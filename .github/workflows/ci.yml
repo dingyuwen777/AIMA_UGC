@@ -71,7 +71,7 @@ jobs:
           }
           trap cleanup EXIT
 
-          uv run uvicorn aima_ugc.entrypoints.api_main:app --host 127.0.0.1 --port 8090 >"${API_LOG}" 2>&1 &
+          uv run uvicorn aima_ugc.entrypoints.api_main:app --host 127.0.0.1 --port 8090 --reload --reload-dir backend/src >"${API_LOG}" 2>&1 &
           API_PID=$!
           npm --prefix frontend run dev >"${FRONTEND_LOG}" 2>&1 &
           FRONTEND_PID=$!
