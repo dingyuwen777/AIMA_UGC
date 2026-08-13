@@ -29,7 +29,7 @@
 - uv + `pyproject.toml + uv.lock`；
 - Vue 3 + TypeScript + Vite + Pinia；
 - OpenAPI 生成前端 Client；
-- TikHub → 不可变 Raw → 平台 Mapper → Canonical → Ingestion → PostgreSQL；
+- Provider Adapter（TikHub、官方 API、Apify、自建采集器、文件/历史导入等）→ 不可变 Raw → Mapper → Canonical → Ingestion Service → Owner Repository → PostgreSQL；
 - PostgreSQL 持久化 Job；
 - Local ArtifactStore 默认实现，可替换 S3；
 - 应用 `.log` 文件为主要排障日志，Docker 日志为辅助；
@@ -122,12 +122,20 @@ Router
 外部数据：
 
 ```text
-Provider
+Provider Adapter
 → Raw Artifact
 → Mapper
 → Canonical
-→ Ingestion
+→ Ingestion Service
 → Owner Repository
+→ PostgreSQL
+
+数据库读取：
+
+PostgreSQL
+→ Query Repository / Read Model
+→ Query/Application Service
+→ Router / API
 ```
 
 禁止：
@@ -151,7 +159,7 @@ Provider
 
 调试入口必须复用生产实现。
 
-- TikHub Probe 调生产 Client/Operation；
+- Provider Probe 调对应生产 Adapter/Operation；TikHub 只是一个 Provider 实现；
 - Mapper 测试调用生产 Mapper；
 - Ingestion 使用 Canonical Fixture 和隔离 PostgreSQL；
 - Worker 使用生产 Job Runtime 和 Fake Handler；
@@ -159,7 +167,7 @@ Provider
 - Renderer 使用固定 Report Context；
 - 不复制 endpoint、分页、字段映射和业务规则。
 
-真实 TikHub/模型 Probe 默认关闭，明确费用，不进普通 CI，不写生产库，不打印 Secret。
+真实付费 Provider/模型 Probe 默认关闭，明确费用，不进普通 CI，不写生产库，不打印 Secret。
 
 ## 7. 数据
 

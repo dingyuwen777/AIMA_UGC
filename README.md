@@ -185,12 +185,14 @@ npm --prefix frontend run generate:api
 系统采用模块化单体，API、Worker、Scheduler 和 Migration 分进程运行。核心数据链路固定为：
 
 ```text
-TikHub / 其他 Provider
+TikHub / 官方 API / Apify / 自建采集器 / 文件导入 / 其他 Provider
 → 不可变 Raw Artifact
-→ 平台 Mapper
+→ 对应 Mapper
 → Canonical Contract
-→ Ingestion
+→ Ingestion Service
+→ Owner Repository
 → PostgreSQL
+→ Query Repository / Read Model
 → API / Analysis / Monitoring / Reporting
 ```
 
