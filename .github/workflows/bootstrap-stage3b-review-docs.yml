@@ -1,0 +1,23 @@
+name: Bootstrap Stage 3B review docs
+on:
+  push:
+    branches: [feature/stage3b-canonical-v1]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/stage3b-canonical-v1
+      - name: Apply review fixes
+        shell: bash
+        run: |
+          python scripts/dev/patch_stage3b_review_docs.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/blueprint
+          git commit -m "修正 Stage 3B Blueprint Review 问题"
+          git push origin HEAD:feature/stage3b-canonical-v1
