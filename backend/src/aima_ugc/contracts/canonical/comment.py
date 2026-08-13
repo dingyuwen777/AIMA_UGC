@@ -32,4 +32,4 @@ class CanonicalCommentV1(CanonicalObservationModel):
     locations: list[CanonicalLocationV1] = Field(default_factory=list)
     is_by_content_author: bool | None = None
     status: str | None = None
-    source: CanonicalSourceV1 | None = None
+    source: CanonicalSourceV1
