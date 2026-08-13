@@ -42,9 +42,7 @@ def test_settings_version_and_provider_neutral_audit() -> None:
             )
         with session.begin():
             actor_kind = session.execute(
-                select(audit_events_table.c.actor_kind).where(
-                    audit_events_table.c.id == event_id
-                )
+                select(audit_events_table.c.actor_kind).where(audit_events_table.c.id == event_id)
             ).scalar_one()
         assert first.version == 1
         assert second.version == 2
