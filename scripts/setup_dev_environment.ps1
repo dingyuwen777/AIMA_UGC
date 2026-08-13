@@ -9,7 +9,6 @@ $script:AimaNpmRegistry = 'https://registry.npmmirror.com'
 
 function Get-AimaRepositoryRoot {
     param([Parameter(Mandatory = $true)][string]$ScriptRoot)
-
     return (Split-Path -Parent $ScriptRoot)
 }
 
@@ -18,13 +17,11 @@ function Get-AimaTargetVersions {
 
     $packageJsonPath = Join-Path $RepoRoot 'frontend\package.json'
     $packageJson = Get-Content -LiteralPath $packageJsonPath -Raw | ConvertFrom-Json
-    $npmVersion = [string]$packageJson.packageManager
-    if ($npmVersion -match '^npm@(\d+\.\d+\.\d+)$') {
-        $npmTarget = $Matches[1]
-    }
-    else {
+    $packageManager = [string]$packageJson.packageManager
+    if ($packageManager -notmatch '^npm@(\d+\.\d+\.\d+)$') {
         throw "Unable to parse npm target from $packageJsonPath"
     }
+    $npmTarget = $Matches[1]
 
     return [pscustomobject]@{
         Python = (Get-Content -LiteralPath (Join-Path $RepoRoot '.python-version') -Raw).Trim()
@@ -40,11 +37,9 @@ function ConvertTo-AimaVersion {
     if ([string]::IsNullOrWhiteSpace($Text)) {
         return $null
     }
-
     if ($Text -match '(\d+\.\d+\.\d+)') {
         return $Matches[1]
     }
-
     return $null
 }
 
@@ -54,7 +49,6 @@ function Get-AimaPythonMajorMinor {
     if ($Version -notmatch '^(\d+)\.(\d+)\.\d+$') {
         throw "Invalid Python version: $Version"
     }
-
     return "$($Matches[1]).$($Matches[2])"
 }
 
@@ -70,7 +64,6 @@ function Get-AimaCommandPath {
     if ($source -match '\\WindowsApps\\python(?:3)?\.exe$') {
         return $null
     }
-
     return $source
 }
 
@@ -80,13 +73,13 @@ function Get-AimaCommandVersion {
         [Parameter(Mandatory = $true)][string[]]$Arguments
     )
 
-    $commandPath = Get-AimaCommandPath -Name $Name
-    if ([string]::IsNullOrWhiteSpace($commandPath)) {
+    $path = Get-AimaCommandPath -Name $Name
+    if ([string]::IsNullOrWhiteSpace($path)) {
         return $null
     }
 
     try {
-        $output = & $commandPath @Arguments 2>&1 | Out-String
+        $output = & $path @Arguments 2>&1 | Out-String
         if ($LASTEXITCODE -ne 0) {
             return $null
         }
@@ -102,8 +95,8 @@ function Get-AimaPythonTargetExecutable {
 
     $pythonPath = Get-AimaCommandPath -Name 'python.exe'
     if (-not [string]::IsNullOrWhiteSpace($pythonPath)) {
-        $pathVersion = Get-AimaCommandVersion -Name 'python.exe' -Arguments @('--version')
-        if ($pathVersion -eq $TargetVersion) {
+        $output = & $pythonPath --version 2>&1 | Out-String
+        if ((ConvertTo-AimaVersion -Text $output) -eq $TargetVersion) {
             return $pythonPath
         }
     }
@@ -117,31 +110,18 @@ function Get-AimaPythonTargetExecutable {
                 $candidate = $output.Trim()
                 if (Test-Path -LiteralPath $candidate) {
                     $versionOutput = & $candidate --version 2>&1 | Out-String
-                    $candidateVersion = ConvertTo-AimaVersion -Text $versionOutput
-                    if ($candidateVersion -eq $TargetVersion) {
+                    if ((ConvertTo-AimaVersion -Text $versionOutput) -eq $TargetVersion) {
                         return $candidate
                     }
                 }
             }
         }
         catch {
-            # The launcher may exist while the requested runtime does not.
+            # Requested runtime is not available through the launcher.
         }
     }
 
     return $null
-}
-
-function Get-AimaPythonTargetVersion {
-    param([Parameter(Mandatory = $true)][string]$TargetVersion)
-
-    $pythonPath = Get-AimaPythonTargetExecutable -TargetVersion $TargetVersion
-    if ([string]::IsNullOrWhiteSpace($pythonPath)) {
-        return $null
-    }
-
-    $output = & $pythonPath --version 2>&1 | Out-String
-    return (ConvertTo-AimaVersion -Text $output)
 }
 
 function Get-AimaCurrentVersions {
@@ -155,19 +135,16 @@ function Get-AimaCurrentVersions {
 
 function Get-AimaPythonInstallerUri {
     param([Parameter(Mandatory = $true)][string]$Version)
-
     return "$script:AimaPythonMirrorRoot/$Version/python-$Version-amd64.exe"
 }
 
 function Get-AimaNodeInstallerUri {
     param([Parameter(Mandatory = $true)][string]$Version)
-
     return "$script:AimaNodeMirrorRoot/v$Version/node-v$Version-x64.msi"
 }
 
 function Get-AimaNodeChecksumUri {
     param([Parameter(Mandatory = $true)][string]$Version)
-
     return "$script:AimaNodeMirrorRoot/v$Version/SHASUMS256.txt"
 }
 
@@ -187,16 +164,14 @@ function Enable-AimaTls12 {
 function Refresh-AimaProcessPath {
     $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-    $segments = @()
-
+    $parts = @()
     if (-not [string]::IsNullOrWhiteSpace($machinePath)) {
-        $segments += $machinePath
+        $parts += $machinePath
     }
     if (-not [string]::IsNullOrWhiteSpace($userPath)) {
-        $segments += $userPath
+        $parts += $userPath
     }
-
-    $env:Path = ($segments -join ';')
+    $env:Path = ($parts -join ';')
 }
 
 function Add-AimaUserPathEntry {
@@ -209,26 +184,23 @@ function Add-AimaUserPathEntry {
         $entries = @($userPath -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
     }
 
-    $exists = $false
     foreach ($entry in $entries) {
         try {
-            $entryNormalized = [IO.Path]::GetFullPath($entry).TrimEnd('\')
-            if ($entryNormalized.Equals($normalized, [StringComparison]::OrdinalIgnoreCase)) {
-                $exists = $true
-                break
+            if ([IO.Path]::GetFullPath($entry).TrimEnd('\').Equals(
+                $normalized,
+                [StringComparison]::OrdinalIgnoreCase
+            )) {
+                Refresh-AimaProcessPath
+                return
             }
         }
         catch {
-            # Keep malformed unrelated PATH entries unchanged.
+            # Preserve unrelated malformed PATH entries unchanged.
         }
     }
 
-    if (-not $exists) {
-        Write-Host "Adding to current user's PATH: $normalized"
-        $newEntries = @($normalized) + $entries
-        [Environment]::SetEnvironmentVariable('Path', ($newEntries -join ';'), 'User')
-    }
-
+    Write-Host "Adding to current user's PATH: $normalized"
+    [Environment]::SetEnvironmentVariable('Path', ((@($normalized) + $entries) -join ';'), 'User')
     Refresh-AimaProcessPath
 }
 
@@ -249,7 +221,7 @@ function Invoke-AimaDownload {
 }
 
 function Get-AimaRegisteredPrograms {
-    $registryPaths = @(
+    $paths = @(
         'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
         'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
         'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
@@ -257,26 +229,22 @@ function Get-AimaRegisteredPrograms {
     $seen = @{}
     $programs = @()
 
-    foreach ($registryPath in $registryPaths) {
-        $items = Get-ItemProperty -Path $registryPath -ErrorAction SilentlyContinue
-        foreach ($item in $items) {
+    foreach ($path in $paths) {
+        foreach ($item in (Get-ItemProperty -Path $path -ErrorAction SilentlyContinue)) {
             if ([string]::IsNullOrWhiteSpace([string]$item.DisplayName)) {
                 continue
             }
-
             $displayVersion = ''
             if ($null -ne $item.PSObject.Properties['DisplayVersion']) {
                 $displayVersion = [string]$item.DisplayVersion
             }
             $key = "{0}|{1}|{2}" -f $item.DisplayName, $displayVersion, $item.PSChildName
-            if ($seen.ContainsKey($key)) {
-                continue
+            if (-not $seen.ContainsKey($key)) {
+                $seen[$key] = $true
+                $programs += $item
             }
-            $seen[$key] = $true
-            $programs += $item
         }
     }
-
     return $programs
 }
 
@@ -286,7 +254,6 @@ function Get-AimaProgramDisplayVersion {
     if ($null -eq $Program.PSObject.Properties['DisplayVersion']) {
         return ''
     }
-
     return [string]$Program.DisplayVersion
 }
 
@@ -319,26 +286,24 @@ function Confirm-AimaUninstall {
     }
 
     Write-Host ''
-    Write-Host "Detected registered $Label installation(s) that do not match the repository target:"
+    Write-Host "Detected old $Label installation(s):"
     foreach ($program in $Programs) {
         Write-Host ("  - {0} {1}" -f $program.DisplayName, (Get-AimaProgramDisplayVersion -Program $program))
     }
-    Write-Host 'Keeping older versions can be useful for other projects. Default: keep them.'
-    $answer = Read-Host "Uninstall these old $Label installation(s) first? [y/N]"
-    return ($answer -match '^(?i:y|yes)$')
+    Write-Host 'Default: keep old versions for other projects.'
+    return ((Read-Host "Uninstall these old $Label installation(s) first? [y/N]") -match '^(?i:y|yes)$')
 }
 
 function Invoke-AimaRegisteredUninstall {
     param([Parameter(Mandatory = $true)][object]$Program)
 
-    Write-Host ("Opening uninstaller: {0} {1}" -f $Program.DisplayName, (Get-AimaProgramDisplayVersion -Program $Program))
     $productCode = [string]$Program.PSChildName
     $uninstallString = ''
     if ($null -ne $Program.PSObject.Properties['UninstallString']) {
         $uninstallString = [string]$Program.UninstallString
     }
 
-    $process = $null
+    Write-Host ("Opening uninstaller: {0} {1}" -f $Program.DisplayName, (Get-AimaProgramDisplayVersion -Program $Program))
     if ($productCode -match '^\{[0-9A-Fa-f-]+\}$' -and $uninstallString -match '(?i)msiexec') {
         $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList @('/x', $productCode) -Wait -PassThru
     }
@@ -346,13 +311,13 @@ function Invoke-AimaRegisteredUninstall {
         $process = Start-Process -FilePath 'cmd.exe' -ArgumentList @('/d', '/s', '/c', $uninstallString) -Wait -PassThru
     }
     else {
-        Write-Warning ("No safe registered uninstaller was found for {0}; leaving it installed." -f $Program.DisplayName)
+        Write-Warning "No registered uninstaller found for $($Program.DisplayName); keeping it installed."
         return
     }
 
     if ($process.ExitCode -notin @(0, 1641, 3010)) {
         if ($process.ExitCode -eq 1602) {
-            throw "Uninstall was cancelled by the user: $($Program.DisplayName)"
+            throw "Uninstall cancelled by user: $($Program.DisplayName)"
         }
         throw "Uninstall failed with exit code $($process.ExitCode): $($Program.DisplayName)"
     }
@@ -364,16 +329,14 @@ function Install-AimaPython {
         [Parameter(Mandatory = $true)][string]$TempDir
     )
 
-    $registrations = Get-AimaPythonRegistrations -TargetVersion $TargetVersion
-    if (Confirm-AimaUninstall -Label 'Python' -Programs $registrations) {
-        foreach ($program in $registrations) {
+    $oldPrograms = Get-AimaPythonRegistrations -TargetVersion $TargetVersion
+    if (Confirm-AimaUninstall -Label 'Python' -Programs $oldPrograms) {
+        foreach ($program in $oldPrograms) {
             Invoke-AimaRegisteredUninstall -Program $program
         }
-        Refresh-AimaProcessPath
     }
 
-    $installerName = "python-$TargetVersion-amd64.exe"
-    $installerPath = Join-Path $TempDir $installerName
+    $installerPath = Join-Path $TempDir "python-$TargetVersion-amd64.exe"
     Invoke-AimaDownload -Uri (Get-AimaPythonInstallerUri -Version $TargetVersion) -Destination $installerPath
 
     $signature = Get-AuthenticodeSignature -FilePath $installerPath
@@ -381,20 +344,16 @@ function Install-AimaPython {
         throw "Python installer Authenticode verification failed: $($signature.Status)"
     }
 
-    Write-Host ''
-    Write-Host "Opening the mirrored official Python $TargetVersion installer."
-    Write-Host 'The installer UI remains visible. Complete the installation to continue.'
-    $arguments = @(
+    Write-Host "Opening Python $TargetVersion installer UI ..."
+    $process = Start-Process -FilePath $installerPath -ArgumentList @(
         'InstallAllUsers=0',
         'PrependPath=1',
         'Include_test=0',
         'InstallLauncherAllUsers=0'
-    )
-    $process = Start-Process -FilePath $installerPath -ArgumentList $arguments -Wait -PassThru
+    ) -Wait -PassThru
     if ($process.ExitCode -notin @(0, 1641, 3010)) {
         throw "Python installer exited with code $($process.ExitCode)"
     }
-
     Refresh-AimaProcessPath
 }
 
@@ -404,22 +363,20 @@ function Install-AimaNode {
         [Parameter(Mandatory = $true)][string]$TempDir
     )
 
-    $registrations = Get-AimaNodeRegistrations -TargetVersion $TargetVersion
-    if ($registrations.Count -gt 0) {
-        Write-Host ''
-        Write-Host 'Node.js usually uses one standard installation location on Windows.'
-        Write-Host 'Choosing to keep the old version means this script will not uninstall it first; the mirrored official MSI may still perform an in-place product upgrade.'
+    $oldPrograms = Get-AimaNodeRegistrations -TargetVersion $TargetVersion
+    if ($oldPrograms.Count -gt 0) {
+        Write-Host 'Note: the standard Node.js MSI may upgrade the common installation in place even when old Node is kept.'
     }
-    if (Confirm-AimaUninstall -Label 'Node.js' -Programs $registrations) {
-        foreach ($program in $registrations) {
+    if (Confirm-AimaUninstall -Label 'Node.js' -Programs $oldPrograms) {
+        foreach ($program in $oldPrograms) {
             Invoke-AimaRegisteredUninstall -Program $program
         }
-        Refresh-AimaProcessPath
     }
 
     $installerName = "node-v$TargetVersion-x64.msi"
     $installerPath = Join-Path $TempDir $installerName
     $checksumUri = Get-AimaNodeChecksumUri -Version $TargetVersion
+
     Enable-AimaTls12
     try {
         $checksums = (Invoke-WebRequest -Uri $checksumUri -UseBasicParsing).Content
@@ -427,6 +384,7 @@ function Install-AimaNode {
     catch {
         throw "China mirror checksum download failed: $checksumUri`n$($_.Exception.Message)"
     }
+
     $pattern = '(?m)^([0-9A-Fa-f]{64})\s+' + [regex]::Escape($installerName) + '\s*$'
     if ($checksums -notmatch $pattern) {
         throw "Unable to find $installerName in mirrored SHASUMS256.txt"
@@ -444,16 +402,14 @@ function Install-AimaNode {
         throw "Node.js MSI Authenticode verification failed: $($signature.Status)"
     }
 
-    Write-Host ''
-    Write-Host "Opening the mirrored official Node.js $TargetVersion MSI installer."
+    Write-Host "Opening Node.js $TargetVersion MSI installer ..."
     $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList @('/i', ('"{0}"' -f $installerPath)) -Wait -PassThru
     if ($process.ExitCode -notin @(0, 1641, 3010)) {
         if ($process.ExitCode -eq 1602) {
-            throw 'Node.js installation was cancelled by the user.'
+            throw 'Node.js installation cancelled by user.'
         }
         throw "Node.js installer exited with code $($process.ExitCode)"
     }
-
     Refresh-AimaProcessPath
 }
 
@@ -462,13 +418,18 @@ function Update-AimaNpm {
 
     $npmPath = Get-AimaCommandPath -Name 'npm.cmd'
     if ([string]::IsNullOrWhiteSpace($npmPath)) {
-        throw 'npm.cmd is not available after Node.js installation.'
+        throw 'npm.cmd is unavailable after Node.js installation.'
     }
 
-    Write-Host "Updating npm to $TargetVersion from China npm mirror ..."
+    Write-Host 'npm global versions are not managed side-by-side by the standard Node.js installer.'
+    $answer = Read-Host "Replace the currently resolved npm with npm@$TargetVersion? [Y/n]"
+    if ($answer -match '^(?i:n|no)$') {
+        throw 'npm upgrade declined; repository toolchain is not ready.'
+    }
+
     & $npmPath install --global "npm@$TargetVersion" --registry $script:AimaNpmRegistry '--replace-registry-host=always'
     if ($LASTEXITCODE -ne 0) {
-        throw "npm upgrade failed with exit code $LASTEXITCODE. If Windows reports permission denied, rerun the setup entry as Administrator."
+        throw "npm upgrade failed with exit code $LASTEXITCODE. If permission is denied, rerun as Administrator."
     }
     Refresh-AimaProcessPath
 }
@@ -479,7 +440,7 @@ function Remove-AimaStandaloneUvIfRequested {
         return
     }
 
-    $answer = Read-Host 'Remove the currently resolved uv executable before installing the repository version? [y/N]'
+    $answer = Read-Host 'Remove the currently resolved old uv before installing the repository version? [y/N]'
     if ($answer -notmatch '^(?i:y|yes)$') {
         return
     }
@@ -487,7 +448,7 @@ function Remove-AimaStandaloneUvIfRequested {
     $standardDir = [IO.Path]::GetFullPath((Join-Path $HOME '.local\bin')).TrimEnd('\')
     $resolvedDir = [IO.Path]::GetFullPath((Split-Path -Parent $uvPath)).TrimEnd('\')
     if (-not $resolvedDir.Equals($standardDir, [StringComparison]::OrdinalIgnoreCase)) {
-        Write-Warning "uv is resolved from $resolvedDir, which may be owned by another package manager. It will not be deleted automatically."
+        Write-Warning "uv is resolved from $resolvedDir and may be owned by another package manager; it will not be deleted automatically."
         return
     }
 
@@ -507,22 +468,21 @@ function Install-AimaUv {
     )
 
     if (-not [string]::IsNullOrWhiteSpace($CurrentVersion)) {
-        Write-Host "Current uv version: $CurrentVersion; target: $TargetVersion"
         Remove-AimaStandaloneUvIfRequested
     }
 
-    $targetPython = Get-AimaPythonTargetExecutable -TargetVersion $TargetPythonVersion
-    if ([string]::IsNullOrWhiteSpace($targetPython)) {
+    $pythonPath = Get-AimaPythonTargetExecutable -TargetVersion $TargetPythonVersion
+    if ([string]::IsNullOrWhiteSpace($pythonPath)) {
         throw "Python $TargetPythonVersion is required before installing uv."
     }
 
-    Write-Host "Installing uv $TargetVersion from TUNA PyPI mirror ..."
-    & $targetPython -m pip install --disable-pip-version-check --upgrade "uv==$TargetVersion" --index-url $script:AimaPypiIndex
+    Write-Host "Installing uv $TargetVersion from TUNA PyPI ..."
+    & $pythonPath -m pip install --disable-pip-version-check --upgrade "uv==$TargetVersion" --index-url $script:AimaPypiIndex
     if ($LASTEXITCODE -ne 0) {
         throw "uv installation from TUNA PyPI failed with exit code $LASTEXITCODE"
     }
 
-    $scriptsDir = (& $targetPython -c 'import sysconfig; print(sysconfig.get_path("scripts"))' 2>&1 | Out-String).Trim()
+    $scriptsDir = (& $pythonPath -c 'import sysconfig; print(sysconfig.get_path("scripts"))' 2>&1 | Out-String).Trim()
     if ([string]::IsNullOrWhiteSpace($scriptsDir) -or -not (Test-Path -LiteralPath $scriptsDir)) {
         throw 'Unable to determine the target Python Scripts directory after installing uv.'
     }
@@ -537,7 +497,7 @@ function Assert-AimaToolVersion {
     )
 
     if ($Actual -ne $Expected) {
-        throw "$Label version mismatch after setup. Expected $Expected, got $Actual. Open a new terminal and rerun the setup; if an older runtime still wins PATH resolution, keep it only after fixing PATH precedence."
+        throw "$Label version mismatch. Expected $Expected, got $Actual. If an older executable still wins PATH resolution, fix PATH precedence and rerun setup."
     }
 }
 
@@ -550,10 +510,9 @@ function Install-AimaProjectDependencies {
         throw 'uv or npm is unavailable; project dependencies cannot be installed.'
     }
 
-    $previousUvIndex = $env:UV_DEFAULT_INDEX
-    $previousNpmRegistry = $env:npm_config_registry
-    $previousReplaceRegistryHost = $env:npm_config_replace_registry_host
-
+    $oldUvIndex = $env:UV_DEFAULT_INDEX
+    $oldNpmRegistry = $env:npm_config_registry
+    $oldReplaceHost = $env:npm_config_replace_registry_host
     $env:UV_DEFAULT_INDEX = $script:AimaPypiIndex
     $env:npm_config_registry = $script:AimaNpmRegistry
     $env:npm_config_replace_registry_host = 'always'
@@ -563,57 +522,28 @@ function Install-AimaProjectDependencies {
         Write-Host "Using uv index: $script:AimaPypiIndex"
         Write-Host "Using npm registry: $script:AimaNpmRegistry"
 
-        Write-Host 'Checking Python lock ...'
         & $uvPath lock --check
-        if ($LASTEXITCODE -ne 0) {
-            throw "uv lock --check failed with exit code $LASTEXITCODE"
-        }
+        if ($LASTEXITCODE -ne 0) { throw "uv lock --check failed: $LASTEXITCODE" }
 
-        Write-Host 'Installing locked Python dependencies ...'
         & $uvPath sync --locked
-        if ($LASTEXITCODE -ne 0) {
-            throw "uv sync --locked failed with exit code $LASTEXITCODE"
-        }
+        if ($LASTEXITCODE -ne 0) { throw "uv sync --locked failed: $LASTEXITCODE" }
 
-        Write-Host 'Installing locked frontend dependencies ...'
         & $npmPath ci --prefix frontend
-        if ($LASTEXITCODE -ne 0) {
-            throw "npm ci --prefix frontend failed with exit code $LASTEXITCODE"
-        }
+        if ($LASTEXITCODE -ne 0) { throw "npm ci --prefix frontend failed: $LASTEXITCODE" }
 
         & $uvPath run python -c 'import aima_ugc; print(aima_ugc.__version__)'
-        if ($LASTEXITCODE -ne 0) {
-            throw "Python package import verification failed with exit code $LASTEXITCODE"
-        }
+        if ($LASTEXITCODE -ne 0) { throw "Package import verification failed: $LASTEXITCODE" }
     }
     finally {
         Pop-Location
-        if ($null -eq $previousUvIndex) {
-            Remove-Item Env:UV_DEFAULT_INDEX -ErrorAction SilentlyContinue
-        }
-        else {
-            $env:UV_DEFAULT_INDEX = $previousUvIndex
-        }
-        if ($null -eq $previousNpmRegistry) {
-            Remove-Item Env:npm_config_registry -ErrorAction SilentlyContinue
-        }
-        else {
-            $env:npm_config_registry = $previousNpmRegistry
-        }
-        if ($null -eq $previousReplaceRegistryHost) {
-            Remove-Item Env:npm_config_replace_registry_host -ErrorAction SilentlyContinue
-        }
-        else {
-            $env:npm_config_replace_registry_host = $previousReplaceRegistryHost
-        }
+        if ($null -eq $oldUvIndex) { Remove-Item Env:UV_DEFAULT_INDEX -ErrorAction SilentlyContinue } else { $env:UV_DEFAULT_INDEX = $oldUvIndex }
+        if ($null -eq $oldNpmRegistry) { Remove-Item Env:npm_config_registry -ErrorAction SilentlyContinue } else { $env:npm_config_registry = $oldNpmRegistry }
+        if ($null -eq $oldReplaceHost) { Remove-Item Env:npm_config_replace_registry_host -ErrorAction SilentlyContinue } else { $env:npm_config_replace_registry_host = $oldReplaceHost }
     }
 }
 
-function Write-AimaVersionSummary {
-    param(
-        [Parameter(Mandatory = $true)]$Current,
-        [Parameter(Mandatory = $true)]$Target
-    )
+function Write-AimaStatus {
+    param($Current, $Target)
 
     Write-Host ''
     Write-Host 'Toolchain status:'
@@ -625,10 +555,10 @@ function Write-AimaVersionSummary {
 
 function Invoke-AimaDevEnvironmentSetup {
     if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
-        throw 'This one-click bootstrap currently supports Windows only. Use docs/Environment instructions for Linux/macOS.'
+        throw 'One-click bootstrap currently supports Windows only.'
     }
     if (-not [Environment]::Is64BitOperatingSystem -or $env:PROCESSOR_ARCHITECTURE -ne 'AMD64') {
-        throw 'This one-click bootstrap currently supports Windows x64 only.'
+        throw 'One-click bootstrap currently supports Windows x64 only.'
     }
 
     $repoRoot = Get-AimaRepositoryRoot -ScriptRoot $PSScriptRoot
@@ -639,23 +569,25 @@ function Invoke-AimaDevEnvironmentSetup {
     try {
         Refresh-AimaProcessPath
         $current = Get-AimaCurrentVersions
-        Write-AimaVersionSummary -Current $current -Target $target
+        Write-AimaStatus -Current $current -Target $target
+
         Write-Host ''
         Write-Host 'China mirror policy:'
-        Write-Host "  Python: $script:AimaPythonMirrorRoot"
-        Write-Host "  PyPI:   $script:AimaPypiIndex"
-        Write-Host "  Node:   $script:AimaNodeMirrorRoot"
-        Write-Host "  npm:    $script:AimaNpmRegistry"
-        Write-Host 'No automatic fallback to overseas sources is performed.'
+        Write-Host "  Python installer: $script:AimaPythonMirrorRoot"
+        Write-Host "  PyPI / uv:       $script:AimaPypiIndex"
+        Write-Host "  Node binaries:   $script:AimaNodeMirrorRoot"
+        Write-Host "  npm registry:    $script:AimaNpmRegistry"
+        Write-Host '  Automatic overseas fallback: disabled'
 
-        $targetPythonVersion = Get-AimaPythonTargetVersion -TargetVersion $target.Python
-        if ($targetPythonVersion -ne $target.Python) {
+        if ([string]::IsNullOrWhiteSpace((Get-AimaPythonTargetExecutable -TargetVersion $target.Python))) {
             Install-AimaPython -TargetVersion $target.Python -TempDir $tempDir
-            $targetPythonVersion = Get-AimaPythonTargetVersion -TargetVersion $target.Python
-            Assert-AimaToolVersion -Label 'Python target runtime' -Actual $targetPythonVersion -Expected $target.Python
         }
-        elseif ($current.Python -ne $target.Python) {
-            Write-Host "Python $($target.Python) is already installed side-by-side; the older Python on PATH is being kept. uv will select the repository Python from .python-version."
+        $pythonPath = Get-AimaPythonTargetExecutable -TargetVersion $target.Python
+        if ([string]::IsNullOrWhiteSpace($pythonPath)) {
+            throw "Python $($target.Python) was not found after installation."
+        }
+        if ($current.Python -ne $target.Python) {
+            Write-Host "Python $($target.Python) is available for AIMA_UGC; another Python may remain first on global PATH."
         }
 
         $current = Get-AimaCurrentVersions
@@ -666,7 +598,6 @@ function Invoke-AimaDevEnvironmentSetup {
         }
 
         if ($current.Npm -ne $target.Npm) {
-            Write-Host "npm does not use a side-by-side global version in the standard Node.js installation. Updating npm will replace the currently resolved global npm version."
             Update-AimaNpm -TargetVersion $target.Npm
             $current = Get-AimaCurrentVersions
             Assert-AimaToolVersion -Label 'npm' -Actual $current.Npm -Expected $target.Npm
@@ -678,7 +609,7 @@ function Invoke-AimaDevEnvironmentSetup {
             Assert-AimaToolVersion -Label 'uv' -Actual $current.Uv -Expected $target.Uv
         }
 
-        Write-AimaVersionSummary -Current $current -Target $target
+        Write-AimaStatus -Current $current -Target $target
         Install-AimaProjectDependencies -RepoRoot $repoRoot
 
         Write-Host ''
