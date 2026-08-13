@@ -14,14 +14,17 @@ function Get-AimaTargetVersions {
     $packageJsonPath = Join-Path $RepoRoot 'frontend\package.json'
     $packageJson = Get-Content -LiteralPath $packageJsonPath -Raw | ConvertFrom-Json
     $npmVersion = [string]$packageJson.packageManager
-    if ($npmVersion -notmatch '^npm@(\d+\.\d+\.\d+)$') {
+    if ($npmVersion -match '^npm@(\d+\.\d+\.\d+)$') {
+        $npmTarget = $Matches[1]
+    }
+    else {
         throw "Unable to parse npm target from $packageJsonPath"
     }
 
     return [pscustomobject]@{
         Python = (Get-Content -LiteralPath (Join-Path $RepoRoot '.python-version') -Raw).Trim()
         Node   = (Get-Content -LiteralPath (Join-Path $RepoRoot '.node-version') -Raw).Trim()
-        Npm    = $Matches[1]
+        Npm    = $npmTarget
         Uv     = (Get-Content -LiteralPath (Join-Path $RepoRoot '.uv-version') -Raw).Trim()
     }
 }
@@ -112,6 +115,11 @@ function Get-AimaUvInstallerUri {
     return "https://astral.sh/uv/$Version/install.ps1"
 }
 
+function Enable-AimaTls12 {
+    [Net.ServicePointManager]::SecurityProtocol =
+        [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+}
+
 function Refresh-AimaProcessPath {
     $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
@@ -133,6 +141,7 @@ function Invoke-AimaDownload {
         [Parameter(Mandatory = $true)][string]$Destination
     )
 
+    Enable-AimaTls12
     Write-Host "Downloading: $Uri"
     Invoke-WebRequest -Uri $Uri -OutFile $Destination -UseBasicParsing
 }
@@ -291,6 +300,7 @@ function Install-AimaNode {
     $installerName = "node-v$TargetVersion-x64.msi"
     $installerPath = Join-Path $TempDir $installerName
     $checksumUri = Get-AimaNodeChecksumUri -Version $TargetVersion
+    Enable-AimaTls12
     $checksums = (Invoke-WebRequest -Uri $checksumUri -UseBasicParsing).Content
     $pattern = '(?m)^([0-9A-Fa-f]{64})\s+' + [regex]::Escape($installerName) + '\s*$'
     if ($checksums -notmatch $pattern) {

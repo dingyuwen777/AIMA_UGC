@@ -38,7 +38,12 @@ jobs:
           test "$(npm --version)" = "11.17.0"
 
       - name: Install uv
-        run: python -m pip install "uv==0.12.3"
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          test "$(uv --version)" = "uv ${UV_VERSION}"
 
       - name: Verify locked Python environment
         shell: bash
@@ -137,3 +142,60 @@ jobs:
           npm --prefix frontend run test -- --run
           npm --prefix frontend run build
           npm --prefix frontend exec -- playwright --version
+
+  windows-bootstrap:
+    name: Windows bootstrap
+    runs-on: windows-2025
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Validate Windows PowerShell bootstrap
+        shell: powershell
+        run: |
+          $scriptPath = (Resolve-Path 'scripts/setup_dev_environment.ps1').Path
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            $scriptPath,
+            [ref]$tokens,
+            [ref]$parseErrors
+          ) | Out-Null
+          if ($parseErrors.Count -ne 0) {
+            $parseErrors | ForEach-Object { Write-Error $_.Message }
+            throw 'PowerShell parser errors found.'
+          }
+
+          . $scriptPath
+          $repoRoot = (Resolve-Path '.').Path
+          $targets = Get-AimaTargetVersions -RepoRoot $repoRoot
+          if ($targets.Python -ne '3.14.7') { throw "Unexpected Python target: $($targets.Python)" }
+          if ($targets.Node -ne '24.19.0') { throw "Unexpected Node target: $($targets.Node)" }
+          if ($targets.Npm -ne '11.17.0') { throw "Unexpected npm target: $($targets.Npm)" }
+          if ($targets.Uv -ne '0.12.3') { throw "Unexpected uv target: $($targets.Uv)" }
+
+          if ((ConvertTo-AimaVersion -Text 'Python 3.14.7') -ne '3.14.7') {
+            throw 'Python version parser failed.'
+          }
+          if ((ConvertTo-AimaVersion -Text 'v24.19.0') -ne '24.19.0') {
+            throw 'Node version parser failed.'
+          }
+          if ((Get-AimaPythonInstallerUri -Version $targets.Python) -ne 'https://www.python.org/ftp/python/3.14.7/python-3.14.7-amd64.exe') {
+            throw 'Python installer URL is not exact.'
+          }
+          if ((Get-AimaNodeInstallerUri -Version $targets.Node) -ne 'https://nodejs.org/dist/v24.19.0/node-v24.19.0-x64.msi') {
+            throw 'Node installer URL is not exact.'
+          }
+          if ((Get-AimaNodeChecksumUri -Version $targets.Node) -ne 'https://nodejs.org/dist/v24.19.0/SHASUMS256.txt') {
+            throw 'Node checksum URL is not exact.'
+          }
+          if ((Get-AimaUvInstallerUri -Version $targets.Uv) -ne 'https://astral.sh/uv/0.12.3/install.ps1') {
+            throw 'uv installer URL is not exact.'
+          }
+
+          $cmdContent = Get-Content -LiteralPath 'scripts/setup_dev_environment.cmd' -Raw
+          if ($cmdContent -notmatch 'setup_dev_environment\.ps1') {
+            throw 'CMD entry does not invoke the PowerShell bootstrap.'
+          }
+
+          Write-Host 'Windows bootstrap static and pure-function checks passed.'
