@@ -37,7 +37,7 @@
 | 文档 | 负责内容 | 什么时候读取 |
 | --- | --- | --- |
 | [`01-总体架构与技术选型.md`](01-总体架构与技术选型.md) | 模块化单体、运行组件、七个业务模块、目录结构、依赖方向、可替换边界 | 总体架构、目录、模块边界、技术路线、跨模块设计 |
-| [`02-采集系统与数据标准化.md`](02-采集系统与数据标准化.md) | Plan/Run/Scope/Request/Attempt/Candidate、TikHub Adapter、Raw、Mapper、Canonical、分页、刷新策略 | Provider、TikHub、采集、Raw、Mapper、Canonical、平台数据映射 |
+| [`02-采集系统与数据标准化.md`](02-采集系统与数据标准化.md) | Plan/Run/Scope/Request/Attempt/Candidate、Provider Adapter、Raw、Mapper、Canonical、分页、刷新策略 | Provider、TikHub/官方 API/Apify/导入、采集、Raw、Mapper、Canonical、平台数据映射 |
 | [`03-数据库与文件存储.md`](03-数据库与文件存储.md) | PostgreSQL、表与约束、Owner、Current/Version/Metric、Artifact、Job 数据结构、备份一致性 | Schema、表、Migration、Repository、Artifact、数据历史与幂等 |
 | [`04-后端任务API与前端.md`](04-后端任务API与前端.md) | Router/Service/Repository、HTTP Contract、错误、Cursor、Auth、Job Runtime、前端调用边界 | API、Job、前端 Client、认证授权、业务服务、长任务 |
 | [`05-日志安全部署与运维.md`](05-日志安全部署与运维.md) | 日志、审计、Secret、安全、Docker Compose、离线 Release、备份、回滚、运维 | 日志、安全、配置、部署、Release、服务器目录、备份恢复 |
@@ -46,7 +46,7 @@
 
 ## 当前开发状态
 
-**Stage 1 工程基线、Stage 2 Platform 基础和 Stage 3A 数据库基础均已建立。** 当前代码已经具备：
+**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础和 Stage 3B Canonical Contract 均已建立。** 当前代码已经具备：
 
 - 根 Python/uv 工程、固定运行时与锁文件、FastAPI/Vue、OpenAPI → Orval Client、完整 Stage 1 CI；
 - Windows PowerShell 5.1 开发环境引导和本地 Uvicorn + Vite 双服务联调；
@@ -55,7 +55,8 @@
 - `ArtifactService` / `ArtifactStore` 边界和 Local ArtifactStore；
 - API / Worker / Scheduler / Migration 的最小 Platform bootstrap；
 - 隔离 PostgreSQL 18.4 的 Stage 2 Platform CI；
-- Stage 3A 根 Alembic、`20260813_0001`、`artifacts/system_settings/audit_events`、PostgreSQL Repository 和独立 Migration CI。
+- Stage 3A 根 Alembic、`20260813_0001`、`artifacts/system_settings/audit_events`、PostgreSQL Repository 和独立 Migration CI；
+- Stage 3B Provider/平台无关 Canonical V1 Pydantic Contract、生成 JSON Schema、固定脱敏帖子聚合示例、稀疏 `observed_fields`、评论树/coverage 语义与 Contract Test。
 
 Stage 2 的机器事实以 `backend/src/aima_ugc/platform/`、`backend/src/aima_ugc/bootstrap/`、HTTP Contract、测试和 CI 为准；跨文档决定维护在 [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md)。不要在其他 Blueprint 复制实现细节或版本表。
 
@@ -74,13 +75,9 @@ Stage 2 的机器事实以 `backend/src/aima_ugc/platform/`、`backend/src/aima_
 
 ### 阶段 3：Contract、数据库与 System/Audit
 
-Stage 2 已完成，Stage 3A 数据库/Alembic/基础持久化也已完成。下一步 Stage 3B 应建立：
+Stage 3A 数据库/Alembic/基础持久化和 Stage 3B Canonical Contract 均已完成。Canonical 现在由 Pydantic 唯一手写事实源、生成 JSON Schema、固定脱敏聚合示例和 Contract Test 维护，并已经冻结 Provider 无关、稀疏 Observation、评论 root/parent、coverage 和完整帖子 Read Model 语义。
 
-- Canonical Pydantic / JSON Schema 的正式机器 Contract；
-- 固定、合法、脱敏的 Canonical 示例与 Contract Test；
-- Mapper/Ingestion 后续共同消费的稳定字段语义。
-
-Stage 3A 已建立的 Schema/Repository 不重复设计；登录、Role/Permission、Principal 和 actor-bound API 幂等继续等待真实第三方身份需求。
+Stage 3A/3B 已建立的 Schema/Repository/Contract 不重复设计；登录、Role/Permission、Principal 和 actor-bound API 幂等继续等待真实第三方身份需求。**下一步正式工程阶段是 Stage 4 Job Runtime**，之后才进入 Provider Adapter/Raw 和单平台纵切。
 
 阶段 0 未全部完成时，Stage 3 只推进已有明确设计支撑的共享基础，不得替用户猜测页面字段、五平台 Operation、隐私保留期、容量或 Scheduler 策略；更不得直接批量实现五个平台。
 

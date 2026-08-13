@@ -3,17 +3,26 @@
 ## 1. 普通请求怎样走
 
 ```text
+读取：
 Vue Page
-→ Feature Store
-→ Feature API
+→ Feature Store / Feature API
+→ OpenAPI 生成 Client
+→ FastAPI Router
+→ Query/Application Service
+→ Query Repository / Read Model
+→ PostgreSQL
+
+写入：
+Vue Page
+→ Feature Store / Feature API
 → OpenAPI 生成 Client
 → FastAPI Router
 → Application Service
-→ Repository / Provider Port
-→ PostgreSQL 或创建 Job
+→ Owner Repository 或创建 Job
+→ PostgreSQL
 ```
 
-每层只做自己负责的事情。Router 不承载复杂业务；页面不理解数据库表；Repository 不解释 TikHub 字段。
+每层只做自己负责的事情。Router 不承载复杂业务；页面不理解数据库表；Repository 不解释任何 Provider 私有字段。内容读取走 Query Repository/Read Model，内容写入走 Ingestion + Owner Repository，二者不让 API 或 Mapper 直接碰 SQL。
 
 ## 2. 后端开发规则
 
@@ -32,7 +41,7 @@ Vue Page
 
 - SQL；
 - 文件路径拼接；
-- TikHub 请求；
+- 直接 Provider 请求；
 - 批量循环；
 - 业务分类；
 - 报告渲染；
@@ -55,14 +64,14 @@ Service 负责事务边界和模块协作，不负责 HTTP 字段，也不依赖
 
 ### 2.3 Repository
 
-Repository 只负责本模块表的读写：
+Owner Repository 负责本模块业务写入，Query Repository 负责只读查询和 Read Model 组装。二者共享数据库运行时但不合并成万能 Repository：
 
-- SQLAlchemy 2 `select()`；
+- SQLAlchemy 2 `select()` / `insert()` / `update()` 等显式语句；Query Repository 只使用只读查询；
 - 参数绑定；
 - 显式事务；
 - 返回模块模型或 Read Model；
 - 不返回驱动私有 Row 给上层；
-- 不做 TikHub 字段翻译；
+- 不做 TikHub、官方 API、Apify 等 Provider 字段翻译；
 - 不在多个 Repository 重复同一业务查询。
 
 不创建“万能 BaseRepository”。共享数据库连接、事务和分页工具即可，业务 SQL 保持在 Owner Repository。
@@ -86,10 +95,10 @@ Pydantic Request/Response Model
 Pydantic Canonical Model
 → 生成 JSON Schema
 → 固定 examples
-→ Mapper / Ingestion / Contract Test
+→ Mapper / Ingestion / Query / Contract Test
 ```
 
-Canonical 不再同时手写两份可能漂移的 Python 类和 JSON Schema。Pydantic 模型是唯一手写事实源，JSON Schema 和示例验证由脚本生成/校验。
+Pydantic 模型是唯一手写事实源，JSON Schema 由 `scripts/contracts/generate.py` 确定性生成到 `contracts/canonical/`。写入原子 Contract 是 `CanonicalContentV1` / `CanonicalCommentV1`；查询、导出、AI 和页面的完整帖子视图使用 `CanonicalContentAggregateV1`。Aggregate 是 Read Model，不要求 Mapper 一次生成，也不作为数据库大 JSON 持久化。`observed_fields` 控制稀疏更新，`comment_coverage` 明确评论采集完整度。
 
 ### 3.3 Job Payload
 

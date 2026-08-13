@@ -1,20 +1,26 @@
-"""Stage 1 OpenAPI 基线结构检查。"""
+"""固定 Contract 的基础兼容与生成物检查。"""
 
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-TARGET = ROOT / "contracts" / "openapi" / "openapi.json"
+OPENAPI_TARGET = ROOT / "contracts" / "openapi" / "openapi.json"
+CANONICAL_TARGETS = [
+    "contracts/canonical/content.v1.schema.json",
+    "contracts/canonical/comment.v1.schema.json",
+    "contracts/canonical/content.aggregate.v1.schema.json",
+]
 
 
 def main() -> int:
-    if not TARGET.exists():
+    if not OPENAPI_TARGET.exists():
         print("CONTRACT_MISSING: contracts/openapi/openapi.json 不存在")
         return 1
 
-    spec = json.loads(TARGET.read_text(encoding="utf-8"))
+    spec = json.loads(OPENAPI_TARGET.read_text(encoding="utf-8"))
     paths = spec.get("paths", {})
     operation_ids: list[str] = []
     for path_item in paths.values():
@@ -36,7 +42,16 @@ def main() -> int:
         print("CONTRACT_HEALTH_MISSING: /health/live 必须使用 operationId=healthLive")
         return 1
 
-    print("Stage 1 OpenAPI 基线结构检查通过；历史兼容比较尚不适用。")
+    diff = subprocess.run(
+        ["git", "diff", "--exit-code", "--", *CANONICAL_TARGETS],
+        cwd=ROOT,
+        check=False,
+    )
+    if diff.returncode != 0:
+        print("CANONICAL_SCHEMA_STALE: 生成后的 Canonical JSON Schema 与提交版本不一致")
+        return 1
+
+    print("OpenAPI 基线与 Canonical Schema 漂移检查通过。")
     return 0
 
 

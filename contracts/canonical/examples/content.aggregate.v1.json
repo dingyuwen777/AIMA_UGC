@@ -1,0 +1,278 @@
+{
+  "schema_version": "content.aggregate.v1",
+  "content": {
+    "schema_version": "content.v1",
+    "platform": "xiaohongshu",
+    "external_content_id": "note_123",
+    "content_type": "image_post",
+    "title": "爱玛电动车使用体验",
+    "text": "示例正文",
+    "canonical_url": "https://example.com/posts/note_123",
+    "share_url": "https://example.com/share/note_123",
+    "author": {
+      "external_account_id": "user_001",
+      "alternate_ids": {"red_id": "red_001"},
+      "handle": "aima_rider",
+      "display_name": "示例作者",
+      "profile_url": "https://example.com/users/user_001",
+      "avatar_url": "https://example.com/avatar/user_001.jpg",
+      "bio": "示例公开简介",
+      "verified": true,
+      "verification_label": "企业认证",
+      "region": "上海",
+      "follower_count": 12000,
+      "following_count": 300,
+      "content_count": 180,
+      "total_like_count": 500000
+    },
+    "published_at": "2026-08-13T02:00:00Z",
+    "source_updated_at": "2026-08-13T02:30:00Z",
+    "observed_at": "2026-08-13T04:00:00Z",
+    "media": [
+      {
+        "media_type": "image",
+        "external_media_id": "media_001",
+        "url": "https://example.com/media/image_001.jpg",
+        "preview_url": "https://example.com/media/image_001_preview.jpg",
+        "width": 1920,
+        "height": 1080,
+        "position": 0,
+        "mime_type": "image/jpeg"
+      }
+    ],
+    "topics": [
+      {
+        "name": "爱玛电动车",
+        "external_topic_id": "topic_001",
+        "url": "https://example.com/topics/topic_001"
+      }
+    ],
+    "locations": [
+      {
+        "location_type": "ip_region",
+        "label": "上海",
+        "country": "中国",
+        "region": "上海"
+      }
+    ],
+    "metrics": {
+      "schema_version": "metrics.v1",
+      "like_count": 152,
+      "comment_count": 27,
+      "share_count": 4,
+      "favorite_count": 21
+    },
+    "status": "available",
+    "source": {
+      "schema_version": "source.v1",
+      "provider_name": "tikhub",
+      "operation": "content_detail",
+      "provider_request_id": "request_001",
+      "provider_attempt_id": "attempt_001",
+      "raw_artifact_id": "11111111-1111-4111-8111-111111111111",
+      "source_type": "keyword_search",
+      "source_value": "爱玛",
+      "item_locator": "items[0]",
+      "observed_at": "2026-08-13T04:00:00Z"
+    },
+    "observed_fields": [
+      "title",
+      "text",
+      "canonical_url",
+      "share_url",
+      "author.external_account_id",
+      "author.alternate_ids",
+      "author.handle",
+      "author.display_name",
+      "author.profile_url",
+      "author.avatar_url",
+      "author.bio",
+      "author.verified",
+      "author.verification_label",
+      "author.region",
+      "author.follower_count",
+      "author.following_count",
+      "author.content_count",
+      "author.total_like_count",
+      "published_at",
+      "source_updated_at",
+      "media",
+      "topics",
+      "locations",
+      "metrics.like_count",
+      "metrics.comment_count",
+      "metrics.share_count",
+      "metrics.favorite_count",
+      "status"
+    ]
+  },
+  "comment_coverage": {
+    "status": "partial",
+    "reported_total": 27,
+    "captured_count": 2,
+    "observed_at": "2026-08-13T04:05:00Z"
+  },
+  "comment_threads": [
+    {
+      "root_comment": {
+        "schema_version": "comment.v1",
+        "platform": "xiaohongshu",
+        "external_content_id": "note_123",
+        "external_comment_id": "comment_100",
+        "root_comment_id": "comment_100",
+        "author": {
+          "external_account_id": "user_100",
+          "display_name": "评论者A",
+          "profile_url": "https://example.com/users/user_100",
+          "avatar_url": "https://example.com/avatar/user_100.jpg",
+          "region": "江苏"
+        },
+        "text": "续航怎么样？",
+        "published_at": "2026-08-13T03:00:00Z",
+        "observed_at": "2026-08-13T04:05:00Z",
+        "metrics": {
+          "schema_version": "metrics.v1",
+          "like_count": 8,
+          "reply_count": 1
+        },
+        "is_by_content_author": false,
+        "status": "available",
+        "source": {
+          "schema_version": "source.v1",
+          "provider_name": "tikhub",
+          "operation": "comment_list",
+          "provider_request_id": "request_002",
+          "provider_attempt_id": "attempt_002",
+          "raw_artifact_id": "22222222-2222-4222-8222-222222222222",
+          "source_type": "comments",
+          "source_value": "note_123",
+          "item_locator": "comments[0]",
+          "observed_at": "2026-08-13T04:05:00Z"
+        },
+        "observed_fields": [
+          "text",
+          "published_at",
+          "author.external_account_id",
+          "author.display_name",
+          "author.profile_url",
+          "author.avatar_url",
+          "author.region",
+          "metrics.like_count",
+          "metrics.reply_count",
+          "is_by_content_author",
+          "status"
+        ]
+      },
+      "replies": [
+        {
+          "schema_version": "comment.v1",
+          "platform": "xiaohongshu",
+          "external_content_id": "note_123",
+          "external_comment_id": "comment_101",
+          "root_comment_id": "comment_100",
+          "parent_comment_id": "comment_100",
+          "author": {
+            "external_account_id": "user_001",
+            "alternate_ids": {"red_id": "red_001"},
+            "handle": "aima_rider",
+            "display_name": "示例作者",
+            "profile_url": "https://example.com/users/user_001",
+            "avatar_url": "https://example.com/avatar/user_001.jpg",
+            "verified": true,
+            "region": "上海"
+          },
+          "text": "日常通勤可以满足。",
+          "published_at": "2026-08-13T03:10:00Z",
+          "observed_at": "2026-08-13T04:05:00Z",
+          "metrics": {
+            "schema_version": "metrics.v1",
+            "like_count": 2,
+            "reply_count": 0
+          },
+          "is_by_content_author": true,
+          "status": "available",
+          "source": {
+            "schema_version": "source.v1",
+            "provider_name": "tikhub",
+            "operation": "comment_replies",
+            "provider_request_id": "request_003",
+            "provider_attempt_id": "attempt_003",
+            "raw_artifact_id": "33333333-3333-4333-8333-333333333333",
+            "source_type": "comment_replies",
+            "source_value": "comment_100",
+            "item_locator": "replies[0]",
+            "observed_at": "2026-08-13T04:05:00Z"
+          },
+          "observed_fields": [
+            "root_comment_id",
+            "parent_comment_id",
+            "text",
+            "published_at",
+            "author.external_account_id",
+            "author.alternate_ids",
+            "author.handle",
+            "author.display_name",
+            "author.profile_url",
+            "author.avatar_url",
+            "author.verified",
+            "author.region",
+            "metrics.like_count",
+            "metrics.reply_count",
+            "is_by_content_author",
+            "status"
+          ]
+        }
+      ],
+      "coverage": {
+        "status": "complete",
+        "reported_total": 1,
+        "captured_count": 1,
+        "observed_at": "2026-08-13T04:05:00Z"
+      }
+    }
+  ],
+  "unthreaded_comments": [],
+  "system": {
+    "first_seen_at": "2026-08-13T04:00:00Z",
+    "last_seen_at": "2026-08-13T04:05:00Z",
+    "latest_observed_at": "2026-08-13T04:05:00Z"
+  },
+  "lineage": [
+    {
+      "schema_version": "source.v1",
+      "provider_name": "tikhub",
+      "operation": "content_detail",
+      "provider_request_id": "request_001",
+      "provider_attempt_id": "attempt_001",
+      "raw_artifact_id": "11111111-1111-4111-8111-111111111111",
+      "source_type": "keyword_search",
+      "source_value": "爱玛",
+      "item_locator": "items[0]",
+      "observed_at": "2026-08-13T04:00:00Z"
+    },
+    {
+      "schema_version": "source.v1",
+      "provider_name": "tikhub",
+      "operation": "comment_list",
+      "provider_request_id": "request_002",
+      "provider_attempt_id": "attempt_002",
+      "raw_artifact_id": "22222222-2222-4222-8222-222222222222",
+      "source_type": "comments",
+      "source_value": "note_123",
+      "item_locator": "comments[0]",
+      "observed_at": "2026-08-13T04:05:00Z"
+    },
+    {
+      "schema_version": "source.v1",
+      "provider_name": "tikhub",
+      "operation": "comment_replies",
+      "provider_request_id": "request_003",
+      "provider_attempt_id": "attempt_003",
+      "raw_artifact_id": "33333333-3333-4333-8333-333333333333",
+      "source_type": "comment_replies",
+      "source_value": "comment_100",
+      "item_locator": "replies[0]",
+      "observed_at": "2026-08-13T04:05:00Z"
+    }
+  ]
+}
