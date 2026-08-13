@@ -3,14 +3,23 @@
 ## 1. 普通请求怎样走
 
 ```text
+读取：
 Vue Page
-→ Feature Store
-→ Feature API
+→ Feature Store / Feature API
+→ OpenAPI 生成 Client
+→ FastAPI Router
+→ Query/Application Service
+→ Query Repository / Read Model
+→ PostgreSQL
+
+写入：
+Vue Page
+→ Feature Store / Feature API
 → OpenAPI 生成 Client
 → FastAPI Router
 → Application Service
-→ Repository / Provider Port
-→ PostgreSQL 或创建 Job
+→ Owner Repository 或创建 Job
+→ PostgreSQL
 ```
 
 每层只做自己负责的事情。Router 不承载复杂业务；页面不理解数据库表；Repository 不解释任何 Provider 私有字段。内容读取走 Query Repository/Read Model，内容写入走 Ingestion + Owner Repository，二者不让 API 或 Mapper 直接碰 SQL。
@@ -57,7 +66,7 @@ Service 负责事务边界和模块协作，不负责 HTTP 字段，也不依赖
 
 Owner Repository 负责本模块业务写入，Query Repository 负责只读查询和 Read Model 组装。二者共享数据库运行时但不合并成万能 Repository：
 
-- SQLAlchemy 2 `select()`；
+- SQLAlchemy 2 `select()` / `insert()` / `update()` 等显式语句；Query Repository 只使用只读查询；
 - 参数绑定；
 - 显式事务；
 - 返回模块模型或 Read Model；
