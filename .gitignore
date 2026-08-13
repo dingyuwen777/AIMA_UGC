@@ -223,3 +223,6 @@ node_modules/
 frontend/dist/
 frontend/playwright-report/
 frontend/test-results/
+
+# Stage 2 local runtime state / secrets / logs / artifacts
+.runtime/
