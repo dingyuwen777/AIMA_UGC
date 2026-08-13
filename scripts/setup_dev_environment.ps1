@@ -482,7 +482,7 @@ function Install-AimaUv {
         throw "uv installation from TUNA PyPI failed with exit code $LASTEXITCODE"
     }
 
-    $scriptsDir = (& $pythonPath -c 'import sysconfig; print(sysconfig.get_path("scripts"))' 2>&1 | Out-String).Trim()
+    $scriptsDir = (& $pythonPath -c "import sysconfig; print(sysconfig.get_path('scripts'))" 2>&1 | Out-String).Trim()
     if ([string]::IsNullOrWhiteSpace($scriptsDir) -or -not (Test-Path -LiteralPath $scriptsDir)) {
         throw 'Unable to determine the target Python Scripts directory after installing uv.'
     }
