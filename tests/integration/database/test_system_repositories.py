@@ -1,8 +1,6 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import select
-
 from aima_ugc.adapters.persistence.postgres.system import (
     PostgresAuditRepository,
     PostgresSystemSettingsRepository,
@@ -11,6 +9,7 @@ from aima_ugc.modules.system.models import AuditEvent
 from aima_ugc.modules.system.tables import audit_events_table
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
+from sqlalchemy import select
 
 
 def test_settings_version_and_provider_neutral_audit() -> None:
