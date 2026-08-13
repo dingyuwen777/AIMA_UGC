@@ -71,15 +71,15 @@ Stage 2 的机器事实以 `backend/src/aima_ugc/platform/`、`backend/src/aima_
 - 日请求量、数据量、并发、磁盘预算、SLO、RPO、RTO；
 - Scheduler misfire/catch-up 业务策略。
 
-### 阶段 3：Contract、数据库与 System/Auth
+### 阶段 3：Contract、数据库与 System/Audit
 
 Stage 2 已完成，不再继续向 Platform 层堆业务能力。下一阶段应建立：
 
 - Canonical Pydantic / JSON Schema 的正式机器 Contract；
 - 核心 PostgreSQL Schema 与 Alembic Revision；
 - Artifact 元数据 PostgreSQL Repository / Table，使 Stage 2 的 Metadata Port 有正式实现；
-- System Settings、User、Role、Permission、Session、登录限流、审计；
-- API 幂等基础；
+- System Settings、Provider 中立审计，以及未来第三方身份接入所需的 `Principal/AuthContext` 扩展边界；
+- 当前不实现登录入口、本地密码、Session、CSRF、登录限流或 MFA；API 幂等的 actor 作用域跟随未来 Principal/认证语义冻结；
 - 表 Owner、Migration 升降级和隔离 PostgreSQL 集成门禁。
 
 阶段 0 未全部完成时，Stage 3 只推进已有明确设计支撑的共享基础，不得替用户猜测页面字段、五平台 Operation、隐私保留期、容量或 Scheduler 策略；更不得直接批量实现五个平台。
