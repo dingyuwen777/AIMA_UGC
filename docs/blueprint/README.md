@@ -16,7 +16,7 @@
 
 不要因为存在 Blueprint 就跳过代码和测试事实，也不要一次性读取所有文档代替针对当前任务的现状调查。
 
-实际开发机配置、Windows x64 一键环境初始化、本地启动、前后端联调以及生产部署当前状态见 [`../环境运行与部署.md`](../环境运行与部署.md)。该文档是操作入口，不替代本目录的架构和门禁事实。
+实际开发机配置、Windows x64 一键环境初始化、本地启动、Stage 2 PostgreSQL/readiness 配置以及生产部署当前状态见 [`../环境运行与部署.md`](../环境运行与部署.md)。该文档是操作入口，不替代本目录的架构和门禁事实。
 
 ## 事实源优先级
 
@@ -46,13 +46,19 @@
 
 ## 当前开发状态
 
-**Stage 1 工程基线已经建立。** 当前仓库已经不再只是 Blueprint：根 Python/uv 工程、Python/Node/npm/uv 版本声明、最小 FastAPI/Vue 工程、固定 OpenAPI、生成 TypeScript Client、基础测试、质量门禁、本地前后端双服务联调，以及 Windows PowerShell 5.1 环境引导门禁都已有机器事实。
+**Stage 1 工程基线和 Stage 2 Platform 基础均已建立。** 当前代码已经具备：
 
-Linux Stage 1 验证负责锁文件、Contract、测试、Wheel、前端 Build 和真实本地双服务 HTTP smoke；Windows bootstrap 验证负责一键环境引导器的 PowerShell 5.1 兼容性、版本事实读取、官方下载地址构造和非破坏性安全约束。Windows CI 不真实卸载/安装 Runner 系统软件，不能把它表述为完整 GUI 安装 E2E。
+- 根 Python/uv 工程、固定运行时与锁文件、FastAPI/Vue、OpenAPI → Orval Client、完整 Stage 1 CI；
+- Windows PowerShell 5.1 开发环境引导和本地 Uvicorn + Vite 双服务联调；
+- 显式 `AIMA_*` Config、只读 Secret 文件、统一 `.log`、同步 PostgreSQL Runtime；
+- `GET /health/ready`；
+- `ArtifactService` / `ArtifactStore` 边界和 Local ArtifactStore；
+- API / Worker / Scheduler / Migration 的最小 Platform bootstrap；
+- 隔离 PostgreSQL 18.4 的 Stage 2 Platform CI。
 
-Stage 1 已确认的工具链细节只在 [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md) 维护；实际版本以 `.python-version`、`.node-version`、`.uv-version`、`frontend/package.json`、`uv.lock`、`frontend/package-lock.json` 为准。不要在其他 Blueprint 再复制一份版本表。
+Stage 2 的机器事实以 `backend/src/aima_ugc/platform/`、`backend/src/aima_ugc/bootstrap/`、HTTP Contract、测试和 CI 为准；跨文档决定维护在 [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md)。不要在其他 Blueprint 复制实现细节或版本表。
 
-当前下一步分成两条并行路径：
+当前下一步分成两条并行路径。
 
 ### 阶段 0：继续补齐不能由技术人员猜测的业务事实
 
@@ -65,18 +71,18 @@ Stage 1 已确认的工具链细节只在 [`07-技术决策与实施门禁.md`](
 - 日请求量、数据量、并发、磁盘预算、SLO、RPO、RTO；
 - Scheduler misfire/catch-up 业务策略。
 
-### 阶段 2：开始不依赖上述业务决策的 Platform 基础
+### 阶段 3：Contract、数据库与 System/Auth
 
-按 `05`、`06`、`07` 的边界，可以开始：
+Stage 2 已完成，不再继续向 Platform 层堆业务能力。下一阶段应建立：
 
-- 配置与 Secret 读取；
-- 统一日志基础；
-- `/health/ready` 所需基础能力；
-- PostgreSQL 连接基础；
-- `ArtifactService` / `ArtifactStore` 的最小边界与 Local Store；
-- API、Worker、Scheduler、Migration 四个进程的最小 bootstrap/entrypoint。
+- Canonical Pydantic / JSON Schema 的正式机器 Contract；
+- 核心 PostgreSQL Schema 与 Alembic Revision；
+- Artifact 元数据 PostgreSQL Repository / Table，使 Stage 2 的 Metadata Port 有正式实现；
+- System Settings、User、Role、Permission、Session、登录限流、审计；
+- API 幂等基础；
+- 表 Owner、Migration 升降级和隔离 PostgreSQL 集成门禁。
 
-阶段 0 未全部完成时，不得借 Stage 2 跳过后续 Go/No-Go：尤其不得批量实现五个平台、宣称中文搜索质量/单机容量达标或宣称生产恢复已验收。
+阶段 0 未全部完成时，Stage 3 只推进已有明确设计支撑的共享基础，不得替用户猜测页面字段、五平台 Operation、隐私保留期、容量或 Scheduler 策略；更不得直接批量实现五个平台。
 
 ## 修改规则
 
