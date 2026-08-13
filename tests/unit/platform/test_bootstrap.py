@@ -1,4 +1,5 @@
 from aima_ugc.bootstrap.migration import create_migration_runtime
+from aima_ugc.bootstrap.runtime import create_platform_runtime
 from aima_ugc.bootstrap.scheduler import create_scheduler_runtime
 from aima_ugc.bootstrap.worker import create_worker_runtime
 from aima_ugc.platform.config import PlatformSettings
@@ -25,3 +26,18 @@ def test_worker_scheduler_and_migration_share_platform_bootstrap(tmp_path) -> No
     assert (settings.log_dir / "worker.log").is_file()
     assert (settings.log_dir / "scheduler.log").is_file()
     assert not (settings.log_dir / "migrate.log").exists()
+
+
+def test_runtime_readiness_fails_closed_when_postgres_secret_is_missing(tmp_path) -> None:
+    settings = build_settings(tmp_path)
+    runtime = create_platform_runtime("api", settings=settings)
+
+    try:
+        report = runtime.check_readiness()
+    finally:
+        runtime.close()
+
+    assert report.database == "error"
+    assert report.artifact_store == "ok"
+    assert report.log_directory == "ok"
+    assert report.ready is False
