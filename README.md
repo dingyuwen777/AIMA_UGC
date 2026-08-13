@@ -4,9 +4,9 @@ AIMA_UGC 是爱玛舆情监控系统的 Greenfield 重构仓库。目标是从�
 
 ## 当前状态
 
-**Stage 1 工程基线、Stage 2 Platform 基础和 Stage 3A 数据库基础已经建立。** 当前仓库已经具备可安装 Python package、FastAPI/Vue 最小工程、固定 OpenAPI 与生成 TypeScript Client、本地前后端联调、Windows x64 开发环境引导，以及业务无关的 Config、Secret、统一日志、PostgreSQL 连接、`/health/ready`、ArtifactService/ArtifactStore、Local ArtifactStore、Alembic 首条 Revision、Artifact PostgreSQL 元数据 Repository、System Settings 和 Provider 中立 Audit 基础。
+**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础和 Stage 3B Canonical Contract 已经建立。** 当前仓库已经具备可安装 Python package、FastAPI/Vue 最小工程、固定 OpenAPI 与生成 TypeScript Client、本地前后端联调、Windows x64 开发环境引导，业务无关 Platform/数据库基础，以及 Provider/平台无关的 Canonical V1 Pydantic Contract、生成 JSON Schema、固定脱敏完整帖子示例和 Contract Test。
 
-仍未进入业务功能批量开发阶段。Stage 0 的页面/角色、五平台能力矩阵、真实 Fixture、隐私/保留、容量/SLO/RPO/RTO 和 Scheduler misfire 等业务事实继续约束后续实现；下一项正式工程工作是 Stage 3B Canonical Contract。
+仍未进入业务功能批量开发阶段。Stage 0 的页面/角色、逐平台能力矩阵与真实 Fixture、隐私/保留、容量/SLO/RPO/RTO 和 Scheduler misfire 等业务事实继续约束后续实现；**下一项正式工程工作是 Stage 4 Job Runtime**，之后依次进入 Stage 5 Provider Adapter/Raw 和 Stage 6 单平台端到端纵切。
 
 事实源规则：
 
@@ -63,6 +63,17 @@ Stage 2 CI 使用隔离 PostgreSQL `18.4` 验证真实连接和 readiness。Stag
 - PostgreSQL Artifact Repository 使用条件更新推进 `pending → stored → linked/error`，非法状态转换关闭失败；
 - System Settings 只保存非敏感 JSON 设置；Audit actor 使用 `system/principal` Provider 中立语义；
 - 当前仍不实现本地登录、Session、飞书/OIDC、具体 Role/Permission Schema、API 幂等 actor 表或自动 Retention 删除。
+
+### Stage 3B：Canonical 数据契约 V1
+
+- `backend/src/aima_ugc/contracts/canonical/` 是 Canonical Pydantic 唯一手写事实源；
+- `contracts/canonical/` 保存确定性生成的 Content/Comment/Aggregate JSON Schema 和固定脱敏示例；
+- 写入原子 Contract 为 `CanonicalContentV1` / `CanonicalCommentV1`，读取完整帖子视图为 `CanonicalContentAggregateV1`；
+- TikHub、官方 API、Apify、自建采集器、文件/历史导入等均是 Canonical 之前的 Provider Adapter；
+- 已批准作者/评论者方案 B：尽量保留平台明确公开的账号 ID、备用 ID、昵称/handle、主页/头像、简介、认证、地区和公开统计；
+- 内容指标覆盖点赞、评论、分享、转发、收藏、浏览/播放、弹幕、投币、下载等；评论覆盖点赞/回复数；`null` 表示未知，`0` 表示明确观察到零；
+- 原子 Observation 使用 `observed_fields` 支持稀疏更新；读取 Aggregate 使用 `comment_coverage` 区分评论抓全、部分、未请求和不可用；
+- 数据库目标是关系化 Current + Version + Metric Observation；整棵帖子评论树只在 Query/Read Model 层组装，本阶段不创建业务表 Migration。
 
 ## 环境、启动与部署
 

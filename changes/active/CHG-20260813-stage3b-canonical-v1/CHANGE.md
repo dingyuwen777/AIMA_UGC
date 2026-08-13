@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260813-stage3b-canonical-v1
 title: Stage 3B Canonical 数据契约 V1
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: feature/stage3b-canonical-v1
 created: 2026-08-13
@@ -25,22 +25,22 @@ data_changes: []
 
 # 可观察成功标准
 
-- [ ] Pydantic 是 Canonical 唯一手写事实源，JSON Schema 由脚本生成到 `contracts/canonical/`。
-- [ ] 原子模型至少包含 `CanonicalContentV1`、`CanonicalCommentV1`、`CanonicalAuthorV1`、`CanonicalMetricsV1`、`CanonicalMediaV1`、`CanonicalSourceV1`。
-- [ ] 读取聚合至少包含 `CanonicalCommentThreadV1`、`CanonicalContentAggregateV1` 与评论抓取覆盖状态，能区分 complete/partial/not_requested/unavailable。
-- [ ] 用户已批准作者信息方案 B：内容作者与评论作者均尽量保存平台公开返回的外部 ID、账号/handle、显示昵称、头像 URL、主页 URL、认证、简介、地区以及公开作者统计；缺失或不可靠时为 null，不猜测。
-- [ ] 内容至少可表达点赞、评论、分享、原生转发/转贴、收藏、播放/浏览、弹幕、投币、下载等明确可得互动指标；评论至少可表达点赞与明确提供时的回复数。未知必须为 null，不能以 0 冒充未知。
-- [ ] 内容结构支持标题、正文、内容类型、稳定 URL/分享 URL、发布时间/更新时间、媒体列表、话题、@提及、公开地点/IP归属等可确认语义。
-- [ ] 评论结构严格区分所属内容 ID、评论自身 ID、一级线程根 `root_comment_id`、直接回复 `parent_comment_id`，并保存评论者公开信息、正文、时间、指标、媒体/提及等可得信息。
-- [ ] Provider/平台可以拥有多个外部稳定 ID；通过 `external_id` + `alternate_ids` 表达，不为 B站 `aid/bvid`、小红书 `userid/red_id`、抖音 `uid/unique_id/sec_uid` 分别污染顶层公共字段。
-- [ ] `CanonicalContentAggregateV1` 以一条内容为聚合根，能按一级评论组织回复，同时每条回复仍保留自身 ID/root/parent，不能只靠数组位置表达关系。
-- [ ] 固定合法脱敏示例能被生产 Pydantic Model 与生成 JSON Schema 校验；Schema CI 重生零漂移。
-- [ ] Canonical 不依赖 TikHub SDK/Endpoint/私有字段；`provider` 只是来源 Adapter 标识。
-- [ ] Blueprint 明确支持 TikHub、官方 API、Apify、自建采集器、文件/历史导入和以后其他 Provider；传输可为 HTTP/SDK/文件，但都遵守 Raw → Mapper → Canonical。
-- [ ] 写入边界固定为 `Provider → Raw → Mapper → Canonical → Ingestion Service → Owner Repository → PostgreSQL`。
-- [ ] 读取边界固定为 `PostgreSQL → Query Repository/Read Model → Query/Application Service → API/AI/Reporting`。
-- [ ] PostgreSQL 长期事实按内容/作者/媒体/评论/Current+Version+Metric Observation 等关系保存，查询时组装 Aggregate；不创建独立数据库中间微服务。
-- [ ] Stage 1/2/3A/Windows 既有 CI 继续通过，并增加 Canonical Contract 门禁。
+- [x] Pydantic 是 Canonical 唯一手写事实源，JSON Schema 由脚本生成到 `contracts/canonical/`。
+- [x] 原子模型至少包含 `CanonicalContentV1`、`CanonicalCommentV1`、`CanonicalAuthorV1`、`CanonicalMetricsV1`、`CanonicalMediaV1`、`CanonicalSourceV1`。
+- [x] 读取聚合至少包含 `CanonicalCommentThreadV1`、`CanonicalContentAggregateV1` 与评论抓取覆盖状态，能区分 complete/partial/not_requested/unavailable。
+- [x] 用户已批准作者信息方案 B：内容作者与评论作者均尽量保存平台公开返回的外部 ID、账号/handle、显示昵称、头像 URL、主页 URL、认证、简介、地区以及公开作者统计；缺失或不可靠时为 null，不猜测。
+- [x] 内容至少可表达点赞、评论、分享、原生转发/转贴、收藏、播放/浏览、弹幕、投币、下载等明确可得互动指标；评论至少可表达点赞与明确提供时的回复数。未知必须为 null，不能以 0 冒充未知。
+- [x] 内容结构支持标题、正文、内容类型、稳定 URL/分享 URL、发布时间/更新时间、媒体列表、话题、@提及、公开地点/IP归属等可确认语义。
+- [x] 评论结构严格区分所属内容 ID、评论自身 ID、一级线程根 `root_comment_id`、直接回复 `parent_comment_id`，并保存评论者公开信息、正文、时间、指标、媒体/提及等可得信息。
+- [x] Provider/平台可以拥有多个外部稳定 ID；通过 `external_id` + `alternate_ids` 表达，不为 B站 `aid/bvid`、小红书 `userid/red_id`、抖音 `uid/unique_id/sec_uid` 分别污染顶层公共字段。
+- [x] `CanonicalContentAggregateV1` 以一条内容为聚合根，能按一级评论组织回复，同时每条回复仍保留自身 ID/root/parent，不能只靠数组位置表达关系。
+- [x] 固定合法脱敏示例能被生产 Pydantic Model 与生成 JSON Schema 校验；Schema CI 重生零漂移。
+- [x] Canonical 不依赖 TikHub SDK/Endpoint/私有字段；`provider` 只是来源 Adapter 标识。
+- [x] Blueprint 明确支持 TikHub、官方 API、Apify、自建采集器、文件/历史导入和以后其他 Provider；传输可为 HTTP/SDK/文件，但都遵守 Raw → Mapper → Canonical。
+- [x] 写入边界固定为 `Provider → Raw → Mapper → Canonical → Ingestion Service → Owner Repository → PostgreSQL`。
+- [x] 读取边界固定为 `PostgreSQL → Query Repository/Read Model → Query/Application Service → API/AI/Reporting`。
+- [x] PostgreSQL 长期事实按内容/作者/媒体/评论/Current+Version+Metric Observation 等关系保存，查询时组装 Aggregate；不创建独立数据库中间微服务。
+- [x] Stage 1/2/3A/Windows 既有 CI 继续通过，并增加 Canonical Contract 门禁。
 
 # 理想 Canonical 结构
 
@@ -136,8 +136,15 @@ data_changes: []
 3. 验证：Ruff、mypy、Contract Tests、Schema drift、现有完整 CI。
 4. Review：先检查 Provider 无关性、聚合/原子边界、未知值、ID/root/parent/指标语义，再检查实现质量和文档一致性。
 
+# TDD 与验证证据
+
+- Red：PR #11 Run `31710331120`，Stage 1 Contract Test 因 `ModuleNotFoundError: No module named 'aima_ugc.contracts'` 按正确原因失败；Stage 2/3A 正常。
+- Green：Run `31719449984` 的 Stage 1、Stage 2 Platform、Stage 3A Database、Windows bootstrap 四 Job 全部 success；Stage 1 已通过 Contract 生成/漂移、Ruff、mypy、Unit/Contract/API、Wheel 和前端完整检查。
+- 两阶段 Review：确认未混入业务 Migration、Provider 实现、Job Runtime 或前端业务页面；补强评论树/coverage 关系校验、`null` 与 `0` 语义、`observed_fields` 叶子路径和数据库目标 DDL 空值语义。
+
 # Git
 
 - 基线 main：`4440e9b156ca0ddf52aaf3eed80cdcea28a7bad1`
 - 分支：`feature/stage3b-canonical-v1`
-- PR/CI/合并：实施后记录。
+- Draft PR：#11 `建立 Stage 3B Canonical 数据契约 V1`
+- 候选验证：Run `31719449984` 四 Job 全绿；本状态提交仍需再次执行完整 PR CI 后才可转正式 Review/合并。
