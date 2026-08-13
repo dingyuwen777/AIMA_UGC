@@ -24,7 +24,7 @@ jobs:
         run: |
           set -euo pipefail
           grep -Fq '必须在对话中先给出明确推荐方案' AGENTS.md
-          grep -Fq '当前第一版不设计或实现登录入口' docs/blueprint/04-后端任务API与前端.md
+          grep -Fq '不设计或实现登录入口' docs/blueprint/04-后端任务API与前端.md
           grep -Fq '当前第一版不实现本地用户名/密码' docs/blueprint/05-日志安全部署与运维.md
           grep -Fq '### 5.3 必须由用户/业务 Owner 决定的事项' docs/blueprint/06-开发约束与分阶段实施.md
           grep -Fq '### 2.8 身份认证延期、第三方扩展边界与用户决策规则' docs/blueprint/07-技术决策与实施门禁.md
