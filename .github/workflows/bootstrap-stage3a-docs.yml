@@ -1,0 +1,30 @@
+name: Bootstrap Stage 3A docs
+
+on:
+  push:
+    branches:
+      - migration/stage3a-database-foundation
+
+permissions:
+  contents: write
+
+jobs:
+  patch-docs:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Patch validated Stage 3A facts
+        run: python scripts/dev/patch_stage3a_docs.py
+      - name: Commit docs
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md docs
+          if git diff --cached --quiet; then
+            echo "No documentation changes produced."
+            exit 1
+          fi
+          git commit -m "同步 Stage 3A 数据库实施事实"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
