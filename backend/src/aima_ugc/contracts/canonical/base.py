@@ -31,7 +31,13 @@ class CanonicalObservationModel(CanonicalBaseModel):
 
     @field_validator("observed_fields")
     @classmethod
-    def observed_fields_must_be_unique(cls, value: list[str]) -> list[str]:
+    def validate_observed_fields(cls, value: list[str]) -> list[str]:
         if len(value) != len(set(value)):
             raise ValueError("observed_fields 不能包含重复字段")
+        for path in value:
+            root = path.split(".", 1)[0]
+            if root not in cls.model_fields:
+                raise ValueError(f"observed_fields 包含未声明字段: {path}")
+            if root in {"author", "metrics"} and "." not in path:
+                raise ValueError(f"嵌套字段必须声明叶子路径: {path}")
         return value
