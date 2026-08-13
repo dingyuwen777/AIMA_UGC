@@ -1,0 +1,1 @@
+"""ArtifactStore Adapter。"""
