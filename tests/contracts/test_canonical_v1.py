@@ -1,12 +1,18 @@
 """Stage 3B Canonical V1 契约测试。"""
 
+import json
 from importlib import import_module
 from pathlib import Path
 
+import pytest
 from pydantic import ValidationError
 
 ROOT = Path(__file__).resolve().parents[2]
 EXAMPLE = ROOT / "contracts" / "canonical" / "examples" / "content.aggregate.v1.json"
+
+
+def example_payload() -> dict[str, object]:
+    return json.loads(EXAMPLE.read_text(encoding="utf-8"))
 
 
 def test_canonical_v1_contracts_are_available() -> None:
@@ -54,22 +60,38 @@ def test_null_means_unknown_and_zero_is_a_real_observation() -> None:
     assert metrics.comment_count is None
 
 
-def test_observed_fields_reject_duplicates() -> None:
+def test_observed_fields_reject_duplicates_and_coarse_nested_paths() -> None:
     canonical = import_module("aima_ugc.contracts.canonical")
     source = canonical.CanonicalSourceV1(
         provider_name="file_import",
         operation="fixture",
         observed_at="2026-08-13T04:00:00Z",
     )
-    try:
-        canonical.CanonicalContentV1(
-            platform="xiaohongshu",
-            external_content_id="note_1",
-            content_type="image_post",
-            observed_at="2026-08-13T04:00:00Z",
-            observed_fields=["title", "title"],
-            source=source,
-        )
-    except ValidationError:
-        return
-    raise AssertionError("重复 observed_fields 必须被拒绝")
+    common = {
+        "platform": "xiaohongshu",
+        "external_content_id": "note_1",
+        "content_type": "image_post",
+        "observed_at": "2026-08-13T04:00:00Z",
+        "source": source,
+    }
+
+    with pytest.raises(ValidationError):
+        canonical.CanonicalContentV1(**common, observed_fields=["title", "title"])
+    with pytest.raises(ValidationError):
+        canonical.CanonicalContentV1(**common, observed_fields=["author"])
+    with pytest.raises(ValidationError):
+        canonical.CanonicalContentV1(**common, observed_fields=["provider.private_field"])
+
+
+def test_aggregate_rejects_wrong_thread_root_and_coverage_count() -> None:
+    canonical = import_module("aima_ugc.contracts.canonical")
+
+    wrong_root = example_payload()
+    wrong_root["comment_threads"][0]["replies"][0]["root_comment_id"] = "comment_other"
+    with pytest.raises(ValidationError):
+        canonical.CanonicalContentAggregateV1.model_validate(wrong_root)
+
+    wrong_count = example_payload()
+    wrong_count["comment_coverage"]["captured_count"] = 1
+    with pytest.raises(ValidationError):
+        canonical.CanonicalContentAggregateV1.model_validate(wrong_count)
