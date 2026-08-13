@@ -216,3 +216,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Stage 1 local build / frontend artifacts
+.wheel-venv/
+node_modules/
+frontend/dist/
+frontend/playwright-report/
+frontend/test-results/

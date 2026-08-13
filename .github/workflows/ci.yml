@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  stage1:
+    name: Stage 1
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24.19.0
+
+      - name: Verify runtime versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(python --version)" = "Python 3.14.7"
+          test "$(node --version)" = "v24.19.0"
+          test "$(npm --version)" = "11.17.0"
+
+      - name: Install uv
+        run: python -m pip install "uv==0.12.3"
+
+      - name: Verify locked Python environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv lock --check
+          uv sync --locked
+          uv run python -c "import aima_ugc"
+
+      - name: Install locked frontend environment
+        run: npm ci --prefix frontend
+
+      - name: Audit frontend dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix frontend audit --omit=dev --audit-level=high
+          npm --prefix frontend audit --audit-level=high
+
+      - name: Verify generated contracts and client
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/contracts/generate.py
+          npm --prefix frontend run generate:api
+          git diff --exit-code -- contracts/openapi/openapi.json frontend/src/generated/api
+          uv run python scripts/contracts/generate.py --check
+          uv run python scripts/contracts/check_compatibility.py
+
+      - name: Backend and repository checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff format --check backend tests scripts
+          uv run ruff check backend tests scripts
+          uv run mypy backend/src
+          uv run pytest tests/unit -q
+          uv run pytest tests/contracts -q
+          uv run pytest tests/api -q
+          uv run python scripts/quality/check_architecture.py
+          uv run python scripts/quality/check_table_ownership.py
+          uv run python scripts/quality/scan_secrets.py
+          uv run python scripts/quality/check_docs.py
+
+      - name: Build and verify Wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv build --wheel
+          python -m venv .wheel-venv
+          .wheel-venv/bin/python -m pip install dist/*.whl
+          .wheel-venv/bin/python -c "import aima_ugc; print(aima_ugc.__version__)"
+
+      - name: Frontend checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix frontend run lint
+          npm --prefix frontend run typecheck
+          npm --prefix frontend run test -- --run
+          npm --prefix frontend run build
+          npm --prefix frontend exec -- playwright --version
