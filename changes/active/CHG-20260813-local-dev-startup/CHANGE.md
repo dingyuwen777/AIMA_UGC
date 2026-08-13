@@ -1,115 +1,102 @@
 ---
 schema: rvc-change/v1
 id: CHG-20260813-local-dev-startup
-title: 本地开发启动与联调闭环
-level: L2
-status: ready_for_review
+title: 本地开发启动、环境引导与联调闭环
+level: L3
+status: in_progress
 owner: dingyuwen777
 branch: build/local-dev-startup
 created: 2026-08-13
 updated: 2026-08-13
 depends_on: []
-affected_areas: [toolchain, platform, frontend]
-affected_paths: [pyproject.toml, uv.lock, frontend/vite.config.ts, scripts/dev/, .github/workflows/ci.yml, README.md, docs/环境运行与部署.md, docs/blueprint/README.md, docs/blueprint/07-技术决策与实施门禁.md, changes/active/CHG-20260813-local-dev-startup/CHANGE.md]
+affected_areas: [toolchain, platform, frontend, developer-experience]
+affected_paths: [.python-version, .node-version, .uv-version, pyproject.toml, uv.lock, frontend/package.json, frontend/vite.config.ts, scripts/setup_dev_environment.cmd, scripts/setup_dev_environment.ps1, scripts/dev/, .github/workflows/ci.yml, README.md, docs/环境运行与部署.md, docs/blueprint/README.md, docs/blueprint/07-技术决策与实施门禁.md, changes/active/CHG-20260813-local-dev-startup/CHANGE.md]
 contracts: []
 data_changes: []
 ---
 
 # 目标
 
-让开发者从最新 `main` 克隆仓库后，按锁文件安装依赖，用两个明确命令分别启动 FastAPI 与 Vite，并通过 Vite 开发代理访问后端现有 `/health/live`，形成可重复验证的本地前后端启动闭环；同时建立长期维护的环境、启动与生产部署入口文档。
+让开发者从最新 `main` 克隆仓库后具备两条稳定路径：
+
+1. Windows 开发机可双击 `scripts/setup_dev_environment.cmd` 一键检查并准备 Python / Node / npm / uv 与项目依赖；缺失时使用官方来源安装，版本不符时在执行升级前提示用户是否主动卸载旧版本；
+2. 环境就绪后用两个明确命令分别启动 FastAPI 与 Vite，并通过 Vite 开发代理访问后端现有 `/health/live`，形成可重复验证的本地前后端启动闭环。
+
+同时建立长期维护的环境、启动与生产部署入口文档。
+
+# L3 设计结论
+
+## 方案比较
+
+### 方案 1：winget 全自动
+
+优点：代码少，安装/升级/卸载统一。缺点：依赖本机 winget 和源状态；安装行为可能被组织策略或源配置改变；无法稳定满足“调用官方原始安装包并由用户决定是否卸载旧版”的需求。**不采用。**
+
+### 方案 2：官方安装包 / 官方安装器 + PowerShell 引导
+
+Python 使用 python.org 当前冻结版本的传统 Windows 安装器并保留 GUI；Node 使用 nodejs.org 精确版本 MSI；uv 使用 Astral 支持精确版本 URL 的官方 PowerShell installer；npm 优先随目标 Node 安装，只有 Node 已正确而 npm 单独漂移时才精确升级。脚本自身只依赖 Windows PowerShell，因此即使 Python/Node 均不存在也可运行。**采用。**
+
+### 方案 3：把运行时二进制放进仓库
+
+优点：离线可控。缺点：Git 体积和供应链维护成本高，二进制签名/升级/架构矩阵会变成仓库责任，且当前不是离线开发环境需求。**不采用。**
+
+# 安全与兼容约束
+
+- 脚本默认不卸载任何现有软件；只有检测到版本不符时显示已发现旧版本并询问用户是否主动卸载，默认答案为“否”。
+- Python 不同版本允许并存；若用户选择保留旧版，脚本只安装目标版本并要求最终 `python --version` 真正解析到仓库版本，否则明确失败，不静默改用错误解释器。
+- Node 官方 MSI 对同一标准安装位置可能执行产品升级；用户选择“不卸载”只表示脚本不先主动卸载，不能承诺 MSI 能永久并存多个 Node 主版本。脚本必须明确提示该边界。
+- uv/npm 通常是单一命令位置的工具升级，不承诺并存多个全局版本；对来源不明的 uv 安装不直接删除，避免破坏其他包管理器所有权。
+- 不使用 `Win32_Product`，避免触发 MSI repair；已安装程序只读 Windows Uninstall Registry。
+- 下载只使用固定官方 HTTPS 来源。Node MSI 用官方 `SHASUMS256.txt` 校验 SHA-256；Python installer 校验 Windows Authenticode 有效签名；uv 使用带精确版本号的 Astral 官方 installer URL。
+- 不静默提升权限。Python 默认每用户 GUI 安装；Node MSI 如需管理员权限由 Windows/UAC 正常提示。
+- 不修改系统代理、证书、ExecutionPolicy 永久值或防病毒设置；PowerShell `ExecutionPolicy Bypass` 只用于当前子进程运行已下载的精确 uv installer。
+- 当前一键环境引导只支持 Windows x64；其他平台继续使用文档中的手工锁定安装步骤，不伪装已支持。
 
 # 成功标准
 
-- [x] Python 依赖中包含精确锁定的 ASGI Server，`uv sync --locked` 后无需额外 `pip install` 即可启动后端。
-- [x] 后端本地开发命令固定监听 `127.0.0.1:8090`，并支持 `--reload --reload-dir backend/src`。
-- [x] 前端 `npm --prefix frontend run dev` 固定监听 `127.0.0.1:5173`，端口占用时失败而不是静默切换。
-- [x] Vite 将 `/health` 和 `/api` 代理到本地后端，浏览器通过前端 Origin 可访问 `/health/live`，不需要开发期 CORS 绕行。
-- [x] CI 实际同时启动后端和 Vite，验证后端直连健康检查、前端页面和经 Vite 代理的健康检查。
-- [x] `docs/环境运行与部署.md` 说明版本、首次安装、本地启动、联调验证以及当前生产部署 Go/No-Go；未实现的生产命令没有伪造。
-- [x] 根 README 提供该文档入口；Blueprint README 提供操作入口导航；`07` 只同步新增且已验证的 Uvicorn/本地启动技术事实。
-- [x] 现有 Contract、OpenAPI、生成 Client、API 行为和 Stage 1 质量门禁保持不变。
-
-# 范围
-
-- 在根 Python 项目增加 Uvicorn 运行依赖并更新 `uv.lock`。
-- 固化本地后端 `127.0.0.1:8090` 与 Vite `127.0.0.1:5173` 开发端口。
-- Vite 只代理后端路径前缀 `/health`、`/api`。
-- 增加不复制业务逻辑的本地联调 smoke 检查，复用正式 FastAPI `app`、生成 Client 的相对 URL 约定和 Vite 正式开发服务器。
-- 更新 CI、README、环境运行部署文档、Blueprint 导航和受影响的 Blueprint 07。
+- [x] Uvicorn 已进入根 Python 锁并完成本地双服务 Red/Green。
+- [x] 后端本地开发命令固定 `127.0.0.1:8090` 并已验证 `--reload`。
+- [x] Vite 固定 `127.0.0.1:5173`，代理 `/health`、`/api` 到 8090。
+- [ ] 新增 `.uv-version`，正式 CI 和环境脚本从机器版本文件读取 uv 目标，不再在脚本复制版本号。
+- [ ] `scripts/setup_dev_environment.cmd` 可直接双击调用 PowerShell，不依赖 Python/Node 预先存在。
+- [ ] PowerShell 引导器检测 Python / Node / npm / uv 当前版本；缺失时安装，版本不符时先展示旧版本并询问是否卸载，再继续目标版本安装/升级。
+- [ ] Python 使用官方 GUI 安装器，Node 使用官方 MSI，uv 使用精确版本官方 installer，npm 随 Node 或精确全局升级。
+- [ ] 工具链全部达到仓库目标版本后，脚本实际执行 `uv sync --locked` 与 `npm ci --prefix frontend`，再验证 Python package 可导入。
+- [ ] Windows CI 至少使用 Windows PowerShell 5.1 解析脚本、加载纯函数、验证目标版本来源、官方精确 URL 构造和版本解析，不在 CI 修改 Runner 已安装软件。
+- [ ] `docs/环境运行与部署.md` 把一键脚本作为 Windows 首选路径，并保留手工安装回退；生产部署仍明确 No-Go。
+- [ ] `07` 只在 Windows CI 通过后记录 `.uv-version` 和 Windows 环境引导的机器事实。
+- [ ] 现有 Contract、OpenAPI、生成 Client、API 行为和 Stage 1 质量门禁保持不变。
 
 # 非目标
 
+- 不实现 Linux/macOS 自动安装器；这两个平台继续按文档手工准备锁定环境。
+- 不自动安装 Git、Docker、IDE、数据库或其他当前本地启动不需要的系统软件。
+- 不自动启动长期运行的 API/Vite 进程；环境脚本完成依赖准备后打印正式启动命令。
 - 不实现 PostgreSQL、`/health/ready`、Config/Secret/Logging/Artifact 或四进程 Stage 2 基础。
 - 不实现 Dockerfile、Compose、Release Bundle、Migration、备份或生产部署自动化。
 - 不修改现有 `/health/live` HTTP Contract，不新增业务 API。
-- 不增加 CORS 作为本地联调方案；开发期保持浏览器同源访问 Vite，再由 Vite 代理后端。
-- 不引入额外任务运行器、第二套 Python 项目或一键启动两个长期进程的复杂 Supervisor。
+- 不增加 CORS 作为本地联调方案。
 
-# 必须保持不变
+# 验证证据（已完成部分）
 
-- 仓库根目录仍是唯一 Python/uv 工程；依赖必须进入 `pyproject.toml + uv.lock`。
-- FastAPI 应用仍由 `aima_ugc.entrypoints.api_main:app` 提供；本地启动不得复制应用构建逻辑。
-- 前端继续使用生成 Client 的相对 URL，不手工改 generated 目录。
-- 生产架构仍按 Blueprint 05：同源 Nginx + API/Worker/Scheduler/Migrate/PostgreSQL + 离线 Release；本 Change 只补开发机启动体验。
+- Red Run `31681724208` / job `94388453966`：在 Uvicorn 尚未进入依赖时，smoke 按 `Failed to spawn: uvicorn` 正确失败。
+- Lock bootstrap Run `31681862046` / job `94388891262`：用 Python 3.14.7 + uv 0.12.3 生成仅包含 Uvicorn 相关变化的 `uv.lock`；临时写权限 workflow 已删除。
+- Green Run `31681920014` / job `94389070648`：后端直连、Vite 首页、Vite 代理、Contract、质量脚本、Wheel 和完整前端门禁全绿。
+- 最终本地启动文档命令 Run `31682437917` / job `94390723839`：使用 `--reload --reload-dir backend/src` 的正式开发命令全绿。
 
-# 已确认决策
+# 后续任务
 
-- ASGI Server 使用 `uvicorn==0.52.2`。2026-08-13 PyPI 将其标为 latest，声明 `Python >=3.10` 且包含 Python 3.14 classifier；最终仍以本仓库实际 CI 启动、Wheel 安装和 Lock 验证为采用证据。
-- 只安装 Uvicorn 最小依赖，不安装 `uvicorn[standard]`。官方说明 `--reload` 在没有 `watchfiles` 时会回退为 Python 文件修改时间轮询，当前 CI 已使用文档中的 `--reload --reload-dir backend/src` 命令验证成功。
-- 本地后端端口固定 `8090`，前端固定 `5173` 且 `strictPort=true`。本地开发只绑定 `127.0.0.1`，默认不暴露到局域网。
-- Vite 使用 `server.proxy`，代理 `/health` 与 `/api` 到 `http://127.0.0.1:8090`。这保持生成 Client 的相对路径语义，并避免为了开发环境增加 CORS 公共安全配置。
-- 生产部署操作文档在生产制品未落地前明确标记 No-Go；Blueprint 05 的离线 Release 设计仍是目标事实，不把本地 `vite dev` 或 Uvicorn `--reload` 伪装为生产方案。
-
-# 任务
-
-- [x] 读取最新 main 的 AGENTS、Skill、Blueprint、依赖、入口、前端配置和 CI。
-- [x] 核验 Uvicorn 与 Vite 官方当前能力。
-- [x] Red：增加本地启动 smoke 门禁，在 Uvicorn/Proxy 尚未实现时确认按正确原因失败。
-- [x] Green：增加 Uvicorn、更新 Lock、配置 Vite 代理和固定端口，使 smoke 通过。
-- [x] 同步 README、环境运行部署文档、Blueprint 导航与 Blueprint 07。
-- [x] 完整运行现有后端、Contract、Wheel、前端、audit、生成物无漂移与本地启动 smoke。
-- [x] 两阶段 Review：需求符合性 → 代码质量。
-- [ ] 合并 PR 后重新验证 `main`，再归档 Change。
-
-# 验证
-
-## Red
-
-- PR #3 Red Run `31681724208` / job `94388453966`：精确 Python/Node/npm、uv 安装、锁定 Python 环境、`npm ci` 与两类 npm audit 均已成功；`Local development startup smoke` 在启动后端时按正确原因失败：`Failed to spawn: uvicorn` / `No such file or directory (os error 2)`。这证明原始缺口是仓库没有正式 ASGI Server 依赖，不是测试环境损坏。
-
-## Lock 生成
-
-- 特性分支临时 bootstrap Run `31681862046` / job `94388891262` 使用 Python 3.14.7 + uv 0.12.3 执行 `uv lock`，生成 commit `8da1b93e8912f80aa865626c63351a8dd9df8cf3`；该 commit 只更新 `uv.lock`，加入 Uvicorn 0.52.2 及其解析依赖。
-- 临时 `contents: write` bootstrap workflow 随后已删除；最终分支只保留正式只读 CI。
-
-## Green 与最终验证
-
-- Run `31681920014` / job `94389070648`：首次完整 Green 全绿。实际启动 Uvicorn `127.0.0.1:8090` 与 Vite `127.0.0.1:5173`；smoke 验证后端直连、Vite 首页、Vite `/health/live` 代理全部成功。完整/生产 npm audit 均为 0 vulnerabilities；Contract 重新生成无漂移；Ruff/mypy、Unit 1、Contract 1、API 1、质量脚本、Wheel 构建与隔离安装、ESLint、双 TypeScript typecheck、Vitest 1 file/2 tests、Vite production Build、Playwright CLI 全部通过。
-- Run `31682437917` / job `94390723839`：最终 head `f0a416f7f9c678076df770528f94e0f42c702113` 全绿。CI 使用与 README/`docs/环境运行与部署.md` 完全一致的后端开发命令：`uv run uvicorn aima_ugc.entrypoints.api_main:app --host 127.0.0.1 --port 8090 --reload --reload-dir backend/src`；`Local development startup smoke`、生成物无漂移、文档入口/本地链接、后端/仓库检查、Wheel 和全部前端检查均 success。
-
-# 两阶段 Review
-
-## 需求符合性
-
-基于 `main...build/local-dev-startup` 最终 diff 逐项复核：只新增/修改 Uvicorn 运行依赖与 Lock、Vite 开发服务器/代理、smoke、CI、README、环境运行部署文档、Blueprint 07 与导航。未实现 PostgreSQL、`/health/ready`、Config/Secret/Logging/Artifact、Worker/Scheduler/Migration、Docker/Compose/Release、CORS 或业务 API；现有 `/health/live` Contract 与 generated client 均未改动。成功标准与用户补充的运行/部署文档要求均有对应代码、CI 和当前事实文档。
-
-## 代码质量
-
-复核 `pyproject.toml`、`uv.lock`、`frontend/vite.config.ts`、`scripts/dev/check_local_stack.py`、正式只读 CI 和三份受影响文档：本地调试复用正式 FastAPI `app` 与 Vite server；smoke 只观察 HTTP，不复制业务逻辑；端口只绑定回环地址；没有为了联调放宽 CORS；锁文件由真实 uv 生成；CI 在失败时输出两个服务日志并清理后台进程；生产文档没有编造当前不存在的部署命令。未发现严重或重要问题，也未发现无关重构或 Stage 2 范围蔓延。
-
-# 文档影响
-
-- `docs/环境运行与部署.md`：新增为开发机环境、锁定安装、本地启动、Vite 代理、smoke、常见故障和生产部署当前 Go/No-Go 的长期操作入口。
-- `README.md`：增加最短安装/启动/smoke 命令和上述文档入口。
-- `docs/blueprint/README.md`：增加操作文档导航并同步本地双服务联调已成为机器事实。
-- `docs/blueprint/07-技术决策与实施门禁.md`：蓝图 1.2 → 1.3，增加 Uvicorn 0.52.2、本地 8090/5173、Vite `/health`/`/api` 代理和 smoke 的已验证技术基线。
-- `docs/blueprint/01-总体架构与技术选型.md`、`04-后端任务API与前端.md`、`05-日志安全部署与运维.md`、`06-开发约束与分阶段实施.md` 复核后无需修改；其长期架构、API 边界、生产离线 Release 目标和阶段顺序仍与本次实现一致。
+- [ ] 建立 `.uv-version` 并让 CI 使用。
+- [ ] 实现 Windows PowerShell 引导器与 `.cmd` 一键入口。
+- [ ] 增加 Windows PowerShell 5.1 非破坏性 CI 验证。
+- [ ] 更新 README、环境运行部署文档和 Blueprint 07。
+- [ ] 重新运行 Linux Stage 1 + Windows bootstrap 两类 CI。
+- [ ] 两阶段 Review；PR 合并后重新验证 `main`，再归档 Change。
 
 # Git / 发布
 
 - 分支：`build/local-dev-startup`
-- PR：#3 `补齐本地开发启动与联调闭环`，当前待从 Draft 转正式 Review 后合并。
-- 生产发布：不适用；本 Change 不产生可部署生产 Release，生产状态明确为 No-Go。
+- PR：#3
+- 生产发布：不适用；本 Change 不产生可部署生产 Release，生产状态保持 No-Go。
 - Migration / 数据变化：无。
-- 回滚：移除 Uvicorn 依赖与 Lock 变化、Vite 开发代理、smoke 和对应文档即可；无 Schema/Migration/数据恢复步骤。
+- 回滚：删除 Windows 环境引导与 `.uv-version`，恢复 CI uv 固定方式，并回退 Uvicorn/Vite/smoke/文档相关变化；无 Schema/Migration/数据恢复步骤。
