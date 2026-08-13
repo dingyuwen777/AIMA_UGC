@@ -4,7 +4,7 @@ AIMA_UGC 是爱玛舆情监控系统的 Greenfield 重构仓库。目标是从�
 
 ## 当前状态
 
-**Stage 1 仓库骨架与工具链已经建立。** 当前仓库已经具备可安装 Python package、最小 FastAPI/Vue 工程、固定 OpenAPI、生成 TypeScript Fetch Client、Python/Node 锁文件、基础测试和 CI 质量门禁。
+**Stage 1 仓库骨架、工具链和本地前后端启动闭环已经建立。** 当前仓库已经具备可安装 Python package、最小 FastAPI/Vue 工程、固定 OpenAPI、生成 TypeScript Fetch Client、Python/Node 锁文件、基础测试、CI 质量门禁，以及通过 Vite 开发代理联调 FastAPI 的本地启动方式。
 
 仍未进入业务功能批量开发阶段。Stage 0 的页面/角色、五平台能力矩阵、真实 Fixture、隐私/保留、容量/SLO/RPO/RTO 和 Scheduler misfire 等业务事实继续约束后续实现；Stage 2 可以并行推进不依赖这些业务选择的 Platform 基础。
 
@@ -36,7 +36,8 @@ AIMA_UGC 是爱玛舆情监控系统的 Greenfield 重构仓库。目标是从�
 - build backend 为 `uv_build 0.12.3`；源码固定在 `backend/src/aima_ugc/`；
 - `uv sync --locked` 后可直接 `import aima_ugc`；
 - Wheel 已验证可构建、在隔离环境安装并再次直接 import；
-- 最小 FastAPI 入口已提供 `GET /health/live`，公开 Route 使用显式稳定 `operation_id`。
+- 最小 FastAPI 入口已提供 `GET /health/live`，公开 Route 使用显式稳定 `operation_id`；
+- Uvicorn 已作为锁定运行依赖，本地开发后端固定监听 `127.0.0.1:8090`。
 
 ### Contract / 前端
 
@@ -53,7 +54,16 @@ Pydantic Request/Response
 - Vue 3 + Vite + Pinia 已建立最小可构建应用；
 - TypeScript 7.0.2 native compiler 检查普通 `.ts` 代码；Vue SFC 在 TypeScript 7.0 尚无 programmatic API 的过渡期，按 `07` 的双安装模型使用 `@typescript/typescript6` compatibility API 驱动 `vue-tsc`；
 - `npm run typecheck` 同时执行 TS7 native 和 Vue SFC 两条类型门禁；
+- Vite 本地开发固定监听 `127.0.0.1:5173`，并将 `/health` 与 `/api` 代理到本地 FastAPI；
 - Lint、Vitest、Vite Build 和 Playwright CLI 均已纳入 Stage 1 验证。
+
+## 环境、启动与部署
+
+完整操作说明见：
+
+- [`docs/环境运行与部署.md`](docs/环境运行与部署.md)
+
+该文档包含开发机版本、首次依赖安装、本地前后端启动、Vite 代理联调、smoke 检查，以及当前生产部署的 Go/No-Go。当前仓库已经支持本地前后端开发启动，但**尚不能把开发启动命令当作生产部署方式**。
 
 ## 开发环境初始化
 
@@ -64,7 +74,45 @@ uv sync --locked
 npm ci --prefix frontend
 ```
 
-核心检查：
+本地开发使用两个终端，均从仓库根执行。
+
+终端 1：
+
+```bash
+uv run uvicorn aima_ugc.entrypoints.api_main:app --host 127.0.0.1 --port 8090 --reload --reload-dir backend/src
+```
+
+终端 2：
+
+```bash
+npm --prefix frontend run dev
+```
+
+浏览器入口：
+
+```text
+http://127.0.0.1:5173/
+```
+
+后端直接健康检查：
+
+```text
+http://127.0.0.1:8090/health/live
+```
+
+通过前端 Vite 代理检查：
+
+```text
+http://127.0.0.1:5173/health/live
+```
+
+两个服务都启动后，可在第三个终端执行：
+
+```bash
+uv run python scripts/dev/check_local_stack.py
+```
+
+核心质量检查：
 
 ```bash
 uv lock --check
