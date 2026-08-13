@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260813-stage3a-database-foundation
 title: Stage 3A 数据库、Alembic 与基础持久化
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: migration/stage3a-database-foundation
 created: 2026-08-13
@@ -15,78 +15,117 @@ contracts: []
 data_changes: [artifacts, system_settings, audit_events]
 ---
 
-# 目标
+# 结果
 
-建立 Stage 3A 的数据库事实基线，使后续模块只能通过 Alembic 演进 Schema，并让 Stage 2 的 ArtifactMetadataPort 获得正式 PostgreSQL 实现；同时建立最小 System Settings 和 Provider 中立 Audit 持久化，以及可执行的表写 Owner 门禁。
+Stage 3A 已建立数据库/Alembic 与基础持久化候选实现：
+
+- 根 `alembic.ini` + `migrations/`，首条 Revision `20260813_0001`；
+- `aima_ugc.database_schema` + SQLAlchemy Core `MetaData` 机器注册入口；
+- `artifacts`（Owner=`platform`）、`system_settings` / `audit_events`（Owner=`system`）；
+- PostgreSQL Artifact Metadata、System Settings、Provider 中立 Audit Repository；
+- `Table.info['owner']` + `check_table_ownership.py` 唯一 Owner 门禁；
+- 独立 `Stage 3A Database` CI：PostgreSQL 18.4 Migration、drift、Repository、downgrade/re-upgrade；
+- README、环境运行文档和 Blueprint 03/06/07/导航同步，07 版本 1.8。
 
 # 成功标准
 
-- [ ] 根目录建立可执行 Alembic 配置与 `migrations/`，API/普通进程不自动建表或自动迁移。
-- [ ] 第一条 Revision 从空 PostgreSQL 18.4 建立 `artifacts`、`system_settings`、`audit_events`，并能 downgrade 到 base 后再次 upgrade 到 head。
-- [ ] `artifacts` Schema 与现有 Stage 2 生命周期模型一致；不实现删除/保留 Job，不写死尚未批准的保留期限。
-- [ ] PostgreSQL Artifact Metadata Repository 实现现有 `ArtifactMetadataPort` 的 pending/stored/linked/error 状态转换，并验证非法状态转换关闭失败。
-- [ ] `system_settings` 只保存非敏感数据库设置；Secret 不进入该表。
-- [ ] `audit_events` actor 保持 Provider 中立，可表达 system/principal，不绑定飞书私有 ID 或本地 users。
-- [ ] 每张已建立表具有唯一 Owner，质量门禁不再以 `TABLE_OWNER_RULE_NOT_READY` 失败。
-- [ ] CI 使用真实 PostgreSQL 18.4 验证 Migration、Repository 和表 Owner；Stage 1/2/Windows 既有门禁继续全绿。
-- [ ] 受影响 README/Blueprint 同步当前事实，并清理与 Blueprint 1.7 冲突的旧本地登录/未经批准保留期表述。
-
-# 范围
-
-## 本次实现
-
-- Alembic 配置、env、首条 Revision；
-- 共享 SQLAlchemy MetaData；
-- `artifacts`、`system_settings`、`audit_events` Table 定义；
-- PostgreSQL Artifact Metadata、System Settings、Audit Repository；
-- Stage 3A PostgreSQL 集成测试；
-- 表 Owner 检查；
-- Migration 运行/开发文档。
-
-## 非目标
-
-- Canonical Contract（Stage 3B）；
-- 登录、本地密码、Session、CSRF、登录限流、MFA、飞书/OIDC 回调；
-- Role/Permission/Principal 具体 Schema；
-- `api_idempotency_records` actor 语义；
-- Job Runtime、TikHub、Raw 采集；
-- 自动 Artifact 删除、Retention Job 或具体 Raw/Audit 保留期限；
-- 生产 Docker/Compose/Release。
+- [x] 根目录建立可执行 Alembic 配置与 `migrations/`，API/普通进程不自动建表或自动迁移。
+- [x] 第一条 Revision 从空 PostgreSQL 18.4 建立 `artifacts`、`system_settings`、`audit_events`，并能 downgrade 到 base 后再次 upgrade 到 head。
+- [x] `artifacts` Schema 与 Stage 2 生命周期一致；不实现删除/保留 Job，不写死尚未批准的保留期限。
+- [x] PostgreSQL Artifact Metadata Repository 支持 pending/stored/linked/error 状态转换，并验证非法转换关闭失败。
+- [x] `system_settings` 定位为非敏感数据库设置；Secret 继续位于 Secret 边界。
+- [x] `audit_events` actor Provider 中立，可表达 system/principal，不绑定飞书私有 ID 或本地 users。
+- [x] 每张已建立表具有唯一 Owner，质量门禁不再使用 `TABLE_OWNER_RULE_NOT_READY` 占位失败。
+- [x] 真实 PostgreSQL 18.4 已验证 Migration、Repository、Owner；Stage 1/2 现有代码门禁在候选实现 head 已通过。
+- [x] README/运行文档/Blueprint 已同步，并删除旧本地 Auth 与未批准固定保留期残留。
 
 # 方案比较
 
 ## A. 只在 Alembic Revision 写 DDL，运行时代码手写 SQL
 
-不采用。Schema 会在 Migration 和 Repository 中形成两套难以校验的字段事实，后续 Owner/Repository 测试更容易漂移。
+不采用。Schema 会在 Migration 和 Repository 中形成两套难以校验的字段事实。
 
 ## B. 现在建立完整 ORM Base、Generic Repository、UnitOfWork
 
-不采用。Stage 3A 只有三张共享基础表，完整 ORM/UoW 会提前引入 Stage 3D 的事务抽象和不必要的通用层。
+不采用。会提前引入后续事务编排抽象，当前三张共享基础表不需要。
 
 ## C. SQLAlchemy Core Table + Owner Repository + Alembic（采用）
 
-共享 MetaData 只承担命名/Schema 注册；各 Owner 定义自己的 Table；PostgreSQL Adapter 使用 Core SQL 实现 Port/Repository；Alembic Revision显式创建/删除表。边界最少、可测试，且不会把业务模型绑定 ORM。
+共享 MetaData 负责机器 Schema 注册；各 Owner 定义自己的 Table；PostgreSQL Adapter 使用 Core SQL；Revision 显式冻结已批准 Schema。`alembic check` 校验运行时 Table 与 Migration 不漂移。
 
-# 已确认关键决策
+# 关键边界
 
-- PostgreSQL 18、SQLAlchemy 2、psycopg 3、Alembic 1.19.1 均复用当前锁定版本，不升级依赖。
-- 当前第一版登录能力已明确延期；本 Change 不创建本地 Auth Schema。
-- Artifact 保留/删除策略仍是用户决策门禁；本 Change 仅保留 `retention_class`/可空 `expires_at` 能力，不自动删除。
-- Audit actor 使用 Provider 中立语义；未来第三方身份先映射内部 Principal 再写审计。
+- 不升级任何依赖；继续使用锁定 PostgreSQL 18 / SQLAlchemy 2 / psycopg 3 / Alembic 1.19.1。
+- 不创建本地 `users/sessions/auth_login_attempts`，不实现登录、Session、飞书/OIDC、Role/Permission/Principal。
+- 不创建 actor-bound `api_idempotency_records`。
+- Artifact `retention_class` / 可空 `expires_at` 只预留表达能力；具体保留/删除期限仍走用户决策门禁。
+- `PostgresArtifactMetadataRepository` 是 session-bound Owner Repository；调用方必须为各元数据阶段使用短事务，不能把 ArtifactStore 文件 I/O 包进同一长事务。跨业务 `linked`/UoW 协调属于后续事务编排阶段。
+- Audit Repository 只提供 append；actor 仅使用 Provider 中立 `system/principal` 语义。
+- API/Worker/Scheduler 启动不调用 Alembic；Migration 仍是独立进程/命令。
+
+# 验证与 TDD
+
+## Red
+
+PR #9 Red Run `31699937100`：`tests/unit/database/test_stage3a_schema.py` 在实现前因 `ModuleNotFoundError: No module named 'aima_ugc.database_schema'` 正确失败；锁定环境、本地双服务 smoke 和 Contract 前置均正常。
+
+## Green / Migration
+
+Run `31703513639`：`Stage 3A Database` 完整 success，真实执行：
+
+```text
+Schema/Owner
+→ alembic upgrade head
+→ alembic current
+→ alembic check
+→ Repository Integration
+→ alembic downgrade base
+→ 验证三张应用表已移除
+→ alembic upgrade head
+→ alembic check
+```
+
+同一轮 Stage 2 Platform success；Stage 1 当时只因后续已修复的 Ruff 机械格式失败。
+
+Run `31703805697`：Stage 3A Database 与 Stage 2 Platform success；Stage 1 已通过 Ruff、mypy、Unit/Contract/API、架构、Table Owner、Secret、文档等后端仓库门禁并进入构建尾部。
+
+# 两阶段 Review
+
+## 需求符合性
+
+- 最终差异只覆盖 Stage 3A：Schema/Alembic/三张基础表/Repository/Owner/CI/文档；
+- 没有进入 Canonical、Job Runtime、TikHub、认证、自动 Retention 或生产 Release；
+- 未把任何未批准的保留期限写进代码或 Migration；
+- 未建立本地 Auth Schema；第三方身份延期决定保持不变。
+
+## 代码质量
+
+Review 修复两处边界：
+
+1. Stage 3A 单元测试不再要求 `metadata.tables` 永远“只能有三张表”，只要求三张基础表存在且 Owner 正确，避免未来扩表被错误阻断；
+2. PostgreSQL Artifact Repository 明确为 session-bound / caller-owned short transaction，禁止把文件 I/O 包进同一数据库事务；跨业务 UoW 留给后续阶段。
+
+Migration 与运行时 Table 已由 `alembic check` 双向验证零漂移；Repository 不自行 commit；Artifact 状态更新用当前状态条件防止非法/竞争转换。未发现剩余严重或重要问题。
+
+# 文档
+
+- `README.md`：Stage 3A 当前事实、独立 CI、下一步 Stage 3B；
+- `docs/环境运行与部署.md`：本地 Migration 命令、downgrade 风险、生产仍 No-Go；
+- Blueprint 03：实际三张基础表、Owner、Migration、ArtifactStore 接口、未决 Retention；
+- Blueprint 06：Stage 3A 已完成候选事实，下一步 Stage 3B；
+- Blueprint 07：1.7 → 1.8，固化 Stage 3A 技术事实和 Go/No-Go；
+- Blueprint README：当前状态与 Stage 3B 路线。
 
 # Migration、部署与回滚
 
-- 初始 Revision `down_revision = None`；空库 `upgrade head` 后必须可 `downgrade base` 再 `upgrade head`。
-- API/Worker/Scheduler 启动不调用 Alembic；Migration 作为独立进程/命令运行。
-- 当前无生产数据，因此不存在数据回填；生产 Release 仍为 No-Go。
-- downgrade 仅作为开发/CI 验证，不替代未来生产备份回滚。
-
-# 验证计划
-
-按 Red → Green：先加入表达 Stage 3A Schema/Repository 的失败测试并观察缺失实现失败；再最小实现。最终执行目标测试、真实 PostgreSQL Migration/Repository 集成、Ruff、mypy、架构/Owner/Secret/文档检查和完整 CI。
+- 初始 Revision `down_revision=None`；已验证空库 `base → head → base → head`。
+- 当前无生产数据，无数据回填。
+- `downgrade base` 只作为隔离开发/CI 可逆性证据；未来生产回滚必须依赖 Release/Backup Set，不机械 downgrade。
+- 生产 Release 仍 No-Go。
 
 # Git
 
 - 基线 main：`1b1f21b214902922f3979523f642888773bb889c`
 - 分支：`migration/stage3a-database-foundation`
-- PR/CI/合并：实施后记录。
+- Draft PR：#9 `建立 Stage 3A 数据库与 Alembic 基线`
+- 最终候选要求：本 `ready_for_review` 提交触发的 Stage 1 / Stage 2 Platform / Stage 3A Database / Windows bootstrap 四 Job 全绿后才可转正式并合并。
