@@ -33,6 +33,8 @@ def test_content_aggregate_example_represents_full_post_view() -> None:
     assert aggregate.comment_coverage.status == "partial"
     assert aggregate.comment_coverage.reported_total == 27
     assert aggregate.comment_coverage.captured_count == 2
+    assert aggregate.system.first_seen_at <= aggregate.system.last_seen_at
+    assert len(aggregate.lineage) == 3
 
     thread = aggregate.comment_threads[0]
     assert thread.root_comment.external_comment_id == "comment_100"
@@ -54,6 +56,11 @@ def test_null_means_unknown_and_zero_is_a_real_observation() -> None:
 
 def test_observed_fields_reject_duplicates() -> None:
     canonical = import_module("aima_ugc.contracts.canonical")
+    source = canonical.CanonicalSourceV1(
+        provider_name="file_import",
+        operation="fixture",
+        observed_at="2026-08-13T04:00:00Z",
+    )
     try:
         canonical.CanonicalContentV1(
             platform="xiaohongshu",
@@ -61,6 +68,7 @@ def test_observed_fields_reject_duplicates() -> None:
             content_type="image_post",
             observed_at="2026-08-13T04:00:00Z",
             observed_fields=["title", "title"],
+            source=source,
         )
     except ValidationError:
         return
