@@ -12,7 +12,6 @@ export default defineConfig({
       override: {
         fetch: {
           includeHttpResponseReturnType: false,
-          forceSuccessResponse: true,
         },
       },
     },
