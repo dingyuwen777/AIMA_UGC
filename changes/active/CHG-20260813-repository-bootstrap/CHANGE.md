@@ -21,22 +21,22 @@ data_changes: []
 
 # 成功标准
 
-- [ ] 根目录是唯一 Python/uv 工程，Python 3.14.7 与 Node 24.19.0 有精确版本声明和锁文件。
-- [ ] `backend/src/aima_ugc/` 可以在 `uv sync --locked` 后直接导入，不使用 `PYTHONPATH`、`sys.path` 或第二套 backend 项目。
-- [ ] `uv build` 生成的 Wheel 可在隔离环境安装，并能直接 `import aima_ugc`。
-- [ ] 最小 FastAPI 应用提供 Blueprint 已定义的 `/health/live`，OpenAPI 中使用稳定 `operation_id`。
-- [ ] OpenAPI 可确定性生成到 `contracts/openapi/openapi.json`，并生成可调用的 TypeScript SDK；生成结果可通过当前 Vue/TypeScript 工具链检查和构建。
-- [ ] Vue 3 前端同时执行 TypeScript 7 原生 `.ts` 检查和 Vue SFC compatibility API 类型检查，且可 Lint、Unit Test 和 Build。
-- [ ] Ruff、mypy、pytest、Contract/质量检查和前端检查可由 CI 在 `linux/amd64` GitHub Hosted Runner 上使用冻结运行时实际执行。
-- [ ] CI 只检查当前 Stage 1 已存在能力，不伪造尚未实现的 PostgreSQL、Migration、Docker Release、五平台业务或 E2E 业务流。
-- [ ] README 与 Blueprint 同步为实际 Stage 1 机器事实，未决 Stage 0 门禁继续保留。
+- [x] 根目录是唯一 Python/uv 工程，Python 3.14.7 与 Node 24.19.0 有精确版本声明和锁文件。
+- [x] `backend/src/aima_ugc/` 可以在 `uv sync --locked` 后直接导入，不使用 `PYTHONPATH`、`sys.path` 或第二套 backend 项目。
+- [x] `uv build` 生成的 Wheel 可在隔离环境安装，并能直接 `import aima_ugc`。
+- [x] 最小 FastAPI 应用提供 Blueprint 已定义的 `/health/live`，OpenAPI 中使用稳定 `operation_id`。
+- [x] OpenAPI 可确定性生成到 `contracts/openapi/openapi.json`，并由 Orval 8.24.0 生成可调用 Fetch Client；生成结果通过 TS7 native、Vue SFC typecheck 和 Vite Build。
+- [x] Vue 3 前端同时执行 TypeScript 7 原生 `.ts` 检查和 Vue SFC compatibility API 类型检查，并通过 Lint、Unit Test 和 Build。
+- [x] Ruff、mypy、pytest、Contract/质量检查和前端检查已由 `linux/amd64` GitHub Hosted Runner 使用冻结运行时实际执行。
+- [x] CI 只检查当前 Stage 1 已存在能力，不伪造尚未实现的 PostgreSQL、Migration、Docker Release、五平台业务或业务 E2E。
+- [x] README 与 Blueprint 已同步为实际 Stage 1 机器事实，未决 Stage 0 门禁继续保留。
 
 # 范围
 
 - 建立方案 A 的根 Python 项目、最小 FastAPI package、测试入口和构建配置。
 - 建立最小 Vue/TypeScript/Vite/Pinia 前端及其测试、Lint、类型和构建入口。
-- 建立 OpenAPI 生成、兼容性基础检查和 TypeScript SDK 生成 PoC。
-- 建立 Stage 1 所需最小质量脚本和 GitHub Actions CI。
+- 建立 OpenAPI 生成、兼容性基础检查和 TypeScript Fetch Client 生成。
+- 建立 Stage 1 所需最小质量脚本、GitHub Actions CI、CODEOWNERS 和 PR 模板。
 - 生成并提交 `uv.lock`、`frontend/package-lock.json`、固定 OpenAPI 和前端 generated client。
 - 同步根 README、Blueprint 导航和 `07` 中已经通过 PoC 的 Stage 1 决策。
 
@@ -60,30 +60,40 @@ data_changes: []
 
 ## Python build backend
 
-比较 `uv_build`、Hatchling 和 setuptools。当前项目是纯 Python、既定包管理器为 uv、没有 build hook/扩展模块/历史兼容约束，因此使用与冻结 uv 版本一致的 `uv_build`，显式设置 `module-root = "backend/src"`、`module-name = "aima_ugc"`；以实际 Wheel 内容、隔离安装和直接 import 为验收。
+比较 `uv_build`、Hatchling 和 setuptools。当前项目是纯 Python、既定包管理器为 uv、没有 build hook/扩展模块/历史兼容约束，因此使用与冻结 uv 版本一致的 `uv_build 0.12.3`，显式设置 `module-root = "backend/src"`、`module-name = "aima_ugc"`。实际 CI 已验证 Wheel 构建、隔离安装和直接 import。
 
-## OpenAPI TypeScript SDK
+## OpenAPI TypeScript Client
 
-`@hey-api/openapi-ts 0.99.0` 在冻结 Node 24.19.0 + TypeScript 7.0.2 实验中运行时崩溃，读取 `ts.SyntaxKind.AnyKeyword` 时对象为 `undefined`，因此否决。Orval 8.23.0 可成功生成但开发依赖存在 npm 高危漏洞；升级到 Orval 8.24.0 后生产与完整 npm audit 均为 0，Fetch SDK 生成成功，因此当前候选为 Orval 8.24.0，仍以最终 Typecheck/Build 通过为冻结条件。
+`@hey-api/openapi-ts 0.99.0` 在冻结 Node 24.19.0 + TypeScript 7.0.2 实验中运行时崩溃，因此否决。Orval 8.23.0 可生成但开发依赖存在 npm 高危漏洞；升级到 Orval 8.24.0 后完整与生产 npm audit 均为 0。最终使用 Orval 8.24.0 的 Fetch Client，单文件生成到 `frontend/src/generated/api/client.ts`，仅启用 `includeHttpResponseReturnType: false`。`forceSuccessResponse` 在真实 FastAPI OpenAPI 下会产生未定义成功类型别名，已按 Orval 默认语义移除。生成代码通过 TS7、Vue typecheck 和 Vite Build。
+
+Orval 为开发期工具，不增加浏览器运行时 HTTP 依赖；采用 Fetch 是因为浏览器已有原生实现。替代方案 OpenAPI Generator 会额外引入 Java/JAR 工具链；手写 Fetch Client 会形成第二套 HTTP 事实源。Orval 及当前直接前端工具依赖由 `package-lock.json` 固定，本轮完整 npm audit 为 0。
 
 ## TypeScript 7、Vue SFC 与 Lint
 
-实际 CI 证明 `vue-tsc 3.3.9` 直接配 `typescript 7.0.2` 会因 TS7 不导出 `./lib/tsc` 而失败。TypeScript 7.0 官方同时说明其尚无 programmatic API，Vue/Volar 等嵌入式语言工具现阶段需要 TypeScript 6 API；Vue Language Tools 3.3.8 起采用 TS7 + `@typescript/typescript6` 双安装并修复 shim 解析。
+实际 CI 证明 `vue-tsc 3.3.9` 直接配 `typescript 7.0.2` 会因 TS7 不导出 `./lib/tsc` 而失败。TypeScript 7.0 官方说明其暂时没有 programmatic JS API，Vue/Volar 等嵌入式语言工具仍需 TypeScript 6 API；Vue Language Tools 当前采用同类双安装过渡模型。
 
-因此保留 TypeScript 7.0.2 原生编译器为项目普通 `.ts` 代码门禁，通过 `@typescript/native = npm:typescript@7.0.2` 明确路径执行；`typescript` 名称按官方过渡模式指向 `@typescript/typescript6@6.0.2`，仅供 `vue-tsc` 等需要 JS compiler API 的 Vue SFC 工具使用。不得把后者描述为项目降级到 TS6。两条检查都必须在 CI 成功。
+因此保留 TypeScript 7.0.2 native compiler 为普通 `.ts` 代码门禁，通过 `@typescript/native = npm:typescript@7.0.2` 明确路径执行；包名 `typescript` 指向 `@typescript/typescript6@6.0.2`，只供 `vue-tsc` 等需要 JS compiler API 的 Vue SFC 工具使用。`npm run typecheck` 同时执行两条检查，不能把 compatibility API 描述为项目降级到 TS6。
 
-Lint 继续使用已经实际通过的 ESLint + `eslint-plugin-vue`/`vue-eslint-parser` + Babel TypeScript syntax parser；Stage 1 不宣称 type-aware ESLint，类型正确性由上述双类型门禁负责。
+Lint 使用 ESLint 10.8.0 + `eslint-plugin-vue` 10.10.0 + `vue-eslint-parser` 10.4.1 + Babel TypeScript syntax parser。当前 `typescript-eslint` 尚未正式支持 TS7，因此不强行引入；Stage 1 不宣称 type-aware ESLint，类型正确性由双类型门禁负责。
+
+## 安全与依赖
+
+- Python 与 npm 直接依赖均精确声明，传递依赖由 Lock 固定；
+- Orval 8.23.0 的开发依赖高危问题未通过 `audit fix --force` 绕过，而是切换到 8.24.0 后重新完整验证；
+- 最终 bootstrap CI 的生产和完整 npm audit 都为 0 vulnerabilities；
+- npm 安装仍提示上游传递依赖 `glob@10.5.0` 已 deprecated，以及 `esbuild` install script allow-scripts 提示；当前完整 audit 为 0 且 Vite production Build 成功。这些是上游工具链告警，不通过无依据 overrides/强制升级掩盖，后续只有出现可验证风险或上游正式替代时再独立处理。
 
 # 任务
 
 - [x] 调查当前仓库、AGENTS、Skill、Blueprint、版本快照与 Stage 1 门禁。
 - [x] 核验构建后端、SDK 生成器和 TS7/Vue 工具兼容边界的一手资料。
 - [x] 建立最小后端/package/测试/Contract/质量脚本。
-- [ ] 完成前端双类型门禁、SDK 生成、Lint/typecheck/unit/build。
-- [ ] 生成 Python/npm 锁文件和固定生成物。
-- [ ] 建立并运行 Stage 1 CI，修复真实失败。
+- [x] 完成前端双类型门禁、SDK 生成、Lint/typecheck/unit/build。
+- [x] 生成 Python/npm 锁文件和固定生成物。
+- [x] 用 bootstrap CI 建立并验证 Stage 1 机器事实。
+- [x] 同步受影响 README/Blueprint 决策。
+- [ ] 用正式只读 PR CI 再验证最终 diff。
 - [ ] 两阶段 Review：需求符合性 → 代码质量。
-- [ ] 同步受影响 README/Blueprint 决策。
 - [ ] 合并到 `main` 后重新验证集成状态并归档 Change。
 
 # 验证
@@ -91,9 +101,9 @@ Lint 继续使用已经实际通过的 ESLint + `eslint-plugin-vue`/`vue-eslint-
 ## 计划
 
 - Python：精确运行时、`uv lock --check`、`uv sync --locked`、直接 import、Ruff、mypy、pytest、`uv build`、隔离 Wheel 安装/import。
-- Contract：OpenAPI 生成 `--check`、基础兼容性/operationId 检查、SDK 重新生成后无 diff。
-- Frontend：精确 Node/npm、`npm ci`、完整和生产依赖 audit、TS7 原生 `.ts` 检查、Vue SFC compatibility typecheck、Lint、Vitest、Vite Build。
-- CI：GitHub Actions `linux/amd64` runner 完整执行上述 Stage 1 门禁并读取 job/log 结果。
+- Contract：OpenAPI 重新生成无漂移、基础 operationId 检查、Orval Client 重新生成无漂移。
+- Frontend：精确 Node/npm、`npm ci`、完整和生产依赖 audit、TS7 native `.ts` 检查、Vue SFC compatibility typecheck、Lint、Vitest、Vite Build。
+- CI：正式 GitHub Actions PR workflow 使用只读权限执行完整 Stage 1 门禁。
 - 文档：固定入口、链接、版本/术语和 Stage 1 状态检查。
 
 ## 新鲜证据
@@ -101,17 +111,21 @@ Lint 继续使用已经实际通过的 ESLint + `eslint-plugin-vue`/`vue-eslint-
 - Run `31676428866`：冻结运行时与 Python 依赖成功；Red 按正确原因失败，`/health/live` 为 404。
 - Run `31676509961`：health Green 通过；`@hey-api/openapi-ts 0.99.0` 在 TS7 下运行崩溃，因此否决。
 - Orval 8.23.0 可生成，但 npm audit 暴露 `js-yaml` 高危；按审计修复线改测 8.24.0，不执行 `audit fix --force`。
-- Run `31677513245`：Orval 8.24.0 完整/生产 npm audit 均 0；SDK 生成成功；Ruff、mypy、Unit/Contract/API、OpenAPI、架构、Secret、文档检查全部通过；Wheel 构建、隔离安装、直接 import 成功；ESLint 通过。唯一阻塞为 `vue-tsc 3.3.9` 直接读取 TS7 `typescript/lib/tsc` 失败，确认需要官方双安装过渡模式。
+- Run `31677513245`：Orval 8.24.0 完整/生产 npm audit 均 0；SDK、后端、Wheel、ESLint 已通过，暴露 `vue-tsc` 直接消费 TS7 programmatic API 不成立。
+- Run `31678378543` / job `94377944065`：最终 bootstrap 全绿。Python 3.14.7、Node 24.19.0、npm 11.17.0、uv 0.12.3；Ruff/mypy、Unit 1、Contract 1、API 1、OpenAPI/架构/Secret/文档检查；Wheel 构建与隔离安装；完整和生产 npm audit 均 0；Orval 8.24.0 SDK；ESLint；TS7 native；`vue-tsc` compatibility；Vitest 1 file/2 tests；Vite 8.2.1 production Build；Playwright 1.62.1 CLI 全部通过。
+- 同一 Run 生成并提交机器事实 commit `6aad0c139bf08cc2573003eeb40cbb53924e3d40`：`uv.lock`、`frontend/package-lock.json`、固定 OpenAPI、生成 Fetch Client。
 
 # 文档影响
 
-- `README.md`：从“Stage 1 待建立”更新为实际可用工程入口和命令。
-- `docs/blueprint/README.md`：更新当前开发状态。
-- `docs/blueprint/07-技术决策与实施门禁.md`：修正被实际 CI 推翻的 TS7/vue-tsc 兼容判断，并在最终 PoC 通过后记录 build backend、Orval 和前端 Lint/双类型门禁。
-- `docs/blueprint/01-总体架构与技术选型.md`、`04-后端任务API与前端.md`、`06-开发约束与分阶段实施.md`：仅同步受本次实际工具链结果影响的长期事实和验证命令，不改业务架构。
+- `README.md`：已更新为 Stage 1 实际工程入口、命令和下一阶段。
+- `docs/blueprint/README.md`：已更新为 Stage 1 完成、Stage 0 + Stage 2 并行的当前状态。
+- `docs/blueprint/07-技术决策与实施门禁.md`：已从 1.1 更新为 1.2，修正 TS7/vue-tsc 假设，并记录 `uv_build`、Orval、双类型门禁和 Lint 的已验证方案。
+- `docs/blueprint/01-总体架构与技术选型.md`：复核后无需修改；其“Vue 3 + TypeScript”“根 Python 工程”“生成 Client”等架构级描述仍然正确，精确工具链应只在 `07`/Lock 维护。
+- `docs/blueprint/04-后端任务API与前端.md`：复核后无需修改；其 Pydantic → FastAPI OpenAPI → 固定 OpenAPI → TypeScript Client 的契约边界与本次实现一致。
+- `docs/blueprint/06-开发约束与分阶段实施.md`：复核后无需修改；统一命令仍是 `npm run typecheck`，具体双编译器实现属于 `package.json` 与 `07` 的工具链事实；阶段定义不改写成历史流水账。
 
 # 交付
 
-- Commit：实现中；最终以 PR head 为准。
-- PR：待最终 CI 通过后创建。
-- 发布：不涉及生产发布；目标是合并到 `main` 的 Stage 1 工程基线。
+- Commit：最终以 PR head 为准；机器事实 commit 为 `6aad0c1`。
+- PR：下一步创建，正式 CI 通过后进入 Review/合并。
+- 发布：不涉及生产发布；本 Change 只建立可继续开发的 Stage 1 工程基线。

@@ -1,21 +1,23 @@
-name: Bootstrap Stage 1
+name: CI
 
 on:
   push:
     branches:
-      - build/repository-bootstrap
+      - main
+  pull_request:
+    branches:
+      - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  bootstrap:
+  stage1:
+    name: Stage 1
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
-        with:
-          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v6.2.0
@@ -38,44 +40,44 @@ jobs:
       - name: Install uv
         run: python -m pip install "uv==0.12.3"
 
-      - name: Resolve Python lock and sync
-        run: |
-          uv lock
-          uv sync --locked
-
-      - name: Verify Red or Green health behavior
-        run: uv run pytest tests/api/test_health.py -q
-
-      - name: Generate OpenAPI
-        run: uv run python scripts/contracts/generate.py
-
-      - name: Install frontend dependencies
-        run: npm install --prefix frontend
-
-      - name: Audit production frontend dependencies
-        run: npm --prefix frontend audit --omit=dev --audit-level=high
-
-      - name: Report full frontend dependency audit
-        continue-on-error: true
-        run: npm --prefix frontend audit --audit-level=high
-
-      - name: Generate TypeScript SDK
-        run: npm --prefix frontend run generate:api
-
-      - name: Backend and contract checks
+      - name: Verify locked Python environment
         shell: bash
         run: |
           set -euo pipefail
           uv lock --check
+          uv sync --locked
           uv run python -c "import aima_ugc"
+
+      - name: Install locked frontend environment
+        run: npm ci --prefix frontend
+
+      - name: Audit frontend dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix frontend audit --omit=dev --audit-level=high
+          npm --prefix frontend audit --audit-level=high
+
+      - name: Verify generated contracts and client
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/contracts/generate.py
+          npm --prefix frontend run generate:api
+          git diff --exit-code -- contracts/openapi/openapi.json frontend/src/generated/api
+          uv run python scripts/contracts/generate.py --check
+          uv run python scripts/contracts/check_compatibility.py
+
+      - name: Backend and repository checks
+        shell: bash
+        run: |
+          set -euo pipefail
           uv run ruff format --check backend tests scripts
           uv run ruff check backend tests scripts
           uv run mypy backend/src
           uv run pytest tests/unit -q
           uv run pytest tests/contracts -q
           uv run pytest tests/api -q
-          uv run python scripts/contracts/generate.py --check
-          uv run python scripts/contracts/check_compatibility.py
           uv run python scripts/quality/check_architecture.py
           uv run python scripts/quality/check_table_ownership.py
           uv run python scripts/quality/scan_secrets.py
@@ -99,17 +101,3 @@ jobs:
           npm --prefix frontend run test -- --run
           npm --prefix frontend run build
           npm --prefix frontend exec -- playwright --version
-
-      - name: Commit generated machine facts
-        shell: bash
-        run: |
-          set -euo pipefail
-          git add uv.lock frontend/package-lock.json contracts/openapi/openapi.json frontend/src/generated/api
-          if git diff --cached --quiet; then
-            echo "生成物无变化"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "生成锁文件和接口客户端"
-          git push
