@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260813-repository-bootstrap
 title: Stage 1 仓库骨架与工具链初始化
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: build/repository-bootstrap
 created: 2026-08-13
@@ -80,7 +80,7 @@ Lint 使用 ESLint 10.8.0 + `eslint-plugin-vue` 10.10.0 + `vue-eslint-parser` 10
 
 - Python 与 npm 直接依赖均精确声明，传递依赖由 Lock 固定；
 - Orval 8.23.0 的开发依赖高危问题未通过 `audit fix --force` 绕过，而是切换到 8.24.0 后重新完整验证；
-- 最终 bootstrap CI 的生产和完整 npm audit 都为 0 vulnerabilities；
+- 最终 bootstrap CI 与正式 PR CI 的生产和完整 npm audit 都为 0 vulnerabilities；
 - npm 安装仍提示上游传递依赖 `glob@10.5.0` 已 deprecated，以及 `esbuild` install script allow-scripts 提示；当前完整 audit 为 0 且 Vite production Build 成功。这些是上游工具链告警，不通过无依据 overrides/强制升级掩盖，后续只有出现可验证风险或上游正式替代时再独立处理。
 
 # 任务
@@ -92,7 +92,7 @@ Lint 使用 ESLint 10.8.0 + `eslint-plugin-vue` 10.10.0 + `vue-eslint-parser` 10
 - [x] 生成 Python/npm 锁文件和固定生成物。
 - [x] 用 bootstrap CI 建立并验证 Stage 1 机器事实。
 - [x] 同步受影响 README/Blueprint 决策。
-- [ ] 用正式只读 PR CI 再验证最终 diff。
+- [x] 用正式只读 PR CI 再验证最终 diff。
 - [ ] 两阶段 Review：需求符合性 → 代码质量。
 - [ ] 合并到 `main` 后重新验证集成状态并归档 Change。
 
@@ -114,6 +114,7 @@ Lint 使用 ESLint 10.8.0 + `eslint-plugin-vue` 10.10.0 + `vue-eslint-parser` 10
 - Run `31677513245`：Orval 8.24.0 完整/生产 npm audit 均 0；SDK、后端、Wheel、ESLint 已通过，暴露 `vue-tsc` 直接消费 TS7 programmatic API 不成立。
 - Run `31678378543` / job `94377944065`：最终 bootstrap 全绿。Python 3.14.7、Node 24.19.0、npm 11.17.0、uv 0.12.3；Ruff/mypy、Unit 1、Contract 1、API 1、OpenAPI/架构/Secret/文档检查；Wheel 构建与隔离安装；完整和生产 npm audit 均 0；Orval 8.24.0 SDK；ESLint；TS7 native；`vue-tsc` compatibility；Vitest 1 file/2 tests；Vite 8.2.1 production Build；Playwright 1.62.1 CLI 全部通过。
 - 同一 Run 生成并提交机器事实 commit `6aad0c139bf08cc2573003eeb40cbb53924e3d40`：`uv.lock`、`frontend/package-lock.json`、固定 OpenAPI、生成 Fetch Client。
+- PR #1 正式只读 CI Run `31679196892` / job `94380511793` 全绿：从已提交 Lock 使用 `uv sync --locked` 与 `npm ci` 安装；完整/生产 npm audit 通过；OpenAPI 与 Orval Client 重新生成后 `git diff --exit-code` 无漂移；后端/仓库检查、Wheel、前端双类型检查、Vitest、Vite Build 和 Playwright CLI 全部通过。
 
 # 文档影响
 
@@ -126,6 +127,6 @@ Lint 使用 ESLint 10.8.0 + `eslint-plugin-vue` 10.10.0 + `vue-eslint-parser` 10
 
 # 交付
 
-- Commit：最终以 PR head 为准；机器事实 commit 为 `6aad0c1`。
-- PR：下一步创建，正式 CI 通过后进入 Review/合并。
+- Commit：当前 PR head 为 `edb358eaf6e6ea485fa11fe712ef4b4f996fafbb`，更新本记录后以最新 head 为准；机器事实 commit 为 `6aad0c1`。
+- PR：#1 `建立 Stage 1 仓库骨架与工具链`；正式只读 CI 已验证通过。
 - 发布：不涉及生产发布；本 Change 只建立可继续开发的 Stage 1 工程基线。
