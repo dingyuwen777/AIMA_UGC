@@ -224,5 +224,13 @@ frontend/dist/
 frontend/playwright-report/
 frontend/test-results/
 
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+~$*.docx
+
 # Stage 2 local runtime state / secrets / logs / artifacts
 .runtime/
