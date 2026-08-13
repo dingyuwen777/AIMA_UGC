@@ -43,6 +43,16 @@ function ConvertTo-AimaVersion {
     return $null
 }
 
+function Get-AimaPythonMajorMinor {
+    param([Parameter(Mandatory = $true)][string]$Version)
+
+    if ($Version -notmatch '^(\d+)\.(\d+)\.\d+$') {
+        throw "Invalid Python version: $Version"
+    }
+
+    return "$($Matches[1]).$($Matches[2])"
+}
+
 function Get-AimaCommandPath {
     param([Parameter(Mandatory = $true)][string]$Name)
 
@@ -80,6 +90,34 @@ function Get-AimaCommandVersion {
     catch {
         return $null
     }
+}
+
+function Get-AimaPythonTargetVersion {
+    param([Parameter(Mandatory = $true)][string]$TargetVersion)
+
+    $pathVersion = Get-AimaCommandVersion -Name 'python.exe' -Arguments @('--version')
+    if ($pathVersion -eq $TargetVersion) {
+        return $pathVersion
+    }
+
+    $launcherPath = Get-AimaCommandPath -Name 'py.exe'
+    if (-not [string]::IsNullOrWhiteSpace($launcherPath)) {
+        try {
+            $selector = '-' + (Get-AimaPythonMajorMinor -Version $TargetVersion)
+            $output = & $launcherPath $selector --version 2>&1 | Out-String
+            if ($LASTEXITCODE -eq 0) {
+                $launcherVersion = ConvertTo-AimaVersion -Text $output
+                if ($launcherVersion -eq $TargetVersion) {
+                    return $launcherVersion
+                }
+            }
+        }
+        catch {
+            # The launcher may exist while the requested runtime does not.
+        }
+    }
+
+    return $null
 }
 
 function Get-AimaCurrentVersions {
@@ -162,7 +200,11 @@ function Get-AimaRegisteredPrograms {
                 continue
             }
 
-            $key = "{0}|{1}|{2}" -f $item.DisplayName, $item.DisplayVersion, $item.PSChildName
+            $displayVersion = ''
+            if ($null -ne $item.PSObject.Properties['DisplayVersion']) {
+                $displayVersion = [string]$item.DisplayVersion
+            }
+            $key = "{0}|{1}|{2}" -f $item.DisplayName, $displayVersion, $item.PSChildName
             if ($seen.ContainsKey($key)) {
                 continue
             }
@@ -174,12 +216,22 @@ function Get-AimaRegisteredPrograms {
     return $programs
 }
 
+function Get-AimaProgramDisplayVersion {
+    param([Parameter(Mandatory = $true)][object]$Program)
+
+    if ($null -eq $Program.PSObject.Properties['DisplayVersion']) {
+        return ''
+    }
+
+    return [string]$Program.DisplayVersion
+}
+
 function Get-AimaPythonRegistrations {
     param([Parameter(Mandatory = $true)][string]$TargetVersion)
 
     return @(Get-AimaRegisteredPrograms | Where-Object {
         $_.DisplayName -match '^Python \d+\.\d+\.\d+(?: \((?:32|64)-bit\))?$' -and
-        [string]$_.DisplayVersion -ne $TargetVersion
+        (Get-AimaProgramDisplayVersion -Program $_) -ne $TargetVersion
     })
 }
 
@@ -187,7 +239,8 @@ function Get-AimaNodeRegistrations {
     param([Parameter(Mandatory = $true)][string]$TargetVersion)
 
     return @(Get-AimaRegisteredPrograms | Where-Object {
-        $_.DisplayName -eq 'Node.js' -and [string]$_.DisplayVersion -ne $TargetVersion
+        $_.DisplayName -eq 'Node.js' -and
+        (Get-AimaProgramDisplayVersion -Program $_) -ne $TargetVersion
     })
 }
 
@@ -204,7 +257,7 @@ function Confirm-AimaUninstall {
     Write-Host ''
     Write-Host "Detected registered $Label installation(s) that do not match the repository target:"
     foreach ($program in $Programs) {
-        Write-Host ("  - {0} {1}" -f $program.DisplayName, $program.DisplayVersion)
+        Write-Host ("  - {0} {1}" -f $program.DisplayName, (Get-AimaProgramDisplayVersion -Program $program))
     }
     Write-Host 'Keeping older versions can be useful for other projects. Default: keep them.'
     $answer = Read-Host "Uninstall these old $Label installation(s) first? [y/N]"
@@ -214,11 +267,14 @@ function Confirm-AimaUninstall {
 function Invoke-AimaRegisteredUninstall {
     param([Parameter(Mandatory = $true)][object]$Program)
 
-    Write-Host ("Opening uninstaller: {0} {1}" -f $Program.DisplayName, $Program.DisplayVersion)
-    $process = $null
+    Write-Host ("Opening uninstaller: {0} {1}" -f $Program.DisplayName, (Get-AimaProgramDisplayVersion -Program $Program))
     $productCode = [string]$Program.PSChildName
-    $uninstallString = [string]$Program.UninstallString
+    $uninstallString = ''
+    if ($null -ne $Program.PSObject.Properties['UninstallString']) {
+        $uninstallString = [string]$Program.UninstallString
+    }
 
+    $process = $null
     if ($productCode -match '^\{[0-9A-Fa-f-]+\}$' -and $uninstallString -match '(?i)msiexec') {
         $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList @('/x', $productCode) -Wait -PassThru
     }
@@ -459,10 +515,10 @@ function Write-AimaVersionSummary {
 
     Write-Host ''
     Write-Host 'Toolchain status:'
-    Write-Host ("  Python  current={0} target={1}" -f $(if ($Current.Python) { $Current.Python } else { '<missing>' }), $Target.Python)
-    Write-Host ("  Node    current={0} target={1}" -f $(if ($Current.Node) { $Current.Node } else { '<missing>' }), $Target.Node)
-    Write-Host ("  npm     current={0} target={1}" -f $(if ($Current.Npm) { $Current.Npm } else { '<missing>' }), $Target.Npm)
-    Write-Host ("  uv      current={0} target={1}" -f $(if ($Current.Uv) { $Current.Uv } else { '<missing>' }), $Target.Uv)
+    Write-Host ("  Python on PATH current={0} target={1}" -f $(if ($Current.Python) { $Current.Python } else { '<missing>' }), $Target.Python)
+    Write-Host ("  Node           current={0} target={1}" -f $(if ($Current.Node) { $Current.Node } else { '<missing>' }), $Target.Node)
+    Write-Host ("  npm            current={0} target={1}" -f $(if ($Current.Npm) { $Current.Npm } else { '<missing>' }), $Target.Npm)
+    Write-Host ("  uv             current={0} target={1}" -f $(if ($Current.Uv) { $Current.Uv } else { '<missing>' }), $Target.Uv)
 }
 
 function Invoke-AimaDevEnvironmentSetup {
@@ -483,12 +539,17 @@ function Invoke-AimaDevEnvironmentSetup {
         $current = Get-AimaCurrentVersions
         Write-AimaVersionSummary -Current $current -Target $target
 
-        if ($current.Python -ne $target.Python) {
+        $targetPythonVersion = Get-AimaPythonTargetVersion -TargetVersion $target.Python
+        if ($targetPythonVersion -ne $target.Python) {
             Install-AimaPython -TargetVersion $target.Python -TempDir $tempDir
-            $current = Get-AimaCurrentVersions
-            Assert-AimaToolVersion -Label 'Python' -Actual $current.Python -Expected $target.Python
+            $targetPythonVersion = Get-AimaPythonTargetVersion -TargetVersion $target.Python
+            Assert-AimaToolVersion -Label 'Python target runtime' -Actual $targetPythonVersion -Expected $target.Python
+        }
+        elseif ($current.Python -ne $target.Python) {
+            Write-Host "Python $($target.Python) is already installed side-by-side; the older Python on PATH is being kept. uv will select the repository Python from .python-version."
         }
 
+        $current = Get-AimaCurrentVersions
         if ($current.Node -ne $target.Node) {
             Install-AimaNode -TargetVersion $target.Node -TempDir $tempDir
             $current = Get-AimaCurrentVersions
@@ -496,6 +557,7 @@ function Invoke-AimaDevEnvironmentSetup {
         }
 
         if ($current.Npm -ne $target.Npm) {
+            Write-Host "npm does not use a side-by-side global version in the standard Node.js installation. Updating npm will replace the currently resolved global npm version."
             Update-AimaNpm -TargetVersion $target.Npm
             $current = Get-AimaCurrentVersions
             Assert-AimaToolVersion -Label 'npm' -Actual $current.Npm -Expected $target.Npm
