@@ -12,4 +12,69 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           ref: feature/stage3b-canonical-v1
-      - run: echo ready
+      - name: Finalize Stage 3B status docs
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              s = p.read_text(encoding='utf-8')
+              if s.count(old) != 1:
+                  raise SystemExit(f'{path}: expected one match, got {s.count(old)}')
+              p.write_text(s.replace(old, new), encoding='utf-8')
+
+          replace_once(
+              'README.md',
+              '**Stage 1 工程基线、Stage 2 Platform 基础和 Stage 3A 数据库基础已经建立。** 当前仓库已经具备可安装 Python package、FastAPI/Vue 最小工程、固定 OpenAPI 与生成 TypeScript Client、本地前后端联调、Windows x64 开发环境引导，以及业务无关的 Config、Secret、统一日志、PostgreSQL 连接、`/health/ready`、ArtifactService/ArtifactStore、Local ArtifactStore、Alembic 首条 Revision、Artifact PostgreSQL 元数据 Repository、System Settings 和 Provider 中立 Audit 基础。\n\n仍未进入业务功能批量开发阶段。Stage 0 的页面/角色、五平台能力矩阵、真实 Fixture、隐私/保留、容量/SLO/RPO/RTO 和 Scheduler misfire 等业务事实继续约束后续实现；下一项正式工程工作是 Stage 3B Canonical Contract。',
+              '**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础和 Stage 3B Canonical Contract 已经建立。** 当前仓库已经具备可安装 Python package、FastAPI/Vue 最小工程、固定 OpenAPI 与生成 TypeScript Client、本地前后端联调、Windows x64 开发环境引导，业务无关 Platform/数据库基础，以及 Provider/平台无关的 Canonical V1 Pydantic Contract、生成 JSON Schema、固定脱敏完整帖子示例和 Contract Test。\n\n仍未进入业务功能批量开发阶段。Stage 0 的页面/角色、逐平台能力矩阵与真实 Fixture、隐私/保留、容量/SLO/RPO/RTO 和 Scheduler misfire 等业务事实继续约束后续实现；**下一项正式工程工作是 Stage 4 Job Runtime**，之后依次进入 Stage 5 Provider Adapter/Raw 和 Stage 6 单平台端到端纵切。'
+          )
+
+          stage3a_end = '- 当前仍不实现本地登录、Session、飞书/OIDC、具体 Role/Permission Schema、API 幂等 actor 表或自动 Retention 删除。\n'
+          stage3b = '''- 当前仍不实现本地登录、Session、飞书/OIDC、具体 Role/Permission Schema、API 幂等 actor 表或自动 Retention 删除。\n\n### Stage 3B：Canonical 数据契约 V1\n\n- `backend/src/aima_ugc/contracts/canonical/` 是 Canonical Pydantic 唯一手写事实源；\n- `contracts/canonical/` 保存确定性生成的 Content/Comment/Aggregate JSON Schema 和固定脱敏示例；\n- 写入原子 Contract 为 `CanonicalContentV1` / `CanonicalCommentV1`，读取完整帖子视图为 `CanonicalContentAggregateV1`；\n- TikHub、官方 API、Apify、自建采集器、文件/历史导入等均是 Canonical 之前的 Provider Adapter；\n- 已批准作者/评论者方案 B：尽量保留平台明确公开的账号 ID、备用 ID、昵称/handle、主页/头像、简介、认证、地区和公开统计；\n- 内容指标覆盖点赞、评论、分享、转发、收藏、浏览/播放、弹幕、投币、下载等；评论覆盖点赞/回复数；`null` 表示未知，`0` 表示明确观察到零；\n- 原子 Observation 使用 `observed_fields` 支持稀疏更新；读取 Aggregate 使用 `comment_coverage` 区分评论抓全、部分、未请求和不可用；\n- 数据库目标是关系化 Current + Version + Metric Observation；整棵帖子评论树只在 Query/Read Model 层组装，本阶段不创建业务表 Migration。\n'''
+          replace_once('README.md', stage3a_end, stage3b)
+
+          replace_once(
+              'docs/blueprint/README.md',
+              '**Stage 1 工程基线、Stage 2 Platform 基础和 Stage 3A 数据库基础均已建立。** 当前代码已经具备：',
+              '**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础和 Stage 3B Canonical Contract 均已建立。** 当前代码已经具备：'
+          )
+          replace_once(
+              'docs/blueprint/README.md',
+              '- Stage 3A 根 Alembic、`20260813_0001`、`artifacts/system_settings/audit_events`、PostgreSQL Repository 和独立 Migration CI。',
+              '- Stage 3A 根 Alembic、`20260813_0001`、`artifacts/system_settings/audit_events`、PostgreSQL Repository 和独立 Migration CI；\n- Stage 3B Provider/平台无关 Canonical V1 Pydantic Contract、生成 JSON Schema、固定脱敏帖子聚合示例、稀疏 `observed_fields`、评论树/coverage 语义与 Contract Test。'
+          )
+          old_stage = '''### 阶段 3：Contract、数据库与 System/Audit\n\nStage 2 已完成，Stage 3A 数据库/Alembic/基础持久化也已完成。下一步 Stage 3B 应建立：\n\n- Canonical Pydantic / JSON Schema 的正式机器 Contract；\n- 固定、合法、脱敏的 Canonical 示例与 Contract Test；\n- Mapper/Ingestion 后续共同消费的稳定字段语义。\n\nStage 3A 已建立的 Schema/Repository 不重复设计；登录、Role/Permission、Principal 和 actor-bound API 幂等继续等待真实第三方身份需求。'''
+          new_stage = '''### 阶段 3：Contract、数据库与 System/Audit\n\nStage 3A 数据库/Alembic/基础持久化和 Stage 3B Canonical Contract 均已完成。Canonical 现在由 Pydantic 唯一手写事实源、生成 JSON Schema、固定脱敏聚合示例和 Contract Test 维护，并已经冻结 Provider 无关、稀疏 Observation、评论 root/parent、coverage 和完整帖子 Read Model 语义。\n\nStage 3A/3B 已建立的 Schema/Repository/Contract 不重复设计；登录、Role/Permission、Principal 和 actor-bound API 幂等继续等待真实第三方身份需求。**下一步正式工程阶段是 Stage 4 Job Runtime**，之后才进入 Provider Adapter/Raw 和单平台纵切。'''
+          replace_once('docs/blueprint/README.md', old_stage, new_stage)
+
+          replace_once(
+              'docs/blueprint/06-开发约束与分阶段实施.md',
+              '**Stage 3A 数据库基础已完成**：根 Alembic、首条 Revision、`artifacts/system_settings/audit_events`、唯一 Table Owner、Artifact PostgreSQL Metadata Repository、System Settings 与 Provider 中立 Audit Repository 已由 PostgreSQL 18.4 CI 验证 `base → head → base → head` 和 `alembic check`。当前不实现登录入口、本地密码、Session、CSRF、登录限流或 MFA。\n\n**下一步 Stage 3B**：建立 Canonical Pydantic 唯一手写事实源、生成 JSON Schema、固定合法脱敏示例和 Contract Test。只有平台字段/个人信息语义需要业务决定时才按用户决策门禁暂停对应部分。',
+              '**Stage 3A 数据库基础已完成**：根 Alembic、首条 Revision、`artifacts/system_settings/audit_events`、唯一 Table Owner、Artifact PostgreSQL Metadata Repository、System Settings 与 Provider 中立 Audit Repository 已由 PostgreSQL 18.4 CI 验证 `base → head → base → head` 和 `alembic check`。当前不实现登录入口、本地密码、Session、CSRF、登录限流或 MFA。\n\n**Stage 3B Canonical Contract 已完成**：Pydantic 是唯一手写事实源，JSON Schema 确定性生成；`CanonicalContentV1` / `CanonicalCommentV1` 支持 Provider 无关原子 Observation、丰富公开作者/评论者方案 B、完整互动指标和稀疏 `observed_fields`；`CanonicalContentAggregateV1` 以内容为根组织一级评论/回复、coverage、system 和 lineage。数据库持久化目标已冻结为关系化 Current + Version + Metric Observation，但业务表 Migration 留到单平台纵切阶段。\n\n**下一步 Stage 4**：实现 PostgreSQL Job Runtime；Stage 5 再实现首个 Provider Adapter/Raw，Stage 6 用一个已批准真实 Fixture 完成 Mapper → Canonical → Ingestion → PostgreSQL 的端到端纵切。'
+          )
+
+          replace_once(
+              'docs/blueprint/07-技术决策与实施门禁.md',
+              '| 3 Contract/DB/System | **Stage 3A 已完成，下一步 3B**：首条 Alembic、三张基础表、Table Owner、Artifact/System/Audit Repository 已验证；继续建立 Canonical Contract，本地登录/Session 仍延期 | 改写已发布 Revision、绕过 Owner Repository、写死未批准 Retention 期限、因旧蓝图创建本地密码/Session 表 |',
+              '| 3 Contract/DB/System | **Stage 3A + 3B 已完成**：Alembic/基础持久化和 Provider 无关 Canonical V1 均已建立；Pydantic→JSON Schema、脱敏聚合示例、`observed_fields`、评论 root/parent/coverage 与方案 B 作者语义已有机器 Contract/测试 | 改写已发布 Revision、绕过 Owner/Ingestion、手改生成 Schema、让 Provider 私有 JSON 泄漏公共 Contract、写死未批准 Retention 期限 |'
+          )
+
+          change = Path('changes/active/CHG-20260813-stage3b-canonical-v1/CHANGE.md')
+          s = change.read_text(encoding='utf-8')
+          if s.count('status: in_progress') != 1:
+              raise SystemExit('Change status target not unique')
+          s = s.replace('status: in_progress', 'status: ready_for_review')
+          s = s.replace('- [ ]', '- [x]')
+          marker = '# Git\n\n- 基线 main：`4440e9b156ca0ddf52aaf3eed80cdcea28a7bad1`\n- 分支：`feature/stage3b-canonical-v1`\n- PR/CI/合并：实施后记录。'
+          replacement = '''# TDD 与验证证据\n\n- Red：PR #11 Run `31710331120`，Stage 1 Contract Test 因 `ModuleNotFoundError: No module named 'aima_ugc.contracts'` 按正确原因失败；Stage 2/3A 正常。\n- Green：Run `31719449984` 的 Stage 1、Stage 2 Platform、Stage 3A Database、Windows bootstrap 四 Job 全部 success；Stage 1 已通过 Contract 生成/漂移、Ruff、mypy、Unit/Contract/API、Wheel 和前端完整检查。\n- 两阶段 Review：确认未混入业务 Migration、Provider 实现、Job Runtime 或前端业务页面；补强评论树/coverage 关系校验、`null` 与 `0` 语义、`observed_fields` 叶子路径和数据库目标 DDL 空值语义。\n\n# Git\n\n- 基线 main：`4440e9b156ca0ddf52aaf3eed80cdcea28a7bad1`\n- 分支：`feature/stage3b-canonical-v1`\n- Draft PR：#11 `建立 Stage 3B Canonical 数据契约 V1`\n- 候选验证：Run `31719449984` 四 Job 全绿；本状态提交仍需再次执行完整 PR CI 后才可转正式 Review/合并。'''
+          if s.count(marker) != 1:
+              raise SystemExit('Change Git marker not unique')
+          change.write_text(s.replace(marker, replacement), encoding='utf-8')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md docs/blueprint changes/active/CHG-20260813-stage3b-canonical-v1/CHANGE.md
+          git commit -m "收口 Stage 3B 状态与验证证据"
+          git push origin HEAD:feature/stage3b-canonical-v1
