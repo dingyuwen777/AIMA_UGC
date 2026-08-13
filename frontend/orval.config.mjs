@@ -8,7 +8,6 @@ export default defineConfig({
     output: {
       mode: 'single',
       target: 'src/generated/api/client.ts',
-      schemas: 'src/generated/api/models',
       client: 'fetch',
       override: {
         fetch: {
