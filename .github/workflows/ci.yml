@@ -43,7 +43,8 @@ jobs:
           set -euo pipefail
           UV_VERSION="$(tr -d '\r\n' < .uv-version)"
           python -m pip install "uv==${UV_VERSION}"
-          test "$(uv --version)" = "uv ${UV_VERSION}"
+          UV_ACTUAL="$(uv --version | awk '{print $2}')"
+          test "${UV_ACTUAL}" = "${UV_VERSION}"
 
       - name: Verify locked Python environment
         shell: bash
