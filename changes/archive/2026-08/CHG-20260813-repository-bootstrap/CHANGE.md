@@ -3,21 +3,21 @@ schema: rvc-change/v1
 id: CHG-20260813-repository-bootstrap
 title: Stage 1 仓库骨架与工具链初始化
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: build/repository-bootstrap
 created: 2026-08-13
 updated: 2026-08-13
 depends_on: []
 affected_areas: [toolchain, platform]
-affected_paths: [pyproject.toml, uv.lock, .python-version, .node-version, backend/, frontend/, tests/, scripts/, contracts/, .github/, .gitignore, README.md, docs/blueprint/, changes/active/CHG-20260813-repository-bootstrap/CHANGE.md]
+affected_paths: [pyproject.toml, uv.lock, .python-version, .node-version, backend/, frontend/, tests/, scripts/, contracts/, .github/, .gitignore, README.md, docs/blueprint/, changes/archive/2026-08/CHG-20260813-repository-bootstrap/CHANGE.md]
 contracts: [HTTP OpenAPI]
 data_changes: []
 ---
 
 # 目标
 
-把当前只有 Blueprint 的 Greenfield 仓库初始化为可安装、可测试、可构建、可生成前端 Client、可运行 CI 的 Stage 1 工程基线，为后续多人并行开发提供同一套机器事实和质量入口。
+把只有 Blueprint 的 Greenfield 仓库初始化为可安装、可测试、可构建、可生成前端 Client、可运行 CI 的 Stage 1 工程基线，为后续多人并行开发提供同一套机器事实和质量入口。
 
 # 成功标准
 
@@ -80,7 +80,7 @@ Lint 使用 ESLint 10.8.0 + `eslint-plugin-vue` 10.10.0 + `vue-eslint-parser` 10
 
 - Python 与 npm 直接依赖均精确声明，传递依赖由 Lock 固定；
 - Orval 8.23.0 的开发依赖高危问题未通过 `audit fix --force` 绕过，而是切换到 8.24.0 后重新完整验证；
-- 最终 bootstrap CI 与正式 PR CI 的生产和完整 npm audit 都为 0 vulnerabilities；
+- 最终 bootstrap CI、正式 PR CI 和合并后 `main` CI 的生产与完整 npm audit 都为 0 vulnerabilities；
 - npm 安装仍提示上游传递依赖 `glob@10.5.0` 已 deprecated，以及 `esbuild` install script allow-scripts 提示；当前完整 audit 为 0 且 Vite production Build 成功。这些是上游工具链告警，不通过无依据 overrides/强制升级掩盖，后续只有出现可验证风险或上游正式替代时再独立处理。
 
 # 任务
@@ -94,7 +94,7 @@ Lint 使用 ESLint 10.8.0 + `eslint-plugin-vue` 10.10.0 + `vue-eslint-parser` 10
 - [x] 同步受影响 README/Blueprint 决策。
 - [x] 用正式只读 PR CI 再验证最终 diff。
 - [x] 两阶段 Review：需求符合性 → 代码质量。
-- [ ] 合并到 `main` 后重新验证集成状态并归档 Change。
+- [x] 合并到 `main` 后重新验证集成状态并归档 Change。
 
 # 验证
 
@@ -103,7 +103,7 @@ Lint 使用 ESLint 10.8.0 + `eslint-plugin-vue` 10.10.0 + `vue-eslint-parser` 10
 - Python：精确运行时、`uv lock --check`、`uv sync --locked`、直接 import、Ruff、mypy、pytest、`uv build`、隔离 Wheel 安装/import。
 - Contract：OpenAPI 重新生成无漂移、基础 operationId 检查、Orval Client 重新生成无漂移。
 - Frontend：精确 Node/npm、`npm ci`、完整和生产依赖 audit、TS7 native `.ts` 检查、Vue SFC compatibility typecheck、Lint、Vitest、Vite Build。
-- CI：正式 GitHub Actions PR workflow 使用只读权限执行完整 Stage 1 门禁。
+- CI：正式 GitHub Actions PR workflow 使用只读权限执行完整 Stage 1 门禁；合并后在 `main` push 上再次执行同一门禁。
 - 文档：固定入口、链接、版本/术语和 Stage 1 状态检查。
 
 ## 新鲜证据
@@ -115,8 +115,9 @@ Lint 使用 ESLint 10.8.0 + `eslint-plugin-vue` 10.10.0 + `vue-eslint-parser` 10
 - Run `31678378543` / job `94377944065`：最终 bootstrap 全绿。Python 3.14.7、Node 24.19.0、npm 11.17.0、uv 0.12.3；Ruff/mypy、Unit 1、Contract 1、API 1、OpenAPI/架构/Secret/文档检查；Wheel 构建与隔离安装；完整和生产 npm audit 均 0；Orval 8.24.0 SDK；ESLint；TS7 native；`vue-tsc` compatibility；Vitest 1 file/2 tests；Vite 8.2.1 production Build；Playwright 1.62.1 CLI 全部通过。
 - 同一 Run 生成并提交机器事实 commit `6aad0c139bf08cc2573003eeb40cbb53924e3d40`：`uv.lock`、`frontend/package-lock.json`、固定 OpenAPI、生成 Fetch Client。
 - PR #1 正式只读 CI Run `31679196892` / job `94380511793` 全绿：从已提交 Lock 使用 `uv sync --locked` 与 `npm ci` 安装；完整/生产 npm audit 通过；OpenAPI 与 Orval Client 重新生成后 `git diff --exit-code` 无漂移；后端/仓库检查、Wheel、前端双类型检查、Vitest、Vite Build 和 Playwright CLI 全部通过。
-- PR #1 当前 head `9226afba488ea6432144b3d4548b9efd002a9476` 的只读 CI Run `31679370068` / job `94381059683` 再次全绿，所有 13 个业务步骤均 success。
-- 两阶段 Review（基于 `main...build/repository-bootstrap` 当前 diff）：需求符合性未发现 Stage 2、TikHub、Schema、Auth、Job/Scheduler 等越界实现；成功标准均有代码/测试/CI/文档对应。代码质量复核了 `pyproject.toml`、只读 CI、FastAPI health Contract、Orval 配置、TypeScript 双类型链、生成脚本和完整 diff；未发现严重或重要问题，未引入并行实现、无关重构或凭据。
+- PR #1 head `9226afba488ea6432144b3d4548b9efd002a9476` 的只读 CI Run `31679370068` / job `94381059683` 全绿；Review 记录更新后的最终 head `0ec3949a9475ea6d473a7b6cc4eb5d626b4d2d93` 的 CI Run `31679712922` / job `94382150503` 再次全绿，所有 Stage 1 业务步骤 success。
+- 两阶段 Review（基于最终 `main...build/repository-bootstrap` diff）：需求符合性未发现 Stage 2、TikHub、Schema、Auth、Job/Scheduler 等越界实现；成功标准均有代码/测试/CI/文档对应。代码质量复核了 `pyproject.toml`、只读 CI、FastAPI health Contract、Orval 配置、TypeScript 双类型链、生成脚本和完整 diff；未发现严重或重要问题，未引入并行实现、无关重构或凭据。
+- PR #1 以 squash 方式合并，`main` 提交 `bcc920650d7b868830497b9d6c32d02aa74ac54b`。合并后主分支 CI Run `31679816136` / job `94382471521` 全绿：锁定环境、audit、生成物零漂移、后端/仓库检查、Wheel 与前端检查全部 success。
 
 # 文档影响
 
@@ -129,6 +130,7 @@ Lint 使用 ESLint 10.8.0 + `eslint-plugin-vue` 10.10.0 + `vue-eslint-parser` 10
 
 # 交付
 
-- Commit：Review 前 PR head 为 `9226afba488ea6432144b3d4548b9efd002a9476`；本记录更新后以新的 PR head 为准。机器事实 commit 为 `6aad0c1`。
-- PR：#1 `建立 Stage 1 仓库骨架与工具链`；正式只读 CI 已多次验证通过。
-- 发布：不涉及生产发布；本 Change 只建立可继续开发的 Stage 1 工程基线。
+- Commit：PR #1 squash merge commit `bcc920650d7b868830497b9d6c32d02aa74ac54b`；机器事实生成 commit `6aad0c1` 保留在 PR 历史与本 Change 证据中。
+- PR：#1 `建立 Stage 1 仓库骨架与工具链` 已合并。
+- CI：PR 最终 CI `31679712922` 全绿；合并后 `main` CI `31679816136` 全绿。
+- 发布：不涉及生产发布；本 Change 建立可继续开发的 Stage 1 工程基线并完成归档。
