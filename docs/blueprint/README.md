@@ -16,7 +16,7 @@
 
 不要因为存在 Blueprint 就跳过代码和测试事实，也不要一次性读取所有文档代替针对当前任务的现状调查。
 
-实际开发机配置、本地启动、前后端联调以及生产部署当前状态见 [`../环境运行与部署.md`](../环境运行与部署.md)。该文档是操作入口，不替代本目录的架构和门禁事实。
+实际开发机配置、Windows x64 一键环境初始化、本地启动、前后端联调以及生产部署当前状态见 [`../环境运行与部署.md`](../环境运行与部署.md)。该文档是操作入口，不替代本目录的架构和门禁事实。
 
 ## 事实源优先级
 
@@ -46,9 +46,11 @@
 
 ## 当前开发状态
 
-**Stage 1 工程基线已经建立并通过实际 `linux/amd64` CI。** 当前仓库已经不再只是 Blueprint：根 Python/uv 工程、Python/Node 锁定版本、最小 FastAPI/Vue 工程、固定 OpenAPI、生成 TypeScript Client、基础测试、质量门禁和本地前后端双服务联调都已有机器事实。
+**Stage 1 工程基线已经建立。** 当前仓库已经不再只是 Blueprint：根 Python/uv 工程、Python/Node/npm/uv 版本声明、最小 FastAPI/Vue 工程、固定 OpenAPI、生成 TypeScript Client、基础测试、质量门禁、本地前后端双服务联调，以及 Windows PowerShell 5.1 环境引导门禁都已有机器事实。
 
-Stage 1 已确认的工具链细节只在 [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md) 维护；实际依赖版本以 `uv.lock`、`frontend/package-lock.json`、`.python-version`、`.node-version` 为准。不要在其他 Blueprint 再复制一份版本表。
+Linux Stage 1 验证负责锁文件、Contract、测试、Wheel、前端 Build 和真实本地双服务 HTTP smoke；Windows bootstrap 验证负责一键环境引导器的 PowerShell 5.1 兼容性、版本事实读取、官方下载地址构造和非破坏性安全约束。Windows CI 不真实卸载/安装 Runner 系统软件，不能把它表述为完整 GUI 安装 E2E。
+
+Stage 1 已确认的工具链细节只在 [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md) 维护；实际版本以 `.python-version`、`.node-version`、`.uv-version`、`frontend/package.json`、`uv.lock`、`frontend/package-lock.json` 为准。不要在其他 Blueprint 再复制一份版本表。
 
 当前下一步分成两条并行路径：
 
