@@ -1,4 +1,4 @@
-name: Bootstrap Stage 3A review fix
+name: Bootstrap Stage 3A review cleanup
 
 on:
   push:
@@ -9,37 +9,16 @@ permissions:
   contents: write
 
 jobs:
-  review-fix:
+  cleanup:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
-      - name: Apply bounded review fixes
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          test_path = Path("tests/unit/database/test_stage3a_schema.py")
-          text = test_path.read_text(encoding="utf-8")
-          old = '    assert set(metadata.tables) == set(expected)\n    actual = {name: table.info["owner"] for name, table in metadata.tables.items()}\n'
-          new = '    actual = {name: metadata.tables[name].info["owner"] for name in expected}\n'
-          if text.count(old) != 1:
-              raise SystemExit("Stage 3A schema test marker changed unexpectedly")
-          test_path.write_text(text.replace(old, new, 1), encoding="utf-8")
-
-          repo_path = Path("backend/src/aima_ugc/adapters/persistence/postgres/artifact_metadata.py")
-          repo_text = repo_path.read_text(encoding="utf-8")
-          old_doc = '    """调用方拥有 Session/事务；状态转换使用条件更新防竞争。"""'
-          new_doc = '''    """Session-bound Owner Repository；状态转换使用条件更新防竞争。\n\n    调用方为每个元数据阶段使用短事务；ArtifactStore 文件 I/O 不得位于\n    同一数据库事务中。跨业务写入的 linked/UoW 协调留到后续阶段。\n    """'''
-          if repo_text.count(old_doc) != 1:
-              raise SystemExit("Artifact repository doc marker changed unexpectedly")
-          repo_path.write_text(repo_text.replace(old_doc, new_doc, 1), encoding="utf-8")
-          PY
-      - name: Commit bounded review fixes
+      - name: Remove one-time review workflow
         run: |
           set -euo pipefail
+          git rm .github/workflows/bootstrap-stage3a-review-fix.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add tests/unit/database/test_stage3a_schema.py backend/src/aima_ugc/adapters/persistence/postgres/artifact_metadata.py
-          git commit -m "修正 Stage 3A Review 边界"
+          git commit -m "移除 Stage 3A Review 临时工作流"
           git push origin "HEAD:${GITHUB_REF_NAME}"
