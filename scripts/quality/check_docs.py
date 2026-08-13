@@ -38,7 +38,9 @@ def main() -> int:
             continue
         text = doc.read_text(encoding="utf-8")
         if STANDALONE_MANIFEST_RE.search(text):
-            errors.append(f"DOC004 {doc.relative_to(ROOT)}: 禁止恢复已删除的独立 manifest.json 引用")
+            errors.append(
+                f"DOC004 {doc.relative_to(ROOT)}: 禁止恢复已删除的独立 manifest.json 引用"
+            )
         if "R0–R3" in text or "R0-R3" in text:
             errors.append(f"DOC005 {doc.relative_to(ROOT)}: 任务等级必须使用 L1–L3")
 
