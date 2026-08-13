@@ -4,7 +4,7 @@ AIMA_UGC 是爱玛舆情监控系统的 Greenfield 重构仓库。目标是从�
 
 ## 当前状态
 
-**Stage 1 仓库骨架、工具链和本地前后端启动闭环已经建立。** 当前仓库已经具备可安装 Python package、最小 FastAPI/Vue 工程、固定 OpenAPI、生成 TypeScript Fetch Client、Python/Node 锁文件、基础测试、CI 质量门禁，以及通过 Vite 开发代理联调 FastAPI 的本地启动方式。
+**Stage 1 仓库骨架、工具链、本地前后端启动闭环和 Windows x64 开发环境引导已经建立。** 当前仓库已经具备可安装 Python package、最小 FastAPI/Vue 工程、固定 OpenAPI、生成 TypeScript Fetch Client、Python/Node/uv/npm 版本声明与锁文件、基础测试、CI 质量门禁，以及通过 Vite 开发代理联调 FastAPI 的本地启动方式。
 
 仍未进入业务功能批量开发阶段。Stage 0 的页面/角色、五平台能力矩阵、真实 Fixture、隐私/保留、容量/SLO/RPO/RTO 和 Scheduler misfire 等业务事实继续约束后续实现；Stage 2 可以并行推进不依赖这些业务选择的 Platform 基础。
 
@@ -32,7 +32,8 @@ AIMA_UGC 是爱玛舆情监控系统的 Greenfield 重构仓库。目标是从�
 ### Python / 后端
 
 - Python `3.14.7`，由 `.python-version` 固定；
-- 仓库根目录是唯一 uv 工程，依赖由 `pyproject.toml + uv.lock` 固定；
+- uv `0.12.3`，由 `.uv-version` 固定，Python 依赖由 `pyproject.toml + uv.lock` 固定；
+- 仓库根目录是唯一 uv 工程；
 - build backend 为 `uv_build 0.12.3`；源码固定在 `backend/src/aima_ugc/`；
 - `uv sync --locked` 后可直接 `import aima_ugc`；
 - Wheel 已验证可构建、在隔离环境安装并再次直接 import；
@@ -50,7 +51,7 @@ Pydantic Request/Response
 ```
 
 - OpenAPI 和前端生成 Client 禁止手工修改；
-- Node `24.19.0`、npm `11.17.0` 由仓库声明固定；所有 npm 依赖由 `frontend/package-lock.json` 锁定；
+- Node `24.19.0` 由 `.node-version` 固定，npm `11.17.0` 由 `frontend/package.json` 固定；所有 npm 依赖由 `frontend/package-lock.json` 锁定；
 - Vue 3 + Vite + Pinia 已建立最小可构建应用；
 - TypeScript 7.0.2 native compiler 检查普通 `.ts` 代码；Vue SFC 在 TypeScript 7.0 尚无 programmatic API 的过渡期，按 `07` 的双安装模型使用 `@typescript/typescript6` compatibility API 驱动 `vue-tsc`；
 - `npm run typecheck` 同时执行 TS7 native 和 Vue SFC 两条类型门禁；
@@ -63,9 +64,37 @@ Pydantic Request/Response
 
 - [`docs/环境运行与部署.md`](docs/环境运行与部署.md)
 
-该文档包含开发机版本、首次依赖安装、本地前后端启动、Vite 代理联调、smoke 检查，以及当前生产部署的 Go/No-Go。当前仓库已经支持本地前后端开发启动，但**尚不能把开发启动命令当作生产部署方式**。
+### Windows x64：推荐一键初始化
 
-## 开发环境初始化
+首次开发优先直接双击：
+
+```text
+scripts\setup_dev_environment.cmd
+```
+
+或者在 PowerShell / CMD 中运行同一个文件。它不要求本机预先存在 Python、Node、npm 或 uv，会从仓库版本声明读取目标版本并检查当前环境：
+
+```text
+Python ← .python-version
+Node   ← .node-version
+npm    ← frontend/package.json
+uv     ← .uv-version
+```
+
+缺失或版本不符合时，脚本使用固定官方来源准备目标版本；检测到旧 Python/Node 时会先列出来并询问是否卸载，默认保留。Python 可保留旧版本并让目标版本并存；Node 官方 MSI 可能在标准安装位置执行产品升级。npm 的标准全局安装不提供并行版本，目标 npm 会替换当前解析到的全局 npm；uv 只会在确认是官方默认独立安装目录时允许用户选择删除旧可执行文件，其他来源不会自动删除。
+
+工具版本满足后，脚本继续执行：
+
+```text
+uv lock --check
+uv sync --locked
+npm ci --prefix frontend
+uv run python -c "import aima_ugc; print(aima_ugc.__version__)"
+```
+
+Windows CI 会用 Windows PowerShell 5.1 检查脚本语法、版本来源、官方精确 URL 构造和安全约束，但不会在 CI Runner 上真实卸载/安装系统软件。实际安装界面和卸载选择由开发者本机交互完成。
+
+### 手工初始化 / Linux / macOS
 
 从仓库根执行：
 
@@ -74,7 +103,11 @@ uv sync --locked
 npm ci --prefix frontend
 ```
 
-本地开发使用两个终端，均从仓库根执行。
+Linux/macOS 当前没有自动安装系统运行时的脚本，先按 [`docs/环境运行与部署.md`](docs/环境运行与部署.md) 准备仓库要求的精确 Python/Node/npm/uv 版本，再执行以上锁定安装。
+
+## 本地启动
+
+使用两个终端，均从仓库根执行。
 
 终端 1：
 
@@ -112,7 +145,7 @@ http://127.0.0.1:5173/health/live
 uv run python scripts/dev/check_local_stack.py
 ```
 
-核心质量检查：
+## 核心质量检查
 
 ```bash
 uv lock --check
