@@ -7,6 +7,7 @@ from pydantic import AwareDatetime, Field
 from .base import CanonicalBaseModel, NonNegativeInt
 from .comment import CanonicalCommentV1
 from .content import CanonicalContentV1
+from .source import CanonicalSourceV1
 
 
 class CanonicalCommentCoverageV1(CanonicalBaseModel):
@@ -35,3 +36,4 @@ class CanonicalContentAggregateV1(CanonicalBaseModel):
     comment_threads: list[CanonicalCommentThreadV1] = Field(default_factory=list)
     unthreaded_comments: list[CanonicalCommentV1] = Field(default_factory=list)
     system: CanonicalAggregateSystemV1
+    lineage: list[CanonicalSourceV1] = Field(default_factory=list)
