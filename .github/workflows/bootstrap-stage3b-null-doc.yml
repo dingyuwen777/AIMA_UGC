@@ -12,5 +12,27 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           ref: feature/stage3b-canonical-v1
-      - name: Patch docs
-        run: echo ready
+      - name: Patch DDL null semantics
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('docs/blueprint/03-数据库与文件存储.md')
+          s = p.read_text(encoding='utf-8')
+          pairs = [
+              ("title                   text not null default ''\ntext                    text not null default ''", "title                   text\ntext                    text", 1),
+              ("status                  text not null default 'active'", "status                  text", 2),
+              ("text                  text not null\npublished_at", "text                  text\npublished_at", 1),
+          ]
+          for old, new, expected in pairs:
+              count = s.count(old)
+              if count != expected:
+                  raise SystemExit(f'expected {expected}, got {count}: {old!r}')
+              s = s.replace(old, new)
+          p.write_text(s, encoding='utf-8')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/blueprint/03-数据库与文件存储.md
+          git commit -m "修正 Stage 3B DDL 空值语义"
+          git push origin HEAD:feature/stage3b-canonical-v1
