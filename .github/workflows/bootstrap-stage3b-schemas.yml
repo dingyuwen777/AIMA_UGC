@@ -1,4 +1,4 @@
-name: Bootstrap Stage 3B schemas
+name: Bootstrap Stage 3B schema cleanup
 
 on:
   push:
@@ -9,26 +9,19 @@ permissions:
   contents: write
 
 jobs:
-  generate:
+  cleanup:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
         with:
           ref: feature/stage3b-canonical-v1
-      - uses: actions/setup-python@v6.2.0
-        with:
-          python-version: 3.14.7
-      - name: Generate committed Canonical schemas
+      - name: Remove bootstrap workflow
         shell: bash
         run: |
           set -euo pipefail
-          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
-          python -m pip install "uv==${UV_VERSION}"
-          uv sync --locked
-          uv run python scripts/contracts/generate_canonical.py
+          git rm .github/workflows/bootstrap-stage3b-schemas.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add contracts/canonical/*.schema.json
-          git commit -m "生成 Canonical V1 JSON Schema"
+          git commit -m "移除 Stage 3B 临时 Schema 工作流"
           git push origin HEAD:feature/stage3b-canonical-v1
