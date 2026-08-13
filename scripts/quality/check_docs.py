@@ -9,6 +9,7 @@ from urllib.parse import unquote
 ROOT = Path(__file__).resolve().parents[2]
 ENTRY_DOCS = [ROOT / "README.md", ROOT / "docs" / "blueprint" / "README.md"]
 LINK_RE = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
+STANDALONE_MANIFEST_RE = re.compile(r"(?<![\w-])manifest\.json\b")
 
 
 def main() -> int:
@@ -36,8 +37,8 @@ def main() -> int:
         if ".git" in doc.parts:
             continue
         text = doc.read_text(encoding="utf-8")
-        if "manifest.json" in text:
-            errors.append(f"DOC004 {doc.relative_to(ROOT)}: 禁止恢复已删除的 manifest.json 引用")
+        if STANDALONE_MANIFEST_RE.search(text):
+            errors.append(f"DOC004 {doc.relative_to(ROOT)}: 禁止恢复已删除的独立 manifest.json 引用")
         if "R0–R3" in text or "R0-R3" in text:
             errors.append(f"DOC005 {doc.relative_to(ROOT)}: 任务等级必须使用 L1–L3")
 
