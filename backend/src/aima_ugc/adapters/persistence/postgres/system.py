@@ -1,10 +1,10 @@
 """System Settings 与 Audit PostgreSQL Repository。"""
 
+from pydantic import JsonValue
 from sqlalchemy import func, insert, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
-from pydantic import JsonValue
 
 from aima_ugc.modules.system.models import AuditEvent, SystemSetting
 from aima_ugc.modules.system.tables import audit_events_table, system_settings_table
