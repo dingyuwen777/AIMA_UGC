@@ -223,3 +223,11 @@ node_modules/
 frontend/dist/
 frontend/playwright-report/
 frontend/test-results/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+~$*.docx
