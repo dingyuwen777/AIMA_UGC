@@ -36,12 +36,15 @@ def render_openapi() -> str:
 
 
 def render_canonical(model: type) -> str:
-    return json.dumps(
-        model.model_json_schema(),
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    ) + "\n"
+    return (
+        json.dumps(
+            model.model_json_schema(),
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        + "\n"
+    )
 
 
 def main() -> int:
@@ -51,7 +54,10 @@ def main() -> int:
 
     expected: dict[Path, str] = {OPENAPI_TARGET: render_openapi()}
     expected.update(
-        {CANONICAL_DIR / filename: render_canonical(model) for filename, model in CANONICAL_MODELS.items()}
+        {
+            CANONICAL_DIR / filename: render_canonical(model)
+            for filename, model in CANONICAL_MODELS.items()
+        }
     )
 
     if args.check:
