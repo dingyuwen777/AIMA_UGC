@@ -1,0 +1,16 @@
+name: Bootstrap Stage 3B null doc
+on:
+  push:
+    branches: [feature/stage3b-canonical-v1]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/stage3b-canonical-v1
+      - name: Patch docs
+        run: echo ready
