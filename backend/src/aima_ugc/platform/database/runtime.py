@@ -49,9 +49,14 @@ class DatabaseRuntime:
             )
         return self._engine
 
+    @property
+    def engine(self) -> Engine:
+        """返回共享 Engine，供显式 Migration/集成代码使用。"""
+        return self._ensure_engine()
+
     def ping(self) -> bool:
         """执行真实 `SELECT 1`，不自动重试或修改 Schema。"""
-        with self._ensure_engine().connect() as connection:
+        with self.engine.connect() as connection:
             result = connection.execute(text("SELECT 1")).scalar_one()
         return int(result) == 1
 
@@ -59,7 +64,7 @@ class DatabaseRuntime:
         """创建同步 Session，供后续 Repository/Unit of Work 使用。"""
         if self._session_factory is None:
             self._session_factory = sessionmaker(
-                bind=self._ensure_engine(),
+                bind=self.engine,
                 class_=Session,
                 expire_on_commit=False,
             )
