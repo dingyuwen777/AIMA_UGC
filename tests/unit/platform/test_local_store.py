@@ -1,7 +1,6 @@
 import hashlib
 
 import pytest
-
 from aima_ugc.adapters.storage.local import LocalArtifactStore
 
 

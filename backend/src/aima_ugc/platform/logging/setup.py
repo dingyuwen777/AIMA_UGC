@@ -31,7 +31,7 @@ def _gzip_rotator(source: str, destination: str) -> None:
 
 
 def _mark_managed(handler: logging.Handler) -> logging.Handler:
-    setattr(handler, "_aima_managed", True)
+    handler.__dict__["_aima_managed"] = True
     return handler
 
 

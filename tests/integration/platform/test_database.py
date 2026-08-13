@@ -1,7 +1,6 @@
-from sqlalchemy import text
-
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
+from sqlalchemy import text
 
 
 def test_database_runtime_connects_to_real_postgresql_18() -> None:

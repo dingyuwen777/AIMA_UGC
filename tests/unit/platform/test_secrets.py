@@ -1,5 +1,4 @@
 import pytest
-
 from aima_ugc.platform.security import SecretFileError, read_secret_file
 
 
