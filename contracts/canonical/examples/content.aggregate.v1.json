@@ -160,7 +160,18 @@
         "locations": [],
         "is_by_content_author": false,
         "status": "available",
-        "source": null,
+        "source": {
+          "schema_version": "source.v1",
+          "provider_name": "tikhub",
+          "operation": "comment_list",
+          "provider_request_id": "request_002",
+          "provider_attempt_id": "attempt_002",
+          "raw_artifact_id": "22222222-2222-4222-8222-222222222222",
+          "source_type": "comments",
+          "source_value": "note_123",
+          "item_locator": "comments[0]",
+          "observed_at": "2026-08-13T04:05:00Z"
+        },
         "observed_fields": ["text", "author", "metrics.like_count", "metrics.reply_count"]
       },
       "replies": [
@@ -211,7 +222,18 @@
           "locations": [],
           "is_by_content_author": true,
           "status": "available",
-          "source": null,
+          "source": {
+            "schema_version": "source.v1",
+            "provider_name": "tikhub",
+            "operation": "comment_replies",
+            "provider_request_id": "request_003",
+            "provider_attempt_id": "attempt_003",
+            "raw_artifact_id": "33333333-3333-4333-8333-333333333333",
+            "source_type": "comment_replies",
+            "source_value": "comment_100",
+            "item_locator": "replies[0]",
+            "observed_at": "2026-08-13T04:05:00Z"
+          },
           "observed_fields": ["text", "author", "metrics.like_count", "metrics.reply_count"]
         }
       ],
@@ -223,5 +245,48 @@
       }
     }
   ],
-  "unthreaded_comments": []
+  "unthreaded_comments": [],
+  "system": {
+    "first_seen_at": "2026-08-13T04:00:00Z",
+    "last_seen_at": "2026-08-13T04:05:00Z",
+    "latest_observed_at": "2026-08-13T04:05:00Z"
+  },
+  "lineage": [
+    {
+      "schema_version": "source.v1",
+      "provider_name": "tikhub",
+      "operation": "content_detail",
+      "provider_request_id": "request_001",
+      "provider_attempt_id": "attempt_001",
+      "raw_artifact_id": "11111111-1111-4111-8111-111111111111",
+      "source_type": "keyword_search",
+      "source_value": "爱玛",
+      "item_locator": "items[0]",
+      "observed_at": "2026-08-13T04:00:00Z"
+    },
+    {
+      "schema_version": "source.v1",
+      "provider_name": "tikhub",
+      "operation": "comment_list",
+      "provider_request_id": "request_002",
+      "provider_attempt_id": "attempt_002",
+      "raw_artifact_id": "22222222-2222-4222-8222-222222222222",
+      "source_type": "comments",
+      "source_value": "note_123",
+      "item_locator": "comments[0]",
+      "observed_at": "2026-08-13T04:05:00Z"
+    },
+    {
+      "schema_version": "source.v1",
+      "provider_name": "tikhub",
+      "operation": "comment_replies",
+      "provider_request_id": "request_003",
+      "provider_attempt_id": "attempt_003",
+      "raw_artifact_id": "33333333-3333-4333-8333-333333333333",
+      "source_type": "comment_replies",
+      "source_value": "comment_100",
+      "item_locator": "replies[0]",
+      "observed_at": "2026-08-13T04:05:00Z"
+    }
+  ]
 }
