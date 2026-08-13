@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import AnyHttpUrl, AwareDatetime, Field
+from pydantic import AnyHttpUrl, AwareDatetime, Field, field_validator
 
 from .author import CanonicalAuthorV1
 from .base import CanonicalObservationModel, Identifier, PlatformName
@@ -39,3 +39,33 @@ class CanonicalContentV1(CanonicalObservationModel):
     metrics: CanonicalMetricsV1 = Field(default_factory=CanonicalMetricsV1)
     status: str | None = None
     source: CanonicalSourceV1
+
+    @field_validator("observed_fields")
+    @classmethod
+    def validate_observed_paths(cls, value: list[str]) -> list[str]:
+        direct = {
+            "alternate_ids",
+            "content_type",
+            "title",
+            "text",
+            "canonical_url",
+            "share_url",
+            "published_at",
+            "source_updated_at",
+            "media",
+            "topics",
+            "mentions",
+            "locations",
+            "status",
+        }
+        author_fields = set(CanonicalAuthorV1.model_fields)
+        metric_fields = set(CanonicalMetricsV1.model_fields) - {"schema_version"}
+        for path in value:
+            if path in direct:
+                continue
+            if path.startswith("author.") and path.removeprefix("author.") in author_fields:
+                continue
+            if path.startswith("metrics.") and path.removeprefix("metrics.") in metric_fields:
+                continue
+            raise ValueError(f"内容 observed_fields 包含未声明或过粗的路径: {path}")
+        return value
