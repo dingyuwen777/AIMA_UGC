@@ -181,6 +181,9 @@ jobs:
           if ((ConvertTo-AimaVersion -Text 'v24.19.0') -ne '24.19.0') {
             throw 'Node version parser failed.'
           }
+          if ((Get-AimaPythonMajorMinor -Version $targets.Python) -ne '3.14') {
+            throw 'Python launcher selector parser failed.'
+          }
           if ((Get-AimaPythonInstallerUri -Version $targets.Python) -ne 'https://www.python.org/ftp/python/3.14.7/python-3.14.7-amd64.exe') {
             throw 'Python installer URL is not exact.'
           }
@@ -192,6 +195,14 @@ jobs:
           }
           if ((Get-AimaUvInstallerUri -Version $targets.Uv) -ne 'https://astral.sh/uv/0.12.3/install.ps1') {
             throw 'uv installer URL is not exact.'
+          }
+
+          $scriptContent = Get-Content -LiteralPath $scriptPath -Raw
+          if ($scriptContent -match 'Win32_Product') {
+            throw 'Bootstrap must not query Win32_Product.'
+          }
+          if ($scriptContent -match '(?im)^\s*Set-ExecutionPolicy\b') {
+            throw 'Bootstrap must not permanently change PowerShell ExecutionPolicy.'
           }
 
           $cmdContent = Get-Content -LiteralPath 'scripts/setup_dev_environment.cmd' -Raw
