@@ -19,16 +19,30 @@ jobs:
           from pathlib import Path
           p = Path('docs/blueprint/03-数据库与文件存储.md')
           s = p.read_text(encoding='utf-8')
-          pairs = [
-              ("title                   text not null default ''\ntext                    text not null default ''", "title                   text\ntext                    text", 1),
-              ("status                  text not null default 'active'", "status                  text", 2),
-              ("text                  text not null\npublished_at", "text                  text\npublished_at", 1),
-          ]
-          for old, new, expected in pairs:
-              count = s.count(old)
-              if count != expected:
-                  raise SystemExit(f'expected {expected}, got {count}: {old!r}')
-              s = s.replace(old, new)
+          c0 = s.index('### 5.12 `contents`')
+          c1 = s.index('### 5.13 内容指标 Observation')
+          content = s[c0:c1]
+          old = "title                   text not null default ''\ntext                    text not null default ''"
+          if content.count(old) != 1:
+              raise SystemExit('contents title/text target not unique')
+          content = content.replace(old, "title                   text\ntext                    text")
+          old_status = "status                  text not null default 'active'"
+          if content.count(old_status) != 1:
+              raise SystemExit('contents status target not unique')
+          content = content.replace(old_status, "status                  text")
+          s = s[:c0] + content + s[c1:]
+
+          m0 = s.index('### 5.15 `comments`')
+          m1 = s.index('### 5.15A Ingestion')
+          comments = s[m0:m1]
+          old_text = "text                  text not null"
+          if comments.count(old_text) != 1:
+              raise SystemExit('comments text target not unique')
+          comments = comments.replace(old_text, "text                  text")
+          if comments.count(old_status) != 1:
+              raise SystemExit('comments status target not unique')
+          comments = comments.replace(old_status, "status                text")
+          s = s[:m0] + comments + s[m1:]
           p.write_text(s, encoding='utf-8')
           PY
           git config user.name "github-actions[bot]"
