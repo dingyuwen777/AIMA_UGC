@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260813-stage3b-canonical-v1
 title: Stage 3B Canonical 数据契约 V1
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: feature/stage3b-canonical-v1
 created: 2026-08-13
@@ -148,3 +148,13 @@ data_changes: []
 - 分支：`feature/stage3b-canonical-v1`
 - Draft PR：#11 `建立 Stage 3B Canonical 数据契约 V1`
 - 候选验证：Run `31719449984` 四 Job 全绿；本状态提交仍需再次执行完整 PR CI 后才可转正式 Review/合并。
+
+
+# 完成与合并证据
+
+- PR #11 `建立 Stage 3B Canonical 数据契约 V1` 已 squash merge。
+- 最终 PR head：`4d8d698dd2637e950cdbe5ed47c8d6e03eee2abd`。
+- 最终 PR CI：Run `31719983879`，Stage 1、Stage 2 Platform、Stage 3A Database、Windows bootstrap 全部 success。
+- `main` 合并提交：`25aa02cd9337f3ead9987945ac95565cc99864b6`。
+- 合并后 main CI：Run `31720259226`，四 Job 全部 success。
+- Stage 3B 未创建业务数据 Migration；下一正式工程阶段为 Stage 4 Job Runtime。
