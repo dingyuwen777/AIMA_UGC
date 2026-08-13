@@ -1,0 +1,30 @@
+name: Bootstrap Stage 2 review doc
+
+on:
+  push:
+    branches:
+      - feature/stage2-platform-foundation
+
+permissions:
+  contents: write
+
+jobs:
+  patch-review-doc:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Patch review doc
+        run: python scripts/dev/patch_stage2_review_doc.py
+
+      - name: Commit doc
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/blueprint/07-技术决策与实施门禁.md
+          git commit -m "同步 Stage 2 Artifact 原子发布事实"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
