@@ -1,4 +1,4 @@
-"""路径安全、原子写的本地 ArtifactStore。"""
+"""路径安全、原子发布且不覆盖的本地 ArtifactStore。"""
 
 from __future__ import annotations
 
@@ -80,9 +80,13 @@ class LocalArtifactStore:
                 os.fsync(handle.fileno())
             if os.name != "nt":
                 temp.chmod(0o600)
-            if target.exists():
-                raise FileExistsError(storage_key)
-            os.replace(temp, target)
+
+            # hard link 的目标创建是原子 no-overwrite：若竞争者先占用同 key，
+            # 操作会失败而不是像 os.replace 一样覆盖已存在 Artifact。
+            try:
+                os.link(temp, target)
+            except FileExistsError as exc:
+                raise FileExistsError(storage_key) from exc
         finally:
             temp.unlink(missing_ok=True)
 
