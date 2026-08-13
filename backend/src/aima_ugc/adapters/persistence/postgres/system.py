@@ -38,22 +38,22 @@ class PostgresSystemSettingsRepository:
 
     def put(self, key: str, value: JsonValue) -> SystemSetting:
         now = func.clock_timestamp()
-        statement = pg_insert(system_settings_table).values(
+        insert_statement = pg_insert(system_settings_table).values(
             key=key,
             value=value,
             version=1,
             created_at=now,
             updated_at=now,
         )
-        statement = statement.on_conflict_do_update(
+        upsert_statement = insert_statement.on_conflict_do_update(
             index_elements=[system_settings_table.c.key],
             set_={
-                "value": statement.excluded.value,
+                "value": insert_statement.excluded.value,
                 "version": system_settings_table.c.version + 1,
                 "updated_at": func.clock_timestamp(),
             },
         ).returning(system_settings_table)
-        row = self._session.execute(statement).mappings().one()
+        row = self._session.execute(upsert_statement).mappings().one()
         return _setting_from_row(row)
 
 
