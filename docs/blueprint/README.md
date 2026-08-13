@@ -16,6 +16,8 @@
 
 不要因为存在 Blueprint 就跳过代码和测试事实，也不要一次性读取所有文档代替针对当前任务的现状调查。
 
+实际开发机配置、本地启动、前后端联调以及生产部署当前状态见 [`../环境运行与部署.md`](../环境运行与部署.md)。该文档是操作入口，不替代本目录的架构和门禁事实。
+
 ## 事实源优先级
 
 仓库进入实现阶段后，发生冲突时按以下顺序处理：
@@ -44,7 +46,7 @@
 
 ## 当前开发状态
 
-**Stage 1 工程基线已经建立并通过实际 `linux/amd64` CI。** 当前仓库已经不再只是 Blueprint：根 Python/uv 工程、Python/Node 锁定版本、最小 FastAPI/Vue 工程、固定 OpenAPI、生成 TypeScript Client、基础测试和质量门禁都已有机器事实。
+**Stage 1 工程基线已经建立并通过实际 `linux/amd64` CI。** 当前仓库已经不再只是 Blueprint：根 Python/uv 工程、Python/Node 锁定版本、最小 FastAPI/Vue 工程、固定 OpenAPI、生成 TypeScript Client、基础测试、质量门禁和本地前后端双服务联调都已有机器事实。
 
 Stage 1 已确认的工具链细节只在 [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md) 维护；实际依赖版本以 `uv.lock`、`frontend/package-lock.json`、`.python-version`、`.node-version` 为准。不要在其他 Blueprint 再复制一份版本表。
 
