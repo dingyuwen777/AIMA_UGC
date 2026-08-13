@@ -16,6 +16,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7.0.1
 
+      - name: Fix validated migration marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("scripts/dev/patch_deferred_auth_blueprint.py")
+          text = path.read_text(encoding="utf-8")
+          old = '### 5.19 `System/Auth` 与 API 幂等表\\n'
+          new = '### 5.19 System/Auth 与 API 幂等表\\n'
+          if text.count(old) != 1:
+              raise SystemExit(f"expected one old marker, found {text.count(old)}")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+
       - name: Patch validated decisions
         run: python scripts/dev/patch_deferred_auth_blueprint.py
 
