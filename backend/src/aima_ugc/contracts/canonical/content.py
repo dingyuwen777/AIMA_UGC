@@ -38,4 +38,4 @@ class CanonicalContentV1(CanonicalObservationModel):
     locations: list[CanonicalLocationV1] = Field(default_factory=list)
     metrics: CanonicalMetricsV1 = Field(default_factory=CanonicalMetricsV1)
     status: str | None = None
-    source: CanonicalSourceV1 | None = None
+    source: CanonicalSourceV1
