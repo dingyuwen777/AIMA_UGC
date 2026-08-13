@@ -14,6 +14,27 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
+      - name: Fix validated Blueprint README markers
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/dev/patch_stage3a_docs.py")
+          text = path.read_text(encoding="utf-8")
+          fixes = {
+              '"### 阶段 3：Contract、数据库与 System/Auth"':
+                  '"### 阶段 3：Contract、数据库与 System/Audit"',
+              '"- 核心 PostgreSQL Schema 与 Alembic Revision；\\n- Artifact 元数据 PostgreSQL Repository / Table，使 Stage 2 的 Metadata Port 有正式实现；\\n- System Settings、User、Role、Permission、Session、登录限流、审计；\\n- API 幂等基础；\\n- 表 Owner、Migration 升降级和隔离 PostgreSQL 集成门禁。"':
+                  '"- 核心 PostgreSQL Schema 与 Alembic Revision；\\n- Artifact 元数据 PostgreSQL Repository / Table，使 Stage 2 的 Metadata Port 有正式实现；\\n- System Settings、Provider 中立审计，以及未来第三方身份接入所需的 `Principal/AuthContext` 扩展边界；\\n- 当前不实现登录入口、本地密码、Session、CSRF、登录限流或 MFA；API 幂等的 actor 作用域跟随未来 Principal/认证语义冻结；\\n- 表 Owner、Migration 升降级和隔离 PostgreSQL 集成门禁。"',
+              '"- Canonical Pydantic / JSON Schema 的正式机器 Contract；\\n- 固定、合法、脱敏的 Canonical 示例与 Contract Test；\\n- Mapper/Ingestion 后续共同消费的稳定字段语义。\\n\\nStage 3A 已建立的 Schema/Repository 不重复设计；登录、Role/Permission、Principal 和 actor-bound API 幂等继续等待真实第三方身份需求。"':
+                  '"- 固定、合法、脱敏的 Canonical 示例与 Contract Test；\\n- Mapper/Ingestion 后续共同消费的稳定字段语义。\\n\\nStage 3A 已建立的 Schema/Repository 不重复设计；登录、Role/Permission、Principal 和 actor-bound API 幂等继续等待真实第三方身份需求。"',
+          }
+          for old, new in fixes.items():
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected one script marker, found {text.count(old)}: {old}")
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding="utf-8")
+          PY
       - name: Patch validated Stage 3A facts
         run: python scripts/dev/patch_stage3a_docs.py
       - name: Commit docs
