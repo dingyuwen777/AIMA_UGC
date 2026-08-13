@@ -1,6 +1,6 @@
 """Canonical V1 公开作者/评论者结构。"""
 
-from pydantic import AnyHttpUrl
+from pydantic import AnyHttpUrl, Field
 
 from .base import CanonicalBaseModel, Identifier, NonNegativeInt
 
@@ -9,7 +9,7 @@ class CanonicalAuthorV1(CanonicalBaseModel):
     """帖子作者和评论者共用的公开账号信息。"""
 
     external_account_id: Identifier | None = None
-    alternate_ids: dict[str, Identifier] = {}
+    alternate_ids: dict[str, Identifier] = Field(default_factory=dict)
     handle: str | None = None
     display_name: str | None = None
     profile_url: AnyHttpUrl | None = None
