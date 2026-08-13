@@ -1,6 +1,7 @@
 """AIMA Canonical V1 公共契约。"""
 
 from .aggregate import (
+    CanonicalAggregateSystemV1,
     CanonicalCommentCoverageV1,
     CanonicalCommentThreadV1,
     CanonicalContentAggregateV1,
@@ -18,6 +19,7 @@ from .metrics import CanonicalMetricsV1
 from .source import CanonicalSourceV1
 
 __all__ = [
+    "CanonicalAggregateSystemV1",
     "CanonicalAuthorV1",
     "CanonicalCommentCoverageV1",
     "CanonicalCommentThreadV1",
