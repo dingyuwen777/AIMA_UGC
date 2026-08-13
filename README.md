@@ -81,9 +81,22 @@ npm    ← frontend/package.json
 uv     ← .uv-version
 ```
 
-缺失或版本不符合时，脚本使用固定官方来源准备目标版本；检测到旧 Python/Node 时会先列出来并询问是否卸载，默认保留。Python 可保留旧版本并让目标版本并存；Node 官方 MSI 可能在标准安装位置执行产品升级。npm 的标准全局安装不提供并行版本，目标 npm 会替换当前解析到的全局 npm；uv 只会在确认是官方默认独立安装目录时允许用户选择删除旧可执行文件，其他来源不会自动删除。
+面向中国大陆开发机，一键脚本固定使用国内源，不在运行过程中解析 `latest`，也不会静默回退境外源：
 
-工具版本满足后，脚本继续执行：
+```text
+Python Windows 安装包 → 清华 TUNA Python 镜像
+PyPI / uv / Python 依赖 → 清华 TUNA PyPI
+Node.js Windows MSI     → npmmirror Node 二进制镜像
+npm 包与 npm 自身       → registry.npmmirror.com
+```
+
+这些镜像配置只在脚本当前进程或具体安装命令中生效；脚本结束后恢复原环境变量，不永久改写本机全局 pip/uv/npm Registry 配置。国内镜像不可用时会显示具体 URL 并失败，不会在用户不知道的情况下切换到境外下载源。
+
+缺失或版本不符合时，脚本准备仓库目标版本；检测到旧 Python/Node 时会先列出来并询问是否卸载，默认保留。Python 可保留旧版本并让目标版本并存，由 `.python-version + uv` 为 AIMA_UGC 选择目标解释器；Node 官方 MSI 可能在标准安装位置执行产品升级。npm 的标准全局安装不提供并行版本，版本不符时会明确询问是否替换当前 npm；uv 只有在确认旧可执行文件位于其默认独立安装目录时才允许用户选择删除，其他来源不会自动删除。
+
+完整性检查不会因为使用镜像而降低：Python 安装包要求 Windows Authenticode 有效签名；Node MSI 同时校验镜像中的 `SHASUMS256.txt` 和 Authenticode 签名。
+
+工具版本满足后，脚本继续使用国内包源执行：
 
 ```text
 uv lock --check
@@ -92,7 +105,7 @@ npm ci --prefix frontend
 uv run python -c "import aima_ugc; print(aima_ugc.__version__)"
 ```
 
-Windows CI 会用 Windows PowerShell 5.1 检查脚本语法、版本来源、官方精确 URL 构造和安全约束，但不会在 CI Runner 上真实卸载/安装系统软件。实际安装界面和卸载选择由开发者本机交互完成。
+Windows CI 会用 Windows PowerShell 5.1 检查脚本语法、版本事实源、目标 Python 发现、国内镜像精确 URL、无境外运行时源残留以及安全约束，但不会在 CI Runner 上真实卸载/安装系统软件。实际 GUI 安装和卸载选择仍由开发者本机交互完成。
 
 ### 手工初始化 / Linux / macOS
 
