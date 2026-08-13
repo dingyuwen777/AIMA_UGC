@@ -58,6 +58,42 @@ jobs:
           npm --prefix frontend audit --omit=dev --audit-level=high
           npm --prefix frontend audit --audit-level=high
 
+      - name: Local development startup smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          API_LOG=/tmp/aima-api.log
+          FRONTEND_LOG=/tmp/aima-frontend.log
+
+          cleanup() {
+            if [[ -n "${FRONTEND_PID:-}" ]]; then kill "${FRONTEND_PID}" 2>/dev/null || true; fi
+            if [[ -n "${API_PID:-}" ]]; then kill "${API_PID}" 2>/dev/null || true; fi
+          }
+          trap cleanup EXIT
+
+          uv run uvicorn aima_ugc.entrypoints.api_main:app --host 127.0.0.1 --port 8090 >"${API_LOG}" 2>&1 &
+          API_PID=$!
+          npm --prefix frontend run dev >"${FRONTEND_LOG}" 2>&1 &
+          FRONTEND_PID=$!
+
+          sleep 1
+          if ! kill -0 "${API_PID}" 2>/dev/null; then
+            cat "${API_LOG}"
+            exit 1
+          fi
+          if ! kill -0 "${FRONTEND_PID}" 2>/dev/null; then
+            cat "${FRONTEND_LOG}"
+            exit 1
+          fi
+
+          if ! uv run python scripts/dev/check_local_stack.py; then
+            echo "--- api log ---"
+            cat "${API_LOG}"
+            echo "--- frontend log ---"
+            cat "${FRONTEND_LOG}"
+            exit 1
+          fi
+
       - name: Verify generated contracts and client
         shell: bash
         run: |
