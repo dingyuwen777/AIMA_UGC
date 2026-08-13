@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260813-local-dev-startup
 title: 本地开发启动、环境引导与联调闭环
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: build/local-dev-startup
 created: 2026-08-13
@@ -107,6 +107,8 @@ PowerShell 自身在受支持 Windows 上可用，不依赖 Python/Node 预装�
 - TUNA PyPI `simple/uv` 已核验存在 `uv-0.12.3-py3-none-win_amd64.whl`；国内 uv 安装因此改为目标 Python + TUNA PyPI，不再调用境外 Astral installer。
 - 最终国内源代码/CI head `3cc365894e68ccb3e1e8a9257aad0e1501c46f04`：PR CI Run `31685192802` 全绿，Windows 门禁验证 TUNA Python、TUNA PyPI、npmmirror Node、npmmirror npm 的精确配置以及无境外运行时源残留。
 - Blueprint/README/运行文档同步 head `bbba2f9cf2eece1a2cb76f9b3d9a3a040c1e434e`：PR CI Run `31685616287` 全绿。
+- Review 证据 head `419cf9e9660ef0fe73cd5421e3edfd2a2149ffae`：PR CI Run `31685839100` 的 Ubuntu Stage 1 与 Windows bootstrap 均全绿。
+- PR #3 squash merge 后，`main` 提交 `cd8fdb9d78ff2a7703244dc4398efb98a6c1a2b6` 的 push CI Run `31685995007` 再次验证 Ubuntu Stage 1 与 Windows bootstrap 均全绿。
 
 # 两阶段 Review
 
@@ -138,8 +140,10 @@ PowerShell 自身在受支持 Windows 上可用，不依赖 Python/Node 预装�
 
 # Git / 发布
 
-- 分支：`build/local-dev-startup`
-- PR：#3 `补齐本地开发启动与联调闭环`，待当前 Review 证据 head CI 全绿后转 Ready 并合并。
+- 开发分支：`build/local-dev-startup`。
+- PR #3 `补齐本地开发、环境引导与联调闭环` 已 squash merge。
+- 合并提交：`cd8fdb9d78ff2a7703244dc4398efb98a6c1a2b6`。
+- 合并后 `main` CI：Run `31685995007`，Ubuntu Stage 1 与 Windows bootstrap 均成功。
 - 生产发布：不适用；生产仍为 No-Go。
 - Migration / 数据变化：无。
 - 回滚：移除 Uvicorn/Lock、Vite 代理、smoke、Windows 引导、`.uv-version` 和对应文档/CI；无 Schema/Migration/数据恢复步骤。
