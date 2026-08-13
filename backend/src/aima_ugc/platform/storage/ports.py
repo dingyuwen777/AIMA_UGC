@@ -23,7 +23,7 @@ class ArtifactStore(Protocol):
 
 
 class ArtifactMetadataPort(Protocol):
-    """ArtifactService 的元数据持久化边界；Stage 3 再实现 PostgreSQL Repository。"""
+    """ArtifactService 的元数据持久化边界。"""
 
     def create_pending(self, record: ArtifactRecord) -> None: ...
 

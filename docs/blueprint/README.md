@@ -46,7 +46,7 @@
 
 ## 当前开发状态
 
-**Stage 1 工程基线和 Stage 2 Platform 基础均已建立。** 当前代码已经具备：
+**Stage 1 工程基线、Stage 2 Platform 基础和 Stage 3A 数据库基础均已建立。** 当前代码已经具备：
 
 - 根 Python/uv 工程、固定运行时与锁文件、FastAPI/Vue、OpenAPI → Orval Client、完整 Stage 1 CI；
 - Windows PowerShell 5.1 开发环境引导和本地 Uvicorn + Vite 双服务联调；
@@ -54,7 +54,8 @@
 - `GET /health/ready`；
 - `ArtifactService` / `ArtifactStore` 边界和 Local ArtifactStore；
 - API / Worker / Scheduler / Migration 的最小 Platform bootstrap；
-- 隔离 PostgreSQL 18.4 的 Stage 2 Platform CI。
+- 隔离 PostgreSQL 18.4 的 Stage 2 Platform CI；
+- Stage 3A 根 Alembic、`20260813_0001`、`artifacts/system_settings/audit_events`、PostgreSQL Repository 和独立 Migration CI。
 
 Stage 2 的机器事实以 `backend/src/aima_ugc/platform/`、`backend/src/aima_ugc/bootstrap/`、HTTP Contract、测试和 CI 为准；跨文档决定维护在 [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md)。不要在其他 Blueprint 复制实现细节或版本表。
 
@@ -73,14 +74,13 @@ Stage 2 的机器事实以 `backend/src/aima_ugc/platform/`、`backend/src/aima_
 
 ### 阶段 3：Contract、数据库与 System/Audit
 
-Stage 2 已完成，不再继续向 Platform 层堆业务能力。下一阶段应建立：
+Stage 2 已完成，Stage 3A 数据库/Alembic/基础持久化也已完成。下一步 Stage 3B 应建立：
 
 - Canonical Pydantic / JSON Schema 的正式机器 Contract；
-- 核心 PostgreSQL Schema 与 Alembic Revision；
-- Artifact 元数据 PostgreSQL Repository / Table，使 Stage 2 的 Metadata Port 有正式实现；
-- System Settings、Provider 中立审计，以及未来第三方身份接入所需的 `Principal/AuthContext` 扩展边界；
-- 当前不实现登录入口、本地密码、Session、CSRF、登录限流或 MFA；API 幂等的 actor 作用域跟随未来 Principal/认证语义冻结；
-- 表 Owner、Migration 升降级和隔离 PostgreSQL 集成门禁。
+- 固定、合法、脱敏的 Canonical 示例与 Contract Test；
+- Mapper/Ingestion 后续共同消费的稳定字段语义。
+
+Stage 3A 已建立的 Schema/Repository 不重复设计；登录、Role/Permission、Principal 和 actor-bound API 幂等继续等待真实第三方身份需求。
 
 阶段 0 未全部完成时，Stage 3 只推进已有明确设计支撑的共享基础，不得替用户猜测页面字段、五平台 Operation、隐私保留期、容量或 Scheduler 策略；更不得直接批量实现五个平台。
 
