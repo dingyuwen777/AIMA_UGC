@@ -30,17 +30,13 @@ def render_schema(model: type) -> str:
     ) + "\n"
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--check", action="store_true")
-    args = parser.parse_args()
-
+def sync_canonical(*, check: bool) -> int:
     TARGET_DIR.mkdir(parents=True, exist_ok=True)
     stale: list[str] = []
     for filename, model in MODELS.items():
         target = TARGET_DIR / filename
         rendered = render_schema(model)
-        if args.check:
+        if check:
             if not target.exists() or target.read_text(encoding="utf-8") != rendered:
                 stale.append(filename)
         else:
@@ -51,6 +47,13 @@ def main() -> int:
         return 1
     print("Canonical JSON Schema 已同步。")
     return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--check", action="store_true")
+    args = parser.parse_args()
+    return sync_canonical(check=args.check)
 
 
 if __name__ == "__main__":
