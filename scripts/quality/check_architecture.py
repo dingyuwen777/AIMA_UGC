@@ -33,14 +33,7 @@ REQUIRED = [
     / "persistence"
     / "postgres"
     / "artifact_metadata.py",
-    ROOT
-    / "backend"
-    / "src"
-    / "aima_ugc"
-    / "adapters"
-    / "persistence"
-    / "postgres"
-    / "system.py",
+    ROOT / "backend" / "src" / "aima_ugc" / "adapters" / "persistence" / "postgres" / "system.py",
     ROOT / "backend" / "src" / "aima_ugc" / "bootstrap" / "runtime.py",
     ROOT / "backend" / "src" / "aima_ugc" / "entrypoints" / "api_main.py",
     ROOT / "backend" / "src" / "aima_ugc" / "entrypoints" / "worker_main.py",
