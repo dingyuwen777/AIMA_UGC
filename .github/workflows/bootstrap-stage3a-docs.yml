@@ -14,38 +14,38 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
-      - name: Fix validated Blueprint README markers
+      - name: Patch final Stage 3A documentation facts
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          path = Path("scripts/dev/patch_stage3a_docs.py")
-          text = path.read_text(encoding="utf-8")
-          fixes = {
-              '"### 阶段 3：Contract、数据库与 System/Auth"':
-                  '"### 阶段 3：Contract、数据库与 System/Audit"',
-              '"- 核心 PostgreSQL Schema 与 Alembic Revision；\\n- Artifact 元数据 PostgreSQL Repository / Table，使 Stage 2 的 Metadata Port 有正式实现；\\n- System Settings、User、Role、Permission、Session、登录限流、审计；\\n- API 幂等基础；\\n- 表 Owner、Migration 升降级和隔离 PostgreSQL 集成门禁。"':
-                  '"- 核心 PostgreSQL Schema 与 Alembic Revision；\\n- Artifact 元数据 PostgreSQL Repository / Table，使 Stage 2 的 Metadata Port 有正式实现；\\n- System Settings、Provider 中立审计，以及未来第三方身份接入所需的 `Principal/AuthContext` 扩展边界；\\n- 当前不实现登录入口、本地密码、Session、CSRF、登录限流或 MFA；API 幂等的 actor 作用域跟随未来 Principal/认证语义冻结；\\n- 表 Owner、Migration 升降级和隔离 PostgreSQL 集成门禁。"',
-              '"- Canonical Pydantic / JSON Schema 的正式机器 Contract；\\n- 固定、合法、脱敏的 Canonical 示例与 Contract Test；\\n- Mapper/Ingestion 后续共同消费的稳定字段语义。\\n\\nStage 3A 已建立的 Schema/Repository 不重复设计；登录、Role/Permission、Principal 和 actor-bound API 幂等继续等待真实第三方身份需求。"':
-                  '"- 固定、合法、脱敏的 Canonical 示例与 Contract Test；\\n- Mapper/Ingestion 后续共同消费的稳定字段语义。\\n\\nStage 3A 已建立的 Schema/Repository 不重复设计；登录、Role/Permission、Principal 和 actor-bound API 幂等继续等待真实第三方身份需求。"',
+          replacements = {
+              Path("docs/blueprint/07-技术决策与实施门禁.md"): [
+                  (
+                      "| Artifact 基础 | `platform/storage` 定义 Service/Port，`adapters/storage/local` 提供 Local Store；PostgreSQL Metadata Repository 留到阶段 3 |",
+                      "| Artifact 基础 | `platform/storage` 定义 Service/Port，`adapters/storage/local` 提供 Local Store；Stage 3A 已由 `adapters/persistence/postgres/artifact_metadata.py` 实现 PostgreSQL Metadata Repository |",
+                  ),
+              ],
+              Path("README.md"): [
+                  (
+                      "唯一初始化版本快照、Stage 1 工具链和 Stage 2 Platform 已验证决策见",
+                      "唯一初始化版本快照、Stage 1 工具链、Stage 2 Platform 和 Stage 3A 已验证决策见",
+                  ),
+              ],
           }
-          for old, new in fixes.items():
-              if text.count(old) != 1:
-                  raise SystemExit(f"expected one script marker, found {text.count(old)}: {old}")
-              text = text.replace(old, new, 1)
-          path.write_text(text, encoding="utf-8")
+          for path, pairs in replacements.items():
+              text = path.read_text(encoding="utf-8")
+              for old, new in pairs:
+                  if text.count(old) != 1:
+                      raise SystemExit(f"{path}: expected one match, found {text.count(old)}: {old}")
+                  text = text.replace(old, new, 1)
+              path.write_text(text, encoding="utf-8")
           PY
-      - name: Patch validated Stage 3A facts
-        run: python scripts/dev/patch_stage3a_docs.py
       - name: Commit docs
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add README.md docs
-          if git diff --cached --quiet; then
-            echo "No documentation changes produced."
-            exit 1
-          fi
-          git commit -m "同步 Stage 3A 数据库实施事实"
+          git add README.md docs/blueprint/07-技术决策与实施门禁.md
+          git commit -m "收口 Stage 3A 文档事实"
           git push origin "HEAD:${GITHUB_REF_NAME}"
