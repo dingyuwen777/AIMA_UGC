@@ -12,6 +12,55 @@ export const HealthResponseValue = {
 } as const;
 export type HealthResponse = typeof HealthResponseValue;
 
+export type ReadinessChecksArtifactStore = typeof ReadinessChecksArtifactStore[keyof typeof ReadinessChecksArtifactStore];
+
+
+export const ReadinessChecksArtifactStore = {
+  ok: 'ok',
+  error: 'error',
+} as const;
+
+export type ReadinessChecksDatabase = typeof ReadinessChecksDatabase[keyof typeof ReadinessChecksDatabase];
+
+
+export const ReadinessChecksDatabase = {
+  ok: 'ok',
+  error: 'error',
+} as const;
+
+export type ReadinessChecksLogDirectory = typeof ReadinessChecksLogDirectory[keyof typeof ReadinessChecksLogDirectory];
+
+
+export const ReadinessChecksLogDirectory = {
+  ok: 'ok',
+  error: 'error',
+} as const;
+
+/**
+ * readiness 子检查，不包含异常详情。
+ */
+export interface ReadinessChecks {
+  artifact_store: ReadinessChecksArtifactStore;
+  database: ReadinessChecksDatabase;
+  log_directory: ReadinessChecksLogDirectory;
+}
+
+export type ReadinessResponseStatus = typeof ReadinessResponseStatus[keyof typeof ReadinessResponseStatus];
+
+
+export const ReadinessResponseStatus = {
+  ok: 'ok',
+  error: 'error',
+} as const;
+
+/**
+ * 依赖就绪检查响应。
+ */
+export interface ReadinessResponse {
+  checks: ReadinessChecks;
+  status: ReadinessResponseStatus;
+}
+
 export const getHealthLiveUrl = () => {
 
 
@@ -39,5 +88,37 @@ export const healthLive = async ( options?: RequestInit): Promise<HealthResponse
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: HealthResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getHealthReadyUrl = () => {
+
+
+
+
+  return `/health/ready`
+}
+
+/**
+ * 检查 PostgreSQL、Artifact 目录和日志目录，不泄露失败详情。
+ * @summary Health Ready
+ */
+export const healthReady = async ( options?: RequestInit): Promise<ReadinessResponse> => {
+
+  const res = await fetch(getHealthReadyUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ReadinessResponse = body ? JSON.parse(body) : {}
   return data
 }

@@ -144,6 +144,112 @@ jobs:
           npm --prefix frontend run build
           npm --prefix frontend exec -- playwright --version
 
+  stage2-platform:
+    name: Stage 2 Platform
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_DB: aima_ugc
+          POSTGRES_USER: aima_ugc
+          POSTGRES_PASSWORD: stage2-ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aima_ugc -d aima_ugc"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AIMA_DATA_DIR: .runtime/ci-stage2/data
+      AIMA_LOG_DIR: .runtime/ci-stage2/logs
+      AIMA_SECRET_DIR: .runtime/ci-stage2/secrets
+      AIMA_DB_HOST: 127.0.0.1
+      AIMA_DB_PORT: 5432
+      AIMA_DB_NAME: aima_ugc
+      AIMA_DB_USER: aima_ugc
+      AIMA_DB_CONNECT_TIMEOUT_SECONDS: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Install frozen Python environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+
+      - name: Prepare isolated runtime directories and Secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${AIMA_DATA_DIR}" "${AIMA_LOG_DIR}" "${AIMA_SECRET_DIR}"
+          printf '%s\n' 'stage2-ci' > "${AIMA_SECRET_DIR}/postgres_password"
+          chmod 600 "${AIMA_SECRET_DIR}/postgres_password"
+
+      - name: Platform unit and PostgreSQL integration tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest tests/unit/platform -q
+          uv run pytest tests/integration/platform -q
+
+      - name: Real readiness HTTP smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          API_STDOUT="${RUNNER_TEMP}/aima-stage2-api.stdout"
+          cleanup() {
+            if [[ -n "${API_PID:-}" ]]; then kill "${API_PID}" 2>/dev/null || true; fi
+          }
+          trap cleanup EXIT
+
+          uv run uvicorn aima_ugc.entrypoints.api_main:app --host 127.0.0.1 --port 8091 >"${API_STDOUT}" 2>&1 &
+          API_PID=$!
+
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8091/health/ready > "${RUNNER_TEMP}/aima-ready.json"; then
+              break
+            fi
+            if ! kill -0 "${API_PID}" 2>/dev/null; then
+              cat "${API_STDOUT}"
+              exit 1
+            fi
+            sleep 1
+          done
+
+          curl -fsS http://127.0.0.1:8091/health/ready > "${RUNNER_TEMP}/aima-ready.json"
+          uv run python - "${RUNNER_TEMP}/aima-ready.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          assert payload == {
+              "status": "ok",
+              "checks": {
+                  "database": "ok",
+                  "artifact_store": "ok",
+                  "log_directory": "ok",
+              },
+          }
+          PY
+
+          test -f "${AIMA_LOG_DIR}/api.log"
+          if grep -Fq 'stage2-ci' "${AIMA_LOG_DIR}/api.log"; then
+            echo "Database test password leaked into api.log"
+            exit 1
+          fi
+
   windows-bootstrap:
     name: Windows bootstrap
     runs-on: windows-2025

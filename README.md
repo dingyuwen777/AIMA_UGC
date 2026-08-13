@@ -4,9 +4,9 @@ AIMA_UGC 是爱玛舆情监控系统的 Greenfield 重构仓库。目标是从�
 
 ## 当前状态
 
-**Stage 1 仓库骨架、工具链、本地前后端启动闭环和 Windows x64 开发环境引导已经建立。** 当前仓库已经具备可安装 Python package、最小 FastAPI/Vue 工程、固定 OpenAPI、生成 TypeScript Fetch Client、Python/Node/uv/npm 版本声明与锁文件、基础测试、CI 质量门禁，以及通过 Vite 开发代理联调 FastAPI 的本地启动方式。
+**Stage 1 工程基线与 Stage 2 Platform 基础已经建立。** 当前仓库已经具备可安装 Python package、FastAPI/Vue 最小工程、固定 OpenAPI 与生成 TypeScript Client、本地前后端联调、Windows x64 开发环境引导，以及业务无关的 Config、Secret、统一日志、PostgreSQL 连接、`/health/ready`、ArtifactService/ArtifactStore、Local ArtifactStore 和 API/Worker/Scheduler/Migration 最小 bootstrap。
 
-仍未进入业务功能批量开发阶段。Stage 0 的页面/角色、五平台能力矩阵、真实 Fixture、隐私/保留、容量/SLO/RPO/RTO 和 Scheduler misfire 等业务事实继续约束后续实现；Stage 2 可以并行推进不依赖这些业务选择的 Platform 基础。
+仍未进入业务功能批量开发阶段。Stage 0 的页面/角色、五平台能力矩阵、真实 Fixture、隐私/保留、容量/SLO/RPO/RTO 和 Scheduler misfire 等业务事实继续约束后续实现；下一项正式工程阶段是 Stage 3 Contract / Database / System/Auth。
 
 事实源规则：
 
@@ -27,42 +27,36 @@ AIMA_UGC 是爱玛舆情监控系统的 Greenfield 重构仓库。目标是从�
 
 只读取与当前任务直接相关的内容，不把整套文档机械加载为上下文。
 
-## 已建立的 Stage 1 工程事实
+## 已建立的工程事实
 
-### Python / 后端
+### Stage 1：工程与前端工具链
 
-- Python `3.14.7`，由 `.python-version` 固定；
-- uv `0.12.3`，由 `.uv-version` 固定，Python 依赖由 `pyproject.toml + uv.lock` 固定；
-- 仓库根目录是唯一 uv 工程；
-- build backend 为 `uv_build 0.12.3`；源码固定在 `backend/src/aima_ugc/`；
-- `uv sync --locked` 后可直接 `import aima_ugc`；
-- Wheel 已验证可构建、在隔离环境安装并再次直接 import；
-- 最小 FastAPI 入口已提供 `GET /health/live`，公开 Route 使用显式稳定 `operation_id`；
-- Uvicorn 已作为锁定运行依赖，本地开发后端固定监听 `127.0.0.1:8090`。
+- Python `3.14.7` 由 `.python-version` 固定，uv `0.12.3` 由 `.uv-version` 固定；
+- 根目录是唯一 Python/uv 工程，源码固定在 `backend/src/aima_ugc/`；
+- `uv_build` 已验证 Wheel 构建、隔离安装和直接 import；
+- FastAPI 已提供 `GET /health/live`；Uvicorn 是锁定运行依赖；
+- Node/npm、Vue/Vite/Pinia、TypeScript 7 native + Vue SFC compatibility 类型链已锁定；
+- Pydantic → FastAPI OpenAPI → Orval Fetch Client 的生成链已建立，生成物禁止手改；
+- Windows x64 一键开发环境引导、本地 Uvicorn + Vite 双服务 smoke 和完整 CI 已建立。
 
-### Contract / 前端
+### Stage 2：Platform 基础
 
-```text
-Pydantic Request/Response
-→ FastAPI OpenAPI
-→ contracts/openapi/openapi.json
-→ Orval Fetch Client
-→ frontend/src/generated/api/
-```
+当前业务无关 Platform 位于 `backend/src/aima_ugc/platform/` 和 `backend/src/aima_ugc/bootstrap/`：
 
-- OpenAPI 和前端生成 Client 禁止手工修改；
-- Node `24.19.0` 由 `.node-version` 固定，npm `11.17.0` 由 `frontend/package.json` 固定；所有 npm 依赖由 `frontend/package-lock.json` 锁定；
-- Vue 3 + Vite + Pinia 已建立最小可构建应用；
-- TypeScript 7.0.2 native compiler 检查普通 `.ts` 代码；Vue SFC 在 TypeScript 7.0 尚无 programmatic API 的过渡期，按 `07` 的双安装模型使用 `@typescript/typescript6` compatibility API 驱动 `vue-tsc`；
-- `npm run typecheck` 同时执行 TS7 native 和 Vue SFC 两条类型门禁；
-- Vite 本地开发固定监听 `127.0.0.1:5173`，并将 `/health` 与 `/api` 代理到本地 FastAPI；
-- Lint、Vitest、Vite Build 和 Playwright CLI 均已纳入 Stage 1 验证。
+- `Config`：只读取代码明确声明的 `AIMA_*` 环境变量；当前不自动加载 `.env` 或 `env.local.example`；
+- `Secret`：PostgreSQL 密码只从 `<AIMA_SECRET_DIR>/postgres_password` 文件读取，不放入环境变量；
+- `Logging`：API/Worker/Scheduler 使用统一北京时间毫秒日志、敏感信息脱敏和 `20 MiB × 10` gzip 轮转基础；
+- `DatabaseRuntime`：同步 SQLAlchemy 2 + psycopg 3，提供真实 `SELECT 1`、Session Factory 和连接池释放，不自动建表、不自动跑 Migration；
+- `GET /health/ready`：检查 PostgreSQL、Artifact 根目录和日志目录；全部可用返回 200，否则返回 503，并且不返回连接串、Secret 或原始异常；
+- `ArtifactStore`：只按 `storage_key` 存取字节；Local 实现提供路径逃逸防护、同 key 不覆盖和原子写；
+- `ArtifactService`：负责 ID、元数据 Port 以及 `pending → stored → linked`；PostgreSQL `artifacts` Repository/Table 留到 Stage 3；
+- API、Worker、Scheduler、Migration 已有共用 Platform 的最小 bootstrap；Worker/Job 和正式 Scheduler 逻辑尚未实现。
+
+Stage 2 CI 使用隔离 PostgreSQL `18.4` 验证真实连接和 readiness；这只是开发/CI 基线，不等于生产镜像 variant 或 Release digest 已批准。
 
 ## 环境、启动与部署
 
-完整操作说明见：
-
-- [`docs/环境运行与部署.md`](docs/环境运行与部署.md)
+完整操作说明见 [`docs/环境运行与部署.md`](docs/环境运行与部署.md)。
 
 ### Windows x64：推荐一键初始化
 
@@ -72,51 +66,25 @@ Pydantic Request/Response
 scripts\setup_dev_environment.cmd
 ```
 
-或者在 PowerShell / CMD 中运行同一个文件。它不要求本机预先存在 Python、Node、npm 或 uv，会从仓库版本声明读取目标版本并检查当前环境：
+它从仓库机器事实读取 Python / Node / npm / uv 目标版本，在中国大陆开发机固定使用清华 TUNA / npmmirror 国内源，并在工具版本满足后执行锁定依赖安装。旧 Python/Node 的主动卸载会先询问，默认保留；镜像失败不会静默切到境外运行时源。
+
+### Stage 2 本地运行配置
+
+`env.local.example` 是**示例，不会被代码自动加载**。至少需要给后端进程提供对应的 `AIMA_*` 环境变量，并创建：
 
 ```text
-Python ← .python-version
-Node   ← .node-version
-npm    ← frontend/package.json
-uv     ← .uv-version
+<AIMA_SECRET_DIR>/postgres_password
 ```
 
-面向中国大陆开发机，一键脚本固定使用国内源，不在运行过程中解析 `latest`，也不会静默回退境外源：
+默认本地目录为：
 
 ```text
-Python Windows 安装包 → 清华 TUNA Python 镜像
-PyPI / uv / Python 依赖 → 清华 TUNA PyPI
-Node.js Windows MSI     → npmmirror Node 二进制镜像
-npm 包与 npm 自身       → registry.npmmirror.com
+.runtime/data
+.runtime/logs
+.runtime/secrets
 ```
 
-这些镜像配置只在脚本当前进程或具体安装命令中生效；脚本结束后恢复原环境变量，不永久改写本机全局 pip/uv/npm Registry 配置。国内镜像不可用时会显示具体 URL 并失败，不会在用户不知道的情况下切换到境外下载源。
-
-缺失或版本不符合时，脚本准备仓库目标版本；检测到旧 Python/Node 时会先列出来并询问是否卸载，默认保留。Python 可保留旧版本并让目标版本并存，由 `.python-version + uv` 为 AIMA_UGC 选择目标解释器；Node 官方 MSI 可能在标准安装位置执行产品升级。npm 的标准全局安装不提供并行版本，版本不符时会明确询问是否替换当前 npm；uv 只有在确认旧可执行文件位于其默认独立安装目录时才允许用户选择删除，其他来源不会自动删除。
-
-完整性检查不会因为使用镜像而降低：Python 安装包要求 Windows Authenticode 有效签名；Node MSI 同时校验镜像中的 `SHASUMS256.txt` 和 Authenticode 签名。
-
-工具版本满足后，脚本继续使用国内包源执行：
-
-```text
-uv lock --check
-uv sync --locked
-npm ci --prefix frontend
-uv run python -c "import aima_ugc; print(aima_ugc.__version__)"
-```
-
-Windows CI 会用 Windows PowerShell 5.1 检查脚本语法、版本事实源、目标 Python 发现、国内镜像精确 URL、无境外运行时源残留以及安全约束，但不会在 CI Runner 上真实卸载/安装系统软件。实际 GUI 安装和卸载选择仍由开发者本机交互完成。
-
-### 手工初始化 / Linux / macOS
-
-从仓库根执行：
-
-```bash
-uv sync --locked
-npm ci --prefix frontend
-```
-
-Linux/macOS 当前没有自动安装系统运行时的脚本，先按 [`docs/环境运行与部署.md`](docs/环境运行与部署.md) 准备仓库要求的精确 Python/Node/npm/uv 版本，再执行以上锁定安装。
+`.runtime/` 已被 Git 忽略。具体 PostgreSQL 准备和 Windows / PowerShell 注入方式见运行文档。
 
 ## 本地启动
 
@@ -140,23 +108,27 @@ npm --prefix frontend run dev
 http://127.0.0.1:5173/
 ```
 
-后端直接健康检查：
+存活检查不依赖数据库：
 
 ```text
 http://127.0.0.1:8090/health/live
 ```
 
-通过前端 Vite 代理检查：
+依赖就绪检查：
 
 ```text
-http://127.0.0.1:5173/health/live
+http://127.0.0.1:8090/health/ready
 ```
 
-两个服务都启动后，可在第三个终端执行：
+`/health/ready` 只有在 PostgreSQL、Artifact 目录和日志目录都可用时返回 200；否则返回 503。
+
+前端 Vite 继续把 `/health` 与 `/api` 代理到本地 FastAPI。两个服务启动后可以运行：
 
 ```bash
 uv run python scripts/dev/check_local_stack.py
 ```
+
+该 smoke 仍只验证 Stage 1 的前后端启动/代理；Stage 2 的 PostgreSQL/readiness 真实验证由 CI 的 `Stage 2 Platform` Job 负责。
 
 ## 核心质量检查
 
@@ -182,6 +154,14 @@ npm --prefix frontend run typecheck
 npm --prefix frontend run test -- --run
 npm --prefix frontend run build
 ```
+
+Platform 单元测试可独立运行：
+
+```bash
+uv run pytest tests/unit/platform -q
+```
+
+`tests/integration/platform` 需要隔离 PostgreSQL 18 和对应 `AIMA_*` / Secret 配置，普通本地机器不要在未准备数据库时机械执行。
 
 修改 HTTP Contract 后，先重新生成固定 OpenAPI 和前端 Client，再提交生成物：
 
@@ -223,15 +203,16 @@ TikHub / 其他 Provider
 ```text
 阶段 0：继续补齐产品、页面、五平台能力、真实 Fixture、容量/SLO/RPO/RTO 等业务事实
         ↘ 与不依赖业务选择的工作并行
-阶段 2：Config / Secret / Logging / DB Connection / Artifact / 四进程基础
-→ 阶段 3：Contract、数据库与 System/Auth
+阶段 1：已完成
+阶段 2：Platform 基础已完成
+→ 阶段 3：Canonical Contract、核心数据库 Schema/Alembic、System/Auth
 → 阶段 4：Job Runtime
 → 阶段 5：TikHub Client 与 Raw
 → 阶段 6：先完成一个平台的端到端纵切
 → 后续阶段按蓝图逐步扩展
 ```
 
-Stage 0 未全部完成不阻止与业务选择无关的 Stage 2，但不得绕过上游门禁直接批量实现五个平台或生产能力。
+Stage 0 未全部完成不阻止 Stage 3 中与已确认技术事实直接相关的数据库/系统基础，但任何依赖产品、平台能力、隐私、容量或 Scheduler 策略的设计仍必须等待对应门禁；尤其不得直接批量实现五个平台。
 
 ## 多人协作
 
@@ -241,10 +222,6 @@ Git 和 CI 的具体要求以 `AGENTS.md`、Skill 和 `06` 为准。没有本轮
 
 ## Blueprint 导航
 
-所有领域设计入口见：
+所有领域设计入口见 [`docs/blueprint/README.md`](docs/blueprint/README.md)。
 
-- [`docs/blueprint/README.md`](docs/blueprint/README.md)
-
-版本初始化的唯一文档快照和 Stage 1 已验证工具链见：
-
-- [`docs/blueprint/07-技术决策与实施门禁.md`](docs/blueprint/07-技术决策与实施门禁.md)
+唯一初始化版本快照、Stage 1 工具链和 Stage 2 Platform 已验证决策见 [`docs/blueprint/07-技术决策与实施门禁.md`](docs/blueprint/07-技术决策与实施门禁.md)。

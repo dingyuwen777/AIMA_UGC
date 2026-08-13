@@ -231,3 +231,6 @@ desktop.ini
 .idea/
 .vscode/
 ~$*.docx
+
+# Stage 2 local runtime state / secrets / logs / artifacts
+.runtime/
