@@ -13,7 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from aima_ugc.adapters.storage.local import LocalArtifactStore
 from aima_ugc.platform.config import PlatformSettings, load_settings
 from aima_ugc.platform.database import DatabaseRuntime
-from aima_ugc.platform.health import ReadinessReport
+from aima_ugc.platform.health import CheckStatus, ReadinessReport
 from aima_ugc.platform.logging import (
     configure_service_logging,
     log_event,
@@ -47,9 +47,9 @@ class PlatformRuntime:
     logger: logging.Logger
 
     def check_readiness(self) -> ReadinessReport:
-        database_status = "error"
-        artifact_status = "error"
-        log_status = "error"
+        database_status: CheckStatus = "error"
+        artifact_status: CheckStatus = "error"
+        log_status: CheckStatus = "error"
 
         try:
             if self.database.ping():

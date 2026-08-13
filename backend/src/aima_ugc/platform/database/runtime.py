@@ -52,7 +52,8 @@ class DatabaseRuntime:
     def ping(self) -> bool:
         """执行真实 `SELECT 1`，不自动重试或修改 Schema。"""
         with self._ensure_engine().connect() as connection:
-            return connection.execute(text("SELECT 1")).scalar_one() == 1
+            result = connection.execute(text("SELECT 1")).scalar_one()
+        return int(result) == 1
 
     def new_session(self) -> Session:
         """创建同步 Session，供后续 Repository/Unit of Work 使用。"""

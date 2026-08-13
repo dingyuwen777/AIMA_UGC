@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import Literal
 
@@ -67,7 +67,7 @@ def create_app(*, readiness_check: ReadinessCheck | None = None) -> FastAPI:
         return resolved_runtime.check_readiness()
 
     @asynccontextmanager
-    async def lifespan(_: FastAPI):
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         if readiness_check is None:
             get_runtime()
         try:
