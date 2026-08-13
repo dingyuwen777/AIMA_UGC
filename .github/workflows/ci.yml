@@ -38,7 +38,13 @@ jobs:
           test "$(npm --version)" = "11.17.0"
 
       - name: Install uv
-        run: python -m pip install "uv==0.12.3"
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          UV_ACTUAL="$(uv --version | awk '{print $2}')"
+          test "${UV_ACTUAL}" = "${UV_VERSION}"
 
       - name: Verify locked Python environment
         shell: bash
@@ -57,6 +63,42 @@ jobs:
           set -euo pipefail
           npm --prefix frontend audit --omit=dev --audit-level=high
           npm --prefix frontend audit --audit-level=high
+
+      - name: Local development startup smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          API_LOG=/tmp/aima-api.log
+          FRONTEND_LOG=/tmp/aima-frontend.log
+
+          cleanup() {
+            if [[ -n "${FRONTEND_PID:-}" ]]; then kill "${FRONTEND_PID}" 2>/dev/null || true; fi
+            if [[ -n "${API_PID:-}" ]]; then kill "${API_PID}" 2>/dev/null || true; fi
+          }
+          trap cleanup EXIT
+
+          uv run uvicorn aima_ugc.entrypoints.api_main:app --host 127.0.0.1 --port 8090 --reload --reload-dir backend/src >"${API_LOG}" 2>&1 &
+          API_PID=$!
+          npm --prefix frontend run dev >"${FRONTEND_LOG}" 2>&1 &
+          FRONTEND_PID=$!
+
+          sleep 1
+          if ! kill -0 "${API_PID}" 2>/dev/null; then
+            cat "${API_LOG}"
+            exit 1
+          fi
+          if ! kill -0 "${FRONTEND_PID}" 2>/dev/null; then
+            cat "${FRONTEND_LOG}"
+            exit 1
+          fi
+
+          if ! uv run python scripts/dev/check_local_stack.py; then
+            echo "--- api log ---"
+            cat "${API_LOG}"
+            echo "--- frontend log ---"
+            cat "${FRONTEND_LOG}"
+            exit 1
+          fi
 
       - name: Verify generated contracts and client
         shell: bash
@@ -101,3 +143,98 @@ jobs:
           npm --prefix frontend run test -- --run
           npm --prefix frontend run build
           npm --prefix frontend exec -- playwright --version
+
+  windows-bootstrap:
+    name: Windows bootstrap
+    runs-on: windows-2025
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Setup target Python for non-destructive validation
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Validate Windows PowerShell bootstrap
+        shell: powershell
+        run: |
+          $scriptPath = (Resolve-Path 'scripts/setup_dev_environment.ps1').Path
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            $scriptPath,
+            [ref]$tokens,
+            [ref]$parseErrors
+          ) | Out-Null
+          if ($parseErrors.Count -ne 0) {
+            $parseErrors | ForEach-Object { Write-Error $_.Message }
+            throw 'PowerShell parser errors found.'
+          }
+
+          . $scriptPath
+          $repoRoot = (Resolve-Path '.').Path
+          $targets = Get-AimaTargetVersions -RepoRoot $repoRoot
+          if ($targets.Python -ne '3.14.7') { throw "Unexpected Python target: $($targets.Python)" }
+          if ($targets.Node -ne '24.19.0') { throw "Unexpected Node target: $($targets.Node)" }
+          if ($targets.Npm -ne '11.17.0') { throw "Unexpected npm target: $($targets.Npm)" }
+          if ($targets.Uv -ne '0.12.3') { throw "Unexpected uv target: $($targets.Uv)" }
+
+          if ((ConvertTo-AimaVersion -Text 'Python 3.14.7') -ne '3.14.7') {
+            throw 'Python version parser failed.'
+          }
+          if ((ConvertTo-AimaVersion -Text 'v24.19.0') -ne '24.19.0') {
+            throw 'Node version parser failed.'
+          }
+          if ((Get-AimaPythonMajorMinor -Version $targets.Python) -ne '3.14') {
+            throw 'Python launcher selector parser failed.'
+          }
+
+          $targetPython = Get-AimaPythonTargetExecutable -TargetVersion $targets.Python
+          if ([string]::IsNullOrWhiteSpace($targetPython)) {
+            throw 'Target Python discovery failed.'
+          }
+          $scriptsDir = (& $targetPython -c "import sysconfig; print(sysconfig.get_path('scripts'))" 2>&1 | Out-String).Trim()
+          if ([string]::IsNullOrWhiteSpace($scriptsDir)) {
+            throw 'Target Python scripts path discovery failed.'
+          }
+
+          if ((Get-AimaPythonInstallerUri -Version $targets.Python) -ne 'https://mirrors.tuna.tsinghua.edu.cn/python/3.14.7/python-3.14.7-amd64.exe') {
+            throw 'Python China mirror URL is not exact.'
+          }
+          if ((Get-AimaNodeInstallerUri -Version $targets.Node) -ne 'https://npmmirror.com/mirrors/node/v24.19.0/node-v24.19.0-x64.msi') {
+            throw 'Node China mirror URL is not exact.'
+          }
+          if ((Get-AimaNodeChecksumUri -Version $targets.Node) -ne 'https://npmmirror.com/mirrors/node/v24.19.0/SHASUMS256.txt') {
+            throw 'Node checksum China mirror URL is not exact.'
+          }
+          if ((Get-AimaPypiIndexUri) -ne 'https://pypi.tuna.tsinghua.edu.cn/simple') {
+            throw 'PyPI China mirror is not exact.'
+          }
+          if ((Get-AimaNpmRegistryUri) -ne 'https://registry.npmmirror.com') {
+            throw 'npm China registry is not exact.'
+          }
+
+          $scriptContent = Get-Content -LiteralPath $scriptPath -Raw
+          foreach ($forbiddenHost in @(
+            'www.python.org/ftp/python',
+            'nodejs.org/dist',
+            'astral.sh/uv/'
+          )) {
+            if ($scriptContent -match [regex]::Escape($forbiddenHost)) {
+              throw "Bootstrap contains overseas runtime source: $forbiddenHost"
+            }
+          }
+          if ($scriptContent -match 'Win32_Product') {
+            throw 'Bootstrap must not query Win32_Product.'
+          }
+          if ($scriptContent -match '(?im)^\s*Set-ExecutionPolicy\b') {
+            throw 'Bootstrap must not permanently change PowerShell ExecutionPolicy.'
+          }
+
+          $cmdContent = Get-Content -LiteralPath 'scripts/setup_dev_environment.cmd' -Raw
+          if ($cmdContent -notmatch 'setup_dev_environment\.ps1') {
+            throw 'CMD entry does not invoke the PowerShell bootstrap.'
+          }
+
+          Write-Host 'Windows bootstrap China mirror, static, and pure-function checks passed.'
