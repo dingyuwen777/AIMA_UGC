@@ -18,8 +18,4 @@ class ReadinessReport:
 
     @property
     def ready(self) -> bool:
-        return (
-            self.database == "ok"
-            and self.artifact_store == "ok"
-            and self.log_directory == "ok"
-        )
+        return self.database == "ok" and self.artifact_store == "ok" and self.log_directory == "ok"

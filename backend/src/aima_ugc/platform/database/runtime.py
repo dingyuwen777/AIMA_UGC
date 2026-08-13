@@ -31,9 +31,7 @@ class DatabaseRuntime:
 
     def _ensure_engine(self) -> Engine:
         if self._engine is None:
-            password = self._secret_reader(
-                self._settings.postgres_password_file
-            ).get_secret_value()
+            password = self._secret_reader(self._settings.postgres_password_file).get_secret_value()
             url = URL.create(
                 drivername="postgresql+psycopg",
                 username=self._settings.db_user,

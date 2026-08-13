@@ -54,7 +54,7 @@ def test_logging_redacts_escapes_and_rotates_to_gzip(tmp_path) -> None:
     assert "user@example.com" not in output
     assert "13800138000" not in output
     assert "Bearer ***" in output
-    assert "password=\"***\"" in output
+    assert 'password="***"' in output
     assert r"line1\nline2" in output
     assert "service=api" in output
     assert "event=test.event" in output

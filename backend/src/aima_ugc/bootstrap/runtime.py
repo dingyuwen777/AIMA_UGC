@@ -54,7 +54,7 @@ class PlatformRuntime:
         try:
             if self.database.ping():
                 database_status = "ok"
-        except (OSError, SecretFileError, SQLAlchemyError):
+        except OSError, SecretFileError, SQLAlchemyError:
             database_status = "error"
 
         try:
