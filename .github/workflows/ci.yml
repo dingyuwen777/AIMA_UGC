@@ -151,6 +151,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7.0.1
 
+      - name: Setup target Python for non-destructive validation
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
       - name: Validate Windows PowerShell bootstrap
         shell: powershell
         run: |
@@ -184,20 +189,42 @@ jobs:
           if ((Get-AimaPythonMajorMinor -Version $targets.Python) -ne '3.14') {
             throw 'Python launcher selector parser failed.'
           }
-          if ((Get-AimaPythonInstallerUri -Version $targets.Python) -ne 'https://www.python.org/ftp/python/3.14.7/python-3.14.7-amd64.exe') {
-            throw 'Python installer URL is not exact.'
+
+          $targetPython = Get-AimaPythonTargetExecutable -TargetVersion $targets.Python
+          if ([string]::IsNullOrWhiteSpace($targetPython)) {
+            throw 'Target Python discovery failed.'
           }
-          if ((Get-AimaNodeInstallerUri -Version $targets.Node) -ne 'https://nodejs.org/dist/v24.19.0/node-v24.19.0-x64.msi') {
-            throw 'Node installer URL is not exact.'
+          $scriptsDir = (& $targetPython -c 'import sysconfig; print(sysconfig.get_path("scripts"))' 2>&1 | Out-String).Trim()
+          if ([string]::IsNullOrWhiteSpace($scriptsDir)) {
+            throw 'Target Python scripts path discovery failed.'
           }
-          if ((Get-AimaNodeChecksumUri -Version $targets.Node) -ne 'https://nodejs.org/dist/v24.19.0/SHASUMS256.txt') {
-            throw 'Node checksum URL is not exact.'
+
+          if ((Get-AimaPythonInstallerUri -Version $targets.Python) -ne 'https://mirrors.tuna.tsinghua.edu.cn/python/3.14.7/python-3.14.7-amd64.exe') {
+            throw 'Python China mirror URL is not exact.'
           }
-          if ((Get-AimaUvInstallerUri -Version $targets.Uv) -ne 'https://astral.sh/uv/0.12.3/install.ps1') {
-            throw 'uv installer URL is not exact.'
+          if ((Get-AimaNodeInstallerUri -Version $targets.Node) -ne 'https://npmmirror.com/mirrors/node/v24.19.0/node-v24.19.0-x64.msi') {
+            throw 'Node China mirror URL is not exact.'
+          }
+          if ((Get-AimaNodeChecksumUri -Version $targets.Node) -ne 'https://npmmirror.com/mirrors/node/v24.19.0/SHASUMS256.txt') {
+            throw 'Node checksum China mirror URL is not exact.'
+          }
+          if ((Get-AimaPypiIndexUri) -ne 'https://pypi.tuna.tsinghua.edu.cn/simple') {
+            throw 'PyPI China mirror is not exact.'
+          }
+          if ((Get-AimaNpmRegistryUri) -ne 'https://registry.npmmirror.com') {
+            throw 'npm China registry is not exact.'
           }
 
           $scriptContent = Get-Content -LiteralPath $scriptPath -Raw
+          foreach ($forbiddenHost in @(
+            'www.python.org/ftp/python',
+            'nodejs.org/dist',
+            'astral.sh/uv/'
+          )) {
+            if ($scriptContent -match [regex]::Escape($forbiddenHost)) {
+              throw "Bootstrap contains overseas runtime source: $forbiddenHost"
+            }
+          }
           if ($scriptContent -match 'Win32_Product') {
             throw 'Bootstrap must not query Win32_Product.'
           }
@@ -210,4 +237,4 @@ jobs:
             throw 'CMD entry does not invoke the PowerShell bootstrap.'
           }
 
-          Write-Host 'Windows bootstrap static and pure-function checks passed.'
+          Write-Host 'Windows bootstrap China mirror, static, and pure-function checks passed.'
