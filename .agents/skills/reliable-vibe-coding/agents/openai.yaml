@@ -1,0 +1,4 @@
+interface:
+  display_name: "Reliable Vibe Coding"
+  short_description: "Evidence-driven coding with durable project context"
+  default_prompt: "Use $reliable-vibe-coding to inspect this repository and complete the task with fresh verification evidence."
