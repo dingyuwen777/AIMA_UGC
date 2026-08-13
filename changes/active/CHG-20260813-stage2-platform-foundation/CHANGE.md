@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260813-stage2-platform-foundation
 title: Stage 2 Platform 基础能力
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: feature/stage2-platform-foundation
 created: 2026-08-13
@@ -15,115 +15,41 @@ contracts: [GET /health/ready]
 data_changes: []
 ---
 
-# 背景与现状
+# 目标与结果
 
-Stage 1 已建立可安装 Python package、FastAPI/Vue 最小工程、本地双服务启动、锁文件和 CI。当前 `main` 还没有 Platform 层的配置、Secret、统一日志、PostgreSQL 连接、ArtifactStore/ArtifactService、readiness 或 Worker/Scheduler/Migration bootstrap。
+Stage 2 已建立不依赖业务模块的 Platform 基础，使后续 Stage 3/4/5 可以复用同一套配置、Secret、日志、数据库和 Artifact 边界：
 
-用户已授权按 Blueprint 进入 Stage 2，并明确本轮先忽略 `main` Branch Protection。
+- 显式 `AIMA_*` Config；
+- Secret 只读文件；
+- API/Worker/Scheduler 统一 `.log` 基础；
+- 同步 SQLAlchemy 2 + psycopg 3 PostgreSQL Runtime；
+- `GET /health/ready`；
+- `ArtifactService` / `ArtifactStore` / Local ArtifactStore；
+- API、Worker、Scheduler、Migration 最小 Platform bootstrap；
+- 隔离 PostgreSQL 18.4 的 Stage 2 CI。
 
-# 目标
-
-建立一个不依赖业务模块的 Platform 基础，使后续 Stage 3/4/5 可以基于稳定的配置、Secret、日志、数据库和文件存储边界继续开发。
+用户明确要求本轮忽略 `main` Branch Protection；本 Change 未修改任何 Branch Protection 设置。
 
 # 成功标准
 
-- [ ] 配置从显式 `AIMA_*` 环境变量读取，默认值和类型有测试，运行时不解析 `latest`。
-- [ ] Secret 只从只读文件读取；空值、缺失、目录、过大和 NUL 等异常明确失败，Secret 内容不进入异常文本。
-- [ ] API/Worker/Scheduler 使用统一结构化日志基础；北京时间毫秒格式、稳定 `event`、控制字符转义、敏感值脱敏、长度限制、20 MiB×10 gzip 轮转可验证。
-- [ ] PostgreSQL 使用现有 SQLAlchemy 2 + psycopg 3 同步连接；提供 `ping()`、Session Factory 和 `dispose()`，不自动建表、不自动 Migration。
-- [ ] `/health/live` 保持现有 200 Contract；新增 `GET /health/ready`，检查 PostgreSQL、Artifact 目录和日志目录，成功返回 200，依赖不可用返回 503，响应不泄露 Secret/连接串。
-- [ ] `ArtifactStore` 只按 `storage_key` 存取字节；Local Store 原子写、路径穿越拒绝、读取/存在检查可独立测试。
-- [ ] `ArtifactService` 负责 Artifact ID、元数据和 `pending → stored → linked` 生命周期编排；持久化 Port 用 Fake 验证，PostgreSQL `artifacts` 表留到 Stage 3。
-- [ ] 不实现删除/保留策略，因为 Stage 0 的保留与删除规则尚未批准。
-- [ ] API、Worker、Scheduler、Migration 四个 entrypoint/bootstrap 模块存在并复用同一 Platform 组件；不伪造 Worker/Scheduler 空循环。
-- [ ] CI 增加 PostgreSQL 18.4 隔离集成验证和 Stage 2 Platform 测试；原 Stage 1、Windows bootstrap、Contract、Wheel、前端门禁保持全绿。
-- [ ] README、运行文档和受影响 Blueprint 与实际实现一致。
+- [x] Config 只读取代码显式声明的 `AIMA_*`；默认值、类型和相对路径解析有测试；不自动加载 `.env` / `env.local.example`。
+- [x] Secret 只从普通文件读取；限制大小/UTF-8/NUL/空值，只移除尾部换行，异常不回显 Secret 内容。
+- [x] API/Worker/Scheduler 统一北京时间毫秒日志、稳定 `event`、控制字符转义、敏感值脱敏、长度限制和 `20 MiB × 10` gzip 轮转；真实轮转有单元测试。
+- [x] PostgreSQL 使用现有同步 SQLAlchemy 2 + psycopg 3；提供 `ping()`、Session Factory、`dispose()`；没有自动建表或 Migration。
+- [x] `/health/live` 保持既有 200 Contract；新增 `GET /health/ready`，依赖就绪返回 200，不可用返回 503，响应不泄露 Secret、连接串或原始异常。
+- [x] Local ArtifactStore 只按 `storage_key` 存取字节；拒绝路径穿越/反斜杠/符号链接逃逸；同 key 不覆盖；同目录临时文件 + fsync + hard-link 原子 no-overwrite 发布；竞争写测试已覆盖。
+- [x] `ArtifactService` 负责 ID、元数据 Port 和 `pending → stored → linked`；PostgreSQL `artifacts` Table/Repository 留到 Stage 3。
+- [x] 未实现 Artifact 删除/保留策略，继续等待 Stage 0 规则。
+- [x] API、Worker、Scheduler、Migration 四个 entrypoint/bootstrap 复用同一 Platform 组件；未伪造 Worker Job 循环或 Scheduler 计划循环。
+- [x] CI 使用 `postgres:18.4` 做真实连接、Platform unit/integration、`/health/ready` HTTP smoke，并检查测试密码不进入 `api.log`。
+- [x] 原 Stage 1、Windows bootstrap、OpenAPI/Client、Wheel、前端门禁保持全绿。
+- [x] README、运行文档、Blueprint README、06、07 与最终实现同步；Blueprint 07 已升至 1.6。
 
-# 范围
+# 最终技术决定
 
-- `platform/config`：环境配置模型与加载。
-- `platform/security`：Secret 文件读取。
-- `platform/logging`：Formatter、脱敏和 Handler 配置。
-- `platform/database`：Engine/Session/Ping 基础。
-- `platform/storage` + `adapters/storage/local`：Artifact 边界与 Local Store。
-- `platform/health`：readiness 检查结果。
-- `bootstrap` / `entrypoints`：四进程最小装配入口。
-- 单元、API、隔离 PostgreSQL 集成测试和 CI。
-- 当前事实文档同步。
+## Config
 
-# 非目标
-
-- 不创建任何业务表、`artifacts` 表或 Alembic Revision；Schema/Migration 属于 Stage 3。
-- 不实现用户、Session、RBAC、API 幂等。
-- 不实现 Job 表、Worker claim/lease/fencing、Reaper 或 Scheduler 计划逻辑。
-- 不实现 TikHub、Provider、Raw、Mapper、Canonical 或 Ingestion。
-- 不实现 Dockerfile、生产 Compose、Release Bundle、备份恢复。
-- 不实现 Artifact 删除/保留策略，也不自动清理文件。
-- 不新增 Redis、消息队列、Pydantic Settings、structlog 等依赖。
-- 本轮按用户要求不配置 Branch Protection。
-
-# 必须保持不变
-
-- 根目录仍是唯一 Python/uv 工程；源码仍在 `backend/src/aima_ugc/`。
-- `/health/live` 的路径、200 状态、`{"status":"ok"}` 响应和 `operation_id=healthLive` 保持不变。
-- 本地后端仍可在没有 PostgreSQL 时启动并提供 `/health/live`；数据库未就绪时只影响 `/health/ready`。
-- 前端生成 Client 继续由 FastAPI OpenAPI → Orval 生成，禁止手改。
-- 生产仍是 No-Go；本轮不会把本地开发命令包装成生产部署。
-- Secret 不写 Git、日志、Raw、Job Payload 或数据库明文。
-
-# L3 方案比较与决定
-
-## 配置
-
-### 方案 A：Pydantic + 显式环境变量映射（采用）
-
-复用现有 Pydantic，不新增依赖。每个 `AIMA_*` 名称在代码中显式映射，默认值和类型可测试，后续配置变化可被 Review 直接看到。
-
-### 方案 B：新增 `pydantic-settings`
-
-能力完整，但当前只需要少量 Platform 配置，引入额外依赖和隐式来源优先级没有必要。
-
-### 方案 C：纯 `os.environ` + dataclass
-
-依赖最少，但会重复编写类型转换和校验，错误信息也更弱。
-
-## 日志
-
-### 方案 A：标准库 logging + RotatingFileHandler + gzip（采用）
-
-直接满足 Blueprint 05，依赖为零，单服务单写者假设成立。
-
-### 方案 B：structlog / loguru
-
-可读性和结构化能力更强，但当前没有多 sink/trace 等需求，新增依赖缺乏证据。
-
-## 数据库
-
-### 方案 A：同步 SQLAlchemy Engine + psycopg（采用）
-
-与 Blueprint 01 已确认同步路线一致，可供 API/Worker/Scheduler/Migration 共用。
-
-### 方案 B：async SQLAlchemy
-
-当前没有单进程高并发数据库瓶颈证据，会给团队引入同步/异步双模型。
-
-## Artifact
-
-### 方案 A：Service + Metadata Port + Local ArtifactStore（采用）
-
-Service 管 ID/元数据/生命周期，Store 只管字节；Metadata Port 由测试 Fake 验证，Stage 3 再接 PostgreSQL Repository。符合现有边界且不会提前建表。
-
-### 方案 B：Local Store 直接管理 JSON 元数据
-
-会把文件系统变成第二业务事实源，违反 PostgreSQL 唯一业务事实库原则。
-
-### 方案 C：Stage 2 直接创建 `artifacts` 表
-
-会提前进入 Stage 3 Schema/Migration 范围，不采用。
-
-# 配置 Contract
-
-Stage 2 固定以下非敏感环境变量：
+采用现有 Pydantic + 显式环境变量映射，不新增 `pydantic-settings`。当前非敏感 Contract：
 
 ```text
 AIMA_DATA_DIR=.runtime/data
@@ -140,92 +66,118 @@ AIMA_DB_USER=aima_ugc
 AIMA_DB_CONNECT_TIMEOUT_SECONDS=3
 ```
 
-PostgreSQL 密码不进入环境变量，固定从：
+`env.local.example` 只是示例，代码不会自动加载。PostgreSQL 密码固定从 `<AIMA_SECRET_DIR>/postgres_password` 读取。
+
+## Logging
+
+采用标准库 `logging + RotatingFileHandler + gzip`，不新增第三方日志依赖。Formatter 在最终输出层再次脱敏；业务代码仍禁止主动记录 Secret。
+
+## Database
+
+采用已批准的同步 SQLAlchemy Engine + psycopg。Engine 惰性创建，readiness 执行真实 `SELECT 1`，不自动重试、建表或运行 Alembic。
+
+## Artifact
+
+采用 `ArtifactService + ArtifactMetadataPort + ArtifactStore`：
 
 ```text
-<AIMA_SECRET_DIR>/postgres_password
+ArtifactService
+→ 管 Artifact ID / 元数据 / pending → stored → linked
+
+ArtifactMetadataPort
+→ Stage 2 用 Fake 验证
+→ Stage 3 再实现 PostgreSQL Repository
+
+ArtifactStore
+→ put/read/exists(storage_key)
+→ 不知道 Artifact UUID，不反查数据库
 ```
 
-读取。生产未来把 `AIMA_SECRET_DIR` 指向 `/run/secrets`；本地默认 `.runtime/secrets`。
+Local Store 的最终发布使用 hard-link 的原子 no-overwrite 语义；若同 key 已存在或并发竞争者先发布，当前写入明确失败，不覆盖不可变 Artifact。
 
-# Artifact Contract
+# 非目标与保持不变
 
-`ArtifactStore` 只负责：
+- 没有业务表、`artifacts` 表、Alembic Revision 或数据 Migration。
+- 没有 User/Session/RBAC、API 幂等。
+- 没有 Job 表、claim/lease/fencing/Reaper 或正式 Scheduler。
+- 没有 TikHub、Provider、Raw、Mapper、Canonical、Ingestion。
+- 没有 Dockerfile、生产 Compose、Release Bundle 或备份恢复。
+- 没有 Artifact 删除/保留动作。
+- 没有新增 Python/npm 依赖。
+- `/health/live` 路径、200、`{"status":"ok"}` 和 `operation_id=healthLive` 不变。
+- 前端 Client 仍由固定 OpenAPI → Orval 生成，生成物未手改。
+- 生产仍为 No-Go。
+- Branch Protection 按用户要求未处理。
 
-```text
-put(storage_key, bytes) -> sha256 + byte_size
-read(storage_key) -> bytes
-exists(storage_key) -> bool
-```
+# TDD / 实际验证证据
 
-Local Store 必须把 `storage_key` 约束在配置根目录内并原子替换目标文件。
+## Red
 
-`ArtifactService` 本阶段只实现：
+- PR Run `31688263120` / Stage 1 job `94409359710`：新增 `/health/ready` 目标测试后，实现尚不存在，实际返回 404、预期 503；`/health/live` 和前置工具链正常，因此是正确 Red。
 
-```text
-create/store: pending -> stored
-link: stored -> linked
-```
+## Contract / Green 迭代
 
-删除状态保留在长期设计中，但本阶段不提供删除业务动作。
+- Contract bootstrap Run `31689094676`：冻结 Python/Node/uv/npm 环境成功生成固定 OpenAPI 和 Orval Client；临时写权限 workflow 随后删除。
+- 第一轮 Green 先被 Ruff format 阻断；按冻结 Python 3.14 / Ruff 的实际格式结果修正，没有修改行为。
+- 第二轮只剩 Ruff lint 的机械问题；修正后继续推进。
+- 第三轮 mypy 暴露 SQLAlchemy scalar、readiness Literal、FastAPI lifespan 三类严格类型边界；通过补准确类型修复，没有 `type: ignore`。
+- Run `31689773340`：在新增 Stage 2 PostgreSQL Job 前，原 Stage 1 + Windows bootstrap 已全绿，证明 Platform 实现没有破坏 Stage 1 基线。
 
-# 实施步骤
+## Stage 2 CI
 
-[1] 建立 Red
-→ 修改范围：`tests/api/test_health.py`
-→ 预期结果：新增 `/health/ready` 目标行为测试，在实现前因 404 正确失败
-→ 验证方式：PR CI `uv run pytest tests/api -q`
+- Run `31690114115`：第一次把 `${{ runner.temp }}` 放在 job 级 `env`，GitHub workflow 在调度前校验失败并产生 0 Job；这是 CI 表达式作用域错误，不是应用/数据库失败。最终改为独立 `Stage 2 Platform` Job + 已忽略的 `.runtime/ci-stage2` 相对目录。
+- Git-data ref 更新未产生 PR synchronize 事件；通过 PR close/reopen 触发标准 `pull_request` reopened 事件，仅用于让当前 head 执行 CI，没有改代码历史或绕过门禁。
+- 开发过程中 `main` 前进到 `e0f1e0e349f615572b69392893e96e5bfadc5d55`；复核只涉及函数组织规范和 `.gitignore` OS/IDE 忽略项，与 Stage 2 无语义冲突。通过普通双父 merge `fec25aacc2a7e1feb250fac875321bfdc3c345c0` 合入特性分支，没有 force/rebase/覆盖用户修改。
+- Run `31690779819`：合并最新 main 后，`Stage 1`、`Stage 2 Platform`、`Windows bootstrap` 三个 Job 首次全部 success。
+- 文档精确迁移 Run `31691508009`：脚本要求每段旧文本唯一匹配后才更新运行文档/06/07；临时 workflow/脚本随后删除。
+- Run `31691578448`：临时文档工具删除后的正式分支，三个 Job 再次全部 success。
 
-[2] 配置 / Secret / DB
-→ 修改范围：`platform/config`、`platform/security`、`platform/database`
-→ 预期结果：显式配置、Secret 文件、同步 PostgreSQL runtime 可独立验证
-→ 验证方式：Unit + PostgreSQL 18.4 Integration
+## Review 修复
 
-[3] 日志
-→ 修改范围：`platform/logging`
-→ 预期结果：格式、脱敏、控制字符、长度和 gzip 轮转符合 Blueprint 05
-→ 验证方式：Unit tests + CI 文件检查
+Review 找到两个需要补强的边界：
 
-[4] Artifact
-→ 修改范围：`platform/storage`、`adapters/storage/local`
-→ 预期结果：路径安全、原子写和 pending/stored/linked 生命周期通过 Fake Metadata Port 验证
-→ 验证方式：Unit tests
+1. Local Store 原实现用 `os.replace`，在“存在检查后、发布前”的极窄竞争窗口可能覆盖同 key；改成 hard-link 原子 no-overwrite，并新增模拟竞争写测试。
+2. API 503 已用注入结果测试，但真实“缺 PostgreSQL Secret”的 fail-closed 路径缺直接测试；已增加真实 PlatformRuntime 测试，确认 database=`error`、Artifact/log=`ok`、ready=false。
 
-[5] Bootstrap / Health
-→ 修改范围：`bootstrap/`、四个 `entrypoints/`、API health Contract
-→ 预期结果：四进程复用 Platform 装配；API ready 对真实依赖给出 200/503
-→ 验证方式：API tests + PostgreSQL Integration + HTTP smoke
+- Review-fix Run `31691841817`：`Stage 1`、`Stage 2 Platform`、`Windows bootstrap` 三 Job 全部 success。
+- 其中 Stage 2 job `94420674666` 使用 PostgreSQL 18.4；Platform unit `17 passed`，PostgreSQL integration `1 passed`，真实 Uvicorn `/health/ready` 返回 database/artifact_store/log_directory 全部 `ok`，并检查测试密码 `stage2-ci` 没有进入 `api.log`。
+- Review 后 Blueprint 07 Artifact 描述同步为 hard-link 原子 no-overwrite；Run `31691949384` 成功完成精确文档修正，临时 workflow/脚本随后再次删除。
 
-[6] CI 与文档
-→ 修改范围：`.github/workflows/ci.yml`、`env.local.example`、README、运行文档、Blueprint README/06/07
-→ 预期结果：Stage 2 独立 Job 全绿；Stage 2 当前事实有单一落点
-→ 验证方式：完整 PR CI、Contract/Client 零漂移、文档检查
+# 两阶段 Review
 
-[7] Review / 合并 / 归档
-→ 修改范围：Change 与 PR
-→ 预期结果：两阶段 Review 无严重/重要问题；合并后 `main` CI 全绿，再归档 Change
-→ 验证方式：最终 PR head CI + `main` push CI
+## 需求符合性
 
-# 兼容、Migration、部署与回滚
+复核 `main...feature/stage2-platform-foundation`：最终差异只覆盖 Stage 2 Platform、`/health/ready` Contract/生成物、测试、CI、运行示例和受影响文档。没有进入 Stage 3 Schema/Auth、Stage 4 Job Runtime、Stage 5 TikHub/Raw 或 Stage 11 Release。用户并发进入 main 的开发规范和 `.gitignore` 修改已保留。
 
-- HTTP：只新增 `/health/ready`；`/health/live` 保持兼容。
-- 配置：新增 `AIMA_*` Platform 配置；没有旧生产配置需要迁移。
-- 数据：无数据库 Schema/Data 变化，无 Migration。
-- 依赖：不新增 Python/npm 依赖。
-- 部署：不产生生产 Release；生产状态保持 No-Go。
-- 回滚：移除 Stage 2 Platform 模块、`/health/ready`、Stage 2 CI 和对应文档即可；无数据恢复步骤。
+## 代码质量与安全
 
-# 风险与安全
+- Config 来源显式，没有隐式 `.env` 优先级。
+- Secret 只读文件，异常/health/log 不回显内容。
+- PostgreSQL Runtime 不做 DDL/Migration，真实 PostgreSQL 18.4 已验证。
+- 日志实际验证 gzip 轮转、控制字符转义和敏感信息脱敏。
+- Local Store 路径/符号链接安全、不可变同 key 和竞争写 no-overwrite 已验证。
+- Artifact Service/Store 边界没有把文件系统变成第二业务事实源。
+- readiness fail closed，真实成功与真实缺 Secret 失败路径均有测试。
+- Worker/Scheduler/Migration 仅提供 Platform bootstrap，没有伪造后续阶段逻辑。
+- 生产仍明确 No-Go。
 
-- 日志 Formatter 必须在最后输出前再次脱敏；业务代码仍禁止主动记录 Secret。
-- readiness 不返回连接串、密码路径内容或原始异常文本。
-- Local Store 必须拒绝绝对路径、`..`、反斜杠绕过和根目录外的符号链接目标。
-- Secret 文件设置最大读取大小，避免误读大文件；只去除尾部换行，不任意 trim 有意义的空格。
-- PostgreSQL ping 使用短连接超时，不在健康检查中自动重试或自动修改 Schema。
+Review 修复后未发现严重或重要问题。
 
-# Git
+# 文档同步
 
-- 分支：`feature/stage2-platform-foundation`
-- PR：待创建
-- 用户已授权实现、提交、PR、合并到 `main`。
-- 本轮按用户要求忽略 `main` Branch Protection 配置。
+- `README.md`：Stage 2 当前状态、最短配置/启动/readiness 入口与下一阶段。
+- `docs/环境运行与部署.md`：Stage 2 `AIMA_*`、Secret 文件、PostgreSQL/readiness 本地操作；生产仍 No-Go。
+- `docs/blueprint/README.md`：Stage 2 已完成，下一阶段切到 Stage 3。
+- `docs/blueprint/06-开发约束与分阶段实施.md`：Stage 2 验收明确为日志/Secret/Local Store/隔离 PostgreSQL/readiness；生产 Compose 健康留到 Stage 11。
+- `docs/blueprint/07-技术决策与实施门禁.md`：1.5 → 1.6，固化 Stage 2 Platform 决策、版本验证状态和 Go/No-Go。
+- `01/03/05` 复核后长期架构未被实现推翻，没有为了形式重复改写。
+
+# Git / 发布 / 回滚
+
+- 开发分支：`feature/stage2-platform-foundation`
+- PR：#5 `建立 Stage 2 Platform 基础能力`。
+- Migration / 数据变化：无。
+- 生产发布：不适用，生产仍为 No-Go。
+- 回滚：移除 Stage 2 Platform 模块、`/health/ready`、Stage 2 CI 和对应生成物/文档即可；无 Schema/Data 恢复步骤。
+- 合并前要求：当前 `ready_for_review` head 的 Stage 1 / Stage 2 Platform / Windows bootstrap 全绿。
+- 合并后要求：`main` merge commit 的三个 Job再次全绿后才能归档本 Change。
