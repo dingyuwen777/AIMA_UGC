@@ -44,11 +44,13 @@
 
 ## 当前开发状态
 
-当前仓库处于 Greenfield 初始化阶段。Blueprint 已建立，但不能把目标目录或目标组件当成已经存在的实现。
+**Stage 1 工程基线已经建立并通过实际 `linux/amd64` CI。** 当前仓库已经不再只是 Blueprint：根 Python/uv 工程、Python/Node 锁定版本、最小 FastAPI/Vue 工程、固定 OpenAPI、生成 TypeScript Client、基础测试和质量门禁都已有机器事实。
 
-当前应优先完成两类工作：
+Stage 1 已确认的工具链细节只在 [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md) 维护；实际依赖版本以 `uv.lock`、`frontend/package-lock.json`、`.python-version`、`.node-version` 为准。不要在其他 Blueprint 再复制一份版本表。
 
-### 阶段 0：补齐不能由技术人员猜测的业务事实
+当前下一步分成两条并行路径：
+
+### 阶段 0：继续补齐不能由技术人员猜测的业务事实
 
 包括但不限于：
 
@@ -59,19 +61,18 @@
 - 日请求量、数据量、并发、磁盘预算、SLO、RPO、RTO；
 - Scheduler misfire/catch-up 业务策略。
 
-### 阶段 1：建立可验证的工程骨架
+### 阶段 2：开始不依赖上述业务决策的 Platform 基础
 
-包括：
+按 `05`、`06`、`07` 的边界，可以开始：
 
-- 根目录唯一 Python/uv 工程；
-- `backend/src/aima_ugc/` package discovery 与 Wheel PoC；
-- Python/Node 精确版本声明和锁文件；
-- 最小 FastAPI、Vue/TypeScript、pytest/Vitest 工程；
-- 可调用的 OpenAPI TypeScript Client 生成 PoC；
-- 可运行的 Vue/TypeScript ESLint 组合；
-- CI 和基础质量门禁。
+- 配置与 Secret 读取；
+- 统一日志基础；
+- `/health/ready` 所需基础能力；
+- PostgreSQL 连接基础；
+- `ArtifactService` / `ArtifactStore` 的最小边界与 Local Store；
+- API、Worker、Scheduler、Migration 四个进程的最小 bootstrap/entrypoint。
 
-阶段 0 未全部完成时，可以并行推进不依赖业务选择的阶段 1 和部分阶段 2，但不得借此跳过后续 Go/No-Go。
+阶段 0 未全部完成时，不得借 Stage 2 跳过后续 Go/No-Go：尤其不得批量实现五个平台、宣称中文搜索质量/单机容量达标或宣称生产恢复已验收。
 
 ## 修改规则
 
