@@ -22,9 +22,16 @@ class CanonicalCommentThreadV1(CanonicalBaseModel):
     coverage: CanonicalCommentCoverageV1
 
 
+class CanonicalAggregateSystemV1(CanonicalBaseModel):
+    first_seen_at: AwareDatetime
+    last_seen_at: AwareDatetime
+    latest_observed_at: AwareDatetime
+
+
 class CanonicalContentAggregateV1(CanonicalBaseModel):
     schema_version: Literal["content.aggregate.v1"] = "content.aggregate.v1"
     content: CanonicalContentV1
     comment_coverage: CanonicalCommentCoverageV1
     comment_threads: list[CanonicalCommentThreadV1] = Field(default_factory=list)
     unthreaded_comments: list[CanonicalCommentV1] = Field(default_factory=list)
+    system: CanonicalAggregateSystemV1
