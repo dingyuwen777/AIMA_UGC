@@ -4,9 +4,9 @@ AIMA_UGC 是爱玛舆情监控系统的 Greenfield 重构仓库。目标是从�
 
 ## 当前状态
 
-**Stage 1 工程基线与 Stage 2 Platform 基础已经建立。** 当前仓库已经具备可安装 Python package、FastAPI/Vue 最小工程、固定 OpenAPI 与生成 TypeScript Client、本地前后端联调、Windows x64 开发环境引导，以及业务无关的 Config、Secret、统一日志、PostgreSQL 连接、`/health/ready`、ArtifactService/ArtifactStore、Local ArtifactStore 和 API/Worker/Scheduler/Migration 最小 bootstrap。
+**Stage 1 工程基线、Stage 2 Platform 基础和 Stage 3A 数据库基础已经建立。** 当前仓库已经具备可安装 Python package、FastAPI/Vue 最小工程、固定 OpenAPI 与生成 TypeScript Client、本地前后端联调、Windows x64 开发环境引导，以及业务无关的 Config、Secret、统一日志、PostgreSQL 连接、`/health/ready`、ArtifactService/ArtifactStore、Local ArtifactStore、Alembic 首条 Revision、Artifact PostgreSQL 元数据 Repository、System Settings 和 Provider 中立 Audit 基础。
 
-仍未进入业务功能批量开发阶段。Stage 0 的页面/角色、五平台能力矩阵、真实 Fixture、隐私/保留、容量/SLO/RPO/RTO 和 Scheduler misfire 等业务事实继续约束后续实现；下一项正式工程阶段是 Stage 3 Contract / Database / System/Auth。
+仍未进入业务功能批量开发阶段。Stage 0 的页面/角色、五平台能力矩阵、真实 Fixture、隐私/保留、容量/SLO/RPO/RTO 和 Scheduler misfire 等业务事实继续约束后续实现；下一项正式工程工作是 Stage 3B Canonical Contract。
 
 事实源规则：
 
@@ -49,10 +49,20 @@ AIMA_UGC 是爱玛舆情监控系统的 Greenfield 重构仓库。目标是从�
 - `DatabaseRuntime`：同步 SQLAlchemy 2 + psycopg 3，提供真实 `SELECT 1`、Session Factory 和连接池释放，不自动建表、不自动跑 Migration；
 - `GET /health/ready`：检查 PostgreSQL、Artifact 根目录和日志目录；全部可用返回 200，否则返回 503，并且不返回连接串、Secret 或原始异常；
 - `ArtifactStore`：只按 `storage_key` 存取字节；Local 实现提供路径逃逸防护、同 key 不覆盖和原子写；
-- `ArtifactService`：负责 ID、元数据 Port 以及 `pending → stored → linked`；PostgreSQL `artifacts` Repository/Table 留到 Stage 3；
+- `ArtifactService`：负责 ID、元数据 Port 以及 `pending → stored → linked`；Stage 3A 已用 PostgreSQL `artifacts` Table/Repository 实现正式元数据持久化；
 - API、Worker、Scheduler、Migration 已有共用 Platform 的最小 bootstrap；Worker/Job 和正式 Scheduler 逻辑尚未实现。
 
-Stage 2 CI 使用隔离 PostgreSQL `18.4` 验证真实连接和 readiness；这只是开发/CI 基线，不等于生产镜像 variant 或 Release digest 已批准。
+Stage 2 CI 使用隔离 PostgreSQL `18.4` 验证真实连接和 readiness。Stage 3A 另有独立 PostgreSQL 18.4 Job 验证 `upgrade head → alembic check → Repository 集成 → downgrade base → upgrade head → alembic check`。这些仍只是开发/CI 基线，不等于生产镜像 variant 或 Release digest 已批准。
+
+### Stage 3A：数据库与基础持久化
+
+- 根目录 `alembic.ini` + `migrations/` 是 Schema 演进入口，API/Worker/Scheduler 不自动迁移；
+- 首条 Revision `20260813_0001` 建立 `artifacts`、`system_settings`、`audit_events`；
+- `aima_ugc.database_schema` 注册当前应用 Table，`Table.info['owner']` 是表写 Owner 机器事实；
+- `artifacts` Owner=`platform`，`system_settings`/`audit_events` Owner=`system`；
+- PostgreSQL Artifact Repository 使用条件更新推进 `pending → stored → linked/error`，非法状态转换关闭失败；
+- System Settings 只保存非敏感 JSON 设置；Audit actor 使用 `system/principal` Provider 中立语义；
+- 当前仍不实现本地登录、Session、飞书/OIDC、具体 Role/Permission Schema、API 幂等 actor 表或自动 Retention 删除。
 
 ## 环境、启动与部署
 
@@ -205,7 +215,8 @@ TikHub / 其他 Provider
         ↘ 与不依赖业务选择的工作并行
 阶段 1：已完成
 阶段 2：Platform 基础已完成
-→ 阶段 3：Canonical Contract、核心数据库 Schema/Alembic、System/Audit + 第三方身份扩展边界（不实现登录）
+阶段 3A：数据库/Alembic/Artifact Metadata/System/Audit 基础已完成
+→ 阶段 3B：Canonical Pydantic / JSON Schema / 固定示例
 → 阶段 4：Job Runtime
 → 阶段 5：TikHub Client 与 Raw
 → 阶段 6：先完成一个平台的端到端纵切
