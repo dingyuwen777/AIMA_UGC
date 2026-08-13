@@ -72,11 +72,12 @@ data_changes: []
 
 比较：
 
-1. `@hey-api/openapi-ts`：官方定位直接生成 typed SDK，支持插件化 SDK/client，运行要求 Node 22+，满足 Node 24 基线；精确锁版本。
-2. `openapi-typescript`：此前 Blueprint 已记录其版本与 TypeScript 7 peer 约束不匹配，而且核心能力偏类型生成，不满足“可调用 SDK”门禁。
-3. 手写 Fetch Client + 类型生成：会形成手写 HTTP 语义和 OpenAPI 两个事实源，不符合生成 Client 的既定边界。
+1. `@hey-api/openapi-ts 0.99.0`：官方定位直接生成 typed SDK，但在本 Change 的冻结 Node 24.19.0 + TypeScript 7.0.2 实验中运行时崩溃，读取 `ts.SyntaxKind.AnyKeyword` 时对象为 `undefined`，因此否决。
+2. `orval 8.23.0`：MIT，官方支持从 OpenAPI 生成类型安全客户端，并有原生 Fetch Client；不增加浏览器运行时 HTTP 依赖。当前作为第二个 PoC 候选，以实际生成、Typecheck 和 Build 结果决定是否冻结。
+3. OpenAPI Generator：能力成熟，但需要额外 Java/JAR 工具链，对当前单一 Fetch Client 需求更重。
+4. 手写 Fetch Client + 类型生成：会形成手写 HTTP 语义和 OpenAPI 两个事实源，不符合生成 Client 的既定边界。
 
-决定：使用精确锁定的 `@hey-api/openapi-ts`，启用 `@hey-api/sdk`，CI 验证从真实 OpenAPI 生成可调用 `healthLive` 并在 TypeScript 7 下编译。
+当前决定：否决 Hey API，不降级 TypeScript；对 Orval 做单变量 PoC，只有实际通过生成、TypeScript 7 编译和前端构建后才把它写入长期 Blueprint。
 
 ## TypeScript 7 Lint
 
@@ -92,7 +93,7 @@ data_changes: []
 
 - [x] 调查当前仓库、AGENTS、Skill、Blueprint、版本快照与 Stage 1 门禁。
 - [x] 核验 `uv_build`、OpenAPI SDK 生成器和 TypeScript 7 Lint 的官方当前能力。
-- [ ] 建立最小后端/package/测试/Contract/质量脚本。
+- [x] 建立最小后端/package/测试/Contract/质量脚本。
 - [ ] 建立最小前端、SDK 生成、Lint/typecheck/unit/build。
 - [ ] 生成 Python/npm 锁文件和固定生成物。
 - [ ] 建立并运行 Stage 1 CI，修复真实失败。
@@ -106,13 +107,17 @@ data_changes: []
 
 - Python：精确运行时、`uv lock --check`、`uv sync --locked`、直接 import、Ruff、mypy、pytest、`uv build`、隔离 Wheel 安装/import。
 - Contract：OpenAPI 生成 `--check`、基础兼容性/operationId 检查、SDK 重新生成后无 diff。
-- Frontend：精确 Node/npm、`npm ci`、Lint、`vue-tsc --noEmit`、Vitest、Vite Build。
+- Frontend：精确 Node/npm、`npm ci`、生产依赖安全审计、Lint、`vue-tsc --noEmit`、Vitest、Vite Build。
 - CI：GitHub Actions `linux/amd64` runner 完整执行上述 Stage 1 门禁并读取 job/log 结果。
 - 文档：固定入口、链接、版本/术语和 Stage 1 状态检查。
 
 ## 新鲜证据
 
-- 尚未完成实现验证。当前执行宿主的 Python/Node/uv 版本与冻结版本不一致且无法联网安装依赖，因此最终依赖、构建和运行时验证必须以本 Change 的 GitHub Actions 新鲜结果为准；不会用本地较旧工具结果代替。
+- CI Run `31676428866`（job `94371888881`）：Python 3.14.7、Node 24.19.0、npm 11.17.0、uv 0.12.3 均实际成功；`uv lock` 解析 34 个包并成功 `uv sync --locked`。Red 测试按正确原因失败：`GET /health/live` 返回 404，断言要求 200；1 failed。
+- 增加最小 health route 后，CI Run `31676509961`（job `94372141578`）目标测试通过：1 passed；OpenAPI 生成成功；npm 依赖安装成功。
+- 同一 Run 在 `@hey-api/openapi-ts 0.99.0` SDK 生成阶段失败：`TypeError: Cannot read properties of undefined (reading 'AnyKeyword')`。该候选因此被证伪，不通过补丁或降低 TypeScript 版本规避。
+- CI 的首次完整 npm 安装还报告 4 个 high severity 漏洞；当前增加生产依赖 audit 门禁和完整 audit 诊断，待新的 Orval 依赖树实际结果决定处理，不运行 `npm audit fix --force`。
+- 当前执行宿主的 Python/Node/uv 版本与冻结版本不一致且无法联网安装依赖，因此最终依赖、构建和运行时验证以本 Change 的 GitHub Actions 新鲜结果为准，不用本地较旧工具结果代替。
 
 # 文档影响
 
@@ -123,6 +128,6 @@ data_changes: []
 
 # 交付
 
-- Commit：待实现和验证后填写。
-- PR：待 CI 通过后创建。
+- Commit：实现中；已创建 `a96b9f5`、`cb6db1b`、`be7eeb8`。
+- PR：待最终 CI 通过后创建。
 - 发布：不涉及生产发布；目标是合并到 `main` 的 Stage 1 工程基线。

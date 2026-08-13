@@ -52,6 +52,13 @@ jobs:
       - name: Install frontend dependencies
         run: npm install --prefix frontend
 
+      - name: Audit production frontend dependencies
+        run: npm --prefix frontend audit --omit=dev --audit-level=high
+
+      - name: Report full frontend dependency audit
+        continue-on-error: true
+        run: npm --prefix frontend audit --audit-level=high
+
       - name: Generate TypeScript SDK
         run: npm --prefix frontend run generate:api
 
