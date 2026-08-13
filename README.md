@@ -235,4 +235,4 @@ Git 和 CI 的具体要求以 `AGENTS.md`、Skill 和 `06` 为准。没有本轮
 
 所有领域设计入口见 [`docs/blueprint/README.md`](docs/blueprint/README.md)。
 
-唯一初始化版本快照、Stage 1 工具链和 Stage 2 Platform 已验证决策见 [`docs/blueprint/07-技术决策与实施门禁.md`](docs/blueprint/07-技术决策与实施门禁.md)。
+唯一初始化版本快照、Stage 1 工具链、Stage 2 Platform 和 Stage 3A 已验证决策见 [`docs/blueprint/07-技术决策与实施门禁.md`](docs/blueprint/07-技术决策与实施门禁.md)。
