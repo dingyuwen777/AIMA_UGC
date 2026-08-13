@@ -14,12 +14,15 @@ TARGET = ROOT / "contracts" / "openapi" / "openapi.json"
 
 def render_openapi() -> str:
     """返回确定性 OpenAPI JSON。"""
-    return json.dumps(
-        create_app().openapi(),
-        ensure_ascii=False,
-        indent=2,
-        sort_keys=True,
-    ) + "\n"
+    return (
+        json.dumps(
+            create_app().openapi(),
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
 
 
 def main() -> int:

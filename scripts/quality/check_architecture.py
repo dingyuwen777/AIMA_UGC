@@ -29,9 +29,7 @@ def main() -> int:
             errors.append(f"ARCH001 {path.relative_to(ROOT)}: Stage 1 必需文件不存在")
     for path in FORBIDDEN:
         if path.exists():
-            errors.append(
-                f"ARCH002 {path.relative_to(ROOT)}: 方案 A 禁止创建第二套 backend 工程"
-            )
+            errors.append(f"ARCH002 {path.relative_to(ROOT)}: 方案 A 禁止创建第二套 backend 工程")
 
     if errors:
         print("\n".join(errors))
