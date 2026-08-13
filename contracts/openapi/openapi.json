@@ -16,6 +16,66 @@
         ],
         "title": "HealthResponse",
         "type": "object"
+      },
+      "ReadinessChecks": {
+        "additionalProperties": false,
+        "description": "readiness 子检查，不包含异常详情。",
+        "properties": {
+          "artifact_store": {
+            "enum": [
+              "ok",
+              "error"
+            ],
+            "title": "Artifact Store",
+            "type": "string"
+          },
+          "database": {
+            "enum": [
+              "ok",
+              "error"
+            ],
+            "title": "Database",
+            "type": "string"
+          },
+          "log_directory": {
+            "enum": [
+              "ok",
+              "error"
+            ],
+            "title": "Log Directory",
+            "type": "string"
+          }
+        },
+        "required": [
+          "database",
+          "artifact_store",
+          "log_directory"
+        ],
+        "title": "ReadinessChecks",
+        "type": "object"
+      },
+      "ReadinessResponse": {
+        "additionalProperties": false,
+        "description": "依赖就绪检查响应。",
+        "properties": {
+          "checks": {
+            "$ref": "#/components/schemas/ReadinessChecks"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "checks"
+        ],
+        "title": "ReadinessResponse",
+        "type": "object"
       }
     }
   },
@@ -42,6 +102,38 @@
           }
         },
         "summary": "Health Live",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "description": "检查 PostgreSQL、Artifact 目录和日志目录，不泄露失败详情。",
+        "operationId": "healthReady",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Health Ready",
         "tags": [
           "health"
         ]
