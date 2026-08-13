@@ -34,7 +34,11 @@ def _artifact_from_row(row: RowMapping) -> ArtifactRecord:
 
 
 class PostgresArtifactMetadataRepository:
-    """调用方拥有 Session/事务；状态转换使用条件更新防竞争。"""
+    """Session-bound Owner Repository；状态转换使用条件更新防竞争。
+
+    调用方为每个元数据阶段使用短事务；ArtifactStore 文件 I/O 不得位于
+    同一数据库事务中。跨业务写入的 linked/UoW 协调留到后续阶段。
+    """
 
     def __init__(self, session: Session) -> None:
         self._session = session

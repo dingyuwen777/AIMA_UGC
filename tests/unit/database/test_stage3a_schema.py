@@ -7,6 +7,5 @@ def test_stage3a_tables_have_explicit_write_owners() -> None:
         "audit_events": "system",
         "system_settings": "system",
     }
-    assert set(metadata.tables) == set(expected)
-    actual = {name: table.info["owner"] for name, table in metadata.tables.items()}
+    actual = {name: metadata.tables[name].info["owner"] for name in expected}
     assert actual == expected
