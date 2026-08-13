@@ -1,4 +1,5 @@
 import hashlib
+import os
 
 import pytest
 from aima_ugc.adapters.storage.local import LocalArtifactStore
@@ -18,6 +19,22 @@ def test_local_store_writes_atomically_and_is_immutable(tmp_path) -> None:
     with pytest.raises(FileExistsError):
         store.put("raw/item-1", b"replacement")
     assert store.read("raw/item-1") == payload
+
+
+def test_local_store_does_not_overwrite_if_publish_races(tmp_path, monkeypatch) -> None:
+    store = LocalArtifactStore(tmp_path / "artifacts")
+    real_link = os.link
+
+    def publish_competitor_then_link(source, destination) -> None:
+        destination.write_bytes(b"competing immutable value")
+        real_link(source, destination)
+
+    monkeypatch.setattr(os, "link", publish_competitor_then_link)
+
+    with pytest.raises(FileExistsError):
+        store.put("raw/race", b"losing value")
+
+    assert store.read("raw/race") == b"competing immutable value"
 
 
 @pytest.mark.parametrize(
