@@ -192,15 +192,19 @@ Cursor 是不透明字符串，至少包含版本、稳定排序字段、ID、�
 
 ### 4.6 幂等
 
-创建长任务支持 `Idempotency-Key`，由独立 `api_idempotency_records` 表实现：
+HTTP 写请求的幂等仍是长期要求，但现有语义以稳定 actor/Principal 为作用域。当前第一版已明确延期认证，Principal/actor 数据库语义尚未冻结，因此 Stage 3A **不创建绑定 `users` 的 `api_idempotency_records`**，也不为了实现幂等反向引入本地用户表。
 
-- 相同 actor、相同 operation、相同 key、相同规范化 Payload Hash 且仍在有效期内，返回原 Job/响应；
-- 相同作用域和 key 但 Payload Hash 不同，返回 409；
-- 不同 actor 互不冲突；
-- 过期后在锁住唯一记录的短事务内允许复用，并写审计；
-- API 幂等记录与 Job 内部的 `job_type + internal_idempotency_key` 是两个契约，不得合并。
+未来进入真实认证/写 API 阶段时，再在同一个 L3 Change 中冻结：
 
-创建 API 幂等记录、业务资源和 Job 必须在同一数据库事务中完成。有效期由系统配置给出并在 OpenAPI/运维文档公开，不能由前端任意延长。
+- actor/Principal 的稳定内部作用域；
+- `Idempotency-Key` 有效期；
+- operation 标识和规范化 Payload Hash；
+- 同 actor + operation + key + 同 Payload 返回原结果；
+- 同作用域/key 但 Payload 不同返回 409；
+- 过期复用、审计、清理和索引；
+- API 幂等记录、业务资源与下游 Job 的同事务边界。
+
+API 幂等与 Job 内部 `job_type + internal_idempotency_key` 始终是两个不同契约，不因认证延期而合并。
 
 ### 4.7 身份认证扩展边界与授权
 
