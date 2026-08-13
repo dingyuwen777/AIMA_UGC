@@ -78,6 +78,18 @@
 
 能从仓库确认的事实不反问。发现错误前提先指出。
 
+### 用户决策门禁
+
+如果某个未决事项会实质影响业务语义、页面/验收、公共 Contract、Schema、权限/安全、隐私与保留/删除、外部 Provider/Operation、费用/预算、调度策略、SLO/RPO/RTO、兼容性或不可逆数据行为，并且仓库没有已经批准的事实：
+
+1. 不得由 Agent 静默选一个默认值后继续实现依赖该决定的代码；
+2. 先完成能够由仓库、官方资料、Fixture 或测试自行确认的事实调查，再只提出最小必要的上游问题；
+3. **必须在对话中先给出明确推荐方案**；存在有意义的取舍时再给 2–3 个实质不同的备选，并说明影响，不能只把一个没有建议的开放问题丢给用户；
+4. 由用户/业务 Owner 作最终决定；在得到决定前，暂停依赖该决定的 Contract、Schema、业务语义、安全策略或不可逆实现，与该决定无依赖的工作可以继续；
+5. 用户明确“暂不决定/以后再做”时，把延期本身记录为正式设计边界，不得继续偷偷实现该能力；
+6. 用户给出决定后，在同一任务同步到对应长期事实源：Blueprint/需求文档、OpenSpec（存在时）、Contract/Schema（形成机器事实时）以及当前 Change；聊天记录不能作为后续开发唯一事实源；
+7. 后续任务再次遇到已经固化的决定时直接读取事实源执行，不重复询问；只有新需求与已批准决定冲突时才重新提请用户决策。
+
 ## 4. 简单、精准、兼容
 
 - 只写满足当前需求的最少代码；
@@ -250,16 +262,18 @@ Worker 必须原子认领 `queued` 或接管 Lease 已过期的 `running` Job，
 
 - Secret 不提交 Git、不写数据库明文、不进 Raw、日志、Job；
 - 使用 Compose Secret 或只读 Secret 文件；
-- 本地账号密码使用 Argon2id，服务端 Session Cookie 使用 `HttpOnly`、`Secure` 和 `SameSite`；
-- Session、登录限流、RBAC 和 API 幂等必须有数据库表和生命周期，不使用纯进程内状态充当生产事实；
-- 修改请求按会话模型执行 CSRF 防护；
+- 当前第一版不实现本地账号密码、登录入口、MFA、Session、CSRF 或登录限流；真实第三方身份接入需求明确后再通过独立 L3 Change 实现认证；
+- 未来飞书、OIDC 或其他企业身份源必须通过可替换 Identity/Authentication Adapter 进入统一 `Principal/AuthContext`；业务模块不得直接依赖飞书 SDK、`open_id`、`union_id` 或其他 Provider 私有字段；
+- Authentication 与 Authorization 解耦：后端权限判断面向统一 Principal、稳定 Permission 和对象级策略，不因更换身份 Provider 改写业务 Service；
+- 如果未来选定服务端 Session，再按实际方案实现 Session 哈希、Cookie、CSRF、撤销与过期；如果采用 OAuth/OIDC/飞书授权流程，则按协议验证 `state`、`nonce`，支持时使用 PKCE；
+- API 幂等必须有数据库事实源；认证/授权实现进入生产范围后同样不得使用纯进程内状态充当生产事实；
 - CORS、Allowed Hosts 和 Provider 出站域名使用显式 Allowlist；
 - 后端执行权限校验；
 - 参数绑定 SQL；
 - 防路径穿越、SSRF、命令执行、不安全反序列化、公式注入、Zip Bomb 和超大上传；
 - Raw 和导出受权限和审计保护；
 - Artifact 下载执行对象级授权，出站 SSRF 校验覆盖 DNS 结果和每次重定向；
-- 不得关闭认证、证书、输入校验或安全检查。
+- 已实现并批准的认证、证书、输入校验或安全检查不得为方便调试而关闭；第三方认证尚未接入时，敏感/写 API 不得宣称具备公网生产认证能力。
 
 ## 12. 测试
 
@@ -301,7 +315,7 @@ uv run python scripts/quality/check_docs.py
 - 多 Scheduler 对同一 Occurrence 不重复、不丢失；
 - 多级预算账户并发预留、结算、释放和计费未知；
 - API Idempotency-Key 覆盖同/异 Payload、跨用户和过期；
-- Session fixation、CSRF、撤销/过期、RBAC、IDOR、SSRF 重定向/DNS、路径/Zip/日志注入；
+- 认证接入阶段按实际协议验证身份边界与授权；采用 Session 时覆盖 fixation、CSRF、撤销/过期，采用 OAuth/OIDC/飞书授权流程时覆盖 state/nonce/PKCE/回调绑定；通用授权覆盖 Permission/对象级权限/IDOR，其他安全专项继续覆盖 SSRF 重定向/DNS、路径/Zip/日志注入；
 - 中文搜索质量/性能基准、容量 Soak、数据库+Artifact 协调恢复和孤儿对账。
 
 禁止：
@@ -342,7 +356,7 @@ uv run python scripts/quality/check_docs.py
 - 调试测试；
 - 用户行为。
 
-受影响就同任务更新，不受影响不制造文档差异。长期文档描述合并后的当前系统，不写成变更日志。文档用普通中文、真实路径、真实命令和明确例子。
+受影响就同任务更新，不受影响不制造文档差异。长期文档描述合并后的当前系统，不写成变更日志。文档用普通中文、真实路径、真实命令和明确例子。用户确认的长期业务/技术决定或明确延期决定必须在同一任务落到正式事实源，不能只存在于聊天或 Change 历史中。
 
 ## 15. Git
 

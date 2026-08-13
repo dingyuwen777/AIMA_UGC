@@ -205,7 +205,7 @@ TikHub / 其他 Provider
         ↘ 与不依赖业务选择的工作并行
 阶段 1：已完成
 阶段 2：Platform 基础已完成
-→ 阶段 3：Canonical Contract、核心数据库 Schema/Alembic、System/Auth
+→ 阶段 3：Canonical Contract、核心数据库 Schema/Alembic、System/Audit + 第三方身份扩展边界（不实现登录）
 → 阶段 4：Job Runtime
 → 阶段 5：TikHub Client 与 Raw
 → 阶段 6：先完成一个平台的端到端纵切

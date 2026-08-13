@@ -202,13 +202,28 @@ Cursor 是不透明字符串，至少包含版本、稳定排序字段、ID、�
 
 创建 API 幂等记录、业务资源和 Job 必须在同一数据库事务中完成。有效期由系统配置给出并在 OpenAPI/运维文档公开，不能由前端任意延长。
 
-### 4.7 认证、会话和授权
+### 4.7 身份认证扩展边界与授权
 
-第一版使用服务端 Session：登录成功后轮换 Session ID，数据库只保存 Token 哈希；Cookie 使用 `HttpOnly`、`Secure`、`SameSite=Lax`，修改请求同时校验 CSRF。Session 支持空闲过期、绝对过期、主动注销和管理员撤销。
+当前第一版**不设计或实现登录入口、本地用户名/密码、MFA、Session、CSRF 和登录限流**。这些不是当前 Stage 3 成功标准。未来预计接入飞书等第三方企业应用/身份源；具体采用飞书 OAuth、OIDC、企业自建登录还是服务端 Session，由真实接入场景明确后通过独立 L3 Change 决定。
 
-权限事实来自 `permissions`、`roles` 和 `role_permissions`。Router 声明所需权限，Service 对对象级资源再次校验；仅隐藏前端按钮不算授权。Artifact/Raw/导出下载必须先按 Artifact ID 查元数据和所属业务对象，再判断对象级权限，不能把存储路径或可猜 URL 直接暴露给浏览器。
+长期依赖方向固定为：
 
-登录限流和短期锁定必须同时考虑规范化账号标识与客户端/IP 安全摘要，避免只按单一 IP 造成绕过或大范围误伤；所有登录结果、撤销和权限拒绝写审计。
+```text
+Feishu / OIDC / 其他企业身份源
+→ Identity / Authentication Adapter
+→ Principal / AuthContext
+→ Authorization Service / Policy
+→ Role / Permission / 对象级授权
+→ 业务 Service
+```
+
+业务 Router/Service 只消费统一 `Principal/AuthContext` 和授权结果，不读取飞书 `open_id`、`union_id`、租户字段或 SDK 对象做权限判断。Provider-specific 身份只存在于身份映射/Adapter 边界，因此未来替换身份源不需要改写业务模块。
+
+角色名称和操作边界仍属于阶段 0 业务决定；长期只固定“后端授权不能依赖前端隐藏按钮”。未来权限控制应尽量面向稳定 Permission 和对象级策略。Artifact/Raw/敏感导出下载必须先查元数据和所属业务对象，再执行权限判断，不能把存储路径或可猜 URL 直接暴露给浏览器。
+
+如果未来选定服务端 Session，必须再明确 Session 生命周期、Token 哈希、Cookie、CSRF、撤销/过期和限流；如果选择 OAuth/OIDC/飞书授权流程，则必须按实际协议验证回调绑定、`state`、`nonce`，支持时使用 PKCE。Provider Token/Secret 只保存在服务端 Secret 边界，不进入浏览器长期存储、日志或业务表明文。
+
+第三方认证尚未实现和验收前，系统可以继续本地/受控环境开发，但**不得把敏感或写 API 宣称为具备公网生产认证能力**。
 
 ## 5. 长任务
 
