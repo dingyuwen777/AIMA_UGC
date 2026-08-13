@@ -4,7 +4,6 @@
     "schema_version": "content.v1",
     "platform": "xiaohongshu",
     "external_content_id": "note_123",
-    "alternate_ids": {},
     "content_type": "image_post",
     "title": "爱玛电动车使用体验",
     "text": "示例正文",
@@ -37,10 +36,8 @@
         "preview_url": "https://example.com/media/image_001_preview.jpg",
         "width": 1920,
         "height": 1080,
-        "duration_ms": null,
         "position": 0,
-        "mime_type": "image/jpeg",
-        "alt_text": null
+        "mime_type": "image/jpeg"
       }
     ],
     "topics": [
@@ -50,16 +47,12 @@
         "url": "https://example.com/topics/topic_001"
       }
     ],
-    "mentions": [],
     "locations": [
       {
         "location_type": "ip_region",
         "label": "上海",
         "country": "中国",
-        "region": "上海",
-        "city": null,
-        "latitude": null,
-        "longitude": null
+        "region": "上海"
       }
     ],
     "metrics": {
@@ -67,14 +60,7 @@
       "like_count": 152,
       "comment_count": 27,
       "share_count": 4,
-      "repost_count": null,
-      "favorite_count": 21,
-      "view_count": null,
-      "play_count": null,
-      "danmaku_count": null,
-      "coin_count": null,
-      "download_count": null,
-      "reply_count": null
+      "favorite_count": 21
     },
     "status": "available",
     "source": {
@@ -94,15 +80,30 @@
       "text",
       "canonical_url",
       "share_url",
-      "author",
+      "author.external_account_id",
+      "author.alternate_ids",
+      "author.handle",
+      "author.display_name",
+      "author.profile_url",
+      "author.avatar_url",
+      "author.bio",
+      "author.verified",
+      "author.verification_label",
+      "author.region",
+      "author.follower_count",
+      "author.following_count",
+      "author.content_count",
+      "author.total_like_count",
       "published_at",
+      "source_updated_at",
       "media",
       "topics",
       "locations",
       "metrics.like_count",
       "metrics.comment_count",
       "metrics.share_count",
-      "metrics.favorite_count"
+      "metrics.favorite_count",
+      "status"
     ]
   },
   "comment_coverage": {
@@ -118,46 +119,22 @@
         "platform": "xiaohongshu",
         "external_content_id": "note_123",
         "external_comment_id": "comment_100",
-        "alternate_ids": {},
         "root_comment_id": "comment_100",
-        "parent_comment_id": null,
         "author": {
           "external_account_id": "user_100",
-          "alternate_ids": {},
-          "handle": null,
           "display_name": "评论者A",
           "profile_url": "https://example.com/users/user_100",
           "avatar_url": "https://example.com/avatar/user_100.jpg",
-          "bio": null,
-          "verified": false,
-          "verification_label": null,
-          "region": "江苏",
-          "follower_count": null,
-          "following_count": null,
-          "content_count": null,
-          "total_like_count": null
+          "region": "江苏"
         },
         "text": "续航怎么样？",
         "published_at": "2026-08-13T03:00:00Z",
-        "source_updated_at": null,
         "observed_at": "2026-08-13T04:05:00Z",
         "metrics": {
           "schema_version": "metrics.v1",
           "like_count": 8,
-          "comment_count": null,
-          "share_count": null,
-          "repost_count": null,
-          "favorite_count": null,
-          "view_count": null,
-          "play_count": null,
-          "danmaku_count": null,
-          "coin_count": null,
-          "download_count": null,
           "reply_count": 1
         },
-        "media": [],
-        "mentions": [],
-        "locations": [],
         "is_by_content_author": false,
         "status": "available",
         "source": {
@@ -172,7 +149,19 @@
           "item_locator": "comments[0]",
           "observed_at": "2026-08-13T04:05:00Z"
         },
-        "observed_fields": ["text", "author", "metrics.like_count", "metrics.reply_count"]
+        "observed_fields": [
+          "text",
+          "published_at",
+          "author.external_account_id",
+          "author.display_name",
+          "author.profile_url",
+          "author.avatar_url",
+          "author.region",
+          "metrics.like_count",
+          "metrics.reply_count",
+          "is_by_content_author",
+          "status"
+        ]
       },
       "replies": [
         {
@@ -180,7 +169,6 @@
           "platform": "xiaohongshu",
           "external_content_id": "note_123",
           "external_comment_id": "comment_101",
-          "alternate_ids": {},
           "root_comment_id": "comment_100",
           "parent_comment_id": "comment_100",
           "author": {
@@ -190,36 +178,17 @@
             "display_name": "示例作者",
             "profile_url": "https://example.com/users/user_001",
             "avatar_url": "https://example.com/avatar/user_001.jpg",
-            "bio": "示例公开简介",
             "verified": true,
-            "verification_label": "企业认证",
-            "region": "上海",
-            "follower_count": 12000,
-            "following_count": 300,
-            "content_count": 180,
-            "total_like_count": 500000
+            "region": "上海"
           },
           "text": "日常通勤可以满足。",
           "published_at": "2026-08-13T03:10:00Z",
-          "source_updated_at": null,
           "observed_at": "2026-08-13T04:05:00Z",
           "metrics": {
             "schema_version": "metrics.v1",
             "like_count": 2,
-            "comment_count": null,
-            "share_count": null,
-            "repost_count": null,
-            "favorite_count": null,
-            "view_count": null,
-            "play_count": null,
-            "danmaku_count": null,
-            "coin_count": null,
-            "download_count": null,
             "reply_count": 0
           },
-          "media": [],
-          "mentions": [],
-          "locations": [],
           "is_by_content_author": true,
           "status": "available",
           "source": {
@@ -234,7 +203,24 @@
             "item_locator": "replies[0]",
             "observed_at": "2026-08-13T04:05:00Z"
           },
-          "observed_fields": ["text", "author", "metrics.like_count", "metrics.reply_count"]
+          "observed_fields": [
+            "root_comment_id",
+            "parent_comment_id",
+            "text",
+            "published_at",
+            "author.external_account_id",
+            "author.alternate_ids",
+            "author.handle",
+            "author.display_name",
+            "author.profile_url",
+            "author.avatar_url",
+            "author.verified",
+            "author.region",
+            "metrics.like_count",
+            "metrics.reply_count",
+            "is_by_content_author",
+            "status"
+          ]
         }
       ],
       "coverage": {
