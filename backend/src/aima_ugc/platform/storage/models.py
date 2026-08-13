@@ -1,4 +1,4 @@
-"""Artifact Platform 数据结构；数据库表由 Stage 3 Migration 落地。"""
+"""Artifact Platform 数据结构。"""
 
 from __future__ import annotations
 
@@ -15,6 +15,10 @@ ArtifactStatus = Literal[
     "deleted",
     "error",
 ]
+
+
+class ArtifactStateConflict(RuntimeError):
+    """Artifact 当前状态不允许请求的状态转换。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,3 +46,5 @@ class ArtifactRecord:
     byte_size: int | None = None
     stored_at: datetime | None = None
     linked_at: datetime | None = None
+    expires_at: datetime | None = None
+    deleted_at: datetime | None = None
