@@ -88,11 +88,10 @@ jobs:
           set -euo pipefail
           uv run pytest tests/unit/jobs -q
 
-      - name: Upgrade previous revision to Stage 4 head
+      - name: Upgrade empty database to Stage 4 head
         shell: bash
         run: |
           set -euo pipefail
-          uv run alembic upgrade 20260813_0001
           uv run alembic upgrade head
           uv run alembic current
           uv run alembic check
@@ -107,7 +106,7 @@ jobs:
               existing = set(inspect(runtime.engine).get_table_names())
           finally:
               runtime.dispose()
-          required = {"jobs", "job_attempt_events"}
+          required = {"artifacts", "system_settings", "audit_events", "jobs", "job_attempt_events"}
           assert required <= existing, existing
           PY
 
@@ -116,6 +115,34 @@ jobs:
         run: |
           set -euo pipefail
           uv run pytest tests/integration/jobs -q
+
+      - name: Downgrade to base and re-upgrade
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run alembic downgrade base
+          uv run python - <<'PY'
+          from sqlalchemy import inspect
+
+          from aima_ugc.platform.config import load_settings
+          from aima_ugc.platform.database import DatabaseRuntime
+
+          runtime = DatabaseRuntime(load_settings())
+          try:
+              existing = set(inspect(runtime.engine).get_table_names())
+          finally:
+              runtime.dispose()
+          application_tables = {
+              "artifacts",
+              "system_settings",
+              "audit_events",
+              "jobs",
+              "job_attempt_events",
+          }
+          assert not (application_tables & existing), existing
+          PY
+          uv run alembic upgrade head
+          uv run alembic check
 
       - name: Downgrade to previous revision and re-upgrade
         shell: bash

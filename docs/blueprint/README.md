@@ -50,19 +50,20 @@
 
 ## 当前开发状态
 
-**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础和 Stage 3B Canonical Contract 均已建立。** 当前代码已经具备：
+**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础、Stage 3B Canonical Contract 和 Stage 4 PostgreSQL Job Runtime 均已建立。** 当前代码已经具备：
 
 - 根 Python/uv 工程、固定运行时与锁文件、FastAPI/Vue、OpenAPI → Orval Client、完整 Stage 1 CI；
 - Windows PowerShell 5.1 开发环境引导和本地 Uvicorn + Vite 双服务联调；
 - 显式 `AIMA_*` Config、只读 Secret 文件、统一 `.log`、同步 PostgreSQL Runtime；
 - `GET /health/ready`；
 - `ArtifactService` / `ArtifactStore` 边界和 Local ArtifactStore；
-- API / Worker / Scheduler / Migration 的最小 Platform bootstrap；
+- API / Worker / Scheduler / Migration 的 Platform bootstrap；
 - 隔离 PostgreSQL 18.4 的 Stage 2 Platform CI；
 - Stage 3A 根 Alembic、`20260813_0001`、`artifacts/system_settings/audit_events`、PostgreSQL Repository 和独立 Migration CI；
-- Stage 3B Provider/平台无关 Canonical V1 Pydantic Contract、生成 JSON Schema、固定脱敏帖子聚合示例、稀疏 `observed_fields`、评论树/coverage 语义与 Contract Test。
+- Stage 3B Provider/平台无关 Canonical V1 Pydantic Contract、生成 JSON Schema、固定脱敏帖子聚合示例、稀疏 `observed_fields`、评论树/coverage 语义与 Contract Test；
+- Stage 4 `20260814_0002`、`jobs/job_attempt_events`、Job Registry、PostgreSQL Repository、Worker/Reaper、Lease/Fencing/Deadline/重试/取消/Attempt 事件审计和独立 PostgreSQL 18 Job Runtime CI。
 
-Stage 2 的机器事实以 `backend/src/aima_ugc/platform/`、`backend/src/aima_ugc/bootstrap/`、HTTP Contract、测试和 CI 为准；跨文档决定维护在 [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md)。不要在其他 Blueprint 复制实现细节或版本表。
+Stage 4 的机器事实以 `backend/src/aima_ugc/platform/jobs/`、`backend/src/aima_ugc/adapters/persistence/postgres/jobs.py`、第二条 Migration、测试和 CI 为准；跨文档决定维护在 [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md)。不要在其他 Blueprint 复制实现细节或版本表。
 
 当前下一步分成两条并行路径。
 
@@ -77,13 +78,13 @@ Stage 2 的机器事实以 `backend/src/aima_ugc/platform/`、`backend/src/aima_
 - 日请求量、数据量、并发、磁盘预算、SLO、RPO、RTO；
 - Scheduler misfire/catch-up 业务策略。
 
-### 阶段 3：Contract、数据库与 System/Audit
+### 阶段 5：Provider Adapter、Provider Attempt 和 Raw
 
-Stage 3A 数据库/Alembic/基础持久化和 Stage 3B Canonical Contract 均已完成。Canonical 现在由 Pydantic 唯一手写事实源、生成 JSON Schema、固定脱敏聚合示例和 Contract Test 维护，并已经冻结 Provider 无关、稀疏 Observation、评论 root/parent、coverage 和完整帖子 Read Model 语义。
+Stage 5 的正式工程范围是 Provider Client/Adapter、Provider Request/Attempt、错误与费用事实、Raw Artifact Envelope 和 Fake Transport。最终多级预算表不在本阶段提前建立：它同时外键依赖 Stage 5 的 Provider Request/Attempt、Stage 6 的 Content 和 Stage 7 的 Collection/Run，因此保持最终 Schema 不变并在 Stage 7 父事实齐全后落地。
 
-Stage 3A/3B 已建立的 Schema/Repository/Contract 不重复设计；登录、Role/Permission、Principal 和 actor-bound API 幂等继续等待真实第三方身份需求。**下一步正式工程阶段是 Stage 4 Job Runtime**，之后才进入 Provider Adapter/Raw 和单平台纵切。
+如果 Stage 5 要接入某个真实平台的具体 Operation、费用或真实 Fixture，仍受阶段 0 对应业务事实门禁；Provider 中立的基础边界可以在不猜测平台语义的前提下继续推进。
 
-阶段 0 未全部完成时，Stage 3 只推进已有明确设计支撑的共享基础，不得替用户猜测页面字段、五平台 Operation、隐私保留期、容量或 Scheduler 策略；更不得直接批量实现五个平台。
+Stage 1—4 已建立的 Schema/Repository/Contract/Job Runtime 不重复设计；登录、Role/Permission、Principal 和 actor-bound API 幂等继续等待真实第三方身份需求。
 
 ## 修改规则
 
