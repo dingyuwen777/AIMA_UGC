@@ -7,8 +7,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from sqlalchemy import insert, select
-
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataGateway,
 )
@@ -40,6 +38,7 @@ from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.jobs import JobRegistry, JobWorker
 from aima_ugc.platform.storage import ArtifactService
+from sqlalchemy import insert, select
 
 _FIXTURE = Path("tests/fixtures/providers/tikhub/xhs/search_notes_page1.sanitized.json")
 _NOW = datetime(2026, 8, 5, 10, 0, 12, tzinfo=UTC)
