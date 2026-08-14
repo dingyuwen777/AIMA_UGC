@@ -111,14 +111,20 @@ def map_comment(
         observed_fields.append("source_updated_at")
 
     explicit_parent = _first_dict(raw, "target_comment", "targetComment")
-    parent_comment_id = _optional_string(explicit_parent, "id", "comment_id")
+    parent_comment_id: str | None = _optional_string(explicit_parent, "id", "comment_id")
+    root_comment_id: str | None
     if is_root:
         root_comment_id = external_comment_id
         parent_comment_id = None
+        observed_fields.extend(("root_comment_id", "parent_comment_id"))
     else:
         root_comment_id = context.root_comment_id or _optional_string(
             raw, "root_comment_id", "root_commentId"
         )
+        if root_comment_id is not None:
+            observed_fields.append("root_comment_id")
+        if parent_comment_id is not None:
+            observed_fields.append("parent_comment_id")
 
     return CanonicalCommentV1(
         platform="xhs",
@@ -213,7 +219,15 @@ def _map_content_metrics(
         values[canonical] = value
         if present:
             observed.append(canonical)
-    return CanonicalMetricsV1(**values), tuple(observed)
+    return (
+        CanonicalMetricsV1(
+            like_count=values.get("like_count"),
+            comment_count=values.get("comment_count"),
+            favorite_count=values.get("favorite_count"),
+            share_count=values.get("share_count"),
+        ),
+        tuple(observed),
+    )
 
 
 def _content_type(raw: dict[str, Any]) -> str:
