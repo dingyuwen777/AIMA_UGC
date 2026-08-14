@@ -30,9 +30,12 @@ AGENTS.md
 截至本文编制时：
 
 - 小红书 TikHub App V2 Operation/Mapper 已在 Stage 6 实现；
+- Stage 7 第一批跨平台机器基础已经进入 main：`aima_ugc.contracts.collection`、纯 `CollectionDecisionService`、`XHS_TIKHUB_CAPABILITY`、固定 `contracts/collection/*.schema.json` 和 `scripts/dev/probe_collection_decision.py`；
+- 当前 Decision Service 已把零评论短路、评论数不变跳过、评论数增减/未知、详情触发和二级回复目标等规则统一到一份生产逻辑；Provider Capability 只暴露当前代码实际实现的能力；
+- 当前 XHS 评论 Operation 固定 `latest_v2`，所以 Capability 只暴露规范化 `latest`；仓库尚无合法脱敏非空评论 Fixture/Real Probe 证明“遇到已知 comment_id 即可安全停止”，因此当前 XHS 不声明稳定增量停止能力；
 - 抖音、微博、B站、快手 Operation/Mapper 尚未进入 main，平台文档记录的是 Stage 7 已批准目标链路和实施门禁，不得理解为代码已存在；
 - 五个平台默认 Provider 都是 TikHub，但架构允许以后逐平台显式替换 Provider；
-- Real Provider Probe 的安全、Raw、Canonical、XLSX 边界已经固化；
+- Real Provider Probe 的安全、Raw、Canonical、XLSX 边界已经固化，但统一真实 Operation Probe 和完整 Business Pipeline Probe 仍需在后续 Stage 7 实现；当前已有的是不访问 Provider/数据库的 Decision Probe；
 - Stage 7 Scheduler 仍等待 misfire/catch-up 决策，不能因为 Provider 开始开发就提前启用自动调度。
 
 ## 3. 通用抓取逻辑
@@ -45,16 +48,14 @@ AGENTS.md
 → Mapper 得到当前 Observation
 → 按 platform + external_content_id 去重
 → 与数据库/Probe 上一次状态比较
-→ 决定是否抓详情
-→ 决定是否抓一级评论
-→ 决定是否抓二级回复
+→ 正式 CollectionDecisionService 决定详情/评论/回复动作
 → 每个真实 HTTP Attempt 先取得预算
 → 保存每次 Raw
 → Mapper → Canonical
 → Ingestion → PostgreSQL
 ```
 
-搜索结果重复并不丢失本次发现来源，只是尽量避免重复付费抓详情/评论。
+搜索结果重复并不丢失本次发现来源，只是尽量避免重复付费抓详情/评论。Decision Service 只接收规范化事实和 Capability，不解析 TikHub Raw、不访问数据库、不拼 Provider URL。
 
 ## 4. 评论决策最简表
 
@@ -65,7 +66,7 @@ AGENTS.md
 | 新内容 | 未知 | — | 先看 Capability/详情；必要时受预算首屏探测 |
 | 已有内容 | 0 | 未变化 | 跳过 |
 | 已有内容 | >0 | 未变化 | **跳过，不重新抓评论** |
-| 已有内容 | >0 | 增加 | 增量评论或受控刷新 |
+| 已有内容 | >0 | 增加 | Capability 已证明稳定增量时增量抓取，否则受控刷新 |
 | 已有内容 | >0 | 减少 | 记录下降 + 受控刷新；不猜具体删除 |
 | 任意 | 任意 | 任意 | 人工 Deep Collection 可加深，但仍受预算 |
 
@@ -90,6 +91,7 @@ auto_deep_collection = false
 - 评论数 >50：目标抓 50 条，不追求全量；
 - 目标是软目标：一页已经付费返回的数据全部保留；
 - 一级评论明确没有回复时不请求二级评论；
+- 平台 Capability 不支持二级评论时不生成二级回复目标；
 - 重复帖子评论数不变时不重抓；
 - 真正硬限制是请求/费用 Budget，不是“刚好 50 行”。
 
@@ -109,7 +111,7 @@ max_id / next_offset
 Secret / Authorization
 ```
 
-前端只能看到 Capability 明确支持的选项；不支持发布时间筛选的平台不能伪装支持。
+前端只能看到 Capability 明确支持且当前 Operation 实际实现的选项；“第三方 API 支持”不等于“AIMA 当前代码已支持”。不支持发布时间筛选的平台不能伪装支持。
 
 ## 7. 时间窗口
 
@@ -156,13 +158,23 @@ unavailable
 
 ## 11. 单独业务调试
 
-### Operation Probe
+### 当前已实现：Decision Probe
 
-只验证一个真实/Fixture Operation：请求参数、分页、Raw、Mapper、Canonical。
+生产入口是正式 `CollectionDecisionService`。当前可以用：
 
-### Business Pipeline Probe
+```text
+scripts/dev/probe_collection_decision.py
+```
 
-验证完整业务逻辑：
+输入显式 `CollectionDecisionRequestV1` JSON，默认注入当前 XHS Capability，输出正式 `CollectionDecisionV1` JSON。它只验证业务 Decision，不访问 TikHub、不访问 PostgreSQL、不需要 Secret，也不复制决策逻辑。
+
+### 后续 Stage 7：Operation Probe
+
+目标是只验证一个真实/Fixture Operation：请求参数、分页、Raw、Mapper、Canonical。真实 Probe 必须复用正式 Provider Client/Operation/Mapper，通过正式 Secret 边界读取凭据，默认关闭、不进入普通 CI、不写生产业务数据库。
+
+### 后续 Stage 7：Business Pipeline Probe
+
+完整目标链路是：
 
 ```text
 Search
@@ -178,11 +190,11 @@ Search
 第一次运行保存 Probe Snapshot；第二次读取上一次 Snapshot，验证：
 
 - 重复内容评论数不变是否真的没有再次请求评论；
-- 评论数增加是否进入增量路径；
+- 评论数增加是否进入增量路径或受控刷新；
 - 零评论是否直接短路；
 - Budget 到达时是否安全停止。
 
-生产使用 PostgreSQL previous state，Probe 使用 Probe Snapshot；**决策实现必须是同一份生产代码**。
+生产使用 PostgreSQL previous state，Probe 使用 Probe Snapshot；**决策实现必须是同一份生产代码**。在这个完整 Probe 真实实现进入 main 前，不得因为 Decision Probe 已存在就宣称 Business Pipeline Probe 已完成。
 
 ## 12. 平台差异不能被“统一参数”掩盖
 
@@ -200,4 +212,4 @@ Search
 
 修改某个平台的 endpoint、分页、业务配置、Mapper、Fixture 或 Probe 时，同任务检查并更新对应平台文档；跨平台规则变化再同步 Blueprint 08/07。
 
-平台文档必须如实写“已实现 / 待实现 / 已 Fixture 验证 / 仅官方文档确认 / 已 Real Probe”，不能用一个状态替代另一个状态。
+平台文档必须如实写“已实现 / 待实现 / 已 Fixture 验证 / 仅官方文档确认 / 已 Real Probe”，不能用一个状态替代另一个状态。新对话恢复 Stage 7 时，先按 [`../blueprint/README.md`](../blueprint/README.md) 的恢复流程确认当前进度，再读取本文件和目标平台机器事实。
