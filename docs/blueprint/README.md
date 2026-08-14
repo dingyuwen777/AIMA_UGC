@@ -12,7 +12,8 @@
 2. 按 `AGENTS.md` 读取 [`.agents/skills/reliable-vibe-coding/SKILL.md`](../../.agents/skills/reliable-vibe-coding/SKILL.md)；
 3. 读取本文和 [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md)；
 4. 再按当前任务读取对应领域 Blueprint；
-5. 进入具体实现后，只继续读取相关模块 README、Contract、Migration、依赖、实现和测试。
+5. **涉及 Provider、TikHub、采集 Plan、关键词发现、详情/评论策略、成本控制或平台 Operation 时，必须再读取 [`08-采集策略与平台能力.md`](08-采集策略与平台能力.md)，然后读取 [`../collection/README.md`](../collection/README.md) 和目标平台文档；**
+6. 进入具体实现后，只继续读取相关模块 README、Contract、Migration、依赖、Operation/Mapper、Fixture、实现和测试。
 
 不要因为存在 Blueprint 就跳过代码和测试事实，也不要一次性读取所有文档代替针对当前任务的现状调查。
 
@@ -22,6 +23,8 @@
 
 人类可读的统一测试与调试入口固定为 [`../测试与调试说明.md`](../测试与调试说明.md)。它负责解释测试分层、独立验证方式、Fixture/Fake/Probe、运行入口和成功判据；测试代码、Contract、Fixture、Migration、本轮执行结果和 CI 才是验证事实，说明文档不得复制第二套断言或期望值清单。
 
+采集逻辑的人类可读开发入口固定为 [`../collection/README.md`](../collection/README.md)。它负责讲清通用 Decision Pipeline、成本短路、评论抽样、Deep Collection、Business Pipeline Probe，以及小红书/抖音/微博/B站/快手各自的 TikHub Operation、业务参数、内部分页、代码/Fixture/测试状态。平台文档不得把“已批准目标实现”写成“当前代码已完成”。
+
 ## 事实源优先级
 
 仓库进入实现阶段后，发生冲突时按以下顺序处理：
@@ -30,7 +33,8 @@
 已批准的 OpenSpec change（仓库建立后）
 → 当前代码、Migration、Contract、锁文件、生成物和测试事实
 → 07 中的已确认跨文档决策和初始化版本快照
-→ 01—06 对应领域设计
+→ 01—08 对应领域设计
+→ docs/collection/ 平台实现说明
 → README 导航和摘要
 ```
 
@@ -41,12 +45,13 @@
 | 文档 | 负责内容 | 什么时候读取 |
 | --- | --- | --- |
 | [`01-总体架构与技术选型.md`](01-总体架构与技术选型.md) | 模块化单体、运行组件、七个业务模块、目录结构、依赖方向、可替换边界 | 总体架构、目录、模块边界、技术路线、跨模块设计 |
-| [`02-采集系统与数据标准化.md`](02-采集系统与数据标准化.md) | Plan/Run/Scope/Request/Attempt/Candidate、Provider Adapter、Raw、Mapper、Canonical、分页、刷新策略 | Provider、TikHub/官方 API/Apify/导入、采集、Raw、Mapper、Canonical、平台数据映射 |
-| [`03-数据库与文件存储.md`](03-数据库与文件存储.md) | PostgreSQL、表与约束、Owner、Current/Version/Metric、Artifact、Job 数据结构、备份一致性 | Schema、表、Migration、Repository、Artifact、数据历史与幂等 |
-| [`04-后端任务API与前端.md`](04-后端任务API与前端.md) | Router/Service/Repository、HTTP Contract、错误、Cursor、Auth、Job Runtime、前端调用边界；公开 API 同时维护固定 OpenAPI、生成 Client 和人类可读接口说明 | API、Job、前端 Client、认证授权、业务服务、长任务 |
+| [`02-采集系统与数据标准化.md`](02-采集系统与数据标准化.md) | Plan/Run/Scope/Request/Attempt/Candidate、Provider Adapter、Raw、Mapper、Canonical、分页、刷新基础 | Provider、Raw、Mapper、Canonical、来源链、通用采集基础 |
+| [`03-数据库与文件存储.md`](03-数据库与文件存储.md) | PostgreSQL、表与约束、Owner、Current/Version/Metric、Artifact、Job、预算数据结构、备份一致性 | Schema、表、Migration、Repository、Artifact、数据历史、幂等、预算 |
+| [`04-后端任务API与前端.md`](04-后端任务API与前端.md) | Router/Service/Repository、HTTP Contract、错误、Cursor、Auth、Job Runtime、前端调用边界 | API、Job、前端 Client、认证授权、业务服务、长任务 |
 | [`05-日志安全部署与运维.md`](05-日志安全部署与运维.md) | 日志、审计、Secret、安全、Docker Compose、离线 Release、备份、回滚、运维 | 日志、安全、配置、部署、Release、服务器目录、备份恢复 |
 | [`06-开发约束与分阶段实施.md`](06-开发约束与分阶段实施.md) | TDD、独立可验证能力、测试分层、验证命令、CI、Git、文档同步、Review、阶段 0—12 实施顺序 | 制定开发计划、测试/调试、CI、Git、交付、判断阶段顺序 |
 | [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md) | 已确认跨文档决策、唯一初始化版本快照、未决门禁、阶段 Go/No-Go | 每个任务都先读；技术版本、重大决策、是否允许进入某阶段 |
+| [`08-采集策略与平台能力.md`](08-采集策略与平台能力.md) | Stage 7 五平台默认 Provider、Operation Matrix、Decision Pipeline、Capability、评论/成本/预算/Deep/Probe 业务规则 | TikHub/Provider、平台采集、Plan 参数、评论、预算、Capability、Real/Business Probe |
 
 ## 当前开发状态
 
@@ -61,49 +66,51 @@
 - 隔离 PostgreSQL 18.4 的 Stage 2 Platform CI；
 - Stage 3A 根 Alembic、`20260813_0001`、`artifacts/system_settings/audit_events`、PostgreSQL Repository 和独立 Migration CI；
 - Stage 3B Provider/平台无关 Canonical V1 Pydantic Contract、生成 JSON Schema、固定脱敏帖子聚合示例、稀疏 `observed_fields`、评论树/coverage 语义与 Contract Test；
-- Stage 4 `20260814_0002`、`jobs/job_attempt_events`、Job Registry、PostgreSQL Repository、Worker/Reaper、Lease/Fencing/Deadline/重试/取消/Attempt 事件审计和独立 PostgreSQL 18 Job Runtime CI。
-- Stage 5A Provider-neutral Request/Attempt/Error/Billing Pydantic Contract、固定 JSON Schema、一次发送 Provider Client/Fake Transport，以及递归脱敏、gzip、SHA-256、不可覆盖和可回放的 Raw Artifact 独立 CI。
-- Stage 5B 第三条 Revision、`collection_runs/collection_scopes`、真实 Job 唯一外键、Collection Service/Repository 和 PostgreSQL 18.4 独立 CI。
-- Stage 5C 第四条 Revision、`provider_requests/provider_request_attempts`、最终 Scope/Request/Artifact 外键、幂等 Request 与未发送不计费 Attempt，以及 PostgreSQL 18.4 独立 CI。
-- Stage 5D 第五条 Revision、受 Job Fencing 约束的 Dispatch CAS、每 Attempt 一次 Provider Client 调用、Raw/Artifact 终态关联、遗留 `dispatching` 恢复，以及 PostgreSQL 18.4 独立 CI。
+- Stage 4 `20260814_0002`、`jobs/job_attempt_events`、Job Registry、PostgreSQL Repository、Worker/Reaper、Lease/Fencing/Deadline/重试/取消/Attempt 事件审计和独立 PostgreSQL 18 Job Runtime CI；
+- Stage 5A Provider-neutral Request/Attempt/Error/Billing Pydantic Contract、固定 JSON Schema、一次发送 Provider Client/Fake Transport，以及递归脱敏、gzip、SHA-256、不可覆盖和可回放的 Raw Artifact 独立 CI；
+- Stage 5B 第三条 Revision、`collection_runs/collection_scopes`、真实 Job 唯一外键、Collection Service/Repository 和 PostgreSQL 18.4 独立 CI；
+- Stage 5C 第四条 Revision、`provider_requests/provider_request_attempts`、最终 Scope/Request/Artifact 外键、幂等 Request 与未发送不计费 Attempt，以及 PostgreSQL 18.4 独立 CI；
+- Stage 5D 第五条 Revision、受 Job Fencing 约束的 Dispatch CAS、每 Attempt 一次 Provider Client 调用、Raw/Artifact 终态关联、遗留 `dispatching` 恢复，以及 PostgreSQL 18.4 独立 CI；
 - Stage 6 小红书 TikHub App V2 搜索/详情/评论 Operation 与分页、纯 Mapper、脱敏非空搜索 Fixture、Candidate/Ingestion 追加账本、Content/Comment Current+Version+Metric、已存 Raw Replay Job、第六至第九条 Revision，以及 PostgreSQL 18.4 独立 CI。
 
-Stage 4 的机器事实以 `backend/src/aima_ugc/platform/jobs/`、`backend/src/aima_ugc/adapters/persistence/postgres/jobs.py`、第二条 Migration、测试和 CI 为准。Stage 5A 的机器事实以 Provider Contract/Client/Fake/Raw、生成 Schema、测试和 CI 为准；Stage 5B 以 `modules/collection/execution.py`、Collection Table/Repository、第三条 Migration、PostgreSQL 测试和 CI 为准；Stage 5C 以 `modules/collection/provider_persistence.py`、Provider Repository、第四条 Migration、PostgreSQL 测试和 CI 为准；Stage 5D 以 `modules/collection/provider_dispatch.py`、`modules/collection/provider_recovery.py`、PostgreSQL Dispatch Adapter、第五条 Migration、测试和 CI 为准；Stage 6 以 TikHub XHS Operation/Mapper、Candidate/Content Owner 实现、Raw Replay、第六至第九条 Migration、Fixture、测试和 CI 为准。跨文档决定维护在 [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md)，不要在其他 Blueprint 复制实现细节或版本表。
+Stage 4 的机器事实以 `backend/src/aima_ugc/platform/jobs/`、`backend/src/aima_ugc/adapters/persistence/postgres/jobs.py`、第二条 Migration、测试和 CI 为准。Stage 5A 的机器事实以 Provider Contract/Client/Fake/Raw、生成 Schema、测试和 CI 为准；Stage 5B 以 `modules/collection/execution.py`、Collection Table/Repository、第三条 Migration、PostgreSQL 测试和 CI 为准；Stage 5C 以 `modules/collection/provider_persistence.py`、Provider Repository、第四条 Migration、PostgreSQL 测试和 CI 为准；Stage 5D 以 `modules/collection/provider_dispatch.py`、`modules/collection/provider_recovery.py`、PostgreSQL Dispatch Adapter、第五条 Migration、测试和 CI 为准；Stage 6 以 TikHub XHS Operation/Mapper、Candidate/Content Owner 实现、Raw Replay、第六至第九条 Migration、Fixture、测试和 CI 为准。跨文档决定维护在 [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md)，Stage 7 采集业务语义维护在 [`08-采集策略与平台能力.md`](08-采集策略与平台能力.md)。
 
-当前下一步分成两条并行路径。
+## 当前下一步
 
-### 阶段 0：继续补齐不能由技术人员猜测的业务事实
+### Stage 7：可以开始的 Provider / Collection 工作
 
-包括但不限于：
+五平台默认 Provider、首版 TikHub Operation Matrix、统一 Decision Pipeline、自适应评论策略、Capability、Deep Collection、费用预测/硬预算和独立业务调试边界已经在 08 冻结。可以按边界清楚的 Stage 7 PR 开始：
 
-- 第一版页面、角色操作边界、字段和验收流程；
-- 抖音、微博、B站、快手的 Operation/字段/分页/详情/评论/费用/限流能力矩阵，以及小红书真实付费调用的费用/预算/限流生产门禁；
-- 每个平台合法取得并脱敏的真实 Fixture；
-- Raw、个人信息、导出和审计的访问、保留和删除规则；
-- 日请求量、数据量、并发、磁盘预算、SLO、RPO、RTO；
-- Scheduler misfire/catch-up 业务策略。
+- Collection Decision Service；
+- Provider Capability/规范化业务参数 Contract；
+- Plan 平台配置与 Run Snapshot；
+- Provider Config/路由；
+- 最终多级预算 Ledger；
+- 抖音、微博、B站、快手 Operation/分页状态机；
+- Operation Probe / Business Pipeline Probe；
+- 获得合法脱敏真实 Fixture 后实现对应 Mapper/Ingestion 纵切。
 
-### 阶段 5—6：Provider-neutral 基础与首个平台纵切
+**这不表示其余四平台已经兼容完成。** 当前 main 的 TikHub Operation/Mapper 只有小红书；抖音、微博、B站、快手仍必须分别取得合法脱敏非空真实 Fixture、通过 Mapper Contract Test 和 Real Provider Probe 后，才能标记平台纵切完成。
 
-Stage 5A 已建立 Provider Client/Transport Port、Provider Request/Attempt、错误与费用的版本化 Contract、Raw Artifact Envelope 和 Fake Transport。Stage 5B 已用第三条 Revision 建立 `collection_runs/collection_scopes`、真实 `collection_runs.job_id → jobs.id` 唯一外键和 caller-owned transaction 的 Collection Repository；本阶段只接受 `manual/api/backfill`，不创建无父表支撑的 Plan/Occurrence 列或 `scheduled` 语义。Stage 5C 已用第四条 Revision 按最终字段建立 Provider Request/Attempt 表、Scope/Request/Artifact 外键、来源身份冻结、幂等 `pending` Request 和未发送不计费的 `reserved` Attempt。
+### 仍然阻塞的上游事项
 
-Stage 5D 已用第五条 Revision 和生产调用链建立不计费 Provider-neutral Dispatch：短事务验证当前 Job Fencing 并 CAS 进入 `dispatching`，事务外最多调用一次 Provider Client，terminal 短事务关联已校验 Raw 并推进 Artifact `linked`；接管者优先恢复确定性路径上的已落盘 Raw，没有可用 Raw 才保守记为 `unknown`，不复发同一 Attempt。至此 Stage 5 的 Provider-neutral 工程范围完成。
-
-Stage 6 已基于批准的小红书 TikHub App V2 能力和合法脱敏 Fixture，建立搜索/详情/评论 Operation、分页状态、纯 Mapper、Candidate/Ingestion 与 Content/Comment Current+Version+Metric，以及只回放已存 Raw 的正式 Job Handler。Candidate/Ingestion 由数据库 Trigger 保护为只追加账本，成功结果必须绑定 Canonical 身份和业务目标。2026-08-14 的受控真实搜索 Probe 只确认当前 HTTP 200 空页包装和分页会话字段；非空 Mapper 证据仍来自脱敏 Fixture，详情/评论与生产付费采集尚未做真实兼容验收。
-
-Stage 7 仍等待其余平台矩阵、Scheduler 决策，以及真实调用需要的最终多级预算。Stage 5D 的 Fake 结果和 Stage 6 的空页 Probe 都不能证明五平台或生产兼容性。
-
-Stage 1—6 已建立的 Schema/Repository/Contract/Job Runtime/Raw/Dispatch/Ingestion 边界不重复设计；登录、Role/Permission、Principal 和 actor-bound API 幂等继续等待真实第三方身份需求。
+- Scheduler `misfire_policy`、`max_catch_up_runs` 和停机补跑费用/容量保护仍未批准，因此不能启用 Stage 7 自动 Scheduler；
+- Raw、个人信息、导出和审计的访问/保留/删除规则仍待批准；
+- 日请求量、数据量、并发、磁盘预算、SLO、RPO、RTO 仍是生产容量/Release 门禁；
+- Stage 8 正式业务页面不在当前 Stage 7 实现范围。Stage 7 先建立 Capability/Plan 的后端机器 Contract，Stage 8 再通过 OpenAPI 生成 Client 实现页面。
 
 ## 修改规则
 
-- `01`—`06` 描述各领域当前设计；
-- `07` 只保存跨文档已确认决策、唯一初始化版本快照和实施门禁；
+- `01`—`06` 描述各领域基础设计；
+- `07` 保存跨文档已确认决策、版本快照和 Go/No-Go；
+- `08` 保存 Stage 7 采集业务语义、Provider/Operation Matrix、Capability 和成本策略；
+- `docs/collection/` 保存面向开发/调试的通用和平台抓取说明，并始终标记当前代码/Fixture/Probe 状态；
 - 实际代码、Contract、Migration、锁文件和测试建立后，不在 Blueprint 复制第二份机器事实；
 - 所有需要前端或其他受支持调用方使用的公开 HTTP API，都必须由 Pydantic Request/Response + FastAPI Route 生成固定 OpenAPI，再生成前端 TypeScript Client；内部 Repository、Mapper、Provider Adapter、Worker Runtime、Migration 等能力不因存在就自动暴露 HTTP API；
 - 公开 HTTP API 新增、删除或实质变化时，除同步固定 OpenAPI 和生成 Client 外，还必须同步 [`../API接口说明.md`](../API接口说明.md)，说明接口用途、方法/路径、稳定 `operation_id`、主要输入输出、重要错误、权限、分页/幂等/异步 Job 等人类需要理解的语义；完整字段 Schema 仍只由机器 Contract 维护，禁止在 Markdown 中复制第二套字段事实；
 - 前端业务功能默认采用“后端业务能力 → Pydantic HTTP Contract → FastAPI Route → API/Contract Test → 固定 OpenAPI → 生成 TypeScript Client → Feature API/Store → Vue 页面/组件 → E2E”的闭环，页面和按钮不得各自手写 URL 或重复定义 Request/Response Contract；
-- 对具有明确输入输出、独立业务价值、独立失败边界或可以脱离完整系统验证的能力，必须建立与风险匹配的独立验证闭环：测试/调试/Probe 复用生产实现，明确测试位置、Fixture/Fake/隔离依赖、运行命令、预期结果和未覆盖项；项目公共方法写入 [`../测试与调试说明.md`](../测试与调试说明.md)，模块特有入口写入对应模块 README，不为每个小函数机械创建测试文件或测试文档；
+- 对具有明确输入输出、独立业务价值、独立失败边界或可以脱离完整系统验证的能力，必须建立与风险匹配的独立验证闭环：测试/调试/Probe 复用生产实现，明确测试位置、Fixture/Fake/隔离依赖、运行命令、预期结果和未覆盖项；项目公共方法写入 [`../测试与调试说明.md`](../测试与调试说明.md)，Provider/平台特有入口同时写入 [`../collection/`](../collection/) 对应文档；
+- 修改 Provider/Operation/Mapper/分页/评论策略/预算/Capability 时，必须按 08 的“文档同步规则”检查目标平台文档；
 - 设计发生实质变化时，按 `AGENTS.md` 和 Skill 的 L1/L2/L3 流程处理；
 - 受影响的文档才更新，不为形式保持“所有文档都有变化”；
 - 长期文档直接描述合并后的当前状态，不写成变更流水账。
@@ -115,7 +122,7 @@ Stage 1—6 已建立的 Schema/Repository/Contract/Job Runtime/Raw/Dispatch/Ing
 → 再建立机器 Contract
 → 再实现最小纵切
 → 让每个有价值的边界可以独立验证
-→ 用真实测试和集成证据验证
+→ 用真实 Fixture / PostgreSQL / Probe / CI 证据验证
 → 最后扩展并行开发
 ```
 
