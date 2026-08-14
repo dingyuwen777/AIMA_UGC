@@ -181,6 +181,11 @@ Provider Request/Attempt 持久化和 `scope_id` 最终外键。
 - 全量 Unit/Contract/API 本地运行有 33 passed、17 setup error；错误均发生在 pytest 读取宿主或
   workspace 临时目录时返回 `WinError 5`，没有测试断言失败。尝试使用仓库内独立 basetemp 仍被
   同一 ACL 拒绝；保留原测试，等待通用 Linux CI 复验。
+- 首轮 PR CI：通用 CI、Stage 4 和 Stage 5B 均通过；Stage 5A 原工作流因扫描整个
+  `tests/integration/collection` 而误收集新增 PostgreSQL 测试，在未配置 Secret 的 Stage 5A 环境
+  产生 4 个 setup error（其余 22 passed）。失败日志确认不是断言或生产代码错误。修复将 Stage 5A
+  测试入口精确收窄到原有 Provider Client、Raw Artifact 和 Provider Contract 文件；Stage 5B
+  PostgreSQL 测试继续只由配置真实 PostgreSQL 18.4 的新工作流执行，未删除或跳过任何测试。
 
 # 文档影响
 
