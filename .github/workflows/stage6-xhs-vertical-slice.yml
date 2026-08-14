@@ -117,11 +117,18 @@ jobs:
           uv run alembic downgrade 20260814_0005
           uv run alembic upgrade head
           uv run alembic check
-      - name: Verify previous Stage 6 revision to head
+      - name: Verify first Stage 6 revision to head
         shell: bash
         run: |
           set -euo pipefail
           uv run alembic downgrade 20260814_0006
+          uv run alembic upgrade head
+          uv run alembic check
+      - name: Verify previous Stage 6 revision to head
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run alembic downgrade 20260814_0007
           uv run alembic upgrade head
           uv run alembic check
       - name: Verify base round trip
