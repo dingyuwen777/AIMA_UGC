@@ -11,6 +11,11 @@ from aima_ugc.contracts.canonical import (
     CanonicalContentAggregateV1,
     CanonicalContentV1,
 )
+from aima_ugc.contracts.collection import (
+    CollectionDecisionRequestV1,
+    CollectionDecisionV1,
+    ProviderPlatformCapabilityV1,
+)
 from aima_ugc.contracts.provider import ProviderAttemptV1, ProviderRequestV1, RawEnvelopeV1
 from aima_ugc.entrypoints.api_main import create_app
 
@@ -18,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[2]
 OPENAPI_TARGET = ROOT / "contracts" / "openapi" / "openapi.json"
 CANONICAL_DIR = ROOT / "contracts" / "canonical"
 PROVIDER_DIR = ROOT / "contracts" / "provider"
+COLLECTION_DIR = ROOT / "contracts" / "collection"
 CANONICAL_MODELS = {
     "content.v1.schema.json": CanonicalContentV1,
     "comment.v1.schema.json": CanonicalCommentV1,
@@ -27,6 +33,11 @@ PROVIDER_MODELS = {
     "request.v1.schema.json": ProviderRequestV1,
     "attempt.v1.schema.json": ProviderAttemptV1,
     "raw-envelope.v1.schema.json": RawEnvelopeV1,
+}
+COLLECTION_MODELS = {
+    "decision-request.v1.schema.json": CollectionDecisionRequestV1,
+    "decision.v1.schema.json": CollectionDecisionV1,
+    "provider-platform-capability.v1.schema.json": ProviderPlatformCapabilityV1,
 }
 
 
@@ -72,6 +83,12 @@ def main() -> int:
             for filename, model in PROVIDER_MODELS.items()
         }
     )
+    expected.update(
+        {
+            COLLECTION_DIR / filename: render_schema(model)
+            for filename, model in COLLECTION_MODELS.items()
+        }
+    )
 
     if args.check:
         stale = [
@@ -82,7 +99,7 @@ def main() -> int:
         if stale:
             print("CONTRACT_STALE: " + ", ".join(str(path) for path in stale))
             return 1
-        print("OpenAPI、Canonical 与 Provider Contract 已同步。")
+        print("OpenAPI、Canonical、Provider 与 Collection Contract 已同步。")
         return 0
 
     for path, rendered in expected.items():
