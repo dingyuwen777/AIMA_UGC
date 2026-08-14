@@ -294,36 +294,66 @@ def test_postgres_ingestion_preserves_sparse_fields_a_b_a_metrics_and_comment_tr
     session = database_runtime.new_session()
     try:
         with session.begin():
-            chain = _insert_source_chain(
-                session,
-                operation="search_notes",
-                source_value="爱玛",
-            )
             service = ContentIngestionService(PostgresContentRepository(session))
-            context = _mapping_context(chain, operation="search_notes")
             base = {
                 "id": "note-history",
                 "type": "normal",
                 "desc": "正文必须保留",
                 "liked_count": 10,
             }
+
+            first_chain = _insert_source_chain(
+                session,
+                operation="search_notes",
+                source_value="爱玛-A",
+            )
             first = service.ingest_content(
-                map_content({**base, "title": "A"}, context, item_locator="a")
+                map_content(
+                    {**base, "title": "A"},
+                    _mapping_context(first_chain, operation="search_notes"),
+                    item_locator="note:note-history",
+                )
+            )
+
+            second_chain = _insert_source_chain(
+                session,
+                operation="search_notes",
+                source_value="爱玛-B",
             )
             service.ingest_content(
-                map_content({**base, "title": "B", "liked_count": 20}, context, item_locator="b")
+                map_content(
+                    {**base, "title": "B", "liked_count": 20},
+                    _mapping_context(second_chain, operation="search_notes"),
+                    item_locator="note:note-history",
+                )
+            )
+
+            third_chain = _insert_source_chain(
+                session,
+                operation="search_notes",
+                source_value="爱玛-A2",
             )
             service.ingest_content(
-                map_content({**base, "title": "A", "liked_count": 8}, context, item_locator="c")
+                map_content(
+                    {**base, "title": "A", "liked_count": 8},
+                    _mapping_context(third_chain, operation="search_notes"),
+                    item_locator="note:note-history",
+                )
             )
-            sparse_context = replace(
-                context,
+
+            checkpoint_chain = _insert_source_chain(
+                session,
+                operation="search_notes",
+                source_value="爱玛-checkpoint",
+            )
+            checkpoint_context = replace(
+                _mapping_context(checkpoint_chain, operation="search_notes"),
                 observed_at=datetime(2026, 8, 6, 10, 0, tzinfo=UTC),
             )
             sparse = map_content(
                 {"id": "note-history", "type": "normal", "title": "A", "liked_count": 8},
-                sparse_context,
-                item_locator="d",
+                checkpoint_context,
+                item_locator="note:note-history",
             )
             service.ingest_content(sparse)
             service.ingest_content(sparse)
@@ -445,16 +475,18 @@ def test_raw_replay_and_sparse_author_do_not_duplicate_or_clear_history(
             )
             service.ingest_content(sparse_author)
 
-        assert session.execute(
+        version_ids = session.execute(
             select(content_versions_table.c.id).where(
                 content_versions_table.c.content_id == first.target_id
             )
-        ).scalars().all().__len__() == 1
-        assert session.execute(
+        ).scalars().all()
+        metric_ids = session.execute(
             select(content_metric_observations_table.c.id).where(
                 content_metric_observations_table.c.content_id == first.target_id
             )
-        ).scalars().all().__len__() == 1
+        ).scalars().all()
+        assert len(version_ids) == 1
+        assert len(metric_ids) == 1
         account = (
             session.execute(
                 select(accounts_table).where(
