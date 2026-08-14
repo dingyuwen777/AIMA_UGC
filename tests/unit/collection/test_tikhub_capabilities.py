@@ -48,7 +48,8 @@ def test_xhs_tikhub_capability_matches_current_stage6_operations() -> None:
 
     comments = _operation("comments")
     assert comments.provider_operations == ("get_note_comments",)
-    # TikHub API 支持更多排序，但当前 Stage 6 builder 固定 latest_v2；Capability 只能暴露已实现选择。
+    # TikHub API 支持更多排序，但当前 Stage 6 builder 固定 latest_v2；
+    # Capability 只能暴露当前仓库已经实现的选择。
     assert comments.comment_sort_modes == ("latest",)
     assert comments.supports_reply_count is True
     assert comments.supports_sub_comments is True
