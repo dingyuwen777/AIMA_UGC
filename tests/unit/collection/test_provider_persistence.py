@@ -11,6 +11,12 @@ from aima_ugc.modules.collection.provider_persistence import (
     ProviderPersistenceService,
     ProviderRequestRecord,
 )
+from aima_ugc.modules.collection.tables import (
+    provider_request_attempts_table,
+    provider_requests_table,
+)
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.schema import CreateIndex
 
 
 class RecordingProviderRepository:
@@ -86,3 +92,10 @@ def test_service_can_idempotently_ensure_request_without_creating_attempt() -> N
     assert repository.request_calls == [request]
     assert repository.attempt_calls == []
     assert repository.get_request_calls == []
+
+
+def test_provider_index_names_compile_for_postgresql() -> None:
+    dialect = postgresql.dialect()
+    for table in (provider_requests_table, provider_request_attempts_table):
+        for index in table.indexes:
+            assert str(CreateIndex(index).compile(dialect=dialect))

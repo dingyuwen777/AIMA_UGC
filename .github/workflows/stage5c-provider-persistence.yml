@@ -173,7 +173,7 @@ jobs:
           assert "ck_provider_request_attempts_billing_status_allowed" in attempt_checks, attempt_checks
           assert "ix_provider_requests_scope_id_created_at" in request_indexes, request_indexes
           assert (
-              "ix_provider_request_attempts_dispatch_status_dispatch_started_at" in attempt_indexes
+              "ix_provider_attempts_dispatch_status_started_at" in attempt_indexes
           ), attempt_indexes
           assert "ix_provider_request_attempts_completed_at" in attempt_indexes, attempt_indexes
           assert triggers == {

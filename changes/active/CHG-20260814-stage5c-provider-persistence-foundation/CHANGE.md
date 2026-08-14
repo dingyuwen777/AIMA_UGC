@@ -177,8 +177,9 @@ Dispatcher、费用预算、Raw 关联或真实平台已经完成。
 - Red：`.venv\Scripts\python.exe -m pytest -p no:cacheprovider
   tests/unit/collection/test_provider_persistence.py -q` 在生产模块尚不存在时以
   `ModuleNotFoundError: aima_ugc.modules.collection.provider_persistence` 失败；不是环境失败。
-- Green/回归：同一目标命令 `2 passed`；Collection Unit + Provider Contract `21 passed`；Collection
-  Unit + 全部 Contract + API `30 passed`。
+- Green/回归：初次实现目标命令 `2 passed`；PR 首轮 PostgreSQL CI 暴露显式索引名超过 63 字符后，
+  新增 PostgreSQL dialect DDL 编译回归测试并确认 `2 passed, 1 failed` 的正确 Red；缩短索引名后目标
+  `3 passed`，Collection Unit + 全部 Contract + API `31 passed`。
 - 静态与质量：Ruff format/check、mypy（74 个源码文件）、架构、9 表 Owner、Secret、文档、Contract
   生成漂移与兼容检查均退出 0；`uv lock --check` 退出 0。
 - Wheel：构建 `aima_ugc-0.1.0-py3-none-any.whl`（103 entries，84801 bytes），检查不含
@@ -188,6 +189,9 @@ Dispatcher、费用预算、Raw 关联或真实平台已经完成。
   18.4 CI 提供 Migration、触发器和并发证据。
 - 完整 Windows Unit 共 `35 passed, 1 failed`；唯一失败为系统未授予创建目录符号链接权限
   `WinError 1314`，未跳过或修改测试，等待 Linux 通用 CI 复核。
+- PR #23 首轮 Stage 4/5B/5C 的 `alembic upgrade head` 共同失败；完整日志根因为
+  `Identifier 'ix_provider_request_attempts_dispatch_status_dispatch_started_at' exceeds maximum length of
+  63 characters`。已同步修正 Table、第四条 Migration 与 CI 断言，等待新提交复核。
 
 # 文档影响
 

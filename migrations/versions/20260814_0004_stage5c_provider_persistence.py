@@ -237,7 +237,7 @@ def upgrade() -> None:
         ),
     )
     op.create_index(
-        "ix_provider_request_attempts_dispatch_status_dispatch_started_at",
+        "ix_provider_attempts_dispatch_status_started_at",
         "provider_request_attempts",
         ["dispatch_status", "dispatch_started_at"],
     )
@@ -267,7 +267,7 @@ def downgrade() -> None:
         table_name="provider_request_attempts",
     )
     op.drop_index(
-        "ix_provider_request_attempts_dispatch_status_dispatch_started_at",
+        "ix_provider_attempts_dispatch_status_started_at",
         table_name="provider_request_attempts",
     )
     op.drop_table("provider_request_attempts")

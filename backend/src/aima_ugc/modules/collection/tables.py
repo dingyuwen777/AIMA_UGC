@@ -254,7 +254,7 @@ Index(
     provider_requests_table.c.created_at,
 )
 Index(
-    "ix_provider_request_attempts_dispatch_status_dispatch_started_at",
+    "ix_provider_attempts_dispatch_status_started_at",
     provider_request_attempts_table.c.dispatch_status,
     provider_request_attempts_table.c.dispatch_started_at,
 )
