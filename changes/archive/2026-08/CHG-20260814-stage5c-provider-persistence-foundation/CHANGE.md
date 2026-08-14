@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260814-stage5c-provider-persistence-foundation"
 title: "Stage 5C Provider 持久化基础"
 level: L3
-status: in_progress
+status: done
 owner: "dingyuwen777"
 branch: "feature/stage5c-provider-persistence-foundation"
 created: 2026-08-14
@@ -49,21 +49,21 @@ data_changes:
 
 # 成功标准
 
-- [ ] `provider_requests.scope_id` 是 `collection_scopes.id` 的非空外键，数据库不重复保存
+- [x] `provider_requests.scope_id` 是 `collection_scopes.id` 的非空外键，数据库不重复保存
   `run_id/platform`，Repository 根据 Scope→Run 事实校验 `ProviderRequestV1` 的来源一致性。
-- [ ] `provider_requests` 使用 `(scope_id, request_fingerprint)` 唯一约束实现逻辑请求幂等；同一
+- [x] `provider_requests` 使用 `(scope_id, request_fingerprint)` 唯一约束实现逻辑请求幂等；同一
   Contract 重放返回原记录，冲突 ID、Provider 或稳定请求内容关闭失败。
-- [ ] `provider_request_attempts` 具有最终 `provider_request_id/raw_artifact_id` 外键、
+- [x] `provider_request_attempts` 具有最终 `provider_request_id/raw_artifact_id` 外键、
   `(provider_request_id, attempt_no)` 与 `(id, provider_request_id)` 唯一约束，以及 Blueprint 的
   Dispatch/Billing/时间/金额一致性约束。
-- [ ] 本阶段 Request 只以 `pending` 创建且数据库暂不增加完整状态白名单；创建入口只原子建立
+- [x] 本阶段 Request 只以 `pending` 创建且数据库暂不增加完整状态白名单；创建入口只原子建立
   `not_billable + reserved` Attempt，并同步递增 Request `attempt_count`。
-- [ ] 数据库 Trigger 禁止已有 Request 的 Scope 身份被改写、已有 Attempt 的 Request 来源身份被
+- [x] 数据库 Trigger 禁止已有 Request 的 Scope 身份被改写、已有 Attempt 的 Request 来源身份被
   改写，并在 Attempt 离开 `reserved` 后冻结其 Request/Raw 来源引用。
-- [ ] 两张表唯一写 Owner 为 `collection`；Repository 不提交事务，不执行网络或文件 I/O。
-- [ ] PostgreSQL 18 集成测试覆盖最终 FK/Unique/Check、幂等与冲突、并发 Attempt 序号、来源冻结和
+- [x] 两张表唯一写 Owner 为 `collection`；Repository 不提交事务，不执行网络或文件 I/O。
+- [x] PostgreSQL 18 集成测试覆盖最终 FK/Unique/Check、幂等与冲突、并发 Attempt 序号、来源冻结和
   caller rollback；第四条 Revision 覆盖 `base → head`、`20260814_0003 → head` 及双向重建。
-- [ ] Stage 1–5B 既有 Contract、JSON Schema、Artifact/Job 行为、依赖和锁文件保持兼容，独立
+- [x] Stage 1–5B 既有 Contract、JSON Schema、Artifact/Job 行为、依赖和锁文件保持兼容，独立
   Stage 5C CI、README、Blueprint 和测试说明与实现同步。
 
 # 范围
@@ -157,7 +157,7 @@ Dispatcher、费用预算、Raw 关联或真实平台已经完成。
 - [x] Refactor：全绿后只整理重复、映射和错误命名，不扩大状态机或外部 I/O 范围。
 - [x] 同步 Collection README、Blueprint 导航/阶段门禁、统一测试说明和独立 Stage 5C CI。
 - [x] 执行需求符合性与代码质量两阶段复核，修复严重/重要问题。
-- [ ] 取得本地/CI/PR/合并后 main 新鲜证据并归档 Change。
+- [x] 取得本地/CI/PR/合并后 main 新鲜证据并归档 Change。
 
 # 验证
 
@@ -185,13 +185,24 @@ Dispatcher、费用预算、Raw 关联或真实平台已经完成。
 - Wheel：构建 `aima_ugc-0.1.0-py3-none-any.whl`（103 entries，84801 bytes），检查不含
   `.runtime`，在隔离 venv `pip --no-deps` 安装后直接导入输出 `0.1.0`。
 - 本地限制：真实 PostgreSQL 目标测试共 8 项均在 setup 因缺少
-  `.runtime/secrets/postgres_password` 停止，Docker daemon 查询超时；等待 Stage 5C Linux/PostgreSQL
-  18.4 CI 提供 Migration、触发器和并发证据。
+  `.runtime/secrets/postgres_password` 停止，Docker daemon 查询超时；后续 Stage 5C Linux/PostgreSQL
+  18.4 CI 已补齐 Migration、触发器和并发证据。
 - 完整 Windows Unit 共 `35 passed, 1 failed`；唯一失败为系统未授予创建目录符号链接权限
-  `WinError 1314`，未跳过或修改测试，等待 Linux 通用 CI 复核。
+  `WinError 1314`，未跳过或修改测试；后续 Linux 通用 CI 已复核成功。
 - PR #23 首轮 Stage 4/5B/5C 的 `alembic upgrade head` 共同失败；完整日志根因为
   `Identifier 'ix_provider_request_attempts_dispatch_status_dispatch_started_at' exceeds maximum length of
-  63 characters`。已同步修正 Table、第四条 Migration 与 CI 断言，等待新提交复核。
+  63 characters`。已同步修正 Table、第四条 Migration 与 CI 断言，并由第二轮全部门禁复核成功。
+- PR #23 最终 head `9174867f55176104013e5b46d0e139fc0e832262`：通用 CI
+  `31780467530`、Stage 4 `31780467529`、Stage 5A `31780467503`、Stage 5B
+  `31780467509`、Stage 5C `31780467516` 全部 completed/success；Stage 5C 实际执行 22 个
+  Unit/Contract 与 15 个 PostgreSQL Collection Integration，并验证空库/上一 Revision 升级、两种
+  downgrade/re-upgrade、最终约束/索引/触发器和全部质量门禁。
+- PR #23 squash 合并到 main，merge commit
+  `ba5c92231e0f2e5c8193327ae85015bc944ff57d`。远端实现分支已由合并流程删除，本地实现分支在
+  main 复验后删除。
+- 合并后 main 通用 CI `31780695671`、Stage 4 `31780695669`、Stage 5A `31780695672`、
+  Stage 5B `31780695695`、Stage 5C `31780695670` 全部 completed/success；本地 main 与
+  origin/main 均指向合并提交且实现阶段工作区干净。
 
 # 文档影响
 
@@ -205,6 +216,11 @@ Dispatcher、费用预算、Raw 关联或真实平台已经完成。
 
 - 基线 main：`bdc1e2895e3336edc9b3c2c3b29d3df95ed6b718`。
 - 实现分支：`feature/stage5c-provider-persistence-foundation`。
-- Commit：尚未创建。
-- PR：尚未创建。
+- 实现 Commit：`82cfbeb`（`建立 Stage 5C Provider 持久化基础`）、`9174867`
+  （`修复 PostgreSQL 索引名超长`）。
+- 实现 PR：[PR #23](https://github.com/dingyuwen777/AIMA_UGC/pull/23)，squash merge commit
+  `ba5c92231e0f2e5c8193327ae85015bc944ff57d`。
+- Change 收尾分支：`docs/archive-stage5c-provider-persistence`。
+- Change 状态：done，归档至
+  `changes/archive/2026-08/CHG-20260814-stage5c-provider-persistence-foundation/`。
 - 发布：未部署；本 Change 只建立数据库和库级入口。
