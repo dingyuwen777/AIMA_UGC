@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
@@ -13,7 +13,11 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import insert, select, update
 from sqlalchemy.orm import Session
 
-from aima_ugc.contracts.canonical import CanonicalCommentV1, CanonicalContentV1
+from aima_ugc.contracts.canonical import (
+    CanonicalAuthorV1,
+    CanonicalCommentV1,
+    CanonicalContentV1,
+)
 from aima_ugc.modules.content.tables import (
     accounts_table,
     comment_metric_observations_table,
@@ -36,6 +40,27 @@ _CONTENT_METRICS = (
     "danmaku_count",
     "coin_count",
     "download_count",
+)
+_CONTENT_BUSINESS_COLUMNS = (
+    "content_type",
+    "title",
+    "text",
+    "canonical_url",
+    "share_url",
+    "author_account_id",
+    "published_at",
+    "source_updated_at",
+    "status",
+)
+_COMMENT_BUSINESS_COLUMNS = (
+    "root_comment_id",
+    "parent_comment_id",
+    "text",
+    "published_at",
+    "source_updated_at",
+    "status",
+    "is_by_content_author",
+    "author_account_id",
 )
 
 
@@ -70,13 +95,13 @@ class PostgresContentRepository:
         author_id = self._upsert_author(observation)
         if row is None:
             content_id = uuid4()
-            values = _new_content_values(content_id, observation, author_id)
-            self._session.execute(insert(contents_table).values(**values))
+            state = _new_content_state(content_id, observation, author_id)
+            self._session.execute(insert(contents_table).values(**state))
             self._append_content_version(
                 content_id=content_id,
                 version_no=1,
+                state=state,
                 observation=observation,
-                author_id=author_id,
                 attempt_id=attempt_id,
                 raw_id=raw_id,
             )
@@ -86,18 +111,24 @@ class PostgresContentRepository:
                 reason="initial",
                 attempt_id=attempt_id,
                 raw_id=raw_id,
+                state=state,
             )
             return PostgresIngestionResult(content_id, 1, True, True)
 
-        content_id = row["id"]
-        updates = _content_updates(dict(row), observation, author_id)
-        business_changed = _content_business_tuple(dict(row)) != _content_business_tuple(
-            {**dict(row), **updates}
+        current = dict(row)
+        content_id = current["id"]
+        updates = _content_updates(observation, author_id)
+        merged = {**current, **updates}
+        business_changed = _business_tuple(current, _CONTENT_BUSINESS_COLUMNS) != _business_tuple(
+            merged, _CONTENT_BUSINESS_COLUMNS
         )
-        version_no = int(row["current_version"]) + (1 if business_changed else 0)
-        updates["current_version"] = version_no
-        updates["last_seen_at"] = max(row["last_seen_at"], observation.observed_at)
-        updates["updated_at"] = observation.observed_at
+        version_no = int(current["current_version"]) + (1 if business_changed else 0)
+        updates.update(
+            current_version=version_no,
+            last_seen_at=max(current["last_seen_at"], observation.observed_at),
+            updated_at=observation.observed_at,
+        )
+        merged.update(updates)
         self._session.execute(
             update(contents_table).where(contents_table.c.id == content_id).values(**updates)
         )
@@ -105,15 +136,15 @@ class PostgresContentRepository:
             self._append_content_version(
                 content_id=content_id,
                 version_no=version_no,
-                observation=_merge_content_for_version(dict(row), updates, observation),
-                author_id=updates.get("author_account_id", row["author_account_id"]),
+                state=merged,
+                observation=observation,
                 attempt_id=attempt_id,
                 raw_id=raw_id,
             )
 
         metric_changed = any(
             f"metrics.{name}" in observation.observed_fields
-            and updates.get(f"current_{name}", row[f"current_{name}"]) != row[f"current_{name}"]
+            and merged.get(f"current_{name}") != current.get(f"current_{name}")
             for name in _CONTENT_METRICS
         )
         metric_recorded = False
@@ -132,10 +163,15 @@ class PostgresContentRepository:
                     reason=reason,
                     attempt_id=attempt_id,
                     raw_id=raw_id,
-                    current={**dict(row), **updates},
+                    state=merged,
                 )
                 metric_recorded = True
-        return PostgresIngestionResult(content_id, version_no, business_changed, metric_recorded)
+        return PostgresIngestionResult(
+            content_id,
+            version_no,
+            business_changed,
+            metric_recorded,
+        )
 
     def ingest_comment(self, observation: CanonicalCommentV1) -> PostgresIngestionResult:
         attempt_id, raw_id = _source_ids(observation)
@@ -158,124 +194,67 @@ class PostgresContentRepository:
             .one_or_none()
         )
         author_id = self._upsert_comment_author(observation)
-        like_count = (
-            observation.metrics.like_count
-            if "metrics.like_count" in observation.observed_fields
-            else None
-        )
-        reply_count = (
-            observation.metrics.reply_count
-            if "metrics.reply_count" in observation.observed_fields
-            else None
-        )
         if row is None:
             comment_id = uuid4()
-            self._session.execute(
-                insert(comments_table).values(
-                    id=comment_id,
-                    content_id=content_id,
-                    external_comment_id=observation.external_comment_id,
-                    root_comment_id=observation.root_comment_id,
-                    parent_comment_id=observation.parent_comment_id,
-                    author_account_id=author_id,
-                    text=observation.text if "text" in observation.observed_fields else None,
-                    published_at=(
-                        observation.published_at
-                        if "published_at" in observation.observed_fields
-                        else None
-                    ),
-                    source_updated_at=(
-                        observation.source_updated_at
-                        if "source_updated_at" in observation.observed_fields
-                        else None
-                    ),
-                    status=observation.status if "status" in observation.observed_fields else None,
-                    is_by_content_author=(
-                        observation.is_by_content_author
-                        if "is_by_content_author" in observation.observed_fields
-                        else None
-                    ),
-                    first_seen_at=observation.observed_at,
-                    last_seen_at=observation.observed_at,
-                    current_like_count=like_count,
-                    current_reply_count=reply_count,
-                    current_version=1,
-                    updated_at=observation.observed_at,
-                )
-            )
+            state = _new_comment_state(comment_id, content_id, observation, author_id)
+            self._session.execute(insert(comments_table).values(**state))
             self._append_comment_version(
-                comment_id,
-                1,
-                observation,
+                comment_id=comment_id,
+                version_no=1,
+                state=state,
+                observation=observation,
                 attempt_id=attempt_id,
                 raw_id=raw_id,
             )
             self._append_comment_metric(
-                comment_id,
-                observation,
+                comment_id=comment_id,
+                observation=observation,
                 reason="initial",
                 attempt_id=attempt_id,
                 raw_id=raw_id,
-                like_count=like_count,
-                reply_count=reply_count,
+                state=state,
             )
             return PostgresIngestionResult(comment_id, 1, True, True)
 
-        comment_id = row["id"]
-        updates: dict[str, Any] = {"last_seen_at": max(row["last_seen_at"], observation.observed_at)}
-        field_map = {
-            "root_comment_id": "root_comment_id",
-            "parent_comment_id": "parent_comment_id",
-            "text": "text",
-            "published_at": "published_at",
-            "source_updated_at": "source_updated_at",
-            "status": "status",
-            "is_by_content_author": "is_by_content_author",
-        }
-        for path, column in field_map.items():
-            if path in observation.observed_fields:
-                updates[column] = getattr(observation, path)
-        if observation.author is not None and author_id is not None:
-            updates["author_account_id"] = author_id
-        if "metrics.like_count" in observation.observed_fields:
-            updates["current_like_count"] = observation.metrics.like_count
-        if "metrics.reply_count" in observation.observed_fields:
-            updates["current_reply_count"] = observation.metrics.reply_count
-        business_columns = (
-            "root_comment_id",
-            "parent_comment_id",
-            "text",
-            "published_at",
-            "source_updated_at",
-            "status",
-            "is_by_content_author",
-            "author_account_id",
+        current = dict(row)
+        comment_id = current["id"]
+        updates = _comment_updates(observation, author_id)
+        merged = {**current, **updates}
+        business_changed = _business_tuple(current, _COMMENT_BUSINESS_COLUMNS) != _business_tuple(
+            merged, _COMMENT_BUSINESS_COLUMNS
         )
-        business_changed = any(updates.get(name, row[name]) != row[name] for name in business_columns)
-        version_no = int(row["current_version"]) + (1 if business_changed else 0)
-        updates["current_version"] = version_no
-        updates["updated_at"] = observation.observed_at
+        version_no = int(current["current_version"]) + (1 if business_changed else 0)
+        updates.update(
+            current_version=version_no,
+            last_seen_at=max(current["last_seen_at"], observation.observed_at),
+            updated_at=observation.observed_at,
+        )
+        merged.update(updates)
         self._session.execute(
             update(comments_table).where(comments_table.c.id == comment_id).values(**updates)
         )
         if business_changed:
             self._append_comment_version(
-                comment_id,
-                version_no,
-                observation,
+                comment_id=comment_id,
+                version_no=version_no,
+                state=merged,
+                observation=observation,
                 attempt_id=attempt_id,
                 raw_id=raw_id,
-                current={**dict(row), **updates},
             )
+
         metric_changed = (
-            ("metrics.like_count" in observation.observed_fields and like_count != row["current_like_count"])
-            or (
-                "metrics.reply_count" in observation.observed_fields
-                and reply_count != row["current_reply_count"]
-            )
+            "metrics.like_count" in observation.observed_fields
+            and merged.get("current_like_count") != current.get("current_like_count")
+        ) or (
+            "metrics.reply_count" in observation.observed_fields
+            and merged.get("current_reply_count") != current.get("current_reply_count")
         )
         metric_recorded = False
-        if "metrics.like_count" in observation.observed_fields or "metrics.reply_count" in observation.observed_fields:
+        if (
+            "metrics.like_count" in observation.observed_fields
+            or "metrics.reply_count" in observation.observed_fields
+        ):
             day = observation.observed_at.astimezone(_BUSINESS_TZ).date()
             if metric_changed:
                 reason = "changed"
@@ -283,34 +262,55 @@ class PostgresContentRepository:
                 reason = "daily_checkpoint"
             else:
                 reason = None
-            if reason:
+            if reason is not None:
                 self._append_comment_metric(
-                    comment_id,
-                    observation,
+                    comment_id=comment_id,
+                    observation=observation,
                     reason=reason,
                     attempt_id=attempt_id,
                     raw_id=raw_id,
-                    like_count=updates.get("current_like_count", row["current_like_count"]),
-                    reply_count=updates.get("current_reply_count", row["current_reply_count"]),
+                    state=merged,
                 )
                 metric_recorded = True
-        return PostgresIngestionResult(comment_id, version_no, business_changed, metric_recorded)
+        return PostgresIngestionResult(
+            comment_id,
+            version_no,
+            business_changed,
+            metric_recorded,
+        )
 
     def _upsert_author(self, observation: CanonicalContentV1) -> UUID | None:
-        return self._upsert_account(observation.platform, observation.author, observation.observed_at)
+        return self._upsert_account(
+            observation.platform,
+            observation.author,
+            observation.observed_at,
+        )
 
     def _upsert_comment_author(self, observation: CanonicalCommentV1) -> UUID | None:
-        return self._upsert_account(observation.platform, observation.author, observation.observed_at)
+        return self._upsert_account(
+            observation.platform,
+            observation.author,
+            observation.observed_at,
+        )
 
-    def _upsert_account(self, platform: str, author: Any, observed_at: Any) -> UUID | None:
+    def _upsert_account(
+        self,
+        platform: str,
+        author: CanonicalAuthorV1 | None,
+        observed_at: datetime,
+    ) -> UUID | None:
         if author is None or author.external_account_id is None:
             return None
-        row = self._session.execute(
-            select(accounts_table).where(
-                accounts_table.c.platform == platform,
-                accounts_table.c.external_account_id == author.external_account_id,
+        row = (
+            self._session.execute(
+                select(accounts_table).where(
+                    accounts_table.c.platform == platform,
+                    accounts_table.c.external_account_id == author.external_account_id,
+                )
             )
-        ).mappings().one_or_none()
+            .mappings()
+            .one_or_none()
+        )
         values = {
             "display_name": author.display_name,
             "handle": author.handle,
@@ -328,7 +328,11 @@ class PostgresContentRepository:
             "updated_at": observed_at,
         }
         if row is not None:
-            self._session.execute(update(accounts_table).where(accounts_table.c.id == row["id"]).values(**values))
+            self._session.execute(
+                update(accounts_table)
+                .where(accounts_table.c.id == row["id"])
+                .values(**values)
+            )
             return row["id"]
         account_id = uuid4()
         self._session.execute(
@@ -347,26 +351,29 @@ class PostgresContentRepository:
         *,
         content_id: UUID,
         version_no: int,
+        state: dict[str, Any],
         observation: CanonicalContentV1,
-        author_id: UUID | None,
         attempt_id: UUID,
         raw_id: UUID,
     ) -> None:
-        del author_id
         self._session.execute(
             insert(content_versions_table).values(
                 id=uuid4(),
                 content_id=content_id,
                 version_no=version_no,
-                content_type=observation.content_type,
-                title=observation.title,
-                text=observation.text,
-                canonical_url=str(observation.canonical_url) if observation.canonical_url else None,
-                share_url=str(observation.share_url) if observation.share_url else None,
-                author_snapshot=(observation.author.model_dump(mode="json") if observation.author else None),
-                published_at=observation.published_at,
-                source_updated_at=observation.source_updated_at,
-                status=observation.status,
+                content_type=state["content_type"],
+                title=state.get("title"),
+                text=state.get("text"),
+                canonical_url=state.get("canonical_url"),
+                share_url=state.get("share_url"),
+                author_snapshot=(
+                    observation.author.model_dump(mode="json")
+                    if observation.author is not None
+                    else None
+                ),
+                published_at=state.get("published_at"),
+                source_updated_at=state.get("source_updated_at"),
+                status=state.get("status"),
                 provider_attempt_id=attempt_id,
                 raw_artifact_id=raw_id,
                 observed_at=observation.observed_at,
@@ -381,17 +388,9 @@ class PostgresContentRepository:
         reason: str,
         attempt_id: UUID,
         raw_id: UUID,
-        current: dict[str, Any] | None = None,
+        state: dict[str, Any],
     ) -> None:
-        values = current or {}
-        metrics = {
-            name: (
-                getattr(observation.metrics, name)
-                if f"metrics.{name}" in observation.observed_fields
-                else values.get(f"current_{name}")
-            )
-            for name in _CONTENT_METRICS
-        }
+        metrics = {name: state.get(f"current_{name}") for name in _CONTENT_METRICS}
         self._session.execute(
             insert(content_metric_observations_table).values(
                 id=uuid4(),
@@ -408,30 +407,31 @@ class PostgresContentRepository:
 
     def _append_comment_version(
         self,
+        *,
         comment_id: UUID,
         version_no: int,
+        state: dict[str, Any],
         observation: CanonicalCommentV1,
-        *,
         attempt_id: UUID,
         raw_id: UUID,
-        current: dict[str, Any] | None = None,
     ) -> None:
-        state = current or {}
         self._session.execute(
             insert(comment_versions_table).values(
                 id=uuid4(),
                 comment_id=comment_id,
                 version_no=version_no,
-                root_comment_id=state.get("root_comment_id", observation.root_comment_id),
-                parent_comment_id=state.get("parent_comment_id", observation.parent_comment_id),
-                text=state.get("text", observation.text),
-                author_snapshot=(observation.author.model_dump(mode="json") if observation.author else None),
-                published_at=state.get("published_at", observation.published_at),
-                source_updated_at=state.get("source_updated_at", observation.source_updated_at),
-                status=state.get("status", observation.status),
-                is_by_content_author=state.get(
-                    "is_by_content_author", observation.is_by_content_author
+                root_comment_id=state.get("root_comment_id"),
+                parent_comment_id=state.get("parent_comment_id"),
+                text=state.get("text"),
+                author_snapshot=(
+                    observation.author.model_dump(mode="json")
+                    if observation.author is not None
+                    else None
                 ),
+                published_at=state.get("published_at"),
+                source_updated_at=state.get("source_updated_at"),
+                status=state.get("status"),
+                is_by_content_author=state.get("is_by_content_author"),
                 provider_attempt_id=attempt_id,
                 raw_artifact_id=raw_id,
                 observed_at=observation.observed_at,
@@ -440,14 +440,13 @@ class PostgresContentRepository:
 
     def _append_comment_metric(
         self,
+        *,
         comment_id: UUID,
         observation: CanonicalCommentV1,
-        *,
         reason: str,
         attempt_id: UUID,
         raw_id: UUID,
-        like_count: int | None,
-        reply_count: int | None,
+        state: dict[str, Any],
     ) -> None:
         self._session.execute(
             insert(comment_metric_observations_table).values(
@@ -458,41 +457,54 @@ class PostgresContentRepository:
                 reason=reason,
                 business_date=observation.observed_at.astimezone(_BUSINESS_TZ).date(),
                 observation_key=_observation_key(observation, reason),
-                like_count=like_count,
-                reply_count=reply_count,
+                like_count=state.get("current_like_count"),
+                reply_count=state.get("current_reply_count"),
                 observed_at=observation.observed_at,
             )
         )
 
     def _has_content_checkpoint(self, content_id: UUID, day: date) -> bool:
-        return self._session.execute(
-            select(content_metric_observations_table.c.id).where(
-                content_metric_observations_table.c.content_id == content_id,
-                content_metric_observations_table.c.business_date == day,
-                content_metric_observations_table.c.reason == "daily_checkpoint",
-            )
-        ).first() is not None
+        return (
+            self._session.execute(
+                select(content_metric_observations_table.c.id).where(
+                    content_metric_observations_table.c.content_id == content_id,
+                    content_metric_observations_table.c.business_date == day,
+                    content_metric_observations_table.c.reason == "daily_checkpoint",
+                )
+            ).first()
+            is not None
+        )
 
     def _has_comment_checkpoint(self, comment_id: UUID, day: date) -> bool:
-        return self._session.execute(
-            select(comment_metric_observations_table.c.id).where(
-                comment_metric_observations_table.c.comment_id == comment_id,
-                comment_metric_observations_table.c.business_date == day,
-                comment_metric_observations_table.c.reason == "daily_checkpoint",
-            )
-        ).first() is not None
+        return (
+            self._session.execute(
+                select(comment_metric_observations_table.c.id).where(
+                    comment_metric_observations_table.c.comment_id == comment_id,
+                    comment_metric_observations_table.c.business_date == day,
+                    comment_metric_observations_table.c.reason == "daily_checkpoint",
+                )
+            ).first()
+            is not None
+        )
 
 
-def _source_ids(observation: CanonicalContentV1 | CanonicalCommentV1) -> tuple[UUID, UUID]:
-    if observation.source.provider_attempt_id is None or observation.source.raw_artifact_id is None:
+def _source_ids(
+    observation: CanonicalContentV1 | CanonicalCommentV1,
+) -> tuple[UUID, UUID]:
+    if (
+        observation.source.provider_attempt_id is None
+        or observation.source.raw_artifact_id is None
+    ):
         raise ValueError("持久化 Canonical 必须包含 provider_attempt_id 与 raw_artifact_id")
     return UUID(observation.source.provider_attempt_id), observation.source.raw_artifact_id
 
 
-def _new_content_values(
-    content_id: UUID, observation: CanonicalContentV1, author_id: UUID | None
+def _new_content_state(
+    content_id: UUID,
+    observation: CanonicalContentV1,
+    author_id: UUID | None,
 ) -> dict[str, Any]:
-    values: dict[str, Any] = {
+    state: dict[str, Any] = {
         "id": content_id,
         "platform": observation.platform,
         "external_content_id": observation.external_content_id,
@@ -503,70 +515,96 @@ def _new_content_values(
         "current_version": 1,
         "updated_at": observation.observed_at,
     }
-    return _content_updates(values, observation, author_id)
+    state.update(_content_updates(observation, author_id))
+    return state
 
 
 def _content_updates(
-    current: dict[str, Any], observation: CanonicalContentV1, author_id: UUID | None
+    observation: CanonicalContentV1,
+    author_id: UUID | None,
 ) -> dict[str, Any]:
-    updates: dict[str, Any] = {}
-    simple = {
-        "content_type": observation.content_type,
+    updates: dict[str, Any] = {"content_type": observation.content_type}
+    values = {
         "title": observation.title,
         "text": observation.text,
-        "canonical_url": str(observation.canonical_url) if observation.canonical_url else None,
+        "canonical_url": (
+            str(observation.canonical_url) if observation.canonical_url else None
+        ),
         "share_url": str(observation.share_url) if observation.share_url else None,
         "published_at": observation.published_at,
         "source_updated_at": observation.source_updated_at,
         "status": observation.status,
     }
-    for path, value in simple.items():
-        if path == "content_type" or path in observation.observed_fields:
+    for path, value in values.items():
+        if path in observation.observed_fields:
             updates[path] = value
     if observation.author is not None and author_id is not None:
         updates["author_account_id"] = author_id
     for name in _CONTENT_METRICS:
         if f"metrics.{name}" in observation.observed_fields:
             updates[f"current_{name}"] = getattr(observation.metrics, name)
-    for key, value in current.items():
-        updates.setdefault(key, value)
     return updates
 
 
-def _content_business_tuple(row: dict[str, Any]) -> tuple[Any, ...]:
-    return tuple(
-        row.get(name)
-        for name in (
-            "content_type",
-            "title",
-            "text",
-            "canonical_url",
-            "share_url",
-            "author_account_id",
-            "published_at",
-            "source_updated_at",
-            "status",
-        )
-    )
+def _new_comment_state(
+    comment_id: UUID,
+    content_id: UUID,
+    observation: CanonicalCommentV1,
+    author_id: UUID | None,
+) -> dict[str, Any]:
+    state: dict[str, Any] = {
+        "id": comment_id,
+        "content_id": content_id,
+        "external_comment_id": observation.external_comment_id,
+        "root_comment_id": observation.root_comment_id,
+        "parent_comment_id": observation.parent_comment_id,
+        "author_account_id": author_id,
+        "first_seen_at": observation.observed_at,
+        "last_seen_at": observation.observed_at,
+        "current_version": 1,
+        "updated_at": observation.observed_at,
+    }
+    state.update(_comment_updates(observation, author_id))
+    return state
 
 
-def _merge_content_for_version(
-    previous: dict[str, Any], updates: dict[str, Any], observation: CanonicalContentV1
-) -> CanonicalContentV1:
-    values = {**previous, **updates}
-    return observation.model_copy(
-        update={
-            "content_type": values["content_type"],
-            "title": values.get("title"),
-            "text": values.get("text"),
-            "published_at": values.get("published_at"),
-            "source_updated_at": values.get("source_updated_at"),
-            "status": values.get("status"),
-        }
-    )
+def _comment_updates(
+    observation: CanonicalCommentV1,
+    author_id: UUID | None,
+) -> dict[str, Any]:
+    updates: dict[str, Any] = {}
+    values = {
+        "root_comment_id": observation.root_comment_id,
+        "parent_comment_id": observation.parent_comment_id,
+        "text": observation.text,
+        "published_at": observation.published_at,
+        "source_updated_at": observation.source_updated_at,
+        "status": observation.status,
+        "is_by_content_author": observation.is_by_content_author,
+    }
+    for path, value in values.items():
+        if path in observation.observed_fields or path in {
+            "root_comment_id",
+            "parent_comment_id",
+        }:
+            updates[path] = value
+    if observation.author is not None and author_id is not None:
+        updates["author_account_id"] = author_id
+    if "metrics.like_count" in observation.observed_fields:
+        updates["current_like_count"] = observation.metrics.like_count
+    if "metrics.reply_count" in observation.observed_fields:
+        updates["current_reply_count"] = observation.metrics.reply_count
+    return updates
 
 
-def _observation_key(observation: CanonicalContentV1 | CanonicalCommentV1, reason: str) -> str:
+def _business_tuple(row: dict[str, Any], columns: tuple[str, ...]) -> tuple[Any, ...]:
+    return tuple(row.get(name) for name in columns)
+
+
+def _observation_key(
+    observation: CanonicalContentV1 | CanonicalCommentV1,
+    reason: str,
+) -> str:
     payload = {
         "attempt": observation.source.provider_attempt_id,
         "raw": str(observation.source.raw_artifact_id),
