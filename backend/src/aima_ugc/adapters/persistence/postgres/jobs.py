@@ -79,12 +79,16 @@ class PostgresJobRepository:
         if row is not None:
             return _row_to_job(row)
 
-        existing = self._session.execute(
-            select(jobs_table).where(
-                jobs_table.c.job_type == job_type,
-                jobs_table.c.internal_idempotency_key == internal_idempotency_key,
+        existing = (
+            self._session.execute(
+                select(jobs_table).where(
+                    jobs_table.c.job_type == job_type,
+                    jobs_table.c.internal_idempotency_key == internal_idempotency_key,
+                )
             )
-        ).mappings().one()
+            .mappings()
+            .one()
+        )
         job = _row_to_job(existing)
         if job.payload_version != payload_version or job.payload != payload:
             raise JobIdempotencyConflict(
@@ -93,9 +97,11 @@ class PostgresJobRepository:
         return job
 
     def get(self, job_id: UUID) -> JobRecord | None:
-        row = self._session.execute(
-            select(jobs_table).where(jobs_table.c.id == job_id)
-        ).mappings().one_or_none()
+        row = (
+            self._session.execute(select(jobs_table).where(jobs_table.c.id == job_id))
+            .mappings()
+            .one_or_none()
+        )
         return _row_to_job(row) if row is not None else None
 
     def list_events(self, job_id: UUID) -> list[JobAttemptEvent]:
@@ -120,9 +126,10 @@ class PostgresJobRepository:
             return None
 
         new_token = uuid4().hex
-        row = self._session.execute(
-            text(
-                """
+        row = (
+            self._session.execute(
+                text(
+                    """
                 WITH job_clock AS MATERIALIZED (
                     SELECT clock_timestamp() AS now_at
                 ),
@@ -193,22 +200,23 @@ class PostgresJobRepository:
                 )
                 SELECT * FROM transitioned
                 """
-            ),
-            {
-                "supported_job_types": list(supported_job_types),
-                "worker_id": worker_id,
-                "lease_token": new_token,
-                "lease_seconds": lease_seconds,
-            },
-        ).mappings().one_or_none()
+                ),
+                {
+                    "supported_job_types": list(supported_job_types),
+                    "worker_id": worker_id,
+                    "lease_token": new_token,
+                    "lease_seconds": lease_seconds,
+                },
+            )
+            .mappings()
+            .one_or_none()
+        )
         if row is None:
             return None
 
         job = _row_to_job(row)
         previous_status = cast(str, row["previous_status"])
-        event_type: JobEventType = (
-            "claimed" if previous_status == "queued" else "lease_taken_over"
-        )
+        event_type: JobEventType = "claimed" if previous_status == "queued" else "lease_taken_over"
         self._append_event(
             job=job,
             event_type=event_type,
@@ -232,9 +240,10 @@ class PostgresJobRepository:
         if not 0 <= progress <= 100:
             raise ValueError("progress must be between 0 and 100")
 
-        row = self._session.execute(
-            text(
-                """
+        row = (
+            self._session.execute(
+                text(
+                    """
                 WITH job_clock AS MATERIALIZED (
                     SELECT clock_timestamp() AS now_at
                 )
@@ -256,23 +265,27 @@ class PostgresJobRepository:
                   AND j.attempt_deadline_at > c.now_at
                 RETURNING j.*
                 """
-            ),
-            {
-                "job_id": job_id,
-                "lease_token": lease_token,
-                "lease_seconds": lease_seconds,
-                "progress": progress,
-            },
-        ).mappings().one_or_none()
+                ),
+                {
+                    "job_id": job_id,
+                    "lease_token": lease_token,
+                    "lease_seconds": lease_seconds,
+                    "progress": progress,
+                },
+            )
+            .mappings()
+            .one_or_none()
+        )
         if row is None:
             raise LeaseLostError("job lease is no longer current")
         return _row_to_job(row)
 
     def cancel_requested(self, *, job_id: UUID, lease_token: str) -> bool:
         """只允许当前、未过期 Lease 读取取消状态。"""
-        row = self._session.execute(
-            text(
-                """
+        row = (
+            self._session.execute(
+                text(
+                    """
                 WITH job_clock AS MATERIALIZED (
                     SELECT clock_timestamp() AS now_at
                 )
@@ -284,9 +297,12 @@ class PostgresJobRepository:
                   AND j.lease_expires_at > c.now_at
                   AND j.attempt_deadline_at > c.now_at
                 """
-            ),
-            {"job_id": job_id, "lease_token": lease_token},
-        ).mappings().one_or_none()
+                ),
+                {"job_id": job_id, "lease_token": lease_token},
+            )
+            .mappings()
+            .one_or_none()
+        )
         if row is None:
             raise LeaseLostError("job lease is no longer current")
         return row["cancel_requested_at"] is not None
@@ -361,9 +377,10 @@ class PostgresJobRepository:
     ) -> JobRecord:
         if retry_delay_seconds < 0:
             raise ValueError("retry_delay_seconds must be nonnegative")
-        row = self._session.execute(
-            text(
-                """
+        row = (
+            self._session.execute(
+                text(
+                    """
                 WITH job_clock AS MATERIALIZED (
                     SELECT clock_timestamp() AS now_at
                 )
@@ -412,14 +429,17 @@ class PostgresJobRepository:
                   AND j.attempt_deadline_at > c.now_at
                 RETURNING j.*
                 """
-            ),
-            {
-                "job_id": job_id,
-                "lease_token": lease_token,
-                "error_code": error_code,
-                "retry_delay_seconds": retry_delay_seconds,
-            },
-        ).mappings().one_or_none()
+                ),
+                {
+                    "job_id": job_id,
+                    "lease_token": lease_token,
+                    "error_code": error_code,
+                    "retry_delay_seconds": retry_delay_seconds,
+                },
+            )
+            .mappings()
+            .one_or_none()
+        )
         if row is None:
             raise LeaseLostError("job lease is no longer current")
         job = _row_to_job(row)
@@ -475,9 +495,13 @@ class PostgresJobRepository:
 
     def request_cancel(self, job_id: UUID) -> JobRecord:
         """queued 立即取消；running 仅记录请求，等待协作或 Reaper 收敛。"""
-        row = self._session.execute(
-            select(jobs_table).where(jobs_table.c.id == job_id).with_for_update()
-        ).mappings().one_or_none()
+        row = (
+            self._session.execute(
+                select(jobs_table).where(jobs_table.c.id == job_id).with_for_update()
+            )
+            .mappings()
+            .one_or_none()
+        )
         if row is None:
             raise KeyError(f"job not found: {job_id}")
         job = _row_to_job(row)
@@ -486,17 +510,21 @@ class PostgresJobRepository:
 
         now = func.clock_timestamp()
         if job.status == "queued":
-            cancelled_row = self._session.execute(
-                update(jobs_table)
-                .where(jobs_table.c.id == job_id, jobs_table.c.status == "queued")
-                .values(
-                    status="cancelled",
-                    cancel_requested_at=now,
-                    finished_at=now,
-                    updated_at=now,
+            cancelled_row = (
+                self._session.execute(
+                    update(jobs_table)
+                    .where(jobs_table.c.id == job_id, jobs_table.c.status == "queued")
+                    .values(
+                        status="cancelled",
+                        cancel_requested_at=now,
+                        finished_at=now,
+                        updated_at=now,
+                    )
+                    .returning(*jobs_table.c)
                 )
-                .returning(*jobs_table.c)
-            ).mappings().one()
+                .mappings()
+                .one()
+            )
             cancelled = _row_to_job(cancelled_row)
             self._append_event(
                 job=cancelled,
@@ -507,15 +535,19 @@ class PostgresJobRepository:
             )
             return cancelled
 
-        requested_row = self._session.execute(
-            update(jobs_table)
-            .where(jobs_table.c.id == job_id, jobs_table.c.status == "running")
-            .values(
-                cancel_requested_at=func.coalesce(jobs_table.c.cancel_requested_at, now),
-                updated_at=now,
+        requested_row = (
+            self._session.execute(
+                update(jobs_table)
+                .where(jobs_table.c.id == job_id, jobs_table.c.status == "running")
+                .values(
+                    cancel_requested_at=func.coalesce(jobs_table.c.cancel_requested_at, now),
+                    updated_at=now,
+                )
+                .returning(*jobs_table.c)
             )
-            .returning(*jobs_table.c)
-        ).mappings().one()
+            .mappings()
+            .one()
+        )
         return _row_to_job(requested_row)
 
     def reap_next(
@@ -528,9 +560,10 @@ class PostgresJobRepository:
         if retry_delay_seconds < 0:
             raise ValueError("retry_delay_seconds must be nonnegative")
 
-        row = self._session.execute(
-            text(
-                """
+        row = (
+            self._session.execute(
+                text(
+                    """
                 WITH job_clock AS MATERIALIZED (
                     SELECT clock_timestamp() AS now_at
                 )
@@ -553,8 +586,11 @@ class PostgresJobRepository:
                 FOR UPDATE OF j SKIP LOCKED
                 LIMIT 1
                 """
+                )
             )
-        ).mappings().one_or_none()
+            .mappings()
+            .one_or_none()
+        )
         if row is None:
             return None
 
@@ -574,29 +610,33 @@ class PostgresJobRepository:
         if job.job_type in timeout_retry_job_types and job.attempt < job.max_attempts:
             backoff_seconds = retry_delay_seconds * (2 ** max(job.attempt - 1, 0))
             next_available = reaper_now + timedelta(seconds=backoff_seconds)
-            transitioned = self._session.execute(
-                update(jobs_table)
-                .where(
-                    jobs_table.c.id == job.id,
-                    jobs_table.c.status == "running",
-                    jobs_table.c.attempt == job.attempt,
-                    jobs_table.c.lease_token == job.lease_token,
+            transitioned = (
+                self._session.execute(
+                    update(jobs_table)
+                    .where(
+                        jobs_table.c.id == job.id,
+                        jobs_table.c.status == "running",
+                        jobs_table.c.attempt == job.attempt,
+                        jobs_table.c.lease_token == job.lease_token,
+                    )
+                    .values(
+                        status="queued",
+                        available_at=next_available,
+                        progress=0,
+                        attempt_started_at=None,
+                        attempt_deadline_at=None,
+                        heartbeat_at=None,
+                        lease_owner=None,
+                        lease_token=None,
+                        lease_expires_at=None,
+                        error_code="attempt_timeout",
+                        updated_at=reaper_now,
+                    )
+                    .returning(*jobs_table.c)
                 )
-                .values(
-                    status="queued",
-                    available_at=next_available,
-                    progress=0,
-                    attempt_started_at=None,
-                    attempt_deadline_at=None,
-                    heartbeat_at=None,
-                    lease_owner=None,
-                    lease_token=None,
-                    lease_expires_at=None,
-                    error_code="attempt_timeout",
-                    updated_at=reaper_now,
-                )
-                .returning(*jobs_table.c)
-            ).mappings().one()
+                .mappings()
+                .one()
+            )
             retried = _row_to_job(transitioned)
             self._append_event(
                 job=retried,
@@ -607,25 +647,29 @@ class PostgresJobRepository:
             )
             return retried
 
-        transitioned = self._session.execute(
-            update(jobs_table)
-            .where(
-                jobs_table.c.id == job.id,
-                jobs_table.c.status == "running",
-                jobs_table.c.attempt == job.attempt,
-                jobs_table.c.lease_token == job.lease_token,
+        transitioned = (
+            self._session.execute(
+                update(jobs_table)
+                .where(
+                    jobs_table.c.id == job.id,
+                    jobs_table.c.status == "running",
+                    jobs_table.c.attempt == job.attempt,
+                    jobs_table.c.lease_token == job.lease_token,
+                )
+                .values(
+                    status="failed",
+                    finished_at=reaper_now,
+                    lease_owner=None,
+                    lease_token=None,
+                    lease_expires_at=None,
+                    error_code="attempt_timeout",
+                    updated_at=reaper_now,
+                )
+                .returning(*jobs_table.c)
             )
-            .values(
-                status="failed",
-                finished_at=reaper_now,
-                lease_owner=None,
-                lease_token=None,
-                lease_expires_at=None,
-                error_code="attempt_timeout",
-                updated_at=reaper_now,
-            )
-            .returning(*jobs_table.c)
-        ).mappings().one()
+            .mappings()
+            .one()
+        )
         failed = _row_to_job(transitioned)
         self._append_event(
             job=failed,
@@ -646,19 +690,23 @@ class PostgresJobRepository:
             if job.lease_token is None:
                 raise RuntimeError("running job is missing lease token")
             conditions.append(jobs_table.c.lease_token == job.lease_token)
-        transitioned = self._session.execute(
-            update(jobs_table)
-            .where(*conditions)
-            .values(
-                status="cancelled",
-                finished_at=now_at,
-                lease_owner=None,
-                lease_token=None,
-                lease_expires_at=None,
-                updated_at=now_at,
+        transitioned = (
+            self._session.execute(
+                update(jobs_table)
+                .where(*conditions)
+                .values(
+                    status="cancelled",
+                    finished_at=now_at,
+                    lease_owner=None,
+                    lease_token=None,
+                    lease_expires_at=None,
+                    updated_at=now_at,
+                )
+                .returning(*jobs_table.c)
             )
-            .returning(*jobs_table.c)
-        ).mappings().one()
+            .mappings()
+            .one()
+        )
         cancelled = _row_to_job(transitioned)
         self._append_event(
             job=cancelled,
@@ -677,19 +725,23 @@ class PostgresJobRepository:
         values: dict[str, object],
     ) -> JobRecord:
         now = func.clock_timestamp()
-        row = self._session.execute(
-            update(jobs_table)
-            .where(
-                jobs_table.c.id == job_id,
-                jobs_table.c.status == "running",
-                jobs_table.c.lease_token == lease_token,
-                jobs_table.c.cancel_requested_at.is_(None),
-                jobs_table.c.lease_expires_at > now,
-                jobs_table.c.attempt_deadline_at > now,
+        row = (
+            self._session.execute(
+                update(jobs_table)
+                .where(
+                    jobs_table.c.id == job_id,
+                    jobs_table.c.status == "running",
+                    jobs_table.c.lease_token == lease_token,
+                    jobs_table.c.cancel_requested_at.is_(None),
+                    jobs_table.c.lease_expires_at > now,
+                    jobs_table.c.attempt_deadline_at > now,
+                )
+                .values(**values)
+                .returning(*jobs_table.c)
             )
-            .values(**values)
-            .returning(*jobs_table.c)
-        ).mappings().one_or_none()
+            .mappings()
+            .one_or_none()
+        )
         if row is None:
             raise LeaseLostError("job lease is no longer current")
         return _row_to_job(row)
