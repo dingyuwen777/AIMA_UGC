@@ -55,7 +55,7 @@
 
 ## 当前开发状态
 
-**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础、Stage 3B Canonical Contract、Stage 4 PostgreSQL Job Runtime、Stage 5A—5D Provider-neutral 基础和 Stage 6 小红书纵切均已建立。** 当前代码已经具备：
+**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础、Stage 3B Canonical Contract、Stage 4 PostgreSQL Job Runtime、Stage 5A—5D Provider-neutral 基础、Stage 6 小红书纵切，以及 Stage 7 的第一批 Decision/Capability 机器基础均已建立。** 当前代码已经具备：
 
 - 根 Python/uv 工程、固定运行时与锁文件、FastAPI/Vue、OpenAPI → Orval Client、完整 Stage 1 CI；
 - Windows PowerShell 5.1 开发环境引导和本地 Uvicorn + Vite 双服务联调；
@@ -71,26 +71,54 @@
 - Stage 5B 第三条 Revision、`collection_runs/collection_scopes`、真实 Job 唯一外键、Collection Service/Repository 和 PostgreSQL 18.4 独立 CI；
 - Stage 5C 第四条 Revision、`provider_requests/provider_request_attempts`、最终 Scope/Request/Artifact 外键、幂等 Request 与未发送不计费 Attempt，以及 PostgreSQL 18.4 独立 CI；
 - Stage 5D 第五条 Revision、受 Job Fencing 约束的 Dispatch CAS、每 Attempt 一次 Provider Client 调用、Raw/Artifact 终态关联、遗留 `dispatching` 恢复，以及 PostgreSQL 18.4 独立 CI；
-- Stage 6 小红书 TikHub App V2 搜索/详情/评论 Operation 与分页、纯 Mapper、脱敏非空搜索 Fixture、Candidate/Ingestion 追加账本、Content/Comment Current+Version+Metric、已存 Raw Replay Job、第六至第九条 Revision，以及 PostgreSQL 18.4 独立 CI。
+- Stage 6 小红书 TikHub App V2 搜索/详情/评论 Operation 与分页、纯 Mapper、脱敏非空搜索 Fixture、Candidate/Ingestion 追加账本、Content/Comment Current+Version+Metric、已存 Raw Replay Job、第六至第九条 Revision，以及 PostgreSQL 18.4 独立 CI；
+- Stage 7 第一批版本化 `CollectionDecisionRequestV1` / `CollectionDecisionV1` / `ProviderPlatformCapabilityV1` Contract、生成 JSON Schema、纯 `CollectionDecisionService`、当前 XHS TikHub Capability 和独立 Decision Probe；这一单元不包含 Migration、Scheduler 或其余四平台实现。
 
-Stage 4 的机器事实以 `backend/src/aima_ugc/platform/jobs/`、`backend/src/aima_ugc/adapters/persistence/postgres/jobs.py`、第二条 Migration、测试和 CI 为准。Stage 5A 的机器事实以 Provider Contract/Client/Fake/Raw、生成 Schema、测试和 CI 为准；Stage 5B 以 `modules/collection/execution.py`、Collection Table/Repository、第三条 Migration、PostgreSQL 测试和 CI 为准；Stage 5C 以 `modules/collection/provider_persistence.py`、Provider Repository、第四条 Migration、PostgreSQL 测试和 CI 为准；Stage 5D 以 `modules/collection/provider_dispatch.py`、`modules/collection/provider_recovery.py`、PostgreSQL Dispatch Adapter、第五条 Migration、测试和 CI 为准；Stage 6 以 TikHub XHS Operation/Mapper、Candidate/Content Owner 实现、Raw Replay、第六至第九条 Migration、Fixture、测试和 CI 为准。跨文档决定维护在 [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md)，Stage 7 采集业务语义维护在 [`08-采集策略与平台能力.md`](08-采集策略与平台能力.md)。
+Stage 4 的机器事实以 `backend/src/aima_ugc/platform/jobs/`、`backend/src/aima_ugc/adapters/persistence/postgres/jobs.py`、第二条 Migration、测试和 CI 为准。Stage 5A 的机器事实以 Provider Contract/Client/Fake/Raw、生成 Schema、测试和 CI 为准；Stage 5B 以 `modules/collection/execution.py`、Collection Table/Repository、第三条 Migration、PostgreSQL 测试和 CI 为准；Stage 5C 以 `modules/collection/provider_persistence.py`、Provider Repository、第四条 Migration、PostgreSQL 测试和 CI 为准；Stage 5D 以 `modules/collection/provider_dispatch.py`、`modules/collection/provider_recovery.py`、PostgreSQL Dispatch Adapter、第五条 Migration、测试和 CI 为准；Stage 6 以 TikHub XHS Operation/Mapper、Candidate/Content Owner 实现、Raw Replay、第六至第九条 Migration、Fixture、测试和 CI 为准；Stage 7 当前已完成部分以 `aima_ugc.contracts.collection`、`modules/collection/decision.py`、`adapters/providers/tikhub/capabilities.py`、`contracts/collection/`、对应测试和已归档 Change 为准。跨文档决定维护在 [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md)，Stage 7 采集业务语义维护在 [`08-采集策略与平台能力.md`](08-采集策略与平台能力.md)。
 
 ## 当前下一步
 
-### Stage 7：可以开始的 Provider / Collection 工作
+### Stage 7：当前进度与剩余实现单元
 
-五平台默认 Provider、首版 TikHub Operation Matrix、统一 Decision Pipeline、自适应评论策略、Capability、Deep Collection、费用预测/硬预算和独立业务调试边界已经在 08 冻结。可以按边界清楚的 Stage 7 PR 开始：
+Stage 7 仍然是 [`06-开发约束与分阶段实施.md`](06-开发约束与分阶段实施.md) 定义的一个正式阶段。下面列的是为了独立开发、验证和 Review 而拆出的**实现单元**，不是新的 `Stage 7A/7B/...` 阶段名称；后续 Agent 不得自行发明新的正式阶段层级。
 
-- Collection Decision Service；
-- Provider Capability/规范化业务参数 Contract；
-- Plan 平台配置与 Run Snapshot；
-- Provider Config/路由；
-- 最终多级预算 Ledger；
-- 抖音、微博、B站、快手 Operation/分页状态机；
-- Operation Probe / Business Pipeline Probe；
-- 获得合法脱敏真实 Fixture 后实现对应 Mapper/Ingestion 纵切。
+已完成并进入 main：
+
+- Collection Decision/Reply Decision 的版本化 Contract 与纯 `CollectionDecisionService`；
+- Provider Platform Capability Contract 与当前 `XHS_TIKHUB_CAPABILITY`；
+- `contracts/collection/*.schema.json` 生成/漂移门禁；
+- `scripts/dev/probe_collection_decision.py` 独立 Decision Probe；
+- 对应 Unit/Contract/Stage 5A—5D/Stage 6/主 CI 回归；
+- Change `CHG-20260815-stage7-decision-capability` 已完成并归档。
+
+Stage 7 剩余实现单元应继续从仓库事实中选择一个边界完整、无上游阻塞的单元推进，主要包括：
+
+- Provider Config/路由与平台 Capability 的正式接线；
+- 关键词/词包、Plan 平台配置、Occurrence 与 Run Snapshot 等剩余父事实；
+- 在父事实完整后建立最终多级预算 Ledger 和并发 reserve/settle/release/audit；
+- 抖音、微博、B站、快手各自的 TikHub Operation/分页状态机；
+- 每个平台取得合法脱敏真实 Fixture 后完成 Mapper/Ingestion 纵切；
+- 统一 Operation Real Probe，以及复用生产 Decision/Mapper 的完整 Business Pipeline Probe（Raw/Canonical/Decision/XLSX）；
+- Scheduler 只在 `misfire_policy`、`max_catch_up_runs` 和停机补跑费用/容量保护获得批准后实现/启用。
 
 **这不表示其余四平台已经兼容完成。** 当前 main 的 TikHub Operation/Mapper 只有小红书；抖音、微博、B站、快手仍必须分别取得合法脱敏非空真实 Fixture、通过 Mapper Contract Test 和 Real Provider Probe 后，才能标记平台纵切完成。
+
+### 新对话 / 新 Agent 如何恢复 Stage 7
+
+新会话**不得依赖上一段聊天记录或模型记忆来判断 Stage 7 做到哪里**。固定恢复流程：
+
+```text
+AGENTS.md
+→ .agents/skills/reliable-vibe-coding/SKILL.md
+→ docs/blueprint/README.md
+→ docs/blueprint/07-技术决策与实施门禁.md
+→ docs/blueprint/08-采集策略与平台能力.md
+→ docs/collection/README.md
+→ changes/active（如存在）
+→ 与候选 Stage 7 单元直接相关的代码 / Contract / Migration / Fixture / Test / CI
+```
+
+恢复后先以机器事实复核本文的进度摘要；若代码与本文不一致，先把它判定为实现缺陷或文档过期并同步修正，不能从旧聊天补猜。没有 Active Change 时，从上面的“Stage 7 剩余实现单元”中选择一个当前无阻塞、可以独立 Red→Green→Review→CI→合并的单元；一次会话只推进当前确认的一个正式 Stage 7 工作单元，不自动进入 Stage 8。
 
 ### 仍然阻塞的上游事项
 
