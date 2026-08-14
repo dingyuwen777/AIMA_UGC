@@ -4,25 +4,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import date, datetime
-from typing import Protocol, TypeVar
+from typing import Generic, Protocol, TypeVar
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from aima_ugc.contracts.canonical import CanonicalCommentV1, CanonicalContentV1
 
 _BUSINESS_TZ = ZoneInfo("Asia/Shanghai")
+_ResultT_co = TypeVar("_ResultT_co", covariant=True)
 _ResultT = TypeVar("_ResultT")
 
 
-class ContentIngestionRepository(Protocol[_ResultT]):
+class ContentIngestionRepository(Protocol[_ResultT_co]):
     """ContentIngestionService 需要的 Owner Repository 能力。"""
 
-    def ingest_content(self, observation: CanonicalContentV1) -> _ResultT: ...
+    def ingest_content(self, observation: CanonicalContentV1) -> _ResultT_co: ...
 
-    def ingest_comment(self, observation: CanonicalCommentV1) -> _ResultT: ...
+    def ingest_comment(self, observation: CanonicalCommentV1) -> _ResultT_co: ...
 
 
-class ContentIngestionService:
+class ContentIngestionService(Generic[_ResultT]):
     """Canonical 摄取唯一生产入口；数据库细节由 Content Owner Repository 实现。"""
 
     def __init__(self, repository: ContentIngestionRepository[_ResultT]) -> None:
