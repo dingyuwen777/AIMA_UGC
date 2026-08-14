@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime
 from typing import Any, cast
 from uuid import UUID
 
@@ -11,7 +12,10 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
 from aima_ugc.adapters.persistence.postgres.candidates import PostgresCandidateRepository
-from aima_ugc.adapters.persistence.postgres.content import PostgresContentRepository
+from aima_ugc.adapters.persistence.postgres.content import (
+    PostgresContentRepository,
+    PostgresIngestionResult,
+)
 from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
     XhsMappingContext,
     map_comment,
@@ -31,6 +35,7 @@ from aima_ugc.modules.collection.xhs_replay import (
 )
 from aima_ugc.modules.content.ingestion import ContentIngestionService
 from aima_ugc.platform.storage import ArtifactRecord
+from aima_ugc.platform.storage.models import ArtifactStatus
 from aima_ugc.platform.storage.tables import artifacts_table
 
 SessionFactory = Callable[[], Session]
@@ -108,7 +113,9 @@ class PostgresXhsReplayIngestionWriter:
         try:
             with session.begin():
                 candidates = CandidateIngestionService(PostgresCandidateRepository(session))
-                content = ContentIngestionService(PostgresContentRepository(session))
+                content: ContentIngestionService[PostgresIngestionResult] = ContentIngestionService(
+                    PostgresContentRepository(session)
+                )
                 context = XhsMappingContext(
                     provider_request_id=str(source.provider_request_id),
                     provider_attempt_id=str(source.provider_attempt_id),
@@ -121,7 +128,7 @@ class PostgresXhsReplayIngestionWriter:
                 )
                 if source.operation == "search_notes":
                     count = _ingest_search_items(
-                        body=body,
+                        body=cast(dict[str, Any], body),
                         source=source,
                         context=context,
                         candidates=candidates,
@@ -129,12 +136,13 @@ class PostgresXhsReplayIngestionWriter:
                     )
                     return XhsReplaySummary(content_count=count)
                 if source.operation in {"get_image_note_detail", "get_video_note_detail"}:
-                    raw_item = _find_content_item(body)
+                    raw_item = _find_content_item(cast(dict[str, Any], body))
+                    external_id = _external_id(raw_item)
                     candidate = candidates.discover(
                         provider_request_attempt_id=source.provider_attempt_id,
                         item_kind="content",
-                        external_item_id=_external_id(raw_item),
-                        item_locator=f"note:{_external_id(raw_item)}",
+                        external_item_id=external_id,
+                        item_locator=f"note:{external_id}",
                         discovered_at=envelope.completed_at,
                     )
                     canonical = map_content(raw_item, context, item_locator=candidate.item_locator)
@@ -148,7 +156,7 @@ class PostgresXhsReplayIngestionWriter:
                     return XhsReplaySummary(content_count=1)
                 if source.operation in {"get_note_comments", "get_note_sub_comments"}:
                     count = _ingest_comments(
-                        body=body,
+                        body=cast(dict[str, Any], body),
                         source=source,
                         context=context,
                         candidates=candidates,
@@ -168,7 +176,7 @@ def _ingest_search_items(
     source: XhsReplaySource,
     context: XhsMappingContext,
     candidates: CandidateIngestionService,
-    content: ContentIngestionService,
+    content: ContentIngestionService[PostgresIngestionResult],
 ) -> int:
     count = 0
     for raw_item in extract_search_items(body):
@@ -199,9 +207,9 @@ def _ingest_comments(
     source: XhsReplaySource,
     context: XhsMappingContext,
     candidates: CandidateIngestionService,
-    content: ContentIngestionService,
+    content: ContentIngestionService[PostgresIngestionResult],
     is_root: bool,
-    observed_at,
+    observed_at: datetime,
 ) -> int:
     count = 0
     for raw_comment in _find_comment_items(body):
@@ -245,9 +253,9 @@ def _find_content_item(body: dict[str, Any]) -> dict[str, Any]:
             break
         note = current.get("note")
         if isinstance(note, dict):
-            return note
+            return cast(dict[str, Any], note)
         if any(key in current for key in ("id", "note_id")):
-            return current
+            return cast(dict[str, Any], current)
         current = current.get("data")
     raise ValueError("详情 Raw 中未找到可映射的笔记对象")
 
@@ -259,7 +267,7 @@ def _find_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
             break
         comments = current.get("comments")
         if isinstance(comments, list):
-            return tuple(item for item in comments if isinstance(item, dict))
+            return tuple(cast(dict[str, Any], item) for item in comments if isinstance(item, dict))
         current = current.get("data")
     return ()
 
@@ -267,7 +275,7 @@ def _find_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
 def _external_id(raw: dict[str, Any]) -> str:
     note = raw.get("note")
     if isinstance(note, dict):
-        raw = note
+        raw = cast(dict[str, Any], note)
     value = raw.get("id") or raw.get("note_id") or raw.get("comment_id")
     if value is None or not str(value).strip():
         raise ValueError("Raw Item 缺少稳定外部 ID")
@@ -285,10 +293,10 @@ def _artifact_from_row(row: RowMapping) -> ArtifactRecord:
         sha256=cast(str | None, row["sha256"]),
         byte_size=cast(int | None, row["byte_size"]),
         retention_class=cast(str, row["retention_class"]),
-        storage_status=cast(Any, row["storage_status"]),
-        created_at=row["created_at"],
-        stored_at=row["stored_at"],
-        linked_at=row["linked_at"],
-        expires_at=row["expires_at"],
-        deleted_at=row["deleted_at"],
+        storage_status=cast(ArtifactStatus, row["storage_status"]),
+        created_at=cast(datetime, row["created_at"]),
+        stored_at=cast(datetime | None, row["stored_at"]),
+        linked_at=cast(datetime | None, row["linked_at"]),
+        expires_at=cast(datetime | None, row["expires_at"]),
+        deleted_at=cast(datetime | None, row["deleted_at"]),
     )
