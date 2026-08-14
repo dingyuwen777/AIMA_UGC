@@ -54,23 +54,23 @@ Provider Attempt 在当前 Job Fencing 约束下进入 `dispatching`，通过既
 
 # 成功标准
 
-- [ ] 只有当前 `running` Job 的正确 Token，且 Lease/Deadline 未过期时，才能以 CAS 将
+- [x] 只有当前 `running` Job 的正确 Token，且 Lease/Deadline 未过期时，才能以 CAS 将
   `reserved → dispatching`；伪造、旧或过期 Token 均关闭失败。
 - [x] 每个进入 `dispatching` 的 Attempt 最多执行一次正式 `ProviderClient.dispatch`；
   Transport 明确报告未发送时记为 `not_sent`，有确定响应时记为 `completed`，
   发送后结果不可确定时记为 `unknown`。
-- [ ] `completed/unknown` 在进程存活时使用正式
+- [x] `completed/unknown` 在进程存活时使用正式
   `RawArtifactService → ArtifactService → LocalArtifactStore` 保存 gzip Raw；数据库元数据的
   `pending/stored` 和最终 `linked` 使用真实 PostgreSQL Owner 入口。
-- [ ] Attempt 终态、Raw 外键、Provider Request 当前汇总状态/费用和 Artifact `linked`
+- [x] Attempt 终态、Raw 外键、Provider Request 当前汇总状态/费用和 Artifact `linked`
   在同一短事务提交；该事务提交前再次校验当前 Job Fencing。
-- [ ] Reconciler 在 Lease 丢失、Deadline 到达、Job 终态或新 Token 接管时处理遗留
+- [x] Reconciler 在 Lease 丢失、Deadline 到达、Job 终态或新 Token 接管时处理遗留
   `dispatching` Attempt：已校验 `stored` Raw 只做恢复和关联，无可用 Raw 则记为
   `unknown + billing_status=unknown + potential_duplicate_charge=true`，绝不复发原 Attempt。
-- [ ] 第五条 Revision 不改写 `20260814_0004`；它将 Provider Request 状态收紧为
+- [x] 第五条 Revision 不改写 `20260814_0004`；它将 Provider Request 状态收紧为
   `pending/dispatching/completed/not_sent/unknown`，并把 Attempt 来源 Trigger 改为“终态可从
   `null` 一次绑定 Raw，绑定后不可替换或清空”。
-- [ ] 真实 PostgreSQL 18.4 集成测试覆盖并发 CAS、旧/新 Token、socket 前后失败、
+- [x] 真实 PostgreSQL 18.4 集成测试覆盖并发 CAS、旧/新 Token、socket 前后失败、
   Raw 落盘后崩溃、结果事务回滚、Reconciler 和第五条 Migration 双升级路径。
 - [x] Stage 1–5C 既有 Contract/Schema、Job Runtime、Artifact、Migration、依赖与公共 HTTP
   行为保持兼容；独立 Stage 5D CI 和受影响文档与实现同步。
@@ -215,7 +215,14 @@ Provider Attempt 在当前 Job Fencing 约束下进入 `dispatching`，通过既
   `no pq wrapper available / libpq library not found`，因此本地 Stage 5D PostgreSQL、Migration
   和 Alembic 结论保持未验证，等待 Linux CI 新鲜证据；测试容器和临时目录已清理。
 - 前端本地 Typecheck 在测试前因 `frontend/node_modules/@typescript/native` 未安装而失败；
-  本 Change 不修改前端或依赖，完整 npm 门禁等待 CI 的 `npm ci` 环境。
+  本 Change 不修改前端或依赖，PR 的 Stage 1 已在 `npm ci` 环境完成前端 Typecheck/Build。
+- PR #25 的 `Stage 5D Provider Dispatch`（Actions run `31787775484`）在 Ubuntu 24.04 +
+  PostgreSQL 18.4 上退出码 0：Unit/Provider Contract `31 passed`，真实 Collection
+  PostgreSQL/Local ArtifactStore Integration `24 passed`；空库升级到 `20260814_0005 (head)`、
+  `alembic check`、`head → base → head` 与 `head → 0004 → head` 全部通过。
+- 同一 Stage 5D run 的 Ruff format/check、Mypy 77 个源码文件、Architecture、Table Owner、
+  Secret、Docs、Contract 生成/兼容门禁全部通过；PR #25 的 Stage 1、Stage 2、Stage 3A、
+  Stage 4、Stage 5A、Stage 5B、Stage 5C 和 Windows bootstrap 也全部通过。
 
 # 文档影响
 
@@ -225,6 +232,7 @@ Provider Attempt 在当前 Job Fencing 约束下进入 `dispatching`，通过既
 
 # 交付
 
-- Commit：未创建。
-- PR：未创建。
+- Commit：`165dfa1 实现 Stage 5D Provider 调度与恢复`；
+  `c6b51af 刷新 Stage 5D 项目导航索引`。
+- PR：GitHub Draft PR #25，目标 `main`，全部初始检查通过；合并与归档尚未执行。
 - 发布：本 Change 不启用真实 Provider 或具体 Collection Handler，不部署。
