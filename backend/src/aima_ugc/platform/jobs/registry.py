@@ -10,10 +10,6 @@ from pydantic import BaseModel
 from .models import JobExecutionContextProtocol, JobHandlerResult
 
 
-
-type JobHandler = Callable[[BaseModel, JobExecutionContextProtocol], JobHandlerResult]
-
-
 @dataclass(frozen=True, slots=True)
 class JobDefinition:
     """单个 Job 类型的生产执行定义。"""
@@ -21,7 +17,7 @@ class JobDefinition:
     job_type: str
     payload_version: str
     payload_model: type[BaseModel]
-    handler: JobHandler
+    handler: Callable[[BaseModel, JobExecutionContextProtocol], JobHandlerResult]
     retry_on_timeout: bool
 
 
@@ -37,7 +33,7 @@ class JobRegistry:
         job_type: str,
         payload_version: str,
         payload_model: type[BaseModel],
-        handler: JobHandler,
+        handler: Callable[[BaseModel, JobExecutionContextProtocol], JobHandlerResult],
         retry_on_timeout: bool,
     ) -> None:
         if job_type in self._definitions:

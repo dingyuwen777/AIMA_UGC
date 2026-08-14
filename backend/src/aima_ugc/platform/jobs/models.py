@@ -8,21 +8,6 @@ from typing import Literal, Protocol, Self
 from uuid import UUID
 
 
-
-type JobStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
-type JobEventType = Literal[
-    "claimed",
-    "lease_taken_over",
-    "retry_scheduled",
-    "succeeded",
-    "failed",
-    "cancelled",
-    "timed_out",
-    "lease_lost",
-]
-type JobOutcome = Literal["succeeded", "retry", "failed", "cancelled"]
-
-
 @dataclass(frozen=True, slots=True)
 class JobRecord:
     """`jobs` 当前快照。"""
@@ -32,7 +17,7 @@ class JobRecord:
     payload_version: str
     payload: dict[str, object]
     result: object | None
-    status: JobStatus
+    status: Literal["queued", "running", "succeeded", "failed", "cancelled"]
     internal_idempotency_key: str
     request_id: str | None
     priority: int
@@ -65,7 +50,16 @@ class JobAttemptEvent:
     event_seq: int
     attempt: int
     lease_takeover_count: int
-    event_type: JobEventType
+    event_type: Literal[
+        "claimed",
+        "lease_taken_over",
+        "retry_scheduled",
+        "succeeded",
+        "failed",
+        "cancelled",
+        "timed_out",
+        "lease_lost",
+    ]
     worker_id: str | None
     lease_token_fingerprint: str | None
     reason_code: str | None
@@ -85,7 +79,7 @@ class JobExecutionContextProtocol(Protocol):
 class JobHandlerResult:
     """Handler 显式返回的状态转换意图。"""
 
-    outcome: JobOutcome
+    outcome: Literal["succeeded", "retry", "failed", "cancelled"]
     result: dict[str, object] | None = None
     error_code: str | None = None
 
@@ -112,3 +106,16 @@ class LeaseLostError(RuntimeError):
 
 class JobIdempotencyConflict(RuntimeError):
     """同一内部幂等键被用于不同 Payload。"""
+
+
+type JobStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
+type JobEventType = Literal[
+    "claimed",
+    "lease_taken_over",
+    "retry_scheduled",
+    "succeeded",
+    "failed",
+    "cancelled",
+    "timed_out",
+    "lease_lost",
+]
