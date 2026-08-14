@@ -20,6 +20,8 @@
 
 人类可读的统一 HTTP API 说明入口固定为 [`../API接口说明.md`](../API接口说明.md)。该文档用于开发、联调和测试人员理解接口用途与调用方式；HTTP 的机器事实仍由 Pydantic Request/Response、FastAPI Route、固定 `contracts/openapi/openapi.json`、生成 Client 和测试维护，API 说明文档不得成为第二套字段 Schema。
 
+人类可读的统一测试与调试入口固定为 [`../测试与调试说明.md`](../测试与调试说明.md)。它负责解释测试分层、独立验证方式、Fixture/Fake/Probe、运行入口和成功判据；测试代码、Contract、Fixture、Migration、本轮执行结果和 CI 才是验证事实，说明文档不得复制第二套断言或期望值清单。
+
 ## 事实源优先级
 
 仓库进入实现阶段后，发生冲突时按以下顺序处理：
@@ -43,7 +45,7 @@
 | [`03-数据库与文件存储.md`](03-数据库与文件存储.md) | PostgreSQL、表与约束、Owner、Current/Version/Metric、Artifact、Job 数据结构、备份一致性 | Schema、表、Migration、Repository、Artifact、数据历史与幂等 |
 | [`04-后端任务API与前端.md`](04-后端任务API与前端.md) | Router/Service/Repository、HTTP Contract、错误、Cursor、Auth、Job Runtime、前端调用边界；公开 API 同时维护固定 OpenAPI、生成 Client 和人类可读接口说明 | API、Job、前端 Client、认证授权、业务服务、长任务 |
 | [`05-日志安全部署与运维.md`](05-日志安全部署与运维.md) | 日志、审计、Secret、安全、Docker Compose、离线 Release、备份、回滚、运维 | 日志、安全、配置、部署、Release、服务器目录、备份恢复 |
-| [`06-开发约束与分阶段实施.md`](06-开发约束与分阶段实施.md) | TDD、测试分层、验证命令、CI、Git、文档同步、Review、阶段 0—12 实施顺序 | 制定开发计划、测试、CI、Git、交付、判断阶段顺序 |
+| [`06-开发约束与分阶段实施.md`](06-开发约束与分阶段实施.md) | TDD、独立可验证能力、测试分层、验证命令、CI、Git、文档同步、Review、阶段 0—12 实施顺序 | 制定开发计划、测试/调试、CI、Git、交付、判断阶段顺序 |
 | [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md) | 已确认跨文档决策、唯一初始化版本快照、未决门禁、阶段 Go/No-Go | 每个任务都先读；技术版本、重大决策、是否允许进入某阶段 |
 
 ## 当前开发状态
@@ -91,6 +93,7 @@ Stage 3A/3B 已建立的 Schema/Repository/Contract 不重复设计；登录、R
 - 所有需要前端或其他受支持调用方使用的公开 HTTP API，都必须由 Pydantic Request/Response + FastAPI Route 生成固定 OpenAPI，再生成前端 TypeScript Client；内部 Repository、Mapper、Provider Adapter、Worker Runtime、Migration 等能力不因存在就自动暴露 HTTP API；
 - 公开 HTTP API 新增、删除或实质变化时，除同步固定 OpenAPI 和生成 Client 外，还必须同步 [`../API接口说明.md`](../API接口说明.md)，说明接口用途、方法/路径、稳定 `operation_id`、主要输入输出、重要错误、权限、分页/幂等/异步 Job 等人类需要理解的语义；完整字段 Schema 仍只由机器 Contract 维护，禁止在 Markdown 中复制第二套字段事实；
 - 前端业务功能默认采用“后端业务能力 → Pydantic HTTP Contract → FastAPI Route → API/Contract Test → 固定 OpenAPI → 生成 TypeScript Client → Feature API/Store → Vue 页面/组件 → E2E”的闭环，页面和按钮不得各自手写 URL 或重复定义 Request/Response Contract；
+- 对具有明确输入输出、独立业务价值、独立失败边界或可以脱离完整系统验证的能力，必须建立与风险匹配的独立验证闭环：测试/调试/Probe 复用生产实现，明确测试位置、Fixture/Fake/隔离依赖、运行命令、预期结果和未覆盖项；项目公共方法写入 [`../测试与调试说明.md`](../测试与调试说明.md)，模块特有入口写入对应模块 README，不为每个小函数机械创建测试文件或测试文档；
 - 设计发生实质变化时，按 `AGENTS.md` 和 Skill 的 L1/L2/L3 流程处理；
 - 受影响的文档才更新，不为形式保持“所有文档都有变化”；
 - 长期文档直接描述合并后的当前状态，不写成变更流水账。
@@ -101,7 +104,8 @@ Stage 3A/3B 已建立的 Schema/Repository/Contract 不重复设计；登录、R
 先确定事实和边界
 → 再建立机器 Contract
 → 再实现最小纵切
-→ 用真实测试验证
+→ 让每个有价值的边界可以独立验证
+→ 用真实测试和集成证据验证
 → 最后扩展并行开发
 ```
 
