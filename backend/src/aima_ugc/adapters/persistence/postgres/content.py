@@ -6,7 +6,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
@@ -116,7 +116,7 @@ class PostgresContentRepository:
             return PostgresIngestionResult(content_id, 1, True, True)
 
         current = dict(row)
-        content_id = current["id"]
+        content_id = cast(UUID, current["id"])
         updates = _content_updates(observation, author_id)
         merged = {**current, **updates}
         business_changed = _business_tuple(current, _CONTENT_BUSINESS_COLUMNS) != _business_tuple(
@@ -148,11 +148,16 @@ class PostgresContentRepository:
             for name in _CONTENT_METRICS
         )
         metric_recorded = False
-        if any(f"metrics.{name}" in observation.observed_fields for name in _CONTENT_METRICS):
+        has_metric_fields = any(
+            f"metrics.{name}" in observation.observed_fields for name in _CONTENT_METRICS
+        )
+        if has_metric_fields and not self._has_content_source_metric(
+            content_id, attempt_id, raw_id
+        ):
             day = observation.observed_at.astimezone(_BUSINESS_TZ).date()
             if metric_changed:
                 reason = "changed"
-            elif not self._has_content_checkpoint(content_id, day):
+            elif not self._has_content_metric_on_day(content_id, day):
                 reason = "daily_checkpoint"
             else:
                 reason = None
@@ -217,7 +222,7 @@ class PostgresContentRepository:
             return PostgresIngestionResult(comment_id, 1, True, True)
 
         current = dict(row)
-        comment_id = current["id"]
+        comment_id = cast(UUID, current["id"])
         updates = _comment_updates(observation, author_id)
         merged = {**current, **updates}
         business_changed = _business_tuple(current, _COMMENT_BUSINESS_COLUMNS) != _business_tuple(
@@ -251,14 +256,17 @@ class PostgresContentRepository:
             and merged.get("current_reply_count") != current.get("current_reply_count")
         )
         metric_recorded = False
-        if (
+        has_metric_fields = (
             "metrics.like_count" in observation.observed_fields
             or "metrics.reply_count" in observation.observed_fields
+        )
+        if has_metric_fields and not self._has_comment_source_metric(
+            comment_id, attempt_id, raw_id
         ):
             day = observation.observed_at.astimezone(_BUSINESS_TZ).date()
             if metric_changed:
                 reason = "changed"
-            elif not self._has_comment_checkpoint(comment_id, day):
+            elif not self._has_comment_metric_on_day(comment_id, day):
                 reason = "daily_checkpoint"
             else:
                 reason = None
@@ -283,6 +291,7 @@ class PostgresContentRepository:
         return self._upsert_account(
             observation.platform,
             observation.author,
+            observation.observed_fields,
             observation.observed_at,
         )
 
@@ -290,6 +299,7 @@ class PostgresContentRepository:
         return self._upsert_account(
             observation.platform,
             observation.author,
+            observation.observed_fields,
             observation.observed_at,
         )
 
@@ -297,6 +307,7 @@ class PostgresContentRepository:
         self,
         platform: str,
         author: CanonicalAuthorV1 | None,
+        observed_fields: list[str],
         observed_at: datetime,
     ) -> UUID | None:
         if author is None or author.external_account_id is None:
@@ -311,7 +322,7 @@ class PostgresContentRepository:
             .mappings()
             .one_or_none()
         )
-        values = {
+        author_values = {
             "display_name": author.display_name,
             "handle": author.handle,
             "profile_url": str(author.profile_url) if author.profile_url else None,
@@ -320,18 +331,37 @@ class PostgresContentRepository:
             "verified": author.verified,
             "verification_label": author.verification_label,
             "region": author.region,
-            "current_follower_count": author.follower_count,
-            "current_following_count": author.following_count,
-            "current_content_count": author.content_count,
-            "current_total_like_count": author.total_like_count,
+            "follower_count": author.follower_count,
+            "following_count": author.following_count,
+            "content_count": author.content_count,
+            "total_like_count": author.total_like_count,
+        }
+        column_names = {
+            "display_name": "display_name",
+            "handle": "handle",
+            "profile_url": "profile_url",
+            "avatar_url": "avatar_url",
+            "bio": "bio",
+            "verified": "verified",
+            "verification_label": "verification_label",
+            "region": "region",
+            "follower_count": "current_follower_count",
+            "following_count": "current_following_count",
+            "content_count": "current_content_count",
+            "total_like_count": "current_total_like_count",
+        }
+        values: dict[str, Any] = {
             "last_seen_at": observed_at,
             "updated_at": observed_at,
         }
+        for field_name, value in author_values.items():
+            if f"author.{field_name}" in observed_fields:
+                values[column_names[field_name]] = value
         if row is not None:
             self._session.execute(
                 update(accounts_table).where(accounts_table.c.id == row["id"]).values(**values)
             )
-            return row["id"]
+            return cast(UUID, row["id"])
         account_id = uuid4()
         self._session.execute(
             insert(accounts_table).values(
@@ -461,25 +491,57 @@ class PostgresContentRepository:
             )
         )
 
-    def _has_content_checkpoint(self, content_id: UUID, day: date) -> bool:
+    def _has_content_source_metric(
+        self,
+        content_id: UUID,
+        attempt_id: UUID,
+        raw_id: UUID,
+    ) -> bool:
         return (
             self._session.execute(
                 select(content_metric_observations_table.c.id).where(
                     content_metric_observations_table.c.content_id == content_id,
-                    content_metric_observations_table.c.business_date == day,
-                    content_metric_observations_table.c.reason == "daily_checkpoint",
+                    content_metric_observations_table.c.provider_attempt_id == attempt_id,
+                    content_metric_observations_table.c.raw_artifact_id == raw_id,
                 )
             ).first()
             is not None
         )
 
-    def _has_comment_checkpoint(self, comment_id: UUID, day: date) -> bool:
+    def _has_comment_source_metric(
+        self,
+        comment_id: UUID,
+        attempt_id: UUID,
+        raw_id: UUID,
+    ) -> bool:
+        return (
+            self._session.execute(
+                select(comment_metric_observations_table.c.id).where(
+                    comment_metric_observations_table.c.comment_id == comment_id,
+                    comment_metric_observations_table.c.provider_attempt_id == attempt_id,
+                    comment_metric_observations_table.c.raw_artifact_id == raw_id,
+                )
+            ).first()
+            is not None
+        )
+
+    def _has_content_metric_on_day(self, content_id: UUID, day: date) -> bool:
+        return (
+            self._session.execute(
+                select(content_metric_observations_table.c.id).where(
+                    content_metric_observations_table.c.content_id == content_id,
+                    content_metric_observations_table.c.business_date == day,
+                )
+            ).first()
+            is not None
+        )
+
+    def _has_comment_metric_on_day(self, comment_id: UUID, day: date) -> bool:
         return (
             self._session.execute(
                 select(comment_metric_observations_table.c.id).where(
                     comment_metric_observations_table.c.comment_id == comment_id,
                     comment_metric_observations_table.c.business_date == day,
-                    comment_metric_observations_table.c.reason == "daily_checkpoint",
                 )
             ).first()
             is not None
@@ -576,10 +638,7 @@ def _comment_updates(
         "is_by_content_author": observation.is_by_content_author,
     }
     for path, value in values.items():
-        if path in observation.observed_fields or path in {
-            "root_comment_id",
-            "parent_comment_id",
-        }:
+        if path in observation.observed_fields:
             updates[path] = value
     if observation.author is not None and author_id is not None:
         updates["author_account_id"] = author_id
