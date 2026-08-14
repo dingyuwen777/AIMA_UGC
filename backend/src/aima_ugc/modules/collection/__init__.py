@@ -1,5 +1,6 @@
 """采集业务模块。"""
 
+from .decision import CollectionDecisionService
 from .execution import (
     CollectionExecution,
     CollectionExecutionService,
@@ -30,6 +31,7 @@ from .provider_recovery import (
 )
 
 __all__ = [
+    "CollectionDecisionService",
     "CollectionExecution",
     "CollectionExecutionService",
     "CollectionRunRecord",
