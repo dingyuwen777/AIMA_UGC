@@ -28,6 +28,7 @@ from aima_ugc.modules.collection.tables import (
 )
 from aima_ugc.modules.content.ingestion import ContentIngestionService
 from aima_ugc.modules.content.tables import (
+    accounts_table,
     comment_metric_observations_table,
     comment_versions_table,
     comments_table,
@@ -391,6 +392,147 @@ def test_postgres_ingestion_preserves_sparse_fields_a_b_a_metrics_and_comment_tr
                 comment_metric_observations_table.c.comment_id == comment_result.target_id
             )
         ).scalars().all() == ["initial"]
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_raw_replay_and_sparse_author_do_not_duplicate_or_clear_history(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    session = database_runtime.new_session()
+    try:
+        with session.begin():
+            first_chain = _insert_source_chain(
+                session,
+                operation="search_notes",
+                source_value="爱玛",
+            )
+            service = ContentIngestionService(PostgresContentRepository(session))
+            full = map_content(
+                {
+                    "id": "note-replay",
+                    "type": "normal",
+                    "title": "稳定标题",
+                    "liked_count": 10,
+                    "user": {
+                        "userid": "user-replay",
+                        "nickname": "完整昵称",
+                        "red_official_verified": True,
+                    },
+                },
+                _mapping_context(first_chain, operation="search_notes"),
+                item_locator="note:note-replay",
+            )
+            first = service.ingest_content(full)
+            service.ingest_content(full)
+
+            second_chain = _insert_source_chain(
+                session,
+                operation="search_notes",
+                source_value="爱玛-补回",
+            )
+            sparse_author = map_content(
+                {
+                    "id": "note-replay",
+                    "type": "normal",
+                    "title": "稳定标题",
+                    "liked_count": 10,
+                    "user": {"userid": "user-replay"},
+                },
+                _mapping_context(second_chain, operation="search_notes"),
+                item_locator="note:note-replay",
+            )
+            service.ingest_content(sparse_author)
+
+        assert session.execute(
+            select(content_versions_table.c.id).where(
+                content_versions_table.c.content_id == first.target_id
+            )
+        ).scalars().all().__len__() == 1
+        assert session.execute(
+            select(content_metric_observations_table.c.id).where(
+                content_metric_observations_table.c.content_id == first.target_id
+            )
+        ).scalars().all().__len__() == 1
+        account = (
+            session.execute(
+                select(accounts_table).where(
+                    accounts_table.c.platform == "xhs",
+                    accounts_table.c.external_account_id == "user-replay",
+                )
+            )
+            .mappings()
+            .one()
+        )
+        assert account["display_name"] == "完整昵称"
+        assert account["verified"] is True
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_sparse_sub_comment_does_not_clear_known_direct_parent(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    session = database_runtime.new_session()
+    try:
+        with session.begin():
+            content_chain = _insert_source_chain(
+                session,
+                operation="search_notes",
+                source_value="爱玛",
+            )
+            service = ContentIngestionService(PostgresContentRepository(session))
+            service.ingest_content(
+                map_content(
+                    {"id": "note-comments", "type": "normal", "title": "评论测试"},
+                    _mapping_context(content_chain, operation="search_notes"),
+                    item_locator="note:note-comments",
+                )
+            )
+
+            comment_chain = _insert_source_chain(
+                session,
+                operation="get_note_sub_comments",
+                source_value="note-comments",
+            )
+            comment_context = replace(
+                _mapping_context(comment_chain, operation="get_note_sub_comments"),
+                root_comment_id="comment-root",
+            )
+            explicit = map_comment(
+                {
+                    "id": "comment-child",
+                    "note_id": "note-comments",
+                    "content": "回复",
+                    "target_comment": {"id": "comment-parent"},
+                },
+                comment_context,
+                item_locator="comment:comment-child",
+                is_root=False,
+            )
+            first = service.ingest_comment(explicit)
+            sparse = map_comment(
+                {
+                    "id": "comment-child",
+                    "note_id": "note-comments",
+                    "content": "回复",
+                },
+                comment_context,
+                item_locator="comment:comment-child",
+                is_root=False,
+            )
+            service.ingest_comment(sparse)
+
+        comment = (
+            session.execute(select(comments_table).where(comments_table.c.id == first.target_id))
+            .mappings()
+            .one()
+        )
+        assert comment["root_comment_id"] == "comment-root"
+        assert comment["parent_comment_id"] == "comment-parent"
+        assert comment["current_version"] == 1
     finally:
         session.rollback()
         session.close()
