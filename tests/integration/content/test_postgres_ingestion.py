@@ -10,9 +10,6 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import insert, select
-from sqlalchemy.exc import DBAPIError
-
 from aima_ugc.adapters.persistence.postgres.candidates import PostgresCandidateRepository
 from aima_ugc.adapters.persistence.postgres.content import PostgresContentRepository
 from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
@@ -42,6 +39,8 @@ from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.storage.tables import artifacts_table
+from sqlalchemy import insert, select
+from sqlalchemy.exc import DBAPIError
 
 _FIXTURE = Path("tests/fixtures/providers/tikhub/xhs/search_notes_page1.sanitized.json")
 OBSERVED_AT = datetime(2026, 8, 5, 10, 0, 12, tzinfo=UTC)
