@@ -1,0 +1,85 @@
+name: Stage 5A Provider Raw
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/src/aima_ugc/contracts/provider/**"
+      - "backend/src/aima_ugc/modules/collection/**"
+      - "backend/src/aima_ugc/adapters/providers/**"
+      - "backend/src/aima_ugc/platform/storage/service.py"
+      - "contracts/provider/**"
+      - "scripts/contracts/**"
+      - "scripts/quality/**"
+      - "tests/unit/collection/**"
+      - "tests/integration/collection/**"
+      - "tests/contracts/test_provider_v1.py"
+      - ".github/workflows/stage5a-provider-raw.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "backend/src/aima_ugc/contracts/provider/**"
+      - "backend/src/aima_ugc/modules/collection/**"
+      - "backend/src/aima_ugc/adapters/providers/**"
+      - "backend/src/aima_ugc/platform/storage/service.py"
+      - "contracts/provider/**"
+      - "scripts/contracts/**"
+      - "scripts/quality/**"
+      - "tests/unit/collection/**"
+      - "tests/integration/collection/**"
+      - "tests/contracts/test_provider_v1.py"
+      - ".github/workflows/stage5a-provider-raw.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  stage5a-provider-raw:
+    name: Stage 5A Provider Raw
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Install frozen Python environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+
+      - name: Provider and Raw tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest tests/unit/collection tests/integration/collection tests/contracts/test_provider_v1.py -q
+
+      - name: Provider Contract drift
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/contracts/generate.py
+          git diff --exit-code -- contracts/provider
+          uv run python scripts/contracts/generate.py --check
+          uv run python scripts/contracts/check_compatibility.py
+
+      - name: Stage 5A quality gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff format --check backend tests scripts
+          uv run ruff check backend tests scripts
+          uv run mypy backend/src
+          uv run python scripts/quality/check_architecture.py
+          uv run python scripts/quality/check_table_ownership.py
+          uv run python scripts/quality/scan_secrets.py
+          uv run python scripts/quality/check_docs.py

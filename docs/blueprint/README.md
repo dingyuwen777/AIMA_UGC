@@ -50,7 +50,7 @@
 
 ## 当前开发状态
 
-**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础、Stage 3B Canonical Contract 和 Stage 4 PostgreSQL Job Runtime 均已建立。** 当前代码已经具备：
+**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础、Stage 3B Canonical Contract、Stage 4 PostgreSQL Job Runtime 和 Stage 5A Provider/Raw 基础均已建立。** 当前代码已经具备：
 
 - 根 Python/uv 工程、固定运行时与锁文件、FastAPI/Vue、OpenAPI → Orval Client、完整 Stage 1 CI；
 - Windows PowerShell 5.1 开发环境引导和本地 Uvicorn + Vite 双服务联调；
@@ -62,8 +62,9 @@
 - Stage 3A 根 Alembic、`20260813_0001`、`artifacts/system_settings/audit_events`、PostgreSQL Repository 和独立 Migration CI；
 - Stage 3B Provider/平台无关 Canonical V1 Pydantic Contract、生成 JSON Schema、固定脱敏帖子聚合示例、稀疏 `observed_fields`、评论树/coverage 语义与 Contract Test；
 - Stage 4 `20260814_0002`、`jobs/job_attempt_events`、Job Registry、PostgreSQL Repository、Worker/Reaper、Lease/Fencing/Deadline/重试/取消/Attempt 事件审计和独立 PostgreSQL 18 Job Runtime CI。
+- Stage 5A Provider-neutral Request/Attempt/Error/Billing Pydantic Contract、固定 JSON Schema、一次发送 Provider Client/Fake Transport，以及递归脱敏、gzip、SHA-256、不可覆盖和可回放的 Raw Artifact 独立 CI。
 
-Stage 4 的机器事实以 `backend/src/aima_ugc/platform/jobs/`、`backend/src/aima_ugc/adapters/persistence/postgres/jobs.py`、第二条 Migration、测试和 CI 为准；跨文档决定维护在 [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md)。不要在其他 Blueprint 复制实现细节或版本表。
+Stage 4 的机器事实以 `backend/src/aima_ugc/platform/jobs/`、`backend/src/aima_ugc/adapters/persistence/postgres/jobs.py`、第二条 Migration、测试和 CI 为准。Stage 5A 的机器事实以 `backend/src/aima_ugc/contracts/provider/`、`backend/src/aima_ugc/modules/collection/providers/`、`backend/src/aima_ugc/adapters/providers/fake.py`、`contracts/provider/`、测试和 CI 为准；跨文档决定维护在 [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md)。不要在其他 Blueprint 复制实现细节或版本表。
 
 当前下一步分成两条并行路径。
 
@@ -80,11 +81,13 @@ Stage 4 的机器事实以 `backend/src/aima_ugc/platform/jobs/`、`backend/src/
 
 ### 阶段 5：Provider Adapter、Provider Attempt 和 Raw
 
-Stage 5 的正式工程范围是 Provider Client/Adapter、Provider Request/Attempt、错误与费用事实、Raw Artifact Envelope 和 Fake Transport。最终多级预算表不在本阶段提前建立：它同时外键依赖 Stage 5 的 Provider Request/Attempt、Stage 6 的 Content 和 Stage 7 的 Collection/Run，因此保持最终 Schema 不变并在 Stage 7 父事实齐全后落地。
+Stage 5A 已建立 Provider Client/Transport Port、Provider Request/Attempt、错误与费用的版本化 Contract、Raw Artifact Envelope 和 Fake Transport，但没有建立 Provider PostgreSQL 表。选择该拆分是因为最终 `provider_requests.scope_id → collection_scopes`，而 Collection Run/Scope 父事实尚未建立；本阶段禁止使用无外键 `scope_id`、临时父表或其他弱约束 Schema 绕过依赖。
+
+Stage 5 整体仍在进行中。Provider Request/Attempt 持久化必须等待 Collection 父事实，并通过后续独立 L3 决策按 `03` 的最终 Schema 一次建立；在此之前 Stage 6 的 Candidate/来源链仍是 No-Go。最终多级预算表继续等待 Provider、Content、Collection/Run 父事实全部齐全后建立，不在 Stage 5A 提前实现。
 
 如果 Stage 5 要接入某个真实平台的具体 Operation、费用或真实 Fixture，仍受阶段 0 对应业务事实门禁；Provider 中立的基础边界可以在不猜测平台语义的前提下继续推进。
 
-Stage 1—4 已建立的 Schema/Repository/Contract/Job Runtime 不重复设计；登录、Role/Permission、Principal 和 actor-bound API 幂等继续等待真实第三方身份需求。
+Stage 1—5A 已建立的 Schema/Repository/Contract/Job Runtime/Raw 边界不重复设计；登录、Role/Permission、Principal 和 actor-bound API 幂等继续等待真实第三方身份需求。
 
 ## 修改规则
 
