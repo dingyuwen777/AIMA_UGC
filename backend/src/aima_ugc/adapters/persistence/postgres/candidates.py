@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import cast
 from uuid import UUID, uuid4
 
@@ -35,37 +36,45 @@ class PostgresCandidateRepository:
         item_kind: CandidateKind,
         external_item_id: str | None,
         item_locator: str,
-        discovered_at,
+        discovered_at: datetime,
     ) -> CandidateRecord:
         candidate_id = uuid4()
-        created = self._session.execute(
-            pg_insert(collection_candidates_table)
-            .values(
-                id=candidate_id,
-                provider_request_attempt_id=provider_request_attempt_id,
-                item_kind=item_kind,
-                external_item_id=external_item_id,
-                item_locator=item_locator,
-                discovered_at=discovered_at,
-                created_at=func.clock_timestamp(),
+        created = (
+            self._session.execute(
+                pg_insert(collection_candidates_table)
+                .values(
+                    id=candidate_id,
+                    provider_request_attempt_id=provider_request_attempt_id,
+                    item_kind=item_kind,
+                    external_item_id=external_item_id,
+                    item_locator=item_locator,
+                    discovered_at=discovered_at,
+                    created_at=func.clock_timestamp(),
+                )
+                .on_conflict_do_nothing(
+                    index_elements=[
+                        collection_candidates_table.c.provider_request_attempt_id,
+                        collection_candidates_table.c.item_locator,
+                    ]
+                )
+                .returning(*collection_candidates_table.c)
             )
-            .on_conflict_do_nothing(
-                index_elements=[
-                    collection_candidates_table.c.provider_request_attempt_id,
-                    collection_candidates_table.c.item_locator,
-                ]
-            )
-            .returning(*collection_candidates_table.c)
-        ).mappings().one_or_none()
+            .mappings()
+            .one_or_none()
+        )
         if created is not None:
             return _candidate_from_row(created)
-        row = self._session.execute(
-            select(collection_candidates_table).where(
-                collection_candidates_table.c.provider_request_attempt_id
-                == provider_request_attempt_id,
-                collection_candidates_table.c.item_locator == item_locator,
+        row = (
+            self._session.execute(
+                select(collection_candidates_table).where(
+                    collection_candidates_table.c.provider_request_attempt_id
+                    == provider_request_attempt_id,
+                    collection_candidates_table.c.item_locator == item_locator,
+                )
             )
-        ).mappings().one()
+            .mappings()
+            .one()
+        )
         if row["item_kind"] != item_kind or row["external_item_id"] != external_item_id:
             raise ValueError("同一 Attempt/item_locator 的 Candidate 身份发生冲突")
         return _candidate_from_row(row)
@@ -89,8 +98,9 @@ class PostgresCandidateRepository:
             .with_for_update()
         ).scalar_one()
         current_no = self._session.execute(
-            select(func.coalesce(func.max(collection_candidate_ingestions_table.c.ingestion_no), 0))
-            .where(collection_candidate_ingestions_table.c.candidate_id == candidate_id)
+            select(
+                func.coalesce(func.max(collection_candidate_ingestions_table.c.ingestion_no), 0)
+            ).where(collection_candidate_ingestions_table.c.candidate_id == candidate_id)
         ).scalar_one()
         values = {
             "id": uuid4(),
@@ -107,11 +117,15 @@ class PostgresCandidateRepository:
             "error_detail": error_detail,
             "processed_at": func.clock_timestamp(),
         }
-        row = self._session.execute(
-            pg_insert(collection_candidate_ingestions_table)
-            .values(**values)
-            .returning(*collection_candidate_ingestions_table.c)
-        ).mappings().one()
+        row = (
+            self._session.execute(
+                pg_insert(collection_candidate_ingestions_table)
+                .values(**values)
+                .returning(*collection_candidate_ingestions_table.c)
+            )
+            .mappings()
+            .one()
+        )
         return _ingestion_from_row(row)
 
 
@@ -122,8 +136,8 @@ def _candidate_from_row(row: RowMapping) -> CandidateRecord:
         item_kind=cast(CandidateKind, row["item_kind"]),
         external_item_id=cast(str | None, row["external_item_id"]),
         item_locator=cast(str, row["item_locator"]),
-        discovered_at=row["discovered_at"],
-        created_at=row["created_at"],
+        discovered_at=cast(datetime, row["discovered_at"]),
+        created_at=cast(datetime, row["created_at"]),
     )
 
 
@@ -141,5 +155,5 @@ def _ingestion_from_row(row: RowMapping) -> CandidateIngestionRecord:
         result=cast(IngestionStatus, row["result"]),
         error_code=cast(str | None, row["error_code"]),
         error_detail=cast(str | None, row["error_detail"]),
-        processed_at=row["processed_at"],
+        processed_at=cast(datetime, row["processed_at"]),
     )
