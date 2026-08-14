@@ -232,7 +232,13 @@ def _string(value: object) -> str | None:
 def _integer(value: object, *, default: int) -> int:
     if isinstance(value, bool):
         return default
-    try:
-        return int(value)  # type: ignore[arg-type]
-    except TypeError, ValueError:
-        return default
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return default
+    return default
