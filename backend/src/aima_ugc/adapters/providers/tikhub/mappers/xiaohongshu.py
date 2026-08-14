@@ -151,7 +151,9 @@ def _unwrap_content(raw: dict[str, Any]) -> dict[str, Any]:
     return raw
 
 
-def _map_author(raw: dict[str, Any]) -> tuple[CanonicalAuthorV1 | None, tuple[str, ...]]:
+def _map_author(
+    raw: dict[str, Any],
+) -> tuple[CanonicalAuthorV1 | None, tuple[str, ...]]:
     if not raw:
         return None, ()
     external_id = _optional_string(raw, "user_id", "userId", "id")
@@ -163,10 +165,14 @@ def _map_author(raw: dict[str, Any]) -> tuple[CanonicalAuthorV1 | None, tuple[st
         fields.append("display_name")
     if not fields:
         return None, ()
-    return CanonicalAuthorV1(external_account_id=external_id, display_name=display_name), tuple(fields)
+    return CanonicalAuthorV1(
+        external_account_id=external_id, display_name=display_name
+    ), tuple(fields)
 
 
-def _map_content_metrics(raw: dict[str, Any]) -> tuple[CanonicalMetricsV1, tuple[str, ...]]:
+def _map_content_metrics(
+    raw: dict[str, Any],
+) -> tuple[CanonicalMetricsV1, tuple[str, ...]]:
     mapping = {
         "like_count": ("liked_count", "like_count"),
         "comment_count": ("comments_count", "comment_count"),
@@ -204,7 +210,7 @@ def _timestamp(raw: dict[str, Any], *keys: str) -> datetime | None:
                 seconds /= 1000
             try:
                 return datetime.fromtimestamp(seconds, tz=UTC)
-            except (OverflowError, OSError, ValueError):
+            except OverflowError, OSError, ValueError:
                 return None
     return None
 
@@ -220,7 +226,7 @@ def _count(raw: dict[str, Any], *keys: str) -> tuple[int | None, bool]:
             return None, False
         try:
             parsed = int(value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None, False
         return (parsed if parsed >= 0 else None), parsed >= 0
     return None, False
