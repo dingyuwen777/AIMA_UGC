@@ -10,6 +10,7 @@ from aima_ugc.modules.collection.tables import (
     provider_request_attempts_table,
     provider_requests_table,
 )
+from aima_ugc.modules.content.account_tables import account_external_ids_table
 from aima_ugc.modules.content.tables import (
     accounts_table,
     comment_coverage_observations_table,
@@ -26,6 +27,7 @@ from aima_ugc.platform.jobs.tables import job_attempt_events_table, jobs_table
 from aima_ugc.platform.storage.tables import artifacts_table
 
 __all__ = [
+    "account_external_ids_table",
     "accounts_table",
     "artifacts_table",
     "audit_events_table",
