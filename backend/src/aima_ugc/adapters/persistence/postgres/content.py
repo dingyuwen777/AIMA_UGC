@@ -329,9 +329,7 @@ class PostgresContentRepository:
         }
         if row is not None:
             self._session.execute(
-                update(accounts_table)
-                .where(accounts_table.c.id == row["id"])
-                .values(**values)
+                update(accounts_table).where(accounts_table.c.id == row["id"]).values(**values)
             )
             return row["id"]
         account_id = uuid4()
@@ -491,10 +489,7 @@ class PostgresContentRepository:
 def _source_ids(
     observation: CanonicalContentV1 | CanonicalCommentV1,
 ) -> tuple[UUID, UUID]:
-    if (
-        observation.source.provider_attempt_id is None
-        or observation.source.raw_artifact_id is None
-    ):
+    if observation.source.provider_attempt_id is None or observation.source.raw_artifact_id is None:
         raise ValueError("持久化 Canonical 必须包含 provider_attempt_id 与 raw_artifact_id")
     return UUID(observation.source.provider_attempt_id), observation.source.raw_artifact_id
 
@@ -527,9 +522,7 @@ def _content_updates(
     values = {
         "title": observation.title,
         "text": observation.text,
-        "canonical_url": (
-            str(observation.canonical_url) if observation.canonical_url else None
-        ),
+        "canonical_url": (str(observation.canonical_url) if observation.canonical_url else None),
         "share_url": str(observation.share_url) if observation.share_url else None,
         "published_at": observation.published_at,
         "source_updated_at": observation.source_updated_at,
