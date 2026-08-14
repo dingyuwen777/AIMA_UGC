@@ -2,19 +2,29 @@
 
 Collection 负责采集执行、Provider Adapter 调用、Raw 证据和后续 Mapper/Candidate 边界。当前已建立
 Stage 5A Provider-neutral Request/Attempt、一次发送 Transport、Raw Artifact，Stage 5B
-Collection Run/Scope PostgreSQL 父事实，Stage 5C Provider Request/Attempt 持久化基础，以及
-Stage 5D 不计费 Provider-neutral Dispatch、Raw 关联与崩溃恢复基础，以及 Stage 6 小红书
-TikHub App V2 Operation/Mapper、Candidate/Ingestion 追加账本和已存 Raw 回放纵切。
+Collection Run/Scope PostgreSQL 父事实，Stage 5C Provider Request/Attempt 持久化基础，Stage 5D
+不计费 Provider-neutral Dispatch、Raw 关联与崩溃恢复基础，Stage 6 小红书 TikHub App V2
+Operation/Mapper、Candidate/Ingestion 追加账本和已存 Raw 回放纵切，以及 Stage 7 第一批跨平台
+Decision/Capability 机器基础。
 
 ## 生产入口
 
 - `aima_ugc.contracts.provider`：版本化 `ProviderRequestV1`、`ProviderAttemptV1`、费用、安全错误和
   `RawEnvelopeV1`；
+- `aima_ugc.contracts.collection`：Stage 7 版本化 `CollectionDecisionRequestV1`、
+  `CollectionDecisionV1` 与 `ProviderPlatformCapabilityV1`；只表达规范化业务事实/能力，不包含
+  Provider 私有分页状态或 Secret；
+- `aima_ugc.modules.collection.CollectionDecisionService`：根据 previous/current 规范化事实、业务策略和
+  Capability 纯计算详情、一级评论与二级回复动作及稳定 reason code；不访问数据库、不发 HTTP、
+  不解释 Provider Raw；
+- `aima_ugc.adapters.providers.tikhub.capabilities.XHS_TIKHUB_CAPABILITY`：当前只登记已实现的
+  小红书 TikHub 业务 Capability；其余四平台只有在对应 Operation/合法脱敏 Fixture/验证建立后才加入
+  机器 registry；
 - `aima_ugc.modules.collection.providers.ProviderClient`：每个 Attempt 最多调用一次注入的
   `ProviderTransport`，不隐藏网络重试；
 - `aima_ugc.modules.collection.providers.RawArtifactService`：递归脱敏后通过正式
   `ArtifactService + ArtifactStore` 保存、校验和回放 gzip Raw；
-- `aima_ugc.adapters.providers.fake.FakeProviderTransport`：普通测试使用的受控外部 I/O Fake。
+- `aima_ugc.adapters.providers.fake.FakeProviderTransport`：普通测试使用的受控外部 I/O Fake；
 - `aima_ugc.modules.collection.CollectionExecutionService`：校验本阶段 `manual/api/backfill` 创建语义和
   Scope 身份唯一性；
 - `aima_ugc.adapters.persistence.postgres.collection.PostgresCollectionRepository`：在调用方持有的同一
@@ -55,27 +65,64 @@ raw/<provider>/<platform>/<YYYY>/<MM>/<DD>/<run_id>/<scope_id>/<attempt_id>.json
 terminal Attempt 业务短事务中一次性建立 `provider_request_attempts.raw_artifact_id` 引用，并由
 Artifact Owner Repository 把元数据从 `stored` 推进为 `linked`；关联完成后来源身份不可改写。
 
+## Stage 7 Decision 独立调试
+
+`CollectionDecisionService` 的调试入口固定为：
+
+```text
+显式 CollectionDecisionRequestV1 JSON
+→ scripts/dev/probe_collection_decision.py
+→ 正式 CollectionDecisionService
+→ CollectionDecisionV1 JSON
+```
+
+例如可准备一个不含 Secret 的 JSON：
+
+```json
+{
+  "current": {"comment_count": 35, "comments_available": true},
+  "previous": {"comment_count": 35}
+}
+```
+
+然后从仓库根目录运行：
+
+```bash
+uv run python scripts/dev/probe_collection_decision.py ./decision.json
+```
+
+未显式提供 Capability 时，当前 Probe 默认使用已实现的 `XHS_TIKHUB_CAPABILITY`。该入口只验证
+Decision 业务逻辑，不调用 TikHub、不读生产数据库、不产生费用，也不会把 API Key 作为输入。
+
 ## 独立验证
 
 ```bash
+uv run pytest tests/unit/collection/test_stage7_decision.py tests/unit/collection/test_tikhub_capabilities.py tests/unit/collection/test_stage7_decision_probe.py -q
+uv run pytest tests/contracts/test_collection_stage7.py -q
 uv run pytest tests/unit/collection tests/unit/content tests/contracts/test_provider_v1.py -q
 uv run pytest tests/integration/collection tests/integration/content -q
 uv run python scripts/contracts/generate.py --check
 ```
 
-测试从正式 Client、Raw Service、ArtifactService 和 Local ArtifactStore 进入。Fake Transport 不访问
-网络、不需要 Token、不产生费用；Raw 测试目录位于 Git 忽略的 `.runtime/stage5a-tests/`。Repository
-集成测试要求先准备隔离 PostgreSQL 18、Secret 文件并执行 `uv run alembic upgrade head`；独立
-`Stage 5B Collection Execution`、`Stage 5C Provider Persistence`、
-`Stage 5D Provider Dispatch` 与 `Stage 6 XHS Vertical Slice` CI 固定使用 PostgreSQL 18.4。
+测试从正式 Client、Raw Service、ArtifactService、Decision Service 和 Local ArtifactStore 等对应生产入口进入。
+Fake Transport 不访问网络、不需要 Token、不产生费用；Raw 测试目录位于 Git 忽略的
+`.runtime/stage5a-tests/`。Repository 集成测试要求先准备隔离 PostgreSQL 18、Secret 文件并执行
+`uv run alembic upgrade head`；独立 `Stage 5B Collection Execution`、
+`Stage 5C Provider Persistence`、`Stage 5D Provider Dispatch` 与 `Stage 6 XHS Vertical Slice` CI
+固定使用 PostgreSQL 18.4。
 
 ## 当前限制
 
-- 已有小红书 TikHub App V2 具体 Operation，但没有接入真实 HTTP/SDK/文件 Transport；
+- 已有小红书 TikHub App V2 具体 Operation，但没有接入真实生产 HTTP Transport；
+- Stage 7 当前只有通用 Decision/Capability Contract、纯 Decision Service 和 XHS Capability；没有把
+  抖音、微博、B站、快手的设计目标冒充当前机器 Capability；
+- XHS `get_note_comments` 当前仍缺合法脱敏非空真实评论 Fixture/Real Probe，虽然正式 Operation 使用
+  `latest_v2`，但机器 Capability 暂不声明 `supports_incremental_comment_sort`；评论数增加时先走受控刷新；
 - 仅支持 `manual/api/backfill` Run；没有 Plan/Occurrence/Scheduler，因而不支持 `scheduled`；
-- 当前 Dispatch 纵切只允许不计费 Attempt 和 Fake Transport；没有多级预算预留/结算、真实付费 Provider、
-  生产网络调用或最终多级预算；Stage 6 只有已存 Raw 回放 Job Handler；
+- 当前 Dispatch 纵切只允许不计费 Attempt 和 Fake Transport；没有最终多级预算预留/结算、真实付费
+  Provider、生产网络调用或最终多级预算；Stage 6 只有已存 Raw 回放 Job Handler；
 - 只有小红书 Mapper/Candidate/Ingestion/Content/Comment 首个平台纵切，没有其余平台或 Scheduler；
 - 没有决定 Raw 的访问、保留、删除、备份和生产容量策略；
-- 真实 Provider Probe 默认不进入代码或 CI；2026-08-14 的用户授权搜索 Probe 只确认当次 HTTP 200
-  空页包装/分页字段，不能用其或 Fake 结果宣称详情、评论或生产平台兼容。
+- 真实 Provider Probe 默认不进入普通 CI；2026-08-14 的用户授权搜索 Probe 只确认当次 HTTP 200
+  空页包装/分页字段，不能用其或 Fake 结果宣称详情、评论或生产平台兼容。本轮尝试的额外只读实调在
+  HTTP 发送前即因执行宿主 DNS 无法解析 TikHub 域名而失败，因此没有新增真实接口兼容证据。
