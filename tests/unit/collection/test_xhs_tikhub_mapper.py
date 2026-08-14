@@ -3,12 +3,12 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
+from aima_ugc.contracts.canonical import CanonicalCommentV1, CanonicalContentV1
 from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
     XhsMappingContext,
     map_comment,
     map_content,
 )
-from aima_ugc.contracts.canonical import CanonicalCommentV1, CanonicalContentV1
 
 
 OBSERVED_AT = datetime(2026, 8, 5, 10, 0, 12, tzinfo=UTC)
