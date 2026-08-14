@@ -13,7 +13,6 @@ from aima_ugc.modules.content.ingestion import (
     InMemoryContentRepository,
 )
 
-
 OBSERVED_AT = datetime(2026, 8, 14, 3, 0, tzinfo=UTC)
 SOURCE = CanonicalSourceV1(
     provider_name="tikhub",
