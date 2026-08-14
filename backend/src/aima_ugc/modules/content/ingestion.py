@@ -1,14 +1,38 @@
-"""Canonical Content 稀疏摄取与 Current/History 领域语义。"""
+"""Canonical Content/Comment 摄取领域入口与轻量内存验证实现。"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import date, datetime
+from typing import Protocol, TypeVar
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from aima_ugc.contracts.canonical import CanonicalContentV1
+from aima_ugc.contracts.canonical import CanonicalCommentV1, CanonicalContentV1
 
 _BUSINESS_TZ = ZoneInfo("Asia/Shanghai")
+_ResultT = TypeVar("_ResultT")
+
+
+class ContentIngestionRepository(Protocol[_ResultT]):
+    """ContentIngestionService 需要的 Owner Repository 能力。"""
+
+    def ingest_content(self, observation: CanonicalContentV1) -> _ResultT: ...
+
+    def ingest_comment(self, observation: CanonicalCommentV1) -> _ResultT: ...
+
+
+class ContentIngestionService:
+    """Canonical 摄取唯一生产入口；数据库细节由 Content Owner Repository 实现。"""
+
+    def __init__(self, repository: ContentIngestionRepository[_ResultT]) -> None:
+        self._repository = repository
+
+    def ingest_content(self, observation: CanonicalContentV1) -> _ResultT:
+        return self._repository.ingest_content(observation)
+
+    def ingest_comment(self, observation: CanonicalCommentV1) -> _ResultT:
+        return self._repository.ingest_comment(observation)
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,13 +67,14 @@ class MetricObservation:
 
 @dataclass(frozen=True, slots=True)
 class IngestionResult:
+    target_id: UUID | None
     version_no: int
     version_created: bool
     metric_recorded: bool
 
 
 class InMemoryContentRepository:
-    """领域测试用 Repository；与生产 PostgreSQL Repository 共享同一摄取决策。"""
+    """无数据库的领域语义验证实现；生产仍使用 PostgreSQL Repository。"""
 
     def __init__(self) -> None:
         self._contents: dict[tuple[str, str], ContentCurrent] = {}
@@ -60,29 +85,9 @@ class InMemoryContentRepository:
     def get_content(self, platform: str, external_content_id: str) -> ContentCurrent | None:
         return self._contents.get((platform, external_content_id))
 
-    def save_content(self, content: ContentCurrent) -> None:
-        self._contents[(content.platform, content.external_content_id)] = content
-
-    def append_version(self, version: ContentVersion) -> None:
-        self.versions.append(version)
-
-    def append_metric(self, key: tuple[str, str], observation: MetricObservation) -> None:
-        self.metric_observations.append(observation)
-        self._metric_days.add((*key, observation.business_date))
-
-    def has_metric_on_day(self, key: tuple[str, str], business_date: date) -> bool:
-        return (*key, business_date) in self._metric_days
-
-
-class ContentIngestionService:
-    """只依据 observed_fields 合并 Canonical Content。"""
-
-    def __init__(self, repository: InMemoryContentRepository) -> None:
-        self._repository = repository
-
     def ingest_content(self, observation: CanonicalContentV1) -> IngestionResult:
         key = (observation.platform, observation.external_content_id)
-        current = self._repository.get_content(*key)
+        current = self._contents.get(key)
         business_date = observation.observed_at.astimezone(_BUSINESS_TZ).date()
 
         if current is None:
@@ -101,9 +106,9 @@ class ContentIngestionService:
                 last_seen_at=observation.observed_at,
                 current_version=1,
             )
-            self._repository.save_content(current)
-            self._repository.append_version(_version(current, observation.observed_at))
-            self._repository.append_metric(
+            self._contents[key] = current
+            self.versions.append(_version(current, observation.observed_at))
+            self._append_metric(
                 key,
                 MetricObservation(
                     like_count=current.like_count,
@@ -112,7 +117,7 @@ class ContentIngestionService:
                     business_date=business_date,
                 ),
             )
-            return IngestionResult(1, True, True)
+            return IngestionResult(None, 1, True, True)
 
         updated = replace(
             current,
@@ -137,18 +142,18 @@ class ContentIngestionService:
         )
         if business_changed:
             updated = replace(updated, current_version=current.current_version + 1)
-            self._repository.append_version(_version(updated, observation.observed_at))
+            self.versions.append(_version(updated, observation.observed_at))
 
         metric_recorded = False
         if "metrics.like_count" in observation.observed_fields:
             if updated.like_count != current.like_count:
                 reason = "changed"
-            elif not self._repository.has_metric_on_day(key, business_date):
+            elif not self._has_metric_on_day(key, business_date):
                 reason = "daily_checkpoint"
             else:
                 reason = ""
             if reason:
-                self._repository.append_metric(
+                self._append_metric(
                     key,
                     MetricObservation(
                         like_count=updated.like_count,
@@ -159,8 +164,22 @@ class ContentIngestionService:
                 )
                 metric_recorded = True
 
-        self._repository.save_content(updated)
-        return IngestionResult(updated.current_version, business_changed, metric_recorded)
+        self._contents[key] = updated
+        return IngestionResult(None, updated.current_version, business_changed, metric_recorded)
+
+    def ingest_comment(self, observation: CanonicalCommentV1) -> IngestionResult:
+        raise NotImplementedError("内存验证实现当前只覆盖 Content；Comment 由 PostgreSQL 集成测试验证")
+
+    def _append_metric(
+        self,
+        key: tuple[str, str],
+        observation: MetricObservation,
+    ) -> None:
+        self.metric_observations.append(observation)
+        self._metric_days.add((*key, observation.business_date))
+
+    def _has_metric_on_day(self, key: tuple[str, str], business_date: date) -> bool:
+        return (*key, business_date) in self._metric_days
 
 
 def _version(content: ContentCurrent, observed_at: datetime) -> ContentVersion:
