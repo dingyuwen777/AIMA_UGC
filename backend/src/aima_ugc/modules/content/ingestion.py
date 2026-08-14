@@ -22,16 +22,16 @@ class ContentIngestionRepository(Protocol[_ResultT_co]):
     def ingest_comment(self, observation: CanonicalCommentV1) -> _ResultT_co: ...
 
 
-class ContentIngestionService[_ResultT]:
+class ContentIngestionService[ResultT]:
     """Canonical 摄取唯一生产入口；数据库细节由 Content Owner Repository 实现。"""
 
-    def __init__(self, repository: ContentIngestionRepository[_ResultT]) -> None:
+    def __init__(self, repository: ContentIngestionRepository[ResultT]) -> None:
         self._repository = repository
 
-    def ingest_content(self, observation: CanonicalContentV1) -> _ResultT:
+    def ingest_content(self, observation: CanonicalContentV1) -> ResultT:
         return self._repository.ingest_content(observation)
 
-    def ingest_comment(self, observation: CanonicalCommentV1) -> _ResultT:
+    def ingest_comment(self, observation: CanonicalCommentV1) -> ResultT:
         return self._repository.ingest_comment(observation)
 
 
