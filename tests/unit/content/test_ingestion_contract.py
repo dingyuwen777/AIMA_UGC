@@ -27,9 +27,7 @@ SOURCE = CanonicalSourceV1(
 )
 
 
-def _content(
-    *, title: str, likes: int, observed_at: datetime = OBSERVED_AT
-) -> CanonicalContentV1:
+def _content(*, title: str, likes: int, observed_at: datetime = OBSERVED_AT) -> CanonicalContentV1:
     return CanonicalContentV1(
         platform="xhs",
         external_content_id="note-1",
