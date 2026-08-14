@@ -1,5 +1,10 @@
 """Stage 6 小红书 TikHub App V2 Operation 行为测试。"""
 
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
 from aima_ugc.adapters.providers.tikhub.operations.xiaohongshu import (
     XhsCommentPagination,
     XhsSearchPagination,
@@ -8,10 +13,17 @@ from aima_ugc.adapters.providers.tikhub.operations.xiaohongshu import (
     build_search_notes_request,
     build_sub_comments_request,
     build_video_detail_request,
+    extract_search_items,
 )
 
+_FIXTURE = Path("tests/fixtures/providers/tikhub/xhs/search_notes_page1.sanitized.json")
 
-def test_search_request_and_pagination_keep_session_state() -> None:
+
+def _search_fixture() -> dict[str, object]:
+    return json.loads(_FIXTURE.read_text(encoding="utf-8"))
+
+
+def test_search_request_and_real_fixture_pagination_keep_session_state() -> None:
     request = build_search_notes_request(
         keyword="爱玛",
         page=1,
@@ -23,23 +35,14 @@ def test_search_request_and_pagination_keep_session_state() -> None:
     assert request.params["page"] == 1
     assert "search_id" not in request.params
 
-    pagination = XhsSearchPagination.from_response(
-        current_page=1,
-        body={
-            "data": {
-                "data": {
-                    "search_id": "search-1",
-                    "search_session_id": "session-1",
-                    "has_more": True,
-                    "items": [{"note": {"id": "note-1"}}],
-                }
-            }
-        },
-    )
+    body = _search_fixture()
+    pagination = XhsSearchPagination.from_response(current_page=1, body=body)
     assert pagination.should_continue is True
     assert pagination.next_page == 2
-    assert pagination.search_id == "search-1"
-    assert pagination.search_session_id == "session-1"
+    assert pagination.search_id == "search-fixture-1"
+    assert pagination.search_session_id == "session-fixture-1"
+    assert pagination.item_ids == ("note-fixture-1", "note-fixture-2")
+    assert len(extract_search_items(body)) == 2
 
     next_request = build_search_notes_request(
         keyword="爱玛",
@@ -49,14 +52,14 @@ def test_search_request_and_pagination_keep_session_state() -> None:
         search_id=pagination.search_id,
         search_session_id=pagination.search_session_id,
     )
-    assert next_request.params["search_id"] == "search-1"
-    assert next_request.params["search_session_id"] == "session-1"
+    assert next_request.params["search_id"] == "search-fixture-1"
+    assert next_request.params["search_session_id"] == "session-fixture-1"
 
 
 def test_search_pagination_stops_on_empty_or_nonadvancing_page() -> None:
     empty = XhsSearchPagination.from_response(
         current_page=2,
-        body={"data": {"data": {"has_more": True, "items": []}}},
+        body={"data": {"data": {"items": []}, "next_page": 3}},
     )
     assert empty.should_continue is False
     assert empty.stop_reason == "empty_page"
@@ -66,15 +69,25 @@ def test_search_pagination_stops_on_empty_or_nonadvancing_page() -> None:
         previous_item_ids=("note-1",),
         body={
             "data": {
-                "data": {
-                    "has_more": True,
-                    "items": [{"note": {"id": "note-1"}}],
-                }
+                "data": {"items": [{"note": {"id": "note-1"}}]},
+                "next_page": 3,
             }
         },
     )
     assert nonadvancing.should_continue is False
     assert nonadvancing.stop_reason == "duplicate_page"
+
+    stalled = XhsSearchPagination.from_response(
+        current_page=2,
+        body={
+            "data": {
+                "data": {"items": [{"note": {"id": "note-2"}}]},
+                "next_page": 2,
+            }
+        },
+    )
+    assert stalled.should_continue is False
+    assert stalled.stop_reason == "pagination_not_advanced"
 
 
 def test_detail_and_comment_requests_use_approved_app_v2_endpoints() -> None:
@@ -96,6 +109,7 @@ def test_comment_pagination_preserves_cursor_index_and_page_area() -> None:
                 "data": {
                     "cursor": "cursor-2",
                     "index": 20,
+                    "pageArea": "FOLDED",
                     "has_more": True,
                     "comments": [{"id": "comment-1"}],
                 }
@@ -105,7 +119,23 @@ def test_comment_pagination_preserves_cursor_index_and_page_area() -> None:
     assert pagination.should_continue is True
     assert pagination.cursor == "cursor-2"
     assert pagination.index == 20
-    assert pagination.page_area == "UNFOLDED"
+    assert pagination.page_area == "FOLDED"
+
+    sub_comment_cursor = XhsCommentPagination.from_response(
+        previous_cursor="",
+        previous_index=1,
+        page_area="UNFOLDED",
+        body={
+            "data": {
+                "data": {
+                    "cursor": {"cursor": "child-cursor", "index": 3},
+                    "comments": [{"id": "comment-child"}],
+                }
+            }
+        },
+    )
+    assert sub_comment_cursor.cursor == "child-cursor"
+    assert sub_comment_cursor.index == 3
 
     stalled = XhsCommentPagination.from_response(
         previous_cursor="cursor-2",
