@@ -119,9 +119,7 @@ def _insert_source_chain(
             platform="xhs",
             source_type="keyword_search",
             source_value=source_value,
-            operation_group=(
-                "content_discovery" if operation == "search_notes" else "comments"
-            ),
+            operation_group=("content_discovery" if operation == "search_notes" else "comments"),
             status="running",
         )
     )
