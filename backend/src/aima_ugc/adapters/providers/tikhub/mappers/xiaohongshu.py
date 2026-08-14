@@ -37,11 +37,12 @@ def map_content(
     item = _unwrap_content(raw)
     external_id = _required_string(item, "id", "note_id")
     observed_fields: list[str] = ["content_type"]
+
     title = _optional_string(item, "title")
     text = _optional_string(item, "desc", "text", "content")
-    if _has_any(item, "title"):
+    if title is not None:
         observed_fields.append("title")
-    if _has_any(item, "desc", "text", "content"):
+    if text is not None:
         observed_fields.append("text")
 
     author_raw = _first_dict(item, "user", "user_info", "author")
@@ -54,16 +55,19 @@ def map_content(
     published_at = _timestamp(item, "timestamp", "time", "publish_time")
     if published_at is not None:
         observed_fields.append("published_at")
+    source_updated_at = _timestamp(item, "update_time", "source_updated_at")
+    if source_updated_at is not None:
+        observed_fields.append("source_updated_at")
 
-    content_type = _content_type(item)
     return CanonicalContentV1(
         platform="xhs",
         external_content_id=external_id,
-        content_type=content_type,
+        content_type=_content_type(item),
         title=title,
         text=text,
         author=author,
         published_at=published_at,
+        source_updated_at=source_updated_at,
         observed_at=context.observed_at,
         metrics=metrics,
         source=_source(context, item_locator),
@@ -84,7 +88,7 @@ def map_comment(
     observed_fields: list[str] = []
 
     text = _optional_string(raw, "content", "text")
-    if _has_any(raw, "content", "text"):
+    if text is not None:
         observed_fields.append("text")
 
     author_raw = _first_dict(raw, "user_info", "user", "author")
@@ -102,6 +106,9 @@ def map_comment(
     published_at = _timestamp(raw, "create_time", "timestamp", "time")
     if published_at is not None:
         observed_fields.append("published_at")
+    source_updated_at = _timestamp(raw, "update_time", "source_updated_at")
+    if source_updated_at is not None:
+        observed_fields.append("source_updated_at")
 
     explicit_parent = _first_dict(raw, "target_comment", "targetComment")
     parent_comment_id = _optional_string(explicit_parent, "id", "comment_id")
@@ -122,6 +129,7 @@ def map_comment(
         author=author,
         text=text,
         published_at=published_at,
+        source_updated_at=source_updated_at,
         observed_at=context.observed_at,
         metrics=metrics,
         source=_source(context, item_locator),
@@ -156,17 +164,33 @@ def _map_author(
 ) -> tuple[CanonicalAuthorV1 | None, tuple[str, ...]]:
     if not raw:
         return None, ()
-    external_id = _optional_string(raw, "user_id", "userId", "id")
+    external_id = _optional_string(raw, "userid", "user_id", "userId", "id")
+    red_id = _optional_string(raw, "red_id", "redId")
     display_name = _optional_string(raw, "nickname", "nick_name", "name")
+    verified = _optional_bool(raw, "red_official_verified", "verified")
+
     fields: list[str] = []
+    alternate_ids: dict[str, str] = {}
     if external_id is not None:
         fields.append("external_account_id")
+    if red_id is not None:
+        alternate_ids["red_id"] = red_id
+        fields.append("alternate_ids")
     if display_name is not None:
         fields.append("display_name")
+    if verified is not None:
+        fields.append("verified")
     if not fields:
         return None, ()
-    return CanonicalAuthorV1(external_account_id=external_id, display_name=display_name), tuple(
-        fields
+
+    return (
+        CanonicalAuthorV1(
+            external_account_id=external_id,
+            alternate_ids=alternate_ids,
+            display_name=display_name,
+            verified=verified,
+        ),
+        tuple(fields),
     )
 
 
@@ -210,7 +234,7 @@ def _timestamp(raw: dict[str, Any], *keys: str) -> datetime | None:
                 seconds /= 1000
             try:
                 return datetime.fromtimestamp(seconds, tz=UTC)
-            except OverflowError, OSError, ValueError:
+            except (OverflowError, OSError, ValueError):
                 return None
     return None
 
@@ -226,10 +250,18 @@ def _count(raw: dict[str, Any], *keys: str) -> tuple[int | None, bool]:
             return None, False
         try:
             parsed = int(value)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             return None, False
         return (parsed if parsed >= 0 else None), parsed >= 0
     return None, False
+
+
+def _optional_bool(raw: dict[str, Any], *keys: str) -> bool | None:
+    for key in keys:
+        value = raw.get(key)
+        if isinstance(value, bool):
+            return value
+    return None
 
 
 def _required_string(raw: dict[str, Any], *keys: str) -> str:
@@ -254,7 +286,3 @@ def _first_dict(raw: dict[str, Any], *keys: str) -> dict[str, Any]:
         if isinstance(value, dict):
             return value
     return {}
-
-
-def _has_any(raw: dict[str, Any], *keys: str) -> bool:
-    return any(key in raw for key in keys)
