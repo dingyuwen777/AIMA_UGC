@@ -168,7 +168,9 @@ class InMemoryContentRepository:
         return IngestionResult(None, updated.current_version, business_changed, metric_recorded)
 
     def ingest_comment(self, observation: CanonicalCommentV1) -> IngestionResult:
-        raise NotImplementedError("内存验证实现当前只覆盖 Content；Comment 由 PostgreSQL 集成测试验证")
+        raise NotImplementedError(
+            "内存验证实现当前只覆盖 Content；Comment 由 PostgreSQL 集成测试验证"
+        )
 
     def _append_metric(
         self,
