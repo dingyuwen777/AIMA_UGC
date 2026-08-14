@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260814-stage5b-collection-execution-foundation"
 title: "Stage 5B Collection Run/Scope 父事实"
 level: L3
-status: in_progress
+status: done
 owner: "dingyuwen777"
 branch: "feature/stage5b-collection-execution-foundation"
 created: 2026-08-14
@@ -44,18 +44,18 @@ data_changes:
 
 # 成功标准
 
-- [ ] `collection_runs.job_id` 是 `jobs.id` 的非空唯一外键，不接受不存在的 Job。
-- [ ] 本阶段 Run 只接受 `manual/api/backfill`；`scheduled` 在 Plan/Occurrence 父事实建立前关闭失败。
-- [ ] `collection_runs` 保存冻结配置、六种既定状态、计数、错误与时间字段；计数受非负约束。
-- [ ] `collection_scopes` 保存 Blueprint 既定身份、状态、分页、进度、统计和时间字段，并以
+- [x] `collection_runs.job_id` 是 `jobs.id` 的非空唯一外键，不接受不存在的 Job。
+- [x] 本阶段 Run 只接受 `manual/api/backfill`；`scheduled` 在 Plan/Occurrence 父事实建立前关闭失败。
+- [x] `collection_runs` 保存冻结配置、六种既定状态、计数、错误与时间字段；计数受非负约束。
+- [x] `collection_scopes` 保存 Blueprint 既定身份、状态、分页、进度、统计和时间字段，并以
   `(run_id, platform, source_type, source_value, operation_group)` 唯一约束防止重复 Scope。
-- [ ] Collection Service 在一个调用中创建 queued Run 与其 queued Scopes；重复 Scope 身份在写库前
+- [x] Collection Service 在一个调用中创建 queued Run 与其 queued Scopes；重复 Scope 身份在写库前
   返回稳定领域错误，数据库仍保留最终唯一约束。
-- [ ] 两张表只有 `collection` Owner，Router、Provider 和其他模块不能直接写表。
-- [ ] PostgreSQL 18 集成测试覆盖真实 FK、唯一约束、JSONB/default、Repository 读取和事务回滚。
-- [ ] 第三条 Revision 覆盖 `base → head`、`20260814_0002 → head` 及两种 downgrade/re-upgrade。
-- [ ] Stage 1–5A 既有 Contract、Schema、Migration、接口、依赖、锁文件和合法行为不变。
-- [ ] 独立 Stage 5B CI、Blueprint、模块 README 和测试说明与实现同步。
+- [x] 两张表只有 `collection` Owner，Router、Provider 和其他模块不能直接写表。
+- [x] PostgreSQL 18 集成测试覆盖真实 FK、唯一约束、JSONB/default、Repository 读取和事务回滚。
+- [x] 第三条 Revision 覆盖 `base → head`、`20260814_0002 → head` 及两种 downgrade/re-upgrade。
+- [x] Stage 1–5A 既有 Contract、Schema、Migration、接口、依赖、锁文件和合法行为不变。
+- [x] 独立 Stage 5B CI、Blueprint、模块 README 和测试说明与实现同步。
 
 # 范围
 
@@ -138,10 +138,10 @@ Provider Request/Attempt 持久化和 `scope_id` 最终外键。
 - [x] 用户确认方案 A、范围、非目标和后续拆分。
 - [x] Red：先建立 Service/Table/Repository/真实 PostgreSQL 行为测试，并确认因生产入口缺失失败。
 - [x] Green：完成模型、Port、Service、Table、Repository、Schema 注册和第三条 Migration 的最小实现。
-- [ ] Refactor：全绿后只整理重复与公共导出，不扩大状态机或 Provider 范围。
+- [x] Refactor：全绿后只整理重复与公共导出，不扩大状态机或 Provider 范围。
 - [x] 同步 Collection README、Blueprint 导航/阶段门禁、统一测试说明和独立 Stage 5B CI。
-- [ ] 执行需求符合性与代码质量两阶段复核，修复严重/重要问题。
-- [ ] 取得本地/CI/PR/合并后 main 新鲜证据并归档 Change。
+- [x] 执行需求符合性与代码质量两阶段复核，修复严重/重要问题。
+- [x] 取得本地/CI/PR/合并后 main 新鲜证据并归档 Change。
 
 # 验证
 
@@ -186,6 +186,21 @@ Provider Request/Attempt 持久化和 `scope_id` 最终外键。
   产生 4 个 setup error（其余 22 passed）。失败日志确认不是断言或生产代码错误。修复将 Stage 5A
   测试入口精确收窄到原有 Provider Client、Raw Artifact 和 Provider Contract 文件；Stage 5B
   PostgreSQL 测试继续只由配置真实 PostgreSQL 18.4 的新工作流执行，未删除或跳过任何测试。
+- PR #21 最终 head `e0138631edce10622be173b8febf83995e1b2576`：通用 CI
+  `31775146007`、Stage 4 `31775146003`、Stage 5A `31775146022`、Stage 5B
+  `31775146048` 全部 completed/success；PR 状态 CLEAN/MERGEABLE。
+- PR #21 squash 合并到 main，merge commit
+  `755291ff39e486d584e2b6e5e303b8a97f1240c1`。远端实现分支已删除，本地 main 与 origin/main
+  均指向该提交且工作区干净。
+- 合并后 main 通用 CI `31775286324` completed/success：Backend/Repository 34+13+3 passed，
+  Ruff/mypy/Contract/Wheel、前端 lint/type/test/build、Windows bootstrap、Stage 2/3A PostgreSQL
+  门禁全部成功。
+- 合并后 main Stage 5B `31775286224` completed/success：Collection Unit/Provider Contract
+  19 passed，真实 PostgreSQL Collection Integration 7 passed；`base → head → base → head`、
+  `20260814_0002 → head → 20260814_0002 → head` 与每次 `alembic check` 均通过；真实
+  Job FK、Run/Scope Unique 和目标索引检查通过。
+- 合并后 main Stage 4 `31775286278`、Stage 5A `31775286330` 均 completed/success；Stage 5A
+  测试边界修正后既有 Provider/Raw 门禁保持通过。
 
 # 文档影响
 
@@ -199,6 +214,11 @@ Provider Request/Attempt 持久化和 `scope_id` 最终外键。
 
 - 基线 main：`236e07c063efce58af5416a6f08adcd736f8785c`。
 - 实现分支：`feature/stage5b-collection-execution-foundation`。
-- Commit：待完成。
-- PR：待完成。
+- 实现 Commit：`d2056f9`（`建立 Stage 5B Collection 执行父事实`）、`e013863`
+  （`修正 Stage 5A 测试边界`）。
+- 实现 PR：[PR #21](https://github.com/dingyuwen777/AIMA_UGC/pull/21)，squash merge commit
+  `755291ff39e486d584e2b6e5e303b8a97f1240c1`。
+- Change 收尾分支：`chore/archive-stage5b-collection-execution-foundation-change`。
+- Change 状态：done，归档至
+  `changes/archive/2026-08/CHG-20260814-stage5b-collection-execution-foundation/`。
 - 发布：未部署；本 Change 只建立数据库与库级入口。
