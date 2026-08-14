@@ -32,6 +32,7 @@ class ArtifactService:
         retention_class: str,
         data: bytes,
         encoding: str | None = None,
+        storage_key: str | None = None,
     ) -> ArtifactRecord:
         """先登记 pending，再原子落字节并标记 stored。"""
         if not _KIND_PATTERN.fullmatch(kind):
@@ -42,12 +43,17 @@ class ArtifactService:
             raise ValueError("Artifact retention_class 不能为空")
 
         artifact_id = uuid4()
-        storage_key = f"{kind}/{artifact_id}"
+        if storage_key is None:
+            resolved_storage_key = f"{kind}/{artifact_id}"
+        elif not storage_key:
+            raise ValueError("Artifact storage_key 不能为空")
+        else:
+            resolved_storage_key = storage_key
         pending = ArtifactRecord(
             id=artifact_id,
             kind=kind,
             storage_backend=self._store.backend_name,
-            storage_key=storage_key,
+            storage_key=resolved_storage_key,
             content_type=content_type,
             encoding=encoding,
             retention_class=retention_class,
@@ -57,7 +63,7 @@ class ArtifactService:
         self._metadata.create_pending(pending)
 
         try:
-            stored = self._store.put(storage_key, data)
+            stored = self._store.put(resolved_storage_key, data)
         except Exception:
             try:
                 self._metadata.mark_error(artifact_id)
