@@ -1,4 +1,4 @@
-"""检查 Stage 1–5C 仓库与架构硬约束。"""
+"""检查 Stage 1–5D 仓库与架构硬约束。"""
 
 from __future__ import annotations
 
@@ -17,12 +17,14 @@ REQUIRED = [
     ROOT / "migrations" / "versions" / "20260814_0002_stage4_job_runtime.py",
     ROOT / "migrations" / "versions" / "20260814_0003_stage5b_collection_execution.py",
     ROOT / "migrations" / "versions" / "20260814_0004_stage5c_provider_persistence.py",
+    ROOT / "migrations" / "versions" / "20260814_0005_stage5d_provider_dispatch.py",
     ROOT / "contracts" / "provider" / "request.v1.schema.json",
     ROOT / "contracts" / "provider" / "attempt.v1.schema.json",
     ROOT / "contracts" / "provider" / "raw-envelope.v1.schema.json",
     ROOT / ".github" / "workflows" / "stage5a-provider-raw.yml",
     ROOT / ".github" / "workflows" / "stage5b-collection-execution.yml",
     ROOT / ".github" / "workflows" / "stage5c-provider-persistence.yml",
+    ROOT / ".github" / "workflows" / "stage5d-provider-dispatch.yml",
     ROOT / "backend" / "src" / "aima_ugc" / "__init__.py",
     ROOT / "backend" / "src" / "aima_ugc" / "database_schema.py",
     ROOT / "backend" / "src" / "aima_ugc" / "platform" / "config" / "settings.py",
@@ -49,6 +51,8 @@ REQUIRED = [
     / "raw_artifact.py",
     ROOT / "backend" / "src" / "aima_ugc" / "modules" / "collection" / "execution.py",
     ROOT / "backend" / "src" / "aima_ugc" / "modules" / "collection" / "provider_persistence.py",
+    ROOT / "backend" / "src" / "aima_ugc" / "modules" / "collection" / "provider_dispatch.py",
+    ROOT / "backend" / "src" / "aima_ugc" / "modules" / "collection" / "provider_recovery.py",
     ROOT / "backend" / "src" / "aima_ugc" / "modules" / "collection" / "tables.py",
     ROOT / "backend" / "src" / "aima_ugc" / "adapters" / "providers" / "fake.py",
     ROOT / "backend" / "src" / "aima_ugc" / "modules" / "system" / "ports.py",
@@ -72,6 +76,14 @@ REQUIRED = [
     / "postgres"
     / "collection.py",
     ROOT / "backend" / "src" / "aima_ugc" / "adapters" / "persistence" / "postgres" / "provider.py",
+    ROOT
+    / "backend"
+    / "src"
+    / "aima_ugc"
+    / "adapters"
+    / "persistence"
+    / "postgres"
+    / "provider_dispatch.py",
     ROOT / "backend" / "src" / "aima_ugc" / "bootstrap" / "runtime.py",
     ROOT / "backend" / "src" / "aima_ugc" / "entrypoints" / "api_main.py",
     ROOT / "backend" / "src" / "aima_ugc" / "entrypoints" / "worker_main.py",
@@ -91,7 +103,7 @@ def main() -> int:
     errors: list[str] = []
     for path in REQUIRED:
         if not path.exists():
-            errors.append(f"ARCH001 {path.relative_to(ROOT)}: Stage 1–5C 必需文件不存在")
+            errors.append(f"ARCH001 {path.relative_to(ROOT)}: Stage 1–5D 必需文件不存在")
     for path in FORBIDDEN:
         if path.exists():
             errors.append(f"ARCH002 {path.relative_to(ROOT)}: 方案 A 禁止创建第二套 backend 工程")
@@ -100,7 +112,7 @@ def main() -> int:
         print("\n".join(errors))
         return 1
 
-    print("Stage 1–5C 架构骨架检查通过。")
+    print("Stage 1–5D 架构骨架检查通过。")
     return 0
 
 

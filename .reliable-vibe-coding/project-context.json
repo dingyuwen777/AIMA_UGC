@@ -1,0 +1,276 @@
+{
+  "candidate_path_digest": "23ef2203da9ef9122ea488f4c4062e97a42e0997dd8bdbba18385fc8ef195635",
+  "directories": [
+    {
+      "count": 4,
+      "kinds": [
+        "documentation",
+        "instructions",
+        "manifest"
+      ],
+      "path": ""
+    },
+    {
+      "count": 1,
+      "kinds": [
+        "documentation"
+      ],
+      "path": "backend/src/aima_ugc/modules/collection"
+    },
+    {
+      "count": 1,
+      "kinds": [
+        "documentation"
+      ],
+      "path": "backend/src/aima_ugc/modules/system"
+    },
+    {
+      "count": 3,
+      "kinds": [
+        "contract"
+      ],
+      "path": "contracts/canonical"
+    },
+    {
+      "count": 1,
+      "kinds": [
+        "contract"
+      ],
+      "path": "contracts/canonical/examples"
+    },
+    {
+      "count": 1,
+      "kinds": [
+        "contract"
+      ],
+      "path": "contracts/openapi"
+    },
+    {
+      "count": 3,
+      "kinds": [
+        "contract"
+      ],
+      "path": "contracts/provider"
+    },
+    {
+      "count": 3,
+      "kinds": [
+        "documentation"
+      ],
+      "path": "docs"
+    },
+    {
+      "count": 8,
+      "kinds": [
+        "documentation"
+      ],
+      "path": "docs/blueprint"
+    },
+    {
+      "count": 2,
+      "kinds": [
+        "manifest"
+      ],
+      "path": "frontend"
+    }
+  ],
+  "documents": [
+    {
+      "kind": "instructions",
+      "path": "AGENTS.md",
+      "sha256": "584c3337beeda8d4f88781bea5ebaa797ba0a81eeb6e5b40df2a1f2d81b24206",
+      "size": 18353,
+      "title": "AIMA_UGC AI / Coding Agent 开发规范"
+    },
+    {
+      "kind": "documentation",
+      "path": "README.md",
+      "sha256": "d380ec1cc47e5eb3c4ab39bda389df9366d034ada4db4151ea126cf4f39dfac7",
+      "size": 21116,
+      "title": "AIMA_UGC"
+    },
+    {
+      "kind": "documentation",
+      "path": "backend/src/aima_ugc/modules/collection/README.md",
+      "sha256": "b6295f8b844fefac1c41ebc4f2fdfe5b91dae49b395c8d116ed02bb503b791a1",
+      "size": 4577,
+      "title": "Collection 模块"
+    },
+    {
+      "kind": "documentation",
+      "path": "backend/src/aima_ugc/modules/system/README.md",
+      "sha256": "523a29e6a6d12dc3f37ffcad5e6f8182aa2067053daf72e66d850c6a4cb6fd06",
+      "size": 744,
+      "title": "System 模块"
+    },
+    {
+      "kind": "contract",
+      "path": "contracts/canonical/comment.v1.schema.json",
+      "sha256": "6285e04c12f66e727d022123007205cb644491c45c589108af0de3a7b60e815a",
+      "size": 9131
+    },
+    {
+      "kind": "contract",
+      "path": "contracts/canonical/content.aggregate.v1.schema.json",
+      "sha256": "818ff6cfbc32465e0c2ff8ba72538ccf9920ffdecbd7373142cf851d906db73f",
+      "size": 14000
+    },
+    {
+      "kind": "contract",
+      "path": "contracts/canonical/content.v1.schema.json",
+      "sha256": "a53a5fb2e4625e65ccd55283e2e0aef82d5616272703ed27284a7e3d510f5d5b",
+      "size": 9549
+    },
+    {
+      "kind": "contract",
+      "path": "contracts/canonical/examples/content.aggregate.v1.json",
+      "sha256": "8c8e6befc02b3dfe5ad60059f91e87b098c1c16a6687d3d614b8e5b4b42dee8e",
+      "size": 9053
+    },
+    {
+      "kind": "contract",
+      "path": "contracts/openapi/openapi.json",
+      "sha256": "680706c7c6530f4bf7b652725b038dc5f827feef6ee9d8f135276cc450dab075",
+      "size": 3617
+    },
+    {
+      "kind": "contract",
+      "path": "contracts/provider/attempt.v1.schema.json",
+      "sha256": "b159603f4bcf1f02cef06b503fad4950321c3fd367191c527916b18297995d8e",
+      "size": 3447
+    },
+    {
+      "kind": "contract",
+      "path": "contracts/provider/raw-envelope.v1.schema.json",
+      "sha256": "a6057256904c09f4a65b8f98758dbec095743614f6e79a5976f16cc980355363",
+      "size": 4553
+    },
+    {
+      "kind": "contract",
+      "path": "contracts/provider/request.v1.schema.json",
+      "sha256": "3e8f2dde692a232faf9bd06ac6f3f4f647cf92938672dc69b8336c5a7de2e779",
+      "size": 1269
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/API接口说明.md",
+      "sha256": "be198aba82ecea7a701d732d7f61e8cd0d192457df3a828bf7240ea14e11f10f",
+      "size": 6050,
+      "title": "AIMA_UGC API 接口说明"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/blueprint/01-总体架构与技术选型.md",
+      "sha256": "3e0f45f002ac87aeb481651dc706033e97449b903e4acd521063a2ce3d4cfbfb",
+      "size": 15858,
+      "title": "总体架构与技术选型"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/blueprint/02-采集系统与数据标准化.md",
+      "sha256": "ebb5d5bef35c6ba312e2eccbc4c36d1be6fb7c5f8ff2ec4f026879fd3ef022eb",
+      "size": 24556,
+      "title": "采集系统与数据标准化"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/blueprint/03-数据库与文件存储.md",
+      "sha256": "7b50aa543184088e7f706c3cc383c399ffe3f774b0227ee7576bf87597f2b31c",
+      "size": 50406,
+      "title": "数据库与文件存储"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/blueprint/04-后端任务API与前端.md",
+      "sha256": "2132d9fa3c30f5e80ee8036379b3acfcfad9fa649396205a04e6d8055f864d7f",
+      "size": 25012,
+      "title": "后端任务、API 与前端"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/blueprint/05-日志安全部署与运维.md",
+      "sha256": "41d377f6a68e768ea3d06b58b08dac146889716d4a362d3fdd4206cc2974a6e4",
+      "size": 20761,
+      "title": "日志、安全、部署与运维"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/blueprint/06-开发约束与分阶段实施.md",
+      "sha256": "d612afd66b30f31148dc8623707b698680fff29d9d076f8d4a4ec69c5caa47aa",
+      "size": 32625,
+      "title": "开发约束与分阶段实施"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/blueprint/07-技术决策与实施门禁.md",
+      "sha256": "e9cddb1f9815ed7ee26718532e847d8ad5a8aa0f37e66610ec94680cc27f20fa",
+      "size": 44864,
+      "title": "技术决策与实施门禁"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/blueprint/README.md",
+      "sha256": "edbf53b31630f3be444e61c8f4b71dcafc726dd6b288139fe246985b644e9e7e",
+      "size": 12574,
+      "title": "AIMA_UGC Blueprint 导航"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/测试与调试说明.md",
+      "sha256": "e11ff661b9c3931ad0fb0e39b2a5147c917c6f867ccf48e7a351a77835533eef",
+      "size": 16139,
+      "title": "AIMA_UGC 测试与调试说明"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/环境运行与部署.md",
+      "sha256": "2aa995ac5a32ccb3726a22411b26bb258bfd111328c42448ca159b87db85919e",
+      "size": 18025,
+      "title": "环境、运行与部署"
+    },
+    {
+      "kind": "manifest",
+      "path": "frontend/package-lock.json",
+      "sha256": "7d85e197ee1c52e01939bbab03b53ad6322fa6635e5e6079ac43f2acd1cd7d21",
+      "size": 230570
+    },
+    {
+      "kind": "manifest",
+      "path": "frontend/package.json",
+      "sha256": "1a1d3ca3099cb705dd63ed1e691797d9778efd62b79d858635e4bbc800b8307d",
+      "size": 1378
+    },
+    {
+      "kind": "manifest",
+      "path": "pyproject.toml",
+      "sha256": "f1a58010d4078392ac70078cc74bd01ea53061b27cbcb4672193f8de1460f621",
+      "size": 893
+    },
+    {
+      "kind": "manifest",
+      "path": "uv.lock",
+      "sha256": "e122f38c1657016ce59718f214a672d889ce2f3321b4cb410670320f3825bfd2",
+      "size": 88730
+    }
+  ],
+  "generated_at": "2026-08-14T08:59:52+00:00",
+  "generator_version": "0.1.0",
+  "git": {
+    "indexed_at_commit": "9770e8a333d15df10b56422c5a5559028411ecd6",
+    "repository": true,
+    "worktree_candidate_digest": "e1778963e4a223f6b45c3f72755946945ddf7c5ebce7889f0586a8357ea811f0"
+  },
+  "package_scripts": {
+    "frontend/package.json": {
+      "build": "npm run typecheck && vite build",
+      "dev": "vite",
+      "generate:api": "orval --config orval.config.mjs",
+      "lint": "eslint . --max-warnings=0",
+      "test": "vitest",
+      "typecheck": "npm run typecheck:ts7 && npm run typecheck:vue",
+      "typecheck:ts7": "node ./node_modules/@typescript/native/lib/tsc.js --project tsconfig.native.json --noEmit",
+      "typecheck:vue": "vue-tsc --noEmit"
+    }
+  },
+  "schema": "rvc-project-context/v1"
+}

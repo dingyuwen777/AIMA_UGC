@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import insert, update
+from sqlalchemy import insert, select, update
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
@@ -65,6 +66,16 @@ class PostgresArtifactMetadataRepository:
                 deleted_at=record.deleted_at,
             )
         )
+
+    def get_by_storage_key(self, storage_key: str) -> ArtifactRecord | None:
+        row = (
+            self._session.execute(
+                select(artifacts_table).where(artifacts_table.c.storage_key == storage_key)
+            )
+            .mappings()
+            .one_or_none()
+        )
+        return _artifact_from_row(row) if row is not None else None
 
     def mark_stored(
         self,
@@ -131,3 +142,46 @@ class PostgresArtifactMetadataRepository:
         if row is None:
             raise ArtifactStateConflict("Artifact 不是 pending，不能标记为 error")
         return _artifact_from_row(row)
+
+
+class PostgresArtifactMetadataGateway:
+    """ArtifactService 使用的分阶段 PostgreSQL 短事务入口。"""
+
+    def __init__(self, session_factory: Callable[[], Session]) -> None:
+        self._session_factory = session_factory
+
+    def create_pending(self, record: ArtifactRecord) -> None:
+        self._run(lambda repository: repository.create_pending(record))
+
+    def mark_stored(
+        self,
+        artifact_id: UUID,
+        *,
+        sha256: str,
+        byte_size: int,
+        stored_at: datetime,
+    ) -> ArtifactRecord:
+        return self._run(
+            lambda repository: repository.mark_stored(
+                artifact_id,
+                sha256=sha256,
+                byte_size=byte_size,
+                stored_at=stored_at,
+            )
+        )
+
+    def mark_linked(self, artifact_id: UUID, *, linked_at: datetime) -> ArtifactRecord:
+        return self._run(
+            lambda repository: repository.mark_linked(artifact_id, linked_at=linked_at)
+        )
+
+    def mark_error(self, artifact_id: UUID) -> ArtifactRecord:
+        return self._run(lambda repository: repository.mark_error(artifact_id))
+
+    def _run[T](self, operation: Callable[[PostgresArtifactMetadataRepository], T]) -> T:
+        session = self._session_factory()
+        try:
+            with session.begin():
+                return operation(PostgresArtifactMetadataRepository(session))
+        finally:
+            session.close()

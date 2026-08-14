@@ -175,9 +175,10 @@ class ProviderClient:
         attempt_id: UUID,
         attempt_no: int,
         transport_request: ProviderTransportRequest,
+        dispatch_started_at: datetime | None = None,
     ) -> ProviderDispatchResult:
         """调用 Transport 恰好一次，并形成终态 Attempt 与脱敏 Raw 输入。"""
-        started_at = self._clock()
+        started_at = dispatch_started_at or self._clock()
         raw_request = RawRequestV1(
             transport_kind=transport_request.transport_kind,
             method=transport_request.method,

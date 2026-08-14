@@ -11,7 +11,7 @@ from uuid import UUID
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from .models import JobHandlerResult, LeaseLostError
+from .models import JobExecutionFence, JobHandlerResult, LeaseLostError
 from .registry import JobRegistry
 
 if TYPE_CHECKING:
@@ -51,6 +51,11 @@ class JobExecutionContext:
         self._progress = initial_progress
         self._progress_lock = Lock()
         self._heartbeat_error: Exception | None = None
+
+    @property
+    def fence(self) -> JobExecutionFence:
+        """返回仅供当前 Handler 内存传递的 Fencing 能力。"""
+        return JobExecutionFence(job_id=self._job_id, lease_token=self._lease_token)
 
     def heartbeat(self, *, progress: int) -> None:
         session = self._session_factory()

@@ -11,7 +11,11 @@ from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
-from aima_ugc.contracts.provider import ProviderRequestV1
+from aima_ugc.contracts.provider import ProviderAttemptV1, ProviderRequestV1
+from aima_ugc.modules.collection.provider_dispatch import (
+    ProviderAttemptStateConflict,
+    ProviderDispatchPreparation,
+)
 from aima_ugc.modules.collection.provider_persistence import (
     ProviderAttemptRecord,
     ProviderPersistenceConflictError,
@@ -21,6 +25,7 @@ from aima_ugc.modules.collection.provider_persistence import (
     ProviderScopeNotFoundError,
 )
 from aima_ugc.modules.collection.tables import (
+    collection_runs_table,
     collection_scopes_table,
     provider_request_attempts_table,
     provider_requests_table,
@@ -198,9 +203,221 @@ class PostgresProviderRepository:
         self._session.execute(
             update(provider_requests_table)
             .where(provider_requests_table.c.id == provider_request_id)
-            .values(attempt_count=next_attempt_no)
+            .values(
+                attempt_count=next_attempt_no,
+                status="pending",
+                completed_at=None,
+                error_code=None,
+                error_detail=None,
+            )
         )
         return _row_to_attempt(attempt_row)
+
+    def load_dispatch_preparation(
+        self,
+        attempt_id: UUID,
+    ) -> ProviderDispatchPreparation | None:
+        """沿 Attempt→Request→Scope→Run 返回受约束的 Dispatch 父事实。"""
+        row = (
+            self._session.execute(
+                select(
+                    collection_runs_table.c.job_id.label("job_id"),
+                    collection_scopes_table.c.run_id.label("run_id"),
+                    collection_scopes_table.c.platform.label("platform"),
+                    provider_requests_table.c.id.label("request_id"),
+                    provider_requests_table.c.scope_id.label("scope_id"),
+                    provider_requests_table.c.provider.label("provider"),
+                    provider_requests_table.c.operation.label("operation"),
+                    provider_requests_table.c.request_fingerprint.label("request_fingerprint"),
+                    provider_requests_table.c.request_params.label("request_params"),
+                    provider_requests_table.c.pagination_input.label("pagination_input"),
+                )
+                .select_from(
+                    provider_request_attempts_table.join(
+                        provider_requests_table,
+                        provider_request_attempts_table.c.provider_request_id
+                        == provider_requests_table.c.id,
+                    )
+                    .join(
+                        collection_scopes_table,
+                        provider_requests_table.c.scope_id == collection_scopes_table.c.id,
+                    )
+                    .join(
+                        collection_runs_table,
+                        collection_scopes_table.c.run_id == collection_runs_table.c.id,
+                    )
+                )
+                .where(provider_request_attempts_table.c.id == attempt_id)
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is None:
+            return None
+        attempt_row = (
+            self._session.execute(
+                select(provider_request_attempts_table).where(
+                    provider_request_attempts_table.c.id == attempt_id
+                )
+            )
+            .mappings()
+            .one()
+        )
+        request = ProviderRequestV1(
+            request_id=row["request_id"],
+            run_id=row["run_id"],
+            scope_id=row["scope_id"],
+            provider=row["provider"],
+            platform=row["platform"],
+            operation=row["operation"],
+            request_fingerprint=row["request_fingerprint"],
+            request_params=row["request_params"],
+            pagination_input=row["pagination_input"],
+        )
+        return ProviderDispatchPreparation(
+            job_id=row["job_id"],
+            request=request,
+            attempt=_row_to_attempt(attempt_row),
+        )
+
+    def mark_dispatching(self, attempt_id: UUID) -> ProviderAttemptRecord:
+        """仅允许一个竞争者将 reserved Attempt 推进到 dispatching。"""
+        started_at = func.clock_timestamp()
+        row = (
+            self._session.execute(
+                update(provider_request_attempts_table)
+                .where(
+                    provider_request_attempts_table.c.id == attempt_id,
+                    provider_request_attempts_table.c.dispatch_status == "reserved",
+                )
+                .values(
+                    dispatch_status="dispatching",
+                    dispatch_started_at=started_at,
+                )
+                .returning(*provider_request_attempts_table.c)
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is None:
+            raise ProviderAttemptStateConflict("Provider Attempt 不是 reserved")
+        self._session.execute(
+            update(provider_requests_table)
+            .where(
+                provider_requests_table.c.id == row["provider_request_id"],
+                provider_requests_table.c.attempt_count == row["attempt_no"],
+            )
+            .values(
+                status="dispatching",
+                completed_at=None,
+                error_code=None,
+                error_detail=None,
+            )
+        )
+        return _row_to_attempt(row)
+
+    def finalize_dispatch(
+        self,
+        *,
+        attempt: ProviderAttemptV1,
+        raw_artifact_id: UUID | None,
+    ) -> ProviderAttemptRecord:
+        """以 CAS 保存终态 Attempt，并更新逻辑 Request 当前汇总。"""
+        if attempt.dispatch_status not in {"completed", "not_sent", "unknown"}:
+            raise ValueError("Provider Dispatch 终态无效")
+        if attempt.dispatch_status == "completed":
+            if raw_artifact_id is None or attempt.raw_artifact_id != raw_artifact_id:
+                raise ValueError("completed Attempt 必须关联同一 Raw Artifact")
+        elif attempt.dispatch_status == "unknown":
+            if attempt.raw_artifact_id != raw_artifact_id:
+                raise ValueError("unknown Attempt 的 Raw Artifact 引用不一致")
+        elif raw_artifact_id is not None or attempt.raw_artifact_id is not None:
+            raise ValueError("not_sent Attempt 不能关联 Raw Artifact")
+
+        request_row = (
+            self._session.execute(
+                select(provider_requests_table)
+                .where(provider_requests_table.c.id == attempt.provider_request_id)
+                .with_for_update()
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if request_row is None:
+            raise ProviderRequestNotFoundError(
+                f"Provider Request 不存在: {attempt.provider_request_id}"
+            )
+        currency = _merge_cost_dimension(
+            request_row["cost_currency"],
+            attempt.billing.currency,
+            name="currency",
+        )
+        cost_unit = _merge_cost_dimension(
+            request_row["cost_unit"],
+            attempt.billing.unit,
+            name="unit",
+        )
+        error_code = attempt.error.code if attempt.error is not None else None
+        error_detail = attempt.error.safe_summary if attempt.error is not None else None
+        row = (
+            self._session.execute(
+                update(provider_request_attempts_table)
+                .where(
+                    provider_request_attempts_table.c.id == attempt.attempt_id,
+                    provider_request_attempts_table.c.provider_request_id
+                    == attempt.provider_request_id,
+                    provider_request_attempts_table.c.attempt_no == attempt.attempt_no,
+                    provider_request_attempts_table.c.dispatch_status == "dispatching",
+                )
+                .values(
+                    dispatch_status=attempt.dispatch_status,
+                    dispatch_started_at=attempt.dispatch_started_at,
+                    completed_at=attempt.completed_at,
+                    http_status=attempt.http_status,
+                    external_request_id=attempt.external_request_id,
+                    raw_artifact_id=raw_artifact_id,
+                    estimated_cost=attempt.billing.estimated_cost,
+                    actual_cost=attempt.billing.actual_cost,
+                    cost_currency=attempt.billing.currency,
+                    cost_unit=attempt.billing.unit,
+                    unit_price_snapshot=attempt.billing.unit_price_snapshot,
+                    billing_status=attempt.billing.status,
+                    potential_duplicate_charge=attempt.potential_duplicate_charge,
+                    error_code=error_code,
+                    error_detail=error_detail,
+                )
+                .returning(*provider_request_attempts_table.c)
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is None:
+            raise ProviderAttemptStateConflict("Provider Attempt 不是当前 dispatching 状态")
+
+        request_values: dict[str, object] = {
+            "estimated_cost": (
+                cast(Decimal, request_row["estimated_cost"]) + attempt.billing.estimated_cost
+            ),
+            "actual_cost": (
+                cast(Decimal, request_row["actual_cost"]) + attempt.billing.actual_cost
+            ),
+            "cost_currency": currency,
+            "cost_unit": cost_unit,
+        }
+        if request_row["attempt_count"] == attempt.attempt_no:
+            request_values.update(
+                status=attempt.dispatch_status,
+                unit_price_snapshot=attempt.billing.unit_price_snapshot,
+                completed_at=attempt.completed_at,
+                error_code=error_code,
+                error_detail=error_detail,
+            )
+        self._session.execute(
+            update(provider_requests_table)
+            .where(provider_requests_table.c.id == attempt.provider_request_id)
+            .values(**request_values)
+        )
+        return _row_to_attempt(row)
 
     def list_attempts(self, provider_request_id: UUID) -> list[ProviderAttemptRecord]:
         rows = self._session.execute(
@@ -235,6 +452,19 @@ def _is_same_non_billable_reservation(row: RowMapping, provider_request_id: UUID
         and (row["unit_price_snapshot"] is None or row["unit_price_snapshot"] == 0)
         and cast(bool, row["potential_duplicate_charge"]) is False
     )
+
+
+def _merge_cost_dimension(
+    current: str | None,
+    incoming: str | None,
+    *,
+    name: str,
+) -> str | None:
+    if current is not None and incoming is not None and current != incoming:
+        raise ProviderPersistenceConflictError(
+            f"Provider Request 的费用 {name} 与已有 Attempt 不一致"
+        )
+    return incoming if incoming is not None else current
 
 
 def _row_to_request(row: RowMapping) -> ProviderRequestRecord:

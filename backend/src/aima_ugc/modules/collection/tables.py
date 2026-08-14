@@ -109,6 +109,10 @@ provider_requests_table = Table(
     CheckConstraint("char_length(operation) > 0", name="operation_nonempty"),
     CheckConstraint("char_length(status) > 0", name="status_nonempty"),
     CheckConstraint(
+        "status in ('pending','dispatching','completed','not_sent','unknown')",
+        name="status_allowed",
+    ),
+    CheckConstraint(
         "request_fingerprint ~ '^[0-9a-f]{64}$'",
         name="request_fingerprint_sha256",
     ),

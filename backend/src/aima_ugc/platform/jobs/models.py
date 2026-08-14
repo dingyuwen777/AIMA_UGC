@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal, Protocol, Self
 from uuid import UUID
@@ -67,8 +67,19 @@ class JobAttemptEvent:
     happened_at: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class JobExecutionFence:
+    """当前 Worker 用于业务短事务校验的内存能力。"""
+
+    job_id: UUID
+    lease_token: str = field(repr=False)
+
+
 class JobExecutionContextProtocol(Protocol):
     """Handler 可用的最小执行上下文边界。"""
+
+    @property
+    def fence(self) -> JobExecutionFence: ...
 
     def heartbeat(self, *, progress: int) -> None: ...
 

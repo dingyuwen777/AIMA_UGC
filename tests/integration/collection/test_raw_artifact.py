@@ -224,3 +224,29 @@ def test_raw_replay_converts_truncated_gzip_to_integrity_error() -> None:
 
     with pytest.raises(RawArtifactIntegrityError, match="gzip"):
         service.replay(matching_metadata)
+
+
+def test_raw_replay_converts_missing_file_to_integrity_error() -> None:
+    store = LocalArtifactStore(_isolated_artifact_root())
+    service = RawArtifactService(
+        artifacts=ArtifactService(metadata=FakeArtifactMetadata(), store=store),
+        store=store,
+    )
+    stored_at = datetime(2026, 8, 14, 4, 0, tzinfo=UTC)
+    missing = ArtifactRecord(
+        id=uuid4(),
+        kind="provider-raw",
+        storage_backend="local",
+        storage_key="raw/missing.json.gz",
+        content_type="application/json",
+        encoding="gzip",
+        retention_class="raw",
+        storage_status="stored",
+        created_at=stored_at,
+        sha256="0" * 64,
+        byte_size=1,
+        stored_at=stored_at,
+    )
+
+    with pytest.raises(RawArtifactIntegrityError, match="文件不存在"):
+        service.replay(missing)

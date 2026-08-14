@@ -7,7 +7,7 @@ from hashlib import sha256
 from typing import cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, insert, select, text, update
+from sqlalchemy import func, insert, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from aima_ugc.platform.jobs.models import (
     JobAttemptEvent,
     JobEventType,
+    JobExecutionFence,
     JobIdempotencyConflict,
     JobRecord,
     JobStatus,
@@ -306,6 +307,50 @@ class PostgresJobRepository:
         if row is None:
             raise LeaseLostError("job lease is no longer current")
         return row["cancel_requested_at"] is not None
+
+    def lock_current_execution(self, fence: JobExecutionFence) -> JobRecord:
+        """锁住并验证当前 Job Fencing，供业务可见短事务复用。"""
+        now = func.clock_timestamp()
+        row = (
+            self._session.execute(
+                select(jobs_table)
+                .where(
+                    jobs_table.c.id == fence.job_id,
+                    jobs_table.c.status == "running",
+                    jobs_table.c.lease_token == fence.lease_token,
+                    jobs_table.c.cancel_requested_at.is_(None),
+                    jobs_table.c.lease_expires_at > now,
+                    jobs_table.c.attempt_deadline_at > now,
+                )
+                .with_for_update()
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is None:
+            raise LeaseLostError("job lease is no longer current")
+        return _row_to_job(row)
+
+    def lock_expired_execution(self, job_id: UUID) -> JobRecord | None:
+        """只锁住已无有效执行租约的 Job，供保守恢复使用。"""
+        now = func.clock_timestamp()
+        row = (
+            self._session.execute(
+                select(jobs_table)
+                .where(
+                    jobs_table.c.id == job_id,
+                    or_(
+                        jobs_table.c.status != "running",
+                        jobs_table.c.lease_expires_at <= now,
+                        jobs_table.c.attempt_deadline_at <= now,
+                    ),
+                )
+                .with_for_update()
+            )
+            .mappings()
+            .one_or_none()
+        )
+        return _row_to_job(row) if row is not None else None
 
     def succeed(
         self,

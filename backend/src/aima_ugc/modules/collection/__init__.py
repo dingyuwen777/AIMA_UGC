@@ -9,6 +9,11 @@ from .execution import (
     DuplicateCollectionScopeError,
     UnsupportedCollectionTriggerError,
 )
+from .provider_dispatch import (
+    ProviderDispatchOutcome,
+    ProviderDispatchPreparation,
+    ProviderDispatchService,
+)
 from .provider_persistence import (
     PreparedProviderAttempt,
     ProviderAttemptRecord,
@@ -18,6 +23,10 @@ from .provider_persistence import (
     ProviderRequestNotFoundError,
     ProviderRequestRecord,
     ProviderScopeNotFoundError,
+)
+from .provider_recovery import (
+    ProviderAttemptReconciler,
+    ProviderRecoveryCandidate,
 )
 
 __all__ = [
@@ -29,6 +38,11 @@ __all__ = [
     "DuplicateCollectionScopeError",
     "PreparedProviderAttempt",
     "ProviderAttemptRecord",
+    "ProviderAttemptReconciler",
+    "ProviderDispatchOutcome",
+    "ProviderDispatchPreparation",
+    "ProviderDispatchService",
+    "ProviderRecoveryCandidate",
     "ProviderPersistenceConflictError",
     "ProviderPersistenceService",
     "ProviderRequestLineageMismatchError",
