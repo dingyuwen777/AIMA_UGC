@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260814-stage4-job-runtime
 title: Stage 4 PostgreSQL Job Runtime
 level: L3
-status: in_progress
+status: done
 owner: dingyuwen777
 branch: feature/stage4-job-runtime
 created: 2026-08-14
@@ -19,33 +19,15 @@ data_changes: [jobs, job_attempt_events]
 
 建立 Stage 4 PostgreSQL Job Runtime，使长任务具备可恢复、可并发、可审计的持久化状态机：版本化 Payload Registry、内部幂等入队、原子 Claim/Lease takeover、Heartbeat、Fencing、重试、取消、Attempt Deadline、Platform Reaper 与 Worker 执行闭环。
 
-# 可观察成功标准
+# 完成范围
 
-- [x] `jobs` 与 `job_attempt_events` 由第二条 Alembic Revision 建立，表 Owner 为 `platform`，约束与 Blueprint 一致。
-- [x] `job_type + internal_idempotency_key` 保证内部工作项幂等；同键但不同 Payload 关闭失败，不静默复用。
-- [x] Worker 只 Claim Registry 支持的 Job 类型；Payload 由对应版本的 Pydantic Model 校验，未知类型不被认领。
-- [x] Claim 使用单条 `UPDATE ... RETURNING` 原子认领 queued Job，或接管 Lease 过期但 Deadline 未到的 running Job。
-- [x] queued → running 才递增 `attempt`；Lease takeover 保持同一 Attempt/Deadline，只递增 `lease_takeover_count` 并更换 Token。
-- [x] Heartbeat 只延长 Lease 且不超过 `attempt_deadline_at`，不能延长 Deadline；取消、过期 Lease 或 Deadline 到达后续租失败。
-- [x] 成功、失败、重试、取消、进度和续租均以当前 `lease_token` Fencing；旧 Token 更新零行并按 `lease_lost` 处理。
-- [x] Reaper 与 Claim 职责分离：Deadline 到达时按重试次数重新排队或超时失败；running 取消且 Lease 过期、queued 取消均有界收敛。
-- [x] Claim、takeover、retry 与终态转换和 `job_attempt_events` 在同一事务完成；事件仅保存 Token SHA-256 指纹，不保存原 Token，并保留终态 Worker 身份。
-- [x] Fake Handler 可通过正式 Worker 生产实现独立验证，不需要前端、Scheduler、Provider 或真实外部 HTTP。
-- [x] PostgreSQL 18 集成测试覆盖幂等、Claim/takeover、Deadline、Heartbeat、Fencing、重试、取消、Reaper、终态审计和陈旧 Token。
-- [ ] 第二条 Revision 在最终目标提交上同时验证 `base → head`、`20260813_0001 → head`、downgrade/re-upgrade 和 `alembic check`。
-- [ ] Stage 1/2/3A/3B 既有门禁在最终目标提交继续通过，Stage 4 独立 PostgreSQL CI 最终全绿。
-- [x] 相关 Blueprint/测试说明已准备同步当前实现；阶段编排修正为 Stage 4 Job Runtime、Stage 5 Provider Request/Attempt/Raw、Stage 6 Content/Ingestion、Stage 7 最终多级预算 Ledger + Scheduler，最终预算 Schema/费用语义不改变。
-- [ ] PR 合并后 main 重新验证成功，Change 才允许 done/archive。
-
-# 范围
-
-- Platform Job 表、模型和 PostgreSQL Repository；
-- Job Payload Registry；
-- Job Worker、Execution Context 和 Reaper；
-- Worker bootstrap/entrypoint 装配；
-- Stage 4 Unit/Integration Tests 与独立 CI；
-- 第二条 Alembic Migration；
-- 与本阶段直接相关的 Blueprint/测试说明同步。
+- `jobs` / `job_attempt_events` PostgreSQL 表、约束、索引和唯一 Platform 写 Owner；
+- 第二条 Alembic Revision `20260814_0002`；
+- `JobRegistry`、版本化 Pydantic Payload 校验和未知类型不认领；
+- `PostgresJobRepository`：内部幂等入队、原子 Claim、Lease takeover、Heartbeat、Fencing、重试、取消、终态和事件账本；
+- `JobWorker`、自动 Heartbeat、`JobReaper`、Fake Handler 正式执行闭环；
+- Stage 4 Unit / PostgreSQL Integration / 独立 CI；
+- Worker bootstrap/entrypoint、架构硬门禁、Blueprint 和测试说明同步。
 
 # 非目标
 
@@ -56,99 +38,99 @@ data_changes: [jobs, job_attempt_events]
 - 真实付费外部 HTTP；
 - Job HTTP API、前端页面、登录、Retention、生产部署。
 
-# 必须保持不变
+# 成功标准结果
 
-- 根 Python 工程、Python/Node/uv/npm 与现有依赖锁定版本；
-- PostgreSQL 18 + SQLAlchemy 2 + Alembic + psycopg 3 技术路线；
-- Stage 1–3B 已有公共 Contract、Migration、Artifact/System 表与 API 行为；
-- Provider → Raw → Mapper → Canonical → Ingestion → Owner Repository 边界；
-- Router 不写 SQL、Mapper 不访问数据库/HTTP、一个表只有一个写 Owner；
-- Secret 不进入代码、日志、Raw、Job Payload 或数据库明文。
+- [x] `jobs` 与 `job_attempt_events` 由第二条 Revision 建立，Owner=`platform`。
+- [x] `job_type + internal_idempotency_key` 保证内部幂等；同键异 Payload 关闭失败。
+- [x] Worker 只 Claim Registry 支持的类型，Payload 由注册的 Pydantic Model 按版本校验。
+- [x] queued Claim 与 Deadline 前过期 Lease takeover 使用 PostgreSQL 原子认领；queued → running 才递增 Attempt。
+- [x] Lease takeover 保持同一 Attempt/Deadline，只递增 `lease_takeover_count` 并更换 Token。
+- [x] Heartbeat 不延长 Deadline；取消、过期 Lease、Deadline 到达或旧 Token 均不能续租。
+- [x] 成功、失败、重试、取消、进度和续租由当前 `lease_token` Fencing。
+- [x] Reaper 与 Claim 分工：普通过期 Lease 由 Claim 接管，Deadline/取消/次数耗尽由 Reaper 收敛。
+- [x] Claim/takeover/retry/终态与 `job_attempt_events` 同事务；事件只保存 Token SHA-256 指纹并保留终态 Worker 身份。
+- [x] Fake Handler 通过正式 Worker 实现独立验证，不需要 Scheduler/Provider/真实 HTTP。
+- [x] PostgreSQL 18 测试覆盖幂等、Claim/takeover、Deadline、Heartbeat、Fencing、重试、取消、Reaper、终态审计和陈旧 Token。
+- [x] 第二条 Revision 在最终 PR 和合并后 main 上验证 `base → head`、`20260813_0001 → head`、两种 downgrade/re-upgrade 与 `alembic check`。
+- [x] Stage 1/2/3A/3B 既有门禁在最终 PR 和合并后 main 继续通过。
+- [x] 相关 Blueprint/测试说明已同步阶段边界和当前实现。
+- [x] PR #16 合并后 main 重新验证成功。
 
-# 阶段编排冲突与决策
+# 阶段编排决策
 
-冻结的最终预算模型包含以下父事实外键：
+冻结的最终预算模型同时外键依赖：
 
 - `provider_budget_accounts.run_id → collection_runs`；
 - `provider_budget_accounts.content_id → contents`；
 - `provider_budget_reservations.provider_request_id → provider_requests`；
 - `provider_budget_reservations.provider_request_attempt_id → provider_request_attempts`。
 
-因此不能在 Stage 4 为满足旧文字门禁而提前建立最终预算表，也不能去掉外键制造临时弱约束 Schema。
+因此没有为了旧 Stage 4 文字门禁提前建立后续业务表，也没有删除外键制造临时弱约束 Schema。最终阶段边界为：
 
-采用最小一致边界：
+1. Stage 4：PostgreSQL Job Runtime；
+2. Stage 5：Provider Request/Attempt、Raw 与费用事实；
+3. Stage 6：单平台 Content/Ingestion 父事实；
+4. Stage 7：Collection/Run 父事实齐全后建立最终多级预算 Ledger，并与 Scheduler/多平台预算并发一起验收。
 
-1. Stage 4：只建立可独立闭环的 PostgreSQL Job Runtime；
-2. Stage 5：建立 Provider Request/Attempt、Raw 与费用事实；
-3. Stage 6：建立单平台 Content/Ingestion 父事实；
-4. Stage 7：Collection/Run 父事实齐全后建立最终 `provider_budget_accounts/provider_budget_reservations`，并与 Scheduler/多平台预算并发一起验收。
-
-最终预算 Schema、Provider 费用规则和业务语义保持不变；不提前实现后续业务表，不建立临时兼容层。
+最终预算 Schema、Provider 费用规则和业务语义不变。
 
 # TDD 与 Review 证据
 
 ## 初始 Red
 
-第一次 Red 因测试 import 排序失败，未计为有效 Red。修正测试格式且仍未写生产实现后：
+第一次失败只来自测试 import 排序，不计为有效 Red。修正测试格式、仍未写生产实现后：
 
-- 通用 CI `31761088235`：Ruff/mypy 先通过，`pytest tests/unit` 因 `ModuleNotFoundError: aima_ugc.platform.jobs` 收集失败，退出码 2；
-- Stage 4 专项 `31761344098`：PostgreSQL 18.4 与锁定环境成功，`pytest tests/unit/jobs -q` 因同一缺失模块失败，退出码 2。
+- CI `31761088235`：Ruff/mypy 先通过，`pytest tests/unit` 因 `ModuleNotFoundError: aima_ugc.platform.jobs` 失败，退出码 2；
+- Stage 4 CI `31761344098`：PostgreSQL 18.4 和锁定环境成功，`pytest tests/unit/jobs -q` 因同一缺失模块失败，退出码 2。
 
 ## Review 缺陷 Red → Green
 
-需求/质量 Review 发现终态事件在清空 `jobs.lease_owner` 后丢失 Worker 身份。先新增回归测试：
+两阶段 Review 发现终态事件在清空 `jobs.lease_owner` 后丢失 Worker 身份：
 
-- Stage 4 `31763328680`：原有行为通过，新 `test_terminal_event_preserves_worker_identity` 唯一失败，实际 `worker_id=None`；陈旧 Token 终态 Fencing 测试同时通过。
+- Stage 4 run `31763328680`：新回归测试 `test_terminal_event_preserves_worker_identity` 唯一失败，实际 `worker_id=None`；陈旧 Token 终态 Fencing 测试同时通过；
+- 修复后用当前 Token 的 SHA-256 指纹关联既有 Claim/Takeover 事件恢复 Worker 身份，不保存原 Token；
+- 后续 Stage 4 CI 3 个 Unit + 9 个 PostgreSQL Integration 全绿。
 
-修复后 `cc227696231e8d5ecd2956f10c3e5d43038431c3` 的 Stage 4 专项已证明 3 个 Unit + 9 个 PostgreSQL Integration 通过，且 Token 仍只保存 SHA-256 指纹。
+# 最终验证
 
-# 实施任务
+实现 PR 最终目标提交：`cf7717eab3c3b36799057938ce8176efae1da949`。
 
-1. [x] Red：建立 Registry/Job Runtime 行为测试并通过 GitHub Actions 观察正确 Red。
-2. [x] Green：建立 `jobs/job_attempt_events` Table、Migration 与 PostgreSQL Repository。
-3. [x] Green：实现 Registry、Worker Execution Context、自动 Heartbeat、状态结果和 Reaper。
-4. [x] 建立 Stage 4 PostgreSQL 集成测试与专用 CI。
-5. [x] 同步 Worker bootstrap/entrypoint、数据库机器注册和架构硬门禁。
-6. [x] Review 发现终态 Worker 审计缺陷后完成独立 Red → Green 回归。
-7. [ ] 在最终 PR 目标提交执行完整通用 CI + Stage 4 双 Migration 路径 CI。
-8. [ ] PR Ready/Review/合并后重新验证 main，成功后归档 Change 并清理本分支。
+PR 合并前：
 
-# 验证计划
+- 通用 CI `31763979805`：success；
+- Stage 4 Job Runtime `31763979835`：success。
 
-- `uv lock --check`
-- `uv run ruff format --check backend tests scripts`
-- `uv run ruff check backend tests scripts`
-- `uv run mypy backend/src`
-- `uv run pytest tests/unit/jobs -q`
-- `uv run pytest tests/integration/jobs -q`
-- `uv run pytest tests/unit -q`
-- `uv run pytest tests/contracts -q`
-- `uv run pytest tests/integration -q`
-- `uv run pytest tests/api -q`
-- `uv run python scripts/contracts/generate.py --check`
-- `uv run python scripts/contracts/check_compatibility.py`
-- `uv run python scripts/quality/check_architecture.py`
-- `uv run python scripts/quality/check_table_ownership.py`
-- `uv run python scripts/quality/scan_secrets.py`
-- `uv run python scripts/quality/check_docs.py`
-- Stage 4 CI：`base → head` 与 `20260813_0001 → head`、两条 downgrade/re-upgrade、`alembic check`
-- 仓库完整 PR CI；合并后 main CI。
+PR #16 通过普通 Merge API 合并，merge commit：`5f9c4ab838e98f7a791fbfbd68ac047232099502`。
 
-当前宿主无法 clone GitHub，因此本轮命令执行证据以 GitHub Actions 隔离环境为准；不会把静态检查或历史结果冒充本轮本地验证。
+合并后 main：
+
+- 通用 CI `31764203659`：completed / success；
+- Stage 4 Job Runtime `31764203648`：completed / success；
+- `uv run pytest tests/unit/jobs -q`：3 passed；
+- `uv run pytest tests/integration/jobs -q`：9 passed；
+- 空库 `base → head` 到 `20260814_0002` 成功，`alembic check` 无 drift；
+- `head → base → head` 成功；
+- `head → 20260813_0001 → head` 成功；
+- 上一正式 Revision 保留 `artifacts/system_settings/audit_events`，Stage 4 两表正确移除后可重新升级。
+
+当前宿主无法 clone GitHub，因此没有把远端状态冒充用户本地 `git status`，也没有声称运行过本地测试。所有执行证据来自 GitHub Actions。
 
 # 兼容、Migration、部署与回滚
 
-- 公共 HTTP/Canonical Contract：不改变。
-- 新增数据库表：`jobs`、`job_attempt_events`；不回填历史业务数据。
-- 依赖/锁文件：不改变。
-- 部署：本阶段不部署生产；代码部署必须先执行 Alembic `20260814_0002`。
-- 回滚：在没有后续 Revision/生产 Job 数据依赖时可 downgrade 到 `20260813_0001` 并回退本 PR；若已存在真实 Job 数据，回滚前必须先停 Worker 并评估数据丢失，不能直接删除生产表。
+- 公共 HTTP/Canonical Contract：不改变；
+- 新增数据库表：`jobs`、`job_attempt_events`，不回填历史业务数据；
+- 依赖/锁文件：不改变；
+- 本阶段未部署生产；未来部署此版本前必须执行 Alembic `20260814_0002`；
+- 没有后续 Revision/真实 Job 数据依赖时可 downgrade 到 `20260813_0001` 并回退实现；已有真实 Job 数据时必须先停 Worker、评估数据丢失，不能直接删除生产表。
 
 # Git / PR
 
-- 基线 main：`d8cb5bf92d3cb62c0a969ca3e0d2abb2c5a83ca6`
-- 分支：`feature/stage4-job-runtime`
-- 当前实现 HEAD：`cc227696231e8d5ecd2956f10c3e5d43038431c3`（文档/最终门禁提交待追加）
-- PR：`#16` Draft，base=`main`
-- 合并：未执行
-- Change 归档：未执行
+- 基线 main：`d8cb5bf92d3cb62c0a969ca3e0d2abb2c5a83ca6`；
+- 实现分支：`feature/stage4-job-runtime`；
+- 实现 PR：#16；
+- 实现最终 head：`cf7717eab3c3b36799057938ce8176efae1da949`；
+- merge commit：`5f9c4ab838e98f7a791fbfbd68ac047232099502`；
+- 合并后通用 CI：`31764203659` success；
+- 合并后 Stage 4 CI：`31764203648` success；
+- Change 状态：done，归档至 `changes/archive/2026-08/CHG-20260814-stage4-job-runtime/`；
+- Change 收尾分支：`chore/archive-stage4-job-runtime-change`。
