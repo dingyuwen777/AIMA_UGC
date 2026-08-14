@@ -38,14 +38,40 @@ class XhsSearchPagination:
         data = _payload(body)
         items = data.get("items")
         if not isinstance(items, list) or not items:
-            return cls(current_page + 1, _string(data.get("search_id")), _string(data.get("search_session_id")), (), False, "empty_page")
+            return cls(
+                current_page + 1,
+                _string(data.get("search_id")),
+                _string(data.get("search_session_id")),
+                (),
+                False,
+                "empty_page",
+            )
         item_ids = tuple(filter(None, (_search_item_id(item) for item in items)))
         if item_ids and item_ids == previous_item_ids:
-            return cls(current_page + 1, _string(data.get("search_id")), _string(data.get("search_session_id")), item_ids, False, "duplicate_page")
-        has_more = data.get("has_more")
-        if has_more is False:
-            return cls(current_page + 1, _string(data.get("search_id")), _string(data.get("search_session_id")), item_ids, False, "provider_exhausted")
-        return cls(current_page + 1, _string(data.get("search_id")), _string(data.get("search_session_id")), item_ids, True)
+            return cls(
+                current_page + 1,
+                _string(data.get("search_id")),
+                _string(data.get("search_session_id")),
+                item_ids,
+                False,
+                "duplicate_page",
+            )
+        if data.get("has_more") is False:
+            return cls(
+                current_page + 1,
+                _string(data.get("search_id")),
+                _string(data.get("search_session_id")),
+                item_ids,
+                False,
+                "provider_exhausted",
+            )
+        return cls(
+            current_page + 1,
+            _string(data.get("search_id")),
+            _string(data.get("search_session_id")),
+            item_ids,
+            True,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,7 +160,12 @@ def build_sub_comments_request(
 ) -> XhsRequest:
     return XhsRequest(
         f"{_BASE}/get_note_sub_comments",
-        {"note_id": note_id, "comment_id": comment_id, "cursor": cursor, "index": index},
+        {
+            "note_id": note_id,
+            "comment_id": comment_id,
+            "cursor": cursor,
+            "index": index,
+        },
     )
 
 
@@ -168,5 +199,5 @@ def _integer(value: object, *, default: int) -> int:
         return default
     try:
         return int(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return default
