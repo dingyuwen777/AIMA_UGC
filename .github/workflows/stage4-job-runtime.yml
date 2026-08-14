@@ -1,0 +1,140 @@
+name: Stage 4 Job Runtime
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/src/aima_ugc/platform/jobs/**"
+      - "backend/src/aima_ugc/adapters/persistence/postgres/jobs.py"
+      - "backend/src/aima_ugc/database_schema.py"
+      - "backend/src/aima_ugc/bootstrap/worker.py"
+      - "migrations/versions/**"
+      - "tests/unit/jobs/**"
+      - "tests/integration/jobs/**"
+      - ".github/workflows/stage4-job-runtime.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "backend/src/aima_ugc/platform/jobs/**"
+      - "backend/src/aima_ugc/adapters/persistence/postgres/jobs.py"
+      - "backend/src/aima_ugc/database_schema.py"
+      - "backend/src/aima_ugc/bootstrap/worker.py"
+      - "migrations/versions/**"
+      - "tests/unit/jobs/**"
+      - "tests/integration/jobs/**"
+      - ".github/workflows/stage4-job-runtime.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  stage4-job-runtime:
+    name: Stage 4 Job Runtime
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_DB: aima_ugc
+          POSTGRES_USER: aima_ugc
+          POSTGRES_PASSWORD: stage4-ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aima_ugc -d aima_ugc"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AIMA_DATA_DIR: .runtime/ci-stage4/data
+      AIMA_LOG_DIR: .runtime/ci-stage4/logs
+      AIMA_SECRET_DIR: .runtime/ci-stage4/secrets
+      AIMA_DB_HOST: 127.0.0.1
+      AIMA_DB_PORT: 5432
+      AIMA_DB_NAME: aima_ugc
+      AIMA_DB_USER: aima_ugc
+      AIMA_DB_CONNECT_TIMEOUT_SECONDS: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Install frozen Python environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+
+      - name: Prepare Stage 4 Secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${AIMA_DATA_DIR}" "${AIMA_LOG_DIR}" "${AIMA_SECRET_DIR}"
+          printf '%s\n' 'stage4-ci' > "${AIMA_SECRET_DIR}/postgres_password"
+          chmod 600 "${AIMA_SECRET_DIR}/postgres_password"
+
+      - name: Job unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest tests/unit/jobs -q
+
+      - name: Upgrade previous revision to Stage 4 head
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run alembic upgrade 20260813_0001
+          uv run alembic upgrade head
+          uv run alembic current
+          uv run alembic check
+          uv run python - <<'PY'
+          from sqlalchemy import inspect
+
+          from aima_ugc.platform.config import load_settings
+          from aima_ugc.platform.database import DatabaseRuntime
+
+          runtime = DatabaseRuntime(load_settings())
+          try:
+              existing = set(inspect(runtime.engine).get_table_names())
+          finally:
+              runtime.dispose()
+          required = {"jobs", "job_attempt_events"}
+          assert required <= existing, existing
+          PY
+
+      - name: PostgreSQL Job Runtime integration tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest tests/integration/jobs -q
+
+      - name: Downgrade to previous revision and re-upgrade
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run alembic downgrade 20260813_0001
+          uv run python - <<'PY'
+          from sqlalchemy import inspect
+
+          from aima_ugc.platform.config import load_settings
+          from aima_ugc.platform.database import DatabaseRuntime
+
+          runtime = DatabaseRuntime(load_settings())
+          try:
+              existing = set(inspect(runtime.engine).get_table_names())
+          finally:
+              runtime.dispose()
+          assert {"artifacts", "system_settings", "audit_events"} <= existing, existing
+          assert not ({"jobs", "job_attempt_events"} & existing), existing
+          PY
+          uv run alembic upgrade head
+          uv run alembic check
