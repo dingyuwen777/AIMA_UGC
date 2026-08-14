@@ -1,12 +1,14 @@
-"""Collection 模块拥有的 Run/Scope 父事实表。"""
+"""Collection 模块拥有的 Run/Scope 与 Provider Request/Attempt 表。"""
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     Table,
     Text,
     UniqueConstraint,
@@ -76,6 +78,166 @@ collection_scopes_table = Table(
     info={"owner": "collection"},
 )
 
+provider_requests_table = Table(
+    "provider_requests",
+    metadata,
+    Column("id", Uuid(), primary_key=True),
+    Column("scope_id", Uuid(), ForeignKey("collection_scopes.id"), nullable=False),
+    Column("provider", Text(), nullable=False),
+    Column("operation", Text(), nullable=False),
+    Column("request_fingerprint", Text(), nullable=False),
+    Column("request_params", JSONB(), nullable=False),
+    Column(
+        "pagination_input",
+        JSONB(),
+        nullable=False,
+        server_default=text("'{}'::jsonb"),
+    ),
+    Column("status", Text(), nullable=False),
+    Column("attempt_count", Integer(), nullable=False, server_default=text("0")),
+    Column("estimated_cost", Numeric(18, 6), nullable=False, server_default=text("0")),
+    Column("actual_cost", Numeric(18, 6), nullable=False, server_default=text("0")),
+    Column("cost_currency", Text()),
+    Column("cost_unit", Text()),
+    Column("unit_price_snapshot", Numeric(18, 6)),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("completed_at", DateTime(timezone=True)),
+    Column("error_code", Text()),
+    Column("error_detail", Text()),
+    UniqueConstraint("scope_id", "request_fingerprint"),
+    CheckConstraint("char_length(provider) > 0", name="provider_nonempty"),
+    CheckConstraint("char_length(operation) > 0", name="operation_nonempty"),
+    CheckConstraint("char_length(status) > 0", name="status_nonempty"),
+    CheckConstraint(
+        "request_fingerprint ~ '^[0-9a-f]{64}$'",
+        name="request_fingerprint_sha256",
+    ),
+    CheckConstraint(
+        "jsonb_typeof(request_params) = 'object'",
+        name="request_params_object",
+    ),
+    CheckConstraint(
+        "jsonb_typeof(pagination_input) = 'object'",
+        name="pagination_input_object",
+    ),
+    CheckConstraint("attempt_count >= 0", name="attempt_count_nonnegative"),
+    CheckConstraint(
+        "estimated_cost >= 0 and actual_cost >= 0 "
+        "and (unit_price_snapshot is null or unit_price_snapshot >= 0)",
+        name="costs_nonnegative",
+    ),
+    CheckConstraint(
+        "cost_currency is null or cost_currency ~ '^[A-Z]{3}$'",
+        name="cost_currency_format",
+    ),
+    info={"owner": "collection"},
+)
+
+provider_request_attempts_table = Table(
+    "provider_request_attempts",
+    metadata,
+    Column("id", Uuid(), primary_key=True),
+    Column(
+        "provider_request_id",
+        Uuid(),
+        ForeignKey("provider_requests.id"),
+        nullable=False,
+    ),
+    Column("attempt_no", Integer(), nullable=False),
+    Column("dispatch_status", Text(), nullable=False),
+    Column("dispatch_started_at", DateTime(timezone=True)),
+    Column("completed_at", DateTime(timezone=True)),
+    Column("http_status", Integer()),
+    Column("external_request_id", Text()),
+    Column("raw_artifact_id", Uuid(), ForeignKey("artifacts.id")),
+    Column("estimated_cost", Numeric(18, 6), nullable=False, server_default=text("0")),
+    Column("actual_cost", Numeric(18, 6), nullable=False, server_default=text("0")),
+    Column("cost_currency", Text()),
+    Column("cost_unit", Text()),
+    Column("unit_price_snapshot", Numeric(18, 6)),
+    Column("billing_status", Text(), nullable=False),
+    Column(
+        "potential_duplicate_charge",
+        Boolean(),
+        nullable=False,
+        server_default=text("false"),
+    ),
+    Column("error_code", Text()),
+    Column("error_detail", Text()),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("provider_request_id", "attempt_no"),
+    UniqueConstraint("id", "provider_request_id"),
+    CheckConstraint("attempt_no >= 1", name="attempt_no_positive"),
+    CheckConstraint(
+        "dispatch_status in ('reserved','dispatching','completed','not_sent','unknown')",
+        name="dispatch_status_allowed",
+    ),
+    CheckConstraint(
+        "(dispatch_status = 'reserved' and dispatch_started_at is null "
+        "and completed_at is null) or "
+        "(dispatch_status = 'dispatching' and dispatch_started_at is not null "
+        "and completed_at is null) or "
+        "(dispatch_status = 'not_sent' and dispatch_started_at is null "
+        "and completed_at is not null) or "
+        "(dispatch_status in ('completed','unknown') and dispatch_started_at is not null "
+        "and completed_at is not null)",
+        name="dispatch_times_consistent",
+    ),
+    CheckConstraint(
+        "dispatch_status not in ('reserved','dispatching') or raw_artifact_id is null",
+        name="unfinished_has_no_raw",
+    ),
+    CheckConstraint(
+        "completed_at is null or completed_at >= created_at",
+        name="completed_after_created",
+    ),
+    CheckConstraint(
+        "dispatch_started_at is null or completed_at is null "
+        "or completed_at >= dispatch_started_at",
+        name="completed_after_dispatch",
+    ),
+    CheckConstraint(
+        "http_status is null or http_status between 100 and 599",
+        name="http_status_range",
+    ),
+    CheckConstraint(
+        "billing_status in ('not_billable','estimated','confirmed','unknown')",
+        name="billing_status_allowed",
+    ),
+    CheckConstraint(
+        "estimated_cost >= 0 and actual_cost >= 0 "
+        "and (unit_price_snapshot is null or unit_price_snapshot >= 0)",
+        name="costs_nonnegative",
+    ),
+    CheckConstraint(
+        "cost_currency is null or cost_currency ~ '^[A-Z]{3}$'",
+        name="cost_currency_format",
+    ),
+    CheckConstraint(
+        "billing_status <> 'not_billable' or "
+        "(estimated_cost = 0 and actual_cost = 0 "
+        "and coalesce(unit_price_snapshot, 0) = 0)",
+        name="not_billable_has_zero_cost",
+    ),
+    CheckConstraint(
+        "billing_status <> 'confirmed' or cost_currency is not null",
+        name="confirmed_has_currency",
+    ),
+    CheckConstraint(
+        "dispatch_status <> 'not_sent' or "
+        "(billing_status = 'not_billable' and potential_duplicate_charge = false "
+        "and error_code is not null and error_detail is not null)",
+        name="not_sent_consistent",
+    ),
+    CheckConstraint(
+        "dispatch_status <> 'unknown' or "
+        "(billing_status = 'unknown' and potential_duplicate_charge = true "
+        "and error_code is not null and error_detail is not null)",
+        name="unknown_consistent",
+    ),
+    info={"owner": "collection"},
+)
+
 Index(
     "ix_collection_runs_status_created_at",
     collection_runs_table.c.status,
@@ -85,4 +247,18 @@ Index(
     "ix_collection_scopes_run_id_status",
     collection_scopes_table.c.run_id,
     collection_scopes_table.c.status,
+)
+Index(
+    "ix_provider_requests_scope_id_created_at",
+    provider_requests_table.c.scope_id,
+    provider_requests_table.c.created_at,
+)
+Index(
+    "ix_provider_request_attempts_dispatch_status_dispatch_started_at",
+    provider_request_attempts_table.c.dispatch_status,
+    provider_request_attempts_table.c.dispatch_started_at,
+)
+Index(
+    "ix_provider_request_attempts_completed_at",
+    provider_request_attempts_table.c.completed_at,
 )

@@ -9,6 +9,16 @@ from .execution import (
     DuplicateCollectionScopeError,
     UnsupportedCollectionTriggerError,
 )
+from .provider_persistence import (
+    PreparedProviderAttempt,
+    ProviderAttemptRecord,
+    ProviderPersistenceConflictError,
+    ProviderPersistenceService,
+    ProviderRequestLineageMismatchError,
+    ProviderRequestNotFoundError,
+    ProviderRequestRecord,
+    ProviderScopeNotFoundError,
+)
 
 __all__ = [
     "CollectionExecution",
@@ -17,5 +27,13 @@ __all__ = [
     "CollectionScopeDefinition",
     "CollectionScopeRecord",
     "DuplicateCollectionScopeError",
+    "PreparedProviderAttempt",
+    "ProviderAttemptRecord",
+    "ProviderPersistenceConflictError",
+    "ProviderPersistenceService",
+    "ProviderRequestLineageMismatchError",
+    "ProviderRequestNotFoundError",
+    "ProviderRequestRecord",
+    "ProviderScopeNotFoundError",
     "UnsupportedCollectionTriggerError",
 ]

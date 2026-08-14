@@ -4,9 +4,9 @@ AIMA_UGC 是爱玛舆情监控系统的 Greenfield 重构仓库。目标是从�
 
 ## 当前状态
 
-**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础、Stage 3B Canonical Contract、Stage 4 PostgreSQL Job Runtime、Stage 5A Provider/Raw 基础和 Stage 5B Collection Run/Scope 父事实已经建立。** 当前仓库已经具备可安装 Python package、FastAPI/Vue 最小工程、固定 OpenAPI 与生成 TypeScript Client、本地前后端联调、Windows x64 开发环境引导，业务无关 Platform/数据库基础，Provider/平台无关的 Canonical V1 与 Provider V1 Pydantic Contract、一次发送 Fake Transport，以及持久化 Job、Collection 执行父事实和不可变 Raw Artifact 的独立验证闭环。
+**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础、Stage 3B Canonical Contract、Stage 4 PostgreSQL Job Runtime，以及 Stage 5A—5C Provider/Collection 持久化基础已经建立。** 当前仓库已经具备可安装 Python package、FastAPI/Vue 最小工程、固定 OpenAPI 与生成 TypeScript Client、本地前后端联调、Windows x64 开发环境引导，业务无关 Platform/数据库基础，Provider/平台无关的 Canonical V1 与 Provider V1 Pydantic Contract、一次发送 Fake Transport，以及持久化 Job、Collection 执行父事实、Provider Request/Attempt 和不可变 Raw Artifact 的独立验证闭环。
 
-仍未进入业务功能批量开发阶段。Stage 5 整体仍在进行中：Stage 5B 已建立 `collection_runs/collection_scopes` 和真实 `collection_runs.job_id → jobs.id` 唯一外键，但尚未创建 Provider PostgreSQL 表；下一独立 L3 必须按最终 `provider_requests.scope_id → collection_scopes.id` 外键建立持久化，禁止先写无外键临时表。具体平台 Operation、费用和真实 Fixture 继续受 Stage 0 门禁约束。
+仍未进入业务功能批量开发阶段。Stage 5 整体仍在进行中：Stage 5C 已按最终外键建立 `provider_requests/provider_request_attempts`，当前只允许幂等 `pending` Request 和未发送、不计费的 `reserved` Attempt。下一独立 L3（Stage 5D）必须建立受 Job Fencing 约束的 dispatch 状态转换、真实 Raw 关联和崩溃恢复，之后才能进入 Candidate/Ingestion。具体平台 Operation、费用和真实 Fixture 继续受 Stage 0 门禁约束。
 
 事实源规则：
 
@@ -109,6 +109,17 @@ Stage 5A 没有真实 Provider、平台 Operation、Mapper、Provider/Collection
 - `.github/workflows/stage5b-collection-execution.yml` 使用 PostgreSQL 18.4 验证真实 FK/Unique、Repository、第三条 Migration 和双 downgrade/re-upgrade 路径。
 
 Stage 5B 不实现 Plan/Occurrence/Scheduler、Collection Worker/状态转换、Provider 持久化、预算、真实网络、HTTP API 或前端。Blueprint 尚未冻结 Scope 的完整状态枚举，因此当前数据库不擅自增加白名单；创建入口只写 `queued`。
+
+### Stage 5C：Provider 持久化基础
+
+- 第四条 Revision `20260814_0004` 按最终 Blueprint 字段建立 `provider_requests` 与 `provider_request_attempts`；
+- `provider_requests.scope_id → collection_scopes.id`、`provider_request_attempts.provider_request_id → provider_requests.id` 和可空 `raw_artifact_id → artifacts.id` 都是真实外键；
+- `(scope_id, request_fingerprint)` 保护逻辑 Request 幂等，Repository 校验 Provider Request 的 Run/Platform 与 Scope 父链一致；
+- `ProviderPersistenceService → PostgresProviderRepository` 只创建或读取 `pending` Request，并串行分配未发送、不计费的 `reserved` Attempt；同一 Attempt ID 重放不重复递增；
+- Repository 保持 caller-owned transaction，不提交事务、不执行 Provider 或 Artifact I/O；数据库触发器冻结 Scope、Request 和 Attempt 的关键来源身份；
+- `.github/workflows/stage5c-provider-persistence.yml` 使用 PostgreSQL 18.4 验证最终 FK/Unique/Check/Index/Trigger、并发 Attempt 编号、第四条 Migration 和双 downgrade/re-upgrade 路径。
+
+Stage 5C 不实现 dispatch、网络调用、费用预留或结算、Raw 写入/关联、Artifact `linked`、Job Fencing/CAS、Reconciler、Candidate/Ingestion、HTTP API 或前端。这些执行语义属于 Stage 5D。
 
 ## 环境、启动与部署
 
@@ -234,9 +245,10 @@ Collection Run/Scope Repository 需要隔离 PostgreSQL 18、对应 `AIMA_*` / S
 ```bash
 uv run alembic upgrade head
 uv run pytest tests/integration/collection/test_collection_repository.py -q
+uv run pytest tests/integration/collection/test_provider_repository.py -q
 ```
 
-`tests/integration/collection/test_raw_artifact.py` 使用隔离目录、正式 ArtifactService 和 Local ArtifactStore，不访问网络或数据库；同目录的 `test_collection_repository.py` 使用真实 PostgreSQL。普通本地机器不要在未准备数据库时机械执行数据库测试。Job Runtime 和 Collection 父事实的完整迁移路径分别由 `Stage 4 Job Runtime`、`Stage 5B Collection Execution` CI 维护；统一测试入口见 [`docs/测试与调试说明.md`](docs/测试与调试说明.md)。
+`tests/integration/collection/test_raw_artifact.py` 使用隔离目录、正式 ArtifactService 和 Local ArtifactStore，不访问网络或数据库；同目录的 `test_collection_repository.py` 与 `test_provider_repository.py` 使用真实 PostgreSQL。普通本地机器不要在未准备数据库时机械执行数据库测试。Job Runtime、Collection 父事实和 Provider 持久化的完整迁移路径分别由 `Stage 4 Job Runtime`、`Stage 5B Collection Execution`、`Stage 5C Provider Persistence` CI 维护；统一测试入口见 [`docs/测试与调试说明.md`](docs/测试与调试说明.md)。
 
 修改 HTTP Contract 后，先重新生成固定 OpenAPI 和前端 Client，再提交生成物：
 
@@ -287,12 +299,13 @@ TikHub / 官方 API / Apify / 自建采集器 / 文件导入 / 其他 Provider
 阶段 4：PostgreSQL Job Runtime 已完成
 阶段 5A：Provider-neutral Request/Attempt、Fake Transport 与 Raw Artifact 已建立
 阶段 5B：Collection Run/Scope 父事实与第三条 Migration 已建立
-→ 阶段 5：仍需按最终外键建立 Provider Request/Attempt 持久化
+阶段 5C：Provider Request/Attempt 最终表、第四条 Migration 与幂等创建已建立
+→ 阶段 5D：受 Fencing 约束的 dispatch、Raw 关联和崩溃恢复
 → 阶段 6：先完成一个平台的端到端纵切
 → 后续阶段按蓝图逐步扩展
 ```
 
-Stage 0 未全部完成不阻止已经建立的 Stage 5A/5B Provider 中立基础和 Collection 父事实，但 Stage 5 仍不能省略 `provider_requests.scope_id → collection_scopes.id` 最终外键或创建临时弱约束表；任何依赖具体平台 Operation、真实 Fixture、隐私、容量或 Scheduler 策略的设计仍必须等待对应门禁，尤其不得直接批量实现五个平台。
+Stage 0 未全部完成不阻止已经建立的 Stage 5A—5C Provider 中立基础、Collection 父事实和最终 Provider 持久化表，但 Stage 5D 仍不能省略 Job Fencing、计费未知、Raw 关联和崩溃恢复边界；任何依赖具体平台 Operation、真实 Fixture、隐私、容量或 Scheduler 策略的设计仍必须等待对应门禁，尤其不得直接批量实现五个平台。
 
 ## 多人协作
 
@@ -304,4 +317,4 @@ Git 和 CI 的具体要求以 `AGENTS.md`、Skill 和 `06` 为准。没有本轮
 
 所有领域设计入口见 [`docs/blueprint/README.md`](docs/blueprint/README.md)。
 
-唯一初始化版本快照、Stage 1 工具链、Stage 2 Platform、Stage 3A 数据库基础、Stage 4 Job Runtime 和 Stage 5A/5B 已确认决策见 [`docs/blueprint/07-技术决策与实施门禁.md`](docs/blueprint/07-技术决策与实施门禁.md)。
+唯一初始化版本快照、Stage 1 工具链、Stage 2 Platform、Stage 3A 数据库基础、Stage 4 Job Runtime 和 Stage 5A—5C 已确认决策见 [`docs/blueprint/07-技术决策与实施门禁.md`](docs/blueprint/07-技术决策与实施门禁.md)。
