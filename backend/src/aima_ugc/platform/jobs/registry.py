@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from .models import JobExecutionContextProtocol, JobHandlerResult
 
 
+
 type JobHandler = Callable[[BaseModel, JobExecutionContextProtocol], JobHandlerResult]
 
 

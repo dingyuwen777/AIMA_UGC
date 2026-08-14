@@ -8,6 +8,7 @@ from typing import Literal, Protocol, Self
 from uuid import UUID
 
 
+
 type JobStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 type JobEventType = Literal[
     "claimed",
