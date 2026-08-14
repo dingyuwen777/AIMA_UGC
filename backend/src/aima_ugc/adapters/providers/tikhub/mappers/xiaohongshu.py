@@ -165,9 +165,9 @@ def _map_author(
         fields.append("display_name")
     if not fields:
         return None, ()
-    return CanonicalAuthorV1(
-        external_account_id=external_id, display_name=display_name
-    ), tuple(fields)
+    return CanonicalAuthorV1(external_account_id=external_id, display_name=display_name), tuple(
+        fields
+    )
 
 
 def _map_content_metrics(
