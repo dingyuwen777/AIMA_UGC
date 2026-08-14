@@ -1,6 +1,17 @@
 """Stage 6 Collection Candidate/Ingestion 追加账本表。"""
 
-from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Integer, Table, Text, UniqueConstraint, Uuid, text
+from sqlalchemy import (
+    CheckConstraint,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Table,
+    Text,
+    UniqueConstraint,
+    Uuid,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 
 from aima_ugc.platform.database.metadata import metadata
@@ -30,11 +41,21 @@ collection_candidate_ingestions_table = Table(
     "collection_candidate_ingestions",
     metadata,
     Column("id", Uuid(), primary_key=True),
-    Column("candidate_id", Uuid(), ForeignKey("collection_candidates.id"), nullable=False),
+    Column(
+        "candidate_id",
+        Uuid(),
+        ForeignKey("collection_candidates.id"),
+        nullable=False,
+    ),
     Column("ingestion_no", Integer(), nullable=False),
     Column("canonical_version", Text()),
     Column("canonical_identity", Text()),
-    Column("observed_fields", JSONB(), nullable=False, server_default=text("'[]'::jsonb")),
+    Column(
+        "observed_fields",
+        JSONB(),
+        nullable=False,
+        server_default=text("'[]'::jsonb"),
+    ),
     Column("target_type", Text()),
     Column("content_id", Uuid(), ForeignKey("contents.id")),
     Column("comment_id", Uuid(), ForeignKey("comments.id")),
@@ -54,6 +75,9 @@ collection_candidate_ingestions_table = Table(
         "(target_type is null and content_id is null and comment_id is null)",
         name="target_consistent",
     ),
-    CheckConstraint("jsonb_typeof(observed_fields) = 'array'", name="observed_fields_array"),
+    CheckConstraint(
+        "jsonb_typeof(observed_fields) = 'array'",
+        name="observed_fields_array",
+    ),
     info={"owner": "collection"},
 )
