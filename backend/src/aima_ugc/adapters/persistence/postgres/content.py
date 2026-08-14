@@ -18,6 +18,7 @@ from aima_ugc.contracts.canonical import (
     CanonicalCommentV1,
     CanonicalContentV1,
 )
+from aima_ugc.modules.content.account_tables import account_external_ids_table
 from aima_ugc.modules.content.tables import (
     accounts_table,
     comment_metric_observations_table,
@@ -358,21 +359,54 @@ class PostgresContentRepository:
             if f"author.{field_name}" in observed_fields:
                 values[column_names[field_name]] = value
         if row is not None:
+            account_id = cast(UUID, row["id"])
             self._session.execute(
-                update(accounts_table).where(accounts_table.c.id == row["id"]).values(**values)
+                update(accounts_table).where(accounts_table.c.id == account_id).values(**values)
             )
-            return cast(UUID, row["id"])
-        account_id = uuid4()
-        self._session.execute(
-            insert(accounts_table).values(
-                id=account_id,
-                platform=platform,
-                external_account_id=author.external_account_id,
-                first_seen_at=observed_at,
-                **values,
+        else:
+            account_id = uuid4()
+            self._session.execute(
+                insert(accounts_table).values(
+                    id=account_id,
+                    platform=platform,
+                    external_account_id=author.external_account_id,
+                    first_seen_at=observed_at,
+                    **values,
+                )
             )
-        )
+        if "author.alternate_ids" in observed_fields:
+            self._upsert_account_external_ids(account_id, author.alternate_ids)
         return account_id
+
+    def _upsert_account_external_ids(
+        self,
+        account_id: UUID,
+        alternate_ids: dict[str, str],
+    ) -> None:
+        for id_type, external_id in sorted(alternate_ids.items()):
+            row = self._session.execute(
+                select(account_external_ids_table).where(
+                    account_external_ids_table.c.account_id == account_id,
+                    account_external_ids_table.c.id_type == id_type,
+                )
+            ).mappings().one_or_none()
+            if row is None:
+                self._session.execute(
+                    insert(account_external_ids_table).values(
+                        account_id=account_id,
+                        id_type=id_type,
+                        external_id=external_id,
+                    )
+                )
+            elif row["external_id"] != external_id:
+                self._session.execute(
+                    update(account_external_ids_table)
+                    .where(
+                        account_external_ids_table.c.account_id == account_id,
+                        account_external_ids_table.c.id_type == id_type,
+                    )
+                    .values(external_id=external_id)
+                )
 
     def _append_content_version(
         self,
