@@ -384,12 +384,16 @@ class PostgresContentRepository:
         alternate_ids: dict[str, str],
     ) -> None:
         for id_type, external_id in sorted(alternate_ids.items()):
-            row = self._session.execute(
-                select(account_external_ids_table).where(
-                    account_external_ids_table.c.account_id == account_id,
-                    account_external_ids_table.c.id_type == id_type,
+            row = (
+                self._session.execute(
+                    select(account_external_ids_table).where(
+                        account_external_ids_table.c.account_id == account_id,
+                        account_external_ids_table.c.id_type == id_type,
+                    )
                 )
-            ).mappings().one_or_none()
+                .mappings()
+                .one_or_none()
+            )
             if row is None:
                 self._session.execute(
                     insert(account_external_ids_table).values(
