@@ -33,6 +33,7 @@ from aima_ugc.modules.collection.xhs_replay import (
     XhsRawReplayHandler,
     register_xhs_raw_replay_job,
 )
+from aima_ugc.modules.content.account_tables import account_external_ids_table
 from aima_ugc.modules.content.tables import contents_table
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
@@ -213,9 +214,21 @@ def test_job_replays_linked_raw_without_second_provider_call(tmp_path: Path) -> 
                 .scalars()
                 .all()
             )
+            alternate_ids = set(
+                session.execute(
+                    select(
+                        account_external_ids_table.c.id_type,
+                        account_external_ids_table.c.external_id,
+                    )
+                ).all()
+            )
         assert stored_job is not None
         assert stored_job.status == "succeeded"
         assert len(content_ids) == 2
+        assert alternate_ids == {
+            ("red_id", "red-fixture-1"),
+            ("red_id", "red-fixture-2"),
+        }
     finally:
         session.rollback()
         session.close()
