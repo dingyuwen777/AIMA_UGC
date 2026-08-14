@@ -3,8 +3,15 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from aima_ugc.contracts.canonical import CanonicalContentV1, CanonicalMetricsV1, CanonicalSourceV1
-from aima_ugc.modules.content.ingestion import ContentIngestionService, InMemoryContentRepository
+from aima_ugc.contracts.canonical import (
+    CanonicalContentV1,
+    CanonicalMetricsV1,
+    CanonicalSourceV1,
+)
+from aima_ugc.modules.content.ingestion import (
+    ContentIngestionService,
+    InMemoryContentRepository,
+)
 
 
 OBSERVED_AT = datetime(2026, 8, 14, 3, 0, tzinfo=UTC)
@@ -20,7 +27,9 @@ SOURCE = CanonicalSourceV1(
 )
 
 
-def _content(*, title: str, likes: int, observed_at: datetime = OBSERVED_AT) -> CanonicalContentV1:
+def _content(
+    *, title: str, likes: int, observed_at: datetime = OBSERVED_AT
+) -> CanonicalContentV1:
     return CanonicalContentV1(
         platform="xhs",
         external_content_id="note-1",
@@ -59,15 +68,16 @@ def test_unobserved_field_is_not_cleared_and_daily_checkpoint_is_singleton() -> 
     service = ContentIngestionService(repository)
     service.ingest_content(_content(title="A", likes=10))
 
+    next_observed_at = datetime(2026, 8, 15, 2, 0, tzinfo=UTC)
     sparse = CanonicalContentV1(
         platform="xhs",
         external_content_id="note-1",
         content_type="image",
         title="A",
         text=None,
-        observed_at=datetime(2026, 8, 15, 2, 0, tzinfo=UTC),
+        observed_at=next_observed_at,
         metrics=CanonicalMetricsV1(like_count=10),
-        source=SOURCE.model_copy(update={"observed_at": datetime(2026, 8, 15, 2, 0, tzinfo=UTC)}),
+        source=SOURCE.model_copy(update={"observed_at": next_observed_at}),
         observed_fields=["content_type", "title", "metrics.like_count"],
     )
     service.ingest_content(sparse)
