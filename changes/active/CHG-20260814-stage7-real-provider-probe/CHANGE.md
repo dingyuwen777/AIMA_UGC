@@ -115,8 +115,8 @@ data_changes: []
 
 - 基线 main：`7029f19e6cea8a219e1fc0b135ea53f3115da301`
 - 分支：`docs/stage7-real-provider-probe`
-- 当前分支 HEAD：`629f09754ad79cf4f7a613de058e67f7766cdbbe`
-- Commit：文档与 Change 已提交；待 PR 集成
+- 文档提交：`202a922f`、`c83e68ee`、`9d4d28c1`、`629f0975`
+- Change：`ready_for_review`
 - PR：待创建
 - CI：待 PR 运行
 - 合并：未执行
