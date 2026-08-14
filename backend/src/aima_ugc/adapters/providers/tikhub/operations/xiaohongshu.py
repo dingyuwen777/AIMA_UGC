@@ -35,43 +35,48 @@ class XhsSearchPagination:
         body: dict[str, Any],
         previous_item_ids: tuple[str, ...] = (),
     ) -> XhsSearchPagination:
-        data = _payload(body)
-        items = data.get("items")
+        metadata = _find_mapping(body, required_any=("search_id", "search_session_id", "next_page"))
+        page_data = _find_mapping(body, required_any=("items",))
+        items = page_data.get("items")
+        search_id = _string(metadata.get("search_id"))
+        search_session_id = _string(metadata.get("search_session_id"))
+        next_page = _integer(metadata.get("next_page"), default=current_page + 1)
+
         if not isinstance(items, list) or not items:
-            return cls(
-                current_page + 1,
-                _string(data.get("search_id")),
-                _string(data.get("search_session_id")),
-                (),
-                False,
-                "empty_page",
-            )
+            return cls(next_page, search_id, search_session_id, (), False, "empty_page")
+
         item_ids = tuple(filter(None, (_search_item_id(item) for item in items)))
         if item_ids and item_ids == previous_item_ids:
             return cls(
-                current_page + 1,
-                _string(data.get("search_id")),
-                _string(data.get("search_session_id")),
+                next_page,
+                search_id,
+                search_session_id,
                 item_ids,
                 False,
                 "duplicate_page",
             )
-        if data.get("has_more") is False:
+
+        has_more = _first_value((page_data, metadata), "has_more")
+        if has_more is False:
             return cls(
-                current_page + 1,
-                _string(data.get("search_id")),
-                _string(data.get("search_session_id")),
+                next_page,
+                search_id,
+                search_session_id,
                 item_ids,
                 False,
                 "provider_exhausted",
             )
-        return cls(
-            current_page + 1,
-            _string(data.get("search_id")),
-            _string(data.get("search_session_id")),
-            item_ids,
-            True,
-        )
+        if next_page <= current_page:
+            return cls(
+                next_page,
+                search_id,
+                search_session_id,
+                item_ids,
+                False,
+                "pagination_not_advanced",
+            )
+
+        return cls(next_page, search_id, search_session_id, item_ids, True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,17 +98,22 @@ class XhsCommentPagination:
         page_area: str,
         body: dict[str, Any],
     ) -> XhsCommentPagination:
-        data = _payload(body)
+        data = _find_mapping(body, required_any=("comments", "cursor", "index", "pageArea"))
         comments = data.get("comments")
         if not isinstance(comments, list) or not comments:
             return cls(previous_cursor, previous_index, page_area, False, "empty_page")
-        cursor = _string(data.get("cursor")) or ""
-        index = _integer(data.get("index"), default=previous_index)
+
+        cursor_value = data.get("cursor")
+        cursor_mapping = cursor_value if isinstance(cursor_value, dict) else {}
+        cursor = _string(cursor_mapping.get("cursor")) or _string(cursor_value) or ""
+        index = _integer(cursor_mapping.get("index"), default=_integer(data.get("index"), default=previous_index))
+        next_page_area = _string(data.get("pageArea")) or _string(data.get("page_area")) or page_area
+
         if cursor == previous_cursor and index == previous_index:
-            return cls(cursor, index, page_area, False, "pagination_not_advanced")
+            return cls(cursor, index, next_page_area, False, "pagination_not_advanced")
         if data.get("has_more") is False:
-            return cls(cursor, index, page_area, False, "provider_exhausted")
-        return cls(cursor, index, page_area, True)
+            return cls(cursor, index, next_page_area, False, "provider_exhausted")
+        return cls(cursor, index, next_page_area, True)
 
 
 def build_search_notes_request(
@@ -169,16 +179,36 @@ def build_sub_comments_request(
     )
 
 
-def _payload(body: dict[str, Any]) -> dict[str, Any]:
+def extract_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    """从真实 App V2 搜索响应中提取 item wrapper，不复制分页逻辑。"""
+    page_data = _find_mapping(body, required_any=("items",))
+    items = page_data.get("items")
+    if not isinstance(items, list):
+        return ()
+    return tuple(item for item in items if isinstance(item, dict))
+
+
+def _find_mapping(body: dict[str, Any], *, required_any: tuple[str, ...]) -> dict[str, Any]:
     current: object = body
-    for _ in range(3):
+    fallback = body
+    for _ in range(5):
         if not isinstance(current, dict):
-            return {}
+            break
+        fallback = current
+        if any(key in current for key in required_any):
+            return current
         nested = current.get("data")
         if not isinstance(nested, dict):
-            return current
+            break
         current = nested
-    return current if isinstance(current, dict) else {}
+    return fallback
+
+
+def _first_value(mappings: tuple[dict[str, Any], ...], key: str) -> object:
+    for mapping in mappings:
+        if key in mapping:
+            return mapping[key]
+    return None
 
 
 def _search_item_id(item: object) -> str:
@@ -199,5 +229,5 @@ def _integer(value: object, *, default: int) -> int:
         return default
     try:
         return int(value)  # type: ignore[arg-type]
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return default
