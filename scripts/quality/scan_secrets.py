@@ -1,4 +1,4 @@
-"""对 Stage 1 源码和配置执行最小凭据泄漏扫描。"""
+"""对当前源码和配置执行最小凭据泄漏扫描。"""
 
 from __future__ import annotations
 
@@ -59,7 +59,7 @@ def main() -> int:
         print("\n".join(errors))
         return 1
 
-    print("Stage 1 Secret 扫描通过。")
+    print("源码与配置 Secret 扫描通过。")
     return 0
 
 

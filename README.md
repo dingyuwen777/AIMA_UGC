@@ -4,9 +4,9 @@ AIMA_UGC 是爱玛舆情监控系统的 Greenfield 重构仓库。目标是从�
 
 ## 当前状态
 
-**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础、Stage 3B Canonical Contract 和 Stage 4 PostgreSQL Job Runtime 已经建立。** 当前仓库已经具备可安装 Python package、FastAPI/Vue 最小工程、固定 OpenAPI 与生成 TypeScript Client、本地前后端联调、Windows x64 开发环境引导，业务无关 Platform/数据库基础，Provider/平台无关的 Canonical V1 Pydantic Contract，以及持久化 Job 的认领、恢复、Fencing、重试、取消和超时闭环。
+**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础、Stage 3B Canonical Contract、Stage 4 PostgreSQL Job Runtime 和 Stage 5A Provider/Raw 基础已经建立。** 当前仓库已经具备可安装 Python package、FastAPI/Vue 最小工程、固定 OpenAPI 与生成 TypeScript Client、本地前后端联调、Windows x64 开发环境引导，业务无关 Platform/数据库基础，Provider/平台无关的 Canonical V1 与 Provider V1 Pydantic Contract、一次发送 Fake Transport，以及持久化 Job 和不可变 Raw Artifact 的独立验证闭环。
 
-仍未进入业务功能批量开发阶段。Stage 0 的页面/角色、逐平台能力矩阵与真实 Fixture、隐私/保留、容量/SLO/RPO/RTO 和 Scheduler misfire 等业务事实继续约束后续实现；**下一项正式工程工作是 Stage 5 Provider Adapter、Provider Attempt 和 Raw**。Provider 中立基础边界可以继续推进，具体平台 Operation、费用和真实 Fixture 仍受对应 Stage 0 门禁约束。
+仍未进入业务功能批量开发阶段。Stage 5 整体仍在进行中：Stage 5A 不创建 Provider PostgreSQL 表；`provider_requests.scope_id` 的最终外键依赖尚未建立的 Collection Run/Scope 父事实，持久化阶段必须通过后续独立 L3 决策按最终 Schema 一次建立，禁止先写无外键临时表。具体平台 Operation、费用和真实 Fixture 继续受 Stage 0 门禁约束。
 
 事实源规则：
 
@@ -86,6 +86,18 @@ Stage 2 CI 使用隔离 PostgreSQL `18.4` 验证真实连接和 readiness。Stag
 - `.github/workflows/stage4-job-runtime.yml` 使用 PostgreSQL 18.4 验证 Job Runtime，以及 `base → head` 和上一正式 Revision → head 两条 Migration 路径。
 
 Stage 4 不实现 Scheduler、Provider Request/Raw、Collection/Content 业务表或最终多级预算 Ledger。后续阶段不得为提前实现预算而建立缺少最终外键的临时表。
+
+### Stage 5A：Provider-neutral Request/Attempt 与 Raw Artifact
+
+- `backend/src/aima_ugc/contracts/provider/` 是 Provider Request、Attempt、费用、安全错误和 Raw Envelope 的 Pydantic V1 事实源；
+- `contracts/provider/` 保存确定性生成的 Request、Attempt 和 Raw Envelope JSON Schema；
+- `ProviderClient` 每个 Attempt 最多调用一次注入的 `ProviderTransport`，不隐藏自动网络重试；
+- `FakeProviderTransport` 可验证成功、HTTP 429/5xx、发送前失败和发送结果未知，不访问网络、不需要 Token；
+- `RawArtifactService` 递归脱敏，使用确定性 JSON + gzip，经正式 `ArtifactService + LocalArtifactStore` 保存不可覆盖 Raw，并在回放时重新校验 SHA-256、大小、gzip 和 Contract；
+- 网络结果未知固定记录 `unknown` 费用和 `potential_duplicate_charge`，不承诺零重复计费；
+- `.github/workflows/stage5a-provider-raw.yml` 提供独立 Provider/Raw Contract、测试与质量门禁。
+
+Stage 5A 没有真实 Provider、平台 Operation、Mapper、Provider/Collection 数据库表、预算、Worker 注册或生产 Probe；Raw Artifact 保持 `stored`，未来 Provider Attempt Repository 建立受约束引用后才能标记 `linked`。
 
 ## 环境、启动与部署
 
@@ -200,7 +212,13 @@ Job Registry 与正式 Worker 的纯逻辑测试可独立运行：
 uv run pytest tests/unit/jobs -q
 ```
 
-`tests/integration/platform` 和 `tests/integration/jobs` 需要隔离 PostgreSQL 18 和对应 `AIMA_*` / Secret 配置，普通本地机器不要在未准备数据库时机械执行。Job Runtime 的完整 PostgreSQL 与双迁移路径验证由 `Stage 4 Job Runtime` CI 维护；统一测试入口见 [`docs/测试与调试说明.md`](docs/测试与调试说明.md)。
+Provider Client、Fake Transport、Raw Artifact 与 Provider Contract 可独立运行：
+
+```bash
+uv run pytest tests/unit/collection tests/integration/collection tests/contracts/test_provider_v1.py -q
+```
+
+`tests/integration/collection` 使用隔离目录、正式 ArtifactService 和 Local ArtifactStore，不访问网络或数据库。`tests/integration/platform` 和 `tests/integration/jobs` 需要隔离 PostgreSQL 18 和对应 `AIMA_*` / Secret 配置，普通本地机器不要在未准备数据库时机械执行。Job Runtime 的完整 PostgreSQL 与双迁移路径验证由 `Stage 4 Job Runtime` CI 维护；统一测试入口见 [`docs/测试与调试说明.md`](docs/测试与调试说明.md)。
 
 修改 HTTP Contract 后，先重新生成固定 OpenAPI 和前端 Client，再提交生成物：
 
@@ -249,12 +267,13 @@ TikHub / 官方 API / Apify / 自建采集器 / 文件导入 / 其他 Provider
 阶段 3A：数据库/Alembic/Artifact Metadata/System/Audit 基础已完成
 阶段 3B：Canonical Pydantic / JSON Schema / 固定示例已完成
 阶段 4：PostgreSQL Job Runtime 已完成
-→ 阶段 5：Provider Adapter、Provider Attempt 与 Raw
+阶段 5A：Provider-neutral Request/Attempt、Fake Transport 与 Raw Artifact 已建立
+→ 阶段 5：仍需在 Collection 父事实具备后按最终 Schema 建立 Provider 持久化
 → 阶段 6：先完成一个平台的端到端纵切
 → 后续阶段按蓝图逐步扩展
 ```
 
-Stage 0 未全部完成不阻止 Stage 5 中 Provider 中立的 Request/Attempt、错误、费用事实、Raw Envelope 和 Fake Transport 基础，但任何依赖具体平台 Operation、真实 Fixture、隐私、容量或 Scheduler 策略的设计仍必须等待对应门禁；尤其不得直接批量实现五个平台。
+Stage 0 未全部完成不阻止已经建立的 Stage 5A Provider 中立基础，但 Stage 5 仍不能越过 Collection 父事实外键建立临时弱约束表；任何依赖具体平台 Operation、真实 Fixture、隐私、容量或 Scheduler 策略的设计仍必须等待对应门禁，尤其不得直接批量实现五个平台。
 
 ## 多人协作
 
@@ -266,4 +285,4 @@ Git 和 CI 的具体要求以 `AGENTS.md`、Skill 和 `06` 为准。没有本轮
 
 所有领域设计入口见 [`docs/blueprint/README.md`](docs/blueprint/README.md)。
 
-唯一初始化版本快照、Stage 1 工具链、Stage 2 Platform、Stage 3A 数据库基础和 Stage 4 Job Runtime 已验证决策见 [`docs/blueprint/07-技术决策与实施门禁.md`](docs/blueprint/07-技术决策与实施门禁.md)。
+唯一初始化版本快照、Stage 1 工具链、Stage 2 Platform、Stage 3A 数据库基础、Stage 4 Job Runtime 和 Stage 5A Provider/Raw 已确认决策见 [`docs/blueprint/07-技术决策与实施门禁.md`](docs/blueprint/07-技术决策与实施门禁.md)。
