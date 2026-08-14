@@ -102,6 +102,8 @@ def test_root_comment_has_no_direct_parent() -> None:
     assert isinstance(result, CanonicalCommentV1)
     assert result.root_comment_id == "comment-root"
     assert result.parent_comment_id is None
+    assert "root_comment_id" in result.observed_fields
+    assert "parent_comment_id" in result.observed_fields
 
 
 def test_sub_comment_context_sets_thread_root_but_does_not_guess_direct_parent() -> None:
@@ -117,6 +119,8 @@ def test_sub_comment_context_sets_thread_root_but_does_not_guess_direct_parent()
     )
     assert result.root_comment_id == "comment-root"
     assert result.parent_comment_id is None
+    assert "root_comment_id" in result.observed_fields
+    assert "parent_comment_id" not in result.observed_fields
 
 
 def test_explicit_target_comment_maps_direct_parent() -> None:
@@ -133,3 +137,5 @@ def test_explicit_target_comment_maps_direct_parent() -> None:
     )
     assert result.root_comment_id == "comment-root"
     assert result.parent_comment_id == "comment-child"
+    assert "root_comment_id" in result.observed_fields
+    assert "parent_comment_id" in result.observed_fields
