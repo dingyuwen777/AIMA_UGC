@@ -4,9 +4,9 @@ AIMA_UGC 是爱玛舆情监控系统的 Greenfield 重构仓库。目标是从�
 
 ## 当前状态
 
-**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础和 Stage 3B Canonical Contract 已经建立。** 当前仓库已经具备可安装 Python package、FastAPI/Vue 最小工程、固定 OpenAPI 与生成 TypeScript Client、本地前后端联调、Windows x64 开发环境引导，业务无关 Platform/数据库基础，以及 Provider/平台无关的 Canonical V1 Pydantic Contract、生成 JSON Schema、固定脱敏完整帖子示例和 Contract Test。
+**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础、Stage 3B Canonical Contract 和 Stage 4 PostgreSQL Job Runtime 已经建立。** 当前仓库已经具备可安装 Python package、FastAPI/Vue 最小工程、固定 OpenAPI 与生成 TypeScript Client、本地前后端联调、Windows x64 开发环境引导，业务无关 Platform/数据库基础，Provider/平台无关的 Canonical V1 Pydantic Contract，以及持久化 Job 的认领、恢复、Fencing、重试、取消和超时闭环。
 
-仍未进入业务功能批量开发阶段。Stage 0 的页面/角色、逐平台能力矩阵与真实 Fixture、隐私/保留、容量/SLO/RPO/RTO 和 Scheduler misfire 等业务事实继续约束后续实现；**下一项正式工程工作是 Stage 4 Job Runtime**，之后依次进入 Stage 5 Provider Adapter/Raw 和 Stage 6 单平台端到端纵切。
+仍未进入业务功能批量开发阶段。Stage 0 的页面/角色、逐平台能力矩阵与真实 Fixture、隐私/保留、容量/SLO/RPO/RTO 和 Scheduler misfire 等业务事实继续约束后续实现；**下一项正式工程工作是 Stage 5 Provider Adapter、Provider Attempt 和 Raw**。Provider 中立基础边界可以继续推进，具体平台 Operation、费用和真实 Fixture 仍受对应 Stage 0 门禁约束。
 
 事实源规则：
 
@@ -50,7 +50,7 @@ AIMA_UGC 是爱玛舆情监控系统的 Greenfield 重构仓库。目标是从�
 - `GET /health/ready`：检查 PostgreSQL、Artifact 根目录和日志目录；全部可用返回 200，否则返回 503，并且不返回连接串、Secret 或原始异常；
 - `ArtifactStore`：只按 `storage_key` 存取字节；Local 实现提供路径逃逸防护、同 key 不覆盖和原子写；
 - `ArtifactService`：负责 ID、元数据 Port 以及 `pending → stored → linked`；Stage 3A 已用 PostgreSQL `artifacts` Table/Repository 实现正式元数据持久化；
-- API、Worker、Scheduler、Migration 已有共用 Platform 的最小 bootstrap；Worker/Job 和正式 Scheduler 逻辑尚未实现。
+- API、Worker、Scheduler、Migration 已有共用 Platform 的 bootstrap；Worker 已接入 Stage 4 PostgreSQL Job Runtime，正式 Scheduler 逻辑尚未实现。
 
 Stage 2 CI 使用隔离 PostgreSQL `18.4` 验证真实连接和 readiness。Stage 3A 另有独立 PostgreSQL 18.4 Job 验证 `upgrade head → alembic check → Repository 集成 → downgrade base → upgrade head → alembic check`。这些仍只是开发/CI 基线，不等于生产镜像 variant 或 Release digest 已批准。
 
@@ -74,6 +74,18 @@ Stage 2 CI 使用隔离 PostgreSQL `18.4` 验证真实连接和 readiness。Stag
 - 内容指标覆盖点赞、评论、分享、转发、收藏、浏览/播放、弹幕、投币、下载等；评论覆盖点赞/回复数；`null` 表示未知，`0` 表示明确观察到零；
 - 原子 Observation 使用 `observed_fields` 支持稀疏更新；读取 Aggregate 使用 `comment_coverage` 区分评论抓全、部分、未请求和不可用；
 - 数据库目标是关系化 Current + Version + Metric Observation；整棵帖子评论树只在 Query/Read Model 层组装，本阶段不创建业务表 Migration。
+
+### Stage 4：PostgreSQL Job Runtime
+
+- `backend/src/aima_ugc/platform/jobs/` 提供版本化 Payload Registry、Job 模型和正式 Worker；
+- 第二条 Revision `20260814_0002` 建立 `jobs` 与 `job_attempt_events`，两表 Owner 均为 `platform`；
+- `job_type + internal_idempotency_key` 只表达系统内部幂等，同键异 Payload 关闭失败；
+- PostgreSQL Repository 支持 queued 原子 Claim、Deadline 前过期 Lease 的同 Attempt takeover、Heartbeat、Fencing、进度、重试、取消和 Reaper；
+- Heartbeat 不延长 Attempt Deadline，陈旧 Lease Token 不能续租或提交终态；Attempt 事件只保存 Token SHA-256 指纹；
+- Worker Handler 在数据库事务外执行，Fake Handler 通过同一正式 Worker 入口形成独立验证闭环；
+- `.github/workflows/stage4-job-runtime.yml` 使用 PostgreSQL 18.4 验证 Job Runtime，以及 `base → head` 和上一正式 Revision → head 两条 Migration 路径。
+
+Stage 4 不实现 Scheduler、Provider Request/Raw、Collection/Content 业务表或最终多级预算 Ledger。后续阶段不得为提前实现预算而建立缺少最终外键的临时表。
 
 ## 环境、启动与部署
 
@@ -182,7 +194,13 @@ Platform 单元测试可独立运行：
 uv run pytest tests/unit/platform -q
 ```
 
-`tests/integration/platform` 需要隔离 PostgreSQL 18 和对应 `AIMA_*` / Secret 配置，普通本地机器不要在未准备数据库时机械执行。
+Job Registry 与正式 Worker 的纯逻辑测试可独立运行：
+
+```bash
+uv run pytest tests/unit/jobs -q
+```
+
+`tests/integration/platform` 和 `tests/integration/jobs` 需要隔离 PostgreSQL 18 和对应 `AIMA_*` / Secret 配置，普通本地机器不要在未准备数据库时机械执行。Job Runtime 的完整 PostgreSQL 与双迁移路径验证由 `Stage 4 Job Runtime` CI 维护；统一测试入口见 [`docs/测试与调试说明.md`](docs/测试与调试说明.md)。
 
 修改 HTTP Contract 后，先重新生成固定 OpenAPI 和前端 Client，再提交生成物：
 
@@ -229,14 +247,14 @@ TikHub / 官方 API / Apify / 自建采集器 / 文件导入 / 其他 Provider
 阶段 1：已完成
 阶段 2：Platform 基础已完成
 阶段 3A：数据库/Alembic/Artifact Metadata/System/Audit 基础已完成
-→ 阶段 3B：Canonical Pydantic / JSON Schema / 固定示例
-→ 阶段 4：Job Runtime
-→ 阶段 5：TikHub Client 与 Raw
+阶段 3B：Canonical Pydantic / JSON Schema / 固定示例已完成
+阶段 4：PostgreSQL Job Runtime 已完成
+→ 阶段 5：Provider Adapter、Provider Attempt 与 Raw
 → 阶段 6：先完成一个平台的端到端纵切
 → 后续阶段按蓝图逐步扩展
 ```
 
-Stage 0 未全部完成不阻止 Stage 3 中与已确认技术事实直接相关的数据库/系统基础，但任何依赖产品、平台能力、隐私、容量或 Scheduler 策略的设计仍必须等待对应门禁；尤其不得直接批量实现五个平台。
+Stage 0 未全部完成不阻止 Stage 5 中 Provider 中立的 Request/Attempt、错误、费用事实、Raw Envelope 和 Fake Transport 基础，但任何依赖具体平台 Operation、真实 Fixture、隐私、容量或 Scheduler 策略的设计仍必须等待对应门禁；尤其不得直接批量实现五个平台。
 
 ## 多人协作
 
@@ -248,4 +266,4 @@ Git 和 CI 的具体要求以 `AGENTS.md`、Skill 和 `06` 为准。没有本轮
 
 所有领域设计入口见 [`docs/blueprint/README.md`](docs/blueprint/README.md)。
 
-唯一初始化版本快照、Stage 1 工具链、Stage 2 Platform 和 Stage 3A 已验证决策见 [`docs/blueprint/07-技术决策与实施门禁.md`](docs/blueprint/07-技术决策与实施门禁.md)。
+唯一初始化版本快照、Stage 1 工具链、Stage 2 Platform、Stage 3A 数据库基础和 Stage 4 Job Runtime 已验证决策见 [`docs/blueprint/07-技术决策与实施门禁.md`](docs/blueprint/07-技术决策与实施门禁.md)。
