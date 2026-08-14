@@ -755,13 +755,24 @@ class PostgresJobRepository:
         lease_token: str | None,
         reason_code: str | None,
     ) -> None:
+        fingerprint = sha256(lease_token.encode()).hexdigest() if lease_token is not None else None
+        if worker_id is None and fingerprint is not None:
+            worker_id = self._session.scalar(
+                select(job_attempt_events_table.c.worker_id)
+                .where(
+                    job_attempt_events_table.c.job_id == job.id,
+                    job_attempt_events_table.c.lease_token_fingerprint == fingerprint,
+                    job_attempt_events_table.c.worker_id.is_not(None),
+                )
+                .order_by(job_attempt_events_table.c.event_seq.desc())
+                .limit(1)
+            )
         next_seq_value = self._session.scalar(
             select(func.coalesce(func.max(job_attempt_events_table.c.event_seq), 0) + 1).where(
                 job_attempt_events_table.c.job_id == job.id
             )
         )
         next_seq = cast(int, next_seq_value)
-        fingerprint = sha256(lease_token.encode()).hexdigest() if lease_token is not None else None
         self._session.execute(
             insert(job_attempt_events_table).values(
                 id=uuid4(),
