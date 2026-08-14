@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260814-stage5d-provider-dispatch-recovery"
 title: "Stage 5D Provider Dispatch 与恢复"
 level: L3
-status: ready_for_review
+status: done
 owner: "dingyuwen777"
 branch: "feature/stage5d-provider-dispatch"
 created: 2026-08-14
@@ -171,7 +171,7 @@ Provider Attempt 在当前 Job Fencing 约束下进入 `dispatching`，通过既
 - [x] Refactor：目标单元测试全绿后只整理状态映射、来源查询和错误语义，不扩大到具体 Provider/Handler。
 - [x] 同步 Collection README、Blueprint 导航/02/03/04/06/07、统一测试说明、根 README、
   质量入口和独立 Stage 5D CI。
-- [ ] 执行需求符合性与代码质量两阶段复核，取得本地/CI/PR/合并后 main 新鲜证据并归档。
+- [x] 执行需求符合性与代码质量两阶段复核，取得本地/CI/PR/合并后 main 新鲜证据并归档。
 
 # 验证
 
@@ -223,6 +223,14 @@ Provider Attempt 在当前 Job Fencing 约束下进入 `dispatching`，通过既
 - 同一 Stage 5D run 的 Ruff format/check、Mypy 77 个源码文件、Architecture、Table Owner、
   Secret、Docs、Contract 生成/兼容门禁全部通过；PR #25 的 Stage 1、Stage 2、Stage 3A、
   Stage 4、Stage 5A、Stage 5B、Stage 5C 和 Windows bootstrap 也全部通过。
+- PR #25 最终 head `0d1283a77271d303a69f4052e11d808a1616fc04` 的九项检查全部
+  completed/success，PR 由 Draft 转为 Ready 后以 merge commit
+  `d1e79faf5c147595ba4519f8d878f40a2a315831` 合并到 `main`。
+- 合并后 `main` 本地目标测试退出码 0，`35 passed`；Ruff format/check、Mypy 77 个源码文件、
+  Architecture、Table Owner、Secret、Docs、Contract 生成/兼容门禁全部退出码 0，工作区干净。
+- 合并提交的通用 CI `31788248329`、Stage 4 `31788248260`、Stage 5A `31788248300`、
+  Stage 5B `31788248268`、Stage 5C `31788248302`、Stage 5D `31788248291` 均为
+  completed/success，形成合并后 PostgreSQL 18.4、Migration、前后端与 Windows 新鲜证据。
 
 # 文档影响
 
@@ -232,7 +240,13 @@ Provider Attempt 在当前 Job Fencing 约束下进入 `dispatching`，通过既
 
 # 交付
 
-- Commit：`165dfa1 实现 Stage 5D Provider 调度与恢复`；
-  `c6b51af 刷新 Stage 5D 项目导航索引`。
-- PR：GitHub Draft PR #25，目标 `main`，全部初始检查通过；合并与归档尚未执行。
+- 基线 main：`9770e8a333d15df10b56422c5a5559028411ecd6`。
+- 实现分支：`feature/stage5d-provider-dispatch`。
+- 实现 Commit：`165dfa1`（`实现 Stage 5D Provider 调度与恢复`）、`c6b51af`
+  （`刷新 Stage 5D 项目导航索引`）、`0d1283a`（`记录 Stage 5D CI 验证证据`）。
+- 实现 PR：[PR #25](https://github.com/dingyuwen777/AIMA_UGC/pull/25)，merge commit
+  `d1e79faf5c147595ba4519f8d878f40a2a315831`。
+- Change 收尾分支：`docs/archive-stage5d-provider-dispatch`。
+- Change 状态：done，归档至
+  `changes/archive/2026-08/CHG-20260814-stage5d-provider-dispatch-recovery/`。
 - 发布：本 Change 不启用真实 Provider 或具体 Collection Handler，不部署。
