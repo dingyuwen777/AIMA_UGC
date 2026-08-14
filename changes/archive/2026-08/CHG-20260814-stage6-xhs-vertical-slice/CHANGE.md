@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260814-stage6-xhs-vertical-slice"
 title: "Stage 6 小红书 TikHub App V2 端到端纵切"
 level: L3
-status: ready_for_review
+status: done
 owner: "dingyuwen777"
 branch: "feature/stage6-xhs-vertical-slice"
 created: 2026-08-14
@@ -92,15 +92,23 @@ Stage 1–5D 已在 main 建立 Provider-neutral Job、Collection Run/Scope、Pr
 
 # 成功标准
 
-- [ ] 真实脱敏 `search_notes` Fixture 可被正式 XHS Mapper 转成合法 `CanonicalContentV1`，且无真实 Token/签名/账号/正文/CDN URL 泄漏。
-- [ ] 搜索分页保存并推进 `page/search_id/search_session_id`；评论分页保存并推进 `cursor/index/pageArea`；空页、重复页和状态不推进可确定停止。
-- [ ] 图文/视频详情和一级/二级评论 Operation 使用批准的 App V2 endpoint，参数由 Operation 唯一定义。
-- [ ] Comment Mapper 只在来源明确时设置 `root_comment_id/parent_comment_id`；sub-comments 调用上下文只可确定 thread root，不能猜 direct parent。
-- [ ] Candidate/Ingestion 账本与 Content/Comment Current+Version+Metric 表由 Stage 6 Revision 建立，并有约束保护来源链、身份、只追加和成功结果完整性。
-- [ ] Ingestion 只更新 `observed_fields`；同一内容 A→B→A 产生三个业务版本；指标下降被记录；同一业务日最多一个无变化检查点。
-- [ ] 失败 Mapper/Ingestion 可从已存 Raw 重放，不产生第二次 Provider 调用；Fake Provider 端到端 Job 边界通过。
-- [ ] Stage 6 Unit/Contract/Integration、Migration 多升级路径、Ruff、mypy、架构/Table Owner/Secret/docs/Contract 门禁全绿。
-- [ ] PR 合并后 main 相关 CI 重新成功，Change 才允许 done/archive。
+- [x] 真实脱敏 `search_notes` Fixture 可被正式 XHS Mapper 转成合法 `CanonicalContentV1`，且无真实 Token/签名/账号/正文/CDN URL 泄漏。
+- [x] 搜索分页保存并推进 `page/search_id/search_session_id`；评论分页保存并推进 `cursor/index/pageArea`；空页、重复页和状态不推进可确定停止。
+- [x] 图文/视频详情和一级/二级评论 Operation 使用批准的 App V2 endpoint，参数由 Operation 唯一定义。
+- [x] Comment Mapper 只在来源明确时设置 `root_comment_id/parent_comment_id`；sub-comments 调用上下文只可确定 thread root，不能猜 direct parent。
+- [x] Candidate/Ingestion 账本与 Content/Comment Current+Version+Metric 表由 Stage 6 Revision 建立，并有约束保护来源链、身份、只追加和成功结果完整性。
+- [x] Ingestion 只更新 `observed_fields`；同一内容 A→B→A 产生三个业务版本；指标下降被记录；同一业务日最多一个无变化检查点。
+- [x] 失败 Mapper/Ingestion 可从已存 Raw 重放，不产生第二次 Provider 调用；Fake Provider 端到端 Job 边界通过。
+- [x] Stage 6 Unit/Contract/Integration、Migration 多升级路径、Ruff、mypy、架构/Table Owner/Secret/docs/Contract 门禁全绿。
+- [x] PR 合并后 main 相关 CI 重新成功，Change 才允许 done/archive。
+
+# 方案比较与关键决策
+
+1. **方案 A（采用）**：保留已经执行过的 `0006`—`0008`，以增量 `0009` 同时增加数据库只追加 Trigger、成功结果 Check 和服务层关闭失败校验。优点是兼容已执行 Revision、约束覆盖直接 SQL 和生产入口，回滚边界明确；代价是多一条 Migration。
+2. 方案 B：直接改写 `0006` 并把账本约束塞回首条 Stage 6 Revision。文件更少，但 `0006` 已被 CI 和分支历史执行，改写会破坏 Migration 可追溯性和已部署兼容，故拒绝。
+3. 方案 C：只在 `CandidateIngestionService` 校验，不增加数据库约束。实现最小，但无法阻止直接 SQL UPDATE/DELETE 或写入无目标成功结果，不满足 Blueprint 的不可变账本机器事实，故拒绝。
+
+用户已批准继续完成 Stage 6；实现按现有模块化单体、Owner Repository 和增量 Migration 路线执行，没有更换 Contract、目录、运行时或依赖。
 
 # 实施步骤
 
@@ -162,4 +170,27 @@ Stage 1–5D 已在 main 建立 Provider-neutral Job、Collection Run/Scope、Pr
 - 当前仅有真实 `search_notes` 响应 Fixture；详情/评论使用确定性 Fake/结构测试，不能宣称已通过真实 TikHub 详情/评论兼容验收。
 - TikHub 属第三方 Provider；端点变化通过 Operation/Fixture 隔离，不向 Canonical/业务表泄漏 Provider 私有字段。
 - 当前真实 Probe 的两次成功响应均为空结果页，不能宣称已用当日实时非空数据验证字段映射；非空映射证据仍来自 2026-08-05 脱敏 Fixture。
-- 本地 PostgreSQL 集成因 libpq wrapper 不可用而不能运行；合并前必须取得 GitHub Actions PostgreSQL 18.4 的新鲜绿色证据。
+- 本地 PostgreSQL 集成因 libpq wrapper 不可用而不能运行；该未验证项已由 PR 与合并后 main 的 GitHub Actions PostgreSQL 18.4 新鲜绿色证据覆盖。
+
+# 最终验证证据
+
+- 实现提交 `c9ff0043d95d7e8112899104855e87912c600417` 的 PR 工作流全部 completed/success：CI `31813222528`、Stage 4 `31813222545`、Stage 5A `31813222539`、Stage 5B `31813222553`、Stage 5C `31813222534`、Stage 5D `31813222581`、Stage 6 `31813222527`。
+- Stage 6 PR run 的 Unit、Quality、PostgreSQL 三个 Job 全部成功；PostgreSQL 18.4 实际完成 Collection/Content Integration、`upgrade head`、`0005 → head`、`0006 → head`、`0008 → head`、`base → head` 往返和 `alembic check`。
+- PR #27 最终 head 为 `c9ff0043d95d7e8112899104855e87912c600417`，非 Draft、mergeable、无 review thread/review/comment 阻塞，以 merge commit `c3fab0f2f46678bd576a70b80b221227bcaeb6aa` 合并到 `main`。
+- 合并后 main push 工作流全部 completed/success：CI `31813934345`、Stage 4 `31813934277`、Stage 5A `31813934398`、Stage 5B `31813934281`、Stage 5C `31813934413`、Stage 5D `31813934369`、Stage 6 `31813934317`。
+- 合并后本地 main 复验：Stage 6 Unit/Contract `41 passed`；Ruff format/check、mypy 92 个源文件、Architecture、Table Owner、Secret、Docs、Contract generate/compatibility 均退出码 0，工作区干净。
+- 本地全量 Unit/Contract/API 的唯一失败仍是 Windows 当前进程缺少目录符号链接权限（WinError 1314）；测试未删除或跳过，Linux 通用 CI 已成功覆盖。
+
+# 文档影响
+
+- 根 README、Collection/Content README、Blueprint 导航/阶段/技术门禁、测试调试说明和 Fixture README 已同步 Stage 6 当前事实、真实 Probe 边界、Migration 和测试入口。
+- 无公开 HTTP API、OpenAPI 字段或前端行为变化；固定 Contract 生成和兼容门禁证明生成物无漂移，因此 `docs/API接口说明.md` 与前端生成 Client 无需修改。
+
+# 交付
+
+- 基线 main：`5b18bbc2b73e55d3faa448abe4ae7dcdf8fc7130`。
+- 实现分支：`feature/stage6-xhs-vertical-slice`；补强提交：`c9ff004`（`补强 Stage 6 Candidate 追加账本约束`）。
+- 实现 PR：[PR #27](https://github.com/dingyuwen777/AIMA_UGC/pull/27)，merge commit `c3fab0f2f46678bd576a70b80b221227bcaeb6aa`。
+- Change 收尾分支：`docs/archive-stage6-xhs-vertical-slice`。
+- Change 状态：done，归档至 `changes/archive/2026-08/CHG-20260814-stage6-xhs-vertical-slice/`。
+- 发布：本 Change 不启用真实 Provider Transport、付费预算、Scheduler、API 或前端，不执行生产部署。
