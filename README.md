@@ -4,9 +4,9 @@ AIMA_UGC 是爱玛舆情监控系统的 Greenfield 重构仓库。目标是从�
 
 ## 当前状态
 
-**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础、Stage 3B Canonical Contract、Stage 4 PostgreSQL Job Runtime，以及 Stage 5A—5D Provider-neutral 基础已经建立。** 当前仓库已经具备可安装 Python package、FastAPI/Vue 最小工程、固定 OpenAPI 与生成 TypeScript Client、本地前后端联调、Windows x64 开发环境引导，业务无关 Platform/数据库基础，Provider/平台无关的 Canonical V1 与 Provider V1 Pydantic Contract、一次发送 Fake Transport，以及持久化 Job、Collection 执行父事实、Provider Request/Attempt、不可变 Raw Artifact、受 Fencing 约束的 Dispatch 和崩溃恢复验证闭环。
+**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础、Stage 3B Canonical Contract、Stage 4 PostgreSQL Job Runtime、Stage 5A—5D Provider-neutral 基础，以及 Stage 6 小红书 TikHub App V2 纵切已经建立。** 当前仓库已经具备可安装 Python package、FastAPI/Vue 最小工程、固定 OpenAPI 与生成 TypeScript Client、本地前后端联调、Windows x64 开发环境引导，业务无关 Platform/数据库基础，Provider/平台无关的 Canonical V1 与 Provider V1 Pydantic Contract、一次发送 Fake Transport，以及持久化 Job、Collection 执行父事实、Provider Request/Attempt、不可变 Raw Artifact、受 Fencing 约束的 Dispatch 和崩溃恢复验证闭环。
 
-仍未进入业务功能批量开发阶段。Stage 5D 已建立不计费 Provider-neutral 纵切：只有当前 Job Fence 能取得 Dispatch CAS，每个 Attempt 最多调用一次 Provider Client，terminal 短事务关联已校验 Raw 并推进 Artifact `linked`，遗留 `dispatching` 优先从确定性 Raw 恢复，缺失或损坏时保守记为 `unknown` 且不复发。Stage 5 的 Provider-neutral 工程范围至此完成；具体平台 Operation、真实 Fixture、费用和预算继续受 Stage 0 及父事实门禁约束。
+仍未进入五平台和产品功能批量开发阶段。Stage 6 已在不启用真实付费采集的前提下补齐首个小红书纵切：TikHub App V2 Operation/分页、纯 Mapper、合法脱敏 Fixture、Candidate/Ingestion 追加账本、Content/Comment Current+Version+Metric、已存 Raw 回放 Job，以及 PostgreSQL 18.4 独立 CI。当前真实 Provider 只做过用户明确授权的最小只读兼容 Probe；生产 Transport、多级预算、其余平台和 Scheduler 继续受 Stage 0/7 门禁约束。
 
 事实源规则：
 
@@ -132,6 +132,17 @@ Stage 5C 不实现 dispatch、网络调用、费用预留或结算、Raw 写入/
 
 Stage 5D 只使用不计费 Attempt 和 Fake Transport，不访问真实 Provider、不产生费用，也不包含预算 Reservation/Settlement、具体平台 Operation、Collection Job Handler、Candidate/Ingestion、HTTP API 或前端。
 
+### Stage 6：小红书 TikHub App V2 端到端纵切
+
+- `adapters/providers/tikhub/operations/xiaohongshu.py` 唯一定义搜索、图文/视频详情、一级/二级评论 App V2 endpoint、参数和分页停止语义；
+- `adapters/providers/tikhub/mappers/xiaohongshu.py` 只把已确认 Raw/上下文映射为 Canonical Content/Comment，不发 HTTP、不读数据库；
+- `collection_candidates/collection_candidate_ingestions` 保存逐项来源和每次摄取结果，数据库 Trigger 禁止 UPDATE/DELETE，成功结果必须关联 Canonical 身份和 Content/Comment 目标；
+- Content Owner 关系表保存 Account、Content/Comment Current、Version、Metric Observation 与评论覆盖，`observed_fields` 控制稀疏更新，允许 `A → B → A` 形成新版本并记录指标下降；
+- `collection.xhs.raw-replay.v1` Job 只接受已完成且 `linked` 的已存 Raw，通过正式 Mapper/Ingestion/Owner Repository 回放，不持有 Provider Client，因而不会为了重试再次调用外部 Provider；
+- `20260814_0006`—`20260814_0009` 建立 Stage 6 表和约束；`.github/workflows/stage6-xhs-vertical-slice.yml` 验证空库、Stage 5D、首条 Stage 6 和上一条 Stage 6 Revision 到 `head` 的升级路径。
+
+Stage 6 没有启用真实 HTTP Transport、预算 Reservation/Settlement、公开 HTTP API 或前端。2026-08-14 的受控真实搜索 Probe 只确认当前 HTTP 200 响应包装、分页会话字段和空页停止结构；实时返回项为空，非空字段映射仍以仓库中的合法脱敏 Fixture 和自动化测试为证据，不能据此宣称详情/评论或生产采集已经验收。
+
 ## 环境、启动与部署
 
 完整操作说明见 [`docs/环境运行与部署.md`](docs/环境运行与部署.md)。
@@ -249,6 +260,7 @@ Provider Client、Fake Transport、Raw Artifact 与 Provider Contract 可独立�
 
 ```bash
 uv run pytest tests/unit/collection tests/integration/collection/test_raw_artifact.py tests/contracts/test_provider_v1.py -q
+uv run pytest tests/unit/content tests/integration/content -q
 ```
 
 Collection Run/Scope Repository 需要隔离 PostgreSQL 18、对应 `AIMA_*` / Secret 配置和最新 Migration：
@@ -260,7 +272,7 @@ uv run pytest tests/integration/collection/test_provider_repository.py -q
 uv run pytest tests/integration/collection/test_provider_dispatch.py -q
 ```
 
-`tests/integration/collection/test_raw_artifact.py` 使用隔离目录、正式 ArtifactService 和 Local ArtifactStore，不访问网络或数据库；同目录的 Repository/Dispatch 测试使用真实 PostgreSQL。普通本地机器不要在未准备数据库时机械执行数据库测试。Job Runtime、Collection 父事实、Provider 持久化和 Dispatch/恢复的完整迁移路径分别由 `Stage 4 Job Runtime`、`Stage 5B Collection Execution`、`Stage 5C Provider Persistence`、`Stage 5D Provider Dispatch` CI 维护；统一测试入口见 [`docs/测试与调试说明.md`](docs/测试与调试说明.md)。
+`tests/integration/collection/test_raw_artifact.py` 使用隔离目录、正式 ArtifactService 和 Local ArtifactStore，不访问网络或数据库；同目录的 Repository/Dispatch 测试和 `tests/integration/content/` 使用真实 PostgreSQL。普通本地机器不要在未准备数据库时机械执行数据库测试。Job Runtime、Collection 父事实、Provider 持久化、Dispatch/恢复和小红书纵切的完整迁移路径分别由 `Stage 4 Job Runtime`、`Stage 5B Collection Execution`、`Stage 5C Provider Persistence`、`Stage 5D Provider Dispatch`、`Stage 6 XHS Vertical Slice` CI 维护；统一测试入口见 [`docs/测试与调试说明.md`](docs/测试与调试说明.md)。
 
 修改 HTTP Contract 后，先重新生成固定 OpenAPI 和前端 Client，再提交生成物：
 
@@ -313,11 +325,12 @@ TikHub / 官方 API / Apify / 自建采集器 / 文件导入 / 其他 Provider
 阶段 5B：Collection Run/Scope 父事实与第三条 Migration 已建立
 阶段 5C：Provider Request/Attempt 最终表、第四条 Migration 与幂等创建已建立
 阶段 5D：受 Fencing 约束的 dispatch、Raw 关联和崩溃恢复已建立
-→ 阶段 6：先完成一个平台的端到端纵切
+阶段 6：小红书 TikHub App V2 端到端纵切已建立
+→ 阶段 7：其余平台与 Collection/Scheduler（等待对应业务决策）
 → 后续阶段按蓝图逐步扩展
 ```
 
-Stage 0 未全部完成不影响已经建立的 Stage 5A—5D Provider-neutral 基础；任何依赖具体平台 Operation、真实 Fixture、费用预算、隐私、容量或 Scheduler 策略的设计仍必须等待对应门禁，尤其不得用 Fake Transport 验证冒充真实平台兼容性或直接批量实现五个平台。
+Stage 0 未全部完成不影响已经建立的 Stage 5A—6 基础。小红书 TikHub App V2 的本次 Operation 和脱敏 Fixture 已形成 Stage 6 事实；其余平台、真实付费 Transport/预算、隐私保留、容量或 Scheduler 策略仍必须等待对应门禁，尤其不得用 Fake/空页 Probe 冒充五平台或生产兼容性验收。
 
 ## 多人协作
 
@@ -329,4 +342,4 @@ Git 和 CI 的具体要求以 `AGENTS.md`、Skill 和 `06` 为准。没有本轮
 
 所有领域设计入口见 [`docs/blueprint/README.md`](docs/blueprint/README.md)。
 
-唯一初始化版本快照、Stage 1 工具链、Stage 2 Platform、Stage 3A 数据库基础、Stage 4 Job Runtime 和 Stage 5A—5D 已确认决策见 [`docs/blueprint/07-技术决策与实施门禁.md`](docs/blueprint/07-技术决策与实施门禁.md)。
+唯一初始化版本快照、Stage 1 工具链、Stage 2 Platform、Stage 3A 数据库基础、Stage 4 Job Runtime、Stage 5A—5D 和 Stage 6 已确认决策见 [`docs/blueprint/07-技术决策与实施门禁.md`](docs/blueprint/07-技术决策与实施门禁.md)。

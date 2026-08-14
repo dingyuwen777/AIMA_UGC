@@ -3,7 +3,8 @@
 Collection 负责采集执行、Provider Adapter 调用、Raw 证据和后续 Mapper/Candidate 边界。当前已建立
 Stage 5A Provider-neutral Request/Attempt、一次发送 Transport、Raw Artifact，Stage 5B
 Collection Run/Scope PostgreSQL 父事实，Stage 5C Provider Request/Attempt 持久化基础，以及
-Stage 5D 不计费 Provider-neutral Dispatch、Raw 关联与崩溃恢复基础。
+Stage 5D 不计费 Provider-neutral Dispatch、Raw 关联与崩溃恢复基础，以及 Stage 6 小红书
+TikHub App V2 Operation/Mapper、Candidate/Ingestion 追加账本和已存 Raw 回放纵切。
 
 ## 生产入口
 
@@ -28,10 +29,21 @@ Stage 5D 不计费 Provider-neutral Dispatch、Raw 关联与崩溃恢复基础�
   确定性路径校验并恢复已落盘 Raw；没有可用 Raw 时保守记为 `unknown`，不复发原 Attempt；
 - `aima_ugc.adapters.persistence.postgres.provider_dispatch`：把 Job Fencing、Provider Attempt Owner 写入和
   Artifact `stored → linked` 组合成短事务持久化边界；
+- `aima_ugc.adapters.providers.tikhub.operations.xiaohongshu`：唯一定义小红书 App V2 搜索、详情、一级/二级
+  评论请求和分页状态；不访问数据库；
+- `aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu`：把已确认 Raw/采集上下文纯映射为
+  Canonical Content/Comment；不发 HTTP、不读数据库；
+- `aima_ugc.modules.collection.CandidateIngestionService` 与
+  `aima_ugc.adapters.persistence.postgres.candidates.PostgresCandidateRepository`：追加逐项 Candidate 和
+  Ingestion 结果；数据库约束禁止账本 UPDATE/DELETE，并拒绝没有 Canonical 身份/业务目标的成功结果；
+- `aima_ugc.modules.collection.XhsRawReplayHandler` 与 `adapters.persistence.postgres.xhs_replay`：从正式
+  Job Runtime 读取 completed/linked Raw，经生产 Mapper、Ingestion 和 Owner Repository 回放；Handler
+  不接受 Provider Client/Transport；
 - `aima_ugc.modules.collection.tables`：`collection_runs/collection_scopes` 与
   `provider_requests/provider_request_attempts` 的唯一 Collection Owner Table 定义；第三、四条
   Migration 建立真实 Job、Scope、Request 和 Artifact 外键，第五条 Migration 冻结 Request 状态白名单和
-  terminal Attempt 的一次性 Raw 关联规则。
+  terminal Attempt 的一次性 Raw 关联规则；`candidate_tables` 是 Stage 6 Candidate/Ingestion Owner Table，
+  第六至第九条 Migration 建立业务表、来源约束、账号备用 ID 和追加账本保护。
 
 Raw Artifact 使用以下相对 `storage_key`：
 
@@ -46,22 +58,24 @@ Artifact Owner Repository 把元数据从 `stored` 推进为 `linked`；关联�
 ## 独立验证
 
 ```bash
-uv run pytest tests/unit/collection tests/integration/collection tests/contracts/test_provider_v1.py -q
+uv run pytest tests/unit/collection tests/unit/content tests/contracts/test_provider_v1.py -q
+uv run pytest tests/integration/collection tests/integration/content -q
 uv run python scripts/contracts/generate.py --check
 ```
 
 测试从正式 Client、Raw Service、ArtifactService 和 Local ArtifactStore 进入。Fake Transport 不访问
 网络、不需要 Token、不产生费用；Raw 测试目录位于 Git 忽略的 `.runtime/stage5a-tests/`。Repository
 集成测试要求先准备隔离 PostgreSQL 18、Secret 文件并执行 `uv run alembic upgrade head`；独立
-`Stage 5B Collection Execution`、`Stage 5C Provider Persistence` 与
-`Stage 5D Provider Dispatch` CI 固定使用 PostgreSQL 18.4。
+`Stage 5B Collection Execution`、`Stage 5C Provider Persistence`、
+`Stage 5D Provider Dispatch` 与 `Stage 6 XHS Vertical Slice` CI 固定使用 PostgreSQL 18.4。
 
 ## 当前限制
 
-- 没有真实 HTTP/SDK/文件 Transport 或具体平台 Operation；
+- 已有小红书 TikHub App V2 具体 Operation，但没有接入真实 HTTP/SDK/文件 Transport；
 - 仅支持 `manual/api/backfill` Run；没有 Plan/Occurrence/Scheduler，因而不支持 `scheduled`；
 - 当前 Dispatch 纵切只允许不计费 Attempt 和 Fake Transport；没有多级预算预留/结算、真实付费 Provider、
-  具体平台 Operation 或 Collection Job Handler/Worker 注册；
-- 没有 Mapper、Candidate、Ingestion、Content/Comment 或 Scheduler；
+  生产网络调用或最终多级预算；Stage 6 只有已存 Raw 回放 Job Handler；
+- 只有小红书 Mapper/Candidate/Ingestion/Content/Comment 首个平台纵切，没有其余平台或 Scheduler；
 - 没有决定 Raw 的访问、保留、删除、备份和生产容量策略；
-- 真实 Provider Probe 默认不存在，不能用 Fake 结果宣称外部平台兼容。
+- 真实 Provider Probe 默认不进入代码或 CI；2026-08-14 的用户授权搜索 Probe 只确认当次 HTTP 200
+  空页包装/分页字段，不能用其或 Fake 结果宣称详情、评论或生产平台兼容。
