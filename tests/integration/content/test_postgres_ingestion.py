@@ -475,16 +475,24 @@ def test_raw_replay_and_sparse_author_do_not_duplicate_or_clear_history(
             )
             service.ingest_content(sparse_author)
 
-        version_ids = session.execute(
-            select(content_versions_table.c.id).where(
-                content_versions_table.c.content_id == first.target_id
+        version_ids = (
+            session.execute(
+                select(content_versions_table.c.id).where(
+                    content_versions_table.c.content_id == first.target_id
+                )
             )
-        ).scalars().all()
-        metric_ids = session.execute(
-            select(content_metric_observations_table.c.id).where(
-                content_metric_observations_table.c.content_id == first.target_id
+            .scalars()
+            .all()
+        )
+        metric_ids = (
+            session.execute(
+                select(content_metric_observations_table.c.id).where(
+                    content_metric_observations_table.c.content_id == first.target_id
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(version_ids) == 1
         assert len(metric_ids) == 1
         account = (
