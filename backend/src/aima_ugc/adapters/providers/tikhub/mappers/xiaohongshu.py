@@ -234,7 +234,7 @@ def _timestamp(raw: dict[str, Any], *keys: str) -> datetime | None:
                 seconds /= 1000
             try:
                 return datetime.fromtimestamp(seconds, tz=UTC)
-            except (OverflowError, OSError, ValueError):
+            except OverflowError, OSError, ValueError:
                 return None
     return None
 
@@ -250,7 +250,7 @@ def _count(raw: dict[str, Any], *keys: str) -> tuple[int | None, bool]:
             return None, False
         try:
             parsed = int(value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None, False
         return (parsed if parsed >= 0 else None), parsed >= 0
     return None, False
