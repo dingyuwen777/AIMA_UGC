@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260814-stage7-real-provider-probe
 title: 固化 Stage 7 真实 Provider Probe 与人工审阅边界
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: docs/stage7-real-provider-probe
 created: 2026-08-14
@@ -27,7 +27,7 @@ data_changes: []
 - [x] `docs/测试与调试说明.md` 说明人工 Probe 的配置能力、输出结构和 XLSX 人工审阅布局。
 - [x] XLSX 以人工阅读为目标：帖子公共字段跨评论行纵向合并、评论一条一行、一级/二级关系清晰、无粗黑边框；机器事实仍由 Raw/Canonical 维护。
 - [x] 不新增代码、Contract、Schema、Migration、依赖或具体 Provider Operation 选择。
-- [ ] PR CI 成功，合并后 main 相关 CI 再次成功后才归档 Change。
+- [x] PR CI 成功，合并后 main 相关 CI 再次成功后归档 Change。
 
 # 范围
 
@@ -85,19 +85,27 @@ data_changes: []
 → 预期结果：开发者能理解未来 Probe 的配置维度、输出目录、Raw/Canonical/XLSX 分工和人工审阅样式。
 → 验证方式：Markdown/链接/术语检查 + CI。
 
-# 验证计划与当前证据
+# 验证与 Review 证据
 
-纯文档任务不伪造 Red/Green。使用仓库已有确定性文档、Secret、架构和完整 PR CI 作为替代验证；合并后再次检查 main CI。当前宿主没有本地仓库/终端，因此本轮无法在本地执行 `uv run ...` 命令，最终以 GitHub Actions 对目标提交的实际结果为准。
-
-提交前人工复核已确认：
+纯文档任务未伪造 Red/Green。提交前按需求符合性和文档质量两阶段复核：
 
 - 分支相对基线 `main` 只修改本 Change 和四个已声明文档；
 - Blueprint 02 只扩展 Real Probe 与采集验收边界；
 - Blueprint 06 只扩展 Stage 7 范围/验收，不改变阶段树；
 - Blueprint 07 版本从 1.14 更新到 1.15，仅新增 Real Probe 跨模块决策和 Stage 7 No-Go；
-- `docs/测试与调试说明.md` 只增加未来 Stage 7 Probe/XLSX 人工审阅说明和通用 Probe 安全要求；
+- `docs/测试与调试说明.md` 只增加未来 Stage 7 Probe/XLSX 人工审阅说明和通用 Probe 安全要求，并补充 XLSX 公式注入、长 ID、评论 coverage 与来源定位边界；
 - 抖音、微博、B站、快手具体 Operation 与 Scheduler misfire/catch-up 仍明确保持未决；
 - 无代码、Contract、Schema、Migration、依赖和锁文件变化。
+
+当前宿主没有本地仓库/终端，因此没有本地 `uv run ...` 执行证据；最终采用 GitHub Actions 对目标提交和合并后 main 的新鲜结果：
+
+- PR #29 head `f7832767b39b9081357f43f7bf173517efce1384`：
+  - CI run `31819316403` / #243：success；
+  - Stage 6 XHS Vertical Slice run `31819316402` / #81：success；Quality、Unit、PostgreSQL 均 success。
+- PR #29 以 merge commit `a55a21ede83637bbc7cb0415b7daf57a67753bf2` 合并到 main。
+- 合并后 main `a55a21ede83637bbc7cb0415b7daf57a67753bf2`：
+  - CI run `31819433349` / #244：success；Stage 1、Stage 2 Platform、Stage 3A Database、Windows bootstrap 均 success；
+  - Stage 6 XHS Vertical Slice run `31819433407` / #82：success；Quality、Unit、PostgreSQL 均 success，PostgreSQL Job 重新执行 Stage 5D→head、首个/上一 Stage 6 Revision→head 与 base round trip。
 
 # 文档影响
 
@@ -114,10 +122,10 @@ data_changes: []
 # Git
 
 - 基线 main：`7029f19e6cea8a219e1fc0b135ea53f3115da301`
-- 分支：`docs/stage7-real-provider-probe`
+- 开发分支：`docs/stage7-real-provider-probe`
 - 文档提交：`202a922f`、`c83e68ee`、`9d4d28c1`、`629f0975`
-- Change：`ready_for_review`
-- PR：待创建
-- CI：待 PR 运行
-- 合并：未执行
-- 归档：未执行
+- PR：#29
+- PR CI：#243 / `31819316403` success；Stage 6 #81 / `31819316402` success
+- 合并：`a55a21ede83637bbc7cb0415b7daf57a67753bf2`
+- 合并后 main CI：#244 / `31819433349` success；Stage 6 #82 / `31819433407` success
+- Change：done，进入 `changes/archive/2026-08/`
