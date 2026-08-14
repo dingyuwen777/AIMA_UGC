@@ -18,6 +18,11 @@ PROVIDER_TARGETS = [
     "contracts/provider/attempt.v1.schema.json",
     "contracts/provider/raw-envelope.v1.schema.json",
 ]
+COLLECTION_TARGETS = [
+    "contracts/collection/decision-request.v1.schema.json",
+    "contracts/collection/decision.v1.schema.json",
+    "contracts/collection/provider-platform-capability.v1.schema.json",
+]
 
 
 def main() -> int:
@@ -48,15 +53,26 @@ def main() -> int:
         return 1
 
     diff = subprocess.run(
-        ["git", "diff", "--exit-code", "--", *CANONICAL_TARGETS, *PROVIDER_TARGETS],
+        [
+            "git",
+            "diff",
+            "--exit-code",
+            "--",
+            *CANONICAL_TARGETS,
+            *PROVIDER_TARGETS,
+            *COLLECTION_TARGETS,
+        ],
         cwd=ROOT,
         check=False,
     )
     if diff.returncode != 0:
-        print("CONTRACT_SCHEMA_STALE: 生成后的 Canonical/Provider JSON Schema 与提交版本不一致")
+        print(
+            "CONTRACT_SCHEMA_STALE: 生成后的 Canonical/Provider/Collection JSON Schema "
+            "与提交版本不一致"
+        )
         return 1
 
-    print("OpenAPI 基线与 Canonical/Provider Schema 漂移检查通过。")
+    print("OpenAPI 基线与 Canonical/Provider/Collection Schema 漂移检查通过。")
     return 0
 
 
