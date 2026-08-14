@@ -206,3 +206,34 @@ def test_reply_decision_uses_explicit_zero_positive_and_unknown_semantics() -> N
     )
     assert unknown.action == "probe_first_page"
     assert unknown.reason == "reply_count_unknown_probe"
+
+
+def test_reply_target_is_absent_when_platform_has_no_sub_comment_capability() -> None:
+    no_replies_capability = XHS_TIKHUB_CAPABILITY.model_copy(
+        update={
+            "operations": tuple(
+                operation.model_copy(update={"supports_sub_comments": False})
+                if operation.business_operation == "comments"
+                else operation
+                for operation in XHS_TIKHUB_CAPABILITY.operations
+                if operation.business_operation != "sub_comments"
+            )
+        }
+    )
+    request = _request(current_comment_count=12)
+    request = request.model_copy(update={"capability": no_replies_capability})
+
+    decision = CollectionDecisionService().decide(request)
+    assert decision.comment_action == "fetch_adaptive"
+    assert decision.reply_target_per_root is None
+
+    reply = CollectionDecisionService().decide_reply(
+        ReplyDecisionRequestV1(
+            reply_count=3,
+            policy=CollectionDecisionPolicyV1(),
+            capability=no_replies_capability,
+        )
+    )
+    assert reply.action == "skip"
+    assert reply.reason == "sub_comments_unavailable"
+    assert reply.target is None
