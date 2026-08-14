@@ -10,7 +10,6 @@ from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
 )
 from aima_ugc.contracts.canonical import CanonicalCommentV1, CanonicalContentV1
 
-
 OBSERVED_AT = datetime(2026, 8, 5, 10, 0, 12, tzinfo=UTC)
 RAW_ARTIFACT_ID = UUID("00000000-0000-0000-0000-000000000101")
 
@@ -28,18 +27,27 @@ def _context(*, operation: str, root_comment_id: str | None = None) -> XhsMappin
     )
 
 
-def test_search_card_maps_only_observed_content_fields() -> None:
+def test_real_search_wrapper_maps_observed_content_fields() -> None:
     raw = {
-        "id": "note-1",
-        "type": "normal",
-        "title": "脱敏标题",
-        "desc": "脱敏正文",
-        "timestamp": 1785920000,
-        "liked_count": 12,
-        "comments_count": 3,
-        "collected_count": 4,
-        "shared_count": 2,
-        "user": {"user_id": "user-1", "nickname": "脱敏用户"},
+        "model_type": "note",
+        "note": {
+            "id": "note-1",
+            "type": "normal",
+            "title": "脱敏标题",
+            "desc": "脱敏正文",
+            "timestamp": 1785920000,
+            "update_time": 1785920060000,
+            "liked_count": 12,
+            "comments_count": 3,
+            "collected_count": 4,
+            "shared_count": 2,
+            "user": {
+                "userid": "user-1",
+                "red_id": "red-1",
+                "nickname": "脱敏用户",
+                "red_official_verified": False,
+            },
+        },
     }
     result = map_content(raw, _context(operation="search_notes"), item_locator="note:note-1")
     assert isinstance(result, CanonicalContentV1)
@@ -50,21 +58,31 @@ def test_search_card_maps_only_observed_content_fields() -> None:
     assert result.metrics.comment_count == 3
     assert result.metrics.favorite_count == 4
     assert result.metrics.share_count == 2
+    assert result.author is not None
+    assert result.author.external_account_id == "user-1"
+    assert result.author.alternate_ids == {"red_id": "red-1"}
+    assert result.author.verified is False
     assert "text" in result.observed_fields
+    assert "source_updated_at" in result.observed_fields
+    assert "author.alternate_ids" in result.observed_fields
     assert "metrics.like_count" in result.observed_fields
     assert result.source.item_locator == "note:note-1"
     assert result.source.provider_name == "tikhub"
 
 
-def test_mapper_does_not_invent_missing_time_or_metrics() -> None:
+def test_mapper_does_not_invent_missing_or_blank_fields() -> None:
     result = map_content(
-        {"id": "note-2", "type": "video", "title": "仅标题"},
+        {"note": {"id": "note-2", "type": "video", "title": "", "desc": ""}},
         _context(operation="search_notes"),
         item_locator="note:note-2",
     )
     assert result.published_at is None
+    assert result.title is None
+    assert result.text is None
     assert result.metrics.like_count is None
     assert "published_at" not in result.observed_fields
+    assert "title" not in result.observed_fields
+    assert "text" not in result.observed_fields
     assert "metrics.like_count" not in result.observed_fields
 
 
