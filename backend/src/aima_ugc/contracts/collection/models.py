@@ -72,18 +72,16 @@ class ProviderOperationCapabilityV1(CollectionBaseModel):
     supports_reply_count: bool = False
     supports_sub_comments: bool = False
     supports_incremental_comment_sort: bool = False
-    provider_page_size_policy: Literal[
-        "fixed", "provider_default", "configurable", "unknown"
-    ] = "unknown"
+    provider_page_size_policy: Literal["fixed", "provider_default", "configurable", "unknown"] = (
+        "unknown"
+    )
     optional_enrichments: tuple[StableCode, ...] = ()
 
 
 class ProviderPlatformCapabilityV1(CollectionBaseModel):
     """一个 Provider + Platform 当前已验证/实现的业务能力集合。"""
 
-    schema_version: Literal["provider-platform-capability.v1"] = (
-        "provider-platform-capability.v1"
-    )
+    schema_version: Literal["provider-platform-capability.v1"] = "provider-platform-capability.v1"
     provider: ProviderName
     platform: PlatformName
     operations: tuple[ProviderOperationCapabilityV1, ...] = Field(min_length=1)
@@ -95,14 +93,12 @@ class ProviderPlatformCapabilityV1(CollectionBaseModel):
             raise ValueError("Provider Platform Capability 存在重复业务 Operation")
         return self
 
-    def operation(self, business_operation: BusinessOperation) -> ProviderOperationCapabilityV1 | None:
+    def operation(
+        self, business_operation: BusinessOperation
+    ) -> ProviderOperationCapabilityV1 | None:
         """按规范化业务 Operation 读取能力；不存在时返回 None。"""
         return next(
-            (
-                item
-                for item in self.operations
-                if item.business_operation == business_operation
-            ),
+            (item for item in self.operations if item.business_operation == business_operation),
             None,
         )
 
@@ -146,9 +142,7 @@ class CollectionDecisionContextV1(CollectionBaseModel):
 class CollectionDecisionRequestV1(CollectionBaseModel):
     """一次内容级后续采集决策的完整输入。"""
 
-    schema_version: Literal["collection-decision-request.v1"] = (
-        "collection-decision-request.v1"
-    )
+    schema_version: Literal["collection-decision-request.v1"] = "collection-decision-request.v1"
     current: ContentObservationV1
     previous: PreviousContentStateV1 | None = None
     context: CollectionDecisionContextV1 = Field(default_factory=CollectionDecisionContextV1)
