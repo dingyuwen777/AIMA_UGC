@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260814-stage5a-provider-raw-foundation"
 title: "Stage 5A Provider 与 Raw 基础"
 level: L3
-status: ready_for_review
+status: done
 owner: "dingyuwen777"
 branch: "feature/stage5a-provider-raw-foundation"
 created: 2026-08-14
@@ -145,7 +145,7 @@ Stage 5 仍为进行中，不能宣称 Provider PostgreSQL Attempt/费用账本�
 - [x] 生成固定 Provider JSON Schema并同步 Contract 漂移门禁。
 - [x] 同步 README、Blueprint、统一测试说明和独立 Stage 5A CI。
 - [x] 执行需求符合性与代码质量两阶段本地复核，修复 Raw 直接构造脱敏和截断 gzip 错误边界。
-- [ ] 取得 PR/CI/合并后 main 新鲜证据并归档 Change。
+- [x] 取得 PR/CI/合并后 main 新鲜证据并归档 Change。
 
 # 验证
 
@@ -183,6 +183,14 @@ Stage 5 仍为进行中，不能宣称 Provider PostgreSQL Attempt/费用账本�
   未删除、跳过或修改该测试，等待 Linux CI 复验。
 - 前端文件、OpenAPI 和生成 Client 未变化；本机 Node/npm 版本不等于锁定版本，前端完整门禁由
   仓库通用 CI 使用精确版本验证。
+- 实现 PR #19 head `ca0604a22b82ec166f507cf1cfe54fb506f7acce`：通用 CI
+  `31772112193` 和 Stage 5A CI `31772112256` 均为 success。
+- PR #19 以 squash 合并到 main，merge commit
+  `d0d93d6bd84094d16e1b0d8f0cd2d5f455c621f5`。
+- 合并后 main：通用 CI `31772268280` 和 Stage 5A CI `31772268312` 均为
+  completed/success；通用 CI 覆盖精确 Python/Node/npm、Wheel、前端、Windows bootstrap、
+  PostgreSQL 18 Stage 2/3A 和 Linux 路径安全回归。
+- 合并后本地 main 目标测试 16 passed；Contract、架构、Table Owner、Secret、文档门禁均退出码 0。
 
 # 文档影响
 
@@ -194,6 +202,13 @@ Stage 5 仍为进行中，不能宣称 Provider PostgreSQL Attempt/费用账本�
 
 # 交付
 
-- Commit：尚未创建。
-- PR：尚未创建。
-- 发布：不部署；等待 PR、CI、合并后 main 验证。
+- 基线 main：`dd53605ace65583a8f4a91baa967b35651da609d`。
+- 实现分支：`feature/stage5a-provider-raw-foundation`。
+- 实现 Commit：`ca0604a22b82ec166f507cf1cfe54fb506f7acce`，中文提交
+  `建立 Stage 5A Provider 与 Raw 基础`。
+- 实现 PR：[PR #19](https://github.com/dingyuwen777/AIMA_UGC/pull/19)。
+- 合并 Commit：`d0d93d6bd84094d16e1b0d8f0cd2d5f455c621f5`。
+- Change 收尾分支：`chore/archive-stage5a-provider-raw-foundation-change`。
+- Change 状态：done，归档到
+  `changes/archive/2026-08/CHG-20260814-stage5a-provider-raw-foundation/`。
+- 发布：未部署；Stage 5A 只建立库级入口，无生产启用、Migration 或数据迁移。
