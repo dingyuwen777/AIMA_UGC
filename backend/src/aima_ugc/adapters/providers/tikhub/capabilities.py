@@ -37,7 +37,9 @@ XHS_TIKHUB_CAPABILITY = ProviderPlatformCapabilityV1(
         ProviderOperationCapabilityV1(
             business_operation="comments",
             provider_operations=("get_note_comments",),
-            comment_sort_modes=("latest", "most_liked"),
+            # TikHub 官方还支持 like_count/default，但当前 Stage 6 Operation
+            # 把 sort_strategy 固定为 latest_v2，因此当前机器 Capability 只暴露 latest。
+            comment_sort_modes=("latest",),
             supports_reply_count=True,
             supports_sub_comments=True,
             # 当前只有非空 Search Fixture。latest_v2 虽由官方文档定义为最新排序，
