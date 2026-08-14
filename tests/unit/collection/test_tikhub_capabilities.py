@@ -48,7 +48,8 @@ def test_xhs_tikhub_capability_matches_current_stage6_operations() -> None:
 
     comments = _operation("comments")
     assert comments.provider_operations == ("get_note_comments",)
-    assert "latest" in comments.comment_sort_modes
+    # TikHub API 支持更多排序，但当前 Stage 6 builder 固定 latest_v2；Capability 只能暴露已实现选择。
+    assert comments.comment_sort_modes == ("latest",)
     assert comments.supports_reply_count is True
     assert comments.supports_sub_comments is True
     # 当前没有非空真实评论 Fixture 证明“遇到已知 comment_id 即可安全停”，保守关闭增量资格。
@@ -64,7 +65,9 @@ def test_xhs_capability_operation_names_stay_aligned_with_request_builders() -> 
     ).path.endswith("/search_notes")
     assert build_image_detail_request(note_id="note-1").path.endswith("/get_image_note_detail")
     assert build_video_detail_request(note_id="note-1").path.endswith("/get_video_note_detail")
-    assert build_note_comments_request(note_id="note-1").path.endswith("/get_note_comments")
+    comments_request = build_note_comments_request(note_id="note-1")
+    assert comments_request.path.endswith("/get_note_comments")
+    assert comments_request.params["sort_strategy"] == "latest_v2"
     assert build_sub_comments_request(note_id="note-1", comment_id="comment-1").path.endswith(
         "/get_note_sub_comments"
     )
