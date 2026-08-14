@@ -31,16 +31,9 @@ class CollectionDecisionService:
             comment_action=comment_action,
             comment_reason=comment_reason,
             comment_target=comment_target,
-            reply_target_per_root=(
-                request.policy.reply_target_per_root
-                if comment_action
-                in {
-                    "fetch_adaptive",
-                    "fetch_incremental",
-                    "refresh_controlled",
-                    "probe_first_page",
-                }
-                else None
+            reply_target_per_root=self._reply_target_hint(
+                request,
+                comment_action=comment_action,
             ),
         )
 
@@ -133,6 +126,25 @@ class CollectionDecisionService:
             return "refresh_controlled", "comment_count_increased_refresh", target
 
         return "refresh_controlled", "comment_count_decreased", target
+
+    @staticmethod
+    def _reply_target_hint(
+        request: CollectionDecisionRequestV1,
+        *,
+        comment_action: CommentAction,
+    ) -> int | None:
+        if comment_action not in {
+            "fetch_adaptive",
+            "fetch_incremental",
+            "refresh_controlled",
+            "probe_first_page",
+        }:
+            return None
+        comments = request.capability.operation("comments")
+        sub_comments = request.capability.operation("sub_comments")
+        if comments is None or sub_comments is None or not comments.supports_sub_comments:
+            return None
+        return request.policy.reply_target_per_root
 
     @staticmethod
     def _comment_target(
