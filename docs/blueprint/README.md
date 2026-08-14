@@ -50,7 +50,7 @@
 
 ## 当前开发状态
 
-**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础、Stage 3B Canonical Contract、Stage 4 PostgreSQL Job Runtime 和 Stage 5A—5C Provider/Collection 持久化基础均已建立。** 当前代码已经具备：
+**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础、Stage 3B Canonical Contract、Stage 4 PostgreSQL Job Runtime 和 Stage 5A—5D Provider-neutral 基础均已建立。** 当前代码已经具备：
 
 - 根 Python/uv 工程、固定运行时与锁文件、FastAPI/Vue、OpenAPI → Orval Client、完整 Stage 1 CI；
 - Windows PowerShell 5.1 开发环境引导和本地 Uvicorn + Vite 双服务联调；
@@ -65,8 +65,9 @@
 - Stage 5A Provider-neutral Request/Attempt/Error/Billing Pydantic Contract、固定 JSON Schema、一次发送 Provider Client/Fake Transport，以及递归脱敏、gzip、SHA-256、不可覆盖和可回放的 Raw Artifact 独立 CI。
 - Stage 5B 第三条 Revision、`collection_runs/collection_scopes`、真实 Job 唯一外键、Collection Service/Repository 和 PostgreSQL 18.4 独立 CI。
 - Stage 5C 第四条 Revision、`provider_requests/provider_request_attempts`、最终 Scope/Request/Artifact 外键、幂等 Request 与未发送不计费 Attempt，以及 PostgreSQL 18.4 独立 CI。
+- Stage 5D 第五条 Revision、受 Job Fencing 约束的 Dispatch CAS、每 Attempt 一次 Provider Client 调用、Raw/Artifact 终态关联、遗留 `dispatching` 恢复，以及 PostgreSQL 18.4 独立 CI。
 
-Stage 4 的机器事实以 `backend/src/aima_ugc/platform/jobs/`、`backend/src/aima_ugc/adapters/persistence/postgres/jobs.py`、第二条 Migration、测试和 CI 为准。Stage 5A 的机器事实以 Provider Contract/Client/Fake/Raw、生成 Schema、测试和 CI 为准；Stage 5B 以 `modules/collection/execution.py`、Collection Table/Repository、第三条 Migration、PostgreSQL 测试和 CI 为准；Stage 5C 以 `modules/collection/provider_persistence.py`、Provider Repository、第四条 Migration、PostgreSQL 测试和 CI 为准。跨文档决定维护在 [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md)，不要在其他 Blueprint 复制实现细节或版本表。
+Stage 4 的机器事实以 `backend/src/aima_ugc/platform/jobs/`、`backend/src/aima_ugc/adapters/persistence/postgres/jobs.py`、第二条 Migration、测试和 CI 为准。Stage 5A 的机器事实以 Provider Contract/Client/Fake/Raw、生成 Schema、测试和 CI 为准；Stage 5B 以 `modules/collection/execution.py`、Collection Table/Repository、第三条 Migration、PostgreSQL 测试和 CI 为准；Stage 5C 以 `modules/collection/provider_persistence.py`、Provider Repository、第四条 Migration、PostgreSQL 测试和 CI 为准；Stage 5D 以 `modules/collection/provider_dispatch.py`、`modules/collection/provider_recovery.py`、PostgreSQL Dispatch Adapter、第五条 Migration、测试和 CI 为准。跨文档决定维护在 [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md)，不要在其他 Blueprint 复制实现细节或版本表。
 
 当前下一步分成两条并行路径。
 
@@ -85,11 +86,11 @@ Stage 4 的机器事实以 `backend/src/aima_ugc/platform/jobs/`、`backend/src/
 
 Stage 5A 已建立 Provider Client/Transport Port、Provider Request/Attempt、错误与费用的版本化 Contract、Raw Artifact Envelope 和 Fake Transport。Stage 5B 已用第三条 Revision 建立 `collection_runs/collection_scopes`、真实 `collection_runs.job_id → jobs.id` 唯一外键和 caller-owned transaction 的 Collection Repository；本阶段只接受 `manual/api/backfill`，不创建无父表支撑的 Plan/Occurrence 列或 `scheduled` 语义。Stage 5C 已用第四条 Revision 按最终字段建立 Provider Request/Attempt 表、Scope/Request/Artifact 外键、来源身份冻结、幂等 `pending` Request 和未发送不计费的 `reserved` Attempt。
 
-Stage 5 整体仍在进行中。下一独立 L3（Stage 5D）必须建立受 Job Fencing 约束的 dispatch 状态转换、计费未知处理、Raw 关联与崩溃恢复；在形成可审计的 Collection→Provider Attempt→Raw 完整来源链前，Stage 6 Candidate/Ingestion 仍是 No-Go。最终多级预算表继续等待 Content 父事实和已批准的预算语义，不在 Stage 5C 提前实现。
+Stage 5D 已用第五条 Revision 和生产调用链建立不计费 Provider-neutral Dispatch：短事务验证当前 Job Fencing 并 CAS 进入 `dispatching`，事务外最多调用一次 Provider Client，terminal 短事务关联已校验 Raw 并推进 Artifact `linked`；接管者优先恢复确定性路径上的已落盘 Raw，没有可用 Raw 才保守记为 `unknown`，不复发同一 Attempt。至此 Stage 5 的 Provider-neutral 工程范围完成，Stage 6 可在平台能力矩阵和合法脱敏 Fixture 获批后开始。最终多级预算仍等待 Content 父事实和已批准的预算语义。
 
-如果 Stage 5 要接入某个真实平台的具体 Operation、费用或真实 Fixture，仍受阶段 0 对应业务事实门禁；Provider 中立的基础边界可以在不猜测平台语义的前提下继续推进。
+真实平台的具体 Operation、费用、预算和真实 Fixture 仍受阶段 0 对应业务事实门禁；Stage 5D 的 Fake Transport 结果不证明任何外部平台兼容性。
 
-Stage 1—5C 已建立的 Schema/Repository/Contract/Job Runtime/Raw 边界不重复设计；登录、Role/Permission、Principal 和 actor-bound API 幂等继续等待真实第三方身份需求。
+Stage 1—5D 已建立的 Schema/Repository/Contract/Job Runtime/Raw/Dispatch 边界不重复设计；登录、Role/Permission、Principal 和 actor-bound API 幂等继续等待真实第三方身份需求。
 
 ## 修改规则
 

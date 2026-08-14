@@ -4,9 +4,9 @@ AIMA_UGC 是爱玛舆情监控系统的 Greenfield 重构仓库。目标是从�
 
 ## 当前状态
 
-**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础、Stage 3B Canonical Contract、Stage 4 PostgreSQL Job Runtime，以及 Stage 5A—5C Provider/Collection 持久化基础已经建立。** 当前仓库已经具备可安装 Python package、FastAPI/Vue 最小工程、固定 OpenAPI 与生成 TypeScript Client、本地前后端联调、Windows x64 开发环境引导，业务无关 Platform/数据库基础，Provider/平台无关的 Canonical V1 与 Provider V1 Pydantic Contract、一次发送 Fake Transport，以及持久化 Job、Collection 执行父事实、Provider Request/Attempt 和不可变 Raw Artifact 的独立验证闭环。
+**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础、Stage 3B Canonical Contract、Stage 4 PostgreSQL Job Runtime，以及 Stage 5A—5D Provider-neutral 基础已经建立。** 当前仓库已经具备可安装 Python package、FastAPI/Vue 最小工程、固定 OpenAPI 与生成 TypeScript Client、本地前后端联调、Windows x64 开发环境引导，业务无关 Platform/数据库基础，Provider/平台无关的 Canonical V1 与 Provider V1 Pydantic Contract、一次发送 Fake Transport，以及持久化 Job、Collection 执行父事实、Provider Request/Attempt、不可变 Raw Artifact、受 Fencing 约束的 Dispatch 和崩溃恢复验证闭环。
 
-仍未进入业务功能批量开发阶段。Stage 5 整体仍在进行中：Stage 5C 已按最终外键建立 `provider_requests/provider_request_attempts`，当前只允许幂等 `pending` Request 和未发送、不计费的 `reserved` Attempt。下一独立 L3（Stage 5D）必须建立受 Job Fencing 约束的 dispatch 状态转换、真实 Raw 关联和崩溃恢复，之后才能进入 Candidate/Ingestion。具体平台 Operation、费用和真实 Fixture 继续受 Stage 0 门禁约束。
+仍未进入业务功能批量开发阶段。Stage 5D 已建立不计费 Provider-neutral 纵切：只有当前 Job Fence 能取得 Dispatch CAS，每个 Attempt 最多调用一次 Provider Client，terminal 短事务关联已校验 Raw 并推进 Artifact `linked`，遗留 `dispatching` 优先从确定性 Raw 恢复，缺失或损坏时保守记为 `unknown` 且不复发。Stage 5 的 Provider-neutral 工程范围至此完成；具体平台 Operation、真实 Fixture、费用和预算继续受 Stage 0 及父事实门禁约束。
 
 事实源规则：
 
@@ -97,7 +97,7 @@ Stage 4 不实现 Scheduler、Provider Request/Raw、Collection/Content 业务�
 - 网络结果未知固定记录 `unknown` 费用和 `potential_duplicate_charge`，不承诺零重复计费；
 - `.github/workflows/stage5a-provider-raw.yml` 提供独立 Provider/Raw Contract、测试与质量门禁。
 
-Stage 5A 没有真实 Provider、平台 Operation、Mapper、Provider/Collection 数据库表、预算、Worker 注册或生产 Probe；Raw Artifact 保持 `stored`，未来 Provider Attempt Repository 建立受约束引用后才能标记 `linked`。
+Stage 5A 没有真实 Provider、平台 Operation、Mapper、Provider/Collection 数据库表、预算、Worker 注册或生产 Probe；它的独立 Raw 测试只推进 Artifact 到 `stored`，Stage 5D 的 terminal 短事务再建立 Attempt 引用并标记 `linked`。
 
 ### Stage 5B：Collection Run/Scope 父事实
 
@@ -120,6 +120,17 @@ Stage 5B 不实现 Plan/Occurrence/Scheduler、Collection Worker/状态转换、
 - `.github/workflows/stage5c-provider-persistence.yml` 使用 PostgreSQL 18.4 验证最终 FK/Unique/Check/Index/Trigger、并发 Attempt 编号、第四条 Migration 和双 downgrade/re-upgrade 路径。
 
 Stage 5C 不实现 dispatch、网络调用、费用预留或结算、Raw 写入/关联、Artifact `linked`、Job Fencing/CAS、Reconciler、Candidate/Ingestion、HTTP API 或前端。这些执行语义属于 Stage 5D。
+
+### Stage 5D：Provider Dispatch 与崩溃恢复
+
+- `JobExecutionFence` 把当前 Job ID 与 Lease Token 作为内部执行凭证，Token 不进入 Payload、日志或 `repr`；
+- `ProviderDispatchService` 先在短事务中验证 Fence 并 CAS `reserved → dispatching`，再于事务外调用一次正式 Provider Client，最后以短事务提交 terminal 结果；
+- `completed/unknown` 先由正式 Raw/Artifact 链落盘并校验，再一次性关联 Attempt、推进 Artifact `stored → linked`；
+- `ProviderAttemptReconciler` 接管遗留 `dispatching` 时优先恢复确定性路径上的完整 Raw；没有可用 Raw 才保守记为 `unknown`，不复发同一 Attempt；
+- 第五条 Revision `20260814_0005` 固定 Request 状态白名单和 terminal Attempt 的一次性 Raw 关联规则；
+- `.github/workflows/stage5d-provider-dispatch.yml` 使用 PostgreSQL 18.4 验证 Fencing、一次调用、Raw 恢复、无 Raw Reaper 和迁移路径。
+
+Stage 5D 只使用不计费 Attempt 和 Fake Transport，不访问真实 Provider、不产生费用，也不包含预算 Reservation/Settlement、具体平台 Operation、Collection Job Handler、Candidate/Ingestion、HTTP API 或前端。
 
 ## 环境、启动与部署
 
@@ -246,9 +257,10 @@ Collection Run/Scope Repository 需要隔离 PostgreSQL 18、对应 `AIMA_*` / S
 uv run alembic upgrade head
 uv run pytest tests/integration/collection/test_collection_repository.py -q
 uv run pytest tests/integration/collection/test_provider_repository.py -q
+uv run pytest tests/integration/collection/test_provider_dispatch.py -q
 ```
 
-`tests/integration/collection/test_raw_artifact.py` 使用隔离目录、正式 ArtifactService 和 Local ArtifactStore，不访问网络或数据库；同目录的 `test_collection_repository.py` 与 `test_provider_repository.py` 使用真实 PostgreSQL。普通本地机器不要在未准备数据库时机械执行数据库测试。Job Runtime、Collection 父事实和 Provider 持久化的完整迁移路径分别由 `Stage 4 Job Runtime`、`Stage 5B Collection Execution`、`Stage 5C Provider Persistence` CI 维护；统一测试入口见 [`docs/测试与调试说明.md`](docs/测试与调试说明.md)。
+`tests/integration/collection/test_raw_artifact.py` 使用隔离目录、正式 ArtifactService 和 Local ArtifactStore，不访问网络或数据库；同目录的 Repository/Dispatch 测试使用真实 PostgreSQL。普通本地机器不要在未准备数据库时机械执行数据库测试。Job Runtime、Collection 父事实、Provider 持久化和 Dispatch/恢复的完整迁移路径分别由 `Stage 4 Job Runtime`、`Stage 5B Collection Execution`、`Stage 5C Provider Persistence`、`Stage 5D Provider Dispatch` CI 维护；统一测试入口见 [`docs/测试与调试说明.md`](docs/测试与调试说明.md)。
 
 修改 HTTP Contract 后，先重新生成固定 OpenAPI 和前端 Client，再提交生成物：
 
@@ -300,12 +312,12 @@ TikHub / 官方 API / Apify / 自建采集器 / 文件导入 / 其他 Provider
 阶段 5A：Provider-neutral Request/Attempt、Fake Transport 与 Raw Artifact 已建立
 阶段 5B：Collection Run/Scope 父事实与第三条 Migration 已建立
 阶段 5C：Provider Request/Attempt 最终表、第四条 Migration 与幂等创建已建立
-→ 阶段 5D：受 Fencing 约束的 dispatch、Raw 关联和崩溃恢复
+阶段 5D：受 Fencing 约束的 dispatch、Raw 关联和崩溃恢复已建立
 → 阶段 6：先完成一个平台的端到端纵切
 → 后续阶段按蓝图逐步扩展
 ```
 
-Stage 0 未全部完成不阻止已经建立的 Stage 5A—5C Provider 中立基础、Collection 父事实和最终 Provider 持久化表，但 Stage 5D 仍不能省略 Job Fencing、计费未知、Raw 关联和崩溃恢复边界；任何依赖具体平台 Operation、真实 Fixture、隐私、容量或 Scheduler 策略的设计仍必须等待对应门禁，尤其不得直接批量实现五个平台。
+Stage 0 未全部完成不影响已经建立的 Stage 5A—5D Provider-neutral 基础；任何依赖具体平台 Operation、真实 Fixture、费用预算、隐私、容量或 Scheduler 策略的设计仍必须等待对应门禁，尤其不得用 Fake Transport 验证冒充真实平台兼容性或直接批量实现五个平台。
 
 ## 多人协作
 
@@ -317,4 +329,4 @@ Git 和 CI 的具体要求以 `AGENTS.md`、Skill 和 `06` 为准。没有本轮
 
 所有领域设计入口见 [`docs/blueprint/README.md`](docs/blueprint/README.md)。
 
-唯一初始化版本快照、Stage 1 工具链、Stage 2 Platform、Stage 3A 数据库基础、Stage 4 Job Runtime 和 Stage 5A—5C 已确认决策见 [`docs/blueprint/07-技术决策与实施门禁.md`](docs/blueprint/07-技术决策与实施门禁.md)。
+唯一初始化版本快照、Stage 1 工具链、Stage 2 Platform、Stage 3A 数据库基础、Stage 4 Job Runtime 和 Stage 5A—5D 已确认决策见 [`docs/blueprint/07-技术决策与实施门禁.md`](docs/blueprint/07-技术决策与实施门禁.md)。

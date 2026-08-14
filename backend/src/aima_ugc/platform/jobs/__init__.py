@@ -2,6 +2,7 @@
 
 from .models import (
     JobAttemptEvent,
+    JobExecutionFence,
     JobHandlerResult,
     JobIdempotencyConflict,
     JobRecord,
@@ -13,6 +14,7 @@ from .worker import JobExecutionContext, JobReaper, JobWorker
 __all__ = [
     "JobAttemptEvent",
     "JobDefinition",
+    "JobExecutionFence",
     "JobExecutionContext",
     "JobHandlerResult",
     "JobIdempotencyConflict",

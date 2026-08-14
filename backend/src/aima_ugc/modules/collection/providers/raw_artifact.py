@@ -6,6 +6,8 @@ import gzip
 import hashlib
 import json
 from dataclasses import dataclass
+from datetime import datetime
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
@@ -21,6 +23,21 @@ from aima_ugc.platform.storage import ArtifactRecord, ArtifactService, ArtifactS
 from .transport import ProviderDispatchResult
 
 _BUSINESS_TIMEZONE = ZoneInfo("Asia/Shanghai")
+
+
+def raw_storage_key(
+    *,
+    request: ProviderRequestV1,
+    dispatch_started_at: datetime,
+    attempt_id: UUID,
+) -> str:
+    """返回 Raw 写入与崩溃恢复共用的确定性 storage key。"""
+    local_date = dispatch_started_at.astimezone(_BUSINESS_TIMEZONE)
+    return (
+        f"raw/{request.provider}/{request.platform}/"
+        f"{local_date:%Y/%m/%d}/{request.run_id}/{request.scope_id}/"
+        f"{attempt_id}.json.gz"
+    )
 
 
 class RawArtifactIntegrityError(RuntimeError):
@@ -87,11 +104,10 @@ class RawArtifactService:
         if gzip.decompress(compressed) != plain:
             raise RawArtifactIntegrityError("Raw gzip 写入前校验失败")
 
-        local_date = attempt.dispatch_started_at.astimezone(_BUSINESS_TIMEZONE)
-        storage_key = (
-            f"raw/{request.provider}/{request.platform}/"
-            f"{local_date:%Y/%m/%d}/{request.run_id}/{request.scope_id}/"
-            f"{attempt.attempt_id}.json.gz"
+        storage_key = raw_storage_key(
+            request=request,
+            dispatch_started_at=attempt.dispatch_started_at,
+            attempt_id=attempt.attempt_id,
         )
         artifact = self._artifacts.store_bytes(
             kind="provider-raw",
@@ -117,7 +133,12 @@ class RawArtifactService:
         if artifact.sha256 is None or artifact.byte_size is None:
             raise RawArtifactIntegrityError("Artifact 缺少完整性元数据")
 
-        compressed = self._store.read(artifact.storage_key)
+        try:
+            compressed = self._store.read(artifact.storage_key)
+        except FileNotFoundError as exc:
+            raise RawArtifactIntegrityError("Raw 文件不存在") from exc
+        except (OSError, ValueError) as exc:
+            raise RawArtifactIntegrityError("Raw 文件无法安全读取") from exc
         actual_sha256 = hashlib.sha256(compressed).hexdigest()
         if actual_sha256 != artifact.sha256:
             raise RawArtifactIntegrityError("Raw SHA-256 校验失败")

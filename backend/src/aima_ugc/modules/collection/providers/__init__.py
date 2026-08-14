@@ -1,6 +1,11 @@
 """Collection 模块的 Provider-neutral 生产入口。"""
 
-from .raw_artifact import CapturedRawArtifact, RawArtifactIntegrityError, RawArtifactService
+from .raw_artifact import (
+    CapturedRawArtifact,
+    RawArtifactIntegrityError,
+    RawArtifactService,
+    raw_storage_key,
+)
 from .transport import (
     ProviderClient,
     ProviderDispatchResult,
@@ -20,4 +25,5 @@ __all__ = [
     "ProviderTransportResponse",
     "RawArtifactIntegrityError",
     "RawArtifactService",
+    "raw_storage_key",
 ]
