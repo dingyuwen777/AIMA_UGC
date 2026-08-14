@@ -85,8 +85,8 @@
     {
       "kind": "documentation",
       "path": "README.md",
-      "sha256": "d380ec1cc47e5eb3c4ab39bda389df9366d034ada4db4151ea126cf4f39dfac7",
-      "size": 21116,
+      "sha256": "703e79ee8f199c9788a18e694baf87da45ceb8ef9a773d562bc3c3c6c39f1e6a",
+      "size": 21134,
       "title": "AIMA_UGC"
     },
     {
@@ -253,12 +253,12 @@
       "size": 88730
     }
   ],
-  "generated_at": "2026-08-14T08:59:52+00:00",
+  "generated_at": "2026-08-14T09:20:05+00:00",
   "generator_version": "0.1.0",
   "git": {
-    "indexed_at_commit": "9770e8a333d15df10b56422c5a5559028411ecd6",
+    "indexed_at_commit": "165dfa15b8b73a440c95d029a6367166491e611c",
     "repository": true,
-    "worktree_candidate_digest": "e1778963e4a223f6b45c3f72755946945ddf7c5ebce7889f0586a8357ea811f0"
+    "worktree_candidate_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
   },
   "package_scripts": {
     "frontend/package.json": {
