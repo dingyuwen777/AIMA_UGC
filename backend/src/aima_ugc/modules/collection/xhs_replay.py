@@ -77,7 +77,8 @@ class XhsRawReplayHandler:
         source = self._source_reader.load(payload.provider_attempt_id)
         envelope = self._raw_artifacts.replay(source.artifact)
         _validate_replay_source(source, envelope)
-        context.raise_if_cancelled()
+        if context.cancel_requested():
+            return JobHandlerResult.cancelled()
         summary = self._ingestion_writer.ingest(source, envelope)
         context.heartbeat(progress=95)
         return JobHandlerResult.succeeded(
