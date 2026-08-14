@@ -1,9 +1,8 @@
 from typing import Literal
 
 import pytest
-from pydantic import BaseModel
-
 from aima_ugc.platform.jobs.registry import JobRegistry
+from pydantic import BaseModel
 
 
 class EchoPayloadV1(BaseModel):
