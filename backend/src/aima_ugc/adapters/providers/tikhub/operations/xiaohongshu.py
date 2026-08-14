@@ -106,8 +106,13 @@ class XhsCommentPagination:
         cursor_value = data.get("cursor")
         cursor_mapping = cursor_value if isinstance(cursor_value, dict) else {}
         cursor = _string(cursor_mapping.get("cursor")) or _string(cursor_value) or ""
-        index = _integer(cursor_mapping.get("index"), default=_integer(data.get("index"), default=previous_index))
-        next_page_area = _string(data.get("pageArea")) or _string(data.get("page_area")) or page_area
+        index = _integer(
+            cursor_mapping.get("index"),
+            default=_integer(data.get("index"), default=previous_index),
+        )
+        next_page_area = (
+            _string(data.get("pageArea")) or _string(data.get("page_area")) or page_area
+        )
 
         if cursor == previous_cursor and index == previous_index:
             return cls(cursor, index, next_page_area, False, "pagination_not_advanced")
@@ -229,5 +234,5 @@ def _integer(value: object, *, default: int) -> int:
         return default
     try:
         return int(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return default
