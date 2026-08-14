@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260814-stage7-real-provider-probe
 title: 固化 Stage 7 真实 Provider Probe 与人工审阅边界
 level: L2
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: docs/stage7-real-provider-probe
 created: 2026-08-14
@@ -21,12 +21,12 @@ data_changes: []
 
 # 成功标准
 
-- [ ] Blueprint 02 明确 Real Probe 的输入、生产调用链、Secret、Raw、Canonical 与 XLSX 派生物边界。
-- [ ] Blueprint 06 把五个平台独立 Real Probe 纳入 Stage 7 的正式范围和验收。
-- [ ] Blueprint 07 固化 Real Probe 的跨模块安全、费用、CI 和生产数据边界，同时保留尚未批准的四平台具体 Operation 与 Scheduler 策略门禁。
-- [ ] `docs/测试与调试说明.md` 说明人工 Probe 的配置能力、输出结构和 XLSX 人工审阅布局。
-- [ ] XLSX 以人工阅读为目标：帖子公共字段跨评论行纵向合并、评论一条一行、一级/二级关系清晰、无粗黑边框；机器事实仍由 Raw/Canonical 维护。
-- [ ] 不新增代码、Contract、Schema、Migration、依赖或具体 Provider Operation 选择。
+- [x] Blueprint 02 明确 Real Probe 的输入、生产调用链、Secret、Raw、Canonical 与 XLSX 派生物边界。
+- [x] Blueprint 06 把五个平台独立 Real Probe 纳入 Stage 7 的正式范围和验收。
+- [x] Blueprint 07 固化 Real Probe 的跨模块安全、费用、CI 和生产数据边界，同时保留尚未批准的四平台具体 Operation 与 Scheduler 策略门禁。
+- [x] `docs/测试与调试说明.md` 说明人工 Probe 的配置能力、输出结构和 XLSX 人工审阅布局。
+- [x] XLSX 以人工阅读为目标：帖子公共字段跨评论行纵向合并、评论一条一行、一级/二级关系清晰、无粗黑边框；机器事实仍由 Raw/Canonical 维护。
+- [x] 不新增代码、Contract、Schema、Migration、依赖或具体 Provider Operation 选择。
 - [ ] PR CI 成功，合并后 main 相关 CI 再次成功后才归档 Change。
 
 # 范围
@@ -51,7 +51,7 @@ data_changes: []
 - Probe、测试和脚本必须复用生产 Client/Operation/Mapper，不复制 endpoint、分页或字段映射。
 - API Key/Cookie/Token 等 Secret 不进入源码、Git、日志、Raw、Canonical、Excel、Job Payload 或数据库明文。
 - 真实付费 Provider Probe 默认关闭且不进入普通 CI。
-- Stage 7 仍受其余四平台能力矩阵/脱敏 Fixture和 Scheduler misfire/catch-up 决策门禁约束。
+- Stage 7 仍受其余四平台能力矩阵/脱敏 Fixture 和 Scheduler misfire/catch-up 决策门禁约束。
 
 # 已确认关键决策
 
@@ -85,9 +85,19 @@ data_changes: []
 → 预期结果：开发者能理解未来 Probe 的配置维度、输出目录、Raw/Canonical/XLSX 分工和人工审阅样式。
 → 验证方式：Markdown/链接/术语检查 + CI。
 
-# 验证计划
+# 验证计划与当前证据
 
 纯文档任务不伪造 Red/Green。使用仓库已有确定性文档、Secret、架构和完整 PR CI 作为替代验证；合并后再次检查 main CI。当前宿主没有本地仓库/终端，因此本轮无法在本地执行 `uv run ...` 命令，最终以 GitHub Actions 对目标提交的实际结果为准。
+
+提交前人工复核已确认：
+
+- 分支相对基线 `main` 只修改本 Change 和四个已声明文档；
+- Blueprint 02 只扩展 Real Probe 与采集验收边界；
+- Blueprint 06 只扩展 Stage 7 范围/验收，不改变阶段树；
+- Blueprint 07 版本从 1.14 更新到 1.15，仅新增 Real Probe 跨模块决策和 Stage 7 No-Go；
+- `docs/测试与调试说明.md` 只增加未来 Stage 7 Probe/XLSX 人工审阅说明和通用 Probe 安全要求；
+- 抖音、微博、B站、快手具体 Operation 与 Scheduler misfire/catch-up 仍明确保持未决；
+- 无代码、Contract、Schema、Migration、依赖和锁文件变化。
 
 # 文档影响
 
@@ -105,8 +115,9 @@ data_changes: []
 
 - 基线 main：`7029f19e6cea8a219e1fc0b135ea53f3115da301`
 - 分支：`docs/stage7-real-provider-probe`
-- Commit：进行中
-- PR：未创建
-- CI：未运行
+- 当前分支 HEAD：`629f09754ad79cf4f7a613de058e67f7766cdbbe`
+- Commit：文档与 Change 已提交；待 PR 集成
+- PR：待创建
+- CI：待 PR 运行
 - 合并：未执行
 - 归档：未执行
