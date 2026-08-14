@@ -102,6 +102,8 @@ class CandidateIngestionService:
         error_code: str | None = None,
         error_detail: str | None = None,
     ) -> CandidateIngestionRecord:
+        if result in {"ingested", "duplicate"} and (canonical is None or target_id is None):
+            raise ValueError("成功的 Candidate Ingestion 必须提供 Canonical 和目标 ID")
         if canonical is None:
             return self._repository.append_ingestion(
                 candidate_id=candidate_id,

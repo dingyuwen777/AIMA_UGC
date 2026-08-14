@@ -79,5 +79,11 @@ collection_candidate_ingestions_table = Table(
         "jsonb_typeof(observed_fields) = 'array'",
         name="observed_fields_array",
     ),
+    CheckConstraint(
+        "result not in ('ingested','duplicate') or "
+        "(target_type is not null and canonical_version is not null "
+        "and canonical_identity is not null)",
+        name="success_target_required",
+    ),
     info={"owner": "collection"},
 )

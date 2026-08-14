@@ -18,7 +18,10 @@ from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
     map_content,
 )
 from aima_ugc.adapters.providers.tikhub.operations.xiaohongshu import extract_search_items
-from aima_ugc.modules.collection.candidate_tables import collection_candidates_table
+from aima_ugc.modules.collection.candidate_tables import (
+    collection_candidate_ingestions_table,
+    collection_candidates_table,
+)
 from aima_ugc.modules.collection.candidates import CandidateIngestionService
 from aima_ugc.modules.collection.tables import (
     collection_runs_table,
@@ -40,7 +43,7 @@ from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.storage.tables import artifacts_table
-from sqlalchemy import insert, select
+from sqlalchemy import delete, insert, select, update
 from sqlalchemy.exc import DBAPIError
 
 _FIXTURE = Path("tests/fixtures/providers/tikhub/xhs/search_notes_page1.sanitized.json")
@@ -597,6 +600,69 @@ def test_candidate_requires_completed_attempt_with_linked_raw(
                     external_item_id="invalid",
                     item_locator="note:invalid",
                     discovered_at=OBSERVED_AT,
+                )
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_candidate_ledgers_are_append_only_and_success_requires_target(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    session = database_runtime.new_session()
+    try:
+        with session.begin():
+            chain = _insert_source_chain(
+                session,
+                operation="search_notes",
+                source_value="爱玛",
+            )
+            service = CandidateIngestionService(PostgresCandidateRepository(session))
+            candidate = service.discover(
+                provider_request_attempt_id=chain.attempt_id,
+                item_kind="content",
+                external_item_id="note-ledger",
+                item_locator="note:note-ledger",
+                discovered_at=OBSERVED_AT,
+            )
+            failed = service.record_ingestion(
+                candidate_id=candidate.id,
+                canonical=None,
+                target_id=None,
+                result="failed",
+                error_code="mapper_failed",
+            )
+
+        mutations = (
+            update(collection_candidates_table)
+            .where(collection_candidates_table.c.id == candidate.id)
+            .values(item_locator="note:mutated"),
+            delete(collection_candidates_table).where(
+                collection_candidates_table.c.id == candidate.id
+            ),
+            update(collection_candidate_ingestions_table)
+            .where(collection_candidate_ingestions_table.c.id == failed.id)
+            .values(result="unsupported"),
+            delete(collection_candidate_ingestions_table).where(
+                collection_candidate_ingestions_table.c.id == failed.id
+            ),
+        )
+        for statement in mutations:
+            with pytest.raises(DBAPIError, match="追加账本"):
+                with session.begin():
+                    session.execute(statement)
+
+        with pytest.raises(DBAPIError, match="success_target_required"):
+            with session.begin():
+                session.execute(
+                    insert(collection_candidate_ingestions_table).values(
+                        id=uuid4(),
+                        candidate_id=candidate.id,
+                        ingestion_no=2,
+                        observed_fields=[],
+                        result="ingested",
+                        processed_at=OBSERVED_AT,
+                    )
                 )
     finally:
         session.rollback()

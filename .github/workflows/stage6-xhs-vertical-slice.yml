@@ -128,7 +128,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          uv run alembic downgrade 20260814_0007
+          uv run alembic downgrade 20260814_0008
           uv run alembic upgrade head
           uv run alembic check
       - name: Verify base round trip

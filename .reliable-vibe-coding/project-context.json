@@ -1,5 +1,5 @@
 {
-  "candidate_path_digest": "23ef2203da9ef9122ea488f4c4062e97a42e0997dd8bdbba18385fc8ef195635",
+  "candidate_path_digest": "f4e513cd104e8fe90a3b24c3a7e8c027fbef384f63834743019c138bf72c8847",
   "directories": [
     {
       "count": 4,
@@ -16,6 +16,13 @@
         "documentation"
       ],
       "path": "backend/src/aima_ugc/modules/collection"
+    },
+    {
+      "count": 1,
+      "kinds": [
+        "documentation"
+      ],
+      "path": "backend/src/aima_ugc/modules/content"
     },
     {
       "count": 1,
@@ -72,6 +79,13 @@
         "manifest"
       ],
       "path": "frontend"
+    },
+    {
+      "count": 1,
+      "kinds": [
+        "documentation"
+      ],
+      "path": "tests/fixtures/providers/tikhub/xhs"
     }
   ],
   "documents": [
@@ -85,16 +99,23 @@
     {
       "kind": "documentation",
       "path": "README.md",
-      "sha256": "703e79ee8f199c9788a18e694baf87da45ceb8ef9a773d562bc3c3c6c39f1e6a",
-      "size": 21134,
+      "sha256": "7d72788745f3563e826677c6822e9a916ba3052d24cd00d45cd118d3eb1a9e7b",
+      "size": 23086,
       "title": "AIMA_UGC"
     },
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/modules/collection/README.md",
-      "sha256": "b6295f8b844fefac1c41ebc4f2fdfe5b91dae49b395c8d116ed02bb503b791a1",
-      "size": 4577,
+      "sha256": "313c88ea3508e18bd8e8ee396a52e6cd8b7ab5d553dcebbdfbce5123fafbd37b",
+      "size": 6113,
       "title": "Collection 模块"
+    },
+    {
+      "kind": "documentation",
+      "path": "backend/src/aima_ugc/modules/content/README.md",
+      "sha256": "4004efbf1622e2d4e7fec09b506c35e7a6b3a452bd1781e1d86c4b92561010e3",
+      "size": 2076,
+      "title": "Content 模块"
     },
     {
       "kind": "documentation",
@@ -168,22 +189,22 @@
     {
       "kind": "documentation",
       "path": "docs/blueprint/02-采集系统与数据标准化.md",
-      "sha256": "ebb5d5bef35c6ba312e2eccbc4c36d1be6fb7c5f8ff2ec4f026879fd3ef022eb",
-      "size": 24556,
+      "sha256": "52ed756920a3e1ba0290d0f0fb701f20022af0bc841803bb21a134ebec17060e",
+      "size": 24557,
       "title": "采集系统与数据标准化"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/03-数据库与文件存储.md",
-      "sha256": "7b50aa543184088e7f706c3cc383c399ffe3f774b0227ee7576bf87597f2b31c",
-      "size": 50406,
+      "sha256": "759524b8cd6fb76864398c5f1de64e6965c45f9cc5c83c8abd5ac05cc30bef38",
+      "size": 50407,
       "title": "数据库与文件存储"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/04-后端任务API与前端.md",
-      "sha256": "2132d9fa3c30f5e80ee8036379b3acfcfad9fa649396205a04e6d8055f864d7f",
-      "size": 25012,
+      "sha256": "7c39b77a1c92d472b27fc9dda5c66b9a1a538ad0073bf57afbf9e0cd95559b61",
+      "size": 25013,
       "title": "后端任务、API 与前端"
     },
     {
@@ -196,29 +217,29 @@
     {
       "kind": "documentation",
       "path": "docs/blueprint/06-开发约束与分阶段实施.md",
-      "sha256": "d612afd66b30f31148dc8623707b698680fff29d9d076f8d4a4ec69c5caa47aa",
-      "size": 32625,
+      "sha256": "66c066af1c02f353c7409cc0ef55ec9a8ea46c3d235bab4a2ec6dbcf4ad213d8",
+      "size": 33094,
       "title": "开发约束与分阶段实施"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/07-技术决策与实施门禁.md",
-      "sha256": "e9cddb1f9815ed7ee26718532e847d8ad5a8aa0f37e66610ec94680cc27f20fa",
-      "size": 44864,
+      "sha256": "a3bb32184d1496dc4515114f7062dc1cd0251167aad81c4b9ccc2d64364e3962",
+      "size": 47138,
       "title": "技术决策与实施门禁"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/README.md",
-      "sha256": "edbf53b31630f3be444e61c8f4b71dcafc726dd6b288139fe246985b644e9e7e",
-      "size": 12574,
+      "sha256": "d3e602022a51dbd39d86213f7709c0da37b8666610adfc922d9b31bea2fcd406",
+      "size": 13585,
       "title": "AIMA_UGC Blueprint 导航"
     },
     {
       "kind": "documentation",
       "path": "docs/测试与调试说明.md",
-      "sha256": "e11ff661b9c3931ad0fb0e39b2a5147c917c6f867ccf48e7a351a77835533eef",
-      "size": 16139,
+      "sha256": "58e28dddbee419dc01e5172061398fd3913be68455c7516701900e545b8a24b1",
+      "size": 18100,
       "title": "AIMA_UGC 测试与调试说明"
     },
     {
@@ -247,18 +268,25 @@
       "size": 893
     },
     {
+      "kind": "documentation",
+      "path": "tests/fixtures/providers/tikhub/xhs/README.md",
+      "sha256": "096dd2d4d77913b194b6decdf8d673f27daaa7fd8efb549e051bf254a7f3fb38",
+      "size": 1285,
+      "title": "TikHub 小红书测试 Fixture"
+    },
+    {
       "kind": "manifest",
       "path": "uv.lock",
       "sha256": "e122f38c1657016ce59718f214a672d889ce2f3321b4cb410670320f3825bfd2",
       "size": 88730
     }
   ],
-  "generated_at": "2026-08-14T09:20:05+00:00",
+  "generated_at": "2026-08-14T14:52:42+00:00",
   "generator_version": "0.1.0",
   "git": {
-    "indexed_at_commit": "165dfa15b8b73a440c95d029a6367166491e611c",
+    "indexed_at_commit": "5e7845b92d531ade933af857dfa3da0e6368b27c",
     "repository": true,
-    "worktree_candidate_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    "worktree_candidate_digest": "6023eae3b11f9e6eec09fe4f886f23a225865aada32f987ced433b055eca3a98"
   },
   "package_scripts": {
     "frontend/package.json": {
