@@ -29,9 +29,10 @@ data_changes: []
 - [x] `contracts/collection/*.schema.json` 由 Pydantic 确定性生成，生成/漂移门禁已经接入现有 Contract 脚本。
 - [x] `scripts/dev/probe_collection_decision.py` 用显式 JSON 调用正式 Decision Service；测试通过真实子进程执行脚本，不复制业务逻辑、不改 `sys.path`。
 - [x] Red 先因目标模块尚不存在失败；Green 后 Stage 5A—5D、Stage 6、主 CI 全部成功。
+- [x] 两阶段 Review 已完成并修复两个问题：Capability 不超报当前评论排序；无二级评论能力时不产生回复目标假信号。
 - [x] 无 Migration/数据库表/公开 HTTP API/前端/Scheduler/依赖/锁文件变化。
 - [x] Collection README 同步机器入口、Probe 和已知限制；Secret 扫描成功，TikHub API Key 未进入仓库或 CI 输出。
-- [ ] PR #33 正式 Review 后合并，合并后 main 相关 CI 成功，再归档 Change。
+- [ ] PR #33 最终元数据 head CI 成功后转 ready、合并；合并后 main 相关 CI 成功，再归档 Change。
 
 # 范围与非目标
 
@@ -53,7 +54,8 @@ data_changes: []
 2. 本单元先建立跨平台公共 Decision/Capability；四平台 Capability 在各自真实 Operation/Fixture 单元中增加。
 3. Decision Service 只接受规范化事实，生产编排以后负责从 Mapper/PostgreSQL 准备 previous/current state。
 4. 当前 XHS 评论 Capability **不声明**稳定增量停止：TikHub 官方文档说明 `latest_v2` 是最新评论排序，但仓库尚无合法脱敏非空评论 Fixture/Real Probe 证明“遇到已知 comment_id 即可安全停止”，因此评论数增加先 `refresh_controlled`。
-5. TikHub Secret 只允许经正式 Secret 边界进入显式 Real Probe。本轮使用用户授权凭据做最小只读请求尝试时，执行宿主在 TLS/HTTP 之前即 DNS 解析失败；凭据未写文件、未打印、未提交，因此没有新增真实接口兼容证据。
+5. 当前 XHS 评论 Operation 虽然 TikHub 官方支持多种排序，但仓库 Stage 6 builder 固定 `sort_strategy=latest_v2`；因此当前机器 Capability 只暴露规范化 `latest`，不能把 Provider 支持但代码尚未参数化的排序冒充已实现业务能力。
+6. TikHub Secret 只允许经正式 Secret 边界进入显式 Real Probe。本轮使用用户授权凭据做最小只读请求尝试时，执行宿主在 TLS/HTTP 之前即 DNS 解析失败；凭据未写文件、未打印、未提交，因此没有新增真实接口兼容证据。
 
 # 方案比较
 
@@ -76,21 +78,43 @@ ModuleNotFoundError: No module named 'aima_ugc.adapters.providers.tikhub.capabil
 1. 首轮 Quality 指出 `models.py` Ruff format 漂移；只按 Ruff 格式修正，无行为变化。
 2. Unit 指出测试把 `scripts/` 当包导入；改为子进程真实执行 `scripts/dev/probe_collection_decision.py`，未加入 `PYTHONPATH/sys.path` 特例。
 3. Quality/主 CI 指出 3 个 Collection Schema 与 Pydantic 生成物仅有 description 漂移；按 `scripts/contracts/generate.py` 实际生成 diff 同步，最终生成检查通过。
+4. 第一阶段需求 Review 发现 XHS Capability 曾把 TikHub 支持的 `most_liked` 暴露为当前可配置排序，但 Stage 6 builder 实际固定 `latest_v2`；已收紧为 `comment_sort_modes=("latest",)` 并测试 builder 参数。
+5. 第二阶段质量 Review 发现 `reply_target_per_root` 在未来不支持二级回复的平台仍可能给出 5；已改为只有 comments Capability 明确支持且存在 `sub_comments` Operation 时才给出目标，并补负例测试。
+6. Review 修正后一次 Stage 5A 只因测试注释 101 字符触发 Ruff E501；Provider/Raw 17 个测试与 Contract 检查此前均已成功。已只拆分注释，不改行为或断言。
 
-## 当前 Green
+## Review 后最终 Green
 
-head：`66854ae040401bc428e65e036a31739426e9f409`
+行为/测试 head：`8596c9e7417b86c11498e59b6c4bbb9b98cebd9f`
 
-- `CI #270` / run `31830794703`：success；Stage 1、Stage 2、Stage 3A、Windows bootstrap 全部 success。
-- `Stage 5A Provider Raw #34` / `31830794691`：success。
-- `Stage 5B Collection Execution #32` / `31830794671`：success。
-- `Stage 5C Provider Persistence #29` / `31830794670`：success。
-- `Stage 5D Provider Dispatch #26` / `31830794686`：success。
-- `Stage 6 XHS Vertical Slice #108` / `31830794685`：success；Unit、Quality、PostgreSQL 均 success。
-- Stage 6 Quality 实际执行并通过 Ruff format/check、mypy、architecture、table owner、secret scan、docs、Contract generate/check/compatibility。
-- Stage 6 PostgreSQL 实际通过 Collection/Stage 6 Integration 和既有 Migration 升级/round-trip 路径。
+- `CI #276` / run `31831424969`：success；Stage 1、Stage 2、Stage 3A、Windows bootstrap 全部 success。
+- `Stage 5A Provider Raw #40` / `31831424950`：success。
+- `Stage 5B Collection Execution #38` / `31831424995`：success。
+- `Stage 5C Provider Persistence #35` / `31831424961`：success。
+- `Stage 5D Provider Dispatch #32` / `31831425020`：success。
+- `Stage 6 XHS Vertical Slice #114` / `31831424967`：success；Unit、Quality、PostgreSQL 均 success。
+- Stage 5A 的 Provider/Raw 17 tests、Provider/Collection Contract 生成与漂移检查、Ruff/mypy/architecture/owner/secret/docs 门禁均成功。
+- Stage 6 PostgreSQL 实际通过 Collection/Stage 6 Integration 和 Stage 5D/Stage 6/base Migration round-trip 路径。
 
-当前宿主没有本地 Git 工作树，因此没有伪造本地 `git status`/pytest 输出；上面全部来自本 PR GitHub Actions 新鲜证据。
+本次 Change 审计文件更新发生在上述代码/测试 head 之后，不改变生产或测试逻辑；PR 最终 head 仍需重新通过 GitHub Actions 后才允许合并。
+
+当前宿主没有本地 Git 工作树，因此没有伪造本地 `git status`/pytest 输出；以上均来自 PR GitHub Actions 新鲜证据。
+
+# 两阶段 Review
+
+## 第一阶段：需求符合性
+
+- 目标 Decision/Capability 已落机器 Contract；XHS 只登记当前实现能力；其余四平台未提前实现/注册。
+- 零评论、评论不变、增减/未知、Deep/定时详情和二级回复规则均有测试。
+- Scheduler、Migration、Plan 持久化、预算、HTTP API、前端均未越界。
+- 发现并修复“Provider 支持排序 ≠ 当前仓库已实现可配置排序”的 Capability 超报。
+
+## 第二阶段：代码质量
+
+- Decision Service 为纯逻辑，无 HTTP/DB/Raw 解析；Probe 复用生产 Service。
+- Capability 不包含 Secret/技术分页字段；Secret 扫描通过。
+- 无 sub-comments Capability 时不会产出虚假 reply target。
+- Contract 由 Pydantic 唯一生成源维护，固定 Schema 有 drift 门禁。
+- 未新增依赖、临时抽象、Migration 或跨模块 SQL。
 
 # 文档、兼容、Migration、部署、回滚
 
@@ -107,8 +131,8 @@ head：`66854ae040401bc428e65e036a31739426e9f409`
 - 基线 main：`d0c1dc0b64bbda0c93d49aff1cc83677a0c17c29`
 - 分支：`agent/stage7-decision-capability`
 - Change：`ready_for_review`
-- PR：#33（draft，待完成 Review 后转 ready）
+- PR：#33（draft；最终 head CI 成功后转 ready）
 - Red：已确认
-- Green：当前 head 六条相关 workflow 全部 success
+- Green：Review 后代码/测试 head 六条相关 workflow 全部 success
 - 合并：未执行
 - 归档：未执行
