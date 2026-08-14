@@ -8,6 +8,12 @@ from aima_ugc.contracts.collection import (
     ReplyDecisionRequestV1,
     ReplyDecisionV1,
 )
+from aima_ugc.contracts.collection.models import (
+    CommentAction,
+    CommentReason,
+    DetailAction,
+    DetailReason,
+)
 
 
 class CollectionDecisionService:
@@ -62,8 +68,8 @@ class CollectionDecisionService:
     @staticmethod
     def _detail_decision(
         request: CollectionDecisionRequestV1,
-    ) -> tuple[str, str]:
-        desired_reason: str | None = None
+    ) -> tuple[DetailAction, DetailReason]:
+        desired_reason: DetailReason | None = None
         if request.context.manual_deep_collection:
             desired_reason = "manual_deep_collection"
         elif request.context.scheduled_refresh_checkpoint:
@@ -86,8 +92,8 @@ class CollectionDecisionService:
         cls,
         request: CollectionDecisionRequestV1,
         *,
-        detail_action: str,
-    ) -> tuple[str, str, int | None]:
+        detail_action: DetailAction,
+    ) -> tuple[CommentAction, CommentReason, int | None]:
         policy = request.policy
         if not policy.comments_enabled:
             return "skip", "comments_disabled", None
