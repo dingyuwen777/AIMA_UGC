@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from sqlalchemy import insert, select
+
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataGateway,
 )
@@ -17,7 +19,7 @@ from aima_ugc.adapters.persistence.postgres.xhs_replay import (
 )
 from aima_ugc.adapters.providers.fake import FakeProviderTransport
 from aima_ugc.adapters.storage.local import LocalArtifactStore
-from aima_ugc.contracts.provider import ProviderRequestV1, ProviderBillingV1
+from aima_ugc.contracts.provider import ProviderBillingV1, ProviderRequestV1
 from aima_ugc.modules.collection.providers import ProviderClient, RawArtifactService
 from aima_ugc.modules.collection.providers.transport import (
     ProviderTransportRequest,
@@ -38,7 +40,6 @@ from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.jobs import JobRegistry, JobWorker
 from aima_ugc.platform.storage import ArtifactService
-from sqlalchemy import insert, select
 
 _FIXTURE = Path("tests/fixtures/providers/tikhub/xhs/search_notes_page1.sanitized.json")
 _NOW = datetime(2026, 8, 5, 10, 0, 12, tzinfo=UTC)
@@ -201,14 +202,18 @@ def test_job_replays_linked_raw_without_second_provider_call(tmp_path: Path) -> 
 
         with session.begin():
             stored_job = PostgresJobRepository(session).get(replay_job.id)
-            content_ids = session.execute(
-                select(contents_table.c.id).where(
-                    contents_table.c.platform == "xhs",
-                    contents_table.c.external_content_id.in_(
-                        ["note-fixture-1", "note-fixture-2"]
-                    ),
+            content_ids = (
+                session.execute(
+                    select(contents_table.c.id).where(
+                        contents_table.c.platform == "xhs",
+                        contents_table.c.external_content_id.in_(
+                            ["note-fixture-1", "note-fixture-2"]
+                        ),
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
         assert stored_job is not None
         assert stored_job.status == "succeeded"
         assert len(content_ids) == 2
