@@ -11,6 +11,7 @@ on:
     paths:
       - "backend/src/aima_ugc/modules/collection/**"
       - "backend/src/aima_ugc/adapters/persistence/postgres/**"
+      - "backend/src/aima_ugc/adapters/providers/tikhub/**"
       - "backend/src/aima_ugc/modules/system/**"
       - "backend/src/aima_ugc/modules/content/**"
       - "backend/src/aima_ugc/database_schema.py"
@@ -18,6 +19,7 @@ on:
       - "tests/unit/collection/**"
       - "tests/integration/collection/**"
       - "docs/blueprint/03-数据库与文件存储.md"
+      - "docs/blueprint/08-采集策略与平台能力.md"
       - "docs/blueprint/README.md"
       - "backend/src/aima_ugc/modules/collection/README.md"
       - "changes/**"
@@ -49,6 +51,7 @@ jobs:
           set -euo pipefail
           uv run pytest \
             tests/unit/collection/test_provider_budget.py \
+            tests/unit/collection/test_tikhub_pricing.py \
             tests/unit/collection/test_provider_persistence.py \
             tests/unit/collection/test_provider_dispatch.py \
             -q
