@@ -1,0 +1,32 @@
+{
+  "code": 200,
+  "data": {
+    "mixFeeds": [
+      {
+        "itemType": 5,
+        "feed": {
+          "photo_id": 100001,
+          "kwaiId": "kwai-fixture-1",
+          "caption": "脱敏正文 A",
+          "timestamp": 1720000000,
+          "time": "2026-08-15 09:30:00",
+          "type": 1,
+          "photo_status": 0,
+          "user_id": 100002,
+          "user_name": "脱敏用户 A",
+          "verified": false,
+          "like_count": 15223,
+          "comment_count": 686,
+          "collect_count": 1850,
+          "share_count": 7016,
+          "forward_count": 0,
+          "view_count": 639011,
+          "duration": 11500
+        }
+      }
+    ],
+    "pcursor": "1",
+    "responseCode": 1,
+    "result": 1
+  }
+}
