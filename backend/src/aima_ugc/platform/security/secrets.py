@@ -1,16 +1,42 @@
-"""以只读文件方式读取 Secret。"""
+"""以只读文件方式读取 Secret，并校验稳定 Secret 引用。"""
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from pydantic import SecretStr
 
 _MAX_SECRET_BYTES = 65_536
+_SECRET_REF_PART = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 class SecretFileError(RuntimeError):
     """Secret 文件不可安全读取。"""
+
+
+def validate_secret_ref(secret_ref: str) -> str:
+    """校验数据库/Contract 可保存的相对 Secret 引用，不读取 Secret 内容。"""
+    if not secret_ref or len(secret_ref) > 256:
+        raise ValueError("Secret 引用不能为空且长度不能超过 256")
+    if secret_ref.startswith("/") or "\\" in secret_ref:
+        raise ValueError("Secret 引用必须是使用 / 分隔的相对路径")
+    parts = secret_ref.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        raise ValueError("Secret 引用不能包含空段、. 或 ..")
+    if any(_SECRET_REF_PART.fullmatch(part) is None for part in parts):
+        raise ValueError("Secret 引用包含不允许的路径字符")
+    return secret_ref
+
+
+def resolve_secret_ref(secret_dir: Path, secret_ref: str) -> Path:
+    """把已校验 Secret 引用解析到 Secret 根目录内，不允许路径逃逸。"""
+    validated = validate_secret_ref(secret_ref)
+    root = secret_dir.resolve(strict=False)
+    target = (root / validated).resolve(strict=False)
+    if target != root and root not in target.parents:
+        raise ValueError("Secret 引用解析后逃逸 Secret 根目录")
+    return target
 
 
 def read_secret_file(path: Path, *, max_bytes: int = _MAX_SECRET_BYTES) -> SecretStr:
