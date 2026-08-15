@@ -8,8 +8,8 @@ from pathlib import Path
 from aima_ugc.adapters.providers.tikhub.operations.bilibili import (
     extract_search_items as extract_bilibili_items,
 )
+from aima_ugc.adapters.providers.tikhub.operations.kuaishou import KuaishouSearchPagination
 from aima_ugc.adapters.providers.tikhub.operations.kuaishou import (
-    KuaishouSearchPagination,
     extract_search_items as extract_kuaishou_items,
 )
 from aima_ugc.adapters.providers.tikhub.operations.weibo import (
