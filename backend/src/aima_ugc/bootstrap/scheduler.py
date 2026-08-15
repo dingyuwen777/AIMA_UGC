@@ -10,6 +10,11 @@ from aima_ugc.adapters.persistence.postgres.collection_planning import (
     PostgresCollectionPlanningRepository,
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
+from aima_ugc.modules.collection.collection_run_job import (
+    COLLECTION_RUN_JOB_TYPE,
+    COLLECTION_RUN_PAYLOAD_VERSION,
+    CollectionRunJobPayload,
+)
 from aima_ugc.modules.collection.execution import CollectionExecutionService
 from aima_ugc.modules.collection.planning import CollectionPlanningService, CollectionPlanRecord
 from aima_ugc.modules.collection.scheduler import resolve_scheduler_plan
@@ -95,9 +100,9 @@ def run_scheduler_once(
                     )
 
                 job = PostgresJobRepository(session).enqueue(
-                    job_type="collection.run.v1",
-                    payload_version="collection.run.v1",
-                    payload=_scheduled_job_payload(plan, decision.enqueue_for),
+                    job_type=COLLECTION_RUN_JOB_TYPE,
+                    payload_version=COLLECTION_RUN_PAYLOAD_VERSION,
+                    payload=CollectionRunJobPayload().model_dump(mode="json"),
                     internal_idempotency_key=_scheduled_job_idempotency_key(
                         plan, decision.enqueue_for
                     ),
@@ -140,17 +145,6 @@ def run_scheduler_once(
 
 def _scheduled_job_idempotency_key(plan: CollectionPlanRecord, scheduled_for: datetime) -> str:
     return f"scheduled:{plan.id}:{plan.schedule_version}:{scheduled_for.isoformat()}"
-
-
-def _scheduled_job_payload(
-    plan: CollectionPlanRecord, scheduled_for: datetime
-) -> dict[str, object]:
-    return {
-        "schema_version": "collection.run.v1",
-        "plan_id": str(plan.id),
-        "schedule_version": plan.schedule_version,
-        "scheduled_for": scheduled_for.isoformat(),
-    }
 
 
 def _scheduled_run_snapshot(
