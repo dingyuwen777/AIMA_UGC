@@ -162,9 +162,7 @@ def upgrade() -> None:
             "plan_id",
             "schedule_version",
             "scheduled_for",
-            name=op.f(
-                "uq_collection_schedule_occurrences_plan_id_schedule_version_scheduled_for"
-            ),
+            name=op.f("uq_collection_schedule_occurrences_plan_id_schedule_version_scheduled_for"),
         ),
         sa.UniqueConstraint(
             "job_id",
