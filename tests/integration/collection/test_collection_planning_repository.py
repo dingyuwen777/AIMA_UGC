@@ -195,7 +195,9 @@ def test_scheduled_occurrence_and_run_share_one_job_and_plan_snapshot(
         session.close()
 
 
-def test_manual_run_can_reference_plan_without_occurrence(database_runtime: DatabaseRuntime) -> None:
+def test_manual_run_can_reference_plan_without_occurrence(
+    database_runtime: DatabaseRuntime,
+) -> None:
     provider_config_id, keyword_pack_id = _seed_dependencies(database_runtime)
     session = database_runtime.new_session()
     planning_service = CollectionPlanningService(PostgresCollectionPlanningRepository(session))

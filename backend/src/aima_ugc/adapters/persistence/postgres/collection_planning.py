@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import cast
 from uuid import UUID, uuid4
 
@@ -107,10 +108,7 @@ class PostgresCollectionPlanningRepository:
             .all()
         )
         keyword_pack_ids = tuple(
-            cast(
-                UUID,
-                value,
-            )
+            cast(UUID, value)
             for value in self._session.execute(
                 select(collection_plan_keyword_packs_table.c.keyword_pack_id)
                 .where(collection_plan_keyword_packs_table.c.plan_id == plan_id)
@@ -125,7 +123,7 @@ class PostgresCollectionPlanningRepository:
         *,
         plan_id: UUID,
         schedule_version: int,
-        scheduled_for,
+        scheduled_for: datetime,
         job_id: UUID | None,
         status: CollectionOccurrenceStatus,
         skip_reason: str | None,
