@@ -1,0 +1,25 @@
+{
+  "data": {
+    "comments": [
+      {
+        "aweme_id": "douyin-aweme-1",
+        "cid": "douyin-comment-reply-1",
+        "create_time": 1720000100,
+        "digg_count": 9,
+        "reply_id": "douyin-comment-root-1",
+        "reply_to_reply_id": "douyin-comment-parent-1",
+        "root_comment_id": "douyin-comment-root-1",
+        "text": "脱敏二级回复",
+        "user": {
+          "uid": "douyin-user-2",
+          "sec_uid": "douyin-sec-user-2",
+          "unique_id": "douyin-handle-2",
+          "nickname": "脱敏回复用户"
+        }
+      }
+    ],
+    "cursor": 10,
+    "has_more": 0,
+    "total": 1
+  }
+}
