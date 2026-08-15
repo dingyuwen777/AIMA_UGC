@@ -4,19 +4,26 @@ Collection 负责采集执行、Provider Adapter 调用、Raw 证据和后续 Ma
 Stage 5A Provider-neutral Request/Attempt、一次发送 Transport、Raw Artifact，Stage 5B
 Collection Run/Scope PostgreSQL 父事实，Stage 5C Provider Request/Attempt 持久化基础，Stage 5D
 不计费 Provider-neutral Dispatch、Raw 关联与崩溃恢复基础，Stage 6 小红书 TikHub App V2
-Operation/Mapper、Candidate/Ingestion 追加账本和已存 Raw 回放纵切，以及 Stage 7 第一批跨平台
-Decision/Capability 机器基础。
+Operation/Mapper、Candidate/Ingestion 追加账本和已存 Raw 回放纵切，以及 Stage 7 的
+Decision/Capability 与 Provider Config/Platform Route 机器基础。
 
 ## 生产入口
 
 - `aima_ugc.contracts.provider`：版本化 `ProviderRequestV1`、`ProviderAttemptV1`、费用、安全错误和
   `RawEnvelopeV1`；
 - `aima_ugc.contracts.collection`：Stage 7 版本化 `CollectionDecisionRequestV1`、
-  `CollectionDecisionV1` 与 `ProviderPlatformCapabilityV1`；只表达规范化业务事实/能力，不包含
-  Provider 私有分页状态或 Secret；
+  `CollectionDecisionV1`、`ProviderPlatformCapabilityV1`、`ProviderConfigV1` 与
+  `ProviderPlatformRouteV1`；只表达规范化业务事实/能力和 Provider 配置引用，不包含 Provider 私有分页状态或
+  原始 Secret；
 - `aima_ugc.modules.collection.CollectionDecisionService`：根据 previous/current 规范化事实、业务策略和
   Capability 纯计算详情、一级评论与二级回复动作及稳定 reason code；不访问数据库、不发 HTTP、
   不解释 Provider Raw；
+- `aima_ugc.modules.collection.provider_routing.ProviderRegistry`：把具体 Provider Config + Platform
+  解析到当前已注册 Provider Capability；禁用配置、未知 Provider、Base URL 不在 Provider allowlist 或
+  未实现平台时关闭失败；
+- `aima_ugc.adapters.providers.registry.build_default_provider_registry`：当前只登记已有机器事实的
+  `tikhub + xhs`，TikHub Base URL allowlist 为 `https://api.tikhub.io`；其余四平台只有对应
+  Operation/Fixture/Capability 建立后才注册；
 - `aima_ugc.adapters.providers.tikhub.capabilities.XHS_TIKHUB_CAPABILITY`：当前只登记已实现的
   小红书 TikHub 业务 Capability；其余四平台只有在对应 Operation/合法脱敏 Fixture/验证建立后才加入
   机器 registry；
@@ -54,6 +61,8 @@ Decision/Capability 机器基础。
   Migration 建立真实 Job、Scope、Request 和 Artifact 外键，第五条 Migration 冻结 Request 状态白名单和
   terminal Attempt 的一次性 Raw 关联规则；`candidate_tables` 是 Stage 6 Candidate/Ingestion Owner Table，
   第六至第九条 Migration 建立业务表、来源约束、账号备用 ID 和追加账本保护。
+
+Provider 配置实例由 System Owner 持久化在 `provider_configs`。同一种 Provider 可以有多个实例；实例不绑定平台，平台/Plan 后续选择具体 `provider_config_id`。数据库只保存 `secret_ref`，不保存 API Key/Token 明文；Secret 引用校验和解析在 `platform/security`，Provider Registry 再执行 Provider/Base URL/Capability 校验。
 
 Raw Artifact 使用以下相对 `storage_key`：
 
@@ -94,28 +103,43 @@ uv run python scripts/dev/probe_collection_decision.py ./decision.json
 未显式提供 Capability 时，当前 Probe 默认使用已实现的 `XHS_TIKHUB_CAPABILITY`。该入口只验证
 Decision 业务逻辑，不调用 TikHub、不读生产数据库、不产生费用，也不会把 API Key 作为输入。
 
+## Provider Config / Route 独立验证
+
+Provider Config 与平台路由不需要启动完整前后端：
+
+```text
+ProviderConfigV1 / System ProviderConfig
+→ ProviderRegistry
+→ ProviderPlatformRouteV1
+→ 当前 ProviderPlatformCapabilityV1
+```
+
+当前默认 Registry 只允许 `tikhub + xhs`，并只接受 `https://api.tikhub.io`。同一个 TikHub Provider 类型可以建立多个稳定 UUID 的 Config；两个实例可共享同一 Capability，但历史身份、后续 Budget 和平台引用保持独立。禁用 Config、未知 Provider、不允许 Base URL、尚未实现的平台都必须失败。
+
 ## 独立验证
 
 ```bash
-uv run pytest tests/unit/collection/test_stage7_decision.py tests/unit/collection/test_tikhub_capabilities.py tests/unit/collection/test_stage7_decision_probe.py -q
-uv run pytest tests/contracts/test_collection_stage7.py -q
+uv run pytest tests/unit/collection/test_stage7_decision.py tests/unit/collection/test_tikhub_capabilities.py tests/unit/collection/test_stage7_decision_probe.py tests/unit/collection/test_provider_routing.py -q
+uv run pytest tests/contracts/test_collection_stage7.py tests/contracts/test_provider_config_stage7.py -q
 uv run pytest tests/unit/collection tests/unit/content tests/contracts/test_provider_v1.py -q
-uv run pytest tests/integration/collection tests/integration/content -q
+uv run pytest tests/integration/collection tests/integration/content tests/integration/database/test_provider_config_repository.py -q
 uv run python scripts/contracts/generate.py --check
 ```
 
-测试从正式 Client、Raw Service、ArtifactService、Decision Service 和 Local ArtifactStore 等对应生产入口进入。
+测试从正式 Client、Raw Service、ArtifactService、Decision Service、Provider Registry 和 Local ArtifactStore 等对应生产入口进入。
 Fake Transport 不访问网络、不需要 Token、不产生费用；Raw 测试目录位于 Git 忽略的
 `.runtime/stage5a-tests/`。Repository 集成测试要求先准备隔离 PostgreSQL 18、Secret 文件并执行
 `uv run alembic upgrade head`；独立 `Stage 5B Collection Execution`、
-`Stage 5C Provider Persistence`、`Stage 5D Provider Dispatch` 与 `Stage 6 XHS Vertical Slice` CI
-固定使用 PostgreSQL 18.4。
+`Stage 5C Provider Persistence`、`Stage 5D Provider Dispatch`、`Stage 6 XHS Vertical Slice` 与
+`Stage 7 Provider Config Routing` CI 固定使用 PostgreSQL 18.4。
 
 ## 当前限制
 
 - 已有小红书 TikHub App V2 具体 Operation，但没有接入真实生产 HTTP Transport；
-- Stage 7 当前只有通用 Decision/Capability Contract、纯 Decision Service 和 XHS Capability；没有把
-  抖音、微博、B站、快手的设计目标冒充当前机器 Capability；
+- Stage 7 已有通用 Decision/Capability、Provider Config/Route Contract、System `provider_configs` 父事实和
+  当前 `tikhub + xhs` Registry；没有把抖音、微博、B站、快手的设计目标冒充当前机器 Capability；
+- 当前 Provider Config 只保存 `secret_ref` 并复用 Stage 2 只读 Secret 文件边界；Stage 8 若提供浏览器凭据
+  编辑，仍需独立建立安全可写 SecretStore/SecretService，读取接口不得回显原始 Secret；
 - XHS `get_note_comments` 当前仍缺合法脱敏非空真实评论 Fixture/Real Probe，虽然正式 Operation 使用
   `latest_v2`，但机器 Capability 暂不声明 `supports_incremental_comment_sort`；评论数增加时先走受控刷新；
 - 仅支持 `manual/api/backfill` Run；没有 Plan/Occurrence/Scheduler，因而不支持 `scheduled`；
