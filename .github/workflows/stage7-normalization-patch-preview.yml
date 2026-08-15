@@ -75,17 +75,33 @@ jobs:
           path.write_text(text.replace(old, "with session.begin_nested():"), encoding="utf-8")
           PY
 
-      - name: Format only Stage 7 normalization sources
+      - name: Normalize Stage 7 source with locked Ruff
         shell: bash
         run: |
           set -euo pipefail
-          uv run ruff format \
-            backend/src/aima_ugc/adapters/providers/tikhub \
-            backend/src/aima_ugc/adapters/providers/registry.py \
-            tests/unit/collection/test_*tikhub*.py \
-            tests/unit/collection/test_provider_routing.py \
-            tests/integration/content/test_tikhub_real_normalized_ingestion.py \
-            scripts/dev/probe_tikhub_stage7_*.py
+          paths=(
+            backend/src/aima_ugc/adapters/providers/tikhub
+            backend/src/aima_ugc/adapters/providers/registry.py
+            tests/unit/collection/test_collection_run_job.py
+            tests/unit/collection/test_provider_routing.py
+            tests/unit/collection/test_tikhub_capabilities.py
+            tests/unit/collection/test_tikhub_probe.py
+            tests/unit/collection/test_tikhub_pricing.py
+            tests/unit/collection/test_tikhub_real_capabilities.py
+            tests/unit/collection/test_tikhub_real_comment_mappers.py
+            tests/unit/collection/test_tikhub_real_detail_mappers.py
+            tests/unit/collection/test_tikhub_real_reply_mappers.py
+            tests/unit/collection/test_tikhub_real_search_mappers.py
+            tests/unit/collection/test_tikhub_real_search_operations.py
+            tests/unit/collection/test_tikhub_transport.py
+            tests/integration/content/test_tikhub_real_normalized_ingestion.py
+            scripts/dev/probe_tikhub_stage7_search.py
+            scripts/dev/probe_tikhub_stage7_detail_comments.py
+            scripts/dev/probe_tikhub_stage7_replies.py
+          )
+          uv run ruff format "${paths[@]}"
+          uv run ruff check --fix "${paths[@]}"
+          uv run ruff format "${paths[@]}"
           uv run ruff format --check backend tests scripts
           uv run ruff check backend tests scripts
 
@@ -126,9 +142,22 @@ jobs:
           git diff --name-only -- \
             backend/src/aima_ugc/adapters/providers/tikhub \
             backend/src/aima_ugc/adapters/providers/registry.py \
-            tests/unit/collection \
+            tests/unit/collection/test_collection_run_job.py \
+            tests/unit/collection/test_provider_routing.py \
+            tests/unit/collection/test_tikhub_capabilities.py \
+            tests/unit/collection/test_tikhub_probe.py \
+            tests/unit/collection/test_tikhub_pricing.py \
+            tests/unit/collection/test_tikhub_real_capabilities.py \
+            tests/unit/collection/test_tikhub_real_comment_mappers.py \
+            tests/unit/collection/test_tikhub_real_detail_mappers.py \
+            tests/unit/collection/test_tikhub_real_reply_mappers.py \
+            tests/unit/collection/test_tikhub_real_search_mappers.py \
+            tests/unit/collection/test_tikhub_real_search_operations.py \
+            tests/unit/collection/test_tikhub_transport.py \
             tests/integration/content/test_tikhub_real_normalized_ingestion.py \
-            scripts/dev \
+            scripts/dev/probe_tikhub_stage7_search.py \
+            scripts/dev/probe_tikhub_stage7_detail_comments.py \
+            scripts/dev/probe_tikhub_stage7_replies.py \
             > "${RUNNER_TEMP}/stage7-normalization-patch/files.txt"
           while IFS= read -r file; do
             [ -n "${file}" ] || continue
