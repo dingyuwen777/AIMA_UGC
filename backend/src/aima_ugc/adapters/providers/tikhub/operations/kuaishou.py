@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 _SEARCH_PATH = "/api/v1/kuaishou/app/search_video_v2"
 _DETAIL_PATH = "/api/v1/kuaishou/app/fetch_one_video"
@@ -36,6 +36,38 @@ class KuaishouCursorPagination:
             return cls(previous_cursor, False, "cursor_unavailable")
         normalized = returned_cursor.strip()
         if normalized == "":
+            return cls("", False, "cursor_unavailable")
+        if normalized == previous_cursor:
+            return cls(normalized, False, "pagination_not_advanced")
+        return cls(normalized, True)
+
+
+@dataclass(frozen=True, slots=True)
+class KuaishouSearchPagination:
+    """Search V2 按真实 data.pcursor 推进，不猜 Provider 私有终止哨兵。"""
+
+    next_cursor: str
+    should_continue: bool
+    stop_reason: str | None = None
+
+    @classmethod
+    def from_response(
+        cls,
+        *,
+        previous_cursor: str,
+        body: dict[str, Any],
+    ) -> KuaishouSearchPagination:
+        data = body.get("data")
+        if not isinstance(data, dict):
+            return cls(previous_cursor, False, "response_data_unavailable")
+        items = data.get("mixFeeds")
+        if not isinstance(items, list) or not items:
+            return cls(previous_cursor, False, "empty_page")
+        returned = data.get("pcursor")
+        if returned is None:
+            return cls(previous_cursor, False, "cursor_unavailable")
+        normalized = str(returned).strip()
+        if not normalized:
             return cls("", False, "cursor_unavailable")
         if normalized == previous_cursor:
             return cls(normalized, False, "pagination_not_advanced")
@@ -84,6 +116,21 @@ def build_video_sub_comments_request(
     )
 
 
+def extract_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    """从真实 App Search V2 的 data.mixFeeds 提取含 feed 的业务 item。"""
+    data = body.get("data")
+    if not isinstance(data, dict):
+        return ()
+    items = data.get("mixFeeds")
+    if not isinstance(items, list):
+        return ()
+    return tuple(
+        item
+        for item in items
+        if isinstance(item, dict) and isinstance(item.get("feed"), dict)
+    )
+
+
 def _required_text(value: str, field_name: str) -> str:
     normalized = value.strip()
     if not normalized:
@@ -94,8 +141,10 @@ def _required_text(value: str, field_name: str) -> str:
 __all__ = [
     "KuaishouCursorPagination",
     "KuaishouRequest",
+    "KuaishouSearchPagination",
     "build_search_request",
     "build_video_comments_request",
     "build_video_detail_request",
     "build_video_sub_comments_request",
+    "extract_search_items",
 ]
