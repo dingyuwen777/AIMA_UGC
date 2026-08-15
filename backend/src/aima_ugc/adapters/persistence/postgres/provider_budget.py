@@ -7,11 +7,14 @@ from decimal import Decimal
 from typing import cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, func, insert, select, update
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
 from aima_ugc.modules.collection.provider_budget import (
+    BudgetDimension,
+    BudgetReservationStatus,
+    BudgetScopeType,
     ProviderBudgetAccountMissingError,
     ProviderBudgetAccountRecord,
     ProviderBudgetAccountSpec,
@@ -119,8 +122,7 @@ class PostgresProviderBudgetRepository:
         missing = keys - set(account_by_key)
         if missing:
             missing_text = ", ".join(
-                f"{scope_key}/{dimension}/{unit}"
-                for scope_key, dimension, unit in sorted(missing)
+                f"{scope_key}/{dimension}/{unit}" for scope_key, dimension, unit in sorted(missing)
             )
             raise ProviderBudgetAccountMissingError(
                 f"Provider Attempt 缺少覆盖调用时刻的预算账户: {missing_text}"
@@ -172,12 +174,7 @@ class PostgresProviderBudgetRepository:
                     updated_at=func.clock_timestamp(),
                 )
             )
-            created.append(
-                _reservation_from_rows(
-                    reservation,
-                    account,
-                )
-            )
+            created.append(_reservation_from_rows(reservation, account))
         return tuple(created)
 
     def assert_dispatch_ready(self, provider_request_attempt_id: UUID) -> None:
@@ -194,7 +191,9 @@ class PostgresProviderBudgetRepository:
             )
         provider_config_id = cast(UUID | None, attempt["provider_config_id"])
         if provider_config_id is None:
-            raise ProviderBudgetReservationMissingError("计费 Provider Request 缺少 provider_config_id")
+            raise ProviderBudgetReservationMissingError(
+                "计费 Provider Request 缺少 provider_config_id"
+            )
         currency = cast(str | None, attempt["cost_currency"])
         if currency is None:
             raise ProviderBudgetReservationMissingError("计费 Provider Attempt 缺少 cost_currency")
@@ -203,7 +202,9 @@ class PostgresProviderBudgetRepository:
         if not rows:
             raise ProviderBudgetReservationMissingError("计费 Provider Attempt 尚未取得预算预留")
         if any(row["reservation_status"] != "reserved" for row in rows):
-            raise ProviderBudgetReservationMissingError("Provider Attempt 的预算 Reservation 已不是 reserved")
+            raise ProviderBudgetReservationMissingError(
+                "Provider Attempt 的预算 Reservation 已不是 reserved"
+            )
         if any(row["provider_config_id"] != provider_config_id for row in rows):
             raise ProviderBudgetReservationMissingError("预算账户与 Provider Request Config 不一致")
 
@@ -237,13 +238,15 @@ class PostgresProviderBudgetRepository:
             for row in rows
         }
         if actual != expected:
-            raise ProviderBudgetReservationMissingError("Provider Attempt 的预算预留层级或金额不完整")
+            raise ProviderBudgetReservationMissingError(
+                "Provider Attempt 的预算预留层级或金额不完整"
+            )
 
         now = self._session.scalar(select(func.clock_timestamp()))
-        if now is None or any(
-            not (row["period_start"] <= now < row["period_end"]) for row in rows
-        ):
-            raise ProviderBudgetReservationMissingError("Provider Attempt 的预算周期已不覆盖发送时刻")
+        if now is None or any(not (row["period_start"] <= now < row["period_end"]) for row in rows):
+            raise ProviderBudgetReservationMissingError(
+                "Provider Attempt 的预算周期已不覆盖发送时刻"
+            )
 
     def finalize_attempt(
         self,
@@ -278,7 +281,9 @@ class PostgresProviderBudgetRepository:
         if not rows:
             return
         if any(row["status"] != "reserved" for row in rows):
-            raise ProviderBudgetLineageError("Provider Budget Reservation 不是可结算的 reserved 状态")
+            raise ProviderBudgetLineageError(
+                "Provider Budget Reservation 不是可结算的 reserved 状态"
+            )
         if dispatch_status not in {"completed", "not_sent", "unknown"}:
             raise ValueError("Provider Budget 终态无效")
 
@@ -291,9 +296,7 @@ class PostgresProviderBudgetRepository:
                     settled = Decimal("1")
                 else:
                     if currency is None or currency != unit:
-                        raise ProviderBudgetLineageError(
-                            "Provider 实际费用币种与预算账户不一致"
-                        )
+                        raise ProviderBudgetLineageError("Provider 实际费用币种与预算账户不一致")
                     settled = actual_cost
                 status = "settled"
                 account_values = {
@@ -349,7 +352,11 @@ class PostgresProviderBudgetRepository:
             ).mappings()
         )
         reserved = sum(
-            (cast(Decimal, row["reserved_amount"]) for row in rows if row["status"] == "reserved"),
+            (
+                cast(Decimal, row["reserved_amount"])
+                for row in rows
+                if row["status"] == "reserved"
+            ),
             Decimal("0"),
         )
         settled = sum(
@@ -361,7 +368,11 @@ class PostgresProviderBudgetRepository:
             Decimal("0"),
         )
         unknown = sum(
-            (cast(Decimal, row["reserved_amount"]) for row in rows if row["status"] == "unknown"),
+            (
+                cast(Decimal, row["reserved_amount"])
+                for row in rows
+                if row["status"] == "unknown"
+            ),
             Decimal("0"),
         )
         if (
@@ -372,7 +383,7 @@ class PostgresProviderBudgetRepository:
             raise ProviderBudgetDriftError(f"Provider Budget Account 聚合值漂移: {account_id}")
         return ProviderBudgetAuditSnapshot(
             account_id=account_id,
-            dimension=cast(str, account["dimension"]),
+            dimension=cast(BudgetDimension, account["dimension"]),
             unit=cast(str, account["unit"]),
             reserved_amount=reserved,
             settled_amount=settled,
@@ -449,12 +460,8 @@ class PostgresProviderBudgetRepository:
                         "reservation_settled_amount"
                     ),
                     provider_budget_reservations_table.c.status.label("reservation_status"),
-                    provider_budget_reservations_table.c.created_at.label(
-                        "reservation_created_at"
-                    ),
-                    provider_budget_reservations_table.c.updated_at.label(
-                        "reservation_updated_at"
-                    ),
+                    provider_budget_reservations_table.c.created_at.label("reservation_created_at"),
+                    provider_budget_reservations_table.c.updated_at.label("reservation_updated_at"),
                     provider_budget_accounts_table.c.provider_config_id,
                     provider_budget_accounts_table.c.scope_type,
                     provider_budget_accounts_table.c.scope_key,
@@ -490,29 +497,36 @@ class PostgresProviderBudgetRepository:
         expected = {
             (item.scope_key, item.dimension, item.unit): item.amount for item in requirements
         }
-        actual = {
-            (row["scope_key"], row["dimension"], row["unit"]): cast(
-                Decimal, row["reservation_reserved_amount"]
-            )
+        rows_by_key = {
+            (row["scope_key"], row["dimension"], row["unit"]): row
             for row in rows
             if row["reservation_status"] == "reserved"
         }
+        actual = {
+            key: cast(Decimal, row["reservation_reserved_amount"])
+            for key, row in rows_by_key.items()
+        }
         if actual != expected or len(rows) != len(expected):
             raise ProviderBudgetLineageError("同一 Attempt 已存在不同或非 reserved 的预算账本")
-        return tuple(_reservation_from_joined_row(row) for row in rows)
+        return tuple(
+            _reservation_from_joined_row(
+                rows_by_key[(requirement.scope_key, requirement.dimension, requirement.unit)]
+            )
+            for requirement in requirements
+        )
 
 
 def _account_from_row(row: RowMapping) -> ProviderBudgetAccountRecord:
     return ProviderBudgetAccountRecord(
         id=cast(UUID, row["id"]),
         provider_config_id=cast(UUID, row["provider_config_id"]),
-        scope_type=cast(str, row["scope_type"]),
+        scope_type=cast(BudgetScopeType, row["scope_type"]),
         scope_key=cast(str, row["scope_key"]),
         run_id=cast(UUID | None, row["run_id"]),
         content_id=cast(UUID | None, row["content_id"]),
         period_start=row["period_start"],
         period_end=row["period_end"],
-        dimension=cast(str, row["dimension"]),
+        dimension=cast(BudgetDimension, row["dimension"]),
         unit=cast(str, row["unit"]),
         limit_amount=cast(Decimal, row["limit_amount"]),
         reserved_amount=cast(Decimal, row["reserved_amount"]),
@@ -533,12 +547,12 @@ def _reservation_from_rows(
         budget_account_id=cast(UUID, reservation["budget_account_id"]),
         provider_request_id=cast(UUID, reservation["provider_request_id"]),
         provider_request_attempt_id=cast(UUID, reservation["provider_request_attempt_id"]),
-        scope_type=cast(str, account["scope_type"]),
-        dimension=cast(str, account["dimension"]),
+        scope_type=cast(BudgetScopeType, account["scope_type"]),
+        dimension=cast(BudgetDimension, account["dimension"]),
         unit=cast(str, account["unit"]),
         reserved_amount=cast(Decimal, reservation["reserved_amount"]),
         settled_amount=cast(Decimal | None, reservation["settled_amount"]),
-        status=cast(str, reservation["status"]),
+        status=cast(BudgetReservationStatus, reservation["status"]),
         created_at=reservation["created_at"],
         updated_at=reservation["updated_at"],
     )
@@ -550,12 +564,12 @@ def _reservation_from_joined_row(row: RowMapping) -> ProviderBudgetReservationRe
         budget_account_id=cast(UUID, row["budget_account_id"]),
         provider_request_id=cast(UUID, row["provider_request_id"]),
         provider_request_attempt_id=cast(UUID, row["provider_request_attempt_id"]),
-        scope_type=cast(str, row["scope_type"]),
-        dimension=cast(str, row["dimension"]),
+        scope_type=cast(BudgetScopeType, row["scope_type"]),
+        dimension=cast(BudgetDimension, row["dimension"]),
         unit=cast(str, row["unit"]),
         reserved_amount=cast(Decimal, row["reservation_reserved_amount"]),
         settled_amount=cast(Decimal | None, row["reservation_settled_amount"]),
-        status=cast(str, row["reservation_status"]),
+        status=cast(BudgetReservationStatus, row["reservation_status"]),
         created_at=row["reservation_created_at"],
         updated_at=row["reservation_updated_at"],
     )

@@ -126,6 +126,8 @@ class ProviderPersistenceService:
         provider_config_id: UUID | None = None,
     ) -> ProviderRequestRecord:
         """按 Scope + fingerprint 建立或复用逻辑 Request。"""
+        if provider_config_id is None:
+            return self._repository.create_or_get_request(request)
         return self._repository.create_or_get_request(
             request,
             provider_config_id=provider_config_id,

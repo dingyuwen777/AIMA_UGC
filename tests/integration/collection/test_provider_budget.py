@@ -324,9 +324,7 @@ def test_reservation_is_atomic_and_replay_is_idempotent(
 
     assert len(first) == 4
     assert replay == first
-    assert {
-        (item.scope_type, item.dimension, item.status) for item in first
-    } == {
+    assert {(item.scope_type, item.dimension, item.status) for item in first} == {
         ("global", "request_count", "reserved"),
         ("global", "monetary_cost", "reserved"),
         ("run", "request_count", "reserved"),
@@ -339,7 +337,11 @@ def test_reservation_is_atomic_and_replay_is_idempotent(
             audit = ProviderBudgetService(PostgresProviderBudgetRepository(session))
             snapshots = [audit.audit_account(account.id) for account in accounts]
         for snapshot in snapshots:
-            expected = Decimal("1") if snapshot.dimension == "request_count" else Decimal("0.010000")
+            expected = (
+                Decimal("1")
+                if snapshot.dimension == "request_count"
+                else Decimal("0.010000")
+            )
             assert snapshot.reserved_amount == expected
             assert snapshot.settled_amount == 0
             assert snapshot.unknown_amount == 0
@@ -591,7 +593,11 @@ def test_not_sent_releases_and_unknown_keeps_reservation_as_unknown(
             for item in released
         )
         for item in held_unknown:
-            expected = Decimal("1") if item.dimension == "request_count" else Decimal("0.010000")
+            expected = (
+                Decimal("1")
+                if item.dimension == "request_count"
+                else Decimal("0.010000")
+            )
             assert item.reserved_amount == 0
             assert item.settled_amount == 0
             assert item.unknown_amount == expected
