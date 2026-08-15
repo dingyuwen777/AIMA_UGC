@@ -1,0 +1,37 @@
+{
+  "data": {
+    "items": [
+      {
+        "category": "comment",
+        "data": {
+          "created_at": "Sat Aug 15 09:30:00 +0800 2026",
+          "id": 100001,
+          "idstr": "weibo-comment-root-1",
+          "like_counts": 762,
+          "max_id": 0,
+          "mid": "weibo-comment-root-1",
+          "rid": "0",
+          "rootid": 100001,
+          "rootidstr": "weibo-comment-root-1",
+          "text": "脱敏一级评论",
+          "total_number": 2,
+          "user": {
+            "id": 100002,
+            "idstr": "weibo-user-1",
+            "screen_name": "脱敏用户",
+            "verified": true,
+            "description": "脱敏简介"
+          }
+        },
+        "type": "comment"
+      }
+    ],
+    "moreInfo": {
+      "params": {
+        "count": 20,
+        "max_id": 100003,
+        "max_id_type": 0
+      }
+    }
+  }
+}
