@@ -1,4 +1,4 @@
-"""Collection 模块拥有的 Run/Scope、Provider Request/Attempt 与预算账本表。"""
+"""Collection 模块拥有的 Plan/Run/Scope、Provider Request/Attempt 与预算账本表。"""
 
 from sqlalchemy import (
     Boolean,
@@ -21,11 +21,92 @@ from sqlalchemy.dialects.postgresql import JSONB, ExcludeConstraint
 
 from aima_ugc.platform.database.metadata import metadata
 
+collection_plans_table = Table(
+    "collection_plans",
+    metadata,
+    Column("id", Uuid(), primary_key=True),
+    Column("name", Text(), nullable=False),
+    Column("enabled", Boolean(), nullable=False),
+    Column("schedule_expr", Text()),
+    Column("timezone", Text(), nullable=False),
+    Column("schedule_version", Integer(), nullable=False, server_default=text("1")),
+    Column("next_run_at", DateTime(timezone=True)),
+    Column("last_scheduled_at", DateTime(timezone=True)),
+    Column("misfire_policy", Text(), nullable=False),
+    Column("max_catch_up_runs", Integer(), nullable=False),
+    Column("detail_policy", Text(), nullable=False),
+    Column("comment_policy", Text(), nullable=False),
+    Column("request_budget", Integer(), nullable=False),
+    Column("created_by", Uuid()),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("name"),
+    CheckConstraint("char_length(name) > 0", name="name_nonempty"),
+    CheckConstraint(
+        "schedule_expr is null or char_length(schedule_expr) > 0",
+        name="schedule_expr_nonempty",
+    ),
+    CheckConstraint("timezone = 'Asia/Shanghai'", name="timezone_first_release"),
+    CheckConstraint("schedule_version >= 1", name="schedule_version_positive"),
+    CheckConstraint("char_length(misfire_policy) > 0", name="misfire_policy_nonempty"),
+    CheckConstraint("max_catch_up_runs >= 0", name="max_catch_up_runs_nonnegative"),
+    CheckConstraint("char_length(detail_policy) > 0", name="detail_policy_nonempty"),
+    CheckConstraint("char_length(comment_policy) > 0", name="comment_policy_nonempty"),
+    CheckConstraint("request_budget >= 0", name="request_budget_nonnegative"),
+    info={"owner": "collection"},
+)
+
+collection_plan_platforms_table = Table(
+    "collection_plan_platforms",
+    metadata,
+    Column("plan_id", Uuid(), ForeignKey("collection_plans.id"), primary_key=True),
+    Column("platform", Text(), primary_key=True),
+    Column("provider_config_id", Uuid(), ForeignKey("provider_configs.id"), nullable=False),
+    Column("config", JSONB(), nullable=False, server_default=text("'{}'::jsonb")),
+    CheckConstraint("char_length(platform) > 0", name="platform_nonempty"),
+    CheckConstraint("jsonb_typeof(config) = 'object'", name="config_object"),
+    info={"owner": "collection"},
+)
+
+collection_plan_keyword_packs_table = Table(
+    "collection_plan_keyword_packs",
+    metadata,
+    Column("plan_id", Uuid(), ForeignKey("collection_plans.id"), primary_key=True),
+    Column("keyword_pack_id", Uuid(), ForeignKey("keyword_packs.id"), primary_key=True),
+    info={"owner": "collection"},
+)
+
+collection_schedule_occurrences_table = Table(
+    "collection_schedule_occurrences",
+    metadata,
+    Column("id", Uuid(), primary_key=True),
+    Column("plan_id", Uuid(), ForeignKey("collection_plans.id"), nullable=False),
+    Column("schedule_version", Integer(), nullable=False),
+    Column("scheduled_for", DateTime(timezone=True), nullable=False),
+    Column("job_id", Uuid(), ForeignKey("jobs.id")),
+    Column("status", Text(), nullable=False),
+    Column("skip_reason", Text()),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("plan_id", "schedule_version", "scheduled_for"),
+    UniqueConstraint("job_id"),
+    CheckConstraint("schedule_version >= 1", name="schedule_version_positive"),
+    CheckConstraint("status in ('enqueued','skipped')", name="status_allowed"),
+    CheckConstraint(
+        "(status = 'enqueued' and job_id is not null and skip_reason is null) or "
+        "(status = 'skipped' and job_id is null and skip_reason is not null "
+        "and char_length(skip_reason) > 0)",
+        name="status_binding_consistent",
+    ),
+    info={"owner": "collection"},
+)
+
 collection_runs_table = Table(
     "collection_runs",
     metadata,
     Column("id", Uuid(), primary_key=True),
     Column("job_id", Uuid(), ForeignKey("jobs.id"), nullable=False),
+    Column("manual_plan_id", Uuid(), ForeignKey("collection_plans.id")),
+    Column("occurrence_id", Uuid(), ForeignKey("collection_schedule_occurrences.id")),
     Column("trigger_type", Text(), nullable=False),
     Column("config_snapshot", JSONB(), nullable=False),
     Column("status", Text(), nullable=False),
@@ -39,9 +120,11 @@ collection_runs_table = Table(
     Column("error_summary", Text()),
     Column("created_at", DateTime(timezone=True), nullable=False),
     UniqueConstraint("job_id"),
+    UniqueConstraint("occurrence_id"),
     CheckConstraint(
-        "trigger_type in ('manual','api','backfill')",
-        name="trigger_type_allowed",
+        "(trigger_type = 'scheduled' and occurrence_id is not null and manual_plan_id is null) "
+        "or (trigger_type in ('manual','api','backfill') and occurrence_id is null)",
+        name="trigger_binding_consistent",
     ),
     CheckConstraint(
         "status in ('queued','running','partial_success','succeeded','failed','cancelled')",
