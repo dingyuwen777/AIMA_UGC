@@ -184,13 +184,17 @@ def _xhs(client: httpx.Client, output: Path, manifest: list[dict[str, object]]) 
         time_filter="不限",
         note_type="普通笔记",
     )
-    search_body = _call_request(client, search, label="xhs_search", output=output, manifest=manifest)
+    search_body = _call_request(
+        client, search, label="xhs_search", output=output, manifest=manifest
+    )
     items = xiaohongshu.extract_search_items(search_body)
     item = _max_by(
         items,
-        lambda wrapped: (wrapped.get("note") or {}).get("comments_count")
-        if isinstance(wrapped.get("note"), dict)
-        else 0,
+        lambda wrapped: (
+            (wrapped.get("note") or {}).get("comments_count")
+            if isinstance(wrapped.get("note"), dict)
+            else 0
+        ),
     )
     note = item.get("note")
     if not isinstance(note, dict):
@@ -233,11 +237,13 @@ def _douyin(client: httpx.Client, output: Path, manifest: list[dict[str, object]
     items = douyin.extract_search_items(search_body)
     item = _max_by(
         items,
-        lambda wrapped: ((wrapped.get("data") or {}).get("aweme_info") or {})
-        .get("statistics", {})
-        .get("comment_count")
-        if isinstance(wrapped.get("data"), dict)
-        else 0,
+        lambda wrapped: (
+            ((wrapped.get("data") or {}).get("aweme_info") or {})
+            .get("statistics", {})
+            .get("comment_count")
+            if isinstance(wrapped.get("data"), dict)
+            else 0
+        ),
     )
     data = item.get("data")
     aweme = data.get("aweme_info") if isinstance(data, dict) else None
@@ -281,9 +287,11 @@ def _weibo(client: httpx.Client, output: Path, manifest: list[dict[str, object]]
     items = weibo.extract_search_items(search_body)
     item = _max_by(
         items,
-        lambda wrapped: (wrapped.get("mblog") or {}).get("comments_count")
-        if isinstance(wrapped.get("mblog"), dict)
-        else 0,
+        lambda wrapped: (
+            (wrapped.get("mblog") or {}).get("comments_count")
+            if isinstance(wrapped.get("mblog"), dict)
+            else 0
+        ),
     )
     status = item.get("mblog")
     if not isinstance(status, dict):
@@ -367,9 +375,11 @@ def _kuaishou(client: httpx.Client, output: Path, manifest: list[dict[str, objec
     items = kuaishou.extract_search_items(search_body)
     item = _max_by(
         items,
-        lambda wrapped: (wrapped.get("feed") or {}).get("comment_count")
-        if isinstance(wrapped.get("feed"), dict)
-        else 0,
+        lambda wrapped: (
+            (wrapped.get("feed") or {}).get("comment_count")
+            if isinstance(wrapped.get("feed"), dict)
+            else 0
+        ),
     )
     feed = item.get("feed")
     if not isinstance(feed, dict):
