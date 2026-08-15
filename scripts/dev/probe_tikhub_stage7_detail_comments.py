@@ -294,9 +294,7 @@ def run() -> None:
         )
         _send(
             client,
-            _from_request(
-                bilibili.build_video_comments_request(av_id=av_id), "bilibili_comments"
-            ),
+            _from_request(bilibili.build_video_comments_request(av_id=av_id), "bilibili_comments"),
             output=output,
             manifest=manifest,
         )
@@ -311,7 +309,9 @@ def run() -> None:
         photo_id = str(_first_kuaishou_feed(kuaishou_search_body)["photo_id"])
         _send(
             client,
-            _from_request(kuaishou.build_video_detail_request(photo_id=photo_id), "kuaishou_detail"),
+            _from_request(
+                kuaishou.build_video_detail_request(photo_id=photo_id), "kuaishou_detail"
+            ),
             output=output,
             manifest=manifest,
         )
