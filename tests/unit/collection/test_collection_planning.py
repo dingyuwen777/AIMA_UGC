@@ -11,6 +11,8 @@ from aima_ugc.modules.collection.planning import (
     DuplicatePlanPlatformError,
     PlanPlatformDefinition,
     UnsafePlanConfigError,
+    UnsupportedPlanCatchUpError,
+    UnsupportedPlanMisfirePolicyError,
     UnsupportedPlanTimezoneError,
 )
 
@@ -27,6 +29,8 @@ class _RecordingPlanningRepository:
 def _definition(
     *,
     timezone: str = "Asia/Shanghai",
+    misfire_policy: str = "latest_only",
+    max_catch_up_runs: int = 0,
     platforms: tuple[PlanPlatformDefinition, ...] | None = None,
     keyword_pack_ids: tuple[UUID, ...] | None = None,
 ) -> CollectionPlanDefinition:
@@ -37,8 +41,8 @@ def _definition(
         schedule_expr="0 */6 * * *",
         timezone=timezone,
         schedule_version=1,
-        misfire_policy="explicit-policy-not-yet-executed",
-        max_catch_up_runs=0,
+        misfire_policy=misfire_policy,
+        max_catch_up_runs=max_catch_up_runs,
         detail_policy="on_change",
         comment_policy="adaptive",
         request_budget=100,
@@ -55,7 +59,7 @@ def _definition(
     )
 
 
-def test_service_accepts_only_first_release_timezone_and_preserves_explicit_policy() -> None:
+def test_service_accepts_only_approved_first_release_scheduler_policy() -> None:
     repository = _RecordingPlanningRepository()
     service = CollectionPlanningService(repository)
 
@@ -63,10 +67,17 @@ def test_service_accepts_only_first_release_timezone_and_preserves_explicit_poli
 
     assert created.name == "爱玛舆情默认计划"
     assert repository.definitions[0].timezone == "Asia/Shanghai"
-    assert repository.definitions[0].misfire_policy == "explicit-policy-not-yet-executed"
+    assert repository.definitions[0].misfire_policy == "latest_only"
+    assert repository.definitions[0].max_catch_up_runs == 0
 
     with pytest.raises(UnsupportedPlanTimezoneError, match="Asia/Shanghai"):
         service.create_plan(_definition(timezone="UTC"))
+
+    with pytest.raises(UnsupportedPlanMisfirePolicyError, match="latest_only"):
+        service.create_plan(_definition(misfire_policy="bounded_catch_up"))
+
+    with pytest.raises(UnsupportedPlanCatchUpError, match="0"):
+        service.create_plan(_definition(max_catch_up_runs=1))
 
 
 def test_service_rejects_duplicate_platform_identity() -> None:
