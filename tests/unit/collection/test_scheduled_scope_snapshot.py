@@ -110,7 +110,9 @@ def test_duplicate_keyword_from_multiple_packs_produces_one_scope_per_platform()
     ]
 
 
-def test_disabled_or_non_plan_entries_do_not_create_scopes_but_pack_versions_stay_auditable() -> None:
+def test_disabled_or_non_plan_entries_do_not_create_scopes_but_pack_versions_stay_auditable() -> (
+    None
+):
     snapshot = build_scheduled_scope_snapshot(
         plan_platforms=("xhs", "douyin"),
         entries=(
