@@ -180,6 +180,8 @@ def _parse_endpoints(value: object) -> tuple[TikHubEndpointPrice, ...]:
         if status not in {"verified", "pending_endpoint_info"}:
             raise ValueError(f"TikHub Pricing verification_status 无效: {status}")
         base_price_raw = raw.get("base_price")
+        verified_at: str | None
+        verified_via: str | None
         if status == "verified":
             base_price = _positive_decimal(base_price_raw, "base_price")
             verified_at = _required_text(raw, "verified_at")
