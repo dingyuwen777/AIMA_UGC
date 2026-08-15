@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Literal
 from uuid import UUID
 
 from sqlalchemy import func, or_, select
@@ -269,13 +270,23 @@ def _finalize_provider_and_artifact(
     attempt: ProviderAttemptV1,
     raw_artifact_id: UUID | None,
 ) -> ProviderAttemptRecord:
+    budget_status: Literal["completed", "not_sent", "unknown"]
+    if attempt.dispatch_status == "completed":
+        budget_status = "completed"
+    elif attempt.dispatch_status == "not_sent":
+        budget_status = "not_sent"
+    elif attempt.dispatch_status == "unknown":
+        budget_status = "unknown"
+    else:
+        raise ValueError("Provider Dispatch 终态无效")
+
     persisted = provider.finalize_dispatch(
         attempt=attempt,
         raw_artifact_id=raw_artifact_id,
     )
     ProviderBudgetService(PostgresProviderBudgetRepository(session)).finalize_attempt(
         provider_request_attempt_id=attempt.attempt_id,
-        dispatch_status=attempt.dispatch_status,
+        dispatch_status=budget_status,
         actual_cost=attempt.billing.actual_cost,
         currency=attempt.billing.currency,
     )
