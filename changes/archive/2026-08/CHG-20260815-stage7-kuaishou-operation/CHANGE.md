@@ -3,9 +3,9 @@ schema: rvc-change/v1
 id: CHG-20260815-stage7-kuaishou-operation
 title: 建立 Stage 7 快手 TikHub Operation 与分页状态机
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
-branch: feature/stage7-kuaishou-operation
+branch: chore/archive-stage7-kuaishou-operation-final
 created: 2026-08-15
 updated: 2026-08-15
 depends_on: [CHG-20260815-stage7-decision-capability]
@@ -29,8 +29,8 @@ data_changes: []
 - [x] Review 继续发现未经一手资料证明的 `no_more -> provider_exhausted` 特例；第二轮 Red `9ee4eb7f17072ac2e91ce2d37180b555e03f7101` 实际得到 `3 failed, 113 passed`、退出码 1，第三个失败精确锁定该猜测语义。
 - [x] Green `bc10e518556c94797ba2a9498f6082256abfc3d8` 只把 Web 参数改为官方 snake_case 并删除无证据 sentinel；PR CI `31868447755` 的 Stage 1 实际得到 Unit `116 passed`、Contract `33 passed`、API `3 passed`，Ruff/Mypy/Contract/Architecture/Table Owner/Secret/docs/Wheel/Frontend 均成功；该 head 的 7 个 PR workflow 全部成功。
 - [x] 不新增 Mapper/Capability/Registry/Migration/数据库/依赖/API/前端，不接管后续 Stage 7 单元。
-- [ ] 功能 PR 正常合并后，快手平台文档、Collection 总览/模块 README 与 Blueprint 当前状态如实区分 Operation 与 Mapper/Fixture/Probe/Capability，并通过独立 PR/CI 合入。
-- [ ] 功能 PR 合并后的最新 `main` 包含本实现且相关 push CI 新鲜成功；随后才允许把 Change 标记 `done` 并移动到 Archive。
+- [x] 功能 PR #44 已正常合并到 `main`，merge commit 为 `c66b055fe9fdf41a29618af6642e79a7f0c4c5bc`；合并后该提交的 7 个 push workflow 全部成功，主 CI `31868653033` 的 Stage 1 新鲜得到 Unit `116 passed`、Contract `33 passed`、API `3 passed`，并通过 Contract/兼容、Ruff、Mypy、Architecture、Table Owner、Secret、docs、Wheel、Frontend 与本地启动 smoke。
+- [x] 快手平台文档、Collection 总览/模块 README 与 Blueprint 当前状态已在本 Change 收尾分支同步：明确 Operation 已进入 `main`，同时明确 Mapper、合法脱敏非空真实 Fixture、Real Probe、Capability/默认 Registry 尚未闭环，不把 Operation 通过等同于“快手已兼容”。
 
 # 非目标与不变项
 
@@ -55,13 +55,16 @@ data_changes: []
 
 [步骤 5：两阶段 Review] → 修改范围：PR #44 diff、Blueprint 08、官方请求参数 → 结果：需求范围与代码质量复核未发现新的严重/重要问题；不做无价值 Refactor。
 
-[步骤 6：合并与长期文档] → 修改范围：PR #44、最新 `main`、快手/Collection/Blueprint 文档 → 结果：待正常 merge、合并后 main CI 与文档归档闭环，不提前把未进入 main 的目标状态写成长期当前事实。
+[步骤 6：功能合并与 main 验证] → 修改范围：PR #44、最新 `main` → 结果：PR #44 正常 merge 为 `c66b055fe9fdf41a29618af6642e79a7f0c4c5bc`；该 merge commit 的 7/7 push workflow success，主 CI `31868653033` success。
+
+[步骤 7：长期文档与 Change 收尾] → 修改范围：`docs/collection/kuaishou.md`、`docs/collection/README.md`、Collection 模块 README、Blueprint README/08、Change 生命周期 → 结果：长期文档按已进入 `main` 的机器事实更新，同时保留 Mapper/Fixture/Probe/Capability 未完成边界；本记录移动到 Archive。
 
 # Git
 
-- 分支：`feature/stage7-kuaishou-operation`
-- PR：#44
-- Green head：`bc10e518556c94797ba2a9498f6082256abfc3d8`
-- Green PR CI：7/7 workflow success；主 CI `31868447755` success
-- 合并 / main CI / Change 归档：待执行
-- Change：ready_for_review
+- 功能分支：`feature/stage7-kuaishou-operation`
+- 功能 PR：#44，已合并
+- 最终功能 PR head：`e3e885070f6b536c862bcdaff0679765c724a319`
+- 功能 merge commit：`c66b055fe9fdf41a29618af6642e79a7f0c4c5bc`
+- 合并后 main push CI：7/7 workflow success；主 CI `31868653033` success
+- 收尾分支：`chore/archive-stage7-kuaishou-operation-final`
+- Change：done，归档到 `changes/archive/2026-08/CHG-20260815-stage7-kuaishou-operation/CHANGE.md`
