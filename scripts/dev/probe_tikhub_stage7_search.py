@@ -140,7 +140,7 @@ def _search_requests() -> tuple[SearchProbeRequest, ...]:
     xhs = build_search_notes_request(
         keyword=KEYWORD,
         page=1,
-        sort_type="综合",
+        sort_type="general",
         time_filter="不限",
     )
     douyin = build_video_search_request(keyword=KEYWORD)
