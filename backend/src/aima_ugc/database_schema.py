@@ -4,6 +4,7 @@ from aima_ugc.modules.collection.candidate_tables import (
     collection_candidate_ingestions_table,
     collection_candidates_table,
 )
+from aima_ugc.modules.collection.scheduler_schema import register_scheduler_schema
 from aima_ugc.modules.collection.tables import (
     collection_plan_keyword_packs_table,
     collection_plan_platforms_table,
@@ -38,6 +39,8 @@ from aima_ugc.modules.system.tables import (
 from aima_ugc.platform.database.metadata import metadata
 from aima_ugc.platform.jobs.tables import job_attempt_events_table, jobs_table
 from aima_ugc.platform.storage.tables import artifacts_table
+
+register_scheduler_schema()
 
 __all__ = [
     "account_external_ids_table",
