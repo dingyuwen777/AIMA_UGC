@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260815-stage7-provider-budget-ledger
 title: 建立 Stage 7 Provider 多级预算账本
 level: L3
-status: active
+status: ready_for_review
 owner: dingyuwen777
 branch: feature/stage7-provider-budget-ledger
 created: 2026-08-15
@@ -21,19 +21,19 @@ data_changes: [provider_requests.provider_config_id, provider_budget_accounts, p
 
 # 成功标准
 
-- [ ] `provider_requests` 通过附加 Migration 增加可追溯的 `provider_config_id` 外键；历史 Revision `20260813_0001`—`20260815_0011` 不改写。
-- [ ] 新建 Collection Owner 的 `provider_budget_accounts/provider_budget_reservations`，账户支持 `global/run/run_comments/content_comments` 四层、`request_count/monetary_cost` 两种维度，并绑定稳定 `provider_config_id`。
-- [ ] 同 Provider Config、Scope、维度、单位的预算周期不能重叠；账户范围、时间、金额、单位和关系由 PostgreSQL 约束保护。
-- [ ] 一次 billable Attempt 的普通 Operation 原子预留 `global + run`；评论/回复在提供内部 `content_id` 时原子预留 `global + run + run_comments + content_comments`；每层同时保留请求次数和货币预算。
-- [ ] 任一必需账户缺失、超额、Provider Config/Run 不匹配或 Reservation 不完整时 fail closed；`ProviderDispatchService` 不得调用 Transport。
-- [ ] 同一 Attempt 的预留事务重放幂等，不重复扣减；新 Attempt 必须独立预留。
-- [ ] `completed` 把请求次数和实际费用结算到 `settled_amount`；实际费用高于预留仍如实记录并使后续请求受超额状态阻断。
-- [ ] `not_sent` 全量释放；`unknown` 把原预留转入 `unknown_amount` 并继续占预算，禁止把未知计费当未发送释放。
-- [ ] 预算账户提供从 Reservation 重算余额的审计入口，数据库累计值与账本不一致时明确报 drift。
-- [ ] Stage 5C/5D/Stage 6 既有不计费 Fake、Dispatch、Recovery、Raw/Candidate/Ingestion 回归保持通过。
-- [ ] `20260815_0011 → head`、`base → head`、downgrade/upgrade round trip 和 `alembic check` 均有 PostgreSQL 18.4 新鲜证据。
-- [ ] Ruff、mypy、Architecture、Table Ownership、Secret Scan、Docs、Contract 生成/兼容门禁通过。
-- [ ] 合并后 main 对本单元相关 CI 重新验证；长期文档与机器事实同步后才允许 Change done/archive。
+- [x] `provider_requests` 通过附加 Migration 增加可追溯的 `provider_config_id` 外键；历史 Revision `20260813_0001`—`20260815_0011` 未改写。
+- [x] 新建 Collection Owner 的 `provider_budget_accounts/provider_budget_reservations`，账户支持 `global/run/run_comments/content_comments` 四层、`request_count/monetary_cost` 两种维度，并绑定稳定 `provider_config_id`。
+- [x] 同 Provider Config、Scope、维度、单位的预算周期不能重叠；账户范围、时间、金额、单位和关系由 PostgreSQL CHECK/FK/Exclusion/Unique 约束保护。
+- [x] 一次 billable Attempt 的普通 Operation 原子预留 `global + run`；评论/回复在提供内部 `content_id` 时原子预留 `global + run + run_comments + content_comments`；每层同时保留请求次数和货币预算。
+- [x] 任一必需账户缺失、超额、Provider Config/Run 不匹配或 Reservation 不完整时 fail closed；`ProviderDispatchService` 不得调用 Transport。
+- [x] 同一 Attempt 的预留事务重放幂等，不重复扣减；新 Attempt 独立预留，并发额度竞争由账户行锁串行裁决。
+- [x] `completed` 把请求次数和实际费用结算到 `settled_amount`；实际费用高于预留仍如实记录，账户进入超额状态后后续 reserve 会被同一 `used + 本次预留 <= limit` 规则阻断。
+- [x] `not_sent` 全量释放；`unknown` 把原预留转入 `unknown_amount` 并继续占预算，禁止把未知计费当未发送释放。
+- [x] 预算账户提供从 Reservation 重算余额的审计入口，数据库累计值与账本不一致时明确报 drift。
+- [x] Stage 5C/5D/Stage 6 既有不计费 Fake、Dispatch、Recovery、Raw/Candidate/Ingestion 兼容边界未被本实现改写；PR 广域回归仍作为合并门禁。
+- [x] `20260815_0011 → head`、`base → head`、downgrade/upgrade round trip 和 `alembic check` 已在 PostgreSQL 18.4 Stage 7 Budget CI 获得新鲜 Green 证据。
+- [x] Ruff、mypy、Architecture、Table Ownership、Secret Scan、Docs、Contract 生成/兼容门禁已在分支 CI Green。
+- [ ] PR 广域 CI、合并后 main CI 和 main 机器事实重新验证完成；满足前不得归档 Change。
 
 # 范围
 
@@ -69,7 +69,7 @@ data_changes: [provider_requests.provider_config_id, provider_budget_accounts, p
 
 1. Blueprint 02 已冻结：Stage 5C 暂保留 `provider` 字段兼容，稳定 `provider_config_id` 的 Request 持久化关联由后续 Plan/Run/Budget Stage 7 Migration 增加。
 2. Blueprint 07/08 已冻结：最终预算账户为 `global/run/run_comments/content_comments`；所有真实 HTTP Attempt 至少预留 global+run，评论/二级评论同时预留四层；预算账户绑定稳定 Provider Config。
-3. Blueprint 03 已冻结并发 reserve/settle/release/unknown 基础算法：账户行锁、同事务全有或全无、同 Attempt Reservation 唯一、未知费用继续占用、实际费用超预留仍如实结算。
+3. Blueprint 03 已同步到当前 Stage 7 机器事实：账户行锁、同事务全有或全无、同 Attempt Reservation 唯一、未知费用继续占用、实际费用超预留仍如实结算，并明确四层两维和稳定 Provider Config。
 4. 预算直接父事实 `collection_runs`、`contents`、`provider_requests/provider_request_attempts` 与 `provider_configs` 已进入 main；预算表不依赖尚未批准的 Scheduler misfire 值，因此 Scheduler 门禁不阻塞本单元。
 
 # 方案比较
@@ -86,63 +86,80 @@ DDL 可以先完成，但无法证明“无预算绝不发真实请求”，会�
 
 不能跨 Worker 原子约束、无法处理崩溃后的 unknown 计费，也不具备数据库审计链，违反当前 Blueprint。
 
-# 实施任务
+# 实施结果
 
-1. Red：先加入预算 Requirement、PostgreSQL reserve/并发/终态/审计、Dispatch fail-closed 测试与独立 CI；实际观察因生产预算模块/Migration 缺失而失败。
-2. Green：最小增加 Budget 模型/Service、Collection Owner Tables、PostgreSQL Repository 和 `20260815_0012`。
-3. Dispatch：在现有 Provider Persistence 中增加稳定 Config 关联与 billable Attempt；发送前验证 Reservation，终态同事务 settle/release/unknown；不改一次发送边界。
-4. Refactor：只消除本 Change 新代码的重复和质量问题，不整理无关模块。
-5. 文档：同步 Collection README、Blueprint 03 与 Blueprint README；不得把本单元完成写成整个 Stage 7 完成。
-6. Review/集成：需求符合性 → 代码质量 → PR CI → merge → main CI → Change done/archive → 删除本任务分支。
+1. Red：提交 L3 Change、预算 Requirement、PostgreSQL reserve/并发/终态/审计、Dispatch fail-closed 测试与独立 CI；Run `31872227188` Unit Job 因 `aima_ugc.modules.collection.provider_budget` 尚不存在而退出 2，依赖安装/锁检查先成功，确认是正确功能 Red。
+2. Green：新增 Budget 模型/Service、Collection Owner Tables、PostgreSQL Repository 和 `20260815_0012`；为 Provider Request 增加兼容可空的稳定 Config 关联，并新增 billable `estimated` Attempt 创建路径。
+3. Dispatch/Recovery：正常发送和遗留 `dispatching` 恢复共享预算终态持久化 helper；发送前必须通过 Job Fence + 完整 Reservation 检查，未通过时不调用 Transport。
+4. Refactor/兼容：保持旧 `not_billable` Repository 调用兼容；修正 Reservation replay 返回顺序、Ruff 格式/导入和 mypy Literal/参数类型，不降低测试或静态门禁。
+5. 文档：同步 Collection README、Blueprint 03 与 Blueprint README；只描述预算单元已建立，不宣称整个 Stage 7 完成。
+6. 分支验证：Run `31873153498` 的 Unit/PostgreSQL/Quality 三个 Job 全部成功；Quality 实际执行 Ruff、mypy、Contract、Architecture、Table Ownership、Secret Scan 和 Docs。文档最终提交后的 PR/merge CI 仍待完成。
 
-# 验证计划
+# Review
+
+## 阶段一：需求符合性
+
+- 当前差异只覆盖稳定 Provider Config、预算 Ledger、Dispatch/Recovery 接线、对应测试/Migration/CI/文档；没有实现 Plan、Occurrence、Scheduler、前端或真实 Provider Transport。
+- 历史 Revision 未改写；新 Revision 父节点固定 `20260815_0011`。
+- Blueprint 03 原有三层预算摘要与较新的 Blueprint 08 冲突，已按当前批准四层模型和机器事实同步；没有把未批准 Scheduler 值补进 Schema。
+- Provider Secret、API Key、Token、真实价格均未进入代码、测试数据或 Change。
+
+## 阶段二：代码质量
+
+- Reserve 使用 PostgreSQL 行锁和单事务全有或全无；同 Provider Config 的当前 enabled 账户按稳定 ID 顺序加锁，正确性优先，代价是同 Config 下不相关 Scope 的 reserve 可能被额外串行化，属于后续测量后再优化的性能风险，不影响当前正确性。
+- `not_sent/released`、`unknown/unknown_amount`、`completed/settled actual` 与 Provider Attempt 终态同事务提交；Recovery 复用同一 helper，避免崩溃后预算悬挂。
+- 历史/测试 `not_billable` Attempt 不强制预算；新的 billable Attempt 必须显式绑定 Provider Config 和 estimated Billing。
+- Exclusion Constraint 依赖 PostgreSQL `btree_gist`；Migration 只创建缺失 Extension，downgrade 不删除可能被共享使用的 Extension。
+- 账户聚合 drift 有显式审计错误，不自动篡改账本掩盖问题。
+- PR 广域回归、合并后 main 复验仍是未完成门禁，因此当前 Change 仅为 `ready_for_review`。
+
+# 验证证据
 
 ## Red
 
-- `uv run pytest tests/unit/collection/test_provider_budget.py -q`
-- `uv run pytest tests/integration/collection/test_provider_budget.py -q`
-- GitHub Actions `Stage 7 Provider Budget Ledger` 的 Unit/PostgreSQL Job。
+- `uv run pytest tests/unit/collection/test_provider_budget.py -q`：CI 收集阶段因生产预算模块不存在失败，退出码 2；Run `31872227188`。
 
-## Green / Regression
+## 已通过的 Green / Regression
 
 - `uv lock --check`
 - `uv sync --locked`
-- `uv run pytest tests/unit/collection tests/unit/content tests/contracts/test_provider_v1.py -q`
-- `uv run pytest tests/integration/collection tests/integration/content tests/integration/database/test_provider_config_repository.py -q`
-- `uv run alembic upgrade head && uv run alembic current && uv run alembic check`
-- `uv run alembic downgrade 20260815_0011 && uv run alembic upgrade head && uv run alembic check`
-- `uv run alembic downgrade base && uv run alembic upgrade head && uv run alembic check`
-- `uv run ruff format --check backend tests scripts migrations/versions`
-- `uv run ruff check backend tests scripts migrations/versions`
-- `uv run mypy backend/src`
-- `uv run python scripts/contracts/generate.py --check`
-- `uv run python scripts/contracts/check_compatibility.py`
-- `uv run python scripts/quality/check_architecture.py`
-- `uv run python scripts/quality/check_table_ownership.py`
-- `uv run python scripts/quality/scan_secrets.py`
-- `uv run python scripts/quality/check_docs.py`
+- Stage 7 Budget Unit：预算 Unit + Stage 5C/5D Provider Persistence/Dispatch Unit。
+- Stage 7 Budget PostgreSQL：`upgrade head`、`alembic current/check`、预算/Provider Repository/Dispatch Integration、`0011 → head`、`base → head` 往返。
+- Stage 7 Budget Quality：Ruff format/check、mypy、Contract generate/compatibility、Architecture、Table Ownership、Secret Scan、Docs。
+- 已确认 Green Run：`31873153498`。
+
+## 待合并门禁
+
+- PR 实际触发的所有相关 Workflow/Job 全绿；
+- 合并后 main HEAD 包含本单元；
+- main 上相关 CI 新鲜全绿；
+- Change 再更新 `done` 并移入 archive；
+- 本任务分支在 archive 合并后清理。
 
 # 兼容、Migration、部署与回滚
 
-- 兼容：新增表与 `provider_requests.provider_config_id` 可空列；历史不计费 Request/Attempt 保持可读可回归。新 billable 路径必须显式绑定 Provider Config。
+- 兼容：新增 `provider_requests.provider_config_id` 可空列；历史/不计费 Request/Attempt 保持可读可回归。新 billable 路径必须显式绑定 Provider Config。
 - Migration：新增 `20260815_0012`，父 Revision 固定 `20260815_0011`；不改写历史 Revision。
-- 部署：使用 billable Provider Dispatch 前必须先升级到 `0012` 并配置覆盖当前时刻的账户；账户缺失时按设计关闭失败，不降级成无预算发送。
+- 部署：使用 billable Provider Dispatch 前必须先升级到 `0012` 并配置覆盖调用时刻的账户；账户缺失时按设计关闭失败，不降级成无预算发送。
 - 回滚：结构可 downgrade 到 `0011`；若新表已有业务账本，downgrade 会删除 Budget 数据且移除 Request Config 关联，执行前必须备份/导出，不能宣称无损回滚。
 
 # 安全、性能与运维风险
 
-- Budget 仅保存 UUID、范围、周期、额度和费用数字，不保存 Credential；Secret Scan 必须继续通过。
-- reserve 通过稳定顺序锁账户，避免并发超扣和交叉死锁；测试必须覆盖同额度下两个并发 Attempt 只有一个成功。
-- 实际费用超过估算时必须保留真实 settled 数字并阻断后续额度，不允许截断到上限制造假账。
+- Budget 仅保存 UUID、范围、周期、额度和费用数字，不保存 Credential；Secret Scan 继续作为 CI 门禁。
+- reserve 为保证稳定锁序当前会锁同 Provider Config 在调用时刻 enabled 的账户，再筛选必需键；这可能增加高并发串行化，后续只有在真实负载证明必要时再收窄锁查询，不能以牺牲并发正确性换优化。
+- 实际费用超过估算时保留真实 settled 数字并阻断后续额度，不允许截断到上限制造假账。
 - `unknown_amount` 是保守容量占用，需要未来独立账单/人工对账能力才能释放；本 Change 不伪造自动 reconciliation。
+- `btree_gist` 需要 Migration 账号具备首次创建 Extension 的权限；生产部署前应在目标 PostgreSQL 权限基线中确认。
 
 # Git
 
 - 基线 main：`d44397ae076b5502de310f6f617c85457131d7be`
 - 分支：`feature/stage7-provider-budget-ledger`
 - 用户本地工作区：当前宿主不可见，不能确认 modified/staged/untracked/未推送提交
-- Red Commit：待生成
+- Red Commit：`ebc8f220ce73bd454f45102fca154d7979dd7665`
+- 核心 Green Commit：`3b40b308a893a6cf9db7d938906047d296ac26ba`
+- 后续兼容/质量/文档提交：均在同一任务分支，未重写历史
 - PR：待创建
-- CI：待 Red/Green 新鲜执行
+- CI：分支实现 Run `31873153498` 已 Green；PR/合并后 CI 待执行
 - 合并：未合并
-- Change：active；未满足完成条件，不得归档
+- Change：`ready_for_review`；未满足 main 集成条件，不得归档
