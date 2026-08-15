@@ -83,7 +83,7 @@ def count(raw: dict[str, Any], *keys: str) -> tuple[int | None, bool]:
             return None, False
         try:
             parsed = int(value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None, False
         return (parsed if parsed >= 0 else None), parsed >= 0
     return None, False
@@ -121,7 +121,7 @@ def parse_timestamp(value: object) -> datetime | None:
                 return parsed_iso.astimezone(UTC)
             try:
                 parsed_mail = parsedate_to_datetime(text)
-            except (TypeError, ValueError, OverflowError):
+            except TypeError, ValueError, OverflowError:
                 parsed_mail = None
             if parsed_mail is not None and parsed_mail.tzinfo is not None:
                 return parsed_mail.astimezone(UTC)
@@ -132,7 +132,7 @@ def parse_timestamp(value: object) -> datetime | None:
         numeric /= 1000
     try:
         return datetime.fromtimestamp(numeric, tz=UTC)
-    except (OverflowError, OSError, ValueError):
+    except OverflowError, OSError, ValueError:
         return None
 
 
