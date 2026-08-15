@@ -11,7 +11,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import Select
 
 from aima_ugc.contracts.provider import ProviderAttemptV1
-from aima_ugc.modules.collection.provider_budget import ProviderBudgetService
+from aima_ugc.modules.collection.provider_budget import (
+    ProviderBudgetService,
+    completed_budget_settlement_amount,
+)
 from aima_ugc.modules.collection.provider_dispatch import ProviderDispatchPreparation
 from aima_ugc.modules.collection.provider_persistence import (
     ProviderAttemptRecord,
@@ -284,10 +287,22 @@ def _finalize_provider_and_artifact(
         attempt=attempt,
         raw_artifact_id=raw_artifact_id,
     )
+    budget_settlement_cost = attempt.billing.actual_cost
+    if budget_status == "completed" and attempt.billing.status != "not_billable":
+        if attempt.billing.currency is None:
+            raise ValueError("completed 计费 Attempt 缺少 currency")
+        budget_settlement_cost = completed_budget_settlement_amount(
+            dimension="monetary_cost",
+            reserved_amount=attempt.billing.estimated_cost,
+            billing_status=attempt.billing.status,
+            actual_cost=attempt.billing.actual_cost,
+            billing_currency=attempt.billing.currency,
+            account_unit=attempt.billing.currency,
+        )
     ProviderBudgetService(PostgresProviderBudgetRepository(session)).finalize_attempt(
         provider_request_attempt_id=attempt.attempt_id,
         dispatch_status=budget_status,
-        actual_cost=attempt.billing.actual_cost,
+        actual_cost=budget_settlement_cost,
         currency=attempt.billing.currency,
     )
     if raw_artifact_id is not None:
