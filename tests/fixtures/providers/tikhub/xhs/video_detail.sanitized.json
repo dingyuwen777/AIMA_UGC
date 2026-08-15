@@ -1,0 +1,35 @@
+{
+  "data": {
+    "data": [
+      {
+        "id": "xhs-note-video-1",
+        "title": "脱敏视频标题",
+        "desc": "脱敏视频正文",
+        "type": "video",
+        "time": 1720000000,
+        "last_update_time": 1720000100,
+        "liked_count": 200,
+        "comments_count": 40,
+        "collected_count": 50,
+        "shared_count": 15,
+        "view_count": 2000,
+        "ip_location": "上海",
+        "user": {
+          "userid": "xhs-user-video-1",
+          "nickname": "脱敏视频用户"
+        },
+        "images_list": [],
+        "topics": [],
+        "video_info_v2": {
+          "media": {
+            "video": {
+              "duration": 85,
+              "height": 1920,
+              "width": 1080
+            }
+          }
+        }
+      }
+    ]
+  }
+}
