@@ -17,7 +17,7 @@ from aima_ugc.platform.database import DatabaseRuntime
 from sqlalchemy.exc import IntegrityError
 
 
-def test_keyword_catalog_round_trip_and_normalized_text_uniqueness() -> None:
+def test_keyword_catalog_round_trip_and_database_constraints() -> None:
     runtime = DatabaseRuntime(load_settings())
     session = runtime.new_session()
     pack_id = uuid4()
@@ -64,7 +64,7 @@ def test_keyword_catalog_round_trip_and_normalized_text_uniqueness() -> None:
         assert created_item == item
         assert loaded_items == [item]
 
-        duplicate = Keyword(
+        duplicate_keyword = Keyword(
             id=uuid4(),
             text="同一规范化身份的另一种原文",
             normalized_text=keyword.normalized_text,
@@ -72,7 +72,23 @@ def test_keyword_catalog_round_trip_and_normalized_text_uniqueness() -> None:
         )
         with pytest.raises(IntegrityError):
             with session.begin():
-                repository.create_keyword(duplicate)
+                repository.create_keyword(duplicate_keyword)
+
+        with pytest.raises(IntegrityError):
+            with session.begin():
+                repository.add_item(item)
+
+        missing_pack_item = KeywordPackItem(
+            pack_id=uuid4(),
+            keyword_id=keyword_id,
+            platform="xhs",
+            priority=20,
+            enabled=True,
+            note="用于验证外键",
+        )
+        with pytest.raises(IntegrityError):
+            with session.begin():
+                repository.add_item(missing_pack_item)
 
         assert keyword_packs_table.info["owner"] == "system"
         assert keywords_table.info["owner"] == "system"
@@ -84,6 +100,15 @@ def test_keyword_catalog_round_trip_and_normalized_text_uniqueness() -> None:
             "priority",
             "enabled",
             "note",
+        }
+        assert tuple(column.name for column in keyword_pack_items_table.primary_key.columns) == (
+            "pack_id",
+            "keyword_id",
+            "platform",
+        )
+        assert {foreign_key.target_fullname for foreign_key in keyword_pack_items_table.foreign_keys} == {
+            "keyword_packs.id",
+            "keywords.id",
         }
     finally:
         session.close()
