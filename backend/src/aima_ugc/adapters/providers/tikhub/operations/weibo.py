@@ -12,7 +12,7 @@ _SUB_COMMENTS_PATH = "/api/v1/weibo/web_v2/fetch_post_sub_comments"
 
 _SEARCH_TYPES = {
     "general": 1,
-    "realtime": 61,
+    "latest": 61,
     "hot": 60,
     "video": 64,
     "image": 63,
