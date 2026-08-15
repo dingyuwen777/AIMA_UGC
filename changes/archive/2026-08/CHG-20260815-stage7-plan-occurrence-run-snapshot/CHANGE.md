@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260815-stage7-plan-occurrence-run-snapshot
 title: 建立 Stage 7 Plan、Occurrence 与 Run Snapshot 父事实
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: feature/stage7-plan-occurrence-run-snapshot
 created: 2026-08-15
@@ -86,42 +86,19 @@ Plan/Platform、Plan/Keyword Pack 使用真实 FK 关联；平台变化较大的
 
 # 公共接口与兼容策略
 
-- 本 Change 不新增公开 HTTP API、OpenAPI 或前端 Client，因此 `contracts: []`；Contract 生成与兼容检查必须零漂移。
+- 本 Change 不新增公开 HTTP API、OpenAPI 或前端 Client，因此 `contracts: []`；Contract 生成与兼容检查零漂移。
 - `CollectionExecutionService.create_run` 仅增加可选 `manual_plan_id/occurrence_id`，原有 `manual/api/backfill` 调用保持兼容。
 - 数据库通过追加 `0013` 演进；不修改历史 Revision。
 - `scheduled` 是新增合法 trigger，只能在 `occurrence_id` 存在时提交；旧 trigger 语义不变。
 
 # 安全、性能与运维风险
 
-- 安全：Plan 平台配置入口递归拒绝常见 Secret 形态字段；真正凭据仍只通过 Provider Config `secret_ref` 引用；仓库 Secret Scan 必须通过。
+- 安全：Plan 平台配置入口递归拒绝常见 Secret 形态字段；真正凭据仍只通过 Provider Config `secret_ref` 引用；仓库 Secret Scan 通过。
 - 并发/一致性：Occurrence 唯一键、Job/Occurrence 唯一关系与 deferred constraint 在事务提交点防止孤儿、Job 不一致和 skipped→Run 反向关系。
 - 性能：本 Change 只建立父事实；关键关系由 PK/Unique/FK 覆盖当前按 Plan/Job/Occurrence 的写入与定位。Scheduler 扫描/抢占模式尚未批准，因此不提前为未知查询模式增加索引。
-- 运维：新增 PL/pgSQL constraint function/trigger，Migration 与回滚必须在 PostgreSQL 18.4 真实执行；回滚会删除本 Change 新增 Plan/Occurrence 数据，生产使用后不能无数据处置直接 downgrade。
+- 运维：新增 PL/pgSQL constraint function/trigger，Migration 与回滚已在 PostgreSQL 18.4 真实执行；回滚会删除本 Change 新增 Plan/Occurrence 数据，生产使用后不能无数据处置直接 downgrade。
 
-# 用户确认的上游决策
-
-- 本次用户已明确授权完成当前正式阶段单元的分支、Change、代码、Migration、测试、PR、CI、合并和归档流程。
-- Scheduler 的 `misfire_policy`、`max_catch_up_runs` 和停机补跑成本/容量仍未获得业务决策，本 Change 不替用户选择默认语义。
-- TikHub 凭据只允许用于受控验证，不得进入代码、Change、日志或 CI 明文；本 Change 不需要真实付费 Provider 调用来证明数据库父事实。
-
-# Red → Green → Refactor
-
-[步骤 1：Red]
-→ 修改范围：`tests/unit/collection/`、`tests/integration/collection/`、Stage 7 专项 workflow
-→ 预期结果：Plan/Occurrence/Run Snapshot 测试因生产实现或新表不存在而失败。
-→ 验证方式：分支 GitHub Actions 新鲜失败 Run，确认失败原因属于目标缺失。
-
-[步骤 2：Green]
-→ 修改范围：Collection Domain/Table/Postgres Repository、`database_schema.py`、`migrations/versions/20260815_0013_stage7_plan_occurrence_run_snapshot.py`
-→ 预期结果：目标父事实、兼容 Run 创建和 Deferred 一致性约束成立。
-→ 验证方式：专项 Unit/PostgreSQL；`0012→head`、`base→head`、round trip、`alembic check`。
-
-[步骤 3：Refactor 与文档]
-→ 修改范围：Collection README、Blueprint README、Change
-→ 预期结果：长期文档只描述当前真实能力，并明确 Scheduler 仍受决策门禁阻塞。
-→ 验证方式：Ruff、mypy、Contract、Architecture、Table Ownership、Secret Scan、Docs、diff 两阶段 Review。
-
-# 新鲜验证证据
+# Red → Green → Refactor 证据
 
 ## Red
 
@@ -131,14 +108,22 @@ GitHub Actions run `31887206516`：
 - PostgreSQL Job 先成功升级到当时 head `20260815_0012` 且 `alembic check` 无漂移，再因 Planning Repository 尚不存在失败。
 - Red 由目标生产能力缺失触发，不是环境或旧 Migration 故障。
 
-## Green / Refactor 最终分支证据
+## 最终分支 Green / Refactor
 
 GitHub Actions run `31888242072`，branch head `ae81c222fd309ddeb26b052f06f689b03812f09f`：
 
 - `Stage 7 Plan Unit`：`17 passed in 1.30s`，0 failed，0 skipped。
 - `Stage 7 Plan PostgreSQL`：`20260815_0013 (head)`，`alembic check` 无新操作；专项与既有 Collection Repository 合计 `11 passed in 0.72s`；随后 `0012 → head` 与 `base → head` downgrade/upgrade 均再次 `alembic check` 无 drift。
 - `Stage 7 Plan Quality`：Ruff format/check 通过；mypy `Success: no issues found in 109 source files`；Contract generate/compatibility、Architecture（112 files）、Table Ownership（28 mapped tables）、Secret Scan（180 files）、Docs（33 Markdown files）全部通过。
-- PostgreSQL 日志中的 constraint/FK/unique 错误来自预期负向测试；对应 pytest Job 结论为 success。
+
+## PR 与 main 集成
+
+- PR：`#53`，head `638b8ee468f37ce82f21180d909dc47c3c4d52cc`。
+- PR 级实际触发 workflow：11/11 success，包括主 CI、Stage 4、Stage 5A—5D、Stage 6、Stage 7 Provider Config/Keyword Packs/Budget 与本 Change 专项。
+- 合并 commit：`34544ca732e6652ce9847a49bddb799e7d98b4e0`。
+- 合并后 main push 对该 merge commit 再次触发 11 个 workflow，全部进入完成状态且未出现 failure/cancelled/timed_out/action_required/skipped/neutral 等非成功结论。
+- main `Stage 7 Plan Occurrence Run Snapshot` run `31888469521`：Unit、PostgreSQL、Quality 三个 Job 均 `success`；`0013` Migration 已在 main 可读。
+- main Stage 5D run `31888469788`、Stage 4 run `31888469282`、Stage 7 Provider Budget run `31888468995`、Stage 7 Keyword Packs run `31888469185` 等相关回归均 `success`。
 
 # 两阶段 Review
 
@@ -157,7 +142,7 @@ GitHub Actions run `31888242072`，branch head `ae81c222fd309ddeb26b052f06f689b0
 - Migration：`0012→0013`、`base→head`、downgrade/upgrade、drift 均通过。
 - 并发：关系身份由数据库 Unique/FK/constraint 保护；本 Change 不实现未批准 Scheduler 并发策略。
 - 资源生命周期：Repository 不自行提交，事务由调用方持有；集成测试显式关闭 Session/Runtime。
-- 未发现严重或重要问题需要阻止 Review。
+- 未发现严重或重要问题需要阻止合并。
 
 # 文档影响
 
@@ -169,15 +154,16 @@ GitHub Actions run `31888242072`，branch head `ae81c222fd309ddeb26b052f06f689b0
 
 未修改 `docs/blueprint/03-数据库与文件存储.md`：实际实现符合其已批准结构，无设计变化；不为制造变更痕迹改写长期设计。
 
-# Git / PR 状态
+# Git 结果
 
 - 基线 main：`e453a3467ccfed61a81981acbc9cfae489e3afae`。
-- 任务分支：`feature/stage7-plan-occurrence-run-snapshot`。
-- 合并前重新检查 main 仍为基线 HEAD，Open PR 为 0，未发现新的远端并行冲突。
-- 当前状态：代码、测试、Migration、文档和分支 CI 已满足进入 PR Review 的条件；尚未合并，因此本 Change 仍不能标记 `done`。
+- 实现分支：`feature/stage7-plan-occurrence-run-snapshot`。
+- 实现 PR：`#53`，已通过正常 merge commit 合入 main。
+- 集成 main：`34544ca732e6652ce9847a49bddb799e7d98b4e0`，合并后相关 CI 已重新验证成功。
+- Change 仅在上述集成证据成立后才切换为 `done` 并移入本归档路径。
 
 # 回滚与部署
 
 - Migration 为追加式 `0013`；不改写历史 Revision。
 - 回滚通过 `alembic downgrade 20260815_0012` 删除本 Change 新增父事实/列；生产若已有 Plan/Occurrence 数据，回滚前必须确认数据处置，不能静默丢数据。
-- 不部署生产环境；数据库角色继续使用现有 Migration 权限。
+- 本轮未部署生产环境；数据库角色继续使用现有 Migration 权限。
