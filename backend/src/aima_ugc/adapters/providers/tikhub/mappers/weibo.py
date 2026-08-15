@@ -93,16 +93,36 @@ def map_comment(
         raise ValueError("微博评论必须由请求上下文提供 external_content_id")
     external_comment_id = required_string(raw, "idstr", "mid", "id")
 
-    author, _ = _map_author(first_dict(raw, "user"))
-    like_count, _ = count(raw, "like_counts")
-    reply_count, _ = count(raw, "total_number")
+    observed_fields: list[str] = []
+    text = optional_string(raw, "text")
+    if text is not None:
+        observed_fields.append("text")
+
+    author, author_fields = _map_author(first_dict(raw, "user"))
+    observed_fields.extend(f"author.{field}" for field in author_fields)
+
+    like_count, like_observed = count(raw, "like_counts")
+    reply_count, reply_observed = count(raw, "total_number")
+    if like_observed:
+        observed_fields.append("metrics.like_count")
+    if reply_observed:
+        observed_fields.append("metrics.reply_count")
+
+    published_at = timestamp(raw, "created_at")
+    if published_at is not None:
+        observed_fields.append("published_at")
 
     if is_root:
         root_comment_id = external_comment_id
         parent_comment_id = None
+        observed_fields.extend(("root_comment_id", "parent_comment_id"))
     else:
         root_comment_id = context.root_comment_id or optional_string(raw, "rootidstr", "rootid")
         parent_comment_id = _weibo_parent_comment_id(raw, root_comment_id)
+        if root_comment_id is not None:
+            observed_fields.append("root_comment_id")
+        if parent_comment_id is not None:
+            observed_fields.append("parent_comment_id")
 
     return CanonicalCommentV1(
         platform="weibo",
@@ -111,11 +131,12 @@ def map_comment(
         root_comment_id=root_comment_id,
         parent_comment_id=parent_comment_id,
         author=author,
-        text=optional_string(raw, "text"),
-        published_at=timestamp(raw, "created_at"),
+        text=text,
+        published_at=published_at,
         observed_at=context.observed_at,
         metrics=CanonicalMetricsV1(like_count=like_count, reply_count=reply_count),
         source=source(context, item_locator),
+        observed_fields=observed_fields,
     )
 
 
