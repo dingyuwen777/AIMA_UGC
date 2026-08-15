@@ -1,4 +1,4 @@
-"""TikHub 抖音 Search V2 Raw → Canonical 纯 Mapper。"""
+"""TikHub 抖音 Raw → Canonical 纯 Mapper。"""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from typing import Any
 
 from aima_ugc.contracts.canonical import (
     CanonicalAuthorV1,
+    CanonicalCommentV1,
     CanonicalContentV1,
     CanonicalMetricsV1,
 )
@@ -31,7 +32,9 @@ def map_content(
     data = first_dict(raw, "data")
     item = first_dict(data, "aweme_info")
     if not item:
-        raise ValueError("抖音 Search item 缺少 data.aweme_info")
+        item = raw if "aweme_id" in raw else {}
+    if not item:
+        raise ValueError("抖音内容缺少 aweme_info/aweme_id")
 
     external_id = required_string(item, "aweme_id")
     observed_fields: list[str] = ["content_type"]
@@ -79,6 +82,57 @@ def map_content(
         source=source(context, item_locator),
         observed_fields=observed_fields,
     )
+
+
+def map_comment(
+    raw: dict[str, Any],
+    context: DouyinMappingContext,
+    *,
+    item_locator: str,
+    is_root: bool,
+) -> CanonicalCommentV1:
+    """把真实 App V3 comment/reply 映射为统一评论树节点。"""
+    external_comment_id = required_string(raw, "cid")
+    external_content_id = optional_string(raw, "aweme_id") or context.external_content_id
+    if external_content_id is None:
+        raise ValueError("抖音评论缺少 aweme_id 且上下文未提供 external_content_id")
+
+    text = optional_string(raw, "text")
+    author, _ = _map_author(first_dict(raw, "user"))
+    like_count, _ = count(raw, "digg_count")
+    reply_count, _ = count(raw, "reply_comment_total")
+    published_at = timestamp(raw, "create_time")
+
+    if is_root:
+        root_comment_id = external_comment_id
+        parent_comment_id = None
+    else:
+        root_comment_id = context.root_comment_id
+        parent_comment_id = _douyin_parent_comment_id(raw)
+
+    return CanonicalCommentV1(
+        platform="douyin",
+        external_content_id=external_content_id,
+        external_comment_id=external_comment_id,
+        root_comment_id=root_comment_id,
+        parent_comment_id=parent_comment_id,
+        author=author,
+        text=text,
+        published_at=published_at,
+        observed_at=context.observed_at,
+        metrics=CanonicalMetricsV1(like_count=like_count, reply_count=reply_count),
+        source=source(context, item_locator),
+    )
+
+
+def _douyin_parent_comment_id(raw: dict[str, Any]) -> str | None:
+    reply_to_reply_id = optional_string(raw, "reply_to_reply_id")
+    if reply_to_reply_id not in {None, "0"}:
+        return reply_to_reply_id
+    reply_id = optional_string(raw, "reply_id")
+    if reply_id not in {None, "0"}:
+        return reply_id
+    return None
 
 
 def _content_type(item: dict[str, Any]) -> str:
@@ -157,4 +211,4 @@ def _map_metrics(raw: dict[str, Any]) -> tuple[CanonicalMetricsV1, tuple[str, ..
     )
 
 
-__all__ = ["DouyinMappingContext", "map_content"]
+__all__ = ["DouyinMappingContext", "map_comment", "map_content"]
