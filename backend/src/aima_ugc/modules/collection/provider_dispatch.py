@@ -78,11 +78,17 @@ def _planned_billing_from_record(attempt: ProviderAttemptRecord) -> ProviderBill
         raise ValueError("dispatching Attempt 的 Billing 必须为 not_billable 或 estimated")
     if attempt.cost_currency is None:
         raise ValueError("estimated Attempt 缺少 cost_currency")
+    if attempt.cost_unit is None:
+        raise ValueError("estimated Attempt 缺少 cost_unit")
+    if attempt.unit_price_snapshot is None:
+        raise ValueError("estimated Attempt 缺少 unit_price_snapshot")
+    if attempt.actual_cost != 0:
+        raise ValueError("estimated Attempt 不得在发送前存在 actual_cost")
     return ProviderBillingV1(
         status="estimated",
         currency=attempt.cost_currency,
         unit=attempt.cost_unit,
-        unit_price_snapshot=attempt.unit_price_snapshot or Decimal("0"),
+        unit_price_snapshot=attempt.unit_price_snapshot,
         estimated_cost=attempt.estimated_cost,
         actual_cost=Decimal("0"),
     )
