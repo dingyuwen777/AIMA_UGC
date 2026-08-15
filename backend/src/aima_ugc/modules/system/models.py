@@ -64,3 +64,36 @@ class ProviderConfig:
         object.__setattr__(self, "display_name", validated.display_name)
         object.__setattr__(self, "base_url", validated.base_url)
         object.__setattr__(self, "secret_ref", validated.secret_ref)
+
+
+@dataclass(frozen=True, slots=True)
+class KeywordPack:
+    """可复用的关键词集合父事实。"""
+
+    id: UUID
+    name: str
+    description: str
+    enabled: bool
+    version: int
+
+
+@dataclass(frozen=True, slots=True)
+class Keyword:
+    """单个关键词事实；规范化身份由调用边界显式提供。"""
+
+    id: UUID
+    text: str
+    normalized_text: str
+    enabled: bool
+
+
+@dataclass(frozen=True, slots=True)
+class KeywordPackItem:
+    """词包内关键词的平台级关联属性。"""
+
+    pack_id: UUID
+    keyword_id: UUID
+    platform: str
+    priority: int
+    enabled: bool
+    note: str
