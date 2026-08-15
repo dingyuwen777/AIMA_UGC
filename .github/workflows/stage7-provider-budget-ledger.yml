@@ -52,6 +52,7 @@ jobs:
           uv run pytest \
             tests/unit/collection/test_provider_budget.py \
             tests/unit/collection/test_tikhub_pricing.py \
+            tests/unit/collection/test_provider_client.py \
             tests/unit/collection/test_provider_persistence.py \
             tests/unit/collection/test_provider_dispatch.py \
             -q
