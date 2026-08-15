@@ -1,0 +1,32 @@
+{
+  "code": 200,
+  "data": {
+    "photos": [
+      {
+        "photo_id": 100001,
+        "kwaiId": "kwai-detail-1",
+        "caption": "脱敏快手详情正文",
+        "timestamp": 1720000000000,
+        "time": "2026-08-15 09:30:00",
+        "type": 1,
+        "photo_status": 0,
+        "user_id": 100002,
+        "user_name": "脱敏用户",
+        "like_count": 100,
+        "comment_count": 20,
+        "collect_count": 30,
+        "share_count": 10,
+        "forward_count": 3,
+        "view_count": 1000,
+        "downloadCount": 2,
+        "duration": 11500,
+        "cover_thumbnail_urls": [
+          "https://example.invalid/kuaishou/cover-1"
+        ],
+        "main_mv_urls": [
+          "https://example.invalid/kuaishou/video-1"
+        ]
+      }
+    ]
+  }
+}
