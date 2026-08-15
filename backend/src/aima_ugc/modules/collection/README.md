@@ -5,7 +5,7 @@ Stage 5A Provider-neutral Request/Attempt、一次发送 Transport、Raw Artifac
 Collection Run/Scope PostgreSQL 父事实，Stage 5C Provider Request/Attempt 持久化基础，Stage 5D
 不计费 Provider-neutral Dispatch、Raw 关联与崩溃恢复基础，Stage 6 小红书 TikHub App V2
 Operation/Mapper、Candidate/Ingestion 追加账本和已存 Raw 回放纵切，以及 Stage 7 的
-Decision/Capability、Provider Config/Platform Route 机器基础、抖音和微博 TikHub 请求/分页 Operation。
+Decision/Capability、Provider Config/Platform Route 机器基础、抖音/微博/B站 TikHub 请求/分页 Operation。
 
 ## 生产入口
 
@@ -35,6 +35,9 @@ Decision/Capability、Provider Config/Platform Route 机器基础、抖音和微
 - `aima_ugc.adapters.providers.tikhub.operations.weibo`：按已批准 Web Search + App Detail/一级评论 + Web V2
   二级评论职责定义微博请求；搜索只推进外部提供的非空页 observation，一级评论只按官方
   `data.moreInfo.params.max_id` 取游标，二级评论不猜未被 Fixture 证明的响应 max_id 路径；
+- `aima_ugc.adapters.providers.tikhub.operations.bilibili`：当前 `main` 已有 B站 App Search/Detail/Comments/
+  Reply 请求与保守分页机器实现；其独立 Active Change 尚未闭环，因此这里只记录代码事实，不替代该 Change
+  的 Review、CI、文档同步或归档；
 - `aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu`：把已确认 Raw/采集上下文纯映射为
   Canonical Content/Comment；不发 HTTP、不读数据库；
 - `aima_ugc.modules.collection.providers.ProviderClient`：每个 Attempt 最多调用一次注入的
@@ -130,11 +133,14 @@ ProviderConfigV1 / System ProviderConfig
 uv run pytest tests/unit/collection/test_xhs_tikhub_operation.py -q
 uv run pytest tests/unit/collection/test_douyin_tikhub_operation.py -q
 uv run pytest tests/unit/collection/test_weibo_tikhub_operation.py -q
+uv run pytest tests/unit/collection/test_bilibili_tikhub_operation.py -q
 ```
 
 抖音 Operation 测试证明批准 endpoint、业务参数→Provider 参数映射、Search 分页状态，以及 App V3 评论/回复不覆盖 TikHub 官方 `count` 默认值；它不证明抖音 Raw 字段 Mapper、评论数组结构、稳定增量停止或真实 Provider 兼容。
 
 微博 Operation 测试证明当前官方 Search 参数映射、详情/一级评论 `status_id`、一级评论官方 max_id 路径和二级评论 `id/max_id` 请求；搜索列表字段、二级评论返回游标路径、Raw→Canonical Mapper 和真实兼容仍需合法脱敏 Fixture/Probe。
+
+B站 Operation 测试已经出现在当前 `main` 的合并测试基线上；B站 Active Change 仍是独立生命周期，微博 Change 不替它宣称完成。
 
 ## 独立验证
 
@@ -158,8 +164,9 @@ Fake Transport 不访问网络、不需要 Token、不产生费用；Raw 测试�
 - 小红书 TikHub App V2 已有 Operation/Mapper/Ingestion 完整纵切，但真实生产 HTTP Transport 尚未接入；
 - 抖音已建立 Search V2 + App V3 Detail/Comments/Replies 请求构造和基础分页状态机，但没有 Douyin Mapper、合法脱敏非空真实 Fixture、Real Probe、Capability/默认 Registry，因此不能宣称抖音平台已兼容；
 - 微博已建立 Web Search + App Detail/Comments + Web V2 Sub-comments 请求构造和有证据的游标状态，但没有 Weibo Mapper、合法脱敏非空真实 Fixture、Real Probe、Capability/默认 Registry，搜索结果列表和二级游标响应路径也尚未由真实 Fixture 固化；
+- B站 Operation/保守分页代码已进入当前 `main`，但对应 B站 Active Change 仍为 `in_progress`；微博 Change 不接管其剩余 Review/CI/文档/归档工作，也不据此宣称 B站已兼容；
 - Stage 7 已有通用 Decision/Capability、Provider Config/Route Contract、System `provider_configs` 父事实和
-  当前 `tikhub + xhs` Registry；B站、快手仍只有目标设计，抖音/微博尚未达到可注册 Capability 的完整证据门禁；
+  当前 `tikhub + xhs` Registry；快手仍只有目标设计，抖音/微博/B站均尚未达到可注册 Capability 的完整证据门禁；
 - 当前 Provider Config 只保存 `secret_ref` 并复用 Stage 2 只读 Secret 文件边界；Stage 8 若提供浏览器凭据
   编辑，仍需独立建立安全可写 SecretStore/SecretService，读取接口不得回显原始 Secret；
 - XHS `get_note_comments` 当前仍缺合法脱敏非空真实评论 Fixture/Real Probe，虽然正式 Operation 使用
@@ -170,5 +177,5 @@ Fake Transport 不访问网络、不需要 Token、不产生费用；Raw 测试�
 - 除小红书外，没有其他平台的 Mapper/Candidate/Ingestion/Content/Comment 纵切；
 - 没有决定 Raw 的访问、保留、删除、备份和生产容量策略；
 - 真实 Provider Probe 默认不进入普通 CI；2026-08-14 的用户授权搜索 Probe 只确认当次 HTTP 200
-  空页包装/分页字段，不能用其或 Fake 结果宣称详情、评论或生产平台兼容。本轮抖音/微博 Operation 只使用
+  空页包装/分页字段，不能用其或 Fake 结果宣称详情、评论或生产平台兼容。本轮微博 Operation 只使用
   2026-08-15 重新核验的 TikHub 官方文档与自动化请求/分页测试，没有新增真实非空响应证据。
