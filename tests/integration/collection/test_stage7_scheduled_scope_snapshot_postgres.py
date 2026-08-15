@@ -84,7 +84,12 @@ def test_scheduler_freezes_keyword_pack_version_and_explicit_platform_scopes(
                 Keyword(id=uuid4(), text="爱玛", normalized_text=f"爱玛-{uuid4()}", enabled=True)
             )
             ev = keyword_repository.create_keyword(
-                Keyword(id=uuid4(), text="电动车", normalized_text=f"电动车-{uuid4()}", enabled=True)
+                Keyword(
+                    id=uuid4(),
+                    text="电动车",
+                    normalized_text=f"电动车-{uuid4()}",
+                    enabled=True,
+                )
             )
             keyword_repository.add_item(
                 KeywordPackItem(
@@ -174,9 +179,7 @@ def test_scheduler_freezes_keyword_pack_version_and_explicit_platform_scopes(
     try:
         run = session.execute(select(collection_runs_table)).mappings().one()
         scopes = (
-            session.execute(
-                select(collection_scopes_table).order_by(collection_scopes_table.c.id)
-            )
+            session.execute(select(collection_scopes_table).order_by(collection_scopes_table.c.id))
             .mappings()
             .all()
         )
