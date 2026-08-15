@@ -37,8 +37,6 @@ class KuaishouCursorPagination:
         normalized = returned_cursor.strip()
         if normalized == "":
             return cls("", False, "cursor_unavailable")
-        if normalized.lower() == "no_more":
-            return cls(normalized, False, "provider_exhausted")
         if normalized == previous_cursor:
             return cls(normalized, False, "pagination_not_advanced")
         return cls(normalized, True)
@@ -65,7 +63,7 @@ def build_video_comments_request(*, photo_id: str, pcursor: str = "") -> Kuaisho
     return KuaishouRequest(
         method="GET",
         path=_COMMENTS_PATH,
-        params={"photoId": _required_text(photo_id, "photo_id"), "pcursor": pcursor},
+        params={"photo_id": _required_text(photo_id, "photo_id"), "pcursor": pcursor},
     )
 
 
@@ -79,8 +77,8 @@ def build_video_sub_comments_request(
         method="GET",
         path=_SUB_COMMENTS_PATH,
         params={
-            "photoId": _required_text(photo_id, "photo_id"),
-            "rootCommentId": _required_text(root_comment_id, "root_comment_id"),
+            "photo_id": _required_text(photo_id, "photo_id"),
+            "root_comment_id": _required_text(root_comment_id, "root_comment_id"),
             "pcursor": pcursor,
         },
     )
