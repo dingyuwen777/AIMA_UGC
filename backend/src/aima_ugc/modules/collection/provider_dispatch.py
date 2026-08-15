@@ -144,4 +144,7 @@ class ProviderDispatchService:
             raw_artifact_id=captured.artifact.id,
             fence=fence,
         )
-        return ProviderDispatchOutcome(attempt=persisted, artifact=captured.artifact)
+        return ProviderDispatchOutcome(
+            attempt=persisted,
+            artifact=captured.artifact,
+        )
