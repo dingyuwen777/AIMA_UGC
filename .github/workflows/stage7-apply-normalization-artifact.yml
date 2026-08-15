@@ -45,11 +45,11 @@ jobs:
           ref: feature/stage7-completion
           fetch-depth: 2
 
-      - name: Verify apply workflow is directly based on verified preview head
+      - name: Verify apply workflow is directly based on approved branch state
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "f30159f2c66df82c61351bc039beee3702743617"
+          test "$(git rev-parse HEAD^)" = "f654c73e46988bb341221eafb6e3f5d0110f5a3d"
           changed="$(git diff --name-only HEAD^ HEAD)"
           test "${changed}" = ".github/workflows/stage7-apply-normalization-artifact.yml"
 
