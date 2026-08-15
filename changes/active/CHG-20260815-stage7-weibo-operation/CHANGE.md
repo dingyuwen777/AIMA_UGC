@@ -21,6 +21,8 @@ data_changes: []
 
 当前代码已经建立：Web Search 规范化业务参数映射与 page 状态、App Detail 请求、App 一级评论请求与官方 `data.moreInfo.params.max_id` 游标、Web V2 二级评论请求与不猜响应路径的 max_id 状态转换。Weibo Mapper、合法脱敏非空真实 Fixture、Real Provider Probe、Capability/默认 Registry 接线仍明确不在本单元结果中。
 
+本 Change 开发期间 `main` 并行前进并已出现 B站 Operation 机器代码；其 `CHG-20260815-stage7-bilibili-operation` 仍在 `changes/active/` 且状态 `in_progress`。微博 PR 不接管、完成或归档该 Change，只在自身已经修改的 Collection README/Blueprint 中兼容记录当前机器事实，避免合并微博时继续写入“B站尚无 Operation”的过期状态。
+
 # 成功标准
 
 - [x] 搜索固定使用 `GET /api/v1/weibo/web/fetch_search`；页码从 1 开始；规范化 `general/latest/hot/video/image/article` 映射当前官方 `search_type=1/61/60/64/63/21`。
@@ -31,10 +33,10 @@ data_changes: []
 - [x] 一级评论严格按官方 `$.data.moreInfo.params.max_id` 提取下一游标；返回空值或与上一次相同即停止，不猜评论数组字段。
 - [x] 二级评论固定使用 `GET /api/v1/weibo/web_v2/fetch_post_sub_comments`，`id` 表示根评论 ID，首次 `max_id=''`，后续使用返回 max_id；当前不覆盖可选 `count`。
 - [x] 二级评论只根据“上次 max_id + 已可靠提取的返回 max_id”做状态转换；当前官方文档没有稳定响应 JSON path，本单元不猜提取路径。
-- [x] Red 先因 `operations.weibo` 不存在而正确失败；首次 Green 后 Collection/Content/Provider Contract Unit 已有 `82 passed` 中间证据。
+- [x] Red 先因 `operations.weibo` 不存在而正确失败；Green 后已多次取得 Collection/Content/Provider Contract Unit 成功证据。
 - [x] 不新增 Mapper、Capability、Registry、Migration、数据库、依赖、公共 HTTP API 或前端代码。
-- [x] `docs/collection/weibo.md`、Collection README、Blueprint README/08 如实区分“Operation 已实现”与“Mapper/Fixture/Probe/Capability 待完成”。
-- [ ] 最终 PR head 重新通过相关 Unit/Quality/PostgreSQL/Stage 5A—5D/Stage 6/Stage 7/主 CI 后才转 Ready 并合并。
+- [x] `docs/collection/weibo.md`、Collection README、Blueprint README/08 如实区分“Operation 已实现”与“Mapper/Fixture/Probe/Capability 待完成”，并兼容记录当前 main 的 B站并行机器事实而不替其 Change 闭环。
+- [ ] 最终 PR head 基于当前最新 main 重新通过相关 Unit/Quality/PostgreSQL/Stage 5A—5D/Stage 6/Stage 7/主 CI 后才允许合并。
 
 # 范围
 
@@ -43,6 +45,7 @@ data_changes: []
 - Weibo App 一级评论请求和官方 `max_id` JSON path 提取/停止。
 - Weibo Web V2 二级评论请求和不猜响应结构的 cursor 状态转换。
 - Unit Test、平台文档、Collection README 与 Blueprint 当前实现状态同步。
+- 仅对本 Change 已触及的共享 README/Blueprint 做并行 main 兼容同步；不修改 B站生产代码、测试、平台文档或 Change 生命周期。
 
 # 非目标
 
@@ -52,6 +55,7 @@ data_changes: []
 - 不实现搜索结果/二级评论响应列表字段解析，直到合法脱敏真实 Fixture 证明字段。
 - 不实现 Plan、Budget、Scheduler、Stage 8 API/前端。
 - 不做 App/Web 之间的静默 fallback。
+- 不接管或归档并行 B站 Change。
 
 # 必须保持不变
 
@@ -87,24 +91,25 @@ PR #40 Red head `f71d48a19900b4af447494e034f654d6a811cb0a`，Stage 6 XHS Vertica
 
 失败来自本 Change 目标生产模块尚不存在，不是依赖、数据库或旧测试故障。
 
-## Green 中间证据
+## Green 与并行 main 中间证据
 
 首次 Green head `4555d0cd32e84efd9a012709e53625451409bb72`：
 
 - Stage 6 Unit 完整日志：`82 passed in 2.91s`，0 failed，退出码 0；
 - 同一 head 的 CI、Stage 5A、5B、5C、5D、Stage 6、Stage 7 共 7 条 workflow 全部 success。
 
-随后两阶段 Review 修正业务语义和默认值，最终 head 必须重新跑新鲜 CI 后才允许 Ready/merge。
+Review 修正业务语义/默认值并同步 Blueprint 后，head `ba469acd1b7068e65ffb722357b97fecce6c4bb2` 的 GitHub PR merge ref 已自动基于并行前进后的 `main=0e4a74674dc5027a9b65bddace49cb50974e4f7a`（其中包含 B站 Operation）运行；Stage 6 Unit 完整日志为 `93 passed in 2.94s`，0 failed，退出码 0。随后为避免共享文档覆盖/遗漏并行 B站机器事实，又做了最小兼容同步，因此仍需以最新 head 重跑最终新鲜 CI。
 
 # 两阶段 Review
 
 ## 第一阶段：需求符合性
 
-- 四个 endpoint 与 Blueprint 08 已批准主链一致，没有切换到其他 App/Web endpoint 或增加 fallback。
+- 四个微博 endpoint 与 Blueprint 08 已批准主链一致，没有切换到其他 App/Web endpoint 或增加 fallback。
 - Search 只冻结官方请求参数和 page 状态；没有在缺真实 Fixture 时猜搜索结果列表字段。
 - 一级评论只解析官方明确的 `data.moreInfo.params.max_id`；二级评论不猜返回 max_id JSON path。
 - 没有实现 Mapper、Capability、Registry、Plan、Budget、Scheduler、Stage 8 API/UI，非目标未越界。
 - Blueprint README/08、Collection README、微博平台文档均明确 Operation 完成不等于微博平台兼容完成。
+- 并行 `main` 出现 B站 Operation 后，只在本 Change 已经触及的共享文档中记录其机器存在和 Active/in_progress 状态，没有修改/接管 B站代码、测试、平台文档或 Change。
 
 ## 第二阶段：代码质量
 
@@ -112,6 +117,7 @@ PR #40 Red head `f71d48a19900b4af447494e034f654d6a811cb0a`，Stage 6 XHS Vertica
 - Review 发现最初 Search/一级评论默认分别为 `general/hot`，与已批准关键词监控“最新”及 `comment_sort=latest_if_supported` 默认策略不一致；已改为默认 `latest`，显式 `general/hot` 仍保留。
 - Operation 保持纯请求/分页逻辑，没有 DB、Artifact、Secret 或 Mapper 副作用。
 - 错误输入采用明确 ValueError；Provider 私有枚举集中在单一 Operation 模块。
+- 两份 Blueprint 的 EOF 换行噪声已清理；共享文档的并行 B站同步只描述当前事实，不宣称其 Change 完成。
 - 无依赖、锁文件、Migration、公共 Contract/API 或前端生成物变化。
 
 # 验证计划
@@ -140,11 +146,11 @@ uv run python scripts/quality/check_docs.py
 已同步：
 
 - `docs/collection/weibo.md`：当前 endpoint、AIMA→Provider 参数映射、分页已证明边界、未验证边界；
-- `backend/src/aima_ugc/modules/collection/README.md`：生产入口、独立验证和当前限制；
-- `docs/blueprint/README.md`：Stage 7 当前机器进度与剩余单元；
-- `docs/blueprint/08-采集策略与平台能力.md`：Operation Matrix、微博当前状态与 Stage 7 门禁。
+- `backend/src/aima_ugc/modules/collection/README.md`：微博生产入口、独立验证和当前限制，并兼容记录当前 main 已出现但尚未闭环的 B站 Operation；
+- `docs/blueprint/README.md`：Stage 7 当前机器进度、B站并行 Active Change 和剩余单元；
+- `docs/blueprint/08-采集策略与平台能力.md`：Operation Matrix、微博当前状态、B站并行机器状态与 Stage 7 门禁。
 
-Blueprint 的主 endpoint/业务设计没有改变；本 Change 只同步当前实现状态，并按既有跨平台业务语义统一 `latest`。
+Blueprint 的微博主 endpoint/业务设计没有改变；本 Change 只同步当前实现状态，并按既有跨平台业务语义统一 `latest`。并行 B站内容只修正文档事实，不改变或批准其独立方案。
 
 # 兼容、依赖、Migration、部署和回滚
 
@@ -152,15 +158,17 @@ Blueprint 的主 endpoint/业务设计没有改变；本 Change 只同步当前�
 - Migration/数据库：无变化。
 - 依赖/锁文件：无变化。
 - 部署：无变化，不新增进程/配置。
-- 回滚：回滚本 Change 的 Operation/测试/文档提交即可，无数据回滚。
+- 回滚：回滚本 Change 的微博 Operation/测试/文档差异即可，无数据回滚；共享文档中记录的 B站当前机器事实不能因回滚微博代码而错误删除，若届时 B站 Change 已推进需以当时 main 为准。
 
 # Git
 
-- 基线 main：`d12bcfcb454609b37408f8ff98531d6fd2a4e125`
+- 创建分支时基线 main：`d12bcfcb454609b37408f8ff98531d6fd2a4e125`
+- 并行前进后已观察 main：`0e4a74674dc5027a9b65bddace49cb50974e4f7a`（B站 Operation merge commit）
 - 分支：`feature/stage7-weibo-operation`
-- PR：#40，Draft；最终 CI 成功后转 Ready
+- PR：#40，当前 open/非 Draft；即使 UI 已是 Ready 状态，也不在最终 CI 成功前合并
 - 正确 Red：head `f71d48a19900b4af447494e034f654d6a811cb0a`，run `31857426164` / job `94944721799`
-- 中间 Green：head `4555d0cd32e84efd9a012709e53625451409bb72`，7 条相关 workflow success，Stage 6 Unit `82 passed`
+- 首次 Green：head `4555d0cd32e84efd9a012709e53625451409bb72`，7 条相关 workflow success，Stage 6 Unit `82 passed`
+- 并行 main merge-ref 中间验证：head `ba469acd1b7068e65ffb722357b97fecce6c4bb2`，Stage 6 Unit `93 passed`
 - 最终 PR CI：待最新 head 完成
 - 合并：未执行
 - 合并后 main 验证：未执行
