@@ -8,6 +8,7 @@ from aima_ugc.contracts.canonical import (
     CanonicalAuthorV1,
     CanonicalCommentV1,
     CanonicalContentV1,
+    CanonicalMediaV1,
     CanonicalMetricsV1,
 )
 
@@ -28,7 +29,7 @@ DouyinMappingContext = TikHubMappingContext
 def map_content(
     raw: dict[str, Any], context: DouyinMappingContext, *, item_locator: str
 ) -> CanonicalContentV1:
-    """把真实 Search V2 business_data item 映射为内容 Observation。"""
+    """把真实 Search V2 或 App V3 Detail 映射为内容 Observation。"""
     data = first_dict(raw, "data")
     item = first_dict(data, "aweme_info")
     if not item:
@@ -67,6 +68,10 @@ def map_content(
     if published_at is not None:
         observed_fields.append("published_at")
 
+    media = _map_media(item)
+    if media:
+        observed_fields.append("media")
+
     return CanonicalContentV1(
         platform="douyin",
         external_content_id=external_id,
@@ -78,6 +83,7 @@ def map_content(
         author=author,
         published_at=published_at,
         observed_at=context.observed_at,
+        media=media,
         metrics=metrics,
         source=source(context, item_locator),
         observed_fields=observed_fields,
@@ -164,6 +170,23 @@ def _content_type(item: dict[str, Any]) -> str:
     return "unknown"
 
 
+def _map_media(item: dict[str, Any]) -> list[CanonicalMediaV1]:
+    video = first_dict(item, "video")
+    if video:
+        duration, _ = count(video, "duration")
+        width, _ = count(video, "width")
+        height, _ = count(video, "height")
+        return [
+            CanonicalMediaV1(
+                media_type="video",
+                width=width,
+                height=height,
+                duration_ms=duration,
+            )
+        ]
+    return []
+
+
 def _map_author(raw: dict[str, Any]) -> tuple[CanonicalAuthorV1 | None, tuple[str, ...]]:
     if not raw:
         return None, ()
@@ -207,6 +230,7 @@ def _map_metrics(raw: dict[str, Any]) -> tuple[CanonicalMetricsV1, tuple[str, ..
         "comment_count": ("comment_count",),
         "favorite_count": ("collect_count",),
         "share_count": ("share_count",),
+        "repost_count": ("forward_count",),
         "play_count": ("play_count",),
         "download_count": ("download_count",),
     }
@@ -223,6 +247,7 @@ def _map_metrics(raw: dict[str, Any]) -> tuple[CanonicalMetricsV1, tuple[str, ..
             comment_count=values["comment_count"],
             favorite_count=values["favorite_count"],
             share_count=values["share_count"],
+            repost_count=values["repost_count"],
             play_count=values["play_count"],
             download_count=values["download_count"],
         ),
