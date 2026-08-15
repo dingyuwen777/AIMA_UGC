@@ -166,25 +166,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf dist
+          rm -rf dist .runtime/wheel-check
           uv build --wheel
-          python - <<'PY'
-          import sys
-          from pathlib import Path
-          from zipfile import ZipFile
+          uv venv .runtime/wheel-check
+          uv pip install \
+            --offline \
+            --python .runtime/wheel-check/bin/python \
+            dist/*.whl
+          .runtime/wheel-check/bin/python - <<'PY'
+          from importlib.resources import files
 
-          wheel = next(Path("dist").glob("*.whl")).resolve()
-          expected = "aima_ugc/adapters/providers/tikhub/pricing.toml"
-          with ZipFile(wheel) as archive:
-              names = set(archive.namelist())
-          if expected not in names:
-              raise SystemExit(f"wheel missing required pricing resource: {expected}")
-
-          sys.path.insert(0, str(wheel))
           from aima_ugc.adapters.providers.tikhub.pricing import load_tikhub_pricing
 
+          resource = files("aima_ugc.adapters.providers.tikhub").joinpath("pricing.toml")
+          if not resource.is_file():
+              raise SystemExit("installed wheel missing required pricing resource")
           catalog = load_tikhub_pricing()
           if catalog.provider != "tikhub" or catalog.default_price_dispatch_fallback:
-              raise SystemExit("wheel pricing catalog failed runtime validation")
-          print(f"verified wheel resource and runtime loader: {expected}")
+              raise SystemExit("installed wheel pricing catalog failed runtime validation")
+          print("verified installed wheel pricing resource and runtime loader")
           PY
