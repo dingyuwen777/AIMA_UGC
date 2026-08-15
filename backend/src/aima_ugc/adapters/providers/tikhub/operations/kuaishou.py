@@ -129,6 +129,26 @@ def extract_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     )
 
 
+def extract_detail_item(body: dict[str, Any]) -> dict[str, Any]:
+    """从真实 App Detail 的 data.photos 提取第一条作品。"""
+    data = body.get("data")
+    photos = data.get("photos") if isinstance(data, dict) else None
+    if not isinstance(photos, list) or not photos or not isinstance(photos[0], dict):
+        raise ValueError("快手详情响应缺少非空 data.photos")
+    return photos[0]
+
+
+def extract_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    """从真实 Web 一级评论响应提取 data.rootComments。"""
+    data = body.get("data")
+    if not isinstance(data, dict):
+        return ()
+    items = data.get("rootComments")
+    if not isinstance(items, list):
+        return ()
+    return tuple(item for item in items if isinstance(item, dict))
+
+
 def _required_text(value: str, field_name: str) -> str:
     normalized = value.strip()
     if not normalized:
@@ -144,5 +164,7 @@ __all__ = [
     "build_video_comments_request",
     "build_video_detail_request",
     "build_video_sub_comments_request",
+    "extract_comment_items",
+    "extract_detail_item",
     "extract_search_items",
 ]
