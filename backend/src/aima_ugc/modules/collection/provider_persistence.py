@@ -1,29 +1,28 @@
-"""Provider 逻辑 Request 与 reserved Attempt 的持久化入口。"""
+"""Provider Request/Attempt 的模块业务编排与持久化边界。"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import Protocol
+from typing import Literal, Protocol
 from uuid import UUID
 
-from aima_ugc.contracts.provider import ProviderBillingV1, ProviderRequestV1
+from aima_ugc.contracts.provider import ProviderAttemptV1, ProviderBillingV1, ProviderRequestV1
 
 
 @dataclass(frozen=True, slots=True)
 class ProviderRequestRecord:
-    """`provider_requests` 当前持久化快照。"""
+    """`provider_requests` 的稳定持久化快照。"""
 
     id: UUID
     scope_id: UUID
-    provider_config_id: UUID | None
     provider: str
     operation: str
     request_fingerprint: str
     request_params: dict[str, object]
     pagination_input: dict[str, object]
-    status: str
+    status: Literal["pending", "dispatching", "completed", "not_sent", "unknown"]
     attempt_count: int
     estimated_cost: Decimal
     actual_cost: Decimal
@@ -34,16 +33,17 @@ class ProviderRequestRecord:
     completed_at: datetime | None
     error_code: str | None
     error_detail: str | None
+    provider_config_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class ProviderAttemptRecord:
-    """`provider_request_attempts` 当前持久化快照。"""
+    """`provider_request_attempts` 的稳定持久化快照。"""
 
     id: UUID
     provider_request_id: UUID
     attempt_no: int
-    dispatch_status: str
+    dispatch_status: Literal["reserved", "dispatching", "completed", "not_sent", "unknown"]
     dispatch_started_at: datetime | None
     completed_at: datetime | None
     http_status: int | None
@@ -54,7 +54,7 @@ class ProviderAttemptRecord:
     cost_currency: str | None
     cost_unit: str | None
     unit_price_snapshot: Decimal | None
-    billing_status: str
+    billing_status: Literal["not_billable", "estimated", "confirmed", "unknown"]
     potential_duplicate_charge: bool
     error_code: str | None
     error_detail: str | None
@@ -63,18 +63,10 @@ class ProviderAttemptRecord:
 
 @dataclass(frozen=True, slots=True)
 class PreparedProviderAttempt:
-    """同一调用方事务中建立或复用的 Request 与 reserved Attempt。"""
+    """一次 Provider 执行前的 Request 与 Attempt 快照。"""
 
     request: ProviderRequestRecord
     attempt: ProviderAttemptRecord
-
-
-class ProviderScopeNotFoundError(LookupError):
-    """Provider Request 引用的 Collection Scope 不存在。"""
-
-
-class ProviderRequestLineageMismatchError(ValueError):
-    """Provider Contract 的 Run/平台/配置与数据库来源不一致。"""
 
 
 class ProviderPersistenceConflictError(RuntimeError):
@@ -158,11 +150,15 @@ class ProviderPersistenceService:
         attempt_id: UUID,
         billing: ProviderBillingV1,
     ) -> PreparedProviderAttempt:
-        """为真实外部调用建立稳定 Provider Config 关联和 estimated Attempt。"""
+        """为真实外部调用建立稳定 Provider Config 关联和发送前价格快照。"""
         if billing.status != "estimated":
             raise ValueError("billable Attempt 创建时 billing.status 必须为 estimated")
         if billing.currency is None:
             raise ValueError("billable Attempt 创建时必须声明 currency")
+        if billing.unit is None:
+            raise ValueError("billable Attempt 创建时必须声明 unit")
+        if billing.actual_cost != 0:
+            raise ValueError("billable Attempt 创建时不得预填 actual_cost")
         persisted_request = self.ensure_request(
             request,
             provider_config_id=provider_config_id,
