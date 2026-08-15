@@ -45,7 +45,7 @@ Capability / Registry 接线
 | `play_count` | `2` |
 | `danmaku_count` | `3` |
 
-分页规则：
+当前 Operation 保留既有业务默认：未显式指定 `sort_mode` 时使用 `general`。分页规则：
 
 ```text
 首屏：不发送 cursor
@@ -87,7 +87,7 @@ latest → mode=2
 hot    → mode=3
 ```
 
-首屏不发送 `next_offset`；后续页只在调用方已经从可靠响应事实提取到 offset 时发送 `next_offset`。当前 Operation **不猜**评论响应中的下一页 JSON 路径，也不解析评论数组。
+首屏不发送 `next_offset`；后续页只在调用方已经从可靠响应事实提取到 offset 时发送 `next_offset`。当前 Operation **不猜**评论响应中的下一页 JSON 路径，也不解析评论数组。若调用方给出的数字 offset 没有严格前进，分页状态机会保守停止，避免回退或重复造成循环。
 
 ## 7. 二级回复
 
@@ -137,7 +137,7 @@ B站 `mode=2` 只是“时间排序”请求能力。只有合法脱敏真实 Fi
 uv run pytest tests/unit/collection/test_bilibili_tikhub_operation.py -q
 ```
 
-该测试证明：当前 endpoint、搜索 `cursor/order`、官方搜索下一 cursor 路径、详情 `av_id/bv_id`、一级评论 `mode/next_offset`、二级回复 `root/next_offset` 和关闭失败输入校验。
+该测试证明：当前 endpoint、搜索 `cursor/order`、官方搜索下一 cursor 路径、详情 `av_id/bv_id`、一级评论 `mode/next_offset`、二级回复 `root/next_offset`、默认排序/分页保守兼容语义和关闭失败输入校验。
 
 它**不证明**：真实非空响应字段、Mapper、评论数组/分页响应路径、稳定增量停止、真实 TikHub 兼容、Capability/Registry 或完整生产采集。
 
