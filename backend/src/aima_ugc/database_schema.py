@@ -21,7 +21,11 @@ from aima_ugc.modules.content.tables import (
     content_versions_table,
     contents_table,
 )
-from aima_ugc.modules.system.tables import audit_events_table, system_settings_table
+from aima_ugc.modules.system.tables import (
+    audit_events_table,
+    provider_configs_table,
+    system_settings_table,
+)
 from aima_ugc.platform.database.metadata import metadata
 from aima_ugc.platform.jobs.tables import job_attempt_events_table, jobs_table
 from aima_ugc.platform.storage.tables import artifacts_table
@@ -45,6 +49,7 @@ __all__ = [
     "job_attempt_events_table",
     "jobs_table",
     "metadata",
+    "provider_configs_table",
     "provider_request_attempts_table",
     "provider_requests_table",
     "system_settings_table",

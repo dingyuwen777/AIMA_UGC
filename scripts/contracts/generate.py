@@ -14,7 +14,9 @@ from aima_ugc.contracts.canonical import (
 from aima_ugc.contracts.collection import (
     CollectionDecisionRequestV1,
     CollectionDecisionV1,
+    ProviderConfigV1,
     ProviderPlatformCapabilityV1,
+    ProviderPlatformRouteV1,
 )
 from aima_ugc.contracts.provider import ProviderAttemptV1, ProviderRequestV1, RawEnvelopeV1
 from aima_ugc.entrypoints.api_main import create_app
@@ -37,7 +39,9 @@ PROVIDER_MODELS = {
 COLLECTION_MODELS = {
     "decision-request.v1.schema.json": CollectionDecisionRequestV1,
     "decision.v1.schema.json": CollectionDecisionV1,
+    "provider-config.v1.schema.json": ProviderConfigV1,
     "provider-platform-capability.v1.schema.json": ProviderPlatformCapabilityV1,
+    "provider-platform-route.v1.schema.json": ProviderPlatformRouteV1,
 }
 
 

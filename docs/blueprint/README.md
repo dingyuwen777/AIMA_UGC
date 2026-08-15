@@ -23,7 +23,7 @@
 
 人类可读的统一测试与调试入口固定为 [`../测试与调试说明.md`](../测试与调试说明.md)。它负责解释测试分层、独立验证方式、Fixture/Fake/Probe、运行入口和成功判据；测试代码、Contract、Fixture、Migration、本轮执行结果和 CI 才是验证事实，说明文档不得复制第二套断言或期望值清单。
 
-采集逻辑的人类可读开发入口固定为 [`../collection/README.md`](../collection/README.md)。它负责讲清通用 Decision Pipeline、成本短路、评论抽样、Deep Collection、Business Pipeline Probe，以及小红书/抖音/微博/B站/快手各自的 TikHub Operation、业务参数、内部分页、代码/Fixture/测试状态。平台文档不得把“已批准目标实现”写成“当前代码已完成”。
+采集逻辑的人类可读开发入口固定为 [`../collection/README.md`](../collection/README.md)。它负责讲清通用 Decision Pipeline、Provider Config/平台选择、成本短路、评论抽样、Deep Collection、Business Pipeline Probe，以及小红书/抖音/微博/B站/快手各自的 TikHub Operation、业务参数、内部分页、代码/Fixture/测试状态。平台文档不得把“已批准目标实现”写成“当前代码已完成”。
 
 ## 事实源优先级
 
@@ -45,17 +45,17 @@
 | 文档 | 负责内容 | 什么时候读取 |
 | --- | --- | --- |
 | [`01-总体架构与技术选型.md`](01-总体架构与技术选型.md) | 模块化单体、运行组件、七个业务模块、目录结构、依赖方向、可替换边界 | 总体架构、目录、模块边界、技术路线、跨模块设计 |
-| [`02-采集系统与数据标准化.md`](02-采集系统与数据标准化.md) | Plan/Run/Scope/Request/Attempt/Candidate、Provider Adapter、Raw、Mapper、Canonical、分页、刷新基础 | Provider、Raw、Mapper、Canonical、来源链、通用采集基础 |
+| [`02-采集系统与数据标准化.md`](02-采集系统与数据标准化.md) | Plan/Run/Scope/Request/Attempt/Candidate、Provider Config/Adapter、Raw、Mapper、Canonical、分页、刷新基础 | Provider、Raw、Mapper、Canonical、来源链、通用采集基础 |
 | [`03-数据库与文件存储.md`](03-数据库与文件存储.md) | PostgreSQL、表与约束、Owner、Current/Version/Metric、Artifact、Job、预算数据结构、备份一致性 | Schema、表、Migration、Repository、Artifact、数据历史、幂等、预算 |
 | [`04-后端任务API与前端.md`](04-后端任务API与前端.md) | Router/Service/Repository、HTTP Contract、错误、Cursor、Auth、Job Runtime、前端调用边界 | API、Job、前端 Client、认证授权、业务服务、长任务 |
 | [`05-日志安全部署与运维.md`](05-日志安全部署与运维.md) | 日志、审计、Secret、安全、Docker Compose、离线 Release、备份、回滚、运维 | 日志、安全、配置、部署、Release、服务器目录、备份恢复 |
 | [`06-开发约束与分阶段实施.md`](06-开发约束与分阶段实施.md) | TDD、独立可验证能力、测试分层、验证命令、CI、Git、文档同步、Review、阶段 0—12 实施顺序 | 制定开发计划、测试/调试、CI、Git、交付、判断阶段顺序 |
 | [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md) | 已确认跨文档决策、唯一初始化版本快照、未决门禁、阶段 Go/No-Go | 每个任务都先读；技术版本、重大决策、是否允许进入某阶段 |
-| [`08-采集策略与平台能力.md`](08-采集策略与平台能力.md) | Stage 7 五平台默认 Provider、Operation Matrix、Decision Pipeline、Capability、评论/成本/预算/Deep/Probe 业务规则 | TikHub/Provider、平台采集、Plan 参数、评论、预算、Capability、Real/Business Probe |
+| [`08-采集策略与平台能力.md`](08-采集策略与平台能力.md) | Stage 7 Provider Config/平台选择、五平台默认 Provider、Operation Matrix、Decision Pipeline、Capability、评论/成本/预算/Deep/Probe 业务规则 | TikHub/Provider、平台采集、Plan 参数、评论、预算、Capability、Real/Business Probe |
 
 ## 当前开发状态
 
-**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础、Stage 3B Canonical Contract、Stage 4 PostgreSQL Job Runtime、Stage 5A—5D Provider-neutral 基础、Stage 6 小红书纵切，以及 Stage 7 的第一批 Decision/Capability 机器基础均已建立。** 当前代码已经具备：
+**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础、Stage 3B Canonical Contract、Stage 4 PostgreSQL Job Runtime、Stage 5A—5D Provider-neutral 基础、Stage 6 小红书纵切，以及 Stage 7 的 Decision/Capability 与 Provider Config/平台路由机器基础均已建立。** 当前代码已经具备：
 
 - 根 Python/uv 工程、固定运行时与锁文件、FastAPI/Vue、OpenAPI → Orval Client、完整 Stage 1 CI；
 - Windows PowerShell 5.1 开发环境引导和本地 Uvicorn + Vite 双服务联调；
@@ -72,9 +72,10 @@
 - Stage 5C 第四条 Revision、`provider_requests/provider_request_attempts`、最终 Scope/Request/Artifact 外键、幂等 Request 与未发送不计费 Attempt，以及 PostgreSQL 18.4 独立 CI；
 - Stage 5D 第五条 Revision、受 Job Fencing 约束的 Dispatch CAS、每 Attempt 一次 Provider Client 调用、Raw/Artifact 终态关联、遗留 `dispatching` 恢复，以及 PostgreSQL 18.4 独立 CI；
 - Stage 6 小红书 TikHub App V2 搜索/详情/评论 Operation 与分页、纯 Mapper、脱敏非空搜索 Fixture、Candidate/Ingestion 追加账本、Content/Comment Current+Version+Metric、已存 Raw Replay Job、第六至第九条 Revision，以及 PostgreSQL 18.4 独立 CI；
-- Stage 7 第一批版本化 `CollectionDecisionRequestV1` / `CollectionDecisionV1` / `ProviderPlatformCapabilityV1` Contract、生成 JSON Schema、纯 `CollectionDecisionService`、当前 XHS TikHub Capability 和独立 Decision Probe；这一单元不包含 Migration、Scheduler 或其余四平台实现。
+- Stage 7 版本化 `CollectionDecisionRequestV1` / `CollectionDecisionV1` / `ProviderPlatformCapabilityV1`、纯 `CollectionDecisionService`、当前 XHS TikHub Capability 和独立 Decision Probe；
+- Stage 7 `ProviderConfigV1` / `ProviderPlatformRouteV1`、System `provider_configs`、`20260815_0010`、PostgreSQL Provider Config Repository、Secret 引用校验和当前只登记 `tikhub + xhs` 的 Provider Registry；同一种 Provider 可以有多个配置实例，实例不绑定平台，平台/Plan 后续选择具体 `provider_config_id`。
 
-Stage 4 的机器事实以 `backend/src/aima_ugc/platform/jobs/`、`backend/src/aima_ugc/adapters/persistence/postgres/jobs.py`、第二条 Migration、测试和 CI 为准。Stage 5A 的机器事实以 Provider Contract/Client/Fake/Raw、生成 Schema、测试和 CI 为准；Stage 5B 以 `modules/collection/execution.py`、Collection Table/Repository、第三条 Migration、PostgreSQL 测试和 CI 为准；Stage 5C 以 `modules/collection/provider_persistence.py`、Provider Repository、第四条 Migration、PostgreSQL 测试和 CI 为准；Stage 5D 以 `modules/collection/provider_dispatch.py`、`modules/collection/provider_recovery.py`、PostgreSQL Dispatch Adapter、第五条 Migration、测试和 CI 为准；Stage 6 以 TikHub XHS Operation/Mapper、Candidate/Content Owner 实现、Raw Replay、第六至第九条 Migration、Fixture、测试和 CI 为准；Stage 7 当前已完成部分以 `aima_ugc.contracts.collection`、`modules/collection/decision.py`、`adapters/providers/tikhub/capabilities.py`、`contracts/collection/`、对应测试和已归档 Change 为准。跨文档决定维护在 [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md)，Stage 7 采集业务语义维护在 [`08-采集策略与平台能力.md`](08-采集策略与平台能力.md)。
+Stage 4 的机器事实以 `backend/src/aima_ugc/platform/jobs/`、`backend/src/aima_ugc/adapters/persistence/postgres/jobs.py`、第二条 Migration、测试和 CI 为准。Stage 5A 的机器事实以 Provider Contract/Client/Fake/Raw、生成 Schema、测试和 CI 为准；Stage 5B 以 `modules/collection/execution.py`、Collection Table/Repository、第三条 Migration、PostgreSQL 测试和 CI 为准；Stage 5C 以 `modules/collection/provider_persistence.py`、Provider Repository、第四条 Migration、PostgreSQL 测试和 CI 为准；Stage 5D 以 `modules/collection/provider_dispatch.py`、`modules/collection/provider_recovery.py`、PostgreSQL Dispatch Adapter、第五条 Migration、测试和 CI 为准；Stage 6 以 TikHub XHS Operation/Mapper、Candidate/Content Owner 实现、Raw Replay、第六至第九条 Migration、Fixture、测试和 CI 为准；Stage 7 当前机器事实以 `aima_ugc.contracts.collection`、`modules/collection/decision.py`、`modules/collection/provider_routing.py`、System `provider_configs`/Repository、`adapters/providers/registry.py`、`adapters/providers/tikhub/capabilities.py`、`contracts/collection/`、第十条 Revision、对应测试和 Stage 7 专项 CI 为准。Stage 7 采集业务语义维护在 [`08-采集策略与平台能力.md`](08-采集策略与平台能力.md)。
 
 ## 当前下一步
 
@@ -88,12 +89,12 @@ Stage 7 仍然是 [`06-开发约束与分阶段实施.md`](06-开发约束与分
 - Provider Platform Capability Contract 与当前 `XHS_TIKHUB_CAPABILITY`；
 - `contracts/collection/*.schema.json` 生成/漂移门禁；
 - `scripts/dev/probe_collection_decision.py` 独立 Decision Probe；
-- 对应 Unit/Contract/Stage 5A—5D/Stage 6/主 CI 回归；
-- Change `CHG-20260815-stage7-decision-capability` 已完成并归档。
+- Provider Config/Platform Route Contract、`provider_configs` System 父事实、PostgreSQL Repository、Secret 引用边界和当前 `tikhub + xhs` Provider Registry；
+- 对应 Unit/Contract/PostgreSQL/Stage 5A—5D/Stage 6/主 CI 回归；
+- 已完成的 Change 以 `changes/archive/` 中 Stage 7 记录为准。
 
 Stage 7 剩余实现单元应继续从仓库事实中选择一个边界完整、无上游阻塞的单元推进，主要包括：
 
-- Provider Config/路由与平台 Capability 的正式接线；
 - 关键词/词包、Plan 平台配置、Occurrence 与 Run Snapshot 等剩余父事实；
 - 在父事实完整后建立最终多级预算 Ledger 和并发 reserve/settle/release/audit；
 - 抖音、微博、B站、快手各自的 TikHub Operation/分页状态机；
@@ -118,27 +119,27 @@ AGENTS.md
 → 与候选 Stage 7 单元直接相关的代码 / Contract / Migration / Fixture / Test / CI
 ```
 
-恢复后先以机器事实复核本文的进度摘要；若代码与本文不一致，先把它判定为实现缺陷或文档过期并同步修正，不能从旧聊天补猜。没有 Active Change 时，从上面的“Stage 7 剩余实现单元”中选择一个当前无阻塞、可以独立 Red→Green→Review→CI→合并的单元；一次会话只推进当前确认的一个正式 Stage 7 工作单元，不自动进入 Stage 8。
+恢复后先以机器事实复核本文的进度摘要；若代码与本文不一致，先把它判定为实现缺陷或文档过期并同步修正，不能从旧聊天补猜。没有 Active Change 时，从上面的“Stage 7 剩余实现单元”中选择一个当前无阻塞、可以独立 Red→Green→Review→CI→合并的单元；一次会话只推进当前确认的一个 Stage 7 实现单元，不自动进入 Stage 8。
 
 ### 仍然阻塞的上游事项
 
 - Scheduler `misfire_policy`、`max_catch_up_runs` 和停机补跑费用/容量保护仍未批准，因此不能启用 Stage 7 自动 Scheduler；
 - Raw、个人信息、导出和审计的访问/保留/删除规则仍待批准；
 - 日请求量、数据量、并发、磁盘预算、SLO、RPO、RTO 仍是生产容量/Release 门禁；
-- Stage 8 正式业务页面不在当前 Stage 7 实现范围。Stage 7 先建立 Capability/Plan 的后端机器 Contract，Stage 8 再通过 OpenAPI 生成 Client 实现页面。
+- Stage 8 正式业务页面不在当前 Stage 7 实现范围。Stage 7 先建立 Provider Config/Capability/Plan 的后端机器 Contract，Stage 8 再通过 OpenAPI 生成 Client 实现页面；Provider 凭据编辑还需要正式安全 SecretStore/SecretService，不能把数据库明文 Secret 当捷径。
 
 ## 修改规则
 
 - `01`—`06` 描述各领域基础设计；
 - `07` 保存跨文档已确认决策、版本快照和 Go/No-Go；
-- `08` 保存 Stage 7 采集业务语义、Provider/Operation Matrix、Capability 和成本策略；
+- `08` 保存 Stage 7 采集业务语义、Provider Config/Operation Matrix、Capability 和成本策略；
 - `docs/collection/` 保存面向开发/调试的通用和平台抓取说明，并始终标记当前代码/Fixture/Probe 状态；
 - 实际代码、Contract、Migration、锁文件和测试建立后，不在 Blueprint 复制第二份机器事实；
 - 所有需要前端或其他受支持调用方使用的公开 HTTP API，都必须由 Pydantic Request/Response + FastAPI Route 生成固定 OpenAPI，再生成前端 TypeScript Client；内部 Repository、Mapper、Provider Adapter、Worker Runtime、Migration 等能力不因存在就自动暴露 HTTP API；
 - 公开 HTTP API 新增、删除或实质变化时，除同步固定 OpenAPI 和生成 Client 外，还必须同步 [`../API接口说明.md`](../API接口说明.md)，说明接口用途、方法/路径、稳定 `operation_id`、主要输入输出、重要错误、权限、分页/幂等/异步 Job 等人类需要理解的语义；完整字段 Schema 仍只由机器 Contract 维护，禁止在 Markdown 中复制第二套字段事实；
 - 前端业务功能默认采用“后端业务能力 → Pydantic HTTP Contract → FastAPI Route → API/Contract Test → 固定 OpenAPI → 生成 TypeScript Client → Feature API/Store → Vue 页面/组件 → E2E”的闭环，页面和按钮不得各自手写 URL 或重复定义 Request/Response Contract；
 - 对具有明确输入输出、独立业务价值、独立失败边界或可以脱离完整系统验证的能力，必须建立与风险匹配的独立验证闭环：测试/调试/Probe 复用生产实现，明确测试位置、Fixture/Fake/隔离依赖、运行命令、预期结果和未覆盖项；项目公共方法写入 [`../测试与调试说明.md`](../测试与调试说明.md)，Provider/平台特有入口同时写入 [`../collection/`](../collection/) 对应文档；
-- 修改 Provider/Operation/Mapper/分页/评论策略/预算/Capability 时，必须按 08 的“文档同步规则”检查目标平台文档；
+- 修改 Provider Config/Provider/Operation/Mapper/分页/评论策略/预算/Capability 时，必须按 08 的“文档同步规则”检查目标平台文档；
 - 设计发生实质变化时，按 `AGENTS.md` 和 Skill 的 L1/L2/L3 流程处理；
 - 受影响的文档才更新，不为形式保持“所有文档都有变化”；
 - 长期文档直接描述合并后的当前状态，不写成变更流水账。

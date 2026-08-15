@@ -1,13 +1,19 @@
-"""System Settings 与 Audit PostgreSQL Repository。"""
+"""System Settings、Provider Config 与 Audit PostgreSQL Repository。"""
+
+from uuid import UUID
 
 from pydantic import JsonValue
-from sqlalchemy import func, insert, select
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
-from aima_ugc.modules.system.models import AuditEvent, SystemSetting
-from aima_ugc.modules.system.tables import audit_events_table, system_settings_table
+from aima_ugc.modules.system.models import AuditEvent, ProviderConfig, SystemSetting
+from aima_ugc.modules.system.tables import (
+    audit_events_table,
+    provider_configs_table,
+    system_settings_table,
+)
 
 
 def _setting_from_row(row: RowMapping) -> SystemSetting:
@@ -17,6 +23,17 @@ def _setting_from_row(row: RowMapping) -> SystemSetting:
         version=row["version"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+    )
+
+
+def _provider_config_from_row(row: RowMapping) -> ProviderConfig:
+    return ProviderConfig(
+        id=row["id"],
+        provider=row["provider"],
+        display_name=row["display_name"],
+        base_url=row["base_url"],
+        secret_ref=row["secret_ref"],
+        enabled=row["enabled"],
     )
 
 
@@ -55,6 +72,83 @@ class PostgresSystemSettingsRepository:
         ).returning(system_settings_table)
         row = self._session.execute(upsert_statement).mappings().one()
         return _setting_from_row(row)
+
+
+class PostgresProviderConfigRepository:
+    """Provider Config 的 System Owner Repository；Provider 类型与稳定 UUID 不可原地改写。"""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def get(self, config_id: UUID) -> ProviderConfig | None:
+        row = (
+            self._session.execute(
+                select(provider_configs_table).where(provider_configs_table.c.id == config_id)
+            )
+            .mappings()
+            .one_or_none()
+        )
+        return None if row is None else _provider_config_from_row(row)
+
+    def create(self, config: ProviderConfig) -> ProviderConfig:
+        now = func.clock_timestamp()
+        row = (
+            self._session.execute(
+                insert(provider_configs_table)
+                .values(
+                    id=config.id,
+                    provider=config.provider,
+                    display_name=config.display_name,
+                    base_url=config.base_url,
+                    secret_ref=config.secret_ref,
+                    enabled=config.enabled,
+                    created_at=now,
+                    updated_at=now,
+                )
+                .returning(provider_configs_table)
+            )
+            .mappings()
+            .one()
+        )
+        return _provider_config_from_row(row)
+
+    def update_settings(
+        self,
+        config_id: UUID,
+        *,
+        display_name: str,
+        base_url: str,
+        secret_ref: str,
+        enabled: bool,
+    ) -> ProviderConfig:
+        current = self.get(config_id)
+        if current is None:
+            raise KeyError(f"Provider Config 不存在: {config_id}")
+        validated = ProviderConfig(
+            id=current.id,
+            provider=current.provider,
+            display_name=display_name,
+            base_url=base_url,
+            secret_ref=secret_ref,
+            enabled=enabled,
+        )
+        row = (
+            self._session.execute(
+                update(provider_configs_table)
+                .where(provider_configs_table.c.id == config_id)
+                .values(
+                    display_name=validated.display_name,
+                    base_url=validated.base_url,
+                    secret_ref=validated.secret_ref,
+                    enabled=validated.enabled,
+                    updated_at=func.clock_timestamp(),
+                )
+                .returning(provider_configs_table)
+            )
+            .mappings()
+            .one()
+        )
+        return _provider_config_from_row(row)
 
 
 class PostgresAuditRepository:

@@ -21,7 +21,9 @@ PROVIDER_TARGETS = [
 COLLECTION_TARGETS = [
     "contracts/collection/decision-request.v1.schema.json",
     "contracts/collection/decision.v1.schema.json",
+    "contracts/collection/provider-config.v1.schema.json",
     "contracts/collection/provider-platform-capability.v1.schema.json",
+    "contracts/collection/provider-platform-route.v1.schema.json",
 ]
 
 
