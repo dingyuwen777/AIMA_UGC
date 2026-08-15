@@ -33,6 +33,8 @@ class PostgresCollectionRepository:
         trigger_type: CollectionRunTrigger,
         config_snapshot: dict[str, object],
         scopes: tuple[CollectionScopeDefinition, ...],
+        manual_plan_id: UUID | None = None,
+        occurrence_id: UUID | None = None,
     ) -> CollectionExecution:
         """在当前事务创建一个 queued Run 及其 queued Scopes。"""
         run_id = uuid4()
@@ -42,6 +44,8 @@ class PostgresCollectionRepository:
                 .values(
                     id=run_id,
                     job_id=job_id,
+                    manual_plan_id=manual_plan_id,
+                    occurrence_id=occurrence_id,
                     trigger_type=trigger_type,
                     config_snapshot=config_snapshot,
                     status="queued",
@@ -105,6 +109,8 @@ def _row_to_run(row: RowMapping) -> CollectionRunRecord:
     return CollectionRunRecord(
         id=cast(UUID, row["id"]),
         job_id=cast(UUID, row["job_id"]),
+        manual_plan_id=cast(UUID | None, row["manual_plan_id"]),
+        occurrence_id=cast(UUID | None, row["occurrence_id"]),
         trigger_type=cast(CollectionRunTrigger, row["trigger_type"]),
         config_snapshot=cast(dict[str, object], row["config_snapshot"]),
         status=cast(CollectionRunStatus, row["status"]),
