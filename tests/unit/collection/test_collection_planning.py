@@ -10,6 +10,7 @@ from aima_ugc.modules.collection.planning import (
     DuplicatePlanKeywordPackError,
     DuplicatePlanPlatformError,
     PlanPlatformDefinition,
+    UnsafePlanConfigError,
     UnsupportedPlanTimezoneError,
 )
 
@@ -87,6 +88,15 @@ def test_service_rejects_duplicate_keyword_pack_identity() -> None:
     with pytest.raises(DuplicatePlanKeywordPackError, match="keyword pack"):
         CollectionPlanningService(_RecordingPlanningRepository()).create_plan(
             _definition(keyword_pack_ids=(pack_id, pack_id))
+        )
+
+
+def test_plan_platform_config_rejects_secret_shaped_keys_recursively() -> None:
+    with pytest.raises(UnsafePlanConfigError, match="Secret"):
+        PlanPlatformDefinition(
+            platform="xhs",
+            provider_config_id=uuid4(),
+            config={"search": {"access-token": "must-not-be-here"}},
         )
 
 

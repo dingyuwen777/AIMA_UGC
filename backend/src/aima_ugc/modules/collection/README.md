@@ -1,205 +1,98 @@
 # Collection 模块
 
-Collection 负责采集执行、Provider Adapter 调用、Raw 证据和后续 Mapper/Candidate 边界。当前已建立
-Stage 5A Provider-neutral Request/Attempt、一次发送 Transport、Raw Artifact，Stage 5B
-Collection Run/Scope PostgreSQL 父事实，Stage 5C Provider Request/Attempt 持久化基础，Stage 5D
-不计费 Provider-neutral Dispatch、Raw 关联与崩溃恢复基础，Stage 6 小红书 TikHub App V2
-Operation/Mapper、Candidate/Ingestion 追加账本和已存 Raw 回放纵切，以及 Stage 7 的
-Decision/Capability、Provider Config/Platform Route 机器基础、抖音/微博/B站/快手 TikHub 请求/分页 Operation、稳定 Provider Config 绑定、TikHub 后端版本化 Pricing 和最终多级 Provider Budget Ledger。
+Collection 是采集业务 Owner。它负责把已经通过 Contract / Provider 边界确定的采集输入，组织成可追踪的 Plan、Run、Scope、Provider Request / Attempt、Candidate，以及预算账本事实；它不拥有 HTTP Router、Provider 私有分页协议或 Canonical 业务表。
 
-## 生产入口
+## 1. 稳定边界
 
-- `aima_ugc.contracts.provider`：版本化 `ProviderRequestV1`、`ProviderAttemptV1`、费用、安全错误和
-  `RawEnvelopeV1`；
-- `aima_ugc.contracts.collection`：Stage 7 版本化 `CollectionDecisionRequestV1`、
-  `CollectionDecisionV1`、`ProviderPlatformCapabilityV1`、`ProviderConfigV1` 与
-  `ProviderPlatformRouteV1`；只表达规范化业务事实/能力和 Provider 配置引用，不包含 Provider 私有分页状态或
-  原始 Secret；
-- `aima_ugc.modules.collection.CollectionDecisionService`：根据 previous/current 规范化事实、业务策略和
-  Capability 纯计算详情、一级评论与二级回复动作及稳定 reason code；不访问数据库、不发 HTTP、
-  不解释 Provider Raw；
-- `aima_ugc.modules.collection.provider_routing.ProviderRegistry`：把具体 Provider Config + Platform
-  解析到当前已注册 Provider Capability；禁用配置、未知 Provider、Base URL 不在 Provider allowlist 或
-  未实现平台时关闭失败；
-- `aima_ugc.adapters.providers.registry.build_default_provider_registry`：当前只登记已有完整机器事实的
-  `tikhub + xhs`，TikHub Base URL allowlist 为 `https://api.tikhub.io`；其他平台只有对应
-  Operation/Fixture/Mapper/Capability 证据闭环后才注册；
-- `aima_ugc.adapters.providers.tikhub.capabilities.XHS_TIKHUB_CAPABILITY`：当前只登记已实现的
-  小红书 TikHub 业务 Capability；其余平台只有在对应 Operation/合法脱敏 Fixture/验证建立后才加入
-  机器 registry；
-- `aima_ugc.adapters.providers.tikhub.pricing` + `pricing.toml`：TikHub 后端版本化价格事实入口；只有目标 endpoint 已由官方价格事实核验并标记 `verified` 时才生成 `ProviderBillingV1(status="estimated")`，未核验/缺失/非法价格关闭失败，不用全局常见价格兜底；
-- `aima_ugc.adapters.providers.tikhub.operations.xiaohongshu`：唯一定义小红书 App V2 搜索、详情、一级/二级
-  评论请求和分页状态；不访问数据库；
-- `aima_ugc.adapters.providers.tikhub.operations.douyin`：按已批准 TikHub Search V2 + App V3 主链路定义
-  抖音搜索、详情、一级评论和评论回复请求，以及仅基于已确认响应事实的分页状态；不做 Raw→Canonical Mapper，
-  不把尚未验证的评论数组/增量停止语义写进 Operation；
-- `aima_ugc.adapters.providers.tikhub.operations.weibo`：按已批准 Web Search + App Detail/一级评论 + Web V2
-  二级评论职责定义微博请求；搜索只推进外部提供的非空页 observation，一级评论只按官方
-  `data.moreInfo.params.max_id` 取游标，二级评论不猜未被 Fixture 证明的响应 max_id 路径；
-- `aima_ugc.adapters.providers.tikhub.operations.bilibili`：按当前 TikHub Bilibili App 官方契约定义 Search/
-  Detail/Comments/Reply 请求；搜索使用官方 `cursor` 与数字 `order`，只解析已确认的
-  `data.data.pagination.next`，详情/评论/回复使用 `av_id`/`bv_id` 二选一，评论/回复只消费调用方可靠提取的
-  `next_offset`，不猜未被 Fixture 证明的评论响应路径；
-- `aima_ugc.adapters.providers.tikhub.operations.kuaishou`：按已批准 App Search V2 / Detail + Web 一级/二级
-  评论职责定义快手请求；Search 只暴露 `keyword + pcursor`，Web 评论使用 `photo_id/root_comment_id`
-  snake_case 参数，分页只消费调用方可靠提取的返回 `pcursor`，不猜响应 JSON path、评论列表字段或 Provider
-  结束哨兵；
-- `aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu`：把已确认 Raw/采集上下文纯映射为
-  Canonical Content/Comment；不发 HTTP、不读数据库；
-- `aima_ugc.modules.collection.providers.ProviderClient`：每个 Attempt 最多调用一次注入的
-  `ProviderTransport`，不隐藏网络重试；billable Dispatch 传入数据库已经持久化的发送前 Billing 快照，响应没有权威逐请求账单时保留该快照，只有 `confirmed` 才补充真实 `actual_cost`；
-- `aima_ugc.modules.collection.providers.RawArtifactService`：递归脱敏后通过正式
-  `ArtifactService + ArtifactStore` 保存、校验和回放 gzip Raw；
-- `aima_ugc.adapters.providers.fake.FakeProviderTransport`：普通测试使用的受控外部 I/O Fake；
-- `aima_ugc.modules.collection.CollectionExecutionService`：校验本阶段 `manual/api/backfill` 创建语义和
-  Scope 身份唯一性；
-- `aima_ugc.adapters.persistence.postgres.collection.PostgresCollectionRepository`：在调用方持有的同一
-  SQLAlchemy Session/事务内创建 queued Run/Scopes，并按 Job/Run 查询父事实；
-- `aima_ugc.modules.collection.ProviderPersistenceService`：校验 Provider Request 与 Scope 父链；非计费路径继续准备兼容的 `reserved` Attempt，计费路径必须绑定稳定 `provider_config_id` 并建立 `estimated` Attempt；
-- `aima_ugc.adapters.persistence.postgres.provider.PostgresProviderRepository`：在调用方持有的同一
-  SQLAlchemy Session/事务内持久化 Request/Attempt，不提交事务、不执行外部 I/O；
-- `aima_ugc.modules.collection.provider_budget.ProviderBudgetService`：构造普通 Attempt 的 `global + run` 与评论 Attempt 的 `global + run + run_comments + content_comments` 两维预算要求，编排账户创建、原子预留、终态结算和账本审计；`completed + estimated` 的货币账本按原保守 Reservation 结算且 Attempt `actual_cost` 保持 0，`completed + confirmed` 才按 Provider 权威实际费用结算；不发 HTTP；
-- `aima_ugc.adapters.persistence.postgres.provider_budget.PostgresProviderBudgetRepository`：按稳定顺序锁住调用时刻覆盖的账户，检查 `settled + reserved + unknown + 本次预留 <= limit`，同一事务全部预留或全部失败；同一 Attempt 重放幂等，缺账户/超额/来源不一致均关闭失败；
-- `aima_ugc.modules.collection.ProviderDispatchService`：先用 Job Fencing 和 Budget 门禁在短事务中验证计费 Attempt 已有完整 Reservation，再取得 `reserved → dispatching` CAS；把持久化价格快照交给 Provider Client，事务外最多调用一次 Transport，最后在短事务中提交 Provider 与预算终态；
-- `aima_ugc.modules.collection.ProviderAttemptReconciler`：接管遗留 `dispatching` Attempt 时优先按
-  确定性路径校验并恢复已落盘 Raw；没有可用 Raw 时保守记为 `unknown`，不复发原 Attempt；
-- `aima_ugc.adapters.persistence.postgres.provider_dispatch`：把 Job Fencing、预算发送前检查、Provider Attempt Owner 写入、预算 `settled/released/unknown` 和 Artifact `stored → linked` 组合成短事务持久化边界；
-- `aima_ugc.modules.collection.CandidateIngestionService` 与
-  `aima_ugc.adapters.persistence.postgres.candidates.PostgresCandidateRepository`：追加逐项 Candidate 和
-  Ingestion 结果；数据库约束禁止账本 UPDATE/DELETE，并拒绝没有 Canonical 身份/业务目标的成功结果；
-- `aima_ugc.modules.collection.XhsRawReplayHandler` 与 `adapters.persistence.postgres.xhs_replay`：从正式
-  Job Runtime 读取 completed/linked Raw，经生产 Mapper、Ingestion 和 Owner Repository 回放；Handler
-  不接受 Provider Client/Transport；
-- `aima_ugc.modules.collection.tables`：`collection_runs/collection_scopes`、`provider_requests/provider_request_attempts` 和 `provider_budget_accounts/provider_budget_reservations` 的唯一 Collection Owner Table 定义；第三、四条 Migration 建立真实 Job、Scope、Request 和 Artifact 外键，第五条 Migration 冻结 Request 状态白名单和 terminal Attempt 的一次性 Raw 关联规则；`candidate_tables` 是 Stage 6 Candidate/Ingestion Owner Table，第六至第九条 Migration 建立业务表、来源约束、账号备用 ID 和追加账本保护；第十二条 Migration 为 Request 增加稳定 Provider Config 关联并建立最终多级预算账本。
+当前模块已经具备以下父事实与执行边界：
 
-Provider 配置实例由 System Owner 持久化在 `provider_configs`。同一种 Provider 可以有多个实例；实例不绑定平台，平台/Plan 后续选择具体 `provider_config_id`。数据库只保存 `secret_ref`，不保存 API Key/Token 明文；`platform/security` 当前负责 Secret 引用安全校验，实际 Provider Secret 的解析/读取要在真实 Transport/SecretService 接线时复用正式 Secret 边界，Provider Registry 再执行 Provider/Base URL/Capability 校验。预算账户同样绑定稳定 Provider Config UUID，因此同 Provider 类型的多个配置实例不会共享额度。
+1. `planning.py`
+   - `CollectionPlanDefinition`：Plan 的稳定创建输入；首版时区只允许 `Asia/Shanghai`；
+   - `PlanPlatformDefinition`：以 `platform + provider_config_id` 固定 Provider 配置选择，`config` 只保存平台业务配置 object；
+   - `CollectionPlanningService`：校验首版稳定约束、平台/关键词包关系唯一性，以及显式 Occurrence 输入；
+   - 不解析 Cron，不推导 `misfire_policy` / catch-up 行为，也不推进 `next_run_at`。
+2. `execution.py`
+   - `CollectionExecutionService`：创建 Run / Scope 父事实；
+   - `manual` / `api` / `backfill` Run 可以选择性绑定 `manual_plan_id`，但不得绑定 Occurrence；
+   - `scheduled` Run 必须绑定唯一 `occurrence_id`，并不得重复保存 `manual_plan_id`。
+3. `provider_persistence.py` / `provider_dispatch.py` / `provider_recovery.py`
+   - Provider Request / Attempt 的持久化、正式 Dispatch、失败归因与 Recovery；
+   - Provider 私有 cursor / page / search_id 等状态只属于 Provider Request / Attempt / Scope，不进入 Plan 普通业务配置。
+4. `pipeline.py` / `candidate_tables.py`
+   - Raw → Mapper → Candidate → Canonical / Ingestion 的正式纵向链路；
+   - Mapper 不访问数据库、不发 HTTP；Provider 不直接写业务表。
+5. `provider_budget.py`
+   - Provider 调用前预算预留、成功/失败结算和 `unknown` 账务保守处理；
+   - `unknown` 不自动退款。
 
-Provider endpoint 单价属于对应 Provider Adapter 的技术事实，不属于 Provider Config/Plan 前端字段。TikHub 增加平台/endpoint 或官方改价时维护 `tikhub/pricing.toml`；以后换成其他 Provider 时由新 Provider Adapter 维护自己的 pricing 配置/loader并转换成统一 Billing Contract，Budget Ledger 不因 Provider 更换而重写。详细维护步骤见 `docs/collection/README.md`。
+## 2. Plan / Occurrence / Run Snapshot 父事实
 
-Raw Artifact 使用以下相对 `storage_key`：
+Stage 7 已建立以下 Collection-owned 数据事实：
 
-```text
-raw/<provider>/<platform>/<YYYY>/<MM>/<DD>/<run_id>/<scope_id>/<attempt_id>.json.gz
-```
+- `collection_plans`
+  - 唯一 `name`；
+  - 首版 `timezone = Asia/Shanghai`；
+  - `schedule_version >= 1`；
+  - `misfire_policy`、`max_catch_up_runs` 目前只持久化显式值，不解释运行语义；
+  - `request_budget >= 0`；
+  - `next_run_at` / `last_scheduled_at` 作为未来 Scheduler 可更新字段存在，但当前没有 Scheduler 写入逻辑。
+- `collection_plan_platforms`
+  - 一个 Plan 的同一平台只允许一条关系；
+  - 通过稳定 `provider_config_id` 引用 `provider_configs`；
+  - `config` 必须为 JSON object，并由领域入口拒绝 Secret 形态字段；不得保存 API Key、Token、Cookie 或 Provider 私有分页状态。
+- `collection_plan_keyword_packs`
+  - Plan 与 `keyword_packs` 使用真实关联表；不把关系塞入 JSON。
+- `collection_schedule_occurrences`
+  - `(plan_id, schedule_version, scheduled_for)` 唯一；
+  - `enqueued` 必须有 `job_id`，`skipped` 必须无 Job 且有 `skip_reason`；
+  - `job_id` 唯一。
+- `collection_runs`
+  - 一个 Run 仍只绑定一个 Job；
+  - `scheduled` Run 必须通过 `occurrence_id` 关联 Plan / Schedule Version；
+  - `manual` / `api` / `backfill` 保持兼容，并可选记录 `manual_plan_id`；
+  - `config_snapshot` 继续作为运行时不可变配置快照，不替代 Plan/Occurrence 的关系身份。
 
-日期按 `Asia/Shanghai` 从数据库持久化的发送时间计算，使崩溃恢复能重建同一确定性路径。Stage 5D 在
-terminal Attempt 业务短事务中一次性建立 `provider_request_attempts.raw_artifact_id` 引用，并由
-Artifact Owner Repository 把元数据从 `stored` 推进为 `linked`；关联完成后来源身份不可改写。
+数据库使用 deferred constraint trigger 在事务提交前检查跨表一致性：
 
-## Stage 7 Decision 独立调试
+- `enqueued` Occurrence 必须恰有一个反向 `scheduled` Run；
+- Occurrence 与 Run 必须引用同一个 Job；
+- `skipped` Occurrence 不允许存在 Run。
 
-`CollectionDecisionService` 的调试入口固定为：
+这样可以在同一事务中先创建 Job / Occurrence / Run，再在提交点统一验证，而不会因为插入顺序人为放松约束。
 
-```text
-显式 CollectionDecisionRequestV1 JSON
-→ scripts/dev/probe_collection_decision.py
-→ 正式 CollectionDecisionService
-→ CollectionDecisionV1 JSON
-```
+## 3. PostgreSQL 写入口
 
-例如可准备一个不含 Secret 的 JSON：
+- `adapters/persistence/postgres/collection_planning.py`
+  - `PostgresCollectionPlanningRepository` 是 Plan / PlanPlatform / PlanKeywordPack / Occurrence 的 Collection 写入口；
+  - Repository 不自行 `commit()`，事务由调用方持有。
+- `adapters/persistence/postgres/collection.py`
+  - `PostgresCollectionRepository` 是 Run / Scope 的 Collection 写入口；
+  - 保留既有 `manual/api/backfill` 调用兼容性，并支持新的 Plan / Occurrence 绑定。
 
-```json
-{
-  "current": {"comment_count": 35, "comments_available": true},
-  "previous": {"comment_count": 35}
-}
-```
+`database_schema.py` 只负责注册当前机器 Schema；正式结构变化必须通过 Alembic Revision 演进。
 
-然后从仓库根目录运行：
+## 4. Secret 与配置边界
 
-```bash
-uv run python scripts/dev/probe_collection_decision.py ./decision.json
-```
+- Provider Secret 只通过 `provider_configs.secret_ref` 间接引用，不进入 Plan、Run、Scope、Raw、Job Payload 或日志明文；
+- Plan 平台 `config` 是业务配置，不是 Provider HTTP 参数仓库；
+- Provider 私有 cursor、page、search_id、签名或认证字段不进入 Plan；
+- `misfire_policy` 与 `max_catch_up_runs` 当前只是持久化字段，不能从数据库存在推断 Scheduler 策略已经批准。
 
-未显式提供 Capability 时，当前 Probe 默认使用已实现的 `XHS_TIKHUB_CAPABILITY`。该入口只验证
-Decision 业务逻辑，不调用 TikHub、不读生产数据库、不产生费用，也不会把 API Key 作为输入。
+## 5. 当前仍未实现的边界
 
-## Provider Config / Route 独立验证
+当前 **没有正式 Scheduler Runtime**。以下能力仍需后续独立决策和实现：
 
-Provider Config 与平台路由不需要启动完整前后端：
+- Cron / schedule expression 的正式解析与校验；
+- `next_run_at` / `last_scheduled_at` 的推进算法；
+- `misfire_policy` 的允许值与恢复语义；
+- `max_catch_up_runs` 的实际追赶策略、停机成本与容量上界；
+- Scheduler 主循环、抢占 / 并发协调、恢复测试。
 
-```text
-ProviderConfigV1 / System ProviderConfig
-→ ProviderRegistry
-→ ProviderPlatformRouteV1
-→ 当前 ProviderPlatformCapabilityV1
-```
+因此：Plan/Occurrence/Run Snapshot 父事实已经存在，不等于 Scheduler 已经可运行。
 
-当前默认 Registry 只允许 `tikhub + xhs`，并只接受 `https://api.tikhub.io`。同一个 TikHub Provider 类型可以建立多个稳定 UUID 的 Config；两个实例可共享同一 Capability，但历史身份、Budget 和平台引用保持独立。禁用 Config、未知 Provider、不允许 Base URL、尚未建立完整 Capability 的平台都必须失败。
+## 6. 调试与测试原则
 
-## Provider Operation 独立验证
-
-不需要数据库或完整系统即可验证请求构造与分页状态机：
-
-```bash
-uv run pytest tests/unit/collection/test_xhs_tikhub_operation.py -q
-uv run pytest tests/unit/collection/test_douyin_tikhub_operation.py -q
-uv run pytest tests/unit/collection/test_weibo_tikhub_operation.py -q
-uv run pytest tests/unit/collection/test_bilibili_tikhub_operation.py -q
-uv run pytest tests/unit/collection/test_kuaishou_tikhub_operation.py -q
-```
-
-抖音 Operation 测试证明批准 endpoint、业务参数→Provider 参数映射、Search 分页状态，以及 App V3 评论/回复不覆盖 TikHub 官方 `count` 默认值；它不证明抖音 Raw 字段 Mapper、评论数组结构、稳定增量停止或真实 Provider 兼容。
-
-微博 Operation 测试证明当前官方 Search 参数映射、详情/一级评论 `status_id`、一级评论官方 max_id 路径和二级评论 `id/max_id` 请求；搜索列表字段、二级评论返回游标路径、Raw→Canonical Mapper 和真实兼容仍需合法脱敏 Fixture/Probe。
-
-B站 Operation 测试证明当前官方 App endpoint、搜索 `cursor/order`、官方搜索下一 cursor 路径、详情 `av_id/bv_id`、一级评论 `mode/next_offset`、二级回复 `root/next_offset` 以及无效输入关闭失败；它不证明 B站 Raw→Canonical Mapper、评论响应字段/分页路径、稳定增量停止、Real Provider 兼容或默认 Registry Capability。
-
-快手 Operation 测试证明批准的 App Search V2 / Detail 与 Web 一级/二级评论 endpoint、snake_case 请求参数、Search 不伪造排序/时间筛选，以及 `pcursor` 只消费调用方可靠提取的返回值；它不证明快手响应 JSON path、评论列表字段、Provider 结束哨兵、Raw→Canonical Mapper、Real Provider 兼容或默认 Registry Capability。
-
-## Provider Pricing / Budget 独立验证
-
-Pricing 与预算都不需要真实 Provider 网络或 Secret。TikHub Pricing 单测验证配置解析、已核验 endpoint 生成保守 Billing，以及未知/未核验/非法价格 fail closed；Provider Client 测试验证发送前价格快照不会被普通响应伪造覆盖。PostgreSQL 18 集成测试再验证账户周期、同 Attempt 幂等、并发竞争、发送前关闭失败、`completed/not_sent/unknown` 终态和账本 drift：
-
-```bash
-uv run pytest tests/unit/collection/test_tikhub_pricing.py tests/unit/collection/test_provider_budget.py tests/unit/collection/test_provider_client.py -q
-uv run pytest tests/integration/collection/test_provider_budget.py tests/integration/collection/test_provider_budget_estimated_settlement.py -q
-```
-
-计费路径的调用顺序固定为：
-
-```text
-Provider Pricing → verified endpoint base_price
-→ prepare_billable_attempt(provider_config_id, estimated billing snapshot)
-→ reserve_attempt(...)
-→ ProviderDispatchService.dispatch(...)
-→ start_dispatch 中再次验证完整 Reservation
-→ ProviderClient 使用持久化 planned billing 执行单次 Transport send
-→ completed+confirmed: 按权威 actual 结算
-→ completed+estimated: Attempt actual_cost=0，按原保守 Reservation 结算预算占用
-→ not_sent: released / unknown: unknown_amount
-```
-
-没有覆盖发送时刻的必需账户、额度不足、Provider Config/Run 不匹配、Reservation 不完整或目标 endpoint 价格未核验时，都必须在 Transport 前关闭失败。`unknown_amount` 在独立对账能力建立前持续占用预算，不能按未发送释放。`settled_amount` 对没有权威逐请求账单的 TikHub 表达保守预算占用，不得对外冒充实际账单消费。
-
-Stage 7 Provider Budget Quality 还会构建 Wheel、在隔离环境安装并调用 `load_tikhub_pricing()`，证明 `pricing.toml` 被正式 Release Python 包携带，而不是只在源码 checkout 中可用。
-
-## 独立验证
-
-```bash
-uv run pytest tests/unit/collection/test_stage7_decision.py tests/unit/collection/test_tikhub_capabilities.py tests/unit/collection/test_stage7_decision_probe.py tests/unit/collection/test_provider_routing.py -q
-uv run pytest tests/contracts/test_collection_stage7.py tests/contracts/test_provider_config_stage7.py -q
-uv run pytest tests/unit/collection tests/unit/content tests/contracts/test_provider_v1.py -q
-uv run pytest tests/integration/collection tests/integration/content tests/integration/database/test_provider_config_repository.py -q
-uv run python scripts/contracts/generate.py --check
-```
-
-测试从正式 Client、Raw Service、ArtifactService、Decision Service、Provider Registry、Provider Operation、Provider Pricing、Provider Budget 和 Local ArtifactStore 等对应生产入口进入。Fake Transport 不访问网络、不需要 Token、不产生费用；Raw 测试目录位于 Git 忽略的 `.runtime/stage5a-tests/`。Repository 集成测试要求先准备隔离 PostgreSQL 18、Secret 文件并执行 `uv run alembic upgrade head`；独立 `Stage 5B Collection Execution`、`Stage 5C Provider Persistence`、`Stage 5D Provider Dispatch`、`Stage 6 XHS Vertical Slice`、`Stage 7 Provider Config Routing` 与 `Stage 7 Provider Budget Ledger` CI 固定使用 PostgreSQL 18.4。
-
-## 当前限制
-
-- 小红书 TikHub App V2 已有 Operation/Mapper/Ingestion 完整纵切，但真实生产 HTTP Transport 尚未接入；
-- 抖音已建立 Search V2 + App V3 Detail/Comments/Replies 请求构造和基础分页状态机，但没有 Douyin Mapper、合法脱敏非空真实 Fixture、Real Probe、Capability/默认 Registry，因此不能宣称抖音平台已兼容；
-- 微博已建立 Web Search + App Detail/Comments + Web V2 Sub-comments 请求构造和有证据的游标状态，但没有 Weibo Mapper、合法脱敏非空真实 Fixture、Real Probe、Capability/默认 Registry，搜索结果列表和二级游标响应路径也尚未由真实 Fixture 固化；
-- B站已建立 App Search/Detail/Comments/Reply 请求构造；搜索只按官方 `data.data.pagination.next` 推进，评论/回复只消费调用方可靠提取的 `next_offset`。当前仍没有 Bilibili Mapper、合法脱敏非空真实 Fixture、Real Probe、Capability/默认 Registry，因此不能宣称 B站平台已兼容；
-- 快手已建立 App Search V2 / Detail + Web Comments/Sub-comments 请求构造和保守 `pcursor` 状态；当前仍没有 Kuaishou Mapper、合法脱敏非空真实 Fixture、Real Probe、Capability/默认 Registry，因此不能宣称快手平台已兼容；
-- Stage 7 已有通用 Decision/Capability、Provider Config/Route Contract、System `provider_configs` 父事实、TikHub Pricing fail-closed 配置/loader、最终 Provider Budget Ledger 和当前 `tikhub + xhs` Registry；抖音/微博/B站/快手均尚未达到可注册 Capability 的完整证据门禁；
-- 当前 TikHub Pricing 已列出 Stage 6/7 已知 Operation endpoint，但当前未由官方 Endpoint Info 核验精确基础价的条目保持 `pending_endpoint_info`，因此真实 billable TikHub Dispatch 仍应 fail closed；不得用全局常见价格、历史平均费用或 Fake 数字绕过；
-- 当前 Provider Config 只保存 `secret_ref` 并复用 Stage 2 只读 Secret 文件边界；Stage 8 若提供浏览器凭据编辑，仍需独立建立安全可写 SecretStore/SecretService，读取接口不得回显原始 Secret；
-- XHS `get_note_comments` 当前仍缺合法脱敏非空真实评论 Fixture/Real Probe，虽然正式 Operation 使用 `latest_v2`，但机器 Capability 暂不声明 `supports_incremental_comment_sort`；评论数增加时先走受控刷新；
-- 仅支持 `manual/api/backfill` Run；没有 Plan/Occurrence/Scheduler，因而不支持 `scheduled`；
-- 最终多级预算已实现数据库账户/Reservation、并发硬约束、发送前 Pricing/Billing 快照与 Dispatch/Recovery 终态接线，但尚没有真实付费 Provider Transport、预算管理 API/页面或 Provider 账单自动 reconciliation；Stage 6 只有已存 Raw 回放 Job Handler；
-- 除小红书外，没有其他平台的 Mapper/Candidate/Ingestion/Content/Comment 纵切；
-- 没有决定 Raw 的访问、保留、删除、备份和生产容量策略；
-- 真实 Provider Probe 默认不进入普通 CI；2026-08-14 的用户授权搜索 Probe 只确认当次 HTTP 200 空页包装/分页字段，不能用其或 Fake 结果宣称详情、评论或生产平台兼容。微博、B站和快手当前 Operation 都只使用 2026-08-15 重新核验的 TikHub 官方文档与自动化请求/分页测试，没有新增真实非空响应证据。
+- 调试入口复用 `CollectionPlanningService` / `CollectionExecutionService` / 正式 Repository，不另写第二套 SQL；
+- PostgreSQL 集成测试验证真实 FK、Unique、Check 与 deferred constraint，而不是只验证 Mock；
+- 新 Migration 必须至少验证上一正式 Revision → head、base → head、downgrade / upgrade 与 `alembic check`；
+- 真实付费 Provider Probe 默认不进入普通 CI，不能因为缺少真实网络调用而降低本模块数据库和领域测试标准。

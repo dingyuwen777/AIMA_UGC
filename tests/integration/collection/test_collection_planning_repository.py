@@ -246,6 +246,69 @@ def test_deferred_constraint_rejects_enqueued_occurrence_without_run(
         session.close()
 
 
+def test_deferred_constraint_rejects_occurrence_and_run_job_mismatch(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    provider_config_id, keyword_pack_id = _seed_dependencies(database_runtime)
+    session = database_runtime.new_session()
+    planning_service = CollectionPlanningService(PostgresCollectionPlanningRepository(session))
+    execution_service = CollectionExecutionService(PostgresCollectionRepository(session))
+    job_repository = PostgresJobRepository(session)
+    try:
+        with pytest.raises(IntegrityError), session.begin():
+            plan = planning_service.create_plan(
+                _plan_definition(provider_config_id, keyword_pack_id)
+            )
+            occurrence_job = _enqueue_job(job_repository, key=f"occurrence-{uuid4()}")
+            run_job = _enqueue_job(job_repository, key=f"run-{uuid4()}")
+            occurrence = planning_service.record_enqueued_occurrence(
+                plan_id=plan.id,
+                schedule_version=plan.schedule_version,
+                scheduled_for=datetime(2026, 8, 16, 9, 0, tzinfo=UTC),
+                job_id=occurrence_job.id,
+            )
+            execution_service.create_run(
+                job_id=run_job.id,
+                trigger_type="scheduled",
+                config_snapshot={"schema_version": "collection-run-config.v1"},
+                scopes=(),
+                occurrence_id=occurrence.id,
+            )
+    finally:
+        session.close()
+
+
+def test_deferred_constraint_rejects_run_for_skipped_occurrence(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    provider_config_id, keyword_pack_id = _seed_dependencies(database_runtime)
+    session = database_runtime.new_session()
+    planning_service = CollectionPlanningService(PostgresCollectionPlanningRepository(session))
+    execution_service = CollectionExecutionService(PostgresCollectionRepository(session))
+    job_repository = PostgresJobRepository(session)
+    try:
+        with pytest.raises(IntegrityError), session.begin():
+            plan = planning_service.create_plan(
+                _plan_definition(provider_config_id, keyword_pack_id)
+            )
+            job = _enqueue_job(job_repository, key=f"skipped-run-{uuid4()}")
+            occurrence = planning_service.record_skipped_occurrence(
+                plan_id=plan.id,
+                schedule_version=plan.schedule_version,
+                scheduled_for=datetime(2026, 8, 16, 10, 0, tzinfo=UTC),
+                skip_reason="explicit-test-skip",
+            )
+            execution_service.create_run(
+                job_id=job.id,
+                trigger_type="scheduled",
+                config_snapshot={"schema_version": "collection-run-config.v1"},
+                scopes=(),
+                occurrence_id=occurrence.id,
+            )
+    finally:
+        session.close()
+
+
 def test_skipped_occurrence_commits_without_job_or_run(database_runtime: DatabaseRuntime) -> None:
     provider_config_id, keyword_pack_id = _seed_dependencies(database_runtime)
     session = database_runtime.new_session()

@@ -16,11 +16,13 @@ on:
       - "backend/src/aima_ugc/database_schema.py"
       - "migrations/versions/20260815_0013_stage7_plan_occurrence_run_snapshot.py"
       - "tests/unit/collection/test_collection_planning.py"
+      - "tests/unit/collection/test_collection_execution.py"
       - "tests/integration/collection/test_collection_planning_repository.py"
       - "tests/integration/collection/test_collection_repository.py"
       - "docs/blueprint/03-数据库与文件存储.md"
       - "docs/blueprint/06-开发约束与分阶段实施.md"
       - "docs/blueprint/README.md"
+      - "docs/collection/README.md"
       - "backend/src/aima_ugc/modules/collection/README.md"
       - "changes/**"
       - ".github/workflows/stage7-plan-occurrence-run-snapshot.yml"
@@ -49,7 +51,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          uv run pytest tests/unit/collection/test_collection_planning.py -q
+          uv run pytest \
+            tests/unit/collection/test_collection_planning.py \
+            tests/unit/collection/test_collection_execution.py \
+            -q
 
   postgres:
     name: Stage 7 Plan PostgreSQL
