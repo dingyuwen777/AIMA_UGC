@@ -10,6 +10,9 @@ from aima_ugc.adapters.persistence.postgres.collection_planning import (
     PostgresCollectionPlanningRepository,
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
+from aima_ugc.adapters.persistence.postgres.scheduled_keywords import (
+    PostgresScheduledKeywordSnapshotReader,
+)
 from aima_ugc.modules.collection.collection_run_job import (
     COLLECTION_RUN_JOB_TYPE,
     COLLECTION_RUN_PAYLOAD_VERSION,
@@ -17,6 +20,10 @@ from aima_ugc.modules.collection.collection_run_job import (
 )
 from aima_ugc.modules.collection.execution import CollectionExecutionService
 from aima_ugc.modules.collection.planning import CollectionPlanningService, CollectionPlanRecord
+from aima_ugc.modules.collection.scheduled_scopes import (
+    ScheduledKeywordPackSnapshot,
+    build_scheduled_scope_snapshot,
+)
 from aima_ugc.modules.collection.scheduler import resolve_scheduler_plan
 from aima_ugc.platform.config import PlatformSettings
 
@@ -90,6 +97,15 @@ def run_scheduler_once(
                 if decision.next_run_at is None:  # pragma: no cover - 领域结果不允许
                     raise RuntimeError("due Scheduler decision 缺少 next_run_at")
 
+                keyword_catalog = PostgresScheduledKeywordSnapshotReader(session).read(
+                    plan.keyword_pack_ids
+                )
+                scope_snapshot = build_scheduled_scope_snapshot(
+                    plan_platforms=tuple(item.platform for item in plan.platforms),
+                    entries=keyword_catalog.entries,
+                    keyword_packs=keyword_catalog.keyword_packs,
+                )
+
                 planning_service = CollectionPlanningService(planning_repository)
                 for skipped_slot in decision.skipped:
                     planning_service.record_skipped_occurrence(
@@ -120,8 +136,13 @@ def run_scheduler_once(
                 CollectionExecutionService(PostgresCollectionRepository(session)).create_run(
                     job_id=job.id,
                     trigger_type="scheduled",
-                    config_snapshot=_scheduled_run_snapshot(plan, decision.enqueue_for),
-                    scopes=(),
+                    config_snapshot=_scheduled_run_snapshot(
+                        plan,
+                        decision.enqueue_for,
+                        keyword_packs=scope_snapshot.keyword_packs,
+                        keyword_scope_count=len(scope_snapshot.scopes),
+                    ),
+                    scopes=scope_snapshot.scopes,
                     occurrence_id=occurrence.id,
                 )
                 planning_repository.update_schedule_cursor(
@@ -148,9 +169,13 @@ def _scheduled_job_idempotency_key(plan: CollectionPlanRecord, scheduled_for: da
 
 
 def _scheduled_run_snapshot(
-    plan: CollectionPlanRecord, scheduled_for: datetime
+    plan: CollectionPlanRecord,
+    scheduled_for: datetime,
+    *,
+    keyword_packs: tuple[ScheduledKeywordPackSnapshot, ...],
+    keyword_scope_count: int,
 ) -> dict[str, object]:
-    """冻结调度时可安全持久化的 Plan 业务事实，不复制 Provider Secret。"""
+    """冻结调度时可安全持久化的 Plan/词包版本事实，不复制 Provider Secret。"""
     return {
         "schema_version": "collection-run-config.v1",
         "plan_id": str(plan.id),
@@ -170,4 +195,13 @@ def _scheduled_run_snapshot(
             for item in plan.platforms
         ],
         "keyword_pack_ids": [str(item) for item in plan.keyword_pack_ids],
+        "keyword_packs": [
+            {
+                "id": str(item.pack_id),
+                "version": item.version,
+                "enabled": item.enabled,
+            }
+            for item in keyword_packs
+        ],
+        "keyword_scope_count": keyword_scope_count,
     }
