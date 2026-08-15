@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260815-stage7-keyword-packs
 title: 建立 Stage 7 关键词与词包父事实
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: feature/stage7-keyword-packs
 created: 2026-08-15
@@ -21,13 +21,13 @@ data_changes: [keyword_packs, keywords, keyword_pack_items]
 
 # 成功标准
 
-- [ ] `keyword_packs`、`keywords`、`keyword_pack_items` 由 System 模块拥有并进入应用 Schema 注册。
-- [ ] `keywords.normalized_text` 由数据库唯一约束保证同一显式规范化值只保存一次；本 Change 不擅自定义 NFKC/casefold/空白等规范化算法。
-- [ ] `keyword_pack_items` 使用 `(pack_id, keyword_id, platform)` 复合主键，保留平台、优先级、启用状态和备注；`platform='all'` 可作为当前父事实保存。
-- [ ] PostgreSQL Repository 可创建/读取词包和关键词、关联词条并按词包读取关联项，不由文件驱动运行时采集。
-- [ ] 新 Alembic Revision 仅追加上述三张表；`20260815_0010 → head`、`base → head` 均通过 `alembic check`。
-- [ ] Unit、PostgreSQL Integration、架构/表 Owner/Secret/文档质量门禁有独立 GitHub Actions 新鲜证据。
-- [ ] 受影响长期文档与机器事实同步；Stage 7 仍保持进行中，不把本单元完成写成整个 Stage 7 完成。
+- [x] `keyword_packs`、`keywords`、`keyword_pack_items` 由 System 模块拥有并进入应用 Schema 注册。
+- [x] `keywords.normalized_text` 由数据库唯一约束保证同一显式规范化值只保存一次；本 Change 不擅自定义 NFKC/casefold/空白等规范化算法。
+- [x] `keyword_pack_items` 使用 `(pack_id, keyword_id, platform)` 复合主键，保留平台、优先级、启用状态和备注；`platform='all'` 可作为当前父事实保存。
+- [x] PostgreSQL Repository 可创建/读取词包和关键词、关联词条并按词包读取关联项，不由文件驱动运行时采集。
+- [x] 新 Alembic Revision 仅追加上述三张表；`20260815_0010 → head`、`base → head` 均通过 `alembic check`。
+- [x] Unit、PostgreSQL Integration、架构/表 Owner/Secret/文档质量门禁有独立 GitHub Actions 新鲜证据。
+- [ ] 受影响长期文档与机器事实同步；Stage 7 仍保持进行中，不把本单元完成写成整个 Stage 7 完成。该项在实现进入 main 后按集成事实更新 Blueprint，再归档 Change。
 
 # 范围
 
@@ -57,7 +57,7 @@ data_changes: [keyword_packs, keywords, keyword_pack_items]
 # 已确认关键决策
 
 1. Blueprint 02 已冻结关键词以单词为最小数据库事实，同一 `normalized_text` 只保存一次，词包和关键词使用关系表。
-2. Blueprint 02 同时要求词条具备平台、启用、优先级和备注；Blueprint 03 的 `keyword_pack_items` 字段摘要漏写备注。本 Change 将备注落实为关系属性 `keyword_pack_items.note`，并同步修正 Blueprint 03，不新造第二套语义。
+2. Blueprint 02 同时要求词条具备平台、启用、优先级和备注；Blueprint 03 的 `keyword_pack_items` 字段摘要漏写备注。本 Change 将备注落实为关系属性 `keyword_pack_items.note`，并在集成后同步 Blueprint 03，不新造第二套语义。
 3. `normalized_text` 是显式稳定身份字段；当前只验证非空和唯一，不在没有 API/导入契约的情况下猜测规范化算法。
 4. 本单元只建立关键词父事实。Plan 关联、Run 展开/冻结和 Worker 消费 Snapshot 留给后续 Stage 7 父事实单元。
 
@@ -77,57 +77,43 @@ data_changes: [keyword_packs, keywords, keyword_pack_items]
 
 # 实施任务
 
-1. Red：先加入目标 Unit/Integration 测试和本单元 CI，确认当前代码因关键词模型/Repository/表缺失而失败。
-2. Green：最小增加 System 模型、表、Repository、Schema 注册和 `20260815_0011` Migration，使目标测试通过。
-3. Refactor：只在测试通过后消除本 Change 新代码中的重复，不整理无关 System/Collection 文件。
-4. 文档：同步 System README、Blueprint 03 字段事实和 Blueprint README Stage 7 进度摘要。
-5. Review：先逐项复核需求范围，再检查正确性、约束、Migration、兼容、安全和无关改动。
-6. 集成：PR CI 成功后合并；合并后重新验证 main，再把 Change 设为 done 并归档。
+1. Red：已先加入目标 Unit/Integration 测试和本单元 CI，确认当前代码因关键词模型/Repository 缺失而失败。
+2. Green：已最小增加 System 模型、表、Repository、Schema 注册和 `20260815_0011` Migration。
+3. Refactor：仅按 Ruff 结果修正本 Change 新代码/测试格式，没有整理无关模块。
+4. 文档：System README 已同步；Blueprint 03 和 Blueprint README 等实现合入 main 后按最终机器事实同步。
+5. Review：已执行需求符合性和代码质量复核，并补上复合主键/外键的真实 PostgreSQL 约束测试。
+6. 集成：待 PR CI、合并、main 新鲜 CI；完成后再同步 Blueprint、设为 done 并归档。
 
 # 验证计划与本轮证据
 
-Red 计划：
+## Red
 
-```text
-GitHub Actions / Stage 7 Keyword Packs
-→ Unit 导入尚不存在的关键词模型
-→ PostgreSQL Integration 导入尚不存在的 Keyword Repository
-→ 读取真实失败日志确认失败原因
-```
+GitHub Actions Run `31869801537`：
 
-Green/Review 计划：
+- `Stage 7 Keyword Packs Unit`：失败，退出码 2；因 `aima_ugc.modules.system.models` 中不存在 `Keyword`，符合预期 Red。
+- `Stage 7 Keyword Packs PostgreSQL`：失败，退出码 2；先确认当前 head 为 `20260815_0010` 且 `alembic check` 零漂移，随后因 `aima_ugc.adapters.persistence.postgres.keywords` 不存在而失败，符合预期 Red。
+- Quality 当时另有新测试 import 顺序问题，不作为 Red 证据。
 
-```text
-uv lock --check
-uv sync --locked
-uv run pytest tests/unit/system/test_keyword_models.py -q
-uv run pytest tests/integration/database/test_keyword_repository.py -q
-uv run alembic upgrade head
-uv run alembic check
-uv run alembic downgrade 20260815_0010
-uv run alembic upgrade head
-uv run alembic check
-uv run alembic downgrade base
-uv run alembic upgrade head
-uv run alembic check
-uv run ruff format --check backend tests scripts
-uv run ruff check backend tests scripts
-uv run mypy backend/src
-uv run python scripts/contracts/generate.py --check
-uv run python scripts/contracts/check_compatibility.py
-uv run python scripts/quality/check_architecture.py
-uv run python scripts/quality/check_table_ownership.py
-uv run python scripts/quality/scan_secrets.py
-uv run python scripts/quality/check_docs.py
-```
+Red commit：`c56207d17d329fb9619d93308b1f812b4b8092c5`。
+
+## Green / Review
+
+最终分支验证：GitHub Actions Run `31870301677`，head `f32e926a6a40654f86424ed1b054a3ac275a13b5`：
+
+- `Stage 7 Keyword Packs Unit`：success；
+- `Stage 7 Keyword Packs Quality`：success；覆盖 `uv lock --check`、`uv sync --locked`、Ruff Format/Check、mypy、Contract 生成/兼容、Architecture、Table Ownership、Secret Scan、Docs Check；
+- `Stage 7 Keyword Packs PostgreSQL`：success；覆盖 `alembic upgrade head`、`alembic check`、目标 Integration、`20260815_0010 → head`、`base → head`；
+- Integration 实际验证 `normalized_text` 唯一、`keyword_pack_items` 复合主键、两条外键、Repository round-trip 与 System Owner。
+
+过程中曾出现仅由 Ruff 格式/import 顺序导致的失败，均读取日志后按仓库实际规则修正；没有降低检查、删除断言或绕过测试。
 
 当前宿主没有可访问的用户本地 Git 工作区或可用 `gh`，所以本 Change 的新鲜执行证据由 GitHub Actions 提供；用户本地 modified/staged/untracked/未推送提交仍不可见，不把远端状态冒充本地 `git status`。
 
 # 文档影响
 
-- `backend/src/aima_ugc/modules/system/README.md`：增加关键词目录职责、三张表与独立验证入口。
-- `docs/blueprint/03-数据库与文件存储.md`：把 Blueprint 02 已批准但字段摘要漏记的 `note` 补到 `keyword_pack_items`。
-- `docs/blueprint/README.md`：只把本单元真实进入 main 后的关键词/词包机器事实从“剩余父事实”移出；不得宣称 Stage 7 完成。
+- `backend/src/aima_ugc/modules/system/README.md`：已增加关键词目录职责、三张表与独立验证入口。
+- `docs/blueprint/03-数据库与文件存储.md`：待实现进入 main 后，把 Blueprint 02 已批准但字段摘要漏记的 `note`、当前 Owner 和 Migration 链同步为最终事实。
+- `docs/blueprint/README.md`：待实现进入 main 后，把关键词/词包机器事实从“剩余父事实”移出；不得宣称 Stage 7 完成。
 
 # 兼容、Migration、部署与回滚
 
@@ -138,7 +124,7 @@ uv run python scripts/quality/check_docs.py
 
 # 安全、性能与运维风险
 
-- 本单元不持有 Secret，不接受 Provider Token/API Key；Secret Scan 继续作为门禁。
+- 本单元不持有 Secret，不接受 Provider Token/API Key；Secret Scan 已作为门禁通过。
 - 关键词和备注是业务配置文本，后续公开 API 仍需单独建立权限、审计和输入长度边界；本 Change 不提前伪造认证语义。
 - 唯一索引 `normalized_text` 与三列复合主键足以支撑当前身份/关联约束；没有测量证据前不添加额外索引。
 
@@ -147,8 +133,9 @@ uv run python scripts/quality/check_docs.py
 - 基线 main：`22aea46cff29e9939c51832b9b71a21f817d81c7`
 - 分支：`feature/stage7-keyword-packs`
 - 本地工作区：当前宿主不可见
-- Commit：Red/Green 待本 Change 实际产生后记录
+- Red Commit：`c56207d17d329fb9619d93308b1f812b4b8092c5`
+- 当前实现 head：`f32e926a6a40654f86424ed1b054a3ac275a13b5`
 - PR：待创建
-- CI：待执行
+- 最新分支 CI：Run `31870301677`，3/3 Jobs success
 - 合并：未合并
-- Change：`in_progress`，不得在集成前归档
+- Change：`ready_for_review`；正式文档、main 集成和合并后 CI 未闭环，因此不得归档
