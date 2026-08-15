@@ -164,7 +164,9 @@ def _prepare_context(
                 request_params={"keyword": "爱玛"},
             )
             attempt_id = uuid4()
-            ProviderPersistenceService(PostgresProviderRepository(session)).prepare_billable_attempt(
+            ProviderPersistenceService(
+                PostgresProviderRepository(session)
+            ).prepare_billable_attempt(
                 request=request,
                 provider_config_id=provider_config_id,
                 attempt_id=attempt_id,
@@ -309,8 +311,11 @@ def test_completed_estimated_billing_keeps_actual_zero_and_settles_reserved_uppe
     )
 
     assert outcome.attempt.dispatch_status == "completed"
-    assert outcome.attempt.billing.status == "estimated"
-    assert outcome.attempt.billing.actual_cost == 0
+    assert outcome.attempt.billing_status == "estimated"
+    assert outcome.attempt.actual_cost == 0
+    assert outcome.attempt.estimated_cost == reserved_cost
+    assert outcome.attempt.unit_price_snapshot == reserved_cost
+    assert outcome.attempt.cost_currency == "USD"
     with database_runtime.engine.connect() as connection:
         persisted_actual_cost = connection.scalar(
             select(provider_request_attempts_table.c.actual_cost).where(
