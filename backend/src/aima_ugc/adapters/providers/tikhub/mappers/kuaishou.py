@@ -8,6 +8,7 @@ from aima_ugc.contracts.canonical import (
     CanonicalAuthorV1,
     CanonicalCommentV1,
     CanonicalContentV1,
+    CanonicalMediaV1,
     CanonicalMetricsV1,
 )
 
@@ -56,6 +57,10 @@ def map_content(
     if published_at is not None:
         observed_fields.append("published_at")
 
+    media = _map_media(item)
+    if media:
+        observed_fields.append("media")
+
     return CanonicalContentV1(
         platform="kuaishou",
         external_content_id=external_id,
@@ -65,6 +70,7 @@ def map_content(
         author=author,
         published_at=published_at,
         observed_at=context.observed_at,
+        media=media,
         metrics=metrics,
         source=source(context, item_locator),
         observed_fields=observed_fields,
@@ -147,6 +153,39 @@ def _content_type(item: dict[str, Any]) -> str:
         if isinstance(value, list) and value:
             return "image"
     return "unknown"
+
+
+def _map_media(item: dict[str, Any]) -> list[CanonicalMediaV1]:
+    duration, _ = count(item, "duration")
+    mapped: list[CanonicalMediaV1] = []
+    video_url = _first_http_url(item.get("main_mv_urls"))
+    if video_url is not None:
+        mapped.append(
+            CanonicalMediaV1(
+                media_type="video",
+                url=video_url,
+                duration_ms=duration,
+            )
+        )
+    cover_url = _first_http_url(item.get("cover_thumbnail_urls"))
+    if cover_url is not None:
+        mapped.append(
+            CanonicalMediaV1(
+                media_type="cover",
+                url=cover_url,
+                duration_ms=duration,
+            )
+        )
+    return mapped
+
+
+def _first_http_url(value: object) -> str | None:
+    if not isinstance(value, list):
+        return None
+    for item in value:
+        if isinstance(item, str) and item.startswith(("http://", "https://")):
+            return item
+    return None
 
 
 def _map_content_author(
