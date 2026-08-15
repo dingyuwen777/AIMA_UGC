@@ -22,6 +22,7 @@ class TikHubMappingContext:
     source_type: str
     source_value: str
     observed_at: datetime
+    external_content_id: str | None = None
     root_comment_id: str | None = None
 
 
