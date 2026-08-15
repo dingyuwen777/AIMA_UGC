@@ -193,6 +193,35 @@ def extract_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     return tuple(item for item in items if isinstance(item, dict))
 
 
+def extract_detail_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    """统一提取图文 detail 的 note_list 与视频 detail 的直接 note item。"""
+    outer = body.get("data")
+    if not isinstance(outer, dict):
+        return ()
+    items = outer.get("data")
+    if not isinstance(items, list):
+        return ()
+    extracted: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        note_list = item.get("note_list")
+        if isinstance(note_list, list):
+            extracted.extend(note for note in note_list if isinstance(note, dict))
+        elif "id" in item or "note_id" in item:
+            extracted.append(item)
+    return tuple(extracted)
+
+
+def extract_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    """从真实一级评论响应提取 comments；内嵌 sub_comments 由 Mapper 单独处理。"""
+    data = _find_mapping(body, required_any=("comments",))
+    items = data.get("comments")
+    if not isinstance(items, list):
+        return ()
+    return tuple(item for item in items if isinstance(item, dict))
+
+
 def _find_mapping(body: dict[str, Any], *, required_any: tuple[str, ...]) -> dict[str, Any]:
     current: object = body
     fallback = body
@@ -242,3 +271,18 @@ def _integer(value: object, *, default: int) -> int:
         except ValueError:
             return default
     return default
+
+
+__all__ = [
+    "XhsCommentPagination",
+    "XhsRequest",
+    "XhsSearchPagination",
+    "build_image_detail_request",
+    "build_note_comments_request",
+    "build_search_notes_request",
+    "build_sub_comments_request",
+    "build_video_detail_request",
+    "extract_comment_items",
+    "extract_detail_items",
+    "extract_search_items",
+]
