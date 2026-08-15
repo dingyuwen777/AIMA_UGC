@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from decimal import Decimal
+from typing import Protocol, cast
 from uuid import UUID
 
-from aima_ugc.contracts.provider import ProviderAttemptV1, ProviderRequestV1
+from aima_ugc.contracts.provider import ProviderAttemptV1, ProviderBillingV1, ProviderRequestV1
 from aima_ugc.platform.jobs import JobExecutionFence
 from aima_ugc.platform.storage import ArtifactRecord
 
@@ -70,6 +71,23 @@ class RawArtifactCapture(Protocol):
     ) -> CapturedRawArtifact: ...
 
 
+def _planned_billing_from_record(attempt: ProviderAttemptRecord) -> ProviderBillingV1:
+    if attempt.billing_status == "not_billable":
+        return ProviderBillingV1(status="not_billable")
+    if attempt.billing_status != "estimated":
+        raise ValueError("dispatching Attempt 的 Billing 必须为 not_billable 或 estimated")
+    if attempt.cost_currency is None:
+        raise ValueError("estimated Attempt 缺少 cost_currency")
+    return ProviderBillingV1(
+        status="estimated",
+        currency=attempt.cost_currency,
+        unit=attempt.cost_unit,
+        unit_price_snapshot=attempt.unit_price_snapshot or Decimal("0"),
+        estimated_cost=attempt.estimated_cost,
+        actual_cost=Decimal("0"),
+    )
+
+
 class ProviderDispatchService:
     """CAS 后执行一次 Provider Client，再提交 Raw 终态。"""
 
@@ -101,6 +119,7 @@ class ProviderDispatchService:
             attempt_no=preparation.attempt.attempt_no,
             transport_request=transport_request,
             dispatch_started_at=preparation.attempt.dispatch_started_at,
+            planned_billing=_planned_billing_from_record(preparation.attempt),
         )
         if dispatch.attempt.dispatch_status == "not_sent":
             persisted = self._persistence.finalize_dispatch(
