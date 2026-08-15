@@ -57,7 +57,7 @@ class BilibiliSearchPagination:
 
 @dataclass(frozen=True, slots=True)
 class BilibiliCursorPagination:
-    """评论/回复只处理调用方已可靠提取的 next_offset，不猜响应路径。"""
+    """评论/回复处理调用方已可靠提取的 next_offset。"""
 
     next_cursor: int
     should_continue: bool
@@ -154,11 +154,8 @@ def build_reply_detail_request(
 
 def extract_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     """从真实 App 分类搜索的 data.data.items 提取 av item。"""
-    outer_data = body.get("data")
-    if not isinstance(outer_data, dict):
-        return ()
-    provider_data = outer_data.get("data")
-    if not isinstance(provider_data, dict):
+    provider_data = _provider_data(body)
+    if provider_data is None:
         return ()
     items = provider_data.get("items")
     if not isinstance(items, list):
@@ -168,12 +165,36 @@ def extract_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     )
 
 
-def _search_next_cursor(body: dict[str, Any]) -> str:
+def extract_detail_item(body: dict[str, Any]) -> dict[str, Any]:
+    """从真实 App 视频详情响应提取 data.data。"""
+    provider_data = _provider_data(body)
+    if provider_data is None or "aid" not in provider_data:
+        raise ValueError("B站详情响应缺少 data.data/aid")
+    return provider_data
+
+
+def extract_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    """从真实 App 评论/回复响应提取 data.data.replies。"""
+    provider_data = _provider_data(body)
+    if provider_data is None:
+        return ()
+    replies = provider_data.get("replies")
+    if not isinstance(replies, list):
+        return ()
+    return tuple(item for item in replies if isinstance(item, dict))
+
+
+def _provider_data(body: dict[str, Any]) -> dict[str, Any] | None:
     outer_data = body.get("data")
     if not isinstance(outer_data, dict):
-        raise ValueError("B站搜索响应缺少 data")
+        return None
     provider_data = outer_data.get("data")
-    if not isinstance(provider_data, dict):
+    return provider_data if isinstance(provider_data, dict) else None
+
+
+def _search_next_cursor(body: dict[str, Any]) -> str:
+    provider_data = _provider_data(body)
+    if provider_data is None:
         raise ValueError("B站搜索响应缺少 data.data")
     pagination = provider_data.get("pagination")
     if pagination is None:
@@ -240,5 +261,7 @@ __all__ = [
     "build_search_request",
     "build_video_comments_request",
     "build_video_detail_request",
+    "extract_comment_items",
+    "extract_detail_item",
     "extract_search_items",
 ]
