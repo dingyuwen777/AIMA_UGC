@@ -97,18 +97,36 @@ def map_comment(
     if external_content_id is None:
         raise ValueError("抖音评论缺少 aweme_id 且上下文未提供 external_content_id")
 
+    observed_fields: list[str] = []
     text = optional_string(raw, "text")
-    author, _ = _map_author(first_dict(raw, "user"))
-    like_count, _ = count(raw, "digg_count")
-    reply_count, _ = count(raw, "reply_comment_total")
+    if text is not None:
+        observed_fields.append("text")
+
+    author, author_fields = _map_author(first_dict(raw, "user"))
+    observed_fields.extend(f"author.{field}" for field in author_fields)
+
+    like_count, like_observed = count(raw, "digg_count")
+    reply_count, reply_observed = count(raw, "reply_comment_total")
+    if like_observed:
+        observed_fields.append("metrics.like_count")
+    if reply_observed:
+        observed_fields.append("metrics.reply_count")
+
     published_at = timestamp(raw, "create_time")
+    if published_at is not None:
+        observed_fields.append("published_at")
 
     if is_root:
         root_comment_id = external_comment_id
         parent_comment_id = None
+        observed_fields.extend(("root_comment_id", "parent_comment_id"))
     else:
         root_comment_id = context.root_comment_id
         parent_comment_id = _douyin_parent_comment_id(raw)
+        if root_comment_id is not None:
+            observed_fields.append("root_comment_id")
+        if parent_comment_id is not None:
+            observed_fields.append("parent_comment_id")
 
     return CanonicalCommentV1(
         platform="douyin",
@@ -122,6 +140,7 @@ def map_comment(
         observed_at=context.observed_at,
         metrics=CanonicalMetricsV1(like_count=like_count, reply_count=reply_count),
         source=source(context, item_locator),
+        observed_fields=observed_fields,
     )
 
 
