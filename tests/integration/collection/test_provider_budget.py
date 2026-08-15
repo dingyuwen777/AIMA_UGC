@@ -12,8 +12,6 @@ from threading import Barrier
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import delete, insert, select, update
-
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataGateway,
 )
@@ -67,6 +65,7 @@ from aima_ugc.platform.jobs import JobExecutionFence
 from aima_ugc.platform.jobs.tables import job_attempt_events_table, jobs_table
 from aima_ugc.platform.storage import ArtifactService
 from aima_ugc.platform.storage.tables import artifacts_table
+from sqlalchemy import delete, insert, select, update
 
 
 @dataclass(frozen=True, slots=True)
