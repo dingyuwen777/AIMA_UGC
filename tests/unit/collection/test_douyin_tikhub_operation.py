@@ -158,6 +158,25 @@ def test_search_pagination_stops_on_empty_duplicate_exhausted_or_stalled_page() 
     assert stalled.stop_reason == "pagination_not_advanced"
 
 
+def test_search_duplicate_page_ignores_item_order() -> None:
+    duplicate = DouyinSearchPagination.from_response(
+        current_cursor=20,
+        previous_item_ids=("aweme-1", "aweme-2"),
+        body={
+            "data": {
+                "business_data": [
+                    {"data": {"aweme_info": {"aweme_id": "aweme-2"}}},
+                    {"data": {"aweme_info": {"aweme_id": "aweme-1"}}},
+                ],
+                "cursor": 40,
+                "has_more": 1,
+            }
+        },
+    )
+    assert duplicate.should_continue is False
+    assert duplicate.stop_reason == "duplicate_page"
+
+
 def test_detail_comments_and_replies_use_approved_v3_endpoints_without_count_override() -> None:
     detail = build_video_detail_request(aweme_id="aweme-1")
     assert detail.method == "GET"
