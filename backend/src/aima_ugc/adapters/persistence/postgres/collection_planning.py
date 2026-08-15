@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, insert, select
+from sqlalchemy import func, insert, or_, select, update
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
@@ -23,6 +23,10 @@ from aima_ugc.modules.collection.tables import (
     collection_plans_table,
     collection_schedule_occurrences_table,
 )
+
+
+class StaleCollectionPlanError(RuntimeError):
+    """Scheduler 锁定后发现 Plan 版本已变化或已消失。"""
 
 
 class PostgresCollectionPlanningRepository:
@@ -88,35 +92,61 @@ class PostgresCollectionPlanningRepository:
 
     def get_plan(self, plan_id: UUID) -> CollectionPlanRecord | None:
         """读取 Plan 聚合快照，不修改事务状态。"""
-        row = (
-            self._session.execute(
-                select(collection_plans_table).where(collection_plans_table.c.id == plan_id)
-            )
-            .mappings()
-            .one_or_none()
-        )
-        if row is None:
-            return None
+        return self._get_plan(plan_id, for_update=False)
 
-        platform_rows = (
-            self._session.execute(
-                select(collection_plan_platforms_table)
-                .where(collection_plan_platforms_table.c.plan_id == plan_id)
-                .order_by(collection_plan_platforms_table.c.platform)
+    def list_schedulable_plan_ids(self, *, now: datetime, limit: int = 100) -> tuple[UUID, ...]:
+        """短事务预扫需要初始化或已经到期的 Plan ID，不在此处抢锁。"""
+        if now.utcoffset() is None:
+            raise ValueError("Scheduler scan now 必须包含时区")
+        if limit < 1:
+            raise ValueError("Scheduler scan limit 必须大于等于 1")
+        values = self._session.execute(
+            select(collection_plans_table.c.id)
+            .where(
+                collection_plans_table.c.enabled.is_(True),
+                collection_plans_table.c.schedule_expr.is_not(None),
+                or_(
+                    collection_plans_table.c.next_run_at.is_(None),
+                    collection_plans_table.c.next_run_at <= now,
+                ),
             )
-            .mappings()
-            .all()
+            .order_by(
+                collection_plans_table.c.next_run_at.asc().nullsfirst(),
+                collection_plans_table.c.id,
+            )
+            .limit(limit)
+        ).scalars()
+        return tuple(cast(UUID, value) for value in values)
+
+    def get_plan_for_update(self, plan_id: UUID) -> CollectionPlanRecord | None:
+        """在当前事务锁定一个 Plan，并重新读取最新调度事实。"""
+        return self._get_plan(plan_id, for_update=True)
+
+    def update_schedule_cursor(
+        self,
+        *,
+        plan_id: UUID,
+        schedule_version: int,
+        next_run_at: datetime,
+        last_scheduled_at: datetime | None,
+    ) -> None:
+        """推进当前 Plan 版本的 Scheduler cursor；版本漂移时 fail closed。"""
+        if next_run_at.utcoffset() is None:
+            raise ValueError("next_run_at 必须包含时区")
+        result = self._session.execute(
+            update(collection_plans_table)
+            .where(
+                collection_plans_table.c.id == plan_id,
+                collection_plans_table.c.schedule_version == schedule_version,
+            )
+            .values(
+                next_run_at=next_run_at,
+                last_scheduled_at=last_scheduled_at,
+                updated_at=func.clock_timestamp(),
+            )
         )
-        keyword_pack_ids = tuple(
-            cast(UUID, value)
-            for value in self._session.execute(
-                select(collection_plan_keyword_packs_table.c.keyword_pack_id)
-                .where(collection_plan_keyword_packs_table.c.plan_id == plan_id)
-                .order_by(collection_plan_keyword_packs_table.c.keyword_pack_id)
-            ).scalars()
-        )
-        platforms = tuple(_row_to_platform(platform_row) for platform_row in platform_rows)
-        return _row_to_plan(row, platforms=platforms, keyword_pack_ids=keyword_pack_ids)
+        if result.rowcount != 1:
+            raise StaleCollectionPlanError("Scheduler cursor 更新时 Plan 版本已变化")
 
     def create_occurrence(
         self,
@@ -148,6 +178,34 @@ class PostgresCollectionPlanningRepository:
             .one()
         )
         return _row_to_occurrence(row)
+
+    def _get_plan(self, plan_id: UUID, *, for_update: bool) -> CollectionPlanRecord | None:
+        statement = select(collection_plans_table).where(collection_plans_table.c.id == plan_id)
+        if for_update:
+            statement = statement.with_for_update()
+        row = self._session.execute(statement).mappings().one_or_none()
+        if row is None:
+            return None
+
+        platform_rows = (
+            self._session.execute(
+                select(collection_plan_platforms_table)
+                .where(collection_plan_platforms_table.c.plan_id == plan_id)
+                .order_by(collection_plan_platforms_table.c.platform)
+            )
+            .mappings()
+            .all()
+        )
+        keyword_pack_ids = tuple(
+            cast(UUID, value)
+            for value in self._session.execute(
+                select(collection_plan_keyword_packs_table.c.keyword_pack_id)
+                .where(collection_plan_keyword_packs_table.c.plan_id == plan_id)
+                .order_by(collection_plan_keyword_packs_table.c.keyword_pack_id)
+            ).scalars()
+        )
+        platforms = tuple(_row_to_platform(platform_row) for platform_row in platform_rows)
+        return _row_to_plan(row, platforms=platforms, keyword_pack_ids=keyword_pack_ids)
 
 
 def _row_to_platform(row: RowMapping) -> PlanPlatformDefinition:
