@@ -277,7 +277,9 @@ def _sanitize_scalar(key: str, value: object, pseudonyms: _Pseudonymizer) -> obj
     return value
 
 
-def sanitize_json(value: object, *, key: str = "root", pseudonyms: _Pseudonymizer | None = None) -> object:
+def sanitize_json(
+    value: object, *, key: str = "root", pseudonyms: _Pseudonymizer | None = None
+) -> object:
     """保留 JSON 字段、容器形状和非识别数值，删除 Secret/PII/URL/真实 ID。"""
     active = pseudonyms or _Pseudonymizer()
     if isinstance(value, dict):
