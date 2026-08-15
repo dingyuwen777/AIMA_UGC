@@ -107,7 +107,7 @@ def build_search_request(
     *,
     keyword: str,
     page: int = 1,
-    search_mode: str = "general",
+    search_mode: str = "latest",
     time_scope: str = "all",
 ) -> WeiboRequest:
     """把规范化搜索参数映射到 TikHub 微博 Web 搜索。"""
@@ -144,7 +144,7 @@ def build_status_comments_request(
     *,
     status_id: str,
     max_id: str | None = None,
-    sort_mode: str = "hot",
+    sort_mode: str = "latest",
 ) -> WeiboRequest:
     """构造微博 App 一级评论请求；首屏不发送 max_id。"""
     params: dict[str, object] = {
