@@ -81,7 +81,9 @@ jobs:
           set -euo pipefail
           uv run ruff format \
             backend/src/aima_ugc/adapters/providers/tikhub \
+            backend/src/aima_ugc/adapters/providers/registry.py \
             tests/unit/collection/test_*tikhub*.py \
+            tests/unit/collection/test_provider_routing.py \
             tests/integration/content/test_tikhub_real_normalized_ingestion.py \
             scripts/dev/probe_tikhub_stage7_*.py
           uv run ruff format --check backend tests scripts
@@ -101,6 +103,7 @@ jobs:
             tests/unit/collection/test_tikhub_real_reply_mappers.py \
             tests/unit/collection/test_tikhub_real_capabilities.py \
             tests/unit/collection/test_tikhub_transport.py \
+            tests/unit/collection/test_provider_routing.py \
             tests/integration/content/test_tikhub_real_normalized_ingestion.py \
             tests/integration/content/test_xhs_raw_replay_job.py \
             -q
@@ -122,6 +125,7 @@ jobs:
           mkdir -p "${RUNNER_TEMP}/stage7-normalization-patch"
           git diff --name-only -- \
             backend/src/aima_ugc/adapters/providers/tikhub \
+            backend/src/aima_ugc/adapters/providers/registry.py \
             tests/unit/collection \
             tests/integration/content/test_tikhub_real_normalized_ingestion.py \
             scripts/dev \
