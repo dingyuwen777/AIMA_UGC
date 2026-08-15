@@ -291,10 +291,7 @@ def sanitize_json(
             for child_key, child_value in value.items()
         }
     if isinstance(value, list):
-        return [
-            sanitize_json(item, key=key, pseudonyms=active)
-            for item in value[:_MAX_LIST_ITEMS]
-        ]
+        return [sanitize_json(item, key=key, pseudonyms=active) for item in value[:_MAX_LIST_ITEMS]]
     return _sanitize_scalar(key, value, active)
 
 
