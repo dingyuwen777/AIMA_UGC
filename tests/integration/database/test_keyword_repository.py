@@ -106,7 +106,9 @@ def test_keyword_catalog_round_trip_and_database_constraints() -> None:
             "keyword_id",
             "platform",
         )
-        assert {foreign_key.target_fullname for foreign_key in keyword_pack_items_table.foreign_keys} == {
+        assert {
+            foreign_key.target_fullname for foreign_key in keyword_pack_items_table.foreign_keys
+        } == {
             "keyword_packs.id",
             "keywords.id",
         }
