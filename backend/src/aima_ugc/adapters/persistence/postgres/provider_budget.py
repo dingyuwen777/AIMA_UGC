@@ -352,11 +352,7 @@ class PostgresProviderBudgetRepository:
             ).mappings()
         )
         reserved = sum(
-            (
-                cast(Decimal, row["reserved_amount"])
-                for row in rows
-                if row["status"] == "reserved"
-            ),
+            (cast(Decimal, row["reserved_amount"]) for row in rows if row["status"] == "reserved"),
             Decimal("0"),
         )
         settled = sum(
@@ -368,11 +364,7 @@ class PostgresProviderBudgetRepository:
             Decimal("0"),
         )
         unknown = sum(
-            (
-                cast(Decimal, row["reserved_amount"])
-                for row in rows
-                if row["status"] == "unknown"
-            ),
+            (cast(Decimal, row["reserved_amount"]) for row in rows if row["status"] == "unknown"),
             Decimal("0"),
         )
         if (

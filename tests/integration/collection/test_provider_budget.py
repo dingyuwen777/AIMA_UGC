@@ -286,9 +286,7 @@ def _reserve(
     session = runtime.new_session()
     try:
         with session.begin():
-            return ProviderBudgetService(
-                PostgresProviderBudgetRepository(session)
-            ).reserve_attempt(
+            return ProviderBudgetService(PostgresProviderBudgetRepository(session)).reserve_attempt(
                 provider_config_id=context.provider_config_id,
                 provider_request_id=context.request.request_id,
                 provider_request_attempt_id=attempt_id or context.attempt_id,
@@ -338,9 +336,7 @@ def test_reservation_is_atomic_and_replay_is_idempotent(
             snapshots = [audit.audit_account(account.id) for account in accounts]
         for snapshot in snapshots:
             expected = (
-                Decimal("1")
-                if snapshot.dimension == "request_count"
-                else Decimal("0.010000")
+                Decimal("1") if snapshot.dimension == "request_count" else Decimal("0.010000")
             )
             assert snapshot.reserved_amount == expected
             assert snapshot.settled_amount == 0
@@ -593,11 +589,7 @@ def test_not_sent_releases_and_unknown_keeps_reservation_as_unknown(
             for item in released
         )
         for item in held_unknown:
-            expected = (
-                Decimal("1")
-                if item.dimension == "request_count"
-                else Decimal("0.010000")
-            )
+            expected = Decimal("1") if item.dimension == "request_count" else Decimal("0.010000")
             assert item.reserved_amount == 0
             assert item.settled_amount == 0
             assert item.unknown_amount == expected
