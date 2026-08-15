@@ -6,7 +6,7 @@ import tomllib
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from importlib.resources import files
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from aima_ugc.contracts.provider import ProviderBillingV1
 
@@ -196,7 +196,7 @@ def _parse_endpoints(value: object) -> tuple[TikHubEndpointPrice, ...]:
         parsed.append(
             TikHubEndpointPrice(
                 path=path,
-                verification_status=status,  # type: ignore[arg-type]
+                verification_status=cast(TikHubPriceVerificationStatus, status),
                 base_price=base_price,
                 verified_at=verified_at,
                 verified_via=verified_via,
