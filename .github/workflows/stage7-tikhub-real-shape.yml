@@ -1,24 +1,11 @@
 name: Stage 7 TikHub Real Shape
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - feature/stage7-completion
-      - main
     paths:
-      - "backend/src/aima_ugc/adapters/providers/tikhub/**"
-      - "backend/src/aima_ugc/contracts/canonical/**"
-      - "tests/fixtures/providers/tikhub/**"
-      - "tests/unit/collection/test_*tikhub*"
-      - ".github/workflows/stage7-tikhub-real-shape.yml"
-  pull_request:
-    branches:
-      - main
-    paths:
-      - "backend/src/aima_ugc/adapters/providers/tikhub/**"
-      - "backend/src/aima_ugc/contracts/canonical/**"
-      - "tests/fixtures/providers/tikhub/**"
-      - "tests/unit/collection/test_*tikhub*"
       - ".github/workflows/stage7-tikhub-real-shape.yml"
 
 permissions:
@@ -55,6 +42,8 @@ jobs:
             tests/unit/collection/test_kuaishou_tikhub_operation.py \
             tests/unit/collection/test_tikhub_real_search_operations.py \
             tests/unit/collection/test_tikhub_real_search_mappers.py \
+            tests/unit/collection/test_tikhub_real_comment_mappers.py \
+            tests/unit/collection/test_tikhub_real_detail_mappers.py \
             tests/unit/collection/test_tikhub_pricing.py \
             -q
 
