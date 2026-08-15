@@ -4,7 +4,6 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
-
 from aima_ugc.modules.collection.provider_budget import build_attempt_budget_requirements
 
 
