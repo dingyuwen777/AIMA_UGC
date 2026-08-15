@@ -103,9 +103,7 @@ class TikHubPricingCatalog:
         for endpoint in self.endpoints:
             if endpoint.path == normalized:
                 return endpoint
-        raise TikHubPriceNotVerifiedError(
-            f"TikHub endpoint 缺少已核验官方精确价格: {normalized}"
-        )
+        raise TikHubPriceNotVerifiedError(f"TikHub endpoint 缺少已核验官方精确价格: {normalized}")
 
     def billing_for_endpoint(self, path: str) -> ProviderBillingV1:
         """按已核验官方基价构造发送前保守 Billing，不生成假 actual_cost。"""
