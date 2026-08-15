@@ -1,0 +1,52 @@
+{
+  "code": 200,
+  "data": {
+    "business_config": {
+      "backtrace": "backtrace-fixture-1",
+      "has_more": 1,
+      "next_page": {
+        "cursor": 8,
+        "search_id": "search-fixture-1"
+      }
+    },
+    "business_data": [
+      {
+        "card_id": "card-fixture-1",
+        "data": {
+          "aweme_info": {
+            "aweme_id": "aweme-fixture-1",
+            "group_id": "aweme-fixture-1",
+            "desc": "脱敏正文 A",
+            "item_title": "脱敏标题 A",
+            "create_time": 1720000000,
+            "aweme_type": 0,
+            "media_type": 4,
+            "share_url": "https://example.invalid/douyin/aweme-fixture-1",
+            "author": {
+              "uid": "user-fixture-1",
+              "sec_uid": "sec-fixture-1",
+              "unique_id": "handle-fixture-1",
+              "nickname": "脱敏用户 A",
+              "verification_type": 1,
+              "enterprise_verify_reason": "脱敏认证"
+            },
+            "statistics": {
+              "aweme_id": "aweme-fixture-1",
+              "collect_count": 66,
+              "comment_count": 30,
+              "digg_count": 252,
+              "download_count": 4,
+              "play_count": 0,
+              "share_count": 37
+            },
+            "video": {
+              "duration": 221200
+            }
+          }
+        },
+        "data_id": "data-fixture-1",
+        "type": 1
+      }
+    ]
+  }
+}
