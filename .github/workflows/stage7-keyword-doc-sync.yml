@@ -25,7 +25,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          changed="$(git diff --name-only)"
+          changed="$(git -c core.quotePath=false diff --name-only)"
           printf '%s\n' "$changed"
           expected=$'docs/blueprint/03-数据库与文件存储.md\ndocs/blueprint/README.md'
           test "$changed" = "$expected"
