@@ -23,6 +23,9 @@ from aima_ugc.modules.content.tables import (
 )
 from aima_ugc.modules.system.tables import (
     audit_events_table,
+    keyword_pack_items_table,
+    keyword_packs_table,
+    keywords_table,
     provider_configs_table,
     system_settings_table,
 )
@@ -48,6 +51,9 @@ __all__ = [
     "contents_table",
     "job_attempt_events_table",
     "jobs_table",
+    "keyword_pack_items_table",
+    "keyword_packs_table",
+    "keywords_table",
     "metadata",
     "provider_configs_table",
     "provider_request_attempts_table",

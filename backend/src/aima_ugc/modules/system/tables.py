@@ -1,6 +1,18 @@
 """System 模块拥有的数据表。"""
 
-from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, Integer, Table, Text, Uuid, text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Table,
+    Text,
+    UniqueConstraint,
+    Uuid,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 
 from aima_ugc.platform.database.metadata import metadata
@@ -33,6 +45,50 @@ provider_configs_table = Table(
     CheckConstraint("char_length(display_name) > 0", name="display_name_nonempty"),
     CheckConstraint("char_length(base_url) > 0", name="base_url_nonempty"),
     CheckConstraint("char_length(secret_ref) > 0", name="secret_ref_nonempty"),
+    info={"owner": "system"},
+)
+
+keyword_packs_table = Table(
+    "keyword_packs",
+    metadata,
+    Column("id", Uuid(), primary_key=True),
+    Column("name", Text(), nullable=False),
+    Column("description", Text(), nullable=False, server_default=text("''")),
+    Column("enabled", Boolean(), nullable=False, server_default=text("true")),
+    Column("version", Integer(), nullable=False, server_default=text("1")),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("name"),
+    CheckConstraint("char_length(name) > 0", name="name_nonempty"),
+    CheckConstraint("version > 0", name="version_positive"),
+    info={"owner": "system"},
+)
+
+keywords_table = Table(
+    "keywords",
+    metadata,
+    Column("id", Uuid(), primary_key=True),
+    Column("text", Text(), nullable=False),
+    Column("normalized_text", Text(), nullable=False),
+    Column("enabled", Boolean(), nullable=False, server_default=text("true")),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("normalized_text"),
+    CheckConstraint("char_length(text) > 0", name="text_nonempty"),
+    CheckConstraint("char_length(normalized_text) > 0", name="normalized_text_nonempty"),
+    info={"owner": "system"},
+)
+
+keyword_pack_items_table = Table(
+    "keyword_pack_items",
+    metadata,
+    Column("pack_id", Uuid(), ForeignKey("keyword_packs.id"), primary_key=True),
+    Column("keyword_id", Uuid(), ForeignKey("keywords.id"), primary_key=True),
+    Column("platform", Text(), primary_key=True),
+    Column("priority", Integer(), nullable=False, server_default=text("100")),
+    Column("enabled", Boolean(), nullable=False, server_default=text("true")),
+    Column("note", Text(), nullable=False, server_default=text("''")),
+    CheckConstraint("char_length(platform) > 0", name="platform_nonempty"),
     info={"owner": "system"},
 )
 
