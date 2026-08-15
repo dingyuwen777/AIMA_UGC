@@ -163,16 +163,12 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["budget_account_id"],
             ["provider_budget_accounts.id"],
-            name=op.f(
-                "fk_provider_budget_reservations_budget_account_id_provider_budget_accounts"
-            ),
+            name=op.f("fk_provider_budget_reservations_budget_account_id_provider_budget_accounts"),
         ),
         sa.ForeignKeyConstraint(
             ["provider_request_id"],
             ["provider_requests.id"],
-            name=op.f(
-                "fk_provider_budget_reservations_provider_request_id_provider_requests"
-            ),
+            name=op.f("fk_provider_budget_reservations_provider_request_id_provider_requests"),
         ),
         sa.ForeignKeyConstraint(
             ["provider_request_attempt_id", "provider_request_id"],
