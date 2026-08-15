@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Self
+from typing import Literal, Self
 from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID
 
@@ -30,7 +30,7 @@ def normalize_provider_base_url(value: str) -> str:
 class ProviderConfigV1(CollectionBaseModel):
     """一个可被多个平台引用的 Provider 配置实例；只保存 Secret 引用。"""
 
-    schema_version: str = "provider-config.v1"
+    schema_version: Literal["provider-config.v1"] = "provider-config.v1"
     provider_config_id: UUID
     provider: ProviderName
     display_name: str = Field(min_length=1, max_length=128)
@@ -60,7 +60,7 @@ class ProviderConfigV1(CollectionBaseModel):
 class ProviderPlatformRouteV1(CollectionBaseModel):
     """平台选择具体 Provider Config 后解析出的稳定路由与业务 Capability。"""
 
-    schema_version: str = "provider-platform-route.v1"
+    schema_version: Literal["provider-platform-route.v1"] = "provider-platform-route.v1"
     provider_config_id: UUID
     provider: ProviderName
     platform: PlatformName
