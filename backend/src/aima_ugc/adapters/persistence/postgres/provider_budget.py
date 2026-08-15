@@ -22,6 +22,7 @@ from aima_ugc.modules.collection.provider_budget import (
     ProviderBudgetDriftError,
     ProviderBudgetExceededError,
     ProviderBudgetLineageError,
+    ProviderBudgetRequirement,
     ProviderBudgetReservationMissingError,
     ProviderBudgetReservationRecord,
     build_attempt_budget_requirements,
@@ -484,7 +485,7 @@ class PostgresProviderBudgetRepository:
     def _validate_replay(
         self,
         rows: list[RowMapping],
-        requirements,
+        requirements: tuple[ProviderBudgetRequirement, ...],
     ) -> tuple[ProviderBudgetReservationRecord, ...]:
         expected = {
             (item.scope_key, item.dimension, item.unit): item.amount for item in requirements
