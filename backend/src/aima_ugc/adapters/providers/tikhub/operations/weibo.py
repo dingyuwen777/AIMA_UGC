@@ -37,7 +37,7 @@ class WeiboRequest:
 
 @dataclass(frozen=True, slots=True)
 class WeiboSearchPagination:
-    """搜索 page 状态；结果列表字段由后续真实 Fixture 提供 observation。"""
+    """搜索 page 状态；结果列表由真实 cards/mblog 结构判断。"""
 
     next_page: int
     should_continue: bool
@@ -172,6 +172,23 @@ def build_status_sub_comments_request(
     )
 
 
+def extract_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    """从真实 Web Search 的 data.data.cards 提取含 mblog 的业务卡片。"""
+    outer = body.get("data")
+    if not isinstance(outer, dict):
+        return ()
+    provider = outer.get("data")
+    data = provider if isinstance(provider, dict) else outer
+    cards = data.get("cards")
+    if not isinstance(cards, list):
+        return ()
+    return tuple(
+        card
+        for card in cards
+        if isinstance(card, dict) and isinstance(card.get("mblog"), dict)
+    )
+
+
 def _first_level_comment_max_id(body: dict[str, Any]) -> str:
     data = body.get("data")
     if not isinstance(data, dict):
@@ -215,4 +232,5 @@ __all__ = [
     "build_status_comments_request",
     "build_status_detail_request",
     "build_status_sub_comments_request",
+    "extract_search_items",
 ]
