@@ -34,10 +34,10 @@ def test_detail_uses_photo_id() -> None:
 def test_web_comments_use_photo_id_and_pcursor_without_business_page_size() -> None:
     first = build_video_comments_request(photo_id="photo-1")
     assert first.path == "/api/v1/kuaishou/web/fetch_one_video_comment"
-    assert first.params == {"photoId": "photo-1", "pcursor": ""}
+    assert first.params == {"photo_id": "photo-1", "pcursor": ""}
 
     next_page = build_video_comments_request(photo_id="photo-1", pcursor="cursor-2")
-    assert next_page.params == {"photoId": "photo-1", "pcursor": "cursor-2"}
+    assert next_page.params == {"photo_id": "photo-1", "pcursor": "cursor-2"}
     assert "count" not in next_page.params
 
 
@@ -48,8 +48,8 @@ def test_web_sub_comments_use_root_comment_id_and_pcursor() -> None:
     )
     assert first.path == "/api/v1/kuaishou/web/fetch_one_video_sub_comment"
     assert first.params == {
-        "photoId": "photo-1",
-        "rootCommentId": "comment-root",
+        "photo_id": "photo-1",
+        "root_comment_id": "comment-root",
         "pcursor": "",
     }
 
