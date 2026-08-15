@@ -5,8 +5,6 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
-from sqlalchemy.exc import IntegrityError
-
 from aima_ugc.adapters.persistence.postgres.keywords import PostgresKeywordCatalogRepository
 from aima_ugc.modules.system.models import Keyword, KeywordPack, KeywordPackItem
 from aima_ugc.modules.system.tables import (
@@ -16,6 +14,7 @@ from aima_ugc.modules.system.tables import (
 )
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
+from sqlalchemy.exc import IntegrityError
 
 
 def test_keyword_catalog_round_trip_and_normalized_text_uniqueness() -> None:
