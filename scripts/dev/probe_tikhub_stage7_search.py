@@ -1,11 +1,11 @@
-"""Stage 7 TikHub 五平台 Search 真实 Fixture 获取探针。
+"""Stage 7 TikHub 五平台真实兼容性最小探针。
 
-本脚本只用于显式人工兼容性验证：
-- Secret 只从环境变量读取，不写日志、请求快照或输出文件；
-- 请求结构复用生产 TikHub Operation builder；
-- 不做隐藏重试；
-- 真实响应只在内存中存在，落盘前必须递归脱敏；
-- pricing 与 search 分两阶段运行，search 需要外部显式放行。
+用途：
+- pricing：逐个核验生产 pricing.toml 已登记的全部 TikHub 业务 endpoint；
+- search：五个平台各请求一页“爱玛”搜索，用真实响应观察结构。
+
+约束：Secret 只从环境变量读取；请求复用生产 Operation builder；不隐藏重试；
+真实响应只在内存存在，输出前递归脱敏并把数组截断到最多两个样本元素。
 """
 
 from __future__ import annotations
@@ -29,11 +29,13 @@ from aima_ugc.adapters.providers.tikhub.operations.weibo import (
     build_search_request as build_weibo_search_request,
 )
 from aima_ugc.adapters.providers.tikhub.operations.xiaohongshu import build_search_notes_request
+from aima_ugc.adapters.providers.tikhub.pricing import load_tikhub_pricing
 
 BASE_URL = "https://api.tikhub.io"
 KEYWORD = "爱玛"
 ENDPOINT_INFO_PATH = "/api/v1/tikhub/user/get_endpoint_info"
 CALCULATE_PRICE_PATH = "/api/v1/tikhub/user/calculate_price"
+_MAX_LIST_ITEMS = 2
 
 _SECRET_KEY_PARTS = (
     "authorization",
@@ -80,6 +82,7 @@ _TIME_KEY_PARTS = ("create_time", "publish_time", "timestamp", "time_stamp", "up
 _SAFE_SHORT_STRING_KEYS = {
     "code",
     "content_type",
+    "currency",
     "format",
     "has_more",
     "message",
@@ -94,6 +97,7 @@ _SAFE_SHORT_STRING_KEYS = {
     "status_code",
     "time_zone",
     "type",
+    "unit",
 }
 _ASCII_ENUM = re.compile(r"^[A-Za-z0-9_.:/ -]{1,80}$")
 
@@ -279,7 +283,7 @@ def _sanitize_scalar(key: str, value: object, pseudonyms: _Pseudonymizer) -> obj
 def sanitize_json(
     value: object, *, key: str = "root", pseudonyms: _Pseudonymizer | None = None
 ) -> object:
-    """保留 JSON 字段、容器形状和非识别数值，删除 Secret/PII/URL/真实 ID。"""
+    """保留 JSON 字段/类型；删除 Secret/PII/URL/真实 ID，并限制样本数组大小。"""
     active = pseudonyms or _Pseudonymizer()
     if isinstance(value, dict):
         return {
@@ -287,7 +291,10 @@ def sanitize_json(
             for child_key, child_value in value.items()
         }
     if isinstance(value, list):
-        return [sanitize_json(item, key=key, pseudonyms=active) for item in value]
+        return [
+            sanitize_json(item, key=key, pseudonyms=active)
+            for item in value[:_MAX_LIST_ITEMS]
+        ]
     return _sanitize_scalar(key, value, active)
 
 
@@ -299,38 +306,44 @@ def _nonempty_list_paths(value: object, *, prefix: str = "$") -> list[str]:
     elif isinstance(value, list):
         if value:
             paths.append(prefix)
-        for index, child in enumerate(value[:3]):
+        for index, child in enumerate(value):
             paths.extend(_nonempty_list_paths(child, prefix=f"{prefix}[{index}]"))
     return paths
 
 
+def _safe_endpoint_filename(index: int, suffix: str) -> str:
+    return f"endpoint_{index:02d}_{suffix}.sanitized.json"
+
+
 def run_pricing_probe() -> None:
-    """获取五个 Search endpoint 的 endpoint-info 与单请求查价，不执行平台搜索。"""
+    """逐个核验生产 pricing.toml 已登记的全部 TikHub 业务 endpoint。"""
     output = _output_dir()
     token = _required_token()
+    catalog = load_tikhub_pricing()
     manifest: list[dict[str, object]] = []
     with _client(token) as client:
-        for request in _search_requests():
+        for index, endpoint in enumerate(catalog.endpoints, start=1):
             info_status, info_body = _request_json(
                 client,
                 method="GET",
                 path=ENDPOINT_INFO_PATH,
-                params={"endpoint": request.path},
+                params={"endpoint": endpoint.path},
             )
             price_status, price_body = _request_json(
                 client,
                 method="GET",
                 path=CALCULATE_PRICE_PATH,
-                params={"endpoint": request.path, "request_per_day": 1},
+                params={"endpoint": endpoint.path, "request_per_day": 1},
             )
             safe_info = sanitize_json(info_body)
             safe_price = sanitize_json(price_body)
-            _write_json(output / request.platform / "endpoint_info.sanitized.json", safe_info)
-            _write_json(output / request.platform / "price_for_one.sanitized.json", safe_price)
+            _write_json(output / _safe_endpoint_filename(index, "info"), safe_info)
+            _write_json(output / _safe_endpoint_filename(index, "price"), safe_price)
             manifest.append(
                 {
-                    "platform": request.platform,
-                    "endpoint": request.path,
+                    "index": index,
+                    "endpoint": endpoint.path,
+                    "configured_status": endpoint.verification_status,
                     "endpoint_info_http_status": info_status,
                     "calculate_price_http_status": price_status,
                 }
@@ -340,14 +353,16 @@ def run_pricing_probe() -> None:
         {
             "schema_version": "stage7-tikhub-pricing-probe.v1",
             "base_url": BASE_URL,
-            "keyword": KEYWORD,
+            "endpoint_count": len(catalog.endpoints),
+            "requests_per_endpoint": 2,
+            "hidden_retries": 0,
             "requests": manifest,
         },
     )
 
 
 def run_search_probe() -> None:
-    """在外部已核验查价并显式放行后，各执行一次真实 Search 请求。"""
+    """查价证据已人工核验后，五个平台各执行一次单页 Search。"""
     if os.environ.get("AIMA_TIKHUB_PROBE_PRICING_APPROVED") != "yes":
         raise RuntimeError("真实 Search Probe 必须在 pricing 证据人工核验后显式放行")
     output = _output_dir()
@@ -363,6 +378,7 @@ def run_search_probe() -> None:
                 body=request.body,
             )
             safe_body = sanitize_json(body)
+            nonempty_paths = _nonempty_list_paths(safe_body)
             _write_json(output / request.platform / "search_page1.sanitized.json", safe_body)
             manifest.append(
                 {
@@ -370,7 +386,7 @@ def run_search_probe() -> None:
                     "method": request.method,
                     "endpoint": request.path,
                     "http_status": status,
-                    "nonempty_list_paths": _nonempty_list_paths(safe_body),
+                    "nonempty_list_paths": nonempty_paths,
                 }
             )
     _write_json(
@@ -380,6 +396,7 @@ def run_search_probe() -> None:
             "base_url": BASE_URL,
             "keyword": KEYWORD,
             "max_search_requests": len(_search_requests()),
+            "max_list_items_per_array": _MAX_LIST_ITEMS,
             "hidden_retries": 0,
             "requests": manifest,
         },
