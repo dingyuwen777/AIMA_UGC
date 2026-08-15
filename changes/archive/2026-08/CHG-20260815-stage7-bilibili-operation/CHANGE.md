@@ -3,14 +3,14 @@ schema: rvc-change/v1
 id: CHG-20260815-stage7-bilibili-operation
 title: 建立 Stage 7 B站 TikHub Operation 与分页状态机
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: chore/archive-stage7-bilibili-operation
 created: 2026-08-15
 updated: 2026-08-15
 depends_on: [CHG-20260815-stage7-decision-capability]
 affected_areas: [collection, provider, testing, documentation]
-affected_paths: [backend/src/aima_ugc/adapters/providers/tikhub/operations/bilibili.py, tests/unit/collection/test_bilibili_tikhub_operation.py, docs/collection/bilibili.md, docs/collection/README.md, backend/src/aima_ugc/modules/collection/README.md]
+affected_paths: [backend/src/aima_ugc/adapters/providers/tikhub/operations/bilibili.py, tests/unit/collection/test_bilibili_tikhub_operation.py, docs/collection/bilibili.md, docs/collection/README.md, backend/src/aima_ugc/modules/collection/README.md, docs/blueprint/README.md, docs/blueprint/08-采集策略与平台能力.md]
 contracts: []
 data_changes: []
 ---
@@ -19,7 +19,7 @@ data_changes: []
 
 按 Blueprint 08 已批准的 TikHub B站 App 主链和 2026-08-15 当前官方文档，建立分类搜索、视频详情、一级评论、二级回复的请求构造与有证据分页状态。只实现官方资料可证明的 Provider 请求事实，不在缺少合法脱敏真实 Fixture 时猜 Mapper、评论响应字段或稳定增量停止语义。
 
-原 PR #42 已把首版 Operation 合入 `main`，但本轮收尾复核发现其搜索分页/排序和评论/回复请求参数与当前 TikHub 官方契约不一致，因此不能直接归档。本 Change 继续作为同一 Stage 7 正式单元，先建立回归 Red，再做最小 Green 修复、兼容性 Review 和文档同步。
+原 PR #42 已把首版 Operation 合入 `main`，但本轮收尾复核发现其搜索分页/排序和评论/回复请求参数与当前 TikHub 官方契约不一致，因此不能直接归档。本 Change 继续作为同一 Stage 7 正式单元，先建立回归 Red，再做最小 Green 修复、兼容性 Review、文档同步、正常合并和合并后 `main` 验证。
 
 # 成功标准
 
@@ -33,8 +33,8 @@ data_changes: []
 - [x] 两阶段 Review 发现首轮 Green 无必要地把默认排序从 `general` 改为 `latest`，并把数字 offset 的“回退即停止”放宽为“仅相等停止”；第二轮 Red `6e35d296c63a77d3fb727ffcdcce266e8db02102` 实际得到 `2 failed, 93 passed`、退出码 1。
 - [x] Review 修复提交 `7f687316a74a052295dda723935aac4f28b9e2ba` 恢复原有默认排序和保守游标语义；同一 Stage 6 Unit 命令实际得到 `95 passed`、退出码 0。
 - [x] 不新增 Mapper/Capability/Registry/Migration/数据库/依赖/API/前端，不接管并行快手实现。
-- [x] B站平台文档、Collection 总览和 Collection 模块 README 已同步 Operation 与 Mapper/Fixture/Probe/Capability 的真实边界。
-- [ ] PR #43 正常合并后，最新 `main` 包含修复且相关 CI 新鲜成功；随后才允许把 Change 标记 `done` 并移动到 Archive。
+- [x] B站平台文档、Collection 总览、Collection 模块 README 与 Blueprint 当前状态已同步 Operation 与 Mapper/Fixture/Probe/Capability 的真实边界。
+- [x] PR #43 正常合并到 `main`，merge commit 为 `418063c04b5a373b6b58621c06482d5d9281ea53`；合并后 `main` 的 7 个 push workflow 全部成功，主 CI `31867338995`、Stage 6 `31867338963`、Stage 7 Provider Config Routing `31867338868` 均为 success。
 
 # 非目标与不变项
 
@@ -59,20 +59,27 @@ data_changes: []
 
 [步骤 5：兼容性 Review Green] → 修改范围：`operations/bilibili.py` → 结果：只恢复 `general` 默认值和 `returned_cursor <= previous_cursor` 停止规则；同一 Unit 集合 `95 passed`、退出码 0，TikHub 当前请求契约修复保持不变。
 
-[步骤 6：文档/Review] → 修改范围：B站平台文档、Collection README、Collection 模块 README、本 Change → 结果：长期文档只描述当前机器事实，不把 Operation 等同平台兼容；等待 PR #43 最终 CI 与合并后 main 验证。
+[步骤 6：文档/Review] → 修改范围：B站平台文档、Collection README、Collection 模块 README、本 Change → 结果：长期文档只描述当前机器事实，不把 Operation 等同平台兼容；PR #43 最终 head 的 7 个 workflow 全部成功。
+
+[步骤 7：合并后验证] → 修改范围：最新 `main` 与 Actions → 结果：PR #43 正常 merge，`main=418063c04b5a373b6b58621c06482d5d9281ea53`；合并后 7/7 push workflow success，满足 Change `done`/Archive 门禁。
+
+[步骤 8：归档] → 修改范围：`changes/active/`、`changes/archive/2026-08/`、Blueprint 当前状态 → 结果：Change 转为 `done`，从 Active 移入 Archive；长期 Blueprint 不再保留“B站 Active/未闭环”的过期表述。
 
 # 验证
 
-PR Actions 使用仓库锁定环境执行 `uv lock --check`、`uv sync --locked`、Ruff、mypy、Collection Unit、架构/Table Owner/Secret/docs 等既有门禁。当前宿主没有可访问的用户本地 AIMA 工作区，因此不把远端干净等同于用户本地 `git status`；本单元没有合法脱敏非空 B站 Fixture，也不伪造 Real Provider Probe 结果。
+PR Actions 使用仓库锁定环境执行 `uv lock --check`、`uv sync --locked`、Ruff、mypy、Collection Unit、架构/Table Owner/Secret/docs 等既有门禁。PR 最终 head `e031d41b9c90ec3fc781a49ee17db09f4934fe5d` 的 7 个 workflow 全部 success；合并后 `main=418063c04b5a373b6b58621c06482d5d9281ea53` 再次得到 7/7 push workflow success。当前宿主没有可访问的用户本地 AIMA 工作区，因此不把远端干净等同于用户本地 `git status`；本单元没有合法脱敏非空 B站 Fixture，也不伪造 Real Provider Probe 结果。
 
 # Git
 
-- 原实现 PR：#42，已合并，但本轮发现请求契约缺陷后继续修复同一 Change。
-- 当前收尾/修复分支：`chore/archive-stage7-bilibili-operation`
-- 当前 PR：#43 `chore/archive-stage7-bilibili-operation → main`
+- 原实现 PR：#42，已合并；本轮发现请求契约缺陷后继续修复同一 Change。
+- 修复/评审分支：`chore/archive-stage7-bilibili-operation`
+- 修复 PR：#43 `chore/archive-stage7-bilibili-operation → main`
 - 分支同步：`a30498caad12fb763bc4b8b90b3aa816a8f244c5`，非强制 merge 当前基线 main。
 - 首轮 Regression Red：`6c250a99aca736e1deb9ed653570fdc2592c0f3b`
 - 首轮 Green：`5b5392529e03e626f00b32e1ddf627e872843354`
 - Review Red：`6e35d296c63a77d3fb727ffcdcce266e8db02102`
 - Review Green：`7f687316a74a052295dda723935aac4f28b9e2ba`
-- Change：`ready_for_review`；只有 PR #43 合并、合并后 main CI 验证成功后才转 `done`/Archive。
+- PR 最终 head：`e031d41b9c90ec3fc781a49ee17db09f4934fe5d`
+- PR #43 merge commit：`418063c04b5a373b6b58621c06482d5d9281ea53`
+- 合并后主 CI：`31867338995` success；Stage 6：`31867338963` success；Stage 7 Provider Config Routing：`31867338868` success。
+- 生命周期归档分支：`chore/archive-stage7-bilibili-operation-final`。
