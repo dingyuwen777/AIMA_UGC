@@ -1,0 +1,29 @@
+{
+  "data": {
+    "detailInfo": {
+      "status": {
+        "id": 100001,
+        "idstr": "weibo-status-detail-1",
+        "mid": "weibo-mid-detail-1",
+        "text": "脱敏微博详情正文",
+        "created_at": "Sat Aug 15 09:30:00 +0800 2026",
+        "edit_at": "Sat Aug 15 09:35:00 +0800 2026",
+        "attitudes_count": 100,
+        "comments_count": 20,
+        "reposts_count": 10,
+        "favorites_count": 5,
+        "pic_num": 0,
+        "region_name": "发布于 上海",
+        "user": {
+          "id": 100002,
+          "idstr": "weibo-user-detail-1",
+          "screen_name": "脱敏用户",
+          "verified": true,
+          "profile_url": "https://example.invalid/weibo/user-1",
+          "avatar_hd": "https://example.invalid/weibo/avatar-1",
+          "description": "脱敏简介"
+        }
+      }
+    }
+  }
+}
