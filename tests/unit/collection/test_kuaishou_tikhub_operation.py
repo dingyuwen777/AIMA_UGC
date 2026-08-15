@@ -54,7 +54,7 @@ def test_web_sub_comments_use_root_comment_id_and_pcursor() -> None:
     }
 
 
-def test_cursor_state_does_not_guess_response_json_path() -> None:
+def test_cursor_state_does_not_guess_response_json_path_or_provider_sentinels() -> None:
     next_page = KuaishouCursorPagination.from_returned_cursor(
         previous_cursor="",
         returned_cursor="cursor-2",
@@ -62,12 +62,13 @@ def test_cursor_state_does_not_guess_response_json_path() -> None:
     assert next_page.should_continue is True
     assert next_page.next_cursor == "cursor-2"
 
-    exhausted = KuaishouCursorPagination.from_returned_cursor(
+    unknown_nonempty_cursor = KuaishouCursorPagination.from_returned_cursor(
         previous_cursor="cursor-2",
         returned_cursor="no_more",
     )
-    assert exhausted.should_continue is False
-    assert exhausted.stop_reason == "provider_exhausted"
+    assert unknown_nonempty_cursor.should_continue is True
+    assert unknown_nonempty_cursor.next_cursor == "no_more"
+    assert unknown_nonempty_cursor.stop_reason is None
 
     unavailable = KuaishouCursorPagination.from_returned_cursor(
         previous_cursor="cursor-2",
