@@ -133,7 +133,7 @@ class PostgresCollectionPlanningRepository:
         """推进当前 Plan 版本的 Scheduler cursor；版本漂移时 fail closed。"""
         if next_run_at.utcoffset() is None:
             raise ValueError("next_run_at 必须包含时区")
-        result = self._session.execute(
+        updated_plan_id = self._session.execute(
             update(collection_plans_table)
             .where(
                 collection_plans_table.c.id == plan_id,
@@ -144,8 +144,9 @@ class PostgresCollectionPlanningRepository:
                 last_scheduled_at=last_scheduled_at,
                 updated_at=func.clock_timestamp(),
             )
-        )
-        if result.rowcount != 1:
+            .returning(collection_plans_table.c.id)
+        ).scalar_one_or_none()
+        if updated_plan_id != plan_id:
             raise StaleCollectionPlanError("Scheduler cursor 更新时 Plan 版本已变化")
 
     def create_occurrence(
