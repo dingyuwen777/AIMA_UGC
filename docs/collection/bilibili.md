@@ -2,19 +2,26 @@
 
 ## 1. 当前状态
 
-B站 TikHub Operation/Mapper **尚未在 main 实现**。本文冻结 Stage 7 首版主链路；完成兼容验收仍需要合法脱敏真实 Fixture、Mapper Contract Test 和 Real Provider Probe。
+B站 TikHub App **Operation 已实现并有自动化请求/分页测试**；Raw→Canonical Mapper、合法脱敏非空真实 Fixture、Real Provider Probe、Capability/默认 Registry 仍未实现。因此当前只能宣称“B站 Operation 已实现”，**不能宣称 B站平台已兼容或可生产采集**。
 
-目标路径：
+当前机器路径：
 
 ```text
 backend/src/aima_ugc/adapters/providers/tikhub/operations/bilibili.py
-backend/src/aima_ugc/adapters/providers/tikhub/mappers/bilibili.py
 tests/unit/collection/test_bilibili_tikhub_operation.py
-tests/unit/collection/test_bilibili_tikhub_mapper.py
-tests/fixtures/providers/tikhub/bilibili/
 ```
 
-## 2. 已批准 TikHub Operation
+后续平台兼容仍需：
+
+```text
+backend/src/aima_ugc/adapters/providers/tikhub/mappers/bilibili.py
+tests/unit/collection/test_bilibili_tikhub_mapper.py
+tests/fixtures/providers/tikhub/bilibili/
+Real Provider Probe
+Capability / Registry 接线
+```
+
+## 2. 当前 TikHub Operation
 
 | 业务动作 | Endpoint | 官方文档 |
 | --- | --- | --- |
@@ -23,111 +30,115 @@ tests/fixtures/providers/tikhub/bilibili/
 | 一级评论 | `GET /api/v1/bilibili/app/fetch_video_comments` | https://docs.tikhub.io/382707663e0 |
 | 二级回复 | `GET /api/v1/bilibili/app/fetch_reply_detail` | https://docs.tikhub.io/382707664e0 |
 
-第一版全部使用 TikHub Bilibili App API family，不建立 Web fallback。
+第一版全部使用 TikHub Bilibili App API family，不建立 Web fallback。Operation 只负责 Provider 请求参数和有证据的分页状态，不访问数据库、不写 Artifact、不读取 Secret，也不解析尚未由 Fixture 固化的评论业务字段。
 
-## 3. 搜索业务参数
+## 3. 分类搜索
 
-分类搜索当前支持：
+舆情发现首版固定 `search_type=video`，避免在没有 Mapper/Canonical 设计的情况下把番剧、直播、文章、用户等不同对象静默当成视频。
 
-- keyword；
-- search_type：video、bangumi、pgc、live、article、user 等；
-- order：综合、最新发布、播放量、弹幕数；
-- page_size：只有正式 Capability 决定是否允许业务配置；
-- cursor：内部技术分页，使用上一页 `data.pagination.next`。
+规范化排序映射为当前 TikHub 官方值：
 
-首版舆情内容发现默认 `search_type=video`；以后需要文章/直播等内容时通过明确 Capability/Plan 扩展，不在 Mapper 中把不同对象硬装成视频。
+| 业务语义 | Provider `order` |
+| --- | ---: |
+| `general` | `0` |
+| `latest` | `1` |
+| `play_count` | `2` |
+| `danmaku_count` | `3` |
+
+分页规则：
+
+```text
+首屏：不发送 cursor
+→ 响应 $.data.data.pagination.next
+→ 非空且不同于上一 cursor：继续
+→ 缺失/空：provider_exhausted
+→ 与上一 cursor 相同：pagination_not_advanced
+```
+
+这里只解析 TikHub 当前官方文档明确给出的 `$.data.data.pagination.next`。搜索结果数组位置、业务字段和 Raw→Canonical 语义仍等待合法脱敏非空 Fixture。`page_size` 保留 Provider 默认值，不作为本单元业务参数开放。
 
 ## 4. 时间范围是平台差异
 
-当前批准的 `fetch_search_by_type` 没有观察到 Provider 原生发布时间筛选，所以：
+当前 `fetch_search_by_type` 没有批准的 Provider 原生发布时间筛选，因此：
 
 ```text
 native_time_filter = false
 ```
 
-前端不能显示一个看似由 B站/TikHub 原生支持的“最近一天/一周”筛选。
+前端不能显示一个看似由 B站/TikHub 原生支持的“最近一天/一周”筛选。以后若基于最新排序和发布时间做本地停止，必须由 Fixture/Probe 证明排序与时间字段足够稳定，并在 Capability/UI 中明确它是本地边界而不是 Provider 原生过滤。
 
-如果 Stage 7 以后在 `order=最新发布` 下用返回 `published_at` 做本地越界停止，必须：
+## 5. 视频详情
 
-- Capability 明确标记为本地时间边界而非 Provider 原生筛选；
-- 用 Fixture/Probe 验证排序和时间字段足够稳定；
-- UI 给出说明，不能承诺 Provider 已在服务端过滤；
-- 非最新排序时不能套用同一停止假设。
+详情请求必须使用以下二者之一，且不能同时提供：
 
-## 5. 详情和评论
+```text
+av_id
+bv_id
+```
 
-详情接受 av_id 或 bv_id，稳定外部身份仍按 Canonical 的字符串 ID 处理。
+外部 ID 始终按字符串处理。Operation 不负责决定哪个 ID 是 Canonical 主身份；该映射语义由后续 Mapper/Fixture 冻结。
 
-一级评论：
+## 6. 一级评论
 
-- av_id/bv_id 二选一；
-- mode=3 热门、mode=2 时间；
-- next_offset 是技术分页。
+一级评论同样要求 `av_id` / `bv_id` 二选一。当前业务排序映射：
 
-二级回复：
+```text
+latest → mode=2
+hot    → mode=3
+```
 
-- root：一级评论 ID；
-- av_id/bv_id；
-- next_offset；
-- ps：只有 Capability/真实测试证明需要业务配置时才开放。
+首屏不发送 `next_offset`；后续页只在调用方已经从可靠响应事实提取到 offset 时发送 `next_offset`。当前 Operation **不猜**评论响应中的下一页 JSON 路径，也不解析评论数组。
 
-## 6. B站标准 Pipeline
+## 7. 二级回复
+
+请求参数：
+
+```text
+root               # 一级评论 ID
+av_id 或 bv_id      # 二选一
+next_offset         # 可选，后续页
+```
+
+`ps` 保持 Provider 默认值，不在当前业务层覆盖。与一级评论相同，Operation 只消费调用方已可靠提取的下一 offset，不猜尚未由 Fixture 证明的响应路径。
+
+## 8. B站标准 Pipeline
+
+当前只完成最前面的 Operation 机器边界；完整平台纵切仍是：
 
 ```text
 fetch_search_by_type
 → Search Raw
 → Bilibili Mapper / Observation
-→ bv/av 稳定身份去重
-→ 指标/comment_count 比较
+→ platform + external_content_id 去重
+→ CollectionDecisionService
 → 必要时 fetch_one_video
-→ Comment Eligibility
 → fetch_video_comments
-→ 对有回复线程 fetch_reply_detail
+→ 对需要的线程 fetch_reply_detail
 → Raw → Mapper → Canonical → Ingestion
 ```
 
-## 7. 评论省钱与增量
+未实现的 Mapper/Fixture/Probe/Capability 不能被 Operation 测试替代。
 
-通用规则：
+## 9. 评论省钱与增量
 
-- 可靠 comment_count=0 → 不请求评论；
-- 重复内容 comment_count 不变 → 不请求；
-- 其他指标变化但评论数不变 → 只更新指标；
-- 评论数增加 → 优先增量/受控刷新；
-- 评论数下降 → 记录下降，不凭部分 coverage 猜删除。
+跨平台通用规则保持不变：可靠 `comment_count=0` 短路；重复内容评论数不变默认不重抓；评论数增加仅在 Capability 已证明稳定增量时走增量，否则受控刷新；评论数下降只记录事实，不凭部分 coverage 猜具体删除。
 
-B站一级评论支持时间排序 `mode=2`。只有真实 Fixture/Probe 证明按时间读取并遇到已知 comment_id 能形成稳定停止条件后才开启增量评论能力。
+B站 `mode=2` 只是“时间排序”请求能力。只有合法脱敏真实 Fixture/Probe 证明按时间读取并遇到已知 `comment_id` 可以稳定停止后，Capability 才能声明增量评论能力。
 
-默认完整阈值 50、目标 50、每线程回复目标 5；整页已返回数据全部保留。
+## 10. 弹幕不是评论
 
-## 8. 弹幕不是评论
+弹幕属于独立 enrichment，不进入 `comments` 评论树。搜索按弹幕数排序也不等于已经采集弹幕正文。第一版默认不因为普通舆情采集自动增加弹幕请求；若后续启用，必须有独立 Operation/Raw/Mapper/预算语义。
 
-B站有独立弹幕能力和弹幕指标。第一版把弹幕作为可选 enrichment：
+## 11. 独立验证与验收边界
 
-```text
-dan m aku_policy = off（默认）
+不需要数据库或真实 Provider 即可运行 Operation 单测：
+
+```bash
+uv run pytest tests/unit/collection/test_bilibili_tikhub_operation.py -q
 ```
 
-未来可以开放：关闭 / Deep Collection / 指定高价值内容采集，但必须单独预算、单独 Raw/Mapper 语义，不能把弹幕混入 `comments` 伪装成评论树。
+该测试证明：当前 endpoint、搜索 `cursor/order`、官方搜索下一 cursor 路径、详情 `av_id/bv_id`、一级评论 `mode/next_offset`、二级回复 `root/next_offset` 和关闭失败输入校验。
 
-搜索按“弹幕数”排序只是搜索排序能力，不等于已经采集弹幕正文。
+它**不证明**：真实非空响应字段、Mapper、评论数组/分页响应路径、稳定增量停止、真实 TikHub 兼容、Capability/Registry 或完整生产采集。
 
-## 9. Deep Collection
-
-已入库视频从内部 `content_id` 发起，后端解析 bv_id/av_id。未发现内容可以通过 BV/AV ID 或分享链接高级入口补抓。
-
-Deep Collection 可以提高评论目标或开启弹幕 enrichment，但仍受真实 Provider 预算。
-
-## 10. 独立调试和验收
-
-Operation Probe 验证：分类搜索 cursor、详情 av/bv、一级评论 mode/next_offset、二级 root/next_offset。
-
-Business Pipeline Probe 验证：
-
-- 重复视频评论数不变不抓评论；
-- `mode=2` 是否适合增量停止；
-- `data.pagination.next` 缺失/空时正确停止；
-- 没有原生时间过滤时 UI/决策不伪造服务端过滤；
-- 弹幕 enrichment 默认不会增加请求。
-
-官方文档允许开始 Operation 实现；B站“已兼容”必须等合法脱敏非空真实 Fixture、Mapper Contract Test 和 Real Probe。
+B站“已兼容”必须等合法脱敏非空真实 Fixture、Mapper Contract Test、Real Provider Probe 与正式 Capability/Registry 接线共同闭环。
