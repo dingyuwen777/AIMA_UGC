@@ -162,3 +162,21 @@ jobs:
           uv run python scripts/quality/check_table_ownership.py
           uv run python scripts/quality/scan_secrets.py
           uv run python scripts/quality/check_docs.py
+      - name: Verify TikHub Pricing is packaged in wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          uv build --wheel
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          wheel = next(Path("dist").glob("*.whl"))
+          expected = "aima_ugc/adapters/providers/tikhub/pricing.toml"
+          with ZipFile(wheel) as archive:
+              names = set(archive.namelist())
+          if expected not in names:
+              raise SystemExit(f"wheel missing required pricing resource: {expected}")
+          print(f"verified wheel resource: {expected}")
+          PY
