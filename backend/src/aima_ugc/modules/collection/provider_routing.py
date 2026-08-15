@@ -5,11 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from aima_ugc.contracts.collection import ProviderPlatformCapabilityV1, ProviderPlatformRouteV1
+from aima_ugc.contracts.collection.provider_config import normalize_provider_base_url
 from aima_ugc.modules.system.models import ProviderConfig
-
-
-def _normalized_base_url(value: str) -> str:
-    return value.rstrip("/")
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,6 +24,10 @@ class ProviderRegistration:
             raise ValueError("Provider 注册至少需要一个允许的 Base URL")
         if any(capability.provider != self.provider for capability in self.capabilities):
             raise ValueError("Provider 注册与 Capability 的 Provider 身份不一致")
+        normalized_urls = tuple(normalize_provider_base_url(url) for url in self.allowed_base_urls)
+        if len(normalized_urls) != len(set(normalized_urls)):
+            raise ValueError("Provider 注册存在重复 Base URL")
+        object.__setattr__(self, "allowed_base_urls", normalized_urls)
         platforms = [capability.platform for capability in self.capabilities]
         if len(platforms) != len(set(platforms)):
             raise ValueError("Provider 注册存在重复平台 Capability")
@@ -48,8 +49,7 @@ class ProviderRegistry:
         if registration is None:
             raise ValueError(f"Provider 未注册: {config.provider}")
 
-        allowed_urls = {_normalized_base_url(url) for url in registration.allowed_base_urls}
-        if _normalized_base_url(config.base_url) not in allowed_urls:
+        if normalize_provider_base_url(config.base_url) not in registration.allowed_base_urls:
             raise ValueError(f"Provider Base URL 不在允许列表: {config.provider}")
 
         capability = next(
