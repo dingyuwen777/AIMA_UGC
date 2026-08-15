@@ -37,11 +37,13 @@ Web Search 当前 Operation 接受规范化业务值并映射 TikHub 私有枚�
 | AIMA 业务值 | TikHub `search_type` |
 | --- | ---: |
 | `general` | 1 |
-| `realtime` | 61 |
+| `latest` | 61 |
 | `hot` | 60 |
 | `video` | 64 |
 | `image` | 63 |
 | `article` | 21 |
+
+TikHub 官方把 `61` 命名为“实时”，并说明其按时间排序、最新优先；AIMA 对上层统一使用跨平台业务语义 `latest`，由 Operation 映射到第三方枚举。
 
 时间范围：
 
@@ -125,7 +127,7 @@ max_id  = 首屏空字符串，后续游标
 完整目标链仍是：
 
 ```text
-fetch_search（默认实时/最新）
+fetch_search（默认最新）
 → Search Raw
 → Weibo Mapper / Observation
 → status_id 去重
@@ -183,6 +185,7 @@ uv run pytest tests/unit/collection/test_weibo_tikhub_operation.py -q
 它验证：
 
 - 当前官方搜索 `search_type/time_scope/page` 映射；
+- AIMA `latest` → TikHub `search_type=61`；
 - 详情和一级评论使用 `status_id`；
 - 一级评论只按官方 `data.moreInfo.params.max_id` 推进；
 - 二级评论 `id/max_id` 请求和不覆盖 `count`；
