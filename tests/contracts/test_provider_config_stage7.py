@@ -19,13 +19,14 @@ def test_provider_config_is_versioned_and_contains_only_secret_reference() -> No
         provider_config_id=uuid4(),
         provider="tikhub",
         display_name="TikHub 主账号",
-        base_url="https://api.tikhub.io",
+        base_url="https://api.tikhub.io/",
         secret_ref="providers/tikhub/main/api-key",
         enabled=True,
     )
 
     assert ProviderConfigV1.model_fields["schema_version"].default == "provider-config.v1"
     assert config.provider == "tikhub"
+    assert config.base_url == "https://api.tikhub.io"
     assert "api_key" not in ProviderConfigV1.model_fields
     assert "token" not in ProviderConfigV1.model_fields
     assert config.model_dump(mode="json")["secret_ref"] == "providers/tikhub/main/api-key"
@@ -43,6 +44,28 @@ def test_provider_config_rejects_unsafe_secret_reference(secret_ref: str) -> Non
             display_name="TikHub",
             base_url="https://api.tikhub.io",
             secret_ref=secret_ref,
+            enabled=True,
+        )
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "http://api.tikhub.io",
+        "https://user:password@api.tikhub.io",
+        "https://api.tikhub.io?token=secret",
+        "https://api.tikhub.io#fragment",
+        "api.tikhub.io",
+    ],
+)
+def test_provider_config_rejects_unsafe_base_url(base_url: str) -> None:
+    with pytest.raises(ValidationError):
+        ProviderConfigV1(
+            provider_config_id=uuid4(),
+            provider="tikhub",
+            display_name="TikHub",
+            base_url=base_url,
+            secret_ref="providers/tikhub/test/api-key",
             enabled=True,
         )
 
