@@ -45,6 +45,17 @@ def _transport_request(token: str = "stage5a-test-token") -> ProviderTransportRe
     )
 
 
+def _planned_billing(amount: Decimal = Decimal("0.002000")) -> ProviderBillingV1:
+    return ProviderBillingV1(
+        status="estimated",
+        currency="USD",
+        unit="request",
+        unit_price_snapshot=amount,
+        estimated_cost=amount,
+        actual_cost=Decimal("0"),
+    )
+
+
 def test_provider_client_success_calls_transport_once_without_persisting_token() -> None:
     started = datetime(2026, 8, 14, 4, 0, tzinfo=UTC)
     finished = started + timedelta(milliseconds=50)
@@ -92,6 +103,94 @@ def test_provider_client_success_calls_transport_once_without_persisting_token()
             method="GET",
             path="/fake/search?api_key=stage5a-test-token",
         )
+
+
+def test_provider_client_keeps_planned_price_when_response_has_no_billing_receipt() -> None:
+    started = datetime(2026, 8, 15, 8, 0, tzinfo=UTC)
+    planned = _planned_billing()
+    transport = FakeProviderTransport(
+        [ProviderTransportResponse(status_code=200, body={"items": []})]
+    )
+    client = ProviderClient(
+        transport=transport,
+        clock=_clock(started, started + timedelta(seconds=1)),
+    )
+
+    result = client.dispatch(
+        request=_request(),
+        attempt_id=uuid4(),
+        attempt_no=1,
+        transport_request=_transport_request(),
+        planned_billing=planned,
+    )
+
+    assert result.attempt.billing == planned
+    assert result.attempt.billing.actual_cost == 0
+
+
+def test_provider_client_confirmed_receipt_preserves_planned_estimate_snapshot() -> None:
+    started = datetime(2026, 8, 15, 8, 0, tzinfo=UTC)
+    planned = _planned_billing()
+    transport = FakeProviderTransport(
+        [
+            ProviderTransportResponse(
+                status_code=200,
+                body={"items": []},
+                billing=ProviderBillingV1(
+                    status="confirmed",
+                    currency="USD",
+                    unit="request",
+                    actual_cost=Decimal("0.001500"),
+                ),
+            )
+        ]
+    )
+    client = ProviderClient(
+        transport=transport,
+        clock=_clock(started, started + timedelta(seconds=1)),
+    )
+
+    result = client.dispatch(
+        request=_request(),
+        attempt_id=uuid4(),
+        attempt_no=1,
+        transport_request=_transport_request(),
+        planned_billing=planned,
+    )
+
+    assert result.attempt.billing.status == "confirmed"
+    assert result.attempt.billing.unit_price_snapshot == planned.unit_price_snapshot
+    assert result.attempt.billing.estimated_cost == planned.estimated_cost
+    assert result.attempt.billing.actual_cost == Decimal("0.001500")
+
+
+def test_provider_client_explicit_no_charge_can_release_planned_money() -> None:
+    started = datetime(2026, 8, 15, 8, 0, tzinfo=UTC)
+    transport = FakeProviderTransport(
+        [
+            ProviderTransportResponse(
+                status_code=422,
+                body={"message": "invalid"},
+                billing=ProviderBillingV1(status="not_billable"),
+            )
+        ]
+    )
+    client = ProviderClient(
+        transport=transport,
+        clock=_clock(started, started + timedelta(seconds=1)),
+    )
+
+    result = client.dispatch(
+        request=_request(),
+        attempt_id=uuid4(),
+        attempt_no=1,
+        transport_request=_transport_request(),
+        planned_billing=_planned_billing(),
+    )
+
+    assert result.attempt.billing.status == "not_billable"
+    assert result.attempt.billing.estimated_cost == 0
+    assert result.attempt.billing.actual_cost == 0
 
 
 @pytest.mark.parametrize(
@@ -179,3 +278,35 @@ def test_provider_client_preserves_transport_failure_boundary(
         assert result.attempt.dispatch_started_at is None
     else:
         assert result.attempt.dispatch_started_at == started
+
+
+def test_provider_client_unknown_failure_keeps_planned_price_snapshot() -> None:
+    started = datetime(2026, 8, 15, 8, 0, tzinfo=UTC)
+    planned = _planned_billing()
+    transport = FakeProviderTransport(
+        [
+            ProviderTransportFailure.unknown(
+                code="network_result_unknown",
+                safe_summary="发送后连接中断",
+            )
+        ]
+    )
+    client = ProviderClient(
+        transport=transport,
+        clock=_clock(started, started + timedelta(seconds=1)),
+    )
+
+    result = client.dispatch(
+        request=_request(),
+        attempt_id=uuid4(),
+        attempt_no=1,
+        transport_request=_transport_request(),
+        planned_billing=planned,
+    )
+
+    assert result.attempt.billing.status == "unknown"
+    assert result.attempt.billing.currency == "USD"
+    assert result.attempt.billing.unit == "request"
+    assert result.attempt.billing.unit_price_snapshot == planned.unit_price_snapshot
+    assert result.attempt.billing.estimated_cost == planned.estimated_cost
+    assert result.attempt.billing.actual_cost == 0
