@@ -10,7 +10,7 @@ created: 2026-08-15
 updated: 2026-08-15
 depends_on: [CHG-20260815-stage7-provider-config-routing, CHG-20260815-stage7-keyword-packs]
 affected_areas: [collection, system, database, jobs, testing, documentation]
-affected_paths: [backend/src/aima_ugc/modules/collection/, backend/src/aima_ugc/adapters/persistence/postgres/, backend/src/aima_ugc/database_schema.py, migrations/versions/, tests/unit/collection/, tests/integration/collection/, docs/blueprint/03-数据库与文件存储.md, docs/blueprint/06-开发约束与分阶段实施.md, docs/blueprint/README.md, backend/src/aima_ugc/modules/collection/README.md, .github/workflows/]
+affected_paths: [backend/src/aima_ugc/modules/collection/, backend/src/aima_ugc/adapters/persistence/postgres/, backend/src/aima_ugc/database_schema.py, migrations/versions/, tests/unit/collection/, tests/integration/collection/, docs/blueprint/03-数据库与文件存储.md, docs/blueprint/06-开发约束与分阶段实施.md, docs/blueprint/README.md, docs/collection/README.md, backend/src/aima_ugc/modules/collection/README.md, .github/workflows/]
 contracts: []
 data_changes: [collection_plans, collection_plan_platforms, collection_plan_keyword_packs, collection_schedule_occurrences, collection_runs.manual_plan_id, collection_runs.occurrence_id]
 ---
@@ -78,6 +78,12 @@ Stage 5B 已建立 `collection_runs/collection_scopes`，Stage 7 已建立 Provi
 → 修改范围：Collection README、Blueprint 03/06/README、Change
 → 预期结果：长期文档只描述当前真实能力，并明确 Scheduler 仍受决策门禁阻塞。
 → 验证方式：Ruff、mypy、Architecture、Table Ownership、Secret Scan、Docs、diff 两阶段 Review。
+
+# 验证进度
+
+- Red：GitHub Actions run `31887206516` 的 Stage 7 Plan Unit 在锁定环境安装成功后，因 `aima_ugc.modules.collection.planning` 尚不存在而以 1 error / exit code 2 失败；PostgreSQL Job 先成功升级到当时 head `20260815_0012` 且 `alembic check` 无漂移，再因 Planning Repository 尚不存在失败。该 Red 由目标生产能力缺失触发，不是环境或旧 Migration 故障。
+- 首轮 Green：GitHub Actions run `31887495216` 的 Stage 7 Plan Unit 已通过；Stage 7 Plan PostgreSQL 已通过 8 个集成测试，并完成 `0012 → head`、`base → head`、downgrade/upgrade 与 `alembic check`。Quality 当轮只运行到 Ruff format，发现本 Change 文件格式问题后停止，因此不能把后续 mypy/Contract/Architecture/Table Ownership/Secret/Docs 记为已验证。
+- Refactor：已修正 Ruff 指出的格式/类型注解，补充 Run/Occurrence 反向 Job 一致性、skipped Occurrence、Plan 平台 Secret 递归拒绝回归测试，并同步 Collection/Blueprint 当前状态说明。上述 Refactor 仍必须由本分支新的完整 CI 重新证明后才能进入 Review。
 
 # 回滚与部署
 
