@@ -1,4 +1,4 @@
-"""TikHub 微博 Search Raw → Canonical 纯 Mapper。"""
+"""TikHub 微博 Raw → Canonical 纯 Mapper。"""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from typing import Any
 
 from aima_ugc.contracts.canonical import (
     CanonicalAuthorV1,
+    CanonicalCommentV1,
     CanonicalContentV1,
     CanonicalMetricsV1,
 )
@@ -28,26 +29,29 @@ WeiboMappingContext = TikHubMappingContext
 def map_content(
     raw: dict[str, Any], context: WeiboMappingContext, *, item_locator: str
 ) -> CanonicalContentV1:
-    """把真实 Web Search card.mblog 映射为内容 Observation。"""
+    """把真实 Web Search mblog 或 App Detail status 映射为内容 Observation。"""
     item = first_dict(raw, "mblog")
+    if not item and "id" in raw and "user" in raw:
+        item = raw
     if not item:
-        raise ValueError("微博 Search card 缺少 mblog")
+        raise ValueError("微博内容缺少 mblog/status")
 
-    external_id = required_string(item, "id", "mid")
+    external_id = required_string(item, "idstr", "id", "mid")
     observed_fields: list[str] = ["content_type"]
 
     alternate_ids: dict[str, str] = {}
-    bid = optional_string(item, "bid")
-    if bid is not None:
-        alternate_ids["bid"] = bid
+    for key in ("mid", "bid"):
+        value = optional_string(item, key)
+        if value is not None and value != external_id:
+            alternate_ids[key] = value
+    if alternate_ids:
         observed_fields.append("alternate_ids")
 
-    text = optional_string(item, "text")
+    text = optional_string(item, "text", "text_raw")
     if text is not None:
         observed_fields.append("text")
 
-    author_raw = first_dict(item, "user")
-    author, author_fields = _map_author(author_raw)
+    author, author_fields = _map_author(first_dict(item, "user"))
     observed_fields.extend(f"author.{field}" for field in author_fields)
 
     metrics, metric_fields = _map_metrics(item)
@@ -56,6 +60,9 @@ def map_content(
     published_at = timestamp(item, "created_at")
     if published_at is not None:
         observed_fields.append("published_at")
+    source_updated_at = timestamp(item, "edit_at")
+    if source_updated_at is not None:
+        observed_fields.append("source_updated_at")
 
     return CanonicalContentV1(
         platform="weibo",
@@ -65,11 +72,59 @@ def map_content(
         text=text,
         author=author,
         published_at=published_at,
+        source_updated_at=source_updated_at,
         observed_at=context.observed_at,
         metrics=metrics,
         source=source(context, item_locator),
         observed_fields=observed_fields,
     )
+
+
+def map_comment(
+    raw: dict[str, Any],
+    context: WeiboMappingContext,
+    *,
+    item_locator: str,
+    is_root: bool,
+) -> CanonicalCommentV1:
+    """把真实 App comment item 映射为统一评论树节点。"""
+    external_content_id = context.external_content_id
+    if external_content_id is None:
+        raise ValueError("微博评论必须由请求上下文提供 external_content_id")
+    external_comment_id = required_string(raw, "idstr", "mid", "id")
+
+    author, _ = _map_author(first_dict(raw, "user"))
+    like_count, _ = count(raw, "like_counts")
+    reply_count, _ = count(raw, "total_number")
+
+    if is_root:
+        root_comment_id = external_comment_id
+        parent_comment_id = None
+    else:
+        root_comment_id = context.root_comment_id or optional_string(raw, "rootidstr", "rootid")
+        parent_comment_id = _weibo_parent_comment_id(raw, root_comment_id)
+
+    return CanonicalCommentV1(
+        platform="weibo",
+        external_content_id=external_content_id,
+        external_comment_id=external_comment_id,
+        root_comment_id=root_comment_id,
+        parent_comment_id=parent_comment_id,
+        author=author,
+        text=optional_string(raw, "text"),
+        published_at=timestamp(raw, "created_at"),
+        observed_at=context.observed_at,
+        metrics=CanonicalMetricsV1(like_count=like_count, reply_count=reply_count),
+        source=source(context, item_locator),
+    )
+
+
+def _weibo_parent_comment_id(raw: dict[str, Any], root_comment_id: str | None) -> str | None:
+    for key in ("reply_id", "replyid", "rid"):
+        value = optional_string(raw, key)
+        if value not in {None, "0", root_comment_id}:
+            return value
+    return None
 
 
 def _content_type(item: dict[str, Any]) -> str:
@@ -82,9 +137,10 @@ def _content_type(item: dict[str, Any]) -> str:
 def _map_author(raw: dict[str, Any]) -> tuple[CanonicalAuthorV1 | None, tuple[str, ...]]:
     if not raw:
         return None, ()
-    external_id = optional_string(raw, "id", "idstr")
+    external_id = optional_string(raw, "idstr", "id")
     display_name = optional_string(raw, "screen_name")
     profile_url = http_url(raw, "profile_url")
+    avatar_url = http_url(raw, "avatar_hd", "avatar_large")
     bio = optional_string(raw, "description")
     verified = optional_bool(raw, "verified")
 
@@ -95,6 +151,8 @@ def _map_author(raw: dict[str, Any]) -> tuple[CanonicalAuthorV1 | None, tuple[st
         fields.append("display_name")
     if profile_url is not None:
         fields.append("profile_url")
+    if avatar_url is not None:
+        fields.append("avatar_url")
     if bio is not None:
         fields.append("bio")
     if verified is not None:
@@ -107,6 +165,7 @@ def _map_author(raw: dict[str, Any]) -> tuple[CanonicalAuthorV1 | None, tuple[st
             external_account_id=external_id,
             display_name=display_name,
             profile_url=profile_url,
+            avatar_url=avatar_url,
             bio=bio,
             verified=verified,
         ),
@@ -139,4 +198,4 @@ def _map_metrics(item: dict[str, Any]) -> tuple[CanonicalMetricsV1, tuple[str, .
     )
 
 
-__all__ = ["WeiboMappingContext", "map_content"]
+__all__ = ["WeiboMappingContext", "map_comment", "map_content"]
