@@ -1,0 +1,45 @@
+{
+  "data": {
+    "data": [
+      {
+        "note_list": [
+          {
+            "id": "xhs-note-detail-1",
+            "title": "脱敏图文标题",
+            "desc": "脱敏图文正文",
+            "type": "normal",
+            "time": 1720000000,
+            "last_update_time": 1720000100,
+            "liked_count": 100,
+            "comments_count": 20,
+            "collected_count": 30,
+            "shared_count": 10,
+            "view_count": 1000,
+            "ip_location": "上海",
+            "user": {
+              "userid": "xhs-user-detail-1",
+              "red_id": "xhs-red-detail-1",
+              "nickname": "脱敏用户"
+            },
+            "images_list": [
+              {
+                "fileid": "xhs-image-1",
+                "url": "https://example.invalid/xhs/image-1",
+                "width": 2250,
+                "height": 3000,
+                "index": 0
+              }
+            ],
+            "topics": [
+              {
+                "id": "xhs-topic-1",
+                "name": "脱敏话题",
+                "link": "https://example.invalid/xhs/topic-1"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
