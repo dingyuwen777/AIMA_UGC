@@ -76,7 +76,7 @@ class BilibiliCursorPagination:
             return cls(previous_cursor, False, "cursor_unavailable")
         if returned_cursor < 0:
             raise ValueError("returned_cursor 不能小于 0")
-        if returned_cursor == previous_cursor:
+        if returned_cursor <= previous_cursor:
             return cls(returned_cursor, False, "pagination_not_advanced")
         return cls(returned_cursor, True)
 
@@ -85,7 +85,7 @@ def build_search_request(
     *,
     keyword: str,
     cursor: str | None = None,
-    sort_mode: str = "latest",
+    sort_mode: str = "general",
     search_type: str = "video",
 ) -> BilibiliRequest:
     """构造 B站分类搜索请求；首版只允许视频内容。"""
