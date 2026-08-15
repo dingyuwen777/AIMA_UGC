@@ -183,9 +183,7 @@ def extract_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     if not isinstance(cards, list):
         return ()
     return tuple(
-        card
-        for card in cards
-        if isinstance(card, dict) and isinstance(card.get("mblog"), dict)
+        card for card in cards if isinstance(card, dict) and isinstance(card.get("mblog"), dict)
     )
 
 
