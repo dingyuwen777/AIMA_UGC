@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from types import SimpleNamespace
 from typing import cast
 from uuid import uuid4
 
-from aima_ugc.contracts.provider import ProviderRequestV1
+import pytest
+from aima_ugc.contracts.provider import ProviderBillingV1, ProviderRequestV1
 from aima_ugc.modules.collection.provider_persistence import (
     PreparedProviderAttempt,
     ProviderAttemptRecord,
@@ -45,10 +47,8 @@ class RecordingProviderRepository:
         return self.request_result
 
 
-def test_service_prepares_request_and_non_billable_attempt_in_order() -> None:
-    repository = RecordingProviderRepository()
-    service = ProviderPersistenceService(repository)
-    request = ProviderRequestV1.create(
+def _request() -> ProviderRequestV1:
+    return ProviderRequestV1.create(
         request_id=uuid4(),
         run_id=uuid4(),
         scope_id=uuid4(),
@@ -58,6 +58,12 @@ def test_service_prepares_request_and_non_billable_attempt_in_order() -> None:
         request_params={"keyword": "爱玛"},
         pagination_input={"page": 1},
     )
+
+
+def test_service_prepares_request_and_non_billable_attempt_in_order() -> None:
+    repository = RecordingProviderRepository()
+    service = ProviderPersistenceService(repository)
+    request = _request()
     attempt_id = uuid4()
 
     prepared = service.prepare_non_billable_attempt(
@@ -92,6 +98,50 @@ def test_service_can_idempotently_ensure_request_without_creating_attempt() -> N
     assert repository.request_calls == [request]
     assert repository.attempt_calls == []
     assert repository.get_request_calls == []
+
+
+@pytest.mark.parametrize(
+    ("billing", "message"),
+    [
+        (
+            ProviderBillingV1(
+                status="estimated",
+                currency="USD",
+                unit="request",
+                unit_price_snapshot=Decimal("0.001"),
+                estimated_cost=Decimal("0.001"),
+                actual_cost=Decimal("0.001"),
+            ),
+            "不得预填 actual_cost",
+        ),
+        (
+            ProviderBillingV1(
+                status="estimated",
+                currency="USD",
+                unit_price_snapshot=Decimal("0.001"),
+                estimated_cost=Decimal("0.001"),
+            ),
+            "必须声明 unit",
+        ),
+    ],
+)
+def test_billable_attempt_rejects_untruthful_or_incomplete_planned_billing(
+    billing: ProviderBillingV1,
+    message: str,
+) -> None:
+    repository = RecordingProviderRepository()
+    service = ProviderPersistenceService(repository)
+
+    with pytest.raises(ValueError, match=message):
+        service.prepare_billable_attempt(
+            request=_request(),
+            provider_config_id=uuid4(),
+            attempt_id=uuid4(),
+            billing=billing,
+        )
+
+    assert repository.request_calls == []
+    assert repository.attempt_calls == []
 
 
 def test_provider_index_names_compile_for_postgresql() -> None:
