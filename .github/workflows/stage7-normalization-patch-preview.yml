@@ -59,20 +59,85 @@ jobs:
           printf '%s\n' 'stage7-ci' > "${AIMA_SECRET_DIR}/postgres_password"
           chmod 600 "${AIMA_SECRET_DIR}/postgres_password"
 
-      - name: Make real-response integration transaction isolated
+      - name: Apply typed real-response patch in temporary workspace
         shell: bash
         run: |
           set -euo pipefail
           uv run python - <<'PY'
           from pathlib import Path
 
-          path = Path("tests/integration/content/test_tikhub_real_normalized_ingestion.py")
-          text = path.read_text(encoding="utf-8")
-          old = "with session.begin():"
-          count = text.count(old)
-          if count != 2:
-              raise SystemExit(f"expected 2 transaction blocks, found {count}")
-          path.write_text(text.replace(old, "with session.begin_nested():"), encoding="utf-8")
+          def replace_exact(path: str, old: str, new: str, expected: int = 1) -> None:
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              actual = text.count(old)
+              if actual != expected:
+                  raise SystemExit(f"{path}: expected {expected} matches, found {actual}")
+              target.write_text(text.replace(old, new), encoding="utf-8")
+
+          integration = "tests/integration/content/test_tikhub_real_normalized_ingestion.py"
+          replace_exact(integration, "with session.begin():", "with session.begin_nested():", 2)
+
+          common = "backend/src/aima_ugc/adapters/providers/tikhub/mappers/common.py"
+          replace_exact(
+              common,
+              "from uuid import UUID\n\nfrom aima_ugc.contracts.canonical import CanonicalSourceV1",
+              "from uuid import UUID\n\nfrom pydantic import AnyHttpUrl\n\nfrom aima_ugc.contracts.canonical import CanonicalSourceV1",
+          )
+          replace_exact(
+              common,
+              '''def http_url(raw: dict[str, Any], *keys: str) -> str | None:\n    value = optional_string(raw, *keys)\n    if value is None or not value.startswith(("http://", "https://")):\n        return None\n    return value\n''',
+              '''def http_url(raw: dict[str, Any], *keys: str) -> AnyHttpUrl | None:\n    value = optional_string(raw, *keys)\n    if value is None or not value.startswith(("http://", "https://")):\n        return None\n    try:\n        return AnyHttpUrl(value)\n    except ValueError:\n        return None\n''',
+          )
+
+          xhs = "backend/src/aima_ugc/adapters/providers/tikhub/mappers/xiaohongshu.py"
+          replace_exact(
+              xhs,
+              "from uuid import UUID\n\nfrom aima_ugc.contracts.canonical import (",
+              "from uuid import UUID\n\nfrom pydantic import AnyHttpUrl\n\nfrom aima_ugc.contracts.canonical import (",
+          )
+          replace_exact(
+              xhs,
+              '''def _http_url(raw: dict[str, Any], *keys: str) -> str | None:\n    value = _optional_string(raw, *keys)\n    if value is None or not value.startswith(("http://", "https://")):\n        return None\n    return value\n''',
+              '''def _http_url(raw: dict[str, Any], *keys: str) -> AnyHttpUrl | None:\n    value = _optional_string(raw, *keys)\n    if value is None or not value.startswith(("http://", "https://")):\n        return None\n    try:\n        return AnyHttpUrl(value)\n    except ValueError:\n        return None\n''',
+          )
+
+          douyin_operation = "backend/src/aima_ugc/adapters/providers/tikhub/operations/douyin.py"
+          replace_exact(
+              douyin_operation,
+              '''    data = body.get("data")\n    if not isinstance(data, dict) or not isinstance(data.get("aweme_detail"), dict):\n        raise ValueError("抖音详情响应缺少 data.aweme_detail")\n    return data["aweme_detail"]\n''',
+              '''    data = body.get("data")\n    detail = data.get("aweme_detail") if isinstance(data, dict) else None\n    if not isinstance(detail, dict):\n        raise ValueError("抖音详情响应缺少 data.aweme_detail")\n    return {str(key): value for key, value in detail.items()}\n''',
+          )
+
+          root_block = '''    if is_root:\n        root_comment_id = external_comment_id\n        parent_comment_id = None\n'''
+          typed_root_block = '''    root_comment_id: str | None\n    parent_comment_id: str | None\n    if is_root:\n        root_comment_id = external_comment_id\n        parent_comment_id = None\n'''
+          for path in (
+              "backend/src/aima_ugc/adapters/providers/tikhub/mappers/douyin.py",
+              "backend/src/aima_ugc/adapters/providers/tikhub/mappers/weibo.py",
+              "backend/src/aima_ugc/adapters/providers/tikhub/mappers/bilibili.py",
+              "backend/src/aima_ugc/adapters/providers/tikhub/mappers/kuaishou.py",
+          ):
+              replace_exact(path, root_block, typed_root_block)
+
+          kuaishou = "backend/src/aima_ugc/adapters/providers/tikhub/mappers/kuaishou.py"
+          replace_exact(
+              kuaishou,
+              "from typing import Any\n\nfrom aima_ugc.contracts.canonical import (",
+              "from typing import Any\n\nfrom pydantic import AnyHttpUrl\n\nfrom aima_ugc.contracts.canonical import (",
+          )
+          replace_exact(
+              kuaishou,
+              '''def _first_http_url(value: object) -> str | None:\n    if not isinstance(value, list):\n        return None\n    for item in value:\n        if isinstance(item, str) and item.startswith(("http://", "https://")):\n            return item\n    return None\n''',
+              '''def _first_http_url(value: object) -> AnyHttpUrl | None:\n    if not isinstance(value, list):\n        return None\n    for item in value:\n        if not isinstance(item, str) or not item.startswith(("http://", "https://")):\n            continue\n        try:\n            return AnyHttpUrl(item)\n        except ValueError:\n            continue\n    return None\n''',
+          )
+
+          transport = "backend/src/aima_ugc/adapters/providers/tikhub/transport.py"
+          replace_exact(transport, "                params=request.params,", "                params=_http_query_params(request.params),")
+          replace_exact(
+              transport,
+              '''def _http_headers(headers: Mapping[str, object]) -> dict[str, str]:\n    return {str(key): str(value) for key, value in headers.items()}\n\n\ndef _external_request_id(headers: httpx.Headers) -> str | None:\n''',
+              '''_HttpQueryValue = str | int | float | bool | None\n\n\ndef _http_query_params(params: Mapping[str, object]) -> dict[str, _HttpQueryValue]:\n    converted: dict[str, _HttpQueryValue] = {}\n    for key, value in params.items():\n        if value is None or isinstance(value, (str, int, float, bool)):\n            converted[str(key)] = value\n            continue\n        raise ProviderTransportFailure.not_sent(\n            code="tikhub_invalid_query_param",\n            safe_summary="TikHub query 参数类型不受支持",\n        )\n    return converted\n\n\ndef _http_headers(headers: Mapping[str, object]) -> dict[str, str]:\n    return {str(key): str(value) for key, value in headers.items()}\n\n\ndef _external_request_id(headers: httpx.Headers) -> str | None:\n''',
+          )
+          replace_exact(transport, "            return value\n    return None\n", "            return str(value)\n    return None\n")
           PY
 
       - name: Normalize Stage 7 source with locked Ruff
@@ -135,6 +200,7 @@ jobs:
           git diff --check
 
       - name: Build patch artifact
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
@@ -152,7 +218,6 @@ jobs:
             tests/unit/collection/test_tikhub_real_detail_mappers.py \
             tests/unit/collection/test_tikhub_real_reply_mappers.py \
             tests/unit/collection/test_tikhub_real_search_mappers.py \
-            tests/unit/collection/test_tikhub_real_search_operations.py \
             tests/unit/collection/test_tikhub_transport.py \
             tests/integration/content/test_tikhub_real_normalized_ingestion.py \
             scripts/dev/probe_tikhub_stage7_search.py \
@@ -167,6 +232,7 @@ jobs:
           cat "${RUNNER_TEMP}/stage7-normalization-patch/files.txt"
 
       - name: Upload verified patch sources
+        if: always()
         uses: actions/upload-artifact@v7.0.1
         with:
           name: stage7-normalization-patch-${{ github.run_id }}
