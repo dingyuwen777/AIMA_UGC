@@ -17,7 +17,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import ExcludeConstraint, JSONB
+from sqlalchemy.dialects.postgresql import JSONB, ExcludeConstraint
 
 from aima_ugc.platform.database.metadata import metadata
 
