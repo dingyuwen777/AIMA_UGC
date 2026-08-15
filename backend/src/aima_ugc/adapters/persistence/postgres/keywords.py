@@ -92,9 +92,7 @@ class PostgresKeywordCatalogRepository:
     def get_keyword_by_normalized_text(self, normalized_text: str) -> Keyword | None:
         row = (
             self._session.execute(
-                select(keywords_table).where(
-                    keywords_table.c.normalized_text == normalized_text
-                )
+                select(keywords_table).where(keywords_table.c.normalized_text == normalized_text)
             )
             .mappings()
             .one_or_none()
