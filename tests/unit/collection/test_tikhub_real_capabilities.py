@@ -86,14 +86,8 @@ def test_search_capabilities_expose_normalized_business_values_not_provider_curs
     assert douyin.native_time_filter is True
 
     weibo = _operation(WEIBO_TIKHUB_CAPABILITY, "keyword_search")
-    assert set(weibo.supported_sort_modes) == {
-        "general",
-        "latest",
-        "hot",
-        "video",
-        "image",
-        "article",
-    }
+    assert set(weibo.supported_sort_modes) == {"general", "latest", "hot"}
+    assert set(weibo.supported_content_types) == {"all", "video", "image", "article"}
     assert set(weibo.supported_time_filters) == {"all", "hour", "day", "week", "month"}
     assert weibo.native_time_filter is True
 
@@ -106,6 +100,7 @@ def test_search_capabilities_expose_normalized_business_values_not_provider_curs
     }
     assert bilibili.supported_content_types == ("video",)
     assert bilibili.native_time_filter is False
+    assert bilibili.observes_comment_count is False
 
     kuaishou = _operation(KUAISHOU_TIKHUB_CAPABILITY, "keyword_search")
     assert kuaishou.supported_sort_modes == ()

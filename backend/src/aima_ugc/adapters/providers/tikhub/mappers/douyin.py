@@ -112,7 +112,7 @@ def map_comment(
     observed_fields.extend(f"author.{field}" for field in author_fields)
 
     like_count, like_observed = count(raw, "digg_count")
-    reply_count, reply_observed = count(raw, "reply_comment_total")
+    reply_count, reply_observed = count(raw, "reply_comment_total", "comment_reply_total")
     if like_observed:
         observed_fields.append("metrics.like_count")
     if reply_observed:
@@ -127,7 +127,7 @@ def map_comment(
         parent_comment_id = None
         observed_fields.extend(("root_comment_id", "parent_comment_id"))
     else:
-        root_comment_id = context.root_comment_id
+        root_comment_id = context.root_comment_id or optional_string(raw, "root_comment_id")
         parent_comment_id = _douyin_parent_comment_id(raw)
         if root_comment_id is not None:
             observed_fields.append("root_comment_id")
