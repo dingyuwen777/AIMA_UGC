@@ -17,7 +17,14 @@ def test_default_catalog_keeps_global_price_informational_only() -> None:
     assert catalog.currency == "USD"
     assert catalog.default_base_price == Decimal("0.001000")
     assert catalog.default_price_dispatch_fallback is False
-    assert [(tier.min_requests_per_day, tier.max_requests_per_day, tier.discount_percent) for tier in catalog.tiers] == [
+    assert [
+        (
+            tier.min_requests_per_day,
+            tier.max_requests_per_day,
+            tier.discount_percent,
+        )
+        for tier in catalog.tiers
+    ] == [
         (0, 1000, Decimal("0")),
         (1000, 5000, Decimal("10")),
         (5000, 10000, Decimal("20")),
