@@ -11,6 +11,7 @@ from uuid import UUID
 BudgetScopeType = Literal["global", "run", "run_comments", "content_comments"]
 BudgetDimension = Literal["request_count", "monetary_cost"]
 BudgetReservationStatus = Literal["reserved", "settled", "released", "unknown"]
+ProviderBillingStatus = Literal["not_billable", "estimated", "confirmed", "unknown"]
 
 
 class ProviderBudgetError(RuntimeError):
@@ -186,6 +187,7 @@ class ProviderBudgetRepository(Protocol):
         *,
         provider_request_attempt_id: UUID,
         dispatch_status: Literal["completed", "not_sent", "unknown"],
+        billing_status: ProviderBillingStatus,
         actual_cost: Decimal,
         currency: str | None,
     ) -> None: ...
@@ -239,12 +241,14 @@ class ProviderBudgetService:
         *,
         provider_request_attempt_id: UUID,
         dispatch_status: Literal["completed", "not_sent", "unknown"],
+        billing_status: ProviderBillingStatus,
         actual_cost: Decimal,
         currency: str | None,
     ) -> None:
         self._repository.finalize_attempt(
             provider_request_attempt_id=provider_request_attempt_id,
             dispatch_status=dispatch_status,
+            billing_status=billing_status,
             actual_cost=actual_cost,
             currency=currency,
         )
@@ -301,3 +305,40 @@ def build_attempt_budget_requirements(
             )
         )
     return tuple(requirements)
+
+
+def completed_budget_settlement_amount(
+    *,
+    dimension: BudgetDimension,
+    reserved_amount: Decimal,
+    billing_status: ProviderBillingStatus,
+    actual_cost: Decimal,
+    billing_currency: str | None,
+    account_unit: str,
+) -> Decimal:
+    """计算 completed Attempt 的预算结算值，不把 estimate 冒充权威实际费用。"""
+    if reserved_amount < 0:
+        raise ProviderBudgetLineageError("Provider Budget reserved_amount 不能为负数")
+    if actual_cost < 0:
+        raise ProviderBudgetLineageError("Provider actual_cost 不能为负数")
+    if dimension == "request_count":
+        return Decimal("1")
+
+    if billing_status == "confirmed":
+        if billing_currency is None or billing_currency != account_unit:
+            raise ProviderBudgetLineageError("Provider 实际费用币种与预算账户不一致")
+        return actual_cost
+
+    if billing_status == "estimated":
+        if billing_currency is None or billing_currency != account_unit:
+            raise ProviderBudgetLineageError("Provider 估算费用币种与预算账户不一致")
+        if actual_cost != 0:
+            raise ProviderBudgetLineageError("estimated Billing 不得携带非零 actual_cost")
+        return reserved_amount
+
+    if billing_status == "not_billable":
+        if actual_cost != 0:
+            raise ProviderBudgetLineageError("not_billable Billing 不得携带非零 actual_cost")
+        return Decimal("0")
+
+    raise ProviderBudgetLineageError("completed Attempt 不允许 unknown Billing")
