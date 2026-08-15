@@ -84,15 +84,33 @@ def map_comment(
     if external_content_id is None:
         raise ValueError("快手评论缺少 photo_id 且上下文未提供 external_content_id")
 
-    author = _map_comment_author(raw)
-    like_count, _ = count(raw, "likedCount", "like_count")
+    observed_fields: list[str] = []
+    text = optional_string(raw, "content")
+    if text is not None:
+        observed_fields.append("text")
+
+    author, author_fields = _map_comment_author(raw)
+    observed_fields.extend(f"author.{field}" for field in author_fields)
+
+    like_count, like_observed = count(raw, "likedCount", "like_count")
+    if like_observed:
+        observed_fields.append("metrics.like_count")
+
+    published_at = timestamp(raw, "timestamp")
+    if published_at is not None:
+        observed_fields.append("published_at")
 
     if is_root:
         root_comment_id = external_comment_id
         parent_comment_id = None
+        observed_fields.extend(("root_comment_id", "parent_comment_id"))
     else:
         root_comment_id = context.root_comment_id
         parent_comment_id = _kuaishou_parent_comment_id(raw, root_comment_id)
+        if root_comment_id is not None:
+            observed_fields.append("root_comment_id")
+        if parent_comment_id is not None:
+            observed_fields.append("parent_comment_id")
 
     return CanonicalCommentV1(
         platform="kuaishou",
@@ -101,11 +119,12 @@ def map_comment(
         root_comment_id=root_comment_id,
         parent_comment_id=parent_comment_id,
         author=author,
-        text=optional_string(raw, "content"),
-        published_at=timestamp(raw, "timestamp"),
+        text=text,
+        published_at=published_at,
         observed_at=context.observed_at,
         metrics=CanonicalMetricsV1(like_count=like_count),
         source=source(context, item_locator),
+        observed_fields=observed_fields,
     )
 
 
@@ -155,16 +174,28 @@ def _map_content_author(
     )
 
 
-def _map_comment_author(raw: dict[str, Any]) -> CanonicalAuthorV1 | None:
+def _map_comment_author(
+    raw: dict[str, Any],
+) -> tuple[CanonicalAuthorV1 | None, tuple[str, ...]]:
     external_id = optional_string(raw, "user_id", "author_id")
     display_name = optional_string(raw, "author_name")
     verified = optional_bool(raw, "authorVerified")
-    if external_id is None and display_name is None and verified is None:
-        return None
-    return CanonicalAuthorV1(
-        external_account_id=external_id,
-        display_name=display_name,
-        verified=verified,
+    fields: list[str] = []
+    if external_id is not None:
+        fields.append("external_account_id")
+    if display_name is not None:
+        fields.append("display_name")
+    if verified is not None:
+        fields.append("verified")
+    if not fields:
+        return None, ()
+    return (
+        CanonicalAuthorV1(
+            external_account_id=external_id,
+            display_name=display_name,
+            verified=verified,
+        ),
+        tuple(fields),
     )
 
 
