@@ -1,0 +1,31 @@
+{
+  "code": 200,
+  "data": {
+    "data": {
+      "aid": 100001,
+      "bvid": "BV-fixture-detail-1",
+      "title": "脱敏 B站标题",
+      "desc": "脱敏 B站正文",
+      "pubdate": 1720000000,
+      "ctime": 1720000000,
+      "pic": "https://example.invalid/bilibili/cover-1",
+      "duration": 180,
+      "tname": "脱敏分区",
+      "owner": {
+        "mid": 100002,
+        "name": "脱敏用户",
+        "face": "https://example.invalid/bilibili/avatar-1"
+      },
+      "stat": {
+        "aid": 100001,
+        "view": 2628,
+        "danmaku": 1,
+        "reply": 7,
+        "favorite": 42,
+        "coin": 4,
+        "share": 5,
+        "like": 16
+      }
+    }
+  }
+}
