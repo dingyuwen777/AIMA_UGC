@@ -95,7 +95,7 @@ def _plan_definition(provider_config_id, keyword_pack_id) -> CollectionPlanDefin
         schedule_expr="0 */6 * * *",
         timezone="Asia/Shanghai",
         schedule_version=1,
-        misfire_policy="explicit-policy-not-yet-executed",
+        misfire_policy="latest_only",
         max_catch_up_runs=0,
         detail_policy="on_change",
         comment_policy="adaptive",
@@ -143,10 +143,39 @@ def test_repository_persists_plan_platform_and_keyword_pack_relations(
         assert stored is not None
         assert stored.timezone == "Asia/Shanghai"
         assert stored.schedule_version == 1
+        assert stored.misfire_policy == "latest_only"
+        assert stored.max_catch_up_runs == 0
         assert stored.platforms[0].platform == "xhs"
         assert stored.platforms[0].provider_config_id == provider_config_id
         assert stored.platforms[0].config == {"sort_mode": "latest"}
         assert stored.keyword_pack_ids == (keyword_pack_id,)
+    finally:
+        session.close()
+
+
+def test_database_rejects_unapproved_scheduler_policy(database_runtime: DatabaseRuntime) -> None:
+    provider_config_id, keyword_pack_id = _seed_dependencies(database_runtime)
+    session = database_runtime.new_session()
+    repository = PostgresCollectionPlanningRepository(session)
+    try:
+        invalid_policy = _plan_definition(provider_config_id, keyword_pack_id)
+        invalid_policy = CollectionPlanDefinition(
+            name=invalid_policy.name,
+            enabled=invalid_policy.enabled,
+            schedule_expr=invalid_policy.schedule_expr,
+            timezone=invalid_policy.timezone,
+            schedule_version=invalid_policy.schedule_version,
+            misfire_policy="bounded_catch_up",
+            max_catch_up_runs=0,
+            detail_policy=invalid_policy.detail_policy,
+            comment_policy=invalid_policy.comment_policy,
+            request_budget=invalid_policy.request_budget,
+            created_by=invalid_policy.created_by,
+            platforms=invalid_policy.platforms,
+            keyword_pack_ids=invalid_policy.keyword_pack_ids,
+        )
+        with pytest.raises(IntegrityError), session.begin():
+            repository.create_plan(invalid_policy)
     finally:
         session.close()
 
