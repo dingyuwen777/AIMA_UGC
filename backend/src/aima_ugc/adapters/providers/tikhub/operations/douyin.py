@@ -62,11 +62,27 @@ class DouyinSearchPagination:
         body: dict[str, Any],
         previous_item_ids: tuple[str, ...] = (),
     ) -> DouyinSearchPagination:
-        data = _find_mapping(body, required_any=("business_data", "cursor", "has_more"))
+        data = _find_mapping(body, required_any=("business_data",))
         items = extract_search_items(body)
-        next_cursor = _integer(data.get("cursor"), default=current_cursor)
-        search_id = _string(data.get("search_id")) or ""
-        backtrace = _string(data.get("backtrace")) or ""
+
+        business_config_raw = data.get("business_config")
+        business_config = business_config_raw if isinstance(business_config_raw, dict) else {}
+        next_page_raw = business_config.get("next_page")
+        next_page = next_page_raw if isinstance(next_page_raw, dict) else {}
+
+        next_cursor = _integer(
+            next_page.get("cursor"),
+            default=_integer(data.get("cursor"), default=current_cursor),
+        )
+        search_id = _string(next_page.get("search_id")) or _string(data.get("search_id")) or ""
+        backtrace = (
+            _string(business_config.get("backtrace")) or _string(data.get("backtrace")) or ""
+        )
+        has_more = (
+            business_config.get("has_more")
+            if "has_more" in business_config
+            else data.get("has_more")
+        )
 
         if not items:
             return cls(next_cursor, search_id, backtrace, (), False, "empty_page")
@@ -81,7 +97,7 @@ class DouyinSearchPagination:
                 False,
                 "duplicate_page",
             )
-        if _provider_exhausted(data.get("has_more")):
+        if _provider_exhausted(has_more):
             return cls(
                 next_cursor,
                 search_id,
