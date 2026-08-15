@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Literal, Protocol, Self
 from uuid import UUID
 
@@ -53,9 +54,7 @@ class ProviderTransportResponse(ProviderBaseModel):
     status_code: int | None = Field(default=None, ge=100, le=599)
     external_request_id: str | None = Field(default=None, min_length=1, max_length=512)
     body: JsonValue = None
-    billing: ProviderBillingV1 = Field(
-        default_factory=lambda: ProviderBillingV1(status="not_billable")
-    )
+    billing: ProviderBillingV1 | None = None
 
 
 class ProviderTransportFailure(RuntimeError):
@@ -156,6 +155,65 @@ def _classify_http_error(status_code: int) -> ProviderErrorV1 | None:
     )
 
 
+def _unknown_billing_with_planned_snapshot(
+    *,
+    planned: ProviderBillingV1 | None,
+    reported: ProviderBillingV1,
+) -> ProviderBillingV1:
+    if planned is None or planned.status != "estimated":
+        return reported
+    if reported.currency is not None and reported.currency != planned.currency:
+        raise ValueError("Provider unknown Billing 币种与发送前价格快照不一致")
+    if reported.unit is not None and reported.unit != planned.unit:
+        raise ValueError("Provider unknown Billing 单位与发送前价格快照不一致")
+    return ProviderBillingV1(
+        status="unknown",
+        currency=planned.currency,
+        unit=planned.unit,
+        unit_price_snapshot=planned.unit_price_snapshot,
+        estimated_cost=planned.estimated_cost,
+        actual_cost=Decimal("0"),
+    )
+
+
+def _completed_billing(
+    *,
+    planned: ProviderBillingV1 | None,
+    reported: ProviderBillingV1 | None,
+) -> ProviderBillingV1:
+    if planned is None:
+        return reported or ProviderBillingV1(status="not_billable")
+    if planned.status not in {"not_billable", "estimated"}:
+        raise ValueError("Provider planned Billing 必须为 not_billable 或 estimated")
+    if planned.status == "not_billable":
+        if reported is None or reported.status == "not_billable":
+            return ProviderBillingV1(status="not_billable")
+        raise ValueError("not_billable Attempt 不能在响应后变为计费 Attempt")
+
+    if reported is None:
+        return planned
+    if reported.status == "not_billable":
+        return reported
+    if reported.status == "unknown":
+        raise ValueError("确定响应不能使用 unknown Billing")
+    if reported.currency is not None and reported.currency != planned.currency:
+        raise ValueError("Provider Billing 币种与发送前价格快照不一致")
+    if reported.unit is not None and reported.unit != planned.unit:
+        raise ValueError("Provider Billing 单位与发送前价格快照不一致")
+    if reported.status == "estimated":
+        if reported.actual_cost != 0:
+            raise ValueError("estimated Billing 不能携带非零 actual_cost")
+        return planned
+    return ProviderBillingV1(
+        status="confirmed",
+        currency=planned.currency,
+        unit=planned.unit,
+        unit_price_snapshot=planned.unit_price_snapshot,
+        estimated_cost=planned.estimated_cost,
+        actual_cost=reported.actual_cost,
+    )
+
+
 class ProviderClient:
     """通过注入 Transport 执行一次 Provider Attempt，不做隐藏网络重试。"""
 
@@ -176,8 +234,14 @@ class ProviderClient:
         attempt_no: int,
         transport_request: ProviderTransportRequest,
         dispatch_started_at: datetime | None = None,
+        planned_billing: ProviderBillingV1 | None = None,
     ) -> ProviderDispatchResult:
-        """调用 Transport 恰好一次，并形成终态 Attempt 与脱敏 Raw 输入。"""
+        """调用 Transport 恰好一次，并保留发送前价格快照形成终态 Attempt。"""
+        if planned_billing is not None and planned_billing.status not in {
+            "not_billable",
+            "estimated",
+        }:
+            raise ValueError("发送前 planned Billing 必须为 not_billable 或 estimated")
         started_at = dispatch_started_at or self._clock()
         raw_request = RawRequestV1(
             transport_kind=transport_request.transport_kind,
@@ -215,7 +279,10 @@ class ProviderClient:
                     dispatch_status="unknown",
                     dispatch_started_at=started_at,
                     completed_at=completed_at,
-                    billing=failure.billing,
+                    billing=_unknown_billing_with_planned_snapshot(
+                        planned=planned_billing,
+                        reported=failure.billing,
+                    ),
                     potential_duplicate_charge=True,
                     error=ProviderErrorV1(
                         category="unknown",
@@ -248,7 +315,7 @@ class ProviderClient:
             completed_at=completed_at,
             http_status=response.status_code,
             external_request_id=external_request_id,
-            billing=response.billing,
+            billing=_completed_billing(planned=planned_billing, reported=response.billing),
             error=error,
             created_at=started_at,
         )
