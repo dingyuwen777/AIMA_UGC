@@ -47,9 +47,9 @@ def run_scheduler_once(
     scan_session = runtime.database.new_session()
     try:
         with scan_session.begin():
-            plan_ids = PostgresCollectionPlanningRepository(
-                scan_session
-            ).list_schedulable_plan_ids(now=observed_at, limit=scan_limit)
+            plan_ids = PostgresCollectionPlanningRepository(scan_session).list_schedulable_plan_ids(
+                now=observed_at, limit=scan_limit
+            )
     finally:
         scan_session.close()
 
@@ -142,7 +142,9 @@ def _scheduled_job_idempotency_key(plan: CollectionPlanRecord, scheduled_for: da
     return f"scheduled:{plan.id}:{plan.schedule_version}:{scheduled_for.isoformat()}"
 
 
-def _scheduled_job_payload(plan: CollectionPlanRecord, scheduled_for: datetime) -> dict[str, object]:
+def _scheduled_job_payload(
+    plan: CollectionPlanRecord, scheduled_for: datetime
+) -> dict[str, object]:
     return {
         "schema_version": "collection.run.v1",
         "plan_id": str(plan.id),
