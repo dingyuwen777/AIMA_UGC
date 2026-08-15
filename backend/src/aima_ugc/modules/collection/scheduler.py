@@ -187,9 +187,7 @@ def _parse_field(
             end = start
 
         if start < minimum or end > maximum:
-            raise ScheduleExpressionError(
-                f"Cron {name} 必须位于 {minimum}..{maximum}"
-            )
+            raise ScheduleExpressionError(f"Cron {name} 必须位于 {minimum}..{maximum}")
         for item in range(start, end + 1, step):
             values.add(0 if normalize_sunday and item == 7 else item)
 
