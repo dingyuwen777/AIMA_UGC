@@ -21,7 +21,7 @@ data_changes: []
 
 # 成功标准
 
-- [ ] 搜索固定使用 `GET /api/v1/weibo/web/fetch_search`；页码从 1 开始，规范化 `general/realtime/hot/video/image/article` 映射当前官方 `search_type=1/60/61/4/2/64`。
+- [ ] 搜索固定使用 `GET /api/v1/weibo/web/fetch_search`；页码从 1 开始，规范化 `general/realtime/hot/video/image/article` 映射当前官方 `search_type=1/61/60/64/63/21`。
 - [ ] 搜索时间 `all/hour/day/week/month` 中，`all` 不发送 `time_scope`，其余映射官方同名值；页码状态只负责 `page+1`，搜索结果列表位置/空页识别留待合法真实 Fixture 证明后接线。
 - [ ] 详情固定使用 `GET /api/v1/weibo/app/fetch_status_detail`，参数名以当前官方文档为准使用 `status_id`。
 - [ ] 一级评论固定使用 `GET /api/v1/weibo/app/fetch_status_comments`，使用 `status_id`、可选 `max_id`、`sort_type=0/1`；首屏不传 `max_id`。
@@ -66,7 +66,7 @@ data_changes: []
 - Comments: https://docs.tikhub.io/410358104e0
 - Sub comments: https://docs.tikhub.io/381269410e0
 
-当前官方事实：Search `page` 从 1 开始并使用 `search_type/time_scope`；Detail 参数为 `status_id`；一级评论参数为 `status_id/max_id/sort_type`，下一游标 JSON path 固定为 `$.data.moreInfo.params.max_id`，没有更多评论时 max_id 为空或相同；二级评论参数为根评论 `id`、可选 `count` 和 `max_id`，首次 max_id 为空，后续使用返回值，但当前文档没有给响应 max_id 的稳定 JSON path。
+当前官方事实：Search `page` 从 1 开始；`search_type` 当前为综合=1、实时=61、热门=60、视频=64、图片=63、文章=21；`time_scope` 支持 hour/day/week/month，留空表示不限时间。Detail 参数为 `status_id`。一级评论参数为 `status_id/max_id/sort_type`，下一游标 JSON path 固定为 `$.data.moreInfo.params.max_id`，没有更多评论时 max_id 为空或相同。二级评论参数为根评论 `id`、可选 `count` 和 `max_id`，首次 max_id 为空，后续使用返回值，但当前文档没有给响应 max_id 的稳定 JSON path。
 
 # 实施步骤
 
