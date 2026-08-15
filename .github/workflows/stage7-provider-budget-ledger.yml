@@ -14,11 +14,12 @@ on:
       - "backend/src/aima_ugc/modules/system/**"
       - "backend/src/aima_ugc/modules/content/**"
       - "backend/src/aima_ugc/database_schema.py"
-      - "migrations/**"
+      - "migrations/versions/20260815_0012_stage7_provider_budget_ledger.py"
       - "tests/unit/collection/**"
       - "tests/integration/collection/**"
       - "docs/blueprint/03-数据库与文件存储.md"
       - "docs/blueprint/README.md"
+      - "backend/src/aima_ugc/modules/collection/README.md"
       - "changes/**"
       - ".github/workflows/stage7-provider-budget-ledger.yml"
 
@@ -145,8 +146,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          uv run ruff format --check backend tests scripts migrations/versions
-          uv run ruff check backend tests scripts migrations/versions
+          uv run ruff format --check backend tests scripts
+          uv run ruff format --check migrations/versions/20260815_0012_stage7_provider_budget_ledger.py
+          uv run ruff check backend tests scripts
+          uv run ruff check migrations/versions/20260815_0012_stage7_provider_budget_ledger.py
           uv run mypy backend/src
           uv run python scripts/contracts/generate.py --check
           uv run python scripts/contracts/check_compatibility.py

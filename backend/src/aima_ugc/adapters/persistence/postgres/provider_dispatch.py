@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import Select
 
 from aima_ugc.contracts.provider import ProviderAttemptV1
+from aima_ugc.modules.collection.provider_budget import ProviderBudgetService
 from aima_ugc.modules.collection.provider_dispatch import ProviderDispatchPreparation
 from aima_ugc.modules.collection.provider_persistence import (
     ProviderAttemptRecord,
@@ -29,10 +30,11 @@ from aima_ugc.platform.jobs.tables import jobs_table
 from .artifact_metadata import PostgresArtifactMetadataRepository
 from .jobs import PostgresJobRepository
 from .provider import PostgresProviderRepository
+from .provider_budget import PostgresProviderBudgetRepository
 
 
 class PostgresProviderDispatchPersistence:
-    """Fencing 校验与 Collection/Artifact Owner 终态事务入口。"""
+    """Fencing、Budget 与 Collection/Artifact Owner 终态事务入口。"""
 
     def __init__(self, session_factory: Callable[[], Session]) -> None:
         self._session_factory = session_factory
@@ -51,6 +53,9 @@ class PostgresProviderDispatchPersistence:
                 if preparation is None:
                     raise ProviderRequestNotFoundError(f"Provider Attempt 不存在: {attempt_id}")
                 _lock_matching_job(session, preparation=preparation, fence=fence)
+                ProviderBudgetService(
+                    PostgresProviderBudgetRepository(session)
+                ).assert_dispatch_ready(attempt_id)
                 dispatching = provider.mark_dispatching(attempt_id)
                 return ProviderDispatchPreparation(
                     job_id=preparation.job_id,
@@ -267,6 +272,12 @@ def _finalize_provider_and_artifact(
     persisted = provider.finalize_dispatch(
         attempt=attempt,
         raw_artifact_id=raw_artifact_id,
+    )
+    ProviderBudgetService(PostgresProviderBudgetRepository(session)).finalize_attempt(
+        provider_request_attempt_id=attempt.attempt_id,
+        dispatch_status=attempt.dispatch_status,
+        actual_cost=attempt.billing.actual_cost,
+        currency=attempt.billing.currency,
     )
     if raw_artifact_id is not None:
         if attempt.completed_at is None:

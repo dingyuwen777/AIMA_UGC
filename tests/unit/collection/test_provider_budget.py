@@ -9,10 +9,7 @@ from aima_ugc.modules.collection.provider_budget import build_attempt_budget_req
 
 
 def _by_scope_dimension(requirements):
-    return {
-        (item.scope_type, item.dimension): (item.unit, item.amount)
-        for item in requirements
-    }
+    return {(item.scope_type, item.dimension): (item.unit, item.amount) for item in requirements}
 
 
 def test_regular_attempt_requires_global_and_run_for_both_dimensions() -> None:
@@ -56,16 +53,12 @@ def test_comment_attempt_requires_all_four_layers_for_both_dimensions() -> None:
         ("content_comments", "request_count"): ("request", Decimal("1")),
         ("content_comments", "monetary_cost"): ("CNY", Decimal("0.010000")),
     }
-    assert {
-        item.run_id
-        for item in requirements
-        if item.scope_type in {"run", "run_comments"}
-    } == {run_id}
-    assert {
-        item.content_id
-        for item in requirements
-        if item.scope_type == "content_comments"
-    } == {content_id}
+    assert {item.run_id for item in requirements if item.scope_type in {"run", "run_comments"}} == {
+        run_id
+    }
+    assert {item.content_id for item in requirements if item.scope_type == "content_comments"} == {
+        content_id
+    }
 
 
 def test_budget_requirements_reject_invalid_money_inputs() -> None:
