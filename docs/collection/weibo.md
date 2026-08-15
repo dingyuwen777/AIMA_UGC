@@ -2,86 +2,148 @@
 
 ## 1. 当前状态
 
-微博 TikHub Operation/Mapper **尚未在 main 实现**。本文记录 Stage 7 已批准的首版主链路。实际字段映射和兼容结论必须等合法脱敏真实 Fixture、Mapper Contract Test 和 Real Provider Probe。
+微博 TikHub **Operation 请求构造与有证据的分页状态已经在 Stage 7 实现**。当前仍没有 Weibo Raw→Canonical Mapper、合法脱敏非空真实 Fixture、Real Provider Probe、Capability/默认 Registry 接线，因此只能确认“正式 Operation 已存在”，**不能宣称微博平台已兼容或已进入生产采集链路**。
 
-目标路径：
+当前机器路径：
 
 ```text
 backend/src/aima_ugc/adapters/providers/tikhub/operations/weibo.py
-backend/src/aima_ugc/adapters/providers/tikhub/mappers/weibo.py
 tests/unit/collection/test_weibo_tikhub_operation.py
+```
+
+后续 Mapper/Fixture 只有真实实现存在后才成为机器事实：
+
+```text
+backend/src/aima_ugc/adapters/providers/tikhub/mappers/weibo.py
 tests/unit/collection/test_weibo_tikhub_mapper.py
 tests/fixtures/providers/tikhub/weibo/
 ```
 
-## 2. 已批准 TikHub Operation
+## 2. 已批准并已实现的 TikHub Operation
 
-| 业务动作 | Endpoint | 官方文档 |
-| --- | --- | --- |
-| 关键词搜索 | `GET /api/v1/weibo/web/fetch_search` | https://docs.tikhub.io/381269400e0 |
-| 微博详情 | `GET /api/v1/weibo/app/fetch_status_detail` | https://docs.tikhub.io/410358103e0 |
-| 一级评论 | `GET /api/v1/weibo/app/fetch_status_comments` | https://docs.tikhub.io/410358104e0 |
-| 二级评论 | `GET /api/v1/weibo/web_v2/fetch_post_sub_comments` | https://docs.tikhub.io/381269410e0 |
+| 业务动作 | Endpoint | 当前代码状态 | 官方文档 |
+| --- | --- | --- | --- |
+| 关键词搜索 | `GET /api/v1/weibo/web/fetch_search` | 已实现请求构造；page 状态不猜结果列表字段 | https://docs.tikhub.io/381269400e0 |
+| 微博详情 | `GET /api/v1/weibo/app/fetch_status_detail` | 已实现请求构造，当前参数名为 `status_id` | https://docs.tikhub.io/410358103e0 |
+| 一级评论 | `GET /api/v1/weibo/app/fetch_status_comments` | 已实现请求构造 + 官方 max_id 路径分页 | https://docs.tikhub.io/410358104e0 |
+| 二级评论 | `GET /api/v1/weibo/web_v2/fetch_post_sub_comments` | 已实现请求构造 + 已提取 max_id 状态转换；不猜响应 path | https://docs.tikhub.io/381269410e0 |
 
-Web/App/Web V2 的组合是各业务 Operation 的固定选型，不是失败 fallback。
+Web/App/Web V2 的组合是四个业务 Operation 的固定职责，不是失败 fallback；当前代码不做不同 API family 之间的静默切换。
 
 ## 3. 搜索业务参数
 
-Web Search 当前官方支持：
+Web Search 当前 Operation 接受规范化业务值并映射 TikHub 私有枚举：
 
-- keyword；
-- search_type：综合、实时、热门以及视频/图片/文章等类型；
-- time_scope：不限、hour、day、week、month；
-- page：技术分页，从 1 递增。
+| AIMA 业务值 | TikHub `search_type` |
+| --- | ---: |
+| `general` | 1 |
+| `realtime` | 61 |
+| `hot` | 60 |
+| `video` | 64 |
+| `image` | 63 |
+| `article` | 21 |
 
-舆情关键词发现默认规范化语义：
+时间范围：
 
 ```text
-sort = latest
-→ search_type = 61（实时/最新）
+all   → 不发送 time_scope
+hour  → time_scope=hour
+day   → time_scope=day
+week  → time_scope=week
+month → time_scope=month
 ```
 
-普通 UI 可展示 Capability 允许的排序/内容类型/时间范围，但不能直接让用户填写 `search_type=61` 这类第三方枚举。
+`page` 从 1 开始，由 Operation/Worker/Probe 管理，不属于普通业务 UI。
 
-`page` 属 Operation 分页状态，由 Worker/Probe 管理。
+当前官方文档足以证明搜索请求参数，但**没有给出足以冻结 AIMA 搜索结果列表位置/空页字段的稳定非空响应 Fixture**。因此当前 Operation 不解析一个猜测的微博列表路径。`WeiboSearchPagination.from_page_observation()` 只接收上层在未来经真实 Fixture 可靠得到的 `has_results` observation：有结果时 `page+1`，无结果时 `empty_page` 停止。
 
-## 4. 详情和评论
+这意味着“请求构造已实现”不等于“Search Raw Mapper 已完成”。
 
-详情使用 App `fetch_status_detail(status_id)`，获取完整文本、媒体和互动数据。
+## 4. 详情和一级评论
+
+详情固定使用 App `fetch_status_detail`，当前官方参数名为：
+
+```text
+status_id
+```
+
+不能继续沿用泛化的 `id` 名称猜测请求参数。
 
 一级评论使用 App `fetch_status_comments`：
 
-- status_id；
-- max_id：后续页使用响应值；
-- sort_type：0 热度、1 时间；
-- 官方说明每页约 20 条，max_id 为空或不推进时结束。
+- `status_id`：微博 ID；
+- `sort_type=0`：热度；
+- `sort_type=1`：最新；
+- 首屏不发送 `max_id`；
+- 后续页使用上一页返回的 max_id。
 
-二级评论使用 Web V2 `fetch_post_sub_comments`：
+当前唯一实现的响应游标提取路径严格来自官方文档：
 
-- id：一级评论 ID；
-- count：默认 10，只有 Capability/真实测试证明允许业务控制时才开放；
-- max_id：分页状态。
+```text
+$.data.moreInfo.params.max_id
+```
 
-## 5. 微博标准 Pipeline
+停止规则：
+
+- max_id 为空 → `provider_exhausted`；
+- max_id 与上一次相同 → `pagination_not_advanced`；
+- 其他非空新 max_id → 继续。
+
+Operation **不读取或猜测评论数组字段**；评论内容和业务字段必须等合法真实 Fixture 后由 Mapper 固化。
+
+## 5. 二级评论
+
+二级评论固定使用 Web V2 `fetch_post_sub_comments`：
+
+```text
+id      = 一级/root 评论 ID
+max_id  = 首屏空字符串，后续游标
+```
+
+官方接口还存在可选 `count`，但当前 Operation 不覆盖它，避免把 Provider page size 当作普通业务配置。
+
+当前官方资料说明后续请求使用返回的 max_id，但没有提供本仓库可以可靠冻结的响应 JSON path。因此当前实现刻意拆成两层：
+
+```text
+未来 Fixture/Adapter 可靠提取 returned_max_id
+→ WeiboSubCommentPagination.from_returned_max_id(...)
+→ 判断继续 / cursor_unavailable / pagination_not_advanced
+```
+
+本单元不猜 `data.xxx.max_id` 之类路径。合法脱敏真实 Fixture 到位后，再在同一个正式 Operation/Mapper 边界补充实际提取逻辑。
+
+## 6. 微博标准 Pipeline
+
+当前已经建立的部分：
+
+```text
+规范化业务参数
+→ Weibo Operation
+→ TikHub 请求描述 / 已证明的 Pagination State
+```
+
+完整目标链仍是：
 
 ```text
 fetch_search（默认实时/最新）
 → Search Raw
 → Weibo Mapper / Observation
 → status_id 去重
-→ 指标/comment_count 比较
+→ CollectionDecisionService
 → 必要时 fetch_status_detail
 → Comment Eligibility
-→ fetch_status_comments（时间排序用于增量候选）
+→ fetch_status_comments
 → 对有回复线程 fetch_post_sub_comments
 → Raw → Mapper → Canonical → Ingestion
 ```
 
-## 6. 省钱与增量评论
+后半段不能因为 Operation 代码已存在而自动视为完成。
 
-通用短路保持：可靠 comment_count=0 不请求；重复微博 comment_count 未变化不请求；其他指标变化不自动重抓评论。
+## 7. 省钱与增量评论
 
-一级评论支持按时间排序，因此在合法 Fixture/Real Probe 证明时间排序与 comment_id 停止可稳定工作后，允许：
+通用短路目标保持：可靠 `comment_count=0` 不请求评论；重复微博 `comment_count` 未变化不请求；其他指标变化不自动重抓评论。
+
+一级评论官方支持最新排序，因此**未来**在合法 Fixture/Real Probe 证明“最新排序 + comment_id 停止”稳定后，可以启用增量：
 
 ```text
 comment_count 增加
@@ -92,34 +154,54 @@ comment_count 增加
 → 停止
 ```
 
-在该证据完成前 Capability 不宣称增量停止已验收，可使用受控部分刷新。
+当前没有对应真实评论 Fixture/Probe，因此 Capability 仍不能宣称稳定增量停止；Operation 也没有实现“遇到已知 comment_id”这一未经证据支持的规则。
 
-默认评论完整阈值 50、目标 50、每个一级线程二级目标 5；实际整页返回全部保留。
+默认评论完整阈值 50、目标 50、每个一级线程二级目标 5 属上层 Decision/Plan 业务策略，不改变 Provider 自身分页事实。
 
-## 7. 时间窗口
+## 8. 时间窗口
 
-微博搜索有原生 hour/day/week/month，因此前端可以按 Capability 展示这些业务范围。
+微博 Web Search 有原生 `hour/day/week/month` 时间筛选；`all` 表示不限制。
 
-时间窗口小于调度周期只 Warning；比如每 6 小时运行但只搜 hour，提示潜在发现盲区但允许保存。
+时间窗口小于调度周期只 Warning。例如每 6 小时运行但搜索 hour，会提示潜在发现盲区但允许保存；是否暴露给前端仍由未来 Weibo Capability 机器 Contract 决定，而不是 Vue 自己写 TikHub 枚举。
 
-重叠窗口按 status_id 去重，不因此重复抓详情/评论。
+重叠窗口后续按 status_id 去重，不因此重复抓详情/评论。
 
-## 8. Deep Collection
+## 9. Deep Collection
 
-内容页发起时只提交内部 `content_id`，后端解析 status_id。系统未发现的微博可以通过高级 status_id/分享链接入口补抓；解析完成后继续走正式详情/评论/预算链。
+内容页发起时最终只提交内部 `content_id`，后端解析 status_id 和 Provider Config。系统未发现的微博才通过高级 status_id/分享链接入口补抓；解析完成后继续走正式 Provider Route/详情/评论/Budget/Raw/Mapper/Canonical。
 
 Deep 模式可以提高一级/二级目标，但不能绕过 global/run/run_comments/content_comments 硬预算。
 
-## 9. 独立调试和验收
+## 10. 独立调试和验收
 
-Operation Probe 分别验证搜索、详情、一级评论、二级评论。
+当前 Operation 自动化测试入口：
 
-Business Pipeline Probe 至少验证：
+```bash
+uv run pytest tests/unit/collection/test_weibo_tikhub_operation.py -q
+```
+
+它验证：
+
+- 当前官方搜索 `search_type/time_scope/page` 映射；
+- 详情和一级评论使用 `status_id`；
+- 一级评论只按官方 `data.moreInfo.params.max_id` 推进；
+- 二级评论 `id/max_id` 请求和不覆盖 `count`；
+- 二级 max_id 状态转换不猜响应 JSON path。
+
+后续 Real Provider Probe 必须分别验证 Search、Detail、Comments、Sub-comments 的真实响应。平台兼容完成仍要求：
+
+```text
+合法脱敏非空真实 Fixture
++ Mapper Contract Test
++ Real Provider Probe
+```
+
+Business Pipeline Probe 还至少验证：
 
 - 搜索重复 status_id 不重复付费抓评论；
-- comment_count 不变时评论请求数为 0；
-- 时间排序的一级评论是否能可靠遇到已知 comment_id；
-- max_id 为空/不推进时停止；
-- 二级评论真实 root/parent 关系只按来源字段映射，不按数组顺序猜。
+- `comment_count` 不变时评论请求数为 0；
+- 时间排序是否能可靠遇到已知 comment_id；
+- 一级 max_id 为空/不推进时停止；
+- 二级真实 max_id path、root/parent 关系只按来源字段映射，不按数组顺序猜。
 
-官方文档允许开始实现请求/分页；平台完成必须有合法脱敏非空真实 Fixture、Mapper Contract Test 和 Real Probe。
+官方文档与当前 Operation Unit Test 都不能替代这些真实兼容证据。
