@@ -8,6 +8,7 @@ from aima_ugc.contracts.canonical import (
     CanonicalAuthorV1,
     CanonicalCommentV1,
     CanonicalContentV1,
+    CanonicalLocationV1,
     CanonicalMetricsV1,
 )
 
@@ -64,6 +65,10 @@ def map_content(
     if source_updated_at is not None:
         observed_fields.append("source_updated_at")
 
+    locations = _map_locations(item)
+    if locations:
+        observed_fields.append("locations")
+
     return CanonicalContentV1(
         platform="weibo",
         external_content_id=external_id,
@@ -74,6 +79,7 @@ def map_content(
         published_at=published_at,
         source_updated_at=source_updated_at,
         observed_at=context.observed_at,
+        locations=locations,
         metrics=metrics,
         source=source(context, item_locator),
         observed_fields=observed_fields,
@@ -153,6 +159,13 @@ def _content_type(item: dict[str, Any]) -> str:
     if present and pic_num is not None and pic_num > 0:
         return "image"
     return "text"
+
+
+def _map_locations(item: dict[str, Any]) -> list[CanonicalLocationV1]:
+    region_name = optional_string(item, "region_name")
+    if region_name is None:
+        return []
+    return [CanonicalLocationV1(location_type="ip_region", label=region_name)]
 
 
 def _map_author(raw: dict[str, Any]) -> tuple[CanonicalAuthorV1 | None, tuple[str, ...]]:
