@@ -3,163 +3,149 @@ schema: rvc-change/v1
 id: CHG-20260815-stage7-provider-budget-ledger
 title: 建立 Stage 7 Provider 多级预算账本
 level: L3
-status: ready_for_review
+status: in_progress
 owner: dingyuwen777
 branch: feature/stage7-provider-budget-ledger
 created: 2026-08-15
 updated: 2026-08-15
 depends_on: []
 affected_areas: [collection, system, database, provider, testing, documentation]
-affected_paths: [backend/src/aima_ugc/modules/collection/, backend/src/aima_ugc/adapters/persistence/postgres/, backend/src/aima_ugc/database_schema.py, migrations/versions/20260815_0012_stage7_provider_budget_ledger.py, tests/unit/collection/, tests/integration/collection/, docs/blueprint/03-数据库与文件存储.md, docs/blueprint/README.md, backend/src/aima_ugc/modules/collection/README.md, .github/workflows/stage7-provider-budget-ledger.yml]
+affected_paths: [backend/src/aima_ugc/modules/collection/, backend/src/aima_ugc/adapters/persistence/postgres/, backend/src/aima_ugc/adapters/providers/tikhub/, backend/src/aima_ugc/database_schema.py, migrations/versions/20260815_0012_stage7_provider_budget_ledger.py, tests/unit/collection/, tests/integration/collection/, docs/blueprint/03-数据库与文件存储.md, docs/blueprint/08-采集策略与平台能力.md, docs/blueprint/README.md, backend/src/aima_ugc/modules/collection/README.md, .github/workflows/stage7-provider-budget-ledger.yml]
 contracts: []
 data_changes: [provider_requests.provider_config_id, provider_budget_accounts, provider_budget_reservations]
 ---
 
 # 目标
 
-建立 Stage 7 已批准的最终 Provider 多级预算 Ledger，使真实计费 Attempt 在进入 Provider 发送边界前必须取得数据库硬预算预留，并在 completed/not_sent/unknown 终态分别结算、释放或保守占用；同时把 Provider Request 与稳定 `provider_config_id` 建立持久化关联，避免不同 Provider 配置实例混用额度。
+建立 Stage 7 最终 Provider 多级预算 Ledger，使真实计费 Attempt 在进入 Provider 发送边界前必须取得数据库硬预算预留，并在 `completed/not_sent/unknown` 终态结算、释放或保守占用；Provider Request 与稳定 `provider_config_id` 绑定，避免不同配置实例混用额度。
+
+本 Change 在 Review 前根据 TikHub 官方计费事实修正一项重要语义：**TikHub 普通业务响应只证明成功请求会计费，不提供已确认的逐请求实际扣费金额，因此系统不得把估算值或 Fake Transport 的 `actual_cost` 冒充 TikHub 实际费用。** TikHub 预算估算必须来自后端版本化官方价格配置；只有经 TikHub 官方 endpoint 信息明确核验的单价才可用于真实发送，缺少已核验单价时 fail closed。
+
+# 本轮已确认计费决策
+
+1. TikHub 价格事实源是 TikHub 官网/官方 endpoint 价格信息，不使用历史平均费用猜测硬预算。
+2. 后端保存版本化 TikHub Pricing 配置文件；不进入前端页面，不允许前端修改，也不把 Secret/API Key 写入该配置。
+3. TikHub 官网“多数服务 0.001 USD/请求”只作为全局说明，**不是所有 endpoint 的可发送默认价**；因为 TikHub 存在不同价格的 endpoint。具体 endpoint 未经官方价格信息核验时不得使用全局默认值放行请求。
+4. 已核验 endpoint 的 `base_price` 作为发送前保守预留金额和 Attempt `unit_price_snapshot`。当前 Budget Ledger 的 `estimated_cost` 对 TikHub 首版同样采用该保守基价，不先用阶梯折扣缩小硬预留。
+5. TikHub 的阶梯折扣规则可以保存在 Pricing 配置中作为官方计费规则快照，但在没有逐请求账单/账户级对账实现前，不把折扣计算结果命名为 `actual_cost`。
+6. `completed + billing=confirmed` 仅用于真正能提供权威逐请求费用的 Provider，货币预算按真实 `actual_cost` 结算。
+7. `completed + billing=estimated` 表示 Provider 没有逐请求权威费用；货币预算按原 Reservation 的保守金额结算，Attempt 的 `actual_cost` 必须保持 0。这是“预算记账上界”，不是财务实际消费。
+8. `not_sent` 释放 Reservation；`unknown` 把原 Reservation 转入 `unknown_amount` 并继续占用；如果未来 TikHub Adapter 能根据明确非 200 规则确认不收费，可在 Provider 计费语义中返回不计费结果再释放货币预算。
+9. 将来若实现 TikHub `daily usage`、余额或账单对账，应作为独立对账能力增加；在此之前不得声称 `settled_amount` 等于 TikHub 财务账单实际费用。
 
 # 成功标准
 
-- [x] `provider_requests` 通过附加 Migration 增加可追溯的 `provider_config_id` 外键；历史 Revision `20260813_0001`—`20260815_0011` 未改写。
-- [x] 新建 Collection Owner 的 `provider_budget_accounts/provider_budget_reservations`，账户支持 `global/run/run_comments/content_comments` 四层、`request_count/monetary_cost` 两种维度，并绑定稳定 `provider_config_id`。
-- [x] 同 Provider Config、Scope、维度、单位的预算周期不能重叠；账户范围、时间、金额、单位和关系由 PostgreSQL CHECK/FK/Exclusion/Unique 约束保护。
-- [x] 一次 billable Attempt 的普通 Operation 原子预留 `global + run`；评论/回复在提供内部 `content_id` 时原子预留 `global + run + run_comments + content_comments`；每层同时保留请求次数和货币预算。
-- [x] 任一必需账户缺失、超额、Provider Config/Run 不匹配或 Reservation 不完整时 fail closed；`ProviderDispatchService` 不得调用 Transport。
-- [x] 同一 Attempt 的预留事务重放幂等，不重复扣减；新 Attempt 独立预留，并发额度竞争由账户行锁串行裁决。
-- [x] `completed` 把请求次数和实际费用结算到 `settled_amount`；实际费用高于预留仍如实记录，账户进入超额状态后后续 reserve 会被同一 `used + 本次预留 <= limit` 规则阻断。
-- [x] `not_sent` 全量释放；`unknown` 把原预留转入 `unknown_amount` 并继续占预算，禁止把未知计费当未发送释放。
-- [x] 预算账户提供从 Reservation 重算余额的审计入口，数据库累计值与账本不一致时明确报 drift。
-- [x] Stage 5C/5D/Stage 6 既有不计费 Fake、Dispatch、Recovery、Raw/Candidate/Ingestion 兼容边界未被本实现改写；PR 广域回归仍作为合并门禁。
-- [x] `20260815_0011 → head`、`base → head`、downgrade/upgrade round trip 和 `alembic check` 已在 PostgreSQL 18.4 Stage 7 Budget CI 获得新鲜 Green 证据。
-- [x] Ruff、mypy、Architecture、Table Ownership、Secret Scan、Docs、Contract 生成/兼容门禁已在分支 CI Green。
+- [x] `provider_requests` 通过附加 Migration 增加可追溯 `provider_config_id` 外键；已进入 main 的历史 Revision `0001`—`0011` 不改写。
+- [x] 新建 Collection Owner 的 `provider_budget_accounts/provider_budget_reservations`，支持 `global/run/run_comments/content_comments` 四层、`request_count/monetary_cost` 两维并绑定稳定 `provider_config_id`。
+- [x] 同 Provider Config、Scope、维度、单位的预算周期禁止重叠；范围、时间、金额、关系由 PostgreSQL 约束保护。
+- [x] 普通 billable Attempt 原子预留 `global + run`；评论/回复额外预留 `run_comments + content_comments`；每层同时预留请求次数与货币额度。
+- [x] 必需账户缺失、超额、来源链不匹配或 Reservation 不完整时 fail closed，Transport 不得被调用。
+- [x] 同 Attempt 预留重放幂等；新 Attempt 独立预留；并发额度竞争由数据库行锁裁决。
+- [ ] 增加后端 TikHub Pricing 配置与 loader：保存官方全局价格说明/阶梯规则及逐 endpoint 核验状态；没有已核验精确价格的 endpoint 必须 fail closed。
+- [ ] TikHub Pricing 生成的 `ProviderBillingV1` 使用已核验官方基价作为 `unit_price_snapshot/estimated_cost`，`actual_cost=0`，且不依赖前端输入。
+- [ ] `completed + estimated` 不再把 0 或猜测值当实际费用，而按原保守 Reservation 进入预算 `settled_amount`；`completed + confirmed` 仍保留泛 Provider 的权威实际费用结算能力。
+- [x] `not_sent` 全量释放；`unknown` 保守转入 `unknown_amount`。
+- [x] 预算账户可从 Reservation 重算并检测 drift。
+- [ ] 新计费语义完成 Red → Green → Refactor，独立 Stage 7 Budget CI 新鲜全绿。
 - [ ] PR 广域 CI、合并后 main CI 和 main 机器事实重新验证完成；满足前不得归档 Change。
 
 # 范围
 
 - Provider Request 稳定 `provider_config_id` 持久化关联。
 - Provider Budget Account / Reservation 数据模型、Table、Migration、Repository/Service。
-- 普通 Attempt 两层预算和评论 Attempt 四层预算的原子 reserve。
-- Dispatch 发送前 fail-closed 预算门禁。
-- Dispatch/Recovery 终态 settle/release/unknown。
-- Reservation 幂等、并发竞争、超额和账本 drift 审计。
-- 本单元独立 Unit/PostgreSQL CI 与受影响长期文档。
+- 普通 Attempt 两层预算、评论 Attempt 四层预算及并发原子 reserve。
+- Dispatch 发送前 fail-closed 预算门禁和 Dispatch/Recovery 终态记账。
+- 后端 TikHub Pricing 静态版本化配置、解析/校验、已核验 endpoint 查价与 `ProviderBillingV1` 构造。
+- TikHub 没有逐请求权威账单时的保守预算记账语义。
+- 独立 Unit/PostgreSQL CI 与相关长期文档。
 
 # 非目标
 
-- 不建立 `collection_plans`、Plan Platform、Occurrence 或 Run Snapshot。
-- 不实现 Scheduler，不决定 `misfire_policy`、`max_catch_up_runs` 或停机 catch-up 行为。
-- 不实现 Provider 价格发现、TikHub 价格硬编码、自动充值、账单拉取或财务对账 API。
-- 不新增 HTTP API、OpenAPI、前端预算页面或 Stage 8 业务页面。
-- 不调用真实付费 Provider；本 Change 使用 Fake Transport 和 PostgreSQL 验证发送门禁。
-- 不修改四个平台 Mapper/Fixture/Capability/Registry 状态。
-- 不实现 Retention、生产容量、SLO、RPO/RTO 或部署生产环境。
+- 不建立 `collection_plans`、Plan Platform、Occurrence、Run Snapshot 或 Scheduler；不决定 `misfire_policy/max_catch_up_runs`。
+- 不新增前端价格/预算页面，不允许前端读取或修改 TikHub Pricing 配置。
+- 不实现自动充值、财务账单拉取、每日使用量/余额对账 API；这些属于后续独立能力。
+- 不把 TikHub 官网“多数服务 0.001 USD”批量填成所有当前 endpoint 的精确价格。
+- 当前执行环境无法解析 `api.tikhub.io` DNS 时，不伪造 endpoint-info 返回；未核验 endpoint 保持不可发送状态。
+- 不修改四个平台 Mapper/Fixture/Capability/Registry 状态，不实现 Retention/SLO/RPO/RTO 或生产部署。
 
 # 必须保持不变
 
-- 已发布 Revision `20260813_0001`—`20260815_0011` 不改写，只新增 `0012`。
-- Provider Client 继续一次 Attempt 最多一次 Transport send；真正重发必须创建新 Attempt。
-- Raw 仍由 ArtifactService/RawArtifactService 管理，Provider/Mapper/Repository Owner 边界不改变。
-- `not_billable` Fake/文件型 Attempt 不强行要求货币预算，既有 Stage 5D 测试语义保持兼容。
-- Secret/API Key/Token 不进入 Budget 表、Request 参数、日志、Change、Fixture 或测试输出。
-- Provider Config 由 System Owner 管理；Budget 表与 Provider Request/Attempt 仍由 Collection Owner 管理。
-- `provider_config_id` 表达稳定配置实例身份；同 Provider 类型的不同配置实例预算严格隔离。
-
-# 已确认设计依据
-
-1. Blueprint 02 已冻结：Stage 5C 暂保留 `provider` 字段兼容，稳定 `provider_config_id` 的 Request 持久化关联由后续 Plan/Run/Budget Stage 7 Migration 增加。
-2. Blueprint 07/08 已冻结：最终预算账户为 `global/run/run_comments/content_comments`；所有真实 HTTP Attempt 至少预留 global+run，评论/二级评论同时预留四层；预算账户绑定稳定 Provider Config。
-3. Blueprint 03 已同步到当前 Stage 7 机器事实：账户行锁、同事务全有或全无、同 Attempt Reservation 唯一、未知费用继续占用、实际费用超预留仍如实结算，并明确四层两维和稳定 Provider Config。
-4. 预算直接父事实 `collection_runs`、`contents`、`provider_requests/provider_request_attempts` 与 `provider_configs` 已进入 main；预算表不依赖尚未批准的 Scheduler misfire 值，因此 Scheduler 门禁不阻塞本单元。
+- 已进入 main 的 Revision `20260813_0001`—`20260815_0011` 不改写；`0012` 尚未合并，可在本 Change 内修正，但不得创建与本单元无关的 Schema。
+- Provider Client 继续一次 Attempt 最多一次 Transport send；真正重发必须新建 Attempt。
+- Raw/Mapper/Canonical/Owner Repository 边界不改变。
+- 既有 `not_billable` Fake/文件型 Attempt 保持兼容。
+- Secret/API Key/Token 不进入 Pricing 配置、Budget 表、Request 参数、日志、Change、Fixture 或测试输出。
+- Provider Config 属于 System Owner；Budget 与 Provider Request/Attempt 属于 Collection Owner。
+- 同 Provider 类型的不同 `provider_config_id` 预算严格隔离。
 
 # 方案比较
 
-## 方案 A：最终 PostgreSQL Ledger + Dispatch 门禁（采用）
+## 方案 A：官方价格后端配置 + 保守预留 + 可选权威实际费用（采用）
 
-按已批准四层模型一次建立最终 Account/Reservation，并让 billable Attempt 在 `reserved → dispatching` CAS 前检查完整 Reservation，终态与 Provider Attempt 在同一短事务结算。优点是并发正确、可审计、无临时弱约束表，且直接满足 Stage 7 预算成功标准。
+已核验 TikHub endpoint 基价固化为后端配置。真实发送前按基价保守 reserve；TikHub 普通响应没有逐请求账单时按 Reservation 上界记预算，不写假 `actual_cost`。其他未来 Provider 若能返回权威逐请求费用，仍可用 `confirmed + actual_cost` 精确结算。
 
-## 方案 B：只建预算表，暂不接 Dispatch（拒绝）
+## 方案 B：把 0.001 当 TikHub 所有接口默认单价（拒绝）
 
-DDL 可以先完成，但无法证明“无预算绝不发真实请求”，会留下可绕过的生产路径，不构成闭环。
+TikHub 官方仅说明“多数服务”为 0.001，且文档存在其他固定价格接口。把 0.001 当全局硬预算默认值可能低估费用，不能保证预算限制有效。
 
-## 方案 C：内存计数器或配置文件额度（拒绝）
+## 方案 C：按历史平均费用预测下一次硬预算（拒绝）
 
-不能跨 Worker 原子约束、无法处理崩溃后的 unknown 计费，也不具备数据库审计链，违反当前 Blueprint。
+历史平均不是 Provider 当前价格事实，价格变更或 endpoint 不同都会导致低估；只可未来用于统计/异常检测，不能用于发送门禁。
 
-# 实施结果
+## 方案 D：每次业务请求前在线调用 TikHub 价格接口（拒绝作为运行时主路径）
 
-1. Red：提交 L3 Change、预算 Requirement、PostgreSQL reserve/并发/终态/审计、Dispatch fail-closed 测试与独立 CI；Run `31872227188` Unit Job 因 `aima_ugc.modules.collection.provider_budget` 尚不存在而退出 2，依赖安装/锁检查先成功，确认是正确功能 Red。
-2. Green：新增 Budget 模型/Service、Collection Owner Tables、PostgreSQL Repository 和 `20260815_0012`；为 Provider Request 增加兼容可空的稳定 Config 关联，并新增 billable `estimated` Attempt 创建路径。
-3. Dispatch/Recovery：正常发送和遗留 `dispatching` 恢复共享预算终态持久化 helper；发送前必须通过 Job Fence + 完整 Reservation 检查，未通过时不调用 Transport。
-4. Refactor/兼容：保持旧 `not_billable` Repository 调用兼容；修正 Reservation replay 返回顺序、Ruff 格式/导入和 mypy Literal/参数类型，不降低测试或静态门禁。
-5. 文档：同步 Collection README、Blueprint 03 与 Blueprint README；只描述预算单元已建立，不宣称整个 Stage 7 完成。
-6. 分支验证：Run `31873153498` 的 Unit/PostgreSQL/Quality 三个 Job 全部成功；Quality 实际执行 Ruff、mypy、Contract、Architecture、Table Ownership、Secret Scan 和 Docs。文档最终提交后的 PR/merge CI 仍待完成。
+会把真实采集额外依赖网络和价格服务可用性，并增加调用链复杂度。生产运行时以版本化本地配置为事实；官方 endpoint-info 用于开发/运维校验和配置更新。
 
-# Review
+# 已有实现与历史验证
+
+1. 初始 Red：Run `31872227188` 的 Unit Job 因生产预算模块不存在而退出 2，证明预算行为测试先于实现。
+2. 已有 Green：Budget Domain/Repository、`0012`、Provider Config 关联、Dispatch/Recovery 门禁、并发 reserve、unknown/released/settled 与 drift 审计已经实现。
+3. 已有 Green Run `31873153498`：Unit/PostgreSQL/Quality 全部成功；后续文档提交也有成功分支 Run。
+4. 由于本次计费事实修正改变成功标准，上述 Green 只作为旧设计回归基线；Change 已从 `ready_for_review` 退回 `in_progress`，必须重新产生针对 Pricing/保守记账语义的 Red/Green 证据后才能 Review/PR。
+
+# Review 门禁
 
 ## 阶段一：需求符合性
 
-- 当前差异只覆盖稳定 Provider Config、预算 Ledger、Dispatch/Recovery 接线、对应测试/Migration/CI/文档；没有实现 Plan、Occurrence、Scheduler、前端或真实 Provider Transport。
-- 历史 Revision 未改写；新 Revision 父节点固定 `20260815_0011`。
-- Blueprint 03 原有三层预算摘要与较新的 Blueprint 08 冲突，已按当前批准四层模型和机器事实同步；没有把未批准 Scheduler 值补进 Schema。
-- Provider Secret、API Key、Token、真实价格均未进入代码、测试数据或 Change。
+- TikHub 精确价格不得由测试值、历史平均、前端参数或“多数服务默认价”猜测。
+- 未核验 endpoint 发送前必须失败；已核验价格形成 Attempt 快照并进入 Budget Reservation。
+- TikHub 无权威逐请求费用时 `actual_cost` 保持 0，文档不得称预算记账值为实际财务消费。
+- 本 Change 不扩展到 Scheduler、Plan、前端、财务对账或其他 Stage 7 平台 Mapper。
 
 ## 阶段二：代码质量
 
-- Reserve 使用 PostgreSQL 行锁和单事务全有或全无；同 Provider Config 的当前 enabled 账户按稳定 ID 顺序加锁，正确性优先，代价是同 Config 下不相关 Scope 的 reserve 可能被额外串行化，属于后续测量后再优化的性能风险，不影响当前正确性。
-- `not_sent/released`、`unknown/unknown_amount`、`completed/settled actual` 与 Provider Attempt 终态同事务提交；Recovery 复用同一 helper，避免崩溃后预算悬挂。
-- 历史/测试 `not_billable` Attempt 不强制预算；新的 billable Attempt 必须显式绑定 Provider Config 和 estimated Billing。
-- Exclusion Constraint 依赖 PostgreSQL `btree_gist`；Migration 只创建缺失 Extension，downgrade 不删除可能被共享使用的 Extension。
-- 账户聚合 drift 有显式审计错误，不自动篡改账本掩盖问题。
-- PR 广域回归、合并后 main 复验仍是未完成门禁，因此当前 Change 仅为 `ready_for_review`。
+- Pricing 配置必须可版本控制、可严格解析、Secret-free，并随 Python Wheel 正常打包。
+- Budget 终态仍与 Provider Attempt/Artifact 在同一短事务提交；Recovery 使用同一逻辑。
+- 继续保持 Reservation 幂等、并发原子性、账户审计和旧 Provider-neutral 行为。
+- 不为通过检查降低 Ruff/mypy/Contract/Architecture/Table Ownership/Secret Scan/Docs 门禁。
 
-# 验证证据
+# 验证计划
 
-## Red
+## 新 Red
 
-- `uv run pytest tests/unit/collection/test_provider_budget.py -q`：CI 收集阶段因生产预算模块不存在失败，退出码 2；Run `31872227188`。
+- 新增 TikHub Pricing Unit：默认配置可读取；官方全局默认不能充当未核验 endpoint 的发送 fallback；已核验测试配置能生成保守 `estimated` Billing；非法/重复/非正价格失败。
+- 新增 Budget Integration：`completed + estimated` 的 `actual_cost=0` 时，货币预算按原 Reservation 保守结算，而不是结算为 0；原 `completed + confirmed` 精确实际费用测试继续保留。
 
-## 已通过的 Green / Regression
+## Green / Regression
 
-- `uv lock --check`
-- `uv sync --locked`
-- Stage 7 Budget Unit：预算 Unit + Stage 5C/5D Provider Persistence/Dispatch Unit。
-- Stage 7 Budget PostgreSQL：`upgrade head`、`alembic current/check`、预算/Provider Repository/Dispatch Integration、`0011 → head`、`base → head` 往返。
-- Stage 7 Budget Quality：Ruff format/check、mypy、Contract generate/compatibility、Architecture、Table Ownership、Secret Scan、Docs。
-- 已确认 Green Run：`31873153498`。
-
-## 待合并门禁
-
-- PR 实际触发的所有相关 Workflow/Job 全绿；
-- 合并后 main HEAD 包含本单元；
-- main 上相关 CI 新鲜全绿；
-- Change 再更新 `done` 并移入 archive；
-- 本任务分支在 archive 合并后清理。
+- Stage 7 Provider Budget Unit：Budget + TikHub Pricing + Provider Persistence/Dispatch。
+- Stage 7 Provider Budget PostgreSQL：Budget + Provider Repository/Dispatch、`0011 → head`、`base → head`、`alembic check`。
+- Quality：Ruff、mypy、Contract generate/compatibility、Architecture、Table Ownership、Secret Scan、Docs。
+- PR 广域 CI；合并后 main 新鲜 CI。
 
 # 兼容、Migration、部署与回滚
 
-- 兼容：新增 `provider_requests.provider_config_id` 可空列；历史/不计费 Request/Attempt 保持可读可回归。新 billable 路径必须显式绑定 Provider Config。
-- Migration：新增 `20260815_0012`，父 Revision 固定 `20260815_0011`；不改写历史 Revision。
-- 部署：使用 billable Provider Dispatch 前必须先升级到 `0012` 并配置覆盖调用时刻的账户；账户缺失时按设计关闭失败，不降级成无预算发送。
-- 回滚：结构可 downgrade 到 `0011`；若新表已有业务账本，downgrade 会删除 Budget 数据且移除 Request Config 关联，执行前必须备份/导出，不能宣称无损回滚。
+- Contract：首选保持现有 Provider V1 字段/枚举兼容；通过更严格的 TikHub Adapter 使用方式和 Budget 终态语义消除假 `actual_cost`，不无必要修改 Provider V1 Schema。
+- Migration：当前计划不新增 Pricing 数据表；Pricing 是后端版本化文件。若无需新列，`0012` 结构保持当前预算表设计。
+- 部署：真实 TikHub billable Dispatch 只有在目标 endpoint 有已核验配置价且相应 Budget Account 覆盖调用时刻时才允许发送。
+- 回滚：代码可回退 Pricing/记账逻辑；Schema downgrade 仍按 `0012 → 0011`，若预算账本已有数据必须先备份，不能宣称无损回滚。
 
-# 安全、性能与运维风险
+# 当前未验证事实与风险
 
-- Budget 仅保存 UUID、范围、周期、额度和费用数字，不保存 Credential；Secret Scan 继续作为 CI 门禁。
-- reserve 为保证稳定锁序当前会锁同 Provider Config 在调用时刻 enabled 的账户，再筛选必需键；这可能增加高并发串行化，后续只有在真实负载证明必要时再收窄锁查询，不能以牺牲并发正确性换优化。
-- 实际费用超过估算时保留真实 settled 数字并阻断后续额度，不允许截断到上限制造假账。
-- `unknown_amount` 是保守容量占用，需要未来独立账单/人工对账能力才能释放；本 Change 不伪造自动 reconciliation。
-- `btree_gist` 需要 Migration 账号具备首次创建 Extension 的权限；生产部署前应在目标 PostgreSQL 权限基线中确认。
+- 当前执行环境对 `api.tikhub.io` DNS 解析失败，无法在本机调用 `get_endpoint_info` 取得当前目标 endpoint 精确价格；因此本 Change 不会填写未经核验的 endpoint 单价。
+- TikHub 官网当前公开全局说明为“多数服务 0.001 USD/请求，非 200 不收费”，并提供 endpoint-info / calculate-price / 阶梯折扣接口；这些是配置规则来源，不等于每个目标 endpoint 都已取得精确价格。
+- 本轮尚未实现账户级财务对账，因此 Budget `settled_amount` 对 TikHub 只能表示保守记账占用，不应对外称为账单实际消费。
 
-# Git
+# 结束条件
 
-- 基线 main：`d44397ae076b5502de310f6f617c85457131d7be`
-- 分支：`feature/stage7-provider-budget-ledger`
-- 用户本地工作区：当前宿主不可见，不能确认 modified/staged/untracked/未推送提交
-- Red Commit：`ebc8f220ce73bd454f45102fca154d7979dd7665`
-- 核心 Green Commit：`3b40b308a893a6cf9db7d938906047d296ac26ba`
-- 后续兼容/质量/文档提交：均在同一任务分支，未重写历史
-- PR：待创建
-- CI：分支实现 Run `31873153498` 已 Green；PR/合并后 CI 待执行
-- 合并：未合并
-- Change：`ready_for_review`；未满足 main 集成条件，不得归档
+只有新计费语义的 Red/Green、两阶段 Review、PR 全绿、合并后 main 新鲜验证全部完成后，才把 `status` 改为 `done`、移动到 `changes/archive/2026-08/`，最后清理本任务分支。
