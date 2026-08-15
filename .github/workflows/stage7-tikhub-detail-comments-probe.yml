@@ -1,3 +1,4 @@
+# probe-revision: 2
 name: Stage 7 TikHub Detail Comments Probe
 
 on:
@@ -6,6 +7,7 @@ on:
       - feature/stage7-completion
     paths:
       - ".github/workflows/stage7-tikhub-detail-comments-probe.yml"
+      - "scripts/dev/probe_tikhub_stage7_detail_comments.py"
 
 permissions:
   contents: read
