@@ -18,7 +18,7 @@ def test_search_request_maps_current_documented_business_modes() -> None:
     request = build_search_request(
         keyword="爱玛",
         page=2,
-        search_mode="realtime",
+        search_mode="latest",
         time_scope="day",
     )
 
@@ -37,7 +37,7 @@ def test_search_request_maps_current_documented_business_modes() -> None:
     ("search_mode", "expected"),
     [
         ("general", 1),
-        ("realtime", 61),
+        ("latest", 61),
         ("hot", 60),
         ("video", 64),
         ("image", 63),
