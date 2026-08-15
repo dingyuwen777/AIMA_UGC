@@ -174,7 +174,7 @@ def extract_detail_item(body: dict[str, Any]) -> dict[str, Any]:
 
 
 def extract_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
-    """从真实 App 评论/回复响应提取 data.data.replies。"""
+    """从真实 App 一级评论响应提取 data.data.replies。"""
     provider_data = _provider_data(body)
     if provider_data is None:
         return ()
@@ -182,6 +182,25 @@ def extract_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     if not isinstance(replies, list):
         return ()
     return tuple(item for item in replies if isinstance(item, dict))
+
+
+def extract_reply_detail(
+    body: dict[str, Any],
+) -> tuple[dict[str, Any], tuple[dict[str, Any], ...]]:
+    """从真实 reply detail 提取 root 与 root.replies，不猜其它旁路字段。"""
+    provider_data = _provider_data(body)
+    if provider_data is None:
+        raise ValueError("B站回复详情响应缺少 data.data")
+    root = provider_data.get("root")
+    if not isinstance(root, dict):
+        raise ValueError("B站回复详情响应缺少 data.data.root")
+    replies_raw = root.get("replies")
+    replies = (
+        tuple(item for item in replies_raw if isinstance(item, dict))
+        if isinstance(replies_raw, list)
+        else ()
+    )
+    return root, replies
 
 
 def _provider_data(body: dict[str, Any]) -> dict[str, Any] | None:
@@ -263,5 +282,6 @@ __all__ = [
     "build_video_detail_request",
     "extract_comment_items",
     "extract_detail_item",
+    "extract_reply_detail",
     "extract_search_items",
 ]

@@ -6,6 +6,7 @@ from typing import Any
 
 from aima_ugc.contracts.canonical import (
     CanonicalAuthorV1,
+    CanonicalCommentV1,
     CanonicalContentV1,
     CanonicalMediaV1,
     CanonicalMetricsV1,
@@ -89,6 +90,99 @@ def map_content(
     )
 
 
+def map_comment(
+    raw: dict[str, Any],
+    context: BilibiliMappingContext,
+    *,
+    item_locator: str,
+    is_root: bool,
+) -> CanonicalCommentV1:
+    """把真实 App 一级评论或 reply detail 节点映射为统一评论树。"""
+    external_comment_id = required_string(raw, "rpid_str", "rpid")
+    external_content_id = context.external_content_id or optional_string(raw, "oid_str", "oid")
+    if external_content_id is None:
+        raise ValueError("B站评论缺少 oid 且上下文未提供 external_content_id")
+
+    observed_fields: list[str] = []
+    content = first_dict(raw, "content")
+    text = optional_string(content, "message")
+    if text is not None:
+        observed_fields.append("text")
+
+    author, author_fields = _map_comment_author(first_dict(raw, "member"))
+    observed_fields.extend(f"author.{field}" for field in author_fields)
+
+    like_count, like_observed = count(raw, "like")
+    reply_count, reply_observed = count(raw, "rcount", "count")
+    if like_observed:
+        observed_fields.append("metrics.like_count")
+    if reply_observed:
+        observed_fields.append("metrics.reply_count")
+
+    published_at = timestamp(raw, "ctime")
+    if published_at is not None:
+        observed_fields.append("published_at")
+
+    if is_root:
+        root_comment_id = external_comment_id
+        parent_comment_id = None
+        observed_fields.extend(("root_comment_id", "parent_comment_id"))
+    else:
+        root_comment_id = context.root_comment_id or _nonzero_id(raw, "root_str", "root")
+        parent_comment_id = _nonzero_id(raw, "parent_str", "parent")
+        if root_comment_id is not None:
+            observed_fields.append("root_comment_id")
+        if parent_comment_id is not None:
+            observed_fields.append("parent_comment_id")
+
+    return CanonicalCommentV1(
+        platform="bilibili",
+        external_content_id=external_content_id,
+        external_comment_id=external_comment_id,
+        root_comment_id=root_comment_id,
+        parent_comment_id=parent_comment_id,
+        author=author,
+        text=text,
+        published_at=published_at,
+        observed_at=context.observed_at,
+        metrics=CanonicalMetricsV1(like_count=like_count, reply_count=reply_count),
+        source=source(context, item_locator),
+        observed_fields=observed_fields,
+    )
+
+
+def _nonzero_id(raw: dict[str, Any], *keys: str) -> str | None:
+    value = optional_string(raw, *keys)
+    return None if value in {None, "0"} else value
+
+
+def _map_comment_author(
+    raw: dict[str, Any],
+) -> tuple[CanonicalAuthorV1 | None, tuple[str, ...]]:
+    if not raw:
+        return None, ()
+    external_id = optional_string(raw, "mid")
+    display_name = optional_string(raw, "uname")
+    avatar_url = http_url(raw, "avatar")
+    fields: list[str] = []
+    if external_id is not None:
+        fields.append("external_account_id")
+    if display_name is not None:
+        fields.append("display_name")
+    if avatar_url is not None:
+        fields.append("avatar_url")
+    if not fields:
+        return None, ()
+    return (
+        CanonicalAuthorV1(
+            external_account_id=external_id,
+            display_name=display_name,
+            avatar_url=avatar_url,
+        ),
+        tuple(fields),
+    )
+
+
 def _map_author(
     raw: dict[str, Any], *, is_search: bool
 ) -> tuple[CanonicalAuthorV1 | None, tuple[str, ...]]:
@@ -168,4 +262,4 @@ def _map_media(raw: dict[str, Any], *, is_search: bool) -> list[CanonicalMediaV1
     ]
 
 
-__all__ = ["BilibiliMappingContext", "map_content"]
+__all__ = ["BilibiliMappingContext", "map_comment", "map_content"]

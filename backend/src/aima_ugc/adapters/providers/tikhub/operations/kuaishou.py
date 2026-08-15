@@ -41,6 +41,31 @@ class KuaishouCursorPagination:
             return cls(normalized, False, "pagination_not_advanced")
         return cls(normalized, True)
 
+    @classmethod
+    def from_response(
+        cls,
+        *,
+        previous_cursor: str,
+        body: dict[str, Any],
+        item_key: str,
+    ) -> KuaishouCursorPagination:
+        """按真实 Web data.<item_key>/pcursor 处理评论或二级评论分页。"""
+        data = body.get("data")
+        if not isinstance(data, dict):
+            return cls(previous_cursor, False, "response_data_unavailable")
+        items = data.get(item_key)
+        if not isinstance(items, list):
+            return cls(previous_cursor, False, "items_unavailable")
+        returned = data.get("pcursor")
+        next_cursor = str(returned).strip() if returned is not None else previous_cursor
+        if not items:
+            return cls(next_cursor, False, "empty_page")
+        if returned is None or not next_cursor:
+            return cls(previous_cursor, False, "cursor_unavailable")
+        if next_cursor == previous_cursor:
+            return cls(next_cursor, False, "pagination_not_advanced")
+        return cls(next_cursor, True)
+
 
 @dataclass(frozen=True, slots=True)
 class KuaishouSearchPagination:
@@ -149,6 +174,17 @@ def extract_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     return tuple(item for item in items if isinstance(item, dict))
 
 
+def extract_sub_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    """从真实 Web 二级评论响应提取 data.subComments；空页返回空 tuple。"""
+    data = body.get("data")
+    if not isinstance(data, dict):
+        return ()
+    items = data.get("subComments")
+    if not isinstance(items, list):
+        return ()
+    return tuple(item for item in items if isinstance(item, dict))
+
+
 def _required_text(value: str, field_name: str) -> str:
     normalized = value.strip()
     if not normalized:
@@ -167,4 +203,5 @@ __all__ = [
     "extract_comment_items",
     "extract_detail_item",
     "extract_search_items",
+    "extract_sub_comment_items",
 ]

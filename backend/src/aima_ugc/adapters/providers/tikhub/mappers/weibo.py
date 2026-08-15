@@ -93,7 +93,7 @@ def map_comment(
     item_locator: str,
     is_root: bool,
 ) -> CanonicalCommentV1:
-    """把真实 App comment item 映射为统一评论树节点。"""
+    """把真实 App/Web comment item 映射为统一评论树节点。"""
     external_content_id = context.external_content_id
     if external_content_id is None:
         raise ValueError("微博评论必须由请求上下文提供 external_content_id")
@@ -124,7 +124,7 @@ def map_comment(
         observed_fields.extend(("root_comment_id", "parent_comment_id"))
     else:
         root_comment_id = context.root_comment_id or optional_string(raw, "rootidstr", "rootid")
-        parent_comment_id = _weibo_parent_comment_id(raw, root_comment_id)
+        parent_comment_id = _weibo_parent_comment_id(raw)
         if root_comment_id is not None:
             observed_fields.append("root_comment_id")
         if parent_comment_id is not None:
@@ -146,10 +146,14 @@ def map_comment(
     )
 
 
-def _weibo_parent_comment_id(raw: dict[str, Any], root_comment_id: str | None) -> str | None:
+def _weibo_parent_comment_id(raw: dict[str, Any]) -> str | None:
+    reply_comment = first_dict(raw, "reply_comment")
+    direct_parent = optional_string(reply_comment, "idstr", "mid", "id")
+    if direct_parent not in {None, "0"}:
+        return direct_parent
     for key in ("reply_id", "replyid", "rid"):
         value = optional_string(raw, key)
-        if value not in {None, "0", root_comment_id}:
+        if value not in {None, "0"}:
             return value
     return None
 
