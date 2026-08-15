@@ -29,16 +29,6 @@ def validate_secret_ref(secret_ref: str) -> str:
     return secret_ref
 
 
-def resolve_secret_ref(secret_dir: Path, secret_ref: str) -> Path:
-    """把已校验 Secret 引用解析到 Secret 根目录内，不允许路径逃逸。"""
-    validated = validate_secret_ref(secret_ref)
-    root = secret_dir.resolve(strict=False)
-    target = (root / validated).resolve(strict=False)
-    if target != root and root not in target.parents:
-        raise ValueError("Secret 引用解析后逃逸 Secret 根目录")
-    return target
-
-
 def read_secret_file(path: Path, *, max_bytes: int = _MAX_SECRET_BYTES) -> SecretStr:
     """读取 UTF-8 Secret，仅移除尾部换行，不在错误中包含 Secret 内容。"""
     try:
