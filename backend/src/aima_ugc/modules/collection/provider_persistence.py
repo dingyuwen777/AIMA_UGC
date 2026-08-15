@@ -8,7 +8,7 @@ from decimal import Decimal
 from typing import Protocol
 from uuid import UUID
 
-from aima_ugc.contracts.provider import ProviderRequestV1
+from aima_ugc.contracts.provider import ProviderBillingV1, ProviderRequestV1
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,6 +17,7 @@ class ProviderRequestRecord:
 
     id: UUID
     scope_id: UUID
+    provider_config_id: UUID | None
     provider: str
     operation: str
     request_fingerprint: str
@@ -73,7 +74,7 @@ class ProviderScopeNotFoundError(LookupError):
 
 
 class ProviderRequestLineageMismatchError(ValueError):
-    """Provider Contract 的 Run/平台与数据库 Scope 来源不一致。"""
+    """Provider Contract 的 Run/平台/配置与数据库来源不一致。"""
 
 
 class ProviderPersistenceConflictError(RuntimeError):
@@ -85,9 +86,14 @@ class ProviderRequestNotFoundError(LookupError):
 
 
 class ProviderPersistenceRepository(Protocol):
-    """Stage 5C Provider 来源链的最小持久化边界。"""
+    """Provider 来源链的最小持久化边界。"""
 
-    def create_or_get_request(self, request: ProviderRequestV1) -> ProviderRequestRecord: ...
+    def create_or_get_request(
+        self,
+        request: ProviderRequestV1,
+        *,
+        provider_config_id: UUID | None = None,
+    ) -> ProviderRequestRecord: ...
 
     def get_request(self, provider_request_id: UUID) -> ProviderRequestRecord | None: ...
 
@@ -98,16 +104,34 @@ class ProviderPersistenceRepository(Protocol):
         attempt_id: UUID,
     ) -> ProviderAttemptRecord: ...
 
+    def create_or_get_billable_attempt(
+        self,
+        *,
+        provider_request_id: UUID,
+        attempt_id: UUID,
+        billing: ProviderBillingV1,
+    ) -> ProviderAttemptRecord: ...
+
 
 class ProviderPersistenceService:
-    """在调用方事务内编排逻辑 Request 与非计费 reserved Attempt。"""
+    """在调用方事务内编排逻辑 Request 与 reserved Attempt。"""
 
     def __init__(self, repository: ProviderPersistenceRepository) -> None:
         self._repository = repository
 
-    def ensure_request(self, request: ProviderRequestV1) -> ProviderRequestRecord:
+    def ensure_request(
+        self,
+        request: ProviderRequestV1,
+        *,
+        provider_config_id: UUID | None = None,
+    ) -> ProviderRequestRecord:
         """按 Scope + fingerprint 建立或复用逻辑 Request。"""
-        return self._repository.create_or_get_request(request)
+        if provider_config_id is None:
+            return self._repository.create_or_get_request(request)
+        return self._repository.create_or_get_request(
+            request,
+            provider_config_id=provider_config_id,
+        )
 
     def prepare_non_billable_attempt(
         self,
@@ -120,6 +144,37 @@ class ProviderPersistenceService:
         attempt = self._repository.create_or_get_non_billable_attempt(
             provider_request_id=persisted_request.id,
             attempt_id=attempt_id,
+        )
+        current_request = self._repository.get_request(persisted_request.id)
+        if current_request is None:
+            raise ProviderRequestNotFoundError("Provider Request 在 Attempt 创建后不可见")
+        return PreparedProviderAttempt(request=current_request, attempt=attempt)
+
+    def prepare_billable_attempt(
+        self,
+        *,
+        request: ProviderRequestV1,
+        provider_config_id: UUID,
+        attempt_id: UUID,
+        billing: ProviderBillingV1,
+    ) -> PreparedProviderAttempt:
+        """为真实外部调用建立稳定 Provider Config 关联和发送前价格快照。"""
+        if billing.status != "estimated":
+            raise ValueError("billable Attempt 创建时 billing.status 必须为 estimated")
+        if billing.currency is None:
+            raise ValueError("billable Attempt 创建时必须声明 currency")
+        if billing.unit is None:
+            raise ValueError("billable Attempt 创建时必须声明 unit")
+        if billing.actual_cost != 0:
+            raise ValueError("billable Attempt 创建时不得预填 actual_cost")
+        persisted_request = self.ensure_request(
+            request,
+            provider_config_id=provider_config_id,
+        )
+        attempt = self._repository.create_or_get_billable_attempt(
+            provider_request_id=persisted_request.id,
+            attempt_id=attempt_id,
+            billing=billing,
         )
         current_request = self._repository.get_request(persisted_request.id)
         if current_request is None:

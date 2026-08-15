@@ -1,4 +1,4 @@
-"""Collection 模块拥有的 Run/Scope 与 Provider Request/Attempt 表。"""
+"""Collection 模块拥有的 Run/Scope、Provider Request/Attempt 与预算账本表。"""
 
 from sqlalchemy import (
     Boolean,
@@ -6,6 +6,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     Numeric,
@@ -13,9 +14,10 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, ExcludeConstraint
 
 from aima_ugc.platform.database.metadata import metadata
 
@@ -83,6 +85,7 @@ provider_requests_table = Table(
     metadata,
     Column("id", Uuid(), primary_key=True),
     Column("scope_id", Uuid(), ForeignKey("collection_scopes.id"), nullable=False),
+    Column("provider_config_id", Uuid(), ForeignKey("provider_configs.id")),
     Column("provider", Text(), nullable=False),
     Column("operation", Text(), nullable=False),
     Column("request_fingerprint", Text(), nullable=False),
@@ -242,6 +245,114 @@ provider_request_attempts_table = Table(
     info={"owner": "collection"},
 )
 
+provider_budget_accounts_table = Table(
+    "provider_budget_accounts",
+    metadata,
+    Column("id", Uuid(), primary_key=True),
+    Column("provider_config_id", Uuid(), ForeignKey("provider_configs.id"), nullable=False),
+    Column("scope_type", Text(), nullable=False),
+    Column("scope_key", Text(), nullable=False),
+    Column("run_id", Uuid(), ForeignKey("collection_runs.id")),
+    Column("content_id", Uuid(), ForeignKey("contents.id")),
+    Column("period_start", DateTime(timezone=True), nullable=False),
+    Column("period_end", DateTime(timezone=True), nullable=False),
+    Column("dimension", Text(), nullable=False),
+    Column("unit", Text(), nullable=False),
+    Column("limit_amount", Numeric(18, 6), nullable=False),
+    Column("reserved_amount", Numeric(18, 6), nullable=False, server_default=text("0")),
+    Column("settled_amount", Numeric(18, 6), nullable=False, server_default=text("0")),
+    Column("unknown_amount", Numeric(18, 6), nullable=False, server_default=text("0")),
+    Column("enabled", Boolean(), nullable=False, server_default=text("true")),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint(
+        "provider_config_id",
+        "scope_key",
+        "period_start",
+        "dimension",
+        "unit",
+    ),
+    CheckConstraint(
+        "scope_type in ('global','run','run_comments','content_comments')",
+        name="scope_type_allowed",
+    ),
+    CheckConstraint("period_end > period_start", name="period_valid"),
+    CheckConstraint(
+        "dimension in ('request_count','monetary_cost')",
+        name="dimension_allowed",
+    ),
+    CheckConstraint(
+        "(dimension = 'request_count' and unit = 'request') or "
+        "(dimension = 'monetary_cost' and unit ~ '^[A-Z]{3}$')",
+        name="dimension_unit_consistent",
+    ),
+    CheckConstraint(
+        "limit_amount >= 0 and reserved_amount >= 0 and settled_amount >= 0 "
+        "and unknown_amount >= 0",
+        name="amounts_nonnegative",
+    ),
+    CheckConstraint(
+        "(scope_type = 'global' and run_id is null and content_id is null "
+        "and scope_key = 'global') or "
+        "(scope_type = 'run' and run_id is not null and content_id is null "
+        "and scope_key = 'run:' || run_id::text) or "
+        "(scope_type = 'run_comments' and run_id is not null and content_id is null "
+        "and scope_key = 'run_comments:' || run_id::text) or "
+        "(scope_type = 'content_comments' and content_id is not null and run_id is null "
+        "and scope_key = 'content_comments:' || content_id::text)",
+        name="scope_identity_consistent",
+    ),
+    ExcludeConstraint(
+        ("provider_config_id", "="),
+        ("scope_key", "="),
+        ("dimension", "="),
+        ("unit", "="),
+        (func.tstzrange(Column("period_start"), Column("period_end"), "[)"), "&&"),
+        name="ex_provider_budget_accounts_no_overlap",
+        using="gist",
+    ),
+    info={"owner": "collection"},
+)
+
+provider_budget_reservations_table = Table(
+    "provider_budget_reservations",
+    metadata,
+    Column("id", Uuid(), primary_key=True),
+    Column(
+        "budget_account_id",
+        Uuid(),
+        ForeignKey("provider_budget_accounts.id"),
+        nullable=False,
+    ),
+    Column("provider_request_id", Uuid(), ForeignKey("provider_requests.id"), nullable=False),
+    Column("provider_request_attempt_id", Uuid(), nullable=False),
+    Column("reserved_amount", Numeric(18, 6), nullable=False),
+    Column("settled_amount", Numeric(18, 6)),
+    Column("status", Text(), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("budget_account_id", "provider_request_attempt_id"),
+    ForeignKeyConstraint(
+        ["provider_request_attempt_id", "provider_request_id"],
+        ["provider_request_attempts.id", "provider_request_attempts.provider_request_id"],
+    ),
+    CheckConstraint(
+        "reserved_amount >= 0 and (settled_amount is null or settled_amount >= 0)",
+        name="amounts_nonnegative",
+    ),
+    CheckConstraint(
+        "status in ('reserved','settled','released','unknown')",
+        name="status_allowed",
+    ),
+    CheckConstraint(
+        "(status in ('reserved','unknown') and settled_amount is null) or "
+        "(status = 'settled' and settled_amount is not null) or "
+        "(status = 'released' and coalesce(settled_amount, 0) = 0)",
+        name="status_amount_consistent",
+    ),
+    info={"owner": "collection"},
+)
+
 Index(
     "ix_collection_runs_status_created_at",
     collection_runs_table.c.status,
@@ -265,4 +376,14 @@ Index(
 Index(
     "ix_provider_request_attempts_completed_at",
     provider_request_attempts_table.c.completed_at,
+)
+Index(
+    "ix_provider_budget_accounts_provider_config_id_period",
+    provider_budget_accounts_table.c.provider_config_id,
+    provider_budget_accounts_table.c.period_start,
+    provider_budget_accounts_table.c.period_end,
+)
+Index(
+    "ix_provider_budget_reservations_attempt_id",
+    provider_budget_reservations_table.c.provider_request_attempt_id,
 )

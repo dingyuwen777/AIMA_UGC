@@ -37,6 +37,7 @@ AGENTS.md
 - 当前 XHS 评论 Operation 固定 `latest_v2`，所以 Capability 只暴露规范化 `latest`；仓库尚无合法脱敏非空评论 Fixture/Real Probe 证明“遇到已知 comment_id 即可安全停止”，因此当前 XHS 不声明稳定增量停止能力；
 - 抖音、微博、B站和快手 Operation 已有机器实现与自动测试，但均尚无对应 Mapper、合法脱敏非空真实 Fixture、Real Probe、Capability/默认 Registry。平台文档不得把“Operation 已实现”写成“平台已兼容”；
 - 五个平台默认 Provider 类型都是 TikHub，但架构允许以后逐平台显式选择不同 Provider Config / Provider；
+- Stage 7 已建立 Provider-neutral 多级 Budget Ledger，并开始建立 TikHub 后端版本化 Pricing 配置：`backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml` 保存价格事实，`pricing.py` 负责严格解析和生成发送前保守 Billing；当前未由官方 Endpoint Info 核验精确单价的 endpoint 均保持 `pending_endpoint_info`，不能使用“多数接口价格”作为发送 fallback；
 - Real Provider Probe 的安全、Raw、Canonical、XLSX 边界已经固化，但统一真实 Operation Probe 和完整 Business Pipeline Probe 仍需在后续 Stage 7 实现；当前已有的是不访问 Provider/数据库的 Decision Probe；
 - Stage 7 Scheduler 仍等待 misfire/catch-up 决策，不能因为 Provider 开始开发就提前启用自动调度。
 
@@ -138,7 +139,10 @@ backtrace
 pageArea
 max_id / next_offset
 Secret / Authorization
+Provider endpoint unit price / pricing verification metadata
 ```
+
+**Provider 单价不是前端业务配置。** 前端可以配置“本 Plan/Run 最多允许多少请求、最多允许花多少钱”的预算，但不能显示或修改 TikHub/其他 Provider 的 endpoint 单价表。Provider 单价属于后端 Adapter 的版本化技术事实，通过 Git Review 和测试维护，避免浏览器输入错误价格破坏硬预算。
 
 前端只能看到 Capability 明确支持且当前 Operation 实际实现的选项；“第三方 API 支持”不等于“AIMA 当前代码已支持”。不支持发布时间筛选的平台不能伪装支持。
 
@@ -154,15 +158,52 @@ Secret / Authorization
 
 系统尚未发现的内容可以走高级“外部内容 ID / 分享链接直接采集”。两种入口最终都必须复用正式 Provider Route、Operation、Budget、Raw、Mapper、Canonical 和 Ingestion。
 
-## 10. 费用怎么理解
+## 10. Provider Pricing、费用与预算怎么维护
 
-页面区分：
+费用控制必须把“Provider 价格事实”和“业务预算上限”分开：
 
-1. **预计费用**：有历史时按历史 Run 估算，无历史时保守估算；
-2. **理论请求上限**：由 Plan 的请求/分页上限计算；
-3. **数据库硬预算**：每个真实 Attempt 发送前原子预留，才是实际费用控制。
+1. **Provider 价格事实**：由对应后端 Provider Adapter 维护；TikHub 当前在 `backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml`；
+2. **发送前保守费用**：只使用目标 endpoint 已核验的官方基础价，不使用历史平均价，也不因阶梯折扣缩小硬预算 Reservation；
+3. **理论请求上限**：由 Plan 的请求/分页上限推导；
+4. **数据库硬预算**：每个真实 Attempt 发送前原子预留，是运行时真正的费用门禁；
+5. **实际费用事实**：只有 Provider 明确返回权威逐请求费用或后续账单对账确认后才能称为 `actual_cost`。没有权威逐请求费用时保留 `actual_cost=0`，预算账本按原保守 Reservation 结算，不能把计算值伪装成实际扣费。
 
-预算账户后续绑定具体 `provider_config_id`。因此多个平台共享一个 TikHub Config 时共享该实例的 global 预算；选择不同 TikHub 账号或 Provider 时按配置实例隔离。
+预算账户绑定具体 `provider_config_id`。多个平台共享一个 TikHub Config 时共享该实例的 global 预算；选择不同 TikHub 账号或其他 Provider Config 时按配置实例隔离。
+
+### 10.1 TikHub 内新增平台、endpoint 或官方改价
+
+只要 Provider 仍是 TikHub，Budget Ledger 不需要改。维护步骤固定为：
+
+1. 先确认目标 Operation 的真实 endpoint path；平台 endpoint 变化时同时更新对应 `docs/collection/<platform>.md`；
+2. 通过 TikHub 官方 Endpoint Info/价格说明核验**该 endpoint 的精确基础价**；“多数接口为某价格”只能作为信息，不能当未核验 endpoint 的 Dispatch fallback；
+3. 编辑 `backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml`：更新 `pricing_version`、全局 `verified_at`，并新增或修改对应 `[[endpoints]]`；
+4. 已核验时填写 `verification_status = "verified"`、`base_price`、endpoint `verified_at` 和 `verified_via`；无法核验时保持 `pending_endpoint_info` 且不填写猜测价格；
+5. 运行 `uv run pytest tests/unit/collection/test_tikhub_pricing.py tests/unit/collection/test_provider_budget.py -q`，并运行目标平台 Operation 测试；
+6. 价格未核验、配置缺失、重复、非法或非正数时关闭失败，不允许回退到全局默认价继续发送。
+
+每个 billable Attempt 保存当时使用的 `unit_price_snapshot/estimated_cost`。因此未来 TikHub 改价后，只更新后续 Attempt 使用的配置；历史 Attempt 仍保留当时快照，不按新价格重算。
+
+### 10.2 后面把某个平台换成其他 Provider
+
+Provider 替换时仍然不修改 Budget Ledger 的四层账户、Reservation、并发锁或 Dispatch 门禁。当前扩展边界是：
+
+```text
+新 Provider Adapter
+→ 新 Provider 自己的 pricing 配置/loader
+→ 生成统一 ProviderBillingV1
+→ ProviderPersistence / Budget Reservation
+→ Provider Dispatch
+```
+
+具体步骤：
+
+1. 为新 Provider 建立自己的 Adapter、Operation、Mapper、Capability、Fixture/Probe 和允许的 Base URL/Secret 边界；
+2. 在新 Provider Adapter 内维护该 Provider 的版本化价格配置；不要把另一个 Provider 的价格塞进 TikHub `pricing.toml`；
+3. 发送前把该 Provider 已核验的保守价格转换成统一 `ProviderBillingV1(status="estimated")`；若该 Provider 能返回权威逐请求实际费用，完成后才允许使用 `confirmed + actual_cost`；
+4. 平台/Plan 切换到新的 `provider_config_id`；Canonical、Ingestion、内容数据库和 Budget Ledger 不因 Provider 替换而重写；
+5. 增加该 Provider 的价格测试和目标平台回归，再通过正常 Change/PR/CI 门禁。
+
+当前只有 TikHub 一个真实 Pricing 实现，因此暂不为了“以后可能有第二个 Provider”建立额外通用 Pricing 框架。等第二个 Provider 真正接入时，再根据两个真实实现抽取最小公共接口，避免提前过度抽象。
 
 消费优先级：
 
@@ -250,6 +291,8 @@ Search
 
 ## 14. 文档更新要求
 
-修改 Provider Config 身份/Secret/Base URL/平台选择、某个平台的 endpoint、分页、业务配置、Mapper、Fixture 或 Probe 时，同任务检查并更新对应长期事实文档；跨平台规则变化再同步 Blueprint 08/07。
+修改 Provider Config 身份/Secret/Base URL/平台选择、Provider Pricing、某个平台的 endpoint、分页、业务配置、Mapper、Fixture 或 Probe 时，同任务检查并更新对应长期事实文档；跨平台 Pricing/预算规则变化再同步 Blueprint 08/07。
+
+单纯 TikHub 官方价格变化且 endpoint/业务行为不变时，更新后端 `pricing.toml`、本节维护事实和当前 Change 即可，不需要为了价格数字改写每个平台文档；如果 endpoint/API family 同时变化，则必须同步目标平台文档。
 
 平台文档必须如实写“已实现 / 待实现 / 已 Fixture 验证 / 仅官方文档确认 / 已 Real Probe”，不能用一个状态替代另一个状态。新对话恢复 Stage 7 时，先按 [`../blueprint/README.md`](../blueprint/README.md) 的恢复流程确认当前进度，再读取本文件和目标平台机器事实。

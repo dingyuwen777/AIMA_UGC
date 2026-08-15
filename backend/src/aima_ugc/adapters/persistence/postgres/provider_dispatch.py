@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Literal
 from uuid import UUID
 
 from sqlalchemy import func, or_, select
@@ -10,6 +11,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import Select
 
 from aima_ugc.contracts.provider import ProviderAttemptV1
+from aima_ugc.modules.collection.provider_budget import (
+    ProviderBudgetService,
+    completed_budget_settlement_amount,
+)
 from aima_ugc.modules.collection.provider_dispatch import ProviderDispatchPreparation
 from aima_ugc.modules.collection.provider_persistence import (
     ProviderAttemptRecord,
@@ -29,10 +34,11 @@ from aima_ugc.platform.jobs.tables import jobs_table
 from .artifact_metadata import PostgresArtifactMetadataRepository
 from .jobs import PostgresJobRepository
 from .provider import PostgresProviderRepository
+from .provider_budget import PostgresProviderBudgetRepository
 
 
 class PostgresProviderDispatchPersistence:
-    """Fencing 校验与 Collection/Artifact Owner 终态事务入口。"""
+    """Fencing、Budget 与 Collection/Artifact Owner 终态事务入口。"""
 
     def __init__(self, session_factory: Callable[[], Session]) -> None:
         self._session_factory = session_factory
@@ -51,6 +57,9 @@ class PostgresProviderDispatchPersistence:
                 if preparation is None:
                     raise ProviderRequestNotFoundError(f"Provider Attempt 不存在: {attempt_id}")
                 _lock_matching_job(session, preparation=preparation, fence=fence)
+                ProviderBudgetService(
+                    PostgresProviderBudgetRepository(session)
+                ).assert_dispatch_ready(attempt_id)
                 dispatching = provider.mark_dispatching(attempt_id)
                 return ProviderDispatchPreparation(
                     job_id=preparation.job_id,
@@ -264,9 +273,37 @@ def _finalize_provider_and_artifact(
     attempt: ProviderAttemptV1,
     raw_artifact_id: UUID | None,
 ) -> ProviderAttemptRecord:
+    budget_status: Literal["completed", "not_sent", "unknown"]
+    if attempt.dispatch_status == "completed":
+        budget_status = "completed"
+    elif attempt.dispatch_status == "not_sent":
+        budget_status = "not_sent"
+    elif attempt.dispatch_status == "unknown":
+        budget_status = "unknown"
+    else:
+        raise ValueError("Provider Dispatch 终态无效")
+
     persisted = provider.finalize_dispatch(
         attempt=attempt,
         raw_artifact_id=raw_artifact_id,
+    )
+    budget_settlement_cost = attempt.billing.actual_cost
+    if budget_status == "completed" and attempt.billing.status != "not_billable":
+        if attempt.billing.currency is None:
+            raise ValueError("completed 计费 Attempt 缺少 currency")
+        budget_settlement_cost = completed_budget_settlement_amount(
+            dimension="monetary_cost",
+            reserved_amount=attempt.billing.estimated_cost,
+            billing_status=attempt.billing.status,
+            actual_cost=attempt.billing.actual_cost,
+            billing_currency=attempt.billing.currency,
+            account_unit=attempt.billing.currency,
+        )
+    ProviderBudgetService(PostgresProviderBudgetRepository(session)).finalize_attempt(
+        provider_request_attempt_id=attempt.attempt_id,
+        dispatch_status=budget_status,
+        actual_cost=budget_settlement_cost,
+        currency=attempt.billing.currency,
     )
     if raw_artifact_id is not None:
         if attempt.completed_at is None:
