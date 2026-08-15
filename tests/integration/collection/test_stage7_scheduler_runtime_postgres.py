@@ -146,15 +146,15 @@ def test_latest_only_recovery_commits_skipped_job_occurrence_run_and_cursor_atom
                 .mappings()
                 .all()
             )
-            runs = (
-                session.execute(select(collection_runs_table)).mappings().all()
-            )
+            runs = session.execute(select(collection_runs_table)).mappings().all()
             jobs = session.execute(select(jobs_table)).mappings().all()
 
         assert stored is not None
         assert stored.last_scheduled_at == datetime(2026, 8, 15, 4, 0, tzinfo=UTC)
         assert stored.next_run_at == datetime(2026, 8, 15, 10, 0, tzinfo=UTC)
-        assert [(row["scheduled_for"], row["status"], row["skip_reason"]) for row in occurrences] == [
+        assert [
+            (row["scheduled_for"], row["status"], row["skip_reason"]) for row in occurrences
+        ] == [
             (
                 datetime(2026, 8, 14, 22, 0, tzinfo=UTC),
                 "skipped",
@@ -192,11 +192,15 @@ def test_two_scheduler_ticks_do_not_duplicate_same_occurrence(scheduler_runtime)
         )
 
     with scheduler_runtime.database.engine.begin() as connection:
-        occurrences = connection.execute(
-            select(collection_schedule_occurrences_table).where(
-                collection_schedule_occurrences_table.c.plan_id == plan.id
+        occurrences = (
+            connection.execute(
+                select(collection_schedule_occurrences_table).where(
+                    collection_schedule_occurrences_table.c.plan_id == plan.id
+                )
             )
-        ).mappings().all()
+            .mappings()
+            .all()
+        )
         runs = connection.execute(select(collection_runs_table)).mappings().all()
         jobs = connection.execute(select(jobs_table)).mappings().all()
 
