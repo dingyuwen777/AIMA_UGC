@@ -4,7 +4,11 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
-from aima_ugc.modules.collection.provider_budget import build_attempt_budget_requirements
+from aima_ugc.modules.collection.provider_budget import (
+    ProviderBudgetLineageError,
+    build_attempt_budget_requirements,
+    completed_budget_settlement_amount,
+)
 
 
 def _by_scope_dimension(requirements):
@@ -75,4 +79,42 @@ def test_budget_requirements_reject_invalid_money_inputs() -> None:
             content_id=None,
             estimated_cost=Decimal("0.01"),
             currency="usd",
+        )
+
+
+def test_completed_estimated_money_settles_reserved_upper_bound_without_fake_actual() -> None:
+    settled = completed_budget_settlement_amount(
+        dimension="monetary_cost",
+        reserved_amount=Decimal("0.010000"),
+        billing_status="estimated",
+        actual_cost=Decimal("0"),
+        billing_currency="USD",
+        account_unit="USD",
+    )
+
+    assert settled == Decimal("0.010000")
+
+
+def test_completed_confirmed_money_can_settle_authoritative_actual_cost() -> None:
+    settled = completed_budget_settlement_amount(
+        dimension="monetary_cost",
+        reserved_amount=Decimal("0.010000"),
+        billing_status="confirmed",
+        actual_cost=Decimal("0.020000"),
+        billing_currency="USD",
+        account_unit="USD",
+    )
+
+    assert settled == Decimal("0.020000")
+
+
+def test_completed_estimated_money_rejects_nonzero_actual_cost() -> None:
+    with pytest.raises(ProviderBudgetLineageError, match="estimated"):
+        completed_budget_settlement_amount(
+            dimension="monetary_cost",
+            reserved_amount=Decimal("0.010000"),
+            billing_status="estimated",
+            actual_cost=Decimal("0.001000"),
+            billing_currency="USD",
+            account_unit="USD",
         )
