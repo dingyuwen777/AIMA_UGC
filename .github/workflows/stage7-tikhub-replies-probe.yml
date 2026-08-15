@@ -1,3 +1,4 @@
+# probe-revision: 2
 name: Stage 7 TikHub Replies Probe
 
 on:
@@ -22,7 +23,7 @@ jobs:
         with:
           python-version: 3.14.7
 
-      - name: Validate locked probe and verified pricing
+      - name: Normalize and validate locked probe source
         shell: bash
         run: |
           set -euo pipefail
@@ -30,10 +31,20 @@ jobs:
           python -m pip install "uv==${UV_VERSION}"
           uv lock --check
           uv sync --locked
+          uv run ruff format scripts/dev/probe_tikhub_stage7_replies.py
           uv run ruff format --check scripts/dev/probe_tikhub_stage7_replies.py
           uv run ruff check scripts/dev/probe_tikhub_stage7_replies.py
           uv run python -m py_compile scripts/dev/probe_tikhub_stage7_replies.py
           uv run pytest tests/unit/collection/test_tikhub_pricing.py -q
+
+      - name: Upload normalized probe source
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: stage7-replies-formatted-source-${{ github.run_id }}
+          path: scripts/dev/probe_tikhub_stage7_replies.py
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 9
 
       - name: Verify api.tikhub.io connectivity
         shell: bash
