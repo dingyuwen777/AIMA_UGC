@@ -134,9 +134,7 @@ def map_comment(
     )
 
 
-def _kuaishou_parent_comment_id(
-    raw: dict[str, Any], root_comment_id: str | None
-) -> str | None:
+def _kuaishou_parent_comment_id(raw: dict[str, Any], root_comment_id: str | None) -> str | None:
     for key in ("reply_comment_id", "replyCommentId", "parent_comment_id"):
         value = optional_string(raw, key)
         if value not in {None, "0", root_comment_id}:
