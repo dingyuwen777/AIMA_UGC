@@ -111,6 +111,7 @@ jobs:
           uv run alembic check
           uv run pytest \
             tests/integration/collection/test_provider_budget.py \
+            tests/integration/collection/test_provider_budget_estimated_settlement.py \
             tests/integration/collection/test_provider_repository.py \
             tests/integration/collection/test_provider_dispatch.py \
             -q
