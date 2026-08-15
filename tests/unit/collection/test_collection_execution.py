@@ -9,6 +9,7 @@ from aima_ugc.modules.collection.execution import (
     CollectionExecutionService,
     CollectionScopeDefinition,
     DuplicateCollectionScopeError,
+    InvalidCollectionRunPlanBindingError,
     UnsupportedCollectionTriggerError,
 )
 
@@ -25,6 +26,8 @@ class RecordingCollectionRepository:
         trigger_type,
         config_snapshot,
         scopes,
+        manual_plan_id,
+        occurrence_id,
     ) -> CollectionExecution:
         self.calls.append(
             {
@@ -32,6 +35,8 @@ class RecordingCollectionRepository:
                 "trigger_type": trigger_type,
                 "config_snapshot": config_snapshot,
                 "scopes": scopes,
+                "manual_plan_id": manual_plan_id,
+                "occurrence_id": occurrence_id,
             }
         )
         return self.result
@@ -64,12 +69,14 @@ def test_service_creates_supported_run_with_immutable_scope_sequence() -> None:
             "trigger_type": "manual",
             "config_snapshot": {"schema_version": "collection-run-config.v1"},
             "scopes": tuple(scopes),
+            "manual_plan_id": None,
+            "occurrence_id": None,
         }
     ]
 
 
 @pytest.mark.parametrize("trigger_type", ["manual", "api", "backfill"])
-def test_service_accepts_only_stage5b_trigger_types(trigger_type: str) -> None:
+def test_service_accepts_non_scheduled_trigger_types(trigger_type: str) -> None:
     repository = RecordingCollectionRepository()
     service = CollectionExecutionService(repository)
 
@@ -83,14 +90,63 @@ def test_service_accepts_only_stage5b_trigger_types(trigger_type: str) -> None:
     assert repository.calls[0]["trigger_type"] == trigger_type
 
 
-def test_service_rejects_scheduled_run_before_repository_call() -> None:
+def test_service_accepts_scheduled_run_with_occurrence_only() -> None:
+    repository = RecordingCollectionRepository()
+    service = CollectionExecutionService(repository)
+    occurrence_id = uuid4()
+
+    service.create_run(
+        job_id=uuid4(),
+        trigger_type="scheduled",
+        config_snapshot={},
+        scopes=(),
+        occurrence_id=occurrence_id,
+    )
+
+    assert repository.calls[0]["trigger_type"] == "scheduled"
+    assert repository.calls[0]["occurrence_id"] == occurrence_id
+    assert repository.calls[0]["manual_plan_id"] is None
+
+
+@pytest.mark.parametrize(
+    ("trigger_type", "manual_plan_id", "occurrence_id"),
+    [
+        ("scheduled", None, None),
+        ("scheduled", uuid4(), uuid4()),
+        ("manual", None, uuid4()),
+        ("api", uuid4(), uuid4()),
+        ("backfill", None, uuid4()),
+    ],
+)
+def test_service_rejects_inconsistent_plan_occurrence_binding(
+    trigger_type: str,
+    manual_plan_id,
+    occurrence_id,
+) -> None:
+    repository = RecordingCollectionRepository()
+    service = CollectionExecutionService(repository)
+
+    with pytest.raises(InvalidCollectionRunPlanBindingError):
+        service.create_run(
+            job_id=uuid4(),
+            trigger_type=trigger_type,
+            config_snapshot={},
+            scopes=(),
+            manual_plan_id=manual_plan_id,
+            occurrence_id=occurrence_id,
+        )
+
+    assert repository.calls == []
+
+
+def test_service_rejects_unknown_trigger_before_repository_call() -> None:
     repository = RecordingCollectionRepository()
     service = CollectionExecutionService(repository)
 
     with pytest.raises(UnsupportedCollectionTriggerError):
         service.create_run(
             job_id=uuid4(),
-            trigger_type="scheduled",
+            trigger_type="cron",
             config_snapshot={},
             scopes=(),
         )

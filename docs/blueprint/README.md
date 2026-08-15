@@ -55,7 +55,7 @@
 
 ## 当前开发状态
 
-**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础、Stage 3B Canonical Contract、Stage 4 PostgreSQL Job Runtime、Stage 5A—5D Provider-neutral 基础、Stage 6 小红书纵切，以及 Stage 7 的 Decision/Capability、Provider Config/平台路由、关键词/词包父事实、最终 Provider Budget Ledger、TikHub 后端版本化 Pricing 边界与抖音/微博/B站/快手请求分页 Operation 机器基础均已建立。** 当前代码已经具备：
+**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础、Stage 3B Canonical Contract、Stage 4 PostgreSQL Job Runtime、Stage 5A—5D Provider-neutral 基础、Stage 6 小红书纵切，以及 Stage 7 的 Decision/Capability、Provider Config/平台路由、关键词/词包父事实、Plan/Occurrence/Run Snapshot 父事实、最终 Provider Budget Ledger、TikHub 后端版本化 Pricing 边界与抖音/微博/B站/快手请求分页 Operation 机器基础均已建立。** 当前代码已经具备：
 
 - 根 Python/uv 工程、固定运行时与锁文件、FastAPI/Vue、OpenAPI → Orval Client、完整 Stage 1 CI；
 - Windows PowerShell 5.1 开发环境引导和本地 Uvicorn + Vite 双服务联调；
@@ -73,16 +73,17 @@
 - Stage 5D 第五条 Revision、受 Job Fencing 约束的 Dispatch CAS、每 Attempt 一次 Provider Client 调用、Raw/Artifact 终态关联、遗留 `dispatching` 恢复，以及 PostgreSQL 18.4 独立 CI；
 - Stage 6 小红书 TikHub App V2 搜索/详情/评论 Operation 与分页、纯 Mapper、脱敏非空搜索 Fixture、Candidate/Ingestion 追加账本、Content/Comment Current+Version+Metric、已存 Raw Replay Job、第六至第九条 Revision，以及 PostgreSQL 18.4 独立 CI；
 - Stage 7 版本化 `CollectionDecisionRequestV1` / `CollectionDecisionV1` / `ProviderPlatformCapabilityV1`、纯 `CollectionDecisionService`、当前 XHS TikHub Capability 和独立 Decision Probe；
-- Stage 7 `ProviderConfigV1` / `ProviderPlatformRouteV1`、System `provider_configs`、`20260815_0010`、PostgreSQL Provider Config Repository、Secret 引用校验和当前只登记 `tikhub + xhs` 的 Provider Registry；同一种 Provider 可以有多个配置实例，实例不绑定平台，平台/Plan 后续选择具体 `provider_config_id`；
+- Stage 7 `ProviderConfigV1` / `ProviderPlatformRouteV1`、System `provider_configs`、`20260815_0010`、PostgreSQL Provider Config Repository、Secret 引用校验和当前只登记 `tikhub + xhs` 的 Provider Registry；同一种 Provider 可以有多个配置实例，实例不绑定平台，平台/Plan 选择具体 `provider_config_id`；
 - Stage 7 System `keyword_packs/keywords/keyword_pack_items`、`20260815_0011`、PostgreSQL Keyword Catalog Repository，以及 `normalized_text` 唯一、关系复合主键/外键和 System Owner 约束；
 - Stage 7 `20260815_0012`、`provider_requests.provider_config_id`、`provider_budget_accounts/provider_budget_reservations`、稳定 Provider Config 隔离、`global/run/run_comments/content_comments` 四层两维预算、并发原子 Reservation、Dispatch/Recovery `settled/released/unknown` 终态与账本 drift 审计；
+- Stage 7 `20260815_0013`、`collection_plans/collection_plan_platforms/collection_plan_keyword_packs/collection_schedule_occurrences`、Run 的 `manual_plan_id/occurrence_id` 关系、`Asia/Shanghai` 首版时区边界，以及 enqueued/skipped Occurrence 与 scheduled Run/Job 的 deferred 数据库一致性约束；当前只建立 Scheduler 所需父事实，不解析 Cron、不执行 misfire/catch-up；
 - Stage 7 TikHub Pricing 以 `adapters/providers/tikhub/pricing.toml` 为后端版本化运行时事实：全局“多数服务”价格只作说明，未核验 endpoint 不得使用默认价放行；已核验 endpoint 生成保守 `estimated` Billing/Attempt 价格快照并由 Budget 预留，ProviderClient 在响应没有逐请求账单时保留该计划快照且 `actual_cost=0`；仅真正提供权威逐请求费用的 Provider 才能用 `confirmed + actual_cost`；Pricing 不进入前端，也不保存 Secret；
 - Stage 7 抖音 TikHub `fetch_video_search_v2`、App V3 详情/一级评论/评论回复请求构造，以及 Search/cursor 基础分页状态机；该实现尚不包含 Douyin Mapper、合法脱敏非空真实 Fixture、Real Probe 或默认 Registry Capability 接线；
 - Stage 7 微博 TikHub Web Search、App 详情/一级评论、Web V2 二级评论请求构造，以及仅基于已确认 `page/max_id` 事实的分页状态；该实现尚不包含 Weibo Mapper、合法脱敏非空真实 Fixture、Real Probe 或默认 Registry Capability 接线；
 - Stage 7 B站 TikHub App Search/Detail/Comments/Reply 请求构造与有证据分页已进入 `main`；该实现尚不包含 Bilibili Mapper、合法脱敏非空真实 Fixture、Real Probe 或默认 Registry Capability 接线；
 - Stage 7 快手 TikHub App Search V2 / Detail + Web Comments/Sub-comments 请求构造与保守 `pcursor` 状态已进入 `main`；该实现尚不包含 Kuaishou Mapper、合法脱敏非空真实 Fixture、Real Probe 或默认 Registry Capability 接线。
 
-Stage 4 的机器事实以 `backend/src/aima_ugc/platform/jobs/`、`backend/src/aima_ugc/adapters/persistence/postgres/jobs.py`、第二条 Migration、测试和 CI 为准。Stage 5A 的机器事实以 Provider Contract/Client/Fake/Raw、生成 Schema、测试和 CI 为准；Stage 5B 以 `modules/collection/execution.py`、Collection Table/Repository、第三条 Migration、PostgreSQL 测试和 CI 为准；Stage 5C 以 `modules/collection/provider_persistence.py`、Provider Repository、第四条 Migration、PostgreSQL 测试和 CI 为准；Stage 5D 以 `modules/collection/provider_dispatch.py`、`modules/collection/provider_recovery.py`、PostgreSQL Dispatch Adapter、第五条 Migration、测试和 CI 为准；Stage 6 以 TikHub XHS Operation/Mapper、Candidate/Content Owner 实现、Raw Replay、第六至第九条 Migration、Fixture、测试和 CI 为准；Stage 7 当前机器事实以 `aima_ugc.contracts.collection`、`modules/collection/decision.py`、`modules/collection/provider_routing.py`、`modules/collection/provider_budget.py`、System `provider_configs`/Repository、System `keyword_packs/keywords/keyword_pack_items` 与 `adapters/persistence/postgres/keywords.py`、`adapters/persistence/postgres/provider_budget.py`、`adapters/providers/registry.py`、`adapters/providers/tikhub/pricing.py`、`adapters/providers/tikhub/pricing.toml`、`adapters/providers/tikhub/capabilities.py`、`adapters/providers/tikhub/operations/douyin.py`、`adapters/providers/tikhub/operations/weibo.py`、`adapters/providers/tikhub/operations/bilibili.py`、`adapters/providers/tikhub/operations/kuaishou.py`、`contracts/collection/`、第十至第十二条 Revision、对应测试和 CI 为准。Stage 7 采集业务语义维护在 [`08-采集策略与平台能力.md`](08-采集策略与平台能力.md)。
+Stage 4 的机器事实以 `backend/src/aima_ugc/platform/jobs/`、`backend/src/aima_ugc/adapters/persistence/postgres/jobs.py`、第二条 Migration、测试和 CI 为准。Stage 5A 的机器事实以 Provider Contract/Client/Fake/Raw、生成 Schema、测试和 CI 为准；Stage 5B 以 `modules/collection/execution.py`、Collection Table/Repository、第三条 Migration、PostgreSQL 测试和 CI 为准；Stage 5C 以 `modules/collection/provider_persistence.py`、Provider Repository、第四条 Migration、PostgreSQL 测试和 CI 为准；Stage 5D 以 `modules/collection/provider_dispatch.py`、`modules/collection/provider_recovery.py`、PostgreSQL Dispatch Adapter、第五条 Migration、测试和 CI 为准；Stage 6 以 TikHub XHS Operation/Mapper、Candidate/Content Owner 实现、Raw Replay、第六至第九条 Migration、Fixture、测试和 CI 为准；Stage 7 当前机器事实以 `aima_ugc.contracts.collection`、`modules/collection/decision.py`、`modules/collection/planning.py`、`modules/collection/execution.py`、`modules/collection/provider_routing.py`、`modules/collection/provider_budget.py`、System `provider_configs`/Repository、System `keyword_packs/keywords/keyword_pack_items` 与 `adapters/persistence/postgres/keywords.py`、`adapters/persistence/postgres/collection_planning.py`、`adapters/persistence/postgres/provider_budget.py`、`adapters/providers/registry.py`、`adapters/providers/tikhub/pricing.py`、`adapters/providers/tikhub/pricing.toml`、`adapters/providers/tikhub/capabilities.py`、`adapters/providers/tikhub/operations/douyin.py`、`adapters/providers/tikhub/operations/weibo.py`、`adapters/providers/tikhub/operations/bilibili.py`、`adapters/providers/tikhub/operations/kuaishou.py`、`contracts/collection/`、第十至第十三条 Revision、对应测试和 CI 为准。Stage 7 采集业务语义维护在 [`08-采集策略与平台能力.md`](08-采集策略与平台能力.md)。
 
 ## 当前下一步
 
@@ -99,6 +100,7 @@ Stage 7 仍然是 [`06-开发约束与分阶段实施.md`](06-开发约束与分
 - Provider Config/Platform Route Contract、`provider_configs` System 父事实、PostgreSQL Repository、Secret 引用边界和当前 `tikhub + xhs` Provider Registry；
 - `keyword_packs/keywords/keyword_pack_items` System 父事实、PostgreSQL Keyword Catalog Repository、`20260815_0011` 及唯一/外键/复合主键约束；
 - 最终多级 Provider Budget Ledger：`20260815_0012`、稳定 `provider_config_id`、四层两维账户、并发 reserve、同 Attempt 幂等、发送前关闭失败、`settled/released/unknown`、drift 审计，以及 TikHub 官方价格后端版本化配置/保守预留/不伪造逐请求 `actual_cost` 的计费边界；
+- Plan/Occurrence/Run Snapshot 父事实：`20260815_0013`、Plan→Platform/Keyword Pack 真实关系、稳定 `provider_config_id`、首版 `Asia/Shanghai`、scheduled Run→Occurrence、manual Plan 引用，以及事务提交前的 Occurrence/Run/Job 一致性约束；Scheduler 行为仍未启用；
 - 抖音 TikHub Search V2 + App V3 Detail/Comments/Replies 请求构造和基础分页状态机；
 - 微博 TikHub Web Search + App Detail/Comments + Web V2 Sub-comments 请求构造和有证据的分页状态；
 - B站 TikHub App Search/Detail/Comments/Reply 请求构造和有证据的分页状态；
@@ -108,7 +110,6 @@ Stage 7 仍然是 [`06-开发约束与分阶段实施.md`](06-开发约束与分
 
 Stage 7 剩余实现单元应继续从仓库事实中选择一个边界完整、无上游阻塞的单元推进，主要包括：
 
-- Plan 平台配置、Occurrence 与 Run Snapshot 等剩余父事实；其中正式 Scheduler 仍不得在 misfire/catch-up 语义未批准时启用；
 - 抖音、微博、B站、快手分别取得合法脱敏真实 Fixture 后完成 Mapper/Ingestion 纵切与可运行 Capability/Registry 接线；真实 TikHub billable Probe 还必须先由官方 endpoint 价格事实把目标路径从 `pending_endpoint_info` 核验为 `verified`，不能用全局“多数服务”默认价代替；
 - 统一 Operation Real Probe，以及复用生产 Decision/Mapper 的完整 Business Pipeline Probe（Raw/Canonical/Decision/XLSX）；
 - Scheduler 只在 `misfire_policy`、`max_catch_up_runs` 和停机补跑费用/容量保护获得批准后实现/启用。

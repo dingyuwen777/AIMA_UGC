@@ -5,7 +5,11 @@ from aima_ugc.modules.collection.candidate_tables import (
     collection_candidates_table,
 )
 from aima_ugc.modules.collection.tables import (
+    collection_plan_keyword_packs_table,
+    collection_plan_platforms_table,
+    collection_plans_table,
     collection_runs_table,
+    collection_schedule_occurrences_table,
     collection_scopes_table,
     provider_budget_accounts_table,
     provider_budget_reservations_table,
@@ -42,7 +46,11 @@ __all__ = [
     "audit_events_table",
     "collection_candidate_ingestions_table",
     "collection_candidates_table",
+    "collection_plan_keyword_packs_table",
+    "collection_plan_platforms_table",
+    "collection_plans_table",
     "collection_runs_table",
+    "collection_schedule_occurrences_table",
     "collection_scopes_table",
     "comment_coverage_observations_table",
     "comment_metric_observations_table",

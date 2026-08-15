@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Literal, Protocol, cast
 from uuid import UUID
 
-type CollectionRunTrigger = Literal["manual", "api", "backfill"]
+type CollectionRunTrigger = Literal["scheduled", "manual", "api", "backfill"]
 type CollectionRunStatus = Literal[
     "queued",
     "running",
@@ -38,6 +38,8 @@ class CollectionRunRecord:
 
     id: UUID
     job_id: UUID
+    manual_plan_id: UUID | None
+    occurrence_id: UUID | None
     trigger_type: CollectionRunTrigger
     config_snapshot: dict[str, object]
     status: CollectionRunStatus
@@ -93,11 +95,17 @@ class CollectionExecutionRepository(Protocol):
         trigger_type: CollectionRunTrigger,
         config_snapshot: dict[str, object],
         scopes: tuple[CollectionScopeDefinition, ...],
+        manual_plan_id: UUID | None,
+        occurrence_id: UUID | None,
     ) -> CollectionExecution: ...
 
 
 class UnsupportedCollectionTriggerError(ValueError):
-    """本阶段不支持请求的 Run 触发方式。"""
+    """当前阶段不支持请求的 Run 触发方式。"""
+
+
+class InvalidCollectionRunPlanBindingError(ValueError):
+    """Run 的 trigger、Plan 与 Occurrence 关系不一致。"""
 
 
 class DuplicateCollectionScopeError(ValueError):
@@ -105,9 +113,9 @@ class DuplicateCollectionScopeError(ValueError):
 
 
 class CollectionExecutionService:
-    """校验 Stage 5B 创建语义，并委托唯一 Repository 写入。"""
+    """校验 Run/Scope 与 Plan/Occurrence 创建语义，并委托唯一 Repository 写入。"""
 
-    _SUPPORTED_TRIGGERS = frozenset({"manual", "api", "backfill"})
+    _SUPPORTED_TRIGGERS = frozenset({"scheduled", "manual", "api", "backfill"})
 
     def __init__(self, repository: CollectionExecutionRepository) -> None:
         self._repository = repository
@@ -119,11 +127,23 @@ class CollectionExecutionService:
         trigger_type: str,
         config_snapshot: dict[str, object],
         scopes: tuple[CollectionScopeDefinition, ...] | list[CollectionScopeDefinition],
+        manual_plan_id: UUID | None = None,
+        occurrence_id: UUID | None = None,
     ) -> CollectionExecution:
         """创建 queued Run/Scopes；事务提交或回滚由调用方负责。"""
         if trigger_type not in self._SUPPORTED_TRIGGERS:
             raise UnsupportedCollectionTriggerError(
-                f"unsupported Stage 5B collection trigger: {trigger_type}"
+                f"unsupported collection trigger: {trigger_type}"
+            )
+
+        if trigger_type == "scheduled":
+            if occurrence_id is None or manual_plan_id is not None:
+                raise InvalidCollectionRunPlanBindingError(
+                    "scheduled run requires occurrence_id and forbids manual_plan_id"
+                )
+        elif occurrence_id is not None:
+            raise InvalidCollectionRunPlanBindingError(
+                "manual/api/backfill run must not reference occurrence_id"
             )
 
         scope_sequence = tuple(scopes)
@@ -136,4 +156,6 @@ class CollectionExecutionService:
             trigger_type=cast(CollectionRunTrigger, trigger_type),
             config_snapshot=dict(config_snapshot),
             scopes=scope_sequence,
+            manual_plan_id=manual_plan_id,
+            occurrence_id=occurrence_id,
         )
