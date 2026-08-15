@@ -26,6 +26,7 @@ from aima_ugc.modules.collection.tables import provider_request_attempts_table
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from sqlalchemy import select
+
 from tests.integration.collection.test_provider_budget import (
     _clear_data,
     _create_accounts,
