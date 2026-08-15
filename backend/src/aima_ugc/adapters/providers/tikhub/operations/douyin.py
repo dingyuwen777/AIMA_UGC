@@ -72,7 +72,7 @@ class DouyinSearchPagination:
             return cls(next_cursor, search_id, backtrace, (), False, "empty_page")
 
         item_ids = tuple(filter(None, (_search_item_id(item) for item in items)))
-        if item_ids and item_ids == previous_item_ids:
+        if _same_item_ids(item_ids, previous_item_ids):
             return cls(
                 next_cursor,
                 search_id,
@@ -247,6 +247,12 @@ def _search_item_id(item: dict[str, Any]) -> str:
     if not isinstance(aweme_info, dict):
         return ""
     return _string(aweme_info.get("aweme_id")) or ""
+
+
+def _same_item_ids(current: tuple[str, ...], previous: tuple[str, ...]) -> bool:
+    if not current or len(current) != len(previous):
+        return False
+    return set(current) == set(previous)
 
 
 def _string(value: object) -> str | None:
