@@ -187,7 +187,6 @@ class ProviderBudgetRepository(Protocol):
         *,
         provider_request_attempt_id: UUID,
         dispatch_status: Literal["completed", "not_sent", "unknown"],
-        billing_status: ProviderBillingStatus,
         actual_cost: Decimal,
         currency: str | None,
     ) -> None: ...
@@ -241,14 +240,12 @@ class ProviderBudgetService:
         *,
         provider_request_attempt_id: UUID,
         dispatch_status: Literal["completed", "not_sent", "unknown"],
-        billing_status: ProviderBillingStatus,
         actual_cost: Decimal,
         currency: str | None,
     ) -> None:
         self._repository.finalize_attempt(
             provider_request_attempt_id=provider_request_attempt_id,
             dispatch_status=dispatch_status,
-            billing_status=billing_status,
             actual_cost=actual_cost,
             currency=currency,
         )
