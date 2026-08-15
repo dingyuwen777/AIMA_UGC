@@ -52,10 +52,12 @@ def test_search_mode_mapping_matches_current_official_values(
     assert request.params["search_type"] == expected
 
 
-def test_search_all_time_omits_time_scope_and_rejects_invalid_page_or_mode() -> None:
+def test_search_defaults_to_latest_and_omits_all_time_scope() -> None:
     request = build_search_request(keyword="爱玛", time_scope="all")
-    assert request.params == {"keyword": "爱玛", "page": 1, "search_type": 1}
+    assert request.params == {"keyword": "爱玛", "page": 1, "search_type": 61}
 
+
+def test_search_rejects_invalid_page_mode_or_time_scope() -> None:
     with pytest.raises(ValueError, match="page"):
         build_search_request(keyword="爱玛", page=0)
     with pytest.raises(ValueError, match="search_mode"):
@@ -82,7 +84,7 @@ def test_detail_and_first_level_comments_use_current_status_id_parameter() -> No
     assert detail.path == "/api/v1/weibo/app/fetch_status_detail"
     assert detail.params == {"status_id": "weibo-1"}
 
-    first_page = build_status_comments_request(status_id="weibo-1", sort_mode="latest")
+    first_page = build_status_comments_request(status_id="weibo-1")
     assert first_page.path == "/api/v1/weibo/app/fetch_status_comments"
     assert first_page.params == {"status_id": "weibo-1", "sort_type": 1}
 
