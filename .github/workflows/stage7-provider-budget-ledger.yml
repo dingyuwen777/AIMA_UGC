@@ -169,14 +169,22 @@ jobs:
           rm -rf dist
           uv build --wheel
           python - <<'PY'
+          import sys
           from pathlib import Path
           from zipfile import ZipFile
 
-          wheel = next(Path("dist").glob("*.whl"))
+          wheel = next(Path("dist").glob("*.whl")).resolve()
           expected = "aima_ugc/adapters/providers/tikhub/pricing.toml"
           with ZipFile(wheel) as archive:
               names = set(archive.namelist())
           if expected not in names:
               raise SystemExit(f"wheel missing required pricing resource: {expected}")
-          print(f"verified wheel resource: {expected}")
+
+          sys.path.insert(0, str(wheel))
+          from aima_ugc.adapters.providers.tikhub.pricing import load_tikhub_pricing
+
+          catalog = load_tikhub_pricing()
+          if catalog.provider != "tikhub" or catalog.default_price_dispatch_fallback:
+              raise SystemExit("wheel pricing catalog failed runtime validation")
+          print(f"verified wheel resource and runtime loader: {expected}")
           PY
