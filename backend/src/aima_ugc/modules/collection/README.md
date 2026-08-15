@@ -5,7 +5,7 @@ Stage 5A Provider-neutral Request/Attempt、一次发送 Transport、Raw Artifac
 Collection Run/Scope PostgreSQL 父事实，Stage 5C Provider Request/Attempt 持久化基础，Stage 5D
 不计费 Provider-neutral Dispatch、Raw 关联与崩溃恢复基础，Stage 6 小红书 TikHub App V2
 Operation/Mapper、Candidate/Ingestion 追加账本和已存 Raw 回放纵切，以及 Stage 7 的
-Decision/Capability、Provider Config/Platform Route 机器基础、抖音/微博/B站/快手 TikHub 请求/分页 Operation。
+Decision/Capability、Provider Config/Platform Route 机器基础、抖音/微博/B站/快手 TikHub 请求/分页 Operation、稳定 Provider Config 绑定和最终多级 Provider Budget Ledger。
 
 ## 生产入口
 
@@ -54,29 +54,24 @@ Decision/Capability、Provider Config/Platform Route 机器基础、抖音/微�
   Scope 身份唯一性；
 - `aima_ugc.adapters.persistence.postgres.collection.PostgresCollectionRepository`：在调用方持有的同一
   SQLAlchemy Session/事务内创建 queued Run/Scopes，并按 Job/Run 查询父事实；
-- `aima_ugc.modules.collection.ProviderPersistenceService`：校验 Provider Request 与 Scope 父链，创建或
-  读取幂等 Request，并准备不计费的 `reserved` Attempt；
+- `aima_ugc.modules.collection.ProviderPersistenceService`：校验 Provider Request 与 Scope 父链；非计费路径继续准备兼容的 `reserved` Attempt，计费路径必须绑定稳定 `provider_config_id` 并建立 `estimated` Attempt；
 - `aima_ugc.adapters.persistence.postgres.provider.PostgresProviderRepository`：在调用方持有的同一
   SQLAlchemy Session/事务内持久化 Request/Attempt，不提交事务、不执行外部 I/O；
-- `aima_ugc.modules.collection.ProviderDispatchService`：先用 Job Fencing 在短事务中取得
-  `reserved → dispatching` CAS，再于事务外最多调用一次 Provider Client，最后在短事务中提交结果；
+- `aima_ugc.modules.collection.provider_budget.ProviderBudgetService`：构造普通 Attempt 的 `global + run` 与评论 Attempt 的 `global + run + run_comments + content_comments` 两维预算要求，编排账户创建、原子预留、终态结算和账本审计；不发 HTTP；
+- `aima_ugc.adapters.persistence.postgres.provider_budget.PostgresProviderBudgetRepository`：按稳定顺序锁住调用时刻覆盖的账户，检查 `settled + reserved + unknown + 本次预留 <= limit`，同一事务全部预留或全部失败；同一 Attempt 重放幂等，缺账户/超额/来源不一致均关闭失败；
+- `aima_ugc.modules.collection.ProviderDispatchService`：先用 Job Fencing 和 Budget 门禁在短事务中验证计费 Attempt 已有完整 Reservation，再取得 `reserved → dispatching` CAS；事务外最多调用一次 Provider Client，最后在短事务中提交 Provider 与预算终态；
 - `aima_ugc.modules.collection.ProviderAttemptReconciler`：接管遗留 `dispatching` Attempt 时优先按
   确定性路径校验并恢复已落盘 Raw；没有可用 Raw 时保守记为 `unknown`，不复发原 Attempt；
-- `aima_ugc.adapters.persistence.postgres.provider_dispatch`：把 Job Fencing、Provider Attempt Owner 写入和
-  Artifact `stored → linked` 组合成短事务持久化边界；
+- `aima_ugc.adapters.persistence.postgres.provider_dispatch`：把 Job Fencing、预算发送前检查、Provider Attempt Owner 写入、预算 `settled/released/unknown` 和 Artifact `stored → linked` 组合成短事务持久化边界；
 - `aima_ugc.modules.collection.CandidateIngestionService` 与
   `aima_ugc.adapters.persistence.postgres.candidates.PostgresCandidateRepository`：追加逐项 Candidate 和
   Ingestion 结果；数据库约束禁止账本 UPDATE/DELETE，并拒绝没有 Canonical 身份/业务目标的成功结果；
 - `aima_ugc.modules.collection.XhsRawReplayHandler` 与 `adapters.persistence.postgres.xhs_replay`：从正式
   Job Runtime 读取 completed/linked Raw，经生产 Mapper、Ingestion 和 Owner Repository 回放；Handler
   不接受 Provider Client/Transport；
-- `aima_ugc.modules.collection.tables`：`collection_runs/collection_scopes` 与
-  `provider_requests/provider_request_attempts` 的唯一 Collection Owner Table 定义；第三、四条
-  Migration 建立真实 Job、Scope、Request 和 Artifact 外键，第五条 Migration 冻结 Request 状态白名单和
-  terminal Attempt 的一次性 Raw 关联规则；`candidate_tables` 是 Stage 6 Candidate/Ingestion Owner Table，
-  第六至第九条 Migration 建立业务表、来源约束、账号备用 ID 和追加账本保护。
+- `aima_ugc.modules.collection.tables`：`collection_runs/collection_scopes`、`provider_requests/provider_request_attempts` 和 `provider_budget_accounts/provider_budget_reservations` 的唯一 Collection Owner Table 定义；第三、四条 Migration 建立真实 Job、Scope、Request 和 Artifact 外键，第五条 Migration 冻结 Request 状态白名单和 terminal Attempt 的一次性 Raw 关联规则；`candidate_tables` 是 Stage 6 Candidate/Ingestion Owner Table，第六至第九条 Migration 建立业务表、来源约束、账号备用 ID 和追加账本保护；第十二条 Migration 为 Request 增加稳定 Provider Config 关联并建立最终多级预算账本。
 
-Provider 配置实例由 System Owner 持久化在 `provider_configs`。同一种 Provider 可以有多个实例；实例不绑定平台，平台/Plan 后续选择具体 `provider_config_id`。数据库只保存 `secret_ref`，不保存 API Key/Token 明文；`platform/security` 当前负责 Secret 引用安全校验，实际 Provider Secret 的解析/读取要在真实 Transport/SecretService 接线时复用正式 Secret 边界，Provider Registry 再执行 Provider/Base URL/Capability 校验。
+Provider 配置实例由 System Owner 持久化在 `provider_configs`。同一种 Provider 可以有多个实例；实例不绑定平台，平台/Plan 后续选择具体 `provider_config_id`。数据库只保存 `secret_ref`，不保存 API Key/Token 明文；`platform/security` 当前负责 Secret 引用安全校验，实际 Provider Secret 的解析/读取要在真实 Transport/SecretService 接线时复用正式 Secret 边界，Provider Registry 再执行 Provider/Base URL/Capability 校验。预算账户同样绑定稳定 Provider Config UUID，因此同 Provider 类型的多个配置实例不会共享额度。
 
 Raw Artifact 使用以下相对 `storage_key`：
 
@@ -128,7 +123,7 @@ ProviderConfigV1 / System ProviderConfig
 → 当前 ProviderPlatformCapabilityV1
 ```
 
-当前默认 Registry 只允许 `tikhub + xhs`，并只接受 `https://api.tikhub.io`。同一个 TikHub Provider 类型可以建立多个稳定 UUID 的 Config；两个实例可共享同一 Capability，但历史身份、后续 Budget 和平台引用保持独立。禁用 Config、未知 Provider、不允许 Base URL、尚未建立完整 Capability 的平台都必须失败。
+当前默认 Registry 只允许 `tikhub + xhs`，并只接受 `https://api.tikhub.io`。同一个 TikHub Provider 类型可以建立多个稳定 UUID 的 Config；两个实例可共享同一 Capability，但历史身份、Budget 和平台引用保持独立。禁用 Config、未知 Provider、不允许 Base URL、尚未建立完整 Capability 的平台都必须失败。
 
 ## Provider Operation 独立验证
 
@@ -150,6 +145,28 @@ B站 Operation 测试证明当前官方 App endpoint、搜索 `cursor/order`、�
 
 快手 Operation 测试证明批准的 App Search V2 / Detail 与 Web 一级/二级评论 endpoint、snake_case 请求参数、Search 不伪造排序/时间筛选，以及 `pcursor` 只消费调用方可靠提取的返回值；它不证明快手响应 JSON path、评论列表字段、Provider 结束哨兵、Raw→Canonical Mapper、Real Provider 兼容或默认 Registry Capability。
 
+## Provider Budget 独立验证
+
+预算不需要真实 Provider 网络或 Secret。普通测试先验证层级要求，PostgreSQL 18 集成测试再验证账户周期、同 Attempt 幂等、并发竞争、发送前关闭失败、`completed/not_sent/unknown` 终态和账本 drift：
+
+```bash
+uv run pytest tests/unit/collection/test_provider_budget.py -q
+uv run pytest tests/integration/collection/test_provider_budget.py -q
+```
+
+计费路径的调用顺序固定为：
+
+```text
+prepare_billable_attempt(provider_config_id, estimated billing)
+→ reserve_attempt(...)
+→ ProviderDispatchService.dispatch(...)
+→ start_dispatch 中再次验证完整 Reservation
+→ 单次 Transport send
+→ completed: settled / not_sent: released / unknown: unknown_amount
+```
+
+没有覆盖发送时刻的必需账户、额度不足、Provider Config/Run 不匹配或 Reservation 不完整时，Dispatch 必须在 Transport 前关闭失败。`unknown_amount` 在独立对账能力建立前持续占用预算，不能按未发送释放。
+
 ## 独立验证
 
 ```bash
@@ -160,12 +177,7 @@ uv run pytest tests/integration/collection tests/integration/content tests/integ
 uv run python scripts/contracts/generate.py --check
 ```
 
-测试从正式 Client、Raw Service、ArtifactService、Decision Service、Provider Registry、Provider Operation 和 Local ArtifactStore 等对应生产入口进入。
-Fake Transport 不访问网络、不需要 Token、不产生费用；Raw 测试目录位于 Git 忽略的
-`.runtime/stage5a-tests/`。Repository 集成测试要求先准备隔离 PostgreSQL 18、Secret 文件并执行
-`uv run alembic upgrade head`；独立 `Stage 5B Collection Execution`、
-`Stage 5C Provider Persistence`、`Stage 5D Provider Dispatch`、`Stage 6 XHS Vertical Slice` 与
-`Stage 7 Provider Config Routing` CI 固定使用 PostgreSQL 18.4。
+测试从正式 Client、Raw Service、ArtifactService、Decision Service、Provider Registry、Provider Operation、Provider Budget 和 Local ArtifactStore 等对应生产入口进入。Fake Transport 不访问网络、不需要 Token、不产生费用；Raw 测试目录位于 Git 忽略的 `.runtime/stage5a-tests/`。Repository 集成测试要求先准备隔离 PostgreSQL 18、Secret 文件并执行 `uv run alembic upgrade head`；独立 `Stage 5B Collection Execution`、`Stage 5C Provider Persistence`、`Stage 5D Provider Dispatch`、`Stage 6 XHS Vertical Slice`、`Stage 7 Provider Config Routing` 与 `Stage 7 Provider Budget Ledger` CI 固定使用 PostgreSQL 18.4。
 
 ## 当前限制
 
@@ -174,17 +186,11 @@ Fake Transport 不访问网络、不需要 Token、不产生费用；Raw 测试�
 - 微博已建立 Web Search + App Detail/Comments + Web V2 Sub-comments 请求构造和有证据的游标状态，但没有 Weibo Mapper、合法脱敏非空真实 Fixture、Real Probe、Capability/默认 Registry，搜索结果列表和二级游标响应路径也尚未由真实 Fixture 固化；
 - B站已建立 App Search/Detail/Comments/Reply 请求构造；搜索只按官方 `data.data.pagination.next` 推进，评论/回复只消费调用方可靠提取的 `next_offset`。当前仍没有 Bilibili Mapper、合法脱敏非空真实 Fixture、Real Probe、Capability/默认 Registry，因此不能宣称 B站平台已兼容；
 - 快手已建立 App Search V2 / Detail + Web Comments/Sub-comments 请求构造和保守 `pcursor` 状态；当前仍没有 Kuaishou Mapper、合法脱敏非空真实 Fixture、Real Probe、Capability/默认 Registry，因此不能宣称快手平台已兼容；
-- Stage 7 已有通用 Decision/Capability、Provider Config/Route Contract、System `provider_configs` 父事实和
-  当前 `tikhub + xhs` Registry；抖音/微博/B站/快手均尚未达到可注册 Capability 的完整证据门禁；
-- 当前 Provider Config 只保存 `secret_ref` 并复用 Stage 2 只读 Secret 文件边界；Stage 8 若提供浏览器凭据
-  编辑，仍需独立建立安全可写 SecretStore/SecretService，读取接口不得回显原始 Secret；
-- XHS `get_note_comments` 当前仍缺合法脱敏非空真实评论 Fixture/Real Probe，虽然正式 Operation 使用
-  `latest_v2`，但机器 Capability 暂不声明 `supports_incremental_comment_sort`；评论数增加时先走受控刷新；
+- Stage 7 已有通用 Decision/Capability、Provider Config/Route Contract、System `provider_configs` 父事实、最终 Provider Budget Ledger 和当前 `tikhub + xhs` Registry；抖音/微博/B站/快手均尚未达到可注册 Capability 的完整证据门禁；
+- 当前 Provider Config 只保存 `secret_ref` 并复用 Stage 2 只读 Secret 文件边界；Stage 8 若提供浏览器凭据编辑，仍需独立建立安全可写 SecretStore/SecretService，读取接口不得回显原始 Secret；
+- XHS `get_note_comments` 当前仍缺合法脱敏非空真实评论 Fixture/Real Probe，虽然正式 Operation 使用 `latest_v2`，但机器 Capability 暂不声明 `supports_incremental_comment_sort`；评论数增加时先走受控刷新；
 - 仅支持 `manual/api/backfill` Run；没有 Plan/Occurrence/Scheduler，因而不支持 `scheduled`；
-- 当前 Dispatch 纵切只允许不计费 Attempt 和 Fake Transport；没有最终多级预算预留/结算、真实付费
-  Provider、生产网络调用或最终多级预算；Stage 6 只有已存 Raw 回放 Job Handler；
+- 最终多级预算已实现数据库账户/Reservation、并发硬约束和 Dispatch/Recovery 终态接线，但尚没有真实付费 Provider Transport、预算管理 API/页面或 Provider 账单自动 reconciliation；Stage 6 只有已存 Raw 回放 Job Handler；
 - 除小红书外，没有其他平台的 Mapper/Candidate/Ingestion/Content/Comment 纵切；
 - 没有决定 Raw 的访问、保留、删除、备份和生产容量策略；
-- 真实 Provider Probe 默认不进入普通 CI；2026-08-14 的用户授权搜索 Probe 只确认当次 HTTP 200
-  空页包装/分页字段，不能用其或 Fake 结果宣称详情、评论或生产平台兼容。微博、B站和快手当前 Operation 都只使用
-  2026-08-15 重新核验的 TikHub 官方文档与自动化请求/分页测试，没有新增真实非空响应证据。
+- 真实 Provider Probe 默认不进入普通 CI；2026-08-14 的用户授权搜索 Probe 只确认当次 HTTP 200 空页包装/分页字段，不能用其或 Fake 结果宣称详情、评论或生产平台兼容。微博、B站和快手当前 Operation 都只使用 2026-08-15 重新核验的 TikHub 官方文档与自动化请求/分页测试，没有新增真实非空响应证据。
