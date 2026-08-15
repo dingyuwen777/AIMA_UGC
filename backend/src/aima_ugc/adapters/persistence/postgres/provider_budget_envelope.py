@@ -10,6 +10,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from aima_ugc.modules.collection.provider_budget import (
+    BudgetDimension,
+    BudgetScopeType,
     ProviderBudgetAccountMissingError,
     ProviderBudgetAccountSpec,
     ProviderBudgetLineageError,
@@ -142,7 +144,9 @@ class PostgresProviderBudgetEnvelopeProvisioner:
         required = {("request_count", "request"), ("monetary_cost", currency)}
         missing = required - set(by_key)
         if missing:
-            missing_text = ", ".join(f"{dimension}/{unit}" for dimension, unit in sorted(missing))
+            missing_text = ", ".join(
+                f"{dimension}/{unit}" for dimension, unit in sorted(missing)
+            )
             raise ProviderBudgetAccountMissingError(
                 f"Provider Config 缺少当前有效 Global 预算账户: {missing_text}"
             )
@@ -156,22 +160,24 @@ class PostgresProviderBudgetEnvelopeProvisioner:
         self,
         *,
         provider_config_id: UUID,
-        scope_type: str,
+        scope_type: BudgetScopeType,
         run_id: UUID | None,
         content_id: UUID | None,
         period_start: datetime,
         period_end: datetime,
-        dimension: str,
+        dimension: BudgetDimension,
         unit: str,
         limit_amount: Decimal,
     ) -> None:
-        scope_key = (
-            f"run:{run_id}"
-            if scope_type == "run"
-            else f"run_comments:{run_id}"
-            if scope_type == "run_comments"
-            else f"content_comments:{content_id}"
-        )
+        if scope_type == "run":
+            scope_key = f"run:{run_id}"
+        elif scope_type == "run_comments":
+            scope_key = f"run_comments:{run_id}"
+        elif scope_type == "content_comments":
+            scope_key = f"content_comments:{content_id}"
+        else:  # pragma: no cover - provisioner 不创建 global
+            raise ValueError("预算包络建立器不负责创建 global 账户")
+
         existing = (
             self._session.execute(
                 select(provider_budget_accounts_table).where(
@@ -186,7 +192,10 @@ class PostgresProviderBudgetEnvelopeProvisioner:
             .one_or_none()
         )
         if existing is not None:
-            if existing["period_end"] != period_end or Decimal(existing["limit_amount"]) != limit_amount:
+            if (
+                existing["period_end"] != period_end
+                or Decimal(existing["limit_amount"]) != limit_amount
+            ):
                 raise ProviderBudgetLineageError(
                     f"既有预算账户与派生包络不一致: {scope_key}/{dimension}/{unit}"
                 )
@@ -202,12 +211,12 @@ class PostgresProviderBudgetEnvelopeProvisioner:
                     unit=unit,
                 ),
                 provider_config_id=provider_config_id,
-                scope_type=scope_type,  # type: ignore[arg-type]
+                scope_type=scope_type,
                 run_id=run_id,
                 content_id=content_id,
                 period_start=period_start,
                 period_end=period_end,
-                dimension=dimension,  # type: ignore[arg-type]
+                dimension=dimension,
                 unit=unit,
                 limit_amount=limit_amount,
                 enabled=True,
@@ -220,7 +229,7 @@ def _budget_account_id(
     provider_config_id: UUID,
     scope_key: str,
     period_start: datetime,
-    dimension: str,
+    dimension: BudgetDimension,
     unit: str,
 ) -> UUID:
     return uuid5(
