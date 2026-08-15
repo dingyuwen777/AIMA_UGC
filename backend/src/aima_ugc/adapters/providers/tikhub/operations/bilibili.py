@@ -152,6 +152,24 @@ def build_reply_detail_request(
     return BilibiliRequest(method="GET", path=_REPLY_PATH, params=params)
 
 
+def extract_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    """从真实 App 分类搜索的 data.data.items 提取 av item。"""
+    outer_data = body.get("data")
+    if not isinstance(outer_data, dict):
+        return ()
+    provider_data = outer_data.get("data")
+    if not isinstance(provider_data, dict):
+        return ()
+    items = provider_data.get("items")
+    if not isinstance(items, list):
+        return ()
+    return tuple(
+        item
+        for item in items
+        if isinstance(item, dict) and isinstance(item.get("av"), dict)
+    )
+
+
 def _search_next_cursor(body: dict[str, Any]) -> str:
     outer_data = body.get("data")
     if not isinstance(outer_data, dict):
@@ -224,4 +242,5 @@ __all__ = [
     "build_search_request",
     "build_video_comments_request",
     "build_video_detail_request",
+    "extract_search_items",
 ]
