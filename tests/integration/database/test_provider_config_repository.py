@@ -15,6 +15,7 @@ def test_provider_configs_keep_stable_identity_and_never_store_raw_secret() -> N
     runtime = DatabaseRuntime(load_settings())
     session = runtime.new_session()
     config_id = uuid4()
+    second_config_id = uuid4()
     first = ProviderConfig(
         id=config_id,
         provider="tikhub",
@@ -23,10 +24,19 @@ def test_provider_configs_keep_stable_identity_and_never_store_raw_secret() -> N
         secret_ref="providers/tikhub/main/api-key",
         enabled=True,
     )
+    second = ProviderConfig(
+        id=second_config_id,
+        provider="tikhub",
+        display_name="TikHub 备用账号",
+        base_url="https://api.tikhub.io",
+        secret_ref="providers/tikhub/backup/api-key",
+        enabled=True,
+    )
     try:
         repository = PostgresProviderConfigRepository(session)
         with session.begin():
             created = repository.create(first)
+            created_second = repository.create(second)
         with session.begin():
             updated = repository.update_settings(
                 config_id,
@@ -36,13 +46,17 @@ def test_provider_configs_keep_stable_identity_and_never_store_raw_secret() -> N
                 enabled=False,
             )
             loaded = repository.get(config_id)
+            loaded_second = repository.get(second_config_id)
 
         assert created.id == config_id
+        assert created_second.id == second_config_id
+        assert created.provider == created_second.provider == "tikhub"
         assert updated.id == config_id
         assert updated.provider == "tikhub"
         assert updated.display_name == "TikHub 主账号（更新）"
         assert updated.secret_ref == "providers/tikhub/main/api-key-v2"
         assert loaded == updated
+        assert loaded_second == created_second
 
         column_names = set(provider_configs_table.c.keys())
         assert "secret_ref" in column_names
