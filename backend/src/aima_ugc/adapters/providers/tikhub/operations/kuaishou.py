@@ -125,9 +125,7 @@ def extract_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     if not isinstance(items, list):
         return ()
     return tuple(
-        item
-        for item in items
-        if isinstance(item, dict) and isinstance(item.get("feed"), dict)
+        item for item in items if isinstance(item, dict) and isinstance(item.get("feed"), dict)
     )
 
 
