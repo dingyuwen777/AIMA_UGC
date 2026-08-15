@@ -13,36 +13,12 @@ from pathlib import Path
 from typing import Any, Literal
 
 import httpx
-from aima_ugc.adapters.providers.tikhub.operations.bilibili import (
-    build_search_request as build_bilibili_search,
-    build_video_comments_request as build_bilibili_comments,
-    build_video_detail_request as build_bilibili_detail,
-    extract_search_items as extract_bilibili_search_items,
-)
-from aima_ugc.adapters.providers.tikhub.operations.douyin import (
-    build_video_comments_request as build_douyin_comments,
-    build_video_detail_request as build_douyin_detail,
-    build_video_search_request as build_douyin_search,
-    extract_search_items as extract_douyin_search_items,
-)
-from aima_ugc.adapters.providers.tikhub.operations.kuaishou import (
-    build_search_request as build_kuaishou_search,
-    build_video_comments_request as build_kuaishou_comments,
-    build_video_detail_request as build_kuaishou_detail,
-    extract_search_items as extract_kuaishou_search_items,
-)
-from aima_ugc.adapters.providers.tikhub.operations.weibo import (
-    build_search_request as build_weibo_search,
-    build_status_comments_request as build_weibo_comments,
-    build_status_detail_request as build_weibo_detail,
-    extract_search_items as extract_weibo_search_items,
-)
-from aima_ugc.adapters.providers.tikhub.operations.xiaohongshu import (
-    build_image_detail_request as build_xhs_image_detail,
-    build_note_comments_request as build_xhs_comments,
-    build_search_notes_request as build_xhs_search,
-    build_video_detail_request as build_xhs_video_detail,
-    extract_search_items as extract_xhs_search_items,
+from aima_ugc.adapters.providers.tikhub.operations import (
+    bilibili,
+    douyin,
+    kuaishou,
+    weibo,
+    xiaohongshu,
 )
 from aima_ugc.adapters.providers.tikhub.pricing import load_tikhub_pricing
 
@@ -146,18 +122,15 @@ def _get(path: str, params: dict[str, object], label: str) -> ProbeRequest:
     return ProbeRequest(label=label, method="GET", path=path, params=params)
 
 
-def _from_request(request: object, label: str) -> ProbeRequest:
-    path = str(getattr(request, "path"))
-    params = dict(getattr(request, "params"))
-    method = getattr(request, "method", "GET")
-    body = getattr(request, "body", None)
+def _from_request(request: Any, label: str) -> ProbeRequest:
+    method = request.method
     if method not in {"GET", "POST"}:
         raise ValueError("Probe 只允许 GET/POST")
-    return ProbeRequest(label, method, path, params, body)
+    return ProbeRequest(label, method, str(request.path), dict(request.params), request.body)
 
 
 def _first_xhs_note(body: dict[str, Any]) -> dict[str, Any]:
-    items = extract_xhs_search_items(body)
+    items = xiaohongshu.extract_search_items(body)
     if not items:
         raise RuntimeError("小红书搜索未取得非空 note")
     note = items[0].get("note")
@@ -167,7 +140,7 @@ def _first_xhs_note(body: dict[str, Any]) -> dict[str, Any]:
 
 
 def _first_douyin_aweme(body: dict[str, Any]) -> dict[str, Any]:
-    items = extract_douyin_search_items(body)
+    items = douyin.extract_search_items(body)
     if not items:
         raise RuntimeError("抖音搜索未取得非空 aweme")
     data = items[0].get("data")
@@ -178,7 +151,7 @@ def _first_douyin_aweme(body: dict[str, Any]) -> dict[str, Any]:
 
 
 def _first_weibo_status(body: dict[str, Any]) -> dict[str, Any]:
-    items = extract_weibo_search_items(body)
+    items = weibo.extract_search_items(body)
     if not items:
         raise RuntimeError("微博搜索未取得非空 mblog")
     status = items[0].get("mblog")
@@ -188,14 +161,14 @@ def _first_weibo_status(body: dict[str, Any]) -> dict[str, Any]:
 
 
 def _first_bilibili_item(body: dict[str, Any]) -> dict[str, Any]:
-    items = extract_bilibili_search_items(body)
+    items = bilibili.extract_search_items(body)
     if not items:
         raise RuntimeError("B站搜索未取得非空视频")
     return items[0]
 
 
 def _first_kuaishou_feed(body: dict[str, Any]) -> dict[str, Any]:
-    items = extract_kuaishou_search_items(body)
+    items = kuaishou.extract_search_items(body)
     if not items:
         raise RuntimeError("快手搜索未取得非空作品")
     feed = items[0].get("feed")
@@ -207,10 +180,8 @@ def _first_kuaishou_feed(body: dict[str, Any]) -> dict[str, Any]:
 def run() -> None:
     output = _output_dir()
     manifest: list[dict[str, object]] = []
-    token = _required_token()
-    with _client(token) as client:
-        # 小红书：图文搜索同时作为评论目标；另做一次视频搜索以验证视频详情 endpoint。
-        xhs_image_search = build_xhs_search(
+    with _client(_required_token()) as client:
+        image_search = xiaohongshu.build_search_notes_request(
             keyword=KEYWORD,
             page=1,
             sort_type="comment_descending",
@@ -219,23 +190,19 @@ def run() -> None:
         )
         image_search_body = _send(
             client,
-            _get(xhs_image_search.path, dict(xhs_image_search.params), "xhs_search_image"),
+            _get(image_search.path, dict(image_search.params), "xhs_search_image"),
             output=output,
             manifest=manifest,
         )
-        image_note = _first_xhs_note(image_search_body)
-        image_note_id = str(image_note["id"])
+        image_note_id = str(_first_xhs_note(image_search_body)["id"])
+        image_detail = xiaohongshu.build_image_detail_request(note_id=image_note_id)
         _send(
             client,
-            _get(
-                build_xhs_image_detail(note_id=image_note_id).path,
-                dict(build_xhs_image_detail(note_id=image_note_id).params),
-                "xhs_image_detail",
-            ),
+            _get(image_detail.path, dict(image_detail.params), "xhs_image_detail"),
             output=output,
             manifest=manifest,
         )
-        xhs_comments = build_xhs_comments(note_id=image_note_id)
+        xhs_comments = xiaohongshu.build_note_comments_request(note_id=image_note_id)
         _send(
             client,
             _get(xhs_comments.path, dict(xhs_comments.params), "xhs_comments"),
@@ -243,7 +210,7 @@ def run() -> None:
             manifest=manifest,
         )
 
-        xhs_video_search = build_xhs_search(
+        video_search = xiaohongshu.build_search_notes_request(
             keyword=KEYWORD,
             page=1,
             sort_type="general",
@@ -252,12 +219,12 @@ def run() -> None:
         )
         video_search_body = _send(
             client,
-            _get(xhs_video_search.path, dict(xhs_video_search.params), "xhs_search_video"),
+            _get(video_search.path, dict(video_search.params), "xhs_search_video"),
             output=output,
             manifest=manifest,
         )
         video_note_id = str(_first_xhs_note(video_search_body)["id"])
-        video_detail = build_xhs_video_detail(note_id=video_note_id)
+        video_detail = xiaohongshu.build_video_detail_request(note_id=video_note_id)
         _send(
             client,
             _get(video_detail.path, dict(video_detail.params), "xhs_video_detail"),
@@ -265,7 +232,7 @@ def run() -> None:
             manifest=manifest,
         )
 
-        douyin_search = build_douyin_search(keyword=KEYWORD)
+        douyin_search = douyin.build_video_search_request(keyword=KEYWORD)
         douyin_search_body = _send(
             client,
             _from_request(douyin_search, "douyin_search"),
@@ -275,18 +242,20 @@ def run() -> None:
         aweme_id = str(_first_douyin_aweme(douyin_search_body)["aweme_id"])
         _send(
             client,
-            _from_request(build_douyin_detail(aweme_id=aweme_id), "douyin_detail"),
+            _from_request(douyin.build_video_detail_request(aweme_id=aweme_id), "douyin_detail"),
             output=output,
             manifest=manifest,
         )
         _send(
             client,
-            _from_request(build_douyin_comments(aweme_id=aweme_id), "douyin_comments"),
+            _from_request(
+                douyin.build_video_comments_request(aweme_id=aweme_id), "douyin_comments"
+            ),
             output=output,
             manifest=manifest,
         )
 
-        weibo_search = build_weibo_search(keyword=KEYWORD, search_mode="hot")
+        weibo_search = weibo.build_search_request(keyword=KEYWORD, search_mode="hot")
         weibo_search_body = _send(
             client,
             _from_request(weibo_search, "weibo_search"),
@@ -296,18 +265,20 @@ def run() -> None:
         status_id = str(_first_weibo_status(weibo_search_body)["id"])
         _send(
             client,
-            _from_request(build_weibo_detail(status_id=status_id), "weibo_detail"),
+            _from_request(weibo.build_status_detail_request(status_id=status_id), "weibo_detail"),
             output=output,
             manifest=manifest,
         )
         _send(
             client,
-            _from_request(build_weibo_comments(status_id=status_id), "weibo_comments"),
+            _from_request(
+                weibo.build_status_comments_request(status_id=status_id), "weibo_comments"
+            ),
             output=output,
             manifest=manifest,
         )
 
-        bilibili_search = build_bilibili_search(keyword=KEYWORD)
+        bilibili_search = bilibili.build_search_request(keyword=KEYWORD)
         bilibili_search_body = _send(
             client,
             _from_request(bilibili_search, "bilibili_search"),
@@ -317,18 +288,20 @@ def run() -> None:
         av_id = str(_first_bilibili_item(bilibili_search_body)["param"])
         _send(
             client,
-            _from_request(build_bilibili_detail(av_id=av_id), "bilibili_detail"),
+            _from_request(bilibili.build_video_detail_request(av_id=av_id), "bilibili_detail"),
             output=output,
             manifest=manifest,
         )
         _send(
             client,
-            _from_request(build_bilibili_comments(av_id=av_id), "bilibili_comments"),
+            _from_request(
+                bilibili.build_video_comments_request(av_id=av_id), "bilibili_comments"
+            ),
             output=output,
             manifest=manifest,
         )
 
-        kuaishou_search = build_kuaishou_search(keyword=KEYWORD)
+        kuaishou_search = kuaishou.build_search_request(keyword=KEYWORD)
         kuaishou_search_body = _send(
             client,
             _from_request(kuaishou_search, "kuaishou_search"),
@@ -338,13 +311,15 @@ def run() -> None:
         photo_id = str(_first_kuaishou_feed(kuaishou_search_body)["photo_id"])
         _send(
             client,
-            _from_request(build_kuaishou_detail(photo_id=photo_id), "kuaishou_detail"),
+            _from_request(kuaishou.build_video_detail_request(photo_id=photo_id), "kuaishou_detail"),
             output=output,
             manifest=manifest,
         )
         _send(
             client,
-            _from_request(build_kuaishou_comments(photo_id=photo_id), "kuaishou_comments"),
+            _from_request(
+                kuaishou.build_video_comments_request(photo_id=photo_id), "kuaishou_comments"
+            ),
             output=output,
             manifest=manifest,
         )
