@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260815-stage7-provider-budget-ledger
 title: 建立 Stage 7 Provider 多级预算账本
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: feature/stage7-provider-budget-ledger
 created: 2026-08-15
@@ -41,12 +41,12 @@ data_changes: [provider_requests.provider_config_id, provider_budget_accounts, p
 - [x] 普通 billable Attempt 原子预留 `global + run`；评论/回复额外预留 `run_comments + content_comments`；每层同时预留请求次数与货币额度。
 - [x] 必需账户缺失、超额、来源链不匹配或 Reservation 不完整时 fail closed，Transport 不得被调用。
 - [x] 同 Attempt 预留重放幂等；新 Attempt 独立预留；并发额度竞争由数据库行锁裁决。
-- [ ] 增加后端 TikHub Pricing 配置与 loader：保存官方全局价格说明/阶梯规则及逐 endpoint 核验状态；没有已核验精确价格的 endpoint 必须 fail closed。
-- [ ] TikHub Pricing 生成的 `ProviderBillingV1` 使用已核验官方基价作为 `unit_price_snapshot/estimated_cost`，`actual_cost=0`，且不依赖前端输入。
-- [ ] `completed + estimated` 不再把 0 或猜测值当实际费用，而按原保守 Reservation 进入预算 `settled_amount`；`completed + confirmed` 仍保留泛 Provider 的权威实际费用结算能力。
+- [x] 增加后端 TikHub Pricing 配置与 loader：保存官方全局价格说明/阶梯规则及逐 endpoint 核验状态；没有已核验精确价格的 endpoint 必须 fail closed。
+- [x] TikHub Pricing 生成的 `ProviderBillingV1` 使用已核验官方基价作为 `unit_price_snapshot/estimated_cost`，`actual_cost=0`，且不依赖前端输入。
+- [x] `completed + estimated` 不再把 0 或猜测值当实际费用，而按原保守 Reservation 进入预算 `settled_amount`；`completed + confirmed` 仍保留泛 Provider 的权威实际费用结算能力。
 - [x] `not_sent` 全量释放；`unknown` 保守转入 `unknown_amount`。
 - [x] 预算账户可从 Reservation 重算并检测 drift。
-- [ ] 新计费语义完成 Red → Green → Refactor，独立 Stage 7 Budget CI 新鲜全绿。
+- [x] 新计费语义完成 Red → Green → Refactor，独立 Stage 7 Budget CI 新鲜全绿。
 - [ ] PR 广域 CI、合并后 main CI 和 main 机器事实重新验证完成；满足前不得归档 Change。
 
 # 范围
@@ -96,12 +96,21 @@ TikHub 官方仅说明“多数服务”为 0.001，且文档存在其他固定�
 
 会把真实采集额外依赖网络和价格服务可用性，并增加调用链复杂度。生产运行时以版本化本地配置为事实；官方 endpoint-info 用于开发/运维校验和配置更新。
 
-# 已有实现与历史验证
+# Red / Green / Refactor 证据
 
-1. 初始 Red：Run `31872227188` 的 Unit Job 因生产预算模块不存在而退出 2，证明预算行为测试先于实现。
-2. 已有 Green：Budget Domain/Repository、`0012`、Provider Config 关联、Dispatch/Recovery 门禁、并发 reserve、unknown/released/settled 与 drift 审计已经实现。
-3. 已有 Green Run `31873153498`：Unit/PostgreSQL/Quality 全部成功；后续文档提交也有成功分支 Run。
-4. 由于本次计费事实修正改变成功标准，上述 Green 只作为旧设计回归基线；Change 已从 `ready_for_review` 退回 `in_progress`，必须重新产生针对 Pricing/保守记账语义的 Red/Green 证据后才能 Review/PR。
+1. 初始 Budget Red：Run `31872227188` 的 Unit Job 因生产预算模块不存在而退出 2，证明 Budget 行为测试先于实现。
+2. 旧 Budget Green：Run `31873153498` 的 Unit/PostgreSQL/Quality 全部成功，作为本次 TikHub 计费语义修正前的回归基线。
+3. TikHub Pricing 新 Red：Run `31875013095` 在锁定环境安装成功后，Unit 以 exit code 2 失败，原因是新 Pricing 生产符号尚不存在，符合新的 Red 断言。
+4. Green/Refactor 过程中，CI 先后捕获并修正 Ruff、mypy、测试隔离、计划 Billing 贯穿、Provider Persistence 整文件误覆盖和 Wheel 校验环境问题；未关闭或降低任何门禁。
+5. 最终代码候选 Run `31876319702` 全绿：
+   - Unit：`14 passed`；
+   - PostgreSQL：`24 passed`；
+   - `20260815_0011 → head` 通过；
+   - `base → head` 通过；
+   - 三处 `alembic check` 均为 `No new upgrade operations detected.`；
+   - Ruff format/check、mypy、Contract generate/compatibility、Architecture、Table Ownership、Secret Scan、Docs 全部通过；
+   - Wheel 构建后以 `--reinstall --no-deps` 覆盖锁定 CI venv 中的 editable 安装，实际 `aima_ugc` 导入路径来自 `site-packages`，包内 `pricing.toml` 与运行时 loader 验证成功。
+6. 本文件切换到 `ready_for_review` 后仍需以新的最终分支 HEAD 再跑同一 Workflow；只有该 HEAD 全绿才进入 PR。
 
 # Review 门禁
 
@@ -119,33 +128,28 @@ TikHub 官方仅说明“多数服务”为 0.001，且文档存在其他固定�
 - 继续保持 Reservation 幂等、并发原子性、账户审计和旧 Provider-neutral 行为。
 - 不为通过检查降低 Ruff/mypy/Contract/Architecture/Table Ownership/Secret Scan/Docs 门禁。
 
-# 验证计划
+# 验证范围
 
-## 新 Red
-
-- 新增 TikHub Pricing Unit：默认配置可读取；官方全局默认不能充当未核验 endpoint 的发送 fallback；已核验测试配置能生成保守 `estimated` Billing；非法/重复/非正价格失败。
-- 新增 Budget Integration：`completed + estimated` 的 `actual_cost=0` 时，货币预算按原 Reservation 保守结算，而不是结算为 0；原 `completed + confirmed` 精确实际费用测试继续保留。
-
-## Green / Regression
-
-- Stage 7 Provider Budget Unit：Budget + TikHub Pricing + Provider Persistence/Dispatch。
-- Stage 7 Provider Budget PostgreSQL：Budget + Provider Repository/Dispatch、`0011 → head`、`base → head`、`alembic check`。
-- Quality：Ruff、mypy、Contract generate/compatibility、Architecture、Table Ownership、Secret Scan、Docs。
+- Stage 7 Provider Budget Unit：Budget + TikHub Pricing + Provider Client/Persistence/Dispatch。
+- Stage 7 Provider Budget PostgreSQL：Budget + estimated 终态 + Provider Repository/Dispatch、`0011 → head`、`base → head`、`alembic check`。
+- Quality：Ruff、mypy、Contract generate/compatibility、Architecture、Table Ownership、Secret Scan、Docs、Wheel 资源/运行时加载。
 - PR 广域 CI；合并后 main 新鲜 CI。
 
 # 兼容、Migration、部署与回滚
 
-- Contract：首选保持现有 Provider V1 字段/枚举兼容；通过更严格的 TikHub Adapter 使用方式和 Budget 终态语义消除假 `actual_cost`，不无必要修改 Provider V1 Schema。
-- Migration：当前计划不新增 Pricing 数据表；Pricing 是后端版本化文件。若无需新列，`0012` 结构保持当前预算表设计。
-- 部署：真实 TikHub billable Dispatch 只有在目标 endpoint 有已核验配置价且相应 Budget Account 覆盖调用时刻时才允许发送。
+- Contract：保持现有 Provider V1 字段/枚举兼容；通过更严格的 TikHub Adapter/Provider Client 使用方式和 Budget 终态语义消除假 `actual_cost`，没有为本修正修改 Provider V1 公共 Schema。
+- Migration：Pricing 不新增数据表；当前 Schema 变化仍集中在尚未合并的 `0012`，父 Revision 为 `0011`，已验证 `0011 → head` 与 `base → head`。
+- 依赖：TikHub Pricing parser 使用 Python 标准库 `tomllib/importlib.resources`，没有新增或升级第三方依赖。
+- 部署：真实 TikHub billable Dispatch 只有在目标 endpoint 有已核验配置价且相应 Budget Account 覆盖调用时刻时才允许发送。Migration 使用 `btree_gist`，生产 Migration 角色需要具备创建/使用该 Extension 的权限。
 - 回滚：代码可回退 Pricing/记账逻辑；Schema downgrade 仍按 `0012 → 0011`，若预算账本已有数据必须先备份，不能宣称无损回滚。
 
 # 当前未验证事实与风险
 
-- 当前执行环境对 `api.tikhub.io` DNS 解析失败，无法在本机调用 `get_endpoint_info` 取得当前目标 endpoint 精确价格；因此本 Change 不会填写未经核验的 endpoint 单价。
-- TikHub 官网当前公开全局说明为“多数服务 0.001 USD/请求，非 200 不收费”，并提供 endpoint-info / calculate-price / 阶梯折扣接口；这些是配置规则来源，不等于每个目标 endpoint 都已取得精确价格。
+- 当前执行环境对 `api.tikhub.io` DNS 解析失败，无法调用 `get_endpoint_info` 取得当前目标 endpoint 精确价格；因此生产 `pricing.toml` 中当前 Operation endpoint 均保持 `pending_endpoint_info`，不会填写未经核验的精确单价。
+- TikHub 官网当前公开全局说明为“多数服务 0.001 USD/请求，非 200 不收费”，并提供 endpoint-info / calculate-price / 阶梯折扣能力；这些是配置规则来源，不等于每个目标 endpoint 都已取得精确价格。
 - 本轮尚未实现账户级财务对账，因此 Budget `settled_amount` 对 TikHub 只能表示保守记账占用，不应对外称为账单实际消费。
+- 用户本地工作树、未推送提交和本地环境状态无法从当前 GitHub connector 确认；本 Change 的 Git/CI 结论仅指远端分支与 GitHub Actions。
 
 # 结束条件
 
-只有新计费语义的 Red/Green、两阶段 Review、PR 全绿、合并后 main 新鲜验证全部完成后，才把 `status` 改为 `done`、移动到 `changes/archive/2026-08/`，最后清理本任务分支。
+只有两阶段 Review、PR 全绿、合并后 main 新鲜验证全部完成后，才把 `status` 改为 `done`、移动到 `changes/archive/2026-08/`，最后清理本任务分支。
