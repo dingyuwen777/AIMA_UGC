@@ -35,7 +35,7 @@ AGENTS.md
 - Provider Config 数据库只保存非敏感配置和 `secret_ref`，不保存 API Key/Token 明文；TikHub 当前允许的 Base URL 为 `https://api.tikhub.io`，可配置 URL 仍受 Provider Adapter allowlist 保护；
 - 当前 Decision Service 已把零评论短路、评论数不变跳过、评论数增减/未知、详情触发和二级回复目标等规则统一到一份生产逻辑；Provider Capability 只暴露当前代码实际实现的能力；
 - 当前 XHS 评论 Operation 固定 `latest_v2`，所以 Capability 只暴露规范化 `latest`；仓库尚无合法脱敏非空评论 Fixture/Real Probe 证明“遇到已知 comment_id 即可安全停止”，因此当前 XHS 不声明稳定增量停止能力；
-- 抖音、微博和 B站 Operation 已有机器实现与自动测试，但均尚无对应 Mapper、合法脱敏非空真实 Fixture、Real Probe、Capability/默认 Registry；快手 Operation 仍处于 Stage 7 实现中。平台文档不得把“Operation 已实现”写成“平台已兼容”；
+- 抖音、微博、B站和快手 Operation 已有机器实现与自动测试，但均尚无对应 Mapper、合法脱敏非空真实 Fixture、Real Probe、Capability/默认 Registry。平台文档不得把“Operation 已实现”写成“平台已兼容”；
 - 五个平台默认 Provider 类型都是 TikHub，但架构允许以后逐平台显式选择不同 Provider Config / Provider；
 - Real Provider Probe 的安全、Raw、Canonical、XLSX 边界已经固化，但统一真实 Operation Probe 和完整 Business Pipeline Probe 仍需在后续 Stage 7 实现；当前已有的是不访问 Provider/数据库的 Decision Probe；
 - Stage 7 Scheduler 仍等待 misfire/catch-up 决策，不能因为 Provider 开始开发就提前启用自动调度。
