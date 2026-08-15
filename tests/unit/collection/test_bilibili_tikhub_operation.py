@@ -33,6 +33,11 @@ def test_search_uses_official_cursor_and_numeric_sort_values() -> None:
     }
 
 
+def test_search_keeps_general_as_the_existing_default_sort() -> None:
+    request = build_search_request(keyword="爱玛")
+    assert request.params["order"] == 0
+
+
 @pytest.mark.parametrize(
     ("sort_mode", "expected"),
     [
@@ -143,6 +148,13 @@ def test_returned_comment_offset_state_does_not_guess_response_path() -> None:
     )
     assert stalled.should_continue is False
     assert stalled.stop_reason == "pagination_not_advanced"
+
+    regressed = BilibiliCursorPagination.from_returned_cursor(
+        previous_cursor=20,
+        returned_cursor=10,
+    )
+    assert regressed.should_continue is False
+    assert regressed.stop_reason == "pagination_not_advanced"
 
 
 def test_invalid_search_and_offset_inputs_fail_closed() -> None:
