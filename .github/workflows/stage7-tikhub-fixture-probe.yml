@@ -1,4 +1,4 @@
-# probe-revision: 3
+# probe-revision: 4
 name: Stage 7 TikHub Fixture Probe
 
 on:
@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
   probe:
@@ -66,30 +65,22 @@ jobs:
           openssl pkey -in "${private_key}" -pubout -out "${public_key}"
 
           public_b64="$(base64 -w0 < "${public_key}")"
-          marker="<!-- tikhub-probe-public-key:${GITHUB_RUN_ID} -->"
-          printf -v body '%s\n%s' "${marker}" "${public_b64}"
-          jq -nc --arg body "${body}" '{body:$body}' > "${secure_dir}/public-comment.json"
-          curl --fail --silent --show-error \
-            --request POST \
-            --header "Authorization: Bearer ${GH_TOKEN}" \
-            --header "Accept: application/vnd.github+json" \
-            --header "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/55/comments" \
-            --data-binary @"${secure_dir}/public-comment.json" \
-            > /dev/null
+          echo "AIMA_TIKHUB_PROBE_PUBLIC_KEY_BEGIN:${GITHUB_RUN_ID}"
+          echo "${public_b64}"
+          echo "AIMA_TIKHUB_PROBE_PUBLIC_KEY_END:${GITHUB_RUN_ID}"
 
           cipher_marker="<!-- tikhub-probe-ciphertext:${GITHUB_RUN_ID} -->"
           ciphertext=""
-          for _ in $(seq 1 90); do
-            comments="$(curl --fail --silent --show-error \
+          for _ in $(seq 1 120); do
+            pr_body="$(curl --fail --silent --show-error \
               --header "Authorization: Bearer ${GH_TOKEN}" \
               --header "Accept: application/vnd.github+json" \
               --header "X-GitHub-Api-Version: 2022-11-28" \
-              "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/55/comments?per_page=100")"
-            matched="$(printf '%s' "${comments}" | jq -r --arg marker "${cipher_marker}" \
-              '[.[] | select(.body | startswith($marker))][-1].body // empty')"
-            if [ -n "${matched}" ]; then
-              ciphertext="$(printf '%s\n' "${matched}" | tail -n +2 | tr -d '\r\n ')"
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/55" \
+              | jq -r '.body // ""')"
+            ciphertext="$(printf '%s' "${pr_body}" | jq -Rrs --arg marker "${cipher_marker}" \
+              'split($marker) | if length > 1 then .[1] | split("\n") | map(select(length > 0))[0] // "" else "" end')"
+            if [ -n "${ciphertext}" ]; then
               break
             fi
             sleep 5
@@ -108,9 +99,9 @@ jobs:
           token="$(cat "${token_file}")"
           test "${#token}" -ge 16
           echo "::add-mask::${token}"
-          rm -f "${ciphertext_file}" "${secure_dir}/public-comment.json"
+          rm -f "${ciphertext_file}"
 
-      - name: Fetch official endpoint pricing evidence
+      - name: Fetch official pricing evidence for all registered TikHub endpoints
         shell: bash
         run: |
           set -euo pipefail
@@ -122,6 +113,14 @@ jobs:
           uv run python scripts/dev/probe_tikhub_stage7_search.py
           unset AIMA_TIKHUB_PROBE_TOKEN
 
+          echo "AIMA_TIKHUB_PRICING_EVIDENCE_BEGIN:${GITHUB_RUN_ID}"
+          cat "${RUNNER_TEMP}/tikhub-pricing/manifest.json"
+          for file in "${RUNNER_TEMP}"/tikhub-pricing/endpoint_*_price.sanitized.json; do
+            echo "--- ${file##*/} ---"
+            cat "${file}"
+          done
+          echo "AIMA_TIKHUB_PRICING_EVIDENCE_END:${GITHUB_RUN_ID}"
+
       - name: Upload sanitized pricing evidence
         uses: actions/upload-artifact@v7.0.1
         with:
@@ -131,42 +130,28 @@ jobs:
           retention-days: 1
           compression-level: 9
 
-      - name: Announce pricing evidence and wait for explicit approval
+      - name: Wait for run-specific pricing approval
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          marker="<!-- tikhub-probe-pricing-ready:${GITHUB_RUN_ID} -->"
-          printf -v body '%s\nPricing evidence is sanitized and uploaded for run `%s`. Search calls remain blocked until the run-specific approval marker is posted.' \
-            "${marker}" "${GITHUB_RUN_ID}"
-          jq -nc --arg body "${body}" '{body:$body}' > "${RUNNER_TEMP}/pricing-comment.json"
-          curl --fail --silent --show-error \
-            --request POST \
-            --header "Authorization: Bearer ${GH_TOKEN}" \
-            --header "Accept: application/vnd.github+json" \
-            --header "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/55/comments" \
-            --data-binary @"${RUNNER_TEMP}/pricing-comment.json" \
-            > /dev/null
-          rm -f "${RUNNER_TEMP}/pricing-comment.json"
-
           approval_marker="<!-- tikhub-probe-pricing-approved:${GITHUB_RUN_ID} -->"
           approved=""
-          for _ in $(seq 1 90); do
-            comments="$(curl --fail --silent --show-error \
+          for _ in $(seq 1 120); do
+            approved="$(curl --fail --silent --show-error \
               --header "Authorization: Bearer ${GH_TOKEN}" \
               --header "Accept: application/vnd.github+json" \
               --header "X-GitHub-Api-Version: 2022-11-28" \
-              "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/55/comments?per_page=100")"
-            approved="$(printf '%s' "${comments}" | jq -r --arg marker "${approval_marker}" \
-              '[.[] | select(.body | startswith($marker))][-1].body // empty')"
-            if [ -n "${approved}" ]; then
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/55" \
+              | jq -r --arg marker "${approval_marker}" \
+                '(.body // "") | contains($marker)')"
+            if [ "${approved}" = "true" ]; then
               break
             fi
             sleep 5
           done
-          test -n "${approved}"
+          test "${approved}" = "true"
 
       - name: Fetch one real search page from each platform
         shell: bash
@@ -181,6 +166,14 @@ jobs:
           uv run python scripts/dev/probe_tikhub_stage7_search.py
           unset AIMA_TIKHUB_PROBE_TOKEN
 
+          echo "AIMA_TIKHUB_SEARCH_EVIDENCE_BEGIN:${GITHUB_RUN_ID}"
+          cat "${RUNNER_TEMP}/tikhub-search/manifest.json"
+          for file in "${RUNNER_TEMP}"/tikhub-search/*/search_page1.sanitized.json; do
+            echo "--- ${file} ---"
+            cat "${file}"
+          done
+          echo "AIMA_TIKHUB_SEARCH_EVIDENCE_END:${GITHUB_RUN_ID}"
+
       - name: Upload sanitized five-platform search evidence
         uses: actions/upload-artifact@v7.0.1
         with:
@@ -189,26 +182,6 @@ jobs:
           if-no-files-found: error
           retention-days: 1
           compression-level: 9
-
-      - name: Announce search evidence
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          marker="<!-- tikhub-probe-search-ready:${GITHUB_RUN_ID} -->"
-          printf -v body '%s\nFive-platform sanitized search evidence is uploaded for run `%s`.' \
-            "${marker}" "${GITHUB_RUN_ID}"
-          jq -nc --arg body "${body}" '{body:$body}' > "${RUNNER_TEMP}/search-comment.json"
-          curl --fail --silent --show-error \
-            --request POST \
-            --header "Authorization: Bearer ${GH_TOKEN}" \
-            --header "Accept: application/vnd.github+json" \
-            --header "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/55/comments" \
-            --data-binary @"${RUNNER_TEMP}/search-comment.json" \
-            > /dev/null
-          rm -f "${RUNNER_TEMP}/search-comment.json"
 
       - name: Remove ephemeral credential material
         if: always()
