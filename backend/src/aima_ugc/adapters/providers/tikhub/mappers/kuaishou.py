@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import AnyHttpUrl
+
 from aima_ugc.contracts.canonical import (
     CanonicalAuthorV1,
     CanonicalCommentV1,
@@ -106,6 +108,8 @@ def map_comment(
     if published_at is not None:
         observed_fields.append("published_at")
 
+    root_comment_id: str | None
+    parent_comment_id: str | None
     if is_root:
         root_comment_id = external_comment_id
         parent_comment_id = None
@@ -177,12 +181,16 @@ def _map_media(item: dict[str, Any]) -> list[CanonicalMediaV1]:
     return mapped
 
 
-def _first_http_url(value: object) -> str | None:
+def _first_http_url(value: object) -> AnyHttpUrl | None:
     if not isinstance(value, list):
         return None
     for item in value:
-        if isinstance(item, str) and item.startswith(("http://", "https://")):
-            return item
+        if not isinstance(item, str) or not item.startswith(("http://", "https://")):
+            continue
+        try:
+            return AnyHttpUrl(item)
+        except ValueError:
+            continue
     return None
 
 

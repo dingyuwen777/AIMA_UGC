@@ -79,7 +79,7 @@ class TikHubHttpTransport:
             response = self._client.request(
                 request.method,
                 request.path,
-                params=request.params,
+                params=_http_query_params(request.params),
                 headers=headers,
                 json=request.body,
             )
@@ -147,6 +147,22 @@ def build_tikhub_transport_request(
     )
 
 
+_HttpQueryValue = str | int | float | bool | None
+
+
+def _http_query_params(params: Mapping[str, object]) -> dict[str, _HttpQueryValue]:
+    converted: dict[str, _HttpQueryValue] = {}
+    for key, value in params.items():
+        if value is None or isinstance(value, (str, int, float, bool)):
+            converted[str(key)] = value
+            continue
+        raise ProviderTransportFailure.not_sent(
+            code="tikhub_invalid_query_param",
+            safe_summary="TikHub query 参数类型不受支持",
+        )
+    return converted
+
+
 def _http_headers(headers: Mapping[str, object]) -> dict[str, str]:
     return {str(key): str(value) for key, value in headers.items()}
 
@@ -155,7 +171,7 @@ def _external_request_id(headers: httpx.Headers) -> str | None:
     for key in _REQUEST_ID_HEADERS:
         value = headers.get(key)
         if value:
-            return value
+            return str(value)
     return None
 
 

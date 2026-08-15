@@ -122,6 +122,8 @@ def map_comment(
     if published_at is not None:
         observed_fields.append("published_at")
 
+    root_comment_id: str | None
+    parent_comment_id: str | None
     if is_root:
         root_comment_id = external_comment_id
         parent_comment_id = None

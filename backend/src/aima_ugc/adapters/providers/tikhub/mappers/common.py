@@ -8,6 +8,8 @@ from email.utils import parsedate_to_datetime
 from typing import Any
 from uuid import UUID
 
+from pydantic import AnyHttpUrl
+
 from aima_ugc.contracts.canonical import CanonicalSourceV1
 
 
@@ -137,8 +139,11 @@ def parse_timestamp(value: object) -> datetime | None:
         return None
 
 
-def http_url(raw: dict[str, Any], *keys: str) -> str | None:
+def http_url(raw: dict[str, Any], *keys: str) -> AnyHttpUrl | None:
     value = optional_string(raw, *keys)
     if value is None or not value.startswith(("http://", "https://")):
         return None
-    return value
+    try:
+        return AnyHttpUrl(value)
+    except ValueError:
+        return None

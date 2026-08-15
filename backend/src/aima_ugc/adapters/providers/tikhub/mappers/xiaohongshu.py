@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from pydantic import AnyHttpUrl
+
 from aima_ugc.contracts.canonical import (
     CanonicalAuthorV1,
     CanonicalCommentV1,
@@ -58,9 +60,7 @@ def map_content(
     published_at = _timestamp(item, "timestamp", "time", "publish_time")
     if published_at is not None:
         observed_fields.append("published_at")
-    source_updated_at = _timestamp(
-        item, "last_update_time", "update_time", "source_updated_at"
-    )
+    source_updated_at = _timestamp(item, "last_update_time", "update_time", "source_updated_at")
     if source_updated_at is not None:
         observed_fields.append("source_updated_at")
 
@@ -285,7 +285,9 @@ def _map_media(raw: dict[str, Any]) -> list[CanonicalMediaV1]:
                 url=_http_url(image, "url", "url_size_large"),
                 width=width,
                 height=height,
-                position=position if position_present and position is not None else fallback_position,
+                position=position
+                if position_present and position is not None
+                else fallback_position,
             )
         )
     return mapped
@@ -363,11 +365,14 @@ def _count(raw: dict[str, Any], *keys: str) -> tuple[int | None, bool]:
     return None, False
 
 
-def _http_url(raw: dict[str, Any], *keys: str) -> str | None:
+def _http_url(raw: dict[str, Any], *keys: str) -> AnyHttpUrl | None:
     value = _optional_string(raw, *keys)
     if value is None or not value.startswith(("http://", "https://")):
         return None
-    return value
+    try:
+        return AnyHttpUrl(value)
+    except ValueError:
+        return None
 
 
 def _optional_bool(raw: dict[str, Any], *keys: str) -> bool | None:

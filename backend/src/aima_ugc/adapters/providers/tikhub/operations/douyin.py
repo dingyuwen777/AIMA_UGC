@@ -172,9 +172,10 @@ def extract_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
 def extract_detail_item(body: dict[str, Any]) -> dict[str, Any]:
     """从真实 App V3 detail 响应提取 data.aweme_detail。"""
     data = body.get("data")
-    if not isinstance(data, dict) or not isinstance(data.get("aweme_detail"), dict):
+    detail = data.get("aweme_detail") if isinstance(data, dict) else None
+    if not isinstance(detail, dict):
         raise ValueError("抖音详情响应缺少 data.aweme_detail")
-    return data["aweme_detail"]
+    return {str(key): value for key, value in detail.items()}
 
 
 def extract_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:

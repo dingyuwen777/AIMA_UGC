@@ -4,8 +4,6 @@ from decimal import Decimal
 
 import httpx
 import pytest
-from pydantic import SecretStr
-
 from aima_ugc.adapters.providers.tikhub.operations.douyin import build_video_detail_request
 from aima_ugc.adapters.providers.tikhub.probe import (
     TikHubOperationProbe,
@@ -13,6 +11,7 @@ from aima_ugc.adapters.providers.tikhub.probe import (
     TikHubProbeLimits,
 )
 from aima_ugc.adapters.providers.tikhub.transport import TikHubHttpTransport
+from pydantic import SecretStr
 
 
 def _transport(calls: list[httpx.Request]) -> TikHubHttpTransport:

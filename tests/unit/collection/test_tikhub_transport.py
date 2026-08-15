@@ -6,8 +6,6 @@ import json
 
 import httpx
 import pytest
-from pydantic import SecretStr
-
 from aima_ugc.adapters.providers.tikhub.operations.douyin import build_video_search_request
 from aima_ugc.adapters.providers.tikhub.transport import (
     DEFAULT_TIKHUB_BASE_URL,
@@ -15,6 +13,7 @@ from aima_ugc.adapters.providers.tikhub.transport import (
     build_tikhub_transport_request,
 )
 from aima_ugc.modules.collection.providers.transport import ProviderTransportFailure
+from pydantic import SecretStr
 
 
 def test_transport_injects_secret_only_at_send_boundary_and_sends_once() -> None:

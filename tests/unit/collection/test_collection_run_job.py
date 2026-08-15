@@ -1,9 +1,8 @@
 """正式 Collection Run Job Payload 契约测试。"""
 
 import pytest
-from pydantic import ValidationError
-
 from aima_ugc.modules.collection.collection_run_job import CollectionRunJobPayload
+from pydantic import ValidationError
 
 
 def test_collection_run_job_payload_contains_only_stable_schema_identity() -> None:

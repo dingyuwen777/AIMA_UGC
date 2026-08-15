@@ -9,18 +9,26 @@ from uuid import UUID
 
 from aima_ugc.adapters.providers.tikhub.mappers.bilibili import (
     BilibiliMappingContext,
+)
+from aima_ugc.adapters.providers.tikhub.mappers.bilibili import (
     map_content as map_bilibili_content,
 )
 from aima_ugc.adapters.providers.tikhub.mappers.douyin import (
     DouyinMappingContext,
+)
+from aima_ugc.adapters.providers.tikhub.mappers.douyin import (
     map_content as map_douyin_content,
 )
 from aima_ugc.adapters.providers.tikhub.mappers.kuaishou import (
     KuaishouMappingContext,
+)
+from aima_ugc.adapters.providers.tikhub.mappers.kuaishou import (
     map_content as map_kuaishou_content,
 )
 from aima_ugc.adapters.providers.tikhub.mappers.weibo import (
     WeiboMappingContext,
+)
+from aima_ugc.adapters.providers.tikhub.mappers.weibo import (
     map_content as map_weibo_content,
 )
 

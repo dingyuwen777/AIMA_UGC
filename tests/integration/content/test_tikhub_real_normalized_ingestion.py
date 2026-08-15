@@ -13,26 +13,44 @@ import pytest
 from aima_ugc.adapters.persistence.postgres.content import PostgresContentRepository
 from aima_ugc.adapters.providers.tikhub.mappers.bilibili import (
     BilibiliMappingContext,
+)
+from aima_ugc.adapters.providers.tikhub.mappers.bilibili import (
     map_content as map_bilibili_content,
 )
 from aima_ugc.adapters.providers.tikhub.mappers.douyin import (
     DouyinMappingContext,
+)
+from aima_ugc.adapters.providers.tikhub.mappers.douyin import (
     map_comment as map_douyin_comment,
+)
+from aima_ugc.adapters.providers.tikhub.mappers.douyin import (
     map_content as map_douyin_content,
 )
 from aima_ugc.adapters.providers.tikhub.mappers.kuaishou import (
     KuaishouMappingContext,
+)
+from aima_ugc.adapters.providers.tikhub.mappers.kuaishou import (
     map_comment as map_kuaishou_comment,
+)
+from aima_ugc.adapters.providers.tikhub.mappers.kuaishou import (
     map_content as map_kuaishou_content,
 )
 from aima_ugc.adapters.providers.tikhub.mappers.weibo import (
     WeiboMappingContext,
+)
+from aima_ugc.adapters.providers.tikhub.mappers.weibo import (
     map_comment as map_weibo_comment,
+)
+from aima_ugc.adapters.providers.tikhub.mappers.weibo import (
     map_content as map_weibo_content,
 )
 from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
     XhsMappingContext,
+)
+from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
     map_comment as map_xhs_comment,
+)
+from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
     map_content as map_xhs_content,
 )
 from aima_ugc.adapters.providers.tikhub.operations import (
@@ -259,7 +277,7 @@ def test_real_search_fixtures_normalize_and_persist_for_all_five_platforms(
 ) -> None:
     session = database_runtime.new_session()
     try:
-        with session.begin():
+        with session.begin_nested():
             service = ContentIngestionService(PostgresContentRepository(session))
 
             xhs_chain = _insert_source_chain(
@@ -283,7 +301,9 @@ def test_real_search_fixtures_normalize_and_persist_for_all_five_platforms(
                 (
                     "douyin",
                     "fetch_video_search_v2",
-                    douyin.extract_search_items(_fixture("douyin", "search_page1.sanitized.json"))[0],
+                    douyin.extract_search_items(_fixture("douyin", "search_page1.sanitized.json"))[
+                        0
+                    ],
                     DouyinMappingContext,
                     map_douyin_content,
                     "data.business_data[0]",
@@ -299,7 +319,9 @@ def test_real_search_fixtures_normalize_and_persist_for_all_five_platforms(
                 (
                     "bilibili",
                     "fetch_search_by_type",
-                    bilibili.extract_search_items(_fixture("bilibili", "search_page1.sanitized.json"))[0],
+                    bilibili.extract_search_items(
+                        _fixture("bilibili", "search_page1.sanitized.json")
+                    )[0],
                     BilibiliMappingContext,
                     map_bilibili_content,
                     "data.data.items[0]",
@@ -307,13 +329,17 @@ def test_real_search_fixtures_normalize_and_persist_for_all_five_platforms(
                 (
                     "kuaishou",
                     "search_video_v2",
-                    kuaishou.extract_search_items(_fixture("kuaishou", "search_page1.sanitized.json"))[0],
+                    kuaishou.extract_search_items(
+                        _fixture("kuaishou", "search_page1.sanitized.json")
+                    )[0],
                     KuaishouMappingContext,
                     map_kuaishou_content,
                     "data.mixFeeds[0]",
                 ),
             )
-            mapped_results: list[tuple[CanonicalContentV1, UUID]] = [(xhs_canonical, xhs_result.target_id)]
+            mapped_results: list[tuple[CanonicalContentV1, UUID]] = [
+                (xhs_canonical, xhs_result.target_id)
+            ]
             for platform, operation, raw_item, context_type, mapper, locator in cases:
                 chain = _insert_source_chain(
                     session,
@@ -377,7 +403,7 @@ def test_real_root_comment_fixtures_persist_canonical_comment_semantics(
 ) -> None:
     session = database_runtime.new_session()
     try:
-        with session.begin():
+        with session.begin_nested():
             service = ContentIngestionService(PostgresContentRepository(session))
             cases = (
                 (
@@ -406,9 +432,9 @@ def test_real_root_comment_fixtures_persist_canonical_comment_semantics(
                     "weibo",
                     "weibo-status-1",
                     "fetch_status_comments",
-                    weibo.extract_comment_items(
-                        _fixture("weibo", "comments_page1.sanitized.json")
-                    )[0],
+                    weibo.extract_comment_items(_fixture("weibo", "comments_page1.sanitized.json"))[
+                        0
+                    ],
                     WeiboMappingContext,
                     map_weibo_comment,
                     "data.items[0].data",
@@ -426,7 +452,15 @@ def test_real_root_comment_fixtures_persist_canonical_comment_semantics(
                 ),
             )
             results = []
-            for platform, content_id, operation, raw_comment, context_type, mapper, locator in cases:
+            for (
+                platform,
+                content_id,
+                operation,
+                raw_comment,
+                context_type,
+                mapper,
+                locator,
+            ) in cases:
                 parent_chain = _insert_source_chain(
                     session,
                     platform=platform,
