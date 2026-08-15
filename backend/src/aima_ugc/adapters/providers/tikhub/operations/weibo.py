@@ -29,7 +29,9 @@ class WeiboSearchPagination:
     stop_reason: str | None = None
 
     @classmethod
-    def from_page_observation(cls, *, current_page: int, has_results: bool) -> WeiboSearchPagination:
+    def from_page_observation(
+        cls, *, current_page: int, has_results: bool
+    ) -> WeiboSearchPagination:
         if current_page < 1:
             raise ValueError("current_page 必须从 1 开始")
         if not has_results:
@@ -83,8 +85,14 @@ def build_search_request(
         raise ValueError("page 必须从 1 开始")
     search_type = _choice(_SEARCH_TYPES, search_mode, "search_mode")
     if time_scope not in _TIME_SCOPES:
-        raise ValueError(f"time_scope 不支持: {time_scope}; 可选: {', '.join(sorted(_TIME_SCOPES))}")
-    params: dict[str, object] = {"keyword": normalized_keyword, "page": page, "search_type": search_type}
+        raise ValueError(
+            f"time_scope 不支持: {time_scope}; 可选: {', '.join(sorted(_TIME_SCOPES))}"
+        )
+    params: dict[str, object] = {
+        "keyword": normalized_keyword,
+        "page": page,
+        "search_type": search_type,
+    }
     if time_scope != "all":
         params["time_scope"] = time_scope
     return WeiboRequest("GET", _SEARCH_PATH, params)
