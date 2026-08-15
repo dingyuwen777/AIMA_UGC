@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import Any, Literal
 
 import httpx
-
 from aima_ugc.adapters.providers.tikhub.operations.bilibili import (
     build_search_request as build_bilibili_search_request,
 )
