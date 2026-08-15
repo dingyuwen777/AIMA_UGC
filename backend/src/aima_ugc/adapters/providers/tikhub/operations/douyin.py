@@ -70,7 +70,14 @@ class DouyinSearchPagination:
         if _provider_exhausted(has_more):
             return cls(next_cursor, search_id, backtrace, item_ids, False, "provider_exhausted")
         if next_cursor <= current_cursor:
-            return cls(next_cursor, search_id, backtrace, item_ids, False, "pagination_not_advanced")
+            return cls(
+                next_cursor,
+                search_id,
+                backtrace,
+                item_ids,
+                False,
+                "pagination_not_advanced",
+            )
         return cls(next_cursor, search_id, backtrace, item_ids, True)
 
 
@@ -83,9 +90,7 @@ class DouyinCursorPagination:
     stop_reason: str | None = None
 
     @classmethod
-    def from_response(
-        cls, *, previous_cursor: int, body: dict[str, Any]
-    ) -> DouyinCursorPagination:
+    def from_response(cls, *, previous_cursor: int, body: dict[str, Any]) -> DouyinCursorPagination:
         data = _find_mapping(body, required_any=("cursor", "has_more"))
         next_cursor = _integer(data.get("cursor"), default=previous_cursor)
         if _provider_exhausted(data.get("has_more")):
@@ -126,7 +131,9 @@ def build_video_search_request(
 
 def build_video_detail_request(*, aweme_id: str) -> DouyinRequest:
     return DouyinRequest(
-        "GET", f"{_APP_V3_BASE}/fetch_one_video_v3", {"aweme_id": _required_id(aweme_id, "aweme_id")}
+        "GET",
+        f"{_APP_V3_BASE}/fetch_one_video_v3",
+        {"aweme_id": _required_id(aweme_id, "aweme_id")},
     )
 
 
