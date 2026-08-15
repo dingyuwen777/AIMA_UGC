@@ -2,7 +2,7 @@
 
 ## 1. 当前状态
 
-快手 TikHub Operation/Mapper **尚未在 main 实现**。本文冻结 Stage 7 首版主链路。平台完成仍需要合法脱敏非空真实 Fixture、Mapper Contract Test 和 Real Provider Probe。
+快手 TikHub App Search V2 / Detail + Web 一级/二级评论 Operation 与保守 `pcursor` 状态已经进入 `main`。Mapper、合法脱敏非空真实 Fixture、Mapper Contract Test、Real Provider Probe 和 Capability/默认 Registry 仍未完成，因此不得称“快手已兼容”。
 
 目标路径：
 
@@ -131,14 +131,23 @@ Deep Collection 仍使用相同 App Detail + Web Comment Operations，并受数�
 
 ## 10. 独立调试和验收
 
-Operation Probe 至少验证：
+当前 Unit Test 已验证：
 
-- Search V2 pcursor 首页/下一页/末页；
+- Search V2 只接受 `keyword + pcursor`，不伪造排序、发布时间或内容类型参数；
+- App Detail 使用 `photo_id`；
+- Web 一级/二级评论分别使用 `photo_id + pcursor` 和 `photo_id + root_comment_id + pcursor`；
+- `pcursor` 只消费调用方可靠提取的返回值：缺失/空值停止、游标不推进停止，未知非空且已推进的值继续传递。
+
+当前 Operation 不猜响应 JSON path、评论列表字段或 `no_more` 等 Provider 结束哨兵。这些响应事实必须由后续合法脱敏非空真实 Fixture/Real Probe 固化后才能进入 Mapper 或更具体的分页逻辑。
+
+后续 Operation Probe 至少验证：
+
+- Search V2 真实 pcursor 首页/下一页/末页；
 - App Detail 数字 photo_id/eID；
-- Web root comments pcursor；
+- Web root comments 真实 pcursor；
 - Web subcomments root_comment_id + pcursor；
-- Provider 返回空页/pcursor 不推进时停止。
+- Provider 返回空页、末页或 pcursor 不推进时的真实停止事实。
 
 Business Pipeline Probe 连续两次运行，重点确认昂贵 Search V2 后是否通过去重和 comment_count 判断避免额外详情/评论请求。
 
-**完成门禁**：当前官方文档允许开始 Operation/分页实现；没有快手合法脱敏非空真实 Fixture、Mapper Contract Test 和 Real Probe 前，不得称“快手已兼容”。
+**完成门禁**：Operation/保守 `pcursor` 已进入 `main`；没有快手合法脱敏非空真实 Fixture、Mapper Contract Test 和 Real Probe 前，不得称“快手已兼容”。
