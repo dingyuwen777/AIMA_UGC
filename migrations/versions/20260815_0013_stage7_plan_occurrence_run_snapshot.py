@@ -299,7 +299,7 @@ def _create_occurrence_run_consistency_constraints() -> None:
                 IF reverse_run_count <> 1 OR inconsistent_run_count <> 0 THEN
                     RAISE EXCEPTION USING
                         ERRCODE = '23514',
-                        MESSAGE = 'enqueued Collection Occurrence 必须恰有一个同 Job 的 scheduled Run';
+                        MESSAGE = 'enqueued Occurrence 必须恰有一个同 Job 的 scheduled Run';
                 END IF;
             ELSIF occurrence_status = 'skipped' AND reverse_run_count <> 0 THEN
                 RAISE EXCEPTION USING
@@ -322,7 +322,10 @@ def _create_occurrence_run_consistency_constraints() -> None:
                     PERFORM assert_collection_occurrence_run_consistency(OLD.occurrence_id);
                 END IF;
                 IF TG_OP IN ('INSERT', 'UPDATE')
-                   AND (TG_OP = 'INSERT' OR NEW.occurrence_id IS DISTINCT FROM OLD.occurrence_id) THEN
+                   AND (
+                       TG_OP = 'INSERT'
+                       OR NEW.occurrence_id IS DISTINCT FROM OLD.occurrence_id
+                   ) THEN
                     PERFORM assert_collection_occurrence_run_consistency(NEW.occurrence_id);
                 END IF;
             ELSE
