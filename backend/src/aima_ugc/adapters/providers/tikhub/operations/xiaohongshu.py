@@ -6,6 +6,26 @@ from dataclasses import dataclass
 from typing import Any
 
 _BASE = "/api/v1/xiaohongshu/app_v2"
+_SORT_TYPES = {
+    "general": "general",
+    "latest": "time_descending",
+    "most_liked": "popularity_descending",
+    "most_commented": "comment_descending",
+    "most_collected": "collect_descending",
+    "english_preferred": "english_preferred",
+}
+_TIME_FILTERS = {
+    "all": "不限",
+    "1d": "一天内",
+    "7d": "一周内",
+    "180d": "半年内",
+}
+_NOTE_TYPES = {
+    "all": "不限",
+    "video": "视频笔记",
+    "image": "普通笔记",
+    "live": "直播笔记",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,19 +145,25 @@ def build_search_notes_request(
     *,
     keyword: str,
     page: int,
-    sort_type: str,
-    time_filter: str,
-    note_type: str = "不限",
+    sort_type: str = "general",
+    time_filter: str = "all",
+    note_type: str = "all",
     source: str = "explore_feed",
     search_id: str | None = None,
     search_session_id: str | None = None,
 ) -> XhsRequest:
+    """接受规范化业务枚举；既有 Provider 原值仍兼容。"""
+    normalized_keyword = keyword.strip()
+    if not normalized_keyword:
+        raise ValueError("keyword 不能为空")
+    if page < 1:
+        raise ValueError("page 必须从 1 开始")
     params: dict[str, object] = {
-        "keyword": keyword,
+        "keyword": normalized_keyword,
         "page": page,
-        "sort_type": sort_type,
-        "note_type": note_type,
-        "time_filter": time_filter,
+        "sort_type": _mapped_or_provider_value(_SORT_TYPES, sort_type, "sort_type"),
+        "note_type": _mapped_or_provider_value(_NOTE_TYPES, note_type, "note_type"),
+        "time_filter": _mapped_or_provider_value(_TIME_FILTERS, time_filter, "time_filter"),
         "source": source,
     }
     if search_id:
@@ -214,12 +240,21 @@ def extract_detail_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
 
 
 def extract_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
-    """从真实一级评论响应提取 comments；内嵌 sub_comments 由 Mapper 单独处理。"""
+    """从真实一级/二级评论响应提取 comments。"""
     data = _find_mapping(body, required_any=("comments",))
     items = data.get("comments")
     if not isinstance(items, list):
         return ()
     return tuple(item for item in items if isinstance(item, dict))
+
+
+def _mapped_or_provider_value(mapping: dict[str, str], value: str, field_name: str) -> str:
+    normalized = value.strip()
+    if normalized in mapping:
+        return mapping[normalized]
+    if normalized in mapping.values():
+        return normalized
+    raise ValueError(f"{field_name} 不支持: {value}; 可选: {', '.join(mapping)}")
 
 
 def _find_mapping(body: dict[str, Any], *, required_any: tuple[str, ...]) -> dict[str, Any]:
@@ -271,18 +306,3 @@ def _integer(value: object, *, default: int) -> int:
         except ValueError:
             return default
     return default
-
-
-__all__ = [
-    "XhsCommentPagination",
-    "XhsRequest",
-    "XhsSearchPagination",
-    "build_image_detail_request",
-    "build_note_comments_request",
-    "build_search_notes_request",
-    "build_sub_comments_request",
-    "build_video_detail_request",
-    "extract_comment_items",
-    "extract_detail_items",
-    "extract_search_items",
-]
