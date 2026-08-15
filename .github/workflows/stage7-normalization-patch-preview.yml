@@ -1,0 +1,143 @@
+name: Stage 7 Normalization Patch Preview
+
+on:
+  push:
+    branches:
+      - feature/stage7-completion
+    paths:
+      - ".github/workflows/stage7-normalization-patch-preview.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    name: Normalize and verify real-response ingestion patch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_DB: aima_ugc
+          POSTGRES_USER: aima_ugc
+          POSTGRES_PASSWORD: stage7-ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aima_ugc -d aima_ugc"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AIMA_DATA_DIR: .runtime/ci-stage7-normalization/data
+      AIMA_LOG_DIR: .runtime/ci-stage7-normalization/logs
+      AIMA_SECRET_DIR: .runtime/ci-stage7-normalization/secrets
+      AIMA_DB_HOST: 127.0.0.1
+      AIMA_DB_PORT: 5432
+      AIMA_DB_NAME: aima_ugc
+      AIMA_DB_USER: aima_ugc
+      AIMA_DB_CONNECT_TIMEOUT_SECONDS: 3
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/stage7-completion
+
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Install locked environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+          mkdir -p "${AIMA_DATA_DIR}" "${AIMA_LOG_DIR}" "${AIMA_SECRET_DIR}"
+          printf '%s\n' 'stage7-ci' > "${AIMA_SECRET_DIR}/postgres_password"
+          chmod 600 "${AIMA_SECRET_DIR}/postgres_password"
+
+      - name: Make real-response integration transaction isolated
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python - <<'PY'
+          from pathlib import Path
+
+          path = Path("tests/integration/content/test_tikhub_real_normalized_ingestion.py")
+          text = path.read_text(encoding="utf-8")
+          old = "with session.begin():"
+          count = text.count(old)
+          if count != 2:
+              raise SystemExit(f"expected 2 transaction blocks, found {count}")
+          path.write_text(text.replace(old, "with session.begin_nested():"), encoding="utf-8")
+          PY
+
+      - name: Format only Stage 7 normalization sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff format \
+            backend/src/aima_ugc/adapters/providers/tikhub \
+            tests/unit/collection/test_*tikhub*.py \
+            tests/integration/content/test_tikhub_real_normalized_ingestion.py \
+            scripts/dev/probe_tikhub_stage7_*.py
+          uv run ruff format --check backend tests scripts
+          uv run ruff check backend tests scripts
+
+      - name: Upgrade database and run real-response normalization regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run alembic upgrade head
+          uv run alembic check
+          uv run pytest \
+            tests/unit/collection/test_tikhub_real_search_operations.py \
+            tests/unit/collection/test_tikhub_real_search_mappers.py \
+            tests/unit/collection/test_tikhub_real_detail_mappers.py \
+            tests/unit/collection/test_tikhub_real_comment_mappers.py \
+            tests/unit/collection/test_tikhub_real_reply_mappers.py \
+            tests/unit/collection/test_tikhub_real_capabilities.py \
+            tests/unit/collection/test_tikhub_transport.py \
+            tests/integration/content/test_tikhub_real_normalized_ingestion.py \
+            tests/integration/content/test_xhs_raw_replay_job.py \
+            -q
+
+      - name: Verify type, architecture and secret gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run mypy backend/src
+          uv run python scripts/quality/check_architecture.py
+          uv run python scripts/quality/check_table_ownership.py
+          uv run python scripts/quality/scan_secrets.py
+          git diff --check
+
+      - name: Build patch artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/stage7-normalization-patch"
+          git diff --name-only -- \
+            backend/src/aima_ugc/adapters/providers/tikhub \
+            tests/unit/collection \
+            tests/integration/content/test_tikhub_real_normalized_ingestion.py \
+            scripts/dev \
+            > "${RUNNER_TEMP}/stage7-normalization-patch/files.txt"
+          while IFS= read -r file; do
+            [ -n "${file}" ] || continue
+            mkdir -p "${RUNNER_TEMP}/stage7-normalization-patch/$(dirname "${file}")"
+            cp "${file}" "${RUNNER_TEMP}/stage7-normalization-patch/${file}"
+          done < "${RUNNER_TEMP}/stage7-normalization-patch/files.txt"
+          cat "${RUNNER_TEMP}/stage7-normalization-patch/files.txt"
+
+      - name: Upload verified patch sources
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: stage7-normalization-patch-${{ github.run_id }}
+          path: ${{ runner.temp }}/stage7-normalization-patch
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 9
