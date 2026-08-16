@@ -44,6 +44,18 @@ def test_response_sanitizer_redacts_long_numeric_dynamic_mapping_key() -> None:
     assert sanitized == {"id-0001": {"type": "video"}}
 
 
+def test_response_sanitizer_bounds_high_precision_float_for_publishable_evidence() -> None:
+    probe = _load_probe_module()
+    pseudonyms = probe.Pseudonymizer()
+
+    sanitized = probe.sanitize_response(
+        {"avgEntropy": 13.906618309020995},
+        pseudonyms=pseudonyms,
+    )
+
+    assert sanitized == {"avgEntropy": 13.906618}
+
+
 def test_response_sanitizer_keeps_normal_safe_enum_and_redacts_time() -> None:
     probe = _load_probe_module()
     pseudonyms = probe.Pseudonymizer()
