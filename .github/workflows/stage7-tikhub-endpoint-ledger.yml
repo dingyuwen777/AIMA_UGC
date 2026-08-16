@@ -1,4 +1,4 @@
-# ledger-revision: 2
+# ledger-revision: 3
 name: Stage 7 TikHub Endpoint Ledger
 
 on:
@@ -8,6 +8,7 @@ on:
     paths:
       - ".github/workflows/stage7-tikhub-endpoint-ledger.yml"
       - "scripts/dev/probe_tikhub_endpoint_ledger.py"
+      - "tests/unit/collection/test_tikhub_endpoint_ledger_sanitizer.py"
 
 permissions:
   contents: read
@@ -49,6 +50,7 @@ jobs:
             tests/unit/collection/test_kuaishou_tikhub_operation.py \
             tests/unit/collection/test_tikhub_pricing.py \
             tests/unit/collection/test_tikhub_transport.py \
+            tests/unit/collection/test_tikhub_endpoint_ledger_sanitizer.py \
             -q
 
       - name: Verify api.tikhub.io connectivity
