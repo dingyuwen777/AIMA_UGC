@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-
 from aima_ugc.adapters.providers.tikhub.operations import douyin
 
 BASE_URL = "https://api.tikhub.io"
