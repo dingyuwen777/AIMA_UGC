@@ -42,23 +42,17 @@ def test_real_probe_backed_capabilities_cover_all_five_platforms() -> None:
     assert all(item.operation("comments") is not None for item in capabilities)
 
 
-def test_reply_capabilities_match_real_nonempty_and_empty_evidence() -> None:
-    assert _operation(XHS_TIKHUB_CAPABILITY, "comments").supports_sub_comments is True
-    assert _operation(DOUYIN_TIKHUB_CAPABILITY, "comments").supports_sub_comments is True
-    assert _operation(WEIBO_TIKHUB_CAPABILITY, "comments").supports_sub_comments is True
-    assert _operation(BILIBILI_TIKHUB_CAPABILITY, "comments").supports_sub_comments is True
-
-    for capability in (
+def test_reply_capabilities_match_real_nonempty_evidence() -> None:
+    capabilities = (
         XHS_TIKHUB_CAPABILITY,
         DOUYIN_TIKHUB_CAPABILITY,
         WEIBO_TIKHUB_CAPABILITY,
         BILIBILI_TIKHUB_CAPABILITY,
-    ):
+        KUAISHOU_TIKHUB_CAPABILITY,
+    )
+    for capability in capabilities:
+        assert _operation(capability, "comments").supports_sub_comments is True
         assert capability.operation("sub_comments") is not None
-
-    kuaishou_comments = _operation(KUAISHOU_TIKHUB_CAPABILITY, "comments")
-    assert kuaishou_comments.supports_sub_comments is False
-    assert KUAISHOU_TIKHUB_CAPABILITY.operation("sub_comments") is None
 
 
 def test_real_comment_shape_controls_reply_count_and_incremental_claims() -> None:
@@ -66,7 +60,7 @@ def test_real_comment_shape_controls_reply_count_and_incremental_claims() -> Non
     assert _operation(DOUYIN_TIKHUB_CAPABILITY, "comments").supports_reply_count is True
     assert _operation(WEIBO_TIKHUB_CAPABILITY, "comments").supports_reply_count is True
     assert _operation(BILIBILI_TIKHUB_CAPABILITY, "comments").supports_reply_count is True
-    assert _operation(KUAISHOU_TIKHUB_CAPABILITY, "comments").supports_reply_count is False
+    assert _operation(KUAISHOU_TIKHUB_CAPABILITY, "comments").supports_reply_count is True
 
     for capability in (
         XHS_TIKHUB_CAPABILITY,
