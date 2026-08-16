@@ -2,152 +2,276 @@
 
 ## 1. 当前状态
 
-快手 TikHub App Search V2 / Detail + Web 一级/二级评论 Operation 与保守 `pcursor` 状态已经进入 `main`。Mapper、合法脱敏非空真实 Fixture、Mapper Contract Test、Real Provider Probe 和 Capability/默认 Registry 仍未完成，因此不得称“快手已兼容”。
-
-目标路径：
+快手当前首版正式主链仍为：
 
 ```text
-backend/src/aima_ugc/adapters/providers/tikhub/operations/kuaishou.py
-backend/src/aima_ugc/adapters/providers/tikhub/mappers/kuaishou.py
-tests/unit/collection/test_kuaishou_tikhub_operation.py
-tests/unit/collection/test_kuaishou_tikhub_mapper.py
+App Search V2
+→ App Detail
+→ Web 一级评论
+→ Web 二级评论
+```
+
+当前任务分支已经具备：
+
+- Search / Detail / Web Comments / Web Sub-comments 生产 Operation；
+- 基于真实 TikHub 响应的 Search / Detail / Comment / Reply Mapper；
+- 合法脱敏非空 Fixture；
+- `CanonicalContentV1 / CanonicalCommentV1` 回归；
+- Web 二级评论非空实证；
+- Kuaishou Capability / 默认 Registry 接线；
+- Web/App 评论链同样本 A/B Real Probe 证据。
+
+完整真实结构查询见 [`../blueprint/10-TikHub真实响应结构附录.md`](../blueprint/10-TikHub真实响应结构附录.md)。机器 Fixture 位于：
+
+```text
 tests/fixtures/providers/tikhub/kuaishou/
 ```
 
-## 2. 已批准 TikHub Operation
+## 2. 当前正式 TikHub Operation
 
-| 业务动作 | Endpoint | 官方文档 |
-| --- | --- | --- |
-| 视频搜索 | `GET /api/v1/kuaishou/app/search_video_v2` | https://docs.tikhub.io/467698481e0 |
-| 作品详情 | `GET /api/v1/kuaishou/app/fetch_one_video` | https://docs.tikhub.io/467698469e0 |
-| 一级评论 | `GET /api/v1/kuaishou/web/fetch_one_video_comment` | https://docs.tikhub.io/336972174e0 |
-| 二级评论 | `GET /api/v1/kuaishou/web/fetch_one_video_sub_comment` | https://docs.tikhub.io/343506804e0 |
+| 业务动作 | 当前正式 Endpoint |
+| --- | --- |
+| 视频搜索 | `GET /api/v1/kuaishou/app/search_video_v2` |
+| 作品详情 | `GET /api/v1/kuaishou/app/fetch_one_video` |
+| 一级评论 | `GET /api/v1/kuaishou/web/fetch_one_video_comment` |
+| 二级评论 | `GET /api/v1/kuaishou/web/fetch_one_video_sub_comment` |
 
-App 搜索/详情 + Web 评论是四个业务 Operation 的明确首版选型，不是运行时 fallback。
+App 搜索/详情 + Web 评论是当前批准的四个业务 Operation，不是运行时 fallback。
 
-TikHub App 目录也存在评论能力；在其具体 Contract、价格和真实 Fixture 被单独验证前，不因为“App 看起来更新”而静默改掉本表主 Operation。
+## 3. Search V2
 
-## 3. 搜索能力很有限，前端不能伪造选项
-
-App Search V2 当前官方只明确：
+当前 Search V2 业务参数只有：
 
 ```text
 keyword
 pcursor
 ```
 
-`pcursor` 是技术分页，首页为空，后续使用响应值。
+真实响应主要路径：
 
-当前批准 Operation **没有排序参数和发布时间筛选参数**，因此 Capability 必须表达：
+```text
+data.mixFeeds[].feed
+data.pcursor
+```
+
+当前主 Operation 没有真实证明可用的排序或发布时间原生筛选，所以 Capability 不对前端伪造这些选项：
 
 ```text
 native_time_filter = false
-supported_sort_modes = provider_default only
+supported_sort_modes = ()
+supported_time_filters = ()
 ```
 
-前端不能给快手显示“最新/最多点赞/最近一天”等看似可用但实际上没有传给当前 Provider 的选项。
+## 4. Detail
 
-如果以后实现本地发布时间边界，必须标明是本地停止条件并用 Fixture/Probe 证明，不得说 TikHub Search V2 已原生过滤。
-
-## 4. 搜索成本需要特别控制
-
-TikHub 官方当前明确说明 App `search_video_v2` **收费更贵，但稳定性更高**，具体价格以用户后台/Endpoint Pricing 为准。因此快手首版优先用以下机制省钱：
-
-1. 关键词搜索结果先 Raw/Mapper，再按 photo_id 去重；
-2. 重复内容有效指标/评论数未变化，不请求详情/评论；
-3. 明确零评论不请求评论；
-4. 评论目标使用自适应 50，不默认全量；
-5. 单内容和 Run 评论预算防止热门内容扩散费用；
-6. 预计费用使用当前 endpoint Pricing，不在文档硬编码单价。
-
-不要为了减少搜索费用切到未经批准/未验证的便宜接口；价格变化或替代 endpoint 要单独评估数据质量和总成本。
-
-## 5. 详情和评论
-
-App Detail `fetch_one_video` 使用 photo_id，官方说明支持数字 ID 和短字符串 eID；Canonical 外部 ID 一律按字符串保存。
-
-Web 一级评论：
+App Detail：
 
 ```text
+GET /api/v1/kuaishou/app/fetch_one_video
+photo_id=<external_content_id>
+```
+
+真实业务 item 路径：
+
+```text
+data.photos[0]
+```
+
+Provider 中出现的数字 ID 进入 Canonical 时统一转成字符串。
+
+## 5. Web 一级评论
+
+请求：
+
+```text
+GET /api/v1/kuaishou/web/fetch_one_video_comment
 photo_id
 pcursor
 ```
 
-首屏 pcursor 为空，后续使用响应 pcursor。
-
-Web 二级评论：
+真实一级列表：
 
 ```text
+data.rootComments[]
+```
+
+响应还可包含：
+
+```text
+data.subCommentsMap
+```
+
+评论 Probe 不能机械使用 `rootComments[0]` 请求二级评论。2026-08-16 的 A/B 调查证明，之前一次 Web 二级空页就是弱样本：所选第一条 root 没有正向回复证据。
+
+正确的结构验证应优先选择实际存在以下正向回复信号的 root：
+
+```text
+displaySubCommentCount > 0
+subCommentCount > 0
+或已返回非空 subCommentsMap
+```
+
+## 6. Web 二级评论已真实非空验证
+
+请求：
+
+```text
+GET /api/v1/kuaishou/web/fetch_one_video_sub_comment
 photo_id
 root_comment_id
 pcursor
 ```
 
-同样使用 pcursor 翻页。
+2026-08-16 使用同一个真实作品、同一个明确具有回复数的根评论重新验证：
 
-当前 Web 评论 Operation 没有批准业务排序选项，所以普通 UI 不显示“最新/最热”评论排序。只有未来主 Operation 变更并完成 Fixture/Probe 后再更新 Capability。
+```text
+HTTP 200
+data.subComments[] 非空
+data.pcursor 非空
+```
 
-## 6. 快手标准 Pipeline
+因此当前事实是：
+
+> TikHub Web 二级评论接口可返回真实非空回复；早先一次 `subComments=[]` 不能解释成 TikHub 不支持快手二级评论。
+
+对应仓库 Fixture：
+
+```text
+tests/fixtures/providers/tikhub/kuaishou/sub_comments_page1.sanitized.json
+```
+
+Mapper 规则：
+
+- `comment_id` → `external_comment_id`；
+- `photo_id` / 请求上下文 → `external_content_id`；
+- `root_comment_id` 由本次请求上下文明确给出；
+- `likedCount` → 评论点赞指标；
+- `user_id` → 公开作者账号 ID；
+- 当前真实响应虽然存在 `reply_to`，但证据不足以证明它必然是另一个评论 ID，因此 **不猜 `parent_comment_id`**。
+
+## 7. Web vs App 评论链 A/B
+
+TikHub 当前还提供两条 App 候选 Operation：
+
+```text
+GET /api/v1/kuaishou/app/fetch_video_comment
+GET /api/v1/kuaishou/app/fetch_video_sub_comments
+```
+
+App 二级评论参数：
+
+```text
+photo_id
+root_comment_id
+pcursor
+count = 1..20
+```
+
+2026-08-16 用同一个真实作品、同一个有回复根评论做对照：
+
+| 项目 | Web | App |
+| --- | --- | --- |
+| 一级评论 | HTTP 200、非空 | HTTP 200、非空 |
+| 二级评论 | HTTP 200、非空 | HTTP 200、非空 |
+| 二级主要路径 | `data.subComments[]` | `data.subComments[]` |
+| 一级响应携带部分回复 | `subCommentsMap` | `subCommentsMap.<root>.subComments[]` 更丰富 |
+| 当次 endpoint_cost：一级 | 0.002 USD | 0.001 USD |
+| 当次 endpoint_cost：二级 | 0.010 USD | 0.001 USD |
+
+上述价格只是本次 `get_endpoint_info` 快照，不能作为永久运行时单价。运行时费用仍由版本化 Pricing + endpoint-level verified 事实控制。
+
+### 当前建议
+
+基于当前样本，**推荐后续把快手评论主链切换到 App**，原因：
+
+1. 同样本一级、二级均能取得真实非空数据；
+2. 当前实测 endpoint 单价明显更低；
+3. App 一级响应可携带部分二级回复，存在减少后续请求的机会；
+4. Search/Detail 本来就在 App family，主链更一致。
+
+但这是正式 Provider Operation Matrix 变更。在用户/业务 Owner 批准前：
+
+- 当前正式主链仍保持 Web 评论；
+- 不静默切 App；
+- 不实现 Web→App 或 App→Web 自动 fallback；
+- App builder 只作为本次候选验证事实，不等于生产 Capability 已切换。
+
+## 8. 当前 Capability
+
+基于 Web 非空真实证据，当前快手 Capability 可以正确声明：
+
+```text
+comments.supports_reply_count = true
+comments.supports_sub_comments = true
+sub_comments operation = fetch_one_video_sub_comment
+```
+
+仍不声明：
+
+```text
+supports_incremental_comment_sort = true
+```
+
+因为当前评论接口没有真实证明可依赖的稳定“最新增量”业务排序语义。
+
+## 9. 评论成本控制
+
+无论最终使用 Web 或 App，通用策略保持：
+
+- `comment_count=0` → 不请求评论；
+- 重复内容 `comment_count` 未变化 → 默认不重抓；
+- 其他互动变化但评论数不变 → 不因此重抓评论；
+- 评论数增加 → 受控刷新；
+- 评论数下降 → 记录下降并受控刷新，不根据部分页猜删除；
+- 默认完整阈值 50、一级目标 50、每个一级线程二级目标 5；
+- 返回页超过目标时整页保存；
+- 每次真实发送继续受 Provider Pricing / Budget Ledger 硬门禁。
+
+## 10. 标准 Pipeline
+
+当前正式路径：
 
 ```text
 search_video_v2
 → Search Raw
 → Kuaishou Mapper / Observation
 → photo_id 去重
-→ 指标/comment_count 比较
+→ 指标 / comment_count 比较
 → 必要时 app/fetch_one_video
 → Comment Eligibility
 → web/fetch_one_video_comment
 → 对有回复线程 web/fetch_one_video_sub_comment
-→ Raw → Mapper → Canonical → Ingestion
+→ Raw
+→ Kuaishou Mapper
+→ Canonical
+→ Ingestion
 ```
 
-## 7. 评论省钱规则
+如果后续明确批准切换 App，只替换评论 Operation/分页/Mapper 证据边界；Canonical / Ingestion / 数据库不因 Provider API family 改变而重写。
 
-通用规则保持：
+## 11. 时间窗口与 Deep Collection
 
-- 可靠 `comment_count=0` → 不请求评论；
-- 重复内容 comment_count 未变化 → 不请求；
-- 其他互动变化但评论数不变 → 不因此重抓评论；
-- 评论数增加 → 当前接口没有批准稳定最新排序时，使用受控部分刷新而不是假装增量；
-- 评论数下降 → 记录下降 + 受控刷新，不凭部分样本猜删除。
+Search V2 没有原生时间范围：
 
-默认完整阈值 50、目标 50、每个一级线程二级目标 5；如果 comment/reply 返回页超过目标，整页全部保存。
+- 前端不能把“最近一天/一周”标成 Provider 原生筛选；
+- 需要时间边界时只能基于已验证发布时间做本地停止/筛选；
+- 无法可靠判断时间时按显式页数/预算停止，不伪造 Provider 能力。
 
-## 8. 时间窗口与调度
+Deep Collection 仍从内部 `content_id` 解析真实 `photo_id` 并走同一 Provider Operation、Raw、Mapper、Canonical、Budget 链，不允许浏览器直接调用 TikHub。
 
-因为 Search V2 没有原生时间范围：
+## 12. 独立验证
 
-- 前端不能把“最近一天/一周”显示为 Provider 原生筛选；
-- 需要业务时间边界时只能在实际返回时间字段经 Fixture 验证后做本地停止/筛选；
-- 本地边界和调度周期不匹配只 Warning，不阻止；
-- 无法可靠判断发布时间时宁可继续按显式页数/预算停止，也不能伪造发布时间。
+当前至少由以下真实证据/回归覆盖：
 
-## 9. Deep Collection
+```text
+tests/fixtures/providers/tikhub/kuaishou/
+tests/unit/collection/test_kuaishou_tikhub_operation.py
+tests/unit/collection/test_tikhub_real_search_mappers.py
+tests/unit/collection/test_tikhub_real_detail_mappers.py
+tests/unit/collection/test_tikhub_real_comment_mappers.py
+tests/unit/collection/test_tikhub_real_reply_mappers.py
+tests/unit/collection/test_tikhub_real_capabilities.py
+tests/integration/content/test_tikhub_real_normalized_ingestion.py
+```
 
-已入库内容从内部 `content_id` 发起，后端解析 photo_id 和 Provider。系统未发现的内容可以通过 photo_id/快手分享链接高级入口补抓。
-
-Deep Collection 仍使用相同 App Detail + Web Comment Operations，并受数据库 Budget；不能绕过预算或直接从浏览器调 TikHub。
-
-## 10. 独立调试和验收
-
-当前 Unit Test 已验证：
-
-- Search V2 只接受 `keyword + pcursor`，不伪造排序、发布时间或内容类型参数；
-- App Detail 使用 `photo_id`；
-- Web 一级/二级评论分别使用 `photo_id + pcursor` 和 `photo_id + root_comment_id + pcursor`；
-- `pcursor` 只消费调用方可靠提取的返回值：缺失/空值停止、游标不推进停止，未知非空且已推进的值继续传递。
-
-当前 Operation 不猜响应 JSON path、评论列表字段或 `no_more` 等 Provider 结束哨兵。这些响应事实必须由后续合法脱敏非空真实 Fixture/Real Probe 固化后才能进入 Mapper 或更具体的分页逻辑。
-
-后续 Operation Probe 至少验证：
-
-- Search V2 真实 pcursor 首页/下一页/末页；
-- App Detail 数字 photo_id/eID；
-- Web root comments 真实 pcursor；
-- Web subcomments root_comment_id + pcursor；
-- Provider 返回空页、末页或 pcursor 不推进时的真实停止事实。
-
-Business Pipeline Probe 连续两次运行，重点确认昂贵 Search V2 后是否通过去重和 comment_count 判断避免额外详情/评论请求。
-
-**完成门禁**：Operation/保守 `pcursor` 已进入 `main`；没有快手合法脱敏非空真实 Fixture、Mapper Contract Test 和 Real Probe 前，不得称“快手已兼容”。
+Real Probe 只用于外部事实变化或现有 Fixture 证据不足时的最小验证，不应为普通单元测试重复产生 TikHub 费用。
