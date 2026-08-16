@@ -1,4 +1,4 @@
-"""TikHub 小红书 App V2 Operation 与分页状态。"""
+"""TikHub 小红书 App V2 主 Operation 与 App V1/Web V3 A/B 候选。"""
 
 from __future__ import annotations
 
@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from typing import Any
 
 _BASE = "/api/v1/xiaohongshu/app_v2"
+_APP_V1_BASE = "/api/v1/xiaohongshu/app"
+_WEB_V3_BASE = "/api/v1/xiaohongshu/web_v3"
 _SORT_TYPES = {
     "general": "general",
     "latest": "time_descending",
@@ -173,12 +175,72 @@ def build_search_notes_request(
     return XhsRequest(f"{_BASE}/search_notes", params)
 
 
+def build_app_v1_search_candidate_request(
+    *,
+    keyword: str,
+    page: int = 1,
+    sort_type: str = "general",
+    note_type: str = "不限",
+    time_filter: str = "不限",
+    search_id: str | None = None,
+    session_id: str | None = None,
+) -> XhsRequest:
+    """构造 App V1 Search A/B 候选；不进入默认 Capability 或自动 fallback。"""
+    normalized_keyword = keyword.strip()
+    if not normalized_keyword:
+        raise ValueError("keyword 不能为空")
+    if page < 1:
+        raise ValueError("page 必须从 1 开始")
+    params: dict[str, object] = {
+        "keyword": normalized_keyword,
+        "page": page,
+        "sort_type": sort_type,
+        "filter_note_type": note_type,
+        "filter_note_time": time_filter,
+    }
+    if search_id:
+        params["search_id"] = search_id
+    if session_id:
+        params["session_id"] = session_id
+    return XhsRequest(f"{_APP_V1_BASE}/search_notes", params)
+
+
+def build_web_v3_search_candidate_request(
+    *, keyword: str, page: int = 1, sort: str = "general", note_type: int = 0
+) -> XhsRequest:
+    """构造 Web V3 Search A/B 候选；不进入默认 Capability 或自动 fallback。"""
+    normalized_keyword = keyword.strip()
+    if not normalized_keyword:
+        raise ValueError("keyword 不能为空")
+    if page < 1:
+        raise ValueError("page 必须从 1 开始")
+    return XhsRequest(
+        f"{_WEB_V3_BASE}/fetch_search_notes",
+        {"keyword": normalized_keyword, "page": page, "sort": sort, "note_type": note_type},
+    )
+
+
 def build_image_detail_request(*, note_id: str) -> XhsRequest:
     return XhsRequest(f"{_BASE}/get_image_note_detail", {"note_id": note_id})
 
 
 def build_video_detail_request(*, note_id: str) -> XhsRequest:
     return XhsRequest(f"{_BASE}/get_video_note_detail", {"note_id": note_id})
+
+
+def build_app_v1_detail_candidate_request(*, note_id: str) -> XhsRequest:
+    """构造 App V1 笔记详情 A/B 候选。"""
+    return XhsRequest(f"{_APP_V1_BASE}/get_note_info", {"note_id": note_id})
+
+
+def build_web_v3_detail_candidate_request(
+    *, note_id: str, xsec_token: str | None = None
+) -> XhsRequest:
+    """构造 Web V3 笔记详情 A/B 候选；xsec_token 没有真实来源时不伪造。"""
+    params: dict[str, object] = {"note_id": note_id}
+    if xsec_token:
+        params["xsec_token"] = xsec_token
+    return XhsRequest(f"{_WEB_V3_BASE}/fetch_note_detail", params)
 
 
 def build_note_comments_request(
@@ -196,6 +258,24 @@ def build_note_comments_request(
     )
 
 
+def build_app_v1_comments_candidate_request(
+    *, note_id: str, start: str = "", sort_strategy: int = 1
+) -> XhsRequest:
+    """构造 App V1 一级评论 A/B 候选。"""
+    return XhsRequest(
+        f"{_APP_V1_BASE}/get_note_comments",
+        {"note_id": note_id, "start": start, "sort_strategy": sort_strategy},
+    )
+
+
+def build_web_v3_comments_candidate_request(*, note_id: str, cursor: str = "") -> XhsRequest:
+    """构造 Web V3 一级评论 A/B 候选。"""
+    return XhsRequest(
+        f"{_WEB_V3_BASE}/fetch_note_comments",
+        {"note_id": note_id, "cursor": cursor},
+    )
+
+
 def build_sub_comments_request(
     *, note_id: str, comment_id: str, cursor: str = "", index: int = 1
 ) -> XhsRequest:
@@ -206,6 +286,33 @@ def build_sub_comments_request(
             "comment_id": comment_id,
             "cursor": cursor,
             "index": index,
+        },
+    )
+
+
+def build_app_v1_sub_comments_candidate_request(
+    *, note_id: str, comment_id: str, start: str = ""
+) -> XhsRequest:
+    """构造 App V1 二级评论 A/B 候选。"""
+    return XhsRequest(
+        f"{_APP_V1_BASE}/get_sub_comments",
+        {"note_id": note_id, "comment_id": comment_id, "start": start},
+    )
+
+
+def build_web_v3_sub_comments_candidate_request(
+    *, note_id: str, root_comment_id: str, num: int = 10, cursor: str = ""
+) -> XhsRequest:
+    """构造 Web V3 二级评论 A/B 候选。"""
+    if num < 1:
+        raise ValueError("num 必须大于 0")
+    return XhsRequest(
+        f"{_WEB_V3_BASE}/fetch_sub_comments",
+        {
+            "note_id": note_id,
+            "root_comment_id": root_comment_id,
+            "num": num,
+            "cursor": cursor,
         },
     )
 
