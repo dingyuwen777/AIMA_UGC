@@ -22,9 +22,7 @@ def build_douyin_web_v2_detail_backup_request(*, aweme_id: str) -> DouyinRequest
     )
 
 
-def build_douyin_web_comments_backup_request(
-    *, aweme_id: str, cursor: int = 0
-) -> DouyinRequest:
+def build_douyin_web_comments_backup_request(*, aweme_id: str, cursor: int = 0) -> DouyinRequest:
     """抖音 Web 一级评论备用；不覆盖 Provider 默认 count。"""
     _nonnegative(cursor, "cursor")
     return DouyinRequest(

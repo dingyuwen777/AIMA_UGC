@@ -144,9 +144,7 @@ def build_comprehensive_search_candidate_request(
             "keyword": _required_text(keyword, "keyword"),
             "pcursor": pcursor,
             "sort_type": _choice(_COMPREHENSIVE_SORT_TYPES, sort_mode, "sort_mode"),
-            "publish_time": _choice(
-                _COMPREHENSIVE_PUBLISH_TIMES, publish_time, "publish_time"
-            ),
+            "publish_time": _choice(_COMPREHENSIVE_PUBLISH_TIMES, publish_time, "publish_time"),
             "duration": _choice(_COMPREHENSIVE_DURATIONS, duration, "duration"),
         },
     )

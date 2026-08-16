@@ -137,7 +137,9 @@ def _cases() -> tuple[ProbeCase, ...]:
             name="weibo_web_search_vs_app_search_all",
             platform="weibo",
             semantic_relation="same_business",
-            primary=ProbeRequest(weibo_primary.method, weibo_primary.path, dict(weibo_primary.params)),
+            primary=ProbeRequest(
+                weibo_primary.method, weibo_primary.path, dict(weibo_primary.params)
+            ),
             candidate=ProbeRequest(
                 weibo_candidate.method,
                 weibo_candidate.path,
@@ -217,7 +219,9 @@ def _request_json(client: httpx.Client, request: ProbeRequest) -> tuple[int, dic
     try:
         parsed = response.json()
     except ValueError as exc:
-        raise RuntimeError(f"TikHub {request.path} 返回非 JSON，HTTP {response.status_code}") from exc
+        raise RuntimeError(
+            f"TikHub {request.path} 返回非 JSON，HTTP {response.status_code}"
+        ) from exc
     if not isinstance(parsed, dict):
         raise RuntimeError(f"TikHub {request.path} 响应根节点不是 object")
     return response.status_code, parsed
@@ -228,7 +232,9 @@ def _endpoint_cost(client: httpx.Client, path: str) -> Decimal:
     try:
         parsed: Any = response.json()
     except ValueError as exc:
-        raise RuntimeError(f"TikHub endpoint-info 返回非 JSON，HTTP {response.status_code}") from exc
+        raise RuntimeError(
+            f"TikHub endpoint-info 返回非 JSON，HTTP {response.status_code}"
+        ) from exc
     if response.status_code != 200:
         raise RuntimeError(f"TikHub endpoint-info HTTP {response.status_code}: {path}")
     raw_cost = _find_key(parsed, "endpoint_cost")
@@ -301,7 +307,11 @@ def _weibo_ids(value: object) -> list[str]:
                 ids.append(str(identifier))
                 return ids
         identifier = value.get("idstr") or value.get("mblogid")
-        if identifier is not None and "user" in value and ("text" in value or "created_at" in value):
+        if (
+            identifier is not None
+            and "user" in value
+            and ("text" in value or "created_at" in value)
+        ):
             ids.append(str(identifier))
             return ids
         for child in value.values():
@@ -344,7 +354,10 @@ def _kuaishou_ids(value: object) -> list[str]:
             return ids
         identifier = value.get("photo_id")
         if identifier is not None and (
-            "caption" in value or "author" in value or "view_count" in value or "like_count" in value
+            "caption" in value
+            or "author" in value
+            or "view_count" in value
+            or "like_count" in value
         ):
             ids.append(str(identifier))
             return ids

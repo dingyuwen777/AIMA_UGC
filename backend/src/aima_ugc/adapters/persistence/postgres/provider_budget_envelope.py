@@ -144,9 +144,7 @@ class PostgresProviderBudgetEnvelopeProvisioner:
         required = {("request_count", "request"), ("monetary_cost", currency)}
         missing = required - set(by_key)
         if missing:
-            missing_text = ", ".join(
-                f"{dimension}/{unit}" for dimension, unit in sorted(missing)
-            )
+            missing_text = ", ".join(f"{dimension}/{unit}" for dimension, unit in sorted(missing))
             raise ProviderBudgetAccountMissingError(
                 f"Provider Config 缺少当前有效 Global 预算账户: {missing_text}"
             )
