@@ -2,6 +2,8 @@
 
 本目录用于固定 TikHub 当前真实响应的**结构证据**，供 Operation、分页、Mapper、Canonical 和兼容性测试使用。它不是业务数据样本库，也不保存 API Key 或可用于重新识别真实账号/内容的原值。
 
+人类可读的五平台查询附录见 [`docs/blueprint/10-TikHub真实响应结构附录.md`](../../../../docs/blueprint/10-TikHub真实响应结构附录.md)。
+
 ## 证据来源
 
 2026-08-15 至 2026-08-16，在 GitHub-hosted Ubuntu Runner 上显式访问 `https://api.tikhub.io`，关键词使用“爱玛”，按最小结构验证原则执行：
@@ -10,9 +12,11 @@
 - Detail：从 Search 返回项中选一条可用内容，最多请求一次详情；小红书分别验证图文与视频详情；
 - Comments：每个平台最多一页一级评论；
 - Sub-comments / Replies：只为验证结构选一个有回复的根评论，最多一页；
-- 不做全量翻页，不追完整历史，不把真实响应直接提交到仓库。
+- 不做全量翻页，不追完整历史，不把未经脱敏的真实响应提交到仓库。
 
-对应 TikHub 业务 endpoint 共 21 个，均先通过官方 `get_endpoint_info` 核验 endpoint 与精确基础单价；真实业务请求全部受显式请求数/费用上限约束，不存在隐藏网络重试。
+首轮对应 TikHub 业务 endpoint 共 21 个，均先通过官方 `get_endpoint_info` 核验 endpoint 与精确基础单价；真实业务请求全部受显式请求数/费用上限约束，不存在隐藏网络重试。
+
+2026-08-16 对快手评论链额外执行同样本 Web/App A/B：同一个 Search 命中的真实作品、同一个具有 `displaySubCommentCount/subCommentCount` 正向回复证据的根评论分别请求 Web/App 一级和二级评论。两套二级接口均返回 HTTP 200 且 `data.subComments[]` 非空，因此早先一次快手 Web 空页只说明当时样本没有取得回复，不能解释为 TikHub 不支持快手二级评论。
 
 ## 脱敏规则
 
@@ -36,9 +40,9 @@ Fixture 只证明其保留的字段与层级真实存在，不代表 Provider �
 | 抖音 | 非空 | 非空 | 非空 | 非空 |
 | 微博 | 非空 | 非空 | 非空 | 非空 |
 | B站 | 非空 | 非空 | 非空 | 非空 |
-| 快手 | 非空 | 非空 | 非空 | endpoint 返回成功，但本次 `subComments=[]` |
+| 快手 | 非空 | 非空 | 非空 | **Web 与 App 同样本均非空** |
 
-因此快手 `sub_comments` 当前只证明 endpoint、响应 envelope 和空页语义，**没有非空回复项结构证据**；Capability 不得提前宣称已具备完整二级评论归一化能力。
+快手仓库 Fixture 当前保存首版正式 Web 主链的非空二级评论结构；App A/B 证据用于 Operation 选型评估，在正式切换主 Operation 前不把 App 响应伪装成当前生产主链 Fixture。
 
 ## 统一数据结构结论
 
@@ -64,7 +68,7 @@ root_comment_id = 所属一级评论 ID
 parent_comment_id = Provider 明确给出的直接父评论 ID；没有明确字段时保持 null
 ```
 
-禁止从微博 `rootid`、抖音其他回复字段、B站/快手无关 ID 猜测原内容或直接父评论关系。原内容 ID 缺失时由已知请求上下文显式提供 `external_content_id`。
+禁止从微博 `rootid`、抖音其他回复字段、B站/快手无关 ID 猜测原内容或直接父评论关系。快手 Web 二级响应虽然存在 `reply_to`，当前证据不足以证明它一定是另一个评论 ID，因此不把它猜成 `parent_comment_id`。原内容 ID 缺失时由已知请求上下文显式提供 `external_content_id`。
 
 ## 维护要求
 
