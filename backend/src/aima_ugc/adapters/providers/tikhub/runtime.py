@@ -226,9 +226,7 @@ def _advance_xhs_search(state: dict[str, object], body: dict[str, Any]) -> TikHu
     )
 
 
-def _advance_douyin_search(
-    state: dict[str, object], body: dict[str, Any]
-) -> TikHubPageAdvance:
+def _advance_douyin_search(state: dict[str, object], body: dict[str, Any]) -> TikHubPageAdvance:
     result = douyin.DouyinSearchPagination.from_response(
         current_cursor=_int_state(state, "cursor", default=0),
         body=body,
@@ -259,9 +257,7 @@ def _advance_weibo_search(state: dict[str, object], body: dict[str, Any]) -> Tik
     return TikHubPageAdvance(_json_object({"page": result.next_page}), None)
 
 
-def _advance_bilibili_search(
-    state: dict[str, object], body: dict[str, Any]
-) -> TikHubPageAdvance:
+def _advance_bilibili_search(state: dict[str, object], body: dict[str, Any]) -> TikHubPageAdvance:
     result = bilibili.BilibiliSearchPagination.from_response(
         previous_cursor=_optional_str_state(state, "cursor"),
         body=body,
@@ -271,9 +267,7 @@ def _advance_bilibili_search(
     return TikHubPageAdvance(_json_object({"cursor": result.next_cursor}), None)
 
 
-def _advance_kuaishou_search(
-    state: dict[str, object], body: dict[str, Any]
-) -> TikHubPageAdvance:
+def _advance_kuaishou_search(state: dict[str, object], body: dict[str, Any]) -> TikHubPageAdvance:
     result = kuaishou.KuaishouSearchPagination.from_response(
         previous_cursor=_str_state(state, "pcursor", default=""),
         body=body,
@@ -425,7 +419,7 @@ def build_comments_call(
     return TikHubOperationCall(
         "kuaishou",
         "comments",
-        "fetch_one_video_comment",
+        "fetch_video_comment",
         request.method,
         request.path,
         _json_object(request.params),
