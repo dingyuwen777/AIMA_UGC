@@ -6,6 +6,7 @@ from aima_ugc.adapters.providers.tikhub.operations.bilibili import (
     build_web_reply_candidate_request,
     build_web_search_candidate_request,
     build_web_video_comments_candidate_request,
+    build_web_video_detail_candidate_request,
 )
 from aima_ugc.adapters.providers.tikhub.operations.douyin import (
     build_video_search_request,
@@ -17,6 +18,16 @@ from aima_ugc.adapters.providers.tikhub.operations.kuaishou import (
 from aima_ugc.adapters.providers.tikhub.operations.weibo import (
     build_app_search_candidate_request,
     build_web_status_comments_candidate_request,
+)
+from aima_ugc.adapters.providers.tikhub.operations.xiaohongshu import (
+    build_app_v1_comments_candidate_request,
+    build_app_v1_detail_candidate_request,
+    build_app_v1_search_candidate_request,
+    build_app_v1_sub_comments_candidate_request,
+    build_web_v3_comments_candidate_request,
+    build_web_v3_detail_candidate_request,
+    build_web_v3_search_candidate_request,
+    build_web_v3_sub_comments_candidate_request,
 )
 from aima_ugc.adapters.providers.tikhub.pricing import load_tikhub_pricing
 
@@ -64,6 +75,7 @@ def test_bilibili_web_candidates_are_explicit_and_do_not_replace_app_primary() -
     search = build_web_search_candidate_request(
         keyword="爱玛", page=1, page_size=20, sort_mode="latest"
     )
+    detail = build_web_video_detail_candidate_request(bv_id="BV1TEST")
     comments = build_web_video_comments_candidate_request(bv_id="BV1TEST", page=1)
     replies = build_web_reply_candidate_request(bv_id="BV1TEST", root="9001", page=1)
 
@@ -74,10 +86,81 @@ def test_bilibili_web_candidates_are_explicit_and_do_not_replace_app_primary() -
         "page": 1,
         "page_size": 20,
     }
+    assert detail.path == "/api/v1/bilibili/web/fetch_one_video"
+    assert detail.params == {"bv_id": "BV1TEST"}
     assert comments.path == "/api/v1/bilibili/web/fetch_video_comments"
     assert comments.params == {"bv_id": "BV1TEST", "pn": 1}
     assert replies.path == "/api/v1/bilibili/web/fetch_comment_reply"
     assert replies.params == {"bv_id": "BV1TEST", "pn": 1, "rpid": "9001"}
+
+
+def test_xhs_app_v1_candidates_match_same_business_inputs_without_becoming_primary() -> None:
+    search = build_app_v1_search_candidate_request(
+        keyword="爱玛",
+        page=1,
+        sort_type="general",
+        note_type="不限",
+        time_filter="不限",
+    )
+    detail = build_app_v1_detail_candidate_request(note_id="note-1")
+    comments = build_app_v1_comments_candidate_request(
+        note_id="note-1", start="", sort_strategy=1
+    )
+    sub_comments = build_app_v1_sub_comments_candidate_request(
+        note_id="note-1", comment_id="comment-1", start=""
+    )
+
+    assert search.path == "/api/v1/xiaohongshu/app/search_notes"
+    assert search.params == {
+        "keyword": "爱玛",
+        "page": 1,
+        "sort_type": "general",
+        "filter_note_type": "不限",
+        "filter_note_time": "不限",
+    }
+    assert detail.path == "/api/v1/xiaohongshu/app/get_note_info"
+    assert detail.params == {"note_id": "note-1"}
+    assert comments.path == "/api/v1/xiaohongshu/app/get_note_comments"
+    assert comments.params == {"note_id": "note-1", "start": "", "sort_strategy": 1}
+    assert sub_comments.path == "/api/v1/xiaohongshu/app/get_sub_comments"
+    assert sub_comments.params == {
+        "note_id": "note-1",
+        "comment_id": "comment-1",
+        "start": "",
+    }
+
+
+def test_xhs_web_v3_candidates_are_explicit_and_keep_xsec_optional() -> None:
+    search = build_web_v3_search_candidate_request(
+        keyword="爱玛", page=1, sort="general", note_type=0
+    )
+    detail = build_web_v3_detail_candidate_request(note_id="note-1")
+    comments = build_web_v3_comments_candidate_request(note_id="note-1", cursor="")
+    sub_comments = build_web_v3_sub_comments_candidate_request(
+        note_id="note-1",
+        root_comment_id="comment-1",
+        num=10,
+        cursor="",
+    )
+
+    assert search.path == "/api/v1/xiaohongshu/web_v3/fetch_search_notes"
+    assert search.params == {
+        "keyword": "爱玛",
+        "page": 1,
+        "sort": "general",
+        "note_type": 0,
+    }
+    assert detail.path == "/api/v1/xiaohongshu/web_v3/fetch_note_detail"
+    assert detail.params == {"note_id": "note-1"}
+    assert comments.path == "/api/v1/xiaohongshu/web_v3/fetch_note_comments"
+    assert comments.params == {"note_id": "note-1", "cursor": ""}
+    assert sub_comments.path == "/api/v1/xiaohongshu/web_v3/fetch_sub_comments"
+    assert sub_comments.params == {
+        "note_id": "note-1",
+        "root_comment_id": "comment-1",
+        "num": 10,
+        "cursor": "",
+    }
 
 
 def test_kuaishou_comprehensive_search_is_only_a_candidate_not_a_web_equivalent() -> None:
