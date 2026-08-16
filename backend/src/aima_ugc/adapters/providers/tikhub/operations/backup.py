@@ -64,6 +64,20 @@ def build_weibo_web_v2_detail_backup_request(*, status_id: str) -> WeiboRequest:
     )
 
 
+def build_weibo_web_replies_backup_request(
+    *, root_comment_id: str, max_id: str = "0"
+) -> WeiboRequest:
+    """微博 Web 评论回复备用；正式主链仍使用 Web V2 二级评论。"""
+    return WeiboRequest(
+        method="GET",
+        path="/api/v1/weibo/web/fetch_comment_replies",
+        params={
+            "cid": _required_text(root_comment_id, "root_comment_id"),
+            "max_id": max_id,
+        },
+    )
+
+
 def build_bilibili_web_detail_backup_request(*, aid: str) -> BilibiliRequest:
     """B站 Web AID 详情备用；正式主链仍使用 App fetch_one_video。"""
     return BilibiliRequest(
@@ -90,5 +104,6 @@ __all__ = [
     "build_douyin_web_comments_backup_request",
     "build_douyin_web_replies_backup_request",
     "build_douyin_web_v2_detail_backup_request",
+    "build_weibo_web_replies_backup_request",
     "build_weibo_web_v2_detail_backup_request",
 ]
