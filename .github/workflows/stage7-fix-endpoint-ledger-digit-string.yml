@@ -26,25 +26,7 @@ jobs:
         run: |
           set -euo pipefail
           git pull --ff-only origin feature/stage7-completion
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("scripts/dev/probe_tikhub_endpoint_ledger.py")
-          text = path.read_text(encoding="utf-8")
-          old = '''    if isinstance(value, str):
-        if value == KEYWORD:
-            return value
-'''
-          new = '''    if isinstance(value, str):
-        if len(value) >= 11 and value.isdigit():
-            return pseudonyms.identifier(value)
-        if value == KEYWORD:
-            return value
-'''
-          if text.count(old) != 1:
-              raise SystemExit("digit-string sanitizer patch anchor missing or ambiguous")
-          path.write_text(text.replace(old, new), encoding="utf-8")
-          PY
+          python -c 'from pathlib import Path; p=Path("scripts/dev/probe_tikhub_endpoint_ledger.py"); t=p.read_text(encoding="utf-8"); old="    if isinstance(value, str):\n        if value == KEYWORD:\n            return value\n"; new="    if isinstance(value, str):\n        if len(value) >= 11 and value.isdigit():\n            return pseudonyms.identifier(value)\n        if value == KEYWORD:\n            return value\n"; assert t.count(old) == 1, "digit-string sanitizer patch anchor missing or ambiguous"; p.write_text(t.replace(old, new), encoding="utf-8")'
           UV_VERSION="$(tr -d '\r\n' < .uv-version)"
           python -m pip install "uv==${UV_VERSION}"
           uv lock --check
