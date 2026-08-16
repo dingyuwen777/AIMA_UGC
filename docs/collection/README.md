@@ -2,7 +2,7 @@
 
 本文描述当前任务分支已经落地的采集主链、Stage 7 运行事实以及仍受门禁约束的能力。长期设计以 `docs/blueprint/` 为准，机器事实以代码、Migration、Contract、Fixture 与测试为准。
 
-五个平台 TikHub 真实响应的人类查询入口见 [`../blueprint/10-TikHub真实响应结构附录.md`](../blueprint/10-TikHub真实响应结构附录.md)。
+五个平台 TikHub 真实响应的人类查询入口见 [`../blueprint/10-TikHub真实响应结构附录.md`](../blueprint/10-TikHub真实响应结构附录.md)。同平台 App/Web/V1/V2/V3 的验证与备用规则见 [`../blueprint/11-TikHub多接口验证与备用策略.md`](../blueprint/11-TikHub多接口验证与备用策略.md)。
 
 ## 1. 当前稳定主链
 
@@ -166,7 +166,7 @@ tests/fixtures/providers/tikhub/kuaishou/
 | 抖音 | 非空 | 非空 | 非空 | 非空 |
 | 微博 | 非空 | 非空 | 非空 | 非空 |
 | B站 | 非空 | 非空 | 非空 | 非空 |
-| 快手 | 非空 | 非空 | 非空 | **Web 与 App 同样本均非空** |
+| 快手 | 非空 | 非空 | **Web 与 App 同样本均非空** | **Web 与 App 同样本均非空** |
 
 五个平台真实 Search/Detail/Comments/Replies 已由生产 Extractor / Mapper 构造合法 Canonical；真实 Fixture 还通过 PostgreSQL 18 Ingestion 纵切验证，因此当前 Canonical V1 的核心统一结构已经有真实 Provider 证据。
 
@@ -184,28 +184,52 @@ kuaishou
 
 Capability 只公开当前真实响应和 Operation 已证明的能力，不因为 TikHub 文档存在某个字段/参数就自动声明支持。
 
-快手现有 Web 主评论链已经由真实非空二级评论证明，因此当前 Capability 可以声明：
+快手正式评论 Capability 已切换为 App：
 
 ```text
+comments = fetch_video_comment
 comments.supports_reply_count = true
 comments.supports_sub_comments = true
-sub_comments = fetch_one_video_sub_comment
+sub_comments = fetch_video_sub_comments
 ```
 
-### 4.2 快手 Web/App A/B
+Web `fetch_one_video_comment` / `fetch_one_video_sub_comment` 已由真实同样本 A/B 证明可用，但只保留为显式 `verified_backup`，不进入默认 Capability，也不做自动 fallback。
+
+### 4.2 快手 Web/App A/B 与搜索可比性
 
 快手早先一次 Web `subComments=[]` 已被重新调查：旧 Probe 直接选择第一条根评论，没有确认其存在回复。
 
 2026-08-16 对同一个有回复作品、同一个具有 `displaySubCommentCount/subCommentCount` 正向证据的根评论分别调用 Web/App：
 
+- Web 一级评论 HTTP 200 且非空；
+- App 一级评论 HTTP 200 且非空；
 - Web 二级评论 HTTP 200 且 `data.subComments[]` 非空；
 - App 二级评论 HTTP 200 且 `data.subComments[]` 非空；
 - App 一级响应能直接带部分 `subCommentsMap.<root>.subComments[]`；
 - 当次 endpoint-info：Web 一级 0.002 USD、Web 二级 0.010 USD；App 一级 0.001 USD、App 二级 0.001 USD。
 
-这些单价只是该次 Real Probe 快照，运行时仍以版本化 Pricing / endpoint-level verified 数据为准。
+用户已批准 App 为正式评论主链；App 一级/二级价格已经进入版本化 Pricing。Web 只作为已验证备用记录。
 
-当前正式 Operation Matrix 仍使用 Web 评论链；是否切换 App 属于 Provider Operation 选型决策，在用户批准前不静默切换、不建立自动 fallback。
+快手 Web family 当前没有与关键词视频搜索同语义的 Web Search，因此不能回答“同一关键词 App/Web 搜索结果数量和内容是否一致”。该项状态为：
+
+```text
+not_equivalent / no_same_semantic_web_search
+```
+
+App `search_comprehensive` 是不同语义候选，只能在未来 A/B 中比较其视频子集，不能当作 Web 搜索替身。
+
+### 4.3 其他平台 API family 候选
+
+当前代码只增加显式 A/B candidate builder，不修改其他平台默认 Capability：
+
+- 抖音：Video Search V2 主链 vs Video Search V1 候选；
+- 微博：Web Search 主链 vs App Search All 候选；App 一级评论主链 vs Web V2 Comments 候选；
+- B站：App Search/Comments/Reply 主链 vs 对应 Web 候选；
+- 小红书：保持 App V2 主链，其他 family 需要当前 endpoint 级重新确认后再实验。
+
+除快手 Web 评论链外，这些候选当前均为 `candidate_pending_probe`。当前执行沙箱不能连接 TikHub，且现有 GitHub Runner RSA 公钥 artifact 无法通过当前工具安全取回，因此没有新鲜真实 A/B 的候选不得写成 `verified_backup`。
+
+统一比较记录包括：主/候选结果数、去重稳定 ID 数、交集、仅主、仅候选、并集、Jaccard、排序/分页差异、结构兼容和 endpoint-level 价格。两边都返回空集合时保持 inconclusive。
 
 ## 5. 其他 Stage 7 已落地能力
 
@@ -218,7 +242,8 @@ sub_comments = fetch_one_video_sub_comment
 - Global / Run / Run Comment / Content Comment 多层请求数与金额预算；
 - endpoint-level Pricing fail-closed；
 - XHS 已存 Raw Replay Job Handler，用于把既有 Raw 重新走正式 Mapper / Ingestion，不重新发 Provider HTTP；
-- TikHub HTTP Transport 的 Secret 注入、一次发送和错误状态边界。
+- TikHub HTTP Transport 的 Secret 注入、一次发送和错误状态边界；
+- API family 稳定 ID 集合比较模块与显式候选 Operation builder。
 
 ## 6. 当前仍未闭环的 Stage 7 能力
 
@@ -226,7 +251,7 @@ Stage 7 仍为进行中，当前不能因为 Scheduler、五平台 Mapper 或 Re
 
 1. **正式 `collection.run.v1` Worker Handler**：Scheduler 已能创建 scheduled Job / Occurrence / Run / Scope，但生产 Worker 仍需要完整复用 Provider Routing、Pricing/Budget、Dispatch、Raw、Mapper、Decision、Ingestion 链，不能注册空 Handler 或第二套采集实现；
 2. **统一 Operation / Business Pipeline Probe 的长期生产入口**：本轮一次性 Real Probe 已取得外部结构证据，但最终调试入口必须复用正式 Registry / Operation / Mapper / Decision Service，并保持 billable endpoint 的 Pricing/Budget fail-closed；
-3. **快手评论主 Operation 选型**：Web 已实证可用；App 同样本可用且当前更便宜，但正式 Web→App 变更仍需用户批准；
+3. **其他平台 API family 真实 A/B**：抖音/微博/B站候选 builder 已建立，但在安全凭据交接和真实 Runner Probe 成功前保持 `candidate_pending_probe`；这不阻断当前正式主 Operation 的既有真实兼容证据，也不能被误报为已验证备用；
 4. **最终 Stage 7 集成证据**：相关质量门禁、PR CI、Review、正常 PR 合并以及合并后 main 新鲜 CI 尚未全部完成。
 
 ## 7. 测试与调试
@@ -234,6 +259,7 @@ Stage 7 仍为进行中，当前不能因为 Scheduler、五平台 Mapper 或 Re
 - 调试复用生产 Service / Repository / Provider Operation，不实现第二套路径；
 - Real Probe 默认不进普通 CI，必须显式授权、请求数/费用封顶、Secret 不落盘；
 - 普通回归使用已经合法脱敏的真实 Fixture，不重复产生 TikHub 费用；
+- API family A/B 只使用显式候选 builder，不能注册隐式 fallback；
 - Scheduler 专项验证 latest-only、并发去重、重复 tick 幂等、Plan 行锁重读、Scope Snapshot、Migration drift 与 round-trip；
 - 数据库变化验证 Alembic 上一正式 Revision → head、base → head、downgrade / upgrade 与 `alembic check`；
 - Contract / Ruff / mypy / Architecture / Table Ownership / Secret / Docs 门禁必须保持绿色；
