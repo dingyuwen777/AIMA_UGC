@@ -294,57 +294,57 @@ def extract_search_items(
 def build_detail_call(platform: TikHubPlatform, content: CanonicalContentV1) -> TikHubOperationCall:
     if platform == "xhs":
         if content.content_type == "video":
-            request = xiaohongshu.build_video_detail_request(note_id=content.external_content_id)
+            xhs_request = xiaohongshu.build_video_detail_request(note_id=content.external_content_id)
             operation = "get_video_note_detail"
         else:
-            request = xiaohongshu.build_image_detail_request(note_id=content.external_content_id)
+            xhs_request = xiaohongshu.build_image_detail_request(note_id=content.external_content_id)
             operation = "get_image_note_detail"
         return TikHubOperationCall(
             "xhs",
             "content_detail",
             operation,
             "GET",
-            request.path,
-            _json_object(request.params),
+            xhs_request.path,
+            _json_object(xhs_request.params),
         )
     if platform == "douyin":
-        request = douyin.build_video_detail_request(aweme_id=content.external_content_id)
+        douyin_request = douyin.build_video_detail_request(aweme_id=content.external_content_id)
         return TikHubOperationCall(
             "douyin",
             "content_detail",
             "fetch_one_video_v3",
-            request.method,
-            request.path,
-            _json_object(request.params),
+            douyin_request.method,
+            douyin_request.path,
+            _json_object(douyin_request.params),
         )
     if platform == "weibo":
-        request = weibo.build_status_detail_request(status_id=content.external_content_id)
+        weibo_request = weibo.build_status_detail_request(status_id=content.external_content_id)
         return TikHubOperationCall(
             "weibo",
             "content_detail",
             "fetch_status_detail",
-            request.method,
-            request.path,
-            _json_object(request.params),
+            weibo_request.method,
+            weibo_request.path,
+            _json_object(weibo_request.params),
         )
     if platform == "bilibili":
-        request = bilibili.build_video_detail_request(av_id=content.external_content_id)
+        bilibili_request = bilibili.build_video_detail_request(av_id=content.external_content_id)
         return TikHubOperationCall(
             "bilibili",
             "content_detail",
             "fetch_one_video",
-            request.method,
-            request.path,
-            _json_object(request.params),
+            bilibili_request.method,
+            bilibili_request.path,
+            _json_object(bilibili_request.params),
         )
-    request = kuaishou.build_video_detail_request(photo_id=content.external_content_id)
+    kuaishou_request = kuaishou.build_video_detail_request(photo_id=content.external_content_id)
     return TikHubOperationCall(
         "kuaishou",
         "content_detail",
         "fetch_one_video",
-        request.method,
-        request.path,
-        _json_object(request.params),
+        kuaishou_request.method,
+        kuaishou_request.path,
+        _json_object(kuaishou_request.params),
     )
 
 
@@ -353,7 +353,7 @@ def build_comments_call(
 ) -> TikHubOperationCall:
     paging = state or {}
     if platform == "xhs":
-        request = xiaohongshu.build_note_comments_request(
+        xhs_request = xiaohongshu.build_note_comments_request(
             note_id=external_content_id,
             cursor=_str_state(paging, "cursor", default=""),
             index=_int_state(paging, "index", default=0),
@@ -364,12 +364,12 @@ def build_comments_call(
             "comments",
             "get_note_comments",
             "GET",
-            request.path,
-            _json_object(request.params),
+            xhs_request.path,
+            _json_object(xhs_request.params),
             pagination_input=_json_object(paging),
         )
     if platform == "douyin":
-        request = douyin.build_video_comments_request(
+        douyin_request = douyin.build_video_comments_request(
             aweme_id=external_content_id,
             cursor=_int_state(paging, "cursor", default=0),
         )
@@ -377,13 +377,13 @@ def build_comments_call(
             "douyin",
             "comments",
             "fetch_video_comments",
-            request.method,
-            request.path,
-            _json_object(request.params),
+            douyin_request.method,
+            douyin_request.path,
+            _json_object(douyin_request.params),
             pagination_input=_json_object(paging),
         )
     if platform == "weibo":
-        request = weibo.build_status_comments_request(
+        weibo_request = weibo.build_status_comments_request(
             status_id=external_content_id,
             max_id=_optional_str_state(paging, "max_id"),
             sort_mode="latest",
@@ -392,13 +392,13 @@ def build_comments_call(
             "weibo",
             "comments",
             "fetch_status_comments",
-            request.method,
-            request.path,
-            _json_object(request.params),
+            weibo_request.method,
+            weibo_request.path,
+            _json_object(weibo_request.params),
             pagination_input=_json_object(paging),
         )
     if platform == "bilibili":
-        request = bilibili.build_video_comments_request(
+        bilibili_request = bilibili.build_video_comments_request(
             av_id=external_content_id,
             sort_mode="latest",
             next_offset=_optional_int_state(paging, "next_offset"),
@@ -407,12 +407,12 @@ def build_comments_call(
             "bilibili",
             "comments",
             "fetch_video_comments",
-            request.method,
-            request.path,
-            _json_object(request.params),
+            bilibili_request.method,
+            bilibili_request.path,
+            _json_object(bilibili_request.params),
             pagination_input=_json_object(paging),
         )
-    request = kuaishou.build_video_comments_request(
+    kuaishou_request = kuaishou.build_video_comments_request(
         photo_id=external_content_id,
         pcursor=_str_state(paging, "pcursor", default=""),
     )
@@ -420,9 +420,9 @@ def build_comments_call(
         "kuaishou",
         "comments",
         "fetch_video_comment",
-        request.method,
-        request.path,
-        _json_object(request.params),
+        kuaishou_request.method,
+        kuaishou_request.path,
+        _json_object(kuaishou_request.params),
         pagination_input=_json_object(paging),
     )
 
