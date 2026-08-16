@@ -2,7 +2,7 @@
 
 本目录用于固定 TikHub 当前真实响应的**结构证据**，供 Operation、分页、Mapper、Canonical 和兼容性测试使用。它不是业务数据样本库，也不保存 API Key 或可用于重新识别真实账号/内容的原值。
 
-人类可读的五平台查询附录见 [`docs/blueprint/10-TikHub真实响应结构附录.md`](../../../../docs/blueprint/10-TikHub真实响应结构附录.md)。
+人类可读的五平台查询附录见 [`docs/blueprint/10-TikHub真实响应结构附录.md`](../../../../docs/blueprint/10-TikHub真实响应结构附录.md)。多 API family 的验证与备用判定见 [`docs/blueprint/11-TikHub多接口验证与备用策略.md`](../../../../docs/blueprint/11-TikHub多接口验证与备用策略.md)。
 
 ## 证据来源
 
@@ -17,6 +17,8 @@
 首轮对应 TikHub 业务 endpoint 共 21 个，均先通过官方 `get_endpoint_info` 核验 endpoint 与精确基础单价；真实业务请求全部受显式请求数/费用上限约束，不存在隐藏网络重试。
 
 2026-08-16 对快手评论链额外执行同样本 Web/App A/B：同一个 Search 命中的真实作品、同一个具有 `displaySubCommentCount/subCommentCount` 正向回复证据的根评论分别请求 Web/App 一级和二级评论。两套二级接口均返回 HTTP 200 且 `data.subComments[]` 非空，因此早先一次快手 Web 空页只说明当时样本没有取得回复，不能解释为 TikHub 不支持快手二级评论。
+
+同次 A/B 后用户批准把快手一级、二级正式主 Operation 切换到 App；Web 结构证据继续保留为 `verified_backup`，不形成运行时自动 fallback。App 一级/二级 endpoint-info 单价均已进入正式版本化 Pricing。
 
 ## 脱敏规则
 
@@ -40,9 +42,9 @@ Fixture 只证明其保留的字段与层级真实存在，不代表 Provider �
 | 抖音 | 非空 | 非空 | 非空 | 非空 |
 | 微博 | 非空 | 非空 | 非空 | 非空 |
 | B站 | 非空 | 非空 | 非空 | 非空 |
-| 快手 | 非空 | 非空 | 非空 | **Web 与 App 同样本均非空** |
+| 快手 | 非空 | 非空 | **Web 与 App 同样本均非空** | **Web 与 App 同样本均非空** |
 
-快手仓库 Fixture 当前保存首版正式 Web 主链的非空二级评论结构；App A/B 证据用于 Operation 选型评估，在正式切换主 Operation 前不把 App 响应伪装成当前生产主链 Fixture。
+快手现有 `comments_page1.sanitized.json` / `sub_comments_page1.sanitized.json` 的来源事实仍按生成它们时的 Web 响应保留，不能因为生产主链后来切到 App 就篡改 Fixture provenance。生产主链现在使用 App；Web Fixture 继续证明备用 family 的兼容结构。App 同样本 A/B 证据证明主链可用，但若未来需要把新的 App 原始结构提交成独立 Fixture，仍必须按真实来源重新脱敏并明确 provenance，不能复制 Web Fixture 冒充 App。
 
 ## 统一数据结构结论
 
@@ -80,5 +82,7 @@ Provider endpoint/version 或响应字段发生变化时：
 4. 先观察 Operation/Mapper 测试因真实变化失败；
 5. 再修改生产 Operation/Mapper/Capability；
 6. 通过 Canonical、Secret Scan 与相关 Stage 回归后才能声明兼容。
+
+同一平台出现新的 App/Web/V1/V2/V3 候选时，还必须按 Blueprint 11 记录同关键词/同内容的结果数量、稳定 ID 重合、分页/排序语义与 endpoint-level 价格；未真实 A/B 的候选保持 `candidate_pending_probe`。
 
 不得根据 TikHub 文档示例、旧聊天或人工猜测直接制造“真实 Fixture”。
