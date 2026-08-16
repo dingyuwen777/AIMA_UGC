@@ -28,7 +28,7 @@ from aima_ugc.adapters.providers.tikhub.operations.kuaishou import (
 )
 from aima_ugc.adapters.providers.tikhub.pricing import load_tikhub_pricing
 
-from scripts.dev.probe_tikhub_stage7_search import _nonempty_list_paths, sanitize_json
+from probe_tikhub_stage7_search import _nonempty_list_paths, sanitize_json
 
 BASE_URL = "https://api.tikhub.io"
 KEYWORD = "爱玛"
@@ -296,8 +296,14 @@ def main() -> None:
             app_status, app_body = _request_json(
                 client, path=app_request.path, params=app_request.params
             )
-            _write_json(output / f"candidate_{index}" / "web_comments.sanitized.json", sanitize_json(web_body))
-            _write_json(output / f"candidate_{index}" / "app_comments.sanitized.json", sanitize_json(app_body))
+            _write_json(
+                output / f"candidate_{index}" / "web_comments.sanitized.json",
+                sanitize_json(web_body),
+            )
+            _write_json(
+                output / f"candidate_{index}" / "app_comments.sanitized.json",
+                sanitize_json(app_body),
+            )
 
             roots = _root_candidates(web_body) + _root_candidates(app_body)
             best_by_id: dict[str, RootCandidate] = {}
