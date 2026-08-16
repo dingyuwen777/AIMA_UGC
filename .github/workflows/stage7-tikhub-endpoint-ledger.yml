@@ -1,4 +1,6 @@
-# ledger-revision: 3
+# ledger-revision: 4
+# 2026-08-16：上一轮 Douyin Search V2 曾瞬时 HTTP 400；同 endpoint 随后四组参数诊断 4/4 HTTP 200，
+# 因此不修改生产请求语义，只重跑完整五平台主链并继续严格去标识化门禁。
 name: Stage 7 TikHub Endpoint Ledger
 
 on:
