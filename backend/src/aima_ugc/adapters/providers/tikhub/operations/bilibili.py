@@ -1,4 +1,4 @@
-"""TikHub B站 App Operation 与有证据的分页状态。"""
+"""TikHub B站 App 主 Operation 与 Web A/B 候选。"""
 
 from __future__ import annotations
 
@@ -9,12 +9,19 @@ _SEARCH_PATH = "/api/v1/bilibili/app/fetch_search_by_type"
 _DETAIL_PATH = "/api/v1/bilibili/app/fetch_one_video"
 _COMMENTS_PATH = "/api/v1/bilibili/app/fetch_video_comments"
 _REPLY_PATH = "/api/v1/bilibili/app/fetch_reply_detail"
+_WEB_SEARCH_CANDIDATE_PATH = "/api/v1/bilibili/web/fetch_general_search"
+_WEB_COMMENTS_CANDIDATE_PATH = "/api/v1/bilibili/web/fetch_video_comments"
+_WEB_REPLY_CANDIDATE_PATH = "/api/v1/bilibili/web/fetch_comment_reply"
 
 _SEARCH_ORDERS = {
     "general": 0,
     "latest": 1,
     "play_count": 2,
     "danmaku_count": 3,
+}
+_WEB_SEARCH_ORDERS = {
+    "general": "totalrank",
+    "latest": "pubdate",
 }
 _COMMENT_SORT_MODES = {
     "latest": 2,
@@ -107,6 +114,39 @@ def build_search_request(
     return BilibiliRequest(method="GET", path=_SEARCH_PATH, params=params)
 
 
+def build_web_search_candidate_request(
+    *,
+    keyword: str,
+    page: int = 1,
+    page_size: int = 20,
+    sort_mode: str = "general",
+) -> BilibiliRequest:
+    """构造 Web 搜索 A/B 候选；只支持已明确对应的综合/最新排序。"""
+    normalized_keyword = keyword.strip()
+    if not normalized_keyword:
+        raise ValueError("keyword 不能为空")
+    if page < 1:
+        raise ValueError("page 必须从 1 开始")
+    if page_size < 1:
+        raise ValueError("page_size 必须大于 0")
+    try:
+        order = _WEB_SEARCH_ORDERS[sort_mode]
+    except KeyError as exc:
+        raise ValueError(
+            f"sort_mode 不支持: {sort_mode}; 可选: {', '.join(_WEB_SEARCH_ORDERS)}"
+        ) from exc
+    return BilibiliRequest(
+        method="GET",
+        path=_WEB_SEARCH_CANDIDATE_PATH,
+        params={
+            "keyword": normalized_keyword,
+            "order": order,
+            "page": page,
+            "page_size": page_size,
+        },
+    )
+
+
 def build_video_detail_request(
     *,
     av_id: str | None = None,
@@ -135,6 +175,17 @@ def build_video_comments_request(
     return BilibiliRequest(method="GET", path=_COMMENTS_PATH, params=params)
 
 
+def build_web_video_comments_candidate_request(*, bv_id: str, page: int = 1) -> BilibiliRequest:
+    """构造 Web 一级评论 A/B 候选；不会替代 App 主链。"""
+    if page < 1:
+        raise ValueError("page 必须从 1 开始")
+    return BilibiliRequest(
+        method="GET",
+        path=_WEB_COMMENTS_CANDIDATE_PATH,
+        params={"bv_id": _required_id(bv_id, "bv_id"), "pn": page},
+    )
+
+
 def build_reply_detail_request(
     *,
     root: str,
@@ -150,6 +201,21 @@ def build_reply_detail_request(
     if next_offset is not None:
         params["next_offset"] = _non_negative_int(next_offset, "next_offset")
     return BilibiliRequest(method="GET", path=_REPLY_PATH, params=params)
+
+
+def build_web_reply_candidate_request(*, bv_id: str, root: str, page: int = 1) -> BilibiliRequest:
+    """构造 Web 二级回复 A/B 候选；不会替代 App 主链。"""
+    if page < 1:
+        raise ValueError("page 必须从 1 开始")
+    return BilibiliRequest(
+        method="GET",
+        path=_WEB_REPLY_CANDIDATE_PATH,
+        params={
+            "bv_id": _required_id(bv_id, "bv_id"),
+            "pn": page,
+            "rpid": _required_id(root, "root"),
+        },
+    )
 
 
 def extract_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
@@ -280,6 +346,9 @@ __all__ = [
     "build_search_request",
     "build_video_comments_request",
     "build_video_detail_request",
+    "build_web_reply_candidate_request",
+    "build_web_search_candidate_request",
+    "build_web_video_comments_candidate_request",
     "extract_comment_items",
     "extract_detail_item",
     "extract_reply_detail",
