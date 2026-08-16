@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 from aima_ugc.adapters.providers.tikhub.operations.kuaishou import (
     KuaishouCursorPagination,
+    build_app_video_comments_request,
+    build_app_video_sub_comments_request,
     build_search_request,
     build_video_comments_request,
     build_video_detail_request,
@@ -52,6 +54,53 @@ def test_web_sub_comments_use_root_comment_id_and_pcursor() -> None:
         "root_comment_id": "comment-root",
         "pcursor": "",
     }
+
+
+def test_app_comments_use_official_photo_id_and_pcursor_contract() -> None:
+    first = build_app_video_comments_request(photo_id="photo-1")
+    assert first.method == "GET"
+    assert first.path == "/api/v1/kuaishou/app/fetch_video_comment"
+    assert first.params == {"photo_id": "photo-1", "pcursor": ""}
+
+    next_page = build_app_video_comments_request(photo_id="photo-1", pcursor="cursor-2")
+    assert next_page.params == {"photo_id": "photo-1", "pcursor": "cursor-2"}
+
+
+def test_app_sub_comments_use_official_root_cursor_and_count_contract() -> None:
+    first = build_app_video_sub_comments_request(
+        photo_id="photo-1",
+        root_comment_id="comment-root",
+    )
+    assert first.method == "GET"
+    assert first.path == "/api/v1/kuaishou/app/fetch_video_sub_comments"
+    assert first.params == {
+        "photo_id": "photo-1",
+        "root_comment_id": "comment-root",
+        "pcursor": "",
+        "count": 8,
+    }
+
+    custom = build_app_video_sub_comments_request(
+        photo_id="photo-1",
+        root_comment_id="comment-root",
+        pcursor="cursor-2",
+        count=20,
+    )
+    assert custom.params["pcursor"] == "cursor-2"
+    assert custom.params["count"] == 20
+
+    with pytest.raises(ValueError, match="count"):
+        build_app_video_sub_comments_request(
+            photo_id="photo-1",
+            root_comment_id="comment-root",
+            count=0,
+        )
+    with pytest.raises(ValueError, match="count"):
+        build_app_video_sub_comments_request(
+            photo_id="photo-1",
+            root_comment_id="comment-root",
+            count=21,
+        )
 
 
 def test_cursor_state_does_not_guess_response_json_path_or_provider_sentinels() -> None:
