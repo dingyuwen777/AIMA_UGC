@@ -19,6 +19,12 @@ from aima_ugc.adapters.providers.tikhub.mappers.douyin import (
 from aima_ugc.adapters.providers.tikhub.mappers.douyin import (
     map_comment as map_douyin_comment,
 )
+from aima_ugc.adapters.providers.tikhub.mappers.kuaishou import (
+    KuaishouMappingContext,
+)
+from aima_ugc.adapters.providers.tikhub.mappers.kuaishou import (
+    map_comment as map_kuaishou_comment,
+)
 from aima_ugc.adapters.providers.tikhub.mappers.weibo import (
     WeiboMappingContext,
 )
@@ -156,11 +162,38 @@ def test_bilibili_real_root_and_reply_map_numeric_ids_to_string_tree() -> None:
     assert reply_mapped.parent_comment_id == "bili-comment-root-1"
 
 
-def test_kuaishou_real_empty_sub_comments_are_not_invented() -> None:
+def test_kuaishou_real_sub_comment_maps_nonempty_web_reply_without_guessing_parent() -> None:
     body = _fixture("kuaishou", "sub_comments_page1.sanitized.json")
-    assert kuaishou.extract_sub_comment_items(body) == ()
+    replies = kuaishou.extract_sub_comment_items(body)
+    assert len(replies) == 2
+
+    mapped = map_kuaishou_comment(
+        replies[0],
+        KuaishouMappingContext(
+            provider_request_id="request-reply-1",
+            provider_attempt_id="attempt-reply-1",
+            raw_artifact_id=_RAW_ID,
+            operation="fetch_one_video_sub_comment",
+            source_type="comment",
+            source_value="kuaishou-comment-root-real",
+            observed_at=_OBSERVED_AT,
+            external_content_id="100001",
+            root_comment_id="kuaishou-comment-root-real",
+        ),
+        item_locator="data.subComments[0]",
+        is_root=False,
+    )
+
+    assert mapped.external_content_id == "100001"
+    assert mapped.external_comment_id == "100002"
+    assert mapped.root_comment_id == "kuaishou-comment-root-real"
+    assert mapped.parent_comment_id is None
+    assert mapped.metrics.like_count == 15
+    assert mapped.author is not None
+    assert mapped.author.external_account_id == "100003"
+
     pagination = kuaishou.KuaishouCursorPagination.from_response(
         previous_cursor="cursor-before", body=body, item_key="subComments"
     )
-    assert pagination.should_continue is False
-    assert pagination.stop_reason == "empty_page"
+    assert pagination.should_continue is True
+    assert pagination.next_cursor == "1018975453518"
