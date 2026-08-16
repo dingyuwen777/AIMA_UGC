@@ -26,29 +26,7 @@ jobs:
         run: |
           set -euo pipefail
           git pull --ff-only origin feature/stage7-completion
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("scripts/dev/probe_tikhub_endpoint_ledger.py")
-          text = path.read_text(encoding="utf-8")
-          old = '''    if _is_identifier_key(key):
-        return pseudonyms.identifier(value)
-    if isinstance(value, str):
-'''
-          new = '''    if _is_identifier_key(key):
-        return pseudonyms.identifier(value)
-    if (
-        isinstance(value, (int, float))
-        and not isinstance(value, bool)
-        and abs(value) >= 10_000_000_000
-    ):
-        return pseudonyms.identifier(value)
-    if isinstance(value, str):
-'''
-          if text.count(old) != 1:
-              raise SystemExit("sanitize_response patch anchor missing or ambiguous")
-          path.write_text(text.replace(old, new), encoding="utf-8")
-          PY
+          python -c 'from pathlib import Path; p=Path("scripts/dev/probe_tikhub_endpoint_ledger.py"); t=p.read_text(encoding="utf-8"); old="    if _is_identifier_key(key):\n        return pseudonyms.identifier(value)\n    if isinstance(value, str):\n"; new="    if _is_identifier_key(key):\n        return pseudonyms.identifier(value)\n    if (\n        isinstance(value, (int, float))\n        and not isinstance(value, bool)\n        and abs(value) >= 10_000_000_000\n    ):\n        return pseudonyms.identifier(value)\n    if isinstance(value, str):\n"; assert t.count(old) == 1, "sanitize_response patch anchor missing or ambiguous"; p.write_text(t.replace(old, new), encoding="utf-8")'
           UV_VERSION="$(tr -d '\r\n' < .uv-version)"
           python -m pip install "uv==${UV_VERSION}"
           uv lock --check
