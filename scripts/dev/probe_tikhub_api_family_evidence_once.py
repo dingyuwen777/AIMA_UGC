@@ -637,9 +637,15 @@ def run_probe() -> None:
                         "shape_comparison": base._shape_summary(reply_primary_body, reply_candidate_body),
                         "evidence_files": {
                             "primary_request": f"{reply_case_name}/primary.request.sanitized.json",
-                            "primary_response": f"{reply_case_name}/primary.response.sanitized.json",
-                            "candidate_request": f"{reply_case_name}/candidate.request.sanitized.json",
-                            "candidate_response": f"{reply_case_name}/candidate.response.sanitized.json",
+                            "primary_response": (
+                                f"{reply_case_name}/primary.response.sanitized.json"
+                            ),
+                            "candidate_request": (
+                                f"{reply_case_name}/candidate.request.sanitized.json"
+                            ),
+                            "candidate_response": (
+                                f"{reply_case_name}/candidate.response.sanitized.json"
+                            ),
                         },
                     }
                 )
