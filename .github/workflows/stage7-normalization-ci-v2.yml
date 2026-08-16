@@ -1,4 +1,4 @@
-# normalization-revision: 6
+# normalization-revision: 7
 name: Stage 7 TikHub Normalization CI V2
 
 on:
@@ -79,25 +79,33 @@ jobs:
             backend/src/aima_ugc/adapters/providers/tikhub \
             tests/unit/collection/test_*tikhub*.py
 
-      - name: Mypy API family compare
+      - name: Mypy adapters
         shell: bash
-        run: uv run mypy backend/src/aima_ugc/adapters/providers/tikhub/api_family_compare.py
+        run: uv run mypy backend/src/aima_ugc/adapters
 
-      - name: Mypy Douyin operation
+      - name: Mypy modules
         shell: bash
-        run: uv run mypy backend/src/aima_ugc/adapters/providers/tikhub/operations/douyin.py
+        run: uv run mypy backend/src/aima_ugc/modules
 
-      - name: Mypy Weibo operation
+      - name: Mypy bootstrap
         shell: bash
-        run: uv run mypy backend/src/aima_ugc/adapters/providers/tikhub/operations/weibo.py
+        run: uv run mypy backend/src/aima_ugc/bootstrap
 
-      - name: Mypy Bilibili operation
+      - name: Mypy entrypoints
         shell: bash
-        run: uv run mypy backend/src/aima_ugc/adapters/providers/tikhub/operations/bilibili.py
+        run: uv run mypy backend/src/aima_ugc/entrypoints
 
-      - name: Mypy Kuaishou operation
+      - name: Mypy platform
         shell: bash
-        run: uv run mypy backend/src/aima_ugc/adapters/providers/tikhub/operations/kuaishou.py
+        run: uv run mypy backend/src/aima_ugc/platform
+
+      - name: Mypy contracts
+        shell: bash
+        run: uv run mypy backend/src/aima_ugc/contracts
+
+      - name: Mypy database schema
+        shell: bash
+        run: uv run mypy backend/src/aima_ugc/database_schema.py
 
       - name: Mypy full backend
         shell: bash
