@@ -7,6 +7,8 @@ from typing import Any, Literal
 
 _SEARCH_PATH = "/api/v1/kuaishou/app/search_video_v2"
 _DETAIL_PATH = "/api/v1/kuaishou/app/fetch_one_video"
+_APP_COMMENTS_PATH = "/api/v1/kuaishou/app/fetch_video_comment"
+_APP_SUB_COMMENTS_PATH = "/api/v1/kuaishou/app/fetch_video_sub_comments"
 _COMMENTS_PATH = "/api/v1/kuaishou/web/fetch_one_video_comment"
 _SUB_COMMENTS_PATH = "/api/v1/kuaishou/web/fetch_one_video_sub_comment"
 
@@ -116,6 +118,37 @@ def build_video_detail_request(*, photo_id: str) -> KuaishouRequest:
     )
 
 
+def build_app_video_comments_request(*, photo_id: str, pcursor: str = "") -> KuaishouRequest:
+    """构造当前官方 Kuaishou App 一级评论候选请求。"""
+    return KuaishouRequest(
+        method="GET",
+        path=_APP_COMMENTS_PATH,
+        params={"photo_id": _required_text(photo_id, "photo_id"), "pcursor": pcursor},
+    )
+
+
+def build_app_video_sub_comments_request(
+    *,
+    photo_id: str,
+    root_comment_id: str,
+    pcursor: str = "",
+    count: int = 8,
+) -> KuaishouRequest:
+    """构造当前官方 Kuaishou App 二级回复候选请求。"""
+    if count < 1 or count > 20:
+        raise ValueError("count 必须在 1..20 之间")
+    return KuaishouRequest(
+        method="GET",
+        path=_APP_SUB_COMMENTS_PATH,
+        params={
+            "photo_id": _required_text(photo_id, "photo_id"),
+            "root_comment_id": _required_text(root_comment_id, "root_comment_id"),
+            "pcursor": pcursor,
+            "count": count,
+        },
+    )
+
+
 def build_video_comments_request(*, photo_id: str, pcursor: str = "") -> KuaishouRequest:
     return KuaishouRequest(
         method="GET",
@@ -196,6 +229,8 @@ __all__ = [
     "KuaishouCursorPagination",
     "KuaishouRequest",
     "KuaishouSearchPagination",
+    "build_app_video_comments_request",
+    "build_app_video_sub_comments_request",
     "build_search_request",
     "build_video_comments_request",
     "build_video_detail_request",
