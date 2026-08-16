@@ -1,4 +1,4 @@
-# normalization-revision: 3
+# normalization-revision: 4
 name: Stage 7 TikHub Normalization CI V2
 
 on:
@@ -37,6 +37,9 @@ jobs:
         run: |
           set -euo pipefail
           uv run ruff format \
+            backend/src/aima_ugc/adapters/providers/tikhub \
+            tests/unit/collection/test_*tikhub*.py
+          uv run ruff check --fix \
             backend/src/aima_ugc/adapters/providers/tikhub \
             tests/unit/collection/test_*tikhub*.py
 
