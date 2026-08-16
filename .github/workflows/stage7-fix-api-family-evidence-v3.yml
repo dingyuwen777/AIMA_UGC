@@ -1,0 +1,105 @@
+name: Stage 7 Fix API Family Evidence V3
+
+on:
+  push:
+    branches:
+      - feature/stage7-completion
+    paths:
+      - ".github/workflows/stage7-fix-api-family-evidence-v3.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/stage7-completion
+          fetch-depth: 0
+
+      - name: Patch probe by function boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          base_path = Path("scripts/dev/probe_tikhub_api_families.py")
+          text = base_path.read_text(encoding="utf-8")
+          start = text.index("def _bilibili_ids(value: object) -> list[str]:\n")
+          end = text.index("\ndef _kuaishou_ids", start)
+          replacement = '''def _bilibili_ids(value: object) -> list[str]:
+              ids: list[str] = []
+              if isinstance(value, dict):
+                  av = value.get("av")
+                  if isinstance(av, dict):
+                      identifier = av.get("aid") or value.get("param") or av.get("bvid")
+                      if identifier is not None:
+                          ids.append(str(identifier))
+                          return ids
+                  identifier = value.get("aid") or value.get("bvid")
+                  if identifier is not None and (
+                      "title" in value or "author" in value or "play" in value or "arcurl" in value
+                  ):
+                      ids.append(str(identifier))
+                      return ids
+                  for child in value.values():
+                      ids.extend(_bilibili_ids(child))
+              elif isinstance(value, list):
+                  for child in value:
+                      ids.extend(_bilibili_ids(child))
+              return ids
+          '''.replace("          ", "")
+          base_path.write_text(text[:start] + replacement + text[end:], encoding="utf-8")
+
+          evidence_path = Path("scripts/dev/probe_tikhub_api_family_evidence_once.py")
+          text = evidence_path.read_text(encoding="utf-8")
+          if '    "param",' not in text:
+              marker = '    "photo_id",\n    "request_id",'
+              if marker not in text:
+                  raise SystemExit("ID key marker not found")
+              text = text.replace(
+                  marker,
+                  '    "photo_id",\n    "param",\n    "request_id",\n    "seid",\n    "trackid",',
+                  1,
+              )
+          old_url = 'value.startswith(("http://", "https://"))'
+          if old_url in text:
+              text = text.replace(
+                  old_url,
+                  'value.startswith(("http://", "https://", "//"))',
+                  1,
+              )
+
+          start_marker = (
+              '        bilibili_ids = base._extract_ids('
+              '"bilibili", search_primary_bodies["bilibili"]\n'
+          )
+          start = text.find(start_marker)
+          if start < 0:
+              start = text.find('        bilibili_ids = base._extract_ids("bilibili",')
+          end_marker = "        estimated_business_cost = sum(\n"
+          end = text.find(end_marker, start)
+          if start < 0 or end < 0:
+              raise SystemExit(f"Bilibili block boundaries not found: start={start}, end={end}")
+          evidence_path.write_text(text[:start] + text[end:], encoding="utf-8")
+          PY
+          git diff --check
+
+      - name: Commit focused fix and remove helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin feature/stage7-completion
+          test "$(git rev-parse origin/feature/stage7-completion)" = "${GITHUB_SHA}"
+          git rm .github/workflows/stage7-fix-api-family-evidence-v3.yml
+          git add \
+            scripts/dev/probe_tikhub_api_families.py \
+            scripts/dev/probe_tikhub_api_family_evidence_once.py
+          git diff --cached --check
+          git config user.name "AIMA Stage 7 Runner"
+          git config user.email "actions@users.noreply.github.com"
+          git commit -m "修正 API family Evidence B站 ID 与脱敏"
+          git push origin HEAD:feature/stage7-completion
