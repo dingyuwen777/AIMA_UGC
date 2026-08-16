@@ -26,7 +26,7 @@ def test_douyin_video_search_v1_candidate_reuses_primary_business_filters() -> N
         keyword="爱玛",
         cursor=0,
         sort_mode="latest",
-        publish_time="week",
+        published_within="7d",
         duration="all",
         content_type="video",
     )
@@ -34,7 +34,7 @@ def test_douyin_video_search_v1_candidate_reuses_primary_business_filters() -> N
         keyword="爱玛",
         cursor=0,
         sort_mode="latest",
-        publish_time="week",
+        published_within="7d",
         duration="all",
         content_type="video",
     )
