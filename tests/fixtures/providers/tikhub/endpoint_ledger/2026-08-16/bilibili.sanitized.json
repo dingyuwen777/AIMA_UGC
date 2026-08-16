@@ -1,0 +1,1896 @@
+{
+  "platform": "bilibili",
+  "records": [
+    {
+      "endpoint": "/api/v1/bilibili/app/fetch_search_by_type",
+      "http_status": 200,
+      "label": "search",
+      "method": "GET",
+      "planned_cost_usd": "0.001000",
+      "request": {
+        "authorization": "Bearer <redacted-secret>",
+        "body": null,
+        "method": "GET",
+        "params": {
+          "keyword": "爱玛",
+          "order": 0,
+          "search_type": "video"
+        },
+        "path": "/api/v1/bilibili/app/fetch_search_by_type"
+      },
+      "request_no": 15,
+      "response": {
+        "cache_message": "<redacted-string>",
+        "cache_message_zh": "<redacted-string>",
+        "cache_url": "<redacted-string>",
+        "code": 200,
+        "data": {
+          "code": 0,
+          "data": {
+            "annotation": {
+              "qv_id": "id-0013"
+            },
+            "exp_str": "<redacted-string>",
+            "items": [
+              {
+                "av": {
+                  "author": "<redacted-string>",
+                  "cover": "<redacted-string>",
+                  "danmaku": 1,
+                  "duration": "<redacted-string>",
+                  "face": "<redacted-string>",
+                  "mid": "id-0005",
+                  "play": 2807,
+                  "ptime": "<redacted-time>",
+                  "show_card_desc_2": "<redacted-string>",
+                  "title": "<redacted-string>",
+                  "view_content": "<redacted-string>"
+                },
+                "goto": "av",
+                "param": "id-0004",
+                "uri": "id-0003",
+                "user_act": "id-0006"
+              },
+              {
+                "av": {
+                  "author": "<redacted-string>",
+                  "cover": "<redacted-string>",
+                  "danmaku": 2454,
+                  "duration": "<redacted-string>",
+                  "face": "<redacted-string>",
+                  "mid": "id-0008",
+                  "play": 197113,
+                  "ptime": "<redacted-time>",
+                  "show_card_desc_2": "<redacted-string>",
+                  "title": "<redacted-string>",
+                  "view_content": "<redacted-string>"
+                },
+                "goto": "av",
+                "param": "id-0007",
+                "uri": "<redacted-string>",
+                "user_act": "<redacted-string>"
+              },
+              {
+                "av": {
+                  "author": "<redacted-string>",
+                  "cover": "<redacted-string>",
+                  "danmaku": 3881,
+                  "duration": "<redacted-string>",
+                  "face": "<redacted-string>",
+                  "mid": "id-0011",
+                  "play": 132643,
+                  "ptime": "<redacted-time>",
+                  "show_card_desc_2": "<redacted-string>",
+                  "title": "<redacted-string>",
+                  "view_content": "<redacted-string>"
+                },
+                "goto": "av",
+                "param": "id-0010",
+                "uri": "id-0009",
+                "user_act": "id-0012"
+              }
+            ],
+            "keyword": "爱玛",
+            "page": "<redacted-string>",
+            "pages": 50,
+            "pagination": {
+              "next": "<redacted-string>"
+            },
+            "real_exposure_ratio": 0.8,
+            "result_is_recommend": 1000,
+            "trackid": "id-0002"
+          },
+          "message": "<redacted-string>"
+        },
+        "docs": "<redacted-string>",
+        "message": "<redacted-string>",
+        "message_zh": "<redacted-string>",
+        "params": {
+          "keyword": "爱玛",
+          "order": "<redacted-string>",
+          "search_type": "video"
+        },
+        "request_id": "id-0001",
+        "router": "/api/v1/bilibili/app/fetch_search_by_type",
+        "support": "<redacted-string>",
+        "time": "<redacted-string>",
+        "time_stamp": 1720000000,
+        "time_zone": "<redacted-string>"
+      }
+    },
+    {
+      "endpoint": "/api/v1/bilibili/app/fetch_video_comments",
+      "http_status": 200,
+      "label": "comments_candidate_15",
+      "method": "GET",
+      "planned_cost_usd": "0.001000",
+      "request": {
+        "authorization": "Bearer <redacted-secret>",
+        "body": null,
+        "method": "GET",
+        "params": {
+          "av_id": "id-0004",
+          "mode": 3
+        },
+        "path": "/api/v1/bilibili/app/fetch_video_comments"
+      },
+      "request_no": 16,
+      "response": {
+        "cache_message": "<redacted-string>",
+        "cache_message_zh": "<redacted-string>",
+        "cache_url": "<redacted-string>",
+        "code": 200,
+        "data": {
+          "code": 0,
+          "data": {
+            "assist": 0,
+            "blacklist": 0,
+            "callbacks": null,
+            "config": {
+              "read_only": false,
+              "show_up_flag": true,
+              "showtopic": 1
+            },
+            "control": {
+              "answer_guide_android_url": "<redacted-string>",
+              "answer_guide_icon_url": "<redacted-string>",
+              "answer_guide_ios_url": "<redacted-string>",
+              "answer_guide_text": "<redacted-string>",
+              "bg_text": "<redacted-string>",
+              "child_input_text": "<redacted-string>",
+              "disable_jump_emote": false,
+              "empty_page": null,
+              "enable_charged": false,
+              "enable_cm_biz_helper": false,
+              "giveup_input_text": "<redacted-string>",
+              "input_disable": false,
+              "preload_resources": null,
+              "root_input_text": "<redacted-string>",
+              "screenshot_icon_state": 1,
+              "show_text": "<redacted-string>",
+              "show_type": 1,
+              "upload_picture_icon_state": 1,
+              "web_selection": false
+            },
+            "cursor": {
+              "all_count": 8,
+              "is_begin": true,
+              "is_end": false,
+              "mode": 3,
+              "mode_text": "<redacted-string>",
+              "name": "<redacted-string>",
+              "next": 2,
+              "pagination_reply": {
+                "next_offset": "<redacted-string>"
+              },
+              "prev": 0,
+              "session_id": "id-0015",
+              "support_mode": [
+                2,
+                3
+              ]
+            },
+            "effects": {
+              "preloading": "<redacted-string>"
+            },
+            "note": 1,
+            "replies": [
+              {
+                "action": 0,
+                "assist": 0,
+                "attr": 0,
+                "content": {
+                  "emote": {
+                    "[doge]": {
+                      "attr": 0,
+                      "id": 100005,
+                      "jump_title": "<redacted-string>",
+                      "meta": {
+                        "size": 1,
+                        "suggest": [
+                          "<redacted-string>"
+                        ]
+                      },
+                      "mtime": 1668688325,
+                      "package_id": 100006,
+                      "state": 0,
+                      "text": "<redacted-string>",
+                      "type": 1,
+                      "url": "<redacted-string>"
+                    }
+                  },
+                  "jump_url": {},
+                  "max_line": 6,
+                  "members": [],
+                  "message": "<redacted-string>"
+                },
+                "count": 0,
+                "ctime": 1720000000,
+                "dialog": 100004,
+                "dialog_str": "id-0018",
+                "dynamic_id_str": "id-0018",
+                "fansgrade": 0,
+                "folder": {
+                  "has_folded": false,
+                  "is_folded": false,
+                  "rule": "<redacted-string>"
+                },
+                "invisible": false,
+                "like": 3,
+                "member": {
+                  "avatar": "<redacted-string>",
+                  "avatar_item": {
+                    "container_size": {
+                      "height": 1.8,
+                      "width": 1.8
+                    },
+                    "fallback_layers": {
+                      "is_critical_group": true,
+                      "layers": [
+                        {
+                          "general_spec": {
+                            "pos_spec": {
+                              "axis_x": 0.9,
+                              "axis_y": 0.9,
+                              "coordinate_pos": 2
+                            },
+                            "render_spec": {
+                              "opacity": 1
+                            },
+                            "size_spec": {
+                              "height": 1,
+                              "width": 1
+                            }
+                          },
+                          "layer_config": {
+                            "is_critical": true,
+                            "layer_mask": {
+                              "general_spec": {
+                                "pos_spec": {
+                                  "axis_x": 0.9,
+                                  "axis_y": 0.9,
+                                  "coordinate_pos": 2
+                                },
+                                "render_spec": {
+                                  "opacity": 1
+                                },
+                                "size_spec": {
+                                  "height": 1,
+                                  "width": 1
+                                }
+                              },
+                              "mask_src": {
+                                "draw": {
+                                  "color_config": {
+                                    "day": {
+                                      "argb": "<redacted-string>"
+                                    }
+                                  },
+                                  "draw_type": 1,
+                                  "fill_mode": 1
+                                },
+                                "src_type": 3
+                              }
+                            },
+                            "tags": {
+                              "AVATAR_LAYER": {}
+                            }
+                          },
+                          "resource": {
+                            "res_image": {
+                              "image_src": {
+                                "placeholder": 6,
+                                "remote": {
+                                  "bfs_style": "<redacted-string>",
+                                  "url": "<redacted-string>"
+                                },
+                                "src_type": 1
+                              }
+                            },
+                            "res_type": 3
+                          },
+                          "visible": true
+                        }
+                      ]
+                    },
+                    "mid": "id-0016"
+                  },
+                  "contract_desc": "<redacted-string>",
+                  "face_nft_new": 0,
+                  "fans_detail": null,
+                  "handle": "<redacted-string>",
+                  "is_contractor": false,
+                  "is_senior_member": 0,
+                  "level_info": {
+                    "current_exp": 0,
+                    "current_level": 4,
+                    "current_min": 0,
+                    "next_exp": 0
+                  },
+                  "mid": "id-0016",
+                  "nameplate": {
+                    "condition": "<redacted-string>",
+                    "image": "<redacted-string>",
+                    "image_small": "<redacted-string>",
+                    "level": "<redacted-string>",
+                    "name": "<redacted-string>",
+                    "nid": 0
+                  },
+                  "nft_interaction": null,
+                  "official_verify": {
+                    "desc": "<redacted-string>",
+                    "type": -1
+                  },
+                  "pendant": {
+                    "expire": 0,
+                    "image": "<redacted-string>",
+                    "image_enhance": "<redacted-string>",
+                    "image_enhance_frame": "<redacted-string>",
+                    "n_pid": 0,
+                    "name": "<redacted-string>",
+                    "pid": 0
+                  },
+                  "rank": "<redacted-string>",
+                  "senior": {},
+                  "sex": "<redacted-string>",
+                  "sign": "<redacted-string>",
+                  "uname": "<redacted-string>",
+                  "user_sailing": null,
+                  "vip": {
+                    "accessStatus": 0,
+                    "avatar_subscript": 0,
+                    "dueRemark": "<redacted-string>",
+                    "label": {
+                      "bg_color": "<redacted-string>",
+                      "bg_style": 0,
+                      "border_color": "<redacted-string>",
+                      "img_label_uri_hans": "<redacted-string>",
+                      "img_label_uri_hans_static": "<redacted-string>",
+                      "img_label_uri_hant": "<redacted-string>",
+                      "img_label_uri_hant_static": "<redacted-string>",
+                      "img_label_uri_i18n": "<redacted-string>",
+                      "img_label_uri_i18n_static": "<redacted-string>",
+                      "label_goto": null,
+                      "label_id": 100004,
+                      "label_theme": "<redacted-string>",
+                      "label_type": 0,
+                      "path": "<redacted-string>",
+                      "text": "<redacted-string>",
+                      "text_color": "<redacted-string>",
+                      "use_img_label": true
+                    },
+                    "nickname_color": "<redacted-string>",
+                    "themeType": 0,
+                    "vipDueDate": 0,
+                    "vipStatus": 0,
+                    "vipStatusWarn": "<redacted-string>",
+                    "vipType": 0
+                  }
+                },
+                "mid": 100003,
+                "mid_str": "id-0016",
+                "note_cvid_str": "<redacted-string>",
+                "oid": 100002,
+                "oid_str": "id-0004",
+                "parent": 100004,
+                "parent_str": "id-0018",
+                "rcount": 0,
+                "replies": null,
+                "reply_control": {
+                  "max_line": 6,
+                  "support_share": true,
+                  "time_desc": "<redacted-string>",
+                  "translation_switch": 1
+                },
+                "root": 100004,
+                "root_str": "<redacted-string>",
+                "rpid": 100001,
+                "rpid_str": "id-0017",
+                "state": 0,
+                "track_info": "<redacted-string>",
+                "type": 1,
+                "up_action": {
+                  "like": false,
+                  "reply": false
+                }
+              },
+              {
+                "action": 0,
+                "assist": 0,
+                "attr": 0,
+                "content": {
+                  "emote": {
+                    "[星星眼]": {
+                      "attr": 0,
+                      "id": 100009,
+                      "jump_title": "<redacted-string>",
+                      "meta": {
+                        "size": 1,
+                        "suggest": [
+                          "<redacted-string>"
+                        ]
+                      },
+                      "mtime": 1668688325,
+                      "package_id": 100006,
+                      "state": 0,
+                      "text": "<redacted-string>",
+                      "type": 1,
+                      "url": "<redacted-string>"
+                    }
+                  },
+                  "jump_url": {},
+                  "max_line": 6,
+                  "members": [],
+                  "message": "<redacted-string>"
+                },
+                "count": 0,
+                "ctime": 1720000000,
+                "dialog": 100004,
+                "dialog_str": "id-0018",
+                "dynamic_id_str": "id-0018",
+                "fansgrade": 0,
+                "folder": {
+                  "has_folded": false,
+                  "is_folded": false,
+                  "rule": "<redacted-string>"
+                },
+                "invisible": false,
+                "like": 1,
+                "member": {
+                  "avatar": "<redacted-string>",
+                  "avatar_item": {
+                    "container_size": {
+                      "height": 1.8,
+                      "width": 1.8
+                    },
+                    "fallback_layers": {
+                      "is_critical_group": true,
+                      "layers": [
+                        {
+                          "general_spec": {
+                            "pos_spec": {
+                              "axis_x": 0.9,
+                              "axis_y": 0.9,
+                              "coordinate_pos": 2
+                            },
+                            "render_spec": {
+                              "opacity": 1
+                            },
+                            "size_spec": {
+                              "height": 1,
+                              "width": 1
+                            }
+                          },
+                          "layer_config": {
+                            "is_critical": true,
+                            "layer_mask": {
+                              "general_spec": {
+                                "pos_spec": {
+                                  "axis_x": 0.9,
+                                  "axis_y": 0.9,
+                                  "coordinate_pos": 2
+                                },
+                                "render_spec": {
+                                  "opacity": 1
+                                },
+                                "size_spec": {
+                                  "height": 1,
+                                  "width": 1
+                                }
+                              },
+                              "mask_src": {
+                                "draw": {
+                                  "color_config": {
+                                    "day": {
+                                      "argb": "<redacted-string>"
+                                    }
+                                  },
+                                  "draw_type": 1,
+                                  "fill_mode": 1
+                                },
+                                "src_type": 3
+                              }
+                            },
+                            "tags": {
+                              "AVATAR_LAYER": {}
+                            }
+                          },
+                          "resource": {
+                            "res_image": {
+                              "image_src": {
+                                "placeholder": 6,
+                                "remote": {
+                                  "bfs_style": "<redacted-string>",
+                                  "url": "<redacted-string>"
+                                },
+                                "src_type": 1
+                              }
+                            },
+                            "res_type": 3
+                          },
+                          "visible": true
+                        }
+                      ]
+                    },
+                    "mid": "id-0020"
+                  },
+                  "contract_desc": "<redacted-string>",
+                  "face_nft_new": 0,
+                  "fans_detail": null,
+                  "handle": "<redacted-string>",
+                  "is_contractor": false,
+                  "is_senior_member": 0,
+                  "level_info": {
+                    "current_exp": 0,
+                    "current_level": 5,
+                    "current_min": 0,
+                    "next_exp": 0
+                  },
+                  "mid": "id-0020",
+                  "nameplate": {
+                    "condition": "<redacted-string>",
+                    "image": "<redacted-string>",
+                    "image_small": "<redacted-string>",
+                    "level": "<redacted-string>",
+                    "name": "<redacted-string>",
+                    "nid": 0
+                  },
+                  "nft_interaction": null,
+                  "official_verify": {
+                    "desc": "<redacted-string>",
+                    "type": -1
+                  },
+                  "pendant": {
+                    "expire": 0,
+                    "image": "<redacted-string>",
+                    "image_enhance": "<redacted-string>",
+                    "image_enhance_frame": "<redacted-string>",
+                    "n_pid": 0,
+                    "name": "<redacted-string>",
+                    "pid": 0
+                  },
+                  "rank": "<redacted-string>",
+                  "senior": {},
+                  "sex": "<redacted-string>",
+                  "sign": "<redacted-string>",
+                  "uname": "<redacted-string>",
+                  "user_sailing": null,
+                  "vip": {
+                    "accessStatus": 0,
+                    "avatar_subscript": 0,
+                    "dueRemark": "<redacted-string>",
+                    "label": {
+                      "bg_color": "<redacted-string>",
+                      "bg_style": 0,
+                      "border_color": "<redacted-string>",
+                      "img_label_uri_hans": "<redacted-string>",
+                      "img_label_uri_hans_static": "<redacted-string>",
+                      "img_label_uri_hant": "<redacted-string>",
+                      "img_label_uri_hant_static": "<redacted-string>",
+                      "img_label_uri_i18n": "<redacted-string>",
+                      "img_label_uri_i18n_static": "<redacted-string>",
+                      "label_goto": null,
+                      "label_id": 100004,
+                      "label_theme": "<redacted-string>",
+                      "label_type": 0,
+                      "path": "<redacted-string>",
+                      "text": "<redacted-string>",
+                      "text_color": "<redacted-string>",
+                      "use_img_label": true
+                    },
+                    "nickname_color": "<redacted-string>",
+                    "themeType": 0,
+                    "vipDueDate": 0,
+                    "vipStatus": 0,
+                    "vipStatusWarn": "<redacted-string>",
+                    "vipType": 0
+                  }
+                },
+                "mid": 100008,
+                "mid_str": "<redacted-string>",
+                "note_cvid_str": "<redacted-string>",
+                "oid": 100002,
+                "oid_str": "id-0004",
+                "parent": 100004,
+                "parent_str": "id-0018",
+                "rcount": 0,
+                "replies": null,
+                "reply_control": {
+                  "max_line": 6,
+                  "support_share": true,
+                  "time_desc": "<redacted-string>",
+                  "translation_switch": 1
+                },
+                "root": 100004,
+                "root_str": "<redacted-string>",
+                "rpid": 100007,
+                "rpid_str": "id-0019",
+                "state": 0,
+                "track_info": "<redacted-string>",
+                "type": 1,
+                "up_action": {
+                  "like": false,
+                  "reply": false
+                }
+              },
+              {
+                "action": 0,
+                "assist": 0,
+                "attr": 0,
+                "content": {
+                  "emote": {
+                    "[doge]": {
+                      "attr": 0,
+                      "id": 100005,
+                      "jump_title": "<redacted-string>",
+                      "meta": {
+                        "size": 1,
+                        "suggest": [
+                          "<redacted-string>"
+                        ]
+                      },
+                      "mtime": 1668688325,
+                      "package_id": 100006,
+                      "state": 0,
+                      "text": "<redacted-string>",
+                      "type": 1,
+                      "url": "<redacted-string>"
+                    }
+                  },
+                  "jump_url": {},
+                  "max_line": 6,
+                  "members": [],
+                  "message": "<redacted-string>"
+                },
+                "count": 1,
+                "ctime": 1720000000,
+                "dialog": 100004,
+                "dialog_str": "id-0018",
+                "dynamic_id_str": "id-0018",
+                "fansgrade": 0,
+                "folder": {
+                  "has_folded": false,
+                  "is_folded": false,
+                  "rule": "<redacted-string>"
+                },
+                "invisible": false,
+                "like": 1,
+                "member": {
+                  "avatar": "<redacted-string>",
+                  "avatar_item": {
+                    "container_size": {
+                      "height": 1.8,
+                      "width": 1.8
+                    },
+                    "fallback_layers": {
+                      "is_critical_group": true,
+                      "layers": [
+                        {
+                          "general_spec": {
+                            "pos_spec": {
+                              "axis_x": 0.9,
+                              "axis_y": 0.9,
+                              "coordinate_pos": 2
+                            },
+                            "render_spec": {
+                              "opacity": 1
+                            },
+                            "size_spec": {
+                              "height": 1,
+                              "width": 1
+                            }
+                          },
+                          "layer_config": {
+                            "is_critical": true,
+                            "layer_mask": {
+                              "general_spec": {
+                                "pos_spec": {
+                                  "axis_x": 0.9,
+                                  "axis_y": 0.9,
+                                  "coordinate_pos": 2
+                                },
+                                "render_spec": {
+                                  "opacity": 1
+                                },
+                                "size_spec": {
+                                  "height": 1,
+                                  "width": 1
+                                }
+                              },
+                              "mask_src": {
+                                "draw": {
+                                  "color_config": {
+                                    "day": {
+                                      "argb": "<redacted-string>"
+                                    }
+                                  },
+                                  "draw_type": 1,
+                                  "fill_mode": 1
+                                },
+                                "src_type": 3
+                              }
+                            },
+                            "tags": {
+                              "AVATAR_LAYER": {}
+                            }
+                          },
+                          "resource": {
+                            "res_image": {
+                              "image_src": {
+                                "placeholder": 6,
+                                "remote": {
+                                  "bfs_style": "<redacted-string>",
+                                  "url": "<redacted-string>"
+                                },
+                                "src_type": 1
+                              }
+                            },
+                            "res_type": 3
+                          },
+                          "visible": true
+                        }
+                      ]
+                    },
+                    "mid": "id-0022"
+                  },
+                  "contract_desc": "<redacted-string>",
+                  "face_nft_new": 0,
+                  "fans_detail": null,
+                  "handle": "<redacted-string>",
+                  "is_contractor": false,
+                  "is_senior_member": 0,
+                  "level_info": {
+                    "current_exp": 0,
+                    "current_level": 3,
+                    "current_min": 0,
+                    "next_exp": 0
+                  },
+                  "mid": "id-0022",
+                  "nameplate": {
+                    "condition": "<redacted-string>",
+                    "image": "<redacted-string>",
+                    "image_small": "<redacted-string>",
+                    "level": "<redacted-string>",
+                    "name": "<redacted-string>",
+                    "nid": 0
+                  },
+                  "nft_interaction": null,
+                  "official_verify": {
+                    "desc": "<redacted-string>",
+                    "type": -1
+                  },
+                  "pendant": {
+                    "expire": 0,
+                    "image": "<redacted-string>",
+                    "image_enhance": "<redacted-string>",
+                    "image_enhance_frame": "<redacted-string>",
+                    "n_pid": 0,
+                    "name": "<redacted-string>",
+                    "pid": 0
+                  },
+                  "rank": "<redacted-string>",
+                  "senior": {},
+                  "sex": "<redacted-string>",
+                  "sign": "<redacted-string>",
+                  "uname": "<redacted-string>",
+                  "user_sailing": null,
+                  "vip": {
+                    "accessStatus": 0,
+                    "avatar_subscript": 0,
+                    "dueRemark": "<redacted-string>",
+                    "label": {
+                      "bg_color": "<redacted-string>",
+                      "bg_style": 0,
+                      "border_color": "<redacted-string>",
+                      "img_label_uri_hans": "<redacted-string>",
+                      "img_label_uri_hans_static": "<redacted-string>",
+                      "img_label_uri_hant": "<redacted-string>",
+                      "img_label_uri_hant_static": "<redacted-string>",
+                      "img_label_uri_i18n": "<redacted-string>",
+                      "img_label_uri_i18n_static": "<redacted-string>",
+                      "label_goto": null,
+                      "label_id": 100004,
+                      "label_theme": "<redacted-string>",
+                      "label_type": 0,
+                      "path": "<redacted-string>",
+                      "text": "<redacted-string>",
+                      "text_color": "<redacted-string>",
+                      "use_img_label": true
+                    },
+                    "nickname_color": "<redacted-string>",
+                    "themeType": 0,
+                    "vipDueDate": 100012,
+                    "vipStatus": 0,
+                    "vipStatusWarn": "<redacted-string>",
+                    "vipType": 1
+                  }
+                },
+                "mid": 100011,
+                "mid_str": "<redacted-string>",
+                "note_cvid_str": "<redacted-string>",
+                "oid": 100002,
+                "oid_str": "id-0004",
+                "parent": 100004,
+                "parent_str": "id-0018",
+                "rcount": 1,
+                "replies": [
+                  {
+                    "action": 0,
+                    "assist": 0,
+                    "attr": 0,
+                    "content": {
+                      "emote": {
+                        "[doge]": {
+                          "attr": 0,
+                          "id": 100005,
+                          "jump_title": "<redacted-string>",
+                          "meta": {
+                            "size": 1,
+                            "suggest": [
+                              "<redacted-string>"
+                            ]
+                          },
+                          "mtime": 1668688325,
+                          "package_id": 100006,
+                          "state": 0,
+                          "text": "<redacted-string>",
+                          "type": 1,
+                          "url": "<redacted-string>"
+                        }
+                      },
+                      "jump_url": {},
+                      "max_line": 2,
+                      "members": [],
+                      "message": "<redacted-string>"
+                    },
+                    "count": 0,
+                    "ctime": 1720000000,
+                    "dialog": 100013,
+                    "dialog_str": "id-0023",
+                    "dynamic_id_str": "id-0018",
+                    "fansgrade": 0,
+                    "folder": {
+                      "has_folded": false,
+                      "is_folded": false,
+                      "rule": "<redacted-string>"
+                    },
+                    "invisible": false,
+                    "like": 0,
+                    "member": {
+                      "avatar": "<redacted-string>",
+                      "avatar_item": {
+                        "container_size": {
+                          "height": 1.8,
+                          "width": 1.8
+                        },
+                        "fallback_layers": {
+                          "is_critical_group": true,
+                          "layers": [
+                            {
+                              "general_spec": {
+                                "pos_spec": {
+                                  "axis_x": 0.9,
+                                  "axis_y": 0.9,
+                                  "coordinate_pos": 2
+                                },
+                                "render_spec": {
+                                  "opacity": 1
+                                },
+                                "size_spec": {
+                                  "height": 1,
+                                  "width": 1
+                                }
+                              },
+                              "layer_config": {
+                                "is_critical": true,
+                                "layer_mask": {
+                                  "general_spec": {
+                                    "pos_spec": {
+                                      "axis_x": 0.9,
+                                      "axis_y": 0.9,
+                                      "coordinate_pos": 2
+                                    },
+                                    "render_spec": {
+                                      "opacity": 1
+                                    },
+                                    "size_spec": {
+                                      "height": 1,
+                                      "width": 1
+                                    }
+                                  },
+                                  "mask_src": {
+                                    "draw": {
+                                      "color_config": {
+                                        "day": {
+                                          "argb": "<redacted-string>"
+                                        }
+                                      },
+                                      "draw_type": 1,
+                                      "fill_mode": 1
+                                    },
+                                    "src_type": 3
+                                  }
+                                },
+                                "tags": {
+                                  "AVATAR_LAYER": {}
+                                }
+                              },
+                              "resource": {
+                                "res_image": {
+                                  "image_src": {
+                                    "placeholder": 6,
+                                    "remote": {
+                                      "bfs_style": "<redacted-string>",
+                                      "url": "<redacted-string>"
+                                    },
+                                    "src_type": 1
+                                  }
+                                },
+                                "res_type": 3
+                              },
+                              "visible": true
+                            }
+                          ]
+                        },
+                        "mid": "id-0016"
+                      },
+                      "contract_desc": "<redacted-string>",
+                      "face_nft_new": 0,
+                      "fans_detail": null,
+                      "handle": "<redacted-string>",
+                      "is_contractor": false,
+                      "is_senior_member": 0,
+                      "level_info": {
+                        "current_exp": 0,
+                        "current_level": 4,
+                        "current_min": 0,
+                        "next_exp": 0
+                      },
+                      "mid": "id-0016",
+                      "nameplate": {
+                        "condition": "<redacted-string>",
+                        "image": "<redacted-string>",
+                        "image_small": "<redacted-string>",
+                        "level": "<redacted-string>",
+                        "name": "<redacted-string>",
+                        "nid": 0
+                      },
+                      "nft_interaction": null,
+                      "official_verify": {
+                        "desc": "<redacted-string>",
+                        "type": -1
+                      },
+                      "pendant": {
+                        "expire": 0,
+                        "image": "<redacted-string>",
+                        "image_enhance": "<redacted-string>",
+                        "image_enhance_frame": "<redacted-string>",
+                        "n_pid": 0,
+                        "name": "<redacted-string>",
+                        "pid": 0
+                      },
+                      "rank": "<redacted-string>",
+                      "senior": {},
+                      "sex": "<redacted-string>",
+                      "sign": "<redacted-string>",
+                      "uname": "<redacted-string>",
+                      "user_sailing": null,
+                      "vip": {
+                        "accessStatus": 0,
+                        "avatar_subscript": 0,
+                        "dueRemark": "<redacted-string>",
+                        "label": {
+                          "bg_color": "<redacted-string>",
+                          "bg_style": 0,
+                          "border_color": "<redacted-string>",
+                          "img_label_uri_hans": "<redacted-string>",
+                          "img_label_uri_hans_static": "<redacted-string>",
+                          "img_label_uri_hant": "<redacted-string>",
+                          "img_label_uri_hant_static": "<redacted-string>",
+                          "img_label_uri_i18n": "<redacted-string>",
+                          "img_label_uri_i18n_static": "<redacted-string>",
+                          "label_goto": null,
+                          "label_id": 100004,
+                          "label_theme": "<redacted-string>",
+                          "label_type": 0,
+                          "path": "<redacted-string>",
+                          "text": "<redacted-string>",
+                          "text_color": "<redacted-string>",
+                          "use_img_label": true
+                        },
+                        "nickname_color": "<redacted-string>",
+                        "themeType": 0,
+                        "vipDueDate": 0,
+                        "vipStatus": 0,
+                        "vipStatusWarn": "<redacted-string>",
+                        "vipType": 0
+                      }
+                    },
+                    "mid": 100003,
+                    "mid_str": "id-0016",
+                    "note_cvid_str": "<redacted-string>",
+                    "oid": 100002,
+                    "oid_str": "id-0004",
+                    "parent": 100010,
+                    "parent_str": "id-0021",
+                    "rcount": 0,
+                    "replies": null,
+                    "reply_control": {
+                      "max_line": 2,
+                      "support_share": true,
+                      "time_desc": "<redacted-string>",
+                      "translation_switch": 1
+                    },
+                    "root": 100010,
+                    "root_str": "id-0021",
+                    "rpid": 100013,
+                    "rpid_str": "id-0023",
+                    "state": 0,
+                    "track_info": "<redacted-string>",
+                    "type": 1,
+                    "up_action": {
+                      "like": false,
+                      "reply": false
+                    }
+                  }
+                ],
+                "reply_control": {
+                  "max_line": 6,
+                  "sub_reply_entry_text": "<redacted-string>",
+                  "sub_reply_title_text": "<redacted-string>",
+                  "support_share": true,
+                  "time_desc": "<redacted-string>",
+                  "translation_switch": 1
+                },
+                "root": 100004,
+                "root_str": "<redacted-string>",
+                "rpid": 100010,
+                "rpid_str": "id-0021",
+                "state": 0,
+                "track_info": "<redacted-string>",
+                "type": 1,
+                "up_action": {
+                  "like": false,
+                  "reply": false
+                }
+              }
+            ],
+            "top": {
+              "admin": null,
+              "upper": null,
+              "vote": null
+            },
+            "top_replies": null,
+            "upper": {
+              "mid": 100014
+            },
+            "vote": 0
+          },
+          "message": "<redacted-string>",
+          "ttl": 1
+        },
+        "docs": "<redacted-string>",
+        "message": "<redacted-string>",
+        "message_zh": "<redacted-string>",
+        "params": {
+          "av_id": "id-0004",
+          "mode": "3"
+        },
+        "request_id": "id-0014",
+        "router": "/api/v1/bilibili/app/fetch_video_comments",
+        "support": "<redacted-string>",
+        "time": "<redacted-string>",
+        "time_stamp": 1720000000,
+        "time_zone": "<redacted-string>"
+      }
+    },
+    {
+      "endpoint": "/api/v1/bilibili/app/fetch_one_video",
+      "http_status": 200,
+      "label": "detail",
+      "method": "GET",
+      "planned_cost_usd": "0.001000",
+      "request": {
+        "authorization": "Bearer <redacted-secret>",
+        "body": null,
+        "method": "GET",
+        "params": {
+          "av_id": "id-0004"
+        },
+        "path": "/api/v1/bilibili/app/fetch_one_video"
+      },
+      "request_no": 17,
+      "response": {
+        "cache_message": "<redacted-string>",
+        "cache_message_zh": "<redacted-string>",
+        "cache_url": "<redacted-string>",
+        "code": 200,
+        "data": {
+          "code": 0,
+          "data": {
+            "DagwUser": {},
+            "DataCenterInfo": "<redacted-string>",
+            "ElecReply": null,
+            "InteractLabel": "<redacted-string>",
+            "LiveOrderText": "<redacted-string>",
+            "PlayToast": null,
+            "QueryUpSet": null,
+            "RejectPage": null,
+            "TabModule": null,
+            "aid": 100002,
+            "attribute_v3": 4,
+            "bvid": "id-0033",
+            "cid": 100016,
+            "cm_config": {
+              "ads_control": {
+                "has_danmu": 0,
+                "has_live_booking_ad": false,
+                "under_player_scroller_seconds": 20
+              }
+            },
+            "config": {
+              "feed_has_next": false,
+              "feed_style": "<redacted-string>",
+              "has_guide": false,
+              "is_absolute_time": false,
+              "local_play": 0,
+              "rec_three_point_style": 0,
+              "relates_title": "<redacted-string>",
+              "share_style": 1,
+              "valid_show_m": 0,
+              "valid_show_n": 0
+            },
+            "copyright": 3,
+            "cover43": "<redacted-string>",
+            "ctime": 1720000000,
+            "desc": "<redacted-string>",
+            "desc_tag": [
+              {
+                "attribute": 0,
+                "cover": "<redacted-string>",
+                "hated": 0,
+                "hates": 0,
+                "is_activity": 0,
+                "liked": 0,
+                "likes": 0,
+                "tag_id": 100017,
+                "tag_name": "<redacted-string>",
+                "tag_type": "<redacted-string>",
+                "uri": "<redacted-string>"
+              },
+              {
+                "attribute": 0,
+                "cover": "<redacted-string>",
+                "hated": 0,
+                "hates": 0,
+                "is_activity": 0,
+                "liked": 0,
+                "likes": 0,
+                "tag_id": 100018,
+                "tag_name": "<redacted-string>",
+                "tag_type": "<redacted-string>",
+                "uri": "<redacted-string>"
+              },
+              {
+                "attribute": 0,
+                "cover": "<redacted-string>",
+                "hated": 0,
+                "hates": 0,
+                "is_activity": 0,
+                "liked": 0,
+                "likes": 0,
+                "tag_id": 100019,
+                "tag_name": "<redacted-string>",
+                "tag_type": "<redacted-string>",
+                "uri": "<redacted-string>"
+              }
+            ],
+            "dimension": {
+              "height": 1920,
+              "rotate": 0,
+              "width": 1080
+            },
+            "dislike_reasons": [
+              {
+                "reason_id": 100031,
+                "reason_name": "<redacted-string>"
+              },
+              {
+                "reason_id": 100032,
+                "reason_name": "<redacted-string>"
+              },
+              {
+                "reason_id": 100033,
+                "reason_name": "<redacted-string>"
+              }
+            ],
+            "dislike_reasons_v2": {
+              "reasons": [
+                {
+                  "id": 100034,
+                  "mid": 100014,
+                  "name": "<redacted-string>"
+                },
+                {
+                  "id": 100035,
+                  "name": "<redacted-string>",
+                  "tag_id": 100017
+                },
+                {
+                  "id": 100035,
+                  "name": "<redacted-string>",
+                  "tag_id": 100018
+                }
+              ],
+              "title": "<redacted-string>"
+            },
+            "dm_seg": 1,
+            "duration": 82,
+            "dynamic": "<redacted-string>",
+            "first_frame": "<redacted-string>",
+            "like_custom": {
+              "full_to_half_progress": 30,
+              "non_full_progress": 80,
+              "update_count": 5
+            },
+            "mission_id": 100015,
+            "owner": {
+              "face": "<redacted-string>",
+              "mid": 100014,
+              "name": "<redacted-string>"
+            },
+            "owner_ext": {
+              "NameRender": null,
+              "arc_count": "<redacted-string>",
+              "assists": null,
+              "fans": 1376,
+              "nft_face_icon": null,
+              "official_verify": {
+                "desc": "<redacted-string>",
+                "type": -1
+              },
+              "vip": {
+                "accessStatus": 0,
+                "dueRemark": "<redacted-string>",
+                "label": {
+                  "bg_color": "<redacted-string>",
+                  "bg_style": 0,
+                  "border_color": "<redacted-string>",
+                  "img_label_uri_hans": "<redacted-string>",
+                  "img_label_uri_hans_static": "<redacted-string>",
+                  "img_label_uri_hant": "<redacted-string>",
+                  "img_label_uri_hant_static": "<redacted-string>",
+                  "img_label_uri_i18n": "<redacted-string>",
+                  "img_label_uri_i18n_static": "<redacted-string>",
+                  "label_goto": null,
+                  "label_id": 100004,
+                  "label_theme": "<redacted-string>",
+                  "label_type": 0,
+                  "path": "<redacted-string>",
+                  "text": "<redacted-string>",
+                  "text_color": "<redacted-string>",
+                  "use_img_label": true
+                },
+                "themeType": 0,
+                "vipDueDate": 0,
+                "vipStatus": 0,
+                "vipStatusWarn": "<redacted-string>",
+                "vipType": 0
+              }
+            },
+            "pages": [
+              {
+                "cid": 100016,
+                "ctime": 1720000000,
+                "dimension": {
+                  "height": 1920,
+                  "rotate": 0,
+                  "width": 1080
+                },
+                "dmlink": "id-0025",
+                "download_subtitle": "<redacted-string>",
+                "download_title": "<redacted-string>",
+                "duration": 82,
+                "first_frame": "<redacted-string>",
+                "from": "<redacted-string>",
+                "metas": [
+                  {
+                    "format": "<redacted-string>",
+                    "quality": 15,
+                    "size": 5231
+                  },
+                  {
+                    "format": "<redacted-string>",
+                    "quality": 16,
+                    "size": 5231
+                  },
+                  {
+                    "format": "<redacted-string>",
+                    "quality": 48,
+                    "size": 14973
+                  }
+                ],
+                "page": 1,
+                "part": "<redacted-string>",
+                "vid": "<redacted-string>",
+                "weblink": "<redacted-string>"
+              }
+            ],
+            "pic": "<redacted-string>",
+            "pid_name_v2": "<redacted-string>",
+            "pid_v2": 1013,
+            "play_param": 0,
+            "premiere_resource": null,
+            "pub_location": "<redacted-string>",
+            "pubdate": 1720000000,
+            "relates": [
+              {
+                "BadgeStyle": null,
+                "PowerIconStyle": null,
+                "ad_index": 1,
+                "aid": 100020,
+                "card_index": 1,
+                "cid": 100022,
+                "client_ip": "<redacted-string>",
+                "dimension": {
+                  "height": 1920,
+                  "rotate": 0,
+                  "width": 1080
+                },
+                "duration": 62,
+                "first_frame": "<redacted-string>",
+                "from_source_id": "id-0015",
+                "from_source_type": 0,
+                "game_recommend_reason": "<redacted-string>",
+                "goto": "av",
+                "is_ad_loc": true,
+                "live_info": null,
+                "owner": {
+                  "face": "<redacted-string>",
+                  "mid": 100021,
+                  "name": "<redacted-string>"
+                },
+                "param": "id-0026",
+                "pic": "<redacted-string>",
+                "rank_info": null,
+                "request_id": "id-0028",
+                "src_id": 100023,
+                "stat": {
+                  "aid": 100020,
+                  "coin": 222,
+                  "danmaku": 9,
+                  "dislike": 0,
+                  "fav_g": 0,
+                  "favorite": 3682,
+                  "his_rank": 0,
+                  "like": 3363,
+                  "like_g": 776,
+                  "now_rank": 0,
+                  "reply": 355,
+                  "share": 307,
+                  "view": 134102,
+                  "vt": 0,
+                  "vv": 134102
+                },
+                "stat_vt_display": "<redacted-string>",
+                "title": "<redacted-string>",
+                "trackid": "id-0015",
+                "uri": "id-0027",
+                "wiki_info": null
+              },
+              {
+                "BadgeStyle": null,
+                "PowerIconStyle": null,
+                "aid": 100024,
+                "cid": 100026,
+                "dimension": {
+                  "height": 1512,
+                  "rotate": 0,
+                  "width": 2688
+                },
+                "duration": 70,
+                "first_frame": "<redacted-string>",
+                "from_source_id": "id-0015",
+                "from_source_type": 0,
+                "game_recommend_reason": "<redacted-string>",
+                "goto": "av",
+                "live_info": null,
+                "owner": {
+                  "face": "<redacted-string>",
+                  "mid": 100025,
+                  "name": "<redacted-string>"
+                },
+                "param": "id-0029",
+                "pic": "<redacted-string>",
+                "rank_info": null,
+                "stat": {
+                  "aid": 100024,
+                  "coin": 4,
+                  "danmaku": 15,
+                  "dislike": 0,
+                  "fav_g": 0,
+                  "favorite": 154,
+                  "his_rank": 0,
+                  "like": 440,
+                  "like_g": 0,
+                  "now_rank": 0,
+                  "reply": 206,
+                  "share": 14,
+                  "view": 43021,
+                  "vt": 0,
+                  "vv": 43021
+                },
+                "stat_vt_display": "<redacted-string>",
+                "title": "<redacted-string>",
+                "trackid": "id-0015",
+                "uri": "id-0030",
+                "wiki_info": null
+              },
+              {
+                "BadgeStyle": null,
+                "PowerIconStyle": null,
+                "ad_index": 2,
+                "aid": 100027,
+                "card_index": 3,
+                "cid": 100029,
+                "client_ip": "<redacted-string>",
+                "dimension": {
+                  "height": 1080,
+                  "rotate": 0,
+                  "width": 1920
+                },
+                "duration": 79,
+                "first_frame": "<redacted-string>",
+                "from_source_id": "id-0015",
+                "from_source_type": 0,
+                "game_recommend_reason": "<redacted-string>",
+                "goto": "av",
+                "is_ad_loc": true,
+                "live_info": null,
+                "owner": {
+                  "face": "<redacted-string>",
+                  "mid": 100028,
+                  "name": "<redacted-string>"
+                },
+                "param": "id-0031",
+                "pic": "<redacted-string>",
+                "rank_info": null,
+                "request_id": "id-0028",
+                "src_id": 100030,
+                "stat": {
+                  "aid": 100027,
+                  "coin": 0,
+                  "danmaku": 0,
+                  "dislike": 0,
+                  "fav_g": 0,
+                  "favorite": 4,
+                  "his_rank": 0,
+                  "like": 2,
+                  "like_g": 0,
+                  "now_rank": 0,
+                  "reply": 1,
+                  "share": 0,
+                  "view": 491,
+                  "vt": 0,
+                  "vv": 491
+                },
+                "stat_vt_display": "<redacted-string>",
+                "title": "<redacted-string>",
+                "trackid": "id-0015",
+                "uri": "id-0032",
+                "wiki_info": null
+              }
+            ],
+            "req_user": {
+              "attention": -999,
+              "guest_attention": -999
+            },
+            "rights": {
+              "arc_pay": 0,
+              "autoplay": 1,
+              "bp": 0,
+              "download": 1,
+              "elec": 0,
+              "hd5": 0,
+              "is_cooperation": 0,
+              "movie": 0,
+              "no_background": 0,
+              "no_reprint": 0,
+              "pay": 0,
+              "pay_free_watch": 0,
+              "ugc_pay": 0,
+              "ugc_pay_preview": 0
+            },
+            "short_link": "<redacted-string>",
+            "short_link_v2": "<redacted-string>",
+            "stat": {
+              "aid": 100002,
+              "coin": 4,
+              "danmaku": 1,
+              "dislike": 0,
+              "fav_g": 0,
+              "favorite": 46,
+              "his_rank": 0,
+              "like": 18,
+              "like_g": 0,
+              "now_rank": 0,
+              "reply": 8,
+              "share": 5,
+              "view": 2807,
+              "vt": 0,
+              "vv": 2807
+            },
+            "state": 0,
+            "t_icon": {
+              "act": {
+                "icon": "<redacted-string>"
+              },
+              "new": null
+            },
+            "tid": 240,
+            "tidv2": 2108,
+            "title": "<redacted-string>",
+            "tname": "<redacted-string>",
+            "tnamev2": "<redacted-string>",
+            "videos": 1,
+            "vt_display": "<redacted-string>"
+          },
+          "message": "<redacted-string>",
+          "ttl": 1
+        },
+        "docs": "<redacted-string>",
+        "message": "<redacted-string>",
+        "message_zh": "<redacted-string>",
+        "params": {
+          "av_id": "id-0004"
+        },
+        "request_id": "id-0024",
+        "router": "/api/v1/bilibili/app/fetch_one_video",
+        "support": "<redacted-string>",
+        "time": "<redacted-string>",
+        "time_stamp": 1720000000,
+        "time_zone": "<redacted-string>"
+      }
+    },
+    {
+      "endpoint": "/api/v1/bilibili/app/fetch_reply_detail",
+      "http_status": 200,
+      "label": "replies",
+      "method": "GET",
+      "planned_cost_usd": "0.001000",
+      "request": {
+        "authorization": "Bearer <redacted-secret>",
+        "body": null,
+        "method": "GET",
+        "params": {
+          "av_id": "id-0004",
+          "root": "id-0017"
+        },
+        "path": "/api/v1/bilibili/app/fetch_reply_detail"
+      },
+      "request_no": 18,
+      "response": {
+        "cache_message": "<redacted-string>",
+        "cache_message_zh": "<redacted-string>",
+        "cache_url": "<redacted-string>",
+        "code": 200,
+        "data": {
+          "code": 0,
+          "data": {
+            "FoldRpids": null,
+            "Likes": null,
+            "Mid": 100004,
+            "MixedCards": null,
+            "SubjectTitle": null,
+            "assist": 0,
+            "blacklist": 0,
+            "config": {
+              "read_only": false,
+              "show_up_flag": true,
+              "showtopic": 1
+            },
+            "control": {
+              "answer_guide_android_url": "<redacted-string>",
+              "answer_guide_icon_url": "<redacted-string>",
+              "answer_guide_ios_url": "<redacted-string>",
+              "answer_guide_text": "<redacted-string>",
+              "bg_text": "<redacted-string>",
+              "child_input_text": "<redacted-string>",
+              "disable_jump_emote": false,
+              "empty_page": null,
+              "enable_charged": false,
+              "enable_cm_biz_helper": false,
+              "giveup_input_text": "<redacted-string>",
+              "input_disable": false,
+              "preload_resources": null,
+              "root_input_text": "<redacted-string>",
+              "screenshot_icon_state": 1,
+              "show_text": "<redacted-string>",
+              "show_type": 2,
+              "upload_picture_icon_state": 1,
+              "web_selection": false
+            },
+            "cursor": {
+              "is_begin": true,
+              "is_end": true,
+              "mode": 2,
+              "mode_text": "<redacted-string>",
+              "next": 0,
+              "pagination_reply": {},
+              "prev": 0,
+              "session_id": "id-0015"
+            },
+            "note": 1,
+            "root": {
+              "action": 0,
+              "assist": 0,
+              "attr": 0,
+              "content": {
+                "emote": {
+                  "[doge]": {
+                    "attr": 0,
+                    "id": 100005,
+                    "jump_title": "<redacted-string>",
+                    "meta": {
+                      "size": 1,
+                      "suggest": [
+                        "<redacted-string>"
+                      ]
+                    },
+                    "mtime": 1668688325,
+                    "package_id": 100006,
+                    "state": 0,
+                    "text": "<redacted-string>",
+                    "type": 1,
+                    "url": "<redacted-string>"
+                  }
+                },
+                "jump_url": {},
+                "max_line": 6,
+                "members": [],
+                "message": "<redacted-string>"
+              },
+              "count": 0,
+              "ctime": 1720000000,
+              "dialog": 100004,
+              "dialog_str": "id-0018",
+              "dynamic_id_str": "id-0018",
+              "fansgrade": 0,
+              "floor": 2,
+              "folder": {
+                "has_folded": false,
+                "is_folded": false,
+                "rule": "<redacted-string>"
+              },
+              "invisible": false,
+              "like": 3,
+              "member": {
+                "avatar": "<redacted-string>",
+                "avatar_item": {
+                  "container_size": {
+                    "height": 1.8,
+                    "width": 1.8
+                  },
+                  "fallback_layers": {
+                    "is_critical_group": true,
+                    "layers": [
+                      {
+                        "general_spec": {
+                          "pos_spec": {
+                            "axis_x": 0.9,
+                            "axis_y": 0.9,
+                            "coordinate_pos": 2
+                          },
+                          "render_spec": {
+                            "opacity": 1
+                          },
+                          "size_spec": {
+                            "height": 1,
+                            "width": 1
+                          }
+                        },
+                        "layer_config": {
+                          "is_critical": true,
+                          "layer_mask": {
+                            "general_spec": {
+                              "pos_spec": {
+                                "axis_x": 0.9,
+                                "axis_y": 0.9,
+                                "coordinate_pos": 2
+                              },
+                              "render_spec": {
+                                "opacity": 1
+                              },
+                              "size_spec": {
+                                "height": 1,
+                                "width": 1
+                              }
+                            },
+                            "mask_src": {
+                              "draw": {
+                                "color_config": {
+                                  "day": {
+                                    "argb": "<redacted-string>"
+                                  }
+                                },
+                                "draw_type": 1,
+                                "fill_mode": 1
+                              },
+                              "src_type": 3
+                            }
+                          },
+                          "tags": {
+                            "AVATAR_LAYER": {}
+                          }
+                        },
+                        "resource": {
+                          "res_image": {
+                            "image_src": {
+                              "placeholder": 6,
+                              "remote": {
+                                "bfs_style": "<redacted-string>",
+                                "url": "<redacted-string>"
+                              },
+                              "src_type": 1
+                            }
+                          },
+                          "res_type": 3
+                        },
+                        "visible": true
+                      }
+                    ]
+                  },
+                  "mid": "id-0016"
+                },
+                "contract_desc": "<redacted-string>",
+                "face_nft_new": 0,
+                "fans_detail": null,
+                "handle": "<redacted-string>",
+                "is_contractor": false,
+                "is_senior_member": 0,
+                "level_info": {
+                  "current_exp": 0,
+                  "current_level": 4,
+                  "current_min": 0,
+                  "next_exp": 0
+                },
+                "mid": "id-0016",
+                "nameplate": {
+                  "condition": "<redacted-string>",
+                  "image": "<redacted-string>",
+                  "image_small": "<redacted-string>",
+                  "level": "<redacted-string>",
+                  "name": "<redacted-string>",
+                  "nid": 0
+                },
+                "nft_interaction": null,
+                "official_verify": {
+                  "desc": "<redacted-string>",
+                  "type": -1
+                },
+                "pendant": {
+                  "expire": 0,
+                  "image": "<redacted-string>",
+                  "image_enhance": "<redacted-string>",
+                  "image_enhance_frame": "<redacted-string>",
+                  "n_pid": 0,
+                  "name": "<redacted-string>",
+                  "pid": 0
+                },
+                "rank": "<redacted-string>",
+                "senior": {},
+                "sex": "<redacted-string>",
+                "sign": "<redacted-string>",
+                "uname": "<redacted-string>",
+                "user_sailing": null,
+                "vip": {
+                  "accessStatus": 0,
+                  "avatar_subscript": 0,
+                  "dueRemark": "<redacted-string>",
+                  "label": {
+                    "bg_color": "<redacted-string>",
+                    "bg_style": 0,
+                    "border_color": "<redacted-string>",
+                    "img_label_uri_hans": "<redacted-string>",
+                    "img_label_uri_hans_static": "<redacted-string>",
+                    "img_label_uri_hant": "<redacted-string>",
+                    "img_label_uri_hant_static": "<redacted-string>",
+                    "img_label_uri_i18n": "<redacted-string>",
+                    "img_label_uri_i18n_static": "<redacted-string>",
+                    "label_goto": null,
+                    "label_id": 100004,
+                    "label_theme": "<redacted-string>",
+                    "label_type": 0,
+                    "path": "<redacted-string>",
+                    "text": "<redacted-string>",
+                    "text_color": "<redacted-string>",
+                    "use_img_label": true
+                  },
+                  "nickname_color": "<redacted-string>",
+                  "themeType": 0,
+                  "vipDueDate": 0,
+                  "vipStatus": 0,
+                  "vipStatusWarn": "<redacted-string>",
+                  "vipType": 0
+                }
+              },
+              "mid": 100003,
+              "mid_str": "id-0016",
+              "note_cvid_str": "<redacted-string>",
+              "oid": 100002,
+              "oid_str": "id-0004",
+              "parent": 100004,
+              "parent_str": "id-0018",
+              "rcount": 0,
+              "replies": null,
+              "reply_control": {
+                "max_line": 6,
+                "support_share": true,
+                "time_desc": "<redacted-string>",
+                "translation_switch": 1
+              },
+              "root": 100004,
+              "root_str": "<redacted-string>",
+              "rpid": 100001,
+              "rpid_str": "id-0017",
+              "state": 0,
+              "track_info": "<redacted-string>",
+              "type": 1,
+              "up_action": {
+                "like": false,
+                "reply": false
+              }
+            },
+            "upper": {
+              "mid": 100014
+            },
+            "vote": 0
+          },
+          "message": "<redacted-string>",
+          "ttl": 1
+        },
+        "docs": "<redacted-string>",
+        "message": "<redacted-string>",
+        "message_zh": "<redacted-string>",
+        "params": {
+          "av_id": "id-0004",
+          "root": "id-0017"
+        },
+        "request_id": "id-0034",
+        "router": "/api/v1/bilibili/app/fetch_reply_detail",
+        "support": "<redacted-string>",
+        "time": "<redacted-string>",
+        "time_stamp": 1720000000,
+        "time_zone": "<redacted-string>"
+      }
+    }
+  ],
+  "schema_version": "tikhub-endpoint-ledger-platform.v1",
+  "source_manifest": {
+    "base_url": "https://api.tikhub.io",
+    "captured_at": "2026-08-16T15:05:27.753362+00:00",
+    "github_run_id": "31954514173",
+    "hidden_retries": 0,
+    "keyword": "爱玛"
+  }
+}
