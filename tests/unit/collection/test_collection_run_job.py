@@ -76,6 +76,7 @@ def test_collection_run_job_handler_uses_current_job_fence_and_registry() -> Non
     result = definition.handler(CollectionRunJobPayload(), context)
 
     assert definition.payload_version == COLLECTION_RUN_PAYLOAD_VERSION
+    assert definition.retry_on_timeout is False
     assert executor.fences == [context.fence]
     assert result == JobHandlerResult.succeeded({"job_id": str(context.fence.job_id)})
     assert context.progress == [80]

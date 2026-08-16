@@ -60,6 +60,7 @@ def register_collection_run_job(
         payload_version=COLLECTION_RUN_PAYLOAD_VERSION,
         payload_model=CollectionRunJobPayload,
         handler=handler,
+        retry_on_timeout=False,
     )
 
 

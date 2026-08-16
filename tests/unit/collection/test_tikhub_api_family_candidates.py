@@ -103,9 +103,7 @@ def test_xhs_app_v1_candidates_match_same_business_inputs_without_becoming_prima
         time_filter="不限",
     )
     detail = build_app_v1_detail_candidate_request(note_id="note-1")
-    comments = build_app_v1_comments_candidate_request(
-        note_id="note-1", start="", sort_strategy=1
-    )
+    comments = build_app_v1_comments_candidate_request(note_id="note-1", start="", sort_strategy=1)
     sub_comments = build_app_v1_sub_comments_candidate_request(
         note_id="note-1", comment_id="comment-1", start=""
     )
@@ -134,9 +132,7 @@ def test_xhs_web_v3_candidates_require_xsec_for_protected_operations() -> None:
     search = build_web_v3_search_candidate_request(
         keyword="爱玛", page=1, sort="general", note_type=0
     )
-    detail = build_web_v3_detail_candidate_request(
-        note_id="note-1", xsec_token="xsec-token"
-    )
+    detail = build_web_v3_detail_candidate_request(note_id="note-1", xsec_token="xsec-token")
     comments = build_web_v3_comments_candidate_request(
         note_id="note-1", xsec_token="xsec-token", cursor=""
     )
