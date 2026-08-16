@@ -6,8 +6,10 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 _SEARCH_PATH = "/api/v1/weibo/web/fetch_search"
+_APP_SEARCH_CANDIDATE_PATH = "/api/v1/weibo/app/fetch_search_all"
 _DETAIL_PATH = "/api/v1/weibo/app/fetch_status_detail"
 _COMMENTS_PATH = "/api/v1/weibo/app/fetch_status_comments"
+_WEB_COMMENTS_CANDIDATE_PATH = "/api/v1/weibo/web_v2/fetch_post_comments"
 _SUB_COMMENTS_PATH = "/api/v1/weibo/web_v2/fetch_post_sub_comments"
 _SEARCH_TYPES = {"general": 1, "latest": 61, "hot": 60, "video": 64, "image": 63, "article": 21}
 _TIME_SCOPES = {"all", "hour", "day", "week", "month"}
@@ -98,6 +100,26 @@ def build_search_request(
     return WeiboRequest("GET", _SEARCH_PATH, params)
 
 
+def build_app_search_candidate_request(
+    *, keyword: str, page: int = 1, search_mode: str = "latest"
+) -> WeiboRequest:
+    """构造 App 综合搜索 A/B 候选；不伪造 Web 专属 time_scope，也不进入自动 fallback。"""
+    normalized_keyword = keyword.strip()
+    if not normalized_keyword:
+        raise ValueError("keyword 不能为空")
+    if page < 1:
+        raise ValueError("page 必须从 1 开始")
+    return WeiboRequest(
+        "GET",
+        _APP_SEARCH_CANDIDATE_PATH,
+        {
+            "query": normalized_keyword,
+            "page": page,
+            "search_type": _choice(_SEARCH_TYPES, search_mode, "search_mode"),
+        },
+    )
+
+
 def build_status_detail_request(*, status_id: str) -> WeiboRequest:
     return WeiboRequest("GET", _DETAIL_PATH, {"status_id": _required_id(status_id, "status_id")})
 
@@ -112,6 +134,23 @@ def build_status_comments_request(
     if max_id:
         params["max_id"] = max_id
     return WeiboRequest("GET", _COMMENTS_PATH, params)
+
+
+def build_web_status_comments_candidate_request(
+    *, status_id: str, max_id: str = "", count: int = 10
+) -> WeiboRequest:
+    """构造 Web V2 一级评论 A/B 候选；显式调用且不会替代 App 主链。"""
+    if count < 1:
+        raise ValueError("count 必须大于 0")
+    return WeiboRequest(
+        "GET",
+        _WEB_COMMENTS_CANDIDATE_PATH,
+        {
+            "id": _required_id(status_id, "status_id"),
+            "count": count,
+            "max_id": max_id,
+        },
+    )
 
 
 def build_status_sub_comments_request(*, root_comment_id: str, max_id: str = "") -> WeiboRequest:
@@ -195,10 +234,12 @@ __all__ = [
     "WeiboRequest",
     "WeiboSearchPagination",
     "WeiboSubCommentPagination",
+    "build_app_search_candidate_request",
     "build_search_request",
     "build_status_comments_request",
     "build_status_detail_request",
     "build_status_sub_comments_request",
+    "build_web_status_comments_candidate_request",
     "extract_comment_items",
     "extract_detail_item",
     "extract_search_items",
