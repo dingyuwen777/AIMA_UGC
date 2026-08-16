@@ -1,3 +1,4 @@
+# probe-revision: 2
 name: Stage 7 TikHub API Family Probe
 
 on:
@@ -35,6 +36,16 @@ jobs:
           python -m pip install "uv==${UV_VERSION}"
           uv lock --check
           uv sync --locked
+          uv run ruff format \
+            scripts/dev/probe_tikhub_api_families.py \
+            backend/src/aima_ugc/adapters/providers/tikhub/api_family_compare.py \
+            tests/unit/collection/test_tikhub_api_family_candidates.py \
+            tests/unit/collection/test_tikhub_api_family_compare.py
+          uv run ruff check --fix \
+            scripts/dev/probe_tikhub_api_families.py \
+            backend/src/aima_ugc/adapters/providers/tikhub/api_family_compare.py \
+            tests/unit/collection/test_tikhub_api_family_candidates.py \
+            tests/unit/collection/test_tikhub_api_family_compare.py
           uv run ruff format --check \
             scripts/dev/probe_tikhub_api_families.py \
             backend/src/aima_ugc/adapters/providers/tikhub/api_family_compare.py \
