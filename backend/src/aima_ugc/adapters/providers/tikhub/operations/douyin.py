@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 _SEARCH_PATH = "/api/v1/douyin/search/fetch_video_search_v2"
+_SEARCH_V1_CANDIDATE_PATH = "/api/v1/douyin/search/fetch_video_search_v1"
 _APP_V3_BASE = "/api/v1/douyin/app/v3"
 
 _SORT_TYPES = {"general": "0", "most_liked": "1", "latest": "2"}
@@ -111,6 +112,56 @@ def build_video_search_request(
     search_id: str = "",
     backtrace: str = "",
 ) -> DouyinRequest:
+    return _build_video_search_request(
+        path=_SEARCH_PATH,
+        keyword=keyword,
+        cursor=cursor,
+        sort_mode=sort_mode,
+        published_within=published_within,
+        duration=duration,
+        content_type=content_type,
+        search_id=search_id,
+        backtrace=backtrace,
+    )
+
+
+def build_video_search_v1_candidate_request(
+    *,
+    keyword: str,
+    cursor: int = 0,
+    sort_mode: str = "general",
+    published_within: str = "all",
+    duration: str = "all",
+    content_type: str = "all",
+    search_id: str = "",
+    backtrace: str = "",
+) -> DouyinRequest:
+    """构造同业务语义的 Search V1 A/B 候选；不进入默认 Capability 或自动 fallback。"""
+    return _build_video_search_request(
+        path=_SEARCH_V1_CANDIDATE_PATH,
+        keyword=keyword,
+        cursor=cursor,
+        sort_mode=sort_mode,
+        published_within=published_within,
+        duration=duration,
+        content_type=content_type,
+        search_id=search_id,
+        backtrace=backtrace,
+    )
+
+
+def _build_video_search_request(
+    *,
+    path: str,
+    keyword: str,
+    cursor: int,
+    sort_mode: str,
+    published_within: str,
+    duration: str,
+    content_type: str,
+    search_id: str,
+    backtrace: str,
+) -> DouyinRequest:
     normalized_keyword = keyword.strip()
     if not normalized_keyword:
         raise ValueError("keyword 不能为空")
@@ -126,7 +177,7 @@ def build_video_search_request(
         "search_id": search_id,
         "backtrace": backtrace,
     }
-    return DouyinRequest("POST", _SEARCH_PATH, {}, body)
+    return DouyinRequest("POST", path, {}, body)
 
 
 def build_video_detail_request(*, aweme_id: str) -> DouyinRequest:
@@ -268,6 +319,7 @@ __all__ = [
     "build_video_comments_request",
     "build_video_detail_request",
     "build_video_search_request",
+    "build_video_search_v1_candidate_request",
     "extract_comment_items",
     "extract_detail_item",
     "extract_search_items",
