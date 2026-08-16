@@ -1,8 +1,8 @@
 schema_version = "tikhub-pricing.v1"
 provider = "tikhub"
 currency = "USD"
-pricing_version = "2026-08-15.2"
-verified_at = "2026-08-15"
+pricing_version = "2026-08-16.1"
+verified_at = "2026-08-16"
 official_pricing_url = "https://docs.tikhub.io/4592751m0"
 official_endpoint_info_path = "/api/v1/tikhub/user/get_endpoint_info"
 
@@ -43,9 +43,11 @@ min_requests_per_day = 30000
 max_requests_per_day = 2147483647
 discount_percent = "50"
 
-# 2026-08-15 使用 https://api.tikhub.io 的官方 get_endpoint_info 逐个核验当前代码登记的
-# 21 个业务 endpoint。get_endpoint_info 对 21/21 返回 HTTP 200，并直接返回 data.endpoint_cost；
-# 连续 calculate_price 查询会触发 HTTP 429，因此 endpoint_cost 是本版本逐 endpoint 基价事实源。
+# 2026-08-15 使用 https://api.tikhub.io 的官方 get_endpoint_info 逐个核验首轮 21 个业务
+# endpoint；21/21 返回 HTTP 200，并直接返回 data.endpoint_cost。连续 calculate_price 查询会触发
+# HTTP 429，因此 endpoint_cost 是逐 endpoint 基价事实源。
+# 2026-08-16 快手 Web/App 同样本评论 A/B 前再次通过 get_endpoint_info 核验 App 一级/二级评论，
+# 两者 endpoint_cost 均为 0.001 USD；本版本据此把已批准的 App 主评论链纳入正式 Pricing。
 
 [[endpoints]]
 path = "/api/v1/xiaohongshu/app_v2/search_notes"
@@ -178,6 +180,20 @@ path = "/api/v1/kuaishou/app/fetch_one_video"
 verification_status = "verified"
 base_price = "0.001000"
 verified_at = "2026-08-15"
+verified_via = "get_endpoint_info"
+
+[[endpoints]]
+path = "/api/v1/kuaishou/app/fetch_video_comment"
+verification_status = "verified"
+base_price = "0.001000"
+verified_at = "2026-08-16"
+verified_via = "get_endpoint_info"
+
+[[endpoints]]
+path = "/api/v1/kuaishou/app/fetch_video_sub_comments"
+verification_status = "verified"
+base_price = "0.001000"
+verified_at = "2026-08-16"
 verified_via = "get_endpoint_info"
 
 [[endpoints]]
