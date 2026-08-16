@@ -1,4 +1,4 @@
-# normalization-revision: 8
+# normalization-revision: 9
 name: Stage 7 TikHub Normalization CI V2
 
 on:
@@ -79,21 +79,41 @@ jobs:
             backend/src/aima_ugc/adapters/providers/tikhub \
             tests/unit/collection/test_*tikhub*.py
 
+      - name: Mypy TikHub operations
+        shell: bash
+        run: uv run mypy backend/src/aima_ugc/adapters/providers/tikhub/operations
+
+      - name: Mypy TikHub mappers
+        shell: bash
+        run: uv run mypy backend/src/aima_ugc/adapters/providers/tikhub/mappers
+
+      - name: Mypy TikHub runtime
+        shell: bash
+        run: uv run mypy backend/src/aima_ugc/adapters/providers/tikhub/runtime.py
+
+      - name: Mypy TikHub capabilities
+        shell: bash
+        run: uv run mypy backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py
+
+      - name: Mypy TikHub pricing
+        shell: bash
+        run: uv run mypy backend/src/aima_ugc/adapters/providers/tikhub/pricing.py
+
+      - name: Mypy TikHub probe
+        shell: bash
+        run: uv run mypy backend/src/aima_ugc/adapters/providers/tikhub/probe.py
+
+      - name: Mypy TikHub transport
+        shell: bash
+        run: uv run mypy backend/src/aima_ugc/adapters/providers/tikhub/transport.py
+
+      - name: Mypy TikHub package
+        shell: bash
+        run: uv run mypy backend/src/aima_ugc/adapters/providers/tikhub
+
       - name: Mypy provider adapters
         shell: bash
         run: uv run mypy backend/src/aima_ugc/adapters/providers
-
-      - name: Mypy persistence adapters
-        shell: bash
-        run: uv run mypy backend/src/aima_ugc/adapters/persistence
-
-      - name: Mypy storage adapters
-        shell: bash
-        run: uv run mypy backend/src/aima_ugc/adapters/storage
-
-      - name: Mypy adapters
-        shell: bash
-        run: uv run mypy backend/src/aima_ugc/adapters
 
       - name: Mypy full backend
         shell: bash
