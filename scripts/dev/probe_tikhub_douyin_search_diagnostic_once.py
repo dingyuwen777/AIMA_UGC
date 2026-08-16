@@ -145,18 +145,14 @@ def run() -> None:
         price = _endpoint_cost(client)
         estimated = price * len(cases)
         if estimated > MAX_BUSINESS_COST_USD:
-            raise RuntimeError(
-                f"预计业务费用超过硬上限: {estimated} > {MAX_BUSINESS_COST_USD}"
-            )
+            raise RuntimeError(f"预计业务费用超过硬上限: {estimated} > {MAX_BUSINESS_COST_USD}")
 
         for case in cases:
             response = client.post(ENDPOINT, json=case.body)
             try:
                 parsed: Any = response.json()
             except ValueError as exc:
-                raise RuntimeError(
-                    f"{case.name} 返回非 JSON，HTTP {response.status_code}"
-                ) from exc
+                raise RuntimeError(f"{case.name} 返回非 JSON，HTTP {response.status_code}") from exc
             if not isinstance(parsed, dict):
                 raise RuntimeError(f"{case.name} JSON 根节点不是 object")
             item_count = len(douyin.extract_search_items(parsed))
