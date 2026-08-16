@@ -33,6 +33,8 @@ jobs:
           uv lock --check
           uv sync --locked
           uv run pytest tests/unit/collection/test_kuaishou_tikhub_operation.py -q
+          sed -i 's/catalog\.require_endpoint(/catalog.endpoint(/' \
+            scripts/dev/probe_tikhub_kuaishou_comments_compare.py
           uv run ruff format scripts/dev/probe_tikhub_kuaishou_comments_compare.py
           uv run ruff check --fix scripts/dev/probe_tikhub_kuaishou_comments_compare.py
           uv run ruff check \
