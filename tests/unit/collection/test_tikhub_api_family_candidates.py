@@ -130,15 +130,20 @@ def test_xhs_app_v1_candidates_match_same_business_inputs_without_becoming_prima
     }
 
 
-def test_xhs_web_v3_candidates_are_explicit_and_keep_xsec_optional() -> None:
+def test_xhs_web_v3_candidates_require_xsec_for_protected_operations() -> None:
     search = build_web_v3_search_candidate_request(
         keyword="爱玛", page=1, sort="general", note_type=0
     )
-    detail = build_web_v3_detail_candidate_request(note_id="note-1")
-    comments = build_web_v3_comments_candidate_request(note_id="note-1", cursor="")
+    detail = build_web_v3_detail_candidate_request(
+        note_id="note-1", xsec_token="xsec-token"
+    )
+    comments = build_web_v3_comments_candidate_request(
+        note_id="note-1", xsec_token="xsec-token", cursor=""
+    )
     sub_comments = build_web_v3_sub_comments_candidate_request(
         note_id="note-1",
         root_comment_id="comment-1",
+        xsec_token="xsec-token",
         num=10,
         cursor="",
     )
@@ -151,13 +156,18 @@ def test_xhs_web_v3_candidates_are_explicit_and_keep_xsec_optional() -> None:
         "note_type": 0,
     }
     assert detail.path == "/api/v1/xiaohongshu/web_v3/fetch_note_detail"
-    assert detail.params == {"note_id": "note-1"}
+    assert detail.params == {"note_id": "note-1", "xsec_token": "xsec-token"}
     assert comments.path == "/api/v1/xiaohongshu/web_v3/fetch_note_comments"
-    assert comments.params == {"note_id": "note-1", "cursor": ""}
+    assert comments.params == {
+        "note_id": "note-1",
+        "xsec_token": "xsec-token",
+        "cursor": "",
+    }
     assert sub_comments.path == "/api/v1/xiaohongshu/web_v3/fetch_sub_comments"
     assert sub_comments.params == {
         "note_id": "note-1",
         "root_comment_id": "comment-1",
+        "xsec_token": "xsec-token",
         "num": 10,
         "cursor": "",
     }
