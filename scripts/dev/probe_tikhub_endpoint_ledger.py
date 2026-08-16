@@ -216,11 +216,9 @@ def sanitize_response(
         return value
     if _is_identifier_key(key):
         return pseudonyms.identifier(value)
-    if (
-        isinstance(value, (int, float))
-        and not isinstance(value, bool)
-        and abs(value) >= 10_000_000_000
-    ):
+    if isinstance(value, float):
+        return round(value, 6)
+    if isinstance(value, int) and not isinstance(value, bool) and abs(value) >= 10_000_000_000:
         return pseudonyms.identifier(value)
     if isinstance(value, str):
         if _LONG_NUMERIC_IDENTIFIER.search(value):
