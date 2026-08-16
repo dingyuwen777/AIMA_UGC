@@ -1,0 +1,69 @@
+name: Stage 7 Fix Endpoint Ledger Sanitizer
+
+on:
+  push:
+    branches:
+      - feature/stage7-completion
+    paths:
+      - ".github/workflows/stage7-fix-endpoint-ledger-sanitizer.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/stage7-completion
+          fetch-depth: 0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+      - name: Apply deterministic sanitizer hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          git pull --ff-only origin feature/stage7-completion
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/dev/probe_tikhub_endpoint_ledger.py")
+          text = path.read_text(encoding="utf-8")
+          old = '''    if _is_identifier_key(key):
+        return pseudonyms.identifier(value)
+    if isinstance(value, str):
+'''
+          new = '''    if _is_identifier_key(key):
+        return pseudonyms.identifier(value)
+    if (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and abs(value) >= 10_000_000_000
+    ):
+        return pseudonyms.identifier(value)
+    if isinstance(value, str):
+'''
+          if text.count(old) != 1:
+              raise SystemExit("sanitize_response patch anchor missing or ambiguous")
+          path.write_text(text.replace(old, new), encoding="utf-8")
+          PY
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+          uv run ruff format scripts/dev/probe_tikhub_endpoint_ledger.py
+          uv run ruff check scripts/dev/probe_tikhub_endpoint_ledger.py
+          uv run python -m py_compile scripts/dev/probe_tikhub_endpoint_ledger.py
+          git diff --check
+      - name: Commit verified hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/stage7-fix-endpoint-ledger-sanitizer.yml
+          git add scripts/dev/probe_tikhub_endpoint_ledger.py
+          git config user.name "AIMA Stage 7 Runner"
+          git config user.email "actions@users.noreply.github.com"
+          git commit -m "收紧 TikHub Endpoint Ledger 去标识化"
+          git push origin HEAD:feature/stage7-completion
