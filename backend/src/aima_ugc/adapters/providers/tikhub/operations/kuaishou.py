@@ -6,11 +6,29 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 _SEARCH_PATH = "/api/v1/kuaishou/app/search_video_v2"
+_COMPREHENSIVE_SEARCH_CANDIDATE_PATH = "/api/v1/kuaishou/app/search_comprehensive"
 _DETAIL_PATH = "/api/v1/kuaishou/app/fetch_one_video"
 _APP_COMMENTS_PATH = "/api/v1/kuaishou/app/fetch_video_comment"
 _APP_SUB_COMMENTS_PATH = "/api/v1/kuaishou/app/fetch_video_sub_comments"
 _WEB_COMMENTS_PATH = "/api/v1/kuaishou/web/fetch_one_video_comment"
 _WEB_SUB_COMMENTS_PATH = "/api/v1/kuaishou/web/fetch_one_video_sub_comment"
+_COMPREHENSIVE_SORT_TYPES = {
+    "general": "all",
+    "latest": "newest",
+    "most_liked": "most_likes",
+}
+_COMPREHENSIVE_PUBLISH_TIMES = {
+    "all": "all",
+    "day": "one_day",
+    "week": "one_week",
+    "month": "one_month",
+}
+_COMPREHENSIVE_DURATIONS = {
+    "all": "all",
+    "under_1m": "under_1_min",
+    "1_5m": "1_to_5_min",
+    "over_5m": "over_5_min",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,6 +125,30 @@ def build_search_request(*, keyword: str, pcursor: str = "") -> KuaishouRequest:
         method="GET",
         path=_SEARCH_PATH,
         params={"keyword": normalized_keyword, "pcursor": pcursor},
+    )
+
+
+def build_comprehensive_search_candidate_request(
+    *,
+    keyword: str,
+    pcursor: str = "",
+    sort_mode: str = "general",
+    publish_time: str = "all",
+    duration: str = "all",
+) -> KuaishouRequest:
+    """构造 App 综合搜索 A/B 候选；语义含非视频对象，不能视为 Web 或视频搜索等价备用。"""
+    return KuaishouRequest(
+        method="GET",
+        path=_COMPREHENSIVE_SEARCH_CANDIDATE_PATH,
+        params={
+            "keyword": _required_text(keyword, "keyword"),
+            "pcursor": pcursor,
+            "sort_type": _choice(_COMPREHENSIVE_SORT_TYPES, sort_mode, "sort_mode"),
+            "publish_time": _choice(
+                _COMPREHENSIVE_PUBLISH_TIMES, publish_time, "publish_time"
+            ),
+            "duration": _choice(_COMPREHENSIVE_DURATIONS, duration, "duration"),
+        },
     )
 
 
@@ -241,6 +283,13 @@ def extract_sub_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...
     return tuple(item for item in items if isinstance(item, dict))
 
 
+def _choice(mapping: dict[str, str], value: str, field_name: str) -> str:
+    try:
+        return mapping[value]
+    except KeyError as exc:
+        raise ValueError(f"{field_name} 不支持: {value}; 可选: {', '.join(mapping)}") from exc
+
+
 def _required_text(value: str, field_name: str) -> str:
     normalized = value.strip()
     if not normalized:
@@ -254,6 +303,7 @@ __all__ = [
     "KuaishouSearchPagination",
     "build_app_video_comments_request",
     "build_app_video_sub_comments_request",
+    "build_comprehensive_search_candidate_request",
     "build_search_request",
     "build_video_comments_request",
     "build_video_detail_request",
