@@ -11,6 +11,8 @@ from aima_ugc.adapters.providers.tikhub.operations.kuaishou import (
     build_video_comments_request,
     build_video_detail_request,
     build_video_sub_comments_request,
+    build_web_video_comments_request,
+    build_web_video_sub_comments_request,
 )
 
 
@@ -33,41 +35,18 @@ def test_detail_uses_photo_id() -> None:
     assert request.params == {"photo_id": "photo-1"}
 
 
-def test_web_comments_use_photo_id_and_pcursor_without_business_page_size() -> None:
+def test_primary_comments_use_app_photo_id_and_pcursor() -> None:
     first = build_video_comments_request(photo_id="photo-1")
-    assert first.path == "/api/v1/kuaishou/web/fetch_one_video_comment"
-    assert first.params == {"photo_id": "photo-1", "pcursor": ""}
-
-    next_page = build_video_comments_request(photo_id="photo-1", pcursor="cursor-2")
-    assert next_page.params == {"photo_id": "photo-1", "pcursor": "cursor-2"}
-    assert "count" not in next_page.params
-
-
-def test_web_sub_comments_use_root_comment_id_and_pcursor() -> None:
-    first = build_video_sub_comments_request(
-        photo_id="photo-1",
-        root_comment_id="comment-root",
-    )
-    assert first.path == "/api/v1/kuaishou/web/fetch_one_video_sub_comment"
-    assert first.params == {
-        "photo_id": "photo-1",
-        "root_comment_id": "comment-root",
-        "pcursor": "",
-    }
-
-
-def test_app_comments_use_official_photo_id_and_pcursor_contract() -> None:
-    first = build_app_video_comments_request(photo_id="photo-1")
     assert first.method == "GET"
     assert first.path == "/api/v1/kuaishou/app/fetch_video_comment"
     assert first.params == {"photo_id": "photo-1", "pcursor": ""}
 
-    next_page = build_app_video_comments_request(photo_id="photo-1", pcursor="cursor-2")
+    next_page = build_video_comments_request(photo_id="photo-1", pcursor="cursor-2")
     assert next_page.params == {"photo_id": "photo-1", "pcursor": "cursor-2"}
 
 
-def test_app_sub_comments_use_official_root_cursor_and_count_contract() -> None:
-    first = build_app_video_sub_comments_request(
+def test_primary_sub_comments_use_app_root_cursor_and_count_contract() -> None:
+    first = build_video_sub_comments_request(
         photo_id="photo-1",
         root_comment_id="comment-root",
     )
@@ -80,7 +59,7 @@ def test_app_sub_comments_use_official_root_cursor_and_count_contract() -> None:
         "count": 8,
     }
 
-    custom = build_app_video_sub_comments_request(
+    custom = build_video_sub_comments_request(
         photo_id="photo-1",
         root_comment_id="comment-root",
         pcursor="cursor-2",
@@ -89,6 +68,19 @@ def test_app_sub_comments_use_official_root_cursor_and_count_contract() -> None:
     assert custom.params["pcursor"] == "cursor-2"
     assert custom.params["count"] == 20
 
+
+def test_explicit_app_builders_match_primary_comment_contract() -> None:
+    assert build_app_video_comments_request(photo_id="photo-1") == build_video_comments_request(
+        photo_id="photo-1"
+    )
+    assert build_app_video_sub_comments_request(
+        photo_id="photo-1",
+        root_comment_id="comment-root",
+    ) == build_video_sub_comments_request(
+        photo_id="photo-1",
+        root_comment_id="comment-root",
+    )
+
     with pytest.raises(ValueError, match="count"):
         build_app_video_sub_comments_request(
             photo_id="photo-1",
@@ -96,11 +88,29 @@ def test_app_sub_comments_use_official_root_cursor_and_count_contract() -> None:
             count=0,
         )
     with pytest.raises(ValueError, match="count"):
-        build_app_video_sub_comments_request(
+        build_video_sub_comments_request(
             photo_id="photo-1",
             root_comment_id="comment-root",
             count=21,
         )
+
+
+def test_web_comment_builders_remain_explicit_verified_backup_only() -> None:
+    first = build_web_video_comments_request(photo_id="photo-1")
+    assert first.path == "/api/v1/kuaishou/web/fetch_one_video_comment"
+    assert first.params == {"photo_id": "photo-1", "pcursor": ""}
+    assert "count" not in first.params
+
+    sub = build_web_video_sub_comments_request(
+        photo_id="photo-1",
+        root_comment_id="comment-root",
+    )
+    assert sub.path == "/api/v1/kuaishou/web/fetch_one_video_sub_comment"
+    assert sub.params == {
+        "photo_id": "photo-1",
+        "root_comment_id": "comment-root",
+        "pcursor": "",
+    }
 
 
 def test_cursor_state_does_not_guess_response_json_path_or_provider_sentinels() -> None:
