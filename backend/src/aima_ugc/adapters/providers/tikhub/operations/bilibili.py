@@ -10,6 +10,7 @@ _DETAIL_PATH = "/api/v1/bilibili/app/fetch_one_video"
 _COMMENTS_PATH = "/api/v1/bilibili/app/fetch_video_comments"
 _REPLY_PATH = "/api/v1/bilibili/app/fetch_reply_detail"
 _WEB_SEARCH_CANDIDATE_PATH = "/api/v1/bilibili/web/fetch_general_search"
+_WEB_DETAIL_CANDIDATE_PATH = "/api/v1/bilibili/web/fetch_one_video"
 _WEB_COMMENTS_CANDIDATE_PATH = "/api/v1/bilibili/web/fetch_video_comments"
 _WEB_REPLY_CANDIDATE_PATH = "/api/v1/bilibili/web/fetch_comment_reply"
 
@@ -157,6 +158,15 @@ def build_video_detail_request(
         method="GET",
         path=_DETAIL_PATH,
         params=_video_identity_params(av_id=av_id, bv_id=bv_id),
+    )
+
+
+def build_web_video_detail_candidate_request(*, bv_id: str) -> BilibiliRequest:
+    """构造 Web 视频详情 A/B 候选；不进入默认 Capability 或自动 fallback。"""
+    return BilibiliRequest(
+        method="GET",
+        path=_WEB_DETAIL_CANDIDATE_PATH,
+        params={"bv_id": _required_id(bv_id, "bv_id")},
     )
 
 
@@ -349,6 +359,7 @@ __all__ = [
     "build_web_reply_candidate_request",
     "build_web_search_candidate_request",
     "build_web_video_comments_candidate_request",
+    "build_web_video_detail_candidate_request",
     "extract_comment_items",
     "extract_detail_item",
     "extract_reply_detail",
