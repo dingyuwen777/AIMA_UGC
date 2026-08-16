@@ -1,4 +1,4 @@
-# normalization-revision: 5
+# normalization-revision: 6
 name: Stage 7 TikHub Normalization CI V2
 
 on:
@@ -79,11 +79,29 @@ jobs:
             backend/src/aima_ugc/adapters/providers/tikhub \
             tests/unit/collection/test_*tikhub*.py
 
-      - name: Mypy quality gate
+      - name: Mypy API family compare
         shell: bash
-        run: |
-          set -euo pipefail
-          uv run mypy backend/src
+        run: uv run mypy backend/src/aima_ugc/adapters/providers/tikhub/api_family_compare.py
+
+      - name: Mypy Douyin operation
+        shell: bash
+        run: uv run mypy backend/src/aima_ugc/adapters/providers/tikhub/operations/douyin.py
+
+      - name: Mypy Weibo operation
+        shell: bash
+        run: uv run mypy backend/src/aima_ugc/adapters/providers/tikhub/operations/weibo.py
+
+      - name: Mypy Bilibili operation
+        shell: bash
+        run: uv run mypy backend/src/aima_ugc/adapters/providers/tikhub/operations/bilibili.py
+
+      - name: Mypy Kuaishou operation
+        shell: bash
+        run: uv run mypy backend/src/aima_ugc/adapters/providers/tikhub/operations/kuaishou.py
+
+      - name: Mypy full backend
+        shell: bash
+        run: uv run mypy backend/src
 
       - name: Secret and diff quality gate
         shell: bash
