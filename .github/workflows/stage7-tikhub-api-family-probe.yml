@@ -1,4 +1,4 @@
-# probe-revision: 2
+# probe-revision: 3
 name: Stage 7 TikHub API Family Probe
 
 on:
@@ -14,7 +14,7 @@ on:
 
 permissions:
   contents: read
-  issues: write
+  pull-requests: read
 
 jobs:
   probe:
@@ -71,7 +71,7 @@ jobs:
           test "${status}" = "200"
           echo "TikHub connectivity verified: HTTP ${status}"
 
-      - name: Generate one-time RSA handoff key
+      - name: Generate and publish one-time RSA public key
         shell: bash
         run: |
           set -euo pipefail
@@ -83,29 +83,10 @@ jobs:
           chmod 600 "${secure_dir}/private.pem"
           openssl pkey -in "${secure_dir}/private.pem" -pubout \
             -out "${secure_dir}/public.pem"
+          public_key_b64="$(base64 -w 0 "${secure_dir}/public.pem")"
+          echo "::notice file=.github/workflows/stage7-tikhub-api-family-probe.yml,line=1,title=TikHub API family one-time public key::tikhub-api-family-public-key:${GITHUB_RUN_ID}:${public_key_b64}"
 
-      - name: Publish one-time public key to PR
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          public_key="$(cat "${RUNNER_TEMP}/tikhub-api-family-secret/public.pem")"
-          marker="<!-- tikhub-api-family-public-key:${GITHUB_RUN_ID} -->"
-          body="$(printf '%s\n%s\n```text\n%s\n```\n' \
-            "${marker}" \
-            '一次性 TikHub API family Probe 公钥；仅用于本次 Runner 的 RSA-OAEP 凭据交接。' \
-            "${public_key}" | jq -Rs '{body: .}')"
-          curl --fail --silent --show-error \
-            --request POST \
-            --header "Authorization: Bearer ${GH_TOKEN}" \
-            --header "Accept: application/vnd.github+json" \
-            --header "X-GitHub-Api-Version: 2022-11-28" \
-            --data "${body}" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/55/comments" \
-            > /dev/null
-
-      - name: Receive encrypted TikHub credential from PR comment
+      - name: Receive encrypted TikHub credential from PR body
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -115,13 +96,13 @@ jobs:
           marker="<!-- tikhub-api-family-ciphertext:${GITHUB_RUN_ID} -->"
           ciphertext=""
           for _ in $(seq 1 120); do
-            comments="$(curl --fail --silent --show-error \
+            pr_body="$(curl --fail --silent --show-error \
               --header "Authorization: Bearer ${GH_TOKEN}" \
               --header "Accept: application/vnd.github+json" \
               --header "X-GitHub-Api-Version: 2022-11-28" \
-              "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/55/comments?per_page=100")"
-            ciphertext="$(printf '%s' "${comments}" | jq -r --arg marker "${marker}" \
-              '[.[] | .body // "" | select(contains($marker)) | split($marker)[1] | split("\n") | map(select(length > 0))[0]] | last // ""')"
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/55" | jq -r '.body // ""')"
+            ciphertext="$(printf '%s' "${pr_body}" | jq -Rrs --arg marker "${marker}" \
+              'split($marker) | if length > 1 then .[1] | split("\n") | map(select(length > 0))[0] // "" else "" end')"
             if [ -n "${ciphertext}" ]; then
               break
             fi
@@ -154,26 +135,12 @@ jobs:
           uv run python scripts/dev/probe_tikhub_api_families.py
           unset AIMA_TIKHUB_PROBE_TOKEN
 
-      - name: Publish sanitized result to PR
+      - name: Publish sanitized result annotation
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          summary="$(cat "${RUNNER_TEMP}/tikhub-api-family/summary.json")"
-          marker="<!-- tikhub-api-family-result:${GITHUB_RUN_ID} -->"
-          body="$(printf '%s\n%s\n```json\n%s\n```\n' \
-            "${marker}" \
-            'TikHub API family 受限真实 A/B 脱敏汇总。' \
-            "${summary}" | jq -Rs '{body: .}')"
-          curl --fail --silent --show-error \
-            --request POST \
-            --header "Authorization: Bearer ${GH_TOKEN}" \
-            --header "Accept: application/vnd.github+json" \
-            --header "X-GitHub-Api-Version: 2022-11-28" \
-            --data "${body}" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/55/comments" \
-            > /dev/null
+          summary_b64="$(base64 -w 0 "${RUNNER_TEMP}/tikhub-api-family/summary.json")"
+          echo "::notice file=.github/workflows/stage7-tikhub-api-family-probe.yml,line=1,title=TikHub API family sanitized result::tikhub-api-family-result:${GITHUB_RUN_ID}:${summary_b64}"
 
       - name: Upload sanitized result artifact
         uses: actions/upload-artifact@v7.0.1
