@@ -1,3 +1,4 @@
+# evidence-revision: 2
 name: Stage 7 TikHub API Family Evidence
 
 on:
@@ -66,8 +67,15 @@ jobs:
           chmod 600 "${secure_dir}/private.pem"
           openssl pkey -in "${secure_dir}/private.pem" -pubout \
             -out "${secure_dir}/public.pem"
-          public_key_b64="$(base64 -w 0 "${secure_dir}/public.pem")"
-          echo "::warning file=.github/workflows/stage7-tikhub-api-family-evidence.yml,line=1,title=TikHub API family evidence one-time public key::tikhub-api-family-evidence-public-key:${GITHUB_RUN_ID}:${public_key_b64}"
+
+      - name: Upload one-time RSA public key
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: stage7-tikhub-api-family-evidence-public-key-${{ github.run_id }}
+          path: ${{ runner.temp }}/tikhub-api-family-evidence-secret/public.pem
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 9
 
       - name: Receive encrypted TikHub credential from PR body
         shell: bash
@@ -189,12 +197,14 @@ jobs:
           git add "${target}"
           git diff --cached --check
 
-      - name: Publish sanitized summary annotation
-        shell: bash
-        run: |
-          set -euo pipefail
-          summary_b64="$(base64 -w 0 "${RUNNER_TEMP}/tikhub-api-family-evidence/summary.json")"
-          echo "::warning file=.github/workflows/stage7-tikhub-api-family-evidence.yml,line=1,title=TikHub API family evidence result::tikhub-api-family-evidence-result:${GITHUB_RUN_ID}:${summary_b64}"
+      - name: Upload sanitized evidence
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: stage7-tikhub-api-family-evidence-${{ github.run_id }}
+          path: ${{ runner.temp }}/tikhub-api-family-evidence
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 9
 
       - name: Commit evidence and remove one-time probe
         shell: bash
