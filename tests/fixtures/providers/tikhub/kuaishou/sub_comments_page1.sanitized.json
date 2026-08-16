@@ -1,7 +1,83 @@
 {
+  "cache_message": "<redacted-text>",
+  "cache_message_zh": "<redacted-text>",
+  "cache_url": "https://example.invalid/redacted",
   "code": 200,
   "data": {
-    "pcursor": "",
-    "subComments": []
-  }
+    "host-name": "public-bjmt-c87-kce-node72.idchb1az4.hb1.kwaidc.com",
+    "pcursor": "1018975453518",
+    "result": 1,
+    "subComments": [
+      {
+        "authorArea": "<redacted-text>",
+        "authorVerified": false,
+        "author_id": 100004,
+        "author_liked": false,
+        "author_name": "<redacted-text>",
+        "cashTags": {},
+        "commentAuthorTags": [],
+        "commentBottomTags": [],
+        "comment_id": 100002,
+        "content": "<redacted-text>",
+        "headurl": "https://example.invalid/redacted",
+        "headurls": [
+          {"cdn": "p4.a.yximgs.com", "url": "https://example.invalid/redacted"},
+          {"cdn": "p23.a.yximgs.com", "url": "https://example.invalid/redacted"}
+        ],
+        "isKwaiShopItemComment": false,
+        "likedCount": 15,
+        "photo_id": 100001,
+        "profilePagePrefetchInfo": {"profilePageType": 1},
+        "replyToUserName": "<redacted-text>",
+        "reply_to": 473331688,
+        "time": "2025-05-29 19:38:55",
+        "timestamp": 1720000000,
+        "type": 0,
+        "user_id": 100003,
+        "user_sex": "F"
+      },
+      {
+        "authorArea": "<redacted-text>",
+        "authorVerified": false,
+        "author_id": 100006,
+        "author_liked": false,
+        "author_name": "<redacted-text>",
+        "cashTags": {},
+        "commentAuthorTags": [],
+        "commentBottomTags": [],
+        "comment_id": 100005,
+        "content": "<redacted-text>",
+        "headurl": "https://example.invalid/redacted",
+        "headurls": [
+          {"cdn": "p4.a.yximgs.com", "url": "https://example.invalid/redacted"},
+          {"cdn": "p2.a.yximgs.com", "url": "https://example.invalid/redacted"}
+        ],
+        "isKwaiShopItemComment": false,
+        "likedCount": 4,
+        "photo_id": 100001,
+        "profilePagePrefetchInfo": {"profilePageType": 1},
+        "replyToUserName": "<redacted-text>",
+        "reply_to": 473331688,
+        "time": "2025-06-05 21:19:56",
+        "timestamp": 1720000000,
+        "type": 0,
+        "user_id": 100003,
+        "user_sex": "F"
+      }
+    ]
+  },
+  "docs": "https://example.invalid/redacted",
+  "message": "Request successful. This request will incur a charge.",
+  "message_zh": "请求成功，本次请求将被计费。",
+  "params": {
+    "pcursor": "<redacted-text>",
+    "photo_id": "id-0002",
+    "root_comment_id": "id-0003"
+  },
+  "request_id": "id-0001",
+  "router": "/api/v1/kuaishou/web/fetch_one_video_sub_comment",
+  "support": "Discord: https://discord.gg/aMEAS8Xsvz",
+  "time": "2026-08-15 18:21:40",
+  "time_stamp": 1720000000,
+  "time_zone": "America/Los_Angeles"
 }
