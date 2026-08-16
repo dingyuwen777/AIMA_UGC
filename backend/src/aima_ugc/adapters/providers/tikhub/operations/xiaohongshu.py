@@ -233,14 +233,12 @@ def build_app_v1_detail_candidate_request(*, note_id: str) -> XhsRequest:
     return XhsRequest(f"{_APP_V1_BASE}/get_note_info", {"note_id": note_id})
 
 
-def build_web_v3_detail_candidate_request(
-    *, note_id: str, xsec_token: str | None = None
-) -> XhsRequest:
-    """构造 Web V3 笔记详情 A/B 候选；xsec_token 没有真实来源时不伪造。"""
-    params: dict[str, object] = {"note_id": note_id}
-    if xsec_token:
-        params["xsec_token"] = xsec_token
-    return XhsRequest(f"{_WEB_V3_BASE}/fetch_note_detail", params)
+def build_web_v3_detail_candidate_request(*, note_id: str, xsec_token: str) -> XhsRequest:
+    """构造 Web V3 笔记详情 A/B 候选；官方接口要求显式 xsec_token。"""
+    return XhsRequest(
+        f"{_WEB_V3_BASE}/fetch_note_detail",
+        {"note_id": note_id, "xsec_token": xsec_token},
+    )
 
 
 def build_note_comments_request(
@@ -268,11 +266,13 @@ def build_app_v1_comments_candidate_request(
     )
 
 
-def build_web_v3_comments_candidate_request(*, note_id: str, cursor: str = "") -> XhsRequest:
-    """构造 Web V3 一级评论 A/B 候选。"""
+def build_web_v3_comments_candidate_request(
+    *, note_id: str, xsec_token: str, cursor: str = ""
+) -> XhsRequest:
+    """构造 Web V3 一级评论 A/B 候选；官方接口要求显式 xsec_token。"""
     return XhsRequest(
         f"{_WEB_V3_BASE}/fetch_note_comments",
-        {"note_id": note_id, "cursor": cursor},
+        {"note_id": note_id, "xsec_token": xsec_token, "cursor": cursor},
     )
 
 
@@ -301,9 +301,14 @@ def build_app_v1_sub_comments_candidate_request(
 
 
 def build_web_v3_sub_comments_candidate_request(
-    *, note_id: str, root_comment_id: str, num: int = 10, cursor: str = ""
+    *,
+    note_id: str,
+    root_comment_id: str,
+    xsec_token: str,
+    num: int = 10,
+    cursor: str = "",
 ) -> XhsRequest:
-    """构造 Web V3 二级评论 A/B 候选。"""
+    """构造 Web V3 二级评论 A/B 候选；官方接口要求显式 xsec_token。"""
     if num < 1:
         raise ValueError("num 必须大于 0")
     return XhsRequest(
@@ -311,6 +316,7 @@ def build_web_v3_sub_comments_candidate_request(
         {
             "note_id": note_id,
             "root_comment_id": root_comment_id,
+            "xsec_token": xsec_token,
             "num": num,
             "cursor": cursor,
         },
