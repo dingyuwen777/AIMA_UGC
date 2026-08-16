@@ -215,6 +215,8 @@ def sanitize_response(
     ):
         return pseudonyms.identifier(value)
     if isinstance(value, str):
+        if len(value) >= 11 and value.isdigit():
+            return pseudonyms.identifier(value)
         if value == KEYWORD:
             return value
         normalized = _normalized_key(key)
