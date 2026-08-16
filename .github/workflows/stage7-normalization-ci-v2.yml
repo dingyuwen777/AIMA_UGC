@@ -1,4 +1,4 @@
-# normalization-revision: 7
+# normalization-revision: 8
 name: Stage 7 TikHub Normalization CI V2
 
 on:
@@ -79,33 +79,21 @@ jobs:
             backend/src/aima_ugc/adapters/providers/tikhub \
             tests/unit/collection/test_*tikhub*.py
 
+      - name: Mypy provider adapters
+        shell: bash
+        run: uv run mypy backend/src/aima_ugc/adapters/providers
+
+      - name: Mypy persistence adapters
+        shell: bash
+        run: uv run mypy backend/src/aima_ugc/adapters/persistence
+
+      - name: Mypy storage adapters
+        shell: bash
+        run: uv run mypy backend/src/aima_ugc/adapters/storage
+
       - name: Mypy adapters
         shell: bash
         run: uv run mypy backend/src/aima_ugc/adapters
-
-      - name: Mypy modules
-        shell: bash
-        run: uv run mypy backend/src/aima_ugc/modules
-
-      - name: Mypy bootstrap
-        shell: bash
-        run: uv run mypy backend/src/aima_ugc/bootstrap
-
-      - name: Mypy entrypoints
-        shell: bash
-        run: uv run mypy backend/src/aima_ugc/entrypoints
-
-      - name: Mypy platform
-        shell: bash
-        run: uv run mypy backend/src/aima_ugc/platform
-
-      - name: Mypy contracts
-        shell: bash
-        run: uv run mypy backend/src/aima_ugc/contracts
-
-      - name: Mypy database schema
-        shell: bash
-        run: uv run mypy backend/src/aima_ugc/database_schema.py
 
       - name: Mypy full backend
         shell: bash
