@@ -178,6 +178,13 @@ def _is_identifier_key(key: str) -> bool:
     return any(part in normalized for part in _STATE_KEY_PARTS)
 
 
+def _sanitize_mapping_key(key: object, pseudonyms: Pseudonymizer) -> str:
+    text = str(key)
+    if _LONG_NUMERIC_IDENTIFIER.search(text):
+        return str(pseudonyms.identifier(text))
+    return text
+
+
 def sanitize_response(
     value: object,
     *,
@@ -187,7 +194,7 @@ def sanitize_response(
     """字段/类型保留，直接标识、资源定位值、文本与技术状态值去标识化。"""
     if isinstance(value, dict):
         return {
-            str(child_key): sanitize_response(
+            _sanitize_mapping_key(child_key, pseudonyms): sanitize_response(
                 child_value,
                 key=str(child_key),
                 pseudonyms=pseudonyms,
