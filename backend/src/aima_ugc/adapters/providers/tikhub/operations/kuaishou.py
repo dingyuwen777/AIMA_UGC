@@ -1,4 +1,4 @@
-"""TikHub 快手 App/Web Operation 与保守 pcursor 状态。"""
+"""TikHub 快手 App 主 Operation、Web 已验证备用 Operation 与 pcursor 状态。"""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ _SEARCH_PATH = "/api/v1/kuaishou/app/search_video_v2"
 _DETAIL_PATH = "/api/v1/kuaishou/app/fetch_one_video"
 _APP_COMMENTS_PATH = "/api/v1/kuaishou/app/fetch_video_comment"
 _APP_SUB_COMMENTS_PATH = "/api/v1/kuaishou/app/fetch_video_sub_comments"
-_COMMENTS_PATH = "/api/v1/kuaishou/web/fetch_one_video_comment"
-_SUB_COMMENTS_PATH = "/api/v1/kuaishou/web/fetch_one_video_sub_comment"
+_WEB_COMMENTS_PATH = "/api/v1/kuaishou/web/fetch_one_video_comment"
+_WEB_SUB_COMMENTS_PATH = "/api/v1/kuaishou/web/fetch_one_video_sub_comment"
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,7 +51,7 @@ class KuaishouCursorPagination:
         body: dict[str, Any],
         item_key: str,
     ) -> KuaishouCursorPagination:
-        """按真实 Web data.<item_key>/pcursor 处理评论或二级评论分页。"""
+        """按真实 App 主链/Web 备用链共有的 data.<item_key>/pcursor 推进分页。"""
         data = body.get("data")
         if not isinstance(data, dict):
             return cls(previous_cursor, False, "response_data_unavailable")
@@ -119,7 +119,7 @@ def build_video_detail_request(*, photo_id: str) -> KuaishouRequest:
 
 
 def build_app_video_comments_request(*, photo_id: str, pcursor: str = "") -> KuaishouRequest:
-    """构造当前官方 Kuaishou App 一级评论候选请求。"""
+    """构造已批准的 Kuaishou App 一级评论主请求。"""
     return KuaishouRequest(
         method="GET",
         path=_APP_COMMENTS_PATH,
@@ -134,7 +134,7 @@ def build_app_video_sub_comments_request(
     pcursor: str = "",
     count: int = 8,
 ) -> KuaishouRequest:
-    """构造当前官方 Kuaishou App 二级回复候选请求。"""
+    """构造已批准的 Kuaishou App 二级回复主请求。"""
     if count < 1 or count > 20:
         raise ValueError("count 必须在 1..20 之间")
     return KuaishouRequest(
@@ -150,11 +150,8 @@ def build_app_video_sub_comments_request(
 
 
 def build_video_comments_request(*, photo_id: str, pcursor: str = "") -> KuaishouRequest:
-    return KuaishouRequest(
-        method="GET",
-        path=_COMMENTS_PATH,
-        params={"photo_id": _required_text(photo_id, "photo_id"), "pcursor": pcursor},
-    )
+    """构造当前生产主链一级评论请求；首版固定使用 App，不自动回退 Web。"""
+    return build_app_video_comments_request(photo_id=photo_id, pcursor=pcursor)
 
 
 def build_video_sub_comments_request(
@@ -162,10 +159,36 @@ def build_video_sub_comments_request(
     photo_id: str,
     root_comment_id: str,
     pcursor: str = "",
+    count: int = 8,
 ) -> KuaishouRequest:
+    """构造当前生产主链二级评论请求；首版固定使用 App，不自动回退 Web。"""
+    return build_app_video_sub_comments_request(
+        photo_id=photo_id,
+        root_comment_id=root_comment_id,
+        pcursor=pcursor,
+        count=count,
+    )
+
+
+def build_web_video_comments_request(*, photo_id: str, pcursor: str = "") -> KuaishouRequest:
+    """构造已真实验证的 Web 一级评论备用请求；生产主链不会自动调用。"""
     return KuaishouRequest(
         method="GET",
-        path=_SUB_COMMENTS_PATH,
+        path=_WEB_COMMENTS_PATH,
+        params={"photo_id": _required_text(photo_id, "photo_id"), "pcursor": pcursor},
+    )
+
+
+def build_web_video_sub_comments_request(
+    *,
+    photo_id: str,
+    root_comment_id: str,
+    pcursor: str = "",
+) -> KuaishouRequest:
+    """构造已真实验证的 Web 二级评论备用请求；生产主链不会自动调用。"""
+    return KuaishouRequest(
+        method="GET",
+        path=_WEB_SUB_COMMENTS_PATH,
         params={
             "photo_id": _required_text(photo_id, "photo_id"),
             "root_comment_id": _required_text(root_comment_id, "root_comment_id"),
@@ -197,7 +220,7 @@ def extract_detail_item(body: dict[str, Any]) -> dict[str, Any]:
 
 
 def extract_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
-    """从真实 Web 一级评论响应提取 data.rootComments。"""
+    """从真实 App 主链/Web 备用链共有的 data.rootComments 提取一级评论。"""
     data = body.get("data")
     if not isinstance(data, dict):
         return ()
@@ -208,7 +231,7 @@ def extract_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
 
 
 def extract_sub_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
-    """从真实 Web 二级评论响应提取 data.subComments；空页返回空 tuple。"""
+    """从真实 App 主链/Web 备用链共有的 data.subComments 提取二级评论。"""
     data = body.get("data")
     if not isinstance(data, dict):
         return ()
@@ -235,6 +258,8 @@ __all__ = [
     "build_video_comments_request",
     "build_video_detail_request",
     "build_video_sub_comments_request",
+    "build_web_video_comments_request",
+    "build_web_video_sub_comments_request",
     "extract_comment_items",
     "extract_detail_item",
     "extract_search_items",
