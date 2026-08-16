@@ -129,6 +129,7 @@ _TIME_KEY_PARTS = (
     "update_time",
 )
 _SAFE_ENUM_VALUE = re.compile(r"^[A-Za-z0-9_. -]{1,80}$")
+_LONG_NUMERIC_IDENTIFIER = re.compile(r"(?<![A-Za-z0-9_-])\d{11,}(?![A-Za-z0-9_-])")
 
 
 class Pseudonymizer:
@@ -215,7 +216,7 @@ def sanitize_response(
     ):
         return pseudonyms.identifier(value)
     if isinstance(value, str):
-        if len(value) >= 11 and value.isdigit():
+        if _LONG_NUMERIC_IDENTIFIER.search(value):
             return pseudonyms.identifier(value)
         if value == KEYWORD:
             return value
