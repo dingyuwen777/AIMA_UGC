@@ -1,0 +1,68 @@
+name: Stage 7 Fix Endpoint Ledger Digit String
+
+on:
+  push:
+    branches:
+      - feature/stage7-completion
+    paths:
+      - ".github/workflows/stage7-fix-endpoint-ledger-digit-string.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/stage7-completion
+          fetch-depth: 0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+      - name: Harden digit-string de-identification
+        shell: bash
+        run: |
+          set -euo pipefail
+          git pull --ff-only origin feature/stage7-completion
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/dev/probe_tikhub_endpoint_ledger.py")
+          text = path.read_text(encoding="utf-8")
+          old = '''    if isinstance(value, str):
+        if value == KEYWORD:
+            return value
+'''
+          new = '''    if isinstance(value, str):
+        if len(value) >= 11 and value.isdigit():
+            return pseudonyms.identifier(value)
+        if value == KEYWORD:
+            return value
+'''
+          if text.count(old) != 1:
+              raise SystemExit("digit-string sanitizer patch anchor missing or ambiguous")
+          path.write_text(text.replace(old, new), encoding="utf-8")
+          PY
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+          uv run ruff format scripts/dev/probe_tikhub_endpoint_ledger.py
+          uv run ruff check --fix scripts/dev/probe_tikhub_endpoint_ledger.py
+          uv run ruff format --check scripts/dev/probe_tikhub_endpoint_ledger.py
+          uv run ruff check scripts/dev/probe_tikhub_endpoint_ledger.py
+          uv run python -m py_compile scripts/dev/probe_tikhub_endpoint_ledger.py
+          git diff --check
+      - name: Commit verified hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/stage7-fix-endpoint-ledger-digit-string.yml
+          git add scripts/dev/probe_tikhub_endpoint_ledger.py
+          git diff --cached --check
+          git config user.name "AIMA Stage 7 Runner"
+          git config user.email "actions@users.noreply.github.com"
+          git commit -m "补强 Endpoint Ledger 数字字符串去标识化"
+          git push origin HEAD:feature/stage7-completion
