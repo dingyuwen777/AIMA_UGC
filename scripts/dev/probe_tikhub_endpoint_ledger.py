@@ -18,8 +18,6 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from pydantic import SecretStr
-
 from aima_ugc.adapters.providers.tikhub.operations import (
     bilibili,
     douyin,
@@ -32,6 +30,7 @@ from aima_ugc.adapters.providers.tikhub.probe import (
     TikHubProbeLimits,
 )
 from aima_ugc.adapters.providers.tikhub.transport import TikHubHttpTransport
+from pydantic import SecretStr
 
 BASE_URL = "https://api.tikhub.io"
 KEYWORD = "爱玛"
@@ -209,6 +208,12 @@ def sanitize_response(
         return value
     if _is_identifier_key(key):
         return pseudonyms.identifier(value)
+    if (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and abs(value) >= 10_000_000_000
+    ):
+        return pseudonyms.identifier(value)
     if isinstance(value, str):
         if value == KEYWORD:
             return value
@@ -263,10 +268,7 @@ def observed_path_types(value: object) -> list[dict[str, object]]:
                 visit(child, f"{path}[]")
 
     visit(value, "$")
-    return [
-        {"path": path, "types": sorted(types)}
-        for path, types in sorted(observed.items())
-    ]
+    return [{"path": path, "types": sorted(types)} for path, types in sorted(observed.items())]
 
 
 def _json_type(value: object) -> str:
@@ -487,9 +489,9 @@ def _run_douyin(
     wrapped = _max_item(
         douyin.extract_search_items(search_body),
         lambda item: (
-            ((item.get("data") or {}).get("aweme_info") or {}).get("statistics", {}).get(
-                "comment_count", 0
-            )
+            ((item.get("data") or {}).get("aweme_info") or {})
+            .get("statistics", {})
+            .get("comment_count", 0)
             if isinstance(item.get("data"), dict)
             else 0
         ),
@@ -712,9 +714,7 @@ def _run_kuaishou(
     comments = kuaishou.extract_comment_items(comments_body)
     root = _max_item(
         comments,
-        lambda item: item.get("displaySubCommentCount")
-        or item.get("subCommentCount")
-        or 0,
+        lambda item: item.get("displaySubCommentCount") or item.get("subCommentCount") or 0,
     )
     root_id = str(root.get("comment_id") or root.get("id") or "")
     if not root_id:
@@ -741,8 +741,7 @@ def run() -> None:
     credential = SecretStr(_required_env("AIMA_TIKHUB_PROBE_TOKEN"))
     manifest: list[dict[str, object]] = []
     pseudonyms = {
-        platform: Pseudonymizer()
-        for platform in ("xhs", "douyin", "weibo", "bilibili", "kuaishou")
+        platform: Pseudonymizer() for platform in ("xhs", "douyin", "weibo", "bilibili", "kuaishou")
     }
 
     with TikHubHttpTransport(base_url=BASE_URL) as transport:
