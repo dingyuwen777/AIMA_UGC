@@ -294,10 +294,14 @@ def extract_search_items(
 def build_detail_call(platform: TikHubPlatform, content: CanonicalContentV1) -> TikHubOperationCall:
     if platform == "xhs":
         if content.content_type == "video":
-            xhs_request = xiaohongshu.build_video_detail_request(note_id=content.external_content_id)
+            xhs_request = xiaohongshu.build_video_detail_request(
+                note_id=content.external_content_id
+            )
             operation = "get_video_note_detail"
         else:
-            xhs_request = xiaohongshu.build_image_detail_request(note_id=content.external_content_id)
+            xhs_request = xiaohongshu.build_image_detail_request(
+                note_id=content.external_content_id
+            )
             operation = "get_image_note_detail"
         return TikHubOperationCall(
             "xhs",
