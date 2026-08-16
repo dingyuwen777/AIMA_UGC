@@ -32,6 +32,18 @@ def test_response_sanitizer_redacts_long_numeric_token_inside_safe_enum_string()
     assert sanitized == {"type": "id-0001"}
 
 
+def test_response_sanitizer_redacts_long_numeric_dynamic_mapping_key() -> None:
+    probe = _load_probe_module()
+    pseudonyms = probe.Pseudonymizer()
+
+    sanitized = probe.sanitize_response(
+        {"12345678901": {"type": "video"}},
+        pseudonyms=pseudonyms,
+    )
+
+    assert sanitized == {"id-0001": {"type": "video"}}
+
+
 def test_response_sanitizer_keeps_normal_safe_enum_and_redacts_time() -> None:
     probe = _load_probe_module()
     pseudonyms = probe.Pseudonymizer()
