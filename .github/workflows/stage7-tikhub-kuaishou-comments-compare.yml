@@ -34,6 +34,7 @@ jobs:
           uv sync --locked
           uv run pytest tests/unit/collection/test_kuaishou_tikhub_operation.py -q
           uv run ruff format scripts/dev/probe_tikhub_kuaishou_comments_compare.py
+          uv run ruff check --fix scripts/dev/probe_tikhub_kuaishou_comments_compare.py
           uv run ruff check \
             backend/src/aima_ugc/adapters/providers/tikhub/operations/kuaishou.py \
             tests/unit/collection/test_kuaishou_tikhub_operation.py \
