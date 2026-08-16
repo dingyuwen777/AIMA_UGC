@@ -1,3 +1,4 @@
+# normalization-revision: 3
 name: Stage 7 TikHub Normalization CI V2
 
 on:
@@ -51,6 +52,8 @@ jobs:
             tests/unit/collection/test_weibo_tikhub_operation.py \
             tests/unit/collection/test_bilibili_tikhub_operation.py \
             tests/unit/collection/test_kuaishou_tikhub_operation.py \
+            tests/unit/collection/test_tikhub_api_family_candidates.py \
+            tests/unit/collection/test_tikhub_api_family_compare.py \
             tests/unit/collection/test_tikhub_real_search_operations.py \
             tests/unit/collection/test_tikhub_real_search_mappers.py \
             tests/unit/collection/test_tikhub_real_detail_mappers.py \
@@ -84,5 +87,5 @@ jobs:
           git config user.name "AIMA Stage 7 Runner"
           git config user.email "actions@users.noreply.github.com"
           git add backend/src/aima_ugc/adapters/providers/tikhub tests/unit/collection/test_*tikhub*.py
-          git commit -m "通过 TikHub 真实响应归一化验证"
+          git commit -m "通过 TikHub API family 对照验证"
           git push origin HEAD:feature/stage7-completion
