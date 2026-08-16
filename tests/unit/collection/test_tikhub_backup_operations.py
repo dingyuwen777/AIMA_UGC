@@ -7,6 +7,7 @@ from aima_ugc.adapters.providers.tikhub.operations.backup import (
     build_douyin_web_comments_backup_request,
     build_douyin_web_replies_backup_request,
     build_douyin_web_v2_detail_backup_request,
+    build_weibo_web_replies_backup_request,
     build_weibo_web_v2_detail_backup_request,
 )
 
@@ -33,11 +34,14 @@ def test_douyin_web_backup_requests_keep_same_business_identity() -> None:
     assert "count" not in replies.params
 
 
-def test_weibo_web_v2_detail_backup_requests_full_text() -> None:
-    request = build_weibo_web_v2_detail_backup_request(status_id="status-1")
+def test_weibo_web_v2_detail_and_web_reply_backups_keep_business_identity() -> None:
+    detail = build_weibo_web_v2_detail_backup_request(status_id="status-1")
+    replies = build_weibo_web_replies_backup_request(root_comment_id="comment-root")
 
-    assert request.path == "/api/v1/weibo/web_v2/fetch_post_detail"
-    assert request.params == {"id": "status-1", "is_get_long_text": "true"}
+    assert detail.path == "/api/v1/weibo/web_v2/fetch_post_detail"
+    assert detail.params == {"id": "status-1", "is_get_long_text": "true"}
+    assert replies.path == "/api/v1/weibo/web/fetch_comment_replies"
+    assert replies.params == {"cid": "comment-root", "max_id": "0"}
 
 
 def test_bilibili_web_detail_backup_uses_same_aid() -> None:
@@ -56,5 +60,7 @@ def test_backup_operations_fail_closed_on_empty_ids_or_negative_cursor() -> None
         build_douyin_web_replies_backup_request(item_id="1", comment_id=" ")
     with pytest.raises(ValueError, match="status_id"):
         build_weibo_web_v2_detail_backup_request(status_id="")
+    with pytest.raises(ValueError, match="root_comment_id"):
+        build_weibo_web_replies_backup_request(root_comment_id="")
     with pytest.raises(ValueError, match="aid"):
         build_bilibili_web_detail_backup_request(aid="")
