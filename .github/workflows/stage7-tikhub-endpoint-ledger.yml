@@ -1,3 +1,4 @@
+# ledger-revision: 2
 name: Stage 7 TikHub Endpoint Ledger
 
 on:
@@ -104,6 +105,7 @@ jobs:
             sleep 5
           done
           test -n "${ciphertext}"
+          test "$(( ${#ciphertext} % 4 ))" -eq 0
           printf '%s' "${ciphertext}" | base64 --decode > "${secure_dir}/ciphertext.bin"
           openssl pkeyutl -decrypt \
             -inkey "${secure_dir}/private.pem" \
