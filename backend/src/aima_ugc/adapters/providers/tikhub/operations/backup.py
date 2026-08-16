@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from aima_ugc.adapters.providers.tikhub.operations.bilibili import BilibiliRequest
 from aima_ugc.adapters.providers.tikhub.operations.douyin import DouyinRequest
+from aima_ugc.adapters.providers.tikhub.operations.kuaishou import KuaishouRequest
 from aima_ugc.adapters.providers.tikhub.operations.weibo import WeiboRequest
 
 
@@ -87,6 +88,15 @@ def build_bilibili_web_detail_backup_request(*, aid: str) -> BilibiliRequest:
     )
 
 
+def build_kuaishou_web_v2_detail_backup_request(*, photo_id: str) -> KuaishouRequest:
+    """快手 Web V2 详情备用；正式主链仍使用 App fetch_one_video。"""
+    return KuaishouRequest(
+        method="GET",
+        path="/api/v1/kuaishou/web/fetch_one_video_v2",
+        params={"photo_id": _required_text(photo_id, "photo_id")},
+    )
+
+
 def _required_text(value: str, field_name: str) -> str:
     normalized = value.strip()
     if not normalized:
@@ -104,6 +114,7 @@ __all__ = [
     "build_douyin_web_comments_backup_request",
     "build_douyin_web_replies_backup_request",
     "build_douyin_web_v2_detail_backup_request",
+    "build_kuaishou_web_v2_detail_backup_request",
     "build_weibo_web_replies_backup_request",
     "build_weibo_web_v2_detail_backup_request",
 ]
