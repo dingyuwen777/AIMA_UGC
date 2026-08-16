@@ -1,7 +1,6 @@
 """TikHub 显式备用 Operation 请求合同。"""
 
 import pytest
-
 from aima_ugc.adapters.providers.tikhub.operations.backup import (
     build_bilibili_web_detail_backup_request,
     build_douyin_web_comments_backup_request,

@@ -22,22 +22,29 @@ from pathlib import Path
 from typing import Any, Literal
 
 import httpx
-
 from aima_ugc.adapters.providers.tikhub.api_family_compare import compare_stable_ids
 from aima_ugc.adapters.providers.tikhub.operations.bilibili import (
     build_search_request as build_bilibili_search_request,
+)
+from aima_ugc.adapters.providers.tikhub.operations.bilibili import (
     build_web_search_candidate_request as build_bilibili_web_search_candidate_request,
 )
 from aima_ugc.adapters.providers.tikhub.operations.douyin import (
     build_video_search_request as build_douyin_search_request,
+)
+from aima_ugc.adapters.providers.tikhub.operations.douyin import (
     build_video_search_v1_candidate_request as build_douyin_search_v1_candidate_request,
 )
 from aima_ugc.adapters.providers.tikhub.operations.kuaishou import (
     build_comprehensive_search_candidate_request as build_kuaishou_comprehensive_candidate_request,
+)
+from aima_ugc.adapters.providers.tikhub.operations.kuaishou import (
     build_search_request as build_kuaishou_search_request,
 )
 from aima_ugc.adapters.providers.tikhub.operations.weibo import (
     build_app_search_candidate_request as build_weibo_app_search_candidate_request,
+)
+from aima_ugc.adapters.providers.tikhub.operations.weibo import (
     build_search_request as build_weibo_search_request,
 )
 
