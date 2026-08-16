@@ -179,9 +179,14 @@ KUAISHOU_TIKHUB_CAPABILITY = ProviderPlatformCapabilityV1(
         ProviderOperationCapabilityV1(
             business_operation="comments",
             provider_operations=("fetch_one_video_comment",),
-            supports_reply_count=False,
-            supports_sub_comments=False,
+            supports_reply_count=True,
+            supports_sub_comments=True,
             supports_incremental_comment_sort=False,
+            provider_page_size_policy="provider_default",
+        ),
+        ProviderOperationCapabilityV1(
+            business_operation="sub_comments",
+            provider_operations=("fetch_one_video_sub_comment",),
             provider_page_size_policy="provider_default",
         ),
     ),
