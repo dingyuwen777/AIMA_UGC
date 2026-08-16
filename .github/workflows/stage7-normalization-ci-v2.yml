@@ -1,4 +1,4 @@
-# normalization-revision: 4
+# normalization-revision: 5
 name: Stage 7 TikHub Normalization CI V2
 
 on:
@@ -68,7 +68,7 @@ jobs:
             tests/contracts/test_canonical_v1.py \
             -q
 
-      - name: Run quality and security gates
+      - name: Ruff quality gate
         shell: bash
         run: |
           set -euo pipefail
@@ -78,7 +78,17 @@ jobs:
           uv run ruff check \
             backend/src/aima_ugc/adapters/providers/tikhub \
             tests/unit/collection/test_*tikhub*.py
+
+      - name: Mypy quality gate
+        shell: bash
+        run: |
+          set -euo pipefail
           uv run mypy backend/src
+
+      - name: Secret and diff quality gate
+        shell: bash
+        run: |
+          set -euo pipefail
           uv run python scripts/quality/scan_secrets.py
           git diff --check
 
