@@ -1,0 +1,16 @@
+{
+  "authorization": "Bearer <redacted-secret>",
+  "body": {
+    "backtrace": "<redacted-text>",
+    "content_type": "1",
+    "cursor": 0,
+    "filter_duration": "0",
+    "keyword": "爱玛",
+    "publish_time": "2026-08-16T00:00:00Z",
+    "search_id": "id-0001",
+    "sort_type": "2"
+  },
+  "method": "POST",
+  "params": {},
+  "path": "/api/v1/douyin/search/fetch_video_search_v2"
+}

@@ -1,0 +1,13 @@
+{
+  "authorization": "Bearer <redacted-secret>",
+  "body": null,
+  "method": "GET",
+  "params": {
+    "duration": "all",
+    "keyword": "爱玛",
+    "pcursor": "<redacted-text>",
+    "publish_time": "2026-08-16T00:00:00Z",
+    "sort_type": "newest"
+  },
+  "path": "/api/v1/kuaishou/app/search_comprehensive"
+}

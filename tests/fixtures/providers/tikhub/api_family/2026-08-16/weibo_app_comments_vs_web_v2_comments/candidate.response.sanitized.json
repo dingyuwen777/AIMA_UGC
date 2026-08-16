@@ -1,0 +1,156 @@
+{
+  "cache_message": "<redacted-text>",
+  "cache_message_zh": "<redacted-text>",
+  "cache_url": "https://example.invalid/redacted",
+  "code": 200,
+  "data": {
+    "data": [
+      {
+        "allow_follow": false,
+        "analysis_extra": "<redacted-text>",
+        "biz_mark_type": 0,
+        "cmt_ext": "level_type:1",
+        "comments": [],
+        "created_at": "2026-08-16T00:00:00Z",
+        "degrade_type": "normal",
+        "disable_reply": 0,
+        "floor_number": 1,
+        "hot_icon": {
+          "url": "https://example.invalid/redacted",
+          "wh_ratio": "1.44"
+        },
+        "id": 100011,
+        "idstr": "id-0037",
+        "isExpand": false,
+        "isLikedByMblogAuthor": false,
+        "item_category": "comment",
+        "like_counts": 0,
+        "liked": false,
+        "mark_type": 1,
+        "match_ai_play_picture": false,
+        "max_id": 100002,
+        "mid": "id-0037",
+        "pic_num": 0,
+        "readtimetype": "comment",
+        "report_scheme": "<redacted-text>",
+        "restrictOperate": 0,
+        "restrict_state": 0,
+        "rid": "0_0_0_163514129454400086_0_0_0",
+        "rootid": 5332585199698747,
+        "rootidstr": "5332585199698747",
+        "safe_tags": 4096,
+        "source": "<redacted-text>",
+        "source_allowclick": 0,
+        "source_type": 4,
+        "text": "<redacted-text>",
+        "text_raw": "<redacted-text>",
+        "total_number": 0,
+        "url_objects": [],
+        "user": {
+          "avatar_hd": "https://example.invalid/redacted",
+          "avatar_large": "https://example.invalid/redacted",
+          "cover_image_phone": "https://example.invalid/redacted",
+          "description": "<redacted-text>",
+          "domain": "<redacted-text>",
+          "follow_me": false,
+          "followers_count": 321557,
+          "followers_count_str": "<redacted-text>",
+          "following": false,
+          "friends_count": 36,
+          "gender": "m",
+          "icon_list": [
+            {
+              "data": {
+                "mbrank": 2,
+                "mbtype": 12,
+                "svip": 1,
+                "vvip": 1
+              },
+              "type": "vip"
+            },
+            {
+              "data": {
+                "icon_img": "https://example.invalid/redacted",
+                "title": "<redacted-text>",
+                "url": "https://example.invalid/redacted",
+                "value": "1"
+              },
+              "type": "icon"
+            },
+            {
+              "data": {
+                "icon_img": "https://example.invalid/redacted",
+                "title": "<redacted-text>",
+                "url": "https://example.invalid/redacted",
+                "value": "1"
+              },
+              "type": "icon"
+            }
+          ],
+          "id": 100012,
+          "idstr": "id-0036",
+          "location": "<redacted-text>",
+          "mbrank": 2,
+          "mbtype": 12,
+          "pc_new": 0,
+          "planet_video": false,
+          "profile_image_url": "https://example.invalid/redacted",
+          "profile_url": "/u/7984486935",
+          "screen_name": "<redacted-text>",
+          "status_total_counter": {
+            "comment_cnt": "<redacted-text>",
+            "like_cnt": "<redacted-text>",
+            "repost_cnt": "<redacted-text>",
+            "total_cnt": "<redacted-text>",
+            "total_cnt_format": "<redacted-text>"
+          },
+          "statuses_count": 617,
+          "svip": 1,
+          "url": "<redacted-text>",
+          "user_ability": 2359304,
+          "v_plus": 0,
+          "verified": true,
+          "verified_reason": "<redacted-text>",
+          "verified_type": 7,
+          "verified_type_ext": 50,
+          "vvip": 1,
+          "weihao": "<redacted-text>"
+        }
+      }
+    ],
+    "filter_group": [
+      {
+        "isDefault": 1,
+        "param": "<redacted-text>",
+        "scheme": "<redacted-text>",
+        "title": "<redacted-text>"
+      },
+      {
+        "isDefault": 0,
+        "param": "<redacted-text>",
+        "scheme": "<redacted-text>",
+        "title": "<redacted-text>"
+      }
+    ],
+    "max_id": 100002,
+    "ok": 1,
+    "rootComment": [],
+    "tip_msg": "<redacted-text>",
+    "total_number": 1,
+    "trendsText": "<redacted-text>"
+  },
+  "docs": "https://example.invalid/redacted",
+  "message": "Request successful. This request will incur a charge.",
+  "message_zh": "请求成功，本次请求将被计费。",
+  "params": {
+    "count": "10",
+    "id": "id-0006",
+    "max_id": "id-0014"
+  },
+  "request_id": "id-0038",
+  "router": "/api/v1/weibo/web_v2/fetch_post_comments",
+  "support": "Discord: https://discord.gg/aMEAS8Xsvz",
+  "time": "2026-08-16 02:13:31",
+  "time_stamp": 1720000000,
+  "time_zone": "America/Los_Angeles"
+}

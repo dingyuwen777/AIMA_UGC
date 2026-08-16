@@ -1,0 +1,223 @@
+{
+  "array_evidence_limit": 3,
+  "base_url": "https://api.tikhub.io",
+  "business_pair_count": 5,
+  "business_request_count": 10,
+  "captured_at": "2026-08-16T09:13:31.911374+00:00",
+  "estimated_business_cost_usd": "0.046",
+  "hidden_retries": 0,
+  "keyword": "爱玛",
+  "max_estimated_business_cost_usd": "0.120000",
+  "results": [
+    {
+      "candidate_endpoint": "/api/v1/douyin/search/fetch_video_search_v1",
+      "candidate_http_status": 200,
+      "candidate_price_usd": "0.01",
+      "candidate_provider_code": 200,
+      "evidence_files": {
+        "candidate_request": "douyin_video_search_v2_vs_v1/candidate.request.sanitized.json",
+        "candidate_response": "douyin_video_search_v2_vs_v1/candidate.response.sanitized.json",
+        "primary_request": "douyin_video_search_v2_vs_v1/primary.request.sanitized.json",
+        "primary_response": "douyin_video_search_v2_vs_v1/primary.response.sanitized.json"
+      },
+      "id_comparison": {
+        "candidate_count": 7,
+        "candidate_duplicate_count": 0,
+        "candidate_only_count": 0,
+        "candidate_unique_count": 7,
+        "jaccard": 1.0,
+        "primary_count": 7,
+        "primary_duplicate_count": 0,
+        "primary_only_count": 0,
+        "primary_unique_count": 7,
+        "same_unique_content": true,
+        "shared_count": 7,
+        "union_count": 7
+      },
+      "keyword": "爱玛",
+      "name": "douyin_video_search_v2_vs_v1",
+      "platform": "douyin",
+      "primary_endpoint": "/api/v1/douyin/search/fetch_video_search_v2",
+      "primary_http_status": 200,
+      "primary_price_usd": "0.01",
+      "primary_provider_code": 200,
+      "semantic_relation": "same_business",
+      "shape_comparison": {
+        "candidate_only_path_count": 1146,
+        "candidate_path_count": 1181,
+        "primary_only_path_count": 1063,
+        "primary_path_count": 1098,
+        "shape_jaccard": 0.015597147950089126,
+        "shared_path_count": 35
+      }
+    },
+    {
+      "candidate_endpoint": "/api/v1/weibo/app/fetch_search_all",
+      "candidate_http_status": 200,
+      "candidate_price_usd": "0.001",
+      "candidate_provider_code": 200,
+      "evidence_files": {
+        "candidate_request": "weibo_web_search_vs_app_search_all/candidate.request.sanitized.json",
+        "candidate_response": "weibo_web_search_vs_app_search_all/candidate.response.sanitized.json",
+        "primary_request": "weibo_web_search_vs_app_search_all/primary.request.sanitized.json",
+        "primary_response": "weibo_web_search_vs_app_search_all/primary.response.sanitized.json"
+      },
+      "id_comparison": {
+        "candidate_count": 11,
+        "candidate_duplicate_count": 0,
+        "candidate_only_count": 2,
+        "candidate_unique_count": 11,
+        "jaccard": 0.75,
+        "primary_count": 10,
+        "primary_duplicate_count": 0,
+        "primary_only_count": 1,
+        "primary_unique_count": 10,
+        "same_unique_content": false,
+        "shared_count": 9,
+        "union_count": 12
+      },
+      "keyword": "爱玛",
+      "name": "weibo_web_search_vs_app_search_all",
+      "platform": "weibo",
+      "primary_endpoint": "/api/v1/weibo/web/fetch_search",
+      "primary_http_status": 200,
+      "primary_price_usd": "0.001",
+      "primary_provider_code": 200,
+      "semantic_relation": "same_business",
+      "shape_comparison": {
+        "candidate_only_path_count": 1166,
+        "candidate_path_count": 1183,
+        "primary_only_path_count": 481,
+        "primary_path_count": 498,
+        "shape_jaccard": 0.010216346153846154,
+        "shared_path_count": 17
+      }
+    },
+    {
+      "candidate_endpoint": "/api/v1/bilibili/web/fetch_general_search",
+      "candidate_http_status": 200,
+      "candidate_price_usd": "0.001",
+      "candidate_provider_code": 200,
+      "evidence_files": {
+        "candidate_request": "bilibili_app_search_vs_web_search/candidate.request.sanitized.json",
+        "candidate_response": "bilibili_app_search_vs_web_search/candidate.response.sanitized.json",
+        "primary_request": "bilibili_app_search_vs_web_search/primary.request.sanitized.json",
+        "primary_response": "bilibili_app_search_vs_web_search/primary.response.sanitized.json"
+      },
+      "id_comparison": {
+        "candidate_count": 20,
+        "candidate_duplicate_count": 0,
+        "candidate_only_count": 20,
+        "candidate_unique_count": 20,
+        "jaccard": 0.0,
+        "primary_count": 0,
+        "primary_duplicate_count": 0,
+        "primary_only_count": 0,
+        "primary_unique_count": 0,
+        "same_unique_content": false,
+        "shared_count": 0,
+        "union_count": 20
+      },
+      "keyword": "爱玛",
+      "name": "bilibili_app_search_vs_web_search",
+      "platform": "bilibili",
+      "primary_endpoint": "/api/v1/bilibili/app/fetch_search_by_type",
+      "primary_http_status": 200,
+      "primary_price_usd": "0.001",
+      "primary_provider_code": 200,
+      "semantic_relation": "same_business",
+      "shape_comparison": {
+        "candidate_only_path_count": 89,
+        "candidate_path_count": 110,
+        "primary_only_path_count": 29,
+        "primary_path_count": 50,
+        "shape_jaccard": 0.1510791366906475,
+        "shared_path_count": 21
+      }
+    },
+    {
+      "candidate_endpoint": "/api/v1/kuaishou/app/search_comprehensive",
+      "candidate_http_status": 200,
+      "candidate_price_usd": "0.01",
+      "candidate_provider_code": 200,
+      "evidence_files": {
+        "candidate_request": "kuaishou_video_search_vs_comprehensive_video_subset/candidate.request.sanitized.json",
+        "candidate_response": "kuaishou_video_search_vs_comprehensive_video_subset/candidate.response.sanitized.json",
+        "primary_request": "kuaishou_video_search_vs_comprehensive_video_subset/primary.request.sanitized.json",
+        "primary_response": "kuaishou_video_search_vs_comprehensive_video_subset/primary.response.sanitized.json"
+      },
+      "id_comparison": {
+        "candidate_count": 8,
+        "candidate_duplicate_count": 0,
+        "candidate_only_count": 8,
+        "candidate_unique_count": 8,
+        "jaccard": 0.0,
+        "primary_count": 17,
+        "primary_duplicate_count": 0,
+        "primary_only_count": 17,
+        "primary_unique_count": 17,
+        "same_unique_content": false,
+        "shared_count": 0,
+        "union_count": 25
+      },
+      "keyword": "爱玛",
+      "name": "kuaishou_video_search_vs_comprehensive_video_subset",
+      "platform": "kuaishou",
+      "primary_endpoint": "/api/v1/kuaishou/app/search_video_v2",
+      "primary_http_status": 200,
+      "primary_price_usd": "0.01",
+      "primary_provider_code": 200,
+      "semantic_relation": "broader_candidate",
+      "shape_comparison": {
+        "candidate_only_path_count": 210,
+        "candidate_path_count": 665,
+        "primary_only_path_count": 53,
+        "primary_path_count": 508,
+        "shape_jaccard": 0.6337047353760445,
+        "shared_path_count": 455
+      }
+    },
+    {
+      "candidate_endpoint": "/api/v1/weibo/web_v2/fetch_post_comments",
+      "candidate_http_status": 200,
+      "candidate_price_usd": "0.001",
+      "candidate_provider_code": 200,
+      "evidence_files": {
+        "candidate_request": "weibo_app_comments_vs_web_v2_comments/candidate.request.sanitized.json",
+        "candidate_response": "weibo_app_comments_vs_web_v2_comments/candidate.response.sanitized.json",
+        "primary_request": "weibo_app_comments_vs_web_v2_comments/primary.request.sanitized.json",
+        "primary_response": "weibo_app_comments_vs_web_v2_comments/primary.response.sanitized.json"
+      },
+      "id_comparison": {
+        "candidate_count": 1,
+        "candidate_duplicate_count": 0,
+        "candidate_only_count": 0,
+        "candidate_unique_count": 1,
+        "jaccard": 1.0,
+        "primary_count": 1,
+        "primary_duplicate_count": 0,
+        "primary_only_count": 0,
+        "primary_unique_count": 1,
+        "same_unique_content": true,
+        "shared_count": 1,
+        "union_count": 1
+      },
+      "name": "weibo_app_comments_vs_web_v2_comments",
+      "platform": "weibo",
+      "primary_endpoint": "/api/v1/weibo/app/fetch_status_comments",
+      "primary_http_status": 200,
+      "primary_price_usd": "0.001",
+      "primary_provider_code": 200,
+      "semantic_relation": "same_business",
+      "shape_comparison": {
+        "candidate_only_path_count": 110,
+        "candidate_path_count": 125,
+        "primary_only_path_count": 175,
+        "primary_path_count": 190,
+        "shape_jaccard": 0.05,
+        "shared_path_count": 15
+      }
+    }
+  ],
+  "schema_version": "stage7-tikhub-api-family-evidence.v1"
+}

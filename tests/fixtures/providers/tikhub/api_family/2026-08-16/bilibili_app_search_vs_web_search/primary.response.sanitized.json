@@ -1,0 +1,97 @@
+{
+  "cache_message": "<redacted-text>",
+  "cache_message_zh": "<redacted-text>",
+  "cache_url": "https://example.invalid/redacted",
+  "code": 200,
+  "data": {
+    "code": 0,
+    "data": {
+      "annotation": {
+        "qv_id": "id-0005"
+      },
+      "exp_str": "<redacted-text>",
+      "items": [
+        {
+          "av": {
+            "author": "<redacted-text>",
+            "cover": "https://example.invalid/redacted",
+            "danmaku": 1,
+            "duration": "1:22",
+            "face": "https://example.invalid/redacted",
+            "mid": "id-0002",
+            "play": 2731,
+            "ptime": "1785112637",
+            "show_card_desc_2": "<redacted-text>",
+            "title": "<redacted-text>",
+            "view_content": "2731"
+          },
+          "goto": "av",
+          "param": "116989137782324",
+          "uri": "<redacted-text>",
+          "user_act": "<redacted-text>"
+        },
+        {
+          "av": {
+            "author": "<redacted-text>",
+            "cover": "https://example.invalid/redacted",
+            "danmaku": 381,
+            "duration": "27:28",
+            "face": "https://example.invalid/redacted",
+            "mid": "id-0003",
+            "play": 404891,
+            "ptime": "1778382000",
+            "show_card_desc_2": "<redacted-text>",
+            "title": "<redacted-text>",
+            "view_content": "<redacted-text>"
+          },
+          "goto": "av",
+          "param": "116547628572619",
+          "uri": "<redacted-text>",
+          "user_act": "<redacted-text>"
+        },
+        {
+          "av": {
+            "author": "<redacted-text>",
+            "cover": "https://example.invalid/redacted",
+            "duration": "0:16",
+            "face": "https://example.invalid/redacted",
+            "mid": "id-0004",
+            "play": 504,
+            "ptime": "1786599409",
+            "show_card_desc_2": "<redacted-text>",
+            "title": "<redacted-text>",
+            "view_content": "504"
+          },
+          "goto": "av",
+          "param": "117086563080927",
+          "uri": "<redacted-text>",
+          "user_act": "<redacted-text>"
+        }
+      ],
+      "keyword": "爱玛",
+      "page": "1",
+      "pages": 50,
+      "pagination": {
+        "next": "CAISIDAzMzgxYzI3YTk3OTQyYzY5OTgyMjZmMGIxMDRmZmQ0"
+      },
+      "real_exposure_ratio": 0.8,
+      "result_is_recommend": 1000,
+      "trackid": "1789230946268359539"
+    },
+    "message": "success"
+  },
+  "docs": "https://example.invalid/redacted",
+  "message": "Request successful. This request will incur a charge.",
+  "message_zh": "请求成功，本次请求将被计费。",
+  "params": {
+    "keyword": "爱玛",
+    "order": "1",
+    "search_type": "video"
+  },
+  "request_id": "id-0001",
+  "router": "/api/v1/bilibili/app/fetch_search_by_type",
+  "support": "Discord: https://discord.gg/aMEAS8Xsvz",
+  "time": "2026-08-16 02:12:54",
+  "time_stamp": 1720000000,
+  "time_zone": "America/Los_Angeles"
+}
