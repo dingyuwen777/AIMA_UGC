@@ -233,7 +233,6 @@ jobs:
                   item["name"] for item in inspect(runtime.engine).get_check_constraints(
                       "provider_requests"
                   )
-              }
           finally:
               runtime.dispose()
           assert "ck_provider_requests_status_allowed" not in checks, checks
@@ -241,7 +240,7 @@ jobs:
           uv run alembic upgrade head
           uv run alembic check
 
-      - name: Apply reviewed documentation cleanup
+      - name: Commit reviewed long-term documentation only
         if: github.event_name == 'pull_request' && github.head_ref == 'fix/stage1-stage7-correctness'
         shell: bash
         run: |
@@ -261,62 +260,18 @@ jobs:
               for line in payload.splitlines()
           )
           exec(compile(payload, str(workflow), "exec"), {})
-
-          normalization = Path(".github/workflows/stage7-normalization-ci-v2.yml")
-          normalization_text = normalization.read_text(encoding="utf-8")
-          if "remove one-time workflow" not in normalization_text:
-              raise SystemExit("normalization workflow is not marked one-time")
-          normalization.unlink()
-
-          scheduler = Path(".github/workflows/stage7-scheduler-runtime.yml")
-          scheduler_text = scheduler.read_text(encoding="utf-8")
-          scheduler_old = "    branches:\n      - main\n      - feature/stage7-completion\n"
-          scheduler_new = "    branches:\n      - main\n"
-          if scheduler_text.count(scheduler_old) != 1:
-              raise SystemExit("scheduler old branch block is not unique")
-          scheduler.write_text(
-              scheduler_text.replace(scheduler_old, scheduler_new),
-              encoding="utf-8",
-          )
-
-          real_shape = Path(".github/workflows/stage7-tikhub-real-shape.yml")
-          real_shape_text = real_shape.read_text(encoding="utf-8")
-          real_shape_old = (
-              "  workflow_dispatch:\n"
-              "  push:\n"
-              "    branches:\n"
-              "      - feature/stage7-completion\n"
-              "    paths:\n"
-              "      - \".github/workflows/stage7-tikhub-real-shape.yml\"\n"
-          )
-          if real_shape_text.count(real_shape_old) != 1:
-              raise SystemExit("real-shape legacy push block is not unique")
-          real_shape.write_text(
-              real_shape_text.replace(real_shape_old, "  workflow_dispatch:\n"),
-              encoding="utf-8",
-          )
           PY
+          git restore -- .github/workflows
           uv run python scripts/quality/check_docs.py
           uv run python scripts/quality/scan_secrets.py
-          for path in \
-            .github/workflows/stage7-endpoint-ledger-sanitizer.yml \
-            .github/workflows/stage7-normalization-ci-v2.yml \
-            .github/workflows/stage7-tikhub-api-family-probe.yml \
-            .github/workflows/stage7-tikhub-detail-comments-probe.yml \
-            .github/workflows/stage7-tikhub-endpoint-ledger.yml \
-            .github/workflows/stage7-tikhub-fixture-probe.yml \
-            .github/workflows/stage7-tikhub-fixture-probe-v2.yml \
-            .github/workflows/stage7-tikhub-fixture-probe-v3.yml \
-            .github/workflows/stage7-tikhub-replies-probe.yml; do
-            test ! -e "$path"
-          done
-          ! grep -q --fixed-string 'feature/stage7-completion' .github/workflows/stage7-scheduler-runtime.yml
-          ! grep -q --fixed-string 'feature/stage7-completion' .github/workflows/stage7-tikhub-real-shape.yml
-          grep -q 'workflow_dispatch:' .github/workflows/stage7-tikhub-real-shape.yml
           git diff --check
+          if git diff --quiet -- AGENTS.md README.md docs; then
+            echo 'expected documentation changes were not produced' >&2
+            exit 1
+          fi
           git status --short
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add AGENTS.md README.md docs .github/workflows
-          git commit -m "同步 Stage 1-7 长期文档并清理旧探针任务"
+          git add AGENTS.md README.md docs
+          git commit -m "同步 Stage 1-7 长期文档"
           git push origin HEAD:${GITHUB_HEAD_REF}
