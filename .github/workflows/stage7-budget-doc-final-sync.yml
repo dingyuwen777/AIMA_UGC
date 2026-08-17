@@ -1,0 +1,383 @@
+name: Stage 7 Budget Doc Final Sync
+
+on:
+  push:
+    branches:
+      - feature/stage7-completion
+    paths:
+      - .github/workflows/stage7-budget-doc-final-sync.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/stage7-completion
+          fetch-depth: 0
+
+      - name: Synchronize remaining current facts
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          def joined(*parts: str) -> str:
+              return "\n".join(parts)
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              if new in text and old not in text:
+                  return
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one old anchor, found {count}: {old[:140]!r}")
+              p.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          def regex_once(path: str, pattern: str, new: str, marker: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              if marker in text:
+                  return
+              updated, count = re.subn(pattern, new, text, count=1, flags=re.S | re.M)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one regex anchor, found {count}: {pattern}")
+              p.write_text(updated, encoding="utf-8")
+
+          def remove_once(path: str, old: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              if old not in text:
+                  return
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one removable anchor, found {count}: {old[:140]!r}")
+              p.write_text(text.replace(old, "", 1), encoding="utf-8")
+
+          p2 = "docs/blueprint/02-采集系统与数据标准化.md"
+          replace_once(
+              p2,
+              "Stage 7 的五平台业务 Decision Pipeline、Provider Capability、首版 TikHub Operation Matrix、自适应评论、Deep Collection、费用预测和最终预算语义统一见 [08-采集策略与平台能力.md](08-采集策略与平台能力.md)；面向开发/调试的具体平台抓取逻辑见 [`../collection/README.md`](../collection/README.md)。本文保留 Provider/Raw/Mapper/Canonical/来源链等采集基础，不维护第二份平台 endpoint 表。",
+              "Stage 7 的五平台业务 Decision Pipeline、Provider Capability、首版 TikHub Operation Matrix、自适应评论、Deep Collection、Provider Billing/成本审计以及未来 Budget/Cost Guard 扩展方向统一见 [08-采集策略与平台能力.md](08-采集策略与平台能力.md)；面向开发/调试的具体平台抓取逻辑见 [`../collection/README.md`](../collection/README.md)。本文保留 Provider/Raw/Mapper/Canonical/来源链等采集基础，不维护第二份平台 endpoint 表。",
+          )
+          remove_once(p2, "- 请求和费用预算；\n")
+          replace_once(
+              p2,
+              "Run 是某次人工或定时触发的完整执行记录。创建 Run 时必须冻结已经解析的 Provider Config 身份、Provider 类型、平台业务策略、最终关键词和预算，后续修改 Provider Config 或 Plan 不能改变已经创建的 Run。",
+              "Run 是某次人工或定时触发的完整执行记录。创建 Run 时必须冻结已经解析的 Provider Config 身份、Provider 类型、平台业务策略和最终关键词，后续修改 Provider Config 或 Plan 不能改变已经创建的 Run。当前版本不把请求/金额预算写入 Run Snapshot。",
+          )
+          replace_once(
+              p2,
+              joined(
+                  '  "date_from": "2026-08-11T18:00:00+08:00",',
+                  '  "date_to": "2026-08-12T18:00:00+08:00",',
+                  '  "request_budget": 300',
+                  '}',
+              ),
+              joined(
+                  '  "date_from": "2026-08-11T18:00:00+08:00",',
+                  '  "date_to": "2026-08-12T18:00:00+08:00"',
+                  '}',
+              ),
+          )
+          replace_once(
+              p2,
+              "Provider Request 不是一条真实网络调用记录，因此不会因为重试而覆盖 HTTP 状态、TikHub request ID 或 Raw。Stage 5C 已发布的 Request Schema 暂保留 `provider` 字段兼容；稳定 `provider_config_id` 的持久化关联由后续 Plan/Run/Budget Stage 7 Migration 在父事实完整时增加，不能改写历史 Revision。",
+              "Provider Request 不是一条真实网络调用记录，因此不会因为重试而覆盖 HTTP 状态、TikHub request ID 或 Raw。Stage 5C 已发布的 Request Schema 暂保留 `provider` 字段兼容；稳定 `provider_config_id` 已由 Stage 7 Migration 加入 Provider Request 来源链，历史 Revision 不改写。该身份用于 Provider 路由和审计，不代表当前存在预算账户。",
+          )
+          replace_once(
+              p2,
+              "6. Provider 类型是配置实例稳定身份的一部分。需要从 TikHub 改为另一个 Provider 时创建新的 Provider Config，并让 Plan/平台显式改引用，不能原地把旧 UUID 改成另一 Provider 后污染历史预算/审计；",
+              "6. Provider 类型是配置实例稳定身份的一部分。需要从 TikHub 改为另一个 Provider 时创建新的 Provider Config，并让 Plan/平台显式改引用，不能原地把旧 UUID 改成另一 Provider 后污染历史来源/审计；",
+          )
+          remove_once(p2, "- 达到本次显式请求/费用预算；\n")
+          replace_once(
+              p2,
+              "数据库写失败时 Raw 已存在，Job 可以重试 Mapper 和 Ingestion，且在 Raw 完整性校验通过时不得再次调用 Provider。若此前网络结果未知且没有可用 Raw，是否重试必须按费用策略决定，系统要记录潜在重复计费，不能承诺外部 Provider 一定未收费。",
+              "数据库写失败时 Raw 已存在，Job 可以重试 Mapper 和 Ingestion，且在 Raw 完整性校验通过时不得再次调用 Provider。若此前网络结果未知且没有可用 Raw，是否重试必须按已批准的错误/重试策略决定，系统要记录潜在重复计费，不能承诺外部 Provider 一定未收费。",
+          )
+          section12 = joined(
+              "## 12. Provider Billing 与成本审计",
+              "",
+              "每次 Provider Request Attempt 必须记录本次调用事实，逻辑 Provider Request 汇总全部 Attempt：",
+              "",
+              "- Operation；",
+              "- 请求次数；",
+              "- 单价快照（Provider 已核验时）；",
+              "- 预计费用；",
+              "- Provider 权威返回的实际费用（若存在）；",
+              "- 是否重试；",
+              "- 是否可能重复计费；",
+              "- 是否由回补/Deep 触发。",
+              "",
+              "这些字段用于执行审计和后续对账，不是当前预算额度。当前版本没有 Plan 请求次数上限、金额上限、评论预算、Budget Account、Reservation Ledger 或超预算发送门禁；历史预算结构由 `20260817_0015` 向前删除。Provider Billing/Pricing 仍必须保持事实完整：本地估算不能冒充 Provider `actual_cost`，网络结果未知时要记录潜在重复计费。",
+              "",
+              "优化优先级：",
+              "",
+              "1. 关键词发现优先于下游 enrichment；",
+              "2. 同一 Run 内跨词/重叠窗口按内容身份去重；",
+              "3. 搜索 Observation 先判断，避免所有内容都抓详情；",
+              "4. 可靠零评论直接跳过评论；",
+              "5. 重复且 comment_count 未变化不重抓评论；",
+              "6. 评论目标使用自适应 50/50/5，已返回整页全部保留；",
+              "7. 一级评论明确无回复时不请求二级；",
+              "8. 有已校验 Raw 时只回放，不再次调用 Provider；",
+              "9. 分页以 Provider 末页、可靠时间/已知 ID、技术安全页数、取消和错误等真实边界停止；",
+              "10. Deep/额外统计优先级最低，由明确业务触发。",
+              "",
+              "未来如果业务需要 Budget/Cost Guard，只按 08 的扩展方向通过新的 L3 Change 重新设计，不在当前生产代码中保留 dormant Budget 接口。",
+              "",
+              "## 13. 独立调试和测试",
+          )
+          regex_once(
+              p2,
+              r"## 12\. 成本控制\n.*?\n## 13\. 独立调试和测试",
+              section12,
+              "## 12. Provider Billing 与成本审计",
+          )
+          replace_once(
+              p2,
+              "真实 Credential/API Key 只从 Secret 边界取得，不硬编码、不进入 Git/日志/Raw/Canonical/XLSX/Job Payload/数据库明文。真实 Probe 默认关闭，不进入普通 CI，不写生产业务库，并受显式请求/分页/费用上限约束。",
+              "真实 Credential/API Key 只从 Secret 边界取得，不硬编码、不进入 Git/日志/Raw/Canonical/XLSX/Job Payload/数据库明文。真实 Probe 默认关闭，不进入普通 CI，不写生产业务库；必须设置显式请求/分页上限，并在运行前核对预计费用。",
+          )
+          replace_once(
+              p2,
+              "→ Budget\n→ Raw / Canonical",
+              "→ Raw / Canonical",
+          )
+          replace_once(
+              p2,
+              "当前 main 已实现小红书；抖音/微博/B站/快手虽已批准首版 Operation 目标，但仍是 Stage 7 待实现。官方 endpoint 文档足以实现请求/分页状态机，不足以证明 Mapper 字段兼容；每个平台仍需合法脱敏非空真实 Fixture、Mapper Contract Test 和 Real Probe 才能宣称纵切完成。",
+              "当前 Stage 7 分支已保存五平台合法脱敏真实 Fixture，并通过生产 Extractor/Mapper/Canonical/Ingestion 纵切验证主 Operation 结构；Stage 7 仍未闭环的核心是正式 `collection.run.v1` live Worker 与最终集成/交付证据，不能因 Fixture/Mapper 完成就宣称自动采集闭环。",
+          )
+          remove_once(
+              p2,
+              "- global/run/run_comments/content_comments 并发预留/结算/释放/unknown 有真实 PostgreSQL 集成测试，预算按 Provider Config 隔离；\n",
+          )
+          replace_once(
+              p2,
+              "- 五个平台正式 Operation 都有可由人工显式运行的 Real Probe，可配置真实 Provider URL、Secret 和已批准业务参数，并受显式预算约束；",
+              "- 五个平台正式 Operation 都有可由人工显式运行的 Real Probe，可配置真实 Provider URL、Secret 和已批准业务参数，并设置显式请求/分页上限；",
+          )
+          replace_once(
+              p2,
+              "- 费用预测、理论请求上限、数据库硬预算在 API/前端语义中明确区分；",
+              "- Provider Billing/预计费用与 Provider 权威实际费用在语义中明确区分；当前 API/前端不得暴露不存在的预算额度配置；",
+          )
+
+          p4 = "docs/blueprint/04-后端任务API与前端.md"
+          replace_once(
+              p4,
+              joined(
+                  "class CollectionCrawlPayloadV1(BaseModel):",
+                  '    schema_version: Literal["collection.crawl.v1"]',
+                  "    run_id: UUID",
+                  "    secret_ref: str",
+              ),
+              joined(
+                  "class CollectionRunJobPayloadV1(BaseModel):",
+                  '    schema_version: Literal["collection.run.v1"]',
+              ),
+          )
+          replace_once(
+              p4,
+              "不能把无版本 dict 长期塞进 Job 表。",
+              "不能把无版本 dict 长期塞进 Job 表。当前 `collection.run.v1` Payload 只保存 schema 身份；Handler 使用当前 `JobExecutionFence.job_id` 反查 Run，Provider Secret 通过 Run 中的 `provider_config_id → secret_ref` 在服务端边界解析，不能进入 Job Payload。",
+          )
+          retry_text = joined(
+              "如果 Provider Request 已有通过完整性校验的 Raw，重试必须从 Raw 继续 Mapper/Ingestion，禁止再次调用 Provider。若网络中断导致 Provider 是否完成/计费未知，系统无法保证绝不重复付费；只能按已批准策略决定是否重试，并把 Attempt 标记为计费未知和潜在重复计费。Dispatcher 在短事务锁住并验证所属 Job 当前 Token/状态/Lease/Deadline 后，才用 CAS 把 Attempt 从 `reserved` 变为 `dispatching`；Transport 禁止在一次调用内隐藏自动网络重试。进入该状态后同一 Attempt 最多调用一次 Provider Client。Worker/Job Lease 丢失或 Deadline 到达后，Collection Attempt Reconciler 先检查确定性路径上的 Raw：已校验 Raw 存在时恢复 terminal 事实且不复发；缺失或损坏时才把遗留 `dispatching` CAS 为 `unknown`。旧 Worker 的后续写入被 Job Fencing 拒绝，新的发送必须新建 Attempt。",
+          )
+          regex_once(
+              p4,
+              r"如果 Provider Request 已有通过完整性校验的 Raw，重试必须从 Raw 继续 Mapper/Ingestion，禁止再次调用 Provider。若网络中断导致 Provider 是否完成/计费未知，系统无法保证绝不重复付费；.*?新的发送必须新建 Attempt。",
+              retry_text,
+              "缺失或损坏时才把遗留 `dispatching` CAS 为 `unknown`。旧 Worker",
+          )
+          replace_once(
+              p4,
+              "停机后发现多个错过周期时，Scheduler 必须按 Plan 的 `misfire_policy`（跳过、合并一次或有限补跑）和 `max_catch_up_runs` 处理，且把决定写入 Occurrence/Run。策略与上限在阶段 0 结合费用和容量批准；未批准时不得启用生产 Scheduler，禁止无上限补跑形成请求风暴。",
+              "第一版 Scheduler 已批准并实现 `misfire_policy=latest_only + max_catch_up_runs=0`：停机恢复发现多个到期 slot 时，只为最新 slot 创建 `enqueued` Occurrence/Run/Job，更早 slot 写 `skipped / misfire_superseded`，不额外补跑历史 Run。领域层、数据库约束与 Scheduler Runtime 必须保持该语义一致；未来改变策略需要新的显式设计决策和 Migration。",
+          )
+          registry = joined(
+              "当前 Stage 7 正式 Collection Job 类型是：",
+              "",
+              "```text",
+              "collection.run.v1",
+              "```",
+              "",
+              "它必须由唯一 Handler 注册并消费 Scheduler 创建的 Run/Scope。其他未来采集、分析、报告、导出或维护 Job 只有在对应 Contract/Handler 真正实现后才能加入 Registry；未知 Job 类型不能被任意 Worker 认领。",
+          )
+          regex_once(
+              p4,
+              r"每种 Job 只注册一个 Handler：\n\n```text\ncollection\.crawl\.v1\n.*?maintenance\.retention\.v1\n```\n\n注册冲突必须在进程启动时失败。未知 Job 类型不能被任意 Worker 认领。",
+              registry,
+              "当前 Stage 7 正式 Collection Job 类型是：",
+          )
+
+          p7 = "docs/blueprint/07-技术决策与实施门禁.md"
+          regex_once(
+              p7,
+              r"^\| Stage 4—7 边界 \|[^\n]*\|$",
+              "| Stage 4—7 边界 | Stage 4 只建立 Job Runtime；Stage 5A 建立 Provider Contract/Transport/Raw；Stage 5B 建立 `collection_runs/collection_scopes` 与真实 Job 外键；Stage 5C 建立 Provider Request/Attempt 持久化；Stage 5D 建立 Provider-neutral Dispatch、Raw 关联和崩溃恢复；Stage 6 建立小红书 Operation/Mapper 与 Ingestion 纵切；Stage 7 已建立五平台主 Operation/Mapper/Capability/真实 Fixture、Provider Config、词包、Plan/Occurrence/Run Snapshot 和 `latest_only` Scheduler Runtime，并撤回当前预算功能；当前剩余核心是 `collection.run.v1` live Worker 与最终集成闭环。 |",
+              "当前剩余核心是 `collection.run.v1` live Worker",
+          )
+
+          preadme = "docs/blueprint/README.md"
+          replace_once(
+              preadme,
+              "**涉及 Provider、TikHub、采集 Plan、关键词发现、详情/评论策略、成本控制或平台 Operation 时，必须再读取 [`08-采集策略与平台能力.md`](08-采集策略与平台能力.md)，然后读取 [`../collection/README.md`](../collection/README.md) 和目标平台文档；**",
+              "**涉及 Provider、TikHub、采集 Plan、关键词发现、详情/评论策略、Provider Billing/成本事实、未来 Budget/Cost Guard 扩展或平台 Operation 时，必须再读取 [`08-采集策略与平台能力.md`](08-采集策略与平台能力.md)，然后读取 [`../collection/README.md`](../collection/README.md) 和目标平台文档；**",
+          )
+          replace_once(
+              preadme,
+              "采集逻辑的人类可读开发入口固定为 [`../collection/README.md`](../collection/README.md)。它负责讲清通用 Decision Pipeline、Provider Config/平台选择、成本短路、评论抽样、Deep Collection、Business Pipeline Probe，以及小红书/抖音/微博/B站/快手各自的 TikHub Operation、业务参数、内部分页、代码/Fixture/测试状态。平台文档不得把“已批准目标实现”写成“当前代码已完成”。",
+              "采集逻辑的人类可读开发入口固定为 [`../collection/README.md`](../collection/README.md)。它负责讲清通用 Decision Pipeline、Provider Config/平台选择、Provider Billing/成本审计、评论抽样、Deep Collection、Business Pipeline Probe，以及小红书/抖音/微博/B站/快手各自的 TikHub Operation、业务参数、内部分页、代码/Fixture/测试状态。平台文档不得把“已批准目标实现”写成“当前代码已完成”。",
+          )
+          replace_once(
+              preadme,
+              "| [`03-数据库与文件存储.md`](03-数据库与文件存储.md) | PostgreSQL、表与约束、Owner、Current/Version/Metric、Artifact、Job、预算数据结构、备份一致性 | Schema、表、Migration、Repository、Artifact、数据历史、幂等、预算 |",
+              "| [`03-数据库与文件存储.md`](03-数据库与文件存储.md) | PostgreSQL、表与约束、Owner、Current/Version/Metric、Artifact、Job、Provider Billing 字段、历史预算回撤与备份一致性 | Schema、表、Migration、Repository、Artifact、数据历史、幂等、Provider Billing/历史预算 Migration |",
+          )
+          replace_once(
+              preadme,
+              "| [`08-采集策略与平台能力.md`](08-采集策略与平台能力.md) | Stage 7 Provider Config/平台选择、五平台默认 Provider、Operation Matrix、Decision Pipeline、Capability、评论/成本/预算/Deep/Probe 业务规则 | TikHub/Provider、平台采集、Plan 参数、评论、预算、Capability、Real/Business Probe |",
+              "| [`08-采集策略与平台能力.md`](08-采集策略与平台能力.md) | Stage 7 Provider Config/平台选择、五平台默认 Provider、Operation Matrix、Decision Pipeline、Capability、评论/Provider Billing/Deep/Probe，以及未来 Budget/Cost Guard 扩展方向 | TikHub/Provider、平台采集、Plan 参数、评论、Provider Billing、未来预算扩展、Capability、Real/Business Probe |",
+          )
+          replace_once(
+              preadme,
+              "Stage 7 的 Decision/Capability、Provider Config/平台路由、关键词/词包父事实、Plan/Occurrence/Run Snapshot 父事实、最终 Provider Budget Ledger、TikHub 后端版本化 Pricing 边界与抖音/微博/B站/快手请求分页 Operation 机器基础均已建立。",
+              "Stage 7 的 Decision/Capability、Provider Config/平台路由、关键词/词包父事实、Plan/Occurrence/Run Snapshot、`latest_only` Scheduler Runtime、五平台 TikHub Operation/Mapper/真实 Fixture、Provider Billing/Pricing 审计边界，以及历史预算功能的 `0015` 向前回撤均已建立。",
+          )
+          replace_once(
+              preadme,
+              "- Stage 7 `20260815_0013`、`collection_plans/collection_plan_platforms/collection_plan_keyword_packs/collection_schedule_occurrences`、Run 的 `manual_plan_id/occurrence_id` 关系、`Asia/Shanghai` 首版时区边界，以及 enqueued/skipped Occurrence 与 scheduled Run/Job 的 deferred 数据库一致性约束；当前只建立 Scheduler 所需父事实，不解析 Cron、不执行 misfire/catch-up；",
+              "- Stage 7 `20260815_0013/0014`、Plan/Occurrence/Run/Scope Snapshot、`Asia/Shanghai + latest_only + max_catch_up_runs=0` 约束，以及带 Plan 行锁、并发去重、skipped/enqueued Occurrence 的 Scheduler Runtime；",
+          )
+          replace_once(
+              preadme,
+              "- Stage 7 TikHub Pricing 以 `adapters/providers/tikhub/pricing.toml` 为后端版本化运行时事实：全局“多数服务”价格只作说明，未核验 endpoint 不得使用默认价放行；已核验 endpoint 生成保守 `estimated` Billing/Attempt 价格快照并由 Budget 预留，ProviderClient 在响应没有逐请求账单时保留该计划快照且 `actual_cost=0`；仅真正提供权威逐请求费用的 Provider 才能用 `confirmed + actual_cost`；Pricing 不进入前端，也不保存 Secret；",
+              "- Stage 7 TikHub Pricing 以 `adapters/providers/tikhub/pricing.toml` 为后端版本化成本事实：已核验 endpoint 可生成 `estimated` Billing/Attempt 价格快照，ProviderClient 在响应没有逐请求账单时保持 `actual_cost=0`；仅真正提供权威逐请求费用的 Provider 才能用 `confirmed + actual_cost`；这些字段用于执行审计，不构成当前预算额度或发送门禁；Pricing 不进入前端，也不保存 Secret；",
+          )
+          replace_once(
+              preadme,
+              "- Stage 7 快手 TikHub App Search V2 / Detail + Web Comments/Sub-comments 请求构造与保守 `pcursor` 状态已进入 `main`；该实现尚不包含 Kuaishou Mapper、合法脱敏非空真实 Fixture、Real Probe 或默认 Registry Capability 接线。",
+              "- Stage 7 快手正式主链使用 App Search V2 / Detail / Comments / Sub-comments；Web Comments/Sub-comments 只保留为 2026-08-16 已验证显式备用且不自动 fallback；当前分支已有真实脱敏 Fixture、Mapper/Capability/Ingestion 证据。",
+          )
+
+          mreadme = "backend/src/aima_ugc/modules/collection/README.md"
+          replace_once(
+              mreadme,
+              "Collection 是采集业务 Owner。它负责把已经通过 Contract / Provider 边界确定的采集输入组织成可追踪的 Plan、Occurrence、Run、Scope、Provider Request / Attempt、Candidate 和预算账本事实；它不拥有 HTTP Router、Provider 私有分页协议或 Canonical 业务表。",
+              "Collection 是采集业务 Owner。它负责把已经通过 Contract / Provider 边界确定的采集输入组织成可追踪的 Plan、Occurrence、Run、Scope、Provider Request / Attempt 和 Candidate 事实；它不拥有 HTTP Router、Provider 私有分页协议或 Canonical 业务表。Provider Billing/成本字段只作为执行审计事实，当前模块不实现预算账本。",
+          )
+          remove_once(
+              mreadme,
+              joined(
+                  "6. `provider_budget.py`",
+                  "   - Provider 调用前预算预留、成功/失败结算和 `unknown` 账务保守处理；",
+                  "   - `unknown` 不自动退款。",
+              ) + "\n",
+          )
+          remove_once(mreadme, "  - `request_budget >= 0`；\n")
+          replace_once(
+              mreadme,
+              "- Scheduler 只创建任务事实，真实 Provider HTTP 仍必须经过 Pricing、Budget、Dispatch 与 Raw 边界；",
+              "- Scheduler 只创建任务事实，真实 Provider HTTP 仍必须经过 Provider Billing/Pricing、Dispatch 与 Raw 边界；",
+          )
+          replace_once(
+              mreadme,
+              "- `collection.run.v1` 的整个 Job Attempt 超时不自动重排；任何 Provider 重发都必须遵守“新 Attempt + 新预算预留 + 新 Raw 证据”边界，不能由 Job Runtime 隐式复制一次已经可能发送过的付费调用。",
+              "- `collection.run.v1` 的整个 Job Attempt 超时不自动重排；任何 Provider 重发都必须使用新 Attempt 并形成新的 Raw/计费审计事实，不能由 Job Runtime 隐式复制一次已经可能发送过的外部调用。",
+          )
+          replace_once(
+              mreadme,
+              "- scheduled Run 的 Scope/关键词展开与正式 Provider Operation 执行还需要接回现有 Keyword Pack、Provider Routing、Pricing/Budget、Dispatch、Raw、Mapper、Decision、Ingestion 链；",
+              "- scheduled Run 的 Scope/关键词展开与正式 Provider Operation 执行还需要接回现有 Keyword Pack、Provider Routing、Provider Billing/Pricing、Dispatch、Raw、Mapper、Decision、Ingestion 链；",
+          )
+          replace_once(
+              mreadme,
+              "- 统一真实 Probe 还必须继续保持 endpoint 级 Pricing 核验、安全 Secret 注入、显式请求数/费用上限和普通 CI 零付费请求。",
+              "- 统一真实 Probe 还必须继续保持 Provider Billing/Pricing 事实完整、安全 Secret 注入、显式请求数/分页上限和普通 CI 零付费请求。",
+          )
+
+          dreadme = "docs/collection/README.md"
+          replace_once(
+              dreadme,
+              "Provider Request / Attempt、Dispatch、Recovery 与预算账本继续复用现有 Stage 5D / Stage 7 生产实现。",
+              "Provider Request / Attempt、Dispatch、Recovery 继续复用现有 Stage 5D / Stage 7 生产实现；Billing/成本字段用于执行审计，当前没有 Budget Account/Reservation Ledger。",
+          )
+          remove_once(dreadme, "- Provider Budget Account / Reservation Ledger；\n")
+          remove_once(dreadme, "- Global / Run / Run Comment / Content Comment 多层请求数与金额预算；\n")
+          replace_once(
+              dreadme,
+              "1. **正式 `collection.run.v1` Worker Handler**：Scheduler 已能创建 scheduled Job / Occurrence / Run / Scope，但生产 Worker 仍需要完整复用 Provider Routing、Pricing/Budget、Dispatch、Raw、Mapper、Decision、Ingestion 链，不能注册空 Handler 或第二套采集实现；",
+              "1. **正式 `collection.run.v1` Worker Handler**：Scheduler 已能创建 scheduled Job / Occurrence / Run / Scope，但生产 Worker 仍需要完整复用 Provider Routing、Provider Billing/Pricing、Dispatch、Raw、Mapper、Decision、Ingestion 链，不能注册空 Handler 或第二套采集实现；",
+          )
+          replace_once(
+              dreadme,
+              "2. **统一 Operation / Business Pipeline Probe 的长期生产入口**：本轮一次性 Real Probe 已取得外部结构证据，但最终调试入口必须复用正式 Registry / Operation / Mapper / Decision Service，并保持 billable endpoint 的 Pricing/Budget fail-closed；",
+              "2. **统一 Operation / Business Pipeline Probe 的长期生产入口**：本轮一次性 Real Probe 已取得外部结构证据，但最终调试入口必须复用正式 Registry / Operation / Mapper / Decision Service，并保持 Provider Billing/Pricing 事实完整；",
+          )
+          replace_once(
+              dreadme,
+              "- Real Probe 默认不进普通 CI，必须显式授权、请求数/费用封顶、Secret 不落盘；",
+              "- Real Probe 默认不进普通 CI，必须显式授权、设置请求数/分页上限并在运行前核对预计费用，Secret 不落盘；",
+          )
+
+          required = {
+              p2: ["## 12. Provider Billing 与成本审计", "当前版本不把请求/金额预算写入 Run Snapshot", "collection.run.v1"],
+              p4: ["CollectionRunJobPayloadV1", "misfire_policy=latest_only + max_catch_up_runs=0", "当前 Stage 7 正式 Collection Job 类型是"],
+              p7: ["当前剩余核心是 `collection.run.v1` live Worker"],
+              preadme: ["历史预算功能的 `0015` 向前回撤", "App Search V2 / Detail / Comments / Sub-comments"],
+              mreadme: ["当前模块不实现预算账本", "Provider Billing/Pricing、Dispatch 与 Raw"],
+              dreadme: ["当前没有 Budget Account/Reservation Ledger", "Provider Billing/Pricing 事实完整"],
+          }
+          forbidden = {
+              p2: ["\"request_budget\": 300", "→ Budget\n→ Raw", "global/run/run_comments/content_comments 并发预留", "请求和费用预算；"],
+              p4: ["每个即将发出的真实 HTTP Attempt 都必须取得自己的预算预留", "collection.crawl.v1"],
+              mreadme: ["provider_budget.py", "request_budget >= 0", "Pricing、Budget、Dispatch"],
+              dreadme: ["Provider Budget Account / Reservation Ledger；", "Global / Run / Run Comment / Content Comment 多层请求数与金额预算"],
+          }
+          for path, needles in required.items():
+              text = Path(path).read_text(encoding="utf-8")
+              for needle in needles:
+                  if needle not in text:
+                      raise SystemExit(f"{path}: missing postcondition {needle!r}")
+          for path, needles in forbidden.items():
+              text = Path(path).read_text(encoding="utf-8")
+              for needle in needles:
+                  if needle in text:
+                      raise SystemExit(f"{path}: stale current rule remains {needle!r}")
+
+      - name: Verify documentation and secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/quality/check_docs.py
+          python scripts/quality/scan_secrets.py
+          git diff --check
+
+      - name: Commit facts and self-clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin feature/stage7-completion
+          test "$(git rev-parse origin/feature/stage7-completion)" = "${GITHUB_SHA}"
+          git rm .github/workflows/stage7-budget-doc-final-sync.yml
+          git add \
+            docs/blueprint/02-采集系统与数据标准化.md \
+            docs/blueprint/04-后端任务API与前端.md \
+            docs/blueprint/07-技术决策与实施门禁.md \
+            docs/blueprint/README.md \
+            backend/src/aima_ugc/modules/collection/README.md \
+            docs/collection/README.md
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "补齐预算回撤跨文档当前事实"
+          git push origin HEAD:feature/stage7-completion
