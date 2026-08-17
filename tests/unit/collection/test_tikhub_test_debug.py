@@ -7,6 +7,7 @@ from pathlib import Path
 from zipfile import ZipFile
 
 import pytest
+from openpyxl import load_workbook
 from aima_ugc.adapters.providers.tikhub_test import (
     run_bilibili,
     run_douyin,
@@ -130,7 +131,7 @@ def test_review_workbook_uses_approved_content_comment_layout(tmp_path: Path) ->
                 root_comment_id="000000000000000001",
                 parent_comment_id=None,
                 author="评论者A",
-                text="一级评论",
+                text="=2+2",
                 published_at="2026-08-17 20:01:00",
                 like_count=2,
                 reply_count=1,
@@ -155,30 +156,39 @@ def test_review_workbook_uses_approved_content_comment_layout(tmp_path: Path) ->
 
     with ZipFile(workbook) as archive:
         assert archive.testzip() is None
-        names = set(archive.namelist())
-        assert {
-            "[Content_Types].xml",
-            "xl/workbook.xml",
-            "xl/styles.xml",
-            "xl/worksheets/sheet1.xml",
-            "xl/worksheets/_rels/sheet1.xml.rels",
-        } <= names
-        workbook_xml = archive.read("xl/workbook.xml").decode("utf-8")
-        sheet_xml = archive.read("xl/worksheets/sheet1.xml").decode("utf-8")
-        rels_xml = archive.read("xl/worksheets/_rels/sheet1.xml.rels").decode("utf-8")
-        styles_xml = archive.read("xl/styles.xml").decode("utf-8")
 
-    assert 'name="内容与评论"' in workbook_xml
-    assert "00123456789012345678" in sheet_xml
-    assert "000000000000000001" in sheet_xml
-    assert "000000000000000002" in sheet_xml
-    assert "一级评论" in sheet_xml and "二级评论" in sheet_xml
-    assert '<mergeCell ref="A2:A3"' in sheet_xml
-    assert '<mergeCell ref="N2:N3"' in sheet_xml
-    assert "<hyperlink" in sheet_xml
-    assert "https://example.invalid/note/00123456789012345678" in rels_xml
-    assert "<f>" not in sheet_xml
-    assert 'style="thick"' not in styles_xml
+    loaded = load_workbook(workbook, data_only=False)
+    try:
+        assert loaded.sheetnames == ["内容与评论"]
+        sheet = loaded["内容与评论"]
+        assert sheet.freeze_panes == "A2"
+        assert sheet.sheet_view.showGridLines is False
+        assert "A2:A3" in {str(item) for item in sheet.merged_cells.ranges}
+        assert "N2:N3" in {str(item) for item in sheet.merged_cells.ranges}
+
+        assert sheet["B2"].value == "00123456789012345678"
+        assert sheet["B2"].number_format == "@"
+        assert sheet["P2"].value == "000000000000000001"
+        assert sheet["P3"].value == "000000000000000002"
+        assert sheet["P2"].number_format == "@"
+        assert sheet["P3"].number_format == "@"
+
+        assert sheet["H2"].hyperlink is not None
+        assert sheet["H2"].hyperlink.target == (
+            "https://example.invalid/note/00123456789012345678"
+        )
+        assert sheet["T2"].value == "'=2+2"
+        assert sheet["T2"].data_type != "f"
+        assert sheet["T3"].value == "二级评论"
+
+        assert sheet["A1"].font.bold is True
+        assert sheet["A1"].fill.fill_type == "solid"
+        for row in sheet.iter_rows():
+            for cell in row:
+                for side in (cell.border.left, cell.border.right, cell.border.top, cell.border.bottom):
+                    assert side.style != "thick"
+    finally:
+        loaded.close()
 
 
 def test_all_five_platforms_expose_python_function_entrypoints_without_cli() -> None:
