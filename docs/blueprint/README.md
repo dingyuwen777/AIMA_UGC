@@ -60,9 +60,9 @@
 
 ## 当前开发状态
 
-**Stage 1—6 已闭环；Stage 7 的业务功能实现已经建立，当前处于最终收尾验收。Stage 8 尚未开始。**
+**Stage 1—7 已闭环；Stage 7 的实现、Review、PR 合并、合并后 `main` 新鲜 CI 和 Change 归档均已完成。下一正式阶段是 Stage 8；Stage 8 尚未开始。**
 
-Stage 7 当前已经具备：
+Stage 7 已完成并固化：
 
 - 版本化 Collection Decision / Reply Decision / Provider Platform Capability Contract 与纯 Decision Service；
 - 同一 Provider 类型多 Config、`provider_config_id` 路由、`secret_ref` Secret 边界；
@@ -74,83 +74,40 @@ Stage 7 当前已经具备：
 - Plan → Platform / Keyword Pack、Occurrence、Run/Scope Snapshot，首版固定 `Asia/Shanghai + latest_only + max_catch_up_runs=0`；
 - Scheduler Runtime：更早到期 slot 写 `skipped/misfire_superseded`，只执行最新到期 slot；Occurrence / Job / scheduled Run / Scope / cursor 在正式 PostgreSQL 事务边界内编排；
 - `collection.run.v1` 正式 Worker：`Production JobRegistry / JobWorker → CollectionRunJobHandler → CollectionRunExecutor → TikHubCollectionScopeExecutor → Provider Request/Attempt → Raw → Mapper → Canonical → fenced Ingestion`；
-- Worker 默认 Secret 从 `runtime.settings.secret_dir + validated secret_ref` 读取；默认 TikHub Transport 的自持 HTTP Client 在每次发送后关闭，不留下无人管理的生命周期；
+- Worker 默认 Secret 从 `runtime.settings.secret_dir + validated secret_ref` 读取；默认 TikHub Transport 的自持 HTTP Client 在每次发送后关闭；TikHub Bearer Secret 出站 Origin 限制为批准的 `https://api.tikhub.io`；
 - Real Provider Probe 与 API family A/B 的受控事实入口；真实 Probe 不进入普通 CI，也不能把一次 HTTP 200 当长期稳定性承诺。
 
-当前 Stage 7 的机器事实主要落在：
+Stage 7 的实现 PR 为 `#55`，最终实现 head 为 `056e8f5684b19f6b40c4e7c4755593aee3336a7a`，正常合并后的 `main` commit 为 `737151a179a4b941c8bdc553cc77c4286bcb6d27`；最终 PR head 和合并后 `main` 都取得了新鲜 11/11 workflow 成功证据。完整归档证据见：
 
 ```text
-aima_ugc.contracts.collection
-aima_ugc.modules.collection.*
-aima_ugc.bootstrap.scheduler
-aima_ugc.bootstrap.collection_scope
-aima_ugc.bootstrap.worker
-aima_ugc.entrypoints.worker_main
-aima_ugc.adapters.providers.tikhub.*
-aima_ugc.adapters.persistence.postgres.*
-20260815_0010 ... 20260817_0015
-tests/unit/collection
-tests/integration/collection
-tests/fixtures/providers/tikhub
+changes/archive/2026-08/CHG-20260815-stage7-completion/CHANGE.md
 ```
 
-具体字段、Schema、状态和测试数量必须继续读取对应机器事实，不以本导航复制第二套定义。
+## 下一正式阶段
 
-## 当前下一步
+### Stage 8：API / 正式业务前端
 
-### Stage 7：只做收尾，不进入 Stage 8
+Stage 8 是下一正式阶段，但本次 Stage 7 归档不开始 Stage 8。新的 Stage 8 对话/Change 必须重新从当前 `main` 事实出发，并按 `AGENTS.md`、Skill 和 Stage 8 相关 Blueprint 先完成需求/Contract/接口/验收门禁，再进入实现。
 
-当前 Active L3 Change 为 Stage 7 收尾 Change。新的会话或 Agent 必须先从 GitHub 当前事实判断它是否已经闭环，不能根据旧聊天或单次 CI 结果跳到 Stage 8。
-
-当前收尾顺序：
-
-```text
-最终 PR head 代码/文档一致
-→ Unit / Integration / Contract / Migration / Ruff / mypy / Architecture / Table Ownership / Secret / Docs 全门禁
-→ 需求符合性 Review
-→ 代码质量 / 安全 / 兼容性 Review
-→ 处理严重/重要问题
-→ PR 正常 Ready / 合并
-→ 合并后 main 新鲜 CI
-→ Change done / archive
-→ 再确认 main 与归档事实
-```
-
-Stage 7 收尾期间必须保持以下批准决定不漂移：
-
-```text
-Scheduler = latest_only
-max_catch_up_runs = 0
-Kuaishou comments/sub-comments = App 主链
-Web backup = 显式备用，不自动 fallback
-Provider Config = 多实例 + provider_config_id
-Secret = secret_ref only
-Budget Runtime = 当前不存在
-```
-
-不能因为单个测试、一个 workflow、PR mergeable 或文档标记完成就宣称 Stage 7 闭环。
-
-### 新对话 / 新 Agent 如何恢复 Stage 7
+开始 Stage 8 时至少按以下顺序恢复事实：
 
 ```text
 AGENTS.md
 → .agents/skills/reliable-vibe-coding/SKILL.md
 → docs/blueprint/README.md
 → docs/blueprint/07-技术决策与实施门禁.md
-→ docs/blueprint/08-采集策略与平台能力.md
-→ docs/blueprint/09-Scheduler运行与恢复策略.md（若涉及调度/Worker）
-→ docs/blueprint/11/12（若涉及 TikHub family/真实接口）
-→ docs/collection/README.md
+→ docs/blueprint/04-后端任务API与前端.md
+→ docs/blueprint/08-采集策略与平台能力.md（若页面/接口涉及采集配置）
+→ docs/API接口说明.md
 → changes/active
-→ 当前 PR / branch / main / CI / Review
-→ 与剩余收尾问题直接相关的代码 / Contract / Migration / Fixture / Test
+→ 当前 main / Contract / OpenAPI / generated client / backend Router/Service / frontend 结构与测试
 ```
 
-如果 Stage 7 已全部满足 Change 和合并后验证门禁，下一正式阶段才是 Stage 8；恢复会话本身不得自动开始 Stage 8。
+不得把 Stage 7 历史聊天当作 Stage 8 当前机器事实，也不得因为 Stage 7 已闭环就跳过 Stage 8 自己的需求决策和 Contract 门禁。
 
-### 仍然独立于 Stage 7 功能闭环的后续门禁
+### 独立于 Stage 7 的后续门禁
 
-以下事项仍需要未来阶段/Release 独立处理，不应重新塞入当前 Stage 7：
+以下事项仍需要未来阶段/Release 独立处理，不应重新塞回 Stage 7：
 
 - Raw、个人信息、导出和审计的访问/保留/删除与合规规则；
 - 日请求量、数据量、Worker 并发、Raw/数据库日增量、磁盘容量、SLO、RPO、RTO；
@@ -162,7 +119,7 @@ AGENTS.md
 
 - `01`—`06` 描述各领域基础设计；
 - `07` 保存跨文档已确认决策、版本快照和 Go/No-Go；
-- `08` 保存 Stage 7 采集业务语义、Provider Config/Operation Matrix、Capability、Provider Billing 和未来 Budget/Cost Guard 边界；
+- `08` 保存 Stage 7 已完成的采集业务语义、Provider Config/Operation Matrix、Capability、Provider Billing 和未来 Budget/Cost Guard 边界；
 - `09` 保存 Scheduler 当前唯一恢复语义；
 - `10`—`12` 保存真实响应/API family/endpoint 证据的人类核查入口；
 - `docs/collection/` 保存面向开发/调试的通用和平台抓取说明，并始终标记当前代码/Fixture/Probe 状态；

@@ -1,6 +1,6 @@
 # Scheduler 运行与恢复策略
 
-> 状态：已批准并实现；Stage 7 收尾验证中  
+> 状态：已批准、实现并完成 Stage 7 集成验收  
 > 首版时区：`Asia/Shanghai`  
 > 批准日期：2026-08-15
 
@@ -206,7 +206,7 @@ Scheduler 的有用日志至少应能回答：
 
 ## 10. Stage 7 验收
 
-Scheduler Runtime 至少需要机器证明：
+Scheduler Runtime 的 Stage 7 机器验收已完成，覆盖：
 
 - Domain 拒绝非 `latest_only` 和 `max_catch_up_runs != 0`；
 - PostgreSQL 同样拒绝不批准的策略；
@@ -217,6 +217,6 @@ Scheduler Runtime 至少需要机器证明：
 - 同一时间重复 tick 不重复入队；
 - 两个 Scheduler 并发处理同一 Plan 最终只有一个有效 Job/Run/Occurrence；
 - Migration upgrade/downgrade、`alembic check` 和相关质量门禁通过；
-- Scheduler 创建的 `collection.run.v1` Job 能由正式 Worker Registry/JobWorker 消费并驱动 Collection Scope 执行，而不是只停留在入队事实。
+- Scheduler 创建的 `collection.run.v1` Job 可由正式 Worker Registry/JobWorker 消费并驱动 Collection Scope 执行，而不是只停留在入队事实。
 
-上述 Scheduler/Worker 机器证据通过后，仍需按 Stage 7 Change 完成最终 PR head 全门禁、Review、合并和合并后 main 验证，才能宣称 Stage 7 整体闭环。
+Stage 7 实现 PR #55 已正常合入 `main`，合并后 `main` 取得新鲜 CI；Stage 7 Completion Change 由当前归档 PR #56 完成生命周期归档。本文件不开始或预先定义 Stage 8 的接口实现。
