@@ -175,9 +175,9 @@ def build_video_comments_request(
     av_id: str | None = None,
     bv_id: str | None = None,
     sort_mode: str = "latest",
-    next_offset: int | None = None,
+    next_offset: int | None = 0,
 ) -> BilibiliRequest:
-    """构造 B站 App 一级评论请求；首屏不发送 next_offset。"""
+    """构造 B站 App 一级评论请求；首屏明确发送 next_offset=0。"""
     params = _video_identity_params(av_id=av_id, bv_id=bv_id)
     params["mode"] = _choice(_COMMENT_SORT_MODES, sort_mode, "sort_mode")
     if next_offset is not None:

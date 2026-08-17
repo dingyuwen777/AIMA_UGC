@@ -217,7 +217,7 @@ def extract_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     items = data.get("business_data")
     if not isinstance(items, list):
         return ()
-    return tuple(item for item in items if isinstance(item, dict))
+    return tuple(item for item in items if isinstance(item, dict) and _search_item_id(item))
 
 
 def extract_detail_item(body: dict[str, Any]) -> dict[str, Any]:

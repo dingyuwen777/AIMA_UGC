@@ -38,7 +38,7 @@ XHS_TIKHUB_CAPABILITY = ProviderPlatformCapabilityV1(
             comment_sort_modes=("latest",),
             supports_reply_count=True,
             supports_sub_comments=True,
-            supports_incremental_comment_sort=False,
+            supports_incremental_comment_sort=True,
             provider_page_size_policy="provider_default",
         ),
         ProviderOperationCapabilityV1(
@@ -147,7 +147,7 @@ BILIBILI_TIKHUB_CAPABILITY = ProviderPlatformCapabilityV1(
             comment_sort_modes=("latest", "hot"),
             supports_reply_count=True,
             supports_sub_comments=True,
-            supports_incremental_comment_sort=False,
+            supports_incremental_comment_sort=True,
             provider_page_size_policy="provider_default",
         ),
         ProviderOperationCapabilityV1(

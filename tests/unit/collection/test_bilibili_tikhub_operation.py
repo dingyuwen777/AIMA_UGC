@@ -96,7 +96,7 @@ def test_video_detail_accepts_exactly_one_official_video_id() -> None:
 def test_video_comments_use_official_video_id_sort_and_next_offset() -> None:
     first = build_video_comments_request(bv_id="BV1example", sort_mode="latest")
     assert first.path == "/api/v1/bilibili/app/fetch_video_comments"
-    assert first.params == {"bv_id": "BV1example", "mode": 2}
+    assert first.params == {"bv_id": "BV1example", "mode": 2, "next_offset": 0}
 
     next_page = build_video_comments_request(
         av_id="123456",
@@ -166,3 +166,16 @@ def test_invalid_search_and_offset_inputs_fail_closed() -> None:
         build_video_comments_request(bv_id="BV1example", next_offset=-1)
     with pytest.raises(ValueError, match="next_offset"):
         build_reply_detail_request(root="comment-root", bv_id="BV1example", next_offset=-1)
+
+
+def test_runtime_bilibili_first_comment_page_explicitly_sends_zero_offset() -> None:
+    from aima_ugc.adapters.providers.tikhub.runtime import build_comments_call
+
+    call = build_comments_call(
+        platform="bilibili",
+        external_content_id="123456",
+        state=None,
+    )
+
+    assert call.params["mode"] == 2
+    assert call.params["next_offset"] == 0

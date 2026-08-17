@@ -64,7 +64,10 @@ from aima_ugc.modules.collection.collection_run_executor import (
     CollectionScopeRetryableError,
     CollectionScopeTerminalStatus,
 )
-from aima_ugc.modules.collection.decision import CollectionDecisionService
+from aima_ugc.modules.collection.decision import (
+    CollectionDecisionService,
+    known_comment_boundary_reached,
+)
 from aima_ugc.modules.collection.execution import CollectionRunRecord, CollectionScopeRecord
 from aima_ugc.modules.collection.provider_dispatch import ProviderDispatchService
 from aima_ugc.modules.collection.provider_persistence import PreparedProviderAttempt
@@ -367,10 +370,12 @@ class TikHubCollectionScopeExecutor:
     ) -> None:
         policy = CollectionDecisionPolicyV1()
         prior = self._content_state.evaluate(content)
+        search_comment_count = _observed_comment_count(content)
         decision = self._decision_service.decide(
             CollectionDecisionRequestV1(
                 current=ContentObservationV1(
-                    comment_count=_observed_comment_count(content),
+                    comment_count=search_comment_count,
+                    search_missing_required_fields=search_comment_count is None,
                     business_changed=prior.business_changed if prior is not None else False,
                 ),
                 previous=prior.previous if prior is not None else None,
@@ -516,6 +521,11 @@ class TikHubCollectionScopeExecutor:
         )
         sort_mode = _comment_sort_mode(platform)
         last_executed: _ExecutedCall | None = None
+        known_comment_ids = (
+            self._content_state.known_root_comment_ids(content_id)
+            if comment_action == "fetch_incremental"
+            else frozenset()
+        )
 
         for _page_no in range(1, _MAX_COMMENT_PAGES + 1):
             if context.cancel_requested():
@@ -558,6 +568,7 @@ class TikHubCollectionScopeExecutor:
                 )
 
             raw_items = extract_comment_items(platform, executed.body)
+            page_comment_ids: list[str] = []
             for index, raw_item in enumerate(raw_items):
                 comment = map_comment(
                     platform=platform,
@@ -577,6 +588,7 @@ class TikHubCollectionScopeExecutor:
                 )
                 if comment.external_content_id != content.external_content_id:
                     raise ValueError("TikHub Comment 与 Content 身份不一致")
+                page_comment_ids.append(comment.external_comment_id)
                 self._content_writer.ingest_comment(canonical=comment, fence=context.fence)
                 fetched += 1
 
@@ -619,6 +631,23 @@ class TikHubCollectionScopeExecutor:
                     sort_mode=sort_mode,
                     target_count=comment_target,
                     stop_reason=advance.stop_reason or "provider_exhausted",
+                )
+                return
+            if comment_action == "fetch_incremental" and known_comment_boundary_reached(
+                page_comment_ids, known_comment_ids
+            ):
+                self._record_comment_coverage(
+                    content_id=content_id,
+                    platform=platform,
+                    executed=executed,
+                    context=context,
+                    coverage="partial",
+                    reported_total=reported_total,
+                    collected_count=fetched,
+                    sample_mode=sample_mode,
+                    sort_mode=sort_mode,
+                    target_count=comment_target,
+                    stop_reason="known_comment_reached",
                 )
                 return
             if comment_action == "probe_first_page":

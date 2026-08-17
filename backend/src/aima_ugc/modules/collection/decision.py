@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence, Set
+
 from aima_ugc.contracts.collection import (
     CollectionDecisionRequestV1,
     CollectionDecisionV1,
@@ -14,6 +16,26 @@ from aima_ugc.contracts.collection.models import (
     DetailAction,
     DetailReason,
 )
+
+
+def known_comment_boundary_reached(
+    page_comment_ids: Sequence[str],
+    known_comment_ids: Set[str],
+) -> bool:
+    """最新排序页进入连续历史尾部时，允许调用方停止请求下一页。"""
+    if not page_comment_ids or not known_comment_ids:
+        return False
+    first_known = next(
+        (
+            index
+            for index, comment_id in enumerate(page_comment_ids)
+            if comment_id in known_comment_ids
+        ),
+        None,
+    )
+    if first_known is None:
+        return False
+    return all(comment_id in known_comment_ids for comment_id in page_comment_ids[first_known:])
 
 
 class CollectionDecisionService:

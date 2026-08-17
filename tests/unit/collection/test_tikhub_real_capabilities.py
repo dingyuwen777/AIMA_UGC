@@ -62,11 +62,15 @@ def test_real_comment_shape_controls_reply_count_and_incremental_claims() -> Non
     assert _operation(BILIBILI_TIKHUB_CAPABILITY, "comments").supports_reply_count is True
     assert _operation(KUAISHOU_TIKHUB_CAPABILITY, "comments").supports_reply_count is True
 
+    # XHS latest_v2 与 B站 mode=2/next_offset=0 都有当前真实“最新优先”证据；
+    # 抖音缺少最新评论排序，微博/快手真实页顺序不满足安全历史边界。
+    assert _operation(XHS_TIKHUB_CAPABILITY, "comments").supports_incremental_comment_sort is True
+    assert (
+        _operation(BILIBILI_TIKHUB_CAPABILITY, "comments").supports_incremental_comment_sort is True
+    )
     for capability in (
-        XHS_TIKHUB_CAPABILITY,
         DOUYIN_TIKHUB_CAPABILITY,
         WEIBO_TIKHUB_CAPABILITY,
-        BILIBILI_TIKHUB_CAPABILITY,
         KUAISHOU_TIKHUB_CAPABILITY,
     ):
         assert _operation(capability, "comments").supports_incremental_comment_sort is False

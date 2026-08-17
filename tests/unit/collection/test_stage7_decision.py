@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from aima_ugc.adapters.providers.tikhub.capabilities import XHS_TIKHUB_CAPABILITY
+from aima_ugc.adapters.providers.tikhub.capabilities import (
+    BILIBILI_TIKHUB_CAPABILITY,
+    XHS_TIKHUB_CAPABILITY,
+)
 from aima_ugc.contracts.collection import (
     CollectionDecisionContextV1,
     CollectionDecisionPolicyV1,
@@ -12,6 +15,7 @@ from aima_ugc.contracts.collection import (
     ReplyDecisionRequestV1,
 )
 from aima_ugc.modules.collection import CollectionDecisionService
+from aima_ugc.modules.collection.decision import known_comment_boundary_reached
 
 
 def _request(
@@ -65,13 +69,13 @@ def test_existing_unchanged_comment_count_skips_detail_and_comments() -> None:
     assert decision.comment_reason == "comment_count_unchanged"
 
 
-def test_comment_count_increase_uses_controlled_refresh_without_proven_incremental_sort() -> None:
+def test_xhs_comment_count_increase_uses_incremental_latest_boundary() -> None:
     decision = CollectionDecisionService().decide(
         _request(current_comment_count=41, previous_comment_count=35, existing=True)
     )
 
-    assert decision.comment_action == "refresh_controlled"
-    assert decision.comment_reason == "comment_count_increased_refresh"
+    assert decision.comment_action == "fetch_incremental"
+    assert decision.comment_reason == "comment_count_increased_incremental"
     assert decision.comment_target == 41
 
 
@@ -94,6 +98,25 @@ def test_comment_count_increase_uses_incremental_only_when_capability_proves_it(
     assert decision.comment_action == "fetch_incremental"
     assert decision.comment_reason == "comment_count_increased_incremental"
     assert decision.comment_target == 50
+
+
+def test_known_comment_boundary_requires_continuous_known_tail() -> None:
+    known = frozenset({"old-3", "old-2", "old-1"})
+
+    assert known_comment_boundary_reached(("new-5", "new-4", "old-3", "old-2"), known)
+    assert known_comment_boundary_reached(("old-3", "old-2"), known)
+    assert not known_comment_boundary_reached(("new-5", "new-4"), known)
+    assert not known_comment_boundary_reached(("new-5", "old-3", "new-4"), known)
+    assert not known_comment_boundary_reached((), known)
+    assert not known_comment_boundary_reached(("new-5", "old-3"), frozenset())
+
+
+def test_bilibili_comment_count_increase_uses_verified_incremental_sort() -> None:
+    request = _request(current_comment_count=80, previous_comment_count=35, existing=True)
+    request = request.model_copy(update={"capability": BILIBILI_TIKHUB_CAPABILITY})
+    decision = CollectionDecisionService().decide(request)
+    assert decision.comment_action == "fetch_incremental"
+    assert decision.comment_reason == "comment_count_increased_incremental"
 
 
 def test_comment_count_decrease_never_guesses_specific_deletion() -> None:

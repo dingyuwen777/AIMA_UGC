@@ -199,6 +199,19 @@ kuaishou
 
 Capability 只公开当前真实响应和 Operation 已证明的能力，不因为 TikHub 文档存在某个字段/参数就自动声明支持。
 
+
+当前评论增量资格：
+
+| 平台 | 增量 | 当前证据/限制 |
+| --- | --- | --- |
+| 小红书 | `true` | `latest_v2` + 当前真实评论时间严格非增 |
+| B站 | `true` | `mode=2` + 首屏 `next_offset=0`，当前真实 20 条时间严格非增 |
+| 抖音 | `false` | 评论 Operation 无已批准最新评论排序参数 |
+| 微博 | `false` | `sort_type=1` 当前真实 20 条时间不是严格非增 |
+| 快手 | `false` | 当前真实 94 条评论时间不是严格非增 |
+
+`true` 平台在 `comment_count` 增加时走统一 `fetch_incremental`，并使用生产 `known_comment_reached` 安全边界；`false` 平台走受控刷新。任何当前页都先完整保存 Raw 并完成 Mapper/Ingestion，边界只阻止下一次付费请求。
+
 快手正式评论 Capability 已切换为 App：
 
 ```text
@@ -283,7 +296,7 @@ Stage 7 已完成正式采集与调度闭环：
 
 ## 7. 测试与调试
 
-- 调试复用生产 Service / Repository / Provider Operation，不实现第二套路径；
+- 长期无数据库 TikHub 调试入口为 `backend/src/aima_ugc/adapters/providers/tikhub_test/README.md`；它复用生产 Runtime/Operation/Mapper/Decision，不实现第二套路径；
 - Real Probe 默认不进普通 CI，必须显式授权、设置请求数/分页上限并在运行前核对预计费用，Secret 不落盘；
 - 普通回归使用已经合法脱敏的真实 Fixture，不重复产生 TikHub 费用；
 - API family A/B 只使用显式候选 builder，不能注册隐式 fallback；

@@ -14,7 +14,8 @@
 4. 再按当前任务读取对应领域 Blueprint；
 5. **涉及 Provider、TikHub、采集 Plan、关键词发现、详情/评论策略、Provider Billing/成本事实、未来 Budget/Cost Guard 扩展或平台 Operation 时，必须再读取 [`08-采集策略与平台能力.md`](08-采集策略与平台能力.md)，然后读取 [`../collection/README.md`](../collection/README.md) 和目标平台文档；**
 6. 涉及 Scheduler、TikHub API family 验证或真实响应结构时，再分别读取 `09`—`12` 中与当前任务直接相关的文档；
-7. 进入具体实现后，只继续读取相关模块 README、Contract、Migration、依赖、Operation/Mapper、Fixture、实现和测试。
+7. **涉及帖子/评论原始数据 Excel 导出、`.xlsx` 原始数据查看、系统级数据导出或 `tikhub_test` Excel 复用时，必须读取 [`13-统一数据Excel导出与调试复用.md`](13-统一数据Excel导出与调试复用.md)；该文档负责约束未来正式导出完成后删除 `tikhub_test` 的平行 Excel 实现。**
+8. 进入具体实现后，只继续读取相关模块 README、Contract、Migration、依赖、Operation/Mapper、Fixture、实现和测试。
 
 不要因为存在 Blueprint 就跳过代码和测试事实，也不要一次性读取所有文档代替针对当前任务的现状调查。
 
@@ -57,6 +58,7 @@
 | [`10-TikHub真实响应结构附录.md`](10-TikHub真实响应结构附录.md) | 五平台已脱敏真实响应结构的人类查询入口 | Mapper/Extractor、Fixture 字段定位、真实响应核查 |
 | [`11-TikHub多接口验证与备用策略.md`](11-TikHub多接口验证与备用策略.md) | 同业务语义 API family A/B、候选状态、显式备用与禁止自动 fallback | App/Web/V1/V2/V3 候选验证、备用接口策略 |
 | [`12-TikHub真实请求响应与接口选型台账.md`](12-TikHub真实请求响应与接口选型台账.md) | 五平台主 endpoint、真实请求/响应、价格事实和接口选型证据 | TikHub 主链核查、Real Probe、endpoint 选型与历史 A/B |
+| [`13-统一数据Excel导出与调试复用.md`](13-统一数据Excel导出与调试复用.md) | 采集原始数据 Excel、Canonical/Aggregate 导出边界、`tikhub_test` 阶段性 Excel 与未来共享导出迁移门禁 | 原始数据导出、Excel、`.xlsx`、`openpyxl`、调试原始数据文件、系统级导出复用 |
 
 ## 当前开发状态
 
@@ -98,6 +100,7 @@ AGENTS.md
 → docs/blueprint/07-技术决策与实施门禁.md
 → docs/blueprint/04-后端任务API与前端.md
 → docs/blueprint/08-采集策略与平台能力.md（若页面/接口涉及采集配置）
+→ docs/blueprint/13-统一数据Excel导出与调试复用.md（若涉及基础数据 Excel/导出）
 → docs/API接口说明.md
 → changes/active
 → 当前 main / Contract / OpenAPI / generated client / backend Router/Service / frontend 结构与测试
@@ -110,6 +113,7 @@ AGENTS.md
 以下事项仍需要未来阶段/Release 独立处理，不应重新塞回 Stage 7：
 
 - Raw、个人信息、导出和审计的访问/保留/删除与合规规则；
+- 系统级采集基础数据 Excel 导出；其正式共享 Exporter 落地时必须按 `13` 删除 `tikhub_test` 平行 Excel 实现，不能长期维护两套内容+评论导出代码；
 - 日请求量、数据量、Worker 并发、Raw/数据库日增量、磁盘容量、SLO、RPO、RTO；
 - 生产镜像 variant/digest、离线 Release、安全发布与恢复演练；
 - Stage 8 正式业务 API/页面及 Provider 凭据写入能力；凭据仍必须通过安全 SecretStore/SecretService，不能把数据库明文 Secret 当捷径；
@@ -122,6 +126,7 @@ AGENTS.md
 - `08` 保存 Stage 7 已完成的采集业务语义、Provider Config/Operation Matrix、Capability、Provider Billing 和未来 Budget/Cost Guard 边界；
 - `09` 保存 Scheduler 当前唯一恢复语义；
 - `10`—`12` 保存真实响应/API family/endpoint 证据的人类核查入口；
+- `13` 保存统一采集基础数据 Excel 导出与 `tikhub_test` 阶段性 Excel 的复用/删除门禁，并明确它不是报告 Renderer；
 - `docs/collection/` 保存面向开发/调试的通用和平台抓取说明，并始终标记当前代码/Fixture/Probe 状态；
 - 实际代码、Contract、Migration、锁文件和测试建立后，不在 Blueprint 复制第二份机器事实；
 - 所有需要前端或其他受支持调用方使用的公开 HTTP API，都必须由 Pydantic Request/Response + FastAPI Route 生成固定 OpenAPI，再生成前端 TypeScript Client；内部 Repository、Mapper、Provider Adapter、Worker Runtime、Migration 等能力不因存在就自动暴露 HTTP API；
@@ -129,6 +134,7 @@ AGENTS.md
 - 前端业务功能默认采用“后端业务能力 → Pydantic HTTP Contract → FastAPI Route → API/Contract Test → 固定 OpenAPI → 生成 TypeScript Client → Feature API/Store → Vue 页面/组件 → E2E”的闭环，页面和按钮不得各自手写 URL 或重复定义 Request/Response Contract；
 - 对具有明确输入输出、独立业务价值、独立失败边界或可以脱离完整系统验证的能力，必须建立与风险匹配的独立验证闭环；调试/Probe 复用生产实现；
 - 修改 Provider Config/Provider/Operation/Mapper/分页/评论策略/Provider Billing/Capability 或未来 Budget/Cost Guard 时，必须按 08 的“文档同步规则”检查目标平台文档；
+- 修改基础数据 Excel 导出、共享 Exporter、`.xlsx` 审阅格式或 `tikhub_test` Excel 时，必须按 13 检查是否出现平行实现；正式共享导出一旦完成，删除调试目录内重复导出代码是验收条件；
 - 设计发生实质变化时，按 `AGENTS.md` 和 Skill 的 L1/L2/L3 流程处理；
 - 受影响的文档才更新，不为形式保持“所有文档都有变化”；
 - 长期文档直接描述合并后的当前状态，不写成变更流水账。

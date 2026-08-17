@@ -405,7 +405,7 @@ def build_comments_call(
         bilibili_request = bilibili.build_video_comments_request(
             av_id=external_content_id,
             sort_mode="latest",
-            next_offset=_optional_int_state(paging, "next_offset"),
+            next_offset=_int_state(paging, "next_offset", default=0),
         )
         return TikHubOperationCall(
             "bilibili",

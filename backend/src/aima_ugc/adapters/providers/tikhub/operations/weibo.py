@@ -171,7 +171,7 @@ def extract_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     if not isinstance(cards, list):
         return ()
     return tuple(
-        card for card in cards if isinstance(card, dict) and isinstance(card.get("mblog"), dict)
+        card for card in cards if isinstance(card, dict) and _has_stable_id(card.get("mblog"))
     )
 
 
@@ -194,8 +194,14 @@ def extract_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     return tuple(
         item["data"]
         for item in items
-        if isinstance(item, dict) and isinstance(item.get("data"), dict)
+        if isinstance(item, dict) and _has_stable_id(item.get("data"))
     )
+
+
+def _has_stable_id(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    return any(_string(value.get(key)) for key in ("idstr", "mid", "id"))
 
 
 def _first_level_comment_max_id(body: dict[str, Any]) -> str:
@@ -203,8 +209,10 @@ def _first_level_comment_max_id(body: dict[str, Any]) -> str:
     if not isinstance(data, dict):
         raise ValueError("微博一级评论响应缺少 data")
     more_info = data.get("moreInfo")
+    if more_info is None:
+        return ""
     if not isinstance(more_info, dict):
-        raise ValueError("微博一级评论响应缺少 data.moreInfo")
+        raise ValueError("微博一级评论响应 data.moreInfo 类型非法")
     params = more_info.get("params")
     if not isinstance(params, dict) or "max_id" not in params:
         raise ValueError("微博一级评论响应缺少官方 max_id 路径")
