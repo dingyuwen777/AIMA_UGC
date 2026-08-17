@@ -11,6 +11,9 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
+from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
+    PostgresArtifactMetadataGateway,
+)
 from aima_ugc.adapters.persistence.postgres.collection import PostgresCollectionRepository
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.persistence.postgres.provider import PostgresProviderRepository
@@ -242,7 +245,10 @@ def test_takeover_recovers_valid_file_when_metadata_is_still_pending(
     takeover_fence = _expire_lease(database_runtime, old_fence.job_id)
     store = LocalArtifactStore(tmp_path)
     raw_artifacts = RawArtifactService(
-        artifacts=ArtifactService(metadata=_NoopMetadata(), store=store),
+        artifacts=ArtifactService(
+            metadata=PostgresArtifactMetadataGateway(database_runtime.new_session),
+            store=store,
+        ),
         store=store,
     )
     reconciler = ProviderAttemptReconciler(
@@ -269,19 +275,3 @@ def test_takeover_recovers_valid_file_when_metadata_is_still_pending(
         assert artifact["stored_at"] is not None
     finally:
         session.close()
-
-
-class _NoopMetadata:
-    """本测试只使用 Raw replay，不允许测试自己修复 metadata。"""
-
-    def create_pending(self, record) -> None:
-        raise AssertionError("unexpected create_pending")
-
-    def mark_stored(self, artifact_id, *, sha256, byte_size, stored_at):
-        raise AssertionError("unexpected mark_stored")
-
-    def mark_linked(self, artifact_id, *, linked_at):
-        raise AssertionError("unexpected mark_linked")
-
-    def mark_error(self, artifact_id):
-        raise AssertionError("unexpected mark_error")
