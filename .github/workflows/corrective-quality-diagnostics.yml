@@ -1,0 +1,124 @@
+name: Corrective Quality Diagnostics
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/corrective-quality-diagnostics.yml"
+      - "backend/**"
+      - "tests/**"
+      - "scripts/**"
+      - "migrations/**"
+      - "docs/**"
+      - "README.md"
+      - "changes/**"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+      - name: Install locked environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+      - name: Ruff lint diagnostic
+        shell: bash
+        run: |
+          set +e
+          output="$(uv run ruff check backend tests scripts migrations/versions/20260817_0016_comment_coverage_observability.py 2>&1)"
+          status=$?
+          printf '%s\n' "$output"
+          if [ "$status" -ne 0 ]; then
+            escaped="$(printf '%s' "$output" | tail -c 12000 | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"
+            printf '::error file=pyproject.toml,title=Ruff lint::%s\n' "$escaped"
+          fi
+          exit "$status"
+      - name: Mypy diagnostic
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          output="$(uv run mypy backend/src/aima_ugc 2>&1)"
+          status=$?
+          printf '%s\n' "$output"
+          if [ "$status" -ne 0 ]; then
+            escaped="$(printf '%s' "$output" | tail -c 12000 | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"
+            printf '::error file=pyproject.toml,title=Mypy::%s\n' "$escaped"
+          fi
+          exit "$status"
+      - name: Architecture diagnostic
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          output="$(uv run python scripts/quality/check_architecture.py 2>&1)"
+          status=$?
+          printf '%s\n' "$output"
+          if [ "$status" -ne 0 ]; then
+            escaped="$(printf '%s' "$output" | tail -c 12000 | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"
+            printf '::error file=scripts/quality/check_architecture.py,title=Architecture::%s\n' "$escaped"
+          fi
+          exit "$status"
+      - name: Ownership diagnostic
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          output="$(uv run python scripts/quality/check_table_ownership.py 2>&1)"
+          status=$?
+          printf '%s\n' "$output"
+          if [ "$status" -ne 0 ]; then
+            escaped="$(printf '%s' "$output" | tail -c 12000 | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"
+            printf '::error file=scripts/quality/check_table_ownership.py,title=Ownership::%s\n' "$escaped"
+          fi
+          exit "$status"
+      - name: Secret diagnostic
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          output="$(uv run python scripts/quality/scan_secrets.py 2>&1)"
+          status=$?
+          printf '%s\n' "$output"
+          if [ "$status" -ne 0 ]; then
+            escaped="$(printf '%s' "$output" | tail -c 12000 | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"
+            printf '::error file=scripts/quality/scan_secrets.py,title=Secret scan::%s\n' "$escaped"
+          fi
+          exit "$status"
+      - name: Docs diagnostic
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          output="$(uv run python scripts/quality/check_docs.py 2>&1)"
+          status=$?
+          printf '%s\n' "$output"
+          if [ "$status" -ne 0 ]; then
+            escaped="$(printf '%s' "$output" | tail -c 12000 | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"
+            printf '::error file=scripts/quality/check_docs.py,title=Docs::%s\n' "$escaped"
+          fi
+          exit "$status"
+      - name: Contract diagnostic
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          output="$(uv run python scripts/contracts/generate.py --check 2>&1 && uv run python scripts/contracts/check_compatibility.py 2>&1)"
+          status=$?
+          printf '%s\n' "$output"
+          if [ "$status" -ne 0 ]; then
+            escaped="$(printf '%s' "$output" | tail -c 12000 | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"
+            printf '::error file=scripts/contracts/generate.py,title=Contracts::%s\n' "$escaped"
+          fi
+          exit "$status"
