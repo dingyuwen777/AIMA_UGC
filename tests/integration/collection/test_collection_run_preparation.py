@@ -8,6 +8,10 @@ from decimal import Decimal
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import delete, select
+from sqlalchemy.engine import Connection
+from sqlalchemy.orm import Session
+
 from aima_ugc.adapters.persistence.postgres.collection import PostgresCollectionRepository
 from aima_ugc.adapters.persistence.postgres.collection_run_preparation import (
     PostgresCollectionRunPreparer,
@@ -39,7 +43,6 @@ from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.jobs import JobExecutionFence, LeaseLostError
 from aima_ugc.platform.jobs.tables import job_attempt_events_table, jobs_table
-from sqlalchemy import delete, select
 
 
 @pytest.fixture
@@ -55,7 +58,7 @@ def database_runtime() -> Iterator[DatabaseRuntime]:
         runtime.dispose()
 
 
-def _clear_data(connection) -> None:
+def _clear_data(connection: Connection) -> None:
     connection.execute(delete(provider_budget_reservations_table))
     connection.execute(delete(provider_budget_accounts_table))
     connection.execute(delete(collection_scopes_table))
@@ -66,7 +69,7 @@ def _clear_data(connection) -> None:
 
 
 def _create_global_budget_accounts(
-    session,
+    session: Session,
     *,
     provider_config_id: UUID,
     period_start: datetime,
@@ -146,7 +149,7 @@ def _prepare_execution(
             )
             execution = CollectionExecutionService(PostgresCollectionRepository(session)).create_run(
                 job_id=job.id,
-                trigger_type="scheduled",
+                trigger_type="api",
                 config_snapshot={
                     "schema_version": "collection-run-config.v1",
                     "request_budget": 6,
@@ -235,9 +238,9 @@ def test_preparer_allocates_total_run_budget_by_provider_scope_weight(
         }
         assert len(rows) == 8
         for scope_type in ("run", "run_comments"):
-            assert by_key[(xhs_config_id, scope_type, "request_count")]["limit_amount"] == Decimal(
-                "4"
-            )
+            assert by_key[(xhs_config_id, scope_type, "request_count")][
+                "limit_amount"
+            ] == Decimal("4")
             assert by_key[(douyin_config_id, scope_type, "request_count")][
                 "limit_amount"
             ] == Decimal("2")
