@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260815-stage7-completion
 title: 完成 Stage 7 多平台采集与 Scheduler Runtime
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: feature/stage7-completion
 created: 2026-08-15
@@ -17,7 +17,7 @@ data_changes: [collection_plans, provider_budget_accounts, provider_budget_reser
 
 # 背景与现状
 
-Stage 7 已建立 Decision/Capability、Provider Config/Registry、Keyword Pack、Plan/Occurrence/Run Snapshot、五平台 TikHub Operation/真实脱敏 Fixture/Mapper/Capability 基础，以及批准的 Scheduler `latest_only` Runtime。当前正式 Stage 仍未闭环，剩余核心是 `collection.run.v1` live Worker 执行链、统一长期 Probe、文档/CI/Review/合并闭环。
+Stage 7 已建立 Decision/Capability、Provider Config/Registry、Keyword Pack、Plan/Occurrence/Run Snapshot、五平台 TikHub Operation/真实脱敏 Fixture/Mapper/Capability、批准的 Scheduler `latest_only` Runtime，以及正式 `collection.run.v1` Worker 执行链。当前功能实现已经闭环，剩余工作只允许是最终 PR Head 新鲜 CI、两阶段 Review、正常合并、合并后 main 验证与 Change 归档；不得进入 Stage 8。
 
 2026-08-16 用户批准快手一级、二级评论正式使用 App Operation；Web 不自动 fallback，只作为显式备用证据保留。其他平台的同语义 API family 只有通过真实受限 A/B 后才能标记为已验证备用。
 
@@ -44,13 +44,14 @@ Provider Request/Attempt 的 `provider_config_id`、Billing/成本快照、`pote
 - [x] Scheduler 对 due slot、并发、事务崩溃与重复 tick 保持 Occurrence/Job/Run/cursor 原子且幂等。
 - [x] 五平台当前主 Operation 有合法脱敏真实 Fixture、Mapper、Capability/Registry 与 Canonical/Ingestion 证据。
 - [x] 快手 `comments/sub_comments` 默认生产链使用 App；Web 备用不进入自动 fallback。
-- [ ] 正式 `collection.run.v1` Worker Handler 可消费 Scheduler Job，并复用 Provider Routing、Dispatch、Raw、Mapper、Decision、Ingestion 链。
+- [x] 正式 `collection.run.v1` Worker Handler 可消费 Scheduler Job，并复用 Provider Routing、Dispatch、Raw、Mapper、Decision、Ingestion 链。
 - [x] 所有已实现的业务可见 Run/Scope/Provider 状态写入继续验证当前 Job Fencing Token。
 - [x] Provider 外部调用不包在数据库事务中；同一 Attempt 最多一次真实发送；未知发送结果不得重发同一 Attempt。
+- [x] TikHub 生产 Transport 在解析 Secret 并发送前限制到批准的 `https://api.tikhub.io` 出站 Origin，不允许任意 HTTPS Base URL 接收 Bearer Secret。
 - [x] 当前 Plan/Run/Dispatch 不包含预算配置、预算账户、Reservation、预算分配或超预算门禁。
 - [x] 当前 SQLAlchemy Schema 不再注册 `provider_budget_accounts/provider_budget_reservations`，`collection_plans` 不再包含 `request_budget`。
 - [x] Budget Runtime 模块、Repository、Run Preparer、专用测试和预算 CI 工作流被删除，而不是仅禁用。
-- [x] 历史 `20260815_0012` / `0013` 不改写；新增向前 Migration 从当前 head 删除预算表和 `request_budget`，并通过 downgrade/upgrade round-trip。
+- [x] 历史 `20260815_0012` / `0013` / `0014` 不改写；新增向前 Migration 从当前 head 删除预算表和 `request_budget`，并通过 downgrade/upgrade round-trip。
 - [x] Blueprint 明确：未来预算/成本 Guard 只是可扩展方向，不是当前 Contract/Schema/运行能力；重新实现需新的 L3 Change。
 - [x] 预算回撤行为遵循 Red → Green → Refactor；真实付费 Probe 仍是受控例外，不进入普通 CI。
 - [ ] 当前最终 Head 的 Ruff、mypy、Unit、Contract、PostgreSQL Integration、Architecture、Table Ownership、Secret Scan、Docs 与受影响 Stage 回归全部形成新鲜成功证据。
@@ -64,6 +65,7 @@ Provider Request/Attempt 的 `provider_config_id`、Billing/成本快照、`pote
 - 同平台 API family 候选与受限 A/B Probe。
 - 正式 `collection.run.v1` Worker Handler 与 Operation / Business Pipeline Probe。
 - 当前预算功能向前回撤及对应 Migration/测试/文档。
+- TikHub Transport 的正式出站 Origin 安全边界。
 - Blueprint、Collection 开发说明和平台文档同步。
 
 # 非目标
@@ -109,7 +111,7 @@ Provider Request/Attempt 的 `provider_config_id`、Billing/成本快照、`pote
 
 ## 预算功能回撤方案 B：新增向前 Migration + 删除 Runtime（采用）
 
-- 保留历史 `0012/0013` 不变；
+- 保留历史 `0012/0013/0014` 不变；
 - 新增 `20260817_0015`，从 `0014` 向前删除预算两表和 `collection_plans.request_budget`；
 - 删除 Budget Service/Repository/Envelope/Run Preparer、预算专用测试与工作流；
 - 删除 Dispatch 的预算检查/结算；
@@ -170,25 +172,30 @@ drop collection_plans.request_budget
 → 预期：当前运行时无预算功能，Provider Fencing/Dispatch/Raw 行为不变
 → 证据：预算回撤代码树 `f2dba7da611c2c46e68135b410eab3d89af42e16` 上 Stage 4、Stage 5A、Stage 5B、Stage 5C、Stage 5D、Stage 6、Stage 7 Scheduler、Plan Snapshot、Provider Config、Keyword Packs 均完成 `success`；相关 Migration round-trip 与质量步骤随这些完整 Workflow 成功
 
-[步骤 3：文档同步]
-→ 范围：AGENTS、Blueprint 02/03/04/07/08/README、Collection 模块/开发说明、PR
-→ 预期：不再把预算写成当前能力；未来扩展边界清楚但不预设计实现
-→ 证据：文档同步 Runner `31990437787` 与跨文档最终同步 Runner `31990747773` 的同步、`check_docs.py`、Secret Scan、`git diff --check`、自清理步骤全部成功；临时同步 Workflow 已从最终树移除
+[步骤 3：正式 Worker Red → Green]
+→ 范围：`collection.run.v1` Scope Executor / Worker Registry / Worker entrypoint
+→ 预期：Scheduler Job 进入 Provider → Raw → Mapper → Decision → Ingestion 正式链，且保留既有 keyword-only Worker API
+→ 证据：初始 Red 为 `ImportError: create_collection_job_registry`；随后正式 Registry、entrypoint 与 PostgreSQL/Fake Transport 纵切转 Green，`fec9f45d1239217060b83e6c3da7fa8ad187f9d8` 上 Stage 5B 为 `199 passed`，Collection PostgreSQL Integration 为 `52 passed`
 
-[步骤 4：当前 Head 新鲜 CI]
-→ 范围：本 Change 证据提交后的完整 PR Workflow
-→ 预期：以正常用户提交重新触发 CI；此前 `1a1540a` 的 `action_required` 是 bot-authored commit 没有创建任何 Job，不计为测试失败
-→ 验证：CI + Stage 4/5A/5B/5C/5D/6/7 相关 Workflow 全部出现真实 Job 并成功
+[步骤 4：TikHub 出站 Secret 安全 Red → Green]
+→ 范围：TikHub Transport Base URL / Bearer Secret 发送边界
+→ 预期：非 TikHub HTTPS Origin 在进入 Secret 发送边界前关闭失败
+→ 证据：Red `1 failed, 198 passed`，失败原因为 `https://example.com` 未抛 `ValueError`；Green 后 TikHub Transport 只允许批准的 `https://api.tikhub.io` Origin，Stage 5B `199 passed`
 
-[步骤 5：live Worker]
-→ 范围：`collection.run.v1` Scope Executor / Worker 装配
-→ 预期：Scheduler Job 能进入 Provider → Raw → Mapper → Decision → Ingestion 正式链
-→ 验证：Red/Green Unit + PostgreSQL Integration + Fake Transport；真实付费 Probe 继续只走受控 GitHub Runner
+[步骤 5：文档同步]
+→ 范围：Blueprint README/07/08/09/12、Collection 开发说明与模块 README
+→ 预期：不再把预算写成当前能力，不再把 Worker/五平台/Scheduler 写成未实现；未来扩展边界清楚但不预设计实现
+→ 证据：相关文档已经同步到当前机器事实；最终仍以本 Change 最终 Head 的 Docs/Contract/Secret/quality gates 为准
 
-[步骤 6：最终 Stage 7 交付]
-→ 范围：PR #55 全量 diff、CI、Review、Change 状态
-→ 预期：只有当前 Stage 7 内容，无 Stage 8 漂移
-→ 验证：完整 PR CI + Review + main 合并后新鲜 CI
+[步骤 6：当前 Head 新鲜 CI]
+→ 范围：本 Change `ready_for_review` 提交后的完整 PR Workflow
+→ 预期：CI + Stage 4/5A/5B/5C/5D/6/7 相关 11 个 Workflow 全部出现真实 Job 并成功
+→ 验证：本提交产生后重新取证；此前 `fec9f45d1239217060b83e6c3da7fa8ad187f9d8` 已取得 11/11 workflow `success`，但不替代本提交的新鲜证据
+
+[步骤 7：最终 Stage 7 交付]
+→ 范围：PR #55 全量 diff、CI、两阶段 Review、Change 状态
+→ 预期：只有当前 Stage 7 内容，无 Stage 8 漂移；严重/重要 Review 问题为零
+→ 验证：完整 PR CI + Review + main 合并后新鲜 CI + Change done/archive
 
 # 回滚
 
@@ -204,6 +211,8 @@ drop collection_plans.request_budget
 - Kuaishou App comments/sub-comments：当前主链已切换，Web 仅显式备用。
 - PostgreSQL Fenced Collection Run Gateway：已实现并通过 Stage 5B 验证。
 - TikHub Runtime comments/sub-comments 统一入口：已实现。
-- **预算功能回撤：代码、0015 Migration、回归测试与跨 Blueprint/Collection 文档同步均已完成；当前只等待本提交触发的最终新鲜 CI 复核。**
-- `collection.run.v1` live Worker：仍未闭环，是预算回撤验证完成后的当前核心开发工作。
+- 预算功能回撤：代码、0015 Migration、回归测试与跨 Blueprint/Collection 文档同步均已完成。
+- `collection.run.v1` live Worker：已通过正式 Registry/entrypoint 与 PostgreSQL/Fake Transport 纵切闭环。
+- TikHub Secret 出站边界：已限制到批准的 `api.tikhub.io` Origin，并有 Red → Green 回归证据。
+- Change：`ready_for_review`；等待本 Head 最终新鲜 CI、Review、PR 正常合并、合并后 main CI 与归档。
 - Stage 8：未开始，也不得在本 Change 中开始。
