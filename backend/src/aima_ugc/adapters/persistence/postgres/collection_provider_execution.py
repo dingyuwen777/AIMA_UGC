@@ -98,7 +98,8 @@ class PostgresFencedProviderAttemptPreparer:
                 ]
                 if dispatching_attempts:
                     raise ProviderPersistenceConflictError(
-                        "同一 Provider Request 存在未收敛的 dispatching Attempt，必须先执行 Recovery"
+                        "同一 Provider Request 存在未收敛的 dispatching Attempt，"
+                        "必须先执行 Recovery"
                     )
 
                 successful_attempts = [

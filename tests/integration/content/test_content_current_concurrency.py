@@ -25,7 +25,6 @@ from aima_ugc.modules.collection.tables import (
 )
 from aima_ugc.modules.content.tables import (
     accounts_table,
-    comment_metric_observations_table,
     comments_table,
     content_metric_observations_table,
     content_versions_table,

@@ -17,7 +17,9 @@ CollectionScopeTerminalStatus = Literal[
     "failed",
     "cancelled",
 ]
-_SCOPE_TERMINAL_STATUSES = frozenset(CollectionScopeTerminalStatus.__args__)
+_SCOPE_TERMINAL_STATUSES: frozenset[CollectionScopeTerminalStatus] = frozenset(
+    {"partial_success", "succeeded", "failed", "cancelled"}
+)
 
 
 @dataclass(frozen=True, slots=True)
