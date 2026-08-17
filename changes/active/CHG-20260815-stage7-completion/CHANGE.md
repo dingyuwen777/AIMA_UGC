@@ -12,7 +12,7 @@ depends_on: [CHG-20260815-stage7-plan-occurrence-run-snapshot, CHG-20260815-stag
 affected_areas: [collection, provider, scheduler, database, testing, documentation, ci]
 affected_paths: [backend/src/aima_ugc/modules/collection/, backend/src/aima_ugc/adapters/providers/tikhub/, backend/src/aima_ugc/adapters/persistence/postgres/, backend/src/aima_ugc/bootstrap/, backend/src/aima_ugc/entrypoints/, migrations/versions/, tests/unit/collection/, tests/integration/collection/, tests/fixtures/, scripts/, docs/blueprint/, docs/collection/, backend/src/aima_ugc/modules/collection/README.md, .github/workflows/]
 contracts: [ProviderPlatformCapabilityV1, CanonicalContentV1, CanonicalCommentV1]
-data_changes: [collection_plans, collection_schedule_occurrences, collection_runs]
+data_changes: [collection_plans, provider_budget_accounts, provider_budget_reservations, collection_schedule_occurrences, collection_runs]
 ---
 
 # 背景与现状
@@ -39,21 +39,21 @@ Provider Request/Attempt 的 `provider_config_id`、Billing/成本快照、`pote
 
 # 成功标准
 
-- [ ] Blueprint 07/08/09 与当前 Change 明确记录 `latest_only + max_catch_up_runs=0`。
-- [ ] Plan 领域与数据库拒绝与首版 Scheduler 决策冲突的配置。
-- [ ] Scheduler 对 due slot、并发、事务崩溃与重复 tick 保持 Occurrence/Job/Run/cursor 原子且幂等。
-- [ ] 五平台当前主 Operation 有合法脱敏真实 Fixture、Mapper、Capability/Registry 与 Canonical/Ingestion 证据。
-- [ ] 快手 `comments/sub_comments` 默认生产链使用 App；Web 备用不进入自动 fallback。
+- [x] Blueprint 07/08/09 与当前 Change 明确记录 `latest_only + max_catch_up_runs=0`。
+- [x] Plan 领域与数据库拒绝与首版 Scheduler 决策冲突的配置。
+- [x] Scheduler 对 due slot、并发、事务崩溃与重复 tick 保持 Occurrence/Job/Run/cursor 原子且幂等。
+- [x] 五平台当前主 Operation 有合法脱敏真实 Fixture、Mapper、Capability/Registry 与 Canonical/Ingestion 证据。
+- [x] 快手 `comments/sub_comments` 默认生产链使用 App；Web 备用不进入自动 fallback。
 - [ ] 正式 `collection.run.v1` Worker Handler 可消费 Scheduler Job，并复用 Provider Routing、Dispatch、Raw、Mapper、Decision、Ingestion 链。
-- [ ] 所有业务可见 Run/Scope/Provider 状态写入继续验证当前 Job Fencing Token。
-- [ ] Provider 外部调用不包在数据库事务中；同一 Attempt 最多一次真实发送；未知发送结果不得重发同一 Attempt。
-- [ ] 当前 Plan/Run/Dispatch 不包含预算配置、预算账户、Reservation、预算分配或超预算门禁。
-- [ ] 当前 SQLAlchemy Schema 不再注册 `provider_budget_accounts/provider_budget_reservations`，`collection_plans` 不再包含 `request_budget`。
-- [ ] Budget Runtime 模块、Repository、Run Preparer、专用测试和预算 CI 工作流被删除，而不是仅禁用。
-- [ ] 历史 `20260815_0012` / `0013` 不改写；新增向前 Migration 从当前 head 删除预算表和 `request_budget`，并通过 downgrade/upgrade round-trip。
-- [ ] Blueprint 明确：未来预算/成本 Guard 只是可扩展方向，不是当前 Contract/Schema/运行能力；重新实现需新的 L3 Change。
-- [ ] 新增/修改行为遵循 Red → Green → Refactor；真实付费 Probe 是受控例外，不进入普通 CI。
-- [ ] Ruff、mypy、Unit、Contract、PostgreSQL Integration、Architecture、Table Ownership、Secret Scan、Docs 与受影响 Stage 回归通过。
+- [x] 所有已实现的业务可见 Run/Scope/Provider 状态写入继续验证当前 Job Fencing Token。
+- [x] Provider 外部调用不包在数据库事务中；同一 Attempt 最多一次真实发送；未知发送结果不得重发同一 Attempt。
+- [x] 当前 Plan/Run/Dispatch 不包含预算配置、预算账户、Reservation、预算分配或超预算门禁。
+- [x] 当前 SQLAlchemy Schema 不再注册 `provider_budget_accounts/provider_budget_reservations`，`collection_plans` 不再包含 `request_budget`。
+- [x] Budget Runtime 模块、Repository、Run Preparer、专用测试和预算 CI 工作流被删除，而不是仅禁用。
+- [x] 历史 `20260815_0012` / `0013` 不改写；新增向前 Migration 从当前 head 删除预算表和 `request_budget`，并通过 downgrade/upgrade round-trip。
+- [x] Blueprint 明确：未来预算/成本 Guard 只是可扩展方向，不是当前 Contract/Schema/运行能力；重新实现需新的 L3 Change。
+- [x] 预算回撤行为遵循 Red → Green → Refactor；真实付费 Probe 仍是受控例外，不进入普通 CI。
+- [ ] 当前最终 Head 的 Ruff、mypy、Unit、Contract、PostgreSQL Integration、Architecture、Table Ownership、Secret Scan、Docs 与受影响 Stage 回归全部形成新鲜成功证据。
 - [ ] PR 通过正常 CI 合入 main；合并后的 main 有新鲜成功证据后 Change 才标记 done 并归档。
 
 # 范围
@@ -158,7 +158,7 @@ drop collection_plans.request_budget
 
 未来 Guard 可以读取 `provider_config_id / run / content / operation / Billing estimate` 等稳定事实，但当前不定义它的 Contract、Schema、配置字段、默认策略或 UI；不能为了“预留接口”在生产代码中保留空实现。
 
-# 验证计划
+# 验证计划与已取得证据
 
 [步骤 1：预算回撤 Red]
 → 范围：Plan 字段、Schema 表、Budget Runtime 模块存在性
@@ -168,19 +168,24 @@ drop collection_plans.request_budget
 [步骤 2：预算回撤 Green]
 → 范围：0015 Migration、Plan/Schema/Scheduler/Dispatch、预算模块/测试/CI 删除
 → 预期：当前运行时无预算功能，Provider Fencing/Dispatch/Raw 行为不变
-→ 验证：Unit、Stage 5B/5D、Stage 6、Scheduler、Provider Config、Migration round-trip、Ruff/mypy
+→ 证据：预算回撤代码树 `f2dba7da611c2c46e68135b410eab3d89af42e16` 上 Stage 4、Stage 5A、Stage 5B、Stage 5C、Stage 5D、Stage 6、Stage 7 Scheduler、Plan Snapshot、Provider Config、Keyword Packs 均完成 `success`；相关 Migration round-trip 与质量步骤随这些完整 Workflow 成功
 
 [步骤 3：文档同步]
-→ 范围：AGENTS、Blueprint 03/07/08/README、Collection 文档、PR
+→ 范围：AGENTS、Blueprint 02/03/04/07/08/README、Collection 模块/开发说明、PR
 → 预期：不再把预算写成当前能力；未来扩展边界清楚但不预设计实现
-→ 验证：Docs Check + Secret Scan + 人工一致性 Review
+→ 证据：文档同步 Runner `31990437787` 与跨文档最终同步 Runner `31990747773` 的同步、`check_docs.py`、Secret Scan、`git diff --check`、自清理步骤全部成功；临时同步 Workflow 已从最终树移除
 
-[步骤 4：live Worker]
+[步骤 4：当前 Head 新鲜 CI]
+→ 范围：本 Change 证据提交后的完整 PR Workflow
+→ 预期：以正常用户提交重新触发 CI；此前 `1a1540a` 的 `action_required` 是 bot-authored commit 没有创建任何 Job，不计为测试失败
+→ 验证：CI + Stage 4/5A/5B/5C/5D/6/7 相关 Workflow 全部出现真实 Job 并成功
+
+[步骤 5：live Worker]
 → 范围：`collection.run.v1` Scope Executor / Worker 装配
 → 预期：Scheduler Job 能进入 Provider → Raw → Mapper → Decision → Ingestion 正式链
 → 验证：Red/Green Unit + PostgreSQL Integration + Fake Transport；真实付费 Probe 继续只走受控 GitHub Runner
 
-[步骤 5：最终 Stage 7 交付]
+[步骤 6：最终 Stage 7 交付]
 → 范围：PR #55 全量 diff、CI、Review、Change 状态
 → 预期：只有当前 Stage 7 内容，无 Stage 8 漂移
 → 验证：完整 PR CI + Review + main 合并后新鲜 CI
@@ -194,11 +199,11 @@ drop collection_plans.request_budget
 
 # 当前状态
 
-- Scheduler latest-only：已实现，继续回归验证。
-- 五平台 Operation/Mapper/真实脱敏证据：已建立大量机器事实，继续最终一致性复核。
+- Scheduler latest-only：已实现并有新鲜成功回归证据。
+- 五平台 Operation/Mapper/真实脱敏证据：当前主链机器事实已建立。
 - Kuaishou App comments/sub-comments：当前主链已切换，Web 仅显式备用。
-- PostgreSQL Fenced Collection Run Gateway：已实现并通过 Stage 5B 既有验证。
-- TikHub Runtime comments/sub-comments 统一入口：已实现，继续全局质量回归。
-- 预算功能回撤：Red 已完成；Green 代码/Migration 正在验证，文档同步进行中。
-- `collection.run.v1` live Worker：仍未闭环，是预算回撤完成后的当前核心开发工作。
+- PostgreSQL Fenced Collection Run Gateway：已实现并通过 Stage 5B 验证。
+- TikHub Runtime comments/sub-comments 统一入口：已实现。
+- **预算功能回撤：代码、0015 Migration、回归测试与跨 Blueprint/Collection 文档同步均已完成；当前只等待本提交触发的最终新鲜 CI 复核。**
+- `collection.run.v1` live Worker：仍未闭环，是预算回撤验证完成后的当前核心开发工作。
 - Stage 8：未开始，也不得在本 Change 中开始。
