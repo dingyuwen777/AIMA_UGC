@@ -7,7 +7,6 @@ from pathlib import Path
 from zipfile import ZipFile
 
 import pytest
-
 from aima_ugc.adapters.providers.tikhub_test import (
     run_bilibili,
     run_douyin,
