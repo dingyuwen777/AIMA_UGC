@@ -11,26 +11,38 @@ from aima_ugc.adapters.providers.tikhub.runtime import (
 
 
 def test_sub_comment_calls_use_current_primary_operations() -> None:
-    assert build_sub_comments_call(
-        platform="xhs",
-        external_content_id="note-1",
-        root_comment_id="comment-1",
-    ).path == "/api/v1/xiaohongshu/app_v2/get_note_sub_comments"
-    assert build_sub_comments_call(
-        platform="douyin",
-        external_content_id="aweme-1",
-        root_comment_id="comment-1",
-    ).path == "/api/v1/douyin/app/v3/fetch_video_comment_replies"
-    assert build_sub_comments_call(
-        platform="weibo",
-        external_content_id="status-1",
-        root_comment_id="comment-1",
-    ).path == "/api/v1/weibo/web_v2/fetch_post_sub_comments"
-    assert build_sub_comments_call(
-        platform="bilibili",
-        external_content_id="100010",
-        root_comment_id="comment-1",
-    ).path == "/api/v1/bilibili/app/fetch_reply_detail"
+    assert (
+        build_sub_comments_call(
+            platform="xhs",
+            external_content_id="note-1",
+            root_comment_id="comment-1",
+        ).path
+        == "/api/v1/xiaohongshu/app_v2/get_note_sub_comments"
+    )
+    assert (
+        build_sub_comments_call(
+            platform="douyin",
+            external_content_id="aweme-1",
+            root_comment_id="comment-1",
+        ).path
+        == "/api/v1/douyin/app/v3/fetch_video_comment_replies"
+    )
+    assert (
+        build_sub_comments_call(
+            platform="weibo",
+            external_content_id="status-1",
+            root_comment_id="comment-1",
+        ).path
+        == "/api/v1/weibo/web_v2/fetch_post_sub_comments"
+    )
+    assert (
+        build_sub_comments_call(
+            platform="bilibili",
+            external_content_id="100010",
+            root_comment_id="comment-1",
+        ).path
+        == "/api/v1/bilibili/app/fetch_reply_detail"
+    )
 
     kuaishou = build_sub_comments_call(
         platform="kuaishou",
@@ -88,7 +100,12 @@ def test_comment_pagination_uses_existing_platform_state_models() -> None:
     weibo = advance_comments(
         platform="weibo",
         state={},
-        body={"data": {"items": [{"data": {"idstr": "1"}}], "moreInfo": {"params": {"max_id": "20"}}}},
+        body={
+            "data": {
+                "items": [{"data": {"idstr": "1"}}],
+                "moreInfo": {"params": {"max_id": "20"}},
+            }
+        },
     )
     assert weibo.next_state == {"max_id": "20"}
 
@@ -101,23 +118,37 @@ def test_comment_pagination_uses_existing_platform_state_models() -> None:
 
 
 def test_sub_comment_pagination_stops_on_provider_exhaustion() -> None:
-    assert advance_sub_comments(
-        platform="xhs",
-        state={"cursor": "before", "index": 1, "page_area": "UNFOLDED"},
-        body={"data": {"data": {"comments": [{"id": "1"}], "cursor": "end", "has_more": False}}},
-    ).stop_reason == "provider_exhausted"
-    assert advance_sub_comments(
-        platform="douyin",
-        state={"cursor": 0},
-        body={"data": {"comments": [{"cid": "1"}], "cursor": 0, "has_more": 0}},
-    ).stop_reason == "provider_exhausted"
-    assert advance_sub_comments(
-        platform="weibo",
-        state={"max_id": ""},
-        body={"data": {"data": [{"idstr": "1"}], "max_id": 0}},
-    ).stop_reason == "provider_exhausted"
-    assert advance_sub_comments(
-        platform="kuaishou",
-        state={"pcursor": "before"},
-        body={"data": {"subComments": [], "pcursor": "after"}},
-    ).stop_reason == "empty_page"
+    assert (
+        advance_sub_comments(
+            platform="xhs",
+            state={"cursor": "before", "index": 1, "page_area": "UNFOLDED"},
+            body={
+                "data": {"data": {"comments": [{"id": "1"}], "cursor": "end", "has_more": False}}
+            },
+        ).stop_reason
+        == "provider_exhausted"
+    )
+    assert (
+        advance_sub_comments(
+            platform="douyin",
+            state={"cursor": 0},
+            body={"data": {"comments": [{"cid": "1"}], "cursor": 0, "has_more": 0}},
+        ).stop_reason
+        == "provider_exhausted"
+    )
+    assert (
+        advance_sub_comments(
+            platform="weibo",
+            state={"max_id": ""},
+            body={"data": {"data": [{"idstr": "1"}], "max_id": 0}},
+        ).stop_reason
+        == "provider_exhausted"
+    )
+    assert (
+        advance_sub_comments(
+            platform="kuaishou",
+            state={"pcursor": "before"},
+            body={"data": {"subComments": [], "pcursor": "after"}},
+        ).stop_reason
+        == "empty_page"
+    )

@@ -43,15 +43,11 @@ class _Gateway:
         assert fence.job_id == self.execution.run.job_id
         return self.execution
 
-    def start_run(
-        self, run_id: UUID, *, fence: JobExecutionFence
-    ) -> CollectionRunRecord:
+    def start_run(self, run_id: UUID, *, fence: JobExecutionFence) -> CollectionRunRecord:
         assert run_id == self.execution.run.id
         return self.execution.run
 
-    def start_scope(
-        self, scope_id: UUID, *, fence: JobExecutionFence
-    ) -> CollectionScopeRecord:
+    def start_scope(self, scope_id: UUID, *, fence: JobExecutionFence) -> CollectionScopeRecord:
         return next(scope for scope in self.execution.scopes if scope.id == scope_id)
 
     def finish_scope(

@@ -581,9 +581,7 @@ def _advance_xhs_comments(
     )
 
 
-def _advance_douyin_comments(
-    state: dict[str, object], body: dict[str, Any]
-) -> TikHubPageAdvance:
+def _advance_douyin_comments(state: dict[str, object], body: dict[str, Any]) -> TikHubPageAdvance:
     result = douyin.DouyinCursorPagination.from_response(
         previous_cursor=_int_state(state, "cursor", default=0),
         body=body,
@@ -593,9 +591,7 @@ def _advance_douyin_comments(
     return TikHubPageAdvance(_json_object({"cursor": result.next_cursor}), None)
 
 
-def _advance_weibo_comments(
-    state: dict[str, object], body: dict[str, Any]
-) -> TikHubPageAdvance:
+def _advance_weibo_comments(state: dict[str, object], body: dict[str, Any]) -> TikHubPageAdvance:
     result = weibo.WeiboCommentPagination.from_response(
         previous_max_id=_optional_str_state(state, "max_id"),
         body=body,
@@ -623,9 +619,7 @@ def _advance_weibo_sub_comments(
     return TikHubPageAdvance(_json_object({"max_id": result.next_max_id}), None)
 
 
-def _advance_bilibili_comments(
-    state: dict[str, object], body: dict[str, Any]
-) -> TikHubPageAdvance:
+def _advance_bilibili_comments(state: dict[str, object], body: dict[str, Any]) -> TikHubPageAdvance:
     provider = body.get("data")
     provider_data = provider.get("data") if isinstance(provider, dict) else None
     if not isinstance(provider_data, dict):
@@ -636,9 +630,7 @@ def _advance_bilibili_comments(
     if cursor.get("is_end") is True:
         return TikHubPageAdvance(None, "provider_exhausted")
     pagination_reply = cursor.get("pagination_reply")
-    returned = (
-        pagination_reply.get("next_offset") if isinstance(pagination_reply, dict) else None
-    )
+    returned = pagination_reply.get("next_offset") if isinstance(pagination_reply, dict) else None
     next_offset = _nonnegative_integer(returned)
     result = bilibili.BilibiliCursorPagination.from_returned_cursor(
         previous_cursor=_int_state(state, "next_offset", default=0),
