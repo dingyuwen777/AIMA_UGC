@@ -22,6 +22,7 @@ from aima_ugc.contracts.canonical import (
 from aima_ugc.modules.content.account_tables import account_external_ids_table
 from aima_ugc.modules.content.tables import (
     accounts_table,
+    comment_coverage_observations_table,
     comment_metric_observations_table,
     comment_versions_table,
     comments_table,
@@ -64,6 +65,7 @@ _COMMENT_BUSINESS_COLUMNS = (
     "is_by_content_author",
     "author_account_id",
 )
+_COVERAGE_VALUES = {"complete", "partial", "not_requested", "unavailable"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -316,6 +318,79 @@ class PostgresContentRepository:
             business_changed,
             metric_recorded,
         )
+
+    def record_comment_coverage(
+        self,
+        *,
+        content_id: UUID,
+        provider_attempt_id: UUID,
+        raw_artifact_id: UUID,
+        coverage: str,
+        reported_total: int | None,
+        collected_count: int,
+        sample_mode: str,
+        sort_mode: str,
+        target_count: int | None,
+        stop_reason: str,
+        observed_at: datetime,
+    ) -> UUID:
+        """按来源幂等保存一次评论 Coverage；0016 前历史行可保留空扩展字段。"""
+        if coverage not in _COVERAGE_VALUES:
+            raise ValueError("Comment Coverage 状态非法")
+        if reported_total is not None and reported_total < 0:
+            raise ValueError("Comment Coverage reported_total 不能为负数")
+        if collected_count < 0:
+            raise ValueError("Comment Coverage collected_count 不能为负数")
+        if target_count is not None and target_count < 0:
+            raise ValueError("Comment Coverage target_count 不能为负数")
+        if observed_at.utcoffset() is None:
+            raise ValueError("Comment Coverage observed_at 必须包含时区")
+        if not sample_mode.strip() or not sort_mode.strip() or not stop_reason.strip():
+            raise ValueError("Comment Coverage 可观测字段不能为空")
+        if coverage in {"not_requested", "unavailable"} and collected_count != 0:
+            raise ValueError("未请求/不可用 Coverage 不能包含已采集评论")
+        if coverage == "complete" and reported_total is not None:
+            if collected_count < reported_total:
+                raise ValueError("complete Coverage 的采集数不能小于 Provider 报告总数")
+
+        coverage_id = uuid4()
+        values = {
+            "id": coverage_id,
+            "content_id": content_id,
+            "provider_attempt_id": provider_attempt_id,
+            "raw_artifact_id": raw_artifact_id,
+            "coverage": coverage,
+            "reported_total": reported_total,
+            "collected_count": collected_count,
+            "sample_mode": sample_mode.strip(),
+            "sort_mode": sort_mode.strip(),
+            "target_count": target_count,
+            "stop_reason": stop_reason.strip(),
+            "observed_at": observed_at,
+        }
+        row_id = self._session.execute(
+            pg_insert(comment_coverage_observations_table)
+            .values(**values)
+            .on_conflict_do_update(
+                index_elements=[
+                    comment_coverage_observations_table.c.content_id,
+                    comment_coverage_observations_table.c.provider_attempt_id,
+                    comment_coverage_observations_table.c.raw_artifact_id,
+                ],
+                set_={
+                    "coverage": values["coverage"],
+                    "reported_total": values["reported_total"],
+                    "collected_count": values["collected_count"],
+                    "sample_mode": values["sample_mode"],
+                    "sort_mode": values["sort_mode"],
+                    "target_count": values["target_count"],
+                    "stop_reason": values["stop_reason"],
+                    "observed_at": values["observed_at"],
+                },
+            )
+            .returning(comment_coverage_observations_table.c.id)
+        ).scalar_one()
+        return cast(UUID, row_id)
 
     def _upsert_author(self, observation: CanonicalContentV1) -> UUID | None:
         return self._upsert_account(
