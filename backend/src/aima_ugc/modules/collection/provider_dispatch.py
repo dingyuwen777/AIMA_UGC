@@ -183,12 +183,11 @@ def _log_provider_terminal(
     artifact: ArtifactRecord | None,
 ) -> None:
     request = preparation.request
-    if attempt.dispatch_status == "completed":
-        event = "provider.request.completed"
-    elif attempt.dispatch_status == "unknown":
-        event = "provider.request.unknown"
-    else:
-        event = "provider.request.failed"
+    event = (
+        "provider.request.completed"
+        if attempt.dispatch_status == "completed"
+        else "provider.request.failed"
+    )
     duration_ms: int | None = None
     if attempt.dispatch_started_at is not None and attempt.completed_at is not None:
         duration_ms = max(
