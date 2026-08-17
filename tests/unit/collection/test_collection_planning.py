@@ -45,6 +45,7 @@ def _definition(
         max_catch_up_runs=max_catch_up_runs,
         detail_policy="on_change",
         comment_policy="adaptive",
+        request_budget=100,
         created_by=None,
         platforms=platforms
         or (
@@ -119,6 +120,7 @@ def test_definition_rejects_invalid_stable_numeric_and_text_fields() -> None:
         {"max_catch_up_runs": -1},
         {"detail_policy": ""},
         {"comment_policy": ""},
+        {"request_budget": -1},
     )
 
     for overrides in invalid_values:
@@ -132,6 +134,7 @@ def test_definition_rejects_invalid_stable_numeric_and_text_fields() -> None:
             "max_catch_up_runs": base.max_catch_up_runs,
             "detail_policy": base.detail_policy,
             "comment_policy": base.comment_policy,
+            "request_budget": base.request_budget,
             "created_by": base.created_by,
             "platforms": base.platforms,
             "keyword_pack_ids": base.keyword_pack_ids,

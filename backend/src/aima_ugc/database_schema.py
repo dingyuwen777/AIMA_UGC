@@ -12,6 +12,8 @@ from aima_ugc.modules.collection.tables import (
     collection_runs_table,
     collection_schedule_occurrences_table,
     collection_scopes_table,
+    provider_budget_accounts_table,
+    provider_budget_reservations_table,
     provider_request_attempts_table,
     provider_requests_table,
 )
@@ -66,6 +68,8 @@ __all__ = [
     "keyword_packs_table",
     "keywords_table",
     "metadata",
+    "provider_budget_accounts_table",
+    "provider_budget_reservations_table",
     "provider_configs_table",
     "provider_request_attempts_table",
     "provider_requests_table",
