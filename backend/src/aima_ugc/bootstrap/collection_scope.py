@@ -729,7 +729,9 @@ class TikHubCollectionScopeExecutor:
         session = self._session_factory()
         try:
             with session.begin():
-                artifact = PostgresArtifactMetadataRepository(session).get_by_storage_key(storage_key)
+                artifact = PostgresArtifactMetadataRepository(session).get_by_storage_key(
+                    storage_key
+                )
         finally:
             session.close()
         if artifact is None or artifact.id != expected_artifact_id:

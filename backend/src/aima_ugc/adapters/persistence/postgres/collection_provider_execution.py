@@ -177,8 +177,7 @@ class PostgresFencedProviderAttemptPreparer:
                 ).all()
                 requested_count = sum(status != "reserved" for status, _ in attempts)
                 succeeded_count = sum(
-                    status == "completed" and error_code is None
-                    for status, error_code in attempts
+                    status == "completed" and error_code is None for status, error_code in attempts
                 )
                 failed_count = sum(
                     status in {"not_sent", "unknown"}
