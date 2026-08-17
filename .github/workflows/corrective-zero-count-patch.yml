@@ -28,21 +28,15 @@ jobs:
           text = path.read_text(encoding="utf-8")
           old = '''        return _nonnegative_int(page.get("comment_count_l1")) or _nonnegative_int(
               page.get("comment_count")
-          )'''
+          )'''.replace("              page", "            page").replace("          )", "        )")
           new = '''        root_total = _nonnegative_int(page.get("comment_count_l1"))
           if root_total is not None:
               return root_total
-          return _nonnegative_int(page.get("comment_count"))'''
-          if old not in text:
-              print("confirmed patch is already absent; no change")
-          else:
-              if text.count(old) != 1:
-                  raise SystemExit("expected zero-count fragment exactly once")
-              path.write_text(text.replace(old, new), encoding="utf-8")
+          return _nonnegative_int(page.get("comment_count"))'''.replace("          if", "        if").replace("              return", "            return").replace("          return", "        return")
+          if text.count(old) != 1:
+              raise SystemExit(f"expected zero-count fragment exactly once, found {text.count(old)}")
+          path.write_text(text.replace(old, new), encoding="utf-8")
           PY
-          if git diff --quiet -- backend/src/aima_ugc/bootstrap/collection_scope.py; then
-            exit 0
-          fi
           git diff --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
