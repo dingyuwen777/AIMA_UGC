@@ -151,7 +151,7 @@ def test_logging_does_not_break_scope_exception_isolation(
     run_record = next(
         record
         for record in caplog.records
-        if getattr(record, "event", None) == "collection.run.failed"
+        if getattr(record, "event", None) == "collection.run.completed"
     )
     assert run_record.status == "failed"
     assert run_record.run_id == str(execution.run.id)
