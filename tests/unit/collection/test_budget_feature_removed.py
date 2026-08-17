@@ -31,12 +31,16 @@ def test_runtime_schema_no_longer_registers_budget_ledger_tables() -> None:
 def test_budget_runtime_modules_are_removed_instead_of_left_dormant() -> None:
     assert importlib.util.find_spec("aima_ugc.modules.collection.provider_budget") is None
     assert importlib.util.find_spec("aima_ugc.modules.collection.run_budget") is None
-    assert importlib.util.find_spec("aima_ugc.adapters.persistence.postgres.provider_budget") is None
+    assert (
+        importlib.util.find_spec("aima_ugc.adapters.persistence.postgres.provider_budget") is None
+    )
     assert (
         importlib.util.find_spec("aima_ugc.adapters.persistence.postgres.provider_budget_envelope")
         is None
     )
     assert (
-        importlib.util.find_spec("aima_ugc.adapters.persistence.postgres.collection_run_preparation")
+        importlib.util.find_spec(
+            "aima_ugc.adapters.persistence.postgres.collection_run_preparation"
+        )
         is None
     )
