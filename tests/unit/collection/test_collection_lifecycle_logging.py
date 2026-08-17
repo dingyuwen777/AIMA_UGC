@@ -159,7 +159,9 @@ def test_collection_executor_emits_stable_run_and_scope_events(
     execution = _execution()
     context = _Context(execution.run.job_id)
 
-    with caplog.at_level(logging.INFO, logger="aima_ugc.modules.collection.collection_run_executor"):
+    with caplog.at_level(
+        logging.INFO, logger="aima_ugc.modules.collection.collection_run_executor"
+    ):
         result = CollectionRunExecutor(
             gateway=_Gateway(execution),
             scope_executor=_ScopeExecutor(),

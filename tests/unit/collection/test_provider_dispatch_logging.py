@@ -10,7 +10,11 @@ from uuid import UUID, uuid4
 
 import pytest
 from aima_ugc.adapters.providers.fake import FakeProviderTransport
-from aima_ugc.contracts.provider import ProviderAttemptV1, ProviderRequestV1, terminal_attempt_with_raw
+from aima_ugc.contracts.provider import (
+    ProviderAttemptV1,
+    ProviderRequestV1,
+    terminal_attempt_with_raw,
+)
 from aima_ugc.modules.collection.provider_dispatch import (
     ProviderDispatchPreparation,
     ProviderDispatchService,
