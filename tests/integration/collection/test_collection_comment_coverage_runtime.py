@@ -333,3 +333,39 @@ def test_adaptive_target_keeps_whole_paid_page_and_records_partial_coverage(
     assert coverage["sort_mode"] == "latest"
     assert coverage["target_count"] == 50
     assert coverage["stop_reason"] == "target_reached"
+
+
+def test_comment_response_zero_overrides_older_detail_count(
+    database_runtime: DatabaseRuntime,
+    tmp_path: Path,
+) -> None:
+    _prepared, transport = _execute(
+        runtime=database_runtime,
+        tmp_path=tmp_path,
+        responses=(
+            ProviderTransportResponse(
+                status_code=200,
+                body=_search_response(comment_count=1),
+            ),
+            ProviderTransportResponse(
+                status_code=200,
+                body=_detail_response(comment_count=1),
+            ),
+            ProviderTransportResponse(
+                status_code=200,
+                body=_comments_response(count=0, has_more=False),
+            ),
+        ),
+    )
+
+    assert transport.call_count == 3
+    session = database_runtime.new_session()
+    try:
+        coverage = session.execute(select(comment_coverage_observations_table)).mappings().one()
+    finally:
+        session.close()
+    assert coverage["coverage"] == "complete"
+    assert coverage["reported_total"] == 0
+    assert coverage["collected_count"] == 0
+    assert coverage["target_count"] == 1
+    assert coverage["stop_reason"] == "provider_exhausted"
