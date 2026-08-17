@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 from pydantic import SecretStr
@@ -15,6 +16,7 @@ from aima_ugc.modules.collection.providers.transport import (
 )
 
 DEFAULT_TIKHUB_BASE_URL = "https://api.tikhub.io"
+_ALLOWED_TIKHUB_HOST = "api.tikhub.io"
 _REQUEST_ID_HEADERS = (
     "x-request-id",
     "x-tikhub-request-id",
@@ -32,9 +34,8 @@ class TikHubHttpTransport:
         timeout_seconds: float = 45.0,
         client: httpx.Client | None = None,
     ) -> None:
-        normalized_base_url = base_url.rstrip("/")
-        if not normalized_base_url.startswith("https://"):
-            raise ValueError("TikHub base_url 必须使用 https")
+        actual_base_url = str(client.base_url) if client is not None else base_url
+        normalized_base_url = _validate_tikhub_base_url(actual_base_url)
         if timeout_seconds <= 0:
             raise ValueError("TikHub timeout_seconds 必须大于 0")
         self._base_url = normalized_base_url
@@ -148,6 +149,27 @@ def build_tikhub_transport_request(
 
 
 _HttpQueryValue = str | int | float | bool | None
+
+
+def _validate_tikhub_base_url(value: str) -> str:
+    normalized = value.rstrip("/")
+    try:
+        parsed = urlsplit(normalized)
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("TikHub base_url 必须使用受允许的 HTTPS Origin") from exc
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != _ALLOWED_TIKHUB_HOST
+        or port not in (None, 443)
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or parsed.path not in ("", "/")
+    ):
+        raise ValueError("TikHub base_url 必须使用受允许的 https://api.tikhub.io")
+    return normalized
 
 
 def _http_query_params(params: Mapping[str, object]) -> dict[str, _HttpQueryValue]:
