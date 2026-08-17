@@ -19,11 +19,9 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           ref: agent/tikhub-test-debug
-
       - uses: actions/setup-python@v6.2.0
         with:
           python-version: 3.14.7
-
       - name: Install locked environment
         shell: bash
         run: |
@@ -32,15 +30,12 @@ jobs:
           python -m pip install "uv==${UV_VERSION}"
           uv lock --check
           uv sync --locked
-
       - name: Verify api.tikhub.io connectivity
         shell: bash
         run: |
           set -euo pipefail
-          status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
-            --connect-timeout 10 --max-time 30 https://api.tikhub.io/openapi.json)"
+          status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --connect-timeout 10 --max-time 30 https://api.tikhub.io/openapi.json)"
           test "${status}" = "200"
-
       - name: Generate one-time RSA handoff key
         shell: bash
         run: |
@@ -48,12 +43,9 @@ jobs:
           secure_dir="${RUNNER_TEMP}/tikhub-five-platform-secret"
           mkdir -p "${secure_dir}"
           chmod 700 "${secure_dir}"
-          openssl genpkey -quiet -algorithm RSA -pkeyopt rsa_keygen_bits:3072 \
-            -out "${secure_dir}/private.pem"
+          openssl genpkey -quiet -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "${secure_dir}/private.pem"
           chmod 600 "${secure_dir}/private.pem"
-          openssl pkey -in "${secure_dir}/private.pem" -pubout \
-            -out "${secure_dir}/public.pem"
-
+          openssl pkey -in "${secure_dir}/private.pem" -pubout -out "${secure_dir}/public.pem"
       - name: Upload one-time public key
         uses: actions/upload-artifact@v7.0.1
         with:
@@ -62,7 +54,6 @@ jobs:
           if-no-files-found: error
           retention-days: 1
           compression-level: 9
-
       - name: Receive encrypted TikHub credential
         shell: bash
         env:
@@ -73,42 +64,27 @@ jobs:
           marker="<!-- tikhub-five-platform-ciphertext:${GITHUB_RUN_ID} -->"
           ciphertext=""
           for _ in $(seq 1 120); do
-            pr_body="$(curl --fail --silent --show-error \
-              --header "Authorization: Bearer ${GH_TOKEN}" \
-              --header "Accept: application/vnd.github+json" \
-              --header "X-GitHub-Api-Version: 2022-11-28" \
-              "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/63" | jq -r '.body // ""')"
-            ciphertext="$(printf '%s' "${pr_body}" | jq -Rrs --arg marker "${marker}" \
-              'split($marker) | if length > 1 then .[1] | split("\n") | map(select(length > 0))[0] // "" else "" end')"
-            if [ -n "${ciphertext}" ]; then
-              break
-            fi
+            pr_body="$(curl --fail --silent --show-error --header "Authorization: Bearer ${GH_TOKEN}" --header "Accept: application/vnd.github+json" --header "X-GitHub-Api-Version: 2022-11-28" "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/63" | jq -r '.body // ""')"
+            ciphertext="$(printf '%s' "${pr_body}" | jq -Rrs --arg marker "${marker}" 'split($marker) | if length > 1 then .[1] | split("\n") | map(select(length > 0))[0] // "" else "" end')"
+            if [ -n "${ciphertext}" ]; then break; fi
             sleep 5
           done
           test -n "${ciphertext}"
           printf '%s' "${ciphertext}" | base64 --decode > "${secure_dir}/ciphertext.bin"
-          openssl pkeyutl -decrypt \
-            -inkey "${secure_dir}/private.pem" \
-            -in "${secure_dir}/ciphertext.bin" \
-            -pkeyopt rsa_padding_mode:oaep \
-            -pkeyopt rsa_oaep_md:sha256 \
-            -pkeyopt rsa_mgf1_md:sha256 \
-            -out "${secure_dir}/token"
+          openssl pkeyutl -decrypt -inkey "${secure_dir}/private.pem" -in "${secure_dir}/ciphertext.bin" -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256 -out "${secure_dir}/token"
           chmod 600 "${secure_dir}/token"
           token="$(cat "${secure_dir}/token")"
           test "${#token}" -ge 16
           echo "::add-mask::${token}"
           rm -f "${secure_dir}/ciphertext.bin"
-
-      - name: Probe current live shapes and Bilibili time ordering
+      - name: Run targeted live probe
         shell: bash
         run: |
           set -euo pipefail
           token="$(cat "${RUNNER_TEMP}/tikhub-five-platform-secret/token")"
           echo "::add-mask::${token}"
-          export AIMA_TIKHUB_REAL_OUTPUT="${RUNNER_TEMP}/tikhub-five-platform"
           export AIMA_TIKHUB_REAL_TOKEN="${token}"
-
+          export AIMA_TIKHUB_REAL_OUTPUT="${RUNNER_TEMP}/tikhub-five-platform"
           uv run python - <<'PY'
           from __future__ import annotations
 
@@ -120,7 +96,6 @@ jobs:
           from uuid import uuid4
 
           from pydantic import SecretStr
-
           from aima_ugc.adapters.providers.tikhub import runtime
           from aima_ugc.adapters.providers.tikhub.transport import TikHubHttpTransport
 
@@ -133,25 +108,10 @@ jobs:
               if response.status_code is not None and response.status_code >= 400:
                   raise RuntimeError(f"{call.operation}: HTTP {response.status_code}")
               if not isinstance(response.body, dict):
-                  raise RuntimeError(f"{call.operation}: response body is not object")
+                  raise RuntimeError(f"{call.operation}: non-object response")
               return response.body
 
-          def describe_named_keys(value: object, names: set[str], prefix: str = "$", depth: int = 0) -> list[dict[str, str]]:
-              if depth > 7:
-                  return []
-              rows: list[dict[str, str]] = []
-              if isinstance(value, dict):
-                  for key, item in value.items():
-                      path = f"{prefix}.{key}"
-                      if str(key) in names:
-                          rows.append({"path": path, "type": type(item).__name__})
-                      rows.extend(describe_named_keys(item, names, path, depth + 1))
-              elif isinstance(value, list):
-                  for index, item in enumerate(value[:3]):
-                      rows.extend(describe_named_keys(item, names, f"{prefix}[{index}]", depth + 1))
-              return rows
-
-          def context(operation: str, *, external_content_id: str | None = None):
+          def ctx(operation: str, *, content_id: str | None = None):
               return runtime.mapping_context(
                   provider_request_id=str(uuid4()),
                   provider_attempt_id=str(uuid4()),
@@ -160,173 +120,152 @@ jobs:
                   source_type="keyword_search",
                   source_value="爱玛",
                   observed_at=datetime.now(UTC),
-                  external_content_id=external_content_id,
+                  external_content_id=content_id,
               )
 
           summary: dict[str, object] = {"keyword": "爱玛", "douyin": {}, "weibo": {}, "bilibili": {}}
-
           with TikHubHttpTransport(base_url="https://api.tikhub.io", timeout_seconds=30) as transport:
-              # Douyin: inspect Search V2 business_data item shape without printing values.
+              # Douyin: enumerate every returned card only by type/shape, never IDs or text.
               try:
                   call = runtime.build_search_call(
                       platform="douyin",
                       keyword="爱玛",
-                      config={
-                          "sort_mode": "latest",
-                          "published_within": "1d",
-                          "duration": "all",
-                          "content_type": "all",
-                      },
+                      config={"sort_mode": "latest", "published_within": "1d", "duration": "all", "content_type": "all"},
                       state=None,
                   )
                   body = send(transport, call)
                   items = runtime.extract_search_items("douyin", body)
-                  first = items[0] if items else {}
-                  data_value = first.get("data") if isinstance(first, dict) else None
-                  parsed_data: object = None
-                  data_json_object = False
-                  if isinstance(data_value, str):
-                      try:
-                          parsed_data = json.loads(data_value)
-                      except json.JSONDecodeError:
-                          parsed_data = None
-                      data_json_object = isinstance(parsed_data, dict)
+                  shapes = []
+                  for item in items:
+                      data = item.get("data") if isinstance(item, dict) else None
+                      aweme = data.get("aweme_info") if isinstance(data, dict) else None
+                      shapes.append({
+                          "card_type": item.get("type") if isinstance(item, dict) and isinstance(item.get("type"), (int, str)) else None,
+                          "data_type": type(data).__name__,
+                          "has_aweme_info": isinstance(aweme, dict),
+                          "has_aweme_id": isinstance(aweme, dict) and isinstance(aweme.get("aweme_id"), (str, int)),
+                          "top_keys": sorted(str(key) for key in item.keys()) if isinstance(item, dict) else [],
+                      })
                   summary["douyin"] = {
                       "status": "completed",
                       "search_item_count": len(items),
-                      "first_item_top_keys": sorted(str(key) for key in first.keys()) if isinstance(first, dict) else [],
-                      "data_type": type(data_value).__name__,
-                      "data_json_object": data_json_object,
-                      "live_key_paths": describe_named_keys(first, {"data", "aweme_info", "aweme_id", "business_data"}),
-                      "parsed_data_key_paths": describe_named_keys(parsed_data, {"aweme_info", "aweme_id"}) if data_json_object else [],
+                      "mappable_count": sum(1 for item in shapes if item["has_aweme_id"]),
+                      "shapes": shapes,
                   }
               except Exception as exc:
                   summary["douyin"] = {"status": "failed", "error_type": type(exc).__name__, "error_summary": str(exc)[:300]}
 
-              # Weibo: inspect the live comments pagination keys for one post with observed comments.
+              # Weibo: choose the highest observed comment_count candidate and test real latest pagination.
               try:
                   search_call = runtime.build_search_call(
-                      platform="weibo",
-                      keyword="爱玛",
-                      config={"sort_mode": "latest", "published_within": "day"},
-                      state=None,
+                      platform="weibo", keyword="爱玛", config={"sort_mode": "hot", "published_within": "week"}, state=None
                   )
                   search_body = send(transport, search_call)
-                  search_items = runtime.extract_search_items("weibo", search_body)
-                  selected = None
-                  for index, raw in enumerate(search_items[:20]):
-                      mapped = runtime.map_content(
-                          platform="weibo",
-                          raw=raw,
-                          context=context(search_call.operation),
-                          item_locator=f"search.items[{index}]",
-                      )
-                      if mapped.metrics.comment_count is None or mapped.metrics.comment_count > 0:
-                          selected = mapped
-                          break
-                  if selected is None:
-                      raise RuntimeError("no Weibo content candidate")
-                  comments_call = runtime.build_comments_call(
-                      platform="weibo",
-                      external_content_id=selected.external_content_id,
-                      state=None,
-                  )
-                  comments_body = send(transport, comments_call)
-                  comment_items = runtime.extract_comment_items("weibo", comments_body)
-                  advance_error = None
-                  advance_state = None
-                  try:
-                      advance = runtime.advance_comments(platform="weibo", state=None, body=comments_body)
-                      advance_state = {
-                          "should_continue": advance.should_continue,
-                          "stop_reason": advance.stop_reason,
-                          "next_state_keys": sorted((advance.next_state or {}).keys()),
-                      }
-                  except Exception as exc:
-                      advance_error = {"type": type(exc).__name__, "summary": str(exc)[:300]}
+                  candidates = []
+                  for index, raw in enumerate(runtime.extract_search_items("weibo", search_body)[:20]):
+                      mapped = runtime.map_content(platform="weibo", raw=raw, context=ctx(search_call.operation), item_locator=f"search.items[{index}]")
+                      candidates.append(mapped)
+                  selected = max(candidates, key=lambda item: item.metrics.comment_count if item.metrics.comment_count is not None else -1)
+                  first_call = runtime.build_comments_call(platform="weibo", external_content_id=selected.external_content_id, state=None)
+                  first_body = send(transport, first_call)
+                  first_items = runtime.extract_comment_items("weibo", first_body)
+                  first_times = []
+                  for index, raw in enumerate(first_items):
+                      mapped = runtime.map_comment(platform="weibo", raw=raw, context=ctx(first_call.operation, content_id=selected.external_content_id), item_locator=f"comments.items[{index}]", is_root=True)
+                      if mapped.published_at is not None: first_times.append(mapped.published_at)
+                  data = first_body.get("data") if isinstance(first_body.get("data"), dict) else {}
+                  more_info = data.get("moreInfo") if isinstance(data, dict) else None
+                  next_max_id = None
+                  if isinstance(more_info, dict):
+                      params = more_info.get("params")
+                      if isinstance(params, dict) and params.get("max_id") not in {None, 0, "0", ""}:
+                          next_max_id = str(params["max_id"])
+                  second_count = 0
+                  overlap_count = None
+                  cross_nonincreasing = None
+                  if next_max_id is not None:
+                      second_call = runtime.build_comments_call(platform="weibo", external_content_id=selected.external_content_id, state={"max_id": next_max_id})
+                      second_body = send(transport, second_call)
+                      second_items = runtime.extract_comment_items("weibo", second_body)
+                      second_count = len(second_items)
+                      first_ids = {str(item.get("idstr") or item.get("id")) for item in first_items}
+                      second_ids = {str(item.get("idstr") or item.get("id")) for item in second_items}
+                      overlap_count = len(first_ids & second_ids)
+                      second_times = []
+                      for index, raw in enumerate(second_items):
+                          mapped = runtime.map_comment(platform="weibo", raw=raw, context=ctx(second_call.operation, content_id=selected.external_content_id), item_locator=f"comments2.items[{index}]", is_root=True)
+                          if mapped.published_at is not None: second_times.append(mapped.published_at)
+                      times = first_times + second_times
+                      cross_nonincreasing = len(times) >= 2 and all(a >= b for a, b in zip(times, times[1:]))
+                  item_max_ids = [item.get("max_id") for item in first_items if isinstance(item, dict)]
                   summary["weibo"] = {
                       "status": "completed",
-                      "comment_item_count": len(comment_items),
-                      "comment_request_sort_type": comments_call.params.get("sort_type"),
-                      "pagination_key_paths": describe_named_keys(
-                          comments_body,
-                          {"max_id", "max_id_type", "moreInfo", "more_info", "params", "has_more", "items"},
-                      ),
-                      "advance": advance_state,
-                      "advance_error": advance_error,
+                      "selected_reported_comment_count": selected.metrics.comment_count,
+                      "request_sort_type": first_call.params.get("sort_type"),
+                      "first_page_count": len(first_items),
+                      "first_page_time_nonincreasing": len(first_times) >= 2 and all(a >= b for a, b in zip(first_times, first_times[1:])),
+                      "more_info_present": isinstance(more_info, dict),
+                      "next_cursor_present": next_max_id is not None,
+                      "item_max_id_nonzero_count": sum(1 for value in item_max_ids if value not in {None, 0, "0", ""}),
+                      "second_page_count": second_count,
+                      "second_page_overlap_count": overlap_count,
+                      "cross_page_time_nonincreasing": cross_nonincreasing,
+                      "data_top_keys": sorted(str(key) for key in data.keys()) if isinstance(data, dict) else [],
                   }
               except Exception as exc:
                   summary["weibo"] = {"status": "failed", "error_type": type(exc).__name__, "error_summary": str(exc)[:300]}
 
-              # Bilibili: use production mode=2 and seek several non-trivial comment sequences.
+              # Bilibili: select a popular video by detail comment_count, then test mode=2 across up to two pages.
               try:
                   search_call = runtime.build_search_call(
-                      platform="bilibili",
-                      keyword="爱玛",
-                      config={"sort_mode": "latest", "content_type": "video"},
-                      state=None,
+                      platform="bilibili", keyword="爱玛", config={"sort_mode": "play_count", "content_type": "video"}, state=None
                   )
                   search_body = send(transport, search_call)
-                  raw_contents = runtime.extract_search_items("bilibili", search_body)
-                  sequences: list[dict[str, object]] = []
-                  comment_requests = 0
-                  mapped_comments = 0
-                  for content_index, raw in enumerate(raw_contents[:20]):
-                      content = runtime.map_content(
-                          platform="bilibili",
-                          raw=raw,
-                          context=context(search_call.operation),
-                          item_locator=f"search.items[{content_index}]",
-                      )
-                      state: dict[str, object] | None = None
-                      times: list[datetime] = []
-                      pages = 0
-                      for page_no in range(1, 3):
-                          call = runtime.build_comments_call(
-                              platform="bilibili",
-                              external_content_id=content.external_content_id,
-                              state=state,
-                          )
-                          body = send(transport, call)
-                          comment_requests += 1
-                          pages += 1
-                          items = runtime.extract_comment_items("bilibili", body)
-                          for item_index, item in enumerate(items):
-                              mapped = runtime.map_comment(
-                                  platform="bilibili",
-                                  raw=item,
-                                  context=context(call.operation, external_content_id=content.external_content_id),
-                                  item_locator=f"comments.page[{page_no}].items[{item_index}]",
-                                  is_root=True,
-                              )
-                              mapped_comments += 1
-                              if mapped.published_at is not None:
-                                  times.append(mapped.published_at)
-                          advance = runtime.advance_comments(platform="bilibili", state=state, body=body)
-                          if not advance.should_continue:
+                  search_items = runtime.extract_search_items("bilibili", search_body)
+                  detailed = []
+                  for index, raw in enumerate(search_items[:10]):
+                      search_content = runtime.map_content(platform="bilibili", raw=raw, context=ctx(search_call.operation), item_locator=f"search.items[{index}]")
+                      detail_call = runtime.build_detail_call("bilibili", search_content)
+                      detail_body = send(transport, detail_call)
+                      detail_items = runtime.extract_detail_items("bilibili", detail_body)
+                      for item_index, detail_raw in enumerate(detail_items):
+                          detail = runtime.map_content(platform="bilibili", raw=detail_raw, context=ctx(detail_call.operation, content_id=search_content.external_content_id), item_locator=f"detail.items[{item_index}]")
+                          if detail.external_content_id == search_content.external_content_id:
+                              detailed.append(detail)
                               break
-                          state = dict(advance.next_state or {})
-                      if times:
-                          sequences.append(
-                              {
-                                  "pages": pages,
-                                  "time_count": len(times),
-                                  "nonincreasing": all(a >= b for a, b in zip(times, times[1:])),
-                              }
-                          )
-                      if sum(int(item["time_count"]) for item in sequences) >= 20 and len(sequences) >= 2:
-                          break
-                  comment_call = runtime.build_comments_call(
-                      platform="bilibili", external_content_id="probe-content-id", state=None
-                  )
+                  selected = max(detailed, key=lambda item: item.metrics.comment_count if item.metrics.comment_count is not None else -1)
+                  state: dict[str, object] | None = None
+                  times = []
+                  page_counts = []
+                  overlap_counts = []
+                  previous_ids: set[str] | None = None
+                  pages = 0
+                  for page_no in range(1, 3):
+                      call = runtime.build_comments_call(platform="bilibili", external_content_id=selected.external_content_id, state=state)
+                      body = send(transport, call)
+                      pages += 1
+                      items = runtime.extract_comment_items("bilibili", body)
+                      page_counts.append(len(items))
+                      current_ids = set()
+                      for item_index, raw in enumerate(items):
+                          mapped = runtime.map_comment(platform="bilibili", raw=raw, context=ctx(call.operation, content_id=selected.external_content_id), item_locator=f"comments.page[{page_no}].items[{item_index}]", is_root=True)
+                          current_ids.add(mapped.external_comment_id)
+                          if mapped.published_at is not None: times.append(mapped.published_at)
+                      if previous_ids is not None: overlap_counts.append(len(previous_ids & current_ids))
+                      previous_ids = current_ids
+                      advance = runtime.advance_comments(platform="bilibili", state=state, body=body)
+                      if not advance.should_continue: break
+                      state = dict(advance.next_state or {})
+                  probe_call = runtime.build_comments_call(platform="bilibili", external_content_id="probe-content-id", state=None)
                   summary["bilibili"] = {
                       "status": "completed",
-                      "search_item_count": len(raw_contents),
-                      "comment_requests": comment_requests,
-                      "mapped_comment_count": mapped_comments,
-                      "request_mode": comment_call.params.get("mode"),
-                      "sequences": sequences,
-                      "all_nonincreasing": bool(sequences) and all(bool(item["nonincreasing"]) for item in sequences),
+                      "selected_reported_comment_count": selected.metrics.comment_count,
+                      "request_mode": probe_call.params.get("mode"),
+                      "pages": pages,
+                      "page_counts": page_counts,
+                      "overlap_counts": overlap_counts,
+                      "time_count": len(times),
+                      "cross_page_time_nonincreasing": len(times) >= 2 and all(a >= b for a, b in zip(times, times[1:])),
                   }
               except Exception as exc:
                   summary["bilibili"] = {"status": "failed", "error_type": type(exc).__name__, "error_summary": str(exc)[:300]}
@@ -335,9 +274,7 @@ jobs:
           path.write_text(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
           print(path.read_text(encoding="utf-8"))
           PY
-
           unset AIMA_TIKHUB_REAL_TOKEN
-
       - name: Upload sanitized summary only
         uses: actions/upload-artifact@v7.0.1
         with:
@@ -346,7 +283,6 @@ jobs:
           if-no-files-found: error
           retention-days: 1
           compression-level: 9
-
       - name: Remove ephemeral credential material
         if: always()
         shell: bash
