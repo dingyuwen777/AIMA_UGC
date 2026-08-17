@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import insert, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from aima_ugc.contracts.canonical import (
@@ -81,23 +82,24 @@ class PostgresContentRepository:
 
     def ingest_content(self, observation: CanonicalContentV1) -> PostgresIngestionResult:
         attempt_id, raw_id = _source_ids(observation)
-        row = (
-            self._session.execute(
-                select(contents_table)
-                .where(
-                    contents_table.c.platform == observation.platform,
-                    contents_table.c.external_content_id == observation.external_content_id,
-                )
-                .with_for_update()
-            )
-            .mappings()
-            .one_or_none()
-        )
         author_id = self._upsert_author(observation)
-        if row is None:
-            content_id = uuid4()
-            state = _new_content_state(content_id, observation, author_id)
-            self._session.execute(insert(contents_table).values(**state))
+        content_id = uuid4()
+        state = _new_content_state(content_id, observation, author_id)
+        created = (
+            self._session.execute(
+                pg_insert(contents_table)
+                .values(**state)
+                .on_conflict_do_nothing(
+                    index_elements=[
+                        contents_table.c.platform,
+                        contents_table.c.external_content_id,
+                    ]
+                )
+                .returning(contents_table.c.id)
+            )
+            .scalar_one_or_none()
+        )
+        if created is not None:
             self._append_content_version(
                 content_id=content_id,
                 version_no=1,
@@ -112,23 +114,43 @@ class PostgresContentRepository:
                 reason="initial",
                 attempt_id=attempt_id,
                 raw_id=raw_id,
-                state=state,
             )
             return PostgresIngestionResult(content_id, 1, True, True)
 
-        current = dict(row)
+        current = dict(
+            self._session.execute(
+                select(contents_table)
+                .where(
+                    contents_table.c.platform == observation.platform,
+                    contents_table.c.external_content_id == observation.external_content_id,
+                )
+                .with_for_update()
+            )
+            .mappings()
+            .one()
+        )
         content_id = cast(UUID, current["id"])
-        updates = _content_updates(observation, author_id)
-        merged = {**current, **updates}
-        business_changed = _business_tuple(current, _CONTENT_BUSINESS_COLUMNS) != _business_tuple(
-            merged, _CONTENT_BUSINESS_COLUMNS
-        )
-        version_no = int(current["current_version"]) + (1 if business_changed else 0)
-        updates.update(
-            current_version=version_no,
-            last_seen_at=max(current["last_seen_at"], observation.observed_at),
-            updated_at=observation.observed_at,
-        )
+        metric_changed = _content_metric_changed(current, observation)
+        stale = observation.observed_at < current["last_seen_at"]
+        business_changed = False
+        version_no = int(current["current_version"])
+        updates: dict[str, Any] = {
+            "first_seen_at": min(current["first_seen_at"], observation.observed_at),
+            "last_seen_at": max(current["last_seen_at"], observation.observed_at),
+            "updated_at": max(current["updated_at"], observation.observed_at),
+        }
+        merged = dict(current)
+
+        if not stale:
+            current_updates = _content_updates(observation, author_id)
+            merged.update(current_updates)
+            business_changed = _business_tuple(
+                current, _CONTENT_BUSINESS_COLUMNS
+            ) != _business_tuple(merged, _CONTENT_BUSINESS_COLUMNS)
+            version_no += 1 if business_changed else 0
+            updates.update(current_updates)
+            updates["current_version"] = version_no
+
         merged.update(updates)
         self._session.execute(
             update(contents_table).where(contents_table.c.id == content_id).values(**updates)
@@ -143,11 +165,6 @@ class PostgresContentRepository:
                 raw_id=raw_id,
             )
 
-        metric_changed = any(
-            f"metrics.{name}" in observation.observed_fields
-            and merged.get(f"current_{name}") != current.get(f"current_{name}")
-            for name in _CONTENT_METRICS
-        )
         metric_recorded = False
         has_metric_fields = any(
             f"metrics.{name}" in observation.observed_fields for name in _CONTENT_METRICS
@@ -169,7 +186,6 @@ class PostgresContentRepository:
                     reason=reason,
                     attempt_id=attempt_id,
                     raw_id=raw_id,
-                    state=merged,
                 )
                 metric_recorded = True
         return PostgresIngestionResult(
@@ -187,23 +203,24 @@ class PostgresContentRepository:
                 contents_table.c.external_content_id == observation.external_content_id,
             )
         ).scalar_one()
-        row = (
-            self._session.execute(
-                select(comments_table)
-                .where(
-                    comments_table.c.content_id == content_id,
-                    comments_table.c.external_comment_id == observation.external_comment_id,
-                )
-                .with_for_update()
-            )
-            .mappings()
-            .one_or_none()
-        )
         author_id = self._upsert_comment_author(observation)
-        if row is None:
-            comment_id = uuid4()
-            state = _new_comment_state(comment_id, content_id, observation, author_id)
-            self._session.execute(insert(comments_table).values(**state))
+        comment_id = uuid4()
+        state = _new_comment_state(comment_id, content_id, observation, author_id)
+        created = (
+            self._session.execute(
+                pg_insert(comments_table)
+                .values(**state)
+                .on_conflict_do_nothing(
+                    index_elements=[
+                        comments_table.c.content_id,
+                        comments_table.c.external_comment_id,
+                    ]
+                )
+                .returning(comments_table.c.id)
+            )
+            .scalar_one_or_none()
+        )
+        if created is not None:
             self._append_comment_version(
                 comment_id=comment_id,
                 version_no=1,
@@ -218,23 +235,43 @@ class PostgresContentRepository:
                 reason="initial",
                 attempt_id=attempt_id,
                 raw_id=raw_id,
-                state=state,
             )
             return PostgresIngestionResult(comment_id, 1, True, True)
 
-        current = dict(row)
+        current = dict(
+            self._session.execute(
+                select(comments_table)
+                .where(
+                    comments_table.c.content_id == content_id,
+                    comments_table.c.external_comment_id == observation.external_comment_id,
+                )
+                .with_for_update()
+            )
+            .mappings()
+            .one()
+        )
         comment_id = cast(UUID, current["id"])
-        updates = _comment_updates(observation, author_id)
-        merged = {**current, **updates}
-        business_changed = _business_tuple(current, _COMMENT_BUSINESS_COLUMNS) != _business_tuple(
-            merged, _COMMENT_BUSINESS_COLUMNS
-        )
-        version_no = int(current["current_version"]) + (1 if business_changed else 0)
-        updates.update(
-            current_version=version_no,
-            last_seen_at=max(current["last_seen_at"], observation.observed_at),
-            updated_at=observation.observed_at,
-        )
+        metric_changed = _comment_metric_changed(current, observation)
+        stale = observation.observed_at < current["last_seen_at"]
+        business_changed = False
+        version_no = int(current["current_version"])
+        updates: dict[str, Any] = {
+            "first_seen_at": min(current["first_seen_at"], observation.observed_at),
+            "last_seen_at": max(current["last_seen_at"], observation.observed_at),
+            "updated_at": max(current["updated_at"], observation.observed_at),
+        }
+        merged = dict(current)
+
+        if not stale:
+            current_updates = _comment_updates(observation, author_id)
+            merged.update(current_updates)
+            business_changed = _business_tuple(
+                current, _COMMENT_BUSINESS_COLUMNS
+            ) != _business_tuple(merged, _COMMENT_BUSINESS_COLUMNS)
+            version_no += 1 if business_changed else 0
+            updates.update(current_updates)
+            updates["current_version"] = version_no
+
         merged.update(updates)
         self._session.execute(
             update(comments_table).where(comments_table.c.id == comment_id).values(**updates)
@@ -249,13 +286,6 @@ class PostgresContentRepository:
                 raw_id=raw_id,
             )
 
-        metric_changed = (
-            "metrics.like_count" in observation.observed_fields
-            and merged.get("current_like_count") != current.get("current_like_count")
-        ) or (
-            "metrics.reply_count" in observation.observed_fields
-            and merged.get("current_reply_count") != current.get("current_reply_count")
-        )
         metric_recorded = False
         has_metric_fields = (
             "metrics.like_count" in observation.observed_fields
@@ -278,7 +308,6 @@ class PostgresContentRepository:
                     reason=reason,
                     attempt_id=attempt_id,
                     raw_id=raw_id,
-                    state=merged,
                 )
                 metric_recorded = True
         return PostgresIngestionResult(
@@ -313,16 +342,6 @@ class PostgresContentRepository:
     ) -> UUID | None:
         if author is None or author.external_account_id is None:
             return None
-        row = (
-            self._session.execute(
-                select(accounts_table).where(
-                    accounts_table.c.platform == platform,
-                    accounts_table.c.external_account_id == author.external_account_id,
-                )
-            )
-            .mappings()
-            .one_or_none()
-        )
         author_values = {
             "display_name": author.display_name,
             "handle": author.handle,
@@ -351,28 +370,57 @@ class PostgresContentRepository:
             "content_count": "current_content_count",
             "total_like_count": "current_total_like_count",
         }
-        values: dict[str, Any] = {
-            "last_seen_at": observed_at,
-            "updated_at": observed_at,
+        observed_values = {
+            column_names[field_name]: value
+            for field_name, value in author_values.items()
+            if f"author.{field_name}" in observed_fields
         }
-        for field_name, value in author_values.items():
-            if f"author.{field_name}" in observed_fields:
-                values[column_names[field_name]] = value
-        if row is not None:
-            account_id = cast(UUID, row["id"])
+        account_id = uuid4()
+        created = (
             self._session.execute(
-                update(accounts_table).where(accounts_table.c.id == account_id).values(**values)
-            )
-        else:
-            account_id = uuid4()
-            self._session.execute(
-                insert(accounts_table).values(
+                pg_insert(accounts_table)
+                .values(
                     id=account_id,
                     platform=platform,
                     external_account_id=author.external_account_id,
                     first_seen_at=observed_at,
-                    **values,
+                    last_seen_at=observed_at,
+                    updated_at=observed_at,
+                    **observed_values,
                 )
+                .on_conflict_do_nothing(
+                    index_elements=[
+                        accounts_table.c.platform,
+                        accounts_table.c.external_account_id,
+                    ]
+                )
+                .returning(accounts_table.c.id)
+            )
+            .scalar_one_or_none()
+        )
+        if created is None:
+            row = dict(
+                self._session.execute(
+                    select(accounts_table)
+                    .where(
+                        accounts_table.c.platform == platform,
+                        accounts_table.c.external_account_id == author.external_account_id,
+                    )
+                    .with_for_update()
+                )
+                .mappings()
+                .one()
+            )
+            account_id = cast(UUID, row["id"])
+            values: dict[str, Any] = {
+                "first_seen_at": min(row["first_seen_at"], observed_at),
+                "last_seen_at": max(row["last_seen_at"], observed_at),
+                "updated_at": max(row["updated_at"], observed_at),
+            }
+            if observed_at >= row["last_seen_at"]:
+                values.update(observed_values)
+            self._session.execute(
+                update(accounts_table).where(accounts_table.c.id == account_id).values(**values)
             )
         if "author.alternate_ids" in observed_fields:
             self._upsert_account_external_ids(account_id, author.alternate_ids)
@@ -454,9 +502,15 @@ class PostgresContentRepository:
         reason: str,
         attempt_id: UUID,
         raw_id: UUID,
-        state: dict[str, Any],
     ) -> None:
-        metrics = {name: state.get(f"current_{name}") for name in _CONTENT_METRICS}
+        metrics = {
+            name: (
+                getattr(observation.metrics, name)
+                if f"metrics.{name}" in observation.observed_fields
+                else None
+            )
+            for name in _CONTENT_METRICS
+        }
         self._session.execute(
             insert(content_metric_observations_table).values(
                 id=uuid4(),
@@ -512,7 +566,6 @@ class PostgresContentRepository:
         reason: str,
         attempt_id: UUID,
         raw_id: UUID,
-        state: dict[str, Any],
     ) -> None:
         self._session.execute(
             insert(comment_metric_observations_table).values(
@@ -523,8 +576,16 @@ class PostgresContentRepository:
                 reason=reason,
                 business_date=observation.observed_at.astimezone(_BUSINESS_TZ).date(),
                 observation_key=_observation_key(observation, reason),
-                like_count=state.get("current_like_count"),
-                reply_count=state.get("current_reply_count"),
+                like_count=(
+                    observation.metrics.like_count
+                    if "metrics.like_count" in observation.observed_fields
+                    else None
+                ),
+                reply_count=(
+                    observation.metrics.reply_count
+                    if "metrics.reply_count" in observation.observed_fields
+                    else None
+                ),
                 observed_at=observation.observed_at,
             )
         )
@@ -618,7 +679,9 @@ def _content_updates(
     observation: CanonicalContentV1,
     author_id: UUID | None,
 ) -> dict[str, Any]:
-    updates: dict[str, Any] = {"content_type": observation.content_type}
+    updates: dict[str, Any] = {}
+    if "content_type" in observation.observed_fields:
+        updates["content_type"] = observation.content_type
     values = {
         "title": observation.title,
         "text": observation.text,
@@ -631,7 +694,11 @@ def _content_updates(
     for path, value in values.items():
         if path in observation.observed_fields:
             updates[path] = value
-    if observation.author is not None and author_id is not None:
+    if (
+        observation.author is not None
+        and author_id is not None
+        and "author.external_account_id" in observation.observed_fields
+    ):
         updates["author_account_id"] = author_id
     for name in _CONTENT_METRICS:
         if f"metrics.{name}" in observation.observed_fields:
@@ -678,13 +745,35 @@ def _comment_updates(
     for path, value in values.items():
         if path in observation.observed_fields:
             updates[path] = value
-    if observation.author is not None and author_id is not None:
+    if (
+        observation.author is not None
+        and author_id is not None
+        and "author.external_account_id" in observation.observed_fields
+    ):
         updates["author_account_id"] = author_id
     if "metrics.like_count" in observation.observed_fields:
         updates["current_like_count"] = observation.metrics.like_count
     if "metrics.reply_count" in observation.observed_fields:
         updates["current_reply_count"] = observation.metrics.reply_count
     return updates
+
+
+def _content_metric_changed(current: dict[str, Any], observation: CanonicalContentV1) -> bool:
+    return any(
+        f"metrics.{name}" in observation.observed_fields
+        and current.get(f"current_{name}") != getattr(observation.metrics, name)
+        for name in _CONTENT_METRICS
+    )
+
+
+def _comment_metric_changed(current: dict[str, Any], observation: CanonicalCommentV1) -> bool:
+    return (
+        "metrics.like_count" in observation.observed_fields
+        and current.get("current_like_count") != observation.metrics.like_count
+    ) or (
+        "metrics.reply_count" in observation.observed_fields
+        and current.get("current_reply_count") != observation.metrics.reply_count
+    )
 
 
 def _business_tuple(row: dict[str, Any], columns: tuple[str, ...]) -> tuple[Any, ...]:
