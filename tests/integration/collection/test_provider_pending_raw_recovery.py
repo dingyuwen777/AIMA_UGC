@@ -6,7 +6,7 @@ import gzip
 import hashlib
 import json
 from collections.abc import Iterator
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -168,20 +168,17 @@ def _write_pending_raw(
             "transport_kind": "http",
             "method": "GET",
             "path": "/fake/search",
+            "params": {},
             "headers": {},
-            "query": {},
             "body": None,
         },
         response={
             "status_code": 200,
-            "headers": {},
             "body": {"items": []},
             "external_request_id": None,
         },
         billing={
             "status": "not_billable",
-            "currency": None,
-            "unit": None,
             "unit_price_snapshot": 0,
             "estimated_cost": 0,
             "actual_cost": 0,
