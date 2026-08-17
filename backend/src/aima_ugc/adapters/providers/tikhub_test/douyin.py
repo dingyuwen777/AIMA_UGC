@@ -1,5 +1,6 @@
 """抖音 TikHub 独立测试/调试入口。"""
 
+from collections.abc import Sequence
 from pathlib import Path
 
 from .runner import TikHubTestRunResult, run_platform
@@ -7,7 +8,8 @@ from .runner import TikHubTestRunResult, run_platform
 
 def run_douyin(
     *,
-    keyword: str = "爱玛",
+    keyword: str | None = None,
+    keywords: str | Sequence[str] | None = None,
     sort_mode: str = "general",
     published_within: str = "all",
     duration: str = "all",
@@ -28,6 +30,7 @@ def run_douyin(
     return run_platform(
         platform="douyin",
         keyword=keyword,
+        keywords=keywords,
         search_config={
             "sort_mode": sort_mode,
             "published_within": published_within,

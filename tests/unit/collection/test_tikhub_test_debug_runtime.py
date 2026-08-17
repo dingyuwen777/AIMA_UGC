@@ -20,6 +20,13 @@ def _fixture(name: str) -> dict[str, Any]:
     return json.loads((_FIXTURE_ROOT / name).read_text(encoding="utf-8"))
 
 
+def _single_item_search() -> dict[str, Any]:
+    body = _fixture("search_notes_page1.sanitized.json")
+    items = body["data"]["data"]["items"]
+    body["data"]["data"]["items"] = items[:1]
+    return body
+
+
 def _fake_transport_type(
     responses: list[dict[str, Any]],
     seen_requests: list[ProviderTransportRequest],
@@ -153,8 +160,8 @@ def test_xhs_debug_runtime_reuses_production_flow_and_skips_unchanged_refresh(
     try:
         sheet = workbook["内容与评论"]
         assert sheet.max_row == 3
-        assert sheet["P2"].value == "xhs-comment-root-1"
-        assert sheet["P3"].value == "xhs-comment-reply-2"
+        assert sheet["Q2"].value == "xhs-comment-root-1"
+        assert sheet["Q3"].value == "xhs-comment-reply-2"
     finally:
         workbook.close()
 
@@ -196,11 +203,11 @@ def test_xhs_multiple_keywords_search_each_keyword_but_deduplicate_downstream(
     _write_env(env_file)
 
     responses = [
-        _fixture("search_notes_page1.sanitized.json"),
+        _single_item_search(),
         _matching_detail(),
         _matching_comments(),
         _matching_replies(),
-        _fixture("search_notes_page1.sanitized.json"),
+        _single_item_search(),
     ]
     requests: list[ProviderTransportRequest] = []
     monkeypatch.setattr(

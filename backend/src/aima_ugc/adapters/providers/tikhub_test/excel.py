@@ -37,6 +37,7 @@ _CONTENT_HEADERS = (
     "分享数",
     "评论覆盖",
     "Raw定位",
+    "命中关键词",
 )
 _COMMENT_HEADERS = (
     "评论层级",
@@ -52,8 +53,8 @@ _COMMENT_HEADERS = (
 )
 _HEADERS = _CONTENT_HEADERS + _COMMENT_HEADERS
 _CellValue = str | int | float | bool | None
-_TEXT_ID_COLUMNS = {2, 16, 17, 18}
-_WRAP_COLUMNS = {4, 5, 13, 14, 19, 20, 24}
+_TEXT_ID_COLUMNS = {2, 17, 18, 19}
+_WRAP_COLUMNS = {4, 5, 13, 14, 15, 20, 21, 25}
 _COLUMN_WIDTHS = {
     1: 10,
     2: 24,
@@ -69,16 +70,17 @@ _COLUMN_WIDTHS = {
     12: 11,
     13: 18,
     14: 34,
-    15: 10,
-    16: 24,
+    15: 28,
+    16: 10,
     17: 24,
     18: 24,
-    19: 18,
-    20: 44,
-    21: 20,
-    22: 11,
+    19: 24,
+    20: 18,
+    21: 44,
+    22: 20,
     23: 11,
-    24: 34,
+    24: 11,
+    25: 34,
 }
 
 
@@ -98,6 +100,7 @@ class ReviewContent:
     share_count: int | None
     coverage: str
     raw_locator: str
+    matched_keywords: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,6 +202,7 @@ def _write_content_row(sheet: Worksheet, row: int, content: ReviewContent) -> No
         content.share_count,
         content.coverage,
         content.raw_locator,
+        "；".join(content.matched_keywords),
     )
     for column, value in enumerate(values, start=1):
         _set_value(

@@ -1,5 +1,6 @@
 """B站 TikHub 独立测试/调试入口。"""
 
+from collections.abc import Sequence
 from pathlib import Path
 
 from .runner import TikHubTestRunResult, run_platform
@@ -7,7 +8,8 @@ from .runner import TikHubTestRunResult, run_platform
 
 def run_bilibili(
     *,
-    keyword: str = "爱玛",
+    keyword: str | None = None,
+    keywords: str | Sequence[str] | None = None,
     sort_mode: str = "general",
     content_type: str = "video",
     env_file: str | Path | None = None,
@@ -26,6 +28,7 @@ def run_bilibili(
     return run_platform(
         platform="bilibili",
         keyword=keyword,
+        keywords=keywords,
         search_config={"sort_mode": sort_mode, "content_type": content_type},
         env_file=env_file,
         output_root=output_root,

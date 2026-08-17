@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
@@ -73,7 +74,7 @@ class _TikHubDebugRunner:
         self,
         *,
         platform: tikhub_runtime.TikHubPlatform,
-        keyword: str,
+        keywords: tuple[str, ...],
         search_config: dict[str, object],
         provider_config: TikHubTestConfig,
         output_root: Path,
@@ -83,11 +84,9 @@ class _TikHubDebugRunner:
         include_replies: bool,
         force_refresh: bool,
     ) -> None:
-        if not keyword.strip():
-            raise ValueError("keyword 不能为空")
         limits.validate()
         self.platform = platform
-        self.keyword = keyword.strip()
+        self.keywords = keywords
         self.search_config = search_config
         self.provider_config = provider_config
         self.limits = limits
@@ -105,11 +104,12 @@ class _TikHubDebugRunner:
         self._request_no = 0
         self._requests: list[dict[str, object]] = []
         self._blocks: list[ReviewBlock] = []
+        self._matched_keywords: dict[str, list[str]] = {}
         self._seen_contents: set[str] = set()
         self._seen_comments: set[tuple[str, str]] = set()
         self._root_comment_count = 0
         self._reply_count = 0
-        self._search_stop_reason: str | None = None
+        self._search_stop_reasons: dict[str, str] = {}
 
     def run(self) -> TikHubTestRunResult:
         error: Exception | None = None
@@ -118,13 +118,17 @@ class _TikHubDebugRunner:
                 base_url=self.provider_config.base_url,
                 timeout_seconds=self.provider_config.timeout_seconds,
             ) as transport:
-                self._run_search(transport)
+                for keyword in self.keywords:
+                    if self._content_limit_reached():
+                        self._search_stop_reasons[keyword] = "not_started_content_target_reached"
+                        continue
+                    self._run_search(transport, keyword)
         except Exception as exc:
             error = exc
         finally:
             self.state.save()
             workbook_path = write_review_workbook(
-                tuple(self._blocks),
+                self._blocks_with_keywords(),
                 self.store.review_dir / f"{self.platform}_review.xlsx",
             )
             manifest_path = self.store.write_manifest(self._manifest(error))
@@ -142,16 +146,17 @@ class _TikHubDebugRunner:
             request_count=self._request_no,
         )
 
-    def _run_search(self, transport: TikHubHttpTransport) -> None:
+    def _run_search(self, transport: TikHubHttpTransport, keyword: str) -> None:
         pagination: dict[str, object] | None = None
         for page_no in range(1, self.limits.max_search_pages + 1):
             call = tikhub_runtime.build_search_call(
                 platform=self.platform,
-                keyword=self.keyword,
+                keyword=keyword,
                 config=self.search_config,
                 state=pagination,
             )
             body, raw_record = self._send(transport, call)
+            self._requests[-1]["keyword"] = keyword
             items = tikhub_runtime.extract_search_items(self.platform, body)
             for item_index, raw_item in enumerate(items):
                 content = tikhub_runtime.map_content(
@@ -163,12 +168,13 @@ class _TikHubDebugRunner:
                         raw_artifact_id=raw_record.artifact_id,
                         operation=call.operation,
                         source_type="keyword",
-                        source_value=self.keyword,
+                        source_value=keyword,
                         observed_at=raw_record.observed_at,
                     ),
                     item_locator=f"search.page[{page_no}].items[{item_index}]",
                 )
                 content_id = content.external_content_id
+                self._remember_keyword(content_id, keyword)
                 if content_id in self._seen_contents:
                     continue
                 self._seen_contents.add(content_id)
@@ -182,7 +188,7 @@ class _TikHubDebugRunner:
                     ),
                 )
                 if self._content_limit_reached():
-                    self._search_stop_reason = "content_target_reached"
+                    self._search_stop_reasons[keyword] = "content_target_reached"
                     return
 
             advance = tikhub_runtime.advance_search(
@@ -191,10 +197,10 @@ class _TikHubDebugRunner:
                 body=body,
             )
             if not advance.should_continue:
-                self._search_stop_reason = advance.stop_reason or "provider_exhausted"
+                self._search_stop_reasons[keyword] = advance.stop_reason or "provider_exhausted"
                 return
             pagination = cast(dict[str, object], advance.next_state)
-        self._search_stop_reason = "max_search_pages_reached"
+        self._search_stop_reasons[keyword] = "max_search_pages_reached"
 
     def _process_content(
         self,
@@ -513,6 +519,25 @@ class _TikHubDebugRunner:
             raise RuntimeError(f"TikHub {self.platform} {call.operation} 返回 JSON 顶层不是对象")
         return cast(dict[str, Any], response.body), raw_record
 
+    def _remember_keyword(self, content_id: str, keyword: str) -> None:
+        matched = self._matched_keywords.setdefault(content_id, [])
+        if keyword not in matched:
+            matched.append(keyword)
+
+    def _blocks_with_keywords(self) -> tuple[ReviewBlock, ...]:
+        return tuple(
+            ReviewBlock(
+                content=replace(
+                    block.content,
+                    matched_keywords=tuple(
+                        self._matched_keywords.get(block.content.external_content_id, ())
+                    ),
+                ),
+                comments=block.comments,
+            )
+            for block in self._blocks
+        )
+
     def _content_limit_reached(self) -> bool:
         return (
             self.limits.max_contents is not None and len(self._blocks) >= self.limits.max_contents
@@ -533,13 +558,15 @@ class _TikHubDebugRunner:
         return {
             "schema_version": "tikhub-test-run.v1",
             "platform": self.platform,
-            "keyword": self.keyword,
+            "keyword": self.keywords[0] if len(self.keywords) == 1 else None,
+            "keywords": list(self.keywords),
+            "matched_keywords": self._matched_keywords,
             "status": "failed" if error is not None else "completed",
             "request_count": self._request_no,
             "content_count": len(self._blocks),
             "root_comment_count": self._root_comment_count,
             "reply_count": self._reply_count,
-            "search_stop_reason": self._search_stop_reason,
+            "search_stop_reasons": self._search_stop_reasons,
             "requests": self._requests,
             "error_type": type(error).__name__ if error is not None else None,
             "error_summary": str(error) if error is not None else None,
@@ -549,7 +576,8 @@ class _TikHubDebugRunner:
 def run_platform(
     *,
     platform: tikhub_runtime.TikHubPlatform,
-    keyword: str,
+    keyword: str | None = None,
+    keywords: str | Sequence[str] | None = None,
     search_config: dict[str, object] | None = None,
     env_file: str | Path | None = None,
     output_root: str | Path | None = None,
@@ -565,11 +593,12 @@ def run_platform(
     force_refresh: bool = False,
 ) -> TikHubTestRunResult:
     """执行一个平台的独立真实调试；所有 Provider 私有逻辑由生产 Runtime 负责。"""
+    normalized_keywords = _normalize_keywords(keyword=keyword, keywords=keywords)
     config = TikHubTestConfig.load(env_file)
     root = Path(output_root) if output_root is not None else _DEFAULT_OUTPUT_ROOT
     return _TikHubDebugRunner(
         platform=platform,
-        keyword=keyword,
+        keywords=normalized_keywords,
         search_config=search_config or {},
         provider_config=config,
         output_root=root,
@@ -586,6 +615,36 @@ def run_platform(
         include_replies=include_replies,
         force_refresh=force_refresh,
     ).run()
+
+
+def _normalize_keywords(
+    *,
+    keyword: str | None,
+    keywords: str | Sequence[str] | None,
+) -> tuple[str, ...]:
+    if keyword is not None and keywords is not None:
+        raise ValueError("keyword 与 keywords 不能同时传入")
+    if keyword is not None:
+        raw_values: tuple[str, ...] = (keyword,)
+    elif keywords is None:
+        raw_values = ("爱玛",)
+    elif isinstance(keywords, str):
+        raw_values = (keywords,)
+    else:
+        raw_values = tuple(keywords)
+
+    normalized: list[str] = []
+    for value in raw_values:
+        if not isinstance(value, str):
+            raise ValueError("keywords 只能包含字符串")
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("keywords 不能包含空字符串")
+        if stripped not in normalized:
+            normalized.append(stripped)
+    if not normalized:
+        raise ValueError("keywords 至少包含一个关键词")
+    return tuple(normalized)
 
 
 def _review_content(

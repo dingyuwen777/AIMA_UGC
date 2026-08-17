@@ -1,5 +1,6 @@
 """快手 TikHub 独立测试/调试入口。"""
 
+from collections.abc import Sequence
 from pathlib import Path
 
 from .runner import TikHubTestRunResult, run_platform
@@ -7,7 +8,8 @@ from .runner import TikHubTestRunResult, run_platform
 
 def run_kuaishou(
     *,
-    keyword: str = "爱玛",
+    keyword: str | None = None,
+    keywords: str | Sequence[str] | None = None,
     env_file: str | Path | None = None,
     output_root: str | Path | None = None,
     run_id: str | None = None,
@@ -24,6 +26,7 @@ def run_kuaishou(
     return run_platform(
         platform="kuaishou",
         keyword=keyword,
+        keywords=keywords,
         env_file=env_file,
         output_root=output_root,
         run_id=run_id,

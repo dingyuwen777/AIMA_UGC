@@ -1,5 +1,6 @@
 """微博 TikHub 独立测试/调试入口。"""
 
+from collections.abc import Sequence
 from pathlib import Path
 
 from .runner import TikHubTestRunResult, run_platform
@@ -7,7 +8,8 @@ from .runner import TikHubTestRunResult, run_platform
 
 def run_weibo(
     *,
-    keyword: str = "爱玛",
+    keyword: str | None = None,
+    keywords: str | Sequence[str] | None = None,
     sort_mode: str = "latest",
     published_within: str = "all",
     env_file: str | Path | None = None,
@@ -26,6 +28,7 @@ def run_weibo(
     return run_platform(
         platform="weibo",
         keyword=keyword,
+        keywords=keywords,
         search_config={
             "sort_mode": sort_mode,
             "published_within": published_within,

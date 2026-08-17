@@ -168,16 +168,16 @@ def test_review_workbook_uses_approved_content_comment_layout(tmp_path: Path) ->
 
         assert sheet["B2"].value == "00123456789012345678"
         assert sheet["B2"].number_format == "@"
-        assert sheet["P2"].value == "000000000000000001"
-        assert sheet["P3"].value == "000000000000000002"
-        assert sheet["P2"].number_format == "@"
-        assert sheet["P3"].number_format == "@"
+        assert sheet["Q2"].value == "000000000000000001"
+        assert sheet["Q3"].value == "000000000000000002"
+        assert sheet["Q2"].number_format == "@"
+        assert sheet["Q3"].number_format == "@"
 
         assert sheet["H2"].hyperlink is not None
         assert sheet["H2"].hyperlink.target == ("https://example.invalid/note/00123456789012345678")
-        assert sheet["T2"].value == "'=2+2"
-        assert sheet["T2"].data_type != "f"
-        assert sheet["T3"].value == "二级评论"
+        assert sheet["U2"].value == "'=2+2"
+        assert sheet["U2"].data_type != "f"
+        assert sheet["U3"].value == "二级评论"
 
         assert sheet["A1"].font.bold is True
         assert sheet["A1"].fill.fill_type == "solid"
