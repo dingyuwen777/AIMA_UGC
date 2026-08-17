@@ -368,4 +368,4 @@ def test_comment_response_zero_overrides_older_detail_count(
     assert coverage["reported_total"] == 0
     assert coverage["collected_count"] == 0
     assert coverage["target_count"] == 1
-    assert coverage["stop_reason"] == "provider_exhausted"
+    assert coverage["stop_reason"] == "empty_page"
