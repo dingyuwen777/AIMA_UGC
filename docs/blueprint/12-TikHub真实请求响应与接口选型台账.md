@@ -68,10 +68,10 @@ Search
 2. 稳定内容 ID / 评论 ID 能跨 Search → Detail → Comments → Replies 串联；
 3. 响应字段足以映射现有 `CanonicalContentV1 / CanonicalCommentV1`；
 4. 分页状态可明确解析，不猜 Provider 私有 sentinel；
-5. endpoint-level Pricing 已核验，Budget 可在发送前 fail closed；
+5. endpoint-level Pricing 已核验，可在发送前形成 Provider Request/Attempt 的价格快照与计费审计事实；
 6. 当前生产 Operation/Mapper/Fixture/测试覆盖更完整；
 7. 同等可用时优先请求更少、价格更低、同一 API family 更一致的链路；
-8. 备用接口即使实测成功，也**不自动 fallback**。自动 fallback 会新增一次付费 Attempt，并改变 Budget、Raw lineage、失败语义和审计，因此必须单独设计。
+8. 备用接口即使实测成功，也**不自动 fallback**。自动 fallback 会新增一次付费 Attempt，并改变 Raw lineage、失败语义和计费审计，因此必须单独设计；当前系统没有 Budget Runtime，不能把 fallback 绑到已撤回的预算接口上。
 
 ---
 
@@ -607,6 +607,6 @@ App 内部 `search_comprehensive` 是更宽的综合搜索，不是等价视频�
 7. 必要时验证 Canonical → PostgreSQL；
 8. 更新本文“选型理由”和 Blueprint 11 状态；
 9. 只有显式批准才能切换生产主接口；
-10. 备用接口不自动 fallback，除非另有经过审批的失败/预算/Raw lineage 设计。
+10. 备用接口不自动 fallback，除非另有经过审批的失败语义、Attempt、Raw lineage 和计费审计设计；若未来重新引入 Budget/Cost Guard，必须通过新的 L3 Change，不能复用当前已撤回接口。
 
 禁止因为 TikHub 文档示例、接口名称、旧聊天或一次 HTTP 200 就写成“生产兼容”。
