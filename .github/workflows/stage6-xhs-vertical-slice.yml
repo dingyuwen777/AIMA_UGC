@@ -131,6 +131,34 @@ jobs:
           uv run alembic downgrade 20260814_0008
           uv run alembic upgrade head
           uv run alembic check
+      - name: Verify pre-Coverage head to current head
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run alembic downgrade 20260817_0015
+          uv run python - <<'PY'
+          from sqlalchemy import inspect
+
+          from aima_ugc.platform.config import load_settings
+          from aima_ugc.platform.database import DatabaseRuntime
+
+          runtime = DatabaseRuntime(load_settings())
+          try:
+              columns = {
+                  item["name"]
+                  for item in inspect(runtime.engine).get_columns(
+                      "comment_coverage_observations"
+                  )
+              }
+          finally:
+              runtime.dispose()
+          assert "sample_mode" not in columns, columns
+          assert "sort_mode" not in columns, columns
+          assert "target_count" not in columns, columns
+          assert "stop_reason" not in columns, columns
+          PY
+          uv run alembic upgrade head
+          uv run alembic check
       - name: Verify base round trip
         shell: bash
         run: |
