@@ -1,4 +1,4 @@
-# runtime-budget-format-revision: 5
+# runtime-budget-format-revision: 6
 name: Stage 7 Format Runtime Budget
 
 on:
@@ -46,7 +46,6 @@ jobs:
             tests/unit/collection/test_collection_run_preparation.py
             tests/unit/collection/test_tikhub_runtime_comment_flow.py
           )
-          uv run ruff check --fix "${targets[@]}"
           python - <<'PY'
           from pathlib import Path
 
@@ -78,6 +77,7 @@ jobs:
               raise SystemExit("runtime test format target not found")
           runtime_test.write_text(text.replace(old, new, 1), encoding="utf-8")
           PY
+          uv run ruff check --fix "${targets[@]}"
           uv run ruff format "${targets[@]}"
           uv run ruff check "${targets[@]}"
           uv run mypy backend/src
