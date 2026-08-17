@@ -6,7 +6,7 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   targeted:
@@ -29,113 +29,8 @@ jobs:
           set -euo pipefail
           UV_VERSION="$(tr -d '\r\n' < .uv-version)"
           python -m pip install "uv==${UV_VERSION}"
-          uv lock
+          uv lock --check
           uv sync --locked
-
-      - name: Apply known type fixes and format debug scope
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-
-          def replace(path: str, old: str, new: str, *, count: int = 1) -> None:
-              file = Path(path)
-              text = file.read_text(encoding="utf-8")
-              actual = text.count(old)
-              if actual < count:
-                  raise SystemExit(f"{path}: expected at least {count} occurrence(s), found {actual}")
-              text = text.replace(old, new, count)
-              file.write_text(text, encoding="utf-8")
-
-          excel = "backend/src/aima_ugc/adapters/providers/tikhub_test/excel.py"
-          replace(
-              excel,
-              "from openpyxl import Workbook\nfrom openpyxl.styles import Alignment, Border, Font, PatternFill, Side\n",
-              "from openpyxl import Workbook\nfrom openpyxl.cell.cell import Cell\nfrom openpyxl.styles import Alignment, Border, Font, PatternFill, Side\n",
-          )
-          replace(
-              excel,
-              "from openpyxl.utils import get_column_letter\nfrom openpyxl.worksheet.worksheet import Worksheet\n",
-              "from openpyxl.utils import get_column_letter\nfrom openpyxl.worksheet.properties import PageSetupProperties\nfrom openpyxl.worksheet.worksheet import Worksheet\n",
-          )
-          replace(
-              excel,
-              "_HEADERS = _CONTENT_HEADERS + _COMMENT_HEADERS\n_TEXT_ID_COLUMNS = {2, 16, 17, 18}\n",
-              "_HEADERS = _CONTENT_HEADERS + _COMMENT_HEADERS\n_CellValue = str | int | float | bool | None\n_TEXT_ID_COLUMNS = {2, 16, 17, 18}\n",
-          )
-          replace(
-              excel,
-              "    sheet = workbook.active\n    sheet.title = \"内容与评论\"\n",
-              "    sheet = workbook.active\n    if not isinstance(sheet, Worksheet):\n        raise RuntimeError(\"openpyxl 未创建可写 Worksheet\")\n    sheet.title = \"内容与评论\"\n",
-          )
-          replace(
-              excel,
-              "    sheet.sheet_properties.pageSetUpPr.fitToPage = True\n    sheet.page_setup.fitToWidth = 1\n    sheet.page_setup.fitToHeight = 0\n    sheet.sheet_properties.outlinePr.summaryBelow = True\n",
-              "    sheet.sheet_properties.pageSetUpPr = PageSetupProperties(fitToPage=True)\n    sheet.page_setup.fitToWidth = 1\n    sheet.page_setup.fitToHeight = 0\n    outline = sheet.sheet_properties.outlinePr\n    if outline is not None:\n        outline.summaryBelow = True\n",
-          )
-          replace(excel, "    values: tuple[object, ...] = (\n", "    values: tuple[_CellValue, ...] = (\n", count=1)
-          replace(excel, "    values: tuple[object, ...] = (\n", "    values: tuple[_CellValue, ...] = (\n", count=1)
-          replace(
-              excel,
-              "def _set_value(cell: object, value: object, *, text_id: bool) -> None:\n    # openpyxl Cell 类型运行时拥有 value/number_format；保持这里的小型 helper 易于静态复核。\n    target = cell\n    if isinstance(value, str):\n        safe_value = _safe_external_text(value)\n    else:\n        safe_value = value\n    target.value = safe_value\n    if text_id:\n        target.number_format = \"@\"\n",
-              "def _set_value(cell: Cell, value: _CellValue, *, text_id: bool) -> None:\n    safe_value: _CellValue = _safe_external_text(value) if isinstance(value, str) else value\n    cell.value = safe_value\n    if text_id:\n        cell.number_format = \"@\"\n",
-          )
-
-          core = "backend/src/aima_ugc/adapters/providers/tikhub_test/core.py"
-          replace(
-              core,
-              "        if create:\n            contents = self._platforms.setdefault(platform, {})\n            return contents.setdefault(\n                external_content_id,\n                {\"comment_count\": None, \"comment_ids\": []},\n            )\n        contents = self._platforms.get(platform)\n        if contents is None:\n            return None\n        return contents.get(external_content_id)\n",
-              "        contents = self._platforms.get(platform)\n        if contents is None:\n            if not create:\n                return None\n            contents = {}\n            self._platforms[platform] = contents\n        if create:\n            return contents.setdefault(\n                external_content_id,\n                {\"comment_count\": None, \"comment_ids\": []},\n            )\n        return contents.get(external_content_id)\n",
-          )
-
-          runner = "backend/src/aima_ugc/adapters/providers/tikhub_test/runner.py"
-          replace(
-              runner,
-              "from dataclasses import dataclass\nfrom pathlib import Path\n",
-              "from dataclasses import dataclass\nfrom datetime import datetime\nfrom pathlib import Path\n",
-          )
-          replace(
-              runner,
-              "    CollectionDecisionRequestV1,\n    ContentObservationV1,\n",
-              "    CollectionDecisionRequestV1,\n    CollectionDecisionV1,\n    ContentObservationV1,\n",
-          )
-          replace(runner, "    ):\n        current_count = content.metrics.comment_count\n", "    ) -> CollectionDecisionV1:\n        current_count = content.metrics.comment_count\n")
-          replace(
-              runner,
-              "def _human_time(value: object) -> str | None:\n    if value is None or not hasattr(value, \"astimezone\"):\n        return None\n    converted = value.astimezone(_BEIJING)\n",
-              "def _human_time(value: datetime | None) -> str | None:\n    if value is None:\n        return None\n    converted = value.astimezone(_BEIJING)\n",
-          )
-          text = Path(runner).read_text(encoding="utf-8")
-          text = text.replace("BaseException", "Exception")
-          Path(runner).write_text(text, encoding="utf-8")
-          PY
-
-          uv run ruff format \
-            backend/src/aima_ugc/adapters/providers/tikhub_test \
-            tests/unit/collection/test_tikhub_test_debug.py \
-            tests/unit/collection/test_tikhub_test_debug_runtime.py
-          uv run ruff check --fix \
-            backend/src/aima_ugc/adapters/providers/tikhub_test \
-            tests/unit/collection/test_tikhub_test_debug.py \
-            tests/unit/collection/test_tikhub_test_debug_runtime.py
-          if git diff --quiet -- \
-            uv.lock \
-            backend/src/aima_ugc/adapters/providers/tikhub_test \
-            tests/unit/collection/test_tikhub_test_debug.py \
-            tests/unit/collection/test_tikhub_test_debug_runtime.py; then
-            echo "TikHub debug scope already synchronized"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            uv.lock \
-            backend/src/aima_ugc/adapters/providers/tikhub_test \
-            tests/unit/collection/test_tikhub_test_debug.py \
-            tests/unit/collection/test_tikhub_test_debug_runtime.py
-          git commit -m "修正 TikHub 调试类型边界"
-          git push origin "HEAD:${{ github.head_ref }}"
 
       - name: Run targeted quality and tests
         shell: bash
