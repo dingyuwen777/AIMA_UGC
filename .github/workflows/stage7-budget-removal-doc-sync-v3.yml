@@ -26,6 +26,9 @@ jobs:
           from pathlib import Path
           import re
 
+          def joined(*parts: str) -> str:
+              return "\n".join(parts)
+
           def replace_once(path: str, old: str, new: str) -> None:
               p = Path(path)
               text = p.read_text(encoding="utf-8")
@@ -139,33 +142,36 @@ jobs:
               "Deep Collection 仍必须受数据库硬预算限制。Stage 8 若需要向用户展示一次操作的**聚合预计成本**，该值由后端根据计划请求量和 Pricing 结果产生；不得把 TikHub endpoint 单价表、折扣阶梯或 Pricing 配置暴露/复制到前端，也不得允许前端修改 Provider 价格。",
               "Deep Collection 当前不附加预算/额度功能，但仍必须遵守正式 Job、Provider Routing、Fencing、一次 Attempt 一次发送、Raw 与 Ingestion 边界。若未来需要 Budget/Cost Guard 或聚合预计成本，必须通过新的 L3 Change 单独设计；不得把 Provider Pricing 配置复制到前端。",
           )
+          section_15_16 = joined(
+              "## 15. Provider Billing 与成本事实",
+              "",
+              "当前系统保留 Provider Request/Attempt 的 Billing 与成本字段，用于记录一次外部调用在发送前采用的价格快照、Provider 明确返回的实际费用（若存在），以及网络结果未知时的潜在重复计费风险。这些字段属于**执行与审计事实**，不是预算额度。",
+              "",
+              "TikHub Pricing 继续作为 Provider Adapter 的版本化成本事实来源。它可以产生可审计的 `estimated_cost / currency / unit_price_snapshot`，但不能把本地估算值伪装成 Provider 权威账单；Pricing 不保存 Secret，也不是普通业务前端配置。",
+              "",
+              "当前版本没有 Plan 请求次数上限、金额上限、评论预算、Budget Account 或 Reservation Ledger，也不根据这些额度阻断网络请求。Provider Billing 的完整性要求与“预算功能”是两件不同的事情。",
+              "",
+              "## 16. 未来 Budget / Cost Guard 扩展方向",
+              "",
+              "预算功能已于 2026-08-17 由用户明确撤回。当前生产代码、当前 SQLAlchemy Schema 和 Plan Contract **不得保留 Budget Service、Budget Repository、Budget Account、Reservation Ledger、`request_budget` 或空实现接口**。历史 Migration 保持不可变，由新的向前 Migration `20260817_0015` 删除已落地预算结构。",
+              "",
+              "以后如果业务确实需要限额能力，必须创建新的 L3 Change，从真实业务需求重新冻结限制对象、周期、维度、超限行为、对账、迁移和 UI。候选接入位置只作为架构方向保留：",
+              "",
+              "```text",
+              "已准备 Provider Attempt",
+              "→ 可选 Budget / Cost Guard（未来独立能力）",
+              "→ Dispatch CAS",
+              "→ Provider Transport",
+              "```",
+              "",
+              "未来 Guard 可以读取 `provider_config_id`、Run/Content/Operation 身份和 Provider Billing estimate 等稳定事实，但在新 Change 批准前不定义 Contract、Schema、默认额度或前端配置，也不在生产代码中预留空接口。",
+              "",
+              "## 17. Business Pipeline Probe",
+          )
           regex_once(
               p8,
               r"## 15\. 费用预测、Provider Pricing 与硬预算\n.*?\n## 17\. Business Pipeline Probe",
-              """## 15. Provider Billing 与成本事实
-
-当前系统保留 Provider Request/Attempt 的 Billing 与成本字段，用于记录一次外部调用在发送前采用的价格快照、Provider 明确返回的实际费用（若存在），以及网络结果未知时的潜在重复计费风险。这些字段属于**执行与审计事实**，不是预算额度。
-
-TikHub Pricing 继续作为 Provider Adapter 的版本化成本事实来源。它可以产生可审计的 `estimated_cost / currency / unit_price_snapshot`，但不能把本地估算值伪装成 Provider 权威账单；Pricing 不保存 Secret，也不是普通业务前端配置。
-
-当前版本没有 Plan 请求次数上限、金额上限、评论预算、Budget Account 或 Reservation Ledger，也不根据这些额度阻断网络请求。Provider Billing 的完整性要求与“预算功能”是两件不同的事情。
-
-## 16. 未来 Budget / Cost Guard 扩展方向
-
-预算功能已于 2026-08-17 由用户明确撤回。当前生产代码、当前 SQLAlchemy Schema 和 Plan Contract **不得保留 Budget Service、Budget Repository、Budget Account、Reservation Ledger、`request_budget` 或空实现接口**。历史 Migration 保持不可变，由新的向前 Migration `20260817_0015` 删除已落地预算结构。
-
-以后如果业务确实需要限额能力，必须创建新的 L3 Change，从真实业务需求重新冻结限制对象、周期、维度、超限行为、对账、迁移和 UI。候选接入位置只作为架构方向保留：
-
-```text
-已准备 Provider Attempt
-→ 可选 Budget / Cost Guard（未来独立能力）
-→ Dispatch CAS
-→ Provider Transport
-```
-
-未来 Guard 可以读取 `provider_config_id`、Run/Content/Operation 身份和 Provider Billing estimate 等稳定事实，但在新 Change 批准前不定义 Contract、Schema、默认额度或前端配置，也不在生产代码中预留空接口。
-
-## 17. Business Pipeline Probe""",
+              section_15_16,
               "## 16. 未来 Budget / Cost Guard 扩展方向",
           )
           remove_line(p8, r"^[ \t]*→ Budget Limits[ \t]*\r?\n", "→ Budget Limits")
@@ -184,34 +190,58 @@ TikHub Pricing 继续作为 Provider Adapter 的版本化成本事实来源。�
               r"^[ \t]*- 最终多级预算账户/Reservation Migration 与并发测试；[ \t]*\r?\n",
               "最终多级预算账户/Reservation Migration",
           )
+          kuaishou = joined(
+              "### 18.5 快手",
+              "",
+              "- 当前正式主链使用 App Search V2 / Detail / 一级评论 / 二级回复；评论分页继续使用有证据的 `pcursor` 状态，不猜响应字段；",
+              "- Web 一级/二级评论保留为 2026-08-16 已验证的显式备用方案，但 Runtime/Capability 不得因 App 失败自动 fallback；",
+              "- 当前批准的搜索 Operation 没有排序/发布时间参数，前端不能显示不存在的原生选项；",
+              "- 真实 Fixture/Mapper/Capability 以当前代码、测试和 endpoint ledger 为机器事实，文档不得超越它们声称兼容。",
+              "",
+              "详细平台规则",
+          )
           regex_once(
               p8,
               r"### 18\.5 快手\n\n.*?\n\n详细平台规则",
-              """### 18.5 快手
-
-- 当前正式主链使用 App Search V2 / Detail / 一级评论 / 二级回复；评论分页继续使用有证据的 `pcursor` 状态，不猜响应字段；
-- Web 一级/二级评论保留为 2026-08-16 已验证的显式备用方案，但 Runtime/Capability 不得因 App 失败自动 fallback；
-- 当前批准的搜索 Operation 没有排序/发布时间参数，前端不能显示不存在的原生选项；
-- 真实 Fixture/Mapper/Capability 以当前代码、测试和 endpoint ledger 为机器事实，文档不得超越它们声称兼容。
-
-详细平台规则""",
+              kuaishou,
               "Web 一级/二级评论保留为 2026-08-16 已验证的显式备用方案",
           )
 
           p3 = "docs/blueprint/03-数据库与文件存储.md"
+          remove_line(p3, r"^[ \t]*collection_run_cost_totals[ \t]*\r?\n", "collection_run_cost_totals")
           remove_line(p3, r"^[ \t]*provider_budget_accounts[ \t]*\r?\n", "provider_budget_accounts")
           remove_line(p3, r"^[ \t]*provider_budget_reservations[ \t]*\r?\n", "provider_budget_reservations")
           remove_line(p3, r"^[ \t]*request_budget[ \t]+integer not null[ \t]*\r?\n", "request_budget")
           regex_once(
               p3,
+              r"Run 的费用不能用一个无币种 `numeric` 跨币种相加，按币种保存汇总：\n\n```text\ncollection_run_cost_totals\n.*?请求次数与货币成本是不同维度，不写入此表混加；请求计数来自 Attempt/Run 计数和 `request_count` 预算账户。\n",
+              "Run 当前只保存请求、成功、失败、内容和评论等执行计数。Provider 费用事实保留在 Request/Attempt Billing 字段；当前不建立 Run 预算或费用汇总表。\n",
+              "当前不建立 Run 预算或费用汇总表",
+          )
+          replace_once(
+              p3,
+              "`provider_config_id` 是 Stage 7 `20260815_0012` 增加的稳定 Provider 配置实例身份；历史和不计费 Request 可以为空，新建 billable Attempt 必须显式绑定具体 Config，且 Request 已有 Attempt 后该来源身份不可改写。",
+              "`provider_config_id` 是 Stage 7 `20260815_0012` 增加的稳定 Provider 配置实例身份；历史和不计费 Request 可以为空，新建 billable Attempt 必须显式绑定具体 Config，且 Request 已有 Attempt 后该来源身份不可改写。该字段用于 Provider 来源与执行审计，不代表当前存在预算账户。",
+          )
+          regex_once(
+              p3,
+              r"预算预留提交后，Dispatcher 在短事务中沿 Attempt→Request→Scope→Run 锁住所属 Job，验证当前 `status=running \+ lease_token \+ lease/deadline 未过期`，再以 CAS 将 `reserved → dispatching`；只有赢得 CAS 的执行者可以调用 Provider Client。Transport 层必须关闭会在一次调用内部悄悄重发网络请求的自动重试；同一 Attempt 不能再次进入发送，任何真正重发都先建新 Attempt。活跃 Transport 明确证明请求未进入发送边界时，Dispatcher 可把已进入数据库 `dispatching` 的 Attempt 终结为 `not_sent` 并清除发送开始时间；一旦进程崩溃、超时或无法取得完整性已验证 Raw，就不能事后宣称未发送，而要保守转为 `unknown`，保留预留且禁止复用该 Attempt 发送。",
+              "Dispatcher 在短事务中沿 Attempt→Request→Scope→Run 锁住所属 Job，验证当前 `status=running + lease_token + lease/deadline 未过期`，再以 CAS 将 `reserved → dispatching`；只有赢得 CAS 的执行者可以调用 Provider Client。Transport 层必须关闭会在一次调用内部悄悄重发网络请求的自动重试；同一 Attempt 不能再次进入发送，任何真正重发都先建新 Attempt。活跃 Transport 明确证明请求未进入发送边界时，Dispatcher 可把已进入数据库 `dispatching` 的 Attempt 终结为 `not_sent` 并清除发送开始时间；一旦进程崩溃、超时或无法取得完整性已验证 Raw，就不能事后宣称未发送，而要保守转为 `unknown`，并禁止复用该 Attempt 发送。",
+              "并禁止复用该 Attempt 发送",
+          )
+          budget_state = joined(
+              "### 5.17 预算功能当前状态",
+              "",
+              "当前版本**不保存 Provider Budget Account 或 Reservation Ledger**。历史 Revision `20260815_0012` 曾建立 `provider_budget_accounts/provider_budget_reservations`，后续 `20260817_0015` 按用户决定向前删除这两张表，并删除 `collection_plans.request_budget`；历史 Revision 不改写。",
+              "",
+              "`provider_requests.provider_config_id`、Provider Request/Attempt 的 Billing/成本快照和 `potential_duplicate_charge` 继续保留，因为它们表达来源与执行审计，而不是预算额度。未来若重新引入 Budget/Cost Guard，必须通过新的 L3 Change 建立新的 Contract/Schema/Migration/测试，不能复活已删除的 Runtime 代码。",
+              "",
+              "### 5.18 `artifacts`",
+          )
+          regex_once(
+              p3,
               r"### 5\.17 Provider 预算账户与预留账本\n.*?\n### 5\.18 `artifacts`",
-              """### 5.17 预算功能当前状态
-
-当前版本**不保存 Provider Budget Account 或 Reservation Ledger**。历史 Revision `20260815_0012` 曾建立 `provider_budget_accounts/provider_budget_reservations`，后续 `20260817_0015` 按用户决定向前删除这两张表，并删除 `collection_plans.request_budget`；历史 Revision 不改写。
-
-`provider_requests.provider_config_id`、Provider Request/Attempt 的 Billing/成本快照和 `potential_duplicate_charge` 继续保留，因为它们表达来源与执行审计，而不是预算额度。未来若重新引入 Budget/Cost Guard，必须通过新的 L3 Change 建立新的 Contract/Schema/Migration/测试，不能复活已删除的 Runtime 代码。
-
-### 5.18 `artifacts`""",
+              budget_state,
               "### 5.17 预算功能当前状态",
           )
           remove_line(
@@ -240,11 +270,12 @@ TikHub Pricing 继续作为 Provider Adapter 的版本化成本事实来源。�
               "docs/blueprint/README.md": ["20260817_0015"],
               "docs/blueprint/07-技术决策与实施门禁.md": ["当前保留 Provider Request/Attempt 的 Billing"],
               p8: ["## 16. 未来 Budget / Cost Guard 扩展方向", "App `fetch_video_comment`"],
-              p3: ["### 5.17 预算功能当前状态", "20260817_0015"],
+              p3: ["### 5.17 预算功能当前状态", "20260817_0015", "当前不建立 Run 预算或费用汇总表"],
           }
           forbidden = {
               "AGENTS.md": ["每个真实 HTTP Attempt 强制取得 global+run"],
-              p8: ["→ BUDGET RESERVATION", "## 16. Budget Ledger 的 Stage 7 最终语义"],
+              p8: ["→ BUDGET RESERVATION", "## 16. Budget Ledger 的 Stage 7 最终语义", "请求/费用预算"],
+              p3: ["provider_budget_reservations(budget_account_id, status)", "短事务创建 reserved Attempt 并原子取得必需预算"],
           }
           for path, needles in required.items():
               text = Path(path).read_text(encoding="utf-8")
