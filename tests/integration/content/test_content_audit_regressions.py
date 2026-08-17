@@ -407,13 +407,14 @@ def test_alternate_stable_id_conflict_fails_closed_instead_of_overwriting(
 
     session = database_runtime.new_session()
     try:
+        with session.begin():
+            PostgresContentRepository(session).ingest_content(first)
         with pytest.raises(ValueError, match="稳定外部 ID 冲突"):
             with session.begin():
-                repository = PostgresContentRepository(session)
-                repository.ingest_content(first)
-                repository.ingest_content(second)
-        rows = session.execute(select(account_external_ids_table)).mappings().all()
+                PostgresContentRepository(session).ingest_content(second)
+        row = session.execute(select(account_external_ids_table)).mappings().one()
     finally:
         session.close()
 
-    assert rows == []
+    assert row["id_type"] == "red_id"
+    assert row["external_id"] == "red-stable-1"
