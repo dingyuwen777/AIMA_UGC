@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
-from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -13,6 +12,7 @@ from aima_ugc.adapters.persistence.postgres.collection import PostgresCollection
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
 from aima_ugc.adapters.providers.fake import FakeProviderTransport
+from aima_ugc.bootstrap.runtime import PlatformRuntime
 from aima_ugc.bootstrap.scheduler import create_scheduler_runtime
 from aima_ugc.entrypoints.worker_main import create_collection_job_registry, create_job_worker
 from aima_ugc.modules.collection.execution import (
@@ -27,7 +27,6 @@ from aima_ugc.modules.collection.tables import (
     provider_requests_table,
 )
 from aima_ugc.modules.system.models import ProviderConfig
-from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.jobs.tables import jobs_table
 from pydantic import SecretStr
 from sqlalchemy import func, select
@@ -36,20 +35,20 @@ _FIXTURES = Path("tests/fixtures/providers/tikhub/xhs")
 
 
 @pytest.fixture
-def database_runtime() -> Iterator[DatabaseRuntime]:
-    runtime = create_scheduler_runtime().database
-    with runtime.engine.begin() as connection:
+def platform_runtime() -> Iterator[PlatformRuntime]:
+    runtime = create_scheduler_runtime()
+    with runtime.database.engine.begin() as connection:
         connection.exec_driver_sql(
             "TRUNCATE TABLE jobs, artifacts, accounts RESTART IDENTITY CASCADE"
         )
     try:
         yield runtime
     finally:
-        with runtime.engine.begin() as connection:
+        with runtime.database.engine.begin() as connection:
             connection.exec_driver_sql(
                 "TRUNCATE TABLE jobs, artifacts, accounts RESTART IDENTITY CASCADE"
             )
-        runtime.dispose()
+        runtime.close()
 
 
 def _fixture(name: str) -> dict[str, object]:
@@ -92,9 +91,9 @@ def _detail_response() -> dict[str, object]:
 
 
 def test_http_500_retries_same_logical_request_with_new_provider_attempt(
-    database_runtime: DatabaseRuntime,
+    platform_runtime: PlatformRuntime,
 ) -> None:
-    session = database_runtime.new_session()
+    session = platform_runtime.database.new_session()
     try:
         with session.begin():
             provider_config = PostgresProviderConfigRepository(session).create(
@@ -156,7 +155,7 @@ def test_http_500_retries_same_logical_request_with_new_provider_attempt(
         )
     )
     registry = create_collection_job_registry(
-        database=database_runtime,
+        runtime=platform_runtime,
         transport_factory=lambda _config: transport,
         secret_resolver=lambda secret_ref: (
             SecretStr("fixture-secret")
@@ -165,7 +164,7 @@ def test_http_500_retries_same_logical_request_with_new_provider_attempt(
         ),
     )
     worker = create_job_worker(
-        database=database_runtime,
+        runtime=platform_runtime,
         registry=registry,
         worker_id="collection-retry-worker",
         lease_seconds=120,
@@ -173,9 +172,11 @@ def test_http_500_retries_same_logical_request_with_new_provider_attempt(
     )
 
     assert worker.run_once() is True
-    session = database_runtime.new_session()
+    session = platform_runtime.database.new_session()
     try:
-        after_first = session.execute(select(jobs_table).where(jobs_table.c.id == job.id)).mappings().one()
+        after_first = (
+            session.execute(select(jobs_table).where(jobs_table.c.id == job.id)).mappings().one()
+        )
         run_after_first = session.execute(select(collection_runs_table)).mappings().one()
         scope_after_first = session.execute(select(collection_scopes_table)).mappings().one()
     finally:
@@ -190,9 +191,11 @@ def test_http_500_retries_same_logical_request_with_new_provider_attempt(
     assert worker.run_once() is False
     assert transport.call_count == 3
 
-    session = database_runtime.new_session()
+    session = platform_runtime.database.new_session()
     try:
-        final_job = session.execute(select(jobs_table).where(jobs_table.c.id == job.id)).mappings().one()
+        final_job = (
+            session.execute(select(jobs_table).where(jobs_table.c.id == job.id)).mappings().one()
+        )
         final_run = session.execute(select(collection_runs_table)).mappings().one()
         final_scope = session.execute(select(collection_scopes_table)).mappings().one()
         search_request = (
@@ -204,13 +207,17 @@ def test_http_500_retries_same_logical_request_with_new_provider_attempt(
             .mappings()
             .one()
         )
-        attempts = session.execute(
-            select(provider_request_attempts_table)
-            .where(
-                provider_request_attempts_table.c.provider_request_id == search_request["id"]
+        attempts = (
+            session.execute(
+                select(provider_request_attempts_table)
+                .where(
+                    provider_request_attempts_table.c.provider_request_id == search_request["id"]
+                )
+                .order_by(provider_request_attempts_table.c.attempt_no)
             )
-            .order_by(provider_request_attempts_table.c.attempt_no)
-        ).mappings().all()
+            .mappings()
+            .all()
+        )
         request_count = session.scalar(select(func.count()).select_from(provider_requests_table))
     finally:
         session.close()
