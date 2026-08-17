@@ -87,7 +87,7 @@ def test_run_output_store_keeps_raw_and_canonical_without_database(tmp_path: Pat
             "external_comment_id": "comment-1",
         },
     )
-    manifest_path = store.write_manifest({"platform": "xhs", "requests": 1})
+    run_summary_path = store.write_run_summary({"platform": "xhs", "requests": 1})
 
     assert json.loads(raw.path.read_text(encoding="utf-8")) == raw_body
     assert raw.artifact_id
@@ -101,7 +101,7 @@ def test_run_output_store_keeps_raw_and_canonical_without_database(tmp_path: Pat
         ]
         == "comment-1"
     )
-    assert json.loads(manifest_path.read_text(encoding="utf-8"))["requests"] == 1
+    assert json.loads(run_summary_path.read_text(encoding="utf-8"))["requests"] == 1
     assert not any("postgres" in part.lower() for part in store.run_dir.parts)
 
 

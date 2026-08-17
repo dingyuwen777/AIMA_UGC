@@ -154,7 +154,7 @@ def test_xhs_debug_runtime_reuses_production_flow_and_skips_unchanged_refresh(
     assert len(content_lines) == 2
     assert len(comment_lines) == 2
     assert {json.loads(line)["external_content_id"] for line in comment_lines} == {"note-fixture-1"}
-    assert json.loads(first.manifest_path.read_text(encoding="utf-8"))["status"] == "completed"
+    assert json.loads(first.run_summary_path.read_text(encoding="utf-8"))["status"] == "completed"
 
     workbook = load_workbook(first.workbook_path, data_only=False)
     try:
@@ -232,7 +232,7 @@ def test_xhs_multiple_keywords_search_each_keyword_but_deduplicate_downstream(
     assert result.content_count == 1
     assert sum(request.path.endswith("/search_notes") for request in requests) == 2
 
-    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    manifest = json.loads(result.run_summary_path.read_text(encoding="utf-8"))
     assert manifest["keywords"] == ["爱玛", "爱玛电动车"]
     assert manifest["matched_keywords"]["note-fixture-1"] == ["爱玛", "爱玛电动车"]
 

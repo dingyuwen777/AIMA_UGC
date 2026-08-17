@@ -260,9 +260,9 @@ class RunOutputStore:
             handle.write("\n")
         return path
 
-    def write_manifest(self, value: dict[str, object]) -> Path:
-        assert_secret_free(value, path="tikhub_test.manifest")
-        path = self.run_dir / "manifest.json"
+    def write_run_summary(self, value: dict[str, object]) -> Path:
+        assert_secret_free(value, path="tikhub_test.run_summary")
+        path = self.run_dir / "run_summary.json"
         path.write_text(_json_text(value), encoding="utf-8")
         return path
 

@@ -41,7 +41,7 @@ class TikHubTestRunResult:
     platform: tikhub_runtime.TikHubPlatform
     run_dir: Path
     workbook_path: Path
-    manifest_path: Path
+    run_summary_path: Path
     content_count: int
     root_comment_count: int
     reply_count: int
@@ -134,7 +134,7 @@ class _TikHubDebugRunner:
                 self._blocks_with_keywords(),
                 self.store.review_dir / f"{self.platform}_review.xlsx",
             )
-            manifest_path = self.store.write_manifest(self._manifest(error))
+            run_summary_path = self.store.write_run_summary(self._manifest(error))
 
         if error is not None:
             raise error
@@ -142,7 +142,7 @@ class _TikHubDebugRunner:
             platform=self.platform,
             run_dir=self.store.run_dir,
             workbook_path=workbook_path,
-            manifest_path=manifest_path,
+            run_summary_path=run_summary_path,
             content_count=len(self._blocks),
             root_comment_count=self._root_comment_count,
             reply_count=self._reply_count,

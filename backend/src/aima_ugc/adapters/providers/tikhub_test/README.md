@@ -54,7 +54,7 @@ result = run_xiaohongshu(
 - 同一组关键词中完全相同的词会去重并保持首次出现顺序；
 - 每个关键词分别执行自己的 Search/分页；
 - **同一帖子被多个关键词命中时，只执行一次后续 Detail/评论/回复，避免重复付费**；
-- `manifest.json` 和 Excel 的“命中关键词”列保留该帖子命中的全部关键词。
+- `run_summary.json` 和 Excel 的“命中关键词”列保留该帖子命中的全部关键词。
 
 ## 3. 平台入口
 
@@ -188,12 +188,12 @@ output/
          │  └─ comments.jsonl
          ├─ review/
          │  └─ xhs_review.xlsx
-         └─ manifest.json
+         └─ run_summary.json
 ```
 
 - `raw/`：每个真实请求的完整脱敏 Provider 响应；
 - `canonical/`：正式 Mapper 产生的统一 `CanonicalContentV1 / CanonicalCommentV1`；
-- `manifest.json`：关键词、请求、停止原因、内容/评论数量、每条内容命中哪些关键词等运行事实；
+- `run_summary.json`：关键词、请求、停止原因、内容/评论数量、每条内容命中哪些关键词等运行事实；
 - `review/*.xlsx`：帖子 + 评论基础采集数据的人工可读视图，**不是舆情分析报告**；
 - `state.json`：仅保存避免重复请求所需的帖子 ID、评论 ID、最近评论计数等轻量信息。
 
