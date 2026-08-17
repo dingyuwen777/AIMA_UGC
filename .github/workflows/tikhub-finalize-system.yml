@@ -30,7 +30,7 @@ jobs:
           python -m pip install "uv==${UV_VERSION}"
           uv lock --check
           uv sync --locked
-      - name: Apply finalization scripts
+      - name: Apply finalization and remove task-only files
         shell: bash
         run: |
           set -euo pipefail
@@ -43,22 +43,28 @@ jobs:
             backend/src/aima_ugc/adapters/providers/tikhub_test \
             tests/unit/collection/test_stage7_decision.py \
             tests/unit/collection/test_tikhub_real_capabilities.py \
-            tests/unit/collection/test_tikhub_test_debug.py \
-            scripts/dev/tikhub_finalize_code.py \
-            scripts/dev/tikhub_finalize_platform_docs.py \
-            scripts/dev/tikhub_finalize_blueprints.py \
-            scripts/dev/tikhub_finalize_meta.py
+            tests/unit/collection/test_tikhub_test_debug.py
           uv run ruff check --fix \
             backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py \
             backend/src/aima_ugc/adapters/providers/tikhub_test \
             tests/unit/collection/test_stage7_decision.py \
             tests/unit/collection/test_tikhub_real_capabilities.py \
-            tests/unit/collection/test_tikhub_test_debug.py \
+            tests/unit/collection/test_tikhub_test_debug.py
+          git rm -f --ignore-unmatch \
+            .github/workflows/tikhub-bilibili-weibo-green.yml \
+            .github/workflows/tikhub-five-platform-comment-order-probe.yml \
+            .github/workflows/tikhub-system-green-patch.yml \
+            .github/workflows/tikhub-system-green-patch-v2.yml \
+            .github/workflows/tikhub-system-green-patch-v3.yml \
+            .github/workflows/tikhub-system-green-patch-v4.yml \
+            .github/workflows/tikhub-system-green-patch-v5.yml \
+            .github/workflows/tikhub-test-lock-refresh.yml \
+            .github/workflows/tikhub-finalize-system.yml \
             scripts/dev/tikhub_finalize_code.py \
             scripts/dev/tikhub_finalize_platform_docs.py \
             scripts/dev/tikhub_finalize_blueprints.py \
             scripts/dev/tikhub_finalize_meta.py
-      - name: Verify finalization
+      - name: Verify final repository state
         shell: bash
         run: |
           set -euo pipefail
@@ -82,24 +88,10 @@ jobs:
           uv run python scripts/quality/scan_secrets.py
           uv run python scripts/quality/check_docs.py
           git diff --check
-      - name: Remove task-only files and commit verified result
+      - name: Commit verified result
         shell: bash
         run: |
           set -euo pipefail
-          git rm -f --ignore-unmatch \
-            .github/workflows/tikhub-bilibili-weibo-green.yml \
-            .github/workflows/tikhub-five-platform-comment-order-probe.yml \
-            .github/workflows/tikhub-system-green-patch.yml \
-            .github/workflows/tikhub-system-green-patch-v2.yml \
-            .github/workflows/tikhub-system-green-patch-v3.yml \
-            .github/workflows/tikhub-system-green-patch-v4.yml \
-            .github/workflows/tikhub-system-green-patch-v5.yml \
-            .github/workflows/tikhub-test-lock-refresh.yml \
-            .github/workflows/tikhub-finalize-system.yml \
-            scripts/dev/tikhub_finalize_code.py \
-            scripts/dev/tikhub_finalize_platform_docs.py \
-            scripts/dev/tikhub_finalize_blueprints.py \
-            scripts/dev/tikhub_finalize_meta.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
