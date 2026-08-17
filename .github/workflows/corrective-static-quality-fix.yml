@@ -1,0 +1,90 @@
+name: Corrective Static Quality Fix
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/corrective-static-quality-fix.yml"
+      - "backend/src/aima_ugc/modules/collection/collection_run_executor.py"
+      - "backend/src/aima_ugc/adapters/persistence/postgres/collection_provider_execution.py"
+      - "tests/integration/content/test_content_current_concurrency.py"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+      - name: Install locked environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+      - name: Apply exact static fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              Path("backend/src/aima_ugc/modules/collection/collection_run_executor.py"): [
+                  (
+                      "_SCOPE_TERMINAL_STATUSES = frozenset(CollectionScopeTerminalStatus.__args__)",
+                      "_SCOPE_TERMINAL_STATUSES: frozenset[CollectionScopeTerminalStatus] = frozenset(\n"
+                      "    {\"partial_success\", \"succeeded\", \"failed\", \"cancelled\"}\n"
+                      ")",
+                  ),
+              ],
+              Path(
+                  "backend/src/aima_ugc/adapters/persistence/postgres/"
+                  "collection_provider_execution.py"
+              ): [
+                  (
+                      '                        "同一 Provider Request 存在未收敛的 dispatching Attempt，必须先执行 Recovery"',
+                      '                        "同一 Provider Request 存在未收敛的 dispatching Attempt，"\n'
+                      '                        "必须先执行 Recovery"',
+                  ),
+              ],
+              Path("tests/integration/content/test_content_current_concurrency.py"): [
+                  (
+                      "    comment_metric_observations_table,\n",
+                      "",
+                  ),
+              ],
+          }
+
+          for path, items in replacements.items():
+              text = path.read_text(encoding="utf-8")
+              for old, new in items:
+                  count = text.count(old)
+                  if count != 1:
+                      raise SystemExit(f"{path}: expected fragment once, found {count}")
+                  text = text.replace(old, new)
+              path.write_text(text, encoding="utf-8")
+          PY
+          uv run ruff format \
+            backend/src/aima_ugc/modules/collection/collection_run_executor.py \
+            backend/src/aima_ugc/adapters/persistence/postgres/collection_provider_execution.py \
+            tests/integration/content/test_content_current_concurrency.py
+          uv run ruff check backend tests scripts migrations/versions/20260817_0016_comment_coverage_observability.py
+          uv run mypy backend/src/aima_ugc
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            backend/src/aima_ugc/modules/collection/collection_run_executor.py \
+            backend/src/aima_ugc/adapters/persistence/postgres/collection_provider_execution.py \
+            tests/integration/content/test_content_current_concurrency.py
+          git commit -m "修复本轮静态质量问题"
+          git push origin HEAD:${GITHUB_HEAD_REF}
