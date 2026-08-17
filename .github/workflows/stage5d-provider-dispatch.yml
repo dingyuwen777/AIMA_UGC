@@ -29,7 +29,7 @@ on:
       - ".github/workflows/stage5d-provider-dispatch.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   stage5d-provider-dispatch:
@@ -61,6 +61,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup Python
         uses: actions/setup-python@v6.2.0
@@ -132,18 +134,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          uv run ruff format backend tests scripts migrations/versions/20260814_0005_stage5d_provider_dispatch.py
-          changed="$(git diff --name-only -- backend tests scripts migrations/versions/20260814_0005_stage5d_provider_dispatch.py)"
+          uv run ruff format backend/src/aima_ugc/bootstrap/collection_scope.py backend/src/aima_ugc/adapters/persistence/postgres/collection_provider_execution.py
+          changed="$(git diff --name-only -- backend/src/aima_ugc/bootstrap/collection_scope.py backend/src/aima_ugc/adapters/persistence/postgres/collection_provider_execution.py)"
           if [ -n "$changed" ]; then
-            while IFS= read -r path; do
-              [ -z "$path" ] && continue
-              printf '::error file=%s::Ruff formatter would modify this file\n' "$path"
-              encoded="$(git diff -- "$path" | base64 -w0)"
-              printf '::notice file=%s,title=ruff-format-diff-base64::%s\n' "$path" "$encoded"
-            done <<< "$changed"
-            git diff --check
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add backend/src/aima_ugc/bootstrap/collection_scope.py backend/src/aima_ugc/adapters/persistence/postgres/collection_provider_execution.py
+            git commit -m "应用 Ruff 格式化"
+            git push origin HEAD:${GITHUB_HEAD_REF}
+            printf '%s\n' "Ruff formatter changes committed to ${GITHUB_HEAD_REF}."
             exit 1
           fi
+          uv run ruff format --check backend tests scripts migrations/versions/20260814_0005_stage5d_provider_dispatch.py
 
       - name: Ruff lint
         shell: bash
