@@ -176,7 +176,7 @@ def _configure_sheet(sheet: Worksheet) -> None:
 
 def _write_header(sheet: Worksheet) -> None:
     for column, value in enumerate(_HEADERS, start=1):
-        cell = sheet.cell(row=1, column=column, value=value)
+        cell = _writable_cell(sheet, row=1, column=column, value=value)
         cell.font = _HEADER_FONT
         cell.fill = _HEADER_FILL
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
@@ -201,7 +201,11 @@ def _write_content_row(sheet: Worksheet, row: int, content: ReviewContent) -> No
         content.raw_locator,
     )
     for column, value in enumerate(values, start=1):
-        _set_value(sheet.cell(row=row, column=column), value, text_id=column in _TEXT_ID_COLUMNS)
+        _set_value(
+            _writable_cell(sheet, row=row, column=column),
+            value,
+            text_id=column in _TEXT_ID_COLUMNS,
+        )
 
 
 def _write_comment_row(sheet: Worksheet, row: int, comment: ReviewCommentRow) -> None:
@@ -219,7 +223,24 @@ def _write_comment_row(sheet: Worksheet, row: int, comment: ReviewCommentRow) ->
     )
     for offset, value in enumerate(values, start=1):
         column = len(_CONTENT_HEADERS) + offset
-        _set_value(sheet.cell(row=row, column=column), value, text_id=column in _TEXT_ID_COLUMNS)
+        _set_value(
+            _writable_cell(sheet, row=row, column=column),
+            value,
+            text_id=column in _TEXT_ID_COLUMNS,
+        )
+
+
+def _writable_cell(
+    sheet: Worksheet,
+    *,
+    row: int,
+    column: int,
+    value: _CellValue = None,
+) -> Cell:
+    cell = sheet.cell(row=row, column=column, value=value)
+    if not isinstance(cell, Cell):
+        raise RuntimeError(f"目标单元格已合并，无法写入：row={row}, column={column}")
+    return cell
 
 
 def _set_value(cell: Cell, value: _CellValue, *, text_id: bool) -> None:
