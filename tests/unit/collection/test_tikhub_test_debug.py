@@ -95,9 +95,12 @@ def test_run_output_store_keeps_raw_and_canonical_without_database(tmp_path: Pat
         "platform": "xhs",
         "external_content_id": "note-1",
     }
-    assert json.loads((store.canonical_dir / "comments.jsonl").read_text(encoding="utf-8"))[
-        "external_comment_id"
-    ] == "comment-1"
+    assert (
+        json.loads((store.canonical_dir / "comments.jsonl").read_text(encoding="utf-8"))[
+            "external_comment_id"
+        ]
+        == "comment-1"
+    )
     assert json.loads(manifest_path.read_text(encoding="utf-8"))["requests"] == 1
     assert not any("postgres" in part.lower() for part in store.run_dir.parts)
 
