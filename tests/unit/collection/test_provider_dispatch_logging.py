@@ -167,6 +167,14 @@ def _service(outcome: ProviderTransportResponse | ProviderTransportFailure):
             "provider.request.failed",
             "not_sent",
         ),
+        (
+            ProviderTransportFailure.unknown(
+                code="read_timeout",
+                safe_summary="发送后结果未知",
+            ),
+            "provider.request.unknown",
+            "unknown",
+        ),
     ],
 )
 def test_provider_dispatch_emits_safe_stable_lifecycle_events(
