@@ -147,7 +147,9 @@ def test_raw_capture_logs_write_failure_without_raw_or_request_body(
         store=LocalArtifactStore(root),
     )
 
-    with caplog.at_level(logging.WARNING, logger="aima_ugc.modules.collection.providers.raw_artifact"):
+    with caplog.at_level(
+        logging.WARNING, logger="aima_ugc.modules.collection.providers.raw_artifact"
+    ):
         with pytest.raises(OSError, match="disk full"):
             service.capture(request=request, dispatch=dispatch)
 
