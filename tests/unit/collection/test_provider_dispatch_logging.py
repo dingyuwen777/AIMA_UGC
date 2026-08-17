@@ -172,7 +172,7 @@ def _service(outcome: ProviderTransportResponse | ProviderTransportFailure):
                 code="read_timeout",
                 safe_summary="发送后结果未知",
             ),
-            "provider.request.unknown",
+            "provider.request.failed",
             "unknown",
         ),
     ],
