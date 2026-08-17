@@ -370,10 +370,12 @@ class TikHubCollectionScopeExecutor:
     ) -> None:
         policy = CollectionDecisionPolicyV1()
         prior = self._content_state.evaluate(content)
+        search_comment_count = _observed_comment_count(content)
         decision = self._decision_service.decide(
             CollectionDecisionRequestV1(
                 current=ContentObservationV1(
-                    comment_count=_observed_comment_count(content),
+                    comment_count=search_comment_count,
+                    search_missing_required_fields=search_comment_count is None,
                     business_changed=prior.business_changed if prior is not None else False,
                 ),
                 previous=prior.previous if prior is not None else None,
