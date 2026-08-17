@@ -72,9 +72,7 @@ def database_runtime() -> Iterator[DatabaseRuntime]:
 
 def _clear_data(connection: Connection) -> None:
     """测试数据库专用清理；TRUNCATE 不改变生产 append-only UPDATE/DELETE Trigger。"""
-    connection.exec_driver_sql(
-        "TRUNCATE TABLE jobs, artifacts, accounts RESTART IDENTITY CASCADE"
-    )
+    connection.exec_driver_sql("TRUNCATE TABLE jobs, artifacts, accounts RESTART IDENTITY CASCADE")
 
 
 def _create_live_source(runtime: DatabaseRuntime, *, source_value: str) -> _LiveSource:
@@ -220,9 +218,7 @@ def _candidate_id_for_attempt(runtime: DatabaseRuntime, attempt_id: UUID) -> UUI
         with session.begin():
             return session.scalar(
                 select(collection_candidates_table.c.id)
-                .where(
-                    collection_candidates_table.c.provider_request_attempt_id == attempt_id
-                )
+                .where(collection_candidates_table.c.provider_request_attempt_id == attempt_id)
                 .limit(1)
             )
     finally:
@@ -271,8 +267,7 @@ def test_current_fence_ingests_candidate_and_content_atomically(
             )
             candidate_id = session.scalar(
                 select(collection_candidates_table.c.id).where(
-                    collection_candidates_table.c.provider_request_attempt_id
-                    == source.attempt_id
+                    collection_candidates_table.c.provider_request_attempt_id == source.attempt_id
                 )
             )
             assert candidate_id is not None
@@ -355,9 +350,7 @@ def test_content_state_reader_separates_comment_count_from_other_business_change
     title_not_observed = canonical.model_copy(
         update={
             "title": "标题 B",
-            "observed_fields": [
-                field for field in canonical.observed_fields if field != "title"
-            ],
+            "observed_fields": [field for field in canonical.observed_fields if field != "title"],
         }
     )
     title_state = reader.evaluate(title_not_observed)
