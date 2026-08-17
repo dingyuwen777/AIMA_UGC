@@ -86,7 +86,7 @@ def map_comment(
     item_locator: str,
     is_root: bool,
 ) -> CanonicalCommentV1:
-    """把真实 Web rootComments/sub-comments 映射为统一评论树节点。"""
+    """把真实快手 rootComments/sub-comments 映射为统一评论树节点。"""
     external_comment_id = required_string(raw, "comment_id")
     external_content_id = optional_string(raw, "photo_id") or context.external_content_id
     if external_content_id is None:
@@ -103,6 +103,9 @@ def map_comment(
     like_count, like_observed = count(raw, "likedCount", "like_count")
     if like_observed:
         observed_fields.append("metrics.like_count")
+    reply_count, reply_observed = count(raw, "subCommentCount")
+    if reply_observed:
+        observed_fields.append("metrics.reply_count")
 
     published_at = timestamp(raw, "timestamp")
     if published_at is not None:
@@ -132,7 +135,7 @@ def map_comment(
         text=text,
         published_at=published_at,
         observed_at=context.observed_at,
-        metrics=CanonicalMetricsV1(like_count=like_count),
+        metrics=CanonicalMetricsV1(like_count=like_count, reply_count=reply_count),
         source=source(context, item_locator),
         observed_fields=observed_fields,
     )
