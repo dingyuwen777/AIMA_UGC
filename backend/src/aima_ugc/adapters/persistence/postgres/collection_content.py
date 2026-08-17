@@ -6,6 +6,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from uuid import UUID
 
+from sqlalchemy import select
+from sqlalchemy.engine import RowMapping
+from sqlalchemy.orm import Session
+
 from aima_ugc.contracts.canonical import CanonicalContentV1
 from aima_ugc.contracts.collection import PreviousContentStateV1
 from aima_ugc.modules.collection.candidates import CandidateIngestionService
@@ -18,9 +22,6 @@ from aima_ugc.modules.collection.tables import (
 from aima_ugc.modules.content.ingestion import ContentIngestionService
 from aima_ugc.modules.content.tables import accounts_table, contents_table
 from aima_ugc.platform.jobs import JobExecutionFence, LeaseLostError
-from sqlalchemy import select
-from sqlalchemy.engine import RowMapping
-from sqlalchemy.orm import Session
 
 from .candidates import PostgresCandidateRepository
 from .content import PostgresContentRepository, PostgresIngestionResult
