@@ -122,6 +122,18 @@ jobs:
           assert "已绑定的 Raw 引用不可修改" in function_body, function_body
           PY
 
+      - name: Coverage and detail re-decision PostgreSQL regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest tests/integration/collection/test_collection_comment_coverage_runtime.py -q
+
+      - name: Scope takeover Raw replay PostgreSQL regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest tests/integration/collection/test_collection_scope_recovery_runtime.py -q
+
       - name: PostgreSQL and Artifact integration tests
         shell: bash
         run: |
@@ -186,7 +198,6 @@ jobs:
                   item["name"] for item in inspect(runtime.engine).get_check_constraints(
                       "provider_requests"
                   )
-              }
           finally:
               runtime.dispose()
           assert "ck_provider_requests_status_allowed" not in checks, checks
