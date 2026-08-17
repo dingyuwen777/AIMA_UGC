@@ -185,3 +185,53 @@ def test_xhs_debug_runtime_reuses_production_flow_and_skips_unchanged_refresh(
     assert second.reply_count == 0
     assert len(first_requests) == 4
     assert len(second_requests) == 1
+
+
+def test_xhs_multiple_keywords_search_each_keyword_but_deduplicate_downstream(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    env_file = tmp_path / ".env"
+    output_root = tmp_path / "output"
+    _write_env(env_file)
+
+    responses = [
+        _fixture("search_notes_page1.sanitized.json"),
+        _matching_detail(),
+        _matching_comments(),
+        _matching_replies(),
+        _fixture("search_notes_page1.sanitized.json"),
+    ]
+    requests: list[ProviderTransportRequest] = []
+    monkeypatch.setattr(
+        "aima_ugc.adapters.providers.tikhub_test.runner.TikHubHttpTransport",
+        _fake_transport_type(responses, requests),
+    )
+
+    result = run_xiaohongshu(
+        keywords=("爱玛", "爱玛电动车"),
+        env_file=env_file,
+        output_root=output_root,
+        run_id="multiple-keywords",
+        max_search_pages=1,
+        max_comments_per_content=1,
+        max_comment_pages_per_content=1,
+        max_replies_per_root=1,
+        max_reply_pages_per_root=1,
+    )
+
+    assert responses == []
+    assert result.request_count == 5
+    assert result.content_count == 1
+    assert sum(request.path.endswith("/search_notes") for request in requests) == 2
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["keywords"] == ["爱玛", "爱玛电动车"]
+    assert manifest["matched_keywords"]["note-fixture-1"] == ["爱玛", "爱玛电动车"]
+
+    workbook = load_workbook(result.workbook_path, data_only=False)
+    try:
+        sheet = workbook["内容与评论"]
+        assert sheet["O2"].value == "爱玛；爱玛电动车"
+    finally:
+        workbook.close()
