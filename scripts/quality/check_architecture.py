@@ -124,7 +124,8 @@ def _check_import_boundaries() -> list[str]:
         for module in _imports(path):
             if _matches_prefix(module, ("aima_ugc.adapters", "aima_ugc.entrypoints")):
                 errors.append(
-                    f"ARCH003 {path.relative_to(ROOT)}: 领域模块禁止反向依赖 Adapter/Entrypoint ({module})"
+                    f"ARCH003 {path.relative_to(ROOT)}: "
+                    f"领域模块禁止反向依赖 Adapter/Entrypoint ({module})"
                 )
 
     for path in provider_root.rglob("*.py"):
@@ -139,7 +140,8 @@ def _check_import_boundaries() -> list[str]:
         for module in imports:
             if _matches_prefix(module, forbidden):
                 errors.append(
-                    f"ARCH004 {path.relative_to(ROOT)}: Provider Adapter 禁止直接访问持久化/业务表 ({module})"
+                    f"ARCH004 {path.relative_to(ROOT)}: "
+                    f"Provider Adapter 禁止直接访问持久化/业务表 ({module})"
                 )
 
         if "mappers" in path.parts:
@@ -152,7 +154,8 @@ def _check_import_boundaries() -> list[str]:
             for module in imports:
                 if _matches_prefix(module, mapper_forbidden):
                     errors.append(
-                        f"ARCH005 {path.relative_to(ROOT)}: Mapper 必须保持纯转换，禁止 HTTP/数据库依赖 ({module})"
+                        f"ARCH005 {path.relative_to(ROOT)}: "
+                        f"Mapper 必须保持纯转换，禁止 HTTP/数据库依赖 ({module})"
                     )
 
     for path in entrypoints_root.rglob("*.py"):
