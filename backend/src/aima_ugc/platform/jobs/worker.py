@@ -11,7 +11,9 @@ from uuid import UUID
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from .models import JobExecutionFence, JobHandlerResult, LeaseLostError
+from aima_ugc.platform.logging import log_event
+
+from .models import JobExecutionFence, JobHandlerResult, JobRecord, LeaseLostError
 from .registry import JobRegistry
 
 if TYPE_CHECKING:
@@ -122,11 +124,23 @@ class _HeartbeatLoop:
                         return
                 except LeaseLostError:
                     pass
-                logger.warning("job_lease_lost job_id=%s", self._context._job_id)
+                log_event(
+                    logger,
+                    logging.WARNING,
+                    "job.lease_lost",
+                    "Job Lease 已失效。",
+                    job_id=str(self._context._job_id),
+                )
                 self._context._set_heartbeat_error(exc)
                 return
             except Exception as exc:
-                logger.warning("job_heartbeat_failed job_id=%s", self._context._job_id)
+                log_event(
+                    logger,
+                    logging.WARNING,
+                    "job.heartbeat_failed",
+                    "Job Heartbeat 执行失败。",
+                    job_id=str(self._context._job_id),
+                )
                 self._context._set_heartbeat_error(exc)
                 return
 
@@ -171,6 +185,7 @@ class JobWorker:
         if job.lease_token is None:
             raise RuntimeError("claimed job is missing lease token")
 
+        _log_job_started(job, worker_id=self._worker_id)
         try:
             payload = self._registry.validate_payload(
                 job_type=job.job_type,
@@ -178,7 +193,13 @@ class JobWorker:
                 payload=job.payload,
             )
         except ValidationError, ValueError:
-            self._fail_invalid_payload(job.id, job.lease_token)
+            failed = self._fail_invalid_payload(job.id, job.lease_token)
+            _log_job_terminal(
+                failed,
+                event="job.failed",
+                worker_id=self._worker_id,
+                error_code="invalid_payload",
+            )
             return True
 
         definition = self._registry.get(job.job_type)
@@ -196,20 +217,33 @@ class JobWorker:
         finally:
             heartbeat_loop.stop()
         context._raise_heartbeat_error()
-        self._apply_result(job_id=job.id, lease_token=job.lease_token, result=result)
+        persisted = self._apply_result(job_id=job.id, lease_token=job.lease_token, result=result)
+        event = {
+            "succeeded": "job.completed",
+            "retry": "job.retry_scheduled",
+            "failed": "job.failed",
+            "cancelled": "job.cancelled",
+        }[result.outcome]
+        _log_job_terminal(
+            persisted,
+            event=event,
+            worker_id=self._worker_id,
+            error_code=result.error_code,
+        )
         return True
 
-    def _fail_invalid_payload(self, job_id: UUID, lease_token: str) -> None:
+    def _fail_invalid_payload(self, job_id: UUID, lease_token: str) -> JobRecord:
         session = self._session_factory()
         try:
             with session.begin():
-                _repository(session).fail_permanent(
+                failed = _repository(session).fail_permanent(
                     job_id=job_id,
                     lease_token=lease_token,
                     error_code="invalid_payload",
                 )
         finally:
             session.close()
+        return failed
 
     def _apply_result(
         self,
@@ -217,13 +251,13 @@ class JobWorker:
         job_id: UUID,
         lease_token: str,
         result: JobHandlerResult,
-    ) -> None:
+    ) -> JobRecord:
         session = self._session_factory()
         try:
             with session.begin():
                 repository = _repository(session)
                 if result.outcome == "succeeded":
-                    repository.succeed(
+                    persisted = repository.succeed(
                         job_id=job_id,
                         lease_token=lease_token,
                         result=result.result,
@@ -231,7 +265,7 @@ class JobWorker:
                 elif result.outcome == "retry":
                     if result.error_code is None:
                         raise ValueError("retry result requires error_code")
-                    repository.retry_transient(
+                    persisted = repository.retry_transient(
                         job_id=job_id,
                         lease_token=lease_token,
                         error_code=result.error_code,
@@ -240,15 +274,18 @@ class JobWorker:
                 elif result.outcome == "failed":
                     if result.error_code is None:
                         raise ValueError("failed result requires error_code")
-                    repository.fail_permanent(
+                    persisted = repository.fail_permanent(
                         job_id=job_id,
                         lease_token=lease_token,
                         error_code=result.error_code,
                     )
                 elif result.outcome == "cancelled":
-                    repository.mark_cancelled(job_id=job_id, lease_token=lease_token)
+                    persisted = repository.mark_cancelled(job_id=job_id, lease_token=lease_token)
+                else:
+                    raise ValueError(f"unsupported Job outcome: {result.outcome}")
         finally:
             session.close()
+        return persisted
 
 
 class JobReaper:
@@ -278,3 +315,40 @@ class JobReaper:
         finally:
             session.close()
         return job is not None
+
+
+def _log_job_started(job: JobRecord, *, worker_id: str) -> None:
+    log_event(
+        logger,
+        logging.INFO,
+        "job.started",
+        "Job 已开始执行。",
+        job_id=str(job.id),
+        job_type=job.job_type,
+        attempt=job.attempt,
+        max_attempts=job.max_attempts,
+        worker_id=worker_id,
+        timeout_seconds=job.timeout_seconds,
+    )
+
+
+def _log_job_terminal(
+    job: JobRecord,
+    *,
+    event: str,
+    worker_id: str,
+    error_code: str | None,
+) -> None:
+    log_event(
+        logger,
+        logging.INFO,
+        event,
+        "Job 状态已持久化。",
+        job_id=str(job.id),
+        job_type=job.job_type,
+        attempt=job.attempt,
+        max_attempts=job.max_attempts,
+        worker_id=worker_id,
+        status=job.status,
+        error_code=error_code or job.error_code,
+    )

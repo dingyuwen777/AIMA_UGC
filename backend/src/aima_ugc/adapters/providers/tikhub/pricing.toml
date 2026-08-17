@@ -11,8 +11,9 @@ official_endpoint_info_path = "/api/v1/tikhub/user/get_endpoint_info"
 default_base_price = "0.001000"
 default_price_dispatch_fallback = false
 
-# 官方阶梯折扣规则快照。首版硬预算始终按 endpoint 已核验 base_price 保守预留，
-# 不用折扣价缩小 Reservation；是否允许折扣由 endpoint 自身事实决定，当前账本不依赖折扣放宽预算。
+# 官方阶梯折扣规则快照。当前 Stage 1—7 Pricing 只用于 endpoint 费用事实、
+# Provider Attempt 成本快照与审计；系统没有请求/金额 Budget、Reservation 或发送预算门禁。
+# 发送前仍按 endpoint 已核验 base_price fail-closed；未来折扣或 Budget 策略需新的 L3 Change。
 [[tiers]]
 min_requests_per_day = 0
 max_requests_per_day = 1000

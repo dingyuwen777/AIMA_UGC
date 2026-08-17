@@ -5,6 +5,7 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
@@ -18,11 +19,13 @@ from aima_ugc.contracts.provider import (
     RawEnvelopeV1,
     terminal_attempt_with_raw,
 )
+from aima_ugc.platform.logging import log_event
 from aima_ugc.platform.storage import ArtifactRecord, ArtifactService, ArtifactStore
 
 from .transport import ProviderDispatchResult
 
 _BUSINESS_TIMEZONE = ZoneInfo("Asia/Shanghai")
+logger = logging.getLogger(__name__)
 
 
 def raw_storage_key(
@@ -109,13 +112,28 @@ class RawArtifactService:
             dispatch_started_at=attempt.dispatch_started_at,
             attempt_id=attempt.attempt_id,
         )
-        artifact = self._artifacts.store_bytes(
-            kind="provider-raw",
-            content_type="application/json",
-            retention_class="raw",
-            data=compressed,
-            encoding="gzip",
-            storage_key=storage_key,
+        try:
+            artifact = self._artifacts.store_bytes(
+                kind="provider-raw",
+                content_type="application/json",
+                retention_class="raw",
+                data=compressed,
+                encoding="gzip",
+                storage_key=storage_key,
+            )
+        except Exception as exc:
+            _log_raw_write_failed(
+                request=request,
+                attempt_id=attempt.attempt_id,
+                error_code=type(exc).__name__,
+            )
+            raise
+        _log_raw_stored(
+            request=request,
+            attempt_id=attempt.attempt_id,
+            artifact_id=artifact.id,
+            byte_size=artifact.byte_size,
+            recovered=False,
         )
         linked_attempt = terminal_attempt_with_raw(attempt, artifact.id)
         return CapturedRawArtifact(
@@ -167,6 +185,13 @@ class RawArtifactService:
             byte_size=actual_size,
             stored_at=datetime.now(UTC),
         )
+        _log_raw_stored(
+            request=request,
+            attempt_id=attempt_id,
+            artifact_id=artifact.id,
+            byte_size=actual_size,
+            recovered=True,
+        )
         return envelope
 
     def _read_bytes(self, artifact: ArtifactRecord) -> bytes:
@@ -187,6 +212,56 @@ class RawArtifactService:
             return RawEnvelopeV1.model_validate_json(plain)
         except ValidationError as exc:
             raise RawArtifactIntegrityError("Raw Envelope Contract 校验失败") from exc
+
+
+def _log_raw_write_failed(
+    *,
+    request: ProviderRequestV1,
+    attempt_id: UUID,
+    error_code: str,
+) -> None:
+    log_event(
+        logger,
+        logging.WARNING,
+        "raw.artifact.write_failed",
+        "Provider Raw Artifact 写入失败。",
+        provider_request_id=str(request.request_id),
+        provider_attempt_id=str(attempt_id),
+        run_id=str(request.run_id),
+        scope_id=str(request.scope_id),
+        provider=request.provider,
+        platform=request.platform,
+        operation=request.operation,
+        status="error",
+        error_code=error_code,
+    )
+
+
+def _log_raw_stored(
+    *,
+    request: ProviderRequestV1,
+    attempt_id: UUID,
+    artifact_id: UUID,
+    byte_size: int | None,
+    recovered: bool,
+) -> None:
+    log_event(
+        logger,
+        logging.INFO,
+        "raw.artifact.stored",
+        "Provider Raw Artifact 已完成存储。",
+        artifact_id=str(artifact_id),
+        provider_request_id=str(request.request_id),
+        provider_attempt_id=str(attempt_id),
+        run_id=str(request.run_id),
+        scope_id=str(request.scope_id),
+        provider=request.provider,
+        platform=request.platform,
+        operation=request.operation,
+        status="stored",
+        byte_size=byte_size,
+        recovered=recovered,
+    )
 
 
 def _validate_envelope_lineage(
