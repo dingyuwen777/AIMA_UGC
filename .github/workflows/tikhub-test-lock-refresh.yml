@@ -1,4 +1,4 @@
-name: TikHub Test Dependency Lock Refresh
+name: TikHub Test Development Check
 
 on:
   pull_request:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  refresh-lock:
+  targeted:
     if: github.head_ref == 'agent/tikhub-test-debug' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     steps:
@@ -23,24 +23,63 @@ jobs:
         with:
           python-version: 3.14.7
 
-      - name: Install locked uv version
+      - name: Install locked environment
         shell: bash
         run: |
           set -euo pipefail
           UV_VERSION="$(tr -d '\r\n' < .uv-version)"
           python -m pip install "uv==${UV_VERSION}"
+          uv lock
+          uv sync --locked
 
-      - name: Refresh uv.lock
+      - name: Format only TikHub debug scope
         shell: bash
         run: |
           set -euo pipefail
-          uv lock
-          if git diff --quiet -- uv.lock; then
-            echo "uv.lock already synchronized"
+          uv run ruff format \
+            backend/src/aima_ugc/adapters/providers/tikhub_test \
+            tests/unit/collection/test_tikhub_test_debug.py \
+            tests/unit/collection/test_tikhub_test_debug_runtime.py
+          if git diff --quiet -- \
+            uv.lock \
+            backend/src/aima_ugc/adapters/providers/tikhub_test \
+            tests/unit/collection/test_tikhub_test_debug.py \
+            tests/unit/collection/test_tikhub_test_debug_runtime.py; then
+            echo "TikHub debug scope already formatted and locked"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add uv.lock
-          git commit -m "锁定 openpyxl 依赖"
+          git add \
+            uv.lock \
+            backend/src/aima_ugc/adapters/providers/tikhub_test \
+            tests/unit/collection/test_tikhub_test_debug.py \
+            tests/unit/collection/test_tikhub_test_debug_runtime.py
+          git commit -m "格式化 TikHub 调试工具"
           git push origin "HEAD:${{ github.head_ref }}"
+          echo "已提交格式化结果；新的 PR head 将重新执行本门禁"
+          exit 0
+
+      - name: Run targeted quality and tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff format --check \
+            backend/src/aima_ugc/adapters/providers/tikhub_test \
+            tests/unit/collection/test_tikhub_test_debug.py \
+            tests/unit/collection/test_tikhub_test_debug_runtime.py
+          uv run ruff check \
+            backend/src/aima_ugc/adapters/providers/tikhub_test \
+            tests/unit/collection/test_tikhub_test_debug.py \
+            tests/unit/collection/test_tikhub_test_debug_runtime.py
+          uv run mypy backend/src
+          uv run pytest \
+            tests/unit/collection/test_tikhub_test_debug.py \
+            tests/unit/collection/test_tikhub_test_debug_runtime.py \
+            tests/unit/collection/test_xhs_tikhub_operation.py \
+            tests/unit/collection/test_xhs_tikhub_mapper.py \
+            tests/unit/collection/test_tikhub_real_search_mappers.py \
+            tests/unit/collection/test_tikhub_real_comment_mappers.py \
+            tests/unit/collection/test_tikhub_real_reply_mappers.py \
+            -q
+          uv run python scripts/quality/scan_secrets.py
