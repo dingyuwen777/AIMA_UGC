@@ -189,7 +189,7 @@ def test_review_workbook_uses_approved_content_comment_layout(tmp_path: Path) ->
                     cell.border.top,
                     cell.border.bottom,
                 ):
-                    assert side.style != "thick"
+                    assert side is None or side.style != "thick"
     finally:
         loaded.close()
 
