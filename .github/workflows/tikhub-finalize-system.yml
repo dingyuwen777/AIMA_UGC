@@ -1,0 +1,707 @@
+name: TikHub Five Platform Finalize
+
+on:
+  push:
+    branches: [agent/tikhub-test-debug]
+    paths: [".github/workflows/tikhub-finalize-system.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: agent/tikhub-test-debug
+          fetch-depth: 0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+      - name: Install locked environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+      - name: Apply system-level finalization
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          from textwrap import dedent
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one match, got {count}: {old[:80]!r}")
+              p.write_text(text.replace(old, new), encoding="utf-8")
+
+          def replace_all(path: str, replacements: tuple[tuple[str, str], ...]) -> None:
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              for old, new in replacements:
+                  if old not in text:
+                      raise SystemExit(f"{path}: missing replacement source: {old!r}")
+                  text = text.replace(old, new)
+              p.write_text(text, encoding="utf-8")
+
+          # B站真实 mode=2 + next_offset=0 首屏已验证 20/20 唯一 ID 且时间严格非增。
+          replace_once(
+              "backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py",
+              '''        ProviderOperationCapabilityV1(\n            business_operation="comments",\n            provider_operations=("fetch_video_comments",),\n            comment_sort_modes=("latest", "hot"),\n            supports_reply_count=True,\n            supports_sub_comments=True,\n            supports_incremental_comment_sort=False,\n            provider_page_size_policy="provider_default",\n        ),''',
+              '''        ProviderOperationCapabilityV1(\n            business_operation="comments",\n            provider_operations=("fetch_video_comments",),\n            comment_sort_modes=("latest", "hot"),\n            supports_reply_count=True,\n            supports_sub_comments=True,\n            supports_incremental_comment_sort=True,\n            provider_page_size_policy="provider_default",\n        ),''',
+          )
+
+          replace_once(
+              "tests/unit/collection/test_tikhub_real_capabilities.py",
+              '''    # XHS App V2 comments 固定 latest_v2，且官方说明为时间倒序/最新优先；\n    # 其余平台当前仍缺少同等级“可按历史 comment_id 安全截断”的证据。\n    assert _operation(XHS_TIKHUB_CAPABILITY, "comments").supports_incremental_comment_sort is True\n    for capability in (\n        DOUYIN_TIKHUB_CAPABILITY,\n        WEIBO_TIKHUB_CAPABILITY,\n        BILIBILI_TIKHUB_CAPABILITY,\n        KUAISHOU_TIKHUB_CAPABILITY,\n    ):\n        assert _operation(capability, "comments").supports_incremental_comment_sort is False''',
+              '''    # XHS latest_v2 与 B站 mode=2/next_offset=0 都有当前真实“最新优先”证据；\n    # 抖音缺少可选择的最新评论排序，微博/快手真实页顺序不满足安全历史边界。\n    assert _operation(XHS_TIKHUB_CAPABILITY, "comments").supports_incremental_comment_sort is True\n    assert (\n        _operation(BILIBILI_TIKHUB_CAPABILITY, "comments").supports_incremental_comment_sort\n        is True\n    )\n    for capability in (\n        DOUYIN_TIKHUB_CAPABILITY,\n        WEIBO_TIKHUB_CAPABILITY,\n        KUAISHOU_TIKHUB_CAPABILITY,\n    ):\n        assert _operation(capability, "comments").supports_incremental_comment_sort is False''',
+          )
+
+          decision_path = Path("tests/unit/collection/test_stage7_decision.py")
+          decision = decision_path.read_text(encoding="utf-8")
+          decision = decision.replace(
+              "from aima_ugc.adapters.providers.tikhub.capabilities import XHS_TIKHUB_CAPABILITY",
+              "from aima_ugc.adapters.providers.tikhub.capabilities import (\n    BILIBILI_TIKHUB_CAPABILITY,\n    XHS_TIKHUB_CAPABILITY,\n)",
+          )
+          marker = "\ndef test_comment_count_decrease_never_guesses_specific_deletion() -> None:\n"
+          if marker not in decision:
+              raise SystemExit("decision insertion marker missing")
+          bili_test = dedent('''
+          \n
+def test_bilibili_comment_count_increase_uses_verified_incremental_sort() -> None:
+              request = _request(current_comment_count=80, previous_comment_count=35, existing=True)
+              request = request.model_copy(update={"capability": BILIBILI_TIKHUB_CAPABILITY})
+
+              decision = CollectionDecisionService().decide(request)
+
+              assert decision.comment_action == "fetch_incremental"
+              assert decision.comment_reason == "comment_count_increased_incremental"
+          ''')
+          decision_path.write_text(decision.replace(marker, bili_test + marker), encoding="utf-8")
+
+          # 当前新包未对外发布，统一把“review”内部命名收敛成“原始数据”。
+          replace_all(
+              "backend/src/aima_ugc/adapters/providers/tikhub_test/excel.py",
+              (
+                  ("人工审阅 XLSX", "原始数据 XLSX"),
+                  ("ReviewContent", "RawDataContent"),
+                  ("ReviewCommentRow", "RawDataCommentRow"),
+                  ("ReviewBlock", "RawDataBlock"),
+                  ("write_review_workbook", "write_raw_data_workbook"),
+                  ("纵向区块人工审阅 Workbook", "纵向区块原始数据 Workbook"),
+              ),
+          )
+          replace_all(
+              "backend/src/aima_ugc/adapters/providers/tikhub_test/runner.py",
+              (
+                  ("ReviewContent", "RawDataContent"),
+                  ("ReviewCommentRow", "RawDataCommentRow"),
+                  ("ReviewBlock", "RawDataBlock"),
+                  ("write_review_workbook", "write_raw_data_workbook"),
+                  ("review_dir", "raw_data_dir"),
+                  ("_review_content", "_raw_data_content"),
+                  ("_review_comment", "_raw_data_comment"),
+                  ("_review.xlsx", "_raw_data.xlsx"),
+                  ("_manifest", "_run_summary"),
+              ),
+          )
+          replace_all(
+              "backend/src/aima_ugc/adapters/providers/tikhub_test/core.py",
+              (
+                  ("review_dir", "raw_data_dir"),
+                  ('run_dir / "review"', 'run_dir / "raw_data"'),
+              ),
+          )
+          replace_all(
+              "tests/unit/collection/test_tikhub_test_debug.py",
+              (
+                  ("ReviewContent", "RawDataContent"),
+                  ("ReviewCommentRow", "RawDataCommentRow"),
+                  ("ReviewBlock", "RawDataBlock"),
+                  ("write_review_workbook", "write_raw_data_workbook"),
+                  ("test_review_workbook_uses_approved_content_comment_layout", "test_raw_data_workbook_uses_approved_content_comment_layout"),
+              ),
+          )
+          replace_all(
+              "backend/src/aima_ugc/adapters/providers/tikhub_test/README.md",
+              (
+                  ("xhs_review.xlsx", "xhs_raw_data.xlsx"),
+                  ("review/", "raw_data/"),
+              ),
+          )
+
+          # Blueprint 13 只讨论原始数据 Excel，不把它叫报告或人工审阅 Renderer。
+          replace_all(
+              "docs/blueprint/13-统一数据Excel导出与调试复用.md",
+              (
+                  ("阶段性人工审阅 Excel 实现", "阶段性原始数据 Excel 实现"),
+                  ("tikhub_test 临时 ReviewContent / ReviewCommentRow", "tikhub_test 临时 RawDataContent / RawDataCommentRow"),
+                  ("内容与评论.xlsx", "<platform>_raw_data.xlsx"),
+                  ("人工审阅格式不能反向成为 Canonical Schema", "原始数据 Excel 展示格式不能反向成为 Canonical Schema"),
+                  ("唯一共享 Excel Exporter/Renderer", "唯一共享原始数据 Excel Exporter"),
+                  ("`ReviewContent` / `ReviewCommentRow` / `ReviewBlock`", "`RawDataContent` / `RawDataCommentRow` / `RawDataBlock`"),
+              ),
+          )
+          replace_all(
+              "docs/blueprint/README.md",
+              (
+                  ("帖子/评论基础数据 Excel 导出、`.xlsx` 人工审阅", "帖子/评论原始数据 Excel 导出、`.xlsx` 原始数据查看"),
+                  ("采集基础数据 Excel、Canonical/Aggregate 导出边界、`tikhub_test` 阶段性 Excel", "采集原始数据 Excel、Canonical/Aggregate 导出边界、`tikhub_test` 阶段性 Excel"),
+                  ("基础数据导出、Excel、`.xlsx`、`openpyxl`、调试审阅文件", "原始数据导出、Excel、`.xlsx`、`openpyxl`、调试原始数据文件"),
+              ),
+          )
+
+          # 07 固化系统级共享原始数据 Excel 与 tikhub_test 收敛门禁。
+          p07 = Path("docs/blueprint/07-技术决策与实施门禁.md")
+          text07 = p07.read_text(encoding="utf-8")
+          text07 = text07.replace("> 蓝图版本：1.17", "> 蓝图版本：1.18")
+          anchor = "| 数据库中间层 | 写入固定 Canonical → Ingestion Service → Owner Repository；读取固定 PostgreSQL → Query Repository/Read Model → Query Service；Aggregate 不作为数据库大 JSON 持久化 |\n"
+          if anchor not in text07:
+              raise SystemExit("07 decision table anchor missing")
+          row = "| 原始数据 Excel | 系统级原始数据 Excel 只消费 Canonical/Aggregate 或经批准的 Provider-neutral Export Read Model；它不是分析报告。正式共享 Exporter 落地时，`tikhub_test` 必须删除平行 Excel 生成实现并复用共享导出，不能长期维护两套字段/样式/安全规则。 |\n"
+          text07 = text07.replace(anchor, anchor + row)
+          p07.write_text(text07, encoding="utf-8")
+
+          # Blueprint 08：把设计、机器事实与本轮真实验证矩阵收敛到同一处。
+          p08 = Path("docs/blueprint/08-采集策略与平台能力.md")
+          text08 = p08.read_text(encoding="utf-8")
+          old10 = '''如果 Provider 没有稳定时间排序或 Fixture 不能证明该停止条件可靠，则 Capability 不声明增量能力，改为受控部分刷新。\n\n`comment_count` 下降只表示平台总量发生变化，可能是删除、审核或统计校正。如果以前或当前 coverage 不是完整集合，不得把“这次没看到某条旧评论”解释成具体删除。'''
+          new10 = '''如果 Provider 没有稳定时间排序或 Fixture/真实 Probe 不能证明该停止条件可靠，则 Capability 不声明增量能力，改为受控部分刷新。已付费返回的当前页必须完整保存、映射和摄取；历史边界只决定“是否继续付费请求下一页”。\n\n当前五平台正式 Capability：\n\n| 平台 | 评论排序事实 | `supports_incremental_comment_sort` | 原因 |\n| --- | --- | --- | --- |\n| 小红书 | App V2 固定 `latest_v2` | `true` | 官方最新优先语义 + 当前真实页时间严格非增 |\n| B站 | App `mode=2`，首屏显式 `next_offset=0` | `true` | 官方时间排序语义 + 当前真实首屏 20/20 唯一 ID、20 个时间戳严格非增 |\n| 抖音 | App V3 评论无已批准的最新评论排序参数 | `false` | 无法证明 comment ID 可作为安全时间边界 |\n| 微博 | App `sort_type=1` | `false` | 当前真实 20 条有效评论时间顺序并非严格非增 |\n| 快手 | App `pcursor`，无已批准的最新评论排序参数 | `false` | 当前真实 94 条一级评论时间顺序并非严格非增 |\n\n增量安全停止使用生产共享规则：某页出现已知历史评论后，只有从**第一个已知评论到该页末尾全部都是已知评论**，才记录 `known_comment_reached` 并停止下一页；如果旧评论后又出现新评论，则继续翻页，避免置顶/混排导致误停。\n\n`comment_count` 下降只表示平台总量发生变化，可能是删除、审核或统计校正。如果以前或当前 coverage 不是完整集合，不得把“这次没看到某条旧评论”解释成具体删除。'''
+          if old10 not in text08:
+              raise SystemExit("Blueprint08 incremental block missing")
+          text08 = text08.replace(old10, new10)
+          text08 = text08.replace("→ 人工 XLSX", "→ 原始数据 Excel")
+          text08 = text08.replace("`decisions.jsonl` 和人工 XLSX", "运行摘要/决策证据和原始数据 Excel")
+          start = text08.index("## 18. 五平台能力差异摘要")
+          end = text08.index("## 19. Stage 7 当前实现与收尾门禁")
+          section18 = dedent('''
+          ## 18. 五平台能力差异摘要
+
+          ### 18.1 小红书
+
+          - Search App V2 支持排序、内容类型和发布时间筛选；评论 App V2 固定 `sort_strategy=latest_v2`；
+          - 当前真实 Runner 观察到 6 条一级评论 ID 唯一且时间严格非增；Capability 已开启安全增量；
+          - `comment_count` 增加时生产 Decision 可进入 `fetch_incremental`，正式 Scope 从 PostgreSQL 读取已知一级评论 ID，并使用共享 `known_comment_reached` 边界停止下一页。
+
+          ### 18.2 抖音
+
+          - Search V2、App V3 Detail/Comments/Replies、Mapper、真实 Fixture、Capability/Registry 和生产纵切均已建立；
+          - 真实兼容验证确认生产 extractor 会过滤不含稳定 `aweme_id` 的混合搜索卡片；
+          - App V3 评论当前没有已批准的“最新评论排序”业务参数，因此 `supports_incremental_comment_sort=false`；评论数增加走 `refresh_controlled`，不猜历史 ID 时间边界。
+
+          ### 18.3 微博
+
+          - Web Search、App Detail/一级评论、Web V2 二级评论、Mapper、真实 Fixture、Capability/Registry 均已建立；
+          - App 一级评论可发送 `sort_type=1`，但当前真实样本的 20 条有效评论时间顺序不是严格非增；生产 extractor 同时会过滤没有稳定评论 ID 的展示卡片；
+          - 因此 `supports_incremental_comment_sort=false`，不能因为参数名叫“latest”就提前停止分页。
+
+          ### 18.4 B站
+
+          - App Search/Detail/Comments/Reply、Mapper、真实 Fixture、Capability/Registry 均已建立；Search 当前没有 Provider 原生时间范围，`native_time_filter=false`；
+          - 评论 `latest` 映射 `mode=2`；真实 Probe 证明首屏必须显式 `next_offset=0` 才能稳定返回 App 评论，因此生产 Runtime 已固定该首屏语义；
+          - 2026-08-18 当前真实 Runner 选择一个 Provider 报告 105 条评论的视频，`mode=2 + next_offset=0` 返回 20 条，20/20 ID 唯一、20 个时间戳严格非增；结合官方“mode=2=time”语义，Capability 开启 `supports_incremental_comment_sort=true`。
+
+          ### 18.5 快手
+
+          - 正式主链仍为 App Search V2 / Detail / 一级评论 / 二级回复；Web 评论链只保留显式 `verified_backup`，不自动 fallback；
+          - 当前正式 App 评论没有已批准的最新评论排序参数；真实 Probe 的 94 条一级评论时间顺序不是严格非增；
+          - 因此 `supports_incremental_comment_sort=false`，评论数增加继续受控刷新。
+
+          详细平台规则、官方链接和当前代码路径见 [`../collection/README.md`](../collection/README.md)。
+
+          ''')
+          text08 = text08[:start] + section18 + text08[end:]
+          start19 = text08.index("## 19. Stage 7 当前实现与收尾门禁")
+          end19 = text08.index("## 20. 文档同步规则")
+          section19 = dedent('''
+          ## 19. Stage 7 当前实现状态与一致性门禁
+
+          Stage 7 的基础采集/调度闭环已合入 `main` 并归档；本节不再把历史 PR #55 的“待合并”步骤描述成当前工作。当前正式机器实现包括五平台 TikHub Operation/Mapper/Capability/Registry、Provider Config/Secret、Decision、Plan/Occurrence/Run Snapshot、Scheduler、`collection.run.v1` Worker、Raw/Canonical/Ingestion 与 Provider Billing 审计。
+
+          2026-08-18 的系统一致性复核发现并修复了一个已批准 Blueprint 未完整落地的缺口：增量评论 Decision 已存在，但生产 Scope 最初没有历史 comment ID 边界，且 XHS Capability 保守关闭。当前规则已经收敛为：
+
+          - 生产 `known_comment_reached` 规则由 Collection 模块统一拥有；
+          - PostgreSQL 一次读取目标内容已有一级评论 ID，不逐评论查询；
+          - XHS、B站按已验证最新排序开启增量；抖音、微博、快手保持受控刷新；
+          - `tikhub_test` 只提供文件版 previous state，调用同一个生产 Decision/边界规则；
+          - 当前没有请求/金额 Budget Runtime，也不以预算作为评论停止条件。
+
+          后续任何平台若要从 `false` 改成 `true`，必须取得同等级“官方排序语义 + 当前真实多评论页顺序 + 稳定 comment ID”的证据，并同步 Capability、平台文档和回归测试；不能只依据参数名称或单条样本。
+
+          ''')
+          text08 = text08[:start19] + section19 + text08[end19:]
+          p08.write_text(text08, encoding="utf-8")
+
+          # 平台实现文档直接改写为当前事实，清除 Stage7 前的“尚未实现/Budget”遗留。
+          docs = {
+              "docs/collection/xiaohongshu.md": r'''# 小红书采集逻辑
+
+## 1. 当前状态
+
+小红书当前已具备完整 TikHub 生产链：App V2 Search、图文/视频 Detail、一级/二级评论 Operation，生产 Extractor/Mapper、合法脱敏真实 Fixture、Capability/Registry、Canonical/Ingestion、正式 Collection Worker 与独立 `tikhub_test` 调试入口均已建立。
+
+## 2. 正式 Operation
+
+| 业务动作 | Endpoint |
+| --- | --- |
+| 搜索 | `GET /api/v1/xiaohongshu/app_v2/search_notes` |
+| 图文详情 | `GET /api/v1/xiaohongshu/app_v2/get_image_note_detail` |
+| 视频详情 | `GET /api/v1/xiaohongshu/app_v2/get_video_note_detail` |
+| 一级评论 | `GET /api/v1/xiaohongshu/app_v2/get_note_comments` |
+| 二级评论 | `GET /api/v1/xiaohongshu/app_v2/get_note_sub_comments` |
+
+第一版不做 App/Web 自动 fallback。搜索对上层暴露规范化排序、内容类型和发布时间范围；Provider 私有 `page/search_id/search_session_id/cursor/index/pageArea` 只由 Operation/Runtime 管理。
+
+## 3. 评论与增量省钱
+
+一级评论请求固定发送：
+
+```text
+sort_strategy=latest_v2
+```
+
+当前官方语义和真实 Runner 都证明该主链按最新优先工作：真实样本的一级评论 ID 唯一，发布时间严格非增。因此 Capability 为：
+
+```text
+comment_sort_modes = ("latest",)
+supports_incremental_comment_sort = true
+```
+
+统一行为：
+
+```text
+comment_count 不变 → 默认不请求评论
+comment_count 增加 → fetch_incremental
+comment_count 减少 → refresh_controlled
+```
+
+增量时先完整保存、映射和摄取当前已付费页面。只有从本页第一个已知历史 `comment_id` 到页尾全部都是已知历史评论，才记录 `known_comment_reached` 并停止下一页；旧评论后又出现新评论时继续翻页。生产系统从 PostgreSQL 一次读取历史一级评论 ID，`tikhub_test` 用文件 state 适配，但两者调用同一个生产边界规则。
+
+当前没有请求次数/金额 Budget Runtime，不能把技术页数上限或评论目标解释成预算门禁。
+
+## 4. Pipeline
+
+```text
+search_notes → Raw → Mapper/Observation → identity/compare → Decision
+→ 必要时 Detail → Comments/Replies → Raw → Mapper → Canonical → Ingestion
+```
+
+重复搜索窗口、分页和多关键词都按 `(platform, external_content_id)` 收敛后续付费动作。
+
+## 5. 独立调试
+
+无数据库调试入口：
+
+```python
+from aima_ugc.adapters.providers.tikhub_test.xiaohongshu import run_xiaohongshu
+
+run_xiaohongshu(keyword="爱玛", sort_mode="latest", published_within="1d")
+```
+
+输出 Raw、Canonical、`run_summary.json`、跨运行 `state.json` 和原始数据 Excel。完整规则见 `backend/src/aima_ugc/adapters/providers/tikhub_test/README.md`。
+''',
+              "docs/collection/douyin.md": r'''# 抖音采集逻辑
+
+## 1. 当前状态
+
+抖音当前已建立 Search V2、App V3 Detail/一级评论/回复 Operation，生产 Extractor/Mapper、合法脱敏真实 Fixture、Capability/Registry、Canonical/Ingestion、正式 Collection Worker 与 `tikhub_test` 独立调试入口。
+
+## 2. 正式 Operation
+
+| 业务动作 | Endpoint |
+| --- | --- |
+| 搜索 | `POST /api/v1/douyin/search/fetch_video_search_v2` |
+| 详情 | `GET /api/v1/douyin/app/v3/fetch_one_video_v3` |
+| 一级评论 | `GET /api/v1/douyin/app/v3/fetch_video_comments` |
+| 回复 | `GET /api/v1/douyin/app/v3/fetch_video_comment_replies` |
+
+Search V2 规范化支持 `general/most_liked/latest`、`all/1d/7d/180d`、时长和内容类型。`cursor/search_id/backtrace` 是 Provider 技术状态，不进入普通业务配置。
+
+真实兼容复核发现搜索响应可能混入不含 `aweme_info.aweme_id` 的展示卡片；生产 extractor 现在只把具有稳定视频 ID 的业务卡片送入 Mapper，避免第三方混合结果导致整个 Scope 失败。
+
+## 3. 评论省钱与排序边界
+
+当前 App V3 一级评论主 Operation 使用 `aweme_id + cursor`，正式接口没有已批准的“最新评论排序”业务参数。因此：
+
+```text
+supports_incremental_comment_sort = false
+```
+
+即使 `comment_count` 增加，也不能假定“遇到旧 comment_id 就代表进入历史区”。当前 Decision 使用 `refresh_controlled`；不变时默认跳过评论，减少重复费用。未来只有在官方排序语义和真实多评论页顺序都能证明安全边界时，才能开启增量。
+
+## 4. Pipeline
+
+```text
+fetch_video_search_v2 → Raw → Douyin Mapper → aweme_id identity/compare
+→ Decision → 必要时 fetch_one_video_v3
+→ fetch_video_comments / replies → Raw → Mapper → Canonical → Ingestion
+```
+
+当前没有 Budget/Cost Guard；费用控制依赖去重、Decision、Provider 末页、目标和技术安全上限。
+
+## 5. 独立调试
+
+```python
+from aima_ugc.adapters.providers.tikhub_test.douyin import run_douyin
+
+run_douyin(keyword="爱玛", sort_mode="latest", published_within="1d")
+```
+
+调试入口复用生产 Runtime/Mapper，输出 Raw、Canonical、`run_summary.json`、state 和原始数据 Excel。
+''',
+              "docs/collection/weibo.md": r'''# 微博采集逻辑
+
+## 1. 当前状态
+
+微博当前已建立 Web Search、App Detail/一级评论、Web V2 二级评论 Operation，生产 Extractor/Mapper、合法脱敏真实 Fixture、Capability/Registry、Canonical/Ingestion、正式 Collection Worker 与 `tikhub_test` 独立调试入口。
+
+## 2. 正式 Operation
+
+| 业务动作 | Endpoint |
+| --- | --- |
+| 搜索 | `GET /api/v1/weibo/web/fetch_search` |
+| 详情 | `GET /api/v1/weibo/app/fetch_status_detail` |
+| 一级评论 | `GET /api/v1/weibo/app/fetch_status_comments` |
+| 二级评论 | `GET /api/v1/weibo/web_v2/fetch_post_sub_comments` |
+
+Search 对上层提供 `general/latest/hot` 与已验证时间范围。不同 API family 是固定业务职责，不是 fallback。
+
+## 3. 评论分页与真实形状兼容
+
+一级评论可发送：
+
+```text
+sort_type=0  # hot
+sort_type=1  # latest
+```
+
+生产 extractor 只接收具有稳定 `idstr/mid/id` 的真实评论数据；TikHub 响应中的展示卡片不会送入 Comment Mapper。分页优先消费 `data.moreInfo.params.max_id`；当当前真实形状缺少 `moreInfo` 时按 Provider 末页处理，而不是猜测另一个私有游标路径。
+
+## 4. 为什么当前不开增量
+
+虽然接口存在 `sort_type=1`，2026-08-18 当前真实 Probe 对 20 条有效评论计算得到：
+
+```text
+time_count = 20
+time_nonincreasing = false
+```
+
+因此“参数叫 latest”不足以证明 comment ID 可以作为安全历史边界，Capability 保持：
+
+```text
+supports_incremental_comment_sort = false
+```
+
+`comment_count` 增加时继续 `refresh_controlled`；不变时默认跳过评论。只有未来重新取得稳定顺序证据，才能经新的机器事实修改 Capability。
+
+## 5. Pipeline 与调试
+
+```text
+fetch_search → Raw → Weibo Mapper → status_id identity/compare → Decision
+→ 必要时 Detail → Comments/Sub-comments → Raw → Mapper → Canonical → Ingestion
+```
+
+```python
+from aima_ugc.adapters.providers.tikhub_test.weibo import run_weibo
+
+run_weibo(keyword="爱玛", sort_mode="latest", published_within="day")
+```
+
+当前没有 Budget/Cost Guard；独立调试输出 Raw、Canonical、`run_summary.json`、state 和原始数据 Excel。
+''',
+              "docs/collection/bilibili.md": r'''# B站采集逻辑
+
+## 1. 当前状态
+
+B站当前已建立 App Search/Detail/一级评论/回复 Operation，生产 Extractor/Mapper、合法脱敏真实 Fixture、Capability/Registry、Canonical/Ingestion、正式 Collection Worker 与 `tikhub_test` 独立调试入口。
+
+## 2. 正式 Operation
+
+| 业务动作 | Endpoint |
+| --- | --- |
+| 分类视频搜索 | `GET /api/v1/bilibili/app/fetch_search_by_type` |
+| 视频详情 | `GET /api/v1/bilibili/app/fetch_one_video` |
+| 一级评论 | `GET /api/v1/bilibili/app/fetch_video_comments` |
+| 二级回复 | `GET /api/v1/bilibili/app/fetch_reply_detail` |
+
+搜索排序为 `general/latest/play_count/danmaku_count`。当前 Search 没有 Provider 原生发布时间筛选，所以 `native_time_filter=false`；本地时间边界不能伪装成服务端能力。
+
+## 3. 一级评论的首屏与排序
+
+正式业务排序：
+
+```text
+latest → mode=2
+hot    → mode=3
+```
+
+当前真实验证确认 App 首屏必须显式发送：
+
+```text
+next_offset=0
+```
+
+省略 offset 或误从 1 开始会造成当前样本返回空页，因此生产 builder/Runtime 已固定首屏 `next_offset=0`，后续只消费已经由正式分页 extractor 证明的 offset。
+
+## 4. 已验证增量能力
+
+TikHub 官方当前把 `mode=2` 定义为时间排序。2026-08-18 GitHub-hosted Runner 使用生产 Runtime、关键词“爱玛”，从前五个候选中选择 Provider 报告评论数最高的样本后验证：
+
+```text
+reported_comment_count = 105
+mode = 2
+next_offset = 0
+returned_root_comments = 20
+unique_comment_ids = 20
+time_count = 20
+time_nonincreasing = true
+```
+
+因此当前 Capability 为：
+
+```text
+comment_sort_modes = ("latest", "hot")
+supports_incremental_comment_sort = true
+```
+
+`comment_count` 增加时走统一 `fetch_incremental`。当前已付费页先完整 Raw/Mapper/Ingestion；只有从首个已知历史 comment ID 到页尾全部已知时才 `known_comment_reached`，否则继续下一页。
+
+## 5. Pipeline 与调试
+
+```text
+fetch_search_by_type → Raw → Bilibili Mapper → content identity/compare → Decision
+→ 必要时 fetch_one_video → fetch_video_comments / fetch_reply_detail
+→ Raw → Mapper → Canonical → Ingestion
+```
+
+```python
+from aima_ugc.adapters.providers.tikhub_test.bilibili import run_bilibili
+
+run_bilibili(keyword="爱玛", sort_mode="latest")
+```
+
+弹幕仍是独立 enrichment，不等同评论。当前没有 Budget/Cost Guard。
+''',
+              "docs/collection/kuaishou.md": r'''# 快手采集逻辑
+
+## 1. 当前状态
+
+快手正式主链固定为 App Search V2 → App Detail → App 一级评论 → App 二级评论。Web 一级/二级评论已有真实兼容证据，但只作为显式 `verified_backup`，App 失败时不自动 fallback。
+
+## 2. 正式 Operation
+
+| 业务动作 | Endpoint | 状态 |
+| --- | --- | --- |
+| 搜索 | `GET /api/v1/kuaishou/app/search_video_v2` | primary |
+| 详情 | `GET /api/v1/kuaishou/app/fetch_one_video` | primary |
+| 一级评论 | `GET /api/v1/kuaishou/app/fetch_video_comment` | primary |
+| 二级评论 | `GET /api/v1/kuaishou/app/fetch_video_sub_comments` | primary |
+| Web 一级/二级评论 | Web family 对应接口 | verified backup |
+
+Search V2 当前只暴露真实支持的 `keyword/pcursor`；没有批准的原生排序和发布时间筛选，因此 `native_time_filter=false`。
+
+## 3. 评论与回复
+
+一级真实列表来自 `data.rootComments[]`，`subCommentCount` 映射为 `metrics.reply_count`；`displaySubCommentCount` 只是显示信号，不能当数量。二级回复使用明确 `root_comment_id`，没有直接父 ID 时不根据数组位置猜 `parent_comment_id`。
+
+## 4. 为什么当前不开增量
+
+当前 App 评论主接口没有已批准的“最新评论排序”参数。真实 Runner 对当前样本取得 94 条一级评论，comment ID 唯一，但发布时间顺序并非严格非增。因此：
+
+```text
+supports_incremental_comment_sort = false
+```
+
+`comment_count` 增加时受控刷新；不变时默认跳过评论。不能为了省请求而在一个混排页面中遇到旧 comment ID 后提前停止。
+
+## 5. Pipeline、成本与调试
+
+```text
+search_video_v2 → Raw → Kuaishou Mapper → photo_id identity/compare → Decision
+→ 必要时 fetch_one_video → fetch_video_comment / fetch_video_sub_comments
+→ Raw → Mapper → Canonical → Ingestion
+```
+
+当前正式 App 一级/二级 endpoint Pricing 继续用于 Provider Billing 审计，但系统没有请求次数/金额 Budget Runtime。
+
+```python
+from aima_ugc.adapters.providers.tikhub_test.kuaishou import run_kuaishou
+
+run_kuaishou(keyword="爱玛")
+```
+
+调试输出 Raw、Canonical、`run_summary.json`、state 和原始数据 Excel。
+''',
+          }
+          for path, content in docs.items():
+              Path(path).write_text(dedent(content).lstrip(), encoding="utf-8")
+
+          # 采集总览增加当前五平台增量资格矩阵，并明确此次修复不重开 Stage7。
+          collection = Path("docs/collection/README.md")
+          ctext = collection.read_text(encoding="utf-8")
+          anchor = "Capability 只公开当前真实响应和 Operation 已证明的能力，不因为 TikHub 文档存在某个字段/参数就自动声明支持。\n"
+          matrix = dedent('''
+
+          当前评论增量资格：
+
+          | 平台 | 增量 | 当前证据/限制 |
+          | --- | --- | --- |
+          | 小红书 | `true` | `latest_v2` + 当前真实评论时间严格非增 |
+          | B站 | `true` | `mode=2` + 首屏 `next_offset=0`，当前真实 20 条时间严格非增 |
+          | 抖音 | `false` | 评论 Operation 无已批准最新评论排序参数 |
+          | 微博 | `false` | `sort_type=1` 当前真实 20 条时间不是严格非增 |
+          | 快手 | `false` | 当前真实 94 条评论时间不是严格非增 |
+
+          `true` 平台在 `comment_count` 增加时走统一 `fetch_incremental`，并使用生产 `known_comment_reached` 安全边界；`false` 平台走受控刷新。任何当前页都先完整保存 Raw 并完成 Mapper/Ingestion，边界只阻止下一次付费请求。
+          ''')
+          if anchor not in ctext:
+              raise SystemExit("collection README capability anchor missing")
+          ctext = ctext.replace(anchor, anchor + matrix)
+          ctext = ctext.replace(
+              "Stage 7 已完成正式采集与调度闭环：",
+              "Stage 7 基础正式采集与调度闭环已经完成并归档。本次 2026-08-18 一致性修复不重开 Stage 7，而是补齐已批准增量评论设计在生产执行层的缺口：",
+          )
+          ctext = ctext.replace(
+              "- 快手 App 评论/二级评论主链、无自动 Provider/App/Web fallback、`secret_ref` Secret 边界和预算功能回撤均保持不变。",
+              "- 快手 App 评论/二级评论主链、无自动 Provider/App/Web fallback、`secret_ref` Secret 边界和预算功能回撤均保持不变；\n- 增量评论当前只有 XHS 与 B站通过 Capability 启用，抖音/微博/快手继续受控刷新。",
+          )
+          ctext = ctext.replace(
+              "- 调试复用生产 Service / Repository / Provider Operation，不实现第二套路径；",
+              "- 长期无数据库 TikHub 调试入口为 `backend/src/aima_ugc/adapters/providers/tikhub_test/README.md`；它复用生产 Runtime/Operation/Mapper/Decision，不实现第二套路径；",
+          )
+          collection.write_text(ctext, encoding="utf-8")
+
+          # 人类测试说明：统一“原始数据 Excel”术语并加入长期 tikhub_test 入口。
+          testing = Path("docs/测试与调试说明.md")
+          ttext = testing.read_text(encoding="utf-8")
+          ttext = ttext.replace("→ 人工审阅导出", "→ 原始数据 Excel 导出")
+          ttext = ttext.replace("人工审阅文件\n→ 基于 Raw/Canonical 生成的 XLSX 等派生视图，只供人工快速检查", "原始数据 Excel\n→ 基于 Canonical 生成的帖子/指标/评论明细视图；完整 Provider Raw 仍单独保存")
+          ttext = ttext.replace("#### XLSX 人工审阅布局", "#### 原始数据 XLSX 布局")
+          ttext = ttext.replace("审阅文件", "原始数据 Excel")
+          insert_anchor = "### 4.2 Mapper\n"
+          section = dedent('''
+          #### 长期五平台 `tikhub_test` 调试入口
+
+          `backend/src/aima_ugc/adapters/providers/tikhub_test/` 是五个平台长期无数据库调试入口。平台函数只准备业务参数，实际 endpoint、分页、Mapper、Capability、Decision 和增量历史边界都复用生产实现。
+
+          ```text
+          run_xiaohongshu / run_douyin / run_weibo / run_bilibili / run_kuaishou
+          → 生产 TikHub Runtime / Transport
+          → Raw
+          → 生产 Mapper → Canonical
+          → 生产 Collection Decision / known_comment_reached
+          → run_summary.json + state.json + 原始数据 Excel
+          ```
+
+          真实 `.env` 只保存在调试目录本地且不提交；关键词是函数参数。支持单关键词和多关键词，多关键词共享内容 identity 去重。同一运行达到 Provider 末页、业务软目标或技术页数上限后停止；XHS/B站还能在已验证最新排序下用已知评论历史边界停止下一页。
+
+          当前原始数据 Excel 是系统级共享导出尚未开发前的阶段性实现。未来正式共享 Raw-data Excel Exporter 落地时，必须按 Blueprint 13 删除 `tikhub_test` 的平行 Excel 代码并复用共享实现。
+
+          ''')
+          if insert_anchor not in ttext:
+              raise SystemExit("testing docs mapper anchor missing")
+          ttext = ttext.replace(insert_anchor, section + insert_anchor)
+          testing.write_text(ttext, encoding="utf-8")
+
+          # 根 README 增加人类入口，不复制实现细节。
+          root = Path("README.md")
+          rtext = root.read_text(encoding="utf-8")
+          root_anchor = "Stage 8 尚未开始。当前五平台生产实现使用同一 Collection/Content 边界，普通 CI 通过 Fake Transport + 合法脱敏 Fixture 验证，不产生付费 TikHub 请求；真实 Provider Probe 仅在明确授权和请求上限下作为外部兼容证据。当前没有请求/金额 Budget、Budget Account 或 Reservation Ledger。"
+          root_new = root_anchor + "\n\n五平台无数据库 TikHub 独立调试入口见 [`backend/src/aima_ugc/adapters/providers/tikhub_test/README.md`](backend/src/aima_ugc/adapters/providers/tikhub_test/README.md)。它复用生产 Runtime/Operation/Mapper/Decision，支持单/多关键词，输出 Raw、Canonical、`run_summary.json`、跨运行 state 和原始数据 Excel；当前评论增量只对真实排序证据充分的小红书、B站开启。"
+          if root_anchor not in rtext:
+              raise SystemExit("root README status anchor missing")
+          root.write_text(rtext.replace(root_anchor, root_new), encoding="utf-8")
+
+          # Change 记录当前真实范围；保持 in_progress，最终 CI/Review 后再由主 Agent 标 ready_for_review。
+          change = Path("changes/active/CHG-20260817-tikhub-debug-harness/CHANGE.md")
+          ch = change.read_text(encoding="utf-8")
+          ch = ch.replace("title: TikHub 五平台独立调试与 XHS 增量评论一致性修复", "title: TikHub 五平台独立调试与评论增量一致性修复")
+          ch = ch.replace("# TikHub 五平台独立调试与 XHS 增量评论一致性修复", "# TikHub 五平台独立调试与评论增量一致性修复")
+          ch = ch.replace("Raw、Canonical、manifest、跨运行轻量 state", "Raw、Canonical、`run_summary.json`、跨运行轻量 state")
+          ch = ch.replace("Raw、Canonical、manifest 和 XLSX", "Raw、Canonical、`run_summary.json` 和 XLSX")
+          ch = ch.replace("manifest/Excel", "run summary/Excel")
+          ch = ch.replace("Raw、Canonical、manifest 或 Excel", "Raw、Canonical、run summary 或 Excel")
+          ch = ch.replace("### B. XHS 生产增量评论闭环", "### B. 五平台生产评论增量闭环")
+          ch = ch.replace("9. XHS Capability 声明 `supports_incremental_comment_sort=True`；其他四个平台除非存在同等级官方/Fixture/真实证据，否则保持当前值，不顺手扩大能力。", "9. XHS 与 B站 Capability 声明 `supports_incremental_comment_sort=True`；抖音、微博、快手基于当前官方/真实排序证据保持 `False`，不得为统一形式强行扩大能力。")
+          ch = ch.replace("不把尚未验证稳定最新评论语义的抖音/微博/B站/快手强行声明为增量评论能力。", "不把当前没有安全最新评论边界证据的抖音/微博/快手强行声明为增量评论能力。")
+          ch = ch.replace("本轮只纠正 XHS 已批准 Capability/执行缺口。", "本轮纠正已批准评论增量设计在生产执行层的缺口，并按真实证据更新 XHS/B站 Capability；不改变五个平台主 Operation/Mapper/Canonical 语义。")
+          ch = ch.replace("8. XHS 官方 `latest_v2` + 当前生产 Operation 固定发送该参数，满足已批准 Blueprint 的稳定最新排序前提；本轮只为 XHS 开启生产增量评论能力。", "8. XHS `latest_v2` 与 B站 `mode=2 + next_offset=0` 都取得当前真实多评论顺序证据，因此两者开启生产增量；抖音无最新评论排序参数，微博/快手真实顺序不满足安全边界，保持关闭。")
+          evidence = dedent('''
+
+          ### 五平台真实排序与兼容证据（GitHub-hosted Runner）
+
+          - `32045460636`：五平台首轮真实验证。XHS `latest_v2` 获得 6 条唯一一级评论且时间严格非增；快手获得 94 条唯一一级评论但时间顺序非严格非增。
+          - `32047972292`：抖音 post-fix 真实兼容验证，生产 extractor 从 8 个混合业务卡片中过滤并映射 7 个稳定 `aweme_id`，Detail/Comments 主链可继续；抖音评论 Operation 仍无已批准最新评论排序参数。
+          - `32048374466`：微博真实 shape 验证，Search/Detail 可映射；21 个评论候选中 20 个为有效稳定 ID，`sort_type=1` 的 20 个评论时间顺序 `time_nonincreasing=false`，因此不启用增量。
+          - `32049910092`：B站最终定向验证，生产 `mode=2 + next_offset=0` 在 Provider 报告 105 条评论的样本上返回 20 条，20/20 comment ID 唯一、20 个时间戳严格非增；结合官方 `mode=2=time`，启用 B站增量。
+          - 所有真实调用使用一次性 RSA-3072 OAEP-SHA256 凭据交接，Runner 接收后立即清理 PR 密文占位和临时密钥材料；明文 TikHub Key 未写入 Git、PR、日志或 Artifact。
+          ''')
+          if "### 五平台真实排序与兼容证据（GitHub-hosted Runner）" not in ch:
+              ch += evidence
+          change.write_text(ch, encoding="utf-8")
+          PY
+
+          uv run ruff format \
+            backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py \
+            backend/src/aima_ugc/adapters/providers/tikhub_test \
+            tests/unit/collection/test_stage7_decision.py \
+            tests/unit/collection/test_tikhub_real_capabilities.py \
+            tests/unit/collection/test_tikhub_test_debug.py
+          uv run ruff check --fix \
+            backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py \
+            backend/src/aima_ugc/adapters/providers/tikhub_test \
+            tests/unit/collection/test_stage7_decision.py \
+            tests/unit/collection/test_tikhub_real_capabilities.py \
+            tests/unit/collection/test_tikhub_test_debug.py
+      - name: Verify finalization
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv lock --check
+          uv run ruff format --check backend tests scripts
+          uv run ruff check backend tests scripts
+          uv run mypy backend/src
+          uv run pytest \
+            tests/unit/collection/test_stage7_decision.py \
+            tests/unit/collection/test_tikhub_real_capabilities.py \
+            tests/unit/collection/test_bilibili_tikhub_operation.py \
+            tests/unit/collection/test_douyin_tikhub_operation.py \
+            tests/unit/collection/test_weibo_tikhub_operation.py \
+            tests/unit/collection/test_kuaishou_tikhub_operation.py \
+            tests/unit/collection/test_xhs_tikhub_operation.py \
+            tests/unit/collection/test_tikhub_test_debug.py \
+            tests/unit/collection/test_tikhub_test_debug_runtime.py \
+            -q
+          uv run python scripts/quality/check_architecture.py
+          uv run python scripts/quality/check_table_ownership.py
+          uv run python scripts/quality/scan_secrets.py
+          uv run python scripts/quality/check_docs.py
+          git diff --check
+      - name: Remove task-only workflows and commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm -f --ignore-unmatch \
+            .github/workflows/tikhub-bilibili-weibo-green.yml \
+            .github/workflows/tikhub-five-platform-comment-order-probe.yml \
+            .github/workflows/tikhub-system-green-patch.yml \
+            .github/workflows/tikhub-system-green-patch-v2.yml \
+            .github/workflows/tikhub-system-green-patch-v3.yml \
+            .github/workflows/tikhub-system-green-patch-v4.yml \
+            .github/workflows/tikhub-system-green-patch-v5.yml \
+            .github/workflows/tikhub-test-lock-refresh.yml \
+            .github/workflows/tikhub-finalize-system.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "完成 TikHub 五平台评论增量一致性修复"
+          git push origin HEAD:agent/tikhub-test-debug
