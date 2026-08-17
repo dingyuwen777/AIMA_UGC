@@ -178,9 +178,9 @@ class PostgresContentRepository:
         version_no = int(current["current_version"])
         merged = dict(current)
         merged.update(current_updates)
-        business_changed = _business_tuple(
-            current, _CONTENT_BUSINESS_COLUMNS
-        ) != _business_tuple(merged, _CONTENT_BUSINESS_COLUMNS)
+        business_changed = _business_tuple(current, _CONTENT_BUSINESS_COLUMNS) != _business_tuple(
+            merged, _CONTENT_BUSINESS_COLUMNS
+        )
         version_no += 1 if business_changed else 0
         updates: dict[str, Any] = {
             "first_seen_at": min(current["first_seen_at"], observation.observed_at),
@@ -298,9 +298,9 @@ class PostgresContentRepository:
         version_no = int(current["current_version"])
         merged = dict(current)
         merged.update(current_updates)
-        business_changed = _business_tuple(
-            current, _COMMENT_BUSINESS_COLUMNS
-        ) != _business_tuple(merged, _COMMENT_BUSINESS_COLUMNS)
+        business_changed = _business_tuple(current, _COMMENT_BUSINESS_COLUMNS) != _business_tuple(
+            merged, _COMMENT_BUSINESS_COLUMNS
+        )
         version_no += 1 if business_changed else 0
         updates: dict[str, Any] = {
             "first_seen_at": min(current["first_seen_at"], observation.observed_at),
@@ -557,9 +557,7 @@ class PostgresContentRepository:
                     )
                 )
             elif row["external_id"] != external_id:
-                raise ValueError(
-                    f"账号稳定外部 ID 冲突: account_id={account_id} id_type={id_type}"
-                )
+                raise ValueError(f"账号稳定外部 ID 冲突: account_id={account_id} id_type={id_type}")
 
     def _append_content_version(
         self,
@@ -874,11 +872,7 @@ def _initial_freshness(
     field_columns: dict[str, str],
     observed_at: datetime,
 ) -> dict[str, str]:
-    return {
-        field: observed_at.isoformat()
-        for field in observed_fields
-        if field in field_columns
-    }
+    return {field: observed_at.isoformat() for field in observed_fields if field in field_columns}
 
 
 def _fresh_updates(
