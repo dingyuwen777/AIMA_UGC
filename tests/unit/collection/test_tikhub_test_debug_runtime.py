@@ -138,17 +138,15 @@ def test_xhs_debug_runtime_reuses_production_flow_and_skips_unchanged_refresh(
     assert first.reply_count == 1
     assert len(list((first.run_dir / "raw").glob("*.json"))) == 4
 
-    content_lines = (first.run_dir / "canonical" / "contents.jsonl").read_text(
-        encoding="utf-8"
-    ).splitlines()
-    comment_lines = (first.run_dir / "canonical" / "comments.jsonl").read_text(
-        encoding="utf-8"
-    ).splitlines()
+    content_lines = (
+        (first.run_dir / "canonical" / "contents.jsonl").read_text(encoding="utf-8").splitlines()
+    )
+    comment_lines = (
+        (first.run_dir / "canonical" / "comments.jsonl").read_text(encoding="utf-8").splitlines()
+    )
     assert len(content_lines) == 2
     assert len(comment_lines) == 2
-    assert {json.loads(line)["external_content_id"] for line in comment_lines} == {
-        "note-fixture-1"
-    }
+    assert {json.loads(line)["external_content_id"] for line in comment_lines} == {"note-fixture-1"}
     assert json.loads(first.manifest_path.read_text(encoding="utf-8"))["status"] == "completed"
 
     workbook = load_workbook(first.workbook_path, data_only=False)

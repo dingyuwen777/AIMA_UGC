@@ -174,9 +174,7 @@ def test_review_workbook_uses_approved_content_comment_layout(tmp_path: Path) ->
         assert sheet["P3"].number_format == "@"
 
         assert sheet["H2"].hyperlink is not None
-        assert sheet["H2"].hyperlink.target == (
-            "https://example.invalid/note/00123456789012345678"
-        )
+        assert sheet["H2"].hyperlink.target == ("https://example.invalid/note/00123456789012345678")
         assert sheet["T2"].value == "'=2+2"
         assert sheet["T2"].data_type != "f"
         assert sheet["T3"].value == "二级评论"
@@ -185,7 +183,12 @@ def test_review_workbook_uses_approved_content_comment_layout(tmp_path: Path) ->
         assert sheet["A1"].fill.fill_type == "solid"
         for row in sheet.iter_rows():
             for cell in row:
-                for side in (cell.border.left, cell.border.right, cell.border.top, cell.border.bottom):
+                for side in (
+                    cell.border.left,
+                    cell.border.right,
+                    cell.border.top,
+                    cell.border.bottom,
+                ):
                     assert side.style != "thick"
     finally:
         loaded.close()

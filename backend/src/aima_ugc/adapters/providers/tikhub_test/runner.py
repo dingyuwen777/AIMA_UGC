@@ -257,7 +257,9 @@ class _TikHubDebugRunner:
             )
 
         comments: list[ReviewCommentRow] = []
-        coverage = self._coverage_for_skipped_comments(decision.comment_action, decision.comment_reason)
+        coverage = self._coverage_for_skipped_comments(
+            decision.comment_action, decision.comment_reason
+        )
         if decision.comment_action not in {"skip", "defer_until_detail"}:
             comments, coverage = self._fetch_comments(
                 transport,
@@ -286,11 +288,7 @@ class _TikHubDebugRunner:
         after_detail: bool,
     ):
         current_count = content.metrics.comment_count
-        previous = (
-            PreviousContentStateV1(comment_count=previous_count)
-            if previous_exists
-            else None
-        )
+        previous = PreviousContentStateV1(comment_count=previous_count) if previous_exists else None
         context = CollectionDecisionContextV1(
             scheduled_refresh_checkpoint=self.force_refresh and not after_detail,
         )
@@ -303,13 +301,9 @@ class _TikHubDebugRunner:
                 current=ContentObservationV1(
                     comment_count=current_count,
                     comments_available=None,
-                    search_missing_required_fields=(
-                        not after_detail and current_count is None
-                    ),
+                    search_missing_required_fields=(not after_detail and current_count is None),
                     business_changed=(
-                        not after_detail
-                        and previous_exists
-                        and previous_count != current_count
+                        not after_detail and previous_exists and previous_count != current_count
                     ),
                 ),
                 previous=previous,
@@ -512,19 +506,14 @@ class _TikHubDebugRunner:
         )
         status_code = response.status_code
         if status_code is not None and status_code >= 400:
-            raise RuntimeError(
-                f"TikHub {self.platform} {call.operation} 返回 HTTP {status_code}"
-            )
+            raise RuntimeError(f"TikHub {self.platform} {call.operation} 返回 HTTP {status_code}")
         if not isinstance(response.body, dict):
-            raise RuntimeError(
-                f"TikHub {self.platform} {call.operation} 返回 JSON 顶层不是对象"
-            )
+            raise RuntimeError(f"TikHub {self.platform} {call.operation} 返回 JSON 顶层不是对象")
         return cast(dict[str, Any], response.body), raw_record
 
     def _content_limit_reached(self) -> bool:
         return (
-            self.limits.max_contents is not None
-            and len(self._blocks) >= self.limits.max_contents
+            self.limits.max_contents is not None and len(self._blocks) >= self.limits.max_contents
         )
 
     def _coverage_for_skipped_comments(self, action: str, reason: str) -> str:
