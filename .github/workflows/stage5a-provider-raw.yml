@@ -63,7 +63,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          uv run pytest tests/unit/collection/test_provider_client.py tests/integration/collection/test_raw_artifact.py tests/contracts/test_provider_v1.py -q
+          uv run pytest tests/unit/collection/test_provider_client.py tests/integration/collection/test_raw_artifact.py tests/integration/collection/test_raw_artifact_logging.py tests/contracts/test_provider_v1.py -q
 
       - name: Provider Contract drift
         shell: bash
