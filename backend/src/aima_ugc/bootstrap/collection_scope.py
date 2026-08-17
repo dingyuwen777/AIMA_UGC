@@ -29,22 +29,26 @@ from aima_ugc.adapters.providers.tikhub.runtime import (
     TikHubPlatform,
     advance_comments,
     advance_search,
+    advance_sub_comments,
     build_comments_call,
     build_detail_call,
     build_search_call,
+    build_sub_comments_call,
     extract_comment_items,
     extract_detail_items,
     extract_search_items,
+    extract_sub_comment_items,
     map_comment,
     map_content,
     mapping_context,
 )
-from aima_ugc.contracts.canonical import CanonicalContentV1
+from aima_ugc.contracts.canonical import CanonicalCommentV1, CanonicalContentV1
 from aima_ugc.contracts.collection import (
     CollectionDecisionPolicyV1,
     CollectionDecisionRequestV1,
     ContentObservationV1,
     ProviderPlatformCapabilityV1,
+    ReplyDecisionRequestV1,
 )
 from aima_ugc.contracts.provider import ProviderRequestV1
 from aima_ugc.modules.collection.collection_run_executor import (
@@ -64,12 +68,14 @@ from aima_ugc.platform.jobs.models import JobExecutionContextProtocol
 
 _MAX_SEARCH_PAGES = 100
 _MAX_COMMENT_PAGES = 100
+_MAX_SUB_COMMENT_PAGES = 100
 _COMMENT_FETCH_ACTIONS = {
     "fetch_adaptive",
     "fetch_incremental",
     "refresh_controlled",
     "probe_first_page",
 }
+_REPLY_FETCH_ACTIONS = {"fetch_nested", "fetch_first_page_only"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +101,7 @@ class _ScopeStats:
     search_items: int = 0
     detail_requests: int = 0
     comment_requests: int = 0
+    sub_comment_requests: int = 0
     comment_count: int = 0
     content_identities: set[tuple[str, str]] = field(default_factory=set)
 
@@ -107,6 +114,7 @@ class _ScopeStats:
             "search_items": self.search_items,
             "detail_requests": self.detail_requests,
             "comment_requests": self.comment_requests,
+            "sub_comment_requests": self.sub_comment_requests,
             "provider_requests": self.requested_count,
         }
 
@@ -283,6 +291,7 @@ class TikHubCollectionScopeExecutor:
                 scope=scope,
                 content=content,
                 provider_config=provider_config,
+                capability=capability,
                 context=context,
                 stats=stats,
                 comment_action=decision.comment_action,
@@ -343,6 +352,7 @@ class TikHubCollectionScopeExecutor:
         scope: CollectionScopeRecord,
         content: CanonicalContentV1,
         provider_config: ProviderConfig,
+        capability: ProviderPlatformCapabilityV1,
         context: JobExecutionContextProtocol,
         stats: _ScopeStats,
         comment_action: str,
@@ -396,6 +406,30 @@ class TikHubCollectionScopeExecutor:
                 fetched += 1
                 stats.comment_count += 1
 
+                reply_count = comment.metrics.reply_count or 0
+                reply_decision = self._decision_service.decide_reply(
+                    ReplyDecisionRequestV1(
+                        reply_count=reply_count,
+                        depth=2,
+                        policy=CollectionDecisionPolicyV1(),
+                        capability=capability,
+                    )
+                )
+                if (
+                    reply_decision.reply_action in _REPLY_FETCH_ACTIONS
+                    and not context.cancel_requested()
+                ):
+                    self._fetch_sub_comments(
+                        run=run,
+                        scope=scope,
+                        root_comment=comment,
+                        provider_config=provider_config,
+                        context=context,
+                        stats=stats,
+                        reply_action=reply_decision.reply_action,
+                        reply_target=reply_decision.reply_target,
+                    )
+
             if comment_target is not None and fetched >= comment_target:
                 return
             if comment_action == "probe_first_page":
@@ -411,6 +445,86 @@ class TikHubCollectionScopeExecutor:
             pagination_state = dict(advance.next_state)
 
         raise RuntimeError("TikHub Comments 达到技术分页上限")
+
+    def _fetch_sub_comments(
+        self,
+        *,
+        run: CollectionRunRecord,
+        scope: CollectionScopeRecord,
+        root_comment: CanonicalCommentV1,
+        provider_config: ProviderConfig,
+        context: JobExecutionContextProtocol,
+        stats: _ScopeStats,
+        reply_action: str,
+        reply_target: int | None,
+    ) -> None:
+        platform = _tikhub_platform(scope.platform)
+        pagination_state: dict[str, object] = {}
+        fetched = 0
+
+        for _page_no in range(1, _MAX_SUB_COMMENT_PAGES + 1):
+            if context.cancel_requested():
+                return
+            call = build_sub_comments_call(
+                platform=platform,
+                external_content_id=root_comment.external_content_id,
+                root_comment_id=root_comment.external_comment_id,
+                state=pagination_state,
+            )
+            executed = self._execute_call(
+                run=run,
+                scope=scope,
+                call=call,
+                provider_config=provider_config,
+                context=context,
+            )
+            stats.requested_count += 1
+            stats.succeeded_count += 1
+            stats.sub_comment_requests += 1
+
+            for index, raw_item in enumerate(extract_sub_comment_items(platform, executed.body)):
+                if reply_target is not None and fetched >= reply_target:
+                    return
+                reply = map_comment(
+                    platform=platform,
+                    raw=raw_item,
+                    context=mapping_context(
+                        provider_request_id=str(executed.request_id),
+                        provider_attempt_id=str(executed.attempt_id),
+                        raw_artifact_id=executed.raw_artifact_id,
+                        operation=call.operation,
+                        source_type=scope.source_type,
+                        source_value=scope.source_value,
+                        observed_at=self._observed_at(),
+                        external_content_id=root_comment.external_content_id,
+                        root_comment_id=root_comment.external_comment_id,
+                    ),
+                    item_locator=f"sub_comments.items[{index}]",
+                    is_root=False,
+                )
+                if reply.external_content_id != root_comment.external_content_id:
+                    raise ValueError("TikHub Reply 与 Content 身份不一致")
+                if reply.root_comment_id != root_comment.external_comment_id:
+                    raise ValueError("TikHub Reply 与 Root Comment 身份不一致")
+                self._content_writer.ingest_comment(canonical=reply, fence=context.fence)
+                fetched += 1
+                stats.comment_count += 1
+
+            if reply_target is not None and fetched >= reply_target:
+                return
+            if reply_action == "fetch_first_page_only":
+                return
+            advance = advance_sub_comments(
+                platform=platform,
+                state=pagination_state,
+                body=executed.body,
+            )
+            if not advance.should_continue:
+                return
+            assert advance.next_state is not None
+            pagination_state = dict(advance.next_state)
+
+        raise RuntimeError("TikHub SubComments 达到技术分页上限")
 
     def _execute_call(
         self,
