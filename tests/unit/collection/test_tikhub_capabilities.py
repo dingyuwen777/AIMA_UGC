@@ -48,13 +48,12 @@ def test_xhs_tikhub_capability_matches_current_stage6_operations() -> None:
 
     comments = _operation("comments")
     assert comments.provider_operations == ("get_note_comments",)
-    # TikHub API 支持更多排序，但当前 Stage 6 builder 固定 latest_v2；
-    # Capability 只能暴露当前仓库已经实现的选择。
     assert comments.comment_sort_modes == ("latest",)
     assert comments.supports_reply_count is True
     assert comments.supports_sub_comments is True
-    # 当前没有非空真实评论 Fixture 证明“遇到已知 comment_id 即可安全停”，保守关闭增量资格。
-    assert comments.supports_incremental_comment_sort is False
+    # App V2 当前生产 builder 固定发送 latest_v2；官方接口定义为时间倒序/最新优先。
+    # Blueprint 08 已批准在稳定最新排序下按已知 comment_id 边界停止下一页请求。
+    assert comments.supports_incremental_comment_sort is True
 
     replies = _operation("sub_comments")
     assert replies.provider_operations == ("get_note_sub_comments",)
