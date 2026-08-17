@@ -1,0 +1,68 @@
+name: Corrective Docs Cleanup Push Runner
+
+on:
+  push:
+    branches:
+      - fix/stage1-stage7-correctness
+    paths:
+      - ".github/workflows/corrective-doc-workflow-cleanup-push.yml"
+      - ".github/workflows/corrective-doc-workflow-cleanup.yml"
+      - "AGENTS.md"
+      - "README.md"
+      - "docs/**"
+      - ".github/workflows/stage7-*.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: fix/stage1-stage7-correctness
+          fetch-depth: 0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+      - name: Install locked environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+      - name: Execute reviewed cleanup payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path(".github/workflows/corrective-doc-workflow-cleanup.yml")
+          text = workflow.read_text(encoding="utf-8")
+          marker = "          python - <<'PY'\n"
+          end_marker = "\n          PY\n"
+          if text.count(marker) != 1:
+              raise SystemExit("cleanup Python start marker is not unique")
+          payload = text.split(marker, 1)[1].split(end_marker, 1)[0]
+          exec(compile(textwrap.dedent(payload), str(workflow), "exec"), {})
+          PY
+          uv run python scripts/quality/check_docs.py
+          uv run python scripts/quality/scan_secrets.py
+          if grep -R --line-number --fixed-string 'feature/stage7-completion' .github/workflows; then
+            echo 'obsolete Stage 7 branch-bound workflow remains' >&2
+            exit 1
+          fi
+          test -f .github/workflows/stage7-tikhub-real-shape.yml
+          grep -q 'workflow_dispatch:' .github/workflows/stage7-tikhub-real-shape.yml
+          git diff --check
+          git status --short
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add AGENTS.md README.md docs .github/workflows
+          git commit -m "同步 Stage 1-7 长期文档并清理旧探针任务"
+          git push origin HEAD:fix/stage1-stage7-correctness
