@@ -42,6 +42,7 @@ from aima_ugc.modules.collection.providers import (
     ProviderTransportResponse,
     RawArtifactService,
 )
+from aima_ugc.modules.collection.tables import provider_requests_table
 from aima_ugc.modules.system.models import ProviderConfig
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
@@ -306,12 +307,7 @@ def test_takeover_reconciles_search_raw_then_formal_scope_replays_without_resend
             attempts = PostgresProviderRepository(session).list_attempts(prepared.request.id)
             search_attempt = attempts[0]
             request_count = session.scalar(
-                select(func.count()).select_from(
-                    __import__(
-                        "aima_ugc.modules.collection.tables",
-                        fromlist=["provider_requests_table"],
-                    ).provider_requests_table
-                )
+                select(func.count()).select_from(provider_requests_table)
             )
     finally:
         session.close()
