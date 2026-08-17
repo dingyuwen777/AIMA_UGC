@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -21,6 +22,8 @@ from aima_ugc.platform.storage import ArtifactRecord
 
 from .provider_persistence import ProviderAttemptRecord
 from .providers import RawArtifactIntegrityError
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,8 +128,13 @@ class ProviderAttemptReconciler:
                     _attempt_from_envelope(candidate, envelope),
                     artifact.id,
                 )
-            except RawArtifactIntegrityError:
-                pass
+            except RawArtifactIntegrityError as exc:
+                logger.warning(
+                    "provider_raw_recovery_rejected attempt_id=%s artifact_id=%s reason=%s",
+                    candidate.attempt.id,
+                    artifact.id,
+                    str(exc),
+                )
         return _unknown_attempt(candidate.attempt, completed_at=self._clock()), None
 
 
