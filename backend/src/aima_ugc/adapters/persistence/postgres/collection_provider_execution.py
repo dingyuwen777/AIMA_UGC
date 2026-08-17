@@ -84,9 +84,7 @@ class PostgresFencedProviderAttemptPreparer:
                         "同一 Provider Request 存在多个 reserved Attempt，无法安全恢复"
                     )
 
-                resolved_attempt_id = (
-                    reserved_attempts[0].id if reserved_attempts else attempt_id
-                )
+                resolved_attempt_id = reserved_attempts[0].id if reserved_attempts else attempt_id
                 return service.prepare_billable_attempt(
                     request=request,
                     provider_config_id=provider_config_id,
