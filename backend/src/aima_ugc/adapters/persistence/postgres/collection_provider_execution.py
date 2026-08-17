@@ -13,6 +13,7 @@ from aima_ugc.contracts.provider import ProviderBillingV1, ProviderRequestV1
 from aima_ugc.modules.collection.candidate_tables import collection_candidates_table
 from aima_ugc.modules.collection.provider_persistence import (
     PreparedProviderAttempt,
+    ProviderAttemptRecord,
     ProviderPersistenceConflictError,
     ProviderPersistenceService,
 )
@@ -119,6 +120,16 @@ class PostgresFencedProviderAttemptPreparer:
                         request=persisted_request,
                         attempt=successful,
                     )
+
+                if attempts:
+                    latest_attempt = max(attempts, key=lambda item: item.attempt_no)
+                    if latest_attempt.dispatch_status != "reserved" and not _attempt_allows_retry(
+                        latest_attempt
+                    ):
+                        return PreparedProviderAttempt(
+                            request=persisted_request,
+                            attempt=latest_attempt,
+                        )
 
                 reserved_attempts = [
                     attempt for attempt in attempts if attempt.dispatch_status == "reserved"
@@ -255,6 +266,17 @@ class PostgresFencedProviderAttemptPreparer:
             or ownership.job_id != fence.job_id
         ):
             raise LeaseLostError("Provider Request Scope 不属于当前 Job Fence")
+
+
+_RETRYABLE_HTTP_STATUSES = {408, 425, 429}
+
+
+def _attempt_allows_retry(attempt: ProviderAttemptRecord) -> bool:
+    if attempt.dispatch_status in {"not_sent", "unknown"}:
+        return True
+    if attempt.dispatch_status != "completed" or attempt.http_status is None:
+        return False
+    return attempt.http_status in _RETRYABLE_HTTP_STATUSES or attempt.http_status >= 500
 
 
 __all__ = [

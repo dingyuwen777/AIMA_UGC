@@ -843,6 +843,19 @@ class TikHubCollectionScopeExecutor:
         )
 
         if prepared.attempt.dispatch_status == "completed":
+            if prepared.attempt.error_code is not None or (
+                prepared.attempt.http_status is not None and prepared.attempt.http_status >= 400
+            ):
+                status_code = prepared.attempt.http_status
+                raise _ProviderCallFailed(
+                    error_code=(
+                        prepared.attempt.error_code
+                        or (f"http_{status_code}" if status_code is not None else "provider_failed")
+                    ),
+                    retryable=(
+                        _retryable_http_status(status_code) if status_code is not None else False
+                    ),
+                )
             return self._replay_completed_call(request=request, prepared=prepared)
         if prepared.attempt.dispatch_status != "reserved":
             raise RuntimeError(
