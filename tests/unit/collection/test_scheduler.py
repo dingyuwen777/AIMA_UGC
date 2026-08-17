@@ -30,7 +30,6 @@ def _plan(*, next_run_at: datetime | None, enabled: bool = True) -> CollectionPl
         max_catch_up_runs=0,
         detail_policy="on_change",
         comment_policy="adaptive",
-        request_budget=100,
         created_by=None,
         created_at=now,
         updated_at=now,
