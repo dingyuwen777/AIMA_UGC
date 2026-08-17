@@ -1,0 +1,237 @@
+name: Corrective Docs And Workflow Cleanup
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/corrective-doc-workflow-cleanup.yml"
+      - "AGENTS.md"
+      - "README.md"
+      - "docs/**"
+      - ".github/workflows/stage7-*.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+      - name: Install locked environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+      - name: Update long-term facts and remove obsolete probes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected replacement source once, found {count}")
+              target.write_text(text.replace(old, new), encoding="utf-8")
+
+          replace_once(
+              "README.md",
+              """**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础、Stage 3B Canonical Contract、Stage 4 PostgreSQL Job Runtime、Stage 5A—5D Provider-neutral 基础，以及 Stage 6 小红书 TikHub App V2 纵切已经建立。** 当前仓库已经具备可安装 Python package、FastAPI/Vue 最小工程、固定 OpenAPI 与生成 TypeScript Client、本地前后端联调、Windows x64 开发环境引导，业务无关 Platform/数据库基础，Provider/平台无关的 Canonical V1 与 Provider V1 Pydantic Contract、一次发送 Fake Transport，以及持久化 Job、Collection 执行父事实、Provider Request/Attempt、不可变 Raw Artifact、受 Fencing 约束的 Dispatch 和崩溃恢复验证闭环。
+
+仍未进入五平台和产品功能批量开发阶段。Stage 6 已在不启用真实付费采集的前提下补齐首个小红书纵切：TikHub App V2 Operation/分页、纯 Mapper、合法脱敏 Fixture、Candidate/Ingestion 追加账本、Content/Comment Current+Version+Metric、已存 Raw 回放 Job，以及 PostgreSQL 18.4 独立 CI。当前真实 Provider 只做过用户明确授权的最小只读兼容 Probe；生产 Transport、多级预算、其余平台和 Scheduler 继续受 Stage 0/7 门禁约束。""",
+              """**Stage 1—7 的工程基线、Platform/数据库/Canonical、PostgreSQL Job Runtime、Provider Request/Attempt + Raw、Collection Run/Scope、五平台 TikHub Operation/Mapper/Ingestion，以及 Scheduler/正式 Worker 主链已经建立。** 当前仓库具备可安装 Python package、FastAPI/Vue 最小工程、固定 OpenAPI 与生成 TypeScript Client、本地前后端联调、Windows x64 开发环境引导、PostgreSQL 18 Schema/Migration、Provider/平台无关 Canonical V1 与 Provider V1 Contract，以及 `Scheduler → Occurrence → Job → Run/Scope → Provider → Raw → Mapper → Canonical → Content Owner` 的持久化执行链。
+
+Stage 8 尚未开始。当前五平台生产实现使用同一 Collection/Content 边界，普通 CI 通过 Fake Transport + 合法脱敏 Fixture 验证，不产生付费 TikHub 请求；真实 Provider Probe 仅在明确授权和请求上限下作为外部兼容证据。当前没有请求/金额 Budget、Budget Account 或 Reservation Ledger。源码仍不能直接视为公网生产交付：Stage 8 业务 API/页面/认证授权，以及 Release 阶段的 Docker/离线发布、协调 Backup/Restore、生产镜像与恢复演练仍需后续正式门禁。""",
+          )
+          replace_once(
+              "README.md",
+              "- API、Worker、Scheduler、Migration 已有共用 Platform 的 bootstrap；Worker 已接入 Stage 4 PostgreSQL Job Runtime，正式 Scheduler 逻辑尚未实现。",
+              "- API、Worker、Scheduler、Migration 共用 Platform bootstrap；Stage 7 已接通 Scheduler Runtime、正式 Collection Job Registry/JobWorker 与 TikHub Scope 执行链，Worker 进程的常驻服务管理仍属于后续部署/Release 形态。",
+          )
+          replace_once(
+              "README.md",
+              """Stage 6 没有启用真实 HTTP Transport、预算 Reservation/Settlement、公开 HTTP API 或前端。2026-08-14 的受控真实搜索 Probe 只确认当前 HTTP 200 响应包装、分页会话字段和空页停止结构；实时返回项为空，非空字段映射仍以仓库中的合法脱敏 Fixture 和自动化测试为证据，不能据此宣称详情/评论或生产采集已经验收。
+
+## 环境、启动与部署""",
+              """Stage 6 没有启用真实 HTTP Transport、预算 Reservation/Settlement、公开 HTTP API 或前端。2026-08-14 的受控真实搜索 Probe 只确认当前 HTTP 200 响应包装、分页会话字段和空页停止结构；实时返回项为空，非空字段映射仍以仓库中的合法脱敏 Fixture 和自动化测试为证据，不能据此宣称详情/评论或生产采集已经验收。
+
+### Stage 7：五平台采集、计划调度与正式 Worker
+
+- 小红书、抖音、微博、B站、快手均通过 TikHub 平台 Operation/Extractor/Mapper 进入同一 Canonical/Content Owner，不建立平台专用业务表；
+- `provider_configs.secret_ref` 固定 Provider 配置与 Secret 边界，Provider Request/Attempt 保存 Billing/成本快照和潜在重复计费审计事实，但当前没有 Budget 发送门禁；
+- Keyword Pack、Collection Plan/Plan Platform、Occurrence 和 `latest_only` Scheduler Runtime 已关系化持久化；
+- `collection.run.v1` 正式链路由 JobWorker 驱动 `CollectionRunExecutor → TikHubCollectionScopeExecutor`，支持 Scope durable checkpoint、终态 Scope 跳过、Provider 可重试错误跨 Job Attempt 恢复；
+- 遗留 `dispatching` Attempt 先由 Reconciler 校验确定性 Raw：完整 Raw 存在时直接恢复并 replay，禁止因 Worker takeover 再次发送同一 Provider 请求；
+- 评论/回复 target 是跨页软目标，当前已经返回的整页全部摄取；评论采集同时记录 complete/partial/not_requested/unavailable Coverage 及 sample/sort/target/stop reason；
+- Account/Content/Comment 首次并发插入由 PostgreSQL 唯一约束 + `ON CONFLICT` 收敛；较旧乱序 Observation 不覆盖较新的 Current，但仍可保留合法历史事实。
+
+Stage 7 的真实 Provider 兼容证据由受控 Probe、合法脱敏 Fixture 与 `docs/blueprint/10`—`12` 维护；一次 HTTP 200 不等于长期稳定性承诺。Stage 8 仍是下一正式业务阶段。
+
+## 环境、启动与部署""",
+          )
+          replace_once(
+              "README.md",
+              "Job Runtime、Collection 父事实、Provider 持久化、Dispatch/恢复和小红书纵切的完整迁移路径分别由 `Stage 4 Job Runtime`、`Stage 5B Collection Execution`、`Stage 5C Provider Persistence`、`Stage 5D Provider Dispatch`、`Stage 6 XHS Vertical Slice` CI 维护；统一测试入口见 [`docs/测试与调试说明.md`](docs/测试与调试说明.md)。",
+              "Job Runtime、Collection 父事实、Provider 持久化、Dispatch/恢复、Content/Ingestion、五平台规范化与 Scheduler 的完整回归分别由 Stage 4/5/6/7 正式 Workflow 维护；Collection 恢复、Coverage、Provider retry 和 Content 并发/乱序回归也包含在对应 PostgreSQL Integration 中。统一测试入口见 [`docs/测试与调试说明.md`](docs/测试与调试说明.md)。",
+          )
+
+          replace_once(
+              "docs/环境运行与部署.md",
+              """- **Windows x64 一键开发环境初始化：Go**；
+- **本地前后端开发启动：Go**；
+- **Stage 2 Platform 本地配置、PostgreSQL 连接与 `/health/ready`：Go**；
+- **Stage 3A Alembic Migration 与基础 Repository 开发：Go**；
+- **Linux/macOS 手工准备运行时 + 锁定依赖安装：Go**；
+- **当前源码直接作为生产系统部署：No-Go**。
+
+生产 No-Go 的原因是 Canonical/其余业务 Schema、认证授权、Job Runtime、正式 Scheduler、Docker Compose 和生产 Release 等后续能力尚未完整落地和验收。Stage 3A 已建立 Alembic 和三张基础表，但这只证明数据库基础可开发、可迁移，不等于生产 Schema 或部署已完成。""",
+              """- **Windows x64 一键开发环境初始化：Go**；
+- **本地前后端开发启动：Go**；
+- **Platform 配置、PostgreSQL 连接、Artifact/日志目录与 `/health/ready`：Go**；
+- **Alembic Migration、Stage 1—7 Repository/Job/Collection/Content 开发与 PostgreSQL Integration：Go**；
+- **Stage 7 Scheduler Runtime：Go（代码入口与测试已建立）**；
+- **Stage 7 Collection Job Registry/JobWorker 装配：Go（生产调用链已验证；常驻进程管理不在当前文档伪造命令）**；
+- **Linux/macOS 手工准备运行时 + 锁定依赖安装：Go**；
+- **当前源码直接作为公网生产系统部署：No-Go**。
+
+生产 No-Go 不再是因为 Job Runtime、Scheduler 或五平台采集尚未实现；这些 Stage 1—7 机器能力已经存在。当前阻塞生产交付的是 Stage 8 正式业务 API/页面/认证授权，以及 Release 阶段尚未闭环的 Docker/离线 Release、生产镜像固定、协调 Backup/Restore 写屏障、恢复演练和生产验收。开发/CI 可运行不等于生产发布已完成。""",
+          )
+
+          replace_once(
+              "docs/测试与调试说明.md",
+              "覆盖一次发送、成功、429、5xx、发送前失败、发送后结果未知、费用状态和测试 Token 排除序列化。Stage 6 已在该边界之上增加小红书 TikHub App V2 Operation/Mapper，但普通测试仍不访问真实 Provider。",
+              "覆盖一次发送、成功、429、5xx、发送前失败、发送后结果未知、费用状态和测试 Token 排除序列化。Stage 7 已在该边界之上接通小红书、抖音、微博、B站、快手 TikHub Operation/Mapper；普通测试仍使用 Fake + 脱敏 Fixture，不访问真实付费 Provider。",
+          )
+          replace_once(
+              "docs/测试与调试说明.md",
+              """Stage 7 实现五个平台正式 Operation 时，必须同时建立一个统一人工 Probe 脚本/入口。这个入口不是第二套采集器：""",
+              """Stage 7 已建立受控 Real Provider Probe 脚本；它们复用生产 Operation/Transport/Mapper，不是第二套采集器。当前主要入口包括：
+
+```text
+scripts/dev/probe_tikhub_api_families.py
+scripts/dev/probe_tikhub_endpoint_ledger.py
+scripts/dev/probe_tikhub_stage7_search.py
+scripts/dev/probe_tikhub_stage7_detail_comments.py
+scripts/dev/probe_tikhub_stage7_replies.py
+```
+
+统一原则仍是：""",
+          )
+          replace_once(
+              "docs/测试与调试说明.md",
+              "这里不预先发明四个平台尚未批准的参数名，也不要求五个平台拥有完全相同的私有参数。具体脚本路径、配置模型和运行命令在 Stage 7 实现存在后由代码、模块 README 和测试补成机器可执行事实；本文现在只冻结调试能力和输出要求。",
+              "五个平台不要求拥有相同的 Provider 私有参数；脚本只调用当前代码已经批准的 Operation/分页状态机。新增或替换 endpoint 时，先以官方资料、现有 Fixture/台账确认；仍有结构不确定时才在用户明确授权下用 GitHub Runner 做有请求上限的最小真实 Probe，并把合法脱敏结果固化为 Fixture/台账。",
+          )
+          replace_once(
+              "docs/测试与调试说明.md",
+              """Stage 6 小红书 Mapper 使用 2026-08-05 合法脱敏的非空 `search_notes` Fixture，并从生产 Mapper 进入：
+
+```bash
+uv run pytest tests/unit/collection/test_xhs_tikhub_mapper.py -q
+```
+
+Fixture 只证明已观察到的搜索字段结构；详情和评论使用确定性结构测试，尚无真实响应 Fixture，不能宣称
+当日真实兼容验收。""",
+              """Stage 7 五个平台 Mapper/Extractor 都从生产实现进入，并使用 `tests/fixtures/providers/tikhub/{xhs,douyin,weibo,bilibili,kuaishou}/` 下的合法脱敏真实/固定 Fixture 维护已观察结构。平台 Operation/Mapper/Capability 的单元测试和 `Stage 7 Normalization CI V2` 共同防止字段映射漂移。
+
+```bash
+uv run pytest tests/unit/collection/test_xhs_tikhub_mapper.py -q
+uv run pytest tests/unit/collection -q
+```
+
+Fixture 证明的是已捕获并脱敏的响应形态，不承诺 Provider 永久不变；真实接口变化必须先保留 Raw 证据，再更新 Mapper/Fixture/测试，不能凭一次在线请求静默改字段。""",
+          )
+          replace_once(
+              "docs/测试与调试说明.md",
+              """PostgreSQL Integration 覆盖真实来源链、Content/Comment Current+Version+Metric、指标下降、每日检查点、
+事务回滚、Candidate/Ingestion 追加账本 Trigger、成功结果 Check，以及 `collection.xhs.raw-replay.v1`
+从已存 Raw 进入正式 Mapper/Ingestion/Owner Repository。完整 Migration 多路径由
+`.github/workflows/stage6-xhs-vertical-slice.yml` 在 PostgreSQL 18.4 验证。""",
+              """PostgreSQL Integration 覆盖真实来源链、Content/Comment Current+Version+Metric、指标下降、每日检查点、
+事务回滚、Candidate/Ingestion 追加账本 Trigger、成功结果 Check，以及 `collection.xhs.raw-replay.v1`
+从已存 Raw 进入正式 Mapper/Ingestion/Owner Repository。当前额外回归首次并发 Account/Content/Comment 收敛、旧 Observation 不回滚较新 Current、稀疏指标历史、Comment Coverage、Detail 后评论重决策、整页软目标、Provider Raw takeover 不重发，以及 HTTP 500 → Job retry → 同逻辑 Request 新 Provider Attempt 成功。完整 Migration 多路径由
+`.github/workflows/stage6-xhs-vertical-slice.yml` 与 Stage 5D/通用 CI 在 PostgreSQL 18.4 验证。
+
+```bash
+uv run pytest tests/integration/content/test_content_current_concurrency.py -q
+uv run pytest tests/integration/collection/test_collection_comment_coverage_runtime.py -q
+uv run pytest tests/integration/collection/test_collection_scope_recovery_runtime.py -q
+uv run pytest tests/integration/collection/test_collection_worker_retry_runtime.py -q
+```""",
+          )
+          replace_once(
+              "docs/测试与调试说明.md",
+              "目标：证明持久化 Job 的认领、恢复、Lease、Fencing、Deadline、重试、取消和超时状态语义正确。Provider 多级预算属于后续 Provider/Collection 阶段，不由 Stage 4 Job Runtime 测试冒充已验证。",
+              "目标：证明持久化 Job 的认领、恢复、Lease、Fencing、Deadline、重试、取消和超时状态语义正确。当前版本不实现多级预算账户或 Reservation Ledger；Provider Billing/成本事实与重试/恢复由 Provider/Collection 专项验证，未来 Budget 如重新进入范围必须另建 L3 Change。",
+          )
+
+          replace_once(
+              "docs/blueprint/03-数据库与文件存储.md",
+              "`comment_coverage_observations` 保存一次评论采集对某个内容或线程的覆盖事实：`complete/partial/not_requested/unavailable`、平台报告总数、已采集数、观察时间和来源。这样 Read Model 能区分“没有评论”和“没有抓评论”。",
+              "`comment_coverage_observations` 保存一次评论采集对某个内容或线程的覆盖事实：`complete/partial/not_requested/unavailable`、平台报告总数、已采集数、`sample_mode`、`sort_mode`、`target_count`、`stop_reason`、观察时间和 Provider Attempt/Raw 来源。同一 `content_id + provider_attempt_id + raw_artifact_id` 来源必须幂等。这样 Read Model 不仅能区分“没有评论”和“没有抓评论”，还能解释为什么停止、是否为抽样以及目标深度是多少。",
+          )
+          replace_once(
+              "docs/blueprint/03-数据库与文件存储.md",
+              "各值可空：`null` 表示未知/本次未提供，`0` 表示明确观察到零。新 Observation 可以比旧值小，禁止把指标写成单调递增或只保留最大值。继续使用 `initial`、`changed`、`daily_checkpoint`、来源 Attempt/Raw、`observation_key` 和 `Asia/Shanghai` 每日部分唯一约束保证历史与幂等。",
+              "各值可空：`null` 表示未知/本次未提供，`0` 表示明确观察到零。指标 Observation 必须按本次 `observed_fields` 稀疏记录，未观察字段保持 `null`，不能从 Current 静默复制旧值伪造历史。新 Observation 可以比旧值小，禁止把指标写成单调递增或只保留最大值。较旧 `observed_at` 的补录仍可形成合法历史事实并向前扩展 `first_seen_at`，但不得覆盖更晚 Observation 已建立的 Current 字段、Current 指标、`updated_at` 或 `current_version`。继续使用 `initial`、`changed`、`daily_checkpoint`、来源 Attempt/Raw、`observation_key` 和 `Asia/Shanghai` 每日部分唯一约束保证历史与幂等。",
+          )
+
+          replace_once(
+              "AGENTS.md",
+              "所有业务写 Unit of Work、Artifact 生命周期和文件 rename/delete 必须参与统一共享 session-level advisory 写屏障，并在取得共享锁后复核维护 epoch。常规/发布 Backup Set 先启用维护，再取得同键独占锁等待在途写者排空，持有到数据库与文件捕获都完成；仅拒绝新 HTTP 请求不算一致性屏障。",
+              "进入 Release 阶段实现协调 Backup/Restore 后，所有业务写 Unit of Work、Artifact 生命周期和文件 rename/delete **必须**参与统一共享 session-level advisory 写屏障，并在取得共享锁后复核维护 epoch；Backup Set 再以同键独占锁等待在途写者排空并持有到数据库与文件捕获完成，仅拒绝新 HTTP 请求不算一致性屏障。Stage 1—7 当前尚未实现这套 Release 写屏障，不得在文档、测试或交付中伪造为已完成，也不得因此把 Release 范围偷偷塞入业务阶段。",
+          )
+          replace_once(
+              "AGENTS.md",
+              "- 多级预算账户并发预留、结算、释放和计费未知；",
+              "- Provider 同一逻辑 Request 的并发/重试/恢复：新发送必须新 Attempt，完整 Raw takeover 不重发，429/5xx/网络未知保留来源、费用与潜在重复计费事实；当前不测试已撤回的多级 Budget/Reservation；",
+          )
+
+          obsolete = [
+              ".github/workflows/stage7-endpoint-ledger-sanitizer.yml",
+              ".github/workflows/stage7-tikhub-api-family-probe.yml",
+              ".github/workflows/stage7-tikhub-detail-comments-probe.yml",
+              ".github/workflows/stage7-tikhub-endpoint-ledger.yml",
+              ".github/workflows/stage7-tikhub-fixture-probe.yml",
+              ".github/workflows/stage7-tikhub-fixture-probe-v2.yml",
+              ".github/workflows/stage7-tikhub-fixture-probe-v3.yml",
+              ".github/workflows/stage7-tikhub-replies-probe.yml",
+          ]
+          for item in obsolete:
+              path = Path(item)
+              text = path.read_text(encoding="utf-8")
+              if "feature/stage7-completion" not in text:
+                  raise SystemExit(f"{item}: obsolete branch marker missing")
+              if "workflow_dispatch:" in text:
+                  raise SystemExit(f"{item}: still has manual workflow_dispatch; refuse deletion")
+              path.unlink()
+          PY
+
+          uv run python scripts/quality/check_docs.py
+          uv run python scripts/quality/scan_secrets.py
+          if grep -R --line-number --fixed-string 'feature/stage7-completion' .github/workflows; then
+            echo 'obsolete Stage 7 branch-bound workflow remains' >&2
+            exit 1
+          fi
+          test -f .github/workflows/stage7-tikhub-real-shape.yml
+          grep -q 'workflow_dispatch:' .github/workflows/stage7-tikhub-real-shape.yml
+          git diff --check
+          git status --short
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add AGENTS.md README.md docs .github/workflows
+          git commit -m "同步 Stage 1-7 长期文档并清理旧探针任务"
+          git push origin HEAD:${GITHUB_HEAD_REF}
