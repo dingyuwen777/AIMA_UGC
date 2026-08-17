@@ -168,7 +168,7 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
             )
         )
         registry = create_collection_job_registry(
-            runtime,
+            runtime=runtime,
             transport_factory=lambda _config: transport,
             secret_resolver=lambda secret_ref: (
                 SecretStr("fixture-secret")
@@ -177,8 +177,8 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
             ),
         )
         worker = create_job_worker(
-            runtime,
-            registry,
+            runtime=runtime,
+            registry=registry,
             worker_id="collection-worker-integration",
             lease_seconds=120,
             retry_delay_seconds=0,
