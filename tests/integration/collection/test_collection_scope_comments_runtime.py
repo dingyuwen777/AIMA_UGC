@@ -10,7 +10,6 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataGateway,
 )
