@@ -67,6 +67,30 @@ class PostgresCollectionRunExecutionGateway:
         finally:
             session.close()
 
+    def checkpoint_scope(
+        self,
+        scope_id: UUID,
+        *,
+        fence: JobExecutionFence,
+        pagination_state: dict[str, object],
+        progress: int,
+        stats: dict[str, object],
+    ) -> CollectionScopeRecord:
+        """在当前 Fence 下保存 running Scope 的可恢复分页与统计状态。"""
+        session = self._session_factory()
+        try:
+            with session.begin():
+                repository = self._locked_repository(session, fence)
+                self._require_scope(repository, fence=fence, scope_id=scope_id)
+                return repository.checkpoint_scope(
+                    scope_id,
+                    pagination_state=pagination_state,
+                    progress=progress,
+                    stats=stats,
+                )
+        finally:
+            session.close()
+
     def finish_scope(
         self,
         scope_id: UUID,
