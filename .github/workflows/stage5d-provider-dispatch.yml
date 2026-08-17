@@ -86,95 +86,99 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
-          def replace_once(path: str, old: str, new: str) -> None:
-              target = Path(path)
-              text = target.read_text(encoding="utf-8")
-              if new in text:
-                  return
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"{path}: expected source once, found {count}")
-              target.write_text(text.replace(old, new), encoding="utf-8")
-
-          replace_once(
-              "backend/src/aima_ugc/adapters/persistence/postgres/collection_provider_execution.py",
-              """from aima_ugc.modules.collection.provider_persistence import (
-              PreparedProviderAttempt,
-              ProviderPersistenceConflictError,
-              ProviderPersistenceService,
-          )""".replace("              ", "    "),
-              """from aima_ugc.modules.collection.provider_persistence import (
-              PreparedProviderAttempt,
-              ProviderAttemptRecord,
-              ProviderPersistenceConflictError,
-              ProviderPersistenceService,
-          )""".replace("              ", "    "),
-          )
-          replace_once(
-              "backend/src/aima_ugc/adapters/persistence/postgres/collection_provider_execution.py",
-              """                reserved_attempts = [
-                      attempt for attempt in attempts if attempt.dispatch_status == "reserved"
-                  ]""".replace("                  ", "    "),
-              """                if attempts:
-                      latest_attempt = max(attempts, key=lambda item: item.attempt_no)
-                      if latest_attempt.dispatch_status != "reserved" and not _attempt_allows_retry(
-                          latest_attempt
-                      ):
-                          return PreparedProviderAttempt(
-                              request=persisted_request,
-                              attempt=latest_attempt,
-                          )
-
-                  reserved_attempts = [
-                      attempt for attempt in attempts if attempt.dispatch_status == "reserved"
-                  ]""".replace("                  ", "    "),
-          )
           provider_path = Path(
               "backend/src/aima_ugc/adapters/persistence/postgres/collection_provider_execution.py"
           )
-          provider_text = provider_path.read_text(encoding="utf-8")
-          helper = '''\n\n_RETRYABLE_HTTP_STATUSES = {408, 425, 429}\n\n\ndef _attempt_allows_retry(attempt: ProviderAttemptRecord) -> bool:\n    if attempt.dispatch_status in {"not_sent", "unknown"}:\n        return True\n    if attempt.dispatch_status != "completed" or attempt.http_status is None:\n        return False\n    return attempt.http_status in _RETRYABLE_HTTP_STATUSES or attempt.http_status >= 500\n'''
-          marker = '\n\n__all__ = [\n'
-          if helper.strip() not in provider_text:
+          provider_lines = provider_path.read_text(encoding="utf-8").splitlines()
+          if "    ProviderAttemptRecord," not in provider_lines:
+              matches = [
+                  index
+                  for index, line in enumerate(provider_lines)
+                  if line == "    PreparedProviderAttempt,"
+              ]
+              if len(matches) != 1:
+                  raise SystemExit(f"PreparedProviderAttempt import matches={len(matches)}")
+              provider_lines.insert(matches[0] + 1, "    ProviderAttemptRecord,")
+
+          if not any("latest_attempt = max(attempts" in line for line in provider_lines):
+              matches = [
+                  index
+                  for index, line in enumerate(provider_lines)
+                  if line == "                reserved_attempts = ["
+              ]
+              if len(matches) != 1:
+                  raise SystemExit(f"reserved_attempts matches={len(matches)}")
+              block = [
+                  "                if attempts:",
+                  "                    latest_attempt = max(attempts, key=lambda item: item.attempt_no)",
+                  "                    if latest_attempt.dispatch_status != \"reserved\" and not _attempt_allows_retry(",
+                  "                        latest_attempt",
+                  "                    ):",
+                  "                        return PreparedProviderAttempt(",
+                  "                            request=persisted_request,",
+                  "                            attempt=latest_attempt,",
+                  "                        )",
+                  "",
+              ]
+              provider_lines[matches[0]:matches[0]] = block
+
+          provider_text = "\n".join(provider_lines) + "\n"
+          helper = '''\n_RETRYABLE_HTTP_STATUSES = {408, 425, 429}\n\n\ndef _attempt_allows_retry(attempt: ProviderAttemptRecord) -> bool:\n    if attempt.dispatch_status in {"not_sent", "unknown"}:\n        return True\n    if attempt.dispatch_status != "completed" or attempt.http_status is None:\n        return False\n    return attempt.http_status in _RETRYABLE_HTTP_STATUSES or attempt.http_status >= 500\n\n'''
+          if "def _attempt_allows_retry(" not in provider_text:
+              marker = "\n__all__ = [\n"
               if provider_text.count(marker) != 1:
                   raise SystemExit("provider execution __all__ marker is not unique")
-              provider_path.write_text(
-                  provider_text.replace(marker, helper + marker),
-                  encoding="utf-8",
-              )
+              provider_text = provider_text.replace(marker, "\n" + helper + "__all__ = [\n")
+          provider_path.write_text(provider_text, encoding="utf-8")
 
-          replace_once(
-              "backend/src/aima_ugc/bootstrap/collection_scope.py",
-              """        if prepared.attempt.dispatch_status == "completed":
-              return self._replay_completed_call(request=request, prepared=prepared)""".replace(
-                  "              ", "    "
-              ),
-              """        if prepared.attempt.dispatch_status == "completed":
-              if prepared.attempt.error_code is not None or (
-                  prepared.attempt.http_status is not None
-                  and prepared.attempt.http_status >= 400
-              ):
-                  status_code = prepared.attempt.http_status
-                  raise _ProviderCallFailed(
-                      error_code=(
-                          prepared.attempt.error_code
-                          or (f"http_{status_code}" if status_code is not None else "provider_failed")
-                      ),
-                      retryable=(
-                          _retryable_http_status(status_code)
-                          if status_code is not None
-                          else False
-                      ),
-                  )
-              return self._replay_completed_call(request=request, prepared=prepared)""".replace(
-                  "              ", "    "
-              ),
-          )
-          replace_once(
-              "docs/测试与调试说明.md",
-              "平台 Operation/Mapper/Capability 的单元测试和 `Stage 7 Normalization CI V2` 共同防止字段映射漂移。",
-              "平台 Operation/Mapper/Capability 的单元测试、Stage 6/7 正式 CI，以及保留的 `Stage 7 TikHub Real Shape` 手动入口共同防止字段映射漂移。",
-          )
+          scope_path = Path("backend/src/aima_ugc/bootstrap/collection_scope.py")
+          scope_lines = scope_path.read_text(encoding="utf-8").splitlines()
+          if not any("status_code = prepared.attempt.http_status" in line for line in scope_lines):
+              starts = [
+                  index
+                  for index, line in enumerate(scope_lines)
+                  if line == '        if prepared.attempt.dispatch_status == "completed":'
+                  and index + 1 < len(scope_lines)
+                  and scope_lines[index + 1]
+                  == "            return self._replay_completed_call(request=request, prepared=prepared)"
+              ]
+              if len(starts) != 1:
+                  raise SystemExit(f"completed replay branch matches={len(starts)}")
+              replacement = [
+                  '        if prepared.attempt.dispatch_status == "completed":',
+                  "            if prepared.attempt.error_code is not None or (",
+                  "                prepared.attempt.http_status is not None",
+                  "                and prepared.attempt.http_status >= 400",
+                  "            ):",
+                  "                status_code = prepared.attempt.http_status",
+                  "                raise _ProviderCallFailed(",
+                  "                    error_code=(",
+                  "                        prepared.attempt.error_code",
+                  "                        or (",
+                  '                            f"http_{status_code}"',
+                  "                            if status_code is not None",
+                  '                            else "provider_failed"',
+                  "                        )",
+                  "                    ),",
+                  "                    retryable=(",
+                  "                        _retryable_http_status(status_code)",
+                  "                        if status_code is not None",
+                  "                        else False",
+                  "                    ),",
+                  "                )",
+                  "            return self._replay_completed_call(request=request, prepared=prepared)",
+              ]
+              scope_lines[starts[0] : starts[0] + 2] = replacement
+          scope_path.write_text("\n".join(scope_lines) + "\n", encoding="utf-8")
+
+          docs_path = Path("docs/测试与调试说明.md")
+          docs_text = docs_path.read_text(encoding="utf-8")
+          old = "平台 Operation/Mapper/Capability 的单元测试和 `Stage 7 Normalization CI V2` 共同防止字段映射漂移。"
+          new = "平台 Operation/Mapper/Capability 的单元测试、Stage 6/7 正式 CI，以及保留的 `Stage 7 TikHub Real Shape` 手动入口共同防止字段映射漂移。"
+          if new not in docs_text:
+              if docs_text.count(old) != 1:
+                  raise SystemExit(f"stale normalization doc matches={docs_text.count(old)}")
+              docs_path.write_text(docs_text.replace(old, new), encoding="utf-8")
           PY
           uv run ruff format \
             backend/src/aima_ugc/adapters/persistence/postgres/collection_provider_execution.py \
