@@ -235,7 +235,7 @@ Worker 必须原子认领 `queued` 或接管 Lease 已过期的 `running` Job，
 
 已校验 Raw 存在时禁止再次调用 Provider；网络结果未知时不能承诺零重复计费，必须按批准策略重试并记录计费未知/潜在重复费用。当前版本**不实现请求/金额预算、Budget Account 或 Reservation Ledger**，也不得为了预留扩展点保留 dormant Budget Service/Repository。Provider Request/Attempt 仍可保存 Billing/成本快照与潜在重复计费事实用于执行审计。Dispatch CAS 必须验证当前 Job Fencing，Transport 禁止在一次调用中隐藏自动网络重试；Attempt 进入 `dispatching` 后同一 Attempt 不得再次发送。未来若业务需要 Budget/Cost Guard，必须通过新的 L3 Change 明确 Contract、Schema、配置、Migration 和验证后再接入发送前边界。
 
-所有业务写 Unit of Work、Artifact 生命周期和文件 rename/delete 必须参与统一共享 session-level advisory 写屏障，并在取得共享锁后复核维护 epoch。常规/发布 Backup Set 先启用维护，再取得同键独占锁等待在途写者排空，持有到数据库与文件捕获都完成；仅拒绝新 HTTP 请求不算一致性屏障。
+进入 Release 阶段实现协调 Backup/Restore 后，所有业务写 Unit of Work、Artifact 生命周期和文件 rename/delete **必须**参与统一共享 session-level advisory 写屏障，并在取得共享锁后复核维护 epoch；Backup Set 再以同键独占锁等待在途写者排空并持有到数据库与文件捕获完成，仅拒绝新 HTTP 请求不算一致性屏障。Stage 1—7 当前尚未实现这套 Release 写屏障，不得在文档、测试或交付中伪造为已完成，也不得因此把 Release 范围偷偷塞入业务阶段。
 
 正常 Heartbeat 不写 INFO。Secret 不进 Job Payload。
 
@@ -321,7 +321,7 @@ uv run python scripts/quality/check_docs.py
 - Worker 在 claim、HTTP、Raw、业务提交和终态边界崩溃后恢复，旧/新 Lease 并发受 Fencing；
 - Attempt Deadline、Reaper 超时/取消/次数耗尽 CAS 和 Heartbeat 不续 Deadline；
 - 多 Scheduler 对同一 Occurrence 不重复、不丢失；
-- 多级预算账户并发预留、结算、释放和计费未知；
+- Provider 同一逻辑 Request 的并发/重试/恢复：新发送必须新 Attempt，完整 Raw takeover 不重发，429/5xx/网络未知保留来源、费用与潜在重复计费事实；当前不测试已撤回的多级 Budget/Reservation；
 - API Idempotency-Key 覆盖同/异 Payload、跨用户和过期；
 - 认证接入阶段按实际协议验证身份边界与授权；采用 Session 时覆盖 fixation、CSRF、撤销/过期，采用 OAuth/OIDC/飞书授权流程时覆盖 state/nonce/PKCE/回调绑定；通用授权覆盖 Permission/对象级权限/IDOR，其他安全专项继续覆盖 SSRF 重定向/DNS、路径/Zip/日志注入；
 - 中文搜索质量/性能基准、容量 Soak、数据库+Artifact 协调恢复和孤儿对账。
