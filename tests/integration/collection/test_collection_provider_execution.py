@@ -224,3 +224,33 @@ def test_valid_fence_cannot_prepare_request_for_another_jobs_scope(
         )
 
     assert _counts(database_runtime) == (0, 0)
+
+
+def test_resolve_or_prepare_reuses_existing_reserved_attempt(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    config = _provider_config(database_runtime)
+    run_id, scope_id, fence = _claimed_scope(database_runtime, source_value="爱玛")
+    preparer = PostgresFencedProviderAttemptPreparer(database_runtime.new_session)
+    first_request = _request(run_id=run_id, scope_id=scope_id, keyword="爱玛")
+    first_attempt_id = uuid4()
+    first = preparer.prepare_billable_attempt(
+        request=first_request,
+        provider_config_id=config.id,
+        attempt_id=first_attempt_id,
+        billing=_billing(),
+        fence=fence,
+    )
+
+    resumed = preparer.resolve_or_prepare_billable_attempt(
+        request=_request(run_id=run_id, scope_id=scope_id, keyword="爱玛"),
+        provider_config_id=config.id,
+        attempt_id=uuid4(),
+        billing=_billing(),
+        fence=fence,
+    )
+
+    assert resumed.request.id == first.request.id
+    assert resumed.attempt.id == first_attempt_id
+    assert resumed.attempt.dispatch_status == "reserved"
+    assert _counts(database_runtime) == (1, 1)
