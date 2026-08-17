@@ -204,6 +204,49 @@ def test_older_sparse_content_can_fill_field_never_seen_by_newer_observation(
     assert current["last_seen_at"] == newer_at
 
 
+def test_newer_explicit_null_blocks_older_non_null_value(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    newer_at = datetime(2026, 8, 17, 12, 0, tzinfo=UTC)
+    older_at = datetime(2026, 8, 17, 10, 0, tzinfo=UTC)
+    newer = CanonicalContentV1(
+        platform="xhs",
+        external_content_id="audit-explicit-null-content",
+        content_type="note",
+        title=None,
+        observed_at=newer_at,
+        source=_source(database_runtime, observed_at=newer_at, suffix="explicit-null-newer"),
+        observed_fields=["content_type", "title"],
+    )
+    older = CanonicalContentV1(
+        platform="xhs",
+        external_content_id="audit-explicit-null-content",
+        content_type="note",
+        title="OLDER TITLE",
+        observed_at=older_at,
+        source=_source(database_runtime, observed_at=older_at, suffix="explicit-null-older"),
+        observed_fields=["content_type", "title"],
+    )
+
+    session = database_runtime.new_session()
+    try:
+        with session.begin():
+            repository = PostgresContentRepository(session)
+            first = repository.ingest_content(newer)
+            repository.ingest_content(older)
+        current = (
+            session.execute(select(contents_table).where(contents_table.c.id == first.target_id))
+            .mappings()
+            .one()
+        )
+    finally:
+        session.close()
+
+    assert current["title"] is None
+    assert current["field_observed_at"]["title"] == newer_at.isoformat()
+    assert current["last_seen_at"] == newer_at
+
+
 def test_older_sparse_comment_can_fill_field_never_seen_by_newer_observation(
     database_runtime: DatabaseRuntime,
 ) -> None:

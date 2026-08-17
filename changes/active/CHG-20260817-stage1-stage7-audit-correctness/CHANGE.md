@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260817-stage1-stage7-audit-correctness
 title: 修复 Stage 1-7 审计发现的正确性与恢复缺口
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: fix/stage1-stage7-audit-correctness
 created: 2026-08-17
@@ -120,11 +120,11 @@ data_changes: [accounts, account_external_ids, contents, comments, artifacts]
 # 兼容、Migration、部署与回滚
 
 - 公共 HTTP/Pydantic Contract：目标是不变化。
-- 数据库：预计追加一个向前 Revision，为 `accounts/contents/comments` 增加内部 `field_observed_at` JSONB；历史 Revision 不改写。
-- 现有历史行迁移：旧行没有可靠字段级时间。Migration 只能用当前 `last_seen_at` 作为保守基线初始化“当前非空/已知字段”的 freshness；对于当前为 null 且历史是否观察过无法可靠推断的字段，不伪造已观察事实。具体 backfill 必须由代码/历史表能力验证后实现，并以测试证明不会让旧 Observation 回滚已知 Current。
-- Artifact pending reconciliation 预计不需要 Schema 变化，优先复用现有 `sha256/byte_size/stored_at/storage_status`。
+- 数据库：已追加向前 Revision `20260817_0017`，为 `accounts/contents/comments` 增加内部 `field_observed_at` JSONB；历史 Revision 不改写。
+- 现有历史行迁移：旧行没有可靠字段级时间。Migration 只用当前 `last_seen_at` 作为保守基线初始化“当前非空/已知字段”的 freshness；对于当前为 null 且历史是否观察过无法可靠推断的字段，不伪造已观察事实。回归测试验证较旧 Observation 不会回滚已知 Current，同时允许补充更晚 Observation 未观察的字段。
+- Artifact pending reconciliation 不需要 Schema 变化，复用现有 `sha256/byte_size/stored_at/storage_status`。
 - 部署：本 Change 不建立生产部署流程；数据库升级仍按现有 Alembic 门禁。
-- 回滚：代码回滚需与新 Revision 兼容评估；若新增 freshness 列，downgrade 会删除内部 provenance，已有业务 Current 值不应被删除。正式生产回滚仍属于未来 Release 设计。
+- 回滚：代码回滚需与 `20260817_0017` 兼容评估；downgrade 会删除内部 provenance，已有业务 Current 值不删除。正式生产回滚仍属于未来 Release 设计。
 
 # 安全、性能与运维风险
 
@@ -212,10 +212,16 @@ uv run python scripts/contracts/check_compatibility.py
 - `backend/src/aima_ugc/modules/system/README.md`
 - `changes/archive/2026-08/CHG-20260815-stage7-completion/CHANGE.md` 的最终 metadata
 
+# 合并前核验记录
+
+- `PR #59` 当前承载本 Change，目标分支为 `main`。
+- `0ea7078ca342d801004105518d90daf268917bc0` 已取得 12/12 PR workflow success；本次只补显式 null 回归并更新 Change 生命周期状态，最终 head 仍需重新取得新鲜门禁后才能合并。
+- PR 当前无 Review submission、无 inline review thread；最终两阶段 Review 与合并后 `main` 验证仍属于步骤 7。
+
 # Git
 
 - 基线 main：`fbe7abc28f66d038565993b0ea28c0cdc5ab31f1`
 - 开发分支：`fix/stage1-stage7-audit-correctness`
-- PR：尚未创建
+- PR：`#59 修复 Stage 1-7 审计发现的正确性与恢复缺口`
 - 合并：尚未执行
-- Change：`in_progress`
+- Change：`ready_for_review`
