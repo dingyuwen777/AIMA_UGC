@@ -294,11 +294,11 @@ class CollectionRunExecutor:
                     scope=scope,
                     status="failed",
                     stop_reason="scope_execution_failed",
-                    requested_count=_stat_int(scope.stats, "requested_count"),
-                    succeeded_count=_stat_int(scope.stats, "succeeded_count"),
-                    failed_count=_stat_int(scope.stats, "failed_count"),
-                    content_count=_stat_int(scope.stats, "content_count"),
-                    comment_count=_stat_int(scope.stats, "comment_count"),
+                    requested_count=_log_stat_int(scope.stats, "requested_count"),
+                    succeeded_count=_log_stat_int(scope.stats, "succeeded_count"),
+                    failed_count=_log_stat_int(scope.stats, "failed_count"),
+                    content_count=_log_stat_int(scope.stats, "content_count"),
+                    comment_count=_log_stat_int(scope.stats, "comment_count"),
                 )
             else:
                 totals.add(scope_result)
@@ -431,6 +431,14 @@ def _log_scope_completed(
         content_count=content_count,
         comment_count=comment_count,
     )
+
+
+def _log_stat_int(stats: dict[str, object], name: str) -> int:
+    """日志只读取安全计数；坏的诊断字段不得改变 Scope 故障隔离控制流。"""
+    value = stats.get(name, 0)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return 0
+    return value
 
 
 def _stat_int(stats: dict[str, object], name: str) -> int:
