@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
 from aima_ugc.contracts.canonical import CanonicalContentV1
@@ -70,7 +71,9 @@ class PostgresCollectionContentStateReader:
                     session.execute(
                         select(
                             contents_table,
-                            accounts_table.c.external_account_id.label("author_external_account_id"),
+                            accounts_table.c.external_account_id.label(
+                                "author_external_account_id"
+                            ),
                         )
                         .outerjoin(
                             accounts_table,
@@ -182,9 +185,8 @@ def _item_locator(observation: CanonicalContentV1) -> str:
     return value.strip()
 
 
-def _business_changed(row: object, observation: CanonicalContentV1) -> bool:
-    current = row
-    if current["content_type"] != observation.content_type:  # type: ignore[index]
+def _business_changed(row: RowMapping, observation: CanonicalContentV1) -> bool:
+    if row["content_type"] != observation.content_type:
         return True
 
     direct_values = {
@@ -199,18 +201,18 @@ def _business_changed(row: object, observation: CanonicalContentV1) -> bool:
     for observed_path, column_name in _CONTENT_DIRECT_FIELDS.items():
         if (
             observed_path in observation.observed_fields
-            and current[column_name] != direct_values[observed_path]  # type: ignore[index]
+            and row[column_name] != direct_values[observed_path]
         ):
             return True
 
     if observation.author is not None and observation.author.external_account_id is not None:
-        if current["author_external_account_id"] != observation.author.external_account_id:  # type: ignore[index]
+        if row["author_external_account_id"] != observation.author.external_account_id:
             return True
 
     for name in _CONTENT_DECISION_METRICS:
         if f"metrics.{name}" not in observation.observed_fields:
             continue
-        if current[f"current_{name}"] != getattr(observation.metrics, name):  # type: ignore[index]
+        if row[f"current_{name}"] != getattr(observation.metrics, name):
             return True
     return False
 
