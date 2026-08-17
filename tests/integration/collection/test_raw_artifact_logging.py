@@ -102,9 +102,7 @@ def test_raw_capture_emits_stored_event_without_raw_or_request_body(
         store=store,
     )
 
-    with caplog.at_level(
-        logging.INFO, logger="aima_ugc.modules.collection.providers.raw_artifact"
-    ):
+    with caplog.at_level(logging.INFO, logger="aima_ugc.modules.collection.providers.raw_artifact"):
         captured = service.capture(request=request, dispatch=dispatch)
 
     records = [
