@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Protocol
@@ -9,6 +10,7 @@ from uuid import UUID
 
 from aima_ugc.contracts.provider import ProviderAttemptV1, ProviderBillingV1, ProviderRequestV1
 from aima_ugc.platform.jobs import JobExecutionFence
+from aima_ugc.platform.logging import log_event
 from aima_ugc.platform.storage import ArtifactRecord
 
 from .provider_persistence import ProviderAttemptRecord
@@ -18,6 +20,8 @@ from .providers import (
     ProviderDispatchResult,
     ProviderTransportRequest,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,6 +123,7 @@ class ProviderDispatchService:
         preparation = self._persistence.start_dispatch(attempt_id=attempt_id, fence=fence)
         if preparation.attempt.dispatch_started_at is None:
             raise ValueError("dispatching Attempt 缺少 dispatch_started_at")
+        _log_provider_started(preparation)
         dispatch = self._client.dispatch(
             request=preparation.request,
             attempt_id=preparation.attempt.id,
@@ -133,6 +138,7 @@ class ProviderDispatchService:
                 raw_artifact_id=None,
                 fence=fence,
             )
+            _log_provider_terminal(preparation, persisted, artifact=None)
             return ProviderDispatchOutcome(attempt=persisted, artifact=None)
 
         captured = self._raw_artifacts.capture(
@@ -144,7 +150,73 @@ class ProviderDispatchService:
             raw_artifact_id=captured.artifact.id,
             fence=fence,
         )
+        _log_provider_terminal(preparation, persisted, artifact=captured.artifact)
         return ProviderDispatchOutcome(
             attempt=persisted,
             artifact=captured.artifact,
         )
+
+
+def _log_provider_started(preparation: ProviderDispatchPreparation) -> None:
+    request = preparation.request
+    attempt = preparation.attempt
+    log_event(
+        logger,
+        logging.INFO,
+        "provider.request.started",
+        "Provider Request 已进入发送边界。",
+        provider_request_id=str(request.request_id),
+        provider_attempt_id=str(attempt.id),
+        run_id=str(request.run_id),
+        scope_id=str(request.scope_id),
+        provider=request.provider,
+        platform=request.platform,
+        operation=request.operation,
+        attempt_no=attempt.attempt_no,
+    )
+
+
+def _log_provider_terminal(
+    preparation: ProviderDispatchPreparation,
+    attempt: ProviderAttemptRecord,
+    *,
+    artifact: ArtifactRecord | None,
+) -> None:
+    request = preparation.request
+    event = (
+        "provider.request.completed"
+        if attempt.dispatch_status == "completed"
+        else "provider.request.failed"
+    )
+    duration_ms: int | None = None
+    if attempt.dispatch_started_at is not None and attempt.completed_at is not None:
+        duration_ms = max(
+            0,
+            int((attempt.completed_at - attempt.dispatch_started_at).total_seconds() * 1000),
+        )
+    log_event(
+        logger,
+        logging.INFO,
+        event,
+        "Provider Request 状态已持久化。",
+        provider_request_id=str(request.request_id),
+        provider_attempt_id=str(attempt.id),
+        run_id=str(request.run_id),
+        scope_id=str(request.scope_id),
+        provider=request.provider,
+        platform=request.platform,
+        operation=request.operation,
+        attempt_no=attempt.attempt_no,
+        status=attempt.dispatch_status,
+        duration_ms=duration_ms,
+        http_status=attempt.http_status,
+        external_request_id=attempt.external_request_id,
+        raw_artifact_id=str(artifact.id) if artifact is not None else None,
+        billing_status=attempt.billing_status,
+        estimated_cost=str(attempt.estimated_cost),
+        actual_cost=str(attempt.actual_cost),
+        cost_currency=attempt.cost_currency,
+        cost_unit=attempt.cost_unit,
+        potential_duplicate_charge=attempt.potential_duplicate_charge,
+        error_code=attempt.error_code,
+    )

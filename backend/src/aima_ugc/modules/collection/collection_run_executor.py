@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Literal, Protocol
 from uuid import UUID
 
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol, LeaseLostError
+from aima_ugc.platform.logging import log_event
 
 from .execution import CollectionExecution, CollectionRunRecord, CollectionScopeRecord
+
+logger = logging.getLogger(__name__)
 
 CollectionScopeTerminalStatus = Literal[
     "partial_success",
@@ -216,6 +220,16 @@ class CollectionRunExecutor:
         failed_scopes = 0
         partial_scopes = 0
         total_scopes = len(execution.scopes)
+        log_event(
+            logger,
+            logging.INFO,
+            "collection.run.started",
+            "Collection Run 已开始执行。",
+            run_id=str(run.id),
+            job_id=str(run.job_id),
+            trigger_type=run.trigger_type,
+            scope_count=total_scopes,
+        )
 
         for index, persisted_scope in enumerate(execution.scopes):
             if persisted_scope.status in _SCOPE_TERMINAL_STATUSES:
@@ -275,6 +289,17 @@ class CollectionRunExecutor:
                     pagination_state=dict(scope.pagination_state),
                     stats=dict(scope.stats),
                 )
+                _log_scope_completed(
+                    run=run,
+                    scope=scope,
+                    status="failed",
+                    stop_reason="scope_execution_failed",
+                    requested_count=_stat_int(scope.stats, "requested_count"),
+                    succeeded_count=_stat_int(scope.stats, "succeeded_count"),
+                    failed_count=_stat_int(scope.stats, "failed_count"),
+                    content_count=_stat_int(scope.stats, "content_count"),
+                    comment_count=_stat_int(scope.stats, "comment_count"),
+                )
             else:
                 totals.add(scope_result)
                 self._gateway.finish_scope(
@@ -284,6 +309,17 @@ class CollectionRunExecutor:
                     stop_reason=scope_result.stop_reason,
                     pagination_state=dict(scope_result.pagination_state),
                     stats=dict(scope_result.stats),
+                )
+                _log_scope_completed(
+                    run=run,
+                    scope=scope,
+                    status=scope_result.status,
+                    stop_reason=scope_result.stop_reason,
+                    requested_count=scope_result.requested_count,
+                    succeeded_count=scope_result.succeeded_count,
+                    failed_count=scope_result.failed_count,
+                    content_count=scope_result.content_count,
+                    comment_count=scope_result.comment_count,
                 )
                 if scope_result.status == "failed":
                     failed_scopes += 1
@@ -336,7 +372,7 @@ class CollectionRunExecutor:
         totals: _RunTotals,
         error_summary: str | None,
     ) -> CollectionRunRecord:
-        return self._gateway.finish_run(
+        finished = self._gateway.finish_run(
             run.id,
             fence=fence,
             status=status,
@@ -347,6 +383,54 @@ class CollectionRunExecutor:
             comment_count=totals.comment_count,
             error_summary=error_summary,
         )
+        log_event(
+            logger,
+            logging.INFO,
+            "collection.run.completed",
+            "Collection Run 已进入终态。",
+            run_id=str(run.id),
+            job_id=str(run.job_id),
+            status=status,
+            requested_count=totals.requested_count,
+            succeeded_count=totals.succeeded_count,
+            failed_count=totals.failed_count,
+            content_count=totals.content_count,
+            comment_count=totals.comment_count,
+            error_code=error_summary,
+        )
+        return finished
+
+
+def _log_scope_completed(
+    *,
+    run: CollectionRunRecord,
+    scope: CollectionScopeRecord,
+    status: str,
+    stop_reason: str | None,
+    requested_count: int,
+    succeeded_count: int,
+    failed_count: int,
+    content_count: int,
+    comment_count: int,
+) -> None:
+    log_event(
+        logger,
+        logging.INFO,
+        "collection.scope.completed",
+        "Collection Scope 已进入终态。",
+        run_id=str(run.id),
+        job_id=str(run.job_id),
+        scope_id=str(scope.id),
+        platform=scope.platform,
+        operation_group=scope.operation_group,
+        status=status,
+        stop_reason=stop_reason,
+        requested_count=requested_count,
+        succeeded_count=succeeded_count,
+        failed_count=failed_count,
+        content_count=content_count,
+        comment_count=comment_count,
+    )
 
 
 def _stat_int(stats: dict[str, object], name: str) -> int:

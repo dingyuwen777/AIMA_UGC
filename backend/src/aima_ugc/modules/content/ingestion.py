@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import date, datetime
-from typing import Protocol, TypeVar
+from typing import Any, Protocol, TypeVar
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -12,6 +12,14 @@ from aima_ugc.contracts.canonical import CanonicalCommentV1, CanonicalContentV1
 
 _BUSINESS_TZ = ZoneInfo("Asia/Shanghai")
 _ResultT_co = TypeVar("_ResultT_co", covariant=True)
+_INMEMORY_FIELD_NAMES = frozenset(
+    {
+        "content_type",
+        "title",
+        "text",
+        "metrics.like_count",
+    }
+)
 
 
 class ContentIngestionRepository(Protocol[_ResultT_co]):
@@ -74,10 +82,11 @@ class IngestionResult:
 
 
 class InMemoryContentRepository:
-    """无数据库的领域语义验证实现；生产仍使用 PostgreSQL Repository。"""
+    """无数据库的 Content 领域 Fake；支持字段级 Current freshness 语义验证。"""
 
     def __init__(self) -> None:
         self._contents: dict[tuple[str, str], ContentCurrent] = {}
+        self._field_observed_at: dict[tuple[str, str], dict[str, datetime]] = {}
         self.versions: list[ContentVersion] = []
         self.metric_observations: list[MetricObservation] = []
         self._metric_days: set[tuple[str, str, date]] = set()
@@ -107,6 +116,11 @@ class InMemoryContentRepository:
                 current_version=1,
             )
             self._contents[key] = current
+            self._field_observed_at[key] = {
+                field: observation.observed_at
+                for field in observation.observed_fields
+                if field in _INMEMORY_FIELD_NAMES
+            }
             self.versions.append(_version(current, observation.observed_at))
             self._append_metric(
                 key,
@@ -119,20 +133,30 @@ class InMemoryContentRepository:
             )
             return IngestionResult(None, 1, True, True)
 
+        field_freshness = self._field_observed_at.setdefault(key, {})
+        candidate_values: dict[str, Any] = {
+            "content_type": observation.content_type,
+            "title": observation.title,
+            "text": observation.text,
+            "metrics.like_count": observation.metrics.like_count,
+        }
+        accepted: dict[str, Any] = {}
+        for field in observation.observed_fields:
+            if field not in _INMEMORY_FIELD_NAMES:
+                continue
+            previous_at = field_freshness.get(field)
+            if previous_at is not None and observation.observed_at < previous_at:
+                continue
+            accepted[field] = candidate_values[field]
+            field_freshness[field] = observation.observed_at
+
         updated = replace(
             current,
-            content_type=(
-                observation.content_type
-                if "content_type" in observation.observed_fields
-                else current.content_type
-            ),
-            title=observation.title if "title" in observation.observed_fields else current.title,
-            text=observation.text if "text" in observation.observed_fields else current.text,
-            like_count=(
-                observation.metrics.like_count
-                if "metrics.like_count" in observation.observed_fields
-                else current.like_count
-            ),
+            content_type=accepted.get("content_type", current.content_type),
+            title=accepted.get("title", current.title),
+            text=accepted.get("text", current.text),
+            like_count=accepted.get("metrics.like_count", current.like_count),
+            first_seen_at=min(current.first_seen_at, observation.observed_at),
             last_seen_at=max(current.last_seen_at, observation.observed_at),
         )
         business_changed = (updated.content_type, updated.title, updated.text) != (
@@ -146,7 +170,7 @@ class InMemoryContentRepository:
 
         metric_recorded = False
         if "metrics.like_count" in observation.observed_fields:
-            if updated.like_count != current.like_count:
+            if observation.metrics.like_count != current.like_count:
                 reason = "changed"
             elif not self._has_metric_on_day(key, business_date):
                 reason = "daily_checkpoint"
@@ -156,7 +180,7 @@ class InMemoryContentRepository:
                 self._append_metric(
                     key,
                     MetricObservation(
-                        like_count=updated.like_count,
+                        like_count=observation.metrics.like_count,
                         reason=reason,
                         observed_at=observation.observed_at,
                         business_date=business_date,
