@@ -1,0 +1,79 @@
+name: Temporary Audit Docs Patch
+
+on:
+  push:
+    branches:
+      - fix/stage1-stage7-audit-final-closure
+    paths:
+      - .github/workflows/patch-audit-docs.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: fix/stage1-stage7-audit-final-closure
+          fetch-depth: 0
+      - name: Apply exact documentation fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          blueprint = Path("docs/blueprint/06-开发约束与分阶段实施.md")
+          text = blueprint.read_text(encoding="utf-8")
+
+          old_root = '''AGENTS.md
+          README.md
+          pyproject.toml
+          uv.lock
+          frontend/package.json
+          frontend/package-lock.json
+          compose.yaml'''
+          new_root = '''AGENTS.md
+          README.md
+          pyproject.toml
+          uv.lock
+          frontend/package.json
+          frontend/package-lock.json'''
+          if text.count(old_root) != 1:
+              raise SystemExit(f"unexpected root pre-read block count: {text.count(old_root)}")
+          text = text.replace(old_root, new_root, 1)
+
+          marker = '''```\n\n再按任务读取：'''
+          replacement = '''```\n\n进入 Release / Compose 阶段且对应文件已经建立后，再读取根 `Dockerfile`、`compose.yaml` 及环境/部署配置；当前 Stage 1—7 不因这些未来 Release 文件尚未建立而阻塞普通编码前事实恢复。\n\n再按任务读取：'''
+          if text.count(marker) < 1:
+              raise SystemExit("pre-read insertion marker not found")
+          text = text.replace(marker, replacement, 1)
+
+          old_budget = '''Provider/Raw 专项在对应阶段覆盖真实 HTTP Attempt 的 socket 前后、Raw 落盘和 dispatching 恢复；最终多级预算专项在全部外键父事实建立后覆盖 global/run/content_comments 账户的并发预留、结算、释放和计费未知，并分别证明 global+run 必需、评论额外 content 必需、缺账户关闭失败、新 HTTP Attempt 必须新预留、同一 Attempt 的预留事务重放不会重复预留。'''
+          new_budget = '''Provider/Raw 专项在对应阶段覆盖真实 HTTP Attempt 的 socket 前后、Raw 落盘和 dispatching 恢复，并验证 Provider Billing/Pricing、`potential_duplicate_charge` 与 Raw-first recovery。当前版本不实现请求/金额 Budget、Budget Account、Reservation Ledger 或发送预算门禁；未来 Budget/Cost Guard 只有在新的 L3 Change 明确 Contract、Schema、Migration 和执行边界后，才建立对应 Integration 专项。'''
+          if text.count(old_budget) != 1:
+              raise SystemExit(f"unexpected stale budget paragraph count: {text.count(old_budget)}")
+          text = text.replace(old_budget, new_budget, 1)
+          blueprint.write_text(text, encoding="utf-8")
+
+          completion = Path("changes/archive/2026-08/CHG-20260815-stage7-completion/CHANGE.md")
+          change = completion.read_text(encoding="utf-8")
+          old_data = 'data_changes: [collection_plans, provider_budget_accounts, provider_budget_reservations, collection_schedule_occurrences, collection_runs]'
+          new_data = 'data_changes: [collection_plans, collection_schedule_occurrences, collection_runs]'
+          if change.count(old_data) != 1:
+              raise SystemExit(f"unexpected stale data_changes count: {change.count(old_data)}")
+          completion.write_text(change.replace(old_data, new_data, 1), encoding="utf-8")
+          PY
+          git diff --check
+          git diff -- docs/blueprint/06-开发约束与分阶段实施.md changes/archive/2026-08/CHG-20260815-stage7-completion/CHANGE.md
+      - name: Commit exact fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "yuwen.ding"
+          git config user.email "dingyuwen777@gmail.com"
+          git add docs/blueprint/06-开发约束与分阶段实施.md changes/archive/2026-08/CHG-20260815-stage7-completion/CHANGE.md
+          git commit -m "修正审计剩余文档事实"
+          git push origin HEAD:fix/stage1-stage7-audit-final-closure
