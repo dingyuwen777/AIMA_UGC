@@ -6,8 +6,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from openpyxl import Workbook
+from openpyxl.cell.cell import Cell
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.properties import PageSetupProperties
 from openpyxl.worksheet.worksheet import Worksheet
 
 _FORMULA_PREFIXES = ("=", "+", "-", "@")
@@ -49,6 +51,7 @@ _COMMENT_HEADERS = (
     "评论Raw定位",
 )
 _HEADERS = _CONTENT_HEADERS + _COMMENT_HEADERS
+_CellValue = str | int | float | bool | None
 _TEXT_ID_COLUMNS = {2, 16, 17, 18}
 _WRAP_COLUMNS = {4, 5, 13, 14, 19, 20, 24}
 _COLUMN_WIDTHS = {
@@ -124,6 +127,8 @@ def write_review_workbook(blocks: tuple[ReviewBlock, ...], path: str | Path) -> 
 
     workbook = Workbook()
     sheet = workbook.active
+    if not isinstance(sheet, Worksheet):
+        raise RuntimeError("openpyxl 未创建可写 Worksheet")
     sheet.title = "内容与评论"
     _configure_sheet(sheet)
     _write_header(sheet)
@@ -161,10 +166,12 @@ def _configure_sheet(sheet: Worksheet) -> None:
     sheet.row_dimensions[1].height = 32
     for column, width in _COLUMN_WIDTHS.items():
         sheet.column_dimensions[get_column_letter(column)].width = width
-    sheet.sheet_properties.pageSetUpPr.fitToPage = True
+    sheet.sheet_properties.pageSetUpPr = PageSetupProperties(fitToPage=True)
     sheet.page_setup.fitToWidth = 1
     sheet.page_setup.fitToHeight = 0
-    sheet.sheet_properties.outlinePr.summaryBelow = True
+    outline = sheet.sheet_properties.outlinePr
+    if outline is not None:
+        outline.summaryBelow = True
 
 
 def _write_header(sheet: Worksheet) -> None:
@@ -177,7 +184,7 @@ def _write_header(sheet: Worksheet) -> None:
 
 
 def _write_content_row(sheet: Worksheet, row: int, content: ReviewContent) -> None:
-    values: tuple[object, ...] = (
+    values: tuple[_CellValue, ...] = (
         content.platform,
         content.external_content_id,
         content.content_type,
@@ -198,7 +205,7 @@ def _write_content_row(sheet: Worksheet, row: int, content: ReviewContent) -> No
 
 
 def _write_comment_row(sheet: Worksheet, row: int, comment: ReviewCommentRow) -> None:
-    values: tuple[object, ...] = (
+    values: tuple[_CellValue, ...] = (
         comment.level,
         comment.comment_id,
         comment.root_comment_id,
@@ -215,16 +222,11 @@ def _write_comment_row(sheet: Worksheet, row: int, comment: ReviewCommentRow) ->
         _set_value(sheet.cell(row=row, column=column), value, text_id=column in _TEXT_ID_COLUMNS)
 
 
-def _set_value(cell: object, value: object, *, text_id: bool) -> None:
-    # openpyxl Cell 类型运行时拥有 value/number_format；保持这里的小型 helper 易于静态复核。
-    target = cell
-    if isinstance(value, str):
-        safe_value = _safe_external_text(value)
-    else:
-        safe_value = value
-    target.value = safe_value
+def _set_value(cell: Cell, value: _CellValue, *, text_id: bool) -> None:
+    safe_value: _CellValue = _safe_external_text(value) if isinstance(value, str) else value
+    cell.value = safe_value
     if text_id:
-        target.number_format = "@"
+        cell.number_format = "@"
 
 
 def _style_body_row(sheet: Worksheet, row: int, *, fill: PatternFill) -> None:

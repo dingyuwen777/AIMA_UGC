@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 from zoneinfo import ZoneInfo
@@ -15,6 +16,7 @@ from aima_ugc.contracts.collection import (
     CollectionDecisionContextV1,
     CollectionDecisionPolicyV1,
     CollectionDecisionRequestV1,
+    CollectionDecisionV1,
     ContentObservationV1,
     PreviousContentStateV1,
     ReplyDecisionRequestV1,
@@ -110,14 +112,14 @@ class _TikHubDebugRunner:
         self._search_stop_reason: str | None = None
 
     def run(self) -> TikHubTestRunResult:
-        error: BaseException | None = None
+        error: Exception | None = None
         try:
             with TikHubHttpTransport(
                 base_url=self.provider_config.base_url,
                 timeout_seconds=self.provider_config.timeout_seconds,
             ) as transport:
                 self._run_search(transport)
-        except BaseException as exc:
+        except Exception as exc:
             error = exc
         finally:
             self.state.save()
@@ -286,7 +288,7 @@ class _TikHubDebugRunner:
         previous_exists: bool,
         previous_count: int | None,
         after_detail: bool,
-    ):
+    ) -> CollectionDecisionV1:
         current_count = content.metrics.comment_count
         previous = PreviousContentStateV1(comment_count=previous_count) if previous_exists else None
         context = CollectionDecisionContextV1(
@@ -527,7 +529,7 @@ class _TikHubDebugRunner:
             return f"not_requested ({reason})"
         return f"partial 0/unknown ({reason})"
 
-    def _manifest(self, error: BaseException | None) -> dict[str, object]:
+    def _manifest(self, error: Exception | None) -> dict[str, object]:
         return {
             "schema_version": "tikhub-test-run.v1",
             "platform": self.platform,
@@ -637,8 +639,8 @@ def _review_comment(
     )
 
 
-def _human_time(value: object) -> str | None:
-    if value is None or not hasattr(value, "astimezone"):
+def _human_time(value: datetime | None) -> str | None:
+    if value is None:
         return None
     converted = value.astimezone(_BEIJING)
     return converted.strftime("%Y-%m-%d %H:%M:%S")

@@ -152,15 +152,17 @@ class DebugState:
     def _entry(
         self, platform: str, external_content_id: str, *, create: bool
     ) -> dict[str, Any] | None:
+        contents = self._platforms.get(platform)
+        if contents is None:
+            if not create:
+                return None
+            contents = {}
+            self._platforms[platform] = contents
         if create:
-            contents = self._platforms.setdefault(platform, {})
             return contents.setdefault(
                 external_content_id,
                 {"comment_count": None, "comment_ids": []},
             )
-        contents = self._platforms.get(platform)
-        if contents is None:
-            return None
         return contents.get(external_content_id)
 
 
