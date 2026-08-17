@@ -8,9 +8,6 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import insert, select
-from sqlalchemy.engine import Connection
-
 from aima_ugc.adapters.persistence.postgres.collection import PostgresCollectionRepository
 from aima_ugc.adapters.persistence.postgres.collection_content import (
     PostgresCollectionContentStateReader,
@@ -31,8 +28,6 @@ from aima_ugc.modules.collection.execution import (
     CollectionScopeDefinition,
 )
 from aima_ugc.modules.collection.tables import (
-    collection_runs_table,
-    collection_scopes_table,
     provider_request_attempts_table,
     provider_requests_table,
 )
@@ -40,8 +35,9 @@ from aima_ugc.modules.content.tables import contents_table
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.jobs import JobExecutionFence, LeaseLostError
-from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.storage.tables import artifacts_table
+from sqlalchemy import insert, select
+from sqlalchemy.engine import Connection
 
 _NOW = datetime(2026, 8, 17, 1, 15, tzinfo=UTC)
 
