@@ -132,25 +132,14 @@ jobs:
         shell: bash
         run: |
           set +e
-          junit="${RUNNER_TEMP}/scope-recovery-junit.xml"
-          uv run pytest tests/integration/collection/test_collection_scope_recovery_runtime.py -q --junitxml="${junit}"
+          output="$(uv run pytest tests/integration/collection/test_collection_scope_recovery_runtime.py -vv --tb=short 2>&1)"
           status=$?
+          printf '%s\n' "${output}"
           if [ "${status}" -ne 0 ]; then
-            JUNIT_PATH="${junit}" uv run python - <<'PY'
+            PYTEST_OUTPUT="${output}" uv run python - <<'PY'
           import os
-          import xml.etree.ElementTree as ET
-          from pathlib import Path
 
-          path = Path(os.environ["JUNIT_PATH"])
-          root = ET.parse(path).getroot()
-          node = root.find(".//failure") or root.find(".//error")
-          if node is None:
-              detail = "pytest failed but JUnit contained no failure/error node"
-          else:
-              detail = "\n".join(
-                  part for part in (node.get("message", ""), node.text or "") if part
-              )
-          detail = detail[-12000:]
+          detail = os.environ.get("PYTEST_OUTPUT", "")[-12000:]
           escaped = detail.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
           print(
               "::error file=tests/integration/collection/"
@@ -225,6 +214,7 @@ jobs:
                   item["name"] for item in inspect(runtime.engine).get_check_constraints(
                       "provider_requests"
                   )
+              }
           finally:
               runtime.dispose()
           assert "ck_provider_requests_status_allowed" not in checks, checks
