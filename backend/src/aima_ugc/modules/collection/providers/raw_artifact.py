@@ -112,14 +112,22 @@ class RawArtifactService:
             dispatch_started_at=attempt.dispatch_started_at,
             attempt_id=attempt.attempt_id,
         )
-        artifact = self._artifacts.store_bytes(
-            kind="provider-raw",
-            content_type="application/json",
-            retention_class="raw",
-            data=compressed,
-            encoding="gzip",
-            storage_key=storage_key,
-        )
+        try:
+            artifact = self._artifacts.store_bytes(
+                kind="provider-raw",
+                content_type="application/json",
+                retention_class="raw",
+                data=compressed,
+                encoding="gzip",
+                storage_key=storage_key,
+            )
+        except Exception as exc:
+            _log_raw_write_failed(
+                request=request,
+                attempt_id=attempt.attempt_id,
+                error_code=type(exc).__name__,
+            )
+            raise
         _log_raw_stored(
             request=request,
             attempt_id=attempt.attempt_id,
@@ -204,6 +212,29 @@ class RawArtifactService:
             return RawEnvelopeV1.model_validate_json(plain)
         except ValidationError as exc:
             raise RawArtifactIntegrityError("Raw Envelope Contract 校验失败") from exc
+
+
+def _log_raw_write_failed(
+    *,
+    request: ProviderRequestV1,
+    attempt_id: UUID,
+    error_code: str,
+) -> None:
+    log_event(
+        logger,
+        logging.WARNING,
+        "raw.artifact.write_failed",
+        "Provider Raw Artifact 写入失败。",
+        provider_request_id=str(request.request_id),
+        provider_attempt_id=str(attempt_id),
+        run_id=str(request.run_id),
+        scope_id=str(request.scope_id),
+        provider=request.provider,
+        platform=request.platform,
+        operation=request.operation,
+        status="error",
+        error_code=error_code,
+    )
 
 
 def _log_raw_stored(

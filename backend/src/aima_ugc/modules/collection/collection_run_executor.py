@@ -383,10 +383,11 @@ class CollectionRunExecutor:
             comment_count=totals.comment_count,
             error_summary=error_summary,
         )
+        event = "collection.run.failed" if status == "failed" else "collection.run.completed"
         log_event(
             logger,
             logging.INFO,
-            "collection.run.completed",
+            event,
             "Collection Run 已进入终态。",
             run_id=str(run.id),
             job_id=str(run.job_id),
