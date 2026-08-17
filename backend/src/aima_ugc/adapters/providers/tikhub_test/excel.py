@@ -1,4 +1,4 @@
-"""TikHub 调试结果的人工审阅 XLSX。"""
+"""TikHub 调试结果的原始数据 XLSX。"""
 
 from __future__ import annotations
 
@@ -85,7 +85,7 @@ _COLUMN_WIDTHS = {
 
 
 @dataclass(frozen=True, slots=True)
-class ReviewContent:
+class RawDataContent:
     platform: str
     external_content_id: str
     content_type: str
@@ -104,7 +104,7 @@ class ReviewContent:
 
 
 @dataclass(frozen=True, slots=True)
-class ReviewCommentRow:
+class RawDataCommentRow:
     level: str
     comment_id: str
     root_comment_id: str | None
@@ -118,13 +118,13 @@ class ReviewCommentRow:
 
 
 @dataclass(frozen=True, slots=True)
-class ReviewBlock:
-    content: ReviewContent
-    comments: tuple[ReviewCommentRow, ...] = ()
+class RawDataBlock:
+    content: RawDataContent
+    comments: tuple[RawDataCommentRow, ...] = ()
 
 
-def write_review_workbook(blocks: tuple[ReviewBlock, ...], path: str | Path) -> Path:
-    """生成已批准的 `内容与评论` 纵向区块人工审阅 Workbook。"""
+def write_raw_data_workbook(blocks: tuple[RawDataBlock, ...], path: str | Path) -> Path:
+    """生成已批准的 `内容与评论` 纵向区块原始数据 Workbook。"""
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
 
@@ -186,7 +186,7 @@ def _write_header(sheet: Worksheet) -> None:
         cell.border = _BOTTOM_BORDER
 
 
-def _write_content_row(sheet: Worksheet, row: int, content: ReviewContent) -> None:
+def _write_content_row(sheet: Worksheet, row: int, content: RawDataContent) -> None:
     values: tuple[_CellValue, ...] = (
         content.platform,
         content.external_content_id,
@@ -212,7 +212,7 @@ def _write_content_row(sheet: Worksheet, row: int, content: ReviewContent) -> No
         )
 
 
-def _write_comment_row(sheet: Worksheet, row: int, comment: ReviewCommentRow) -> None:
+def _write_comment_row(sheet: Worksheet, row: int, comment: RawDataCommentRow) -> None:
     values: tuple[_CellValue, ...] = (
         comment.level,
         comment.comment_id,
@@ -287,8 +287,8 @@ def _safe_external_text(value: str) -> str:
     return value
 
 
-def _empty_comment_row() -> ReviewCommentRow:
-    return ReviewCommentRow(
+def _empty_comment_row() -> RawDataCommentRow:
+    return RawDataCommentRow(
         level="—",
         comment_id="",
         root_comment_id=None,
@@ -303,8 +303,8 @@ def _empty_comment_row() -> ReviewCommentRow:
 
 
 __all__ = [
-    "ReviewBlock",
-    "ReviewCommentRow",
-    "ReviewContent",
-    "write_review_workbook",
+    "RawDataBlock",
+    "RawDataCommentRow",
+    "RawDataContent",
+    "write_raw_data_workbook",
 ]

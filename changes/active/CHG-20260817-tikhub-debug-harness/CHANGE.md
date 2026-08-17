@@ -1,6 +1,6 @@
 ---
 id: CHG-20260817-tikhub-debug-harness
-title: TikHub 五平台独立调试与 XHS 增量评论一致性修复
+title: TikHub 五平台独立调试与评论增量一致性修复
 level: L2
 status: in_progress
 owner: ChatGPT
@@ -32,7 +32,7 @@ contracts: []
 data_changes: []
 ---
 
-# TikHub 五平台独立调试与 XHS 增量评论一致性修复
+# TikHub 五平台独立调试与评论增量一致性修复
 
 ## 背景与当前事实
 
@@ -52,7 +52,7 @@ data_changes: []
 1. 为小红书、抖音、微博、B站、快手提供可直接调用的 Python 调试入口，不依赖 PostgreSQL、API、Worker 或 Scheduler。
 2. 调试入口复用生产 TikHub Operation、分页、Transport、Mapper、Capability 和 Collection Decision，不复制 endpoint、字段映射或业务规则。
 3. 修复 XHS 已批准增量评论在生产主链未闭环的问题，使系统和调试工具都调用同一“已知评论边界”规则。
-4. 保存 Raw、Canonical、manifest、跨运行轻量 state 和原始数据 Excel；不写生产数据库。
+4. 保存 Raw、Canonical、`run_summary.json`、跨运行轻量 state 和原始数据 Excel；不写生产数据库。
 5. 最终完成五平台受控真实 Provider 验证、PR Review、CI、合并后 main 复验和 Change 归档。
 
 ## 可观察成功标准
@@ -60,17 +60,17 @@ data_changes: []
 ### A. 五平台独立调试
 
 1. `backend/src/aima_ugc/adapters/providers/tikhub_test/` 提供五个平台独立 `run_*()` Python 函数，不新增 CLI。
-2. 关键词在函数参数配置；同时支持 `keyword="爱玛"` 与 `keywords=("爱玛", "爱玛电动车")`。同一运行每个关键词独立执行 Search，但共享内容去重，重复帖子只拉一次 Detail/评论，并在 manifest/Excel 保留命中关键词。
+2. 关键词在函数参数配置；同时支持 `keyword="爱玛"` 与 `keywords=("爱玛", "爱玛电动车")`。同一运行每个关键词独立执行 Search，但共享内容去重，重复帖子只拉一次 Detail/评论，并在 run summary/Excel 保留命中关键词。
 3. `.env` 只保存 `TIKHUB_BASE_URL`、`TIKHUB_API_KEY`、超时等 Provider 连接配置；真实 `.env` 永不提交，仓库只保存 `.env.example`。
-4. 每次运行的 Raw、Canonical、manifest 和 XLSX 保存到 `tikhub_test/output/<platform>/runs/<run-id>/`；跨运行 `state.json` 保存轻量 current/去重状态，可删除后重置。
+4. 每次运行的 Raw、Canonical、`run_summary.json` 和 XLSX 保存到 `tikhub_test/output/<platform>/runs/<run-id>/`；跨运行 `state.json` 保存轻量 current/去重状态，可删除后重置。
 5. Excel 是“原始采集数据 Excel”，不是分析报告；字段来自统一 Canonical，完整 Provider Raw 仍单独保存。
 6. Excel 使用锁定 `openpyxl==3.1.5`，保持 `内容与评论` 核心 Sheet、内容区块纵向合并、每条评论一行、comment/root/parent ID、文本 ID、超链接、浅色表头、防公式注入和命中关键词。
 7. 未来正式系统级原始数据 Excel 导出落地后，必须删除 `tikhub_test/excel.py` 的平行实现并复用共享 Data Exporter；该门禁由 Blueprint 13 固化。
 
-### B. XHS 生产增量评论闭环
+### B. 五平台生产评论增量闭环
 
 8. XHS `get_note_comments` 继续固定使用生产 Operation 的 `sort_strategy=latest_v2`；不创建第二个评论 Client/endpoint。
-9. XHS Capability 声明 `supports_incremental_comment_sort=True`；其他四个平台除非存在同等级官方/Fixture/真实证据，否则保持当前值，不顺手扩大能力。
+9. XHS 与 B站 Capability 声明 `supports_incremental_comment_sort=True`；抖音、微博、快手基于当前官方/真实排序证据保持 `False`，不得为统一形式强行扩大能力。
 10. `comment_count` 增加且 previous state 存在时，生产 Decision 返回 `fetch_incremental / comment_count_increased_incremental`。
 11. PostgreSQL previous-state 读取一次取得目标内容已有一级评论 external ID 集合，不做逐评论 SQL，不改变表结构。
 12. 增量页必须先完整保存 Raw，并对当前已付费页面全部执行 Mapper/Ingestion；不能因命中旧评论而裁掉本页已返回数据。
@@ -100,7 +100,7 @@ data_changes: []
 - 不新增/修改公共 HTTP API、Pydantic Contract Schema、数据库 Schema 或 Migration。
 - 不恢复请求次数预算、金额预算、Budget Account、Reservation Ledger 或发送前 Budget/Cost Guard。
 - 不为 TikHub 增加自动网络重试或自动 App/Web/API family fallback。
-- 不把尚未验证稳定最新评论语义的抖音/微博/B站/快手强行声明为增量评论能力。
+- 不把当前没有安全最新评论边界证据的抖音/微博/快手强行声明为增量评论能力。
 - 不把 Provider Raw JSON 变成公共业务结构；原始数据 Excel 仍以 Canonical/Aggregate 语义为列来源。
 - 不实现分析报告或 Report Renderer。
 
@@ -108,10 +108,10 @@ data_changes: []
 
 - 根目录是唯一 Python/uv 工程根；源码在 `backend/src/aima_ugc/`。
 - TikHub 出站 Origin 仍只允许生产 Transport 已批准的 `https://api.tikhub.io`。
-- 五平台现有主 Operation、Mapper、Canonical 字段语义保持；本轮只纠正 XHS 已批准 Capability/执行缺口。
+- 五平台现有主 Operation、Mapper、Canonical 字段语义保持；本轮纠正已批准评论增量设计在生产执行层的缺口，并按真实证据更新 XHS/B站 Capability；不改变五个平台主 Operation/Mapper/Canonical 语义。
 - 每个 Provider Attempt 最多一次真实发送；Raw 先保存，Mapper/Ingestion 后执行。
 - 已付费返回的整页 Raw/Canonical 不因软目标或历史边界被本地裁剪。
-- 真实 Provider Probe 不进入普通 CI；Secret 不进入 Git、日志、Raw、Canonical、manifest 或 Excel。
+- 真实 Provider Probe 不进入普通 CI；Secret 不进入 Git、日志、Raw、Canonical、run summary 或 Excel。
 
 ## 已确认关键决策
 
@@ -122,7 +122,7 @@ data_changes: []
 5. 原始数据 Excel 复用已批准的 `内容与评论` 纵向区块格式；不是舆情报告。
 6. `openpyxl==3.1.5` 用于当前阶段性 Excel；未来系统共享原始数据导出完成后按 Blueprint 13 删除调试目录平行实现。
 7. 当前没有生产预算域；省钱依赖身份去重、Decision、Provider 末页、业务/技术停止条件和增量历史边界。
-8. XHS 官方 `latest_v2` + 当前生产 Operation 固定发送该参数，满足已批准 Blueprint 的稳定最新排序前提；本轮只为 XHS 开启生产增量评论能力。
+8. XHS `latest_v2` 与 B站 `mode=2 + next_offset=0` 都取得当前真实多评论顺序证据，因此两者开启生产增量；抖音无最新评论排序参数，微博/快手真实顺序不满足安全边界，保持关闭。
 9. 历史边界采用“当前整页处理完成后再决定是否继续下一页”，且只有从首个已知评论到页尾均为已知历史评论才停止，降低页面内置顶/混排造成误停的风险。
 
 ## 生产复用点
@@ -199,3 +199,11 @@ uv run python scripts/quality/check_docs.py
 - 当前 head 在本次 Change 更新前为 `528b0c67f482d93c26bc61a1dce1ceb7898d81d2`。
 - 合并：尚未执行。
 - 发布/部署：不适用；本 Change 不改变生产部署形态。
+
+### 五平台真实排序与兼容证据（GitHub-hosted Runner）
+
+- `32045460636`：五平台首轮真实验证。XHS `latest_v2` 获得唯一一级评论且时间严格非增；快手获得 94 条唯一一级评论但时间顺序非严格非增。
+- `32047972292`：抖音 post-fix 真实兼容验证，生产 extractor 从 8 个混合业务卡片中过滤并映射 7 个稳定 `aweme_id`，Detail/Comments 主链可继续；抖音评论 Operation 仍无已批准最新评论排序参数。
+- `32048374466`：微博真实 shape 验证，Search/Detail 可映射；21 个评论候选中 20 个为有效稳定 ID，`sort_type=1` 的 20 个评论时间顺序 `time_nonincreasing=false`，因此不启用增量。
+- `32049910092`：B站最终定向验证，生产 `mode=2 + next_offset=0` 在 Provider 报告 105 条评论的样本上返回 20 条，20/20 comment ID 唯一、20 个时间戳严格非增；结合官方 `mode=2=time`，启用 B站增量。
+- 所有真实调用使用一次性 RSA-3072 OAEP-SHA256 凭据交接，Runner 接收后立即清理 PR 密文占位和临时密钥材料；明文 TikHub Key 未写入 Git、PR、日志或 Artifact。

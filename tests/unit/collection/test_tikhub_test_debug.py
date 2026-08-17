@@ -17,10 +17,10 @@ from aima_ugc.adapters.providers.tikhub_test import (
 from aima_ugc.adapters.providers.tikhub_test.config import TikHubTestConfig
 from aima_ugc.adapters.providers.tikhub_test.core import DebugState, RunOutputStore
 from aima_ugc.adapters.providers.tikhub_test.excel import (
-    ReviewBlock,
-    ReviewCommentRow,
-    ReviewContent,
-    write_review_workbook,
+    RawDataBlock,
+    RawDataCommentRow,
+    RawDataContent,
+    write_raw_data_workbook,
 )
 from openpyxl import load_workbook
 
@@ -105,10 +105,10 @@ def test_run_output_store_keeps_raw_and_canonical_without_database(tmp_path: Pat
     assert not any("postgres" in part.lower() for part in store.run_dir.parts)
 
 
-def test_review_workbook_uses_approved_content_comment_layout(tmp_path: Path) -> None:
+def test_raw_data_workbook_uses_approved_content_comment_layout(tmp_path: Path) -> None:
     workbook = tmp_path / "result.xlsx"
-    block = ReviewBlock(
-        content=ReviewContent(
+    block = RawDataBlock(
+        content=RawDataContent(
             platform="xhs",
             external_content_id="00123456789012345678",
             content_type="image",
@@ -125,7 +125,7 @@ def test_review_workbook_uses_approved_content_comment_layout(tmp_path: Path) ->
             raw_locator="raw/search_notes-0001.json",
         ),
         comments=(
-            ReviewCommentRow(
+            RawDataCommentRow(
                 level="一级",
                 comment_id="000000000000000001",
                 root_comment_id="000000000000000001",
@@ -137,7 +137,7 @@ def test_review_workbook_uses_approved_content_comment_layout(tmp_path: Path) ->
                 reply_count=1,
                 raw_locator="raw/comments-0002.json#0",
             ),
-            ReviewCommentRow(
+            RawDataCommentRow(
                 level="二级",
                 comment_id="000000000000000002",
                 root_comment_id="000000000000000001",
@@ -152,7 +152,7 @@ def test_review_workbook_uses_approved_content_comment_layout(tmp_path: Path) ->
         ),
     )
 
-    write_review_workbook((block,), workbook)
+    write_raw_data_workbook((block,), workbook)
 
     with ZipFile(workbook) as archive:
         assert archive.testzip() is None

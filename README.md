@@ -6,7 +6,9 @@ AIMA_UGC 是爱玛舆情监控系统的 Greenfield 重构仓库。目标是从�
 
 **Stage 1—7 的工程基线、Platform/数据库/Canonical、PostgreSQL Job Runtime、Provider Request/Attempt + Raw、Collection Run/Scope、五平台 TikHub Operation/Mapper/Ingestion，以及 Scheduler/正式 Worker 主链已经建立。** 当前仓库具备可安装 Python package、FastAPI/Vue 最小工程、固定 OpenAPI 与生成 TypeScript Client、本地前后端联调、Windows x64 开发环境引导、PostgreSQL 18 Schema/Migration、Provider/平台无关 Canonical V1 与 Provider V1 Contract，以及 `Scheduler → Occurrence → Job → Run/Scope → Provider → Raw → Mapper → Canonical → Content Owner` 的持久化执行链。
 
-Stage 8 尚未开始。当前五平台生产实现使用同一 Collection/Content 边界，普通 CI 通过 Fake Transport + 合法脱敏 Fixture 验证，不产生付费 TikHub 请求；真实 Provider Probe 仅在明确授权和请求上限下作为外部兼容证据。当前没有请求/金额 Budget、Budget Account 或 Reservation Ledger。源码仍不能直接视为公网生产交付：Stage 8 业务 API/页面/认证授权，以及 Release 阶段的 Docker/离线发布、协调 Backup/Restore、生产镜像与恢复演练仍需后续正式门禁。
+Stage 8 尚未开始。当前五平台生产实现使用同一 Collection/Content 边界，普通 CI 通过 Fake Transport + 合法脱敏 Fixture 验证，不产生付费 TikHub 请求；真实 Provider Probe 仅在明确授权和请求上限下作为外部兼容证据。当前没有请求/金额 Budget、Budget Account 或 Reservation Ledger。
+
+五平台无数据库 TikHub 独立调试入口见 [`backend/src/aima_ugc/adapters/providers/tikhub_test/README.md`](backend/src/aima_ugc/adapters/providers/tikhub_test/README.md)。它复用生产 Runtime/Operation/Mapper/Decision，支持单/多关键词，输出 Raw、Canonical、`run_summary.json`、跨运行 state 和原始数据 Excel；当前评论增量只对真实排序证据充分的小红书、B站开启。源码仍不能直接视为公网生产交付：Stage 8 业务 API/页面/认证授权，以及 Release 阶段的 Docker/离线发布、协调 Backup/Restore、生产镜像与恢复演练仍需后续正式门禁。
 
 事实源规则：
 

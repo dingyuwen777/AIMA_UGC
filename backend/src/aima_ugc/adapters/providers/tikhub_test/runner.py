@@ -29,7 +29,7 @@ from aima_ugc.modules.collection.decision import (
 
 from .config import TikHubTestConfig
 from .core import DebugState, RawOutputRecord, RunOutputStore, default_run_id
-from .excel import ReviewBlock, ReviewCommentRow, ReviewContent, write_review_workbook
+from .excel import RawDataBlock, RawDataCommentRow, RawDataContent, write_raw_data_workbook
 
 _DEFAULT_OUTPUT_ROOT = Path(__file__).with_name("output")
 _BEIJING = ZoneInfo("Asia/Shanghai")
@@ -106,7 +106,7 @@ class _TikHubDebugRunner:
         self.state = DebugState.load(output_root / platform / "state.json")
         self._request_no = 0
         self._requests: list[dict[str, object]] = []
-        self._blocks: list[ReviewBlock] = []
+        self._blocks: list[RawDataBlock] = []
         self._matched_keywords: dict[str, list[str]] = {}
         self._seen_contents: set[str] = set()
         self._seen_comments: set[tuple[str, str]] = set()
@@ -130,11 +130,11 @@ class _TikHubDebugRunner:
             error = exc
         finally:
             self.state.save()
-            workbook_path = write_review_workbook(
+            workbook_path = write_raw_data_workbook(
                 self._blocks_with_keywords(),
-                self.store.review_dir / f"{self.platform}_review.xlsx",
+                self.store.raw_data_dir / f"{self.platform}_raw_data.xlsx",
             )
-            run_summary_path = self.store.write_run_summary(self._manifest(error))
+            run_summary_path = self.store.write_run_summary(self._run_summary(error))
 
         if error is not None:
             raise error
@@ -267,7 +267,7 @@ class _TikHubDebugRunner:
                 after_detail=True,
             )
 
-        comments: list[ReviewCommentRow] = []
+        comments: list[RawDataCommentRow] = []
         coverage = self._coverage_for_skipped_comments(
             decision.comment_action, decision.comment_reason
         )
@@ -285,8 +285,8 @@ class _TikHubDebugRunner:
             comment_count=content.metrics.comment_count,
         )
         self._blocks.append(
-            ReviewBlock(
-                content=_review_content(content, coverage, content_raw_locator),
+            RawDataBlock(
+                content=_raw_data_content(content, coverage, content_raw_locator),
                 comments=tuple(comments),
             )
         )
@@ -341,10 +341,10 @@ class _TikHubDebugRunner:
         content: CanonicalContentV1,
         action: str,
         target: int,
-    ) -> tuple[list[ReviewCommentRow], str]:
+    ) -> tuple[list[RawDataCommentRow], str]:
         content_id = content.external_content_id
         pagination: dict[str, object] | None = None
-        mapped_rows: list[ReviewCommentRow] = []
+        mapped_rows: list[RawDataCommentRow] = []
         root_total = 0
         provider_exhausted = False
         known_comment_ids = (
@@ -394,7 +394,7 @@ class _TikHubDebugRunner:
                     f"{self.store.relative_path(raw_record.path)}"
                     f"#comments.page[{page_no}].items[{item_index}]"
                 )
-                mapped_rows.append(_review_comment(comment, "一级", locator))
+                mapped_rows.append(_raw_data_comment(comment, "一级", locator))
                 mapped_roots.append(comment)
                 root_total += 1
                 self._root_comment_count += 1
@@ -438,7 +438,7 @@ class _TikHubDebugRunner:
         transport: TikHubHttpTransport,
         content: CanonicalContentV1,
         root: CanonicalCommentV1,
-    ) -> list[ReviewCommentRow]:
+    ) -> list[RawDataCommentRow]:
         reply_decision = self.decision_service.decide_reply(
             ReplyDecisionRequestV1(
                 reply_count=root.metrics.reply_count,
@@ -450,7 +450,7 @@ class _TikHubDebugRunner:
             return []
         target = reply_decision.target or self.limits.max_replies_per_root
         pagination: dict[str, object] | None = None
-        mapped_rows: list[ReviewCommentRow] = []
+        mapped_rows: list[RawDataCommentRow] = []
         mapped_count = 0
         for page_no in range(1, self.limits.max_reply_pages_per_root + 1):
             call = tikhub_runtime.build_sub_comments_call(
@@ -493,7 +493,7 @@ class _TikHubDebugRunner:
                     f"{self.store.relative_path(raw_record.path)}"
                     f"#replies.page[{page_no}].items[{item_index}]"
                 )
-                mapped_rows.append(_review_comment(comment, "二级", locator))
+                mapped_rows.append(_raw_data_comment(comment, "二级", locator))
                 mapped_count += 1
                 self._reply_count += 1
 
@@ -545,9 +545,9 @@ class _TikHubDebugRunner:
         if keyword not in matched:
             matched.append(keyword)
 
-    def _blocks_with_keywords(self) -> tuple[ReviewBlock, ...]:
+    def _blocks_with_keywords(self) -> tuple[RawDataBlock, ...]:
         return tuple(
-            ReviewBlock(
+            RawDataBlock(
                 content=replace(
                     block.content,
                     matched_keywords=tuple(
@@ -575,7 +575,7 @@ class _TikHubDebugRunner:
             return f"not_requested ({reason})"
         return f"partial 0/unknown ({reason})"
 
-    def _manifest(self, error: Exception | None) -> dict[str, object]:
+    def _run_summary(self, error: Exception | None) -> dict[str, object]:
         return {
             "schema_version": "tikhub-test-run.v1",
             "platform": self.platform,
@@ -668,17 +668,17 @@ def _normalize_keywords(
     return tuple(normalized)
 
 
-def _review_content(
+def _raw_data_content(
     content: CanonicalContentV1,
     coverage: str,
     raw_locator: str,
-) -> ReviewContent:
+) -> RawDataContent:
     author = content.author
     author_label = None
     if author is not None:
         author_label = author.display_name or author.handle or author.external_account_id
     content_url = content.canonical_url or content.share_url
-    return ReviewContent(
+    return RawDataContent(
         platform=content.platform,
         external_content_id=content.external_content_id,
         content_type=content.content_type,
@@ -696,16 +696,16 @@ def _review_content(
     )
 
 
-def _review_comment(
+def _raw_data_comment(
     comment: CanonicalCommentV1,
     level: str,
     raw_locator: str,
-) -> ReviewCommentRow:
+) -> RawDataCommentRow:
     author = comment.author
     author_label = None
     if author is not None:
         author_label = author.display_name or author.handle or author.external_account_id
-    return ReviewCommentRow(
+    return RawDataCommentRow(
         level=level,
         comment_id=comment.external_comment_id,
         root_comment_id=comment.root_comment_id,

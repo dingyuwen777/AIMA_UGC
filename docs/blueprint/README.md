@@ -14,7 +14,7 @@
 4. 再按当前任务读取对应领域 Blueprint；
 5. **涉及 Provider、TikHub、采集 Plan、关键词发现、详情/评论策略、Provider Billing/成本事实、未来 Budget/Cost Guard 扩展或平台 Operation 时，必须再读取 [`08-采集策略与平台能力.md`](08-采集策略与平台能力.md)，然后读取 [`../collection/README.md`](../collection/README.md) 和目标平台文档；**
 6. 涉及 Scheduler、TikHub API family 验证或真实响应结构时，再分别读取 `09`—`12` 中与当前任务直接相关的文档；
-7. **涉及帖子/评论基础数据 Excel 导出、`.xlsx` 人工审阅、系统级数据导出或 `tikhub_test` Excel 复用时，必须读取 [`13-统一数据Excel导出与调试复用.md`](13-统一数据Excel导出与调试复用.md)；该文档负责约束未来正式导出完成后删除 `tikhub_test` 的平行 Excel 实现。**
+7. **涉及帖子/评论原始数据 Excel 导出、`.xlsx` 原始数据查看、系统级数据导出或 `tikhub_test` Excel 复用时，必须读取 [`13-统一数据Excel导出与调试复用.md`](13-统一数据Excel导出与调试复用.md)；该文档负责约束未来正式导出完成后删除 `tikhub_test` 的平行 Excel 实现。**
 8. 进入具体实现后，只继续读取相关模块 README、Contract、Migration、依赖、Operation/Mapper、Fixture、实现和测试。
 
 不要因为存在 Blueprint 就跳过代码和测试事实，也不要一次性读取所有文档代替针对当前任务的现状调查。
@@ -58,7 +58,7 @@
 | [`10-TikHub真实响应结构附录.md`](10-TikHub真实响应结构附录.md) | 五平台已脱敏真实响应结构的人类查询入口 | Mapper/Extractor、Fixture 字段定位、真实响应核查 |
 | [`11-TikHub多接口验证与备用策略.md`](11-TikHub多接口验证与备用策略.md) | 同业务语义 API family A/B、候选状态、显式备用与禁止自动 fallback | App/Web/V1/V2/V3 候选验证、备用接口策略 |
 | [`12-TikHub真实请求响应与接口选型台账.md`](12-TikHub真实请求响应与接口选型台账.md) | 五平台主 endpoint、真实请求/响应、价格事实和接口选型证据 | TikHub 主链核查、Real Probe、endpoint 选型与历史 A/B |
-| [`13-统一数据Excel导出与调试复用.md`](13-统一数据Excel导出与调试复用.md) | 采集基础数据 Excel、Canonical/Aggregate 导出边界、`tikhub_test` 阶段性 Excel 与未来共享导出迁移门禁 | 基础数据导出、Excel、`.xlsx`、`openpyxl`、调试审阅文件、系统级导出复用 |
+| [`13-统一数据Excel导出与调试复用.md`](13-统一数据Excel导出与调试复用.md) | 采集原始数据 Excel、Canonical/Aggregate 导出边界、`tikhub_test` 阶段性 Excel 与未来共享导出迁移门禁 | 原始数据导出、Excel、`.xlsx`、`openpyxl`、调试原始数据文件、系统级导出复用 |
 
 ## 当前开发状态
 

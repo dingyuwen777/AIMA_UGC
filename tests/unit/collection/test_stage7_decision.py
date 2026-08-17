@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from aima_ugc.adapters.providers.tikhub.capabilities import XHS_TIKHUB_CAPABILITY
+from aima_ugc.adapters.providers.tikhub.capabilities import (
+    BILIBILI_TIKHUB_CAPABILITY,
+    XHS_TIKHUB_CAPABILITY,
+)
 from aima_ugc.contracts.collection import (
     CollectionDecisionContextV1,
     CollectionDecisionPolicyV1,
@@ -106,6 +109,14 @@ def test_known_comment_boundary_requires_continuous_known_tail() -> None:
     assert not known_comment_boundary_reached(("new-5", "old-3", "new-4"), known)
     assert not known_comment_boundary_reached((), known)
     assert not known_comment_boundary_reached(("new-5", "old-3"), frozenset())
+
+
+def test_bilibili_comment_count_increase_uses_verified_incremental_sort() -> None:
+    request = _request(current_comment_count=80, previous_comment_count=35, existing=True)
+    request = request.model_copy(update={"capability": BILIBILI_TIKHUB_CAPABILITY})
+    decision = CollectionDecisionService().decide(request)
+    assert decision.comment_action == "fetch_incremental"
+    assert decision.comment_reason == "comment_count_increased_incremental"
 
 
 def test_comment_count_decrease_never_guesses_specific_deletion() -> None:

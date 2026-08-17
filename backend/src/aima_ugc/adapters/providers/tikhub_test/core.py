@@ -180,7 +180,7 @@ class RunOutputStore:
     run_dir: Path
     raw_dir: Path
     canonical_dir: Path
-    review_dir: Path
+    raw_data_dir: Path
 
     @classmethod
     def create(
@@ -196,14 +196,14 @@ class RunOutputStore:
         run_dir = Path(output_root) / platform / "runs" / normalized_run_id
         raw_dir = run_dir / "raw"
         canonical_dir = run_dir / "canonical"
-        review_dir = run_dir / "review"
-        for path in (raw_dir, canonical_dir, review_dir):
+        raw_data_dir = run_dir / "raw_data"
+        for path in (raw_dir, canonical_dir, raw_data_dir):
             path.mkdir(parents=True, exist_ok=True)
         return cls(
             run_dir=run_dir,
             raw_dir=raw_dir,
             canonical_dir=canonical_dir,
-            review_dir=review_dir,
+            raw_data_dir=raw_data_dir,
         )
 
     def save_raw(

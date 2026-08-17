@@ -44,16 +44,16 @@ Canonical / Query Read Model
 
 ## 3. 当前 `tikhub_test` 的阶段性实现
 
-在正式系统级数据 Excel 导出尚未开发完成前，`backend/src/aima_ugc/adapters/providers/tikhub_test/` 允许保留一个**阶段性人工审阅 Excel 实现**，用于真实 Provider 调试闭环。
+在正式系统级数据 Excel 导出尚未开发完成前，`backend/src/aima_ugc/adapters/providers/tikhub_test/` 允许保留一个**阶段性原始数据 Excel 实现**，用于真实 Provider 调试闭环。
 
 当前边界：
 
 ```text
 TikHub 正式 Operation / Transport / Mapper
 → CanonicalContentV1 / CanonicalCommentV1
-→ tikhub_test 临时 ReviewContent / ReviewCommentRow
+→ tikhub_test 临时 RawDataContent / RawDataCommentRow
 → tikhub_test/excel.py
-→ 内容与评论.xlsx
+→ <platform>_raw_data.xlsx
 ```
 
 它的存在只为当前调试工具在系统级导出能力缺失时提供可读结果，不代表已经形成第二套长期 Export Contract。
@@ -66,7 +66,7 @@ TikHub 正式 Operation / Transport / Mapper
 - 一级/二级评论保留 `external_comment_id`、`root_comment_id`、`parent_comment_id`；
 - `comment_coverage`/等价覆盖状态可追溯；
 - 外部文本防 Excel 公式注入；
-- 人工审阅格式不能反向成为 Canonical Schema。
+- 原始数据 Excel 展示格式不能反向成为 Canonical Schema。
 
 ## 4. 正式系统级数据导出的复用门禁
 
@@ -76,10 +76,10 @@ TikHub 正式 Operation / Transport / Mapper
 
 1. 明确统一数据导出的业务范围、筛选条件、权限、最大数据量、同步/Job 边界、文件生命周期和验收样例；
 2. 导出核心只消费 `CanonicalContentAggregateV1` 或经批准的 Provider-neutral Export Read Model，不读取 TikHub/平台私有 JSON；
-3. 建立唯一共享 Excel Exporter/Renderer（具体模块路径由未来 Change 基于当时仓库结构确定，本文不提前冻结目录）；
+3. 建立唯一共享原始数据 Excel Exporter（具体模块路径由未来 Change 基于当时仓库结构确定，本文不提前冻结目录）；
 4. 共享实现覆盖内容区块、一级/二级评论关系、文本 ID、时间、URL、长文本、覆盖状态、公式注入防护和可打开性验证；
 5. 系统业务导出和 `tikhub_test` 都调用同一个共享 Excel 导出实现；
-6. **删除 `tikhub_test/excel.py` 中已经重复的导出实现，以及只为该重复实现存在的 `ReviewContent` / `ReviewCommentRow` / `ReviewBlock` 等临时显示模型；**如果某个类型仍有独立用途，必须说明用途并避免复制共享 Export Model；
+6. **删除 `tikhub_test/excel.py` 中已经重复的导出实现，以及只为该重复实现存在的 `RawDataContent` / `RawDataCommentRow` / `RawDataBlock` 等临时显示模型；**如果某个类型仍有独立用途，必须说明用途并避免复制共享 Export Model；
 7. 把通用 Excel 单元测试迁移到共享导出模块；`tikhub_test` 只保留“真实/Fixture Canonical 能进入共享 Exporter 并成功生成文件”的集成级回归；
 8. 更新 `tikhub_test/README.md`、根 README、测试说明和受影响 Blueprint，明确当前已无第二套 Excel 实现；
 9. PR Review 必须搜索仓库中的 `.xlsx`/`openpyxl`/Excel exporter 相关实现，确认没有两个独立的内容+评论数据导出器继续并存。
