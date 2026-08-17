@@ -414,10 +414,7 @@ class TikHubCollectionScopeExecutor:
                         capability=capability,
                     )
                 )
-                if (
-                    reply_decision.action in _REPLY_FETCH_ACTIONS
-                    and not context.cancel_requested()
-                ):
+                if reply_decision.action in _REPLY_FETCH_ACTIONS and not context.cancel_requested():
                     self._fetch_sub_comments(
                         run=run,
                         scope=scope,
@@ -569,9 +566,7 @@ class TikHubCollectionScopeExecutor:
             transport_request=call.transport_request(credential),
         )
         if outcome.attempt.dispatch_status != "completed":
-            raise RuntimeError(
-                f"TikHub Provider Attempt 未完成: {outcome.attempt.dispatch_status}"
-            )
+            raise RuntimeError(f"TikHub Provider Attempt 未完成: {outcome.attempt.dispatch_status}")
         if outcome.attempt.http_status is not None and outcome.attempt.http_status >= 400:
             raise RuntimeError(f"TikHub Provider 返回 HTTP {outcome.attempt.http_status}")
         if outcome.artifact is None:
@@ -609,9 +604,7 @@ def _platform_runtime_config(run: CollectionRunRecord, platform: str) -> _Platfo
     if not isinstance(platforms, list):
         raise ValueError("Collection Run Snapshot 缺少 platforms")
     matches = [
-        item
-        for item in platforms
-        if isinstance(item, dict) and item.get("platform") == platform
+        item for item in platforms if isinstance(item, dict) and item.get("platform") == platform
     ]
     if len(matches) != 1:
         raise ValueError("Collection Run Snapshot 必须为 Scope 平台提供唯一 Provider Config")
