@@ -2,11 +2,6 @@ name: Stage 7 TikHub Real Shape
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - feature/stage7-completion
-    paths:
-      - ".github/workflows/stage7-tikhub-real-shape.yml"
 
 permissions:
   contents: read
