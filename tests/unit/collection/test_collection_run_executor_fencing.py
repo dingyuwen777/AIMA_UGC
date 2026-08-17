@@ -86,16 +86,6 @@ class _FencedGateway:
         return self.execution.run
 
 
-class _RunPreparer:
-    def prepare(
-        self,
-        *,
-        execution: CollectionExecution,
-        fence: JobExecutionFence,
-    ) -> None:
-        assert execution.run.job_id == fence.job_id
-
-
 class _ScopeExecutor:
     def execute(
         self,
@@ -163,7 +153,6 @@ def test_executor_passes_current_fence_to_every_gateway_state_transition() -> No
 
     result = CollectionRunExecutor(
         gateway=gateway,
-        run_preparer=_RunPreparer(),
         scope_executor=_ScopeExecutor(),
     ).execute(
         fence=fence,
