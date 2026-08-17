@@ -154,7 +154,7 @@ def test_scope_runtime_dispatches_search_and_detail_then_ingests_canonical_conte
             )
             CollectionExecutionService(PostgresCollectionRepository(session)).create_run(
                 job_id=job.id,
-                trigger_type="scheduled",
+                trigger_type="api",
                 config_snapshot={
                     "schema_version": "collection-run-config.v1",
                     "detail_policy": "on_change",
