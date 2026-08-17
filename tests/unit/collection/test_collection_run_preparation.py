@@ -1,4 +1,6 @@
-"""Collection Run 状态推进必须复用当前 Job Fencing Token。"""
+"""Collection Run 运行前准备编排测试。"""
+
+from __future__ import annotations
 
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
@@ -14,45 +16,38 @@ from aima_ugc.modules.collection.execution import (
 )
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult
 
-_NOW = datetime(2026, 8, 17, tzinfo=UTC)
+_NOW = datetime(2026, 8, 17, 0, 30, tzinfo=UTC)
 
 
 class _Context:
     def __init__(self, fence: JobExecutionFence) -> None:
         self._fence = fence
+        self.heartbeats: list[int] = []
 
     @property
     def fence(self) -> JobExecutionFence:
         return self._fence
 
     def heartbeat(self, *, progress: int) -> None:
-        assert 0 <= progress <= 100
+        self.heartbeats.append(progress)
 
     def cancel_requested(self) -> bool:
         return False
 
 
-class _FencedGateway:
-    def __init__(self, execution: CollectionExecution, expected_fence: JobExecutionFence) -> None:
+class _Gateway:
+    def __init__(self, execution: CollectionExecution) -> None:
         self.execution = execution
-        self.expected_fence = expected_fence
-        self.observed: list[JobExecutionFence] = []
-
-    def _check(self, fence: JobExecutionFence) -> None:
-        assert fence == self.expected_fence
-        self.observed.append(fence)
 
     def load(self, fence: JobExecutionFence) -> CollectionExecution | None:
-        self._check(fence)
-        return self.execution if fence.job_id == self.execution.run.job_id else None
+        assert fence.job_id == self.execution.run.job_id
+        return self.execution
 
     def start_run(self, run_id: UUID, *, fence: JobExecutionFence) -> CollectionRunRecord:
-        self._check(fence)
         assert run_id == self.execution.run.id
         return self.execution.run
 
     def start_scope(self, scope_id: UUID, *, fence: JobExecutionFence) -> CollectionScopeRecord:
-        self._check(fence)
         return next(scope for scope in self.execution.scopes if scope.id == scope_id)
 
     def finish_scope(
@@ -65,7 +60,6 @@ class _FencedGateway:
         pagination_state: dict[str, object],
         stats: dict[str, object],
     ) -> CollectionScopeRecord:
-        self._check(fence)
         return next(scope for scope in self.execution.scopes if scope.id == scope_id)
 
     def finish_run(
@@ -81,22 +75,33 @@ class _FencedGateway:
         comment_count: int,
         error_summary: str | None,
     ) -> CollectionRunRecord:
-        self._check(fence)
-        assert run_id == self.execution.run.id
         return self.execution.run
 
 
 class _RunPreparer:
+    def __init__(self) -> None:
+        self.calls: list[tuple[UUID, tuple[UUID, ...], JobExecutionFence]] = []
+
     def prepare(
         self,
         *,
         execution: CollectionExecution,
         fence: JobExecutionFence,
     ) -> None:
-        assert execution.run.job_id == fence.job_id
+        self.calls.append(
+            (
+                execution.run.id,
+                tuple(scope.id for scope in execution.scopes),
+                fence,
+            )
+        )
 
 
 class _ScopeExecutor:
+    def __init__(self, preparer: _RunPreparer) -> None:
+        self._preparer = preparer
+        self.calls: list[UUID] = []
+
     def execute(
         self,
         *,
@@ -104,15 +109,17 @@ class _ScopeExecutor:
         scope: CollectionScopeRecord,
         context: _Context,
     ) -> CollectionScopeExecutionResult:
+        assert self._preparer.calls, "Run 预算/路由准备必须早于任何 Scope 执行"
+        self.calls.append(scope.id)
         return CollectionScopeExecutionResult(
             status="succeeded",
             stop_reason="provider_exhausted",
             pagination_state={},
             stats={},
-            requested_count=1,
-            succeeded_count=1,
+            requested_count=0,
+            succeeded_count=0,
             failed_count=0,
-            content_count=1,
+            content_count=0,
             comment_count=0,
         )
 
@@ -125,10 +132,10 @@ def _execution() -> CollectionExecution:
         job_id=job_id,
         manual_plan_id=None,
         occurrence_id=None,
-        trigger_type="api",
-        config_snapshot={},
-        status="running",
-        started_at=_NOW,
+        trigger_type="scheduled",
+        config_snapshot={"schema_version": "collection-run-config.v1"},
+        status="queued",
+        started_at=None,
         finished_at=None,
         requested_count=0,
         succeeded_count=0,
@@ -138,47 +145,51 @@ def _execution() -> CollectionExecution:
         error_summary=None,
         created_at=_NOW,
     )
-    scope = CollectionScopeRecord(
-        id=uuid4(),
-        run_id=run_id,
-        platform="xhs",
-        source_type="keyword_search",
-        source_value="爱玛",
-        operation_group="content_discovery",
-        status="queued",
-        pagination_state={},
-        progress=0,
-        stop_reason=None,
-        stats={},
-        started_at=None,
-        finished_at=None,
+    scopes = tuple(
+        CollectionScopeRecord(
+            id=uuid4(),
+            run_id=run_id,
+            platform=platform,
+            source_type="keyword_search",
+            source_value="爱玛",
+            operation_group="content_discovery",
+            status="queued",
+            pagination_state={},
+            progress=0,
+            stop_reason=None,
+            stats={},
+            started_at=None,
+            finished_at=None,
+        )
+        for platform in ("xhs", "douyin")
     )
-    return CollectionExecution(run=run, scopes=(scope,))
+    return CollectionExecution(run=run, scopes=scopes)
 
 
-def test_executor_passes_current_fence_to_every_gateway_state_transition() -> None:
+def test_run_preparer_receives_full_execution_before_first_scope() -> None:
     execution = _execution()
     fence = JobExecutionFence(job_id=execution.run.job_id, lease_token="lease-token")
-    gateway = _FencedGateway(execution, fence)
+    preparer = _RunPreparer()
+    scope_executor = _ScopeExecutor(preparer)
 
     result = CollectionRunExecutor(
-        gateway=gateway,
-        run_preparer=_RunPreparer(),
-        scope_executor=_ScopeExecutor(),
-    ).execute(
-        fence=fence,
-        context=_Context(fence),
-    )
+        gateway=_Gateway(execution),
+        run_preparer=preparer,
+        scope_executor=scope_executor,
+    ).execute(fence=fence, context=_Context(fence))
 
     assert result == JobHandlerResult.succeeded(
         {
             "run_id": str(execution.run.id),
             "status": "succeeded",
-            "requested_count": 1,
-            "succeeded_count": 1,
+            "requested_count": 0,
+            "succeeded_count": 0,
             "failed_count": 0,
-            "content_count": 1,
+            "content_count": 0,
             "comment_count": 0,
         }
     )
-    assert gateway.observed == [fence, fence, fence, fence, fence]
+    assert preparer.calls == [
+        (execution.run.id, tuple(scope.id for scope in execution.scopes), fence)
+    ]
+    assert scope_executor.calls == [scope.id for scope in execution.scopes]

@@ -90,6 +90,17 @@ class CollectionRunExecutionGateway(Protocol):
     ) -> CollectionRunRecord: ...
 
 
+class CollectionRunPreparer(Protocol):
+    """在首个 Scope 前基于完整 Run 快照建立运行所需的路由/预算事实。"""
+
+    def prepare(
+        self,
+        *,
+        execution: CollectionExecution,
+        fence: JobExecutionFence,
+    ) -> None: ...
+
+
 class CollectionScopeExecutor(Protocol):
     """执行一个 Scope；Provider/Raw/Mapper/Ingestion 细节留在 Scope 实现内。"""
 
@@ -134,9 +145,11 @@ class CollectionRunExecutor:
         self,
         *,
         gateway: CollectionRunExecutionGateway,
+        run_preparer: CollectionRunPreparer,
         scope_executor: CollectionScopeExecutor,
     ) -> None:
         self._gateway = gateway
+        self._run_preparer = run_preparer
         self._scope_executor = scope_executor
 
     def execute(
@@ -150,6 +163,7 @@ class CollectionRunExecutor:
             return JobHandlerResult.failed("collection_run_not_found")
 
         run = self._gateway.start_run(execution.run.id, fence=fence)
+        self._run_preparer.prepare(execution=execution, fence=fence)
         totals = _RunTotals()
         failed_scopes = 0
         partial_scopes = 0
@@ -262,6 +276,7 @@ class CollectionRunExecutor:
 __all__ = [
     "CollectionRunExecutionGateway",
     "CollectionRunExecutor",
+    "CollectionRunPreparer",
     "CollectionScopeExecutionResult",
     "CollectionScopeExecutor",
 ]

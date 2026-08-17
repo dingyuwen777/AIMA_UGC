@@ -64,6 +64,7 @@ def _create_plan(scheduler_runtime):
                     max_catch_up_runs=0,
                     detail_policy="on_change",
                     comment_policy="adaptive",
+                    request_budget=100,
                     created_by=None,
                     platforms=(),
                     keyword_pack_ids=(),

@@ -112,6 +112,16 @@ class _Gateway:
         return self.execution.run
 
 
+class _RunPreparer:
+    def prepare(
+        self,
+        *,
+        execution: CollectionExecution,
+        fence: JobExecutionFence,
+    ) -> None:
+        assert execution.run.job_id == fence.job_id
+
+
 class _ScopeExecutor:
     def __init__(self, results: dict[UUID, CollectionScopeExecutionResult | Exception]) -> None:
         self._results = results
@@ -202,6 +212,7 @@ def test_executor_finishes_successful_run_with_aggregated_scope_counts() -> None
 
     result = CollectionRunExecutor(
         gateway=gateway,
+        run_preparer=_RunPreparer(),
         scope_executor=scope_executor,
     ).execute(
         fence=context.fence,
@@ -247,6 +258,7 @@ def test_executor_isolates_scope_exception_and_marks_run_partial_success() -> No
 
     result = CollectionRunExecutor(
         gateway=gateway,
+        run_preparer=_RunPreparer(),
         scope_executor=scope_executor,
     ).execute(
         fence=context.fence,
@@ -271,6 +283,7 @@ def test_executor_stops_before_next_scope_when_job_is_cancel_requested() -> None
 
     result = CollectionRunExecutor(
         gateway=gateway,
+        run_preparer=_RunPreparer(),
         scope_executor=scope_executor,
     ).execute(
         fence=context.fence,
