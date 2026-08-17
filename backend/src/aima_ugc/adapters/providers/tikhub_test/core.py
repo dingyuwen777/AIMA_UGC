@@ -12,7 +12,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel
 
-from aima_ugc.contracts.provider import assert_secret_free, redact_json
+from aima_ugc.contracts.provider import assert_redacted_json, assert_secret_free, redact_json
 
 _SAFE_FILENAME = re.compile(r"[^A-Za-z0-9_.-]+")
 _STATE_SCHEMA = "tikhub-test-state.v1"
@@ -215,7 +215,7 @@ class RunOutputStore:
             raise FileExistsError(f"TikHub 调试 Raw 不允许覆盖：{path}")
 
         safe_body = redact_json(body)
-        assert_secret_free(safe_body, path=f"tikhub_test.raw.{safe_operation}")
+        assert_redacted_json(safe_body, path=f"tikhub_test.raw.{safe_operation}")
         path.write_text(_json_text(safe_body), encoding="utf-8")
         return RawOutputRecord(
             artifact_id=uuid4(),
@@ -240,7 +240,14 @@ class RunOutputStore:
         assert_secret_free(payload, path=f"tikhub_test.canonical.{kind}")
         path = self.canonical_dir / f"{kind}.jsonl"
         with path.open("a", encoding="utf-8", newline="\n") as handle:
-            handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+            handle.write(
+                json.dumps(
+                    payload,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            )
             handle.write("\n")
         return path
 
