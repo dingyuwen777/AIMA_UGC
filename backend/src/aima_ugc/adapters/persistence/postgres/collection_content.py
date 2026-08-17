@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
-from aima_ugc.contracts.canonical import CanonicalContentV1
+from aima_ugc.contracts.canonical import CanonicalCommentV1, CanonicalContentV1
 from aima_ugc.contracts.collection import PreviousContentStateV1
 from aima_ugc.modules.collection.candidates import CandidateIngestionService
 from aima_ugc.modules.collection.tables import (
@@ -137,6 +137,39 @@ class PostgresFencedCollectionIngestionWriter:
         finally:
             session.close()
 
+    def ingest_comment(
+        self,
+        *,
+        canonical: CanonicalCommentV1,
+        fence: JobExecutionFence,
+    ) -> PostgresIngestionResult:
+        """校验当前 Job Fence 后复用现有 Comment Owner 与 Candidate 账本。"""
+        attempt_id = _provider_attempt_id(canonical)
+        item_locator = _item_locator(canonical)
+        session = self._session_factory()
+        try:
+            with session.begin():
+                _lock_matching_attempt(session, attempt_id=attempt_id, fence=fence)
+                candidate_service = CandidateIngestionService(PostgresCandidateRepository(session))
+                content_service = ContentIngestionService(PostgresContentRepository(session))
+                candidate = candidate_service.discover(
+                    provider_request_attempt_id=attempt_id,
+                    item_kind="comment",
+                    external_item_id=canonical.external_comment_id,
+                    item_locator=item_locator,
+                    discovered_at=canonical.observed_at,
+                )
+                result = content_service.ingest_comment(canonical)
+                candidate_service.record_ingestion(
+                    candidate_id=candidate.id,
+                    canonical=canonical,
+                    target_id=result.target_id,
+                    result="ingested",
+                )
+                return result
+        finally:
+            session.close()
+
 
 def _lock_matching_attempt(
     session: Session,
@@ -168,7 +201,7 @@ def _lock_matching_attempt(
         raise LeaseLostError("Provider Attempt 不属于当前 Job Fence")
 
 
-def _provider_attempt_id(observation: CanonicalContentV1) -> UUID:
+def _provider_attempt_id(observation: CanonicalContentV1 | CanonicalCommentV1) -> UUID:
     value = observation.source.provider_attempt_id
     if value is None:
         raise ValueError("Collection live ingestion 要求 provider_attempt_id")
@@ -178,7 +211,7 @@ def _provider_attempt_id(observation: CanonicalContentV1) -> UUID:
         raise ValueError("Collection live ingestion 的 provider_attempt_id 不是 UUID") from exc
 
 
-def _item_locator(observation: CanonicalContentV1) -> str:
+def _item_locator(observation: CanonicalContentV1 | CanonicalCommentV1) -> str:
     value = observation.source.item_locator
     if value is None or not value.strip():
         raise ValueError("Collection live ingestion 要求非空 item_locator")
