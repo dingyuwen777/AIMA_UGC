@@ -1,12 +1,12 @@
 # Scheduler 运行与恢复策略
 
-> 状态：已批准设计；Stage 7 正在实现与验证  
+> 状态：已批准并实现；Stage 7 收尾验证中  
 > 首版时区：`Asia/Shanghai`  
 > 批准日期：2026-08-15
 
-本文冻结 AIMA_UGC 首版 Scheduler 的运行、停机恢复、并发和持久化语义。它补充 `04-后端任务API与前端.md` 中的 Scheduler 事务流程，以及 `07-技术决策与实施门禁.md`、`08-采集策略与平台能力.md` 中此前尚未批准的 misfire/catch-up 门禁。
+本文冻结 AIMA_UGC 首版 Scheduler 的运行、停机恢复、并发和持久化语义。它补充 `04-后端任务API与前端.md` 中的 Scheduler 事务流程，以及 `07-技术决策与实施门禁.md`、`08-采集策略与平台能力.md` 中的 Scheduler 边界。
 
-如果本文与未更新的旧摘要冲突，以本文的已批准 Scheduler 决策和当前机器实现/测试为准；旧摘要应在后续文档同步中删除“misfire 尚未决定”的表述，而不是保留两套语义。
+如果本文与未更新的旧摘要冲突，以本文的已批准 Scheduler 决策和当前机器实现/测试为准；旧摘要应删除“misfire 尚未决定”的表述，而不是保留两套语义。
 
 ## 1. 已批准的停机恢复方案
 
@@ -49,12 +49,12 @@ Scheduler 在 05:00 停机、17:00 恢复，则：
 
 ## 2. 为什么采用 latest-only
 
-AIMA_UGC 是持续刷新型舆情监控系统，不是要求每一个调度批次都不可缺失的账务系统。恢复后的首要目标是尽快得到当前舆情状态，同时控制第三方 API 成本和恢复压力。
+AIMA_UGC 是持续刷新型舆情监控系统，不是要求每一个调度批次都不可缺失的账务系统。恢复后的首要目标是尽快得到当前舆情状态，同时控制第三方 API 请求压力和重复采集。
 
 `latest_only` 的收益：
 
 - 服务恢复后立即执行最近一个已错过周期，不额外等待下一个未来周期；
-- 不会因长时间停机形成 TikHub 集中补跑和费用突增；
+- 不会因长时间停机形成 TikHub 集中补跑；
 - 避免大量重叠搜索窗口重复请求；
 - 历史漏数风险由搜索窗口重叠、backfill、去重和历史刷新机制负责补偿；
 - Scheduler 状态清晰，所有被覆盖的历史 slot 仍有 `skipped` 审计事实。
@@ -64,7 +64,7 @@ AIMA_UGC 是持续刷新型舆情监控系统，不是要求每一个调度批�
 - `bounded_catch_up`：恢复时额外执行最近 N 个历史周期；
 - `strict_skip`：错过的周期全部跳过并等待下一个未来周期。
 
-后续如需改变策略，必须作为新的高风险 Change 处理，同时修改数据库约束、Domain、Scheduler、测试、Blueprint 和成本评估，不能只改前端参数。
+后续如需改变策略，必须作为新的高风险 Change 处理，同时修改数据库约束、Domain、Scheduler、测试、Blueprint 和成本/容量评估，不能只改前端参数。
 
 ## 3. 首版 Schedule Expression
 
@@ -174,20 +174,20 @@ plan_id + schedule_version + scheduled_for
 
 Stage 8 未来修改 Plan 时必须负责正确提升 `schedule_version` 和重置/调整 Scheduler cursor；在 Stage 8 Contract 冻结前，不在本阶段提前发明编辑 API 语义。
 
-## 8. 成本和故障保护
+## 8. Provider 成本事实和故障保护
 
-`latest_only` 只是 Scheduler 第一层恢复限流，不能替代 Provider Budget Ledger。
+`latest_only` 是 Scheduler 的恢复限流策略。当前系统**不实现**请求次数预算、金额预算、Budget Account、Reservation Ledger、Run/评论 Budget 或发送预算门禁，Scheduler 也不得借“恢复限流”重新引入这些能力。
 
-真实 Provider HTTP 仍必须：
+真实 Provider HTTP 仍保留以下执行与审计事实：
 
 ```text
-Plan request_budget
-→ global/run/run_comments/content_comments 预算
-→ endpoint Pricing 已核验
+Provider Config
+→ endpoint Pricing / Billing facts
 → Provider Request / Attempt
+→ 成本快照 / potential_duplicate_charge 审计
 ```
 
-Pricing 未核验仍必须发送前 fail closed，不能因为 Scheduler 已经创建 Job 就绕过价格门禁。
+这些 Pricing、Billing 和成本快照用于描述已经选择/发生的 Provider 请求与计费风险，不是预算能力，也不能作为 dormant Budget 接口的入口。未来如果需要 Budget / Cost Guard，必须新建 L3 Change，重新批准 Contract、Schema、发送门禁、并发语义和迁移。
 
 如果一个 Plan 的历史积压逻辑 slot 数异常巨大，Scheduler 应 fail closed 并要求人工确认，而不是在一个事务中无限创建 skipped 行。
 
@@ -216,6 +216,7 @@ Scheduler Runtime 至少需要机器证明：
 - Job + Occurrence + scheduled Run + cursor 同事务一致；
 - 同一时间重复 tick 不重复入队；
 - 两个 Scheduler 并发处理同一 Plan 最终只有一个有效 Job/Run/Occurrence；
-- Migration upgrade/downgrade、`alembic check` 和相关质量门禁通过。
+- Migration upgrade/downgrade、`alembic check` 和相关质量门禁通过；
+- Scheduler 创建的 `collection.run.v1` Job 能由正式 Worker Registry/JobWorker 消费并驱动 Collection Scope 执行，而不是只停留在入队事实。
 
-在以上机器证据全部通过前，只能说“决策已批准、实现进行中”，不能把 Stage 7 Scheduler 标记完成。
+上述 Scheduler/Worker 机器证据通过后，仍需按 Stage 7 Change 完成最终 PR head 全门禁、Review、合并和合并后 main 验证，才能宣称 Stage 7 整体闭环。
