@@ -50,7 +50,7 @@ from aima_ugc.contracts.collection import (
     ProviderPlatformCapabilityV1,
     ReplyDecisionRequestV1,
 )
-from aima_ugc.contracts.provider import ProviderRequestV1
+from aima_ugc.contracts.provider import JsonObject, ProviderRequestV1
 from aima_ugc.modules.collection.collection_run_executor import (
     CollectionScopeExecutionResult,
     CollectionScopeTerminalStatus,
@@ -531,7 +531,7 @@ class TikHubCollectionScopeExecutor:
         provider_config: ProviderConfig,
         context: JobExecutionContextProtocol,
     ) -> _ExecutedCall:
-        request_params: dict[str, object] = {
+        request_params: JsonObject = {
             "method": call.method,
             "path": call.path,
             "params": dict(call.params),
