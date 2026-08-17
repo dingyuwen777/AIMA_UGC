@@ -230,6 +230,7 @@ jobs:
                   item["name"] for item in inspect(runtime.engine).get_check_constraints(
                       "provider_requests"
                   )
+              }
           finally:
               runtime.dispose()
           assert "ck_provider_requests_status_allowed" not in checks, checks
