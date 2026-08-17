@@ -342,16 +342,19 @@ def test_concurrent_first_content_insert_converges_on_one_row(
 
     try:
         with ThreadPoolExecutor(max_workers=2) as executor:
-            ids = [future.result() for future in [executor.submit(ingest, item) for item in observations]]
+            ids = [
+                future.result()
+                for future in [executor.submit(ingest, item) for item in observations]
+            ]
     finally:
         _drop_delay_trigger(database_runtime, table="contents", trigger="delay_contents_insert")
 
     assert ids[0] == ids[1]
     with database_runtime.engine.connect() as connection:
         count = connection.scalar(
-            select(text("count(*)")).select_from(contents_table).where(
-                contents_table.c.external_content_id == "note-concurrent"
-            )
+            select(text("count(*)"))
+            .select_from(contents_table)
+            .where(contents_table.c.external_content_id == "note-concurrent")
         )
     assert count == 1
 
@@ -393,22 +396,27 @@ def test_concurrent_first_comment_insert_converges_on_one_row(
         try:
             barrier.wait()
             with worker_session.begin():
-                return PostgresContentRepository(worker_session).ingest_comment(observation).target_id
+                return (
+                    PostgresContentRepository(worker_session).ingest_comment(observation).target_id
+                )
         finally:
             worker_session.close()
 
     try:
         with ThreadPoolExecutor(max_workers=2) as executor:
-            ids = [future.result() for future in [executor.submit(ingest, item) for item in observations]]
+            ids = [
+                future.result()
+                for future in [executor.submit(ingest, item) for item in observations]
+            ]
     finally:
         _drop_delay_trigger(database_runtime, table="comments", trigger="delay_comments_insert")
 
     assert ids[0] == ids[1]
     with database_runtime.engine.connect() as connection:
         count = connection.scalar(
-            select(text("count(*)")).select_from(comments_table).where(
-                comments_table.c.external_comment_id == "comment-concurrent"
-            )
+            select(text("count(*)"))
+            .select_from(comments_table)
+            .where(comments_table.c.external_comment_id == "comment-concurrent")
         )
     assert count == 1
 

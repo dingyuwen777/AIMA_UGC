@@ -87,20 +87,17 @@ class PostgresContentRepository:
         author_id = self._upsert_author(observation)
         content_id = uuid4()
         state = _new_content_state(content_id, observation, author_id)
-        created = (
-            self._session.execute(
-                pg_insert(contents_table)
-                .values(**state)
-                .on_conflict_do_nothing(
-                    index_elements=[
-                        contents_table.c.platform,
-                        contents_table.c.external_content_id,
-                    ]
-                )
-                .returning(contents_table.c.id)
+        created = self._session.execute(
+            pg_insert(contents_table)
+            .values(**state)
+            .on_conflict_do_nothing(
+                index_elements=[
+                    contents_table.c.platform,
+                    contents_table.c.external_content_id,
+                ]
             )
-            .scalar_one_or_none()
-        )
+            .returning(contents_table.c.id)
+        ).scalar_one_or_none()
         if created is not None:
             self._append_content_version(
                 content_id=content_id,
@@ -208,20 +205,17 @@ class PostgresContentRepository:
         author_id = self._upsert_comment_author(observation)
         comment_id = uuid4()
         state = _new_comment_state(comment_id, content_id, observation, author_id)
-        created = (
-            self._session.execute(
-                pg_insert(comments_table)
-                .values(**state)
-                .on_conflict_do_nothing(
-                    index_elements=[
-                        comments_table.c.content_id,
-                        comments_table.c.external_comment_id,
-                    ]
-                )
-                .returning(comments_table.c.id)
+        created = self._session.execute(
+            pg_insert(comments_table)
+            .values(**state)
+            .on_conflict_do_nothing(
+                index_elements=[
+                    comments_table.c.content_id,
+                    comments_table.c.external_comment_id,
+                ]
             )
-            .scalar_one_or_none()
-        )
+            .returning(comments_table.c.id)
+        ).scalar_one_or_none()
         if created is not None:
             self._append_comment_version(
                 comment_id=comment_id,
@@ -451,28 +445,25 @@ class PostgresContentRepository:
             if f"author.{field_name}" in observed_fields
         }
         account_id = uuid4()
-        created = (
-            self._session.execute(
-                pg_insert(accounts_table)
-                .values(
-                    id=account_id,
-                    platform=platform,
-                    external_account_id=author.external_account_id,
-                    first_seen_at=observed_at,
-                    last_seen_at=observed_at,
-                    updated_at=observed_at,
-                    **observed_values,
-                )
-                .on_conflict_do_nothing(
-                    index_elements=[
-                        accounts_table.c.platform,
-                        accounts_table.c.external_account_id,
-                    ]
-                )
-                .returning(accounts_table.c.id)
+        created = self._session.execute(
+            pg_insert(accounts_table)
+            .values(
+                id=account_id,
+                platform=platform,
+                external_account_id=author.external_account_id,
+                first_seen_at=observed_at,
+                last_seen_at=observed_at,
+                updated_at=observed_at,
+                **observed_values,
             )
-            .scalar_one_or_none()
-        )
+            .on_conflict_do_nothing(
+                index_elements=[
+                    accounts_table.c.platform,
+                    accounts_table.c.external_account_id,
+                ]
+            )
+            .returning(accounts_table.c.id)
+        ).scalar_one_or_none()
         if created is None:
             row = dict(
                 self._session.execute(
