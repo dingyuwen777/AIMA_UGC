@@ -233,7 +233,7 @@ Worker 必须原子认领 `queued` 或接管 Lease 已过期的 `running` Job，
 
 每次 Attempt 有 Heartbeat 不可延长的 Deadline。Platform Reaper 必须用 CAS 处理 Deadline 超时、取消和次数耗尽；Heartbeat 存活不能让超时 Handler 无限运行。Scheduler 停机补跑必须有已批准的 misfire 策略和上限。
 
-已校验 Raw 存在时禁止再次调用 Provider；网络结果未知时不能承诺零重复计费，必须按批准策略重试并记录计费未知/潜在重复费用。Run、单内容评论和全局预算使用数据库账户与 Reservation Ledger 原子预留/结算/释放，不能只用进程内计数或先查后扣。每个真实 HTTP Attempt 强制取得 global+run 预留，评论 Operation 再取得 content_comments；应有账户缺失时关闭失败。只有同一 Attempt 的预留事务重放可以依靠唯一键复用原预留，网络重试不得复用上一 Attempt 的预留。Dispatch CAS 必须验证当前 Job Fencing，Transport 禁止在一次调用中隐藏自动网络重试；Attempt 进入 `dispatching` 后同一 Attempt 不得再次发送，崩溃恢复按计费未知保守占用预算。
+已校验 Raw 存在时禁止再次调用 Provider；网络结果未知时不能承诺零重复计费，必须按批准策略重试并记录计费未知/潜在重复费用。当前版本**不实现请求/金额预算、Budget Account 或 Reservation Ledger**，也不得为了预留扩展点保留 dormant Budget Service/Repository。Provider Request/Attempt 仍可保存 Billing/成本快照与潜在重复计费事实用于执行审计。Dispatch CAS 必须验证当前 Job Fencing，Transport 禁止在一次调用中隐藏自动网络重试；Attempt 进入 `dispatching` 后同一 Attempt 不得再次发送。未来若业务需要 Budget/Cost Guard，必须通过新的 L3 Change 明确 Contract、Schema、配置、Migration 和验证后再接入发送前边界。
 
 所有业务写 Unit of Work、Artifact 生命周期和文件 rename/delete 必须参与统一共享 session-level advisory 写屏障，并在取得共享锁后复核维护 epoch。常规/发布 Backup Set 先启用维护，再取得同键独占锁等待在途写者排空，持有到数据库与文件捕获都完成；仅拒绝新 HTTP 请求不算一致性屏障。
 
