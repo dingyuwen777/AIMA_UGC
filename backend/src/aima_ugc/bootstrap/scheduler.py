@@ -185,7 +185,6 @@ def _scheduled_run_snapshot(
         "timezone": plan.timezone,
         "detail_policy": plan.detail_policy,
         "comment_policy": plan.comment_policy,
-        "request_budget": plan.request_budget,
         "platforms": [
             {
                 "platform": item.platform,
