@@ -7,7 +7,6 @@ from pathlib import Path
 from zipfile import ZipFile
 
 import pytest
-from openpyxl import load_workbook
 from aima_ugc.adapters.providers.tikhub_test import (
     run_bilibili,
     run_douyin,
@@ -23,6 +22,7 @@ from aima_ugc.adapters.providers.tikhub_test.excel import (
     ReviewContent,
     write_review_workbook,
 )
+from openpyxl import load_workbook
 
 
 def test_local_env_loads_tikhub_secret_without_exposing_value(tmp_path: Path) -> None:

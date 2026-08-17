@@ -222,9 +222,9 @@ def _set_value(cell: object, value: object, *, text_id: bool) -> None:
         safe_value = _safe_external_text(value)
     else:
         safe_value = value
-    setattr(target, "value", safe_value)
+    target.value = safe_value
     if text_id:
-        setattr(target, "number_format", "@")
+        target.number_format = "@"
 
 
 def _style_body_row(sheet: Worksheet, row: int, *, fill: PatternFill) -> None:

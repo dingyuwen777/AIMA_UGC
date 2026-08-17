@@ -6,12 +6,12 @@ import json
 from pathlib import Path
 from typing import Any
 
-from openpyxl import load_workbook
 from aima_ugc.adapters.providers.tikhub_test import run_xiaohongshu
 from aima_ugc.modules.collection.providers.transport import (
     ProviderTransportRequest,
     ProviderTransportResponse,
 )
+from openpyxl import load_workbook
 
 _FIXTURE_ROOT = Path("tests/fixtures/providers/tikhub/xhs")
 
