@@ -40,8 +40,18 @@ accounts_table = Table(
     Column("current_total_like_count", BigInteger()),
     Column("first_seen_at", DateTime(timezone=True), nullable=False),
     Column("last_seen_at", DateTime(timezone=True), nullable=False),
+    Column(
+        "field_observed_at",
+        JSONB(),
+        nullable=False,
+        server_default=text("'{}'::jsonb"),
+    ),
     Column("updated_at", DateTime(timezone=True), nullable=False),
     UniqueConstraint("platform", "external_account_id"),
+    CheckConstraint(
+        "jsonb_typeof(field_observed_at) = 'object'",
+        name="field_observed_at_object",
+    ),
     info={"owner": "content"},
 )
 
@@ -73,9 +83,19 @@ contents_table = Table(
     Column("current_danmaku_count", BigInteger()),
     Column("current_coin_count", BigInteger()),
     Column("current_download_count", BigInteger()),
+    Column(
+        "field_observed_at",
+        JSONB(),
+        nullable=False,
+        server_default=text("'{}'::jsonb"),
+    ),
     Column("updated_at", DateTime(timezone=True), nullable=False),
     UniqueConstraint("platform", "external_content_id"),
     CheckConstraint("current_version >= 1", name="current_version_positive"),
+    CheckConstraint(
+        "jsonb_typeof(field_observed_at) = 'object'",
+        name="field_observed_at_object",
+    ),
     info={"owner": "content"},
 )
 
@@ -160,9 +180,19 @@ comments_table = Table(
     Column("current_like_count", BigInteger()),
     Column("current_reply_count", BigInteger()),
     Column("current_version", Integer(), nullable=False),
+    Column(
+        "field_observed_at",
+        JSONB(),
+        nullable=False,
+        server_default=text("'{}'::jsonb"),
+    ),
     Column("updated_at", DateTime(timezone=True), nullable=False),
     UniqueConstraint("content_id", "external_comment_id"),
     CheckConstraint("current_version >= 1", name="current_version_positive"),
+    CheckConstraint(
+        "jsonb_typeof(field_observed_at) = 'object'",
+        name="field_observed_at_object",
+    ),
     info={"owner": "content"},
 )
 
