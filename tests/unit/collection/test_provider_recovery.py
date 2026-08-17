@@ -178,17 +178,22 @@ def test_orphaned_attempt_without_raw_becomes_unknown() -> None:
     assert finalized["raw_artifact_id"] is None
 
 
-def test_orphaned_attempt_with_corrupt_raw_becomes_unknown_without_deleting_evidence() -> None:
+def test_orphaned_attempt_with_corrupt_raw_logs_reason_and_becomes_unknown(caplog) -> None:
     candidate, _ = _candidate(with_artifact=True)
     persistence = FakeRecoveryPersistence(candidate)
 
-    ProviderAttemptReconciler(
-        persistence=persistence,
-        raw_artifacts=CorruptRawReplay(),
-        clock=lambda: candidate.attempt.dispatch_started_at + timedelta(seconds=5),
-    ).reap_once()
+    with caplog.at_level("WARNING"):
+        ProviderAttemptReconciler(
+            persistence=persistence,
+            raw_artifacts=CorruptRawReplay(),
+            clock=lambda: candidate.attempt.dispatch_started_at + timedelta(seconds=5),
+        ).reap_once()
 
     finalized = persistence.finalized[0]
     assert finalized["attempt"].dispatch_status == "unknown"
     assert finalized["raw_artifact_id"] is None
     assert candidate.artifact.storage_status == "stored"
+    assert "provider_raw_recovery_rejected" in caplog.text
+    assert "Raw SHA-256 校验失败" in caplog.text
+    assert str(candidate.attempt.id) in caplog.text
+    assert str(candidate.artifact.id) in caplog.text
