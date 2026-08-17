@@ -27,11 +27,15 @@ from aima_ugc.adapters.providers.tikhub.pricing import load_tikhub_pricing
 from aima_ugc.adapters.providers.tikhub.runtime import (
     TikHubOperationCall,
     TikHubPlatform,
+    advance_comments,
     advance_search,
+    build_comments_call,
     build_detail_call,
     build_search_call,
+    extract_comment_items,
     extract_detail_items,
     extract_search_items,
+    map_comment,
     map_content,
     mapping_context,
 )
@@ -59,6 +63,13 @@ from aima_ugc.modules.system.models import ProviderConfig
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol
 
 _MAX_SEARCH_PAGES = 100
+_MAX_COMMENT_PAGES = 100
+_COMMENT_FETCH_ACTIONS = {
+    "fetch_adaptive",
+    "fetch_incremental",
+    "refresh_controlled",
+    "probe_first_page",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +94,8 @@ class _ScopeStats:
     search_pages: int = 0
     search_items: int = 0
     detail_requests: int = 0
+    comment_requests: int = 0
+    comment_count: int = 0
     content_identities: set[tuple[str, str]] = field(default_factory=set)
 
     def record_content(self, content: CanonicalContentV1) -> None:
@@ -93,6 +106,7 @@ class _ScopeStats:
             "search_pages": self.search_pages,
             "search_items": self.search_items,
             "detail_requests": self.detail_requests,
+            "comment_requests": self.comment_requests,
             "provider_requests": self.requested_count,
         }
 
@@ -253,12 +267,40 @@ class TikHubCollectionScopeExecutor:
         self._content_writer.ingest_content(canonical=content, fence=context.fence)
         stats.record_content(content)
 
-        if decision.detail_action != "fetch":
-            return
-        if context.cancel_requested():
-            return
+        if decision.detail_action == "fetch" and not context.cancel_requested():
+            self._fetch_detail(
+                run=run,
+                scope=scope,
+                content=content,
+                provider_config=provider_config,
+                context=context,
+                stats=stats,
+            )
 
-        detail_call = build_detail_call(_tikhub_platform(scope.platform), content)
+        if decision.comment_action in _COMMENT_FETCH_ACTIONS and not context.cancel_requested():
+            self._fetch_comments(
+                run=run,
+                scope=scope,
+                content=content,
+                provider_config=provider_config,
+                context=context,
+                stats=stats,
+                comment_action=decision.comment_action,
+                comment_target=decision.comment_target,
+            )
+
+    def _fetch_detail(
+        self,
+        *,
+        run: CollectionRunRecord,
+        scope: CollectionScopeRecord,
+        content: CanonicalContentV1,
+        provider_config: ProviderConfig,
+        context: JobExecutionContextProtocol,
+        stats: _ScopeStats,
+    ) -> None:
+        platform = _tikhub_platform(scope.platform)
+        detail_call = build_detail_call(platform, content)
         executed = self._execute_call(
             run=run,
             scope=scope,
@@ -270,12 +312,12 @@ class TikHubCollectionScopeExecutor:
         stats.succeeded_count += 1
         stats.detail_requests += 1
 
-        detail_items = extract_detail_items(_tikhub_platform(scope.platform), executed.body)
+        detail_items = extract_detail_items(platform, executed.body)
         if not detail_items:
             raise ValueError("TikHub Detail 响应未包含可映射内容")
         for index, raw_item in enumerate(detail_items):
             detail_content = map_content(
-                platform=_tikhub_platform(scope.platform),
+                platform=platform,
                 raw=raw_item,
                 context=mapping_context(
                     provider_request_id=str(executed.request_id),
@@ -293,6 +335,82 @@ class TikHubCollectionScopeExecutor:
                 raise ValueError("TikHub Detail 与 Search Content 身份不一致")
             self._content_writer.ingest_content(canonical=detail_content, fence=context.fence)
             stats.record_content(detail_content)
+
+    def _fetch_comments(
+        self,
+        *,
+        run: CollectionRunRecord,
+        scope: CollectionScopeRecord,
+        content: CanonicalContentV1,
+        provider_config: ProviderConfig,
+        context: JobExecutionContextProtocol,
+        stats: _ScopeStats,
+        comment_action: str,
+        comment_target: int | None,
+    ) -> None:
+        platform = _tikhub_platform(scope.platform)
+        pagination_state: dict[str, object] = {}
+        fetched = 0
+
+        for _page_no in range(1, _MAX_COMMENT_PAGES + 1):
+            if context.cancel_requested():
+                return
+            call = build_comments_call(
+                platform=platform,
+                external_content_id=content.external_content_id,
+                state=pagination_state,
+            )
+            executed = self._execute_call(
+                run=run,
+                scope=scope,
+                call=call,
+                provider_config=provider_config,
+                context=context,
+            )
+            stats.requested_count += 1
+            stats.succeeded_count += 1
+            stats.comment_requests += 1
+
+            for index, raw_item in enumerate(extract_comment_items(platform, executed.body)):
+                if comment_target is not None and fetched >= comment_target:
+                    return
+                comment = map_comment(
+                    platform=platform,
+                    raw=raw_item,
+                    context=mapping_context(
+                        provider_request_id=str(executed.request_id),
+                        provider_attempt_id=str(executed.attempt_id),
+                        raw_artifact_id=executed.raw_artifact_id,
+                        operation=call.operation,
+                        source_type=scope.source_type,
+                        source_value=scope.source_value,
+                        observed_at=self._observed_at(),
+                        external_content_id=content.external_content_id,
+                    ),
+                    item_locator=f"comments.items[{index}]",
+                    is_root=True,
+                )
+                if comment.external_content_id != content.external_content_id:
+                    raise ValueError("TikHub Comment 与 Content 身份不一致")
+                self._content_writer.ingest_comment(canonical=comment, fence=context.fence)
+                fetched += 1
+                stats.comment_count += 1
+
+            if comment_target is not None and fetched >= comment_target:
+                return
+            if comment_action == "probe_first_page":
+                return
+            advance = advance_comments(
+                platform=platform,
+                state=pagination_state,
+                body=executed.body,
+            )
+            if not advance.should_continue:
+                return
+            assert advance.next_state is not None
+            pagination_state = dict(advance.next_state)
+
+        raise RuntimeError("TikHub Comments 达到技术分页上限")
 
     def _execute_call(
         self,
@@ -446,7 +564,7 @@ def _result(
         succeeded_count=stats.succeeded_count,
         failed_count=stats.failed_count,
         content_count=stats.content_count,
-        comment_count=0,
+        comment_count=stats.comment_count,
     )
 
 
