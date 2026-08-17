@@ -32,6 +32,7 @@ from aima_ugc.modules.collection.execution import (
 )
 from aima_ugc.modules.collection.providers import ProviderTransportResponse, RawArtifactService
 from aima_ugc.modules.collection.tables import (
+    collection_runs_table,
     provider_request_attempts_table,
     provider_requests_table,
 )
@@ -245,10 +246,15 @@ def test_scope_runtime_fetches_and_ingests_root_comments(
             )
             assert session.scalar(select(func.count()).select_from(artifacts_table)) == 3
             comment = session.execute(select(comments_table)).mappings().one()
+            run_comment_count = session.scalar(
+                select(collection_runs_table.c.comment_count).where(
+                    collection_runs_table.c.job_id == job.id
+                )
+            )
         assert comment["external_comment_id"] == "xhs-comment-root-1"
         assert comment["root_comment_id"] == "xhs-comment-root-1"
         assert comment["parent_comment_id"] is None
         assert comment["text"] == "脱敏一级评论"
-        assert result.run.comment_count == 1
+        assert run_comment_count == 1
     finally:
         session.close()
