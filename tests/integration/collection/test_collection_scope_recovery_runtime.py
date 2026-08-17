@@ -246,7 +246,7 @@ def test_takeover_reconciles_search_raw_then_formal_scope_replays_without_resend
         (ProviderTransportResponse(status_code=200, body=_search_response()),)
     )
     first_dispatch = ProviderClient(transport=first_transport).dispatch(
-        request=prepared.request,
+        request=dispatching.request,
         attempt_id=prepared.attempt.id,
         attempt_no=prepared.attempt.attempt_no,
         transport_request=call.transport_request(SecretStr("fixture-secret")),
@@ -254,7 +254,7 @@ def test_takeover_reconciles_search_raw_then_formal_scope_replays_without_resend
         planned_billing=billing,
     )
     raw_artifacts = _raw_service(database_runtime, tmp_path / "artifacts")
-    captured = raw_artifacts.capture(request=prepared.request, dispatch=first_dispatch)
+    captured = raw_artifacts.capture(request=dispatching.request, dispatch=first_dispatch)
     assert first_transport.call_count == 1
     assert captured.artifact.storage_status == "stored"
 
