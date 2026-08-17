@@ -1,147 +1,201 @@
 ---
 id: CHG-20260817-tikhub-debug-harness
-title: TikHub 五平台独立测试调试工具
+title: TikHub 五平台独立调试与 XHS 增量评论一致性修复
 level: L2
 status: in_progress
 owner: ChatGPT
 branch: agent/tikhub-test-debug
 created: 2026-08-17
-updated: 2026-08-17
+updated: 2026-08-18
 depends_on: []
 affected_areas:
   - collection
   - provider
+  - content
 affected_paths:
   - backend/src/aima_ugc/adapters/providers/tikhub_test
-  - tests/unit/collection/test_tikhub_test_debug.py
-  - .github/workflows/tikhub-test-real.yml
+  - backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py
+  - backend/src/aima_ugc/adapters/persistence/postgres/collection_content.py
+  - backend/src/aima_ugc/bootstrap/collection_scope.py
+  - backend/src/aima_ugc/modules/collection/decision.py
+  - tests/unit/collection
+  - tests/integration/collection
   - pyproject.toml
   - uv.lock
   - README.md
   - docs/测试与调试说明.md
+  - docs/blueprint/08-采集策略与平台能力.md
+  - docs/blueprint/13-统一数据Excel导出与调试复用.md
+  - docs/collection/README.md
+  - docs/collection/xiaohongshu.md
 contracts: []
 data_changes: []
 ---
 
-# TikHub 五平台独立测试调试工具
+# TikHub 五平台独立调试与 XHS 增量评论一致性修复
+
+## 背景与当前事实
+
+本 Change 最初负责建立五平台 TikHub 无数据库独立调试工具。实施过程中按用户要求继续核对整个系统设计与生产实现后，发现 Stage 7 已批准 Blueprint 与当前机器实现存在一个直接影响费用与调试真实性的缺口：
+
+1. `docs/blueprint/08-采集策略与平台能力.md` 已明确规定：已有内容 `comment_count` 增加时优先增量抓取；有稳定“最新”排序的平台从最新第一页开始，遇到已知 `comment_id` 并达到安全边界后停止继续翻页，稳定 `stop_reason=known_comment_reached`。
+2. 小红书当前生产 Operation `build_note_comments_request()` 已固定发送 `sort_strategy=latest_v2`；TikHub 官方接口说明将该值定义为按时间倒序/最新优先，并推荐用于稳定分页。
+3. 但 `XHS_TIKHUB_CAPABILITY.comments.supports_incremental_comment_sort` 当前仍为 `False`，因此生产 `CollectionDecisionService` 会把 `comment_count` 增长降级成 `refresh_controlled`，不会发出 `fetch_incremental`。
+4. 正式 `TikHubCollectionScopeExecutor._fetch_comments()` 当前也没有读取 PostgreSQL 已知一级评论 ID，因此即使收到 `fetch_incremental` 也不能实现 `known_comment_reached`。
+5. PostgreSQL `comments` 已有 `(content_id, external_comment_id)` 唯一身份，不需要新表或 Migration；缺的是只读历史边界与执行停止逻辑。
+6. `docs/collection/xiaohongshu.md` 仍包含“小红书是唯一已落地平台”“Stage 7 Budget”等过期描述，需要与当前 Stage 7/预算回撤事实同步。
+
+因此该问题不是新增一套调试私有策略，而是修复“已批准 Blueprint → Capability → Decision → PostgreSQL previous state → 正式 Scope Executor → 调试入口”的一致性。
 
 ## 目标
 
-在不依赖 PostgreSQL、API、Worker 或 Scheduler 的情况下，为小红书、抖音、微博、B站、快手提供可直接调用的 Python 调试入口。入口复用现有 TikHub 生产 Operation、分页、Transport、Mapper、Capability 和 Collection Decision 语义，保存真实 Raw、Canonical、跨运行轻量去重状态与人工审阅 Excel，用于开发和排障。
+1. 为小红书、抖音、微博、B站、快手提供可直接调用的 Python 调试入口，不依赖 PostgreSQL、API、Worker 或 Scheduler。
+2. 调试入口复用生产 TikHub Operation、分页、Transport、Mapper、Capability 和 Collection Decision，不复制 endpoint、字段映射或业务规则。
+3. 修复 XHS 已批准增量评论在生产主链未闭环的问题，使系统和调试工具都调用同一“已知评论边界”规则。
+4. 保存 Raw、Canonical、manifest、跨运行轻量 state 和原始数据 Excel；不写生产数据库。
+5. 最终完成五平台受控真实 Provider 验证、PR Review、CI、合并后 main 复验和 Change 归档。
 
 ## 可观察成功标准
 
+### A. 五平台独立调试
+
 1. `backend/src/aima_ugc/adapters/providers/tikhub_test/` 提供五个平台独立 `run_*()` Python 函数，不新增 CLI。
-2. 每个平台可设置现有 Capability 已支持的关键词、排序/筛选参数，以及搜索页数、最大帖子数、每帖评论目标、每根评论回复目标等调试边界；不得开放仓库当前主 Operation 不支持的业务参数。
-3. 调试链严格复用 `adapters/providers/tikhub/operations/*`、生产分页状态、`TikHubHttpTransport`、生产 Mapper、Capability 和 `CollectionDecisionService`；不复制 endpoint、字段映射、自动 fallback 或隐藏重试。
-4. 不写数据库。每次运行的 Raw、Canonical、manifest 和 XLSX 全部保存到 `tikhub_test/output/<platform>/runs/<run-id>/`；跨运行 `state.json` 只保存去重所需的内容 ID、已知评论 ID 和最近评论计数等轻量状态。
-5. 内容唯一身份使用 `(platform, external_content_id)`；同次搜索和跨关键词/分页重复内容只执行一次后续详情/评论动作。评论按平台稳定 comment ID 去重；Provider 末页和目标达到后停止额外请求，已付费返回的整页 Raw 数据不裁剪。
-6. `tikhub_test/.env` 是本地运行配置，加载 TikHub URL/密钥；真实 `.env` 永不提交。仓库只提交 `.env.example`，Secret 不进入代码、日志、Raw、Canonical、manifest 或 Excel。
-7. Excel 沿用已批准的 Real Provider Probe 格式：核心 Sheet 名为 `内容与评论`；一条内容形成纵向区块，公共内容列跨评论行合并，每条评论一行，保留 comment/root/parent ID，URL 可点击，ID 以文本保存，浅色表头、白色主体、无粗黑边框。实现使用锁定的 `openpyxl==3.1.5`，优先保证可编辑性、样式、合并单元格和人工审阅质量。
-8. 自动化测试覆盖 `.env` 加载与 Secret 隐藏、状态去重、Raw/Canonical 落盘、用 `openpyxl` 重新打开 XLSX 并验证布局/样式/超链接/文本 ID/防公式注入、五个平台公开入口及无数据库依赖。
-9. GitHub-hosted Runner 使用受控 Secret 对 `https://api.tikhub.io` 以关键词“爱玛”执行五平台真实 Search → Detail → 一级评论 → 二级评论/回复验证；验证 Raw 与 Canonical 均可生成，且每个平台取得非空内容与评论样本。实时平台数据若某次检索没有可回复样本，必须扩大当前已批准搜索范围或明确报告证据，不能伪造通过。
-10. PR 合并前完成需求符合性和代码质量两阶段复核；合并后对 `main` 再取得新鲜 CI 证据。
+2. 关键词在函数参数配置；同时支持 `keyword="爱玛"` 与 `keywords=("爱玛", "爱玛电动车")`。同一运行每个关键词独立执行 Search，但共享内容去重，重复帖子只拉一次 Detail/评论，并在 manifest/Excel 保留命中关键词。
+3. `.env` 只保存 `TIKHUB_BASE_URL`、`TIKHUB_API_KEY`、超时等 Provider 连接配置；真实 `.env` 永不提交，仓库只保存 `.env.example`。
+4. 每次运行的 Raw、Canonical、manifest 和 XLSX 保存到 `tikhub_test/output/<platform>/runs/<run-id>/`；跨运行 `state.json` 保存轻量 current/去重状态，可删除后重置。
+5. Excel 是“原始采集数据 Excel”，不是分析报告；字段来自统一 Canonical，完整 Provider Raw 仍单独保存。
+6. Excel 使用锁定 `openpyxl==3.1.5`，保持 `内容与评论` 核心 Sheet、内容区块纵向合并、每条评论一行、comment/root/parent ID、文本 ID、超链接、浅色表头、防公式注入和命中关键词。
+7. 未来正式系统级原始数据 Excel 导出落地后，必须删除 `tikhub_test/excel.py` 的平行实现并复用共享 Data Exporter；该门禁由 Blueprint 13 固化。
+
+### B. XHS 生产增量评论闭环
+
+8. XHS `get_note_comments` 继续固定使用生产 Operation 的 `sort_strategy=latest_v2`；不创建第二个评论 Client/endpoint。
+9. XHS Capability 声明 `supports_incremental_comment_sort=True`；其他四个平台除非存在同等级官方/Fixture/真实证据，否则保持当前值，不顺手扩大能力。
+10. `comment_count` 增加且 previous state 存在时，生产 Decision 返回 `fetch_incremental / comment_count_increased_incremental`。
+11. PostgreSQL previous-state 读取一次取得目标内容已有一级评论 external ID 集合，不做逐评论 SQL，不改变表结构。
+12. 增量页必须先完整保存 Raw，并对当前已付费页面全部执行 Mapper/Ingestion；不能因命中旧评论而裁掉本页已返回数据。
+13. 对按最新排序的页面，若存在一个已知历史评论，且从第一个已知评论开始到该页末尾均为已知历史评论，则判定进入连续历史区；记录 `stop_reason=known_comment_reached` 并不再请求下一页。若“已知评论后又出现新评论”，不能提前停止。
+14. `known_comment_reached` 规则由生产 Collection 代码拥有；正式 Scope Executor 和 `tikhub_test` 调用同一规则，测试目录不得复制一份判断。
+15. 生产 PostgreSQL/Fake Transport 纵切证明：已有 XHS 内容 `comment_count: 1 → 2` 时只请求 Search + 第一页 Comments；第一页含“新评论 → 已知旧评论”且 Provider 仍声明有下一页时，不发送第二页评论请求，新评论入库，历史评论可正常更新，Coverage 记录 `known_comment_reached`。
+
+### C. 文档与交付
+
+16. `docs/blueprint/08`、`docs/collection/README.md`、`docs/collection/xiaohongshu.md`、模块 README/测试说明与机器实现一致；删除预算已回撤、平台状态已过期等相关错误描述。
+17. GitHub-hosted Runner 使用受控 Secret 对 `https://api.tikhub.io`、关键词“爱玛”执行五平台真实 Search → Detail → 一级评论 → 二级评论/回复验证；不把 Secret/完整真实 Raw 上传到公开 Artifact。
+18. PR 合并前完成需求符合性与代码质量两阶段 Review；合并后对 `main` 取得新鲜 CI 证据后再归档 Change。
 
 ## 范围
 
-- 新增 `tikhub_test` 调试包及平台入口。
-- 新增无数据库文件状态、Raw/Canonical、manifest 与 XLSX 派生输出。
-- 新增 `openpyxl==3.1.5` 作为正式锁定运行依赖，仅用于可编辑 XLSX 导出与验证。
-- 新增单元测试与受控手动/本次验证用 GitHub Actions workflow。
-- 更新根 README 与 `docs/测试与调试说明.md` 导航；`tikhub_test/README.md` 为具体使用入口。
+- `tikhub_test` 配置、运行、文件状态、Raw/Canonical、原始数据 Excel、五平台函数入口与文档。
+- `openpyxl==3.1.5` 与 `types-openpyxl` 的锁定依赖。
+- XHS Capability 增量声明修复。
+- Collection Decision 的共享历史评论边界纯规则。
+- PostgreSQL Content/Comment current state 的只读历史一级评论 ID 查询。
+- 正式 TikHub Scope XHS 增量评论停止逻辑与 Coverage stop reason。
+- `tikhub_test` 对同一生产规则的文件状态适配。
+- 相关 Unit/Integration/Fixture 回归和文档同步。
 
 ## 非目标
 
-- 不修改公共 HTTP API、Pydantic Contract、数据库 Schema、Migration、生产 Job/Scheduler 语义。
-- 不恢复请求次数预算、金额预算、Budget Account、Reservation Ledger、发送前 Budget/Cost Guard。
-- 不为调试工具增加自动网络重试、自动 Provider/API family fallback 或生产数据库写入。
-- 不升级 Python、uv、前端依赖，也不引入 `pandas`、`xlsxwriter` 等第二套 Excel 技术路线；当前只增加 `openpyxl==3.1.5`。
-- 不把调试输出提交到 Git 仓库。
+- 不新增/修改公共 HTTP API、Pydantic Contract Schema、数据库 Schema 或 Migration。
+- 不恢复请求次数预算、金额预算、Budget Account、Reservation Ledger 或发送前 Budget/Cost Guard。
+- 不为 TikHub 增加自动网络重试或自动 App/Web/API family fallback。
+- 不把尚未验证稳定最新评论语义的抖音/微博/B站/快手强行声明为增量评论能力。
+- 不把 Provider Raw JSON 变成公共业务结构；原始数据 Excel 仍以 Canonical/Aggregate 语义为列来源。
+- 不实现分析报告或 Report Renderer。
 
 ## 必须保持不变
 
-- 根目录仍是唯一 Python/uv 工程根；源码仍位于 `backend/src/aima_ugc/`。
+- 根目录是唯一 Python/uv 工程根；源码在 `backend/src/aima_ugc/`。
 - TikHub 出站 Origin 仍只允许生产 Transport 已批准的 `https://api.tikhub.io`。
-- 五平台主 Operation、Capability、Canonical 字段语义和 Mapper 保持当前 `main` 实现。
-- 真实 Provider Probe 不进入普通常规 CI；本 Change 的真实联网验证是用户明确授权的一次受控交付门禁，长期入口保持显式手动触发。
-- Secret 不进入 Git 历史或用户可见日志。
+- 五平台现有主 Operation、Mapper、Canonical 字段语义保持；本轮只纠正 XHS 已批准 Capability/执行缺口。
+- 每个 Provider Attempt 最多一次真实发送；Raw 先保存，Mapper/Ingestion 后执行。
+- 已付费返回的整页 Raw/Canonical 不因软目标或历史边界被本地裁剪。
+- 真实 Provider Probe 不进入普通 CI；Secret 不进入 Git、日志、Raw、Canonical、manifest 或 Excel。
 
 ## 已确认关键决策
 
-1. 调试目录固定为 `backend/src/aima_ugc/adapters/providers/tikhub_test/`，平台代码可分文件组织。
-2. 本地凭据文件固定为该目录下 `.env`；Git 只保存 `.env.example`。
-3. 中间数据不用数据库，全部进入 `output/`；跨运行轻量 `state.json` 用于避免重复付费动作，可删除该文件重置调试状态。
-4. Excel 复用 `CHG-20260814-stage7-real-provider-probe` 已批准的 `内容与评论` 纵向区块格式。
-5. 费用节省通过去重、Provider 末页、显式页数/帖子/评论/回复边界和生产 Decision Service 的跳过语义实现，不建立生产预算域。
-6. GitHub-hosted Runner 可使用仓库 Secret 做真实验证，密钥不得写入 workflow、代码或日志。
-7. 2026-08-17 用户明确允许新增 Excel 库并要求优先生成“格式好看的 Excel”；本 Change 选择 `openpyxl==3.1.5`，原因是当前目标需要可编辑 `.xlsx`、合并单元格、样式、文本格式、超链接及重新打开验证，不需要再增加第二套 Excel 依赖。
+1. 调试目录固定为 `backend/src/aima_ugc/adapters/providers/tikhub_test/`。
+2. 本地 Provider 凭据固定从该目录 `.env` 加载；Git 只保存 `.env.example`。
+3. 关键词属于运行参数，不属于 Secret `.env`；单关键词和多关键词都支持。
+4. 中间数据不用数据库，全部进入 `output/`；`state.json` 用于跨运行 current/去重，可删除重置。
+5. 原始数据 Excel 复用已批准的 `内容与评论` 纵向区块格式；不是舆情报告。
+6. `openpyxl==3.1.5` 用于当前阶段性 Excel；未来系统共享原始数据导出完成后按 Blueprint 13 删除调试目录平行实现。
+7. 当前没有生产预算域；省钱依赖身份去重、Decision、Provider 末页、业务/技术停止条件和增量历史边界。
+8. XHS 官方 `latest_v2` + 当前生产 Operation 固定发送该参数，满足已批准 Blueprint 的稳定最新排序前提；本轮只为 XHS 开启生产增量评论能力。
+9. 历史边界采用“当前整页处理完成后再决定是否继续下一页”，且只有从首个已知评论到页尾均为已知历史评论才停止，降低页面内置顶/混排造成误停的风险。
 
-## 现有生产复用点
+## 生产复用点
 
 - `backend/src/aima_ugc/adapters/providers/tikhub/runtime.py`
-- `backend/src/aima_ugc/adapters/providers/tikhub/operations/{xiaohongshu,douyin,weibo,bilibili,kuaishou}.py`
+- `backend/src/aima_ugc/adapters/providers/tikhub/operations/*`
 - `backend/src/aima_ugc/adapters/providers/tikhub/mappers/*`
-- `backend/src/aima_ugc/adapters/providers/tikhub/transport.py`
 - `backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py`
+- `backend/src/aima_ugc/bootstrap/collection_scope.py`
+- `backend/src/aima_ugc/adapters/persistence/postgres/collection_content.py`
 - `backend/src/aima_ugc/modules/collection/decision.py`
 - `backend/src/aima_ugc/contracts/canonical/*`
-- 既有脱敏真实 Fixture 与 Stage 7 Real Probe 选择策略。
+- `backend/src/aima_ugc/modules/content/tables.py`
 
-## 分步计划与验证
+## TDD / 验证计划
 
-### 1. Red：固化调试包行为
+### 1. 已完成：调试包 Red → Green
 
-→ 修改范围：`tests/unit/collection/test_tikhub_test_debug.py`  
-→ 预期结果：测试表达配置、去重、输出、Excel 与五平台函数的目标行为；实现尚不存在时因目标模块缺失而失败。  
-→ 验证方式：`uv run pytest tests/unit/collection/test_tikhub_test_debug.py -q`
+- 初始 Red：目标模块不存在时 pytest 正确失败。
+- Green：Python 3.14.7 上 Ruff、mypy、目标测试、Secret scan 通过。
+- 多关键词 Red：`run_xiaohongshu()` 不接受 `keywords` 时仅新增用例失败。
+- 多关键词 Green：Runner 验证 `ruff + mypy + 8 个调试目标测试` 成功后提交。
 
-### 2. Green：实现共用无数据库调试基础
+### 2. 当前：XHS 增量评论生产 Red
 
-→ 修改范围：`backend/src/aima_ugc/adapters/providers/tikhub_test/{__init__,config,core,excel}.py`、`.env.example`、`output/.gitignore`、`pyproject.toml`、`uv.lock`  
-→ 预期结果：配置安全加载；一次请求一次发送；Raw/Canonical/manifest/state/XLSX 可生成；内容和评论可跨运行去重；Excel 可由 `openpyxl` 重新打开并保留目标版式。  
-→ 验证方式：目标测试 + `uv run ruff check ...` + `uv run mypy backend/src` + `uv lock --check`
+新增/调整测试先证明以下当前缺口：
 
-### 3. Green：接入五个平台生产 Operation/Mapper
+- Capability 应声明 XHS incremental；
+- Decision 应得到 `fetch_incremental`；
+- PostgreSQL state reader 应返回历史一级评论 ID；
+- 正式 Scope 第一页命中安全历史边界后不应请求下一页，并写 `known_comment_reached`；
+- `tikhub_test` 应调用同一生产边界规则。
 
-→ 修改范围：`tikhub_test/{runner,xiaohongshu,douyin,weibo,bilibili,kuaishou}.py`  
-→ 预期结果：五个平台入口仅准备参数、调用生产 Runtime/Operation/分页/Mapper、保存输出，不复制 endpoint 或 Canonical 规则。  
-→ 验证方式：目标测试及现有五平台 Operation/Mapper/真实 Fixture 回归测试。
+在生产修复前必须实际观察这些测试按正确原因失败。
 
-### 4. 文档与人类使用入口
+### 3. Green / Refactor
 
-→ 修改范围：`tikhub_test/README.md`、根 `README.md`、`docs/测试与调试说明.md`  
-→ 预期结果：说明 `.env`、函数调用示例、平台参数、目录结构、去重/重置逻辑、Excel 格式和真实调用风险，并能从根导航进入。  
-→ 验证方式：`uv run python scripts/quality/check_docs.py` 与人工逐项核对链接。
+最小修改 Capability、Decision helper、state reader、Scope Executor 和调试 state 适配；不增加 Schema/Migration/新 endpoint。
 
-### 5. 真实 GitHub Runner 验证
+### 4. 回归
 
-→ 修改范围：`.github/workflows/tikhub-test-real.yml`  
-→ 预期结果：受控 Secret 只写入 Runner 临时 `.env`，五平台真实采集均产生非空内容、评论和可解析输出；不写生产数据库，不上传含真实内容/Secret 的公开 Artifact。  
-→ 验证方式：读取本次 workflow job/steps/logs，只记录状态码、计数和验证结论，不输出密钥或完整 Raw。
+至少执行：
 
-### 6. 两阶段复核与集成
+```text
+uv lock --check
+uv run ruff format --check backend tests scripts
+uv run ruff check backend tests scripts
+uv run mypy backend/src
+uv run pytest tests/unit/collection tests/unit/content tests/contracts/test_provider_v1.py -q
+uv run pytest tests/integration/collection tests/integration/content -q   # PostgreSQL 18
+uv run python scripts/quality/scan_secrets.py
+uv run python scripts/quality/check_docs.py
+```
 
-→ 修改范围：本 Change、完整 PR diff  
-→ 预期结果：先按用户成功标准复核，再检查正确性、安全、兼容性、无关改动和重复实现；CI/Real Probe 通过后合并。  
-→ 验证方式：目标测试、相关测试、完整 `CI`、Secret scan、PR changed files/patch review、合并后 `main` 新鲜 workflow。
+并读取 Stage 6 XHS Vertical Slice、完整 CI 和受影响 Stage 7 workflows 的新鲜结果。
 
-## 文档影响
+### 5. 真实 Provider / Review / 集成
 
-- `tikhub_test/README.md`：具体使用说明和输出格式唯一人类入口。
-- 根 `README.md`：增加独立 TikHub 测试/调试导航。
-- `docs/测试与调试说明.md`：把 Stage 7 一次性 Probe 与长期 `tikhub_test` 调试入口区分清楚。
-- Blueprint 不新增第二套机器 Schema；若需要导航，只做最小链接，不复制字段定义。
+完成五平台真实 Runner 验证；两阶段 Review；PR #63 由 Draft 转正式并正常合并；main 新鲜 CI 后归档 Change。
 
-## 验证证据
+## 已有验证证据
 
-- 开发基线：`main@e64a9e5956caf08fbbe14321cc0f45b603b3b919` 的适用 push workflows 查询结果均为 `completed/success`。
-- TDD Red：PR #63 head `19046103682de53a2eb87014053bfe2895409d80` 的 CI run `32041123976` 中，Python 3.14.7 环境、`ruff format --check`、`ruff check`、`mypy backend/src` 均先通过；随后 `uv run pytest tests/unit -q` 在收集 `test_tikhub_test_debug.py` 时明确失败为 `ModuleNotFoundError: No module named 'aima_ugc.adapters.providers.tikhub_test'`，这是目标实现尚不存在导致的正确失败原因。
-- `openpyxl==3.1.5` 的 Python 3.14.7 实际兼容、Green、真实 Provider、PR 最终与合并后证据尚未完成，后续只记录本轮新鲜结果。
+- 开发基线：`main@e64a9e5956caf08fbbe14321cc0f45b603b3b919` 的适用 push workflows 均成功。
+- 初始 TDD Red：PR #63 head `19046103682de53a2eb87014053bfe2895409d80`，pytest 因 `aima_ugc.adapters.providers.tikhub_test` 不存在而失败，前置 Ruff/mypy 已通过。
+- 调试 Green：`dd34563f1cba09eb70b9c3a570e98b2ec61dee9c` 的只读目标门禁中 Python 3.14.7、`openpyxl==3.1.5`、`types-openpyxl`、Ruff、mypy 137 个源文件、30 个目标/回归测试、Secret scan 全部通过。
+- 多关键词 Red：`af0127c81f59fc5121e8302477f7b4096f90a072` 的目标门禁中仅多关键词用例因 `unexpected keyword argument 'keywords'` 失败。
+- 多关键词 Green：一次性受控 Runner 在 Python 3.14.7 上通过 Ruff、mypy 137 源文件与 8 个调试目标测试后生成提交 `64db854e5469f882f9fe6ba7466b31ffa3243727`；一次性补丁 workflow 随后已删除。
+- 系统一致性调查：Blueprint 08 已有 `known_comment_reached`/增量评论设计；XHS Operation 已固定 `latest_v2`；Capability 仍为 false；正式 Scope 缺历史 comment ID；PostgreSQL `comments` 现有唯一身份足以实现，无需 Migration。
 
 ## Git 状态
 
-- 分支：`agent/tikhub-test-debug`，从 `main@e64a9e5956caf08fbbe14321cc0f45b603b3b919` 创建。
+- 分支：`agent/tikhub-test-debug`。
 - PR：#63，Draft / Open。
-- 已完成 Red 测试提交与格式门禁修正；当前进入 Green。
+- 当前 head 在本次 Change 更新前为 `528b0c67f482d93c26bc61a1dce1ceb7898d81d2`。
 - 合并：尚未执行。
-- 发布/部署：不适用；本任务只交付仓库内调试能力。
+- 发布/部署：不适用；本 Change 不改变生产部署形态。
