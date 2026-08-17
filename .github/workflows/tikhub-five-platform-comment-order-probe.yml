@@ -1,11 +1,9 @@
-name: TikHub Post-fix Compatibility Probe
+name: TikHub Weibo Shape Probe
 
 on:
   push:
-    branches:
-      - agent/tikhub-test-debug
-    paths:
-      - ".github/workflows/tikhub-five-platform-comment-order-probe.yml"
+    branches: [agent/tikhub-test-debug]
+    paths: [".github/workflows/tikhub-five-platform-comment-order-probe.yml"]
 
 permissions:
   contents: read
@@ -14,16 +12,14 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7.0.1
         with:
           ref: agent/tikhub-test-debug
-
       - uses: actions/setup-python@v6.2.0
         with:
           python-version: 3.14.7
-
       - name: Install locked environment
         shell: bash
         run: |
@@ -32,67 +28,49 @@ jobs:
           python -m pip install "uv==${UV_VERSION}"
           uv lock --check
           uv sync --locked
-
       - name: Generate one-time RSA handoff key
         shell: bash
         run: |
           set -euo pipefail
-          secure_dir="${RUNNER_TEMP}/tikhub-postfix-secret"
+          secure_dir="${RUNNER_TEMP}/tikhub-weibo-secret"
           mkdir -p "${secure_dir}"
           chmod 700 "${secure_dir}"
           openssl genpkey -quiet -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "${secure_dir}/private.pem"
           chmod 600 "${secure_dir}/private.pem"
           openssl pkey -in "${secure_dir}/private.pem" -pubout -out "${secure_dir}/public.pem"
-
       - name: Upload one-time public key
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: tikhub-postfix-public-key-${{ github.run_id }}
-          path: ${{ runner.temp }}/tikhub-postfix-secret/public.pem
-          if-no-files-found: error
+          name: tikhub-weibo-public-key-${{ github.run_id }}
+          path: ${{ runner.temp }}/tikhub-weibo-secret/public.pem
           retention-days: 1
           compression-level: 9
-
       - name: Receive encrypted TikHub credential
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          secure_dir="${RUNNER_TEMP}/tikhub-postfix-secret"
-          marker="<!-- tikhub-postfix-ciphertext:${GITHUB_RUN_ID} -->"
+          secure_dir="${RUNNER_TEMP}/tikhub-weibo-secret"
+          marker="<!-- tikhub-weibo-ciphertext:${GITHUB_RUN_ID} -->"
           ciphertext=""
           for _ in $(seq 1 120); do
-            pr_body="$(curl --fail --silent --show-error \
-              --header "Authorization: Bearer ${GH_TOKEN}" \
-              --header "Accept: application/vnd.github+json" \
-              --header "X-GitHub-Api-Version: 2022-11-28" \
-              "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/63" | jq -r '.body // ""')"
-            ciphertext="$(printf '%s' "${pr_body}" | jq -Rrs --arg marker "${marker}" \
-              'split($marker) | if length > 1 then .[1] | split("\n") | map(select(length > 0))[0] // "" else "" end')"
+            body="$(curl --fail --silent --show-error --header "Authorization: Bearer ${GH_TOKEN}" --header "Accept: application/vnd.github+json" --header "X-GitHub-Api-Version: 2022-11-28" "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/63" | jq -r '.body // ""')"
+            ciphertext="$(printf '%s' "${body}" | jq -Rrs --arg marker "${marker}" 'split($marker) | if length > 1 then .[1] | split("\n") | map(select(length > 0))[0] // "" else "" end')"
             if [ -n "${ciphertext}" ]; then break; fi
             sleep 5
           done
           test -n "${ciphertext}"
-          printf '%s' "${ciphertext}" | base64 --decode > "${secure_dir}/ciphertext.bin"
-          openssl pkeyutl -decrypt \
-            -inkey "${secure_dir}/private.pem" \
-            -in "${secure_dir}/ciphertext.bin" \
-            -pkeyopt rsa_padding_mode:oaep \
-            -pkeyopt rsa_oaep_md:sha256 \
-            -pkeyopt rsa_mgf1_md:sha256 \
-            -out "${secure_dir}/token"
-          chmod 600 "${secure_dir}/token"
+          printf '%s' "${ciphertext}" | base64 --decode > "${secure_dir}/cipher.bin"
+          openssl pkeyutl -decrypt -inkey "${secure_dir}/private.pem" -in "${secure_dir}/cipher.bin" -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256 -out "${secure_dir}/token"
           token="$(cat "${secure_dir}/token")"
           test "${#token}" -ge 16
           echo "::add-mask::${token}"
-          rm -f "${secure_dir}/ciphertext.bin"
-
-      - name: Run post-fix real compatibility probe
+      - name: Probe Weibo stages without user content
         shell: bash
         run: |
           set -euo pipefail
-          token="$(cat "${RUNNER_TEMP}/tikhub-postfix-secret/token")"
+          token="$(cat "${RUNNER_TEMP}/tikhub-weibo-secret/token")"
           echo "::add-mask::${token}"
           export AIMA_TIKHUB_TOKEN="${token}"
           uv run python - <<'PY'
@@ -101,41 +79,24 @@ jobs:
           import json
           import os
           from datetime import UTC, datetime
-          from typing import Any
           from uuid import uuid4
 
           from pydantic import SecretStr
 
           from aima_ugc.adapters.providers.tikhub import runtime
-          from aima_ugc.adapters.providers.tikhub.operations import bilibili
           from aima_ugc.adapters.providers.tikhub.transport import TikHubHttpTransport
 
           credential = SecretStr(os.environ["AIMA_TIKHUB_TOKEN"])
 
-          def send(transport: TikHubHttpTransport, call: runtime.TikHubOperationCall) -> dict[str, Any]:
+          def send(transport, call):
               response = transport.send(call.transport_request(credential))
               if response.status_code is not None and response.status_code >= 400:
-                  raise RuntimeError(f"{call.platform}/{call.operation}: HTTP {response.status_code}")
+                  raise RuntimeError(f"HTTP {response.status_code}")
               if not isinstance(response.body, dict):
-                  raise RuntimeError(f"{call.platform}/{call.operation}: non-object response")
+                  raise RuntimeError("non-object")
               return response.body
 
-          def direct_call(platform: str, operation: str, request: object) -> runtime.TikHubOperationCall:
-              method = getattr(request, "method")
-              path = getattr(request, "path")
-              params = getattr(request, "params")
-              body = getattr(request, "body", None)
-              return runtime.TikHubOperationCall(
-                  platform=platform,
-                  business_operation="comments",
-                  operation=operation,
-                  method=method,
-                  path=path,
-                  params=params,
-                  body=body,
-              )
-
-          def context(operation: str, *, content_id: str | None = None):
+          def ctx(operation, content_id=None):
               return runtime.mapping_context(
                   provider_request_id=str(uuid4()),
                   provider_attempt_id=str(uuid4()),
@@ -147,82 +108,9 @@ jobs:
                   external_content_id=content_id,
               )
 
-          def nonempty_list_paths(value: object, prefix: str = "$", depth: int = 0) -> list[dict[str, object]]:
-              if depth > 7:
-                  return []
-              rows: list[dict[str, object]] = []
-              if isinstance(value, dict):
-                  for key, item in value.items():
-                      rows.extend(nonempty_list_paths(item, f"{prefix}.{key}", depth + 1))
-              elif isinstance(value, list):
-                  if value:
-                      first = value[0]
-                      rows.append({
-                          "path": prefix,
-                          "count": len(value),
-                          "first_type": type(first).__name__,
-                          "first_keys": sorted(str(key) for key in first.keys()) if isinstance(first, dict) else [],
-                      })
-                  for index, item in enumerate(value[:2]):
-                      rows.extend(nonempty_list_paths(item, f"{prefix}[{index}]", depth + 1))
-              return rows
-
-          summary: dict[str, object] = {"keyword": "爱玛"}
-
-          with TikHubHttpTransport(base_url="https://api.tikhub.io", timeout_seconds=30) as transport:
-              # Douyin: verify the production Search extractor now filters mixed cards and the main chain reaches comments.
-              try:
-                  search_call = runtime.build_search_call(
-                      platform="douyin",
-                      keyword="爱玛",
-                      config={
-                          "sort_mode": "latest",
-                          "published_within": "1d",
-                          "duration": "all",
-                          "content_type": "all",
-                      },
-                      state=None,
-                  )
-                  search_body = send(transport, search_call)
-                  raw_business = search_body.get("data") if isinstance(search_body.get("data"), dict) else {}
-                  business_data = raw_business.get("business_data") if isinstance(raw_business, dict) else []
-                  extracted = runtime.extract_search_items("douyin", search_body)
-                  mapped = [
-                      runtime.map_content(
-                          platform="douyin",
-                          raw=item,
-                          context=context(search_call.operation),
-                          item_locator=f"search.items[{index}]",
-                      )
-                      for index, item in enumerate(extracted[:8])
-                  ]
-                  selected = next(
-                      (item for item in mapped if item.metrics.comment_count is None or item.metrics.comment_count > 0),
-                      mapped[0] if mapped else None,
-                  )
-                  if selected is None:
-                      raise RuntimeError("no mappable Douyin content")
-                  detail_call = runtime.build_detail_call("douyin", selected)
-                  detail_items = runtime.extract_detail_items("douyin", send(transport, detail_call))
-                  comments_call = runtime.build_comments_call(
-                      platform="douyin",
-                      external_content_id=selected.external_content_id,
-                      state=None,
-                  )
-                  comment_items = runtime.extract_comment_items("douyin", send(transport, comments_call))
-                  summary["douyin"] = {
-                      "status": "completed",
-                      "raw_business_card_count": len(business_data) if isinstance(business_data, list) else None,
-                      "production_extracted_count": len(extracted),
-                      "mapped_count": len(mapped),
-                      "detail_item_count": len(detail_items),
-                      "comment_item_count": len(comment_items),
-                  }
-              except Exception as exc:
-                  summary["douyin"] = {"status": "failed", "error_type": type(exc).__name__, "error_summary": str(exc)[:300]}
-
-              # Weibo: verify production Search filtering and current comments end-of-data semantics.
-              try:
+          out = {"keyword": "爱玛", "stage": "start"}
+          try:
+              with TikHubHttpTransport(base_url="https://api.tikhub.io", timeout_seconds=30) as transport:
                   search_call = runtime.build_search_call(
                       platform="weibo",
                       keyword="爱玛",
@@ -230,22 +118,59 @@ jobs:
                       state=None,
                   )
                   search_body = send(transport, search_call)
-                  extracted = runtime.extract_search_items("weibo", search_body)
-                  mapped = [
-                      runtime.map_content(
-                          platform="weibo",
-                          raw=item,
-                          context=context(search_call.operation),
-                          item_locator=f"search.items[{index}]",
-                      )
-                      for index, item in enumerate(extracted[:20])
-                  ]
+                  search_items = runtime.extract_search_items("weibo", search_body)
+                  search_ok = []
+                  search_fail = []
+                  for index, raw in enumerate(search_items[:20]):
+                      try:
+                          mapped = runtime.map_content(
+                              platform="weibo",
+                              raw=raw,
+                              context=ctx(search_call.operation),
+                              item_locator=f"search.items[{index}]",
+                          )
+                          search_ok.append(mapped)
+                      except Exception as exc:
+                          mblog = raw.get("mblog") if isinstance(raw, dict) else None
+                          search_fail.append({
+                              "index": index,
+                              "error_type": type(exc).__name__,
+                              "keys": sorted(str(key) for key in mblog.keys()) if isinstance(mblog, dict) else [],
+                          })
+                  out["search"] = {
+                      "extracted_count": len(search_items),
+                      "mapped_count": len(search_ok),
+                      "failed": search_fail,
+                  }
+                  if not search_ok:
+                      raise RuntimeError("no mapped search content")
                   selected = max(
-                      mapped,
+                      search_ok,
                       key=lambda item: item.metrics.comment_count if item.metrics.comment_count is not None else -1,
                   )
+
                   detail_call = runtime.build_detail_call("weibo", selected)
-                  detail_items = runtime.extract_detail_items("weibo", send(transport, detail_call))
+                  detail_body = send(transport, detail_call)
+                  detail_items = runtime.extract_detail_items("weibo", detail_body)
+                  detail_ok = 0
+                  detail_fail = []
+                  for index, raw in enumerate(detail_items):
+                      try:
+                          runtime.map_content(
+                              platform="weibo",
+                              raw=raw,
+                              context=ctx(detail_call.operation, selected.external_content_id),
+                              item_locator=f"detail.items[{index}]",
+                          )
+                          detail_ok += 1
+                      except Exception as exc:
+                          detail_fail.append({
+                              "index": index,
+                              "error_type": type(exc).__name__,
+                              "keys": sorted(str(key) for key in raw.keys()) if isinstance(raw, dict) else [],
+                          })
+                  out["detail"] = {"extracted_count": len(detail_items), "mapped_count": detail_ok, "failed": detail_fail}
+
                   comments_call = runtime.build_comments_call(
                       platform="weibo",
                       external_content_id=selected.external_content_id,
@@ -253,102 +178,46 @@ jobs:
                   )
                   comments_body = send(transport, comments_call)
                   comment_items = runtime.extract_comment_items("weibo", comments_body)
+                  comment_ok = 0
+                  comment_fail = []
+                  times = []
+                  for index, raw in enumerate(comment_items):
+                      try:
+                          comment = runtime.map_comment(
+                              platform="weibo",
+                              raw=raw,
+                              context=ctx(comments_call.operation, selected.external_content_id),
+                              item_locator=f"comments.items[{index}]",
+                              is_root=True,
+                          )
+                          comment_ok += 1
+                          if comment.published_at is not None:
+                              times.append(comment.published_at)
+                      except Exception as exc:
+                          comment_fail.append({
+                              "index": index,
+                              "error_type": type(exc).__name__,
+                              "keys": sorted(str(key) for key in raw.keys()) if isinstance(raw, dict) else [],
+                          })
                   advance = runtime.advance_comments(platform="weibo", state=None, body=comments_body)
-                  comment_times = []
-                  for index, item in enumerate(comment_items):
-                      comment = runtime.map_comment(
-                          platform="weibo",
-                          raw=item,
-                          context=context(comments_call.operation, content_id=selected.external_content_id),
-                          item_locator=f"comments.items[{index}]",
-                          is_root=True,
-                      )
-                      if comment.published_at is not None:
-                          comment_times.append(comment.published_at)
-                  summary["weibo"] = {
-                      "status": "completed",
-                      "production_extracted_count": len(extracted),
-                      "mapped_count": len(mapped),
-                      "selected_reported_comment_count": selected.metrics.comment_count,
-                      "detail_item_count": len(detail_items),
-                      "comment_item_count": len(comment_items),
+                  out["comments"] = {
+                      "extracted_count": len(comment_items),
+                      "mapped_count": comment_ok,
+                      "failed": comment_fail,
+                      "time_count": len(times),
+                      "time_nonincreasing": len(times) >= 2 and all(a >= b for a, b in zip(times, times[1:])),
                       "advance_should_continue": advance.should_continue,
                       "advance_stop_reason": advance.stop_reason,
-                      "comment_time_count": len(comment_times),
-                      "time_nonincreasing": len(comment_times) >= 2 and all(a >= b for a, b in zip(comment_times, comment_times[1:])),
                   }
-              except Exception as exc:
-                  summary["weibo"] = {"status": "failed", "error_type": type(exc).__name__, "error_summary": str(exc)[:300]}
-
-              # Bilibili: isolate App first-page cursor/sort behavior before considering any provider-family change.
-              try:
-                  search_call = runtime.build_search_call(
-                      platform="bilibili",
-                      keyword="爱玛",
-                      config={"sort_mode": "play_count", "content_type": "video"},
-                      state=None,
-                  )
-                  search_body = send(transport, search_call)
-                  search_items = runtime.extract_search_items("bilibili", search_body)
-                  candidates = []
-                  for index, raw in enumerate(search_items[:10]):
-                      search_content = runtime.map_content(
-                          platform="bilibili",
-                          raw=raw,
-                          context=context(search_call.operation),
-                          item_locator=f"search.items[{index}]",
-                      )
-                      detail_call = runtime.build_detail_call("bilibili", search_content)
-                      detail_items = runtime.extract_detail_items("bilibili", send(transport, detail_call))
-                      if not detail_items:
-                          continue
-                      detail = runtime.map_content(
-                          platform="bilibili",
-                          raw=detail_items[0],
-                          context=context(detail_call.operation, content_id=search_content.external_content_id),
-                          item_locator="detail.items[0]",
-                      )
-                      candidates.append(detail)
-                  selected = max(
-                      candidates,
-                      key=lambda item: item.metrics.comment_count if item.metrics.comment_count is not None else -1,
-                  )
-                  aid = selected.external_content_id
-                  bvid = selected.alternate_ids.get("bvid")
-                  if not bvid:
-                      raise RuntimeError("selected Bilibili detail has no bvid")
-
-                  variants = {
-                      "app_latest_omitted": bilibili.build_video_comments_request(av_id=aid, sort_mode="latest"),
-                      "app_latest_offset_0": bilibili.build_video_comments_request(av_id=aid, sort_mode="latest", next_offset=0),
-                      "app_latest_offset_1": bilibili.build_video_comments_request(av_id=aid, sort_mode="latest", next_offset=1),
-                      "app_hot_omitted": bilibili.build_video_comments_request(av_id=aid, sort_mode="hot"),
-                      "web_page_1": bilibili.build_web_video_comments_candidate_request(bv_id=bvid, page=1),
-                  }
-                  variant_results: dict[str, object] = {}
-                  for name, request in variants.items():
-                      body = send(transport, direct_call("bilibili", name, request))
-                      if name.startswith("app_"):
-                          items = bilibili.extract_comment_items(body)
-                          variant_results[name] = {
-                              "comment_count": len(items),
-                              "list_paths": nonempty_list_paths(body),
-                          }
-                      else:
-                          variant_results[name] = {"list_paths": nonempty_list_paths(body)}
-                  summary["bilibili"] = {
-                      "status": "completed",
-                      "selected_reported_comment_count": selected.metrics.comment_count,
-                      "variants": variant_results,
-                  }
-              except Exception as exc:
-                  summary["bilibili"] = {"status": "failed", "error_type": type(exc).__name__, "error_summary": str(exc)[:300]}
-
-          print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
+                  out["status"] = "completed"
+          except Exception as exc:
+              out["status"] = "failed"
+              out["error_type"] = type(exc).__name__
+              out["error_summary"] = str(exc)[:200]
+          print(json.dumps(out, ensure_ascii=False, indent=2, sort_keys=True))
           PY
           unset AIMA_TIKHUB_TOKEN
-
       - name: Remove ephemeral credential material
         if: always()
         shell: bash
-        run: rm -rf "${RUNNER_TEMP}/tikhub-postfix-secret"
+        run: rm -rf "${RUNNER_TEMP}/tikhub-weibo-secret"
