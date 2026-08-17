@@ -23,73 +23,110 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
+          import re
           from pathlib import Path
 
           provider = Path("backend/src/aima_ugc/modules/collection/provider_dispatch.py")
           text = provider.read_text(encoding="utf-8")
-          old = '''    event = (
-              "provider.request.completed"
-              if attempt.dispatch_status == "completed"
-              else "provider.request.failed"
-          )'''
-          new = '''    if attempt.dispatch_status == "completed":
-              event = "provider.request.completed"
-          elif attempt.dispatch_status == "unknown":
-              event = "provider.request.unknown"
-          else:
-              event = "provider.request.failed"'''
-          if text.count(old) != 1:
-              raise SystemExit(f"provider event block count={text.count(old)}")
-          provider.write_text(text.replace(old, new, 1), encoding="utf-8")
+          pattern = re.compile(
+              r'    event = \(\n'
+              r'        "provider\.request\.completed"\n'
+              r'        if attempt\.dispatch_status == "completed"\n'
+              r'        else "provider\.request\.failed"\n'
+              r'    \)'
+          )
+          replacement = (
+              '    if attempt.dispatch_status == "completed":\n'
+              '        event = "provider.request.completed"\n'
+              '    elif attempt.dispatch_status == "unknown":\n'
+              '        event = "provider.request.unknown"\n'
+              '    else:\n'
+              '        event = "provider.request.failed"'
+          )
+          text, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f"provider event block count={count}")
+          provider.write_text(text, encoding="utf-8")
 
           collection = Path("backend/src/aima_ugc/modules/collection/collection_run_executor.py")
           text = collection.read_text(encoding="utf-8")
-          old = '''        log_event(
-              logger,
-              logging.INFO,
-              "collection.run.completed",
-              "Collection Run 已进入终态。",'''
-          new = '''        event = "collection.run.failed" if status == "failed" else "collection.run.completed"
-          log_event(
-              logger,
-              logging.INFO,
-              event,
-              "Collection Run 已进入终态。",'''
+          old = (
+              '        log_event(\n'
+              '            logger,\n'
+              '            logging.INFO,\n'
+              '            "collection.run.completed",\n'
+              '            "Collection Run 已进入终态。",'
+          )
+          new = (
+              '        event = "collection.run.failed" if status == "failed" else "collection.run.completed"\n'
+              '        log_event(\n'
+              '            logger,\n'
+              '            logging.INFO,\n'
+              '            event,\n'
+              '            "Collection Run 已进入终态。",'
+          )
           if text.count(old) != 1:
               raise SystemExit(f"collection run event block count={text.count(old)}")
           collection.write_text(text.replace(old, new, 1), encoding="utf-8")
 
           raw = Path("backend/src/aima_ugc/modules/collection/providers/raw_artifact.py")
           text = raw.read_text(encoding="utf-8")
-          old = '''        artifact = self._artifacts.store_bytes(
-              kind="provider-raw",
-              content_type="application/json",
-              retention_class="raw",
-              data=compressed,
-              encoding="gzip",
-              storage_key=storage_key,
-          )'''
-          new = '''        try:
-              artifact = self._artifacts.store_bytes(
-                  kind="provider-raw",
-                  content_type="application/json",
-                  retention_class="raw",
-                  data=compressed,
-                  encoding="gzip",
-                  storage_key=storage_key,
-              )
-          except Exception as exc:
-              _log_raw_write_failed(
-                  request=request,
-                  attempt_id=attempt.attempt_id,
-                  error_code=type(exc).__name__,
-              )
-              raise'''
+          old = (
+              '        artifact = self._artifacts.store_bytes(\n'
+              '            kind="provider-raw",\n'
+              '            content_type="application/json",\n'
+              '            retention_class="raw",\n'
+              '            data=compressed,\n'
+              '            encoding="gzip",\n'
+              '            storage_key=storage_key,\n'
+              '        )'
+          )
+          new = (
+              '        try:\n'
+              '            artifact = self._artifacts.store_bytes(\n'
+              '                kind="provider-raw",\n'
+              '                content_type="application/json",\n'
+              '                retention_class="raw",\n'
+              '                data=compressed,\n'
+              '                encoding="gzip",\n'
+              '                storage_key=storage_key,\n'
+              '            )\n'
+              '        except Exception as exc:\n'
+              '            _log_raw_write_failed(\n'
+              '                request=request,\n'
+              '                attempt_id=attempt.attempt_id,\n'
+              '                error_code=type(exc).__name__,\n'
+              '            )\n'
+              '            raise'
+          )
           if text.count(old) != 1:
               raise SystemExit(f"raw store block count={text.count(old)}")
           text = text.replace(old, new, 1)
-          marker = '''\ndef _log_raw_stored(\n'''
-          helper = '''\ndef _log_raw_write_failed(\n    *,\n    request: ProviderRequestV1,\n    attempt_id: UUID,\n    error_code: str,\n) -> None:\n    log_event(\n        logger,\n        logging.WARNING,\n        "raw.artifact.write_failed",\n        "Provider Raw Artifact 写入失败。",\n        provider_request_id=str(request.request_id),\n        provider_attempt_id=str(attempt_id),\n        run_id=str(request.run_id),\n        scope_id=str(request.scope_id),\n        provider=request.provider,\n        platform=request.platform,\n        operation=request.operation,\n        status="error",\n        error_code=error_code,\n    )\n\n\ndef _log_raw_stored(\n'''
+          marker = '\ndef _log_raw_stored(\n'
+          helper = (
+              '\ndef _log_raw_write_failed(\n'
+              '    *,\n'
+              '    request: ProviderRequestV1,\n'
+              '    attempt_id: UUID,\n'
+              '    error_code: str,\n'
+              ') -> None:\n'
+              '    log_event(\n'
+              '        logger,\n'
+              '        logging.WARNING,\n'
+              '        "raw.artifact.write_failed",\n'
+              '        "Provider Raw Artifact 写入失败。",\n'
+              '        provider_request_id=str(request.request_id),\n'
+              '        provider_attempt_id=str(attempt_id),\n'
+              '        run_id=str(request.run_id),\n'
+              '        scope_id=str(request.scope_id),\n'
+              '        provider=request.provider,\n'
+              '        platform=request.platform,\n'
+              '        operation=request.operation,\n'
+              '        status="error",\n'
+              '        error_code=error_code,\n'
+              '    )\n\n\n'
+              'def _log_raw_stored(\n'
+          )
           if text.count(marker) != 1:
               raise SystemExit(f"raw helper marker count={text.count(marker)}")
           raw.write_text(text.replace(marker, helper, 1), encoding="utf-8")
