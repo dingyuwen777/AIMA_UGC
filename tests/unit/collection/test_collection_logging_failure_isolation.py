@@ -148,3 +148,10 @@ def test_logging_does_not_break_scope_exception_isolation(
     )
     assert scope_record.status == "failed"
     assert scope_record.requested_count == 0
+    run_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "collection.run.failed"
+    )
+    assert run_record.status == "failed"
+    assert run_record.run_id == str(execution.run.id)
