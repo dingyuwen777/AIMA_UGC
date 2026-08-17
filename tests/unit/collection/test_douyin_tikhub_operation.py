@@ -226,3 +226,21 @@ def test_comment_cursor_pagination_uses_only_documented_cursor_and_has_more_fact
     )
     assert stalled.should_continue is False
     assert stalled.stop_reason == "pagination_not_advanced"
+
+
+def test_search_extractor_ignores_non_video_business_cards_without_aweme_id() -> None:
+    body = {
+        "data": {
+            "business_data": [
+                {"type": 1, "data": {"aweme_info": {"aweme_id": "aweme-1"}}},
+                {"type": 66668, "data": {"display": "non-content-card"}},
+                {"type": 1, "data": {"aweme_info": {"aweme_id": "aweme-2"}}},
+            ],
+            "cursor": 20,
+            "has_more": 1,
+        }
+    }
+    items = extract_search_items(body)
+    pagination = DouyinSearchPagination.from_response(current_cursor=0, body=body)
+    assert len(items) == 2
+    assert pagination.item_ids == ("aweme-1", "aweme-2")

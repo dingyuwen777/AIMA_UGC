@@ -11,6 +11,7 @@ from aima_ugc.adapters.providers.tikhub.operations.weibo import (
     build_status_comments_request,
     build_status_detail_request,
     build_status_sub_comments_request,
+    extract_search_items,
 )
 
 
@@ -158,3 +159,28 @@ def test_sub_comment_cursor_transition_does_not_guess_response_json_path() -> No
     )
     assert stalled.should_continue is False
     assert stalled.stop_reason == "pagination_not_advanced"
+
+
+def test_search_extractor_ignores_mblog_cards_without_stable_post_id() -> None:
+    body = {
+        "data": {
+            "cards": [
+                {"mblog": {"idstr": "post-1", "text": "valid"}},
+                {"mblog": {"text": "incomplete"}},
+                {"card_type": 11},
+            ]
+        }
+    }
+    items = extract_search_items(body)
+    assert len(items) == 1
+    assert items[0]["mblog"]["idstr"] == "post-1"
+
+
+def test_first_level_comment_pagination_treats_missing_official_cursor_as_provider_exhausted() -> (
+    None
+):
+    result = WeiboCommentPagination.from_response(
+        previous_max_id=None, body={"data": {"items": [{"data": {"id": "comment-1"}}]}}
+    )
+    assert result.should_continue is False
+    assert result.stop_reason == "provider_exhausted"

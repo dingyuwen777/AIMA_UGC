@@ -104,6 +104,13 @@ class DebugState:
             return True
         return entry.get("comment_count") != comment_count
 
+    def known_comment_ids(self, platform: str, external_content_id: str) -> frozenset[str]:
+        entry = self._entry(platform, external_content_id, create=False)
+        if entry is None:
+            return frozenset()
+        values = entry.get("comment_ids", [])
+        return frozenset(item for item in values if isinstance(item, str) and item)
+
     def is_known_comment(
         self, platform: str, external_content_id: str, external_comment_id: str
     ) -> bool:

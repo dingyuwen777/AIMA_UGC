@@ -22,7 +22,10 @@ from aima_ugc.contracts.collection import (
     PreviousContentStateV1,
     ReplyDecisionRequestV1,
 )
-from aima_ugc.modules.collection.decision import CollectionDecisionService
+from aima_ugc.modules.collection.decision import (
+    CollectionDecisionService,
+    known_comment_boundary_reached,
+)
 
 from .config import TikHubTestConfig
 from .core import DebugState, RawOutputRecord, RunOutputStore, default_run_id
@@ -272,6 +275,7 @@ class _TikHubDebugRunner:
             comments, coverage = self._fetch_comments(
                 transport,
                 content=content,
+                action=decision.comment_action,
                 target=decision.comment_target or self.limits.max_comments_per_content,
             )
 
@@ -335,6 +339,7 @@ class _TikHubDebugRunner:
         transport: TikHubHttpTransport,
         *,
         content: CanonicalContentV1,
+        action: str,
         target: int,
     ) -> tuple[list[ReviewCommentRow], str]:
         content_id = content.external_content_id
@@ -342,6 +347,11 @@ class _TikHubDebugRunner:
         mapped_rows: list[ReviewCommentRow] = []
         root_total = 0
         provider_exhausted = False
+        known_comment_ids = (
+            self.state.known_comment_ids(self.platform, content_id)
+            if action == "fetch_incremental"
+            else frozenset()
+        )
         for page_no in range(1, self.limits.max_comment_pages_per_content + 1):
             call = tikhub_runtime.build_comments_call(
                 platform=self.platform,
@@ -351,6 +361,7 @@ class _TikHubDebugRunner:
             body, raw_record = self._send(transport, call)
             items = tikhub_runtime.extract_comment_items(self.platform, body)
             mapped_roots: list[CanonicalCommentV1] = []
+            page_comment_ids: list[str] = []
             for item_index, raw_item in enumerate(items):
                 comment = tikhub_runtime.map_comment(
                     platform=self.platform,
@@ -368,6 +379,7 @@ class _TikHubDebugRunner:
                     item_locator=f"comments.page[{page_no}].items[{item_index}]",
                     is_root=True,
                 )
+                page_comment_ids.append(comment.external_comment_id)
                 key = (content_id, comment.external_comment_id)
                 if key in self._seen_comments:
                     continue
@@ -399,6 +411,15 @@ class _TikHubDebugRunner:
             if not advance.should_continue:
                 provider_exhausted = True
                 break
+            if action == "fetch_incremental" and known_comment_boundary_reached(
+                page_comment_ids, known_comment_ids
+            ):
+                expected = (
+                    str(content.metrics.comment_count)
+                    if content.metrics.comment_count is not None
+                    else "unknown"
+                )
+                return mapped_rows, f"partial {root_total}/{expected} (known_comment_reached)"
             if root_total >= target:
                 break
             pagination = cast(dict[str, object], advance.next_state)

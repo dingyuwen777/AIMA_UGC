@@ -138,15 +138,15 @@ result = run_kuaishou(
 五个平台共用以下调试边界：
 
 ```python
-max_search_pages=20
-max_contents=None
-max_comments_per_content=100
-max_comment_pages_per_content=20
-max_replies_per_root=20
-max_reply_pages_per_root=10
-include_comments=True
-include_replies=True
-force_refresh=False
+max_search_pages = 20
+max_contents = None
+max_comments_per_content = 100
+max_comment_pages_per_content = 20
+max_replies_per_root = 20
+max_reply_pages_per_root = 10
+include_comments = True
+include_replies = True
+force_refresh = False
 ```
 
 含义：

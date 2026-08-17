@@ -21,7 +21,7 @@ from aima_ugc.modules.collection.tables import (
     provider_requests_table,
 )
 from aima_ugc.modules.content.ingestion import ContentIngestionService
-from aima_ugc.modules.content.tables import accounts_table, contents_table
+from aima_ugc.modules.content.tables import accounts_table, comments_table, contents_table
 from aima_ugc.platform.jobs import JobExecutionFence, LeaseLostError
 
 from .candidates import PostgresCandidateRepository
@@ -96,6 +96,21 @@ class PostgresCollectionContentStateReader:
                     ),
                     business_changed=_business_changed(row, observation),
                 )
+        finally:
+            session.close()
+
+    def known_root_comment_ids(self, content_id: UUID) -> frozenset[str]:
+        """一次读取目标内容当前已知一级评论 ID。"""
+        session = self._session_factory()
+        try:
+            with session.begin():
+                values = session.scalars(
+                    select(comments_table.c.external_comment_id).where(
+                        comments_table.c.content_id == content_id,
+                        comments_table.c.parent_comment_id.is_(None),
+                    )
+                ).all()
+                return frozenset(str(value) for value in values if value)
         finally:
             session.close()
 
