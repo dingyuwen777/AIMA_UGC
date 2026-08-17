@@ -143,7 +143,6 @@ def test_scheduler_freezes_keyword_pack_version_and_explicit_platform_scopes(
                     max_catch_up_runs=0,
                     detail_policy="on_change",
                     comment_policy="adaptive",
-                    request_budget=100,
                     created_by=None,
                     platforms=(
                         PlanPlatformDefinition(
@@ -197,5 +196,6 @@ def test_scheduler_freezes_keyword_pack_version_and_explicit_platform_scopes(
             {"id": str(pack.id), "version": 3, "enabled": True}
         ]
         assert run["config_snapshot"]["keyword_scope_count"] == 3
+        assert "request_budget" not in run["config_snapshot"]
     finally:
         session.close()
