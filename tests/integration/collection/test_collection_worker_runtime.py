@@ -14,7 +14,7 @@ from aima_ugc.adapters.persistence.postgres.keywords import PostgresKeywordCatal
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
 from aima_ugc.adapters.providers.fake import FakeProviderTransport
 from aima_ugc.bootstrap.scheduler import create_scheduler_runtime, run_scheduler_once
-from aima_ugc.bootstrap.worker import create_collection_job_registry, create_job_worker
+from aima_ugc.entrypoints.worker_main import create_collection_job_registry, create_job_worker
 from aima_ugc.modules.collection.planning import (
     CollectionPlanDefinition,
     CollectionPlanningService,
