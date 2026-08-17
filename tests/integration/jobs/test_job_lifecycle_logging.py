@@ -66,6 +66,12 @@ def _worker(runtime: DatabaseRuntime, outcome: str) -> JobWorker:
         if outcome == "failed":
             return JobHandlerResult.failed("permanent_error")
         if outcome == "cancelled":
+            session = runtime.new_session()
+            try:
+                with session.begin():
+                    PostgresJobRepository(session).request_cancel(context.fence.job_id)
+            finally:
+                session.close()
             return JobHandlerResult.cancelled()
         raise AssertionError(outcome)
 
