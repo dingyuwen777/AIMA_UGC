@@ -1002,9 +1002,10 @@ def _provider_reported_comment_total(
 ) -> int | None:
     if platform == "xhs":
         page = _nested_mapping(body, "data", "data")
-        return _nonnegative_int(page.get("comment_count_l1")) or _nonnegative_int(
-            page.get("comment_count")
-        )
+        root_total = _nonnegative_int(page.get("comment_count_l1"))
+        if root_total is not None:
+            return root_total
+        return _nonnegative_int(page.get("comment_count"))
     if platform == "douyin":
         page = _nested_mapping(body, "data")
         return _nonnegative_int(page.get("total"))
