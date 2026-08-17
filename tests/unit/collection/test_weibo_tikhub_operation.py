@@ -184,3 +184,30 @@ def test_first_level_comment_pagination_treats_missing_official_cursor_as_provid
     )
     assert result.should_continue is False
     assert result.stop_reason == "provider_exhausted"
+
+
+def test_comment_extractor_ignores_non_comment_cards_without_stable_comment_id() -> None:
+    from aima_ugc.adapters.providers.tikhub.operations.weibo import extract_comment_items
+
+    body = {
+        "data": {
+            "items": [
+                {"data": {"idstr": "comment-1", "text": "valid"}},
+                {
+                    "data": {
+                        "card_type": 11,
+                        "display": "non-comment-card",
+                        "itemid": "display-card",
+                    }
+                },
+                {"data": {"mid": "comment-2", "text": "valid-2"}},
+            ]
+        }
+    }
+
+    items = extract_comment_items(body)
+
+    assert [item.get("idstr") or item.get("mid") for item in items] == [
+        "comment-1",
+        "comment-2",
+    ]

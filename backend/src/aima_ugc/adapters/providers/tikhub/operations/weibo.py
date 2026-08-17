@@ -171,7 +171,7 @@ def extract_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     if not isinstance(cards, list):
         return ()
     return tuple(
-        card for card in cards if isinstance(card, dict) and _mblog_has_stable_id(card.get("mblog"))
+        card for card in cards if isinstance(card, dict) and _has_stable_id(card.get("mblog"))
     )
 
 
@@ -194,11 +194,11 @@ def extract_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     return tuple(
         item["data"]
         for item in items
-        if isinstance(item, dict) and isinstance(item.get("data"), dict)
+        if isinstance(item, dict) and _has_stable_id(item.get("data"))
     )
 
 
-def _mblog_has_stable_id(value: object) -> bool:
+def _has_stable_id(value: object) -> bool:
     if not isinstance(value, dict):
         return False
     return any(_string(value.get(key)) for key in ("idstr", "mid", "id"))
