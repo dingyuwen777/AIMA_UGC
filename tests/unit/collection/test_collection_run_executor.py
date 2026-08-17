@@ -43,16 +43,30 @@ class _Gateway:
         self.finished_scopes: list[tuple[UUID, str, str | None]] = []
         self.finished_run: tuple[str, dict[str, int]] | None = None
 
-    def load(self, job_id: UUID) -> CollectionExecution | None:
-        if job_id != self.execution.run.job_id:
-            return None
+    def _check_fence(self, fence: JobExecutionFence) -> None:
+        assert fence.job_id == self.execution.run.job_id
+
+    def load(self, fence: JobExecutionFence) -> CollectionExecution | None:
+        self._check_fence(fence)
         return self.execution
 
-    def start_run(self, run_id: UUID) -> CollectionRunRecord:
+    def start_run(
+        self,
+        run_id: UUID,
+        *,
+        fence: JobExecutionFence,
+    ) -> CollectionRunRecord:
+        self._check_fence(fence)
         assert run_id == self.execution.run.id
         return self.execution.run
 
-    def start_scope(self, scope_id: UUID) -> CollectionScopeRecord:
+    def start_scope(
+        self,
+        scope_id: UUID,
+        *,
+        fence: JobExecutionFence,
+    ) -> CollectionScopeRecord:
+        self._check_fence(fence)
         self.started_scopes.append(scope_id)
         return next(scope for scope in self.execution.scopes if scope.id == scope_id)
 
@@ -60,11 +74,13 @@ class _Gateway:
         self,
         scope_id: UUID,
         *,
+        fence: JobExecutionFence,
         status: str,
         stop_reason: str | None,
         pagination_state: dict[str, object],
         stats: dict[str, object],
     ) -> CollectionScopeRecord:
+        self._check_fence(fence)
         self.finished_scopes.append((scope_id, status, stop_reason))
         return next(scope for scope in self.execution.scopes if scope.id == scope_id)
 
@@ -72,6 +88,7 @@ class _Gateway:
         self,
         run_id: UUID,
         *,
+        fence: JobExecutionFence,
         status: str,
         requested_count: int,
         succeeded_count: int,
@@ -80,6 +97,7 @@ class _Gateway:
         comment_count: int,
         error_summary: str | None,
     ) -> CollectionRunRecord:
+        self._check_fence(fence)
         assert run_id == self.execution.run.id
         self.finished_run = (
             status,

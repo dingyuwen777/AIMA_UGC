@@ -46,18 +46,29 @@ class CollectionScopeExecutionResult:
 
 
 class CollectionRunExecutionGateway(Protocol):
-    """Run Executor 所需的最小状态推进边界。"""
+    """Run Executor 所需的最小状态推进边界；所有业务可见写入必须携带当前 Fence。"""
 
-    def load(self, job_id: UUID) -> CollectionExecution | None: ...
+    def load(self, fence: JobExecutionFence) -> CollectionExecution | None: ...
 
-    def start_run(self, run_id: UUID) -> CollectionRunRecord: ...
+    def start_run(
+        self,
+        run_id: UUID,
+        *,
+        fence: JobExecutionFence,
+    ) -> CollectionRunRecord: ...
 
-    def start_scope(self, scope_id: UUID) -> CollectionScopeRecord: ...
+    def start_scope(
+        self,
+        scope_id: UUID,
+        *,
+        fence: JobExecutionFence,
+    ) -> CollectionScopeRecord: ...
 
     def finish_scope(
         self,
         scope_id: UUID,
         *,
+        fence: JobExecutionFence,
         status: str,
         stop_reason: str | None,
         pagination_state: dict[str, object],
@@ -68,6 +79,7 @@ class CollectionRunExecutionGateway(Protocol):
         self,
         run_id: UUID,
         *,
+        fence: JobExecutionFence,
         status: str,
         requested_count: int,
         succeeded_count: int,
@@ -133,11 +145,11 @@ class CollectionRunExecutor:
         fence: JobExecutionFence,
         context: JobExecutionContextProtocol,
     ) -> JobHandlerResult:
-        execution = self._gateway.load(fence.job_id)
+        execution = self._gateway.load(fence)
         if execution is None:
             return JobHandlerResult.failed("collection_run_not_found")
 
-        run = self._gateway.start_run(execution.run.id)
+        run = self._gateway.start_run(execution.run.id, fence=fence)
         totals = _RunTotals()
         failed_scopes = 0
         partial_scopes = 0
@@ -147,13 +159,14 @@ class CollectionRunExecutor:
             if context.cancel_requested():
                 self._finish_run(
                     run=run,
+                    fence=fence,
                     status="cancelled",
                     totals=totals,
                     error_summary="cancel_requested",
                 )
                 return JobHandlerResult.cancelled()
 
-            scope = self._gateway.start_scope(queued_scope.id)
+            scope = self._gateway.start_scope(queued_scope.id, fence=fence)
             try:
                 scope_result = self._scope_executor.execute(
                     run=run,
@@ -166,6 +179,7 @@ class CollectionRunExecutor:
                 failed_scopes += 1
                 self._gateway.finish_scope(
                     scope.id,
+                    fence=fence,
                     status="failed",
                     stop_reason="scope_execution_failed",
                     pagination_state=dict(scope.pagination_state),
@@ -175,6 +189,7 @@ class CollectionRunExecutor:
                 totals.add(scope_result)
                 self._gateway.finish_scope(
                     scope.id,
+                    fence=fence,
                     status=scope_result.status,
                     stop_reason=scope_result.stop_reason,
                     pagination_state=dict(scope_result.pagination_state),
@@ -187,6 +202,7 @@ class CollectionRunExecutor:
                 elif scope_result.status == "cancelled":
                     self._finish_run(
                         run=run,
+                        fence=fence,
                         status="cancelled",
                         totals=totals,
                         error_summary="scope_cancelled",
@@ -206,6 +222,7 @@ class CollectionRunExecutor:
         error_summary = "scope_execution_failed" if failed_scopes else None
         self._finish_run(
             run=run,
+            fence=fence,
             status=run_status,
             totals=totals,
             error_summary=error_summary,
@@ -224,12 +241,14 @@ class CollectionRunExecutor:
         self,
         *,
         run: CollectionRunRecord,
+        fence: JobExecutionFence,
         status: str,
         totals: _RunTotals,
         error_summary: str | None,
     ) -> CollectionRunRecord:
         return self._gateway.finish_run(
             run.id,
+            fence=fence,
             status=status,
             requested_count=totals.requested_count,
             succeeded_count=totals.succeeded_count,
