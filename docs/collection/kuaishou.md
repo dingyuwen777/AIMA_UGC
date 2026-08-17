@@ -22,7 +22,8 @@ App Search V2
 - `CanonicalContentV1 / CanonicalCommentV1` 回归；
 - Web/App 评论链同样本 A/B Real Probe 证据；
 - Kuaishou Capability / 默认 Registry 接线；
-- App 一级/二级正式 endpoint-level Pricing。
+- App 一级/二级正式 endpoint-level Pricing；
+- App 一级评论真实 `subCommentCount → metrics.reply_count` 映射。
 
 完整真实结构查询见 [`../blueprint/10-TikHub真实响应结构附录.md`](../blueprint/10-TikHub真实响应结构附录.md)。多 API family 的验证与备用判定规则见 [`../blueprint/11-TikHub多接口验证与备用策略.md`](../blueprint/11-TikHub多接口验证与备用策略.md)。
 
@@ -144,11 +145,25 @@ data.rootComments[]
 data.subCommentsMap.<root>.subComments[]
 ```
 
+2026-08-16 的真实 endpoint ledger 已确认一级根评论存在两个不同语义的字段：
+
+```text
+displaySubCommentCount   # boolean，仅表示是否显示回复数/回复入口
+subCommentCount          # integer，实际回复数量
+```
+
+因此：
+
+- `displaySubCommentCount == true` 只能作为“该 root 可能存在回复”的正向显示信号，**不能当回复数量**；
+- `subCommentCount > 0` 是选择有回复 root 的直接数量证据；
+- Mapper 在 `subCommentCount` 实际存在时写入 `metrics.reply_count` 并声明 `metrics.reply_count` 已观察；
+- 不存在该字段时保持 `reply_count = null`，不从布尔显示开关或 `subCommentsMap` 长度猜总数。
+
 评论 Probe 不能机械使用 `rootComments[0]` 请求二级评论。需要验证二级结构时，应优先选择存在以下正向回复信号的 root：
 
 ```text
-displaySubCommentCount > 0
 subCommentCount > 0
+或 displaySubCommentCount == true
 或已返回非空 subCommentsMap
 ```
 
@@ -177,6 +192,7 @@ Mapper 继续使用统一评论树规则：
 - `photo_id` / 请求上下文 → `external_content_id`；
 - `root_comment_id` 由请求上下文明确给出；
 - `likedCount` → 评论点赞指标；
+- 一级根评论 `subCommentCount` → `metrics.reply_count`；
 - `user_id` → 公开作者账号 ID；
 - 没有明确直接父评论 ID 时，不猜 `parent_comment_id`。
 
@@ -220,7 +236,7 @@ App 失败后自动切 Web 会同时引入：
 因此首版固定：
 
 ```text
-App failure → 正常失败/重试/预算/审计路径
+App failure → 正常失败/重试/审计路径
            → 不自动调用 Web
 ```
 
@@ -237,6 +253,8 @@ comments.supports_sub_comments = true
 sub_comments operation = fetch_video_sub_comments
 ```
 
+`supports_reply_count = true` 的机器含义是：当前 App 一级评论真实响应已经证明存在 `subCommentCount`，且生产 Mapper 能把它映射为 `CanonicalCommentV1.metrics.reply_count`；它不是仅由文档声明的能力。
+
 仍不声明：
 
 ```text
@@ -247,7 +265,7 @@ supports_incremental_comment_sort = true
 
 Web `fetch_one_video_comment` / `fetch_one_video_sub_comment` 不进入默认 Capability。
 
-## 9. Pricing
+## 9. Pricing 与执行审计
 
 当前正式 App 评论 endpoint 已进入版本化 `pricing.toml`：
 
@@ -258,7 +276,7 @@ Web `fetch_one_video_comment` / `fetch_one_video_sub_comment` 不进入默认 Ca
 
 价格来自 2026-08-16 同样本 A/B 前的 `get_endpoint_info` 核验。Web 备用价格继续保留用于显式 Probe/人工切换评估。
 
-任何运行时请求仍必须通过当前版本化 Pricing 和 Budget Ledger；不能因为这里记录了历史价格就绕过 endpoint-level fail-closed。
+当前 Stage 1—7 **没有请求次数/金额 Budget Runtime、Budget Account 或 Reservation Ledger**。真实发送仍必须经过版本化 Pricing、Provider Request/Attempt、Billing 快照、Dispatch/Fencing 与不可变 Raw 审计边界；不能把历史价格记录理解为发送预算门禁，也不能绕过 Provider 执行审计。
 
 ## 10. 评论成本控制
 
@@ -271,7 +289,7 @@ Web `fetch_one_video_comment` / `fetch_one_video_sub_comment` 不进入默认 Ca
 - 评论数下降 → 记录下降并受控刷新，不根据部分页猜删除；
 - 默认完整阈值 50、一级目标 50、每个一级线程二级目标 5；
 - 返回页超过目标时整页保存；
-- 每次真实发送继续受 Provider Pricing / Budget Ledger 硬门禁。
+- 每次真实发送继续受 Provider Request/Attempt、Pricing/Billing、Fencing 与 Raw 审计边界约束。
 
 ## 11. 标准 Pipeline
 
@@ -301,9 +319,9 @@ Search V2 没有原生时间范围：
 
 - 前端不能把“最近一天/一周”标成 Provider 原生筛选；
 - 需要时间边界时只能基于已验证发布时间做本地停止/筛选；
-- 无法可靠判断时间时按显式页数/预算停止，不伪造 Provider 能力。
+- 无法可靠判断时间时按显式页数/执行策略停止，不伪造 Provider 能力。
 
-Deep Collection 仍从内部 `content_id` 解析真实 `photo_id` 并走同一 Provider Operation、Raw、Mapper、Canonical、Budget 链，不允许浏览器直接调用 TikHub。
+Deep Collection 仍从内部 `content_id` 解析真实 `photo_id` 并走同一 Provider Operation、Raw、Mapper、Canonical 链，不允许浏览器直接调用 TikHub。
 
 ## 13. 独立验证
 
@@ -311,6 +329,7 @@ Deep Collection 仍从内部 `content_id` 解析真实 `photo_id` 并走同一 P
 
 ```text
 tests/fixtures/providers/tikhub/kuaishou/
+tests/fixtures/providers/tikhub/endpoint_ledger/2026-08-16/kuaishou.sanitized.json
 tests/unit/collection/test_kuaishou_tikhub_operation.py
 tests/unit/collection/test_tikhub_api_family_candidates.py
 tests/unit/collection/test_tikhub_api_family_compare.py
@@ -323,4 +342,4 @@ tests/unit/collection/test_tikhub_pricing.py
 tests/integration/content/test_tikhub_real_normalized_ingestion.py
 ```
 
-Real Probe 只用于外部事实变化或现有 Fixture 证据不足时的最小验证，不应为普通单元测试重复产生 TikHub 费用。
+Real Probe 只用于外部事实变化或现有 Fixture/endpoint ledger 证据不足时的最小验证，不应为普通单元测试重复产生 TikHub 费用。
