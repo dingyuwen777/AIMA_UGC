@@ -75,7 +75,7 @@ _COMMENT_FETCH_ACTIONS = {
     "refresh_controlled",
     "probe_first_page",
 }
-_REPLY_FETCH_ACTIONS = {"fetch_nested", "fetch_first_page_only"}
+_REPLY_FETCH_ACTIONS = {"fetch_target", "probe_first_page"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -406,17 +406,16 @@ class TikHubCollectionScopeExecutor:
                 fetched += 1
                 stats.comment_count += 1
 
-                reply_count = comment.metrics.reply_count or 0
+                reply_count = comment.metrics.reply_count
                 reply_decision = self._decision_service.decide_reply(
                     ReplyDecisionRequestV1(
                         reply_count=reply_count,
-                        depth=2,
                         policy=CollectionDecisionPolicyV1(),
                         capability=capability,
                     )
                 )
                 if (
-                    reply_decision.reply_action in _REPLY_FETCH_ACTIONS
+                    reply_decision.action in _REPLY_FETCH_ACTIONS
                     and not context.cancel_requested()
                 ):
                     self._fetch_sub_comments(
@@ -426,8 +425,8 @@ class TikHubCollectionScopeExecutor:
                         provider_config=provider_config,
                         context=context,
                         stats=stats,
-                        reply_action=reply_decision.reply_action,
-                        reply_target=reply_decision.reply_target,
+                        reply_action=reply_decision.action,
+                        reply_target=reply_decision.target,
                     )
 
             if comment_target is not None and fetched >= comment_target:
@@ -512,7 +511,7 @@ class TikHubCollectionScopeExecutor:
 
             if reply_target is not None and fetched >= reply_target:
                 return
-            if reply_action == "fetch_first_page_only":
+            if reply_action == "probe_first_page":
                 return
             advance = advance_sub_comments(
                 platform=platform,
