@@ -7,12 +7,17 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from pydantic import AnyHttpUrl
+
 from aima_ugc.contracts.canonical import (
     CanonicalAuthorV1,
     CanonicalCommentV1,
     CanonicalContentV1,
+    CanonicalLocationV1,
+    CanonicalMediaV1,
     CanonicalMetricsV1,
     CanonicalSourceV1,
+    CanonicalTopicV1,
 )
 
 
@@ -33,7 +38,7 @@ class XhsMappingContext:
 def map_content(
     raw: dict[str, Any], context: XhsMappingContext, *, item_locator: str
 ) -> CanonicalContentV1:
-    """把搜索卡片或详情事实映射为一条原子 Content Observation。"""
+    """把搜索卡片或真实详情事实映射为一条原子 Content Observation。"""
     item = _unwrap_content(raw)
     external_id = _required_string(item, "id", "note_id")
     observed_fields: list[str] = ["content_type"]
@@ -55,9 +60,19 @@ def map_content(
     published_at = _timestamp(item, "timestamp", "time", "publish_time")
     if published_at is not None:
         observed_fields.append("published_at")
-    source_updated_at = _timestamp(item, "update_time", "source_updated_at")
+    source_updated_at = _timestamp(item, "last_update_time", "update_time", "source_updated_at")
     if source_updated_at is not None:
         observed_fields.append("source_updated_at")
+
+    media = _map_media(item)
+    if media:
+        observed_fields.append("media")
+    topics = _map_topics(item)
+    if topics:
+        observed_fields.append("topics")
+    locations = _map_locations(item)
+    if locations:
+        observed_fields.append("locations")
 
     return CanonicalContentV1(
         platform="xhs",
@@ -69,6 +84,9 @@ def map_content(
         published_at=published_at,
         source_updated_at=source_updated_at,
         observed_at=context.observed_at,
+        media=media,
+        topics=topics,
+        locations=locations,
         metrics=metrics,
         source=_source(context, item_locator),
         observed_fields=observed_fields,
@@ -208,6 +226,7 @@ def _map_content_metrics(
         "comment_count": ("comments_count", "comment_count"),
         "favorite_count": ("collected_count", "collect_count", "favorite_count"),
         "share_count": ("shared_count", "share_count"),
+        "view_count": ("view_count",),
     }
     values: dict[str, int | None] = {}
     observed: list[str] = []
@@ -225,9 +244,85 @@ def _map_content_metrics(
             comment_count=values.get("comment_count"),
             favorite_count=values.get("favorite_count"),
             share_count=values.get("share_count"),
+            view_count=values.get("view_count"),
         ),
         tuple(observed),
     )
+
+
+def _map_media(raw: dict[str, Any]) -> list[CanonicalMediaV1]:
+    if _content_type(raw) == "video":
+        video_info = _first_dict(raw, "video_info_v2", "video_info")
+        media = _first_dict(video_info, "media")
+        video = _first_dict(media, "video")
+        if video:
+            duration, _ = _count(video, "duration")
+            width, _ = _count(video, "width")
+            height, _ = _count(video, "height")
+            return [
+                CanonicalMediaV1(
+                    media_type="video",
+                    width=width,
+                    height=height,
+                    duration_ms=duration * 1000 if duration is not None else None,
+                )
+            ]
+
+    images = raw.get("images_list")
+    if not isinstance(images, list):
+        return []
+    mapped: list[CanonicalMediaV1] = []
+    for fallback_position, image in enumerate(images):
+        if not isinstance(image, dict):
+            continue
+        width, _ = _count(image, "width")
+        height, _ = _count(image, "height")
+        position, position_present = _count(image, "index")
+        mapped.append(
+            CanonicalMediaV1(
+                media_type="image",
+                external_media_id=_optional_string(image, "fileid", "file_id", "id"),
+                url=_http_url(image, "url", "url_size_large"),
+                width=width,
+                height=height,
+                position=position
+                if position_present and position is not None
+                else fallback_position,
+            )
+        )
+    return mapped
+
+
+def _map_topics(raw: dict[str, Any]) -> list[CanonicalTopicV1]:
+    topics = raw.get("topics")
+    if not isinstance(topics, list):
+        return []
+    mapped: list[CanonicalTopicV1] = []
+    for topic in topics:
+        if not isinstance(topic, dict):
+            continue
+        name = _optional_string(topic, "name", "topic_name")
+        if name is None:
+            continue
+        mapped.append(
+            CanonicalTopicV1(
+                name=name,
+                external_topic_id=_optional_string(topic, "id", "topic_id"),
+                url=_http_url(topic, "link", "url"),
+            )
+        )
+    return mapped
+
+
+def _map_locations(raw: dict[str, Any]) -> list[CanonicalLocationV1]:
+    ip_location = _optional_string(raw, "ip_location")
+    if ip_location is not None:
+        return [CanonicalLocationV1(location_type="ip_region", label=ip_location)]
+    geo = _first_dict(raw, "geo_info", "geoInfo")
+    label = _optional_string(geo, "poi_name", "name", "address")
+    if label is not None:
+        return [CanonicalLocationV1(location_type="place", label=label)]
+    return []
 
 
 def _content_type(raw: dict[str, Any]) -> str:
@@ -268,6 +363,16 @@ def _count(raw: dict[str, Any], *keys: str) -> tuple[int | None, bool]:
             return None, False
         return (parsed if parsed >= 0 else None), parsed >= 0
     return None, False
+
+
+def _http_url(raw: dict[str, Any], *keys: str) -> AnyHttpUrl | None:
+    value = _optional_string(raw, *keys)
+    if value is None or not value.startswith(("http://", "https://")):
+        return None
+    try:
+        return AnyHttpUrl(value)
+    except ValueError:
+        return None
 
 
 def _optional_bool(raw: dict[str, Any], *keys: str) -> bool | None:

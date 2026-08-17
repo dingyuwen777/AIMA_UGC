@@ -1,0 +1,190 @@
+# probe-revision: 4
+name: Stage 7 TikHub Fixture Probe
+
+on:
+  push:
+    branches:
+      - feature/stage7-completion
+    paths:
+      - ".github/workflows/stage7-tikhub-fixture-probe.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Stage 7 TikHub Fixture Probe
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Install locked environment and validate probe code
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+          uv run ruff format --check scripts/dev/probe_tikhub_stage7_search.py
+          uv run ruff check scripts/dev/probe_tikhub_stage7_search.py
+          uv run python -m py_compile scripts/dev/probe_tikhub_stage7_search.py
+
+      - name: Verify api.tikhub.io connectivity
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            --connect-timeout 10 --max-time 30 https://api.tikhub.io/openapi.json)"
+          test "${status}" = "200"
+          echo "TikHub .io connectivity: HTTP ${status}"
+
+      - name: Receive TikHub token through one-time RSA handoff
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          secure_dir="${RUNNER_TEMP}/tikhub-probe-secret"
+          mkdir -p "${secure_dir}"
+          chmod 700 "${secure_dir}"
+          private_key="${secure_dir}/private.pem"
+          public_key="${secure_dir}/public.pem"
+          token_file="${secure_dir}/token"
+          ciphertext_file="${secure_dir}/ciphertext.bin"
+
+          openssl genpkey -quiet -algorithm RSA \
+            -pkeyopt rsa_keygen_bits:3072 \
+            -out "${private_key}"
+          chmod 600 "${private_key}"
+          openssl pkey -in "${private_key}" -pubout -out "${public_key}"
+
+          public_b64="$(base64 -w0 < "${public_key}")"
+          echo "AIMA_TIKHUB_PROBE_PUBLIC_KEY_BEGIN:${GITHUB_RUN_ID}"
+          echo "${public_b64}"
+          echo "AIMA_TIKHUB_PROBE_PUBLIC_KEY_END:${GITHUB_RUN_ID}"
+
+          cipher_marker="<!-- tikhub-probe-ciphertext:${GITHUB_RUN_ID} -->"
+          ciphertext=""
+          for _ in $(seq 1 120); do
+            pr_body="$(curl --fail --silent --show-error \
+              --header "Authorization: Bearer ${GH_TOKEN}" \
+              --header "Accept: application/vnd.github+json" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/55" \
+              | jq -r '.body // ""')"
+            ciphertext="$(printf '%s' "${pr_body}" | jq -Rrs --arg marker "${cipher_marker}" \
+              'split($marker) | if length > 1 then .[1] | split("\n") | map(select(length > 0))[0] // "" else "" end')"
+            if [ -n "${ciphertext}" ]; then
+              break
+            fi
+            sleep 5
+          done
+          test -n "${ciphertext}"
+
+          printf '%s' "${ciphertext}" | base64 --decode > "${ciphertext_file}"
+          openssl pkeyutl -decrypt \
+            -inkey "${private_key}" \
+            -in "${ciphertext_file}" \
+            -pkeyopt rsa_padding_mode:oaep \
+            -pkeyopt rsa_oaep_md:sha256 \
+            -pkeyopt rsa_mgf1_md:sha256 \
+            -out "${token_file}"
+          chmod 600 "${token_file}"
+          token="$(cat "${token_file}")"
+          test "${#token}" -ge 16
+          echo "::add-mask::${token}"
+          rm -f "${ciphertext_file}"
+
+      - name: Fetch official pricing evidence for all registered TikHub endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(cat "${RUNNER_TEMP}/tikhub-probe-secret/token")"
+          echo "::add-mask::${token}"
+          export AIMA_TIKHUB_PROBE_TOKEN="${token}"
+          export AIMA_TIKHUB_PROBE_MODE=pricing
+          export AIMA_TIKHUB_PROBE_OUTPUT_DIR="${RUNNER_TEMP}/tikhub-pricing"
+          uv run python scripts/dev/probe_tikhub_stage7_search.py
+          unset AIMA_TIKHUB_PROBE_TOKEN
+
+          echo "AIMA_TIKHUB_PRICING_EVIDENCE_BEGIN:${GITHUB_RUN_ID}"
+          cat "${RUNNER_TEMP}/tikhub-pricing/manifest.json"
+          for file in "${RUNNER_TEMP}"/tikhub-pricing/endpoint_*_price.sanitized.json; do
+            echo "--- ${file##*/} ---"
+            cat "${file}"
+          done
+          echo "AIMA_TIKHUB_PRICING_EVIDENCE_END:${GITHUB_RUN_ID}"
+
+      - name: Upload sanitized pricing evidence
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: stage7-tikhub-pricing-${{ github.run_id }}
+          path: ${{ runner.temp }}/tikhub-pricing
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 9
+
+      - name: Wait for run-specific pricing approval
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          approval_marker="<!-- tikhub-probe-pricing-approved:${GITHUB_RUN_ID} -->"
+          approved=""
+          for _ in $(seq 1 120); do
+            approved="$(curl --fail --silent --show-error \
+              --header "Authorization: Bearer ${GH_TOKEN}" \
+              --header "Accept: application/vnd.github+json" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/55" \
+              | jq -r --arg marker "${approval_marker}" \
+                '(.body // "") | contains($marker)')"
+            if [ "${approved}" = "true" ]; then
+              break
+            fi
+            sleep 5
+          done
+          test "${approved}" = "true"
+
+      - name: Fetch one real search page from each platform
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(cat "${RUNNER_TEMP}/tikhub-probe-secret/token")"
+          echo "::add-mask::${token}"
+          export AIMA_TIKHUB_PROBE_TOKEN="${token}"
+          export AIMA_TIKHUB_PROBE_MODE=search
+          export AIMA_TIKHUB_PROBE_PRICING_APPROVED=yes
+          export AIMA_TIKHUB_PROBE_OUTPUT_DIR="${RUNNER_TEMP}/tikhub-search"
+          uv run python scripts/dev/probe_tikhub_stage7_search.py
+          unset AIMA_TIKHUB_PROBE_TOKEN
+
+          echo "AIMA_TIKHUB_SEARCH_EVIDENCE_BEGIN:${GITHUB_RUN_ID}"
+          cat "${RUNNER_TEMP}/tikhub-search/manifest.json"
+          for file in "${RUNNER_TEMP}"/tikhub-search/*/search_page1.sanitized.json; do
+            echo "--- ${file} ---"
+            cat "${file}"
+          done
+          echo "AIMA_TIKHUB_SEARCH_EVIDENCE_END:${GITHUB_RUN_ID}"
+
+      - name: Upload sanitized five-platform search evidence
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: stage7-tikhub-search-${{ github.run_id }}
+          path: ${{ runner.temp }}/tikhub-search
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 9
+
+      - name: Remove ephemeral credential material
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "${RUNNER_TEMP}/tikhub-probe-secret"

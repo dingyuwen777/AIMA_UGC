@@ -10,7 +10,7 @@ from aima_ugc.adapters.providers.tikhub.pricing import (
 )
 
 
-def test_default_catalog_keeps_global_price_informational_only() -> None:
+def test_default_catalog_uses_real_endpoint_info_prices_without_global_fallback() -> None:
     catalog = load_tikhub_pricing()
 
     assert catalog.provider == "tikhub"
@@ -33,8 +33,15 @@ def test_default_catalog_keeps_global_price_informational_only() -> None:
         (30000, 2147483647, Decimal("50")),
     ]
 
-    with pytest.raises(TikHubPriceNotVerifiedError, match="官方精确价格"):
-        catalog.billing_for_endpoint("/api/v1/xiaohongshu/app_v2/search_notes")
+    assert catalog.billing_for_endpoint(
+        "/api/v1/xiaohongshu/app_v2/search_notes"
+    ).unit_price_snapshot == Decimal("0.010000")
+    assert catalog.billing_for_endpoint(
+        "/api/v1/douyin/app/v3/fetch_one_video_v3"
+    ).unit_price_snapshot == Decimal("0.001000")
+    assert catalog.billing_for_endpoint(
+        "/api/v1/kuaishou/web/fetch_one_video_comment"
+    ).unit_price_snapshot == Decimal("0.002000")
 
 
 def test_verified_endpoint_builds_conservative_estimated_billing() -> None:

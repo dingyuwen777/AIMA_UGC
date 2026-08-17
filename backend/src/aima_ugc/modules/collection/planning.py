@@ -8,6 +8,8 @@ from typing import Literal, Protocol
 from uuid import UUID
 
 _FIRST_RELEASE_TIMEZONE = "Asia/Shanghai"
+_FIRST_RELEASE_MISFIRE_POLICY = "latest_only"
+_FIRST_RELEASE_MAX_CATCH_UP_RUNS = 0
 _FORBIDDEN_CONFIG_KEYS = frozenset(
     {
         "api_key",
@@ -27,6 +29,14 @@ type CollectionOccurrenceStatus = Literal["enqueued", "skipped"]
 
 class UnsupportedPlanTimezoneError(ValueError):
     """Plan 使用了首版尚未开放的时区。"""
+
+
+class UnsupportedPlanMisfirePolicyError(ValueError):
+    """Plan 使用了首版尚未批准的停机恢复策略。"""
+
+
+class UnsupportedPlanCatchUpError(ValueError):
+    """Plan 请求了首版尚未批准的历史补跑次数。"""
 
 
 class DuplicatePlanPlatformError(ValueError):
@@ -57,7 +67,7 @@ class PlanPlatformDefinition:
 
 @dataclass(frozen=True, slots=True)
 class CollectionPlanDefinition:
-    """创建 Plan 所需的稳定父事实；不解释 Scheduler 策略语义。"""
+    """创建 Plan 所需的稳定父事实；Scheduler 仅执行已批准策略。"""
 
     name: str
     enabled: bool
@@ -68,7 +78,6 @@ class CollectionPlanDefinition:
     max_catch_up_runs: int
     detail_policy: str
     comment_policy: str
-    request_budget: int
     created_by: UUID | None
     platforms: tuple[PlanPlatformDefinition, ...]
     keyword_pack_ids: tuple[UUID, ...]
@@ -90,8 +99,6 @@ class CollectionPlanDefinition:
             raise ValueError("detail_policy 不能为空")
         if not self.comment_policy.strip():
             raise ValueError("comment_policy 不能为空")
-        if self.request_budget < 0:
-            raise ValueError("request_budget 不能小于 0")
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,7 +117,6 @@ class CollectionPlanRecord:
     max_catch_up_runs: int
     detail_policy: str
     comment_policy: str
-    request_budget: int
     created_by: UUID | None
     created_at: datetime
     updated_at: datetime
@@ -152,16 +158,24 @@ class CollectionPlanningRepository(Protocol):
 
 
 class CollectionPlanningService:
-    """只校验已冻结的 Plan/Occurrence 结构，不执行 Scheduler 策略。"""
+    """校验已冻结的 Plan/Occurrence 结构与首版 Scheduler 策略。"""
 
     def __init__(self, repository: CollectionPlanningRepository) -> None:
         self._repository = repository
 
     def create_plan(self, definition: CollectionPlanDefinition) -> CollectionPlanRecord:
-        """创建显式 Plan；首版时区固定为 Asia/Shanghai。"""
+        """创建显式 Plan；首版只接受已批准的时区与 latest-only 策略。"""
         if definition.timezone != _FIRST_RELEASE_TIMEZONE:
             raise UnsupportedPlanTimezoneError(
                 f"first release plan timezone must be {_FIRST_RELEASE_TIMEZONE}"
+            )
+        if definition.misfire_policy != _FIRST_RELEASE_MISFIRE_POLICY:
+            raise UnsupportedPlanMisfirePolicyError(
+                f"first release misfire_policy must be {_FIRST_RELEASE_MISFIRE_POLICY}"
+            )
+        if definition.max_catch_up_runs != _FIRST_RELEASE_MAX_CATCH_UP_RUNS:
+            raise UnsupportedPlanCatchUpError(
+                f"first release max_catch_up_runs must be {_FIRST_RELEASE_MAX_CATCH_UP_RUNS}"
             )
 
         platforms = [platform.platform for platform in definition.platforms]
@@ -181,7 +195,7 @@ class CollectionPlanningService:
         scheduled_for: datetime,
         job_id: UUID,
     ) -> CollectionScheduleOccurrenceRecord:
-        """记录调用方已决定入队的 Occurrence，不推导调度策略。"""
+        """记录 Scheduler 已决定入队的 Occurrence，不在此层执行 Job。"""
         _validate_occurrence_time(schedule_version, scheduled_for)
         return self._repository.create_occurrence(
             plan_id=plan_id,
@@ -200,7 +214,7 @@ class CollectionPlanningService:
         scheduled_for: datetime,
         skip_reason: str,
     ) -> CollectionScheduleOccurrenceRecord:
-        """记录调用方显式决定跳过的 Occurrence，不推导跳过原因。"""
+        """记录 Scheduler 已决定跳过的 Occurrence。"""
         _validate_occurrence_time(schedule_version, scheduled_for)
         if not skip_reason.strip():
             raise ValueError("skipped occurrence 必须提供 skip_reason")

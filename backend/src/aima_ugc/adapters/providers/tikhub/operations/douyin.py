@@ -6,31 +6,13 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 _SEARCH_PATH = "/api/v1/douyin/search/fetch_video_search_v2"
+_SEARCH_V1_CANDIDATE_PATH = "/api/v1/douyin/search/fetch_video_search_v1"
 _APP_V3_BASE = "/api/v1/douyin/app/v3"
 
-_SORT_TYPES = {
-    "general": "0",
-    "most_liked": "1",
-    "latest": "2",
-}
-_PUBLISH_TIMES = {
-    "all": "0",
-    "1d": "1",
-    "7d": "7",
-    "180d": "180",
-}
-_DURATIONS = {
-    "all": "0",
-    "under_1m": "0-1",
-    "1_5m": "1-5",
-    "over_5m": "5-10000",
-}
-_CONTENT_TYPES = {
-    "all": "0",
-    "video": "1",
-    "image": "2",
-    "article": "3",
-}
+_SORT_TYPES = {"general": "0", "most_liked": "1", "latest": "2"}
+_PUBLISH_TIMES = {"all": "0", "1d": "1", "7d": "7", "180d": "180"}
+_DURATIONS = {"all": "0", "under_1m": "0-1", "1_5m": "1-5", "over_5m": "5-10000"}
+_CONTENT_TYPES = {"all": "0", "video": "1", "image": "2", "article": "3"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,34 +44,32 @@ class DouyinSearchPagination:
         body: dict[str, Any],
         previous_item_ids: tuple[str, ...] = (),
     ) -> DouyinSearchPagination:
-        data = _find_mapping(body, required_any=("business_data", "cursor", "has_more"))
+        data = _find_mapping(body, required_any=("business_data",))
         items = extract_search_items(body)
-        next_cursor = _integer(data.get("cursor"), default=current_cursor)
-        search_id = _string(data.get("search_id")) or ""
-        backtrace = _string(data.get("backtrace")) or ""
-
+        business_config_raw = data.get("business_config")
+        business_config = business_config_raw if isinstance(business_config_raw, dict) else {}
+        next_page_raw = business_config.get("next_page")
+        next_page = next_page_raw if isinstance(next_page_raw, dict) else {}
+        next_cursor = _integer(
+            next_page.get("cursor"),
+            default=_integer(data.get("cursor"), default=current_cursor),
+        )
+        search_id = _string(next_page.get("search_id")) or _string(data.get("search_id")) or ""
+        backtrace = (
+            _string(business_config.get("backtrace")) or _string(data.get("backtrace")) or ""
+        )
+        has_more = (
+            business_config.get("has_more")
+            if "has_more" in business_config
+            else data.get("has_more")
+        )
         if not items:
             return cls(next_cursor, search_id, backtrace, (), False, "empty_page")
-
         item_ids = tuple(filter(None, (_search_item_id(item) for item in items)))
         if _same_item_ids(item_ids, previous_item_ids):
-            return cls(
-                next_cursor,
-                search_id,
-                backtrace,
-                item_ids,
-                False,
-                "duplicate_page",
-            )
-        if _provider_exhausted(data.get("has_more")):
-            return cls(
-                next_cursor,
-                search_id,
-                backtrace,
-                item_ids,
-                False,
-                "provider_exhausted",
-            )
+            return cls(next_cursor, search_id, backtrace, item_ids, False, "duplicate_page")
+        if _provider_exhausted(has_more):
+            return cls(next_cursor, search_id, backtrace, item_ids, False, "provider_exhausted")
         if next_cursor <= current_cursor:
             return cls(
                 next_cursor,
@@ -104,19 +84,14 @@ class DouyinSearchPagination:
 
 @dataclass(frozen=True, slots=True)
 class DouyinCursorPagination:
-    """App V3 评论/回复仅基于官方 cursor/has_more 的下一页状态。"""
+    """App V3 评论/回复仅基于真实 cursor/has_more 的下一页状态。"""
 
     next_cursor: int
     should_continue: bool
     stop_reason: str | None = None
 
     @classmethod
-    def from_response(
-        cls,
-        *,
-        previous_cursor: int,
-        body: dict[str, Any],
-    ) -> DouyinCursorPagination:
+    def from_response(cls, *, previous_cursor: int, body: dict[str, Any]) -> DouyinCursorPagination:
         data = _find_mapping(body, required_any=("cursor", "has_more"))
         next_cursor = _integer(data.get("cursor"), default=previous_cursor)
         if _provider_exhausted(data.get("has_more")):
@@ -137,7 +112,56 @@ def build_video_search_request(
     search_id: str = "",
     backtrace: str = "",
 ) -> DouyinRequest:
-    """把规范化搜索业务参数映射到 TikHub Douyin Search V2 请求体。"""
+    return _build_video_search_request(
+        path=_SEARCH_PATH,
+        keyword=keyword,
+        cursor=cursor,
+        sort_mode=sort_mode,
+        published_within=published_within,
+        duration=duration,
+        content_type=content_type,
+        search_id=search_id,
+        backtrace=backtrace,
+    )
+
+
+def build_video_search_v1_candidate_request(
+    *,
+    keyword: str,
+    cursor: int = 0,
+    sort_mode: str = "general",
+    published_within: str = "all",
+    duration: str = "all",
+    content_type: str = "all",
+    search_id: str = "",
+    backtrace: str = "",
+) -> DouyinRequest:
+    """构造同业务语义的 Search V1 A/B 候选；不进入默认 Capability 或自动 fallback。"""
+    return _build_video_search_request(
+        path=_SEARCH_V1_CANDIDATE_PATH,
+        keyword=keyword,
+        cursor=cursor,
+        sort_mode=sort_mode,
+        published_within=published_within,
+        duration=duration,
+        content_type=content_type,
+        search_id=search_id,
+        backtrace=backtrace,
+    )
+
+
+def _build_video_search_request(
+    *,
+    path: str,
+    keyword: str,
+    cursor: int,
+    sort_mode: str,
+    published_within: str,
+    duration: str,
+    content_type: str,
+    search_id: str,
+    backtrace: str,
+) -> DouyinRequest:
     normalized_keyword = keyword.strip()
     if not normalized_keyword:
         raise ValueError("keyword 不能为空")
@@ -153,40 +177,34 @@ def build_video_search_request(
         "search_id": search_id,
         "backtrace": backtrace,
     }
-    return DouyinRequest(method="POST", path=_SEARCH_PATH, params={}, body=body)
+    return DouyinRequest("POST", path, {}, body)
 
 
 def build_video_detail_request(*, aweme_id: str) -> DouyinRequest:
-    """构造 TikHub Douyin App V3 单作品详情请求。"""
     return DouyinRequest(
-        method="GET",
-        path=f"{_APP_V3_BASE}/fetch_one_video_v3",
-        params={"aweme_id": _required_id(aweme_id, "aweme_id")},
+        "GET",
+        f"{_APP_V3_BASE}/fetch_one_video_v3",
+        {"aweme_id": _required_id(aweme_id, "aweme_id")},
     )
 
 
 def build_video_comments_request(*, aweme_id: str, cursor: int = 0) -> DouyinRequest:
-    """构造一级评论请求；不覆盖 TikHub 官方要求保持默认的 count。"""
     _nonnegative_cursor(cursor)
     return DouyinRequest(
-        method="GET",
-        path=f"{_APP_V3_BASE}/fetch_video_comments",
-        params={"aweme_id": _required_id(aweme_id, "aweme_id"), "cursor": cursor},
+        "GET",
+        f"{_APP_V3_BASE}/fetch_video_comments",
+        {"aweme_id": _required_id(aweme_id, "aweme_id"), "cursor": cursor},
     )
 
 
 def build_video_comment_replies_request(
-    *,
-    item_id: str,
-    comment_id: str,
-    cursor: int = 0,
+    *, item_id: str, comment_id: str, cursor: int = 0
 ) -> DouyinRequest:
-    """构造评论回复请求；不覆盖 TikHub 官方要求保持默认的 count。"""
     _nonnegative_cursor(cursor)
     return DouyinRequest(
-        method="GET",
-        path=f"{_APP_V3_BASE}/fetch_video_comment_replies",
-        params={
+        "GET",
+        f"{_APP_V3_BASE}/fetch_video_comment_replies",
+        {
             "item_id": _required_id(item_id, "item_id"),
             "comment_id": _required_id(comment_id, "comment_id"),
             "cursor": cursor,
@@ -195,9 +213,28 @@ def build_video_comment_replies_request(
 
 
 def extract_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
-    """从 Search V2 响应中提取官方 business_data wrapper，不解释业务字段。"""
     data = _find_mapping(body, required_any=("business_data",))
     items = data.get("business_data")
+    if not isinstance(items, list):
+        return ()
+    return tuple(item for item in items if isinstance(item, dict))
+
+
+def extract_detail_item(body: dict[str, Any]) -> dict[str, Any]:
+    """从真实 App V3 detail 响应提取 data.aweme_detail。"""
+    data = body.get("data")
+    detail = data.get("aweme_detail") if isinstance(data, dict) else None
+    if not isinstance(detail, dict):
+        raise ValueError("抖音详情响应缺少 data.aweme_detail")
+    return {str(key): value for key, value in detail.items()}
+
+
+def extract_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    """从真实 App V3 评论/回复响应提取 data.comments。"""
+    data = body.get("data")
+    if not isinstance(data, dict):
+        return ()
+    items = data.get("comments")
     if not isinstance(items, list):
         return ()
     return tuple(item for item in items if isinstance(item, dict))
@@ -207,8 +244,7 @@ def _choice(mapping: dict[str, str], value: str, field_name: str) -> str:
     try:
         return mapping[value]
     except KeyError as exc:
-        allowed = ", ".join(mapping)
-        raise ValueError(f"{field_name} 不支持: {value}; 可选: {allowed}") from exc
+        raise ValueError(f"{field_name} 不支持: {value}; 可选: {', '.join(mapping)}") from exc
 
 
 def _required_id(value: str, field_name: str) -> str:
@@ -241,18 +277,12 @@ def _find_mapping(body: dict[str, Any], *, required_any: tuple[str, ...]) -> dic
 
 def _search_item_id(item: dict[str, Any]) -> str:
     data = item.get("data")
-    if not isinstance(data, dict):
-        return ""
-    aweme_info = data.get("aweme_info")
-    if not isinstance(aweme_info, dict):
-        return ""
-    return _string(aweme_info.get("aweme_id")) or ""
+    aweme_info = data.get("aweme_info") if isinstance(data, dict) else None
+    return _string(aweme_info.get("aweme_id")) or "" if isinstance(aweme_info, dict) else ""
 
 
 def _same_item_ids(current: tuple[str, ...], previous: tuple[str, ...]) -> bool:
-    if not current or len(current) != len(previous):
-        return False
-    return set(current) == set(previous)
+    return bool(current) and len(current) == len(previous) and set(current) == set(previous)
 
 
 def _string(value: object) -> str | None:
@@ -289,5 +319,8 @@ __all__ = [
     "build_video_comments_request",
     "build_video_detail_request",
     "build_video_search_request",
+    "build_video_search_v1_candidate_request",
+    "extract_comment_items",
+    "extract_detail_item",
     "extract_search_items",
 ]

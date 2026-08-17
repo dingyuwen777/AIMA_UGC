@@ -1,0 +1,3870 @@
+{
+  "platform": "kuaishou",
+  "records": [
+    {
+      "endpoint": "/api/v1/kuaishou/app/search_video_v2",
+      "http_status": 200,
+      "label": "search",
+      "method": "GET",
+      "planned_cost_usd": "0.010000",
+      "request": {
+        "authorization": "Bearer <redacted-secret>",
+        "body": null,
+        "method": "GET",
+        "params": {
+          "keyword": "爱玛",
+          "pcursor": "id-0001"
+        },
+        "path": "/api/v1/kuaishou/app/search_video_v2"
+      },
+      "request_no": 19,
+      "response": {
+        "cache_message": "<redacted-string>",
+        "cache_message_zh": "<redacted-string>",
+        "cache_url": "<redacted-string>",
+        "code": 200,
+        "data": {
+          "debug_id": "id-0039",
+          "debug_info": "<redacted-string>",
+          "extParams": {
+            "disablePhotoInsert": false,
+            "dynamicShard": false,
+            "isCreativeMode": false,
+            "isShowPymkUserPhotos": true,
+            "isShowScrollTopButton": false,
+            "livePendantResource": "<redacted-string>",
+            "outerStreamFetch": 10,
+            "pageSingleDoubleStyle": 0,
+            "rsRecoAfterPlayInterval": 2,
+            "searchTaskParam": {},
+            "sessionParams": "id-0001",
+            "streamExtParams": "<redacted-string>",
+            "subtagWithPic": false
+          },
+          "host-name": "<redacted-string>",
+          "jumpToSlideMode": true,
+          "llsid": "id-0038",
+          "mixFeeds": [
+            {
+              "atmosphereType": 0,
+              "extInfo": {
+                "clickTriggerInnerStream": false,
+                "ext_params": {
+                  "relevance_score": "<redacted-string>"
+                },
+                "feedback": {
+                  "contentList": [
+                    {
+                      "id": "id-0014",
+                      "text": "<redacted-string>"
+                    },
+                    {
+                      "id": "id-0015",
+                      "text": "<redacted-string>"
+                    },
+                    {
+                      "id": "id-0016",
+                      "text": "<redacted-string>"
+                    }
+                  ],
+                  "otherContent": {
+                    "id": "id-0017",
+                    "text": "<redacted-string>"
+                  },
+                  "unInterestList": [
+                    {
+                      "id": "id-0018",
+                      "text": "<redacted-string>"
+                    },
+                    {
+                      "id": "id-0019",
+                      "text": "<redacted-string>"
+                    }
+                  ]
+                },
+                "recallSource": "<redacted-string>",
+                "screenItemKey": "<redacted-string>",
+                "showPlcFeatureEntry": false
+              },
+              "feed": {
+                "adminTags": [],
+                "bottomEntryInfo": {
+                  "bizExtraData": {
+                    "half_search": "<redacted-string>"
+                  },
+                  "bottomBizType": 14,
+                  "bottomStyleInfo": {
+                    "bottomStrongStyle": {
+                      "actionUrl": "<redacted-string>",
+                      "backgroundColor": "<redacted-string>",
+                      "bottomStrongStyleType": 0,
+                      "enableForceClose": false,
+                      "fontColor": "<redacted-string>",
+                      "fontSize": 0,
+                      "iconHeight": 0,
+                      "iconUrl": "<redacted-string>",
+                      "iconWidth": 0,
+                      "labels": [],
+                      "needToRequestStrongApi": false,
+                      "preTitle": "<redacted-string>",
+                      "roundCorner": false,
+                      "showSeparator": false,
+                      "strongStyleItems": [],
+                      "tailIconUrl": "<redacted-string>",
+                      "title": "<redacted-string>",
+                      "visibility": 0
+                    },
+                    "bottomWeakStyle": {
+                      "actionUrl": "id-0006",
+                      "backgroundColor": "<redacted-string>",
+                      "bottomWeakStyleType": 0,
+                      "enableForceClose": false,
+                      "fontColor": "<redacted-string>",
+                      "fontSize": 13,
+                      "iconHeight": 48,
+                      "iconRightMargin": 4,
+                      "iconTextSuffix": "<redacted-string>",
+                      "iconUrl": "<redacted-string>",
+                      "iconWidth": 48,
+                      "jumpText": "<redacted-string>",
+                      "label": "<redacted-string>",
+                      "notTruncatedTitle": "<redacted-string>",
+                      "preTitle": "<redacted-string>",
+                      "roundCorner": false,
+                      "showArrow": true,
+                      "showClose": false,
+                      "showSeparator": false,
+                      "tailIconUrl": "<redacted-string>",
+                      "title": "<redacted-string>",
+                      "users": [],
+                      "visibility": 15
+                    },
+                    "delayShowWeakStyle": false,
+                    "playVideoEndToStrongMillis": 0,
+                    "showStrongVideoCountdownMillis": 0,
+                    "showStrongVideoMillis": 0,
+                    "strongStyleCloseHideWeakStyle": false,
+                    "styleTriggers": [],
+                    "weakToStrongAction": []
+                  },
+                  "eventTrackData": {
+                    "all_source": "<redacted-string>",
+                    "entry_source": "<redacted-string>",
+                    "is_hotbar": "<redacted-string>",
+                    "query_id": "id-0004",
+                    "query_list_id": "id-0005",
+                    "query_name": "<redacted-string>",
+                    "rel_score": "<redacted-string>",
+                    "stg_recall_source": "<redacted-string>"
+                  }
+                },
+                "canShowQuickCommentGuide": true,
+                "caption": "<redacted-string>",
+                "captionToComment": "<redacted-string>",
+                "clearScreenSameAuthorCount": 1411,
+                "collect_count": 43,
+                "commentGuessSearch": {
+                  "displayPrefix": "<redacted-string>",
+                  "extParams": "<redacted-string>",
+                  "iconUrl": "<redacted-string>",
+                  "searchWord": "<redacted-string>",
+                  "searchWordMD5": "<redacted-string>",
+                  "searchWordUrl": "id-0009",
+                  "sessionId": "id-0005"
+                },
+                "commentInfo": {
+                  "commentCountSpecialEffect": true,
+                  "commentEducationGuide": {
+                    "guideType": 1,
+                    "triggerCharCount": 10
+                  },
+                  "commentIconType": 0,
+                  "enableAIPresetGuide": false,
+                  "extFunctionAreasList": [
+                    {
+                      "ext": "<redacted-string>",
+                      "key": "<redacted-string>",
+                      "text": "<redacted-string>"
+                    },
+                    {
+                      "ext": "<redacted-string>",
+                      "key": "<redacted-string>",
+                      "text": "<redacted-string>"
+                    },
+                    {
+                      "ext": "id-0013",
+                      "key": "<redacted-string>",
+                      "text": "<redacted-string>"
+                    }
+                  ],
+                  "permissions": 447
+                },
+                "commentTopBarPriority": [
+                  {
+                    "bizType": "<redacted-string>",
+                    "subBizType": "<redacted-string>"
+                  },
+                  {
+                    "bizType": "<redacted-string>",
+                    "subBizType": "<redacted-string>"
+                  },
+                  {
+                    "bizType": "<redacted-string>",
+                    "subBizType": "<redacted-string>"
+                  }
+                ],
+                "comment_count": 5,
+                "coronaVipInfo": {
+                  "enableFilmAd": false,
+                  "filmAdInfo": {
+                    "pageId": 100014436,
+                    "posId": 9777,
+                    "subPageId": 100017199
+                  },
+                  "inspireAdInfo": {
+                    "pageId": 100011251,
+                    "posId": 20578,
+                    "subPageId": 100024209
+                  },
+                  "vipPhoto": false
+                },
+                "cover_thumbnail_urls": [
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  },
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  }
+                ],
+                "danmakuInfo": {
+                  "danmakuShowDirection": 2,
+                  "defaultDanmaku": "<redacted-string>",
+                  "hasDanmaku": true,
+                  "hetuList": [
+                    4688,
+                    143715
+                  ],
+                  "paster": false,
+                  "photoDanmakuGuide": false
+                },
+                "detailEntryInfo": {
+                  "eventTrackData": {
+                    "query_id": "id-0007",
+                    "query_list_id": "id-0005",
+                    "query_name": "<redacted-string>"
+                  },
+                  "keyword": "<redacted-string>"
+                },
+                "disableCommentDislike": false,
+                "downloadCount": 9,
+                "duration": 3766,
+                "editInfo": {},
+                "enableCoronaDetailPage": false,
+                "enableCoronaViewLater": true,
+                "enableFullScreenPlay": false,
+                "exp_tag": "<redacted-string>",
+                "ext_params": {
+                  "color": "<redacted-string>",
+                  "h": 1280,
+                  "interval": 30,
+                  "mtype": 3,
+                  "sound": 3690,
+                  "video": 3766,
+                  "w": 720
+                },
+                "fastCommentType": 1,
+                "feedLogCtx": {
+                  "stExParams": "<redacted-string>",
+                  "stidContainer": "<redacted-string>"
+                },
+                "feedSwitches": {
+                  "disable61ActivityAnimation": true,
+                  "disableCommentLikeAnimation": false,
+                  "enablePictureCommentForPhoto": true,
+                  "enablePlayerPanel": true
+                },
+                "ff_cover_thumbnail_urls": [
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  },
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  }
+                ],
+                "fixedColor": "<redacted-string>",
+                "followShoot": {
+                  "isLipsSyncPhoto": false
+                },
+                "following": 0,
+                "forward_count": 0,
+                "forward_stats_params": {
+                  "et": "<redacted-string>",
+                  "fid": "id-0010"
+                },
+                "frameStyle": 0,
+                "hasVote": false,
+                "headurls": [
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  },
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  }
+                ],
+                "inputPromptGuide": "<redacted-string>",
+                "interactionRecommendGuide": {
+                  "enableCollectRecommend": true,
+                  "enableFollowRecommend": true,
+                  "enableLikeRecommend": true,
+                  "enableShareRecommend": true,
+                  "interactionHeightAb": {
+                    "collect": true,
+                    "follow": true,
+                    "like": true,
+                    "share": true
+                  },
+                  "untruncableText": "<redacted-string>"
+                },
+                "like_count": 125,
+                "liked": 0,
+                "location": {},
+                "main_mv_urls": [
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  },
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  }
+                ],
+                "musicDisk": {
+                  "expand": false
+                },
+                "musicStrategy": {
+                  "isMusicMuted": false
+                },
+                "myRecommended": {
+                  "recommendTagGuideConfig": {},
+                  "recommendTextOnlyFriendFormat": "<redacted-string>",
+                  "recommendTextOnlyYouFormat": "<redacted-string>",
+                  "recommendTextYouAndFriendFormat": "<redacted-string>",
+                  "recommendUsers": 4,
+                  "recommended": 2
+                },
+                "noNeedToRequestPLCApi": true,
+                "override_cover_size": {
+                  "coverTitlePosToTop": -2,
+                  "cuttingShift": 0,
+                  "cuttingType": 0,
+                  "height": 1280,
+                  "shiftDirection": 0,
+                  "width": 720
+                },
+                "photoFavorAuthor": {
+                  "canFreeFavorAuthor": true,
+                  "favorAuthorCount": 0,
+                  "favorGuideStrategy": 0
+                },
+                "photo_id": 100001,
+                "photo_status": 0,
+                "picSearchTag": {
+                  "control": {
+                    "controlInfo": {
+                      "centerLaplacianVarThreshold": 7,
+                      "centerMeanGrayThreshold": 10,
+                      "highMeanGrayThreshold": 230,
+                      "laplacianVarThreshold": 20,
+                      "lowMeanGrayThreshold": 5,
+                      "middleMeanGrayThreshold": 20,
+                      "recognizeTopK": 1
+                    },
+                    "routeType": 2
+                  },
+                  "count": 5,
+                  "extParams": "id-0012",
+                  "onlineDetection": true,
+                  "rangeTag": []
+                },
+                "plcFeatureEntryAbFlag": 3,
+                "plcHighPriorityThanBottomEntry": false,
+                "plcResponseTime": 100004,
+                "profilePagePrefetchInfo": {
+                  "profilePageType": 1
+                },
+                "ptp": "<redacted-string>",
+                "recToFriendCount": 4,
+                "recoTags": [],
+                "recommended": 2,
+                "recreationSetting": 1,
+                "sameFrame": {
+                  "allow": true,
+                  "availableDepth": 7
+                },
+                "savePlayProgressStrategy": 2,
+                "screenshotCount": 127,
+                "serverExpTag": "id-0008",
+                "shareGuide": {
+                  "guides": {
+                    "default": {
+                      "iconType": "<redacted-string>"
+                    }
+                  },
+                  "minPlayDurationInSeconds": 15,
+                  "photoShareGuide": true,
+                  "playTimes": 2,
+                  "textDisplayDurationInSeconds": 4
+                },
+                "sharePassingParam": "<redacted-string>",
+                "share_count": 367,
+                "share_info": "<redacted-string>",
+                "showGrDetailPage": false,
+                "showSpecialFollowIcon": 2,
+                "slideCommentEntryDisabled": false,
+                "soundTrack": {
+                  "artist": "<redacted-string>",
+                  "audioType": 1,
+                  "audioUrls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    },
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "avatarUrls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    },
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "disableEnhancedEntry": true,
+                  "duration": 3,
+                  "finalStatus": 0,
+                  "genreId": 0,
+                  "hasCopyright": true,
+                  "id": "id-0011",
+                  "imageUrls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    },
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "isOffline": false,
+                  "loudness": -15,
+                  "name": "<redacted-string>",
+                  "photoId": 100001,
+                  "type": 9,
+                  "user": {
+                    "eid": "<redacted-string>",
+                    "following": false,
+                    "headurl": "<redacted-string>",
+                    "headurls": [
+                      {
+                        "cdn": "<redacted-string>",
+                        "url": "<redacted-string>"
+                      },
+                      {
+                        "cdn": "<redacted-string>",
+                        "url": "<redacted-string>"
+                      }
+                    ],
+                    "profilePagePrefetchInfo": {
+                      "profilePageType": 1
+                    },
+                    "user_id": 100003,
+                    "user_name": "<redacted-string>",
+                    "user_sex": "<redacted-string>",
+                    "visitorBeFollowed": false
+                  }
+                },
+                "sourcePhotoPage": "<redacted-string>",
+                "streamManifest": {
+                  "adaptationSet": [
+                    {
+                      "duration": 3766,
+                      "id": 100002,
+                      "representation": [
+                        {
+                          "adaptiveType": 0,
+                          "agc": true,
+                          "avgBitrate": 831,
+                          "backupUrl": [
+                            "<redacted-string>"
+                          ],
+                          "bitratePattern": [
+                            1109,
+                            769,
+                            1450
+                          ],
+                          "colorInfo": {
+                            "bright": 3.1334,
+                            "contrast": 3.455,
+                            "saturation": 2.5338,
+                            "yMean": 127.2032,
+                            "yMeanMax": 135.6641,
+                            "yMeanMin": 64.1401
+                          },
+                          "comment": "<redacted-string>",
+                          "defaultSelect": false,
+                          "disableAdaptive": false,
+                          "featureP2sp": false,
+                          "fileSize": 391456,
+                          "frameRate": 30,
+                          "hdrType": 0,
+                          "height": 1280,
+                          "hidden": false,
+                          "id": 100002,
+                          "kvqScore": {
+                            "FR": -1,
+                            "FRPost": -1,
+                            "NR": 3.2521,
+                            "NRPost": -1,
+                            "blur": 0.1815,
+                            "kvqVersion": "<redacted-string>",
+                            "nnvcScore": -1,
+                            "sharpness": 0.3187
+                          },
+                          "makeupGain": 1.126,
+                          "maxBitrate": 3800,
+                          "minorInfo": "<redacted-string>",
+                          "mute": false,
+                          "normalizeGain": 1,
+                          "oriLoudness": -11.028,
+                          "p2spCode": "<redacted-string>",
+                          "quality": 1.5,
+                          "qualityLabel": "<redacted-string>",
+                          "qualityType": "<redacted-string>",
+                          "realLoudness": -10.774,
+                          "realNormalizeGain": 1,
+                          "url": "<redacted-string>",
+                          "videoCodec": "<redacted-string>",
+                          "volumeInfo": {
+                            "loudness": -10.8,
+                            "lra": 0.3,
+                            "lraHigh": -10.8,
+                            "lraLow": -11,
+                            "lraTh": -30.9,
+                            "th": -20.8,
+                            "tp": 0.5
+                          },
+                          "width": 720
+                        }
+                      ]
+                    }
+                  ],
+                  "audioFeature": {
+                    "audioClip": 0,
+                    "audioQuality": 92.9933,
+                    "audioSnr": 60,
+                    "backgroundSoundProbability": 0,
+                    "dialogProbability": 0.0014,
+                    "effectiveBandwidthInHz": 15043.859,
+                    "musicProbability": 0.9986,
+                    "stereophonicRichness": 0
+                  },
+                  "businessType": 2,
+                  "hideAuto": false,
+                  "manualDefaultSelect": false,
+                  "mediaType": 2,
+                  "playInfo": {
+                    "bizType": 0,
+                    "cdnTimeRangeLevel": 1,
+                    "strategyBus": "<redacted-string>"
+                  },
+                  "stereoType": 0,
+                  "version": "<redacted-string>",
+                  "videoFeature": {
+                    "avgEntropy": 11.642786,
+                    "blockyProbability": 0.165918,
+                    "blurProbability": 0.020996,
+                    "capSrc": 4e-06,
+                    "contrast": 0.006327,
+                    "mosScore": 0.761719,
+                    "overExposed": 0.0,
+                    "yMean": 125.82943,
+                    "yMeanMax": 134.02782,
+                    "yMeanMin": 64.05246
+                  },
+                  "videoId": "<redacted-string>"
+                },
+                "subscribeNotification": false,
+                "supportType": 0,
+                "tag_hash_type": 1,
+                "tags": [],
+                "time": "<redacted-string>",
+                "timestamp": 1720000000,
+                "type": 1,
+                "us_c": 0,
+                "us_d": 0,
+                "us_l": true,
+                "user_id": 100003,
+                "user_name": "<redacted-string>",
+                "user_settings": {
+                  "display_photo_collect_list": false,
+                  "display_photo_like_list": false,
+                  "tabConfig": []
+                },
+                "user_sex": "<redacted-string>",
+                "verified": false,
+                "videoColdStartType": 0,
+                "view_count": 39589
+              },
+              "feedLogCtx": {
+                "stidContainer": "<redacted-string>"
+              },
+              "isSingleColumnMode": false,
+              "itemTransferInfo": "<redacted-string>",
+              "itemType": 5,
+              "rank": 0
+            },
+            {
+              "atmosphereType": 0,
+              "extInfo": {
+                "clickTriggerInnerStream": false,
+                "ext_params": {
+                  "relevance_score": "<redacted-string>"
+                },
+                "feedback": {
+                  "contentList": [
+                    {
+                      "id": "id-0014",
+                      "text": "<redacted-string>"
+                    },
+                    {
+                      "id": "id-0015",
+                      "text": "<redacted-string>"
+                    },
+                    {
+                      "id": "id-0016",
+                      "text": "<redacted-string>"
+                    }
+                  ],
+                  "otherContent": {
+                    "id": "id-0017",
+                    "text": "<redacted-string>"
+                  },
+                  "unInterestList": [
+                    {
+                      "id": "id-0018",
+                      "text": "<redacted-string>"
+                    },
+                    {
+                      "id": "id-0019",
+                      "text": "<redacted-string>"
+                    }
+                  ]
+                },
+                "recallSource": "<redacted-string>",
+                "screenItemKey": "<redacted-string>",
+                "showPlcFeatureEntry": false
+              },
+              "feed": {
+                "adminTags": [],
+                "bottomEntryInfo": {
+                  "bizExtraData": {
+                    "half_search": "<redacted-string>"
+                  },
+                  "bottomBizType": 14,
+                  "bottomStyleInfo": {
+                    "bottomStrongStyle": {
+                      "actionUrl": "<redacted-string>",
+                      "backgroundColor": "<redacted-string>",
+                      "bottomStrongStyleType": 0,
+                      "enableForceClose": false,
+                      "fontColor": "<redacted-string>",
+                      "fontSize": 0,
+                      "iconHeight": 0,
+                      "iconUrl": "<redacted-string>",
+                      "iconWidth": 0,
+                      "labels": [],
+                      "needToRequestStrongApi": false,
+                      "preTitle": "<redacted-string>",
+                      "roundCorner": false,
+                      "showSeparator": false,
+                      "strongStyleItems": [],
+                      "tailIconUrl": "<redacted-string>",
+                      "title": "<redacted-string>",
+                      "visibility": 0
+                    },
+                    "bottomWeakStyle": {
+                      "actionUrl": "id-0021",
+                      "backgroundColor": "<redacted-string>",
+                      "bottomWeakStyleType": 0,
+                      "enableForceClose": false,
+                      "fontColor": "<redacted-string>",
+                      "fontSize": 13,
+                      "iconHeight": 48,
+                      "iconRightMargin": 4,
+                      "iconTextSuffix": "<redacted-string>",
+                      "iconUrl": "<redacted-string>",
+                      "iconWidth": 48,
+                      "jumpText": "<redacted-string>",
+                      "label": "<redacted-string>",
+                      "notTruncatedTitle": "<redacted-string>",
+                      "preTitle": "<redacted-string>",
+                      "roundCorner": false,
+                      "showArrow": true,
+                      "showClose": false,
+                      "showSeparator": false,
+                      "tailIconUrl": "<redacted-string>",
+                      "title": "<redacted-string>",
+                      "users": [],
+                      "visibility": 15
+                    },
+                    "delayShowWeakStyle": false,
+                    "playVideoEndToStrongMillis": 0,
+                    "showStrongVideoCountdownMillis": 0,
+                    "showStrongVideoMillis": 0,
+                    "strongStyleCloseHideWeakStyle": false,
+                    "styleTriggers": [],
+                    "weakToStrongAction": []
+                  },
+                  "eventTrackData": {
+                    "all_source": "<redacted-string>",
+                    "entry_source": "<redacted-string>",
+                    "is_hotbar": "<redacted-string>",
+                    "query_id": "id-0020",
+                    "query_list_id": "id-0005",
+                    "query_name": "<redacted-string>",
+                    "rel_score": "<redacted-string>",
+                    "stg_recall_source": "<redacted-string>"
+                  }
+                },
+                "canShowQuickCommentGuide": true,
+                "caption": "<redacted-string>",
+                "captionToComment": "<redacted-string>",
+                "clearScreenSameAuthorCount": 260,
+                "collect_count": 170,
+                "commentGuessSearch": {
+                  "displayPrefix": "<redacted-string>",
+                  "extParams": "<redacted-string>",
+                  "iconUrl": "<redacted-string>",
+                  "searchWord": "<redacted-string>",
+                  "searchWordMD5": "<redacted-string>",
+                  "searchWordUrl": "id-0024",
+                  "sessionId": "id-0005"
+                },
+                "commentInfo": {
+                  "commentCountSpecialEffect": true,
+                  "commentEducationGuide": {
+                    "guideType": 0,
+                    "triggerCharCount": 0
+                  },
+                  "commentIconType": 0,
+                  "enableAIPresetGuide": false,
+                  "extFunctionAreasList": [
+                    {
+                      "ext": "<redacted-string>",
+                      "key": "<redacted-string>",
+                      "text": "<redacted-string>"
+                    },
+                    {
+                      "ext": "<redacted-string>",
+                      "key": "<redacted-string>",
+                      "text": "<redacted-string>"
+                    },
+                    {
+                      "ext": "id-0027",
+                      "key": "<redacted-string>",
+                      "text": "<redacted-string>"
+                    }
+                  ],
+                  "permissions": 447
+                },
+                "commentTopBarPriority": [
+                  {
+                    "bizType": "<redacted-string>",
+                    "subBizType": "<redacted-string>"
+                  },
+                  {
+                    "bizType": "<redacted-string>",
+                    "subBizType": "<redacted-string>"
+                  },
+                  {
+                    "bizType": "<redacted-string>",
+                    "subBizType": "<redacted-string>"
+                  }
+                ],
+                "comment_count": 151,
+                "coronaVipInfo": {
+                  "enableFilmAd": false,
+                  "filmAdInfo": {
+                    "pageId": 100014436,
+                    "posId": 9777,
+                    "subPageId": 100017199
+                  },
+                  "inspireAdInfo": {
+                    "pageId": 100011251,
+                    "posId": 20578,
+                    "subPageId": 100024209
+                  },
+                  "vipPhoto": false
+                },
+                "cover_thumbnail_urls": [
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  },
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  }
+                ],
+                "danmakuInfo": {
+                  "danmakuShowDirection": 2,
+                  "defaultDanmaku": "<redacted-string>",
+                  "hasDanmaku": true,
+                  "hetuList": [
+                    4707,
+                    143710
+                  ],
+                  "paster": false,
+                  "photoDanmakuGuide": false
+                },
+                "detailEntryInfo": {
+                  "eventTrackData": {
+                    "query_id": "id-0022",
+                    "query_list_id": "id-0005",
+                    "query_name": "<redacted-string>"
+                  },
+                  "keyword": "<redacted-string>"
+                },
+                "disableCommentDislike": false,
+                "downloadCount": 28,
+                "duration": 14300,
+                "editInfo": {
+                  "coverVersion": 4,
+                  "editTime": 100008,
+                  "editVersion": 4
+                },
+                "enableCoronaDetailPage": false,
+                "enableCoronaViewLater": true,
+                "enableFullScreenPlay": false,
+                "enableShareToStory": true,
+                "exp_tag": "<redacted-string>",
+                "ext_params": {
+                  "color": "<redacted-string>",
+                  "h": 1280,
+                  "interval": 30,
+                  "mtype": 3,
+                  "sound": 14280,
+                  "video": 14300,
+                  "w": 720
+                },
+                "fastCommentType": 1,
+                "feedLogCtx": {
+                  "stExParams": "<redacted-string>",
+                  "stidContainer": "<redacted-string>"
+                },
+                "feedSwitches": {
+                  "disable61ActivityAnimation": true,
+                  "disableCommentLikeAnimation": false,
+                  "enablePictureCommentForPhoto": true,
+                  "enablePlayerPanel": true
+                },
+                "ff_cover_thumbnail_urls": [
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  },
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  }
+                ],
+                "fixedColor": "<redacted-string>",
+                "followShoot": {
+                  "isLipsSyncPhoto": false
+                },
+                "following": 0,
+                "forwardCount": 2,
+                "forward_count": 0,
+                "forward_stats_params": {
+                  "et": "<redacted-string>",
+                  "fid": "id-0010"
+                },
+                "frameStyle": 0,
+                "hasVote": false,
+                "headurls": [
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  },
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  }
+                ],
+                "inputPromptGuide": "<redacted-string>",
+                "interactionRecommendGuide": {
+                  "enableCollectRecommend": true,
+                  "enableFollowRecommend": true,
+                  "enableLikeRecommend": true,
+                  "enableShareRecommend": true,
+                  "interactionHeightAb": {
+                    "collect": true,
+                    "follow": true,
+                    "like": true,
+                    "share": true
+                  },
+                  "untruncableText": "<redacted-string>"
+                },
+                "like_count": 702,
+                "liked": 0,
+                "location": {},
+                "main_mv_urls": [
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  },
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  }
+                ],
+                "musicDisk": {
+                  "expand": false
+                },
+                "musicStrategy": {
+                  "isMusicMuted": false
+                },
+                "myRecommended": {
+                  "recommendTagGuideConfig": {},
+                  "recommendTextOnlyFriendFormat": "<redacted-string>",
+                  "recommendTextOnlyYouFormat": "<redacted-string>",
+                  "recommendTextYouAndFriendFormat": "<redacted-string>",
+                  "recommendUsers": 16,
+                  "recommended": 2
+                },
+                "noNeedToRequestPLCApi": true,
+                "override_cover_size": {
+                  "coverTitlePosToTop": -2,
+                  "cuttingShift": 0,
+                  "cuttingType": 0,
+                  "height": 1280,
+                  "shiftDirection": 0,
+                  "width": 720
+                },
+                "photoFavorAuthor": {
+                  "canFavorAuthor": true,
+                  "canFreeFavorAuthor": false,
+                  "favorAuthorCount": 1,
+                  "favorGuideStrategy": 0
+                },
+                "photoTextLocationInfo": {
+                  "heightRatio": 0.76458,
+                  "leftRatio": 0,
+                  "topRatio": 0,
+                  "widthRatio": 0.73981
+                },
+                "photo_id": 100005,
+                "photo_status": 0,
+                "picSearchTag": {
+                  "count": 5,
+                  "extParams": "id-0026",
+                  "onlineDetection": true,
+                  "rangeTag": []
+                },
+                "plcFeatureEntryAbFlag": 3,
+                "plcHighPriorityThanBottomEntry": false,
+                "plcResponseTime": 100004,
+                "profilePagePrefetchInfo": {
+                  "profilePageType": 2
+                },
+                "ptp": "<redacted-string>",
+                "recToFriendCount": 16,
+                "recoTags": [],
+                "recommended": 2,
+                "recreationSetting": 1,
+                "sameFrame": {
+                  "allow": true,
+                  "availableDepth": 7
+                },
+                "savePlayProgressStrategy": 2,
+                "screenshotCount": 291,
+                "serverExpTag": "id-0023",
+                "shareGuide": {
+                  "guides": {
+                    "default": {
+                      "iconType": "<redacted-string>"
+                    }
+                  },
+                  "minPlayDurationInSeconds": 15,
+                  "photoShareGuide": true,
+                  "playTimes": 2,
+                  "textDisplayDurationInSeconds": 4
+                },
+                "sharePassingParam": "<redacted-string>",
+                "share_count": 237,
+                "share_info": "<redacted-string>",
+                "showGrDetailPage": false,
+                "showSpecialFollowIcon": 2,
+                "slideCommentEntryDisabled": false,
+                "soundTrack": {
+                  "artist": "<redacted-string>",
+                  "audioType": 1,
+                  "audioUrls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    },
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "avatarUrls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    },
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "disableEnhancedEntry": true,
+                  "duration": 14,
+                  "finalStatus": 0,
+                  "genreId": 0,
+                  "hasCopyright": true,
+                  "id": "id-0025",
+                  "imageUrls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    },
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "isOffline": false,
+                  "loudness": -15,
+                  "name": "<redacted-string>",
+                  "photoId": 100005,
+                  "type": 9,
+                  "user": {
+                    "eid": "<redacted-string>",
+                    "following": false,
+                    "headurl": "<redacted-string>",
+                    "headurls": [
+                      {
+                        "cdn": "<redacted-string>",
+                        "url": "<redacted-string>"
+                      },
+                      {
+                        "cdn": "<redacted-string>",
+                        "url": "<redacted-string>"
+                      }
+                    ],
+                    "profilePagePrefetchInfo": {
+                      "profilePageType": 2
+                    },
+                    "user_id": 100009,
+                    "user_name": "<redacted-string>",
+                    "user_sex": "<redacted-string>",
+                    "visitorBeFollowed": false
+                  }
+                },
+                "sourcePhotoPage": "<redacted-string>",
+                "streamManifest": {
+                  "adaptationSet": [
+                    {
+                      "duration": 14300,
+                      "id": 100002,
+                      "representation": [
+                        {
+                          "adaptiveType": 0,
+                          "agc": true,
+                          "avgBitrate": 594,
+                          "backupUrl": [
+                            "<redacted-string>"
+                          ],
+                          "bitratePattern": [
+                            746,
+                            557,
+                            817
+                          ],
+                          "colorInfo": {
+                            "yMean": 140.623,
+                            "yMeanMax": 146.5558,
+                            "yMeanMin": 56.6099
+                          },
+                          "comment": "<redacted-string>",
+                          "defaultSelect": false,
+                          "disableAdaptive": false,
+                          "featureP2sp": false,
+                          "fileSize": 1062558,
+                          "frameRate": 30,
+                          "hdrType": 0,
+                          "height": 1280,
+                          "hidden": false,
+                          "id": 100002,
+                          "kvqScore": {
+                            "FR": -1,
+                            "FRPost": -1,
+                            "NR": 3.1017,
+                            "NRPost": 3.1704,
+                            "blur": 0.1301,
+                            "kvqVersion": "<redacted-string>",
+                            "nnvcScore": -1,
+                            "sharpness": 0.4566,
+                            "srModelVersion": "<redacted-string>"
+                          },
+                          "makeupGain": 1.016,
+                          "maxBitrate": 3400,
+                          "minorInfo": "<redacted-string>",
+                          "mute": false,
+                          "normalizeGain": 1,
+                          "oriLoudness": -7.142,
+                          "p2spCode": "<redacted-string>",
+                          "quality": 1.92,
+                          "qualityLabel": "<redacted-string>",
+                          "qualityType": "<redacted-string>",
+                          "realLoudness": -7.485,
+                          "realNormalizeGain": 1,
+                          "url": "<redacted-string>",
+                          "videoCodec": "<redacted-string>",
+                          "volumeInfo": {
+                            "loudness": -7.7,
+                            "lra": 2,
+                            "lraHigh": -6.8,
+                            "lraLow": -8.8,
+                            "lraTh": -27.4,
+                            "th": -17.7,
+                            "tp": 1.6
+                          },
+                          "width": 720
+                        },
+                        {
+                          "adaptiveType": 0,
+                          "agc": true,
+                          "avgBitrate": 484,
+                          "backupUrl": [
+                            "<redacted-string>"
+                          ],
+                          "bitratePattern": [
+                            633,
+                            452,
+                            669
+                          ],
+                          "colorInfo": {
+                            "yMean": 140.6292,
+                            "yMeanMax": 146.5583,
+                            "yMeanMin": 56.4461
+                          },
+                          "comment": "<redacted-string>",
+                          "defaultSelect": false,
+                          "disableAdaptive": false,
+                          "featureP2sp": false,
+                          "fileSize": 865742,
+                          "frameRate": 30,
+                          "hdrType": 0,
+                          "height": 1280,
+                          "hidden": false,
+                          "id": 100006,
+                          "kvqScore": {
+                            "FR": -1,
+                            "FRPost": -1,
+                            "NR": 3.0153,
+                            "NRPost": 3.1134,
+                            "blur": 0.1418,
+                            "kvqVersion": "<redacted-string>",
+                            "nnvcScore": -1,
+                            "sharpness": 0.4228,
+                            "srModelVersion": "<redacted-string>"
+                          },
+                          "makeupGain": 1.016,
+                          "maxBitrate": 3500,
+                          "minorInfo": "<redacted-string>",
+                          "mute": false,
+                          "normalizeGain": 1,
+                          "oriLoudness": -7.142,
+                          "p2spCode": "<redacted-string>",
+                          "quality": 1.5,
+                          "qualityLabel": "<redacted-string>",
+                          "qualityType": "<redacted-string>",
+                          "realLoudness": -7.485,
+                          "realNormalizeGain": 1,
+                          "url": "<redacted-string>",
+                          "videoCodec": "<redacted-string>",
+                          "volumeInfo": {
+                            "loudness": -7.7,
+                            "lra": 2,
+                            "lraHigh": -6.8,
+                            "lraLow": -8.8,
+                            "lraTh": -27.4,
+                            "th": -17.7,
+                            "tp": 1.6
+                          },
+                          "width": 720
+                        },
+                        {
+                          "agc": true,
+                          "avgBitrate": 540,
+                          "backupUrl": [
+                            "<redacted-string>"
+                          ],
+                          "bitratePattern": [
+                            666,
+                            506,
+                            708
+                          ],
+                          "colorInfo": {
+                            "yMean": 140.6146,
+                            "yMeanMax": 146.5338,
+                            "yMeanMin": 56.2561
+                          },
+                          "comment": "<redacted-string>",
+                          "defaultSelect": false,
+                          "disableAdaptive": false,
+                          "featureP2sp": false,
+                          "fileSize": 966844,
+                          "frameRate": 30,
+                          "hdrType": 0,
+                          "height": 1024,
+                          "hidden": false,
+                          "id": 100007,
+                          "kvqScore": {
+                            "FR": -1,
+                            "FRPost": -1,
+                            "NR": 3.0513,
+                            "NRPost": 3.1224,
+                            "blur": 0.1382,
+                            "kvqVersion": "<redacted-string>",
+                            "nnvcScore": -1,
+                            "sharpness": 0.29,
+                            "srModelVersion": "<redacted-string>"
+                          },
+                          "makeupGain": 1.016,
+                          "maxBitrate": 2100,
+                          "minorInfo": "<redacted-string>",
+                          "mute": false,
+                          "normalizeGain": 1,
+                          "oriLoudness": -7.142,
+                          "p2spCode": "<redacted-string>",
+                          "quality": 1.4,
+                          "qualityLabel": "<redacted-string>",
+                          "qualityType": "<redacted-string>",
+                          "realLoudness": -7.485,
+                          "realNormalizeGain": 1,
+                          "url": "<redacted-string>",
+                          "videoCodec": "<redacted-string>",
+                          "volumeInfo": {
+                            "loudness": -7.7,
+                            "lra": 2,
+                            "lraHigh": -6.8,
+                            "lraLow": -8.8,
+                            "lraTh": -27.4,
+                            "th": -17.7,
+                            "tp": 1.6
+                          },
+                          "width": 576
+                        }
+                      ]
+                    }
+                  ],
+                  "audioFeature": {
+                    "audioClip": 0.001,
+                    "audioQuality": 91.9801,
+                    "audioSnr": 60,
+                    "backgroundSoundProbability": 0,
+                    "dialogProbability": 0.1241,
+                    "effectiveBandwidthInHz": 15699.342,
+                    "musicProbability": 0.8759,
+                    "stereophonicRichness": 100
+                  },
+                  "businessType": 2,
+                  "hideAuto": false,
+                  "manualDefaultSelect": false,
+                  "mediaType": 2,
+                  "playInfo": {
+                    "bizType": 0,
+                    "cdnTimeRangeLevel": 1,
+                    "strategyBus": "<redacted-string>"
+                  },
+                  "stereoType": 0,
+                  "version": "<redacted-string>",
+                  "videoFeature": {
+                    "avgEntropy": 14.619132,
+                    "blockyProbability": 0.337037,
+                    "blurProbability": 0.071533,
+                    "capSrc": 0.00169,
+                    "contrast": 0.001205,
+                    "mosScore": 0.719076,
+                    "overExposed": 0.0,
+                    "underExposed": 0.0,
+                    "yMean": 142.57434,
+                    "yMeanMax": 148.62712,
+                    "yMeanMin": 56.55573
+                  },
+                  "videoId": "<redacted-string>"
+                },
+                "subscribeNotification": false,
+                "supportType": 0,
+                "tag_hash_type": 1,
+                "tags": [],
+                "time": "<redacted-string>",
+                "timestamp": 1720000000,
+                "type": 1,
+                "us_c": 0,
+                "us_d": 0,
+                "us_l": true,
+                "user_id": 100009,
+                "user_name": "<redacted-string>",
+                "user_settings": {
+                  "display_photo_collect_list": false,
+                  "display_photo_like_list": false,
+                  "tabConfig": []
+                },
+                "user_sex": "<redacted-string>",
+                "verified": false,
+                "videoColdStartType": 0,
+                "view_count": 228050
+              },
+              "feedLogCtx": {
+                "stidContainer": "<redacted-string>"
+              },
+              "isSingleColumnMode": false,
+              "itemTransferInfo": "<redacted-string>",
+              "itemType": 5,
+              "rank": 1
+            },
+            {
+              "atmosphereType": 0,
+              "extInfo": {
+                "clickTriggerInnerStream": false,
+                "ext_params": {
+                  "relevance_score": "<redacted-string>"
+                },
+                "feedback": {
+                  "contentList": [
+                    {
+                      "id": "id-0014",
+                      "text": "<redacted-string>"
+                    },
+                    {
+                      "id": "id-0015",
+                      "text": "<redacted-string>"
+                    },
+                    {
+                      "id": "id-0016",
+                      "text": "<redacted-string>"
+                    }
+                  ],
+                  "otherContent": {
+                    "id": "id-0017",
+                    "text": "<redacted-string>"
+                  },
+                  "unInterestList": [
+                    {
+                      "id": "id-0018",
+                      "text": "<redacted-string>"
+                    },
+                    {
+                      "id": "id-0019",
+                      "text": "<redacted-string>"
+                    }
+                  ]
+                },
+                "recallSource": "<redacted-string>",
+                "recoBgColor": "<redacted-string>",
+                "recoIconUrl": [
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  },
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  }
+                ],
+                "recoTextColor": "<redacted-string>",
+                "recoType": 100,
+                "screenItemKey": "<redacted-string>",
+                "searchRecoReason": "<redacted-string>",
+                "showPlcFeatureEntry": false
+              },
+              "feed": {
+                "adminTags": [],
+                "bottomEntryInfo": {
+                  "bizExtraData": {
+                    "half_search": "<redacted-string>"
+                  },
+                  "bottomBizType": 14,
+                  "bottomStyleInfo": {
+                    "bottomStrongStyle": {
+                      "actionUrl": "<redacted-string>",
+                      "backgroundColor": "<redacted-string>",
+                      "bottomStrongStyleType": 0,
+                      "enableForceClose": false,
+                      "fontColor": "<redacted-string>",
+                      "fontSize": 0,
+                      "iconHeight": 0,
+                      "iconUrl": "<redacted-string>",
+                      "iconWidth": 0,
+                      "labels": [],
+                      "needToRequestStrongApi": false,
+                      "preTitle": "<redacted-string>",
+                      "roundCorner": false,
+                      "showSeparator": false,
+                      "strongStyleItems": [],
+                      "tailIconUrl": "<redacted-string>",
+                      "title": "<redacted-string>",
+                      "visibility": 0
+                    },
+                    "bottomWeakStyle": {
+                      "actionUrl": "id-0029",
+                      "backgroundColor": "<redacted-string>",
+                      "bottomWeakStyleType": 0,
+                      "enableForceClose": false,
+                      "fontColor": "<redacted-string>",
+                      "fontSize": 13,
+                      "iconHeight": 48,
+                      "iconRightMargin": 4,
+                      "iconTextSuffix": "<redacted-string>",
+                      "iconUrl": "<redacted-string>",
+                      "iconWidth": 48,
+                      "jumpText": "<redacted-string>",
+                      "label": "<redacted-string>",
+                      "notTruncatedTitle": "<redacted-string>",
+                      "preTitle": "<redacted-string>",
+                      "roundCorner": false,
+                      "showArrow": true,
+                      "showClose": false,
+                      "showSeparator": false,
+                      "tailIconUrl": "<redacted-string>",
+                      "title": "<redacted-string>",
+                      "users": [],
+                      "visibility": 15
+                    },
+                    "delayShowWeakStyle": false,
+                    "playVideoEndToStrongMillis": 0,
+                    "showStrongVideoCountdownMillis": 0,
+                    "showStrongVideoMillis": 0,
+                    "strongStyleCloseHideWeakStyle": false,
+                    "styleTriggers": [],
+                    "weakToStrongAction": []
+                  },
+                  "eventTrackData": {
+                    "all_source": "<redacted-string>",
+                    "entry_source": "<redacted-string>",
+                    "is_hotbar": "<redacted-string>",
+                    "query_id": "id-0028",
+                    "query_list_id": "id-0005",
+                    "query_name": "<redacted-string>",
+                    "rel_score": "<redacted-string>",
+                    "stg_recall_source": "<redacted-string>"
+                  }
+                },
+                "canShowQuickCommentGuide": true,
+                "caption": "<redacted-string>",
+                "captionSearchInfo": {
+                  "actionUrlList": [
+                    "id-0032"
+                  ],
+                  "captionSearchType": 2,
+                  "dataSource": 0,
+                  "extParams": "<redacted-string>",
+                  "offsetList": [
+                    2
+                  ],
+                  "queryIdList": [
+                    "<redacted-string>"
+                  ],
+                  "searchWordList": [
+                    "<redacted-string>"
+                  ],
+                  "sessionId": "id-0005"
+                },
+                "captionToComment": "<redacted-string>",
+                "clearScreenSameAuthorCount": 922,
+                "collect_count": 4669,
+                "commentGuessSearch": {
+                  "displayPrefix": "<redacted-string>",
+                  "extParams": "<redacted-string>",
+                  "iconUrl": "<redacted-string>",
+                  "searchWord": "<redacted-string>",
+                  "searchWordMD5": "<redacted-string>",
+                  "searchWordUrl": "id-0033",
+                  "sessionId": "id-0005"
+                },
+                "commentInfo": {
+                  "commentCountSpecialEffect": true,
+                  "commentEducationGuide": {
+                    "guideType": 0,
+                    "triggerCharCount": 0
+                  },
+                  "commentIconType": 0,
+                  "enableAIPresetGuide": false,
+                  "extFunctionAreasList": [
+                    {
+                      "ext": "<redacted-string>",
+                      "key": "<redacted-string>",
+                      "text": "<redacted-string>"
+                    },
+                    {
+                      "ext": "<redacted-string>",
+                      "key": "<redacted-string>",
+                      "text": "<redacted-string>"
+                    },
+                    {
+                      "ext": "id-0036",
+                      "key": "<redacted-string>",
+                      "text": "<redacted-string>"
+                    }
+                  ],
+                  "permissions": 447
+                },
+                "commentTopBarPriority": [
+                  {
+                    "bizType": "<redacted-string>",
+                    "subBizType": "<redacted-string>"
+                  },
+                  {
+                    "bizType": "<redacted-string>",
+                    "subBizType": "<redacted-string>"
+                  },
+                  {
+                    "bizType": "<redacted-string>",
+                    "subBizType": "<redacted-string>"
+                  }
+                ],
+                "comment_count": 1298,
+                "coronaVipInfo": {
+                  "enableFilmAd": false,
+                  "filmAdInfo": {
+                    "pageId": 100014436,
+                    "posId": 9777,
+                    "subPageId": 100017199
+                  },
+                  "inspireAdInfo": {
+                    "pageId": 100011251,
+                    "posId": 20578,
+                    "subPageId": 100024209
+                  },
+                  "vipPhoto": false
+                },
+                "cover_thumbnail_urls": [
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  },
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  }
+                ],
+                "danmakuInfo": {
+                  "danmakuShowDirection": 2,
+                  "defaultDanmaku": "<redacted-string>",
+                  "hasDanmaku": true,
+                  "hetuList": [
+                    4707
+                  ],
+                  "paster": false,
+                  "photoDanmakuGuide": false
+                },
+                "detailEntryInfo": {
+                  "eventTrackData": {
+                    "query_id": "id-0030",
+                    "query_list_id": "id-0005",
+                    "query_name": "<redacted-string>"
+                  },
+                  "keyword": "<redacted-string>"
+                },
+                "disableCommentDislike": false,
+                "downloadCount": 701,
+                "duration": 54666,
+                "editInfo": {},
+                "enableCoronaDetailPage": false,
+                "enableCoronaViewLater": true,
+                "enableFullScreenPlay": false,
+                "enableShareToStory": true,
+                "exp_tag": "<redacted-string>",
+                "ext_params": {
+                  "color": "<redacted-string>",
+                  "h": 1280,
+                  "interval": 30,
+                  "mtype": 3,
+                  "sound": 54659,
+                  "video": 54666,
+                  "w": 720
+                },
+                "fastCommentType": 1,
+                "feedLogCtx": {
+                  "stExParams": "<redacted-string>",
+                  "stidContainer": "<redacted-string>"
+                },
+                "feedSwitches": {
+                  "disable61ActivityAnimation": true,
+                  "disableCommentLikeAnimation": false,
+                  "enablePictureCommentForPhoto": true,
+                  "enablePlayerPanel": true
+                },
+                "ff_cover_thumbnail_urls": [
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  },
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  }
+                ],
+                "fixedColor": "<redacted-string>",
+                "followShoot": {
+                  "isLipsSyncPhoto": false
+                },
+                "following": 0,
+                "forwardCount": 3,
+                "forward_count": 0,
+                "forward_stats_params": {
+                  "et": "<redacted-string>",
+                  "fid": "id-0010"
+                },
+                "frameStyle": 0,
+                "hasVote": false,
+                "headurls": [
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  },
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  }
+                ],
+                "inputPromptGuide": "<redacted-string>",
+                "interactionRecommendGuide": {
+                  "enableCollectRecommend": true,
+                  "enableFollowRecommend": true,
+                  "enableLikeRecommend": true,
+                  "enableShareRecommend": true,
+                  "interactionHeightAb": {
+                    "collect": true,
+                    "follow": true,
+                    "like": true,
+                    "share": true
+                  },
+                  "untruncableText": "<redacted-string>"
+                },
+                "like_count": 17510,
+                "liked": 0,
+                "location": {},
+                "longVideo": true,
+                "main_mv_urls": [
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  },
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  }
+                ],
+                "musicDisk": {
+                  "expand": false
+                },
+                "musicStrategy": {
+                  "isMusicMuted": false
+                },
+                "myRecommended": {
+                  "recommendTagGuideConfig": {},
+                  "recommendTextOnlyFriendFormat": "<redacted-string>",
+                  "recommendTextOnlyYouFormat": "<redacted-string>",
+                  "recommendTextYouAndFriendFormat": "<redacted-string>",
+                  "recommendUsers": 382,
+                  "recommended": 2
+                },
+                "noNeedToRequestPLCApi": true,
+                "override_cover_size": {
+                  "coverTitlePosToTop": -2,
+                  "cuttingShift": 0,
+                  "cuttingType": 0,
+                  "height": 1280,
+                  "shiftDirection": 0,
+                  "width": 720
+                },
+                "photoFavorAuthor": {
+                  "canFavorAuthor": true,
+                  "canFreeFavorAuthor": false,
+                  "favorAuthorCount": 2,
+                  "favorGuideStrategy": 0
+                },
+                "photoTextLocationInfo": {
+                  "heightRatio": 0.81458,
+                  "leftRatio": 0.09166,
+                  "topRatio": 0.03906,
+                  "widthRatio": 0.90462
+                },
+                "photo_id": 100010,
+                "photo_status": 0,
+                "picSearchTag": {
+                  "control": {
+                    "controlInfo": {
+                      "centerLaplacianVarThreshold": 7,
+                      "centerMeanGrayThreshold": 10,
+                      "highMeanGrayThreshold": 230,
+                      "laplacianVarThreshold": 20,
+                      "lowMeanGrayThreshold": 5,
+                      "middleMeanGrayThreshold": 20,
+                      "recognizeTopK": 1
+                    },
+                    "routeType": 2
+                  },
+                  "count": 5,
+                  "extParams": "id-0035",
+                  "onlineDetection": true,
+                  "rangeTag": []
+                },
+                "playRecommendGuide": {
+                  "recommendTagConfig": {
+                    "exitStyle": {
+                      "exitByUnClick": [
+                        {
+                          "exitTime": 43200,
+                          "showCount": 8
+                        },
+                        {
+                          "exitTime": 4320,
+                          "showCount": 5
+                        },
+                        {
+                          "exitTime": 1440,
+                          "showCount": 3
+                        }
+                      ]
+                    },
+                    "peopleLimitStyle": [
+                      "<redacted-string>",
+                      "<redacted-string>"
+                    ],
+                    "showStyle": {
+                      "delayTime": 0,
+                      "requiredPlayTime": 18000,
+                      "type": "playTime"
+                    }
+                  },
+                  "requiredPlayTime": 18000,
+                  "type": 1,
+                  "untruncableText": "<redacted-string>"
+                },
+                "plcFeatureEntryAbFlag": 3,
+                "plcHighPriorityThanBottomEntry": false,
+                "plcResponseTime": 100004,
+                "profilePagePrefetchInfo": {
+                  "profilePageType": 2
+                },
+                "ptp": "<redacted-string>",
+                "recToFriendCount": 382,
+                "recoTags": [],
+                "recommended": 2,
+                "recreationSetting": 1,
+                "sameFrame": {
+                  "allow": true,
+                  "availableDepth": 7
+                },
+                "savePlayProgressStrategy": 2,
+                "screenshotCount": 4147,
+                "serverExpTag": "id-0031",
+                "shareGuide": {
+                  "guides": {
+                    "default": {
+                      "iconType": "<redacted-string>"
+                    }
+                  },
+                  "minPlayDurationInSeconds": 15,
+                  "photoShareGuide": true,
+                  "playTimes": 2,
+                  "textDisplayDurationInSeconds": 4
+                },
+                "sharePassingParam": "<redacted-string>",
+                "share_count": 22192,
+                "share_info": "<redacted-string>",
+                "showGrDetailPage": false,
+                "showSpecialFollowIcon": 2,
+                "slideCommentEntryDisabled": false,
+                "soundTrack": {
+                  "artist": "<redacted-string>",
+                  "audioType": 1,
+                  "audioUrls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    },
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "avatarUrls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    },
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "disableEnhancedEntry": true,
+                  "duration": 54,
+                  "finalStatus": 0,
+                  "genreId": 0,
+                  "hasCopyright": true,
+                  "id": "id-0034",
+                  "imageUrls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    },
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "isOffline": false,
+                  "loudness": -15,
+                  "name": "<redacted-string>",
+                  "photoId": 100010,
+                  "type": 9,
+                  "user": {
+                    "eid": "<redacted-string>",
+                    "following": false,
+                    "headurl": "<redacted-string>",
+                    "headurls": [
+                      {
+                        "cdn": "<redacted-string>",
+                        "url": "<redacted-string>"
+                      },
+                      {
+                        "cdn": "<redacted-string>",
+                        "url": "<redacted-string>"
+                      }
+                    ],
+                    "profilePagePrefetchInfo": {
+                      "profilePageType": 2
+                    },
+                    "user_id": 100011,
+                    "user_name": "<redacted-string>",
+                    "user_sex": "<redacted-string>",
+                    "visitorBeFollowed": false
+                  }
+                },
+                "sourcePhotoPage": "<redacted-string>",
+                "streamManifest": {
+                  "adaptationSet": [
+                    {
+                      "duration": 54666,
+                      "id": 100002,
+                      "representation": [
+                        {
+                          "adaptiveType": 0,
+                          "agc": true,
+                          "avgBitrate": 769,
+                          "backupUrl": [
+                            "<redacted-string>"
+                          ],
+                          "bitratePattern": [
+                            1357,
+                            751,
+                            1499
+                          ],
+                          "colorInfo": {},
+                          "comment": "<redacted-string>",
+                          "defaultSelect": false,
+                          "disableAdaptive": false,
+                          "featureP2sp": false,
+                          "fileSize": 5261155,
+                          "frameRate": 30.000183,
+                          "hdrType": 0,
+                          "height": 1280,
+                          "hidden": false,
+                          "id": 100002,
+                          "kvqScore": {
+                            "FR": -1,
+                            "FRPost": -1,
+                            "NR": 3.5942,
+                            "NRPost": -1,
+                            "blur": 0.1441,
+                            "kvqVersion": "<redacted-string>",
+                            "nnvcScore": -1,
+                            "sharpness": 0.3746,
+                            "srModelVersion": "<redacted-string>"
+                          },
+                          "makeupGain": 1.111,
+                          "maxBitrate": 3400,
+                          "minorInfo": "<redacted-string>",
+                          "mute": false,
+                          "normalizeGain": 1,
+                          "oriLoudness": -8.916,
+                          "p2spCode": "<redacted-string>",
+                          "quality": 1.92,
+                          "qualityLabel": "<redacted-string>",
+                          "qualityType": "<redacted-string>",
+                          "realLoudness": -9.58,
+                          "realNormalizeGain": 1,
+                          "url": "<redacted-string>",
+                          "videoCodec": "<redacted-string>",
+                          "volumeInfo": {
+                            "loudness": -9.7,
+                            "lra": 1.1,
+                            "lraHigh": -9.1,
+                            "lraLow": -10.2,
+                            "lraTh": -29.7,
+                            "th": -19.7,
+                            "tp": 1
+                          },
+                          "width": 720
+                        },
+                        {
+                          "adaptiveType": 0,
+                          "agc": true,
+                          "avgBitrate": 643,
+                          "backupUrl": [
+                            "<redacted-string>"
+                          ],
+                          "bitratePattern": [
+                            1150,
+                            629,
+                            1301
+                          ],
+                          "colorInfo": {},
+                          "comment": "<redacted-string>",
+                          "defaultSelect": false,
+                          "disableAdaptive": false,
+                          "featureP2sp": false,
+                          "fileSize": 4397615,
+                          "frameRate": 30.000183,
+                          "hdrType": 0,
+                          "height": 1280,
+                          "hidden": false,
+                          "id": 100006,
+                          "kvqScore": {
+                            "FR": -1,
+                            "FRPost": -1,
+                            "NR": 3.5055,
+                            "NRPost": -1,
+                            "blur": 0.1538,
+                            "kvqVersion": "<redacted-string>",
+                            "nnvcScore": -1,
+                            "sharpness": 0.3982,
+                            "srModelVersion": "<redacted-string>"
+                          },
+                          "makeupGain": 1.111,
+                          "maxBitrate": 3500,
+                          "minorInfo": "<redacted-string>",
+                          "mute": false,
+                          "normalizeGain": 1,
+                          "oriLoudness": -8.916,
+                          "p2spCode": "<redacted-string>",
+                          "quality": 1.5,
+                          "qualityLabel": "<redacted-string>",
+                          "qualityType": "<redacted-string>",
+                          "realLoudness": -9.58,
+                          "realNormalizeGain": 1,
+                          "url": "<redacted-string>",
+                          "videoCodec": "<redacted-string>",
+                          "volumeInfo": {
+                            "loudness": -9.7,
+                            "lra": 1.1,
+                            "lraHigh": -9.1,
+                            "lraLow": -10.2,
+                            "lraTh": -29.7,
+                            "th": -19.7,
+                            "tp": 1
+                          },
+                          "width": 720
+                        },
+                        {
+                          "agc": true,
+                          "avgBitrate": 561,
+                          "backupUrl": [
+                            "<redacted-string>"
+                          ],
+                          "bitratePattern": [
+                            989,
+                            544,
+                            1125
+                          ],
+                          "colorInfo": {},
+                          "comment": "<redacted-string>",
+                          "defaultSelect": false,
+                          "disableAdaptive": false,
+                          "featureP2sp": false,
+                          "fileSize": 3833601,
+                          "frameRate": 30.000183,
+                          "hdrType": 0,
+                          "height": 1024,
+                          "hidden": false,
+                          "id": 100007,
+                          "kvqScore": {
+                            "FR": -1,
+                            "FRPost": -1,
+                            "NR": 3.3636,
+                            "NRPost": -1,
+                            "blur": 0.1392,
+                            "kvqVersion": "<redacted-string>",
+                            "nnvcScore": -1,
+                            "sharpness": 0.4396,
+                            "srModelVersion": "<redacted-string>"
+                          },
+                          "makeupGain": 1.111,
+                          "maxBitrate": 2100,
+                          "minorInfo": "<redacted-string>",
+                          "mute": false,
+                          "normalizeGain": 1,
+                          "oriLoudness": -8.916,
+                          "p2spCode": "<redacted-string>",
+                          "quality": 1.4,
+                          "qualityLabel": "<redacted-string>",
+                          "qualityType": "<redacted-string>",
+                          "realLoudness": -9.58,
+                          "realNormalizeGain": 1,
+                          "url": "<redacted-string>",
+                          "videoCodec": "<redacted-string>",
+                          "volumeInfo": {
+                            "loudness": -9.7,
+                            "lra": 1.1,
+                            "lraHigh": -9.1,
+                            "lraLow": -10.2,
+                            "lraTh": -29.7,
+                            "th": -19.7,
+                            "tp": 1
+                          },
+                          "width": 576
+                        }
+                      ]
+                    }
+                  ],
+                  "audioFeature": {
+                    "audioClip": 0.0003,
+                    "audioQuality": 70.3058,
+                    "audioSnr": 12.1867,
+                    "backgroundSoundProbability": 0.0001,
+                    "dialogProbability": 0.5498,
+                    "effectiveBandwidthInHz": 12129.649,
+                    "musicProbability": 0.4501,
+                    "stereophonicRichness": 95.7508
+                  },
+                  "businessType": 2,
+                  "hideAuto": false,
+                  "manualDefaultSelect": false,
+                  "mediaType": 2,
+                  "playInfo": {
+                    "bizType": 0,
+                    "cdnTimeRangeLevel": 1,
+                    "strategyBus": "<redacted-string>"
+                  },
+                  "stereoType": 0,
+                  "version": "<redacted-string>",
+                  "videoFeature": {
+                    "avgEntropy": 14.878529,
+                    "blockyProbability": 0.225057,
+                    "blurProbability": 0.011182,
+                    "capSrc": 3e-06,
+                    "contrast": 0.006905,
+                    "mosScore": 0.837402,
+                    "overExposed": 6e-06,
+                    "underExposed": 0.0
+                  },
+                  "videoId": "<redacted-string>"
+                },
+                "subscribeNotification": false,
+                "supportType": 0,
+                "tag_hash_type": 1,
+                "tags": [],
+                "time": "<redacted-string>",
+                "timestamp": 1720000000,
+                "type": 1,
+                "us_c": 0,
+                "us_d": 0,
+                "us_l": true,
+                "user_id": 100011,
+                "user_name": "<redacted-string>",
+                "user_settings": {
+                  "display_photo_collect_list": false,
+                  "display_photo_like_list": false,
+                  "tabConfig": []
+                },
+                "user_sex": "<redacted-string>",
+                "verified": false,
+                "videoColdStartType": 0,
+                "view_count": 1188780
+              },
+              "feedLogCtx": {
+                "stidContainer": "<redacted-string>"
+              },
+              "isSingleColumnMode": false,
+              "itemTransferInfo": "<redacted-string>",
+              "itemType": 5,
+              "rank": 2
+            }
+          ],
+          "pcursor": "id-0037",
+          "portalFlag": true,
+          "recoInterestFlag": false,
+          "recoPcursor": "id-0003",
+          "responseCode": 0,
+          "result": 1,
+          "ussid": "<redacted-string>"
+        },
+        "docs": "<redacted-string>",
+        "message": "<redacted-string>",
+        "message_zh": "<redacted-string>",
+        "params": {
+          "keyword": "爱玛",
+          "pcursor": "id-0001"
+        },
+        "request_id": "id-0002",
+        "router": "/api/v1/kuaishou/app/search_video_v2",
+        "support": "<redacted-string>",
+        "time": "<redacted-string>",
+        "time_stamp": 1720000000,
+        "time_zone": "<redacted-string>"
+      }
+    },
+    {
+      "endpoint": "/api/v1/kuaishou/app/fetch_one_video",
+      "http_status": 200,
+      "label": "detail",
+      "method": "GET",
+      "planned_cost_usd": "0.001000",
+      "request": {
+        "authorization": "Bearer <redacted-secret>",
+        "body": null,
+        "method": "GET",
+        "params": {
+          "photo_id": "id-0040"
+        },
+        "path": "/api/v1/kuaishou/app/fetch_one_video"
+      },
+      "request_no": 20,
+      "response": {
+        "cache_message": "<redacted-string>",
+        "cache_message_zh": "<redacted-string>",
+        "cache_url": "<redacted-string>",
+        "code": 200,
+        "data": {
+          "host-name": "<redacted-string>",
+          "photos": [
+            {
+              "adminTags": [],
+              "canShowQuickCommentGuide": true,
+              "caption": "<redacted-string>",
+              "captionSearchInfo": {
+                "actionUrlList": [
+                  "id-0043"
+                ],
+                "captionSearchType": 2,
+                "dataSource": 0,
+                "extParams": "<redacted-string>",
+                "offsetList": [
+                  2
+                ],
+                "queryIdList": [
+                  "<redacted-string>"
+                ],
+                "searchWordList": [
+                  "<redacted-string>"
+                ],
+                "sessionId": "id-0042"
+              },
+              "captionToComment": "<redacted-string>",
+              "clearScreenSameAuthorCount": 922,
+              "collect_count": 4669,
+              "commentGuessSearch": {
+                "displayPrefix": "<redacted-string>",
+                "extParams": "<redacted-string>",
+                "iconUrl": "<redacted-string>",
+                "searchWord": "<redacted-string>",
+                "searchWordMD5": "<redacted-string>",
+                "searchWordUrl": "id-0044",
+                "sessionId": "id-0042"
+              },
+              "commentInfo": {
+                "commentCountSpecialEffect": true,
+                "commentEducationGuide": {
+                  "guideType": 0,
+                  "triggerCharCount": 0
+                },
+                "commentIconType": 0,
+                "enableAIPresetGuide": false,
+                "permissions": 191
+              },
+              "commentTopBarPriority": [
+                {
+                  "bizType": "<redacted-string>",
+                  "subBizType": "<redacted-string>"
+                },
+                {
+                  "bizType": "<redacted-string>",
+                  "subBizType": "<redacted-string>"
+                },
+                {
+                  "bizType": "<redacted-string>",
+                  "subBizType": "<redacted-string>"
+                }
+              ],
+              "comment_count": 1298,
+              "coronaVipInfo": {
+                "enableFilmAd": false,
+                "filmAdInfo": {
+                  "pageId": 100014436,
+                  "posId": 9777,
+                  "subPageId": 100017199
+                },
+                "inspireAdInfo": {
+                  "pageId": 100011251,
+                  "posId": 20578,
+                  "subPageId": 100024209
+                },
+                "vipPhoto": false
+              },
+              "cover_thumbnail_urls": [
+                {
+                  "cdn": "<redacted-string>",
+                  "url": "<redacted-string>"
+                },
+                {
+                  "cdn": "<redacted-string>",
+                  "url": "<redacted-string>"
+                }
+              ],
+              "danmakuInfo": {
+                "danmakuShowDirection": 2,
+                "defaultDanmaku": "<redacted-string>",
+                "hasDanmaku": true,
+                "hetuList": [
+                  4707
+                ],
+                "paster": false,
+                "photoDanmakuGuide": false
+              },
+              "disableCommentDislike": false,
+              "downloadCount": 701,
+              "duration": 54666,
+              "editInfo": {},
+              "enableCoronaDetailPage": false,
+              "enableCoronaViewLater": true,
+              "enableFullScreenPlay": false,
+              "enableShareToStory": true,
+              "exp_tag": "<redacted-string>",
+              "ext_params": {
+                "color": "<redacted-string>",
+                "h": 1280,
+                "interval": 30,
+                "mtype": 3,
+                "sound": 54659,
+                "video": 54666,
+                "w": 720
+              },
+              "feedLogCtx": {
+                "logParams": "<redacted-string>",
+                "stExParams": "<redacted-string>",
+                "stidContainer": "<redacted-string>"
+              },
+              "feedSwitches": {
+                "disable61ActivityAnimation": true,
+                "disableCommentLikeAnimation": false,
+                "enablePictureCommentForPhoto": true,
+                "enablePlayerPanel": true
+              },
+              "ff_cover_thumbnail_urls": [
+                {
+                  "cdn": "<redacted-string>",
+                  "url": "<redacted-string>"
+                },
+                {
+                  "cdn": "<redacted-string>",
+                  "url": "<redacted-string>"
+                }
+              ],
+              "fixedColor": "<redacted-string>",
+              "followShoot": {
+                "isLipsSyncPhoto": false
+              },
+              "following": 0,
+              "forwardCount": 3,
+              "forward_count": 0,
+              "forward_stats_params": {
+                "et": "<redacted-string>"
+              },
+              "frameStyle": 0,
+              "hasVote": false,
+              "headurls": [
+                {
+                  "cdn": "<redacted-string>",
+                  "url": "<redacted-string>"
+                },
+                {
+                  "cdn": "<redacted-string>",
+                  "url": "<redacted-string>"
+                }
+              ],
+              "inputPromptGuide": "<redacted-string>",
+              "like_count": 17510,
+              "liked": 0,
+              "location": {},
+              "longVideo": true,
+              "main_mv_urls": [
+                {
+                  "cdn": "<redacted-string>",
+                  "url": "<redacted-string>"
+                },
+                {
+                  "cdn": "<redacted-string>",
+                  "url": "<redacted-string>"
+                }
+              ],
+              "musicDisk": {
+                "expand": false
+              },
+              "musicStrategy": {
+                "isMusicMuted": false
+              },
+              "noNeedToRequestPLCApi": true,
+              "originalPhotoId": "id-0040",
+              "photoReward": {
+                "canFreeFavorAuthor": false,
+                "descNotClickText": "<redacted-string>",
+                "favorGuideStrategy": 0,
+                "rewardCount": 2
+              },
+              "photoTextLocationInfo": {
+                "heightRatio": 0.81458,
+                "leftRatio": 0.09166,
+                "topRatio": 0.03906,
+                "widthRatio": 0.90462
+              },
+              "photo_id": 100010,
+              "photo_status": 0,
+              "picSearchTag": {
+                "count": 5,
+                "extParams": "id-0035",
+                "onlineDetection": true,
+                "rangeTag": []
+              },
+              "plcFeatureEntryAbFlag": 3,
+              "plcHighPriorityThanBottomEntry": false,
+              "plcResponseTime": 100012,
+              "profilePagePrefetchInfo": {
+                "profilePageType": 2
+              },
+              "ptp": "<redacted-string>",
+              "recToFriendCount": 382,
+              "recoTags": [],
+              "recreationSetting": 1,
+              "sameFrame": {
+                "allow": true,
+                "availableDepth": 7
+              },
+              "savePlayProgressStrategy": 2,
+              "screenshotCount": 4147,
+              "serverExpTag": "id-0045",
+              "shareGuide": {
+                "minPlayDurationInSeconds": 15,
+                "photoShareGuide": false,
+                "playTimes": 2,
+                "textDisplayDurationInSeconds": 4
+              },
+              "sharePassingParam": "<redacted-string>",
+              "share_count": 22192,
+              "share_info": "<redacted-string>",
+              "showGrDetailPage": false,
+              "showSpecialFollowIcon": 2,
+              "slideCommentEntryDisabled": false,
+              "soundTrack": {
+                "artist": "<redacted-string>",
+                "audioType": 1,
+                "audioUrls": [
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  },
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  }
+                ],
+                "avatarUrls": [
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  },
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  }
+                ],
+                "disableEnhancedEntry": true,
+                "duration": 54,
+                "finalStatus": 0,
+                "genreId": 0,
+                "hasCopyright": true,
+                "id": "id-0034",
+                "imageUrls": [
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  },
+                  {
+                    "cdn": "<redacted-string>",
+                    "url": "<redacted-string>"
+                  }
+                ],
+                "isOffline": false,
+                "loudness": -15.0,
+                "name": "<redacted-string>",
+                "photoId": 100010,
+                "type": 9,
+                "user": {
+                  "eid": "<redacted-string>",
+                  "following": false,
+                  "headurl": "<redacted-string>",
+                  "headurls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    },
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "profilePagePrefetchInfo": {
+                    "profilePageType": 2
+                  },
+                  "user_id": 100011,
+                  "user_name": "<redacted-string>",
+                  "user_sex": "<redacted-string>",
+                  "visitorBeFollowed": false
+                }
+              },
+              "sourcePhotoPage": "<redacted-string>",
+              "streamManifest": {
+                "adaptationSet": [
+                  {
+                    "duration": 54666,
+                    "id": 100002,
+                    "representation": [
+                      {
+                        "adaptiveType": 7,
+                        "agc": true,
+                        "avgBitrate": 1332,
+                        "backupUrl": [
+                          "<redacted-string>"
+                        ],
+                        "bitratePattern": [
+                          1758,
+                          1295,
+                          2104
+                        ],
+                        "colorInfo": {},
+                        "comment": "<redacted-string>",
+                        "defaultSelect": false,
+                        "disableAdaptive": false,
+                        "featureP2sp": false,
+                        "fileSize": 9103605,
+                        "frameRate": 30.000183,
+                        "hdrType": 0,
+                        "height": 1920,
+                        "hidden": false,
+                        "id": 100002,
+                        "kvqScore": {
+                          "FR": -1.0,
+                          "FRPost": -1.0,
+                          "NR": 3.8676,
+                          "NRPost": -1.0,
+                          "blur": 0.0871,
+                          "kvqVersion": "<redacted-string>",
+                          "nnvcScore": -1.0,
+                          "sharpness": 0.3494,
+                          "srModelVersion": "<redacted-string>"
+                        },
+                        "makeupGain": 1.111,
+                        "maxBitrate": 5700,
+                        "minorInfo": "<redacted-string>",
+                        "mute": false,
+                        "normalizeGain": 1.0,
+                        "oriLoudness": -8.916,
+                        "p2spCode": "<redacted-string>",
+                        "quality": 2.05,
+                        "qualityLabel": "<redacted-string>",
+                        "qualityType": "<redacted-string>",
+                        "realLoudness": -9.58,
+                        "realNormalizeGain": 1.0,
+                        "url": "<redacted-string>",
+                        "videoCodec": "<redacted-string>",
+                        "volumeInfo": {
+                          "loudness": -9.7,
+                          "lra": 1.1,
+                          "lraHigh": -9.1,
+                          "lraLow": -10.2,
+                          "lraTh": -29.7,
+                          "th": -19.7,
+                          "tp": 1.0
+                        },
+                        "width": 1080
+                      },
+                      {
+                        "adaptiveType": 7,
+                        "agc": true,
+                        "avgBitrate": 1261,
+                        "backupUrl": [
+                          "<redacted-string>"
+                        ],
+                        "bitratePattern": [
+                          1925,
+                          1147,
+                          2499
+                        ],
+                        "colorInfo": {},
+                        "comment": "<redacted-string>",
+                        "defaultSelect": false,
+                        "disableAdaptive": false,
+                        "featureP2sp": false,
+                        "fileSize": 8619436,
+                        "frameRate": 30.000183,
+                        "hdrType": 0,
+                        "height": 1920,
+                        "hidden": false,
+                        "id": 100006,
+                        "kvqScore": {
+                          "FR": -1.0,
+                          "FRPost": -1.0,
+                          "NR": 3.8442,
+                          "NRPost": -1.0,
+                          "blur": 0.1852,
+                          "kvqVersion": "<redacted-string>",
+                          "nnvcScore": -1.0,
+                          "sharpness": 0.3809,
+                          "srModelVersion": "<redacted-string>"
+                        },
+                        "makeupGain": 1.111,
+                        "maxBitrate": 5600,
+                        "minorInfo": "<redacted-string>",
+                        "mute": false,
+                        "normalizeGain": 1.0,
+                        "oriLoudness": -8.916,
+                        "p2spCode": "<redacted-string>",
+                        "quality": 2.0,
+                        "qualityLabel": "<redacted-string>",
+                        "qualityType": "<redacted-string>",
+                        "realLoudness": -9.58,
+                        "realNormalizeGain": 1.0,
+                        "url": "<redacted-string>",
+                        "videoCodec": "<redacted-string>",
+                        "volumeInfo": {
+                          "loudness": -9.7,
+                          "lra": 1.1,
+                          "lraHigh": -9.1,
+                          "lraLow": -10.2,
+                          "lraTh": -29.7,
+                          "th": -19.7,
+                          "tp": 1.0
+                        },
+                        "width": 1080
+                      },
+                      {
+                        "adaptiveType": 0,
+                        "agc": true,
+                        "avgBitrate": 769,
+                        "backupUrl": [
+                          "<redacted-string>"
+                        ],
+                        "bitratePattern": [
+                          1357,
+                          751,
+                          1499
+                        ],
+                        "colorInfo": {},
+                        "comment": "<redacted-string>",
+                        "defaultSelect": false,
+                        "disableAdaptive": false,
+                        "featureP2sp": false,
+                        "fileSize": 5261155,
+                        "frameRate": 30.000183,
+                        "hdrType": 0,
+                        "height": 1280,
+                        "hidden": false,
+                        "id": 100007,
+                        "kvqScore": {
+                          "FR": -1.0,
+                          "FRPost": -1.0,
+                          "NR": 3.5942,
+                          "NRPost": -1.0,
+                          "blur": 0.1441,
+                          "kvqVersion": "<redacted-string>",
+                          "nnvcScore": -1.0,
+                          "sharpness": 0.3746,
+                          "srModelVersion": "<redacted-string>"
+                        },
+                        "makeupGain": 1.111,
+                        "maxBitrate": 3400,
+                        "minorInfo": "<redacted-string>",
+                        "mute": false,
+                        "normalizeGain": 1.0,
+                        "oriLoudness": -8.916,
+                        "p2spCode": "<redacted-string>",
+                        "quality": 1.92,
+                        "qualityLabel": "<redacted-string>",
+                        "qualityType": "<redacted-string>",
+                        "realLoudness": -9.58,
+                        "realNormalizeGain": 1.0,
+                        "url": "<redacted-string>",
+                        "videoCodec": "<redacted-string>",
+                        "volumeInfo": {
+                          "loudness": -9.7,
+                          "lra": 1.1,
+                          "lraHigh": -9.1,
+                          "lraLow": -10.2,
+                          "lraTh": -29.7,
+                          "th": -19.7,
+                          "tp": 1.0
+                        },
+                        "width": 720
+                      }
+                    ]
+                  }
+                ],
+                "audioFeature": {
+                  "audioClip": 0.0003,
+                  "audioQuality": 70.3058,
+                  "audioSnr": 12.1867,
+                  "backgroundSoundProbability": 0.0001,
+                  "dialogProbability": 0.5498,
+                  "effectiveBandwidthInHz": 12129.649,
+                  "musicProbability": 0.4501,
+                  "stereophonicRichness": 95.7508
+                },
+                "businessType": 2,
+                "hideAuto": false,
+                "manualDefaultSelect": false,
+                "mediaType": 2,
+                "playInfo": {
+                  "bizType": 0,
+                  "cdnTimeRangeLevel": 1,
+                  "strategyBus": "<redacted-string>"
+                },
+                "stereoType": 0,
+                "version": "<redacted-string>",
+                "videoFeature": {
+                  "avgEntropy": 14.878529,
+                  "blockyProbability": 0.225057,
+                  "blurProbability": 0.011182,
+                  "capSrc": 3e-06,
+                  "contrast": 0.006905,
+                  "mosScore": 0.837402,
+                  "overExposed": 6e-06,
+                  "underExposed": 0.0
+                },
+                "videoId": "<redacted-string>"
+              },
+              "subscribeNotification": false,
+              "supportType": 0,
+              "tag_hash_type": 1,
+              "tags": [],
+              "time": "<redacted-string>",
+              "timestamp": 1720000000,
+              "type": 1,
+              "us_c": 0,
+              "us_d": 0,
+              "us_l": true,
+              "user_id": 100011,
+              "user_name": "<redacted-string>",
+              "user_settings": {
+                "display_photo_collect_list": false,
+                "display_photo_like_list": false,
+                "tabConfig": []
+              },
+              "user_sex": "<redacted-string>",
+              "verified": false,
+              "videoColdStartType": 0,
+              "view_count": 1188780
+            }
+          ],
+          "result": 1
+        },
+        "docs": "<redacted-string>",
+        "message": "<redacted-string>",
+        "message_zh": "<redacted-string>",
+        "params": {
+          "photo_id": "id-0040"
+        },
+        "request_id": "id-0041",
+        "router": "/api/v1/kuaishou/app/fetch_one_video",
+        "support": "<redacted-string>",
+        "time": "<redacted-string>",
+        "time_stamp": 1720000000,
+        "time_zone": "<redacted-string>"
+      }
+    },
+    {
+      "endpoint": "/api/v1/kuaishou/app/fetch_video_comment",
+      "http_status": 200,
+      "label": "comments",
+      "method": "GET",
+      "planned_cost_usd": "0.001000",
+      "request": {
+        "authorization": "Bearer <redacted-secret>",
+        "body": null,
+        "method": "GET",
+        "params": {
+          "pcursor": "id-0001",
+          "photo_id": "id-0040"
+        },
+        "path": "/api/v1/kuaishou/app/fetch_video_comment"
+      },
+      "request_no": 21,
+      "response": {
+        "cache_message": "<redacted-string>",
+        "cache_message_zh": "<redacted-string>",
+        "cache_url": "<redacted-string>",
+        "code": 200,
+        "data": {
+          "commentCount": 1298,
+          "extInfo": {
+            "medalSnackBarInfo": {
+              "taskProgressInfoList": []
+            }
+          },
+          "host-name": "<redacted-string>",
+          "pcursor": "id-0077",
+          "result": 1,
+          "rootComments": [
+            {
+              "attachments": [
+                {
+                  "content": {
+                    "bigUrl": [
+                      {
+                        "cdn": "<redacted-string>",
+                        "url": "<redacted-string>"
+                      },
+                      {
+                        "cdn": "<redacted-string>",
+                        "url": "<redacted-string>"
+                      }
+                    ],
+                    "smallUrl": [
+                      {
+                        "cdn": "<redacted-string>",
+                        "url": "<redacted-string>"
+                      },
+                      {
+                        "cdn": "<redacted-string>",
+                        "url": "<redacted-string>"
+                      }
+                    ]
+                  },
+                  "id": "id-0075",
+                  "layout": {
+                    "height": 1920,
+                    "thumbHeight": 360,
+                    "thumbWidth": 270,
+                    "width": 1440
+                  },
+                  "type": "LIVE_PHOTO"
+                }
+              ],
+              "authorArea": "<redacted-string>",
+              "authorVerified": false,
+              "author_id": 100046,
+              "author_liked": false,
+              "author_name": "<redacted-string>",
+              "cashTags": {},
+              "commentAuthorTags": [],
+              "commentBottomTags": [],
+              "comment_id": 100045,
+              "content": "<redacted-string>",
+              "displaySubCommentCount": true,
+              "headurl": "<redacted-string>",
+              "headurls": [
+                {
+                  "cdn": "<redacted-string>",
+                  "url": "<redacted-string>"
+                },
+                {
+                  "cdn": "<redacted-string>",
+                  "url": "<redacted-string>"
+                }
+              ],
+              "hot": true,
+              "isKwaiShopItemComment": false,
+              "likedCount": 64,
+              "photo_id": 100010,
+              "profilePagePrefetchInfo": {
+                "profilePageType": 1
+              },
+              "recallType": 1,
+              "reply_to": 0,
+              "subCommentCount": 25,
+              "time": "<redacted-string>",
+              "timestamp": 1720000000,
+              "type": 0,
+              "user_id": 100011,
+              "user_sex": "<redacted-string>"
+            },
+            {
+              "authorArea": "<redacted-string>",
+              "authorVerified": false,
+              "author_id": 100048,
+              "author_liked": false,
+              "author_name": "<redacted-string>",
+              "cashTags": {},
+              "commentAuthorTags": [],
+              "commentBottomTags": [],
+              "comment_id": 100047,
+              "content": "<redacted-string>",
+              "displaySubCommentCount": true,
+              "headurl": "<redacted-string>",
+              "headurls": [
+                {
+                  "cdn": "<redacted-string>",
+                  "url": "<redacted-string>"
+                },
+                {
+                  "cdn": "<redacted-string>",
+                  "url": "<redacted-string>"
+                }
+              ],
+              "hot": true,
+              "isKwaiShopItemComment": false,
+              "likedCount": 40,
+              "photo_id": 100010,
+              "profilePagePrefetchInfo": {
+                "profilePageType": 1
+              },
+              "recallType": 1,
+              "reply_to": 0,
+              "subCommentCount": 2,
+              "time": "<redacted-string>",
+              "timestamp": 1720000000,
+              "type": 0,
+              "user_id": 100011,
+              "user_sex": "<redacted-string>"
+            },
+            {
+              "attachments": [
+                {
+                  "content": {
+                    "bigUrl": [
+                      {
+                        "cdn": "<redacted-string>",
+                        "url": "<redacted-string>"
+                      },
+                      {
+                        "cdn": "<redacted-string>",
+                        "url": "<redacted-string>"
+                      }
+                    ],
+                    "smallUrl": [
+                      {
+                        "cdn": "<redacted-string>",
+                        "url": "<redacted-string>"
+                      },
+                      {
+                        "cdn": "<redacted-string>",
+                        "url": "<redacted-string>"
+                      }
+                    ]
+                  },
+                  "id": "id-0076",
+                  "layout": {
+                    "height": 1440,
+                    "thumbHeight": 360,
+                    "thumbWidth": 480,
+                    "width": 1920
+                  },
+                  "type": "LIVE_PHOTO"
+                }
+              ],
+              "authorArea": "<redacted-string>",
+              "authorVerified": false,
+              "author_id": 100050,
+              "author_liked": false,
+              "author_name": "<redacted-string>",
+              "cashTags": {},
+              "commentAuthorTags": [],
+              "commentBottomTags": [],
+              "comment_id": 100049,
+              "content": "<redacted-string>",
+              "displaySubCommentCount": true,
+              "headurl": "<redacted-string>",
+              "headurls": [
+                {
+                  "cdn": "<redacted-string>",
+                  "url": "<redacted-string>"
+                },
+                {
+                  "cdn": "<redacted-string>",
+                  "url": "<redacted-string>"
+                }
+              ],
+              "hot": true,
+              "isKwaiShopItemComment": false,
+              "likedCount": 6,
+              "photo_id": 100010,
+              "profilePagePrefetchInfo": {
+                "profilePageType": 1
+              },
+              "recallType": 1,
+              "reply_to": 0,
+              "subCommentCount": 11,
+              "time": "<redacted-string>",
+              "timestamp": 1720000000,
+              "type": 0,
+              "user_id": 100011,
+              "user_sex": "<redacted-string>"
+            }
+          ],
+          "subCommentsMap": {
+            "id-0047": {
+              "pcursor": "id-0048",
+              "subComments": [
+                {
+                  "authorArea": "<redacted-string>",
+                  "authorVerified": false,
+                  "author_id": 100014,
+                  "author_liked": false,
+                  "author_name": "<redacted-string>",
+                  "cashTags": {},
+                  "commentAuthorTags": [],
+                  "commentBottomTags": [],
+                  "comment_id": 100013,
+                  "content": "<redacted-string>",
+                  "headurl": "<redacted-string>",
+                  "headurls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    },
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "isKwaiShopItemComment": false,
+                  "likedCount": 0,
+                  "photo_id": 100010,
+                  "profilePagePrefetchInfo": {
+                    "profilePageType": 1
+                  },
+                  "replyToUserName": "<redacted-string>",
+                  "reply_to": 3912695768,
+                  "time": "<redacted-string>",
+                  "timestamp": 1720000000,
+                  "type": 0,
+                  "user_id": 100011,
+                  "user_sex": "<redacted-string>"
+                }
+              ]
+            },
+            "id-0049": {
+              "pcursor": "id-0050",
+              "subComments": [
+                {
+                  "authorArea": "<redacted-string>",
+                  "authorVerified": false,
+                  "author_id": 100016,
+                  "author_liked": false,
+                  "author_name": "<redacted-string>",
+                  "cashTags": {},
+                  "commentAuthorTags": [],
+                  "commentBottomTags": [],
+                  "comment_id": 100015,
+                  "content": "<redacted-string>",
+                  "headurl": "<redacted-string>",
+                  "headurls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    },
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "isKwaiShopItemComment": false,
+                  "likedCount": 0,
+                  "photo_id": 100010,
+                  "profilePagePrefetchInfo": {
+                    "profilePageType": 1
+                  },
+                  "replyToUserName": "<redacted-string>",
+                  "reply_to": 321502849,
+                  "time": "<redacted-string>",
+                  "timestamp": 1720000000,
+                  "type": 0,
+                  "user_id": 100011,
+                  "user_sex": "<redacted-string>"
+                }
+              ]
+            },
+            "id-0051": {
+              "pcursor": "id-0052",
+              "subComments": [
+                {
+                  "authorArea": "<redacted-string>",
+                  "authorVerified": false,
+                  "author_id": 100018,
+                  "author_liked": false,
+                  "author_name": "<redacted-string>",
+                  "cashTags": {},
+                  "commentAuthorTags": [],
+                  "commentBottomTags": [],
+                  "comment_id": 100017,
+                  "content": "<redacted-string>",
+                  "headurl": "<redacted-string>",
+                  "headurls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    },
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "isKwaiShopItemComment": false,
+                  "likedCount": 0,
+                  "pendantUrls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "photo_id": 100010,
+                  "profilePagePrefetchInfo": {
+                    "profilePageType": 1
+                  },
+                  "replyToUserName": "<redacted-string>",
+                  "reply_to": 1870634936,
+                  "time": "<redacted-string>",
+                  "timestamp": 1720000000,
+                  "type": 0,
+                  "user_id": 100011,
+                  "user_sex": "<redacted-string>"
+                }
+              ]
+            },
+            "id-0053": {
+              "pcursor": "id-0003",
+              "subComments": [
+                {
+                  "authorVerified": true,
+                  "authorVerifiedDetail": {
+                    "description": "<redacted-string>",
+                    "iconType": 2,
+                    "musicCompany": false,
+                    "newVerified": true,
+                    "type": 9,
+                    "viceVerifiedType": 0
+                  },
+                  "author_id": 100020,
+                  "author_liked": false,
+                  "author_name": "<redacted-string>",
+                  "cashTags": {},
+                  "commentAuthorTags": [],
+                  "commentBottomTags": [],
+                  "comment_id": 100019,
+                  "content": "<redacted-string>",
+                  "headurl": "<redacted-string>",
+                  "headurls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    },
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "isKwaiShopItemComment": false,
+                  "likedCount": 0,
+                  "photo_id": 100010,
+                  "profilePagePrefetchInfo": {
+                    "profilePageType": 2
+                  },
+                  "replyToUserName": "<redacted-string>",
+                  "reply_to": 3666839173,
+                  "time": "<redacted-string>",
+                  "timestamp": 1720000000,
+                  "type": 0,
+                  "user_id": 100011,
+                  "user_sex": "<redacted-string>"
+                }
+              ]
+            },
+            "id-0054": {
+              "pcursor": "id-0055",
+              "subComments": [
+                {
+                  "authorArea": "<redacted-string>",
+                  "authorVerified": false,
+                  "author_id": 100022,
+                  "author_liked": false,
+                  "author_name": "<redacted-string>",
+                  "cashTags": {},
+                  "commentAuthorTags": [],
+                  "commentBottomTags": [],
+                  "comment_id": 100021,
+                  "content": "<redacted-string>",
+                  "headurl": "<redacted-string>",
+                  "headurls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    },
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "isKwaiShopItemComment": false,
+                  "likedCount": 0,
+                  "photo_id": 100010,
+                  "profilePagePrefetchInfo": {
+                    "profilePageType": 1
+                  },
+                  "replyToUserName": "<redacted-string>",
+                  "reply_to": 127681440,
+                  "time": "<redacted-string>",
+                  "timestamp": 1720000000,
+                  "type": 0,
+                  "user_id": 100011,
+                  "user_sex": "<redacted-string>"
+                }
+              ]
+            },
+            "id-0056": {
+              "pcursor": "id-0057",
+              "subComments": [
+                {
+                  "authorArea": "<redacted-string>",
+                  "authorVerified": false,
+                  "author_id": 100024,
+                  "author_liked": false,
+                  "author_name": "<redacted-string>",
+                  "cashTags": {},
+                  "commentAuthorTags": [],
+                  "commentBottomTags": [],
+                  "comment_id": 100023,
+                  "content": "<redacted-string>",
+                  "headurl": "<redacted-string>",
+                  "headurls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    },
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "isKwaiShopItemComment": false,
+                  "likedCount": 0,
+                  "photo_id": 100010,
+                  "profilePagePrefetchInfo": {
+                    "profilePageType": 1
+                  },
+                  "replyToUserName": "<redacted-string>",
+                  "reply_to": 4365713445,
+                  "time": "<redacted-string>",
+                  "timestamp": 1720000000,
+                  "type": 0,
+                  "user_id": 100011,
+                  "user_sex": "<redacted-string>"
+                }
+              ]
+            },
+            "id-0058": {
+              "pcursor": "id-0003",
+              "subComments": [
+                {
+                  "authorArea": "<redacted-string>",
+                  "authorVerified": false,
+                  "author_id": 100026,
+                  "author_liked": false,
+                  "author_name": "<redacted-string>",
+                  "cashTags": {},
+                  "commentAuthorTags": [
+                    {
+                      "bgColorOnBlack": "<redacted-string>",
+                      "bgColorOnWhite": "<redacted-string>",
+                      "colorOnBlack": "<redacted-string>",
+                      "colorOnWhite": "<redacted-string>",
+                      "extra": {
+                        "icon": "<redacted-string>",
+                        "iconHeight": 16,
+                        "iconOnDark": "<redacted-string>",
+                        "iconWidth": 18,
+                        "subText": "<redacted-string>"
+                      },
+                      "linkUrl": "id-0059",
+                      "tagType": 21,
+                      "text": "<redacted-string>"
+                    }
+                  ],
+                  "commentBottomTags": [],
+                  "comment_id": 100025,
+                  "content": "<redacted-string>",
+                  "headurl": "<redacted-string>",
+                  "headurls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    },
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "isKwaiShopItemComment": false,
+                  "likedCount": 0,
+                  "photo_id": 100010,
+                  "profilePagePrefetchInfo": {
+                    "profilePageType": 1
+                  },
+                  "replyToUserName": "<redacted-string>",
+                  "reply_to": 1889279577,
+                  "time": "<redacted-string>",
+                  "timestamp": 1720000000,
+                  "type": 0,
+                  "user_id": 100011,
+                  "user_sex": "<redacted-string>"
+                }
+              ]
+            },
+            "id-0060": {
+              "pcursor": "id-0003",
+              "subComments": [
+                {
+                  "authorArea": "<redacted-string>",
+                  "authorVerified": false,
+                  "author_id": 100028,
+                  "author_liked": false,
+                  "author_name": "<redacted-string>",
+                  "cashTags": {},
+                  "commentAuthorTags": [],
+                  "commentBottomTags": [],
+                  "comment_id": 100027,
+                  "content": "<redacted-string>",
+                  "headurl": "<redacted-string>",
+                  "headurls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    },
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "isKwaiShopItemComment": false,
+                  "likedCount": 0,
+                  "photo_id": 100010,
+                  "profilePagePrefetchInfo": {
+                    "profilePageType": 1
+                  },
+                  "replyToUserName": "<redacted-string>",
+                  "reply_to": 4191379742,
+                  "time": "<redacted-string>",
+                  "timestamp": 1720000000,
+                  "type": 0,
+                  "user_id": 100011,
+                  "user_sex": "<redacted-string>"
+                }
+              ]
+            },
+            "id-0061": {
+              "pcursor": "id-0003",
+              "subComments": [
+                {
+                  "authorVerified": true,
+                  "authorVerifiedDetail": {
+                    "description": "<redacted-string>",
+                    "iconType": 2,
+                    "musicCompany": false,
+                    "newVerified": true,
+                    "type": 9,
+                    "viceVerifiedType": 0
+                  },
+                  "author_id": 100020,
+                  "author_liked": false,
+                  "author_name": "<redacted-string>",
+                  "cashTags": {},
+                  "commentAuthorTags": [],
+                  "commentBottomTags": [],
+                  "comment_id": 100029,
+                  "content": "<redacted-string>",
+                  "headurl": "<redacted-string>",
+                  "headurls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    },
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "isKwaiShopItemComment": false,
+                  "likedCount": 0,
+                  "photo_id": 100010,
+                  "profilePagePrefetchInfo": {
+                    "profilePageType": 2
+                  },
+                  "replyToUserName": "<redacted-string>",
+                  "reply_to": 235956662,
+                  "time": "<redacted-string>",
+                  "timestamp": 1720000000,
+                  "type": 0,
+                  "user_id": 100011,
+                  "user_sex": "<redacted-string>"
+                }
+              ]
+            },
+            "id-0062": {
+              "pcursor": "id-0003",
+              "subComments": [
+                {
+                  "authorArea": "<redacted-string>",
+                  "authorVerified": false,
+                  "author_id": 100031,
+                  "author_liked": false,
+                  "author_name": "<redacted-string>",
+                  "cashTags": {},
+                  "commentAuthorTags": [],
+                  "commentBottomTags": [],
+                  "comment_id": 100030,
+                  "content": "<redacted-string>",
+                  "headurl": "<redacted-string>",
+                  "headurls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    },
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "isKwaiShopItemComment": false,
+                  "likedCount": 0,
+                  "photo_id": 100010,
+                  "profilePagePrefetchInfo": {
+                    "profilePageType": 1
+                  },
+                  "replyToUserName": "<redacted-string>",
+                  "reply_to": 19279856,
+                  "time": "<redacted-string>",
+                  "timestamp": 1720000000,
+                  "type": 0,
+                  "user_id": 100011,
+                  "user_sex": "<redacted-string>"
+                }
+              ]
+            },
+            "id-0063": {
+              "pcursor": "id-0064",
+              "subComments": [
+                {
+                  "authorArea": "<redacted-string>",
+                  "authorVerified": false,
+                  "author_id": 100033,
+                  "author_liked": false,
+                  "author_name": "<redacted-string>",
+                  "cashTags": {},
+                  "commentAuthorTags": [],
+                  "commentBottomTags": [],
+                  "comment_id": 100032,
+                  "content": "<redacted-string>",
+                  "headurl": "<redacted-string>",
+                  "headurls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    },
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "isKwaiShopItemComment": false,
+                  "likedCount": 3,
+                  "photo_id": 100010,
+                  "profilePagePrefetchInfo": {
+                    "profilePageType": 1
+                  },
+                  "replyToUserName": "<redacted-string>",
+                  "reply_to": 4248819630,
+                  "time": "<redacted-string>",
+                  "timestamp": 1720000000,
+                  "type": 0,
+                  "user_id": 100011,
+                  "user_sex": "<redacted-string>"
+                }
+              ]
+            },
+            "id-0065": {
+              "pcursor": "id-0066",
+              "subComments": [
+                {
+                  "authorArea": "<redacted-string>",
+                  "authorVerified": false,
+                  "author_id": 100035,
+                  "author_liked": false,
+                  "author_name": "<redacted-string>",
+                  "cashTags": {},
+                  "commentAuthorTags": [],
+                  "commentBottomTags": [],
+                  "comment_id": 100034,
+                  "content": "<redacted-string>",
+                  "headurl": "<redacted-string>",
+                  "headurls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    },
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "isKwaiShopItemComment": false,
+                  "likedCount": 2,
+                  "photo_id": 100010,
+                  "profilePagePrefetchInfo": {
+                    "profilePageType": 1
+                  },
+                  "replyToUserName": "<redacted-string>",
+                  "reply_to": 2659429663,
+                  "time": "<redacted-string>",
+                  "timestamp": 1720000000,
+                  "type": 0,
+                  "user_id": 100011,
+                  "user_sex": "<redacted-string>"
+                }
+              ]
+            },
+            "id-0067": {
+              "pcursor": "id-0068",
+              "subComments": [
+                {
+                  "authorArea": "<redacted-string>",
+                  "authorVerified": false,
+                  "author_id": 100037,
+                  "author_liked": false,
+                  "author_name": "<redacted-string>",
+                  "cashTags": {},
+                  "commentAuthorTags": [],
+                  "commentBottomTags": [],
+                  "comment_id": 100036,
+                  "content": "<redacted-string>",
+                  "headurl": "<redacted-string>",
+                  "headurls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    },
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "isKwaiShopItemComment": false,
+                  "likedCount": 0,
+                  "photo_id": 100010,
+                  "profilePagePrefetchInfo": {
+                    "profilePageType": 1
+                  },
+                  "replyToUserName": "<redacted-string>",
+                  "reply_to": 127833131,
+                  "time": "<redacted-string>",
+                  "timestamp": 1720000000,
+                  "type": 0,
+                  "user_id": 100011,
+                  "user_sex": "<redacted-string>"
+                }
+              ]
+            },
+            "id-0069": {
+              "pcursor": "id-0003",
+              "subComments": [
+                {
+                  "authorArea": "<redacted-string>",
+                  "authorVerified": false,
+                  "author_id": 100039,
+                  "author_liked": false,
+                  "author_name": "<redacted-string>",
+                  "cashTags": {},
+                  "commentAuthorTags": [],
+                  "commentBottomTags": [],
+                  "comment_id": 100038,
+                  "content": "<redacted-string>",
+                  "headurl": "<redacted-string>",
+                  "headurls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    },
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "isKwaiShopItemComment": false,
+                  "likedCount": 0,
+                  "photo_id": 100010,
+                  "profilePagePrefetchInfo": {
+                    "profilePageType": 1
+                  },
+                  "replyToUserName": "<redacted-string>",
+                  "reply_to": 1666373891,
+                  "time": "<redacted-string>",
+                  "timestamp": 1720000000,
+                  "type": 0,
+                  "user_id": 100011,
+                  "user_sex": "<redacted-string>"
+                }
+              ]
+            },
+            "id-0070": {
+              "pcursor": "id-0071",
+              "subComments": [
+                {
+                  "authorArea": "<redacted-string>",
+                  "authorVerified": false,
+                  "author_id": 100041,
+                  "author_liked": false,
+                  "author_name": "<redacted-string>",
+                  "cashTags": {},
+                  "commentAuthorTags": [],
+                  "commentBottomTags": [],
+                  "comment_id": 100040,
+                  "content": "<redacted-string>",
+                  "headurl": "<redacted-string>",
+                  "headurls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    },
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "isKwaiShopItemComment": false,
+                  "likedCount": 4,
+                  "photo_id": 100010,
+                  "profilePagePrefetchInfo": {
+                    "profilePageType": 1
+                  },
+                  "replyToUserName": "<redacted-string>",
+                  "reply_to": 2257890813,
+                  "time": "<redacted-string>",
+                  "timestamp": 1720000000,
+                  "type": 0,
+                  "user_id": 100011,
+                  "user_sex": "<redacted-string>"
+                }
+              ]
+            },
+            "id-0072": {
+              "pcursor": "id-0073",
+              "subComments": [
+                {
+                  "authorArea": "<redacted-string>",
+                  "authorVerified": false,
+                  "author_id": 100018,
+                  "author_liked": false,
+                  "author_name": "<redacted-string>",
+                  "cashTags": {},
+                  "commentAuthorTags": [],
+                  "commentBottomTags": [],
+                  "comment_id": 100042,
+                  "content": "<redacted-string>",
+                  "headurl": "<redacted-string>",
+                  "headurls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    },
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "isKwaiShopItemComment": false,
+                  "likedCount": 0,
+                  "pendantUrls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "photo_id": 100010,
+                  "profilePagePrefetchInfo": {
+                    "profilePageType": 1
+                  },
+                  "replyToUserName": "<redacted-string>",
+                  "reply_to": 3742176652,
+                  "time": "<redacted-string>",
+                  "timestamp": 1720000000,
+                  "type": 0,
+                  "user_id": 100011,
+                  "user_sex": "<redacted-string>"
+                }
+              ]
+            },
+            "id-0074": {
+              "pcursor": "id-0003",
+              "subComments": [
+                {
+                  "authorArea": "<redacted-string>",
+                  "authorVerified": false,
+                  "author_id": 100044,
+                  "author_liked": false,
+                  "author_name": "<redacted-string>",
+                  "cashTags": {},
+                  "commentAuthorTags": [],
+                  "commentBottomTags": [],
+                  "comment_id": 100043,
+                  "content": "<redacted-string>",
+                  "headurl": "<redacted-string>",
+                  "headurls": [
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    },
+                    {
+                      "cdn": "<redacted-string>",
+                      "url": "<redacted-string>"
+                    }
+                  ],
+                  "isKwaiShopItemComment": false,
+                  "likedCount": 0,
+                  "photo_id": 100010,
+                  "profilePagePrefetchInfo": {
+                    "profilePageType": 1
+                  },
+                  "replyToUserName": "<redacted-string>",
+                  "reply_to": 4524390900,
+                  "time": "<redacted-string>",
+                  "timestamp": 1720000000,
+                  "type": 0,
+                  "user_id": 100011,
+                  "user_sex": "<redacted-string>"
+                }
+              ]
+            }
+          },
+          "transparentPayload": "<redacted-string>"
+        },
+        "docs": "<redacted-string>",
+        "message": "<redacted-string>",
+        "message_zh": "<redacted-string>",
+        "params": {
+          "pcursor": "id-0001",
+          "photo_id": "id-0040"
+        },
+        "request_id": "id-0046",
+        "router": "/api/v1/kuaishou/app/fetch_video_comment",
+        "support": "<redacted-string>",
+        "time": "<redacted-string>",
+        "time_stamp": 1720000000,
+        "time_zone": "<redacted-string>"
+      }
+    },
+    {
+      "endpoint": "/api/v1/kuaishou/app/fetch_video_sub_comments",
+      "http_status": 200,
+      "label": "sub_comments",
+      "method": "GET",
+      "planned_cost_usd": "0.001000",
+      "request": {
+        "authorization": "Bearer <redacted-secret>",
+        "body": null,
+        "method": "GET",
+        "params": {
+          "count": 8,
+          "pcursor": "id-0001",
+          "photo_id": "id-0040",
+          "root_comment_id": "id-0063"
+        },
+        "path": "/api/v1/kuaishou/app/fetch_video_sub_comments"
+      },
+      "request_no": 22,
+      "response": {
+        "cache_message": "<redacted-string>",
+        "cache_message_zh": "<redacted-string>",
+        "cache_url": "<redacted-string>",
+        "code": 200,
+        "data": {
+          "debug_id": "id-0080",
+          "debug_info": "<redacted-string>",
+          "host-name": "<redacted-string>",
+          "pcursor": "id-0079",
+          "result": 1,
+          "subComments": [
+            {
+              "authorArea": "<redacted-string>",
+              "authorVerified": false,
+              "author_id": 100033,
+              "author_liked": false,
+              "author_name": "<redacted-string>",
+              "cashTags": {},
+              "commentAuthorTags": [],
+              "commentBottomTags": [],
+              "comment_id": 100032,
+              "content": "<redacted-string>",
+              "dislikedCount": 0,
+              "headurl": "<redacted-string>",
+              "headurls": [
+                {
+                  "cdn": "<redacted-string>",
+                  "url": "<redacted-string>"
+                },
+                {
+                  "cdn": "<redacted-string>",
+                  "url": "<redacted-string>"
+                }
+              ],
+              "isKwaiShopItemComment": false,
+              "likedCount": 3,
+              "photo_id": 100010,
+              "profilePagePrefetchInfo": {
+                "profilePageType": 1
+              },
+              "replyToUserName": "<redacted-string>",
+              "reply_to": 4248819630,
+              "time": "<redacted-string>",
+              "timestamp": 1720000000,
+              "type": 0,
+              "user_id": 100011,
+              "user_sex": "<redacted-string>"
+            },
+            {
+              "authorArea": "<redacted-string>",
+              "authorVerified": false,
+              "author_id": 100046,
+              "author_liked": false,
+              "author_name": "<redacted-string>",
+              "cashTags": {},
+              "commentAuthorTags": [],
+              "commentBottomTags": [],
+              "comment_id": 100051,
+              "content": "<redacted-string>",
+              "dislikedCount": 0,
+              "headurl": "<redacted-string>",
+              "headurls": [
+                {
+                  "cdn": "<redacted-string>",
+                  "url": "<redacted-string>"
+                },
+                {
+                  "cdn": "<redacted-string>",
+                  "url": "<redacted-string>"
+                }
+              ],
+              "isKwaiShopItemComment": false,
+              "likedCount": 2,
+              "photo_id": 100010,
+              "profilePagePrefetchInfo": {
+                "profilePageType": 1
+              },
+              "replyToUserName": "<redacted-string>",
+              "reply_to": 1866058920,
+              "time": "<redacted-string>",
+              "timestamp": 1720000000,
+              "type": 0,
+              "user_id": 100011,
+              "user_sex": "<redacted-string>"
+            },
+            {
+              "authorArea": "<redacted-string>",
+              "authorVerified": false,
+              "author_id": 100046,
+              "author_liked": false,
+              "author_name": "<redacted-string>",
+              "cashTags": {},
+              "commentAuthorTags": [],
+              "commentBottomTags": [],
+              "comment_id": 100052,
+              "content": "<redacted-string>",
+              "dislikedCount": 0,
+              "headurl": "<redacted-string>",
+              "headurls": [
+                {
+                  "cdn": "<redacted-string>",
+                  "url": "<redacted-string>"
+                },
+                {
+                  "cdn": "<redacted-string>",
+                  "url": "<redacted-string>"
+                }
+              ],
+              "isKwaiShopItemComment": false,
+              "likedCount": 3,
+              "photo_id": 100010,
+              "profilePagePrefetchInfo": {
+                "profilePageType": 1
+              },
+              "replyToUserName": "<redacted-string>",
+              "reply_to": 2620332486,
+              "time": "<redacted-string>",
+              "timestamp": 1720000000,
+              "type": 0,
+              "user_id": 100011,
+              "user_sex": "<redacted-string>"
+            }
+          ]
+        },
+        "docs": "<redacted-string>",
+        "message": "<redacted-string>",
+        "message_zh": "<redacted-string>",
+        "params": {
+          "count": "<redacted-string>",
+          "pcursor": "id-0001",
+          "photo_id": "id-0040",
+          "root_comment_id": "id-0063"
+        },
+        "request_id": "id-0078",
+        "router": "/api/v1/kuaishou/app/fetch_video_sub_comments",
+        "support": "<redacted-string>",
+        "time": "<redacted-string>",
+        "time_stamp": 1720000000,
+        "time_zone": "<redacted-string>"
+      }
+    }
+  ],
+  "schema_version": "tikhub-endpoint-ledger-platform.v1",
+  "source_manifest": {
+    "base_url": "https://api.tikhub.io",
+    "captured_at": "2026-08-16T15:05:27.753362+00:00",
+    "github_run_id": "31954514173",
+    "hidden_retries": 0,
+    "keyword": "爱玛"
+  }
+}

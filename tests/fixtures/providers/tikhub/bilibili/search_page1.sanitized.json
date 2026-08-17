@@ -1,0 +1,33 @@
+{
+  "code": 200,
+  "data": {
+    "data": {
+      "page": 1,
+      "pages": 10,
+      "pagination": {
+        "next": "cursor-fixture-1"
+      },
+      "items": [
+        {
+          "av": {
+            "author": "脱敏用户 A",
+            "cover": "https://example.invalid/bilibili/cover-fixture-1",
+            "danmaku": 2452,
+            "duration": "2:02:48",
+            "face": "https://example.invalid/bilibili/avatar-fixture-1",
+            "mid": "user-fixture-1",
+            "play": 196954,
+            "ptime": "1720000000",
+            "show_card_desc_2": "脱敏描述 A",
+            "title": "脱敏标题 A",
+            "view_content": "脱敏正文 A"
+          },
+          "goto": "av",
+          "param": "av-fixture-1",
+          "uri": "https://example.invalid/bilibili/av-fixture-1",
+          "user_act": {}
+        }
+      ]
+    }
+  }
+}

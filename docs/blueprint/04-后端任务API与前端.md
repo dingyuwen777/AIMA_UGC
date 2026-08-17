@@ -105,13 +105,11 @@ Pydantic 模型是唯一手写事实源，JSON Schema 由 `scripts/contracts/gen
 每种 Job 有独立 Pydantic Payload：
 
 ```python
-class CollectionCrawlPayloadV1(BaseModel):
-    schema_version: Literal["collection.crawl.v1"]
-    run_id: UUID
-    secret_ref: str
+class CollectionRunJobPayloadV1(BaseModel):
+    schema_version: Literal["collection.run.v1"]
 ```
 
-不能把无版本 dict 长期塞进 Job 表。
+不能把无版本 dict 长期塞进 Job 表。当前 `collection.run.v1` Payload 只保存 schema 身份；Handler 使用当前 `JobExecutionFence.job_id` 反查 Run，Provider Secret 通过 Run 中的 `provider_config_id → secret_ref` 在服务端边界解析，不能进入 Job Payload。
 
 ## 4. API 规则
 
@@ -352,7 +350,7 @@ Heartbeat 的作用只是延长 Lease 和上报进度。
 | lease_lost | Worker 失去租约 | 当前 Worker 停止，新 Worker 接管 |
 | partial | 部分 Scope 成功 | Run 记录部分成功，失败 Scope 可单独重跑 |
 
-如果 Provider Request 已有通过完整性校验的 Raw，重试必须从 Raw 继续 Mapper/Ingestion，禁止再次调用 Provider。若网络中断导致 Provider 是否完成/计费未知，系统无法保证绝不重复付费；只能按已批准策略决定是否重试，并把 Attempt 标记为计费未知和潜在重复计费。Run、单内容评论和全局预算必须在数据库中原子预留/结算，不能由多个 Worker 先查余额再各自消费。每个即将发出的真实 HTTP Attempt 都必须取得自己的预算预留：所有 Operation 需要 global + run，评论 Operation 再需要目标 content_comments；应有账户缺失或无覆盖周期就关闭失败。网络重试是新 Attempt，不能复用上一 Attempt 的额度，只有同一 Attempt 的预留事务重放由唯一键避免重复预留。Dispatcher 在短事务锁住并验证所属 Job 当前 Token/状态/Lease/Deadline 后，才用 CAS 把 Attempt 从 `reserved` 变为 `dispatching`；Transport 禁止在一次调用内隐藏自动网络重试。进入该状态后同一 Attempt 最多调用一次 Provider Client。Worker/Job Lease 丢失或 Deadline 到达后，Collection Attempt Reconciler 先检查确定性路径上的 Raw：已校验 Raw 存在时恢复 terminal 事实且不复发；缺失或损坏时才把遗留 `dispatching` CAS 为 `unknown` 并保守占用预算。旧 Worker 的后续写入被 Job Fencing 拒绝，新的发送必须新建 Attempt。
+如果 Provider Request 已有通过完整性校验的 Raw，重试必须从 Raw 继续 Mapper/Ingestion，禁止再次调用 Provider。若网络中断导致 Provider 是否完成/计费未知，系统无法保证绝不重复付费；只能按已批准策略决定是否重试，并把 Attempt 标记为计费未知和潜在重复计费。Dispatcher 在短事务锁住并验证所属 Job 当前 Token/状态/Lease/Deadline 后，才用 CAS 把 Attempt 从 `reserved` 变为 `dispatching`；Transport 禁止在一次调用内隐藏自动网络重试。进入该状态后同一 Attempt 最多调用一次 Provider Client。Worker/Job Lease 丢失或 Deadline 到达后，Collection Attempt Reconciler 先检查确定性路径上的 Raw：已校验 Raw 存在时恢复 terminal 事实且不复发；缺失或损坏时才把遗留 `dispatching` CAS 为 `unknown`。旧 Worker 的后续写入被 Job Fencing 拒绝，新的发送必须新建 Attempt。
 
 Handler 在 Deadline 前主动返回时也必须用当前 `lease_token` 做 CAS 状态转换：`transient` 只有在 `attempt < max_attempts` 时才清理 Lease/Attempt 时刻并按指数退避设置 `queued + available_at`，下一次认领开始新 Attempt；次数已耗尽则置 `failed`。`permanent` 置 `failed`；`cancelled` 置 `cancelled`；成功置 `succeeded`。转换事务同时保存错误/结果和审计日志，CAS 更新零行即按 `lease_lost` 处理。外部调用、Raw、业务写入等阶段的幂等规则保证提前失败与 Reaper 超时走相同结果语义；数据库 CHECK 禁止 `attempt >= max_attempts` 的 `queued` 行，避免永远无法认领的任务。
 
@@ -400,24 +398,17 @@ Scheduler 每次循环：
 
 Scheduler 不直接执行 Job。多 Scheduler 实例和任一提交边界崩溃都依赖 Occurrence 的 `unique(plan_id, schedule_version, scheduled_for)` 与上述同一事务保证不重复、不丢失；发生唯一冲突时整个事务（包括先插入的 Job）回滚，表示该逻辑时刻已由另一事务处理，不再创建第二个 Run。提交前 Deferred Constraint Trigger 验证 enqueued/skipped、反向 Run 关系以及 scheduled Run 与 Occurrence 的 `job_id` 相同。手工/API/回补 Run 没有 Occurrence，但仍有独立内部幂等键和 `collection_runs.job_id` 绑定。
 
-停机后发现多个错过周期时，Scheduler 必须按 Plan 的 `misfire_policy`（跳过、合并一次或有限补跑）和 `max_catch_up_runs` 处理，且把决定写入 Occurrence/Run。策略与上限在阶段 0 结合费用和容量批准；未批准时不得启用生产 Scheduler，禁止无上限补跑形成请求风暴。
+第一版 Scheduler 已批准并实现 `misfire_policy=latest_only + max_catch_up_runs=0`：停机恢复发现多个到期 slot 时，只为最新 slot 创建 `enqueued` Occurrence/Run/Job，更早 slot 写 `skipped / misfire_superseded`，不额外补跑历史 Run。领域层、数据库约束与 Scheduler Runtime 必须保持该语义一致；未来改变策略需要新的显式设计决策和 Migration。
 
 ## 8. Worker Registry
 
-每种 Job 只注册一个 Handler：
+当前 Stage 7 正式 Collection Job 类型是：
 
 ```text
-collection.crawl.v1
-collection.backfill.v1
-collection.comment_refresh.v1
-analysis.content.v1
-analysis.comment.v1
-report.generate.v1
-export.comments.v1
-maintenance.retention.v1
+collection.run.v1
 ```
 
-注册冲突必须在进程启动时失败。未知 Job 类型不能被任意 Worker 认领。
+它必须由唯一 Handler 注册并消费 Scheduler 创建的 Run/Scope。其他未来采集、分析、报告、导出或维护 Job 只有在对应 Contract/Handler 真正实现后才能加入 Registry；未知 Job 类型不能被任意 Worker 认领。
 
 跨模块的可靠触发使用同一 PostgreSQL Unit of Work：业务 Owner 在提交内容/分析/告警事实时，同时插入版本化 Job；Worker 再以内部幂等键消费。不得先提交业务数据、随后在另一个事务“尽力创建 Job”。当前规模不因此引入新消息中间件。
 

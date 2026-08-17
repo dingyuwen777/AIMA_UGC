@@ -1,0 +1,32 @@
+{
+  "data": {
+    "aweme_detail": {
+      "aweme_id": "douyin-aweme-detail-1",
+      "group_id": "douyin-aweme-detail-1",
+      "desc": "脱敏详情正文",
+      "item_title": "脱敏详情标题",
+      "create_time": 1720000000,
+      "share_url": "https://example.invalid/douyin/detail-1",
+      "author": {
+        "uid": "douyin-user-detail-1",
+        "sec_uid": "douyin-sec-detail-1",
+        "unique_id": "douyin-handle-detail-1",
+        "nickname": "脱敏用户"
+      },
+      "statistics": {
+        "digg_count": 100,
+        "comment_count": 20,
+        "collect_count": 30,
+        "share_count": 10,
+        "play_count": 1000,
+        "download_count": 2,
+        "forward_count": 3
+      },
+      "video": {
+        "duration": 12000,
+        "width": 1080,
+        "height": 1920
+      }
+    }
+  }
+}

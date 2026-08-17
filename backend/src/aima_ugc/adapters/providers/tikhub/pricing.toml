@@ -1,18 +1,18 @@
 schema_version = "tikhub-pricing.v1"
 provider = "tikhub"
 currency = "USD"
-pricing_version = "2026-08-15.1"
-verified_at = "2026-08-15"
+pricing_version = "2026-08-16.1"
+verified_at = "2026-08-16"
 official_pricing_url = "https://docs.tikhub.io/4592751m0"
 official_endpoint_info_path = "/api/v1/tikhub/user/get_endpoint_info"
 
 # TikHub 官网当前说明“多数服务”为 0.001 USD/请求，但并非全部 endpoint。
-# 该值只用于记录官方全局说明，绝不能作为未核验 endpoint 的 Dispatch fallback。
+# 该值只用于记录官方全局说明，绝不能作为未知 endpoint 的 Dispatch fallback。
 default_base_price = "0.001000"
 default_price_dispatch_fallback = false
 
-# 官方阶梯折扣规则快照。首版硬预算仍按 endpoint 已核验 base_price 保守预留，
-# 不用折扣价缩小 Reservation；在没有财务对账前也不把折扣计算值称为 actual_cost。
+# 官方阶梯折扣规则快照。首版硬预算始终按 endpoint 已核验 base_price 保守预留，
+# 不用折扣价缩小 Reservation；是否允许折扣由 endpoint 自身事实决定，当前账本不依赖折扣放宽预算。
 [[tiers]]
 min_requests_per_day = 0
 max_requests_per_day = 1000
@@ -43,90 +43,169 @@ min_requests_per_day = 30000
 max_requests_per_day = 2147483647
 discount_percent = "50"
 
-# 当前代码已经实现请求构造的 TikHub endpoint 全部显式列出。
-# 当前执行环境无法解析 api.tikhub.io，尚不能调用官方 get_endpoint_info 核验精确单价，
-# 因此全部保持 pending_endpoint_info。缺少 verified base_price 时 Pricing loader 必须 fail closed。
+# 2026-08-15 使用 https://api.tikhub.io 的官方 get_endpoint_info 逐个核验首轮 21 个业务
+# endpoint；21/21 返回 HTTP 200，并直接返回 data.endpoint_cost。连续 calculate_price 查询会触发
+# HTTP 429，因此 endpoint_cost 是逐 endpoint 基价事实源。
+# 2026-08-16 快手 Web/App 同样本评论 A/B 前再次通过 get_endpoint_info 核验 App 一级/二级评论，
+# 两者 endpoint_cost 均为 0.001 USD；本版本据此把已批准的 App 主评论链纳入正式 Pricing。
 
 [[endpoints]]
 path = "/api/v1/xiaohongshu/app_v2/search_notes"
-verification_status = "pending_endpoint_info"
+verification_status = "verified"
+base_price = "0.010000"
+verified_at = "2026-08-15"
+verified_via = "get_endpoint_info"
 
 [[endpoints]]
 path = "/api/v1/xiaohongshu/app_v2/get_image_note_detail"
-verification_status = "pending_endpoint_info"
+verification_status = "verified"
+base_price = "0.010000"
+verified_at = "2026-08-15"
+verified_via = "get_endpoint_info"
 
 [[endpoints]]
 path = "/api/v1/xiaohongshu/app_v2/get_video_note_detail"
-verification_status = "pending_endpoint_info"
+verification_status = "verified"
+base_price = "0.010000"
+verified_at = "2026-08-15"
+verified_via = "get_endpoint_info"
 
 [[endpoints]]
 path = "/api/v1/xiaohongshu/app_v2/get_note_comments"
-verification_status = "pending_endpoint_info"
+verification_status = "verified"
+base_price = "0.010000"
+verified_at = "2026-08-15"
+verified_via = "get_endpoint_info"
 
 [[endpoints]]
 path = "/api/v1/xiaohongshu/app_v2/get_note_sub_comments"
-verification_status = "pending_endpoint_info"
+verification_status = "verified"
+base_price = "0.010000"
+verified_at = "2026-08-15"
+verified_via = "get_endpoint_info"
 
 [[endpoints]]
 path = "/api/v1/douyin/search/fetch_video_search_v2"
-verification_status = "pending_endpoint_info"
+verification_status = "verified"
+base_price = "0.010000"
+verified_at = "2026-08-15"
+verified_via = "get_endpoint_info"
 
 [[endpoints]]
 path = "/api/v1/douyin/app/v3/fetch_one_video_v3"
-verification_status = "pending_endpoint_info"
+verification_status = "verified"
+base_price = "0.001000"
+verified_at = "2026-08-15"
+verified_via = "get_endpoint_info"
 
 [[endpoints]]
 path = "/api/v1/douyin/app/v3/fetch_video_comments"
-verification_status = "pending_endpoint_info"
+verification_status = "verified"
+base_price = "0.001000"
+verified_at = "2026-08-15"
+verified_via = "get_endpoint_info"
 
 [[endpoints]]
 path = "/api/v1/douyin/app/v3/fetch_video_comment_replies"
-verification_status = "pending_endpoint_info"
+verification_status = "verified"
+base_price = "0.001000"
+verified_at = "2026-08-15"
+verified_via = "get_endpoint_info"
 
 [[endpoints]]
 path = "/api/v1/weibo/web/fetch_search"
-verification_status = "pending_endpoint_info"
+verification_status = "verified"
+base_price = "0.001000"
+verified_at = "2026-08-15"
+verified_via = "get_endpoint_info"
 
 [[endpoints]]
 path = "/api/v1/weibo/app/fetch_status_detail"
-verification_status = "pending_endpoint_info"
+verification_status = "verified"
+base_price = "0.001000"
+verified_at = "2026-08-15"
+verified_via = "get_endpoint_info"
 
 [[endpoints]]
 path = "/api/v1/weibo/app/fetch_status_comments"
-verification_status = "pending_endpoint_info"
+verification_status = "verified"
+base_price = "0.001000"
+verified_at = "2026-08-15"
+verified_via = "get_endpoint_info"
 
 [[endpoints]]
 path = "/api/v1/weibo/web_v2/fetch_post_sub_comments"
-verification_status = "pending_endpoint_info"
+verification_status = "verified"
+base_price = "0.001000"
+verified_at = "2026-08-15"
+verified_via = "get_endpoint_info"
 
 [[endpoints]]
 path = "/api/v1/bilibili/app/fetch_search_by_type"
-verification_status = "pending_endpoint_info"
+verification_status = "verified"
+base_price = "0.001000"
+verified_at = "2026-08-15"
+verified_via = "get_endpoint_info"
 
 [[endpoints]]
 path = "/api/v1/bilibili/app/fetch_one_video"
-verification_status = "pending_endpoint_info"
+verification_status = "verified"
+base_price = "0.001000"
+verified_at = "2026-08-15"
+verified_via = "get_endpoint_info"
 
 [[endpoints]]
 path = "/api/v1/bilibili/app/fetch_video_comments"
-verification_status = "pending_endpoint_info"
+verification_status = "verified"
+base_price = "0.001000"
+verified_at = "2026-08-15"
+verified_via = "get_endpoint_info"
 
 [[endpoints]]
 path = "/api/v1/bilibili/app/fetch_reply_detail"
-verification_status = "pending_endpoint_info"
+verification_status = "verified"
+base_price = "0.001000"
+verified_at = "2026-08-15"
+verified_via = "get_endpoint_info"
 
 [[endpoints]]
 path = "/api/v1/kuaishou/app/search_video_v2"
-verification_status = "pending_endpoint_info"
+verification_status = "verified"
+base_price = "0.010000"
+verified_at = "2026-08-15"
+verified_via = "get_endpoint_info"
 
 [[endpoints]]
 path = "/api/v1/kuaishou/app/fetch_one_video"
-verification_status = "pending_endpoint_info"
+verification_status = "verified"
+base_price = "0.001000"
+verified_at = "2026-08-15"
+verified_via = "get_endpoint_info"
+
+[[endpoints]]
+path = "/api/v1/kuaishou/app/fetch_video_comment"
+verification_status = "verified"
+base_price = "0.001000"
+verified_at = "2026-08-16"
+verified_via = "get_endpoint_info"
+
+[[endpoints]]
+path = "/api/v1/kuaishou/app/fetch_video_sub_comments"
+verification_status = "verified"
+base_price = "0.001000"
+verified_at = "2026-08-16"
+verified_via = "get_endpoint_info"
 
 [[endpoints]]
 path = "/api/v1/kuaishou/web/fetch_one_video_comment"
-verification_status = "pending_endpoint_info"
+verification_status = "verified"
+base_price = "0.002000"
+verified_at = "2026-08-15"
+verified_via = "get_endpoint_info"
 
 [[endpoints]]
 path = "/api/v1/kuaishou/web/fetch_one_video_sub_comment"
-verification_status = "pending_endpoint_info"
+verification_status = "verified"
+base_price = "0.010000"
+verified_at = "2026-08-15"
+verified_via = "get_endpoint_info"

@@ -1,0 +1,138 @@
+# normalization-revision: 9
+name: Stage 7 TikHub Normalization CI V2
+
+on:
+  push:
+    branches:
+      - feature/stage7-completion
+    paths:
+      - ".github/workflows/stage7-normalization-ci-v2.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/stage7-completion
+          fetch-depth: 0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Install locked environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+
+      - name: Normalize formatting in the task boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff format \
+            backend/src/aima_ugc/adapters/providers/tikhub \
+            tests/unit/collection/test_*tikhub*.py
+          uv run ruff check --fix \
+            backend/src/aima_ugc/adapters/providers/tikhub \
+            tests/unit/collection/test_*tikhub*.py
+
+      - name: Run real response normalization tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest \
+            tests/unit/collection/test_xhs_tikhub_operation.py \
+            tests/unit/collection/test_xhs_tikhub_mapper.py \
+            tests/unit/collection/test_douyin_tikhub_operation.py \
+            tests/unit/collection/test_douyin_tikhub_real_shape.py \
+            tests/unit/collection/test_weibo_tikhub_operation.py \
+            tests/unit/collection/test_bilibili_tikhub_operation.py \
+            tests/unit/collection/test_kuaishou_tikhub_operation.py \
+            tests/unit/collection/test_tikhub_api_family_candidates.py \
+            tests/unit/collection/test_tikhub_api_family_compare.py \
+            tests/unit/collection/test_tikhub_real_search_operations.py \
+            tests/unit/collection/test_tikhub_real_search_mappers.py \
+            tests/unit/collection/test_tikhub_real_detail_mappers.py \
+            tests/unit/collection/test_tikhub_real_comment_mappers.py \
+            tests/unit/collection/test_tikhub_real_reply_mappers.py \
+            tests/unit/collection/test_tikhub_real_capabilities.py \
+            tests/unit/collection/test_tikhub_pricing.py \
+            tests/unit/collection/test_tikhub_transport.py \
+            tests/contracts/test_canonical_v1.py \
+            -q
+
+      - name: Ruff quality gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff format --check \
+            backend/src/aima_ugc/adapters/providers/tikhub \
+            tests/unit/collection/test_*tikhub*.py
+          uv run ruff check \
+            backend/src/aima_ugc/adapters/providers/tikhub \
+            tests/unit/collection/test_*tikhub*.py
+
+      - name: Mypy TikHub operations
+        shell: bash
+        run: uv run mypy backend/src/aima_ugc/adapters/providers/tikhub/operations
+
+      - name: Mypy TikHub mappers
+        shell: bash
+        run: uv run mypy backend/src/aima_ugc/adapters/providers/tikhub/mappers
+
+      - name: Mypy TikHub runtime
+        shell: bash
+        run: uv run mypy backend/src/aima_ugc/adapters/providers/tikhub/runtime.py
+
+      - name: Mypy TikHub capabilities
+        shell: bash
+        run: uv run mypy backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py
+
+      - name: Mypy TikHub pricing
+        shell: bash
+        run: uv run mypy backend/src/aima_ugc/adapters/providers/tikhub/pricing.py
+
+      - name: Mypy TikHub probe
+        shell: bash
+        run: uv run mypy backend/src/aima_ugc/adapters/providers/tikhub/probe.py
+
+      - name: Mypy TikHub transport
+        shell: bash
+        run: uv run mypy backend/src/aima_ugc/adapters/providers/tikhub/transport.py
+
+      - name: Mypy TikHub package
+        shell: bash
+        run: uv run mypy backend/src/aima_ugc/adapters/providers/tikhub
+
+      - name: Mypy provider adapters
+        shell: bash
+        run: uv run mypy backend/src/aima_ugc/adapters/providers
+
+      - name: Mypy full backend
+        shell: bash
+        run: uv run mypy backend/src
+
+      - name: Secret and diff quality gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/quality/scan_secrets.py
+          git diff --check
+
+      - name: Commit verified formatting and remove one-time workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/stage7-normalization-ci-v2.yml
+          git config user.name "AIMA Stage 7 Runner"
+          git config user.email "actions@users.noreply.github.com"
+          git add backend/src/aima_ugc/adapters/providers/tikhub tests/unit/collection/test_*tikhub*.py
+          git commit -m "通过 TikHub API family 对照验证"
+          git push origin HEAD:feature/stage7-completion

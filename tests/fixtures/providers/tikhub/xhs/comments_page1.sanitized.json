@@ -1,0 +1,46 @@
+{
+  "data": {
+    "data": {
+      "comment_count": 21166,
+      "comment_count_l1": 19105,
+      "comments": [
+        {
+          "id": "xhs-comment-root-1",
+          "note_id": "xhs-note-1",
+          "content": "脱敏一级评论",
+          "like_count": 145,
+          "sub_comment_count": 119,
+          "sub_comment_cursor": "cursor-1",
+          "time": 1720000000,
+          "user": {
+            "userid": "xhs-user-1",
+            "red_id": "red-user-1",
+            "nickname": "脱敏用户"
+          },
+          "sub_comments": [
+            {
+              "id": "xhs-comment-reply-1",
+              "note_id": "xhs-note-1",
+              "content": "脱敏二级回复",
+              "like_count": 11,
+              "time": 1720000010,
+              "user": {
+                "userid": "xhs-user-2",
+                "nickname": "脱敏回复用户"
+              },
+              "target_comment": {
+                "id": "xhs-comment-root-1",
+                "status": 0,
+                "user": {
+                  "userid": "xhs-user-1"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "cursor": "cursor-next",
+      "has_more": true
+    }
+  }
+}

@@ -1,4 +1,4 @@
-"""TikHub B站 App Operation 与有证据的分页状态。"""
+"""TikHub B站 App 主 Operation 与 Web A/B 候选。"""
 
 from __future__ import annotations
 
@@ -9,12 +9,20 @@ _SEARCH_PATH = "/api/v1/bilibili/app/fetch_search_by_type"
 _DETAIL_PATH = "/api/v1/bilibili/app/fetch_one_video"
 _COMMENTS_PATH = "/api/v1/bilibili/app/fetch_video_comments"
 _REPLY_PATH = "/api/v1/bilibili/app/fetch_reply_detail"
+_WEB_SEARCH_CANDIDATE_PATH = "/api/v1/bilibili/web/fetch_general_search"
+_WEB_DETAIL_CANDIDATE_PATH = "/api/v1/bilibili/web/fetch_one_video"
+_WEB_COMMENTS_CANDIDATE_PATH = "/api/v1/bilibili/web/fetch_video_comments"
+_WEB_REPLY_CANDIDATE_PATH = "/api/v1/bilibili/web/fetch_comment_reply"
 
 _SEARCH_ORDERS = {
     "general": 0,
     "latest": 1,
     "play_count": 2,
     "danmaku_count": 3,
+}
+_WEB_SEARCH_ORDERS = {
+    "general": "totalrank",
+    "latest": "pubdate",
 }
 _COMMENT_SORT_MODES = {
     "latest": 2,
@@ -57,7 +65,7 @@ class BilibiliSearchPagination:
 
 @dataclass(frozen=True, slots=True)
 class BilibiliCursorPagination:
-    """评论/回复只处理调用方已可靠提取的 next_offset，不猜响应路径。"""
+    """评论/回复处理调用方已可靠提取的 next_offset。"""
 
     next_cursor: int
     should_continue: bool
@@ -107,6 +115,39 @@ def build_search_request(
     return BilibiliRequest(method="GET", path=_SEARCH_PATH, params=params)
 
 
+def build_web_search_candidate_request(
+    *,
+    keyword: str,
+    page: int = 1,
+    page_size: int = 20,
+    sort_mode: str = "general",
+) -> BilibiliRequest:
+    """构造 Web 搜索 A/B 候选；只支持已明确对应的综合/最新排序。"""
+    normalized_keyword = keyword.strip()
+    if not normalized_keyword:
+        raise ValueError("keyword 不能为空")
+    if page < 1:
+        raise ValueError("page 必须从 1 开始")
+    if page_size < 1:
+        raise ValueError("page_size 必须大于 0")
+    try:
+        order = _WEB_SEARCH_ORDERS[sort_mode]
+    except KeyError as exc:
+        raise ValueError(
+            f"sort_mode 不支持: {sort_mode}; 可选: {', '.join(_WEB_SEARCH_ORDERS)}"
+        ) from exc
+    return BilibiliRequest(
+        method="GET",
+        path=_WEB_SEARCH_CANDIDATE_PATH,
+        params={
+            "keyword": normalized_keyword,
+            "order": order,
+            "page": page,
+            "page_size": page_size,
+        },
+    )
+
+
 def build_video_detail_request(
     *,
     av_id: str | None = None,
@@ -117,6 +158,15 @@ def build_video_detail_request(
         method="GET",
         path=_DETAIL_PATH,
         params=_video_identity_params(av_id=av_id, bv_id=bv_id),
+    )
+
+
+def build_web_video_detail_candidate_request(*, bv_id: str) -> BilibiliRequest:
+    """构造 Web 视频详情 A/B 候选；不进入默认 Capability 或自动 fallback。"""
+    return BilibiliRequest(
+        method="GET",
+        path=_WEB_DETAIL_CANDIDATE_PATH,
+        params={"bv_id": _required_id(bv_id, "bv_id")},
     )
 
 
@@ -133,6 +183,17 @@ def build_video_comments_request(
     if next_offset is not None:
         params["next_offset"] = _non_negative_int(next_offset, "next_offset")
     return BilibiliRequest(method="GET", path=_COMMENTS_PATH, params=params)
+
+
+def build_web_video_comments_candidate_request(*, bv_id: str, page: int = 1) -> BilibiliRequest:
+    """构造 Web 一级评论 A/B 候选；不会替代 App 主链。"""
+    if page < 1:
+        raise ValueError("page 必须从 1 开始")
+    return BilibiliRequest(
+        method="GET",
+        path=_WEB_COMMENTS_CANDIDATE_PATH,
+        params={"bv_id": _required_id(bv_id, "bv_id"), "pn": page},
+    )
 
 
 def build_reply_detail_request(
@@ -152,12 +213,83 @@ def build_reply_detail_request(
     return BilibiliRequest(method="GET", path=_REPLY_PATH, params=params)
 
 
-def _search_next_cursor(body: dict[str, Any]) -> str:
+def build_web_reply_candidate_request(*, bv_id: str, root: str, page: int = 1) -> BilibiliRequest:
+    """构造 Web 二级回复 A/B 候选；不会替代 App 主链。"""
+    if page < 1:
+        raise ValueError("page 必须从 1 开始")
+    return BilibiliRequest(
+        method="GET",
+        path=_WEB_REPLY_CANDIDATE_PATH,
+        params={
+            "bv_id": _required_id(bv_id, "bv_id"),
+            "pn": page,
+            "rpid": _required_id(root, "root"),
+        },
+    )
+
+
+def extract_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    """从真实 App 分类搜索的 data.data.items 提取 av item。"""
+    provider_data = _provider_data(body)
+    if provider_data is None:
+        return ()
+    items = provider_data.get("items")
+    if not isinstance(items, list):
+        return ()
+    return tuple(
+        item for item in items if isinstance(item, dict) and isinstance(item.get("av"), dict)
+    )
+
+
+def extract_detail_item(body: dict[str, Any]) -> dict[str, Any]:
+    """从真实 App 视频详情响应提取 data.data。"""
+    provider_data = _provider_data(body)
+    if provider_data is None or "aid" not in provider_data:
+        raise ValueError("B站详情响应缺少 data.data/aid")
+    return provider_data
+
+
+def extract_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    """从真实 App 一级评论响应提取 data.data.replies。"""
+    provider_data = _provider_data(body)
+    if provider_data is None:
+        return ()
+    replies = provider_data.get("replies")
+    if not isinstance(replies, list):
+        return ()
+    return tuple(item for item in replies if isinstance(item, dict))
+
+
+def extract_reply_detail(
+    body: dict[str, Any],
+) -> tuple[dict[str, Any], tuple[dict[str, Any], ...]]:
+    """从真实 reply detail 提取 root 与 root.replies，不猜其它旁路字段。"""
+    provider_data = _provider_data(body)
+    if provider_data is None:
+        raise ValueError("B站回复详情响应缺少 data.data")
+    root = provider_data.get("root")
+    if not isinstance(root, dict):
+        raise ValueError("B站回复详情响应缺少 data.data.root")
+    replies_raw = root.get("replies")
+    replies = (
+        tuple(item for item in replies_raw if isinstance(item, dict))
+        if isinstance(replies_raw, list)
+        else ()
+    )
+    return root, replies
+
+
+def _provider_data(body: dict[str, Any]) -> dict[str, Any] | None:
     outer_data = body.get("data")
     if not isinstance(outer_data, dict):
-        raise ValueError("B站搜索响应缺少 data")
+        return None
     provider_data = outer_data.get("data")
-    if not isinstance(provider_data, dict):
+    return provider_data if isinstance(provider_data, dict) else None
+
+
+def _search_next_cursor(body: dict[str, Any]) -> str:
+    provider_data = _provider_data(body)
+    if provider_data is None:
         raise ValueError("B站搜索响应缺少 data.data")
     pagination = provider_data.get("pagination")
     if pagination is None:
@@ -224,4 +356,12 @@ __all__ = [
     "build_search_request",
     "build_video_comments_request",
     "build_video_detail_request",
+    "build_web_reply_candidate_request",
+    "build_web_search_candidate_request",
+    "build_web_video_comments_candidate_request",
+    "build_web_video_detail_candidate_request",
+    "extract_comment_items",
+    "extract_detail_item",
+    "extract_reply_detail",
+    "extract_search_items",
 ]

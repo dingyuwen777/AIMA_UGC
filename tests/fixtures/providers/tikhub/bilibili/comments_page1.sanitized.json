@@ -1,0 +1,59 @@
+{
+  "code": 200,
+  "data": {
+    "data": {
+      "cursor": {
+        "all_count": 105,
+        "is_begin": true,
+        "is_end": false,
+        "mode": 3,
+        "next": 2,
+        "prev": 0,
+        "pagination_reply": {
+          "next_offset": "offset-fixture-1"
+        }
+      },
+      "replies": [
+        {
+          "rpid": 100001,
+          "rpid_str": "bili-comment-root-1",
+          "oid": 100010,
+          "root": 0,
+          "parent": 0,
+          "ctime": 1722329634,
+          "like": 377,
+          "rcount": 8,
+          "member": {
+            "mid": "bili-user-1",
+            "uname": "脱敏用户",
+            "avatar": "https://example.invalid/bilibili/avatar-1"
+          },
+          "content": {
+            "message": "脱敏一级评论"
+          },
+          "replies": [
+            {
+              "rpid": 100002,
+              "rpid_str": "bili-comment-reply-1",
+              "oid": 100010,
+              "root": 100001,
+              "root_str": "bili-comment-root-1",
+              "parent": 100001,
+              "parent_str": "bili-comment-root-1",
+              "ctime": 1722432651,
+              "like": 39,
+              "rcount": 0,
+              "member": {
+                "mid": "bili-user-2",
+                "uname": "脱敏回复用户"
+              },
+              "content": {
+                "message": "脱敏二级回复"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

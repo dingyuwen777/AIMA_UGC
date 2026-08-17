@@ -1,0 +1,33 @@
+name: Stage 7 Endpoint Ledger Sanitizer
+
+on:
+  push:
+    branches:
+      - feature/stage7-completion
+    paths:
+      - ".github/workflows/stage7-endpoint-ledger-sanitizer.yml"
+      - "scripts/dev/probe_tikhub_endpoint_ledger.py"
+      - "tests/unit/collection/test_tikhub_endpoint_ledger_sanitizer.py"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+      - name: Install locked environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+      - name: Run Endpoint Ledger sanitizer regression
+        shell: bash
+        run: uv run pytest tests/unit/collection/test_tikhub_endpoint_ledger_sanitizer.py -q

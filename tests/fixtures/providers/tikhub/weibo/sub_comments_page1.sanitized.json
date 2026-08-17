@@ -1,0 +1,30 @@
+{
+  "data": {
+    "data": [
+      {
+        "id": 100101,
+        "idstr": "weibo-comment-reply-1",
+        "mid": "weibo-comment-reply-1",
+        "rid": "weibo-comment-root-1",
+        "rootid": 100100,
+        "rootidstr": "weibo-comment-root-1",
+        "created_at": "Sat Aug 15 09:31:00 +0800 2026",
+        "text": "脱敏二级回复",
+        "like_counts": 1,
+        "reply_comment": {
+          "id": 100100,
+          "idstr": "weibo-comment-root-1",
+          "mid": "weibo-comment-root-1"
+        },
+        "user": {
+          "id": 100102,
+          "idstr": "weibo-user-reply-1",
+          "screen_name": "脱敏回复用户",
+          "verified": false
+        }
+      }
+    ],
+    "max_id": 0,
+    "max_id_type": 0
+  }
+}

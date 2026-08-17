@@ -1,36 +1,39 @@
-name: Stage 7 Provider Budget Ledger
+name: Stage 7 Scheduler Runtime
 
 on:
   push:
     branches:
       - main
-      - feature/stage7-provider-budget-ledger
+      - feature/stage7-completion
   pull_request:
     branches:
       - main
     paths:
-      - "backend/src/aima_ugc/modules/collection/**"
-      - "backend/src/aima_ugc/adapters/persistence/postgres/**"
-      - "backend/src/aima_ugc/adapters/providers/tikhub/**"
-      - "backend/src/aima_ugc/modules/system/**"
-      - "backend/src/aima_ugc/modules/content/**"
+      - "backend/src/aima_ugc/modules/collection/collection_run_job.py"
+      - "backend/src/aima_ugc/modules/collection/planning.py"
+      - "backend/src/aima_ugc/modules/collection/scheduler.py"
+      - "backend/src/aima_ugc/adapters/persistence/postgres/collection_planning.py"
+      - "backend/src/aima_ugc/bootstrap/scheduler.py"
+      - "backend/src/aima_ugc/entrypoints/scheduler_main.py"
       - "backend/src/aima_ugc/database_schema.py"
-      - "migrations/versions/20260815_0012_stage7_provider_budget_ledger.py"
-      - "tests/unit/collection/**"
-      - "tests/integration/collection/**"
-      - "docs/blueprint/03-数据库与文件存储.md"
-      - "docs/blueprint/08-采集策略与平台能力.md"
-      - "docs/blueprint/README.md"
+      - "migrations/versions/20260815_0014_stage7_latest_only_scheduler_policy.py"
+      - "tests/unit/collection/test_collection_run_job.py"
+      - "tests/unit/collection/test_collection_planning.py"
+      - "tests/unit/collection/test_scheduler.py"
+      - "tests/integration/collection/test_collection_planning_repository.py"
+      - "tests/integration/collection/test_stage7_scheduler_runtime_postgres.py"
+      - "docs/blueprint/**"
+      - "docs/collection/**"
       - "backend/src/aima_ugc/modules/collection/README.md"
       - "changes/**"
-      - ".github/workflows/stage7-provider-budget-ledger.yml"
+      - ".github/workflows/stage7-scheduler-runtime.yml"
 
 permissions:
   contents: read
 
 jobs:
   unit:
-    name: Stage 7 Provider Budget Unit
+    name: Stage 7 Scheduler Unit
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
@@ -45,20 +48,18 @@ jobs:
           python -m pip install "uv==${UV_VERSION}"
           uv lock --check
           uv sync --locked
-      - name: Run budget and dispatch unit tests
+      - name: Run Scheduler domain tests
         shell: bash
         run: |
           set -euo pipefail
           uv run pytest \
-            tests/unit/collection/test_provider_budget.py \
-            tests/unit/collection/test_tikhub_pricing.py \
-            tests/unit/collection/test_provider_client.py \
-            tests/unit/collection/test_provider_persistence.py \
-            tests/unit/collection/test_provider_dispatch.py \
+            tests/unit/collection/test_collection_run_job.py \
+            tests/unit/collection/test_collection_planning.py \
+            tests/unit/collection/test_scheduler.py \
             -q
 
   postgres:
-    name: Stage 7 Provider Budget PostgreSQL
+    name: Stage 7 Scheduler PostgreSQL
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -66,7 +67,7 @@ jobs:
         env:
           POSTGRES_DB: aima_ugc
           POSTGRES_USER: aima_ugc
-          POSTGRES_PASSWORD: stage7-provider-budget-ci
+          POSTGRES_PASSWORD: stage7-scheduler-ci
         ports:
           - 5432:5432
         options: >-
@@ -75,9 +76,9 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      AIMA_DATA_DIR: .runtime/ci-stage7-provider-budget/data
-      AIMA_LOG_DIR: .runtime/ci-stage7-provider-budget/logs
-      AIMA_SECRET_DIR: .runtime/ci-stage7-provider-budget/secrets
+      AIMA_DATA_DIR: .runtime/ci-stage7-scheduler/data
+      AIMA_LOG_DIR: .runtime/ci-stage7-scheduler/logs
+      AIMA_SECRET_DIR: .runtime/ci-stage7-scheduler/secrets
       AIMA_DB_HOST: 127.0.0.1
       AIMA_DB_PORT: 5432
       AIMA_DB_NAME: aima_ugc
@@ -101,9 +102,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "${AIMA_DATA_DIR}" "${AIMA_LOG_DIR}" "${AIMA_SECRET_DIR}"
-          printf '%s\n' 'stage7-provider-budget-ci' > "${AIMA_SECRET_DIR}/postgres_password"
+          printf '%s\n' 'stage7-scheduler-ci' > "${AIMA_SECRET_DIR}/postgres_password"
           chmod 600 "${AIMA_SECRET_DIR}/postgres_password"
-      - name: Upgrade database and verify budget ledger
+      - name: Upgrade database and verify Scheduler runtime
         shell: bash
         run: |
           set -euo pipefail
@@ -111,16 +112,14 @@ jobs:
           uv run alembic current
           uv run alembic check
           uv run pytest \
-            tests/integration/collection/test_provider_budget.py \
-            tests/integration/collection/test_provider_budget_estimated_settlement.py \
-            tests/integration/collection/test_provider_repository.py \
-            tests/integration/collection/test_provider_dispatch.py \
+            tests/integration/collection/test_collection_planning_repository.py \
+            tests/integration/collection/test_stage7_scheduler_runtime_postgres.py \
             -q
       - name: Verify previous formal revision to head
         shell: bash
         run: |
           set -euo pipefail
-          uv run alembic downgrade 20260815_0011
+          uv run alembic downgrade 20260815_0013
           uv run alembic upgrade head
           uv run alembic check
       - name: Verify base round trip
@@ -132,7 +131,7 @@ jobs:
           uv run alembic check
 
   quality:
-    name: Stage 7 Provider Budget Quality
+    name: Stage 7 Scheduler Quality
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
@@ -152,9 +151,9 @@ jobs:
         run: |
           set -euo pipefail
           uv run ruff format --check backend tests scripts
-          uv run ruff format --check migrations/versions/20260815_0012_stage7_provider_budget_ledger.py
+          uv run ruff format --check migrations/versions/20260815_0014_stage7_latest_only_scheduler_policy.py
           uv run ruff check backend tests scripts
-          uv run ruff check migrations/versions/20260815_0012_stage7_provider_budget_ledger.py
+          uv run ruff check migrations/versions/20260815_0014_stage7_latest_only_scheduler_policy.py
           uv run mypy backend/src
           uv run python scripts/contracts/generate.py --check
           uv run python scripts/contracts/check_compatibility.py
@@ -162,33 +161,3 @@ jobs:
           uv run python scripts/quality/check_table_ownership.py
           uv run python scripts/quality/scan_secrets.py
           uv run python scripts/quality/check_docs.py
-      - name: Verify TikHub Pricing is packaged in wheel
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf dist
-          uv build --wheel
-          uv pip install \
-            --reinstall \
-            --no-deps \
-            --python .venv/bin/python \
-            dist/*.whl
-          .venv/bin/python - <<'PY'
-          from importlib.resources import files
-          from pathlib import Path
-
-          import aima_ugc
-          from aima_ugc.adapters.providers.tikhub.pricing import load_tikhub_pricing
-
-          module_path = Path(aima_ugc.__file__).resolve()
-          if "site-packages" not in module_path.parts:
-              raise SystemExit(f"aima_ugc was not imported from installed wheel: {module_path}")
-          resource = files("aima_ugc.adapters.providers.tikhub").joinpath("pricing.toml")
-          if not resource.is_file():
-              raise SystemExit("installed wheel missing required pricing resource")
-          catalog = load_tikhub_pricing()
-          if catalog.provider != "tikhub" or catalog.default_price_dispatch_fallback:
-              raise SystemExit("installed wheel pricing catalog failed runtime validation")
-          print(f"verified wheel import: {module_path}")
-          print("verified installed wheel pricing resource and runtime loader")
-          PY

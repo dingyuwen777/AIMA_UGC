@@ -1,14 +1,34 @@
-"""TikHub 快手 App/Web Operation 与保守 pcursor 状态。"""
+"""TikHub 快手 App 主 Operation、Web 已验证备用 Operation 与 pcursor 状态。"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 _SEARCH_PATH = "/api/v1/kuaishou/app/search_video_v2"
+_COMPREHENSIVE_SEARCH_CANDIDATE_PATH = "/api/v1/kuaishou/app/search_comprehensive"
 _DETAIL_PATH = "/api/v1/kuaishou/app/fetch_one_video"
-_COMMENTS_PATH = "/api/v1/kuaishou/web/fetch_one_video_comment"
-_SUB_COMMENTS_PATH = "/api/v1/kuaishou/web/fetch_one_video_sub_comment"
+_APP_COMMENTS_PATH = "/api/v1/kuaishou/app/fetch_video_comment"
+_APP_SUB_COMMENTS_PATH = "/api/v1/kuaishou/app/fetch_video_sub_comments"
+_WEB_COMMENTS_PATH = "/api/v1/kuaishou/web/fetch_one_video_comment"
+_WEB_SUB_COMMENTS_PATH = "/api/v1/kuaishou/web/fetch_one_video_sub_comment"
+_COMPREHENSIVE_SORT_TYPES = {
+    "general": "all",
+    "latest": "newest",
+    "most_liked": "most_likes",
+}
+_COMPREHENSIVE_PUBLISH_TIMES = {
+    "all": "all",
+    "day": "one_day",
+    "week": "one_week",
+    "month": "one_month",
+}
+_COMPREHENSIVE_DURATIONS = {
+    "all": "all",
+    "under_1m": "under_1_min",
+    "1_5m": "1_to_5_min",
+    "over_5m": "over_5_min",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +61,63 @@ class KuaishouCursorPagination:
             return cls(normalized, False, "pagination_not_advanced")
         return cls(normalized, True)
 
+    @classmethod
+    def from_response(
+        cls,
+        *,
+        previous_cursor: str,
+        body: dict[str, Any],
+        item_key: str,
+    ) -> KuaishouCursorPagination:
+        """按真实 App 主链/Web 备用链共有的 data.<item_key>/pcursor 推进分页。"""
+        data = body.get("data")
+        if not isinstance(data, dict):
+            return cls(previous_cursor, False, "response_data_unavailable")
+        items = data.get(item_key)
+        if not isinstance(items, list):
+            return cls(previous_cursor, False, "items_unavailable")
+        returned = data.get("pcursor")
+        next_cursor = str(returned).strip() if returned is not None else previous_cursor
+        if not items:
+            return cls(next_cursor, False, "empty_page")
+        if returned is None or not next_cursor:
+            return cls(previous_cursor, False, "cursor_unavailable")
+        if next_cursor == previous_cursor:
+            return cls(next_cursor, False, "pagination_not_advanced")
+        return cls(next_cursor, True)
+
+
+@dataclass(frozen=True, slots=True)
+class KuaishouSearchPagination:
+    """Search V2 按真实 data.pcursor 推进，不猜 Provider 私有终止哨兵。"""
+
+    next_cursor: str
+    should_continue: bool
+    stop_reason: str | None = None
+
+    @classmethod
+    def from_response(
+        cls,
+        *,
+        previous_cursor: str,
+        body: dict[str, Any],
+    ) -> KuaishouSearchPagination:
+        data = body.get("data")
+        if not isinstance(data, dict):
+            return cls(previous_cursor, False, "response_data_unavailable")
+        items = data.get("mixFeeds")
+        if not isinstance(items, list) or not items:
+            return cls(previous_cursor, False, "empty_page")
+        returned = data.get("pcursor")
+        if returned is None:
+            return cls(previous_cursor, False, "cursor_unavailable")
+        normalized = str(returned).strip()
+        if not normalized:
+            return cls("", False, "cursor_unavailable")
+        if normalized == previous_cursor:
+            return cls(normalized, False, "pagination_not_advanced")
+        return cls(normalized, True)
+
 
 def build_search_request(*, keyword: str, pcursor: str = "") -> KuaishouRequest:
     normalized_keyword = _required_text(keyword, "keyword")
@@ -48,6 +125,28 @@ def build_search_request(*, keyword: str, pcursor: str = "") -> KuaishouRequest:
         method="GET",
         path=_SEARCH_PATH,
         params={"keyword": normalized_keyword, "pcursor": pcursor},
+    )
+
+
+def build_comprehensive_search_candidate_request(
+    *,
+    keyword: str,
+    pcursor: str = "",
+    sort_mode: str = "general",
+    publish_time: str = "all",
+    duration: str = "all",
+) -> KuaishouRequest:
+    """构造 App 综合搜索 A/B 候选；语义含非视频对象，不能视为 Web 或视频搜索等价备用。"""
+    return KuaishouRequest(
+        method="GET",
+        path=_COMPREHENSIVE_SEARCH_CANDIDATE_PATH,
+        params={
+            "keyword": _required_text(keyword, "keyword"),
+            "pcursor": pcursor,
+            "sort_type": _choice(_COMPREHENSIVE_SORT_TYPES, sort_mode, "sort_mode"),
+            "publish_time": _choice(_COMPREHENSIVE_PUBLISH_TIMES, publish_time, "publish_time"),
+            "duration": _choice(_COMPREHENSIVE_DURATIONS, duration, "duration"),
+        },
     )
 
 
@@ -59,12 +158,40 @@ def build_video_detail_request(*, photo_id: str) -> KuaishouRequest:
     )
 
 
-def build_video_comments_request(*, photo_id: str, pcursor: str = "") -> KuaishouRequest:
+def build_app_video_comments_request(*, photo_id: str, pcursor: str = "") -> KuaishouRequest:
+    """构造已批准的 Kuaishou App 一级评论主请求。"""
     return KuaishouRequest(
         method="GET",
-        path=_COMMENTS_PATH,
+        path=_APP_COMMENTS_PATH,
         params={"photo_id": _required_text(photo_id, "photo_id"), "pcursor": pcursor},
     )
+
+
+def build_app_video_sub_comments_request(
+    *,
+    photo_id: str,
+    root_comment_id: str,
+    pcursor: str = "",
+    count: int = 8,
+) -> KuaishouRequest:
+    """构造已批准的 Kuaishou App 二级回复主请求。"""
+    if count < 1 or count > 20:
+        raise ValueError("count 必须在 1..20 之间")
+    return KuaishouRequest(
+        method="GET",
+        path=_APP_SUB_COMMENTS_PATH,
+        params={
+            "photo_id": _required_text(photo_id, "photo_id"),
+            "root_comment_id": _required_text(root_comment_id, "root_comment_id"),
+            "pcursor": pcursor,
+            "count": count,
+        },
+    )
+
+
+def build_video_comments_request(*, photo_id: str, pcursor: str = "") -> KuaishouRequest:
+    """构造当前生产主链一级评论请求；首版固定使用 App，不自动回退 Web。"""
+    return build_app_video_comments_request(photo_id=photo_id, pcursor=pcursor)
 
 
 def build_video_sub_comments_request(
@@ -72,16 +199,93 @@ def build_video_sub_comments_request(
     photo_id: str,
     root_comment_id: str,
     pcursor: str = "",
+    count: int = 8,
 ) -> KuaishouRequest:
+    """构造当前生产主链二级评论请求；首版固定使用 App，不自动回退 Web。"""
+    return build_app_video_sub_comments_request(
+        photo_id=photo_id,
+        root_comment_id=root_comment_id,
+        pcursor=pcursor,
+        count=count,
+    )
+
+
+def build_web_video_comments_request(*, photo_id: str, pcursor: str = "") -> KuaishouRequest:
+    """构造已真实验证的 Web 一级评论备用请求；生产主链不会自动调用。"""
     return KuaishouRequest(
         method="GET",
-        path=_SUB_COMMENTS_PATH,
+        path=_WEB_COMMENTS_PATH,
+        params={"photo_id": _required_text(photo_id, "photo_id"), "pcursor": pcursor},
+    )
+
+
+def build_web_video_sub_comments_request(
+    *,
+    photo_id: str,
+    root_comment_id: str,
+    pcursor: str = "",
+) -> KuaishouRequest:
+    """构造已真实验证的 Web 二级评论备用请求；生产主链不会自动调用。"""
+    return KuaishouRequest(
+        method="GET",
+        path=_WEB_SUB_COMMENTS_PATH,
         params={
             "photo_id": _required_text(photo_id, "photo_id"),
             "root_comment_id": _required_text(root_comment_id, "root_comment_id"),
             "pcursor": pcursor,
         },
     )
+
+
+def extract_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    """从真实 App Search V2 的 data.mixFeeds 提取含 feed 的业务 item。"""
+    data = body.get("data")
+    if not isinstance(data, dict):
+        return ()
+    items = data.get("mixFeeds")
+    if not isinstance(items, list):
+        return ()
+    return tuple(
+        item for item in items if isinstance(item, dict) and isinstance(item.get("feed"), dict)
+    )
+
+
+def extract_detail_item(body: dict[str, Any]) -> dict[str, Any]:
+    """从真实 App Detail 的 data.photos 提取第一条作品。"""
+    data = body.get("data")
+    photos = data.get("photos") if isinstance(data, dict) else None
+    if not isinstance(photos, list) or not photos or not isinstance(photos[0], dict):
+        raise ValueError("快手详情响应缺少非空 data.photos")
+    return photos[0]
+
+
+def extract_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    """从真实 App 主链/Web 备用链共有的 data.rootComments 提取一级评论。"""
+    data = body.get("data")
+    if not isinstance(data, dict):
+        return ()
+    items = data.get("rootComments")
+    if not isinstance(items, list):
+        return ()
+    return tuple(item for item in items if isinstance(item, dict))
+
+
+def extract_sub_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    """从真实 App 主链/Web 备用链共有的 data.subComments 提取二级评论。"""
+    data = body.get("data")
+    if not isinstance(data, dict):
+        return ()
+    items = data.get("subComments")
+    if not isinstance(items, list):
+        return ()
+    return tuple(item for item in items if isinstance(item, dict))
+
+
+def _choice(mapping: dict[str, str], value: str, field_name: str) -> str:
+    try:
+        return mapping[value]
+    except KeyError as exc:
+        raise ValueError(f"{field_name} 不支持: {value}; 可选: {', '.join(mapping)}") from exc
 
 
 def _required_text(value: str, field_name: str) -> str:
@@ -94,8 +298,18 @@ def _required_text(value: str, field_name: str) -> str:
 __all__ = [
     "KuaishouCursorPagination",
     "KuaishouRequest",
+    "KuaishouSearchPagination",
+    "build_app_video_comments_request",
+    "build_app_video_sub_comments_request",
+    "build_comprehensive_search_candidate_request",
     "build_search_request",
     "build_video_comments_request",
     "build_video_detail_request",
     "build_video_sub_comments_request",
+    "build_web_video_comments_request",
+    "build_web_video_sub_comments_request",
+    "extract_comment_items",
+    "extract_detail_item",
+    "extract_search_items",
+    "extract_sub_comment_items",
 ]

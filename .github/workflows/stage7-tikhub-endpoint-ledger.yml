@@ -1,0 +1,202 @@
+# ledger-revision: 4
+# 2026-08-16：上一轮 Douyin Search V2 曾瞬时 HTTP 400；同 endpoint 随后四组参数诊断 4/4 HTTP 200，
+# 因此不修改生产请求语义，只重跑完整五平台主链并继续严格去标识化门禁。
+name: Stage 7 TikHub Endpoint Ledger
+
+on:
+  push:
+    branches:
+      - feature/stage7-completion
+    paths:
+      - ".github/workflows/stage7-tikhub-endpoint-ledger.yml"
+      - "scripts/dev/probe_tikhub_endpoint_ledger.py"
+      - "tests/unit/collection/test_tikhub_endpoint_ledger_sanitizer.py"
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  ledger:
+    name: TikHub five-platform endpoint ledger
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/stage7-completion
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Validate locked production and probe code
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+          uv run ruff format scripts/dev/probe_tikhub_endpoint_ledger.py
+          uv run ruff check --fix scripts/dev/probe_tikhub_endpoint_ledger.py
+          uv run ruff format --check scripts/dev/probe_tikhub_endpoint_ledger.py
+          uv run ruff check scripts/dev/probe_tikhub_endpoint_ledger.py
+          uv run python -m py_compile scripts/dev/probe_tikhub_endpoint_ledger.py
+          uv run pytest \
+            tests/unit/collection/test_xhs_tikhub_operation.py \
+            tests/unit/collection/test_douyin_tikhub_operation.py \
+            tests/unit/collection/test_weibo_tikhub_operation.py \
+            tests/unit/collection/test_bilibili_tikhub_operation.py \
+            tests/unit/collection/test_kuaishou_tikhub_operation.py \
+            tests/unit/collection/test_tikhub_pricing.py \
+            tests/unit/collection/test_tikhub_transport.py \
+            tests/unit/collection/test_tikhub_endpoint_ledger_sanitizer.py \
+            -q
+
+      - name: Verify api.tikhub.io connectivity
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            --connect-timeout 10 --max-time 30 https://api.tikhub.io/openapi.json)"
+          test "${status}" = "200"
+          echo "TikHub connectivity verified: HTTP ${status}"
+
+      - name: Generate one-time RSA public key
+        shell: bash
+        run: |
+          set -euo pipefail
+          secure_dir="${RUNNER_TEMP}/tikhub-endpoint-ledger-secret"
+          mkdir -p "${secure_dir}"
+          chmod 700 "${secure_dir}"
+          openssl genpkey -quiet -algorithm RSA -pkeyopt rsa_keygen_bits:3072 \
+            -out "${secure_dir}/private.pem"
+          chmod 600 "${secure_dir}/private.pem"
+          openssl pkey -in "${secure_dir}/private.pem" -pubout \
+            -out "${secure_dir}/public.pem"
+
+      - name: Upload one-time RSA public key
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: stage7-tikhub-endpoint-ledger-public-key-${{ github.run_id }}
+          path: ${{ runner.temp }}/tikhub-endpoint-ledger-secret/public.pem
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 9
+
+      - name: Receive encrypted TikHub credential from PR body
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          secure_dir="${RUNNER_TEMP}/tikhub-endpoint-ledger-secret"
+          marker="<!-- tikhub-endpoint-ledger-ciphertext:${GITHUB_RUN_ID} -->"
+          ciphertext=""
+          for _ in $(seq 1 120); do
+            pr_body="$(curl --fail --silent --show-error \
+              --header "Authorization: Bearer ${GH_TOKEN}" \
+              --header "Accept: application/vnd.github+json" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/55" | jq -r '.body // ""')"
+            ciphertext="$(printf '%s' "${pr_body}" | jq -Rrs --arg marker "${marker}" \
+              'split($marker) | if length > 1 then .[1] | split("\n") | map(select(length > 0))[0] // "" else "" end')"
+            if [ -n "${ciphertext}" ]; then
+              break
+            fi
+            sleep 5
+          done
+          test -n "${ciphertext}"
+          test "$(( ${#ciphertext} % 4 ))" -eq 0
+          printf '%s' "${ciphertext}" | base64 --decode > "${secure_dir}/ciphertext.bin"
+          openssl pkeyutl -decrypt \
+            -inkey "${secure_dir}/private.pem" \
+            -in "${secure_dir}/ciphertext.bin" \
+            -pkeyopt rsa_padding_mode:oaep \
+            -pkeyopt rsa_oaep_md:sha256 \
+            -pkeyopt rsa_mgf1_md:sha256 \
+            -out "${secure_dir}/token"
+          chmod 600 "${secure_dir}/token"
+          token="$(cat "${secure_dir}/token")"
+          test "${#token}" -ge 16
+          echo "::add-mask::${token}"
+          rm -f "${secure_dir}/ciphertext.bin"
+
+      - name: Run bounded five-platform primary endpoint ledger
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(cat "${RUNNER_TEMP}/tikhub-endpoint-ledger-secret/token")"
+          echo "::add-mask::${token}"
+          export AIMA_TIKHUB_PROBE_TOKEN="${token}"
+          export AIMA_TIKHUB_ENDPOINT_LEDGER_APPROVED=yes
+          export AIMA_TIKHUB_PROBE_OUTPUT_DIR="${RUNNER_TEMP}/tikhub-endpoint-ledger"
+          uv run python scripts/dev/probe_tikhub_endpoint_ledger.py
+          unset AIMA_TIKHUB_PROBE_TOKEN
+
+      - name: Validate de-identification and JSON evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="${RUNNER_TEMP}/tikhub-endpoint-ledger"
+          test -s "${evidence}/manifest.json"
+          find "${evidence}" -type f -name '*.json' -print0 | while IFS= read -r -d '' file; do
+            python -m json.tool "${file}" >/dev/null
+          done
+          EVIDENCE_DIR="${evidence}" uv run python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          root = Path(os.environ["EVIDENCE_DIR"])
+          bad_domains = (
+              "douyinpic.com",
+              "douyinvod.com",
+              "hdslb.com",
+              "kuaishou.com",
+              "weibo.cn",
+              "weibo.com",
+              "xhscdn.com",
+              "xhslink.com",
+          )
+          long_digits = re.compile(r"(?<![A-Za-z0-9_-])\d{11,}(?![A-Za-z0-9_-])")
+          for path in root.rglob("*.json"):
+              text = path.read_text(encoding="utf-8")
+              lower = text.lower()
+              if any(domain in lower for domain in bad_domains):
+                  raise SystemExit(f"de-identification domain leak: {path}")
+              if "tos-cn-" in lower or "p3-sign.douyinpic" in lower:
+                  raise SystemExit(f"de-identification media resource leak: {path}")
+              if path.name == "response.sanitized.json":
+                  if "http://" in lower or "https://" in lower or '"//' in text:
+                      raise SystemExit(f"response resource URL leak: {path}")
+                  if long_digits.search(text):
+                      raise SystemExit(f"response long numeric identifier leak: {path}")
+              data = json.loads(text)
+              if path.name == "observed_paths.json":
+                  if not isinstance(data, list):
+                      raise SystemExit(f"observed_paths must be list: {path}")
+                  for item in data:
+                      if not isinstance(item, dict) or set(item) != {"path", "types"}:
+                          raise SystemExit(f"observed_paths unexpected payload: {path}")
+          print("strict endpoint-ledger de-identification checks passed")
+          PY
+          uv run python scripts/quality/scan_secrets.py
+
+      - name: Upload sanitized endpoint ledger
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: stage7-tikhub-endpoint-ledger-${{ github.run_id }}
+          path: ${{ runner.temp }}/tikhub-endpoint-ledger
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 9
+
+      - name: Remove ephemeral credential material
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "${RUNNER_TEMP}/tikhub-endpoint-ledger-secret"

@@ -1,0 +1,25 @@
+{
+  "data": {
+    "commentCount": 98,
+    "pcursor": "cursor-next",
+    "result": 1,
+    "rootComments": [
+      {
+        "authorArea": "脱敏地区",
+        "authorVerified": false,
+        "author_id": 100001,
+        "author_name": "脱敏用户",
+        "comment_id": 100002,
+        "content": "脱敏一级评论",
+        "likedCount": 7,
+        "photo_id": 100003,
+        "replyToUserName": "",
+        "reply_to": 0,
+        "timestamp": 1720000000000,
+        "type": 0,
+        "user_id": 100004
+      }
+    ],
+    "subCommentsMap": {}
+  }
+}

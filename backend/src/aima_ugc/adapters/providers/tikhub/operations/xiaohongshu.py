@@ -1,4 +1,4 @@
-"""TikHub 小红书 App V2 Operation 与分页状态。"""
+"""TikHub 小红书 App V2 主 Operation 与 App V1/Web V3 A/B 候选。"""
 
 from __future__ import annotations
 
@@ -6,6 +6,28 @@ from dataclasses import dataclass
 from typing import Any
 
 _BASE = "/api/v1/xiaohongshu/app_v2"
+_APP_V1_BASE = "/api/v1/xiaohongshu/app"
+_WEB_V3_BASE = "/api/v1/xiaohongshu/web_v3"
+_SORT_TYPES = {
+    "general": "general",
+    "latest": "time_descending",
+    "most_liked": "popularity_descending",
+    "most_commented": "comment_descending",
+    "most_collected": "collect_descending",
+    "english_preferred": "english_preferred",
+}
+_TIME_FILTERS = {
+    "all": "不限",
+    "1d": "一天内",
+    "7d": "一周内",
+    "180d": "半年内",
+}
+_NOTE_TYPES = {
+    "all": "不限",
+    "video": "视频笔记",
+    "image": "普通笔记",
+    "live": "直播笔记",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,19 +147,25 @@ def build_search_notes_request(
     *,
     keyword: str,
     page: int,
-    sort_type: str,
-    time_filter: str,
-    note_type: str = "不限",
+    sort_type: str = "general",
+    time_filter: str = "all",
+    note_type: str = "all",
     source: str = "explore_feed",
     search_id: str | None = None,
     search_session_id: str | None = None,
 ) -> XhsRequest:
+    """接受规范化业务枚举；既有 Provider 原值仍兼容。"""
+    normalized_keyword = keyword.strip()
+    if not normalized_keyword:
+        raise ValueError("keyword 不能为空")
+    if page < 1:
+        raise ValueError("page 必须从 1 开始")
     params: dict[str, object] = {
-        "keyword": keyword,
+        "keyword": normalized_keyword,
         "page": page,
-        "sort_type": sort_type,
-        "note_type": note_type,
-        "time_filter": time_filter,
+        "sort_type": _mapped_or_provider_value(_SORT_TYPES, sort_type, "sort_type"),
+        "note_type": _mapped_or_provider_value(_NOTE_TYPES, note_type, "note_type"),
+        "time_filter": _mapped_or_provider_value(_TIME_FILTERS, time_filter, "time_filter"),
         "source": source,
     }
     if search_id:
@@ -147,12 +175,70 @@ def build_search_notes_request(
     return XhsRequest(f"{_BASE}/search_notes", params)
 
 
+def build_app_v1_search_candidate_request(
+    *,
+    keyword: str,
+    page: int = 1,
+    sort_type: str = "general",
+    note_type: str = "不限",
+    time_filter: str = "不限",
+    search_id: str | None = None,
+    session_id: str | None = None,
+) -> XhsRequest:
+    """构造 App V1 Search A/B 候选；不进入默认 Capability 或自动 fallback。"""
+    normalized_keyword = keyword.strip()
+    if not normalized_keyword:
+        raise ValueError("keyword 不能为空")
+    if page < 1:
+        raise ValueError("page 必须从 1 开始")
+    params: dict[str, object] = {
+        "keyword": normalized_keyword,
+        "page": page,
+        "sort_type": sort_type,
+        "filter_note_type": note_type,
+        "filter_note_time": time_filter,
+    }
+    if search_id:
+        params["search_id"] = search_id
+    if session_id:
+        params["session_id"] = session_id
+    return XhsRequest(f"{_APP_V1_BASE}/search_notes", params)
+
+
+def build_web_v3_search_candidate_request(
+    *, keyword: str, page: int = 1, sort: str = "general", note_type: int = 0
+) -> XhsRequest:
+    """构造 Web V3 Search A/B 候选；不进入默认 Capability 或自动 fallback。"""
+    normalized_keyword = keyword.strip()
+    if not normalized_keyword:
+        raise ValueError("keyword 不能为空")
+    if page < 1:
+        raise ValueError("page 必须从 1 开始")
+    return XhsRequest(
+        f"{_WEB_V3_BASE}/fetch_search_notes",
+        {"keyword": normalized_keyword, "page": page, "sort": sort, "note_type": note_type},
+    )
+
+
 def build_image_detail_request(*, note_id: str) -> XhsRequest:
     return XhsRequest(f"{_BASE}/get_image_note_detail", {"note_id": note_id})
 
 
 def build_video_detail_request(*, note_id: str) -> XhsRequest:
     return XhsRequest(f"{_BASE}/get_video_note_detail", {"note_id": note_id})
+
+
+def build_app_v1_detail_candidate_request(*, note_id: str) -> XhsRequest:
+    """构造 App V1 笔记详情 A/B 候选。"""
+    return XhsRequest(f"{_APP_V1_BASE}/get_note_info", {"note_id": note_id})
+
+
+def build_web_v3_detail_candidate_request(*, note_id: str, xsec_token: str) -> XhsRequest:
+    """构造 Web V3 笔记详情 A/B 候选；官方接口要求显式 xsec_token。"""
+    return XhsRequest(
+        f"{_WEB_V3_BASE}/fetch_note_detail",
+        {"note_id": note_id, "xsec_token": xsec_token},
+    )
 
 
 def build_note_comments_request(
@@ -170,6 +256,26 @@ def build_note_comments_request(
     )
 
 
+def build_app_v1_comments_candidate_request(
+    *, note_id: str, start: str = "", sort_strategy: int = 1
+) -> XhsRequest:
+    """构造 App V1 一级评论 A/B 候选。"""
+    return XhsRequest(
+        f"{_APP_V1_BASE}/get_note_comments",
+        {"note_id": note_id, "start": start, "sort_strategy": sort_strategy},
+    )
+
+
+def build_web_v3_comments_candidate_request(
+    *, note_id: str, xsec_token: str, cursor: str = ""
+) -> XhsRequest:
+    """构造 Web V3 一级评论 A/B 候选；官方接口要求显式 xsec_token。"""
+    return XhsRequest(
+        f"{_WEB_V3_BASE}/fetch_note_comments",
+        {"note_id": note_id, "xsec_token": xsec_token, "cursor": cursor},
+    )
+
+
 def build_sub_comments_request(
     *, note_id: str, comment_id: str, cursor: str = "", index: int = 1
 ) -> XhsRequest:
@@ -184,6 +290,39 @@ def build_sub_comments_request(
     )
 
 
+def build_app_v1_sub_comments_candidate_request(
+    *, note_id: str, comment_id: str, start: str = ""
+) -> XhsRequest:
+    """构造 App V1 二级评论 A/B 候选。"""
+    return XhsRequest(
+        f"{_APP_V1_BASE}/get_sub_comments",
+        {"note_id": note_id, "comment_id": comment_id, "start": start},
+    )
+
+
+def build_web_v3_sub_comments_candidate_request(
+    *,
+    note_id: str,
+    root_comment_id: str,
+    xsec_token: str,
+    num: int = 10,
+    cursor: str = "",
+) -> XhsRequest:
+    """构造 Web V3 二级评论 A/B 候选；官方接口要求显式 xsec_token。"""
+    if num < 1:
+        raise ValueError("num 必须大于 0")
+    return XhsRequest(
+        f"{_WEB_V3_BASE}/fetch_sub_comments",
+        {
+            "note_id": note_id,
+            "root_comment_id": root_comment_id,
+            "xsec_token": xsec_token,
+            "num": num,
+            "cursor": cursor,
+        },
+    )
+
+
 def extract_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     """从真实 App V2 搜索响应中提取 item wrapper，不复制分页逻辑。"""
     page_data = _find_mapping(body, required_any=("items",))
@@ -191,6 +330,44 @@ def extract_search_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     if not isinstance(items, list):
         return ()
     return tuple(item for item in items if isinstance(item, dict))
+
+
+def extract_detail_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    """统一提取图文 detail 的 note_list 与视频 detail 的直接 note item。"""
+    outer = body.get("data")
+    if not isinstance(outer, dict):
+        return ()
+    items = outer.get("data")
+    if not isinstance(items, list):
+        return ()
+    extracted: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        note_list = item.get("note_list")
+        if isinstance(note_list, list):
+            extracted.extend(note for note in note_list if isinstance(note, dict))
+        elif "id" in item or "note_id" in item:
+            extracted.append(item)
+    return tuple(extracted)
+
+
+def extract_comment_items(body: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    """从真实一级/二级评论响应提取 comments。"""
+    data = _find_mapping(body, required_any=("comments",))
+    items = data.get("comments")
+    if not isinstance(items, list):
+        return ()
+    return tuple(item for item in items if isinstance(item, dict))
+
+
+def _mapped_or_provider_value(mapping: dict[str, str], value: str, field_name: str) -> str:
+    normalized = value.strip()
+    if normalized in mapping:
+        return mapping[normalized]
+    if normalized in mapping.values():
+        return normalized
+    raise ValueError(f"{field_name} 不支持: {value}; 可选: {', '.join(mapping)}")
 
 
 def _find_mapping(body: dict[str, Any], *, required_any: tuple[str, ...]) -> dict[str, Any]:

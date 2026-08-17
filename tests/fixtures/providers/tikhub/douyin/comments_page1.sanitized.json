@@ -1,0 +1,28 @@
+{
+  "data": {
+    "comments": [
+      {
+        "aweme_id": "douyin-aweme-1",
+        "cid": "douyin-comment-root-1",
+        "create_time": 1720000000,
+        "digg_count": 3,
+        "item_comment_total": 12,
+        "reply_comment_total": 2,
+        "reply_id": "0",
+        "reply_to_reply_id": "0",
+        "status": 1,
+        "text": "脱敏一级评论",
+        "user": {
+          "uid": "douyin-user-1",
+          "sec_uid": "douyin-sec-user-1",
+          "unique_id": "douyin-handle-1",
+          "nickname": "脱敏用户"
+        }
+      }
+    ],
+    "cursor": 20,
+    "has_more": 1,
+    "status_code": 0,
+    "total": 12
+  }
+}

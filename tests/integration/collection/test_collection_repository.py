@@ -108,6 +108,142 @@ def test_service_persists_run_and_scopes_bound_to_real_job(
         session.close()
 
 
+def test_repository_tracks_live_run_and_scope_lifecycle(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    session = database_runtime.new_session()
+    job_repository = PostgresJobRepository(session)
+    repository = PostgresCollectionRepository(session)
+    try:
+        with session.begin():
+            job = _enqueue_job(job_repository, key="live-lifecycle")
+            created = repository.create_queued_run(
+                job_id=job.id,
+                trigger_type="api",
+                config_snapshot={},
+                scopes=(
+                    CollectionScopeDefinition(
+                        platform="xhs",
+                        source_type="keyword_search",
+                        source_value="爱玛",
+                        operation_group="content_discovery",
+                    ),
+                ),
+            )
+
+        scope_id = created.scopes[0].id
+        with session.begin():
+            running_run = repository.start_run(created.run.id)
+            running_scope = repository.start_scope(scope_id)
+
+        assert running_run.status == "running"
+        assert running_run.started_at is not None
+        assert running_run.finished_at is None
+        assert running_scope.status == "running"
+        assert running_scope.started_at is not None
+        assert running_scope.finished_at is None
+
+        with session.begin():
+            checkpoint = repository.checkpoint_scope(
+                scope_id,
+                pagination_state={"page": 2},
+                progress=40,
+                stats={"requests": 1, "contents": 12},
+            )
+
+        assert checkpoint.status == "running"
+        assert checkpoint.pagination_state == {"page": 2}
+        assert checkpoint.progress == 40
+        assert checkpoint.stats == {"requests": 1, "contents": 12}
+
+        with session.begin():
+            finished_scope = repository.finish_scope(
+                scope_id,
+                status="succeeded",
+                stop_reason="provider_exhausted",
+                pagination_state={"page": 2},
+                stats={"requests": 1, "contents": 12},
+            )
+            finished_run = repository.finish_run(
+                created.run.id,
+                status="succeeded",
+                requested_count=1,
+                succeeded_count=1,
+                failed_count=0,
+                content_count=12,
+                comment_count=0,
+                error_summary=None,
+            )
+
+        assert finished_scope.status == "succeeded"
+        assert finished_scope.progress == 100
+        assert finished_scope.stop_reason == "provider_exhausted"
+        assert finished_scope.finished_at is not None
+        assert finished_run.status == "succeeded"
+        assert finished_run.requested_count == 1
+        assert finished_run.succeeded_count == 1
+        assert finished_run.failed_count == 0
+        assert finished_run.content_count == 12
+        assert finished_run.comment_count == 0
+        assert finished_run.finished_at is not None
+    finally:
+        session.close()
+
+
+def test_repository_rejects_invalid_lifecycle_regression(
+    database_runtime: DatabaseRuntime,
+) -> None:
+    session = database_runtime.new_session()
+    job_repository = PostgresJobRepository(session)
+    repository = PostgresCollectionRepository(session)
+    try:
+        with session.begin():
+            job = _enqueue_job(job_repository, key="invalid-lifecycle")
+            created = repository.create_queued_run(
+                job_id=job.id,
+                trigger_type="api",
+                config_snapshot={},
+                scopes=(
+                    CollectionScopeDefinition(
+                        platform="xhs",
+                        source_type="keyword_search",
+                        source_value="爱玛",
+                        operation_group="content_discovery",
+                    ),
+                ),
+            )
+            repository.start_run(created.run.id)
+            repository.start_scope(created.scopes[0].id)
+            repository.checkpoint_scope(
+                created.scopes[0].id,
+                pagination_state={"page": 2},
+                progress=60,
+                stats={},
+            )
+
+        with pytest.raises(ValueError, match="progress"), session.begin():
+            repository.checkpoint_scope(
+                created.scopes[0].id,
+                pagination_state={"page": 1},
+                progress=30,
+                stats={},
+            )
+
+        with session.begin():
+            repository.finish_scope(
+                created.scopes[0].id,
+                status="failed",
+                stop_reason="provider_error",
+                pagination_state={"page": 2},
+                stats={},
+            )
+
+        with pytest.raises(ValueError, match="terminal"), session.begin():
+            repository.start_scope(created.scopes[0].id)
+    finally:
+        session.close()
+
+
 def test_database_rejects_missing_job_and_duplicate_scope_identity(
     database_runtime: DatabaseRuntime,
 ) -> None:

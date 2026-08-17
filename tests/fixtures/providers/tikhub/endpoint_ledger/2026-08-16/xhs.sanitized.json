@@ -1,0 +1,3780 @@
+{
+  "platform": "xhs",
+  "records": [
+    {
+      "endpoint": "/api/v1/xiaohongshu/app_v2/search_notes",
+      "http_status": 200,
+      "label": "search_notes",
+      "method": "GET",
+      "planned_cost_usd": "0.010000",
+      "request": {
+        "authorization": "Bearer <redacted-secret>",
+        "body": null,
+        "method": "GET",
+        "params": {
+          "keyword": "爱玛",
+          "note_type": "普通笔记",
+          "page": 1,
+          "sort_type": "comment_descending",
+          "source": "explore_feed",
+          "time_filter": "不限"
+        },
+        "path": "/api/v1/xiaohongshu/app_v2/search_notes"
+      },
+      "request_no": 1,
+      "response": {
+        "cache_message": "<redacted-string>",
+        "cache_message_zh": "<redacted-string>",
+        "cache_url": "<redacted-string>",
+        "code": 200,
+        "data": {
+          "code": 0,
+          "data": {
+            "ai_mode_enable": false,
+            "can_cut": false,
+            "cur_cut_number": 0,
+            "dqa_authorized_user_by_shared": false,
+            "is_broad_query": true,
+            "items": [
+              {
+                "mix_track_id": "id-0002",
+                "model_type": "<redacted-string>",
+                "new_help_style": false,
+                "note": {
+                  "advanced_widgets_groups": {
+                    "groups": [
+                      {
+                        "fetch_types": [
+                          "<redacted-string>",
+                          "<redacted-string>",
+                          "<redacted-string>"
+                        ],
+                        "mode": 1
+                      },
+                      {
+                        "fetch_types": [
+                          "<redacted-string>",
+                          "<redacted-string>",
+                          "<redacted-string>"
+                        ],
+                        "mode": 0
+                      }
+                    ]
+                  },
+                  "click_score": 0,
+                  "collected": false,
+                  "collected_count": 14007,
+                  "comments_count": 21417,
+                  "corner_tag_info": [
+                    {
+                      "icon": "<redacted-string>",
+                      "location": -1,
+                      "style": 0,
+                      "text": "<redacted-string>",
+                      "text_en": "<redacted-string>",
+                      "type": "ubt_sig_token"
+                    },
+                    {
+                      "icon": "<redacted-string>",
+                      "location": 5,
+                      "style": 0,
+                      "text": "<redacted-string>",
+                      "text_en": "<redacted-string>",
+                      "type": "publish_time"
+                    }
+                  ],
+                  "cover_image_index": 0,
+                  "debug_info_str": "<redacted-string>",
+                  "desc": "<redacted-string>",
+                  "extract_text_enabled": 0,
+                  "geo_info": {
+                    "distance": "<redacted-string>"
+                  },
+                  "has_music": false,
+                  "id": "id-0004",
+                  "images_list": [
+                    {
+                      "fileid": "<redacted-string>",
+                      "height": 3000,
+                      "need_load_original_image": false,
+                      "original": "<redacted-string>",
+                      "trace_id": "id-0003",
+                      "url": "<redacted-string>",
+                      "url_size_large": "<redacted-string>",
+                      "width": 2250
+                    }
+                  ],
+                  "interaction_area": {
+                    "link": "<redacted-string>",
+                    "status": false,
+                    "text": "<redacted-string>",
+                    "type": 3
+                  },
+                  "last_update_time": 1720000000,
+                  "liked": false,
+                  "liked_count": 14845,
+                  "nice_count": 0,
+                  "niced": false,
+                  "note_attributes": [],
+                  "result_from": "<redacted-string>",
+                  "shared_count": 1152,
+                  "tag_info": {
+                    "title": "<redacted-string>",
+                    "type": "<redacted-string>"
+                  },
+                  "timestamp": 1720000000,
+                  "title": "<redacted-string>",
+                  "type": "normal",
+                  "update_time": 1720000000,
+                  "user": {
+                    "followed": false,
+                    "images": "<redacted-string>",
+                    "nickname": "<redacted-string>",
+                    "red_id": "id-0005",
+                    "red_official_verified": false,
+                    "red_official_verify_type": 0,
+                    "show_red_official_verify_icon": false,
+                    "track_duration": 0,
+                    "userid": "<redacted-string>"
+                  },
+                  "widgets_context": "<redacted-string>",
+                  "xsec_token": "<redacted-secret>"
+                }
+              },
+              {
+                "mix_track_id": "id-0006",
+                "model_type": "<redacted-string>",
+                "new_help_style": false,
+                "note": {
+                  "advanced_widgets_groups": {
+                    "groups": [
+                      {
+                        "fetch_types": [
+                          "<redacted-string>",
+                          "<redacted-string>",
+                          "<redacted-string>"
+                        ],
+                        "mode": 1
+                      },
+                      {
+                        "fetch_types": [
+                          "<redacted-string>",
+                          "<redacted-string>",
+                          "<redacted-string>"
+                        ],
+                        "mode": 0
+                      }
+                    ]
+                  },
+                  "at_user_list": [
+                    {
+                      "nickname": "<redacted-string>",
+                      "user_id": "id-0007",
+                      "user_oid": "<redacted-string>"
+                    },
+                    {
+                      "nickname": "<redacted-string>",
+                      "user_id": "id-0008",
+                      "user_oid": "<redacted-string>"
+                    }
+                  ],
+                  "click_score": 0,
+                  "collected": false,
+                  "collected_count": 2362,
+                  "comments_count": 2047,
+                  "corner_tag_info": [
+                    {
+                      "icon": "<redacted-string>",
+                      "location": -1,
+                      "style": 0,
+                      "text": "<redacted-string>",
+                      "text_en": "<redacted-string>",
+                      "type": "ubt_sig_token"
+                    },
+                    {
+                      "icon": "<redacted-string>",
+                      "location": 5,
+                      "style": 0,
+                      "text": "<redacted-string>",
+                      "text_en": "<redacted-string>",
+                      "type": "publish_time"
+                    }
+                  ],
+                  "cover_image_index": 0,
+                  "debug_info_str": "<redacted-string>",
+                  "desc": "<redacted-string>",
+                  "extract_text_enabled": 0,
+                  "geo_info": {
+                    "distance": "<redacted-string>"
+                  },
+                  "has_music": false,
+                  "id": "id-0010",
+                  "images_list": [
+                    {
+                      "fileid": "<redacted-string>",
+                      "height": 1656,
+                      "need_load_original_image": false,
+                      "original": "<redacted-string>",
+                      "trace_id": "id-0009",
+                      "url": "<redacted-string>",
+                      "url_size_large": "<redacted-string>",
+                      "width": 1242
+                    }
+                  ],
+                  "interaction_area": {
+                    "link": "<redacted-string>",
+                    "status": false,
+                    "text": "<redacted-string>",
+                    "type": 3
+                  },
+                  "last_update_time": 1720000000,
+                  "liked": false,
+                  "liked_count": 3088,
+                  "nice_count": 0,
+                  "niced": false,
+                  "note_attributes": [],
+                  "result_from": "<redacted-string>",
+                  "shared_count": 445,
+                  "tag_info": {
+                    "title": "<redacted-string>",
+                    "type": "<redacted-string>"
+                  },
+                  "timestamp": 1720000000,
+                  "title": "<redacted-string>",
+                  "type": "normal",
+                  "update_time": 1720000000,
+                  "user": {
+                    "followed": false,
+                    "images": "<redacted-string>",
+                    "nickname": "<redacted-string>",
+                    "red_id": "id-0011",
+                    "red_official_verified": false,
+                    "red_official_verify_type": 0,
+                    "show_red_official_verify_icon": false,
+                    "track_duration": 0,
+                    "userid": "<redacted-string>"
+                  },
+                  "widgets_context": "<redacted-string>",
+                  "xsec_token": "<redacted-secret>"
+                }
+              },
+              {
+                "mix_track_id": "id-0012",
+                "model_type": "<redacted-string>",
+                "new_help_style": false,
+                "note": {
+                  "advanced_widgets_groups": {
+                    "groups": [
+                      {
+                        "fetch_types": [
+                          "<redacted-string>",
+                          "<redacted-string>",
+                          "<redacted-string>"
+                        ],
+                        "mode": 1
+                      },
+                      {
+                        "fetch_types": [
+                          "<redacted-string>",
+                          "<redacted-string>",
+                          "<redacted-string>"
+                        ],
+                        "mode": 0
+                      }
+                    ]
+                  },
+                  "click_score": 0,
+                  "collected": false,
+                  "collected_count": 747,
+                  "comments_count": 1109,
+                  "corner_tag_info": [
+                    {
+                      "icon": "<redacted-string>",
+                      "location": -1,
+                      "style": 0,
+                      "text": "<redacted-string>",
+                      "text_en": "<redacted-string>",
+                      "type": "ubt_sig_token"
+                    },
+                    {
+                      "icon": "<redacted-string>",
+                      "location": 5,
+                      "style": 0,
+                      "text": "<redacted-string>",
+                      "text_en": "<redacted-string>",
+                      "type": "publish_time"
+                    }
+                  ],
+                  "cover_image_index": 0,
+                  "debug_info_str": "<redacted-string>",
+                  "desc": "<redacted-string>",
+                  "extract_text_enabled": 0,
+                  "geo_info": {
+                    "distance": "<redacted-string>"
+                  },
+                  "has_music": false,
+                  "id": "id-0014",
+                  "images_list": [
+                    {
+                      "fileid": "<redacted-string>",
+                      "height": 3000,
+                      "need_load_original_image": false,
+                      "original": "<redacted-string>",
+                      "trace_id": "id-0013",
+                      "url": "<redacted-string>",
+                      "url_size_large": "<redacted-string>",
+                      "width": 2250
+                    }
+                  ],
+                  "interaction_area": {
+                    "link": "<redacted-string>",
+                    "status": false,
+                    "text": "<redacted-string>",
+                    "type": 3
+                  },
+                  "last_update_time": 1720000000,
+                  "liked": false,
+                  "liked_count": 1196,
+                  "nice_count": 0,
+                  "niced": false,
+                  "note_attributes": [],
+                  "result_from": "<redacted-string>",
+                  "shared_count": 87,
+                  "tag_info": {
+                    "title": "<redacted-string>",
+                    "type": "<redacted-string>"
+                  },
+                  "timestamp": 1720000000,
+                  "title": "<redacted-string>",
+                  "type": "normal",
+                  "update_time": 1720000000,
+                  "user": {
+                    "followed": false,
+                    "images": "<redacted-string>",
+                    "nickname": "<redacted-string>",
+                    "red_id": "id-0005",
+                    "red_official_verified": false,
+                    "red_official_verify_type": 0,
+                    "show_red_official_verify_icon": false,
+                    "track_duration": 0,
+                    "userid": "<redacted-string>"
+                  },
+                  "widgets_context": "<redacted-string>",
+                  "xsec_token": "<redacted-secret>"
+                }
+              }
+            ],
+            "query_debug_info": {
+              "is_forbidden": false
+            },
+            "query_intent": {
+              "goodsIntent": 3,
+              "low_supply_intent": false,
+              "search_ask_intent": true
+            },
+            "query_type": 0,
+            "request_dqa": 0,
+            "request_dqa_instant": false,
+            "search_dqa_new_page_exp": 1,
+            "search_pull_down_opt_exp": 1,
+            "service_status": "<redacted-string>",
+            "show_single_col": false,
+            "strategy_info": {
+              "query_average_impression_count": 19,
+              "query_can_guide_to_feed": true
+            },
+            "taxonomy1": "<redacted-string>",
+            "video_intent_grade_v3": 1
+          },
+          "debug_id": "id-0017",
+          "debug_info": "<redacted-string>",
+          "msg": "<redacted-string>",
+          "next_page": 2,
+          "page": 1,
+          "search_id": "id-0015",
+          "search_session_id": "id-0016",
+          "success": true
+        },
+        "docs": "<redacted-string>",
+        "message": "<redacted-string>",
+        "message_zh": "<redacted-string>",
+        "params": {
+          "keyword": "爱玛",
+          "note_type": "<redacted-string>",
+          "page": "<redacted-string>",
+          "sort_type": "comment_descending",
+          "source": "<redacted-string>",
+          "time_filter": "<redacted-string>"
+        },
+        "request_id": "id-0001",
+        "router": "/api/v1/xiaohongshu/app_v2/search_notes",
+        "support": "<redacted-string>",
+        "time": "<redacted-string>",
+        "time_stamp": 1720000000,
+        "time_zone": "<redacted-string>"
+      }
+    },
+    {
+      "endpoint": "/api/v1/xiaohongshu/app_v2/get_image_note_detail",
+      "http_status": 200,
+      "label": "image_detail",
+      "method": "GET",
+      "planned_cost_usd": "0.010000",
+      "request": {
+        "authorization": "Bearer <redacted-secret>",
+        "body": null,
+        "method": "GET",
+        "params": {
+          "note_id": "id-0004"
+        },
+        "path": "/api/v1/xiaohongshu/app_v2/get_image_note_detail"
+      },
+      "request_no": 2,
+      "response": {
+        "cache_message": "<redacted-string>",
+        "cache_message_zh": "<redacted-string>",
+        "cache_url": "<redacted-string>",
+        "code": 200,
+        "data": {
+          "code": 0,
+          "data": [
+            {
+              "comment_list": [],
+              "model_type": "<redacted-string>",
+              "note_list": [
+                {
+                  "api_upgrade": -1,
+                  "ats": [],
+                  "biz_map": {},
+                  "co_produce_link": "<redacted-string>",
+                  "collected": false,
+                  "collected_count": 14007,
+                  "comment_prompt_config": {
+                    "forbidden_cmt_type": 0,
+                    "placeholder_long": "<redacted-string>",
+                    "placeholder_short": "<redacted-string>"
+                  },
+                  "comments_count": 21429,
+                  "content_trans_info": {
+                    "strategy": 9
+                  },
+                  "cooperate_binds": [],
+                  "countdown": 0,
+                  "desc": "<redacted-string>",
+                  "enable_brand_lottery": false,
+                  "enable_co_produce": true,
+                  "enable_fls_bridge_cards": false,
+                  "enable_fls_related_cards": false,
+                  "feedback_info": {
+                    "dislike_status": 0
+                  },
+                  "foot_tags": [],
+                  "function_switch": [
+                    {
+                      "enable": false,
+                      "reason": "<redacted-string>",
+                      "type": "image_download"
+                    },
+                    {
+                      "enable": true,
+                      "type": "quote_note"
+                    },
+                    {
+                      "enable": true,
+                      "type": "heat_for_author"
+                    }
+                  ],
+                  "goods_info": {},
+                  "has_co_produce": false,
+                  "has_music": false,
+                  "has_related_goods": false,
+                  "hash_tag": [
+                    {
+                      "bizId": "<redacted-string>",
+                      "current_score": 0,
+                      "id": "id-0019",
+                      "link": "<redacted-string>",
+                      "name": "<redacted-string>",
+                      "record_count": 0,
+                      "record_emoji": "<redacted-string>",
+                      "record_unit": "<redacted-string>",
+                      "tag_hint": "<redacted-string>",
+                      "type": "topic"
+                    },
+                    {
+                      "bizId": "<redacted-string>",
+                      "current_score": 0,
+                      "id": "id-0020",
+                      "link": "<redacted-string>",
+                      "name": "<redacted-string>",
+                      "record_count": 0,
+                      "record_emoji": "<redacted-string>",
+                      "record_unit": "<redacted-string>",
+                      "tag_hint": "<redacted-string>",
+                      "type": "topic"
+                    },
+                    {
+                      "bizId": "<redacted-string>",
+                      "current_score": 0,
+                      "id": "id-0021",
+                      "link": "<redacted-string>",
+                      "name": "<redacted-string>",
+                      "record_count": 0,
+                      "record_emoji": "<redacted-string>",
+                      "record_unit": "<redacted-string>",
+                      "tag_hint": "<redacted-string>",
+                      "type": "topic"
+                    }
+                  ],
+                  "head_tags": [],
+                  "id": "id-0004",
+                  "images_list": [
+                    {
+                      "file_id_trans": "<redacted-string>",
+                      "fileid": "<redacted-string>",
+                      "height": 3000,
+                      "index": 0,
+                      "latitude": 0,
+                      "longitude": 0,
+                      "need_load_original_image": true,
+                      "origin_img": {
+                        "height": 3000,
+                        "size": 0,
+                        "width": 2250
+                      },
+                      "original": "<redacted-string>",
+                      "scale_to_large": 4,
+                      "text_intention": 2,
+                      "trace_id": "id-0003",
+                      "url": "<redacted-string>",
+                      "url_multi_level": {
+                        "high": "<redacted-string>",
+                        "low": "<redacted-string>",
+                        "medium": "<redacted-string>"
+                      },
+                      "url_size_large": "<redacted-string>",
+                      "url_trans": "<redacted-string>",
+                      "width": 2250
+                    }
+                  ],
+                  "in_censor": false,
+                  "ip_location": "<redacted-string>",
+                  "last_update_time": 1720000000,
+                  "liked": false,
+                  "liked_count": 14845,
+                  "liked_users": [],
+                  "long_press_share_info": {
+                    "block_private_msg": false,
+                    "content": "<redacted-string>",
+                    "function_entries": [
+                      {
+                        "type": "image_download"
+                      }
+                    ],
+                    "guide_audited": false,
+                    "is_star": false,
+                    "show_wechat_tag": false,
+                    "title": "<redacted-string>"
+                  },
+                  "may_have_red_packet": false,
+                  "media_save_config": {
+                    "disable_save": false,
+                    "disable_watermark": false,
+                    "disable_weibo_cover": false
+                  },
+                  "mini_program_info": {
+                    "desc": "<redacted-string>",
+                    "path": "<redacted-string>",
+                    "share_title": "<redacted-string>",
+                    "thumb": "<redacted-string>",
+                    "title": "<redacted-string>",
+                    "user_name": "<redacted-string>",
+                    "webpage_url": "<redacted-string>"
+                  },
+                  "model_type": "<redacted-string>",
+                  "need_next_step": false,
+                  "need_product_review": false,
+                  "note_text_press_options": [],
+                  "pre_view_count": -1,
+                  "privacy": {
+                    "nick_names": "<redacted-string>",
+                    "show_tips": false,
+                    "type": 0
+                  },
+                  "qq_mini_program_info": {
+                    "desc": "<redacted-string>",
+                    "path": "<redacted-string>",
+                    "share_title": "<redacted-string>",
+                    "thumb": "<redacted-string>",
+                    "title": "<redacted-string>",
+                    "user_name": "<redacted-string>",
+                    "webpage_url": "<redacted-string>"
+                  },
+                  "red_envelope_note": false,
+                  "seeded": false,
+                  "seeded_count": 0,
+                  "share_code_flag": 0,
+                  "share_info": {
+                    "block_private_msg": false,
+                    "content": "<redacted-string>",
+                    "function_entries": [
+                      {
+                        "type": "generate_image"
+                      },
+                      {
+                        "type": "quote_note"
+                      },
+                      {
+                        "type": "copy_link"
+                      }
+                    ],
+                    "guide_audited": true,
+                    "image": "<redacted-string>",
+                    "is_star": false,
+                    "link": "<redacted-string>",
+                    "show_wechat_tag": false,
+                    "title": "<redacted-string>",
+                    "wechat_share_desc": "<redacted-string>"
+                  },
+                  "shared_count": 1152,
+                  "sticky": false,
+                  "text_language_code": "<redacted-string>",
+                  "time": 1785470508,
+                  "title": "<redacted-string>",
+                  "topics": [
+                    {
+                      "activity_online": false,
+                      "business_type": 0,
+                      "discuss_num": 0,
+                      "id": "id-0019",
+                      "image": "<redacted-string>",
+                      "link": "<redacted-string>",
+                      "name": "<redacted-string>",
+                      "style": 0
+                    }
+                  ],
+                  "type": "normal",
+                  "use_water_color": false,
+                  "user": {
+                    "followed": false,
+                    "fstatus": "<redacted-string>",
+                    "id": "id-0007",
+                    "image": "<redacted-string>",
+                    "level": {
+                      "image": "<redacted-string>"
+                    },
+                    "name": "<redacted-string>",
+                    "nickname": "<redacted-string>",
+                    "red_id": "id-0005",
+                    "red_official_verified": false,
+                    "red_official_verify_type": 0,
+                    "show_red_official_verify_icon": false,
+                    "track_duration": 0,
+                    "userid": "<redacted-string>"
+                  },
+                  "view_count": 0,
+                  "widgets_context": "<redacted-string>",
+                  "widgets_groups": [
+                    [
+                      "<redacted-string>",
+                      "<redacted-string>",
+                      "<redacted-string>"
+                    ],
+                    [
+                      "<redacted-string>",
+                      "<redacted-string>",
+                      "<redacted-string>"
+                    ]
+                  ]
+                }
+              ],
+              "track_id": "id-0022",
+              "user": {
+                "followed": false,
+                "fstatus": "<redacted-string>",
+                "id": "id-0007",
+                "image": "<redacted-string>",
+                "level": {
+                  "image": "<redacted-string>"
+                },
+                "name": "<redacted-string>",
+                "nickname": "<redacted-string>",
+                "red_id": "id-0005",
+                "red_official_verified": false,
+                "red_official_verify_type": 0,
+                "show_red_official_verify_icon": false,
+                "track_duration": 0,
+                "userid": "<redacted-string>"
+              }
+            }
+          ],
+          "debug_id": "id-0023",
+          "debug_info": "<redacted-string>",
+          "msg": "<redacted-string>",
+          "success": true
+        },
+        "docs": "<redacted-string>",
+        "message": "<redacted-string>",
+        "message_zh": "<redacted-string>",
+        "params": {
+          "note_id": "id-0004"
+        },
+        "request_id": "id-0018",
+        "router": "/api/v1/xiaohongshu/app_v2/get_image_note_detail",
+        "support": "<redacted-string>",
+        "time": "<redacted-string>",
+        "time_stamp": 1720000000,
+        "time_zone": "<redacted-string>"
+      }
+    },
+    {
+      "endpoint": "/api/v1/xiaohongshu/app_v2/get_note_comments",
+      "http_status": 200,
+      "label": "comments",
+      "method": "GET",
+      "planned_cost_usd": "0.010000",
+      "request": {
+        "authorization": "Bearer <redacted-secret>",
+        "body": null,
+        "method": "GET",
+        "params": {
+          "cursor": "id-0022",
+          "index": 0,
+          "note_id": "id-0004",
+          "pageArea": "UNFOLDED",
+          "sort_strategy": "latest_v2"
+        },
+        "path": "/api/v1/xiaohongshu/app_v2/get_note_comments"
+      },
+      "request_no": 3,
+      "response": {
+        "cache_message": "<redacted-string>",
+        "cache_message_zh": "<redacted-string>",
+        "cache_url": "<redacted-string>",
+        "code": 200,
+        "data": {
+          "code": 0,
+          "data": {
+            "all_sort_strategies": [
+              {
+                "optional_name": "<redacted-string>",
+                "suffix_name": "<redacted-string>",
+                "type": "default"
+              },
+              {
+                "optional_name": "<redacted-string>",
+                "suffix_name": "<redacted-string>",
+                "type": "latest_v2"
+              },
+              {
+                "optional_name": "<redacted-string>",
+                "suffix_name": "<redacted-string>",
+                "type": "like_count"
+              }
+            ],
+            "comment_count": 21429,
+            "comment_count_l1": 19352,
+            "comments": [
+              {
+                "at_users": [],
+                "biz_label": {
+                  "group_invite": "<redacted-string>",
+                  "product_review": false,
+                  "rich_text": "<redacted-string>"
+                },
+                "collected": false,
+                "comment_type": 2,
+                "content": "<redacted-string>",
+                "downvoted": false,
+                "friend_liked_msg": "<redacted-string>",
+                "hidden": false,
+                "id": "id-0027",
+                "invalid": false,
+                "ip_location": "<redacted-string>",
+                "like_count": 150,
+                "liked": false,
+                "media_source_type": 0,
+                "note_id": "id-0004",
+                "pictures": [
+                  {
+                    "box_h": 120,
+                    "box_w": 160,
+                    "file_id": "id-0022",
+                    "height": 1365,
+                    "meme_package": {
+                      "height": 749,
+                      "image_url": "<redacted-string>",
+                      "width": 1080
+                    },
+                    "origin_url": "<redacted-string>",
+                    "url": "<redacted-string>",
+                    "width": 1968
+                  }
+                ],
+                "relatable_to_note": false,
+                "score": 10000000,
+                "share_strategy": 0,
+                "show_tags": [],
+                "show_tags_v2": [
+                  {
+                    "pos": "<redacted-string>",
+                    "style_id": "id-0031",
+                    "text": "<redacted-string>",
+                    "type": "user_top"
+                  },
+                  {
+                    "pos": "<redacted-string>",
+                    "style_id": "id-0031",
+                    "text": "<redacted-string>",
+                    "type": "is_author"
+                  }
+                ],
+                "show_type": "<redacted-string>",
+                "status": 4,
+                "sub_comment_count": 125,
+                "sub_comment_cursor": "id-0026",
+                "sub_comments": [
+                  {
+                    "at_users": [],
+                    "biz_label": {
+                      "group_invite": "<redacted-string>",
+                      "product_review": false,
+                      "rich_text": "<redacted-string>"
+                    },
+                    "collected": false,
+                    "comment_type": 0,
+                    "content": "<redacted-string>",
+                    "downvoted": false,
+                    "friend_liked_msg": "<redacted-string>",
+                    "hidden": false,
+                    "id": "id-0029",
+                    "ip_location": "<redacted-string>",
+                    "like_count": 11,
+                    "liked": false,
+                    "note_id": "id-0004",
+                    "relatable_to_note": false,
+                    "score": -11,
+                    "share_strategy": 0,
+                    "show_tags": [],
+                    "show_tags_v2": [],
+                    "show_type": "<redacted-string>",
+                    "status": 0,
+                    "target_comment": {
+                      "id": "id-0027",
+                      "status": 4,
+                      "user": {
+                        "additional_tags": {},
+                        "ai_agent": false,
+                        "current_user": "<redacted-string>",
+                        "images": "<redacted-string>",
+                        "level": {
+                          "image": "<redacted-string>"
+                        },
+                        "nickname": "<redacted-string>",
+                        "red_id": "id-0005",
+                        "userid": "<redacted-string>"
+                      }
+                    },
+                    "time": 1785475252,
+                    "translation_strategy": 9,
+                    "user": {
+                      "additional_tags": {},
+                      "ai_agent": false,
+                      "current_user": "<redacted-string>",
+                      "images": "<redacted-string>",
+                      "level": {
+                        "image": "<redacted-string>"
+                      },
+                      "nickname": "<redacted-string>",
+                      "red_id": "id-0028",
+                      "userid": "<redacted-string>"
+                    }
+                  }
+                ],
+                "time": 1785473196,
+                "track_id": "id-0030",
+                "translation_strategy": 9,
+                "user": {
+                  "additional_tags": {},
+                  "ai_agent": false,
+                  "current_user": "<redacted-string>",
+                  "images": "<redacted-string>",
+                  "level": {
+                    "image": "<redacted-string>"
+                  },
+                  "nickname": "<redacted-string>",
+                  "red_id": "id-0005",
+                  "userid": "<redacted-string>"
+                }
+              },
+              {
+                "at_users": [],
+                "biz_label": {
+                  "group_invite": "<redacted-string>",
+                  "product_review": false,
+                  "rich_text": "<redacted-string>"
+                },
+                "collected": false,
+                "comment_type": 0,
+                "content": "<redacted-string>",
+                "downvoted": false,
+                "friend_liked_msg": "<redacted-string>",
+                "hidden": false,
+                "id": "id-0033",
+                "invalid": false,
+                "ip_location": "<redacted-string>",
+                "like_count": 0,
+                "liked": false,
+                "note_id": "id-0004",
+                "relatable_to_note": false,
+                "score": 0,
+                "share_strategy": 0,
+                "show_tags": [],
+                "show_tags_v2": [],
+                "show_type": "<redacted-string>",
+                "status": 0,
+                "sub_comment_count": 0,
+                "sub_comments": [],
+                "time": 1786892620,
+                "track_id": "id-0030",
+                "translation_strategy": 9,
+                "user": {
+                  "additional_tags": {},
+                  "ai_agent": false,
+                  "current_user": "<redacted-string>",
+                  "images": "<redacted-string>",
+                  "level": {
+                    "image": "<redacted-string>"
+                  },
+                  "nickname": "<redacted-string>",
+                  "red_id": "id-0032",
+                  "userid": "<redacted-string>"
+                }
+              },
+              {
+                "at_users": [],
+                "biz_label": {
+                  "group_invite": "<redacted-string>",
+                  "product_review": false,
+                  "rich_text": "<redacted-string>"
+                },
+                "collected": false,
+                "comment_type": 0,
+                "content": "<redacted-string>",
+                "downvoted": false,
+                "friend_liked_msg": "<redacted-string>",
+                "hidden": false,
+                "id": "id-0034",
+                "invalid": false,
+                "ip_location": "<redacted-string>",
+                "like_count": 0,
+                "liked": false,
+                "note_id": "id-0004",
+                "relatable_to_note": false,
+                "score": 0,
+                "share_strategy": 0,
+                "show_tags": [],
+                "show_tags_v2": [],
+                "show_type": "<redacted-string>",
+                "status": 0,
+                "sub_comment_count": 0,
+                "sub_comments": [],
+                "time": 1786892615,
+                "track_id": "id-0030",
+                "translation_strategy": 9,
+                "user": {
+                  "additional_tags": {},
+                  "ai_agent": false,
+                  "current_user": "<redacted-string>",
+                  "images": "<redacted-string>",
+                  "level": {
+                    "image": "<redacted-string>"
+                  },
+                  "nickname": "<redacted-string>",
+                  "red_id": "id-0032",
+                  "userid": "<redacted-string>"
+                }
+              }
+            ],
+            "current_sort_strategy": "<redacted-string>",
+            "cursor": "id-0025",
+            "has_more": true,
+            "page_context": "<redacted-string>",
+            "user_id": "id-0007"
+          },
+          "debug_id": "id-0035",
+          "debug_info": "<redacted-string>",
+          "msg": "<redacted-string>",
+          "success": true
+        },
+        "docs": "<redacted-string>",
+        "message": "<redacted-string>",
+        "message_zh": "<redacted-string>",
+        "params": {
+          "cursor": "id-0022",
+          "index": "<redacted-string>",
+          "note_id": "id-0004",
+          "pageArea": "<redacted-string>",
+          "sort_strategy": "<redacted-string>"
+        },
+        "request_id": "id-0024",
+        "router": "/api/v1/xiaohongshu/app_v2/get_note_comments",
+        "support": "<redacted-string>",
+        "time": "<redacted-string>",
+        "time_stamp": 1720000000,
+        "time_zone": "<redacted-string>"
+      }
+    },
+    {
+      "endpoint": "/api/v1/xiaohongshu/app_v2/get_note_sub_comments",
+      "http_status": 200,
+      "label": "sub_comments",
+      "method": "GET",
+      "planned_cost_usd": "0.010000",
+      "request": {
+        "authorization": "Bearer <redacted-secret>",
+        "body": null,
+        "method": "GET",
+        "params": {
+          "comment_id": "id-0027",
+          "cursor": "id-0022",
+          "index": 1,
+          "note_id": "id-0004"
+        },
+        "path": "/api/v1/xiaohongshu/app_v2/get_note_sub_comments"
+      },
+      "request_no": 4,
+      "response": {
+        "cache_message": "<redacted-string>",
+        "cache_message_zh": "<redacted-string>",
+        "cache_url": "<redacted-string>",
+        "code": 200,
+        "data": {
+          "code": 0,
+          "data": {
+            "comments": [
+              {
+                "at_users": [],
+                "biz_label": {
+                  "group_invite": "<redacted-string>",
+                  "product_review": false,
+                  "rich_text": "<redacted-string>"
+                },
+                "collected": false,
+                "comment_type": 0,
+                "content": "<redacted-string>",
+                "downvoted": false,
+                "friend_liked_msg": "<redacted-string>",
+                "hidden": false,
+                "id": "id-0029",
+                "ip_location": "<redacted-string>",
+                "like_count": 11,
+                "liked": false,
+                "note_id": "id-0004",
+                "relatable_to_note": false,
+                "score": 0,
+                "share_strategy": 0,
+                "show_tags": [],
+                "show_tags_v2": [],
+                "show_type": "<redacted-string>",
+                "status": 0,
+                "target_comment": {
+                  "id": "id-0027",
+                  "status": 4,
+                  "user": {
+                    "additional_tags": {},
+                    "ai_agent": false,
+                    "current_user": "<redacted-string>",
+                    "images": "<redacted-string>",
+                    "level": {
+                      "image": "<redacted-string>"
+                    },
+                    "nickname": "<redacted-string>",
+                    "red_id": "id-0005",
+                    "userid": "<redacted-string>"
+                  }
+                },
+                "time": 1785475252,
+                "translation_strategy": 9,
+                "user": {
+                  "additional_tags": {},
+                  "ai_agent": false,
+                  "current_user": "<redacted-string>",
+                  "images": "<redacted-string>",
+                  "level": {
+                    "image": "<redacted-string>"
+                  },
+                  "nickname": "<redacted-string>",
+                  "red_id": "id-0028",
+                  "userid": "<redacted-string>"
+                }
+              },
+              {
+                "at_users": [],
+                "biz_label": {
+                  "group_invite": "<redacted-string>",
+                  "product_review": false,
+                  "rich_text": "<redacted-string>"
+                },
+                "collected": false,
+                "comment_type": 0,
+                "content": "<redacted-string>",
+                "downvoted": false,
+                "friend_liked_msg": "<redacted-string>",
+                "hash_tags": [
+                  {
+                    "disable_jump": false,
+                    "link": "<redacted-string>",
+                    "name": "<redacted-string>",
+                    "type": "<redacted-string>"
+                  }
+                ],
+                "hidden": false,
+                "id": "id-0038",
+                "ip_location": "<redacted-string>",
+                "like_count": 12,
+                "liked": false,
+                "note_id": "id-0004",
+                "relatable_to_note": false,
+                "score": 0,
+                "share_strategy": 0,
+                "show_tags": [],
+                "show_tags_v2": [
+                  {
+                    "pos": "<redacted-string>",
+                    "style_id": "id-0031",
+                    "text": "<redacted-string>",
+                    "type": "is_author"
+                  }
+                ],
+                "show_type": "<redacted-string>",
+                "status": 0,
+                "target_comment": {
+                  "id": "id-0029",
+                  "status": 0,
+                  "user": {
+                    "additional_tags": {},
+                    "ai_agent": false,
+                    "current_user": "<redacted-string>",
+                    "images": "<redacted-string>",
+                    "level": {
+                      "image": "<redacted-string>"
+                    },
+                    "nickname": "<redacted-string>",
+                    "red_id": "id-0028",
+                    "userid": "<redacted-string>"
+                  }
+                },
+                "time": 1785475464,
+                "translation_strategy": 9,
+                "user": {
+                  "additional_tags": {},
+                  "ai_agent": false,
+                  "current_user": "<redacted-string>",
+                  "images": "<redacted-string>",
+                  "level": {
+                    "image": "<redacted-string>"
+                  },
+                  "nickname": "<redacted-string>",
+                  "red_id": "id-0005",
+                  "userid": "<redacted-string>"
+                }
+              },
+              {
+                "at_users": [],
+                "biz_label": {
+                  "group_invite": "<redacted-string>",
+                  "product_review": false,
+                  "rich_text": "<redacted-string>"
+                },
+                "collected": false,
+                "comment_type": 0,
+                "content": "<redacted-string>",
+                "downvoted": false,
+                "friend_liked_msg": "<redacted-string>",
+                "hash_tags": [
+                  {
+                    "disable_jump": false,
+                    "link": "<redacted-string>",
+                    "name": "<redacted-string>",
+                    "type": "<redacted-string>"
+                  }
+                ],
+                "hidden": false,
+                "id": "id-0040",
+                "ip_location": "<redacted-string>",
+                "like_count": 1,
+                "liked": false,
+                "note_id": "id-0004",
+                "relatable_to_note": false,
+                "score": 0,
+                "share_strategy": 0,
+                "show_tags": [],
+                "show_tags_v2": [],
+                "show_type": "<redacted-string>",
+                "status": 0,
+                "target_comment": {
+                  "id": "id-0038",
+                  "status": 0,
+                  "user": {
+                    "additional_tags": {},
+                    "ai_agent": false,
+                    "current_user": "<redacted-string>",
+                    "images": "<redacted-string>",
+                    "level": {
+                      "image": "<redacted-string>"
+                    },
+                    "nickname": "<redacted-string>",
+                    "red_id": "id-0005",
+                    "userid": "<redacted-string>"
+                  }
+                },
+                "time": 1785478620,
+                "translation_strategy": 9,
+                "user": {
+                  "additional_tags": {},
+                  "ai_agent": false,
+                  "current_user": "<redacted-string>",
+                  "images": "<redacted-string>",
+                  "level": {
+                    "image": "<redacted-string>"
+                  },
+                  "nickname": "<redacted-string>",
+                  "red_id": "id-0039",
+                  "userid": "<redacted-string>"
+                }
+              }
+            ],
+            "cursor": "id-0037",
+            "has_more": true,
+            "page_context": "<redacted-string>"
+          },
+          "debug_id": "id-0041",
+          "debug_info": "<redacted-string>",
+          "msg": "<redacted-string>",
+          "success": true
+        },
+        "docs": "<redacted-string>",
+        "message": "<redacted-string>",
+        "message_zh": "<redacted-string>",
+        "params": {
+          "comment_id": "id-0027",
+          "cursor": "id-0022",
+          "index": "<redacted-string>",
+          "note_id": "id-0004"
+        },
+        "request_id": "id-0036",
+        "router": "/api/v1/xiaohongshu/app_v2/get_note_sub_comments",
+        "support": "<redacted-string>",
+        "time": "<redacted-string>",
+        "time_stamp": 1720000000,
+        "time_zone": "<redacted-string>"
+      }
+    },
+    {
+      "endpoint": "/api/v1/xiaohongshu/app_v2/search_notes",
+      "http_status": 200,
+      "label": "search_notes_video_supporting",
+      "method": "GET",
+      "planned_cost_usd": "0.010000",
+      "request": {
+        "authorization": "Bearer <redacted-secret>",
+        "body": null,
+        "method": "GET",
+        "params": {
+          "keyword": "爱玛",
+          "note_type": "视频笔记",
+          "page": 1,
+          "sort_type": "general",
+          "source": "explore_feed",
+          "time_filter": "不限"
+        },
+        "path": "/api/v1/xiaohongshu/app_v2/search_notes"
+      },
+      "request_no": 5,
+      "response": {
+        "cache_message": "<redacted-string>",
+        "cache_message_zh": "<redacted-string>",
+        "cache_url": "<redacted-string>",
+        "code": 200,
+        "data": {
+          "code": 0,
+          "data": {
+            "ai_mode_enable": false,
+            "can_cut": false,
+            "cur_cut_number": 0,
+            "dqa_authorized_user_by_shared": false,
+            "is_broad_query": true,
+            "items": [
+              {
+                "mix_track_id": "id-0043",
+                "model_type": "<redacted-string>",
+                "new_help_style": false,
+                "note": {
+                  "advanced_widgets_groups": {
+                    "groups": [
+                      {
+                        "fetch_types": [
+                          "<redacted-string>",
+                          "<redacted-string>",
+                          "<redacted-string>"
+                        ],
+                        "mode": 1
+                      },
+                      {
+                        "fetch_types": [
+                          "<redacted-string>",
+                          "<redacted-string>",
+                          "<redacted-string>"
+                        ],
+                        "mode": 0
+                      }
+                    ]
+                  },
+                  "click_score": 0.121437,
+                  "collected": false,
+                  "collected_count": 5,
+                  "comments_count": 1,
+                  "corner_tag_info": [
+                    {
+                      "icon": "<redacted-string>",
+                      "location": -1,
+                      "style": 0,
+                      "text": "<redacted-string>",
+                      "text_en": "<redacted-string>",
+                      "type": "ubt_sig_token"
+                    },
+                    {
+                      "icon": "<redacted-string>",
+                      "location": 5,
+                      "style": 0,
+                      "text": "<redacted-string>",
+                      "text_en": "<redacted-string>",
+                      "type": "publish_time"
+                    }
+                  ],
+                  "cover_image_index": 0,
+                  "debug_info_str": "<redacted-string>",
+                  "desc": "<redacted-string>",
+                  "extract_text_enabled": 0,
+                  "geo_info": {
+                    "distance": "<redacted-string>"
+                  },
+                  "has_music": false,
+                  "id": "id-0044",
+                  "images_list": [
+                    {
+                      "fileid": "<redacted-string>",
+                      "height": 1920,
+                      "need_load_original_image": false,
+                      "original": "<redacted-string>",
+                      "trace_id": "id-0054",
+                      "url": "<redacted-string>",
+                      "url_size_large": "<redacted-string>",
+                      "width": 1080
+                    }
+                  ],
+                  "interaction_area": {
+                    "status": false,
+                    "text": "<redacted-string>",
+                    "type": 1
+                  },
+                  "last_update_time": 1720000000,
+                  "liked": false,
+                  "liked_count": 35,
+                  "nice_count": 0,
+                  "niced": false,
+                  "note_attributes": [],
+                  "result_from": "<redacted-string>",
+                  "shared_count": 21,
+                  "tag_info": {
+                    "title": "<redacted-string>",
+                    "type": "<redacted-string>"
+                  },
+                  "timestamp": 1720000000,
+                  "title": "<redacted-string>",
+                  "type": "video",
+                  "update_time": 1720000000,
+                  "user": {
+                    "followed": false,
+                    "images": "<redacted-string>",
+                    "nickname": "<redacted-string>",
+                    "red_id": "id-0045",
+                    "red_official_verified": false,
+                    "red_official_verify_type": 0,
+                    "show_red_official_verify_icon": false,
+                    "track_duration": 0,
+                    "userid": "<redacted-string>"
+                  },
+                  "video_duration": "<redacted-string>",
+                  "video_info_v2": {
+                    "capa": {
+                      "duration": 13,
+                      "frame_ts": 0,
+                      "is_upload": false,
+                      "is_user_select": false
+                    },
+                    "consumer": {
+                      "can_super_resolution": false
+                    },
+                    "image": {
+                      "thumbnail": "<redacted-string>",
+                      "thumbnail_dim": "<redacted-string>"
+                    },
+                    "media": {
+                      "stream": {
+                        "av1": [],
+                        "h264": [
+                          {
+                            "audio_bitrate": 56681,
+                            "audio_channels": 2,
+                            "audio_codec": "<redacted-string>",
+                            "audio_duration": 13860,
+                            "avg_bitrate": 4949466,
+                            "backup_urls": [
+                              "<redacted-string>",
+                              "<redacted-string>"
+                            ],
+                            "default_stream": 0,
+                            "duration": 13900,
+                            "format": "mp4",
+                            "fps": 30,
+                            "hdr_type": 0,
+                            "height": 1280,
+                            "master_url": "<redacted-string>",
+                            "opaque1": {
+                              "didLoudnorm": "<redacted-string>",
+                              "pcdn_302_flag": "<redacted-string>",
+                              "pcdn_supplier": "<redacted-string>",
+                              "use_pcdn": "<redacted-string>"
+                            },
+                            "psnr": 0,
+                            "quality_type": "<redacted-string>",
+                            "rotate": 0,
+                            "size": 8599698,
+                            "sr": 0,
+                            "ssim": 0,
+                            "stream_desc": "<redacted-string>",
+                            "stream_type": 258,
+                            "video_bitrate": 4885279,
+                            "video_codec": "<redacted-string>",
+                            "video_duration": 13900,
+                            "vmaf": -1,
+                            "volume": 0,
+                            "weight": 45,
+                            "width": 720
+                          }
+                        ],
+                        "h265": [
+                          {
+                            "audio_bitrate": 125166,
+                            "audio_channels": 2,
+                            "audio_codec": "<redacted-string>",
+                            "audio_duration": 13860,
+                            "avg_bitrate": 1257655,
+                            "backup_urls": [
+                              "<redacted-string>",
+                              "<redacted-string>"
+                            ],
+                            "default_stream": 1,
+                            "duration": 13860,
+                            "format": "mp4",
+                            "fps": 60,
+                            "hdr_type": 0,
+                            "height": 1280,
+                            "master_url": "<redacted-string>",
+                            "opaque1": {
+                              "didLoudnorm": "<redacted-string>",
+                              "pcdn_302_flag": "<redacted-string>",
+                              "pcdn_supplier": "<redacted-string>",
+                              "roiWeight": "id-0049",
+                              "roi_info": "id-0048",
+                              "use_pcdn": "<redacted-string>"
+                            },
+                            "psnr": 34.450001,
+                            "quality_type": "<redacted-string>",
+                            "rotate": 0,
+                            "size": 2178888,
+                            "sr": 0,
+                            "ssim": 0,
+                            "stream_desc": "<redacted-string>",
+                            "stream_type": 178,
+                            "video_bitrate": 1119213,
+                            "video_codec": "<redacted-string>",
+                            "video_duration": 13850,
+                            "vmaf": -1,
+                            "volume": 0,
+                            "weight": 46,
+                            "width": 720
+                          },
+                          {
+                            "audio_bitrate": 125166,
+                            "audio_channels": 2,
+                            "audio_codec": "<redacted-string>",
+                            "audio_duration": 13860,
+                            "avg_bitrate": 2091913,
+                            "backup_urls": [
+                              "<redacted-string>",
+                              "<redacted-string>"
+                            ],
+                            "default_stream": 0,
+                            "duration": 13860,
+                            "format": "mp4",
+                            "fps": 60,
+                            "hdr_type": 0,
+                            "height": 1920,
+                            "master_url": "<redacted-string>",
+                            "opaque1": {
+                              "didLoudnorm": "<redacted-string>",
+                              "pcdn_302_flag": "<redacted-string>",
+                              "pcdn_supplier": "<redacted-string>",
+                              "roiWeight": "id-0051",
+                              "roi_info": "id-0050",
+                              "use_pcdn": "<redacted-string>"
+                            },
+                            "psnr": 34.803001,
+                            "quality_type": "<redacted-string>",
+                            "rotate": 0,
+                            "size": 3624240,
+                            "sr": 0,
+                            "ssim": 0,
+                            "stream_desc": "<redacted-string>",
+                            "stream_type": 179,
+                            "video_bitrate": 1954073,
+                            "video_codec": "<redacted-string>",
+                            "video_duration": 13850,
+                            "vmaf": -1,
+                            "volume": 0,
+                            "weight": 47,
+                            "width": 1080
+                          },
+                          {
+                            "audio_bitrate": 125166,
+                            "audio_channels": 2,
+                            "audio_codec": "<redacted-string>",
+                            "audio_duration": 13860,
+                            "avg_bitrate": 3159822,
+                            "backup_urls": [
+                              "<redacted-string>",
+                              "<redacted-string>"
+                            ],
+                            "default_stream": 0,
+                            "duration": 13860,
+                            "format": "mp4",
+                            "fps": 60,
+                            "hdr_type": 0,
+                            "height": 1920,
+                            "master_url": "<redacted-string>",
+                            "opaque1": {
+                              "didLoudnorm": "<redacted-string>",
+                              "pcdn_302_flag": "<redacted-string>",
+                              "pcdn_supplier": "<redacted-string>",
+                              "roiWeight": "id-0053",
+                              "roi_info": "id-0052",
+                              "use_pcdn": "<redacted-string>"
+                            },
+                            "psnr": 35.897999,
+                            "quality_type": "<redacted-string>",
+                            "rotate": 0,
+                            "size": 5474393,
+                            "sr": 0,
+                            "ssim": 0,
+                            "stream_desc": "<redacted-string>",
+                            "stream_type": 250,
+                            "video_bitrate": 3022754,
+                            "video_codec": "<redacted-string>",
+                            "video_duration": 13850,
+                            "vmaf": -1,
+                            "volume": 0,
+                            "weight": 48,
+                            "width": 1080
+                          }
+                        ],
+                        "h266": []
+                      },
+                      "user_level": 0,
+                      "video": {
+                        "biz_id": "id-0046",
+                        "biz_name": 110,
+                        "bound": [
+                          {
+                            "h": 0,
+                            "w": 0,
+                            "x": 0,
+                            "y": 0
+                          }
+                        ],
+                        "drm_type": 0,
+                        "duration": 14,
+                        "hdr_type": 1,
+                        "height": 3840,
+                        "md5": "<redacted-string>",
+                        "opaque1": {
+                          "amend": "<redacted-string>",
+                          "amend_2k": "<redacted-string>",
+                          "amend_4k": "<redacted-string>",
+                          "amend_mobile": "<redacted-string>",
+                          "audioClsInfo": "id-0047",
+                          "audioLevInfo": "<redacted-string>",
+                          "bottomAvgLuma": "<redacted-string>",
+                          "default_screencast_stream": "<redacted-string>",
+                          "domestic": "<redacted-string>",
+                          "hasHumanVoice": "<redacted-string>",
+                          "hd_screencast_stream": "<redacted-string>",
+                          "isSupportSubtitle": "<redacted-string>",
+                          "loudnorm": "<redacted-string>",
+                          "rightAvgLuma": "<redacted-string>",
+                          "topAvgLuma": "<redacted-string>",
+                          "weakNetUserFlag": "<redacted-string>"
+                        },
+                        "stream_types": [
+                          258,
+                          178,
+                          179
+                        ],
+                        "width": 2160
+                      },
+                      "video_id": 100001
+                    }
+                  },
+                  "widgets_context": "<redacted-string>",
+                  "xsec_token": "<redacted-secret>"
+                }
+              },
+              {
+                "mix_track_id": "id-0055",
+                "model_type": "<redacted-string>",
+                "new_help_style": false,
+                "note": {
+                  "advanced_widgets_groups": {
+                    "groups": [
+                      {
+                        "fetch_types": [
+                          "<redacted-string>",
+                          "<redacted-string>",
+                          "<redacted-string>"
+                        ],
+                        "mode": 1
+                      },
+                      {
+                        "fetch_types": [
+                          "<redacted-string>",
+                          "<redacted-string>",
+                          "<redacted-string>"
+                        ],
+                        "mode": 0
+                      }
+                    ]
+                  },
+                  "click_score": 0.052611,
+                  "collected": false,
+                  "collected_count": 7,
+                  "comments_count": 9,
+                  "corner_tag_info": [
+                    {
+                      "icon": "<redacted-string>",
+                      "location": -1,
+                      "style": 0,
+                      "text": "<redacted-string>",
+                      "text_en": "<redacted-string>",
+                      "type": "ubt_sig_token"
+                    },
+                    {
+                      "icon": "<redacted-string>",
+                      "location": 5,
+                      "style": 0,
+                      "text": "<redacted-string>",
+                      "text_en": "<redacted-string>",
+                      "type": "publish_time"
+                    }
+                  ],
+                  "cover_image_index": 0,
+                  "debug_info_str": "<redacted-string>",
+                  "desc": "<redacted-string>",
+                  "extract_text_enabled": 0,
+                  "geo_info": {
+                    "distance": "<redacted-string>"
+                  },
+                  "has_music": false,
+                  "id": "id-0056",
+                  "images_list": [
+                    {
+                      "fileid": "<redacted-string>",
+                      "height": 1440,
+                      "need_load_original_image": false,
+                      "original": "<redacted-string>",
+                      "trace_id": "id-0063",
+                      "url": "<redacted-string>",
+                      "url_size_large": "<redacted-string>",
+                      "width": 1080
+                    }
+                  ],
+                  "interaction_area": {
+                    "status": false,
+                    "text": "<redacted-string>",
+                    "type": 1
+                  },
+                  "last_update_time": 1720000000,
+                  "liked": false,
+                  "liked_count": 11,
+                  "nice_count": 0,
+                  "niced": false,
+                  "note_attributes": [],
+                  "result_from": "<redacted-string>",
+                  "shared_count": 3,
+                  "tag_info": {
+                    "title": "<redacted-string>",
+                    "type": "<redacted-string>"
+                  },
+                  "timestamp": 1720000000,
+                  "title": "<redacted-string>",
+                  "type": "video",
+                  "update_time": 1720000000,
+                  "user": {
+                    "followed": false,
+                    "images": "<redacted-string>",
+                    "nickname": "<redacted-string>",
+                    "red_id": "id-0057",
+                    "red_official_verified": false,
+                    "red_official_verify_type": 0,
+                    "show_red_official_verify_icon": false,
+                    "track_duration": 0,
+                    "userid": "<redacted-string>"
+                  },
+                  "video_duration": "<redacted-string>",
+                  "video_info_v2": {
+                    "capa": {
+                      "duration": 19,
+                      "frame_ts": 0,
+                      "is_upload": false,
+                      "is_user_select": false
+                    },
+                    "consumer": {
+                      "can_super_resolution": false
+                    },
+                    "image": {
+                      "first_frame": "<redacted-string>",
+                      "thumbnail": "<redacted-string>",
+                      "thumbnail_dim": "<redacted-string>"
+                    },
+                    "media": {
+                      "stream": {
+                        "av1": [],
+                        "h264": [
+                          {
+                            "audio_bitrate": 56440,
+                            "audio_channels": 2,
+                            "audio_codec": "<redacted-string>",
+                            "audio_duration": 19132,
+                            "avg_bitrate": 4849781,
+                            "backup_urls": [
+                              "<redacted-string>",
+                              "<redacted-string>"
+                            ],
+                            "default_stream": 0,
+                            "duration": 19134,
+                            "format": "mp4",
+                            "fps": 30,
+                            "hdr_type": 0,
+                            "height": 1280,
+                            "master_url": "<redacted-string>",
+                            "opaque1": {
+                              "didLoudnorm": "<redacted-string>",
+                              "pcdn_302_flag": "<redacted-string>",
+                              "pcdn_supplier": "<redacted-string>",
+                              "use_pcdn": "<redacted-string>"
+                            },
+                            "psnr": 0,
+                            "quality_type": "<redacted-string>",
+                            "rotate": 0,
+                            "size": 11599466,
+                            "sr": 0,
+                            "ssim": 0,
+                            "stream_desc": "<redacted-string>",
+                            "stream_type": 258,
+                            "video_bitrate": 4786154,
+                            "video_codec": "<redacted-string>",
+                            "video_duration": 19133,
+                            "vmaf": -1,
+                            "volume": 0,
+                            "weight": 48,
+                            "width": 720
+                          }
+                        ],
+                        "h265": [
+                          {
+                            "audio_bitrate": 56440,
+                            "audio_channels": 2,
+                            "audio_codec": "<redacted-string>",
+                            "audio_duration": 19132,
+                            "avg_bitrate": 2006587,
+                            "backup_urls": [
+                              "<redacted-string>",
+                              "<redacted-string>"
+                            ],
+                            "default_stream": 1,
+                            "duration": 19134,
+                            "format": "mp4",
+                            "fps": 30,
+                            "hdr_type": 0,
+                            "height": 1280,
+                            "master_url": "<redacted-string>",
+                            "opaque1": {
+                              "didLoudnorm": "<redacted-string>",
+                              "pcdn_302_flag": "<redacted-string>",
+                              "pcdn_supplier": "<redacted-string>",
+                              "roiWeight": "id-0061",
+                              "roi_info": "id-0060",
+                              "use_pcdn": "<redacted-string>"
+                            },
+                            "psnr": 35.089001,
+                            "quality_type": "<redacted-string>",
+                            "rotate": 0,
+                            "size": 4799256,
+                            "sr": 0,
+                            "ssim": 0,
+                            "stream_desc": "<redacted-string>",
+                            "stream_type": 34,
+                            "video_bitrate": 1942945,
+                            "video_codec": "<redacted-string>",
+                            "video_duration": 19133,
+                            "vmaf": -1,
+                            "volume": 0,
+                            "weight": 49,
+                            "width": 720
+                          },
+                          {
+                            "audio_bitrate": 96000,
+                            "audio_channels": 2,
+                            "audio_codec": "<redacted-string>",
+                            "audio_duration": 19133,
+                            "avg_bitrate": 2111492,
+                            "backup_urls": [
+                              "<redacted-string>",
+                              "<redacted-string>"
+                            ],
+                            "default_stream": 0,
+                            "duration": 19134,
+                            "format": "mp4",
+                            "fps": 30,
+                            "hdr_type": 0,
+                            "height": 1920,
+                            "master_url": "<redacted-string>",
+                            "opaque1": {
+                              "didLoudnorm": "<redacted-string>",
+                              "pcdn_302_flag": "<redacted-string>",
+                              "pcdn_supplier": "<redacted-string>",
+                              "roiWeight": "id-0062",
+                              "roi_info": "<redacted-string>",
+                              "use_pcdn": "<redacted-string>"
+                            },
+                            "psnr": 34.213001,
+                            "quality_type": "<redacted-string>",
+                            "rotate": 0,
+                            "size": 5050162,
+                            "sr": 0,
+                            "ssim": 0,
+                            "stream_desc": "<redacted-string>",
+                            "stream_type": 301,
+                            "video_bitrate": 2008319,
+                            "video_codec": "<redacted-string>",
+                            "video_duration": 19133,
+                            "vmaf": -1,
+                            "volume": 0,
+                            "weight": 50,
+                            "width": 1080
+                          }
+                        ],
+                        "h266": []
+                      },
+                      "user_level": 0,
+                      "video": {
+                        "biz_id": "id-0058",
+                        "biz_name": 110,
+                        "bound": [
+                          {
+                            "h": 0,
+                            "w": 0,
+                            "x": 0,
+                            "y": 0
+                          }
+                        ],
+                        "drm_type": 0,
+                        "duration": 20,
+                        "hdr_type": 0,
+                        "height": 1920,
+                        "md5": "<redacted-string>",
+                        "opaque1": {
+                          "amend": "<redacted-string>",
+                          "amend_2k": "<redacted-string>",
+                          "amend_4k": "<redacted-string>",
+                          "amend_mobile": "<redacted-string>",
+                          "audioClsInfo": "id-0059",
+                          "audioLevInfo": "<redacted-string>",
+                          "bottomAvgLuma": "<redacted-string>",
+                          "default_screencast_stream": "<redacted-string>",
+                          "domestic": "<redacted-string>",
+                          "hasHumanVoice": "<redacted-string>",
+                          "hd_screencast_stream": "<redacted-string>",
+                          "isSupportSubtitle": "<redacted-string>",
+                          "loudnorm": "<redacted-string>",
+                          "rightAvgLuma": "<redacted-string>",
+                          "topAvgLuma": "<redacted-string>",
+                          "weakNetUserFlag": "<redacted-string>"
+                        },
+                        "stream_types": [
+                          258,
+                          34,
+                          301
+                        ],
+                        "width": 1080
+                      },
+                      "video_id": 100002
+                    }
+                  },
+                  "widgets_context": "<redacted-string>",
+                  "xsec_token": "<redacted-secret>"
+                }
+              },
+              {
+                "mix_track_id": "id-0064",
+                "model_type": "<redacted-string>",
+                "new_help_style": false,
+                "note": {
+                  "advanced_widgets_groups": {
+                    "groups": [
+                      {
+                        "fetch_types": [
+                          "<redacted-string>",
+                          "<redacted-string>",
+                          "<redacted-string>"
+                        ],
+                        "mode": 1
+                      },
+                      {
+                        "fetch_types": [
+                          "<redacted-string>",
+                          "<redacted-string>",
+                          "<redacted-string>"
+                        ],
+                        "mode": 0
+                      }
+                    ]
+                  },
+                  "click_score": 0.047897,
+                  "collected": false,
+                  "collected_count": 0,
+                  "comments_count": 0,
+                  "corner_tag_info": [
+                    {
+                      "icon": "<redacted-string>",
+                      "location": -1,
+                      "style": 0,
+                      "text": "<redacted-string>",
+                      "text_en": "<redacted-string>",
+                      "type": "ubt_sig_token"
+                    },
+                    {
+                      "icon": "<redacted-string>",
+                      "location": 5,
+                      "style": 0,
+                      "text": "<redacted-string>",
+                      "text_en": "<redacted-string>",
+                      "type": "publish_time"
+                    }
+                  ],
+                  "cover_image_index": 0,
+                  "debug_info_str": "<redacted-string>",
+                  "desc": "<redacted-string>",
+                  "extract_text_enabled": 0,
+                  "geo_info": {
+                    "distance": "<redacted-string>"
+                  },
+                  "has_music": false,
+                  "id": "id-0066",
+                  "images_list": [
+                    {
+                      "fileid": "<redacted-string>",
+                      "height": 1440,
+                      "need_load_original_image": false,
+                      "original": "<redacted-string>",
+                      "trace_id": "id-0065",
+                      "url": "<redacted-string>",
+                      "url_size_large": "<redacted-string>",
+                      "width": 1080
+                    }
+                  ],
+                  "interaction_area": {
+                    "status": false,
+                    "text": "<redacted-string>",
+                    "type": 1
+                  },
+                  "last_update_time": 1720000000,
+                  "liked": false,
+                  "liked_count": 2,
+                  "nice_count": 0,
+                  "niced": false,
+                  "note_attributes": [],
+                  "result_from": "<redacted-string>",
+                  "shared_count": 0,
+                  "tag_info": {
+                    "title": "<redacted-string>",
+                    "type": "<redacted-string>"
+                  },
+                  "timestamp": 1720000000,
+                  "type": "video",
+                  "update_time": 1720000000,
+                  "user": {
+                    "followed": false,
+                    "images": "<redacted-string>",
+                    "nickname": "<redacted-string>",
+                    "red_id": "id-0067",
+                    "red_official_verified": false,
+                    "red_official_verify_type": 0,
+                    "show_red_official_verify_icon": false,
+                    "track_duration": 0,
+                    "userid": "<redacted-string>"
+                  },
+                  "video_duration": "<redacted-string>",
+                  "video_info_v2": {
+                    "capa": {
+                      "duration": 32,
+                      "frame_ts": 0,
+                      "is_upload": false,
+                      "is_user_select": false
+                    },
+                    "consumer": {
+                      "can_super_resolution": false
+                    },
+                    "image": {
+                      "first_frame": "<redacted-string>",
+                      "thumbnail": "<redacted-string>",
+                      "thumbnail_dim": "<redacted-string>"
+                    },
+                    "media": {
+                      "stream": {
+                        "av1": [],
+                        "h264": [
+                          {
+                            "audio_bitrate": 56304,
+                            "audio_channels": 2,
+                            "audio_codec": "<redacted-string>",
+                            "audio_duration": 32229,
+                            "avg_bitrate": 1936042,
+                            "backup_urls": [
+                              "<redacted-string>",
+                              "<redacted-string>"
+                            ],
+                            "default_stream": 0,
+                            "duration": 32234,
+                            "format": "mp4",
+                            "fps": 30,
+                            "hdr_type": 0,
+                            "height": 1280,
+                            "master_url": "<redacted-string>",
+                            "opaque1": {
+                              "didLoudnorm": "<redacted-string>",
+                              "pcdn_302_flag": "<redacted-string>",
+                              "pcdn_supplier": "<redacted-string>",
+                              "use_pcdn": "<redacted-string>"
+                            },
+                            "psnr": 0,
+                            "quality_type": "<redacted-string>",
+                            "rotate": 0,
+                            "size": 7800801,
+                            "sr": 0,
+                            "ssim": 0,
+                            "stream_desc": "<redacted-string>",
+                            "stream_type": 258,
+                            "video_bitrate": 1872728,
+                            "video_codec": "<redacted-string>",
+                            "video_duration": 32233,
+                            "vmaf": -1,
+                            "volume": 0,
+                            "weight": 48,
+                            "width": 720
+                          }
+                        ],
+                        "h265": [
+                          {
+                            "audio_bitrate": 128037,
+                            "audio_channels": 2,
+                            "audio_codec": "<redacted-string>",
+                            "audio_duration": 32229,
+                            "avg_bitrate": 800608,
+                            "backup_urls": [
+                              "<redacted-string>",
+                              "<redacted-string>"
+                            ],
+                            "default_stream": 1,
+                            "duration": 32234,
+                            "format": "mp4",
+                            "fps": 30,
+                            "hdr_type": 0,
+                            "height": 1280,
+                            "master_url": "<redacted-string>",
+                            "opaque1": {
+                              "didLoudnorm": "<redacted-string>",
+                              "pcdn_302_flag": "<redacted-string>",
+                              "pcdn_supplier": "<redacted-string>",
+                              "roiWeight": "<redacted-string>",
+                              "roi_info": "<redacted-string>",
+                              "use_pcdn": "<redacted-string>"
+                            },
+                            "psnr": 40.314999,
+                            "quality_type": "<redacted-string>",
+                            "rotate": 0,
+                            "size": 3225850,
+                            "sr": 0,
+                            "ssim": 0,
+                            "stream_desc": "<redacted-string>",
+                            "stream_type": 114,
+                            "video_bitrate": 665633,
+                            "video_codec": "<redacted-string>",
+                            "video_duration": 32233,
+                            "vmaf": -1,
+                            "volume": 0,
+                            "weight": 49,
+                            "width": 720
+                          },
+                          {
+                            "audio_bitrate": 128037,
+                            "audio_channels": 2,
+                            "audio_codec": "<redacted-string>",
+                            "audio_duration": 32229,
+                            "avg_bitrate": 1058650,
+                            "backup_urls": [
+                              "<redacted-string>",
+                              "<redacted-string>"
+                            ],
+                            "default_stream": 0,
+                            "duration": 32234,
+                            "format": "mp4",
+                            "fps": 30,
+                            "hdr_type": 0,
+                            "height": 1920,
+                            "master_url": "<redacted-string>",
+                            "opaque1": {
+                              "didLoudnorm": "<redacted-string>",
+                              "pcdn_302_flag": "<redacted-string>",
+                              "pcdn_supplier": "<redacted-string>",
+                              "roiWeight": "<redacted-string>",
+                              "roi_info": "<redacted-string>",
+                              "use_pcdn": "<redacted-string>"
+                            },
+                            "psnr": 40.639,
+                            "quality_type": "<redacted-string>",
+                            "rotate": 0,
+                            "size": 4265568,
+                            "sr": 0,
+                            "ssim": 0,
+                            "stream_desc": "<redacted-string>",
+                            "stream_type": 115,
+                            "video_bitrate": 923684,
+                            "video_codec": "<redacted-string>",
+                            "video_duration": 32233,
+                            "vmaf": -1,
+                            "volume": 0,
+                            "weight": 50,
+                            "width": 1080
+                          }
+                        ],
+                        "h266": []
+                      },
+                      "user_level": 0,
+                      "video": {
+                        "biz_id": "id-0068",
+                        "biz_name": 110,
+                        "bound": [
+                          {
+                            "h": 0,
+                            "w": 0,
+                            "x": 0,
+                            "y": 0
+                          }
+                        ],
+                        "drm_type": 0,
+                        "duration": 33,
+                        "hdr_type": 0,
+                        "height": 1920,
+                        "md5": "<redacted-string>",
+                        "opaque1": {
+                          "amend": "<redacted-string>",
+                          "amend_2k": "<redacted-string>",
+                          "amend_4k": "<redacted-string>",
+                          "amend_mobile": "<redacted-string>",
+                          "audioClsInfo": "id-0069",
+                          "audioLevInfo": "<redacted-string>",
+                          "bottomAvgLuma": "<redacted-string>",
+                          "default_screencast_stream": "<redacted-string>",
+                          "domestic": "<redacted-string>",
+                          "hasHumanVoice": "<redacted-string>",
+                          "hd_screencast_stream": "<redacted-string>",
+                          "isSupportSubtitle": "<redacted-string>",
+                          "loudnorm": "<redacted-string>",
+                          "rightAvgLuma": "<redacted-string>",
+                          "topAvgLuma": "<redacted-string>",
+                          "weakNetUserFlag": "<redacted-string>"
+                        },
+                        "stream_types": [
+                          258,
+                          114,
+                          115
+                        ],
+                        "width": 1080
+                      },
+                      "video_id": 100003
+                    }
+                  },
+                  "widgets_context": "<redacted-string>",
+                  "xsec_token": "<redacted-secret>"
+                }
+              }
+            ],
+            "query_debug_info": {
+              "is_forbidden": false
+            },
+            "query_intent": {
+              "goodsIntent": 3,
+              "low_supply_intent": false,
+              "search_ask_intent": true
+            },
+            "query_type": 0,
+            "request_dqa": 0,
+            "request_dqa_instant": false,
+            "search_dqa_new_page_exp": 1,
+            "search_pull_down_opt_exp": 1,
+            "service_status": "<redacted-string>",
+            "show_single_col": false,
+            "strategy_info": {
+              "query_average_impression_count": 19,
+              "query_can_guide_to_feed": true
+            },
+            "taxonomy1": "<redacted-string>",
+            "video_intent_grade_v3": 1
+          },
+          "debug_id": "id-0072",
+          "debug_info": "<redacted-string>",
+          "msg": "<redacted-string>",
+          "next_page": 2,
+          "page": 1,
+          "search_id": "id-0070",
+          "search_session_id": "id-0071",
+          "success": true
+        },
+        "docs": "<redacted-string>",
+        "message": "<redacted-string>",
+        "message_zh": "<redacted-string>",
+        "params": {
+          "keyword": "爱玛",
+          "note_type": "<redacted-string>",
+          "page": "<redacted-string>",
+          "sort_type": "general",
+          "source": "<redacted-string>",
+          "time_filter": "<redacted-string>"
+        },
+        "request_id": "id-0042",
+        "router": "/api/v1/xiaohongshu/app_v2/search_notes",
+        "support": "<redacted-string>",
+        "time": "<redacted-string>",
+        "time_stamp": 1720000000,
+        "time_zone": "<redacted-string>"
+      }
+    },
+    {
+      "endpoint": "/api/v1/xiaohongshu/app_v2/get_video_note_detail",
+      "http_status": 200,
+      "label": "video_detail",
+      "method": "GET",
+      "planned_cost_usd": "0.010000",
+      "request": {
+        "authorization": "Bearer <redacted-secret>",
+        "body": null,
+        "method": "GET",
+        "params": {
+          "note_id": "id-0044"
+        },
+        "path": "/api/v1/xiaohongshu/app_v2/get_video_note_detail"
+      },
+      "request_no": 6,
+      "response": {
+        "cache_message": "<redacted-string>",
+        "cache_message_zh": "<redacted-string>",
+        "cache_url": "<redacted-string>",
+        "code": 200,
+        "data": {
+          "code": 0,
+          "data": [
+            {
+              "api_upgrade": -1,
+              "ats": [],
+              "auto_slide_down": 0,
+              "cny_red_envelope_note": false,
+              "collected": false,
+              "collected_count": 5,
+              "comment_prompt_config": {
+                "forbidden_cmt_type": 0,
+                "placeholder_long": "<redacted-string>",
+                "placeholder_short": "<redacted-string>"
+              },
+              "comments_count": 1,
+              "content_trans_info": {
+                "strategy": 9
+              },
+              "cooperate_binds": [],
+              "countdown": 0,
+              "cursor_score": "id-0022",
+              "desc": "<redacted-string>",
+              "downgrade_type": 0,
+              "enable_brand_lottery": false,
+              "enable_fls_bridge_cards": false,
+              "enable_fls_related_cards": false,
+              "enable_listen_video": false,
+              "feedback_info": {
+                "dislike_status": 0
+              },
+              "final_feed_item": false,
+              "foot_tags": [],
+              "function_switch": [
+                {
+                  "enable": true,
+                  "type": "video_download"
+                },
+                {
+                  "enable": true,
+                  "type": "quote_note"
+                },
+                {
+                  "enable": true,
+                  "type": "heat_for_author"
+                }
+              ],
+              "has_no_more": false,
+              "has_related_goods": false,
+              "hash_tag": [
+                {
+                  "bizId": "<redacted-string>",
+                  "current_score": 0,
+                  "id": "id-0075",
+                  "indicator": "<redacted-string>",
+                  "link": "<redacted-string>",
+                  "name": "<redacted-string>",
+                  "record_count": 0,
+                  "record_emoji": "<redacted-string>",
+                  "record_unit": "<redacted-string>",
+                  "tag_hint": "<redacted-string>",
+                  "type": "topic"
+                },
+                {
+                  "bizId": "<redacted-string>",
+                  "current_score": 0,
+                  "id": "id-0076",
+                  "indicator": "<redacted-string>",
+                  "link": "<redacted-string>",
+                  "name": "<redacted-string>",
+                  "record_count": 0,
+                  "record_emoji": "<redacted-string>",
+                  "record_unit": "<redacted-string>",
+                  "tag_hint": "<redacted-string>",
+                  "type": "topic"
+                },
+                {
+                  "bizId": "<redacted-string>",
+                  "current_score": 0,
+                  "id": "id-0077",
+                  "indicator": "<redacted-string>",
+                  "link": "<redacted-string>",
+                  "name": "<redacted-string>",
+                  "record_count": 0,
+                  "record_emoji": "<redacted-string>",
+                  "record_unit": "<redacted-string>",
+                  "tag_hint": "<redacted-string>",
+                  "type": "topic"
+                }
+              ],
+              "hide_button": false,
+              "id": "id-0044",
+              "images_list": [
+                {
+                  "fileid": "<redacted-string>",
+                  "height": 1920,
+                  "index": 0,
+                  "latitude": 0,
+                  "longitude": 0,
+                  "need_load_original_image": false,
+                  "original": "<redacted-string>",
+                  "scale_to_large": 0,
+                  "trace_id": "id-0054",
+                  "url": "<redacted-string>",
+                  "url_size_large": "<redacted-string>",
+                  "width": 1080
+                }
+              ],
+              "interaction_info": {
+                "nice_count": 0,
+                "niced": false,
+                "share_count": 21
+              },
+              "ip_location": "<redacted-string>",
+              "last_update_time": 1720000000,
+              "lazy_load_mode": 0,
+              "liked": false,
+              "liked_count": 35,
+              "may_have_red_packet": false,
+              "media_save_config": {
+                "disable_save": false,
+                "disable_watermark": false,
+                "disable_weibo_cover": false
+              },
+              "model_type": "<redacted-string>",
+              "native_voice_info": {
+                "deeplink": "id-0079",
+                "disable_panel": true,
+                "sound_id": "id-0080",
+                "url": "<redacted-string>",
+                "use_count": 1
+              },
+              "need_next_step": false,
+              "need_product_review": false,
+              "nice_info": {
+                "display": true,
+                "nice_status": 2
+              },
+              "pre_view_count": -1,
+              "privacy": {
+                "nick_names": "<redacted-string>",
+                "show_tips": false,
+                "type": 0
+              },
+              "qq_mini_program_info": {
+                "desc": "<redacted-string>",
+                "path": "<redacted-string>",
+                "share_title": "<redacted-string>",
+                "thumb": "<redacted-string>",
+                "title": "<redacted-string>",
+                "user_name": "<redacted-string>",
+                "webpage_url": "<redacted-string>"
+              },
+              "regenerate_bit_map": 0,
+              "related_goods_num": 0,
+              "seeded": false,
+              "seeded_count": 0,
+              "share_code_flag": 0,
+              "share_info": {
+                "block_private_msg": false,
+                "content": "<redacted-string>",
+                "function_entries": [
+                  {
+                    "type": "video_download"
+                  },
+                  {
+                    "type": "generate_image"
+                  },
+                  {
+                    "type": "quote_note"
+                  }
+                ],
+                "guide_audited": true,
+                "image": "<redacted-string>",
+                "is_star": false,
+                "link": "<redacted-string>",
+                "show_wechat_tag": false,
+                "title": "<redacted-string>",
+                "wechat_share_desc": "<redacted-string>"
+              },
+              "shared_count": 21,
+              "source_item": false,
+              "source_note": true,
+              "sticky": false,
+              "text_language_code": "<redacted-string>",
+              "time": 1775529419,
+              "title": "<redacted-string>",
+              "topics": [
+                {
+                  "activity_online": false,
+                  "business_type": 0,
+                  "discuss_num": 0,
+                  "id": "id-0075",
+                  "image": "<redacted-string>",
+                  "link": "<redacted-string>",
+                  "name": "<redacted-string>",
+                  "style": 0
+                }
+              ],
+              "track_id": "id-0022",
+              "type": "video",
+              "user": {
+                "followed": false,
+                "fstatus": "<redacted-string>",
+                "id": "id-0074",
+                "image": "<redacted-string>",
+                "level": {
+                  "image": "<redacted-string>"
+                },
+                "name": "<redacted-string>",
+                "nickname": "<redacted-string>",
+                "preload_posted": false,
+                "red_id": "id-0045",
+                "red_official_verified": false,
+                "red_official_verify_type": 0,
+                "show_red_official_verify_icon": false,
+                "track_duration": 0,
+                "userid": "<redacted-string>"
+              },
+              "video_info_v2": {
+                "capa": {
+                  "duration": 13,
+                  "frame_ts": 0,
+                  "is_upload": false,
+                  "is_user_select": false
+                },
+                "consumer": {
+                  "can_super_resolution": false
+                },
+                "image": {
+                  "first_frame": "<redacted-string>",
+                  "thumbnail": "<redacted-string>",
+                  "thumbnail_dim": "<redacted-string>"
+                },
+                "media": {
+                  "audio_stream": {},
+                  "stream": {
+                    "av1": [],
+                    "h264": [
+                      {
+                        "audio_bitrate": 56681,
+                        "audio_channels": 2,
+                        "audio_codec": "<redacted-string>",
+                        "audio_duration": 13860,
+                        "avg_bitrate": 4949466,
+                        "backup_urls": [
+                          "<redacted-string>",
+                          "<redacted-string>"
+                        ],
+                        "default_stream": 0,
+                        "duration": 13900,
+                        "format": "mp4",
+                        "fps": 30,
+                        "hdr_type": 0,
+                        "height": 1280,
+                        "master_url": "<redacted-string>",
+                        "opaque1": {
+                          "didLoudnorm": "<redacted-string>",
+                          "pcdn_302_flag": "<redacted-string>",
+                          "pcdn_supplier": "<redacted-string>",
+                          "use_pcdn": "<redacted-string>"
+                        },
+                        "psnr": 0,
+                        "quality_type": "<redacted-string>",
+                        "rotate": 0,
+                        "size": 8599698,
+                        "sr": 0,
+                        "ssim": 0,
+                        "stream_desc": "<redacted-string>",
+                        "stream_type": 258,
+                        "token": "<redacted-secret>",
+                        "video_bitrate": 4885279,
+                        "video_codec": "<redacted-string>",
+                        "video_duration": 13900,
+                        "vmaf": -1,
+                        "volume": 0,
+                        "weight": 59,
+                        "width": 720
+                      }
+                    ],
+                    "h265": [
+                      {
+                        "audio_bitrate": 125166,
+                        "audio_channels": 2,
+                        "audio_codec": "<redacted-string>",
+                        "audio_duration": 13860,
+                        "avg_bitrate": 1257655,
+                        "backup_urls": [
+                          "<redacted-string>",
+                          "<redacted-string>"
+                        ],
+                        "default_stream": 1,
+                        "duration": 13860,
+                        "format": "mp4",
+                        "fps": 60,
+                        "hdr_type": 0,
+                        "height": 1280,
+                        "master_url": "<redacted-string>",
+                        "opaque1": {
+                          "didLoudnorm": "<redacted-string>",
+                          "pcdn_302_flag": "<redacted-string>",
+                          "pcdn_supplier": "<redacted-string>",
+                          "use_pcdn": "<redacted-string>"
+                        },
+                        "psnr": 34.450001,
+                        "quality_type": "<redacted-string>",
+                        "rotate": 0,
+                        "size": 2178888,
+                        "sr": 0,
+                        "ssim": 0,
+                        "stream_desc": "<redacted-string>",
+                        "stream_type": 178,
+                        "token": "<redacted-secret>",
+                        "video_bitrate": 1119213,
+                        "video_codec": "<redacted-string>",
+                        "video_duration": 13850,
+                        "vmaf": -1,
+                        "volume": 0,
+                        "weight": 62,
+                        "width": 720
+                      },
+                      {
+                        "audio_bitrate": 125166,
+                        "audio_channels": 2,
+                        "audio_codec": "<redacted-string>",
+                        "audio_duration": 13860,
+                        "avg_bitrate": 2091913,
+                        "backup_urls": [
+                          "<redacted-string>",
+                          "<redacted-string>"
+                        ],
+                        "default_stream": 0,
+                        "duration": 13860,
+                        "format": "mp4",
+                        "fps": 60,
+                        "hdr_type": 0,
+                        "height": 1920,
+                        "master_url": "<redacted-string>",
+                        "opaque1": {
+                          "didLoudnorm": "<redacted-string>",
+                          "pcdn_302_flag": "<redacted-string>",
+                          "pcdn_supplier": "<redacted-string>",
+                          "use_pcdn": "<redacted-string>"
+                        },
+                        "psnr": 34.803001,
+                        "quality_type": "<redacted-string>",
+                        "rotate": 0,
+                        "size": 3624240,
+                        "sr": 0,
+                        "ssim": 0,
+                        "stream_desc": "<redacted-string>",
+                        "stream_type": 179,
+                        "token": "<redacted-secret>",
+                        "video_bitrate": 1954073,
+                        "video_codec": "<redacted-string>",
+                        "video_duration": 13850,
+                        "vmaf": -1,
+                        "volume": 0,
+                        "weight": 73,
+                        "width": 1080
+                      },
+                      {
+                        "audio_bitrate": 125166,
+                        "audio_channels": 2,
+                        "audio_codec": "<redacted-string>",
+                        "audio_duration": 13860,
+                        "avg_bitrate": 2928705,
+                        "backup_urls": [
+                          "<redacted-string>",
+                          "<redacted-string>"
+                        ],
+                        "default_stream": 0,
+                        "duration": 13860,
+                        "format": "mp4",
+                        "fps": 60,
+                        "hdr_type": 0,
+                        "height": 1920,
+                        "master_url": "<redacted-string>",
+                        "opaque1": {
+                          "didLoudnorm": "<redacted-string>",
+                          "pcdn_302_flag": "<redacted-string>",
+                          "pcdn_supplier": "<redacted-string>",
+                          "use_pcdn": "<redacted-string>"
+                        },
+                        "psnr": 36.145,
+                        "quality_type": "<redacted-string>",
+                        "rotate": 0,
+                        "size": 5073983,
+                        "sr": 0,
+                        "ssim": 0,
+                        "stream_desc": "<redacted-string>",
+                        "stream_type": 180,
+                        "token": "<redacted-secret>",
+                        "video_bitrate": 2791470,
+                        "video_codec": "<redacted-string>",
+                        "video_duration": 13850,
+                        "vmaf": -1,
+                        "volume": 0,
+                        "weight": 78,
+                        "width": 1080
+                      }
+                    ],
+                    "h266": []
+                  },
+                  "user_level": 0,
+                  "video": {
+                    "bbox": {
+                      "ocr_v2": [
+                        {
+                          "h": 0,
+                          "w": 0,
+                          "x": 0,
+                          "y": 0
+                        }
+                      ],
+                      "ocr_v3": [
+                        {
+                          "h": 0,
+                          "w": 0,
+                          "x": 0,
+                          "y": 0
+                        }
+                      ],
+                      "ocr_v4": [
+                        {
+                          "h": 0,
+                          "w": 0,
+                          "x": 0,
+                          "y": 0
+                        }
+                      ],
+                      "ocr_v5": [
+                        {
+                          "h": 0,
+                          "w": 0,
+                          "x": 0,
+                          "y": 0
+                        }
+                      ]
+                    },
+                    "biz_id": "id-0046",
+                    "biz_name": 110,
+                    "bound": [
+                      {
+                        "h": 0,
+                        "w": 0,
+                        "x": 0,
+                        "y": 0
+                      }
+                    ],
+                    "drm_type": 0,
+                    "duration": 14,
+                    "hdr_type": 1,
+                    "height": 3840,
+                    "md5": "<redacted-string>",
+                    "opaque1": {
+                      "amend_mobile": "<redacted-string>",
+                      "audioClsInfo": "id-0047",
+                      "audioLevInfo": "<redacted-string>",
+                      "bottomAvgLuma": "<redacted-string>",
+                      "domestic": "<redacted-string>",
+                      "hasHumanVoice": "<redacted-string>",
+                      "isSupportSubtitle": "<redacted-string>",
+                      "loudnorm": "<redacted-string>",
+                      "rightAvgLuma": "<redacted-string>",
+                      "topAvgLuma": "<redacted-string>"
+                    },
+                    "stream_types": [
+                      258,
+                      178,
+                      179
+                    ],
+                    "width": 2160
+                  },
+                  "video_id": "id-0078"
+                }
+              },
+              "view_count": 0,
+              "widgets_context": "id-0081",
+              "widgets_groups": [
+                [
+                  "<redacted-string>",
+                  "<redacted-string>",
+                  "<redacted-string>"
+                ],
+                [
+                  "<redacted-string>",
+                  "<redacted-string>",
+                  "<redacted-string>"
+                ]
+              ]
+            },
+            {
+              "api_upgrade": -1,
+              "ats": [],
+              "auto_slide_down": 0,
+              "cny_red_envelope_note": false,
+              "collected": false,
+              "collected_count": 71,
+              "comment_prompt_config": {
+                "forbidden_cmt_type": 0,
+                "placeholder_long": "<redacted-string>",
+                "placeholder_short": "<redacted-string>"
+              },
+              "comments_count": 5,
+              "content_trans_info": {
+                "strategy": 9
+              },
+              "cooperate_binds": [],
+              "countdown": 0,
+              "cursor_score": "id-0093",
+              "desc": "<redacted-string>",
+              "downgrade_type": 0,
+              "enable_brand_lottery": false,
+              "enable_fls_bridge_cards": false,
+              "enable_fls_related_cards": false,
+              "enable_listen_video": false,
+              "feedback_info": {
+                "dislike_status": 0
+              },
+              "final_feed_item": false,
+              "foot_tags": [],
+              "function_switch": [
+                {
+                  "enable": false,
+                  "reason": "<redacted-string>",
+                  "type": "video_download"
+                },
+                {
+                  "enable": true,
+                  "type": "quote_note"
+                },
+                {
+                  "enable": true,
+                  "type": "heat_for_author"
+                }
+              ],
+              "has_no_more": false,
+              "has_related_goods": false,
+              "hash_tag": [
+                {
+                  "bizId": "<redacted-string>",
+                  "current_score": 0,
+                  "id": "id-0085",
+                  "indicator": "<redacted-string>",
+                  "link": "<redacted-string>",
+                  "name": "<redacted-string>",
+                  "record_count": 0,
+                  "record_emoji": "<redacted-string>",
+                  "record_unit": "<redacted-string>",
+                  "tag_hint": "<redacted-string>",
+                  "type": "topic"
+                },
+                {
+                  "bizId": "<redacted-string>",
+                  "current_score": 0,
+                  "id": "id-0086",
+                  "indicator": "<redacted-string>",
+                  "link": "<redacted-string>",
+                  "name": "<redacted-string>",
+                  "record_count": 0,
+                  "record_emoji": "<redacted-string>",
+                  "record_unit": "<redacted-string>",
+                  "tag_hint": "<redacted-string>",
+                  "type": "topic"
+                },
+                {
+                  "bizId": "<redacted-string>",
+                  "current_score": 0,
+                  "id": "id-0087",
+                  "indicator": "<redacted-string>",
+                  "link": "<redacted-string>",
+                  "name": "<redacted-string>",
+                  "record_count": 0,
+                  "record_emoji": "<redacted-string>",
+                  "record_unit": "<redacted-string>",
+                  "tag_hint": "<redacted-string>",
+                  "type": "topic"
+                }
+              ],
+              "hide_button": false,
+              "id": "id-0084",
+              "images_list": [
+                {
+                  "fileid": "<redacted-string>",
+                  "height": 3008,
+                  "index": 0,
+                  "latitude": 0,
+                  "longitude": 0,
+                  "need_load_original_image": false,
+                  "original": "<redacted-string>",
+                  "scale_to_large": 0,
+                  "trace_id": "id-0091",
+                  "url": "<redacted-string>",
+                  "url_size_large": "<redacted-string>",
+                  "width": 2256
+                }
+              ],
+              "interaction_info": {
+                "nice_count": 0,
+                "niced": false,
+                "share_count": 2
+              },
+              "ip_location": "<redacted-string>",
+              "last_update_time": 1720000000,
+              "lazy_load_mode": 0,
+              "liked": false,
+              "liked_count": 121,
+              "may_have_red_packet": false,
+              "media_save_config": {
+                "disable_save": false,
+                "disable_watermark": false,
+                "disable_weibo_cover": false
+              },
+              "model_type": "<redacted-string>",
+              "need_next_step": false,
+              "need_product_review": false,
+              "nice_info": {
+                "display": true,
+                "nice_status": 2
+              },
+              "pre_view_count": -1,
+              "privacy": {
+                "nick_names": "<redacted-string>",
+                "show_tips": false,
+                "type": 0
+              },
+              "qq_mini_program_info": {
+                "desc": "<redacted-string>",
+                "path": "<redacted-string>",
+                "share_title": "<redacted-string>",
+                "thumb": "<redacted-string>",
+                "title": "<redacted-string>",
+                "user_name": "<redacted-string>",
+                "webpage_url": "<redacted-string>"
+              },
+              "reco_extra": {
+                "recVideoCompleteScore": "<redacted-string>"
+              },
+              "regenerate_bit_map": 0,
+              "related_goods_num": 0,
+              "seeded": false,
+              "seeded_count": 0,
+              "share_code_flag": 0,
+              "share_info": {
+                "block_private_msg": false,
+                "content": "<redacted-string>",
+                "function_entries": [
+                  {
+                    "type": "video_download"
+                  },
+                  {
+                    "type": "generate_image"
+                  },
+                  {
+                    "type": "quote_note"
+                  }
+                ],
+                "guide_audited": true,
+                "image": "<redacted-string>",
+                "is_star": false,
+                "link": "<redacted-string>",
+                "show_wechat_tag": false,
+                "title": "<redacted-string>",
+                "wechat_share_desc": "<redacted-string>"
+              },
+              "shared_count": 2,
+              "source_item": false,
+              "source_note": false,
+              "sticky": false,
+              "text_language_code": "<redacted-string>",
+              "time": 1786869958,
+              "title": "<redacted-string>",
+              "topics": [
+                {
+                  "activity_online": false,
+                  "business_type": 0,
+                  "discuss_num": 0,
+                  "id": "id-0085",
+                  "image": "<redacted-string>",
+                  "link": "<redacted-string>",
+                  "name": "<redacted-string>",
+                  "style": 0
+                }
+              ],
+              "track_id": "id-0092",
+              "track_info": "<redacted-string>",
+              "type": "video",
+              "user": {
+                "followed": false,
+                "fstatus": "<redacted-string>",
+                "id": "id-0082",
+                "image": "<redacted-string>",
+                "level": {
+                  "image": "<redacted-string>"
+                },
+                "name": "<redacted-string>",
+                "nickname": "<redacted-string>",
+                "preload_posted": false,
+                "red_id": "id-0083",
+                "red_official_verified": false,
+                "red_official_verify_type": 0,
+                "show_red_official_verify_icon": false,
+                "track_duration": 0,
+                "userid": "<redacted-string>"
+              },
+              "video_info_v2": {
+                "capa": {
+                  "duration": 173,
+                  "frame_ts": 0,
+                  "is_upload": false,
+                  "is_user_select": false
+                },
+                "consumer": {
+                  "can_super_resolution": false
+                },
+                "image": {
+                  "first_frame": "<redacted-string>",
+                  "thumbnail": "<redacted-string>",
+                  "thumbnail_dim": "<redacted-string>"
+                },
+                "media": {
+                  "audio_stream": {},
+                  "stream": {
+                    "av1": [],
+                    "h264": [
+                      {
+                        "audio_bitrate": 56018,
+                        "audio_channels": 2,
+                        "audio_codec": "<redacted-string>",
+                        "audio_duration": 173569,
+                        "avg_bitrate": 2418205,
+                        "backup_urls": [
+                          "<redacted-string>",
+                          "<redacted-string>"
+                        ],
+                        "default_stream": 0,
+                        "duration": 173600,
+                        "format": "mp4",
+                        "fps": 30,
+                        "hdr_type": 0,
+                        "height": 1280,
+                        "master_url": "<redacted-string>",
+                        "opaque1": {
+                          "didLoudnorm": "<redacted-string>",
+                          "pcdn_302_flag": "<redacted-string>",
+                          "pcdn_supplier": "<redacted-string>",
+                          "use_pcdn": "<redacted-string>"
+                        },
+                        "psnr": 0,
+                        "quality_type": "<redacted-string>",
+                        "rotate": 0,
+                        "size": 52475057,
+                        "sr": 0,
+                        "ssim": 0,
+                        "stream_desc": "<redacted-string>",
+                        "stream_type": 258,
+                        "token": "<redacted-secret>",
+                        "video_bitrate": 2355570,
+                        "video_codec": "<redacted-string>",
+                        "video_duration": 173600,
+                        "vmaf": -1,
+                        "volume": 0,
+                        "weight": 59,
+                        "width": 720
+                      }
+                    ],
+                    "h265": [
+                      {
+                        "audio_bitrate": 56018,
+                        "audio_channels": 2,
+                        "audio_codec": "<redacted-string>",
+                        "audio_duration": 173569,
+                        "avg_bitrate": 853824,
+                        "backup_urls": [
+                          "<redacted-string>",
+                          "<redacted-string>"
+                        ],
+                        "default_stream": 1,
+                        "duration": 173570,
+                        "format": "mp4",
+                        "fps": 60,
+                        "hdr_type": 0,
+                        "height": 1280,
+                        "master_url": "<redacted-string>",
+                        "opaque1": {
+                          "didLoudnorm": "<redacted-string>",
+                          "pcdn_302_flag": "<redacted-string>",
+                          "pcdn_supplier": "<redacted-string>",
+                          "use_pcdn": "<redacted-string>"
+                        },
+                        "psnr": 38.852001,
+                        "quality_type": "<redacted-string>",
+                        "rotate": 0,
+                        "size": 18524784,
+                        "sr": 0,
+                        "ssim": 0,
+                        "stream_desc": "<redacted-string>",
+                        "stream_type": 86,
+                        "token": "<redacted-secret>",
+                        "video_bitrate": 789041,
+                        "video_codec": "<redacted-string>",
+                        "video_duration": 173566,
+                        "vmaf": -1,
+                        "volume": 0,
+                        "weight": 62,
+                        "width": 720
+                      },
+                      {
+                        "audio_bitrate": 96012,
+                        "audio_channels": 2,
+                        "audio_codec": "<redacted-string>",
+                        "audio_duration": 173569,
+                        "avg_bitrate": 1470646,
+                        "backup_urls": [
+                          "<redacted-string>",
+                          "<redacted-string>"
+                        ],
+                        "default_stream": 0,
+                        "duration": 173570,
+                        "format": "mp4",
+                        "fps": 60,
+                        "hdr_type": 0,
+                        "height": 1920,
+                        "master_url": "<redacted-string>",
+                        "opaque1": {
+                          "didLoudnorm": "<redacted-string>",
+                          "pcdn_302_flag": "<redacted-string>",
+                          "pcdn_supplier": "<redacted-string>",
+                          "use_pcdn": "<redacted-string>"
+                        },
+                        "psnr": 39.84,
+                        "quality_type": "<redacted-string>",
+                        "rotate": 0,
+                        "size": 31907511,
+                        "sr": 0,
+                        "ssim": 0,
+                        "stream_desc": "<redacted-string>",
+                        "stream_type": 301,
+                        "token": "<redacted-secret>",
+                        "video_bitrate": 1365880,
+                        "video_codec": "<redacted-string>",
+                        "video_duration": 173566,
+                        "vmaf": -1,
+                        "volume": 0,
+                        "weight": 70,
+                        "width": 1080
+                      }
+                    ],
+                    "h266": []
+                  },
+                  "user_level": 0,
+                  "video": {
+                    "bbox": {
+                      "ocr_v2": [
+                        {
+                          "h": 3350,
+                          "w": 1985,
+                          "x": 79,
+                          "y": 394
+                        }
+                      ],
+                      "ocr_v3": [
+                        {
+                          "h": 3350,
+                          "w": 1985,
+                          "x": 79,
+                          "y": 394
+                        }
+                      ],
+                      "ocr_v4": [
+                        {
+                          "h": 0,
+                          "w": 0,
+                          "x": 0,
+                          "y": 0
+                        }
+                      ],
+                      "ocr_v5": [
+                        {
+                          "h": 0,
+                          "w": 0,
+                          "x": 0,
+                          "y": 0
+                        }
+                      ]
+                    },
+                    "biz_id": "id-0088",
+                    "biz_name": 110,
+                    "bound": [
+                      {
+                        "h": 0,
+                        "w": 0,
+                        "x": 0,
+                        "y": 0
+                      }
+                    ],
+                    "drm_type": 0,
+                    "duration": 174,
+                    "hdr_type": 0,
+                    "height": 3840,
+                    "md5": "<redacted-string>",
+                    "opaque1": {
+                      "amend_mobile": "<redacted-string>",
+                      "audioClsInfo": "id-0089",
+                      "audioLevInfo": "<redacted-string>",
+                      "domestic": "<redacted-string>",
+                      "hasHumanVoice": "<redacted-string>",
+                      "insertSubtitleLanguages": "<redacted-string>",
+                      "isSupportSubtitle": "<redacted-string>",
+                      "loudnorm": "<redacted-string>"
+                    },
+                    "stream_types": [
+                      258,
+                      86,
+                      301
+                    ],
+                    "subtitles": {
+                      "en-US": [
+                        {
+                          "format": 0,
+                          "language": "<redacted-string>",
+                          "type": 0,
+                          "url": "<redacted-string>"
+                        }
+                      ],
+                      "source": [
+                        {
+                          "format": 0,
+                          "language": "<redacted-string>",
+                          "type": 0,
+                          "url": "<redacted-string>"
+                        }
+                      ],
+                      "zh-CN": [
+                        {
+                          "format": 0,
+                          "language": "<redacted-string>",
+                          "type": 0,
+                          "url": "<redacted-string>"
+                        }
+                      ]
+                    },
+                    "width": 2160
+                  },
+                  "video_id": "id-0090"
+                }
+              },
+              "view_count": 0,
+              "widgets_context": "<redacted-string>",
+              "widgets_groups": [
+                [
+                  "<redacted-string>",
+                  "<redacted-string>",
+                  "<redacted-string>"
+                ],
+                [
+                  "<redacted-string>",
+                  "<redacted-string>",
+                  "<redacted-string>"
+                ]
+              ]
+            },
+            {
+              "api_upgrade": -1,
+              "ats": [],
+              "auto_slide_down": 0,
+              "cny_red_envelope_note": false,
+              "collected": false,
+              "collected_count": 2033,
+              "comment_prompt_config": {
+                "forbidden_cmt_type": 0,
+                "placeholder_long": "<redacted-string>",
+                "placeholder_short": "<redacted-string>"
+              },
+              "comments_count": 249,
+              "content_trans_info": {
+                "strategy": 9
+              },
+              "cooperate_binds": [],
+              "countdown": 0,
+              "cursor_score": "id-0107",
+              "desc": "<redacted-string>",
+              "downgrade_type": 0,
+              "enable_brand_lottery": false,
+              "enable_fls_bridge_cards": false,
+              "enable_fls_related_cards": false,
+              "enable_listen_video": false,
+              "feedback_info": {
+                "dislike_status": 0
+              },
+              "final_feed_item": false,
+              "foot_tags": [],
+              "function_switch": [
+                {
+                  "enable": false,
+                  "reason": "<redacted-string>",
+                  "type": "video_download"
+                },
+                {
+                  "enable": true,
+                  "type": "quote_note"
+                },
+                {
+                  "enable": true,
+                  "type": "heat_for_author"
+                }
+              ],
+              "has_no_more": false,
+              "has_related_goods": false,
+              "hash_tag": [
+                {
+                  "bizId": "<redacted-string>",
+                  "current_score": 0,
+                  "id": "id-0097",
+                  "indicator": "<redacted-string>",
+                  "link": "<redacted-string>",
+                  "name": "<redacted-string>",
+                  "record_count": 0,
+                  "record_emoji": "<redacted-string>",
+                  "record_unit": "<redacted-string>",
+                  "tag_hint": "<redacted-string>",
+                  "type": "topic"
+                },
+                {
+                  "bizId": "<redacted-string>",
+                  "current_score": 0,
+                  "id": "id-0098",
+                  "indicator": "<redacted-string>",
+                  "link": "<redacted-string>",
+                  "name": "<redacted-string>",
+                  "record_count": 0,
+                  "record_emoji": "<redacted-string>",
+                  "record_unit": "<redacted-string>",
+                  "tag_hint": "<redacted-string>",
+                  "type": "topic"
+                },
+                {
+                  "bizId": "<redacted-string>",
+                  "current_score": 0,
+                  "id": "id-0099",
+                  "indicator": "<redacted-string>",
+                  "link": "<redacted-string>",
+                  "name": "<redacted-string>",
+                  "record_count": 0,
+                  "record_emoji": "<redacted-string>",
+                  "record_unit": "<redacted-string>",
+                  "tag_hint": "<redacted-string>",
+                  "type": "topic"
+                }
+              ],
+              "hide_button": false,
+              "id": "id-0096",
+              "images_list": [
+                {
+                  "fileid": "<redacted-string>",
+                  "height": 2160,
+                  "index": 0,
+                  "latitude": 0,
+                  "longitude": 0,
+                  "need_load_original_image": false,
+                  "original": "<redacted-string>",
+                  "scale_to_large": 0,
+                  "trace_id": "id-0105",
+                  "url": "<redacted-string>",
+                  "url_size_large": "<redacted-string>",
+                  "width": 3840
+                }
+              ],
+              "interaction_info": {
+                "nice_count": 39,
+                "niced": false,
+                "share_count": 666
+              },
+              "ip_location": "<redacted-string>",
+              "last_update_time": 1720000000,
+              "lazy_load_mode": 0,
+              "liked": false,
+              "liked_count": 25362,
+              "may_have_red_packet": false,
+              "media_save_config": {
+                "disable_save": false,
+                "disable_watermark": false,
+                "disable_weibo_cover": false
+              },
+              "model_type": "<redacted-string>",
+              "native_voice_info": {
+                "deeplink": "id-0104",
+                "disable_panel": true,
+                "sound_id": "id-0103",
+                "url": "<redacted-string>",
+                "use_count": 1
+              },
+              "need_next_step": false,
+              "need_product_review": false,
+              "nice_info": {
+                "display": true,
+                "nice_status": 2
+              },
+              "pre_view_count": -1,
+              "privacy": {
+                "nick_names": "<redacted-string>",
+                "show_tips": false,
+                "type": 0
+              },
+              "qq_mini_program_info": {
+                "desc": "<redacted-string>",
+                "path": "<redacted-string>",
+                "share_title": "<redacted-string>",
+                "thumb": "<redacted-string>",
+                "title": "<redacted-string>",
+                "user_name": "<redacted-string>",
+                "webpage_url": "<redacted-string>"
+              },
+              "reco_extra": {
+                "recVideoCompleteScore": "<redacted-string>"
+              },
+              "regenerate_bit_map": 0,
+              "related_goods_num": 0,
+              "seeded": false,
+              "seeded_count": 0,
+              "share_code_flag": 0,
+              "share_info": {
+                "block_private_msg": false,
+                "content": "<redacted-string>",
+                "function_entries": [
+                  {
+                    "type": "video_download"
+                  },
+                  {
+                    "type": "generate_image"
+                  },
+                  {
+                    "type": "quote_note"
+                  }
+                ],
+                "guide_audited": true,
+                "image": "<redacted-string>",
+                "is_star": false,
+                "link": "<redacted-string>",
+                "show_wechat_tag": false,
+                "title": "<redacted-string>",
+                "wechat_share_desc": "<redacted-string>"
+              },
+              "shared_count": 666,
+              "source_item": false,
+              "source_note": false,
+              "sticky": false,
+              "text_language_code": "<redacted-string>",
+              "time": 1784253651,
+              "title": "<redacted-string>",
+              "topics": [
+                {
+                  "activity_online": false,
+                  "business_type": 0,
+                  "discuss_num": 0,
+                  "id": "id-0097",
+                  "image": "<redacted-string>",
+                  "link": "<redacted-string>",
+                  "name": "<redacted-string>",
+                  "style": 0
+                }
+              ],
+              "track_id": "id-0106",
+              "track_info": "<redacted-string>",
+              "type": "video",
+              "user": {
+                "followed": false,
+                "fstatus": "<redacted-string>",
+                "id": "id-0094",
+                "image": "<redacted-string>",
+                "level": {
+                  "image": "<redacted-string>"
+                },
+                "name": "<redacted-string>",
+                "nickname": "<redacted-string>",
+                "preload_posted": false,
+                "red_id": "id-0095",
+                "red_official_verified": false,
+                "red_official_verify_type": 0,
+                "show_red_official_verify_icon": false,
+                "track_duration": 0,
+                "userid": "<redacted-string>"
+              },
+              "video_info_v2": {
+                "capa": {
+                  "duration": 185,
+                  "frame_ts": 0,
+                  "is_upload": false,
+                  "is_user_select": false
+                },
+                "consumer": {
+                  "agent_bg_color": "<redacted-string>",
+                  "can_super_resolution": false
+                },
+                "image": {
+                  "first_frame": "<redacted-string>",
+                  "thumbnail": "<redacted-string>",
+                  "thumbnail_dim": "<redacted-string>"
+                },
+                "media": {
+                  "audio_stream": {},
+                  "stream": {
+                    "av1": [],
+                    "h264": [
+                      {
+                        "audio_bitrate": 56011,
+                        "audio_channels": 2,
+                        "audio_codec": "<redacted-string>",
+                        "audio_duration": 185388,
+                        "avg_bitrate": 3769453,
+                        "backup_urls": [
+                          "<redacted-string>",
+                          "<redacted-string>"
+                        ],
+                        "default_stream": 0,
+                        "duration": 185534,
+                        "format": "mp4",
+                        "fps": 30,
+                        "hdr_type": 0,
+                        "height": 720,
+                        "master_url": "<redacted-string>",
+                        "opaque1": {
+                          "didLoudnorm": "<redacted-string>",
+                          "pcdn_302_flag": "<redacted-string>",
+                          "pcdn_supplier": "<redacted-string>",
+                          "use_pcdn": "<redacted-string>"
+                        },
+                        "psnr": 0,
+                        "quality_type": "<redacted-string>",
+                        "rotate": 0,
+                        "size": 87420212,
+                        "sr": 0,
+                        "ssim": 0,
+                        "stream_desc": "<redacted-string>",
+                        "stream_type": 258,
+                        "token": "<redacted-secret>",
+                        "video_bitrate": 3706888,
+                        "video_codec": "<redacted-string>",
+                        "video_duration": 185533,
+                        "vmaf": -1,
+                        "volume": 0,
+                        "weight": 59,
+                        "width": 1280
+                      }
+                    ],
+                    "h265": [
+                      {
+                        "audio_bitrate": 56011,
+                        "audio_channels": 2,
+                        "audio_codec": "<redacted-string>",
+                        "audio_duration": 185388,
+                        "avg_bitrate": 1351783,
+                        "backup_urls": [
+                          "<redacted-string>",
+                          "<redacted-string>"
+                        ],
+                        "default_stream": 1,
+                        "duration": 185400,
+                        "format": "mp4",
+                        "fps": 60,
+                        "hdr_type": 0,
+                        "height": 720,
+                        "master_url": "<redacted-string>",
+                        "opaque1": {
+                          "didLoudnorm": "<redacted-string>",
+                          "pcdn_302_flag": "<redacted-string>",
+                          "pcdn_supplier": "<redacted-string>",
+                          "use_pcdn": "<redacted-string>"
+                        },
+                        "psnr": 36.921001,
+                        "quality_type": "<redacted-string>",
+                        "rotate": 0,
+                        "size": 31327592,
+                        "sr": 0,
+                        "ssim": 0,
+                        "stream_desc": "<redacted-string>",
+                        "stream_type": 86,
+                        "token": "<redacted-secret>",
+                        "video_bitrate": 1286989,
+                        "video_codec": "<redacted-string>",
+                        "video_duration": 185400,
+                        "vmaf": -1,
+                        "volume": 0,
+                        "weight": 62,
+                        "width": 1280
+                      },
+                      {
+                        "audio_bitrate": 95999,
+                        "audio_channels": 2,
+                        "audio_codec": "<redacted-string>",
+                        "audio_duration": 185388,
+                        "avg_bitrate": 2122478,
+                        "backup_urls": [
+                          "<redacted-string>",
+                          "<redacted-string>"
+                        ],
+                        "default_stream": 0,
+                        "duration": 185400,
+                        "format": "mp4",
+                        "fps": 60,
+                        "hdr_type": 0,
+                        "height": 1080,
+                        "master_url": "<redacted-string>",
+                        "opaque1": {
+                          "didLoudnorm": "<redacted-string>",
+                          "pcdn_302_flag": "<redacted-string>",
+                          "pcdn_supplier": "<redacted-string>",
+                          "use_pcdn": "<redacted-string>"
+                        },
+                        "psnr": 37.629002,
+                        "quality_type": "<redacted-string>",
+                        "rotate": 0,
+                        "size": 49188443,
+                        "sr": 0,
+                        "ssim": 0,
+                        "stream_desc": "<redacted-string>",
+                        "stream_type": 301,
+                        "token": "<redacted-secret>",
+                        "video_bitrate": 2017698,
+                        "video_codec": "<redacted-string>",
+                        "video_duration": 185400,
+                        "vmaf": -1,
+                        "volume": 0,
+                        "weight": 70,
+                        "width": 1920
+                      }
+                    ],
+                    "h266": []
+                  },
+                  "user_level": 0,
+                  "video": {
+                    "bbox": {
+                      "ocr_v2": [
+                        {
+                          "h": 2048,
+                          "w": 3654,
+                          "x": 170,
+                          "y": 26
+                        }
+                      ],
+                      "ocr_v3": [
+                        {
+                          "h": 649,
+                          "w": 3654,
+                          "x": 170,
+                          "y": 1425
+                        }
+                      ],
+                      "ocr_v4": [
+                        {
+                          "h": 0,
+                          "w": 0,
+                          "x": 0,
+                          "y": 0
+                        }
+                      ],
+                      "ocr_v5": [
+                        {
+                          "h": 0,
+                          "w": 0,
+                          "x": 0,
+                          "y": 0
+                        }
+                      ]
+                    },
+                    "biz_id": "id-0100",
+                    "biz_name": 110,
+                    "bound": [
+                      {
+                        "h": 0,
+                        "w": 0,
+                        "x": 0,
+                        "y": 0
+                      }
+                    ],
+                    "drm_type": 0,
+                    "duration": 186,
+                    "hdr_type": 0,
+                    "height": 2160,
+                    "md5": "<redacted-string>",
+                    "opaque1": {
+                      "amend_mobile": "<redacted-string>",
+                      "audioClsInfo": "id-0101",
+                      "audioLevInfo": "<redacted-string>",
+                      "bottomAvgLuma": "<redacted-string>",
+                      "domestic": "<redacted-string>",
+                      "hasHumanVoice": "<redacted-string>",
+                      "insertSubtitleLanguages": "<redacted-string>",
+                      "isSupportSubtitle": "<redacted-string>",
+                      "loudnorm": "<redacted-string>",
+                      "rightAvgLuma": "<redacted-string>",
+                      "topAvgLuma": "<redacted-string>",
+                      "videoLanguage": "<redacted-string>"
+                    },
+                    "stream_types": [
+                      258,
+                      86,
+                      301
+                    ],
+                    "subtitles": {
+                      "en-US": [
+                        {
+                          "format": 0,
+                          "language": "<redacted-string>",
+                          "type": 0,
+                          "url": "<redacted-string>"
+                        }
+                      ],
+                      "source": [
+                        {
+                          "format": 0,
+                          "language": "<redacted-string>",
+                          "type": 0,
+                          "url": "<redacted-string>"
+                        }
+                      ],
+                      "zh-CN": [
+                        {
+                          "format": 0,
+                          "language": "<redacted-string>",
+                          "type": 0,
+                          "url": "<redacted-string>"
+                        }
+                      ]
+                    },
+                    "width": 3840
+                  },
+                  "video_id": "id-0102"
+                }
+              },
+              "view_count": 0,
+              "widgets_context": "id-0108",
+              "widgets_groups": [
+                [
+                  "<redacted-string>",
+                  "<redacted-string>",
+                  "<redacted-string>"
+                ],
+                [
+                  "<redacted-string>",
+                  "<redacted-string>",
+                  "<redacted-string>"
+                ]
+              ]
+            }
+          ],
+          "debug_id": "id-0109",
+          "debug_info": "<redacted-string>",
+          "msg": "<redacted-string>",
+          "success": true
+        },
+        "docs": "<redacted-string>",
+        "message": "<redacted-string>",
+        "message_zh": "<redacted-string>",
+        "params": {
+          "note_id": "id-0044"
+        },
+        "request_id": "id-0073",
+        "router": "/api/v1/xiaohongshu/app_v2/get_video_note_detail",
+        "support": "<redacted-string>",
+        "time": "<redacted-string>",
+        "time_stamp": 1720000000,
+        "time_zone": "<redacted-string>"
+      }
+    }
+  ],
+  "schema_version": "tikhub-endpoint-ledger-platform.v1",
+  "source_manifest": {
+    "base_url": "https://api.tikhub.io",
+    "captured_at": "2026-08-16T15:05:27.753362+00:00",
+    "github_run_id": "31954514173",
+    "hidden_retries": 0,
+    "keyword": "爱玛"
+  }
+}
