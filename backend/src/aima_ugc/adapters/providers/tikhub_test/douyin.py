@@ -10,6 +10,7 @@ def run_douyin(
     keyword: str = "爱玛",
     sort_mode: str = "general",
     published_within: str = "all",
+    duration: str = "all",
     content_type: str = "all",
     env_file: str | Path | None = None,
     output_root: str | Path | None = None,
@@ -30,6 +31,7 @@ def run_douyin(
         search_config={
             "sort_mode": sort_mode,
             "published_within": published_within,
+            "duration": duration,
             "content_type": content_type,
         },
         env_file=env_file,
