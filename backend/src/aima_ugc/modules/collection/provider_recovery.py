@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -21,6 +22,8 @@ from aima_ugc.platform.storage import ArtifactRecord
 
 from .provider_persistence import ProviderAttemptRecord
 from .providers import RawArtifactIntegrityError
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,9 +65,17 @@ class ProviderRecoveryPersistence(Protocol):
 
 
 class RawArtifactReplay(Protocol):
-    """Reconciler 只读校验 Raw 的边界。"""
+    """Reconciler 校验已存 Raw，并能确认遗留 pending Raw。"""
 
     def replay(self, artifact: ArtifactRecord) -> RawEnvelopeV1: ...
+
+    def reconcile_pending(
+        self,
+        artifact: ArtifactRecord,
+        *,
+        request: ProviderRequestV1,
+        attempt_id: UUID,
+    ) -> RawEnvelopeV1: ...
 
 
 class ProviderAttemptReconciler:
@@ -112,15 +123,28 @@ class ProviderAttemptReconciler:
         self,
         candidate: ProviderRecoveryCandidate,
     ) -> tuple[ProviderAttemptV1, UUID | None]:
-        if candidate.artifact is not None:
+        artifact = candidate.artifact
+        if artifact is not None:
             try:
-                envelope = self._raw_artifacts.replay(candidate.artifact)
+                if artifact.storage_status == "pending":
+                    envelope = self._raw_artifacts.reconcile_pending(
+                        artifact,
+                        request=candidate.request,
+                        attempt_id=candidate.attempt.id,
+                    )
+                else:
+                    envelope = self._raw_artifacts.replay(artifact)
                 return (
                     _attempt_from_envelope(candidate, envelope),
-                    candidate.artifact.id,
+                    artifact.id,
                 )
-            except RawArtifactIntegrityError:
-                pass
+            except RawArtifactIntegrityError as exc:
+                logger.warning(
+                    "provider_raw_recovery_rejected attempt_id=%s artifact_id=%s reason=%s",
+                    candidate.attempt.id,
+                    artifact.id,
+                    str(exc),
+                )
         return _unknown_attempt(candidate.attempt, completed_at=self._clock()), None
 
 

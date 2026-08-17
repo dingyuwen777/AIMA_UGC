@@ -6,7 +6,7 @@ import gzip
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -133,17 +133,52 @@ class RawArtifactService:
         if artifact.sha256 is None or artifact.byte_size is None:
             raise RawArtifactIntegrityError("Artifact 缺少完整性元数据")
 
-        try:
-            compressed = self._store.read(artifact.storage_key)
-        except FileNotFoundError as exc:
-            raise RawArtifactIntegrityError("Raw 文件不存在") from exc
-        except (OSError, ValueError) as exc:
-            raise RawArtifactIntegrityError("Raw 文件无法安全读取") from exc
+        compressed = self._read_bytes(artifact)
         actual_sha256 = hashlib.sha256(compressed).hexdigest()
         if actual_sha256 != artifact.sha256:
             raise RawArtifactIntegrityError("Raw SHA-256 校验失败")
         if len(compressed) != artifact.byte_size:
             raise RawArtifactIntegrityError("Raw 字节大小校验失败")
+        return self._parse_envelope(compressed)
+
+    def reconcile_pending(
+        self,
+        artifact: ArtifactRecord,
+        *,
+        request: ProviderRequestV1,
+        attempt_id: UUID,
+    ) -> RawEnvelopeV1:
+        """完整校验已落盘 pending Raw 的实体与来源，再 CAS 提升为 stored。"""
+        if artifact.kind != "provider-raw" or artifact.encoding != "gzip":
+            raise RawArtifactIntegrityError("Artifact 不是 Provider Raw gzip")
+        if artifact.storage_status != "pending":
+            raise RawArtifactIntegrityError("只有 pending Raw 可以执行恢复确认")
+        if artifact.sha256 is not None or artifact.byte_size is not None:
+            raise RawArtifactIntegrityError("pending Raw 不应已有完整性元数据")
+
+        compressed = self._read_bytes(artifact)
+        envelope = self._parse_envelope(compressed)
+        _validate_envelope_lineage(envelope, request=request, attempt_id=attempt_id)
+        actual_sha256 = hashlib.sha256(compressed).hexdigest()
+        actual_size = len(compressed)
+        self._artifacts.confirm_stored_bytes(
+            artifact.id,
+            sha256=actual_sha256,
+            byte_size=actual_size,
+            stored_at=datetime.now(UTC),
+        )
+        return envelope
+
+    def _read_bytes(self, artifact: ArtifactRecord) -> bytes:
+        try:
+            return self._store.read(artifact.storage_key)
+        except FileNotFoundError as exc:
+            raise RawArtifactIntegrityError("Raw 文件不存在") from exc
+        except (OSError, ValueError) as exc:
+            raise RawArtifactIntegrityError("Raw 文件无法安全读取") from exc
+
+    @staticmethod
+    def _parse_envelope(compressed: bytes) -> RawEnvelopeV1:
         try:
             plain = gzip.decompress(compressed)
         except (EOFError, OSError) as exc:
@@ -152,3 +187,31 @@ class RawArtifactService:
             return RawEnvelopeV1.model_validate_json(plain)
         except ValidationError as exc:
             raise RawArtifactIntegrityError("Raw Envelope Contract 校验失败") from exc
+
+
+def _validate_envelope_lineage(
+    envelope: RawEnvelopeV1,
+    *,
+    request: ProviderRequestV1,
+    attempt_id: UUID,
+) -> None:
+    lineage = (
+        envelope.provider,
+        envelope.platform,
+        envelope.operation,
+        envelope.request_id,
+        envelope.attempt_id,
+        envelope.run_id,
+        envelope.scope_id,
+    )
+    expected = (
+        request.provider,
+        request.platform,
+        request.operation,
+        request.request_id,
+        attempt_id,
+        request.run_id,
+        request.scope_id,
+    )
+    if lineage != expected:
+        raise RawArtifactIntegrityError("Raw Envelope 与 Provider Attempt 来源不一致")

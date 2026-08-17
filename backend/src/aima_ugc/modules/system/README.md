@@ -12,7 +12,7 @@
 
 - Secret 原始值；`provider_configs` 只保存 `secret_ref`，不保存 API Key/Token/Cookie 明文；
 - Provider endpoint、分页、Mapper 或平台 Capability；这些属于 Provider/Collection 边界；
-- Plan 对词包的选择、Run 关键词展开/冻结和 Worker 调度；这些属于后续 Collection 父事实；
+- Plan 对词包的选择、Run 关键词展开/冻结、Scheduler/Worker 执行；这些已经属于当前 Collection Owner，System 只提供 Provider Config、关键词、词包等父事实；
 - 登录、本地密码、Session、CSRF、MFA；
 - 飞书/OIDC 回调；
 - 当前尚未批准的角色/Permission Schema。
@@ -26,9 +26,9 @@
 - `keyword_pack_items`：`system`；
 - `audit_events`：`system`。
 
-`provider_configs.id` 是 Provider 配置实例的稳定 UUID。同一种 Provider 可以有多个配置实例；配置实例不绑定平台，后续 Plan/平台策略通过 `provider_config_id` 选择它。Provider 类型不允许对同一稳定 UUID 原地改成另一 Provider；切换 Provider 时创建新配置并改引用。
+`provider_configs.id` 是 Provider 配置实例的稳定 UUID。同一种 Provider 可以有多个配置实例；配置实例不绑定平台，Collection 的 Plan/平台策略通过 `provider_config_id` 选择它。Provider 类型不允许对同一稳定 UUID 原地改成另一 Provider；切换 Provider 时创建新配置并改引用。
 
-`keywords.normalized_text` 是关键词稳定去重字段，数据库保证唯一；当前 System 父事实不自行猜测 NFKC、casefold、空白折叠等规范化算法，正式写入 API/导入边界后再按批准 Contract 产生该值。`keyword_pack_items` 使用 `(pack_id, keyword_id, platform)` 作为复合身份，`platform='all'` 只表示父事实中的全平台词；后续创建 Run 时仍必须展开并冻结为明确平台关键词列表。
+`keywords.normalized_text` 是关键词稳定去重字段，数据库保证唯一；当前 System 父事实不自行猜测 NFKC、casefold、空白折叠等规范化算法，正式写入 API/导入边界后再按批准 Contract 产生该值。`keyword_pack_items` 使用 `(pack_id, keyword_id, platform)` 作为复合身份，`platform='all'` 只表示父事实中的全平台词；Collection 创建 Run 时再按正式 Plan 关系展开并冻结为明确平台关键词列表。
 
 ## 外部依赖和 Port
 

@@ -71,11 +71,33 @@ class ArtifactService:
                 pass
             raise
 
-        return self._metadata.mark_stored(
+        return self.confirm_stored_bytes(
             artifact_id,
             sha256=stored.sha256,
             byte_size=stored.byte_size,
             stored_at=datetime.now(UTC),
+        )
+
+    def confirm_stored_bytes(
+        self,
+        artifact_id: UUID,
+        *,
+        sha256: str,
+        byte_size: int,
+        stored_at: datetime,
+    ) -> ArtifactRecord:
+        """在调用方已验证实体字节后，以 CAS 将 pending 元数据提升为 stored。"""
+        if len(sha256) != 64 or any(char not in "0123456789abcdef" for char in sha256):
+            raise ValueError("Artifact sha256 必须是小写十六进制 SHA-256")
+        if byte_size < 0:
+            raise ValueError("Artifact byte_size 不能为负数")
+        if stored_at.utcoffset() is None:
+            raise ValueError("Artifact stored_at 必须包含时区")
+        return self._metadata.mark_stored(
+            artifact_id,
+            sha256=sha256,
+            byte_size=byte_size,
+            stored_at=stored_at,
         )
 
     def link(self, artifact_id: UUID) -> ArtifactRecord:

@@ -65,6 +65,44 @@ _COMMENT_BUSINESS_COLUMNS = (
     "is_by_content_author",
     "author_account_id",
 )
+_ACCOUNT_FIELD_COLUMNS = {
+    "author.display_name": "display_name",
+    "author.handle": "handle",
+    "author.profile_url": "profile_url",
+    "author.avatar_url": "avatar_url",
+    "author.bio": "bio",
+    "author.verified": "verified",
+    "author.verification_label": "verification_label",
+    "author.region": "region",
+    "author.follower_count": "current_follower_count",
+    "author.following_count": "current_following_count",
+    "author.content_count": "current_content_count",
+    "author.total_like_count": "current_total_like_count",
+}
+_CONTENT_FIELD_COLUMNS = {
+    "content_type": "content_type",
+    "title": "title",
+    "text": "text",
+    "canonical_url": "canonical_url",
+    "share_url": "share_url",
+    "published_at": "published_at",
+    "source_updated_at": "source_updated_at",
+    "status": "status",
+    "author.external_account_id": "author_account_id",
+    **{f"metrics.{name}": f"current_{name}" for name in _CONTENT_METRICS},
+}
+_COMMENT_FIELD_COLUMNS = {
+    "root_comment_id": "root_comment_id",
+    "parent_comment_id": "parent_comment_id",
+    "text": "text",
+    "published_at": "published_at",
+    "source_updated_at": "source_updated_at",
+    "status": "status",
+    "is_by_content_author": "is_by_content_author",
+    "author.external_account_id": "author_account_id",
+    "metrics.like_count": "current_like_count",
+    "metrics.reply_count": "current_reply_count",
+}
 _COVERAGE_VALUES = {"complete", "partial", "not_requested", "unavailable"}
 
 
@@ -130,26 +168,28 @@ class PostgresContentRepository:
         )
         content_id = cast(UUID, current["id"])
         metric_changed = _content_metric_changed(current, observation)
-        stale = observation.observed_at < current["last_seen_at"]
-        business_changed = False
+        current_updates, field_observed_at = _fresh_updates(
+            current=current,
+            candidate_updates=_content_updates(observation, author_id),
+            observed_fields=observation.observed_fields,
+            field_columns=_CONTENT_FIELD_COLUMNS,
+            observed_at=observation.observed_at,
+        )
         version_no = int(current["current_version"])
+        merged = dict(current)
+        merged.update(current_updates)
+        business_changed = _business_tuple(current, _CONTENT_BUSINESS_COLUMNS) != _business_tuple(
+            merged, _CONTENT_BUSINESS_COLUMNS
+        )
+        version_no += 1 if business_changed else 0
         updates: dict[str, Any] = {
             "first_seen_at": min(current["first_seen_at"], observation.observed_at),
             "last_seen_at": max(current["last_seen_at"], observation.observed_at),
             "updated_at": max(current["updated_at"], observation.observed_at),
+            "field_observed_at": field_observed_at,
+            "current_version": version_no,
+            **current_updates,
         }
-        merged = dict(current)
-
-        if not stale:
-            current_updates = _content_updates(observation, author_id)
-            merged.update(current_updates)
-            business_changed = _business_tuple(
-                current, _CONTENT_BUSINESS_COLUMNS
-            ) != _business_tuple(merged, _CONTENT_BUSINESS_COLUMNS)
-            version_no += 1 if business_changed else 0
-            updates.update(current_updates)
-            updates["current_version"] = version_no
-
         merged.update(updates)
         self._session.execute(
             update(contents_table).where(contents_table.c.id == content_id).values(**updates)
@@ -248,26 +288,28 @@ class PostgresContentRepository:
         )
         comment_id = cast(UUID, current["id"])
         metric_changed = _comment_metric_changed(current, observation)
-        stale = observation.observed_at < current["last_seen_at"]
-        business_changed = False
+        current_updates, field_observed_at = _fresh_updates(
+            current=current,
+            candidate_updates=_comment_updates(observation, author_id),
+            observed_fields=observation.observed_fields,
+            field_columns=_COMMENT_FIELD_COLUMNS,
+            observed_at=observation.observed_at,
+        )
         version_no = int(current["current_version"])
+        merged = dict(current)
+        merged.update(current_updates)
+        business_changed = _business_tuple(current, _COMMENT_BUSINESS_COLUMNS) != _business_tuple(
+            merged, _COMMENT_BUSINESS_COLUMNS
+        )
+        version_no += 1 if business_changed else 0
         updates: dict[str, Any] = {
             "first_seen_at": min(current["first_seen_at"], observation.observed_at),
             "last_seen_at": max(current["last_seen_at"], observation.observed_at),
             "updated_at": max(current["updated_at"], observation.observed_at),
+            "field_observed_at": field_observed_at,
+            "current_version": version_no,
+            **current_updates,
         }
-        merged = dict(current)
-
-        if not stale:
-            current_updates = _comment_updates(observation, author_id)
-            merged.update(current_updates)
-            business_changed = _business_tuple(
-                current, _COMMENT_BUSINESS_COLUMNS
-            ) != _business_tuple(merged, _COMMENT_BUSINESS_COLUMNS)
-            version_no += 1 if business_changed else 0
-            updates.update(current_updates)
-            updates["current_version"] = version_no
-
         merged.update(updates)
         self._session.execute(
             update(comments_table).where(comments_table.c.id == comment_id).values(**updates)
@@ -425,24 +467,10 @@ class PostgresContentRepository:
             "content_count": author.content_count,
             "total_like_count": author.total_like_count,
         }
-        column_names = {
-            "display_name": "display_name",
-            "handle": "handle",
-            "profile_url": "profile_url",
-            "avatar_url": "avatar_url",
-            "bio": "bio",
-            "verified": "verified",
-            "verification_label": "verification_label",
-            "region": "region",
-            "follower_count": "current_follower_count",
-            "following_count": "current_following_count",
-            "content_count": "current_content_count",
-            "total_like_count": "current_total_like_count",
-        }
-        observed_values = {
-            column_names[field_name]: value
-            for field_name, value in author_values.items()
-            if f"author.{field_name}" in observed_fields
+        candidate_updates = {
+            _ACCOUNT_FIELD_COLUMNS[path]: author_values[path.removeprefix("author.")]
+            for path in _ACCOUNT_FIELD_COLUMNS
+            if path in observed_fields
         }
         account_id = uuid4()
         created = self._session.execute(
@@ -453,8 +481,13 @@ class PostgresContentRepository:
                 external_account_id=author.external_account_id,
                 first_seen_at=observed_at,
                 last_seen_at=observed_at,
+                field_observed_at=_initial_freshness(
+                    observed_fields,
+                    _ACCOUNT_FIELD_COLUMNS,
+                    observed_at,
+                ),
                 updated_at=observed_at,
-                **observed_values,
+                **candidate_updates,
             )
             .on_conflict_do_nothing(
                 index_elements=[
@@ -478,13 +511,20 @@ class PostgresContentRepository:
                 .one()
             )
             account_id = cast(UUID, row["id"])
+            fresh_updates, field_observed_at = _fresh_updates(
+                current=row,
+                candidate_updates=candidate_updates,
+                observed_fields=observed_fields,
+                field_columns=_ACCOUNT_FIELD_COLUMNS,
+                observed_at=observed_at,
+            )
             values: dict[str, Any] = {
                 "first_seen_at": min(row["first_seen_at"], observed_at),
                 "last_seen_at": max(row["last_seen_at"], observed_at),
                 "updated_at": max(row["updated_at"], observed_at),
+                "field_observed_at": field_observed_at,
+                **fresh_updates,
             }
-            if observed_at >= row["last_seen_at"]:
-                values.update(observed_values)
             self._session.execute(
                 update(accounts_table).where(accounts_table.c.id == account_id).values(**values)
             )
@@ -517,14 +557,7 @@ class PostgresContentRepository:
                     )
                 )
             elif row["external_id"] != external_id:
-                self._session.execute(
-                    update(account_external_ids_table)
-                    .where(
-                        account_external_ids_table.c.account_id == account_id,
-                        account_external_ids_table.c.id_type == id_type,
-                    )
-                    .values(external_id=external_id)
-                )
+                raise ValueError(f"账号稳定外部 ID 冲突: account_id={account_id} id_type={id_type}")
 
     def _append_content_version(
         self,
@@ -735,6 +768,11 @@ def _new_content_state(
         "first_seen_at": observation.observed_at,
         "last_seen_at": observation.observed_at,
         "current_version": 1,
+        "field_observed_at": _initial_freshness(
+            observation.observed_fields,
+            _CONTENT_FIELD_COLUMNS,
+            observation.observed_at,
+        ),
         "updated_at": observation.observed_at,
     }
     state.update(_content_updates(observation, author_id))
@@ -788,6 +826,11 @@ def _new_comment_state(
         "first_seen_at": observation.observed_at,
         "last_seen_at": observation.observed_at,
         "current_version": 1,
+        "field_observed_at": _initial_freshness(
+            observation.observed_fields,
+            _COMMENT_FIELD_COLUMNS,
+            observation.observed_at,
+        ),
         "updated_at": observation.observed_at,
     }
     state.update(_comment_updates(observation, author_id))
@@ -822,6 +865,43 @@ def _comment_updates(
     if "metrics.reply_count" in observation.observed_fields:
         updates["current_reply_count"] = observation.metrics.reply_count
     return updates
+
+
+def _initial_freshness(
+    observed_fields: list[str],
+    field_columns: dict[str, str],
+    observed_at: datetime,
+) -> dict[str, str]:
+    return {field: observed_at.isoformat() for field in observed_fields if field in field_columns}
+
+
+def _fresh_updates(
+    *,
+    current: dict[str, Any],
+    candidate_updates: dict[str, Any],
+    observed_fields: list[str],
+    field_columns: dict[str, str],
+    observed_at: datetime,
+) -> tuple[dict[str, Any], dict[str, str]]:
+    raw_freshness = current.get("field_observed_at") or {}
+    if not isinstance(raw_freshness, dict):
+        raise ValueError("Current field_observed_at 必须是对象")
+    freshness = {str(key): str(value) for key, value in raw_freshness.items()}
+    accepted: dict[str, Any] = {}
+    for field in observed_fields:
+        column = field_columns.get(field)
+        if column is None or column not in candidate_updates:
+            continue
+        previous_raw = freshness.get(field)
+        if previous_raw is not None:
+            previous_at = datetime.fromisoformat(previous_raw)
+            if previous_at.utcoffset() is None:
+                raise ValueError("Current field_observed_at 必须包含时区")
+            if observed_at < previous_at:
+                continue
+        accepted[column] = candidate_updates[column]
+        freshness[field] = observed_at.isoformat()
+    return accepted, freshness
 
 
 def _content_metric_changed(current: dict[str, Any], observation: CanonicalContentV1) -> bool:

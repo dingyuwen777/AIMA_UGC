@@ -56,7 +56,7 @@ Search content_id
 | 抖音 | 非空 | 非空 | 非空 | 非空 | 可表达 |
 | 微博 | 非空 | 非空 | 非空 | 非空 | 可表达 |
 | B站 | 非空 | 非空 | 非空 | 非空 | 可表达 |
-| 快手 | 非空 | 非空 | 非空 | **Web 与 App 同样本均实测非空** | 可表达；Web 当前主链可用 |
+| 快手 | 非空 | 非空 | **App 主链非空；Web 备用同样本非空** | **App 主链与 Web 备用同样本均实测非空** | 可表达；App 当前正式主链 |
 
 真实 Fixture 已通过生产 Extractor / Mapper → Canonical → Ingestion → PostgreSQL 18 纵切验证。当前样本没有证明需要把 Provider 私有字段加入 Canonical V1 公共 Contract。
 
@@ -352,9 +352,9 @@ data.photos[0]
 
 完整脱敏响应：[`kuaishou/detail.sanitized.json`](../../tests/fixtures/providers/tikhub/kuaishou/detail.sanitized.json)
 
-### 8.3 当前 Web 一级评论主链
+### 8.3 当前 App 一级评论主链
 
-Endpoint：`GET /api/v1/kuaishou/web/fetch_one_video_comment`
+正式 Endpoint：`GET /api/v1/kuaishou/app/fetch_video_comment`
 
 主要列表路径：
 
@@ -362,51 +362,85 @@ Endpoint：`GET /api/v1/kuaishou/web/fetch_one_video_comment`
 data.rootComments[]
 ```
 
-真实响应还存在 `subCommentsMap`。不能仅取 `rootComments[0]` 就推断该根评论有二级回复；Real Probe 应优先选择 `displaySubCommentCount/subCommentCount` 等正向回复证据存在的 root。
-
-完整脱敏响应：[`kuaishou/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/kuaishou/comments_page1.sanitized.json)
-
-### 8.4 当前 Web 二级评论主链
-
-Endpoint：`GET /api/v1/kuaishou/web/fetch_one_video_sub_comment`
-
-2026-08-16 的同样本 A/B Probe 已纠正早先一次空页结论：选择具有明确回复数证据的真实根评论后，Web endpoint 返回：
-
-```json
-{
-  "code": 200,
-  "data": {
-    "pcursor": "...",
-    "subComments": [
-      {
-        "comment_id": 100002,
-        "photo_id": 100001,
-        "user_id": 100003,
-        "content": "<redacted-text>",
-        "likedCount": 15,
-        "reply_to": 473331688
-      }
-    ]
-  }
-}
-```
-
-即：**Web 二级评论已真实非空验证，不应再写成“TikHub 不支持快手二级评论”。**
-
-`reply_to` 的业务含义当前没有足够证据证明一定是另一个评论 ID，所以 Mapper 不把它猜成 `parent_comment_id`；`root_comment_id` 由请求上下文明确提供。
-
-完整脱敏响应：[`kuaishou/sub_comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/kuaishou/sub_comments_page1.sanitized.json)
-
-### 8.5 Web vs App 评论 API 同样本 A/B 实证
-
-TikHub 当前还提供：
+当前 App 根评论真实响应已经证明存在：
 
 ```text
-GET /api/v1/kuaishou/app/fetch_video_comment
-GET /api/v1/kuaishou/app/fetch_video_sub_comments
+comment_id                  # 评论 ID
+content                     # 文本
+likedCount                  # 点赞数
+subCommentCount             # integer，实际回复数量
+displaySubCommentCount      # boolean，回复数/入口显示标志
+user_id                     # 用户 ID
+timestamp                   # 发布时间
 ```
 
-2026-08-16 使用同一个 Search 命中的真实作品、同一个具有 `displaySubCommentCount/subCommentCount` 正向回复证据的根评论做最小对照：
+这里必须区分：
+
+- `subCommentCount` 是实际回复数量，生产 Mapper 在字段存在时映射为 `CanonicalCommentV1.metrics.reply_count` 并声明 `metrics.reply_count` 已观察；
+- `displaySubCommentCount` 是布尔显示标志，不能转换成 `0/1` 充当回复数；
+- 字段缺失时 `reply_count` 保持未知，不从 `subCommentsMap` 长度猜总数。
+
+真实 App endpoint ledger 中同一轮样本已经出现 `subCommentCount=25/2/11` 等非零值，因此 `supports_reply_count=true` 有真实 Provider 证据和生产 Mapper 双重支撑。
+
+App 一级响应还可能包含：
+
+```text
+data.subCommentsMap.<root>.subComments[]
+```
+
+不能仅取 `rootComments[0]` 就推断该根评论有二级回复。Real Probe 应优先选择 `subCommentCount > 0`，或在仅需发现候选时参考 `displaySubCommentCount == true` / 非空 `subCommentsMap`。
+
+正式结构证据：[`endpoint_ledger/2026-08-16/kuaishou.sanitized.json`](../../tests/fixtures/providers/tikhub/endpoint_ledger/2026-08-16/kuaishou.sanitized.json)
+
+### 8.4 当前 App 二级评论主链
+
+正式 Endpoint：`GET /api/v1/kuaishou/app/fetch_video_sub_comments`
+
+请求使用：
+
+```text
+photo_id
+root_comment_id
+pcursor
+count
+```
+
+2026-08-16 同样本 A/B Probe 已确认 App endpoint 对明确有回复的根评论返回：
+
+```text
+HTTP 200
+data.subComments[] 非空
+```
+
+`root_comment_id` 由请求上下文明确提供；如果响应没有可靠直接父评论 ID，Mapper 保留 `parent_comment_id = null`，不根据数组位置、用户名或语义不明字段猜测。
+
+正式结构证据同样保存在：[`endpoint_ledger/2026-08-16/kuaishou.sanitized.json`](../../tests/fixtures/providers/tikhub/endpoint_ledger/2026-08-16/kuaishou.sanitized.json)
+
+### 8.5 Web 评论链：已验证备用，不自动 fallback
+
+Web 备用 Endpoint：
+
+```text
+GET /api/v1/kuaishou/web/fetch_one_video_comment
+GET /api/v1/kuaishou/web/fetch_one_video_sub_comment
+```
+
+2026-08-16 的同样本 A/B Probe 已纠正早先一次空页结论：选择具有明确回复数证据的真实根评论后，Web 一级和二级同样返回 HTTP 200 且非空。Web 二级主要路径为：
+
+```text
+data.subComments[]
+```
+
+历史 Web 脱敏 Fixture 继续保留：
+
+- [`kuaishou/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/kuaishou/comments_page1.sanitized.json)
+- [`kuaishou/sub_comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/kuaishou/sub_comments_page1.sanitized.json)
+
+Web 样本中的 `reply_to` 当前没有足够证据证明一定是另一个评论 ID，所以 Mapper 不把它猜成 `parent_comment_id`；`root_comment_id` 由请求上下文明确提供。
+
+Web 已验证可用，但**不是当前默认 Capability 主链，也没有 App 失败后的自动 Web fallback**。如未来回切 Web，必须通过显式 Operation/Capability/Pricing/测试/文档变更完成。
+
+### 8.6 Web vs App 评论 API 同样本 A/B 实证
 
 | 项目 | Web | App |
 | --- | --- | --- |
@@ -420,9 +454,7 @@ GET /api/v1/kuaishou/app/fetch_video_sub_comments
 
 价格只表示 **2026-08-16 Real Probe 的 endpoint-info 快照**，不是运行时永久常量。生产发送仍以版本化 Pricing + endpoint-level verified 事实为准。
 
-当前正式主 Operation Matrix 仍使用 Web 评论链，直到 Provider Operation 选型决策被明确批准。不得因为 App 本次更便宜就在运行时静默 Web→App fallback。
-
-**基于当前证据的推荐：后续将快手评论主链切到 App，Web 保留为已验证的备选事实但不做自动 fallback。** 原因是同样本结构可用，而当前 App 一级/二级评论 endpoint 单价都更低，并且一级响应可携带部分二级回复，理论上可减少后续请求。正式切换前仍需用户/业务 Owner 批准并同步 Operation Matrix、Pricing、Runtime、Fixture/测试和 Change。
+2026-08-16 的 Operation 选型已经批准并在当前 Stage 7 机器实现中落地：**App 一级/二级为正式主链，Web 为 verified backup，不做自动 fallback。** 因此本附录不能再把 Web 写成“当前主链”或把 App 切换写成待批准建议。
 
 ## 9. Canonical 统一规则
 

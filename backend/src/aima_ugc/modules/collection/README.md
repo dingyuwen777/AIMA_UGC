@@ -29,7 +29,9 @@ Collection 是采集业务 Owner。它负责把已经通过 Contract / Provider 
    - Provider Request / Attempt 的持久化、正式 Dispatch、失败归因与 Recovery；
    - Provider Request 是逻辑请求，同一 request fingerprint 在 Job retry / takeover 中复用；
    - 新的外部重发必须建立新的 Provider Attempt；429、408、425、5xx 以及 Transport `not_sent/unknown` 才进入当前自动 retry 边界，其他 4xx 不做无条件重试；
-   - `dispatching` Attempt 在正式 Scope 开始时先经 `ProviderAttemptReconciler` 收敛：存在完整且 Contract/Hash 校验通过的确定性 Raw 时直接 finalize + replay，**禁止再次发送 Provider**；没有可用 Raw 的未知发送结果保留 `potential_duplicate_charge` 语义。
+   - `dispatching` Attempt 在正式 Scope 开始时先经 `ProviderAttemptReconciler` 收敛：`stored/linked` Raw 必须按 metadata 的 SHA-256/字节数、gzip 与 Raw Envelope Contract 全部校验后才能 replay；如果确定性 Raw 文件已经原子落盘但 metadata 仍为 `pending`，Recovery 可以先校验 gzip/Envelope，再重新计算 SHA-256/字节数并以状态 CAS 把该 Artifact 确认为 `stored`，随后复用同一 finalize/link 链，**禁止再次发送 Provider**；
+   - `pending` 只允许在 Recovery 专用路径做上述确认，普通 replay 仍拒绝未完整存储 Artifact；文件缺失、损坏、来源不一致或 metadata 状态异常都保守收敛为 `unknown`；
+   - Raw 完整性失败而降级 `unknown` 时写 `provider_raw_recovery_rejected` warning，记录 Attempt ID、Artifact ID 和安全错误摘要，不记录 Raw 内容、请求参数或 Secret。
 5. `candidates.py` / `candidate_tables.py` 与 Provider Mapper / Ingestion
    - Raw → Mapper → Candidate → Canonical / Ingestion 的统一纵向边界；
    - Mapper 不访问数据库、不发 HTTP；Provider 不直接写业务表；
@@ -112,7 +114,7 @@ Scheduler 停机恢复固定为：
   - Collection 到 Content Owner 的 Fenced Ingestion/Coverage 边界；
   - Collection 不直接写 Content/Comment/Coverage 表。
 
-`database_schema.py` 只注册当前机器 Schema；正式结构变化必须通过 Alembic Revision 演进。首版 Scheduler 策略通过 `0014` 约束，预算回撤通过 `20260817_0015` 完成，评论 Coverage 可观测字段和来源幂等约束由向前 Revision `20260817_0016` 建立；禁止改写已发布历史 Revision。
+`database_schema.py` 只注册当前机器 Schema；正式结构变化必须通过 Alembic Revision 演进。首版 Scheduler 策略通过 `0014` 约束，预算回撤通过 `20260817_0015` 完成，评论 Coverage 可观测字段和来源幂等约束由向前 Revision `20260817_0016` 建立，Current 字段级 freshness 由 `20260817_0017` 建立；禁止改写已发布历史 Revision。
 
 ## 4. Secret、Job、Provider 与配置边界
 
@@ -128,12 +130,14 @@ Scheduler 停机恢复固定为：
 
 Stage 1—7 已存在完整机器实现：Scheduler → Occurrence → `collection.run.v1` Job → Run/Scope → Worker → TikHub 五平台 Provider Operation → Raw → Mapper → Canonical → Candidate/Ingestion → Content Owner/PostgreSQL。
 
+`worker_main.py`、`bootstrap/worker.py` 和 Platform Job Runtime 已提供正式 Worker/JobReaper 装配与 `run_once()` 执行能力；当前 Stage 1—7 并没有再定义一套常驻 Supervisor/服务管理循环。常驻进程的启动、守护、重启和 Release 部署编排属于后续 Release/生产运行边界，不能为了让文档看起来“完整”在本阶段伪造第二套进程管理器。
+
 在进入 Stage 8 前，当前 L3 Corrective Change 重新验证并补齐 Stage 1—7 的恢复、并发、乱序 Current、评论整页/Coverage 与测试/文档一致性。**Stage 8 HTTP CRUD/业务页面/认证授权，以及 Release 阶段 Docker/离线发布/协调 Backup-Restore 仍未开始，不得把本次修复描述为这些能力已经实现。**
 
 当前必须继续保持：
 
 - 五平台 Operation / Mapper / Capability 的已验证边界；
-- 快手 App comments/sub-comments 正式主链；
+- 快手 App comments/sub-comments 正式主链，一级评论真实 `subCommentCount` 可映射 `metrics.reply_count`；
 - 不建立自动 Provider/App/Web fallback；
 - Provider Secret 只走 `secret_ref`，TikHub Bearer Secret 只发送到批准的 `https://api.tikhub.io` Origin；
 - 当前不恢复请求/金额预算、Budget Account、Reservation Ledger 或 dormant Budget 接口。
@@ -145,7 +149,7 @@ Stage 1—7 已存在完整机器实现：Scheduler → Occurrence → `collecti
 - Scheduler 专项验证 new-plan 初始化、latest-only、重复 tick、并发 Scheduler 和 Migration round-trip；
 - Worker 纵切使用 `FakeProviderTransport` 验证真实生产装配；普通 CI 不产生付费 TikHub 请求；
 - Provider 可重试错误必须验证“同一逻辑 Request + 新 Attempt”，同时保留旧 Attempt/Raw/费用事实；
-- Recovery 必须验证 `dispatching + 已完整 Raw + Lease takeover` 后正式 Scope 不再次发送 Provider；
+- Recovery 必须验证 `dispatching + 已完整 Raw + Lease takeover` 后正式 Scope 不再次发送 Provider，并覆盖 pending metadata/文件已落盘的崩溃窗口与损坏 Raw 的 warning 降级路径；
 - 评论测试必须覆盖 Detail 后重决策、整页保留、target 跨页、空页、reported_total=0、Coverage 来源幂等；
 - 新 Migration 至少验证上一正式 Revision → head、base → head、downgrade / upgrade 与 `alembic check`；
 - 真实 Provider Probe 仅在 Fixture/Contract/一手文档不足以确认真实接口形态时人工显式运行，并设置请求/分页上限；不能把 Real Probe 当普通 CI，也不能把付费请求成功替代单元/集成测试。

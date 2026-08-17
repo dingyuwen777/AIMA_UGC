@@ -157,3 +157,24 @@ def test_kuaishou_real_root_comment_converts_numeric_ids_to_strings() -> None:
     assert mapped.author.external_account_id == "100004"
     assert mapped.metrics.like_count == 7
     assert mapped.published_at == datetime.fromtimestamp(1720000000, tz=UTC)
+
+
+def test_kuaishou_app_root_comment_maps_proven_sub_comment_count() -> None:
+    raw = {
+        "comment_id": 100045,
+        "content": "<redacted-string>",
+        "likedCount": 3,
+        "subCommentCount": 25,
+        "displaySubCommentCount": True,
+        "timestamp": 1720000000,
+        "user_id": 100011,
+    }
+    mapped = map_kuaishou_comment(
+        raw,
+        _common_context(KuaishouMappingContext, "fetch_video_comments", "100003"),
+        item_locator="data.rootComments[0]",
+        is_root=True,
+    )
+
+    assert mapped.metrics.reply_count == 25
+    assert "metrics.reply_count" in mapped.observed_fields
