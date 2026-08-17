@@ -10,8 +10,6 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from pydantic import SecretStr
-from sqlalchemy import func, select
 
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataGateway,
@@ -43,6 +41,8 @@ from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.jobs import JobExecutionFence
 from aima_ugc.platform.storage import ArtifactService
 from aima_ugc.platform.storage.tables import artifacts_table
+from pydantic import SecretStr
+from sqlalchemy import func, select
 
 _FIXTURES = Path("tests/fixtures/providers/tikhub/xhs")
 _OBSERVED_AT = datetime(2026, 8, 17, 4, 30, tzinfo=UTC)
