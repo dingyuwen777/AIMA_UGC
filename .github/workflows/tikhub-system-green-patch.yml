@@ -1,0 +1,263 @@
+name: TikHub System Green Patch
+
+on:
+  push:
+    branches:
+      - agent/tikhub-test-debug
+    paths:
+      - ".github/workflows/tikhub-system-green-patch.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  green:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_DB: aima_ugc
+          POSTGRES_USER: aima_ugc
+          POSTGRES_PASSWORD: tikhub-green-ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aima_ugc -d aima_ugc"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AIMA_DATA_DIR: .runtime/ci-tikhub-green/data
+      AIMA_LOG_DIR: .runtime/ci-tikhub-green/logs
+      AIMA_SECRET_DIR: .runtime/ci-tikhub-green/secrets
+      AIMA_DB_HOST: 127.0.0.1
+      AIMA_DB_PORT: 5432
+      AIMA_DB_NAME: aima_ugc
+      AIMA_DB_USER: aima_ugc
+      AIMA_DB_CONNECT_TIMEOUT_SECONDS: 3
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: agent/tikhub-test-debug
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+      - name: Install locked environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv sync --locked
+          mkdir -p "${AIMA_DATA_DIR}" "${AIMA_LOG_DIR}" "${AIMA_SECRET_DIR}"
+          printf '%s\n' 'tikhub-green-ci' > "${AIMA_SECRET_DIR}/postgres_password"
+          chmod 600 "${AIMA_SECRET_DIR}/postgres_password"
+          uv run alembic upgrade head
+      - name: Apply production fixes and regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str, *, count: int = 1) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              actual = text.count(old)
+              if actual < count:
+                  raise SystemExit(f"{path}: expected {count} occurrence(s), found {actual}")
+              file.write_text(text.replace(old, new, count), encoding="utf-8")
+
+          # 1) Collection shared incremental boundary rule.
+          decision = "backend/src/aima_ugc/modules/collection/decision.py"
+          replace(
+              decision,
+              "from __future__ import annotations\n\nfrom aima_ugc.contracts.collection import (\n",
+              "from __future__ import annotations\n\nfrom collections.abc import AbstractSet, Sequence\n\nfrom aima_ugc.contracts.collection import (\n",
+          )
+          marker = "\n\nclass CollectionDecisionService:\n"
+          helper = '''\n\ndef known_comment_boundary_reached(\n    page_comment_ids: Sequence[str],\n    known_comment_ids: AbstractSet[str],\n) -> bool:\n    \"\"\"判断最新排序页是否已进入连续历史评论尾部。\n\n    当前已付费页面仍由调用方完整处理；本函数只决定是否还需要请求下一页。\n    如果已知评论之后又出现新评论，则不能把该页当作安全历史边界。\n    \"\"\"\n    if not page_comment_ids or not known_comment_ids:\n        return False\n    first_known = next(\n        (index for index, comment_id in enumerate(page_comment_ids) if comment_id in known_comment_ids),\n        None,\n    )\n    if first_known is None:\n        return False\n    return all(comment_id in known_comment_ids for comment_id in page_comment_ids[first_known:])\n\n\nclass CollectionDecisionService:\n'''
+          replace(decision, marker, helper)
+
+          # 2) XHS verified latest_v2 capability.
+          capabilities = "backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py"
+          xhs_block = '''        ProviderOperationCapabilityV1(\n            business_operation="comments",\n            provider_operations=("get_note_comments",),\n            comment_sort_modes=("latest",),\n            supports_reply_count=True,\n            supports_sub_comments=True,\n            supports_incremental_comment_sort=False,\n            provider_page_size_policy="provider_default",\n        ),\n'''
+          xhs_new = xhs_block.replace(
+              "supports_incremental_comment_sort=False",
+              "supports_incremental_comment_sort=True",
+          )
+          replace(capabilities, xhs_block, xhs_new)
+
+          # 3) PostgreSQL previous state: one query for known root comment IDs.
+          state_reader = "backend/src/aima_ugc/adapters/persistence/postgres/collection_content.py"
+          replace(
+              state_reader,
+              "from aima_ugc.modules.content.tables import accounts_table, contents_table\n",
+              "from aima_ugc.modules.content.tables import accounts_table, comments_table, contents_table\n",
+          )
+          writer_marker = "\n\nclass PostgresFencedCollectionIngestionWriter:\n"
+          reader_method = '''\n\n    def known_root_comment_ids(self, content_id: UUID) -> frozenset[str]:\n        \"\"\"一次读取内容当前已知一级评论 ID，供稳定最新排序的增量边界判断。\"\"\"\n        session = self._session_factory()\n        try:\n            with session.begin():\n                values = session.scalars(\n                    select(comments_table.c.external_comment_id).where(\n                        comments_table.c.content_id == content_id,\n                        comments_table.c.parent_comment_id.is_(None),\n                    )\n                ).all()\n                return frozenset(str(value) for value in values if value)\n        finally:\n            session.close()\n\n\nclass PostgresFencedCollectionIngestionWriter:\n'''
+          replace(state_reader, writer_marker, reader_method)
+
+          # 4) Formal Scope executor uses shared boundary and DB state.
+          scope = "backend/src/aima_ugc/bootstrap/collection_scope.py"
+          replace(
+              scope,
+              "from aima_ugc.modules.collection.decision import CollectionDecisionService\n",
+              "from aima_ugc.modules.collection.decision import (\n    CollectionDecisionService,\n    known_comment_boundary_reached,\n)\n",
+          )
+          replace(
+              scope,
+              "        last_executed: _ExecutedCall | None = None\n\n        for _page_no in range(1, _MAX_COMMENT_PAGES + 1):\n",
+              "        last_executed: _ExecutedCall | None = None\n        known_comment_ids = (\n            self._content_state.known_root_comment_ids(content_id)\n            if comment_action == \"fetch_incremental\"\n            else frozenset()\n        )\n\n        for _page_no in range(1, _MAX_COMMENT_PAGES + 1):\n",
+          )
+          replace(
+              scope,
+              "            raw_items = extract_comment_items(platform, executed.body)\n            for index, raw_item in enumerate(raw_items):\n",
+              "            raw_items = extract_comment_items(platform, executed.body)\n            page_comment_ids: list[str] = []\n            for index, raw_item in enumerate(raw_items):\n",
+          )
+          replace(
+              scope,
+              "                if comment.external_content_id != content.external_content_id:\n                    raise ValueError(\"TikHub Comment 与 Content 身份不一致\")\n                self._content_writer.ingest_comment(canonical=comment, fence=context.fence)\n",
+              "                if comment.external_content_id != content.external_content_id:\n                    raise ValueError(\"TikHub Comment 与 Content 身份不一致\")\n                page_comment_ids.append(comment.external_comment_id)\n                self._content_writer.ingest_comment(canonical=comment, fence=context.fence)\n",
+          )
+          boundary_insert = '''            if comment_action == "probe_first_page":\n'''
+          boundary_logic = '''            if (\n                comment_action == "fetch_incremental"\n                and known_comment_boundary_reached(page_comment_ids, known_comment_ids)\n            ):\n                self._record_comment_coverage(\n                    content_id=content_id,\n                    platform=platform,\n                    executed=executed,\n                    context=context,\n                    coverage="partial",\n                    reported_total=reported_total,\n                    collected_count=fetched,\n                    sample_mode=sample_mode,\n                    sort_mode=sort_mode,\n                    target_count=comment_target,\n                    stop_reason="known_comment_reached",\n                )\n                return\n            if comment_action == "probe_first_page":\n'''
+          replace(scope, boundary_insert, boundary_logic)
+
+          # 5) Douyin Search V2 only yields mappable video content cards.
+          douyin = "backend/src/aima_ugc/adapters/providers/tikhub/operations/douyin.py"
+          replace(
+              douyin,
+              "    return tuple(item for item in items if isinstance(item, dict))\n",
+              "    return tuple(\n        item\n        for item in items\n        if isinstance(item, dict) and _search_item_id(item)\n    )\n",
+          )
+
+          # 6) Weibo Search only yields mblog cards with a stable post ID; missing official cursor is end-of-data.
+          weibo = "backend/src/aima_ugc/adapters/providers/tikhub/operations/weibo.py"
+          replace(
+              weibo,
+              '''    return tuple(\n        card for card in cards if isinstance(card, dict) and isinstance(card.get("mblog"), dict)\n    )\n''',
+              '''    return tuple(\n        card\n        for card in cards\n        if isinstance(card, dict) and _mblog_has_stable_id(card.get("mblog"))\n    )\n''',
+          )
+          replace(
+              weibo,
+              "\n\ndef _first_level_comment_max_id(body: dict[str, Any]) -> str:\n",
+              '''\n\ndef _mblog_has_stable_id(value: object) -> bool:\n    if not isinstance(value, dict):\n        return False\n    return any(_string(value.get(key)) for key in ("idstr", "mid", "id"))\n\n\ndef _first_level_comment_max_id(body: dict[str, Any]) -> str:\n''',
+          )
+          replace(
+              weibo,
+              '''    more_info = data.get("moreInfo")\n    if not isinstance(more_info, dict):\n        raise ValueError("微博一级评论响应缺少 data.moreInfo")\n''',
+              '''    more_info = data.get("moreInfo")\n    if more_info is None:\n        # 官方下一页游标只定义在 data.moreInfo.params.max_id；\n        # 真实末页可能直接省略 moreInfo，不能猜测 items 内部字段作为下一页游标。\n        return ""\n    if not isinstance(more_info, dict):\n        raise ValueError("微博一级评论响应 data.moreInfo 类型非法")\n''',
+          )
+
+          # 7) File-state debug runner reuses the same production boundary rule.
+          core = "backend/src/aima_ugc/adapters/providers/tikhub_test/core.py"
+          replace(
+              core,
+              "    def is_known_comment(\n",
+              '''    def known_comment_ids(\n        self, platform: str, external_content_id: str\n    ) -> frozenset[str]:\n        entry = self._entry(platform, external_content_id, create=False)\n        if entry is None:\n            return frozenset()\n        comment_ids = entry.get("comment_ids", [])\n        return frozenset(str(item) for item in comment_ids if isinstance(item, str) and item)\n\n    def is_known_comment(\n''',
+          )
+          runner = "backend/src/aima_ugc/adapters/providers/tikhub_test/runner.py"
+          replace(
+              runner,
+              "from aima_ugc.modules.collection.decision import CollectionDecisionService\n",
+              "from aima_ugc.modules.collection.decision import (\n    CollectionDecisionService,\n    known_comment_boundary_reached,\n)\n",
+          )
+          replace(
+              runner,
+              "                content=content,\n                target=decision.comment_target or self.limits.max_comments_per_content,\n",
+              "                content=content,\n                action=decision.comment_action,\n                target=decision.comment_target or self.limits.max_comments_per_content,\n",
+          )
+          replace(
+              runner,
+              "        content: CanonicalContentV1,\n        target: int,\n    ) -> tuple[list[ReviewCommentRow], str]:\n",
+              "        content: CanonicalContentV1,\n        action: str,\n        target: int,\n    ) -> tuple[list[ReviewCommentRow], str]:\n",
+          )
+          replace(
+              runner,
+              "        provider_exhausted = False\n        for page_no in range(1, self.limits.max_comment_pages_per_content + 1):\n",
+              "        provider_exhausted = False\n        known_comment_ids = (\n            self.state.known_comment_ids(self.platform, content_id)\n            if action == \"fetch_incremental\"\n            else frozenset()\n        )\n        for page_no in range(1, self.limits.max_comment_pages_per_content + 1):\n",
+          )
+          replace(
+              runner,
+              "            mapped_roots: list[CanonicalCommentV1] = []\n            for item_index, raw_item in enumerate(items):\n",
+              "            mapped_roots: list[CanonicalCommentV1] = []\n            page_comment_ids: list[str] = []\n            for item_index, raw_item in enumerate(items):\n",
+          )
+          replace(
+              runner,
+              "                key = (content_id, comment.external_comment_id)\n",
+              "                page_comment_ids.append(comment.external_comment_id)\n                key = (content_id, comment.external_comment_id)\n",
+          )
+          replace(
+              runner,
+              "            if root_total >= target:\n                break\n",
+              '''            if (\n                action == "fetch_incremental"\n                and known_comment_boundary_reached(page_comment_ids, known_comment_ids)\n            ):\n                expected = str(content.metrics.comment_count) if content.metrics.comment_count is not None else "unknown"\n                return mapped_rows, f"partial {root_total}/{expected} (known_comment_reached)"\n            if root_total >= target:\n                break\n''',
+          )
+
+          # 8) Unit regressions for real mixed-card and missing-cursor shapes.
+          douyin_test = "tests/unit/collection/test_douyin_tikhub_operation.py"
+          text = Path(douyin_test).read_text(encoding="utf-8")
+          text += '''\n\ndef test_search_extractor_ignores_non_video_business_cards_without_aweme_id() -> None:\n    body = {\n        "data": {\n            "business_data": [\n                {"type": 1, "data": {"aweme_info": {"aweme_id": "aweme-1"}}},\n                {"type": 66668, "data": {"display": "non-content-card"}},\n                {"type": 1, "data": {"aweme_info": {"aweme_id": "aweme-2"}}},\n            ],\n            "cursor": 20,\n            "has_more": 1,\n        }\n    }\n\n    items = extract_search_items(body)\n    pagination = DouyinSearchPagination.from_response(current_cursor=0, body=body)\n\n    assert len(items) == 2\n    assert pagination.item_ids == ("aweme-1", "aweme-2")\n    assert pagination.should_continue is True\n'''
+          Path(douyin_test).write_text(text, encoding="utf-8")
+
+          weibo_test = "tests/unit/collection/test_weibo_tikhub_operation.py"
+          text = Path(weibo_test).read_text(encoding="utf-8")
+          text = text.replace(
+              "    build_status_sub_comments_request,\n)",
+              "    build_status_sub_comments_request,\n    extract_search_items,\n)",
+              1,
+          )
+          text += '''\n\ndef test_search_extractor_ignores_mblog_cards_without_stable_post_id() -> None:\n    body = {\n        "data": {\n            "cards": [\n                {"mblog": {"idstr": "post-1", "text": "valid"}},\n                {"mblog": {"text": "non-content-or-incomplete-card"}},\n                {"card_type": 11},\n            ]\n        }\n    }\n\n    items = extract_search_items(body)\n\n    assert len(items) == 1\n    assert items[0]["mblog"]["idstr"] == "post-1"\n\n\ndef test_first_level_comment_pagination_treats_missing_official_cursor_as_provider_exhausted() -> None:\n    exhausted = WeiboCommentPagination.from_response(\n        previous_max_id=None,\n        body={"data": {"items": [{"data": {"id": "comment-1"}}]}},\n    )\n\n    assert exhausted.should_continue is False\n    assert exhausted.next_max_id == ""\n    assert exhausted.stop_reason == "provider_exhausted"\n'''
+          Path(weibo_test).write_text(text, encoding="utf-8")
+
+          # 9) Keep README Python examples valid for Ruff's doctest formatter.
+          readme = "backend/src/aima_ugc/adapters/providers/tikhub_test/README.md"
+          text = Path(readme).read_text(encoding="utf-8")
+          for name, value in (\n              ("max_search_pages", "20"), ("max_contents", "None"),\n              ("max_comments_per_content", "100"), ("max_comment_pages_per_content", "20"),\n              ("max_replies_per_root", "20"), ("max_reply_pages_per_root", "10"),\n              ("include_comments", "True"), ("include_replies", "True"), ("force_refresh", "False"),\n          ):\n              text = text.replace(f"{name}={value}", f"{name} = {value}")\n          Path(readme).write_text(text, encoding="utf-8")
+          PY
+
+          uv run ruff format backend tests scripts
+          uv run ruff check --fix backend tests scripts
+      - name: Verify Green before commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run mypy backend/src
+          uv run pytest \
+            tests/unit/collection/test_tikhub_capabilities.py \
+            tests/unit/collection/test_tikhub_real_capabilities.py \
+            tests/unit/collection/test_stage7_decision.py \
+            tests/unit/collection/test_douyin_tikhub_operation.py \
+            tests/unit/collection/test_weibo_tikhub_operation.py \
+            tests/unit/collection/test_tikhub_test_debug.py \
+            tests/unit/collection/test_tikhub_test_debug_runtime.py \
+            -q
+          uv run pytest \
+            tests/integration/collection/test_xhs_incremental_comments_runtime.py \
+            tests/integration/collection/test_collection_content_runtime.py \
+            tests/integration/collection/test_collection_scope_comments_runtime.py \
+            -q
+          uv run python scripts/quality/scan_secrets.py
+      - name: Commit verified Green
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            backend/src/aima_ugc/modules/collection/decision.py \
+            backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py \
+            backend/src/aima_ugc/adapters/persistence/postgres/collection_content.py \
+            backend/src/aima_ugc/bootstrap/collection_scope.py \
+            backend/src/aima_ugc/adapters/providers/tikhub/operations/douyin.py \
+            backend/src/aima_ugc/adapters/providers/tikhub/operations/weibo.py \
+            backend/src/aima_ugc/adapters/providers/tikhub_test/core.py \
+            backend/src/aima_ugc/adapters/providers/tikhub_test/runner.py \
+            backend/src/aima_ugc/adapters/providers/tikhub_test/README.md \
+            tests/unit/collection/test_douyin_tikhub_operation.py \
+            tests/unit/collection/test_weibo_tikhub_operation.py
+          git commit -m "修复 TikHub 增量评论与真实响应兼容"
+          git push origin HEAD:agent/tikhub-test-debug
