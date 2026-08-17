@@ -131,20 +131,16 @@ jobs:
       - name: Ruff format
         shell: bash
         run: |
-          set +e
-          output="$(uv run ruff format --check backend tests scripts migrations/versions/20260814_0005_stage5d_provider_dispatch.py 2>&1)"
-          status=$?
-          printf '%s\n' "$output"
-          if [ "$status" -ne 0 ]; then
-            while IFS= read -r line; do
-              case "$line" in
-                "Would reformat: "*)
-                  path="${line#Would reformat: }"
-                  printf '::error file=%s::%s\n' "$path" "$line"
-                  ;;
-              esac
-            done <<< "$output"
-            exit "$status"
+          set -euo pipefail
+          uv run ruff format backend tests scripts migrations/versions/20260814_0005_stage5d_provider_dispatch.py
+          changed="$(git diff --name-only -- backend tests scripts migrations/versions/20260814_0005_stage5d_provider_dispatch.py)"
+          if [ -n "$changed" ]; then
+            while IFS= read -r path; do
+              [ -z "$path" ] && continue
+              printf '::error file=%s::Ruff formatter would modify this file\n' "$path"
+            done <<< "$changed"
+            git diff --check
+            exit 1
           fi
 
       - name: Ruff lint
