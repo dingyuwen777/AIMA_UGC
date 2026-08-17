@@ -46,7 +46,7 @@ Plan / Run / Scope
 - Run 的 `config_snapshot` 保存该次执行不可变配置快照，Plan / Schedule Version 的关系身份以数据库 FK 为准；
 - Scheduler 创建 scheduled Run 时会冻结实际可执行关键词 Scope，避免 Job 入队后重新读取已经变化的词包内容。
 
-Provider Request / Attempt、Dispatch、Recovery 与预算账本继续复用现有 Stage 5D / Stage 7 生产实现。
+Provider Request / Attempt、Dispatch、Recovery 继续复用现有 Stage 5D / Stage 7 生产实现；Billing/成本字段用于执行审计，当前没有 Budget Account/Reservation Ledger。
 
 ## 3. Stage 7 Plan 与 Scheduler 事实
 
@@ -238,8 +238,6 @@ App `search_comprehensive` 是不同语义候选，只能在未来 A/B 中比较
 - Provider Config Registry / `secret_ref` 路由；
 - Keyword / Keyword Pack 与数据库级并发串行化；
 - 五平台 TikHub Operation / Mapper / Capability / Registry 的真实响应基础；
-- Provider Budget Account / Reservation Ledger；
-- Global / Run / Run Comment / Content Comment 多层请求数与金额预算；
 - endpoint-level Pricing fail-closed；
 - XHS 已存 Raw Replay Job Handler，用于把既有 Raw 重新走正式 Mapper / Ingestion，不重新发 Provider HTTP；
 - TikHub HTTP Transport 的 Secret 注入、一次发送和错误状态边界；
@@ -249,15 +247,15 @@ App `search_comprehensive` 是不同语义候选，只能在未来 A/B 中比较
 
 Stage 7 仍为进行中，当前不能因为 Scheduler、五平台 Mapper 或 Real Probe 已完成就宣称自动采集完整闭环。主要剩余：
 
-1. **正式 `collection.run.v1` Worker Handler**：Scheduler 已能创建 scheduled Job / Occurrence / Run / Scope，但生产 Worker 仍需要完整复用 Provider Routing、Pricing/Budget、Dispatch、Raw、Mapper、Decision、Ingestion 链，不能注册空 Handler 或第二套采集实现；
-2. **统一 Operation / Business Pipeline Probe 的长期生产入口**：本轮一次性 Real Probe 已取得外部结构证据，但最终调试入口必须复用正式 Registry / Operation / Mapper / Decision Service，并保持 billable endpoint 的 Pricing/Budget fail-closed；
+1. **正式 `collection.run.v1` Worker Handler**：Scheduler 已能创建 scheduled Job / Occurrence / Run / Scope，但生产 Worker 仍需要完整复用 Provider Routing、Provider Billing/Pricing、Dispatch、Raw、Mapper、Decision、Ingestion 链，不能注册空 Handler 或第二套采集实现；
+2. **统一 Operation / Business Pipeline Probe 的长期生产入口**：本轮一次性 Real Probe 已取得外部结构证据，但最终调试入口必须复用正式 Registry / Operation / Mapper / Decision Service，并保持 Provider Billing/Pricing 事实完整；
 3. **其他平台 API family 真实 A/B**：抖音/微博/B站候选 builder 已建立，但在安全凭据交接和真实 Runner Probe 成功前保持 `candidate_pending_probe`；这不阻断当前正式主 Operation 的既有真实兼容证据，也不能被误报为已验证备用；
 4. **最终 Stage 7 集成证据**：相关质量门禁、PR CI、Review、正常 PR 合并以及合并后 main 新鲜 CI 尚未全部完成。
 
 ## 7. 测试与调试
 
 - 调试复用生产 Service / Repository / Provider Operation，不实现第二套路径；
-- Real Probe 默认不进普通 CI，必须显式授权、请求数/费用封顶、Secret 不落盘；
+- Real Probe 默认不进普通 CI，必须显式授权、设置请求数/分页上限并在运行前核对预计费用，Secret 不落盘；
 - 普通回归使用已经合法脱敏的真实 Fixture，不重复产生 TikHub 费用；
 - API family A/B 只使用显式候选 builder，不能注册隐式 fallback；
 - Scheduler 专项验证 latest-only、并发去重、重复 tick 幂等、Plan 行锁重读、Scope Snapshot、Migration drift 与 round-trip；

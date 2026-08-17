@@ -1,6 +1,6 @@
 # Collection 模块
 
-Collection 是采集业务 Owner。它负责把已经通过 Contract / Provider 边界确定的采集输入组织成可追踪的 Plan、Occurrence、Run、Scope、Provider Request / Attempt、Candidate 和预算账本事实；它不拥有 HTTP Router、Provider 私有分页协议或 Canonical 业务表。
+Collection 是采集业务 Owner。它负责把已经通过 Contract / Provider 边界确定的采集输入组织成可追踪的 Plan、Occurrence、Run、Scope、Provider Request / Attempt 和 Candidate 事实；它不拥有 HTTP Router、Provider 私有分页协议或 Canonical 业务表。Provider Billing/成本字段只作为执行审计事实，当前模块不实现预算账本。
 
 ## 1. 稳定边界
 
@@ -28,9 +28,6 @@ Collection 是采集业务 Owner。它负责把已经通过 Contract / Provider 
 5. `candidates.py` / `candidate_tables.py` 与 Provider Mapper / Ingestion
    - Raw → Mapper → Candidate → Canonical / Ingestion 的现有纵向边界；
    - Mapper 不访问数据库、不发 HTTP；Provider 不直接写业务表。
-6. `provider_budget.py`
-   - Provider 调用前预算预留、成功/失败结算和 `unknown` 账务保守处理；
-   - `unknown` 不自动退款。
 7. `xhs_replay.py`
    - 只回放已经持久化的 XHS Raw；
    - 复用正式 Mapper / Ingestion；
@@ -46,7 +43,6 @@ Stage 7 当前 Collection-owned 数据事实：
   - `schedule_version >= 1`；
   - 首版 `misfire_policy = latest_only`；
   - 首版 `max_catch_up_runs = 0`；
-  - `request_budget >= 0`；
   - `next_run_at` / `last_scheduled_at` 由 Scheduler Runtime 推进。
 - `collection_plan_platforms`
   - 一个 Plan 的同一平台只允许一条关系；
@@ -97,18 +93,18 @@ Scheduler 停机恢复固定为：
 - Provider Secret 只通过 `provider_configs.secret_ref` 间接引用，不进入 Plan、Run、Scope、Raw、Job Payload 或日志明文；
 - Plan 平台 `config` 是业务配置，不是 Provider HTTP 参数仓库；
 - Provider 私有 cursor、page、search_id、签名或认证字段不进入 Plan；
-- Scheduler 只创建任务事实，真实 Provider HTTP 仍必须经过 Pricing、Budget、Dispatch 与 Raw 边界；
-- `collection.run.v1` 的整个 Job Attempt 超时不自动重排；任何 Provider 重发都必须遵守“新 Attempt + 新预算预留 + 新 Raw 证据”边界，不能由 Job Runtime 隐式复制一次已经可能发送过的付费调用。
+- Scheduler 只创建任务事实，真实 Provider HTTP 仍必须经过 Provider Billing/Pricing、Dispatch 与 Raw 边界；
+- `collection.run.v1` 的整个 Job Attempt 超时不自动重排；任何 Provider 重发都必须使用新 Attempt 并形成新的 Raw/计费审计事实，不能由 Job Runtime 隐式复制一次已经可能发送过的外部调用。
 
 ## 5. 当前仍未闭环的边界
 
 Scheduler Runtime 已能计算、加锁并原子持久化调度事实，但 **Stage 7 自动采集还未闭环**：
 
 - `collection.run.v1` 的稳定 Payload/Handler/Registry Contract 已存在，但生产 `bootstrap/worker.py` 还没有装配具体 `CollectionRunJobExecutor`，因此正式 Worker 仍不会 claim Scheduler 创建的 Collection Run Job；
-- scheduled Run 的 Scope/关键词展开与正式 Provider Operation 执行还需要接回现有 Keyword Pack、Provider Routing、Pricing/Budget、Dispatch、Raw、Mapper、Decision、Ingestion 链；
+- scheduled Run 的 Scope/关键词展开与正式 Provider Operation 执行还需要接回现有 Keyword Pack、Provider Routing、Provider Billing/Pricing、Dispatch、Raw、Mapper、Decision、Ingestion 链；
 - Collection-owned Run/Scope Repository 当前只有创建/读取能力，live Executor 仍需要通过正式 Owner 接口补齐运行状态推进，禁止在 Worker 中直接写表；
 - 不允许用空 Handler、直接 SQL 或第二套 Provider 调用代码掩盖该断点；
-- 统一真实 Probe 还必须继续保持 endpoint 级 Pricing 核验、安全 Secret 注入、显式请求数/费用上限和普通 CI 零付费请求。
+- 统一真实 Probe 还必须继续保持 Provider Billing/Pricing 事实完整、安全 Secret 注入、显式请求数/分页上限和普通 CI 零付费请求。
 
 因此当前可以说“Scheduler Runtime 与 `collection.run.v1` Job Contract 已实现并通过当前分支 CI”，不能说“Stage 7 自动采集已完成”。
 
