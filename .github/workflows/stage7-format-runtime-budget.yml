@@ -1,4 +1,4 @@
-# runtime-budget-format-revision: 4
+# runtime-budget-format-revision: 5
 name: Stage 7 Format Runtime Budget
 
 on:
@@ -47,6 +47,37 @@ jobs:
             tests/unit/collection/test_tikhub_runtime_comment_flow.py
           )
           uv run ruff check --fix "${targets[@]}"
+          python - <<'PY'
+          from pathlib import Path
+
+          integration = Path("tests/integration/collection/test_collection_run_preparation.py")
+          text = integration.read_text(encoding="utf-8")
+          old = "            execution = CollectionExecutionService(PostgresCollectionRepository(session)).create_run(\n"
+          new = (
+              "            execution_service = CollectionExecutionService(\n"
+              "                PostgresCollectionRepository(session)\n"
+              "            )\n"
+              "            execution = execution_service.create_run(\n"
+          )
+          if old not in text:
+              raise SystemExit("integration format target not found")
+          integration.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          runtime_test = Path("tests/unit/collection/test_tikhub_runtime_comment_flow.py")
+          text = runtime_test.read_text(encoding="utf-8")
+          old = '        body={"data": {"items": [{"data": {"idstr": "1"}}], "moreInfo": {"params": {"max_id": "20"}}}},\n'
+          new = (
+              '        body={\n'
+              '            "data": {\n'
+              '                "items": [{"data": {"idstr": "1"}}],\n'
+              '                "moreInfo": {"params": {"max_id": "20"}},\n'
+              '            }\n'
+              '        },\n'
+          )
+          if old not in text:
+              raise SystemExit("runtime test format target not found")
+          runtime_test.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
           uv run ruff format "${targets[@]}"
           uv run ruff check "${targets[@]}"
           uv run mypy backend/src
