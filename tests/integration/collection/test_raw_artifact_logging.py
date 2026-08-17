@@ -1,4 +1,4 @@
-"""Provider Raw 成功落盘后的稳定结构化事件回归。"""
+"""Provider Raw 生命周期稳定结构化事件回归。"""
 
 from __future__ import annotations
 
@@ -61,9 +61,12 @@ class _Metadata:
         return errored
 
 
-def test_raw_capture_emits_stored_event_without_raw_or_request_body(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
+class _FailingArtifacts:
+    def store_bytes(self, **kwargs):
+        raise OSError("disk full")
+
+
+def _dispatch_fixture():
     started_at = datetime(2026, 8, 17, 12, 0, tzinfo=UTC)
     completed_at = started_at + timedelta(milliseconds=200)
     run_id = uuid4()
@@ -94,6 +97,13 @@ def test_raw_capture_emits_stored_event_without_raw_or_request_body(
             path="/fake/search",
         ),
     )
+    return request, dispatch, attempt_id, run_id, scope_id
+
+
+def test_raw_capture_emits_stored_event_without_raw_or_request_body(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    request, dispatch, attempt_id, run_id, scope_id = _dispatch_fixture()
     root = Path(".runtime") / "raw-log-tests" / uuid4().hex
     root.mkdir(parents=True)
     store = LocalArtifactStore(root)
@@ -121,6 +131,40 @@ def test_raw_capture_emits_stored_event_without_raw_or_request_body(
     assert record.operation == "keyword_search"
     assert record.status == "stored"
     assert record.byte_size == captured.artifact.byte_size
+    assert "request_params" not in record.__dict__
+    assert "response" not in record.__dict__
+    assert "body" not in record.__dict__
+
+
+def test_raw_capture_logs_write_failure_without_raw_or_request_body(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    request, dispatch, attempt_id, run_id, scope_id = _dispatch_fixture()
+    root = Path(".runtime") / "raw-log-tests" / uuid4().hex
+    root.mkdir(parents=True)
+    service = RawArtifactService(
+        artifacts=_FailingArtifacts(),  # type: ignore[arg-type]
+        store=LocalArtifactStore(root),
+    )
+
+    with caplog.at_level(logging.WARNING, logger="aima_ugc.modules.collection.providers.raw_artifact"):
+        with pytest.raises(OSError, match="disk full"):
+            service.capture(request=request, dispatch=dispatch)
+
+    records = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "raw.artifact.write_failed"
+    ]
+    assert len(records) == 1
+    record = records[0]
+    assert record.provider_request_id == str(request.request_id)
+    assert record.provider_attempt_id == str(attempt_id)
+    assert record.run_id == str(run_id)
+    assert record.scope_id == str(scope_id)
+    assert record.platform == "xhs"
+    assert record.operation == "keyword_search"
+    assert record.error_code == "OSError"
     assert "request_params" not in record.__dict__
     assert "response" not in record.__dict__
     assert "body" not in record.__dict__
