@@ -16,6 +16,11 @@ from aima_ugc.modules.collection.providers.transport import ProviderTransportFai
 from pydantic import SecretStr
 
 
+def test_transport_rejects_non_tikhub_base_url_before_secret_send_boundary() -> None:
+    with pytest.raises(ValueError, match="TikHub base_url"):
+        TikHubHttpTransport(base_url="https://example.com")
+
+
 def test_transport_injects_secret_only_at_send_boundary_and_sends_once() -> None:
     calls: list[httpx.Request] = []
 
