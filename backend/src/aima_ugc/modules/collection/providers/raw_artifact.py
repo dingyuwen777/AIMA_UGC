@@ -133,12 +133,13 @@ class RawArtifactService:
         if artifact.sha256 is None or artifact.byte_size is None:
             raise RawArtifactIntegrityError("Artifact 缺少完整性元数据")
 
-        envelope, actual_sha256, actual_size = self._read_validated_bytes(artifact)
+        compressed = self._read_bytes(artifact)
+        actual_sha256 = hashlib.sha256(compressed).hexdigest()
         if actual_sha256 != artifact.sha256:
             raise RawArtifactIntegrityError("Raw SHA-256 校验失败")
-        if actual_size != artifact.byte_size:
+        if len(compressed) != artifact.byte_size:
             raise RawArtifactIntegrityError("Raw 字节大小校验失败")
-        return envelope
+        return self._parse_envelope(compressed)
 
     def reconcile_pending(self, artifact: ArtifactRecord) -> RawEnvelopeV1:
         """重新确认已落盘但元数据仍 pending 的 Raw，并 CAS 提升为 stored。"""
@@ -149,7 +150,10 @@ class RawArtifactService:
         if artifact.sha256 is not None or artifact.byte_size is not None:
             raise RawArtifactIntegrityError("pending Raw 不应已有完整性元数据")
 
-        envelope, actual_sha256, actual_size = self._read_validated_bytes(artifact)
+        compressed = self._read_bytes(artifact)
+        envelope = self._parse_envelope(compressed)
+        actual_sha256 = hashlib.sha256(compressed).hexdigest()
+        actual_size = len(compressed)
         self._artifacts.confirm_stored_bytes(
             artifact.id,
             sha256=actual_sha256,
@@ -158,24 +162,21 @@ class RawArtifactService:
         )
         return envelope
 
-    def _read_validated_bytes(
-        self,
-        artifact: ArtifactRecord,
-    ) -> tuple[RawEnvelopeV1, str, int]:
+    def _read_bytes(self, artifact: ArtifactRecord) -> bytes:
         try:
-            compressed = self._store.read(artifact.storage_key)
+            return self._store.read(artifact.storage_key)
         except FileNotFoundError as exc:
             raise RawArtifactIntegrityError("Raw 文件不存在") from exc
         except (OSError, ValueError) as exc:
             raise RawArtifactIntegrityError("Raw 文件无法安全读取") from exc
-        actual_sha256 = hashlib.sha256(compressed).hexdigest()
-        actual_size = len(compressed)
+
+    @staticmethod
+    def _parse_envelope(compressed: bytes) -> RawEnvelopeV1:
         try:
             plain = gzip.decompress(compressed)
         except (EOFError, OSError) as exc:
             raise RawArtifactIntegrityError("Raw gzip 无法读取") from exc
         try:
-            envelope = RawEnvelopeV1.model_validate_json(plain)
+            return RawEnvelopeV1.model_validate_json(plain)
         except ValidationError as exc:
             raise RawArtifactIntegrityError("Raw Envelope Contract 校验失败") from exc
-        return envelope, actual_sha256, actual_size
