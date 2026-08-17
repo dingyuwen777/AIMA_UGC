@@ -78,7 +78,6 @@ class CollectionPlanDefinition:
     max_catch_up_runs: int
     detail_policy: str
     comment_policy: str
-    request_budget: int
     created_by: UUID | None
     platforms: tuple[PlanPlatformDefinition, ...]
     keyword_pack_ids: tuple[UUID, ...]
@@ -100,8 +99,6 @@ class CollectionPlanDefinition:
             raise ValueError("detail_policy 不能为空")
         if not self.comment_policy.strip():
             raise ValueError("comment_policy 不能为空")
-        if self.request_budget < 0:
-            raise ValueError("request_budget 不能小于 0")
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,7 +117,6 @@ class CollectionPlanRecord:
     max_catch_up_runs: int
     detail_policy: str
     comment_policy: str
-    request_budget: int
     created_by: UUID | None
     created_at: datetime
     updated_at: datetime
