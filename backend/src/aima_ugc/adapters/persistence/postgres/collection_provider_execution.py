@@ -1,24 +1,42 @@
-"""Collection live runtime 的 Fenced Provider Request/Attempt 准备入口。"""
+"""Collection live runtime 的 Fenced Provider Request/Attempt 准备与 Scope 执行事实读取。"""
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from aima_ugc.contracts.provider import ProviderBillingV1, ProviderRequestV1
+from aima_ugc.modules.collection.candidate_tables import collection_candidates_table
 from aima_ugc.modules.collection.provider_persistence import (
     PreparedProviderAttempt,
     ProviderPersistenceConflictError,
     ProviderPersistenceService,
 )
-from aima_ugc.modules.collection.tables import collection_runs_table, collection_scopes_table
+from aima_ugc.modules.collection.tables import (
+    collection_runs_table,
+    collection_scopes_table,
+    provider_request_attempts_table,
+    provider_requests_table,
+)
 from aima_ugc.platform.jobs import JobExecutionFence, LeaseLostError
 
 from .jobs import PostgresJobRepository
 from .provider import PostgresProviderRepository
+
+
+@dataclass(frozen=True, slots=True)
+class CollectionScopeExecutionCounts:
+    """由 Provider Attempt/Candidate durable 事实聚合的 Scope 计数。"""
+
+    requested_count: int
+    succeeded_count: int
+    failed_count: int
+    content_count: int
+    comment_count: int
 
 
 class PostgresFencedProviderAttemptPreparer:
@@ -61,7 +79,7 @@ class PostgresFencedProviderAttemptPreparer:
         billing: ProviderBillingV1,
         fence: JobExecutionFence,
     ) -> PreparedProviderAttempt:
-        """恢复时优先复用同一逻辑 Request 下尚未发送的 reserved Attempt。"""
+        """恢复时复用同一逻辑 Request 的成功 Raw 或尚未发送的 reserved Attempt。"""
         session = self._session_factory()
         try:
             with session.begin():
@@ -74,10 +92,35 @@ class PostgresFencedProviderAttemptPreparer:
                     request,
                     provider_config_id=provider_config_id,
                 )
-                reserved_attempts = [
+                attempts = repository.list_attempts(persisted_request.id)
+                dispatching_attempts = [
+                    attempt for attempt in attempts if attempt.dispatch_status == "dispatching"
+                ]
+                if dispatching_attempts:
+                    raise ProviderPersistenceConflictError(
+                        "同一 Provider Request 存在未收敛的 dispatching Attempt，必须先执行 Recovery"
+                    )
+
+                successful_attempts = [
                     attempt
-                    for attempt in repository.list_attempts(persisted_request.id)
-                    if attempt.dispatch_status == "reserved"
+                    for attempt in attempts
+                    if attempt.dispatch_status == "completed"
+                    and attempt.error_code is None
+                    and attempt.raw_artifact_id is not None
+                ]
+                if successful_attempts:
+                    successful = max(successful_attempts, key=lambda item: item.attempt_no)
+                    if any(item.attempt_no > successful.attempt_no for item in attempts):
+                        raise ProviderPersistenceConflictError(
+                            "成功 Provider Attempt 之后存在额外执行事实，无法静默选择重发"
+                        )
+                    return PreparedProviderAttempt(
+                        request=persisted_request,
+                        attempt=successful,
+                    )
+
+                reserved_attempts = [
+                    attempt for attempt in attempts if attempt.dispatch_status == "reserved"
                 ]
                 if len(reserved_attempts) > 1:
                     raise ProviderPersistenceConflictError(
@@ -90,6 +133,95 @@ class PostgresFencedProviderAttemptPreparer:
                     provider_config_id=provider_config_id,
                     attempt_id=resolved_attempt_id,
                     billing=billing,
+                )
+        finally:
+            session.close()
+
+    def read_scope_counts(
+        self,
+        *,
+        scope_id: UUID,
+        fence: JobExecutionFence,
+    ) -> CollectionScopeExecutionCounts:
+        """从数据库执行事实聚合计数，避免进程崩溃造成内存统计丢失。"""
+        session = self._session_factory()
+        try:
+            with session.begin():
+                PostgresJobRepository(session).lock_current_execution(fence)
+                ownership = session.execute(
+                    select(collection_runs_table.c.job_id)
+                    .select_from(
+                        collection_scopes_table.join(
+                            collection_runs_table,
+                            collection_scopes_table.c.run_id == collection_runs_table.c.id,
+                        )
+                    )
+                    .where(collection_scopes_table.c.id == scope_id)
+                ).scalar_one_or_none()
+                if ownership != fence.job_id:
+                    raise LeaseLostError("Collection Scope 不属于当前 Job Fence")
+
+                attempts = session.execute(
+                    select(
+                        provider_request_attempts_table.c.dispatch_status,
+                        provider_request_attempts_table.c.error_code,
+                    )
+                    .select_from(
+                        provider_request_attempts_table.join(
+                            provider_requests_table,
+                            provider_request_attempts_table.c.provider_request_id
+                            == provider_requests_table.c.id,
+                        )
+                    )
+                    .where(provider_requests_table.c.scope_id == scope_id)
+                ).all()
+                requested_count = sum(status != "reserved" for status, _ in attempts)
+                succeeded_count = sum(
+                    status == "completed" and error_code is None
+                    for status, error_code in attempts
+                )
+                failed_count = sum(
+                    status in {"not_sent", "unknown"}
+                    or (status == "completed" and error_code is not None)
+                    for status, error_code in attempts
+                )
+
+                def candidate_count(kind: str) -> int:
+                    value = session.scalar(
+                        select(
+                            func.count(
+                                func.distinct(
+                                    func.coalesce(
+                                        collection_candidates_table.c.external_item_id,
+                                        collection_candidates_table.c.item_locator,
+                                    )
+                                )
+                            )
+                        )
+                        .select_from(
+                            collection_candidates_table.join(
+                                provider_request_attempts_table,
+                                collection_candidates_table.c.provider_request_attempt_id
+                                == provider_request_attempts_table.c.id,
+                            ).join(
+                                provider_requests_table,
+                                provider_request_attempts_table.c.provider_request_id
+                                == provider_requests_table.c.id,
+                            )
+                        )
+                        .where(
+                            provider_requests_table.c.scope_id == scope_id,
+                            collection_candidates_table.c.item_kind == kind,
+                        )
+                    )
+                    return int(value or 0)
+
+                return CollectionScopeExecutionCounts(
+                    requested_count=requested_count,
+                    succeeded_count=succeeded_count,
+                    failed_count=failed_count,
+                    content_count=candidate_count("content"),
+                    comment_count=candidate_count("comment"),
                 )
         finally:
             session.close()
@@ -125,4 +257,7 @@ class PostgresFencedProviderAttemptPreparer:
             raise LeaseLostError("Provider Request Scope 不属于当前 Job Fence")
 
 
-__all__ = ["PostgresFencedProviderAttemptPreparer"]
+__all__ = [
+    "CollectionScopeExecutionCounts",
+    "PostgresFencedProviderAttemptPreparer",
+]
