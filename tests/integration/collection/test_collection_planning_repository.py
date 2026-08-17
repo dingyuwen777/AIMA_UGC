@@ -99,7 +99,6 @@ def _plan_definition(provider_config_id, keyword_pack_id) -> CollectionPlanDefin
         max_catch_up_runs=0,
         detail_policy="on_change",
         comment_policy="adaptive",
-        request_budget=100,
         created_by=None,
         platforms=(
             PlanPlatformDefinition(
@@ -169,7 +168,6 @@ def test_database_rejects_unapproved_scheduler_policy(database_runtime: Database
             max_catch_up_runs=0,
             detail_policy=invalid_policy.detail_policy,
             comment_policy=invalid_policy.comment_policy,
-            request_budget=invalid_policy.request_budget,
             created_by=invalid_policy.created_by,
             platforms=invalid_policy.platforms,
             keyword_pack_ids=invalid_policy.keyword_pack_ids,
