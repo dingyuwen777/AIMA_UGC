@@ -40,6 +40,10 @@ jobs:
             backend/src/aima_ugc/adapters/providers/tikhub_test \
             tests/unit/collection/test_tikhub_test_debug.py \
             tests/unit/collection/test_tikhub_test_debug_runtime.py
+          uv run ruff check --fix \
+            backend/src/aima_ugc/adapters/providers/tikhub_test \
+            tests/unit/collection/test_tikhub_test_debug.py \
+            tests/unit/collection/test_tikhub_test_debug_runtime.py
           if git diff --quiet -- \
             uv.lock \
             backend/src/aima_ugc/adapters/providers/tikhub_test \
@@ -57,7 +61,7 @@ jobs:
             tests/unit/collection/test_tikhub_test_debug_runtime.py
           git commit -m "格式化 TikHub 调试工具"
           git push origin "HEAD:${{ github.head_ref }}"
-          echo "已提交格式化结果；新的 PR head 将重新执行本门禁"
+          echo "已提交限定范围 Ruff 修复；新的 PR head 将重新执行本门禁"
           exit 0
 
       - name: Run targeted quality and tests
