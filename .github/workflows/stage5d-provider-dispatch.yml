@@ -125,8 +125,24 @@ jobs:
       - name: Coverage and detail re-decision PostgreSQL regression
         shell: bash
         run: |
-          set -euo pipefail
-          uv run pytest tests/integration/collection/test_collection_comment_coverage_runtime.py -q
+          set +e
+          output="$(uv run pytest tests/integration/collection/test_collection_comment_coverage_runtime.py -vv --tb=short 2>&1)"
+          status=$?
+          printf '%s\n' "${output}"
+          if [ "${status}" -ne 0 ]; then
+            PYTEST_OUTPUT="${output}" uv run python - <<'PY'
+          import os
+
+          detail = os.environ.get("PYTEST_OUTPUT", "")[-12000:]
+          escaped = detail.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print(
+              "::error file=tests/integration/collection/"
+              "test_collection_comment_coverage_runtime.py,title=Coverage regression::"
+              + escaped
+          )
+          PY
+            exit "${status}"
+          fi
 
       - name: Scope takeover Raw replay PostgreSQL regression
         shell: bash
