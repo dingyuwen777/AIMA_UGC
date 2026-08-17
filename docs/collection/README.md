@@ -46,7 +46,7 @@ Plan / Run / Scope
 - Run 的 `config_snapshot` 保存该次执行不可变配置快照，Plan / Schedule Version 的关系身份以数据库 FK 为准；
 - Scheduler 创建 scheduled Run 时会冻结实际可执行关键词 Scope，避免 Job 入队后重新读取已经变化的词包内容。
 
-Provider Request / Attempt、Dispatch、Recovery 继续复用现有 Stage 5D / Stage 7 生产实现；Billing/成本字段用于执行审计，当前没有 Budget Account/Reservation Ledger。
+Provider Request / Attempt、Dispatch、Recovery 继续复用现有 Stage 5D / Stage 7 生产实现；Billing/成本字段用于执行审计，当前没有请求次数/金额预算、Budget Account、Reservation Ledger 或发送预算门禁。
 
 ## 3. Stage 7 Plan 与 Scheduler 事实
 
@@ -144,6 +144,21 @@ Scheduler 已实现首版持久化 Runtime：
 
 多 Scheduler 可以同时预扫同一 Plan，但最终决定在 PostgreSQL 行锁内完成；第二个 Scheduler 必须重读已推进后的 cursor，因此不能重复创建同一 Occurrence/Run/Job。
 
+Scheduler 创建的 `collection.run.v1` Job 已接入正式 Worker 装配：
+
+```text
+Scheduler
+→ Occurrence / scheduled Run / Scope
+→ PostgreSQL Job
+→ Production JobRegistry / JobWorker
+→ CollectionRunJobHandler
+→ CollectionRunExecutor
+→ TikHubCollectionScopeExecutor
+→ Provider / Raw / Mapper / Canonical / Ingestion
+```
+
+自动化纵切使用 `FakeProviderTransport`，验证正式生产装配和数据库链路，不在普通 CI 产生 TikHub 付费请求。
+
 ## 4. 五平台 TikHub 真实兼容事实
 
 2026-08-15 至 2026-08-16 已通过 GitHub-hosted Runner 对 `https://api.tikhub.io` 做受限 Real Probe，关键词使用“爱玛”，不做全量翻页。
@@ -227,9 +242,17 @@ App `search_comprehensive` 是不同语义候选，只能在未来 A/B 中比较
 - B站：App Search/Comments/Reply 主链 vs 对应 Web 候选；
 - 小红书：保持 App V2 主链，其他 family 需要当前 endpoint 级重新确认后再实验。
 
-除快手 Web 评论链外，这些候选当前均为 `candidate_pending_probe`。当前执行沙箱不能连接 TikHub，且现有 GitHub Runner RSA 公钥 artifact 无法通过当前工具安全取回，因此没有新鲜真实 A/B 的候选不得写成 `verified_backup`。
+候选只允许使用以下状态：
 
-统一比较记录包括：主/候选结果数、去重稳定 ID 数、交集、仅主、仅候选、并集、Jaccard、排序/分页差异、结构兼容和 endpoint-level 价格。两边都返回空集合时保持 inconclusive。
+```text
+verified_backup
+candidate_pending_probe
+not_equivalent
+```
+
+即使候选达到 `verified_backup`，也只表示显式备用证据已经建立，不自动注册生产 fallback。任何自动 Provider/App/Web fallback 都必须作为独立设计重新批准。
+
+统一比较记录包括：主/候选结果数、去重稳定 ID 数、交集、仅主、仅候选、并集、Jaccard、排序/分页差异、结构兼容和 endpoint-level 价格。两边都返回空集合时保持 inconclusive，不得升级候选状态。
 
 ## 5. 其他 Stage 7 已落地能力
 
@@ -238,19 +261,24 @@ App `search_comprehensive` 是不同语义候选，只能在未来 A/B 中比较
 - Provider Config Registry / `secret_ref` 路由；
 - Keyword / Keyword Pack 与数据库级并发串行化；
 - 五平台 TikHub Operation / Mapper / Capability / Registry 的真实响应基础；
-- endpoint-level Pricing fail-closed；
+- endpoint-level Pricing 与 Provider Request/Attempt Billing 审计；
 - XHS 已存 Raw Replay Job Handler，用于把既有 Raw 重新走正式 Mapper / Ingestion，不重新发 Provider HTTP；
 - TikHub HTTP Transport 的 Secret 注入、一次发送和错误状态边界；
-- API family 稳定 ID 集合比较模块与显式候选 Operation builder。
+- API family 稳定 ID 集合比较模块与显式候选 Operation builder；
+- `create_collection_job_registry(...)` 与正式 Worker entrypoint，复用现有 Artifact/Raw/Provider/Collection 组件消费 `collection.run.v1`。
+
+当前系统不实现请求次数预算、金额预算、Budget Account、Reservation Ledger、Run/评论 Budget 或 dormant Budget 接口。Provider Billing、Pricing、成本快照和 `potential_duplicate_charge` 只属于执行/审计事实。
 
 ## 6. 当前仍未闭环的 Stage 7 能力
 
-Stage 7 仍为进行中，当前不能因为 Scheduler、五平台 Mapper 或 Real Probe 已完成就宣称自动采集完整闭环。主要剩余：
+Stage 7 的 live Worker 已经接通，当前剩余的是收尾门禁，而不是新的采集架构开发：
 
-1. **正式 `collection.run.v1` Worker Handler**：Scheduler 已能创建 scheduled Job / Occurrence / Run / Scope，但生产 Worker 仍需要完整复用 Provider Routing、Provider Billing/Pricing、Dispatch、Raw、Mapper、Decision、Ingestion 链，不能注册空 Handler 或第二套采集实现；
-2. **统一 Operation / Business Pipeline Probe 的长期生产入口**：本轮一次性 Real Probe 已取得外部结构证据，但最终调试入口必须复用正式 Registry / Operation / Mapper / Decision Service，并保持 Provider Billing/Pricing 事实完整；
-3. **其他平台 API family 真实 A/B**：抖音/微博/B站候选 builder 已建立，但在安全凭据交接和真实 Runner Probe 成功前保持 `candidate_pending_probe`；这不阻断当前正式主 Operation 的既有真实兼容证据，也不能被误报为已验证备用；
-4. **最终 Stage 7 集成证据**：相关质量门禁、PR CI、Review、正常 PR 合并以及合并后 main 新鲜 CI 尚未全部完成。
+1. **最终质量门禁**：Ruff、mypy、Architecture、Table Ownership、Secret、Docs、Contract、Migration 和相关 PostgreSQL 集成测试必须在最终 PR head 上取得新鲜成功证据；
+2. **两阶段 Review**：完成需求符合性 Review，再完成代码质量、安全、兼容性 Review，并处理严重/重要问题；
+3. **PR / main 闭环**：PR #55 按仓库规则从 Draft 进入正常 Review/合并流程，合入 `main` 后再次取得新鲜 CI；
+4. **Change 生命周期**：上述事实成立后，把 `CHG-20260815-stage7-completion` 更新为 `done` 并按规则归档。
+
+Stage 7 收尾期间必须继续保持：快手 App 评论/二级评论主链、不自动 Provider/App/Web fallback、Secret 只走 `secret_ref`、预算功能保持回撤。
 
 ## 7. 测试与调试
 
@@ -259,6 +287,7 @@ Stage 7 仍为进行中，当前不能因为 Scheduler、五平台 Mapper 或 Re
 - 普通回归使用已经合法脱敏的真实 Fixture，不重复产生 TikHub 费用；
 - API family A/B 只使用显式候选 builder，不能注册隐式 fallback；
 - Scheduler 专项验证 latest-only、并发去重、重复 tick 幂等、Plan 行锁重读、Scope Snapshot、Migration drift 与 round-trip；
+- Worker 纵切使用 Fake Transport 证明正式生产 Registry/JobWorker/Collection Scope 链路，不用付费 HTTP 代替可重复回归；
 - 数据库变化验证 Alembic 上一正式 Revision → head、base → head、downgrade / upgrade 与 `alembic check`；
 - Contract / Ruff / mypy / Architecture / Table Ownership / Secret / Docs 门禁必须保持绿色；
 - 不能用 Fixture 测试冒充本轮真实 TikHub 成功调用，也不能用旧版本 Provider 响应冒充当前 Operation 兼容性证据。
