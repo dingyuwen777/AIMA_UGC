@@ -141,8 +141,14 @@ class RawArtifactService:
             raise RawArtifactIntegrityError("Raw 字节大小校验失败")
         return self._parse_envelope(compressed)
 
-    def reconcile_pending(self, artifact: ArtifactRecord) -> RawEnvelopeV1:
-        """重新确认已落盘但元数据仍 pending 的 Raw，并 CAS 提升为 stored。"""
+    def reconcile_pending(
+        self,
+        artifact: ArtifactRecord,
+        *,
+        request: ProviderRequestV1,
+        attempt_id: UUID,
+    ) -> RawEnvelopeV1:
+        """完整校验已落盘 pending Raw 的实体与来源，再 CAS 提升为 stored。"""
         if artifact.kind != "provider-raw" or artifact.encoding != "gzip":
             raise RawArtifactIntegrityError("Artifact 不是 Provider Raw gzip")
         if artifact.storage_status != "pending":
@@ -152,6 +158,7 @@ class RawArtifactService:
 
         compressed = self._read_bytes(artifact)
         envelope = self._parse_envelope(compressed)
+        _validate_envelope_lineage(envelope, request=request, attempt_id=attempt_id)
         actual_sha256 = hashlib.sha256(compressed).hexdigest()
         actual_size = len(compressed)
         self._artifacts.confirm_stored_bytes(
@@ -180,3 +187,31 @@ class RawArtifactService:
             return RawEnvelopeV1.model_validate_json(plain)
         except ValidationError as exc:
             raise RawArtifactIntegrityError("Raw Envelope Contract 校验失败") from exc
+
+
+def _validate_envelope_lineage(
+    envelope: RawEnvelopeV1,
+    *,
+    request: ProviderRequestV1,
+    attempt_id: UUID,
+) -> None:
+    lineage = (
+        envelope.provider,
+        envelope.platform,
+        envelope.operation,
+        envelope.request_id,
+        envelope.attempt_id,
+        envelope.run_id,
+        envelope.scope_id,
+    )
+    expected = (
+        request.provider,
+        request.platform,
+        request.operation,
+        request.request_id,
+        attempt_id,
+        request.run_id,
+        request.scope_id,
+    )
+    if lineage != expected:
+        raise RawArtifactIntegrityError("Raw Envelope 与 Provider Attempt 来源不一致")

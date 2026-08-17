@@ -69,7 +69,13 @@ class RawArtifactReplay(Protocol):
 
     def replay(self, artifact: ArtifactRecord) -> RawEnvelopeV1: ...
 
-    def reconcile_pending(self, artifact: ArtifactRecord) -> RawEnvelopeV1: ...
+    def reconcile_pending(
+        self,
+        artifact: ArtifactRecord,
+        *,
+        request: ProviderRequestV1,
+        attempt_id: UUID,
+    ) -> RawEnvelopeV1: ...
 
 
 class ProviderAttemptReconciler:
@@ -121,7 +127,11 @@ class ProviderAttemptReconciler:
         if artifact is not None:
             try:
                 if artifact.storage_status == "pending":
-                    envelope = self._raw_artifacts.reconcile_pending(artifact)
+                    envelope = self._raw_artifacts.reconcile_pending(
+                        artifact,
+                        request=candidate.request,
+                        attempt_id=candidate.attempt.id,
+                    )
                 else:
                     envelope = self._raw_artifacts.replay(artifact)
                 return (
