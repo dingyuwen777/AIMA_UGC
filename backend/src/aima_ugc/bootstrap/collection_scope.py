@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID, uuid4
@@ -23,7 +23,7 @@ from aima_ugc.adapters.persistence.postgres.provider_dispatch import (
 )
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
 from aima_ugc.adapters.providers.tikhub.capabilities import TIKHUB_PLATFORM_CAPABILITIES
-from aima_ugc.adapters.providers.tikhub.pricing import TikHubPricing, load_tikhub_pricing
+from aima_ugc.adapters.providers.tikhub.pricing import load_tikhub_pricing
 from aima_ugc.adapters.providers.tikhub.runtime import (
     TikHubOperationCall,
     TikHubPlatform,
@@ -43,7 +43,10 @@ from aima_ugc.contracts.collection import (
     ProviderPlatformCapabilityV1,
 )
 from aima_ugc.contracts.provider import ProviderRequestV1
-from aima_ugc.modules.collection.collection_run_executor import CollectionScopeExecutionResult
+from aima_ugc.modules.collection.collection_run_executor import (
+    CollectionScopeExecutionResult,
+    CollectionScopeTerminalStatus,
+)
 from aima_ugc.modules.collection.decision import CollectionDecisionService
 from aima_ugc.modules.collection.execution import CollectionRunRecord, CollectionScopeRecord
 from aima_ugc.modules.collection.provider_dispatch import ProviderDispatchService
@@ -80,14 +83,9 @@ class _ScopeStats:
     search_pages: int = 0
     search_items: int = 0
     detail_requests: int = 0
-    content_identities: set[tuple[str, str]] | None = None
-
-    def __post_init__(self) -> None:
-        if self.content_identities is None:
-            self.content_identities = set()
+    content_identities: set[tuple[str, str]] = field(default_factory=set)
 
     def record_content(self, content: CanonicalContentV1) -> None:
-        assert self.content_identities is not None
         self.content_identities.add((content.platform, content.external_content_id))
 
     def payload(self) -> dict[str, object]:
@@ -100,7 +98,6 @@ class _ScopeStats:
 
     @property
     def content_count(self) -> int:
-        assert self.content_identities is not None
         return len(self.content_identities)
 
 
@@ -435,13 +432,13 @@ def _tikhub_platform(value: str) -> TikHubPlatform:
 
 def _result(
     *,
-    status: str,
+    status: CollectionScopeTerminalStatus,
     stop_reason: str | None,
     pagination_state: dict[str, object],
     stats: _ScopeStats,
 ) -> CollectionScopeExecutionResult:
     return CollectionScopeExecutionResult(
-        status=cast(object, status),
+        status=status,
         stop_reason=stop_reason,
         pagination_state=dict(pagination_state),
         stats=stats.payload(),
