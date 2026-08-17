@@ -154,6 +154,7 @@ def _write_pending_raw(
     request: ProviderRequestV1,
     attempt_id: UUID,
     dispatch_started_at: datetime,
+    envelope_attempt_id: UUID | None = None,
 ) -> UUID:
     completed_at = dispatch_started_at + timedelta(seconds=1)
     envelope = RawEnvelopeV1(
@@ -161,7 +162,7 @@ def _write_pending_raw(
         platform=request.platform,
         operation=request.operation,
         request_id=request.request_id,
-        attempt_id=attempt_id,
+        attempt_id=envelope_attempt_id or attempt_id,
         run_id=request.run_id,
         scope_id=request.scope_id,
         requested_at=dispatch_started_at,
@@ -229,6 +230,20 @@ def _write_pending_raw(
     return artifact_id
 
 
+def _reconciler(runtime: DatabaseRuntime, tmp_path: Path) -> ProviderAttemptReconciler:
+    store = LocalArtifactStore(tmp_path)
+    return ProviderAttemptReconciler(
+        persistence=PostgresProviderRecoveryPersistence(runtime.new_session),
+        raw_artifacts=RawArtifactService(
+            artifacts=ArtifactService(
+                metadata=PostgresArtifactMetadataGateway(runtime.new_session),
+                store=store,
+            ),
+            store=store,
+        ),
+    )
+
+
 def test_takeover_recovers_valid_file_when_metadata_is_still_pending(
     database_runtime: DatabaseRuntime,
     tmp_path: Path,
@@ -243,20 +258,8 @@ def test_takeover_recovers_valid_file_when_metadata_is_still_pending(
         dispatch_started_at=dispatch_started_at,
     )
     takeover_fence = _expire_lease(database_runtime, old_fence.job_id)
-    store = LocalArtifactStore(tmp_path)
-    raw_artifacts = RawArtifactService(
-        artifacts=ArtifactService(
-            metadata=PostgresArtifactMetadataGateway(database_runtime.new_session),
-            store=store,
-        ),
-        store=store,
-    )
-    reconciler = ProviderAttemptReconciler(
-        persistence=PostgresProviderRecoveryPersistence(database_runtime.new_session),
-        raw_artifacts=raw_artifacts,
-    )
 
-    assert reconciler.recover_inherited(takeover_fence) == 1
+    assert _reconciler(database_runtime, tmp_path).recover_inherited(takeover_fence) == 1
 
     session = database_runtime.new_session()
     try:
@@ -273,5 +276,42 @@ def test_takeover_recovers_valid_file_when_metadata_is_still_pending(
         assert artifact["sha256"] is not None
         assert artifact["byte_size"] is not None
         assert artifact["stored_at"] is not None
+    finally:
+        session.close()
+
+
+def test_wrong_lineage_pending_raw_is_not_promoted_to_stored(
+    database_runtime: DatabaseRuntime,
+    tmp_path: Path,
+) -> None:
+    request, attempt, dispatch_started_at, old_fence = _prepare_dispatching(database_runtime)
+    assert dispatch_started_at is not None
+    artifact_id = _write_pending_raw(
+        database_runtime,
+        artifact_root=tmp_path,
+        request=request,
+        attempt_id=attempt.id,
+        dispatch_started_at=dispatch_started_at,
+        envelope_attempt_id=uuid4(),
+    )
+    takeover_fence = _expire_lease(database_runtime, old_fence.job_id)
+
+    assert _reconciler(database_runtime, tmp_path).recover_inherited(takeover_fence) == 1
+
+    session = database_runtime.new_session()
+    try:
+        with session.begin():
+            persisted = PostgresProviderRepository(session).list_attempts(request.request_id)[0]
+            artifact = (
+                session.execute(select(artifacts_table).where(artifacts_table.c.id == artifact_id))
+                .mappings()
+                .one()
+            )
+        assert persisted.dispatch_status == "unknown"
+        assert persisted.raw_artifact_id is None
+        assert artifact["storage_status"] == "pending"
+        assert artifact["sha256"] is None
+        assert artifact["byte_size"] is None
+        assert artifact["stored_at"] is None
     finally:
         session.close()
