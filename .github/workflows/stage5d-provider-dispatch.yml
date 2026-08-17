@@ -138,8 +138,8 @@ jobs:
             while IFS= read -r path; do
               [ -z "$path" ] && continue
               printf '::error file=%s::Ruff formatter would modify this file\n' "$path"
-              encoded="$(base64 -w0 "$path")"
-              printf '::notice file=%s,title=ruff-formatted-base64::%s\n' "$path" "$encoded"
+              encoded="$(git diff -- "$path" | base64 -w0)"
+              printf '::notice file=%s,title=ruff-format-diff-base64::%s\n' "$path" "$encoded"
             done <<< "$changed"
             git diff --check
             exit 1
