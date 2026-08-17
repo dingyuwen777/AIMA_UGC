@@ -12,7 +12,7 @@ depends_on: [CHG-20260815-stage7-plan-occurrence-run-snapshot, CHG-20260815-stag
 affected_areas: [collection, provider, scheduler, database, testing, documentation, ci]
 affected_paths: [backend/src/aima_ugc/modules/collection/, backend/src/aima_ugc/adapters/providers/tikhub/, backend/src/aima_ugc/adapters/persistence/postgres/, backend/src/aima_ugc/bootstrap/, backend/src/aima_ugc/entrypoints/, migrations/versions/, tests/unit/collection/, tests/integration/collection/, tests/fixtures/, scripts/, docs/blueprint/, docs/collection/, backend/src/aima_ugc/modules/collection/README.md, .github/workflows/]
 contracts: [ProviderPlatformCapabilityV1, CanonicalContentV1, CanonicalCommentV1]
-data_changes: [collection_plans, provider_budget_accounts, provider_budget_reservations, collection_schedule_occurrences, collection_runs]
+data_changes: [collection_plans, collection_schedule_occurrences, collection_runs]
 ---
 
 # 完成结论
