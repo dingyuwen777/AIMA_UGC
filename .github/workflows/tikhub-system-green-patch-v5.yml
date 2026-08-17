@@ -1,0 +1,118 @@
+name: TikHub System Green Patch V5
+
+on:
+  push:
+    branches: [agent/tikhub-test-debug]
+    paths: [".github/workflows/tikhub-system-green-patch-v5.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  green:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_DB: aima_ugc
+          POSTGRES_USER: aima_ugc
+          POSTGRES_PASSWORD: tikhub-green-ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U aima_ugc -d aima_ugc"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      AIMA_DATA_DIR: .runtime/ci-tikhub-green/data
+      AIMA_LOG_DIR: .runtime/ci-tikhub-green/logs
+      AIMA_SECRET_DIR: .runtime/ci-tikhub-green/secrets
+      AIMA_DB_HOST: 127.0.0.1
+      AIMA_DB_PORT: 5432
+      AIMA_DB_NAME: aima_ugc
+      AIMA_DB_USER: aima_ugc
+      AIMA_DB_CONNECT_TIMEOUT_SECONDS: 3
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: agent/tikhub-test-debug
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+      - name: Prepare locked environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv sync --locked
+          mkdir -p "${AIMA_DATA_DIR}" "${AIMA_LOG_DIR}" "${AIMA_SECRET_DIR}"
+          printf '%s\n' 'tikhub-green-ci' > "${AIMA_SECRET_DIR}/postgres_password"
+          chmod 600 "${AIMA_SECRET_DIR}/postgres_password"
+          uv run alembic upgrade head
+      - name: Reuse V2 patch with repository-native Set type
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          from textwrap import dedent
+
+          workflow = Path(".github/workflows/tikhub-system-green-patch-v2.yml").read_text(encoding="utf-8")
+          start_marker = "          python - <<'PY'\n"
+          end_marker = "\n          PY\n"
+          start = workflow.index(start_marker) + len(start_marker)
+          end = workflow.index(end_marker, start)
+          script = dedent(workflow[start:end])
+          script = script.replace(
+              "from collections.abc import AbstractSet, Sequence",
+              "from collections.abc import Sequence, Set",
+          )
+          script = script.replace("known_comment_ids: AbstractSet[str]", "known_comment_ids: Set[str]")
+          if "from collections.abc import Sequence, Set" not in script or "known_comment_ids: Set[str]" not in script:
+              raise SystemExit("V2 patch Set type replacement did not apply")
+          exec(compile(script, "<tikhub-green-v5>", "exec"), {"__name__": "__main__"})
+          PY
+          sed -i -E 's/^(max_[a-z_]+|include_comments|include_replies|force_refresh)=/\1 = /' backend/src/aima_ugc/adapters/providers/tikhub_test/README.md
+          uv run ruff format backend tests scripts
+          uv run ruff check --fix backend tests scripts
+      - name: Verify Green
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run mypy backend/src
+          uv run pytest \
+            tests/unit/collection/test_tikhub_capabilities.py \
+            tests/unit/collection/test_tikhub_real_capabilities.py \
+            tests/unit/collection/test_stage7_decision.py \
+            tests/unit/collection/test_douyin_tikhub_operation.py \
+            tests/unit/collection/test_weibo_tikhub_operation.py \
+            tests/unit/collection/test_tikhub_test_debug.py \
+            tests/unit/collection/test_tikhub_test_debug_runtime.py \
+            -q
+          uv run pytest \
+            tests/integration/collection/test_xhs_incremental_comments_runtime.py \
+            tests/integration/collection/test_collection_content_runtime.py \
+            tests/integration/collection/test_collection_scope_comments_runtime.py \
+            -q
+          uv run python scripts/quality/scan_secrets.py
+      - name: Commit verified Green
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            backend/src/aima_ugc/modules/collection/decision.py \
+            backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py \
+            backend/src/aima_ugc/adapters/persistence/postgres/collection_content.py \
+            backend/src/aima_ugc/bootstrap/collection_scope.py \
+            backend/src/aima_ugc/adapters/providers/tikhub/operations/douyin.py \
+            backend/src/aima_ugc/adapters/providers/tikhub/operations/weibo.py \
+            backend/src/aima_ugc/adapters/providers/tikhub_test/core.py \
+            backend/src/aima_ugc/adapters/providers/tikhub_test/runner.py \
+            backend/src/aima_ugc/adapters/providers/tikhub_test/README.md \
+            tests/unit/collection/test_douyin_tikhub_operation.py \
+            tests/unit/collection/test_weibo_tikhub_operation.py
+          git commit -m "修复 TikHub 增量评论与真实响应兼容"
+          git push origin HEAD:agent/tikhub-test-debug
