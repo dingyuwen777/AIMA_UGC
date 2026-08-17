@@ -175,7 +175,9 @@ class PostgresFencedCollectionIngestionWriter:
         self,
         *,
         content_id: UUID,
-        source: CanonicalContentV1 | CanonicalCommentV1,
+        provider_attempt_id: UUID,
+        raw_artifact_id: UUID,
+        platform: str,
         fence: JobExecutionFence,
         coverage: str,
         reported_total: int | None,
@@ -187,16 +189,12 @@ class PostgresFencedCollectionIngestionWriter:
         observed_at: datetime,
     ) -> UUID:
         """校验 Job/Attempt/Content 平台来源后交给 Content Owner 幂等保存 Coverage。"""
-        attempt_id = _provider_attempt_id(source)
-        raw_artifact_id = source.source.raw_artifact_id
-        if raw_artifact_id is None:
-            raise ValueError("Comment Coverage 要求 raw_artifact_id")
         session = self._session_factory()
         try:
             with session.begin():
-                platform = _lock_matching_attempt(
+                attempt_platform = _lock_matching_attempt(
                     session,
-                    attempt_id=attempt_id,
+                    attempt_id=provider_attempt_id,
                     fence=fence,
                 )
                 content_platform = session.scalar(
@@ -204,11 +202,11 @@ class PostgresFencedCollectionIngestionWriter:
                 )
                 if content_platform is None:
                     raise LookupError("Comment Coverage Content 不存在")
-                if content_platform != platform or content_platform != source.platform:
-                    raise ValueError("Comment Coverage Content/Attempt/Canonical 平台不一致")
+                if content_platform != attempt_platform or content_platform != platform:
+                    raise ValueError("Comment Coverage Content/Attempt 平台不一致")
                 return PostgresContentRepository(session).record_comment_coverage(
                     content_id=content_id,
-                    provider_attempt_id=attempt_id,
+                    provider_attempt_id=provider_attempt_id,
                     raw_artifact_id=raw_artifact_id,
                     coverage=coverage,
                     reported_total=reported_total,
