@@ -32,7 +32,7 @@ Collection 是采集业务 Owner。它负责把已经通过 Contract / Provider 
 6. `bootstrap/collection_scope.py` + `bootstrap/worker.py`
    - `TikHubCollectionScopeExecutor` 复用既有 TikHub Operation、Provider Dispatch、Raw、Mapper、Decision 和 fenced Ingestion 执行正式 Scope；
    - `create_collection_job_registry(...)` 用现有 Artifact/Raw/Provider/Collection 组件组装 `collection.run.v1`；
-   - 默认 Secret 只通过 `secret_ref` 在 `AIMA_SECRET_DIR` 下解析；默认 TikHub Transport 每次发送后关闭其自持 HTTP Client，不遗留无人管理的连接生命周期；
+   - 默认 Secret 只通过 `secret_ref` 在 `AIMA_SECRET_DIR` 下解析；默认 TikHub Transport 只允许批准的 `https://api.tikhub.io` Origin 接收 Bearer Secret，并在每次发送后关闭其自持 HTTP Client，不遗留无人管理的连接生命周期；
    - 正式 `entrypoints/worker_main.py` 暴露同一 Registry 装配，不复制 JobWorker 循环。
 7. `xhs_replay.py`
    - 只回放已经持久化的 XHS Raw；
@@ -106,19 +106,21 @@ Scheduler 停机恢复固定为：
 - Provider Billing、Pricing、成本快照和 `potential_duplicate_charge` 是执行/审计事实，不是请求次数或金额预算；当前不存在 Budget Account、Reservation Ledger 或发送预算门禁；
 - `collection.run.v1` 的整个 Job Attempt 超时不自动重排；任何 Provider 重发都必须使用新 Attempt 并形成新的 Raw/计费审计事实，不能由 Job Runtime 隐式复制一次已经可能发送过的外部调用。
 
-## 5. Stage 7 当前闭环状态
+## 5. Stage 7 闭环状态
 
-Scheduler → Occurrence → `collection.run.v1` Job → scheduled Run / Scope → 正式 Worker Registry / JobWorker → `CollectionRunJobHandler` → `CollectionRunExecutor` → `TikHubCollectionScopeExecutor` → Provider / Raw / Mapper / Canonical / Ingestion 的生产链已经在当前 Stage 7 分支通过 PostgreSQL/Fake Transport 纵切验证。
+Scheduler → Occurrence → `collection.run.v1` Job → scheduled Run / Scope → 正式 Worker Registry / JobWorker → `CollectionRunJobHandler` → `CollectionRunExecutor` → `TikHubCollectionScopeExecutor` → Provider / Raw / Mapper / Canonical / Ingestion 的生产链已经通过 PostgreSQL/Fake Transport 纵切验证，并随 PR #55 正常合入 `main`。
 
-当前 Stage 7 剩余工作不再是补第二套 Worker 或 Provider 实现，而是：
+Stage 7 的最终质量门禁、需求符合性 Review、代码质量/安全/兼容性 Review、PR #55 合并和合并后 `main` 新鲜 CI 均已完成；`CHG-20260815-stage7-completion` 由当前归档 PR #56 完成 `done` / archive 生命周期收尾。
 
-- 保持五平台 Operation / Mapper / Capability、快手 App 评论主链、无自动 fallback 和预算回撤不漂移；
-- 清理代码/文档质量门禁并完成需求符合性与代码质量/安全/兼容性 Review；
-- 在最终 PR head 上取得新鲜完整 CI；
-- 按仓库流程把 PR #55 正常合入 `main`，再验证合并后 `main`；
-- 最后将当前 L3 Change 标记完成并按规则归档。
+当前必须继续保持：
 
-在这些收尾门禁全部完成前，可以说“Stage 7 live Worker 已闭环、Stage 7 正在收尾验收”，不能提前宣称整个 Stage 7 已完成。
+- 五平台 Operation / Mapper / Capability 的已验证边界；
+- 快手 App comments/sub-comments 正式主链；
+- 不建立自动 Provider/App/Web fallback；
+- Provider Secret 只走 `secret_ref`，TikHub Bearer Secret 只发送到批准的 `https://api.tikhub.io` Origin；
+- 当前不恢复请求/金额预算、Budget Account、Reservation Ledger 或 dormant Budget 接口。
+
+下一正式阶段是 Stage 8；本模块文档只记录 Stage 7 已完成的 Collection 机器边界，不提前定义 Stage 8 HTTP API 或前端行为。
 
 ## 6. 调试与测试原则
 

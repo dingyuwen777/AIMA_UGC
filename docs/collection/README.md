@@ -1,6 +1,6 @@
 # 采集能力说明
 
-本文描述当前任务分支已经落地的采集主链、Stage 7 运行事实以及仍受门禁约束的能力。长期设计以 `docs/blueprint/` 为准，机器事实以代码、Migration、Contract、Fixture 与测试为准。
+本文描述当前仓库已经落地的采集主链、Stage 7 已完成运行事实以及后续阶段仍受门禁约束的能力。长期设计以 `docs/blueprint/` 为准，机器事实以代码、Migration、Contract、Fixture 与测试为准。
 
 五个平台 TikHub 真实响应的人类查询入口见 [`../blueprint/10-TikHub真实响应结构附录.md`](../blueprint/10-TikHub真实响应结构附录.md)。同平台 App/Web/V1/V2/V3 的验证与备用规则见 [`../blueprint/11-TikHub多接口验证与备用策略.md`](../blueprint/11-TikHub多接口验证与备用策略.md)。
 
@@ -269,16 +269,17 @@ not_equivalent
 
 当前系统不实现请求次数预算、金额预算、Budget Account、Reservation Ledger、Run/评论 Budget 或 dormant Budget 接口。Provider Billing、Pricing、成本快照和 `potential_duplicate_charge` 只属于执行/审计事实。
 
-## 6. 当前仍未闭环的 Stage 7 能力
+## 6. Stage 7 闭环状态
 
-Stage 7 的 live Worker 已经接通，当前剩余的是收尾门禁，而不是新的采集架构开发：
+Stage 7 已完成正式采集与调度闭环：
 
-1. **最终质量门禁**：Ruff、mypy、Architecture、Table Ownership、Secret、Docs、Contract、Migration 和相关 PostgreSQL 集成测试必须在最终 PR head 上取得新鲜成功证据；
-2. **两阶段 Review**：完成需求符合性 Review，再完成代码质量、安全、兼容性 Review，并处理严重/重要问题；
-3. **PR / main 闭环**：PR #55 按仓库规则从 Draft 进入正常 Review/合并流程，合入 `main` 后再次取得新鲜 CI；
-4. **Change 生命周期**：上述事实成立后，把 `CHG-20260815-stage7-completion` 更新为 `done` 并按规则归档。
+- `collection.run.v1` live Worker 已接通 Scheduler / Job / Run / Scope / Provider / Raw / Mapper / Canonical / Ingestion 正式链；
+- PR #55 最终 head 已通过完整相关 CI 和两阶段 Review，并正常合入 `main`；
+- 合并后 `main` 已重新取得新鲜 CI；
+- `CHG-20260815-stage7-completion` 由当前归档 PR #56 更新为 `done` 并移入 `changes/archive/2026-08/`；
+- 快手 App 评论/二级评论主链、无自动 Provider/App/Web fallback、`secret_ref` Secret 边界和预算功能回撤均保持不变。
 
-Stage 7 收尾期间必须继续保持：快手 App 评论/二级评论主链、不自动 Provider/App/Web fallback、Secret 只走 `secret_ref`、预算功能保持回撤。
+下一正式阶段是 Stage 8，但本归档 PR #56 不开始 Stage 8。Stage 8 必须重新按当前 `main`、HTTP Contract、OpenAPI、生成 Client 与前端实际结构建立自己的需求和验收门禁。
 
 ## 7. 测试与调试
 
