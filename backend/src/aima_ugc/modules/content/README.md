@@ -33,10 +33,20 @@ Provider Adapter
 
 - `contents` / `comments` / `accounts` 保存当前业务视图；历史事实保存在版本表和指标 Observation 表。
 - 同一业务身份首次并发发现时，由 PostgreSQL UNIQUE + `ON CONFLICT` 收敛为同一记录，不能依赖“先查再插”避免竞争。
-- `last_seen_at` 单调向前，`first_seen_at` 可以被更早的补录 Observation 向前扩展。
-- `observed_at` 较旧的乱序 Observation 仍可留下历史指标/来源事实，但不得覆盖较新的 Current 业务字段、Current 指标、`updated_at` 或 `current_version`。
+- `last_seen_at` 是实体级“最近一次看见”时间并单调向前；`first_seen_at` 可以被更早的补录 Observation 向前扩展。
+- Current 的稀疏字段不能只用整行 `last_seen_at` 判断新旧。`accounts`、`contents`、`comments` 使用内部 `field_observed_at` JSONB 记录**每个已观察字段**的 freshness；同一字段只接受 `observed_at >=` 该字段已有 freshness 的 Observation。
+- 因此，较旧 Observation 可以补充更晚 Observation **从未观察过**的字段；如果更晚 Observation 已经明确观察过某字段，即使值是合法 `NULL`，较旧 Observation 也不得把它回滚成旧值。
+- `field_observed_at` 只保存字段路径和带时区时间，不保存第二份业务值；稳定业务字段仍使用关系列，指标历史仍使用 Metric Observation。
+- Content/Comment 业务字段在字段级合并后发生变化时才推进 `current_version` 并追加 Version；旧 Observation 补入此前未知字段也属于新的 Current 业务事实，因此可以形成新版本。
 - 指标历史是稀疏事实：只有 `observed_fields` 明确观察到的指标才写值，未观察指标保存 `NULL`，不得从 Current 静默带入。
-- 正常时间顺序下 A → B → A 仍然是三个有效观察事实；“防止旧 Observation 回滚 Current”不等于删除真实回变历史。
+- 正常时间顺序下 A → B → A 仍然是三个有效观察事实；“防止旧 Observation 回滚某字段”不等于删除真实回变历史。
+
+## 账号稳定身份
+
+- `accounts.external_account_id` 是平台主稳定身份；`account_external_ids` 保存已确认的备用稳定 ID。
+- 同一 `account_id + id_type` 重复出现相同值是幂等。
+- 如果同一 `account_id + id_type` 出现不同值，当前语义为 **fail-closed**：抛出稳定身份冲突，不静默覆盖旧值，也不根据 Observation 到达顺序猜哪个 ID 正确。
+- 如果未来真实 Provider 证据证明某类 alternate ID 实际是可变属性，应通过新的身份语义 Change 重新设计，而不是放宽当前稳定 ID 约束。
 
 ## 评论 Coverage
 
@@ -60,7 +70,9 @@ Provider Adapter
 - 不在 Mapper 内访问数据库；
 - 不让 Collection/Router 绕过 Content Owner 直接写 Content/Comment 表；
 - 不把平台原始 JSON 作为 Current 业务模型；
-- 不因旧 Observation 到达较晚而回滚较新的 Current；
-- 不把 `NULL`/未观察字段猜成 `0` 或沿用旧值写入历史。
+- 不用实体级 `last_seen_at` 替代字段级 freshness；
+- 不因旧 Observation 到达较晚而回滚已经被更新 Observation 明确观察过的 Current 字段；
+- 不把 `NULL`/未观察字段猜成 `0` 或沿用旧值写入历史；
+- 不静默覆盖已经建立的稳定 alternate ID。
 
 正式架构、采集决策和 Schema 语义分别以 `docs/blueprint/01-总体架构与技术选型.md`、`02-采集系统与数据标准化.md`、`03-数据库与文件存储.md`、`08-采集策略与平台能力.md` 为长期事实源。
