@@ -4,9 +4,9 @@ AIMA_UGC 是爱玛舆情监控系统的 Greenfield 重构仓库。目标是从�
 
 ## 当前状态
 
-**Stage 1 工程基线、Stage 2 Platform 基础、Stage 3A 数据库基础、Stage 3B Canonical Contract、Stage 4 PostgreSQL Job Runtime、Stage 5A—5D Provider-neutral 基础，以及 Stage 6 小红书 TikHub App V2 纵切已经建立。** 当前仓库已经具备可安装 Python package、FastAPI/Vue 最小工程、固定 OpenAPI 与生成 TypeScript Client、本地前后端联调、Windows x64 开发环境引导，业务无关 Platform/数据库基础，Provider/平台无关的 Canonical V1 与 Provider V1 Pydantic Contract、一次发送 Fake Transport，以及持久化 Job、Collection 执行父事实、Provider Request/Attempt、不可变 Raw Artifact、受 Fencing 约束的 Dispatch 和崩溃恢复验证闭环。
+**Stage 1—7 的工程基线、Platform/数据库/Canonical、PostgreSQL Job Runtime、Provider Request/Attempt + Raw、Collection Run/Scope、五平台 TikHub Operation/Mapper/Ingestion，以及 Scheduler/正式 Worker 主链已经建立。** 当前仓库具备可安装 Python package、FastAPI/Vue 最小工程、固定 OpenAPI 与生成 TypeScript Client、本地前后端联调、Windows x64 开发环境引导、PostgreSQL 18 Schema/Migration、Provider/平台无关 Canonical V1 与 Provider V1 Contract，以及 `Scheduler → Occurrence → Job → Run/Scope → Provider → Raw → Mapper → Canonical → Content Owner` 的持久化执行链。
 
-仍未进入五平台和产品功能批量开发阶段。Stage 6 已在不启用真实付费采集的前提下补齐首个小红书纵切：TikHub App V2 Operation/分页、纯 Mapper、合法脱敏 Fixture、Candidate/Ingestion 追加账本、Content/Comment Current+Version+Metric、已存 Raw 回放 Job，以及 PostgreSQL 18.4 独立 CI。当前真实 Provider 只做过用户明确授权的最小只读兼容 Probe；生产 Transport、多级预算、其余平台和 Scheduler 继续受 Stage 0/7 门禁约束。
+Stage 8 尚未开始。当前五平台生产实现使用同一 Collection/Content 边界，普通 CI 通过 Fake Transport + 合法脱敏 Fixture 验证，不产生付费 TikHub 请求；真实 Provider Probe 仅在明确授权和请求上限下作为外部兼容证据。当前没有请求/金额 Budget、Budget Account 或 Reservation Ledger。源码仍不能直接视为公网生产交付：Stage 8 业务 API/页面/认证授权，以及 Release 阶段的 Docker/离线发布、协调 Backup/Restore、生产镜像与恢复演练仍需后续正式门禁。
 
 事实源规则：
 
@@ -50,7 +50,7 @@ AIMA_UGC 是爱玛舆情监控系统的 Greenfield 重构仓库。目标是从�
 - `GET /health/ready`：检查 PostgreSQL、Artifact 根目录和日志目录；全部可用返回 200，否则返回 503，并且不返回连接串、Secret 或原始异常；
 - `ArtifactStore`：只按 `storage_key` 存取字节；Local 实现提供路径逃逸防护、同 key 不覆盖和原子写；
 - `ArtifactService`：负责 ID、元数据 Port 以及 `pending → stored → linked`；Stage 3A 已用 PostgreSQL `artifacts` Table/Repository 实现正式元数据持久化；
-- API、Worker、Scheduler、Migration 已有共用 Platform 的 bootstrap；Worker 已接入 Stage 4 PostgreSQL Job Runtime，正式 Scheduler 逻辑尚未实现。
+- API、Worker、Scheduler、Migration 共用 Platform bootstrap；Stage 7 已接通 Scheduler Runtime、正式 Collection Job Registry/JobWorker 与 TikHub Scope 执行链，Worker 进程的常驻服务管理仍属于后续部署/Release 形态。
 
 Stage 2 CI 使用隔离 PostgreSQL `18.4` 验证真实连接和 readiness。Stage 3A 另有独立 PostgreSQL 18.4 Job 验证 `upgrade head → alembic check → Repository 集成 → downgrade base → upgrade head → alembic check`。这些仍只是开发/CI 基线，不等于生产镜像 variant 或 Release digest 已批准。
 
@@ -142,6 +142,18 @@ Stage 5D 只使用不计费 Attempt 和 Fake Transport，不访问真实 Provide
 - `20260814_0006`—`20260814_0009` 建立 Stage 6 表和约束；`.github/workflows/stage6-xhs-vertical-slice.yml` 验证空库、Stage 5D、首条 Stage 6 和上一条 Stage 6 Revision 到 `head` 的升级路径。
 
 Stage 6 没有启用真实 HTTP Transport、预算 Reservation/Settlement、公开 HTTP API 或前端。2026-08-14 的受控真实搜索 Probe 只确认当前 HTTP 200 响应包装、分页会话字段和空页停止结构；实时返回项为空，非空字段映射仍以仓库中的合法脱敏 Fixture 和自动化测试为证据，不能据此宣称详情/评论或生产采集已经验收。
+
+### Stage 7：五平台采集、计划调度与正式 Worker
+
+- 小红书、抖音、微博、B站、快手均通过 TikHub 平台 Operation/Extractor/Mapper 进入同一 Canonical/Content Owner，不建立平台专用业务表；
+- `provider_configs.secret_ref` 固定 Provider 配置与 Secret 边界，Provider Request/Attempt 保存 Billing/成本快照和潜在重复计费审计事实，但当前没有 Budget 发送门禁；
+- Keyword Pack、Collection Plan/Plan Platform、Occurrence 和 `latest_only` Scheduler Runtime 已关系化持久化；
+- `collection.run.v1` 正式链路由 JobWorker 驱动 `CollectionRunExecutor → TikHubCollectionScopeExecutor`，支持 Scope durable checkpoint、终态 Scope 跳过、Provider 可重试错误跨 Job Attempt 恢复；
+- 遗留 `dispatching` Attempt 先由 Reconciler 校验确定性 Raw：完整 Raw 存在时直接恢复并 replay，禁止因 Worker takeover 再次发送同一 Provider 请求；
+- 评论/回复 target 是跨页软目标，当前已经返回的整页全部摄取；评论采集同时记录 complete/partial/not_requested/unavailable Coverage 及 sample/sort/target/stop reason；
+- Account/Content/Comment 首次并发插入由 PostgreSQL 唯一约束 + `ON CONFLICT` 收敛；较旧乱序 Observation 不覆盖较新的 Current，但仍可保留合法历史事实。
+
+Stage 7 的真实 Provider 兼容证据由受控 Probe、合法脱敏 Fixture 与 `docs/blueprint/10`—`12` 维护；一次 HTTP 200 不等于长期稳定性承诺。Stage 8 仍是下一正式业务阶段。
 
 ## 环境、启动与部署
 
@@ -272,7 +284,7 @@ uv run pytest tests/integration/collection/test_provider_repository.py -q
 uv run pytest tests/integration/collection/test_provider_dispatch.py -q
 ```
 
-`tests/integration/collection/test_raw_artifact.py` 使用隔离目录、正式 ArtifactService 和 Local ArtifactStore，不访问网络或数据库；同目录的 Repository/Dispatch 测试和 `tests/integration/content/` 使用真实 PostgreSQL。普通本地机器不要在未准备数据库时机械执行数据库测试。Job Runtime、Collection 父事实、Provider 持久化、Dispatch/恢复和小红书纵切的完整迁移路径分别由 `Stage 4 Job Runtime`、`Stage 5B Collection Execution`、`Stage 5C Provider Persistence`、`Stage 5D Provider Dispatch`、`Stage 6 XHS Vertical Slice` CI 维护；统一测试入口见 [`docs/测试与调试说明.md`](docs/测试与调试说明.md)。
+`tests/integration/collection/test_raw_artifact.py` 使用隔离目录、正式 ArtifactService 和 Local ArtifactStore，不访问网络或数据库；同目录的 Repository/Dispatch 测试和 `tests/integration/content/` 使用真实 PostgreSQL。普通本地机器不要在未准备数据库时机械执行数据库测试。Job Runtime、Collection 父事实、Provider 持久化、Dispatch/恢复、Content/Ingestion、五平台规范化与 Scheduler 的完整回归分别由 Stage 4/5/6/7 正式 Workflow 维护；Collection 恢复、Coverage、Provider retry 和 Content 并发/乱序回归也包含在对应 PostgreSQL Integration 中。统一测试入口见 [`docs/测试与调试说明.md`](docs/测试与调试说明.md)。
 
 修改 HTTP Contract 后，先重新生成固定 OpenAPI 和前端 Client，再提交生成物：
 

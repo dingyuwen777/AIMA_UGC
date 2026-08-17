@@ -234,12 +234,27 @@ comment_coverage_observations_table = Table(
     Column("coverage", Text(), nullable=False),
     Column("reported_total", BigInteger()),
     Column("collected_count", BigInteger(), nullable=False, server_default=text("0")),
+    # 0016 新字段对 0015 之前可能存在的历史 Coverage 保持 nullable；新写入由 Owner 强制提供。
+    Column("sample_mode", Text()),
+    Column("sort_mode", Text()),
+    Column("target_count", BigInteger()),
+    Column("stop_reason", Text()),
     Column("observed_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint(
+        "content_id",
+        "provider_attempt_id",
+        "raw_artifact_id",
+        name="uq_comment_coverage_observations_source",
+    ),
     CheckConstraint(
         "coverage in ('complete','partial','not_requested','unavailable')",
         name="coverage_allowed",
     ),
     CheckConstraint("collected_count >= 0", name="collected_count_nonnegative"),
+    CheckConstraint(
+        "target_count is null or target_count >= 0",
+        name="target_count_nonnegative",
+    ),
     info={"owner": "content"},
 )
 

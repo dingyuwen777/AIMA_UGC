@@ -21,19 +21,26 @@ Collection 是采集业务 Owner。它负责把已经通过 Contract / Provider 
    - `manual` / `api` / `backfill` Run 可选择性绑定 `manual_plan_id`，但不得绑定 Occurrence；
    - `scheduled` Run 必须绑定唯一 `occurrence_id`，不得重复保存 `manual_plan_id`；
    - `collection.run.v1` Job Payload 只保存稳定 schema 身份，不复制 `run_id`、Plan 或 Secret；Handler 通过当前 `JobExecutionFence.job_id` 反查正式 Run；
-   - `CollectionRunExecutor` 通过正式 Gateway 推进 Run/Scope，并把 Scope 交给注入的 `CollectionScopeExecutor`；
-   - `collection.run.v1` 明确 `retry_on_timeout = false`：普通 Lease 仍可在同一 Attempt 内 takeover，但 Attempt Deadline 到期后不自动重排整个 Collection Run，避免在外部请求结果不确定时产生隐式重复请求/重复费用。
+   - `CollectionRunExecutor` 在 Lease takeover / Job retry 时跳过已经终态的 Scope，并从 Scope durable stats 复用已完成计数，不重新执行已完成业务副作用；
+   - running Scope 的 `pagination_state / progress / stats` 通过 Fenced `checkpoint_scope()` 持久化；Scope 页进度不再直接改 Job progress，Job progress 只由 Run Executor 按 Scope 完成度推进；
+   - 可重试 Provider 错误先保存 Scope checkpoint，再返回 `JobHandlerResult.retry()` 交给 PostgreSQL Job Runtime；普通 Scope 业务失败仍隔离在当前 Scope；
+   - `collection.run.v1` 明确 `retry_on_timeout = false`：Attempt Deadline 到期后不自动重排整个 Collection Run，避免在外部结果不确定时产生隐式重复费用。
 4. `provider_persistence.py` / `provider_dispatch.py` / `provider_recovery.py`
    - Provider Request / Attempt 的持久化、正式 Dispatch、失败归因与 Recovery；
-   - Provider 私有 cursor / page / search_id 等状态只属于 Provider Request / Attempt / Scope，不进入 Plan 普通业务配置。
+   - Provider Request 是逻辑请求，同一 request fingerprint 在 Job retry / takeover 中复用；
+   - 新的外部重发必须建立新的 Provider Attempt；429、408、425、5xx 以及 Transport `not_sent/unknown` 才进入当前自动 retry 边界，其他 4xx 不做无条件重试；
+   - `dispatching` Attempt 在正式 Scope 开始时先经 `ProviderAttemptReconciler` 收敛：存在完整且 Contract/Hash 校验通过的确定性 Raw 时直接 finalize + replay，**禁止再次发送 Provider**；没有可用 Raw 的未知发送结果保留 `potential_duplicate_charge` 语义。
 5. `candidates.py` / `candidate_tables.py` 与 Provider Mapper / Ingestion
-   - Raw → Mapper → Candidate → Canonical / Ingestion 的现有纵向边界；
-   - Mapper 不访问数据库、不发 HTTP；Provider 不直接写业务表。
+   - Raw → Mapper → Candidate → Canonical / Ingestion 的统一纵向边界；
+   - Mapper 不访问数据库、不发 HTTP；Provider 不直接写业务表；
+   - Scope 请求/成功/失败计数和 Content/Comment 计数从 PostgreSQL Attempt/Candidate durable 事实恢复，不只依赖进程内计数。
 6. `bootstrap/collection_scope.py` + `bootstrap/worker.py`
-   - `TikHubCollectionScopeExecutor` 复用既有 TikHub Operation、Provider Dispatch、Raw、Mapper、Decision 和 fenced Ingestion 执行正式 Scope；
+   - `TikHubCollectionScopeExecutor` 复用既有五平台 TikHub Operation、Provider Dispatch/Recovery、Raw、Mapper、Decision 和 fenced Ingestion 执行正式 Scope；
+   - Search 决策为 `defer_until_detail` 时，Detail 摄取后必须使用最新 Canonical 再计算评论动作；只重算评论决策，不重复发 Detail；
+   - 评论/二级回复的 target 是“是否继续请求下一页”的软目标：当前已经返回并付费的响应页全部 Mapper/Ingestion 后，才决定是否再请求下一页；
+   - 每次评论抓取或明确不抓取形成 `comment_coverage_observations`，保存 complete/partial/not_requested/unavailable、Provider 报告总数、实际采集数、sample/sort/target/stop reason 和 Raw/Attempt 来源；
    - `create_collection_job_registry(...)` 用现有 Artifact/Raw/Provider/Collection 组件组装 `collection.run.v1`；
-   - 默认 Secret 只通过 `secret_ref` 在 `AIMA_SECRET_DIR` 下解析；默认 TikHub Transport 只允许批准的 `https://api.tikhub.io` Origin 接收 Bearer Secret，并在每次发送后关闭其自持 HTTP Client，不遗留无人管理的连接生命周期；
-   - 正式 `entrypoints/worker_main.py` 暴露同一 Registry 装配，不复制 JobWorker 循环。
+   - 默认 Secret 只通过 `secret_ref` 在 `AIMA_SECRET_DIR` 下解析；TikHub Transport 只允许批准的 `https://api.tikhub.io` Origin 接收 Bearer Secret。
 7. `xhs_replay.py`
    - 只回放已经持久化的 XHS Raw；
    - 复用正式 Mapper / Ingestion；
@@ -41,7 +48,7 @@ Collection 是采集业务 Owner。它负责把已经通过 Contract / Provider 
 
 ## 2. Plan / Occurrence / Run / Scheduler
 
-Stage 7 当前 Collection-owned 数据事实：
+当前 Collection-owned 数据事实：
 
 - `collection_plans`
   - 唯一 `name`；
@@ -61,10 +68,14 @@ Stage 7 当前 Collection-owned 数据事实：
   - `enqueued` 必须有 `job_id`，`skipped` 必须无 Job 且有 `skip_reason`；
   - `job_id` 唯一。
 - `collection_runs`
-  - 一个 Run 仍只绑定一个 Job；
+  - 一个 Run 只绑定一个 Job；
   - `scheduled` Run 必须通过 `occurrence_id` 关联 Plan / Schedule Version；
   - `manual` / `api` / `backfill` 保持兼容，并可选记录 `manual_plan_id`；
   - `config_snapshot` 是运行时不可变配置快照，不替代 Plan/Occurrence 的关系身份。
+- `collection_scopes`
+  - 每个平台/来源的最小可恢复执行单元；
+  - `pagination_state / progress / stats` 是 durable checkpoint，不把 Provider 私有 cursor 塞回 Plan；
+  - 终态 Scope 在 Job takeover/retry 后不得重复执行。
 
 数据库使用 deferred constraint trigger 在事务提交前检查跨表一致性：
 
@@ -93,24 +104,31 @@ Scheduler 停机恢复固定为：
   - 保留 `manual/api/backfill` 兼容性并支持 Plan / Occurrence 绑定。
 - `adapters/persistence/postgres/collection_run_execution.py`
   - live Worker 的 Run/Scope 执行 Gateway；
-  - 所有可见状态推进继续受 Job Fence 约束，不允许 Worker 绕过 Owner 直接写表。
+  - start/checkpoint/finish 都先验证当前 Job Fence，不允许旧 Worker 在 Lease takeover 后继续写。
+- `adapters/persistence/postgres/collection_provider_execution.py`
+  - 同一逻辑 Provider Request 的 Attempt 恢复、可重发边界和 Scope durable 计数读取；
+  - 成功且带完整 Raw 的 Request 直接复用；`dispatching` 必须先 Recovery；终态可重试失败才允许建立新的 Attempt。
+- `adapters/persistence/postgres/collection_content.py`
+  - Collection 到 Content Owner 的 Fenced Ingestion/Coverage 边界；
+  - Collection 不直接写 Content/Comment/Coverage 表。
 
-`database_schema.py` 只注册当前机器 Schema；正式结构变化必须通过 Alembic Revision 演进。首版 Scheduler 策略通过 `0014` Migration 和 SQLAlchemy metadata 同时约束，预算回撤通过向前 Migration `20260817_0015` 完成，禁止改写历史 Revision。
+`database_schema.py` 只注册当前机器 Schema；正式结构变化必须通过 Alembic Revision 演进。首版 Scheduler 策略通过 `0014` 约束，预算回撤通过 `20260817_0015` 完成，评论 Coverage 可观测字段和来源幂等约束由向前 Revision `20260817_0016` 建立；禁止改写已发布历史 Revision。
 
-## 4. Secret、Job 与配置边界
+## 4. Secret、Job、Provider 与配置边界
 
 - Provider Secret 只通过 `provider_configs.secret_ref` 间接引用，不进入 Plan、Run、Scope、Raw、Job Payload 或日志明文；
 - Plan 平台 `config` 是业务配置，不是 Provider HTTP 参数仓库；
 - Provider 私有 cursor、page、search_id、签名或认证字段不进入 Plan；
-- Scheduler 只创建任务事实，真实 Provider HTTP 仍必须经过 Provider Billing/Pricing、Dispatch 与 Raw 边界；
+- Scheduler 只创建任务事实，真实 Provider HTTP 必须经过 Provider Billing/Pricing、Dispatch 与 Raw 边界；
 - Provider Billing、Pricing、成本快照和 `potential_duplicate_charge` 是执行/审计事实，不是请求次数或金额预算；当前不存在 Budget Account、Reservation Ledger 或发送预算门禁；
-- `collection.run.v1` 的整个 Job Attempt 超时不自动重排；任何 Provider 重发都必须使用新 Attempt 并形成新的 Raw/计费审计事实，不能由 Job Runtime 隐式复制一次已经可能发送过的外部调用。
+- 同一 Attempt 最多一次外部发送；重发只能新建 Attempt；完整 Raw 存在时必须 replay，不得为了 Job retry 再收费一次；
+- 当前不自动做 Provider/App/Web fallback；各平台 Operation 的备用方案必须由独立决策/验证启用。
 
-## 5. Stage 7 闭环状态
+## 5. 当前阶段边界
 
-Scheduler → Occurrence → `collection.run.v1` Job → scheduled Run / Scope → 正式 Worker Registry / JobWorker → `CollectionRunJobHandler` → `CollectionRunExecutor` → `TikHubCollectionScopeExecutor` → Provider / Raw / Mapper / Canonical / Ingestion 的生产链已经通过 PostgreSQL/Fake Transport 纵切验证，并随 PR #55 正常合入 `main`。
+Stage 1—7 已存在完整机器实现：Scheduler → Occurrence → `collection.run.v1` Job → Run/Scope → Worker → TikHub 五平台 Provider Operation → Raw → Mapper → Canonical → Candidate/Ingestion → Content Owner/PostgreSQL。
 
-Stage 7 的最终质量门禁、需求符合性 Review、代码质量/安全/兼容性 Review、PR #55 合并和合并后 `main` 新鲜 CI 均已完成；`CHG-20260815-stage7-completion` 由当前归档 PR #56 完成 `done` / archive 生命周期收尾。
+在进入 Stage 8 前，当前 L3 Corrective Change 重新验证并补齐 Stage 1—7 的恢复、并发、乱序 Current、评论整页/Coverage 与测试/文档一致性。**Stage 8 HTTP CRUD/业务页面/认证授权，以及 Release 阶段 Docker/离线发布/协调 Backup-Restore 仍未开始，不得把本次修复描述为这些能力已经实现。**
 
 当前必须继续保持：
 
@@ -120,13 +138,14 @@ Stage 7 的最终质量门禁、需求符合性 Review、代码质量/安全/兼
 - Provider Secret 只走 `secret_ref`，TikHub Bearer Secret 只发送到批准的 `https://api.tikhub.io` Origin；
 - 当前不恢复请求/金额预算、Budget Account、Reservation Ledger 或 dormant Budget 接口。
 
-下一正式阶段是 Stage 8；本模块文档只记录 Stage 7 已完成的 Collection 机器边界，不提前定义 Stage 8 HTTP API 或前端行为。
-
 ## 6. 调试与测试原则
 
-- 调试入口复用 `CollectionPlanningService` / `CollectionExecutionService` / 正式 Repository / Provider Operation，不另写第二套 SQL 或 Provider 实现；
-- PostgreSQL 集成测试验证真实 FK、Unique、Check、行锁与 deferred constraint，而不是只验证 Mock；
+- 调试入口复用正式 `CollectionPlanningService` / `CollectionExecutionService` / Repository / Provider Operation，不另写第二套 SQL 或 Provider 实现；
+- PostgreSQL 集成测试验证真实 FK、Unique、Check、行锁、并发 first-insert、Fencing、Raw Recovery 和 deferred constraint，而不是只验证 Mock；
 - Scheduler 专项验证 new-plan 初始化、latest-only、重复 tick、并发 Scheduler 和 Migration round-trip；
-- Worker 纵切使用 `FakeProviderTransport`，证明生产装配与数据库链路，不在普通 CI 产生付费 TikHub 请求；
+- Worker 纵切使用 `FakeProviderTransport` 验证真实生产装配；普通 CI 不产生付费 TikHub 请求；
+- Provider 可重试错误必须验证“同一逻辑 Request + 新 Attempt”，同时保留旧 Attempt/Raw/费用事实；
+- Recovery 必须验证 `dispatching + 已完整 Raw + Lease takeover` 后正式 Scope 不再次发送 Provider；
+- 评论测试必须覆盖 Detail 后重决策、整页保留、target 跨页、空页、reported_total=0、Coverage 来源幂等；
 - 新 Migration 至少验证上一正式 Revision → head、base → head、downgrade / upgrade 与 `alembic check`；
-- 真实付费 Provider Probe 默认不进入普通 CI，不能因为缺少真实网络调用而降低本模块数据库、领域和 Secret 门禁标准。
+- 真实 Provider Probe 仅在 Fixture/Contract/一手文档不足以确认真实接口形态时人工显式运行，并设置请求/分页上限；不能把 Real Probe 当普通 CI，也不能把付费请求成功替代单元/集成测试。

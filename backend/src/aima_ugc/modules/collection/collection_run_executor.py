@@ -1,4 +1,4 @@
-"""Collection Run Job 的 Scope 编排与终态聚合。"""
+"""Collection Run Job 的 Scope 编排、恢复与终态聚合。"""
 
 from __future__ import annotations
 
@@ -17,6 +17,9 @@ CollectionScopeTerminalStatus = Literal[
     "failed",
     "cancelled",
 ]
+_SCOPE_TERMINAL_STATUSES: frozenset[CollectionScopeTerminalStatus] = frozenset(
+    {"partial_success", "succeeded", "failed", "cancelled"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +48,47 @@ class CollectionScopeExecutionResult:
             raise ValueError("Collection Scope 聚合计数不能为负数")
 
 
+class CollectionScopeRetryableError(RuntimeError):
+    """Scope 遇到可重试外部失败时携带 durable checkpoint 返回 Job Runtime。"""
+
+    def __init__(
+        self,
+        *,
+        error_code: str,
+        pagination_state: dict[str, object],
+        progress: int,
+        stats: dict[str, object],
+        requested_count: int,
+        succeeded_count: int,
+        failed_count: int,
+        content_count: int,
+        comment_count: int,
+    ) -> None:
+        super().__init__(error_code)
+        if not error_code:
+            raise ValueError("可重试 Scope 错误必须包含 error_code")
+        if progress < 0 or progress > 99:
+            raise ValueError("可重试 Scope checkpoint progress 必须在 0..99")
+        counts = (
+            requested_count,
+            succeeded_count,
+            failed_count,
+            content_count,
+            comment_count,
+        )
+        if any(value < 0 for value in counts):
+            raise ValueError("可重试 Scope checkpoint 计数不能为负数")
+        self.error_code = error_code
+        self.pagination_state = dict(pagination_state)
+        self.progress = progress
+        self.stats = dict(stats)
+        self.requested_count = requested_count
+        self.succeeded_count = succeeded_count
+        self.failed_count = failed_count
+        self.content_count = content_count
+        self.comment_count = comment_count
+
+
 class CollectionRunExecutionGateway(Protocol):
     """Run Executor 所需的最小状态推进边界；所有业务可见写入必须携带当前 Fence。"""
 
@@ -62,6 +106,16 @@ class CollectionRunExecutionGateway(Protocol):
         scope_id: UUID,
         *,
         fence: JobExecutionFence,
+    ) -> CollectionScopeRecord: ...
+
+    def checkpoint_scope(
+        self,
+        scope_id: UUID,
+        *,
+        fence: JobExecutionFence,
+        pagination_state: dict[str, object],
+        progress: int,
+        stats: dict[str, object],
     ) -> CollectionScopeRecord: ...
 
     def finish_scope(
@@ -117,6 +171,14 @@ class _RunTotals:
         self.content_count += result.content_count
         self.comment_count += result.comment_count
 
+    def add_persisted_scope(self, scope: CollectionScopeRecord) -> None:
+        """恢复时从 Scope durable stats 复用已终态结果，不重新执行业务副作用。"""
+        self.requested_count += _stat_int(scope.stats, "requested_count")
+        self.succeeded_count += _stat_int(scope.stats, "succeeded_count")
+        self.failed_count += _stat_int(scope.stats, "failed_count")
+        self.content_count += _stat_int(scope.stats, "content_count")
+        self.comment_count += _stat_int(scope.stats, "comment_count")
+
     def payload(self) -> dict[str, int]:
         return {
             "requested_count": self.requested_count,
@@ -128,7 +190,7 @@ class _RunTotals:
 
 
 class CollectionRunExecutor:
-    """按 Scope 隔离执行一个 Collection Run，并聚合最终状态。"""
+    """按 Scope 隔离执行一个 Collection Run，并在 Lease takeover 后从 durable 状态恢复。"""
 
     def __init__(
         self,
@@ -155,7 +217,26 @@ class CollectionRunExecutor:
         partial_scopes = 0
         total_scopes = len(execution.scopes)
 
-        for index, queued_scope in enumerate(execution.scopes):
+        for index, persisted_scope in enumerate(execution.scopes):
+            if persisted_scope.status in _SCOPE_TERMINAL_STATUSES:
+                totals.add_persisted_scope(persisted_scope)
+                if persisted_scope.status == "failed":
+                    failed_scopes += 1
+                elif persisted_scope.status == "partial_success":
+                    partial_scopes += 1
+                elif persisted_scope.status == "cancelled":
+                    self._finish_run(
+                        run=run,
+                        fence=fence,
+                        status="cancelled",
+                        totals=totals,
+                        error_summary="scope_cancelled",
+                    )
+                    return JobHandlerResult.cancelled()
+                if total_scopes:
+                    context.heartbeat(progress=((index + 1) * 100) // total_scopes)
+                continue
+
             if context.cancel_requested():
                 self._finish_run(
                     run=run,
@@ -166,7 +247,7 @@ class CollectionRunExecutor:
                 )
                 return JobHandlerResult.cancelled()
 
-            scope = self._gateway.start_scope(queued_scope.id, fence=fence)
+            scope = self._gateway.start_scope(persisted_scope.id, fence=fence)
             try:
                 scope_result = self._scope_executor.execute(
                     run=run,
@@ -175,6 +256,15 @@ class CollectionRunExecutor:
                 )
             except LeaseLostError:
                 raise
+            except CollectionScopeRetryableError as exc:
+                self._gateway.checkpoint_scope(
+                    scope.id,
+                    fence=fence,
+                    pagination_state=exc.pagination_state,
+                    progress=max(scope.progress, exc.progress),
+                    stats=exc.stats,
+                )
+                return JobHandlerResult.retry(exc.error_code)
             except Exception:
                 failed_scopes += 1
                 self._gateway.finish_scope(
@@ -259,9 +349,17 @@ class CollectionRunExecutor:
         )
 
 
+def _stat_int(stats: dict[str, object], name: str) -> int:
+    value = stats.get(name, 0)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"Collection Scope durable stats.{name} 必须为非负整数")
+    return value
+
+
 __all__ = [
     "CollectionRunExecutionGateway",
     "CollectionRunExecutor",
     "CollectionScopeExecutionResult",
     "CollectionScopeExecutor",
+    "CollectionScopeRetryableError",
 ]

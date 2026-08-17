@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - feature/stage7-completion
   pull_request:
     branches:
       - main

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import select
@@ -170,16 +171,65 @@ class PostgresFencedCollectionIngestionWriter:
         finally:
             session.close()
 
+    def record_comment_coverage(
+        self,
+        *,
+        content_id: UUID,
+        provider_attempt_id: UUID,
+        raw_artifact_id: UUID,
+        platform: str,
+        fence: JobExecutionFence,
+        coverage: str,
+        reported_total: int | None,
+        collected_count: int,
+        sample_mode: str,
+        sort_mode: str,
+        target_count: int | None,
+        stop_reason: str,
+        observed_at: datetime,
+    ) -> UUID:
+        """校验 Job/Attempt/Content 平台来源后交给 Content Owner 幂等保存 Coverage。"""
+        session = self._session_factory()
+        try:
+            with session.begin():
+                attempt_platform = _lock_matching_attempt(
+                    session,
+                    attempt_id=provider_attempt_id,
+                    fence=fence,
+                )
+                content_platform = session.scalar(
+                    select(contents_table.c.platform).where(contents_table.c.id == content_id)
+                )
+                if content_platform is None:
+                    raise LookupError("Comment Coverage Content 不存在")
+                if content_platform != attempt_platform or content_platform != platform:
+                    raise ValueError("Comment Coverage Content/Attempt 平台不一致")
+                return PostgresContentRepository(session).record_comment_coverage(
+                    content_id=content_id,
+                    provider_attempt_id=provider_attempt_id,
+                    raw_artifact_id=raw_artifact_id,
+                    coverage=coverage,
+                    reported_total=reported_total,
+                    collected_count=collected_count,
+                    sample_mode=sample_mode,
+                    sort_mode=sort_mode,
+                    target_count=target_count,
+                    stop_reason=stop_reason,
+                    observed_at=observed_at,
+                )
+        finally:
+            session.close()
+
 
 def _lock_matching_attempt(
     session: Session,
     *,
     attempt_id: UUID,
     fence: JobExecutionFence,
-) -> None:
+) -> str:
     PostgresJobRepository(session).lock_current_execution(fence)
-    job_id = session.scalar(
-        select(collection_runs_table.c.job_id)
+    ownership = session.execute(
+        select(collection_runs_table.c.job_id, collection_scopes_table.c.platform)
         .select_from(
             provider_request_attempts_table.join(
                 provider_requests_table,
@@ -196,9 +246,10 @@ def _lock_matching_attempt(
             )
         )
         .where(provider_request_attempts_table.c.id == attempt_id)
-    )
-    if job_id != fence.job_id:
+    ).one_or_none()
+    if ownership is None or ownership.job_id != fence.job_id:
         raise LeaseLostError("Provider Attempt 不属于当前 Job Fence")
+    return str(ownership.platform)
 
 
 def _provider_attempt_id(observation: CanonicalContentV1 | CanonicalCommentV1) -> UUID:

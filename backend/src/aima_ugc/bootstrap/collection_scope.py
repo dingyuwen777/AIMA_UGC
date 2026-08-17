@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID, uuid4
@@ -11,15 +11,23 @@ from uuid import UUID, uuid4
 from pydantic import SecretStr
 from sqlalchemy.orm import Session
 
+from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
+    PostgresArtifactMetadataRepository,
+)
 from aima_ugc.adapters.persistence.postgres.collection_content import (
     PostgresCollectionContentStateReader,
     PostgresFencedCollectionIngestionWriter,
 )
 from aima_ugc.adapters.persistence.postgres.collection_provider_execution import (
+    CollectionScopeExecutionCounts,
     PostgresFencedProviderAttemptPreparer,
+)
+from aima_ugc.adapters.persistence.postgres.collection_run_execution import (
+    PostgresCollectionRunExecutionGateway,
 )
 from aima_ugc.adapters.persistence.postgres.provider_dispatch import (
     PostgresProviderDispatchPersistence,
+    PostgresProviderRecoveryPersistence,
 )
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
 from aima_ugc.adapters.providers.tikhub.capabilities import TIKHUB_PLATFORM_CAPABILITIES
@@ -53,18 +61,23 @@ from aima_ugc.contracts.collection import (
 from aima_ugc.contracts.provider import JsonObject, ProviderRequestV1
 from aima_ugc.modules.collection.collection_run_executor import (
     CollectionScopeExecutionResult,
+    CollectionScopeRetryableError,
     CollectionScopeTerminalStatus,
 )
 from aima_ugc.modules.collection.decision import CollectionDecisionService
 from aima_ugc.modules.collection.execution import CollectionRunRecord, CollectionScopeRecord
 from aima_ugc.modules.collection.provider_dispatch import ProviderDispatchService
+from aima_ugc.modules.collection.provider_persistence import PreparedProviderAttempt
+from aima_ugc.modules.collection.provider_recovery import ProviderAttemptReconciler
 from aima_ugc.modules.collection.providers import (
     ProviderClient,
     ProviderTransport,
     RawArtifactService,
+    raw_storage_key,
 )
 from aima_ugc.modules.system.models import ProviderConfig
-from aima_ugc.platform.jobs.models import JobExecutionContextProtocol
+from aima_ugc.platform.jobs.models import JobExecutionContextProtocol, LeaseLostError
+from aima_ugc.platform.storage import ArtifactRecord
 
 _MAX_SEARCH_PAGES = 100
 _MAX_COMMENT_PAGES = 100
@@ -76,6 +89,11 @@ _COMMENT_FETCH_ACTIONS = {
     "probe_first_page",
 }
 _REPLY_FETCH_ACTIONS = {"fetch_target", "probe_first_page"}
+_RETRYABLE_HTTP_STATUSES = {408, 425, 429}
+_UNAVAILABLE_COMMENT_REASONS = {
+    "comments_operation_unavailable",
+    "comments_unavailable",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +110,15 @@ class _ExecutedCall:
     body: dict[str, object]
 
 
+class _ProviderCallFailed(RuntimeError):
+    """一次 Provider 调用已有持久化失败事实，交给 Scope 决定是否 Job retry。"""
+
+    def __init__(self, *, error_code: str, retryable: bool) -> None:
+        super().__init__(error_code)
+        self.error_code = error_code
+        self.retryable = retryable
+
+
 @dataclass(slots=True)
 class _ScopeStats:
     requested_count: int = 0
@@ -102,14 +129,38 @@ class _ScopeStats:
     detail_requests: int = 0
     comment_requests: int = 0
     sub_comment_requests: int = 0
+    content_count: int = 0
     comment_count: int = 0
-    content_identities: set[tuple[str, str]] = field(default_factory=set)
 
-    def record_content(self, content: CanonicalContentV1) -> None:
-        self.content_identities.add((content.platform, content.external_content_id))
+    @classmethod
+    def from_payload(cls, payload: dict[str, object]) -> _ScopeStats:
+        return cls(
+            requested_count=_payload_int(payload, "requested_count"),
+            succeeded_count=_payload_int(payload, "succeeded_count"),
+            failed_count=_payload_int(payload, "failed_count"),
+            search_pages=_payload_int(payload, "search_pages"),
+            search_items=_payload_int(payload, "search_items"),
+            detail_requests=_payload_int(payload, "detail_requests"),
+            comment_requests=_payload_int(payload, "comment_requests"),
+            sub_comment_requests=_payload_int(payload, "sub_comment_requests"),
+            content_count=_payload_int(payload, "content_count"),
+            comment_count=_payload_int(payload, "comment_count"),
+        )
+
+    def sync_counts(self, counts: CollectionScopeExecutionCounts) -> None:
+        self.requested_count = counts.requested_count
+        self.succeeded_count = counts.succeeded_count
+        self.failed_count = counts.failed_count
+        self.content_count = counts.content_count
+        self.comment_count = counts.comment_count
 
     def payload(self) -> dict[str, object]:
         return {
+            "requested_count": self.requested_count,
+            "succeeded_count": self.succeeded_count,
+            "failed_count": self.failed_count,
+            "content_count": self.content_count,
+            "comment_count": self.comment_count,
             "search_pages": self.search_pages,
             "search_items": self.search_items,
             "detail_requests": self.detail_requests,
@@ -117,10 +168,6 @@ class _ScopeStats:
             "sub_comment_requests": self.sub_comment_requests,
             "provider_requests": self.requested_count,
         }
-
-    @property
-    def content_count(self) -> int:
-        return len(self.content_identities)
 
 
 class TikHubCollectionScopeExecutor:
@@ -142,9 +189,14 @@ class TikHubCollectionScopeExecutor:
         self._observed_at = observed_at or (lambda: datetime.now(UTC))
         self._pricing = load_tikhub_pricing()
         self._attempt_preparer = PostgresFencedProviderAttemptPreparer(session_factory)
+        self._scope_gateway = PostgresCollectionRunExecutionGateway(session_factory)
         self._content_state = PostgresCollectionContentStateReader(session_factory)
         self._content_writer = PostgresFencedCollectionIngestionWriter(session_factory)
         self._decision_service = CollectionDecisionService()
+        self._reconciler = ProviderAttemptReconciler(
+            persistence=PostgresProviderRecoveryPersistence(session_factory),
+            raw_artifacts=raw_artifacts,
+        )
 
     def execute(
         self,
@@ -157,95 +209,149 @@ class TikHubCollectionScopeExecutor:
         if scope.source_type != "keyword_search" or scope.operation_group != "content_discovery":
             raise ValueError("TikHub Scope Runtime 当前只支持 keyword_search/content_discovery")
 
+        self._reconciler.recover_inherited(context.fence)
         platform = _tikhub_platform(scope.platform)
         runtime_config = _platform_runtime_config(run, scope.platform)
         provider_config = self._load_provider_config(runtime_config.provider_config_id)
         capability = _capability(platform)
         _validate_decision_policy(run)
 
-        stats = _ScopeStats()
+        stats = _ScopeStats.from_payload(scope.stats)
+        self._refresh_counts(scope=scope, context=context, stats=stats)
         pagination_state = dict(scope.pagination_state)
         stop_reason: str | None = None
+        first_page_no = max(1, scope.progress + 1)
+        current_page_no = first_page_no
 
-        for page_no in range(1, _MAX_SEARCH_PAGES + 1):
-            if context.cancel_requested():
-                return _result(
-                    status="cancelled",
-                    stop_reason="cancelled",
-                    pagination_state=pagination_state,
-                    stats=stats,
-                )
-
-            call = build_search_call(
-                platform=platform,
-                keyword=scope.source_value,
-                config=runtime_config.config,
-                state=pagination_state,
-            )
-            executed = self._execute_call(
-                run=run,
-                scope=scope,
-                call=call,
-                provider_config=provider_config,
-                context=context,
-            )
-            stats.requested_count += 1
-            stats.succeeded_count += 1
-            stats.search_pages += 1
-
-            items = extract_search_items(platform, executed.body)
-            stats.search_items += len(items)
-            for index, raw_item in enumerate(items):
+        try:
+            for current_page_no in range(first_page_no, _MAX_SEARCH_PAGES + 1):
                 if context.cancel_requested():
+                    self._refresh_counts(scope=scope, context=context, stats=stats)
                     return _result(
                         status="cancelled",
                         stop_reason="cancelled",
                         pagination_state=pagination_state,
                         stats=stats,
                     )
-                search_content = map_content(
+
+                call = build_search_call(
                     platform=platform,
-                    raw=raw_item,
-                    context=mapping_context(
-                        provider_request_id=str(executed.request_id),
-                        provider_attempt_id=str(executed.attempt_id),
-                        raw_artifact_id=executed.raw_artifact_id,
-                        operation=call.operation,
-                        source_type=scope.source_type,
-                        source_value=scope.source_value,
-                        observed_at=self._observed_at(),
-                    ),
-                    item_locator=f"search.items[{index}]",
+                    keyword=scope.source_value,
+                    config=runtime_config.config,
+                    state=pagination_state,
                 )
-                self._process_search_content(
+                executed = self._execute_call(
                     run=run,
                     scope=scope,
-                    content=search_content,
+                    call=call,
                     provider_config=provider_config,
-                    capability=capability,
                     context=context,
-                    stats=stats,
                 )
+                stats.search_pages += 1
 
-            advance = advance_search(
-                platform=platform,
-                state=pagination_state,
-                body=executed.body,
+                items = extract_search_items(platform, executed.body)
+                stats.search_items += len(items)
+                for index, raw_item in enumerate(items):
+                    if context.cancel_requested():
+                        self._refresh_counts(scope=scope, context=context, stats=stats)
+                        return _result(
+                            status="cancelled",
+                            stop_reason="cancelled",
+                            pagination_state=pagination_state,
+                            stats=stats,
+                        )
+                    search_content = map_content(
+                        platform=platform,
+                        raw=raw_item,
+                        context=mapping_context(
+                            provider_request_id=str(executed.request_id),
+                            provider_attempt_id=str(executed.attempt_id),
+                            raw_artifact_id=executed.raw_artifact_id,
+                            operation=call.operation,
+                            source_type=scope.source_type,
+                            source_value=scope.source_value,
+                            observed_at=self._observed_at(),
+                        ),
+                        item_locator=f"search.items[{index}]",
+                    )
+                    self._process_search_content(
+                        run=run,
+                        scope=scope,
+                        content=search_content,
+                        provider_config=provider_config,
+                        capability=capability,
+                        context=context,
+                        stats=stats,
+                    )
+
+                advance = advance_search(
+                    platform=platform,
+                    state=pagination_state,
+                    body=executed.body,
+                )
+                if not advance.should_continue:
+                    stop_reason = advance.stop_reason or "provider_exhausted"
+                    break
+                assert advance.next_state is not None
+                pagination_state = dict(advance.next_state)
+                self._refresh_counts(scope=scope, context=context, stats=stats)
+                self._scope_gateway.checkpoint_scope(
+                    scope.id,
+                    fence=context.fence,
+                    pagination_state=pagination_state,
+                    progress=min(99, current_page_no),
+                    stats=stats.payload(),
+                )
+            else:
+                stop_reason = "page_limit"
+        except LeaseLostError:
+            raise
+        except _ProviderCallFailed as exc:
+            self._refresh_counts(scope=scope, context=context, stats=stats)
+            if exc.retryable:
+                raise CollectionScopeRetryableError(
+                    error_code=exc.error_code,
+                    pagination_state=pagination_state,
+                    progress=max(scope.progress, min(99, current_page_no - 1)),
+                    stats=stats.payload(),
+                    requested_count=stats.requested_count,
+                    succeeded_count=stats.succeeded_count,
+                    failed_count=stats.failed_count,
+                    content_count=stats.content_count,
+                    comment_count=stats.comment_count,
+                ) from exc
+            return _result(
+                status="failed",
+                stop_reason=exc.error_code,
+                pagination_state=pagination_state,
+                stats=stats,
             )
-            if not advance.should_continue:
-                stop_reason = advance.stop_reason or "provider_exhausted"
-                break
-            assert advance.next_state is not None
-            pagination_state = dict(advance.next_state)
-            context.heartbeat(progress=min(99, page_no))
-        else:
-            stop_reason = "page_limit"
+        except Exception:
+            self._refresh_counts(scope=scope, context=context, stats=stats)
+            return _result(
+                status="failed",
+                stop_reason="scope_execution_failed",
+                pagination_state=pagination_state,
+                stats=stats,
+            )
 
+        self._refresh_counts(scope=scope, context=context, stats=stats)
         return _result(
             status="partial_success" if stop_reason == "page_limit" else "succeeded",
             stop_reason=stop_reason,
             pagination_state=pagination_state,
             stats=stats,
+        )
+
+    def _refresh_counts(
+        self,
+        *,
+        scope: CollectionScopeRecord,
+        context: JobExecutionContextProtocol,
+        stats: _ScopeStats,
+    ) -> None:
+        stats.sync_counts(
+            self._attempt_preparer.read_scope_counts(scope_id=scope.id, fence=context.fence)
         )
 
     def _process_search_content(
@@ -259,37 +365,60 @@ class TikHubCollectionScopeExecutor:
         context: JobExecutionContextProtocol,
         stats: _ScopeStats,
     ) -> None:
+        policy = CollectionDecisionPolicyV1()
         prior = self._content_state.evaluate(content)
         decision = self._decision_service.decide(
             CollectionDecisionRequestV1(
                 current=ContentObservationV1(
-                    comment_count=content.metrics.comment_count,
+                    comment_count=_observed_comment_count(content),
                     business_changed=prior.business_changed if prior is not None else False,
                 ),
                 previous=prior.previous if prior is not None else None,
-                policy=CollectionDecisionPolicyV1(),
+                policy=policy,
                 capability=capability,
             )
         )
 
-        self._content_writer.ingest_content(canonical=content, fence=context.fence)
-        stats.record_content(content)
+        search_ingestion = self._content_writer.ingest_content(
+            canonical=content,
+            fence=context.fence,
+        )
+        content_id = search_ingestion.target_id
+        comment_source = content
 
         if decision.detail_action == "fetch" and not context.cancel_requested():
-            self._fetch_detail(
+            comment_source = self._fetch_detail(
                 run=run,
                 scope=scope,
                 content=content,
+                content_id=content_id,
                 provider_config=provider_config,
                 context=context,
                 stats=stats,
             )
+            # 评论动作必须基于 Detail 后的最新 Canonical 事实重新计算；只复用评论部分，
+            # 不再次执行 detail_action，避免形成二次详情请求。
+            decision = self._decision_service.decide(
+                CollectionDecisionRequestV1(
+                    current=ContentObservationV1(
+                        comment_count=_observed_comment_count(comment_source),
+                        business_changed=False,
+                    ),
+                    previous=prior.previous if prior is not None else None,
+                    policy=policy,
+                    capability=capability,
+                )
+            )
 
-        if decision.comment_action in _COMMENT_FETCH_ACTIONS and not context.cancel_requested():
+        if context.cancel_requested():
+            return
+
+        if decision.comment_action in _COMMENT_FETCH_ACTIONS:
             self._fetch_comments(
                 run=run,
                 scope=scope,
-                content=content,
+                content=comment_source,
+                content_id=content_id,
                 provider_config=provider_config,
                 capability=capability,
                 context=context,
@@ -297,6 +426,15 @@ class TikHubCollectionScopeExecutor:
                 comment_action=decision.comment_action,
                 comment_target=decision.comment_target,
             )
+            return
+
+        self._record_non_fetch_coverage(
+            content_id=content_id,
+            content=comment_source,
+            context=context,
+            comment_reason=decision.comment_reason,
+            comment_target=decision.comment_target,
+        )
 
     def _fetch_detail(
         self,
@@ -304,10 +442,11 @@ class TikHubCollectionScopeExecutor:
         run: CollectionRunRecord,
         scope: CollectionScopeRecord,
         content: CanonicalContentV1,
+        content_id: UUID,
         provider_config: ProviderConfig,
         context: JobExecutionContextProtocol,
         stats: _ScopeStats,
-    ) -> None:
+    ) -> CanonicalContentV1:
         platform = _tikhub_platform(scope.platform)
         detail_call = build_detail_call(platform, content)
         executed = self._execute_call(
@@ -317,13 +456,12 @@ class TikHubCollectionScopeExecutor:
             provider_config=provider_config,
             context=context,
         )
-        stats.requested_count += 1
-        stats.succeeded_count += 1
         stats.detail_requests += 1
 
         detail_items = extract_detail_items(platform, executed.body)
         if not detail_items:
             raise ValueError("TikHub Detail 响应未包含可映射内容")
+        latest_detail: CanonicalContentV1 | None = None
         for index, raw_item in enumerate(detail_items):
             detail_content = map_content(
                 platform=platform,
@@ -342,8 +480,16 @@ class TikHubCollectionScopeExecutor:
             )
             if detail_content.external_content_id != content.external_content_id:
                 raise ValueError("TikHub Detail 与 Search Content 身份不一致")
-            self._content_writer.ingest_content(canonical=detail_content, fence=context.fence)
-            stats.record_content(detail_content)
+            detail_ingestion = self._content_writer.ingest_content(
+                canonical=detail_content,
+                fence=context.fence,
+            )
+            if detail_ingestion.target_id != content_id:
+                raise RuntimeError("Detail 与 Search 摄取未收敛到同一 Content")
+            latest_detail = detail_content
+        if latest_detail is None:  # pragma: no cover - 前置非空校验保证
+            raise RuntimeError("TikHub Detail 未产生 Canonical Content")
+        return latest_detail
 
     def _fetch_comments(
         self,
@@ -351,6 +497,7 @@ class TikHubCollectionScopeExecutor:
         run: CollectionRunRecord,
         scope: CollectionScopeRecord,
         content: CanonicalContentV1,
+        content_id: UUID,
         provider_config: ProviderConfig,
         capability: ProviderPlatformCapabilityV1,
         context: JobExecutionContextProtocol,
@@ -361,9 +508,31 @@ class TikHubCollectionScopeExecutor:
         platform = _tikhub_platform(scope.platform)
         pagination_state: dict[str, object] = {}
         fetched = 0
+        reported_total = _observed_comment_count(content)
+        sample_mode = _comment_sample_mode(
+            comment_action=comment_action,
+            comment_target=comment_target,
+            reported_total=reported_total,
+        )
+        sort_mode = _comment_sort_mode(platform)
+        last_executed: _ExecutedCall | None = None
 
         for _page_no in range(1, _MAX_COMMENT_PAGES + 1):
             if context.cancel_requested():
+                if last_executed is not None:
+                    self._record_comment_coverage(
+                        content_id=content_id,
+                        platform=platform,
+                        executed=last_executed,
+                        context=context,
+                        coverage="partial",
+                        reported_total=reported_total,
+                        collected_count=fetched,
+                        sample_mode=sample_mode,
+                        sort_mode=sort_mode,
+                        target_count=comment_target,
+                        stop_reason="cancelled",
+                    )
                 return
             call = build_comments_call(
                 platform=platform,
@@ -377,13 +546,19 @@ class TikHubCollectionScopeExecutor:
                 provider_config=provider_config,
                 context=context,
             )
-            stats.requested_count += 1
-            stats.succeeded_count += 1
+            last_executed = executed
             stats.comment_requests += 1
+            provider_total = _provider_reported_comment_total(platform, executed.body)
+            if provider_total is not None:
+                reported_total = provider_total
+                sample_mode = _comment_sample_mode(
+                    comment_action=comment_action,
+                    comment_target=comment_target,
+                    reported_total=reported_total,
+                )
 
-            for index, raw_item in enumerate(extract_comment_items(platform, executed.body)):
-                if comment_target is not None and fetched >= comment_target:
-                    return
+            raw_items = extract_comment_items(platform, executed.body)
+            for index, raw_item in enumerate(raw_items):
                 comment = map_comment(
                     platform=platform,
                     raw=raw_item,
@@ -404,12 +579,10 @@ class TikHubCollectionScopeExecutor:
                     raise ValueError("TikHub Comment 与 Content 身份不一致")
                 self._content_writer.ingest_comment(canonical=comment, fence=context.fence)
                 fetched += 1
-                stats.comment_count += 1
 
-                reply_count = comment.metrics.reply_count
                 reply_decision = self._decision_service.decide_reply(
                     ReplyDecisionRequestV1(
-                        reply_count=reply_count,
+                        reply_count=comment.metrics.reply_count,
                         policy=CollectionDecisionPolicyV1(),
                         capability=capability,
                     )
@@ -426,21 +599,137 @@ class TikHubCollectionScopeExecutor:
                         reply_target=reply_decision.target,
                     )
 
-            if comment_target is not None and fetched >= comment_target:
-                return
-            if comment_action == "probe_first_page":
-                return
+            # 先解释 Provider 分页结果，再使用软目标决定“是否再请求下一页”。
+            # 因此当前已付费响应页中的全部评论始终先进入 Mapper/Ingestion。
             advance = advance_comments(
                 platform=platform,
                 state=pagination_state,
                 body=executed.body,
             )
             if not advance.should_continue:
+                self._record_comment_coverage(
+                    content_id=content_id,
+                    platform=platform,
+                    executed=executed,
+                    context=context,
+                    coverage=_exhausted_coverage(reported_total, fetched),
+                    reported_total=reported_total,
+                    collected_count=fetched,
+                    sample_mode=sample_mode,
+                    sort_mode=sort_mode,
+                    target_count=comment_target,
+                    stop_reason=advance.stop_reason or "provider_exhausted",
+                )
+                return
+            if comment_action == "probe_first_page":
+                self._record_comment_coverage(
+                    content_id=content_id,
+                    platform=platform,
+                    executed=executed,
+                    context=context,
+                    coverage="partial",
+                    reported_total=reported_total,
+                    collected_count=fetched,
+                    sample_mode=sample_mode,
+                    sort_mode=sort_mode,
+                    target_count=comment_target,
+                    stop_reason="probe_first_page",
+                )
+                return
+            if comment_target is not None and fetched >= comment_target:
+                self._record_comment_coverage(
+                    content_id=content_id,
+                    platform=platform,
+                    executed=executed,
+                    context=context,
+                    coverage="partial",
+                    reported_total=reported_total,
+                    collected_count=fetched,
+                    sample_mode=sample_mode,
+                    sort_mode=sort_mode,
+                    target_count=comment_target,
+                    stop_reason="target_reached",
+                )
                 return
             assert advance.next_state is not None
             pagination_state = dict(advance.next_state)
 
+        if last_executed is None:  # pragma: no cover - 分页上限为正
+            raise RuntimeError("TikHub Comments 未执行任何页面")
+        self._record_comment_coverage(
+            content_id=content_id,
+            platform=platform,
+            executed=last_executed,
+            context=context,
+            coverage="partial",
+            reported_total=reported_total,
+            collected_count=fetched,
+            sample_mode=sample_mode,
+            sort_mode=sort_mode,
+            target_count=comment_target,
+            stop_reason="page_limit",
+        )
         raise RuntimeError("TikHub Comments 达到技术分页上限")
+
+    def _record_non_fetch_coverage(
+        self,
+        *,
+        content_id: UUID,
+        content: CanonicalContentV1,
+        context: JobExecutionContextProtocol,
+        comment_reason: str,
+        comment_target: int | None,
+    ) -> None:
+        attempt_id, raw_artifact_id = _canonical_source_ids(content)
+        coverage = (
+            "unavailable" if comment_reason in _UNAVAILABLE_COMMENT_REASONS else "not_requested"
+        )
+        self._content_writer.record_comment_coverage(
+            content_id=content_id,
+            provider_attempt_id=attempt_id,
+            raw_artifact_id=raw_artifact_id,
+            platform=content.platform,
+            fence=context.fence,
+            coverage=coverage,
+            reported_total=_observed_comment_count(content),
+            collected_count=0,
+            sample_mode="not_requested",
+            sort_mode="not_requested",
+            target_count=comment_target,
+            stop_reason=comment_reason,
+            observed_at=self._observed_at(),
+        )
+
+    def _record_comment_coverage(
+        self,
+        *,
+        content_id: UUID,
+        platform: TikHubPlatform,
+        executed: _ExecutedCall,
+        context: JobExecutionContextProtocol,
+        coverage: str,
+        reported_total: int | None,
+        collected_count: int,
+        sample_mode: str,
+        sort_mode: str,
+        target_count: int | None,
+        stop_reason: str,
+    ) -> None:
+        self._content_writer.record_comment_coverage(
+            content_id=content_id,
+            provider_attempt_id=executed.attempt_id,
+            raw_artifact_id=executed.raw_artifact_id,
+            platform=platform,
+            fence=context.fence,
+            coverage=coverage,
+            reported_total=reported_total,
+            collected_count=collected_count,
+            sample_mode=sample_mode,
+            sort_mode=sort_mode,
+            target_count=target_count,
+            stop_reason=stop_reason,
+            observed_at=self._observed_at(),
+        )
 
     def _fetch_sub_comments(
         self,
@@ -474,13 +763,10 @@ class TikHubCollectionScopeExecutor:
                 provider_config=provider_config,
                 context=context,
             )
-            stats.requested_count += 1
-            stats.succeeded_count += 1
             stats.sub_comment_requests += 1
 
-            for index, raw_item in enumerate(extract_sub_comment_items(platform, executed.body)):
-                if reply_target is not None and fetched >= reply_target:
-                    return
+            raw_items = extract_sub_comment_items(platform, executed.body)
+            for index, raw_item in enumerate(raw_items):
                 reply = map_comment(
                     platform=platform,
                     raw=raw_item,
@@ -504,8 +790,8 @@ class TikHubCollectionScopeExecutor:
                     raise ValueError("TikHub Reply 与 Root Comment 身份不一致")
                 self._content_writer.ingest_comment(canonical=reply, fence=context.fence)
                 fetched += 1
-                stats.comment_count += 1
 
+            # target 是“是否继续请求下一页”的软目标；当前响应整页不能在本地截断。
             if reply_target is not None and fetched >= reply_target:
                 return
             if reply_action == "probe_first_page":
@@ -555,6 +841,27 @@ class TikHubCollectionScopeExecutor:
             billing=self._pricing.billing_for_endpoint(call.path),
             fence=context.fence,
         )
+
+        if prepared.attempt.dispatch_status == "completed":
+            if prepared.attempt.error_code is not None or (
+                prepared.attempt.http_status is not None and prepared.attempt.http_status >= 400
+            ):
+                status_code = prepared.attempt.http_status
+                raise _ProviderCallFailed(
+                    error_code=(
+                        prepared.attempt.error_code
+                        or (f"http_{status_code}" if status_code is not None else "provider_failed")
+                    ),
+                    retryable=(
+                        _retryable_http_status(status_code) if status_code is not None else False
+                    ),
+                )
+            return self._replay_completed_call(request=request, prepared=prepared)
+        if prepared.attempt.dispatch_status != "reserved":
+            raise RuntimeError(
+                f"Provider Attempt 未处于可发送状态: {prepared.attempt.dispatch_status}"
+            )
+
         credential = self._secret_resolver(provider_config.secret_ref)
         outcome = ProviderDispatchService(
             persistence=PostgresProviderDispatchPersistence(self._session_factory),
@@ -566,21 +873,78 @@ class TikHubCollectionScopeExecutor:
             transport_request=call.transport_request(credential),
         )
         if outcome.attempt.dispatch_status != "completed":
-            raise RuntimeError(f"TikHub Provider Attempt 未完成: {outcome.attempt.dispatch_status}")
+            raise _ProviderCallFailed(
+                error_code=outcome.attempt.error_code or outcome.attempt.dispatch_status,
+                retryable=outcome.attempt.dispatch_status in {"not_sent", "unknown"},
+            )
         if outcome.attempt.http_status is not None and outcome.attempt.http_status >= 400:
-            raise RuntimeError(f"TikHub Provider 返回 HTTP {outcome.attempt.http_status}")
+            raise _ProviderCallFailed(
+                error_code=outcome.attempt.error_code or f"http_{outcome.attempt.http_status}",
+                retryable=_retryable_http_status(outcome.attempt.http_status),
+            )
         if outcome.artifact is None:
             raise RuntimeError("TikHub completed Attempt 缺少 Raw Artifact")
 
         envelope = self._raw_artifacts.replay(outcome.artifact)
-        if envelope.response is None or not isinstance(envelope.response.body, dict):
-            raise ValueError("TikHub Raw 响应 body 必须为 JSON Object")
+        body = _response_body(envelope.response.body if envelope.response is not None else None)
         return _ExecutedCall(
             request_id=prepared.request.id,
             attempt_id=prepared.attempt.id,
             raw_artifact_id=outcome.artifact.id,
-            body=cast(dict[str, object], envelope.response.body),
+            body=body,
         )
+
+    def _replay_completed_call(
+        self,
+        *,
+        request: ProviderRequestV1,
+        prepared: PreparedProviderAttempt,
+    ) -> _ExecutedCall:
+        attempt = prepared.attempt
+        if attempt.raw_artifact_id is None or attempt.dispatch_started_at is None:
+            raise RuntimeError("已完成 Provider Attempt 缺少可回放 Raw 来源")
+        artifact = self._load_raw_artifact(
+            request=request,
+            attempt_id=attempt.id,
+            dispatch_started_at=attempt.dispatch_started_at,
+            expected_artifact_id=attempt.raw_artifact_id,
+        )
+        envelope = self._raw_artifacts.replay(artifact)
+        if envelope.response is None:
+            raise RuntimeError("已完成 Provider Attempt 的 Raw 缺少 response")
+        if envelope.response.status_code is not None and envelope.response.status_code >= 400:
+            raise RuntimeError("成功 Attempt 的 Raw 不应包含 HTTP 失败状态")
+        return _ExecutedCall(
+            request_id=prepared.request.id,
+            attempt_id=attempt.id,
+            raw_artifact_id=artifact.id,
+            body=_response_body(envelope.response.body),
+        )
+
+    def _load_raw_artifact(
+        self,
+        *,
+        request: ProviderRequestV1,
+        attempt_id: UUID,
+        dispatch_started_at: datetime,
+        expected_artifact_id: UUID,
+    ) -> ArtifactRecord:
+        storage_key = raw_storage_key(
+            request=request,
+            dispatch_started_at=dispatch_started_at,
+            attempt_id=attempt_id,
+        )
+        session = self._session_factory()
+        try:
+            with session.begin():
+                artifact = PostgresArtifactMetadataRepository(session).get_by_storage_key(
+                    storage_key
+                )
+        finally:
+            session.close()
+        if artifact is None or artifact.id != expected_artifact_id:
+            raise RuntimeError("Provider Attempt 的 Raw Artifact 元数据不存在或来源不一致")
+        return artifact
 
     def _load_provider_config(self, provider_config_id: UUID) -> ProviderConfig:
         session = self._session_factory()
@@ -596,6 +960,113 @@ class TikHubCollectionScopeExecutor:
         if config.provider != "tikhub":
             raise ValueError("TikHub Scope Runtime 只接受 provider=tikhub")
         return config
+
+
+def _canonical_source_ids(observation: CanonicalContentV1) -> tuple[UUID, UUID]:
+    attempt_id = observation.source.provider_attempt_id
+    raw_artifact_id = observation.source.raw_artifact_id
+    if attempt_id is None or raw_artifact_id is None:
+        raise ValueError("Comment Coverage 来源缺少 provider_attempt_id/raw_artifact_id")
+    try:
+        return UUID(attempt_id), raw_artifact_id
+    except ValueError as exc:
+        raise ValueError("Comment Coverage provider_attempt_id 不是 UUID") from exc
+
+
+def _observed_comment_count(content: CanonicalContentV1) -> int | None:
+    if "metrics.comment_count" not in content.observed_fields:
+        return None
+    return content.metrics.comment_count
+
+
+def _comment_sample_mode(
+    *,
+    comment_action: str,
+    comment_target: int | None,
+    reported_total: int | None,
+) -> str:
+    if comment_action == "probe_first_page":
+        return "probe"
+    if (
+        reported_total is not None
+        and comment_target is not None
+        and comment_target >= reported_total
+    ):
+        return "full"
+    return "adaptive_sample"
+
+
+def _comment_sort_mode(platform: TikHubPlatform) -> str:
+    # 仅记录当前 Operation 明确发送的排序；未显式传排序的平台不能猜成 latest。
+    if platform in {"xhs", "weibo", "bilibili"}:
+        return "latest"
+    return "provider_default"
+
+
+def _exhausted_coverage(reported_total: int | None, collected_count: int) -> str:
+    if reported_total is None or collected_count >= reported_total:
+        return "complete"
+    return "partial"
+
+
+def _provider_reported_comment_total(
+    platform: TikHubPlatform,
+    body: dict[str, object],
+) -> int | None:
+    if platform == "xhs":
+        page = _nested_mapping(body, "data", "data")
+        root_total = _nonnegative_int(page.get("comment_count_l1"))
+        if root_total is not None:
+            return root_total
+        return _nonnegative_int(page.get("comment_count"))
+    if platform == "douyin":
+        page = _nested_mapping(body, "data")
+        return _nonnegative_int(page.get("total"))
+    if platform == "bilibili":
+        page = _nested_mapping(body, "data", "data")
+        cursor = page.get("cursor")
+        if isinstance(cursor, dict):
+            return _nonnegative_int(cursor.get("all_count"))
+        return None
+    if platform == "kuaishou":
+        page = _nested_mapping(body, "data")
+        return _nonnegative_int(page.get("commentCount"))
+    # 当前微博真实脱敏 Fixture 未证明存在稳定的根评论总数字段。
+    return None
+
+
+def _nested_mapping(body: dict[str, object], *keys: str) -> dict[str, object]:
+    current: object = body
+    for key in keys:
+        if not isinstance(current, dict):
+            return {}
+        current = current.get(key)
+    if not isinstance(current, dict):
+        return {}
+    return {str(key): value for key, value in current.items()}
+
+
+def _nonnegative_int(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
+
+
+def _response_body(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise ValueError("TikHub Raw 响应 body 必须为 JSON Object")
+    return cast(dict[str, object], value)
+
+
+def _retryable_http_status(status_code: int) -> bool:
+    return status_code in _RETRYABLE_HTTP_STATUSES or status_code >= 500
+
+
+def _payload_int(payload: dict[str, object], name: str) -> int:
+    value = payload.get(name, 0)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return 0
+    return value
 
 
 def _platform_runtime_config(run: CollectionRunRecord, platform: str) -> _PlatformRuntimeConfig:
