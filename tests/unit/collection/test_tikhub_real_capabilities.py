@@ -76,16 +76,26 @@ def test_real_comment_shape_controls_reply_count_and_incremental_claims() -> Non
         assert _operation(capability, "comments").supports_incremental_comment_sort is False
 
 
-def test_search_capabilities_expose_normalized_business_values_not_provider_cursors() -> None:
+def test_search_capabilities_expose_only_runtime_supported_business_values() -> None:
+    xhs = _operation(XHS_TIKHUB_CAPABILITY, "keyword_search")
+    assert set(xhs.supported_content_types) == {"all", "video", "image"}
+
     douyin = _operation(DOUYIN_TIKHUB_CAPABILITY, "keyword_search")
     assert set(douyin.supported_sort_modes) == {"general", "most_liked", "latest"}
     assert set(douyin.supported_time_filters) == {"all", "1d", "7d", "180d"}
-    assert set(douyin.supported_content_types) == {"all", "video", "image", "article"}
+    assert set(douyin.supported_duration_filters) == {
+        "all",
+        "under_1m",
+        "1_5m",
+        "over_5m",
+    }
+    assert set(douyin.supported_content_types) == {"all", "video", "image"}
     assert douyin.native_time_filter is True
 
     weibo = _operation(WEIBO_TIKHUB_CAPABILITY, "keyword_search")
     assert set(weibo.supported_sort_modes) == {"general", "latest", "hot"}
-    assert set(weibo.supported_content_types) == {"all", "video", "image", "article"}
+    # 微博 Provider search_type 是单一维度；不能再把 content_type 与 sort_mode 虚构成独立组合。
+    assert weibo.supported_content_types == ()
     assert set(weibo.supported_time_filters) == {"all", "hour", "day", "week", "month"}
     assert weibo.native_time_filter is True
 
