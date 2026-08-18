@@ -5,27 +5,30 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import insert, select
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
 from aima_ugc.contracts.canonical import CanonicalCommentV1, CanonicalContentV1
 from aima_ugc.contracts.collection import PreviousContentStateV1
-from aima_ugc.modules.collection.candidates import CandidateIngestionService
+from aima_ugc.modules.collection.candidate_tables import collection_candidates_table
+from aima_ugc.modules.collection.candidates import CandidateIngestionService, CandidateKind
 from aima_ugc.modules.collection.tables import (
     collection_runs_table,
     collection_scopes_table,
     provider_request_attempts_table,
     provider_requests_table,
 )
+from aima_ugc.modules.content.extended_tables import comment_thread_coverage_observations_table
 from aima_ugc.modules.content.ingestion import ContentIngestionService
 from aima_ugc.modules.content.tables import accounts_table, comments_table, contents_table
 from aima_ugc.platform.jobs import JobExecutionFence, LeaseLostError
 
 from .candidates import PostgresCandidateRepository
-from .content import PostgresContentRepository, PostgresIngestionResult
+from .content import PostgresIngestionResult
+from .content_complete import PostgresCompleteContentRepository
 from .jobs import PostgresJobRepository
 
 _CONTENT_DIRECT_FIELDS = {
@@ -116,35 +119,115 @@ class PostgresCollectionContentStateReader:
 
 
 class PostgresFencedCollectionIngestionWriter:
-    """在同一短事务校验 Job Fence/Attempt 来源后复用 Candidate 与 Content Owner 写入口。"""
+    """在同一短事务校验 Job Fence/Attempt/Raw 来源后写 Candidate 与 Content Owner。"""
 
     def __init__(self, session_factory: Callable[[], Session]) -> None:
         self._session_factory = session_factory
+
+    def discover_candidate(
+        self,
+        *,
+        provider_attempt_id: UUID,
+        raw_artifact_id: UUID,
+        item_kind: CandidateKind,
+        item_locator: str,
+        discovered_at: datetime,
+        fence: JobExecutionFence,
+    ) -> UUID:
+        """Mapper 前建立逐项发现事实；external identity 可在映射前未知。"""
+        session = self._session_factory()
+        try:
+            with session.begin():
+                _lock_matching_attempt(
+                    session,
+                    attempt_id=provider_attempt_id,
+                    raw_artifact_id=raw_artifact_id,
+                    fence=fence,
+                )
+                candidate = CandidateIngestionService(PostgresCandidateRepository(session)).discover(
+                    provider_request_attempt_id=provider_attempt_id,
+                    item_kind=item_kind,
+                    external_item_id=None,
+                    item_locator=item_locator,
+                    discovered_at=discovered_at,
+                )
+                return candidate.id
+        finally:
+            session.close()
+
+    def record_candidate_failure(
+        self,
+        *,
+        candidate_id: UUID,
+        provider_attempt_id: UUID,
+        fence: JobExecutionFence,
+        result: str,
+        error_code: str,
+    ) -> None:
+        session = self._session_factory()
+        try:
+            with session.begin():
+                _lock_matching_attempt(
+                    session,
+                    attempt_id=provider_attempt_id,
+                    raw_artifact_id=None,
+                    fence=fence,
+                )
+                _require_candidate_attempt(
+                    session,
+                    candidate_id=candidate_id,
+                    attempt_id=provider_attempt_id,
+                )
+                CandidateIngestionService(PostgresCandidateRepository(session)).record_ingestion(
+                    candidate_id=candidate_id,
+                    canonical=None,
+                    target_id=None,
+                    result=result,  # type: ignore[arg-type]
+                    error_code=error_code,
+                    error_detail=None,
+                )
+        finally:
+            session.close()
 
     def ingest_content(
         self,
         *,
         canonical: CanonicalContentV1,
         fence: JobExecutionFence,
+        candidate_id: UUID | None = None,
     ) -> PostgresIngestionResult:
         attempt_id = _provider_attempt_id(canonical)
+        raw_artifact_id = _raw_artifact_id(canonical)
         item_locator = _item_locator(canonical)
         session = self._session_factory()
         try:
             with session.begin():
-                _lock_matching_attempt(session, attempt_id=attempt_id, fence=fence)
-                candidate_service = CandidateIngestionService(PostgresCandidateRepository(session))
-                content_service = ContentIngestionService(PostgresContentRepository(session))
-                candidate = candidate_service.discover(
-                    provider_request_attempt_id=attempt_id,
-                    item_kind="content",
-                    external_item_id=canonical.external_content_id,
-                    item_locator=item_locator,
-                    discovered_at=canonical.observed_at,
+                _lock_matching_attempt(
+                    session,
+                    attempt_id=attempt_id,
+                    raw_artifact_id=raw_artifact_id,
+                    fence=fence,
                 )
+                candidate_service = CandidateIngestionService(PostgresCandidateRepository(session))
+                if candidate_id is None:
+                    candidate = candidate_service.discover(
+                        provider_request_attempt_id=attempt_id,
+                        item_kind="content",
+                        external_item_id=canonical.external_content_id,
+                        item_locator=item_locator,
+                        discovered_at=canonical.observed_at,
+                    )
+                    candidate_id = candidate.id
+                else:
+                    _require_candidate_attempt(
+                        session,
+                        candidate_id=candidate_id,
+                        attempt_id=attempt_id,
+                    )
+                content_service = ContentIngestionService(PostgresCompleteContentRepository(session))
                 result = content_service.ingest_content(canonical)
                 candidate_service.record_ingestion(
-                    candidate_id=candidate.id,
+                    candidate_id=candidate_id,
                     canonical=canonical,
                     target_id=result.target_id,
                     result="ingested",
@@ -158,26 +241,41 @@ class PostgresFencedCollectionIngestionWriter:
         *,
         canonical: CanonicalCommentV1,
         fence: JobExecutionFence,
+        candidate_id: UUID | None = None,
     ) -> PostgresIngestionResult:
-        """校验当前 Job Fence 后复用现有 Comment Owner 与 Candidate 账本。"""
+        """校验当前 Job Fence 后复用完整 Comment Owner 与 Candidate 账本。"""
         attempt_id = _provider_attempt_id(canonical)
+        raw_artifact_id = _raw_artifact_id(canonical)
         item_locator = _item_locator(canonical)
         session = self._session_factory()
         try:
             with session.begin():
-                _lock_matching_attempt(session, attempt_id=attempt_id, fence=fence)
-                candidate_service = CandidateIngestionService(PostgresCandidateRepository(session))
-                content_service = ContentIngestionService(PostgresContentRepository(session))
-                candidate = candidate_service.discover(
-                    provider_request_attempt_id=attempt_id,
-                    item_kind="comment",
-                    external_item_id=canonical.external_comment_id,
-                    item_locator=item_locator,
-                    discovered_at=canonical.observed_at,
+                _lock_matching_attempt(
+                    session,
+                    attempt_id=attempt_id,
+                    raw_artifact_id=raw_artifact_id,
+                    fence=fence,
                 )
+                candidate_service = CandidateIngestionService(PostgresCandidateRepository(session))
+                if candidate_id is None:
+                    candidate = candidate_service.discover(
+                        provider_request_attempt_id=attempt_id,
+                        item_kind="comment",
+                        external_item_id=canonical.external_comment_id,
+                        item_locator=item_locator,
+                        discovered_at=canonical.observed_at,
+                    )
+                    candidate_id = candidate.id
+                else:
+                    _require_candidate_attempt(
+                        session,
+                        candidate_id=candidate_id,
+                        attempt_id=attempt_id,
+                    )
+                content_service = ContentIngestionService(PostgresCompleteContentRepository(session))
                 result = content_service.ingest_comment(canonical)
                 candidate_service.record_ingestion(
-                    candidate_id=candidate.id,
+                    candidate_id=candidate_id,
                     canonical=canonical,
                     target_id=result.target_id,
                     result="ingested",
@@ -203,13 +301,14 @@ class PostgresFencedCollectionIngestionWriter:
         stop_reason: str,
         observed_at: datetime,
     ) -> UUID:
-        """校验 Job/Attempt/Content 平台来源后交给 Content Owner 幂等保存 Coverage。"""
+        """校验 Job/Attempt/Raw/Content 平台来源后保存内容级 Coverage。"""
         session = self._session_factory()
         try:
             with session.begin():
                 attempt_platform = _lock_matching_attempt(
                     session,
                     attempt_id=provider_attempt_id,
+                    raw_artifact_id=raw_artifact_id,
                     fence=fence,
                 )
                 content_platform = session.scalar(
@@ -219,7 +318,7 @@ class PostgresFencedCollectionIngestionWriter:
                     raise LookupError("Comment Coverage Content 不存在")
                 if content_platform != attempt_platform or content_platform != platform:
                     raise ValueError("Comment Coverage Content/Attempt 平台不一致")
-                return PostgresContentRepository(session).record_comment_coverage(
+                return PostgresCompleteContentRepository(session).record_comment_coverage(
                     content_id=content_id,
                     provider_attempt_id=provider_attempt_id,
                     raw_artifact_id=raw_artifact_id,
@@ -235,16 +334,77 @@ class PostgresFencedCollectionIngestionWriter:
         finally:
             session.close()
 
+    def record_thread_coverage(
+        self,
+        *,
+        content_id: UUID,
+        root_comment_id: str,
+        provider_attempt_id: UUID,
+        raw_artifact_id: UUID,
+        platform: str,
+        fence: JobExecutionFence,
+        coverage: str,
+        reported_total: int | None,
+        captured_count: int,
+        target_count: int | None,
+        stop_reason: str,
+        observed_at: datetime,
+    ) -> UUID:
+        session = self._session_factory()
+        try:
+            with session.begin():
+                attempt_platform = _lock_matching_attempt(
+                    session,
+                    attempt_id=provider_attempt_id,
+                    raw_artifact_id=raw_artifact_id,
+                    fence=fence,
+                )
+                content_platform = session.scalar(
+                    select(contents_table.c.platform).where(contents_table.c.id == content_id)
+                )
+                if content_platform != platform or attempt_platform != platform:
+                    raise ValueError("Thread Coverage Content/Attempt 平台不一致")
+                row_id = uuid4()
+                self._session_insert_thread_coverage(
+                    session,
+                    row_id=row_id,
+                    content_id=content_id,
+                    root_comment_id=root_comment_id,
+                    provider_attempt_id=provider_attempt_id,
+                    raw_artifact_id=raw_artifact_id,
+                    coverage=coverage,
+                    reported_total=reported_total,
+                    captured_count=captured_count,
+                    target_count=target_count,
+                    stop_reason=stop_reason,
+                    observed_at=observed_at,
+                )
+                return row_id
+        finally:
+            session.close()
+
+    @staticmethod
+    def _session_insert_thread_coverage(
+        session: Session,
+        **values: object,
+    ) -> None:
+        session.execute(insert(comment_thread_coverage_observations_table).values(**values))
+
 
 def _lock_matching_attempt(
     session: Session,
     *,
     attempt_id: UUID,
     fence: JobExecutionFence,
+    raw_artifact_id: UUID | None,
 ) -> str:
     PostgresJobRepository(session).lock_current_execution(fence)
     ownership = session.execute(
-        select(collection_runs_table.c.job_id, collection_scopes_table.c.platform)
+        select(
+            collection_runs_table.c.job_id,
+            collection_scopes_table.c.platform,
+            provider_request_attempts_table.c.raw_artifact_id,
+        )
         .select_from(
             provider_request_attempts_table.join(
                 provider_requests_table,
@@ -264,7 +424,24 @@ def _lock_matching_attempt(
     ).one_or_none()
     if ownership is None or ownership.job_id != fence.job_id:
         raise LeaseLostError("Provider Attempt 不属于当前 Job Fence")
+    if raw_artifact_id is not None and ownership.raw_artifact_id != raw_artifact_id:
+        raise ValueError("Provider Attempt 与 Canonical Raw Artifact 来源不一致")
     return str(ownership.platform)
+
+
+def _require_candidate_attempt(
+    session: Session,
+    *,
+    candidate_id: UUID,
+    attempt_id: UUID,
+) -> None:
+    persisted = session.scalar(
+        select(collection_candidates_table.c.provider_request_attempt_id).where(
+            collection_candidates_table.c.id == candidate_id
+        )
+    )
+    if persisted != attempt_id:
+        raise ValueError("Candidate 与 Provider Attempt 来源不一致")
 
 
 def _provider_attempt_id(observation: CanonicalContentV1 | CanonicalCommentV1) -> UUID:
@@ -275,6 +452,13 @@ def _provider_attempt_id(observation: CanonicalContentV1 | CanonicalCommentV1) -
         return UUID(value)
     except ValueError as exc:
         raise ValueError("Collection live ingestion 的 provider_attempt_id 不是 UUID") from exc
+
+
+def _raw_artifact_id(observation: CanonicalContentV1 | CanonicalCommentV1) -> UUID:
+    value = observation.source.raw_artifact_id
+    if value is None:
+        raise ValueError("Collection live ingestion 要求 raw_artifact_id")
+    return value
 
 
 def _item_locator(observation: CanonicalContentV1 | CanonicalCommentV1) -> str:
@@ -304,8 +488,11 @@ def _business_changed(row: RowMapping, observation: CanonicalContentV1) -> bool:
         ):
             return True
 
-    if observation.author is not None and observation.author.external_account_id is not None:
-        if row["author_external_account_id"] != observation.author.external_account_id:
+    if "author.external_account_id" in observation.observed_fields:
+        external_account_id = (
+            observation.author.external_account_id if observation.author is not None else None
+        )
+        if row["author_external_account_id"] != external_account_id:
             return True
 
     for name in _CONTENT_DECISION_METRICS:
