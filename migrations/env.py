@@ -30,7 +30,12 @@ def run_migrations_online() -> None:
     runtime = DatabaseRuntime(load_settings())
     try:
         with runtime.engine.connect() as connection:
-            _assert_no_unresolved_legacy_budget_state(connection)
+            # inspect()/SELECT 会触发 SQLAlchemy autobegin。必须先在独立短事务里
+            # 提交预检，再让 Alembic 自己创建并提交 Migration transaction；否则
+            # upgrade 会落在未提交的外层事务里，并在连接关闭时被整体回滚。
+            with connection.begin():
+                _assert_no_unresolved_legacy_budget_state(connection)
+
             context.configure(
                 connection=connection,
                 target_metadata=metadata,
