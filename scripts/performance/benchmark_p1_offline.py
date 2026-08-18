@@ -13,8 +13,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from openpyxl import Workbook
-
 from aima_ugc.adapters.providers.imports import convert_excel_to_canonical_jsonl
 from aima_ugc.modules.analysis import (
     CONTENT_LABELING_PROMPT_PATH,
@@ -28,6 +26,7 @@ from aima_ugc.modules.analysis import (
     label_unified_content_jsonl,
 )
 from aima_ugc.platform.export import export_unified_content_jsonl_to_excel
+from openpyxl import Workbook
 
 PERFORMANCE_SCHEMA_VERSION = "p1-offline-performance.v1"
 _PROFILE = "aima-monitoring-excel.v1"
