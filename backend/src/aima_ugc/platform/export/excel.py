@@ -29,6 +29,7 @@ from aima_ugc.contracts.export import (
 _BEIJING = ZoneInfo("Asia/Shanghai")
 _CONTENT_SHEET = "内容"
 _COMMENT_SHEET = "评论"
+_ExcelCellValue = str | int | float | bool | datetime | None
 _CONTENT_HEADERS = (
     "平台",
     "内容ID",
@@ -265,7 +266,7 @@ def _content_cells(
     include_analysis: bool,
 ) -> list[Cell]:
     analysis = content.analysis if include_analysis else None
-    values: tuple[tuple[object | None, bool, bool], ...] = (
+    values: tuple[tuple[_ExcelCellValue, bool, bool], ...] = (
         (content.platform, False, False),
         (content.external_content_id, True, False),
         (content.source_item_id, True, False),
@@ -306,7 +307,7 @@ def _content_cells(
 
 
 def _comment_cells(sheet: Any, comment: UnifiedDataExcelCommentV1) -> list[Cell]:
-    values: tuple[tuple[object | None, bool], ...] = (
+    values: tuple[tuple[_ExcelCellValue, bool], ...] = (
         (comment.platform, False),
         (comment.external_content_id, True),
         (comment.level, False),
@@ -336,7 +337,7 @@ def _header_cells(sheet: Any, headers: tuple[str, ...]) -> list[Cell]:
 
 def _data_cell(
     sheet: Any,
-    value: object | None,
+    value: _ExcelCellValue,
     *,
     text_id: bool = False,
     hyperlink: bool = False,
@@ -351,7 +352,7 @@ def _data_cell(
     return cell
 
 
-def _safe_excel_value(value: object | None) -> object | None:
+def _safe_excel_value(value: _ExcelCellValue) -> _ExcelCellValue:
     if not isinstance(value, str) or not value:
         return value
     if value[0] in {"=", "+", "-", "@", "\t", "\r"}:
