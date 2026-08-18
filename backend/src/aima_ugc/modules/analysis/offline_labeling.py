@@ -239,6 +239,7 @@ def _process_batch(
                 "platform": source.record.content.platform,
                 "external_content_id": source.record.content.external_content_id,
                 "input_hash": item_result.input_hash,
+                "analysis_status": "failed",
                 "validation_error_codes": list(item_result.validation_error_codes),
             },
         )
