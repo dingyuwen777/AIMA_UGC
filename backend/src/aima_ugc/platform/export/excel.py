@@ -226,14 +226,19 @@ def export_unified_data_excel(
     finally:
         workbook.close()
 
-    _verify_workbook(
-        temp_path,
-        content_rows=content_rows,
-        comment_rows=comment_rows,
-        first_content_id=first_content_id,
-        first_comment_id=first_comment_id,
-    )
-    os.replace(temp_path, target_path)
+    try:
+        _verify_workbook(
+            temp_path,
+            content_rows=content_rows,
+            comment_rows=comment_rows,
+            first_content_id=first_content_id,
+            first_comment_id=first_comment_id,
+        )
+        os.replace(temp_path, target_path)
+    except BaseException:
+        temp_path.unlink(missing_ok=True)
+        raise
+
     return ExcelExportSummary(
         output_path=target_path,
         content_rows=content_rows,
