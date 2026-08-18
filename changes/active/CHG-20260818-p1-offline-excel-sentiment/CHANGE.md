@@ -154,7 +154,12 @@ P1B 开始前必须重新读取最新目标分支 `AGENTS.md`、RVC Skill、Blue
 
 ## 新鲜证据
 
-待 P1A 文档写入后补充本轮实际 re-fetch/compare/CI 状态；功能、90k 性能、真实 LLM 均未开始验证。
+- 已重新读取 `docs/blueprint/README.md`、`13-统一数据Excel导出与调试复用.md`、`14-临时P1-Excel离线导入与舆情打标.md` 和本文，确认 P1 当前优先级、JSONL 主链、raw Excel 可选旁路、`label_sentiment()` 输入和唯一共享 Exporter 表述一致。
+- `compare main@0dc666192f83fa9e55d5cbfffb19c09d31c5ecaf...feature/p1-offline-excel-sentiment`：branch `ahead_by=4`、`behind_by=0`；创建 Draft PR 前只有 4 个授权文档发生变化：新增 P1 Change、修改 Blueprint README、修改 Blueprint 13、新增 Blueprint 14；没有功能代码、依赖、Migration 或无关文件变化。
+- Draft PR `#66` 已创建，创建时 head 为 `d9d669c93f0d55a6ef10d3459508ec6a5a35f7a1`，状态 `Open / Draft / 未合并`。
+- PR 创建后 GitHub Actions 已触发，检查时 `CI`、Stage 6/7 相关 workflow 均为 `in_progress`；尚无完成结论，因此**当前不能宣称 CI 通过**。
+- 本轮没有本地仓库终端，未实际执行 `uv run python scripts/quality/check_docs.py`、Ruff 或其他本地质量命令；P1A 只能声明 GitHub re-fetch/compare 和 PR/CI 状态已验证。
+- 功能、90k 性能、真实 LLM 均未开始验证。
 
 # 文档影响
 
@@ -170,7 +175,8 @@ P1 完成后删除临时 14 和 README 的 P1 导航，但 13 的长期设计保
 
 - 基线：`main@0dc666192f83fa9e55d5cbfffb19c09d31c5ecaf`。
 - 分支：`feature/p1-offline-excel-sentiment`。
-- P1A 文档提交：由 GitHub Contents API 顺序产生，最终 branch head 以本轮验证为准。
-- PR：尚未创建；P1A 验证后创建 Draft PR，后续所有 P1 子阶段继续同一 PR。
+- P1A 当前最新提交：本次验证记录提交后以 branch 最新 head 为准。
+- PR：`#66 P1：离线 Excel 导入与舆情打标`，`Open / Draft / 未合并`；后续 P1B—P1H 继续同一 PR。
+- CI：已触发且当前仍在运行；未宣称通过。
 - 合并：未授权自动合并，不执行。
 - 发布：P1A 仅设计文档，不涉及部署。
