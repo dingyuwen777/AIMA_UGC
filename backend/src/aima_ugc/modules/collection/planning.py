@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Literal, Protocol
 from uuid import UUID
+
+from aima_ugc.contracts.collection import CollectionDecisionPolicyV1
 
 _FIRST_RELEASE_TIMEZONE = "Asia/Shanghai"
 _FIRST_RELEASE_MISFIRE_POLICY = "latest_only"
 _FIRST_RELEASE_MAX_CATCH_UP_RUNS = 0
+_FIRST_RELEASE_DETAIL_POLICY = "on_change"
+_FIRST_RELEASE_COMMENT_POLICY = "adaptive"
 _FORBIDDEN_CONFIG_KEYS = frozenset(
     {
         "api_key",
@@ -17,11 +21,21 @@ _FORBIDDEN_CONFIG_KEYS = frozenset(
         "authorization",
         "cookie",
         "cookies",
+        "credential",
         "password",
         "secret",
         "token",
         "access_token",
     }
+)
+_FORBIDDEN_CONFIG_SUFFIXES = (
+    "_api_key",
+    "_authorization",
+    "_cookie",
+    "_credential",
+    "_password",
+    "_secret",
+    "_token",
 )
 
 type CollectionOccurrenceStatus = Literal["enqueued", "skipped"]
@@ -51,6 +65,14 @@ class UnsafePlanConfigError(ValueError):
     """Plan 平台业务配置包含 Secret 形态字段。"""
 
 
+class EmptyPlanExecutionSurfaceError(ValueError):
+    """Plan 没有任何可执行平台或关键词包。"""
+
+
+class UnsupportedPlanDecisionPolicyError(ValueError):
+    """Plan 使用了首版未支持的详情/评论策略。"""
+
+
 @dataclass(frozen=True, slots=True)
 class PlanPlatformDefinition:
     """Plan 对一个平台的 Provider 配置选择与业务配置。"""
@@ -60,8 +82,10 @@ class PlanPlatformDefinition:
     config: dict[str, object]
 
     def __post_init__(self) -> None:
-        if not self.platform.strip():
+        normalized_platform = self.platform.strip()
+        if not normalized_platform:
             raise ValueError("plan platform 不能为空")
+        object.__setattr__(self, "platform", normalized_platform)
         _reject_secret_keys(self.config)
 
 
@@ -81,6 +105,9 @@ class CollectionPlanDefinition:
     created_by: UUID | None
     platforms: tuple[PlanPlatformDefinition, ...]
     keyword_pack_ids: tuple[UUID, ...]
+    decision_policy: CollectionDecisionPolicyV1 = field(
+        default_factory=CollectionDecisionPolicyV1
+    )
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -99,6 +126,10 @@ class CollectionPlanDefinition:
             raise ValueError("detail_policy 不能为空")
         if not self.comment_policy.strip():
             raise ValueError("comment_policy 不能为空")
+        if not self.platforms:
+            raise EmptyPlanExecutionSurfaceError("plan platform 至少需要一个")
+        if not self.keyword_pack_ids:
+            raise EmptyPlanExecutionSurfaceError("plan keyword pack 至少需要一个")
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +153,9 @@ class CollectionPlanRecord:
     updated_at: datetime
     platforms: tuple[PlanPlatformDefinition, ...]
     keyword_pack_ids: tuple[UUID, ...]
+    decision_policy: CollectionDecisionPolicyV1 = field(
+        default_factory=CollectionDecisionPolicyV1
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,13 +192,13 @@ class CollectionPlanningRepository(Protocol):
 
 
 class CollectionPlanningService:
-    """校验已冻结的 Plan/Occurrence 结构与首版 Scheduler 策略。"""
+    """校验 Plan/Occurrence 结构与首版 Scheduler 策略。"""
 
     def __init__(self, repository: CollectionPlanningRepository) -> None:
         self._repository = repository
 
     def create_plan(self, definition: CollectionPlanDefinition) -> CollectionPlanRecord:
-        """创建显式 Plan；首版只接受已批准的时区与 latest-only 策略。"""
+        """创建显式 Plan；在持久化前拒绝当前 Worker 无法执行的配置。"""
         if definition.timezone != _FIRST_RELEASE_TIMEZONE:
             raise UnsupportedPlanTimezoneError(
                 f"first release plan timezone must be {_FIRST_RELEASE_TIMEZONE}"
@@ -177,14 +211,29 @@ class CollectionPlanningService:
             raise UnsupportedPlanCatchUpError(
                 f"first release max_catch_up_runs must be {_FIRST_RELEASE_MAX_CATCH_UP_RUNS}"
             )
+        if (
+            definition.detail_policy != _FIRST_RELEASE_DETAIL_POLICY
+            or definition.comment_policy != _FIRST_RELEASE_COMMENT_POLICY
+        ):
+            raise UnsupportedPlanDecisionPolicyError(
+                "first release only supports detail_policy=on_change and comment_policy=adaptive"
+            )
 
         platforms = [platform.platform for platform in definition.platforms]
         if len(platforms) != len(set(platforms)):
             raise DuplicatePlanPlatformError("plan platform identity must be unique")
-
         if len(definition.keyword_pack_ids) != len(set(definition.keyword_pack_ids)):
             raise DuplicatePlanKeywordPackError("plan keyword pack identity must be unique")
 
+        if definition.schedule_expr is not None:
+            # 延迟 import 避免 planning/scheduler 的领域类型循环；这里只做语法/时区可执行性验证。
+            from .scheduler import next_schedule_time
+
+            next_schedule_time(
+                definition.schedule_expr,
+                definition.timezone,
+                datetime(2000, 1, 1, tzinfo=UTC),
+            )
         return self._repository.create_plan(definition)
 
     def record_enqueued_occurrence(
@@ -235,11 +284,17 @@ def _validate_occurrence_time(schedule_version: int, scheduled_for: datetime) ->
         raise ValueError("scheduled_for 必须包含时区")
 
 
+def _is_sensitive_config_key(normalized: str) -> bool:
+    return normalized in _FORBIDDEN_CONFIG_KEYS or normalized.endswith(
+        _FORBIDDEN_CONFIG_SUFFIXES
+    )
+
+
 def _reject_secret_keys(value: object, *, path: str = "config") -> None:
     if isinstance(value, dict):
         for key, child in value.items():
             normalized = str(key).strip().lower().replace("-", "_")
-            if normalized in _FORBIDDEN_CONFIG_KEYS:
+            if _is_sensitive_config_key(normalized):
                 raise UnsafePlanConfigError(f"{path} 不允许包含 Secret 字段: {key}")
             _reject_secret_keys(child, path=f"{path}.{key}")
     elif isinstance(value, list | tuple):
