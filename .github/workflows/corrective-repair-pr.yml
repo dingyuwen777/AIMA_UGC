@@ -126,6 +126,10 @@ jobs:
           if text.count(old) != 1:
               raise SystemExit("expected SQLAlchemy insert import exactly once")
           text = text.replace(old, new)
+          old = "                    row_id=row_id,\n"
+          if text.count(old) != 1:
+              raise SystemExit("expected thread coverage row_id exactly once")
+          text = text.replace(old, "                    id=row_id,\n")
           old = '''    def _session_insert_thread_coverage(\n        session: Session,\n        **values: object,\n    ) -> None:\n        session.execute(insert(comment_thread_coverage_observations_table).values(**values))\n'''
           new = '''    def _session_insert_thread_coverage(\n        session: Session,\n        **values: object,\n    ) -> None:\n        statement = pg_insert(comment_thread_coverage_observations_table).values(**values)\n        session.execute(\n            statement.on_conflict_do_update(\n                constraint="uq_comment_thread_coverage_source",\n                set_={\n                    "coverage": statement.excluded.coverage,\n                    "reported_total": statement.excluded.reported_total,\n                    "captured_count": statement.excluded.captured_count,\n                    "target_count": statement.excluded.target_count,\n                    "stop_reason": statement.excluded.stop_reason,\n                    "observed_at": statement.excluded.observed_at,\n                },\n            )\n        )\n'''
           if text.count(old) != 1:
