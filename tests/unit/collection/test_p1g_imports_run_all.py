@@ -32,7 +32,9 @@ def test_p1g_run_all_uses_default_chain_without_raw_excel(
     monkeypatch.setattr(imports_test_entry, "filter_keywords", stage("filter_keywords"))
     monkeypatch.setattr(imports_test_entry, "deduplicate", stage("deduplicate"))
     monkeypatch.setattr(imports_test_entry, "label_sentiment", stage("label_sentiment"))
-    monkeypatch.setattr(imports_test_entry, "export_labeled_excel", stage("export_labeled_excel"), raising=False)
+    monkeypatch.setattr(
+        imports_test_entry, "export_labeled_excel", stage("export_labeled_excel"), raising=False
+    )
 
     def raw_must_not_run(*args, **kwargs):
         raise AssertionError("run_all 不得调用 export_raw_excel")
