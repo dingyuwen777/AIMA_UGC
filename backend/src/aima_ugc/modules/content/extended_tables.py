@@ -251,6 +251,14 @@ comment_thread_coverage_observations_table = Table(
         "target_count is null or target_count >= 0",
         name="target_nonneg",
     ),
+    CheckConstraint(
+        "coverage <> 'complete' or reported_total is null or captured_count >= reported_total",
+        name="complete_count",
+    ),
+    CheckConstraint(
+        "coverage not in ('not_requested','unavailable') or captured_count = 0",
+        name="nonfetch_zero",
+    ),
     info={"owner": "content"},
 )
 

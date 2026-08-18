@@ -76,6 +76,11 @@ from aima_ugc.modules.collection.decision import (
     known_comment_boundary_reached,
 )
 from aima_ugc.modules.collection.execution import CollectionRunRecord, CollectionScopeRecord
+from aima_ugc.modules.collection.execution_limits import (
+    MAX_COMMENT_PAGES,
+    MAX_SEARCH_PAGES,
+    MAX_SUB_COMMENT_PAGES,
+)
 from aima_ugc.modules.collection.provider_dispatch import ProviderDispatchService
 from aima_ugc.modules.collection.provider_persistence import PreparedProviderAttempt
 from aima_ugc.modules.collection.provider_recovery import ProviderAttemptReconciler
@@ -89,9 +94,6 @@ from aima_ugc.modules.system.models import ProviderConfig
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol, LeaseLostError
 from aima_ugc.platform.storage import ArtifactRecord
 
-_MAX_SEARCH_PAGES = 100
-_MAX_COMMENT_PAGES = 100
-_MAX_SUB_COMMENT_PAGES = 100
 _COMMENT_FETCH_ACTIONS = {
     "fetch_adaptive",
     "fetch_incremental",
@@ -273,7 +275,7 @@ class TikHubCollectionScopeExecutor:
         current_page_no = first_page_no
 
         try:
-            for current_page_no in range(first_page_no, _MAX_SEARCH_PAGES + 1):
+            for current_page_no in range(first_page_no, MAX_SEARCH_PAGES + 1):
                 if context.cancel_requested():
                     self._refresh_counts(scope=scope, context=context, stats=stats)
                     return _result(
@@ -701,7 +703,7 @@ class TikHubCollectionScopeExecutor:
         )
         technical_partial = False
 
-        for _page_no in range(1, _MAX_COMMENT_PAGES + 1):
+        for _page_no in range(1, MAX_COMMENT_PAGES + 1):
             if context.cancel_requested():
                 if last_executed is not None:
                     self._record_comment_coverage(
@@ -1070,7 +1072,7 @@ class TikHubCollectionScopeExecutor:
         reported_total = _observed_reply_count(root_comment)
         technical_partial = False
 
-        for _page_no in range(1, _MAX_SUB_COMMENT_PAGES + 1):
+        for _page_no in range(1, MAX_SUB_COMMENT_PAGES + 1):
             if context.cancel_requested():
                 if last_executed is not None:
                     self._content_writer.record_thread_coverage(
@@ -1152,8 +1154,22 @@ class TikHubCollectionScopeExecutor:
                     )
                     raise
                 if reply.external_content_id != root_comment.external_content_id:
+                    self._content_writer.record_candidate_failure(
+                        candidate_id=candidate_id,
+                        provider_attempt_id=executed.attempt_id,
+                        fence=context.fence,
+                        result="invalid",
+                        error_code="reply_content_identity_mismatch",
+                    )
                     raise ValueError("TikHub Reply 与 Content 身份不一致")
                 if reply.root_comment_id != root_comment.external_comment_id:
+                    self._content_writer.record_candidate_failure(
+                        candidate_id=candidate_id,
+                        provider_attempt_id=executed.attempt_id,
+                        fence=context.fence,
+                        result="invalid",
+                        error_code="reply_root_identity_mismatch",
+                    )
                     raise ValueError("TikHub Reply 与 Root Comment 身份不一致")
                 self._content_writer.ingest_comment(
                     canonical=reply,
@@ -1169,6 +1185,8 @@ class TikHubCollectionScopeExecutor:
             )
             if not advance.should_continue:
                 stop_reason = advance.stop_reason or "provider_exhausted"
+                if stop_reason == "empty_page" and not reply_ids:
+                    reported_total = 0
                 coverage = _coverage_for_stop(
                     stop_reason,
                     reported_total,
@@ -1217,11 +1235,7 @@ class TikHubCollectionScopeExecutor:
                 )
 
             if reply_target is not None and len(reply_ids) >= reply_target:
-                coverage = (
-                    "complete"
-                    if reported_total is not None and len(reply_ids) >= reported_total
-                    else "partial"
-                )
+                coverage = "partial"
                 self._content_writer.record_thread_coverage(
                     content_id=content_id,
                     root_comment_id=root_comment.external_comment_id,

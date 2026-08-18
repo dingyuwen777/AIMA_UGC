@@ -13,6 +13,9 @@ from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataGateway,
 )
 from aima_ugc.adapters.persistence.postgres.collection import PostgresCollectionRepository
+from aima_ugc.adapters.persistence.postgres.collection_content import (
+    PostgresFencedCollectionIngestionWriter,
+)
 from aima_ugc.adapters.persistence.postgres.collection_run_execution import (
     PostgresCollectionRunExecutionGateway,
 )
@@ -292,5 +295,40 @@ def test_scope_persists_durable_actions_extensions_and_thread_coverage(
             assert thread_coverage["coverage"] == "complete"
             assert thread_coverage["reported_total"] == 1
             assert thread_coverage["captured_count"] == 1
+            persisted_thread_id = thread_coverage["id"]
+            persisted_thread = dict(thread_coverage)
     finally:
         session.close()
+
+    writer = PostgresFencedCollectionIngestionWriter(database_runtime.new_session)
+    replayed_id = writer.record_thread_coverage(
+        content_id=persisted_thread["content_id"],
+        root_comment_id=persisted_thread["root_comment_id"],
+        provider_attempt_id=persisted_thread["provider_attempt_id"],
+        raw_artifact_id=persisted_thread["raw_artifact_id"],
+        platform="xhs",
+        fence=fence,
+        coverage=persisted_thread["coverage"],
+        reported_total=persisted_thread["reported_total"],
+        captured_count=persisted_thread["captured_count"],
+        target_count=persisted_thread["target_count"],
+        stop_reason=persisted_thread["stop_reason"],
+        observed_at=persisted_thread["observed_at"],
+    )
+    assert replayed_id == persisted_thread_id
+
+    with pytest.raises(ValueError, match="complete"):
+        writer.record_thread_coverage(
+            content_id=persisted_thread["content_id"],
+            root_comment_id=persisted_thread["root_comment_id"],
+            provider_attempt_id=persisted_thread["provider_attempt_id"],
+            raw_artifact_id=persisted_thread["raw_artifact_id"],
+            platform="xhs",
+            fence=fence,
+            coverage="complete",
+            reported_total=2,
+            captured_count=1,
+            target_count=2,
+            stop_reason="provider_exhausted",
+            observed_at=persisted_thread["observed_at"],
+        )

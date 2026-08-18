@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import Table, delete, insert, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from aima_ugc.contracts.canonical import CanonicalCommentV1, CanonicalContentV1
@@ -15,6 +16,7 @@ from aima_ugc.modules.content.extended_tables import (
     comment_locations_table,
     comment_media_table,
     comment_mentions_table,
+    comment_thread_coverage_observations_table,
     content_external_ids_table,
     content_locations_table,
     content_media_table,
@@ -79,6 +81,70 @@ class PostgresCompleteContentRepository:
 
     def record_comment_coverage(self, **kwargs: Any) -> UUID:
         return self._core.record_comment_coverage(**kwargs)
+
+    def record_thread_coverage(
+        self,
+        *,
+        content_id: UUID,
+        root_comment_id: str,
+        provider_attempt_id: UUID,
+        raw_artifact_id: UUID,
+        coverage: str,
+        reported_total: int | None,
+        captured_count: int,
+        target_count: int | None,
+        stop_reason: str,
+        observed_at: datetime,
+    ) -> UUID:
+        if coverage not in {"complete", "partial", "not_requested", "unavailable"}:
+            raise ValueError("Thread Coverage 状态非法")
+        if not root_comment_id.strip():
+            raise ValueError("Thread Coverage root_comment_id 不能为空")
+        if reported_total is not None and reported_total < 0:
+            raise ValueError("Thread Coverage reported_total 不能为负数")
+        if captured_count < 0:
+            raise ValueError("Thread Coverage captured_count 不能为负数")
+        if target_count is not None and target_count < 0:
+            raise ValueError("Thread Coverage target_count 不能为负数")
+        if observed_at.utcoffset() is None:
+            raise ValueError("Thread Coverage observed_at 必须包含时区")
+        if not stop_reason.strip():
+            raise ValueError("Thread Coverage stop_reason 不能为空")
+        if coverage in {"not_requested", "unavailable"} and captured_count != 0:
+            raise ValueError("未请求/不可用 Thread Coverage 不能包含已采集回复")
+        if (
+            coverage == "complete"
+            and reported_total is not None
+            and captured_count < reported_total
+        ):
+            raise ValueError("complete Thread Coverage 的采集数不能小于 Provider 报告总数")
+        statement = pg_insert(comment_thread_coverage_observations_table).values(
+            id=uuid4(),
+            content_id=content_id,
+            root_comment_id=root_comment_id.strip(),
+            provider_attempt_id=provider_attempt_id,
+            raw_artifact_id=raw_artifact_id,
+            coverage=coverage,
+            reported_total=reported_total,
+            captured_count=captured_count,
+            target_count=target_count,
+            stop_reason=stop_reason.strip(),
+            observed_at=observed_at,
+        )
+        row_id = self._session.execute(
+            statement.on_conflict_do_update(
+                constraint="uq_comment_thread_coverage_source",
+                set_={
+                    "coverage": statement.excluded.coverage,
+                    "reported_total": statement.excluded.reported_total,
+                    "captured_count": statement.excluded.captured_count,
+                    "target_count": statement.excluded.target_count,
+                    "stop_reason": statement.excluded.stop_reason,
+                    "observed_at": statement.excluded.observed_at,
+                },
+            ).returning(comment_thread_coverage_observations_table.c.id)
+        ).scalar_one()
+        return cast(UUID, row_id)
 
     def _sync_content_extensions(
         self,

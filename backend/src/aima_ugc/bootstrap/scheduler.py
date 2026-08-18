@@ -19,6 +19,9 @@ from aima_ugc.adapters.persistence.postgres.scheduled_keywords import (
 )
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
 from aima_ugc.adapters.providers.registry import build_default_provider_registry
+from aima_ugc.adapters.providers.tikhub.transport import (
+    DEFAULT_TIKHUB_REQUEST_TIMEOUT_SECONDS,
+)
 from aima_ugc.contracts.collection import ProviderPlatformCapabilityV1
 from aima_ugc.modules.collection.collection_run_job import (
     COLLECTION_RUN_JOB_TYPE,
@@ -26,6 +29,13 @@ from aima_ugc.modules.collection.collection_run_job import (
     CollectionRunJobPayload,
 )
 from aima_ugc.modules.collection.execution import CollectionExecutionService
+from aima_ugc.modules.collection.execution_limits import (
+    DEADLINE_SAFETY_PERCENT,
+    MAX_COMMENT_PAGES,
+    MAX_SEARCH_PAGES,
+    MAX_SUB_COMMENT_PAGES,
+    provider_execution_window_floor_seconds,
+)
 from aima_ugc.modules.collection.planning import CollectionPlanningService, CollectionPlanRecord
 from aima_ugc.modules.collection.scheduled_scopes import (
     ScheduledKeywordPackSnapshot,
@@ -135,6 +145,11 @@ def run_scheduler_once(
                             skip_reason=skipped_slot.reason,
                         )
 
+                    job_timeout_seconds = _scheduled_job_timeout_seconds(
+                        decision.enqueue_for,
+                        decision.next_run_at,
+                        scope_count=len(scope_snapshot.scopes),
+                    )
                     job = PostgresJobRepository(session).enqueue(
                         job_type=COLLECTION_RUN_JOB_TYPE,
                         payload_version=COLLECTION_RUN_PAYLOAD_VERSION,
@@ -145,10 +160,7 @@ def run_scheduler_once(
                         request_id=None,
                         priority=10,
                         max_attempts=2,
-                        timeout_seconds=_scheduled_job_timeout_seconds(
-                            decision.enqueue_for,
-                            decision.next_run_at,
-                        ),
+                        timeout_seconds=job_timeout_seconds,
                     )
                     occurrence = planning_service.record_enqueued_occurrence(
                         plan_id=plan.id,
@@ -165,6 +177,7 @@ def run_scheduler_once(
                             provider_snapshots=provider_snapshots,
                             keyword_packs=scope_snapshot.keyword_packs,
                             keyword_scope_count=len(scope_snapshot.scopes),
+                            job_timeout_seconds=job_timeout_seconds,
                         ),
                         scopes=scope_snapshot.scopes,
                         occurrence_id=occurrence.id,
@@ -281,12 +294,21 @@ def _require_scope_for_every_platform(plan: CollectionPlanRecord, scopes) -> Non
         raise ValueError("Plan 无可执行 Collection Scope")
 
 
-def _scheduled_job_timeout_seconds(scheduled_for: datetime, next_run_at: datetime) -> int:
-    """Scheduled Run 的不可续期 Deadline 与下一逻辑 slot 对齐，不使用固定 300 秒魔数。"""
-    seconds = int((next_run_at - scheduled_for).total_seconds())
-    if seconds < 1:
+def _scheduled_job_timeout_seconds(
+    scheduled_for: datetime,
+    next_run_at: datetime,
+    *,
+    scope_count: int = 1,
+) -> int:
+    """Deadline 不短于 Cron 间隔，也不短于 Provider 技术执行窗口。"""
+    cadence_seconds = int((next_run_at - scheduled_for).total_seconds())
+    if cadence_seconds < 1:
         raise ValueError("Scheduler 下一逻辑 slot 必须晚于当前 scheduled_for")
-    return seconds
+    provider_floor = provider_execution_window_floor_seconds(
+        scope_count=scope_count,
+        request_timeout_seconds=DEFAULT_TIKHUB_REQUEST_TIMEOUT_SECONDS,
+    )
+    return max(cadence_seconds, provider_floor)
 
 
 def _scheduled_job_idempotency_key(plan: CollectionPlanRecord, scheduled_for: datetime) -> str:
@@ -300,6 +322,7 @@ def _scheduled_run_snapshot(
     provider_snapshots: tuple[dict[str, object], ...],
     keyword_packs: tuple[ScheduledKeywordPackSnapshot, ...],
     keyword_scope_count: int,
+    job_timeout_seconds: int,
 ) -> dict[str, object]:
     """冻结调度时可安全持久化的 Plan/Provider/词包执行事实，不复制 Secret 值。"""
     return {
@@ -312,6 +335,15 @@ def _scheduled_run_snapshot(
         "detail_policy": plan.detail_policy,
         "comment_policy": plan.comment_policy,
         "decision_policy": plan.decision_policy.model_dump(mode="json"),
+        "job_timeout_seconds": job_timeout_seconds,
+        "execution_limits": {
+            "scope_count": keyword_scope_count,
+            "max_search_pages": MAX_SEARCH_PAGES,
+            "max_comment_pages": MAX_COMMENT_PAGES,
+            "max_sub_comment_pages": MAX_SUB_COMMENT_PAGES,
+            "provider_request_timeout_seconds": DEFAULT_TIKHUB_REQUEST_TIMEOUT_SECONDS,
+            "deadline_safety_percent": DEADLINE_SAFETY_PERCENT,
+        },
         "platforms": list(provider_snapshots),
         "keyword_pack_ids": [str(item) for item in plan.keyword_pack_ids],
         "keyword_packs": [

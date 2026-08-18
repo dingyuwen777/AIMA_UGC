@@ -16,6 +16,7 @@ from aima_ugc.modules.collection.providers.transport import (
 )
 
 DEFAULT_TIKHUB_BASE_URL = "https://api.tikhub.io"
+DEFAULT_TIKHUB_REQUEST_TIMEOUT_SECONDS = 45.0
 _ALLOWED_TIKHUB_HOST = "api.tikhub.io"
 _REQUEST_ID_HEADERS = (
     "x-request-id",
@@ -31,7 +32,7 @@ class TikHubHttpTransport:
         self,
         *,
         base_url: str = DEFAULT_TIKHUB_BASE_URL,
-        timeout_seconds: float = 45.0,
+        timeout_seconds: float = DEFAULT_TIKHUB_REQUEST_TIMEOUT_SECONDS,
         client: httpx.Client | None = None,
     ) -> None:
         actual_base_url = str(client.base_url) if client is not None else base_url
@@ -199,6 +200,7 @@ def _external_request_id(headers: httpx.Headers) -> str | None:
 
 __all__ = [
     "DEFAULT_TIKHUB_BASE_URL",
+    "DEFAULT_TIKHUB_REQUEST_TIMEOUT_SECONDS",
     "TikHubHttpTransport",
     "build_tikhub_transport_request",
 ]

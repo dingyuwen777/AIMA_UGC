@@ -51,6 +51,20 @@ def test_scheduled_job_deadline_tracks_next_slot_instead_of_fixed_300_seconds() 
     assert _scheduled_job_timeout_seconds(scheduled_for, next_run_at) != 300
 
 
+def test_scheduled_job_deadline_has_provider_execution_floor_for_short_cadence() -> None:
+    scheduled_for = datetime(2026, 8, 18, 0, 0, tzinfo=UTC)
+    next_run_at = datetime(2026, 8, 18, 0, 1, tzinfo=UTC)
+
+    one_scope = _scheduled_job_timeout_seconds(scheduled_for, next_run_at)
+    two_scopes = _scheduled_job_timeout_seconds(
+        scheduled_for,
+        next_run_at,
+        scope_count=2,
+    )
+    assert one_scope > 60
+    assert two_scopes > one_scope
+
+
 def test_scheduled_job_deadline_rejects_non_forward_slot() -> None:
     scheduled_for = datetime(2026, 8, 18, 6, 0, tzinfo=UTC)
     with pytest.raises(ValueError, match="晚于"):
@@ -95,5 +109,6 @@ def test_douyin_duration_capability_round_trips_plan_validation() -> None:
     )
     with pytest.raises(ValueError, match="duration"):
         _validate_search_config(DOUYIN_TIKHUB_CAPABILITY, {"duration": "unsupported"})
+
 
 # Temporary trigger v3 for the registered Stage 5B corrective runner; the runner removes this line.

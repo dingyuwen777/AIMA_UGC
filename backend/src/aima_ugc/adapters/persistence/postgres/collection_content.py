@@ -5,10 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
@@ -26,7 +25,6 @@ from aima_ugc.modules.collection.tables import (
     provider_request_attempts_table,
     provider_requests_table,
 )
-from aima_ugc.modules.content.extended_tables import comment_thread_coverage_observations_table
 from aima_ugc.modules.content.ingestion import ContentIngestionService
 from aima_ugc.modules.content.tables import accounts_table, comments_table, contents_table
 from aima_ugc.platform.jobs import JobExecutionFence, LeaseLostError
@@ -375,12 +373,11 @@ class PostgresFencedCollectionIngestionWriter:
                 content_platform = session.scalar(
                     select(contents_table.c.platform).where(contents_table.c.id == content_id)
                 )
+                if content_platform is None:
+                    raise LookupError("Thread Coverage Content 不存在")
                 if content_platform != platform or attempt_platform != platform:
                     raise ValueError("Thread Coverage Content/Attempt 平台不一致")
-                row_id = uuid4()
-                self._session_insert_thread_coverage(
-                    session,
-                    id=row_id,
+                return PostgresCompleteContentRepository(session).record_thread_coverage(
                     content_id=content_id,
                     root_comment_id=root_comment_id,
                     provider_attempt_id=provider_attempt_id,
@@ -392,29 +389,8 @@ class PostgresFencedCollectionIngestionWriter:
                     stop_reason=stop_reason,
                     observed_at=observed_at,
                 )
-                return row_id
         finally:
             session.close()
-
-    @staticmethod
-    def _session_insert_thread_coverage(
-        session: Session,
-        **values: object,
-    ) -> None:
-        statement = pg_insert(comment_thread_coverage_observations_table).values(**values)
-        session.execute(
-            statement.on_conflict_do_update(
-                constraint="uq_comment_thread_coverage_source",
-                set_={
-                    "coverage": statement.excluded.coverage,
-                    "reported_total": statement.excluded.reported_total,
-                    "captured_count": statement.excluded.captured_count,
-                    "target_count": statement.excluded.target_count,
-                    "stop_reason": statement.excluded.stop_reason,
-                    "observed_at": statement.excluded.observed_at,
-                },
-            )
-        )
 
 
 def _lock_matching_attempt(

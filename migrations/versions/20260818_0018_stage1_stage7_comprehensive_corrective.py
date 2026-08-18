@@ -357,6 +357,14 @@ def upgrade() -> None:
             "target_count is null or target_count >= 0",
             name="target_nonneg",
         ),
+        sa.CheckConstraint(
+            "coverage <> 'complete' or reported_total is null or captured_count >= reported_total",
+            name="complete_count",
+        ),
+        sa.CheckConstraint(
+            "coverage not in ('not_requested','unavailable') or captured_count = 0",
+            name="nonfetch_zero",
+        ),
         sa.ForeignKeyConstraint(["content_id"], ["contents.id"]),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
