@@ -10,10 +10,10 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from alembic import command
-from alembic.config import Config
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.security import read_secret_file
+from alembic import command
+from alembic.config import Config
 from sqlalchemy import URL, create_engine, inspect, text
 from sqlalchemy.engine import Engine
 
