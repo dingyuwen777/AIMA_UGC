@@ -68,9 +68,11 @@ def test_p1g_recovers_successful_checkpoint_without_second_llm_call(
     input_path.parent.mkdir(parents=True)
     input_path.write_text(_record().model_dump_json() + "\n", encoding="utf-8")
 
+    prompt_loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
+    recovery_taxonomy = prompt_loader.load()
     first_service = ContentLabelingService(
-        prompt_loader=PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH),
-        llm=FakeContentLabelingLLM(responses=[_valid_response()]),
+        prompt_loader=prompt_loader,
+        llm=FakeContentLabelingLLM(responses=[_valid_response(prompt_loader)]),
     )
 
     def fail_replace(source: str | bytes | Path, target: str | bytes | Path) -> None:
@@ -85,6 +87,7 @@ def test_p1g_recovers_successful_checkpoint_without_second_llm_call(
                 service=first_service,
                 max_validation_retries=0,
                 batch_size=1,
+                recovery_taxonomy=recovery_taxonomy,
             )
 
     before_recovery = UnifiedContentRecordV1.model_validate_json(input_path.read_bytes())
@@ -95,11 +98,12 @@ def test_p1g_recovers_successful_checkpoint_without_second_llm_call(
         input_path=input_path,
         analysis_dir=analysis_dir,
         service=ContentLabelingService(
-            prompt_loader=PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH),
+            prompt_loader=prompt_loader,
             llm=second_fake,
         ),
         max_validation_retries=0,
         batch_size=1,
+        recovery_taxonomy=recovery_taxonomy,
     )
 
     recovered = UnifiedContentRecordV1.model_validate_json(input_path.read_bytes())
@@ -123,6 +127,7 @@ def test_p1g_does_not_recover_checkpoint_from_different_prompt(
     input_path.write_text(_record().model_dump_json() + "\n", encoding="utf-8")
 
     first_loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
+    first_taxonomy = first_loader.load()
     first_service = ContentLabelingService(
         prompt_loader=first_loader,
         llm=FakeContentLabelingLLM(responses=[_valid_response(first_loader)]),
@@ -140,6 +145,7 @@ def test_p1g_does_not_recover_checkpoint_from_different_prompt(
                 service=first_service,
                 max_validation_retries=0,
                 batch_size=1,
+                recovery_taxonomy=first_taxonomy,
             )
 
     changed_prompt = tmp_path / "content_labeling_changed.md"
@@ -148,6 +154,7 @@ def test_p1g_does_not_recover_checkpoint_from_different_prompt(
         encoding="utf-8",
     )
     second_loader = PromptTaxonomyLoader(changed_prompt)
+    second_taxonomy = second_loader.load()
     second_fake = FakeContentLabelingLLM(responses=[_valid_response(second_loader)])
     summary = label_unified_content_jsonl(
         input_path=input_path,
@@ -155,11 +162,12 @@ def test_p1g_does_not_recover_checkpoint_from_different_prompt(
         service=ContentLabelingService(prompt_loader=second_loader, llm=second_fake),
         max_validation_retries=0,
         batch_size=1,
+        recovery_taxonomy=second_taxonomy,
     )
 
     rewritten = UnifiedContentRecordV1.model_validate_json(input_path.read_bytes())
     assert rewritten.analysis is not None
-    assert rewritten.analysis.prompt_sha256 == second_loader.load().prompt_sha256
+    assert rewritten.analysis.prompt_sha256 == second_taxonomy.prompt_sha256
     assert summary.rows_recovered == 0
     assert summary.rows_succeeded == 1
     assert summary.llm_attempts == 1
