@@ -301,8 +301,7 @@ def _content_cells(
         (content.coverage, False, False),
     )
     return [
-        _data_cell(sheet, value, text_id=text_id, hyperlink=link)
-        for value, text_id, link in values
+        _data_cell(sheet, value, text_id=text_id, hyperlink=link) for value, text_id, link in values
     ]
 
 
