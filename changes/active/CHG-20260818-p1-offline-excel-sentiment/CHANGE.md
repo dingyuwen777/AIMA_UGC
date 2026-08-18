@@ -121,7 +121,7 @@ MAX_VALIDATION_RETRIES = 2
 - [x] Blueprint 14 同步 P1 的动态 Taxonomy、本地校验、重试和 README 门禁。
 - [x] `imports/` File Provider/Reader/Mapper 实现并通过 P1B 自动测试。
 - [x] `imports_test/README.md`、`.env.example`、`test.py` 已建立；P1B 仅提供 `convert()`，人工入口只调用生产实现，后续单步函数和 `run_all()` 按 P1C–P1G 增量补齐。
-- [x] `convert()` 生成 `canonical/contents.jsonl`，错误逐行可定位，存在无效行时不发布部分业务 JSONL。
+- [x] `convert()` 生成 `canonical/contents.jsonl`，错误逐行可定位，存在无效行时不发布部分业务 JSONL，下一次转换开始前清理旧诊断文件避免误读。
 - [ ] `filter_keywords()` 生成 `filtered/contents.jsonl`，保留 `matched_keywords`。
 - [ ] `deduplicate()` 生成 `UnifiedContentRecordV1` 格式 `deduplicated/contents.jsonl`，冲突不静默覆盖。
 - [ ] `UnifiedDataExcelV1` + 唯一共享 Exporter 落地，`tikhub_test` 删除平行 Excel 实现。
@@ -236,19 +236,28 @@ P1C 开始前必须重新读取最新 `AGENTS.md`、RVC Skill、Blueprint README
 
 P1B 按 Red → Green → Review 执行，使用仓库锁定的 Python 3.14.7 / uv 0.12.3 / openpyxl 3.1.5 环境。
 
-## TDD Red
+## TDD Red：初始行为
 
 - Commit：`d691100e0024dd46e68a22cd7e825987633ef23e`（`测试：锁定P1B Excel导入行为`）。
 - Stage 5A Provider Raw Run：`32130422292`，Job：`95690130684`。
 - `pytest` 在收集 `tests/unit/collection/test_imports_excel.py` 时因 `aima_ugc.adapters.providers.imports` 尚不存在失败；`ModuleNotFoundError`，1 个 collection error，退出码 2。
 - 失败原因与 P1B 尚未实现完全一致，没有用已有失败冒充 Red。
 
-## Green / 专项门禁
+## Green：基础实现
 
 - 实现 Commit：`e6b0b5549af55e9dc13b326d94db2327f8bf3341`（`实现P1B Excel离线导入转换`）。
 - 验证编排/格式修正 Commit：`33f3c76364d3df12ddd19dfccf70acc3f80cd60d`、`6908950a6e13b60f891335ec6599f2f92c008253`、`9a33a90467c629649f8aee5dfc6b5b5c05f9bd62`。
-- Stage 5A Provider Raw Run：`32131546430`，Job：`95693577309`。
-- `uv run pytest tests/unit/collection/test_imports_excel.py -q`：退出码 0，4 passed in 0.75s。
+- 第一轮稳定专项证据 Run `32131546430` / Job `95693577309`：4 passed；P1B Ruff format/check、mypy、Secret、Docs 均通过；Architecture 仅因当前 Stage 1–7 基线缺失 11 个 `operations/...` 必需文件失败。
+
+## Review 发现缺陷后的回归 Red → Green
+
+- Review 发现：上一轮生成过 `conversion_errors.jsonl` 后，如果下一轮在缺表头等工作簿级错误处提前失败，旧诊断文件会残留并误导人工排查。
+- 回归 Red Commit：`29d40381f345e9bdf0d58ec200797688ffe042ba`（`测试：覆盖P1B错误文件残留回归`）。
+- Red Run：`32132122163`，Job：`95695352110`。
+- `uv run pytest tests/unit/collection/test_imports_excel.py -q`：退出码 1，4 passed / 1 failed；唯一失败为 `test_convert_clears_previous_error_file_before_fatal_workbook_error`，证明旧错误文件确实残留。
+- 修复 Commit：`6e701887076561f42e42c7b7f3901208886c587a`（`修复：清理P1B过期转换错误文件`）。
+- Green Run：`32132181435`，Job：`95695536750`。
+- `uv run pytest tests/unit/collection/test_imports_excel.py -q`：退出码 0，5 passed in 0.80s。
 - P1B `ruff format --check`：退出码 0，11 files already formatted。
 - P1B `ruff check`：退出码 0，All checks passed。
 - P1B `mypy`：退出码 0，Success: no issues found in 9 source files。
@@ -257,9 +266,10 @@ P1B 按 Red → Green → Review 执行，使用仓库锁定的 Python 3.14.7 / 
 
 ## Architecture / 回归 / CI 基线阻断
 
-- 同一 Run `32131546430` 的 `check_architecture.py`：退出码 1；仅报告 11 个现有 `backend/src/aima_ugc/operations/...` Stage 1–7 必需文件不存在，没有报告 P1B 新增 `imports/` / `imports_test/` 架构违规。该目录漂移来自当前 main/PR merge 基线，不在 P1B 授权范围，本轮未修改或绕过。
-- Green 首轮 Stage 5A Run `32130950731` 的 Provider/Raw 相关回归共 28 项：25 passed、3 failed；3 个失败均在现有 `tests/contracts/test_provider_v1.py`，涉及 `ProviderRequestV1.create(... operations=...)` 与 RawEnvelope `operations` schema 旧/新语义不一致，不是 P1B 测试失败。
-- 正式 Contract/全量 CI 仍受当前 main 的 Stage 1–7 Contract/Architecture 漂移阻断；P1B 未修改 Canonical/Provider Contract，也未通过篡改测试或门禁制造全绿。
+- Green Run `32132181435` 的 `check_architecture.py`：退出码 1；仅报告 11 个现有 `backend/src/aima_ugc/operations/...` Stage 1–7 必需文件不存在，没有报告 P1B 新增 `imports/` / `imports_test/` 架构违规。该目录漂移来自当前 main/PR merge 基线，不在 P1B 授权范围，本轮未修改或绕过。
+- 早期 Green Run `32130950731` 的 Provider/Raw 相关回归共 28 项：25 passed、3 failed；3 个失败均在现有 `tests/contracts/test_provider_v1.py`，涉及 `ProviderRequestV1.create(... operations=...)` 与 RawEnvelope `operations` schema 旧/新语义不一致，不是 P1B 测试失败。
+- 最终代码前一检查点的正式 CI Run `32131844801` Stage 1 已再次确认 `CONTRACT_SCHEMA_STALE`：生成后的 `ProviderPlatformCapabilityV1.schema_version` 为 `provider-operations-capability.v1`，提交版本仍为 `provider-platform-capability.v1`。这是当前 main 基线 Contract 漂移，P1B 未修改 Provider/Collection Contract。
+- 正式 Contract/全量 CI 因当前 main 的 Stage 1–7 Contract/Architecture 漂移仍未全绿；P1B 未修改这些基线文件，也未通过篡改测试或门禁制造全绿。
 
 # Git / PR / 发布
 
