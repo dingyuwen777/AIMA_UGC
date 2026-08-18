@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
-from datetime import datetime
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
-from zoneinfo import ZoneInfo
 
 from aima_ugc.adapters.providers.tikhub import runtime as tikhub_runtime
 from aima_ugc.adapters.providers.tikhub.capabilities import TIKHUB_PLATFORM_CAPABILITIES
@@ -19,12 +17,6 @@ from aima_ugc.adapters.providers.tikhub_test.core.core import (
     RunOutputStore,
     default_run_id,
 )
-from aima_ugc.adapters.providers.tikhub_test.core.excel import (
-    RawDataBlock,
-    RawDataCommentRow,
-    RawDataContent,
-    write_raw_data_workbook,
-)
 from aima_ugc.contracts.canonical import CanonicalCommentV1, CanonicalContentV1
 from aima_ugc.contracts.collection import (
     CollectionDecisionContextV1,
@@ -35,13 +27,18 @@ from aima_ugc.contracts.collection import (
     PreviousContentStateV1,
     ReplyDecisionRequestV1,
 )
+from aima_ugc.contracts.export import UnifiedDataExcelCommentV1, UnifiedDataExcelV1
 from aima_ugc.modules.collection.decision import (
     CollectionDecisionService,
     known_comment_boundary_reached,
 )
+from aima_ugc.platform.export import (
+    export_unified_data_excel,
+    project_canonical_comment,
+    project_canonical_content,
+)
 
 _DEFAULT_OUTPUT_ROOT = Path(__file__).with_name("output")
-_BEIJING = ZoneInfo("Asia/Shanghai")
 _CAPABILITIES = {item.platform: item for item in TIKHUB_PLATFORM_CAPABILITIES}
 
 
@@ -135,7 +132,7 @@ class _TikHubDebugRunner:
         self._request_no = 0
         self._requests: list[dict[str, object]] = []
         self._content_failures: list[dict[str, object]] = []
-        self._blocks: list[RawDataBlock] = []
+        self._blocks: list[UnifiedDataExcelV1] = []
         self._matched_keywords: dict[str, list[str]] = {}
         self._seen_contents: set[str] = set()
         self._seen_comments: set[tuple[str, str]] = set()
@@ -159,10 +156,11 @@ class _TikHubDebugRunner:
             error = exc
         finally:
             self.state.save()
-            workbook_path = write_raw_data_workbook(
+            workbook_path = export_unified_data_excel(
                 self._blocks_with_keywords(),
                 self.store.raw_data_dir / f"{self.platform}_raw_data.xlsx",
-            )
+                include_analysis=False,
+            ).output_path
             run_summary_path = self.store.write_run_summary(self._run_summary(error))
 
         if error is not None:
@@ -274,11 +272,11 @@ class _TikHubDebugRunner:
                         }
                     )
                     self._blocks.append(
-                        RawDataBlock(
-                            content=_raw_data_content(
+                        UnifiedDataExcelV1(
+                            content=project_canonical_content(
                                 search_content,
-                                "unavailable",
-                                search_raw_locator,
+                                coverage="unavailable",
+                                raw_locator=search_raw_locator,
                             ),
                             comments=(),
                         )
@@ -325,7 +323,7 @@ class _TikHubDebugRunner:
                 after_detail=True,
             )
 
-        comments: list[RawDataCommentRow] = []
+        comments: list[UnifiedDataExcelCommentV1] = []
         coverage = self._coverage_for_skipped_comments(
             decision.comment_action, decision.comment_reason
         )
@@ -343,8 +341,12 @@ class _TikHubDebugRunner:
             comment_count=content.metrics.comment_count,
         )
         self._blocks.append(
-            RawDataBlock(
-                content=_raw_data_content(content, coverage, content_raw_locator),
+            UnifiedDataExcelV1(
+                content=project_canonical_content(
+                    content,
+                    coverage=coverage,
+                    raw_locator=content_raw_locator,
+                ),
                 comments=tuple(comments),
             )
         )
@@ -399,10 +401,10 @@ class _TikHubDebugRunner:
         content: CanonicalContentV1,
         action: str,
         target: int,
-    ) -> tuple[list[RawDataCommentRow], str]:
+    ) -> tuple[list[UnifiedDataExcelCommentV1], str]:
         content_id = content.external_content_id
         pagination: dict[str, object] | None = None
-        mapped_rows: list[RawDataCommentRow] = []
+        mapped_rows: list[UnifiedDataExcelCommentV1] = []
         root_total = 0
         provider_exhausted = False
         known_comment_ids = (
@@ -452,7 +454,9 @@ class _TikHubDebugRunner:
                     f"{self.store.relative_path(raw_record.path)}"
                     f"#comments.page[{page_no}].items[{item_index}]"
                 )
-                mapped_rows.append(_raw_data_comment(comment, "一级", locator))
+                mapped_rows.append(
+                    project_canonical_comment(comment, level="一级", raw_locator=locator)
+                )
                 mapped_roots.append(comment)
                 root_total += 1
                 self._root_comment_count += 1
@@ -496,7 +500,7 @@ class _TikHubDebugRunner:
         transport: TikHubHttpTransport,
         content: CanonicalContentV1,
         root: CanonicalCommentV1,
-    ) -> list[RawDataCommentRow]:
+    ) -> list[UnifiedDataExcelCommentV1]:
         reply_decision = self.decision_service.decide_reply(
             ReplyDecisionRequestV1(
                 reply_count=root.metrics.reply_count,
@@ -508,7 +512,7 @@ class _TikHubDebugRunner:
             return []
         target = reply_decision.target or self.limits.max_replies_per_root
         pagination: dict[str, object] | None = None
-        mapped_rows: list[RawDataCommentRow] = []
+        mapped_rows: list[UnifiedDataExcelCommentV1] = []
         mapped_count = 0
         for page_no in range(1, self.limits.max_reply_pages_per_root + 1):
             call = tikhub_runtime.build_sub_comments_call(
@@ -551,7 +555,9 @@ class _TikHubDebugRunner:
                     f"{self.store.relative_path(raw_record.path)}"
                     f"#replies.page[{page_no}].items[{item_index}]"
                 )
-                mapped_rows.append(_raw_data_comment(comment, "二级", locator))
+                mapped_rows.append(
+                    project_canonical_comment(comment, level="二级", raw_locator=locator)
+                )
                 mapped_count += 1
                 self._reply_count += 1
 
@@ -617,16 +623,21 @@ class _TikHubDebugRunner:
         if keyword not in matched:
             matched.append(keyword)
 
-    def _blocks_with_keywords(self) -> tuple[RawDataBlock, ...]:
+    def _blocks_with_keywords(self) -> tuple[UnifiedDataExcelV1, ...]:
         return tuple(
-            RawDataBlock(
-                content=replace(
-                    block.content,
-                    matched_keywords=tuple(
-                        self._matched_keywords.get(block.content.external_content_id, ())
-                    ),
-                ),
-                comments=block.comments,
+            block.model_copy(
+                update={
+                    "content": block.content.model_copy(
+                        update={
+                            "matched_keywords": tuple(
+                                self._matched_keywords.get(
+                                    block.content.external_content_id,
+                                    (),
+                                )
+                            )
+                        }
+                    )
+                }
             )
             for block in self._blocks
         )
@@ -755,64 +766,6 @@ def _normalize_keywords(
     if not normalized:
         raise ValueError("keywords 至少包含一个关键词")
     return tuple(normalized)
-
-
-def _raw_data_content(
-    content: CanonicalContentV1,
-    coverage: str,
-    raw_locator: str,
-) -> RawDataContent:
-    author = content.author
-    author_label = None
-    if author is not None:
-        author_label = author.display_name or author.handle or author.external_account_id
-    content_url = content.canonical_url or content.share_url
-    return RawDataContent(
-        platform=content.platform,
-        external_content_id=content.external_content_id,
-        content_type=content.content_type,
-        title=content.title,
-        text=content.text,
-        author=author_label,
-        published_at=_human_time(content.published_at),
-        content_url=str(content_url) if content_url is not None else None,
-        like_count=content.metrics.like_count,
-        comment_count=content.metrics.comment_count,
-        favorite_count=content.metrics.favorite_count,
-        share_count=content.metrics.share_count,
-        coverage=coverage,
-        raw_locator=raw_locator,
-    )
-
-
-def _raw_data_comment(
-    comment: CanonicalCommentV1,
-    level: str,
-    raw_locator: str,
-) -> RawDataCommentRow:
-    author = comment.author
-    author_label = None
-    if author is not None:
-        author_label = author.display_name or author.handle or author.external_account_id
-    return RawDataCommentRow(
-        level=level,
-        comment_id=comment.external_comment_id,
-        root_comment_id=comment.root_comment_id,
-        parent_comment_id=comment.parent_comment_id,
-        author=author_label,
-        text=comment.text,
-        published_at=_human_time(comment.published_at),
-        like_count=comment.metrics.like_count,
-        reply_count=comment.metrics.reply_count,
-        raw_locator=raw_locator,
-    )
-
-
-def _human_time(value: datetime | None) -> str | None:
-    if value is None:
-        return None
-    converted = value.astimezone(_BEIJING)
-    return converted.strftime("%Y-%m-%d %H:%M:%S")
 
 
 __all__ = ["TikHubTestRunResult", "run_platform"]

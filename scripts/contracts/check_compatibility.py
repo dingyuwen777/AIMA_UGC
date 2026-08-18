@@ -28,6 +28,9 @@ COLLECTION_TARGETS = [
     "contracts/collection/provider-operations-capability.v1.schema.json",
     "contracts/collection/provider-operations-route.v1.schema.json",
 ]
+EXPORT_TARGETS = [
+    "contracts/export/unified-data-excel.v1.schema.json",
+]
 
 
 def main() -> int:
@@ -67,18 +70,19 @@ def main() -> int:
             *CANONICAL_TARGETS,
             *PROVIDER_TARGETS,
             *COLLECTION_TARGETS,
+            *EXPORT_TARGETS,
         ],
         cwd=ROOT,
         check=False,
     )
     if diff.returncode != 0:
         print(
-            "CONTRACT_SCHEMA_STALE: 生成后的 Analysis/Canonical/Provider/Collection JSON Schema "
-            "与提交版本不一致"
+            "CONTRACT_SCHEMA_STALE: 生成后的 Analysis/Canonical/Provider/Collection/Export "
+            "JSON Schema 与提交版本不一致"
         )
         return 1
 
-    print("OpenAPI 基线与 Analysis/Canonical/Provider/Collection Schema 漂移检查通过。")
+    print("OpenAPI 基线与 Analysis/Canonical/Provider/Collection/Export Schema 漂移检查通过。")
     return 0
 
 

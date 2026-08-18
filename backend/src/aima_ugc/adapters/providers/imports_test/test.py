@@ -12,6 +12,10 @@ from aima_ugc.modules.analysis import (
     deduplicate_content_jsonl,
     filter_canonical_content_jsonl,
 )
+from aima_ugc.platform.export import (
+    ExcelExportSummary,
+    export_unified_content_jsonl_to_excel,
+)
 
 INPUT_XLSX = Path(r"E:\path\to\source.xlsx")
 OUTPUT_ROOT = Path(__file__).with_name("output")
@@ -54,6 +58,16 @@ def deduplicate() -> ContentDeduplicationSummary:
     return deduplicate_content_jsonl(
         input_path=OUTPUT_ROOT / "filtered" / "contents.jsonl",
         output_path=OUTPUT_ROOT / "deduplicated" / "contents.jsonl",
+    )
+
+
+def export_raw_excel() -> ExcelExportSummary:
+    """可选导出 deduplicated JSONL 的 raw 人工审阅视图。"""
+
+    return export_unified_content_jsonl_to_excel(
+        input_path=OUTPUT_ROOT / "deduplicated" / "contents.jsonl",
+        output_path=OUTPUT_ROOT / "raw_data.xlsx",
+        include_analysis=False,
     )
 
 
