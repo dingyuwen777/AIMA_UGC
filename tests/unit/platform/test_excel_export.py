@@ -12,13 +12,12 @@ from aima_ugc.contracts.canonical import (
     CanonicalMetricsV1,
     CanonicalSourceV1,
 )
-from aima_ugc.contracts.export import (
-    UnifiedDataExcelAnalysisV1,
-    UnifiedDataExcelCommentV1,
-    UnifiedDataExcelContentV1,
-    UnifiedDataExcelV1,
+from aima_ugc.contracts.export import UnifiedDataExcelAnalysisV1, UnifiedDataExcelV1
+from aima_ugc.platform.export import (
+    export_unified_data_excel,
+    project_canonical_comment,
+    project_canonical_content,
 )
-from aima_ugc.platform.export import export_unified_data_excel
 from openpyxl import load_workbook
 
 _OBSERVED_AT = datetime(2026, 8, 18, 6, 0, tzinfo=UTC)
@@ -89,9 +88,9 @@ def _comment() -> CanonicalCommentV1:
 
 def _export_record() -> UnifiedDataExcelV1:
     return UnifiedDataExcelV1(
-        content=UnifiedDataExcelContentV1(
-            content=_content(),
-            matched_keywords=["keyword-a", "keyword-b"],
+        content=project_canonical_content(
+            _content(),
+            matched_keywords=("keyword-a", "keyword-b"),
             analysis=UnifiedDataExcelAnalysisV1(
                 sentiment="sentiment-test",
                 primary_label="primary-test",
@@ -104,8 +103,8 @@ def _export_record() -> UnifiedDataExcelV1:
             coverage="partial 1/2",
         ),
         comments=(
-            UnifiedDataExcelCommentV1(
-                comment=_comment(),
+            project_canonical_comment(
+                _comment(),
                 level="一级",
                 raw_locator="raw/comments.json#item[0]",
             ),
