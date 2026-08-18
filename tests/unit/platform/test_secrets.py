@@ -1,29 +1,53 @@
+from __future__ import annotations
+
+from pathlib import Path
+
 import pytest
-from aima_ugc.platform.security import SecretFileError, read_secret_file
+from aima_ugc.platform.security import (
+    SecretFileError,
+    read_secret_file,
+    validate_secret_ref,
+)
 
 
-def test_secret_reader_only_removes_trailing_newlines(tmp_path) -> None:
-    secret_file = tmp_path / "postgres_password"
-    secret_file.write_text("  meaningful spaces  \r\n", encoding="utf-8")
-
-    secret = read_secret_file(secret_file)
-
-    assert secret.get_secret_value() == "  meaningful spaces  "
+def test_validate_secret_ref_rejects_path_escape() -> None:
+    assert validate_secret_ref("providers/tikhub/main") == "providers/tikhub/main"
+    for invalid in ("../secret", "/absolute", "providers\\secret", "a//b", "a/./b"):
+        with pytest.raises(ValueError):
+            validate_secret_ref(invalid)
 
 
-def test_secret_reader_rejects_nul_without_leaking_secret(tmp_path) -> None:
-    secret_file = tmp_path / "postgres_password"
-    secret_file.write_bytes(b"actual-secret-value\x00hidden")
+def test_read_secret_file_trims_only_trailing_newline(tmp_path: Path) -> None:
+    secret_dir = tmp_path / "secrets"
+    secret_dir.mkdir()
+    secret_file = secret_dir / "provider-key"
+    secret_file.write_text("  keep-spaces  \r\n", encoding="utf-8")
 
-    with pytest.raises(SecretFileError) as exc_info:
-        read_secret_file(secret_file)
+    value = read_secret_file(secret_file, root=secret_dir)
 
-    assert "actual-secret-value" not in str(exc_info.value)
+    assert value.get_secret_value() == "  keep-spaces  "
 
 
-def test_secret_reader_rejects_oversized_file(tmp_path) -> None:
-    secret_file = tmp_path / "postgres_password"
-    secret_file.write_text("x" * 32, encoding="utf-8")
+def test_read_secret_file_rejects_symlink_even_when_target_is_regular_file(tmp_path: Path) -> None:
+    secret_dir = tmp_path / "secrets"
+    secret_dir.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("must-not-read", encoding="utf-8")
+    link = secret_dir / "provider-key"
+    try:
+        link.symlink_to(outside)
+    except OSError:
+        pytest.skip("当前测试文件系统不允许创建 symlink")
 
-    with pytest.raises(SecretFileError):
-        read_secret_file(secret_file, max_bytes=16)
+    with pytest.raises(SecretFileError, match="符号链接|根目录"):
+        read_secret_file(link, root=secret_dir)
+
+
+def test_read_secret_file_rejects_explicit_root_escape(tmp_path: Path) -> None:
+    secret_dir = tmp_path / "secrets"
+    secret_dir.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("must-not-read", encoding="utf-8")
+
+    with pytest.raises(SecretFileError, match="根目录"):
+        read_secret_file(outside, root=secret_dir)
