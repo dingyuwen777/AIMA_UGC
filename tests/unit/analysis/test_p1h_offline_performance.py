@@ -1,22 +1,39 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 from openpyxl import load_workbook
 
-from scripts.performance.benchmark_p1_offline import run_benchmark
+ROOT = Path(__file__).resolve().parents[3]
+BENCHMARK = ROOT / "scripts" / "performance" / "benchmark_p1_offline.py"
 
 
 def test_p1h_benchmark_reuses_production_chain_and_records_required_metrics(
     tmp_path: Path,
 ) -> None:
-    report = run_benchmark(
-        work_dir=tmp_path,
-        row_count=6,
-        label_batch_size=3,
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(BENCHMARK),
+            "--work-dir",
+            str(tmp_path),
+            "--rows",
+            "6",
+            "--label-batch-size",
+            "3",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
     )
+    assert completed.returncode == 0, completed.stderr
 
+    report_path = tmp_path / "performance_report.json"
+    report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["schema_version"] == "p1-offline-performance.v1"
     assert report["row_count"] == 6
     assert report["column_count"] == 13
@@ -42,13 +59,9 @@ def test_p1h_benchmark_reuses_production_chain_and_records_required_metrics(
     source_xlsx = Path(artifacts["source_xlsx"]["path"])
     deduplicated_jsonl = Path(artifacts["deduplicated_jsonl"]["path"])
     labeled_xlsx = Path(artifacts["labeled_xlsx"]["path"])
-    report_path = Path(artifacts["report_json"]["path"])
     for artifact in (source_xlsx, deduplicated_jsonl, labeled_xlsx, report_path):
         assert artifact.is_file()
         assert artifact.stat().st_size > 0
-
-    persisted_report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert persisted_report == report
 
     workbook = load_workbook(labeled_xlsx, read_only=True, data_only=True)
     try:
