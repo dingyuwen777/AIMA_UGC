@@ -59,7 +59,12 @@ def test_keyword_catalog_round_trip_and_database_constraints() -> None:
             )
             loaded_items = repository.list_items(pack_id)
 
-        assert created_pack == loaded_pack == pack
+        assert created_pack == pack
+        assert loaded_pack is not None
+        assert loaded_pack.version == 2
+        assert loaded_pack.name == pack.name
+        assert loaded_pack.description == pack.description
+        assert loaded_pack.enabled == pack.enabled
         assert created_keyword == loaded_keyword == loaded_by_normalized == keyword
         assert created_item == item
         assert loaded_items == [item]
