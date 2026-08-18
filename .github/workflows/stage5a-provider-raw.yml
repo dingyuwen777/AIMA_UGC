@@ -22,7 +22,7 @@ on:
       - "scripts/quality/**"
       - "tests/unit/collection/**"
       - "tests/unit/analysis/**"
-      - "tests/unit/platform/test_excel_export.py"
+      - "tests/unit/platform/**"
       - "tests/integration/collection/**"
       - "tests/contracts/test_provider_v1.py"
       - ".github/workflows/stage5a-provider-raw.yml"
@@ -47,7 +47,7 @@ on:
       - "scripts/quality/**"
       - "tests/unit/collection/**"
       - "tests/unit/analysis/**"
-      - "tests/unit/platform/test_excel_export.py"
+      - "tests/unit/platform/**"
       - "tests/integration/collection/**"
       - "tests/contracts/test_provider_v1.py"
       - ".github/workflows/stage5a-provider-raw.yml"
@@ -84,9 +84,10 @@ jobs:
           uv run pytest \
             tests/unit/collection/test_imports_excel.py \
             tests/unit/collection/test_imports_test_export.py \
+            tests/unit/collection/test_p1g_imports_run_all.py \
             tests/unit/collection/test_tikhub_test_debug.py \
             tests/unit/analysis \
-            tests/unit/platform/test_excel_export.py \
+            tests/unit/platform \
             -q
 
       - name: P1 lint and type gates
@@ -104,9 +105,10 @@ jobs:
             backend/src/aima_ugc/platform/export \
             tests/unit/collection/test_imports_excel.py \
             tests/unit/collection/test_imports_test_export.py \
+            tests/unit/collection/test_p1g_imports_run_all.py \
             tests/unit/collection/test_tikhub_test_debug.py \
             tests/unit/analysis \
-            tests/unit/platform/test_excel_export.py
+            tests/unit/platform
           uv run ruff check \
             backend/src/aima_ugc/contracts/analysis \
             backend/src/aima_ugc/contracts/export \
@@ -118,9 +120,10 @@ jobs:
             backend/src/aima_ugc/platform/export \
             tests/unit/collection/test_imports_excel.py \
             tests/unit/collection/test_imports_test_export.py \
+            tests/unit/collection/test_p1g_imports_run_all.py \
             tests/unit/collection/test_tikhub_test_debug.py \
             tests/unit/analysis \
-            tests/unit/platform/test_excel_export.py
+            tests/unit/platform
           uv run mypy \
             backend/src/aima_ugc/contracts/analysis \
             backend/src/aima_ugc/contracts/export \
