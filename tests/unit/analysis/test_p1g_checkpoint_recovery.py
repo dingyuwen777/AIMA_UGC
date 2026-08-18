@@ -41,8 +41,8 @@ def _record() -> UnifiedContentRecordV1:
     )
 
 
-def _valid_response() -> str:
-    taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
+def _valid_response(loader: PromptTaxonomyLoader | None = None) -> str:
+    taxonomy = (loader or PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)).load()
     primary = taxonomy.primary_labels[0]
     return json.dumps(
         {
@@ -111,3 +111,56 @@ def test_p1g_recovers_successful_checkpoint_without_second_llm_call(
     assert second_fake.calls == []
     checkpoints = analysis_dir / "checkpoints.jsonl"
     assert len(checkpoints.read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_p1g_does_not_recover_checkpoint_from_different_prompt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    input_path = tmp_path / "deduplicated" / "contents.jsonl"
+    analysis_dir = tmp_path / "analysis"
+    input_path.parent.mkdir(parents=True)
+    input_path.write_text(_record().model_dump_json() + "\n", encoding="utf-8")
+
+    first_loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
+    first_service = ContentLabelingService(
+        prompt_loader=first_loader,
+        llm=FakeContentLabelingLLM(responses=[_valid_response(first_loader)]),
+    )
+
+    def fail_replace(source: str | bytes | Path, target: str | bytes | Path) -> None:
+        raise OSError("replace failed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr("aima_ugc.modules.analysis.offline_labeling.os.replace", fail_replace)
+        with pytest.raises(OSError, match="replace failed"):
+            label_unified_content_jsonl(
+                input_path=input_path,
+                analysis_dir=analysis_dir,
+                service=first_service,
+                max_validation_retries=0,
+                batch_size=1,
+            )
+
+    changed_prompt = tmp_path / "content_labeling_changed.md"
+    changed_prompt.write_text(
+        CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8") + "\n<!-- P1G prompt revision -->\n",
+        encoding="utf-8",
+    )
+    second_loader = PromptTaxonomyLoader(changed_prompt)
+    second_fake = FakeContentLabelingLLM(responses=[_valid_response(second_loader)])
+    summary = label_unified_content_jsonl(
+        input_path=input_path,
+        analysis_dir=analysis_dir,
+        service=ContentLabelingService(prompt_loader=second_loader, llm=second_fake),
+        max_validation_retries=0,
+        batch_size=1,
+    )
+
+    rewritten = UnifiedContentRecordV1.model_validate_json(input_path.read_bytes())
+    assert rewritten.analysis is not None
+    assert rewritten.analysis.prompt_sha256 == second_loader.load().prompt_sha256
+    assert summary.rows_recovered == 0
+    assert summary.rows_succeeded == 1
+    assert summary.llm_attempts == 1
+    assert len(second_fake.calls) == 1
