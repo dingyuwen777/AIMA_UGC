@@ -22,7 +22,8 @@ on:
       - "scripts/quality/**"
       - "tests/unit/collection/**"
       - "tests/unit/analysis/**"
-      - "tests/unit/platform/**"
+      - "tests/unit/platform/test_excel_export.py"
+      - "tests/unit/platform/test_p1g_labeled_excel.py"
       - "tests/integration/collection/**"
       - "tests/contracts/test_provider_v1.py"
       - ".github/workflows/stage5a-provider-raw.yml"
@@ -47,7 +48,8 @@ on:
       - "scripts/quality/**"
       - "tests/unit/collection/**"
       - "tests/unit/analysis/**"
-      - "tests/unit/platform/**"
+      - "tests/unit/platform/test_excel_export.py"
+      - "tests/unit/platform/test_p1g_labeled_excel.py"
       - "tests/integration/collection/**"
       - "tests/contracts/test_provider_v1.py"
       - ".github/workflows/stage5a-provider-raw.yml"
@@ -87,7 +89,8 @@ jobs:
             tests/unit/collection/test_p1g_imports_run_all.py \
             tests/unit/collection/test_tikhub_test_debug.py \
             tests/unit/analysis \
-            tests/unit/platform \
+            tests/unit/platform/test_excel_export.py \
+            tests/unit/platform/test_p1g_labeled_excel.py \
             -q
 
       - name: P1 lint and type gates
@@ -108,7 +111,8 @@ jobs:
             tests/unit/collection/test_p1g_imports_run_all.py \
             tests/unit/collection/test_tikhub_test_debug.py \
             tests/unit/analysis \
-            tests/unit/platform
+            tests/unit/platform/test_excel_export.py \
+            tests/unit/platform/test_p1g_labeled_excel.py
           uv run ruff check \
             backend/src/aima_ugc/contracts/analysis \
             backend/src/aima_ugc/contracts/export \
@@ -123,7 +127,8 @@ jobs:
             tests/unit/collection/test_p1g_imports_run_all.py \
             tests/unit/collection/test_tikhub_test_debug.py \
             tests/unit/analysis \
-            tests/unit/platform
+            tests/unit/platform/test_excel_export.py \
+            tests/unit/platform/test_p1g_labeled_excel.py
           uv run mypy \
             backend/src/aima_ugc/contracts/analysis \
             backend/src/aima_ugc/contracts/export \
