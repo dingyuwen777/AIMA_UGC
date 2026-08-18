@@ -20,14 +20,10 @@ from aima_ugc.platform.database.metadata import metadata
 
 
 def _source_columns() -> tuple[Column, Column, Column]:
+    """来源由 Attempt+Raw 复合 FK 统一约束，避免两个冗余单列来源 FK。"""
     return (
-        Column(
-            "provider_attempt_id",
-            Uuid(),
-            ForeignKey("provider_request_attempts.id"),
-            nullable=False,
-        ),
-        Column("raw_artifact_id", Uuid(), ForeignKey("artifacts.id"), nullable=False),
+        Column("provider_attempt_id", Uuid(), nullable=False),
+        Column("raw_artifact_id", Uuid(), nullable=False),
         Column("observed_at", DateTime(timezone=True), nullable=False),
     )
 
@@ -226,19 +222,12 @@ comment_thread_coverage_observations_table = Table(
     Column("id", Uuid(), primary_key=True),
     Column("content_id", Uuid(), ForeignKey("contents.id"), nullable=False),
     Column("root_comment_id", Text(), nullable=False),
-    Column(
-        "provider_attempt_id",
-        Uuid(),
-        ForeignKey("provider_request_attempts.id"),
-        nullable=False,
-    ),
-    Column("raw_artifact_id", Uuid(), ForeignKey("artifacts.id"), nullable=False),
+    *_source_columns(),
     Column("coverage", Text(), nullable=False),
     Column("reported_total", BigInteger()),
     Column("captured_count", BigInteger(), nullable=False),
     Column("target_count", BigInteger()),
     Column("stop_reason", Text(), nullable=False),
-    Column("observed_at", DateTime(timezone=True), nullable=False),
     UniqueConstraint(
         "content_id",
         "root_comment_id",
@@ -246,10 +235,7 @@ comment_thread_coverage_observations_table = Table(
         "raw_artifact_id",
         name="uq_comment_thread_coverage_source",
     ),
-    CheckConstraint(
-        "char_length(root_comment_id) > 0",
-        name="root_comment_id_nonempty",
-    ),
+    CheckConstraint("char_length(root_comment_id) > 0", name="root_id_nonempty"),
     CheckConstraint(
         "coverage in ('complete','partial','not_requested','unavailable')",
         name="coverage_allowed",
