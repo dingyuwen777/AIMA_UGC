@@ -1,7 +1,7 @@
 """AIMA_UGC Alembic 环境。"""
 
 from alembic import context
-from sqlalchemy import Connection, inspect, text
+from sqlalchemy import Connection, text
 
 from aima_ugc.database_schema import metadata
 from aima_ugc.platform.config import load_settings
@@ -10,11 +10,14 @@ from aima_ugc.platform.database import DatabaseRuntime
 
 def _assert_no_unresolved_legacy_budget_state(connection: Connection) -> None:
     """旧 Budget 表仍有未决预留时拒绝 Migration，避免 0015 静默销毁状态。"""
-    if "provider_budget_reservations" not in inspect(connection).get_table_names():
+    table_exists = connection.scalar(
+        text("SELECT to_regclass('public.provider_budget_reservations') IS NOT NULL")
+    )
+    if not table_exists:
         return
     unresolved = connection.scalar(
         text(
-            "SELECT count(*) FROM provider_budget_reservations "
+            "SELECT count(*) FROM public.provider_budget_reservations "
             "WHERE status IN ('reserved', 'unknown')"
         )
     )
@@ -30,9 +33,9 @@ def run_migrations_online() -> None:
     runtime = DatabaseRuntime(load_settings())
     try:
         with runtime.engine.connect() as connection:
-            # inspect()/SELECT 会触发 SQLAlchemy autobegin。必须先在独立短事务里
-            # 提交预检，再让 Alembic 自己创建并提交 Migration transaction；否则
-            # upgrade 会落在未提交的外层事务里，并在连接关闭时被整体回滚。
+            # 预检必须在独立短事务里提交，再让 Alembic 自己创建 Migration
+            # transaction。使用 PostgreSQL to_regclass 直接读取实时关系状态，避免
+            # 旧 revision 往返时反射结果与当前 DDL 状态脱节。
             with connection.begin():
                 _assert_no_unresolved_legacy_budget_state(connection)
 
