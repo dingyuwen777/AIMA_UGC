@@ -1,8 +1,8 @@
 # Analysis 模块
 
-> 当前阶段：P1A—P1F 已闭环；下一最小 P1 单元为 P1G。P1G 未完成前，不把 checkpoint 自动恢复、`run_all()` 或最终 labeled Excel 串联描述为已实现。
+> 当前阶段：P1A—P1G 已闭环；下一最小 P1 单元为 P1H。P1H 未完成前，不把 90k 性能、真实模型付费小样或 P1 最终收口描述为已完成。
 
-`aima_ugc.modules.analysis` 保存平台无关的内容处理与 AI 分析业务能力。当前已建立 Prompt/Taxonomy 运行时加载、本地 Validator、Analysis Service/Port、Fake、真实 OpenAI-compatible Adapter 的业务接线，以及离线 JSONL checkpoint/attempt/failed 审计和成功 Analysis 原子回写。
+`aima_ugc.modules.analysis` 保存平台无关的内容处理与 AI 分析业务能力。当前已建立 Prompt/Taxonomy 运行时加载、本地 Validator、Analysis Service/Port、Fake、真实 OpenAI-compatible Adapter 的业务接线，以及离线 JSONL checkpoint/attempt/failed 审计、成功 Analysis 原子回写和 checkpoint 崩溃恢复。
 
 ## 1. 边界与业务事实源
 
@@ -27,7 +27,7 @@ P1 第一版不接数据库。AI 只读取并回写同一个：
 deduplicated/contents.jsonl
 ```
 
-`analysis/checkpoints.jsonl`、`attempts.jsonl`、`failed.jsonl` 是恢复/费用安全/审计材料，不是第二业务事实源；最终业务消费者仍应读取回写后的 `deduplicated/contents.jsonl`。
+`analysis/checkpoints.jsonl`、`attempts.jsonl`、`failed.jsonl` 是恢复/费用安全/审计材料，不是第二业务事实源；最终业务消费者和最终 Excel 都读取回写后的 `deduplicated/contents.jsonl`。
 
 ## 2. Prompt / Taxonomy 唯一事实源
 
@@ -156,9 +156,9 @@ POST <base_url>/chat/completions
 - 可配置 JSON mode；即使启用也仍执行本地 Validator；
 - Provider 返回标准 token usage 时记录 input/output tokens；通用 Adapter 不猜测价格，所以没有明确费用字段时 `cost_amount/cost_currency` 保持空。
 
-P1F 没有新增 OpenAI SDK，也没有新增网络重试库；复用锁文件中的 `httpx`。
+没有新增 OpenAI SDK，也没有新增网络重试库；复用锁文件中的 `httpx`。
 
-## 7. 离线 JSONL 打标、attempt 与原子回写
+## 7. 离线 JSONL 打标、checkpoint 恢复与原子回写
 
 生产入口：
 
@@ -172,7 +172,7 @@ label_unified_content_jsonl(...)
 deduplicated/contents.jsonl
 ```
 
-每批调用正式 `ContentLabelingService`。成功结果通过本地 Validator 后依次执行：
+成功结果通过本地 Validator 后依次执行：
 
 ```text
 写 analysis/checkpoints.jsonl
@@ -182,7 +182,21 @@ deduplicated/contents.jsonl
 → os.replace 原子替换 deduplicated/contents.jsonl
 ```
 
-如果最终替换失败，临时业务文件会清理，原 `deduplicated/contents.jsonl` 不被破坏；已落盘 checkpoint 保留，供后续恢复/审计使用。
+如果最终替换失败，临时业务文件会清理，原 `deduplicated/contents.jsonl` 不被破坏；已落盘 checkpoint 保留。
+
+P1G 建立跨进程崩溃恢复：启动下一次打标时读取成功 checkpoint，但只有同时满足以下条件才允许恢复并跳过再次模型调用：
+
+```text
+platform 相同
+external_content_id 相同
+最小模型输入 input_hash 相同
+prompt_sha256 等于当前完整 Prompt
+ taxonomy_sha256 等于当前 Taxonomy
+```
+
+其中 `input_hash` 仍只由允许发送给模型的 `title`、`text`、`author.display_name` 计算。Prompt 或 Taxonomy 发生任何不兼容变化时，旧 checkpoint 仍保留为历史审计，但不会被恢复；该内容按当前规则正常重新调用模型。这样既避免已经成功且规则未变化的 item 重复付费，也不会把旧规则的标签当作当前成功结果。
+
+恢复成功的记录直接把 checkpoint 中已验证的 `ContentLabelAnalysisV1` 写入业务临时 JSONL，再参与同一次原子 `os.replace`；checkpoint 本身始终不是业务事实源。`OfflineContentLabelingSummary.rows_recovered` 用于区分本次恢复数量和本次新模型成功数量。
 
 审计文件：
 
@@ -192,31 +206,11 @@ analysis/attempts.jsonl
 analysis/failed.jsonl
 ```
 
-`attempts.jsonl` 每次模型 attempt 记录：
-
-```text
-attempt_no
-item_nos
-validation_error_codes
-model_provider
-model
-prompt_sha256
-taxonomy_sha256
-started_at
-completed_at
-input_tokens / output_tokens（可获得时）
-cost_amount / cost_currency（可获得时）
-```
-
-并保存安全的 item 配对身份与 `input_hash`，用于排查同一批次到底调用了哪些记录。
-
-`checkpoints.jsonl` 只保存已经通过 Validator 的成功 Analysis；`failed.jsonl` 显式记录 `analysis_status=failed` 与最终校验错误代码。失败 item 不会被猜测填入业务 Analysis。
-
-当前 P1F 会跳过业务 JSONL 中已经存在成功 `analysis` 的记录；**利用 checkpoint 自动恢复“checkpoint 已写但业务 JSONL 尚未发布”等崩溃场景属于 P1G**，当前不要把 checkpoint 文件手工当成第二业务事实源回读。
+`attempts.jsonl` 每次模型 attempt 记录 attempt_no、item_nos、validation_error_codes、model/provider、Prompt/Taxonomy Hash、时间和可获得的 token/费用；`checkpoints.jsonl` 只保存已通过 Validator 的成功 Analysis；`failed.jsonl` 显式记录 `analysis_status=failed` 与最终校验错误代码。失败 item 不会被猜测填入业务 Analysis。
 
 ## 8. Fake、调试与费用
 
-`FakeContentLabelingLLM` 不访问网络、不产生真实模型费用，用预设原始响应驱动正式 Service 与 Validator。它适合验证非法 JSON、字段错误、item 配对错误、未知标签、父子错配、数组/空标签、Validation Retry 次数以及同批成功 item 不重复调用。
+`FakeContentLabelingLLM` 不访问网络、不产生真实模型费用，用预设原始响应驱动正式 Service 与 Validator。它适合验证非法 JSON、字段错误、item 配对错误、未知标签、父子错配、数组/空标签、Validation Retry、同批部分成功，以及 P1G 的 checkpoint 恢复与旧 Prompt checkpoint 失效行为。
 
 真实模型调试优先查看：
 
@@ -226,37 +220,18 @@ analysis/checkpoints.jsonl
 analysis/failed.jsonl
 ```
 
-再核对对应 attempt 的：
+再核对 `validation_error_codes`、`prompt_sha256`、`taxonomy_sha256`、`model_provider` 和 `model`。不要通过放宽 Validator、模糊匹配或自动改标签制造“成功”。Validation Retry 会产生额外真实模型调用和费用；checkpoint 恢复只复用与当前输入和当前规则完全匹配的成功结果。
 
-```text
-validation_error_codes
-prompt_sha256
-taxonomy_sha256
-model_provider
-model
-```
+## 9. P1G 与后续边界
 
-不要通过放宽 Validator、模糊匹配或自动改标签制造“成功”。Validation Retry 会产生额外真实模型调用和费用；`max_validation_retries` 只是 Validation Retry 上限，不代表网络重试次数。
+P1G 已在 P1F 基础上补齐：
 
-## 9. P1F 与后续边界
+- checkpoint 跨进程崩溃恢复，成功恢复不再次调用模型；
+- 恢复同时绑定最小输入 Hash、当前 `prompt_sha256` 和当前 `taxonomy_sha256`；
+- `imports_test.run_all()` 固定串联 convert → filter → deduplicate → label → final Excel；
+- `run_summary.json` 原子写出；
+- 最终 labeled Excel 只读取回写后的同一 `deduplicated/contents.jsonl`；
+- Shared Exporter 正确投影 `record.analysis` 到现有 `UnifiedDataExcelV1` 分析列；
+- `export_raw_excel()` 继续只是人工旁路，不进入默认 `run_all()`。
 
-P1F 已实现：
-
-- 真实 OpenAI-compatible LLM Adapter；
-- `label_sentiment()` 的真实 Adapter 接线与显式费用开关；
-- 最小业务输入；
-- 可配置 Validation Retry；
-- attempt/checkpoint/failed 审计；
-- 成功 Analysis 原子回写同一 `deduplicated/contents.jsonl`；
-- 无网络 Fake 与 HTTP Mock 自动测试。
-
-P1F **未实现也不提前实现**：
-
-- `run_all()` 完整串联；
-- 从 checkpoint 自动恢复中断并保证跨进程重启不重复成功模型调用；
-- `run_summary.json`；
-- 最终 `labeled_data.xlsx` 串联；
-- 90k 性能验证；
-- 真实模型付费小样。
-
-前三项和最终同源 Excel 串联属于 P1G；90k 与真实模型小样属于 P1H。
+P1G **没有进入 P1H**：尚未执行 90k 性能基准、真实付费模型小样、真实 token/费用核验或 P1 最终归档。
