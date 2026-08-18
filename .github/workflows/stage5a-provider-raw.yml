@@ -7,17 +7,21 @@ on:
     paths:
       - "backend/src/aima_ugc/contracts/provider/**"
       - "backend/src/aima_ugc/contracts/analysis/**"
+      - "backend/src/aima_ugc/contracts/export/**"
       - "backend/src/aima_ugc/modules/collection/**"
       - "backend/src/aima_ugc/modules/analysis/**"
       - "backend/src/aima_ugc/adapters/providers/**"
+      - "backend/src/aima_ugc/platform/export/**"
       - "backend/src/aima_ugc/operations/storage/**"
       - "backend/src/aima_ugc/adapters/storage/**"
       - "contracts/provider/**"
       - "contracts/analysis/**"
+      - "contracts/export/**"
       - "scripts/contracts/**"
       - "scripts/quality/**"
       - "tests/unit/collection/**"
       - "tests/unit/analysis/**"
+      - "tests/unit/platform/test_excel_export.py"
       - "tests/integration/collection/**"
       - "tests/contracts/test_provider_v1.py"
       - ".github/workflows/stage5a-provider-raw.yml"
@@ -27,17 +31,21 @@ on:
     paths:
       - "backend/src/aima_ugc/contracts/provider/**"
       - "backend/src/aima_ugc/contracts/analysis/**"
+      - "backend/src/aima_ugc/contracts/export/**"
       - "backend/src/aima_ugc/modules/collection/**"
       - "backend/src/aima_ugc/modules/analysis/**"
       - "backend/src/aima_ugc/adapters/providers/**"
+      - "backend/src/aima_ugc/platform/export/**"
       - "backend/src/aima_ugc/operations/storage/**"
       - "backend/src/aima_ugc/adapters/storage/**"
       - "contracts/provider/**"
       - "contracts/analysis/**"
+      - "contracts/export/**"
       - "scripts/contracts/**"
       - "scripts/quality/**"
       - "tests/unit/collection/**"
       - "tests/unit/analysis/**"
+      - "tests/unit/platform/test_excel_export.py"
       - "tests/integration/collection/**"
       - "tests/contracts/test_provider_v1.py"
       - ".github/workflows/stage5a-provider-raw.yml"
@@ -73,7 +81,10 @@ jobs:
           set -euo pipefail
           uv run pytest \
             tests/unit/collection/test_imports_excel.py \
+            tests/unit/collection/test_imports_test_export.py \
+            tests/unit/collection/test_tikhub_test_debug.py \
             tests/unit/analysis/test_offline_content_processing.py \
+            tests/unit/platform/test_excel_export.py \
             -q
 
       - name: P1 lint and type gates
@@ -82,35 +93,51 @@ jobs:
           set -euo pipefail
           uv run ruff format --check \
             backend/src/aima_ugc/contracts/analysis \
+            backend/src/aima_ugc/contracts/export \
             backend/src/aima_ugc/modules/analysis \
             backend/src/aima_ugc/adapters/providers/imports \
             backend/src/aima_ugc/adapters/providers/imports_test \
+            backend/src/aima_ugc/adapters/providers/tikhub_test/operations/runner.py \
+            backend/src/aima_ugc/platform/export \
             tests/unit/collection/test_imports_excel.py \
-            tests/unit/analysis/test_offline_content_processing.py
+            tests/unit/collection/test_imports_test_export.py \
+            tests/unit/collection/test_tikhub_test_debug.py \
+            tests/unit/analysis/test_offline_content_processing.py \
+            tests/unit/platform/test_excel_export.py
           uv run ruff check \
             backend/src/aima_ugc/contracts/analysis \
+            backend/src/aima_ugc/contracts/export \
             backend/src/aima_ugc/modules/analysis \
             backend/src/aima_ugc/adapters/providers/imports \
             backend/src/aima_ugc/adapters/providers/imports_test \
+            backend/src/aima_ugc/adapters/providers/tikhub_test/operations/runner.py \
+            backend/src/aima_ugc/platform/export \
             tests/unit/collection/test_imports_excel.py \
-            tests/unit/analysis/test_offline_content_processing.py
+            tests/unit/collection/test_imports_test_export.py \
+            tests/unit/collection/test_tikhub_test_debug.py \
+            tests/unit/analysis/test_offline_content_processing.py \
+            tests/unit/platform/test_excel_export.py
           uv run mypy \
             backend/src/aima_ugc/contracts/analysis \
+            backend/src/aima_ugc/contracts/export \
             backend/src/aima_ugc/modules/analysis \
             backend/src/aima_ugc/adapters/providers/imports \
-            backend/src/aima_ugc/adapters/providers/imports_test
+            backend/src/aima_ugc/adapters/providers/imports_test \
+            backend/src/aima_ugc/adapters/providers/tikhub_test/operations/runner.py \
+            backend/src/aima_ugc/platform/export
 
-      - name: P1 Analysis Contract drift
+      - name: P1 Analysis and Export Contract drift
         shell: bash
         run: |
           set -euo pipefail
           uv run python scripts/contracts/generate.py
-          git diff --exit-code -- contracts/analysis
-          UNTRACKED="$(git ls-files --others --exclude-standard -- contracts/analysis)"
+          git diff --exit-code -- contracts/analysis contracts/export
+          UNTRACKED="$(git ls-files --others --exclude-standard -- contracts/analysis contracts/export)"
           if [[ -n "${UNTRACKED}" ]]; then
-            echo "ANALYSIS_CONTRACT_UNTRACKED: ${UNTRACKED}"
+            echo "P1_CONTRACT_UNTRACKED: ${UNTRACKED}"
             exit 1
           fi
+          test -f contracts/export/unified-data-excel.v1.schema.json
           uv run python scripts/contracts/generate.py --check
 
       - name: P1 architecture gate
