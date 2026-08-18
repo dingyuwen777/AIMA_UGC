@@ -331,10 +331,11 @@ def _load_checkpoint_index(
             platform = payload.get("platform")
             external_content_id = payload.get("external_content_id")
             input_hash = payload.get("input_hash")
-            if not all(
-                isinstance(value, str) and value
-                for value in (platform, external_content_id, input_hash)
-            ):
+            if not isinstance(platform, str) or not platform:
+                raise ValueError(f"{path}: 第 {line_number} 行 checkpoint 身份字段不合法")
+            if not isinstance(external_content_id, str) or not external_content_id:
+                raise ValueError(f"{path}: 第 {line_number} 行 checkpoint 身份字段不合法")
+            if not isinstance(input_hash, str) or not input_hash:
                 raise ValueError(f"{path}: 第 {line_number} 行 checkpoint 身份字段不合法")
             try:
                 analysis = ContentLabelAnalysisV1.model_validate(payload.get("analysis"))
