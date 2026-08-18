@@ -13,8 +13,9 @@ class _ExportBaseModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-# Excel 展示所需的分析列投影；具体标签闭集仍由后续 Prompt Taxonomy 管理。
 class UnifiedDataExcelAnalysisV1(_ExportBaseModel):
+    """Excel 展示所需的分析列投影；不定义具体标签闭集。"""
+
     sentiment: str = Field(min_length=1, max_length=128)
     primary_label: str = Field(min_length=1, max_length=256)
     secondary_label: str = Field(min_length=1, max_length=256)
@@ -23,8 +24,9 @@ class UnifiedDataExcelAnalysisV1(_ExportBaseModel):
     taxonomy_version: str | None = Field(default=None, max_length=256)
 
 
-# 统一数据 Excel 的单条内容投影，不反向扩展 CanonicalContentV1。
 class UnifiedDataExcelContentV1(_ExportBaseModel):
+    """统一数据 Excel 的单条内容投影。"""
+
     platform: str = Field(min_length=1, max_length=64)
     external_content_id: str = Field(min_length=1, max_length=512)
     source_item_id: str | None = Field(default=None, max_length=512)
@@ -55,8 +57,9 @@ class UnifiedDataExcelContentV1(_ExportBaseModel):
     coverage: str | None = Field(default=None, max_length=1024)
 
 
-# 统一数据 Excel 的单条评论投影。
 class UnifiedDataExcelCommentV1(_ExportBaseModel):
+    """统一数据 Excel 的单条评论投影。"""
+
     platform: str = Field(min_length=1, max_length=64)
     external_content_id: str = Field(min_length=1, max_length=512)
     level: str = Field(min_length=1, max_length=64)
@@ -72,8 +75,9 @@ class UnifiedDataExcelCommentV1(_ExportBaseModel):
     raw_locator: str | None = Field(default=None, max_length=4096)
 
 
-# 一个内容投影及其稳定关联评论的统一 Excel 输入契约。
 class UnifiedDataExcelV1(_ExportBaseModel):
+    """一个内容区块及其稳定关联评论的统一 Excel 输入契约。"""
+
     schema_version: Literal["unified-data-excel.v1"] = "unified-data-excel.v1"
     content: UnifiedDataExcelContentV1
     comments: tuple[UnifiedDataExcelCommentV1, ...] = ()
