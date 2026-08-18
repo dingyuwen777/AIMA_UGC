@@ -48,7 +48,11 @@ _SENSITIVE_SUFFIXES = (
     "_token",
 )
 _BEARER_PATTERN = re.compile(r"(?i)\bbearer\s+[^\s,;]+")
-_INLINE_SECRET_PATTERN = re.compile(r"(?i)\b(api[_-]?key|password|secret|token)=([^&\s]+)")
+_INLINE_SECRET_PATTERN = re.compile(
+    r"(?i)\b("
+    r"[a-z0-9_-]*(?:api[_-]?key|authorization|cookie|credential|password|secret|token)"
+    r")=([^&\s]+)"
+)
 
 
 class ProviderBaseModel(BaseModel):
@@ -80,7 +84,10 @@ def assert_secret_free(value: object, *, path: str = "request") -> None:
 
 def _redact_text(value: str) -> str:
     redacted = _BEARER_PATTERN.sub(REDACTED, value)
-    return _INLINE_SECRET_PATTERN.sub(lambda match: f"{match.group(1)}={REDACTED}", redacted)
+    return _INLINE_SECRET_PATTERN.sub(
+        lambda match: f"{match.group(1)}={REDACTED}",
+        redacted,
+    )
 
 
 def redact_json(value: Any) -> JsonValue:
