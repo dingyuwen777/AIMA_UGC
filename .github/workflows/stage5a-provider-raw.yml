@@ -65,7 +65,7 @@ jobs:
           set -euo pipefail
           uv run pytest tests/unit/collection/test_imports_excel.py -q
 
-      - name: P1B quality gates
+      - name: P1B lint and type gates
         shell: bash
         run: |
           set -euo pipefail
@@ -80,7 +80,18 @@ jobs:
           uv run mypy \
             backend/src/aima_ugc/adapters/providers/imports \
             backend/src/aima_ugc/adapters/providers/imports_test
+
+      - name: P1B architecture gate
+        shell: bash
+        run: |
+          set -euo pipefail
           uv run python scripts/quality/check_architecture.py
+
+      - name: P1B Secret and Docs gates
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
           uv run python scripts/quality/scan_secrets.py
           uv run python scripts/quality/check_docs.py
 
