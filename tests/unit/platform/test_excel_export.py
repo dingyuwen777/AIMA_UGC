@@ -234,7 +234,9 @@ def test_raw_and_labeled_exports_keep_same_schema(tmp_path: Path) -> None:
         assert raw_workbook.sheetnames == labeled_workbook.sheetnames == ["内容", "评论"]
         assert raw_headers == labeled_headers
 
-        raw_values = [cell.value for cell in next(raw_workbook["内容"].iter_rows(min_row=2, max_row=2))]
+        raw_values = [
+            cell.value for cell in next(raw_workbook["内容"].iter_rows(min_row=2, max_row=2))
+        ]
         labeled_values = [
             cell.value for cell in next(labeled_workbook["内容"].iter_rows(min_row=2, max_row=2))
         ]

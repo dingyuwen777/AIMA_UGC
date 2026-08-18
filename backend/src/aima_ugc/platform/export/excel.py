@@ -300,7 +300,10 @@ def _content_cells(
         (content.raw_locator, False, False),
         (content.coverage, False, False),
     )
-    return [_data_cell(sheet, value, text_id=text_id, hyperlink=link) for value, text_id, link in values]
+    return [
+        _data_cell(sheet, value, text_id=text_id, hyperlink=link)
+        for value, text_id, link in values
+    ]
 
 
 def _comment_cells(sheet: Any, comment: UnifiedDataExcelCommentV1) -> list[Cell]:
