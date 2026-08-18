@@ -224,30 +224,35 @@ output/
 
 ## 7. Excel 说明
 
-当前工作簿核心 Sheet 为 `内容与评论`：
+当前 TikHub 调试导出已经收口到统一 `UnifiedDataExcelV1` + 唯一共享 Exporter：
 
-- 一条帖子形成连续纵向区块；
-- 公共内容字段跨评论行合并；
-- 一级/二级评论各占一行；
-- 保留 comment/root/parent ID；
-- 外部 ID 按文本保存；
-- URL 可点击；
+```text
+CanonicalContentV1 / CanonicalCommentV1
+→ tikhub_test 只做统一导出投影
+→ aima_ugc.platform.export.excel
+→ <platform>_raw_data.xlsx
+```
+
+工作簿固定为两个 Sheet：
+
+- `内容`：每条内容一行，包含稳定内容 ID、内容/作者/指标、命中关键词、Provider、Raw 定位和评论覆盖状态；
+- `评论`：每条一级/二级评论一行，保留 content/comment/root/parent ID 和 Raw 定位。
+
+共享 Exporter 统一负责：
+
+- 外部 ID 按文本保存，避免 Excel 科学计数法破坏 ID；
+- HTTP(S) URL 生成可点击超链接；
 - 长文本换行；
-- 显示“命中关键词”和评论覆盖状态；
-- 防 Excel 公式注入；
-- 不使用粗黑边框。
+- Excel 公式注入防护；
+- 时间转换为北京时间可读格式；
+- write-only 流式写出；
+- 写出后重新打开检查 Sheet、表头、行数和关键 ID。
 
-完整 TikHub 原始响应仍以 `raw/*.json` 为事实，不把 Excel 当 Provider Raw 或数据库回灌格式。
+`tikhub_test` 不再维护自己的 Workbook 布局实现，原 `tikhub_test/core/excel.py` 已删除；通用 Excel 行为测试也归属共享导出模块。以后 `imports_test`、正式数据导出和 TikHub 调试都必须复用同一 Exporter，不允许再建立平行的内容+评论 Excel 生成逻辑。
 
-### 未来统一数据导出迁移门禁
+完整 TikHub 原始响应仍以 `raw/*.json` 为 Provider 事实，Canonical JSONL 仍是统一业务数据，不把 Excel 当 Provider Raw、数据库回灌格式或第二事实源。
 
-当前 `tikhub_test/excel.py` 是**阶段性基础数据 Excel 实现**。未来系统正式开发统一“帖子/评论基础数据 Excel 导出”后，必须按 [`docs/blueprint/13-统一数据Excel导出与调试复用.md`](../../../../../../docs/blueprint/13-统一数据Excel导出与调试复用.md) 收口：
-
-- 正式导出基于统一 Canonical/Aggregate 数据；
-- `tikhub_test` 改为直接调用共享 Exporter；
-- 删除本目录重复的 Excel 生成逻辑和只为它存在的临时显示模型；
-- 通用 Excel 测试迁移到共享模块；
-- 不允许长期维护两套内容+评论 Excel 导出器。
+统一导出设计门禁见 [`docs/blueprint/13-统一数据Excel导出与调试复用.md`](../../../../../../docs/blueprint/13-统一数据Excel导出与调试复用.md)。
 
 ## 8. 不使用命令行参数
 
