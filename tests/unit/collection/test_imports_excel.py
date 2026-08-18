@@ -213,3 +213,54 @@ def test_convert_rejects_missing_profile_headers(tmp_path: Path) -> None:
             profile_name="aima-monitoring-excel.v1",
             sheet_name="文章",
         )
+
+
+def test_convert_clears_previous_error_file_before_fatal_workbook_error(tmp_path: Path) -> None:
+    source = tmp_path / "source.xlsx"
+    output = tmp_path / "output" / "canonical" / "contents.jsonl"
+    _write_workbook(
+        source,
+        (
+            1,
+            "爱玛",
+            None,
+            "无稳定身份",
+            "正文",
+            "小红书",
+            None,
+            datetime(2026, 8, 18, 12, 31),
+            None,
+            "作者",
+            None,
+            None,
+            10,
+        ),
+    )
+
+    with pytest.raises(ExcelImportRejectedRowsError) as exc_info:
+        convert_excel_to_canonical_jsonl(
+            input_path=source,
+            output_path=output,
+            profile_name="aima-monitoring-excel.v1",
+            sheet_name="文章",
+        )
+    error_path = exc_info.value.summary.error_path
+    assert error_path.exists()
+
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "文章"
+    worksheet.append(("文章编号", "标题"))
+    worksheet.append(("SOURCE-001", "缺列"))
+    workbook.save(source)
+    workbook.close()
+
+    with pytest.raises(ValueError, match="缺少必需列"):
+        convert_excel_to_canonical_jsonl(
+            input_path=source,
+            output_path=output,
+            profile_name="aima-monitoring-excel.v1",
+            sheet_name="文章",
+        )
+
+    assert not error_path.exists()
