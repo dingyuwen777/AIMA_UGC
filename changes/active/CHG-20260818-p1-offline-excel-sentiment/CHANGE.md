@@ -306,7 +306,7 @@ P1D 建立了 Provider-neutral 的 `UnifiedDataExcelV1` 与唯一共享 Excel Ex
 - 共享 Exporter 使用 write-only Workbook，ID 强制文本、HTTP(S) 超链接、公式注入防护、北京时间展示，并在替换最终文件前重新打开检查 Sheet、表头、行数和关键 ID；
 - 没有引入 pandas、LLM、数据库、Migration 或 `run_all()`。
 
-### 7.1 TDD Red
+### 7.1 初始 TDD Red
 
 Red commit：`78810b47439745cc4c487b43d68a705c96ae4e2e`（`测试：锁定P1D统一Excel导出行为`）。
 
@@ -314,7 +314,7 @@ CI Run `32139833333` / Job `95719627231`：共享导出测试按预期因 `Modul
 
 ### 7.2 Green / Refactor
 
-代码与测试提交：
+核心实现与测试提交：
 
 - `d755ca3ed2cf60e0ba4ddf2baf366f7819312dad`：实现 P1D 统一 Excel 导出核心；
 - `551c38dc875019d82b39a4289792d7f77e5b7bc9`：修正测试按扁平 Export Contract 构造；
@@ -322,9 +322,19 @@ CI Run `32139833333` / Job `95719627231`：共享导出测试按预期因 `Modul
 - `b8b213882f7f31727b497d76d7aefcc434f8cc4e`：收窄 Excel 单元格类型，解决 mypy 边界；
 - `adb315fc020bbc437c10ff313eebcc131319e4b7`：同步 Export Schema 生成语义及 imports/tikhub_test README。
 
-最终 P1D 专项 CI：Run `32142588255` / Job `95728560740`。
+### 7.3 Review 回归 Red → Green
 
-实际命令与结果：
+代码质量 Review 发现：Workbook 已成功写入临时 `.tmp.xlsx` 后，如果“重新打开校验”阶段抛异常，旧实现会遗留临时文件。该问题不会发布最终目标文件，但会给人工调试/后续运行留下无意义中间产物，因此按 TDD 补回归并修复。
+
+回归 Red commit：`8afdf7777714f8c37fb7f51856b46c02724373a5`（`测试：覆盖P1D导出验证失败清理`）。
+
+Red Stage 5A Run `32143537815` / Job `95731685410`：目标测试退出码 1，`1 failed, 18 passed in 2.54s`；唯一失败为 `test_shared_exporter_cleans_temp_file_when_reopen_verification_fails`，断言 `.raw_data.tmp.xlsx` 不存在时失败，证明缺陷因正确原因复现。
+
+Green commit：`920c75c9117e0a4c4e2450b1d917e7df116dadf3`（`修复：清理P1D导出验证失败临时文件`）。实现仅把 post-save 验证与 `os.replace` 包进同一异常清理边界：失败时删除临时文件并原样重新抛出异常；最终目标在验证成功前仍不被替换。
+
+接口文档/Contract 同步 commit：`18f3a1a1941d331ccc5c6a3d7e65f58e2db522ca`（`契约：补齐P1D统一Excel接口文档`）。恢复 Export 公共 Pydantic Contract 的 PEP 257 docstring，并同步 `contracts/export/unified-data-excel.v1.schema.json` 的生成描述；字段、标签类型、Workbook Schema 均未改变。
+
+P1D 最新代码专项证据：Stage 5A Run `32143868628` / Job `95732774015`：
 
 ```text
 uv run pytest \
@@ -336,7 +346,7 @@ uv run pytest \
   -q
 ```
 
-结果：退出码 0，`18 passed in 2.72s`。
+结果：退出码 0，`19 passed in 2.78s`。
 
 ```text
 uv run ruff format --check <P1D paths>
@@ -352,13 +362,13 @@ git diff --exit-code -- contracts/analysis contracts/export
 uv run python scripts/contracts/generate.py --check
 ```
 
-结果：退出码 0；`Analysis` 与 `Export` Contract 已同步，`contracts/export/unified-data-excel.v1.schema.json` 无漂移。
+结果：退出码 0；Analysis 与 Export Contract 生成/固定文件一致。
 
 ```text
 uv run python scripts/quality/check_architecture.py
 ```
 
-结果：退出码 1；仍为本轮开始前已存在的 11 个 `ARCH001`：缺失 `backend/src/aima_ugc/operations/{collection,content,analysis,reporting,identity,risk,alert,keyword,scheduler,observability,worker}/`。P1D 新增 `contracts/export`、`platform/export` 或迁移后的 `tikhub_test` 没有新增 Architecture 违规。
+结果：退出码 1；仍只报告本轮开始前已存在的 11 个 `ARCH001`：缺失 `backend/src/aima_ugc/operations/config/settings.py`、`security/secrets.py`、`logging/formatter.py`、`database/runtime.py`、`database/metadata.py`、`storage/ports.py`、`storage/tables.py`、`jobs/models.py`、`jobs/registry.py`、`jobs/tables.py`、`jobs/worker.py`。P1D 新增 Export Contract/Exporter 或迁移后的 `tikhub_test` 没有新增 Architecture 报错。
 
 ```text
 uv run python scripts/quality/scan_secrets.py
@@ -367,34 +377,36 @@ uv run python scripts/quality/check_docs.py
 
 结果：退出码 0；Secret 与 Docs gate 均通过。
 
-### 7.3 两阶段 Review
+### 7.4 两阶段 Review
 
 需求符合性 Review：通过。
 
-- `d68e359...` → `adb315fc...` 的 P1D 差异只覆盖 Export Contract/Exporter、imports/tikhub_test 迁移、相关测试/门禁/README；
+- P1D 差异只覆盖 Export Contract/Exporter、imports/tikhub_test 迁移、相关测试/门禁/README/Blueprint 同步；
 - 删除旧 `tikhub_test/core/excel.py` 后只保留 `aima_ugc.platform.export.excel` 作为内容+评论 Excel 生成实现；
 - `imports_test.export_raw_excel()` 明确从 deduplicated JSONL 派生；
-- 没有进入 P1E，没有 Prompt/Taxonomy、LLM Adapter、数据库、Migration、依赖升级或 `run_all()` 变化；
-- 与并行 `douyin-detail-400` Change 同文件的 `tikhub_test/operations/runner.py` 仅替换 Excel 投影/写出，保留抖音 Detail HTTP 400 的既有降级语义。
+- 没有进入 P1E，没有 Prompt/Taxonomy Loader、LLM Adapter、数据库、Migration、依赖升级或 `run_all()` 变化；
+- 与并行 `douyin-detail-400` Change 同文件的 `tikhub_test/operations/runner.py` 仅替换 Excel 投影/写出，保留抖音 Detail HTTP 400 的既有降级语义；
+- 与并行北京时间 Change 共享的 `tikhub_test/README.md` 保留其北京时间展示语义，仅同步共享 Excel Exporter 的现状。
 
-代码质量 Review：通过 P1D 门禁。
+代码质量 Review：通过 P1D 专项目标门禁，并补齐验证失败临时文件清理回归。
 
-- write-only 输出和流式 Iterable 边界适合后续 90k 性能验证；
-- 输出先写临时 XLSX、重新打开验证后再 `os.replace`，目标文件不会在校验前被替换；
+- write-only 输出和流式 Iterable 边界适合后续 P1H 90k 性能验证；
+- 输出先写临时 XLSX、重新打开验证后再 `os.replace`，验证/替换异常会清理临时文件；
 - ID 文本化、公式注入防护、URL scheme 限制、北京时间展示均有专项测试；
 - raw/labeled 相同 Schema 的分析列空值/填值行为有专项测试；
+- 公共 Export Contract 有 docstring，固定 Schema 由生成器维护；
 - 没有平行 Workbook 规则和无关重构。
 
 ## 8. 当前全仓 CI 基线
 
-P1D 代码/文档 head `adb315fc020bbc437c10ff313eebcc131319e4b7` 对应完整 CI Run `32142588229` 仍为失败，但失败签名均为本轮开始前已有基线：
+P1D 在代码专项门禁闭环后，全仓 CI 仍不是全绿；已核实失败签名来自 P1D 开始前已存在的 Stage 1—7 基线，而非 Export 新增逻辑：
 
-1. Stage 1 / Job `95728561071`：退出码 1。`scripts/contracts/generate.py` 已成功生成并声明 OpenAPI、Analysis、Canonical、Provider、Collection、Export 同步；随后固定 Collection 生成物仍发生既有 `ProviderPlatformCapabilityV1.schema_version` 漂移：提交值 `provider-platform-capability.v1`，当前代码生成值 `provider-operations-capability.v1`。P1D Export Schema 没有出现在该失败 diff 中。
-2. Stage 2 Platform / Job `95728561021`：退出码 2，测试收集时 `backend/src/aima_ugc/modules/content/tables.py:293` 访问不存在的 `contents_table.c.platform`，`1 error during collection`。
-3. Stage 3A Database / Job `95728561000`：退出码 2，同一 `contents_table.c.platform` 导致 `1 error during collection`。
-4. P1D 专项 Stage 5A 的唯一失败仍为上述 11 个既有 Architecture `ARCH001`；专项功能、Ruff、mypy、Export Contract、Secret、Docs 均已通过。
+1. Stage 1：固定 Collection 生成物仍发生既有 `ProviderPlatformCapabilityV1.schema_version` 漂移：提交值 `provider-platform-capability.v1`，当前代码生成值 `provider-operations-capability.v1`；P1D Export Schema 已通过自身生成/漂移门禁。
+2. Stage 2 Platform：测试收集时 `backend/src/aima_ugc/modules/content/tables.py:293` 访问不存在的 `contents_table.c.platform`，`AttributeError: platform`，1 个 collection error，退出码 2。
+3. Stage 3A Database：同一 `contents_table.c.platform` 问题导致 1 个 collection error，退出码 2。
+4. P1D 专项 Stage 5A 的唯一失败是上述 11 个既有 Architecture `ARCH001`；P1D 功能、Ruff、mypy、Export Contract、Secret、Docs 均通过。
 
-这些基线问题不在 P1D 范围内，本 Change 没有通过删除测试、降低门禁或修改无关实现来制造“全绿”。
+这些基线问题不在 P1D 范围内，本 Change 没有通过删除测试、降低门禁或修改无关实现来制造“全绿”。另一个 Active Change `CHG-20260818-stage1-stage7-comprehensive-corrective` 元数据声明负责 Stage 1—7 全面整改；本轮未覆盖或修改其范围。
 
 ## 9. 依赖、Migration、模型与费用
 
@@ -403,13 +415,12 @@ P1D 代码/文档 head `adb315fc020bbc437c10ff313eebcc131319e4b7` 对应完整 C
 - P1D 没有调用任何真实或 Fake LLM；
 - `Validation Retry` 尚未进入实现，因此重试次数为 0；
 - 模型 token/费用为 0；
-- P1D 回滚方式为按提交反向恢复 Export Contract/共享 Exporter/tikhub_test 迁移，不涉及数据库回滚。
+- P1D 回滚方式为按提交反向恢复 Export Contract/共享 Exporter/tikhub_test 迁移和本轮错误路径清理，不涉及数据库回滚。
 
 ## 10. Git / PR
 
-- `main` 基线（本轮 P1D 开始时）：`0dc666192f83fa9e55d5cbfffb19c09d31c5ecaf`；最终交付前重新核验当前 main；
+- `main` 基线：`0dc666192f83fa9e55d5cbfffb19c09d31c5ecaf`；最终交付前重新核验当前 main；
 - 功能分支：`feature/p1-offline-excel-sentiment`；
-- P1D 最新代码/文档提交：`adb315fc020bbc437c10ff313eebcc131319e4b7`；
 - Draft PR：#66；
-- 不自动合并、不直接推 main、不强制推送；
-- P1D 完成后下一最小单元为 P1E。
+- P1D 已闭环，当前下一最小单元为 P1E；
+- 不自动合并、不直接推 main、不强制推送。
