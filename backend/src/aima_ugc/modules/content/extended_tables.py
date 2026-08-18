@@ -103,7 +103,10 @@ content_mentions_table = Table(
     Column("display_text", Text()),
     *_source_columns(),
     CheckConstraint("position >= 0", name="position_nonnegative"),
-    CheckConstraint("jsonb_typeof(alternate_ids) = 'object'", name="alternate_ids_object"),
+    CheckConstraint(
+        "jsonb_typeof(alternate_ids) = 'object'",
+        name="alternate_ids_object",
+    ),
     info={"owner": "content"},
 )
 
@@ -121,9 +124,18 @@ content_locations_table = Table(
     Column("longitude", Float()),
     *_source_columns(),
     CheckConstraint("position >= 0", name="position_nonnegative"),
-    CheckConstraint("location_type in ('place','ip_region')", name="location_type_allowed"),
-    CheckConstraint("latitude is null or latitude between -90 and 90", name="latitude_range"),
-    CheckConstraint("longitude is null or longitude between -180 and 180", name="longitude_range"),
+    CheckConstraint(
+        "location_type in ('place','ip_region')",
+        name="location_type_allowed",
+    ),
+    CheckConstraint(
+        "latitude is null or latitude between -90 and 90",
+        name="latitude_range",
+    ),
+    CheckConstraint(
+        "longitude is null or longitude between -180 and 180",
+        name="longitude_range",
+    ),
     info={"owner": "content"},
 )
 
@@ -172,7 +184,10 @@ comment_mentions_table = Table(
     Column("display_text", Text()),
     *_source_columns(),
     CheckConstraint("position >= 0", name="position_nonnegative"),
-    CheckConstraint("jsonb_typeof(alternate_ids) = 'object'", name="alternate_ids_object"),
+    CheckConstraint(
+        "jsonb_typeof(alternate_ids) = 'object'",
+        name="alternate_ids_object",
+    ),
     info={"owner": "content"},
 )
 
@@ -190,9 +205,18 @@ comment_locations_table = Table(
     Column("longitude", Float()),
     *_source_columns(),
     CheckConstraint("position >= 0", name="position_nonnegative"),
-    CheckConstraint("location_type in ('place','ip_region')", name="location_type_allowed"),
-    CheckConstraint("latitude is null or latitude between -90 and 90", name="latitude_range"),
-    CheckConstraint("longitude is null or longitude between -180 and 180", name="longitude_range"),
+    CheckConstraint(
+        "location_type in ('place','ip_region')",
+        name="location_type_allowed",
+    ),
+    CheckConstraint(
+        "latitude is null or latitude between -90 and 90",
+        name="latitude_range",
+    ),
+    CheckConstraint(
+        "longitude is null or longitude between -180 and 180",
+        name="longitude_range",
+    ),
     info={"owner": "content"},
 )
 
@@ -202,7 +226,12 @@ comment_thread_coverage_observations_table = Table(
     Column("id", Uuid(), primary_key=True),
     Column("content_id", Uuid(), ForeignKey("contents.id"), nullable=False),
     Column("root_comment_id", Text(), nullable=False),
-    Column("provider_attempt_id", Uuid(), ForeignKey("provider_request_attempts.id"), nullable=False),
+    Column(
+        "provider_attempt_id",
+        Uuid(),
+        ForeignKey("provider_request_attempts.id"),
+        nullable=False,
+    ),
     Column("raw_artifact_id", Uuid(), ForeignKey("artifacts.id"), nullable=False),
     Column("coverage", Text(), nullable=False),
     Column("reported_total", BigInteger()),
@@ -217,14 +246,23 @@ comment_thread_coverage_observations_table = Table(
         "raw_artifact_id",
         name="uq_comment_thread_coverage_source",
     ),
-    CheckConstraint("char_length(root_comment_id) > 0", name="root_comment_id_nonempty"),
+    CheckConstraint(
+        "char_length(root_comment_id) > 0",
+        name="root_comment_id_nonempty",
+    ),
     CheckConstraint(
         "coverage in ('complete','partial','not_requested','unavailable')",
         name="coverage_allowed",
     ),
-    CheckConstraint("captured_count >= 0", name="captured_count_nonnegative"),
-    CheckConstraint("reported_total is null or reported_total >= 0", name="reported_total_nonnegative"),
-    CheckConstraint("target_count is null or target_count >= 0", name="target_count_nonnegative"),
+    CheckConstraint("captured_count >= 0", name="captured_nonneg"),
+    CheckConstraint(
+        "reported_total is null or reported_total >= 0",
+        name="reported_nonneg",
+    ),
+    CheckConstraint(
+        "target_count is null or target_count >= 0",
+        name="target_nonneg",
+    ),
     info={"owner": "content"},
 )
 
