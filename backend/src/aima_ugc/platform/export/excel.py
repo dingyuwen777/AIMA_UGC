@@ -257,10 +257,21 @@ def _iter_unified_content_jsonl(path: Path) -> Iterator[UnifiedDataExcelV1]:
                 raise ValueError(
                     f"{path}: 第 {line_number} 行不是合法 UnifiedContentRecordV1"
                 ) from exc
+            analysis = None
+            if record.analysis is not None:
+                analysis = UnifiedDataExcelAnalysisV1(
+                    sentiment=record.analysis.sentiment,
+                    primary_label=record.analysis.primary_label,
+                    secondary_label=record.analysis.secondary_label,
+                    model=record.analysis.model,
+                    prompt_version=record.analysis.prompt_version,
+                    taxonomy_version=record.analysis.taxonomy_sha256,
+                )
             yield UnifiedDataExcelV1(
                 content=project_canonical_content(
                     record.content,
                     matched_keywords=record.matched_keywords,
+                    analysis=analysis,
                 )
             )
 
@@ -307,7 +318,8 @@ def _content_cells(
         (content.coverage, False, False),
     )
     return [
-        _data_cell(sheet, value, text_id=text_id, hyperlink=link) for value, text_id, link in values
+        _data_cell(sheet, value, text_id=text_id, hyperlink=link)
+        for value, text_id, link in values
     ]
 
 
