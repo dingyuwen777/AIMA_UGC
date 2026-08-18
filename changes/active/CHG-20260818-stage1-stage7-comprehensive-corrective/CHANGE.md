@@ -174,7 +174,7 @@ data_changes: [collection_plans, collection_plan_decision_policies, collection_r
 - Docs：`uv run python scripts/quality/check_docs.py`
 - Contract：生成物/兼容检查使用仓库现有 CI 命令。
 - Alembic：`upgrade head`、`check`、`downgrade/upgrade` 及历史数据升级回归。
-- Frontend：保持当前 `npm ci`、lint/typecheck/test/build` 现有门禁。
+- Frontend：保持当前 `npm ci`、lint/typecheck/test/build 现有门禁。
 - GitHub Actions：最终 PR head 读取所有适用 workflow/job，failure/cancelled/timed_out/in_progress 均为 0。
 
 ## 新鲜证据
