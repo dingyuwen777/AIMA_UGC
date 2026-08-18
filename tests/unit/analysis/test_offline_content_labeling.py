@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-
 from aima_ugc.contracts.analysis import UnifiedContentRecordV1
 from aima_ugc.contracts.canonical import CanonicalContentV1, CanonicalSourceV1
 from aima_ugc.modules.analysis import (

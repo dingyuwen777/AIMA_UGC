@@ -4,8 +4,6 @@ import json
 
 import httpx
 import pytest
-from pydantic import SecretStr
-
 from aima_ugc.adapters.llm.openai_compatible import (
     OpenAICompatibleContentLabelingLLM,
     OpenAICompatibleLLMError,
@@ -14,6 +12,7 @@ from aima_ugc.modules.analysis.content_labeling import (
     ContentLabelingLLMRequest,
     ContentLabelingModelItem,
 )
+from pydantic import SecretStr
 
 
 def _request(*, previous_errors: tuple[str, ...] = ()) -> ContentLabelingLLMRequest:
