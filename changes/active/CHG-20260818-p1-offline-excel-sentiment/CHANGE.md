@@ -87,7 +87,7 @@ backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v1.md
 - [ ] P1H：90k 性能 + 真实模型小样 + Review/CI + 收口
 - [ ] P1 全部结束后归档 Change、删除 Blueprint 14，并恢复 README 到 Stage 8 正式导航
 
-**当前检查点：P1H 进行中。90k Windows 性能、P1H 专项测试与两阶段 Review 已取得新鲜证据；真实模型小样因 GitHub Actions 未配置 `AIMA_LLM_API_KEY` 与 `AIMA_LLM_MODEL` 而在请求前阻塞；整仓 CI 还被 11 个既有 `operations/...` Architecture 基线错误阻断。因此 P1H 尚未闭环，不归档 Change、不删除 Blueprint 14、不进入 Stage 8。**
+**当前检查点：P1H 进行中。90k Windows 性能、P1H 专项测试与两阶段 Review 已取得新鲜证据；真实模型小样因 GitHub Actions 未配置 `AIMA_LLM_API_KEY` 与 `AIMA_LLM_MODEL` 而在请求前阻塞；整仓 CI 当前还存在 Stage 1—7/main 基线完整性问题，已直接确认包括 Architecture 路径缺失、Collection Contract drift 以及 Content 表 `operations/platform` 不一致导致的导入/Alembic 失败。因此 P1H 尚未闭环，不归档 Change、不删除 Blueprint 14、不进入 Stage 8。**
 
 ## 4. P1A—P1F 闭环摘要
 
@@ -200,7 +200,7 @@ P1H 本轮只新增可重复性能基准与测试，并把新鲜证据继续记�
 
 ## 10. Active Change 协调
 
-当前可见 Active Changes 中，`CHG-20260818-stage1-stage7-comprehensive-corrective` 的 metadata 覆盖 `contracts/`、`tests/`、`.github/workflows/` 和 `docs/blueprint/` 等广路径，与 P1 存在可见路径重叠。其 PR #65 已合并，但 Change 仍保留在 active；本轮没有越界修改其 Stage 1—7 `operations/...` Architecture 基线问题，也没有借 P1H 静默重构 platform/operations 目录。
+当前可见 Active Changes 中，`CHG-20260818-stage1-stage7-comprehensive-corrective` 的 metadata 覆盖 `contracts/`、`tests/`、`.github/workflows/` 和 `docs/blueprint/` 等广路径，与 P1 存在可见路径重叠。其 PR #65 已合并，但 Change 仍保留在 active；本轮没有越界修改其 Stage 1—7 `operations/...` Architecture、Contract 或数据库基线问题，也没有借 P1H 静默重构 platform/operations 目录。
 
 其他已检查 Active Change（北京时间展示、抖音 detail 400、Windows bootstrap display name）没有与本次 P1H 性能基准或 Analysis Contract 形成直接 Contract/实现冲突。
 
@@ -322,21 +322,29 @@ Validation Retry = 未发生
 
 该结果只能证明“当前 GitHub Actions 没有可用于 P1H 的真实 LLM 凭据”，不能替代真实模型小样成功证据。不得用 TikHub 或其他无关密钥代替。
 
-### 12.5 当前专项回归与整仓 CI 阻塞
+### 12.5 最终 head 专项回归与整仓 CI 阻塞
 
-head `b04670233fcf8b9b8bf1ab7d63db5c04a564a8b8` 的 Stage 5A Run `32165652086` / Job `95804494349`：
+head `1ffc18e63d0fd9356000a1392608a0a80d46588a` 的 Stage 5A Run `32166332648` / Job `95806672157` 提供当前代码等价的最新 P1 专项证据：
 
-- P1 目标/回归 pytest：退出码 0，`65 passed in 3.21s`；
+- P1 目标/回归 pytest：退出码 0，`65 passed in 3.05s`；
 - Ruff：退出码 0，`40 files already formatted` / `All checks passed`；
 - mypy：退出码 0，24 source files 无问题；
 - Analysis + Export Contract drift：退出码 0；
 - Secret / Docs：退出码 0；
-- Architecture：退出码 1，仍只报告 11 个既有 `ARCH001`，均为缺失 `backend/src/aima_ugc/operations/...` Stage 1—7 必需路径；
-- Architecture 之后的 Provider/Raw tests、Provider Contract drift、整套 Stage 5A quality 继续按 workflow 顺序跳过。
+- Architecture：退出码 1，报告 11 个 `ARCH001`，均为缺失 `backend/src/aima_ugc/operations/...` Stage 1—7 必需路径；
+- Architecture 之后的 Provider/Raw tests、Provider Contract drift、整套 Stage 5A quality 按 workflow 顺序跳过。
 
-因此 P1H 目前有两个独立阻塞：
+同一 head 触发的 11 个 PR workflows 均为 `completed/failure`，因此不能把 P1 专项成功描述成整仓 CI 全绿。已直接核实的整仓基线失败至少包括以下三类：
+
+1. **Architecture 路径基线不一致**：`scripts/quality/check_architecture.py` 要求 11 个 `backend/src/aima_ugc/operations/...` 文件，当前仓库实际未满足，Stage 5A 以退出码 1 失败。
+2. **Collection Contract drift**：顶层 CI Run `32166332616` 的 Stage 1 Collection 先有 `35 passed`，随后 `scripts/contracts/check_collection_contract.py` 退出码 1；已提交 `contracts/provider/operator-capability-v1.schema.json` 的 `schema_version.const` 为 `provider-platform-capability.v1`，当前源码生成值为 `provider-operations-capability.v1`。
+3. **Content 表 `operations/platform` 不一致**：同一顶层 CI 的 Stage 2 Platform 与 Stage 3A Database 都在测试收集阶段退出码 2；`contents_table` 当前定义 `operations` 列，但文件底部索引仍访问 `contents_table.c.platform`，触发 `AttributeError: platform`。Stage 1-7 Audit Correctness Run `32166332523` / Job `95806671892` 的 `alembic upgrade head` 也因同一错误退出码 1，Migration 尚未真正开始执行。
+
+其余失败 workflows 已确认状态为 failure，但本轮没有逐个完成独立根因归因，因此不把所有失败都武断归为上述三类。
+
+因此 P1H 当前有两个上层阻塞：
 
 1. 缺少真实 OpenAI-compatible 模型小样所需 `AIMA_LLM_API_KEY` 与 `AIMA_LLM_MODEL`；
-2. 当前 main/PR 基线的 11 个 Stage 1—7 Architecture 错误使整仓适用 CI 无法全绿。
+2. Stage 1—7/main 整仓基线完整性尚未恢复，直接证据至少包含 Architecture、Collection Contract drift 与 Content 表 `operations/platform` 不一致三类失败。
 
-本轮不得把这两个阻塞描述为 P1H 已闭环，也不得越界在 P1 Change 中静默重构 `platform/operations` 目录。P1H 保持未勾选；下一次仍只继续 P1H 的阻塞解除、真实模型小样、最终 Review/CI 与收口。
+第二项与 `CHG-20260818-stage1-stage7-comprehensive-corrective` 的既有范围真实重叠；本轮 P1 不越界修改数据库 Schema、Collection Contract 或 platform/operations 架构，也不绕过 CI。P1H 保持未勾选；下一次仍只继续 P1H 的阻塞解除、真实模型小样、最终 Review/CI 与收口。
