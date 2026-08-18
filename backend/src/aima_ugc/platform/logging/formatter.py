@@ -26,14 +26,14 @@ _STANDARD_LOG_RECORD_KEYS: Final = frozenset(
 )
 _KEY_PATTERN: Final = re.compile(r"^[A-Za-z0-9_.-]+$")
 _SENSITIVE_KEY_PATTERN: Final = re.compile(
-    r"(?:authorization|cookie|password|passwd|secret|token|api[_ -]?key)",
+    r"(?:authorization|cookie|credential|password|passwd|secret|token|api[_ -]?key)",
     re.IGNORECASE,
 )
 _INLINE_PATTERNS: Final = (
     (re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+"), "Bearer ***"),
     (
         re.compile(
-            r"(?i)\b(authorization|cookie|password|passwd|secret|token|api[_ -]?key)"
+            r"(?i)\b(authorization|cookie|credential|password|passwd|secret|token|api[_ -]?key)"
             r"\s*([=:])\s*(?:\"[^\"]*\"|'[^']*'|[^\s,;]+)"
         ),
         r"\1\2***",
@@ -58,6 +58,22 @@ def _redact_text(value: str) -> str:
     return redacted
 
 
+def _redact_value(value: object, *, key: str | None = None) -> object:
+    """递归脱敏 dict/list/tuple；敏感键不允许把子值先转成字符串后再猜。"""
+    if key is not None and _SENSITIVE_KEY_PATTERN.search(key):
+        return "***"
+    if isinstance(value, dict):
+        return {
+            str(child_key): _redact_value(child, key=str(child_key))
+            for child_key, child in value.items()
+        }
+    if isinstance(value, list | tuple):
+        return [_redact_value(child) for child in value]
+    if isinstance(value, str):
+        return _redact_text(value)
+    return value
+
+
 def _truncate(value: str, limit: int) -> tuple[str, bool]:
     if len(value) <= limit:
         return value, False
@@ -74,8 +90,14 @@ def _render_value(key: str, value: object) -> tuple[str, bool]:
     if isinstance(value, (int, float)):
         return str(value), False
 
-    rendered, truncated = _truncate(_redact_text(str(value)), _FIELD_LIMIT)
-    return json.dumps(rendered, ensure_ascii=False), truncated
+    redacted = _redact_value(value, key=key)
+    if isinstance(redacted, str):
+        rendered, truncated = _truncate(redacted, _FIELD_LIMIT)
+        return json.dumps(rendered, ensure_ascii=False), truncated
+
+    serialized = json.dumps(redacted, ensure_ascii=False, separators=(",", ":"), default=str)
+    serialized, truncated = _truncate(serialized, _FIELD_LIMIT)
+    return serialized, truncated
 
 
 class AimaLogFormatter(logging.Formatter):
