@@ -19,6 +19,7 @@ from .content_labeling import (
     _input_hash,
     _to_model_item,
 )
+from .prompt_taxonomy import PromptTaxonomy
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,8 +68,9 @@ def label_unified_content_jsonl(
     service: ContentLabelingService,
     max_validation_retries: int,
     batch_size: int = 20,
+    recovery_taxonomy: PromptTaxonomy | None = None,
 ) -> OfflineContentLabelingSummary:
-    """读取统一内容 JSONL，恢复成功 checkpoint，并原子回写已校验 Analysis。"""
+    """读取统一内容 JSONL，按当前 Prompt/Taxonomy 恢复 checkpoint 并原子回写。"""
 
     if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size <= 0:
         raise ValueError("batch_size 必须是大于 0 的整数")
@@ -79,7 +81,10 @@ def label_unified_content_jsonl(
     checkpoint_path = audit_dir / "checkpoints.jsonl"
     attempt_path = audit_dir / "attempts.jsonl"
     failed_path = audit_dir / "failed.jsonl"
-    checkpoint_index = _load_checkpoint_index(checkpoint_path)
+    checkpoint_index = _load_checkpoint_index(
+        checkpoint_path,
+        recovery_taxonomy=recovery_taxonomy,
+    )
     temp_path = source_path.with_name(f".{source_path.name}.labeling.tmp")
     temp_path.unlink(missing_ok=True)
 
@@ -207,7 +212,9 @@ def _process_batch(
 
     if not pending_sources:
         return _BatchOutcome(
-            rows=tuple(_rewrite_record(source, recovered.get(source.line_number)) for source in batch),
+            rows=tuple(
+                _rewrite_record(source, recovered.get(source.line_number)) for source in batch
+            ),
             rows_already_labeled=already_labeled,
             rows_recovered=len(recovered),
             rows_succeeded=0,
@@ -300,8 +307,12 @@ def _process_batch(
     )
 
 
-def _load_checkpoint_index(path: Path) -> dict[_CheckpointKey, ContentLabelAnalysisV1]:
-    if not path.exists():
+def _load_checkpoint_index(
+    path: Path,
+    *,
+    recovery_taxonomy: PromptTaxonomy | None,
+) -> dict[_CheckpointKey, ContentLabelAnalysisV1]:
+    if not path.exists() or recovery_taxonomy is None:
         return {}
 
     index: dict[_CheckpointKey, ContentLabelAnalysisV1] = {}
@@ -320,7 +331,10 @@ def _load_checkpoint_index(path: Path) -> dict[_CheckpointKey, ContentLabelAnaly
             platform = payload.get("platform")
             external_content_id = payload.get("external_content_id")
             input_hash = payload.get("input_hash")
-            if not all(isinstance(value, str) and value for value in (platform, external_content_id, input_hash)):
+            if not all(
+                isinstance(value, str) and value
+                for value in (platform, external_content_id, input_hash)
+            ):
                 raise ValueError(f"{path}: 第 {line_number} 行 checkpoint 身份字段不合法")
             try:
                 analysis = ContentLabelAnalysisV1.model_validate(payload.get("analysis"))
@@ -328,6 +342,11 @@ def _load_checkpoint_index(path: Path) -> dict[_CheckpointKey, ContentLabelAnaly
                 raise ValueError(f"{path}: 第 {line_number} 行 checkpoint analysis 不合法") from exc
             if analysis.input_hash != input_hash:
                 raise ValueError(f"{path}: 第 {line_number} 行 checkpoint input_hash 不一致")
+            if (
+                analysis.prompt_sha256 != recovery_taxonomy.prompt_sha256
+                or analysis.taxonomy_sha256 != recovery_taxonomy.taxonomy_sha256
+            ):
+                continue
             key = (platform, external_content_id, input_hash)
             previous = index.get(key)
             if previous is not None and previous != analysis:
