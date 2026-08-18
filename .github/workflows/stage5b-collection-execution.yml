@@ -130,6 +130,10 @@ jobs:
           uv run ruff check --fix "${changed[@]}"
           uv run ruff format --check "${changed[@]}"
           uv run ruff check "${changed[@]}"
+          # 0018 源码刚增加 DB Check，先让真实 PostgreSQL 重建 0018，再进行 Green 验证。
+          uv run alembic downgrade 20260817_0017
+          uv run alembic upgrade head
+          uv run alembic check
           uv run pytest \
             tests/unit/collection/test_comprehensive_corrective_invariants.py::test_scheduled_job_deadline_has_provider_execution_floor_for_short_cadence \
             tests/integration/collection/test_comprehensive_corrective_runtime.py::test_scope_persists_durable_actions_extensions_and_thread_coverage \
