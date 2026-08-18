@@ -29,20 +29,36 @@ def validate_secret_ref(secret_ref: str) -> str:
     return secret_ref
 
 
-def read_secret_file(path: Path, *, max_bytes: int = _MAX_SECRET_BYTES) -> SecretStr:
-    """读取 UTF-8 Secret，仅移除尾部换行，不在错误中包含 Secret 内容。"""
+def read_secret_file(
+    path: Path,
+    *,
+    root: Path | None = None,
+    max_bytes: int = _MAX_SECRET_BYTES,
+) -> SecretStr:
+    """读取 UTF-8 Secret；拒绝 symlink 和可解析到批准根目录之外的路径。"""
     try:
-        stat = path.stat()
+        if path.is_symlink():
+            raise SecretFileError(f"Secret 文件不允许使用符号链接: {path}")
+        resolved_path = path.resolve(strict=True)
+        if root is not None:
+            resolved_root = root.resolve(strict=True)
+            try:
+                resolved_path.relative_to(resolved_root)
+            except ValueError as exc:
+                raise SecretFileError(f"Secret 文件越过批准根目录: {path}") from exc
+        stat = resolved_path.stat()
+    except SecretFileError:
+        raise
     except OSError as exc:
         raise SecretFileError(f"Secret 文件不可访问: {path}") from exc
 
-    if not path.is_file():
+    if not resolved_path.is_file():
         raise SecretFileError(f"Secret 路径不是普通文件: {path}")
     if stat.st_size > max_bytes:
         raise SecretFileError(f"Secret 文件超过允许大小: {path}")
 
     try:
-        raw = path.read_bytes()
+        raw = resolved_path.read_bytes()
     except OSError as exc:
         raise SecretFileError(f"Secret 文件读取失败: {path}") from exc
 
