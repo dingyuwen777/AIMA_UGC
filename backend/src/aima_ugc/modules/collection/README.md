@@ -9,12 +9,13 @@ Collection 是采集业务 Owner。它负责把已经通过 Contract / Provider 
 1. `planning.py`
    - `CollectionPlanDefinition`：Plan 的稳定创建输入；首版只允许 `Asia/Shanghai + latest_only + max_catch_up_runs=0`；
    - `PlanPlatformDefinition`：以 `platform + provider_config_id` 固定 Provider 配置选择，`config` 只保存平台业务配置 object；
-   - `CollectionPlanningService`：校验首版策略、平台/关键词包关系唯一性，以及显式 Occurrence 输入。
+   - `CollectionPlanningService`：在持久化前校验首版策略、Cron、至少一个平台/词包、平台/词包关系唯一性和 Decision Policy；Scheduler 在入队前继续校验 Provider Config、Registry/Capability 与每个平台至少一个可执行 Scope。
 2. `scheduler.py` + `bootstrap/scheduler.py`
    - 解析首版五字段数值 Cron；
    - 按 `latest_only` 计算停机恢复；
    - 对 Plan 使用 PostgreSQL 行锁重读当前状态；
-   - 在一个短事务中编排 skipped Occurrence、Job、enqueued Occurrence、scheduled Run 与 cursor 推进；
+   - 在一个短事务中校验 Provider/关键词执行面、冻结 Run Snapshot，并编排 skipped Occurrence、Job、enqueued Occurrence、scheduled Run 与 cursor 推进；单个非法 Plan 回滚并记录 `scheduler.plan.rejected`，不终止其他 Plan；
+   - Scheduled Job Deadline 取 Cron 周期间隔与按 Scope 数、共享分页技术上限、TikHub 单请求 timeout 和安全余量推导的 Provider 执行窗口下限中的较大值；这是有限技术容量边界，不是 Budget；
    - 不直接执行 Provider HTTP，也不建立第二套内存任务队列。
 3. `execution.py` / `collection_run_job.py` / `collection_run_executor.py`
    - `CollectionExecutionService`：创建 Run / Scope 父事实；
@@ -33,15 +34,17 @@ Collection 是采集业务 Owner。它负责把已经通过 Contract / Provider 
    - `pending` 只允许在 Recovery 专用路径做上述确认，普通 replay 仍拒绝未完整存储 Artifact；文件缺失、损坏、来源不一致或 metadata 状态异常都保守收敛为 `unknown`；
    - Raw 完整性失败而降级 `unknown` 时写 `provider_raw_recovery_rejected` warning，记录 Attempt ID、Artifact ID 和安全错误摘要，不记录 Raw 内容、请求参数或 Secret。
 5. `candidates.py` / `candidate_tables.py` 与 Provider Mapper / Ingestion
-   - Raw → Mapper → Candidate → Canonical / Ingestion 的统一纵向边界；
+   - Raw → Candidate → Mapper → Canonical / Ingestion 的统一纵向边界；Candidate 在 Mapper 前按稳定 Raw item locator 建立，Mapper/身份校验失败也追加 `invalid/failed` Ingestion ledger；
    - Mapper 不访问数据库、不发 HTTP；Provider 不直接写业务表；
    - Scope 请求/成功/失败计数和 Content/Comment 计数从 PostgreSQL Attempt/Candidate durable 事实恢复，不只依赖进程内计数。
 6. `bootstrap/collection_scope.py` + `bootstrap/worker.py`
    - `TikHubCollectionScopeExecutor` 复用既有五平台 TikHub Operation、Provider Dispatch/Recovery、Raw、Mapper、Decision 和 fenced Ingestion 执行正式 Scope；
    - Search 决策为 `defer_until_detail` 时，Detail 摄取后必须使用最新 Canonical 再计算评论动作；只重算评论决策，不重复发 Detail；
-   - 评论/二级回复的 target 是“是否继续请求下一页”的软目标：当前已经返回并付费的响应页全部 Mapper/Ingestion 后，才决定是否再请求下一页；
-   - 每次评论抓取或明确不抓取形成 `comment_coverage_observations`，保存 complete/partial/not_requested/unavailable、Provider 报告总数、实际采集数、sample/sort/target/stop reason 和 Raw/Attempt 来源；
-   - `create_collection_job_registry(...)` 用现有 Artifact/Raw/Provider/Collection 组件组装 `collection.run.v1`；
+   - Search 首次 Decision 先写 `collection_content_actions` durable action/checkpoint；Job retry/Lease takeover 恢复未完成 Detail/Comments，而不是在 Search 已更新 Current 后重新计算并跳过原动作；
+   - Mapper/回放的 `observed_at` 使用对应 Raw Envelope 的完成时间，旧 Raw replay 不用恢复时钟回滚 Current；
+   - 评论/二级回复的 target 是“是否继续请求下一页”的软目标：当前已经返回并付费的响应页全部 Mapper/Ingestion 后，才决定是否再请求下一页；Provider 仍有下一页时 target 命中只能形成 `partial`；
+   - 内容级评论和每个 root thread 分别保存 Coverage；显式最新空评论/回复页可把更旧的 Provider reported count 收敛为 0，`complete` 受 Owner 与数据库一致性约束；
+   - `create_collection_job_registry(...)` 用现有 Artifact/Raw/Provider/Collection 组件组装 `collection.run.v1`；默认 Worker 按受批准 Base URL 复用 TikHub HTTP Client/连接池，并由 `PlatformRuntime.close()` 统一释放；
    - 默认 Secret 只通过 `secret_ref` 在 `AIMA_SECRET_DIR` 下解析；TikHub Transport 只允许批准的 `https://api.tikhub.io` Origin 接收 Bearer Secret。
 7. `xhs_replay.py`
    - 只回放已经持久化的 XHS Raw；
@@ -114,7 +117,7 @@ Scheduler 停机恢复固定为：
   - Collection 到 Content Owner 的 Fenced Ingestion/Coverage 边界；
   - Collection 不直接写 Content/Comment/Coverage 表。
 
-`database_schema.py` 只注册当前机器 Schema；正式结构变化必须通过 Alembic Revision 演进。首版 Scheduler 策略通过 `0014` 约束，预算回撤通过 `20260817_0015` 完成，评论 Coverage 可观测字段和来源幂等约束由向前 Revision `20260817_0016` 建立，Current 字段级 freshness 由 `20260817_0017` 建立；禁止改写已发布历史 Revision。
+`database_schema.py` 只注册当前机器 Schema；正式结构变化必须通过 Alembic Revision 演进。首版 Scheduler 策略通过 `0014` 约束，预算回撤通过 `20260817_0015` 完成，评论 Coverage 可观测字段和来源幂等约束由 `20260817_0016` 建立，Current 字段级 freshness 由 `20260817_0017` 建立；`20260818_0018` 新增 Decision Policy、durable content action、Canonical 子实体、thread Coverage 与 Attempt↔Raw 复合来源约束。禁止改写已发布历史 Revision。
 
 ## 4. Secret、Job、Provider 与配置边界
 
@@ -132,7 +135,7 @@ Stage 1—7 已存在完整机器实现：Scheduler → Occurrence → `collecti
 
 `worker_main.py`、`bootstrap/worker.py` 和 Platform Job Runtime 已提供正式 Worker/JobReaper 装配与 `run_once()` 执行能力；当前 Stage 1—7 并没有再定义一套常驻 Supervisor/服务管理循环。常驻进程的启动、守护、重启和 Release 部署编排属于后续 Release/生产运行边界，不能为了让文档看起来“完整”在本阶段伪造第二套进程管理器。
 
-在进入 Stage 8 前，当前 L3 Corrective Change 重新验证并补齐 Stage 1—7 的恢复、并发、乱序 Current、评论整页/Coverage 与测试/文档一致性。**Stage 8 HTTP CRUD/业务页面/认证授权，以及 Release 阶段 Docker/离线发布/协调 Backup-Restore 仍未开始，不得把本次修复描述为这些能力已经实现。**
+Stage 1—7 当前机器基线已经包含 durable action/retry 恢复、Raw observation-time replay、可执行 Plan fail-closed、不可变 Run Snapshot、有限 Deadline sizing、Candidate-before-Mapper ledger、Canonical 子实体、内容级与线程级 Coverage、字段 freshness、来源复合约束及五平台 Capability/Operation。**Stage 8 HTTP CRUD/业务页面/认证授权，以及 Release 阶段 Docker/离线发布/协调 Backup-Restore 仍未开始，不得把上述 Stage 1—7 能力外推为这些后续能力已经实现。**
 
 当前必须继续保持：
 

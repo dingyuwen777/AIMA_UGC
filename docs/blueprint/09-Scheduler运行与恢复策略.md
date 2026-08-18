@@ -118,6 +118,9 @@ Scheduler 不执行 TikHub HTTP，也不建立第二套内存任务队列。正�
 → 重读 enabled / schedule_version / schedule_expr / timezone
   / next_run_at / misfire_policy / max_catch_up_runs
 → 计算 latest-only 决策
+→ 校验 Provider Config/Registry/Capability、词包与每个平台可执行 Scope
+→ 冻结 Provider/Decision/关键词/技术执行上限 Run Snapshot
+→ 推导有限 Job Deadline
 → 写更早的 skipped Occurrence
 → 通过 PostgresJobRepository 创建唯一 Job
 → 写最新 enqueued Occurrence
@@ -134,6 +137,20 @@ Scheduler 不执行 TikHub HTTP，也不建立第二套内存任务队列。正�
 - Scheduler 只负责跨 Owner 的同事务编排，不直接越权写别的 Owner 表；
 - `enqueued` Occurrence、Job、scheduled Run 和 cursor 推进必须同事务提交；
 - `skipped` Occurrence 不得关联 Job/Run。
+
+### 5.1 可执行性门禁与 Job Deadline
+
+Scheduler 对每个 due Plan 在同一短事务内验证 Provider Config 存在且可用、Provider+Platform 已注册且 Capability 接受平台业务配置、词包存在且每个目标平台至少产生一个可执行 Scope。非法 Cron、异常 backlog、缺失词包/Provider 或不支持配置只回滚该 Plan，增加失败计数并记录 `scheduler.plan.rejected`；不能退出整个 tick。0 Scope Run 即使被其他入口构造也必须在 `CollectionRunExecutor` fail closed，不能记成功。
+
+Scheduled Job 的不可续期 Deadline 不使用固定 300 秒，也不简单等于 Cron 周期。当前算法取：
+
+```text
+max(本次 scheduled_for → next logical slot 的秒数,
+    scope_count × (search/comment/sub-comment 技术页数上限之和)
+      × TikHub 单请求 timeout + 安全余量)
+```
+
+分页上限和 timeout 同时写入 Run Snapshot 的 `execution_limits` 作为可审计执行事实。该值只用于容量/超时保护，不是请求次数或金额 Budget，不改变“同一 Attempt 最多一次发送”和 Deadline 不可由 Heartbeat 无限延长的 Job Runtime 规则。
 
 ## 6. 并发与幂等
 
@@ -217,6 +234,8 @@ Scheduler Runtime 的 Stage 7 机器验收已完成，覆盖：
 - 同一时间重复 tick 不重复入队；
 - 两个 Scheduler 并发处理同一 Plan 最终只有一个有效 Job/Run/Occurrence；
 - Migration upgrade/downgrade、`alembic check` 和相关质量门禁通过；
-- Scheduler 创建的 `collection.run.v1` Job 可由正式 Worker Registry/JobWorker 消费并驱动 Collection Scope 执行，而不是只停留在入队事实。
+- Scheduler 创建的 `collection.run.v1` Job 可由正式 Worker Registry/JobWorker 消费并驱动 Collection Scope 执行，而不是只停留在入队事实；
+- 单个非法 Plan 不阻断同一 tick 的合法 Plan，缺 Provider/词包/Scope/Capability 组合关闭失败；
+- scheduled Run 冻结 Provider/Decision/关键词/技术执行上限，短周期 Cron 的 Job Deadline 仍不低于可计算的 Provider 执行窗口下限。
 
 Stage 7 实现 PR #55 已正常合入 `main`，合并后 `main` 取得新鲜 CI；Stage 7 Completion Change 由当前归档 PR #56 完成生命周期归档。本文件不开始或预先定义 Stage 8 的接口实现。

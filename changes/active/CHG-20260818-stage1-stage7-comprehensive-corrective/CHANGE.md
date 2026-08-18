@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260818-stage1-stage7-comprehensive-corrective
 title: Stage 1-7 全面正确性与一致性整改
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: fix/stage1-stage7-comprehensive-corrective
 created: 2026-08-18
@@ -12,7 +12,7 @@ depends_on: []
 affected_areas: [collection, content, system, platform, provider, scheduler, database, migration, security, logging, testing, ci, documentation]
 affected_paths: [backend/src/aima_ugc/modules/collection/, backend/src/aima_ugc/modules/content/, backend/src/aima_ugc/modules/system/, backend/src/aima_ugc/adapters/persistence/postgres/, backend/src/aima_ugc/adapters/providers/tikhub/, backend/src/aima_ugc/bootstrap/, backend/src/aima_ugc/platform/jobs/, backend/src/aima_ugc/platform/security/, backend/src/aima_ugc/platform/logging/, backend/src/aima_ugc/contracts/, migrations/versions/, tests/, .github/workflows/, docs/blueprint/, docs/collection/, README.md]
 contracts: [CanonicalContentV1, CanonicalCommentV1, CanonicalContentAggregateV1, CollectionDecisionPolicyV1, ProviderPlatformCapabilityV1]
-data_changes: [collection_plans, collection_runs, collection_scopes, collection_candidates, provider_request_attempts, keyword_packs, contents, comments, comment_coverage_observations]
+data_changes: [collection_plans, collection_plan_decision_policies, collection_runs, collection_scopes, collection_content_actions, collection_candidates, provider_request_attempts, keyword_packs, contents, comments, comment_coverage_observations, comment_thread_coverage_observations, canonical_content_extensions]
 ---
 
 # 目标
@@ -21,27 +21,27 @@ data_changes: [collection_plans, collection_runs, collection_scopes, collection_
 
 # 成功标准
 
-- [ ] Search 已写 Current 后 Detail/Comments/Replies 失败或进程崩溃，重试仍按本次已批准 durable action 完成未完成动作，不因 previous state 被本次 Search 改写而跳过。
-- [ ] 已存在 Raw 回放使用 Raw 自身观察时间，不以恢复时当前时间覆盖 `field_observed_at`，旧 Raw 不得回滚更新 Current。
-- [ ] 单个非法 Cron/异常 backlog Plan 只对该 Plan fail closed，不退出 Scheduler 常驻循环，不阻塞其他合法 Plan。
-- [ ] Plan 保存/调度前保证可执行：Cron、平台、词包、可用关键词、Provider Config、Registry/Capability、业务配置和支持的策略均闭环；0 Scope Run 不允许记成功。
-- [ ] Plan/Run 的 `CollectionDecisionPolicyV1` 真正传入正式 Worker；关闭评论、评论目标、回复目标和受控刷新等已批准策略可观察生效。
-- [ ] Collection Job Deadline 不再使用未经容量依据的固定 300 秒魔数；合法采集不会因默认深度正常耗时被错误杀死，Deadline 仍不可由 Heartbeat 无限延长。
-- [ ] 当前生产 Mapper 已确认产生的 `alternate_ids/media/topics/mentions/locations` 等 Canonical 事实进入 PostgreSQL 稳定业务结构，不只停留在 Raw。
-- [ ] 二级回复具有线程级 Coverage；顶层评论 Coverage 与线程/root/reply 数据可无损构造 `CanonicalContentAggregateV1`。
-- [ ] `pagination_not_advanced/cursor_unavailable/response_data_unavailable/page_limit/known_comment_reached` 等停止原因与 `complete/partial` 正确对应；target 以唯一业务身份统计，不用重复 Provider 行提前吃满。
-- [ ] Capability 可公开值与 Runtime/Operation/Mapper/Canonical 一致；不存在配置项被静默忽略或声明内容类型映射为错误类型。
-- [ ] Run Snapshot 的 Provider 执行事实语义明确且可重复；Run 创建后修改/禁用 Provider Config 不得静默改变已创建 Run 的非 Secret 执行配置。Secret rotation 如采用最新 Secret，需在正式文档中明确该唯一例外。
-- [ ] Candidate 在 Mapper/Ingestion 前形成逐项发现事实，Mapper invalid/failed 也有 ledger；生产 item locator 使用可稳定追溯 Raw item 的身份而非过滤后数组下标。
-- [ ] Keyword Pack 成员/关系语义变化必然提升 pack version；同一 version 不对应不同关键词集合。
-- [ ] Plan Secret 检查覆盖敏感后缀；Secret 读取拒绝 symlink 越界；日志递归脱敏嵌套 dict/list；Raw 字符串型 token/query 具有对应负例保护。
-- [ ] `CanonicalCommentV1.observed_fields` 嵌套叶子严格校验；`author.external_account_id` 显式 null 正确推进 freshness；Attempt 与 Raw Artifact 来源必须在 Fenced Ingestion/数据库边界绑定一致。
-- [ ] Scope 评论统计使用真实 Canonical identity，不假设 comment ID 跨内容全局唯一。
-- [ ] TikHub 正式 Worker 复用受控连接池/Client 生命周期，不为每次请求无条件新建 TLS 连接。
-- [ ] Blueprint/README/模块文档只描述当前机器事实；删除 Stage 7 已过期单平台/当前 Change 表述，并新增覆盖上述跨生命周期不变量的长期测试门禁。
-- [ ] P0=0、P1=0、P2=0；P3 在本 Change 范围内清零或有经用户批准且不影响正确性/安全/当前验收的明确延期事实。
-- [ ] 目标测试、相关 Unit/Contract/PostgreSQL Integration、Ruff、mypy、Architecture、Table Ownership、Secret Scan、Docs、Contract 生成/兼容、Alembic upgrade/check/round-trip、前端现有构建/测试与适用 GitHub Actions 全部取得本分支最新 head 的新鲜成功证据。
-- [ ] 最终只对本 Change diff 做需求符合性 + 代码质量终审；严重/重要问题为 0 后才允许进入 Stage 8。
+- [x] Search 已写 Current 后 Detail/Comments/Replies 失败或进程崩溃，重试仍按本次已批准 durable action 完成未完成动作，不因 previous state 被本次 Search 改写而跳过。
+- [x] 已存在 Raw 回放使用 Raw 自身观察时间，不以恢复时当前时间覆盖 `field_observed_at`，旧 Raw 不得回滚更新 Current。
+- [x] 单个非法 Cron/异常 backlog Plan 只对该 Plan fail closed，不退出 Scheduler 常驻循环，不阻塞其他合法 Plan。
+- [x] Plan 保存/调度前保证可执行：Cron、平台、词包、可用关键词、Provider Config、Registry/Capability、业务配置和支持的策略均闭环；0 Scope Run 不允许记成功。
+- [x] Plan/Run 的 `CollectionDecisionPolicyV1` 真正传入正式 Worker；关闭评论、评论目标、回复目标和受控刷新等已批准策略可观察生效。
+- [x] Collection Job Deadline 不再使用未经容量依据的固定 300 秒魔数；合法采集不会因默认深度正常耗时被错误杀死，Deadline 仍不可由 Heartbeat 无限延长。
+- [x] 当前生产 Mapper 已确认产生的 `alternate_ids/media/topics/mentions/locations` 等 Canonical 事实进入 PostgreSQL 稳定业务结构，不只停留在 Raw。
+- [x] 二级回复具有线程级 Coverage；顶层评论 Coverage 与线程/root/reply 数据可无损构造 `CanonicalContentAggregateV1`。
+- [x] `pagination_not_advanced/cursor_unavailable/response_data_unavailable/page_limit/known_comment_reached` 等停止原因与 `complete/partial` 正确对应；target 以唯一业务身份统计，不用重复 Provider 行提前吃满。
+- [x] Capability 可公开值与 Runtime/Operation/Mapper/Canonical 一致；不存在配置项被静默忽略或声明内容类型映射为错误类型。
+- [x] Run Snapshot 的 Provider 执行事实语义明确且可重复；Run 创建后修改/禁用 Provider Config 不得静默改变已创建 Run 的非 Secret 执行配置。Secret rotation 如采用最新 Secret，需在正式文档中明确该唯一例外。
+- [x] Candidate 在 Mapper/Ingestion 前形成逐项发现事实，Mapper invalid/failed 也有 ledger；生产 item locator 使用可稳定追溯 Raw item 的身份而非过滤后数组下标。
+- [x] Keyword Pack 成员/关系语义变化必然提升 pack version；同一 version 不对应不同关键词集合。
+- [x] Plan Secret 检查覆盖敏感后缀；Secret 读取拒绝 symlink 越界；日志递归脱敏嵌套 dict/list；Raw 字符串型 token/query 具有对应负例保护。
+- [x] `CanonicalCommentV1.observed_fields` 嵌套叶子严格校验；`author.external_account_id` 显式 null 正确推进 freshness；Attempt 与 Raw Artifact 来源必须在 Fenced Ingestion/数据库边界绑定一致。
+- [x] Scope 评论统计使用真实 Canonical identity，不假设 comment ID 跨内容全局唯一。
+- [x] TikHub 正式 Worker 复用受控连接池/Client 生命周期，不为每次请求无条件新建 TLS 连接。
+- [x] Blueprint/README/模块文档只描述当前机器事实；删除 Stage 7 已过期单平台/当前 Change 表述，并新增覆盖上述跨生命周期不变量的长期测试门禁。
+- [x] P0=0、P1=0、P2=0；P3 在本 Change 范围内清零或有经用户批准且不影响正确性/安全/当前验收的明确延期事实。
+- [x] 目标测试、相关 Unit/Contract/PostgreSQL Integration、Ruff、mypy、Architecture、Table Ownership、Secret Scan、Docs、Contract 生成/兼容、Alembic upgrade/check/round-trip、前端现有构建/测试与适用 GitHub Actions 全部取得本分支最新 head 的新鲜成功证据。
+- [x] 最终只对本 Change diff 做需求符合性 + 代码质量终审；严重/重要问题为 0 后才允许进入 Stage 8。
 
 # 范围
 
@@ -118,15 +118,15 @@ data_changes: [collection_plans, collection_runs, collection_scopes, collection_
 
 - [x] 读取 `AGENTS.md`、RVC Skill、Change/Development/Repository/Verification 约束、Blueprint README/07，并确认当前 main/Active Change 状态。
 - [x] 固化 18 组 Findings、成功标准、方案比较、兼容/Migration/回滚边界。
-- [ ] 为 P1/P2 建立跨生命周期失败回归（Red），包含 Search 已提交后下游失败、old Raw replay、invalid Plan 隔离、0 Scope、Decision Policy、Coverage、Capability roundtrip、Attempt↔Raw、Secret/freshness 等。
-- [ ] 实现 Collection durable action/checkpoint 与 retry 恢复。
-- [ ] 修复 Raw observation time、Plan/Scheduler/Run Snapshot/Deadline/Keyword Pack version。
-- [ ] 完成 Canonical 子实体、Thread Coverage、来源复合约束与 Comment Contract/freshness。
-- [ ] 修复五平台 Capability/Runtime/Mapper 与 pagination/unique-count 语义。
-- [ ] 修复 Secret/Logging/Raw 脱敏与 TikHub Client 生命周期。
-- [ ] 同步 Blueprint/README/测试说明和 CI 门禁。
-- [ ] 运行目标测试→模块测试→Contract/DB/Provider→完整 CI，并读取全部失败根因直至绿色。
-- [ ] 对最终 diff 做需求符合性 Review，再做代码质量/安全/兼容 Review；阻塞项清零。
+- [x] 为 P1/P2 建立跨生命周期失败回归（Red），包含 Search 已提交后下游失败、old Raw replay、invalid Plan 隔离、0 Scope、Decision Policy、Coverage、Capability roundtrip、Attempt↔Raw、Secret/freshness 等。
+- [x] 实现 Collection durable action/checkpoint 与 retry 恢复。
+- [x] 修复 Raw observation time、Plan/Scheduler/Run Snapshot/Deadline/Keyword Pack version。
+- [x] 完成 Canonical 子实体、Thread Coverage、来源复合约束与 Comment Contract/freshness。
+- [x] 修复五平台 Capability/Runtime/Mapper 与 pagination/unique-count 语义。
+- [x] 修复 Secret/Logging/Raw 脱敏与 TikHub Client 生命周期。
+- [x] 同步 Blueprint/README/测试说明和 CI 门禁。
+- [x] 运行目标测试→模块测试→Contract/DB/Provider→完整 CI，并读取全部失败根因直至绿色。
+- [x] 对最终 diff 做需求符合性 Review，再做代码质量/安全/兼容 Review；阻塞项清零。
 
 # 跨生命周期回归矩阵
 
@@ -179,7 +179,10 @@ data_changes: [collection_plans, collection_runs, collection_scopes, collection_
 
 ## 新鲜证据
 
-- 尚未执行实现后验证；不得用历史 CI 冒充。
+- 最终终审新增 5 组回归先在未修实现上稳定 Red：短周期 Deadline 无执行窗口下限、Thread Coverage upsert 返回假 ID、Reply soft-target 误报 complete、SubComments 显式空页未覆盖旧 reply_count、Reply 身份失败缺 Candidate ledger。
+- GitHub-hosted PostgreSQL 18 Red→Green Run `32112722378`：5 组目标回归 Green；mypy 143 source files 无错误；Unit/Contract 236 passed；Collection Integration 66 passed；Content Integration 19 passed；Database Integration 8 passed；Architecture/Table Ownership/Secret Scan/Docs/Contract/Alembic round-trip 全部通过。
+- 修复落盘后的代码候选 `63686850f233656fcee3c3c25d622a2c9c10f5aa` 取得 12/12 适用正式 GitHub Actions 成功：CI、Stage 4、5A/5B/5C/5D、Stage 6、Stage 7 Keyword Packs/Provider Config Routing/Plan Occurrence Run Snapshot/Scheduler Runtime、Stage 1-7 Audit Correctness。
+- 最终文档提交仍必须由 PR 当前 head 的适用 GitHub Actions 重新验证；任何 Red 都会把本 Change 退回 `in_progress`，不得合并。
 
 # 文档影响
 
@@ -189,6 +192,6 @@ data_changes: [collection_plans, collection_runs, collection_scopes, collection_
 
 - 基线 main：`16a97e0aa3b5990b1babf5e0512413242286ae53`
 - 分支：`fix/stage1-stage7-comprehensive-corrective`
-- Commit：本 Change 初始化提交已创建；后续实现提交待完成。
-- PR：待实现与目标验证后创建 Draft/Ready PR；未授权且未通过终审前不合并 main。
+- Commit：代码整改已落到 PR #65 分支；最终文档事实同步由本 Change 收尾提交完成。
+- PR：#65 `修复 Stage 1-7 全面正确性与一致性问题`；当前 Change 达到 `ready_for_review` 后才允许把 Draft 转 Ready，未授权不得合并 main。
 - 发布：本 Change 不部署生产。
