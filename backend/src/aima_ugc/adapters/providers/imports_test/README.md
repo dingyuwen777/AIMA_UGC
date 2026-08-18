@@ -1,8 +1,8 @@
 # Excel 离线导入测试 / 调试
 
-本目录是临时 P1 的**人工入口**，用于在不接数据库、不接 Scheduler 的情况下逐步验证本地 XLSX 处理链。它不是第二套实现：Excel Reader/Profile/Identity/Mapper 来自 `aima_ugc.adapters.providers.imports`，关键词过滤、去重和 AI 分析业务核心来自平台无关的 `aima_ugc.modules.analysis`，Excel 人工审阅视图复用 `aima_ugc.platform.export` 的共享 Exporter。
+本目录是临时 P1 的**人工入口**，用于在不接数据库、不接 Scheduler 的情况下逐步验证本地 XLSX → JSONL → AI 分析链。它不是第二套实现：Excel Reader/Profile/Identity/Mapper 来自 `aima_ugc.adapters.providers.imports`，关键词过滤、去重和 AI 分析业务核心来自平台无关的 `aima_ugc.modules.analysis`，真实模型调用复用 `aima_ugc.adapters.llm`，Excel 人工审阅视图复用 `aima_ugc.platform.export` 的唯一共享 Exporter。
 
-当前已实现 P1B—P1E 的底层能力：
+当前 P1A—P1F 已闭环。已可单步执行：
 
 ```text
 source.xlsx
@@ -11,16 +11,19 @@ source.xlsx
 → filter_keywords()
 → output/filtered/contents.jsonl         # UnifiedContentRecordV1
 → deduplicate()
-→ output/deduplicated/contents.jsonl     # UnifiedContentRecordV1
-     └─ export_raw_excel()               # 可选人工审阅旁路
-        → output/raw_data.xlsx
+→ output/deduplicated/contents.jsonl     # analysis 初始为空
+     ├─ export_raw_excel()               # 可选人工审阅旁路
+     │  → output/raw_data.xlsx
+     └─ label_sentiment()                # 显式启用真实模型后执行
+        → output/analysis/checkpoints.jsonl
+        → output/analysis/attempts.jsonl
+        → output/analysis/failed.jsonl
+        → 原子回写同一 output/deduplicated/contents.jsonl
 ```
 
-P1E 已建立 `PromptTaxonomyLoader`、完整 Prompt、严格本地 Validator、Analysis Contract、Analysis Service/Port 与无网络 Fake；**尚未**把真实模型、checkpoint 和 JSONL 回写接入 `label_sentiment()`。因此当前默认人工主链仍停在去重，不能把 P1E 的底层分析能力误认为 P1F/P1G 已完成。
+P1F 尚**没有**建立 `run_all()`、checkpoint 自动崩溃恢复、`run_summary.json` 或最终 `labeled_data.xlsx` 串联；这些属于 P1G。`export_raw_excel()` 只是可选旁路，不进入未来默认 `run_all()`，AI 也不会从 raw Excel 回读。
 
-`export_raw_excel()` 只读取 `deduplicated/contents.jsonl`，不会回读 `source.xlsx`，也不进入未来默认 `run_all()` 主链。
-
-## 1. 配置本地文件
+## 1. 顶部人工配置
 
 编辑 `test.py` 顶部：
 
@@ -35,10 +38,19 @@ PROFILE = "aima-monitoring-excel.v1"
 
 ENABLE_REAL_LLM = False
 MAX_VALIDATION_RETRIES = 2
+LLM_BATCH_SIZE = 20
+
 ENV_FILE = Path(__file__).with_name(".env")
 ```
 
-`MAX_VALIDATION_RETRIES` 就在 `test.py` 顶部修改。推荐从 `2` 开始，它的精确定义是：
+说明：
+
+- `ENABLE_REAL_LLM=False` 是默认安全状态；不显式改成 `True`，`label_sentiment()` 会在读取 `.env` 或发网络请求前直接拒绝；
+- `MAX_VALIDATION_RETRIES` 是**额外 Validation Retry 次数**，推荐从 `2` 开始；
+- `LLM_BATCH_SIZE` 控制每批送入正式 `ContentLabelingService` 的业务记录数量，不改变单条业务字段；
+- `ENV_FILE` 指向本目录 `.env`；真实 Secret 不写源码、不提交仓库。
+
+`MAX_VALIDATION_RETRIES` 精确定义：
 
 ```text
 0 = 首次请求失败后不重试，总请求最多 1 次
@@ -46,9 +58,44 @@ ENV_FILE = Path(__file__).with_name(".env")
 2 = 额外重试 2 次，总请求最多 3 次
 ```
 
-P1E 已在正式 `ContentLabelingService` 固定这套语义，但 `test.py` 的 `label_sentiment()`、`ENABLE_REAL_LLM` 与 `.env` 真实 Adapter 接线属于 P1F；当前不要为了“能跑”自行在本文件实现第二套 LLM 调用。
+Validation Retry 会增加真实模型调用和费用。它只针对**模型已经返回、但本地 Validator 判定不合法**的响应；网络超时、连接错误、HTTP 错误属于 Transport/Provider 错误，当前 OpenAI-compatible Adapter 不隐藏网络重试。
 
-本工具不增加 CLI 参数。当前可以在 IDE/调试器中按顺序单独调用：
+## 2. `.env` 配置真实模型
+
+复制：
+
+```text
+.env.example
+→ .env
+```
+
+当前示例变量：
+
+```dotenv
+AIMA_LLM_BASE_URL=https://api.openai.com/v1
+AIMA_LLM_API_KEY=
+AIMA_LLM_MODEL=
+AIMA_LLM_PROVIDER=openai-compatible
+AIMA_LLM_TIMEOUT_SECONDS=60
+AIMA_LLM_JSON_MODE=true
+```
+
+含义：
+
+- `AIMA_LLM_BASE_URL`：OpenAI-compatible API 根地址；
+- `AIMA_LLM_API_KEY`：真实 API key；
+- `AIMA_LLM_MODEL`：目标模型名；
+- `AIMA_LLM_PROVIDER`：用于 Analysis 审计的稳定 Provider 名称；
+- `AIMA_LLM_TIMEOUT_SECONDS`：单次 HTTP 请求超时，必须大于 0；
+- `AIMA_LLM_JSON_MODE`：`true/false`。Provider 支持 JSON mode 时可保持 `true`；不支持时设为 `false`。
+
+真实 `.env` 已由仓库根 `.gitignore` 忽略。不要把 API key 写到 `.env.example`、README、测试、日志、Change 或提交信息中。
+
+即使 Provider 支持 JSON mode，本地 Validator 仍是强制边界，不会因模型声明“结构化输出”而跳过校验。
+
+## 3. 单步调用
+
+本工具不增加 CLI 参数。可以在 IDE/调试器中按顺序单独调用：
 
 ```python
 from aima_ugc.adapters.providers.imports_test.test import (
@@ -56,17 +103,23 @@ from aima_ugc.adapters.providers.imports_test.test import (
     deduplicate,
     export_raw_excel,
     filter_keywords,
+    label_sentiment,
 )
 
 convert()
 filter_keywords()
 deduplicate()
 export_raw_excel()  # 可选，不属于默认主链
+
+# 确认真实模型配置和费用后：
+# 1. test.py: ENABLE_REAL_LLM = True
+# 2. 填写 .env
+label_sentiment()
 ```
 
-当前 `__main__` 仍只执行 `convert()`；完整串联由 P1G 的 `run_all()` 建立。
+当前 `__main__` 仍只执行 `convert()`；完整 `run_all()` 由 P1G 建立，P1F 不提前串联后续步骤。
 
-## 2. Excel Profile 与 Canonical 映射
+## 4. Excel Profile 与 Canonical 映射
 
 首版 Profile：`aima-monitoring-excel.v1`，默认 Sheet：`文章`。
 
@@ -108,7 +161,7 @@ P1 保持 `CanonicalContentV1` 不变，不向 Canonical 增加 AI 标签。主�
 → 无法构造则拒绝该行
 ```
 
-## 3. convert() 输出与错误
+## 5. `convert()` 输出与错误
 
 成功输出：
 
@@ -120,7 +173,7 @@ output/canonical/
 
 `contents.jsonl` 每行都可由 `CanonicalContentV1` 重新校验。任何一行不合法时转换继续扫描并记录安全的行号诊断，但**不会发布部分业务 `contents.jsonl`**。
 
-## 4. filter_keywords() 规则
+## 6. `filter_keywords()` 规则
 
 过滤只消费 `canonical/contents.jsonl`。关键词配置先执行最小清洗：去掉首尾空白、去除重复项；空关键词直接拒绝，避免产生“匹配所有内容”的错误结果。
 
@@ -151,9 +204,7 @@ output/filtered/contents.jsonl
 }
 ```
 
-过滤/去重阶段的 `analysis` 为空。P1E 已允许 `UnifiedContentRecordV1.analysis` 在**通过本地 Validator 后**承载 `ContentLabelAnalysisV1`；实际回写在 P1F 才建立。
-
-## 5. deduplicate() 规则
+## 7. `deduplicate()` 规则
 
 去重只消费 `filtered/contents.jsonl`，稳定身份键为：
 
@@ -177,15 +228,13 @@ output/filtered/contents.jsonl
 output/deduplicated/deduplication_conflicts.jsonl
 ```
 
-诊断只包含平台、内容 ID、首次/重复行号和不同字段路径，不复制标题、正文等业务文本。
-
 没有冲突时输出：
 
 ```text
 output/deduplicated/contents.jsonl
 ```
 
-## 6. P1E AI 分析核心与 Validation Retry
+## 8. Prompt / Taxonomy 唯一事实源
 
 唯一 Prompt/Taxonomy 事实源：
 
@@ -193,7 +242,16 @@ output/deduplicated/contents.jsonl
 backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v1.md
 ```
 
-Python 不复制具体标签 Enum/Literal/父子关系。`PromptTaxonomyLoader` 从 Markdown 中唯一机器 JSON 块加载当前闭集，并计算 `prompt_sha256` 与 `taxonomy_sha256`。
+具体情感、一级标签、二级标签和父子关系不复制到 `test.py` 或其他 Python Enum/Literal/常量。`PromptTaxonomyLoader` 从 Markdown 中唯一机器 JSON 块加载当前闭集，并计算：
+
+```text
+prompt_sha256
+taxonomy_sha256
+```
+
+以后仅修改标签增删/改名、父子关系、判断标准、典型表达或示例时，只改该 Markdown，不在本人工入口维护第二份 taxonomy。
+
+## 9. 模型最小输入与本地 Validator
 
 每条内容发给模型的业务字段只允许：
 
@@ -203,36 +261,138 @@ text
 author.display_name
 ```
 
-缺失填 `""`。临时 `item_no` 只用于批次配对。内容 ID、平台、URL、互动指标、粉丝数、Provider、`matched_keywords`、源 Excel 情感、Raw locator 等都不能发送。
+缺失填 `""`。临时 `item_no` 只用于批次配对。
 
-本地 Validator 会严格检查 JSON、固定字段、额外字段、item 数量/顺序/唯一性、sentiment、一级标签和二级父子关系。非法输出不做模糊匹配或自动改标签。
+禁止发送内容 ID、平台 ID、URL、点赞/评论/转发/粉丝等指标、Provider、`matched_keywords`、源 Excel 全文情感、Raw locator 或其他 Provider 私有字段。
 
-Validation Retry 只重试当前仍未成功的 item。同批已经校验成功的 item 不会因为其他 item 失败而再次调用。每次模型请求是独立 attempt；真实 token/费用只有 Adapter 能提供时才记录。
+模型每条只允许返回：
 
-如果手工用 P1E 的 `FakeContentLabelingLLM` 调试，可查看：
-
-```text
-ContentLabelingBatchResult.attempts
-ContentLabelingItemResult.analysis_status
-ContentLabelingItemResult.validation_error_codes
+```json
+{
+  "item_no": 1,
+  "sentiment": "...",
+  "primary_label": "...",
+  "secondary_label": "..."
+}
 ```
 
-达到 `MAX_VALIDATION_RETRIES` 上限后失败 item 为：
+本地 Validator 严格检查：JSON、固定字段、额外字段、item 数量/顺序/唯一性与配对、sentiment membership、primary membership、secondary→primary 父子关系、数组/空标签等。非法输出不做模糊匹配、近义替换或自动猜标签。
+
+## 10. `label_sentiment()` 与 Validation Retry
+
+`label_sentiment()` 只读取：
+
+```text
+output/deduplicated/contents.jsonl
+```
+
+并组装：
+
+```text
+PromptTaxonomyLoader
+→ ContentLabelingService
+→ OpenAICompatibleContentLabelingLLM
+→ label_unified_content_jsonl
+```
+
+真实 Adapter 一次 `complete()` 只发送一次 HTTP 请求，不隐藏 Transport Retry。Validation Retry 由正式 `ContentLabelingService` 统一控制，`MAX_VALIDATION_RETRIES` 不会在 Adapter/Prompt 再复制一份。
+
+可进入 Validation Retry 的典型错误包括：
+
+- 非法 JSON；
+- 缺少必须字段；
+- 额外未声明字段；
+- item 缺失/重复/数量不一致；
+- `item_no` 无法配对；
+- 未知 sentiment；
+- 未知一级标签；
+- 二级标签不属于一级；
+- 数组、多标签、空标签；
+- 其他结构不合法。
+
+同批已经通过 Validator 的成功 item 会从后续重试集合移除，不会因其他 item 失败重复调用。达到上限仍不合法时：
 
 ```text
 analysis_status = failed
 analysis = None
 ```
 
-不会填猜测标签。
+业务 JSONL 不会写猜测标签。
 
-### attempts / checkpoints / failed 在哪里看
+## 11. attempts / checkpoints / failed
 
-- **P1E 当前**：attempts 和 failed 只存在于 `ContentLabelingBatchResult` 内存结果，用于 Fake/Service 单元测试和调试；
-- **P1F 建立后**：通过 Validator 的成功结果会先进入 `output/analysis/checkpoints.jsonl`，再原子回写 `deduplicated/contents.jsonl`；真实入口也会把 attempt/失败诊断暴露为可审计输出；
-- 现在如果目录里没有 `analysis/checkpoints.jsonl`，这是正常的 P1E 阶段边界，不要自行伪造 checkpoint 文件。
+执行 `label_sentiment()` 后查看：
 
-## 7. 共享 Excel Exporter
+```text
+output/analysis/
+├─ attempts.jsonl
+├─ checkpoints.jsonl
+└─ failed.jsonl
+```
+
+### `attempts.jsonl`
+
+每个模型请求都是独立 attempt，记录：
+
+```text
+batch_no
+attempt_no
+item_nos
+validation_error_codes
+model_provider
+model
+prompt_sha256
+taxonomy_sha256
+started_at
+completed_at
+input_tokens / output_tokens（Provider 返回时）
+cost_amount / cost_currency（可获得时）
+```
+
+还包含安全的 item 配对身份和 `input_hash`，用于确认哪条记录发生了哪次调用。
+
+### `checkpoints.jsonl`
+
+只有通过本地 Validator 的成功 Analysis 才会先写 checkpoint，并执行 `flush/fsync`。随后才把 Analysis 写入业务 JSONL 临时文件，临时文件 `flush/fsync` 后再原子替换：
+
+```text
+output/deduplicated/contents.jsonl
+```
+
+checkpoint 是恢复/费用安全/审计依据，不是第二业务事实源。
+
+### `failed.jsonl`
+
+达到 Validation Retry 上限仍失败的 item 会记录：
+
+```text
+analysis_status = failed
+validation_error_codes = [...]
+```
+
+不会构造假的 `ContentLabelAnalysisV1`。
+
+### 崩溃恢复边界
+
+P1F 已保证：成功 checkpoint 在业务 JSONL 发布前落盘；最终 `os.replace` 失败时原业务 JSONL 不被破坏，checkpoint 仍保留。
+
+P1F **尚未**实现从 checkpoint 自动恢复中断、跨进程重启跳过“checkpoint 已成功但业务 JSONL 尚未发布”的 item。该恢复闭环属于 P1G；当前不要手工把 checkpoint 当成第二业务 JSONL 覆盖原文件。
+
+## 12. 如何调试模型非法响应
+
+优先按顺序查看：
+
+1. `output/analysis/attempts.jsonl` 的 `validation_error_codes`；
+2. `output/analysis/failed.jsonl` 的最终错误；
+3. 本次 `prompt_sha256` / `taxonomy_sha256` 是否与当前 Prompt 一致；
+4. `model_provider` / `model` 是否是预期配置；
+5. Provider 是否支持当前 `AIMA_LLM_JSON_MODE` 设置。
+
+如果输出不合法，应修 Prompt、模型配置或 Provider 兼容性，不要关闭 Validator、模糊匹配或在程序里猜测标签。
+
+真实 token 只有 Provider 返回时才会记录。通用 OpenAI-compatible Adapter 不猜测供应商价格，因此未提供真实价格时费用字段可以为空；Validation Retry 本身会增加模型请求数量和费用。
+
+## 13. 共享 Excel Exporter
 
 P1D 建立唯一共享导出链：
 
@@ -254,16 +414,26 @@ backend/src/aima_ugc/platform/export/excel.py
 
 Exporter 使用 write-only Workbook 流式写出，并在发布目标文件前重新打开检查 Sheet、表头、行数和关键 ID。完整业务数据仍以 JSONL 为事实源，Excel 只用于人工查看和交付。
 
-## 8. JSONL 与失败边界
+## 14. 当前 P1F / P1G 边界
 
-filtered/deduplicated 业务文件都使用 `UnifiedContentRecordV1`，不会创建第二套 Excel 中间事实源。输入 JSONL 每行都重新做 Pydantic 校验；空行、非法 JSON 或 Contract 不合法时 fail closed。
+P1F 已实现并可单步验证：
 
-目标 JSONL 文件通过临时文件写完、`flush/fsync` 后再替换；新一轮开始前清理旧目标/诊断，避免后续步骤误读上一次成功或失败的陈旧文件。
+```text
+convert()
+filter_keywords()
+deduplicate()
+export_raw_excel()  # 可选
+label_sentiment()   # 显式真实模型开关
+```
 
-P1F 的 AI 成功回写仍只更新同一个 `deduplicated/contents.jsonl`；`analysis/checkpoints.jsonl` 是恢复/费用安全/审计依据，不是第二业务事实源。
+下一单元 P1G 才实现：
 
-## 9. .env 与真实模型边界
+```text
+run_all()
+checkpoint 自动崩溃恢复
+run_summary.json
+export_labeled_excel()
+最终 Excel 只读取回写后的同一 deduplicated/contents.jsonl
+```
 
-P1E 不读取真实 Secret，也不会访问真实模型。`ENABLE_REAL_LLM=False` 保持默认安全状态。
-
-真实 OpenAI-compatible LLM Adapter、`.env.example` 需要的 URL/API key/model 配置、网络/Transport Retry、checkpoint、JSONL 原子回写和 `label_sentiment()` 接线统一在 P1F 实现。真实 `.env` 已由仓库根 `.gitignore` 忽略，不要提交密钥。
+不要在 P1F 人工入口中自行复制第二套 `run_all()`、恢复算法或 Excel 写出逻辑。
