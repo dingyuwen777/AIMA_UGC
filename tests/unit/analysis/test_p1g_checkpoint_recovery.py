@@ -150,7 +150,8 @@ def test_p1g_does_not_recover_checkpoint_from_different_prompt(
 
     changed_prompt = tmp_path / "content_labeling_changed.md"
     changed_prompt.write_text(
-        CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8") + "\n<!-- P1G prompt revision -->\n",
+        CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
+        + "\n<!-- P1G prompt revision -->\n",
         encoding="utf-8",
     )
     second_loader = PromptTaxonomyLoader(changed_prompt)
