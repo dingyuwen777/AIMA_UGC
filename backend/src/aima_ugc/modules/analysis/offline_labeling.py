@@ -70,7 +70,7 @@ def label_unified_content_jsonl(
     batch_size: int = 20,
     recovery_taxonomy: PromptTaxonomy | None = None,
 ) -> OfflineContentLabelingSummary:
-    """读取统一内容 JSONL，按当前 Prompt/Taxonomy 恢复 checkpoint 并原子回写。"""
+    """读取统一内容 JSONL，按当前 Prompt/Taxonomy/模型身份恢复 checkpoint 并原子回写。"""
 
     if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size <= 0:
         raise ValueError("batch_size 必须是大于 0 的整数")
@@ -84,6 +84,8 @@ def label_unified_content_jsonl(
     checkpoint_index = _load_checkpoint_index(
         checkpoint_path,
         recovery_taxonomy=recovery_taxonomy,
+        recovery_model_provider=service.provider_name,
+        recovery_model=service.model_name,
     )
     temp_path = source_path.with_name(f".{source_path.name}.labeling.tmp")
     temp_path.unlink(missing_ok=True)
@@ -311,6 +313,8 @@ def _load_checkpoint_index(
     path: Path,
     *,
     recovery_taxonomy: PromptTaxonomy | None,
+    recovery_model_provider: str,
+    recovery_model: str,
 ) -> dict[_CheckpointKey, ContentLabelAnalysisV1]:
     if not path.exists() or recovery_taxonomy is None:
         return {}
@@ -346,6 +350,8 @@ def _load_checkpoint_index(
             if (
                 analysis.prompt_sha256 != recovery_taxonomy.prompt_sha256
                 or analysis.taxonomy_sha256 != recovery_taxonomy.taxonomy_sha256
+                or analysis.model_provider != recovery_model_provider
+                or analysis.model != recovery_model
             ):
                 continue
             key = (platform, external_content_id, input_hash)
