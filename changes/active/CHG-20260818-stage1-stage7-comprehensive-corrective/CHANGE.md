@@ -103,9 +103,9 @@ data_changes: [collection_plans, collection_plan_decision_policies, collection_r
 # 数据与 Migration
 
 - 允许新增向前 Alembic Revision；禁止改写已发布 `20260813_0001`—`20260817_0017`。
-- 预计新增：Collection content action/checkpoint；Content Canonical 子实体表；thread/reply coverage；必要唯一/复合来源约束；Keyword Pack 版本触发/Repository 更新语义。
-- Migration 必须覆盖 `0017 → head` 与 `base → head`，并针对包含历史数据的升级路径写真实 PostgreSQL 集成测试；不得只验证空库建表。
-- 新结构对既有历史数据不能凭空伪造来源；无法证明的历史子字段保持缺失/unknown，不从 Raw 批量重算除非显式编写受控 backfill。
+- 实际新增：Collection content action/checkpoint；Content Canonical 子实体表；thread/reply coverage；必要唯一/复合来源约束；Keyword Pack 成员写入后的 version 提升语义。
+- Migration 覆盖 `0017 → head` 与 `base → head`，并针对包含历史数据的升级路径使用真实 PostgreSQL 集成测试验证；不只验证空库建表。
+- 新结构对既有历史数据不凭空伪造来源；无法证明的历史子字段保持缺失/unknown，不从 Raw 批量重算。
 
 # 安全、性能、部署和回滚
 
@@ -139,7 +139,7 @@ data_changes: [collection_plans, collection_plan_decision_policies, collection_r
 5. 0 platform/0 keyword/0 executable scope → fail closed；0 Scope Run 不成功。
 6. `comments_enabled=false` → 正式 Worker 0 comment requests。
 7. `sample_target=N/reply_target=N` → 正式 Worker 深度按 Snapshot 生效。
-8. 正常合法长采集的推导 Deadline 大于其最大批准请求预算且仍有限。
+8. 正常合法长采集的推导 Deadline 不低于按当前技术分页上限、Scope 数和 Provider timeout 计算的有限执行窗口，并保持不可由 Heartbeat 无限延长。
 9. Mapper 产生的 media/topic/location/alternate_ids 等 → PostgreSQL → Read Model 不丢。
 10. root + replies → thread coverage + top-level coverage 自洽并可构造 Aggregate。
 11. pagination_not_advanced/cursor unavailable/page_limit → 不伪造 complete。
@@ -174,7 +174,7 @@ data_changes: [collection_plans, collection_plan_decision_policies, collection_r
 - Docs：`uv run python scripts/quality/check_docs.py`
 - Contract：生成物/兼容检查使用仓库现有 CI 命令。
 - Alembic：`upgrade head`、`check`、`downgrade/upgrade` 及历史数据升级回归。
-- Frontend：保持当前 `npm ci`、lint/typecheck/test/build 现有门禁。
+- Frontend：保持当前 `npm ci`、lint/typecheck/test/build` 现有门禁。
 - GitHub Actions：最终 PR head 读取所有适用 workflow/job，failure/cancelled/timed_out/in_progress 均为 0。
 
 ## 新鲜证据
@@ -182,16 +182,16 @@ data_changes: [collection_plans, collection_plan_decision_policies, collection_r
 - 最终终审新增 5 组回归先在未修实现上稳定 Red：短周期 Deadline 无执行窗口下限、Thread Coverage upsert 返回假 ID、Reply soft-target 误报 complete、SubComments 显式空页未覆盖旧 reply_count、Reply 身份失败缺 Candidate ledger。
 - GitHub-hosted PostgreSQL 18 Red→Green Run `32112722378`：5 组目标回归 Green；mypy 143 source files 无错误；Unit/Contract 236 passed；Collection Integration 66 passed；Content Integration 19 passed；Database Integration 8 passed；Architecture/Table Ownership/Secret Scan/Docs/Contract/Alembic round-trip 全部通过。
 - 修复落盘后的代码候选 `63686850f233656fcee3c3c25d622a2c9c10f5aa` 取得 12/12 适用正式 GitHub Actions 成功：CI、Stage 4、5A/5B/5C/5D、Stage 6、Stage 7 Keyword Packs/Provider Config Routing/Plan Occurrence Run Snapshot/Scheduler Runtime、Stage 1-7 Audit Correctness。
-- 最终文档提交仍必须由 PR 当前 head 的适用 GitHub Actions 重新验证；任何 Red 都会把本 Change 退回 `in_progress`，不得合并。
+- 最终长期文档与文档一致性回归落盘后的候选 `696c09c77f9933d3cc0cebc9bc877a3cd2746c9c` 再次取得同一 12/12 适用正式 GitHub Actions 成功；该候选已包含 Collection README、Blueprint 02/03/05/07/08/09、测试说明和长期文档事实回归。
 
 # 文档影响
 
-整改后同步 `docs/blueprint/02/03/05/07/08/09`、Blueprint README、Collection 模块/平台说明、测试说明和必要根 README；只写最终当前事实，不把本 Change 流水账复制进长期文档。
+已同步 `docs/blueprint/02/03/05/07/08/09`、Collection 模块 README 和测试说明；语义检查确认 Blueprint README、根 README 及平台分文档无需为本 Change 再复制一套相同事实。长期文档只描述当前系统，不复制本 Change 流水账。
 
 # 交付
 
 - 基线 main：`16a97e0aa3b5990b1babf5e0512413242286ae53`
 - 分支：`fix/stage1-stage7-comprehensive-corrective`
-- Commit：代码整改已落到 PR #65 分支；最终文档事实同步由本 Change 收尾提交完成。
-- PR：#65 `修复 Stage 1-7 全面正确性与一致性问题`；当前 Change 达到 `ready_for_review` 后才允许把 Draft 转 Ready，未授权不得合并 main。
+- Commit：代码整改、最终文档事实同步与长期文档一致性回归均已落到 PR #65 分支。
+- PR：#65 `修复 Stage 1-7 全面正确性与一致性问题`；Change 为 `ready_for_review`，可在最终 PR head 仍保持门禁绿色后转 Ready；未授权不得合并 main。
 - 发布：本 Change 不部署生产。
