@@ -230,6 +230,15 @@ class CollectionRunExecutor:
             trigger_type=run.trigger_type,
             scope_count=total_scopes,
         )
+        if total_scopes == 0:
+            self._finish_run(
+                run=run,
+                fence=fence,
+                status="failed",
+                totals=totals,
+                error_summary="collection_run_has_no_scopes",
+            )
+            return JobHandlerResult.failed("collection_run_has_no_scopes")
 
         for index, persisted_scope in enumerate(execution.scopes):
             if persisted_scope.status in _SCOPE_TERMINAL_STATUSES:
@@ -247,8 +256,7 @@ class CollectionRunExecutor:
                         error_summary="scope_cancelled",
                     )
                     return JobHandlerResult.cancelled()
-                if total_scopes:
-                    context.heartbeat(progress=((index + 1) * 100) // total_scopes)
+                context.heartbeat(progress=((index + 1) * 100) // total_scopes)
                 continue
 
             if context.cancel_requested():
@@ -335,10 +343,9 @@ class CollectionRunExecutor:
                     )
                     return JobHandlerResult.cancelled()
 
-            if total_scopes:
-                context.heartbeat(progress=((index + 1) * 100) // total_scopes)
+            context.heartbeat(progress=((index + 1) * 100) // total_scopes)
 
-        if failed_scopes == total_scopes and total_scopes > 0:
+        if failed_scopes == total_scopes:
             run_status = "failed"
         elif failed_scopes or partial_scopes:
             run_status = "partial_success"
