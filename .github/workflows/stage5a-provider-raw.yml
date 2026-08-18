@@ -56,7 +56,7 @@ on:
 
 permissions:
   contents: read
-  issues: write
+  issues: read
 
 jobs:
   stage5a-provider-raw:
@@ -205,20 +205,14 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Generate ephemeral key and receive encrypted configuration
+      - name: Generate ephemeral RSA key
+        id: ephemeral_key
         shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
           KEY_DIR="${RUNNER_TEMP}/p1h-ephemeral"
-          RUN_TOKEN="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          PUBLIC_PREFIX="P1H_EPHEMERAL_PUBLIC_KEY:${RUN_TOKEN}:"
-          PAYLOAD_PREFIX="P1H_EPHEMERAL_PAYLOAD:${RUN_TOKEN}:"
           mkdir -p "${KEY_DIR}"
           chmod 700 "${KEY_DIR}"
-
           openssl genpkey \
             -algorithm RSA \
             -pkeyopt rsa_keygen_bits:3072 \
@@ -228,26 +222,54 @@ jobs:
           openssl pkey \
             -in "${KEY_DIR}/private.pem" \
             -pubout \
-            -out "${KEY_DIR}/public.pem" \
+            -outform DER \
+            -out "${KEY_DIR}/public.der" \
             >/dev/null 2>&1
+          PUBLIC_KEY_B64URL="$(base64 -w0 "${KEY_DIR}/public.der" | tr '+/' '-_' | tr -d '=')"
+          echo "chunk0=${PUBLIC_KEY_B64URL:0:160}" >> "${GITHUB_OUTPUT}"
+          echo "chunk1=${PUBLIC_KEY_B64URL:160:160}" >> "${GITHUB_OUTPUT}"
+          echo "chunk2=${PUBLIC_KEY_B64URL:320:160}" >> "${GITHUB_OUTPUT}"
+          echo "chunk3=${PUBLIC_KEY_B64URL:480:160}" >> "${GITHUB_OUTPUT}"
+          printf '%s\n' 'public-key-marker' > "${KEY_DIR}/marker.txt"
 
-          PUBLIC_KEY_B64="$(base64 -w0 "${KEY_DIR}/public.pem")"
-          comment_json="$(jq -n --arg body "${PUBLIC_PREFIX}${PUBLIC_KEY_B64}" '{body: $body}')"
-          curl \
-            --fail \
-            --silent \
-            --show-error \
-            --location \
-            -X POST \
-            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            -H "Content-Type: application/json" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
-            --data "${comment_json}" \
-            >/dev/null
-          echo "P1H_EPHEMERAL_PUBLIC_KEY_COMMENTED:${RUN_TOKEN}"
+      - name: Publish public key chunk 0
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: p1h-pub-${{ github.run_id }}-${{ github.run_attempt }}-0-${{ steps.ephemeral_key.outputs.chunk0 }}
+          path: ${{ runner.temp }}/p1h-ephemeral/marker.txt
+          retention-days: 1
 
+      - name: Publish public key chunk 1
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: p1h-pub-${{ github.run_id }}-${{ github.run_attempt }}-1-${{ steps.ephemeral_key.outputs.chunk1 }}
+          path: ${{ runner.temp }}/p1h-ephemeral/marker.txt
+          retention-days: 1
+
+      - name: Publish public key chunk 2
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: p1h-pub-${{ github.run_id }}-${{ github.run_attempt }}-2-${{ steps.ephemeral_key.outputs.chunk2 }}
+          path: ${{ runner.temp }}/p1h-ephemeral/marker.txt
+          retention-days: 1
+
+      - name: Publish public key chunk 3
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: p1h-pub-${{ github.run_id }}-${{ github.run_attempt }}-3-${{ steps.ephemeral_key.outputs.chunk3 }}
+          path: ${{ runner.temp }}/p1h-ephemeral/marker.txt
+          retention-days: 1
+
+      - name: Receive encrypted configuration
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          KEY_DIR="${RUNNER_TEMP}/p1h-ephemeral"
+          RUN_TOKEN="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          PAYLOAD_PREFIX="P1H_EPHEMERAL_PAYLOAD:${RUN_TOKEN}:"
           payload_found=false
           for _ in $(seq 1 90); do
             comments_json="$(curl \
@@ -267,12 +289,10 @@ jobs:
             fi
             sleep 2
           done
-
           if [[ "${payload_found}" != "true" ]]; then
             echo "P1H_EPHEMERAL_PAYLOAD_TIMEOUT:${RUN_TOKEN}"
             exit 3
           fi
-
           base64 --decode "${KEY_DIR}/payload.b64" > "${KEY_DIR}/payload.bin"
           openssl pkeyutl \
             -decrypt \
