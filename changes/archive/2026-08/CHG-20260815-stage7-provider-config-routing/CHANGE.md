@@ -10,8 +10,8 @@ created: 2026-08-15
 updated: 2026-08-15
 depends_on: [CHG-20260815-stage7-decision-capability]
 affected_areas: [system, collection, provider, contracts, database, testing, documentation]
-affected_paths: [backend/src/aima_ugc/modules/system/, backend/src/aima_ugc/modules/collection/, backend/src/aima_ugc/platform/security/, backend/src/aima_ugc/adapters/persistence/postgres/system.py, backend/src/aima_ugc/adapters/providers/, backend/src/aima_ugc/contracts/collection/, backend/src/aima_ugc/database_schema.py, contracts/collection/, migrations/versions/20260815_0010_stage7_provider_configs.py, scripts/contracts/, tests/contracts/test_provider_config_stage7.py, tests/unit/collection/test_provider_routing.py, tests/integration/database/test_provider_config_repository.py, .github/workflows/stage7-provider-config-routing.yml, docs/blueprint/README.md, docs/blueprint/02-采集系统与数据标准化.md, docs/blueprint/08-采集策略与平台能力.md, docs/collection/README.md]
-contracts: [provider-config.v1, provider-platform-route.v1]
+affected_paths: [backend/src/aima_ugc/modules/system/, backend/src/aima_ugc/modules/collection/, backend/src/aima_ugc/operations/security/, backend/src/aima_ugc/adapters/persistence/postgres/system.py, backend/src/aima_ugc/adapters/providers/, backend/src/aima_ugc/contracts/collection/, backend/src/aima_ugc/database_schema.py, contracts/collection/, migrations/versions/20260815_0010_stage7_provider_configs.py, scripts/contracts/, tests/contracts/test_provider_config_stage7.py, tests/unit/collection/test_provider_routing.py, tests/integration/database/test_provider_config_repository.py, .github/workflows/stage7-provider-config-routing.yml, docs/blueprint/README.md, docs/blueprint/02-采集系统与数据标准化.md, docs/blueprint/08-采集策略与平台能力.md, docs/collection/README.md]
+contracts: [provider-config.v1, provider-operations-route.v1]
 data_changes: [provider_configs]
 ---
 

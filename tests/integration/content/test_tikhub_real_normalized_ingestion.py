@@ -248,7 +248,7 @@ def _assert_content_persisted(session, canonical: CanonicalContentV1, target_id:
         .mappings()
         .one()
     )
-    assert row["platform"] == canonical.platform
+    assert row["operations"] == canonical.platform
     assert row["external_content_id"] == canonical.external_content_id
     assert isinstance(row["external_content_id"], str)
     assert row["content_type"] == canonical.content_type

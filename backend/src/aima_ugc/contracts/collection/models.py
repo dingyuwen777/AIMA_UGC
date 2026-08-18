@@ -82,7 +82,7 @@ class ProviderOperationCapabilityV1(CollectionBaseModel):
 class ProviderPlatformCapabilityV1(CollectionBaseModel):
     """一个 Provider + Platform 当前已验证/实现的业务能力集合。"""
 
-    schema_version: Literal["provider-platform-capability.v1"] = "provider-platform-capability.v1"
+    schema_version: Literal["provider-operations-capability.v1"] = "provider-operations-capability.v1"
     provider: ProviderName
     platform: PlatformName
     operations: tuple[ProviderOperationCapabilityV1, ...] = Field(min_length=1)

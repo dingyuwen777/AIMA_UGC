@@ -9,8 +9,8 @@ branch: fix/stage1-stage7-correctness
 created: 2026-08-17
 updated: 2026-08-17
 depends_on: [CHG-20260815-stage7-completion]
-affected_areas: [platform, jobs, collection, content, provider, database, migration, testing, ci, documentation]
-affected_paths: [backend/src/aima_ugc/platform/jobs/, backend/src/aima_ugc/modules/collection/, backend/src/aima_ugc/modules/content/, backend/src/aima_ugc/adapters/persistence/postgres/, backend/src/aima_ugc/bootstrap/, migrations/versions/, tests/unit/, tests/integration/, .github/workflows/, README.md, docs/]
+affected_areas: [operations, jobs, collection, content, provider, database, migration, testing, ci, documentation]
+affected_paths: [backend/src/aima_ugc/operations/jobs/, backend/src/aima_ugc/modules/collection/, backend/src/aima_ugc/modules/content/, backend/src/aima_ugc/adapters/persistence/postgres/, backend/src/aima_ugc/bootstrap/, migrations/versions/, tests/unit/, tests/integration/, .github/workflows/, README.md, docs/]
 contracts: []
 data_changes: [comment_coverage_observations]
 ---

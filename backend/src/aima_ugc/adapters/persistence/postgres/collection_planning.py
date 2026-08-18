@@ -74,7 +74,7 @@ class PostgresCollectionPlanningRepository:
                     [
                         {
                             "plan_id": plan_id,
-                            "platform": platform.platform,
+                            "operations": platform.platform,
                             "provider_config_id": platform.provider_config_id,
                             "config": dict(platform.config),
                         }
@@ -232,7 +232,7 @@ class PostgresCollectionPlanningRepository:
 
 def _row_to_platform(row: RowMapping) -> PlanPlatformDefinition:
     return PlanPlatformDefinition(
-        platform=cast(str, row["platform"]),
+        platform=cast(str, row["operations"]),
         provider_config_id=cast(UUID, row["provider_config_id"]),
         config=cast(dict[str, object], row["config"]),
     )

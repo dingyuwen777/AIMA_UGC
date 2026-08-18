@@ -101,7 +101,7 @@ def test_keyword_catalog_round_trip_and_database_constraints() -> None:
         assert set(keyword_pack_items_table.c.keys()) == {
             "pack_id",
             "keyword_id",
-            "platform",
+            "operations",
             "priority",
             "enabled",
             "note",
@@ -109,7 +109,7 @@ def test_keyword_catalog_round_trip_and_database_constraints() -> None:
         assert tuple(column.name for column in keyword_pack_items_table.primary_key.columns) == (
             "pack_id",
             "keyword_id",
-            "platform",
+            "operations",
         )
         assert {
             foreign_key.target_fullname for foreign_key in keyword_pack_items_table.foreign_keys

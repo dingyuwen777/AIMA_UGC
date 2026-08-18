@@ -49,7 +49,7 @@ fetch_search_by_type → Raw → Mapper → content identity/compare → Decisio
 ```
 
 ```python
-from aima_ugc.adapters.providers.tikhub_test.bilibili import run_bilibili
+from aima_ugc.adapters.providers.tikhub_test import run_bilibili
 
 run_bilibili(keyword="爱玛", sort_mode="latest")
 ```

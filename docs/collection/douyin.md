@@ -33,9 +33,19 @@ fetch_video_search_v2 → Raw → Mapper → aweme_id identity/compare → Decis
 ```
 
 ```python
-from aima_ugc.adapters.providers.tikhub_test.douyin import run_douyin
+from aima_ugc.adapters.providers.tikhub_test import run_douyin
 
 run_douyin(keyword="爱玛", sort_mode="latest", published_within="1d")
 ```
 
 当前没有 Budget/Cost Guard；调试输出 Raw、Canonical、`run_summary.json`、state 和原始数据 Excel。
+
+`tikhub_test` 批量调试时，单个搜索结果调用 `fetch_one_video_v3` 若收到 TikHub 明确返回的
+HTTP 400，会先保存该响应 Raw、HTTP 状态和 request ID，再以搜索阶段已映射的内容输出
+`comment_coverage=unavailable`，并继续处理其余内容。`run_summary.json` 此时使用
+`status=completed_with_errors`，在 `content_failures` 中记录失败内容；该内容不写入跨运行去重
+状态，下一次人工运行仍会重新请求详情。
+
+这个边界只用于避免无数据库调试入口被单条内容中断，不会隐藏自动重试，也不会自动切换
+Web/V1/V2 等备用接口；生产 Worker 的 Provider Attempt、重试和计费语义不受影响。其他
+Operation 或其他 HTTP 错误继续按原行为终止调试运行。

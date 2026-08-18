@@ -86,7 +86,7 @@ def test_service_rejects_duplicate_platform_identity() -> None:
         PlanPlatformDefinition(platform="xhs", provider_config_id=uuid4(), config={}),
     )
 
-    with pytest.raises(DuplicatePlanPlatformError, match="platform"):
+    with pytest.raises(DuplicatePlanPlatformError, match="operations"):
         CollectionPlanningService(_RecordingPlanningRepository()).create_plan(
             _definition(platforms=duplicate_platforms)
         )

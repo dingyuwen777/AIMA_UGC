@@ -40,7 +40,7 @@ search_video_v2 → Raw → Mapper → photo_id identity/compare → Decision
 当前 App endpoint Pricing 继续用于 Provider Billing 审计，但系统没有请求次数/金额 Budget Runtime。
 
 ```python
-from aima_ugc.adapters.providers.tikhub_test.kuaishou import run_kuaishou
+from aima_ugc.adapters.providers.tikhub_test import run_kuaishou
 
 run_kuaishou(keyword="爱玛")
 ```

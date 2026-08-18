@@ -455,7 +455,7 @@ def run_probe() -> None:
             results.append(
                 {
                     "name": case.name,
-                    "platform": case.platform,
+                    "operations": case.platform,
                     "semantic_relation": case.semantic_relation,
                     "keyword": KEYWORD,
                     "primary_endpoint": case.primary.path,

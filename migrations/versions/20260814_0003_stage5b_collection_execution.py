@@ -64,7 +64,7 @@ def upgrade() -> None:
         "collection_scopes",
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("run_id", sa.Uuid(), nullable=False),
-        sa.Column("platform", sa.Text(), nullable=False),
+        sa.Column("operations", sa.Text(), nullable=False),
         sa.Column("source_type", sa.Text(), nullable=False),
         sa.Column("source_value", sa.Text(), nullable=False),
         sa.Column("operation_group", sa.Text(), nullable=False),
@@ -93,7 +93,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id", name=op.f("pk_collection_scopes")),
         sa.UniqueConstraint(
             "run_id",
-            "platform",
+            "operations",
             "source_type",
             "source_value",
             "operation_group",

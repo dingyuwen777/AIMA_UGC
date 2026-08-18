@@ -109,7 +109,7 @@ def test_job_worker_emits_stable_lifecycle_events(
     _enqueue(database_runtime, key=f"job-log-{outcome}-{uuid4()}")
     worker = _worker(database_runtime, outcome)
 
-    with caplog.at_level(logging.INFO, logger="aima_ugc.platform.jobs.worker"):
+    with caplog.at_level(logging.INFO, logger="aima_ugc.operations.jobs.worker"):
         assert worker.run_once() is True
 
     records = [record for record in caplog.records if hasattr(record, "event")]

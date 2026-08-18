@@ -9,8 +9,8 @@ branch: feature/stage4-job-runtime
 created: 2026-08-14
 updated: 2026-08-14
 depends_on: [CHG-20260813-stage3a-database-foundation, CHG-20260813-stage3b-canonical-v1]
-affected_areas: [platform, jobs, database, migration, worker, ci, blueprint, testing]
-affected_paths: [backend/src/aima_ugc/platform/jobs/, backend/src/aima_ugc/adapters/persistence/postgres/jobs.py, backend/src/aima_ugc/database_schema.py, backend/src/aima_ugc/bootstrap/worker.py, backend/src/aima_ugc/entrypoints/worker_main.py, migrations/versions/, tests/unit/jobs/, tests/integration/jobs/, .github/workflows/stage4-job-runtime.yml, docs/blueprint/README.md, docs/blueprint/06-开发约束与分阶段实施.md, docs/blueprint/07-技术决策与实施门禁.md, docs/测试与调试说明.md]
+affected_areas: [operations, jobs, database, migration, worker, ci, blueprint, testing]
+affected_paths: [backend/src/aima_ugc/operations/jobs/, backend/src/aima_ugc/adapters/persistence/postgres/jobs.py, backend/src/aima_ugc/database_schema.py, backend/src/aima_ugc/bootstrap/worker.py, backend/src/aima_ugc/entrypoints/worker_main.py, migrations/versions/, tests/unit/jobs/, tests/integration/jobs/, .github/workflows/stage4-job-runtime.yml, docs/blueprint/README.md, docs/blueprint/06-开发约束与分阶段实施.md, docs/blueprint/07-技术决策与实施门禁.md, docs/测试与调试说明.md]
 contracts: [JobPayloadRegistry]
 data_changes: [jobs, job_attempt_events]
 ---

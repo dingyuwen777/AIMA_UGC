@@ -40,7 +40,7 @@ fetch_search → Raw → Mapper → status_id identity/compare → Decision
 ```
 
 ```python
-from aima_ugc.adapters.providers.tikhub_test.weibo import run_weibo
+from aima_ugc.adapters.providers.tikhub_test import run_weibo
 
 run_weibo(keyword="爱玛", sort_mode="latest", published_within="day")
 ```

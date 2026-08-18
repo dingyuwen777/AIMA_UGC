@@ -23,7 +23,7 @@ affected_paths:
   - "backend/src/aima_ugc/contracts/provider/"
   - "backend/src/aima_ugc/modules/collection/"
   - "backend/src/aima_ugc/adapters/providers/"
-  - "backend/src/aima_ugc/platform/storage/"
+  - "backend/src/aima_ugc/operations/storage/"
   - "contracts/provider/"
   - "scripts/contracts/"
   - "scripts/quality/"

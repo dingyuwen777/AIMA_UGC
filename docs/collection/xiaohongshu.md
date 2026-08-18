@@ -36,7 +36,7 @@ search_notes → Raw → Mapper/Observation → identity/compare → Decision
 ```
 
 ```python
-from aima_ugc.adapters.providers.tikhub_test.xiaohongshu import run_xiaohongshu
+from aima_ugc.adapters.providers.tikhub_test import run_xiaohongshu
 
 run_xiaohongshu(keyword="爱玛", sort_mode="latest", published_within="1d")
 ```

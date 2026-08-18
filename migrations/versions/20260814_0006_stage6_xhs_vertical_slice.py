@@ -20,7 +20,7 @@ def upgrade() -> None:
     op.create_table(
         "accounts",
         sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("platform", sa.Text(), nullable=False),
+        sa.Column("operations", sa.Text(), nullable=False),
         sa.Column("external_account_id", sa.Text(), nullable=False),
         sa.Column("handle", sa.Text()),
         sa.Column("display_name", sa.Text()),
@@ -39,13 +39,13 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_accounts")),
         sa.UniqueConstraint(
-            "platform", "external_account_id", name=op.f("uq_accounts_platform_external_account_id")
+            "operations", "external_account_id", name=op.f("uq_accounts_platform_external_account_id")
         ),
     )
     op.create_table(
         "contents",
         sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("platform", sa.Text(), nullable=False),
+        sa.Column("operations", sa.Text(), nullable=False),
         sa.Column("external_content_id", sa.Text(), nullable=False),
         sa.Column("content_type", sa.Text(), nullable=False),
         sa.Column("title", sa.Text()),
@@ -75,7 +75,7 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_contents")),
         sa.UniqueConstraint(
-            "platform", "external_content_id", name=op.f("uq_contents_platform_external_content_id")
+            "operations", "external_content_id", name=op.f("uq_contents_platform_external_content_id")
         ),
         sa.CheckConstraint(
             "current_version >= 1", name=op.f("ck_contents_current_version_positive")
@@ -84,7 +84,7 @@ def upgrade() -> None:
     op.create_index(
         "ix_contents_platform_last_seen",
         "contents",
-        ["platform", "last_seen_at"],
+        ["operations", "last_seen_at"],
         unique=False,
     )
     op.create_table(
@@ -413,7 +413,7 @@ def upgrade() -> None:
         CREATE FUNCTION validate_candidate_ingestion_target() RETURNS trigger AS $$
         DECLARE expected_kind text; expected_platform text; target_platform text;
         BEGIN
-          SELECT c.item_kind, s.platform INTO expected_kind, expected_platform
+          SELECT c.item_kind, s.operations INTO expected_kind, expected_platform
           FROM collection_candidates c
           JOIN provider_request_attempts a ON a.id = c.provider_request_attempt_id
           JOIN provider_requests r ON r.id = a.provider_request_id
@@ -423,9 +423,9 @@ def upgrade() -> None:
             RAISE EXCEPTION 'Candidate item_kind 与 Ingestion target_type 不一致';
           END IF;
           IF NEW.target_type = 'content' THEN
-            SELECT platform INTO target_platform FROM contents WHERE id = NEW.content_id;
+            SELECT operations INTO target_platform FROM contents WHERE id = NEW.content_id;
           ELSIF NEW.target_type = 'comment' THEN
-            SELECT c2.platform INTO target_platform FROM comments cm JOIN contents c2 ON c2.id = cm.content_id WHERE cm.id = NEW.comment_id;
+            SELECT c2.operations INTO target_platform FROM comments cm JOIN contents c2 ON c2.id = cm.content_id WHERE cm.id = NEW.comment_id;
           END IF;
           IF NEW.target_type IS NOT NULL AND target_platform IS DISTINCT FROM expected_platform THEN
             RAISE EXCEPTION 'Candidate 与 Ingestion 目标平台不一致';

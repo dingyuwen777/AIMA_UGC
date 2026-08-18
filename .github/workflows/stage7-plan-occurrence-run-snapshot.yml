@@ -12,7 +12,7 @@ on:
       - "backend/src/aima_ugc/modules/collection/**"
       - "backend/src/aima_ugc/adapters/persistence/postgres/**"
       - "backend/src/aima_ugc/modules/system/**"
-      - "backend/src/aima_ugc/platform/jobs/**"
+      - "backend/src/aima_ugc/operations/jobs/**"
       - "backend/src/aima_ugc/database_schema.py"
       - "migrations/versions/20260815_0013_stage7_plan_occurrence_run_snapshot.py"
       - "tests/unit/collection/test_collection_planning.py"

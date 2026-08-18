@@ -1,13 +1,32 @@
 import gzip
 import logging
 import re
+from datetime import UTC, datetime
 
 from aima_ugc.platform.config import PlatformSettings
 from aima_ugc.platform.logging import (
+    AimaLogFormatter,
     configure_service_logging,
     log_event,
     shutdown_service_logging,
 )
+
+
+def test_log_timestamp_uses_beijing_time() -> None:
+    record = logging.LogRecord(
+        name="aima_ugc.test.logging",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="固定时刻",
+        args=(),
+        exc_info=None,
+    )
+    record.created = datetime(2026, 8, 18, 6, 10, 8, 637000, tzinfo=UTC).timestamp()
+
+    line = AimaLogFormatter(service="api").format(record)
+
+    assert line.startswith("[2026-08-18 14:10:08.637] [INFO]")
 
 
 def test_logging_redacts_escapes_and_rotates_to_gzip(tmp_path) -> None:

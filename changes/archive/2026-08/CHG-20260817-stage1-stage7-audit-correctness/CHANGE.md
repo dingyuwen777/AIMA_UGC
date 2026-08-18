@@ -9,8 +9,8 @@ branch: fix/stage1-stage7-audit-correctness
 created: 2026-08-17
 updated: 2026-08-17
 depends_on: [CHG-20260817-stage1-stage7-correctness]
-affected_areas: [content, collection, platform, provider, database, migration, testing, ci, documentation]
-affected_paths: [backend/src/aima_ugc/modules/content/, backend/src/aima_ugc/platform/storage/, backend/src/aima_ugc/adapters/storage/, backend/src/aima_ugc/adapters/persistence/postgres/, backend/src/aima_ugc/modules/collection/, backend/src/aima_ugc/entrypoints/, backend/src/aima_ugc/platform/jobs/, migrations/versions/, tests/, scripts/quality/, .github/workflows/, README.md, docs/, backend/src/aima_ugc/modules/system/README.md, backend/src/aima_ugc/modules/collection/README.md, backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml]
+affected_areas: [content, collection, operations, provider, database, migration, testing, ci, documentation]
+affected_paths: [backend/src/aima_ugc/modules/content/, backend/src/aima_ugc/operations/storage/, backend/src/aima_ugc/adapters/storage/, backend/src/aima_ugc/adapters/persistence/postgres/, backend/src/aima_ugc/modules/collection/, backend/src/aima_ugc/entrypoints/, backend/src/aima_ugc/operations/jobs/, migrations/versions/, tests/, scripts/quality/, .github/workflows/, README.md, docs/, backend/src/aima_ugc/modules/system/README.md, backend/src/aima_ugc/modules/collection/README.md, backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml]
 contracts: []
 data_changes: [accounts, account_external_ids, contents, comments, artifacts]
 ---

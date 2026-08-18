@@ -49,5 +49,5 @@ artifacts_table = Table(
         "and stored_at is not null and deleted_at is not null) or storage_status = 'error'",
         name="storage_state_consistent",
     ),
-    info={"owner": "platform"},
+    info={"owner": "operations"},
 )

@@ -132,7 +132,7 @@ def test_completed_http_400_is_not_resent_after_worker_takeover(
                     "comment_policy": "adaptive",
                     "platforms": [
                         {
-                            "platform": "xhs",
+                            "operations": "xhs",
                             "provider_config_id": str(provider_config.id),
                             "config": {
                                 "sort_mode": "latest",

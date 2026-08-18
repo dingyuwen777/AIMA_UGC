@@ -231,14 +231,19 @@ function Get-AimaRegisteredPrograms {
 
     foreach ($path in $paths) {
         foreach ($item in (Get-ItemProperty -Path $path -ErrorAction SilentlyContinue)) {
-            if ([string]::IsNullOrWhiteSpace([string]$item.DisplayName)) {
+            $displayNameProperty = $item.PSObject.Properties['DisplayName']
+            if ($null -eq $displayNameProperty) {
+                continue
+            }
+            $displayName = [string]$displayNameProperty.Value
+            if ([string]::IsNullOrWhiteSpace($displayName)) {
                 continue
             }
             $displayVersion = ''
             if ($null -ne $item.PSObject.Properties['DisplayVersion']) {
                 $displayVersion = [string]$item.DisplayVersion
             }
-            $key = "{0}|{1}|{2}" -f $item.DisplayName, $displayVersion, $item.PSChildName
+            $key = "{0}|{1}|{2}" -f $displayName, $displayVersion, $item.PSChildName
             if (-not $seen.ContainsKey($key)) {
                 $seen[$key] = $true
                 $programs += $item
@@ -278,7 +283,7 @@ function Get-AimaNodeRegistrations {
 function Confirm-AimaUninstall {
     param(
         [Parameter(Mandatory = $true)][string]$Label,
-        [Parameter(Mandatory = $true)][object[]]$Programs
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]]$Programs
     )
 
     if ($Programs.Count -eq 0) {
@@ -329,11 +334,14 @@ function Install-AimaPython {
         [Parameter(Mandatory = $true)][string]$TempDir
     )
 
-    $oldPrograms = Get-AimaPythonRegistrations -TargetVersion $TargetVersion
+    $oldPrograms = @(Get-AimaPythonRegistrations -TargetVersion $TargetVersion)
     if (Confirm-AimaUninstall -Label 'Python' -Programs $oldPrograms) {
         foreach ($program in $oldPrograms) {
             Invoke-AimaRegisteredUninstall -Program $program
         }
+    }
+    elseif ($oldPrograms.Count -gt 0) {
+        Write-Host 'Keeping the detected old Python installation(s).'
     }
 
     $installerPath = Join-Path $TempDir "python-$TargetVersion-amd64.exe"
@@ -363,7 +371,10 @@ function Install-AimaNode {
         [Parameter(Mandatory = $true)][string]$TempDir
     )
 
-    $oldPrograms = Get-AimaNodeRegistrations -TargetVersion $TargetVersion
+    $defaultInstallDir = Join-Path $env:ProgramFiles 'nodejs'
+    Write-Host "Node.js MSI default installation directory: $defaultInstallDir"
+
+    $oldPrograms = @(Get-AimaNodeRegistrations -TargetVersion $TargetVersion)
     if ($oldPrograms.Count -gt 0) {
         Write-Host 'Note: the standard Node.js MSI may upgrade the common installation in place even when old Node is kept.'
     }
@@ -371,6 +382,9 @@ function Install-AimaNode {
         foreach ($program in $oldPrograms) {
             Invoke-AimaRegisteredUninstall -Program $program
         }
+    }
+    elseif ($oldPrograms.Count -gt 0) {
+        Write-Host 'Keeping the detected old Node.js installation(s); the MSI may still upgrade the common installation in place.'
     }
 
     $installerName = "node-v$TargetVersion-x64.msi"
@@ -413,6 +427,16 @@ function Install-AimaNode {
     Refresh-AimaProcessPath
 }
 
+function Get-AimaNpmInstallPrefix {
+    param([Parameter(Mandatory = $true)][string]$NpmPath)
+
+    $prefix = Split-Path -Parent $NpmPath
+    if ([string]::IsNullOrWhiteSpace($prefix)) {
+        throw "Unable to determine the npm installation prefix from: $NpmPath"
+    }
+    return $prefix
+}
+
 function Update-AimaNpm {
     param([Parameter(Mandatory = $true)][string]$TargetVersion)
 
@@ -421,13 +445,16 @@ function Update-AimaNpm {
         throw 'npm.cmd is unavailable after Node.js installation.'
     }
 
+    $installPrefix = Get-AimaNpmInstallPrefix -NpmPath $npmPath
     Write-Host 'npm global versions are not managed side-by-side by the standard Node.js installer.'
+    Write-Host "Currently resolved npm command: $npmPath"
+    Write-Host "Target npm installation prefix: $installPrefix"
     $answer = Read-Host "Replace the currently resolved npm with npm@$TargetVersion? [Y/n]"
     if ($answer -match '^(?i:n|no)$') {
         throw 'npm upgrade declined; repository toolchain is not ready.'
     }
 
-    & $npmPath install --global "npm@$TargetVersion" --registry $script:AimaNpmRegistry '--replace-registry-host=always'
+    & $npmPath install --global "npm@$TargetVersion" --prefix $installPrefix --registry $script:AimaNpmRegistry '--replace-registry-host=always'
     if ($LASTEXITCODE -ne 0) {
         throw "npm upgrade failed with exit code $LASTEXITCODE. If permission is denied, rerun as Administrator."
     }
@@ -513,29 +540,78 @@ function Install-AimaProjectDependencies {
     $oldUvIndex = $env:UV_DEFAULT_INDEX
     $oldNpmRegistry = $env:npm_config_registry
     $oldReplaceHost = $env:npm_config_replace_registry_host
-    $env:UV_DEFAULT_INDEX = $script:AimaPypiIndex
     $env:npm_config_registry = $script:AimaNpmRegistry
     $env:npm_config_replace_registry_host = 'always'
+    $requirementsPath = Join-Path ([IO.Path]::GetTempPath()) (
+        'AIMA_UGC-locked-requirements-' + [Guid]::NewGuid().ToString('N') + '.txt'
+    )
 
     Push-Location $RepoRoot
     try {
         Write-Host "Using uv index: $script:AimaPypiIndex"
         Write-Host "Using npm registry: $script:AimaNpmRegistry"
 
-        & $uvPath lock --check
-        if ($LASTEXITCODE -ne 0) { throw "uv lock --check failed: $LASTEXITCODE" }
+        Remove-Item Env:UV_DEFAULT_INDEX -ErrorAction SilentlyContinue
+        & $uvPath lock --check --offline
+        if ($LASTEXITCODE -ne 0) { throw "uv lock --check --offline failed: $LASTEXITCODE" }
 
-        & $uvPath sync --locked
-        if ($LASTEXITCODE -ne 0) { throw "uv sync --locked failed: $LASTEXITCODE" }
+        & $uvPath export --locked --offline --format requirements-txt --no-emit-project --output-file $requirementsPath | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "uv locked requirements export failed: $LASTEXITCODE" }
+
+        $target = Get-AimaTargetVersions -RepoRoot $RepoRoot
+        $targetPythonPath = Get-AimaPythonTargetExecutable -TargetVersion $target.Python
+        if ([string]::IsNullOrWhiteSpace($targetPythonPath)) {
+            throw "Python $($target.Python) is required before installing project dependencies."
+        }
+        $venvPath = Join-Path $RepoRoot '.venv'
+        $projectPythonPath = Join-Path $venvPath 'Scripts\python.exe'
+        $recreateVenv = -not (Test-Path -LiteralPath $projectPythonPath)
+        if (-not $recreateVenv) {
+            try {
+                $venvVersionText = & $projectPythonPath --version 2>&1 | Out-String
+                $recreateVenv = (ConvertTo-AimaVersion -Text $venvVersionText) -ne $target.Python
+            }
+            catch {
+                $recreateVenv = $true
+            }
+        }
+        if ($recreateVenv) {
+            $venvArguments = @('venv', '--python', $targetPythonPath, '--no-python-downloads')
+            if (Test-Path -LiteralPath $venvPath) {
+                $venvArguments += '--clear'
+            }
+            $venvArguments += $venvPath
+            & $uvPath @venvArguments
+            if ($LASTEXITCODE -ne 0) { throw "Project virtual environment creation failed: $LASTEXITCODE" }
+        }
+
+        $env:UV_DEFAULT_INDEX = $script:AimaPypiIndex
+        & $uvPath pip sync --python $projectPythonPath --require-hashes $requirementsPath
+        if ($LASTEXITCODE -ne 0) { throw "uv locked dependency sync failed: $LASTEXITCODE" }
+
+        & $uvPath pip install --python $projectPythonPath --no-deps --editable $RepoRoot
+        if ($LASTEXITCODE -ne 0) { throw "AIMA_UGC editable install failed: $LASTEXITCODE" }
 
         & $npmPath ci --prefix frontend
         if ($LASTEXITCODE -ne 0) { throw "npm ci --prefix frontend failed: $LASTEXITCODE" }
 
-        & $uvPath run python -c 'import aima_ugc; print(aima_ugc.__version__)'
+        $frontendDependenciesPath = Join-Path $RepoRoot 'frontend\node_modules'
+        if (-not (Test-Path -LiteralPath $frontendDependenciesPath)) {
+            throw "Frontend dependency directory was not created: $frontendDependenciesPath"
+        }
+
+        & $projectPythonPath -c 'import aima_ugc; print(aima_ugc.__version__)'
         if ($LASTEXITCODE -ne 0) { throw "Package import verification failed: $LASTEXITCODE" }
+
+        Write-Host 'Installed project dependency locations:'
+        Write-Host "  Python environment: $projectPythonPath"
+        Write-Host "  Frontend packages:  $frontendDependenciesPath"
     }
     finally {
         Pop-Location
+        if (Test-Path -LiteralPath $requirementsPath) {
+            Remove-Item -LiteralPath $requirementsPath -Force -ErrorAction SilentlyContinue
+        }
         if ($null -eq $oldUvIndex) { Remove-Item Env:UV_DEFAULT_INDEX -ErrorAction SilentlyContinue } else { $env:UV_DEFAULT_INDEX = $oldUvIndex }
         if ($null -eq $oldNpmRegistry) { Remove-Item Env:npm_config_registry -ErrorAction SilentlyContinue } else { $env:npm_config_registry = $oldNpmRegistry }
         if ($null -eq $oldReplaceHost) { Remove-Item Env:npm_config_replace_registry_host -ErrorAction SilentlyContinue } else { $env:npm_config_replace_registry_host = $oldReplaceHost }
@@ -610,6 +686,12 @@ function Invoke-AimaDevEnvironmentSetup {
         }
 
         Write-AimaStatus -Current $current -Target $target
+        Write-Host ''
+        Write-Host 'Resolved target tool locations:'
+        Write-Host "  Python $($target.Python): $pythonPath"
+        Write-Host "  Node.js:             $(Get-AimaCommandPath -Name 'node.exe')"
+        Write-Host "  npm:                 $(Get-AimaCommandPath -Name 'npm.cmd')"
+        Write-Host "  uv:                  $(Get-AimaCommandPath -Name 'uv.exe')"
         Install-AimaProjectDependencies -RepoRoot $repoRoot
 
         Write-Host ''

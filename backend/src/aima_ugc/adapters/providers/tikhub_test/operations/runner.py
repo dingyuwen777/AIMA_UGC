@@ -12,6 +12,19 @@ from zoneinfo import ZoneInfo
 from aima_ugc.adapters.providers.tikhub import runtime as tikhub_runtime
 from aima_ugc.adapters.providers.tikhub.capabilities import TIKHUB_PLATFORM_CAPABILITIES
 from aima_ugc.adapters.providers.tikhub.transport import TikHubHttpTransport
+from aima_ugc.adapters.providers.tikhub_test.core.config import TikHubTestConfig
+from aima_ugc.adapters.providers.tikhub_test.core.core import (
+    DebugState,
+    RawOutputRecord,
+    RunOutputStore,
+    default_run_id,
+)
+from aima_ugc.adapters.providers.tikhub_test.core.excel import (
+    RawDataBlock,
+    RawDataCommentRow,
+    RawDataContent,
+    write_raw_data_workbook,
+)
 from aima_ugc.contracts.canonical import CanonicalCommentV1, CanonicalContentV1
 from aima_ugc.contracts.collection import (
     CollectionDecisionContextV1,
@@ -26,10 +39,6 @@ from aima_ugc.modules.collection.decision import (
     CollectionDecisionService,
     known_comment_boundary_reached,
 )
-
-from .config import TikHubTestConfig
-from .core import DebugState, RawOutputRecord, RunOutputStore, default_run_id
-from .excel import RawDataBlock, RawDataCommentRow, RawDataContent, write_raw_data_workbook
 
 _DEFAULT_OUTPUT_ROOT = Path(__file__).with_name("output")
 _BEIJING = ZoneInfo("Asia/Shanghai")
@@ -72,6 +81,25 @@ class _RunLimits:
             raise ValueError(f"TikHub 调试上限必须大于 0: {', '.join(invalid)}")
 
 
+class _TikHubHttpStatusError(RuntimeError):
+    """保留已落盘 HTTP 失败的安全关联信息，供内容级决策使用。"""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int,
+        operation: str,
+        external_request_id: str | None,
+        raw_file: str,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.operation = operation
+        self.external_request_id = external_request_id
+        self.raw_file = raw_file
+
+
 class _TikHubDebugRunner:
     def __init__(
         self,
@@ -106,6 +134,7 @@ class _TikHubDebugRunner:
         self.state = DebugState.load(output_root / platform / "state.json")
         self._request_no = 0
         self._requests: list[dict[str, object]] = []
+        self._content_failures: list[dict[str, object]] = []
         self._blocks: list[RawDataBlock] = []
         self._matched_keywords: dict[str, list[str]] = {}
         self._seen_contents: set[str] = set()
@@ -226,7 +255,36 @@ class _TikHubDebugRunner:
 
         if decision.detail_action == "fetch":
             detail_call = tikhub_runtime.build_detail_call(self.platform, search_content)
-            detail_body, detail_raw = self._send(transport, detail_call)
+            try:
+                detail_body, detail_raw = self._send(transport, detail_call)
+            except _TikHubHttpStatusError as exc:
+                if (
+                    self.platform == "douyin"
+                    and detail_call.operation == "fetch_one_video_v3"
+                    and exc.status_code == 400
+                ):
+                    self._content_failures.append(
+                        {
+                            "external_content_id": content_id,
+                            "stage": "detail",
+                            "operation": exc.operation,
+                            "status_code": exc.status_code,
+                            "external_request_id": exc.external_request_id,
+                            "raw_file": exc.raw_file,
+                        }
+                    )
+                    self._blocks.append(
+                        RawDataBlock(
+                            content=_raw_data_content(
+                                search_content,
+                                "unavailable",
+                                search_raw_locator,
+                            ),
+                            comments=(),
+                        )
+                    )
+                    return
+                raise
             detail_items = tikhub_runtime.extract_detail_items(self.platform, detail_body)
             mapped_details: list[tuple[CanonicalContentV1, str]] = []
             for index, detail_item in enumerate(detail_items):
@@ -521,6 +579,7 @@ class _TikHubDebugRunner:
             status_code=response.status_code,
             external_request_id=response.external_request_id,
         )
+        raw_file = self.store.relative_path(raw_record.path)
         self._requests.append(
             {
                 "request_no": self._request_no,
@@ -530,12 +589,25 @@ class _TikHubDebugRunner:
                 "path": call.path,
                 "status_code": response.status_code,
                 "external_request_id": response.external_request_id,
-                "raw_file": self.store.relative_path(raw_record.path),
+                "raw_file": raw_file,
             }
         )
         status_code = response.status_code
         if status_code is not None and status_code >= 400:
-            raise RuntimeError(f"TikHub {self.platform} {call.operation} 返回 HTTP {status_code}")
+            message = f"TikHub {self.platform} {call.operation} 返回 HTTP {status_code}"
+            if (
+                call.platform == "douyin"
+                and call.operation == "fetch_one_video_v3"
+                and status_code == 400
+            ):
+                raise _TikHubHttpStatusError(
+                    message,
+                    status_code=status_code,
+                    operation=call.operation,
+                    external_request_id=response.external_request_id,
+                    raw_file=raw_file,
+                )
+            raise RuntimeError(message)
         if not isinstance(response.body, dict):
             raise RuntimeError(f"TikHub {self.platform} {call.operation} 返回 JSON 顶层不是对象")
         return cast(dict[str, Any], response.body), raw_record
@@ -576,22 +648,37 @@ class _TikHubDebugRunner:
         return f"partial 0/unknown ({reason})"
 
     def _run_summary(self, error: Exception | None) -> dict[str, object]:
+        status = "failed" if error is not None else "completed"
+        if error is None and self._content_failures:
+            status = "completed_with_errors"
         return {
             "schema_version": "tikhub-test-run.v1",
-            "platform": self.platform,
+            "operations": self.platform,
             "keyword": self.keywords[0] if len(self.keywords) == 1 else None,
             "keywords": list(self.keywords),
             "matched_keywords": self._matched_keywords,
-            "status": "failed" if error is not None else "completed",
+            "status": status,
             "request_count": self._request_no,
             "content_count": len(self._blocks),
             "root_comment_count": self._root_comment_count,
             "reply_count": self._reply_count,
             "search_stop_reasons": self._search_stop_reasons,
             "requests": self._requests,
+            "content_failures": self._content_failures,
             "error_type": type(error).__name__ if error is not None else None,
             "error_summary": str(error) if error is not None else None,
         }
+
+
+def find_env_file(start_path: Path | None = None) -> Path | None:
+    """从 start_path（默认当前工作目录）向上递归查找 .env 文件。"""
+    if start_path is None:
+        start_path = Path.cwd()
+    for parent in [start_path] + list(start_path.parents):
+        env_file = parent / ".env"
+        if env_file.exists():
+            return env_file
+    return None
 
 
 def run_platform(
@@ -615,6 +702,8 @@ def run_platform(
 ) -> TikHubTestRunResult:
     """执行一个平台的独立真实调试；所有 Provider 私有逻辑由生产 Runtime 负责。"""
     normalized_keywords = _normalize_keywords(keyword=keyword, keywords=keywords)
+    if env_file is None:
+        env_file = find_env_file()
     config = TikHubTestConfig.load(env_file)
     root = Path(output_root) if output_root is not None else _DEFAULT_OUTPUT_ROOT
     return _TikHubDebugRunner(

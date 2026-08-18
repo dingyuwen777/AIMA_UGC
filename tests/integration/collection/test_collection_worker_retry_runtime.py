@@ -125,7 +125,7 @@ def test_http_500_retries_same_logical_request_with_new_provider_attempt(
                     "comment_policy": "adaptive",
                     "platforms": [
                         {
-                            "platform": "xhs",
+                            "operations": "xhs",
                             "provider_config_id": str(provider_config.id),
                             "config": {
                                 "sort_mode": "latest",

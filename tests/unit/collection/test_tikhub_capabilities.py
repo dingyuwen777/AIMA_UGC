@@ -23,7 +23,7 @@ def _operation(name: str):
 
 
 def test_xhs_tikhub_capability_matches_current_executable_operations() -> None:
-    assert XHS_TIKHUB_CAPABILITY.schema_version == "provider-platform-capability.v1"
+    assert XHS_TIKHUB_CAPABILITY.schema_version == "provider-operations-capability.v1"
     assert XHS_TIKHUB_CAPABILITY.provider == "tikhub"
     assert XHS_TIKHUB_CAPABILITY.platform == "xhs"
 

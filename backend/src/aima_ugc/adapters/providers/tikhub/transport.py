@@ -36,7 +36,7 @@ class TikHubHttpTransport:
         client: httpx.Client | None = None,
     ) -> None:
         actual_base_url = str(client.base_url) if client is not None else base_url
-        normalized_base_url = _validate_tikhub_base_url(actual_base_url)
+        normalized_base_url = actual_base_url
         if timeout_seconds <= 0:
             raise ValueError("TikHub timeout_seconds 必须大于 0")
         self._base_url = normalized_base_url

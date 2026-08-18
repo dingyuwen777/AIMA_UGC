@@ -1,5 +1,5 @@
 {
-  "candidate_path_digest": "f4e513cd104e8fe90a3b24c3a7e8c027fbef384f63834743019c138bf72c8847",
+  "candidate_path_digest": "d5bf98c2ddec42bc0c1bf09d982eba84465b6390aedb9155898a266a7356b509",
   "directories": [
     {
       "count": 4,
@@ -9,6 +9,13 @@
         "manifest"
       ],
       "path": ""
+    },
+    {
+      "count": 1,
+      "kinds": [
+        "documentation"
+      ],
+      "path": "backend/src/aima_ugc/adapters/providers/tikhub_test"
     },
     {
       "count": 1,
@@ -46,6 +53,13 @@
       "path": "contracts/canonical/examples"
     },
     {
+      "count": 5,
+      "kinds": [
+        "contract"
+      ],
+      "path": "contracts/collection"
+    },
+    {
       "count": 1,
       "kinds": [
         "contract"
@@ -67,11 +81,18 @@
       "path": "docs"
     },
     {
-      "count": 8,
+      "count": 14,
       "kinds": [
         "documentation"
       ],
       "path": "docs/blueprint"
+    },
+    {
+      "count": 6,
+      "kinds": [
+        "documentation"
+      ],
+      "path": "docs/collection"
     },
     {
       "count": 2,
@@ -85,6 +106,20 @@
       "kinds": [
         "documentation"
       ],
+      "path": "tests/fixtures/providers/tikhub"
+    },
+    {
+      "count": 1,
+      "kinds": [
+        "documentation"
+      ],
+      "path": "tests/fixtures/providers/tikhub/endpoint_ledger/2026-08-16"
+    },
+    {
+      "count": 1,
+      "kinds": [
+        "documentation"
+      ],
       "path": "tests/fixtures/providers/tikhub/xhs"
     }
   ],
@@ -92,36 +127,43 @@
     {
       "kind": "instructions",
       "path": "AGENTS.md",
-      "sha256": "584c3337beeda8d4f88781bea5ebaa797ba0a81eeb6e5b40df2a1f2d81b24206",
-      "size": 18353,
+      "sha256": "8559b4dcd87ac32fafad117a9ee13b7d9c491368577f3de1b6c11ded2bc7f3d7",
+      "size": 18672,
       "title": "AIMA_UGC AI / Coding Agent 开发规范"
     },
     {
       "kind": "documentation",
       "path": "README.md",
-      "sha256": "7d72788745f3563e826677c6822e9a916ba3052d24cd00d45cd118d3eb1a9e7b",
-      "size": 23086,
+      "sha256": "72338272ea724d91d85e0ae6e4c10c56fe7d8e9036cd64bc33dc8affe94d884f",
+      "size": 25185,
       "title": "AIMA_UGC"
     },
     {
       "kind": "documentation",
+      "path": "backend/src/aima_ugc/adapters/providers/tikhub_test/README.md",
+      "sha256": "4eadbb9f5544985cc863cc8fd0f97e8ca0b213a56d4107641fed669ce4ab513d",
+      "size": 8417,
+      "title": "TikHub 五平台独立测试 / 调试"
+    },
+    {
+      "kind": "documentation",
       "path": "backend/src/aima_ugc/modules/collection/README.md",
-      "sha256": "313c88ea3508e18bd8e8ee396a52e6cd8b7ab5d553dcebbdfbce5123fafbd37b",
-      "size": 6113,
+      "sha256": "9470239dbc5ea22abe7a78a89c4745c0c51a7573bc31cb112789249bbd1b26cf",
+      "size": 13471,
       "title": "Collection 模块"
     },
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/modules/content/README.md",
-      "sha256": "4004efbf1622e2d4e7fec09b506c35e7a6b3a452bd1781e1d86c4b92561010e3",
-      "size": 2076,
+      "sha256": "d95b0dc89f3e8b1e5b80b8863a8fc14376bda286f5d1d50ba07d2264241fcf0c",
+      "size": 5169,
       "title": "Content 模块"
     },
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/modules/system/README.md",
-      "sha256": "523a29e6a6d12dc3f37ffcad5e6f8182aa2067053daf72e66d850c6a4cb6fd06",
-      "size": 744,
+      "sha256": "86dc626a70281e93785a7e02ffe704e1c19af3738389afd3c41fe29b313b187a",
+      "size": 2605,
       "title": "System 模块"
     },
     {
@@ -147,6 +189,36 @@
       "path": "contracts/canonical/examples/content.aggregate.v1.json",
       "sha256": "8c8e6befc02b3dfe5ad60059f91e87b098c1c16a6687d3d614b8e5b4b42dee8e",
       "size": 9053
+    },
+    {
+      "kind": "contract",
+      "path": "contracts/collection/decision-request.v1.schema.json",
+      "sha256": "1b25fdb14acf8f5b8f2abe84546b4b604297d9a5ac0219a3d50257b7048a24d2",
+      "size": 6099
+    },
+    {
+      "kind": "contract",
+      "path": "contracts/collection/decision.v1.schema.json",
+      "sha256": "649b2b3e8b91b6700891d0a60c6a378998abb9bd5eb0b07350dbfe2844b0e039",
+      "size": 1564
+    },
+    {
+      "kind": "contract",
+      "path": "contracts/collection/provider-config.v1.schema.json",
+      "sha256": "269e1eabc9700dd19bfd9e6e5fd0c9e211b8d6b946cf50381c7b401766767044",
+      "size": 899
+    },
+    {
+      "kind": "contract",
+      "path": "contracts/collection/provider-platform-capability.v1.schema.json",
+      "sha256": "55c6cd689167a98d5895db8a58b7064297794ee4f6387faeb019b2d36da1c076",
+      "size": 2947
+    },
+    {
+      "kind": "contract",
+      "path": "contracts/collection/provider-platform-route.v1.schema.json",
+      "sha256": "d19d28e7f54b1d13f5d0b893fd180b50f5bb6b9d14a2ff37e5c9c4eca1b698a3",
+      "size": 3748
     },
     {
       "kind": "contract",
@@ -189,64 +261,148 @@
     {
       "kind": "documentation",
       "path": "docs/blueprint/02-采集系统与数据标准化.md",
-      "sha256": "52ed756920a3e1ba0290d0f0fb701f20022af0bc841803bb21a134ebec17060e",
-      "size": 24557,
+      "sha256": "cefa4ca1192f914467f4d1cad0ca834d24d53037cc03e32a7bd68a9fb3827f7d",
+      "size": 33226,
       "title": "采集系统与数据标准化"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/03-数据库与文件存储.md",
-      "sha256": "759524b8cd6fb76864398c5f1de64e6965c45f9cc5c83c8abd5ac05cc30bef38",
-      "size": 50407,
+      "sha256": "51e5410a87ad786fa199413fd59376d5193da6a913c9eb5e129fbc63aa0d40b6",
+      "size": 51503,
       "title": "数据库与文件存储"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/04-后端任务API与前端.md",
-      "sha256": "7c39b77a1c92d472b27fc9dda5c66b9a1a538ad0073bf57afbf9e0cd95559b61",
-      "size": 25013,
+      "sha256": "e05ec74f8d789ba8066d308656f4d5f8e7230bc8a493941755cdad216738a7c7",
+      "size": 24779,
       "title": "后端任务、API 与前端"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/05-日志安全部署与运维.md",
-      "sha256": "41d377f6a68e768ea3d06b58b08dac146889716d4a362d3fdd4206cc2974a6e4",
-      "size": 20761,
+      "sha256": "1caa040c71227fb6f9ba78d50534277c60f7fc205deecf0778c9aa956f1c8fc2",
+      "size": 20810,
       "title": "日志、安全、部署与运维"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/06-开发约束与分阶段实施.md",
-      "sha256": "66c066af1c02f353c7409cc0ef55ec9a8ea46c3d235bab4a2ec6dbcf4ad213d8",
-      "size": 33094,
+      "sha256": "59675f44c09ec5e7c170f2b95acf5326ee1afdc76f533674d2046ba01e17b1f5",
+      "size": 34593,
       "title": "开发约束与分阶段实施"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/07-技术决策与实施门禁.md",
-      "sha256": "a3bb32184d1496dc4515114f7062dc1cd0251167aad81c4b9ccc2d64364e3962",
-      "size": 47138,
+      "sha256": "3bfe902ad0e7bfaafbacf3c0f7a919e63e0f5c8dbe533418d2c89f0780af5cd3",
+      "size": 56057,
       "title": "技术决策与实施门禁"
     },
     {
       "kind": "documentation",
+      "path": "docs/blueprint/08-采集策略与平台能力.md",
+      "sha256": "6ad9ccef91fb86aa72629a78c79a134a7c5c77d8d1bd1dc98b5257a2054920c4",
+      "size": 28450,
+      "title": "采集策略与平台能力"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/blueprint/09-Scheduler运行与恢复策略.md",
+      "sha256": "1ff60f87fd01ca1c88123431850ec6bcf2f1b828badf576459e072a0f41ec21c",
+      "size": 9224,
+      "title": "Scheduler 运行与恢复策略"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/blueprint/10-TikHub真实响应结构附录.md",
+      "sha256": "f55432272607f5a1cfef5b6208d72f3dda02710dccf166c5f15ca928d4ae9222",
+      "size": 16640,
+      "title": "TikHub 五平台真实响应结构附录"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/blueprint/11-TikHub多接口验证与备用策略.md",
+      "sha256": "0e0bd75c6e28ae416f3357a41cd07dadf2603834cdd1110113fa49f28e10d3f0",
+      "size": 10632,
+      "title": "TikHub 多接口验证与备用策略"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/blueprint/12-TikHub真实请求响应与接口选型台账.md",
+      "sha256": "e2e0f2b20149322f2d9d2bb28bcbe235ca325e5a8684d9124a0697c833a7687f",
+      "size": 21883,
+      "title": "TikHub 五平台真实请求、响应与接口选型台账"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/blueprint/13-统一数据Excel导出与调试复用.md",
+      "sha256": "199eecb71bbd47a52cb189b371ff0a9c14e832231d1d2aa7b90ad965dbaff78e",
+      "size": 6095,
+      "title": "统一数据 Excel 导出与调试复用"
+    },
+    {
+      "kind": "documentation",
       "path": "docs/blueprint/README.md",
-      "sha256": "d3e602022a51dbd39d86213f7709c0da37b8666610adfc922d9b31bea2fcd406",
-      "size": 13585,
+      "sha256": "69756c24ec5cbcdc141d9d6c511c55c7746f16b3c2f8cffacd736a27cdfc621c",
+      "size": 15130,
       "title": "AIMA_UGC Blueprint 导航"
     },
     {
       "kind": "documentation",
+      "path": "docs/collection/README.md",
+      "sha256": "c45b718b3d7b300472c8a09aa53a0cc50d3749cb24013b25896cf0290d3e8b68",
+      "size": 14070,
+      "title": "采集能力说明"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/collection/bilibili.md",
+      "sha256": "bee146fd6549ceadacecad777fa901b2325f6b98d6f3e86047e4e0cb4c997102",
+      "size": 2148,
+      "title": "B站采集逻辑"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/collection/douyin.md",
+      "sha256": "b25d885bd9686fb46761f4403fce4c45f2a4f7d3995faa35609e85439b367761",
+      "size": 2650,
+      "title": "抖音采集逻辑"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/collection/kuaishou.md",
+      "sha256": "85053d923c1116b5f443e82d0f94452128ec97a0446b707ebdee1b6f5f162acb",
+      "size": 2126,
+      "title": "快手采集逻辑"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/collection/weibo.md",
+      "sha256": "9c15b52e41588a071a09751165c0db5e9903c78af7d16399874be19e3edc0bed",
+      "size": 1856,
+      "title": "微博采集逻辑"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/collection/xiaohongshu.md",
+      "sha256": "5c64d2fc331e9345a3b5f02a3f35a6d19e7bc4b247a202153d50ff83ced5e299",
+      "size": 2104,
+      "title": "小红书采集逻辑"
+    },
+    {
+      "kind": "documentation",
       "path": "docs/测试与调试说明.md",
-      "sha256": "58e28dddbee419dc01e5172061398fd3913be68455c7516701900e545b8a24b1",
-      "size": 18100,
+      "sha256": "b7e8b0537015c6b4da24f887c5cfc608752de74d50a112934a2846f0e3c4435d",
+      "size": 24925,
       "title": "AIMA_UGC 测试与调试说明"
     },
     {
       "kind": "documentation",
       "path": "docs/环境运行与部署.md",
-      "sha256": "2aa995ac5a32ccb3726a22411b26bb258bfd111328c42448ca159b87db85919e",
-      "size": 18025,
+      "sha256": "b138ba845dcbc155f4f19546ca0c5723c8d58008d3e7f303c2ce45cd51b40fd1",
+      "size": 18602,
       "title": "环境、运行与部署"
     },
     {
@@ -264,29 +420,43 @@
     {
       "kind": "manifest",
       "path": "pyproject.toml",
-      "sha256": "f1a58010d4078392ac70078cc74bd01ea53061b27cbcb4672193f8de1460f621",
-      "size": 893
+      "sha256": "79bf9c6c91d53e86d66ee2ad7eefeca37c11543a035bab0183ca0d6c4a585436",
+      "size": 956
+    },
+    {
+      "kind": "documentation",
+      "path": "tests/fixtures/providers/tikhub/README.md",
+      "sha256": "bff186280f71e22040fb7c42dcfdf866fe1dfe527bcf7bc36c5e8540742dfb12",
+      "size": 5483,
+      "title": "TikHub 真实结构 Fixture"
+    },
+    {
+      "kind": "documentation",
+      "path": "tests/fixtures/providers/tikhub/endpoint_ledger/2026-08-16/README.md",
+      "sha256": "df4f987d9cbf4fd1262dbd1eb8eeae79d125dbbfe138a45146905e4b264955c0",
+      "size": 730,
+      "title": "TikHub 五平台主链真实 Endpoint Ledger"
     },
     {
       "kind": "documentation",
       "path": "tests/fixtures/providers/tikhub/xhs/README.md",
-      "sha256": "096dd2d4d77913b194b6decdf8d673f27daaa7fd8efb549e051bf254a7f3fb38",
-      "size": 1285,
+      "sha256": "33c992113c253c28f3f033019726ee89f661fa9ffca15294ca6337ff8bfaf44e",
+      "size": 1290,
       "title": "TikHub 小红书测试 Fixture"
     },
     {
       "kind": "manifest",
       "path": "uv.lock",
-      "sha256": "e122f38c1657016ce59718f214a672d889ce2f3321b4cb410670320f3825bfd2",
-      "size": 88730
+      "sha256": "d36a8044069af29d08bc434d0c38a113d498d4a90bd848f9e5c8d89aeed64fa3",
+      "size": 91124
     }
   ],
-  "generated_at": "2026-08-14T14:52:42+00:00",
+  "generated_at": "2026-08-18T07:57:29+00:00",
   "generator_version": "0.1.0",
   "git": {
-    "indexed_at_commit": "5e7845b92d531ade933af857dfa3da0e6368b27c",
+    "indexed_at_commit": "16a97e0aa3b5990b1babf5e0512413242286ae53",
     "repository": true,
-    "worktree_candidate_digest": "6023eae3b11f9e6eec09fe4f886f23a225865aada32f987ced433b055eca3a98"
+    "worktree_candidate_digest": "f578d6bcc54d9f6453771f08ee7f970861d1d20baff3fe9536152aace1bdd637"
   },
   "package_scripts": {
     "frontend/package.json": {

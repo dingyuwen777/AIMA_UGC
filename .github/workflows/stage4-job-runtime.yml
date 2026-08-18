@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - "backend/src/aima_ugc/platform/jobs/**"
+      - "backend/src/aima_ugc/operations/jobs/**"
       - "backend/src/aima_ugc/adapters/persistence/postgres/jobs.py"
       - "backend/src/aima_ugc/database_schema.py"
       - "backend/src/aima_ugc/bootstrap/worker.py"
@@ -17,7 +17,7 @@ on:
     branches:
       - main
     paths:
-      - "backend/src/aima_ugc/platform/jobs/**"
+      - "backend/src/aima_ugc/operations/jobs/**"
       - "backend/src/aima_ugc/adapters/persistence/postgres/jobs.py"
       - "backend/src/aima_ugc/database_schema.py"
       - "backend/src/aima_ugc/bootstrap/worker.py"

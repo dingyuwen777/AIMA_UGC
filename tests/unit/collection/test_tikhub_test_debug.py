@@ -14,9 +14,9 @@ from aima_ugc.adapters.providers.tikhub_test import (
     run_weibo,
     run_xiaohongshu,
 )
-from aima_ugc.adapters.providers.tikhub_test.config import TikHubTestConfig
-from aima_ugc.adapters.providers.tikhub_test.core import DebugState, RunOutputStore
-from aima_ugc.adapters.providers.tikhub_test.excel import (
+from aima_ugc.adapters.providers.tikhub_test import TikHubTestConfig
+from aima_ugc.adapters.providers.tikhub_test import DebugState, RunOutputStore
+from aima_ugc.adapters.providers.tikhub_test.core.excel import (
     RawDataBlock,
     RawDataCommentRow,
     RawDataContent,
@@ -78,21 +78,21 @@ def test_run_output_store_keeps_raw_and_canonical_without_database(tmp_path: Pat
     raw_body = {"data": {"items": [{"id": "note-1"}]}}
 
     raw = store.save_raw(operation="search_notes", body=raw_body, request_no=1)
-    store.append_canonical("contents", {"platform": "xhs", "external_content_id": "note-1"})
+    store.append_canonical("contents", {"operations": "xhs", "external_content_id": "note-1"})
     store.append_canonical(
         "comments",
         {
-            "platform": "xhs",
+            "operations": "xhs",
             "external_content_id": "note-1",
             "external_comment_id": "comment-1",
         },
     )
-    run_summary_path = store.write_run_summary({"platform": "xhs", "requests": 1})
+    run_summary_path = store.write_run_summary({"operations": "xhs", "requests": 1})
 
     assert json.loads(raw.path.read_text(encoding="utf-8")) == raw_body
     assert raw.artifact_id
     assert json.loads((store.canonical_dir / "contents.jsonl").read_text(encoding="utf-8")) == {
-        "platform": "xhs",
+        "operations": "xhs",
         "external_content_id": "note-1",
     }
     assert (

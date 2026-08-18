@@ -68,7 +68,7 @@ def test_observed_fields_reject_duplicates_and_coarse_nested_paths() -> None:
         observed_at="2026-08-13T04:00:00Z",
     )
     common = {
-        "platform": "xiaohongshu",
+        "operations": "xiaohongshu",
         "external_content_id": "note_1",
         "content_type": "image_post",
         "observed_at": "2026-08-13T04:00:00Z",

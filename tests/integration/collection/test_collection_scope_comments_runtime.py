@@ -174,7 +174,7 @@ def test_scope_runtime_fetches_and_ingests_root_comments(
                     "comment_policy": "adaptive",
                     "platforms": [
                         {
-                            "platform": "xhs",
+                            "operations": "xhs",
                             "provider_config_id": str(provider_config.id),
                             "config": {
                                 "sort_mode": "latest",

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from aima_ugc.adapters.providers.tikhub_test import run_xiaohongshu
+from aima_ugc.adapters.providers.tikhub_test.core.core import RunOutputStore, default_run_id
 from aima_ugc.modules.collection.providers.transport import (
     ProviderTransportRequest,
     ProviderTransportResponse,
@@ -14,6 +16,15 @@ from aima_ugc.modules.collection.providers.transport import (
 from openpyxl import load_workbook
 
 _FIXTURE_ROOT = Path("tests/fixtures/providers/tikhub/xhs")
+
+
+def test_default_run_directory_uses_beijing_time_with_explicit_offset(tmp_path: Path) -> None:
+    run_id = default_run_id(datetime(2026, 8, 18, 6, 10, 8, 637851, tzinfo=UTC))
+
+    store = RunOutputStore.create(output_root=tmp_path, platform="xhs", run_id=run_id)
+
+    assert run_id == "20260818T141008.637851+0800"
+    assert store.run_dir.name == "20260818T141008.637851+0800"
 
 
 def _fixture(name: str) -> dict[str, Any]:

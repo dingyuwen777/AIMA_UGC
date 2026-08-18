@@ -47,7 +47,7 @@ def build_scheduled_scope_snapshot(
     entries: tuple[ScheduledKeywordEntry, ...],
     keyword_packs: tuple[ScheduledKeywordPackSnapshot, ...] = (),
 ) -> ScheduledScopeSnapshot:
-    """展开 `platform=all` 并按稳定关键词身份去重，不读取外部状态。"""
+    """展开 `operations=all` 并按稳定关键词身份去重，不读取外部状态。"""
     normalized_platforms = tuple(
         platform.strip() for platform in plan_platforms if platform.strip()
     )

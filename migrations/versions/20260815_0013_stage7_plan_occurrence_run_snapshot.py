@@ -83,7 +83,7 @@ def upgrade() -> None:
     op.create_table(
         "collection_plan_platforms",
         sa.Column("plan_id", sa.Uuid(), nullable=False),
-        sa.Column("platform", sa.Text(), nullable=False),
+        sa.Column("operations", sa.Text(), nullable=False),
         sa.Column("provider_config_id", sa.Uuid(), nullable=False),
         sa.Column(
             "config",
@@ -103,11 +103,11 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint(
             "plan_id",
-            "platform",
+            "operations",
             name=op.f("pk_collection_plan_platforms"),
         ),
         sa.CheckConstraint(
-            "char_length(platform) > 0",
+            "char_length(operations) > 0",
             name=op.f("ck_collection_plan_platforms_platform_nonempty"),
         ),
         sa.CheckConstraint(
