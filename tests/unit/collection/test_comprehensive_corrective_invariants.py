@@ -96,4 +96,4 @@ def test_douyin_duration_capability_round_trips_plan_validation() -> None:
     with pytest.raises(ValueError, match="duration"):
         _validate_search_config(DOUYIN_TIKHUB_CAPABILITY, {"duration": "unsupported"})
 
-# Temporary trigger for the registered Stage 5B corrective runner; the runner removes this line.
+# Temporary trigger v3 for the registered Stage 5B corrective runner; the runner removes this line.
