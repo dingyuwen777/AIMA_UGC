@@ -105,9 +105,7 @@ class CollectionPlanDefinition:
     created_by: UUID | None
     platforms: tuple[PlanPlatformDefinition, ...]
     keyword_pack_ids: tuple[UUID, ...]
-    decision_policy: CollectionDecisionPolicyV1 = field(
-        default_factory=CollectionDecisionPolicyV1
-    )
+    decision_policy: CollectionDecisionPolicyV1 = field(default_factory=CollectionDecisionPolicyV1)
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -153,9 +151,7 @@ class CollectionPlanRecord:
     updated_at: datetime
     platforms: tuple[PlanPlatformDefinition, ...]
     keyword_pack_ids: tuple[UUID, ...]
-    decision_policy: CollectionDecisionPolicyV1 = field(
-        default_factory=CollectionDecisionPolicyV1
-    )
+    decision_policy: CollectionDecisionPolicyV1 = field(default_factory=CollectionDecisionPolicyV1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -285,9 +281,7 @@ def _validate_occurrence_time(schedule_version: int, scheduled_for: datetime) ->
 
 
 def _is_sensitive_config_key(normalized: str) -> bool:
-    return normalized in _FORBIDDEN_CONFIG_KEYS or normalized.endswith(
-        _FORBIDDEN_CONFIG_SUFFIXES
-    )
+    return normalized in _FORBIDDEN_CONFIG_KEYS or normalized.endswith(_FORBIDDEN_CONFIG_SUFFIXES)
 
 
 def _reject_secret_keys(value: object, *, path: str = "config") -> None:
