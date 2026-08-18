@@ -131,6 +131,54 @@ jobs:
           if text.count(old) != 1:
               raise SystemExit("expected thread coverage insert block exactly once")
           writer.write_text(text.replace(old, new), encoding="utf-8")
+
+          extended = Path("backend/src/aima_ugc/modules/content/extended_tables.py")
+          text = extended.read_text(encoding="utf-8")
+          if "from typing import Any\n" not in text:
+              text = text.replace('"""Stage 1-7 全面整改补齐的 Content Owner Canonical 子实体表。"""\n\n', '"""Stage 1-7 全面整改补齐的 Content Owner Canonical 子实体表。"""\n\nfrom typing import Any\n\n')
+          old = "def _source_columns() -> tuple[Column, Column, Column]:"
+          new = "def _source_columns() -> tuple[Column[Any], Column[Any], Column[Any]]:"
+          if text.count(old) != 1:
+              raise SystemExit("expected _source_columns annotation exactly once")
+          extended.write_text(text.replace(old, new), encoding="utf-8")
+
+          complete = Path("backend/src/aima_ugc/adapters/persistence/postgres/content_complete.py")
+          text = complete.read_text(encoding="utf-8")
+          text = text.replace(
+              "from sqlalchemy import delete, insert, select, update\n",
+              "from sqlalchemy import Table, delete, insert, select, update\n",
+          )
+          old = "def _lock_parent(session: Session, table, parent_id: UUID) -> dict[str, Any]:  # type: ignore[no-untyped-def]"
+          new = "def _lock_parent(session: Session, table: Table, parent_id: UUID) -> dict[str, Any]:"
+          if text.count(old) != 1:
+              raise SystemExit("expected _lock_parent annotation exactly once")
+          text = text.replace(old, new)
+          old = '''    parent_table,\n    parent_id: UUID,\n    field_name: str,\n    observed_at: datetime,\n) -> bool:  # type: ignore[no-untyped-def]\n'''
+          new = '''    parent_table: Table,\n    parent_id: UUID,\n    field_name: str,\n    observed_at: datetime,\n) -> bool:\n'''
+          if text.count(old) != 1:
+              raise SystemExit("expected _claim_collection_freshness annotation exactly once")
+          complete.write_text(text.replace(old, new), encoding="utf-8")
+
+          actions = Path("backend/src/aima_ugc/adapters/persistence/postgres/collection_actions.py")
+          text = actions.read_text(encoding="utf-8")
+          old = '''    decision = CollectionDecisionV1(\n        detail_action=cast(str, row["detail_action"]),\n        detail_reason=cast(str, row["detail_reason"]),\n        comment_action=cast(str, row["comment_action"]),\n        comment_reason=cast(str, row["comment_reason"]),\n        comment_target=cast(int | None, row["comment_target"]),\n        reply_target_per_root=cast(int | None, row["reply_target_per_root"]),\n    )\n'''
+          new = '''    decision = CollectionDecisionV1.model_validate(\n        {\n            "detail_action": row["detail_action"],\n            "detail_reason": row["detail_reason"],\n            "comment_action": row["comment_action"],\n            "comment_reason": row["comment_reason"],\n            "comment_target": row["comment_target"],\n            "reply_target_per_root": row["reply_target_per_root"],\n        }\n    )\n'''
+          if text.count(old) != 1:
+              raise SystemExit("expected CollectionDecisionV1 restore block exactly once")
+          actions.write_text(text.replace(old, new), encoding="utf-8")
+
+          scheduler = Path("backend/src/aima_ugc/bootstrap/scheduler.py")
+          text = scheduler.read_text(encoding="utf-8")
+          if "from sqlalchemy.orm import Session\n" not in text:
+              insert_at = "from datetime import UTC, datetime\n\n"
+              if text.count(insert_at) != 1:
+                  raise SystemExit("expected scheduler import anchor exactly once")
+              text = text.replace(insert_at, insert_at + "from sqlalchemy.orm import Session\n\n")
+          old = "def _resolve_provider_snapshots(session, plan: CollectionPlanRecord) -> tuple[dict[str, object], ...]:"
+          new = "def _resolve_provider_snapshots(\n    session: Session, plan: CollectionPlanRecord\n) -> tuple[dict[str, object], ...]:"
+          if text.count(old) != 1:
+              raise SystemExit("expected _resolve_provider_snapshots annotation exactly once")
+          scheduler.write_text(text.replace(old, new), encoding="utf-8")
           PY
 
           uv run ruff format backend tests scripts
@@ -165,5 +213,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add backend tests scripts migrations/versions/20260818_0018_stage1_stage7_comprehensive_corrective.py
-          git commit -m "fix(corrective): close recovery and migration drift"
+          git commit -m "fix(corrective): close recovery migration and typing"
           git push origin HEAD:fix/stage1-stage7-comprehensive-corrective
