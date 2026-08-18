@@ -322,6 +322,18 @@ class ContentLabelingService:
         self._prompt_loader = prompt_loader
         self._llm = llm
 
+    @property
+    def provider_name(self) -> str:
+        """返回当前 Service 实际使用的 LLM Provider 身份。"""
+
+        return self._llm.provider_name
+
+    @property
+    def model_name(self) -> str:
+        """返回当前 Service 实际使用的模型身份。"""
+
+        return self._llm.model_name
+
     def label_contents(
         self,
         contents: Sequence[CanonicalContentV1],
