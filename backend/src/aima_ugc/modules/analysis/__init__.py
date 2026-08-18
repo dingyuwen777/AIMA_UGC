@@ -25,6 +25,7 @@ from .offline_content import (
     deduplicate_content_jsonl,
     filter_canonical_content_jsonl,
 )
+from .offline_labeling import OfflineContentLabelingSummary, label_unified_content_jsonl
 
 __all__ = [
     "CONTENT_LABELING_PROMPT_PATH",
@@ -42,10 +43,12 @@ __all__ = [
     "ContentLabelingService",
     "ContentLabelingValidationError",
     "FakeContentLabelingLLM",
+    "OfflineContentLabelingSummary",
     "PromptTaxonomy",
     "PromptTaxonomyError",
     "PromptTaxonomyLoader",
     "RuntimeTaxonomyValidator",
     "deduplicate_content_jsonl",
     "filter_canonical_content_jsonl",
+    "label_unified_content_jsonl",
 ]

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
 from aima_ugc.adapters.providers.imports_test import test as imports_test_entry
 from aima_ugc.contracts.analysis import UnifiedContentRecordV1
 from aima_ugc.contracts.canonical import CanonicalContentV1, CanonicalSourceV1
@@ -58,3 +59,14 @@ def test_imports_test_export_raw_excel_reads_only_deduplicated_jsonl(
         assert content_row[24:30] == (None, None, None, None, None, None)
     finally:
         workbook.close()
+
+
+def test_imports_test_label_sentiment_requires_explicit_real_llm_opt_in(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(imports_test_entry, "ENABLE_REAL_LLM", False)
+    monkeypatch.setattr(imports_test_entry, "ENV_FILE", tmp_path / "must-not-be-read.env")
+
+    with pytest.raises(RuntimeError, match="ENABLE_REAL_LLM"):
+        imports_test_entry.label_sentiment()
