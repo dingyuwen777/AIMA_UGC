@@ -1,0 +1,52 @@
+name: P1H Offline Excel Performance
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "scripts/performance/benchmark_p1_offline.py"
+      - "tests/unit/analysis/test_p1h_offline_performance.py"
+      - ".github/workflows/p1h-offline-performance.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  p1h-offline-performance:
+    name: P1H Windows 90k Performance
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Install frozen Python environment
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $uvVersion = (Get-Content .uv-version -Raw).Trim()
+          python -m pip install "uv==$uvVersion"
+          uv lock --check
+          uv sync --locked
+
+      - name: Benchmark lint and Windows smoke test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          uv run ruff format --check scripts/performance/benchmark_p1_offline.py tests/unit/analysis/test_p1h_offline_performance.py
+          uv run ruff check scripts/performance/benchmark_p1_offline.py tests/unit/analysis/test_p1h_offline_performance.py
+          uv run pytest tests/unit/analysis/test_p1h_offline_performance.py -q
+
+      - name: Run 90000 x 13 production-chain benchmark
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $workDir = Join-Path $env:RUNNER_TEMP "p1h-offline-performance"
+          New-Item -ItemType Directory -Path $workDir -Force | Out-Null
+          uv run python scripts/performance/benchmark_p1_offline.py --work-dir $workDir --rows 90000 --label-batch-size 100
