@@ -46,6 +46,7 @@ def convert_excel_to_canonical_jsonl(
     temp_path.unlink(missing_ok=True)
     temp_error_path.unlink(missing_ok=True)
     target_path.unlink(missing_ok=True)
+    error_path.unlink(missing_ok=True)
 
     rows_seen = 0
     rows_written = 0
