@@ -185,6 +185,7 @@ jobs:
         run: |
           set -euo pipefail
           uv run python scripts/quality/_final_corrective_runner.py cleanup-trigger
+          uv run ruff format tests/unit/collection/test_comprehensive_corrective_invariants.py
           git fetch origin main
           git checkout origin/main -- .github/workflows/stage5b-collection-execution.yml
           git rm -f scripts/quality/_final_corrective_runner.py
