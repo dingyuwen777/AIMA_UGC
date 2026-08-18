@@ -45,9 +45,7 @@ class PromptTaxonomy:
         """按一级标签顺序展开所有二级标签。"""
 
         return tuple(
-            secondary
-            for primary in self.primary_labels
-            for secondary in self.labels[primary]
+            secondary for primary in self.primary_labels for secondary in self.labels[primary]
         )
 
 
@@ -81,7 +79,9 @@ class PromptTaxonomyLoader:
             raise PromptTaxonomyError("Prompt Taxonomy 根节点必须是 JSON object")
         expected_keys = {"schema_version", "sentiments", "labels"}
         if set(payload) != expected_keys:
-            raise PromptTaxonomyError("Prompt Taxonomy 根节点字段必须严格为 schema_version/sentiments/labels")
+            raise PromptTaxonomyError(
+                "Prompt Taxonomy 根节点字段必须严格为 schema_version/sentiments/labels"
+            )
 
         schema_version = payload["schema_version"]
         if schema_version != _TAXONOMY_SCHEMA_VERSION:

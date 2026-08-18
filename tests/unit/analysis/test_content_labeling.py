@@ -228,7 +228,9 @@ def test_runtime_validator_rejects_secondary_from_another_primary() -> None:
     assert exc_info.value.error_codes == ("invalid_secondary_for_primary",)
 
 
-@pytest.mark.parametrize("failure_kind", ["duplicate_sentiment", "duplicate_secondary", "empty_secondary"])
+@pytest.mark.parametrize(
+    "failure_kind", ["duplicate_sentiment", "duplicate_secondary", "empty_secondary"]
+)
 def test_invalid_prompt_taxonomy_fails_before_llm_call(
     tmp_path: Path,
     failure_kind: str,
