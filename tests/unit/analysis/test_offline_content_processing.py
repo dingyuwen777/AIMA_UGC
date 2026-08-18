@@ -97,6 +97,33 @@ def test_filter_keywords_matches_title_and_text_and_writes_unified_records(tmp_p
     assert all(record.analysis is None for record in records)
 
 
+def test_filter_keywords_cleans_keyword_config_and_preserves_first_seen_order(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "canonical" / "contents.jsonl"
+    output = tmp_path / "filtered" / "contents.jsonl"
+    _write_jsonl(
+        source,
+        [
+            _content(
+                external_content_id="content-1",
+                title="爱玛新品发布",
+                text="电动车体验升级",
+                item_locator="sheet=文章;row=2",
+            )
+        ],
+    )
+
+    filter_canonical_content_jsonl(
+        input_path=source,
+        output_path=output,
+        keywords=(" 爱玛 ", "爱玛", "电动车", " 电动车 "),
+    )
+
+    record = UnifiedContentRecordV1.model_validate_json(output.read_text(encoding="utf-8").strip())
+    assert record.matched_keywords == ["爱玛", "电动车"]
+
+
 def test_deduplicate_collapses_equivalent_identity_and_keeps_first_locator(tmp_path: Path) -> None:
     source = tmp_path / "filtered" / "contents.jsonl"
     output = tmp_path / "deduplicated" / "contents.jsonl"
