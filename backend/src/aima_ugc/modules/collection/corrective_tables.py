@@ -87,7 +87,7 @@ collection_content_actions_table = Table(
     ),
     CheckConstraint(
         "resolved_comment_count is null or resolved_comment_count >= 0",
-        name="resolved_comment_count_nonnegative",
+        name="resolved_count_nonneg",
     ),
     CheckConstraint(
         "comments_completed = false or detail_completed = true or detail_action = 'skip'",
