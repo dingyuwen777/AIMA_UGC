@@ -42,6 +42,9 @@ collection_content_actions_table = Table(
     ),
     Column("search_raw_artifact_id", Uuid(), ForeignKey("artifacts.id"), nullable=False),
     Column("search_observed_at", DateTime(timezone=True), nullable=False),
+    Column("previous_exists", Boolean(), nullable=False),
+    Column("previous_comment_count", BigInteger()),
+    Column("initial_business_changed", Boolean(), nullable=False),
     Column("detail_action", Text(), nullable=False),
     Column("detail_reason", Text(), nullable=False),
     Column("comment_action", Text(), nullable=False),
@@ -55,6 +58,10 @@ collection_content_actions_table = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False),
     UniqueConstraint("scope_id", "external_content_id"),
     CheckConstraint("char_length(external_content_id) > 0", name="external_content_id_nonempty"),
+    CheckConstraint(
+        "previous_comment_count is null or previous_comment_count >= 0",
+        name="previous_comment_count_nonnegative",
+    ),
     CheckConstraint("detail_action in ('fetch','skip')", name="detail_action_allowed"),
     CheckConstraint(
         "comment_action in "
