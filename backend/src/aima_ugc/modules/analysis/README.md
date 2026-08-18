@@ -191,10 +191,12 @@ platform 相同
 external_content_id 相同
 最小模型输入 input_hash 相同
 prompt_sha256 等于当前完整 Prompt
- taxonomy_sha256 等于当前 Taxonomy
+taxonomy_sha256 等于当前 Taxonomy
+model_provider 等于当前 Service 的 Provider
+model 等于当前 Service 的模型
 ```
 
-其中 `input_hash` 仍只由允许发送给模型的 `title`、`text`、`author.display_name` 计算。Prompt 或 Taxonomy 发生任何不兼容变化时，旧 checkpoint 仍保留为历史审计，但不会被恢复；该内容按当前规则正常重新调用模型。这样既避免已经成功且规则未变化的 item 重复付费，也不会把旧规则的标签当作当前成功结果。
+其中 `input_hash` 仍只由允许发送给模型的 `title`、`text`、`author.display_name` 计算。Prompt、Taxonomy、Provider 或模型身份发生变化时，旧 checkpoint 仍保留为历史审计，但不会被恢复；该内容按当前规则正常重新调用模型。这样既避免已经成功且输入/规则/模型身份未变化的 item 重复付费，也不会把旧规则或旧模型的标签当作当前成功结果。
 
 恢复成功的记录直接把 checkpoint 中已验证的 `ContentLabelAnalysisV1` 写入业务临时 JSONL，再参与同一次原子 `os.replace`；checkpoint 本身始终不是业务事实源。`OfflineContentLabelingSummary.rows_recovered` 用于区分本次恢复数量和本次新模型成功数量。
 
@@ -210,7 +212,7 @@ analysis/failed.jsonl
 
 ## 8. Fake、调试与费用
 
-`FakeContentLabelingLLM` 不访问网络、不产生真实模型费用，用预设原始响应驱动正式 Service 与 Validator。它适合验证非法 JSON、字段错误、item 配对错误、未知标签、父子错配、数组/空标签、Validation Retry、同批部分成功，以及 P1G 的 checkpoint 恢复与旧 Prompt checkpoint 失效行为。
+`FakeContentLabelingLLM` 不访问网络、不产生真实模型费用，用预设原始响应驱动正式 Service 与 Validator。它适合验证非法 JSON、字段错误、item 配对错误、未知标签、父子错配、数组/空标签、Validation Retry、同批部分成功，以及 P1G 的 checkpoint 恢复与旧 Prompt/Taxonomy/Provider/模型 checkpoint 失效行为。
 
 真实模型调试优先查看：
 
@@ -220,14 +222,14 @@ analysis/checkpoints.jsonl
 analysis/failed.jsonl
 ```
 
-再核对 `validation_error_codes`、`prompt_sha256`、`taxonomy_sha256`、`model_provider` 和 `model`。不要通过放宽 Validator、模糊匹配或自动改标签制造“成功”。Validation Retry 会产生额外真实模型调用和费用；checkpoint 恢复只复用与当前输入和当前规则完全匹配的成功结果。
+再核对 `validation_error_codes`、`prompt_sha256`、`taxonomy_sha256`、`model_provider` 和 `model`。不要通过放宽 Validator、模糊匹配或自动改标签制造“成功”。Validation Retry 会产生额外真实模型调用和费用；checkpoint 恢复只复用与当前输入、当前 Prompt/Taxonomy 和当前模型身份完全匹配的成功结果。
 
 ## 9. P1G 与后续边界
 
 P1G 已在 P1F 基础上补齐：
 
 - checkpoint 跨进程崩溃恢复，成功恢复不再次调用模型；
-- 恢复同时绑定最小输入 Hash、当前 `prompt_sha256` 和当前 `taxonomy_sha256`；
+- 恢复同时绑定最小输入 Hash、当前 `prompt_sha256`、当前 `taxonomy_sha256`、`model_provider` 和 `model`；
 - `imports_test.run_all()` 固定串联 convert → filter → deduplicate → label → final Excel；
 - `run_summary.json` 原子写出；
 - 最终 labeled Excel 只读取回写后的同一 `deduplicated/contents.jsonl`；
