@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from aima_ugc.contracts.analysis import ContentLabelAnalysisV1, UnifiedContentRecordV1
 from aima_ugc.contracts.canonical import (
     CanonicalAuthorV1,
