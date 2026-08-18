@@ -29,6 +29,10 @@ from aima_ugc.modules.collection.execution import (
     CollectionScopeDefinition,
 )
 from aima_ugc.modules.collection.providers import ProviderTransportResponse, RawArtifactService
+from aima_ugc.modules.collection.tables import (
+    provider_request_attempts_table,
+    provider_requests_table,
+)
 from aima_ugc.modules.content.tables import (
     comment_coverage_observations_table,
     comments_table,
@@ -282,6 +286,17 @@ def test_unknown_search_comment_count_is_redecided_after_detail_and_records_comp
     session = database_runtime.new_session()
     try:
         coverage = session.execute(select(comment_coverage_observations_table)).mappings().one()
+        comment_completed_at = session.scalar(
+            select(provider_request_attempts_table.c.completed_at)
+            .select_from(
+                provider_request_attempts_table.join(
+                    provider_requests_table,
+                    provider_request_attempts_table.c.provider_request_id
+                    == provider_requests_table.c.id,
+                )
+            )
+            .where(provider_requests_table.c.operation == "get_note_comments")
+        )
     finally:
         session.close()
     assert coverage["coverage"] == "complete"
@@ -291,7 +306,8 @@ def test_unknown_search_comment_count_is_redecided_after_detail_and_records_comp
     assert coverage["sort_mode"] == "latest"
     assert coverage["target_count"] == 1
     assert coverage["stop_reason"] == "provider_exhausted"
-    assert coverage["observed_at"] == _OBSERVED_AT
+    assert comment_completed_at is not None
+    assert coverage["observed_at"] == comment_completed_at
     assert prepared.job_id is not None
 
 
