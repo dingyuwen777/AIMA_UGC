@@ -5,6 +5,8 @@ from importlib.util import find_spec
 from pathlib import Path
 from zipfile import ZipFile
 
+import aima_ugc.platform.export.excel as excel_module
+import pytest
 from aima_ugc.contracts.canonical import (
     CanonicalAuthorV1,
     CanonicalCommentV1,
@@ -254,6 +256,25 @@ def test_raw_and_labeled_exports_keep_same_schema(tmp_path: Path) -> None:
     finally:
         raw_workbook.close()
         labeled_workbook.close()
+
+
+def test_shared_exporter_cleans_temp_file_when_reopen_verification_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    output = tmp_path / "raw_data.xlsx"
+    temp_output = tmp_path / ".raw_data.tmp.xlsx"
+
+    def fail_reopen(*args, **kwargs):
+        raise OSError("reopen verification failed")
+
+    monkeypatch.setattr(excel_module, "load_workbook", fail_reopen)
+
+    with pytest.raises(OSError, match="reopen verification failed"):
+        export_unified_data_excel((_export_record(),), output, include_analysis=False)
+
+    assert not output.exists()
+    assert not temp_output.exists()
 
 
 def test_tikhub_parallel_excel_module_is_removed() -> None:
