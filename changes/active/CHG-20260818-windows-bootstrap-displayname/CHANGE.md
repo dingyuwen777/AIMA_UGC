@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260818-windows-bootstrap-displayname"
 title: "修复Windows环境引导严格模式对象属性失败"
 level: L2
-status: in_progress
+status: ready_for_review
 owner: "dingyuwen777"
 branch: "main"
 created: 2026-08-18
@@ -31,11 +31,11 @@ Windows x64 环境引导在 PowerShell 5.1 严格模式下安全处理缺少 `Di
 - [x] 脚本继续使用注册表 Provider，不引入 `Win32_Product`，不关闭 StrictMode，不改变默认保留
       旧版本、交互卸载、国内源、签名与哈希校验策略。
 - [x] PowerShell 5.1 解析、回归检查和仓库 Windows bootstrap 静态安全门禁通过。
-- [ ] 单条旧 Node 注册记录不会因 PowerShell 管道自动展开而在 `.Count` 处失败，并能到达卸载询问边界。
-- [ ] Python/Node 旧版本选择结果、Node 默认安装目录、目标工具实际路径和项目依赖路径均有明确输出。
-- [ ] 纯逻辑全流程能够从 Node/npm 版本漂移继续到项目依赖安装阶段。
-- [ ] npm 目标版本安装到当前解析到的 `npm.cmd` 所在 prefix，避免被 PATH 中的旧 npm 遮蔽。
-- [ ] 国内镜像不会使 PyPI 来源的 `uv.lock` 被误判为漂移；依赖仍按锁定版本和哈希安装。
+- [x] 单条旧 Node 注册记录不会因 PowerShell 管道自动展开而在 `.Count` 处失败，并能到达卸载询问边界。
+- [x] Python/Node 旧版本选择结果、Node 默认安装目录、目标工具实际路径和项目依赖路径均有明确输出。
+- [x] 纯逻辑全流程能够从 Node/npm 版本漂移继续到项目依赖安装阶段。
+- [x] npm 目标版本安装到当前解析到的 `npm.cmd` 所在 prefix，避免被 PATH 中的旧 npm 遮蔽。
+- [x] 国内镜像不会使 PyPI 来源的 `uv.lock` 被误判为漂移；依赖仍按锁定版本和哈希安装。
 
 # 范围
 
@@ -83,9 +83,9 @@ Windows x64 环境引导在 PowerShell 5.1 严格模式下安全处理缺少 `Di
 - [x] 调查当前实现和事实源
 - [x] 建立缺少 `DisplayName` 的失败测试并确认修复
 - [x] 建立单条旧 Node 注册记录的失败测试并确认 Red
-- [ ] 完成单元素集合和安装路径输出实现
-- [ ] 同步受影响文档
-- [ ] 取得本轮新鲜验证证据
+- [x] 完成单元素集合和安装路径输出实现
+- [x] 同步受影响文档
+- [x] 取得本轮新鲜验证证据
 
 # 验证
 
@@ -104,26 +104,60 @@ Windows x64 环境引导在 PowerShell 5.1 严格模式下安全处理缺少 `Di
   `PropertyNotFoundStrict`，与用户现场一致。
 - Green：相同 PowerShell 5.1 回归命令退出码 0，输出
   `Windows registry DisplayName regression passed.`。
+- `.Count` Red：PowerShell 5.1 让 `Get-AimaNodeRegistrations` 替身返回单个对象，调用正式
+  `Install-AimaNode`；退出码 1，正式实现产生 `PropertyNotFoundStrict,Install-AimaNode`。
+- `.Count` Green：同一回归在数组固定后退出码 0，输出默认安装目录和
+  `Single Node registration regression passed.`，且成功到达卸载询问替身边界。
+- npm prefix Red/Green：新增行为测试先因 `Get-AimaNpmInstallPrefix` 不存在退出码 1；实现后在
+  PowerShell 5.1 对 `D:\nodejs\npm.cmd` 返回 `D:\nodejs`，退出码 0。另以隔离临时 prefix 从
+  npmmirror 实际安装 `npm@11.17.0`，生成目标 `npm.cmd` 并输出 `11.17.0`，退出码 0，临时目录已清理。
 - 本机只读注册表验证：PowerShell 5.1 调用正式 `Get-AimaRegisteredPrograms` 和
   `Get-AimaNodeRegistrations -TargetVersion 24.19.0`，退出码 0；枚举 61 个具名程序，识别
   1 个旧 Node，版本 `24.18.1`。未触发下载、安装、卸载或 UAC。
 - Windows bootstrap 完整纯逻辑/静态检查：PowerShell 5.1 Parser、目标版本、版本解析、
   Python 发现、国内镜像精确 URL、无境外源、无 `Win32_Product`、无永久
-  `Set-ExecutionPolicy`、CMD 入口及新增注册表回归全部通过，退出码 0。
+  `Set-ExecutionPolicy`、CMD 入口、空/单条注册记录、npm prefix、锁定依赖命令及模拟
+  Node/npm 版本漂移到依赖安装的完整流程全部通过，退出码 0。
+- 真实 Node 安装边界：正式 `Install-AimaNode` 使用 npmmirror 下载 `24.19.0` MSI，完成镜像
+  SHA-256 与 Windows Authenticode 校验并到达 `msiexec /i`；测试用函数替身拦截启动，未实际
+  安装、卸载或弹 UAC，退出码 0，临时目录已清理。
+- uv 镜像 Red：在 `UV_DEFAULT_INDEX=清华` 下执行旧 `uv lock --check`，退出码 1，显示锁文件
+  需要更新；移除镜像身份并执行 `uv lock --check --offline`，退出码 0。隔离虚拟环境按
+  `export --locked --offline → pip sync --require-hashes → editable install` 从清华镜像安装 38 个
+  锁定依赖并成功导入 `aima_ugc 0.1.0`，退出码 0，临时环境已清理。
+- 真实项目依赖安装：正式 `Install-AimaProjectDependencies` 退出码 0；后端锁定依赖与 editable
+  包同步成功，`npm ci` 安装 391 个包，`import aima_ugc` 输出 `0.1.0`；实际路径为
+  `E:\work\03_Aima\code\AIMA_UGC\.venv\Scripts\python.exe` 和
+  `E:\work\03_Aima\code\AIMA_UGC\frontend\node_modules`。
 - `D:\python314\python.exe` 使用 PyYAML 6.0.3 解析 `.github/workflows/ci.yml`，退出码 0，
   `windows-bootstrap` Job 存在。
-- `git diff --check -- scripts/setup_dev_environment.ps1 .github/workflows/ci.yml`：退出码 0。
+- `git diff --check`（本 Change 四个路径）：退出码 0。
 - `uv run python scripts/quality/check_docs.py` 与 `scan_secrets.py`：退出码均为 0。
-- 未运行完整 `setup_dev_environment.cmd`：它下一步会打开 Node MSI、更新全局 npm 并安装项目
-  依赖，属于真实系统变更和交互式安装；本轮以正式函数真实注册表只读验证和 CI 纯逻辑检查替代。
+- `uv lock --check --offline`：退出码 0，39 个包的锁文件与声明一致。
+- `npm --prefix frontend run build` 首次在受限沙箱内因 Vite 子进程 `spawn EPERM` 退出 1；按原命令
+  在允许本地子进程的环境重跑退出码 0，TS7、`vue-tsc` 和 Vite build 全部完成，25 个模块转换，
+  生成 `dist/index.html` 与 JS bundle，证明 `npm ci` 的 allow-scripts 警告未造成当前构建缺件。
+- 本 Change 元数据通过 `rvc.py` 的 `read_change_metadata` 校验，输出
+  `CHG-20260818-windows-bootstrap-displayname ready_for_review 3`。全局 `rvc.py status` 被外部
+  并发提交中的 `CHG-20260818-stage1-stage7-comprehensive-corrective` 阻断：该文件把
+  `contracts` 等列表写成当前轻量解析器不支持的单行 YAML 列表；本任务未修改该无关 Change。
+- 未运行完整 `setup_dev_environment.cmd`：它会真实升级全局 Node/npm，且是否先卸载旧 Node 是
+  用户交互决策。本轮已真实验证 Node 安装函数到 MSI 启动前边界、隔离 npm 安装和正式项目依赖
+  安装，但没有替用户选择卸载或操作 MSI UI。
 
 # 文档影响
 
-- 不改变已批准使用方式、版本、镜像或交互语义，现有 Blueprint/运行文档无需修改；CI 和
-  Change 记录缺陷边界与验证事实。
+- `docs/环境运行与部署.md` 已同步单/旧版本提示、工具与依赖实际路径，以及兼顾 portable
+  `uv.lock` 和国内镜像的精确哈希安装流程；版本、公共 Contract、数据库和 Migration 不变。
+- 当前锁定依赖只声明 `psycopg==3.3.4`；Windows 没有本机 libpq/binary wrapper 时，正式
+  `import psycopg` 仍会失败。仓库现有测试文档和历史 Change 已把本地 PostgreSQL 验证限定到
+  有 wrapper 的环境或 Linux CI；本 Change 未擅自增加 `psycopg-binary` 依赖。
 
 # 交付
 
-- Commit：未授权，未执行。
-- PR：未授权，未执行。
-- 发布：不涉及依赖、Migration 或服务部署；未执行系统工具安装。
+- Commit：工作期间出现外部并发提交 `4d493801bbdf2bf5e6e0a8b188464f68cc40c0b2`，其提交消息为
+  `调整tikhub_test目录结构`，已把本 Change 大部分文件与大量无关修改一起提交并推送到
+  `main/origin/main`；该提交/推送不是本任务 Agent 执行。之后补充的 CI 断言、文档措辞和本
+  Change 证据仍未提交。
+- PR：本任务未创建或操作。
+- 发布：不涉及 Migration 或服务部署；未实际安装/卸载系统 Node/npm/Python/uv。

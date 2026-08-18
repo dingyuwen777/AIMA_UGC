@@ -421,6 +421,9 @@ jobs:
           if ($registeredPrograms[0].DisplayName -ne 'Node.js') {
             throw 'Valid Node.js registry entry was not preserved.'
           }
+          if (Confirm-AimaUninstall -Label 'Node.js' -Programs @()) {
+            throw 'Empty old-version collection must not request an uninstall.'
+          }
 
           $targetPython = Get-AimaPythonTargetExecutable -TargetVersion $targets.Python
           if ([string]::IsNullOrWhiteSpace($targetPython)) {
@@ -462,6 +465,16 @@ jobs:
           }
           if ($scriptContent -match '(?im)^\s*Set-ExecutionPolicy\b') {
             throw 'Bootstrap must not permanently change PowerShell ExecutionPolicy.'
+          }
+          foreach ($requiredPattern in @(
+            'lock\s+--check\s+--offline',
+            'export\s+--locked\s+--offline',
+            'pip\s+sync\s+--python\s+\$projectPythonPath\s+--require-hashes',
+            'pip\s+install\s+--python\s+\$projectPythonPath\s+--no-deps\s+--editable'
+          )) {
+            if ($scriptContent -notmatch $requiredPattern) {
+              throw "Bootstrap is missing locked China-mirror dependency stage: $requiredPattern"
+            }
           }
 
           $cmdContent = Get-Content -LiteralPath 'scripts/setup_dev_environment.cmd' -Raw
