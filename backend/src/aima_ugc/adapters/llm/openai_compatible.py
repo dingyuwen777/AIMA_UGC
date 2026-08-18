@@ -154,9 +154,7 @@ def _normalize_base_url(value: str) -> str:
 def _user_message(request: ContentLabelingLLMRequest) -> str:
     payload: dict[str, object] = {"items": request.model_payload()}
     if request.previous_validation_error_codes:
-        payload["previous_validation_error_codes"] = list(
-            request.previous_validation_error_codes
-        )
+        payload["previous_validation_error_codes"] = list(request.previous_validation_error_codes)
         payload["retry_instruction"] = (
             "上一响应未通过本地校验；仅修正列出的结构/标签错误，并重新返回整个当前批次。"
         )

@@ -342,9 +342,7 @@ def _parse_record(raw_line: bytes, path: Path, line_number: int) -> UnifiedConte
     try:
         return UnifiedContentRecordV1.model_validate_json(raw_line)
     except ValidationError as exc:
-        raise ValueError(
-            f"{path}: 第 {line_number} 行不是合法 UnifiedContentRecordV1"
-        ) from exc
+        raise ValueError(f"{path}: 第 {line_number} 行不是合法 UnifiedContentRecordV1") from exc
 
 
 def _write_records(output_file: TextIO, records: tuple[UnifiedContentRecordV1, ...]) -> None:
