@@ -114,6 +114,8 @@ def label_sentiment() -> OfflineContentLabelingSummary:
         env.get("AIMA_LLM_JSON_MODE", "true"),
         name="AIMA_LLM_JSON_MODE",
     )
+    prompt_loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
+    recovery_taxonomy = prompt_loader.load()
     with OpenAICompatibleContentLabelingLLM(
         base_url=_require_env(env, "AIMA_LLM_BASE_URL"),
         api_key=SecretStr(_require_env(env, "AIMA_LLM_API_KEY")),
@@ -123,7 +125,7 @@ def label_sentiment() -> OfflineContentLabelingSummary:
         use_json_mode=use_json_mode,
     ) as llm:
         service = ContentLabelingService(
-            prompt_loader=PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH),
+            prompt_loader=prompt_loader,
             llm=llm,
         )
         return label_unified_content_jsonl(
@@ -132,6 +134,7 @@ def label_sentiment() -> OfflineContentLabelingSummary:
             service=service,
             max_validation_retries=MAX_VALIDATION_RETRIES,
             batch_size=LLM_BATCH_SIZE,
+            recovery_taxonomy=recovery_taxonomy,
         )
 
 
