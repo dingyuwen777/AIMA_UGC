@@ -14,6 +14,7 @@ affected_paths:
   - docs/blueprint/13-统一数据Excel导出与调试复用.md
   - docs/blueprint/14-临时P1-Excel离线导入与舆情打标.md
   - docs/blueprint/15-舆情AI打标与统一分析契约.md
+  - backend/src/aima_ugc/adapters/llm/
   - backend/src/aima_ugc/adapters/providers/imports/
   - backend/src/aima_ugc/adapters/providers/imports_test/
   - backend/src/aima_ugc/adapters/providers/tikhub_test/
@@ -35,23 +36,11 @@ rollback:
 
 # 临时 P1 Excel 离线导入、去重与舆情 AI 打标
 
-## 1. 背景与原因
+## 1. 目标与固定边界
 
-Stage 1—7 已闭环，Stage 8 仍是正式下一阶段；但当前需要插入一个最高优先级的临时 P1，用于把既有约 9 万行 Excel 舆情数据转换为 Canonical/统一内容 JSONL，执行关键词过滤、稳定身份去重、AI 情感与一级/二级标签分析，并最终导出统一 Excel 人工审阅文件。
+Stage 1—7 已闭环，Stage 8 仍是正式下一阶段；P1 是 Stage 7 与 Stage 8 之间的临时最高优先级阶段。第一版不接数据库，业务中间事实源统一使用 JSONL。
 
-本 Change 的约束是：
-
-- P1 是临时阶段，不改变 Stage 8 的正式顺序；
-- 第一版不接数据库，业务中间事实源统一使用 JSONL；
-- `CanonicalContentV1` 只表示 Provider/平台可观察事实，不增加 AI 标签；
-- `UnifiedContentRecordV1 = content + matched_keywords + analysis`；
-- Analysis 标签事实源唯一来自 `backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v1.md`；
-- Python/Pydantic 不复制具体标签枚举、Literal、父子映射常量或第二份 taxonomy JSON；
-- P1 每个网页对话只闭环一个最小子阶段。
-
-## 2. 固化业务决定
-
-### 2.1 主链
+固定主链：
 
 ```text
 source.xlsx
@@ -61,79 +50,34 @@ source.xlsx
 → AI 打标
 → 本地结构/Taxonomy 校验
 → Validation Retry（有界）
-→ 成功 checkpoint
+→ analysis/checkpoints.jsonl
 → 原子回写同一个 deduplicated/contents.jsonl
 → labeled_data.xlsx
 ```
 
-`analysis/checkpoints.jsonl` 只用于恢复、费用安全和审计，不是第二业务事实源。`raw_data.xlsx` 只是可选人工审阅旁路，不进入默认 `run_all()`；AI 不得依赖 raw Excel 回读。
+`analysis/checkpoints.jsonl` 只用于恢复、费用安全和审计，不是第二业务事实源；`raw_data.xlsx` 只是可选人工审阅旁路，不进入默认 `run_all()`。
 
-### 2.2 Canonical / Unified Record / Analysis
-
-```text
-CanonicalContentV1
-= Provider/平台可观察事实
-
-UnifiedContentRecordV1
-= content + matched_keywords + analysis
-```
-
-AI 成功后：
+数据边界保持：
 
 ```text
-analysis: ContentLabelAnalysisV1
+CanonicalContentV1 = Provider/平台可观察事实
+UnifiedContentRecordV1 = content + matched_keywords + analysis
+analysis = ContentLabelAnalysisV1 | null
 ```
 
-未来数据库归属：
+Canonical 禁止增加 AI 标签。未来数据库中 `record.content` 归 Content Owner，`record.analysis` 归 Analysis Owner；不得把整条记录作为一坨 JSONB 写入 contents 表。
 
-```text
-record.content → Content Owner
-record.analysis → Analysis Owner
-```
+## 2. Prompt / Taxonomy / LLM 固定决策
 
-禁止把整条统一记录作为一坨 JSONB 写入 `contents` 表。
-
-### 2.3 Prompt / Taxonomy 唯一事实源
-
-唯一标签事实源：
+唯一具体标签事实源：
 
 ```text
 backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v1.md
 ```
 
-Markdown 中必须存在机器可读区块：
+Markdown 内唯一机器 Taxonomy JSON 使用 `AIMA_TAXONOMY_START/END` 标记。代码只做精确 JSON 提取、`json.loads`、Taxonomy 校验、`taxonomy_sha256`、完整 `prompt_sha256` 和运行时 membership/父子关系校验；不得解析自然语言表格猜闭集，也不得在 Python/Pydantic 复制具体标签 Enum、Literal、父子映射或第二份 taxonomy JSON。首版保持 Blueprint 15 的 9 个一级标签、39 个二级标签。
 
-````markdown
-<!-- AIMA_TAXONOMY_START -->
-```json
-{
-  "schema_version": "aima-content-taxonomy.v1",
-  "sentiments": ["正面", "中性", "负面", "混合"],
-  "labels": {
-    "...": ["..."]
-  }
-}
-```
-<!-- AIMA_TAXONOMY_END -->
-````
-
-代码流程固定：
-
-```text
-读取 Markdown
-→ 精确提取 JSON 块
-→ json.loads
-→ 校验 taxonomy
-→ taxonomy_sha256
-→ 完整 prompt_sha256
-→ 用当前 taxonomy 校验模型输出
-```
-
-自然语言表格不得用于猜测闭集。首版完整名称和判断标准以 Blueprint 15 为唯一设计事实源；当前为 9 个一级标签、39 个二级标签。
-
-### 2.4 LLM 最小输入与固定输出
-
-每条内容仅允许发送三个业务字段：
+每条模型业务输入只允许：
 
 ```text
 title
@@ -141,106 +85,23 @@ text
 author.display_name
 ```
 
-缺失填空字符串。不得发送 ID、URL、平台/Provider、指标、`matched_keywords`、源 Excel 全文情感、Raw locator 或其他 Provider 私有字段。批量请求允许临时 `item_no` 配对，但它不是业务字段。
+缺失填 `""`。临时 `item_no` 只做批次配对。内容 ID、平台、URL、指标、粉丝数、Provider、`matched_keywords`、源 Excel 情感、Raw locator 等不得发送。
 
-模型每条仅返回：
+模型每条固定返回 `item_no/sentiment/primary_label/secondary_label`。三个标签字段在 Contract 中使用 `str`，具体允许值由当前 PromptTaxonomy 动态校验。
 
-```json
-{
-  "item_no": 1,
-  "sentiment": "...",
-  "primary_label": "...",
-  "secondary_label": "..."
-}
-```
+本地 Validator 必须检查 JSON、固定/额外字段、item 数量/顺序/唯一性/配对、sentiment、primary、secondary→primary。非法输出不得模糊匹配、近义替换或程序猜值。
 
-`ContentLabelAnalysisV1` 的三个标签字段使用 `str`；具体值由当前 PromptTaxonomy 做 membership 和父子关系校验。
+`max_validation_retries >= 0` 精确定义为额外 Validation Retry 次数：0/1/2 分别对应总模型请求最多 1/2/3 次。Validation Retry 与 Transport Retry 分离；同批已经成功的 item 不得因其他 item 失败重复调用。
 
-### 2.5 本地 Validator 与 Validation Retry
+## 3. imports / imports_test / Export 固定边界
 
-即使 Adapter 使用 JSON mode / structured output，也必须本地再次校验：
+正式 File Provider `backend/src/aima_ugc/adapters/providers/imports/` 只负责 XLSX → Reader/Profile/Identity/Mapper → `CanonicalContentV1`，不得承担关键词、去重、LLM、Excel 输出或数据库。
 
-- Prompt Taxonomy 本身合法；
-- JSON 可解析；
-- 固定字段正确、无额外字段；
-- `item_no` 数量、顺序、唯一性和配对正确；
-- sentiment 属于当前 taxonomy；
-- primary 属于当前 taxonomy；
-- secondary 属于当前 primary。
+人工入口 `backend/src/aima_ugc/adapters/providers/imports_test/test.py` 保持单函数可独立调用；最终默认 `run_all()` 为 convert → filter → deduplicate → label → export labeled，`export_raw_excel()` 只为显式旁路。
 
-非法输出不得模糊匹配、不得近义词替换、不得猜测补值、不得记成功。
+长期只有 `UnifiedDataExcelV1 + backend/src/aima_ugc/platform/export/excel.py` 一套内容/评论 Excel Exporter；`tikhub_test`、`imports_test` 与未来正式导出共同复用。
 
-生产 Analysis Service 接收：
-
-```text
-max_validation_retries: int >= 0
-```
-
-语义：
-
-```text
-0 = 总请求最多 1 次
-1 = 总请求最多 2 次
-2 = 总请求最多 3 次
-```
-
-Validation Retry 与网络重试分离。每次重请求都是独立 attempt，记录 attempt_no、错误代码、model/provider、prompt/taxonomy hash、时间及可获得的 token/费用。达到上限仍不合法时 `analysis_status = failed`，不得填猜测标签。
-
-人工入口示例配置：
-
-```python
-MAX_VALIDATION_RETRIES = 2
-```
-
-### 2.6 imports / imports_test
-
-正式 File Provider：
-
-```text
-backend/src/aima_ugc/adapters/providers/imports/
-```
-
-只负责 XLSX → Reader/Profile/Identity/Mapper → `CanonicalContentV1`，不得做关键词、去重、LLM、Excel 输出或数据库。
-
-人工入口：
-
-```text
-backend/src/aima_ugc/adapters/providers/imports_test/
-├─ README.md
-├─ .env.example
-├─ test.py
-└─ output/
-```
-
-`test.py` 顶部配置和函数边界按 Blueprint 14 固化；默认 `run_all()` 最终应为 convert → filter → deduplicate → label → export labeled，`export_raw_excel()` 只为显式旁路。
-
-### 2.7 共享 Excel Exporter
-
-长期只有：
-
-```text
-UnifiedDataExcelV1
-+
-backend/src/aima_ugc/platform/export/excel.py
-```
-
-`tikhub_test`、`imports_test` 和未来正式导出都必须复用该 Exporter；不得保留平行内容+评论 Workbook 生成逻辑。
-
-### 2.8 性能
-
-保留既有 `openpyxl`，没有真实性能失败证据时不引入 pandas。P1H 必须记录 90,000×13 的读取/转换、筛选、去重、JSONL AI 回写、最终 Excel 时间、rows/s、峰值 RSS 和文件大小。
-
-## 3. 成功标准
-
-- [x] P1A：设计与阶段导航固化；
-- [x] P1B：Excel imports + imports_test + convert；
-- [x] P1C：关键词过滤 + `UnifiedContentRecordV1` 去重；
-- [x] P1D：`UnifiedDataExcelV1` + 唯一共享 Exporter + tikhub_test 迁移；
-- [x] P1E：PromptTaxonomyLoader + 完整 Prompt + Analysis Contract/Service/Port + Fake + README + Retry tests；
-- [ ] P1F：真实 OpenAI-compatible LLM Adapter + 最小输入 + Validation Retry + checkpoint + JSONL 原子回写；
-- [ ] P1G：`run_all()` + 崩溃恢复 + 最终同源 JSONL 导出；
-- [ ] P1H：90k 性能 + 真实模型小样 + 全链路 Review/CI + P1 收口；
-- [ ] P1 全部结束后归档 Change、删除 Blueprint 14，并恢复 README 到 Stage 8 正式导航。
+性能保持既有 `openpyxl`；没有真实性能失败证据不引入 pandas。P1H 记录 90,000×13 的各阶段时间、rows/s、峰值 RSS 与文件大小。
 
 ## 4. 子阶段检查点
 
@@ -249,217 +110,62 @@ backend/src/aima_ugc/platform/export/excel.py
 - [x] P1C：关键词过滤 + UnifiedContentRecordV1 去重
 - [x] P1D：UnifiedDataExcelV1 + 唯一共享 Exporter + tikhub_test 迁移
 - [x] P1E：PromptTaxonomyLoader + Prompt + Analysis Contract/Service/Port + Fake + README + Retry tests
-- [ ] P1F：真实 LLM Adapter + 最小输入 + Validation Retry + checkpoint + 原子回写
+- [x] P1F：真实 OpenAI-compatible LLM Adapter + 最小输入 + Validation Retry + checkpoint + JSONL 原子回写
 - [ ] P1G：run_all + 崩溃恢复 + 最终同源 JSONL 导出
 - [ ] P1H：90k 性能 + 真实模型小样 + Review/CI + 收口
+- [ ] P1 全部结束后归档 Change、删除 Blueprint 14，并恢复 README 到 Stage 8 正式导航
 
-**当前检查点：P1E 已闭环；下一最小正式单元为 P1F。不得在本 Change 未闭环时跳到 Stage 8。**
+**当前检查点：P1F 已闭环；下一最小正式单元为 P1G。不得在本轮继续进入 P1G。**
 
-## 5. P1B 已完成证据
+## 5. P1A—P1E 已闭环摘要
 
-P1B 建立了正式 `imports/` File Provider 与 `imports_test/test.py` 的 `convert()` 人工入口，使用 `openpyxl` read-only + `iter_rows(values_only=True)` 把指定 Excel Profile 转为 `CanonicalContentV1` JSONL；不接数据库、不做关键词/去重/LLM/Excel 输出。
+P1B 建立 `imports/` File Provider 和 `convert()`，使用 openpyxl read-only + `iter_rows(values_only=True)` 输出 Canonical JSONL；13 列 Profile、北京时间解释后转 UTC、稳定身份优先级、错误时不发布部分业务文件均有测试。
 
-关键行为：
+P1C 建立平台无关关键词过滤和 `(platform, external_content_id)` 去重；冲突 fail closed，filtered/deduplicated 都使用 `UnifiedContentRecordV1`，JSONL 临时文件 + flush/fsync + replace 原子发布。
 
-- 13 列 Profile 校验，缺列关闭失败；
-- 日期按 `Asia/Shanghai` 解释并转 UTC；
-- 身份优先平台 URL 原生 ID，其次文章编号，再次规范化 URL SHA-256；
-- 无稳定身份拒绝该行；
-- 业务 JSONL 原子发布；有转换错误时不发布部分成功业务文件；
-- 源 Excel “全文情感”不写入 Canonical Analysis。
+P1D 建立 `UnifiedDataExcelV1` 与唯一共享 Exporter，并迁移 `tikhub_test`/`imports_test`；write-only Workbook、ID 文本化、URL、公式注入防护、北京时间展示和重新打开校验均有测试。
 
-TDD Red commit：`618459b680946554142f01d6fe054f94d5c23593`。
+P1E 建立 `ContentLabelAnalysisV1`、唯一 Prompt/Taxonomy、`PromptTaxonomyLoader`、严格 Runtime Validator、`ContentLabelingService`/Port/Fake 和 Validation Retry；具体标签未复制到生产 Python。
 
-P1B 代码/文档提交：`c3e6d240e7f69936f7cb86a4d4c02518b69367cb`、`77ade299145d1be5be8d7f2130673b318693d5934`。
+P1E 最近专项证据：Stage 5A Run `32150865899` / Job `95756108571`，49 passed；Ruff/mypy、Analysis+Export Contract、Secret、Docs 成功；Architecture 只报告当时已有的 11 个 `operations/...` 缺失项。
 
-P1B 专项 CI：Run `32137347850` / Job `95711612819`：7 passed；Ruff format/check、mypy、Analysis Contract drift、Secret、Docs 均通过；Architecture 因仓库既有 11 个 `ARCH001` 缺 `operations/...` 路径失败。
+## 6. P1F 已完成实现
 
-## 6. P1C 已完成证据
+P1F 在 P1E 的 Provider-neutral Port/Service 之上增加真实 OpenAI-compatible HTTP Adapter 和离线 JSONL 打标编排，没有修改 Prompt/Taxonomy 闭集、Canonical Contract、数据库或 Migration：
 
-P1C 新增 `UnifiedContentRecordV1` 与平台无关的离线过滤/去重生产函数：
+- `aima_ugc.adapters.llm.OpenAICompatibleContentLabelingLLM` 使用仓库既有 `httpx==0.28.1`，一次 `complete()` 恰好一次 `chat/completions` HTTP 请求；Adapter 不隐藏 Transport Retry；
+- API key 使用 `SecretStr`，异常不回显 Secret 或 Provider body；`.env.example` 只保留空 key 示例；真实 `.env` 继续由根 `.gitignore` 忽略；
+- 请求 system message 使用完整 Prompt；user message 只包含 P1E 已投影的 `item_no/title/text/author.display_name`，Validation Retry 时只附上一轮校验错误代码和重新返回当前批次的指令；
+- 可选 JSON mode 只是 Provider 输出约束，本地 Validator 仍是最终成功门禁；
+- `label_unified_content_jsonl()` 流式读取 `deduplicated/contents.jsonl`，按批调用正式 Service；失败 item 保持 `analysis=null`；
+- 每次模型请求写 `analysis/attempts.jsonl`，包含 attempt、模型、prompt/taxonomy hash、时间、错误代码及可获得 token/费用；
+- 通过本地 Validator 的成功 item 先追加 `analysis/checkpoints.jsonl` 并 flush/fsync，再写业务 JSONL 临时文件；
+- `failed.jsonl` 只保存失败诊断，不伪造成功 Analysis；
+- 完成后业务文件通过临时文件 + flush/fsync + `os.replace` 原子替换同一个 `deduplicated/contents.jsonl`；
+- `imports_test.label_sentiment()` 默认 `ENABLE_REAL_LLM=False`，只有人工显式启用后才从 `.env` 建立真实 Adapter；`MAX_VALIDATION_RETRIES` 仍是唯一人工重试配置；
+- P1F 不实现 `run_all()`、跨进程 checkpoint 恢复或最终 `labeled_data.xlsx`，这些属于 P1G。
 
-- 过滤仅匹配 `title + text`，按配置顺序保存全部 `matched_keywords`；
-- 空关键词/非法 JSONL/Contract 错误关闭失败；
-- 去重键严格为 `(platform, external_content_id)`；
-- 除 `content.source.item_locator` 外完全等价才视为重复；
-- 同稳定身份其他字段不同则记录安全冲突并不发布部分 deduplicated 业务 JSONL；
-- filtered/deduplicated 均使用 `UnifiedContentRecordV1`，`analysis=null`；
-- 写入通过临时文件 + flush/fsync + replace 原子发布。
+## 7. P1F TDD 与新鲜验证
 
-TDD Red commit：`8879f91a6313dfa13362ab0097374920b0ebd8e8`。
+### 7.1 Red
 
-P1C Green/文档提交：`720e56d80a03b6e11e80a1f295da9e7ca0565879`、`b27949d679a6d092b5fa3813421981fd3af95add`、`064986fe16c25bed4fabda8694882393969f0299`、`d68e35925f759dd121793bfe85f2d3710d91eda3`。
+Red commit：`79b44fd08b82ab97086be7d47a1467ec35e0f952`（`测试：锁定P1F真实模型与JSONL回写`）。
 
-P1C 专项 CI：Run `32137874253` / Job `95713331554`：9 passed；Ruff format/check、mypy、Analysis Contract drift、Secret、Docs 均通过；Architecture 仍因同一 11 个既有 `ARCH001` 失败。
-
-## 7. P1D 已完成证据
-
-P1D 建立了 Provider-neutral 的 `UnifiedDataExcelV1` 与唯一共享 Excel Exporter，并把 `tikhub_test`、`imports_test` 收口到同一导出实现：
-
-- 新增 `backend/src/aima_ugc/contracts/export/` 和固定生成物 `contracts/export/unified-data-excel.v1.schema.json`；
-- 新增唯一共享实现 `backend/src/aima_ugc/platform/export/excel.py`；
-- 工作簿固定为 `内容`、`评论` 两个 Sheet，raw/labeled 共用同一列 Schema；
-- Canonical 通过显式 projection helper 转为 Excel Contract，不向 `CanonicalContentV1` 增加 AI/展示字段；
-- Analysis 占位字段是普通 `str`，没有具体标签 Enum/Literal/父子映射；
-- `imports_test.export_raw_excel()` 只读取 `deduplicated/contents.jsonl`，不会回读源 XLSX，也不进入默认主链；
-- `tikhub_test/core/excel.py` 已删除，TikHub 调试只投影 Canonical/评论/coverage/raw locator 并调用共享 Exporter；
-- 共享 Exporter 使用 write-only Workbook，ID 强制文本、HTTP(S) 超链接、公式注入防护、北京时间展示，并在替换最终文件前重新打开检查 Sheet、表头、行数和关键 ID；
-- 没有引入 pandas、LLM、数据库、Migration 或 `run_all()`。
-
-### 7.1 初始 TDD Red
-
-Red commit：`78810b47439745cc4c487b43d68a705c96ae4e2e`（`测试：锁定P1D统一Excel导出行为`）。
-
-CI Run `32139833333` / Job `95719627231`：共享导出测试按预期因 `ModuleNotFoundError: No module named 'aima_ugc.contracts.export'` 在 collection 阶段失败，证明测试确实锁定了尚未实现的 P1D Contract/Exporter。该次同时暴露 `test_tikhub_test_debug.py` 的既有 `TikHubTestConfig` 公共导入错误；该错误与 P1D Excel 行为无关，未被当作 Red 成功依据，后续仅把测试改为从真实模块路径导入。
+Stage 5A Run `32154648685` / Job `95768801659`：P1 pytest 退出码 2；新增 collection error 精确为缺少 `aima_ugc.adapters.llm` 和 `label_unified_content_jsonl`。依赖安装成功，Secret/Docs 同时成功，证明 Red 来自 P1F 尚未实现而不是环境或测试语法问题。
 
 ### 7.2 Green / Refactor
 
-核心实现与测试提交：
+P1F 实现相对 Red 共 9 个后续提交，当前代码包括：
 
-- `d755ca3ed2cf60e0ba4ddf2baf366f7819312dad`：实现 P1D 统一 Excel 导出核心；
-- `551c38dc875019d82b39a4289792d7f77e5b7bc9`：修正测试按扁平 Export Contract 构造；
-- `07a82339521faa002cea439a267de61de529eeaa`、`be37a4fbfd1bc49a96f78e89546c7e12b9385ee8`：只按 Ruff 结果整理格式；
-- `b8b213882f7f31727b497d76d7aefcc434f8cc4e`：收窄 Excel 单元格类型，解决 mypy 边界；
-- `adb315fc020bbc437c10ff313eebcc131319e4b7`：同步 Export Schema 生成语义及 imports/tikhub_test README。
+- `backend/src/aima_ugc/adapters/llm/openai_compatible.py` 与 `__init__.py`；
+- `backend/src/aima_ugc/modules/analysis/offline_labeling.py` 与公共导出；
+- `imports_test/test.py` 的 `label_sentiment()`、安全 `.env.example` 和 README；
+- Stage 5A 对 `adapters/llm` 的触发、Ruff 和 mypy 覆盖；
+- P1F 相关单元测试与阶段导航同步。
 
-### 7.3 Review 回归 Red → Green
+### 7.3 最新专项验证
 
-代码质量 Review 发现：Workbook 已成功写入临时 `.tmp.xlsx` 后，如果“重新打开校验”阶段抛异常，旧实现会遗留临时文件。该问题不会发布最终目标文件，但会给人工调试/后续运行留下无意义中间产物，因此按 TDD 补回归并修复。
-
-回归 Red commit：`8afdf7777714f8c37fb7f51856b46c02724373a5`（`测试：覆盖P1D导出验证失败清理`）。
-
-Red Stage 5A Run `32143537815` / Job `95731685410`：目标测试退出码 1，`1 failed, 18 passed in 2.54s`；唯一失败为 `test_shared_exporter_cleans_temp_file_when_reopen_verification_fails`，断言 `.raw_data.tmp.xlsx` 不存在时失败，证明缺陷因正确原因复现。
-
-Green commit：`920c75c9117e0a4c4e2450b1d917e7df116dadf3`（`修复：清理P1D导出验证失败临时文件`）。实现仅把 post-save 验证与 `os.replace` 包进同一异常清理边界：失败时删除临时文件并原样重新抛出异常；最终目标在验证成功前仍不被替换。
-
-接口文档/Contract 同步 commit：`18f3a1a1941d331ccc5c6a3d7e65f58e2db522ca`（`契约：补齐P1D统一Excel接口文档`）。恢复 Export 公共 Pydantic Contract 的 PEP 257 docstring，并同步 `contracts/export/unified-data-excel.v1.schema.json` 的生成描述；字段、标签类型、Workbook Schema 均未改变。
-
-P1D 最新代码专项证据：Stage 5A Run `32143868628` / Job `95732774015`：
-
-```text
-uv run pytest \
-  tests/unit/collection/test_imports_excel.py \
-  tests/unit/collection/test_imports_test_export.py \
-  tests/unit/collection/test_tikhub_test_debug.py \
-  tests/unit/analysis/test_offline_content_processing.py \
-  tests/unit/platform/test_excel_export.py \
-  -q
-```
-
-结果：退出码 0，`19 passed in 2.78s`。
-
-```text
-uv run ruff format --check <P1D paths>
-uv run ruff check <P1D paths>
-uv run mypy <P1D source paths>
-```
-
-结果：退出码 0；Ruff `24 files already formatted`、`All checks passed!`；mypy `Success: no issues found in 18 source files`。
-
-```text
-uv run python scripts/contracts/generate.py
-git diff --exit-code -- contracts/analysis contracts/export
-uv run python scripts/contracts/generate.py --check
-```
-
-结果：退出码 0；Analysis 与 Export Contract 生成/固定文件一致。
-
-```text
-uv run python scripts/quality/check_architecture.py
-```
-
-结果：退出码 1；仍只报告本轮开始前已存在的 11 个 `ARCH001`：缺失 `backend/src/aima_ugc/operations/config/settings.py`、`security/secrets.py`、`logging/formatter.py`、`database/runtime.py`、`database/metadata.py`、`storage/ports.py`、`storage/tables.py`、`jobs/models.py`、`jobs/registry.py`、`jobs/tables.py`、`jobs/worker.py`。P1D 新增 Export Contract/Exporter 或迁移后的 `tikhub_test` 没有新增 Architecture 报错。
-
-```text
-uv run python scripts/quality/scan_secrets.py
-uv run python scripts/quality/check_docs.py
-```
-
-结果：退出码 0；Secret 与 Docs gate 均通过。
-
-### 7.4 两阶段 Review
-
-需求符合性 Review：通过。
-
-- P1D 差异只覆盖 Export Contract/Exporter、imports/tikhub_test 迁移、相关测试/门禁/README/Blueprint 同步；
-- 删除旧 `tikhub_test/core/excel.py` 后只保留 `aima_ugc.platform.export.excel` 作为内容+评论 Excel 生成实现；
-- `imports_test.export_raw_excel()` 明确从 deduplicated JSONL 派生；
-- 没有进入 P1E，没有 Prompt/Taxonomy Loader、LLM Adapter、数据库、Migration、依赖升级或 `run_all()` 变化；
-- 与并行 `douyin-detail-400` Change 同文件的 `tikhub_test/operations/runner.py` 仅替换 Excel 投影/写出，保留抖音 Detail HTTP 400 的既有降级语义；
-- 与并行北京时间 Change 共享的 `tikhub_test/README.md` 保留其北京时间展示语义，仅同步共享 Excel Exporter 的现状。
-
-代码质量 Review：通过 P1D 专项目标门禁，并补齐验证失败临时文件清理回归。
-
-- write-only 输出和流式 Iterable 边界适合后续 P1H 90k 性能验证；
-- 输出先写临时 XLSX、重新打开验证后再 `os.replace`，验证/替换异常会清理临时文件；
-- ID 文本化、公式注入防护、URL scheme 限制、北京时间展示均有专项测试；
-- raw/labeled 相同 Schema 的分析列空值/填值行为有专项测试；
-- 公共 Export Contract 有 docstring，固定 Schema 由生成器维护；
-- 没有平行 Workbook 规则和无关重构。
-
-## 8. 当前全仓 CI 基线
-
-P1E 在代码专项门禁闭环后，全仓 CI 仍不是全绿；已核实失败签名来自 P1E 开始前已存在的 Stage 1—7 基线，而非 Analysis 新增逻辑：
-
-1. Stage 1：固定 Collection 生成物仍发生既有 `ProviderPlatformCapabilityV1.schema_version` 漂移：提交值 `provider-platform-capability.v1`，当前代码生成值 `provider-operations-capability.v1`；P1E Analysis/Export Schema 已通过自身生成/漂移门禁。
-2. Stage 2 Platform：测试收集时 `backend/src/aima_ugc/modules/content/tables.py:293` 访问不存在的 `contents_table.c.platform`，`AttributeError: platform`，1 个 collection error，退出码 2。
-3. Stage 3A Database：同一 `contents_table.c.platform` 问题导致 1 个 collection error，退出码 2。
-4. P1E 专项 Stage 5A 的唯一失败是上述 11 个既有 Architecture `ARCH001`；P1E 功能、Ruff、mypy、Analysis/Export Contract、Secret、Docs 均通过。
-
-这些基线问题不在 P1E 范围内，本 Change 没有通过删除测试、降低门禁或修改无关实现来制造“全绿”。另一个 Active Change `CHG-20260818-stage1-stage7-comprehensive-corrective` 元数据声明负责 Stage 1—7 全面整改；本轮实际 diff 预检未发现其 PR #65 修改 Analysis/P1E 代码、Contract、测试或 Blueprint 13/14/15，因此 P1E 没有覆盖其真实同路径修改。
-
-## 9. 依赖、Migration、模型与费用
-
-- Python/Node/uv/openpyxl 等版本保持仓库锁定版本；P1E 未新增、升级或降级依赖；
-- P1E 没有数据库写入、Migration、部署配置或生产数据迁移；
-- P1E 自动测试只使用 `FakeContentLabelingLLM`，没有调用真实 LLM；
-- Validation Retry 的 0/1/2 精确总请求次数和部分成功不重复调用行为已通过 Fake 自动测试；
-- 模型 token/真实外部费用为 0；
-- P1E 回滚方式为按提交反向恢复 Analysis Contract/Prompt/Service/Fake/测试/文档，不涉及数据库回滚。
-
-## 10. Git / PR
-
-- `main` 基线：`0dc666192f83fa9e55d5cbfffb19c09d31c5ecaf`；最终交付前重新核验当前 main；
-- 功能分支：`feature/p1-offline-excel-sentiment`；
-- Draft PR：#66；
-- P1E 已闭环，当前下一最小单元为 P1F；
-- 不自动合并、不直接推 main、不强制推送。
-
-## 11. P1E 已完成证据
-
-P1E 建立全平台通用的动态 Prompt/Taxonomy 与严格分析核心，没有进入真实 Adapter、checkpoint、业务 JSONL AI 回写或 `run_all()`：
-
-- `ContentLabelAnalysisV1` 的 sentiment/primary/secondary 三个业务标签字段保持 `str`，具体闭集不写入 Python；
-- `UnifiedContentRecordV1.analysis` 允许 `ContentLabelAnalysisV1 | null`，`CanonicalContentV1` 未增加 AI 标签；
-- 唯一生产标签事实源建立为 `backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v1.md`；
-- `PromptTaxonomyLoader` 精确提取唯一机器 JSON 块，拒绝非法 JSON、重复 object key、空值/重复 taxonomy，并计算 `taxonomy_sha256` 与完整 `prompt_sha256`；
-- 当前 Prompt 的 9 一级/39 二级父子关系由自动测试直接与 Blueprint 15 基线比较；生产 Python 自动扫描确认没有复制具体标签；
-- `RuntimeTaxonomyValidator` 严格检查 JSON、固定/额外字段、item 数量/顺序/唯一性/配对、字符串标签、当前 sentiment/primary membership 和 secondary→primary 关系；
-- `ContentLabelingService` 只投影 `title`、`text`、`author.display_name`，缺失填空字符串；临时 `item_no` 只做批次配对；
-- Validation Retry 只重新请求仍未成功 item，同批已成功 item 从后续请求移除；Transport Retry 没有混入 Validation Retry；
-- `ContentLabelAnalysisV1` 只表示本地 Validator 已通过的成功结果；达到重试上限的失败 item 为 `analysis_status=failed`、`analysis=None`，不构造猜测标签；
-- `modules/analysis/README.md` 和 `imports_test/README.md` 已同步唯一 Prompt、Validator、重试、费用、Hash、调试与 P1E/P1F 边界。
-
-### 11.1 TDD Red
-
-Red commit：`381d21064e1d1a12f781252732829e5e751f6ccb`（`测试：锁定P1E舆情分析行为`）。
-
-Stage 5A Run `32147390203` / Job `95744391741`：P1 目标测试在 collection 阶段退出码 2，唯一新增错误是 `ContentLabelAnalysisV1` 尚不存在；Secret/Docs 同时通过。该失败来自 P1E 尚未实现，而非测试语法、依赖或环境故障。
-
-### 11.2 Green / Refactor / 补充回归
-
-- `7a369567a0fb887b2c1ad0168c3bc152606c5ce5`：实现 P1E Analysis Contract、PromptTaxonomyLoader、Validator、Service/Port/Fake、Prompt 与固定 Schema 生成接线；
-- `f7d9f19730361b42bbe45616d4d8847c66f3f32a`、`2439acd759f6f062e08cd4a19256465776e6e6a7`：只按 Ruff 结果整理格式/import；
-- `7fad362147ee6697b2cd2fa49de09c396fe6c023`：按 Contract 生成器实际输出同步 `content-record.v1.schema.json`；
-- `e8decd6f12f558c42f2f90f6e5cd3fe1982868de`：补齐显式非法响应类别与 Validation Retry 测试；
-- `b7080670af4003466c61efcfd63fc63078153dd4`：同步 Analysis 与 imports_test README；
-- `886a6b93d21148fc85171ca5e323a71b5c82e349`：按 Ruff 最终格式化补充测试。
-
-补充测试覆盖：缺少必须字段、item/顶层额外字段、重复 item、unexpected item_no、未知一级标签、数组标签、空标签和 item 顺序错误；这些都不会被程序修正或猜测，而是按 Validation Retry 语义重新请求。
-
-### 11.3 最新 P1E 专项验证
-
-Stage 5A Run `32150865899` / Job `95756108571`：
+当前 P1F head 前一文档检查点 `ada47610057d1aacbd0863f1df04d091cecdfd8a` 的 Stage 5A Run `32157763801` / Job `95779015906`：
 
 ```text
 uv run pytest \
@@ -471,15 +177,15 @@ uv run pytest \
   -q
 ```
 
-结果：退出码 0，`49 passed in 2.21s`。
+结果：退出码 0，`57 passed in 2.74s`。
 
 ```text
-uv run ruff format --check <P1 scoped paths>
-uv run ruff check <P1 scoped paths>
-uv run mypy <P1 source paths>
+uv run ruff format --check <P1 scoped paths including adapters/llm>
+uv run ruff check <P1 scoped paths including adapters/llm>
+uv run mypy <P1 source paths including adapters/llm>
 ```
 
-结果：退出码 0；Ruff `31 files already formatted`、`All checks passed!`；mypy `Success: no issues found in 21 source files`。
+结果：退出码 0；Ruff `36 files already formatted`、`All checks passed!`；mypy `Success: no issues found in 24 source files`。
 
 ```text
 uv run python scripts/contracts/generate.py
@@ -487,37 +193,42 @@ git diff --exit-code -- contracts/analysis contracts/export
 uv run python scripts/contracts/generate.py --check
 ```
 
-结果：退出码 0；OpenAPI、Analysis、Canonical、Provider、Collection 与 Export Contract 固定生成物同步，P1 Analysis/Export drift 通过。
+结果：退出码 0；Analysis/Export Contract 固定生成物同步。
 
 ```text
 uv run python scripts/quality/check_architecture.py
 ```
 
-结果：退出码 1；仍只报告 P1E 开始前已经存在的 11 个 `ARCH001`：缺失 `backend/src/aima_ugc/operations/config/settings.py`、`security/secrets.py`、`logging/formatter.py`、`database/runtime.py`、`database/metadata.py`、`storage/ports.py`、`storage/tables.py`、`jobs/models.py`、`jobs/registry.py`、`jobs/tables.py`、`jobs/worker.py`。P1E 新增 Analysis 路径没有新增 Architecture 报错。
+结果：退出码 1；仍只报告 11 个既有 `ARCH001`，均为缺失 `backend/src/aima_ugc/operations/...` Stage 1—7 旧路径；P1F 的 `adapters/llm`、Analysis 和 imports_test 没有新增 Architecture 报错。
 
 ```text
 uv run python scripts/quality/scan_secrets.py
 uv run python scripts/quality/check_docs.py
 ```
 
-结果：退出码 0；Secret 扫描与文档入口/本地链接检查通过。
+结果：退出码 0；Secret 与 Docs gate 成功。
 
-由于 Stage 5A 的 Architecture step 失败，后续 Provider/Raw tests、Provider Contract drift 和整套 Stage 5A quality step 按 workflow 顺序被跳过；不得把它们记为本 head 已执行成功。
+由于 Architecture step 失败，后续 Provider/Raw tests、Provider Contract drift 和整套 Stage 5A quality step 被 workflow 顺序跳过，不能记为本 head 已执行成功。
 
-### 11.4 两阶段 Review
+### 7.4 全仓 CI 状态
 
-需求符合性 Review：通过 P1E 范围审查。
+`ada4761...` 对应 11 个适用 PR workflow 均为 failure；Stage 5A 已确认 P1F 专项步骤成功、Architecture 为既有 11 个 `ARCH001`。其他工作流仍受仓库当前全仓基线问题影响，因此本轮不宣称 CI 全绿，也不绕过门禁。
 
-- 相对 P1E 开始前 `c540686771225f0c4ea7f3624d85ca2e52d671db`，代码/测试/README 差异只集中在 Analysis Contract、Prompt/Taxonomy、Service/Port/Fake、固定 Schema、Contract 生成器、P1E 测试和 P1 Stage 5A 专项目标；
-- 未修改数据库、Migration、真实 OpenAI-compatible Adapter、checkpoint、`deduplicated/contents.jsonl` AI 回写、`label_sentiment()` 真实接线、`run_all()` 或 90k 性能逻辑；
-- 不修改 Blueprint 07，避免与并行 Stage 1—7 corrective Change 的真实共享文档路径冲突；
-- 没有进入 P1F。
+## 8. 两阶段 Review
 
-代码质量 Review：没有发现需要阻塞 P1E 闭环的新增严重/重要问题。
+需求符合性 Review：通过 P1F 范围复核。
 
-- Taxonomy 动态加载、Prompt/Taxonomy 双 Hash、成功/失败边界和 Validation/Transport Retry 分离都由测试锁定；
-- 具体标签未复制到生产 Python；
-- 模型输入最小化由测试验证，ID、平台、Provider、URL、指标、粉丝数、Raw locator 等不可进入请求 payload；
-- partial-success 批次只重试失败 item，避免同批成功 item 重复调用/费用；
-- Contract Schema 由仓库生成器维护，没有手工漂移；
-- 没有新增依赖、平行数据事实源或无关重构。
+- 模型最小输入继续由 P1E Service 投影，Adapter 没有重新读取 Canonical 私有字段；
+- Validation Retry 仍只由 Service 控制，Adapter 没有复制重试次数或标签闭集；
+- 成功 Analysis 只有本地 Validator 通过后才进入 checkpoint 和业务 JSONL；
+- checkpoint 先持久化再允许业务临时文件承载成功 Analysis；
+- 真实模型默认关闭，不存在测试/CI 意外付费调用；
+- 未进入 `run_all()`、跨进程恢复、最终 Excel 或 90k 性能阶段。
+
+代码质量 Review：未发现阻塞 P1F 闭环的新增严重/重要问题。
+
+- HTTP Client 生命周期可控，Adapter 不隐藏重试；
+- Secret 不进入日志/异常或版本库示例；
+- JSONL 采用流式读取和临时文件原子替换，不需要为 90k 行一次性构造完整业务文件内存副本；
+- attempts/checkpoints/failed 与业务 JSONL 的角色分离明确；
+- 没有新增依赖、数据库
