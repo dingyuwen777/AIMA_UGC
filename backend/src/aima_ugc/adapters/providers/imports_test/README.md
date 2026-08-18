@@ -24,9 +24,7 @@ source.xlsx
 INPUT_XLSX = Path(r"E:\path\to\source.xlsx")
 OUTPUT_ROOT = Path(__file__).with_name("output")
 
-KEYWORDS = (
-    "爱玛",
-)
+KEYWORDS = ("爱玛",)
 
 SHEET_NAME = "文章"
 PROFILE = "aima-monitoring-excel.v1"

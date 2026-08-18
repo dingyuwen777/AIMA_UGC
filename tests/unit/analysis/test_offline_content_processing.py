@@ -130,7 +130,9 @@ def test_deduplicate_collapses_equivalent_identity_and_keeps_first_locator(tmp_p
     assert record.content.source.item_locator == "sheet=文章;row=2"
 
 
-def test_deduplicate_conflict_fails_closed_without_publishing_partial_output(tmp_path: Path) -> None:
+def test_deduplicate_conflict_fails_closed_without_publishing_partial_output(
+    tmp_path: Path,
+) -> None:
     source = tmp_path / "filtered" / "contents.jsonl"
     output = tmp_path / "deduplicated" / "contents.jsonl"
     first = UnifiedContentRecordV1(
