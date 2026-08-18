@@ -6,7 +6,9 @@ on:
       - main
     paths:
       - "backend/src/aima_ugc/contracts/provider/**"
+      - "backend/src/aima_ugc/contracts/analysis/**"
       - "backend/src/aima_ugc/modules/collection/**"
+      - "backend/src/aima_ugc/modules/analysis/**"
       - "backend/src/aima_ugc/adapters/providers/**"
       - "backend/src/aima_ugc/operations/storage/**"
       - "backend/src/aima_ugc/adapters/storage/**"
@@ -14,6 +16,7 @@ on:
       - "scripts/contracts/**"
       - "scripts/quality/**"
       - "tests/unit/collection/**"
+      - "tests/unit/analysis/**"
       - "tests/integration/collection/**"
       - "tests/contracts/test_provider_v1.py"
       - ".github/workflows/stage5a-provider-raw.yml"
@@ -22,7 +25,9 @@ on:
       - main
     paths:
       - "backend/src/aima_ugc/contracts/provider/**"
+      - "backend/src/aima_ugc/contracts/analysis/**"
       - "backend/src/aima_ugc/modules/collection/**"
+      - "backend/src/aima_ugc/modules/analysis/**"
       - "backend/src/aima_ugc/adapters/providers/**"
       - "backend/src/aima_ugc/operations/storage/**"
       - "backend/src/aima_ugc/adapters/storage/**"
@@ -30,6 +35,7 @@ on:
       - "scripts/contracts/**"
       - "scripts/quality/**"
       - "tests/unit/collection/**"
+      - "tests/unit/analysis/**"
       - "tests/integration/collection/**"
       - "tests/contracts/test_provider_v1.py"
       - ".github/workflows/stage5a-provider-raw.yml"
@@ -59,35 +65,46 @@ jobs:
           uv lock --check
           uv sync --locked
 
-      - name: P1B Excel import tests
+      - name: P1 Excel import and processing tests
         shell: bash
         run: |
           set -euo pipefail
-          uv run pytest tests/unit/collection/test_imports_excel.py -q
+          uv run pytest \
+            tests/unit/collection/test_imports_excel.py \
+            tests/unit/analysis/test_offline_content_processing.py \
+            -q
 
-      - name: P1B lint and type gates
+      - name: P1 lint and type gates
         shell: bash
         run: |
           set -euo pipefail
           uv run ruff format --check \
+            backend/src/aima_ugc/contracts/analysis \
+            backend/src/aima_ugc/modules/analysis \
             backend/src/aima_ugc/adapters/providers/imports \
             backend/src/aima_ugc/adapters/providers/imports_test \
-            tests/unit/collection/test_imports_excel.py
+            tests/unit/collection/test_imports_excel.py \
+            tests/unit/analysis/test_offline_content_processing.py
           uv run ruff check \
+            backend/src/aima_ugc/contracts/analysis \
+            backend/src/aima_ugc/modules/analysis \
             backend/src/aima_ugc/adapters/providers/imports \
             backend/src/aima_ugc/adapters/providers/imports_test \
-            tests/unit/collection/test_imports_excel.py
+            tests/unit/collection/test_imports_excel.py \
+            tests/unit/analysis/test_offline_content_processing.py
           uv run mypy \
+            backend/src/aima_ugc/contracts/analysis \
+            backend/src/aima_ugc/modules/analysis \
             backend/src/aima_ugc/adapters/providers/imports \
             backend/src/aima_ugc/adapters/providers/imports_test
 
-      - name: P1B architecture gate
+      - name: P1 architecture gate
         shell: bash
         run: |
           set -euo pipefail
           uv run python scripts/quality/check_architecture.py
 
-      - name: P1B Secret and Docs gates
+      - name: P1 Secret and Docs gates
         if: ${{ always() }}
         shell: bash
         run: |
