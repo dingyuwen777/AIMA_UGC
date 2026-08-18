@@ -21,7 +21,8 @@ XHS_TIKHUB_CAPABILITY = ProviderPlatformCapabilityV1(
                 "english_preferred",
             ),
             supported_time_filters=("all", "1d", "7d", "180d"),
-            supported_content_types=("all", "video", "image", "live"),
+            # 生产 Detail/Mapper 当前只闭环 image/video；live 不再对 Plan 暴露伪能力。
+            supported_content_types=("all", "video", "image"),
             native_time_filter=True,
             observes_comment_count=True,
             provider_page_size_policy="provider_default",
@@ -58,7 +59,9 @@ DOUYIN_TIKHUB_CAPABILITY = ProviderPlatformCapabilityV1(
             provider_operations=("fetch_video_search_v2",),
             supported_sort_modes=("general", "most_liked", "latest"),
             supported_time_filters=("all", "1d", "7d", "180d"),
-            supported_content_types=("all", "video", "image", "article"),
+            supported_duration_filters=("all", "under_1m", "1_5m", "over_5m"),
+            # 当前 Mapper 只把 video/image 映射为稳定内容类型；article 先关闭公开入口。
+            supported_content_types=("all", "video", "image"),
             native_time_filter=True,
             observes_comment_count=True,
             provider_page_size_policy="provider_default",
@@ -92,9 +95,10 @@ WEIBO_TIKHUB_CAPABILITY = ProviderPlatformCapabilityV1(
         ProviderOperationCapabilityV1(
             business_operation="keyword_search",
             provider_operations=("fetch_search",),
+            # TikHub 当前 search_type 是单一维度；生产 Runtime 只批准这三个排序/搜索模式，
+            # 不再把 video/image/article 虚构成可与 sort 独立组合的 content_type。
             supported_sort_modes=("general", "latest", "hot"),
             supported_time_filters=("all", "hour", "day", "week", "month"),
-            supported_content_types=("all", "video", "image", "article"),
             native_time_filter=True,
             observes_comment_count=True,
             provider_page_size_policy="provider_default",

@@ -12,9 +12,9 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
 from aima_ugc.adapters.persistence.postgres.candidates import PostgresCandidateRepository
-from aima_ugc.adapters.persistence.postgres.content import (
-    PostgresContentRepository,
-    PostgresIngestionResult,
+from aima_ugc.adapters.persistence.postgres.content import PostgresIngestionResult
+from aima_ugc.adapters.persistence.postgres.content_complete import (
+    PostgresCompleteContentRepository,
 )
 from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
     XhsMappingContext,
@@ -29,10 +29,7 @@ from aima_ugc.modules.collection.tables import (
     provider_request_attempts_table,
     provider_requests_table,
 )
-from aima_ugc.modules.collection.xhs_replay import (
-    XhsReplaySource,
-    XhsReplaySummary,
-)
+from aima_ugc.modules.collection.xhs_replay import XhsReplaySource, XhsReplaySummary
 from aima_ugc.modules.content.ingestion import ContentIngestionService
 from aima_ugc.platform.storage import ArtifactRecord
 from aima_ugc.platform.storage.models import ArtifactStatus
@@ -100,7 +97,7 @@ class PostgresXhsReplaySourceReader:
 
 
 class PostgresXhsReplayIngestionWriter:
-    """在一个短事务内把已校验 Raw 转成 Candidate/Canonical/业务事实。"""
+    """在一个短事务内把已校验 Raw 转成 Candidate/Canonical/完整业务事实。"""
 
     def __init__(self, session_factory: SessionFactory) -> None:
         self._session_factory = session_factory
@@ -114,7 +111,7 @@ class PostgresXhsReplayIngestionWriter:
             with session.begin():
                 candidates = CandidateIngestionService(PostgresCandidateRepository(session))
                 content: ContentIngestionService[PostgresIngestionResult] = ContentIngestionService(
-                    PostgresContentRepository(session)
+                    PostgresCompleteContentRepository(session)
                 )
                 context = XhsMappingContext(
                     provider_request_id=str(source.provider_request_id),

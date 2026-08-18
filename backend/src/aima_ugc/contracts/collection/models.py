@@ -64,6 +64,7 @@ class ProviderOperationCapabilityV1(CollectionBaseModel):
     provider_operations: tuple[OperationName, ...] = Field(min_length=1)
     supported_sort_modes: tuple[StableCode, ...] = ()
     supported_time_filters: tuple[StableCode, ...] = ()
+    supported_duration_filters: tuple[StableCode, ...] = ()
     supported_content_types: tuple[StableCode, ...] = ()
     native_time_filter: bool = False
     observes_comment_count: bool = False

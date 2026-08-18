@@ -12,6 +12,9 @@ from aima_ugc.adapters.persistence.postgres.collection_planning import (
 from aima_ugc.adapters.persistence.postgres.keywords import PostgresKeywordCatalogRepository
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
 from aima_ugc.bootstrap.scheduler import create_scheduler_runtime, run_scheduler_once
+from aima_ugc.modules.collection.corrective_tables import (
+    collection_plan_decision_policies_table,
+)
 from aima_ugc.modules.collection.planning import (
     CollectionPlanDefinition,
     CollectionPlanningService,
@@ -47,6 +50,7 @@ def scheduler_runtime():
             connection.execute(delete(collection_schedule_occurrences_table))
             connection.execute(delete(collection_plan_keyword_packs_table))
             connection.execute(delete(collection_plan_platforms_table))
+            connection.execute(delete(collection_plan_decision_policies_table))
             connection.execute(delete(collection_plans_table))
             connection.execute(delete(job_attempt_events_table))
             connection.execute(delete(jobs_table))
@@ -193,7 +197,7 @@ def test_scheduler_freezes_keyword_pack_version_and_explicit_platform_scopes(
         }
         assert run["config_snapshot"]["keyword_pack_ids"] == [str(pack.id)]
         assert run["config_snapshot"]["keyword_packs"] == [
-            {"id": str(pack.id), "version": 3, "enabled": True}
+            {"id": str(pack.id), "version": 5, "enabled": True}
         ]
         assert run["config_snapshot"]["keyword_scope_count"] == 3
         assert "request_budget" not in run["config_snapshot"]

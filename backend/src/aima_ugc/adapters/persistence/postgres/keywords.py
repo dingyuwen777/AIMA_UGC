@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from sqlalchemy import func, insert, select
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
@@ -136,6 +136,17 @@ class PostgresKeywordCatalogRepository:
             .mappings()
             .one()
         )
+        updated_pack = self._session.execute(
+            update(keyword_packs_table)
+            .where(keyword_packs_table.c.id == item.pack_id)
+            .values(
+                version=keyword_packs_table.c.version + 1,
+                updated_at=func.clock_timestamp(),
+            )
+            .returning(keyword_packs_table.c.id)
+        ).scalar_one_or_none()
+        if updated_pack != item.pack_id:
+            raise RuntimeError(f"词包成员写入后无法提升版本: {item.pack_id}")
         return _item_from_row(row)
 
     def list_items(self, pack_id: UUID) -> list[KeywordPackItem]:

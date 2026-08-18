@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from threading import Lock
 
 from pydantic import SecretStr
 
@@ -18,12 +19,7 @@ from aima_ugc.modules.collection.collection_run_job import (
     CollectionRunJobHandler,
     register_collection_run_job,
 )
-from aima_ugc.modules.collection.providers import (
-    ProviderTransport,
-    ProviderTransportRequest,
-    ProviderTransportResponse,
-    RawArtifactService,
-)
+from aima_ugc.modules.collection.providers import ProviderTransport, RawArtifactService
 from aima_ugc.modules.system.models import ProviderConfig
 from aima_ugc.platform.config import PlatformSettings
 from aima_ugc.platform.jobs import JobReaper, JobRegistry, JobWorker
@@ -34,25 +30,36 @@ from .collection_scope import TikHubCollectionScopeExecutor
 from .runtime import PlatformRuntime, create_platform_runtime
 
 
-class _TikHubOneShotTransport:
-    """每次发送都关闭自持 HTTP Client，避免 Worker 默认装配泄漏连接资源。"""
+class _TikHubTransportPool:
+    """按已验证 Base URL 复用进程级 httpx Client，并由 PlatformRuntime 统一关闭。"""
 
-    def __init__(self, *, base_url: str) -> None:
-        self._base_url = base_url
+    def __init__(self) -> None:
+        self._transports: dict[str, TikHubHttpTransport] = {}
+        self._lock = Lock()
 
-    def send(self, request: ProviderTransportRequest) -> ProviderTransportResponse:
-        with TikHubHttpTransport(base_url=self._base_url) as transport:
-            return transport.send(request)
+    def __call__(self, provider_config: ProviderConfig) -> ProviderTransport:
+        with self._lock:
+            transport = self._transports.get(provider_config.base_url)
+            if transport is None:
+                transport = TikHubHttpTransport(base_url=provider_config.base_url)
+                self._transports[provider_config.base_url] = transport
+            return transport
 
-
-def _default_transport_factory(provider_config: ProviderConfig) -> ProviderTransport:
-    return _TikHubOneShotTransport(base_url=provider_config.base_url)
+    def close(self) -> None:
+        with self._lock:
+            transports = tuple(self._transports.values())
+            self._transports.clear()
+        for transport in transports:
+            transport.close()
 
 
 def _default_secret_resolver(runtime: PlatformRuntime) -> Callable[[str], SecretStr]:
     def resolve(secret_ref: str) -> SecretStr:
         validated_ref = validate_secret_ref(secret_ref)
-        return read_secret_file(runtime.settings.secret_dir / validated_ref)
+        return read_secret_file(
+            runtime.settings.secret_dir / validated_ref,
+            root=runtime.settings.secret_dir,
+        )
 
     return resolve
 
@@ -77,10 +84,15 @@ def create_collection_job_registry(
         artifacts=artifact_service,
         store=runtime.artifact_store,
     )
+    resolved_transport_factory = transport_factory
+    if resolved_transport_factory is None:
+        pool = _TikHubTransportPool()
+        runtime.add_resource_closer(pool.close)
+        resolved_transport_factory = pool
     scope_executor = TikHubCollectionScopeExecutor(
         session_factory=runtime.database.new_session,
         raw_artifacts=raw_artifacts,
-        transport_factory=transport_factory or _default_transport_factory,
+        transport_factory=resolved_transport_factory,
         secret_resolver=secret_resolver or _default_secret_resolver(runtime),
     )
     executor = CollectionRunExecutor(

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from uuid import uuid4
 
@@ -45,6 +46,7 @@ class PlatformRuntime:
     database: DatabaseRuntime
     artifact_store: LocalArtifactStore
     logger: logging.Logger
+    _resource_closers: list[Callable[[], None]] = field(default_factory=list, repr=False)
 
     def check_readiness(self) -> ReadinessReport:
         database_status: CheckStatus = "error"
@@ -72,7 +74,20 @@ class PlatformRuntime:
             log_directory=log_status,
         )
 
+    def add_resource_closer(self, closer: Callable[[], None]) -> None:
+        """注册进程级外部资源；Runtime.close() 统一释放。"""
+        self._resource_closers.append(closer)
+
     def close(self) -> None:
+        while self._resource_closers:
+            closer = self._resource_closers.pop()
+            try:
+                closer()
+            except Exception:
+                self.logger.exception(
+                    "runtime resource close failed",
+                    extra={"event": "service.resource_close_failed"},
+                )
         self.database.dispose()
         shutdown_service_logging(self.logger)
 

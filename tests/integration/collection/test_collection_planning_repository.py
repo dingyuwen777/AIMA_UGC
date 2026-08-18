@@ -10,6 +10,9 @@ from aima_ugc.adapters.persistence.postgres.collection_planning import (
     PostgresCollectionPlanningRepository,
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
+from aima_ugc.modules.collection.corrective_tables import (
+    collection_plan_decision_policies_table,
+)
 from aima_ugc.modules.collection.execution import CollectionExecutionService
 from aima_ugc.modules.collection.planning import (
     CollectionPlanDefinition,
@@ -43,6 +46,7 @@ def database_runtime() -> Iterator[DatabaseRuntime]:
             connection.execute(delete(collection_schedule_occurrences_table))
             connection.execute(delete(collection_plan_keyword_packs_table))
             connection.execute(delete(collection_plan_platforms_table))
+            connection.execute(delete(collection_plan_decision_policies_table))
             connection.execute(delete(collection_plans_table))
             connection.execute(delete(job_attempt_events_table))
             connection.execute(delete(jobs_table))

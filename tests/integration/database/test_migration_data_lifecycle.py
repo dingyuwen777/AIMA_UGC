@@ -1,0 +1,307 @@
+"""数据型 Migration 必须用旧 Revision + 历史数据验证，而不只验证空库 round-trip。"""
+
+from __future__ import annotations
+
+import os
+from collections.abc import Iterator
+from contextlib import contextmanager
+from datetime import UTC, datetime
+from pathlib import Path
+from uuid import uuid4
+
+import pytest
+from aima_ugc.platform.config import load_settings
+from aima_ugc.platform.security import read_secret_file
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import URL, create_engine, inspect, text
+from sqlalchemy.engine import Engine
+
+_ROOT = Path(__file__).resolve().parents[3]
+_NOW = datetime(2026, 8, 17, 8, 30, tzinfo=UTC)
+
+
+def _database_url(database: str) -> URL:
+    settings = load_settings()
+    password = read_secret_file(settings.postgres_password_file).get_secret_value()
+    return URL.create(
+        drivername="postgresql+psycopg",
+        username=settings.db_user,
+        password=password,
+        host=settings.db_host,
+        port=settings.db_port,
+        database=database,
+    )
+
+
+def _engine(database: str, *, autocommit: bool = False) -> Engine:
+    return create_engine(
+        _database_url(database),
+        isolation_level="AUTOCOMMIT" if autocommit else None,
+        pool_pre_ping=True,
+    )
+
+
+@pytest.fixture
+def migration_database() -> Iterator[str]:
+    settings = load_settings()
+    database = f"aima_migration_{uuid4().hex}"
+    admin = _engine(settings.db_name, autocommit=True)
+    try:
+        with admin.connect() as connection:
+            connection.exec_driver_sql(f'CREATE DATABASE "{database}"')
+        yield database
+    finally:
+        with admin.connect() as connection:
+            connection.execute(
+                text(
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                    "WHERE datname = :database AND pid <> pg_backend_pid()"
+                ),
+                {"database": database},
+            )
+            connection.exec_driver_sql(f'DROP DATABASE IF EXISTS "{database}"')
+        admin.dispose()
+
+
+@contextmanager
+def _migration_target(database: str) -> Iterator[None]:
+    previous = os.environ.get("AIMA_DB_NAME")
+    os.environ["AIMA_DB_NAME"] = database
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("AIMA_DB_NAME", None)
+        else:
+            os.environ["AIMA_DB_NAME"] = previous
+
+
+def _upgrade(database: str, revision: str) -> None:
+    with _migration_target(database):
+        command.upgrade(Config(str(_ROOT / "alembic.ini")), revision)
+
+
+def _seed_budget_reservation(database: str, *, status: str) -> None:
+    settled_amount = 1 if status == "settled" else None
+    engine = _engine(database)
+    try:
+        with engine.begin() as connection:
+            # 测试只需要制造“0014 已存在的历史 Reservation”事实。FK 来源链在这里
+            # 不是被测对象；replica 仅用于隔离测试装载，不进入生产 Migration。
+            connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO provider_budget_reservations(
+                      id, budget_account_id, provider_request_id,
+                      provider_request_attempt_id, reserved_amount,
+                      settled_amount, status, created_at, updated_at
+                    ) VALUES (
+                      :id, :budget_account_id, :provider_request_id,
+                      :provider_request_attempt_id, 1,
+                      :settled_amount, :status, :created_at, :updated_at
+                    )
+                    """
+                ),
+                {
+                    "id": uuid4(),
+                    "budget_account_id": uuid4(),
+                    "provider_request_id": uuid4(),
+                    "provider_request_attempt_id": uuid4(),
+                    "settled_amount": settled_amount,
+                    "status": status,
+                    "created_at": _NOW,
+                    "updated_at": _NOW,
+                },
+            )
+    finally:
+        engine.dispose()
+
+
+def test_0014_to_0015_accepts_settled_historical_budget_rows(
+    migration_database: str,
+) -> None:
+    _upgrade(migration_database, "20260815_0014")
+    _seed_budget_reservation(migration_database, status="settled")
+
+    _upgrade(migration_database, "20260817_0015")
+
+    engine = _engine(migration_database)
+    try:
+        tables = set(inspect(engine).get_table_names())
+        assert "provider_budget_accounts" not in tables
+        assert "provider_budget_reservations" not in tables
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+                "20260817_0015"
+            )
+    finally:
+        engine.dispose()
+
+
+def test_0014_to_0015_blocks_unresolved_budget_before_destructive_ddl(
+    migration_database: str,
+) -> None:
+    _upgrade(migration_database, "20260815_0014")
+    _seed_budget_reservation(migration_database, status="reserved")
+
+    with pytest.raises(RuntimeError, match="未决.*Reservation"):
+        _upgrade(migration_database, "20260817_0015")
+
+    engine = _engine(migration_database)
+    try:
+        tables = set(inspect(engine).get_table_names())
+        assert "provider_budget_accounts" in tables
+        assert "provider_budget_reservations" in tables
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+                "20260815_0014"
+            )
+            assert (
+                connection.scalar(
+                    text(
+                        "SELECT count(*) FROM provider_budget_reservations "
+                        "WHERE status = 'reserved'"
+                    )
+                )
+                == 1
+            )
+    finally:
+        engine.dispose()
+
+
+def test_0016_to_0017_backfills_only_existing_current_fields(
+    migration_database: str,
+) -> None:
+    _upgrade(migration_database, "20260817_0016")
+    account_id = uuid4()
+    content_id = uuid4()
+    comment_id = uuid4()
+    engine = _engine(migration_database)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO accounts(
+                      id, platform, external_account_id, handle, display_name,
+                      first_seen_at, last_seen_at, updated_at
+                    ) VALUES (
+                      :id, 'xhs', 'account-old', 'old-handle', NULL,
+                      :seen, :seen, :seen
+                    )
+                    """
+                ),
+                {"id": account_id, "seen": _NOW},
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO contents(
+                      id, platform, external_content_id, content_type,
+                      title, text, author_account_id, first_seen_at,
+                      last_seen_at, current_version, current_like_count,
+                      current_comment_count, updated_at
+                    ) VALUES (
+                      :id, 'xhs', 'content-old', 'image',
+                      '历史标题', NULL, :author_id, :seen,
+                      :seen, 1, 9, NULL, :seen
+                    )
+                    """
+                ),
+                {"id": content_id, "author_id": account_id, "seen": _NOW},
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO comments(
+                      id, content_id, external_comment_id, root_comment_id,
+                      parent_comment_id, author_account_id, text,
+                      is_by_content_author, first_seen_at, last_seen_at,
+                      current_like_count, current_reply_count, current_version,
+                      updated_at
+                    ) VALUES (
+                      :id, :content_id, 'comment-old', 'comment-old',
+                      NULL, :author_id, '历史评论', FALSE, :seen, :seen,
+                      2, NULL, 1, :seen
+                    )
+                    """
+                ),
+                {
+                    "id": comment_id,
+                    "content_id": content_id,
+                    "author_id": account_id,
+                    "seen": _NOW,
+                },
+            )
+    finally:
+        engine.dispose()
+
+    _upgrade(migration_database, "20260817_0017")
+
+    engine = _engine(migration_database)
+    try:
+        with engine.connect() as connection:
+            account = (
+                connection.execute(
+                    text(
+                        "SELECT field_observed_at, last_seen_at::text AS seen "
+                        "FROM accounts WHERE id = :id"
+                    ),
+                    {"id": account_id},
+                )
+                .mappings()
+                .one()
+            )
+            content = (
+                connection.execute(
+                    text(
+                        "SELECT field_observed_at, last_seen_at::text AS seen "
+                        "FROM contents WHERE id = :id"
+                    ),
+                    {"id": content_id},
+                )
+                .mappings()
+                .one()
+            )
+            comment = (
+                connection.execute(
+                    text(
+                        "SELECT field_observed_at, last_seen_at::text AS seen "
+                        "FROM comments WHERE id = :id"
+                    ),
+                    {"id": comment_id},
+                )
+                .mappings()
+                .one()
+            )
+
+        account_fields = account["field_observed_at"]
+        assert account_fields["author.handle"] == account["seen"]
+        assert "author.display_name" not in account_fields
+
+        content_fields = content["field_observed_at"]
+        for field in (
+            "content_type",
+            "title",
+            "author.external_account_id",
+            "metrics.like_count",
+        ):
+            assert content_fields[field] == content["seen"]
+        assert "text" not in content_fields
+        assert "metrics.comment_count" not in content_fields
+
+        comment_fields = comment["field_observed_at"]
+        for field in (
+            "root_comment_id",
+            "author.external_account_id",
+            "text",
+            "is_by_content_author",
+            "metrics.like_count",
+        ):
+            assert comment_fields[field] == comment["seen"]
+        assert "parent_comment_id" not in comment_fields
+        assert "metrics.reply_count" not in comment_fields
+    finally:
+        engine.dispose()

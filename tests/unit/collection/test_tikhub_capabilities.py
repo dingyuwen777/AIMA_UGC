@@ -22,7 +22,7 @@ def _operation(name: str):
     )
 
 
-def test_xhs_tikhub_capability_matches_current_stage6_operations() -> None:
+def test_xhs_tikhub_capability_matches_current_executable_operations() -> None:
     assert XHS_TIKHUB_CAPABILITY.schema_version == "provider-platform-capability.v1"
     assert XHS_TIKHUB_CAPABILITY.provider == "tikhub"
     assert XHS_TIKHUB_CAPABILITY.platform == "xhs"
@@ -38,7 +38,8 @@ def test_xhs_tikhub_capability_matches_current_stage6_operations() -> None:
         "english_preferred",
     }
     assert set(search.supported_time_filters) == {"all", "1d", "7d", "180d"}
-    assert set(search.supported_content_types) == {"all", "video", "image", "live"}
+    # live 搜索不能进入当前 image/video Detail+Mapper 主链，因此不对 Plan 暴露。
+    assert set(search.supported_content_types) == {"all", "video", "image"}
     assert search.native_time_filter is True
     assert search.observes_comment_count is True
 

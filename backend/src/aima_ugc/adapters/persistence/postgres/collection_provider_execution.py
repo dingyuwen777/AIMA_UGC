@@ -10,7 +10,10 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from aima_ugc.contracts.provider import ProviderBillingV1, ProviderRequestV1
-from aima_ugc.modules.collection.candidate_tables import collection_candidates_table
+from aima_ugc.modules.collection.candidate_tables import (
+    collection_candidate_ingestions_table,
+    collection_candidates_table,
+)
 from aima_ugc.modules.collection.provider_persistence import (
     PreparedProviderAttempt,
     ProviderAttemptRecord,
@@ -31,7 +34,7 @@ from .provider import PostgresProviderRepository
 
 @dataclass(frozen=True, slots=True)
 class CollectionScopeExecutionCounts:
-    """由 Provider Attempt/Candidate durable 事实聚合的 Scope 计数。"""
+    """由 Provider Attempt/Candidate Ingestion durable 事实聚合的 Scope 计数。"""
 
     requested_count: int
     succeeded_count: int
@@ -197,24 +200,26 @@ class PostgresFencedProviderAttemptPreparer:
                     for status, error_code in attempts
                 )
 
-                def candidate_count(kind: str) -> int:
+                def target_count(kind: str) -> int:
+                    target_column = (
+                        collection_candidate_ingestions_table.c.content_id
+                        if kind == "content"
+                        else collection_candidate_ingestions_table.c.comment_id
+                    )
                     value = session.scalar(
-                        select(
-                            func.count(
-                                func.distinct(
-                                    func.coalesce(
-                                        collection_candidates_table.c.external_item_id,
-                                        collection_candidates_table.c.item_locator,
-                                    )
-                                )
-                            )
-                        )
+                        select(func.count(func.distinct(target_column)))
                         .select_from(
-                            collection_candidates_table.join(
+                            collection_candidate_ingestions_table.join(
+                                collection_candidates_table,
+                                collection_candidate_ingestions_table.c.candidate_id
+                                == collection_candidates_table.c.id,
+                            )
+                            .join(
                                 provider_request_attempts_table,
                                 collection_candidates_table.c.provider_request_attempt_id
                                 == provider_request_attempts_table.c.id,
-                            ).join(
+                            )
+                            .join(
                                 provider_requests_table,
                                 provider_request_attempts_table.c.provider_request_id
                                 == provider_requests_table.c.id,
@@ -223,6 +228,10 @@ class PostgresFencedProviderAttemptPreparer:
                         .where(
                             provider_requests_table.c.scope_id == scope_id,
                             collection_candidates_table.c.item_kind == kind,
+                            collection_candidate_ingestions_table.c.result.in_(
+                                ("ingested", "duplicate")
+                            ),
+                            target_column.is_not(None),
                         )
                     )
                     return int(value or 0)
@@ -231,8 +240,8 @@ class PostgresFencedProviderAttemptPreparer:
                     requested_count=requested_count,
                     succeeded_count=succeeded_count,
                     failed_count=failed_count,
-                    content_count=candidate_count("content"),
-                    comment_count=candidate_count("comment"),
+                    content_count=target_count("content"),
+                    comment_count=target_count("comment"),
                 )
         finally:
             session.close()

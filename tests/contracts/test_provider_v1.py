@@ -8,12 +8,15 @@ from uuid import uuid4
 
 import pytest
 from aima_ugc.contracts.provider import (
+    REDACTED,
     ProviderAttemptV1,
     ProviderBillingV1,
     ProviderErrorV1,
     ProviderRequestV1,
     RawEnvelopeV1,
     RawRequestV1,
+    assert_redacted_json,
+    redact_json,
 )
 from pydantic import ValidationError
 
@@ -78,6 +81,28 @@ def test_raw_contract_rejects_unredacted_secret_text() -> None:
             safe_summary="Authorization: Bearer must-not-survive",
             retryable=True,
         )
+
+
+def test_raw_redaction_covers_suffix_tokens_inside_url_or_query_strings() -> None:
+    raw = {
+        "url": (
+            "https://example.invalid/path?"
+            "xsec_token=xsec-must-not-survive&"
+            "refresh_token=refresh-must-not-survive&"
+            "client_secret=secret-must-not-survive"
+        )
+    }
+
+    redacted = redact_json(raw)
+    rendered = json.dumps(redacted, ensure_ascii=False)
+
+    assert "xsec-must-not-survive" not in rendered
+    assert "refresh-must-not-survive" not in rendered
+    assert "secret-must-not-survive" not in rendered
+    assert rendered.count(REDACTED) == 3
+    assert_redacted_json(redacted)
+    with pytest.raises(ValueError, match="脱敏"):
+        assert_redacted_json(raw)
 
 
 def test_provider_attempt_rejects_inconsistent_unknown_and_not_sent_states() -> None:
