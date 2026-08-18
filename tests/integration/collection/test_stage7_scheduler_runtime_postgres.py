@@ -11,7 +11,14 @@ from aima_ugc.adapters.persistence.postgres.collection_planning import (
     PostgresCollectionPlanningRepository,
 )
 from aima_ugc.bootstrap.scheduler import create_scheduler_runtime, run_scheduler_once
-from aima_ugc.modules.collection.planning import CollectionPlanDefinition, CollectionPlanningService
+from aima_ugc.modules.collection.corrective_tables import (
+    collection_plan_decision_policies_table,
+)
+from aima_ugc.modules.collection.planning import (
+    CollectionPlanDefinition,
+    CollectionPlanningService,
+    PlanPlatformDefinition,
+)
 from aima_ugc.modules.collection.tables import (
     collection_plan_keyword_packs_table,
     collection_plan_platforms_table,
@@ -20,8 +27,14 @@ from aima_ugc.modules.collection.tables import (
     collection_schedule_occurrences_table,
     collection_scopes_table,
 )
+from aima_ugc.modules.system.tables import (
+    keyword_pack_items_table,
+    keyword_packs_table,
+    keywords_table,
+    provider_configs_table,
+)
 from aima_ugc.platform.jobs.tables import job_attempt_events_table, jobs_table
-from sqlalchemy import delete, select
+from sqlalchemy import delete, insert, select
 
 
 @pytest.fixture
@@ -35,9 +48,14 @@ def scheduler_runtime():
             connection.execute(delete(collection_schedule_occurrences_table))
             connection.execute(delete(collection_plan_keyword_packs_table))
             connection.execute(delete(collection_plan_platforms_table))
+            connection.execute(delete(collection_plan_decision_policies_table))
             connection.execute(delete(collection_plans_table))
             connection.execute(delete(job_attempt_events_table))
             connection.execute(delete(jobs_table))
+            connection.execute(delete(keyword_pack_items_table))
+            connection.execute(delete(keywords_table))
+            connection.execute(delete(keyword_packs_table))
+            connection.execute(delete(provider_configs_table))
 
     cleanup()
     try:
@@ -51,6 +69,53 @@ def _create_plan(scheduler_runtime):
     session = scheduler_runtime.database.new_session()
     try:
         with session.begin():
+            provider_config_id = uuid4()
+            keyword_pack_id = uuid4()
+            keyword_id = uuid4()
+            now = datetime.now(UTC)
+            session.execute(
+                insert(provider_configs_table).values(
+                    id=provider_config_id,
+                    provider="tikhub",
+                    display_name=f"scheduler-provider-{uuid4()}",
+                    base_url="https://api.tikhub.io",
+                    secret_ref=f"providers/tikhub/test/scheduler-{uuid4()}",
+                    enabled=True,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            session.execute(
+                insert(keyword_packs_table).values(
+                    id=keyword_pack_id,
+                    name=f"scheduler-pack-{uuid4()}",
+                    description="scheduler runtime fixture",
+                    enabled=True,
+                    version=1,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            session.execute(
+                insert(keywords_table).values(
+                    id=keyword_id,
+                    text="爱玛",
+                    normalized_text=f"scheduler-aima-{uuid4()}",
+                    enabled=True,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            session.execute(
+                insert(keyword_pack_items_table).values(
+                    pack_id=keyword_pack_id,
+                    keyword_id=keyword_id,
+                    platform="xhs",
+                    priority=10,
+                    enabled=True,
+                    note="scheduler runtime fixture",
+                )
+            )
             plan = CollectionPlanningService(
                 PostgresCollectionPlanningRepository(session)
             ).create_plan(
@@ -65,8 +130,14 @@ def _create_plan(scheduler_runtime):
                     detail_policy="on_change",
                     comment_policy="adaptive",
                     created_by=None,
-                    platforms=(),
-                    keyword_pack_ids=(),
+                    platforms=(
+                        PlanPlatformDefinition(
+                            platform="xhs",
+                            provider_config_id=provider_config_id,
+                            config={},
+                        ),
+                    ),
+                    keyword_pack_ids=(keyword_pack_id,),
                 )
             )
         return plan

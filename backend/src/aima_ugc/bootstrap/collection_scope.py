@@ -840,6 +840,14 @@ class TikHubCollectionScopeExecutor:
             )
             if not advance.should_continue:
                 stop_reason = advance.stop_reason or "provider_exhausted"
+                if stop_reason == "empty_page" and not seen_comment_ids:
+                    # 第一页评论接口的显式空集合是比 Search/Detail 更晚的观察事实。
+                    reported_total = 0
+                    sample_mode = _comment_sample_mode(
+                        comment_action=comment_action,
+                        comment_target=comment_target,
+                        reported_total=reported_total,
+                    )
                 coverage = _coverage_for_stop(
                     stop_reason,
                     reported_total,
@@ -904,11 +912,8 @@ class TikHubCollectionScopeExecutor:
                     technical_partial=technical_partial,
                 )
             if comment_target is not None and len(seen_comment_ids) >= comment_target:
-                coverage = (
-                    "complete"
-                    if reported_total is not None and len(seen_comment_ids) >= reported_total
-                    else "partial"
-                )
+                # 只有 Provider 仍声明可继续分页时才会走到这里；达到软目标不能证明全集完整。
+                coverage = "partial"
                 self._record_comment_coverage(
                     content_id=content_id,
                     platform=platform,

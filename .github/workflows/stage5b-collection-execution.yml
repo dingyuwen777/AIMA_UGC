@@ -1,21 +1,37 @@
 name: Stage 5B Collection Execution
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/src/aima_ugc/modules/collection/**"
+      - "backend/src/aima_ugc/adapters/persistence/postgres/collection.py"
+      - "backend/src/aima_ugc/database_schema.py"
+      - "migrations/versions/**"
+      - "tests/unit/collection/**"
+      - "tests/integration/collection/**"
+      - "scripts/quality/check_architecture.py"
+      - ".github/workflows/stage5b-collection-execution.yml"
   pull_request:
     branches:
       - main
     paths:
-      - ".github/workflows/stage5b-collection-execution.yml"
-      - ".github/workflows/_corrective-remaining-fix.yml"
-      - "backend/src/aima_ugc/bootstrap/collection_scope.py"
+      - "backend/src/aima_ugc/modules/collection/**"
+      - "backend/src/aima_ugc/adapters/persistence/postgres/collection.py"
+      - "backend/src/aima_ugc/database_schema.py"
+      - "migrations/versions/**"
+      - "tests/unit/collection/**"
       - "tests/integration/collection/**"
+      - "scripts/quality/check_architecture.py"
+      - ".github/workflows/stage5b-collection-execution.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  corrective-repair:
-    if: github.head_ref == 'fix/stage1-stage7-comprehensive-corrective'
+  stage5b-collection-execution:
+    name: Stage 5B Collection Execution
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -23,7 +39,7 @@ jobs:
         env:
           POSTGRES_DB: aima_ugc
           POSTGRES_USER: aima_ugc
-          POSTGRES_PASSWORD: corrective-ci
+          POSTGRES_PASSWORD: stage5b-ci
         ports:
           - 5432:5432
         options: >-
@@ -32,165 +48,115 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      AIMA_DATA_DIR: .runtime/corrective/data
-      AIMA_LOG_DIR: .runtime/corrective/logs
-      AIMA_SECRET_DIR: .runtime/corrective/secrets
+      AIMA_DATA_DIR: .runtime/ci-stage5b/data
+      AIMA_LOG_DIR: .runtime/ci-stage5b/logs
+      AIMA_SECRET_DIR: .runtime/ci-stage5b/secrets
       AIMA_DB_HOST: 127.0.0.1
       AIMA_DB_PORT: 5432
       AIMA_DB_NAME: aima_ugc
       AIMA_DB_USER: aima_ugc
       AIMA_DB_CONNECT_TIMEOUT_SECONDS: 3
     steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          ref: fix/stage1-stage7-comprehensive-corrective
-          fetch-depth: 0
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
 
-      - uses: actions/setup-python@v6.2.0
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
         with:
           python-version: 3.14.7
 
-      - name: Install and migrate
+      - name: Install frozen Python environment
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install -q "uv==$(tr -d '\r\n' < .uv-version)"
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
           uv lock --check
-          uv sync --locked --quiet
-          mkdir -p "$AIMA_DATA_DIR" "$AIMA_LOG_DIR" "$AIMA_SECRET_DIR"
-          printf '%s\n' 'corrective-ci' > "$AIMA_SECRET_DIR/postgres_password"
-          chmod 600 "$AIMA_SECRET_DIR/postgres_password"
-          uv run alembic upgrade head
-          uv run alembic check
+          uv sync --locked
 
-      - name: Apply minimal patch
+      - name: Prepare Stage 5B Secret
         shell: bash
         run: |
           set -euo pipefail
-          uv run python - <<'PY'
-          from pathlib import Path
+          mkdir -p "${AIMA_DATA_DIR}" "${AIMA_LOG_DIR}" "${AIMA_SECRET_DIR}"
+          printf '%s\n' 'stage5b-ci' > "${AIMA_SECRET_DIR}/postgres_password"
+          chmod 600 "${AIMA_SECRET_DIR}/postgres_password"
 
-          scope_path = Path("backend/src/aima_ugc/bootstrap/collection_scope.py")
-          text = scope_path.read_text(encoding="utf-8")
-          old_target = '''            if comment_target is not None and len(seen_comment_ids) >= comment_target:\n                coverage = (\n                    "complete"\n                    if reported_total is not None and len(seen_comment_ids) >= reported_total\n                    else "partial"\n                )\n                self._record_comment_coverage(\n'''
-          new_target = '''            if comment_target is not None and len(seen_comment_ids) >= comment_target:\n                # 只有 Provider 仍声明可继续分页时才会走到这里；达到软目标不能证明全集完整。\n                coverage = "partial"\n                self._record_comment_coverage(\n'''
-          if old_target not in text:
-              raise SystemExit("target_reached block not found")
-          text = text.replace(old_target, new_target, 1)
-
-          old_terminal = '''            if not advance.should_continue:\n                stop_reason = advance.stop_reason or "provider_exhausted"\n                coverage = _coverage_for_stop(\n'''
-          new_terminal = '''            if not advance.should_continue:\n                stop_reason = advance.stop_reason or "provider_exhausted"\n                if stop_reason == "empty_page" and not seen_comment_ids:\n                    # 第一页评论接口的显式空集合是比 Search/Detail 更晚的观察事实。\n                    reported_total = 0\n                    sample_mode = _comment_sample_mode(\n                        comment_action=comment_action,\n                        comment_target=comment_target,\n                        reported_total=reported_total,\n                    )\n                coverage = _coverage_for_stop(\n'''
-          if old_terminal not in text:
-              raise SystemExit("terminal coverage block not found")
-          text = text.replace(old_terminal, new_terminal, 1)
-          scope_path.write_text(text, encoding="utf-8")
-
-          patched = []
-          for path in Path("tests/integration/collection").glob("test_*.py"):
-              content = path.read_text(encoding="utf-8")
-              parent_delete = "connection.execute(delete(collection_plans_table))"
-              if parent_delete not in content:
-                  continue
-              child_delete = "connection.execute(delete(collection_plan_decision_policies_table))"
-              changed = False
-              if "collection_plan_decision_policies_table" not in content:
-                  anchor = "from aima_ugc.modules.collection"
-                  index = content.find(anchor)
-                  if index < 0:
-                      raise SystemExit(f"collection import anchor missing: {path}")
-                  content = (
-                      content[:index]
-                      + "from aima_ugc.modules.collection.corrective_tables import (\n"
-                      + "    collection_plan_decision_policies_table,\n"
-                      + ")\n"
-                      + content[index:]
-                  )
-                  changed = True
-              if child_delete not in content:
-                  content = content.replace(
-                      parent_delete,
-                      child_delete + "\n            " + parent_delete,
-                  )
-                  changed = True
-              if changed:
-                  path.write_text(content, encoding="utf-8")
-                  patched.append(str(path))
-
-          snapshot_path = Path(
-              "tests/integration/collection/test_stage7_scheduled_scope_snapshot_postgres.py"
-          )
-          snapshot = snapshot_path.read_text(encoding="utf-8")
-          old_expected = '{"id": str(pack.id), "version": 3, "enabled": True}'
-          new_expected = '{"id": str(pack.id), "version": 5, "enabled": True}'
-          if old_expected not in snapshot:
-              raise SystemExit("keyword pack snapshot expectation not found")
-          snapshot_path.write_text(snapshot.replace(old_expected, new_expected, 1), encoding="utf-8")
-
-          scheduler_path = Path(
-              "tests/integration/collection/test_stage7_scheduler_runtime_postgres.py"
-          )
-          scheduler = scheduler_path.read_text(encoding="utf-8")
-          scheduler = scheduler.replace(
-              "from aima_ugc.modules.collection.planning import CollectionPlanDefinition, CollectionPlanningService\n",
-              "from aima_ugc.modules.collection.planning import (\n"
-              "    CollectionPlanDefinition,\n"
-              "    CollectionPlanningService,\n"
-              "    PlanPlatformDefinition,\n"
-              ")\n",
-              1,
-          )
-          if "from aima_ugc.modules.system.tables import (" not in scheduler:
-              anchor = "from aima_ugc.platform.jobs.tables import job_attempt_events_table, jobs_table\n"
-              system_imports = (
-                  "from aima_ugc.modules.system.tables import (\n"
-                  "    keyword_pack_items_table,\n"
-                  "    keyword_packs_table,\n"
-                  "    keywords_table,\n"
-                  "    provider_configs_table,\n"
-                  ")\n"
-              )
-              if anchor not in scheduler:
-                  raise SystemExit("scheduler system import anchor not found")
-              scheduler = scheduler.replace(anchor, system_imports + anchor, 1)
-          scheduler = scheduler.replace(
-              "from sqlalchemy import delete, select\n",
-              "from sqlalchemy import delete, insert, select\n",
-              1,
-          )
-          jobs_cleanup = "            connection.execute(delete(jobs_table))\n"
-          system_cleanup = (
-              jobs_cleanup
-              + "            connection.execute(delete(keyword_pack_items_table))\n"
-              + "            connection.execute(delete(keywords_table))\n"
-              + "            connection.execute(delete(keyword_packs_table))\n"
-              + "            connection.execute(delete(provider_configs_table))\n"
-          )
-          if "connection.execute(delete(keyword_pack_items_table))" not in scheduler:
-              if jobs_cleanup not in scheduler:
-                  raise SystemExit("scheduler cleanup anchor not found")
-              scheduler = scheduler.replace(jobs_cleanup, system_cleanup, 1)
-
-          start = scheduler.index("def _create_plan(scheduler_runtime):")
-          end = scheduler.index("\ndef _force_due_cursor", start)
-          new_helper = '''def _create_plan(scheduler_runtime):\n    session = scheduler_runtime.database.new_session()\n    try:\n        with session.begin():\n            provider_config_id = uuid4()\n            keyword_pack_id = uuid4()\n            keyword_id = uuid4()\n            now = datetime.now(UTC)\n            session.execute(\n                insert(provider_configs_table).values(\n                    id=provider_config_id,\n                    provider="tikhub",\n                    display_name=f"scheduler-provider-{uuid4()}",\n                    base_url="https://api.tikhub.io",\n                    secret_ref=f"providers/tikhub/test/scheduler-{uuid4()}",\n                    enabled=True,\n                    created_at=now,\n                    updated_at=now,\n                )\n            )\n            session.execute(\n                insert(keyword_packs_table).values(\n                    id=keyword_pack_id,\n                    name=f"scheduler-pack-{uuid4()}",\n                    description="scheduler runtime fixture",\n                    enabled=True,\n                    version=1,\n                    created_at=now,\n                    updated_at=now,\n                )\n            )\n            session.execute(\n                insert(keywords_table).values(\n                    id=keyword_id,\n                    text="爱玛",\n                    normalized_text=f"scheduler-aima-{uuid4()}",\n                    enabled=True,\n                    created_at=now,\n                    updated_at=now,\n                )\n            )\n            session.execute(\n                insert(keyword_pack_items_table).values(\n                    pack_id=keyword_pack_id,\n                    keyword_id=keyword_id,\n                    platform="xhs",\n                    priority=10,\n                    enabled=True,\n                    note="scheduler runtime fixture",\n                )\n            )\n            plan = CollectionPlanningService(\n                PostgresCollectionPlanningRepository(session)\n            ).create_plan(\n                CollectionPlanDefinition(\n                    name=f"scheduler-{uuid4()}",\n                    enabled=True,\n                    schedule_expr="0 */6 * * *",\n                    timezone="Asia/Shanghai",\n                    schedule_version=1,\n                    misfire_policy="latest_only",\n                    max_catch_up_runs=0,\n                    detail_policy="on_change",\n                    comment_policy="adaptive",\n                    created_by=None,\n                    platforms=(\n                        PlanPlatformDefinition(\n                            platform="xhs",\n                            provider_config_id=provider_config_id,\n                            config={},\n                        ),\n                    ),\n                    keyword_pack_ids=(keyword_pack_id,),\n                )\n            )\n        return plan\n    finally:\n        session.close()\n\n'''
-          scheduler = scheduler[:start] + new_helper + scheduler[end + 1 :]
-          scheduler_path.write_text(scheduler, encoding="utf-8")
-
-          print("patched cleanup fixtures:", *patched, sep="\n")
-          PY
-          uv run ruff format backend/src/aima_ugc/bootstrap/collection_scope.py tests/integration/collection
-          uv run ruff check --fix backend/src/aima_ugc/bootstrap/collection_scope.py tests/integration/collection
-          uv run ruff format --check backend/src/aima_ugc/bootstrap/collection_scope.py tests/integration/collection
-          uv run ruff check backend/src/aima_ugc/bootstrap/collection_scope.py tests/integration/collection
-
-      - name: Verify repaired scope
+      - name: Collection unit and Provider contract tests
         shell: bash
         run: |
           set -euo pipefail
-          uv run mypy backend/src/aima_ugc
           uv run pytest tests/unit/collection tests/contracts/test_provider_v1.py -q
-          uv run pytest tests/integration/collection -q
+
+      - name: Upgrade empty database to Stage 5B head
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run alembic upgrade head
+          uv run alembic current
           uv run alembic check
+          uv run python - <<'PY'
+          from sqlalchemy import inspect
+
+          from aima_ugc.platform.config import load_settings
+          from aima_ugc.platform.database import DatabaseRuntime
+
+          runtime = DatabaseRuntime(load_settings())
+          try:
+              inspector = inspect(runtime.engine)
+              existing = set(inspector.get_table_names())
+              run_foreign_keys = inspector.get_foreign_keys("collection_runs")
+              run_uniques = {
+                  tuple(item["column_names"])
+                  for item in inspector.get_unique_constraints("collection_runs")
+              }
+              scope_uniques = {
+                  tuple(item["column_names"])
+                  for item in inspector.get_unique_constraints("collection_scopes")
+              }
+              run_indexes = {item["name"] for item in inspector.get_indexes("collection_runs")}
+              scope_indexes = {item["name"] for item in inspector.get_indexes("collection_scopes")}
+          finally:
+              runtime.dispose()
+
+          required = {
+              "artifacts",
+              "system_settings",
+              "audit_events",
+              "jobs",
+              "job_attempt_events",
+              "collection_runs",
+              "collection_scopes",
+          }
+          assert required <= existing, existing
+          assert any(
+              item["constrained_columns"] == ["job_id"]
+              and item["referred_table"] == "jobs"
+              and item["referred_columns"] == ["id"]
+              for item in run_foreign_keys
+          ), run_foreign_keys
+          assert ("job_id",) in run_uniques, run_uniques
+          assert (
+              "run_id",
+              "platform",
+              "source_type",
+              "source_value",
+              "operation_group",
+          ) in scope_uniques, scope_uniques
+          assert "ix_collection_runs_status_created_at" in run_indexes, run_indexes
+          assert "ix_collection_scopes_run_id_status" in scope_indexes, scope_indexes
+          PY
+
+      - name: PostgreSQL Collection integration tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest tests/integration/collection -q
+
+      - name: Stage 5B quality gates
+        shell: bash
+        run: |
+          set -euo pipefail
           uv run python scripts/quality/check_architecture.py
           uv run python scripts/quality/check_table_ownership.py
           uv run python scripts/quality/scan_secrets.py
@@ -198,21 +164,61 @@ jobs:
           uv run python scripts/contracts/generate.py --check
           uv run python scripts/contracts/check_compatibility.py
 
-      - name: Commit verified repair and restore formal workflow
+      - name: Downgrade to base and re-upgrade
         shell: bash
         run: |
           set -euo pipefail
-          git fetch origin main
-          git checkout origin/main -- .github/workflows/stage5b-collection-execution.yml
-          if [ -f .github/workflows/_corrective-remaining-fix.yml ]; then
-            git rm -f .github/workflows/_corrective-remaining-fix.yml
-          fi
-          if [ -f .github/workflows/_corrective-focused-diagnostics.yml ]; then
-            git rm -f .github/workflows/_corrective-focused-diagnostics.yml
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add backend/src/aima_ugc/bootstrap/collection_scope.py tests/integration/collection .github/workflows
-          git diff --cached --check
-          git commit -m "fix: close remaining collection and scheduler regressions"
-          git push origin HEAD:fix/stage1-stage7-comprehensive-corrective
+          uv run alembic downgrade base
+          uv run python - <<'PY'
+          from sqlalchemy import inspect
+
+          from aima_ugc.platform.config import load_settings
+          from aima_ugc.platform.database import DatabaseRuntime
+
+          runtime = DatabaseRuntime(load_settings())
+          try:
+              existing = set(inspect(runtime.engine).get_table_names())
+          finally:
+              runtime.dispose()
+          application_tables = {
+              "artifacts",
+              "system_settings",
+              "audit_events",
+              "jobs",
+              "job_attempt_events",
+              "collection_runs",
+              "collection_scopes",
+          }
+          assert not (application_tables & existing), existing
+          PY
+          uv run alembic upgrade head
+          uv run alembic check
+
+      - name: Downgrade to previous revision and re-upgrade
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run alembic downgrade 20260814_0002
+          uv run python - <<'PY'
+          from sqlalchemy import inspect
+
+          from aima_ugc.platform.config import load_settings
+          from aima_ugc.platform.database import DatabaseRuntime
+
+          runtime = DatabaseRuntime(load_settings())
+          try:
+              existing = set(inspect(runtime.engine).get_table_names())
+          finally:
+              runtime.dispose()
+          previous = {
+              "artifacts",
+              "system_settings",
+              "audit_events",
+              "jobs",
+              "job_attempt_events",
+          }
+          assert previous <= existing, existing
+          assert not ({"collection_runs", "collection_scopes"} & existing), existing
+          PY
+          uv run alembic upgrade head
+          uv run alembic check
