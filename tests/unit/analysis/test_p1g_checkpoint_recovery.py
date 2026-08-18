@@ -173,3 +173,69 @@ def test_p1g_does_not_recover_checkpoint_from_different_prompt(
     assert summary.rows_succeeded == 1
     assert summary.llm_attempts == 1
     assert len(second_fake.calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("second_provider", "second_model"),
+    [
+        ("provider-b", "model-a"),
+        ("provider-a", "model-b"),
+    ],
+)
+def test_p1g_does_not_recover_checkpoint_from_different_model_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    second_provider: str,
+    second_model: str,
+) -> None:
+    input_path = tmp_path / "deduplicated" / "contents.jsonl"
+    analysis_dir = tmp_path / "analysis"
+    input_path.parent.mkdir(parents=True)
+    input_path.write_text(_record().model_dump_json() + "\n", encoding="utf-8")
+
+    prompt_loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
+    recovery_taxonomy = prompt_loader.load()
+    first_fake = FakeContentLabelingLLM(
+        responses=[_valid_response(prompt_loader)],
+        provider_name="provider-a",
+        model_name="model-a",
+    )
+    first_service = ContentLabelingService(prompt_loader=prompt_loader, llm=first_fake)
+
+    def fail_replace(source: str | bytes | Path, target: str | bytes | Path) -> None:
+        raise OSError("replace failed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr("aima_ugc.modules.analysis.offline_labeling.os.replace", fail_replace)
+        with pytest.raises(OSError, match="replace failed"):
+            label_unified_content_jsonl(
+                input_path=input_path,
+                analysis_dir=analysis_dir,
+                service=first_service,
+                max_validation_retries=0,
+                batch_size=1,
+                recovery_taxonomy=recovery_taxonomy,
+            )
+
+    second_fake = FakeContentLabelingLLM(
+        responses=[_valid_response(prompt_loader)],
+        provider_name=second_provider,
+        model_name=second_model,
+    )
+    summary = label_unified_content_jsonl(
+        input_path=input_path,
+        analysis_dir=analysis_dir,
+        service=ContentLabelingService(prompt_loader=prompt_loader, llm=second_fake),
+        max_validation_retries=0,
+        batch_size=1,
+        recovery_taxonomy=recovery_taxonomy,
+    )
+
+    rewritten = UnifiedContentRecordV1.model_validate_json(input_path.read_bytes())
+    assert rewritten.analysis is not None
+    assert rewritten.analysis.model_provider == second_provider
+    assert rewritten.analysis.model == second_model
+    assert summary.rows_recovered == 0
+    assert summary.rows_succeeded == 1
+    assert summary.llm_attempts == 1
+    assert len(second_fake.calls) == 1
