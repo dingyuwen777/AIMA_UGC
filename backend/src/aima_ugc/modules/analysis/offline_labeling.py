@@ -1,4 +1,4 @@
-"""P1F 离线 JSONL 舆情打标编排；成功 checkpoint 后原子发布同一业务 JSONL。"""
+"""P1F/P1G 离线 JSONL 舆情打标编排；checkpoint 先落盘并支持崩溃恢复。"""
 
 from __future__ import annotations
 
@@ -16,6 +16,8 @@ from .content_labeling import (
     ContentLabelingAttempt,
     ContentLabelingBatchResult,
     ContentLabelingService,
+    _input_hash,
+    _to_model_item,
 )
 
 
@@ -27,6 +29,7 @@ class OfflineContentLabelingSummary:
     analysis_dir: Path
     rows_seen: int
     rows_already_labeled: int
+    rows_recovered: int
     rows_succeeded: int
     rows_failed: int
     llm_attempts: int
@@ -48,9 +51,13 @@ class _PendingRow:
 class _BatchOutcome:
     rows: tuple[UnifiedContentRecordV1, ...]
     rows_already_labeled: int
+    rows_recovered: int
     rows_succeeded: int
     rows_failed: int
     llm_attempts: int
+
+
+_CheckpointKey = tuple[str, str, str]
 
 
 def label_unified_content_jsonl(
@@ -61,7 +68,7 @@ def label_unified_content_jsonl(
     max_validation_retries: int,
     batch_size: int = 20,
 ) -> OfflineContentLabelingSummary:
-    """读取统一内容 JSONL，记录模型审计并原子回写已校验 Analysis。"""
+    """读取统一内容 JSONL，恢复成功 checkpoint，并原子回写已校验 Analysis。"""
 
     if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size <= 0:
         raise ValueError("batch_size 必须是大于 0 的整数")
@@ -72,11 +79,13 @@ def label_unified_content_jsonl(
     checkpoint_path = audit_dir / "checkpoints.jsonl"
     attempt_path = audit_dir / "attempts.jsonl"
     failed_path = audit_dir / "failed.jsonl"
+    checkpoint_index = _load_checkpoint_index(checkpoint_path)
     temp_path = source_path.with_name(f".{source_path.name}.labeling.tmp")
     temp_path.unlink(missing_ok=True)
 
     rows_seen = 0
     rows_already_labeled = 0
+    rows_recovered = 0
     rows_succeeded = 0
     rows_failed = 0
     llm_attempts = 0
@@ -112,13 +121,17 @@ def label_unified_content_jsonl(
                     checkpoint_file=checkpoint_file,
                     attempt_file=attempt_file,
                     failed_file=failed_file,
+                    checkpoint_index=checkpoint_index,
                 )
                 _write_records(output_file, outcome.rows)
                 rows_already_labeled += outcome.rows_already_labeled
+                rows_recovered += outcome.rows_recovered
                 rows_succeeded += outcome.rows_succeeded
                 rows_failed += outcome.rows_failed
                 llm_attempts += outcome.llm_attempts
-                published_changes = published_changes or outcome.rows_succeeded > 0
+                published_changes = published_changes or (
+                    outcome.rows_recovered > 0 or outcome.rows_succeeded > 0
+                )
                 source_batch.clear()
 
             if source_batch:
@@ -131,13 +144,17 @@ def label_unified_content_jsonl(
                     checkpoint_file=checkpoint_file,
                     attempt_file=attempt_file,
                     failed_file=failed_file,
+                    checkpoint_index=checkpoint_index,
                 )
                 _write_records(output_file, outcome.rows)
                 rows_already_labeled += outcome.rows_already_labeled
+                rows_recovered += outcome.rows_recovered
                 rows_succeeded += outcome.rows_succeeded
                 rows_failed += outcome.rows_failed
                 llm_attempts += outcome.llm_attempts
-                published_changes = published_changes or outcome.rows_succeeded > 0
+                published_changes = published_changes or (
+                    outcome.rows_recovered > 0 or outcome.rows_succeeded > 0
+                )
 
             _flush_and_sync(output_file)
 
@@ -154,6 +171,7 @@ def label_unified_content_jsonl(
         analysis_dir=audit_dir,
         rows_seen=rows_seen,
         rows_already_labeled=rows_already_labeled,
+        rows_recovered=rows_recovered,
         rows_succeeded=rows_succeeded,
         rows_failed=rows_failed,
         llm_attempts=llm_attempts,
@@ -169,12 +187,29 @@ def _process_batch(
     checkpoint_file: TextIO,
     attempt_file: TextIO,
     failed_file: TextIO,
+    checkpoint_index: dict[_CheckpointKey, ContentLabelAnalysisV1],
 ) -> _BatchOutcome:
-    pending_sources = [source for source in batch if source.record.analysis is None]
+    recovered: dict[int, ContentLabelAnalysisV1] = {}
+    pending_sources: list[_SourceRow] = []
+    already_labeled = 0
+
+    for source in batch:
+        if source.record.analysis is not None:
+            already_labeled += 1
+            continue
+        input_hash = _content_input_hash(source.record)
+        key = _checkpoint_key(source.record, input_hash)
+        checkpoint_analysis = checkpoint_index.get(key)
+        if checkpoint_analysis is not None:
+            recovered[source.line_number] = checkpoint_analysis
+            continue
+        pending_sources.append(source)
+
     if not pending_sources:
         return _BatchOutcome(
-            rows=tuple(source.record for source in batch),
-            rows_already_labeled=len(batch),
+            rows=tuple(_rewrite_record(source, recovered.get(source.line_number)) for source in batch),
+            rows_already_labeled=already_labeled,
+            rows_recovered=len(recovered),
             rows_succeeded=0,
             rows_failed=0,
             llm_attempts=0,
@@ -226,6 +261,7 @@ def _process_batch(
                 },
             )
             analyses[source.line_number] = analysis
+            checkpoint_index[_checkpoint_key(source.record, item_result.input_hash)] = analysis
             continue
 
         if item_result.analysis is not None:
@@ -251,24 +287,73 @@ def _process_batch(
 
     rewritten: list[UnifiedContentRecordV1] = []
     for source in batch:
-        analysis = analyses.get(source.line_number)
-        if analysis is None:
-            rewritten.append(source.record)
-            continue
-        rewritten.append(
-            UnifiedContentRecordV1(
-                content=source.record.content,
-                matched_keywords=list(source.record.matched_keywords),
-                analysis=analysis,
-            )
-        )
+        analysis = recovered.get(source.line_number) or analyses.get(source.line_number)
+        rewritten.append(_rewrite_record(source, analysis))
 
     return _BatchOutcome(
         rows=tuple(rewritten),
-        rows_already_labeled=len(batch) - len(pending),
+        rows_already_labeled=already_labeled,
+        rows_recovered=len(recovered),
         rows_succeeded=len(analyses),
         rows_failed=failed_count,
         llm_attempts=len(result.attempts),
+    )
+
+
+def _load_checkpoint_index(path: Path) -> dict[_CheckpointKey, ContentLabelAnalysisV1]:
+    if not path.exists():
+        return {}
+
+    index: dict[_CheckpointKey, ContentLabelAnalysisV1] = {}
+    with path.open("rb") as input_file:
+        for line_number, raw_line in enumerate(input_file, start=1):
+            if not raw_line.strip():
+                raise ValueError(f"{path}: 第 {line_number} 行为空，拒绝恢复 checkpoint")
+            try:
+                payload = json.loads(raw_line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"{path}: 第 {line_number} 行不是合法 checkpoint JSON") from exc
+            if not isinstance(payload, dict):
+                raise ValueError(f"{path}: 第 {line_number} 行 checkpoint 顶层必须是 object")
+            if payload.get("schema_version") != "content-label-checkpoint.v1":
+                raise ValueError(f"{path}: 第 {line_number} 行 checkpoint schema_version 不支持")
+            platform = payload.get("platform")
+            external_content_id = payload.get("external_content_id")
+            input_hash = payload.get("input_hash")
+            if not all(isinstance(value, str) and value for value in (platform, external_content_id, input_hash)):
+                raise ValueError(f"{path}: 第 {line_number} 行 checkpoint 身份字段不合法")
+            try:
+                analysis = ContentLabelAnalysisV1.model_validate(payload.get("analysis"))
+            except ValidationError as exc:
+                raise ValueError(f"{path}: 第 {line_number} 行 checkpoint analysis 不合法") from exc
+            if analysis.input_hash != input_hash:
+                raise ValueError(f"{path}: 第 {line_number} 行 checkpoint input_hash 不一致")
+            key = (platform, external_content_id, input_hash)
+            previous = index.get(key)
+            if previous is not None and previous != analysis:
+                raise ValueError(f"{path}: 第 {line_number} 行 checkpoint 与既有成功结果冲突")
+            index[key] = analysis
+    return index
+
+
+def _content_input_hash(record: UnifiedContentRecordV1) -> str:
+    return _input_hash(_to_model_item(record.content, item_no=1))
+
+
+def _checkpoint_key(record: UnifiedContentRecordV1, input_hash: str) -> _CheckpointKey:
+    return (record.content.platform, record.content.external_content_id, input_hash)
+
+
+def _rewrite_record(
+    source: _SourceRow,
+    analysis: ContentLabelAnalysisV1 | None,
+) -> UnifiedContentRecordV1:
+    if analysis is None:
+        return source.record
+    return UnifiedContentRecordV1(
+        content=source.record.content,
+        matched_keywords=list(source.record.matched_keywords),
+        analysis=analysis,
     )
 
 
