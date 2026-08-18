@@ -128,6 +128,7 @@ def test_offline_labeling_checkpoints_success_and_rewrites_only_validated_analys
     assert attempts[0]["validation_error_codes"] == ["unknown_sentiment"]
     assert len(failed) == 1
     assert failed[0]["external_content_id"] == "content-2"
+    assert failed[0]["analysis_status"] == "failed"
     assert failed[0]["validation_error_codes"] == ["unknown_sentiment"]
 
 
