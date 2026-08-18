@@ -7,7 +7,7 @@ owner: AI coding agent
 branch: feature/p1-offline-excel-sentiment
 base_branch: main
 created_at: 2026-08-18
-updated_at: 2026-08-18
+updated_at: 2026-08-19
 affected_paths:
   - docs/blueprint/
   - backend/src/aima_ugc/adapters/llm/
@@ -33,7 +33,7 @@ rollback:
 
 ## 1. 目标与不变量
 
-P1 是 Stage 7 与 Stage 8 之间的临时最高优先级阶段，不改变正式 Stage 编号。第一版不接数据库，业务中间事实源统一使用 JSONL：
+P1 是 Stage 7 与 Stage 8 之间的临时最高优先级阶段，不改变正式 Stage 编号。第一版不接数据库，业务主链固定为：
 
 ```text
 source.xlsx
@@ -45,10 +45,10 @@ source.xlsx
 → Validation Retry
 → analysis/checkpoints.jsonl
 → 原子回写同一个 deduplicated/contents.jsonl
-→ labeled_data.xlsx
+→ <source>_<run-id>_labeled_data.xlsx
 ```
 
-`analysis/checkpoints.jsonl` 只用于恢复、费用安全和审计，不是第二业务事实源；`raw_data.xlsx` 只是可选人工审阅旁路。
+`analysis/checkpoints.jsonl` 只用于恢复、费用安全和审计，不是第二业务事实源；`raw_data.xlsx` 只是可选人工审阅旁路，不进入默认 `run_all()`。
 
 ```text
 CanonicalContentV1 = Provider/平台可观察事实
@@ -82,13 +82,13 @@ backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v1.md
 - [x] P1D：UnifiedDataExcelV1 + 唯一共享 Exporter + tikhub_test 迁移
 - [x] P1E：PromptTaxonomyLoader + Prompt + Analysis Contract/Service/Port + Fake + README + Retry tests
 - [x] P1F：真实 OpenAI-compatible LLM Adapter + 最小输入 + Validation Retry + checkpoint + JSONL 原子回写
-- [ ] P1G：run_all + 崩溃恢复 + 最终同源 JSONL 导出
+- [x] P1G：run_all + 崩溃恢复 + 最终同源 JSONL 导出
 - [ ] P1H：90k 性能 + 真实模型小样 + Review/CI + 收口
 - [ ] P1 全部结束后归档 Change、删除 Blueprint 14，并恢复 README 到 Stage 8 正式导航
 
-**当前检查点：P1F 已闭环；下一最小正式单元为 P1G。本轮不得继续进入 P1G。**
+**当前检查点：P1G 已闭环；下一最小正式单元为 P1H。本轮不得继续进入 P1H。**
 
-## 4. P1A—P1E 闭环摘要
+## 4. P1A—P1F 闭环摘要
 
 P1B 建立 `imports/` File Provider 和 `convert()`，使用 openpyxl read-only + `iter_rows(values_only=True)` 输出 Canonical JSONL，并锁定 13 列 Profile、时间转换、稳定身份优先级和错误时不发布部分业务文件。
 
@@ -96,76 +96,115 @@ P1C 建立平台无关关键词过滤和 `(platform, external_content_id)` 去�
 
 P1D 建立 `UnifiedDataExcelV1` 与唯一共享 Exporter，并迁移 `tikhub_test`/`imports_test`；write-only Workbook、ID 文本化、URL、公式注入防护、北京时间展示和重新打开校验均有测试。
 
-P1E 建立 `ContentLabelAnalysisV1`、唯一 Prompt/Taxonomy、`PromptTaxonomyLoader`、严格 Runtime Validator、`ContentLabelingService`/Port/Fake 和 Validation Retry；具体标签未复制到生产 Python。P1E 最近专项证据为 Stage 5A Run `32150865899` / Job `95756108571`：49 passed，Ruff/mypy、Analysis+Export Contract、Secret、Docs 成功；Architecture 只报告当时已有的 11 个 `operations/...` 缺失项。
+P1E 建立 `ContentLabelAnalysisV1`、唯一 Prompt/Taxonomy、`PromptTaxonomyLoader`、严格 Runtime Validator、`ContentLabelingService`/Port/Fake 和 Validation Retry；具体标签未复制到生产 Python。
 
-## 5. P1F 实现
+P1F 建立真实 OpenAI-compatible Adapter、Secret 边界、最小业务输入、attempts/checkpoints/failed 审计以及成功 Analysis 原子回写同一个 `deduplicated/contents.jsonl`；真实模型默认关闭，普通 CI 不产生付费调用。
 
-P1F 在 P1E Provider-neutral Port/Service 之上增加真实 OpenAI-compatible HTTP Adapter 和离线 JSONL 打标编排，没有修改 Prompt/Taxonomy 闭集、Canonical Contract、数据库或 Migration：
+P1F 最终专项验证 head `ada47610057d1aacbd0863f1df04d091cecdfd8a` 的 Stage 5A Run `32157763801` / Job `95779015906`：57 passed；Ruff/mypy、Analysis+Export Contract、Secret、Docs 成功；Architecture 仍只报告 11 个既有 `operations/...` 缺失项。
 
-- `aima_ugc.adapters.llm.OpenAICompatibleContentLabelingLLM` 复用锁定的 `httpx==0.28.1`；一次 `complete()` 恰好一次 `chat/completions` HTTP 请求，Adapter 不隐藏 Transport Retry；
-- API key 使用 `SecretStr`；异常不回显 Secret 或 Provider body；`.env.example` 只保留空 key 示例，真实 `.env` 继续由根 `.gitignore` 忽略；
-- system message 使用完整 Prompt；user message 只包含 P1E 已投影的 `item_no/title/text/author.display_name`；Validation Retry 时只附上一轮错误代码和重新返回当前批次的指令；
-- JSON mode 只是 Provider 输出约束，本地 Validator 仍是最终成功门禁；
-- `label_unified_content_jsonl()` 流式读取 `deduplicated/contents.jsonl`，按批调用正式 Service；失败 item 保持 `analysis=null`；
-- 每次模型请求写 `analysis/attempts.jsonl`；成功 item 先写 `analysis/checkpoints.jsonl` 并 flush/fsync，再写业务 JSONL 临时文件；失败诊断写 `analysis/failed.jsonl`；
-- `failed.jsonl` 显式写 `analysis_status=failed` 和最终校验错误代码；失败 item 不构造猜测版 `ContentLabelAnalysisV1`；
-- 完成后业务文件通过临时文件 + flush/fsync + `os.replace` 原子替换同一个 `deduplicated/contents.jsonl`；
-- `imports_test.label_sentiment()` 默认 `ENABLE_REAL_LLM=False`，人工显式启用后才读取 `.env` 建立真实 Adapter；`MAX_VALIDATION_RETRIES` 仍是人工入口唯一 Validation Retry 配置；
-- P1F 不实现 `run_all()`、跨进程 checkpoint 恢复或最终 `labeled_data.xlsx`，这些属于 P1G。
+## 5. P1G 实现
 
-## 6. P1F TDD 与新鲜验证
+P1G 在 P1F 基础上完成离线人工主链和跨进程恢复，没有新增数据库、Migration、依赖或平行 Excel 实现：
 
-### 6.1 初始 Red
+- `imports_test.run_all()` 固定串联 `convert → filter_keywords → deduplicate → label_sentiment → export_labeled_excel`；`export_raw_excel()` 不进入默认主链；
+- `run_all()` 生成 `run_id`，原子写 `output/run_summary.json`，最终文件名为 `<source>_<run-id>_labeled_data.xlsx`；
+- `export_labeled_excel()` 只读取已经回写 Analysis 的同一个 `deduplicated/contents.jsonl`，并继续复用唯一 Shared Exporter / `UnifiedDataExcelV1`；
+- Shared Exporter 从 `UnifiedContentRecordV1.analysis` 投影 sentiment、一级、二级、model、Prompt version、Taxonomy Hash，不从 raw Excel 或 checkpoint 构造第二业务视图；
+- `label_unified_content_jsonl()` 启动时加载成功 checkpoint；匹配成功的记录直接恢复到业务 JSONL 临时文件，不再次调用模型；
+- 恢复身份绑定 `platform + external_content_id + input_hash + prompt_sha256 + taxonomy_sha256 + model_provider + model`；旧 Prompt、Taxonomy、Provider 或模型的 checkpoint 只保留审计，不复用为当前成功结果；
+- `input_hash` 仍只由允许发送给模型的 `title + text + author.display_name` 计算；没有把 ID、URL、指标、Provider 私有字段加入模型输入；
+- 成功 checkpoint 仍先 `flush/fsync`，业务 JSONL 临时文件再 `flush/fsync + os.replace`；最终替换失败时原业务 JSONL 保持不变，下一次身份一致时从 checkpoint 恢复。
 
-Red commit：`79b44fd08b82ab97086be7d47a1467ec35e0f952`（`测试：锁定P1F真实模型与原子回写行为`）。Stage 5A Run `32154648685` / Job `95768801659`：P1 pytest 退出码 2；新增 collection error 精确为缺少 `aima_ugc.adapters.llm` 和 `label_unified_content_jsonl`。依赖安装成功，Secret/Docs 同时成功，因此 Red 来自 P1F 尚未实现。
+## 6. P1G TDD 与新鲜验证
 
-### 6.2 Green / Refactor
+### 6.1 已有 P1G 主链
 
-核心 Green commit：`9958bf6b36cda325e442a692a357e5a93ae53b0a`（`实现：P1F真实模型适配与原子回写`）。随后 `7c4066f71b8346acb048221550cebf350702a3f6` 与 `092dc12cae07ab84ae52b31abe57d3737d04137a` 只按 Ruff 结果调整格式/import，不改变行为。
+P1G 主链已通过专项测试覆盖：
 
-`092dc12cae07ab84ae52b31abe57d3737d04137a` 的 Stage 5A Run `32156628763` / Job `95775300503`：P1 目标测试 57 passed；Ruff format/check、mypy、Analysis/Export Contract、Secret、Docs 均通过；Architecture 仍只报同一 11 个既有 `ARCH001`。
+- `tests/unit/collection/test_p1g_imports_run_all.py`：锁定默认 `run_all()` 顺序、禁止 raw Excel 进入主链、`run_summary.json` 和最终文件名；
+- `tests/unit/platform/test_p1g_labeled_excel.py`：锁定最终 Excel 从同一个回写后的 deduplicated JSONL 读取 Analysis；
+- `tests/unit/analysis/test_p1g_checkpoint_recovery.py`：锁定 checkpoint 先落盘、崩溃后恢复和 Prompt 变化失效。
 
-### 6.3 Review 回归 Red → Green
+在本轮开始时，branch head `bb3cdaa2c93ba4b54253466491ba4efbe248baca` 的 Stage 5A Run `32160754603` / Job `95788804463` 已有 62 passed；Ruff/mypy、Analysis+Export Contract、Secret、Docs 成功；Architecture 仍为同一 11 个既有错误。
 
-两阶段 Review 发现 `failed.jsonl` 已保存最终校验错误，但缺少固化要求的显式 `analysis_status=failed`。没有直接猜测修补，而是先建立回归测试。
+### 6.2 Review 发现模型身份恢复缺口：Red
 
-回归 Red commit：`7924099612c01431cfa5ba023ee8a7ecb746770b`（`测试：要求P1F失败审计显式标记状态`）。Stage 5A Run `32157035336` / Job `95776627383`：目标测试退出码 1，`1 failed, 56 passed`；唯一失败为 `KeyError: 'analysis_status'`，根因与预期一致。
+需求符合性复核对照 Blueprint 15 发现：既有 checkpoint loader 只绑定 `input_hash + prompt_sha256 + taxonomy_sha256`，没有绑定 `model_provider + model`。切换 Provider 或模型时会错误恢复旧 checkpoint，跳过本应发生的当前模型调用，影响结果可追溯性和费用安全。
 
-Green fix commit：`22a7c0a59a4cb8059e239edcb0099f81b34efd6b`（`修复：补齐P1F失败审计状态`）。对应 Stage 5A Run `32157213113` / Job `95777200740`：目标测试退出码 0，`57 passed in 2.62s`；Ruff `36 files already formatted`、`All checks passed!`；mypy `Success: no issues found in 24 source files`；Analysis/Export Contract、Secret、Docs 均通过；Architecture 仍只报同一 11 个既有 `ARCH001`。
+先建立回归测试，commit：
 
-### 6.4 文档后最新专项验证
+```text
+d80a8fb674f8cd51fa4be8b33e6bd3bbd03e51aa
+测试：锁定P1G模型身份恢复边界
+```
 
-P1F 代码与 README/Blueprint 同步后的验证 head 为 `ada47610057d1aacbd0863f1df04d091cecdfd8a`。Stage 5A Run `32157763801` / Job `95779015906`：
+Stage 5A Run `32161890146` / Job `95792468933`：
 
-- P1 目标/回归 pytest：退出码 0，`57 passed in 2.74s`；
-- Ruff format：退出码 0，`36 files already formatted`；
-- Ruff check：退出码 0，`All checks passed!`；
-- mypy：退出码 0，`Success: no issues found in 24 source files`；
+- P1 pytest：退出码 1，`2 failed, 62 passed`；
+- 两个新增失败分别精确证明 Provider 从 `provider-a` 切到 `provider-b`、模型从 `model-a` 切到 `model-b` 时仍错误恢复旧 Analysis；
+- Secret / Docs 同时成功；
+- Red 根因与预期一致，没有用猜测式补丁制造失败。
+
+### 6.3 Green
+
+最小修复：
+
+```text
+f3e0981e8605a28becc8164d17308ed681498247
+实现：暴露P1G当前模型恢复身份
+
+d636cedefe324fd8620b77dc560e9755b8c916bd
+修复：绑定P1G恢复模型身份
+```
+
+`ContentLabelingService` 只新增只读 `provider_name/model_name` 访问器；checkpoint loader 在既有 Prompt/Taxonomy 过滤基础上增加当前 Provider/model 精确匹配。checkpoint Schema、Analysis Contract、Prompt/Taxonomy 和业务 JSONL 结构均未改变。
+
+`d636cedefe324fd8620b77dc560e9755b8c916bd` 的 Stage 5A Run `32162296188` / Job `95793757795`：
+
+- P1 目标/回归 pytest：退出码 0，`64 passed in 2.89s`；
+- Ruff format/check：退出码 0，39 files already formatted / All checks passed；
+- mypy：退出码 0，24 source files 无问题；
 - Analysis + Export Contract drift：退出码 0；
 - Secret / Docs：退出码 0；
-- Architecture：退出码 1，仍只报告 11 个既有 `ARCH001`，均为缺失 `backend/src/aima_ugc/operations/...` Stage 1—7 旧路径；P1F 没有新增 Architecture 报错。
+- Architecture：退出码 1，仍只报告 11 个既有 `ARCH001`，均为缺失 `backend/src/aima_ugc/operations/...` Stage 1—7 旧路径；没有新增 P1G Architecture 报错。
 
-Architecture step 失败后，Provider/Raw tests、Provider Contract drift 和整套 Stage 5A quality step 按 workflow 顺序被跳过，不能记为本 head 已执行成功。全仓适用 PR workflow 仍不是全绿，本轮不绕过门禁或把专项成功误写成整仓成功。
+Architecture step 失败后，Provider/Raw tests、Provider Contract drift 和 Stage 5A 整套 quality step 按 workflow 顺序跳过。因此全仓适用 PR workflow 仍不是全绿，不把 P1 专项成功描述成整仓 CI 成功。
 
 ## 7. 两阶段 Review
 
-需求符合性 Review：通过 P1F 范围复核。模型最小输入继续由 P1E Service 投影；Validation Retry 仍只由 Service 控制；成功 Analysis 只有本地 Validator 通过后才进入 checkpoint 和业务 JSONL；真实模型默认关闭；未进入 P1G/P1H。
+需求符合性 Review：P1G 当前实现满足 `run_all()` 固定主链、raw Excel 旁路、最终 Excel 同源、checkpoint 恢复和费用安全要求。Review 中发现的 Provider/model 恢复身份缺口已通过独立 Red→Green 修复。未进入 P1H 的 90k 性能、真实模型小样、最终 P1 收口和归档。
 
-代码质量 Review：Review 中发现的失败审计状态缺口已按独立 Red→Green 修复，之后未发现阻塞 P1F 闭环的新增严重/重要问题。HTTP Client 生命周期可控，Adapter 不隐藏重试；Secret 不进入异常或版本库示例；JSONL 使用流式读取和原子替换；attempts/checkpoints/failed 与业务 JSONL 角色分离；未新增依赖、数据库或 Migration。
+代码质量 Review：从模型身份 Red 到 Green 的生产差异仅为 Service 只读身份访问器和 checkpoint 精确过滤；私有 `_load_checkpoint_index` 签名变化不构成公共 API 破坏。旧 checkpoint 文件已包含 `ContentLabelAnalysisV1.model_provider/model`，因此不需要数据格式 Migration。未新增依赖、平行 Excel 生成逻辑、隐藏 Transport Retry 或第二业务事实源。
 
-## 8. 依赖、费用、Migration、回滚
+## 8. 文档同步
 
-- Python/Node/uv 版本保持仓库锁定版本；P1F 未新增、升级或降级依赖；复用 `httpx==0.28.1`；
-- 无数据库写入、Migration、部署或生产数据迁移；
-- 自动测试没有真实外部模型调用，真实 token/费用为 0；
-- 实际人工启用真实 LLM 后，每次 Validation Retry 都会产生额外模型调用和费用；Adapter 不做隐藏 Transport Retry；
-- 真实 OpenAI-compatible Provider 互操作与付费小样属于 P1H，本轮没有虚构验证结果；
-- 回滚方式为 revert P1F Adapter/离线打标/人工入口/测试/文档提交，不涉及数据库回滚。
+P1G 闭环后已同步：
 
-## 9. Git / PR
+- `backend/src/aima_ugc/modules/analysis/README.md`：checkpoint 恢复明确绑定 Prompt/Taxonomy/Provider/model；
+- `backend/src/aima_ugc/adapters/providers/imports_test/README.md`：更新 `run_all()`、崩溃恢复、attempts/checkpoints/failed、最终 Excel 与 P1G/P1H 边界；
+- `docs/blueprint/README.md`：P1A—P1G 已闭环，下一最小单元 P1H；
+- `docs/blueprint/14-临时P1-Excel离线导入与舆情打标.md`：当前状态推进到 P1G 已闭环；
+- Blueprint 13/15 的长期 Contract/Analysis 设计没有改变，不复制第二套标签或 Excel Schema。
 
-- `main`：`0dc666192f83fa9e55d5cbfffb19c09d31c5ecaf`（本轮再次核验）；
+## 9. 依赖、费用、Migration、部署、回滚
+
+- Python/Node/uv 和现有依赖版本保持不变；没有新增、升级或降级依赖；
+- 无数据库写入、DDL/Migration、生产部署或持久化数据迁移；
+- 本轮自动测试只使用 Fake/本地测试，不调用真实付费模型，真实模型 token/费用为 0；
+- 实际人工启用真实 LLM 后，Validation Retry 会增加模型请求和费用；checkpoint 只在输入、Prompt/Taxonomy、Provider 和 model 全部匹配时减少重复成功调用；
+- P1H 才执行真实 OpenAI-compatible 模型小样、token/费用统计和 90k 性能证据；
+- 回滚方式为 revert P1G run_all/recovery/export/tests/docs 提交，不涉及数据库回滚。
+
+## 10. Active Change 协调
+
+当前可见 Active Changes 中，`CHG-20260818-stage1-stage7-comprehensive-corrective` 的 metadata 覆盖 `contracts/`、`tests/`、`.github/workflows/` 和 `docs/blueprint/` 等广路径，与 P1 存在可见路径重叠；本 P1G 修复没有修改 Analysis/Export Contract Schema、Migration 或该 Change 的实现文件。若该 corrective branch 后续修改同一 Blueprint/workflow，合并前仍需按当时 Git diff 重新协调，不能假设当前无冲突等于未来无冲突。
+
+其他已检查 Active Change（北京时间展示、抖音 detail 400、Windows bootstrap display name）没有与本次 P1G Analysis 恢复核心形成直接 Contract/代码路径冲突。
+
+## 11. Git / PR
+
 - branch：`feature/p1-offline-excel-sentiment`；
-- Draft PR：#66，Open，未合并；
-- P1F 已闭环；下一最小单元 P1G；
+- Draft PR：#66，保持 Open / Draft / 未合并；
+- P1G 已闭环；下一最小单元 P1H；
+- P1 Change 继续保持 `in_progress`，不得在 P1H 前归档；
 - 禁止直接推 main、自动合并、强制推送或新建平行 P1 Change。
