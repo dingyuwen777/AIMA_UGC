@@ -97,10 +97,39 @@ jobs:
         run: |
           set -euo pipefail
           uv run python scripts/quality/_final_corrective_runner.py apply-fixes
-          uv run ruff format backend/src/aima_ugc migrations tests
-          uv run ruff check --fix backend/src/aima_ugc migrations tests
-          uv run ruff format --check backend/src/aima_ugc migrations tests
-          uv run ruff check backend/src/aima_ugc migrations tests
+          uv run python - <<'PY'
+          from pathlib import Path
+
+          path = Path("backend/src/aima_ugc/adapters/persistence/postgres/content_complete.py")
+          text = path.read_text(encoding="utf-8")
+          if "comment_thread_coverage_observations_table," not in text:
+              anchor = "from aima_ugc.modules.content.extended_tables import (\n"
+              if anchor not in text:
+                  raise SystemExit("content_complete extended_tables import anchor missing")
+              text = text.replace(
+                  anchor,
+                  anchor + "    comment_thread_coverage_observations_table,\n",
+                  1,
+              )
+          path.write_text(text, encoding="utf-8")
+          PY
+          changed=(
+            backend/src/aima_ugc/modules/collection/execution_limits.py
+            backend/src/aima_ugc/adapters/providers/tikhub/transport.py
+            backend/src/aima_ugc/bootstrap/collection_scope.py
+            backend/src/aima_ugc/bootstrap/scheduler.py
+            backend/src/aima_ugc/adapters/persistence/postgres/collection_content.py
+            backend/src/aima_ugc/adapters/persistence/postgres/content_complete.py
+            backend/src/aima_ugc/modules/content/extended_tables.py
+            migrations/versions/20260818_0018_stage1_stage7_comprehensive_corrective.py
+            tests/integration/collection/test_comprehensive_corrective_runtime.py
+            tests/integration/collection/test_collection_scope_replies_runtime.py
+            tests/unit/collection/test_comprehensive_corrective_invariants.py
+          )
+          uv run ruff format "${changed[@]}"
+          uv run ruff check --fix "${changed[@]}"
+          uv run ruff format --check "${changed[@]}"
+          uv run ruff check "${changed[@]}"
           uv run pytest \
             tests/unit/collection/test_comprehensive_corrective_invariants.py::test_scheduled_job_deadline_has_provider_execution_floor_for_short_cadence \
             tests/integration/collection/test_comprehensive_corrective_runtime.py::test_scope_persists_durable_actions_extensions_and_thread_coverage \
