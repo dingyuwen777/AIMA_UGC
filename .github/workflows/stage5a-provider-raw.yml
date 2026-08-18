@@ -83,8 +83,7 @@ jobs:
             tests/unit/collection/test_imports_excel.py \
             tests/unit/collection/test_imports_test_export.py \
             tests/unit/collection/test_tikhub_test_debug.py \
-            tests/unit/analysis/test_offline_content_processing.py \
-            tests/unit/analysis/test_content_labeling.py \
+            tests/unit/analysis \
             tests/unit/platform/test_excel_export.py \
             -q
 
@@ -103,8 +102,7 @@ jobs:
             tests/unit/collection/test_imports_excel.py \
             tests/unit/collection/test_imports_test_export.py \
             tests/unit/collection/test_tikhub_test_debug.py \
-            tests/unit/analysis/test_offline_content_processing.py \
-            tests/unit/analysis/test_content_labeling.py \
+            tests/unit/analysis \
             tests/unit/platform/test_excel_export.py
           uv run ruff check \
             backend/src/aima_ugc/contracts/analysis \
@@ -117,8 +115,7 @@ jobs:
             tests/unit/collection/test_imports_excel.py \
             tests/unit/collection/test_imports_test_export.py \
             tests/unit/collection/test_tikhub_test_debug.py \
-            tests/unit/analysis/test_offline_content_processing.py \
-            tests/unit/analysis/test_content_labeling.py \
+            tests/unit/analysis \
             tests/unit/platform/test_excel_export.py
           uv run mypy \
             backend/src/aima_ugc/contracts/analysis \
