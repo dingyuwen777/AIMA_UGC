@@ -10,6 +10,8 @@ from sqlalchemy import func, insert, or_, select, update
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
+from aima_ugc.contracts.collection import CollectionDecisionPolicyV1
+from aima_ugc.modules.collection.corrective_tables import collection_plan_decision_policies_table
 from aima_ugc.modules.collection.planning import (
     CollectionOccurrenceStatus,
     CollectionPlanDefinition,
@@ -55,6 +57,13 @@ class PostgresCollectionPlanningRepository:
                 comment_policy=definition.comment_policy,
                 created_by=definition.created_by,
                 created_at=now,
+                updated_at=now,
+            )
+        )
+        self._session.execute(
+            insert(collection_plan_decision_policies_table).values(
+                plan_id=plan_id,
+                policy=definition.decision_policy.model_dump(mode="json"),
                 updated_at=now,
             )
         )
@@ -204,8 +213,21 @@ class PostgresCollectionPlanningRepository:
                 .order_by(collection_plan_keyword_packs_table.c.keyword_pack_id)
             ).scalars()
         )
+        policy_payload = self._session.scalar(
+            select(collection_plan_decision_policies_table.c.policy).where(
+                collection_plan_decision_policies_table.c.plan_id == plan_id
+            )
+        )
+        if policy_payload is None:
+            raise RuntimeError(f"Collection Plan 缺少 Decision Policy: {plan_id}")
+        decision_policy = CollectionDecisionPolicyV1.model_validate(policy_payload)
         platforms = tuple(_row_to_platform(platform_row) for platform_row in platform_rows)
-        return _row_to_plan(row, platforms=platforms, keyword_pack_ids=keyword_pack_ids)
+        return _row_to_plan(
+            row,
+            platforms=platforms,
+            keyword_pack_ids=keyword_pack_ids,
+            decision_policy=decision_policy,
+        )
 
 
 def _row_to_platform(row: RowMapping) -> PlanPlatformDefinition:
@@ -221,6 +243,7 @@ def _row_to_plan(
     *,
     platforms: tuple[PlanPlatformDefinition, ...],
     keyword_pack_ids: tuple[UUID, ...],
+    decision_policy: CollectionDecisionPolicyV1,
 ) -> CollectionPlanRecord:
     return CollectionPlanRecord(
         id=cast(UUID, row["id"]),
@@ -240,6 +263,7 @@ def _row_to_plan(
         updated_at=row["updated_at"],
         platforms=platforms,
         keyword_pack_ids=keyword_pack_ids,
+        decision_policy=decision_policy,
     )
 
 
