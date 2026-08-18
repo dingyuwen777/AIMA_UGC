@@ -158,12 +158,15 @@ def test_0014_to_0015_blocks_unresolved_budget_before_destructive_ddl(
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
                 "20260815_0014"
             )
-            assert connection.scalar(
-                text(
-                    "SELECT count(*) FROM provider_budget_reservations "
-                    "WHERE status = 'reserved'"
+            assert (
+                connection.scalar(
+                    text(
+                        "SELECT count(*) FROM provider_budget_reservations "
+                        "WHERE status = 'reserved'"
+                    )
                 )
-            ) == 1
+                == 1
+            )
     finally:
         engine.dispose()
 
@@ -240,27 +243,39 @@ def test_0016_to_0017_backfills_only_existing_current_fields(
     engine = _engine(migration_database)
     try:
         with engine.connect() as connection:
-            account = connection.execute(
-                text(
-                    "SELECT field_observed_at, last_seen_at::text AS seen "
-                    "FROM accounts WHERE id = :id"
-                ),
-                {"id": account_id},
-            ).mappings().one()
-            content = connection.execute(
-                text(
-                    "SELECT field_observed_at, last_seen_at::text AS seen "
-                    "FROM contents WHERE id = :id"
-                ),
-                {"id": content_id},
-            ).mappings().one()
-            comment = connection.execute(
-                text(
-                    "SELECT field_observed_at, last_seen_at::text AS seen "
-                    "FROM comments WHERE id = :id"
-                ),
-                {"id": comment_id},
-            ).mappings().one()
+            account = (
+                connection.execute(
+                    text(
+                        "SELECT field_observed_at, last_seen_at::text AS seen "
+                        "FROM accounts WHERE id = :id"
+                    ),
+                    {"id": account_id},
+                )
+                .mappings()
+                .one()
+            )
+            content = (
+                connection.execute(
+                    text(
+                        "SELECT field_observed_at, last_seen_at::text AS seen "
+                        "FROM contents WHERE id = :id"
+                    ),
+                    {"id": content_id},
+                )
+                .mappings()
+                .one()
+            )
+            comment = (
+                connection.execute(
+                    text(
+                        "SELECT field_observed_at, last_seen_at::text AS seen "
+                        "FROM comments WHERE id = :id"
+                    ),
+                    {"id": comment_id},
+                )
+                .mappings()
+                .one()
+            )
 
         account_fields = account["field_observed_at"]
         assert account_fields["author.handle"] == account["seen"]
