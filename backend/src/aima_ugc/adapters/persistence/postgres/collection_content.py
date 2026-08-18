@@ -14,7 +14,11 @@ from sqlalchemy.orm import Session
 from aima_ugc.contracts.canonical import CanonicalCommentV1, CanonicalContentV1
 from aima_ugc.contracts.collection import PreviousContentStateV1
 from aima_ugc.modules.collection.candidate_tables import collection_candidates_table
-from aima_ugc.modules.collection.candidates import CandidateIngestionService, CandidateKind
+from aima_ugc.modules.collection.candidates import (
+    CandidateIngestionService,
+    CandidateKind,
+    IngestionStatus,
+)
 from aima_ugc.modules.collection.tables import (
     collection_runs_table,
     collection_scopes_table,
@@ -161,9 +165,11 @@ class PostgresFencedCollectionIngestionWriter:
         candidate_id: UUID,
         provider_attempt_id: UUID,
         fence: JobExecutionFence,
-        result: str,
+        result: IngestionStatus,
         error_code: str,
     ) -> None:
+        if result not in {"invalid", "unsupported", "failed"}:
+            raise ValueError("Candidate failure 结果必须是 invalid/unsupported/failed")
         session = self._session_factory()
         try:
             with session.begin():
@@ -182,7 +188,7 @@ class PostgresFencedCollectionIngestionWriter:
                     candidate_id=candidate_id,
                     canonical=None,
                     target_id=None,
-                    result=result,  # type: ignore[arg-type]
+                    result=result,
                     error_code=error_code,
                     error_detail=None,
                 )
@@ -505,6 +511,5 @@ def _business_changed(row: RowMapping, observation: CanonicalContentV1) -> bool:
 
 __all__ = [
     "CollectionContentDecisionState",
-    "PostgresCollectionContentStateReader",
     "PostgresFencedCollectionIngestionWriter",
 ]
