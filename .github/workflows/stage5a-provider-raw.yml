@@ -59,11 +59,36 @@ jobs:
           uv lock --check
           uv sync --locked
 
+      - name: P1B Excel import tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest tests/unit/collection/test_imports_excel.py -q
+
+      - name: P1B quality gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff format --check \
+            backend/src/aima_ugc/adapters/providers/imports \
+            backend/src/aima_ugc/adapters/providers/imports_test \
+            tests/unit/collection/test_imports_excel.py
+          uv run ruff check \
+            backend/src/aima_ugc/adapters/providers/imports \
+            backend/src/aima_ugc/adapters/providers/imports_test \
+            tests/unit/collection/test_imports_excel.py
+          uv run mypy \
+            backend/src/aima_ugc/adapters/providers/imports \
+            backend/src/aima_ugc/adapters/providers/imports_test
+          uv run python scripts/quality/check_architecture.py
+          uv run python scripts/quality/scan_secrets.py
+          uv run python scripts/quality/check_docs.py
+
       - name: Provider and Raw tests
         shell: bash
         run: |
           set -euo pipefail
-          uv run pytest tests/unit/collection/test_provider_client.py tests/unit/collection/test_imports_excel.py tests/integration/collection/test_raw_artifact.py tests/integration/collection/test_raw_artifact_logging.py tests/contracts/test_provider_v1.py -q
+          uv run pytest tests/unit/collection/test_provider_client.py tests/integration/collection/test_raw_artifact.py tests/integration/collection/test_raw_artifact_logging.py tests/contracts/test_provider_v1.py -q
 
       - name: Provider Contract drift
         shell: bash
