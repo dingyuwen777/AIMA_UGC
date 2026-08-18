@@ -10,7 +10,7 @@ created: 2026-08-18
 updated: 2026-08-18
 depends_on: []
 affected_areas: [provider, analysis, export, testing, documentation]
-affected_paths: [docs/blueprint/README.md, docs/blueprint/13-统一数据Excel导出与调试复用.md, docs/blueprint/14-临时P1-Excel离线导入与舆情打标.md, docs/blueprint/15-舆情AI打标与统一分析契约.md, backend/src/aima_ugc/adapters/providers/imports/, backend/src/aima_ugc/adapters/providers/imports_test/, backend/src/aima_ugc/adapters/providers/tikhub_test/, backend/src/aima_ugc/adapters/llm/, backend/src/aima_ugc/modules/analysis/, backend/src/aima_ugc/contracts/analysis/, backend/src/aima_ugc/contracts/export/, backend/src/aima_ugc/platform/export/, tests/]
+affected_paths: [docs/blueprint/README.md, docs/blueprint/13-统一数据Excel导出与调试复用.md, docs/blueprint/14-临时P1-Excel离线导入与舆情打标.md, docs/blueprint/15-舆情AI打标与统一分析契约.md, backend/src/aima_ugc/adapters/providers/imports/, backend/src/aima_ugc/adapters/providers/imports_test/, backend/src/aima_ugc/adapters/providers/tikhub_test/, backend/src/aima_ugc/adapters/llm/, backend/src/aima_ugc/modules/analysis/, backend/src/aima_ugc/contracts/analysis/, backend/src/aima_ugc/contracts/export/, backend/src/aima_ugc/platform/export/, tests/, .github/workflows/stage5a-provider-raw.yml]
 contracts: [UnifiedContentRecordV1, ContentLabelAnalysisV1, UnifiedDataExcelV1]
 data_changes: []
 ---
@@ -119,9 +119,9 @@ MAX_VALIDATION_RETRIES = 2
 - [x] Blueprint 15 明确本地 Validator 强制存在，不能依赖模型保证。
 - [x] Blueprint 15 明确 Validation Retry 有界且次数可配置，达到上限 fail closed。
 - [x] Blueprint 14 同步 P1 的动态 Taxonomy、本地校验、重试和 README 门禁。
-- [ ] `imports/` File Provider/Reader/Mapper 实现并通过自动测试。
-- [ ] `imports_test/README.md`、`.env.example`、`test.py` 建立；单步函数和 `run_all()` 只调用生产实现。
-- [ ] `convert()` 生成 `canonical/contents.jsonl`，错误逐行可定位。
+- [x] `imports/` File Provider/Reader/Mapper 实现并通过 P1B 自动测试。
+- [x] `imports_test/README.md`、`.env.example`、`test.py` 已建立；P1B 仅提供 `convert()`，人工入口只调用生产实现，后续单步函数和 `run_all()` 按 P1C–P1G 增量补齐。
+- [x] `convert()` 生成 `canonical/contents.jsonl`，错误逐行可定位，存在无效行时不发布部分业务 JSONL。
 - [ ] `filter_keywords()` 生成 `filtered/contents.jsonl`，保留 `matched_keywords`。
 - [ ] `deduplicate()` 生成 `UnifiedContentRecordV1` 格式 `deduplicated/contents.jsonl`，冲突不静默覆盖。
 - [ ] `UnifiedDataExcelV1` + 唯一共享 Exporter 落地，`tikhub_test` 删除平行 Excel 实现。
@@ -217,14 +217,14 @@ MAX_VALIDATION_RETRIES = 2
 
 # 当前 checkpoint
 
-**P1A 设计事实已按最新决定重新固化；下一最小正式单元仍是 P1B。**
+**P1B 已闭环；下一最小正式单元是 P1C：关键词过滤 + UnifiedContentRecordV1 去重。**
 
-P1B 开始前必须重新读取最新 `AGENTS.md`、RVC Skill、Blueprint README、14、15、13、本文及当前 branch/PR/CI/相关代码与测试。
+P1C 开始前必须重新读取最新 `AGENTS.md`、RVC Skill、Blueprint README、14、15、13、本文及当前 branch/PR/CI/相关代码、Contract 与测试，并重新检查并行 Active Change 是否产生真实路径/Contract 冲突。
 
 # P1 子阶段
 
 - [x] P1A：设计与阶段导航（已随用户新决定更新：动态 Prompt Taxonomy + 本地 Validator + 可配置 Validation Retry）。
-- [ ] P1B：Excel imports + imports_test + convert。
+- [x] P1B：Excel imports + imports_test + convert。
 - [ ] P1C：关键词过滤 + 去重 + UnifiedContentRecordV1。
 - [ ] P1D：UnifiedDataExcelV1 + 唯一共享 Exporter + tikhub_test 迁移。
 - [ ] P1E：PromptTaxonomyLoader + 完整 Prompt + Analysis Contract/Service/Port + Fake + README + Retry tests。
@@ -234,17 +234,37 @@ P1B 开始前必须重新读取最新 `AGENTS.md`、RVC Skill、Blueprint README
 
 # 验证
 
-本轮属于设计文档修正，TDD 不适用。实际验证应包括：
+P1B 按 Red → Green → Review 执行，使用仓库锁定的 Python 3.14.7 / uv 0.12.3 / openpyxl 3.1.5 环境。
 
-- 重新读取 Blueprint 14/15/Change；
-- 搜索旧 `7 个一级/17 个二级` 和“Python 硬编码标签”表述，确保没有残留为当前设计；
-- 核对当前 9 个一级、39 个二级逐项覆盖截图；
-- 比较 P1 branch 与 main 只包含授权范围；
-- CI 状态如实记录，不把未完成/无关基线失败宣称通过。
+## TDD Red
+
+- Commit：`d691100e0024dd46e68a22cd7e825987633ef23e`（`测试：锁定P1B Excel导入行为`）。
+- Stage 5A Provider Raw Run：`32130422292`，Job：`95690130684`。
+- `pytest` 在收集 `tests/unit/collection/test_imports_excel.py` 时因 `aima_ugc.adapters.providers.imports` 尚不存在失败；`ModuleNotFoundError`，1 个 collection error，退出码 2。
+- 失败原因与 P1B 尚未实现完全一致，没有用已有失败冒充 Red。
+
+## Green / 专项门禁
+
+- 实现 Commit：`e6b0b5549af55e9dc13b326d94db2327f8bf3341`（`实现P1B Excel离线导入转换`）。
+- 验证编排/格式修正 Commit：`33f3c76364d3df12ddd19dfccf70acc3f80cd60d`、`6908950a6e13b60f891335ec6599f2f92c008253`、`9a33a90467c629649f8aee5dfc6b5b5c05f9bd62`。
+- Stage 5A Provider Raw Run：`32131546430`，Job：`95693577309`。
+- `uv run pytest tests/unit/collection/test_imports_excel.py -q`：退出码 0，4 passed in 0.75s。
+- P1B `ruff format --check`：退出码 0，11 files already formatted。
+- P1B `ruff check`：退出码 0，All checks passed。
+- P1B `mypy`：退出码 0，Success: no issues found in 9 source files。
+- `scan_secrets.py`：退出码 0，源码、Provider 证据、Change 与文档 Secret 扫描通过。
+- `check_docs.py`：退出码 0，文档入口与本地链接检查通过。
+
+## Architecture / 回归 / CI 基线阻断
+
+- 同一 Run `32131546430` 的 `check_architecture.py`：退出码 1；仅报告 11 个现有 `backend/src/aima_ugc/operations/...` Stage 1–7 必需文件不存在，没有报告 P1B 新增 `imports/` / `imports_test/` 架构违规。该目录漂移来自当前 main/PR merge 基线，不在 P1B 授权范围，本轮未修改或绕过。
+- Green 首轮 Stage 5A Run `32130950731` 的 Provider/Raw 相关回归共 28 项：25 passed、3 failed；3 个失败均在现有 `tests/contracts/test_provider_v1.py`，涉及 `ProviderRequestV1.create(... operations=...)` 与 RawEnvelope `operations` schema 旧/新语义不一致，不是 P1B 测试失败。
+- 正式 Contract/全量 CI 仍受当前 main 的 Stage 1–7 Contract/Architecture 漂移阻断；P1B 未修改 Canonical/Provider Contract，也未通过篡改测试或门禁制造全绿。
 
 # Git / PR / 发布
 
 - Branch：`feature/p1-offline-excel-sentiment`。
-- Draft PR：#66，继续使用同一个 PR。
+- Draft PR：#66，继续使用同一个 PR，保持 Draft。
 - 自动合并：禁止。
-- 发布：P1A 仅设计，不涉及生产部署。
+- P1B 不新增依赖、不新增 Migration、不改数据库、不改正式 HTTP API/前端/Scheduler；部署方式不变。
+- P1B 回滚边界：回退本子阶段新增 `imports/`、`imports_test/`、P1B 单测及 Stage 5A 专项门禁即可；不涉及数据迁移回滚。
