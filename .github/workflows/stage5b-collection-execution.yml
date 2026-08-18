@@ -100,8 +100,8 @@ jobs:
           uv run python - <<'PY'
           from pathlib import Path
 
-          path = Path("backend/src/aima_ugc/adapters/persistence/postgres/content_complete.py")
-          text = path.read_text(encoding="utf-8")
+          content_path = Path("backend/src/aima_ugc/adapters/persistence/postgres/content_complete.py")
+          text = content_path.read_text(encoding="utf-8")
           if "comment_thread_coverage_observations_table," not in text:
               anchor = "from aima_ugc.modules.content.extended_tables import (\n"
               if anchor not in text:
@@ -111,7 +111,23 @@ jobs:
                   anchor + "    comment_thread_coverage_observations_table,\n",
                   1,
               )
-          path.write_text(text, encoding="utf-8")
+          content_path.write_text(text, encoding="utf-8")
+
+          for name in (
+              "backend/src/aima_ugc/modules/content/extended_tables.py",
+              "migrations/versions/20260818_0018_stage1_stage7_comprehensive_corrective.py",
+          ):
+              path = Path(name)
+              text = path.read_text(encoding="utf-8")
+              text = text.replace(
+                  'name="complete_count_consistent"',
+                  'name="complete_count"',
+              )
+              text = text.replace(
+                  'name="nonfetch_count_zero"',
+                  'name="nonfetch_zero"',
+              )
+              path.write_text(text, encoding="utf-8")
           PY
           changed=(
             backend/src/aima_ugc/modules/collection/execution_limits.py
@@ -130,7 +146,6 @@ jobs:
           uv run ruff check --fix "${changed[@]}"
           uv run ruff format --check "${changed[@]}"
           uv run ruff check "${changed[@]}"
-          # 0018 源码刚增加 DB Check，先让真实 PostgreSQL 重建 0018，再进行 Green 验证。
           uv run alembic downgrade 20260817_0017
           uv run alembic upgrade head
           uv run alembic check
