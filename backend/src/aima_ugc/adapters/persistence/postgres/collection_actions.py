@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import cast
@@ -33,6 +34,9 @@ class CollectionContentActionRecord:
     search_provider_attempt_id: UUID
     search_raw_artifact_id: UUID
     search_observed_at: datetime
+    previous_exists: bool
+    previous_comment_count: int | None
+    initial_business_changed: bool
     decision: CollectionDecisionV1
     resolved_comment_count: int | None
     detail_completed: bool
@@ -42,7 +46,7 @@ class CollectionContentActionRecord:
 class PostgresCollectionContentActionRepository:
     """每个 Scope/Content 只冻结一次动作；重试只恢复未完成阶段。"""
 
-    def __init__(self, session_factory) -> None:  # type: ignore[no-untyped-def]
+    def __init__(self, session_factory: Callable[[], Session]) -> None:
         self._session_factory = session_factory
 
     def get(
@@ -79,6 +83,9 @@ class PostgresCollectionContentActionRepository:
         search_provider_attempt_id: UUID,
         search_raw_artifact_id: UUID,
         search_observed_at: datetime,
+        previous_exists: bool,
+        previous_comment_count: int | None,
+        initial_business_changed: bool,
         decision: CollectionDecisionV1,
         resolved_comment_count: int | None,
         fence: JobExecutionFence,
@@ -102,6 +109,9 @@ class PostgresCollectionContentActionRepository:
                     "search_provider_attempt_id": search_provider_attempt_id,
                     "search_raw_artifact_id": search_raw_artifact_id,
                     "search_observed_at": search_observed_at,
+                    "previous_exists": previous_exists,
+                    "previous_comment_count": previous_comment_count,
+                    "initial_business_changed": initial_business_changed,
                     "detail_action": decision.detail_action,
                     "detail_reason": decision.detail_reason,
                     "comment_action": decision.comment_action,
@@ -290,6 +300,9 @@ def _row_to_action(row: RowMapping) -> CollectionContentActionRecord:
         search_provider_attempt_id=cast(UUID, row["search_provider_attempt_id"]),
         search_raw_artifact_id=cast(UUID, row["search_raw_artifact_id"]),
         search_observed_at=row["search_observed_at"],
+        previous_exists=cast(bool, row["previous_exists"]),
+        previous_comment_count=cast(int | None, row["previous_comment_count"]),
+        initial_business_changed=cast(bool, row["initial_business_changed"]),
         decision=decision,
         resolved_comment_count=cast(int | None, row["resolved_comment_count"]),
         detail_completed=cast(bool, row["detail_completed"]),
