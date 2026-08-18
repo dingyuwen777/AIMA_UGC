@@ -107,15 +107,9 @@ def test_long_term_docs_match_stage1_stage7_machine_facts() -> None:
     collection_readme = Path("backend/src/aima_ugc/modules/collection/README.md").read_text(
         encoding="utf-8"
     )
-    blueprint_02 = Path("docs/blueprint/02-采集系统与数据标准化.md").read_text(
-        encoding="utf-8"
-    )
-    blueprint_08 = Path("docs/blueprint/08-采集策略与平台能力.md").read_text(
-        encoding="utf-8"
-    )
-    blueprint_09 = Path("docs/blueprint/09-Scheduler运行与恢复策略.md").read_text(
-        encoding="utf-8"
-    )
+    blueprint_02 = Path("docs/blueprint/02-采集系统与数据标准化.md").read_text(encoding="utf-8")
+    blueprint_08 = Path("docs/blueprint/08-采集策略与平台能力.md").read_text(encoding="utf-8")
+    blueprint_09 = Path("docs/blueprint/09-Scheduler运行与恢复策略.md").read_text(encoding="utf-8")
 
     assert "当前机器 Registry 只接线已经有实现事实的 `tikhub + xhs`" not in blueprint_02
     assert "当前 main 实际只有小红书 Operation/Mapper" not in blueprint_02
