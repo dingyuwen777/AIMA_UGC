@@ -5,6 +5,14 @@ on:
     branches:
       - main
     paths:
+      - "backend/src/aima_ugc/modules/collection/**"
+      - "backend/src/aima_ugc/adapters/persistence/postgres/collection.py"
+      - "backend/src/aima_ugc/database_schema.py"
+      - "migrations/versions/**"
+      - "tests/unit/collection/**"
+      - "tests/integration/collection/**"
+      - "scripts/quality/check_architecture.py"
+      - "scripts/quality/_final_corrective_runner.py"
       - ".github/workflows/stage5b-collection-execution.yml"
 
 permissions:
@@ -47,7 +55,7 @@ jobs:
         with:
           python-version: 3.14.7
 
-      - name: Install frozen environment and migrate
+      - name: Install and migrate
         shell: bash
         run: |
           set -euo pipefail
@@ -61,521 +69,38 @@ jobs:
           uv run alembic current
           uv run alembic check
 
-      - name: Write final review regressions only
+      - name: Red regression evidence
         shell: bash
         run: |
           set -euo pipefail
-          uv run python - <<'PY'
-          from pathlib import Path
-
-          # A/E: Thread Coverage upsert 必须返回真实持久化 ID，且 Content Owner 拒绝伪 complete。
-          path = Path("tests/integration/collection/test_comprehensive_corrective_runtime.py")
-          text = path.read_text(encoding="utf-8")
-          anchor = '''from aima_ugc.adapters.persistence.postgres.collection_run_execution import (\n    PostgresCollectionRunExecutionGateway,\n)\n'''
-          addition = anchor + '''from aima_ugc.adapters.persistence.postgres.collection_content import (\n    PostgresFencedCollectionIngestionWriter,\n)\n'''
-          if "PostgresFencedCollectionIngestionWriter" not in text:
-              if anchor not in text:
-                  raise SystemExit("comprehensive writer import anchor missing")
-              text = text.replace(anchor, addition, 1)
-          old_tail = '''            assert thread_coverage["root_comment_id"] == "xhs-comment-root-1"\n            assert thread_coverage["coverage"] == "complete"\n            assert thread_coverage["reported_total"] == 1\n            assert thread_coverage["captured_count"] == 1\n    finally:\n        session.close()\n'''
-          new_tail = '''            assert thread_coverage["root_comment_id"] == "xhs-comment-root-1"\n            assert thread_coverage["coverage"] == "complete"\n            assert thread_coverage["reported_total"] == 1\n            assert thread_coverage["captured_count"] == 1\n            persisted_thread_id = thread_coverage["id"]\n            persisted_thread = dict(thread_coverage)\n    finally:\n        session.close()\n\n    writer = PostgresFencedCollectionIngestionWriter(database_runtime.new_session)\n    replayed_id = writer.record_thread_coverage(\n        content_id=persisted_thread["content_id"],\n        root_comment_id=persisted_thread["root_comment_id"],\n        provider_attempt_id=persisted_thread["provider_attempt_id"],\n        raw_artifact_id=persisted_thread["raw_artifact_id"],\n        platform="xhs",\n        fence=fence,\n        coverage=persisted_thread["coverage"],\n        reported_total=persisted_thread["reported_total"],\n        captured_count=persisted_thread["captured_count"],\n        target_count=persisted_thread["target_count"],\n        stop_reason=persisted_thread["stop_reason"],\n        observed_at=persisted_thread["observed_at"],\n    )\n    assert replayed_id == persisted_thread_id\n\n    with pytest.raises(ValueError, match="complete"):\n        writer.record_thread_coverage(\n            content_id=persisted_thread["content_id"],\n            root_comment_id=persisted_thread["root_comment_id"],\n            provider_attempt_id=persisted_thread["provider_attempt_id"],\n            raw_artifact_id=persisted_thread["raw_artifact_id"],\n            platform="xhs",\n            fence=fence,\n            coverage="complete",\n            reported_total=2,\n            captured_count=1,\n            target_count=2,\n            stop_reason="provider_exhausted",\n            observed_at=persisted_thread["observed_at"],\n        )\n'''
-          if old_tail not in text:
-              raise SystemExit("comprehensive thread coverage tail missing")
-          path.write_text(text.replace(old_tail, new_tail, 1), encoding="utf-8")
-
-          # B/C/F: Reply soft target、最新空页、身份校验后的 Candidate ledger。
-          path = Path("tests/integration/collection/test_collection_scope_replies_runtime.py")
-          text = path.read_text(encoding="utf-8")
-          text = text.replace(
-              'from aima_ugc.modules.collection.execution import (\n',
-              'from aima_ugc.modules.collection.candidate_tables import (\n'
-              '    collection_candidate_ingestions_table,\n'
-              '    collection_candidates_table,\n'
-              ')\n'
-              'from aima_ugc.modules.collection.execution import (\n',
-              1,
-          )
-          text = text.replace(
-              'from aima_ugc.modules.content.tables import comments_table\n',
-              'from aima_ugc.modules.content.extended_tables import (\n'
-              '    comment_thread_coverage_observations_table,\n'
-              ')\n'
-              'from aima_ugc.modules.content.tables import comments_table\n',
-              1,
-          )
-          old_sub = '''def _sub_comments_response() -> dict[str, object]:\n    body = _fixture("sub_comments_page1.sanitized.json")\n    outer = body["data"]\n    assert isinstance(outer, dict)\n    page = outer["data"]\n    assert isinstance(page, dict)\n    replies = page["comments"]\n    assert isinstance(replies, list) and replies\n    reply = replies[0]\n    assert isinstance(reply, dict)\n    reply["note_id"] = "note-fixture-1"\n    page["comments"] = [reply]\n    page["has_more"] = False\n    return body\n'''
-          new_sub = '''def _sub_comments_response(\n    *,\n    has_more: bool = False,\n    note_id: str = "note-fixture-1",\n    empty: bool = False,\n) -> dict[str, object]:\n    body = _fixture("sub_comments_page1.sanitized.json")\n    outer = body["data"]\n    assert isinstance(outer, dict)\n    page = outer["data"]\n    assert isinstance(page, dict)\n    replies = page["comments"]\n    assert isinstance(replies, list) and replies\n    reply = replies[0]\n    assert isinstance(reply, dict)\n    reply["note_id"] = note_id\n    page["comments"] = [] if empty else [reply]\n    page["has_more"] = has_more\n    page["cursor"] = "cursor-next" if has_more else "cursor-end"\n    return body\n'''
-          if old_sub not in text:
-              raise SystemExit("reply sub response helper missing")
-          text = text.replace(old_sub, new_sub, 1)
-          start = text.index("def test_scope_runtime_fetches_sub_comments_through_formal_operation(")
-          new_tail = r'''def _execute_reply_case(
-    *,
-    database_runtime: DatabaseRuntime,
-    tmp_path: Path,
-    sub_comments: dict[str, object],
-    decision_policy: dict[str, object] | None = None,
-):
-    session = database_runtime.new_session()
-    try:
-        with session.begin():
-            provider_config = PostgresProviderConfigRepository(session).create(
-                ProviderConfig(
-                    id=uuid4(),
-                    provider="tikhub",
-                    display_name="TikHub Scope Replies Runtime",
-                    base_url="https://api.tikhub.io",
-                    secret_ref=f"providers/tikhub/test/scope-replies-runtime-{uuid4()}",
-                    enabled=True,
-                )
-            )
-            job = PostgresJobRepository(session).enqueue(
-                job_type="collection.run.v1",
-                payload_version="collection.run.v1",
-                payload={"schema_version": "collection.run.v1"},
-                internal_idempotency_key=f"scope-replies-runtime:{uuid4()}",
-                request_id=None,
-                priority=10,
-                max_attempts=2,
-                timeout_seconds=300,
-            )
-            snapshot: dict[str, object] = {
-                "schema_version": "collection-run-config.v1",
-                "detail_policy": "on_change",
-                "comment_policy": "adaptive",
-                "platforms": [
-                    {
-                        "platform": "xhs",
-                        "provider_config_id": str(provider_config.id),
-                        "config": {
-                            "sort_mode": "latest",
-                            "published_within": "1d",
-                            "content_type": "all",
-                        },
-                    }
-                ],
-            }
-            if decision_policy is not None:
-                snapshot["decision_policy"] = decision_policy
-            CollectionExecutionService(PostgresCollectionRepository(session)).create_run(
-                job_id=job.id,
-                trigger_type="api",
-                config_snapshot=snapshot,
-                scopes=(
-                    CollectionScopeDefinition(
-                        platform="xhs",
-                        source_type="keyword_search",
-                        source_value="爱玛",
-                        operation_group="content_discovery",
-                    ),
-                ),
-            )
-        with session.begin():
-            claimed = PostgresJobRepository(session).claim_next(
-                supported_job_types=("collection.run.v1",),
-                worker_id=f"scope-replies-runtime-worker-{uuid4()}",
-                lease_seconds=120,
-            )
-        assert claimed is not None and claimed.lease_token is not None
-    finally:
-        session.close()
-
-    transport = FakeProviderTransport(
-        (
-            ProviderTransportResponse(status_code=200, body=_search_response()),
-            ProviderTransportResponse(status_code=200, body=_detail_response()),
-            ProviderTransportResponse(status_code=200, body=_comments_response()),
-            ProviderTransportResponse(status_code=200, body=sub_comments),
-        )
-    )
-    fence = JobExecutionFence(job_id=job.id, lease_token=claimed.lease_token)
-    result = CollectionRunExecutor(
-        gateway=PostgresCollectionRunExecutionGateway(database_runtime.new_session),
-        scope_executor=TikHubCollectionScopeExecutor(
-            session_factory=database_runtime.new_session,
-            raw_artifacts=_raw_service(database_runtime, tmp_path / f"artifacts-{uuid4()}"),
-            transport_factory=lambda _config: transport,
-            secret_resolver=lambda secret_ref: (
-                SecretStr("fixture-secret")
-                if secret_ref == provider_config.secret_ref
-                else (_ for _ in ()).throw(AssertionError("unexpected secret_ref"))
-            ),
-            observed_at=lambda: _OBSERVED_AT,
-        ),
-    ).execute(fence=fence, context=_Context(fence))
-    return result, transport, job.id
-
-
-def test_scope_runtime_reply_target_is_partial_when_provider_has_more(
-    database_runtime: DatabaseRuntime,
-    tmp_path: Path,
-) -> None:
-    result, transport, job_id = _execute_reply_case(
-        database_runtime=database_runtime,
-        tmp_path=tmp_path,
-        sub_comments=_sub_comments_response(has_more=True),
-        decision_policy={"reply_target_per_root": 1},
-    )
-
-    assert result.outcome == "succeeded"
-    assert transport.call_count == 4
-    assert [request.path for request in transport.seen_requests] == [
-        "/api/v1/xiaohongshu/app_v2/search_notes",
-        "/api/v1/xiaohongshu/app_v2/get_image_note_detail",
-        "/api/v1/xiaohongshu/app_v2/get_note_comments",
-        "/api/v1/xiaohongshu/app_v2/get_note_sub_comments",
-    ]
-    assert all(request.credential is None for request in transport.seen_requests)
-
-    session = database_runtime.new_session()
-    try:
-        with session.begin():
-            comments = {
-                row["external_comment_id"]: row
-                for row in session.execute(select(comments_table)).mappings().all()
-            }
-            run_comment_count = session.scalar(
-                select(collection_runs_table.c.comment_count).where(
-                    collection_runs_table.c.job_id == job_id
-                )
-            )
-            coverage = session.execute(
-                select(comment_thread_coverage_observations_table)
-            ).mappings().one()
-        assert set(comments) == {"xhs-comment-root-1", "xhs-comment-reply-2"}
-        assert run_comment_count == 2
-        assert coverage["coverage"] == "partial"
-        assert coverage["reported_total"] == 1
-        assert coverage["captured_count"] == 1
-        assert coverage["stop_reason"] == "target_reached"
-    finally:
-        session.close()
-
-
-def test_sub_comments_empty_page_overrides_stale_root_reply_count(
-    database_runtime: DatabaseRuntime,
-    tmp_path: Path,
-) -> None:
-    result, transport, _job_id = _execute_reply_case(
-        database_runtime=database_runtime,
-        tmp_path=tmp_path,
-        sub_comments=_sub_comments_response(empty=True),
-    )
-
-    assert result.outcome == "succeeded"
-    assert transport.call_count == 4
-    session = database_runtime.new_session()
-    try:
-        with session.begin():
-            coverage = session.execute(
-                select(comment_thread_coverage_observations_table)
-            ).mappings().one()
-            comment_ids = set(session.scalars(select(comments_table.c.external_comment_id)))
-        assert comment_ids == {"xhs-comment-root-1"}
-        assert coverage["coverage"] == "complete"
-        assert coverage["reported_total"] == 0
-        assert coverage["captured_count"] == 0
-        assert coverage["stop_reason"] == "empty_page"
-    finally:
-        session.close()
-
-
-def test_reply_content_identity_mismatch_records_invalid_candidate(
-    database_runtime: DatabaseRuntime,
-    tmp_path: Path,
-) -> None:
-    result, transport, _job_id = _execute_reply_case(
-        database_runtime=database_runtime,
-        tmp_path=tmp_path,
-        sub_comments=_sub_comments_response(note_id="different-note"),
-    )
-
-    assert result.outcome == "failed"
-    assert transport.call_count == 4
-    session = database_runtime.new_session()
-    try:
-        with session.begin():
-            rows = session.execute(
-                select(
-                    collection_candidate_ingestions_table.c.result,
-                    collection_candidate_ingestions_table.c.error_code,
-                )
-                .select_from(
-                    collection_candidate_ingestions_table.join(
-                        collection_candidates_table,
-                        collection_candidate_ingestions_table.c.candidate_id
-                        == collection_candidates_table.c.id,
-                    )
-                )
-                .where(collection_candidates_table.c.item_kind == "comment")
-            ).all()
-        assert any(
-            row.result == "invalid"
-            and row.error_code == "reply_content_identity_mismatch"
-            for row in rows
-        )
-    finally:
-        session.close()
-'''
-          path.write_text(text[:start] + new_tail, encoding="utf-8")
-
-          # D: 短 Cron 周期不能把合法 Provider 执行窗口压缩成 60 秒。
-          path = Path("tests/unit/collection/test_comprehensive_corrective_invariants.py")
-          text = path.read_text(encoding="utf-8")
-          insertion_anchor = '''def test_scheduled_job_deadline_rejects_non_forward_slot() -> None:\n'''
-          new_test = '''def test_scheduled_job_deadline_has_provider_execution_floor_for_short_cadence() -> None:\n    scheduled_for = datetime(2026, 8, 18, 0, 0, tzinfo=UTC)\n    next_run_at = datetime(2026, 8, 18, 0, 1, tzinfo=UTC)\n\n    one_scope = _scheduled_job_timeout_seconds(scheduled_for, next_run_at)\n    two_scopes = _scheduled_job_timeout_seconds(\n        scheduled_for,\n        next_run_at,\n        scope_count=2,\n    )\n    assert one_scope > 60\n    assert two_scopes > one_scope\n\n\n'''
-          if "test_scheduled_job_deadline_has_provider_execution_floor_for_short_cadence" not in text:
-              if insertion_anchor not in text:
-                  raise SystemExit("deadline unit test anchor missing")
-              text = text.replace(insertion_anchor, new_test + insertion_anchor, 1)
-          path.write_text(text, encoding="utf-8")
-          PY
+          uv run python scripts/quality/_final_corrective_runner.py write-tests
           uv run ruff format tests/integration/collection/test_comprehensive_corrective_runtime.py tests/integration/collection/test_collection_scope_replies_runtime.py tests/unit/collection/test_comprehensive_corrective_invariants.py
           uv run ruff check --fix tests/integration/collection/test_comprehensive_corrective_runtime.py tests/integration/collection/test_collection_scope_replies_runtime.py tests/unit/collection/test_comprehensive_corrective_invariants.py
           uv run ruff format --check tests/integration/collection/test_comprehensive_corrective_runtime.py tests/integration/collection/test_collection_scope_replies_runtime.py tests/unit/collection/test_comprehensive_corrective_invariants.py
           uv run ruff check tests/integration/collection/test_comprehensive_corrective_runtime.py tests/integration/collection/test_collection_scope_replies_runtime.py tests/unit/collection/test_comprehensive_corrective_invariants.py
-
-      - name: Confirm current implementation is Red
-        shell: bash
-        run: |
-          set -euo pipefail
           set +e
           uv run pytest \
             tests/unit/collection/test_comprehensive_corrective_invariants.py::test_scheduled_job_deadline_has_provider_execution_floor_for_short_cadence \
             tests/integration/collection/test_comprehensive_corrective_runtime.py::test_scope_persists_durable_actions_extensions_and_thread_coverage \
             tests/integration/collection/test_collection_scope_replies_runtime.py \
             -q --tb=short
-          status=$?
+          red_status=$?
           set -e
-          if [ "$status" -eq 0 ]; then
+          if [ "$red_status" -eq 0 ]; then
             echo "Expected final-review regressions to be Red before production fix"
             exit 1
           fi
-          echo "Red confirmed for final-review regressions"
+          echo "Red confirmed for final-review findings"
 
-      - name: Apply production fixes
+      - name: Apply production fixes and Green targeted regressions
         shell: bash
         run: |
           set -euo pipefail
-          uv run python - <<'PY'
-          from pathlib import Path
-
-          # 统一技术分页上限与 Deadline sizing，不作为发送次数/费用 Budget gate。
-          Path("backend/src/aima_ugc/modules/collection/execution_limits.py").write_text(
-              '''"""Collection 生产执行技术上限与 Job Deadline sizing。\n\n这些值只用于技术分页防护和 Deadline 容量下限，不是费用/请求 Budget，也不在发送前拦截请求。\n"""\n\nMAX_SEARCH_PAGES = 100\nMAX_COMMENT_PAGES = 100\nMAX_SUB_COMMENT_PAGES = 100\nDEADLINE_SAFETY_PERCENT = 20\nMIN_DEADLINE_SAFETY_SECONDS = 60\n\n\ndef provider_execution_window_floor_seconds(\n    *,\n    scope_count: int,\n    request_timeout_seconds: float,\n) -> int:\n    """按 Scope 数、技术分页深度和单请求 timeout 推导有限 Deadline 下限。"""\n    if scope_count < 1:\n        raise ValueError("scope_count 必须至少为 1")\n    if request_timeout_seconds <= 0:\n        raise ValueError("request_timeout_seconds 必须大于 0")\n    paginated_depth_per_scope = (\n        MAX_SEARCH_PAGES + MAX_COMMENT_PAGES + MAX_SUB_COMMENT_PAGES\n    )\n    base_seconds = int(\n        scope_count * paginated_depth_per_scope * request_timeout_seconds\n    )\n    if base_seconds < 1:\n        base_seconds = 1\n    percentage_margin = (\n        base_seconds * DEADLINE_SAFETY_PERCENT + 99\n    ) // 100\n    return base_seconds + max(\n        MIN_DEADLINE_SAFETY_SECONDS,\n        percentage_margin,\n    )\n\n\n__all__ = [\n    "DEADLINE_SAFETY_PERCENT",\n    "MAX_COMMENT_PAGES",\n    "MAX_SEARCH_PAGES",\n    "MAX_SUB_COMMENT_PAGES",\n    "MIN_DEADLINE_SAFETY_SECONDS",\n    "provider_execution_window_floor_seconds",\n]\n''',
-              encoding="utf-8",
-          )
-
-          # TikHub Transport timeout 单一事实源。
-          path = Path("backend/src/aima_ugc/adapters/providers/tikhub/transport.py")
-          text = path.read_text(encoding="utf-8")
-          if "DEFAULT_TIKHUB_REQUEST_TIMEOUT_SECONDS" not in text:
-              text = text.replace(
-                  'DEFAULT_TIKHUB_BASE_URL = "https://api.tikhub.io"\n',
-                  'DEFAULT_TIKHUB_BASE_URL = "https://api.tikhub.io"\n'
-                  'DEFAULT_TIKHUB_REQUEST_TIMEOUT_SECONDS = 45.0\n',
-                  1,
-              )
-              text = text.replace(
-                  "        timeout_seconds: float = 45.0,\n",
-                  "        timeout_seconds: float = DEFAULT_TIKHUB_REQUEST_TIMEOUT_SECONDS,\n",
-                  1,
-              )
-              text = text.replace(
-                  '    "DEFAULT_TIKHUB_BASE_URL",\n',
-                  '    "DEFAULT_TIKHUB_BASE_URL",\n'
-                  '    "DEFAULT_TIKHUB_REQUEST_TIMEOUT_SECONDS",\n',
-                  1,
-              )
-          path.write_text(text, encoding="utf-8")
-
-          # Scope Runtime 复用技术分页上限，并修 Reply Coverage/Candidate ledger/空页新鲜度。
-          path = Path("backend/src/aima_ugc/bootstrap/collection_scope.py")
-          text = path.read_text(encoding="utf-8")
-          import_anchor = (
-              "from aima_ugc.modules.collection.execution import "
-              "CollectionRunRecord, CollectionScopeRecord\n"
-          )
-          import_block = (
-              "from aima_ugc.modules.collection.execution import "
-              "CollectionRunRecord, CollectionScopeRecord\n"
-              "from aima_ugc.modules.collection.execution_limits import (\n"
-              "    MAX_COMMENT_PAGES,\n"
-              "    MAX_SEARCH_PAGES,\n"
-              "    MAX_SUB_COMMENT_PAGES,\n"
-              ")\n"
-          )
-          if "MAX_SEARCH_PAGES," not in text:
-              if import_anchor not in text:
-                  raise SystemExit("collection_scope execution import anchor missing")
-              text = text.replace(import_anchor, import_block, 1)
-          text = text.replace(
-              "_MAX_SEARCH_PAGES = 100\n_MAX_COMMENT_PAGES = 100\n_MAX_SUB_COMMENT_PAGES = 100\n",
-              "",
-              1,
-          )
-          text = text.replace("_MAX_SEARCH_PAGES", "MAX_SEARCH_PAGES")
-          text = text.replace("_MAX_COMMENT_PAGES", "MAX_COMMENT_PAGES")
-          text = text.replace("_MAX_SUB_COMMENT_PAGES", "MAX_SUB_COMMENT_PAGES")
-
-          old_identity = '''                if reply.external_content_id != root_comment.external_content_id:\n                    raise ValueError("TikHub Reply 与 Content 身份不一致")\n                if reply.root_comment_id != root_comment.external_comment_id:\n                    raise ValueError("TikHub Reply 与 Root Comment 身份不一致")\n'''
-          new_identity = '''                if reply.external_content_id != root_comment.external_content_id:\n                    self._content_writer.record_candidate_failure(\n                        candidate_id=candidate_id,\n                        provider_attempt_id=executed.attempt_id,\n                        fence=context.fence,\n                        result="invalid",\n                        error_code="reply_content_identity_mismatch",\n                    )\n                    raise ValueError("TikHub Reply 与 Content 身份不一致")\n                if reply.root_comment_id != root_comment.external_comment_id:\n                    self._content_writer.record_candidate_failure(\n                        candidate_id=candidate_id,\n                        provider_attempt_id=executed.attempt_id,\n                        fence=context.fence,\n                        result="invalid",\n                        error_code="reply_root_identity_mismatch",\n                    )\n                    raise ValueError("TikHub Reply 与 Root Comment 身份不一致")\n'''
-          if old_identity not in text:
-              raise SystemExit("reply identity block missing")
-          text = text.replace(old_identity, new_identity, 1)
-
-          old_terminal = '''            if not advance.should_continue:\n                stop_reason = advance.stop_reason or "provider_exhausted"\n                coverage = _coverage_for_stop(\n                    stop_reason,\n                    reported_total,\n                    len(reply_ids),\n                )\n'''
-          new_terminal = '''            if not advance.should_continue:\n                stop_reason = advance.stop_reason or "provider_exhausted"\n                if stop_reason == "empty_page" and not reply_ids:\n                    # SubComments 的最新显式空集合覆盖 Root Comment 上更旧的 reply_count。\n                    reported_total = 0\n                coverage = _coverage_for_stop(\n                    stop_reason,\n                    reported_total,\n                    len(reply_ids),\n                )\n'''
-          if old_terminal not in text:
-              raise SystemExit("reply terminal block missing")
-          text = text.replace(old_terminal, new_terminal, 1)
-
-          old_target = '''            if reply_target is not None and len(reply_ids) >= reply_target:\n                coverage = (\n                    "complete"\n                    if reported_total is not None and len(reply_ids) >= reported_total\n                    else "partial"\n                )\n                self._content_writer.record_thread_coverage(\n'''
-          new_target = '''            if reply_target is not None and len(reply_ids) >= reply_target:\n                # advance.should_continue=True：Provider 明确仍有下一页，软目标不能证明全集完整。\n                coverage = "partial"\n                self._content_writer.record_thread_coverage(\n'''
-          if old_target not in text:
-              raise SystemExit("reply target block missing")
-          text = text.replace(old_target, new_target, 1)
-          path.write_text(text, encoding="utf-8")
-
-          # Thread Coverage 写入回归 Content Owner；Collection 层只做 Fence/来源/平台校验。
-          path = Path("backend/src/aima_ugc/adapters/persistence/postgres/collection_content.py")
-          text = path.read_text(encoding="utf-8")
-          text = text.replace("from uuid import UUID, uuid4\n", "from uuid import UUID\n", 1)
-          text = text.replace(
-              "from sqlalchemy.dialects.postgresql import insert as pg_insert\n",
-              "",
-              1,
-          )
-          text = text.replace(
-              "from aima_ugc.modules.content.extended_tables import "
-              "comment_thread_coverage_observations_table\n",
-              "",
-              1,
-          )
-          start = text.index("    def record_thread_coverage(")
-          end = text.index("\n\ndef _lock_matching_attempt", start)
-          new_method = '''    def record_thread_coverage(\n        self,\n        *,\n        content_id: UUID,\n        root_comment_id: str,\n        provider_attempt_id: UUID,\n        raw_artifact_id: UUID,\n        platform: str,\n        fence: JobExecutionFence,\n        coverage: str,\n        reported_total: int | None,\n        captured_count: int,\n        target_count: int | None,\n        stop_reason: str,\n        observed_at: datetime,\n    ) -> UUID:\n        """校验 Fence/来源/平台后委托 Content Owner 幂等保存 Thread Coverage。"""\n        session = self._session_factory()\n        try:\n            with session.begin():\n                attempt_platform = _lock_matching_attempt(\n                    session,\n                    attempt_id=provider_attempt_id,\n                    raw_artifact_id=raw_artifact_id,\n                    fence=fence,\n                )\n                content_platform = session.scalar(\n                    select(contents_table.c.platform).where(contents_table.c.id == content_id)\n                )\n                if content_platform is None:\n                    raise LookupError("Thread Coverage Content 不存在")\n                if content_platform != platform or attempt_platform != platform:\n                    raise ValueError("Thread Coverage Content/Attempt 平台不一致")\n                return PostgresCompleteContentRepository(session).record_thread_coverage(\n                    content_id=content_id,\n                    root_comment_id=root_comment_id,\n                    provider_attempt_id=provider_attempt_id,\n                    raw_artifact_id=raw_artifact_id,\n                    coverage=coverage,\n                    reported_total=reported_total,\n                    captured_count=captured_count,\n                    target_count=target_count,\n                    stop_reason=stop_reason,\n                    observed_at=observed_at,\n                )\n        finally:\n            session.close()\n'''
-          path.write_text(text[:start] + new_method + text[end:], encoding="utf-8")
-
-          # Content Owner 实现 Thread Coverage 校验 + 真 ID returning。
-          path = Path("backend/src/aima_ugc/adapters/persistence/postgres/content_complete.py")
-          text = path.read_text(encoding="utf-8")
-          text = text.replace("from typing import Any\n", "from typing import Any, cast\n", 1)
-          text = text.replace(
-              "from sqlalchemy import Table, delete, insert, select, update\n",
-              "from sqlalchemy import Table, delete, insert, select, update\n"
-              "from sqlalchemy.dialects.postgresql import insert as pg_insert\n",
-              1,
-          )
-          method_anchor = '''    def record_comment_coverage(self, **kwargs: Any) -> UUID:\n        return self._core.record_comment_coverage(**kwargs)\n\n'''
-          thread_method = method_anchor + '''    def record_thread_coverage(\n        self,\n        *,\n        content_id: UUID,\n        root_comment_id: str,\n        provider_attempt_id: UUID,\n        raw_artifact_id: UUID,\n        coverage: str,\n        reported_total: int | None,\n        captured_count: int,\n        target_count: int | None,\n        stop_reason: str,\n        observed_at: datetime,\n    ) -> UUID:\n        """Content Owner 幂等保存二级回复线程 Coverage，并返回真实持久化 ID。"""\n        if coverage not in {"complete", "partial", "not_requested", "unavailable"}:\n            raise ValueError("Thread Coverage 状态非法")\n        if not root_comment_id.strip():\n            raise ValueError("Thread Coverage root_comment_id 不能为空")\n        if reported_total is not None and reported_total < 0:\n            raise ValueError("Thread Coverage reported_total 不能为负数")\n        if captured_count < 0:\n            raise ValueError("Thread Coverage captured_count 不能为负数")\n        if target_count is not None and target_count < 0:\n            raise ValueError("Thread Coverage target_count 不能为负数")\n        if observed_at.utcoffset() is None:\n            raise ValueError("Thread Coverage observed_at 必须包含时区")\n        if not stop_reason.strip():\n            raise ValueError("Thread Coverage stop_reason 不能为空")\n        if coverage in {"not_requested", "unavailable"} and captured_count != 0:\n            raise ValueError("未请求/不可用 Thread Coverage 不能包含已采集回复")\n        if coverage == "complete" and reported_total is not None:\n            if captured_count < reported_total:\n                raise ValueError("complete Thread Coverage 的采集数不能小于 Provider 报告总数")\n\n        values = {\n            "id": uuid4(),\n            "content_id": content_id,\n            "root_comment_id": root_comment_id.strip(),\n            "provider_attempt_id": provider_attempt_id,\n            "raw_artifact_id": raw_artifact_id,\n            "coverage": coverage,\n            "reported_total": reported_total,\n            "captured_count": captured_count,\n            "target_count": target_count,\n            "stop_reason": stop_reason.strip(),\n            "observed_at": observed_at,\n        }\n        statement = pg_insert(comment_thread_coverage_observations_table).values(**values)\n        row_id = self._session.execute(\n            statement.on_conflict_do_update(\n                constraint="uq_comment_thread_coverage_source",\n                set_={\n                    "coverage": statement.excluded.coverage,\n                    "reported_total": statement.excluded.reported_total,\n                    "captured_count": statement.excluded.captured_count,\n                    "target_count": statement.excluded.target_count,\n                    "stop_reason": statement.excluded.stop_reason,\n                    "observed_at": statement.excluded.observed_at,\n                },\n            ).returning(comment_thread_coverage_observations_table.c.id)\n        ).scalar_one()\n        return cast(UUID, row_id)\n\n'''
-          if "def record_thread_coverage(" not in text:
-              if method_anchor not in text:
-                  raise SystemExit("content owner coverage anchor missing")
-              text = text.replace(method_anchor, thread_method, 1)
-          path.write_text(text, encoding="utf-8")
-
-          # 新表数据库层也拒绝伪 complete/non-fetch count。
-          path = Path("backend/src/aima_ugc/modules/content/extended_tables.py")
-          text = path.read_text(encoding="utf-8")
-          check_anchor = '''    CheckConstraint(\n        "target_count is null or target_count >= 0",\n        name="target_nonneg",\n    ),\n    info={"owner": "content"},\n'''
-          check_block = '''    CheckConstraint(\n        "target_count is null or target_count >= 0",\n        name="target_nonneg",\n    ),\n    CheckConstraint(\n        "coverage <> 'complete' or reported_total is null or captured_count >= reported_total",\n        name="complete_count_consistent",\n    ),\n    CheckConstraint(\n        "coverage not in ('not_requested','unavailable') or captured_count = 0",\n        name="nonfetch_count_zero",\n    ),\n    info={"owner": "content"},\n'''
-          if "complete_count_consistent" not in text:
-              if check_anchor not in text:
-                  raise SystemExit("extended thread check anchor missing")
-              text = text.replace(check_anchor, check_block, 1)
-          path.write_text(text, encoding="utf-8")
-
-          path = Path("migrations/versions/20260818_0018_stage1_stage7_comprehensive_corrective.py")
-          text = path.read_text(encoding="utf-8")
-          migration_anchor = '''        sa.CheckConstraint(\n            "target_count is null or target_count >= 0",\n            name="target_nonneg",\n        ),\n        sa.ForeignKeyConstraint(["content_id"], ["contents.id"]),\n'''
-          migration_block = '''        sa.CheckConstraint(\n            "target_count is null or target_count >= 0",\n            name="target_nonneg",\n        ),\n        sa.CheckConstraint(\n            "coverage <> 'complete' or reported_total is null or captured_count >= reported_total",\n            name="complete_count_consistent",\n        ),\n        sa.CheckConstraint(\n            "coverage not in ('not_requested','unavailable') or captured_count = 0",\n            name="nonfetch_count_zero",\n        ),\n        sa.ForeignKeyConstraint(["content_id"], ["contents.id"]),\n'''
-          if "complete_count_consistent" not in text:
-              if migration_anchor not in text:
-                  raise SystemExit("migration thread check anchor missing")
-              text = text.replace(migration_anchor, migration_block, 1)
-          path.write_text(text, encoding="utf-8")
-
-          # Scheduler Deadline = max(Cron cadence, Provider 技术执行窗口下限)，并冻结 sizing 事实。
-          path = Path("backend/src/aima_ugc/bootstrap/scheduler.py")
-          text = path.read_text(encoding="utf-8")
-          provider_anchor = (
-              "from aima_ugc.adapters.providers.registry import build_default_provider_registry\n"
-          )
-          provider_import = provider_anchor + (
-              "from aima_ugc.adapters.providers.tikhub.transport import (\n"
-              "    DEFAULT_TIKHUB_REQUEST_TIMEOUT_SECONDS,\n"
-              ")\n"
-          )
-          if "DEFAULT_TIKHUB_REQUEST_TIMEOUT_SECONDS" not in text:
-              if provider_anchor not in text:
-                  raise SystemExit("scheduler provider import anchor missing")
-              text = text.replace(provider_anchor, provider_import, 1)
-          planning_anchor = '''from aima_ugc.modules.collection.collection_run_job import (\n'''
-          limits_import = '''from aima_ugc.modules.collection.execution_limits import (\n    DEADLINE_SAFETY_PERCENT,\n    MAX_COMMENT_PAGES,\n    MAX_SEARCH_PAGES,\n    MAX_SUB_COMMENT_PAGES,\n    provider_execution_window_floor_seconds,\n)\n'''
-          if "provider_execution_window_floor_seconds" not in text:
-              index = text.index(planning_anchor)
-              text = text[:index] + limits_import + text[index:]
-
-          old_job = '''                    job = PostgresJobRepository(session).enqueue(\n                        job_type=COLLECTION_RUN_JOB_TYPE,\n                        payload_version=COLLECTION_RUN_PAYLOAD_VERSION,\n                        payload=CollectionRunJobPayload().model_dump(mode="json"),\n                        internal_idempotency_key=_scheduled_job_idempotency_key(\n                            plan, decision.enqueue_for\n                        ),\n                        request_id=None,\n                        priority=10,\n                        max_attempts=2,\n                        timeout_seconds=_scheduled_job_timeout_seconds(\n                            decision.enqueue_for,\n                            decision.next_run_at,\n                        ),\n                    )\n'''
-          new_job = '''                    job_timeout_seconds = _scheduled_job_timeout_seconds(\n                        decision.enqueue_for,\n                        decision.next_run_at,\n                        scope_count=len(scope_snapshot.scopes),\n                    )\n                    job = PostgresJobRepository(session).enqueue(\n                        job_type=COLLECTION_RUN_JOB_TYPE,\n                        payload_version=COLLECTION_RUN_PAYLOAD_VERSION,\n                        payload=CollectionRunJobPayload().model_dump(mode="json"),\n                        internal_idempotency_key=_scheduled_job_idempotency_key(\n                            plan, decision.enqueue_for\n                        ),\n                        request_id=None,\n                        priority=10,\n                        max_attempts=2,\n                        timeout_seconds=job_timeout_seconds,\n                    )\n'''
-          if old_job not in text:
-              raise SystemExit("scheduler job timeout block missing")
-          text = text.replace(old_job, new_job, 1)
-          text = text.replace(
-              '''                            keyword_packs=scope_snapshot.keyword_packs,\n                            keyword_scope_count=len(scope_snapshot.scopes),\n''',
-              '''                            keyword_packs=scope_snapshot.keyword_packs,\n                            keyword_scope_count=len(scope_snapshot.scopes),\n                            job_timeout_seconds=job_timeout_seconds,\n''',
-              1,
-          )
-          old_fn = '''def _scheduled_job_timeout_seconds(scheduled_for: datetime, next_run_at: datetime) -> int:\n    """Scheduled Run 的不可续期 Deadline 与下一逻辑 slot 对齐，不使用固定 300 秒魔数。"""\n    seconds = int((next_run_at - scheduled_for).total_seconds())\n    if seconds < 1:\n        raise ValueError("Scheduler 下一逻辑 slot 必须晚于当前 scheduled_for")\n    return seconds\n'''
-          new_fn = '''def _scheduled_job_timeout_seconds(\n    scheduled_for: datetime,\n    next_run_at: datetime,\n    *,\n    scope_count: int = 1,\n) -> int:\n    """Deadline 不短于 Cron 间隔，也不短于 Provider 技术执行窗口。"""\n    cadence_seconds = int((next_run_at - scheduled_for).total_seconds())\n    if cadence_seconds < 1:\n        raise ValueError("Scheduler 下一逻辑 slot 必须晚于当前 scheduled_for")\n    provider_floor = provider_execution_window_floor_seconds(\n        scope_count=scope_count,\n        request_timeout_seconds=DEFAULT_TIKHUB_REQUEST_TIMEOUT_SECONDS,\n    )\n    return max(cadence_seconds, provider_floor)\n'''
-          if old_fn not in text:
-              raise SystemExit("scheduler timeout function missing")
-          text = text.replace(old_fn, new_fn, 1)
-          text = text.replace(
-              '''    keyword_packs: tuple[ScheduledKeywordPackSnapshot, ...],\n    keyword_scope_count: int,\n) -> dict[str, object]:\n''',
-              '''    keyword_packs: tuple[ScheduledKeywordPackSnapshot, ...],\n    keyword_scope_count: int,\n    job_timeout_seconds: int,\n) -> dict[str, object]:\n''',
-              1,
-          )
-          snapshot_anchor = '''        "decision_policy": plan.decision_policy.model_dump(mode="json"),\n        "platforms": list(provider_snapshots),\n'''
-          snapshot_block = '''        "decision_policy": plan.decision_policy.model_dump(mode="json"),\n        "job_timeout_seconds": job_timeout_seconds,\n        "execution_limits": {\n            "scope_count": keyword_scope_count,\n            "max_search_pages": MAX_SEARCH_PAGES,\n            "max_comment_pages": MAX_COMMENT_PAGES,\n            "max_sub_comment_pages": MAX_SUB_COMMENT_PAGES,\n            "provider_request_timeout_seconds": DEFAULT_TIKHUB_REQUEST_TIMEOUT_SECONDS,\n            "deadline_safety_percent": DEADLINE_SAFETY_PERCENT,\n        },\n        "platforms": list(provider_snapshots),\n'''
-          if snapshot_anchor not in text:
-              raise SystemExit("scheduler snapshot anchor missing")
-          text = text.replace(snapshot_anchor, snapshot_block, 1)
-          path.write_text(text, encoding="utf-8")
-          PY
-
-          uv run ruff format \
-            backend/src/aima_ugc/modules/collection/execution_limits.py \
-            backend/src/aima_ugc/adapters/providers/tikhub/transport.py \
-            backend/src/aima_ugc/bootstrap/collection_scope.py \
-            backend/src/aima_ugc/bootstrap/scheduler.py \
-            backend/src/aima_ugc/adapters/persistence/postgres/collection_content.py \
-            backend/src/aima_ugc/adapters/persistence/postgres/content_complete.py \
-            backend/src/aima_ugc/modules/content/extended_tables.py \
-            migrations/versions/20260818_0018_stage1_stage7_comprehensive_corrective.py \
-            tests/integration/collection/test_comprehensive_corrective_runtime.py \
-            tests/integration/collection/test_collection_scope_replies_runtime.py \
-            tests/unit/collection/test_comprehensive_corrective_invariants.py
-          uv run ruff check --fix \
-            backend/src/aima_ugc/modules/collection/execution_limits.py \
-            backend/src/aima_ugc/adapters/providers/tikhub/transport.py \
-            backend/src/aima_ugc/bootstrap/collection_scope.py \
-            backend/src/aima_ugc/bootstrap/scheduler.py \
-            backend/src/aima_ugc/adapters/persistence/postgres/collection_content.py \
-            backend/src/aima_ugc/adapters/persistence/postgres/content_complete.py \
-            backend/src/aima_ugc/modules/content/extended_tables.py \
-            migrations/versions/20260818_0018_stage1_stage7_comprehensive_corrective.py \
-            tests/integration/collection/test_comprehensive_corrective_runtime.py \
-            tests/integration/collection/test_collection_scope_replies_runtime.py \
-            tests/unit/collection/test_comprehensive_corrective_invariants.py
+          uv run python scripts/quality/_final_corrective_runner.py apply-fixes
+          uv run ruff format backend/src/aima_ugc migrations tests
+          uv run ruff check --fix backend/src/aima_ugc migrations tests
           uv run ruff format --check backend/src/aima_ugc migrations tests
           uv run ruff check backend/src/aima_ugc migrations tests
-
-      - name: Green targeted final-review regressions
-        shell: bash
-        run: |
-          set -euo pipefail
           uv run pytest \
             tests/unit/collection/test_comprehensive_corrective_invariants.py::test_scheduled_job_deadline_has_provider_execution_floor_for_short_cadence \
             tests/integration/collection/test_comprehensive_corrective_runtime.py::test_scope_persists_durable_actions_extensions_and_thread_coverage \
@@ -607,27 +132,17 @@ def test_reply_content_identity_mismatch_records_invalid_candidate(
           uv run alembic upgrade head
           uv run alembic check
 
-      - name: Commit verified final-review fixes and restore formal workflow
+      - name: Commit verified fixes and remove temporary infrastructure
         shell: bash
         run: |
           set -euo pipefail
+          uv run python scripts/quality/_final_corrective_runner.py cleanup-trigger
           git fetch origin main
           git checkout origin/main -- .github/workflows/stage5b-collection-execution.yml
+          git rm -f scripts/quality/_final_corrective_runner.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            backend/src/aima_ugc/modules/collection/execution_limits.py \
-            backend/src/aima_ugc/adapters/providers/tikhub/transport.py \
-            backend/src/aima_ugc/bootstrap/collection_scope.py \
-            backend/src/aima_ugc/bootstrap/scheduler.py \
-            backend/src/aima_ugc/adapters/persistence/postgres/collection_content.py \
-            backend/src/aima_ugc/adapters/persistence/postgres/content_complete.py \
-            backend/src/aima_ugc/modules/content/extended_tables.py \
-            migrations/versions/20260818_0018_stage1_stage7_comprehensive_corrective.py \
-            tests/integration/collection/test_comprehensive_corrective_runtime.py \
-            tests/integration/collection/test_collection_scope_replies_runtime.py \
-            tests/unit/collection/test_comprehensive_corrective_invariants.py \
-            .github/workflows/stage5b-collection-execution.yml
+          git add backend/src/aima_ugc migrations tests .github/workflows/stage5b-collection-execution.yml
           git diff --cached --check
           git commit -m "fix: close final corrective review findings"
           git push origin HEAD:fix/stage1-stage7-comprehensive-corrective
