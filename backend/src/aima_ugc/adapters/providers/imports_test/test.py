@@ -6,6 +6,12 @@ from aima_ugc.adapters.providers.imports import (
     ExcelConversionSummary,
     convert_excel_to_canonical_jsonl,
 )
+from aima_ugc.modules.analysis import (
+    ContentDeduplicationSummary,
+    ContentFilterSummary,
+    deduplicate_content_jsonl,
+    filter_canonical_content_jsonl,
+)
 
 INPUT_XLSX = Path(r"E:\path\to\source.xlsx")
 OUTPUT_ROOT = Path(__file__).with_name("output")
@@ -22,13 +28,32 @@ ENV_FILE = Path(__file__).with_name(".env")
 
 
 def convert() -> ExcelConversionSummary:
-    """执行 P1B 的 XLSX → Canonical JSONL；不做筛选、去重或 AI。"""
+    """执行 XLSX → Canonical JSONL。"""
 
     return convert_excel_to_canonical_jsonl(
         input_path=INPUT_XLSX,
         output_path=OUTPUT_ROOT / "canonical" / "contents.jsonl",
         profile_name=PROFILE,
         sheet_name=SHEET_NAME,
+    )
+
+
+def filter_keywords() -> ContentFilterSummary:
+    """执行 Canonical JSONL → 关键词命中过滤后的统一内容记录。"""
+
+    return filter_canonical_content_jsonl(
+        input_path=OUTPUT_ROOT / "canonical" / "contents.jsonl",
+        output_path=OUTPUT_ROOT / "filtered" / "contents.jsonl",
+        keywords=KEYWORDS,
+    )
+
+
+def deduplicate() -> ContentDeduplicationSummary:
+    """执行 filtered JSONL → 稳定身份去重后的统一内容记录。"""
+
+    return deduplicate_content_jsonl(
+        input_path=OUTPUT_ROOT / "filtered" / "contents.jsonl",
+        output_path=OUTPUT_ROOT / "deduplicated" / "contents.jsonl",
     )
 
 

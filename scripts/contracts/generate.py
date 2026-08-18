@@ -6,6 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
+from aima_ugc.contracts.analysis import UnifiedContentRecordV1
 from aima_ugc.contracts.canonical import (
     CanonicalCommentV1,
     CanonicalContentAggregateV1,
@@ -23,9 +24,13 @@ from aima_ugc.entrypoints.api_main import create_app
 
 ROOT = Path(__file__).resolve().parents[2]
 OPENAPI_TARGET = ROOT / "contracts" / "openapi" / "openapi.json"
+ANALYSIS_DIR = ROOT / "contracts" / "analysis"
 CANONICAL_DIR = ROOT / "contracts" / "canonical"
 PROVIDER_DIR = ROOT / "contracts" / "provider"
 COLLECTION_DIR = ROOT / "contracts" / "collection"
+ANALYSIS_MODELS = {
+    "content-record.v1.schema.json": UnifiedContentRecordV1,
+}
 CANONICAL_MODELS = {
     "content.v1.schema.json": CanonicalContentV1,
     "comment.v1.schema.json": CanonicalCommentV1,
@@ -77,6 +82,12 @@ def main() -> int:
     expected: dict[Path, str] = {OPENAPI_TARGET: render_openapi()}
     expected.update(
         {
+            ANALYSIS_DIR / filename: render_schema(model)
+            for filename, model in ANALYSIS_MODELS.items()
+        }
+    )
+    expected.update(
+        {
             CANONICAL_DIR / filename: render_schema(model)
             for filename, model in CANONICAL_MODELS.items()
         }
@@ -103,7 +114,7 @@ def main() -> int:
         if stale:
             print("CONTRACT_STALE: " + ", ".join(str(path) for path in stale))
             return 1
-        print("OpenAPI、Canonical、Provider 与 Collection Contract 已同步。")
+        print("OpenAPI、Analysis、Canonical、Provider 与 Collection Contract 已同步。")
         return 0
 
     for path, rendered in expected.items():

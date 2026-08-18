@@ -13,6 +13,7 @@ on:
       - "backend/src/aima_ugc/operations/storage/**"
       - "backend/src/aima_ugc/adapters/storage/**"
       - "contracts/provider/**"
+      - "contracts/analysis/**"
       - "scripts/contracts/**"
       - "scripts/quality/**"
       - "tests/unit/collection/**"
@@ -32,6 +33,7 @@ on:
       - "backend/src/aima_ugc/operations/storage/**"
       - "backend/src/aima_ugc/adapters/storage/**"
       - "contracts/provider/**"
+      - "contracts/analysis/**"
       - "scripts/contracts/**"
       - "scripts/quality/**"
       - "tests/unit/collection/**"
@@ -97,6 +99,13 @@ jobs:
             backend/src/aima_ugc/modules/analysis \
             backend/src/aima_ugc/adapters/providers/imports \
             backend/src/aima_ugc/adapters/providers/imports_test
+
+      - name: P1 Analysis Contract drift
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/contracts/generate.py
+          git diff --exit-code -- contracts/analysis
 
       - name: P1 architecture gate
         shell: bash
