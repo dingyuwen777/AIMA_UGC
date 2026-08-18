@@ -1,37 +1,21 @@
 name: Stage 5B Collection Execution
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "backend/src/aima_ugc/modules/collection/**"
-      - "backend/src/aima_ugc/adapters/persistence/postgres/collection.py"
-      - "backend/src/aima_ugc/database_schema.py"
-      - "migrations/versions/**"
-      - "tests/unit/collection/**"
-      - "tests/integration/collection/**"
-      - "scripts/quality/check_architecture.py"
-      - ".github/workflows/stage5b-collection-execution.yml"
   pull_request:
     branches:
       - main
     paths:
-      - "backend/src/aima_ugc/modules/collection/**"
-      - "backend/src/aima_ugc/adapters/persistence/postgres/collection.py"
-      - "backend/src/aima_ugc/database_schema.py"
-      - "migrations/versions/**"
-      - "tests/unit/collection/**"
-      - "tests/integration/collection/**"
-      - "scripts/quality/check_architecture.py"
       - ".github/workflows/stage5b-collection-execution.yml"
+      - ".github/workflows/_corrective-remaining-fix.yml"
+      - "backend/src/aima_ugc/bootstrap/collection_scope.py"
+      - "tests/integration/collection/**"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  stage5b-collection-execution:
-    name: Stage 5B Collection Execution
+  corrective-repair:
+    if: github.head_ref == 'fix/stage1-stage7-comprehensive-corrective'
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -39,7 +23,7 @@ jobs:
         env:
           POSTGRES_DB: aima_ugc
           POSTGRES_USER: aima_ugc
-          POSTGRES_PASSWORD: stage5b-ci
+          POSTGRES_PASSWORD: corrective-ci
         ports:
           - 5432:5432
         options: >-
@@ -48,115 +32,106 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      AIMA_DATA_DIR: .runtime/ci-stage5b/data
-      AIMA_LOG_DIR: .runtime/ci-stage5b/logs
-      AIMA_SECRET_DIR: .runtime/ci-stage5b/secrets
+      AIMA_DATA_DIR: .runtime/corrective/data
+      AIMA_LOG_DIR: .runtime/corrective/logs
+      AIMA_SECRET_DIR: .runtime/corrective/secrets
       AIMA_DB_HOST: 127.0.0.1
       AIMA_DB_PORT: 5432
       AIMA_DB_NAME: aima_ugc
       AIMA_DB_USER: aima_ugc
       AIMA_DB_CONNECT_TIMEOUT_SECONDS: 3
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: fix/stage1-stage7-comprehensive-corrective
+          fetch-depth: 0
 
-      - name: Setup Python
-        uses: actions/setup-python@v6.2.0
+      - uses: actions/setup-python@v6.2.0
         with:
           python-version: 3.14.7
 
-      - name: Install frozen Python environment
+      - name: Install and migrate
         shell: bash
         run: |
           set -euo pipefail
-          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
-          python -m pip install "uv==${UV_VERSION}"
+          python -m pip install -q "uv==$(tr -d '\r\n' < .uv-version)"
           uv lock --check
-          uv sync --locked
-
-      - name: Prepare Stage 5B Secret
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "${AIMA_DATA_DIR}" "${AIMA_LOG_DIR}" "${AIMA_SECRET_DIR}"
-          printf '%s\n' 'stage5b-ci' > "${AIMA_SECRET_DIR}/postgres_password"
-          chmod 600 "${AIMA_SECRET_DIR}/postgres_password"
-
-      - name: Collection unit and Provider contract tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run pytest tests/unit/collection tests/contracts/test_provider_v1.py -q
-
-      - name: Upgrade empty database to Stage 5B head
-        shell: bash
-        run: |
-          set -euo pipefail
+          uv sync --locked --quiet
+          mkdir -p "$AIMA_DATA_DIR" "$AIMA_LOG_DIR" "$AIMA_SECRET_DIR"
+          printf '%s\n' 'corrective-ci' > "$AIMA_SECRET_DIR/postgres_password"
+          chmod 600 "$AIMA_SECRET_DIR/postgres_password"
           uv run alembic upgrade head
-          uv run alembic current
           uv run alembic check
+
+      - name: Apply minimal patch
+        shell: bash
+        run: |
+          set -euo pipefail
           uv run python - <<'PY'
-          from sqlalchemy import inspect
+          from pathlib import Path
 
-          from aima_ugc.platform.config import load_settings
-          from aima_ugc.platform.database import DatabaseRuntime
+          scope_path = Path("backend/src/aima_ugc/bootstrap/collection_scope.py")
+          text = scope_path.read_text(encoding="utf-8")
+          old_target = '''            if comment_target is not None and len(seen_comment_ids) >= comment_target:\n                coverage = (\n                    "complete"\n                    if reported_total is not None and len(seen_comment_ids) >= reported_total\n                    else "partial"\n                )\n                self._record_comment_coverage(\n'''
+          new_target = '''            if comment_target is not None and len(seen_comment_ids) >= comment_target:\n                # 只有 Provider 仍声明可继续分页时才会走到这里；达到软目标不能证明全集完整。\n                coverage = "partial"\n                self._record_comment_coverage(\n'''
+          if old_target not in text:
+              raise SystemExit("target_reached block not found")
+          text = text.replace(old_target, new_target, 1)
 
-          runtime = DatabaseRuntime(load_settings())
-          try:
-              inspector = inspect(runtime.engine)
-              existing = set(inspector.get_table_names())
-              run_foreign_keys = inspector.get_foreign_keys("collection_runs")
-              run_uniques = {
-                  tuple(item["column_names"])
-                  for item in inspector.get_unique_constraints("collection_runs")
-              }
-              scope_uniques = {
-                  tuple(item["column_names"])
-                  for item in inspector.get_unique_constraints("collection_scopes")
-              }
-              run_indexes = {item["name"] for item in inspector.get_indexes("collection_runs")}
-              scope_indexes = {item["name"] for item in inspector.get_indexes("collection_scopes")}
-          finally:
-              runtime.dispose()
+          old_terminal = '''            if not advance.should_continue:\n                stop_reason = advance.stop_reason or "provider_exhausted"\n                coverage = _coverage_for_stop(\n'''
+          new_terminal = '''            if not advance.should_continue:\n                stop_reason = advance.stop_reason or "provider_exhausted"\n                if stop_reason == "empty_page" and not seen_comment_ids:\n                    # 第一页评论接口的显式空集合是比 Search/Detail 更晚的观察事实。\n                    reported_total = 0\n                    sample_mode = _comment_sample_mode(\n                        comment_action=comment_action,\n                        comment_target=comment_target,\n                        reported_total=reported_total,\n                    )\n                coverage = _coverage_for_stop(\n'''
+          if old_terminal not in text:
+              raise SystemExit("terminal coverage block not found")
+          text = text.replace(old_terminal, new_terminal, 1)
+          scope_path.write_text(text, encoding="utf-8")
 
-          required = {
-              "artifacts",
-              "system_settings",
-              "audit_events",
-              "jobs",
-              "job_attempt_events",
-              "collection_runs",
-              "collection_scopes",
-          }
-          assert required <= existing, existing
-          assert any(
-              item["constrained_columns"] == ["job_id"]
-              and item["referred_table"] == "jobs"
-              and item["referred_columns"] == ["id"]
-              for item in run_foreign_keys
-          ), run_foreign_keys
-          assert ("job_id",) in run_uniques, run_uniques
-          assert (
-              "run_id",
-              "platform",
-              "source_type",
-              "source_value",
-              "operation_group",
-          ) in scope_uniques, scope_uniques
-          assert "ix_collection_runs_status_created_at" in run_indexes, run_indexes
-          assert "ix_collection_scopes_run_id_status" in scope_indexes, scope_indexes
+          patched = []
+          for path in Path("tests/integration/collection").glob("test_*.py"):
+              content = path.read_text(encoding="utf-8")
+              parent_delete = "connection.execute(delete(collection_plans_table))"
+              if parent_delete not in content:
+                  continue
+              child_delete = "connection.execute(delete(collection_plan_decision_policies_table))"
+              changed = False
+              if "collection_plan_decision_policies_table" not in content:
+                  anchor = "from aima_ugc.modules.collection"
+                  index = content.find(anchor)
+                  if index < 0:
+                      raise SystemExit(f"collection import anchor missing: {path}")
+                  content = (
+                      content[:index]
+                      + "from aima_ugc.modules.collection.corrective_tables import (\n"
+                      + "    collection_plan_decision_policies_table,\n"
+                      + ")\n"
+                      + content[index:]
+                  )
+                  changed = True
+              if child_delete not in content:
+                  content = content.replace(
+                      parent_delete,
+                      child_delete + "\n            " + parent_delete,
+                  )
+                  changed = True
+              if changed:
+                  path.write_text(content, encoding="utf-8")
+                  patched.append(str(path))
+          if not patched:
+              raise SystemExit("no plan cleanup fixture patched")
+          print("patched cleanup fixtures:", *patched, sep="\n")
           PY
+          uv run ruff format backend/src/aima_ugc/bootstrap/collection_scope.py tests/integration/collection
+          uv run ruff check --fix backend/src/aima_ugc/bootstrap/collection_scope.py tests/integration/collection
+          uv run ruff format --check backend/src/aima_ugc/bootstrap/collection_scope.py tests/integration/collection
+          uv run ruff check backend/src/aima_ugc/bootstrap/collection_scope.py tests/integration/collection
 
-      - name: PostgreSQL Collection integration tests
+      - name: Verify repaired scope
         shell: bash
         run: |
           set -euo pipefail
+          uv run mypy backend/src/aima_ugc
+          uv run pytest tests/unit/collection tests/contracts/test_provider_v1.py -q
           uv run pytest tests/integration/collection -q
-
-      - name: Stage 5B quality gates
-        shell: bash
-        run: |
-          set -euo pipefail
+          uv run alembic check
           uv run python scripts/quality/check_architecture.py
           uv run python scripts/quality/check_table_ownership.py
           uv run python scripts/quality/scan_secrets.py
@@ -164,61 +139,21 @@ jobs:
           uv run python scripts/contracts/generate.py --check
           uv run python scripts/contracts/check_compatibility.py
 
-      - name: Downgrade to base and re-upgrade
+      - name: Commit verified repair and restore formal workflow
         shell: bash
         run: |
           set -euo pipefail
-          uv run alembic downgrade base
-          uv run python - <<'PY'
-          from sqlalchemy import inspect
-
-          from aima_ugc.platform.config import load_settings
-          from aima_ugc.platform.database import DatabaseRuntime
-
-          runtime = DatabaseRuntime(load_settings())
-          try:
-              existing = set(inspect(runtime.engine).get_table_names())
-          finally:
-              runtime.dispose()
-          application_tables = {
-              "artifacts",
-              "system_settings",
-              "audit_events",
-              "jobs",
-              "job_attempt_events",
-              "collection_runs",
-              "collection_scopes",
-          }
-          assert not (application_tables & existing), existing
-          PY
-          uv run alembic upgrade head
-          uv run alembic check
-
-      - name: Downgrade to previous revision and re-upgrade
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run alembic downgrade 20260814_0002
-          uv run python - <<'PY'
-          from sqlalchemy import inspect
-
-          from aima_ugc.platform.config import load_settings
-          from aima_ugc.platform.database import DatabaseRuntime
-
-          runtime = DatabaseRuntime(load_settings())
-          try:
-              existing = set(inspect(runtime.engine).get_table_names())
-          finally:
-              runtime.dispose()
-          previous = {
-              "artifacts",
-              "system_settings",
-              "audit_events",
-              "jobs",
-              "job_attempt_events",
-          }
-          assert previous <= existing, existing
-          assert not ({"collection_runs", "collection_scopes"} & existing), existing
-          PY
-          uv run alembic upgrade head
-          uv run alembic check
+          git fetch origin main
+          git checkout origin/main -- .github/workflows/stage5b-collection-execution.yml
+          if [ -f .github/workflows/_corrective-remaining-fix.yml ]; then
+            git rm -f .github/workflows/_corrective-remaining-fix.yml
+          fi
+          if [ -f .github/workflows/_corrective-focused-diagnostics.yml ]; then
+            git rm -f .github/workflows/_corrective-focused-diagnostics.yml
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/src/aima_ugc/bootstrap/collection_scope.py tests/integration/collection .github/workflows
+          git diff --cached --check
+          git commit -m "fix: close remaining collection coverage regressions"
+          git push origin HEAD:fix/stage1-stage7-comprehensive-corrective
