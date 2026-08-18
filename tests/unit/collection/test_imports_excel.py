@@ -6,14 +6,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from openpyxl import Workbook
-
 from aima_ugc.adapters.providers.imports import (
     ExcelImportRejectedRowsError,
     convert_excel_to_canonical_jsonl,
 )
 from aima_ugc.adapters.providers.imports.identity import resolve_content_identity
 from aima_ugc.contracts.canonical import CanonicalContentV1
+from openpyxl import Workbook
 
 HEADERS = (
     "序号",
