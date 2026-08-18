@@ -115,8 +115,67 @@ jobs:
               if changed:
                   path.write_text(content, encoding="utf-8")
                   patched.append(str(path))
-          if not patched:
-              raise SystemExit("no plan cleanup fixture patched")
+
+          snapshot_path = Path(
+              "tests/integration/collection/test_stage7_scheduled_scope_snapshot_postgres.py"
+          )
+          snapshot = snapshot_path.read_text(encoding="utf-8")
+          old_expected = '{"id": str(pack.id), "version": 3, "enabled": True}'
+          new_expected = '{"id": str(pack.id), "version": 5, "enabled": True}'
+          if old_expected not in snapshot:
+              raise SystemExit("keyword pack snapshot expectation not found")
+          snapshot_path.write_text(snapshot.replace(old_expected, new_expected, 1), encoding="utf-8")
+
+          scheduler_path = Path(
+              "tests/integration/collection/test_stage7_scheduler_runtime_postgres.py"
+          )
+          scheduler = scheduler_path.read_text(encoding="utf-8")
+          scheduler = scheduler.replace(
+              "from aima_ugc.modules.collection.planning import CollectionPlanDefinition, CollectionPlanningService\n",
+              "from aima_ugc.modules.collection.planning import (\n"
+              "    CollectionPlanDefinition,\n"
+              "    CollectionPlanningService,\n"
+              "    PlanPlatformDefinition,\n"
+              ")\n",
+              1,
+          )
+          if "from aima_ugc.modules.system.tables import (" not in scheduler:
+              anchor = "from aima_ugc.platform.jobs.tables import job_attempt_events_table, jobs_table\n"
+              system_imports = (
+                  "from aima_ugc.modules.system.tables import (\n"
+                  "    keyword_pack_items_table,\n"
+                  "    keyword_packs_table,\n"
+                  "    keywords_table,\n"
+                  "    provider_configs_table,\n"
+                  ")\n"
+              )
+              if anchor not in scheduler:
+                  raise SystemExit("scheduler system import anchor not found")
+              scheduler = scheduler.replace(anchor, system_imports + anchor, 1)
+          scheduler = scheduler.replace(
+              "from sqlalchemy import delete, select\n",
+              "from sqlalchemy import delete, insert, select\n",
+              1,
+          )
+          jobs_cleanup = "            connection.execute(delete(jobs_table))\n"
+          system_cleanup = (
+              jobs_cleanup
+              + "            connection.execute(delete(keyword_pack_items_table))\n"
+              + "            connection.execute(delete(keywords_table))\n"
+              + "            connection.execute(delete(keyword_packs_table))\n"
+              + "            connection.execute(delete(provider_configs_table))\n"
+          )
+          if "connection.execute(delete(keyword_pack_items_table))" not in scheduler:
+              if jobs_cleanup not in scheduler:
+                  raise SystemExit("scheduler cleanup anchor not found")
+              scheduler = scheduler.replace(jobs_cleanup, system_cleanup, 1)
+
+          start = scheduler.index("def _create_plan(scheduler_runtime):")
+          end = scheduler.index("\ndef _force_due_cursor", start)
+          new_helper = '''def _create_plan(scheduler_runtime):\n    session = scheduler_runtime.database.new_session()\n    try:\n        with session.begin():\n            provider_config_id = uuid4()\n            keyword_pack_id = uuid4()\n            keyword_id = uuid4()\n            now = datetime.now(UTC)\n            session.execute(\n                insert(provider_configs_table).values(\n                    id=provider_config_id,\n                    provider="tikhub",\n                    display_name=f"scheduler-provider-{uuid4()}",\n                    base_url="https://api.tikhub.io",\n                    secret_ref=f"providers/tikhub/test/scheduler-{uuid4()}",\n                    enabled=True,\n                    created_at=now,\n                    updated_at=now,\n                )\n            )\n            session.execute(\n                insert(keyword_packs_table).values(\n                    id=keyword_pack_id,\n                    name=f"scheduler-pack-{uuid4()}",\n                    description="scheduler runtime fixture",\n                    enabled=True,\n                    version=1,\n                    created_at=now,\n                    updated_at=now,\n                )\n            )\n            session.execute(\n                insert(keywords_table).values(\n                    id=keyword_id,\n                    text="爱玛",\n                    normalized_text=f"scheduler-aima-{uuid4()}",\n                    enabled=True,\n                    created_at=now,\n                    updated_at=now,\n                )\n            )\n            session.execute(\n                insert(keyword_pack_items_table).values(\n                    pack_id=keyword_pack_id,\n                    keyword_id=keyword_id,\n                    platform="xhs",\n                    priority=10,\n                    enabled=True,\n                    note="scheduler runtime fixture",\n                )\n            )\n            plan = CollectionPlanningService(\n                PostgresCollectionPlanningRepository(session)\n            ).create_plan(\n                CollectionPlanDefinition(\n                    name=f"scheduler-{uuid4()}",\n                    enabled=True,\n                    schedule_expr="0 */6 * * *",\n                    timezone="Asia/Shanghai",\n                    schedule_version=1,\n                    misfire_policy="latest_only",\n                    max_catch_up_runs=0,\n                    detail_policy="on_change",\n                    comment_policy="adaptive",\n                    created_by=None,\n                    platforms=(\n                        PlanPlatformDefinition(\n                            platform="xhs",\n                            provider_config_id=provider_config_id,\n                            config={},\n                        ),\n                    ),\n                    keyword_pack_ids=(keyword_pack_id,),\n                )\n            )\n        return plan\n    finally:\n        session.close()\n\n'''
+          scheduler = scheduler[:start] + new_helper + scheduler[end + 1 :]
+          scheduler_path.write_text(scheduler, encoding="utf-8")
+
           print("patched cleanup fixtures:", *patched, sep="\n")
           PY
           uv run ruff format backend/src/aima_ugc/bootstrap/collection_scope.py tests/integration/collection
@@ -155,5 +214,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add backend/src/aima_ugc/bootstrap/collection_scope.py tests/integration/collection .github/workflows
           git diff --cached --check
-          git commit -m "fix: close remaining collection coverage regressions"
+          git commit -m "fix: close remaining collection and scheduler regressions"
           git push origin HEAD:fix/stage1-stage7-comprehensive-corrective
