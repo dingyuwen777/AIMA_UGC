@@ -1,5 +1,6 @@
 name: Corrective Remaining Fix
 
+# Temporary L3 corrective runner. It self-deletes after the verified patch is committed.
 on:
   push:
     branches:
