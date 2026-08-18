@@ -95,7 +95,7 @@ changes/archive/2026-08/CHG-20260815-stage7-completion/CHANGE.md
 
 P1 是 Stage 7 与 Stage 8 之间的临时优先插入，不改变任何正式 Stage 编号。当前实施顺序由 [`14-临时P1-Excel离线导入与舆情打标.md`](14-临时P1-Excel离线导入与舆情打标.md) 和对应 Active Change 维护；AI 长期语义由 [`15-舆情AI打标与统一分析契约.md`](15-舆情AI打标与统一分析契约.md) 维护。
 
-当前 P1A—P1F 已闭环；下一最小正式单元是 P1G。P1G 未完成前不得进入 P1H 或 Stage 8。
+当前 P1A—P1G 已闭环；下一最小正式单元是 P1H。P1H 未完成前不得进入 Stage 8。
 
 P1 第一版固定为无数据库离线实现：
 
