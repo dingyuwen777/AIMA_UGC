@@ -108,23 +108,34 @@ P1F 在 P1E Provider-neutral Port/Service 之上增加真实 OpenAI-compatible H
 - JSON mode 只是 Provider 输出约束，本地 Validator 仍是最终成功门禁；
 - `label_unified_content_jsonl()` 流式读取 `deduplicated/contents.jsonl`，按批调用正式 Service；失败 item 保持 `analysis=null`；
 - 每次模型请求写 `analysis/attempts.jsonl`；成功 item 先写 `analysis/checkpoints.jsonl` 并 flush/fsync，再写业务 JSONL 临时文件；失败诊断写 `analysis/failed.jsonl`；
+- `failed.jsonl` 显式写 `analysis_status=failed` 和最终校验错误代码；失败 item 不构造猜测版 `ContentLabelAnalysisV1`；
 - 完成后业务文件通过临时文件 + flush/fsync + `os.replace` 原子替换同一个 `deduplicated/contents.jsonl`；
 - `imports_test.label_sentiment()` 默认 `ENABLE_REAL_LLM=False`，人工显式启用后才读取 `.env` 建立真实 Adapter；`MAX_VALIDATION_RETRIES` 仍是人工入口唯一 Validation Retry 配置；
 - P1F 不实现 `run_all()`、跨进程 checkpoint 恢复或最终 `labeled_data.xlsx`，这些属于 P1G。
 
 ## 6. P1F TDD 与新鲜验证
 
-### Red
+### 6.1 初始 Red
 
-Red commit：`79b44fd08b82ab97086be7d47a1467ec35e0f952`（`测试：锁定P1F真实模型与JSONL回写`）。Stage 5A Run `32154648685` / Job `95768801659`：P1 pytest 退出码 2；新增 collection error 精确为缺少 `aima_ugc.adapters.llm` 和 `label_unified_content_jsonl`。依赖安装成功，Secret/Docs 同时成功，因此 Red 来自 P1F 尚未实现。
+Red commit：`79b44fd08b82ab97086be7d47a1467ec35e0f952`（`测试：锁定P1F真实模型与原子回写行为`）。Stage 5A Run `32154648685` / Job `95768801659`：P1 pytest 退出码 2；新增 collection error 精确为缺少 `aima_ugc.adapters.llm` 和 `label_unified_content_jsonl`。依赖安装成功，Secret/Docs 同时成功，因此 Red 来自 P1F 尚未实现。
 
-### Green / Refactor
+### 6.2 Green / Refactor
 
-P1F 在 Red 后新增真实 LLM Adapter、`offline_labeling.py`、`label_sentiment()`、安全 `.env.example`、README、Stage 5A LLM 路径门禁和专项测试；当前 P1F 导航 head 为 `ada47610057d1aacbd0863f1df04d091cecdfd8a`。
+核心 Green commit：`9958bf6b36cda325e442a692a357e5a93ae53b0a`（`实现：P1F真实模型适配与原子回写`）。随后 `7c4066f71b8346acb048221550cebf350702a3f6` 与 `092dc12cae07ab84ae52b31abe57d3737d04137a` 只按 Ruff 结果调整格式/import，不改变行为。
 
-### 最新专项验证
+`092dc12cae07ab84ae52b31abe57d3737d04137a` 的 Stage 5A Run `32156628763` / Job `95775300503`：P1 目标测试 57 passed；Ruff format/check、mypy、Analysis/Export Contract、Secret、Docs 均通过；Architecture 仍只报同一 11 个既有 `ARCH001`。
 
-Stage 5A Run `32157763801` / Job `95779015906`：
+### 6.3 Review 回归 Red → Green
+
+两阶段 Review 发现 `failed.jsonl` 已保存最终校验错误，但缺少固化要求的显式 `analysis_status=failed`。没有直接猜测修补，而是先建立回归测试。
+
+回归 Red commit：`7924099612c01431cfa5ba023ee8a7ecb746770b`（`测试：要求P1F失败审计显式标记状态`）。Stage 5A Run `32157035336` / Job `95776627383`：目标测试退出码 1，`1 failed, 56 passed`；唯一失败为 `KeyError: 'analysis_status'`，根因与预期一致。
+
+Green fix commit：`22a7c0a59a4cb8059e239edcb0099f81b34efd6b`（`修复：补齐P1F失败审计状态`）。对应 Stage 5A Run `32157213113` / Job `95777200740`：目标测试退出码 0，`57 passed in 2.62s`；Ruff `36 files already formatted`、`All checks passed!`；mypy `Success: no issues found in 24 source files`；Analysis/Export Contract、Secret、Docs 均通过；Architecture 仍只报同一 11 个既有 `ARCH001`。
+
+### 6.4 文档后最新专项验证
+
+P1F 代码与 README/Blueprint 同步后的验证 head 为 `ada47610057d1aacbd0863f1df04d091cecdfd8a`。Stage 5A Run `32157763801` / Job `95779015906`：
 
 - P1 目标/回归 pytest：退出码 0，`57 passed in 2.74s`；
 - Ruff format：退出码 0，`36 files already formatted`；
@@ -134,15 +145,13 @@ Stage 5A Run `32157763801` / Job `95779015906`：
 - Secret / Docs：退出码 0；
 - Architecture：退出码 1，仍只报告 11 个既有 `ARCH001`，均为缺失 `backend/src/aima_ugc/operations/...` Stage 1—7 旧路径；P1F 没有新增 Architecture 报错。
 
-Architecture step 失败后，Provider/Raw tests、Provider Contract drift 和整套 Stage 5A quality step 按 workflow 顺序被跳过，不能记为本 head 已执行成功。
-
-`ada4761...` 的 11 个适用 PR workflow 均为 failure，因此本轮不宣称全仓 CI 全绿，也不绕过门禁。
+Architecture step 失败后，Provider/Raw tests、Provider Contract drift 和整套 Stage 5A quality step 按 workflow 顺序被跳过，不能记为本 head 已执行成功。全仓适用 PR workflow 仍不是全绿，本轮不绕过门禁或把专项成功误写成整仓成功。
 
 ## 7. 两阶段 Review
 
 需求符合性 Review：通过 P1F 范围复核。模型最小输入继续由 P1E Service 投影；Validation Retry 仍只由 Service 控制；成功 Analysis 只有本地 Validator 通过后才进入 checkpoint 和业务 JSONL；真实模型默认关闭；未进入 P1G/P1H。
 
-代码质量 Review：未发现阻塞 P1F 闭环的新增严重/重要问题。HTTP Client 生命周期可控，Adapter 不隐藏重试；Secret 不进入异常或版本库示例；JSONL 使用流式读取和原子替换；attempts/checkpoints/failed 与业务 JSONL 角色分离；未新增依赖、数据库或 Migration。
+代码质量 Review：Review 中发现的失败审计状态缺口已按独立 Red→Green 修复，之后未发现阻塞 P1F 闭环的新增严重/重要问题。HTTP Client 生命周期可控，Adapter 不隐藏重试；Secret 不进入异常或版本库示例；JSONL 使用流式读取和原子替换；attempts/checkpoints/failed 与业务 JSONL 角色分离；未新增依赖、数据库或 Migration。
 
 ## 8. 依赖、费用、Migration、回滚
 
@@ -150,11 +159,12 @@ Architecture step 失败后，Provider/Raw tests、Provider Contract drift 和�
 - 无数据库写入、Migration、部署或生产数据迁移；
 - 自动测试没有真实外部模型调用，真实 token/费用为 0；
 - 实际人工启用真实 LLM 后，每次 Validation Retry 都会产生额外模型调用和费用；Adapter 不做隐藏 Transport Retry；
+- 真实 OpenAI-compatible Provider 互操作与付费小样属于 P1H，本轮没有虚构验证结果；
 - 回滚方式为 revert P1F Adapter/离线打标/人工入口/测试/文档提交，不涉及数据库回滚。
 
 ## 9. Git / PR
 
-- `main`：`0dc666192f83fa9e55d5cbfffb19c09d31c5ecaf`（本轮核验时）；
+- `main`：`0dc666192f83fa9e55d5cbfffb19c09d31c5ecaf`（本轮再次核验）；
 - branch：`feature/p1-offline-excel-sentiment`；
 - Draft PR：#66，Open，未合并；
 - P1F 已闭环；下一最小单元 P1G；
