@@ -1,5 +1,7 @@
 # Analysis 模块
 
+> 当前阶段：P1E 已闭环；下一最小 P1 单元为 P1F。P1F 未完成前，本模块不把真实 OpenAI-compatible Adapter、checkpoint 或业务 JSONL AI 回写描述为已实现。
+
 `aima_ugc.modules.analysis` 保存平台无关的内容处理与 AI 分析业务能力。P1E 在这里建立 Prompt/Taxonomy 运行时加载、本地 Validator、Analysis Service/Port 和无网络 Fake；真实 OpenAI-compatible Adapter、checkpoint 与业务 JSONL 原子回写属于 P1F，不在本阶段提前实现。
 
 ## 1. Prompt / Taxonomy 唯一事实源
