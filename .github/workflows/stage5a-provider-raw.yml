@@ -106,6 +106,12 @@ jobs:
           set -euo pipefail
           uv run python scripts/contracts/generate.py
           git diff --exit-code -- contracts/analysis
+          UNTRACKED="$(git ls-files --others --exclude-standard -- contracts/analysis)"
+          if [[ -n "${UNTRACKED}" ]]; then
+            echo "ANALYSIS_CONTRACT_UNTRACKED: ${UNTRACKED}"
+            exit 1
+          fi
+          uv run python scripts/contracts/generate.py --check
 
       - name: P1 architecture gate
         shell: bash
