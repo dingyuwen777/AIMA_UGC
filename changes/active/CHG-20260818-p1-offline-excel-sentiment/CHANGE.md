@@ -20,6 +20,7 @@ affected_paths:
   - backend/src/aima_ugc/platform/export/
   - contracts/analysis/
   - contracts/export/
+  - scripts/performance/
   - tests/unit/analysis/
   - tests/unit/collection/
   - tests/unit/platform/
@@ -86,7 +87,7 @@ backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v1.md
 - [ ] P1H：90k 性能 + 真实模型小样 + Review/CI + 收口
 - [ ] P1 全部结束后归档 Change、删除 Blueprint 14，并恢复 README 到 Stage 8 正式导航
 
-**当前检查点：P1G 已闭环；下一最小正式单元为 P1H。本轮不得继续进入 P1H。**
+**当前检查点：P1H 进行中。90k Windows 性能、P1H 专项测试与两阶段 Review 已取得新鲜证据；真实模型小样因 GitHub Actions 未配置 `AIMA_LLM_API_KEY` 与 `AIMA_LLM_MODEL` 而在请求前阻塞；整仓 CI 还被 11 个既有 `operations/...` Architecture 基线错误阻断。因此 P1H 尚未闭环，不归档 Change、不删除 Blueprint 14、不进入 Stage 8。**
 
 ## 4. P1A—P1F 闭环摘要
 
@@ -172,7 +173,7 @@ Architecture step 失败后，Provider/Raw tests、Provider Contract drift 和 S
 
 ## 7. 两阶段 Review
 
-需求符合性 Review：P1G 当前实现满足 `run_all()` 固定主链、raw Excel 旁路、最终 Excel 同源、checkpoint 恢复和费用安全要求。Review 中发现的 Provider/model 恢复身份缺口已通过独立 Red→Green 修复。未进入 P1H 的 90k 性能、真实模型小样、最终 P1 收口和归档。
+需求符合性 Review：P1G 当前实现满足 `run_all()` 固定主链、raw Excel 旁路、最终 Excel 同源、checkpoint 恢复和费用安全要求。Review 中发现的 Provider/model 恢复身份缺口已通过独立 Red→Green 修复。P1H 本轮继续执行性能、真实模型门禁与最终 CI Review，但尚未满足完整收口条件。
 
 代码质量 Review：从模型身份 Red 到 Green 的生产差异仅为 Service 只读身份访问器和 checkpoint 精确过滤；私有 `_load_checkpoint_index` 签名变化不构成公共 API 破坏。旧 checkpoint 文件已包含 `ContentLabelAnalysisV1.model_provider/model`，因此不需要数据格式 Migration。未新增依赖、平行 Excel 生成逻辑、隐藏 Transport Retry 或第二业务事实源。
 
@@ -186,25 +187,156 @@ P1G 闭环后已同步：
 - `docs/blueprint/14-临时P1-Excel离线导入与舆情打标.md`：当前状态推进到 P1G 已闭环；
 - Blueprint 13/15 的长期 Contract/Analysis 设计没有改变，不复制第二套标签或 Excel Schema。
 
+P1H 本轮只新增可重复性能基准与测试，并把新鲜证据继续记录在同一个 Change；由于 P1H 尚未闭环，不提前删除 Blueprint 14，也不把 Stage 8 恢复为当前开发导航。
+
 ## 9. 依赖、费用、Migration、部署、回滚
 
 - Python/Node/uv 和现有依赖版本保持不变；没有新增、升级或降级依赖；
 - 无数据库写入、DDL/Migration、生产部署或持久化数据迁移；
-- 本轮自动测试只使用 Fake/本地测试，不调用真实付费模型，真实模型 token/费用为 0；
-- 实际人工启用真实 LLM 后，Validation Retry 会增加模型请求和费用；checkpoint 只在输入、Prompt/Taxonomy、Provider 和 model 全部匹配时减少重复成功调用；
-- P1H 才执行真实 OpenAI-compatible 模型小样、token/费用统计和 90k 性能证据；
-- 回滚方式为 revert P1G run_all/recovery/export/tests/docs 提交，不涉及数据库回滚。
+- P1H 90k 性能使用由当前 PromptTaxonomy 动态派生合法标签的无网络 Fake，只测本地 Validator/checkpoint/JSONL 原子回写，不代表真实模型网络延迟或吞吐；
+- 真实模型小样门禁在任何模型请求前确认 `AIMA_LLM_API_KEY` 与 `AIMA_LLM_MODEL` 均未配置，因此本轮真实 LLM 调用次数为 0、token/费用为 0；
+- 实际启用真实 LLM 后，Validation Retry 会增加模型请求和费用；checkpoint 只在输入、Prompt/Taxonomy、Provider 和 model 全部匹配时减少重复成功调用；
+- 回滚方式为 revert P1 对应提交；P1H 性能基准没有数据库、部署或数据迁移回滚要求。
 
 ## 10. Active Change 协调
 
-当前可见 Active Changes 中，`CHG-20260818-stage1-stage7-comprehensive-corrective` 的 metadata 覆盖 `contracts/`、`tests/`、`.github/workflows/` 和 `docs/blueprint/` 等广路径，与 P1 存在可见路径重叠；本 P1G 修复没有修改 Analysis/Export Contract Schema、Migration 或该 Change 的实现文件。若该 corrective branch 后续修改同一 Blueprint/workflow，合并前仍需按当时 Git diff 重新协调，不能假设当前无冲突等于未来无冲突。
+当前可见 Active Changes 中，`CHG-20260818-stage1-stage7-comprehensive-corrective` 的 metadata 覆盖 `contracts/`、`tests/`、`.github/workflows/` 和 `docs/blueprint/` 等广路径，与 P1 存在可见路径重叠。其 PR #65 已合并，但 Change 仍保留在 active；本轮没有越界修改其 Stage 1—7 `operations/...` Architecture 基线问题，也没有借 P1H 静默重构 platform/operations 目录。
 
-其他已检查 Active Change（北京时间展示、抖音 detail 400、Windows bootstrap display name）没有与本次 P1G Analysis 恢复核心形成直接 Contract/代码路径冲突。
+其他已检查 Active Change（北京时间展示、抖音 detail 400、Windows bootstrap display name）没有与本次 P1H 性能基准或 Analysis Contract 形成直接 Contract/实现冲突。
 
 ## 11. Git / PR
 
 - branch：`feature/p1-offline-excel-sentiment`；
 - Draft PR：#66，保持 Open / Draft / 未合并；
-- P1G 已闭环；下一最小单元 P1H；
-- P1 Change 继续保持 `in_progress`，不得在 P1H 前归档；
+- P1H 当前仍为唯一最前未完成 P1 单元；
+- P1 Change 继续保持 `in_progress`；真实模型小样与整仓 CI 阻塞解除前不得归档；
 - 禁止直接推 main、自动合并、强制推送或新建平行 P1 Change。
+
+## 12. P1H 进行中证据
+
+### 12.1 性能基准 TDD：Red → Green
+
+先建立 `tests/unit/analysis/test_p1h_offline_performance.py`，要求性能入口必须复用生产主链、产生阶段时延/rows/s/峰值 RSS/文件大小，并最终重新打开 `labeled_data.xlsx` 验证情感、一级、二级标签非空。
+
+Red commit：
+
+```text
+5c7448d0b6d4dd4d925dc4287cd0938d134b2cfa
+测试：锁定P1H离线性能基准行为
+```
+
+Stage 5A Run `32164502249` / Job `95800818159`：pytest 在收集阶段退出码 2，原因是预期中的性能基准入口尚不存在；Secret / Docs 同时成功。
+
+Green commit：
+
+```text
+155f0f76a7f67fc349ff2ea0522d74bb1cbee52c
+实现：增加P1H离线性能基准
+```
+
+`script/performance` 实际路径为 `scripts/performance/benchmark_p1_offline.py`。该脚本只编排现有生产函数：`convert_excel_to_canonical_jsonl → filter_canonical_content_jsonl → deduplicate_content_jsonl → label_unified_content_jsonl → Shared Excel Exporter`。90k AI 阶段使用 `_TaxonomyBenchmarkLLM`，具体标签从当前 `PromptTaxonomy` 动态取得，不在 Python 复制情感或一级/二级标签闭集。
+
+Green 的 Stage 5A Run `32164885340` / Job `95802045888`：P1 目标/回归 pytest 退出码 0，`65 passed in 3.25s`；mypy、Analysis+Export Contract、Secret/Docs 成功；Architecture 仍为同一 11 个既有 `ARCH001`。
+
+### 12.2 Review 发现 Windows 门禁退出码缺口并修复
+
+第一次 90k Run `32165048185` 的性能命令确实跑完，但日志同时暴露 Ruff `I001`。PowerShell 当时没有显式传播 native process 的 `$LASTEXITCODE`，后续 pytest 成功导致 step 被误标为 success。因此该 Run 不作为门禁全绿证据，只保留其性能数值为辅助参考。
+
+修复 commit：
+
+```text
+b04670233fcf8b9b8bf1ab7d63db5c04a564a8b8
+修复：严格传播P1H性能门禁失败
+```
+
+修复内容仅为 Ruff import 顺序与 Windows workflow 的 native process 退出码传播；没有修改生产数据主链、Contract、Prompt/Taxonomy 或依赖。
+
+### 12.3 90,000 × 13 Windows 新鲜性能证据
+
+修正后的 P1H Windows Run `32165652105` / Job `95804494417`，环境为 Windows Server 2025、Python 3.14.7、仓库锁定依赖：
+
+```text
+uv run ruff format --check scripts/performance/benchmark_p1_offline.py tests/unit/analysis/test_p1h_offline_performance.py
+→ 退出码 0，2 files already formatted
+
+uv run ruff check scripts/performance/benchmark_p1_offline.py tests/unit/analysis/test_p1h_offline_performance.py
+→ 退出码 0，All checks passed
+
+uv run pytest tests/unit/analysis/test_p1h_offline_performance.py -q
+→ 退出码 0，1 passed in 1.66s
+
+uv run python scripts/performance/benchmark_p1_offline.py --work-dir <runner-temp> --rows 90000 --label-batch-size 100
+→ 退出码 0
+```
+
+性能结果：
+
+| 阶段 | 90k 用时 | rows/s | 阶段记录时的进程峰值 RSS |
+| --- | ---: | ---: | ---: |
+| convert | 22.480 s | 4,003.59 | 53,231,616 B |
+| filter_keywords | 4.131 s | 21,787.50 | 53,231,616 B |
+| deduplicate | 8.010 s | 11,236.49 | 85,499,904 B |
+| analysis_writeback（无网络 Fake） | 13.182 s | 6,827.34 | 220,123,136 B |
+| export_labeled_excel | 101.117 s | 890.06 | 234,762,240 B |
+
+主链合计 `148.919 s`，`604.35 rows/s`；进程峰值 RSS `234,762,240 B`（约 223.9 MiB）。Fixture 生成另耗时 `13.884 s`，不计入真实 source.xlsx 已存在时的主链耗时。最终 Excel 导出占主链主要时间，但当前没有正确性、OOM 或依赖层面的失败证据，因此没有引入 pandas。
+
+文件大小：
+
+```text
+source_xlsx             5,826,550 B
+canonical/contents      134,268,574 B
+filtered/contents       142,818,574 B
+deduplicated/contents   193,398,574 B
+analysis/attempts       16,628,886 B
+analysis/checkpoints    70,962,894 B
+labeled_data.xlsx       12,894,069 B
+```
+
+当前 Prompt/Taxonomy 哈希：
+
+```text
+prompt_sha256   473af4b34e507ec086e9b8f4c177a2ffef8080319c619cb328599212438ca0e1
+taxonomy_sha256 d5f118a1a8b002670439858b5dfb1d70f85ee324c1df360733f7caa33aa59c02
+```
+
+### 12.4 真实模型小样：凭据门禁阻塞，未发生付费调用
+
+为避免猜测仓库 Secret，曾创建一次性 P1H real-LLM probe workflow，只从 GitHub Actions Secret/Variable 读取真实模型配置，并在打印任何 Secret 前做缺失门禁。
+
+Run `32165397317` / Job `95803681128`：依赖安装成功；`Require real LLM configuration` 以退出码 2 停止，明确缺失：
+
+```text
+AIMA_LLM_API_KEY
+AIMA_LLM_MODEL
+```
+
+`Run real LLM small sample` 被跳过，所以：
+
+```text
+真实模型请求 = 0
+token = 0
+模型费用 = 0
+Validation Retry = 未发生
+```
+
+该结果只能证明“当前 GitHub Actions 没有可用于 P1H 的真实 LLM 凭据”，不能替代真实模型小样成功证据。不得用 TikHub 或其他无关密钥代替。
+
+### 12.5 当前专项回归与整仓 CI 阻塞
+
+head `b04670233fcf8b9b8bf1ab7d63db5c04a564a8b8` 的 Stage 5A Run `32165652086` / Job `95804494349`：
+
+- P1 目标/回归 pytest：退出码 0，`65 passed in 3.21s`；
+- Ruff：退出码 0，`40 files already formatted` / `All checks passed`；
+- mypy：退出码 0，24 source files 无问题；
+- Analysis + Export Contract drift：退出码 0；
+- Secret / Docs：退出码 0；
+- Architecture：退出码 1，仍只报告 11 个既有 `ARCH001`，均为缺失 `backend/src/aima_ugc/operations/...` Stage 1—7 必需路径；
+- Architecture 之后的 Provider/Raw tests、Provider Contract drift、整套 Stage 5A quality 继续按 workflow 顺序跳过。
+
+因此 P1H 目前有两个独立阻塞：
+
+1. 缺少真实 OpenAI-compatible 模型小样所需 `AIMA_LLM_API_KEY` 与 `AIMA_LLM_MODEL`；
+2. 当前 main/PR 基线的 11 个 Stage 1—7 Architecture 错误使整仓适用 CI 无法全绿。
+
+本轮不得把这两个阻塞描述为 P1H 已闭环，也不得越界在 P1 Change 中静默重构 `platform/operations` 目录。P1H 保持未勾选；下一次仍只继续 P1H 的阻塞解除、真实模型小样、最终 Review/CI 与收口。
