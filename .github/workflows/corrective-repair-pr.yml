@@ -135,6 +135,8 @@ jobs:
 
           uv run ruff format backend tests scripts
           uv run ruff format migrations/versions/20260818_0018_stage1_stage7_comprehensive_corrective.py
+          uv run ruff check --fix backend tests scripts migrations/versions/20260818_0018_stage1_stage7_comprehensive_corrective.py
+          uv run ruff format backend tests scripts
           uv run ruff format --check backend tests scripts
           uv run ruff check backend tests scripts migrations/versions/20260818_0018_stage1_stage7_comprehensive_corrective.py
 
