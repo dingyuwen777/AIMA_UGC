@@ -14,9 +14,10 @@
 4. 再按当前任务读取对应领域 Blueprint；
 5. **涉及 Provider、TikHub、采集 Plan、关键词发现、详情/评论策略、Provider Billing/成本事实、未来 Budget/Cost Guard 扩展或平台 Operation 时，必须再读取 [`08-采集策略与平台能力.md`](08-采集策略与平台能力.md)，然后读取 [`../collection/README.md`](../collection/README.md) 和目标平台文档；**
 6. 涉及 Scheduler、TikHub API family 验证或真实响应结构时，再分别读取 `09`—`12` 中与当前任务直接相关的文档；
-7. **涉及帖子/评论数据 Excel、`.xlsx` 审阅、共享 Exporter、`tikhub_test` 或 `imports_test` Excel 复用时，必须读取 [`13-统一数据Excel导出与调试复用.md`](13-统一数据Excel导出与调试复用.md)；该文档维护唯一 `UnifiedDataExcelV1`、raw/labeled 同契约和唯一共享 Exporter 的长期门禁。**
-8. **当前临时 P1 未闭环期间，任何 Stage 8 开发前必须再读取 [`14-临时P1-Excel离线导入与舆情打标.md`](14-临时P1-Excel离线导入与舆情打标.md) 和对应 Active Change；只继续最前面的未完成 P1 子阶段。**
-9. 进入具体实现后，只继续读取相关模块 README、Contract、Migration、依赖、Operation/Mapper、Fixture、实现和测试。
+7. **涉及帖子/评论数据 Excel、`.xlsx` 审阅、共享 Exporter、`tikhub_test` 或 `imports_test` Excel 复用时，必须读取 [`13-统一数据Excel导出与调试复用.md`](13-统一数据Excel导出与调试复用.md)。**
+8. **涉及 AI 情感/一级/二级标签、Prompt、模型输入、分析结果版本、JSONL 回写或未来 Analysis 数据库存储时，必须读取 [`15-舆情AI打标与统一分析契约.md`](15-舆情AI打标与统一分析契约.md)。**
+9. **当前临时 P1 未闭环期间，任何 Stage 8 开发前必须再读取 [`14-临时P1-Excel离线导入与舆情打标.md`](14-临时P1-Excel离线导入与舆情打标.md) 和对应 Active Change；只继续最前面的未完成 P1 子阶段。**
+10. 进入具体实现后，只继续读取相关模块 README、Contract、Migration、依赖、Operation/Mapper、Fixture、实现和测试。
 
 不要因为存在 Blueprint 就跳过代码和测试事实，也不要一次性读取所有文档代替针对当前任务的现状调查。
 
@@ -59,8 +60,9 @@
 | [`10-TikHub真实响应结构附录.md`](10-TikHub真实响应结构附录.md) | 五平台已脱敏真实响应结构的人类查询入口 | Mapper/Extractor、Fixture 字段定位、真实响应核查 |
 | [`11-TikHub多接口验证与备用策略.md`](11-TikHub多接口验证与备用策略.md) | 同业务语义 API family A/B、候选状态、显式备用与禁止自动 fallback | App/Web/V1/V2/V3 候选验证、备用接口策略 |
 | [`12-TikHub真实请求响应与接口选型台账.md`](12-TikHub真实请求响应与接口选型台账.md) | 五平台主 endpoint、真实请求/响应、价格事实和接口选型证据 | TikHub 主链核查、Real Probe、endpoint 选型与历史 A/B |
-| [`13-统一数据Excel导出与调试复用.md`](13-统一数据Excel导出与调试复用.md) | 唯一 `UnifiedDataExcelV1`、raw/labeled 同契约、JSONL→Excel 边界、共享 Exporter 与调试复用门禁 | Excel、`.xlsx`、`openpyxl`、`tikhub_test`/`imports_test`、系统级统一导出 |
-| [`14-临时P1-Excel离线导入与舆情打标.md`](14-临时P1-Excel离线导入与舆情打标.md) | Stage 8 前临时 P1 的无数据库 Excel→JSONL→LLM→Excel 实施边界和 P1A—P1H | **仅 P1 未闭环期间读取；P1 完成后删除本文和本索引项** |
+| [`13-统一数据Excel导出与调试复用.md`](13-统一数据Excel导出与调试复用.md) | 唯一 `UnifiedDataExcelV1`、raw/labeled 同契约、同源 JSONL→Excel、共享 Exporter 与调试复用门禁 | Excel、`.xlsx`、`openpyxl`、`tikhub_test`/`imports_test`、系统级统一导出 |
+| [`14-临时P1-Excel离线导入与舆情打标.md`](14-临时P1-Excel离线导入与舆情打标.md) | Stage 8 前临时 P1 的无数据库 Excel→JSONL→AI 回写→Excel 实施边界和 P1A—P1H | **仅 P1 未闭环期间读取；P1 完成后删除本文和本索引项** |
+| [`15-舆情AI打标与统一分析契约.md`](15-舆情AI打标与统一分析契约.md) | 全平台通用 4 情感 + 7 一级 + 17 二级 taxonomy、最小模型输入、Markdown Prompt、Analysis Contract、JSONL 回写与数据库 Owner 边界 | AI 打标、Prompt 调优、模型 Adapter、Analysis 结果、数据库/Excel 消费 |
 
 ## 当前开发状态
 
@@ -91,26 +93,30 @@ changes/archive/2026-08/CHG-20260815-stage7-completion/CHANGE.md
 
 ### P1：Excel 离线导入、关键词清洗、去重与舆情打标
 
-P1 是 Stage 7 与 Stage 8 之间的临时优先插入，不改变任何正式 Stage 编号。当前目标和 P1A—P1H 只由 [`14-临时P1-Excel离线导入与舆情打标.md`](14-临时P1-Excel离线导入与舆情打标.md) 与对应 Active Change 维护。
+P1 是 Stage 7 与 Stage 8 之间的临时优先插入，不改变任何正式 Stage 编号。当前实施顺序由 [`14-临时P1-Excel离线导入与舆情打标.md`](14-临时P1-Excel离线导入与舆情打标.md) 和对应 Active Change 维护；AI 长期语义由 [`15-舆情AI打标与统一分析契约.md`](15-舆情AI打标与统一分析契约.md) 维护。
 
-P1 第一版固定为无数据库离线实现，业务数据中间产物使用 JSONL：
+P1 第一版固定为无数据库离线实现：
 
 ```text
 source.xlsx
 → canonical/contents.jsonl
 → filtered/contents.jsonl
-→ deduplicated/contents.jsonl
-→ analysis/results.jsonl
+→ deduplicated/contents.jsonl（analysis 初始为空）
+→ AI 打标并原子回写同一 deduplicated/contents.jsonl
 → labeled_data.xlsx
 ```
 
-`raw_data.xlsx` 只允许作为可选人工审阅旁路，不是 `label_sentiment()` 或默认 `run_all()` 的前置步骤。`label_sentiment()` 直接消费 `deduplicated/contents.jsonl`。
+`raw_data.xlsx` 只允许作为可选人工审阅旁路，不是 AI 或默认 `run_all()` 的前置步骤。
+
+AI 打标是**全平台通用能力**，不是 P1/File Import 专属逻辑。模型业务输入只有 `title`、`text`、`author.display_name`；标签闭集、Markdown Prompt 和未来数据库 Analysis Owner 规则见 Blueprint 15。
 
 P1 完成并归档后必须：
 
 - 删除 `14-临时P1-Excel离线导入与舆情打标.md`；
 - 删除本文中的 P1 临时入口、索引项和当前优先级说明；
-- 保留 13 中的唯一 Excel Contract/共享 Exporter 长期规则以及已经实现的可复用代码/测试；
+- 保留 13 中的唯一 Excel Contract/共享 Exporter 长期规则；
+- 保留 15 中的平台通用 AI 打标长期规则；
+- 保留已经实现的可复用代码/测试；
 - Stage 8 自动恢复为当前下一正式阶段。
 
 P1 多网页对话恢复事实时至少读取：
@@ -121,6 +127,7 @@ AGENTS.md
 → docs/blueprint/README.md
 → docs/blueprint/07-技术决策与实施门禁.md
 → docs/blueprint/14-临时P1-Excel离线导入与舆情打标.md
+→ docs/blueprint/15-舆情AI打标与统一分析契约.md
 → docs/blueprint/13-统一数据Excel导出与调试复用.md
 → changes/active/CHG-20260818-p1-offline-excel-sentiment/CHANGE.md
 → 当前 feature branch / Draft PR / 实现 / 测试
@@ -141,7 +148,8 @@ AGENTS.md
 → docs/blueprint/07-技术决策与实施门禁.md
 → docs/blueprint/04-后端任务API与前端.md
 → docs/blueprint/08-采集策略与平台能力.md（若页面/接口涉及采集配置）
-→ docs/blueprint/13-统一数据Excel导出与调试复用.md（若涉及基础数据 Excel/导出）
+→ docs/blueprint/13-统一数据Excel导出与调试复用.md（若涉及数据 Excel/导出）
+→ docs/blueprint/15-舆情AI打标与统一分析契约.md（若涉及 Analysis/AI）
 → docs/API接口说明.md
 → changes/active
 → 当前 main / Contract / OpenAPI / generated client / backend Router/Service / frontend 结构与测试
@@ -155,6 +163,7 @@ AGENTS.md
 
 - Raw、个人信息、导出和审计的访问/保留/删除与合规规则；
 - P1 的共享 Excel Exporter 只是统一写出核心；正式系统级大批量导出仍需未来 API/Job/Artifact/权限/生命周期闭环；
+- P1 建立的是平台通用 Analysis 核心与无数据库验证入口；正式数据库 DDL/Migration、Analysis Job/API/页面仍在后续正式阶段闭环；
 - 日请求量、数据量、Worker 并发、Raw/数据库日增量、磁盘容量、SLO、RPO、RTO；
 - 生产镜像 variant/digest、离线 Release、安全发布与恢复演练；
 - Stage 8 正式业务 API/页面及 Provider 凭据写入能力；凭据仍必须通过安全 SecretStore/SecretService，不能把数据库明文 Secret 当捷径；
@@ -167,8 +176,9 @@ AGENTS.md
 - `08` 保存 Stage 7 已完成的采集业务语义、Provider Config/Operation Matrix、Capability、Provider Billing 和未来 Budget/Cost Guard 边界；
 - `09` 保存 Scheduler 当前唯一恢复语义；
 - `10`—`12` 保存真实响应/API family/endpoint 证据的人类核查入口；
-- `13` 永久保存唯一 `UnifiedDataExcelV1`、JSONL→Excel 边界、raw/labeled 同契约和共享 Exporter 复用/删除门禁，并明确它不是 Report Renderer；
+- `13` 永久保存唯一 `UnifiedDataExcelV1`、同源 JSONL→Excel、raw/labeled 同契约和共享 Exporter 复用/删除门禁，并明确它不是 Report Renderer；
 - `14` 只保存当前临时 P1 的实施边界，P1 完成后必须删除，不能演变为第二套永久阶段体系；
+- `15` 永久保存全平台 AI taxonomy、最小模型输入、Markdown Prompt、Analysis Contract、JSONL 回写和数据库 Analysis Owner 边界；
 - `docs/collection/` 保存面向开发/调试的通用和平台抓取说明，并始终标记当前代码/Fixture/Probe 状态；
 - 实际代码、Contract、Migration、锁文件和测试建立后，不在 Blueprint 复制第二份机器事实；
 - 所有需要前端或其他受支持调用方使用的公开 HTTP API，都必须由 Pydantic Request/Response + FastAPI Route 生成固定 OpenAPI，再生成前端 TypeScript Client；内部 Repository、Mapper、Provider Adapter、Worker Runtime、Migration 等能力不因存在就自动暴露 HTTP API；
@@ -176,7 +186,8 @@ AGENTS.md
 - 前端业务功能默认采用“后端业务能力 → Pydantic HTTP Contract → FastAPI Route → API/Contract Test → 固定 OpenAPI → 生成 TypeScript Client → Feature API/Store → Vue 页面/组件 → E2E”的闭环，页面和按钮不得各自手写 URL 或重复定义 Request/Response Contract；
 - 对具有明确输入输出、独立业务价值、独立失败边界或可以脱离完整系统验证的能力，必须建立与风险匹配的独立验证闭环；调试/Probe 复用生产实现；
 - 修改 Provider Config/Provider/Operation/Mapper/分页/评论策略/Provider Billing/Capability 或未来 Budget/Cost Guard 时，必须按 08 的“文档同步规则”检查目标平台文档；
-- 修改 Excel 契约、共享 Exporter、`.xlsx` 审阅格式、`tikhub_test` 或 `imports_test` Excel 时，必须按 13 检查是否出现平行实现；共享 Exporter 建成后删除调试目录内重复导出代码是验收条件；
+- 修改 Excel 契约、共享 Exporter、`.xlsx` 审阅格式、`tikhub_test` 或 `imports_test` Excel 时，必须按 13 检查是否出现平行实现；
+- 修改 AI 标签、Prompt、模型输入、Analysis Contract 或 Analysis 持久化语义时，必须按 15 检查标签闭集、父子映射、Prompt Hash 和兼容性；
 - 设计发生实质变化时，按 `AGENTS.md` 和 Skill 的 L1/L2/L3 流程处理；
 - 受影响的文档才更新，不为形式保持“所有文档都有变化”；
 - 长期文档直接描述合并后的当前状态，不写成变更流水账。
