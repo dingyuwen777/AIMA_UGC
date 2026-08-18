@@ -6,6 +6,8 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from sqlalchemy.orm import Session
+
 from aima_ugc.adapters.persistence.postgres.collection import PostgresCollectionRepository
 from aima_ugc.adapters.persistence.postgres.collection_planning import (
     PostgresCollectionPlanningRepository,
@@ -203,7 +205,9 @@ def run_scheduler_once(
     )
 
 
-def _resolve_provider_snapshots(session, plan: CollectionPlanRecord) -> tuple[dict[str, object], ...]:
+def _resolve_provider_snapshots(
+    session: Session, plan: CollectionPlanRecord
+) -> tuple[dict[str, object], ...]:
     """在 Run 创建事务内验证路由并冻结非 Secret Provider 执行配置。"""
     provider_repository = PostgresProviderConfigRepository(session)
     registry = build_default_provider_registry()

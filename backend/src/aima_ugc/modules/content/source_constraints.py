@@ -43,7 +43,9 @@ _SOURCE_TABLES = (
 def register_content_source_constraints() -> None:
     """幂等注册复合来源约束，供运行 Schema 与 Alembic drift 检查共用。"""
     parent_name = "uq_provider_request_attempts_id_raw_artifact"
-    if not any(constraint.name == parent_name for constraint in provider_request_attempts_table.constraints):
+    if not any(
+        constraint.name == parent_name for constraint in provider_request_attempts_table.constraints
+    ):
         provider_request_attempts_table.append_constraint(
             UniqueConstraint(
                 provider_request_attempts_table.c.id,

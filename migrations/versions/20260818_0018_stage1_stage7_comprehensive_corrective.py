@@ -100,11 +100,11 @@ def _create_media_table(table_name: str, parent_table: str, parent_column: str) 
         *_source_columns(),
         sa.CheckConstraint(
             "position >= 0",
-            name=f"ck_{table_name}_position_nonnegative",
+            name="position_nonnegative",
         ),
         sa.CheckConstraint(
             "media_type in ('image','video','live_photo','audio','cover','other')",
-            name=f"ck_{table_name}_media_type_allowed",
+            name="media_type_allowed",
         ),
         sa.ForeignKeyConstraint([parent_column], [f"{parent_table}.id"]),
         sa.PrimaryKeyConstraint(parent_column, "position"),
@@ -134,11 +134,11 @@ def _create_mentions_table(table_name: str, parent_table: str, parent_column: st
         *_source_columns(),
         sa.CheckConstraint(
             "position >= 0",
-            name=f"ck_{table_name}_position_nonnegative",
+            name="position_nonnegative",
         ),
         sa.CheckConstraint(
             "jsonb_typeof(alternate_ids) = 'object'",
-            name=f"ck_{table_name}_alternate_ids_object",
+            name="alternate_ids_object",
         ),
         sa.ForeignKeyConstraint([parent_column], [f"{parent_table}.id"]),
         sa.PrimaryKeyConstraint(parent_column, "position"),
@@ -160,19 +160,19 @@ def _create_locations_table(table_name: str, parent_table: str, parent_column: s
         *_source_columns(),
         sa.CheckConstraint(
             "position >= 0",
-            name=f"ck_{table_name}_position_nonnegative",
+            name="position_nonnegative",
         ),
         sa.CheckConstraint(
             "location_type in ('place','ip_region')",
-            name=f"ck_{table_name}_location_type_allowed",
+            name="location_type_allowed",
         ),
         sa.CheckConstraint(
             "latitude is null or latitude between -90 and 90",
-            name=f"ck_{table_name}_latitude_range",
+            name="latitude_range",
         ),
         sa.CheckConstraint(
             "longitude is null or longitude between -180 and 180",
-            name=f"ck_{table_name}_longitude_range",
+            name="longitude_range",
         ),
         sa.ForeignKeyConstraint([parent_column], [f"{parent_table}.id"]),
         sa.PrimaryKeyConstraint(parent_column, "position"),
@@ -194,7 +194,7 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.CheckConstraint(
             "jsonb_typeof(policy) = 'object'",
-            name="ck_collection_plan_decision_policies_policy_object",
+            name="policy_object",
         ),
         sa.ForeignKeyConstraint(["plan_id"], ["collection_plans.id"]),
         sa.PrimaryKeyConstraint("plan_id"),
@@ -241,37 +241,37 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.CheckConstraint(
             "char_length(external_content_id) > 0",
-            name="ck_collection_content_actions_external_content_id_nonempty",
+            name="external_content_id_nonempty",
         ),
         sa.CheckConstraint(
             "previous_comment_count is null or previous_comment_count >= 0",
-            name="ck_collection_content_actions_previous_count_nonneg",
+            name="previous_count_nonneg",
         ),
         sa.CheckConstraint(
             "detail_action in ('fetch','skip')",
-            name="ck_collection_content_actions_detail_action_allowed",
+            name="detail_action_allowed",
         ),
         sa.CheckConstraint(
             "comment_action in "
             "('skip','fetch_adaptive','fetch_incremental','refresh_controlled',"
             "'probe_first_page','defer_until_detail')",
-            name="ck_collection_content_actions_comment_action_allowed",
+            name="comment_action_allowed",
         ),
         sa.CheckConstraint(
             "comment_target is null or comment_target >= 1",
-            name="ck_collection_content_actions_comment_target_positive",
+            name="comment_target_positive",
         ),
         sa.CheckConstraint(
             "reply_target_per_root is null or reply_target_per_root >= 1",
-            name="ck_collection_content_actions_reply_target_positive",
+            name="reply_target_positive",
         ),
         sa.CheckConstraint(
             "resolved_comment_count is null or resolved_comment_count >= 0",
-            name="ck_collection_content_actions_resolved_count_nonneg",
+            name="resolved_count_nonneg",
         ),
         sa.CheckConstraint(
             "comments_completed = false or detail_completed = true or detail_action = 'skip'",
-            name="ck_collection_content_actions_completion_order",
+            name="completion_order",
         ),
         sa.ForeignKeyConstraint(["scope_id"], ["collection_scopes.id"]),
         sa.ForeignKeyConstraint(
@@ -291,11 +291,11 @@ def upgrade() -> None:
         *_source_columns(),
         sa.CheckConstraint(
             "char_length(id_type) > 0",
-            name="ck_content_external_ids_id_type_nonempty",
+            name="id_type_nonempty",
         ),
         sa.CheckConstraint(
             "char_length(external_id) > 0",
-            name="ck_content_external_ids_external_id_nonempty",
+            name="external_id_nonempty",
         ),
         sa.ForeignKeyConstraint(["content_id"], ["contents.id"]),
         sa.PrimaryKeyConstraint("content_id", "id_type"),
@@ -311,11 +311,11 @@ def upgrade() -> None:
         *_source_columns(),
         sa.CheckConstraint(
             "position >= 0",
-            name="ck_content_topics_position_nonnegative",
+            name="position_nonnegative",
         ),
         sa.CheckConstraint(
             "char_length(name) > 0",
-            name="ck_content_topics_name_nonempty",
+            name="name_nonempty",
         ),
         sa.ForeignKeyConstraint(["content_id"], ["contents.id"]),
         sa.PrimaryKeyConstraint("content_id", "position"),
@@ -339,23 +339,23 @@ def upgrade() -> None:
         sa.Column("stop_reason", sa.Text(), nullable=False),
         sa.CheckConstraint(
             "char_length(root_comment_id) > 0",
-            name="ck_comment_thread_coverage_observations_root_id_nonempty",
+            name="root_id_nonempty",
         ),
         sa.CheckConstraint(
             "coverage in ('complete','partial','not_requested','unavailable')",
-            name="ck_comment_thread_coverage_observations_coverage_allowed",
+            name="coverage_allowed",
         ),
         sa.CheckConstraint(
             "captured_count >= 0",
-            name="ck_comment_thread_coverage_observations_captured_nonneg",
+            name="captured_nonneg",
         ),
         sa.CheckConstraint(
             "reported_total is null or reported_total >= 0",
-            name="ck_comment_thread_coverage_observations_reported_nonneg",
+            name="reported_nonneg",
         ),
         sa.CheckConstraint(
             "target_count is null or target_count >= 0",
-            name="ck_comment_thread_coverage_observations_target_nonneg",
+            name="target_nonneg",
         ),
         sa.ForeignKeyConstraint(["content_id"], ["contents.id"]),
         sa.PrimaryKeyConstraint("id"),

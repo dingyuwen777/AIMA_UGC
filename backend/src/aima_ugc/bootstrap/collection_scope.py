@@ -254,13 +254,8 @@ class TikHubCollectionScopeExecutor:
         context: JobExecutionContextProtocol,
     ) -> CollectionScopeExecutionResult:
         """执行当前正式 keyword_search/content_discovery Scope。"""
-        if (
-            scope.source_type != "keyword_search"
-            or scope.operation_group != "content_discovery"
-        ):
-            raise ValueError(
-                "TikHub Scope Runtime 当前只支持 keyword_search/content_discovery"
-            )
+        if scope.source_type != "keyword_search" or scope.operation_group != "content_discovery":
+            raise ValueError("TikHub Scope Runtime 当前只支持 keyword_search/content_discovery")
 
         self._reconciler.recover_inherited(context.fence)
         platform = _tikhub_platform(scope.platform)
@@ -427,8 +422,7 @@ class TikHubCollectionScopeExecutor:
         return _result(
             status=(
                 "partial_success"
-                if stop_reason == "page_limit"
-                or stats.technical_partial_results > 0
+                if stop_reason == "page_limit" or stats.technical_partial_results > 0
                 else "succeeded"
             ),
             stop_reason=stop_reason,
@@ -477,9 +471,7 @@ class TikHubCollectionScopeExecutor:
                     current=ContentObservationV1(
                         comment_count=search_comment_count,
                         search_missing_required_fields=search_comment_count is None,
-                        business_changed=(
-                            prior.business_changed if prior is not None else False
-                        ),
+                        business_changed=(prior.business_changed if prior is not None else False),
                     ),
                     previous=prior.previous if prior is not None else None,
                     policy=policy,
@@ -496,9 +488,7 @@ class TikHubCollectionScopeExecutor:
                 previous_comment_count=(
                     prior.previous.comment_count if prior is not None else None
                 ),
-                initial_business_changed=(
-                    prior.business_changed if prior is not None else False
-                ),
+                initial_business_changed=(prior.business_changed if prior is not None else False),
                 decision=decision,
                 resolved_comment_count=search_comment_count,
                 fence=context.fence,
@@ -515,7 +505,11 @@ class TikHubCollectionScopeExecutor:
 
         comment_source = content
         decision = action.decision
-        if action.decision.detail_action == "fetch" and not context.cancel_requested():
+        if (
+            action.decision.detail_action == "fetch"
+            and not action.detail_completed
+            and not context.cancel_requested()
+        ):
             comment_source = self._fetch_detail(
                 run=run,
                 scope=scope,
@@ -525,24 +519,23 @@ class TikHubCollectionScopeExecutor:
                 context=context,
                 stats=stats,
             )
-            if not action.detail_completed:
-                post_detail = self._decision_service.decide(
-                    CollectionDecisionRequestV1(
-                        current=ContentObservationV1(
-                            comment_count=_observed_comment_count(comment_source),
-                            business_changed=False,
-                        ),
-                        previous=_previous_from_action(action),
-                        policy=policy,
-                        capability=capability,
-                    )
+            post_detail = self._decision_service.decide(
+                CollectionDecisionRequestV1(
+                    current=ContentObservationV1(
+                        comment_count=_observed_comment_count(comment_source),
+                        business_changed=False,
+                    ),
+                    previous=_previous_from_action(action),
+                    policy=policy,
+                    capability=capability,
                 )
-                action = self._content_actions.complete_detail(
-                    action_id=action.id,
-                    decision=post_detail,
-                    resolved_comment_count=_observed_comment_count(comment_source),
-                    fence=context.fence,
-                )
+            )
+            action = self._content_actions.complete_detail(
+                action_id=action.id,
+                decision=post_detail,
+                resolved_comment_count=_observed_comment_count(comment_source),
+                fence=context.fence,
+            )
             decision = action.decision
 
         if context.cancel_requested():
@@ -812,10 +805,7 @@ class TikHubCollectionScopeExecutor:
                         capability=capability,
                     )
                 )
-                if (
-                    reply_decision.action in _REPLY_FETCH_ACTIONS
-                    and not context.cancel_requested()
-                ):
+                if reply_decision.action in _REPLY_FETCH_ACTIONS and not context.cancel_requested():
                     reply_outcome = self._fetch_sub_comments(
                         run=run,
                         scope=scope,
@@ -827,10 +817,7 @@ class TikHubCollectionScopeExecutor:
                         reply_action=reply_decision.action,
                         reply_target=reply_decision.target,
                     )
-                    seen_comment_ids.update(reply_outcome.reply_ids)
-                    technical_partial = (
-                        technical_partial or reply_outcome.technical_partial
-                    )
+                    technical_partial = technical_partial or reply_outcome.technical_partial
                     if not reply_outcome.completed:
                         return _CommentFetchOutcome(
                             completed=False,
@@ -858,9 +845,7 @@ class TikHubCollectionScopeExecutor:
                     reported_total,
                     len(seen_comment_ids),
                 )
-                technical_partial = (
-                    technical_partial or _technical_partial_stop(stop_reason)
-                )
+                technical_partial = technical_partial or _technical_partial_stop(stop_reason)
                 self._record_comment_coverage(
                     content_id=content_id,
                     platform=platform,
@@ -879,12 +864,9 @@ class TikHubCollectionScopeExecutor:
                     technical_partial=technical_partial,
                 )
 
-            if (
-                comment_action == "fetch_incremental"
-                and known_comment_boundary_reached(
-                    page_comment_ids,
-                    known_comment_ids,
-                )
+            if comment_action == "fetch_incremental" and known_comment_boundary_reached(
+                page_comment_ids,
+                known_comment_ids,
             ):
                 self._record_comment_coverage(
                     content_id=content_id,
@@ -921,14 +903,10 @@ class TikHubCollectionScopeExecutor:
                     completed=True,
                     technical_partial=technical_partial,
                 )
-            if (
-                comment_target is not None
-                and len(seen_comment_ids) >= comment_target
-            ):
+            if comment_target is not None and len(seen_comment_ids) >= comment_target:
                 coverage = (
                     "complete"
-                    if reported_total is not None
-                    and len(seen_comment_ids) >= reported_total
+                    if reported_total is not None and len(seen_comment_ids) >= reported_total
                     else "partial"
                 )
                 self._record_comment_coverage(
@@ -1191,9 +1169,7 @@ class TikHubCollectionScopeExecutor:
                     reported_total,
                     len(reply_ids),
                 )
-                technical_partial = (
-                    technical_partial or _technical_partial_stop(stop_reason)
-                )
+                technical_partial = technical_partial or _technical_partial_stop(stop_reason)
                 self._content_writer.record_thread_coverage(
                     content_id=content_id,
                     root_comment_id=root_comment.external_comment_id,
@@ -1238,8 +1214,7 @@ class TikHubCollectionScopeExecutor:
             if reply_target is not None and len(reply_ids) >= reply_target:
                 coverage = (
                     "complete"
-                    if reported_total is not None
-                    and len(reply_ids) >= reported_total
+                    if reported_total is not None and len(reply_ids) >= reported_total
                     else "partial"
                 )
                 self._content_writer.record_thread_coverage(
@@ -1323,23 +1298,16 @@ class TikHubCollectionScopeExecutor:
 
         if prepared.attempt.dispatch_status == "completed":
             if prepared.attempt.error_code is not None or (
-                prepared.attempt.http_status is not None
-                and prepared.attempt.http_status >= 400
+                prepared.attempt.http_status is not None and prepared.attempt.http_status >= 400
             ):
                 status_code = prepared.attempt.http_status
                 raise _ProviderCallFailed(
                     error_code=(
                         prepared.attempt.error_code
-                        or (
-                            f"http_{status_code}"
-                            if status_code is not None
-                            else "provider_failed"
-                        )
+                        or (f"http_{status_code}" if status_code is not None else "provider_failed")
                     ),
                     retryable=(
-                        _retryable_http_status(status_code)
-                        if status_code is not None
-                        else False
+                        _retryable_http_status(status_code) if status_code is not None else False
                     ),
                 )
             return self._replay_completed_call(
@@ -1348,18 +1316,13 @@ class TikHubCollectionScopeExecutor:
             )
         if prepared.attempt.dispatch_status != "reserved":
             raise RuntimeError(
-                "Provider Attempt 未处于可发送状态: "
-                f"{prepared.attempt.dispatch_status}"
+                f"Provider Attempt 未处于可发送状态: {prepared.attempt.dispatch_status}"
             )
 
         credential = self._secret_resolver(provider_config.secret_ref)
         outcome = ProviderDispatchService(
-            persistence=PostgresProviderDispatchPersistence(
-                self._session_factory
-            ),
-            client=ProviderClient(
-                transport=self._transport_factory(provider_config)
-            ),
+            persistence=PostgresProviderDispatchPersistence(self._session_factory),
+            client=ProviderClient(transport=self._transport_factory(provider_config)),
             raw_artifacts=self._raw_artifacts,
         ).dispatch(
             attempt_id=prepared.attempt.id,
@@ -1368,25 +1331,13 @@ class TikHubCollectionScopeExecutor:
         )
         if outcome.attempt.dispatch_status != "completed":
             raise _ProviderCallFailed(
-                error_code=(
-                    outcome.attempt.error_code
-                    or outcome.attempt.dispatch_status
-                ),
-                retryable=outcome.attempt.dispatch_status
-                in {"not_sent", "unknown"},
+                error_code=(outcome.attempt.error_code or outcome.attempt.dispatch_status),
+                retryable=outcome.attempt.dispatch_status in {"not_sent", "unknown"},
             )
-        if (
-            outcome.attempt.http_status is not None
-            and outcome.attempt.http_status >= 400
-        ):
+        if outcome.attempt.http_status is not None and outcome.attempt.http_status >= 400:
             raise _ProviderCallFailed(
-                error_code=(
-                    outcome.attempt.error_code
-                    or f"http_{outcome.attempt.http_status}"
-                ),
-                retryable=_retryable_http_status(
-                    outcome.attempt.http_status
-                ),
+                error_code=(outcome.attempt.error_code or f"http_{outcome.attempt.http_status}"),
+                retryable=_retryable_http_status(outcome.attempt.http_status),
             )
         if outcome.artifact is None:
             raise RuntimeError("TikHub completed Attempt 缺少 Raw Artifact")
@@ -1410,10 +1361,7 @@ class TikHubCollectionScopeExecutor:
         prepared: PreparedProviderAttempt,
     ) -> _ExecutedCall:
         attempt = prepared.attempt
-        if (
-            attempt.raw_artifact_id is None
-            or attempt.dispatch_started_at is None
-        ):
+        if attempt.raw_artifact_id is None or attempt.dispatch_started_at is None:
             raise RuntimeError("已完成 Provider Attempt 缺少可回放 Raw 来源")
         artifact = self._load_raw_artifact(
             request=request,
@@ -1424,10 +1372,7 @@ class TikHubCollectionScopeExecutor:
         envelope = self._raw_artifacts.replay(artifact)
         if envelope.response is None:
             raise RuntimeError("已完成 Provider Attempt 的 Raw 缺少 response")
-        if (
-            envelope.response.status_code is not None
-            and envelope.response.status_code >= 400
-        ):
+        if envelope.response.status_code is not None and envelope.response.status_code >= 400:
             raise RuntimeError("成功 Attempt 的 Raw 不应包含 HTTP 失败状态")
         return _ExecutedCall(
             request_id=prepared.request.id,
@@ -1453,17 +1398,13 @@ class TikHubCollectionScopeExecutor:
         session = self._session_factory()
         try:
             with session.begin():
-                artifact = (
-                    PostgresArtifactMetadataRepository(
-                        session
-                    ).get_by_storage_key(storage_key)
+                artifact = PostgresArtifactMetadataRepository(session).get_by_storage_key(
+                    storage_key
                 )
         finally:
             session.close()
         if artifact is None or artifact.id != expected_artifact_id:
-            raise RuntimeError(
-                "Provider Attempt 的 Raw Artifact 元数据不存在或来源不一致"
-            )
+            raise RuntimeError("Provider Attempt 的 Raw Artifact 元数据不存在或来源不一致")
         return artifact
 
     def _provider_config_for_run(
@@ -1477,9 +1418,7 @@ class TikHubCollectionScopeExecutor:
             and runtime_config.secret_ref is not None
         ):
             if runtime_config.provider != "tikhub":
-                raise ValueError(
-                    "TikHub Scope Runtime 只接受 provider=tikhub"
-                )
+                raise ValueError("TikHub Scope Runtime 只接受 provider=tikhub")
             return ProviderConfig(
                 id=runtime_config.provider_config_id,
                 provider=runtime_config.provider,
@@ -1500,21 +1439,15 @@ class TikHubCollectionScopeExecutor:
         session = self._session_factory()
         try:
             with session.begin():
-                config = PostgresProviderConfigRepository(session).get(
-                    provider_config_id
-                )
+                config = PostgresProviderConfigRepository(session).get(provider_config_id)
         finally:
             session.close()
         if config is None:
-            raise LookupError(
-                f"Provider Config 不存在: {provider_config_id}"
-            )
+            raise LookupError(f"Provider Config 不存在: {provider_config_id}")
         if not config.enabled:
             raise ValueError("Provider Config 已禁用")
         if config.provider != "tikhub":
-            raise ValueError(
-                "TikHub Scope Runtime 只接受 provider=tikhub"
-            )
+            raise ValueError("TikHub Scope Runtime 只接受 provider=tikhub")
         return config
 
 
@@ -1523,9 +1456,7 @@ def _previous_from_action(
 ) -> PreviousContentStateV1 | None:
     if not action.previous_exists:
         return None
-    return PreviousContentStateV1(
-        comment_count=action.previous_comment_count
-    )
+    return PreviousContentStateV1(comment_count=action.previous_comment_count)
 
 
 def _canonical_source_ids(
@@ -1534,9 +1465,7 @@ def _canonical_source_ids(
     attempt_id = observation.source.provider_attempt_id
     raw_artifact_id = observation.source.raw_artifact_id
     if attempt_id is None or raw_artifact_id is None:
-        raise ValueError(
-            "Coverage 来源缺少 provider_attempt_id/raw_artifact_id"
-        )
+        raise ValueError("Coverage 来源缺少 provider_attempt_id/raw_artifact_id")
     try:
         return UUID(attempt_id), raw_artifact_id
     except ValueError as exc:
@@ -1626,19 +1555,12 @@ def _response_body(value: object) -> dict[str, object]:
 
 
 def _retryable_http_status(status_code: int) -> bool:
-    return (
-        status_code in _RETRYABLE_HTTP_STATUSES
-        or status_code >= 500
-    )
+    return status_code in _RETRYABLE_HTTP_STATUSES or status_code >= 500
 
 
 def _payload_int(payload: dict[str, object], name: str) -> int:
     value = payload.get(name, 0)
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, int)
-        or value < 0
-    ):
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         return 0
     return value
 
@@ -1652,46 +1574,30 @@ def _platform_runtime_config(
     if not isinstance(platforms, list):
         raise ValueError("Collection Run Snapshot 缺少 platforms")
     matches = [
-        item
-        for item in platforms
-        if isinstance(item, dict)
-        and item.get("platform") == platform
+        item for item in platforms if isinstance(item, dict) and item.get("platform") == platform
     ]
     if len(matches) != 1:
-        raise ValueError(
-            "Collection Run Snapshot 必须为 Scope 平台提供唯一 Provider Config"
-        )
+        raise ValueError("Collection Run Snapshot 必须为 Scope 平台提供唯一 Provider Config")
     item = matches[0]
     provider_config_id = item.get("provider_config_id")
     if not isinstance(provider_config_id, str):
-        raise ValueError(
-            "Collection Run Snapshot provider_config_id 必须为 UUID 字符串"
-        )
+        raise ValueError("Collection Run Snapshot provider_config_id 必须为 UUID 字符串")
     try:
         parsed_config_id = UUID(provider_config_id)
     except ValueError as exc:
-        raise ValueError(
-            "Collection Run Snapshot provider_config_id 不是合法 UUID"
-        ) from exc
+        raise ValueError("Collection Run Snapshot provider_config_id 不是合法 UUID") from exc
     config = item.get("config", {})
     if not isinstance(config, dict):
-        raise ValueError(
-            "Collection Run Snapshot platform config 必须为对象"
-        )
+        raise ValueError("Collection Run Snapshot platform config 必须为对象")
     provider = item.get("provider")
     base_url = item.get("base_url")
     secret_ref = item.get("secret_ref")
     return _PlatformRuntimeConfig(
         provider_config_id=parsed_config_id,
-        config={
-            str(key): value
-            for key, value in config.items()
-        },
+        config={str(key): value for key, value in config.items()},
         provider=provider if isinstance(provider, str) else None,
         base_url=base_url if isinstance(base_url, str) else None,
-        secret_ref=(
-            secret_ref if isinstance(secret_ref, str) else None
-        ),
+        secret_ref=(secret_ref if isinstance(secret_ref, str) else None),
     )
 
 
@@ -1702,9 +1608,7 @@ def _decision_policy(
     if payload is None:
         return CollectionDecisionPolicyV1()
     if not isinstance(payload, dict):
-        raise ValueError(
-            "Collection Run Snapshot decision_policy 必须为对象"
-        )
+        raise ValueError("Collection Run Snapshot decision_policy 必须为对象")
     return CollectionDecisionPolicyV1.model_validate(payload)
 
 
@@ -1718,13 +1622,9 @@ def _validate_decision_policy(run: CollectionRunRecord) -> None:
         "adaptive",
     )
     if detail_policy != "on_change":
-        raise ValueError(
-            "Collection Scope Runtime 当前只支持 detail_policy=on_change"
-        )
+        raise ValueError("Collection Scope Runtime 当前只支持 detail_policy=on_change")
     if comment_policy != "adaptive":
-        raise ValueError(
-            "Collection Scope Runtime 当前只支持 comment_policy=adaptive"
-        )
+        raise ValueError("Collection Scope Runtime 当前只支持 comment_policy=adaptive")
 
 
 def _capability(
@@ -1734,15 +1634,12 @@ def _capability(
         (
             capability
             for capability in TIKHUB_PLATFORM_CAPABILITIES
-            if capability.provider == "tikhub"
-            and capability.platform == platform
+            if capability.provider == "tikhub" and capability.platform == platform
         ),
         None,
     )
     if match is None:
-        raise ValueError(
-            f"TikHub 平台 Capability 不存在: {platform}"
-        )
+        raise ValueError(f"TikHub 平台 Capability 不存在: {platform}")
     return match
 
 
@@ -1754,9 +1651,7 @@ def _tikhub_platform(value: str) -> TikHubPlatform:
         "bilibili",
         "kuaishou",
     }:
-        raise ValueError(
-            f"TikHub Scope Runtime 不支持平台: {value}"
-        )
+        raise ValueError(f"TikHub Scope Runtime 不支持平台: {value}")
     return cast(TikHubPlatform, value)
 
 

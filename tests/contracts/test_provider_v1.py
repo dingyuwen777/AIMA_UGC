@@ -8,13 +8,13 @@ from uuid import uuid4
 
 import pytest
 from aima_ugc.contracts.provider import (
+    REDACTED,
     ProviderAttemptV1,
     ProviderBillingV1,
     ProviderErrorV1,
     ProviderRequestV1,
     RawEnvelopeV1,
     RawRequestV1,
-    REDACTED,
     assert_redacted_json,
     redact_json,
 )

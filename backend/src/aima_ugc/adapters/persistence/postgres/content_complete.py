@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, insert, select, update
+from sqlalchemy import Table, delete, insert, select, update
 from sqlalchemy.orm import Session
 
 from aima_ugc.contracts.canonical import CanonicalCommentV1, CanonicalContentV1
@@ -282,7 +282,7 @@ def _require_attempt_raw_pair(session: Session, *, attempt_id: UUID, raw_id: UUI
         raise ValueError("Canonical Provider Attempt 与 Raw Artifact 来源不一致")
 
 
-def _lock_parent(session: Session, table, parent_id: UUID) -> dict[str, Any]:  # type: ignore[no-untyped-def]
+def _lock_parent(session: Session, table: Table, parent_id: UUID) -> dict[str, Any]:
     return dict(
         session.execute(select(table).where(table.c.id == parent_id).with_for_update())
         .mappings()
@@ -313,11 +313,11 @@ def _accept_field_freshness(
 def _claim_collection_freshness(
     session: Session,
     *,
-    parent_table,
+    parent_table: Table,
     parent_id: UUID,
     field_name: str,
     observed_at: datetime,
-) -> bool:  # type: ignore[no-untyped-def]
+) -> bool:
     row = _lock_parent(session, parent_table, parent_id)
     accepted, freshness = _accept_field_freshness(row, field_name, observed_at)
     if not accepted:

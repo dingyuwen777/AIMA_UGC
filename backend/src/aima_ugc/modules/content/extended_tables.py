@@ -1,5 +1,7 @@
 """Stage 1-7 全面整改补齐的 Content Owner Canonical 子实体表。"""
 
+from typing import Any
+
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -19,7 +21,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from aima_ugc.platform.database.metadata import metadata
 
 
-def _source_columns() -> tuple[Column, Column, Column]:
+def _source_columns() -> tuple[Column[Any], Column[Any], Column[Any]]:
     """来源由 Attempt+Raw 复合 FK 统一约束，避免两个冗余单列来源 FK。"""
     return (
         Column("provider_attempt_id", Uuid(), nullable=False),

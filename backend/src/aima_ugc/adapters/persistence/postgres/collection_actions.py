@@ -285,13 +285,15 @@ def _require_attempt_source(
 
 
 def _row_to_action(row: RowMapping) -> CollectionContentActionRecord:
-    decision = CollectionDecisionV1(
-        detail_action=cast(str, row["detail_action"]),
-        detail_reason=cast(str, row["detail_reason"]),
-        comment_action=cast(str, row["comment_action"]),
-        comment_reason=cast(str, row["comment_reason"]),
-        comment_target=cast(int | None, row["comment_target"]),
-        reply_target_per_root=cast(int | None, row["reply_target_per_root"]),
+    decision = CollectionDecisionV1.model_validate(
+        {
+            "detail_action": row["detail_action"],
+            "detail_reason": row["detail_reason"],
+            "comment_action": row["comment_action"],
+            "comment_reason": row["comment_reason"],
+            "comment_target": row["comment_target"],
+            "reply_target_per_root": row["reply_target_per_root"],
+        }
     )
     return CollectionContentActionRecord(
         id=cast(UUID, row["id"]),

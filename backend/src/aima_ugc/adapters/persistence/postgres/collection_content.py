@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import insert, select
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
@@ -148,7 +149,9 @@ class PostgresFencedCollectionIngestionWriter:
                     raw_artifact_id=raw_artifact_id,
                     fence=fence,
                 )
-                candidate = CandidateIngestionService(PostgresCandidateRepository(session)).discover(
+                candidate = CandidateIngestionService(
+                    PostgresCandidateRepository(session)
+                ).discover(
                     provider_request_attempt_id=provider_attempt_id,
                     item_kind=item_kind,
                     external_item_id=None,
@@ -230,7 +233,9 @@ class PostgresFencedCollectionIngestionWriter:
                         candidate_id=candidate_id,
                         attempt_id=attempt_id,
                     )
-                content_service = ContentIngestionService(PostgresCompleteContentRepository(session))
+                content_service = ContentIngestionService(
+                    PostgresCompleteContentRepository(session)
+                )
                 result = content_service.ingest_content(canonical)
                 candidate_service.record_ingestion(
                     candidate_id=candidate_id,
@@ -278,7 +283,9 @@ class PostgresFencedCollectionIngestionWriter:
                         candidate_id=candidate_id,
                         attempt_id=attempt_id,
                     )
-                content_service = ContentIngestionService(PostgresCompleteContentRepository(session))
+                content_service = ContentIngestionService(
+                    PostgresCompleteContentRepository(session)
+                )
                 result = content_service.ingest_comment(canonical)
                 candidate_service.record_ingestion(
                     candidate_id=candidate_id,
@@ -373,7 +380,7 @@ class PostgresFencedCollectionIngestionWriter:
                 row_id = uuid4()
                 self._session_insert_thread_coverage(
                     session,
-                    row_id=row_id,
+                    id=row_id,
                     content_id=content_id,
                     root_comment_id=root_comment_id,
                     provider_attempt_id=provider_attempt_id,
@@ -394,7 +401,20 @@ class PostgresFencedCollectionIngestionWriter:
         session: Session,
         **values: object,
     ) -> None:
-        session.execute(insert(comment_thread_coverage_observations_table).values(**values))
+        statement = pg_insert(comment_thread_coverage_observations_table).values(**values)
+        session.execute(
+            statement.on_conflict_do_update(
+                constraint="uq_comment_thread_coverage_source",
+                set_={
+                    "coverage": statement.excluded.coverage,
+                    "reported_total": statement.excluded.reported_total,
+                    "captured_count": statement.excluded.captured_count,
+                    "target_count": statement.excluded.target_count,
+                    "stop_reason": statement.excluded.stop_reason,
+                    "observed_at": statement.excluded.observed_at,
+                },
+            )
+        )
 
 
 def _lock_matching_attempt(
