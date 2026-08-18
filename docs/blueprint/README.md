@@ -62,7 +62,7 @@
 | [`12-TikHub真实请求响应与接口选型台账.md`](12-TikHub真实请求响应与接口选型台账.md) | 五平台主 endpoint、真实请求/响应、价格事实和接口选型证据 | TikHub 主链核查、Real Probe、endpoint 选型与历史 A/B |
 | [`13-统一数据Excel导出与调试复用.md`](13-统一数据Excel导出与调试复用.md) | 唯一 `UnifiedDataExcelV1`、raw/labeled 同契约、同源 JSONL→Excel、共享 Exporter 与调试复用门禁 | Excel、`.xlsx`、`openpyxl`、`tikhub_test`/`imports_test`、系统级统一导出 |
 | [`14-临时P1-Excel离线导入与舆情打标.md`](14-临时P1-Excel离线导入与舆情打标.md) | Stage 8 前临时 P1 的无数据库 Excel→JSONL→AI 回写→Excel 实施边界和 P1A—P1H | **仅 P1 未闭环期间读取；P1 完成后删除本文和本索引项** |
-| [`15-舆情AI打标与统一分析契约.md`](15-舆情AI打标与统一分析契约.md) | 全平台通用 4 情感 + 7 一级 + 17 二级 taxonomy、最小模型输入、Markdown Prompt、Analysis Contract、JSONL 回写与数据库 Owner 边界 | AI 打标、Prompt 调优、模型 Adapter、Analysis 结果、数据库/Excel 消费 |
+| [`15-舆情AI打标与统一分析契约.md`](15-舆情AI打标与统一分析契约.md) | 全平台通用 4 情感 + 9 一级 + 39 二级 taxonomy、最小模型输入、Markdown Prompt、Analysis Contract、JSONL 回写与数据库 Owner 边界 | AI 打标、Prompt 调优、模型 Adapter、Analysis 结果、数据库/Excel 消费 |
 
 ## 当前开发状态
 
@@ -94,6 +94,8 @@ changes/archive/2026-08/CHG-20260815-stage7-completion/CHANGE.md
 ### P1：Excel 离线导入、关键词清洗、去重与舆情打标
 
 P1 是 Stage 7 与 Stage 8 之间的临时优先插入，不改变任何正式 Stage 编号。当前实施顺序由 [`14-临时P1-Excel离线导入与舆情打标.md`](14-临时P1-Excel离线导入与舆情打标.md) 和对应 Active Change 维护；AI 长期语义由 [`15-舆情AI打标与统一分析契约.md`](15-舆情AI打标与统一分析契约.md) 维护。
+
+当前 P1A—P1D 已闭环；下一最小正式单元是 P1E。P1E 未完成前不得进入 P1F、P1G、P1H 或 Stage 8。
 
 P1 第一版固定为无数据库离线实现：
 
