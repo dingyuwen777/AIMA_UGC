@@ -152,9 +152,7 @@ def test_item_order_mismatch_retries_the_whole_unresolved_batch() -> None:
         },
         ensure_ascii=False,
     )
-    fake = FakeContentLabelingLLM(
-        responses=[bad, _valid_response(taxonomy, (1, 2))]
-    )
+    fake = FakeContentLabelingLLM(responses=[bad, _valid_response(taxonomy, (1, 2))])
 
     result = ContentLabelingService(prompt_loader=loader, llm=fake).label_contents(
         [_content("content-1"), _content("content-2")],
