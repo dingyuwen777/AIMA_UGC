@@ -127,12 +127,7 @@ Provider Request 已有 Attempt 后，`scope_id/import_batch_id/provider/operati
 文件处理仍复用 P1 生产实现：
 
 ```text
-XLSX
-→ Excel Reader / Mapper
-→ Canonical JSONL
-→ keyword filter
-→ stable identity deduplicate
-→ UnifiedContentRecordV1 JSONL
+XLSX → Excel Reader / Mapper → Canonical JSONL → keyword filter → stable identity deduplicate → UnifiedContentRecordV1 JSONL
 ```
 
 显式数据库阶段：
@@ -151,15 +146,7 @@ XLSX
 → PostgreSQL
 ```
 
-`imports_test` 当前 API：
-
-```python
-WRITE_TO_DATABASE = False
-run_all(..., write_to_database=False)
-ingest_database(run_dir=...)
-```
-
-`run_all(write_to_database=True)` 的真实阶段顺序为：`convert → filter_keywords → deduplicate → database_ingestion → label_sentiment → export_labeled_excel`。数据库阶段失败时，它之前已经生成的文件保留；后续 AI/最终 labeled Excel 不会继续自动执行。
+`imports_test` 当前 API 是 `WRITE_TO_DATABASE=False`、`run_all(..., write_to_database=False)` 和 `ingest_database(run_dir=...)`。`run_all(write_to_database=True)` 的真实顺序为 `convert → filter_keywords → deduplicate → database_ingestion → label_sentiment → export_labeled_excel`。数据库阶段失败时，之前已经生成的文件保留，后续 AI/最终 labeled Excel 不继续自动执行。
 
 ## 7. TikHub 调试数据库模式实际执行链
 
@@ -171,8 +158,6 @@ provider_config_id: UUID | None = None
 ```
 
 显式数据库模式要求稳定 `provider_config_id`，并校验 Provider Config 存在/启用/provider=tikhub、Base URL 与本次 `.env` 一致、正式 Secret 与本次 `.env` API Key 一致，以及 Stage 8A Schema 已部署。
-
-执行链：
 
 ```text
 manual Collection Run / keyword Scope / Job Fencing
@@ -223,15 +208,7 @@ README、导航、测试说明和本 Change 收口后产生了新的文档提交
 
 ## 10. 文档同步
 
-已同步：
-
-- Blueprint 02：区分 Collection Candidate 链与 File Import 来源链。
-- Blueprint 03：同步 `processing_import_batches`、Provider Request 双父级、Input Artifact/Attempt 与 Migration 0019。
-- Blueprint 17：Stage 8A 目标态更新为机器事实，并保留 8B—8F 后续边界。
-- Blueprint README：当前状态改为 Stage 8A Foundation 已实现，下一最小正式单元为 8B。
-- `imports_test/README.md`：同步数据库开关、`ingest_database()`、真实顺序和失败边界。
-- `tikhub_test/README.md`：同步 `provider_config_id`、配置/Secret 一致性、单次请求双 Raw 和 fenced Ingestion。
-- `docs/测试与调试说明.md`：同步两个调试入口和 Stage 8A Unit/Contract/PG18 验收。
+已同步：Blueprint 02、03、17、根 Blueprint README、`imports_test/README.md`、`tikhub_test/README.md` 和 `docs/测试与调试说明.md`。
 
 检查后不修改：
 
@@ -256,7 +233,7 @@ README、导航、测试说明和本 Change 收口后产生了新的文档提交
 - 分支：`feature/stage8a-unified-manual-ingestion`
 - PR：`#88 Stage 8A：统一手工数据入库基础`
 - 当前 Change 状态：`ready_for_review`
-- PR 必须在实际最新 head 取得新鲜 CI，并完成需求符合性/代码质量 Review后才可转 Ready/合并。
+- PR 必须在实际最新 head 取得新鲜 CI，并完成需求符合性/代码质量 Review 后才可转 Ready/合并。
 - 合并后必须重新读取 `main` 的 `AGENTS.md` 和合并事实，并验证 main 集成状态；只有此后才能将 Change 置为 `done` 并归档。
 - Stage 8A 闭环前不进入 Stage 8B。
 
