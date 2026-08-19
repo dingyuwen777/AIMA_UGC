@@ -17,7 +17,7 @@ class ContentLabelPairV2(BaseModel):
 
 
 class ContentLabelAnalysisV1(BaseModel):
-    """历史单标签成功分析结果；保留用于兼容旧 JSONL/checkpoint。"""
+    """通过 PromptTaxonomy 与本地 Validator 校验后的单标签分析结果。"""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
