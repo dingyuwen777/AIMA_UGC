@@ -61,7 +61,7 @@ def test_registry_fails_closed_for_disabled_unknown_or_unsupported_routes() -> N
         registry.resolve(config=_config(provider="other-provider"), platform="xhs")
 
     with pytest.raises(ValueError, match="不支持"):
-        registry.resolve(config=_config(), platform="unsupported-operations")
+        registry.resolve(config=_config(), platform="unsupported-platform")
 
     with pytest.raises(ValueError, match="允许列表"):
         registry.resolve(config=_config(base_url="https://example.com"), platform="xhs")

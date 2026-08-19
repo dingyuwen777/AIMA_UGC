@@ -49,7 +49,7 @@ _SAFE_ENUM_KEYS = {
     "mode",
     "note_type",
     "operation",
-    "operations",
+    "platform",
     "result",
     "schema_version",
     "search_type",
@@ -354,7 +354,7 @@ def _capture(
     _write_json(target / "observed_paths.json", paths)
     manifest.append(
         {
-            "operations": platform,
+            "platform": platform,
             "label": label,
             "method": request_doc["method"],
             "endpoint": result.path,

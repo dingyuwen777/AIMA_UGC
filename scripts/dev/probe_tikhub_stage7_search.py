@@ -89,7 +89,7 @@ _SAFE_SHORT_STRING_KEYS = {
     "message_zh",
     "method",
     "mode",
-    "operations",
+    "platform",
     "router",
     "schema_version",
     "search_type",
@@ -379,7 +379,7 @@ def run_search_probe() -> None:
             _write_json(output / request.platform / "search_page1.sanitized.json", safe_body)
             manifest.append(
                 {
-                    "operations": request.platform,
+                    "platform": request.platform,
                     "method": request.method,
                     "endpoint": request.path,
                     "http_status": status,

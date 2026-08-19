@@ -228,7 +228,7 @@ def test_real_search_fixture_ingests_content_and_candidate_lineage(
             .mappings()
             .one()
         )
-        assert content_row["operations"] == "xhs"
+        assert content_row["platform"] == "xhs"
         assert content_row["external_content_id"] == "note-fixture-1"
         assert content_row["title"] == "脱敏标题 A"
         assert content_row["current_comment_count"] == 1

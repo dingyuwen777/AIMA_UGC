@@ -196,7 +196,7 @@ def _prepare_run(runtime: DatabaseRuntime) -> _PreparedRun:
                     "comment_policy": "adaptive",
                     "platforms": [
                         {
-                            "operations": "xhs",
+                            "platform": "xhs",
                             "provider_config_id": str(provider_config.id),
                             "config": {
                                 "sort_mode": "latest",

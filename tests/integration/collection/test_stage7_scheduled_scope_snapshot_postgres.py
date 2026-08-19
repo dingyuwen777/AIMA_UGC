@@ -188,7 +188,7 @@ def test_scheduler_freezes_keyword_pack_version_and_explicit_platform_scopes(
         )
 
         assert {
-            (row["operations"], row["source_type"], row["source_value"], row["operation_group"])
+            (row["platform"], row["source_type"], row["source_value"], row["operation_group"])
             for row in scopes
         } == {
             ("xhs", "keyword_search", "爱玛", "content_discovery"),
