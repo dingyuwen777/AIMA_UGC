@@ -1,9 +1,10 @@
-"""P1F/P1G 离线 JSONL 舆情打标编排；checkpoint 先落盘并支持崩溃恢复。"""
+"""离线 JSONL 舆情打标编排；单条请求、有界并发、checkpoint 优先与崩溃恢复。"""
 
 from __future__ import annotations
 
 import json
 import os
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO
@@ -21,6 +22,8 @@ from .content_labeling import (
 )
 from .prompt_taxonomy import PromptTaxonomy
 
+DEFAULT_OFFLINE_LLM_CONCURRENCY = 250
+
 
 @dataclass(frozen=True, slots=True)
 class OfflineContentLabelingSummary:
@@ -34,31 +37,26 @@ class OfflineContentLabelingSummary:
     rows_succeeded: int
     rows_failed: int
     llm_attempts: int
+    peak_in_flight: int = 0
+    llm_http_requests: int = 0
+    transport_retries: int = 0
 
 
 @dataclass(frozen=True, slots=True)
 class _SourceRow:
     line_number: int
     record: UnifiedContentRecordV1
+    input_hash: str
 
 
 @dataclass(frozen=True, slots=True)
-class _PendingRow:
-    item_no: int
+class _ItemOutcome:
     source: _SourceRow
-
-
-@dataclass(frozen=True, slots=True)
-class _BatchOutcome:
-    rows: tuple[UnifiedContentRecordV1, ...]
-    rows_already_labeled: int
-    rows_recovered: int
-    rows_succeeded: int
-    rows_failed: int
-    llm_attempts: int
+    result: ContentLabelingBatchResult
 
 
 _CheckpointKey = tuple[str, str, str]
+_StableContentKey = tuple[str, str]
 _ANALYSIS_ADAPTER: TypeAdapter[ContentLabelAnalysis] = TypeAdapter(ContentLabelAnalysis)
 
 
@@ -68,14 +66,12 @@ def label_unified_content_jsonl(
     analysis_dir: Path,
     service: ContentLabelingService,
     max_validation_retries: int,
-    batch_size: int = 20,
+    max_concurrency: int = DEFAULT_OFFLINE_LLM_CONCURRENCY,
     recovery_taxonomy: PromptTaxonomy | None = None,
 ) -> OfflineContentLabelingSummary:
-    """读取统一内容 JSONL，按当前 Prompt/Taxonomy/模型身份恢复 checkpoint 并原子回写。"""
+    """单条内容独立请求；先预检，再有界并发，最后按原始顺序原子回写。"""
 
-    if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size <= 0:
-        raise ValueError("batch_size 必须是大于 0 的整数")
-
+    _validate_max_concurrency(max_concurrency)
     source_path = Path(input_path)
     audit_dir = Path(analysis_dir)
     audit_dir.mkdir(parents=True, exist_ok=True)
@@ -88,91 +84,89 @@ def label_unified_content_jsonl(
         recovery_model_provider=service.provider_name,
         recovery_model=service.model_name,
     )
-    temp_path = source_path.with_name(f".{source_path.name}.labeling.tmp")
-    temp_path.unlink(missing_ok=True)
 
-    rows_seen = 0
-    rows_already_labeled = 0
-    rows_recovered = 0
+    rows_seen, rows_already_labeled, rows_recovered, pending_count = _preflight_source(
+        source_path,
+        checkpoint_index=checkpoint_index,
+    )
     rows_succeeded = 0
     rows_failed = 0
     llm_attempts = 0
-    batch_no = 0
-    published_changes = False
+    peak_in_flight = 0
 
-    try:
+    if pending_count:
         with (
-            source_path.open("rb") as input_file,
-            temp_path.open("w", encoding="utf-8", newline="\n") as output_file,
             checkpoint_path.open("a", encoding="utf-8", newline="\n") as checkpoint_file,
             attempt_path.open("a", encoding="utf-8", newline="\n") as attempt_file,
             failed_path.open("a", encoding="utf-8", newline="\n") as failed_file,
         ):
-            source_batch: list[_SourceRow] = []
-            for line_number, raw_line in enumerate(input_file, start=1):
-                rows_seen += 1
-                source_batch.append(
-                    _SourceRow(
-                        line_number=line_number,
-                        record=_parse_record(raw_line, source_path, line_number),
+            pending_rows = _iter_pending_rows(source_path, checkpoint_index=checkpoint_index)
+            first_pending = next(pending_rows, None)
+            if first_pending is None:
+                raise RuntimeError("预检存在待打标记录，但二次扫描未找到待打标记录")
+
+            # Canary 先验证真实 Provider/认证/余额/请求链；失败时避免一次性放大到 250 请求。
+            canary = _label_one(
+                first_pending,
+                service=service,
+                max_validation_retries=max_validation_retries,
+            )
+            succeeded, failed, attempts = _persist_outcomes(
+                (canary,),
+                checkpoint_file=checkpoint_file,
+                attempt_file=attempt_file,
+                failed_file=failed_file,
+                checkpoint_index=checkpoint_index,
+            )
+            rows_succeeded += succeeded
+            rows_failed += failed
+            llm_attempts += attempts
+
+            with ThreadPoolExecutor(
+                max_workers=max_concurrency,
+                thread_name_prefix="aima-content-label",
+            ) as executor:
+                in_flight: dict[Future[_ItemOutcome], _SourceRow] = {}
+                for source in pending_rows:
+                    future = executor.submit(
+                        _label_one,
+                        source,
+                        service=service,
+                        max_validation_retries=max_validation_retries,
                     )
-                )
-                if len(source_batch) < batch_size:
-                    continue
+                    in_flight[future] = source
+                    peak_in_flight = max(peak_in_flight, len(in_flight))
+                    if len(in_flight) < max_concurrency:
+                        continue
 
-                batch_no += 1
-                outcome = _process_batch(
-                    batch=source_batch,
-                    batch_no=batch_no,
-                    service=service,
-                    max_validation_retries=max_validation_retries,
-                    checkpoint_file=checkpoint_file,
-                    attempt_file=attempt_file,
-                    failed_file=failed_file,
-                    checkpoint_index=checkpoint_index,
-                )
-                _write_records(output_file, outcome.rows)
-                rows_already_labeled += outcome.rows_already_labeled
-                rows_recovered += outcome.rows_recovered
-                rows_succeeded += outcome.rows_succeeded
-                rows_failed += outcome.rows_failed
-                llm_attempts += outcome.llm_attempts
-                published_changes = published_changes or (
-                    outcome.rows_recovered > 0 or outcome.rows_succeeded > 0
-                )
-                source_batch.clear()
+                    succeeded, failed, attempts = _drain_completed(
+                        in_flight,
+                        checkpoint_file=checkpoint_file,
+                        attempt_file=attempt_file,
+                        failed_file=failed_file,
+                        checkpoint_index=checkpoint_index,
+                    )
+                    rows_succeeded += succeeded
+                    rows_failed += failed
+                    llm_attempts += attempts
 
-            if source_batch:
-                batch_no += 1
-                outcome = _process_batch(
-                    batch=source_batch,
-                    batch_no=batch_no,
-                    service=service,
-                    max_validation_retries=max_validation_retries,
-                    checkpoint_file=checkpoint_file,
-                    attempt_file=attempt_file,
-                    failed_file=failed_file,
-                    checkpoint_index=checkpoint_index,
-                )
-                _write_records(output_file, outcome.rows)
-                rows_already_labeled += outcome.rows_already_labeled
-                rows_recovered += outcome.rows_recovered
-                rows_succeeded += outcome.rows_succeeded
-                rows_failed += outcome.rows_failed
-                llm_attempts += outcome.llm_attempts
-                published_changes = published_changes or (
-                    outcome.rows_recovered > 0 or outcome.rows_succeeded > 0
-                )
+                while in_flight:
+                    succeeded, failed, attempts = _drain_completed(
+                        in_flight,
+                        checkpoint_file=checkpoint_file,
+                        attempt_file=attempt_file,
+                        failed_file=failed_file,
+                        checkpoint_index=checkpoint_index,
+                    )
+                    rows_succeeded += succeeded
+                    rows_failed += failed
+                    llm_attempts += attempts
 
-            _flush_and_sync(output_file)
-
-        if published_changes:
-            os.replace(temp_path, source_path)
-        else:
-            temp_path.unlink(missing_ok=True)
-    except BaseException:
-        temp_path.unlink(missing_ok=True)
-        raise
+    if rows_recovered or rows_succeeded:
+        _rewrite_source_in_original_order(
+            source_path,
+            checkpoint_index=checkpoint_index,
+        )
 
     return OfflineContentLabelingSummary(
         input_path=source_path,
@@ -183,82 +177,195 @@ def label_unified_content_jsonl(
         rows_succeeded=rows_succeeded,
         rows_failed=rows_failed,
         llm_attempts=llm_attempts,
+        peak_in_flight=peak_in_flight,
     )
 
 
-def _process_batch(
+def _validate_max_concurrency(value: int) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError("max_concurrency 必须是大于 0 的整数")
+
+
+def _preflight_source(
+    source_path: Path,
     *,
-    batch: list[_SourceRow],
-    batch_no: int,
+    checkpoint_index: dict[_CheckpointKey, ContentLabelAnalysis],
+) -> tuple[int, int, int, int]:
+    """付费调用前完整验证输入，并计算本次待处理集合。"""
+
+    rows_seen = 0
+    rows_already_labeled = 0
+    rows_recovered = 0
+    pending_count = 0
+    stable_identities: set[_StableContentKey] = set()
+
+    with source_path.open("rb") as input_file:
+        for line_number, raw_line in enumerate(input_file, start=1):
+            rows_seen += 1
+            record = _parse_record(raw_line, source_path, line_number)
+            identity = (record.content.platform, record.content.external_content_id)
+            if identity in stable_identities:
+                raise ValueError(
+                    f"{source_path}: 第 {line_number} 行出现重复稳定内容身份 "
+                    f"({identity[0]}, {identity[1]})，拒绝在付费模型调用前继续"
+                )
+            stable_identities.add(identity)
+            if record.analysis is not None:
+                rows_already_labeled += 1
+                continue
+            input_hash = _content_input_hash(record)
+            if _checkpoint_key(record, input_hash) in checkpoint_index:
+                rows_recovered += 1
+            else:
+                pending_count += 1
+
+    return rows_seen, rows_already_labeled, rows_recovered, pending_count
+
+
+def _iter_pending_rows(
+    source_path: Path,
+    *,
+    checkpoint_index: dict[_CheckpointKey, ContentLabelAnalysis],
+):
+    with source_path.open("rb") as input_file:
+        for line_number, raw_line in enumerate(input_file, start=1):
+            record = _parse_record(raw_line, source_path, line_number)
+            if record.analysis is not None:
+                continue
+            input_hash = _content_input_hash(record)
+            if _checkpoint_key(record, input_hash) in checkpoint_index:
+                continue
+            yield _SourceRow(
+                line_number=line_number,
+                record=record,
+                input_hash=input_hash,
+            )
+
+
+def _label_one(
+    source: _SourceRow,
+    *,
     service: ContentLabelingService,
     max_validation_retries: int,
+) -> _ItemOutcome:
+    result = service.label_contents(
+        [source.record.content],
+        max_validation_retries=max_validation_retries,
+    )
+    if len(result.items) != 1 or result.items[0].item_no != 1:
+        raise RuntimeError("单条 ContentLabelingService 调用必须且只能返回 item_no=1")
+    if result.items[0].input_hash != source.input_hash:
+        raise RuntimeError("ContentLabelingService 单条结果 input_hash 与预检不一致")
+    return _ItemOutcome(source=source, result=result)
+
+
+def _drain_completed(
+    in_flight: dict[Future[_ItemOutcome], _SourceRow],
+    *,
     checkpoint_file: TextIO,
     attempt_file: TextIO,
     failed_file: TextIO,
     checkpoint_index: dict[_CheckpointKey, ContentLabelAnalysis],
-) -> _BatchOutcome:
-    recovered: dict[int, ContentLabelAnalysis] = {}
-    pending_sources: list[_SourceRow] = []
-    already_labeled = 0
+) -> tuple[int, int, int]:
+    done, _ = wait(tuple(in_flight), return_when=FIRST_COMPLETED)
+    outcomes: list[_ItemOutcome] = []
+    first_error: BaseException | None = None
+    for future in done:
+        in_flight.pop(future, None)
+        try:
+            outcomes.append(future.result())
+        except BaseException as exc:
+            if first_error is None:
+                first_error = exc
 
-    for source in batch:
-        if source.record.analysis is not None:
-            already_labeled += 1
-            continue
-        input_hash = _content_input_hash(source.record)
-        key = _checkpoint_key(source.record, input_hash)
-        checkpoint_analysis = checkpoint_index.get(key)
-        if checkpoint_analysis is not None:
-            recovered[source.line_number] = checkpoint_analysis
-            continue
-        pending_sources.append(source)
-
-    if not pending_sources:
-        return _BatchOutcome(
-            rows=tuple(
-                _rewrite_record(source, recovered.get(source.line_number)) for source in batch
-            ),
-            rows_already_labeled=already_labeled,
-            rows_recovered=len(recovered),
-            rows_succeeded=0,
-            rows_failed=0,
-            llm_attempts=0,
+    succeeded, failed, attempts = _persist_outcomes(
+        outcomes,
+        checkpoint_file=checkpoint_file,
+        attempt_file=attempt_file,
+        failed_file=failed_file,
+        checkpoint_index=checkpoint_index,
+    )
+    if first_error is not None:
+        _finish_in_flight_before_raise(
+            in_flight,
+            checkpoint_file=checkpoint_file,
+            attempt_file=attempt_file,
+            failed_file=failed_file,
+            checkpoint_index=checkpoint_index,
         )
+        raise first_error
+    return succeeded, failed, attempts
 
-    pending = tuple(
-        _PendingRow(item_no=item_no, source=source)
-        for item_no, source in enumerate(pending_sources, start=1)
-    )
-    result = service.label_contents(
-        [item.source.record.content for item in pending],
-        max_validation_retries=max_validation_retries,
-    )
-    if len(result.items) != len(pending):
-        raise RuntimeError("ContentLabelingService 返回 item 数量与输入不一致")
 
-    pending_by_item_no = {item.item_no: item for item in pending}
-    item_hashes = {item.item_no: item.input_hash for item in result.items}
-    _write_attempts(
-        attempt_file,
-        batch_no=batch_no,
-        result=result,
-        pending_by_item_no=pending_by_item_no,
-        item_hashes=item_hashes,
+def _finish_in_flight_before_raise(
+    in_flight: dict[Future[_ItemOutcome], _SourceRow],
+    *,
+    checkpoint_file: TextIO,
+    attempt_file: TextIO,
+    failed_file: TextIO,
+    checkpoint_index: dict[_CheckpointKey, ContentLabelAnalysis],
+) -> None:
+    """Fatal 错误后不再调度新记录，但持久化已提交请求中仍成功的结果。"""
+
+    pending_futures = tuple(in_flight)
+    for future in pending_futures:
+        future.cancel()
+
+    outcomes: list[_ItemOutcome] = []
+    for future in pending_futures:
+        if future.cancelled():
+            continue
+        try:
+            outcomes.append(future.result())
+        except BaseException:
+            continue
+    in_flight.clear()
+    _persist_outcomes(
+        outcomes,
+        checkpoint_file=checkpoint_file,
+        attempt_file=attempt_file,
+        failed_file=failed_file,
+        checkpoint_index=checkpoint_index,
     )
 
-    analyses: dict[int, ContentLabelAnalysis] = {}
-    failed_count = 0
-    for item_result in result.items:
-        pending_item = pending_by_item_no.get(item_result.item_no)
-        if pending_item is None:
-            raise RuntimeError("ContentLabelingService 返回未知 item_no")
-        source = pending_item.source
+
+def _persist_outcomes(
+    outcomes,
+    *,
+    checkpoint_file: TextIO,
+    attempt_file: TextIO,
+    failed_file: TextIO,
+    checkpoint_index: dict[_CheckpointKey, ContentLabelAnalysis],
+) -> tuple[int, int, int]:
+    rows_succeeded = 0
+    rows_failed = 0
+    llm_attempts = 0
+    wrote_anything = False
+
+    for outcome in outcomes:
+        source = outcome.source
+        result = outcome.result
+        item_result = result.items[0]
+        _write_attempts_for_single_item(
+            attempt_file,
+            source=source,
+            result=result,
+        )
+        llm_attempts += len(result.attempts)
+        wrote_anything = wrote_anything or bool(result.attempts)
+
         if item_result.analysis_status == "succeeded":
             analysis = item_result.analysis
             if analysis is None:
                 raise RuntimeError("ContentLabelingService 成功 item 缺少 analysis")
             if analysis.input_hash != item_result.input_hash:
                 raise RuntimeError("ContentLabelingService analysis/input_hash 不一致")
+            key = _checkpoint_key(source.record, item_result.input_hash)
+            previous = checkpoint_index.get(key)
+            if previous is not None:
+                if previous != analysis:
+                    raise RuntimeError("同一 checkpoint 身份产生冲突的 Analysis")
+                continue
             _write_json_line(
                 checkpoint_file,
                 {
@@ -270,13 +377,13 @@ def _process_batch(
                     "analysis": analysis.model_dump(mode="json"),
                 },
             )
-            analyses[source.line_number] = analysis
-            checkpoint_index[_checkpoint_key(source.record, item_result.input_hash)] = analysis
+            checkpoint_index[key] = analysis
+            rows_succeeded += 1
+            wrote_anything = True
             continue
 
         if item_result.analysis is not None:
             raise RuntimeError("ContentLabelingService 失败 item 不得带 analysis")
-        failed_count += 1
         _write_json_line(
             failed_file,
             {
@@ -289,25 +396,94 @@ def _process_batch(
                 "validation_error_codes": list(item_result.validation_error_codes),
             },
         )
+        rows_failed += 1
+        wrote_anything = True
 
-    # 成功 checkpoint 必须先持久化，之后才允许把 Analysis 写入业务 JSONL 临时文件。
-    _flush_and_sync(checkpoint_file)
-    _flush_and_sync(attempt_file)
-    _flush_and_sync(failed_file)
+    if wrote_anything:
+        # checkpoint/attempt/failed 都只由主协调线程写；成功 checkpoint 必须先 durable。
+        _flush_and_sync(checkpoint_file)
+        _flush_and_sync(attempt_file)
+        _flush_and_sync(failed_file)
+    return rows_succeeded, rows_failed, llm_attempts
 
-    rewritten: list[UnifiedContentRecordV1] = []
-    for source in batch:
-        analysis = recovered.get(source.line_number) or analyses.get(source.line_number)
-        rewritten.append(_rewrite_record(source, analysis))
 
-    return _BatchOutcome(
-        rows=tuple(rewritten),
-        rows_already_labeled=already_labeled,
-        rows_recovered=len(recovered),
-        rows_succeeded=len(analyses),
-        rows_failed=failed_count,
-        llm_attempts=len(result.attempts),
-    )
+def _write_attempts_for_single_item(
+    output_file: TextIO,
+    *,
+    source: _SourceRow,
+    result: ContentLabelingBatchResult,
+) -> None:
+    for attempt in result.attempts:
+        if attempt.item_nos != (1,):
+            raise RuntimeError("单条离线打标 attempt 必须只包含 item_no=1")
+        _write_json_line(
+            output_file,
+            _attempt_payload(
+                attempt,
+                source=source,
+            ),
+        )
+
+
+def _attempt_payload(
+    attempt: ContentLabelingAttempt,
+    *,
+    source: _SourceRow,
+) -> dict[str, object]:
+    return {
+        "schema_version": "content-label-attempt.v1",
+        "batch_no": source.line_number,
+        "attempt_no": attempt.attempt_no,
+        "item_nos": [1],
+        "items": [
+            {
+                "item_no": 1,
+                "line_number": source.line_number,
+                "platform": source.record.content.platform,
+                "external_content_id": source.record.content.external_content_id,
+                "input_hash": source.input_hash,
+            }
+        ],
+        "validation_error_codes": list(attempt.validation_error_codes),
+        "model_provider": attempt.model_provider,
+        "model": attempt.model,
+        "prompt_sha256": attempt.prompt_sha256,
+        "taxonomy_sha256": attempt.taxonomy_sha256,
+        "started_at": attempt.started_at.isoformat(),
+        "completed_at": attempt.completed_at.isoformat(),
+        "input_tokens": attempt.input_tokens,
+        "output_tokens": attempt.output_tokens,
+        "cost_amount": str(attempt.cost_amount) if attempt.cost_amount is not None else None,
+        "cost_currency": attempt.cost_currency,
+    }
+
+
+def _rewrite_source_in_original_order(
+    source_path: Path,
+    *,
+    checkpoint_index: dict[_CheckpointKey, ContentLabelAnalysis],
+) -> None:
+    temp_path = source_path.with_name(f".{source_path.name}.labeling.tmp")
+    temp_path.unlink(missing_ok=True)
+    try:
+        with (
+            source_path.open("rb") as input_file,
+            temp_path.open("w", encoding="utf-8", newline="\n") as output_file,
+        ):
+            for line_number, raw_line in enumerate(input_file, start=1):
+                record = _parse_record(raw_line, source_path, line_number)
+                if record.analysis is None:
+                    input_hash = _content_input_hash(record)
+                    analysis = checkpoint_index.get(_checkpoint_key(record, input_hash))
+                    if analysis is not None:
+                        record = _rewrite_record(record, analysis)
+                output_file.write(record.model_dump_json())
+                output_file.write("\n")
+            _flush_and_sync(output_file)
+        os.replace(temp_path, source_path)
+    except BaseException:
+        temp_path.unlink(missing_ok=True)
+        raise
 
 
 def _load_checkpoint_index(
@@ -372,81 +548,14 @@ def _checkpoint_key(record: UnifiedContentRecordV1, input_hash: str) -> _Checkpo
 
 
 def _rewrite_record(
-    source: _SourceRow,
-    analysis: ContentLabelAnalysis | None,
+    record: UnifiedContentRecordV1,
+    analysis: ContentLabelAnalysis,
 ) -> UnifiedContentRecordV1:
-    if analysis is None:
-        return source.record
     return UnifiedContentRecordV1(
-        content=source.record.content,
-        matched_keywords=list(source.record.matched_keywords),
+        content=record.content,
+        matched_keywords=list(record.matched_keywords),
         analysis=analysis,
     )
-
-
-def _write_attempts(
-    output_file: TextIO,
-    *,
-    batch_no: int,
-    result: ContentLabelingBatchResult,
-    pending_by_item_no: dict[int, _PendingRow],
-    item_hashes: dict[int, str],
-) -> None:
-    for attempt in result.attempts:
-        _write_json_line(
-            output_file,
-            _attempt_payload(
-                attempt,
-                batch_no=batch_no,
-                pending_by_item_no=pending_by_item_no,
-                item_hashes=item_hashes,
-            ),
-        )
-
-
-def _attempt_payload(
-    attempt: ContentLabelingAttempt,
-    *,
-    batch_no: int,
-    pending_by_item_no: dict[int, _PendingRow],
-    item_hashes: dict[int, str],
-) -> dict[str, object]:
-    identities: list[dict[str, object]] = []
-    for item_no in attempt.item_nos:
-        pending = pending_by_item_no.get(item_no)
-        if pending is None:
-            raise RuntimeError("ContentLabelingAttempt 包含未知 item_no")
-        input_hash = item_hashes.get(item_no)
-        if input_hash is None:
-            raise RuntimeError("ContentLabelingAttempt 缺少 item input_hash")
-        identities.append(
-            {
-                "item_no": item_no,
-                "line_number": pending.source.line_number,
-                "platform": pending.source.record.content.platform,
-                "external_content_id": pending.source.record.content.external_content_id,
-                "input_hash": input_hash,
-            }
-        )
-
-    return {
-        "schema_version": "content-label-attempt.v1",
-        "batch_no": batch_no,
-        "attempt_no": attempt.attempt_no,
-        "item_nos": list(attempt.item_nos),
-        "items": identities,
-        "validation_error_codes": list(attempt.validation_error_codes),
-        "model_provider": attempt.model_provider,
-        "model": attempt.model,
-        "prompt_sha256": attempt.prompt_sha256,
-        "taxonomy_sha256": attempt.taxonomy_sha256,
-        "started_at": attempt.started_at.isoformat(),
-        "completed_at": attempt.completed_at.isoformat(),
-        "input_tokens": attempt.input_tokens,
-        "output_tokens": attempt.output_tokens,
-        "cost_amount": str(attempt.cost_amount) if attempt.cost_amount is not None else None,
-        "cost_currency": attempt.cost_currency,
-    }
 
 
 def _parse_record(raw_line: bytes, path: Path, line_number: int) -> UnifiedContentRecordV1:
@@ -456,12 +565,6 @@ def _parse_record(raw_line: bytes, path: Path, line_number: int) -> UnifiedConte
         return UnifiedContentRecordV1.model_validate_json(raw_line)
     except ValidationError as exc:
         raise ValueError(f"{path}: 第 {line_number} 行不是合法 UnifiedContentRecordV1") from exc
-
-
-def _write_records(output_file: TextIO, records: tuple[UnifiedContentRecordV1, ...]) -> None:
-    for record in records:
-        output_file.write(record.model_dump_json())
-        output_file.write("\n")
 
 
 def _write_json_line(output_file: TextIO, payload: dict[str, object]) -> None:
@@ -475,6 +578,7 @@ def _flush_and_sync(output_file: TextIO) -> None:
 
 
 __all__ = [
+    "DEFAULT_OFFLINE_LLM_CONCURRENCY",
     "OfflineContentLabelingSummary",
     "label_unified_content_jsonl",
 ]
