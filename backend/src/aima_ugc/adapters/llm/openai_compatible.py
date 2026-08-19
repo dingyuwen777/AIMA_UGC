@@ -30,7 +30,7 @@ class OpenAICompatibleContentLabelingLLM:
         *,
         api_key: SecretStr,
         model: str,
-        provider_name: str,
+        provider_name: str | None = None,
         base_url: str = DEFAULT_OPENAI_COMPATIBLE_BASE_URL,
         timeout_seconds: float = DEFAULT_OPENAI_COMPATIBLE_TIMEOUT_SECONDS,
         use_json_mode: bool = True,
@@ -38,11 +38,12 @@ class OpenAICompatibleContentLabelingLLM:
     ) -> None:
         actual_base_url = str(client.base_url) if client is not None else base_url
         normalized_base_url = _normalize_base_url(actual_base_url)
+        actual_provider_name = provider_name or _provider_name_from_base_url(normalized_base_url)
         if timeout_seconds <= 0:
             raise ValueError("OpenAI-compatible timeout_seconds 必须大于 0")
         if not model or model != model.strip():
             raise ValueError("OpenAI-compatible model 必须是非空且已清洗的字符串")
-        if not provider_name or provider_name != provider_name.strip():
+        if not actual_provider_name or actual_provider_name != actual_provider_name.strip():
             raise ValueError("OpenAI-compatible provider_name 必须是非空且已清洗的字符串")
         secret = api_key.get_secret_value()
         if not secret or secret != secret.strip():
@@ -50,7 +51,7 @@ class OpenAICompatibleContentLabelingLLM:
 
         self._api_key = api_key
         self._model = model
-        self._provider_name = provider_name
+        self._provider_name = actual_provider_name
         self._use_json_mode = use_json_mode
         self._owns_client = client is None
         self._client = client or httpx.Client(
@@ -62,7 +63,7 @@ class OpenAICompatibleContentLabelingLLM:
 
     @property
     def provider_name(self) -> str:
-        """返回用于 Analysis 审计的稳定 Provider 名称。"""
+        """返回用于 Analysis 审计和 checkpoint 身份的稳定模型服务标识。"""
 
         return self._provider_name
 
@@ -149,6 +150,20 @@ def _normalize_base_url(value: str) -> str:
     ):
         raise ValueError("OpenAI-compatible base_url 必须是无凭据、query、fragment 的 HTTP(S) URL")
     return normalized + "/"
+
+
+def _provider_name_from_base_url(value: str) -> str:
+    parsed = urlsplit(value)
+    hostname = parsed.hostname
+    if hostname is None:
+        raise ValueError("OpenAI-compatible base_url 缺少 hostname")
+
+    normalized_host = hostname.lower()
+    display_host = f"[{normalized_host}]" if ":" in normalized_host else normalized_host
+    default_port = 443 if parsed.scheme == "https" else 80
+    if parsed.port is not None and parsed.port != default_port:
+        return f"{display_host}:{parsed.port}"
+    return display_host
 
 
 def _user_message(request: ContentLabelingLLMRequest) -> str:
