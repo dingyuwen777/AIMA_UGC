@@ -9,12 +9,12 @@
 复制本目录的 `.env.example` 为 `.env`：
 
 ```text
-TIKHUB_BASE_URL=https://api.tikhub.dev
+TIKHUB_BASE_URL=https://api.tikhub.io
 TIKHUB_API_KEY=你的真实密钥
 TIKHUB_TIMEOUT_SECONDS=300
 ```
 
-`.env` 已被 Git 忽略，**不要提交真实密钥**。代码只读取本目录 `.env` 或函数显式指定的 `env_file`。当前默认 TikHub Origin 为 `https://api.tikhub.dev`；为兼容既有配置，`https://api.tikhub.io` 仍可显式使用，但任意第三方 Origin 会在发送 Secret 之前被拒绝。
+`.env` 已被 Git 忽略，**不要提交真实密钥**。代码默认读取 `tikhub_test/.env`，也可通过函数显式指定 `env_file`。本地真实调试使用 `https://api.tikhub.io`；生产 Transport 负责 Origin 白名单校验，任意未允许的第三方 Origin 都会在发送 Secret 之前被拒绝。
 
 ## 2. 关键词在哪里配置
 
