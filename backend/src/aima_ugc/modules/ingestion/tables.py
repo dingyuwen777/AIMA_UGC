@@ -60,7 +60,7 @@ def register_ingestion_schema() -> None:
         UniqueConstraint(
             provider_requests_table.c.import_batch_id,
             provider_requests_table.c.request_fingerprint,
-            name="import_batch_id_request_fingerprint",
+            name="uq_provider_requests_import_batch_id_request_fingerprint",
         )
     )
     Index(
