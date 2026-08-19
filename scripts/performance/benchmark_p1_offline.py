@@ -1,4 +1,4 @@
-"""P1H 离线 Excel 主链性能基准；只编排生产实现，不复制业务规则。"""
+"""离线 Excel 主链性能基准；只编排生产实现，不复制业务规则。"""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from aima_ugc.modules.analysis import (
     ContentLabelingLLMRequest,
     ContentLabelingLLMResponse,
     ContentLabelingService,
+    FrozenPromptTaxonomyLoader,
     PromptTaxonomy,
     PromptTaxonomyLoader,
     deduplicate_content_jsonl,
@@ -82,12 +83,12 @@ def run_benchmark(
     *,
     work_dir: Path,
     row_count: int = 90_000,
-    label_batch_size: int = 100,
+    label_concurrency: int = 250,
 ) -> dict[str, Any]:
-    """生成 13 列相似结构 Fixture，并对 P1 生产主链做无网络性能测量。"""
+    """生成 13 列相似结构 Fixture，并对离线生产主链做无网络性能测量。"""
 
     _require_positive_int(row_count, name="row_count")
-    _require_positive_int(label_batch_size, name="label_batch_size")
+    _require_positive_int(label_concurrency, name="label_concurrency")
     root = Path(work_dir)
     root.mkdir(parents=True, exist_ok=True)
     _require_empty_work_dir(root)
@@ -143,10 +144,9 @@ def run_benchmark(
     ):
         raise RuntimeError("性能 Fixture 去重后行数不一致")
 
-    prompt_loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
-    taxonomy = prompt_loader.load()
+    taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
     service = ContentLabelingService(
-        prompt_loader=prompt_loader,
+        prompt_loader=FrozenPromptTaxonomyLoader(taxonomy),
         llm=_TaxonomyBenchmarkLLM(taxonomy),
     )
     labeling, stages["analysis_writeback"] = _measure_stage(
@@ -156,13 +156,14 @@ def run_benchmark(
             analysis_dir=analysis_dir,
             service=service,
             max_validation_retries=0,
-            batch_size=label_batch_size,
+            max_concurrency=label_concurrency,
             recovery_taxonomy=taxonomy,
         ),
     )
     if labeling.rows_succeeded != row_count or labeling.rows_failed != 0:
         raise RuntimeError("性能 Fixture Analysis 回写后成功行数不一致")
     stages["analysis_writeback"]["llm_attempts"] = labeling.llm_attempts
+    stages["analysis_writeback"]["peak_in_flight"] = labeling.peak_in_flight
 
     exported, stages["export_labeled_excel"] = _measure_stage(
         row_count=row_count,
@@ -180,7 +181,7 @@ def run_benchmark(
         "schema_version": PERFORMANCE_SCHEMA_VERSION,
         "row_count": row_count,
         "column_count": len(_HEADERS),
-        "label_batch_size": label_batch_size,
+        "label_concurrency": label_concurrency,
         "fixture_generation_seconds": fixture_elapsed,
         "pipeline_elapsed_seconds": pipeline_elapsed,
         "pipeline_rows_per_second": row_count / pipeline_elapsed,
@@ -340,10 +341,10 @@ def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="运行 P1H 离线 Excel 生产主链性能基准")
+    parser = argparse.ArgumentParser(description="运行离线 Excel 生产主链性能基准")
     parser.add_argument("--work-dir", type=Path, required=True)
     parser.add_argument("--rows", type=int, default=90_000)
-    parser.add_argument("--label-batch-size", type=int, default=100)
+    parser.add_argument("--label-concurrency", type=int, default=250)
     return parser.parse_args()
 
 
@@ -352,7 +353,7 @@ def main() -> int:
     report = run_benchmark(
         work_dir=args.work_dir,
         row_count=args.rows,
-        label_batch_size=args.label_batch_size,
+        label_concurrency=args.label_concurrency,
     )
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0
