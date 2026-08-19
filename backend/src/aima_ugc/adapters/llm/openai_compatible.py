@@ -38,7 +38,11 @@ class OpenAICompatibleContentLabelingLLM:
     ) -> None:
         actual_base_url = str(client.base_url) if client is not None else base_url
         normalized_base_url = _normalize_base_url(actual_base_url)
-        actual_provider_name = provider_name or _provider_name_from_base_url(normalized_base_url)
+        actual_provider_name = (
+            provider_name
+            if provider_name is not None
+            else _provider_name_from_base_url(normalized_base_url)
+        )
         if timeout_seconds <= 0:
             raise ValueError("OpenAI-compatible timeout_seconds 必须大于 0")
         if not model or model != model.strip():
