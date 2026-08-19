@@ -51,7 +51,7 @@ def test_openai_compatible_adapter_sends_one_minimal_chat_completion_request() -
         )
 
     client = httpx.Client(
-        base_url="https://llm.example/v1/",
+        base_url="https://LLM.Example/v1/",
         transport=httpx.MockTransport(handler),
     )
     try:
@@ -59,14 +59,13 @@ def test_openai_compatible_adapter_sends_one_minimal_chat_completion_request() -
             base_url="https://llm.example/v1",
             api_key=SecretStr("super-secret-key"),
             model="model-a",
-            provider_name="provider-a",
             client=client,
-            use_json_mode=True,
         )
         response = adapter.complete(_request())
     finally:
         client.close()
 
+    assert adapter.provider_name == "llm.example"
     assert len(captured) == 1
     sent = captured[0]
     assert sent.method == "POST"
@@ -91,6 +90,23 @@ def test_openai_compatible_adapter_sends_one_minimal_chat_completion_request() -
     assert response.output_tokens == 17
     assert response.cost_amount is None
     assert response.cost_currency is None
+
+
+def test_openai_compatible_adapter_derives_non_default_port_in_provider_identity() -> None:
+    client = httpx.Client(
+        base_url="https://gateway.example:8443/v1/",
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, json={})),
+    )
+    try:
+        adapter = OpenAICompatibleContentLabelingLLM(
+            api_key=SecretStr("secret"),
+            model="model-a",
+            client=client,
+        )
+    finally:
+        client.close()
+
+    assert adapter.provider_name == "gateway.example:8443"
 
 
 def test_openai_compatible_adapter_retry_request_only_adds_validation_errors() -> None:
@@ -120,6 +136,7 @@ def test_openai_compatible_adapter_retry_request_only_adds_validation_errors() -
     finally:
         client.close()
 
+    assert adapter.provider_name == "provider-a"
     assert "response_format" not in captured_body
     user_payload = json.loads(captured_body["messages"][1]["content"])
     assert user_payload["items"] == _request().model_payload()
