@@ -4,8 +4,6 @@ import json
 from datetime import UTC, datetime
 
 import pytest
-from pydantic import ValidationError
-
 from aima_ugc.contracts.analysis import (
     ContentLabelAnalysisV1,
     ContentLabelAnalysisV2,
@@ -19,6 +17,7 @@ from aima_ugc.modules.analysis import (
     FakeContentLabelingLLM,
     PromptTaxonomyLoader,
 )
+from pydantic import ValidationError
 
 OBSERVED_AT = datetime(2026, 8, 19, 6, 0, tzinfo=UTC)
 HASH_A = "a" * 64

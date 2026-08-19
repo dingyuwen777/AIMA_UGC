@@ -127,7 +127,7 @@ def test_shared_exporter_writes_provider_neutral_workbook_and_reopens(tmp_path: 
 
     workbook = load_workbook(output, data_only=False)
     try:
-        assert workbook.sheetnames == ["内容", "评论"]
+        assert workbook.sheetnames == ["内容", "标签明细", "评论"]
         content_sheet = workbook["内容"]
         comment_sheet = workbook["评论"]
         assert content_sheet.freeze_panes == "A2"
@@ -336,7 +336,9 @@ def test_raw_and_labeled_exports_keep_same_schema(tmp_path: Path) -> None:
         labeled_headers = [
             cell.value for cell in next(labeled_workbook["内容"].iter_rows(max_row=1))
         ]
-        assert raw_workbook.sheetnames == labeled_workbook.sheetnames == ["内容", "评论"]
+        assert (
+            raw_workbook.sheetnames == labeled_workbook.sheetnames == ["内容", "标签明细", "评论"]
+        )
         assert raw_headers == labeled_headers
 
         raw_values = [

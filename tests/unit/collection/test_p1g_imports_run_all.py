@@ -51,7 +51,9 @@ def test_p1g_run_all_uses_default_chain_without_raw_excel(
         "export_labeled_excel",
     ]
     assert summary.run_id == "20260818T160000Z"
-    assert summary.run_summary_path == output_root / "run_summary.json"
+    run_dir = output_root / "runs" / "20260818T160000Z"
+    assert summary.run_dir == run_dir
+    assert summary.run_summary_path == run_dir / "run_summary.json"
     payload = json.loads(summary.run_summary_path.read_text(encoding="utf-8"))
     assert payload["run_id"] == "20260818T160000Z"
     assert [item["stage"] for item in payload["stages"]] == calls
@@ -86,9 +88,10 @@ def test_p1g_export_labeled_excel_uses_source_run_id_and_column_config(
 
     imports_test_entry.export_labeled_excel(run_id="20260818T160000Z")
 
+    run_dir = output_root / "runs" / "20260818T160000Z"
     assert captured == {
-        "input_path": output_root / "deduplicated" / "contents.jsonl",
-        "output_path": output_root / "爱玛监测_20260818T160000Z_labeled_data.xlsx",
+        "input_path": run_dir / "deduplicated" / "contents.jsonl",
+        "output_path": run_dir / "labeled_data.xlsx",
         "include_analysis": True,
         "content_columns": imports_test_entry.EXCEL_CONTENT_COLUMNS,
     }

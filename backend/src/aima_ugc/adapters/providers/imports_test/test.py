@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass, is_dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from pydantic import SecretStr
 
@@ -64,7 +65,8 @@ LLM_BATCH_SIZE = 20
 
 ENV_FILE = Path(__file__).with_name(".env")
 
-_RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
+_RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9._+-]+$")
+_BEIJING = ZoneInfo("Asia/Shanghai")
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,57 +74,81 @@ class P1RunSummary:
     """一次人工全链路运行的交付摘要。"""
 
     run_id: str
+    run_dir: Path
     run_summary_path: Path
     labeled_excel_path: Path
 
 
-def convert() -> ExcelConversionSummary:
+def prepare_run_dir(*, run_id: str | None = None) -> Path:
+    """创建一次独立人工运行目录；显式 run_id 不允许覆盖既有目录。"""
+
+    actual_run_id = _resolve_run_id(run_id)
+    run_dir = OUTPUT_ROOT / "runs" / actual_run_id
+    run_dir.mkdir(parents=True, exist_ok=False)
+    return run_dir
+
+
+def _stage_run_dir(run_dir: Path | None) -> Path:
+    if run_dir is None:
+        return prepare_run_dir()
+    actual = Path(run_dir)
+    if not actual.is_dir():
+        raise FileNotFoundError(f"imports_test run_dir 不存在: {actual}")
+    return actual
+
+
+def convert(*, run_dir: Path | None = None) -> ExcelConversionSummary:
     """执行 XLSX → Canonical JSONL。"""
 
+    actual_run_dir = _stage_run_dir(run_dir)
     return convert_excel_to_canonical_jsonl(
         input_path=INPUT_XLSX,
-        output_path=OUTPUT_ROOT / "canonical" / "contents.jsonl",
+        output_path=actual_run_dir / "canonical" / "contents.jsonl",
         profile_name=PROFILE,
         sheet_name=SHEET_NAME,
     )
 
 
-def filter_keywords() -> ContentFilterSummary:
+def filter_keywords(*, run_dir: Path | None = None) -> ContentFilterSummary:
     """执行 Canonical JSONL → 关键词命中过滤后的统一内容记录。"""
 
+    actual_run_dir = _stage_run_dir(run_dir)
     return filter_canonical_content_jsonl(
-        input_path=OUTPUT_ROOT / "canonical" / "contents.jsonl",
-        output_path=OUTPUT_ROOT / "filtered" / "contents.jsonl",
+        input_path=actual_run_dir / "canonical" / "contents.jsonl",
+        output_path=actual_run_dir / "filtered" / "contents.jsonl",
         keywords=KEYWORDS,
     )
 
 
-def deduplicate() -> ContentDeduplicationSummary:
+def deduplicate(*, run_dir: Path | None = None) -> ContentDeduplicationSummary:
     """执行 filtered JSONL → 稳定身份去重后的统一内容记录。"""
 
+    actual_run_dir = _stage_run_dir(run_dir)
     return deduplicate_content_jsonl(
-        input_path=OUTPUT_ROOT / "filtered" / "contents.jsonl",
-        output_path=OUTPUT_ROOT / "deduplicated" / "contents.jsonl",
+        input_path=actual_run_dir / "filtered" / "contents.jsonl",
+        output_path=actual_run_dir / "deduplicated" / "contents.jsonl",
     )
 
 
-def export_raw_excel() -> ExcelExportSummary:
-    """可选导出 deduplicated JSONL 的未填分析标签人工审阅视图。"""
+def export_raw_excel(*, run_dir: Path | None = None) -> ExcelExportSummary:
+    """可选导出当前 run 的未填分析标签人工审阅视图。"""
 
+    actual_run_dir = _stage_run_dir(run_dir)
     return export_unified_content_jsonl_to_excel(
-        input_path=OUTPUT_ROOT / "deduplicated" / "contents.jsonl",
-        output_path=OUTPUT_ROOT / "raw_data.xlsx",
+        input_path=actual_run_dir / "deduplicated" / "contents.jsonl",
+        output_path=actual_run_dir / "raw_data.xlsx",
         include_analysis=False,
         content_columns=EXCEL_CONTENT_COLUMNS,
     )
 
 
-def label_sentiment() -> OfflineContentLabelingSummary:
-    """显式启用真实 LLM 后，对 deduplicated JSONL 做舆情打标与 checkpoint 恢复。"""
+def label_sentiment(*, run_dir: Path | None = None) -> OfflineContentLabelingSummary:
+    """显式启用真实 LLM 后，对当前 run 的 deduplicated JSONL 做打标。"""
 
     if not ENABLE_REAL_LLM:
         raise RuntimeError("真实 LLM 默认关闭；确认费用后将 ENABLE_REAL_LLM 改为 True")
 
+    actual_run_dir = _stage_run_dir(run_dir)
     env = _load_env_file(ENV_FILE)
     timeout_seconds = _parse_positive_float(
         env.get(
@@ -144,8 +170,8 @@ def label_sentiment() -> OfflineContentLabelingSummary:
             llm=llm,
         )
         return label_unified_content_jsonl(
-            input_path=OUTPUT_ROOT / "deduplicated" / "contents.jsonl",
-            analysis_dir=OUTPUT_ROOT / "analysis",
+            input_path=actual_run_dir / "deduplicated" / "contents.jsonl",
+            analysis_dir=actual_run_dir / "analysis",
             service=service,
             max_validation_retries=MAX_VALIDATION_RETRIES,
             batch_size=LLM_BATCH_SIZE,
@@ -153,41 +179,46 @@ def label_sentiment() -> OfflineContentLabelingSummary:
         )
 
 
-def export_labeled_excel(*, run_id: str | None = None) -> ExcelExportSummary:
-    """从回写后的同一 deduplicated JSONL 导出最终带 Analysis 的 Excel。"""
+def export_labeled_excel(
+    *,
+    run_dir: Path | None = None,
+    run_id: str | None = None,
+) -> ExcelExportSummary:
+    """从当前 run 回写后的 deduplicated JSONL 导出最终带 Analysis 的 Excel。"""
 
-    actual_run_id = _resolve_run_id(run_id)
+    actual_run_dir = prepare_run_dir(run_id=run_id) if run_dir is None else _stage_run_dir(run_dir)
     return export_unified_content_jsonl_to_excel(
-        input_path=OUTPUT_ROOT / "deduplicated" / "contents.jsonl",
-        output_path=_labeled_output_path(actual_run_id),
+        input_path=actual_run_dir / "deduplicated" / "contents.jsonl",
+        output_path=_labeled_output_path(actual_run_dir),
         include_analysis=True,
         content_columns=EXCEL_CONTENT_COLUMNS,
     )
 
 
 def run_all(*, run_id: str | None = None) -> P1RunSummary:
-    """按固定顺序执行完整链路；raw Excel 不属于默认链路。"""
+    """创建一次独立 run 目录并按固定顺序执行完整链路。"""
 
     actual_run_id = _resolve_run_id(run_id)
+    run_dir = prepare_run_dir(run_id=actual_run_id)
     stages: list[dict[str, object]] = []
 
-    conversion = convert()
+    conversion = convert(run_dir=run_dir)
     stages.append(_stage_payload("convert", conversion))
 
-    filtering = filter_keywords()
+    filtering = filter_keywords(run_dir=run_dir)
     stages.append(_stage_payload("filter_keywords", filtering))
 
-    deduplication = deduplicate()
+    deduplication = deduplicate(run_dir=run_dir)
     stages.append(_stage_payload("deduplicate", deduplication))
 
-    labeling = label_sentiment()
+    labeling = label_sentiment(run_dir=run_dir)
     stages.append(_stage_payload("label_sentiment", labeling))
 
-    labeled_export = export_labeled_excel(run_id=actual_run_id)
+    labeled_export = export_labeled_excel(run_dir=run_dir)
     stages.append(_stage_payload("export_labeled_excel", labeled_export))
 
-    run_summary_path = OUTPUT_ROOT / "run_summary.json"
-    labeled_excel_path = _labeled_output_path(actual_run_id)
+    run_summary_path = run_dir / "run_summary.json"
+    labeled_excel_path = _labeled_output_path(run_dir)
     _atomic_write_json(
         run_summary_path,
         {
@@ -195,26 +226,28 @@ def run_all(*, run_id: str | None = None) -> P1RunSummary:
             "run_id": actual_run_id,
             "source_xlsx": str(INPUT_XLSX),
             "output_root": str(OUTPUT_ROOT),
+            "run_dir": str(run_dir),
             "labeled_excel": str(labeled_excel_path),
             "stages": stages,
         },
     )
     return P1RunSummary(
         run_id=actual_run_id,
+        run_dir=run_dir,
         run_summary_path=run_summary_path,
         labeled_excel_path=labeled_excel_path,
     )
 
 
 def _resolve_run_id(run_id: str | None) -> str:
-    value = run_id or datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+    value = run_id or datetime.now(UTC).astimezone(_BEIJING).strftime("%Y%m%dT%H%M%S.%f%z")
     if not _RUN_ID_PATTERN.fullmatch(value):
-        raise ValueError("run_id 只允许字母、数字、点、下划线和连字符")
+        raise ValueError("run_id 只允许字母、数字、点、加号、下划线和连字符")
     return value
 
 
-def _labeled_output_path(run_id: str) -> Path:
-    return OUTPUT_ROOT / f"{INPUT_XLSX.stem}_{run_id}_labeled_data.xlsx"
+def _labeled_output_path(run_dir: Path) -> Path:
+    return Path(run_dir) / "labeled_data.xlsx"
 
 
 def _stage_payload(stage: str, summary: object) -> dict[str, object]:

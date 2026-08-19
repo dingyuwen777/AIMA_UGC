@@ -3,8 +3,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from openpyxl import load_workbook
-
 from aima_ugc.contracts.analysis import (
     ContentLabelAnalysisV2,
     ContentLabelPairV2,
@@ -12,6 +10,7 @@ from aima_ugc.contracts.analysis import (
 )
 from aima_ugc.contracts.canonical import CanonicalContentV1, CanonicalSourceV1
 from aima_ugc.platform.export import export_unified_content_jsonl_to_excel
+from openpyxl import load_workbook
 
 OBSERVED_AT = datetime(2026, 8, 19, 6, 0, tzinfo=UTC)
 
@@ -151,6 +150,16 @@ def test_raw_excel_has_label_detail_headers_but_no_fake_rows(tmp_path: Path) -> 
     workbook = load_workbook(output_path, read_only=True, data_only=False)
     try:
         label_sheet = workbook["标签明细"]
-        assert label_sheet.max_row == 1
+        header = next(label_sheet.iter_rows(min_row=1, max_row=1, values_only=True))
+        assert header == (
+            "内容ID",
+            "平台",
+            "标题",
+            "情感标签",
+            "一级标签",
+            "二级标签",
+            "内容链接",
+        )
+        assert next(label_sheet.iter_rows(min_row=2, values_only=True), None) is None
     finally:
         workbook.close()

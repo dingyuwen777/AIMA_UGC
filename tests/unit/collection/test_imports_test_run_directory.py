@@ -5,7 +5,6 @@ import re
 from pathlib import Path
 
 import pytest
-
 from aima_ugc.adapters.providers.imports_test import test as imports_test
 
 
@@ -56,7 +55,9 @@ def test_run_all_uses_one_isolated_run_directory_for_every_stage(
     assert not (tmp_path / "run_summary.json").exists()
 
 
-def test_prepare_run_dir_refuses_to_reuse_existing_run_id(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_prepare_run_dir_refuses_to_reuse_existing_run_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(imports_test, "OUTPUT_ROOT", tmp_path)
     run_id = "20260819T142000.000001+0800"
 
