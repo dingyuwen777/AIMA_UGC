@@ -16,10 +16,25 @@ from aima_ugc.modules.analysis.content_labeling import (
 
 DEFAULT_OPENAI_COMPATIBLE_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_OPENAI_COMPATIBLE_TIMEOUT_SECONDS = 60.0
+DEFAULT_OPENAI_COMPATIBLE_MAX_CONNECTIONS = 100
+_RETRYABLE_HTTP_STATUS_CODES = frozenset({408, 429, 500, 502, 503, 504})
 
 
 class OpenAICompatibleLLMError(RuntimeError):
     """OpenAI-compatible HTTP/响应协议错误；消息不得回显 Secret 或 Provider body。"""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_code: str,
+        retryable: bool,
+        status_code: int | None = None,
+    ) -> None:
+        self.error_code = error_code
+        self.retryable = retryable
+        self.status_code = status_code
+        super().__init__(message)
 
 
 class OpenAICompatibleContentLabelingLLM:
@@ -33,6 +48,7 @@ class OpenAICompatibleContentLabelingLLM:
         provider_name: str | None = None,
         base_url: str = DEFAULT_OPENAI_COMPATIBLE_BASE_URL,
         timeout_seconds: float = DEFAULT_OPENAI_COMPATIBLE_TIMEOUT_SECONDS,
+        max_connections: int = DEFAULT_OPENAI_COMPATIBLE_MAX_CONNECTIONS,
         use_json_mode: bool = True,
         client: httpx.Client | None = None,
     ) -> None:
@@ -45,6 +61,12 @@ class OpenAICompatibleContentLabelingLLM:
         )
         if timeout_seconds <= 0:
             raise ValueError("OpenAI-compatible timeout_seconds 必须大于 0")
+        if (
+            isinstance(max_connections, bool)
+            or not isinstance(max_connections, int)
+            or max_connections <= 0
+        ):
+            raise ValueError("OpenAI-compatible max_connections 必须是大于 0 的整数")
         if not model or model != model.strip():
             raise ValueError("OpenAI-compatible model 必须是非空且已清洗的字符串")
         if not actual_provider_name or actual_provider_name != actual_provider_name.strip():
@@ -61,6 +83,10 @@ class OpenAICompatibleContentLabelingLLM:
         self._client = client or httpx.Client(
             base_url=normalized_base_url,
             timeout=httpx.Timeout(timeout_seconds),
+            limits=httpx.Limits(
+                max_connections=max_connections,
+                max_keepalive_connections=max_connections,
+            ),
             follow_redirects=False,
             trust_env=False,
         )
@@ -114,18 +140,27 @@ class OpenAICompatibleContentLabelingLLM:
                 json=body,
             )
         except httpx.HTTPError as exc:
-            raise OpenAICompatibleLLMError("OpenAI-compatible LLM 网络请求失败") from exc
+            raise OpenAICompatibleLLMError(
+                "OpenAI-compatible LLM 网络请求失败",
+                error_code="network_error",
+                retryable=True,
+            ) from exc
 
         if response.status_code < 200 or response.status_code >= 300:
             raise OpenAICompatibleLLMError(
-                f"OpenAI-compatible LLM 请求失败: HTTP {response.status_code}"
+                f"OpenAI-compatible LLM 请求失败: HTTP {response.status_code}",
+                error_code=f"http_{response.status_code}",
+                retryable=response.status_code in _RETRYABLE_HTTP_STATUS_CODES,
+                status_code=response.status_code,
             )
 
         try:
             payload: Any = response.json()
         except ValueError as exc:
             raise OpenAICompatibleLLMError(
-                "OpenAI-compatible LLM 返回了不可解析的 HTTP JSON"
+                "OpenAI-compatible LLM 返回了不可解析的 HTTP JSON",
+                error_code="invalid_http_json",
+                retryable=False,
             ) from exc
 
         return ContentLabelingLLMResponse(
@@ -184,21 +219,44 @@ def _user_message(request: ContentLabelingLLMRequest) -> str:
     )
 
 
+def _protocol_error(message: str, *, error_code: str) -> OpenAICompatibleLLMError:
+    return OpenAICompatibleLLMError(
+        message,
+        error_code=error_code,
+        retryable=False,
+    )
+
+
 def _response_content(payload: Any) -> str:
     if not isinstance(payload, dict):
-        raise OpenAICompatibleLLMError("OpenAI-compatible LLM 响应顶层必须是 JSON object")
+        raise _protocol_error(
+            "OpenAI-compatible LLM 响应顶层必须是 JSON object",
+            error_code="invalid_response_root",
+        )
     choices = payload.get("choices")
     if not isinstance(choices, list) or not choices:
-        raise OpenAICompatibleLLMError("OpenAI-compatible LLM 响应缺少 choices")
+        raise _protocol_error(
+            "OpenAI-compatible LLM 响应缺少 choices",
+            error_code="missing_choices",
+        )
     first = choices[0]
     if not isinstance(first, dict):
-        raise OpenAICompatibleLLMError("OpenAI-compatible LLM choices[0] 必须是 object")
+        raise _protocol_error(
+            "OpenAI-compatible LLM choices[0] 必须是 object",
+            error_code="invalid_choice",
+        )
     message = first.get("message")
     if not isinstance(message, dict):
-        raise OpenAICompatibleLLMError("OpenAI-compatible LLM 响应缺少 message")
+        raise _protocol_error(
+            "OpenAI-compatible LLM 响应缺少 message",
+            error_code="missing_message",
+        )
     content = message.get("content")
     if not isinstance(content, str) or not content:
-        raise OpenAICompatibleLLMError("OpenAI-compatible LLM message.content 必须是非空字符串")
+        raise _protocol_error(
+            "OpenAI-compatible LLM message.content 必须是非空字符串",
+            error_code="invalid_message_content",
+        )
     return content
 
 
@@ -216,6 +274,7 @@ def _usage_token(payload: Any, key: str) -> int | None:
 
 __all__ = [
     "DEFAULT_OPENAI_COMPATIBLE_BASE_URL",
+    "DEFAULT_OPENAI_COMPATIBLE_MAX_CONNECTIONS",
     "DEFAULT_OPENAI_COMPATIBLE_TIMEOUT_SECONDS",
     "OpenAICompatibleContentLabelingLLM",
     "OpenAICompatibleLLMError",
