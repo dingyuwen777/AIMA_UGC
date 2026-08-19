@@ -136,7 +136,9 @@ class ProviderRequestV1(ProviderBaseModel):
         if (self.run_id is None) != (self.scope_id is None):
             raise ValueError("Collection Provider Request 必须同时声明 run_id 和 scope_id")
         if collection_parent == import_parent:
-            raise ValueError("Provider Request 必须恰好一个来源父级：Collection Scope 或 Import Batch")
+            raise ValueError(
+                "Provider Request 必须恰好一个来源父级：Collection Scope 或 Import Batch"
+            )
         assert_secret_free(self.request_params, path="request_params")
         assert_secret_free(self.pagination_input, path="pagination_input")
         expected = compute_request_fingerprint(

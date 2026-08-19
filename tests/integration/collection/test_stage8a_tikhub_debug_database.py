@@ -174,7 +174,9 @@ def test_tikhub_debug_database_uses_formal_source_chain_and_sends_once(
                 == 1
             )
             assert session.scalar(select(func.count()).select_from(artifacts_table)) == 1
-            assert session.scalar(select(func.count()).select_from(collection_candidates_table)) == 1
+            assert (
+                session.scalar(select(func.count()).select_from(collection_candidates_table)) == 1
+            )
             assert (
                 session.scalar(
                     select(func.count()).select_from(collection_candidate_ingestions_table)

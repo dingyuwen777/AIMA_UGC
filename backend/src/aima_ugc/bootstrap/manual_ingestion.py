@@ -184,7 +184,9 @@ def _ingest_excel_run(
             with session.begin():
                 provider_repository = PostgresProviderRepository(session)
                 provider_service = ProviderPersistenceService(provider_repository)
-                content_service = ContentIngestionService(PostgresCompleteContentRepository(session))
+                content_service = ContentIngestionService(
+                    PostgresCompleteContentRepository(session)
+                )
                 lineage_by_platform: dict[str, tuple[UUID, UUID]] = {}
 
                 with unified_content_path.open("rb") as handle:
@@ -251,7 +253,9 @@ def _ingest_excel_run(
                                 "raw_artifact_id": input_artifact.id,
                             }
                         )
-                        content_service.ingest_content(content.model_copy(update={"source": source}))
+                        content_service.ingest_content(
+                            content.model_copy(update={"source": source})
+                        )
                         rows_ingested += 1
 
                 PostgresProcessingImportBatchRepository(session).mark_succeeded(

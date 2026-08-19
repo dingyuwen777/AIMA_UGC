@@ -408,7 +408,8 @@ class PostgresProviderRepository:
                 update(provider_request_attempts_table)
                 .where(
                     provider_request_attempts_table.c.id == attempt.attempt_id,
-                    provider_request_attempts_table.c.provider_request_id == attempt.provider_request_id,
+                    provider_request_attempts_table.c.provider_request_id
+                    == attempt.provider_request_id,
                     provider_request_attempts_table.c.attempt_no == attempt.attempt_no,
                     provider_request_attempts_table.c.dispatch_status == "dispatching",
                 )
@@ -437,7 +438,8 @@ class PostgresProviderRepository:
         if row is None:
             raise ProviderAttemptStateConflict("Provider Attempt 不是当前 dispatching 状态")
         values: dict[str, object] = {
-            "estimated_cost": cast(Decimal, request_row["estimated_cost"]) + attempt.billing.estimated_cost,
+            "estimated_cost": cast(Decimal, request_row["estimated_cost"])
+            + attempt.billing.estimated_cost,
             "actual_cost": cast(Decimal, request_row["actual_cost"]) + attempt.billing.actual_cost,
             "cost_currency": currency,
             "cost_unit": cost_unit,
@@ -490,7 +492,9 @@ class PostgresProviderRepository:
             .one_or_none()
         )
 
-    def _advance_request_attempt_count(self, *, provider_request_id: UUID, next_attempt_no: int) -> None:
+    def _advance_request_attempt_count(
+        self, *, provider_request_id: UUID, next_attempt_no: int
+    ) -> None:
         self._session.execute(
             update(provider_requests_table)
             .where(provider_requests_table.c.id == provider_request_id)
@@ -510,7 +514,9 @@ def _logical_request_key(request: ProviderRequestV1):
         if request.import_batch_id is not None
         else provider_requests_table.c.scope_id == request.scope_id
     )
-    return and_(parent, provider_requests_table.c.request_fingerprint == request.request_fingerprint)
+    return and_(
+        parent, provider_requests_table.c.request_fingerprint == request.request_fingerprint
+    )
 
 
 def _row_has_logical_key(row: RowMapping, request: ProviderRequestV1) -> bool:

@@ -155,9 +155,7 @@ class _TikHubDebugRunner:
         try:
             if self.write_to_database:
                 if self.provider_config_id is None:
-                    raise ValueError(
-                        "write_to_database=True 时必须显式提供 provider_config_id"
-                    )
+                    raise ValueError("write_to_database=True 时必须显式提供 provider_config_id")
                 from aima_ugc.bootstrap.tikhub_test_database import (
                     create_tikhub_debug_database_session,
                 )

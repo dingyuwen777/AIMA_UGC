@@ -116,15 +116,9 @@ class TikHubDebugDatabaseSession:
         self._credential = credential
         self._pricing = load_tikhub_pricing()
         self._lease_seconds = max(600, int(provider_timeout_seconds * 2) + 60)
-        self._attempt_preparer = PostgresFencedProviderAttemptPreparer(
-            runtime.database.new_session
-        )
-        self._scope_gateway = PostgresCollectionRunExecutionGateway(
-            runtime.database.new_session
-        )
-        self._content_writer = PostgresFencedCollectionIngestionWriter(
-            runtime.database.new_session
-        )
+        self._attempt_preparer = PostgresFencedProviderAttemptPreparer(runtime.database.new_session)
+        self._scope_gateway = PostgresCollectionRunExecutionGateway(runtime.database.new_session)
+        self._content_writer = PostgresFencedCollectionIngestionWriter(runtime.database.new_session)
         artifact_service = ArtifactService(
             metadata=PostgresArtifactMetadataGateway(runtime.database.new_session),
             store=runtime.artifact_store,
@@ -183,9 +177,7 @@ class TikHubDebugDatabaseSession:
             mirror_response=mirror_response,
         )
         outcome = ProviderDispatchService(
-            persistence=PostgresProviderDispatchPersistence(
-                self._runtime.database.new_session
-            ),
+            persistence=PostgresProviderDispatchPersistence(self._runtime.database.new_session),
             client=ProviderClient(transport=mirrored),
             raw_artifacts=self._raw_artifacts,
         ).dispatch(
@@ -334,9 +326,7 @@ class TikHubDebugDatabaseSession:
                 content_count=totals["content_count"],
                 comment_count=totals["comment_count"],
                 error_summary=(
-                    None
-                    if error is None
-                    else f"{type(error).__name__}: {str(error)[:1800]}"
+                    None if error is None else f"{type(error).__name__}: {str(error)[:1800]}"
                 ),
             )
             session = self._runtime.database.new_session()
@@ -440,8 +430,7 @@ class TikHubDebugDatabaseSession:
         fence = JobExecutionFence(job_id=job.id, lease_token=claimed.lease_token)
         run = self._scope_gateway.start_run(execution.run.id, fence=fence)
         scopes = tuple(
-            self._scope_gateway.start_scope(scope.id, fence=fence)
-            for scope in execution.scopes
+            self._scope_gateway.start_scope(scope.id, fence=fence) for scope in execution.scopes
         )
         return run, scopes, fence
 
