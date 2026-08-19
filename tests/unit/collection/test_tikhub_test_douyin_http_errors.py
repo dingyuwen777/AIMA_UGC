@@ -172,10 +172,11 @@ def test_douyin_detail_400_is_recorded_without_aborting_batch_and_retried_next_r
     assert json.loads(raw_path.read_text(encoding="utf-8"))["detail"]["code"] == 400
     workbook = load_workbook(first.workbook_path, data_only=False)
     try:
-        sheet = workbook["内容与评论"]
-        headers = [cell.value for cell in sheet[1]]
+        assert workbook.sheetnames == ["内容", "评论"]
+        content_sheet = workbook["内容"]
+        headers = [cell.value for cell in content_sheet[1]]
         coverage_column = headers.index("评论覆盖") + 1
-        assert sheet.cell(row=2, column=coverage_column).value == "unavailable"
+        assert content_sheet.cell(row=2, column=coverage_column).value == "unavailable"
     finally:
         workbook.close()
 
