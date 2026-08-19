@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from aima_ugc.contracts.provider import assert_redacted_json, assert_secret_free, redact_json
 
-_SAFE_FILENAME = re.compile(r"[^A-Za-z0-9_.-]+")
+_SAFE_FILENAME = re.compile(r"[^A-Za-z0-9_.+-]+")
 _STATE_SCHEMA = "tikhub-test-state.v1"
 _BEIJING_TZ = ZoneInfo("Asia/Shanghai")
 
