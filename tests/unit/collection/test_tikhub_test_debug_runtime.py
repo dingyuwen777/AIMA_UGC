@@ -256,9 +256,6 @@ def test_xhs_multiple_keywords_search_each_keyword_but_deduplicate_downstream(
         content_sheet = workbook["内容"]
         content_headers = [cell.value for cell in content_sheet[1]]
         matched_keywords_column = content_headers.index("命中关键词") + 1
-        assert (
-            content_sheet.cell(row=2, column=matched_keywords_column).value
-            == "爱玛；爱玛电动车"
-        )
+        assert content_sheet.cell(row=2, column=matched_keywords_column).value == "爱玛；爱玛电动车"
     finally:
         workbook.close()
