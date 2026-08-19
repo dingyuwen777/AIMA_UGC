@@ -94,7 +94,7 @@ def test_platform_route_requires_config_capability_identity_match() -> None:
     ("filename", "model"),
     [
         ("provider-config.v1.schema.json", ProviderConfigV1),
-        ("provider-operations-route.v1.schema.json", ProviderPlatformRouteV1),
+        ("provider-platform-route.v1.schema.json", ProviderPlatformRouteV1),
     ],
 )
 def test_fixed_provider_config_schemas_match_pydantic_contract(filename: str, model: type) -> None:
