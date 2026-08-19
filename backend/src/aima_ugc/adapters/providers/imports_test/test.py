@@ -49,6 +49,7 @@ KEYWORD_PACK_FILE = Path(__file__).with_name("keyword_pack.txt")
 
 SHEET_NAME = "文章"
 PROFILE = "aima-monitoring-excel.v1"
+WRITE_TO_DATABASE = False
 
 # 最终 Excel 的“内容”Sheet 展示列；顺序就是导出顺序。
 EXCEL_CONTENT_COLUMNS = (
@@ -138,6 +139,29 @@ def deduplicate(*, run_dir: Path | None = None) -> ContentDeduplicationSummary:
     )
 
 
+def ingest_database(
+    *,
+    run_dir: Path | None = None,
+    rows_seen: int | None = None,
+) -> object:
+    """显式数据库阶段；默认主链不调用，且本入口不管理 Docker/Migration。"""
+
+    actual_run_dir = _stage_run_dir(run_dir)
+    canonical_path = actual_run_dir / "canonical" / "contents.jsonl"
+    deduplicated_path = actual_run_dir / "deduplicated" / "contents.jsonl"
+    resolved_rows_seen = rows_seen if rows_seen is not None else _count_jsonl_rows(canonical_path)
+
+    # 延迟导入保证默认 file-only 模式不装配数据库 Runtime。
+    from aima_ugc.bootstrap.manual_ingestion import ingest_excel_run_to_postgres
+
+    return ingest_excel_run_to_postgres(
+        input_path=INPUT_XLSX,
+        unified_content_path=deduplicated_path,
+        rows_seen=resolved_rows_seen,
+        rows_rejected=0,
+    )
+
+
 def export_raw_excel(*, run_dir: Path | None = None) -> ExcelExportSummary:
     """可选导出当前 run 的未填分析标签人工审阅视图。"""
 
@@ -215,7 +239,11 @@ def export_labeled_excel(
     )
 
 
-def run_all(*, run_id: str | None = None) -> P1RunSummary:
+def run_all(
+    *,
+    run_id: str | None = None,
+    write_to_database: bool = WRITE_TO_DATABASE,
+) -> P1RunSummary:
     """创建一次独立 run 目录并按固定顺序执行完整链路。"""
 
     actual_run_id = _resolve_run_id(run_id)
@@ -230,6 +258,13 @@ def run_all(*, run_id: str | None = None) -> P1RunSummary:
 
     deduplication = deduplicate(run_dir=run_dir)
     stages.append(_stage_payload("deduplicate", deduplication))
+
+    if write_to_database:
+        database_ingestion = ingest_database(
+            run_dir=run_dir,
+            rows_seen=conversion.rows_seen,
+        )
+        stages.append(_stage_payload("database_ingestion", database_ingestion))
 
     labeling = label_sentiment(run_dir=run_dir)
     stages.append(_stage_payload("label_sentiment", labeling))
@@ -258,6 +293,13 @@ def run_all(*, run_id: str | None = None) -> P1RunSummary:
         run_summary_path=run_summary_path,
         labeled_excel_path=labeled_excel_path,
     )
+
+
+def _count_jsonl_rows(path: Path) -> int:
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    with path.open("rb") as handle:
+        return sum(1 for line in handle if line.strip())
 
 
 def _resolve_run_id(run_id: str | None) -> str:

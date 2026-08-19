@@ -2,7 +2,18 @@
 
 from __future__ import annotations
 
-from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Table, Text, UniqueConstraint, Uuid, func
+from sqlalchemy import (
+    CheckConstraint,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Table,
+    Text,
+    UniqueConstraint,
+    Uuid,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 
 from aima_ugc.modules.collection.tables import provider_requests_table
@@ -51,6 +62,11 @@ def register_ingestion_schema() -> None:
             provider_requests_table.c.request_fingerprint,
             name="import_batch_id_request_fingerprint",
         )
+    )
+    Index(
+        "ix_provider_requests_import_batch_id_created_at",
+        provider_requests_table.c.import_batch_id,
+        provider_requests_table.c.created_at,
     )
 
 

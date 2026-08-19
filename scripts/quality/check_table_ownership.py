@@ -9,6 +9,7 @@ ALLOWED_OWNERS = {
     "collection",
     "content",
     "dashboard",
+    "ingestion",
     "monitoring",
     "platform",
     "reporting",
@@ -23,6 +24,7 @@ _SYSTEM_TABLES = {
     "provider_configs",
     "system_settings",
 }
+_INGESTION_TABLES = {"processing_import_batches"}
 _CONTENT_PREFIXES = (
     "account_",
     "accounts",
@@ -40,6 +42,8 @@ def _expected_owner(table_name: str) -> str | None:
         return "platform"
     if table_name in _SYSTEM_TABLES:
         return "system"
+    if table_name in _INGESTION_TABLES:
+        return "ingestion"
     if table_name.startswith(_CONTENT_PREFIXES):
         return "content"
     if table_name.startswith(_COLLECTION_PREFIXES):

@@ -32,14 +32,22 @@ def test_provider_request_has_exactly_one_source_parent() -> None:
         for constraint in provider_requests_table.constraints
         if isinstance(constraint, CheckConstraint)
     }
-    assert "source_parent_exactly_one" in checks
-    assert "scope_id" in checks["source_parent_exactly_one"]
-    assert "import_batch_id" in checks["source_parent_exactly_one"]
+    source_parent = next(
+        (
+            sql
+            for name, sql in checks.items()
+            if name is not None and name.endswith("source_parent_exactly_one")
+        ),
+        None,
+    )
+    assert source_parent is not None
+    assert "scope_id" in source_parent
+    assert "import_batch_id" in source_parent
 
     uniques = {
-        constraint.name: tuple(column.name for column in constraint.columns)
+        tuple(column.name for column in constraint.columns)
         for constraint in provider_requests_table.constraints
         if isinstance(constraint, UniqueConstraint)
     }
-    assert ("scope_id", "request_fingerprint") in uniques.values()
-    assert ("import_batch_id", "request_fingerprint") in uniques.values()
+    assert ("scope_id", "request_fingerprint") in uniques
+    assert ("import_batch_id", "request_fingerprint") in uniques
