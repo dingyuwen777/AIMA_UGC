@@ -24,8 +24,10 @@ affected_paths:
   - backend/src/aima_ugc/adapters/providers/tikhub_test/
   - backend/src/aima_ugc/bootstrap/
   - backend/src/aima_ugc/contracts/provider/
+  - backend/src/aima_ugc/database_schema.py
   - contracts/provider/
   - migrations/
+  - scripts/quality/check_table_ownership.py
   - tests/
   - docs/blueprint/
   - docs/测试与调试说明.md
