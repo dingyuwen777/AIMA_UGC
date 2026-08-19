@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260818-stage1-stage7-comprehensive-corrective
 title: Stage 1-7 全面正确性与一致性整改
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: fix/stage1-stage7-shared-baseline-ci
 created: 2026-08-18
@@ -41,6 +41,7 @@ affected_paths:
   - docs/blueprint/
   - docs/collection/
   - README.md
+  - .reliable-vibe-coding/project-context.json
 contracts:
   - CanonicalContentV1
   - CanonicalCommentV1
@@ -76,17 +77,17 @@ PR #65 已于 `0446b4a2bda3160f61a88d9ed662040f46ee2ac9` 合并。随后 `main` 
 本轮优先按以下边界处理：
 
 1. `backend/src/aima_ugc/platform/` 仍是当前真实 Platform 基础设施目录；质量脚本和 Workflow 不得要求不存在的 `backend/src/aima_ugc/operations/`。
-2. `ProviderPlatformCapabilityV1` 当前源码的 `schema_version` 为 `provider-operations-capability.v1`；固定生成物、兼容检查和长期文档必须与这一当前 Contract 一致。
+2. `ProviderPlatformCapabilityV1` 的固定公共身份继续保持 `provider-platform-capability.v1`，Route 保持 `provider-platform-route.v1`；本轮恢复源码、固定 JSON Schema、生成器、兼容检查和测试的一致性，不把 Provider 内部 `operations` 能力列表误当成公共 Contract 重命名。
 3. 不通过放宽、删除或跳过 Architecture、Contract、Migration、Database 测试来掩盖源码内部错误。若同一机器事实内部存在机械重命名残留（例如表定义字段名与同文件索引/Repository 实际访问列不一致），只允许做不改变业务语义的最小一致性修正。
 4. 不修改 P1 的 Analysis/Excel/Prompt/Taxonomy 业务逻辑，不向 PR #66 塞 Stage 1—7 整改。
 
 ### 本轮新增成功标准
 
-- [ ] Architecture 检查与真实 `platform/` 目录一致，不再要求不存在的 `operations/` 路径，同时继续保持既有模块依赖硬边界。
-- [ ] Collection Contract 当前源码、固定 JSON Schema、生成脚本、兼容检查和测试对 `provider-operations-capability.v1` / route 命名保持一致；不靠关闭 Contract drift 检查通过。
-- [ ] Content/Collection/Keyword 等表定义、Repository 访问列和现有 Migration 机器事实内部一致；数据库模块可正常 import，Alembic 不因列名自相矛盾失败。
-- [ ] AGENTS/Blueprint/README/测试说明只描述当前机器事实，不保留已失效路径或 Contract 文件名。
-- [ ] 目标测试、相关回归、Ruff、mypy、Architecture、Table Ownership、Secret、Docs、Contract、Migration、前端现有门禁和全部适用 GitHub Actions 在最新 corrective PR head 取得新鲜绿色证据。
+- [x] Architecture 检查与真实 `platform/` 目录一致，不再要求不存在的 `operations/` 路径，同时继续保持既有模块依赖硬边界。
+- [x] Collection Contract 当前源码、固定 JSON Schema、生成脚本、兼容检查和测试统一保持 `provider-platform-capability.v1` / `provider-platform-route.v1`；Contract drift 检查继续启用并通过。
+- [x] Content/Collection/Keyword 等表定义、Repository 访问列和现有 Migration 机器事实内部一致；数据库模块可正常 import，Alembic 不因列名自相矛盾失败。
+- [x] AGENTS/Blueprint/README/测试说明与当前机器事实一致；历史归档 Change 恢复为当时事实，RVC 项目索引由 GitHub-hosted runner 重新生成。
+- [x] 代码/文档/索引候选 `2e442db7c94577ffe2055d8cc1c5691b93a049b6` 的目标测试、相关回归、Ruff、mypy、Architecture、Table Ownership、Secret、Docs、Contract、Migration、前端现有门禁和 12/12 适用 GitHub Actions 均取得新鲜绿色证据。
 - [ ] corrective PR 合并后，最新 `main` 再取得适用 Stage 1—7 CI 绿色，才满足回到 P1H 收口的条件。
 
 # 成功标准
@@ -199,13 +200,13 @@ PR #65 已于 `0446b4a2bda3160f61a88d9ed662040f46ee2ac9` 合并。随后 `main` 
 - [x] 确认 PR #65 已合并、旧 corrective 分支已不存在，当前 `main=0dc666192f83fa9e55d5cbfffb19c09d31c5ecaf`。
 - [x] 确认 `4d493801` 与 `0dc66619` 必须保留，不做整提交 revert。
 - [x] 确认当前仓库不存在 `backend/src/aima_ugc/operations/`，Architecture 的 11 个 operations 路径要求是门禁漂移。
-- [x] 确认当前 `ProviderPlatformCapabilityV1.schema_version=provider-operations-capability.v1`，但固定 Contract 仍是 provider-platform 文件名，存在 Contract drift。
+- [x] 确认 `4d493801` 曾把 `ProviderPlatformCapabilityV1.schema_version` 误改为 `provider-operations-capability.v1`，而固定 Contract 仍是 provider-platform 文件名；本轮已恢复固定 Provider Platform Contract 身份并验证生成/兼容一致。
 - [x] 确认 `modules/content/tables.py` 的 `operations` 列与 `contents_table.c.platform`/Repository 当前访问形成源码内部矛盾，不能靠跳过测试解决。
-- [ ] 在 corrective PR 上复现最新 GitHub Actions Red 并保存日志证据。
-- [ ] 修复 Architecture/Contract/Docs/Workflow 漂移。
-- [ ] 对源码内部机械一致性错误建立/复用失败测试后做最小修正。
-- [ ] 运行目标测试、相关 PostgreSQL、Ruff、mypy、Architecture、Ownership、Secret、Docs、Contract、Migration、前端及全部适用 CI。
-- [ ] 两阶段 Review；严重/重要问题清零。
+- [x] 在 corrective PR #67 上复现最新 GitHub Actions Red 并保存日志证据。
+- [x] 修复 Architecture/Contract/Docs/Workflow 漂移，同时保留已批准的 TikHub/tikhub_test 重组、抓取逻辑、`.dev` 默认域名、抖音调试容错和 Windows bootstrap。
+- [x] 对源码内部机械一致性错误建立/复用失败测试后做最小修正；未新增业务 Schema、Migration 或 P1 业务逻辑。
+- [x] 运行目标测试、相关 PostgreSQL、Ruff、mypy、Architecture、Ownership、Secret、Docs、Contract、Migration、前端及全部适用 CI，并取得候选 `2e442db7` 的 12/12 成功。
+- [x] 完成需求符合性 + 代码质量终审：与 PR #65 合并基线比较后，剩余差异仅为已批准 TikHub/tikhub_test、北京时间、Windows bootstrap、对应测试/文档/Active Change 与 RVC 索引；未发现 P1 路径或共享误替换残留。
 - [ ] corrective PR 合并后验证最新 main 全绿，再允许回到 P1H。
 
 # 跨生命周期回归矩阵
@@ -246,17 +247,22 @@ PR #65 已建立并保留原 24 组回归；本轮额外证明：
 
 ## 本轮新鲜证据
 
-- 待 corrective PR 创建后填写；历史 PR #65 结果不得冒充当前 `main` 或本轮修复结果。
+- 初始 Red：PR #67 的 Stage 6 Run `32200828033` 在 Unit 收集阶段出现 `AttributeError: platform`、tikhub_test 导入错误，PostgreSQL Job 在 `alembic upgrade head` 前加载 metadata 时同样因 `contents_table.c.platform` 不存在退出；Architecture 另由不存在的 `operations/` Required Paths 失败。
+- TikHub 行为 Red→Green：新增/调整目标测试先得到 `241 passed / 3 failed`（北京时间 run-id、默认 `.dev`、第三方 Origin 应拒绝）；实现后为 `243 passed / 1 failed`（仅目录安全化丢失 `+`）；允许 `+0800` 后转 Green。
+- 代码/文档/索引候选 `2e442db7c94577ffe2055d8cc1c5691b93a049b6` 取得 12/12 正式 Stage 1—7 Workflow 全部 `success`：CI `32202997908`、Stage 4 `32202997959`、Stage 5A `32202997905`、Stage 5B `32202997910`、Stage 5C `32202997967`、Stage 5D `32202997929`、Stage 6 `32202997901`、Stage 7 Keyword Packs `32202997949`、Provider Config Routing `32202997924`、Plan Occurrence Run Snapshot `32202997904`、Scheduler Runtime `32202997890`、Stage 1-7 Audit Correctness `32202997885`；failure/cancelled/timed_out/in_progress 均为 0。
+- Stage 5D Run `32202997929`：`pytest tests/unit/collection tests/unit/jobs tests/contracts/test_provider_v1.py -q` 为 `244 passed in 4.79s`；`pytest tests/integration/collection -q` 为 `66 passed in 10.76s`；Ruff `270 files already formatted` / `All checks passed!`；mypy `Success: no issues found in 146 source files`；Architecture、Table Ownership、Secret、Docs、Contract 生成/兼容、Alembic base 与 Stage 5C round-trip 全部成功。
+- RVC 项目索引通过 GitHub-hosted Run `32202877294` 执行仓库自带 `rvc.py discover --root . --json` 真实生成并提交；临时生成 Workflow 已删除。
+- TikHub 正式 Operation/Mapper/Runner 与脱敏真实响应 fixture 回归由现有 CI 覆盖；本轮未执行付费/外部真实 TikHub 在线调用，因为当前 GitHub connector 没有可安全注入 Secret 的 workflow-dispatch 输入，本轮未把真实 key 写入代码、Workflow、日志或 PR。
 
 # 文档影响
 
-需要重新语义检查 `AGENTS.md`、Blueprint、README、测试说明、Collection 文档、归档 Change 中是否存在被当前机器事实推翻的路径或 Contract 名称。长期文档描述当前系统；归档 Change 保存历史当时事实，不为追随新命名随意改写历史，除非当前工具错误地把历史文本当运行机器事实。
+已完成语义检查与同步：Architecture/Workflow 保持真实 `platform/` 目录；固定 Provider Platform Contract 恢复一致；TikHub 调试 README 同步 `.dev + 300s + core/operations + 北京时间 +0800`；被批量替换误改的历史归档 Change 恢复为当时事实；RVC 项目索引按当前仓库重新生成。根 `AGENTS.md` 本轮未修改。
 
 # 交付
 
 - 当前基线 main：`0dc666192f83fa9e55d5cbfffb19c09d31c5ecaf`
 - 当前分支：`fix/stage1-stage7-shared-baseline-ci`
 - 原实现 PR：#65，已合并；merge commit=`0446b4a2bda3160f61a88d9ed662040f46ee2ac9`。
-- 本轮 corrective PR：待创建。
+- 本轮 corrective PR：#67 `修复 Stage 1-7 共享基线 CI 漂移`，当前为 Open / Draft / 未合并；候选 `2e442db7c94577ffe2055d8cc1c5691b93a049b6` 已 12/12 正式 Stage 1—7 Workflow 成功。
 - P1 PR #66：不操作。
 - 发布：本 Change 不部署生产。
