@@ -56,10 +56,10 @@ collection_plan_platforms_table = Table(
     "collection_plan_platforms",
     metadata,
     Column("plan_id", Uuid(), ForeignKey("collection_plans.id"), primary_key=True),
-    Column("operations", Text(), primary_key=True),
+    Column("platform", Text(), primary_key=True),
     Column("provider_config_id", Uuid(), ForeignKey("provider_configs.id"), nullable=False),
     Column("config", JSONB(), nullable=False, server_default=text("'{}'::jsonb")),
-    CheckConstraint("char_length(operations) > 0", name="platform_nonempty"),
+    CheckConstraint("char_length(platform) > 0", name="platform_nonempty"),
     CheckConstraint("jsonb_typeof(config) = 'object'", name="config_object"),
     info={"owner": "collection"},
 )
@@ -139,7 +139,7 @@ collection_scopes_table = Table(
     metadata,
     Column("id", Uuid(), primary_key=True),
     Column("run_id", Uuid(), ForeignKey("collection_runs.id"), nullable=False),
-    Column("operations", Text(), nullable=False),
+    Column("platform", Text(), nullable=False),
     Column("source_type", Text(), nullable=False),
     Column("source_value", Text(), nullable=False),
     Column("operation_group", Text(), nullable=False),
@@ -155,7 +155,7 @@ collection_scopes_table = Table(
     Column("stats", JSONB(), nullable=False, server_default=text("'{}'::jsonb")),
     Column("started_at", DateTime(timezone=True)),
     Column("finished_at", DateTime(timezone=True)),
-    UniqueConstraint("run_id", "operations", "source_type", "source_value", "operation_group"),
+    UniqueConstraint("run_id", "platform", "source_type", "source_value", "operation_group"),
     info={"owner": "collection"},
 )
 

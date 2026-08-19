@@ -1,16 +1,16 @@
 ---
 schema: rvc-change/v1
-id: CHG-20260813-stage2-operations-foundation
+id: CHG-20260813-stage2-platform-foundation
 title: Stage 2 Platform 基础能力
 level: L3
 status: done
 owner: dingyuwen777
-branch: feature/stage2-operations-foundation
+branch: feature/stage2-platform-foundation
 created: 2026-08-13
 updated: 2026-08-13
 depends_on: []
-affected_areas: [operations, api, toolchain, developer-experience]
-affected_paths: [backend/src/aima_ugc/operations/, backend/src/aima_ugc/bootstrap/, backend/src/aima_ugc/entrypoints/, backend/src/aima_ugc/adapters/storage/local/, tests/unit/operations/, tests/integration/operations/, tests/api/test_health.py, .github/workflows/ci.yml, env.local.example, README.md, docs/环境运行与部署.md, docs/blueprint/README.md, docs/blueprint/06-开发约束与分阶段实施.md, docs/blueprint/07-技术决策与实施门禁.md]
+affected_areas: [platform, api, toolchain, developer-experience]
+affected_paths: [backend/src/aima_ugc/platform/, backend/src/aima_ugc/bootstrap/, backend/src/aima_ugc/entrypoints/, backend/src/aima_ugc/adapters/storage/local/, tests/unit/platform/, tests/integration/platform/, tests/api/test_health.py, .github/workflows/ci.yml, env.local.example, README.md, docs/环境运行与部署.md, docs/blueprint/README.md, docs/blueprint/06-开发约束与分阶段实施.md, docs/blueprint/07-技术决策与实施门禁.md]
 contracts: [GET /health/ready]
 data_changes: []
 ---

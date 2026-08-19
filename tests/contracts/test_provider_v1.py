@@ -29,7 +29,7 @@ def _request(**overrides: object) -> ProviderRequestV1:
         "run_id": uuid4(),
         "scope_id": uuid4(),
         "provider": "fake_provider",
-        "operations": "xhs",
+        "platform": "xhs",
         "operation": "keyword_search",
         "request_params": {"keyword": "爱玛", "filters": {"sort": "latest"}},
         "pagination_input": {"page": 1},
@@ -153,7 +153,7 @@ def test_raw_envelope_contract_is_provider_neutral_and_versioned() -> None:
 
     assert RawEnvelopeV1.model_fields["schema_version"].default == "provider-response.v1"
     assert "provider" in schema["properties"]
-    assert "operations" in schema["properties"]
+    assert "platform" in schema["properties"]
     assert "operation" in schema["properties"]
     assert "tikhub" not in str(schema).lower()
 

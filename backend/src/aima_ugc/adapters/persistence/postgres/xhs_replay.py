@@ -86,7 +86,7 @@ class PostgresXhsReplaySourceReader:
                 provider_attempt_id=cast(UUID, row["attempt_id"]),
                 provider_request_id=cast(UUID, row["request_id"]),
                 provider=cast(str, row["provider"]),
-                platform=cast(str, row["operations"]),
+                platform=cast(str, row["platform"]),
                 operation=cast(str, row["operation"]),
                 source_type=cast(str, row["source_type"]),
                 source_value=cast(str, row["source_value"]),

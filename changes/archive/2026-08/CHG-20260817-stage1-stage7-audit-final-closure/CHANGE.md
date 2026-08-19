@@ -9,8 +9,8 @@ branch: fix/stage1-stage7-audit-final-closure
 created: 2026-08-17
 updated: 2026-08-17
 depends_on: [CHG-20260817-stage1-stage7-audit-correctness]
-affected_areas: [content, collection, operations, provider, testing, documentation]
-affected_paths: [backend/src/aima_ugc/modules/content/, backend/src/aima_ugc/operations/jobs/, backend/src/aima_ugc/modules/collection/, backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml, tests/unit/content/, tests/unit/collection/, tests/integration/jobs/, tests/integration/collection/, docs/blueprint/05-日志安全部署与运维.md, docs/blueprint/06-开发约束与分阶段实施.md, changes/archive/2026-08/CHG-20260815-stage7-completion/CHANGE.md, .github/workflows/stage5a-provider-raw.yml]
+affected_areas: [content, collection, platform, provider, testing, documentation]
+affected_paths: [backend/src/aima_ugc/modules/content/, backend/src/aima_ugc/platform/jobs/, backend/src/aima_ugc/modules/collection/, backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml, tests/unit/content/, tests/unit/collection/, tests/integration/jobs/, tests/integration/collection/, docs/blueprint/05-日志安全部署与运维.md, docs/blueprint/06-开发约束与分阶段实施.md, changes/archive/2026-08/CHG-20260815-stage7-completion/CHANGE.md, .github/workflows/stage5a-provider-raw.yml]
 contracts: []
 data_changes: []
 ---

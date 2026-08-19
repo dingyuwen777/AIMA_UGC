@@ -15,9 +15,9 @@ from aima_ugc.modules.collection.providers.transport import (
     ProviderTransportResponse,
 )
 
-DEFAULT_TIKHUB_BASE_URL = "https://api.tikhub.io"
+DEFAULT_TIKHUB_BASE_URL = "https://api.tikhub.dev"
 DEFAULT_TIKHUB_REQUEST_TIMEOUT_SECONDS = 45.0
-_ALLOWED_TIKHUB_HOST = "api.tikhub.io"
+_ALLOWED_TIKHUB_HOSTS = frozenset({"api.tikhub.dev", "api.tikhub.io"})
 _REQUEST_ID_HEADERS = (
     "x-request-id",
     "x-tikhub-request-id",
@@ -36,7 +36,7 @@ class TikHubHttpTransport:
         client: httpx.Client | None = None,
     ) -> None:
         actual_base_url = str(client.base_url) if client is not None else base_url
-        normalized_base_url = actual_base_url
+        normalized_base_url = _validate_tikhub_base_url(actual_base_url)
         if timeout_seconds <= 0:
             raise ValueError("TikHub timeout_seconds 必须大于 0")
         self._base_url = normalized_base_url
@@ -161,7 +161,7 @@ def _validate_tikhub_base_url(value: str) -> str:
         raise ValueError("TikHub base_url 必须使用受允许的 HTTPS Origin") from exc
     if (
         parsed.scheme != "https"
-        or parsed.hostname != _ALLOWED_TIKHUB_HOST
+        or parsed.hostname not in _ALLOWED_TIKHUB_HOSTS
         or port not in (None, 443)
         or parsed.username is not None
         or parsed.password is not None
@@ -169,7 +169,7 @@ def _validate_tikhub_base_url(value: str) -> str:
         or parsed.fragment
         or parsed.path not in ("", "/")
     ):
-        raise ValueError("TikHub base_url 必须使用受允许的 https://api.tikhub.io")
+        raise ValueError("TikHub base_url 必须使用受允许的 TikHub HTTPS Origin")
     return normalized
 
 

@@ -9,12 +9,12 @@
 复制本目录的 `.env.example` 为 `.env`：
 
 ```text
-TIKHUB_BASE_URL=https://api.tikhub.io
+TIKHUB_BASE_URL=https://api.tikhub.dev
 TIKHUB_API_KEY=你的真实密钥
-TIKHUB_TIMEOUT_SECONDS=45
+TIKHUB_TIMEOUT_SECONDS=300
 ```
 
-`.env` 已被 Git 忽略，**不要提交真实密钥**。代码只读取本目录 `.env` 或函数显式指定的 `env_file`。
+`.env` 已被 Git 忽略，**不要提交真实密钥**。代码只读取本目录 `.env` 或函数显式指定的 `env_file`。当前默认 TikHub Origin 为 `https://api.tikhub.dev`；为兼容既有配置，`https://api.tikhub.io` 仍可显式使用，但任意第三方 Origin 会在发送 Secret 之前被拒绝。
 
 ## 2. 关键词在哪里配置
 
@@ -191,6 +191,8 @@ output/
          └─ run_summary.json
 ```
 
+未显式传入 `run_id` 时，目录名使用 `Asia/Shanghai` 北京时间，并显式携带 `+0800` 偏移，例如 `20260818T141008.637851+0800`；Raw/Canonical 内部时间语义仍按各自正式 Contract 保持不变。
+
 - `raw/`：每个真实请求的完整脱敏 Provider 响应；
 - `canonical/`：正式 Mapper 产生的统一 `CanonicalContentV1 / CanonicalCommentV1`；
 - `run_summary.json`：关键词、请求、停止原因、内容/评论数量、每条内容命中哪些关键词等运行事实；
@@ -241,7 +243,7 @@ output/
 
 ### 未来统一数据导出迁移门禁
 
-当前 `tikhub_test/excel.py` 是**阶段性基础数据 Excel 实现**。未来系统正式开发统一“帖子/评论基础数据 Excel 导出”后，必须按 [`docs/blueprint/13-统一数据Excel导出与调试复用.md`](../../../../../../docs/blueprint/13-统一数据Excel导出与调试复用.md) 收口：
+当前 `tikhub_test/core/excel.py` 是**阶段性基础数据 Excel 实现**。未来系统正式开发统一“帖子/评论基础数据 Excel 导出”后，必须按 [`docs/blueprint/13-统一数据Excel导出与调试复用.md`](../../../../../../docs/blueprint/13-统一数据Excel导出与调试复用.md) 收口：
 
 - 正式导出基于统一 Canonical/Aggregate 数据；
 - `tikhub_test` 改为直接调用共享 Exporter；

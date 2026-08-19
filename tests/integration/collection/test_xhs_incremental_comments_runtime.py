@@ -259,7 +259,7 @@ def test_xhs_incremental_comments_stop_after_safe_known_comment_boundary(
                     "comment_policy": "adaptive",
                     "platforms": [
                         {
-                            "operations": "xhs",
+                            "platform": "xhs",
                             "provider_config_id": str(provider_config.id),
                             "config": {
                                 "sort_mode": "latest",

@@ -172,7 +172,7 @@ def test_takeover_reconciles_search_raw_then_formal_scope_replays_without_resend
                     "comment_policy": "adaptive",
                     "platforms": [
                         {
-                            "operations": "xhs",
+                            "platform": "xhs",
                             "provider_config_id": str(provider_config.id),
                             "config": {
                                 "sort_mode": "latest",

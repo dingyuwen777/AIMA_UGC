@@ -1593,7 +1593,7 @@ def _platform_runtime_config(
     if not isinstance(platforms, list):
         raise ValueError("Collection Run Snapshot 缺少 platforms")
     matches = [
-        item for item in platforms if isinstance(item, dict) and item.get("operations") == platform
+        item for item in platforms if isinstance(item, dict) and item.get("platform") == platform
     ]
     if len(matches) != 1:
         raise ValueError("Collection Run Snapshot 必须为 Scope 平台提供唯一 Provider Config")
@@ -1607,7 +1607,7 @@ def _platform_runtime_config(
         raise ValueError("Collection Run Snapshot provider_config_id 不是合法 UUID") from exc
     config = item.get("config", {})
     if not isinstance(config, dict):
-        raise ValueError("Collection Run Snapshot operations config 必须为对象")
+        raise ValueError("Collection Run Snapshot platform config 必须为对象")
     provider = item.get("provider")
     base_url = item.get("base_url")
     secret_ref = item.get("secret_ref")

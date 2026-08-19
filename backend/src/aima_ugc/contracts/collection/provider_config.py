@@ -60,7 +60,7 @@ class ProviderConfigV1(CollectionBaseModel):
 class ProviderPlatformRouteV1(CollectionBaseModel):
     """平台选择具体 Provider Config 后解析出的稳定路由与业务 Capability。"""
 
-    schema_version: Literal["provider-operations-route.v1"] = "provider-operations-route.v1"
+    schema_version: Literal["provider-platform-route.v1"] = "provider-platform-route.v1"
     provider_config_id: UUID
     provider: ProviderName
     platform: PlatformName

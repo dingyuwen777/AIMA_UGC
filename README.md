@@ -261,7 +261,7 @@ npm --prefix frontend run build
 Platform 单元测试可独立运行：
 
 ```bash
-uv run pytest tests/unit/operations -q
+uv run pytest tests/unit/platform -q
 ```
 
 Job Registry 与正式 Worker 的纯逻辑测试可独立运行：

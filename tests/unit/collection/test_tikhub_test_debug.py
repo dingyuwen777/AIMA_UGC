@@ -8,14 +8,15 @@ from zipfile import ZipFile
 
 import pytest
 from aima_ugc.adapters.providers.tikhub_test import (
+    DebugState,
+    RunOutputStore,
+    TikHubTestConfig,
     run_bilibili,
     run_douyin,
     run_kuaishou,
     run_weibo,
     run_xiaohongshu,
 )
-from aima_ugc.adapters.providers.tikhub_test import TikHubTestConfig
-from aima_ugc.adapters.providers.tikhub_test import DebugState, RunOutputStore
 from aima_ugc.adapters.providers.tikhub_test.core.excel import (
     RawDataBlock,
     RawDataCommentRow,
@@ -28,7 +29,7 @@ from openpyxl import load_workbook
 def test_local_env_loads_tikhub_secret_without_exposing_value(tmp_path: Path) -> None:
     env_file = tmp_path / ".env"
     env_file.write_text(
-        "TIKHUB_BASE_URL=https://api.tikhub.io\n"
+        "TIKHUB_BASE_URL=https://api.tikhub.dev\n"
         "TIKHUB_API_KEY=super-secret-debug-key\n"
         "TIKHUB_TIMEOUT_SECONDS=12.5\n",
         encoding="utf-8",
@@ -36,7 +37,7 @@ def test_local_env_loads_tikhub_secret_without_exposing_value(tmp_path: Path) ->
 
     config = TikHubTestConfig.load(env_file)
 
-    assert config.base_url == "https://api.tikhub.io"
+    assert config.base_url == "https://api.tikhub.dev"
     assert config.api_key.get_secret_value() == "super-secret-debug-key"
     assert config.timeout_seconds == 12.5
     assert "super-secret-debug-key" not in repr(config)
@@ -45,7 +46,7 @@ def test_local_env_loads_tikhub_secret_without_exposing_value(tmp_path: Path) ->
 
 def test_local_env_requires_api_key(tmp_path: Path) -> None:
     env_file = tmp_path / ".env"
-    env_file.write_text("TIKHUB_BASE_URL=https://api.tikhub.io\n", encoding="utf-8")
+    env_file.write_text("TIKHUB_BASE_URL=https://api.tikhub.dev\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="TIKHUB_API_KEY"):
         TikHubTestConfig.load(env_file)
@@ -78,21 +79,21 @@ def test_run_output_store_keeps_raw_and_canonical_without_database(tmp_path: Pat
     raw_body = {"data": {"items": [{"id": "note-1"}]}}
 
     raw = store.save_raw(operation="search_notes", body=raw_body, request_no=1)
-    store.append_canonical("contents", {"operations": "xhs", "external_content_id": "note-1"})
+    store.append_canonical("contents", {"platform": "xhs", "external_content_id": "note-1"})
     store.append_canonical(
         "comments",
         {
-            "operations": "xhs",
+            "platform": "xhs",
             "external_content_id": "note-1",
             "external_comment_id": "comment-1",
         },
     )
-    run_summary_path = store.write_run_summary({"operations": "xhs", "requests": 1})
+    run_summary_path = store.write_run_summary({"platform": "xhs", "requests": 1})
 
     assert json.loads(raw.path.read_text(encoding="utf-8")) == raw_body
     assert raw.artifact_id
     assert json.loads((store.canonical_dir / "contents.jsonl").read_text(encoding="utf-8")) == {
-        "operations": "xhs",
+        "platform": "xhs",
         "external_content_id": "note-1",
     }
     assert (

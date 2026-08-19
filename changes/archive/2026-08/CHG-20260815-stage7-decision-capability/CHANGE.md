@@ -11,7 +11,7 @@ updated: 2026-08-15
 depends_on: [CHG-20260815-stage7-collection-pipeline]
 affected_areas: [collection, provider, contracts, testing, documentation]
 affected_paths: [backend/src/aima_ugc/contracts/collection/, backend/src/aima_ugc/modules/collection/, backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py, contracts/collection/, scripts/contracts/, scripts/dev/probe_collection_decision.py, tests/unit/collection/, tests/contracts/test_collection_stage7.py, backend/src/aima_ugc/modules/collection/README.md]
-contracts: [collection-decision.v1, provider-operations-capability.v1]
+contracts: [collection-decision.v1, provider-platform-capability.v1]
 data_changes: []
 ---
 
