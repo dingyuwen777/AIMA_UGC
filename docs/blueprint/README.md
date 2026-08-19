@@ -16,8 +16,9 @@
 6. 涉及 Scheduler、TikHub API family 验证或真实响应结构时，再分别读取 `09`—`12` 中与当前任务直接相关的文档；
 7. **涉及帖子/评论数据 Excel、`.xlsx` 审阅、共享 Exporter、`tikhub_test` 或 `imports_test` Excel 复用时，必须读取 [`13-统一数据Excel导出与调试复用.md`](13-统一数据Excel导出与调试复用.md)。**
 8. **涉及正式前端页面结构、页面级隔离、Shared/Feature 边界、Figma、Design-to-Code、Figma MCP、Design Token、公共组件或视觉验收时，必须读取 [`16-前端页面架构与Figma设计工作流.md`](16-前端页面架构与Figma设计工作流.md)。**
-9. **涉及 AI 情感/一级/二级标签、Prompt、模型输入、分析结果版本、JSONL 回写或未来 Analysis 数据库存储时，必须读取 [`15-舆情AI打标与统一分析契约.md`](15-舆情AI打标与统一分析契约.md)。**
-10. 进入具体实现后，只继续读取相关模块 README、Contract、Migration、依赖、Operation/Mapper、Fixture、实现和测试。
+9. **涉及 Stage 8 的 Excel 主数据入口、Processing/Import Batch、统一入库、`imports_test`/`tikhub_test` 可选写库、采集运行中心或 Stage 8 子阶段实施时，必须读取 [`17-Stage8数据入口统一入库与业务前端实施.md`](17-Stage8数据入口统一入库与业务前端实施.md)。**
+10. **涉及 AI 情感/一级/二级标签、Prompt、模型输入、分析结果版本、JSONL 回写或未来 Analysis 数据库存储时，必须读取 [`15-舆情AI打标与统一分析契约.md`](15-舆情AI打标与统一分析契约.md)。**
+11. 进入具体实现后，只继续读取相关模块 README、Contract、Migration、依赖、Operation/Mapper、Fixture、实现和测试。
 
 不要因为存在 Blueprint 就跳过代码和测试事实，也不要一次性读取所有文档代替针对当前任务的现状调查。
 
@@ -63,10 +64,11 @@
 | [`13-统一数据Excel导出与调试复用.md`](13-统一数据Excel导出与调试复用.md) | 唯一 `UnifiedDataExcelV1`、raw/labeled 同契约、同源 JSONL→Excel、共享 Exporter 与调试复用门禁 | Excel、`.xlsx`、`openpyxl`、`tikhub_test`/`imports_test`、系统级统一导出 |
 | [`15-舆情AI打标与统一分析契约.md`](15-舆情AI打标与统一分析契约.md) | 全平台通用 4 情感 + 9 一级 + 39 二级 taxonomy、最小模型输入、Markdown Prompt、Analysis Contract、JSONL 回写与数据库 Owner 边界 | AI 打标、Prompt 调优、模型 Adapter、Analysis 结果、数据库/Excel 消费 |
 | [`16-前端页面架构与Figma设计工作流.md`](16-前端页面架构与Figma设计工作流.md) | Vue 页面级隔离、App/Shared/Feature/Page 边界、Figma 设计事实源、MCP Design-to-Code、Design Token、频繁改版与视觉验收 | Stage 8、前端页面、Figma、公共组件、设计系统、Design-to-Code、视觉验收 |
+| [`17-Stage8数据入口统一入库与业务前端实施.md`](17-Stage8数据入口统一入库与业务前端实施.md) | Excel 主数据入口、TikHub 辅助补采、Processing/Import Batch、统一 Canonical→Ingestion→PostgreSQL、手工调试可选写库、UI 能力映射和 Stage 8A—8F | Stage 8、正式导入、统一入库、`imports_test`/`tikhub_test` 写库、采集运行中心 |
 
 ## 当前开发状态
 
-**Stage 1—7 已闭环。临时 P1 已完成 Excel 离线导入、关键词清洗、稳定身份去重、统一 Excel 导出、全平台通用 AI 打标、checkpoint 恢复、90,000×13 性能验证与真实模型小样；P1 的长期规则已收口到 Blueprint 13/15。Stage 8 现在恢复为下一正式阶段。Stage 8 的前端页面架构与 Figma 设计工作流已经固化到 Blueprint 16，但正式业务 API、页面需求、页面实现和验收尚未因此自动开始。**
+**Stage 1—7 已闭环。临时 P1 已完成 Excel 离线导入、关键词清洗、稳定身份去重、统一 Excel 导出、全平台通用 AI 打标、checkpoint 恢复、90,000×13 性能验证与真实模型小样；P1 的长期规则已收口到 Blueprint 13/15。Stage 8 现在恢复为下一正式阶段。Stage 8 的前端页面架构与 Figma 设计工作流已固化到 Blueprint 16；第一版“Excel 主数据入口、TikHub 辅助补采、所有 Canonical 统一入 PostgreSQL、`imports_test`/`tikhub_test` 默认文件-only 且可显式写库”的实施方案已固化到 Blueprint 17，但这些 Stage 8 目标能力尚未因此自动成为当前代码事实。**
 
 Stage 7 已完成并固化：
 
@@ -97,13 +99,14 @@ P1 已固化的长期能力：
 - raw/labeled Excel 使用同一 Workbook Contract，业务中间处理不从 Excel 回读；
 - 全平台内容 Analysis 复用同一 Prompt/Taxonomy、Runtime Validator、LLM Port/Adapter 和有界 Validation Retry；
 - 成功 Analysis 先 checkpoint，再原子回写同一个 Provider-neutral JSONL；
-- 具体长期 Excel 与 Analysis 规则分别由 Blueprint 13 和 15 维护。
+- 具体长期 Excel 与 Analysis 规则分别由 Blueprint 13 和 15 维护；
+- `imports_test` / `tikhub_test` 当前默认仍是文件-only 人工调试入口；未来显式写库模式按 Blueprint 17 产品化，不能反向破坏默认离线调试能力。
 
 ## 下一正式阶段
 
-### Stage 8：API / 正式业务前端
+### Stage 8：统一数据入口 / API / 正式业务前端
 
-Stage 8 是当前下一正式阶段。新的 Stage 8 对话/Change 必须重新从当时 `main` 事实出发，并按 `AGENTS.md`、Skill 和 Stage 8 相关 Blueprint 完成需求、Contract、接口和验收门禁；本次前端架构/Figma 方案固化只确定开发边界和工作流，不等于已经开始 Stage 8 业务页面实现。
+Stage 8 是当前下一正式阶段。新的 Stage 8 对话/Change 必须重新从当时 `main` 事实出发，并按 `AGENTS.md`、Skill 和 Stage 8 相关 Blueprint 完成需求、Contract、Schema、接口和验收门禁；Blueprint 17 已经明确 Stage 8 从 **8A Unified Manual Ingestion Foundation** 开始，不等于该代码已经实现。
 
 开始 Stage 8 时至少按以下顺序恢复事实：
 
@@ -112,17 +115,20 @@ AGENTS.md
 → .agents/skills/reliable-vibe-coding/SKILL.md
 → docs/blueprint/README.md
 → docs/blueprint/07-技术决策与实施门禁.md
+→ docs/blueprint/17-Stage8数据入口统一入库与业务前端实施.md
+→ docs/blueprint/02-采集系统与数据标准化.md
+→ docs/blueprint/03-数据库与文件存储.md
 → docs/blueprint/04-后端任务API与前端.md
 → docs/blueprint/16-前端页面架构与Figma设计工作流.md
-→ docs/blueprint/08-采集策略与平台能力.md（若页面/接口涉及采集配置）
-→ docs/blueprint/13-统一数据Excel导出与调试复用.md（若涉及数据 Excel/导出）
+→ docs/blueprint/08-采集策略与平台能力.md（若涉及 TikHub/补采/Plan）
+→ docs/blueprint/13-统一数据Excel导出与调试复用.md（若涉及 Excel/调试输出）
 → docs/blueprint/15-舆情AI打标与统一分析契约.md（若涉及 Analysis/AI）
 → docs/API接口说明.md
 → changes/active
-→ 当前 main / Contract / OpenAPI / generated client / backend Router/Service / frontend 结构与测试
+→ 当前 main / Contract / Migration / OpenAPI / generated client / backend Router/Service / frontend 结构与测试
 ```
 
-不得把 Stage 7 或 P1 历史聊天当作 Stage 8 当前机器事实，也不得因为上游已闭环就跳过 Stage 8 自己的需求决策和 Contract 门禁。Blueprint 16 已经解决的是前端组织方式和 Figma/Design-to-Code 工作流；具体页面、字段、行为和验收仍必须在 Stage 8 按真实业务需求逐个确认。
+不得把 Stage 7、P1 或历史聊天当作 Stage 8 当前机器事实，也不得因为 Blueprint 已批准目标设计就把尚未实现的 Batch/API/页面/写库开关写成已完成。Stage 8 每个子阶段都必须重新检查当前实现后只推进下一个未闭环最小单元。
 
 ### 独立于 Stage 7/P1 的后续门禁
 
@@ -130,7 +136,7 @@ AGENTS.md
 
 - Raw、个人信息、导出和审计的访问/保留/删除与合规规则；
 - 已落地的共享 Excel Exporter 只是统一写出核心；正式系统级大批量导出仍需未来 API/Job/Artifact/权限/生命周期闭环；
-- 已落地的是平台通用 Analysis 核心与无数据库验证入口；正式数据库 DDL/Migration、Analysis Job/API/页面仍在后续正式阶段闭环；
+- 已落地的是平台通用 Analysis 核心与无数据库验证入口；正式数据库 DDL/Migration、Analysis Job/API/页面仍需按 Blueprint 15 和对应正式阶段闭环；
 - 日请求量、数据量、Worker 并发、Raw/数据库日增量、磁盘容量、SLO、RPO、RTO；
 - 生产镜像 variant/digest、离线 Release、安全发布与恢复演练；
 - Stage 8 正式业务 API/页面及 Provider 凭据写入能力；凭据仍必须通过安全 SecretStore/SecretService，不能把数据库明文 Secret 当捷径；
@@ -146,14 +152,16 @@ AGENTS.md
 - `13` 永久保存唯一 `UnifiedDataExcelV1`、同源 JSONL→Excel、raw/labeled 同契约和共享 Exporter 复用门禁，并明确它不是 Report Renderer；
 - `15` 永久保存全平台 AI taxonomy、最小模型输入、Markdown Prompt、Analysis Contract、JSONL 回写和数据库 Analysis Owner 边界；
 - `16` 永久保存正式前端页面隔离、App/Shared/Feature/Page Owner、Figma 设计事实源、MCP Design-to-Code、Design Token、高频改版与视觉验收规则；
+- `17` 永久保存 Stage 8 Excel 主数据入口/TikHub 辅助、Processing/Import Batch、统一 Canonical→Ingestion→PostgreSQL、调试入口可选写库、UI 能力映射和 8A—8F 实施顺序；
 - `docs/collection/` 保存面向开发/调试的通用和平台抓取说明，并始终标记当前代码/Fixture/Probe 状态；
 - 实际代码、Contract、Migration、锁文件和测试建立后，不在 Blueprint 复制第二份机器事实；
 - 所有需要前端或其他受支持调用方使用的公开 HTTP API，都必须由 Pydantic Request/Response + FastAPI Route 生成固定 OpenAPI，再生成前端 TypeScript Client；内部 Repository、Mapper、Provider Adapter、Worker Runtime、Migration 等能力不因存在就自动暴露 HTTP API；
 - 公开 HTTP API 新增、删除或实质变化时，除同步固定 OpenAPI 和生成 Client 外，还必须同步 [`../API接口说明.md`](../API接口说明.md)；完整字段 Schema 仍只由机器 Contract 维护；
-- 前端业务功能默认采用“已确认 Figma Frame/页面需求 → 后端业务能力 → Pydantic HTTP Contract → FastAPI Route → API/Contract Test → 固定 OpenAPI → 生成 TypeScript Client → Feature API/Store → Vue 页面/组件 → E2E/视觉验收”的闭环，页面和按钮不得各自手写 URL 或重复定义 Request/Response Contract；页面结构、Figma/MCP 和设计资产的详细规则以 `16` 为准；
+- 前端业务功能默认采用“已确认 Figma Frame/页面需求 → UI/后端能力映射 → Pydantic HTTP Contract → FastAPI Route → API/Contract Test → 固定 OpenAPI → 生成 TypeScript Client → 后端与 Vue 并行 → E2E/视觉验收”的闭环；页面和按钮不得各自手写 URL 或重复定义 Request/Response Contract；页面结构、Figma/MCP 和设计资产的详细规则以 `16` 为准，Stage 8 首个页面的后端能力映射以 `17` 为准；
 - 对具有明确输入输出、独立业务价值、独立失败边界或可以脱离完整系统验证的能力，必须建立与风险匹配的独立验证闭环；调试/Probe 复用生产实现；
 - 修改 Provider Config/Provider/Operation/Mapper/分页/评论策略/Provider Billing/Capability 或未来 Budget/Cost Guard 时，必须按 08 的“文档同步规则”检查目标平台文档；
 - 修改 Excel 契约、共享 Exporter、`.xlsx` 审阅格式、`tikhub_test` 或 `imports_test` Excel 时，必须按 13 检查是否出现平行实现；
+- 修改 Stage 8 的 Import Batch、统一入库、手工调试可选写库、数据入口优先级或采集运行中心能力边界时，必须按 17 检查来源链、统一 Ingestion、数据库前置条件和 UI 能力映射；
 - 修改 AI 标签、Prompt、模型输入、Analysis Contract 或 Analysis 持久化语义时，必须按 15 检查标签闭集、父子映射、Prompt Hash 和兼容性；
 - 修改前端页面组织、Figma/MCP、Design Token、公共组件 Owner 或视觉验收规则时，必须按 16 检查是否引入平行组件、平行 Contract 或跨页面复制；
 - 设计发生实质变化时，按 `AGENTS.md` 和 Skill 的 L1/L2/L3 流程处理；
