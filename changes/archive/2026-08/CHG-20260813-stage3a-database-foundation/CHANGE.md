@@ -9,8 +9,8 @@ branch: migration/stage3a-database-foundation
 created: 2026-08-13
 updated: 2026-08-13
 depends_on: []
-affected_areas: [database, operations, system, migration, ci]
-affected_paths: [migrations/, alembic.ini, backend/src/aima_ugc/operations/database/, backend/src/aima_ugc/operations/storage/, backend/src/aima_ugc/modules/system/, backend/src/aima_ugc/adapters/persistence/postgres/, tests/, scripts/quality/check_table_ownership.py, .github/workflows/ci.yml, README.md, docs/blueprint/]
+affected_areas: [database, platform, system, migration, ci]
+affected_paths: [migrations/, alembic.ini, backend/src/aima_ugc/platform/database/, backend/src/aima_ugc/platform/storage/, backend/src/aima_ugc/modules/system/, backend/src/aima_ugc/adapters/persistence/postgres/, tests/, scripts/quality/check_table_ownership.py, .github/workflows/ci.yml, README.md, docs/blueprint/]
 contracts: []
 data_changes: [artifacts, system_settings, audit_events]
 ---

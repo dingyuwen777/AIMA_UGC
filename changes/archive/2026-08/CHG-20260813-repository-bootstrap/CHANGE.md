@@ -9,7 +9,7 @@ branch: build/repository-bootstrap
 created: 2026-08-13
 updated: 2026-08-13
 depends_on: []
-affected_areas: [toolchain, operations]
+affected_areas: [toolchain, platform]
 affected_paths: [pyproject.toml, uv.lock, .python-version, .node-version, backend/, frontend/, tests/, scripts/, contracts/, .github/, .gitignore, README.md, docs/blueprint/, changes/archive/2026-08/CHG-20260813-repository-bootstrap/CHANGE.md]
 contracts: [HTTP OpenAPI]
 data_changes: []
