@@ -9,14 +9,14 @@ on:
       - main
     paths:
       - "backend/src/aima_ugc/modules/content/**"
-      - "backend/src/aima_ugc/operations/storage/**"
+      - "backend/src/aima_ugc/platform/storage/**"
       - "backend/src/aima_ugc/adapters/storage/**"
       - "backend/src/aima_ugc/adapters/persistence/postgres/**"
       - "backend/src/aima_ugc/modules/collection/**"
       - "migrations/versions/**"
       - "tests/integration/content/**"
       - "tests/integration/collection/**"
-      - "tests/unit/operations/**"
+      - "tests/unit/platform/**"
       - "tests/unit/collection/**"
       - ".github/workflows/stage1-stage7-audit-correctness.yml"
       - "changes/active/CHG-20260817-stage1-stage7-audit-correctness/**"
