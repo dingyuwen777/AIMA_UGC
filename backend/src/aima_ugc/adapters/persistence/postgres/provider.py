@@ -10,6 +10,7 @@ from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from aima_ugc.contracts.provider import ProviderAttemptV1, ProviderBillingV1, ProviderRequestV1
 from aima_ugc.modules.collection.provider_dispatch import (
@@ -508,7 +509,7 @@ class PostgresProviderRepository:
         )
 
 
-def _logical_request_key(request: ProviderRequestV1):
+def _logical_request_key(request: ProviderRequestV1) -> ColumnElement[bool]:
     parent = (
         provider_requests_table.c.import_batch_id == request.import_batch_id
         if request.import_batch_id is not None

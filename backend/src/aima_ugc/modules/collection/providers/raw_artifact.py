@@ -28,6 +28,13 @@ _BUSINESS_TIMEZONE = ZoneInfo("Asia/Shanghai")
 logger = logging.getLogger(__name__)
 
 
+def _collection_parent(request: ProviderRequestV1) -> tuple[UUID, UUID]:
+    """RawEnvelopeV1 当前只属于正式 Collection Scope，不接受 File Import 父级。"""
+    if request.run_id is None or request.scope_id is None:
+        raise ValueError("Provider Raw Envelope 只支持 Collection Scope 来源")
+    return request.run_id, request.scope_id
+
+
 def raw_storage_key(
     *,
     request: ProviderRequestV1,
@@ -35,10 +42,11 @@ def raw_storage_key(
     attempt_id: UUID,
 ) -> str:
     """返回 Raw 写入与崩溃恢复共用的确定性 storage key。"""
+    run_id, scope_id = _collection_parent(request)
     local_date = dispatch_started_at.astimezone(_BUSINESS_TIMEZONE)
     return (
         f"raw/{request.provider}/{request.platform}/"
-        f"{local_date:%Y/%m/%d}/{request.run_id}/{request.scope_id}/"
+        f"{local_date:%Y/%m/%d}/{run_id}/{scope_id}/"
         f"{attempt_id}.json.gz"
     )
 
@@ -77,6 +85,7 @@ class RawArtifactService:
             raise ValueError("只有 completed/unknown Attempt 可以保存 Raw")
         if attempt.dispatch_started_at is None or attempt.completed_at is None:
             raise ValueError("Raw Attempt 缺少发送或完成时间")
+        run_id, scope_id = _collection_parent(request)
 
         envelope = RawEnvelopeV1(
             provider=request.provider,
@@ -84,8 +93,8 @@ class RawArtifactService:
             operation=request.operation,
             request_id=request.request_id,
             attempt_id=attempt.attempt_id,
-            run_id=request.run_id,
-            scope_id=request.scope_id,
+            run_id=run_id,
+            scope_id=scope_id,
             requested_at=attempt.dispatch_started_at,
             completed_at=attempt.completed_at,
             dispatch_status=attempt.dispatch_status,
@@ -270,6 +279,7 @@ def _validate_envelope_lineage(
     request: ProviderRequestV1,
     attempt_id: UUID,
 ) -> None:
+    run_id, scope_id = _collection_parent(request)
     lineage = (
         envelope.provider,
         envelope.platform,
@@ -285,8 +295,8 @@ def _validate_envelope_lineage(
         request.operation,
         request.request_id,
         attempt_id,
-        request.run_id,
-        request.scope_id,
+        run_id,
+        scope_id,
     )
     if lineage != expected:
         raise RawArtifactIntegrityError("Raw Envelope 与 Provider Attempt 来源不一致")

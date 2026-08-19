@@ -34,7 +34,7 @@ from aima_ugc.bootstrap.manual_ingestion import require_stage8a_schema
 from aima_ugc.bootstrap.runtime import PlatformRuntime, create_platform_runtime
 from aima_ugc.contracts.canonical import CanonicalCommentV1, CanonicalContentV1
 from aima_ugc.contracts.collection import CollectionDecisionPolicyV1
-from aima_ugc.contracts.provider import ProviderRequestV1
+from aima_ugc.contracts.provider import JsonObject, ProviderRequestV1
 from aima_ugc.modules.collection.candidates import CandidateKind
 from aima_ugc.modules.collection.execution import (
     CollectionExecutionService,
@@ -148,7 +148,7 @@ class TikHubDebugDatabaseSession:
         self._require_open()
         self._heartbeat()
         scope = self._scope(keyword)
-        request_params: dict[str, object] = {
+        request_params: JsonObject = {
             "method": call.method,
             "path": call.path,
             "params": dict(call.params),
@@ -276,7 +276,7 @@ class TikHubDebugDatabaseSession:
                     scope_id=scope.id,
                     fence=self._fence,
                 )
-                stats = {
+                stats: dict[str, object] = {
                     "requested_count": counts.requested_count,
                     "succeeded_count": counts.succeeded_count,
                     "failed_count": counts.failed_count,
@@ -284,7 +284,8 @@ class TikHubDebugDatabaseSession:
                     "comment_count": counts.comment_count,
                 }
                 for name, value in stats.items():
-                    totals[name] += value
+                    if isinstance(value, int):
+                        totals[name] += value
                 if error is not None:
                     scope_status = "failed"
                 elif counts.failed_count == 0:
