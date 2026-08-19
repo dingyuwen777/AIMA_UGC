@@ -83,7 +83,7 @@ def _retry_delay_seconds(transport_attempt: int) -> float:
         _TRANSPORT_RETRY_MAX_DELAY_SECONDS,
         _TRANSPORT_RETRY_BASE_DELAY_SECONDS * (2 ** (transport_attempt - 1)),
     )
-    return base * random.uniform(0.5, 1.0)
+    return float(base * random.uniform(0.5, 1.0))
 
 
 __all__ = [
