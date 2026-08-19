@@ -124,6 +124,73 @@ def test_filter_keywords_cleans_keyword_config_and_preserves_first_seen_order(
     assert record.matched_keywords == ["爱玛", "电动车"]
 
 
+def test_filter_keywords_matches_case_space_width_and_connector_variants(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "canonical" / "contents.jsonl"
+    output = tmp_path / "filtered" / "contents.jsonl"
+    _write_jsonl(
+        source,
+        [
+            _content(
+                external_content_id="content-1",
+                title="今天试骑 f2 lite_碟刹",
+                text="整体体验不错",
+                item_locator="sheet=文章;row=2",
+            ),
+            _content(
+                external_content_id="content-2",
+                title="另一条车型讨论",
+                text="Ｆ２Ｌｉｔｅ·碟刹续航表现",
+                item_locator="sheet=文章;row=3",
+            ),
+        ],
+    )
+
+    summary = filter_canonical_content_jsonl(
+        input_path=source,
+        output_path=output,
+        keywords=("F2Lite-碟刹",),
+    )
+
+    assert summary.rows_written == 2
+    records = [
+        UnifiedContentRecordV1.model_validate_json(line)
+        for line in output.read_text(encoding="utf-8").splitlines()
+    ]
+    assert [record.matched_keywords for record in records] == [
+        ["F2Lite-碟刹"],
+        ["F2Lite-碟刹"],
+    ]
+
+
+def test_filter_keywords_collapses_normalization_equivalent_config_entries(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "canonical" / "contents.jsonl"
+    output = tmp_path / "filtered" / "contents.jsonl"
+    _write_jsonl(
+        source,
+        [
+            _content(
+                external_content_id="content-1",
+                title="黑翼S360 实测",
+                text="正文",
+                item_locator="sheet=文章;row=2",
+            )
+        ],
+    )
+
+    filter_canonical_content_jsonl(
+        input_path=source,
+        output_path=output,
+        keywords=("黑翼S3 60", "黑翼S360", "黑翼S360"),
+    )
+
+    record = UnifiedContentRecordV1.model_validate_json(output.read_text(encoding="utf-8").strip())
+    assert record.matched_keywords == ["黑翼S3 60"]
+
+
 def test_deduplicate_collapses_equivalent_identity_and_keeps_first_locator(tmp_path: Path) -> None:
     source = tmp_path / "filtered" / "contents.jsonl"
     output = tmp_path / "deduplicated" / "contents.jsonl"
