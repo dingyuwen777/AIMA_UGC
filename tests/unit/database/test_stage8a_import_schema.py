@@ -1,0 +1,45 @@
+"""Stage 8A Processing/Import Batch 与 Provider 来源父级 Schema 契约。"""
+
+from sqlalchemy import CheckConstraint, UniqueConstraint
+
+from aima_ugc.modules.collection.tables import provider_requests_table
+from aima_ugc.modules.ingestion.tables import processing_import_batches_table
+
+
+def test_processing_import_batch_is_minimal_owner_table() -> None:
+    assert processing_import_batches_table.info["owner"] == "ingestion"
+    assert set(processing_import_batches_table.c.keys()) == {
+        "id",
+        "input_artifact_id",
+        "job_id",
+        "status",
+        "stats",
+        "error_summary",
+        "created_at",
+        "started_at",
+        "finished_at",
+    }
+    assert processing_import_batches_table.c.input_artifact_id.nullable is False
+    assert processing_import_batches_table.c.job_id.nullable is True
+
+
+def test_provider_request_has_exactly_one_source_parent() -> None:
+    assert provider_requests_table.c.scope_id.nullable is True
+    assert provider_requests_table.c.import_batch_id.nullable is True
+
+    checks = {
+        constraint.name: str(constraint.sqltext)
+        for constraint in provider_requests_table.constraints
+        if isinstance(constraint, CheckConstraint)
+    }
+    assert "source_parent_exactly_one" in checks
+    assert "scope_id" in checks["source_parent_exactly_one"]
+    assert "import_batch_id" in checks["source_parent_exactly_one"]
+
+    uniques = {
+        constraint.name: tuple(column.name for column in constraint.columns)
+        for constraint in provider_requests_table.constraints
+        if isinstance(constraint, UniqueConstraint)
+    }
+    assert ("scope_id", "request_fingerprint") in uniques.values()
+    assert ("import_batch_id", "request_fingerprint") in uniques.values()
