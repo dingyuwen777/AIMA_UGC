@@ -305,13 +305,7 @@ uv run pytest tests/integration/collection -q
 - `head → base → head`；
 - `head → previous revision → head`。
 
-文档/Change 收口后的最终验证候选 head 为：
-
-```text
-d599c275fb510544972b76727c61684c6a54d08f
-```
-
-本文件本身随后又产生一个只记录验证锚点的文档 commit，因此**最终合并必须以 PR 实际最新 head 为准重新查询 workflow**，不得直接拿 `08f1d646` 或 `d599c275` 的旧结果冒充最终证据。
+README、导航、测试说明和本 Change 收口后又产生文档提交，因此**最终合并必须以 PR 实际最新 head 为准重新查询 workflow**，不得直接拿 `08f1d646` 的旧结果冒充最终证据。
 
 ## 10. 文档同步
 
@@ -382,7 +376,6 @@ PR: #88
 Change: changes/active/CHG-20260820-stage8a-unified-manual-ingestion/CHANGE.md
 code/migration baseline: 20260820_0019
 last fully green core checkpoint: 08f1d646058a0da447b658a257a3f6da61dc0c17
-last pre-validation documentation checkpoint: d599c275fb510544972b76727c61684c6a54d08f
 ```
 
 恢复顺序：先读目标分支 `AGENTS.md` → Skill → 本 Change → PR 最新 head/CI。若最新 head 比上述 checkpoint 更新，必须以 GitHub 最新事实为准重新验证，不能退回旧 commit。
