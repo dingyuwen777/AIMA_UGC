@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260819-import-platform-keyword-match
 title: Excel 导入平台名称受控包含匹配
 level: L2
-status: ready_for_review
+status: done
 owner: ChatGPT
 branch: fix/imports-platform-keyword-match
 created: 2026-08-19
@@ -76,21 +76,21 @@ data_changes: none
 
 Red：用户在 Windows/Python 3.14 直接运行 `imports_test/test.py`，真实输入 `抖音 APP`、`小红书 APP`、`快手 APP`、`哔哩哔哩APP` 等产生 8 条 `platform_unmapped`，稳定复现精确别名过窄问题。
 
-Green（实现 head `37c34e9f06463371e0f4e60661881bb26f22a73e`）：PR #76 触发的 11 个 workflow 全部成功：
+Green（最终 PR head `92584fb37eb8857db7c74d49a8213c78c7bd5db8`）：PR #76 的 11 个 workflow 全部成功：
 
-- CI `32212607312`：success；其中 Stage 1 `Backend and repository checks` success，实际执行 Ruff format/check、mypy、`pytest tests/unit -q`、contracts/api 测试及架构/Owner/Secret/文档检查；Stage 2 Platform、Stage 3A Database、Windows bootstrap 均 success。
-- Stage 1-7 Audit Correctness `32212607309`：success。
-- Stage 5A Provider Raw `32212607390`：success。
-- Stage 5B Collection Execution `32212607300`：success。
-- Stage 5C Provider Persistence `32212607351`：success。
-- Stage 5D Provider Dispatch `32212607308`：success。
-- Stage 6 XHS Vertical Slice `32212607337`：success。
-- Stage 7 Keyword Packs `32212607311`：success。
-- Stage 7 Plan Occurrence Run Snapshot `32212607316`：success。
-- Stage 7 Provider Config Routing `32212607299`：success。
-- Stage 7 Scheduler Runtime `32212607298`：success。
+- CI `32212731802`：success；Stage 1 的 `Backend and repository checks` 实际执行 Ruff format/check、mypy、`pytest tests/unit -q`、contracts/api 测试及架构/Owner/Secret/文档检查；Stage 2 Platform、Stage 3A Database、Windows bootstrap 均 success。
+- Stage 1-7 Audit Correctness `32212731804`：success。
+- Stage 5A Provider Raw `32212731822`：success。
+- Stage 5B Collection Execution `32212731815`：success。
+- Stage 5C Provider Persistence `32212731820`：success。
+- Stage 5D Provider Dispatch `32212731841`：success。
+- Stage 6 XHS Vertical Slice `32212731837`：success。
+- Stage 7 Keyword Packs `32212731807`：success。
+- Stage 7 Plan Occurrence Run Snapshot `32212731876`：success。
+- Stage 7 Provider Config Routing `32212731808`：success。
+- Stage 7 Scheduler Runtime `32212731821`：success。
 
-本次状态提交后仍以最新 PR head 的 workflow 结果作为最终合并门禁。
+集成：PR #76 以普通 merge 正常合入 `main`，merge commit 为 `8d62781ce9f9ec3b01b2dd555e355f08bef78d38`；合并后重新读取 `main` 已确认其指向该提交。
 
 # 文档影响
 
@@ -98,6 +98,9 @@ Green（实现 head `37c34e9f06463371e0f4e60661881bb26f22a73e`）：PR #76 触�
 
 # 交付
 
-- Commit：`6bdb818d732348eec816641972b0ff9a777514c1`（回归测试）、`37c34e9f06463371e0f4e60661881bb26f22a73e`（最小实现）
-- PR：#76（Draft，待最新 head CI 复核后转 Ready）
-- 发布：不涉及独立部署；经正常 PR/CI 集成。
+- 回归测试 Commit：`6bdb818d732348eec816641972b0ff9a777514c1`
+- 实现 Commit：`37c34e9f06463371e0f4e60661881bb26f22a73e`
+- 最终 PR head：`92584fb37eb8857db7c74d49a8213c78c7bd5db8`
+- PR：#76，已合并。
+- main merge commit：`8d62781ce9f9ec3b01b2dd555e355f08bef78d38`
+- 发布：不涉及独立部署；随 `main` 正常集成。
