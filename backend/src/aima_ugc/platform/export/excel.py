@@ -14,7 +14,9 @@ from zoneinfo import ZoneInfo
 from openpyxl import Workbook, load_workbook
 from openpyxl.cell import WriteOnlyCell
 from openpyxl.cell.cell import Cell
-from openpyxl.styles import Alignment, Font
+from openpyxl.styles import Font, PatternFill
+from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.page import PageMargins
 from pydantic import ValidationError
 
 from aima_ugc.contracts.analysis import UnifiedContentRecordV1
@@ -80,8 +82,62 @@ _COMMENT_HEADERS = (
     "来源Provider",
     "Raw/来源定位",
 )
-_HEADER_FONT = Font(bold=True)
-_WRAP_ALIGNMENT = Alignment(vertical="top", wrap_text=True)
+_CONTENT_HEADER_INDEX = {header: index for index, header in enumerate(_CONTENT_HEADERS)}
+_HEADER_FONT = Font(name="Calibri", size=11, bold=True, color="FF000000")
+_BODY_FONT = Font(name="Calibri", size=11, color="FF000000")
+_HEADER_FILL = PatternFill(fill_type="solid", fgColor="FFFFC000")
+_HEADER_ROW_HEIGHT = 16.5
+_DEFAULT_ROW_HEIGHT = 14.5
+_CONTENT_COLUMN_WIDTHS = {
+    "平台": 15,
+    "内容ID": 34,
+    "来源项ID": 34,
+    "内容类型": 15,
+    "标题": 50,
+    "正文": 50,
+    "作者": 20,
+    "发布时间": 12,
+    "内容链接": 34,
+    "作者粉丝数": 12,
+    "作者关注数": 12,
+    "作者内容数": 12,
+    "作者获赞数": 12,
+    "点赞": 12,
+    "评论数": 12,
+    "收藏数": 12,
+    "分享数": 12,
+    "转发数": 12,
+    "浏览数": 12,
+    "播放数": 12,
+    "弹幕数": 12,
+    "投币数": 12,
+    "下载数": 12,
+    "命中关键词": 20,
+    "情感标签": 12,
+    "一级标签": 20,
+    "二级标签": 24,
+    "分析模型": 20,
+    "Prompt版本": 20,
+    "Taxonomy版本": 34,
+    "来源Provider": 15,
+    "Raw/来源定位": 50,
+    "评论覆盖": 20,
+}
+_COMMENT_COLUMN_WIDTHS = {
+    "平台": 15,
+    "内容ID": 34,
+    "评论层级": 12,
+    "评论ID": 34,
+    "根评论ID": 34,
+    "父评论ID": 34,
+    "作者": 20,
+    "评论内容": 50,
+    "评论时间": 12,
+    "评论点赞": 12,
+    "回复数": 12,
+    "来源Provider": 15,
+    "Raw/来源定位": 50,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,6 +225,7 @@ def export_unified_content_jsonl_to_excel(
     input_path: Path,
     output_path: Path,
     include_analysis: bool,
+    content_columns: Iterable[str] | None = None,
 ) -> ExcelExportSummary:
     """直接从 UnifiedContentRecordV1 JSONL 派生 Excel，不回读源 XLSX。"""
 
@@ -176,6 +233,7 @@ def export_unified_content_jsonl_to_excel(
         _iter_unified_content_jsonl(Path(input_path)),
         Path(output_path),
         include_analysis=include_analysis,
+        content_columns=content_columns,
     )
 
 
@@ -184,9 +242,11 @@ def export_unified_data_excel(
     output_path: Path,
     *,
     include_analysis: bool,
+    content_columns: Iterable[str] | None = None,
 ) -> ExcelExportSummary:
-    """使用 write-only Workbook 流式写出唯一 UnifiedDataExcelV1 视图。"""
+    """使用 write-only Workbook 流式写出 UnifiedDataExcelV1 的受控展示视图。"""
 
+    content_headers, content_indices = _resolve_content_columns(content_columns)
     target_path = Path(output_path)
     if target_path.suffix.lower() != ".xlsx":
         raise ValueError("统一 Excel 导出目标必须使用 .xlsx 扩展名")
@@ -197,10 +257,9 @@ def export_unified_data_excel(
     workbook = Workbook(write_only=True)
     content_sheet = workbook.create_sheet(_CONTENT_SHEET)
     comment_sheet = workbook.create_sheet(_COMMENT_SHEET)
-    for sheet in (content_sheet, comment_sheet):
-        sheet.freeze_panes = "A2"
-        sheet.sheet_view.showGridLines = False
-    content_sheet.append(_header_cells(content_sheet, _CONTENT_HEADERS))
+    _configure_sheet(content_sheet, content_headers, _CONTENT_COLUMN_WIDTHS)
+    _configure_sheet(comment_sheet, _COMMENT_HEADERS, _COMMENT_COLUMN_WIDTHS)
+    content_sheet.append(_header_cells(content_sheet, content_headers))
     comment_sheet.append(_header_cells(comment_sheet, _COMMENT_HEADERS))
 
     content_rows = 0
@@ -210,7 +269,14 @@ def export_unified_data_excel(
     try:
         for record in records:
             content = record.content
-            content_sheet.append(_content_cells(content_sheet, content, include_analysis))
+            content_sheet.append(
+                _content_cells(
+                    content_sheet,
+                    content,
+                    include_analysis,
+                    column_indices=content_indices,
+                )
+            )
             content_rows += 1
             if first_content_id is None:
                 first_content_id = content.external_content_id
@@ -219,6 +285,8 @@ def export_unified_data_excel(
                 comment_rows += 1
                 if first_comment_id is None:
                     first_comment_id = comment.external_comment_id
+        _set_auto_filter(content_sheet, len(content_headers), content_rows)
+        _set_auto_filter(comment_sheet, len(_COMMENT_HEADERS), comment_rows)
         workbook.save(temp_path)
     except BaseException:
         temp_path.unlink(missing_ok=True)
@@ -229,6 +297,7 @@ def export_unified_data_excel(
     try:
         _verify_workbook(
             temp_path,
+            content_headers=content_headers,
             content_rows=content_rows,
             comment_rows=comment_rows,
             first_content_id=first_content_id,
@@ -244,6 +313,61 @@ def export_unified_data_excel(
         content_rows=content_rows,
         comment_rows=comment_rows,
     )
+
+
+def _resolve_content_columns(
+    content_columns: Iterable[str] | None,
+) -> tuple[tuple[str, ...], tuple[int, ...]]:
+    if content_columns is None:
+        return _CONTENT_HEADERS, tuple(range(len(_CONTENT_HEADERS)))
+    if isinstance(content_columns, str):
+        raise ValueError("内容列配置必须是列名序列，不能是单个字符串")
+
+    headers = tuple(content_columns)
+    if not headers:
+        raise ValueError("内容列配置至少包含一列")
+    if any(not isinstance(header, str) or not header for header in headers):
+        raise ValueError("内容列配置中的每一项都必须是非空字符串")
+
+    seen: set[str] = set()
+    duplicates: list[str] = []
+    for header in headers:
+        if header in seen and header not in duplicates:
+            duplicates.append(header)
+        seen.add(header)
+    if duplicates:
+        raise ValueError(f"内容列配置包含重复列: {'、'.join(duplicates)}")
+
+    unknown = [header for header in headers if header not in _CONTENT_HEADER_INDEX]
+    if unknown:
+        raise ValueError(f"内容列配置包含不支持的列: {'、'.join(unknown)}")
+
+    return headers, tuple(_CONTENT_HEADER_INDEX[header] for header in headers)
+
+
+def _configure_sheet(sheet: Any, headers: tuple[str, ...], widths: dict[str, int]) -> None:
+    sheet.freeze_panes = "A2"
+    sheet.sheet_view.showGridLines = True
+    sheet.sheet_format.defaultRowHeight = _DEFAULT_ROW_HEIGHT
+    sheet.row_dimensions[1].height = _HEADER_ROW_HEIGHT
+    sheet.page_setup.orientation = "portrait"
+    sheet.page_margins = PageMargins(
+        left=0.7,
+        right=0.7,
+        top=0.75,
+        bottom=0.75,
+        header=0.3,
+        footer=0.3,
+    )
+    for column_number, header in enumerate(headers, start=1):
+        width = widths.get(header)
+        if width is not None:
+            sheet.column_dimensions[get_column_letter(column_number)].width = width
+
+
+def _set_auto_filter(sheet: Any, column_count: int, data_rows: int) -> None:
+    last_column = get_column_letter(column_count)
+    sheet.auto_filter.ref = f"A1:{last_column}{data_rows + 1}"
 
 
 def _iter_unified_content_jsonl(path: Path) -> Iterator[UnifiedDataExcelV1]:
@@ -280,6 +404,8 @@ def _content_cells(
     sheet: Any,
     content: UnifiedDataExcelContentV1,
     include_analysis: bool,
+    *,
+    column_indices: tuple[int, ...],
 ) -> list[Cell]:
     analysis = content.analysis if include_analysis else None
     values: tuple[tuple[_ExcelCellValue, bool, bool], ...] = (
@@ -318,7 +444,9 @@ def _content_cells(
         (content.coverage, False, False),
     )
     return [
-        _data_cell(sheet, value, text_id=text_id, hyperlink=link) for value, text_id, link in values
+        _data_cell(sheet, value, text_id=text_id, hyperlink=link)
+        for index in column_indices
+        for value, text_id, link in (values[index],)
     ]
 
 
@@ -346,7 +474,7 @@ def _header_cells(sheet: Any, headers: tuple[str, ...]) -> list[Cell]:
     for value in headers:
         cell = WriteOnlyCell(sheet, value=value)
         cell.font = _HEADER_FONT
-        cell.alignment = _WRAP_ALIGNMENT
+        cell.fill = _HEADER_FILL
         cells.append(cell)
     return cells
 
@@ -360,11 +488,12 @@ def _data_cell(
 ) -> Cell:
     safe_value = _safe_excel_value(value)
     cell = WriteOnlyCell(sheet, value=safe_value)
-    cell.alignment = _WRAP_ALIGNMENT
+    cell.font = _BODY_FONT
     if text_id and safe_value is not None:
         cell.number_format = "@"
     if hyperlink and isinstance(value, str) and _is_http_url(value):
         cell.hyperlink = value
+        cell.style = "Hyperlink"
     return cell
 
 
@@ -390,6 +519,7 @@ def _display_datetime(value: datetime | None) -> str | None:
 def _verify_workbook(
     path: Path,
     *,
+    content_headers: tuple[str, ...],
     content_rows: int,
     comment_rows: int,
     first_content_id: str | None,
@@ -399,12 +529,15 @@ def _verify_workbook(
     try:
         if workbook.sheetnames != [_CONTENT_SHEET, _COMMENT_SHEET]:
             raise OSError("统一 Excel 导出后 Sheet 结构校验失败")
+        content_id_column = (
+            content_headers.index("内容ID") + 1 if "内容ID" in content_headers else None
+        )
         _verify_sheet(
             workbook[_CONTENT_SHEET],
-            _CONTENT_HEADERS,
+            content_headers,
             expected_rows=content_rows,
             first_id=first_content_id,
-            id_column=2,
+            id_column=content_id_column,
         )
         _verify_sheet(
             workbook[_COMMENT_SHEET],
@@ -423,7 +556,7 @@ def _verify_sheet(
     *,
     expected_rows: int,
     first_id: str | None,
-    id_column: int,
+    id_column: int | None,
 ) -> None:
     header = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True), None)
     if header != headers:
@@ -431,7 +564,7 @@ def _verify_sheet(
     sheet.calculate_dimension(force=True)
     if sheet.max_row != expected_rows + 1:
         raise OSError(f"统一 Excel 导出后行数校验失败: {sheet.title}")
-    if first_id is None:
+    if first_id is None or id_column is None:
         return
     first_row_id = next(
         sheet.iter_rows(
