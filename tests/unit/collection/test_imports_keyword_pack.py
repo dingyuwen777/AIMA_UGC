@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from aima_ugc.adapters.providers.imports_test import test as imports_test
+from aima_ugc.adapters.providers.imports_test.keyword_pack import load_keyword_pack
 
 
 def test_imports_test_uses_separate_keyword_pack_file() -> None:
@@ -17,8 +17,6 @@ def test_imports_test_uses_separate_keyword_pack_file() -> None:
 
 
 def test_keyword_pack_loader_keeps_102_source_model_rows_and_brand_keyword() -> None:
-    from aima_ugc.adapters.providers.imports_test.keyword_pack import load_keyword_pack
-
     pack = load_keyword_pack(imports_test.KEYWORD_PACK_FILE)
 
     assert pack.source_keyword_count == 103
@@ -33,8 +31,6 @@ def test_keyword_pack_loader_keeps_102_source_model_rows_and_brand_keyword() -> 
 def test_keyword_pack_loader_ignores_blank_lines_and_comments_and_fails_if_empty(
     tmp_path: Path,
 ) -> None:
-    from aima_ugc.adapters.providers.imports_test.keyword_pack import load_keyword_pack
-
     populated = tmp_path / "keywords.txt"
     populated.write_text("# 注释\n\n爱玛\n  F30  \n", encoding="utf-8")
     pack = load_keyword_pack(populated)
