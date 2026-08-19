@@ -84,11 +84,11 @@ keyword_pack_items_table = Table(
     metadata,
     Column("pack_id", Uuid(), ForeignKey("keyword_packs.id"), primary_key=True),
     Column("keyword_id", Uuid(), ForeignKey("keywords.id"), primary_key=True),
-    Column("operations", Text(), primary_key=True),
+    Column("platform", Text(), primary_key=True),
     Column("priority", Integer(), nullable=False, server_default=text("100")),
     Column("enabled", Boolean(), nullable=False, server_default=text("true")),
     Column("note", Text(), nullable=False, server_default=text("''")),
-    CheckConstraint("char_length(operations) > 0", name="platform_nonempty"),
+    CheckConstraint("char_length(platform) > 0", name="platform_nonempty"),
     info={"owner": "system"},
 )
 

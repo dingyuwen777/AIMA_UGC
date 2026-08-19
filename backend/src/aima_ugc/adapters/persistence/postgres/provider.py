@@ -58,9 +58,9 @@ class PostgresProviderRepository:
         )
         if scope_row is None:
             raise ProviderScopeNotFoundError(f"Provider Scope 不存在: {request.scope_id}")
-        if scope_row["run_id"] != request.run_id or scope_row["operations"] != request.platform:
+        if scope_row["run_id"] != request.run_id or scope_row["platform"] != request.platform:
             raise ProviderRequestLineageMismatchError(
-                "Provider Request 的 run_id/operations 与 Collection Scope 不一致"
+                "Provider Request 的 run_id/platform 与 Collection Scope 不一致"
             )
         if provider_config_id is not None:
             config_row = (
@@ -285,7 +285,7 @@ class PostgresProviderRepository:
                 select(
                     collection_runs_table.c.job_id.label("job_id"),
                     collection_scopes_table.c.run_id.label("run_id"),
-                    collection_scopes_table.c.platform.label("operations"),
+                    collection_scopes_table.c.platform.label("platform"),
                     provider_requests_table.c.id.label("request_id"),
                     provider_requests_table.c.scope_id.label("scope_id"),
                     provider_requests_table.c.provider.label("provider"),
@@ -330,7 +330,7 @@ class PostgresProviderRepository:
             run_id=row["run_id"],
             scope_id=row["scope_id"],
             provider=row["provider"],
-            platform=row["operations"],
+            platform=row["platform"],
             operation=row["operation"],
             request_fingerprint=row["request_fingerprint"],
             request_params=row["request_params"],

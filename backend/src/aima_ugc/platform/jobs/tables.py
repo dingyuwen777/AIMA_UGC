@@ -78,7 +78,7 @@ jobs_table = Table(
         "((status in ('queued','running')) and finished_at is null)",
         name="finished_state_consistent",
     ),
-    info={"owner": "operations"},
+    info={"owner": "platform"},
 )
 
 job_attempt_events_table = Table(
@@ -103,7 +103,7 @@ job_attempt_events_table = Table(
         "'cancelled','timed_out','lease_lost')",
         name="event_type_allowed",
     ),
-    info={"owner": "operations"},
+    info={"owner": "platform"},
 )
 
 Index(

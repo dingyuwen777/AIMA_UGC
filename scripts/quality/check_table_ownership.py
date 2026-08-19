@@ -10,7 +10,7 @@ ALLOWED_OWNERS = {
     "content",
     "dashboard",
     "monitoring",
-    "operations",
+    "platform",
     "reporting",
     "system",
 }
@@ -37,7 +37,7 @@ _COLLECTION_PREFIXES = ("collection_", "provider_request")
 def _expected_owner(table_name: str) -> str | None:
     """对当前已经形成稳定命名的表族给出唯一 Owner 期望。"""
     if table_name in _PLATFORM_TABLES:
-        return "operations"
+        return "platform"
     if table_name in _SYSTEM_TABLES:
         return "system"
     if table_name.startswith(_CONTENT_PREFIXES):

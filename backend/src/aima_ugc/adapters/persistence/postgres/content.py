@@ -761,7 +761,7 @@ def _new_content_state(
 ) -> dict[str, Any]:
     state: dict[str, Any] = {
         "id": content_id,
-        "operations": observation.platform,
+        "platform": observation.platform,
         "external_content_id": observation.external_content_id,
         "content_type": observation.content_type,
         "author_account_id": author_id,

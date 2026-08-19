@@ -69,7 +69,7 @@ class PostgresCollectionRepository:
                         {
                             "id": uuid4(),
                             "run_id": run_id,
-                            "operations": scope.platform,
+                            "platform": scope.platform,
                             "source_type": scope.source_type,
                             "source_value": scope.source_value,
                             "operation_group": scope.operation_group,
@@ -324,7 +324,7 @@ def _row_to_scope(row: RowMapping) -> CollectionScopeRecord:
     return CollectionScopeRecord(
         id=cast(UUID, row["id"]),
         run_id=cast(UUID, row["run_id"]),
-        platform=cast(str, row["operations"]),
+        platform=cast(str, row["platform"]),
         source_type=cast(str, row["source_type"]),
         source_value=cast(str, row["source_value"]),
         operation_group=cast(str, row["operation_group"]),
