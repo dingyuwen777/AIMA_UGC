@@ -6,8 +6,8 @@ on:
       - main
     paths:
       - "backend/src/aima_ugc/modules/collection/**"
-      - "backend/src/aima_ugc/operations/jobs/**"
-      - "backend/src/aima_ugc/operations/storage/**"
+      - "backend/src/aima_ugc/platform/jobs/**"
+      - "backend/src/aima_ugc/platform/storage/**"
       - "backend/src/aima_ugc/adapters/storage/**"
       - "backend/src/aima_ugc/adapters/persistence/postgres/**"
       - "migrations/versions/**"
@@ -21,8 +21,8 @@ on:
       - main
     paths:
       - "backend/src/aima_ugc/modules/collection/**"
-      - "backend/src/aima_ugc/operations/jobs/**"
-      - "backend/src/aima_ugc/operations/storage/**"
+      - "backend/src/aima_ugc/platform/jobs/**"
+      - "backend/src/aima_ugc/platform/storage/**"
       - "backend/src/aima_ugc/adapters/storage/**"
       - "backend/src/aima_ugc/adapters/persistence/postgres/**"
       - "migrations/versions/**"

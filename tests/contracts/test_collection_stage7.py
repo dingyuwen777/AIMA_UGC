@@ -26,7 +26,7 @@ def test_collection_contracts_are_versioned_and_keep_zero_distinct_from_unknown(
     assert CollectionDecisionV1.model_fields["schema_version"].default == "collection-decision.v1"
     assert (
         ProviderPlatformCapabilityV1.model_fields["schema_version"].default
-        == "provider-operations-capability.v1"
+        == "provider-platform-capability.v1"
     )
 
     assert ContentObservationV1(comment_count=0).comment_count == 0
@@ -62,7 +62,7 @@ def test_platform_capability_rejects_duplicate_business_operations() -> None:
     [
         ("decision-request.v1.schema.json", CollectionDecisionRequestV1),
         ("decision.v1.schema.json", CollectionDecisionV1),
-        ("provider-operations-capability.v1.schema.json", ProviderPlatformCapabilityV1),
+        ("provider-platform-capability.v1.schema.json", ProviderPlatformCapabilityV1),
     ],
 )
 def test_fixed_collection_schemas_match_pydantic_contract(filename: str, model: type) -> None:

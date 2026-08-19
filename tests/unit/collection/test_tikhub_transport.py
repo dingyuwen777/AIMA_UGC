@@ -16,9 +16,18 @@ from aima_ugc.modules.collection.providers.transport import ProviderTransportFai
 from pydantic import SecretStr
 
 
+def test_transport_defaults_to_new_tikhub_api_origin() -> None:
+    assert DEFAULT_TIKHUB_BASE_URL == "https://api.tikhub.dev"
+
+
 def test_transport_rejects_non_tikhub_base_url_before_secret_send_boundary() -> None:
     with pytest.raises(ValueError, match="TikHub base_url"):
         TikHubHttpTransport(base_url="https://example.com")
+
+
+def test_transport_keeps_legacy_tikhub_origin_compatible() -> None:
+    transport = TikHubHttpTransport(base_url="https://api.tikhub.io")
+    transport.close()
 
 
 def test_transport_injects_secret_only_at_send_boundary_and_sends_once() -> None:

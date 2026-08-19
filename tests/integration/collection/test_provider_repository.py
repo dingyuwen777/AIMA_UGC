@@ -165,7 +165,7 @@ def test_repository_rejects_missing_or_mismatched_scope_lineage(
             request_id=uuid4(),
             run_id=run.id,
             scope_id=scope.id,
-        ).model_copy(update={"operations": "dy"})
+        ).model_copy(update={"platform": "dy"})
         with pytest.raises(ProviderRequestLineageMismatchError), session.begin():
             repository.create_or_get_request(mismatched_platform)
     finally:

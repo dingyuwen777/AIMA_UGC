@@ -22,7 +22,7 @@ affected_areas:
   - "blueprint"
 affected_paths:
   - "backend/src/aima_ugc/modules/collection/"
-  - "backend/src/aima_ugc/operations/jobs/"
+  - "backend/src/aima_ugc/platform/jobs/"
   - "backend/src/aima_ugc/adapters/persistence/postgres/"
   - "backend/src/aima_ugc/modules/collection/tables.py"
   - "migrations/versions/"

@@ -37,7 +37,7 @@ def _item_from_row(row: RowMapping) -> KeywordPackItem:
     return KeywordPackItem(
         pack_id=row["pack_id"],
         keyword_id=row["keyword_id"],
-        platform=row["operations"],
+        platform=row["platform"],
         priority=row["priority"],
         enabled=row["enabled"],
         note=row["note"],

@@ -40,8 +40,8 @@ COLLECTION_MODELS = {
     "decision-request.v1.schema.json": CollectionDecisionRequestV1,
     "decision.v1.schema.json": CollectionDecisionV1,
     "provider-config.v1.schema.json": ProviderConfigV1,
-    "provider-operations-capability.v1.schema.json": ProviderPlatformCapabilityV1,
-    "provider-operations-route.v1.schema.json": ProviderPlatformRouteV1,
+    "provider-platform-capability.v1.schema.json": ProviderPlatformCapabilityV1,
+    "provider-platform-route.v1.schema.json": ProviderPlatformRouteV1,
 }
 
 

@@ -9,7 +9,7 @@ branch: build/local-dev-startup
 created: 2026-08-13
 updated: 2026-08-13
 depends_on: []
-affected_areas: [toolchain, operations, frontend, developer-experience]
+affected_areas: [toolchain, platform, frontend, developer-experience]
 affected_paths: [.uv-version, pyproject.toml, uv.lock, frontend/vite.config.ts, scripts/setup_dev_environment.cmd, scripts/setup_dev_environment.ps1, scripts/dev/, .github/workflows/ci.yml, README.md, docs/环境运行与部署.md, docs/blueprint/README.md, docs/blueprint/07-技术决策与实施门禁.md, changes/active/CHG-20260813-local-dev-startup/CHANGE.md]
 contracts: []
 data_changes: []
