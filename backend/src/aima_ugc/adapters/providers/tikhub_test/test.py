@@ -1,3 +1,5 @@
+import os
+
 from aima_ugc.adapters.providers.tikhub_test import (
     run_bilibili,
     run_douyin,
@@ -5,8 +7,8 @@ from aima_ugc.adapters.providers.tikhub_test import (
     run_weibo,
     run_xiaohongshu,
 )
-import os
-os.environ.pop('SSLKEYLOGFILE', None)
+
+os.environ.pop("SSLKEYLOGFILE", None)
 
 output = r"./output"
 
