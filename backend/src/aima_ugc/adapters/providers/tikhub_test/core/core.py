@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel
 
@@ -16,6 +17,7 @@ from aima_ugc.contracts.provider import assert_redacted_json, assert_secret_free
 
 _SAFE_FILENAME = re.compile(r"[^A-Za-z0-9_.-]+")
 _STATE_SCHEMA = "tikhub-test-state.v1"
+_BEIJING_TZ = ZoneInfo("Asia/Shanghai")
 
 
 @dataclass(frozen=True, slots=True)
@@ -271,8 +273,8 @@ class RunOutputStore:
 
 
 def default_run_id(now: datetime | None = None) -> str:
-    actual = (now or datetime.now(UTC)).astimezone(UTC)
-    return actual.strftime("%Y%m%dT%H%M%S.%fZ")
+    actual = (now or datetime.now(UTC)).astimezone(_BEIJING_TZ)
+    return actual.strftime("%Y%m%dT%H%M%S.%f%z")
 
 
 def _safe_name(value: str) -> str:
