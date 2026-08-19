@@ -1,6 +1,6 @@
 # Analysis 模块
 
-> 当前阶段：P1A—P1G 已闭环；下一最小 P1 单元为 P1H。P1H 未完成前，不把 90k 性能、真实模型付费小样或 P1 最终收口描述为已完成。
+> 当前阶段：临时 P1 已闭环。Analysis 模块继续作为平台无关的正式业务能力，后续数据库/API/Job 接入必须复用这里的 Service、Port、Validator 与 Adapter 边界。
 
 `aima_ugc.modules.analysis` 保存平台无关的内容处理与 AI 分析业务能力。当前已建立 Prompt/Taxonomy 运行时加载、本地 Validator、Analysis Service/Port、Fake、真实 OpenAI-compatible Adapter 的业务接线，以及离线 JSONL checkpoint/attempt/failed 审计、成功 Analysis 原子回写和 checkpoint 崩溃恢复。
 
@@ -146,6 +146,8 @@ backend/src/aima_ugc/adapters/llm/openai_compatible.py
 POST <base_url>/chat/completions
 ```
 
+当前只有这一种真实 LLM Adapter，因此调用方不需要再配置“Adapter 类型”。兼容相同 Chat Completions 协议的模型服务只需要更换 Base URL、API Key 和 Model，不为每个厂商复制一套 Adapter。
+
 边界固定为：
 
 - 一次 `complete()` 恰好一次 HTTP 请求；Adapter 不隐藏网络重试；
@@ -153,7 +155,9 @@ POST <base_url>/chat/completions
 - 网络超时、连接错误、HTTP 错误属于 Transport/Provider 错误，不伪装成 Validation Retry；
 - API key 使用 `SecretStr`，错误消息不回显 Provider body 或 Secret；
 - 默认关闭环境代理继承、禁止自动 redirect；
-- 可配置 JSON mode；即使启用也仍执行本地 Validator；
+- Adapter 默认 `use_json_mode=True`；当前离线内容打标人工入口直接使用该默认值，不把 JSON mode 暴露成 `.env` 必填/常规配置；即使启用 JSON mode 也仍执行本地 Validator；
+- `timeout_seconds` 默认 60 秒，调用方只有确有环境差异时才覆盖；
+- 未显式提供 `provider_name` 时，Adapter 从**实际请求 Base URL 的 hostname**生成稳定 `model_provider` 审计身份；显式非默认端口也进入该身份。显式 `provider_name` 参数继续作为程序级兼容覆盖，但人工 `.env` 不需要维护它；
 - Provider 返回标准 token usage 时记录 input/output tokens；通用 Adapter 不猜测价格，所以没有明确费用字段时 `cost_amount/cost_currency` 保持空。
 
 没有新增 OpenAI SDK，也没有新增网络重试库；复用锁文件中的 `httpx`。
@@ -184,7 +188,7 @@ deduplicated/contents.jsonl
 
 如果最终替换失败，临时业务文件会清理，原 `deduplicated/contents.jsonl` 不被破坏；已落盘 checkpoint 保留。
 
-P1G 建立跨进程崩溃恢复：启动下一次打标时读取成功 checkpoint，但只有同时满足以下条件才允许恢复并跳过再次模型调用：
+跨进程崩溃恢复：启动下一次打标时读取成功 checkpoint，但只有同时满足以下条件才允许恢复并跳过再次模型调用：
 
 ```text
 platform 相同
@@ -192,11 +196,11 @@ external_content_id 相同
 最小模型输入 input_hash 相同
 prompt_sha256 等于当前完整 Prompt
 taxonomy_sha256 等于当前 Taxonomy
-model_provider 等于当前 Service 的 Provider
+model_provider 等于当前 Service 的模型服务身份
 model 等于当前 Service 的模型
 ```
 
-其中 `input_hash` 仍只由允许发送给模型的 `title`、`text`、`author.display_name` 计算。Prompt、Taxonomy、Provider 或模型身份发生变化时，旧 checkpoint 仍保留为历史审计，但不会被恢复；该内容按当前规则正常重新调用模型。这样既避免已经成功且输入/规则/模型身份未变化的 item 重复付费，也不会把旧规则或旧模型的标签当作当前成功结果。
+其中 `input_hash` 仍只由允许发送给模型的 `title`、`text`、`author.display_name` 计算。OpenAI-compatible Adapter 默认把实际 Base URL 的 endpoint host 作为 `model_provider`，因此更换服务 endpoint 或模型时旧 checkpoint 会安全失效；Prompt/Taxonomy 变化同理。旧 checkpoint 仍保留为历史审计。
 
 恢复成功的记录直接把 checkpoint 中已验证的 `ContentLabelAnalysisV1` 写入业务临时 JSONL，再参与同一次原子 `os.replace`；checkpoint 本身始终不是业务事实源。`OfflineContentLabelingSummary.rows_recovered` 用于区分本次恢复数量和本次新模型成功数量。
 
@@ -212,7 +216,7 @@ analysis/failed.jsonl
 
 ## 8. Fake、调试与费用
 
-`FakeContentLabelingLLM` 不访问网络、不产生真实模型费用，用预设原始响应驱动正式 Service 与 Validator。它适合验证非法 JSON、字段错误、item 配对错误、未知标签、父子错配、数组/空标签、Validation Retry、同批部分成功，以及 P1G 的 checkpoint 恢复与旧 Prompt/Taxonomy/Provider/模型 checkpoint 失效行为。
+`FakeContentLabelingLLM` 不访问网络、不产生真实模型费用，用预设原始响应驱动正式 Service 与 Validator。它适合验证非法 JSON、字段错误、item 配对错误、未知标签、父子错配、数组/空标签、Validation Retry、同批部分成功，以及 checkpoint 恢复与旧 Prompt/Taxonomy/Provider/模型 checkpoint 失效行为。
 
 真实模型调试优先查看：
 
@@ -222,18 +226,19 @@ analysis/checkpoints.jsonl
 analysis/failed.jsonl
 ```
 
-再核对 `validation_error_codes`、`prompt_sha256`、`taxonomy_sha256`、`model_provider` 和 `model`。不要通过放宽 Validator、模糊匹配或自动改标签制造“成功”。Validation Retry 会产生额外真实模型调用和费用；checkpoint 恢复只复用与当前输入、当前 Prompt/Taxonomy 和当前模型身份完全匹配的成功结果。
+再核对 `validation_error_codes`、`prompt_sha256`、`taxonomy_sha256`、`model_provider` 和 `model`。人工离线入口中的 `model_provider` 默认来自 `AIMA_LLM_BASE_URL` 的 endpoint host，`model` 来自 `AIMA_LLM_MODEL`。不要通过放宽 Validator、模糊匹配或自动改标签制造“成功”。Validation Retry 会产生额外真实模型调用和费用；checkpoint 恢复只复用与当前输入、当前 Prompt/Taxonomy 和当前模型身份完全匹配的成功结果。
 
-## 9. P1G 与后续边界
+## 9. 当前长期边界
 
-P1G 已在 P1F 基础上补齐：
+临时 P1 已完成并验证：
 
 - checkpoint 跨进程崩溃恢复，成功恢复不再次调用模型；
-- 恢复同时绑定最小输入 Hash、当前 `prompt_sha256`、当前 `taxonomy_sha256`、`model_provider` 和 `model`；
+- 恢复绑定最小输入 Hash、当前 `prompt_sha256`、当前 `taxonomy_sha256`、`model_provider` 和 `model`；
 - `imports_test.run_all()` 固定串联 convert → filter → deduplicate → label → final Excel；
 - `run_summary.json` 原子写出；
 - 最终 labeled Excel 只读取回写后的同一 `deduplicated/contents.jsonl`；
 - Shared Exporter 正确投影 `record.analysis` 到现有 `UnifiedDataExcelV1` 分析列；
-- `export_raw_excel()` 继续只是人工旁路，不进入默认 `run_all()`。
+- `export_raw_excel()` 继续只是人工旁路，不进入默认 `run_all()`；
+- 真实 OpenAI-compatible Adapter 继续是可替换外部边界，人工配置只暴露 Base URL、API Key、Model 和可选 timeout。
 
-P1G **没有进入 P1H**：尚未执行 90k 性能基准、真实付费模型小样、真实 token/费用核验或 P1 最终归档。
+未来正式 Analysis Job/API/数据库接入必须复用同一 Service/Port/Adapter/Validator，不把 `imports_test` 复制成第二套正式实现。
