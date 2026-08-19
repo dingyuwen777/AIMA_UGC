@@ -2,6 +2,7 @@
 
 from collections.abc import Sequence
 from pathlib import Path
+from uuid import UUID
 
 from .runner import TikHubTestRunResult, run_platform
 
@@ -25,6 +26,8 @@ def run_xiaohongshu(
     include_comments: bool = True,
     include_replies: bool = True,
     force_refresh: bool = False,
+    write_to_database: bool = False,
+    provider_config_id: UUID | None = None,
 ) -> TikHubTestRunResult:
     return run_platform(
         platform="xhs",
@@ -47,6 +50,8 @@ def run_xiaohongshu(
         include_comments=include_comments,
         include_replies=include_replies,
         force_refresh=force_refresh,
+        write_to_database=write_to_database,
+        provider_config_id=provider_config_id,
     )
 
 

@@ -1,11 +1,12 @@
-"""复用生产 TikHub Runtime 的五平台无数据库调试执行器。"""
+"""复用生产 TikHub Runtime 的五平台人工调试执行器。"""
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
+from uuid import UUID
 
 from aima_ugc.adapters.providers.tikhub import runtime as tikhub_runtime
 from aima_ugc.adapters.providers.tikhub.capabilities import TIKHUB_PLATFORM_CAPABILITIES
@@ -37,6 +38,9 @@ from aima_ugc.platform.export import (
     project_canonical_comment,
     project_canonical_content,
 )
+
+if TYPE_CHECKING:
+    from aima_ugc.bootstrap.tikhub_test_database import TikHubDebugDatabaseSession
 
 _DEFAULT_OUTPUT_ROOT = Path(__file__).resolve().parent.parent / "output"
 _CAPABILITIES = {item.platform: item for item in TIKHUB_PLATFORM_CAPABILITIES}
@@ -111,16 +115,21 @@ class _TikHubDebugRunner:
         include_comments: bool,
         include_replies: bool,
         force_refresh: bool,
+        write_to_database: bool,
+        provider_config_id: UUID | None,
     ) -> None:
         limits.validate()
         self.platform = platform
         self.keywords = keywords
         self.search_config = search_config
         self.provider_config = provider_config
+        self.run_id = run_id
         self.limits = limits
         self.include_comments = include_comments
         self.include_replies = include_replies
         self.force_refresh = force_refresh
+        self.write_to_database = write_to_database
+        self.provider_config_id = provider_config_id
         self.capability = _CAPABILITIES[platform]
         self.decision_service = CollectionDecisionService()
         self.store = RunOutputStore.create(
@@ -129,6 +138,7 @@ class _TikHubDebugRunner:
             run_id=run_id,
         )
         self.state = DebugState.load(output_root / platform / "state.json")
+        self._database: TikHubDebugDatabaseSession | None = None
         self._request_no = 0
         self._requests: list[dict[str, object]] = []
         self._content_failures: list[dict[str, object]] = []
@@ -143,6 +153,27 @@ class _TikHubDebugRunner:
     def run(self) -> TikHubTestRunResult:
         error: Exception | None = None
         try:
+            if self.write_to_database:
+                if self.provider_config_id is None:
+                    raise ValueError(
+                        "write_to_database=True 时必须显式提供 provider_config_id"
+                    )
+                from aima_ugc.bootstrap.tikhub_test_database import (
+                    create_tikhub_debug_database_session,
+                )
+
+                self._database = create_tikhub_debug_database_session(
+                    platform=self.platform,
+                    keywords=self.keywords,
+                    run_id=self.run_id,
+                    provider_config_id=self.provider_config_id,
+                    expected_base_url=self.provider_config.base_url,
+                    expected_api_key=self.provider_config.api_key,
+                    provider_timeout_seconds=self.provider_config.timeout_seconds,
+                    search_config=self.search_config,
+                    policy=self._policy(),
+                )
+
             with TikHubHttpTransport(
                 base_url=self.provider_config.base_url,
                 timeout_seconds=self.provider_config.timeout_seconds,
@@ -155,6 +186,17 @@ class _TikHubDebugRunner:
         except Exception as exc:
             error = exc
         finally:
+            if self._database is not None:
+                try:
+                    self._database.finish(
+                        error=error,
+                        stop_reasons=self._search_stop_reasons,
+                    )
+                except Exception as finish_exc:
+                    if error is None:
+                        error = finish_exc
+                finally:
+                    self._database = None
             self.state.save()
             workbook_path = export_unified_data_excel(
                 self._blocks_with_keywords(),
@@ -185,36 +227,53 @@ class _TikHubDebugRunner:
                 config=self.search_config,
                 state=pagination,
             )
-            body, raw_record = self._send(transport, call)
+            body, raw_record = self._send(transport, call, keyword=keyword)
             self._requests[-1]["keyword"] = keyword
             items = tikhub_runtime.extract_search_items(self.platform, body)
             for item_index, raw_item in enumerate(items):
-                content = tikhub_runtime.map_content(
-                    platform=self.platform,
-                    raw=raw_item,
-                    context=tikhub_runtime.mapping_context(
-                        provider_request_id=raw_record.request_id,
-                        provider_attempt_id=raw_record.attempt_id,
-                        raw_artifact_id=raw_record.artifact_id,
-                        operation=call.operation,
-                        source_type="keyword",
-                        source_value=keyword,
-                        observed_at=raw_record.observed_at,
-                    ),
-                    item_locator=f"search.page[{page_no}].items[{item_index}]",
+                item_locator = f"search.page[{page_no}].items[{item_index}]"
+                candidate_id = self._discover_candidate(
+                    raw_record=raw_record,
+                    item_kind="content",
+                    item_locator=item_locator,
                 )
+                try:
+                    content = tikhub_runtime.map_content(
+                        platform=self.platform,
+                        raw=raw_item,
+                        context=tikhub_runtime.mapping_context(
+                            provider_request_id=raw_record.request_id,
+                            provider_attempt_id=raw_record.attempt_id,
+                            raw_artifact_id=raw_record.artifact_id,
+                            operation=call.operation,
+                            source_type="keyword",
+                            source_value=keyword,
+                            observed_at=raw_record.observed_at,
+                        ),
+                        item_locator=item_locator,
+                    )
+                except Exception as exc:
+                    self._record_candidate_failure(
+                        candidate_id=candidate_id,
+                        raw_record=raw_record,
+                        error=exc,
+                    )
+                    raise
                 content_id = content.external_content_id
                 self._remember_keyword(content_id, keyword)
-                if content_id in self._seen_contents:
+                is_new = content_id not in self._seen_contents
+                if is_new:
+                    self._seen_contents.add(content_id)
+                    self.store.append_canonical("contents", content)
+                self._ingest_content(content, candidate_id=candidate_id)
+                if not is_new:
                     continue
-                self._seen_contents.add(content_id)
-                self.store.append_canonical("contents", content)
                 self._process_content(
                     transport,
+                    keyword=keyword,
                     search_content=content,
                     search_raw_locator=(
-                        f"{self.store.relative_path(raw_record.path)}"
-                        f"#search.page[{page_no}].items[{item_index}]"
+                        f"{self.store.relative_path(raw_record.path)}#{item_locator}"
                     ),
                 )
                 if self._content_limit_reached():
@@ -236,6 +295,7 @@ class _TikHubDebugRunner:
         self,
         transport: TikHubHttpTransport,
         *,
+        keyword: str,
         search_content: CanonicalContentV1,
         search_raw_locator: str,
     ) -> None:
@@ -254,7 +314,11 @@ class _TikHubDebugRunner:
         if decision.detail_action == "fetch":
             detail_call = tikhub_runtime.build_detail_call(self.platform, search_content)
             try:
-                detail_body, detail_raw = self._send(transport, detail_call)
+                detail_body, detail_raw = self._send(
+                    transport,
+                    detail_call,
+                    keyword=keyword,
+                )
             except _TikHubHttpStatusError as exc:
                 if (
                     self.platform == "douyin"
@@ -286,25 +350,40 @@ class _TikHubDebugRunner:
             detail_items = tikhub_runtime.extract_detail_items(self.platform, detail_body)
             mapped_details: list[tuple[CanonicalContentV1, str]] = []
             for index, detail_item in enumerate(detail_items):
-                mapped = tikhub_runtime.map_content(
-                    platform=self.platform,
-                    raw=detail_item,
-                    context=tikhub_runtime.mapping_context(
-                        provider_request_id=detail_raw.request_id,
-                        provider_attempt_id=detail_raw.attempt_id,
-                        raw_artifact_id=detail_raw.artifact_id,
-                        operation=detail_call.operation,
-                        source_type="content",
-                        source_value=content_id,
-                        observed_at=detail_raw.observed_at,
-                    ),
-                    item_locator=f"detail.items[{index}]",
+                item_locator = f"detail.items[{index}]"
+                candidate_id = self._discover_candidate(
+                    raw_record=detail_raw,
+                    item_kind="content",
+                    item_locator=item_locator,
                 )
+                try:
+                    mapped = tikhub_runtime.map_content(
+                        platform=self.platform,
+                        raw=detail_item,
+                        context=tikhub_runtime.mapping_context(
+                            provider_request_id=detail_raw.request_id,
+                            provider_attempt_id=detail_raw.attempt_id,
+                            raw_artifact_id=detail_raw.artifact_id,
+                            operation=detail_call.operation,
+                            source_type="content",
+                            source_value=content_id,
+                            observed_at=detail_raw.observed_at,
+                        ),
+                        item_locator=item_locator,
+                    )
+                except Exception as exc:
+                    self._record_candidate_failure(
+                        candidate_id=candidate_id,
+                        raw_record=detail_raw,
+                        error=exc,
+                    )
+                    raise
                 self.store.append_canonical("contents", mapped)
+                self._ingest_content(mapped, candidate_id=candidate_id)
                 mapped_details.append(
                     (
                         mapped,
-                        f"{self.store.relative_path(detail_raw.path)}#detail.items[{index}]",
+                        f"{self.store.relative_path(detail_raw.path)}#{item_locator}",
                     )
                 )
             matching = next(
@@ -330,6 +409,7 @@ class _TikHubDebugRunner:
         if decision.comment_action not in {"skip", "defer_until_detail"}:
             comments, coverage = self._fetch_comments(
                 transport,
+                keyword=keyword,
                 content=content,
                 action=decision.comment_action,
                 target=decision.comment_target or self.limits.max_comments_per_content,
@@ -398,6 +478,7 @@ class _TikHubDebugRunner:
         self,
         transport: TikHubHttpTransport,
         *,
+        keyword: str,
         content: CanonicalContentV1,
         action: str,
         target: int,
@@ -418,42 +499,56 @@ class _TikHubDebugRunner:
                 external_content_id=content_id,
                 state=pagination,
             )
-            body, raw_record = self._send(transport, call)
+            body, raw_record = self._send(transport, call, keyword=keyword)
             items = tikhub_runtime.extract_comment_items(self.platform, body)
             mapped_roots: list[CanonicalCommentV1] = []
             page_comment_ids: list[str] = []
             for item_index, raw_item in enumerate(items):
-                comment = tikhub_runtime.map_comment(
-                    platform=self.platform,
-                    raw=raw_item,
-                    context=tikhub_runtime.mapping_context(
-                        provider_request_id=raw_record.request_id,
-                        provider_attempt_id=raw_record.attempt_id,
-                        raw_artifact_id=raw_record.artifact_id,
-                        operation=call.operation,
-                        source_type="content",
-                        source_value=content_id,
-                        observed_at=raw_record.observed_at,
-                        external_content_id=content_id,
-                    ),
-                    item_locator=f"comments.page[{page_no}].items[{item_index}]",
-                    is_root=True,
+                item_locator = f"comments.page[{page_no}].items[{item_index}]"
+                candidate_id = self._discover_candidate(
+                    raw_record=raw_record,
+                    item_kind="comment",
+                    item_locator=item_locator,
                 )
+                try:
+                    comment = tikhub_runtime.map_comment(
+                        platform=self.platform,
+                        raw=raw_item,
+                        context=tikhub_runtime.mapping_context(
+                            provider_request_id=raw_record.request_id,
+                            provider_attempt_id=raw_record.attempt_id,
+                            raw_artifact_id=raw_record.artifact_id,
+                            operation=call.operation,
+                            source_type="content",
+                            source_value=content_id,
+                            observed_at=raw_record.observed_at,
+                            external_content_id=content_id,
+                        ),
+                        item_locator=item_locator,
+                        is_root=True,
+                    )
+                except Exception as exc:
+                    self._record_candidate_failure(
+                        candidate_id=candidate_id,
+                        raw_record=raw_record,
+                        error=exc,
+                    )
+                    raise
                 page_comment_ids.append(comment.external_comment_id)
                 key = (content_id, comment.external_comment_id)
-                if key in self._seen_comments:
+                is_new = key not in self._seen_comments
+                if is_new:
+                    self._seen_comments.add(key)
+                    self.store.append_canonical("comments", comment)
+                self._ingest_comment(comment, candidate_id=candidate_id)
+                if not is_new:
                     continue
-                self._seen_comments.add(key)
-                self.store.append_canonical("comments", comment)
                 self.state.remember_comment(
                     self.platform,
                     content_id,
                     comment.external_comment_id,
                 )
-                locator = (
-                    f"{self.store.relative_path(raw_record.path)}"
-                    f"#comments.page[{page_no}].items[{item_index}]"
-                )
+                locator = f"{self.store.relative_path(raw_record.path)}#{item_locator}"
                 mapped_rows.append(
                     project_canonical_comment(comment, level="一级", raw_locator=locator)
                 )
@@ -463,7 +558,14 @@ class _TikHubDebugRunner:
 
             if self.include_replies:
                 for root in mapped_roots:
-                    mapped_rows.extend(self._fetch_replies(transport, content, root))
+                    mapped_rows.extend(
+                        self._fetch_replies(
+                            transport,
+                            keyword=keyword,
+                            content=content,
+                            root=root,
+                        )
+                    )
 
             advance = tikhub_runtime.advance_comments(
                 platform=self.platform,
@@ -498,6 +600,8 @@ class _TikHubDebugRunner:
     def _fetch_replies(
         self,
         transport: TikHubHttpTransport,
+        *,
+        keyword: str,
         content: CanonicalContentV1,
         root: CanonicalCommentV1,
     ) -> list[UnifiedDataExcelCommentV1]:
@@ -521,40 +625,54 @@ class _TikHubDebugRunner:
                 root_comment_id=root.external_comment_id,
                 state=pagination,
             )
-            body, raw_record = self._send(transport, call)
+            body, raw_record = self._send(transport, call, keyword=keyword)
             items = tikhub_runtime.extract_sub_comment_items(self.platform, body)
             for item_index, raw_item in enumerate(items):
-                comment = tikhub_runtime.map_comment(
-                    platform=self.platform,
-                    raw=raw_item,
-                    context=tikhub_runtime.mapping_context(
-                        provider_request_id=raw_record.request_id,
-                        provider_attempt_id=raw_record.attempt_id,
-                        raw_artifact_id=raw_record.artifact_id,
-                        operation=call.operation,
-                        source_type="comment",
-                        source_value=root.external_comment_id,
-                        observed_at=raw_record.observed_at,
-                        external_content_id=content.external_content_id,
-                        root_comment_id=root.external_comment_id,
-                    ),
-                    item_locator=f"replies.page[{page_no}].items[{item_index}]",
-                    is_root=False,
+                item_locator = f"replies.page[{page_no}].items[{item_index}]"
+                candidate_id = self._discover_candidate(
+                    raw_record=raw_record,
+                    item_kind="comment",
+                    item_locator=item_locator,
                 )
+                try:
+                    comment = tikhub_runtime.map_comment(
+                        platform=self.platform,
+                        raw=raw_item,
+                        context=tikhub_runtime.mapping_context(
+                            provider_request_id=raw_record.request_id,
+                            provider_attempt_id=raw_record.attempt_id,
+                            raw_artifact_id=raw_record.artifact_id,
+                            operation=call.operation,
+                            source_type="comment",
+                            source_value=root.external_comment_id,
+                            observed_at=raw_record.observed_at,
+                            external_content_id=content.external_content_id,
+                            root_comment_id=root.external_comment_id,
+                        ),
+                        item_locator=item_locator,
+                        is_root=False,
+                    )
+                except Exception as exc:
+                    self._record_candidate_failure(
+                        candidate_id=candidate_id,
+                        raw_record=raw_record,
+                        error=exc,
+                    )
+                    raise
                 key = (content.external_content_id, comment.external_comment_id)
-                if key in self._seen_comments:
+                is_new = key not in self._seen_comments
+                if is_new:
+                    self._seen_comments.add(key)
+                    self.store.append_canonical("comments", comment)
+                self._ingest_comment(comment, candidate_id=candidate_id)
+                if not is_new:
                     continue
-                self._seen_comments.add(key)
-                self.store.append_canonical("comments", comment)
                 self.state.remember_comment(
                     self.platform,
                     content.external_content_id,
                     comment.external_comment_id,
                 )
-                locator = (
-                    f"{self.store.relative_path(raw_record.path)}"
-                    f"#replies.page[{page_no}].items[{item_index}]"
-                )
+                locator = f"{self.store.relative_path(raw_record.path)}#{item_locator}"
                 mapped_rows.append(
                     project_canonical_comment(comment, level="二级", raw_locator=locator)
                 )
@@ -575,16 +693,58 @@ class _TikHubDebugRunner:
         self,
         transport: TikHubHttpTransport,
         call: tikhub_runtime.TikHubOperationCall,
+        *,
+        keyword: str,
     ) -> tuple[dict[str, Any], RawOutputRecord]:
         self._request_no += 1
-        response = transport.send(call.transport_request(self.provider_config.api_key))
-        raw_record = self.store.save_raw(
-            operation=call.operation,
-            body=response.body,
-            request_no=self._request_no,
-            status_code=response.status_code,
-            external_request_id=response.external_request_id,
-        )
+        if self._database is None:
+            response = transport.send(call.transport_request(self.provider_config.api_key))
+            raw_record = self.store.save_raw(
+                operation=call.operation,
+                body=response.body,
+                request_no=self._request_no,
+                status_code=response.status_code,
+                external_request_id=response.external_request_id,
+            )
+        else:
+            mirrored_record: RawOutputRecord | None = None
+
+            def mirror_response(response: object) -> None:
+                nonlocal mirrored_record
+                status_code = getattr(response, "status_code", None)
+                external_request_id = getattr(response, "external_request_id", None)
+                body = getattr(response, "body", None)
+                mirrored_record = self.store.save_raw(
+                    operation=call.operation,
+                    body=body,
+                    request_no=self._request_no,
+                    status_code=status_code if isinstance(status_code, int) else None,
+                    external_request_id=(
+                        external_request_id if isinstance(external_request_id, str) else None
+                    ),
+                )
+
+            dispatch = self._database.dispatch(
+                keyword=keyword,
+                call=call,
+                transport=transport,
+                mirror_response=mirror_response,
+            )
+            response = dispatch.response
+            if mirrored_record is None:
+                raise RuntimeError("TikHub 数据库模式没有生成本地 Raw 镜像")
+            raw_record = RawOutputRecord(
+                artifact_id=dispatch.raw_artifact_id,
+                request_id=str(dispatch.provider_request_id),
+                attempt_id=str(dispatch.provider_attempt_id),
+                operation=call.operation,
+                request_no=self._request_no,
+                path=mirrored_record.path,
+                observed_at=dispatch.observed_at,
+                status_code=response.status_code,
+                external_request_id=response.external_request_id,
+            )
+
         raw_file = self.store.relative_path(raw_record.path)
         self._requests.append(
             {
@@ -617,6 +777,70 @@ class _TikHubDebugRunner:
         if not isinstance(response.body, dict):
             raise RuntimeError(f"TikHub {self.platform} {call.operation} 返回 JSON 顶层不是对象")
         return cast(dict[str, Any], response.body), raw_record
+
+    def _discover_candidate(
+        self,
+        *,
+        raw_record: RawOutputRecord,
+        item_kind: Literal["content", "comment"],
+        item_locator: str,
+    ) -> UUID | None:
+        if self._database is None:
+            return None
+        try:
+            attempt_id = UUID(raw_record.attempt_id)
+        except ValueError as exc:
+            raise RuntimeError("TikHub 数据库模式 Attempt ID 不是 UUID") from exc
+        return self._database.discover_candidate(
+            provider_attempt_id=attempt_id,
+            raw_artifact_id=raw_record.artifact_id,
+            item_kind=item_kind,
+            item_locator=item_locator,
+            discovered_at=raw_record.observed_at,
+        )
+
+    def _record_candidate_failure(
+        self,
+        *,
+        candidate_id: UUID | None,
+        raw_record: RawOutputRecord,
+        error: Exception,
+    ) -> None:
+        if self._database is None or candidate_id is None:
+            return
+        try:
+            attempt_id = UUID(raw_record.attempt_id)
+        except ValueError as exc:
+            raise RuntimeError("TikHub 数据库模式 Attempt ID 不是 UUID") from exc
+        self._database.record_candidate_failure(
+            candidate_id=candidate_id,
+            provider_attempt_id=attempt_id,
+            error_code=type(error).__name__,
+        )
+
+    def _ingest_content(
+        self,
+        content: CanonicalContentV1,
+        *,
+        candidate_id: UUID | None,
+    ) -> None:
+        if self._database is None:
+            return
+        if candidate_id is None:
+            raise RuntimeError("TikHub 数据库模式 Content 缺少 Candidate")
+        self._database.ingest_content(content, candidate_id=candidate_id)
+
+    def _ingest_comment(
+        self,
+        comment: CanonicalCommentV1,
+        *,
+        candidate_id: UUID | None,
+    ) -> None:
+        if self._database is None:
+            return
+        if candidate_id is None:
+            raise RuntimeError("TikHub 数据库模式 Comment 缺少 Candidate")
+        self._database.ingest_comment(comment, candidate_id=candidate_id)
 
     def _remember_keyword(self, content_id: str, keyword: str) -> None:
         matched = self._matched_keywords.setdefault(content_id, [])
@@ -668,6 +892,10 @@ class _TikHubDebugRunner:
             "keyword": self.keywords[0] if len(self.keywords) == 1 else None,
             "keywords": list(self.keywords),
             "matched_keywords": self._matched_keywords,
+            "write_to_database": self.write_to_database,
+            "provider_config_id": (
+                str(self.provider_config_id) if self.provider_config_id is not None else None
+            ),
             "status": status,
             "request_count": self._request_no,
             "content_count": len(self._blocks),
@@ -699,18 +927,22 @@ def run_platform(
     include_comments: bool = True,
     include_replies: bool = True,
     force_refresh: bool = False,
+    write_to_database: bool = False,
+    provider_config_id: UUID | None = None,
 ) -> TikHubTestRunResult:
-    """执行一个平台的独立真实调试；所有 Provider 私有逻辑由生产 Runtime 负责。"""
+    """执行一个平台的人工调试；数据库写入必须显式 opt-in。"""
     normalized_keywords = _normalize_keywords(keyword=keyword, keywords=keywords)
     config = TikHubTestConfig.load(env_file)
     root = Path(output_root) if output_root is not None else _DEFAULT_OUTPUT_ROOT
+    actual_run_id = run_id or default_run_id()
+    actual_search_config = search_config or {}
     return _TikHubDebugRunner(
         platform=platform,
         keywords=normalized_keywords,
-        search_config=search_config or {},
+        search_config=actual_search_config,
         provider_config=config,
         output_root=root,
-        run_id=run_id or default_run_id(),
+        run_id=actual_run_id,
         limits=_RunLimits(
             max_search_pages=max_search_pages,
             max_contents=max_contents,
@@ -722,6 +954,8 @@ def run_platform(
         include_comments=include_comments,
         include_replies=include_replies,
         force_refresh=force_refresh,
+        write_to_database=write_to_database,
+        provider_config_id=provider_config_id,
     ).run()
 
 
