@@ -1,6 +1,8 @@
 # TikHub 五平台独立测试 / 调试
 
-本目录用于**脱离数据库**直接验证 TikHub 五个平台采集链。它不是第二套采集器：Search、Detail、一级评论、二级回复、分页、Mapper、Capability 和 Collection Decision 都复用 `aima_ugc.adapters.providers.tikhub` 的正式生产实现。
+本目录用于人工验证 TikHub 五个平台采集链。它不是第二套采集器：Search、Detail、一级评论、二级回复、分页、Mapper、Capability 和 Collection Decision 都复用 `aima_ugc.adapters.providers.tikhub` 的正式生产实现。
+
+默认 `write_to_database=False`，因此仍可**脱离数据库**只保存调试文件；显式开启数据库模式后，同一次 TikHub 请求同时保留本地调试 Raw，并进入正式 Collection / Provider / Raw / Candidate / Ingestion 来源链写入 PostgreSQL，不会为了写库再发送第二次 Provider 请求。
 
 支持平台：小红书、抖音、微博、B站、快手。
 
@@ -15,6 +17,8 @@ TIKHUB_TIMEOUT_SECONDS=300
 ```
 
 `.env` 已被 Git 忽略，**不要提交真实密钥**。代码默认读取 `tikhub_test/.env`，也可通过函数显式指定 `env_file`。当前默认 TikHub Origin 为 `https://api.tikhub.dev`；为兼容既有配置，`https://api.tikhub.io` 仍可显式使用，但任意未允许的第三方 Origin 都会在发送 Secret 之前被拒绝。
+
+数据库模式还要求正式 `provider_configs` 中存在一个已启用的 `provider=tikhub` 配置，并显式传入它的 `provider_config_id`。该配置的 `base_url` 与 Secret 必须和当前 `tikhub_test/.env` 实际使用的 URL/API Key 一致；不一致时在发送请求前关闭失败，避免“调试文件用一套凭据、正式来源链记录另一套配置”。
 
 ## 2. 关键词在哪里配置
 
@@ -70,6 +74,8 @@ from aima_ugc.adapters.providers.tikhub_test import (
 
 ### 小红书
 
+默认 file-only：
+
 ```python
 result = run_xiaohongshu(
     keywords=("爱玛", "爱玛电动车"),
@@ -79,6 +85,21 @@ result = run_xiaohongshu(
     max_search_pages=10,
     max_comments_per_content=100,
     max_replies_per_root=20,
+)
+```
+
+显式数据库模式：
+
+```python
+from uuid import UUID
+
+result = run_xiaohongshu(
+    keywords=("爱玛", "爱玛电动车"),
+    sort_mode="latest",
+    published_within="7d",
+    content_type="all",
+    write_to_database=True,
+    provider_config_id=UUID("正式 provider_configs.id"),
 )
 ```
 
@@ -133,6 +154,15 @@ result = run_kuaishou(
 
 快手当前主 Search Operation 没有额外统一排序/时间筛选参数，因此调试入口不虚构这些选项。
 
+五个平台的 `run_*()` 都支持相同的数据库开关：
+
+```python
+write_to_database=False
+provider_config_id=None
+```
+
+只有 `write_to_database=True` 时 `provider_config_id` 才是必填；默认 file-only 不需要它，也不会装配数据库 Runtime。
+
 ## 4. 评论、回复和请求范围
 
 五个平台共用以下调试边界：
@@ -147,6 +177,8 @@ max_reply_pages_per_root = 10
 include_comments = True
 include_replies = True
 force_refresh = False
+write_to_database = False
+provider_config_id = None
 ```
 
 含义：
@@ -159,9 +191,11 @@ force_refresh = False
 - `max_reply_pages_per_root`：每个一级评论的回复最多翻页数；
 - `include_comments=False`：只验证 Search/Detail，不抓评论；
 - `include_replies=False`：抓一级评论但不抓二级回复；
-- `force_refresh=True`：即使跨运行状态显示评论数未变化，也允许受控重新抓评论。
+- `force_refresh=True`：即使跨运行状态显示评论数未变化，也允许受控重新抓评论；
+- `write_to_database=False`：只保留调试文件，不要求 PostgreSQL；
+- `write_to_database=True`：复用正式数据库来源链，同时必须传正式 `provider_config_id`。
 
-这里**没有生产预算/费用硬上限系统**。节省费用依靠：关键词去重、帖子 ID 去重、评论 ID 去重、跨运行状态、Provider 末页、目标评论数和显式页数边界。
+这里**没有生产预算/费用硬上限系统**。节省费用依靠：关键词去重、帖子 ID 去重、评论 ID 去重、跨运行状态、Provider 末页、目标评论数和显式页数边界。数据库模式也不会因为“还要入库”额外重复请求同一个 TikHub Operation。
 
 ## 5. 输出目录
 
@@ -199,6 +233,8 @@ output/
 - `raw_data/*.xlsx`：帖子 + 评论基础采集数据的人工可读视图，**不是舆情分析报告**；
 - `state.json`：仅保存避免重复请求所需的帖子 ID、评论 ID、最近评论计数等轻量信息。
 
+数据库模式不会删除这些调试产物。正式 PostgreSQL Raw Artifact 是同一次 Provider 响应在生产来源链中的不可变证据，本地 `raw/*.json` 继续是人工调试副本；两者职责不同。
+
 ## 6. 去重逻辑
 
 ### 同一次运行
@@ -223,6 +259,8 @@ output/
 `output/<platform>/state.json` 会累积轻量去重状态。下次运行发现同一帖子且评论数没有变化时，生产 `CollectionDecisionService` 可跳过没有价值的 Detail/评论刷新。
 
 需要完全重新验证时，可在确认不再需要历史调试状态后删除对应平台的 `state.json`。删除 `state.json` 不会删除历史 `runs/` Raw/Canonical/Excel。
+
+数据库模式的最终业务身份仍由 PostgreSQL Content Owner 的 `(platform, external_content_id)` 以及评论稳定身份约束收敛；`state.json` 只用于人工调试省请求，不能替代数据库唯一约束、Version/Metric 或来源历史。
 
 ## 7. Excel 说明
 
@@ -252,7 +290,7 @@ CanonicalContentV1 / CanonicalCommentV1
 
 `tikhub_test` 不再维护自己的 Workbook 布局实现，原 `tikhub_test/core/excel.py` 已删除；通用 Excel 行为测试也归属共享导出模块。以后 `imports_test`、正式数据导出和 TikHub 调试都必须复用同一 Exporter，不允许再建立平行的内容+评论 Excel 生成逻辑。
 
-完整 TikHub 原始响应仍以 `raw/*.json` 为 Provider 事实，Canonical JSONL 仍是统一业务数据，不把 Excel 当 Provider Raw、数据库回灌格式或第二事实源。
+完整 TikHub 原始响应仍以 `raw/*.json` 为人工调试 Provider 证据，Canonical JSONL 仍是统一业务数据，不把 Excel 当 Provider Raw、数据库回灌格式或第二事实源。数据库模式直接把同一次响应送入正式 Raw/Candidate/Ingestion，不从导出 Excel 或 Canonical JSONL 再做第二次回灌。
 
 统一导出设计门禁见 [`docs/blueprint/13-统一数据Excel导出与调试复用.md`](../../../../../../docs/blueprint/13-统一数据Excel导出与调试复用.md)。
 
@@ -262,42 +300,48 @@ CanonicalContentV1 / CanonicalCommentV1
 
 返回值 `TikHubTestRunResult` 会告诉你本次运行目录、Excel、manifest、内容数、一级评论数、二级回复数和真实请求数。
 
-## 9. Stage 8A 可选数据库写入（已批准目标，当前未实现）
+## 9. Stage 8A 可选数据库写入（已实现）
 
-当前 `tikhub_test` 的**现有行为仍然是文件模式**：它用于脱离数据库验证五平台采集链，保存 Raw、Canonical、Excel、state 和 run summary，不写业务数据库。下面描述的是 [`docs/blueprint/17-Stage8数据入口统一入库与业务前端实施.md`](../../../../../../docs/blueprint/17-Stage8数据入口统一入库与业务前端实施.md) 已批准的 Stage 8A 目标，当前代码尚未提供该开关。
-
-Stage 8A 将保留现有 `run_*()` 人工调试方式，并增加显式 opt-in 的数据库写入选择。目标语义为：
+Stage 8A 已实现显式 opt-in 的 PostgreSQL 模式，同时保持原有 file-only 默认行为：
 
 ```text
-默认：WRITE_TO_DATABASE = False
-→ 保持当前文件调试行为
-→ 不要求 PostgreSQL
-→ 不写业务数据库
+默认：write_to_database=False
+→ 只使用 tikhub_test/.env 的调试配置
+→ 保持 Raw / Canonical / Excel / state / run summary
+→ 不装配 PostgreSQL Runtime
 
-显式：WRITE_TO_DATABASE = True
-→ 本次 Raw / Canonical / Excel / run summary 仍完整保留
-→ 复用正式 Collection / Provider / Raw / Candidate / Ingestion 来源链
-→ Canonical 最终进入统一 Content Ingestion
-→ 写入 PostgreSQL
+显式：write_to_database=True + provider_config_id=<正式 UUID>
+→ 先校验 PostgreSQL 18 / Stage 8A Schema
+→ 校验正式 provider_config_id 存在、已启用、provider=tikhub
+→ 校验正式 Provider Config 的 base_url 和 Secret 与本次 .env 实际配置一致
+→ 建立 manual Collection Run / keyword Scope / Job + Fencing
+→ 为每一次实际 TikHub 调用建立正式 Provider Request / billable Attempt
+→ Transport 只发送一次网络请求
+→ 同一个响应先镜像到 tikhub_test 本地 Raw
+→ 同一个响应再由正式 RawArtifactService 保存正式 Raw Artifact
+→ Candidate-before-Mapper
+→ 正式 TikHub Mapper / Canonical
+→ 本地 Canonical / Excel 继续保留
+→ 正式 fenced Content Ingestion
+→ PostgreSQL Current / Version / Metric / 来源历史
 ```
-
-最终配置名、应放在公共参数还是各平台 `run_*()` 调用参数中，由 Stage 8A 的实现 Change 根据当前 `tikhub_test` API 冻结；无论形式如何，都必须保持“默认文件-only，显式开启才写库”。
 
 数据库模式固定遵守：
 
 - 假定开发者机器上已经有一个可访问的 PostgreSQL 18 开发实例，通常是已经启动的本地数据库容器；
-- `tikhub_test` 只读取仓库现有数据库配置和 Secret 边界、连接并校验，不负责 `docker compose up/down`；
+- 只读取仓库正式 `AIMA_DB_*` / Secret 配置，不自动 `docker compose up/down`；
 - 不自动创建/删除数据库容器；
-- 不自动执行 Alembic Migration，更不能执行破坏性 Migration；
-- 数据库不可用或 Schema 不满足要求时，数据库阶段明确失败，但已经保存的 Raw/Canonical/Excel 等调试产物继续保留；
-- 不允许数据库失败后静默退回文件模式并把整次运行标为成功；
-- 不直接写 SQL，不建立 `TikHubDatabaseWriter` 或 `tikhub_test` 私有 Repository；
-- 不把已经保存的调试 Canonical 再走一套平行“回灌 Writer”；
-- 优先让写库模式调用正式 Collection/Provider/Raw/Candidate/Ingestion 生产链，使来源 Attempt/Raw/费用/重试语义仍与正式系统一致；
-- Canonical 之后统一复用 `ContentIngestionService → PostgresContentRepository`；
-- 数据库按内容 `(platform, external_content_id)`、评论稳定身份做跨关键词、跨运行、跨来源的最终收敛，`state.json` 只负责调试过程省请求，不能替代 PostgreSQL 唯一约束和历史语义。
+- 不自动执行 Alembic Migration；Schema 不满足当前代码要求时直接失败；
+- `provider_config_id` 必须显式提供，不能根据名称或 `.env` 静默猜正式配置；
+- `.env` Base URL/API Key 必须和该正式 Provider Config/Secret 一致，避免来源审计错配；
+- 不建立 `TikHubDatabaseWriter` 或 `tikhub_test` 私有 Repository，不直接写 Content SQL；
+- 不从已导出的 JSONL/Excel 再走平行回灌路径；
+- Canonical 之后复用现有正式 Collection Content Ingestion / Content Owner；
+- 同一 Provider 网络调用只发送一次，数据库模式本身不会把付费请求翻倍；
+- 如果本地 Raw 镜像失败，正式 Attempt/Raw 会先按生产链收敛，随后错误仍向人工调用方暴露，不把调试文件失败静默吞掉；
+- 执行结束后 Run/Scope/Job 会按真实 Attempt 成败收敛为终态。
 
-因此 Stage 8A 完成后，同一组人工 TikHub 调试参数可以按需要选择：
+因此同一组人工 TikHub 参数可以按需要选择：
 
 ```text
 仅文件调试
@@ -309,4 +353,4 @@ Stage 8A 将保留现有 `run_*()` 人工调试方式，并增加显式 opt-in �
 文件保留 + 正式 PostgreSQL 入库
 ```
 
-两种模式都必须继续复用同一套正式 TikHub Client、Operation、分页、Mapper、Decision 和 Ingestion；本目录仍然只是人工调试/验证入口，不成为第二套生产采集器。
+两种模式都复用同一套正式 TikHub Client、Operation、分页、Mapper、Decision 和 Ingestion；本目录仍然只是人工调试/验证入口，不成为第二套生产采集器。
