@@ -44,14 +44,11 @@ class ContentDeduplicationSummary:
 
 
 class ContentDeduplicationConflictError(ValueError):
-    """同一稳定身份出现不等价记录时 fail closed。"""
+    """兼容旧版调用方保留的异常；当前去重流程不再因字段差异抛出。"""
 
     def __init__(self, summary: ContentDeduplicationSummary) -> None:
         self.summary = summary
-        super().__init__(
-            f"发现 {summary.conflicts} 个稳定身份冲突，未发布去重业务 JSONL；"
-            f"详见 {summary.conflict_path}"
-        )
+        super().__init__(f"发现 {summary.conflicts} 个非等价重复记录；详见 {summary.conflict_path}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,7 +138,7 @@ def deduplicate_content_jsonl(
     input_path: Path,
     output_path: Path,
 ) -> ContentDeduplicationSummary:
-    """按 (platform, external_content_id) 去重；冲突时不发布业务输出。"""
+    """按 (platform, external_content_id) 去重，保留首次记录并审计字段差异。"""
 
     source_path = Path(input_path)
     target_path = Path(output_path)
@@ -188,6 +185,7 @@ def deduplicate_content_jsonl(
                     duplicates_removed += 1
                     continue
 
+                duplicates_removed += 1
                 conflicts += 1
                 first_record = _read_record_at(
                     input_file,
@@ -220,9 +218,6 @@ def deduplicate_content_jsonl(
         conflicts=conflicts,
     )
     temp_conflict_path.replace(conflict_path)
-    if conflicts:
-        temp_path.unlink(missing_ok=True)
-        raise ContentDeduplicationConflictError(summary)
     temp_path.replace(target_path)
     return summary
 

@@ -23,7 +23,7 @@ def test_keyword_pack_loader_keeps_102_source_model_rows_and_brand_keyword() -> 
     assert pack.effective_keyword_count == 96
     assert pack.keywords[0] == "爱玛"
     assert "元宇宙Pony" in pack.keywords
-    assert "凌志26-M" in pack.keywords
+    assert "凌志26M" in pack.keywords
     assert "黑翼S3 60" in pack.keywords
     assert "黑翼S360" not in pack.keywords
 

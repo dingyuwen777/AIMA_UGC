@@ -1,4 +1,4 @@
-# imports_test 本地舆情相关性清洗词包
+# importstest 本地舆情相关性清洗词包
 # 一行一个标准词；空行和以 # 开头的行会被忽略。
 # 机械书写变体由程序统一处理，不需要在这里重复维护大小写、空格、-、_、· 等变体。
 
@@ -13,25 +13,25 @@
 小宝莉
 小宝莉时尚版
 A30Mix
-小金豆-B22
-小金豆-B13
-马赫V7-Z
+小金豆B22
+小金豆B13
+马赫V7Z
 FX3Pro
-F30-微酷
+F30微酷
 F30碟刹
-酷骑S-碟刹新国标
-F20-碟刹
-F2Lite-碟刹
+酷骑S碟刹新国标
+F20碟刹
+F2Lite碟刹
 F30
 F20
-酷迈26-碟刹
-酷迈25S-碟刹
+酷迈26碟刹
+酷迈25S碟刹
 风火轮
 F2lite2.0
-酷迈25S-鼓刹
+酷迈25S鼓刹
 元宇宙Space L
-墩墩-联名
-墩墩-26联名
+墩墩联名
+墩墩26联名
 墩墩
 元宇宙PonyTQ
 元宇宙PlayTQ
@@ -40,57 +40,57 @@ F2lite2.0
 元宇宙lite2.0TQ
 小金豆3.0TQ
 FX3Pro
-F30-微酷TQ
-F30-碟刹TQ
-酷领-25Pro
-F20-碟刹TQ
+F30微酷TQ
+F30碟刹TQ
+酷领25Pro
+F20碟刹TQ
 酷骑Pro
-酷迈26-碟刹TQ
-酷骑S-碟刹
-酷迈25S-碟刹TQ
-酷迈25S-基础TQ
-Q5赫本联名-Z
-Q5TR1.0版-Z
+酷迈26碟刹TQ
+酷骑S碟刹
+酷迈25S碟刹TQ
+酷迈25S基础TQ
+Q5赫本联名Z
+Q5TR1.0版Z
 M豆Air
-喜爱2026Pro-Z
-LumiPro 时尚版-Z
-LumiAir 时尚版-Z
+喜爱2026ProZ
+LumiPro 时尚版Z
+LumiAir 时尚版Z
 喜爱Pro
 罗兰Air
 露娜2024Air
 爱朵2024Air
-仰望A5-Z
-A3-Z
-马赫U3-Z
-T3-1Z6
+仰望A5Z
+A3Z
+马赫U3Z
+T31Z6
 领航官EB 26款
 卫士AB51
-马赫U3-Z
+马赫U3Z
 猎鲨S18
 猎风
 猎骑S1z
 猎骑FB56
 凌骏FB52
-Q5MAX-M
-Q5赫本联名版Pro-M
+Q5MAXM
+Q5赫本联名版ProM
 元宇宙Oi
 元宇宙Plus联名
 M豆AirTFT版
 M豆Air
 LumiPro时尚版
 LumiAir时尚版
-喜爱2026Pro-M
+喜爱2026ProM
 罗兰PRO
 喜爱Air Q605
 A50
 皓影Pro
 露娜2024Air
-爱朵Lite-M
+爱朵LiteM
 优悦Q505
 仰望A5
 仰望A5
 爱玛A3
-泰坦T3-M
+泰坦T3M
 A5ProA580
 领航官2025
 领航官A511
@@ -104,7 +104,7 @@ A5ProA580
 黑翼S360
 绝影2026
 猎鹰
-猎鲨-M
-猎骑26-M
+猎鲨M
+猎骑26M
 猎骑85F520
-凌志26-M
+凌志26M

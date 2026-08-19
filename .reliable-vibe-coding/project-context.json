@@ -1,5 +1,5 @@
 {
-  "candidate_path_digest": "948cbb867e367c79f92de4eee89f52187ae557c5f4b398a88d40942df6d43196",
+  "candidate_path_digest": "27085fa26cc9542a657d50af4f6b3c271d679fa52ddbfa240f079782bfb6d847",
   "directories": [
     {
       "count": 4,
@@ -53,7 +53,7 @@
       "path": "backend/src/aima_ugc/modules/system"
     },
     {
-      "count": 2,
+      "count": 3,
       "kinds": [
         "contract"
       ],
@@ -155,375 +155,381 @@
     {
       "kind": "instructions",
       "path": "AGENTS.md",
-      "sha256": "e0b35f577ad81066fbaedb9fab8e1b7d3bd18992f9e560e35c3c6d72d61d5e76",
-      "size": 18256,
+      "sha256": "8559b4dcd87ac32fafad117a9ee13b7d9c491368577f3de1b6c11ded2bc7f3d7",
+      "size": 18672,
       "title": "AIMA_UGC AI / Coding Agent 开发规范"
     },
     {
       "kind": "documentation",
       "path": "README.md",
-      "sha256": "006cffd52ffc041dd9ad12550eea0d690ad3e758966c5624f808c075eec9565d",
-      "size": 24824,
+      "sha256": "9475019f24acf6fcb4ad15e308e1b8516e233afb4bc4f310e7a62dbbdff96121",
+      "size": 25183,
       "title": "AIMA_UGC"
     },
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/adapters/providers/imports_test/README.md",
-      "sha256": "e6bf6428589788c8655e6fb3015ca263a38c5e820d4451db1f86a62cd7fce693",
-      "size": 13129,
-      "title": "Excel 离线导入测试 / 调试"
+      "sha256": "d02c70d17312f47faa942454d5d979d9c528dcea47f7488d40e428d3a52f6723",
+      "size": 13862,
+      "title": "Excel 离线导入、清洗与 AI 多标签打标"
     },
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/adapters/providers/tikhub_test/README.md",
-      "sha256": "af5af9e3ade55619edc69cd6dad388133246288e315cc207ac32a7e4f3ebccc9",
-      "size": 8992,
+      "sha256": "513d1bede20242ed9ebc492d3bc27a0e04996b2ea7c2102fe0983992b6dc6d91",
+      "size": 9255,
       "title": "TikHub 五平台独立测试 / 调试"
     },
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/modules/analysis/README.md",
-      "sha256": "b68dbd37cacabf9c5239defa79126c2311af3c3e3ecf5e94a01a68e325612a4a",
-      "size": 10283,
+      "sha256": "cde08098872122f4e8379afe86d12c311fbcdb9a4c5e67c3aa50f85d0d3102f1",
+      "size": 10972,
       "title": "Analysis 模块"
     },
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/modules/collection/README.md",
-      "sha256": "3d6ff8596eff82d4940aed3e370e0072646f1285f794c394948f1e96830bbde7",
-      "size": 14813,
+      "sha256": "3cd7cec450f4a9276054af8dfca9fd46943a748cdd35d02b851db14f68de34dc",
+      "size": 14971,
       "title": "Collection 模块"
     },
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/modules/content/README.md",
-      "sha256": "d5526fc2586ae1611cf74de54244e9873aa452d2b889bedf3b4b415fe5879d2c",
-      "size": 5091,
+      "sha256": "d95b0dc89f3e8b1e5b80b8863a8fc14376bda286f5d1d50ba07d2264241fcf0c",
+      "size": 5169,
       "title": "Content 模块"
     },
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/modules/system/README.md",
-      "sha256": "d2ada56e1713e6058fa8dcc8dc150b88d388734f016572e6325889414ac02393",
-      "size": 2560,
+      "sha256": "e6254359ea9ea6c9128cf096eb1c7d0653ad4376ff8487d6f44a5d043c6f9cc1",
+      "size": 4103,
       "title": "System 模块"
     },
     {
       "kind": "contract",
       "path": "contracts/analysis/content-label-analysis.v1.schema.json",
-      "sha256": "58bcb3e5388b62642ec1b23871e2c96a46cfcbf70a0552b1d514d4785baaa812",
-      "size": 1430
+      "sha256": "c2f9e92d2e373e7fba352d1dabae5bcb9a5364806224ec48b6807fe5bfea6386",
+      "size": 1431
+    },
+    {
+      "kind": "contract",
+      "path": "contracts/analysis/content-label-analysis.v2.schema.json",
+      "sha256": "8689a16d4a6586b80d22fdb1a0481c0003d9e92ee1e64d227647ad40950b4dbe",
+      "size": 1769
     },
     {
       "kind": "contract",
       "path": "contracts/analysis/content-record.v1.schema.json",
-      "sha256": "16b68b4d4b94c69fbc06de97bd19056239b7e8696ce0553fe00b8020984acc66",
-      "size": 11612
+      "sha256": "44ce51db3d1d6cb66203dd4fe3d2a030bc80e66e20035c030a048329a96aa26b",
+      "size": 13653
     },
     {
       "kind": "contract",
       "path": "contracts/canonical/comment.v1.schema.json",
-      "sha256": "daaff4f6eebfa2d7c69af61c9ee30ada2f6c6d6e8873fdc6654d9be936fb5070",
-      "size": 9130
+      "sha256": "6285e04c12f66e727d022123007205cb644491c45c589108af0de3a7b60e815a",
+      "size": 9131
     },
     {
       "kind": "contract",
       "path": "contracts/canonical/content.aggregate.v1.schema.json",
-      "sha256": "ccc659cf7f936ee8bb64e1f754eb27d6d6d2a7fcf92bea715288432424c77782",
-      "size": 13999
+      "sha256": "818ff6cfbc32465e0c2ff8ba72538ccf9920ffdecbd7373142cf851d906db73f",
+      "size": 14000
     },
     {
       "kind": "contract",
       "path": "contracts/canonical/content.v1.schema.json",
-      "sha256": "105421385705fdea62cf1f3524fe4c9c4981d84a79e680d10193e8debaa43954",
-      "size": 9548
+      "sha256": "a53a5fb2e4625e65ccd55283e2e0aef82d5616272703ed27284a7e3d510f5d5b",
+      "size": 9549
     },
     {
       "kind": "contract",
       "path": "contracts/canonical/examples/content.aggregate.v1.json",
-      "sha256": "c77213f912fec9178195305025a0732e092fdb93c2f8d5bcc05ccdddc29e8fcd",
-      "size": 8775
+      "sha256": "8c8e6befc02b3dfe5ad60059f91e87b098c1c16a6687d3d614b8e5b4b42dee8e",
+      "size": 9053
     },
     {
       "kind": "contract",
       "path": "contracts/collection/decision-request.v1.schema.json",
-      "sha256": "eb47c86216d380fad8d79958a710bde8736ae3f84c5cd6f9d10ae8e792d10b07",
-      "size": 6285
+      "sha256": "3a11984842a76e46071515c66ae8a94b9aef72850526f549eb03b86a33d4dc60",
+      "size": 6286
     },
     {
       "kind": "contract",
       "path": "contracts/collection/decision.v1.schema.json",
-      "sha256": "9c3640222b4620acf1a91d52b4443ed9b3a07d8950787a3d6d7bc4f4fcba6337",
-      "size": 1563
+      "sha256": "649b2b3e8b91b6700891d0a60c6a378998abb9bd5eb0b07350dbfe2844b0e039",
+      "size": 1564
     },
     {
       "kind": "contract",
       "path": "contracts/collection/provider-config.v1.schema.json",
-      "sha256": "0caa1d86a4005d96397dcfa99bafe1d169bd9f90a8172af45565558e91fba877",
-      "size": 898
+      "sha256": "269e1eabc9700dd19bfd9e6e5fd0c9e211b8d6b946cf50381c7b401766767044",
+      "size": 899
     },
     {
       "kind": "contract",
       "path": "contracts/collection/provider-platform-capability.v1.schema.json",
-      "sha256": "5f85c07e3b74892f5305b451acd1ca9d14cbedf824968568ec591b7f0c633972",
-      "size": 3133
+      "sha256": "890cef7b0e8b57007e26932750ace380b13c728dd07d3c8cd9f4ab7a3781c7a2",
+      "size": 3134
     },
     {
       "kind": "contract",
       "path": "contracts/collection/provider-platform-route.v1.schema.json",
-      "sha256": "1ab2ac0ee46343f68809d46b92b85f929d29f0f732c8de3f50b7e71a61be6303",
-      "size": 3934
+      "sha256": "36ae832a577074c6a402bed08c34c94cee937439b9e556c5e34f3797d5d4393c",
+      "size": 3935
     },
     {
       "kind": "contract",
       "path": "contracts/export/unified-data-excel.v1.schema.json",
-      "sha256": "7e69ee4e858c30975b2deecf6b689e90d33fa02d379662fc69b399142c73c147",
-      "size": 6381
+      "sha256": "c824d01ffeb3ad56c4759156956571df010e7b344f8ccd309c3c9ddb7f093840",
+      "size": 6973
     },
     {
       "kind": "contract",
       "path": "contracts/openapi/openapi.json",
-      "sha256": "0234a612359901867824e82d27b005d53c0c4d74e3d70d43266ab99feaf56c39",
-      "size": 3474
+      "sha256": "680706c7c6530f4bf7b652725b038dc5f827feef6ee9d8f135276cc450dab075",
+      "size": 3617
     },
     {
       "kind": "contract",
       "path": "contracts/provider/attempt.v1.schema.json",
-      "sha256": "7041d1e9c59812b283464421e1401323a6d5252ede8eda1bfb26b7dc24f37fa0",
-      "size": 3446
+      "sha256": "b159603f4bcf1f02cef06b503fad4950321c3fd367191c527916b18297995d8e",
+      "size": 3447
     },
     {
       "kind": "contract",
       "path": "contracts/provider/raw-envelope.v1.schema.json",
-      "sha256": "89361a684b5293bf9c49ba48798ac10d498bfebcf0bd7bd855acf0f90a963929",
-      "size": 4552
+      "sha256": "a6057256904c09f4a65b8f98758dbec095743614f6e79a5976f16cc980355363",
+      "size": 4553
     },
     {
       "kind": "contract",
       "path": "contracts/provider/request.v1.schema.json",
-      "sha256": "02242fcf32250f7552ca6d179bb1db80fa204023dfaf78355e15bea4efba56fd",
-      "size": 1268
+      "sha256": "3e8f2dde692a232faf9bd06ac6f3f4f647cf92938672dc69b8336c5a7de2e779",
+      "size": 1269
     },
     {
       "kind": "documentation",
       "path": "docs/API接口说明.md",
-      "sha256": "61d3c41966e4a525c44ecf3bc0ecfc8893d7e4f6917c11982a1e8640a88abe34",
-      "size": 5889,
+      "sha256": "be198aba82ecea7a701d732d7f61e8cd0d192457df3a828bf7240ea14e11f10f",
+      "size": 6050,
       "title": "AIMA_UGC API 接口说明"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/01-总体架构与技术选型.md",
-      "sha256": "cf165fe43cbba1e1f569ed7e8e17bb11ce772a3b583fea0e85196c6b56b2c914",
-      "size": 15444,
+      "sha256": "3e0f45f002ac87aeb481651dc706033e97449b903e4acd521063a2ce3d4cfbfb",
+      "size": 15858,
       "title": "总体架构与技术选型"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/02-采集系统与数据标准化.md",
-      "sha256": "3e307f35cc3ed691cf9292b36f8e0aa3ec20c86f0644d5491badc4027821a47c",
-      "size": 33000,
+      "sha256": "dd91208dbfa8b58cc680e29672d25ed877da0829f437de8a8c35d09fe319b28a",
+      "size": 33775,
       "title": "采集系统与数据标准化"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/03-数据库与文件存储.md",
-      "sha256": "8535a65d3885d782d1ef9f3d6c314ea41ada07b771c80c267b216cb12cc2d92e",
-      "size": 52316,
+      "sha256": "add379ca6f347ce31c17ca2d6dbe801e6adcbf7507208ea543ef6e1a0ea0f749",
+      "size": 53324,
       "title": "数据库与文件存储"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/04-后端任务API与前端.md",
-      "sha256": "fec99929f836f74fb61ba57a1d7f34d084f7e336d01aa3b6b75b1db620022509",
-      "size": 24179,
+      "sha256": "e05ec74f8d789ba8066d308656f4d5f8e7230bc8a493941755cdad216738a7c7",
+      "size": 24779,
       "title": "后端任务、API 与前端"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/05-日志安全部署与运维.md",
-      "sha256": "0338488e8c5391f5ade94f9dba6f2968f971878acf903279f3430dc56b3a37b2",
-      "size": 20931,
+      "sha256": "3f13b68ff72235f4d0df8410ed9f474d76403031539318054681f0eb6999b0f6",
+      "size": 21598,
       "title": "日志、安全、部署与运维"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/06-开发约束与分阶段实施.md",
-      "sha256": "8920207b170e0310bf1b88233bc3cd037754c2b1042e8b8733c76ab9a7778085",
-      "size": 33777,
+      "sha256": "c5742353b8b80373c4a2dda771bba54de89a0b7de5e1eecbd787a654b35f8328",
+      "size": 34589,
       "title": "开发约束与分阶段实施"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/07-技术决策与实施门禁.md",
-      "sha256": "5cd211f6238d97dde21a1e4773443a355c59e6a8863914d5a39326e793dd3cc0",
-      "size": 55726,
+      "sha256": "6f427a117663e7ae7b8cdc647071b79f71efd15e5a9b4be61645b0768a64adca",
+      "size": 56197,
       "title": "技术决策与实施门禁"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/08-采集策略与平台能力.md",
-      "sha256": "c10a8a956233ec40381a7e31dcea2f479dd0916f8bb0d7a3e64d83cc9889ba60",
-      "size": 29150,
+      "sha256": "36bf7d2045133257357e32edec476f9d5b4a55c27f1550b1054802405ead1fca",
+      "size": 29708,
       "title": "采集策略与平台能力"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/09-Scheduler运行与恢复策略.md",
-      "sha256": "784c4b1e6aa44bd19e08ee67fa095d89d3d6660cdaa0ff00853e4dfb6b74f399",
-      "size": 10631,
+      "sha256": "aabed08be502533bdad4bdb0b389cf0f87e41acc52b573cdc9e62740fa80b075",
+      "size": 10872,
       "title": "Scheduler 运行与恢复策略"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/10-TikHub真实响应结构附录.md",
-      "sha256": "cb57f91ec0543bd3796157f4d3a1072e543834ffc761df01c0e50a6a4f3fdd72",
-      "size": 16137,
+      "sha256": "f55432272607f5a1cfef5b6208d72f3dda02710dccf166c5f15ca928d4ae9222",
+      "size": 16640,
       "title": "TikHub 五平台真实响应结构附录"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/11-TikHub多接口验证与备用策略.md",
-      "sha256": "df3670d2eb9730e9f6590aaa006a7c243c9715a65c448989259bb2a7a94b5090",
-      "size": 10378,
+      "sha256": "0e0bd75c6e28ae416f3357a41cd07dadf2603834cdd1110113fa49f28e10d3f0",
+      "size": 10632,
       "title": "TikHub 多接口验证与备用策略"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/12-TikHub真实请求响应与接口选型台账.md",
-      "sha256": "5df8130778ab8321b064f8a4c061bc00c4a3a05644eb33fa9a3f3a7be2d7eb8b",
-      "size": 21271,
+      "sha256": "e2e0f2b20149322f2d9d2bb28bcbe235ca325e5a8684d9124a0697c833a7687f",
+      "size": 21883,
       "title": "TikHub 五平台真实请求、响应与接口选型台账"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/13-统一数据Excel导出与调试复用.md",
-      "sha256": "c44db804666b7464a2db2857a7da6ce9568ec73635308ab6cf72ee058f44dd31",
-      "size": 9106,
+      "sha256": "044f9174628c96181feac413d5284996972a6a9431b011c9f28461e2caf1f2d1",
+      "size": 12000,
       "title": "统一数据 Excel 导出与调试复用"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/15-舆情AI打标与统一分析契约.md",
-      "sha256": "700bdbf0ef791ddcd7e0086c65975f7264d14ad28c77a80331839e93e6e43b7e",
-      "size": 30108,
+      "sha256": "ca18b0582d999f736e1736d67cde88e85d834de46c8f031848d35f4404518ccd",
+      "size": 33396,
       "title": "舆情 AI 打标与统一分析契约"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/README.md",
-      "sha256": "66c50fb41aa28c3211564aaf9a63d7520d900baef11c31cc2a626e49da707eef",
-      "size": 16846,
+      "sha256": "8b5cb28053bb29df0892396c936a0a0606fc230d0f26873c06fbb3a8594761d9",
+      "size": 17015,
       "title": "AIMA_UGC Blueprint 导航"
     },
     {
       "kind": "documentation",
       "path": "docs/collection/README.md",
-      "sha256": "04ef6edc32f2afe70bcb106abe829a59334722fff6e5a17fb918da728e2d344a",
-      "size": 13763,
+      "sha256": "c45b718b3d7b300472c8a09aa53a0cc50d3749cb24013b25896cf0290d3e8b68",
+      "size": 14070,
       "title": "采集能力说明"
     },
     {
       "kind": "documentation",
       "path": "docs/collection/bilibili.md",
-      "sha256": "4557fd1eb35f7f74560800189e27ca7d39de49241a04a40f1277cb86acad2746",
-      "size": 2091,
+      "sha256": "bee146fd6549ceadacecad777fa901b2325f6b98d6f3e86047e4e0cb4c997102",
+      "size": 2148,
       "title": "B站采集逻辑"
     },
     {
       "kind": "documentation",
       "path": "docs/collection/douyin.md",
-      "sha256": "72bea6bea4d908577df221c669755eb2320f9d7ae6fef2d8ca24797c5e2afc75",
-      "size": 2610,
+      "sha256": "10569d04c5ac23d10d148c14022006c8cd1028248c46a6a02bd135f0bc095092",
+      "size": 2661,
       "title": "抖音采集逻辑"
     },
     {
       "kind": "documentation",
       "path": "docs/collection/kuaishou.md",
-      "sha256": "bf9272aa0854ab34c04b0fee44c64d374b346ba6af783ae1b0d5133da59e7d70",
-      "size": 2078,
+      "sha256": "85053d923c1116b5f443e82d0f94452128ec97a0446b707ebdee1b6f5f162acb",
+      "size": 2126,
       "title": "快手采集逻辑"
     },
     {
       "kind": "documentation",
       "path": "docs/collection/weibo.md",
-      "sha256": "ae3642c5cc3f3e53d0060738ae4814ae37273cde541952228c0724c7d9498ec0",
-      "size": 1808,
+      "sha256": "9c15b52e41588a071a09751165c0db5e9903c78af7d16399874be19e3edc0bed",
+      "size": 1856,
       "title": "微博采集逻辑"
     },
     {
       "kind": "documentation",
       "path": "docs/collection/xiaohongshu.md",
-      "sha256": "c44cf736b23eea6dd2382b962d91fcbf4addea34c5dc0e432bc3eda19b601bfa",
-      "size": 2060,
+      "sha256": "5c64d2fc331e9345a3b5f02a3f35a6d19e7bc4b247a202153d50ff83ced5e299",
+      "size": 2104,
       "title": "小红书采集逻辑"
     },
     {
       "kind": "documentation",
       "path": "docs/测试与调试说明.md",
-      "sha256": "772baca576a36a3047a74d919f5aece5c9a1c405190f01041fc7f1bc5d043c05",
-      "size": 26097,
+      "sha256": "c6388306a8c9dc73310fa086f16f16d0c17bdb2df1ff97e1236642355a2c6de1",
+      "size": 27455,
       "title": "AIMA_UGC 测试与调试说明"
     },
     {
       "kind": "documentation",
       "path": "docs/环境运行与部署.md",
-      "sha256": "c76f0a21c530cff4a18559db6afad9a4aeac9c5fc33a19552b81f9926960471a",
-      "size": 19269,
+      "sha256": "b9fbd4c2ceca5161b21519ae727f9032d447d7304b2bb6163bceec987eb0c81d",
+      "size": 19859,
       "title": "环境、运行与部署"
     },
     {
       "kind": "manifest",
       "path": "frontend/package-lock.json",
-      "sha256": "fede28320ee32b79f0a48c7167660f3f8e48caeb77c5ed1c2265dc806a5c66af",
-      "size": 224163
+      "sha256": "7d85e197ee1c52e01939bbab03b53ad6322fa6635e5e6079ac43f2acd1cd7d21",
+      "size": 230570
     },
     {
       "kind": "manifest",
       "path": "frontend/package.json",
-      "sha256": "631a55140b6d128ec3f8b10263dc6acc4a696cb06e50ffcc85ee09559cde7096",
-      "size": 1332
+      "sha256": "1a1d3ca3099cb705dd63ed1e691797d9778efd62b79d858635e4bbc800b8307d",
+      "size": 1378
     },
     {
       "kind": "manifest",
       "path": "pyproject.toml",
-      "sha256": "7c286facf9cd0eed5eef85f6e26f4d116f70bda2e71defd816fa0672784894d5",
-      "size": 908
+      "sha256": "79bf9c6c91d53e86d66ee2ad7eefeca37c11543a035bab0183ca0d6c4a585436",
+      "size": 956
     },
     {
       "kind": "documentation",
       "path": "tests/fixtures/providers/tikhub/README.md",
-      "sha256": "d67b44e319b48db5a0c068d2037000ddc4c728c62ce84f66b917e2ccba67039b",
-      "size": 5395,
+      "sha256": "bff186280f71e22040fb7c42dcfdf866fe1dfe527bcf7bc36c5e8540742dfb12",
+      "size": 5483,
       "title": "TikHub 真实结构 Fixture"
     },
     {
       "kind": "documentation",
       "path": "tests/fixtures/providers/tikhub/endpoint_ledger/2026-08-16/README.md",
-      "sha256": "9dd78cd16c1b775ce90faf39f0db10884c0921409447cb2aa18b361258cbacf8",
-      "size": 716,
+      "sha256": "df4f987d9cbf4fd1262dbd1eb8eeae79d125dbbfe138a45146905e4b264955c0",
+      "size": 730,
       "title": "TikHub 五平台主链真实 Endpoint Ledger"
     },
     {
       "kind": "documentation",
       "path": "tests/fixtures/providers/tikhub/xhs/README.md",
-      "sha256": "1047865082515f9c99423e92ef824154a4053cbcb114d59e01ff6893326841ce",
-      "size": 1279,
+      "sha256": "33c992113c253c28f3f033019726ee89f661fa9ffca15294ca6337ff8bfaf44e",
+      "size": 1290,
       "title": "TikHub 小红书测试 Fixture"
     },
     {
       "kind": "manifest",
       "path": "uv.lock",
-      "sha256": "2b098c2c115fcf28087d5b8694a6b4ea61de46b65bf233e58289b0f38ceb3ea3",
-      "size": 90475
+      "sha256": "d36a8044069af29d08bc434d0c38a113d498d4a90bd848f9e5c8d89aeed64fa3",
+      "size": 91124
     }
   ],
-  "generated_at": "2026-08-19T02:42:44+00:00",
+  "generated_at": "2026-08-19T11:42:50+00:00",
   "generator_version": "0.1.0",
   "git": {
-    "indexed_at_commit": "74773a49c6adb381a5bddccc24fd88b6c48caab7",
+    "indexed_at_commit": "f06dead311fdb3606fad37efb52bb073ea2a3264",
     "repository": true,
-    "worktree_candidate_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    "worktree_candidate_digest": "79f09ee34bc0aa277558ae74d29d49ffd9d5062b806cd27d1d3f4cc899814d5b"
   },
   "package_scripts": {
     "frontend/package.json": {

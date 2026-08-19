@@ -219,11 +219,16 @@ def _user_message(request: ContentLabelingLLMRequest) -> str:
     )
 
 
-def _protocol_error(message: str, *, error_code: str) -> OpenAICompatibleLLMError:
+def _protocol_error(
+    message: str,
+    *,
+    error_code: str,
+    retryable: bool = False,
+) -> OpenAICompatibleLLMError:
     return OpenAICompatibleLLMError(
         message,
         error_code=error_code,
-        retryable=False,
+        retryable=retryable,
     )
 
 
@@ -252,7 +257,13 @@ def _response_content(payload: Any) -> str:
             error_code="missing_message",
         )
     content = message.get("content")
-    if not isinstance(content, str) or not content:
+    if content is None or (isinstance(content, str) and not content.strip()):
+        raise _protocol_error(
+            "OpenAI-compatible LLM message.content 必须是非空字符串",
+            error_code="invalid_message_content",
+            retryable=True,
+        )
+    if not isinstance(content, str):
         raise _protocol_error(
             "OpenAI-compatible LLM message.content 必须是非空字符串",
             error_code="invalid_message_content",

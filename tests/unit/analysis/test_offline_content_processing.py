@@ -8,7 +8,6 @@ import pytest
 from aima_ugc.contracts.analysis import UnifiedContentRecordV1
 from aima_ugc.contracts.canonical import CanonicalContentV1, CanonicalSourceV1
 from aima_ugc.modules.analysis.offline_content import (
-    ContentDeduplicationConflictError,
     deduplicate_content_jsonl,
     filter_canonical_content_jsonl,
 )
@@ -224,8 +223,13 @@ def test_deduplicate_collapses_equivalent_identity_and_keeps_first_locator(tmp_p
     assert record.content.source.item_locator == "sheet=文章;row=2"
 
 
-def test_deduplicate_conflict_fails_closed_without_publishing_partial_output(
+@pytest.mark.parametrize(
+    "platform",
+    ("xiaohongshu", "douyin", "weibo", "bilibili", "kuaishou"),
+)
+def test_deduplicate_keeps_first_non_equivalent_record_and_audits_difference(
     tmp_path: Path,
+    platform: str,
 ) -> None:
     source = tmp_path / "filtered" / "contents.jsonl"
     output = tmp_path / "deduplicated" / "contents.jsonl"
@@ -235,6 +239,7 @@ def test_deduplicate_conflict_fails_closed_without_publishing_partial_output(
             title="爱玛新品发布",
             text="正文",
             item_locator="sheet=文章;row=2",
+            platform=platform,
         ),
         matched_keywords=["爱玛"],
     )
@@ -244,6 +249,7 @@ def test_deduplicate_conflict_fails_closed_without_publishing_partial_output(
             title="同一身份但标题发生变化",
             text="正文",
             item_locator="sheet=文章;row=9",
+            platform=platform,
         ),
         matched_keywords=["爱玛"],
     )
@@ -253,20 +259,28 @@ def test_deduplicate_conflict_fails_closed_without_publishing_partial_output(
             title="爱玛另一条内容",
             text="正文",
             item_locator="sheet=文章;row=10",
+            platform=platform,
         ),
         matched_keywords=["爱玛"],
     )
     _write_jsonl(source, [first, conflict, another])
 
-    with pytest.raises(ContentDeduplicationConflictError) as exc_info:
-        deduplicate_content_jsonl(input_path=source, output_path=output)
+    summary = deduplicate_content_jsonl(input_path=source, output_path=output)
 
-    summary = exc_info.value.summary
     assert summary.rows_seen == 3
     assert summary.rows_written == 2
-    assert summary.duplicates_removed == 0
+    assert summary.duplicates_removed == 1
     assert summary.conflicts == 1
-    assert not output.exists()
+    records = [
+        UnifiedContentRecordV1.model_validate_json(line)
+        for line in output.read_text(encoding="utf-8").splitlines()
+    ]
+    assert [record.content.external_content_id for record in records] == [
+        "content-1",
+        "content-2",
+    ]
+    assert records[0].content.title == "爱玛新品发布"
+    assert records[0].content.source.item_locator == "sheet=文章;row=2"
     conflicts = [
         json.loads(line)
         for line in summary.conflict_path.read_text(encoding="utf-8").splitlines()
@@ -274,7 +288,7 @@ def test_deduplicate_conflict_fails_closed_without_publishing_partial_output(
     ]
     assert conflicts == [
         {
-            "platform": "xiaohongshu",
+            "platform": platform,
             "external_content_id": "content-1",
             "first_line": 1,
             "duplicate_line": 2,

@@ -525,6 +525,7 @@ aima-monitoring-excel.v1
 - **HTTP 402**：模型服务余额不足；立即停止。
 - **HTTP 429**：进入有界 Transport Retry；持续超过限制时停止新调度，保留成功 checkpoint。
 - **HTTP 5xx / 网络错误**：按 Transport Retry 处理。
+- **HTTP 200 但 `message.content` 为空**：Provider 的 JSON Output 偶发空结果按 Transport Retry 处理；超过限制仍停止新调度，避免无限调用和费用失控。
 - **标签校验失败**：查看 `analysis/attempts.jsonl` 和 `analysis/failed.jsonl`。
 - **程序中途终止**：不要删除 `analysis/checkpoints.jsonl`；修复问题后在同一 run 上继续 `label_sentiment(run_dir=...)` 可恢复成功项。
 - **run_id 已存在**：不要覆盖旧 run，使用新 run ID。
@@ -547,3 +548,24 @@ keyword_pack_items
 3. 正式数据库 `keywords.normalized_text` 的写入规范化算法和历史冲突处理。
 
 当前本地 NFKC/casefold/去空白/连接符规则只定义离线清洗匹配，不自动成为数据库唯一键 Contract。
+
+## 16. 稳定身份去重规则
+
+过滤后的统一记录按以下身份去重：
+
+```text
+(platform, external_content_id)
+```
+
+该规则对小红书、抖音、微博、B站、快手和后续合法平台一致生效：
+
+- 同一身份只输出源文件中首次出现的一条记录；
+- 后续完全等价记录直接计入 `duplicates_removed`；
+- 后续记录即使正文、发布时间、来源文章编号或其他业务字段不同，也仍计入
+  `duplicates_removed`，不会再次进入 LLM；
+- 非等价重复同时写入 `deduplicated/deduplication_conflicts.jsonl`，记录首次行、
+  丢弃行和差异字段，作为数据质量审计，但不再中止任务；
+- 去重不会按字段拼接记录，也不会根据发布时间、文本长度或平台私有规律猜测哪条更正确。
+
+因此最终 `deduplicated/contents.jsonl` 和 Excel 中同一平台的同一内容最多出现一次，代表记录及
+输出顺序由源文件首次出现顺序确定。

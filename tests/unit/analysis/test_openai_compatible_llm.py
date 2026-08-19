@@ -4,6 +4,7 @@ import json
 
 import httpx
 import pytest
+from aima_ugc.adapters.llm import RetryingContentLabelingLLM
 from aima_ugc.adapters.llm.openai_compatible import (
     OpenAICompatibleContentLabelingLLM,
     OpenAICompatibleLLMError,
@@ -180,3 +181,40 @@ def test_openai_compatible_adapter_does_not_hide_transport_retry_or_response_bod
     assert "HTTP 500" in str(exc_info.value)
     assert "sensitive-provider-body" not in str(exc_info.value)
     assert "secret" not in str(exc_info.value)
+
+
+@pytest.mark.parametrize("empty_content", [None, "", " \n\t"])
+def test_openai_compatible_empty_content_uses_explicit_bounded_retry(
+    monkeypatch: pytest.MonkeyPatch,
+    empty_content: str | None,
+) -> None:
+    calls = 0
+    valid_content = '{"items":[]}'
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        content = empty_content if calls == 1 else valid_content
+        return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
+
+    client = httpx.Client(
+        base_url="https://llm.example/v1/",
+        transport=httpx.MockTransport(handler),
+    )
+    monkeypatch.setattr("aima_ugc.adapters.llm.retrying.time.sleep", lambda _: None)
+    try:
+        adapter = OpenAICompatibleContentLabelingLLM(
+            api_key=SecretStr("secret"),
+            model="model-a",
+            client=client,
+        )
+        retrying = RetryingContentLabelingLLM(inner=adapter, max_retries=1)
+
+        response = retrying.complete(_request())
+    finally:
+        client.close()
+
+    assert response.raw_text == valid_content
+    assert calls == 2
+    assert retrying.total_requests == 2
+    assert retrying.total_retries == 1
