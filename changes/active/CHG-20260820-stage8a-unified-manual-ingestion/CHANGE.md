@@ -77,7 +77,7 @@ Stage 8A 当前已经形成以下机器事实：
 5. **重复 Excel 与 Excel/TikHub 跨来源只形成一个 Current：已由 PostgreSQL 18 Integration 验证。**
 6. **更晚合法 Observation 推进 Current/Version/Metric：已由 PostgreSQL 18 Integration 验证。**
 7. **数据库阶段失败后可重试且不制造第二 Current：已由 PostgreSQL 18 Integration 验证。**
-8. **Migration/Contract/Unit/PG18/质量门禁：代码检查点已取得新鲜成功证据；最终文档 head 仍需再次取得完整 CI 后才允许合并。**
+8. **Migration/Contract/Unit/PG18/质量门禁：核心实现检查点已取得新鲜成功证据；最终文档 head 仍需再次取得完整 CI 后才允许合并。**
 
 ## 4. 来源链方案比较与最终选择
 
@@ -256,7 +256,7 @@ manual Collection Run / keyword Scope / Job Fencing
 
 ## 9. PostgreSQL 18 与 CI 新鲜证据
 
-代码/核心文档检查点：
+核心实现检查点：
 
 ```text
 08f1d646058a0da447b658a257a3f6da61dc0c17
@@ -305,7 +305,13 @@ uv run pytest tests/integration/collection -q
 - `head → base → head`；
 - `head → previous revision → head`。
 
-当前最新分支 head 在后续 README/导航/测试说明/本 Change 文档同步后会变化，因此 **08f1d646 的绿灯不作为最终合并证据**。必须等本文件提交后的最新 head 再取得完整适用 CI 全绿，才允许将 PR 转 Ready/合并。
+文档/Change 收口后的最终验证候选 head 为：
+
+```text
+d599c275fb510544972b76727c61684c6a54d08f
+```
+
+本文件本身随后又产生一个只记录验证锚点的文档 commit，因此**最终合并必须以 PR 实际最新 head 为准重新查询 workflow**，不得直接拿 `08f1d646` 或 `d599c275` 的旧结果冒充最终证据。
 
 ## 10. 文档同步
 
@@ -360,7 +366,7 @@ uv run pytest tests/integration/collection -q
 - 起始 `main`：`09ff597f6dc28d06c36017c3c9a8af062fe1e425`
 - 分支：`feature/stage8a-unified-manual-ingestion`
 - PR：`#88 Stage 8A：统一手工数据入库基础`
-- PR 当前仍需在**本 Change 提交后的最新 head**取得新鲜 CI，并完成需求符合性/代码质量 Review。
+- PR 当前仍需在**实际最新 head**取得新鲜 CI，并完成需求符合性/代码质量 Review。
 - 在最终 CI 与 Review 完成前，Change 保持 `ready_for_review`，不得标记 `done`，不得归档。
 - 合并后必须重新读取 `main` 的 `AGENTS.md` 和合并事实，确认 main 集成状态/CI；只有这一步也成立后，才能把 Change 标记 `done` 并移动到 `changes/archive/2026-08/`。
 - Stage 8A 闭环前不进入 Stage 8B。
@@ -376,6 +382,7 @@ PR: #88
 Change: changes/active/CHG-20260820-stage8a-unified-manual-ingestion/CHANGE.md
 code/migration baseline: 20260820_0019
 last fully green core checkpoint: 08f1d646058a0da447b658a257a3f6da61dc0c17
+last pre-validation documentation checkpoint: d599c275fb510544972b76727c61684c6a54d08f
 ```
 
 恢复顺序：先读目标分支 `AGENTS.md` → Skill → 本 Change → PR 最新 head/CI。若最新 head 比上述 checkpoint 更新，必须以 GitHub 最新事实为准重新验证，不能退回旧 commit。
