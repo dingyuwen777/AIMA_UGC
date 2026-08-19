@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260818-douyin-detail-400"
 title: "抖音详情400不中断整批调试采集"
 level: L2
-status: ready_for_review
+status: done
 owner: "dingyuwen777"
 branch: "fix/tikhub-test-default-paths"
 created: 2026-08-18
@@ -84,7 +84,7 @@ TikHub 无数据库调试运行中，单个抖音搜索结果调用 `fetch_one_v
 - [x] 目标、相关与整仓新鲜验证
 - [x] 刷新 RVC `project-context.json`
 - [x] 两阶段复核
-- [ ] PR #73 合并、post-merge 验证与 Change 归档
+- [x] PR #73 合并、post-merge 验证与 Change 归档
 
 # 验证
 
@@ -121,21 +121,21 @@ exit 1
 
 首次 Green 目标测试已经 `68 passed`，随后 Ruff format 正确指出 helper 删除后多余空行；使用仓库锁定 Ruff 机械格式化后，最终候选不保留临时 workflow。
 
-## 最终新鲜候选
+## PR 合并前最终候选
 
-最终代码与 RVC 索引候选 `9cf16351f219d25da41076ff97ef22d21d313695` 已取得 **11/11 适用正式 workflow success**：
+代码与 RVC 索引候选 `9cf16351f219d25da41076ff97ef22d21d313695` 已取得 11/11 适用正式 workflow success；Change 状态提交 `c7404ab62c517877219058d615adb91b0f50c9f6` 再次取得 11/11 success：
 
-- CI — Run `32209558642`；
-- Stage 1-7 Audit Correctness — `32209558665`；
-- Stage 5A Provider Raw — `32209558657`；
-- Stage 5B Collection Execution — `32209558723`；
-- Stage 5C Provider Persistence — `32209558646`；
-- Stage 5D Provider Dispatch — `32209558641`；
-- Stage 6 XHS Vertical Slice — `32209558618`；
-- Stage 7 Keyword Packs — `32209558715`；
-- Stage 7 Plan Occurrence Run Snapshot — `32209558611`；
-- Stage 7 Provider Config Routing — `32209558623`；
-- Stage 7 Scheduler Runtime — `32209558634`。
+- CI — Run `32209730314`；
+- Stage 1-7 Audit Correctness — `32209730304`；
+- Stage 5A Provider Raw — `32209730292`；
+- Stage 5B Collection Execution — `32209730309`；
+- Stage 5C Provider Persistence — `32209730301`；
+- Stage 5D Provider Dispatch — `32209730329`；
+- Stage 6 XHS Vertical Slice — `32209730297`；
+- Stage 7 Keyword Packs — `32209730347`；
+- Stage 7 Plan Occurrence Run Snapshot — `32209730295`；
+- Stage 7 Provider Config Routing — `32209730316`；
+- Stage 7 Scheduler Runtime — `32209730377`。
 
 Stage5A 的目标测试、Ruff/mypy、Analysis/Export Contract、Architecture、Secret/Docs、Provider/Raw、Provider Contract 与全局 quality 全部 success。Stage6 的 Unit、Quality、PostgreSQL Integration 与全部 Migration round-trip success。总 CI 的 Stage1、Stage2、Stage3A 与 Windows bootstrap success。
 
@@ -146,6 +146,31 @@ python .agents/skills/reliable-vibe-coding/scripts/rvc.py discover --root .
 ```
 
 生成后的 `.reliable-vibe-coding/project-context.json` 已提交；一次性 workflow 已删除，不进入最终 PR。
+
+## PR #73 与 post-merge
+
+PR #73 正常 merge 到 `main`：
+
+```text
+merge commit = 6e25fdb640e8a51a394258ee09b33e79405cda88
+```
+
+没有 rebase、force push 或 CI 绕过。合并后从该 main merge commit 建立归档验证分支，并使用 3 个无业务语义 `.txt` marker 重新触发全部正式 Stage workflow；候选 `ab29f4783972e72d105460971d21bd6ffdc39c28` 取得 **12/12 success**：
+
+- CI — Run `32209959634`；
+- Stage 1-7 Audit Correctness — `32209959680`；
+- Stage 4 Job Runtime — `32209959676`；
+- Stage 5A Provider Raw — `32209959592`；
+- Stage 5B Collection Execution — `32209959595`；
+- Stage 5C Provider Persistence — `32209959608`；
+- Stage 5D Provider Dispatch — `32209959621`；
+- Stage 6 XHS Vertical Slice — `32209959594`；
+- Stage 7 Keyword Packs — `32209959718`；
+- Stage 7 Plan Occurrence Run Snapshot — `32209959660`；
+- Stage 7 Provider Config Routing — `32209959604`；
+- Stage 7 Scheduler Runtime — `32209959609`。
+
+三个 marker 在归档前均已删除，不属于产品文件，也不会进入 `main`。
 
 # 两阶段复核
 
@@ -171,8 +196,9 @@ python .agents/skills/reliable-vibe-coding/scripts/rvc.py discover --root .
 
 # 交付
 
-- branch：`fix/tikhub-test-default-paths`；
-- Draft PR：#73；
-- 当前状态：`ready_for_review`；
-- PR 合并后必须取得 post-merge 新鲜验证，随后将本 Change 标记 `done` 并归档；
+- 实现 PR：#73，已合并；
+- 实现 merge commit：`6e25fdb640e8a51a394258ee09b33e79405cda88`；
+- post-merge 12/12 正式 workflow 已成功；
+- 归档 PR：#74；
+- 当前状态：`done`；
 - 不涉及数据库、Migration、依赖、真实 TikHub 付费请求或 Stage 8。
