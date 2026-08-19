@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 import aima_ugc.adapters.providers.tikhub_test.core.config as tikhub_test_config
+import pytest
 from aima_ugc.adapters.providers.tikhub_test import (
     run_bilibili,
     run_douyin,
