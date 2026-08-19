@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260819-simplify-llm-config
 title: 精简离线 AI 打标 LLM 配置
 level: L2
-status: ready_for_review
+status: done
 owner: ChatGPT
 branch: fix/simplify-llm-config
 created: 2026-08-19
@@ -75,7 +75,8 @@ Blueprint 15 已核对：其长期约束只要求 `model_provider + model` 等�
 - [x] 建立失败测试并确认目标行为当前未实现
 - [x] 完成最小实现
 - [x] 同步 `.env.example` 与直接受影响 README
-- [x] 取得目标 Green、静态检查、Contract/架构/Secret/Docs 与主 CI 新鲜证据
+- [x] 取得目标 Green、静态检查、Contract/架构/Secret/Docs 与最终 PR head 全量 workflow 证据
+- [x] PR 正常合并并确认 `main`
 
 # 验证
 
@@ -99,7 +100,23 @@ Green（实现 head `86effe3675f9d99156dd113ff14cc385adaca5ce`）：Stage 5A Pro
 - Provider/Raw 相关测试：`24 passed in 0.38s`；
 - Stage 5A 全仓 Ruff format/check、mypy、架构、table ownership、Secret、Docs 质量门禁全部通过，其中全仓 mypy 为 `Success: no issues found in 168 source files`。
 
-同一实现 head 的主 `CI` run `32218415327` 已 success；Stage 1-7 Audit、Stage 5A/5C/5D、Stage 6、Stage 7 Keyword Packs/Plan Occurrence/Provider Config/Scheduler 共 10 个已完成 workflow 均 success。最后一次记录时 Stage 5B 仍处于 GitHub Runner 排队状态；本 Change 元数据收口提交后仍需以最终 PR head 的新鲜 workflow 结果作为合并门禁。
+最终 PR head `204b5726aba8f6999d11c81ae1ac31a5a4cec675` 的 11 个 PR workflows 全部 completed/success：
+
+- CI `32218613668`；
+- Stage 1-7 Audit Correctness `32218613674`；
+- Stage 5A Provider Raw `32218613652`；
+- Stage 5B Collection Execution `32218613768`；
+- Stage 5C Provider Persistence `32218613724`；
+- Stage 5D Provider Dispatch `32218613757`；
+- Stage 6 XHS Vertical Slice `32218613765`；
+- Stage 7 Keyword Packs `32218613762`；
+- Stage 7 Plan Occurrence Run Snapshot `32218613687`；
+- Stage 7 Provider Config Routing `32218613680`；
+- Stage 7 Scheduler Runtime `32218613670`。
+
+CI `32218613668` 的 Stage 1、Stage 2 Platform、Stage 3A Database、Windows bootstrap 均 success；Stage 1 的 generated contracts/client、backend/repository checks、Wheel build 与 frontend checks 均 success。
+
+集成：PR #78 使用普通 merge 正常合入 `main`，merge commit 为 `3348d10ab70eebab62adcd649717afcdb4ab6fbb`；合并后重新读取 `main` 已确认其指向该提交。
 
 # 文档影响
 
@@ -112,5 +129,7 @@ Green（实现 head `86effe3675f9d99156dd113ff14cc385adaca5ce`）：Stage 5A Pro
 - Change 初始化 Commit：`5a04d4d702baae0cff977da79930e520a47f1827`
 - Red 测试 Commit：`ec6c5a88129a6ed6382896133f5bfb4bd2322a9e`
 - 实现与文档 Commit：`6295be8a659a1cd8c737a3ef66e8fdb8427dcaa1` 至 `86effe3675f9d99156dd113ff14cc385adaca5ce`
-- PR：#78，Draft；待最终 head workflow 全绿后转 Ready 并按仓库正常门禁合并。
-- 发布：不涉及独立部署；随正常 PR 集成。
+- 最终 PR head：`204b5726aba8f6999d11c81ae1ac31a5a4cec675`
+- PR：#78，已正常合并。
+- main merge commit：`3348d10ab70eebab62adcd649717afcdb4ab6fbb`
+- 发布：不涉及独立部署；随 `main` 正常集成。
