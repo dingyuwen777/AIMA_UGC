@@ -16,8 +16,7 @@
 6. 涉及 Scheduler、TikHub API family 验证或真实响应结构时，再分别读取 `09`—`12` 中与当前任务直接相关的文档；
 7. **涉及帖子/评论数据 Excel、`.xlsx` 审阅、共享 Exporter、`tikhub_test` 或 `imports_test` Excel 复用时，必须读取 [`13-统一数据Excel导出与调试复用.md`](13-统一数据Excel导出与调试复用.md)。**
 8. **涉及 AI 情感/一级/二级标签、Prompt、模型输入、分析结果版本、JSONL 回写或未来 Analysis 数据库存储时，必须读取 [`15-舆情AI打标与统一分析契约.md`](15-舆情AI打标与统一分析契约.md)。**
-9. **当前临时 P1 未闭环期间，任何 Stage 8 开发前必须再读取 [`14-临时P1-Excel离线导入与舆情打标.md`](14-临时P1-Excel离线导入与舆情打标.md) 和对应 Active Change；只继续最前面的未完成 P1 子阶段。**
-10. 进入具体实现后，只继续读取相关模块 README、Contract、Migration、依赖、Operation/Mapper、Fixture、实现和测试。
+9. 进入具体实现后，只继续读取相关模块 README、Contract、Migration、依赖、Operation/Mapper、Fixture、实现和测试。
 
 不要因为存在 Blueprint 就跳过代码和测试事实，也不要一次性读取所有文档代替针对当前任务的现状调查。
 
@@ -61,12 +60,11 @@
 | [`11-TikHub多接口验证与备用策略.md`](11-TikHub多接口验证与备用策略.md) | 同业务语义 API family A/B、候选状态、显式备用与禁止自动 fallback | App/Web/V1/V2/V3 候选验证、备用接口策略 |
 | [`12-TikHub真实请求响应与接口选型台账.md`](12-TikHub真实请求响应与接口选型台账.md) | 五平台主 endpoint、真实请求/响应、价格事实和接口选型证据 | TikHub 主链核查、Real Probe、endpoint 选型与历史 A/B |
 | [`13-统一数据Excel导出与调试复用.md`](13-统一数据Excel导出与调试复用.md) | 唯一 `UnifiedDataExcelV1`、raw/labeled 同契约、同源 JSONL→Excel、共享 Exporter 与调试复用门禁 | Excel、`.xlsx`、`openpyxl`、`tikhub_test`/`imports_test`、系统级统一导出 |
-| [`14-临时P1-Excel离线导入与舆情打标.md`](14-临时P1-Excel离线导入与舆情打标.md) | Stage 8 前临时 P1 的无数据库 Excel→JSONL→AI 回写→Excel 实施边界和 P1A—P1H | **仅 P1 未闭环期间读取；P1 完成后删除本文和本索引项** |
 | [`15-舆情AI打标与统一分析契约.md`](15-舆情AI打标与统一分析契约.md) | 全平台通用 4 情感 + 9 一级 + 39 二级 taxonomy、最小模型输入、Markdown Prompt、Analysis Contract、JSONL 回写与数据库 Owner 边界 | AI 打标、Prompt 调优、模型 Adapter、Analysis 结果、数据库/Excel 消费 |
 
 ## 当前开发状态
 
-**Stage 1—7 已闭环；Stage 7 的实现、Review、PR 合并、合并后 `main` 新鲜 CI 和 Change 归档均已完成。Stage 8 仍是下一正式阶段，但当前业务最高优先级切换为临时 P1，P1 完成前暂停进入 Stage 8。**
+**Stage 1—7 已闭环。临时 P1 已完成 Excel 离线导入、关键词清洗、稳定身份去重、统一 Excel 导出、全平台通用 AI 打标、checkpoint 恢复、90,000×13 性能验证与真实模型小样；P1 的长期规则已收口到 Blueprint 13/15。Stage 8 现在恢复为下一正式阶段。**
 
 Stage 7 已完成并固化：
 
@@ -80,7 +78,7 @@ Stage 7 已完成并固化：
 - Plan → Platform / Keyword Pack、Occurrence、Run/Scope Snapshot，首版固定 `Asia/Shanghai + latest_only + max_catch_up_runs=0`；
 - Scheduler Runtime：更早到期 slot 写 `skipped/misfire_superseded`，只执行最新到期 slot；Occurrence / Job / scheduled Run / Scope / cursor 在正式 PostgreSQL 事务边界内编排；
 - `collection.run.v1` 正式 Worker：`Production JobRegistry / JobWorker → CollectionRunJobHandler → CollectionRunExecutor → TikHubCollectionScopeExecutor → Provider Request/Attempt → Raw → Mapper → Canonical → fenced Ingestion`；
-- Worker 默认 Secret 从 `runtime.settings.secret_dir + validated secret_ref` 读取；默认 TikHub Transport 的自持 HTTP Client 在每次发送后关闭；TikHub Bearer Secret 出站 Origin 限制为批准的 `https://api.tikhub.io`；
+- Worker 默认 Secret 从 `runtime.settings.secret_dir + validated secret_ref` 读取；默认 TikHub Transport 的自持 HTTP Client 在每次发送后关闭；TikHub Bearer Secret 默认出站 Origin 为 `https://api.tikhub.dev`，显式兼容既有 `https://api.tikhub.io`，其他 Origin 在发送 Secret 前拒绝；
 - Real Provider Probe 与 API family A/B 的受控事实入口；真实 Probe 不进入普通 CI，也不能把一次 HTTP 200 当长期稳定性承诺。
 
 Stage 7 的实现 PR 为 `#55`，最终实现 head 为 `056e8f5684b19f6b40c4e7c4755593aee3336a7a`，正常合并后的 `main` commit 为 `737151a179a4b941c8bdc553cc77c4286bcb6d27`；最终 PR head 和合并后 `main` 都取得了新鲜 11/11 workflow 成功证据。完整归档证据见：
@@ -89,57 +87,21 @@ Stage 7 的实现 PR 为 `#55`，最终实现 head 为 `056e8f5684b19f6b40c4e7c4
 changes/archive/2026-08/CHG-20260815-stage7-completion/CHANGE.md
 ```
 
-## 当前临时优先阶段
+P1 已固化的长期能力：
 
-### P1：Excel 离线导入、关键词清洗、去重与舆情打标
-
-P1 是 Stage 7 与 Stage 8 之间的临时优先插入，不改变任何正式 Stage 编号。当前实施顺序由 [`14-临时P1-Excel离线导入与舆情打标.md`](14-临时P1-Excel离线导入与舆情打标.md) 和对应 Active Change 维护；AI 长期语义由 [`15-舆情AI打标与统一分析契约.md`](15-舆情AI打标与统一分析契约.md) 维护。
-
-当前 P1A—P1G 已闭环；下一最小正式单元是 P1H。P1H 未完成前不得进入 Stage 8。
-
-P1 第一版固定为无数据库离线实现：
-
-```text
-source.xlsx
-→ canonical/contents.jsonl
-→ filtered/contents.jsonl
-→ deduplicated/contents.jsonl（analysis 初始为空）
-→ AI 打标并原子回写同一 deduplicated/contents.jsonl
-→ labeled_data.xlsx
-```
-
-`raw_data.xlsx` 只允许作为可选人工审阅旁路，不是 AI 或默认 `run_all()` 的前置步骤。
-
-AI 打标是**全平台通用能力**，不是 P1/File Import 专属逻辑。模型业务输入只有 `title`、`text`、`author.display_name`；标签闭集、Markdown Prompt 和未来数据库 Analysis Owner 规则见 Blueprint 15。
-
-P1 完成并归档后必须：
-
-- 删除 `14-临时P1-Excel离线导入与舆情打标.md`；
-- 删除本文中的 P1 临时入口、索引项和当前优先级说明；
-- 保留 13 中的唯一 Excel Contract/共享 Exporter 长期规则；
-- 保留 15 中的平台通用 AI 打标长期规则；
-- 保留已经实现的可复用代码/测试；
-- Stage 8 自动恢复为当前下一正式阶段。
-
-P1 多网页对话恢复事实时至少读取：
-
-```text
-AGENTS.md
-→ .agents/skills/reliable-vibe-coding/SKILL.md
-→ docs/blueprint/README.md
-→ docs/blueprint/07-技术决策与实施门禁.md
-→ docs/blueprint/14-临时P1-Excel离线导入与舆情打标.md
-→ docs/blueprint/15-舆情AI打标与统一分析契约.md
-→ docs/blueprint/13-统一数据Excel导出与调试复用.md
-→ changes/active/CHG-20260818-p1-offline-excel-sentiment/CHANGE.md
-→ 当前 feature branch / Draft PR / 实现 / 测试
-```
+- 文件 Excel Provider 使用 Canonical/Provider-neutral 边界，不依赖数据库；
+- `UnifiedContentRecordV1` 承载关键词命中与可空 Analysis，Canonical 不承载 AI 标签；
+- `UnifiedDataExcelV1` 与唯一共享 Exporter 同时服务 `imports_test`、`tikhub_test` 和后续正式导出；
+- raw/labeled Excel 使用同一 Workbook Contract，业务中间处理不从 Excel 回读；
+- 全平台内容 Analysis 复用同一 Prompt/Taxonomy、Runtime Validator、LLM Port/Adapter 和有界 Validation Retry；
+- 成功 Analysis 先 checkpoint，再原子回写同一个 Provider-neutral JSONL；
+- 具体长期 Excel 与 Analysis 规则分别由 Blueprint 13 和 15 维护。
 
 ## 下一正式阶段
 
 ### Stage 8：API / 正式业务前端
 
-Stage 8 仍是下一正式阶段，但在 P1 完成、临时 Blueprint 清理和 P1 Change 归档之前不得开始。P1 收口后的新 Stage 8 对话/Change 必须重新从当时 `main` 事实出发，并按 `AGENTS.md`、Skill 和 Stage 8 相关 Blueprint 完成需求/Contract/接口/验收门禁。
+Stage 8 是当前下一正式阶段。新的 Stage 8 对话/Change 必须重新从当时 `main` 事实出发，并按 `AGENTS.md`、Skill 和 Stage 8 相关 Blueprint 完成需求、Contract、接口和验收门禁；本次 P1 收口不自动开始 Stage 8 实现。
 
 开始 Stage 8 时至少按以下顺序恢复事实：
 
@@ -164,8 +126,8 @@ AGENTS.md
 以下事项仍需要未来阶段/Release 独立处理：
 
 - Raw、个人信息、导出和审计的访问/保留/删除与合规规则；
-- P1 的共享 Excel Exporter 只是统一写出核心；正式系统级大批量导出仍需未来 API/Job/Artifact/权限/生命周期闭环；
-- P1 建立的是平台通用 Analysis 核心与无数据库验证入口；正式数据库 DDL/Migration、Analysis Job/API/页面仍在后续正式阶段闭环；
+- 已落地的共享 Excel Exporter 只是统一写出核心；正式系统级大批量导出仍需未来 API/Job/Artifact/权限/生命周期闭环；
+- 已落地的是平台通用 Analysis 核心与无数据库验证入口；正式数据库 DDL/Migration、Analysis Job/API/页面仍在后续正式阶段闭环；
 - 日请求量、数据量、Worker 并发、Raw/数据库日增量、磁盘容量、SLO、RPO、RTO；
 - 生产镜像 variant/digest、离线 Release、安全发布与恢复演练；
 - Stage 8 正式业务 API/页面及 Provider 凭据写入能力；凭据仍必须通过安全 SecretStore/SecretService，不能把数据库明文 Secret 当捷径；
@@ -178,8 +140,7 @@ AGENTS.md
 - `08` 保存 Stage 7 已完成的采集业务语义、Provider Config/Operation Matrix、Capability、Provider Billing 和未来 Budget/Cost Guard 边界；
 - `09` 保存 Scheduler 当前唯一恢复语义；
 - `10`—`12` 保存真实响应/API family/endpoint 证据的人类核查入口；
-- `13` 永久保存唯一 `UnifiedDataExcelV1`、同源 JSONL→Excel、raw/labeled 同契约和共享 Exporter 复用/删除门禁，并明确它不是 Report Renderer；
-- `14` 只保存当前临时 P1 的实施边界，P1 完成后必须删除，不能演变为第二套永久阶段体系；
+- `13` 永久保存唯一 `UnifiedDataExcelV1`、同源 JSONL→Excel、raw/labeled 同契约和共享 Exporter 复用门禁，并明确它不是 Report Renderer；
 - `15` 永久保存全平台 AI taxonomy、最小模型输入、Markdown Prompt、Analysis Contract、JSONL 回写和数据库 Analysis Owner 边界；
 - `docs/collection/` 保存面向开发/调试的通用和平台抓取说明，并始终标记当前代码/Fixture/Probe 状态；
 - 实际代码、Contract、Migration、锁文件和测试建立后，不在 Blueprint 复制第二份机器事实；
