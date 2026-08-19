@@ -32,7 +32,9 @@ def test_imports_test_export_raw_excel_uses_configured_review_columns(
     monkeypatch,
 ) -> None:
     output_root = tmp_path / "output"
-    deduplicated = output_root / "deduplicated" / "contents.jsonl"
+    run_dir = output_root / "runs" / "test-run"
+    run_dir.mkdir(parents=True)
+    deduplicated = run_dir / "deduplicated" / "contents.jsonl"
     deduplicated.parent.mkdir(parents=True)
     observed_at = datetime(2026, 8, 18, 6, 0, tzinfo=UTC)
     published_at = datetime(2026, 8, 18, 5, 30, tzinfo=UTC)
@@ -66,14 +68,14 @@ def test_imports_test_export_raw_excel_uses_configured_review_columns(
 
     assert imports_test_entry.EXCEL_CONTENT_COLUMNS == _EXPECTED_IMPORTS_COLUMNS
 
-    summary = imports_test_entry.export_raw_excel()
+    summary = imports_test_entry.export_raw_excel(run_dir=run_dir)
 
-    assert summary.output_path == output_root / "raw_data.xlsx"
+    assert summary.output_path == run_dir / "raw_data.xlsx"
     assert summary.content_rows == 1
     assert summary.comment_rows == 0
     workbook = load_workbook(summary.output_path, data_only=False)
     try:
-        assert workbook.sheetnames == ["内容", "评论"]
+        assert workbook.sheetnames == ["内容", "标签明细", "评论"]
         content_sheet = workbook["内容"]
         assert tuple(cell.value for cell in content_sheet[1]) == _EXPECTED_IMPORTS_COLUMNS
         assert tuple(cell.value for cell in content_sheet[2]) == (

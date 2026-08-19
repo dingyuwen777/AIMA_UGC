@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
 
 class _ExportBaseModel(BaseModel):
@@ -13,15 +13,33 @@ class _ExportBaseModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class UnifiedDataExcelAnalysisV1(_ExportBaseModel):
-    """Excel 展示所需的分析列投影；不定义具体标签闭集。"""
+class UnifiedDataExcelLabelPairV1(_ExportBaseModel):
+    """Excel 标签明细与主表多行展示共用的一级/二级标签对。"""
 
-    sentiment: str = Field(min_length=1, max_length=128)
     primary_label: str = Field(min_length=1, max_length=256)
     secondary_label: str = Field(min_length=1, max_length=256)
+
+
+class UnifiedDataExcelAnalysisV1(_ExportBaseModel):
+    """Excel 展示所需的分析投影；兼容单标签字符串并可携带完整标签对。"""
+
+    sentiment: str = Field(min_length=1, max_length=128)
+    primary_label: str = Field(min_length=1, max_length=4096)
+    secondary_label: str = Field(min_length=1, max_length=4096)
+    label_pairs: tuple[UnifiedDataExcelLabelPairV1, ...] = ()
     model: str | None = Field(default=None, max_length=256)
     prompt_version: str | None = Field(default=None, max_length=256)
     taxonomy_version: str | None = Field(default=None, max_length=256)
+
+    @field_validator("label_pairs")
+    @classmethod
+    def validate_unique_label_pairs(
+        cls, value: tuple[UnifiedDataExcelLabelPairV1, ...]
+    ) -> tuple[UnifiedDataExcelLabelPairV1, ...]:
+        keys = [(item.primary_label, item.secondary_label) for item in value]
+        if len(keys) != len(set(keys)):
+            raise ValueError("Excel Analysis label_pairs 不能重复")
+        return value
 
 
 class UnifiedDataExcelContentV1(_ExportBaseModel):

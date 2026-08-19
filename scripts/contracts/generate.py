@@ -6,7 +6,11 @@ import argparse
 import json
 from pathlib import Path
 
-from aima_ugc.contracts.analysis import ContentLabelAnalysisV1, UnifiedContentRecordV1
+from aima_ugc.contracts.analysis import (
+    ContentLabelAnalysisV1,
+    ContentLabelAnalysisV2,
+    UnifiedContentRecordV1,
+)
 from aima_ugc.contracts.canonical import (
     CanonicalCommentV1,
     CanonicalContentAggregateV1,
@@ -32,6 +36,7 @@ COLLECTION_DIR = ROOT / "contracts" / "collection"
 EXPORT_DIR = ROOT / "contracts" / "export"
 ANALYSIS_MODELS = {
     "content-label-analysis.v1.schema.json": ContentLabelAnalysisV1,
+    "content-label-analysis.v2.schema.json": ContentLabelAnalysisV2,
     "content-record.v1.schema.json": UnifiedContentRecordV1,
 }
 CANONICAL_MODELS = {

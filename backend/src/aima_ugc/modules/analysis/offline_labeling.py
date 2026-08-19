@@ -8,9 +8,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO
 
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
-from aima_ugc.contracts.analysis import ContentLabelAnalysisV1, UnifiedContentRecordV1
+from aima_ugc.contracts.analysis import ContentLabelAnalysis, UnifiedContentRecordV1
 
 from .content_labeling import (
     ContentLabelingAttempt,
@@ -59,6 +59,7 @@ class _BatchOutcome:
 
 
 _CheckpointKey = tuple[str, str, str]
+_ANALYSIS_ADAPTER: TypeAdapter[ContentLabelAnalysis] = TypeAdapter(ContentLabelAnalysis)
 
 
 def label_unified_content_jsonl(
@@ -194,9 +195,9 @@ def _process_batch(
     checkpoint_file: TextIO,
     attempt_file: TextIO,
     failed_file: TextIO,
-    checkpoint_index: dict[_CheckpointKey, ContentLabelAnalysisV1],
+    checkpoint_index: dict[_CheckpointKey, ContentLabelAnalysis],
 ) -> _BatchOutcome:
-    recovered: dict[int, ContentLabelAnalysisV1] = {}
+    recovered: dict[int, ContentLabelAnalysis] = {}
     pending_sources: list[_SourceRow] = []
     already_labeled = 0
 
@@ -245,7 +246,7 @@ def _process_batch(
         item_hashes=item_hashes,
     )
 
-    analyses: dict[int, ContentLabelAnalysisV1] = {}
+    analyses: dict[int, ContentLabelAnalysis] = {}
     failed_count = 0
     for item_result in result.items:
         pending_item = pending_by_item_no.get(item_result.item_no)
@@ -315,11 +316,11 @@ def _load_checkpoint_index(
     recovery_taxonomy: PromptTaxonomy | None,
     recovery_model_provider: str,
     recovery_model: str,
-) -> dict[_CheckpointKey, ContentLabelAnalysisV1]:
+) -> dict[_CheckpointKey, ContentLabelAnalysis]:
     if not path.exists() or recovery_taxonomy is None:
         return {}
 
-    index: dict[_CheckpointKey, ContentLabelAnalysisV1] = {}
+    index: dict[_CheckpointKey, ContentLabelAnalysis] = {}
     with path.open("rb") as input_file:
         for line_number, raw_line in enumerate(input_file, start=1):
             if not raw_line.strip():
@@ -342,7 +343,7 @@ def _load_checkpoint_index(
             if not isinstance(input_hash, str) or not input_hash:
                 raise ValueError(f"{path}: 第 {line_number} 行 checkpoint 身份字段不合法")
             try:
-                analysis = ContentLabelAnalysisV1.model_validate(payload.get("analysis"))
+                analysis = _ANALYSIS_ADAPTER.validate_python(payload.get("analysis"))
             except ValidationError as exc:
                 raise ValueError(f"{path}: 第 {line_number} 行 checkpoint analysis 不合法") from exc
             if analysis.input_hash != input_hash:
@@ -372,7 +373,7 @@ def _checkpoint_key(record: UnifiedContentRecordV1, input_hash: str) -> _Checkpo
 
 def _rewrite_record(
     source: _SourceRow,
-    analysis: ContentLabelAnalysisV1 | None,
+    analysis: ContentLabelAnalysis | None,
 ) -> UnifiedContentRecordV1:
     if analysis is None:
         return source.record

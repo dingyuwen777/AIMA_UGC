@@ -18,7 +18,7 @@ UnifiedContentRecordV1
 ```text
 analysis = null
 或
-ContentLabelAnalysisV1
+ContentLabelAnalysisV2
 ```
 
 P1 第一版不接数据库。AI 只读取并回写同一个：
@@ -34,7 +34,7 @@ deduplicated/contents.jsonl
 具体情感、一级标签、二级标签、一级/二级父子关系、覆盖内容、典型表达、边界规则、冲突优先级和示例只维护在：
 
 ```text
-backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v1.md
+backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v2.md
 ```
 
 Prompt 中只有一个机器可读 Taxonomy JSON 区块：
@@ -60,23 +60,25 @@ Loader 同时计算：
 
 ## 3. Analysis Contract
 
-公共成功结果是：
+当前新成功结果是：
 
 ```text
-ContentLabelAnalysisV1
+ContentLabelAnalysisV2
 ```
 
-三个业务标签字段固定使用 `str`：
+当前成功结果使用：
 
 ```text
-sentiment
-primary_label
-secondary_label
+sentiment: str
+labels: [
+  {primary_label: str, secondary_label: str},
+  ...
+]
 ```
 
-具体允许值由当前 `PromptTaxonomy` 动态校验，不写进 Python Enum/Literal。
+`sentiment` 恰好一个；`labels` 至少一个并允许多个。每个二级标签始终和所属一级标签成对保存，标签对不能重复。具体允许值仍由当前 `PromptTaxonomy` 动态校验，不写进 Python Enum/Literal。历史 `ContentLabelAnalysisV1` 保留只读兼容，新 Service 产生 `ContentLabelAnalysisV2`。
 
-`ContentLabelAnalysisV1` 只表示**已经通过本地 Validator 的成功结果**，所以其中 `analysis_status` 固定为 `succeeded`。Validation Retry 达到上限仍失败时，不构造失败版 `ContentLabelAnalysisV1`：Service 返回该 item 的 `analysis_status=failed`、`analysis=None` 和错误代码，离线编排把失败状态写入 `analysis/failed.jsonl`，业务 JSONL 中该记录仍保持 `analysis=null`。
+`ContentLabelAnalysisV2` 只表示**已经通过本地 Validator 的新成功结果**，`analysis_status` 固定为 `succeeded`；历史 `ContentLabelAnalysisV1` 具有相同成功语义。Validation Retry 达到上限仍失败时，不构造失败版 Analysis：Service 返回该 item 的 `analysis_status=failed`、`analysis=None` 和错误代码，离线编排把失败状态写入 `analysis/failed.jsonl`，业务 JSONL 中该记录仍保持 `analysis=null`。
 
 ## 4. 发给模型的最小业务输入
 
@@ -100,12 +102,13 @@ author.display_name
 - JSON 能否解析；
 - 顶层和 item 固定字段是否正确、是否有额外字段；
 - item 数量、顺序、唯一性与 `item_no` 配对；
-- 标签必须是非空单字符串，不能是数组；
-- sentiment 是否属于当前 Taxonomy；
-- primary 是否属于当前 Taxonomy；
-- secondary 是否属于当前 primary。
+- sentiment 必须是一个非空字符串；
+- labels 必须是非空标签对数组；
+- 标签对不能重复；
+- 每个 primary 是否属于当前 Taxonomy；
+- 每个 secondary 是否属于同一标签对中的 primary。
 
-校验不做模糊匹配、近义标签替换或程序猜测填值。缺少必须字段、额外字段、item 缺失/重复/数量不一致、`item_no` 无法配对、未知 sentiment/一级标签、二级不属于一级、数组/空标签及其他结构错误都会进入 Validation Retry 或最终失败。
+校验不做模糊匹配、近义标签替换或程序猜测填值。缺少必须字段、额外字段、item 缺失/重复/数量不一致、`item_no` 无法配对、未知 sentiment/一级标签、二级不属于一级、空 labels、重复标签对、未知标签、父子错配及其他结构错误都会进入 Validation Retry 或最终失败。
 
 生产 `ContentLabelingService.label_contents()` 接收：
 
@@ -202,7 +205,9 @@ model 等于当前 Service 的模型
 
 其中 `input_hash` 仍只由允许发送给模型的 `title`、`text`、`author.display_name` 计算。OpenAI-compatible Adapter 默认把实际 Base URL 的 endpoint host 作为 `model_provider`，因此更换服务 endpoint 或模型时旧 checkpoint 会安全失效；Prompt/Taxonomy 变化同理。旧 checkpoint 仍保留为历史审计。
 
-恢复成功的记录直接把 checkpoint 中已验证的 `ContentLabelAnalysisV1` 写入业务临时 JSONL，再参与同一次原子 `os.replace`；checkpoint 本身始终不是业务事实源。`OfflineContentLabelingSummary.rows_recovered` 用于区分本次恢复数量和本次新模型成功数量。
+恢复成功的记录直接把 checkpoint 中已验证的 `ContentLabelAnalysisV1` 或 `ContentLabelAnalysisV2` 写入业务临时 JSONL，再参与同一次原子 `os.replace`；checkpoint 本身始终不是业务事实源。`OfflineContentLabelingSummary.rows_recovered` 用于区分本次恢复数量和本次新模型成功数量。
+
+checkpoint 中的 `analysis.schema_version` 决定 V1/V2 解析。历史 V1 checkpoint 可以被安全解析，但是否恢复仍必须同时通过当前 input、Prompt/Taxonomy Hash、Provider 和 Model 身份门禁；因此使用旧 V1 Prompt 生成的 checkpoint 在当前 V2 Prompt 下会自然失效。新模型成功结果只写 V2。
 
 审计文件：
 

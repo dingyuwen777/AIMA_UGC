@@ -1,4 +1,4 @@
-"""P1E Provider-neutral 舆情单标签分析 Service、Port、Fake 与本地 Validator。"""
+"""Provider-neutral 舆情多标签分析 Service、Port、Fake 与本地 Validator。"""
 
 from __future__ import annotations
 
@@ -13,7 +13,11 @@ from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from aima_ugc.contracts.analysis import ContentLabelAnalysisV1
+from aima_ugc.contracts.analysis import (
+    ContentLabelAnalysis,
+    ContentLabelAnalysisV2,
+    ContentLabelPairV2,
+)
 from aima_ugc.contracts.canonical import CanonicalContentV1
 
 from .prompt_taxonomy import (
@@ -125,7 +129,7 @@ class ContentLabelingItemResult:
     item_no: int
     input_hash: str
     analysis_status: Literal["succeeded", "failed"]
-    analysis: ContentLabelAnalysisV1 | None
+    analysis: ContentLabelAnalysis | None
     validation_error_codes: tuple[str, ...] = ()
 
 
@@ -137,7 +141,24 @@ class ContentLabelingBatchResult:
     attempts: tuple[ContentLabelingAttempt, ...]
 
 
-class _ModelLabelItem(BaseModel):
+class _ModelLabelPair(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    primary_label: str = Field(min_length=1)
+    secondary_label: str = Field(min_length=1)
+
+
+class _ModelLabelItemV2(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    item_no: int = Field(ge=1)
+    sentiment: str = Field(min_length=1)
+    labels: list[_ModelLabelPair] = Field(min_length=1)
+
+
+class _ModelLabelItemV1(BaseModel):
+    """兼容历史单标签模型响应；新 Prompt 不再要求该形状。"""
+
     model_config = ConfigDict(extra="forbid", strict=True)
 
     item_no: int = Field(ge=1)
@@ -146,11 +167,31 @@ class _ModelLabelItem(BaseModel):
     secondary_label: str = Field(min_length=1)
 
 
+def _parse_model_label_item(
+    value: dict[str, Any],
+) -> tuple[str, tuple[ContentLabelPairV2, ...]]:
+    if "labels" in value:
+        parsed_v2 = _ModelLabelItemV2.model_validate(value)
+        return parsed_v2.sentiment, tuple(
+            ContentLabelPairV2(
+                primary_label=pair.primary_label,
+                secondary_label=pair.secondary_label,
+            )
+            for pair in parsed_v2.labels
+        )
+    parsed_v1 = _ModelLabelItemV1.model_validate(value)
+    return parsed_v1.sentiment, (
+        ContentLabelPairV2(
+            primary_label=parsed_v1.primary_label,
+            secondary_label=parsed_v1.secondary_label,
+        ),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class _ValidatedLabel:
     sentiment: str
-    primary_label: str
-    secondary_label: str
+    labels: tuple[ContentLabelPairV2, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -182,6 +223,30 @@ class RuntimeTaxonomyValidator:
             errors.append("unknown_primary_label")
         elif secondary_label not in self._taxonomy.labels[primary_label]:
             errors.append("invalid_secondary_for_primary")
+        if errors:
+            raise ContentLabelingValidationError(errors)
+
+    def validate_label_pairs(
+        self,
+        *,
+        sentiment: str,
+        labels: tuple[ContentLabelPairV2, ...],
+    ) -> None:
+        """校验一个情感和多个标签对；不去重、不猜测、不模糊匹配。"""
+
+        errors: list[str] = []
+        if sentiment not in self._taxonomy.sentiments:
+            errors.append("unknown_sentiment")
+        seen: set[tuple[str, str]] = set()
+        for pair in labels:
+            key = (pair.primary_label, pair.secondary_label)
+            if key in seen:
+                errors.append("duplicate_label_pair")
+            seen.add(key)
+            if pair.primary_label not in self._taxonomy.labels:
+                errors.append("unknown_primary_label")
+            elif pair.secondary_label not in self._taxonomy.labels[pair.primary_label]:
+                errors.append("invalid_secondary_for_primary")
         if errors:
             raise ContentLabelingValidationError(errors)
 
@@ -247,27 +312,22 @@ class RuntimeTaxonomyValidator:
                 continue
 
             try:
-                parsed = _ModelLabelItem.model_validate(candidates[0])
+                sentiment, label_pairs = _parse_model_label_item(candidates[0])
             except ValidationError:
                 item_errors[item_no] = ("invalid_item_structure",)
                 aggregate_errors.append("invalid_item_structure")
                 continue
 
             try:
-                self.validate_labels(
-                    sentiment=parsed.sentiment,
-                    primary_label=parsed.primary_label,
-                    secondary_label=parsed.secondary_label,
-                )
+                self.validate_label_pairs(sentiment=sentiment, labels=label_pairs)
             except ContentLabelingValidationError as exc:
                 item_errors[item_no] = exc.error_codes
                 aggregate_errors.extend(exc.error_codes)
                 continue
 
             valid_items[item_no] = _ValidatedLabel(
-                sentiment=parsed.sentiment,
-                primary_label=parsed.primary_label,
-                secondary_label=parsed.secondary_label,
+                sentiment=sentiment,
+                labels=label_pairs,
             )
 
         return _ValidationResult(
@@ -311,7 +371,7 @@ class FakeContentLabelingLLM:
 
 
 class ContentLabelingService:
-    """使用唯一 PromptTaxonomy 和 LLM Port 执行严格单标签分析。"""
+    """使用唯一 PromptTaxonomy 和 LLM Port 执行严格多标签分析。"""
 
     def __init__(
         self,
@@ -362,7 +422,7 @@ class ContentLabelingService:
         unresolved: OrderedDict[int, ContentLabelingModelItem] = OrderedDict(
             (item.item_no, item) for item in model_items
         )
-        successful: dict[int, ContentLabelAnalysisV1] = {}
+        successful: dict[int, ContentLabelAnalysis] = {}
         latest_errors: dict[int, tuple[str, ...]] = {}
         attempts: list[ContentLabelingAttempt] = []
         previous_errors: tuple[str, ...] = ()
@@ -404,10 +464,9 @@ class ContentLabelingService:
             )
 
             for item_no, validated in validation.valid_items.items():
-                successful[item_no] = ContentLabelAnalysisV1(
+                successful[item_no] = ContentLabelAnalysisV2(
                     sentiment=validated.sentiment,
-                    primary_label=validated.primary_label,
-                    secondary_label=validated.secondary_label,
+                    labels=validated.labels,
                     prompt_version=taxonomy.prompt_version,
                     prompt_sha256=taxonomy.prompt_sha256,
                     taxonomy_sha256=taxonomy.taxonomy_sha256,

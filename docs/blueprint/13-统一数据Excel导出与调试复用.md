@@ -61,10 +61,11 @@ content_columns = (
 
 ## 3. 当前共享 Workbook 字段
 
-Workbook 固定两个 Sheet：
+Workbook 固定三个 Sheet：
 
 ```text
 内容
+标签明细
 评论
 ```
 
@@ -143,9 +144,11 @@ Taxonomy版本
 
 其中：
 
-- 情感、一级、二级标签必须来自当前 Analysis Validator 已批准的闭集；
-- 没有合法 Analysis 时保持为空，不用源 Excel 的“全文情感”或其他上游标签填充；
-- 是否显示这些列由最终 `content_columns` 投影决定，但不改变 Analysis 数据是否存在。
+- 情感标签仍为单值；一级/二级标签由 Analysis 的一个或多个合法标签对投影；
+- `内容` Sheet 保持一条内容一行，一级和二级单元格按同一标签对顺序用换行符逐行展示，两个单元格行与行对应；
+- `标签明细` Sheet 一个标签对一行，固定保存内容ID、平台、标题、情感、一级、二级、内容链接，用于 Excel 原生下拉筛选和标签统计；同一内容因此可以在标签明细中出现多行，但不会在内容 Sheet 重复；
+- 没有合法 Analysis 时内容标签列保持为空，标签明细只保留表头，不用源 Excel 的“全文情感”或其他上游标签填充；
+- 是否显示内容 Sheet 的 Analysis 列由 `content_columns` 决定，但不改变 Analysis 数据或标签明细关系。
 
 ## 5. raw 与 labeled 使用同一展示配置
 
@@ -154,7 +157,7 @@ Taxonomy版本
 同一次调用场景下，raw/labeled 必须使用同一个：
 
 ```text
-Sheet 定义
+三个 Sheet 定义
 content_columns
 列顺序
 公共样式
@@ -402,6 +405,6 @@ Provider / File Import
 - 一个共享 Excel Exporter；
 - 默认完整视图向后兼容；
 - 允许对已知内容列做受控有序投影；
-- raw/labeled 同展示配置；
+- raw/labeled 同内容展示配置，标签明细 Sheet 结构也一致；
 - 业务中间处理不依赖 Excel 回读；
 - 数据明细 Excel 与 Report Renderer 相互独立。

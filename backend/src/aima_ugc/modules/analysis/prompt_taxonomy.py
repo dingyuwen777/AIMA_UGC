@@ -14,8 +14,8 @@ from typing import Any
 _TAXONOMY_START = "<!-- AIMA_TAXONOMY_START -->"
 _TAXONOMY_END = "<!-- AIMA_TAXONOMY_END -->"
 _TAXONOMY_SCHEMA_VERSION = "aima-content-taxonomy.v1"
-PROMPT_VERSION = "content-labeling.v1"
-CONTENT_LABELING_PROMPT_PATH = Path(__file__).with_name("prompts") / "content_labeling_v1.md"
+PROMPT_VERSION = "content-labeling.v2"
+CONTENT_LABELING_PROMPT_PATH = Path(__file__).with_name("prompts") / "content_labeling_v2.md"
 
 
 class PromptTaxonomyError(ValueError):
