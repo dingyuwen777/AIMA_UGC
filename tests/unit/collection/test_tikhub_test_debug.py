@@ -52,6 +52,7 @@ def test_run_platform_uses_config_default_env_without_cwd_search(
         tikhub_test_runner,
         "find_env_file",
         lambda *_args, **_kwargs: pytest.fail("run_platform 不应扫描 CWD/父目录 .env"),
+        raising=False,
     )
     monkeypatch.setattr(tikhub_test_runner._TikHubDebugRunner, "run", lambda self: self)
 
