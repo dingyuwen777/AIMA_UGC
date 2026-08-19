@@ -254,11 +254,15 @@ def test_repeated_excel_and_later_tikhub_converge_to_one_current_with_history(
             assert versions[0].provider_attempt_id != versions[1].provider_attempt_id
             assert versions[1].provider_attempt_id == dispatched_attempt_id
 
-            metric_reasons = session.execute(
-                select(content_metric_observations_table.c.reason)
-                .where(content_metric_observations_table.c.content_id == current["id"])
-                .order_by(content_metric_observations_table.c.observed_at)
-            ).scalars().all()
+            metric_reasons = (
+                session.execute(
+                    select(content_metric_observations_table.c.reason)
+                    .where(content_metric_observations_table.c.content_id == current["id"])
+                    .order_by(content_metric_observations_table.c.observed_at)
+                )
+                .scalars()
+                .all()
+            )
             assert metric_reasons == ["initial", "changed"]
     finally:
         session.close()
@@ -288,17 +292,25 @@ def test_failed_database_stage_can_retry_without_business_duplicate(
     session = database_runtime.new_session()
     try:
         with session.begin():
-            assert session.scalar(
-                select(func.count()).select_from(contents_table).where(
-                    contents_table.c.platform == "xhs",
-                    contents_table.c.external_content_id == "stage8a-retry-content",
+            assert (
+                session.scalar(
+                    select(func.count())
+                    .select_from(contents_table)
+                    .where(
+                        contents_table.c.platform == "xhs",
+                        contents_table.c.external_content_id == "stage8a-retry-content",
+                    )
                 )
-            ) == 0
-            assert session.scalar(
-                select(func.count()).select_from(processing_import_batches_table).where(
-                    processing_import_batches_table.c.status == "failed"
+                == 0
+            )
+            assert (
+                session.scalar(
+                    select(func.count())
+                    .select_from(processing_import_batches_table)
+                    .where(processing_import_batches_table.c.status == "failed")
                 )
-            ) == 1
+                == 1
+            )
     finally:
         session.close()
 
@@ -329,16 +341,23 @@ def test_failed_database_stage_can_retry_without_business_duplicate(
                 .one()
             )
             assert current["current_version"] == 1
-            assert session.scalar(
-                select(func.count()).select_from(content_versions_table).where(
-                    content_versions_table.c.content_id == current["id"]
+            assert (
+                session.scalar(
+                    select(func.count())
+                    .select_from(content_versions_table)
+                    .where(content_versions_table.c.content_id == current["id"])
                 )
-            ) == 1
-            statuses = session.execute(
-                select(processing_import_batches_table.c.status).order_by(
-                    processing_import_batches_table.c.created_at
+                == 1
+            )
+            statuses = (
+                session.execute(
+                    select(processing_import_batches_table.c.status).order_by(
+                        processing_import_batches_table.c.created_at
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             assert statuses.count("failed") == 1
             assert statuses.count("succeeded") == 2
     finally:
