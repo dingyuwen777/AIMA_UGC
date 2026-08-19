@@ -5,7 +5,7 @@
 ```text
 读取 Excel
 → 转为统一 Canonical JSONL
-→ 按关键词过滤
+→ 按本地词包过滤
 → 稳定身份去重
 → AI 情感 + 多个一级/二级标签对
 → 导出最终 Excel
@@ -26,7 +26,7 @@ backend/src/aima_ugc/adapters/providers/imports_test/test.py
 ```python
 INPUT_XLSX = Path(r"E:\path\to\source.xlsx")
 OUTPUT_ROOT = Path(__file__).with_name("output")
-KEYWORDS = ("爱玛",)
+KEYWORD_PACK_FILE = Path(__file__).with_name("keyword_pack.txt")
 SHEET_NAME = "文章"
 PROFILE = "aima-monitoring-excel.v1"
 
@@ -50,7 +50,90 @@ LLM_BATCH_SIZE = 20
 
 `EXCEL_CONTENT_COLUMNS` 的顺序就是“内容”Sheet 的列顺序。只能使用共享 Exporter 已定义的列；空、重复或未知列会直接报错。
 
-## 2. 配置模型 `.env`
+## 2. 配置清洗词包
+
+默认词包文件：
+
+```text
+backend/src/aima_ugc/adapters/providers/imports_test/keyword_pack.txt
+```
+
+格式很简单：**一行一个标准词**。空行和以 `#` 开头的注释会被忽略，例如：
+
+```text
+# 品牌词
+爱玛
+
+# 车型
+元宇宙Pony
+F2Lite-碟刹
+马赫U7Pro
+```
+
+当前文件已经包含：
+
+- 品牌词 `爱玛`；
+- 本轮提供的 102 条车型原始清单。
+
+这 102 条车型原始数据里有 6 个完全重复名称；另外 `黑翼S3 60` 与 `黑翼S360` 在忽略空格后属于同一个匹配身份。文件保留原始输入行便于人工核对，但运行时会按规范化匹配身份去重，首次出现的标准名称作为最终 `matched_keywords` 展示值。因此当前 103 个非注释源词条（1 个品牌 + 102 条车型）会形成 96 个有效匹配身份。
+
+### 2.1 机械书写变体自动处理
+
+匹配前，关键词和每条内容的 `title`、`text` 分别执行：
+
+1. Unicode `NFKC`：统一全角/半角英文字母、数字和兼容字符；
+2. `casefold()`：英文大小写不敏感；
+3. 删除所有空白字符；
+4. 忽略连接符 `-`、`_`、`·`。
+
+例如词包只需要写：
+
+```text
+F2Lite-碟刹
+```
+
+下面这些帖子写法都可以命中：
+
+```text
+F2Lite-碟刹
+f2lite-碟刹
+F2 Lite_碟刹
+Ｆ２Ｌｉｔｅ·碟刹
+```
+
+命中后 Excel/JSONL 中仍记录词包标准名称：
+
+```text
+F2Lite-碟刹
+```
+
+不要为了大小写、空格、全角/半角、`-/_/·` 再手工重复添加机械变体。
+
+### 2.2 什么不会自动处理
+
+当前不是模糊搜索，不自动推导：
+
+- 车型俗称；
+- 真正业务别名；
+- 错别字；
+- 拼音；
+- 同义词；
+- 任意标点删除。
+
+例如一个正式车型如果网上普遍还有另一个完全不同的俗称，目前应把该俗称作为另一个词显式写入词包。未来正式网页关键词管理是否建立“标准词 → 多别名”关系，需要在 Stage 8 再确认业务语义后建模，不在这个人工脚本里提前造数据库结构。
+
+### 2.3 当前只过滤标题和正文
+
+相关性过滤仍只检查 Canonical：
+
+```text
+title
+text
+```
+
+不会因为本次词包改造而静默扩大到作者、平台名或其他字段。标题或正文命中任意有效词即可保留该条内容。
+
+## 3. 配置模型 `.env`
 
 复制 `.env.example` 为 `.env`，填写：
 
@@ -65,7 +148,7 @@ AIMA_LLM_MODEL=
 
 只有 Base URL、API Key、Model 必填。当前入口固定使用 OpenAI-compatible Chat Completions Adapter；JSON mode 默认开启。真实 `.env` 已被 Git 忽略，不要把 API Key 写进源码、README、测试、日志或提交记录。
 
-## 3. 运行
+## 4. 运行
 
 ```powershell
 D:\python314\python.exe E:\work\03_Aima\code\AIMA_UGC\backend\src\aima_ugc\adapters\providers\imports_test\test.py
@@ -105,9 +188,9 @@ output/
 
 只有显式调用 `export_raw_excel(run_dir=...)` 时，当前 run 目录还会生成 `raw_data.xlsx`。
 
-不同 run 不覆盖彼此。显式复用已经存在的 run_id 会直接报 `FileExistsError`，防止误覆盖旧结果。
+不同 run 不覆盖彼此。显式复用已经存在的 run_id 会直接报 `FileExistsError`，防止误覆盖旧结果。`run_summary.json` 会记录本次使用的 `keyword_pack_file`，便于以后回看运行配置来源。
 
-## 4. 单步运行
+## 5. 单步运行
 
 如果需要逐阶段调试，先创建一次 run 目录，然后把同一个 `run_dir` 传给后续函数：
 
@@ -123,7 +206,7 @@ export_labeled_excel(run_dir=run_dir)
 
 不要分别无参数调用 `filter_keywords()`、`deduplicate()` 等依赖上一步输入的函数；它们需要读取同一次 run 的上游文件。
 
-## 5. AI 多标签结构
+## 6. AI 多标签结构
 
 每条内容仍只有一个整体情感：
 
@@ -142,7 +225,7 @@ export_labeled_excel(run_dir=run_dir)
 
 历史 `content-label-analysis.v1` 单标签 JSONL/checkpoint 仍可读取；新的模型成功结果写 `content-label-analysis.v2`。
 
-## 6. Excel 怎么展示和筛选多标签
+## 7. Excel 怎么展示和筛选多标签
 
 最终 Workbook 有三个 Sheet：
 
@@ -193,7 +276,7 @@ export_labeled_excel(run_dir=run_dir)
 
 raw 导出也保留“标签明细”Sheet 表头，但 `include_analysis=False` 时不会伪造任何标签行。
 
-## 7. 默认内容列与可选列
+## 8. 默认内容列与可选列
 
 默认只显示：
 
@@ -250,7 +333,7 @@ Raw/来源定位
 
 没有数据的列留空，不制造值。“标签明细”和“评论”Sheet 当前不使用 `EXCEL_CONTENT_COLUMNS` 做列裁剪。
 
-## 8. Excel 公共格式
+## 9. Excel 公共格式
 
 共享 Exporter 统一负责：
 
@@ -267,7 +350,7 @@ Raw/来源定位
 - 使用固定有界列宽，不扫描 9 万行自动算宽度；
 - openpyxl `write_only=True` 流式写出。
 
-## 9. 源 Excel 输入要求
+## 10. 源 Excel 输入要求
 
 Profile：`aima-monitoring-excel.v1`，默认 Sheet：`文章`。必须存在以下 13 个表头，允许额外列：
 
@@ -289,7 +372,26 @@ Profile：`aima-monitoring-excel.v1`，默认 Sheet：`文章`。必须存在以
 
 平台字段会经过受控归一化；无法映射的平台、非法日期、非法粉丝数、缺稳定身份等都会写转换错误并 fail-closed，不发布半份 `contents.jsonl`。
 
-## 10. 常见排错
+## 11. 与未来网页关键词配置的关系
+
+当前 `keyword_pack.txt` 只是**本地人工调试入口的配置来源**，不是系统长期业务事实库。正式系统已经有 PostgreSQL：
+
+```text
+keyword_packs
+keywords
+keyword_pack_items
+```
+
+未来网页管理关键词时，应通过后端 API 写这些正式父事实，再由业务 Service/Matcher 使用，而不是让前端直接读写本地 txt。
+
+进入 Stage 8 的关键词管理页面/API 前，必须先确认两个产品问题，不能由开发者静默猜测：
+
+1. **采集发现词包**与**结果相关性清洗词包**是否是同一词包，还是同一个词包可被赋予不同使用角色；不能因为本地有 102 个车型清洗词，就默认 TikHub 对 102 个车型全部逐词发搜索请求。
+2. 真正业务别名/俗称是否需要“一个标准词对应多个别名”的正式关系，以及它如何参与数据库 `normalized_text` 唯一身份、Run Snapshot 和前端编辑体验。
+
+当前本地清洗使用的 NFKC/casefold/空白/连接符规则只定义 `imports_test` 的相关性匹配行为，**不等同于已经冻结 PostgreSQL `keywords.normalized_text` 的正式写入 Contract**。
+
+## 12. 常见排错
 
 - HTTP 401：模型服务认证失败，先独立验证 API Key；不要通过放宽 Analysis Validator 解决认证问题。
 - `platform_unmapped`：源媒体/平台值无法映射到已知平台。
@@ -298,3 +400,4 @@ Profile：`aima-monitoring-excel.v1`，默认 Sheet：`文章`。必须存在以
 - `analysis/failed.jsonl`：看达到 Validation Retry 上限后仍失败的 item。
 - `analysis/checkpoints.jsonl`：只保存已通过 Validator 的成功 Analysis，用于恢复和费用安全。
 - run_id 已存在：说明该 run 已有历史产物；不要覆盖，使用新的 run_id。
+- 词包没有有效关键词：检查 `KEYWORD_PACK_FILE` 是否指向正确文件，以及文件是否只剩注释/空行。

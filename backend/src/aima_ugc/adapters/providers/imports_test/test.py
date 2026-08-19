@@ -21,6 +21,7 @@ from aima_ugc.adapters.providers.imports import (
     ExcelConversionSummary,
     convert_excel_to_canonical_jsonl,
 )
+from aima_ugc.adapters.providers.imports_test.keyword_pack import load_keyword_pack
 from aima_ugc.modules.analysis import (
     CONTENT_LABELING_PROMPT_PATH,
     ContentDeduplicationSummary,
@@ -39,8 +40,7 @@ from aima_ugc.platform.export import (
 
 INPUT_XLSX = Path(r"E:\path\to\source.xlsx")
 OUTPUT_ROOT = Path(__file__).with_name("output")
-
-KEYWORDS = ("爱玛",)
+KEYWORD_PACK_FILE = Path(__file__).with_name("keyword_pack.txt")
 
 SHEET_NAME = "文章"
 PROFILE = "aima-monitoring-excel.v1"
@@ -113,10 +113,11 @@ def filter_keywords(*, run_dir: Path | None = None) -> ContentFilterSummary:
     """执行 Canonical JSONL → 关键词命中过滤后的统一内容记录。"""
 
     actual_run_dir = _stage_run_dir(run_dir)
+    keyword_pack = load_keyword_pack(KEYWORD_PACK_FILE)
     return filter_canonical_content_jsonl(
         input_path=actual_run_dir / "canonical" / "contents.jsonl",
         output_path=actual_run_dir / "filtered" / "contents.jsonl",
-        keywords=KEYWORDS,
+        keywords=keyword_pack.keywords,
     )
 
 
@@ -227,6 +228,7 @@ def run_all(*, run_id: str | None = None) -> P1RunSummary:
             "source_xlsx": str(INPUT_XLSX),
             "output_root": str(OUTPUT_ROOT),
             "run_dir": str(run_dir),
+            "keyword_pack_file": str(KEYWORD_PACK_FILE),
             "labeled_excel": str(labeled_excel_path),
             "stages": stages,
         },
