@@ -424,7 +424,8 @@ def _persist_outcomes(
         )
         rows_failed += 1
 
-    # checkpoint 是恢复事实源；新成功结果先 durable。attempt/failed 只 flush，正常或 Fatal 收尾统一 fsync。
+    # checkpoint 是恢复事实源，新成功结果先 durable。
+    # attempts/failed 只 flush，正常或 Fatal 收尾再统一 fsync。
     if wrote_checkpoint:
         _flush_and_sync(checkpoint_file)
     attempt_file.flush()
