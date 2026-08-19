@@ -1,0 +1,100 @@
+name: Dev Finalize Analysis Multilabel
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - backend/src/aima_ugc/contracts/analysis/content_label.py
+      - .github/workflows/dev-finalize-analysis-multilabel.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.head_ref == 'feature/analysis-multilabel-run-dir'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/analysis-multilabel-run-dir
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version-file: .python-version
+          check-latest: false
+
+      - name: Install locked environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+
+      - name: Fix compatibility documentation and regenerate contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python - <<'PY'
+          from pathlib import Path
+
+          path = Path("backend/src/aima_ugc/modules/analysis/README.md")
+          text = path.read_text(encoding="utf-8")
+          replacements = {
+              "backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v1.md":
+                  "backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v2.md",
+              "公共成功结果是：\n\n```text\nContentLabelAnalysisV1\n```":
+                  "当前新成功结果是：\n\n```text\nContentLabelAnalysisV2\n```",
+              "`ContentLabelAnalysisV1` 只表示**已经通过本地 Validator 的成功结果**，所以其中 `analysis_status` 固定为 `succeeded`。Validation Retry 达到上限仍失败时，不构造失败版 `ContentLabelAnalysisV1`：":
+                  "`ContentLabelAnalysisV2` 只表示**已经通过本地 Validator 的新成功结果**，`analysis_status` 固定为 `succeeded`；历史 `ContentLabelAnalysisV1` 具有相同成功语义。Validation Retry 达到上限仍失败时，不构造失败版 Analysis：",
+              "恢复成功的记录直接把 checkpoint 中已验证的 `ContentLabelAnalysisV1` 写入业务临时 JSONL":
+                  "恢复成功的记录直接把 checkpoint 中已验证的 `ContentLabelAnalysisV1` 或 `ContentLabelAnalysisV2` 写入业务临时 JSONL",
+              "checkpoint 中的 `analysis.schema_version` 决定 V1/V2。历史 V1 checkpoint 仍可恢复；新模型成功结果写 V2。":
+                  "checkpoint 中的 `analysis.schema_version` 决定 V1/V2 解析。历史 V1 checkpoint 可以被安全解析，但是否恢复仍必须同时通过当前 input、Prompt/Taxonomy Hash、Provider 和 Model 身份门禁；因此使用旧 V1 Prompt 生成的 checkpoint 在当前 V2 Prompt 下会自然失效。新模型成功结果只写 V2。",
+          }
+          for old, new in replacements.items():
+              if text.count(old) != 1:
+                  raise RuntimeError(f"README replacement mismatch: {old[:80]!r}")
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding="utf-8")
+          PY
+          uv run python scripts/contracts/generate.py
+          git diff --exit-code origin/main -- contracts/analysis/content-label-analysis.v1.schema.json
+
+      - name: Verify final candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest \
+            tests/unit/analysis \
+            tests/unit/platform/test_excel_export.py \
+            tests/unit/platform/test_multilabel_excel.py \
+            tests/unit/collection/test_imports_test_export.py \
+            tests/unit/collection/test_p1g_imports_run_all.py \
+            tests/unit/collection/test_imports_test_run_directory.py \
+            -q
+          uv run ruff check backend/src tests scripts
+          uv run ruff format --check backend/src tests scripts
+          uv run mypy backend/src
+          uv run python scripts/contracts/generate.py --check
+          uv run python scripts/quality/check_architecture.py
+          uv run python scripts/quality/scan_secrets.py
+          uv run python scripts/quality/check_docs.py
+
+      - name: Commit finalized implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm -f .github/workflows/dev-finalize-analysis-multilabel.yml
+          git add -A
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "收口多标签分析兼容性与文档"
+          git push origin HEAD:feature/analysis-multilabel-run-dir
