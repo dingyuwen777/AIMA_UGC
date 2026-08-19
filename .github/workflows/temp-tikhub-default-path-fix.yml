@@ -20,47 +20,32 @@ jobs:
       - name: Apply exact relocation fix
         shell: python
         run: |
+          import re
           from pathlib import Path
 
           runner = Path("backend/src/aima_ugc/adapters/providers/tikhub_test/operations/runner.py")
           text = runner.read_text(encoding="utf-8")
           old_output = '_DEFAULT_OUTPUT_ROOT = Path(__file__).with_name("output")'
           new_output = '_DEFAULT_OUTPUT_ROOT = Path(__file__).resolve().parent.parent / "output"'
-          old_find = '''def find_env_file(start_path: Path | None = None) -> Path | None:
-              """从 start_path（默认当前工作目录）向上递归查找 .env 文件。"""
-              if start_path is None:
-                  start_path = Path.cwd()
-              for parent in [start_path] + list(start_path.parents):
-                  env_file = parent / ".env"
-                  if env_file.exists():
-                      return env_file
-              return None
-
-
-          '''
-          old_load = '''    if env_file is None:
-              env_file = find_env_file()
-          config = TikHubTestConfig.load(env_file)'''
-          new_load = '    config = TikHubTestConfig.load(env_file)'
+          old_load = "    if env_file is None:\n        env_file = find_env_file()\n    config = TikHubTestConfig.load(env_file)"
+          new_load = "    config = TikHubTestConfig.load(env_file)"
           assert text.count(old_output) == 1
-          assert text.count(old_find) == 1
           assert text.count(old_load) == 1
-          text = text.replace(old_output, new_output).replace(old_find, "").replace(old_load, new_load)
+          text = text.replace(old_output, new_output).replace(old_load, new_load)
+          text, helper_count = re.subn(
+              r"\ndef find_env_file\(start_path: Path \| None = None\) -> Path \| None:\n.*?\n\ndef run_platform\(",
+              "\n\ndef run_platform(",
+              text,
+              count=1,
+              flags=re.DOTALL,
+          )
+          assert helper_count == 1
           runner.write_text(text, encoding="utf-8")
 
           test_file = Path("tests/unit/collection/test_tikhub_test_debug.py")
           test_text = test_file.read_text(encoding="utf-8")
-          old_guard = '''    monkeypatch.setattr(
-              tikhub_test_runner,
-              "find_env_file",
-              lambda *_args, **_kwargs: pytest.fail("run_platform 不应扫描 CWD/父目录 .env"),
-          )'''
-          new_guard = '''    monkeypatch.setattr(
-              tikhub_test_runner,
-              "find_env_file",
-              lambda *_args, **_kwargs: pytest.fail("run_platform 不应扫描 CWD/父目录 .env"),
-              raising=False,
-          )'''
+          old_guard = '        lambda *_args, **_kwargs: pytest.fail("run_platform 不应扫描 CWD/父目录 .env"),\n    )'
+          new_guard = '        lambda *_args, **_kwargs: pytest.fail("run_platform 不应扫描 CWD/父目录 .env"),\n        raising=False,\n    )'
           assert test_text.count(old_guard) == 1
           test_file.write_text(test_text.replace(old_guard, new_guard), encoding="utf-8")
       - name: Commit exact fix
