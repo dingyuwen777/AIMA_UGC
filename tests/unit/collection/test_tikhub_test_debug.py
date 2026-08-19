@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import aima_ugc.adapters.providers.tikhub_test.core.config as tikhub_test_config
+import aima_ugc.adapters.providers.tikhub_test.operations.runner as tikhub_test_runner
 import pytest
 from aima_ugc.adapters.providers.tikhub_test import (
     run_bilibili,
@@ -22,6 +24,47 @@ def test_default_env_file_stays_at_tikhub_test_root() -> None:
     expected = Path(tikhub_test_config.__file__).resolve().parent.parent / ".env"
 
     assert tikhub_test_config._DEFAULT_ENV_FILE == expected
+
+
+def test_default_output_root_stays_at_tikhub_test_root() -> None:
+    expected = Path(tikhub_test_runner.__file__).resolve().parent.parent / "output"
+
+    assert tikhub_test_runner._DEFAULT_OUTPUT_ROOT == expected
+
+
+def test_run_platform_uses_config_default_env_without_cwd_search(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    seen_env_files: list[str | Path | None] = []
+    fake_config = SimpleNamespace(
+        base_url="https://api.tikhub.dev",
+        api_key=object(),
+        timeout_seconds=1.0,
+    )
+
+    def fake_load(env_file: str | Path | None = None):
+        seen_env_files.append(env_file)
+        return fake_config
+
+    monkeypatch.setattr(tikhub_test_runner.TikHubTestConfig, "load", staticmethod(fake_load))
+    monkeypatch.setattr(
+        tikhub_test_runner,
+        "find_env_file",
+        lambda *_args, **_kwargs: pytest.fail("run_platform 不应扫描 CWD/父目录 .env"),
+        raising=False,
+    )
+    monkeypatch.setattr(tikhub_test_runner._TikHubDebugRunner, "run", lambda self: self)
+
+    result = tikhub_test_runner.run_platform(
+        platform="xhs",
+        keyword="爱玛",
+        output_root=tmp_path,
+        run_id="default-env",
+    )
+
+    assert result is not None
+    assert seen_env_files == [None]
 
 
 def test_local_env_loads_tikhub_secret_without_exposing_value(tmp_path: Path) -> None:

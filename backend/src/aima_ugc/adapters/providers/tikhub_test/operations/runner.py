@@ -38,7 +38,7 @@ from aima_ugc.platform.export import (
     project_canonical_content,
 )
 
-_DEFAULT_OUTPUT_ROOT = Path(__file__).with_name("output")
+_DEFAULT_OUTPUT_ROOT = Path(__file__).resolve().parent.parent / "output"
 _CAPABILITIES = {item.platform: item for item in TIKHUB_PLATFORM_CAPABILITIES}
 
 
@@ -681,17 +681,6 @@ class _TikHubDebugRunner:
         }
 
 
-def find_env_file(start_path: Path | None = None) -> Path | None:
-    """从 start_path（默认当前工作目录）向上递归查找 .env 文件。"""
-    if start_path is None:
-        start_path = Path.cwd()
-    for parent in [start_path] + list(start_path.parents):
-        env_file = parent / ".env"
-        if env_file.exists():
-            return env_file
-    return None
-
-
 def run_platform(
     *,
     platform: tikhub_runtime.TikHubPlatform,
@@ -713,8 +702,6 @@ def run_platform(
 ) -> TikHubTestRunResult:
     """执行一个平台的独立真实调试；所有 Provider 私有逻辑由生产 Runtime 负责。"""
     normalized_keywords = _normalize_keywords(keyword=keyword, keywords=keywords)
-    if env_file is None:
-        env_file = find_env_file()
     config = TikHubTestConfig.load(env_file)
     root = Path(output_root) if output_root is not None else _DEFAULT_OUTPUT_ROOT
     return _TikHubDebugRunner(

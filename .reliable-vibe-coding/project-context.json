@@ -1,5 +1,5 @@
 {
-  "candidate_path_digest": "d5bf98c2ddec42bc0c1bf09d982eba84465b6390aedb9155898a266a7356b509",
+  "candidate_path_digest": "948cbb867e367c79f92de4eee89f52187ae557c5f4b398a88d40942df6d43196",
   "directories": [
     {
       "count": 4,
@@ -15,7 +15,21 @@
       "kinds": [
         "documentation"
       ],
+      "path": "backend/src/aima_ugc/adapters/providers/imports_test"
+    },
+    {
+      "count": 1,
+      "kinds": [
+        "documentation"
+      ],
       "path": "backend/src/aima_ugc/adapters/providers/tikhub_test"
+    },
+    {
+      "count": 1,
+      "kinds": [
+        "documentation"
+      ],
+      "path": "backend/src/aima_ugc/modules/analysis"
     },
     {
       "count": 1,
@@ -37,6 +51,13 @@
         "documentation"
       ],
       "path": "backend/src/aima_ugc/modules/system"
+    },
+    {
+      "count": 2,
+      "kinds": [
+        "contract"
+      ],
+      "path": "contracts/analysis"
     },
     {
       "count": 3,
@@ -64,6 +85,13 @@
       "kinds": [
         "contract"
       ],
+      "path": "contracts/export"
+    },
+    {
+      "count": 1,
+      "kinds": [
+        "contract"
+      ],
       "path": "contracts/openapi"
     },
     {
@@ -81,7 +109,7 @@
       "path": "docs"
     },
     {
-      "count": 14,
+      "count": 15,
       "kinds": [
         "documentation"
       ],
@@ -140,10 +168,24 @@
     },
     {
       "kind": "documentation",
+      "path": "backend/src/aima_ugc/adapters/providers/imports_test/README.md",
+      "sha256": "e6bf6428589788c8655e6fb3015ca263a38c5e820d4451db1f86a62cd7fce693",
+      "size": 13129,
+      "title": "Excel 离线导入测试 / 调试"
+    },
+    {
+      "kind": "documentation",
       "path": "backend/src/aima_ugc/adapters/providers/tikhub_test/README.md",
-      "sha256": "d6b6f54479d1498284c8e8d802a46d1b5d5b857f56011ba1ad9947cab253de43",
-      "size": 8586,
+      "sha256": "af5af9e3ade55619edc69cd6dad388133246288e315cc207ac32a7e4f3ebccc9",
+      "size": 8992,
       "title": "TikHub 五平台独立测试 / 调试"
+    },
+    {
+      "kind": "documentation",
+      "path": "backend/src/aima_ugc/modules/analysis/README.md",
+      "sha256": "b68dbd37cacabf9c5239defa79126c2311af3c3e3ecf5e94a01a68e325612a4a",
+      "size": 10283,
+      "title": "Analysis 模块"
     },
     {
       "kind": "documentation",
@@ -165,6 +207,18 @@
       "sha256": "d2ada56e1713e6058fa8dcc8dc150b88d388734f016572e6325889414ac02393",
       "size": 2560,
       "title": "System 模块"
+    },
+    {
+      "kind": "contract",
+      "path": "contracts/analysis/content-label-analysis.v1.schema.json",
+      "sha256": "58bcb3e5388b62642ec1b23871e2c96a46cfcbf70a0552b1d514d4785baaa812",
+      "size": 1430
+    },
+    {
+      "kind": "contract",
+      "path": "contracts/analysis/content-record.v1.schema.json",
+      "sha256": "16b68b4d4b94c69fbc06de97bd19056239b7e8696ce0553fe00b8020984acc66",
+      "size": 11612
     },
     {
       "kind": "contract",
@@ -219,6 +273,12 @@
       "path": "contracts/collection/provider-platform-route.v1.schema.json",
       "sha256": "1ab2ac0ee46343f68809d46b92b85f929d29f0f732c8de3f50b7e71a61be6303",
       "size": 3934
+    },
+    {
+      "kind": "contract",
+      "path": "contracts/export/unified-data-excel.v1.schema.json",
+      "sha256": "7e69ee4e858c30975b2deecf6b689e90d33fa02d379662fc69b399142c73c147",
+      "size": 6381
     },
     {
       "kind": "contract",
@@ -338,15 +398,22 @@
     {
       "kind": "documentation",
       "path": "docs/blueprint/13-统一数据Excel导出与调试复用.md",
-      "sha256": "dc9b305251a665f46fb2eee6940b10e4878df8f395f19078b7f06abc5fd4a70d",
-      "size": 5988,
+      "sha256": "c44db804666b7464a2db2857a7da6ce9568ec73635308ab6cf72ee058f44dd31",
+      "size": 9106,
       "title": "统一数据 Excel 导出与调试复用"
     },
     {
       "kind": "documentation",
+      "path": "docs/blueprint/15-舆情AI打标与统一分析契约.md",
+      "sha256": "700bdbf0ef791ddcd7e0086c65975f7264d14ad28c77a80331839e93e6e43b7e",
+      "size": 30108,
+      "title": "舆情 AI 打标与统一分析契约"
+    },
+    {
+      "kind": "documentation",
       "path": "docs/blueprint/README.md",
-      "sha256": "ac1afc83913e7e6bb59da98f9aaaa54ea6785c6af3714c2d8b23055061021dea",
-      "size": 14977,
+      "sha256": "66c50fb41aa28c3211564aaf9a63d7520d900baef11c31cc2a626e49da707eef",
+      "size": 16846,
       "title": "AIMA_UGC Blueprint 导航"
     },
     {
@@ -451,10 +518,10 @@
       "size": 90475
     }
   ],
-  "generated_at": "2026-08-19T00:52:34+00:00",
+  "generated_at": "2026-08-19T02:42:44+00:00",
   "generator_version": "0.1.0",
   "git": {
-    "indexed_at_commit": "32ef9c96962b824c654e708c92989f975fd02875",
+    "indexed_at_commit": "74773a49c6adb381a5bddccc24fd88b6c48caab7",
     "repository": true,
     "worktree_candidate_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
   },
