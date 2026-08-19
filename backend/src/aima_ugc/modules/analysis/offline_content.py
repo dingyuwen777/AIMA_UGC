@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,6 +15,8 @@ from pydantic import ValidationError
 
 from aima_ugc.contracts.analysis import UnifiedContentRecordV1
 from aima_ugc.contracts.canonical import CanonicalContentV1
+
+_IGNORED_KEYWORD_CONNECTORS = frozenset({"-", "_", "·"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,17 +61,34 @@ class _SeenIdentity:
     byte_offset: int
 
 
+@dataclass(frozen=True, slots=True)
+class _PreparedKeyword:
+    display_text: str
+    match_text: str
+
+
+def normalize_keyword_match_text(value: str) -> str:
+    """把关键词或待匹配文本归一化为仅用于相关性清洗的匹配文本。"""
+
+    normalized = unicodedata.normalize("NFKC", value).casefold()
+    return "".join(
+        character
+        for character in normalized
+        if not character.isspace() and character not in _IGNORED_KEYWORD_CONNECTORS
+    )
+
+
 def filter_canonical_content_jsonl(
     *,
     input_path: Path,
     output_path: Path,
     keywords: Iterable[str],
 ) -> ContentFilterSummary:
-    """按 title/text 字面包含关系过滤 Canonical JSONL，并写统一内容记录。"""
+    """按规范化后的 title/text 包含关系过滤 Canonical JSONL，并写统一内容记录。"""
 
     source_path = Path(input_path)
     target_path = Path(output_path)
-    normalized_keywords = _normalize_keywords(keywords)
+    prepared_keywords = _prepare_keywords(keywords)
     target_path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = target_path.with_name(f".{target_path.name}.tmp")
     temp_path.unlink(missing_ok=True)
@@ -84,9 +104,14 @@ def filter_canonical_content_jsonl(
             for line_number, raw_line in enumerate(input_file, start=1):
                 rows_seen += 1
                 content = _parse_canonical_line(raw_line, source_path, line_number)
-                searchable_text = f"{content.title or ''}\n{content.text or ''}"
+                searchable_fields = (
+                    normalize_keyword_match_text(content.title or ""),
+                    normalize_keyword_match_text(content.text or ""),
+                )
                 matched_keywords = [
-                    keyword for keyword in normalized_keywords if keyword in searchable_text
+                    keyword.display_text
+                    for keyword in prepared_keywords
+                    if any(keyword.match_text in field for field in searchable_fields)
                 ]
                 if not matched_keywords:
                     continue
@@ -202,19 +227,28 @@ def deduplicate_content_jsonl(
     return summary
 
 
-def _normalize_keywords(keywords: Iterable[str]) -> tuple[str, ...]:
-    normalized: list[str] = []
-    seen: set[str] = set()
+def _prepare_keywords(keywords: Iterable[str]) -> tuple[_PreparedKeyword, ...]:
+    prepared: list[_PreparedKeyword] = []
+    seen_match_texts: set[str] = set()
     for raw_keyword in keywords:
-        keyword = raw_keyword.strip()
-        if not keyword:
+        display_text = raw_keyword.strip()
+        if not display_text:
             raise ValueError("keywords 不能包含空字符串")
-        if keyword not in seen:
-            normalized.append(keyword)
-            seen.add(keyword)
-    if not normalized:
+        match_text = normalize_keyword_match_text(display_text)
+        if not match_text:
+            raise ValueError("keywords 规范化后不能为空")
+        if match_text in seen_match_texts:
+            continue
+        prepared.append(
+            _PreparedKeyword(
+                display_text=display_text,
+                match_text=match_text,
+            )
+        )
+        seen_match_texts.add(match_text)
+    if not prepared:
         raise ValueError("keywords 至少需要一个非空关键词")
-    return tuple(normalized)
+    return tuple(prepared)
 
 
 def _parse_canonical_line(raw_line: bytes, path: Path, line_number: int) -> CanonicalContentV1:
