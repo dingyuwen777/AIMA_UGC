@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Iterable, Iterator
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
@@ -68,10 +69,17 @@ def label_unified_content_jsonl(
     max_validation_retries: int,
     max_concurrency: int = DEFAULT_OFFLINE_LLM_CONCURRENCY,
     recovery_taxonomy: PromptTaxonomy | None = None,
+    batch_size: int | None = None,
 ) -> OfflineContentLabelingSummary:
-    """单条内容独立请求；先预检，再有界并发，最后按原始顺序原子回写。"""
+    """单条内容独立请求；先预检，再有界并发，最后按原始顺序原子回写。
 
-    _validate_max_concurrency(max_concurrency)
+    `batch_size` 仅兼容旧内部调用，解释为并发上限；任何情况下每次模型请求都只有一条内容。
+    """
+
+    actual_concurrency = _resolve_concurrency(
+        max_concurrency=max_concurrency,
+        legacy_batch_size=batch_size,
+    )
     source_path = Path(input_path)
     audit_dir = Path(analysis_dir)
     audit_dir.mkdir(parents=True, exist_ok=True)
@@ -123,7 +131,7 @@ def label_unified_content_jsonl(
             llm_attempts += attempts
 
             with ThreadPoolExecutor(
-                max_workers=max_concurrency,
+                max_workers=actual_concurrency,
                 thread_name_prefix="aima-content-label",
             ) as executor:
                 in_flight: dict[Future[_ItemOutcome], _SourceRow] = {}
@@ -136,7 +144,7 @@ def label_unified_content_jsonl(
                     )
                     in_flight[future] = source
                     peak_in_flight = max(peak_in_flight, len(in_flight))
-                    if len(in_flight) < max_concurrency:
+                    if len(in_flight) < actual_concurrency:
                         continue
 
                     succeeded, failed, attempts = _drain_completed(
@@ -162,6 +170,10 @@ def label_unified_content_jsonl(
                     rows_failed += failed
                     llm_attempts += attempts
 
+            # attempts/failed 不是恢复事实源，正常收尾时一次性 durable，避免每条都做额外 fsync。
+            _flush_and_sync(attempt_file)
+            _flush_and_sync(failed_file)
+
     if rows_recovered or rows_succeeded:
         _rewrite_source_in_original_order(
             source_path,
@@ -181,9 +193,19 @@ def label_unified_content_jsonl(
     )
 
 
+def _resolve_concurrency(*, max_concurrency: int, legacy_batch_size: int | None) -> int:
+    _validate_max_concurrency(max_concurrency)
+    if legacy_batch_size is None:
+        return max_concurrency
+    _validate_max_concurrency(legacy_batch_size)
+    if max_concurrency != DEFAULT_OFFLINE_LLM_CONCURRENCY and max_concurrency != legacy_batch_size:
+        raise ValueError("max_concurrency 与兼容 batch_size 不能配置为不同值")
+    return legacy_batch_size
+
+
 def _validate_max_concurrency(value: int) -> None:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError("max_concurrency 必须是大于 0 的整数")
+        raise ValueError("并发数必须是大于 0 的整数")
 
 
 def _preflight_source(
@@ -226,7 +248,7 @@ def _iter_pending_rows(
     source_path: Path,
     *,
     checkpoint_index: dict[_CheckpointKey, ContentLabelAnalysis],
-):
+) -> Iterator[_SourceRow]:
     with source_path.open("rb") as input_file:
         for line_number, raw_line in enumerate(input_file, start=1):
             record = _parse_record(raw_line, source_path, line_number)
@@ -267,7 +289,10 @@ def _drain_completed(
     failed_file: TextIO,
     checkpoint_index: dict[_CheckpointKey, ContentLabelAnalysis],
 ) -> tuple[int, int, int]:
-    done, _ = wait(tuple(in_flight), return_when=FIRST_COMPLETED)
+    first_done, _ = wait(tuple(in_flight), return_when=FIRST_COMPLETED)
+    # FIRST_COMPLETED 返回时把已经同时完成的 Future 一并收割，减少协调/磁盘同步开销。
+    done = set(first_done)
+    done.update(future for future in in_flight if future.done())
     outcomes: list[_ItemOutcome] = []
     first_error: BaseException | None = None
     for future in done:
@@ -293,6 +318,8 @@ def _drain_completed(
             failed_file=failed_file,
             checkpoint_index=checkpoint_index,
         )
+        _flush_and_sync(attempt_file)
+        _flush_and_sync(failed_file)
         raise first_error
     return succeeded, failed, attempts
 
@@ -330,7 +357,7 @@ def _finish_in_flight_before_raise(
 
 
 def _persist_outcomes(
-    outcomes,
+    outcomes: Iterable[_ItemOutcome],
     *,
     checkpoint_file: TextIO,
     attempt_file: TextIO,
@@ -340,7 +367,7 @@ def _persist_outcomes(
     rows_succeeded = 0
     rows_failed = 0
     llm_attempts = 0
-    wrote_anything = False
+    wrote_checkpoint = False
 
     for outcome in outcomes:
         source = outcome.source
@@ -352,7 +379,6 @@ def _persist_outcomes(
             result=result,
         )
         llm_attempts += len(result.attempts)
-        wrote_anything = wrote_anything or bool(result.attempts)
 
         if item_result.analysis_status == "succeeded":
             analysis = item_result.analysis
@@ -379,7 +405,7 @@ def _persist_outcomes(
             )
             checkpoint_index[key] = analysis
             rows_succeeded += 1
-            wrote_anything = True
+            wrote_checkpoint = True
             continue
 
         if item_result.analysis is not None:
@@ -397,13 +423,12 @@ def _persist_outcomes(
             },
         )
         rows_failed += 1
-        wrote_anything = True
 
-    if wrote_anything:
-        # checkpoint/attempt/failed 都只由主协调线程写；成功 checkpoint 必须先 durable。
+    # checkpoint 是恢复事实源；新成功结果先 durable。attempt/failed 只 flush，正常或 Fatal 收尾统一 fsync。
+    if wrote_checkpoint:
         _flush_and_sync(checkpoint_file)
-        _flush_and_sync(attempt_file)
-        _flush_and_sync(failed_file)
+    attempt_file.flush()
+    failed_file.flush()
     return rows_succeeded, rows_failed, llm_attempts
 
 
