@@ -681,7 +681,6 @@ class _TikHubDebugRunner:
         }
 
 
-
 def run_platform(
     *,
     platform: tikhub_runtime.TikHubPlatform,
