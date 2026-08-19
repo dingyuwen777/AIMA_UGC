@@ -7,6 +7,7 @@
 → Canonical JSONL
 → 词包相关性清洗
 → 稳定身份去重
+→ 可选 PostgreSQL 正式入库
 → DeepSeek / OpenAI-compatible AI 多标签打标
 → 最终 Excel
 ```
@@ -17,7 +18,7 @@
 backend/src/aima_ugc/adapters/providers/imports_test/test.py
 ```
 
-脚本复用系统正式 Reader、Mapper、关键词过滤、去重、Analysis Service、LLM Adapter 和共享 Excel Exporter，不需要数据库或 Scheduler。
+脚本复用系统正式 Reader、Mapper、关键词过滤、去重、Analysis Service、LLM Adapter 和共享 Excel Exporter。默认 `WRITE_TO_DATABASE = False`，因此普通人工文件调试不要求数据库或 Scheduler；只有显式开启数据库模式时才连接已经由开发者准备好的 PostgreSQL 18，并调用正式 File Import / Content Ingestion 实现。
 
 ## 1. 先修改 `test.py` 顶部配置
 
@@ -30,6 +31,7 @@ KEYWORD_PACK_FILE = Path(__file__).with_name("keyword_pack.txt")
 
 SHEET_NAME = "文章"
 PROFILE = "aima-monitoring-excel.v1"
+WRITE_TO_DATABASE = False
 
 ENABLE_REAL_LLM = False
 
@@ -434,11 +436,15 @@ run_dir = prepare_run_dir()
 convert(run_dir=run_dir)
 filter_keywords(run_dir=run_dir)
 deduplicate(run_dir=run_dir)
+
+# 可选：显式写入 PostgreSQL；默认不调用。
+ingest_database(run_dir=run_dir)
+
 label_sentiment(run_dir=run_dir)
 export_labeled_excel(run_dir=run_dir)
 ```
 
-依赖上一步产物的函数必须传同一个 `run_dir`。
+依赖上一步产物的函数必须传同一个 `run_dir`。`run_all(write_to_database=True)` 会在去重完成后、AI 打标前执行同一个 `ingest_database()` 正式数据库阶段。
 
 ## 11. AI 多标签与 Excel
 
@@ -530,6 +536,8 @@ aima-monitoring-excel.v1
 - **程序中途终止**：不要删除 `analysis/checkpoints.jsonl`；修复问题后在同一 run 上继续 `label_sentiment(run_dir=...)` 可恢复成功项。
 - **run_id 已存在**：不要覆盖旧 run，使用新 run ID。
 - **词包为空**：检查 `KEYWORD_PACK_FILE` 是否正确、文件是否只剩注释和空行。
+- **数据库连接失败**：只影响显式数据库阶段；已经生成的 Canonical/filtered/deduplicated 文件保留。启动既定 PostgreSQL 18 开发实例并修复 `AIMA_DB_*` / Secret 配置后重试，不要让脚本自动管理容器。
+- **Stage 8A Schema 不匹配**：先由开发者显式运行仓库 Alembic Migration，再重试；`imports_test` 自身不会执行 Migration。
 
 ## 15. 未来正式网页关键词配置
 
@@ -570,51 +578,44 @@ keyword_pack_items
 因此最终 `deduplicated/contents.jsonl` 和 Excel 中同一平台的同一内容最多出现一次，代表记录及
 输出顺序由源文件首次出现顺序确定。
 
-## 17. Stage 8A 可选数据库写入（已批准目标，当前未实现）
+## 17. Stage 8A 可选数据库写入（已实现）
 
-当前 `imports_test` 的**现有行为仍然是文件模式**：运行时不要求 PostgreSQL，也不会写业务数据库。下面描述的是 [`docs/blueprint/17-Stage8数据入口统一入库与业务前端实施.md`](../../../../../../docs/blueprint/17-Stage8数据入口统一入库与业务前端实施.md) 已批准、将在 Stage 8A 实现的目标，不得把它理解为当前代码已经支持。
-
-Stage 8A 将保留本人工入口，并增加一个显式 opt-in 的数据库写入选择。目标语义为：
+Stage 8A 已保留 `imports_test` 的默认 file-only 行为，并实现显式 PostgreSQL 入库：
 
 ```text
 默认：WRITE_TO_DATABASE = False
-→ 保持当前行为
-→ 只生成 Canonical / filtered / deduplicated / analysis / Excel / run summary 文件
-→ 不要求数据库
+→ convert / filter / deduplicate 按原行为生成文件
+→ 不装配数据库 Runtime
+→ 不要求 PostgreSQL
 
-显式：WRITE_TO_DATABASE = True
-→ 仍先保留本次文件产物
-→ 建立合法文件来源 Artifact / Attempt / 来源链
-→ 把归一化后的 Canonical 交给正式 Content Ingestion
-→ 写入 PostgreSQL
+显式：run_all(write_to_database=True)
+或在同一 run 上单独调用 ingest_database(run_dir=...)
+→ 原始 XLSX 先通过 ArtifactService 保存为 Input Artifact
+→ 建立 Processing / Import Batch
+→ 建立 import-parent Provider Request + non-billable Attempt
+→ Attempt 绑定该 Input Artifact 作为真实来源证据
+→ 读取 deduplicated/contents.jsonl 中的 UnifiedContentRecordV1.content
+→ 用真实 Request / Attempt / Artifact 补齐 Canonical Source
+→ ContentIngestionService
+→ PostgresCompleteContentRepository / PostgresContentRepository
+→ PostgreSQL Current / Version / Metric / 来源历史
 ```
 
-最终配置名由 Stage 8A 的实现 Change 按当前代码冻结；无论名称如何，必须保持“默认不写库，显式开启才写库”。
+数据库模式的前置条件：
 
-数据库模式固定遵守：
+- 开发者已经启动可访问的 PostgreSQL 18；
+- `AIMA_DB_*` 与数据库密码 Secret 使用仓库正式配置；
+- Schema 已由开发者通过正常 Alembic 流程升级到当前 head；
+- 本调试入口**不**自动 `docker compose up/down`，**不**创建/删除数据库，**不**自动运行 Migration。
 
-- 假定开发者机器上已经有一个可访问的 PostgreSQL 18 开发实例，通常是已经启动的本地数据库容器；
-- `imports_test` 只读取仓库现有数据库配置和 Secret 边界、连接并校验，不负责 `docker compose up/down`；
-- 不自动创建/删除数据库容器；
-- 不自动执行 Alembic Migration，更不能执行破坏性 Migration；
-- 数据库不可用或 Schema 不满足要求时，数据库阶段明确失败，但已经生成的文件继续保留；
-- 不允许数据库失败后静默退回文件模式并把整次运行标成成功；
-- 不直接写 SQL，不建立 `ExcelDatabaseWriter` 或 `imports_test` 私有 Repository；
-- Excel Mapper 仍只负责得到 Provider-neutral Canonical；
-- Canonical 之后必须复用 `ContentIngestionService → PostgresContentRepository`；
-- 数据库最终仍按 `(platform, external_content_id)` 做跨批次、跨来源收敛，批次内去重不能替代数据库唯一约束；
-- 当前 PostgreSQL Ingestion 要求合法 `provider_attempt_id + raw_artifact_id` 来源引用，Stage 8A 必须建立真实文件来源链，不能伪造 ID、删除校验或绕过 Owner Repository。
+来源和兼容规则：
 
-因此 Stage 8A 完成后，人工运行可以按需要选择：
+- 不制造假的 Collection Run/Scope/Candidate；Excel 使用真实 Input Artifact + Processing Import Batch + import-parent Request/Attempt；
+- 不伪造 `provider_attempt_id/raw_artifact_id`，也不放松 Content Owner 的来源校验；
+- 不建立 `ExcelDatabaseWriter` 或 `imports_test` 私有 Repository；
+- Canonical 之后仍统一走正式 Content Ingestion；
+- PostgreSQL 最终按 `(platform, external_content_id)` 做跨批次、跨来源收敛；重复导入不创建第二条 Current；
+- 文件阶段已经写出的 Canonical/filtered/deduplicated 产物不会因数据库阶段失败被删除；数据库失败会直接向调用方抛错，不静默降级为“文件模式成功”；
+- 修复数据库/Schema/输入后可重新执行数据库阶段，正式唯一约束和 Ingestion 保证业务 Current 幂等收敛。
 
-```text
-仅文件调试
-```
-
-或：
-
-```text
-文件保留 + 正式 PostgreSQL 入库
-```
-
-两种模式必须复用同一套 Reader、Mapper、清洗、去重、Canonical 和正式 Ingestion 生产实现；本目录继续是人工调试入口，不成为第二套生产系统。
+注意：`run_all()` 的数据库阶段位于 AI 打标之前。如果数据库阶段失败，本次在它之前已经生成的文件会保留，但后续 AI/最终 labeled Excel 不会继续执行；需要保留并继续后续阶段时，修复问题后使用同一 `run_dir` 继续调用对应单步函数。
