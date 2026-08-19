@@ -1,18 +1,22 @@
 name: Dev Apply Analysis Multilabel
 
 on:
-  push:
+  pull_request:
     branches:
-      - feature/analysis-multilabel-run-dir
+      - main
     paths:
       - scripts/dev/_apply_multilabel_change.py
       - .github/workflows/dev-apply-analysis-multilabel.yml
+      - tests/unit/analysis/test_multilabel_analysis_v2.py
+      - tests/unit/platform/test_multilabel_excel.py
+      - tests/unit/collection/test_imports_test_run_directory.py
 
 permissions:
   contents: write
 
 jobs:
   apply-and-verify:
+    if: github.head_ref == 'feature/analysis-multilabel-run-dir'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
