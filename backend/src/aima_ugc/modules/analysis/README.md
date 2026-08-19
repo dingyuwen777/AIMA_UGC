@@ -1,88 +1,59 @@
 # Analysis 模块
 
-> 当前阶段：临时 P1 已闭环。Analysis 模块继续作为平台无关的正式业务能力，后续数据库/API/Job 接入必须复用这里的 Service、Port、Validator 与 Adapter 边界。
+`aima_ugc.modules.analysis` 是平台无关的舆情内容分析能力。Canonical 只保存外部可观察事实，AI 情感和一级/二级标签属于后置 Analysis；文件导入、TikHub 和未来其他 Provider 都必须复用同一 Prompt、Taxonomy、Validator、Service 和 LLM Port。
 
-`aima_ugc.modules.analysis` 保存平台无关的内容处理与 AI 分析业务能力。当前已建立 Prompt/Taxonomy 运行时加载、本地 Validator、Analysis Service/Port、Fake、真实 OpenAI-compatible Adapter 的业务接线，以及离线 JSONL checkpoint/attempt/failed 审计、成功 Analysis 原子回写和 checkpoint 崩溃恢复。
+## 1. 数据边界
 
-## 1. 边界与业务事实源
-
-`CanonicalContentV1` 只表示 Provider/平台可观察事实，不增加 AI 标签。筛选、去重和 AI 分析使用：
+统一处理记录：
 
 ```text
 UnifiedContentRecordV1
-= content + matched_keywords + analysis
+= CanonicalContentV1
++ matched_keywords
++ analysis
 ```
 
-其中：
+当前新成功结果使用：
 
 ```text
-analysis = null
-或
 ContentLabelAnalysisV2
 ```
 
-P1 第一版不接数据库。AI 只读取并回写同一个：
+每条结果：
 
-```text
-deduplicated/contents.jsonl
-```
+- 恰好一个 `sentiment`；
+- 至少一个 `labels` 标签对；
+- 每个标签对保存 `primary_label + secondary_label`；
+- 同一条内容可以有多个一级、多个二级标签；
+- 二级标签始终和所属一级一起保存，父子关系不会丢失。
 
-`analysis/checkpoints.jsonl`、`attempts.jsonl`、`failed.jsonl` 是恢复/费用安全/审计材料，不是第二业务事实源；最终业务消费者和最终 Excel 都读取回写后的 `deduplicated/contents.jsonl`。
+历史 `ContentLabelAnalysisV1` 只保留读取兼容。Canonical、Analysis V2 Contract 和 Excel Contract 不因为并发执行方式改变。
 
-## 2. Prompt / Taxonomy 唯一事实源
+## 2. Prompt / Taxonomy
 
-具体情感、一级标签、二级标签、一级/二级父子关系、覆盖内容、典型表达、边界规则、冲突优先级和示例只维护在：
+唯一 Prompt/Taxonomy 事实源：
 
 ```text
 backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v2.md
 ```
 
-Prompt 中只有一个机器可读 Taxonomy JSON 区块：
+具体情感标签、一级/二级标签、父子关系、判断标准和示例都只维护在该 Markdown。Python 只约束结构和合法性，不复制第二套业务标签枚举。
 
-````markdown
-<!-- AIMA_TAXONOMY_START -->
-```json
-{...}
-```
-<!-- AIMA_TAXONOMY_END -->
-````
-
-`PromptTaxonomyLoader` 精确提取该 JSON 块，使用 `json.loads` 解析，并在任何模型调用前严格校验 schema、空值、重复值和父子结构。自然语言说明只用于模型理解，程序不会解析自然语言表格来猜标签闭集。
-
-Python/Pydantic 只定义结构，不复制具体标签 Enum、Literal、父子关系常量或第二份 taxonomy JSON。因此仅增加、删除、重命名标签，调整父子关系或修改判断标准/示例时，只修改上述 Markdown；运行时 Validator 自动使用当前 Taxonomy。
-
-Loader 同时计算：
-
-- `taxonomy_sha256`：规范化机器 Taxonomy JSON 的 SHA-256；
-- `prompt_sha256`：完整 Prompt Markdown UTF-8 内容的 SHA-256。
-
-仅修改 Prompt 说明文字时只改变 `prompt_sha256`；修改机器 Taxonomy 时两个 Hash 都会随内容变化。
-
-## 3. Analysis Contract
-
-当前新成功结果是：
+`PromptTaxonomyLoader` 会：
 
 ```text
-ContentLabelAnalysisV2
+读取完整 Markdown
+→ 提取机器 Taxonomy JSON
+→ 校验结构
+→ 计算 prompt_sha256
+→ 计算 taxonomy_sha256
 ```
 
-当前成功结果使用：
+真实离线 run 开始时只读取/解析一次 Prompt，然后使用 `FrozenPromptTaxonomyLoader` 把这一份不可变快照复用给整个 run。这样既避免 9 万条内容重复读取文件，也避免运行几小时期间 Prompt 文件被改动后同一 run 出现两套标签口径。
 
-```text
-sentiment: str
-labels: [
-  {primary_label: str, secondary_label: str},
-  ...
-]
-```
+## 3. 发给模型的业务字段
 
-`sentiment` 恰好一个；`labels` 至少一个并允许多个。每个二级标签始终和所属一级标签成对保存，标签对不能重复。具体允许值仍由当前 `PromptTaxonomy` 动态校验，不写进 Python Enum/Literal。历史 `ContentLabelAnalysisV1` 保留只读兼容，新 Service 产生 `ContentLabelAnalysisV2`。
-
-`ContentLabelAnalysisV2` 只表示**已经通过本地 Validator 的新成功结果**，`analysis_status` 固定为 `succeeded`；历史 `ContentLabelAnalysisV1` 具有相同成功语义。Validation Retry 达到上限仍失败时，不构造失败版 Analysis：Service 返回该 item 的 `analysis_status=failed`、`analysis=None` 和错误代码，离线编排把失败状态写入 `analysis/failed.jsonl`，业务 JSONL 中该记录仍保持 `analysis=null`。
-
-## 4. 发给模型的最小业务输入
-
-`ContentLabelingService` 从 `CanonicalContentV1` 只投影：
+`ContentLabelingService` 从 Canonical 只投影：
 
 ```text
 title
@@ -90,126 +61,212 @@ text
 author.display_name
 ```
 
-缺失值统一填空字符串。批量请求额外带临时 `item_no` 做请求/响应配对；它不是业务字段。
+不会发送内容 ID、URL、互动指标、Provider 私有字段、Raw 定位或源 Excel 情感。
 
-不会发送内容 ID、平台 ID、URL、互动指标、粉丝数、Provider、`matched_keywords`、源 Excel 情感、Raw locator 或其他 Provider 私有字段。
-
-## 5. 本地 Validator 与 Validation Retry
-
-模型返回 JSON 后，即使 Adapter/Provider 使用 JSON mode 或 structured output，也不能跳过本地校验。Validator 检查：
-
-- Prompt Taxonomy 本身合法；
-- JSON 能否解析；
-- 顶层和 item 固定字段是否正确、是否有额外字段；
-- item 数量、顺序、唯一性与 `item_no` 配对；
-- sentiment 必须是一个非空字符串；
-- labels 必须是非空标签对数组；
-- 标签对不能重复；
-- 每个 primary 是否属于当前 Taxonomy；
-- 每个 secondary 是否属于同一标签对中的 primary。
-
-校验不做模糊匹配、近义标签替换或程序猜测填值。缺少必须字段、额外字段、item 缺失/重复/数量不一致、`item_no` 无法配对、未知 sentiment/一级标签、二级不属于一级、空 labels、重复标签对、未知标签、父子错配及其他结构错误都会进入 Validation Retry 或最终失败。
-
-生产 `ContentLabelingService.label_contents()` 接收：
-
-```python
-max_validation_retries: int
-```
-
-要求为大于等于 0 的整数，精确定义：
+Service 本身仍支持 `Sequence[CanonicalContentV1]`，便于测试和后续正式业务复用；但当前 `imports_test` 的真实付费离线路径固定为：
 
 ```text
-0 = 首次请求失败后不重试，总请求最多 1 次
-1 = 额外重试 1 次，总请求最多 2 次
-2 = 额外重试 2 次，总请求最多 3 次
+1 条内容
+→ 1 次 ContentLabelingService 调用
+→ 1 个 ContentLabelingLLMRequest
+→ 1 次 DeepSeek/OpenAI-compatible HTTP 请求
 ```
 
-Validation Retry 只处理**已经收到但本地校验不合法的模型响应**。每个重新请求都是独立 LLM attempt。重试请求只带当前仍未成功的 item，并携带上一响应的校验错误代码；同批已经成功并通过本地校验的 item 会从后续重试集合移除，不会因其他 item 错误重复调用/重复计费。
+因此当前离线执行不存在“20 条内容拼成一个模型请求”的行为。
 
-达到上限仍失败时：
+## 4. Validation Retry
+
+模型 HTTP 成功后仍必须经过本地 Validator。Validator 检查：
+
+- JSON 结构；
+- item 对应；
+- sentiment 合法；
+- labels 非空；
+- 标签对不重复；
+- 一级标签存在；
+- 二级标签属于对应一级。
+
+`max_validation_retries` 表示**模型已经成功返回 HTTP 响应，但结果未通过本地校验**后的额外重试次数：
 
 ```text
-analysis_status = failed
-analysis = None
+0 = 最多请求 1 次
+1 = 最多请求 2 次
+2 = 最多请求 3 次
 ```
 
-不得填猜测标签；后续只能显式补跑。
+当前真实离线请求每次只有一条内容，所以某一条标签结构失败时，只重试这一条，不会导致其他已经成功的内容重新请求。
 
-## 6. OpenAI-compatible Adapter 与网络边界
+达到 Validation Retry 上限仍失败：
 
-真实 Adapter 位于：
+```text
+analysis = null
+→ 写 analysis/failed.jsonl
+→ 继续处理其他内容
+```
+
+不猜测、不补造标签。
+
+## 5. Transport Retry
+
+真实 HTTP Base Adapter：
 
 ```text
 backend/src/aima_ugc/adapters/llm/openai_compatible.py
 ```
 
-它实现 `ContentLabelingLLMPort`，使用仓库既有 `httpx` 依赖调用 OpenAI-compatible Chat Completions：
+它继续保持硬边界：
+
+> 一次 `complete()` 恰好一次 HTTP 请求，不隐藏自动网络重试。
+
+显式 Transport Retry 位于：
 
 ```text
-POST <base_url>/chat/completions
+backend/src/aima_ugc/adapters/llm/retrying.py
 ```
 
-当前只有这一种真实 LLM Adapter，因此调用方不需要再配置“Adapter 类型”。兼容相同 Chat Completions 协议的模型服务只需要更换 Base URL、API Key 和 Model，不为每个厂商复制一套 Adapter。
+这样 Validation Retry 与网络 Retry 不会混为同一个计数器。
 
-边界固定为：
+当前可恢复 Transport 错误：
 
-- 一次 `complete()` 恰好一次 HTTP 请求；Adapter 不隐藏网络重试；
-- Validation Retry 仍只由 `ContentLabelingService` 控制；
-- 网络超时、连接错误、HTTP 错误属于 Transport/Provider 错误，不伪装成 Validation Retry；
-- API key 使用 `SecretStr`，错误消息不回显 Provider body 或 Secret；
-- 默认关闭环境代理继承、禁止自动 redirect；
-- Adapter 默认 `use_json_mode=True`；当前离线内容打标人工入口直接使用该默认值，不把 JSON mode 暴露成 `.env` 必填/常规配置；即使启用 JSON mode 也仍执行本地 Validator；
-- `timeout_seconds` 默认 60 秒，调用方只有确有环境差异时才覆盖；
-- 未显式提供 `provider_name` 时，Adapter 从**实际请求 Base URL 的 hostname**生成稳定 `model_provider` 审计身份；显式非默认端口也进入该身份。显式 `provider_name` 参数继续作为程序级兼容覆盖，但人工 `.env` 不需要维护它；
-- Provider 返回标准 token usage 时记录 input/output tokens；通用 Adapter 不猜测价格，所以没有明确费用字段时 `cost_amount/cost_currency` 保持空。
+```text
+网络连接/超时类 httpx.HTTPError
+HTTP 408
+HTTP 429
+HTTP 500
+HTTP 502
+HTTP 503
+HTTP 504
+```
 
-没有新增 OpenAI SDK，也没有新增网络重试库；复用锁文件中的 `httpx`。
+使用有界指数退避 + jitter，当前人工入口默认：
 
-## 7. 离线 JSONL 打标、checkpoint 恢复与原子回写
+```text
+MAX_TRANSPORT_RETRIES = 4
+```
 
-生产入口：
+也就是首次请求之外最多再尝试 4 次。
+
+以下错误不会通过 Transport Retry 反复消耗请求：
+
+```text
+HTTP 400
+HTTP 401
+HTTP 402
+HTTP 403
+HTTP 404
+HTTP 422
+以及 2xx 但响应协议本身非法
+```
+
+这类错误通常表示请求、认证、余额、权限、模型/参数或 Provider 协议需要人工修正。异常信息只保存状态和本地错误分类，不回显 API Key 或 Provider body。
+
+如果可恢复 Transport 错误在当前内容上达到重试上限，当前离线 Analysis 阶段停止继续扩展新请求；此前已经 durable checkpoint 的成功内容不会丢失，修复网络/Provider 后重新运行会直接恢复这些成功项。这样避免 Provider 故障时继续向剩余数万条内容制造失败请求。
+
+## 6. 250 有界并发
+
+当前离线生产入口：
 
 ```python
 label_unified_content_jsonl(...)
 ```
 
-固定读取：
+默认：
+
+```text
+DEFAULT_OFFLINE_LLM_CONCURRENCY = 250
+```
+
+`imports_test` 显式使用：
+
+```python
+LLM_CONCURRENCY = 250
+```
+
+执行模型：
 
 ```text
 deduplicated/contents.jsonl
+        ↓
+完整本地预检
+        ↓
+单条 canary 请求
+        ↓
+最多 250 个 in-flight Future
+        ↓
+任一完成立即补一个新任务
+        ↓
+checkpoint/attempt/failed 单协调线程写入
+        ↓
+全部模型阶段结束
+        ↓
+按原 JSONL 顺序第二遍回写
+        ↓
+os.replace 原子发布
 ```
 
-成功结果通过本地 Validator 后依次执行：
+关键点：
+
+1. **单条请求**：每个 Worker 一次只处理一个 Content。
+2. **滑动窗口**：最多只持有 `max_concurrency` 个 Future，不会一次创建 90,000 个 Future。
+3. **没有批次屏障**：一个慢请求不会让其他 249 个槽位闲置；有完成项就继续补充。
+4. **单写者**：Worker 只调用模型并返回结果；所有 audit/checkpoint 文件由主协调线程写，避免 250 线程争抢文件句柄和破坏 JSONL。
+5. **共享 HTTP Client**：真实 OpenAI-compatible Adapter 复用同一个 `httpx.Client`，连接池 `max_connections` 和 `max_keepalive_connections` 与当前并发上限一致；不会为 9 万条内容重复创建 TLS Client。
+6. **有界内存**：输入通过文件流扫描；除 checkpoint 索引、稳定身份预检集合和最多 250 个在飞任务外，不把 9 万条全部加载到任务列表。
+
+旧内部 `batch_size` 参数暂时保留为兼容别名，只解释成并发上限；它不再控制“一个 HTTP 请求放多少条内容”。人工入口不再暴露 `LLM_BATCH_SIZE`。
+
+## 7. 付费请求前预检和 canary
+
+并发开始前先完整扫描 `deduplicated/contents.jsonl`：
+
+- 每行必须是合法 `UnifiedContentRecordV1`；
+- 同一 `(platform, external_content_id)` 不允许在 deduplicated 文件重复；
+- 已有 `analysis` 的内容直接跳过；
+- 当前 Prompt/Taxonomy/Provider/Model/Input 全匹配的成功 checkpoint 标记为可恢复。
+
+预检失败发生在第一次真实模型请求之前，避免处理到中途才发现输入结构有问题。
+
+预检通过后，先只对第一条待处理内容做一个 canary。只有 canary 的模型链路可以正常工作，才创建 250 并发 Worker。因此 API Key 错误、余额/权限或请求配置错误不会在启动瞬间放大成 250 个无效请求。
+
+## 8. 防重复和 checkpoint
+
+成功恢复身份仍由以下事实共同决定：
 
 ```text
-写 analysis/checkpoints.jsonl
+platform
+external_content_id
+input_hash
+prompt_sha256
+taxonomy_sha256
+model_provider
+model
+```
+
+其中 `input_hash` 只由允许发送给模型的 title/text/author 计算。
+
+每条成功结果顺序：
+
+```text
+LLM 成功
+→ 本地 Validator 成功
+→ 追加 checkpoints.jsonl
 → flush + fsync
-→ 将成功 Analysis 写入业务 JSONL 临时文件
-→ 临时文件 flush + fsync
-→ os.replace 原子替换 deduplicated/contents.jsonl
+→ 才视为可恢复成功
 ```
 
-如果最终替换失败，临时业务文件会清理，原 `deduplicated/contents.jsonl` 不被破坏；已落盘 checkpoint 保留。
+业务 JSONL 不按并发完成顺序直接写。模型阶段结束后，程序重新顺序扫描原 `deduplicated/contents.jsonl`，使用成功 checkpoint 填回 Analysis，再写临时文件并 `os.replace`。因此：
 
-跨进程崩溃恢复：启动下一次打标时读取成功 checkpoint，但只有同时满足以下条件才允许恢复并跳过再次模型调用：
+- checkpoint 可以按 3、1、2 的完成顺序产生；
+- 最终业务 JSONL 仍严格保持原始 1、2、3 行顺序；
+- 程序在最终 `os.replace` 前崩溃时，重新运行会从 durable checkpoint 恢复，不重复请求已经成功持久化的内容。
 
-```text
-platform 相同
-external_content_id 相同
-最小模型输入 input_hash 相同
-prompt_sha256 等于当前完整 Prompt
-taxonomy_sha256 等于当前 Taxonomy
-model_provider 等于当前 Service 的模型服务身份
-model 等于当前 Service 的模型
-```
+已有业务 `analysis` 的记录同样直接跳过模型调用。
 
-其中 `input_hash` 仍只由允许发送给模型的 `title`、`text`、`author.display_name` 计算。OpenAI-compatible Adapter 默认把实际 Base URL 的 endpoint host 作为 `model_provider`，因此更换服务 endpoint 或模型时旧 checkpoint 会安全失效；Prompt/Taxonomy 变化同理。旧 checkpoint 仍保留为历史审计。
+外部 HTTP 存在一个无法由客户端完全消除的边界：Provider 可能已经处理请求，但响应在网络途中丢失。没有 Provider 端幂等键时，客户端无法数学上证明该请求未执行；系统能保证的是只接受一个合法 Analysis，并通过成功 checkpoint 尽量缩小重复调用窗口。
 
-恢复成功的记录直接把 checkpoint 中已验证的 `ContentLabelAnalysisV1` 或 `ContentLabelAnalysisV2` 写入业务临时 JSONL，再参与同一次原子 `os.replace`；checkpoint 本身始终不是业务事实源。`OfflineContentLabelingSummary.rows_recovered` 用于区分本次恢复数量和本次新模型成功数量。
+## 9. audit 与运行指标
 
-checkpoint 中的 `analysis.schema_version` 决定 V1/V2 解析。历史 V1 checkpoint 可以被安全解析，但是否恢复仍必须同时通过当前 input、Prompt/Taxonomy Hash、Provider 和 Model 身份门禁；因此使用旧 V1 Prompt 生成的 checkpoint 在当前 V2 Prompt 下会自然失效。新模型成功结果只写 V2。
-
-审计文件：
+当前分析目录：
 
 ```text
 analysis/checkpoints.jsonl
@@ -217,33 +274,62 @@ analysis/attempts.jsonl
 analysis/failed.jsonl
 ```
 
-`attempts.jsonl` 每次模型 attempt 记录 attempt_no、item_nos、validation_error_codes、model/provider、Prompt/Taxonomy Hash、时间和可获得的 token/费用；`checkpoints.jsonl` 只保存已通过 Validator 的成功 Analysis；`failed.jsonl` 显式记录 `analysis_status=failed` 与最终校验错误代码。失败 item 不会被猜测填入业务 Analysis。
-
-## 8. Fake、调试与费用
-
-`FakeContentLabelingLLM` 不访问网络、不产生真实模型费用，用预设原始响应驱动正式 Service 与 Validator。它适合验证非法 JSON、字段错误、item 配对错误、未知标签、父子错配、数组/空标签、Validation Retry、同批部分成功，以及 checkpoint 恢复与旧 Prompt/Taxonomy/Provider/模型 checkpoint 失效行为。
-
-真实模型调试优先查看：
+`OfflineContentLabelingSummary` 记录：
 
 ```text
-analysis/attempts.jsonl
-analysis/checkpoints.jsonl
-analysis/failed.jsonl
+rows_seen
+rows_already_labeled
+rows_recovered
+rows_succeeded
+rows_failed
+llm_attempts
+peak_in_flight
+llm_http_requests
+transport_retries
 ```
 
-再核对 `validation_error_codes`、`prompt_sha256`、`taxonomy_sha256`、`model_provider` 和 `model`。人工离线入口中的 `model_provider` 默认来自 `AIMA_LLM_BASE_URL` 的 endpoint host，`model` 来自 `AIMA_LLM_MODEL`。不要通过放宽 Validator、模糊匹配或自动改标签制造“成功”。Validation Retry 会产生额外真实模型调用和费用；checkpoint 恢复只复用与当前输入、当前 Prompt/Taxonomy 和当前模型身份完全匹配的成功结果。
+`imports_test/run_summary.json` 会把该 Summary 一起保存，便于判断本次是否真正跑到 250 并发、发生多少 Transport Retry、多少内容来自 checkpoint 恢复。
 
-## 9. 当前长期边界
+## 10. 独立验证
 
-临时 P1 已完成并验证：
+Fake/测试不访问真实模型，也不产生费用。重点测试：
 
-- checkpoint 跨进程崩溃恢复，成功恢复不再次调用模型；
-- 恢复绑定最小输入 Hash、当前 `prompt_sha256`、当前 `taxonomy_sha256`、`model_provider` 和 `model`；
-- `imports_test.run_all()` 固定串联 convert → filter → deduplicate → label → final Excel；
-- `run_summary.json` 原子写出；
-- 最终 labeled Excel 只读取回写后的同一 `deduplicated/contents.jsonl`；
-- Shared Exporter 正确投影 `record.analysis` 到现有 `UnifiedDataExcelV1` 分析列；
-- `export_raw_excel()` 继续只是人工旁路，不进入默认 `run_all()`；
-- 真实 OpenAI-compatible Adapter 继续是可替换外部边界，人工配置只暴露 Base URL、API Key、Model 和可选 timeout。
+- 一条内容一次请求；
+- 有界滑动窗口并发峰值；
+- 乱序完成后业务 JSONL 顺序不变；
+- 重复稳定身份在付费调用前失败；
+- 401 canary 只产生一个请求；
+- 429/503 有界 Transport Retry；
+- 401/402/422 不做 Transport Retry；
+- Validation Retry 只重试当前单条；
+- checkpoint 在业务 JSONL 原子替换失败后仍可恢复；
+- 已有 Analysis 不重复请求；
+- 连接池真正配置到目标并发数。
 
-未来正式 Analysis Job/API/数据库接入必须复用同一 Service/Port/Adapter/Validator，不把 `imports_test` 复制成第二套正式实现。
+常用命令：
+
+```bash
+uv run pytest tests/unit/analysis -q
+uv run ruff check backend tests scripts
+uv run mypy backend/src
+```
+
+真实模型 Probe 默认不进入普通 CI，也不能打印 Secret。
+
+## 11. 后续正式系统
+
+当前改动只把离线人工入口的真实付费执行做成可靠的单条并发链路，没有启动 Stage 8，也没有建立正式 Analysis Job/API/数据库 Repository。
+
+未来正式 Analysis Job 应复用：
+
+```text
+Prompt/Taxonomy
+→ ContentLabelingService
+→ LLM Port
+→ OpenAI-compatible Adapter
+→ 显式 Transport Retry
+→ 本地 Validator
+→ ContentLabelAnalysisV2
+```
+
+正式 Job 的数据库幂等、Lease/Fencing、进度和取消应按 Platform Job Runtime 另行接入，不能把 `imports_test` 的文件编排直接复制成生产 Job Runtime。
