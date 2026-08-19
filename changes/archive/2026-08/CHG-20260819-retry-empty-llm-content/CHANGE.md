@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260819-retry-empty-llm-content"
 title: "重试 LLM 空内容响应并恢复离线打标"
 level: L2
-status: ready_for_review
+status: done
 owner: "Codex"
 branch: "main"
 created: 2026-08-19
@@ -103,6 +103,6 @@ DeepSeek JSON Output 偶发返回空 `message.content` 时，离线内容打标�
 
 # 交付
 
-- Commit：用户已授权将当前工作区全部修改直接提交并推送远程 `main`；提交尚未创建。
+- Commit：`c1cd45364d51127a1970088b13ef45922da5829d`（`更新关键词并完善离线去重与AI重试`）。
 - PR：未授权，未创建。
-- 发布：不适用。
+- 发布：已按用户明确要求直接快进推送至 `origin/main`，远程引用已核验一致。
