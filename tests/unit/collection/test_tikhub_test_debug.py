@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
+import aima_ugc.adapters.providers.tikhub_test.core.config as tikhub_test_config
 from aima_ugc.adapters.providers.tikhub_test import (
     run_bilibili,
     run_douyin,
@@ -15,6 +16,12 @@ from aima_ugc.adapters.providers.tikhub_test import (
 )
 from aima_ugc.adapters.providers.tikhub_test.core.config import TikHubTestConfig
 from aima_ugc.adapters.providers.tikhub_test.core.core import DebugState, RunOutputStore
+
+
+def test_default_env_file_stays_at_tikhub_test_root() -> None:
+    expected = Path(tikhub_test_config.__file__).resolve().parent.parent / ".env"
+
+    assert tikhub_test_config._DEFAULT_ENV_FILE == expected
 
 
 def test_local_env_loads_tikhub_secret_without_exposing_value(tmp_path: Path) -> None:
