@@ -2,6 +2,8 @@
 
 from aima_ugc.modules.ingestion.tables import (
     processing_import_batches_table,
+)
+from aima_ugc.modules.ingestion.tables import (
     register_ingestion_schema as register_manual_ingestion_schema,
 )
 

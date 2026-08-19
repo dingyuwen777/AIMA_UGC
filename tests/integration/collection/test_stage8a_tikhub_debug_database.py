@@ -8,9 +8,6 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from pydantic import SecretStr
-from sqlalchemy import func, select
-
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
 from aima_ugc.adapters.providers.fake import FakeProviderTransport
 from aima_ugc.adapters.providers.tikhub import runtime as tikhub_runtime
@@ -33,6 +30,8 @@ from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.storage.tables import artifacts_table
+from pydantic import SecretStr
+from sqlalchemy import func, select
 
 _FIXTURE = Path("tests/fixtures/providers/tikhub/xhs/search_notes_page1.sanitized.json")
 

@@ -1,9 +1,8 @@
 """Stage 8A Processing/Import Batch 与 Provider 来源父级 Schema 契约。"""
 
-from sqlalchemy import CheckConstraint, UniqueConstraint
-
 from aima_ugc.modules.collection.tables import provider_requests_table
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
+from sqlalchemy import CheckConstraint, UniqueConstraint
 
 
 def test_processing_import_batch_is_minimal_owner_table() -> None:
