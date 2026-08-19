@@ -367,7 +367,7 @@ README、导航、测试说明和本 Change 收口后又产生文档提交，因
 
 ## 13. 中断恢复检查点
 
-如果对话/推理再次中断，新会话从以下事实恢复，而不是依赖聊天记忆：
+如果对话/推理再次中断，新会话从以下稳定导航恢复，而不是依赖聊天记忆或把某个旧 SHA 当永久最新：
 
 ```text
 repo: dingyuwen777/AIMA_UGC
@@ -375,7 +375,6 @@ branch: feature/stage8a-unified-manual-ingestion
 PR: #88
 Change: changes/active/CHG-20260820-stage8a-unified-manual-ingestion/CHANGE.md
 code/migration baseline: 20260820_0019
-last fully green core checkpoint: 08f1d646058a0da447b658a257a3f6da61dc0c17
 ```
 
-恢复顺序：先读目标分支 `AGENTS.md` → Skill → 本 Change → PR 最新 head/CI。若最新 head 比上述 checkpoint 更新，必须以 GitHub 最新事实为准重新验证，不能退回旧 commit。
+恢复顺序固定为：目标分支 `AGENTS.md` → Skill → 本 Change → PR 最新 head/CI。`08f1d646058a0da447b658a257a3f6da61dc0c17` 只是一份已验证历史检查点，不能替代恢复时重新查询 GitHub 当前事实。
