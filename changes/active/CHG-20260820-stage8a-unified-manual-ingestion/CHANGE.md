@@ -239,6 +239,4 @@ README、导航、测试说明和本 Change 收口后产生了新的文档提交
 
 ## 13. 中断恢复
 
-稳定导航：仓库 `dingyuwen777/AIMA_UGC`，分支 `feature/stage8a-unified-manual-ingestion`，PR #88，本 Active Change，Migration baseline `20260820_0019`。
-
-恢复时固定重新读取目标分支 `AGENTS.md` → Skill → 本 Change → PR 最新 head/CI；不把任何开发分支 SHA 当永久最新事实。
+稳定导航只有仓库 `dingyuwen777/AIMA_UGC`、分支 `feature/stage8a-unified-manual-ingestion`、PR #88、本 Active Change 与 Migration baseline `20260820_0019`。恢复时重新读取目标分支 `AGENTS.md` → Skill → 本 Change → PR 最新 head/CI；不在 Change 内维护动态 commit SHA。
