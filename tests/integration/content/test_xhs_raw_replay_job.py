@@ -47,6 +47,10 @@ _NOW = datetime(2026, 8, 5, 10, 0, 12, tzinfo=UTC)
 
 def test_job_replays_linked_raw_without_second_provider_call(tmp_path: Path) -> None:
     runtime = DatabaseRuntime(load_settings())
+    with runtime.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE jobs, artifacts, accounts RESTART IDENTITY CASCADE"
+        )
     store = LocalArtifactStore(tmp_path / "artifacts")
     store.ensure_ready()
     artifact_service = ArtifactService(
@@ -232,4 +236,8 @@ def test_job_replays_linked_raw_without_second_provider_call(tmp_path: Path) -> 
     finally:
         session.rollback()
         session.close()
+        with runtime.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE jobs, artifacts, accounts RESTART IDENTITY CASCADE"
+            )
         runtime.dispose()

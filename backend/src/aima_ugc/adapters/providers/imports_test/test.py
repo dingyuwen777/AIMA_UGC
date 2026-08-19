@@ -43,7 +43,7 @@ from aima_ugc.platform.export import (
 
 os.environ.pop("SSLKEYLOGFILE", None)
 
-INPUT_XLSX = Path(r"E:\Desktop\08_18数据\惠科data(0813 - 0816).xlsx")
+INPUT_XLSX = Path(r"E:\path\to\source.xlsx")
 OUTPUT_ROOT = Path(__file__).with_name("output")
 KEYWORD_PACK_FILE = Path(__file__).with_name("keyword_pack.txt")
 
@@ -64,7 +64,7 @@ EXCEL_CONTENT_COLUMNS = (
     "二级标签",
 )
 
-ENABLE_REAL_LLM = True
+ENABLE_REAL_LLM = False
 # 一条内容一次独立 LLM 请求；同时最多 250 个请求在飞。
 LLM_CONCURRENCY = 250
 MAX_VALIDATION_RETRIES = 2

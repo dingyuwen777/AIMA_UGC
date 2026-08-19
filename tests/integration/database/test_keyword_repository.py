@@ -14,6 +14,7 @@ from aima_ugc.modules.system.tables import (
 )
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
+from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
 
 
@@ -119,4 +120,14 @@ def test_keyword_catalog_round_trip_and_database_constraints() -> None:
         }
     finally:
         session.close()
+        with runtime.engine.begin() as connection:
+            connection.execute(
+                delete(keyword_pack_items_table).where(
+                    keyword_pack_items_table.c.pack_id == pack_id
+                )
+            )
+            connection.execute(
+                delete(keyword_packs_table).where(keyword_packs_table.c.id == pack_id)
+            )
+            connection.execute(delete(keywords_table).where(keywords_table.c.id == keyword_id))
         runtime.dispose()

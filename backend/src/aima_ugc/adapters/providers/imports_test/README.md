@@ -31,7 +31,7 @@ KEYWORD_PACK_FILE = Path(__file__).with_name("keyword_pack.txt")
 SHEET_NAME = "文章"
 PROFILE = "aima-monitoring-excel.v1"
 
-ENABLE_REAL_LLM = True
+ENABLE_REAL_LLM = False
 
 # 一条内容 = 一次独立 LLM 请求；最多同时 250 个请求。
 LLM_CONCURRENCY = 250

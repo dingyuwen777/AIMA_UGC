@@ -1,5 +1,6 @@
 import hashlib
 import os
+import subprocess
 
 import pytest
 from aima_ugc.adapters.storage.local import LocalArtifactStore
@@ -53,7 +54,22 @@ def test_local_store_rejects_parent_symlink_escape(tmp_path) -> None:
     outside = tmp_path / "outside"
     root.mkdir()
     outside.mkdir()
-    (root / "link").symlink_to(outside, target_is_directory=True)
+    link = root / "link"
+    try:
+        link.symlink_to(outside, target_is_directory=True)
+    except OSError as exc:
+        if os.name != "nt" or exc.winerror != 1314:
+            raise
+        # 未开启开发者模式的 Windows 普通账户不能创建 symlink；目录 Junction
+        # 同样能验证父目录重解析点不能逃逸 Artifact 根目录。
+        completed = subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(outside)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if completed.returncode != 0:
+            pytest.skip("当前 Windows 环境既不能创建 symlink，也不能创建目录 Junction")
     store = LocalArtifactStore(root)
 
     with pytest.raises(ValueError):

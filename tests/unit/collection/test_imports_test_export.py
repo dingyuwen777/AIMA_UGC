@@ -27,6 +27,10 @@ _EXPECTED_IMPORTS_COLUMNS = (
 )
 
 
+def test_imports_test_real_llm_is_disabled_by_default() -> None:
+    assert imports_test_entry.ENABLE_REAL_LLM is False
+
+
 def test_imports_test_export_raw_excel_uses_configured_review_columns(
     tmp_path: Path,
     monkeypatch,

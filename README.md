@@ -35,7 +35,7 @@ Stage 8 尚未开始。当前五平台生产实现使用同一 Collection/Conten
 
 - Python `3.14.7` 由 `.python-version` 固定，uv `0.12.3` 由 `.uv-version` 固定；
 - 根目录是唯一 Python/uv 工程，源码固定在 `backend/src/aima_ugc/`；
-- `uv_build` 已验证 Wheel 构建、隔离安装和直接 import；
+- `uv_build` 已验证 Wheel 构建、隔离安装和直接 import；本地 `.env` 与 Provider 调试 `output/` 不进入源码分发包或 Wheel；
 - FastAPI 已提供 `GET /health/live`；Uvicorn 是锁定运行依赖；
 - Node/npm、Vue/Vite/Pinia、TypeScript 7 native + Vue SFC compatibility 类型链已锁定；
 - Pydantic → FastAPI OpenAPI → Orval Fetch Client 的生成链已建立，生成物禁止手改；
