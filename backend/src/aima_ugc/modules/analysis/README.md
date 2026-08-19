@@ -63,7 +63,7 @@ author.display_name
 
 不会发送内容 ID、URL、互动指标、Provider 私有字段、Raw 定位或源 Excel 情感。
 
-Service 本身仍支持 `Sequence[CanonicalContentV1]`，便于测试和后续正式业务复用；但当前 `imports_test` 的真实付费离线路径固定为：
+Service 本身仍支持 `Sequence[CanonicalContentV1]`，便于测试和后续正式业务复用；但当前 `imports_test` 的真实模型离线路径固定为：
 
 ```text
 1 条内容
@@ -146,7 +146,7 @@ MAX_TRANSPORT_RETRIES = 4
 
 也就是首次请求之外最多再尝试 4 次。
 
-以下错误不会通过 Transport Retry 反复消耗请求：
+以下错误不会通过 Transport Retry 反复请求：
 
 ```text
 HTTP 400
@@ -161,6 +161,8 @@ HTTP 422
 这类错误通常表示请求、认证、余额、权限、模型/参数或 Provider 协议需要人工修正。异常信息只保存状态和本地错误分类，不回显 API Key 或 Provider body。
 
 如果可恢复 Transport 错误在当前内容上达到重试上限，当前离线 Analysis 阶段停止继续扩展新请求；此前已经 durable checkpoint 的成功内容不会丢失，修复网络/Provider 后重新运行会直接恢复这些成功项。这样避免 Provider 故障时继续向剩余数万条内容制造失败请求。
+
+这里**没有预算上限、费用阈值或 Token 预算停止逻辑**。费用只作为外部模型调用的客观属性和可观察信息，不参与调度是否继续的判断。
 
 ## 6. 250 有界并发
 
@@ -187,7 +189,7 @@ LLM_CONCURRENCY = 250
 ```text
 deduplicated/contents.jsonl
         ↓
-完整本地预检
+完整本地输入预检
         ↓
 单条 canary 请求
         ↓
@@ -215,7 +217,7 @@ os.replace 原子发布
 
 旧内部 `batch_size` 参数暂时保留为兼容别名，只解释成并发上限；它不再控制“一个 HTTP 请求放多少条内容”。人工入口不再暴露 `LLM_BATCH_SIZE`。
 
-## 7. 付费请求前预检和 canary
+## 7. 模型调用前全文件输入预检和 canary
 
 并发开始前先完整扫描 `deduplicated/contents.jsonl`：
 
@@ -223,6 +225,8 @@ os.replace 原子发布
 - 同一 `(platform, external_content_id)` 不允许在 deduplicated 文件重复；
 - 已有 `analysis` 的内容直接跳过；
 - 当前 Prompt/Taxonomy/Provider/Model/Input 全匹配的成功 checkpoint 标记为可恢复。
+
+这个步骤只是**输入完整性和防重复检查**，不计算预算、不估算费用，也不会因为“花了多少钱”停止运行。
 
 预检失败发生在第一次真实模型请求之前，避免处理到中途才发现输入结构有问题。
 
@@ -292,12 +296,12 @@ transport_retries
 
 ## 10. 独立验证
 
-Fake/测试不访问真实模型，也不产生费用。重点测试：
+Fake/测试不访问真实模型，也不产生真实 API 调用。重点测试：
 
 - 一条内容一次请求；
 - 有界滑动窗口并发峰值；
 - 乱序完成后业务 JSONL 顺序不变；
-- 重复稳定身份在付费调用前失败；
+- 重复稳定身份在模型调用前失败；
 - 401 canary 只产生一个请求；
 - 429/503 有界 Transport Retry；
 - 401/402/422 不做 Transport Retry；
@@ -318,7 +322,7 @@ uv run mypy backend/src
 
 ## 11. 后续正式系统
 
-当前改动只把离线人工入口的真实付费执行做成可靠的单条并发链路，没有启动 Stage 8，也没有建立正式 Analysis Job/API/数据库 Repository。
+当前改动只把离线人工入口的真实模型执行做成可靠的单条并发链路，没有启动 Stage 8，也没有建立正式 Analysis Job/API/数据库 Repository。
 
 未来正式 Analysis Job 应复用：
 
