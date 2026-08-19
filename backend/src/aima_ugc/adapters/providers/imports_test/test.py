@@ -1,4 +1,4 @@
-"""P1 Excel 离线导入人工入口；只配置参数并调用生产实现。"""
+"""Excel 离线导入人工入口；配置参数并调用生产实现。"""
 
 from __future__ import annotations
 
@@ -44,6 +44,20 @@ KEYWORDS = ("爱玛",)
 SHEET_NAME = "文章"
 PROFILE = "aima-monitoring-excel.v1"
 
+# 最终 Excel 的“内容”Sheet 展示列；顺序就是导出顺序。
+EXCEL_CONTENT_COLUMNS = (
+    "平台",
+    "标题",
+    "正文",
+    "作者",
+    "发布时间",
+    "内容链接",
+    "命中关键词",
+    "情感标签",
+    "一级标签",
+    "二级标签",
+)
+
 ENABLE_REAL_LLM = False
 MAX_VALIDATION_RETRIES = 2
 LLM_BATCH_SIZE = 20
@@ -55,7 +69,7 @@ _RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 
 @dataclass(frozen=True, slots=True)
 class P1RunSummary:
-    """一次 P1 人工全链路运行的交付摘要。"""
+    """一次人工全链路运行的交付摘要。"""
 
     run_id: str
     run_summary_path: Path
@@ -93,12 +107,13 @@ def deduplicate() -> ContentDeduplicationSummary:
 
 
 def export_raw_excel() -> ExcelExportSummary:
-    """可选导出 deduplicated JSONL 的 raw 人工审阅视图。"""
+    """可选导出 deduplicated JSONL 的未填分析标签人工审阅视图。"""
 
     return export_unified_content_jsonl_to_excel(
         input_path=OUTPUT_ROOT / "deduplicated" / "contents.jsonl",
         output_path=OUTPUT_ROOT / "raw_data.xlsx",
         include_analysis=False,
+        content_columns=EXCEL_CONTENT_COLUMNS,
     )
 
 
@@ -146,11 +161,12 @@ def export_labeled_excel(*, run_id: str | None = None) -> ExcelExportSummary:
         input_path=OUTPUT_ROOT / "deduplicated" / "contents.jsonl",
         output_path=_labeled_output_path(actual_run_id),
         include_analysis=True,
+        content_columns=EXCEL_CONTENT_COLUMNS,
     )
 
 
 def run_all(*, run_id: str | None = None) -> P1RunSummary:
-    """按固定 P1 主链执行；raw Excel 不属于默认链路。"""
+    """按固定顺序执行完整链路；raw Excel 不属于默认链路。"""
 
     actual_run_id = _resolve_run_id(run_id)
     stages: list[dict[str, object]] = []
