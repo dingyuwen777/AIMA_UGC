@@ -22,7 +22,7 @@ def test_p1h_benchmark_reuses_production_chain_and_records_required_metrics(
             str(tmp_path),
             "--rows",
             "6",
-            "--label-batch-size",
+            "--label-concurrency",
             "3",
         ],
         cwd=ROOT,
@@ -37,8 +37,9 @@ def test_p1h_benchmark_reuses_production_chain_and_records_required_metrics(
     assert report["schema_version"] == "p1-offline-performance.v1"
     assert report["row_count"] == 6
     assert report["column_count"] == 13
-    assert report["label_batch_size"] == 3
+    assert report["label_concurrency"] == 3
     assert report["peak_rss_bytes"] > 0
+    assert report["stages"]["analysis_writeback"]["peak_in_flight"] <= 3
 
     expected_stages = (
         "convert",
