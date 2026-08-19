@@ -1,18 +1,12 @@
 import os
 
-from aima_ugc.adapters.providers.tikhub_test import (
-    run_bilibili,
-    run_douyin,
-    run_kuaishou,
-    run_weibo,
-    run_xiaohongshu,
-)
+from aima_ugc.adapters.providers import tikhub_test
 
 os.environ.pop("SSLKEYLOGFILE", None)
 
 output = r"./output"
 
-# result = run_xiaohongshu(
+# result = tikhub_test.run_xiaohongshu(
 #     keywords=("爱玛", "爱玛电动车"),
 #     sort_mode="latest",
 #     published_within="7d",
@@ -23,7 +17,7 @@ output = r"./output"
 #     output_root=output,
 # )
 
-result = run_douyin(
+result = tikhub_test.run_douyin(
     keywords=("爱玛", "周冠宇"),
     sort_mode="latest",
     published_within="7d",
@@ -33,28 +27,28 @@ result = run_douyin(
     output_root=output,
 )
 #
-# result = run_weibo(
+# result = tikhub_test.run_weibo(
 #     keywords=("爱玛", "爱玛电动车"),
 #     sort_mode="latest",
 #     published_within="week",
 #     output_root=output,
 # )
 #
-# result = run_bilibili(
+# result = tikhub_test.run_bilibili(
 #     keywords=("爱玛", "爱玛电动车"),
 #     sort_mode="latest",
 #     content_type="video",
 #     output_root=output,
 # )
 #
-# result = run_bilibili(
+# result = tikhub_test.run_bilibili(
 #     keywords=("爱玛", "爱玛电动车"),
 #     sort_mode="latest",
 #     content_type="video",
 #     output_root=output,
 # )
 #
-# result = run_kuaishou(
+# result = tikhub_test.run_kuaishou(
 #     keywords=("爱玛", "爱玛电动车"),
 #     output_root=output,
 # )
