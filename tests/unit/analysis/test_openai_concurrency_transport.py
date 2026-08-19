@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import httpx
 import pytest
-from pydantic import SecretStr
-
 from aima_ugc.adapters.llm import (
     OpenAICompatibleContentLabelingLLM,
     OpenAICompatibleLLMError,
 )
 from aima_ugc.modules.analysis import ContentLabelingLLMRequest
+from pydantic import SecretStr
 
 
 def _request() -> ContentLabelingLLMRequest:
