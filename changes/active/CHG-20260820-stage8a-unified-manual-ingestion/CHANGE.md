@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260820-stage8a-unified-manual-ingestion
 title: Stage 8A Unified Manual Ingestion Foundation
 level: L3
-status: in_progress
+status: ready_for_review
 owner: AI coding agent
 branch: feature/stage8a-unified-manual-ingestion
 created: 2026-08-20
@@ -17,231 +17,363 @@ affected_areas:
   - documentation
 affected_paths:
   - changes/active/CHG-20260820-stage8a-unified-manual-ingestion/
-  - backend/src/aima_ugc/modules/
+  - backend/src/aima_ugc/modules/ingestion/
+  - backend/src/aima_ugc/modules/collection/
   - backend/src/aima_ugc/adapters/persistence/postgres/
-  - backend/src/aima_ugc/adapters/providers/imports/
   - backend/src/aima_ugc/adapters/providers/imports_test/
   - backend/src/aima_ugc/adapters/providers/tikhub_test/
+  - backend/src/aima_ugc/bootstrap/
   - backend/src/aima_ugc/contracts/provider/
-  - backend/alembic/
+  - contracts/provider/
+  - migrations/
   - tests/
   - docs/blueprint/
   - docs/测试与调试说明.md
 contracts:
-  - CanonicalContentV1
-  - CanonicalCommentV1
   - ProviderRequestV1
-  - ProviderAttemptV1
 data_changes:
-  - ProcessingImportBatch
+  - processing_import_batches
   - provider_requests
 ---
 
 # Stage 8A：Unified Manual Ingestion Foundation
 
-## 1. 背景与当前机器事实
+## 1. 结果与当前机器事实
 
-Stage 1—7 与临时 P1 已闭环，Stage 8 是当前正式开发阶段。本 Change 只处理 Stage 8A，不进入 Stage 8B/8C，也不开发正式前端。
+Stage 1—7 与临时 P1 已闭环。本 Change 只实现 Stage 8A，不进入 Stage 8B/8C，也不开发正式前端。
 
-开始时从 `main@09ff597f6dc28d06c36017c3c9a8af062fe1e425` 重新读取当前仓库后确认：
+Stage 8A 当前已经形成以下机器事实：
 
-1. `PostgresContentRepository` 对持久化 Canonical 强制要求真实 `provider_attempt_id` 与 `raw_artifact_id`，并校验 Raw Artifact 确实属于该 Attempt；不能为 Excel 伪造 ID，也不能删除这层校验。
-2. `ProviderAttemptV1` Contract 本身允许非 HTTP 执行事实；`http_status` 等 HTTP 字段并非所有成功 Attempt 都必须存在。
-3. 当前 PostgreSQL `provider_requests.scope_id` 为非空 FK，固定指向 `collection_scopes`；因此任何现有 Provider Request 都被迫属于 Collection Run/Scope。
-4. Excel 手工导入如果为了复用 Attempt 而制造虚假的 Collection Run/Scope，会把“文件导入”错误记录为“外部采集运行”，污染 Collection 语义。
-5. `contents` 已有 `(platform, external_content_id)` 唯一约束；正式 Content Repository 已负责 Current、Observation、Version、Metric 与来源历史收敛，不应新增 Excel/TikHub 私有 Writer。
-6. `imports_test` 与 `tikhub_test` 当前默认 file-only 行为必须保持；Stage 8A 的数据库模式必须是显式可选能力。
+1. 新增 `processing_import_batches`，作为 Excel File Import 的最小业务父事实；它不复制 Content/Comment 业务字段。
+2. `ProviderRequestV1/provider_requests` 从“只能属于 Collection Scope”一般化为“恰好属于 Collection Scope 或 Processing Import Batch 之一”。
+3. 既有 Collection Request 仍通过 `scope_id` 工作；File Import 通过 `import_batch_id` 工作。无父级和双父级都关闭失败。
+4. Excel File Import **不制造** Collection Run/Scope/Candidate。它使用真实 Input Artifact + Processing Import Batch + import-parent Provider Request/non-billable Attempt，并把该 Input Artifact 绑定为 Attempt 的真实来源证据。
+5. TikHub 数据库模式仍保持正式 Collection 语义：manual Run/keyword Scope → Provider Request/Attempt → Raw → Candidate-before-Mapper → Canonical → fenced Ingestion。
+6. `imports_test`、`tikhub_test` 默认仍为 file-only；只有显式开启数据库模式才装配 PostgreSQL Runtime。
+7. Canonical 之后不新增 Excel/TikHub 私有 Writer，统一进入现有 Content Ingestion / Content Owner Repository。
+8. PostgreSQL 继续以 `(platform, external_content_id)` 和评论稳定身份作为跨批次、跨来源最终业务收敛边界，并保留 Version/Metric/来源历史。
 
-## 2. 已批准的上游决策
+## 2. 已确认的上游决策与不变项
 
-以下决定继承 Blueprint 17 与用户本轮明确批准，不重新讨论：
+以下决定继承 Blueprint 17 与用户已批准方案：
 
-- Excel 是首版主要数据入口，TikHub 是辅助发现、补漏和补充详情/评论入口。
-- PostgreSQL 是唯一业务事实库；Excel 文件不是数据库。
-- 所有来源必须在 Mapper 前后收敛为 `CanonicalContentV1 / CanonicalCommentV1`，Canonical 之后统一走 `ContentIngestionService -> PostgresContentRepository -> PostgreSQL`。
-- 禁止 Excel/TikHub/debug 私有 Repository、私有 DB Writer 和直接 SQL 绕过 Owner Repository。
-- 采用 Processing / Import Batch 作为一次 Excel 业务处理的最小父事实；它不复制 Content/Comment 业务字段。
-- `imports_test`、`tikhub_test` 永久保留；默认 file-only，显式数据库模式才访问 PostgreSQL。
-- 数据库模式只连接已经由开发者启动的 PostgreSQL 18；不管理 Docker，不自动执行 Migration。
-- 文件阶段成功而数据库阶段失败时保留文件并明确失败；允许幂等重试。
-- 最终 Content 去重键保持 `(platform, external_content_id)`；跨 Excel/TikHub 的同一内容收敛为一个 Current Content，同时保留合法的新 Observation/Version/Metric/来源历史。
+- Excel 是第一版主要人工数据入口，TikHub 是辅助发现、补漏和详情/评论补充来源。
+- PostgreSQL 是唯一业务事实库；Excel/JSONL/XLSX 调试产物不是业务数据库。
+- Provider 差异在 Canonical 前结束；Canonical 后只复用正式 Ingestion 和 Owner Repository。
+- 禁止 `ExcelDatabaseWriter`、`TikHubDatabaseWriter`、调试目录私有 Repository 和绕过 Owner 的直接 SQL。
+- `imports_test`、`tikhub_test` 永久保留；默认 file-only，数据库模式显式 opt-in。
+- 数据库模式只连接开发者已经准备好的 PostgreSQL 18，不自动管理 Docker，不自动运行 Alembic Migration。
+- 数据库/Schema 失败必须明确失败；已经生成的调试文件不因 DB 失败被删除。
+- Stage 8A 不新增 HTTP API、正式 Vue/Figma 页面、Analysis 数据库存储、认证权限、预算系统或新基础设施。
 
-## 3. 目标与可观察成功标准
+## 3. 成功标准状态
 
-本 Change 建立唯一、真实、可审计、可重放的手工文件来源链：
+1. **File Import 不伪造 Collection 来源：已实现。** Excel 使用 Input Artifact → Import Batch → import-parent Request/Attempt；不创建 Collection Run/Scope/Candidate。
+2. **两个调试入口默认不要求数据库：已实现。** 默认参数分别为 `WRITE_TO_DATABASE=False` / `write_to_database=False`，数据库装配使用延迟导入/显式分支。
+3. **显式 DB 模式复用正式来源链和 Ingestion：已实现。**
+4. **DB/Schema 不可用时关闭失败且不自动管理容器/Migration：已实现并有边界测试。**
+5. **重复 Excel 与 Excel/TikHub 跨来源只形成一个 Current：已由 PostgreSQL 18 Integration 验证。**
+6. **更晚合法 Observation 推进 Current/Version/Metric：已由 PostgreSQL 18 Integration 验证。**
+7. **数据库阶段失败后可重试且不制造第二 Current：已由 PostgreSQL 18 Integration 验证。**
+8. **Migration/Contract/Unit/PG18/质量门禁：代码检查点已取得新鲜成功证据；最终文档 head 仍需再次取得完整 CI 后才允许合并。**
 
-```text
-Excel Source
-→ Input Artifact
-→ ProcessingImportBatch
-→ Provider Request / Attempt（File Import 合法父级）
-→ Raw Artifact / Candidate
-→ existing Excel Mapper
-→ CanonicalContentV1 / CanonicalCommentV1
-→ ContentIngestionService
-→ PostgresContentRepository
-→ PostgreSQL
-```
+## 4. 来源链方案比较与最终选择
 
-成功标准：
+### 方案 A：Excel 制造 Collection Run/Scope
 
-1. file import 不制造 Collection Run/Scope，不伪造 Attempt/Raw ID；
-2. imports_test 与 tikhub_test 默认仍不要求数据库，既有文件产物兼容；
-3. 显式 DB 模式使用正式来源链和正式 Ingestion；
-4. DB 不可用或 Schema 不匹配时显式失败，文件产物保留；
-5. 同一 Excel 重试与 Excel/TikHub 跨来源重复最终只有一个 Current Content；
-6. 合法更晚 Observation 仍产生/更新正式历史；
-7. PostgreSQL 18 集成、Migration、Contract、Unit 和相关质量门禁有本轮新鲜证据。
+优点：旧 Schema 改动少。
 
-## 4. 范围
+缺点：把本地文件读取伪装成外部 Collection Scope，污染采集 Run、页面统计和审计语义。
 
-- Processing / Import Batch 的 Stage 8A 最小机器结构、Repository/Service 与状态流转；
-- File Import 合法 Provider Request/Attempt/Artifact/Candidate 来源链；
-- 复用现有 Excel Reader、Mapper、关键词清洗、稳定身份去重；
-- 复用 `ContentIngestionService` 与 `PostgresContentRepository`；
-- imports_test 可选 PostgreSQL 模式；
-- tikhub_test 可选 PostgreSQL 模式，优先复用正式 Collection 链；
-- 正式 PostgreSQL 配置、连通性和 Schema 前置检查；
-- 跨来源去重、历史保留与失败重试验证；
-- 只同步真实受影响的 Blueprint/README/测试说明。
+**结论：不采用。**
 
-## 5. 非目标
+### 方案 B：一般化 Provider Request 父级
 
-不实现 Stage 8B 上传 HTTP API、Stage 8C 采集运行中心、Vue/Figma 正式页面、KPI/Cursor/Content Center、TikHub 补采按钮、Keyword Pack/Collection Plan 页面、完整 Analysis 数据库页面、认证权限、预算系统、Redis/Kafka/RabbitMQ，也不升级无关依赖或做无关重构。
-
-## 6. 来源链方案比较
-
-### 方案 A：制造 Collection Run/Scope，完全复用现有 Provider Request
-
-做法：Excel 导入先建立一个 Collection Run/Scope，再创建现有 Provider Request/Attempt。
-
-优点：Schema 改动最少。
-
-缺点：Collection 当前表达外部数据采集计划/范围；Excel 本地文件读取不是采集 Scope。该方案会制造虚假 Collection 业务事实，使 Collection 页面、审计、统计和未来调度语义混淆。
-
-结论：不采用。
-
-### 方案 B：最小一般化 Provider Request 的父级（推荐）
-
-做法：新增最小 `processing_import_batches` 父事实；`provider_requests` 从“只能属于 collection_scope”一般化为“恰好属于 collection_scope 或 import_batch 之一”。`provider_request_attempts`、Raw Artifact、Candidate、Canonical Source 和 Content 历史来源 FK 全部保持不变。
-
-预期 Schema 约束：
-
-```text
-provider_requests.scope_id       NULLABLE FK collection_scopes(id)
-provider_requests.import_batch_id NULLABLE FK processing_import_batches(id)
-CHECK exactly_one(scope_id, import_batch_id)
-```
+做法：新增 `processing_import_batches`；让 `provider_requests` 恰好属于 `scope_id` 或 `import_batch_id` 之一；继续复用 Provider Attempt、Artifact 和 Content 来源约束。
 
 优点：
 
 - 不伪造 Collection；
-- 不增加第二套 Attempt/Artifact 来源体系；
-- Content Repository 的严格来源校验和历史 FK 无需弱化；
-- 现有 Collection Request 仍保留 scope_id，兼容既有数据；
-- File 与 HTTP Provider 在 Attempt 之后共用同一来源链，审计和重放边界清楚。
+- 不复制 Attempt/Artifact 体系；
+- Content 历史来源约束无需放松；
+- 既有 Collection 数据和调用链兼容；
+- File/HTTP 两种执行仍共享统一 Request/Attempt 执行事实。
 
-代价：Provider Request Contract/Repository 需要做向后兼容的一般化，并需要 forward Migration。
+代价：需要 Provider Request Contract/Repository 一般化和 forward Migration。
 
-结论：采用，前提是后续代码核查未发现更窄且语义正确的现有 Owner API。
+**结论：采用并已实现。**
 
-### 方案 C：新增 FileAttempt/FileArtifact 专用来源体系
+### 方案 C：独立 FileAttempt/FileSource 体系
 
-做法：为 File Import 新建独立执行表，并修改 Canonical/Content Source 使其同时能指向 Provider Attempt 或 File Attempt。
+优点：文件执行概念完全独立。
 
-优点：文件语义完全独立。
+缺点：复制 Attempt/Artifact 概念，并迫使 Content Version/Metric/来源 FK、Contract 和 Repository 扩大为双来源模型，显著增加迁移和维护成本。
 
-缺点：复制 Attempt/Artifact 概念；Content/Observation/Version/Metric 的来源 FK、校验、Contract 和 Repository 都要扩大；迁移与兼容范围显著大于当前需求。
+**结论：不采用。**
 
-结论：除非真实 Schema 证明方案 B 不成立，否则不采用。
+## 5. Schema / Migration 实际结果
 
-## 7. Schema / Migration 与兼容策略
+Forward Revision：
 
-预计需要一个新的 forward Alembic Revision：
+```text
+20260820_0019
+Revises: 20260818_0018
+```
 
-1. 建立 Stage 8A 最小 `processing_import_batches`；
-2. 为 `provider_requests` 增加可空 `import_batch_id` FK；
-3. 将 `scope_id` 改为可空；
-4. 增加恰好一个父级存在的 CHECK；
-5. 保持所有现有 Collection 数据 `scope_id != NULL, import_batch_id = NULL`，不重写历史；
-6. Provider Attempt、Raw Artifact、Candidate、Content 来源 FK 保持原表和原 ID 语义。
+实际变化：
 
-Migration 必须验证 base→head、上一正式 revision→head、downgrade/re-upgrade、`alembic check`，并检查 FK/Unique/Check/Index。
+```text
+processing_import_batches
+  id                uuid PK
+  input_artifact_id uuid NOT NULL FK artifacts(id)
+  job_id            uuid NULL UNIQUE FK jobs(id)
+  status            processing | succeeded | failed
+  stats             jsonb NOT NULL default {}
+  error_summary     text NULL
+  created_at        timestamptz NOT NULL
+  started_at        timestamptz NULL
+  finished_at       timestamptz NULL
+```
 
-公共兼容原则：现有 Collection 调用仍可用原来的 scope/run 语义；新字段只用于合法 File Import。不得用默认值让无父级 Provider Request 偷渡通过。
+`provider_requests`：
 
-## 8. Processing / Import Batch 最小边界
+```text
+scope_id        → nullable
+import_batch_id → nullable FK processing_import_batches(id)
+CHECK exactly one(scope_id, import_batch_id)
+UNIQUE(import_batch_id, request_fingerprint)
+INDEX(import_batch_id, created_at)
+```
 
-只保存一次处理需要的父事实，不复制 contents/comments：
+Provider Request 已有 Attempt 后，`scope_id/import_batch_id/provider/operation` 继续受来源不可变 Trigger 保护。
 
-- 批次稳定 ID；
-- 对应 Job；
-- 输入 Artifact；
-- 状态；
-- 最小计数/错误摘要（仅实现实际执行需要的统计）；
-- 创建/更新时间；
-- 只有 Stage 8A 实际用到时才增加可选 Collection Run 关联。
+Downgrade 不会静默删除已经存在的 File Import 来源事实：如果 `provider_requests.import_batch_id IS NOT NULL` 的记录仍存在，Revision 明确拒绝 downgrade，并要求先显式迁移/处理这些事实。
 
-状态以 Blueprint 17 为上限，只实现代码真实需要的状态转换，不提前为页面堆字段。
+## 6. Excel File Import 实际执行链
 
-## 9. TDD 实施任务
+文件处理仍复用 P1 生产实现：
 
-1. **来源 Schema Red** → 新增失败测试证明：File Import 不能在不伪造 Collection Scope 的情况下建立合法 Provider Request/Attempt；现有 Collection Request 必须继续合法。
-2. **Migration Green** → 实现 ProcessingImportBatch 与 Provider Request XOR 父级；运行 PostgreSQL 18 Migration 往返门禁。
-3. **File Import Red** → 用失败测试表达 Input Artifact → Batch → Attempt/Raw → Mapper → Canonical → Ingestion 的完整来源要求及失败重试语义。
-4. **File Import Green** → 只增加最小正式 Service/Repository，复用现有 Reader/Mapper/Ingestion。
-5. **imports_test Red/Green** → 默认 file-only 零 DB 依赖；显式 DB 模式保留文件再调用正式 File Import；DB 失败显式返回失败。
-6. **tikhub_test Red/Green** → 默认行为不变；DB 模式只调用现有 Collection/Ingestion，不从导出 JSONL 建平行 Writer。
-7. **PostgreSQL Integration** → 重复 Excel、Excel+TikHub 同 ID、更晚 Observation、数据库失败后重试四类真实 PG18 场景。
-8. **Refactor/Review** → 需求符合性后再做代码质量复核，不扩大范围。
-9. **Docs** → 代码事实验证后才把 Stage 8A “目标未实现”更新为真实当前行为。
+```text
+XLSX
+→ Excel Reader / Mapper
+→ Canonical JSONL
+→ keyword filter
+→ stable identity deduplicate
+→ UnifiedContentRecordV1 JSONL
+```
 
-## 10. 数据库与调试运行门禁
+显式数据库阶段：
 
-- `WRITE_TO_DATABASE=False` 或等价显式配置必须为默认值；默认路径不得连接 PostgreSQL。
-- DB 模式读取仓库正式连接配置并验证 PostgreSQL 可访问与 Schema 已迁到代码需要的 revision；不执行 Docker 或 Alembic 管理动作。
-- DB 阶段失败不能静默降级为成功的 file-only；文件阶段产物不可删除。
-- 所有 PostgreSQL Integration 使用真实 PostgreSQL 18，不用 SQLite 替代。
-- Stage 8A 普通验证使用 Fake/Fixture，不发真实 TikHub 付费请求。
+```text
+原始 XLSX
+→ ArtifactService：Input Artifact
+→ Processing Import Batch
+→ import-parent Provider Request
+→ non-billable Provider Attempt
+→ Attempt.raw_artifact_id = Input Artifact
+→ 读取 deduplicated JSONL 的 UnifiedContentRecordV1.content
+→ 绑定真实 Request / Attempt / Artifact 到 Canonical Source
+→ ContentIngestionService
+→ PostgresCompleteContentRepository / PostgresContentRepository
+→ PostgreSQL
+```
 
-## 11. 风险与控制
+`imports_test` 当前 API：
 
-- **历史兼容**：`scope_id` 可空后由 XOR CHECK 保证旧 Collection 与新 Import 二选一，防止无父级/双父级脏数据。
-- **来源审计**：不改变 Content 的 provider_attempt/raw_artifact 严格校验；File Import 也必须先真实创建 Attempt 与 Raw Artifact。
-- **重复写入**：依赖正式 `(platform, external_content_id)` Unique/Owner Repository，不用批次内去重替代数据库最终约束。
-- **部分失败**：文件与数据库阶段分离记录；DB 失败允许同一业务输入重试而不制造第二 Current Content。
-- **运维**：调试入口绝不管理 PostgreSQL 容器/Migration；Schema 不满足时尽早失败并给出可诊断错误。
-- **性能**：不为 Stage 8A 引入新队列/缓存；90k Excel 读取继续复用 P1 已验证的流式实现。
+```python
+WRITE_TO_DATABASE = False
+run_all(..., write_to_database=False)
+ingest_database(run_dir=...)
+```
 
-## 12. 回滚与部署顺序
+`run_all(write_to_database=True)` 的真实阶段顺序：
 
-部署顺序：先停止新 File Import DB 模式使用 → 备份/确认数据库 → 应用 forward Migration → 部署兼容代码 → 验证 Schema/来源链 → 才允许打开调试 DB 模式。
+```text
+convert
+→ filter_keywords
+→ deduplicate
+→ database_ingestion
+→ label_sentiment
+→ export_labeled_excel
+```
 
-回滚使用普通 Git revert 与 Alembic downgrade，不改写历史 Revision。若新 Import 数据已存在，downgrade 前必须先停止 File Import，并明确处理引用 `import_batch_id` 的新数据；不得直接删除仍被来源链引用的 Batch/Request/Attempt。
+数据库阶段失败时，它之前已经生成的 Canonical/filtered/deduplicated 文件保留；后续 AI/最终 labeled Excel 不会继续自动执行。修复数据库/Schema/输入后，可以在同一 `run_dir` 继续调用需要的单步函数。
 
-## 13. 验证计划与本轮证据
+## 7. TikHub 调试数据库模式实际执行链
 
-计划命令以仓库实际工作流/依赖文件为准，至少包含：
+五个平台 `run_*()` 都保留：
 
-- `rvc.py` Active Change 校验/冲突检查；
-- Stage 8A Unit/Contract；
-- PostgreSQL 18 Integration；
-- Alembic base→head、previous→head、downgrade/re-upgrade、`alembic check`；
-- Ruff format/check、mypy（按受影响范围）；
-- Architecture/Table Ownership/Secret/Docs 门禁；
-- PR CI。
+```python
+write_to_database: bool = False
+provider_config_id: UUID | None = None
+```
 
-本节只记录本轮实际执行的命令、Run/Job、退出码和通过/失败数量；未执行前不写“通过”。
+显式数据库模式要求：
 
-## 14. 文档影响
+- `provider_config_id` 必填；
+- Provider Config 存在、启用、`provider=tikhub`；
+- 正式 Provider Config 的 Base URL 与本次 `tikhub_test/.env` Base URL 一致；
+- 正式 Secret 与本次 `.env` API Key 一致；
+- PostgreSQL 已升级到当前 Stage 8A Schema。
 
-代码完成并验证后，仅按真实影响同步：Blueprint 17/02/03/04/06/13、imports_test/tikhub_test README、`docs/测试与调试说明.md`。Blueprint 15 只有 Analysis Contract 真的受影响才改；否则记录“不受影响”的依据。
+执行链：
 
-## 15. Commit / PR / 发布状态
+```text
+manual Collection Run / keyword Scope / Job Fencing
+→ formal Provider Request / billable Attempt
+→ ProviderDispatchService
+→ _MirroringTransport 只执行一次真实 Transport.send
+→ 同一个响应写本地 tikhub_test Raw 镜像
+→ 同一个响应进入 RawArtifactService，形成正式 Raw Artifact
+→ Candidate-before-Mapper
+→ 正式 TikHub Mapper / Canonical
+→ 本地 Canonical / XLSX 继续保留
+→ PostgresFencedCollectionIngestionWriter
+→ Content Owner / PostgreSQL
+```
 
-- 开始 main：`09ff597f6dc28d06c36017c3c9a8af062fe1e425`
-- 开发分支：`feature/stage8a-unified-manual-ingestion`
-- Change：本文件
-- PR：尚未创建
-- CI：尚未产生 Stage 8A 新鲜证据
-- 发布/合并：未发生
+因此数据库模式不会为了“还要写库”再调用第二次 TikHub，也不会从已经导出的 JSONL/Excel 二次回灌。
+
+## 8. TDD 与调试过程证据
+
+### Red
+
+测试提交 `cab003d9...` 首先要求 TikHub 公共入口具备显式 `write_to_database`，当时 Stage 5B 结果为：
+
+```text
+267 passed / 1 failed
+```
+
+唯一失败是目标行为尚未实现，而不是旧基线回归。
+
+### Green / 修正
+
+后续实现了 Processing Batch、Provider Request 双父级、Excel 正式 File Import、两个调试入口数据库模式和 TikHub 正式来源桥接；随后依次修正 Ruff 格式/import-order 与 mypy 类型边界，没有降低门禁或绕过测试。
+
+专属 Stage 8A PG18 验收加入后，曾因新测试文件 Ruff format 失败；业务 PG18 断言当时已经通过。只格式化测试文件后重新取得全绿，不修改验收语义。
+
+## 9. PostgreSQL 18 与 CI 新鲜证据
+
+代码/核心文档检查点：
+
+```text
+08f1d646058a0da447b658a257a3f6da61dc0c17
+```
+
+该 commit 的 12 个适用 workflow 全部 `success`：
+
+- CI — run `32287548675`
+- Stage 4 Job Runtime — `32287548667`
+- Stage 5A Provider Raw — `32287548738`
+- Stage 5B Collection Execution — `32287548694`
+- Stage 5C Provider Persistence — `32287548672`
+- Stage 5D Provider Dispatch — `32287548677`
+- Stage 6 XHS Vertical Slice — `32287548666`
+- Stage 7 Provider Config Routing — `32287548700`
+- Stage 7 Keyword Packs — `32287548706`
+- Stage 7 Scheduler Runtime — `32287548674`
+- Stage 7 Plan Occurrence Run Snapshot — `32287548725`
+- Stage 1–7 Audit Correctness — `32287548760`
+
+Stage 5B job `96180559519` 的完整日志确认：
+
+```text
+postgres:18.4
+uv run pytest tests/unit/collection tests/contracts/test_provider_v1.py -q
+→ 268 passed in 4.85s
+
+uv run alembic upgrade head
+uv run alembic current
+→ 20260820_0019 (head)
+uv run alembic check
+→ No new upgrade operations detected.
+
+uv run pytest tests/integration/collection -q
+→ 69 passed in 11.94s
+```
+
+同一 job 还实际完成：
+
+- Stage 8A 所在 Collection PostgreSQL Integration；
+- Architecture Check；
+- Table Ownership（含 `processing_import_batches:ingestion`）；
+- Secret Scan；
+- Docs link check；
+- Contract generation/check/compatibility；
+- `head → base → head`；
+- `head → previous revision → head`。
+
+当前最新分支 head 在后续 README/导航/测试说明/本 Change 文档同步后会变化，因此 **08f1d646 的绿灯不作为最终合并证据**。必须等本文件提交后的最新 head 再取得完整适用 CI 全绿，才允许将 PR 转 Ready/合并。
+
+## 10. 文档同步
+
+已同步：
+
+- `docs/blueprint/02-采集系统与数据标准化.md`：区分 Collection Candidate 链与 File Import 来源链，删除“所有来源都必须 Candidate”的错误泛化。
+- `docs/blueprint/03-数据库与文件存储.md`：同步 `processing_import_batches`、Provider Request 双父级、Input Artifact/Attempt 与 Migration 0019。
+- `docs/blueprint/17-Stage8数据入口统一入库与业务前端实施.md`：Stage 8A 目标态更新为当前机器事实，并保留 8B—8F 后续边界。
+- `docs/blueprint/README.md`：当前状态更新为 Stage 8A Foundation 已实现、下一最小正式单元为 Stage 8B。
+- `backend/.../imports_test/README.md`：同步 `WRITE_TO_DATABASE=False`、`ingest_database()`、真实执行顺序和失败恢复边界。
+- `backend/.../tikhub_test/README.md`：同步 `write_to_database/provider_config_id`、Provider Config/Secret 一致性、单次请求双 Raw 和 fenced Ingestion。
+- `docs/测试与调试说明.md`：同步两个调试入口、Stage 8A Unit/Contract/PG18 验证方式和成功判据。
+
+检查后不修改：
+
+- Blueprint 04：Stage 8A 没有新增/修改公开 HTTP Contract、FastAPI Route 或生成 Client；HTTP 产品化属于 Stage 8B。
+- Blueprint 15：Stage 8A 没有修改 Analysis Prompt、Taxonomy、Analysis Contract 或正式 Analysis 持久化。
+- Blueprint 13：Stage 8A 没有改变 `UnifiedDataExcelV1`、Workbook 格式或共享 Exporter Contract；数据库模式只增加显式副作用，TikHub 也不从 Excel 回灌。
+- Blueprint 06：开发流程/TDD/CI/Git 规则未改变；Stage 8 的详细子阶段顺序由 Blueprint 17 与根 Blueprint 导航维护。
+
+## 11. 兼容性、依赖、部署与回滚
+
+兼容性：
+
+- 既有 Collection Request 继续使用 `scope_id`；旧数据无需重写。
+- 调试入口默认值保持 file-only；已有调用不传新参数时行为不要求数据库。
+- Content/Comment 公共业务身份、Canonical Content/Comment Contract 与 Content Owner 公共入口未改变。
+
+依赖：
+
+- 未新增、升级或降级 Python/Node/数据库依赖。
+- PostgreSQL 仍为 18 系列；CI 实际使用 18.4。
+
+部署：
+
+```text
+停止/避免新 File Import DB 模式
+→ 备份并确认数据库
+→ 显式 alembic upgrade head
+→ 部署兼容代码
+→ 验证 Schema / Provider 来源链
+→ 才允许人工开启数据库模式
+```
+
+回滚：
+
+- 代码使用普通 Git revert；不重写历史。
+- Migration downgrade 只在没有 File Import Provider Request 时允许；一旦已有 `import_batch_id` 来源事实，必须先显式迁移/处理，不能直接丢失 provenance。
+
+## 12. Review 与 Git 集成状态
+
+- 起始 `main`：`09ff597f6dc28d06c36017c3c9a8af062fe1e425`
+- 分支：`feature/stage8a-unified-manual-ingestion`
+- PR：`#88 Stage 8A：统一手工数据入库基础`
+- PR 当前仍需在**本 Change 提交后的最新 head**取得新鲜 CI，并完成需求符合性/代码质量 Review。
+- 在最终 CI 与 Review 完成前，Change 保持 `ready_for_review`，不得标记 `done`，不得归档。
+- 合并后必须重新读取 `main` 的 `AGENTS.md` 和合并事实，确认 main 集成状态/CI；只有这一步也成立后，才能把 Change 标记 `done` 并移动到 `changes/archive/2026-08/`。
+- Stage 8A 闭环前不进入 Stage 8B。
+
+## 13. 中断恢复检查点
+
+如果对话/推理再次中断，新会话从以下事实恢复，而不是依赖聊天记忆：
+
+```text
+repo: dingyuwen777/AIMA_UGC
+branch: feature/stage8a-unified-manual-ingestion
+PR: #88
+Change: changes/active/CHG-20260820-stage8a-unified-manual-ingestion/CHANGE.md
+code/migration baseline: 20260820_0019
+last fully green core checkpoint: 08f1d646058a0da447b658a257a3f6da61dc0c17
+```
+
+恢复顺序：先读目标分支 `AGENTS.md` → Skill → 本 Change → PR 最新 head/CI。若最新 head 比上述 checkpoint 更新，必须以 GitHub 最新事实为准重新验证，不能退回旧 commit。
