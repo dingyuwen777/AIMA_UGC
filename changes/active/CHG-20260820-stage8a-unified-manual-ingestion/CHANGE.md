@@ -32,26 +32,24 @@ data_changes: [processing_import_batches, provider_requests]
 
 # Stage 8A：Unified Manual Ingestion Foundation
 
-## 结果
+## 当前结果
 
 Stage 8A 只建立统一手工入库 Foundation，不进入 Stage 8B/8C，不开发正式前端。
 
-机器事实：
-
 - `processing_import_batches` 是 Excel File Import 的最小业务父事实。
-- `ProviderRequestV1/provider_requests` 恰好属于 Collection Scope 或 Import Batch 之一；无父级/双父级关闭失败。
-- Excel 不伪造 Collection Run/Scope/Candidate：Input Artifact → Import Batch → import-parent Request/non-billable Attempt → Canonical Source →正式 Content Ingestion。
-- TikHub DB 模式继续使用 manual Collection → Request/Attempt → Raw → Candidate-before-Mapper → Canonical → fenced Ingestion。
-- `imports_test` / `tikhub_test` 默认 file-only，显式 opt-in 才连接 PostgreSQL。
-- Canonical 后没有 Excel/TikHub 私有 Writer；跨来源最终仍由 Content Owner 以业务稳定身份收敛 Current，并保留历史。
+- `ProviderRequestV1/provider_requests` 恰好属于 Collection Scope 或 Import Batch 之一。
+- Excel 不制造 Collection Run/Scope/Candidate：Input Artifact → Import Batch → import-parent Request/non-billable Attempt → Canonical Source →正式 Content Ingestion。
+- TikHub DB 模式仍走 manual Collection → Request/Attempt → Raw → Candidate-before-Mapper → Canonical → fenced Ingestion。
+- `imports_test` / `tikhub_test` 默认 file-only，显式 opt-in 才访问 PostgreSQL。
+- Canonical 后没有 Excel/TikHub 私有 Writer；跨来源最终由 Content Owner 收敛 Current 并保留历史。
 
-## 方案
+## 方案选择
 
-- A：Excel 制造 Collection Run/Scope——语义错误，不采用。
+- A：Excel 制造 Collection Run/Scope——污染 Collection 语义，不采用。
 - B：Provider Request 增加 Import Batch 父级——复用 Attempt/Artifact 与 Content 来源约束，已采用。
-- C：新建 FileAttempt/FileSource——复制来源体系、扩大 Content 来源模型，不采用。
+- C：独立 FileAttempt/FileSource——复制来源体系并扩大 Content 来源模型，不采用。
 
-## Schema / Migration
+## Migration
 
 Forward Revision `20260820_0019`（down `20260818_0018`）：
 
@@ -83,7 +81,7 @@ XLSX → Reader/Mapper → Canonical JSONL → filter → deduplicate
 → Canonical Source → ContentIngestionService → Content Owner → PostgreSQL
 ```
 
-`imports_test` 默认 `WRITE_TO_DATABASE=False`；支持 `run_all(..., write_to_database=False)` 和 `ingest_database(run_dir=...)`。DB 模式顺序为 `convert → filter → deduplicate → database_ingestion → AI → Excel`；DB 失败时之前文件保留，后续阶段不自动继续。
+`imports_test` 默认 `WRITE_TO_DATABASE=False`；支持 `run_all(..., write_to_database=False)` 和 `ingest_database(run_dir=...)`。DB 模式顺序为 `convert → filter → deduplicate → database_ingestion → AI → Excel`；DB 失败时已生成文件保留，后续阶段不自动继续。
 
 ## TikHub DB 链
 
@@ -94,7 +92,7 @@ write_to_database: bool = False
 provider_config_id: UUID | None = None
 ```
 
-DB 模式要求正式 Provider Config/Secret 与本次 `.env` 一致，然后：
+DB 模式验证正式 Provider Config/Secret 与本次 `.env` 一致，然后：
 
 ```text
 manual Collection / Job Fencing
@@ -107,9 +105,9 @@ manual Collection / Job Fencing
 → fenced Ingestion → PostgreSQL
 ```
 
-不会因为写库额外发送第二次 TikHub，也不从 JSONL/Excel 二次回灌。
+不会因写库额外发送第二次 TikHub，也不从 JSONL/Excel 二次回灌。
 
-## TDD / 验证
+## TDD / PostgreSQL 18 证据
 
 Red `cab003d9...`：Stage 5B `267 passed / 1 failed`，唯一失败为缺少目标 `write_to_database` 行为。
 
@@ -125,27 +123,20 @@ alembic check: no drift
 69 PostgreSQL Collection Integration passed
 ```
 
-同一 job 还成功完成 Architecture、Table Ownership、Secret、Docs、Contract compatibility、base roundtrip 和 previous-revision roundtrip。
+同一 job 成功完成 Architecture、Table Ownership、Secret、Docs、Contract compatibility、base roundtrip 和 previous-revision roundtrip。专属 PG18 覆盖 TikHub DB 单次 Fake Transport、重复 Excel、Excel→TikHub 跨来源收敛、较新 Observation 推进 Version/Metric、DB 失败后幂等重试。
 
-专属 PG18 覆盖：TikHub DB 模式单次 Fake Transport、重复 Excel、Excel→TikHub 跨来源收敛、较新 Observation 推进 Version/Metric、DB 失败后幂等重试。
-
-后续 README/导航/测试说明/Change 产生了新文档提交，所以**最终合并必须以 PR 实际最新 head 的新鲜 CI 为准**，不能拿历史绿灯替代。
+由于 README/导航/测试说明/Change 后续产生了新文档提交，**最终合并必须以 PR 实际最新 head 的新鲜 CI 为准**；历史绿灯不能替代最终 head 验证。
 
 ## 文档
 
 已同步：Blueprint 02/03/17、Blueprint README、`imports_test/README.md`、`tikhub_test/README.md`、`docs/测试与调试说明.md`。
 
-不修改：
-
-- Blueprint 04：无 HTTP Contract/Route/Client 变化，属于 8B。
-- Blueprint 15：无 Analysis Contract/Prompt/taxonomy/persistence 变化。
-- Blueprint 13：无 UnifiedDataExcel/Workbook/Exporter Contract 变化。
-- Blueprint 06：开发流程/TDD/CI/Git 门禁未变化；Stage 8 子阶段由 17/根导航维护。
+不修改：Blueprint 04（无 HTTP 变化）、15（无 Analysis 变化）、13（无 Excel Export Contract 变化）、06（开发流程/门禁未变化）。
 
 ## 兼容 / 部署 / 回滚
 
-- 既有 Collection Request 继续使用 `scope_id`，旧数据不重写。
-- 调试入口默认 file-only，已有调用兼容。
+- 既有 Collection Request 继续使用 `scope_id`；旧数据不重写。
+- 调试入口默认 file-only；已有调用兼容。
 - 无新增/升级/降级依赖；PostgreSQL 仍为 18 系列。
 - 部署：备份 → `alembic upgrade head` → 部署代码 → 验证 Schema/来源链 → 再显式开启 DB 模式。
 - 回滚：普通 Git revert；已有 File Import provenance 时 Migration 不允许直接 downgrade。
