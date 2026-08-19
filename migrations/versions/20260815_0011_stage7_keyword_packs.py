@@ -62,7 +62,7 @@ def upgrade() -> None:
         "keyword_pack_items",
         sa.Column("pack_id", sa.Uuid(), nullable=False),
         sa.Column("keyword_id", sa.Uuid(), nullable=False),
-        sa.Column("operations", sa.Text(), nullable=False),
+        sa.Column("platform", sa.Text(), nullable=False),
         sa.Column("priority", sa.Integer(), server_default=sa.text("100"), nullable=False),
         sa.Column("enabled", sa.Boolean(), server_default=sa.text("true"), nullable=False),
         sa.Column("note", sa.Text(), server_default=sa.text("''"), nullable=False),
@@ -79,11 +79,11 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint(
             "pack_id",
             "keyword_id",
-            "operations",
+            "platform",
             name=op.f("pk_keyword_pack_items"),
         ),
         sa.CheckConstraint(
-            "char_length(operations) > 0",
+            "char_length(platform) > 0",
             name=op.f("ck_keyword_pack_items_platform_nonempty"),
         ),
     )

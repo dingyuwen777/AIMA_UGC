@@ -283,10 +283,10 @@ def _create_lineage_triggers() -> None:
         LANGUAGE plpgsql
         AS $$
         BEGIN
-            IF ROW(OLD.run_id, OLD.operations, OLD.source_type, OLD.source_value,
+            IF ROW(OLD.run_id, OLD.platform, OLD.source_type, OLD.source_value,
                    OLD.operation_group)
                IS DISTINCT FROM
-               ROW(NEW.run_id, NEW.operations, NEW.source_type, NEW.source_value,
+               ROW(NEW.run_id, NEW.platform, NEW.source_type, NEW.source_value,
                    NEW.operation_group)
                AND EXISTS (
                    SELECT 1
@@ -305,7 +305,7 @@ def _create_lineage_triggers() -> None:
     op.execute(
         """
         CREATE TRIGGER trg_collection_scope_provider_identity_immutable
-        BEFORE UPDATE OF run_id, operations, source_type, source_value, operation_group
+        BEFORE UPDATE OF run_id, platform, source_type, source_value, operation_group
         ON collection_scopes
         FOR EACH ROW
         EXECUTE FUNCTION guard_collection_scope_provider_identity()
