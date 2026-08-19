@@ -70,21 +70,21 @@ def test_run_output_store_keeps_raw_and_canonical_without_database(tmp_path: Pat
     raw_body = {"data": {"items": [{"id": "note-1"}]}}
 
     raw = store.save_raw(operation="search_notes", body=raw_body, request_no=1)
-    store.append_canonical("contents", {"operations": "xhs", "external_content_id": "note-1"})
+    store.append_canonical("contents", {"platform": "xhs", "external_content_id": "note-1"})
     store.append_canonical(
         "comments",
         {
-            "operations": "xhs",
+            "platform": "xhs",
             "external_content_id": "note-1",
             "external_comment_id": "comment-1",
         },
     )
-    run_summary_path = store.write_run_summary({"operations": "xhs", "requests": 1})
+    run_summary_path = store.write_run_summary({"platform": "xhs", "requests": 1})
 
     assert json.loads(raw.path.read_text(encoding="utf-8")) == raw_body
     assert raw.artifact_id
     assert json.loads((store.canonical_dir / "contents.jsonl").read_text(encoding="utf-8")) == {
-        "operations": "xhs",
+        "platform": "xhs",
         "external_content_id": "note-1",
     }
     assert (
