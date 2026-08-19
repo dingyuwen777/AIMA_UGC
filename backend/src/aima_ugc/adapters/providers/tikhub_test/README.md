@@ -261,3 +261,52 @@ CanonicalContentV1 / CanonicalCommentV1
 本工具没有 CLI。直接在 Python 代码、IDE、调试器或临时 Python 文件中调用 `run_*()` 函数即可。
 
 返回值 `TikHubTestRunResult` 会告诉你本次运行目录、Excel、manifest、内容数、一级评论数、二级回复数和真实请求数。
+
+## 9. Stage 8A 可选数据库写入（已批准目标，当前未实现）
+
+当前 `tikhub_test` 的**现有行为仍然是文件模式**：它用于脱离数据库验证五平台采集链，保存 Raw、Canonical、Excel、state 和 run summary，不写业务数据库。下面描述的是 [`docs/blueprint/17-Stage8数据入口统一入库与业务前端实施.md`](../../../../../../docs/blueprint/17-Stage8数据入口统一入库与业务前端实施.md) 已批准的 Stage 8A 目标，当前代码尚未提供该开关。
+
+Stage 8A 将保留现有 `run_*()` 人工调试方式，并增加显式 opt-in 的数据库写入选择。目标语义为：
+
+```text
+默认：WRITE_TO_DATABASE = False
+→ 保持当前文件调试行为
+→ 不要求 PostgreSQL
+→ 不写业务数据库
+
+显式：WRITE_TO_DATABASE = True
+→ 本次 Raw / Canonical / Excel / run summary 仍完整保留
+→ 复用正式 Collection / Provider / Raw / Candidate / Ingestion 来源链
+→ Canonical 最终进入统一 Content Ingestion
+→ 写入 PostgreSQL
+```
+
+最终配置名、应放在公共参数还是各平台 `run_*()` 调用参数中，由 Stage 8A 的实现 Change 根据当前 `tikhub_test` API 冻结；无论形式如何，都必须保持“默认文件-only，显式开启才写库”。
+
+数据库模式固定遵守：
+
+- 假定开发者机器上已经有一个可访问的 PostgreSQL 18 开发实例，通常是已经启动的本地数据库容器；
+- `tikhub_test` 只读取仓库现有数据库配置和 Secret 边界、连接并校验，不负责 `docker compose up/down`；
+- 不自动创建/删除数据库容器；
+- 不自动执行 Alembic Migration，更不能执行破坏性 Migration；
+- 数据库不可用或 Schema 不满足要求时，数据库阶段明确失败，但已经保存的 Raw/Canonical/Excel 等调试产物继续保留；
+- 不允许数据库失败后静默退回文件模式并把整次运行标为成功；
+- 不直接写 SQL，不建立 `TikHubDatabaseWriter` 或 `tikhub_test` 私有 Repository；
+- 不把已经保存的调试 Canonical 再走一套平行“回灌 Writer”；
+- 优先让写库模式调用正式 Collection/Provider/Raw/Candidate/Ingestion 生产链，使来源 Attempt/Raw/费用/重试语义仍与正式系统一致；
+- Canonical 之后统一复用 `ContentIngestionService → PostgresContentRepository`；
+- 数据库按内容 `(platform, external_content_id)`、评论稳定身份做跨关键词、跨运行、跨来源的最终收敛，`state.json` 只负责调试过程省请求，不能替代 PostgreSQL 唯一约束和历史语义。
+
+因此 Stage 8A 完成后，同一组人工 TikHub 调试参数可以按需要选择：
+
+```text
+仅文件调试
+```
+
+或：
+
+```text
+文件保留 + 正式 PostgreSQL 入库
+```
+
+两种模式都必须继续复用同一套正式 TikHub Client、Operation、分页、Mapper、Decision 和 Ingestion；本目录仍然只是人工调试/验证入口，不成为第二套生产采集器。
