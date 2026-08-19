@@ -2,7 +2,7 @@
 
 ## 1. 定位
 
-本设计负责**帖子/评论数据明细 Excel 的唯一公共契约与共享导出实现**。它不是 Provider Raw、Canonical 持久化格式，也不是管理层分析报告或 Report Renderer。
+本设计负责**帖子/评论数据明细 Excel 的唯一公共数据契约与共享导出实现**。它不是 Provider Raw、Canonical 持久化格式，也不是管理层分析报告或 Report Renderer。
 
 长期数据方向：
 
@@ -11,10 +11,11 @@ Provider Raw / 文件输入 / PostgreSQL Read Model
 → Provider-neutral UnifiedContentRecordV1 / Export Read Model
 → UnifiedDataExcelV1
 → 唯一共享 Excel Exporter
+→ 受控展示投影
 → .xlsx
 ```
 
-分析结果可以作为可选结构化列进入统一数据 Excel，但这不把数据明细 Excel 变成分析报告：
+分析结果可以作为可选结构化列进入数据明细 Excel，但数据明细和分析报告继续是不同产物：
 
 ```text
 数据明细 Excel
@@ -24,36 +25,112 @@ Report
 = 趋势、统计、图表、结论、解释和管理层汇报
 ```
 
-两者继续保持独立业务语义、Job、权限和验收边界。
+## 2. 数据契约与展示列是两层概念
 
-## 2. 唯一 Excel Contract
-
-系统长期只维护一个 Provider-neutral Excel 契约：
+系统长期只维护一个 Provider-neutral Excel 输入契约：
 
 ```text
 UnifiedDataExcelV1
 ```
 
-TikHub、小红书、抖音、微博、B站、快手、文件导入或未来其他 Provider 都不能各自定义 Excel 字段。平台/Provider 差异必须在 Mapper/Canonical 之前解决；Excel 只消费 Provider-neutral 数据。
+TikHub、小红书、抖音、微博、B站、快手、文件导入或未来其他 Provider 都不能各自定义新的 Excel 业务字段。平台/Provider 差异必须在 Mapper/Canonical 或批准的 Export Read Model 之前解决；共享 Exporter 只消费 Provider-neutral 数据。
 
-首版 Workbook 固定两个 Sheet：
+**数据契约完整字段不等于每次人工查看都必须显示所有列。**
+
+共享 Exporter 允许调用方通过一个有序列名序列，从**已经存在的共享内容列**中选择最终显示哪些列以及列顺序：
+
+```python
+content_columns = (
+    "平台",
+    "标题",
+    "正文",
+    "情感标签",
+)
+```
+
+规则固定为：
+
+- 不传 `content_columns`：输出当前完整内容列，保持既有默认行为；
+- 传入配置：只显示配置中的已知列，顺序与配置完全一致；
+- 空配置、重复列、未知列直接拒绝；
+- 列投影只影响最终视图，不删除 `UnifiedDataExcelV1` 中的数据；
+- 调用方不能通过该配置新增自定义列名、公式列、私有字段或第二套字段语义；
+- 评论列当前保持共享完整定义，后续若确有选择需求，再在同一共享 Exporter 中用相同原则扩展。
+
+因此“选择显示列”是 Viewer/Exporter 层能力，不反向改变 Canonical、Analysis 或数据库 Schema。
+
+## 3. 当前共享 Workbook 字段
+
+Workbook 固定两个 Sheet：
 
 ```text
 内容
 评论
 ```
 
-内容 Sheet 至少覆盖：平台、内容 ID、来源项 ID、内容类型、标题、正文、作者、发布时间、内容链接、公开作者统计、互动指标、命中关键词、可选分析字段、来源 Provider 与 Raw/来源定位。
+当前完整内容列为：
 
-评论 Sheet 至少覆盖：平台、内容 ID、评论层级、评论 ID、根评论 ID、父评论 ID、作者、正文、时间、点赞/回复等指标、来源 Provider 与 Raw/来源定位。
+```text
+平台
+内容ID
+来源项ID
+内容类型
+标题
+正文
+作者
+发布时间
+内容链接
+作者粉丝数
+作者关注数
+作者内容数
+作者获赞数
+点赞
+评论数
+收藏数
+分享数
+转发数
+浏览数
+播放数
+弹幕数
+投币数
+下载数
+命中关键词
+情感标签
+一级标签
+二级标签
+分析模型
+Prompt版本
+Taxonomy版本
+来源Provider
+Raw/来源定位
+评论覆盖
+```
 
-外部 ID 一律按文本写入；一级/二级评论关系必须保留稳定 comment/root/parent ID，不能通过 Excel 行位置猜关系。
+当前评论列为：
 
-## 3. AI 标签列
+```text
+平台
+内容ID
+评论层级
+评论ID
+根评论ID
+父评论ID
+作者
+评论内容
+评论时间
+评论点赞
+回复数
+来源Provider
+Raw/来源定位
+```
+
+外部 ID 一律按文本写入；一级/二级评论关系必须保留稳定 comment/root/parent ID，不能依赖 Excel 行位置猜关系。
+
+## 4. AI 标签列
 
 平台通用 AI 标签 Contract 由 [`15-舆情AI打标与统一分析契约.md`](15-舆情AI打标与统一分析契约.md) 维护。
 
-统一 Excel 至少包含：
+共享内容视图支持以下 Analysis 列：
 
 ```text
 情感标签
@@ -66,41 +143,56 @@ Taxonomy版本
 
 其中：
 
-- 情感标签显示：正面 / 中性 / 负面 / 混合；
-- 一级标签、二级标签必须来自 Blueprint 15 的闭集；
-- 没有合法 Analysis 时保持为空，不用源 Excel 的“全文情感”或其他上游标签填充。
+- 情感、一级、二级标签必须来自当前 Analysis Validator 已批准的闭集；
+- 没有合法 Analysis 时保持为空，不用源 Excel 的“全文情感”或其他上游标签填充；
+- 是否显示这些列由最终 `content_columns` 投影决定，但不改变 Analysis 数据是否存在。
 
-## 4. raw 与 labeled 使用同一契约
+## 5. raw 与 labeled 使用同一展示配置
 
-原始数据人工审阅和打标后数据只通过**文件名与分析字段是否输出**区分，不能维护两套 Workbook Schema。
+原始人工审阅和打标后视图不能维护两套 Workbook 代码。
 
-```text
-<source>_<run-id>_raw_data.xlsx
-<source>_<run-id>_labeled_data.xlsx
-```
-
-两者必须：
-
-- Sheet 完全相同；
-- 列名完全相同；
-- 列顺序完全相同；
-- 基础内容/评论字段语义完全相同。
-
-区别：
+同一次调用场景下，raw/labeled 必须使用同一个：
 
 ```text
-raw_data.xlsx
-→ AI 分析列留空
-
-labeled_data.xlsx
-→ 从 UnifiedContentRecordV1.analysis 填入闭集标签和版本化分析元数据
+Sheet 定义
+content_columns
+列顺序
+公共样式
+数据安全规则
 ```
 
-`raw_data.xlsx` 是可选人工审阅派生物，不是处理链路的必经中间层。任何关键词、去重、AI 或数据库逻辑都不能依赖 raw Excel 回读。
+区别只在：
 
-## 5. 同源 JSONL 闭环
+```text
+raw
+→ include_analysis = false
+→ Analysis 列即使被选择也留空
 
-已落地的离线文件处理主链固定为：
+labeled
+→ include_analysis = true
+→ 从 UnifiedContentRecordV1.analysis 填入合法 Analysis 值
+```
+
+`imports_test` 当前默认内容视图为：
+
+```text
+平台
+标题
+正文
+作者
+发布时间
+内容链接
+命中关键词
+情感标签
+一级标签
+二级标签
+```
+
+这是该人工入口的**默认展示配置**，不是 `UnifiedDataExcelV1` 的字段裁剪，也不改变 TikHub 或未来正式导出在未传配置时的完整默认视图。
+
+## 6. 同源 JSONL 闭环
+
+文件处理链继续保持：
 
 ```text
 source.xlsx
@@ -109,30 +201,20 @@ source.xlsx
 → deduplicated/contents.jsonl（UnifiedContentRecordV1，analysis 初始为空）
 → AI 打标
 → 原子回写同一个 deduplicated/contents.jsonl（analysis 已填）
-→ labeled_data.xlsx
+→ shared Excel Exporter
 ```
 
-`label_sentiment()` / 平台中立 `label_content()` 直接消费 `deduplicated/contents.jsonl`。
-
-AI 运行期间可以使用：
+模型成功结果可以先写：
 
 ```text
 analysis/checkpoints.jsonl
 ```
 
-保存已成功模型调用和恢复事实，但 checkpoint 不是下游业务事实源；成功分析必须合并回原 `deduplicated/contents.jsonl`。
+用于恢复、费用安全和审计，但 checkpoint 不是下游业务事实源；成功 Analysis 必须回写原 `deduplicated/contents.jsonl`。
 
-最终 `export_labeled_excel()` **只读取回写后的 `deduplicated/contents.jsonl`**，不再额外 join `analysis/results.jsonl`。
+最终 Excel 只读取这份统一 JSONL，不再 join 第二份业务 Analysis 文件，也不从 Excel 回读进入关键词、去重、AI 或数据库流程。
 
-可选 raw Excel 同样读取这份 JSONL，只是调用共享 Exporter 时：
-
-```text
-include_analysis = false
-```
-
-因此即使内容已经打标，也能从同一 JSONL 生成分析列为空的 raw 人工视图；不需要维护 raw/labeled 两份 JSONL。
-
-## 6. 唯一共享 Exporter
+## 7. 唯一共享 Exporter
 
 共享实现固定在：
 
@@ -148,45 +230,75 @@ imports_test ────┼→ platform/export/excel.py
 未来正式导出 ────┘
 ```
 
-整个后端只维护一个 Provider-neutral Excel 核心写出函数：
+共享入口：
 
 ```python
-export_unified_data_excel(...)
+export_unified_data_excel(..., include_analysis=..., content_columns=...)
+export_unified_content_jsonl_to_excel(..., include_analysis=..., content_columns=...)
 ```
 
-共享函数接受 Provider-neutral 内容记录/迭代器、可选评论记录、目标路径以及是否输出分析字段的明确参数；调用方不能自己再拼 Workbook。
+`content_columns` 是可选展示参数；`None` 表示完整默认内容列。
 
-调用方不得复制：
+调用方可以做的只有：
 
-- Sheet/列定义；
+- 选择共享 Exporter 已知的内容列；
+- 调整这些已知列的顺序；
+- 决定是否填充 Analysis。
+
+调用方不得复制或自行维护：
+
+- Workbook 创建/保存；
+- 自定义新字段或平行列字典；
 - ID 文本格式；
 - URL/超链接；
-- 长文本换行；
 - Formula Injection 防护；
 - 时间显示；
-- 列宽/冻结窗格等公共样式；
+- 字体、填充、列宽、行高、冻结窗格、筛选等公共样式；
 - 大文件写出策略；
-- AI 标签到中文显示值的映射。
+- 导出后重新打开校验。
 
-若未来 Architecture Check 证明当前共享实现目录不再合法，可以通过新的 Change 最小调整目录，但**“一个 Contract + 一个共享 Exporter”不可改变**，也不能以路径调整为由保留平行实现。
+如果未来 Architecture Check 证明共享实现目录需要调整，可以通过独立 Change 最小迁移；**一个 Provider-neutral 数据契约 + 一个共享 Exporter** 的边界不变。
 
-## 7. `tikhub_test` 与 `imports_test` 复用状态
+## 8. 公共 Excel 样式
 
-`tikhub_test` 与 `imports_test` 已完成共享 Exporter 收口：
+当前共享样式参考业务 Excel `文章` Sheet 的稳定视觉规则，并直接固化为代码；运行时不依赖本地模板文件。
 
-1. 通用 Workbook 规则只在唯一共享实现维护；
-2. `tikhub_test` 直接调用共享 Exporter；
-3. `imports_test` 只调用共享 Exporter，不维护自己的 Excel 模块；
-4. 原 `tikhub_test/core/excel.py` 重复实现已删除；
-5. 通用 Excel 单元测试归属共享 Exporter；
-6. `tikhub_test` / `imports_test` 只保留各自输入进入共享 Exporter 的集成回归；
-7. 后续 Review 必须继续检查 `.xlsx`、`openpyxl`、Workbook/Exporter 相关实现，禁止重新形成第二套内容+评论 Excel 生成器。
+固定规则：
 
-任何后续功能若重新引入平行 Workbook 规则，视为违反当前架构边界。
+```text
+冻结首行                    A2
+自动筛选                    首行到实际数据区
+显示网格线                  是
+合并单元格                  否
+表头填充                    #FFC000
+表头字体                    Calibri 11pt bold
+正文字体                    Calibri 11pt
+表头行高                    16.5
+正文默认行高                14.5
+页面方向                    portrait
+左右页边距                  0.7
+上下页边距                  0.75
+页眉/页脚边距               0.3
+HTTP(S) 链接                可点击 Hyperlink
+```
 
-## 8. 大文件实现规则
+列宽使用按字段语义固定的有界宽度，例如：
 
-当前仓库锁定 `openpyxl`。90,000 × 13 Windows 性能验证已证明当前方案在既定规模下能够正确完成且无 OOM 证据，因此当前不新增 pandas。
+```text
+标题/正文/Raw定位           50
+内容ID/来源项ID/URL/Hash    34
+作者/关键词/一级标签等      20 左右
+时间/数值/情感标签          12 左右
+平台/Provider               15
+```
+
+不扫描全部数据自动计算列宽，因为对约 9 万行数据没有必要，会增加额外时间和内存成本。
+
+样式属于共享 Exporter；调用方不得为了“看起来不一样”在导出后再次打开 Workbook 做第二次格式化。
+
+## 9. 大文件实现规则
+
+仓库继续锁定 openpyxl。现有 90,000 × 13 测量已证明当前方案在既定规模下能够正确完成且无 OOM 证据，因此不新增 pandas。
 
 读取大 XLSX：
 
@@ -198,34 +310,45 @@ load_workbook(
 )
 ```
 
-并使用 `iter_rows(values_only=True)` 顺序处理。
+并使用：
 
-最终大 XLSX 写出使用 `write_only` 模式。统一 Exporter 不得为约 9 万行数据：
+```python
+iter_rows(values_only=True)
+```
+
+最终 XLSX 使用：
+
+```python
+Workbook(write_only=True)
+```
+
+统一 Exporter 不得为了展示配置或样式：
 
 - 把完整 Cell 对象长期常驻内存；
-- 扫描全表做自动列宽；
-- 使用大量 merge cell 作为统一长期结构。
+- 扫描全表自动列宽；
+- 使用大量 merge cell；
+- 导出完整文件后再二次打开重写所有数据；
+- 引入 pandas 复制一套 Excel 路径。
 
-当前 90,000 × 13 Windows 基准中，主链总耗时约 `148.919 s`、吞吐约 `604.35 rows/s`、进程峰值 RSS `234,762,240 B`；最终 Excel 写出是主要耗时。该结果是当前实现的测量事实，不代表未来更大规模的性能承诺。只有新的真实负载证明当前方案不能满足需求时，才通过独立 Change 比较 pandas/calamine 等替代方案。
+只有新的真实负载证明现有方案不能满足需求时，才通过独立 Change 比较替代实现。
 
-## 9. 安全与可打开性
+## 10. 安全与可打开性
 
-共享 Exporter 至少统一保证：
+共享 Exporter统一保证：
 
 - 外部 ID 不因 Excel 数字格式丢失精度或前导零；
 - 外部文本防 Formula Injection；
-- 中文、emoji、长文本可读；
+- 中文、emoji 和长文本可读取；
 - URL 只在合法 HTTP/HTTPS 时建立链接；
 - 不把 Secret、Token、Cookie 或本地敏感配置写入 Workbook；
-- 不合法/缺失 Analysis 不能伪造标签；
-- 输出完成后重新打开并核对 Sheet、表头、关键行数和关键字段；
-- 大批量导出进入正式系统后仍必须遵守持久化 Job、Artifact 生命周期、权限和保留规则。
+- 不合法/缺失 Analysis 不伪造标签；
+- `content_columns` 不允许越过共享列集合读取任意对象属性；
+- 输出完成后重新打开并核对 Sheet、实际表头、行数和可用的关键 ID；
+- 大批量导出进入正式系统后仍遵守持久化 Job、Artifact 生命周期、权限和保留规则。
 
-## 10. 与 Canonical、Analysis、数据库和 Report 的边界
+## 11. 与 Canonical、Analysis、数据库和 Report 的关系
 
-统一 Excel 展示格式不能反向成为 Canonical Schema，也不能让 LLM 直接读取 Excel 私有列绕过 Analysis 边界。
-
-长期方向：
+统一 Excel 是可读视图，不是上游数据 Schema：
 
 ```text
 Provider / File Import
@@ -234,22 +357,51 @@ Provider / File Import
 → UnifiedContentRecordV1 / Query Export Read Model
 → UnifiedDataExcelV1
 → Shared Excel Exporter
+→ 可选列投影
 ```
 
-分析结果的标签、模型、Prompt、输入 Hash 和版本语义由 Analysis Contract 维护；Excel 只是最终可读视图，不成为分析事实源。
+因此：
 
-正式入库时内容和 Analysis 分别由 Content Owner 与 Analysis Owner 持久化，不能把 Excel 或 `UnifiedContentRecordV1` 整体塞进 `contents` 表或单个 JSONB 替代稳定结构。数据库长期规则见 Blueprint 15。
+- 修改 `content_columns` 不修改 Canonical；
+- 隐藏某个 Excel 列不代表系统删除该字段；
+- Excel 列名不能反向成为数据库 Schema；
+- LLM 不能直接依赖 Excel 私有列绕过 Analysis 输入边界；
+- 正式入库时 Content 与 Analysis 仍分别由各自 Owner 持久化。
 
-## 11. 长期状态
+## 12. 长期维护规则
 
-临时 P1 阶段已经完成，临时阶段文档不再作为长期事实源。本文继续维护以下长期决定：
+后续修改 Excel 时按以下原则判断：
 
-- 一个 `UnifiedDataExcelV1`；
-- raw/labeled 同契约；
-- raw Excel 可选而非分析中间层；
-- AI 成功结果回写同一 Provider-neutral JSONL 记录，最终导出消费同源记录；
-- 业务数据中间处理不依赖 Excel 回读；
-- `tikhub_test`、`imports_test`、未来正式导出共用唯一共享 Exporter；
-- 数据明细 Excel 与 Report Renderer 保持独立。
+### 只想改变人工查看的列
 
-P1 的实施过程、性能与真实模型证据由对应归档 Change 保存；后续维护不需要依赖临时 Blueprint 才能理解当前 Excel 边界。
+优先修改调用方的 `content_columns` 配置：
+
+```text
+选择已有列
+删除已有列
+调整列顺序
+```
+
+不需要改 `UnifiedDataExcelV1`，也不需要复制 Exporter。
+
+### 想新增一个系统从未存在的导出字段
+
+先确认该字段的真实数据来源和 Owner，再决定是否需要调整 Export Read Model / Contract；不能只在某个测试脚本中硬塞一列。
+
+### 想改变所有 Excel 的公共格式
+
+只修改共享 Exporter 和对应共享测试；TikHub、文件导入和未来正式导出自动复用。
+
+### 想改变某个调用方的默认列
+
+只修改该调用方的列配置，并保证 raw/labeled 使用同一个配置。
+
+长期保持：
+
+- 一个 `UnifiedDataExcelV1` Provider-neutral 数据契约；
+- 一个共享 Excel Exporter；
+- 默认完整视图向后兼容；
+- 允许对已知内容列做受控有序投影；
+- raw/labeled 同展示配置；
+- 业务中间处理不依赖 Excel 回读；
+- 数据明细 Excel 与 Report Renderer 相互独立。

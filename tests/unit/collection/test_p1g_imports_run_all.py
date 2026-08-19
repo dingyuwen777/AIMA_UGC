@@ -57,7 +57,7 @@ def test_p1g_run_all_uses_default_chain_without_raw_excel(
     assert [item["stage"] for item in payload["stages"]] == calls
 
 
-def test_p1g_export_labeled_excel_uses_source_and_run_id_filename(
+def test_p1g_export_labeled_excel_uses_source_run_id_and_column_config(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -67,11 +67,18 @@ def test_p1g_export_labeled_excel_uses_source_and_run_id_filename(
     monkeypatch.setattr(imports_test_entry, "OUTPUT_ROOT", output_root)
     monkeypatch.setattr(imports_test_entry, "INPUT_XLSX", source)
 
-    def fake_export(*, input_path: Path, output_path: Path, include_analysis: bool):
+    def fake_export(
+        *,
+        input_path: Path,
+        output_path: Path,
+        include_analysis: bool,
+        content_columns: tuple[str, ...],
+    ):
         captured.update(
             input_path=input_path,
             output_path=output_path,
             include_analysis=include_analysis,
+            content_columns=content_columns,
         )
         return _DummySummary(stage="export_labeled_excel")
 
@@ -83,6 +90,7 @@ def test_p1g_export_labeled_excel_uses_source_and_run_id_filename(
         "input_path": output_root / "deduplicated" / "contents.jsonl",
         "output_path": output_root / "爱玛监测_20260818T160000Z_labeled_data.xlsx",
         "include_analysis": True,
+        "content_columns": imports_test_entry.EXCEL_CONTENT_COLUMNS,
     }
 
 

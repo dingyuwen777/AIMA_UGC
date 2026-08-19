@@ -218,6 +218,109 @@ def test_shared_exporter_writes_provider_neutral_workbook_and_reopens(tmp_path: 
         workbook.close()
 
 
+def test_shared_exporter_supports_ordered_projection_and_reference_style(tmp_path: Path) -> None:
+    output = tmp_path / "review.xlsx"
+    columns = (
+        "平台",
+        "标题",
+        "正文",
+        "作者",
+        "发布时间",
+        "内容链接",
+        "命中关键词",
+        "情感标签",
+        "一级标签",
+        "二级标签",
+    )
+
+    export_unified_data_excel(
+        (_export_record(),),
+        output,
+        include_analysis=True,
+        content_columns=columns,
+    )
+
+    workbook = load_workbook(output, data_only=False)
+    try:
+        sheet = workbook["内容"]
+        assert tuple(cell.value for cell in sheet[1]) == columns
+        assert tuple(cell.value for cell in sheet[2]) == (
+            "xiaohongshu",
+            "'=dangerous title",
+            "中文正文 😀",
+            "'@dangerous author",
+            "2026-08-18 13:30:00",
+            "https://example.invalid/content/00123456789012345678",
+            "keyword-a；keyword-b",
+            "sentiment-test",
+            "primary-test",
+            "secondary-test",
+        )
+        assert sheet.freeze_panes == "A2"
+        assert sheet.auto_filter.ref == "A1:J2"
+        assert sheet.sheet_view.showGridLines is True
+        assert not sheet.merged_cells.ranges
+        assert sheet.row_dimensions[1].height == pytest.approx(16.5)
+        assert sheet.sheet_format.defaultRowHeight == pytest.approx(14.5)
+
+        header = sheet["A1"]
+        assert header.font.name == "Calibri"
+        assert header.font.sz == pytest.approx(11)
+        assert header.font.bold is True
+        assert header.fill.fill_type == "solid"
+        assert header.fill.fgColor.rgb == "FFFFC000"
+        assert header.alignment.wrap_text in {None, False}
+
+        body = sheet["A2"]
+        assert body.font.name == "Calibri"
+        assert body.font.sz == pytest.approx(11)
+        assert body.font.bold is False
+        assert body.alignment.wrap_text in {None, False}
+
+        assert sheet.column_dimensions["A"].width == pytest.approx(15)
+        assert sheet.column_dimensions["B"].width == pytest.approx(50)
+        assert sheet.column_dimensions["C"].width == pytest.approx(50)
+        assert sheet.column_dimensions["E"].width == pytest.approx(12)
+        assert sheet.column_dimensions["G"].width == pytest.approx(20)
+
+        link = sheet["F2"]
+        assert link.hyperlink is not None
+        assert link.hyperlink.target == "https://example.invalid/content/00123456789012345678"
+        assert link.style == "Hyperlink"
+
+        assert sheet.page_setup.orientation == "portrait"
+        assert sheet.page_margins.left == pytest.approx(0.7)
+        assert sheet.page_margins.right == pytest.approx(0.7)
+        assert sheet.page_margins.top == pytest.approx(0.75)
+        assert sheet.page_margins.bottom == pytest.approx(0.75)
+        assert sheet.page_margins.header == pytest.approx(0.3)
+        assert sheet.page_margins.footer == pytest.approx(0.3)
+    finally:
+        workbook.close()
+
+
+@pytest.mark.parametrize(
+    ("columns", "message"),
+    [
+        ((), "至少包含一列"),
+        (("平台", "平台"), "重复"),
+        (("平台", "不存在的列"), "不支持"),
+    ],
+)
+def test_shared_exporter_rejects_invalid_content_projection(
+    tmp_path: Path,
+    columns: tuple[str, ...],
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        export_unified_data_excel(
+            (_export_record(),),
+            tmp_path / "invalid.xlsx",
+            include_analysis=True,
+            content_columns=columns,
+        )
+
+
 def test_raw_and_labeled_exports_keep_same_schema(tmp_path: Path) -> None:
     raw_output = tmp_path / "raw.xlsx"
     labeled_output = tmp_path / "labeled.xlsx"
