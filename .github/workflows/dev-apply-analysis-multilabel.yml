@@ -48,6 +48,20 @@ jobs:
           set -euo pipefail
           uv run python scripts/dev/_apply_multilabel_change.py
           uv run python scripts/dev/_fix_multilabel_apply.py
+          uv run ruff check --fix \
+            backend/src/aima_ugc/contracts/analysis \
+            backend/src/aima_ugc/modules/analysis \
+            backend/src/aima_ugc/contracts/export \
+            backend/src/aima_ugc/platform/export/excel.py \
+            backend/src/aima_ugc/adapters/providers/imports_test/test.py \
+            scripts/contracts/generate.py \
+            tests/unit/analysis \
+            tests/unit/platform/test_excel_export.py \
+            tests/unit/platform/test_p1g_labeled_excel.py \
+            tests/unit/platform/test_multilabel_excel.py \
+            tests/unit/collection/test_imports_test_export.py \
+            tests/unit/collection/test_p1g_imports_run_all.py \
+            tests/unit/collection/test_imports_test_run_directory.py
           uv run ruff format \
             backend/src/aima_ugc/contracts/analysis \
             backend/src/aima_ugc/modules/analysis \
@@ -63,6 +77,7 @@ jobs:
             tests/unit/collection/test_p1g_imports_run_all.py \
             tests/unit/collection/test_imports_test_run_directory.py
           uv run python scripts/contracts/generate.py
+          rm -f scripts/dev/_apply_multilabel_change.py scripts/dev/_fix_multilabel_apply.py
 
       - name: Target behavior tests
         shell: bash
@@ -95,8 +110,6 @@ jobs:
         run: |
           set -euo pipefail
           git rm -f .github/workflows/dev-apply-analysis-multilabel.yml
-          git rm -f scripts/dev/_apply_multilabel_change.py
-          git rm -f scripts/dev/_fix_multilabel_apply.py
           if git ls-files --error-unmatch changes/active/CHG-20260819-analysis-multilabel-run-dir/.keep >/dev/null 2>&1; then
             git rm -f changes/active/CHG-20260819-analysis-multilabel-run-dir/.keep
           fi
