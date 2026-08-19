@@ -12,7 +12,10 @@ from typing import Any
 
 from pydantic import SecretStr
 
-from aima_ugc.adapters.llm import OpenAICompatibleContentLabelingLLM
+from aima_ugc.adapters.llm import (
+    DEFAULT_OPENAI_COMPATIBLE_TIMEOUT_SECONDS,
+    OpenAICompatibleContentLabelingLLM,
+)
 from aima_ugc.adapters.providers.imports import (
     ExcelConversionSummary,
     convert_excel_to_canonical_jsonl,
@@ -107,12 +110,11 @@ def label_sentiment() -> OfflineContentLabelingSummary:
 
     env = _load_env_file(ENV_FILE)
     timeout_seconds = _parse_positive_float(
-        env.get("AIMA_LLM_TIMEOUT_SECONDS", "60"),
+        env.get(
+            "AIMA_LLM_TIMEOUT_SECONDS",
+            str(DEFAULT_OPENAI_COMPATIBLE_TIMEOUT_SECONDS),
+        ),
         name="AIMA_LLM_TIMEOUT_SECONDS",
-    )
-    use_json_mode = _parse_bool(
-        env.get("AIMA_LLM_JSON_MODE", "true"),
-        name="AIMA_LLM_JSON_MODE",
     )
     prompt_loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
     recovery_taxonomy = prompt_loader.load()
@@ -120,9 +122,7 @@ def label_sentiment() -> OfflineContentLabelingSummary:
         base_url=_require_env(env, "AIMA_LLM_BASE_URL"),
         api_key=SecretStr(_require_env(env, "AIMA_LLM_API_KEY")),
         model=_require_env(env, "AIMA_LLM_MODEL"),
-        provider_name=_require_env(env, "AIMA_LLM_PROVIDER"),
         timeout_seconds=timeout_seconds,
-        use_json_mode=use_json_mode,
     ) as llm:
         service = ContentLabelingService(
             prompt_loader=prompt_loader,
@@ -288,15 +288,6 @@ def _parse_positive_float(value: str, *, name: str) -> float:
     if parsed <= 0:
         raise ValueError(f"{name} 必须大于 0")
     return parsed
-
-
-def _parse_bool(value: str, *, name: str) -> bool:
-    normalized = value.strip().lower()
-    if normalized == "true":
-        return True
-    if normalized == "false":
-        return False
-    raise ValueError(f"{name} 只允许 true 或 false")
 
 
 if __name__ == "__main__":
