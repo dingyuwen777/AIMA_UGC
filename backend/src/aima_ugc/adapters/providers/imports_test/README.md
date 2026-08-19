@@ -1,14 +1,14 @@
 # Excel 离线导入、清洗与 AI 多标签打标
 
-本目录提供一个可直接运行的人工入口，把本地舆情 Excel 依次完成：
+本目录提供一个可以直接运行的人工入口：
 
 ```text
-读取 Excel
-→ 转为统一 Canonical JSONL
-→ 按本地词包过滤
+本地 Excel
+→ Canonical JSONL
+→ 词包相关性清洗
 → 稳定身份去重
-→ AI 情感 + 多个一级/二级标签对
-→ 导出最终 Excel
+→ DeepSeek / OpenAI-compatible AI 多标签打标
+→ 最终 Excel
 ```
 
 入口：
@@ -17,19 +17,41 @@
 backend/src/aima_ugc/adapters/providers/imports_test/test.py
 ```
 
-脚本复用系统正式 Excel Reader、Canonical Mapper、关键词处理、去重、Analysis Service、LLM Adapter 和共享 Excel Exporter，不需要数据库或 Scheduler。
+脚本复用系统正式 Reader、Mapper、关键词过滤、去重、Analysis Service、LLM Adapter 和共享 Excel Exporter，不需要数据库或 Scheduler。
 
-## 1. 修改顶部配置
+## 1. 先修改 `test.py` 顶部配置
 
-至少修改：
+常用配置：
 
 ```python
 INPUT_XLSX = Path(r"E:\path\to\source.xlsx")
 OUTPUT_ROOT = Path(__file__).with_name("output")
 KEYWORD_PACK_FILE = Path(__file__).with_name("keyword_pack.txt")
+
 SHEET_NAME = "文章"
 PROFILE = "aima-monitoring-excel.v1"
 
+ENABLE_REAL_LLM = True
+
+# 一条内容 = 一次独立 LLM 请求；最多同时 250 个请求。
+LLM_CONCURRENCY = 250
+
+# HTTP/网络/429/可恢复 5xx 的额外重试次数。
+MAX_TRANSPORT_RETRIES = 4
+
+# HTTP 成功但模型 JSON/标签校验失败的额外重试次数。
+MAX_VALIDATION_RETRIES = 2
+```
+
+当前没有 `LLM_BATCH_SIZE` 配置。**不会把 20 条内容拼进一次模型请求。**
+
+`LLM_CONCURRENCY = 250` 表示最大在飞 HTTP 请求数，不是每个请求包含 250 条数据。
+
+## 2. 配置最终 Excel 列
+
+默认“内容”Sheet 只显示：
+
+```python
 EXCEL_CONTENT_COLUMNS = (
     "平台",
     "标题",
@@ -42,258 +64,11 @@ EXCEL_CONTENT_COLUMNS = (
     "一级标签",
     "二级标签",
 )
-
-ENABLE_REAL_LLM = True
-MAX_VALIDATION_RETRIES = 2
-LLM_BATCH_SIZE = 20
 ```
 
-`EXCEL_CONTENT_COLUMNS` 的顺序就是“内容”Sheet 的列顺序。只能使用共享 Exporter 已定义的列；空、重复或未知列会直接报错。
+元组顺序就是 Excel 列顺序。可以删除、增加或调整已有共享列；空配置、重复列或未知列会直接报错。
 
-## 2. 配置清洗词包
-
-默认词包文件：
-
-```text
-backend/src/aima_ugc/adapters/providers/imports_test/keyword_pack.txt
-```
-
-格式很简单：**一行一个标准词**。空行和以 `#` 开头的注释会被忽略，例如：
-
-```text
-# 品牌词
-爱玛
-
-# 车型
-元宇宙Pony
-F2Lite-碟刹
-马赫U7Pro
-```
-
-当前文件已经包含：
-
-- 品牌词 `爱玛`；
-- 本轮提供的 102 条车型原始清单。
-
-这 102 条车型原始数据里有 6 个完全重复名称；另外 `黑翼S3 60` 与 `黑翼S360` 在忽略空格后属于同一个匹配身份。文件保留原始输入行便于人工核对，但运行时会按规范化匹配身份去重，首次出现的标准名称作为最终 `matched_keywords` 展示值。因此当前 103 个非注释源词条（1 个品牌 + 102 条车型）会形成 96 个有效匹配身份。
-
-### 2.1 机械书写变体自动处理
-
-匹配前，关键词和每条内容的 `title`、`text` 分别执行：
-
-1. Unicode `NFKC`：统一全角/半角英文字母、数字和兼容字符；
-2. `casefold()`：英文大小写不敏感；
-3. 删除所有空白字符；
-4. 忽略连接符 `-`、`_`、`·`。
-
-例如词包只需要写：
-
-```text
-F2Lite-碟刹
-```
-
-下面这些帖子写法都可以命中：
-
-```text
-F2Lite-碟刹
-f2lite-碟刹
-F2 Lite_碟刹
-Ｆ２Ｌｉｔｅ·碟刹
-```
-
-命中后 Excel/JSONL 中仍记录词包标准名称：
-
-```text
-F2Lite-碟刹
-```
-
-不要为了大小写、空格、全角/半角、`-/_/·` 再手工重复添加机械变体。
-
-### 2.2 什么不会自动处理
-
-当前不是模糊搜索，不自动推导：
-
-- 车型俗称；
-- 真正业务别名；
-- 错别字；
-- 拼音；
-- 同义词；
-- 任意标点删除。
-
-例如一个正式车型如果网上普遍还有另一个完全不同的俗称，目前应把该俗称作为另一个词显式写入词包。未来正式网页关键词管理是否建立“标准词 → 多别名”关系，需要在 Stage 8 再确认业务语义后建模，不在这个人工脚本里提前造数据库结构。
-
-### 2.3 当前只过滤标题和正文
-
-相关性过滤仍只检查 Canonical：
-
-```text
-title
-text
-```
-
-不会因为本次词包改造而静默扩大到作者、平台名或其他字段。标题或正文命中任意有效词即可保留该条内容。
-
-## 3. 配置模型 `.env`
-
-复制 `.env.example` 为 `.env`，填写：
-
-```dotenv
-AIMA_LLM_BASE_URL=
-AIMA_LLM_API_KEY=
-AIMA_LLM_MODEL=
-
-# 可选；不配置默认 60 秒
-# AIMA_LLM_TIMEOUT_SECONDS=60
-```
-
-只有 Base URL、API Key、Model 必填。当前入口固定使用 OpenAI-compatible Chat Completions Adapter；JSON mode 默认开启。真实 `.env` 已被 Git 忽略，不要把 API Key 写进源码、README、测试、日志或提交记录。
-
-## 4. 运行
-
-```powershell
-D:\python314\python.exe E:\work\03_Aima\code\AIMA_UGC\backend\src\aima_ugc\adapters\providers\imports_test\test.py
-```
-
-直接执行会调用：
-
-```text
-run_all()
-```
-
-每次 `run_all()` 先创建一个独立 run 目录，再让所有阶段使用同一个目录。默认 run_id 使用北京时间并显式带 `+0800`：
-
-```text
-20260819T142000.123456+0800
-```
-
-输出结构：
-
-```text
-output/
-└─ runs/
-   └─ <run-id>/
-      ├─ canonical/
-      │  └─ contents.jsonl
-      ├─ filtered/
-      │  └─ contents.jsonl
-      ├─ deduplicated/
-      │  └─ contents.jsonl
-      ├─ analysis/
-      │  ├─ checkpoints.jsonl
-      │  ├─ attempts.jsonl
-      │  └─ failed.jsonl
-      ├─ labeled_data.xlsx
-      └─ run_summary.json
-```
-
-只有显式调用 `export_raw_excel(run_dir=...)` 时，当前 run 目录还会生成 `raw_data.xlsx`。
-
-不同 run 不覆盖彼此。显式复用已经存在的 run_id 会直接报 `FileExistsError`，防止误覆盖旧结果。`run_summary.json` 会记录本次使用的 `keyword_pack_file`，便于以后回看运行配置来源。
-
-## 5. 单步运行
-
-如果需要逐阶段调试，先创建一次 run 目录，然后把同一个 `run_dir` 传给后续函数：
-
-```python
-run_dir = prepare_run_dir()
-
-convert(run_dir=run_dir)
-filter_keywords(run_dir=run_dir)
-deduplicate(run_dir=run_dir)
-label_sentiment(run_dir=run_dir)
-export_labeled_excel(run_dir=run_dir)
-```
-
-不要分别无参数调用 `filter_keywords()`、`deduplicate()` 等依赖上一步输入的函数；它们需要读取同一次 run 的上游文件。
-
-## 6. AI 多标签结构
-
-每条内容仍只有一个整体情感：
-
-```text
-正面 / 中性 / 负面 / 混合
-```
-
-但可以有一个或多个一级/二级标签对。例如：
-
-```text
-骑行性能 / 舒适性
-售后服务 / 客服与服务态度
-```
-
-系统保存的是成对结构，不是两个互不关联的数组，因此不会丢失“二级标签属于哪个一级标签”的关系。模型输出经过本地 Taxonomy Validator；未知标签、错误父子关系、空标签、重复标签对都不会被静默接受。
-
-历史 `content-label-analysis.v1` 单标签 JSONL/checkpoint 仍可读取；新的模型成功结果写 `content-label-analysis.v2`。
-
-## 7. Excel 怎么展示和筛选多标签
-
-最终 Workbook 有三个 Sheet：
-
-```text
-内容
-标签明细
-评论
-```
-
-### 内容
-
-仍保持“一条内容一行”，所以帖子数量不会因为标签多而被放大。
-
-如果一条内容有两个标签对：
-
-```text
-骑行性能 / 舒适性
-售后服务 / 客服与服务态度
-```
-
-“一级标签”单元格显示：
-
-```text
-骑行性能
-售后服务
-```
-
-“二级标签”单元格显示：
-
-```text
-舒适性
-客服与服务态度
-```
-
-两个单元格按同一标签对顺序逐行对应，并启用单元格换行。
-
-### 标签明细
-
-为了使用 Excel 普通下拉筛选，每个标签对单独一行：
-
-```text
-内容ID | 平台 | 标题 | 情感标签 | 一级标签 | 二级标签 | 内容链接
-```
-
-同一内容可以在该 Sheet 出现多行。因此筛选“一级标签 = 骑行性能”会命中它，筛选“一级标签 = 售后服务”也会命中同一内容。
-
-做“内容总数”统计时以“内容”Sheet 为准；做标签筛选、标签频次、一级/二级组合统计时使用“标签明细”Sheet。
-
-raw 导出也保留“标签明细”Sheet 表头，但 `include_analysis=False` 时不会伪造任何标签行。
-
-## 8. 默认内容列与可选列
-
-默认只显示：
-
-```text
-平台
-标题
-正文
-作者
-发布时间
-内容链接
-命中关键词
-情感标签
-一级标签
-二级标签
-```
-
-想增加、删除或排序，只改 `EXCEL_CONTENT_COLUMNS`。当前可选内容列：
+当前可选内容列：
 
 ```text
 平台
@@ -331,28 +106,400 @@ Raw/来源定位
 评论覆盖
 ```
 
-没有数据的列留空，不制造值。“标签明细”和“评论”Sheet 当前不使用 `EXCEL_CONTENT_COLUMNS` 做列裁剪。
+## 3. 配置清洗词包
 
-## 9. Excel 公共格式
+默认文件：
+
+```text
+backend/src/aima_ugc/adapters/providers/imports_test/keyword_pack.txt
+```
+
+规则：
+
+```text
+一行一个标准词
+空行忽略
+# 开头的行是注释
+```
+
+例如：
+
+```text
+# 品牌词
+爱玛
+
+# 车型
+元宇宙Pony
+F2Lite-碟刹
+马赫U7Pro
+```
+
+当前文件已经包含“爱玛”和已提供的 102 条车型原始清单。
+
+匹配前会自动执行：
+
+```text
+Unicode NFKC
+→ casefold 大小写折叠
+→ 删除空白
+→ 忽略 - _ ·
+```
+
+因此只需要配置标准词：
+
+```text
+F2Lite-碟刹
+```
+
+以下机械变体都可以命中：
+
+```text
+F2Lite-碟刹
+f2lite-碟刹
+F2 Lite_碟刹
+Ｆ２Ｌｉｔｅ·碟刹
+```
+
+最终 `matched_keywords` 和 Excel“命中关键词”仍保存词包标准名称，不保存帖子里的变体文本。
+
+当前清洗只检查：
+
+```text
+title
+text
+```
+
+不自动推导真正俗称、别名、错别字、拼音或同义词。真正业务别名目前应显式再加一条词；未来正式网页关键词管理如何建模别名，仍留到对应正式 Change 决策。
+
+## 4. 配置模型 `.env`
+
+复制：
+
+```text
+.env.example
+```
+
+为：
+
+```text
+.env
+```
+
+填写：
+
+```dotenv
+AIMA_LLM_BASE_URL=
+AIMA_LLM_API_KEY=
+AIMA_LLM_MODEL=
+
+# 可选；不配置默认 60 秒
+# AIMA_LLM_TIMEOUT_SECONDS=60
+```
+
+只有 Base URL、API Key、Model 必填。真实 `.env` 已被仓库忽略；不要把 API Key 写进源码、README、测试、日志或提交记录。
+
+当前入口使用 OpenAI-compatible Chat Completions Adapter，JSON mode 默认开启，本地 Validator 仍会再次严格校验模型结果。
+
+## 5. 250 并发实际怎么运行
+
+AI 阶段不是“250 条一次发给模型”，而是：
+
+```text
+内容 1 → HTTP Request 1
+内容 2 → HTTP Request 2
+...
+内容 N → HTTP Request N
+```
+
+最多同时：
+
+```text
+250 个独立请求
+```
+
+执行前先完成整个 `deduplicated/contents.jsonl` 的本地预检：
+
+- 每行 JSONL 合法；
+- 稳定身份不重复；
+- 已有 `analysis` 的内容不再请求；
+- 可用 checkpoint 先标记为恢复项。
+
+预检通过以后先只发 **1 个 canary 请求**。认证、余额、权限、请求参数等基础问题在 canary 就会暴露，不会一启动就放大成 250 个无效请求。
+
+canary 正常后进入有界滑动窗口：
+
+```text
+最多 250 个 Future 在飞
+→ 任一请求完成
+→ 立即补入下一条
+```
+
+不会等“这一组 250 全部完成”才继续，也不会一次创建 90,000 个 Future。
+
+HTTP 使用一个共享 `httpx.Client`，连接池容量与 `LLM_CONCURRENCY` 一致并复用 keep-alive，不为每条数据重新建立 Client/TLS 连接。
+
+同一次 run 的 Prompt/Taxonomy 也只读取解析一次，然后冻结为同一份快照供所有请求复用。
+
+## 6. 两种重试不要混淆
+
+### 6.1 Transport Retry
+
+属于 HTTP/网络层，例如：
+
+```text
+网络连接/超时类 httpx.HTTPError
+HTTP 408
+HTTP 429
+HTTP 500
+HTTP 502
+HTTP 503
+HTTP 504
+```
+
+默认：
+
+```python
+MAX_TRANSPORT_RETRIES = 4
+```
+
+使用指数退避 + jitter。
+
+以下错误不做无意义网络重试：
+
+```text
+HTTP 400
+HTTP 401
+HTTP 402
+HTTP 403
+HTTP 404
+HTTP 422
+Provider 返回的成功 HTTP 但协议结构本身非法
+```
+
+如果 canary 遇到这类问题，AI 阶段只会产生该一个请求，然后立即停止。
+
+如果正式并发阶段出现 Transport 错误并在当前内容上达到重试上限，程序停止继续调度新的模型请求；已经成功写入 checkpoint 的结果保留。修复网络/Provider 后重新运行，会直接恢复已成功项，而不是重新打标。
+
+### 6.2 Validation Retry
+
+属于 HTTP 已经成功，但模型结果不符合本地规则，例如：
+
+```text
+JSON 不合法
+缺字段
+未知情感
+未知一级标签
+二级标签不属于对应一级
+重复标签对
+```
+
+默认：
+
+```python
+MAX_VALIDATION_RETRIES = 2
+```
+
+当前一条内容就是一个请求，因此 Validation Retry 只重新请求这条内容，不会牵连别的成功内容。
+
+达到 Validation Retry 上限仍失败：
+
+```text
+analysis = null
+→ 写 analysis/failed.jsonl
+→ 继续处理其他内容
+```
+
+## 7. 为什么不会因为并发把数据写乱
+
+250 个模型请求完成顺序可能是：
+
+```text
+3 → 1 → 5 → 2 → 4
+```
+
+但 Worker 不直接写业务 JSONL。
+
+成功结果先由单一协调线程写：
+
+```text
+analysis/checkpoints.jsonl
+```
+
+并执行 `flush + fsync`。
+
+全部模型阶段结束后，再重新按原始顺序扫描：
+
+```text
+deduplicated/contents.jsonl
+```
+
+用成功 checkpoint 填回 Analysis，写临时 JSONL，再用 `os.replace` 原子替换。
+
+所以最终业务文件仍是：
+
+```text
+1 → 2 → 3 → 4 → 5
+```
+
+不会按网络返回顺序重排。
+
+## 8. 怎么防止重复打标
+
+在真实请求前依次排除：
+
+```text
+已有业务 analysis
+→ 跳过
+
+当前输入 + Prompt + Taxonomy + Provider + Model 全匹配的成功 checkpoint
+→ 恢复
+
+同一 deduplicated 文件出现重复稳定身份
+→ 付费调用前直接失败
+```
+
+成功 checkpoint 身份绑定：
+
+```text
+platform
+external_content_id
+input_hash
+prompt_sha256
+taxonomy_sha256
+model_provider
+model
+```
+
+程序如果在最终业务 JSONL `os.replace` 前崩溃，下一次执行会读取成功 checkpoint，不会再次调用已经 durable 成功的内容。
+
+需要注意一个外部 API 客观边界：如果模型服务端已经执行请求，但响应在网络途中丢失，而 Provider 没有提供业务幂等键，客户端无法证明该请求是否已执行。程序能保证只接受一个合法 Analysis，并通过 checkpoint 把重复窗口缩到最小。
+
+## 9. 每次运行的目录
+
+直接运行：
+
+```powershell
+D:\python314\python.exe E:\work\03_Aima\code\AIMA_UGC\backend\src\aima_ugc\adapters\providers\imports_test\test.py
+```
+
+会调用：
+
+```text
+run_all()
+```
+
+每次自动创建独立目录：
+
+```text
+output/
+└─ runs/
+   └─ <run-id>/
+      ├─ canonical/
+      │  └─ contents.jsonl
+      ├─ filtered/
+      │  └─ contents.jsonl
+      ├─ deduplicated/
+      │  └─ contents.jsonl
+      ├─ analysis/
+      │  ├─ checkpoints.jsonl
+      │  ├─ attempts.jsonl
+      │  └─ failed.jsonl
+      ├─ labeled_data.xlsx
+      └─ run_summary.json
+```
+
+默认 run ID 是带 `+0800` 的北京时间。不同 run 不互相覆盖；重复使用同一 run ID 会直接 `FileExistsError`。
+
+`run_summary.json` 中 Analysis 摘要包括：
+
+```text
+rows_seen
+rows_already_labeled
+rows_recovered
+rows_succeeded
+rows_failed
+llm_attempts
+peak_in_flight
+llm_http_requests
+transport_retries
+```
+
+这些字段可以用来确认实际请求量、重试量和并发峰值。
+
+## 10. 单步运行
+
+```python
+run_dir = prepare_run_dir()
+
+convert(run_dir=run_dir)
+filter_keywords(run_dir=run_dir)
+deduplicate(run_dir=run_dir)
+label_sentiment(run_dir=run_dir)
+export_labeled_excel(run_dir=run_dir)
+```
+
+依赖上一步产物的函数必须传同一个 `run_dir`。
+
+## 11. AI 多标签与 Excel
+
+每条内容一个整体情感：
+
+```text
+正面 / 中性 / 负面 / 混合
+```
+
+并允许一个或多个标签对：
+
+```text
+骑行性能 / 舒适性
+售后服务 / 客服与服务态度
+```
+
+最终 Workbook：
+
+```text
+内容
+标签明细
+评论
+```
+
+“内容”Sheet 保持一条内容一行；多个一级/二级标签在各自单元格内换行，并按标签对顺序对应。
+
+“标签明细”Sheet 一个标签对一行，适合直接使用 Excel 普通筛选。例如同一内容同时属于两个一级标签，在两个标签各自筛选时都会出现。
+
+统计帖子总数以“内容”Sheet 为准；做标签筛选/频次/组合统计使用“标签明细”Sheet。
+
+## 12. Excel 格式
 
 共享 Exporter 统一负责：
 
 - 冻结首行 `A2`；
 - 首行自动筛选；
-- 表头 `#FFC000`；
+- 表头背景 `#FFC000`；
 - Calibri 11pt，表头粗体；
 - 表头行高 16.5，正文默认行高 14.5；
 - 显示网格线；
 - 不合并单元格；
 - HTTP/HTTPS 链接可点击；
-- 多标签主表单元格使用换行；
-- 页面纵向，左右页边距 0.7、上下 0.75；
-- 使用固定有界列宽，不扫描 9 万行自动算宽度；
-- openpyxl `write_only=True` 流式写出。
+- 多标签单元格换行；
+- 固定有界列宽；
+- `openpyxl write_only=True` 流式写出。
 
-## 10. 源 Excel 输入要求
+## 13. 源 Excel 要求
 
-Profile：`aima-monitoring-excel.v1`，默认 Sheet：`文章`。必须存在以下 13 个表头，允许额外列：
+默认 Sheet：
+
+```text
+文章
+```
+
+Profile：
+
+```text
+aima-monitoring-excel.v1
+```
+
+必须存在以下 13 个表头，允许额外列：
 
 ```text
 序号
@@ -370,11 +517,22 @@ Profile：`aima-monitoring-excel.v1`，默认 Sheet：`文章`。必须存在以
 粉丝数
 ```
 
-平台字段会经过受控归一化；无法映射的平台、非法日期、非法粉丝数、缺稳定身份等都会写转换错误并 fail-closed，不发布半份 `contents.jsonl`。
+无法映射的平台、非法日期/粉丝数、缺稳定身份等都会 fail closed，不发布半份 canonical 业务 JSONL。
 
-## 11. 与未来网页关键词配置的关系
+## 14. 常见排错
 
-当前 `keyword_pack.txt` 只是**本地人工调试入口的配置来源**，不是系统长期业务事实库。正式系统已经有 PostgreSQL：
+- **HTTP 401**：API Key/认证失败；canary 后立即停止，不会扩到 250。
+- **HTTP 402**：模型服务余额不足；立即停止。
+- **HTTP 429**：进入有界 Transport Retry；持续超过限制时停止新调度，保留成功 checkpoint。
+- **HTTP 5xx / 网络错误**：按 Transport Retry 处理。
+- **标签校验失败**：查看 `analysis/attempts.jsonl` 和 `analysis/failed.jsonl`。
+- **程序中途终止**：不要删除 `analysis/checkpoints.jsonl`；修复问题后在同一 run 上继续 `label_sentiment(run_dir=...)` 可恢复成功项。
+- **run_id 已存在**：不要覆盖旧 run，使用新 run ID。
+- **词包为空**：检查 `KEYWORD_PACK_FILE` 是否正确、文件是否只剩注释和空行。
+
+## 15. 未来正式网页关键词配置
+
+当前 `keyword_pack.txt` 只是本地人工入口配置来源。正式系统已经有 PostgreSQL：
 
 ```text
 keyword_packs
@@ -382,22 +540,10 @@ keywords
 keyword_pack_items
 ```
 
-未来网页管理关键词时，应通过后端 API 写这些正式父事实，再由业务 Service/Matcher 使用，而不是让前端直接读写本地 txt。
+未来开发关键词管理 API/前端页面前，仍必须明确：
 
-进入 Stage 8 的关键词管理页面/API 前，必须先确认两个产品问题，不能由开发者静默猜测：
+1. 采集发现词包和结果相关性清洗词包是否使用相同角色；
+2. 真正车型俗称/别名是否建立“标准词 → 多别名”关系；
+3. 正式数据库 `keywords.normalized_text` 的写入规范化算法和历史冲突处理。
 
-1. **采集发现词包**与**结果相关性清洗词包**是否是同一词包，还是同一个词包可被赋予不同使用角色；不能因为本地有 102 个车型清洗词，就默认 TikHub 对 102 个车型全部逐词发搜索请求。
-2. 真正业务别名/俗称是否需要“一个标准词对应多个别名”的正式关系，以及它如何参与数据库 `normalized_text` 唯一身份、Run Snapshot 和前端编辑体验。
-
-当前本地清洗使用的 NFKC/casefold/空白/连接符规则只定义 `imports_test` 的相关性匹配行为，**不等同于已经冻结 PostgreSQL `keywords.normalized_text` 的正式写入 Contract**。
-
-## 12. 常见排错
-
-- HTTP 401：模型服务认证失败，先独立验证 API Key；不要通过放宽 Analysis Validator 解决认证问题。
-- `platform_unmapped`：源媒体/平台值无法映射到已知平台。
-- `conversion_errors.jsonl`：先看转换阶段逐行错误。
-- `analysis/attempts.jsonl`：看模型每次 Validation Attempt。
-- `analysis/failed.jsonl`：看达到 Validation Retry 上限后仍失败的 item。
-- `analysis/checkpoints.jsonl`：只保存已通过 Validator 的成功 Analysis，用于恢复和费用安全。
-- run_id 已存在：说明该 run 已有历史产物；不要覆盖，使用新的 run_id。
-- 词包没有有效关键词：检查 `KEYWORD_PACK_FILE` 是否指向正确文件，以及文件是否只剩注释/空行。
+当前本地 NFKC/casefold/去空白/连接符规则只定义离线清洗匹配，不自动成为数据库唯一键 Contract。
