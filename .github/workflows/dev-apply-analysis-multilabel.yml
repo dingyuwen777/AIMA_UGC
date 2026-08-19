@@ -1,0 +1,100 @@
+name: Dev Apply Analysis Multilabel
+
+on:
+  push:
+    branches:
+      - feature/analysis-multilabel-run-dir
+    paths:
+      - scripts/dev/_apply_multilabel_change.py
+      - .github/workflows/dev-apply-analysis-multilabel.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/analysis-multilabel-run-dir
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version-file: .python-version
+          check-latest: false
+
+      - name: Install locked environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+
+      - name: Apply approved implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/dev/_apply_multilabel_change.py
+          uv run ruff format \
+            backend/src/aima_ugc/contracts/analysis \
+            backend/src/aima_ugc/modules/analysis \
+            backend/src/aima_ugc/contracts/export \
+            backend/src/aima_ugc/platform/export/excel.py \
+            backend/src/aima_ugc/adapters/providers/imports_test/test.py \
+            scripts/contracts/generate.py \
+            tests/unit/analysis \
+            tests/unit/platform/test_excel_export.py \
+            tests/unit/platform/test_p1g_labeled_excel.py \
+            tests/unit/platform/test_multilabel_excel.py \
+            tests/unit/collection/test_imports_test_export.py \
+            tests/unit/collection/test_p1g_imports_run_all.py \
+            tests/unit/collection/test_imports_test_run_directory.py
+          uv run python scripts/contracts/generate.py
+
+      - name: Target behavior tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest \
+            tests/unit/analysis \
+            tests/unit/platform/test_excel_export.py \
+            tests/unit/platform/test_p1g_labeled_excel.py \
+            tests/unit/platform/test_multilabel_excel.py \
+            tests/unit/collection/test_imports_test_export.py \
+            tests/unit/collection/test_p1g_imports_run_all.py \
+            tests/unit/collection/test_imports_test_run_directory.py \
+            -q
+
+      - name: Quality gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff check backend/src tests scripts
+          uv run ruff format --check backend/src tests scripts
+          uv run mypy backend/src
+          uv run python scripts/contracts/generate.py --check
+          uv run python scripts/quality/check_architecture.py
+          uv run python scripts/quality/scan_secrets.py
+          uv run python scripts/quality/check_docs.py
+
+      - name: Remove temporary development files and commit implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm -f .github/workflows/dev-apply-analysis-multilabel.yml
+          git rm -f scripts/dev/_apply_multilabel_change.py
+          if git ls-files --error-unmatch changes/active/CHG-20260819-analysis-multilabel-run-dir/.keep >/dev/null 2>&1; then
+            git rm -f changes/active/CHG-20260819-analysis-multilabel-run-dir/.keep
+          fi
+          git add -A
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "实现多标签分析与独立运行目录"
+          git push origin HEAD:feature/analysis-multilabel-run-dir
