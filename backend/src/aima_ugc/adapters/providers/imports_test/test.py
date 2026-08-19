@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import asdict, dataclass, is_dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -14,8 +14,10 @@ from zoneinfo import ZoneInfo
 from pydantic import SecretStr
 
 from aima_ugc.adapters.llm import (
+    DEFAULT_LLM_TRANSPORT_MAX_RETRIES,
     DEFAULT_OPENAI_COMPATIBLE_TIMEOUT_SECONDS,
     OpenAICompatibleContentLabelingLLM,
+    RetryingContentLabelingLLM,
 )
 from aima_ugc.adapters.providers.imports import (
     ExcelConversionSummary,
@@ -27,6 +29,7 @@ from aima_ugc.modules.analysis import (
     ContentDeduplicationSummary,
     ContentFilterSummary,
     ContentLabelingService,
+    FrozenPromptTaxonomyLoader,
     OfflineContentLabelingSummary,
     PromptTaxonomyLoader,
     deduplicate_content_jsonl,
@@ -60,8 +63,10 @@ EXCEL_CONTENT_COLUMNS = (
 )
 
 ENABLE_REAL_LLM = False
+# 一条内容一次独立 LLM 请求；同时最多 250 个请求在飞。
+LLM_CONCURRENCY = 250
 MAX_VALIDATION_RETRIES = 2
-LLM_BATCH_SIZE = 20
+MAX_TRANSPORT_RETRIES = DEFAULT_LLM_TRANSPORT_MAX_RETRIES
 
 ENV_FILE = Path(__file__).with_name(".env")
 
@@ -144,7 +149,7 @@ def export_raw_excel(*, run_dir: Path | None = None) -> ExcelExportSummary:
 
 
 def label_sentiment(*, run_dir: Path | None = None) -> OfflineContentLabelingSummary:
-    """显式启用真实 LLM 后，对当前 run 的 deduplicated JSONL 做打标。"""
+    """显式启用真实 LLM 后，以单条请求和有界并发打标当前 run。"""
 
     if not ENABLE_REAL_LLM:
         raise RuntimeError("真实 LLM 默认关闭；确认费用后将 ENABLE_REAL_LLM 改为 True")
@@ -158,25 +163,37 @@ def label_sentiment(*, run_dir: Path | None = None) -> OfflineContentLabelingSum
         ),
         name="AIMA_LLM_TIMEOUT_SECONDS",
     )
-    prompt_loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)
-    recovery_taxonomy = prompt_loader.load()
+
+    # 一次 run 只读取/解析一次 Prompt，所有 250 个并发请求共享同一个不可变口径。
+    recovery_taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
+    prompt_loader = FrozenPromptTaxonomyLoader(recovery_taxonomy)
     with OpenAICompatibleContentLabelingLLM(
         base_url=_require_env(env, "AIMA_LLM_BASE_URL"),
         api_key=SecretStr(_require_env(env, "AIMA_LLM_API_KEY")),
         model=_require_env(env, "AIMA_LLM_MODEL"),
         timeout_seconds=timeout_seconds,
-    ) as llm:
+        max_connections=LLM_CONCURRENCY,
+    ) as base_llm:
+        llm = RetryingContentLabelingLLM(
+            inner=base_llm,
+            max_retries=MAX_TRANSPORT_RETRIES,
+        )
         service = ContentLabelingService(
             prompt_loader=prompt_loader,
             llm=llm,
         )
-        return label_unified_content_jsonl(
+        summary = label_unified_content_jsonl(
             input_path=actual_run_dir / "deduplicated" / "contents.jsonl",
             analysis_dir=actual_run_dir / "analysis",
             service=service,
             max_validation_retries=MAX_VALIDATION_RETRIES,
-            batch_size=LLM_BATCH_SIZE,
+            max_concurrency=LLM_CONCURRENCY,
             recovery_taxonomy=recovery_taxonomy,
+        )
+        return replace(
+            summary,
+            llm_http_requests=llm.total_requests,
+            transport_retries=llm.total_retries,
         )
 
 

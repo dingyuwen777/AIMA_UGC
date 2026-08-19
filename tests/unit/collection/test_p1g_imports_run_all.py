@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from aima_ugc.adapters.providers.imports_test import test as imports_test_entry
+from aima_ugc.modules.analysis import OfflineContentLabelingSummary
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,7 +98,7 @@ def test_p1g_export_labeled_excel_uses_source_run_id_and_column_config(
     }
 
 
-def test_label_sentiment_only_requires_three_llm_env_values(
+def test_label_sentiment_only_requires_three_llm_env_values_and_wires_concurrency(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -111,11 +112,23 @@ def test_label_sentiment_only_requires_three_llm_env_values(
     captured: dict[str, object] = {}
 
     class FakeAdapter:
+        provider_name = "llm.example"
+        model_name = "model-a"
+
         def __enter__(self):
             return self
 
         def __exit__(self, *_: object) -> None:
             return None
+
+    class FakeRetrying:
+        provider_name = "llm.example"
+        model_name = "model-a"
+        total_requests = 17
+        total_retries = 2
+
+        def __init__(self, **kwargs):
+            captured["retry_kwargs"] = kwargs
 
     def fake_adapter(**kwargs):
         captured.update(kwargs)
@@ -123,20 +136,36 @@ def test_label_sentiment_only_requires_three_llm_env_values(
 
     def fake_label(**kwargs):
         captured["label_kwargs"] = kwargs
-        return _DummySummary(stage="label_sentiment")
+        return OfflineContentLabelingSummary(
+            input_path=kwargs["input_path"],
+            analysis_dir=kwargs["analysis_dir"],
+            rows_seen=1,
+            rows_already_labeled=0,
+            rows_recovered=0,
+            rows_succeeded=1,
+            rows_failed=0,
+            llm_attempts=1,
+            peak_in_flight=1,
+        )
 
     monkeypatch.setattr(imports_test_entry, "ENABLE_REAL_LLM", True)
     monkeypatch.setattr(imports_test_entry, "ENV_FILE", env_file)
     monkeypatch.setattr(imports_test_entry, "OUTPUT_ROOT", tmp_path / "output")
     monkeypatch.setattr(imports_test_entry, "OpenAICompatibleContentLabelingLLM", fake_adapter)
+    monkeypatch.setattr(imports_test_entry, "RetryingContentLabelingLLM", FakeRetrying)
     monkeypatch.setattr(imports_test_entry, "label_unified_content_jsonl", fake_label)
 
     result = imports_test_entry.label_sentiment()
 
-    assert result == _DummySummary(stage="label_sentiment")
+    assert result.rows_succeeded == 1
+    assert result.llm_http_requests == 17
+    assert result.transport_retries == 2
     assert captured["base_url"] == "https://llm.example/v1"
     assert captured["model"] == "model-a"
     assert captured["timeout_seconds"] == 60.0
+    assert captured["max_connections"] == 250
     assert "api_key" in captured
     assert "provider_name" not in captured
     assert "use_json_mode" not in captured
+    assert captured["retry_kwargs"]["max_retries"] == 4
+    assert captured["label_kwargs"]["max_concurrency"] == 250

@@ -25,10 +25,16 @@ from .offline_content import (
     deduplicate_content_jsonl,
     filter_canonical_content_jsonl,
 )
-from .offline_labeling import OfflineContentLabelingSummary, label_unified_content_jsonl
+from .offline_labeling import (
+    DEFAULT_OFFLINE_LLM_CONCURRENCY,
+    OfflineContentLabelingSummary,
+    label_unified_content_jsonl,
+)
+from .prompt_snapshot import FrozenPromptTaxonomyLoader
 
 __all__ = [
     "CONTENT_LABELING_PROMPT_PATH",
+    "DEFAULT_OFFLINE_LLM_CONCURRENCY",
     "PROMPT_VERSION",
     "ContentDeduplicationConflictError",
     "ContentDeduplicationSummary",
@@ -43,6 +49,7 @@ __all__ = [
     "ContentLabelingService",
     "ContentLabelingValidationError",
     "FakeContentLabelingLLM",
+    "FrozenPromptTaxonomyLoader",
     "OfflineContentLabelingSummary",
     "PromptTaxonomy",
     "PromptTaxonomyError",
