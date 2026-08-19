@@ -24,7 +24,56 @@ new_labels_type = "    labels: list[_ModelLabelPair] = Field(min_length=1)"
 if labeling_text.count(old_labels_type) != 1:
     raise RuntimeError("expected one strict tuple model labels declaration")
 labeling_text = labeling_text.replace(old_labels_type, new_labels_type, 1)
+old_parser = '''    if "labels" in value:
+        parsed = _ModelLabelItemV2.model_validate(value)
+        return parsed.sentiment, tuple(
+            ContentLabelPairV2(
+                primary_label=pair.primary_label,
+                secondary_label=pair.secondary_label,
+            )
+            for pair in parsed.labels
+        )
+    parsed = _ModelLabelItemV1.model_validate(value)
+    return parsed.sentiment, (
+        ContentLabelPairV2(
+            primary_label=parsed.primary_label,
+            secondary_label=parsed.secondary_label,
+        ),
+    )
+'''
+new_parser = '''    if "labels" in value:
+        parsed_v2 = _ModelLabelItemV2.model_validate(value)
+        return parsed_v2.sentiment, tuple(
+            ContentLabelPairV2(
+                primary_label=pair.primary_label,
+                secondary_label=pair.secondary_label,
+            )
+            for pair in parsed_v2.labels
+        )
+    parsed_v1 = _ModelLabelItemV1.model_validate(value)
+    return parsed_v1.sentiment, (
+        ContentLabelPairV2(
+            primary_label=parsed_v1.primary_label,
+            secondary_label=parsed_v1.secondary_label,
+        ),
+    )
+'''
+if labeling_text.count(old_parser) != 1:
+    raise RuntimeError("expected one V1/V2 parser block")
+labeling_text = labeling_text.replace(old_parser, new_parser, 1)
 labeling_path.write_text(labeling_text, encoding="utf-8")
+
+offline_path = ROOT / "backend/src/aima_ugc/modules/analysis/offline_labeling.py"
+offline_text = offline_path.read_text(encoding="utf-8")
+old_adapter = "_ANALYSIS_ADAPTER = TypeAdapter(ContentLabelAnalysis)"
+new_adapter = (
+    "_ANALYSIS_ADAPTER: TypeAdapter[ContentLabelAnalysis] = "
+    "TypeAdapter(ContentLabelAnalysis)"
+)
+if offline_text.count(old_adapter) != 1:
+    raise RuntimeError("expected one analysis TypeAdapter declaration")
+offline_text = offline_text.replace(old_adapter, new_adapter, 1)
+offline_path.write_text(offline_text, encoding="utf-8")
 
 test_path = ROOT / "tests/unit/platform/test_multilabel_excel.py"
 test_text = test_path.read_text(encoding="utf-8")
