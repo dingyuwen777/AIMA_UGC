@@ -569,3 +569,52 @@ keyword_pack_items
 
 因此最终 `deduplicated/contents.jsonl` 和 Excel 中同一平台的同一内容最多出现一次，代表记录及
 输出顺序由源文件首次出现顺序确定。
+
+## 17. Stage 8A 可选数据库写入（已批准目标，当前未实现）
+
+当前 `imports_test` 的**现有行为仍然是文件模式**：运行时不要求 PostgreSQL，也不会写业务数据库。下面描述的是 [`docs/blueprint/17-Stage8数据入口统一入库与业务前端实施.md`](../../../../../../docs/blueprint/17-Stage8数据入口统一入库与业务前端实施.md) 已批准、将在 Stage 8A 实现的目标，不得把它理解为当前代码已经支持。
+
+Stage 8A 将保留本人工入口，并增加一个显式 opt-in 的数据库写入选择。目标语义为：
+
+```text
+默认：WRITE_TO_DATABASE = False
+→ 保持当前行为
+→ 只生成 Canonical / filtered / deduplicated / analysis / Excel / run summary 文件
+→ 不要求数据库
+
+显式：WRITE_TO_DATABASE = True
+→ 仍先保留本次文件产物
+→ 建立合法文件来源 Artifact / Attempt / 来源链
+→ 把归一化后的 Canonical 交给正式 Content Ingestion
+→ 写入 PostgreSQL
+```
+
+最终配置名由 Stage 8A 的实现 Change 按当前代码冻结；无论名称如何，必须保持“默认不写库，显式开启才写库”。
+
+数据库模式固定遵守：
+
+- 假定开发者机器上已经有一个可访问的 PostgreSQL 18 开发实例，通常是已经启动的本地数据库容器；
+- `imports_test` 只读取仓库现有数据库配置和 Secret 边界、连接并校验，不负责 `docker compose up/down`；
+- 不自动创建/删除数据库容器；
+- 不自动执行 Alembic Migration，更不能执行破坏性 Migration；
+- 数据库不可用或 Schema 不满足要求时，数据库阶段明确失败，但已经生成的文件继续保留；
+- 不允许数据库失败后静默退回文件模式并把整次运行标成成功；
+- 不直接写 SQL，不建立 `ExcelDatabaseWriter` 或 `imports_test` 私有 Repository；
+- Excel Mapper 仍只负责得到 Provider-neutral Canonical；
+- Canonical 之后必须复用 `ContentIngestionService → PostgresContentRepository`；
+- 数据库最终仍按 `(platform, external_content_id)` 做跨批次、跨来源收敛，批次内去重不能替代数据库唯一约束；
+- 当前 PostgreSQL Ingestion 要求合法 `provider_attempt_id + raw_artifact_id` 来源引用，Stage 8A 必须建立真实文件来源链，不能伪造 ID、删除校验或绕过 Owner Repository。
+
+因此 Stage 8A 完成后，人工运行可以按需要选择：
+
+```text
+仅文件调试
+```
+
+或：
+
+```text
+文件保留 + 正式 PostgreSQL 入库
+```
+
+两种模式必须复用同一套 Reader、Mapper、清洗、去重、Canonical 和正式 Ingestion 生产实现；本目录继续是人工调试入口，不成为第二套生产系统。
