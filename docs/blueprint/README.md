@@ -68,7 +68,18 @@
 
 ## 当前开发状态
 
-**Stage 1—7 已闭环。临时 P1 已完成 Excel 离线导入、关键词清洗、稳定身份去重、统一 Excel 导出、全平台通用 AI 打标、checkpoint 恢复、90,000×13 性能验证与真实模型小样；P1 的长期规则已收口到 Blueprint 13/15。Stage 8 现在恢复为下一正式阶段。Stage 8 的前端页面架构与 Figma 设计工作流已固化到 Blueprint 16；第一版“Excel 主数据入口、TikHub 辅助补采、所有 Canonical 统一入 PostgreSQL、`imports_test`/`tikhub_test` 默认文件-only 且可显式写库”的实施方案已固化到 Blueprint 17，但这些 Stage 8 目标能力尚未因此自动成为当前代码事实。**
+**Stage 1—7 已闭环，临时 P1 已闭环。Stage 8A 已建立 Unified Manual Ingestion Foundation：Excel 仍是第一版主要人工数据入口，TikHub 仍是辅助来源；两类人工调试入口默认保持 file-only，并可显式把同一业务数据接入正式 PostgreSQL Content 体系。Stage 8A 没有实现网页上传、运行中心、Content Center、正式 Analysis 数据库页面或其他 Stage 8B+ 产品能力。**
+
+Stage 8A 当前机器边界：
+
+- `processing_import_batches` 作为 Excel File Import 的最小业务父事实；
+- `provider_requests` 支持 Collection Scope / Import Batch 恰好一个父级，既有 Collection 来源语义保持兼容；
+- Excel 数据库模式使用 Input Artifact → Processing Import Batch → import-parent Provider Request / non-billable Attempt → Canonical → 正式 Content Ingestion，不伪造 Collection Run/Scope/Candidate；
+- `imports_test` 默认 `WRITE_TO_DATABASE=False`，显式数据库阶段才装配 PostgreSQL Runtime；
+- `tikhub_test` 五个平台 `run_*()` 默认 `write_to_database=False`，显式数据库模式要求稳定 `provider_config_id`，复用 manual Collection / Provider Dispatch / Raw / Candidate-before-Mapper / fenced Ingestion；
+- TikHub 数据库模式同一次外部请求同时保留本地调试 Raw 和正式 Raw Artifact，不从 JSONL/Excel 二次回灌，也不因写库额外再发一次 Provider 请求；
+- PostgreSQL 仍按 `(platform, external_content_id)` 与评论稳定身份收敛跨批次、跨来源 Current，并保留 Version/Metric/来源历史；
+- 数据库模式只连接开发者已经准备好的 PostgreSQL 18，不管理 Docker，不自动执行 Alembic Migration，Schema 不满足要求时关闭失败。
 
 Stage 7 已完成并固化：
 
@@ -93,22 +104,22 @@ changes/archive/2026-08/CHG-20260815-stage7-completion/CHANGE.md
 
 P1 已固化的长期能力：
 
-- 文件 Excel Provider 使用 Canonical/Provider-neutral 边界，不依赖数据库；
+- 文件 Excel Provider 使用 Canonical/Provider-neutral 边界；Stage 8A 只在显式数据库阶段把已经生成的 Provider-neutral 记录接入正式 PostgreSQL 来源链；
 - `UnifiedContentRecordV1` 承载关键词命中与可空 Analysis，Canonical 不承载 AI 标签；
 - `UnifiedDataExcelV1` 与唯一共享 Exporter 同时服务 `imports_test`、`tikhub_test` 和后续正式导出；
 - raw/labeled Excel 使用同一 Workbook Contract，业务中间处理不从 Excel 回读；
 - 全平台内容 Analysis 复用同一 Prompt/Taxonomy、Runtime Validator、LLM Port/Adapter 和有界 Validation Retry；
 - 成功 Analysis 先 checkpoint，再原子回写同一个 Provider-neutral JSONL；
 - 具体长期 Excel 与 Analysis 规则分别由 Blueprint 13 和 15 维护；
-- `imports_test` / `tikhub_test` 当前默认仍是文件-only 人工调试入口；未来显式写库模式按 Blueprint 17 产品化，不能反向破坏默认离线调试能力。
+- `imports_test` / `tikhub_test` 永久保留人工调试入口，默认 file-only；Stage 8A 的显式 PostgreSQL 模式不得反向破坏默认离线调试能力。
 
 ## 下一正式阶段
 
-### Stage 8：统一数据入口 / API / 正式业务前端
+### Stage 8B：Import HTTP / Job Productization
 
-Stage 8 是当前下一正式阶段。新的 Stage 8 对话/Change 必须重新从当时 `main` 事实出发，并按 `AGENTS.md`、Skill 和 Stage 8 相关 Blueprint 完成需求、Contract、Schema、接口和验收门禁；Blueprint 17 已经明确 Stage 8 从 **8A Unified Manual Ingestion Foundation** 开始，不等于该代码已经实现。
+Stage 8A 完成集成闭环后，下一个最小正式单元是 **Stage 8B**。8B 只把已经存在的正式 File Import Foundation 产品化为浏览器/API 可用的 Contract 与持久化 Job，不重新设计 Stage 8A 的来源链，也不提前进入 Stage 8C 正式业务页面。
 
-开始 Stage 8 时至少按以下顺序恢复事实：
+开始 Stage 8B 时仍必须重新从当时 `main` 恢复事实：
 
 ```text
 AGENTS.md
@@ -119,18 +130,14 @@ AGENTS.md
 → docs/blueprint/02-采集系统与数据标准化.md
 → docs/blueprint/03-数据库与文件存储.md
 → docs/blueprint/04-后端任务API与前端.md
-→ docs/blueprint/16-前端页面架构与Figma设计工作流.md
-→ docs/blueprint/08-采集策略与平台能力.md（若涉及 TikHub/补采/Plan）
-→ docs/blueprint/13-统一数据Excel导出与调试复用.md（若涉及 Excel/调试输出）
-→ docs/blueprint/15-舆情AI打标与统一分析契约.md（若涉及 Analysis/AI）
 → docs/API接口说明.md
 → changes/active
 → 当前 main / Contract / Migration / OpenAPI / generated client / backend Router/Service / frontend 结构与测试
 ```
 
-不得把 Stage 7、P1 或历史聊天当作 Stage 8 当前机器事实，也不得因为 Blueprint 已批准目标设计就把尚未实现的 Batch/API/页面/写库开关写成已完成。Stage 8 每个子阶段都必须重新检查当前实现后只推进下一个未闭环最小单元。
+Stage 8B 的目标边界以 Blueprint 17 为准：上传/登记 Excel Source Artifact、创建/查询 Processing Import Batch、持久化 Import Job、状态/阶段/统计/错误摘要、统一 HTTP 错误与 request_id、固定 OpenAPI、生成 Orval Client，以及 API/Contract/PostgreSQL Integration。Stage 8C 的采集运行中心 Vue/Figma 页面不属于 8B。
 
-### 独立于 Stage 7/P1 的后续门禁
+### 独立于 Stage 8A 的后续门禁
 
 以下事项仍需要未来阶段/Release 独立处理：
 
@@ -139,7 +146,7 @@ AGENTS.md
 - 已落地的是平台通用 Analysis 核心与无数据库验证入口；正式数据库 DDL/Migration、Analysis Job/API/页面仍需按 Blueprint 15 和对应正式阶段闭环；
 - 日请求量、数据量、Worker 并发、Raw/数据库日增量、磁盘容量、SLO、RPO、RTO；
 - 生产镜像 variant/digest、离线 Release、安全发布与恢复演练；
-- Stage 8 正式业务 API/页面及 Provider 凭据写入能力；凭据仍必须通过安全 SecretStore/SecretService，不能把数据库明文 Secret 当捷径；
+- Stage 8B+ 正式业务 API/页面及 Provider 凭据写入能力；凭据仍必须通过安全 SecretStore/SecretService，不能把数据库明文 Secret 当捷径；
 - 未来如重新需要 Budget/Cost Guard，必须创建新的 L3 Change，不得复活当前已删除接口。
 
 ## 修改规则
