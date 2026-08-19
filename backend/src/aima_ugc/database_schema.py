@@ -42,6 +42,10 @@ from aima_ugc.modules.content.tables import (
     content_versions_table,
     contents_table,
 )
+from aima_ugc.modules.manual_ingestion.tables import (
+    processing_import_batches_table,
+    register_manual_ingestion_schema,
+)
 from aima_ugc.modules.system.tables import (
     audit_events_table,
     keyword_pack_items_table,
@@ -56,6 +60,7 @@ from aima_ugc.platform.storage.tables import artifacts_table
 
 register_scheduler_schema()
 register_content_source_constraints()
+register_manual_ingestion_schema()
 
 __all__ = [
     "account_external_ids_table",
@@ -94,6 +99,7 @@ __all__ = [
     "keyword_packs_table",
     "keywords_table",
     "metadata",
+    "processing_import_batches_table",
     "provider_configs_table",
     "provider_request_attempts_table",
     "provider_requests_table",

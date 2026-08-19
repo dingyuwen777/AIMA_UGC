@@ -32,7 +32,7 @@ def compute_request_fingerprint(
     request_params: JsonObject,
     pagination_input: JsonObject,
 ) -> str:
-    """对 Scope 内的 Operation、稳定参数和分页输入生成确定性 SHA-256。"""
+    """对一次逻辑请求的稳定参数生成确定性 SHA-256。"""
     assert_secret_free(request_params, path="request_params")
     assert_secret_free(pagination_input, path="pagination_input")
     payload = {
@@ -50,12 +50,13 @@ def compute_request_fingerprint(
 
 
 class ProviderRequestV1(ProviderBaseModel):
-    """一个 Provider Scope 内可幂等复用的逻辑请求。"""
+    """Collection Scope 或 Import Batch 内可幂等复用的逻辑请求。"""
 
     schema_version: Literal["provider-request.v1"] = "provider-request.v1"
     request_id: UUID
-    run_id: UUID
-    scope_id: UUID
+    run_id: UUID | None = None
+    scope_id: UUID | None = None
+    import_batch_id: UUID | None = None
     provider: ProviderName
     platform: PlatformName
     operation: OperationName
@@ -76,13 +77,46 @@ class ProviderRequestV1(ProviderBaseModel):
         request_params: JsonObject | None = None,
         pagination_input: JsonObject | None = None,
     ) -> Self:
-        """从稳定且无 Secret 的参数创建逻辑请求并计算 fingerprint。"""
+        """保持既有 Collection Request 构造方式不变。"""
         params = request_params or {}
         pagination = pagination_input or {}
         return cls(
             request_id=request_id,
             run_id=run_id,
             scope_id=scope_id,
+            import_batch_id=None,
+            provider=provider,
+            platform=platform,
+            operation=operation,
+            request_fingerprint=compute_request_fingerprint(
+                operation=operation,
+                request_params=params,
+                pagination_input=pagination,
+            ),
+            request_params=params,
+            pagination_input=pagination,
+        )
+
+    @classmethod
+    def create_for_import(
+        cls,
+        *,
+        request_id: UUID,
+        import_batch_id: UUID,
+        provider: str,
+        platform: str,
+        operation: str,
+        request_params: JsonObject | None = None,
+        pagination_input: JsonObject | None = None,
+    ) -> Self:
+        """为本地文件导入建立不伪装成 Collection 的逻辑 Request。"""
+        params = request_params or {}
+        pagination = pagination_input or {}
+        return cls(
+            request_id=request_id,
+            run_id=None,
+            scope_id=None,
+            import_batch_id=import_batch_id,
             provider=provider,
             platform=platform,
             operation=operation,
@@ -96,7 +130,13 @@ class ProviderRequestV1(ProviderBaseModel):
         )
 
     @model_validator(mode="after")
-    def validate_fingerprint_and_secret_boundary(self) -> Self:
+    def validate_parent_fingerprint_and_secret_boundary(self) -> Self:
+        collection_parent = self.run_id is not None and self.scope_id is not None
+        import_parent = self.import_batch_id is not None
+        if (self.run_id is None) != (self.scope_id is None):
+            raise ValueError("Collection Provider Request 必须同时声明 run_id 和 scope_id")
+        if collection_parent == import_parent:
+            raise ValueError("Provider Request 必须恰好一个来源父级：Collection Scope 或 Import Batch")
         assert_secret_free(self.request_params, path="request_params")
         assert_secret_free(self.pagination_input, path="pagination_input")
         expected = compute_request_fingerprint(

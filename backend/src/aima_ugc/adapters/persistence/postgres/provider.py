@@ -6,7 +6,7 @@ from decimal import Decimal
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
@@ -18,6 +18,7 @@ from aima_ugc.modules.collection.provider_dispatch import (
 )
 from aima_ugc.modules.collection.provider_persistence import (
     ProviderAttemptRecord,
+    ProviderImportBatchNotFoundError,
     ProviderPersistenceConflictError,
     ProviderRequestLineageMismatchError,
     ProviderRequestNotFoundError,
@@ -30,11 +31,12 @@ from aima_ugc.modules.collection.tables import (
     provider_request_attempts_table,
     provider_requests_table,
 )
+from aima_ugc.modules.manual_ingestion.tables import processing_import_batches_table
 from aima_ugc.modules.system.tables import provider_configs_table
 
 
 class PostgresProviderRepository:
-    """Provider 两表的唯一 Collection 写入口；事务由调用方持有。"""
+    """Provider Request/Attempt 的唯一 PostgreSQL 写入口；事务由调用方持有。"""
 
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -45,41 +47,9 @@ class PostgresProviderRepository:
         *,
         provider_config_id: UUID | None = None,
     ) -> ProviderRequestRecord:
-        """校验 Scope/Config 来源并按 Scope + fingerprint 幂等建立逻辑 Request。"""
-        scope_row = (
-            self._session.execute(
-                select(
-                    collection_scopes_table.c.run_id,
-                    collection_scopes_table.c.platform,
-                ).where(collection_scopes_table.c.id == request.scope_id)
-            )
-            .mappings()
-            .one_or_none()
-        )
-        if scope_row is None:
-            raise ProviderScopeNotFoundError(f"Provider Scope 不存在: {request.scope_id}")
-        if scope_row["run_id"] != request.run_id or scope_row["platform"] != request.platform:
-            raise ProviderRequestLineageMismatchError(
-                "Provider Request 的 run_id/platform 与 Collection Scope 不一致"
-            )
-        if provider_config_id is not None:
-            config_row = (
-                self._session.execute(
-                    select(provider_configs_table.c.provider).where(
-                        provider_configs_table.c.id == provider_config_id
-                    )
-                )
-                .mappings()
-                .one_or_none()
-            )
-            if config_row is None:
-                raise ProviderRequestLineageMismatchError(
-                    f"Provider Config 不存在: {provider_config_id}"
-                )
-            if config_row["provider"] != request.provider:
-                raise ProviderRequestLineageMismatchError(
-                    "Provider Config 的 provider 与 Provider Request 不一致"
-                )
+        """校验来源父级与 Config，并按父级 + fingerprint 幂等建立 Request。"""
+        self._validate_parent(request)
+        self._validate_provider_config(request, provider_config_id)
 
         inserted = (
             self._session.execute(
@@ -87,6 +57,7 @@ class PostgresProviderRepository:
                 .values(
                     id=request.request_id,
                     scope_id=request.scope_id,
+                    import_batch_id=request.import_batch_id,
                     provider_config_id=provider_config_id,
                     provider=request.provider,
                     operation=request.operation,
@@ -110,30 +81,17 @@ class PostgresProviderRepository:
                 select(provider_requests_table).where(
                     or_(
                         provider_requests_table.c.id == request.request_id,
-                        (provider_requests_table.c.scope_id == request.scope_id)
-                        & (
-                            provider_requests_table.c.request_fingerprint
-                            == request.request_fingerprint
-                        ),
+                        _logical_request_key(request),
                     )
                 )
             ).mappings()
         )
         by_id = next((row for row in candidates if row["id"] == request.request_id), None)
-        by_key = next(
-            (
-                row
-                for row in candidates
-                if row["scope_id"] == request.scope_id
-                and row["request_fingerprint"] == request.request_fingerprint
-            ),
-            None,
-        )
+        by_key = next((row for row in candidates if _row_has_logical_key(row, request)), None)
         if by_id is not None and by_key is not None and by_id["id"] != by_key["id"]:
             raise ProviderPersistenceConflictError(
                 "Provider Request ID 与逻辑幂等键分别绑定到不同记录"
             )
-
         existing = by_key if by_key is not None else by_id
         if existing is not None and _request_matches(
             existing,
@@ -144,6 +102,61 @@ class PostgresProviderRepository:
         raise ProviderPersistenceConflictError(
             "Provider Request ID 或逻辑幂等键已绑定到不同稳定内容"
         )
+
+    def _validate_parent(self, request: ProviderRequestV1) -> None:
+        if request.import_batch_id is not None:
+            batch_exists = self._session.scalar(
+                select(processing_import_batches_table.c.id).where(
+                    processing_import_batches_table.c.id == request.import_batch_id
+                )
+            )
+            if batch_exists is None:
+                raise ProviderImportBatchNotFoundError(
+                    f"Processing / Import Batch 不存在: {request.import_batch_id}"
+                )
+            return
+        assert request.scope_id is not None and request.run_id is not None
+        scope_row = (
+            self._session.execute(
+                select(
+                    collection_scopes_table.c.run_id,
+                    collection_scopes_table.c.platform,
+                ).where(collection_scopes_table.c.id == request.scope_id)
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if scope_row is None:
+            raise ProviderScopeNotFoundError(f"Provider Scope 不存在: {request.scope_id}")
+        if scope_row["run_id"] != request.run_id or scope_row["platform"] != request.platform:
+            raise ProviderRequestLineageMismatchError(
+                "Provider Request 的 run_id/platform 与 Collection Scope 不一致"
+            )
+
+    def _validate_provider_config(
+        self,
+        request: ProviderRequestV1,
+        provider_config_id: UUID | None,
+    ) -> None:
+        if request.import_batch_id is not None and provider_config_id is not None:
+            raise ProviderRequestLineageMismatchError(
+                "File Import Provider Request 不绑定外部 provider_config_id"
+            )
+        if provider_config_id is None:
+            return
+        provider = self._session.scalar(
+            select(provider_configs_table.c.provider).where(
+                provider_configs_table.c.id == provider_config_id
+            )
+        )
+        if provider is None:
+            raise ProviderRequestLineageMismatchError(
+                f"Provider Config 不存在: {provider_config_id}"
+            )
+        if provider != request.provider:
+            raise ProviderRequestLineageMismatchError(
+                "Provider Config 的 provider 与 Provider Request 不一致"
+            )
 
     def get_request(self, provider_request_id: UUID) -> ProviderRequestRecord | None:
         row = (
@@ -172,7 +185,6 @@ class PostgresProviderRepository:
             raise ProviderPersistenceConflictError(
                 "Provider Attempt ID 已绑定到不同 Request 或执行事实"
             )
-
         next_attempt_no = cast(int, request_row["attempt_count"]) + 1
         attempt_row = (
             self._session.execute(
@@ -225,7 +237,6 @@ class PostgresProviderRepository:
             raise ProviderRequestLineageMismatchError(
                 "billable Provider Request 必须绑定 provider_config_id"
             )
-
         existing = self._load_attempt(attempt_id)
         if existing is not None:
             if _is_same_billable_reservation(existing, provider_request_id, billing):
@@ -233,7 +244,6 @@ class PostgresProviderRepository:
             raise ProviderPersistenceConflictError(
                 "Provider Attempt ID 已绑定到不同 Request 或费用事实"
             )
-
         next_attempt_no = cast(int, request_row["attempt_count"]) + 1
         attempt_row = (
             self._session.execute(
@@ -261,9 +271,7 @@ class PostgresProviderRepository:
         if attempt_row is None:
             concurrent = self._load_attempt(attempt_id)
             if concurrent is not None and _is_same_billable_reservation(
-                concurrent,
-                provider_request_id,
-                billing,
+                concurrent, provider_request_id, billing
             ):
                 return _row_to_attempt(concurrent)
             raise ProviderPersistenceConflictError(
@@ -279,7 +287,7 @@ class PostgresProviderRepository:
         self,
         attempt_id: UUID,
     ) -> ProviderDispatchPreparation | None:
-        """沿 Attempt→Request→Scope→Run 返回受约束的 Dispatch 父事实。"""
+        """仅 Collection Attempt 可沿 Scope→Run 返回外部 Dispatch 父事实。"""
         row = (
             self._session.execute(
                 select(
@@ -329,6 +337,7 @@ class PostgresProviderRepository:
             request_id=row["request_id"],
             run_id=row["run_id"],
             scope_id=row["scope_id"],
+            import_batch_id=None,
             provider=row["provider"],
             platform=row["platform"],
             operation=row["operation"],
@@ -343,7 +352,6 @@ class PostgresProviderRepository:
         )
 
     def mark_dispatching(self, attempt_id: UUID) -> ProviderAttemptRecord:
-        """仅允许一个竞争者将 reserved Attempt 推进到 dispatching。"""
         started_at = func.clock_timestamp()
         row = (
             self._session.execute(
@@ -352,10 +360,7 @@ class PostgresProviderRepository:
                     provider_request_attempts_table.c.id == attempt_id,
                     provider_request_attempts_table.c.dispatch_status == "reserved",
                 )
-                .values(
-                    dispatch_status="dispatching",
-                    dispatch_started_at=started_at,
-                )
+                .values(dispatch_status="dispatching", dispatch_started_at=started_at)
                 .returning(*provider_request_attempts_table.c)
             )
             .mappings()
@@ -369,12 +374,7 @@ class PostgresProviderRepository:
                 provider_requests_table.c.id == row["provider_request_id"],
                 provider_requests_table.c.attempt_count == row["attempt_no"],
             )
-            .values(
-                status="dispatching",
-                completed_at=None,
-                error_code=None,
-                error_detail=None,
-            )
+            .values(status="dispatching", completed_at=None, error_code=None, error_detail=None)
         )
         return _row_to_attempt(row)
 
@@ -384,7 +384,6 @@ class PostgresProviderRepository:
         attempt: ProviderAttemptV1,
         raw_artifact_id: UUID | None,
     ) -> ProviderAttemptRecord:
-        """以 CAS 保存终态 Attempt，并更新逻辑 Request 当前汇总。"""
         if attempt.dispatch_status not in {"completed", "not_sent", "unknown"}:
             raise ValueError("Provider Dispatch 终态无效")
         if attempt.dispatch_status == "completed":
@@ -395,17 +394,12 @@ class PostgresProviderRepository:
                 raise ValueError("unknown Attempt 的 Raw Artifact 引用不一致")
         elif raw_artifact_id is not None or attempt.raw_artifact_id is not None:
             raise ValueError("not_sent Attempt 不能关联 Raw Artifact")
-
         request_row = self._lock_request(attempt.provider_request_id)
         currency = _merge_cost_dimension(
-            request_row["cost_currency"],
-            attempt.billing.currency,
-            name="currency",
+            request_row["cost_currency"], attempt.billing.currency, name="currency"
         )
         cost_unit = _merge_cost_dimension(
-            request_row["cost_unit"],
-            attempt.billing.unit,
-            name="unit",
+            request_row["cost_unit"], attempt.billing.unit, name="unit"
         )
         error_code = attempt.error.code if attempt.error is not None else None
         error_detail = attempt.error.safe_summary if attempt.error is not None else None
@@ -414,8 +408,7 @@ class PostgresProviderRepository:
                 update(provider_request_attempts_table)
                 .where(
                     provider_request_attempts_table.c.id == attempt.attempt_id,
-                    provider_request_attempts_table.c.provider_request_id
-                    == attempt.provider_request_id,
+                    provider_request_attempts_table.c.provider_request_id == attempt.provider_request_id,
                     provider_request_attempts_table.c.attempt_no == attempt.attempt_no,
                     provider_request_attempts_table.c.dispatch_status == "dispatching",
                 )
@@ -443,19 +436,14 @@ class PostgresProviderRepository:
         )
         if row is None:
             raise ProviderAttemptStateConflict("Provider Attempt 不是当前 dispatching 状态")
-
-        request_values: dict[str, object] = {
-            "estimated_cost": (
-                cast(Decimal, request_row["estimated_cost"]) + attempt.billing.estimated_cost
-            ),
-            "actual_cost": (
-                cast(Decimal, request_row["actual_cost"]) + attempt.billing.actual_cost
-            ),
+        values: dict[str, object] = {
+            "estimated_cost": cast(Decimal, request_row["estimated_cost"]) + attempt.billing.estimated_cost,
+            "actual_cost": cast(Decimal, request_row["actual_cost"]) + attempt.billing.actual_cost,
             "cost_currency": currency,
             "cost_unit": cost_unit,
         }
         if request_row["attempt_count"] == attempt.attempt_no:
-            request_values.update(
+            values.update(
                 status=attempt.dispatch_status,
                 unit_price_snapshot=attempt.billing.unit_price_snapshot,
                 completed_at=attempt.completed_at,
@@ -465,7 +453,7 @@ class PostgresProviderRepository:
         self._session.execute(
             update(provider_requests_table)
             .where(provider_requests_table.c.id == attempt.provider_request_id)
-            .values(**request_values)
+            .values(**values)
         )
         return _row_to_attempt(row)
 
@@ -502,12 +490,7 @@ class PostgresProviderRepository:
             .one_or_none()
         )
 
-    def _advance_request_attempt_count(
-        self,
-        *,
-        provider_request_id: UUID,
-        next_attempt_no: int,
-    ) -> None:
+    def _advance_request_attempt_count(self, *, provider_request_id: UUID, next_attempt_no: int) -> None:
         self._session.execute(
             update(provider_requests_table)
             .where(provider_requests_table.c.id == provider_request_id)
@@ -521,6 +504,23 @@ class PostgresProviderRepository:
         )
 
 
+def _logical_request_key(request: ProviderRequestV1):
+    parent = (
+        provider_requests_table.c.import_batch_id == request.import_batch_id
+        if request.import_batch_id is not None
+        else provider_requests_table.c.scope_id == request.scope_id
+    )
+    return and_(parent, provider_requests_table.c.request_fingerprint == request.request_fingerprint)
+
+
+def _row_has_logical_key(row: RowMapping, request: ProviderRequestV1) -> bool:
+    return bool(
+        row["scope_id"] == request.scope_id
+        and row["import_batch_id"] == request.import_batch_id
+        and row["request_fingerprint"] == request.request_fingerprint
+    )
+
+
 def _request_matches(
     row: RowMapping,
     request: ProviderRequestV1,
@@ -530,10 +530,9 @@ def _request_matches(
     config_matches = provider_config_id is None or row["provider_config_id"] == provider_config_id
     return bool(
         config_matches
-        and row["scope_id"] == request.scope_id
+        and _row_has_logical_key(row, request)
         and row["provider"] == request.provider
         and row["operation"] == request.operation
-        and row["request_fingerprint"] == request.request_fingerprint
         and row["request_params"] == request.request_params
         and row["pagination_input"] == request.pagination_input
     )
@@ -575,12 +574,7 @@ def _is_same_billable_reservation(
     )
 
 
-def _merge_cost_dimension(
-    current: str | None,
-    incoming: str | None,
-    *,
-    name: str,
-) -> str | None:
+def _merge_cost_dimension(current: str | None, incoming: str | None, *, name: str) -> str | None:
     if current is not None and incoming is not None and current != incoming:
         raise ProviderPersistenceConflictError(
             f"Provider Request 的费用 {name} 与已有 Attempt 不一致"
@@ -591,7 +585,8 @@ def _merge_cost_dimension(
 def _row_to_request(row: RowMapping) -> ProviderRequestRecord:
     return ProviderRequestRecord(
         id=cast(UUID, row["id"]),
-        scope_id=cast(UUID, row["scope_id"]),
+        scope_id=cast(UUID | None, row["scope_id"]),
+        import_batch_id=cast(UUID | None, row["import_batch_id"]),
         provider_config_id=cast(UUID | None, row["provider_config_id"]),
         provider=cast(str, row["provider"]),
         operation=cast(str, row["operation"]),
