@@ -10,7 +10,9 @@ from aima_ugc.adapters.providers.imports import (
     ExcelImportRejectedRowsError,
     convert_excel_to_canonical_jsonl,
 )
+from aima_ugc.adapters.providers.imports.excel_profile import get_excel_import_profile
 from aima_ugc.adapters.providers.imports.identity import resolve_content_identity
+from aima_ugc.adapters.providers.imports.models import ExcelImportRowError
 from aima_ugc.contracts.canonical import CanonicalContentV1
 from openpyxl import Workbook
 
@@ -40,6 +42,34 @@ def _write_workbook(path: Path, *rows: tuple[object, ...], sheet_name: str = "�
         worksheet.append(row)
     workbook.save(path)
     workbook.close()
+
+
+@pytest.mark.parametrize(
+    ("media_name", "expected_platform"),
+    (
+        ("抖音 APP", "douyin"),
+        ("小红书 APP", "xiaohongshu"),
+        ("快手 APP", "kuaishou"),
+        ("哔哩哔哩APP", "bilibili"),
+        ("新浪微博", "weibo"),
+    ),
+)
+def test_profile_resolves_known_platform_keyword_inside_media_name(
+    media_name: str,
+    expected_platform: str,
+) -> None:
+    profile = get_excel_import_profile("aima-monitoring-excel.v1")
+
+    assert profile.resolve_platform(media_name) == expected_platform
+
+
+def test_profile_does_not_guess_unknown_chinese_media_name() -> None:
+    profile = get_excel_import_profile("aima-monitoring-excel.v1")
+
+    with pytest.raises(ExcelImportRowError) as exc_info:
+        profile.resolve_platform("某某汽车资讯 APP")
+
+    assert exc_info.value.code == "platform_unmapped"
 
 
 def test_convert_maps_profile_to_canonical_jsonl(tmp_path: Path) -> None:

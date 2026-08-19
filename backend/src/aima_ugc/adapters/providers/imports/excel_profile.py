@@ -41,6 +41,15 @@ _PLATFORM_ALIASES = {
     "快手": "kuaishou",
     "kuaishou": "kuaishou",
 }
+_PLATFORM_KEYWORD_ALIASES = (
+    ("新浪微博", "weibo"),
+    ("哔哩哔哩", "bilibili"),
+    ("小红书", "xiaohongshu"),
+    ("抖音", "douyin"),
+    ("微博", "weibo"),
+    ("快手", "kuaishou"),
+    ("b站", "bilibili"),
+)
 _PLATFORM_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 
@@ -56,12 +65,21 @@ class ExcelImportProfile:
         text = _non_empty_text(value)
         if text is None:
             raise ExcelImportRowError("platform_missing", "媒体名称（中文）不能为空")
-        alias = _PLATFORM_ALIASES.get(text.casefold())
+
+        folded = text.casefold()
+        alias = _PLATFORM_ALIASES.get(folded)
         if alias is not None:
             return alias
-        candidate = re.sub(r"\s+", "_", text.casefold())
+
+        candidate = re.sub(r"\s+", "_", folded)
         if _PLATFORM_PATTERN.fullmatch(candidate):
             return candidate
+
+        compact = re.sub(r"\s+", "", folded)
+        for keyword, platform in _PLATFORM_KEYWORD_ALIASES:
+            if keyword in compact:
+                return platform
+
         raise ExcelImportRowError(
             "platform_unmapped",
             "媒体名称（中文）无法安全映射为 Canonical platform",
