@@ -2,7 +2,7 @@
 
 本目录是临时 P1 的**人工入口**，用于在不接数据库、不接 Scheduler 的情况下验证本地 XLSX → JSONL → AI 分析 → 最终 Excel 全链路。它不是第二套实现：Excel Reader/Profile/Identity/Mapper 来自 `aima_ugc.adapters.providers.imports`，关键词过滤、去重和 AI 分析业务核心来自平台无关的 `aima_ugc.modules.analysis`，真实模型调用复用 `aima_ugc.adapters.llm`，Excel 输出统一复用 `aima_ugc.platform.export` 的共享 Exporter。
 
-当前 P1A—P1G 已闭环；下一最小单元是 P1H。当前默认主链：
+临时 P1 已闭环。当前默认主链：
 
 ```text
 source.xlsx
@@ -69,15 +69,16 @@ Validation Retry 会增加真实模型调用和费用。它只处理**已经收�
 → .env
 ```
 
-当前变量：
+人工配置只保留真正需要环境/用户决定的值：
 
 ```dotenv
-AIMA_LLM_BASE_URL=https://api.openai.com/v1
+# 必填
+AIMA_LLM_BASE_URL=
 AIMA_LLM_API_KEY=
 AIMA_LLM_MODEL=
-AIMA_LLM_PROVIDER=openai-compatible
-AIMA_LLM_TIMEOUT_SECONDS=60
-AIMA_LLM_JSON_MODE=true
+
+# 可选；不配置时使用 Adapter 默认 60 秒
+# AIMA_LLM_TIMEOUT_SECONDS=60
 ```
 
 含义：
@@ -85,9 +86,14 @@ AIMA_LLM_JSON_MODE=true
 - `AIMA_LLM_BASE_URL`：OpenAI-compatible API 根地址；
 - `AIMA_LLM_API_KEY`：真实 API key；
 - `AIMA_LLM_MODEL`：目标模型名；
-- `AIMA_LLM_PROVIDER`：用于 Analysis 审计和 checkpoint 恢复身份的稳定 Provider 名称；
-- `AIMA_LLM_TIMEOUT_SECONDS`：单次 HTTP 请求超时，必须大于 0；
-- `AIMA_LLM_JSON_MODE`：`true/false`。即使开启 JSON mode，本地 Validator 仍是强制门禁。
+- `AIMA_LLM_TIMEOUT_SECONDS`：可选的单次 HTTP 请求超时，必须大于 0；省略时使用 `OpenAICompatibleContentLabelingLLM` 的默认 60 秒。
+
+人工入口不再配置 `AIMA_LLM_PROVIDER` 或 `AIMA_LLM_JSON_MODE`：
+
+- 当前真实模型调用固定复用 `OpenAICompatibleContentLabelingLLM`，没有第二个 Adapter 需要人工选择；
+- 内容打标默认要求 JSON mode，人工入口直接使用 Adapter 的 `use_json_mode=True` 默认值；本地 Validator 仍是最终强制门禁；
+- Analysis/checkpoint 所需的 `model_provider` 审计身份由 Adapter 根据实际 `base_url` 的 hostname 自动生成；显式非默认端口会包含在身份中。例如 `https://api.example.com/v1` 对应 `api.example.com`。该身份不包含 API key、query 或 fragment；
+- Adapter 仍保留程序级 `provider_name` 显式覆盖以兼容既有调用，但它不是 `.env` 的人工配置项。
 
 真实 `.env` 已由仓库根 `.gitignore` 忽略。不要把 API key 写到 `.env.example`、README、测试、日志、Change 或提交信息中。
 
@@ -303,7 +309,7 @@ PromptTaxonomyLoader
 → label_unified_content_jsonl
 ```
 
-真实 Adapter 一次 `complete()` 只发送一次 HTTP 请求。Validation Retry 由正式 `ContentLabelingService` 统一控制，`MAX_VALIDATION_RETRIES` 不会在 Adapter/Prompt 再复制一份。
+当前人工入口固定使用 OpenAI-compatible Adapter；只要模型服务兼容该 Chat Completions 协议，切换服务时只改 `.env` 的 Base URL、API Key 和 Model，不需要为每个模型复制 Adapter。真实 Adapter 默认开启 JSON mode，一次 `complete()` 只发送一次 HTTP 请求。Validation Retry 由正式 `ContentLabelingService` 统一控制，`MAX_VALIDATION_RETRIES` 不会在 Adapter/Prompt 再复制一份。
 
 可进入 Validation Retry 的典型错误包括非法 JSON、字段缺失/额外、item 缺失/重复/数量或顺序不一致、`item_no` 无法配对、未知 sentiment/一级标签、二级不属于一级、数组/多标签/空标签和其他结构不合法。
 
@@ -331,11 +337,13 @@ output/analysis/
 
 每个模型请求都是独立 attempt，记录 `batch_no`、`attempt_no`、item 配对身份、`validation_error_codes`、`model_provider`、`model`、`prompt_sha256`、`taxonomy_sha256`、时间及可获得的 token/费用。
 
+其中 `model_provider` 是模型服务审计身份。人工入口不要求填写 Provider；OpenAI-compatible Adapter 默认由实际 Base URL 的 hostname（必要时带非默认端口）生成该值。`model` 仍来自 `AIMA_LLM_MODEL`。
+
 ### `checkpoints.jsonl`
 
 只有通过本地 Validator 的成功 Analysis 才会先写 checkpoint 并 `flush/fsync`。checkpoint 是恢复/费用安全/审计依据，不是第二业务事实源。
 
-P1G 启动下一次打标时会读取 checkpoint。只有以下身份全部与当前运行一致才允许恢复并跳过再次模型调用：
+启动下一次打标时会读取 checkpoint。只有以下身份全部与当前运行一致才允许恢复并跳过再次模型调用：
 
 ```text
 platform
@@ -343,11 +351,11 @@ external_content_id
 input_hash(title + text + author.display_name)
 prompt_sha256
 taxonomy_sha256
-model_provider
+model_provider（默认由 Base URL endpoint host 派生）
 model
 ```
 
-Prompt、Taxonomy、Provider 或模型变化后，旧 checkpoint 仍保留用于审计，但不会被当作当前成功结果复用。
+Prompt、Taxonomy、模型服务 endpoint 身份或模型变化后，旧 checkpoint 仍保留用于审计，但不会被当作当前成功结果复用。
 
 checkpoint 成功结果先持久化，随后 Analysis 写入业务 JSONL 临时文件；临时文件 `flush/fsync` 后通过 `os.replace` 原子替换：
 
@@ -375,8 +383,8 @@ validation_error_codes = [...]
 1. `output/analysis/attempts.jsonl` 的 `validation_error_codes`；
 2. `output/analysis/failed.jsonl` 的最终错误；
 3. 本次 `prompt_sha256` / `taxonomy_sha256` 是否与当前 Prompt 一致；
-4. `model_provider` / `model` 是否与当前 `.env` 一致；
-5. Provider 是否支持当前 `AIMA_LLM_JSON_MODE` 设置。
+4. `model_provider` 是否与当前 `AIMA_LLM_BASE_URL` 的 endpoint host 一致，`model` 是否与 `AIMA_LLM_MODEL` 一致；
+5. HTTP 4xx/5xx、超时或连接错误是否来自目标模型服务本身；如果服务不兼容当前 OpenAI-compatible JSON mode，请先确认该服务的协议能力，而不是关闭本地 Validator。
 
 不要通过关闭 Validator、模糊匹配或程序猜标签制造“成功”。真实 token 只有 Provider 返回时才记录；通用 OpenAI-compatible Adapter 不猜供应商价格。Validation Retry 会增加请求数与费用，checkpoint 恢复只减少身份完全一致的重复成功调用。
 
@@ -414,7 +422,7 @@ output/<source>_<run-id>_labeled_data.xlsx
 
 `export_raw_excel()` 同样复用这一 Exporter，但 `include_analysis=False`，只是人工旁路。
 
-## 14. `run_summary.json` 与 P1G/P1H 边界
+## 14. `run_summary.json` 与 P1 边界
 
 `run_all()` 为每次运行生成 `run_id`，最终 Excel 文件名与该 `run_id` 绑定，并原子写：
 
@@ -424,14 +432,4 @@ output/run_summary.json
 
 摘要记录 source/output、最终 Excel 路径以及 convert/filter/deduplicate/label/export 各阶段返回摘要。它是运行元数据，不是业务数据事实源。
 
-P1G 已闭环：
-
-```text
-run_all()
-checkpoint 自动崩溃恢复
-run_summary.json
-export_labeled_excel()
-最终 Excel 只读取回写后的同一 deduplicated/contents.jsonl
-```
-
-P1H 尚未执行 90k 性能基准、真实付费模型小样、token/费用统计、全链路最终 Review/CI 和 P1 归档。不要在 P1H 完成前把这些结果描述为已验证。
+临时 P1 已闭环；本目录继续作为文件导入、关键词处理、AI 打标和统一 Excel 的人工验证入口。后续正式数据库/API/Job 能力仍复用同一生产 Analysis Service、LLM Port/Adapter、Validator 与 Exporter，不把本目录扩展成第二套正式业务实现。
