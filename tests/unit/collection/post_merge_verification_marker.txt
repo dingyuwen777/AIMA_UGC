@@ -1,2 +1,0 @@
-仅用于 PR #67 合并后的 Stage 1—7 CI 复验。
-pytest、Ruff 与 mypy 不执行此 .txt 文件；不会合并到 main。
