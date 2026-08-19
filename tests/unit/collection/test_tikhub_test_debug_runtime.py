@@ -169,10 +169,13 @@ def test_xhs_debug_runtime_reuses_production_flow_and_skips_unchanged_refresh(
 
     workbook = load_workbook(first.workbook_path, data_only=False)
     try:
-        sheet = workbook["内容与评论"]
-        assert sheet.max_row == 3
-        assert sheet["Q2"].value == "xhs-comment-root-1"
-        assert sheet["Q3"].value == "xhs-comment-reply-2"
+        assert workbook.sheetnames == ["内容", "评论"]
+        comment_sheet = workbook["评论"]
+        comment_headers = [cell.value for cell in comment_sheet[1]]
+        comment_id_column = comment_headers.index("评论ID") + 1
+        assert comment_sheet.max_row == 3
+        assert comment_sheet.cell(row=2, column=comment_id_column).value == "xhs-comment-root-1"
+        assert comment_sheet.cell(row=3, column=comment_id_column).value == "xhs-comment-reply-2"
     finally:
         workbook.close()
 
@@ -249,7 +252,10 @@ def test_xhs_multiple_keywords_search_each_keyword_but_deduplicate_downstream(
 
     workbook = load_workbook(result.workbook_path, data_only=False)
     try:
-        sheet = workbook["内容与评论"]
-        assert sheet["O2"].value == "爱玛；爱玛电动车"
+        assert workbook.sheetnames == ["内容", "评论"]
+        content_sheet = workbook["内容"]
+        content_headers = [cell.value for cell in content_sheet[1]]
+        matched_keywords_column = content_headers.index("命中关键词") + 1
+        assert content_sheet.cell(row=2, column=matched_keywords_column).value == "爱玛；爱玛电动车"
     finally:
         workbook.close()

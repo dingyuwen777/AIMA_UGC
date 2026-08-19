@@ -1,4 +1,4 @@
-"""TikHub 本地测试/调试配置；真实 Secret 只从同目录 .env 读取。"""
+"""TikHub 本地测试/调试配置；真实 Secret 只从 tikhub_test 根目录 .env 读取。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from aima_ugc.adapters.providers.tikhub.transport import (
     TikHubHttpTransport,
 )
 
-_DEFAULT_ENV_FILE = Path(__file__).with_name(".env")
+_DEFAULT_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,7 +37,7 @@ class TikHubTestConfig:
 
     @classmethod
     def load(cls, env_file: str | Path | None = None) -> TikHubTestConfig:
-        """从显式 `.env` 文件加载，不读取进程环境或仓库其他配置。"""
+        """从显式或 tikhub_test 根目录 `.env` 文件加载，不读取进程环境。"""
         path = Path(env_file) if env_file is not None else _DEFAULT_ENV_FILE
         values = _read_env(path)
         raw_key = values.get("TIKHUB_API_KEY", "").strip()

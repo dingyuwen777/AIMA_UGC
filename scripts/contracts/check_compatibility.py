@@ -8,6 +8,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 OPENAPI_TARGET = ROOT / "contracts" / "openapi" / "openapi.json"
+ANALYSIS_TARGETS = [
+    "contracts/analysis/content-record.v1.schema.json",
+]
 CANONICAL_TARGETS = [
     "contracts/canonical/content.v1.schema.json",
     "contracts/canonical/comment.v1.schema.json",
@@ -24,6 +27,9 @@ COLLECTION_TARGETS = [
     "contracts/collection/provider-config.v1.schema.json",
     "contracts/collection/provider-platform-capability.v1.schema.json",
     "contracts/collection/provider-platform-route.v1.schema.json",
+]
+EXPORT_TARGETS = [
+    "contracts/export/unified-data-excel.v1.schema.json",
 ]
 
 
@@ -60,21 +66,23 @@ def main() -> int:
             "diff",
             "--exit-code",
             "--",
+            *ANALYSIS_TARGETS,
             *CANONICAL_TARGETS,
             *PROVIDER_TARGETS,
             *COLLECTION_TARGETS,
+            *EXPORT_TARGETS,
         ],
         cwd=ROOT,
         check=False,
     )
     if diff.returncode != 0:
         print(
-            "CONTRACT_SCHEMA_STALE: 生成后的 Canonical/Provider/Collection JSON Schema "
-            "与提交版本不一致"
+            "CONTRACT_SCHEMA_STALE: 生成后的 Analysis/Canonical/Provider/Collection/Export "
+            "JSON Schema 与提交版本不一致"
         )
         return 1
 
-    print("OpenAPI 基线与 Canonical/Provider/Collection Schema 漂移检查通过。")
+    print("OpenAPI 基线与 Analysis/Canonical/Provider/Collection/Export Schema 漂移检查通过。")
     return 0
 
 

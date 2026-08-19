@@ -14,8 +14,9 @@
 4. 再按当前任务读取对应领域 Blueprint；
 5. **涉及 Provider、TikHub、采集 Plan、关键词发现、详情/评论策略、Provider Billing/成本事实、未来 Budget/Cost Guard 扩展或平台 Operation 时，必须再读取 [`08-采集策略与平台能力.md`](08-采集策略与平台能力.md)，然后读取 [`../collection/README.md`](../collection/README.md) 和目标平台文档；**
 6. 涉及 Scheduler、TikHub API family 验证或真实响应结构时，再分别读取 `09`—`12` 中与当前任务直接相关的文档；
-7. **涉及帖子/评论原始数据 Excel 导出、`.xlsx` 原始数据查看、系统级数据导出或 `tikhub_test` Excel 复用时，必须读取 [`13-统一数据Excel导出与调试复用.md`](13-统一数据Excel导出与调试复用.md)；该文档负责约束未来正式导出完成后删除 `tikhub_test` 的平行 Excel 实现。**
-8. 进入具体实现后，只继续读取相关模块 README、Contract、Migration、依赖、Operation/Mapper、Fixture、实现和测试。
+7. **涉及帖子/评论数据 Excel、`.xlsx` 审阅、共享 Exporter、`tikhub_test` 或 `imports_test` Excel 复用时，必须读取 [`13-统一数据Excel导出与调试复用.md`](13-统一数据Excel导出与调试复用.md)。**
+8. **涉及 AI 情感/一级/二级标签、Prompt、模型输入、分析结果版本、JSONL 回写或未来 Analysis 数据库存储时，必须读取 [`15-舆情AI打标与统一分析契约.md`](15-舆情AI打标与统一分析契约.md)。**
+9. 进入具体实现后，只继续读取相关模块 README、Contract、Migration、依赖、Operation/Mapper、Fixture、实现和测试。
 
 不要因为存在 Blueprint 就跳过代码和测试事实，也不要一次性读取所有文档代替针对当前任务的现状调查。
 
@@ -51,18 +52,19 @@
 | [`03-数据库与文件存储.md`](03-数据库与文件存储.md) | PostgreSQL、表与约束、Owner、Current/Version/Metric、Artifact、Job、Provider Billing、历史预算回撤与备份一致性 | Schema、Migration、Repository、Artifact、数据历史、幂等、Provider Billing |
 | [`04-后端任务API与前端.md`](04-后端任务API与前端.md) | Router/Service/Repository、HTTP Contract、错误、Cursor、Auth、Job Runtime、前端调用边界 | API、Job、前端 Client、认证授权、业务服务、长任务 |
 | [`05-日志安全部署与运维.md`](05-日志安全部署与运维.md) | 日志、审计、Secret、安全、Docker Compose、离线 Release、备份、回滚、运维 | 日志、安全、配置、部署、Release、备份恢复 |
-| [`06-开发约束与分阶段实施.md`](06-开发约束与分阶段实施.md) | TDD、独立验证、测试分层、CI、Git、文档同步、Review、阶段顺序 | 制定计划、测试/调试、CI、Git、交付、阶段判断 |
+| [`06-开发约束与分阶段实施.md`](06-开发约束与分阶段实施.md) | TDD、独立验证、测试分层、CI、Git、文档同步、Review、正式阶段顺序 | 制定计划、测试/调试、CI、Git、交付、正式阶段判断 |
 | [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md) | 已确认跨文档决策、唯一初始化版本快照、未决门禁、阶段 Go/No-Go | 每个任务都先读；技术版本、重大决策、阶段门禁 |
 | [`08-采集策略与平台能力.md`](08-采集策略与平台能力.md) | Stage 7 Provider Config/平台选择、五平台 Operation、Decision/Capability、评论、Provider Billing、Deep/Probe、未来 Budget/Cost Guard 边界 | TikHub/Provider、平台采集、Plan、评论、Capability、Probe |
 | [`09-Scheduler运行与恢复策略.md`](09-Scheduler运行与恢复策略.md) | `latest_only` Scheduler、Occurrence、停机恢复、并发和正式 Worker 闭环 | Scheduler、Occurrence、scheduled Run、Worker 调度链 |
 | [`10-TikHub真实响应结构附录.md`](10-TikHub真实响应结构附录.md) | 五平台已脱敏真实响应结构的人类查询入口 | Mapper/Extractor、Fixture 字段定位、真实响应核查 |
 | [`11-TikHub多接口验证与备用策略.md`](11-TikHub多接口验证与备用策略.md) | 同业务语义 API family A/B、候选状态、显式备用与禁止自动 fallback | App/Web/V1/V2/V3 候选验证、备用接口策略 |
 | [`12-TikHub真实请求响应与接口选型台账.md`](12-TikHub真实请求响应与接口选型台账.md) | 五平台主 endpoint、真实请求/响应、价格事实和接口选型证据 | TikHub 主链核查、Real Probe、endpoint 选型与历史 A/B |
-| [`13-统一数据Excel导出与调试复用.md`](13-统一数据Excel导出与调试复用.md) | 采集原始数据 Excel、Canonical/Aggregate 导出边界、`tikhub_test` 阶段性 Excel 与未来共享导出迁移门禁 | 原始数据导出、Excel、`.xlsx`、`openpyxl`、调试原始数据文件、系统级导出复用 |
+| [`13-统一数据Excel导出与调试复用.md`](13-统一数据Excel导出与调试复用.md) | 唯一 `UnifiedDataExcelV1`、raw/labeled 同契约、同源 JSONL→Excel、共享 Exporter 与调试复用门禁 | Excel、`.xlsx`、`openpyxl`、`tikhub_test`/`imports_test`、系统级统一导出 |
+| [`15-舆情AI打标与统一分析契约.md`](15-舆情AI打标与统一分析契约.md) | 全平台通用 4 情感 + 9 一级 + 39 二级 taxonomy、最小模型输入、Markdown Prompt、Analysis Contract、JSONL 回写与数据库 Owner 边界 | AI 打标、Prompt 调优、模型 Adapter、Analysis 结果、数据库/Excel 消费 |
 
 ## 当前开发状态
 
-**Stage 1—7 已闭环；Stage 7 的实现、Review、PR 合并、合并后 `main` 新鲜 CI 和 Change 归档均已完成。下一正式阶段是 Stage 8；Stage 8 尚未开始。**
+**Stage 1—7 已闭环。临时 P1 已完成 Excel 离线导入、关键词清洗、稳定身份去重、统一 Excel 导出、全平台通用 AI 打标、checkpoint 恢复、90,000×13 性能验证与真实模型小样；P1 的长期规则已收口到 Blueprint 13/15。Stage 8 现在恢复为下一正式阶段。**
 
 Stage 7 已完成并固化：
 
@@ -76,7 +78,7 @@ Stage 7 已完成并固化：
 - Plan → Platform / Keyword Pack、Occurrence、Run/Scope Snapshot，首版固定 `Asia/Shanghai + latest_only + max_catch_up_runs=0`；
 - Scheduler Runtime：更早到期 slot 写 `skipped/misfire_superseded`，只执行最新到期 slot；Occurrence / Job / scheduled Run / Scope / cursor 在正式 PostgreSQL 事务边界内编排；
 - `collection.run.v1` 正式 Worker：`Production JobRegistry / JobWorker → CollectionRunJobHandler → CollectionRunExecutor → TikHubCollectionScopeExecutor → Provider Request/Attempt → Raw → Mapper → Canonical → fenced Ingestion`；
-- Worker 默认 Secret 从 `runtime.settings.secret_dir + validated secret_ref` 读取；默认 TikHub Transport 的自持 HTTP Client 在每次发送后关闭；TikHub Bearer Secret 出站 Origin 限制为批准的 `https://api.tikhub.io`；
+- Worker 默认 Secret 从 `runtime.settings.secret_dir + validated secret_ref` 读取；默认 TikHub Transport 的自持 HTTP Client 在每次发送后关闭；TikHub Bearer Secret 默认出站 Origin 为 `https://api.tikhub.dev`，显式兼容既有 `https://api.tikhub.io`，其他 Origin 在发送 Secret 前拒绝；
 - Real Provider Probe 与 API family A/B 的受控事实入口；真实 Probe 不进入普通 CI，也不能把一次 HTTP 200 当长期稳定性承诺。
 
 Stage 7 的实现 PR 为 `#55`，最终实现 head 为 `056e8f5684b19f6b40c4e7c4755593aee3336a7a`，正常合并后的 `main` commit 为 `737151a179a4b941c8bdc553cc77c4286bcb6d27`；最终 PR head 和合并后 `main` 都取得了新鲜 11/11 workflow 成功证据。完整归档证据见：
@@ -85,11 +87,21 @@ Stage 7 的实现 PR 为 `#55`，最终实现 head 为 `056e8f5684b19f6b40c4e7c4
 changes/archive/2026-08/CHG-20260815-stage7-completion/CHANGE.md
 ```
 
+P1 已固化的长期能力：
+
+- 文件 Excel Provider 使用 Canonical/Provider-neutral 边界，不依赖数据库；
+- `UnifiedContentRecordV1` 承载关键词命中与可空 Analysis，Canonical 不承载 AI 标签；
+- `UnifiedDataExcelV1` 与唯一共享 Exporter 同时服务 `imports_test`、`tikhub_test` 和后续正式导出；
+- raw/labeled Excel 使用同一 Workbook Contract，业务中间处理不从 Excel 回读；
+- 全平台内容 Analysis 复用同一 Prompt/Taxonomy、Runtime Validator、LLM Port/Adapter 和有界 Validation Retry；
+- 成功 Analysis 先 checkpoint，再原子回写同一个 Provider-neutral JSONL；
+- 具体长期 Excel 与 Analysis 规则分别由 Blueprint 13 和 15 维护。
+
 ## 下一正式阶段
 
 ### Stage 8：API / 正式业务前端
 
-Stage 8 是下一正式阶段，但本次 Stage 7 归档不开始 Stage 8。新的 Stage 8 对话/Change 必须重新从当前 `main` 事实出发，并按 `AGENTS.md`、Skill 和 Stage 8 相关 Blueprint 先完成需求/Contract/接口/验收门禁，再进入实现。
+Stage 8 是当前下一正式阶段。新的 Stage 8 对话/Change 必须重新从当时 `main` 事实出发，并按 `AGENTS.md`、Skill 和 Stage 8 相关 Blueprint 完成需求、Contract、接口和验收门禁；本次 P1 收口不自动开始 Stage 8 实现。
 
 开始 Stage 8 时至少按以下顺序恢复事实：
 
@@ -100,20 +112,22 @@ AGENTS.md
 → docs/blueprint/07-技术决策与实施门禁.md
 → docs/blueprint/04-后端任务API与前端.md
 → docs/blueprint/08-采集策略与平台能力.md（若页面/接口涉及采集配置）
-→ docs/blueprint/13-统一数据Excel导出与调试复用.md（若涉及基础数据 Excel/导出）
+→ docs/blueprint/13-统一数据Excel导出与调试复用.md（若涉及数据 Excel/导出）
+→ docs/blueprint/15-舆情AI打标与统一分析契约.md（若涉及 Analysis/AI）
 → docs/API接口说明.md
 → changes/active
 → 当前 main / Contract / OpenAPI / generated client / backend Router/Service / frontend 结构与测试
 ```
 
-不得把 Stage 7 历史聊天当作 Stage 8 当前机器事实，也不得因为 Stage 7 已闭环就跳过 Stage 8 自己的需求决策和 Contract 门禁。
+不得把 Stage 7 或 P1 历史聊天当作 Stage 8 当前机器事实，也不得因为上游已闭环就跳过 Stage 8 自己的需求决策和 Contract 门禁。
 
-### 独立于 Stage 7 的后续门禁
+### 独立于 Stage 7/P1 的后续门禁
 
-以下事项仍需要未来阶段/Release 独立处理，不应重新塞回 Stage 7：
+以下事项仍需要未来阶段/Release 独立处理：
 
 - Raw、个人信息、导出和审计的访问/保留/删除与合规规则；
-- 系统级采集基础数据 Excel 导出；其正式共享 Exporter 落地时必须按 `13` 删除 `tikhub_test` 平行 Excel 实现，不能长期维护两套内容+评论导出代码；
+- 已落地的共享 Excel Exporter 只是统一写出核心；正式系统级大批量导出仍需未来 API/Job/Artifact/权限/生命周期闭环；
+- 已落地的是平台通用 Analysis 核心与无数据库验证入口；正式数据库 DDL/Migration、Analysis Job/API/页面仍在后续正式阶段闭环；
 - 日请求量、数据量、Worker 并发、Raw/数据库日增量、磁盘容量、SLO、RPO、RTO；
 - 生产镜像 variant/digest、离线 Release、安全发布与恢复演练；
 - Stage 8 正式业务 API/页面及 Provider 凭据写入能力；凭据仍必须通过安全 SecretStore/SecretService，不能把数据库明文 Secret 当捷径；
@@ -121,12 +135,13 @@ AGENTS.md
 
 ## 修改规则
 
-- `01`—`06` 描述各领域基础设计；
+- `01`—`06` 描述各领域基础设计和正式阶段顺序；
 - `07` 保存跨文档已确认决策、版本快照和 Go/No-Go；
 - `08` 保存 Stage 7 已完成的采集业务语义、Provider Config/Operation Matrix、Capability、Provider Billing 和未来 Budget/Cost Guard 边界；
 - `09` 保存 Scheduler 当前唯一恢复语义；
 - `10`—`12` 保存真实响应/API family/endpoint 证据的人类核查入口；
-- `13` 保存统一采集基础数据 Excel 导出与 `tikhub_test` 阶段性 Excel 的复用/删除门禁，并明确它不是报告 Renderer；
+- `13` 永久保存唯一 `UnifiedDataExcelV1`、同源 JSONL→Excel、raw/labeled 同契约和共享 Exporter 复用门禁，并明确它不是 Report Renderer；
+- `15` 永久保存全平台 AI taxonomy、最小模型输入、Markdown Prompt、Analysis Contract、JSONL 回写和数据库 Analysis Owner 边界；
 - `docs/collection/` 保存面向开发/调试的通用和平台抓取说明，并始终标记当前代码/Fixture/Probe 状态；
 - 实际代码、Contract、Migration、锁文件和测试建立后，不在 Blueprint 复制第二份机器事实；
 - 所有需要前端或其他受支持调用方使用的公开 HTTP API，都必须由 Pydantic Request/Response + FastAPI Route 生成固定 OpenAPI，再生成前端 TypeScript Client；内部 Repository、Mapper、Provider Adapter、Worker Runtime、Migration 等能力不因存在就自动暴露 HTTP API；
@@ -134,7 +149,8 @@ AGENTS.md
 - 前端业务功能默认采用“后端业务能力 → Pydantic HTTP Contract → FastAPI Route → API/Contract Test → 固定 OpenAPI → 生成 TypeScript Client → Feature API/Store → Vue 页面/组件 → E2E”的闭环，页面和按钮不得各自手写 URL 或重复定义 Request/Response Contract；
 - 对具有明确输入输出、独立业务价值、独立失败边界或可以脱离完整系统验证的能力，必须建立与风险匹配的独立验证闭环；调试/Probe 复用生产实现；
 - 修改 Provider Config/Provider/Operation/Mapper/分页/评论策略/Provider Billing/Capability 或未来 Budget/Cost Guard 时，必须按 08 的“文档同步规则”检查目标平台文档；
-- 修改基础数据 Excel 导出、共享 Exporter、`.xlsx` 审阅格式或 `tikhub_test` Excel 时，必须按 13 检查是否出现平行实现；正式共享导出一旦完成，删除调试目录内重复导出代码是验收条件；
+- 修改 Excel 契约、共享 Exporter、`.xlsx` 审阅格式、`tikhub_test` 或 `imports_test` Excel 时，必须按 13 检查是否出现平行实现；
+- 修改 AI 标签、Prompt、模型输入、Analysis Contract 或 Analysis 持久化语义时，必须按 15 检查标签闭集、父子映射、Prompt Hash 和兼容性；
 - 设计发生实质变化时，按 `AGENTS.md` 和 Skill 的 L1/L2/L3 流程处理；
 - 受影响的文档才更新，不为形式保持“所有文档都有变化”；
 - 长期文档直接描述合并后的当前状态，不写成变更流水账。
