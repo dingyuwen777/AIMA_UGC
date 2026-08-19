@@ -1,0 +1,41 @@
+name: Refresh RVC Context
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/refresh-rvc-context.yml"
+      - ".reliable-vibe-coding/project-context.json"
+      - "AGENTS.md"
+      - "README.md"
+      - "backend/src/aima_ugc/adapters/providers/tikhub_test/README.md"
+      - "docs/**"
+      - "contracts/**"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    name: Generate current project context
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Refresh project context
+        shell: bash
+        run: |
+          set -euo pipefail
+          python .agents/skills/reliable-vibe-coding/scripts/rvc.py discover --root . --json
+
+      - name: Upload generated context
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: rvc-project-context
+          path: .reliable-vibe-coding/project-context.json
+          if-no-files-found: error
+          retention-days: 1
