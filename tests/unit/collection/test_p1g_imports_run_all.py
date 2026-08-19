@@ -84,3 +84,48 @@ def test_p1g_export_labeled_excel_uses_source_and_run_id_filename(
         "output_path": output_root / "爱玛监测_20260818T160000Z_labeled_data.xlsx",
         "include_analysis": True,
     }
+
+
+def test_label_sentiment_only_requires_three_llm_env_values(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "AIMA_LLM_BASE_URL=https://llm.example/v1\n"
+        "AIMA_LLM_API_KEY=dummy-key\n"
+        "AIMA_LLM_MODEL=model-a\n",
+        encoding="utf-8",
+    )
+    captured: dict[str, object] = {}
+
+    class FakeAdapter:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            return None
+
+    def fake_adapter(**kwargs):
+        captured.update(kwargs)
+        return FakeAdapter()
+
+    def fake_label(**kwargs):
+        captured["label_kwargs"] = kwargs
+        return _DummySummary(stage="label_sentiment")
+
+    monkeypatch.setattr(imports_test_entry, "ENABLE_REAL_LLM", True)
+    monkeypatch.setattr(imports_test_entry, "ENV_FILE", env_file)
+    monkeypatch.setattr(imports_test_entry, "OUTPUT_ROOT", tmp_path / "output")
+    monkeypatch.setattr(imports_test_entry, "OpenAICompatibleContentLabelingLLM", fake_adapter)
+    monkeypatch.setattr(imports_test_entry, "label_unified_content_jsonl", fake_label)
+
+    result = imports_test_entry.label_sentiment()
+
+    assert result == _DummySummary(stage="label_sentiment")
+    assert captured["base_url"] == "https://llm.example/v1"
+    assert captured["model"] == "model-a"
+    assert captured["timeout_seconds"] == 60.0
+    assert "api_key" in captured
+    assert "provider_name" not in captured
+    assert "use_json_mode" not in captured
