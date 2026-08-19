@@ -1,0 +1,91 @@
+name: Temporary Blueprint 15 Sync
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  sync-blueprint:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/llm-single-item-concurrency
+          fetch-depth: 0
+
+      - name: Sync Blueprint 15 and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("docs/blueprint/15-舆情AI打标与统一分析契约.md")
+          text = path.read_text(encoding="utf-8")
+
+          text = text.replace("content_labeling_v1.md", "content_labeling_v2.md")
+
+          start = text.index("## 6. 多主题主标签选择")
+          end = text.index("## 7. 情感标签也由 Prompt 管理")
+          section = '''## 6. 多主题多标签选择
+
+          当前每条内容输出**一个整体情感 + 一个或多个一级/二级标签对**。标签选择遵循：
+
+          1. 只输出正文真实涉及且能被当前 Taxonomy 解释的标签，不为了“覆盖更多”凑标签；
+          2. 同一一级下可以命中多个二级，也可以同时命中多个一级；
+          3. 每个二级标签必须和其所属一级标签成对输出，不能把一级数组和二级数组拆开后丢失父子关系；
+          4. 同一 `(primary_label, secondary_label)` 标签对不得重复；
+          5. 具体产品/服务事实优先于泛品牌印象；
+          6. 明确故障优先“耐用性与质量 / 故障问题与稳定性”，但电池、智能功能、骑行性能有明确专属维度时优先专属标签；
+          7. 电池续航、衰减、充电、安全优先“电池、续航与充电”；App/NFC/仪表/电子功能优先“智能化与电子功能”；
+          8. 售后维修、保修、配件、投诉使用“售后服务”；购买前、下单、提车使用“销售与购买体验”；
+          9. 具体车型价格/配置、优惠、养护成本使用“价格与价值”；品牌层面的品牌溢价才使用“品牌评价 / 性价比与溢价”；
+          10. 广告、代言、直播、达人、联名等传播内容使用“品牌评价 / 营销与传播”。
+
+          模型可以返回多个合法标签对，但本地 Validator 仍是最终写入门禁；未知标签、错误父子关系、空标签和重复标签对一律拒绝。
+
+          '''
+          text = text[:start] + section + text[end:]
+
+          heading = "## 13. JSONL 回写与恢复\n\n"
+          if "### 13.1 当前离线单条并发执行" not in text:
+              addition = '''### 13.1 当前离线单条并发执行
+
+          当前 `imports_test` 的真实模型执行采用：
+
+          ```text
+          一条内容 = 一次独立 LLM 请求
+          最大在飞请求 = 250（运行配置）
+          ```
+
+          250 只描述离线执行并发，不改变 `ContentLabelAnalysisV2`、Canonical 或标签 Taxonomy Contract。并发前先完整扫描输入 JSONL，校验结构、稳定身份、已有 Analysis 和可恢复 checkpoint；这只是**模型调用前的输入完整性与防重复预检**，不包含预算上限、费用阈值或 Token 预算停止逻辑。
+
+          当前执行使用有界滑动窗口，不一次性创建 90,000 个 Future；成功 checkpoint 由单一协调者追加并 durable，全部模型阶段结束后再按原 JSONL 行序原子回写，因此网络完成顺序不会改变业务数据顺序。Transport Retry 与 Validation Retry 分开：网络/429/可恢复 5xx 做有限退避重试，模型 HTTP 成功但标签结构不合法时只重试当前单条内容。
+
+          '''
+              text = text.replace(heading, heading + addition, 1)
+
+          text = text.replace("随后按受控批次：", "全部模型阶段结束后按原始 JSONL 行序：")
+
+          path.write_text(text, encoding="utf-8")
+          Path(".github/workflows/tmp-blueprint15-sync.yml").unlink()
+          PY
+
+          uv_version="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${uv_version}"
+          uv sync --locked
+          uv run python scripts/quality/check_docs.py
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/blueprint/15-舆情AI打标与统一分析契约.md .github/workflows/tmp-blueprint15-sync.yml
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "同步 Analysis 多标签与并发蓝图"
+          git push origin HEAD:feature/llm-single-item-concurrency
