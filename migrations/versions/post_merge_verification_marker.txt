@@ -1,0 +1,2 @@
+仅用于 PR #67 合并后的 Stage 1—7 CI 复验。
+本文件不是 Alembic revision，不包含业务逻辑，不会合并到 main。
