@@ -68,7 +68,11 @@ def test_imports_test_export_raw_excel_uses_configured_review_columns(
     )
     deduplicated.write_text(record.model_dump_json() + "\n", encoding="utf-8")
     monkeypatch.setattr(imports_test_entry, "OUTPUT_ROOT", output_root)
-    monkeypatch.setattr(imports_test_entry, "INPUT_XLSX", tmp_path / "must-not-be-read.xlsx")
+    monkeypatch.setattr(
+        imports_test_entry,
+        "INPUT_XLSX_FILES",
+        tmp_path / "must-not-be-read.xlsx",
+    )
 
     assert imports_test_entry.EXCEL_CONTENT_COLUMNS == _EXPECTED_IMPORTS_COLUMNS
 

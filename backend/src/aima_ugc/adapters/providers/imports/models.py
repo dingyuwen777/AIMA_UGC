@@ -27,6 +27,29 @@ class ExcelConversionSummary:
     rows_rejected: int
 
 
+@dataclass(frozen=True, slots=True)
+class ExcelSourceConversionSummary:
+    """多文件转换中一个源 Excel 的行计数。"""
+
+    input_path: Path
+    rows_seen: int
+    rows_written: int
+    rows_rejected: int
+
+
+@dataclass(frozen=True, slots=True)
+class ExcelBatchConversionSummary:
+    """多个 Excel 合并发布到同一 Canonical JSONL 的汇总。"""
+
+    input_paths: tuple[Path, ...]
+    output_path: Path
+    error_path: Path
+    files: tuple[ExcelSourceConversionSummary, ...]
+    rows_seen: int
+    rows_written: int
+    rows_rejected: int
+
+
 class ExcelImportRowError(ValueError):
     """可安全写入错误清单的单行输入错误。"""
 
@@ -43,5 +66,16 @@ class ExcelImportRejectedRowsError(RuntimeError):
         self.summary = summary
         super().__init__(
             f"Excel 转换存在 {summary.rows_rejected} 行错误；"
+            f"详情见 {summary.error_path}，未发布 {summary.output_path}"
+        )
+
+
+class ExcelBatchImportRejectedRowsError(RuntimeError):
+    """多文件转换存在坏行时阻止发布整个合并 JSONL。"""
+
+    def __init__(self, summary: ExcelBatchConversionSummary) -> None:
+        self.summary = summary
+        super().__init__(
+            f"多 Excel 转换存在 {summary.rows_rejected} 行错误；"
             f"详情见 {summary.error_path}，未发布 {summary.output_path}"
         )

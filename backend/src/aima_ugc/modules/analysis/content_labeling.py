@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, Literal, Protocol
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -67,6 +68,7 @@ class ContentLabelingLLMRequest:
     prompt: str
     items: tuple[ContentLabelingModelItem, ...]
     previous_validation_error_codes: tuple[str, ...] = ()
+    logical_request_id: str | None = None
 
     def model_payload(self) -> list[dict[str, object]]:
         """返回批次中只含允许业务字段的 JSON-ready 列表。"""
@@ -81,8 +83,12 @@ class ContentLabelingLLMResponse:
     raw_text: str
     input_tokens: int | None = None
     output_tokens: int | None = None
+    input_cache_hit_tokens: int | None = None
+    input_cache_miss_tokens: int | None = None
     cost_amount: Decimal | None = None
     cost_currency: str | None = None
+    pricing_snapshot_sha256: str | None = None
+    pricing_source_url: str | None = None
 
 
 class ContentLabelingLLMPort(Protocol):
@@ -116,10 +122,15 @@ class ContentLabelingAttempt:
     taxonomy_sha256: str
     started_at: datetime
     completed_at: datetime
+    logical_request_id: str | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
+    input_cache_hit_tokens: int | None = None
+    input_cache_miss_tokens: int | None = None
     cost_amount: Decimal | None = None
     cost_currency: str | None = None
+    pricing_snapshot_sha256: str | None = None
+    pricing_source_url: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -436,6 +447,7 @@ class ContentLabelingService:
                 prompt=taxonomy.prompt_text,
                 items=tuple(unresolved.values()),
                 previous_validation_error_codes=previous_errors,
+                logical_request_id=uuid4().hex,
             )
             started_at = datetime.now(UTC)
             response = self._llm.complete(request)
@@ -456,10 +468,15 @@ class ContentLabelingService:
                     taxonomy_sha256=taxonomy.taxonomy_sha256,
                     started_at=started_at,
                     completed_at=completed_at,
+                    logical_request_id=request.logical_request_id,
                     input_tokens=response.input_tokens,
                     output_tokens=response.output_tokens,
+                    input_cache_hit_tokens=response.input_cache_hit_tokens,
+                    input_cache_miss_tokens=response.input_cache_miss_tokens,
                     cost_amount=response.cost_amount,
                     cost_currency=response.cost_currency,
+                    pricing_snapshot_sha256=response.pricing_snapshot_sha256,
+                    pricing_source_url=response.pricing_source_url,
                 )
             )
 

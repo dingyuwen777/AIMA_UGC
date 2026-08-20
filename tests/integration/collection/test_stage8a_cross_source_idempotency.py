@@ -11,7 +11,10 @@ import pytest
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
 from aima_ugc.adapters.providers.fake import FakeProviderTransport
 from aima_ugc.adapters.providers.tikhub import runtime as tikhub_runtime
-from aima_ugc.bootstrap.manual_ingestion import ingest_excel_run_to_postgres
+from aima_ugc.bootstrap.manual_ingestion import (
+    ingest_excel_files_run_to_postgres,
+    ingest_excel_run_to_postgres,
+)
 from aima_ugc.bootstrap.tikhub_test_database import create_tikhub_debug_database_session
 from aima_ugc.contracts.analysis import UnifiedContentRecordV1
 from aima_ugc.contracts.canonical import (
@@ -61,6 +64,7 @@ def _content(
     title: str,
     like_count: int,
     observed_at: datetime = _OLD_OBSERVED_AT,
+    source_value: str = "stage8a.xlsx",
 ) -> CanonicalContentV1:
     return CanonicalContentV1(
         platform="xhs",
@@ -74,7 +78,7 @@ def _content(
             provider_name="imports",
             operation="excel_import",
             source_type="file",
-            source_value="stage8a.xlsx",
+            source_value=source_value,
             item_locator=f"content:{external_content_id}",
             observed_at=observed_at,
         ),
@@ -93,6 +97,15 @@ def _write_unified(path: Path, content: CanonicalContentV1, *, invalid_tail: boo
     payload = record.model_dump_json() + "\n"
     if invalid_tail:
         payload += '{"invalid":"record"}\n'
+    path.write_text(payload, encoding="utf-8")
+
+
+def _write_unified_records(path: Path, contents: tuple[CanonicalContentV1, ...]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = "".join(
+        UnifiedContentRecordV1(content=content, matched_keywords=["爱玛"]).model_dump_json() + "\n"
+        for content in contents
+    )
     path.write_text(payload, encoding="utf-8")
 
 
@@ -265,6 +278,64 @@ def test_repeated_excel_and_later_tikhub_converge_to_one_current_with_history(
                 .all()
             )
             assert metric_reasons == ["initial", "changed"]
+    finally:
+        session.close()
+
+
+def test_multi_excel_run_keeps_one_artifact_and_batch_per_source(
+    database_runtime: DatabaseRuntime,
+    tmp_path: Path,
+) -> None:
+    first_path = tmp_path / "first.xlsx"
+    second_path = tmp_path / "second.xlsx"
+    first_path.write_bytes(b"stage8a-first-xlsx")
+    second_path.write_bytes(b"stage8a-second-xlsx")
+    unified_path = tmp_path / "multi-deduplicated.jsonl"
+    _write_unified_records(
+        unified_path,
+        (
+            _content(
+                external_content_id="stage8a-multi-first",
+                title="第一来源",
+                like_count=1,
+                source_value=first_path.name,
+            ),
+            _content(
+                external_content_id="stage8a-multi-second",
+                title="第二来源",
+                like_count=2,
+                source_value=second_path.name,
+            ),
+        ),
+    )
+
+    summary = ingest_excel_files_run_to_postgres(
+        source_rows=((first_path, 3), (second_path, 4)),
+        unified_content_path=unified_path,
+    )
+
+    assert summary.rows_seen == 7
+    assert summary.rows_ingested == 2
+    assert summary.rows_rejected == 0
+    assert len(summary.batches) == 2
+    assert [item.rows_ingested for item in summary.batches] == [1, 1]
+    assert len({item.batch_id for item in summary.batches}) == 2
+    assert len({item.input_artifact_id for item in summary.batches}) == 2
+
+    session = database_runtime.new_session()
+    try:
+        with session.begin():
+            statuses = (
+                session.execute(
+                    select(processing_import_batches_table.c.status).order_by(
+                        processing_import_batches_table.c.created_at
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert statuses == ["succeeded", "succeeded"]
+            assert session.scalar(select(func.count()).select_from(contents_table)) == 2
     finally:
         session.close()
 

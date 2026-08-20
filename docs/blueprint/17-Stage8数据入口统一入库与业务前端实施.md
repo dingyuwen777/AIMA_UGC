@@ -23,7 +23,7 @@
 
 Stage 8A 已建立 Unified Manual Ingestion Foundation；当前机器事实为：
 
-- `imports_test` 仍保留人工 Excel 文件链：Excel → Canonical JSONL → 关键词清洗 → 稳定身份去重 → AI 打标 → Excel；默认 `WRITE_TO_DATABASE = False`，不要求 PostgreSQL；
+- `imports_test` 仍保留人工 Excel 文件链，并支持一个人工 run 按显式顺序合并一个或多个 Excel：Excel → Canonical JSONL → 关键词清洗 → 稳定身份去重 → AI 打标 → Excel；默认 `WRITE_TO_DATABASE = False`，不要求 PostgreSQL；
 - `imports_test` 显式 `write_to_database=True` 或单独调用 `ingest_database(run_dir=...)` 时，复用正式 File Import bootstrap 写入 PostgreSQL；
 - `tikhub_test` 五个平台 `run_*()` 默认 `write_to_database=False`，仍逐请求保存本地 Raw、Canonical、run summary 与 Excel；
 - `tikhub_test` 显式 DB 模式要求正式 `provider_config_id`，复用 manual Collection Run/Scope、Provider Request/Attempt、Provider Dispatch、正式 Raw、Candidate-before-Mapper 和 fenced Ingestion；同一次 Provider 响应同时写本地调试 Raw 与正式 Raw Artifact，不为写库额外发送第二次 TikHub 请求；
@@ -84,6 +84,15 @@ Excel 文件
 ```
 
 Stage 8A 的显式数据库阶段不会复制 Reader/Mapper/Filter/Dedup；它把原始 XLSX 保存为 Input Artifact，建立 Processing / Import Batch 与 import-parent Provider Request/non-billable Attempt，再把去重后的 `UnifiedContentRecordV1.content` 绑定到真实 Request/Attempt/Artifact 后交给正式 Ingestion。
+
+人工多 Excel run 仍只有一套合并后的 Canonical/Filter/Dedup/Analysis/Export 文件链；合并顺序就是
+配置顺序，同一稳定身份保留首次记录。数据库 opt-in 时不把多个原文件伪装成一个 Artifact：系统按
+Canonical `source_value` 把全局去重后的保留记录分回来源文件，并为每个源 Excel 分别建立 Input
+Artifact 与 Processing / Import Batch。当前一个 Batch 仍只引用一个 `input_artifact_id`，无需改变
+Stage 8A Schema。
+
+这些 Batch 按配置顺序独立提交；后续源文件失败不会回滚已经成功且可追溯的 Batch。修复失败原因后
+允许从同一合并 run 重跑数据库阶段，正式内容身份和数据库唯一约束继续保证 Current 幂等收敛。
 
 ### 4.2 TikHub
 
@@ -225,6 +234,11 @@ Processing / Import Batch
 
 Stage 8A 已将机器结构冻结为 `processing_import_batches`：当前只保存 `id`、`input_artifact_id`、可空唯一 `job_id`、`status`、最小 `stats`、`error_summary` 与创建/开始/结束时间；Owner 为 `ingestion`。当前同步人工入口允许 `job_id = null`，Stage 8B 再产品化 HTTP/持久 Job 绑定，不提前为页面堆字段。
 
+因此一个多 Excel 人工 run 对应多个最小 Import Batch，每个 Batch 对应一个原始 Excel Artifact；
+“一个人工 run”不是数据库新增父表，也不把多个文件塞进单个 `input_artifact_id`。某个源文件的记录
+如果全部被相关性过滤或全局去重移除，该文件的 Batch 仍可成功且 `rows_ingested=0`，以保留输入与
+执行事实。
+
 ## 8. 来源追溯不能为了文件导入而降级
 
 当前 PostgreSQL Content 历史要求合法：
@@ -316,6 +330,7 @@ provider_config_id=<正式 provider_configs.id>
 - 二者最终复用 ContentIngestionService/Content Owner Repository；
 - `tikhub_test` 开启写库后复用既有正式 Collection/Provider/Raw/Candidate/Ingestion 执行链，不把调试 JSONL/Excel 再走一套生产回灌路径；
 - `imports_test` 开启写库后复用正式 File Import/Processing Batch 执行入口；调试脚本只准备参数并调用正式实现；
+- `imports_test` 多文件 run 先全局过滤/去重，再按唯一源文件名分别调用正式 File Import 入口；同名文件在付费或写库前 fail closed，避免来源绑定歧义；
 - 数据库阶段失败必须向调用方暴露，不静默退回 file-only 成功。
 
 ## 10. 手工写库模式的本地数据库前置条件
@@ -622,6 +637,7 @@ Stage 8 不作为一个巨型 PR 一次完成。按以下最小正式单元推�
 12. 不使用伪造来源 ID 绕过 PostgreSQL 外键/来源约束；
 13. DB 写入失败后幂等重试不会制造业务重复；
 14. 新 Migration 有 base→head、上一正式 Revision→head、downgrade/re-upgrade 与 `alembic check`；
+15. `imports_test` 多 Excel run 按配置顺序合并、全局去重，并在数据库模式为每个源文件保留独立 Artifact/Import Batch；
 15. 相关 Blueprint/API/测试说明与机器事实同步。
 
 当前自动化已经覆盖以上 Stage 8A 机器行为；最终仍以实现 PR 的实际最新 head CI、Review、合并与合并后 main 验证作为闭环证据。
