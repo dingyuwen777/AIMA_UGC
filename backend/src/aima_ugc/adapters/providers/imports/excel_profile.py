@@ -10,19 +10,12 @@ from .models import ExcelImportRowError
 AIMA_MONITORING_EXCEL_V1 = "aima-monitoring-excel.v1"
 
 _REQUIRED_HEADERS = (
-    "序号",
-    "监测项名称",
-    "文章编号",
+    "媒体名称（中文）",
     "标题",
     "内文",
-    "媒体名称（中文）",
-    "版面",
-    "出版日期",
-    "媒体类型",
     "作者",
-    "全文情感",
+    "出版日期",
     "原文链接",
-    "粉丝数",
 )
 
 _PLATFORM_ALIASES = {

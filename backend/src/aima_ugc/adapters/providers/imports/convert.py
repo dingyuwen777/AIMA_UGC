@@ -37,7 +37,6 @@ def convert_excel_to_canonical_jsonl(
     source_path = Path(input_path)
     target_path = Path(output_path)
     profile = get_excel_import_profile(profile_name)
-    selected_sheet = sheet_name or profile.default_sheet_name
     run_observed_at = observed_at or datetime.now(UTC)
     if run_observed_at.tzinfo is None:
         raise ValueError("observed_at 必须包含时区")
@@ -60,14 +59,14 @@ def convert_excel_to_canonical_jsonl(
             temp_path.open("w", encoding="utf-8", newline="\n") as output_file,
             temp_error_path.open("w", encoding="utf-8", newline="\n") as error_file,
         ):
-            for row in iter_excel_rows(source_path, profile=profile, sheet_name=selected_sheet):
+            for row in iter_excel_rows(source_path, profile=profile, sheet_name=sheet_name):
                 rows_seen += 1
                 try:
                     content = map_excel_row(
                         row,
                         profile=profile,
                         input_name=source_path.name,
-                        sheet_name=selected_sheet,
+                        sheet_name=row.sheet_name,
                         observed_at=run_observed_at,
                     )
                 except ExcelImportRowError as exc:
@@ -139,7 +138,6 @@ def convert_excel_files_to_canonical_jsonl(
 
     target_path = Path(output_path)
     profile = get_excel_import_profile(profile_name)
-    selected_sheet = sheet_name or profile.default_sheet_name
     run_observed_at = observed_at or datetime.now(UTC)
     if run_observed_at.tzinfo is None:
         raise ValueError("observed_at 必须包含时区")
@@ -167,7 +165,7 @@ def convert_excel_files_to_canonical_jsonl(
                 for row in iter_excel_rows(
                     source_path,
                     profile=profile,
-                    sheet_name=selected_sheet,
+                    sheet_name=sheet_name,
                 ):
                     rows_seen += 1
                     try:
@@ -175,7 +173,7 @@ def convert_excel_files_to_canonical_jsonl(
                             row,
                             profile=profile,
                             input_name=source_path.name,
-                            sheet_name=selected_sheet,
+                            sheet_name=row.sheet_name,
                             observed_at=run_observed_at,
                         )
                     except ExcelImportRowError as exc:

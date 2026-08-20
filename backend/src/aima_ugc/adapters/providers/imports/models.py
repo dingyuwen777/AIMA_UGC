@@ -9,9 +9,10 @@ from pathlib import Path
 
 @dataclass(frozen=True, slots=True)
 class ExcelImportRow:
-    """Reader 从源工作表读取的一行，保留原始列值和物理行号。"""
+    """Reader 从源工作表读取的一行，保留工作表、原始列值和物理行号。"""
 
     row_number: int
+    sheet_name: str
     values: Mapping[str, object]
 
 
