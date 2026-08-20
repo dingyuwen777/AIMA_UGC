@@ -368,11 +368,9 @@ uv run mypy backend/src
 
 真实模型 Probe 默认不进入普通 CI，也不能打印 Secret。
 
-## 11. 后续正式系统
+## 11. Stage 8D 正式 Analysis Persistence
 
-当前改动只把离线人工入口的真实模型执行做成可靠的单条并发链路，没有启动 Stage 8，也没有建立正式 Analysis Job/API/数据库 Repository。
-
-未来正式 Analysis Job 应复用：
+Stage 8D 已在不改变离线入口的前提下建立正式数据库链路：
 
 ```text
 Prompt/Taxonomy
@@ -382,6 +380,11 @@ Prompt/Taxonomy
 → 显式 Transport Retry
 → 本地 Validator
 → ContentLabelAnalysisV2
+→ Analysis Result + ordered Label Pair PostgreSQL Owner Repository
+→ current Analysis Query Read Model
 ```
 
-正式 Job 的数据库幂等、Lease/Fencing、进度和取消应按 Platform Job Runtime 另行接入，不能把 `imports_test` 的文件编排直接复制成生产 Job Runtime。
+用户在声音广场显式选择内容或当前查询后，HTTP 会冻结 Content ID + Version 并创建
+`analysis.content-label.v1` durable Job。Worker 分批复用正式 Service/Validator；成功结果与全部有序标签
+在验证当前 Job Fencing Token 的短事务中提交。精确输入/配置身份重试复用现有结果；配置或输入变化保留
+历史。默认 Import/Collection 不自动调用付费模型，Secret 不进 Job Payload、数据库或日志。

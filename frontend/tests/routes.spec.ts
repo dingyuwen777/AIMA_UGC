@@ -17,6 +17,15 @@ describe('frontend bootstrap', () => {
     )
   })
 
+  it('registers the formal voice plaza route', () => {
+    expect(routes).toContainEqual(
+      expect.objectContaining({
+        path: '/voice-plaza',
+        name: 'voice-plaza',
+      }),
+    )
+  })
+
   it('loads Vue Test Utils', () => {
     expect(config.global).toBeDefined()
   })

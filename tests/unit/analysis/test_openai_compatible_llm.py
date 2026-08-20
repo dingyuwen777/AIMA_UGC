@@ -12,6 +12,7 @@ from aima_ugc.adapters.llm import pricing as pricing_module
 from aima_ugc.adapters.llm.openai_compatible import (
     OpenAICompatibleContentLabelingLLM,
     OpenAICompatibleLLMError,
+    resolve_openai_compatible_provider_name,
 )
 from aima_ugc.adapters.llm.pricing import load_llm_pricing
 from aima_ugc.adapters.llm.request_audit import LLMHTTPRequestAudit
@@ -114,6 +115,14 @@ def test_openai_compatible_adapter_derives_non_default_port_in_provider_identity
         client.close()
 
     assert adapter.provider_name == "gateway.example:8443"
+
+
+def test_openai_compatible_adapter_rejects_explicit_empty_provider_identity() -> None:
+    with pytest.raises(ValueError, match="provider_name"):
+        resolve_openai_compatible_provider_name(
+            "https://llm.example/v1",
+            provider_name="",
+        )
 
 
 def test_openai_compatible_adapter_retry_request_only_adds_validation_errors() -> None:

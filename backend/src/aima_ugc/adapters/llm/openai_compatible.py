@@ -67,10 +67,9 @@ class OpenAICompatibleContentLabelingLLM:
     ) -> None:
         actual_base_url = str(client.base_url) if client is not None else base_url
         normalized_base_url = _normalize_base_url(actual_base_url)
-        actual_provider_name = (
-            provider_name
-            if provider_name is not None
-            else _provider_name_from_base_url(normalized_base_url)
+        actual_provider_name = resolve_openai_compatible_provider_name(
+            normalized_base_url,
+            provider_name=provider_name,
         )
         if timeout_seconds <= 0:
             raise ValueError("OpenAI-compatible timeout_seconds 必须大于 0")
@@ -296,6 +295,24 @@ def _provider_name_from_base_url(value: str) -> str:
     return display_host
 
 
+def resolve_openai_compatible_provider_name(
+    base_url: str,
+    *,
+    provider_name: str | None = None,
+) -> str:
+    """按 Adapter 的同一规则解析稳定 Provider 身份，不读取 Secret 或发起网络请求。"""
+
+    normalized_base_url = _normalize_base_url(base_url)
+    resolved = (
+        provider_name
+        if provider_name is not None
+        else _provider_name_from_base_url(normalized_base_url)
+    )
+    if not resolved or resolved != resolved.strip():
+        raise ValueError("OpenAI-compatible provider_name 必须是非空且已清洗的字符串")
+    return resolved
+
+
 def _user_message(request: ContentLabelingLLMRequest) -> str:
     payload: dict[str, object] = {"items": request.model_payload()}
     if request.previous_validation_error_codes:
@@ -451,4 +468,5 @@ __all__ = [
     "DEFAULT_OPENAI_COMPATIBLE_TIMEOUT_SECONDS",
     "OpenAICompatibleContentLabelingLLM",
     "OpenAICompatibleLLMError",
+    "resolve_openai_compatible_provider_name",
 ]

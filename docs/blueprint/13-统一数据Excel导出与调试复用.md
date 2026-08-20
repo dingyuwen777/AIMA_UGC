@@ -279,9 +279,9 @@ backend/src/aima_ugc/platform/export/excel.py
 调用关系：
 
 ```text
-tikhub_test ─────┐
-imports_test ────┼→ platform/export/excel.py
-未来正式导出 ────┘
+tikhub_test ─────────────┐
+imports_test ────────────┼→ platform/export/excel.py
+Stage 8D durable Export ─┘
 ```
 
 共享入口：
@@ -413,7 +413,9 @@ Workbook(write_only=True)
 - 不合法/缺失 Analysis 不伪造标签；
 - 三个列配置都不允许越过对应 Sheet 的共享列集合读取任意对象属性；
 - 输出完成后重新打开并核对 Sheet、实际表头、行数和可用的关键 ID；
-- 大批量导出进入正式系统后仍遵守持久化 Job、Artifact 生命周期、权限和保留规则。
+- Stage 8D 正式声音广场导出已通过持久化 Job 分页读取冻结 Content Version、调用本共享 Exporter 并登记
+  Artifact；未打标内容保留且 AI 列为空。当前认证与自动保留/删除期限尚未批准，下载只用于受信部署
+  边界，不能据此宣称公网权限或自动生命周期已经闭环。
 
 ## 11. 与 Canonical、Analysis、数据库和 Report 的关系
 

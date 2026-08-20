@@ -685,6 +685,21 @@ Playwright 机器能力；用户批准的 PNG 仅作为本 Stage 一次性视觉
 - 统一时间与 64 位 ID；
 - 从“采集运行中心 → 查看处理内容”跳转并带合法查询条件。
 
+Stage 8D 已以用户可见名称“声音广场”完成上述统一 Content 列表/详情、Batch/Run 来源过滤、签名
+Cursor、评论/Coverage 和跨页跳转。用户追加批准把既有 AI 打标与共享 Excel 导出同时产品化：
+
+- Analysis Result + ordered Label Pair、Request + frozen Item 独立持久化；
+- current Analysis 同时匹配 Content Version 与当前 Prompt/Taxonomy/Provider/Model；
+- 列表和详情展示全部结构化一级/二级标签对；
+- 只有用户显式操作才创建 `analysis.content-label.v1` Job，不因导入/采集自动产生模型费用；
+- 查询或选择范围立即冻结 Content ID + Version，由 `reporting.content-export-excel.v1` Job 复用共享
+  Exporter 并登记 Artifact；未打标内容不丢弃；
+- `/voice-plaza` Vue Feature 只使用 Orval Client；无真实媒体时文本优先，不伪造图片。
+
+本阶段未进入 Stage 8E TikHub 辅助补采或 Stage 8F Relevance/Plan 页面。无 Figma 时用户批准固定截图
+作为 Change 级一次性视觉例外；未来 Figma 重做只能替换可视组件/样式，保持 route、Store/API、
+Pydantic/Orval Contract、筛选和操作语义兼容。
+
 ### 8E：TikHub 辅助补采
 
 目标：TikHub 从独立后台能力变成可从业务上下文显式发起的辅助补充来源。
@@ -770,7 +785,8 @@ imports_test / tikhub_test 永久保留
 
 Stage 8A 已完成统一手工摄取 Foundation
 Stage 8B 已建立 Import HTTP / Job / 全局 Relevance Productization
-Stage 8C 已实现并闭环第一个 Vue 采集运行中心页面；下一正式最小单元是 Stage 8D 内容中心
+Stage 8C 已实现并闭环第一个 Vue 采集运行中心页面；Stage 8D 已实现声音广场、current Analysis 与
+durable Excel Export；下一正式最小单元是 Stage 8E TikHub 辅助补采
 离线单批报告读 Excel；正式系统报告读 PostgreSQL Read Model
 报告源显式选择，不按数据库可用性自动切换
 不要用目标 UI 冒充后端已经存在

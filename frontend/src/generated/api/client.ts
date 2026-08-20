@@ -8,6 +8,265 @@ export interface BodyCreateImportBatch {
   file: Blob;
 }
 
+export interface CommentCoverageResponse {
+  /** @minimum 0 */
+  collected_count: number;
+  coverage: string;
+  observed_at: string;
+  reported_total?: number | null;
+}
+
+export interface ContentAnalysisCreatedResponse {
+  job_id: string;
+  request_id: string;
+  status?: 'queued';
+  /** @exclusiveMinimum 0 */
+  target_count: number;
+}
+
+export interface ContentAnalysisJobResultResponse {
+  /** @minimum 0 */
+  failed: number;
+  request_id: string;
+  /** @minimum 0 */
+  stale: number;
+  /** @minimum 0 */
+  succeeded: number;
+}
+
+/**
+ * 按模型重要性顺序返回的一个一级/二级标签对。
+ */
+export interface ContentLabelPairResponse {
+  primary_label: string;
+  secondary_label: string;
+}
+
+export type ContentAnalysisStatus = typeof ContentAnalysisStatus[keyof typeof ContentAnalysisStatus];
+
+
+export const ContentAnalysisStatus = {
+  pending: 'pending',
+  completed: 'completed',
+  stale: 'stale',
+} as const;
+
+export interface ContentAnalysisResponse {
+  analyzed_at?: string | null;
+  labels?: ContentLabelPairResponse[];
+  model?: string | null;
+  model_provider?: string | null;
+  sentiment?: string | null;
+  status: ContentAnalysisStatus;
+}
+
+/**
+ * 可序列化并冻结到 Analysis/Export Request 的查询条件。
+ */
+export interface ContentFilterSnapshot {
+  analysis_status?: ContentAnalysisStatus | null;
+  /** @maxItems 20 */
+  content_types?: string[];
+  /** @maxItems 20 */
+  platforms?: string[];
+  primary_label?: string | null;
+  published_from?: string | null;
+  published_to?: string | null;
+  search?: string | null;
+  secondary_label?: string | null;
+  sentiment?: string | null;
+  source_identifier?: string | null;
+}
+
+export type ContentTargetSelectionScope = typeof ContentTargetSelectionScope[keyof typeof ContentTargetSelectionScope];
+
+
+export const ContentTargetSelectionScope = {
+  query: 'query',
+  selected: 'selected',
+} as const;
+
+/**
+ * HTTP 层选择语义；Service 会立刻冻结 Content ID + Version。
+ */
+export interface ContentTargetSelection {
+  /** @maxItems 1000 */
+  content_ids?: string[];
+  filters?: ContentFilterSnapshot | null;
+  scope: ContentTargetSelectionScope;
+}
+
+export interface ContentAnalysisSubmitRequest {
+  targets: ContentTargetSelection;
+}
+
+export interface ContentCommentResponse {
+  author_display_name?: string | null;
+  external_comment_id: string;
+  id: string;
+  like_count?: number | null;
+  published_at?: string | null;
+  reply_count?: number | null;
+  text?: string | null;
+}
+
+export interface ContentMediaResponse {
+  alt_text?: string | null;
+  media_type: string;
+  /** @minimum 0 */
+  position: number;
+  preview_url?: string | null;
+  url?: string | null;
+}
+
+export interface ContentMetricsResponse {
+  comment_count?: number | null;
+  favorite_count?: number | null;
+  like_count?: number | null;
+  play_count?: number | null;
+  repost_count?: number | null;
+  share_count?: number | null;
+  view_count?: number | null;
+}
+
+export interface ContentSourceResponse {
+  collection_run_id?: string | null;
+  import_batch_id?: string | null;
+  provider_attempt_id?: string | null;
+  provider_name: string;
+  raw_artifact_id?: string | null;
+}
+
+export interface ContentDetailResponse {
+  analysis: ContentAnalysisResponse;
+  author_display_name?: string | null;
+  comment_coverage?: CommentCoverageResponse | null;
+  comments?: ContentCommentResponse[];
+  content_type: string;
+  content_url?: string | null;
+  external_content_id: string;
+  id: string;
+  last_seen_at: string;
+  media?: ContentMediaResponse[];
+  metrics: ContentMetricsResponse;
+  platform: string;
+  published_at?: string | null;
+  source: ContentSourceResponse;
+  source_records?: ContentSourceResponse[];
+  text?: string | null;
+  title?: string | null;
+}
+
+export interface ContentListItemResponse {
+  analysis: ContentAnalysisResponse;
+  author_display_name?: string | null;
+  content_type: string;
+  content_url?: string | null;
+  external_content_id: string;
+  id: string;
+  last_seen_at: string;
+  metrics: ContentMetricsResponse;
+  platform: string;
+  published_at?: string | null;
+  source: ContentSourceResponse;
+  text?: string | null;
+  title?: string | null;
+}
+
+export interface ContentListResponse {
+  has_more: boolean;
+  items: ContentListItemResponse[];
+  next_cursor?: string | null;
+}
+
+export interface DataExportCreatedResponse {
+  export_id: string;
+  job_id: string;
+  status?: 'queued';
+  /** @exclusiveMinimum 0 */
+  target_count: number;
+}
+
+export interface DataExportJobResultResponse {
+  /** @minimum 0 */
+  analyzed_count: number;
+  artifact_id: string;
+  /** @minimum 0 */
+  comment_count: number;
+  /** @minimum 0 */
+  content_count: number;
+  export_id: string;
+  /** @minimum 0 */
+  unanalyzed_count: number;
+}
+
+export interface ImportJobResultResponse {
+  batch_id: string;
+  /** @minimum 0 */
+  rows_ingested: number;
+}
+
+export type JobStatusResponseStatus = typeof JobStatusResponseStatus[keyof typeof JobStatusResponseStatus];
+
+
+export const JobStatusResponseStatus = {
+  queued: 'queued',
+  running: 'running',
+  succeeded: 'succeeded',
+  failed: 'failed',
+  cancelled: 'cancelled',
+} as const;
+
+export interface JobStatusResponse {
+  /** @minimum 0 */
+  attempt: number;
+  created_at: string;
+  error_code?: string | null;
+  finished_at?: string | null;
+  id: string;
+  job_type: string;
+  /** @exclusiveMinimum 0 */
+  max_attempts: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  progress: number;
+  result?: ImportJobResultResponse | ContentAnalysisJobResultResponse | DataExportJobResultResponse | null;
+  started_at?: string | null;
+  status: JobStatusResponseStatus;
+}
+
+export interface DataExportStatsResponse {
+  /** @minimum 0 */
+  analyzed_count: number;
+  /** @minimum 0 */
+  comment_count: number;
+  /** @minimum 0 */
+  content_count: number;
+  /** @minimum 0 */
+  unanalyzed_count: number;
+}
+
+export interface DataExportResponse {
+  artifact_id?: string | null;
+  completed_at?: string | null;
+  created_at: string;
+  filename?: string | null;
+  id: string;
+  job: JobStatusResponse;
+  stats?: DataExportStatsResponse | null;
+}
+
+export interface DataExportListResponse {
+  items: DataExportResponse[];
+}
+
+export interface DataExportSubmitRequest {
+  format?: 'xlsx';
+  targets: ContentTargetSelection;
+}
+
 export interface GlobalRelevanceConfigRequest {
   keyword_pack_id: string;
 }
@@ -49,43 +308,6 @@ export interface ImportBatchCreatedResponse {
   batch_id: string;
   job_id: string;
   status?: 'queued';
-}
-
-export interface ImportJobResultResponse {
-  batch_id: string;
-  /** @minimum 0 */
-  rows_ingested: number;
-}
-
-export type JobStatusResponseStatus = typeof JobStatusResponseStatus[keyof typeof JobStatusResponseStatus];
-
-
-export const JobStatusResponseStatus = {
-  queued: 'queued',
-  running: 'running',
-  succeeded: 'succeeded',
-  failed: 'failed',
-  cancelled: 'cancelled',
-} as const;
-
-export interface JobStatusResponse {
-  /** @minimum 0 */
-  attempt: number;
-  created_at: string;
-  error_code?: string | null;
-  finished_at?: string | null;
-  id: string;
-  job_type: string;
-  /** @exclusiveMinimum 0 */
-  max_attempts: number;
-  /**
-     * @minimum 0
-     * @maximum 100
-     */
-  progress: number;
-  result?: ImportJobResultResponse | null;
-  started_at?: string | null;
-  status: JobStatusResponseStatus;
 }
 
 export type ImportStage = typeof ImportStage[keyof typeof ImportStage];
@@ -249,6 +471,31 @@ export interface ReadinessResponse {
   status: ReadinessResponseStatus;
 }
 
+export type ListContentsParams = {
+search?: string | null;
+/**
+ * @maxItems 20
+ */
+platforms?: string[];
+/**
+ * @maxItems 20
+ */
+content_types?: string[];
+analysis_status?: ContentAnalysisStatus | null;
+sentiment?: string | null;
+primary_label?: string | null;
+secondary_label?: string | null;
+published_from?: string | null;
+published_to?: string | null;
+source_identifier?: string | null;
+cursor?: string | null;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+};
+
 export type ListImportBatchesParams = {
 identifier?: string | null;
 status?: ImportBatchStatus | null;
@@ -262,6 +509,268 @@ cursor?: string | null;
  */
 limit?: number;
 };
+
+export const getGetContentAnalysisJobUrl = (jobId: string,) => {
+
+
+
+
+  return `/api/v1/content-analysis-jobs/${jobId}`
+}
+
+/**
+ * @summary Get Content Analysis Job
+ */
+export const getContentAnalysisJob = async (jobId: string, options?: RequestInit): Promise<JobStatusResponse> => {
+
+  const res = await fetch(getGetContentAnalysisJobUrl(jobId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: JobStatusResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCreateContentAnalysisUrl = () => {
+
+
+
+
+  return `/api/v1/content-analysis-requests`
+}
+
+/**
+ * @summary Create Content Analysis
+ */
+export const createContentAnalysis = async (contentAnalysisSubmitRequest: ContentAnalysisSubmitRequest, options?: RequestInit): Promise<ContentAnalysisCreatedResponse> => {
+
+  const res = await fetch(getCreateContentAnalysisUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(contentAnalysisSubmitRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ContentAnalysisCreatedResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getListContentsUrl = (params?: ListContentsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    const explodeParameters = ["platforms","content_types"];
+
+    if (Array.isArray(value) && explodeParameters.includes(key)) {
+      value.forEach((v) => {
+        normalizedParams.append(key, v === null ? 'null' : String(v));
+      });
+      return;
+    }
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/contents?${stringifiedParams}` : `/api/v1/contents`
+}
+
+/**
+ * @summary List Contents
+ */
+export const listContents = async (params?: ListContentsParams, options?: RequestInit): Promise<ContentListResponse> => {
+
+  const res = await fetch(getListContentsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ContentListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetContentUrl = (contentId: string,) => {
+
+
+
+
+  return `/api/v1/contents/${contentId}`
+}
+
+/**
+ * @summary Get Content
+ */
+export const getContent = async (contentId: string, options?: RequestInit): Promise<ContentDetailResponse> => {
+
+  const res = await fetch(getGetContentUrl(contentId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ContentDetailResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getListDataExportsUrl = () => {
+
+
+
+
+  return `/api/v1/data-exports`
+}
+
+/**
+ * @summary List Data Exports
+ */
+export const listDataExports = async ( options?: RequestInit): Promise<DataExportListResponse> => {
+
+  const res = await fetch(getListDataExportsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: DataExportListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCreateDataExportUrl = () => {
+
+
+
+
+  return `/api/v1/data-exports`
+}
+
+/**
+ * @summary Create Data Export
+ */
+export const createDataExport = async (dataExportSubmitRequest: DataExportSubmitRequest, options?: RequestInit): Promise<DataExportCreatedResponse> => {
+
+  const res = await fetch(getCreateDataExportUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(dataExportSubmitRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: DataExportCreatedResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetDataExportUrl = (exportId: string,) => {
+
+
+
+
+  return `/api/v1/data-exports/${exportId}`
+}
+
+/**
+ * @summary Get Data Export
+ */
+export const getDataExport = async (exportId: string, options?: RequestInit): Promise<DataExportResponse> => {
+
+  const res = await fetch(getGetDataExportUrl(exportId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: DataExportResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getDownloadDataExportUrl = (exportId: string,) => {
+
+
+
+
+  return `/api/v1/data-exports/${exportId}/download`
+}
+
+/**
+ * @summary Download Data Export
+ */
+export const downloadDataExport = async (exportId: string, options?: RequestInit): Promise<Blob> => {
+
+  const res = await fetch(getDownloadDataExportUrl(exportId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.blob();
+  const data: Blob = body as Blob
+  return data
+}
+
+
 
 export const getListImportBatchesUrl = (params?: ListImportBatchesParams,) => {
   const normalizedParams = new URLSearchParams();

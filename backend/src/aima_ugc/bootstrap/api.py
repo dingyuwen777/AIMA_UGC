@@ -15,10 +15,19 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ConfigDict
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHttpException
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, StreamingResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from aima_ugc.contracts.http import (
+    ContentAnalysisCreatedResponse,
+    ContentAnalysisSubmitRequest,
+    ContentDetailResponse,
+    ContentListQuery,
+    ContentListResponse,
+    DataExportCreatedResponse,
+    DataExportListResponse,
+    DataExportResponse,
+    DataExportSubmitRequest,
     GlobalRelevanceConfigRequest,
     GlobalRelevanceConfigResponse,
     HttpErrorItem,
@@ -33,6 +42,13 @@ from aima_ugc.contracts.http import (
     KeywordPackKeywordCreateRequest,
     KeywordPackResponse,
 )
+from aima_ugc.modules.content.http import (
+    ContentCursorUnavailable,
+    ContentHttpService,
+    ContentResourceNotFound,
+    ContentSelectionEmpty,
+    InvalidContentCursor,
+)
 from aima_ugc.modules.ingestion.http import (
     ImportConflict,
     ImportCursorUnavailable,
@@ -44,6 +60,11 @@ from aima_ugc.modules.ingestion.http import (
     RelevanceConfigurationError,
 )
 from aima_ugc.modules.ingestion.xlsx_security import MAX_MULTIPART_BODY_BYTES
+from aima_ugc.modules.reporting.http import (
+    DataExportNotReady,
+    DataExportResourceNotFound,
+    ReportingHttpService,
+)
 from aima_ugc.platform.health import ReadinessReport
 from aima_ugc.platform.logging import log_event
 
@@ -175,6 +196,8 @@ def create_app(
     *,
     readiness_check: ReadinessCheck | None = None,
     import_service: ImportHttpService | None = None,
+    content_service: ContentHttpService | None = None,
+    reporting_service: ReportingHttpService | None = None,
 ) -> FastAPI:
     """创建 API 应用；默认 runtime 延迟到启动或第一次 readiness 检查。"""
     runtime: PlatformRuntime | None = None
@@ -210,6 +233,26 @@ def create_app(
         from aima_ugc.bootstrap.import_http import PostgresImportHttpService
 
         return PostgresImportHttpService(resolved_runtime)
+
+    def current_content_service() -> ContentHttpService:
+        if content_service is not None:
+            return content_service
+        resolved_runtime = get_runtime()
+        if resolved_runtime is None:
+            raise RuntimeError("Content Service 依赖不可用")
+        from aima_ugc.bootstrap.content_http import PostgresContentHttpService
+
+        return PostgresContentHttpService(resolved_runtime)
+
+    def current_reporting_service() -> ReportingHttpService:
+        if reporting_service is not None:
+            return reporting_service
+        resolved_runtime = get_runtime()
+        if resolved_runtime is None:
+            raise RuntimeError("Reporting Service 依赖不可用")
+        from aima_ugc.bootstrap.reporting_http import PostgresReportingHttpService
+
+        return PostgresReportingHttpService(resolved_runtime)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -320,6 +363,74 @@ def create_app(
             code="import_cursor_unavailable",
         )
 
+    @application.exception_handler(ContentResourceNotFound)
+    async def content_resource_not_found(
+        request: Request, _: ContentResourceNotFound
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=404,
+            request_id=_request_id(request),
+            title="内容资源不存在",
+            detail="请求的内容或任务不存在。",
+            code="content_resource_not_found",
+        )
+
+    @application.exception_handler(ContentSelectionEmpty)
+    async def content_selection_empty(request: Request, _: ContentSelectionEmpty) -> JSONResponse:
+        return _error_response(
+            status_code=422,
+            request_id=_request_id(request),
+            title="内容选择为空",
+            detail="当前选择条件没有可处理的内容。",
+            code="content_selection_empty",
+            field="body.targets",
+        )
+
+    @application.exception_handler(InvalidContentCursor)
+    async def invalid_content_cursor(request: Request, _: InvalidContentCursor) -> JSONResponse:
+        return _error_response(
+            status_code=400,
+            request_id=_request_id(request),
+            title="分页游标不合法",
+            detail="分页游标无效、已过期或与当前查询条件不匹配。",
+            code="invalid_content_cursor",
+            field="query.cursor",
+        )
+
+    @application.exception_handler(ContentCursorUnavailable)
+    async def content_cursor_unavailable(
+        request: Request, _: ContentCursorUnavailable
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=503,
+            request_id=_request_id(request),
+            title="分页服务暂不可用",
+            detail="声音广场分页服务配置不可用，请使用 request_id 联系管理员。",
+            code="content_cursor_unavailable",
+        )
+
+    @application.exception_handler(DataExportResourceNotFound)
+    async def data_export_resource_not_found(
+        request: Request, _: DataExportResourceNotFound
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=404,
+            request_id=_request_id(request),
+            title="导出记录不存在",
+            detail="请求的导出记录不存在。",
+            code="data_export_not_found",
+        )
+
+    @application.exception_handler(DataExportNotReady)
+    async def data_export_not_ready(request: Request, _: DataExportNotReady) -> JSONResponse:
+        return _error_response(
+            status_code=409,
+            request_id=_request_id(request),
+            title="导出文件尚未就绪",
+            detail="导出任务尚未成功完成，当前不能下载。",
+            code="data_export_not_ready",
+        )
+
     @application.exception_handler(StarletteHttpException)
     async def http_error(request: Request, exc: StarletteHttpException) -> JSONResponse:
         return _error_response(
@@ -381,6 +492,147 @@ def create_app(
                 artifact_store=report.artifact_store,
                 log_directory=report.log_directory,
             ),
+        )
+
+    @application.get(
+        "/api/v1/contents",
+        operation_id="listContents",
+        response_model=ContentListResponse,
+        responses={
+            400: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            503: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["contents"],
+    )
+    def list_contents(
+        query: Annotated[ContentListQuery, Query()],
+    ) -> ContentListResponse:
+        return current_content_service().list_contents(query)
+
+    @application.get(
+        "/api/v1/contents/{content_id}",
+        operation_id="getContent",
+        response_model=ContentDetailResponse,
+        responses={
+            404: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["contents"],
+    )
+    def get_content(content_id: UUID) -> ContentDetailResponse:
+        return current_content_service().get_content(content_id)
+
+    @application.post(
+        "/api/v1/content-analysis-requests",
+        operation_id="createContentAnalysis",
+        response_model=ContentAnalysisCreatedResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+        responses={
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["contents"],
+    )
+    def create_content_analysis(
+        body: ContentAnalysisSubmitRequest,
+        request: Request,
+    ) -> ContentAnalysisCreatedResponse:
+        return current_content_service().create_analysis(
+            body,
+            request_id=_request_id(request),
+        )
+
+    @application.get(
+        "/api/v1/content-analysis-jobs/{job_id}",
+        operation_id="getContentAnalysisJob",
+        response_model=JobStatusResponse,
+        responses={
+            404: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["contents"],
+    )
+    def get_content_analysis_job(job_id: UUID) -> JobStatusResponse:
+        return current_content_service().get_analysis_job(job_id)
+
+    @application.post(
+        "/api/v1/data-exports",
+        operation_id="createDataExport",
+        response_model=DataExportCreatedResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+        responses={
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["exports"],
+    )
+    def create_data_export(
+        body: DataExportSubmitRequest,
+        request: Request,
+    ) -> DataExportCreatedResponse:
+        return current_reporting_service().create_export(
+            body,
+            request_id=_request_id(request),
+        )
+
+    @application.get(
+        "/api/v1/data-exports",
+        operation_id="listDataExports",
+        response_model=DataExportListResponse,
+        responses={500: {"model": HttpErrorResponse}},
+        tags=["exports"],
+    )
+    def list_data_exports() -> DataExportListResponse:
+        return current_reporting_service().list_exports()
+
+    @application.get(
+        "/api/v1/data-exports/{export_id}",
+        operation_id="getDataExport",
+        response_model=DataExportResponse,
+        responses={
+            404: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["exports"],
+    )
+    def get_data_export(export_id: UUID) -> DataExportResponse:
+        return current_reporting_service().get_export(export_id)
+
+    @application.get(
+        "/api/v1/data-exports/{export_id}/download",
+        operation_id="downloadDataExport",
+        response_class=StreamingResponse,
+        responses={
+            200: {
+                "content": {
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                        "schema": {"type": "string", "format": "binary"}
+                    }
+                },
+                "description": "Excel 导出文件",
+            },
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["exports"],
+    )
+    def download_data_export(export_id: UUID) -> StreamingResponse:
+        download = current_reporting_service().download_export(export_id)
+        return StreamingResponse(
+            download.chunks,
+            media_type=download.content_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{download.filename}"',
+                "Content-Length": str(download.byte_size),
+                "X-Content-Type-Options": "nosniff",
+            },
         )
 
     @application.post(

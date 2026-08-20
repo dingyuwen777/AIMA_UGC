@@ -12,6 +12,21 @@
 - 保存 Canonical 的当前值与稀疏历史事实，不把未观察字段伪造成当前或历史值；
 - 通过 `provider_attempt_id + raw_artifact_id` 保持来源链。
 
+Stage 8D 新增 Provider-neutral 只读边界：
+
+```text
+PostgreSQL Content Current / Version / Metric / Comment / Coverage / Source
+→ PostgresContentQueryRepository
+→ Content HTTP Service
+→ Pydantic / OpenAPI / Orval
+→ Vue 声音广场
+```
+
+查询支持标题、正文、作者、外部 ID、平台、内容类型、发布时间、来源 Batch/Run、AI 状态、情感和
+一级/二级标签过滤，以及绑定查询条件的 HMAC Cursor。Repository 只读 Content/Analysis/Collection
+Owner 的事实；不会成为第二个写 Owner。当前 AI 投影必须同时匹配 Content Version 和进程选定的
+Prompt/Taxonomy/Provider/Model 身份；其他成功历史保留，但页面状态为 `stale`，不能冒充当前结果。
+
 ## 当前五平台边界
 
 Stage 7 已接通 TikHub 的小红书、抖音、微博、B站、快手正式 Operation/Mapper。五个平台最终都进入同一 Canonical V1 和本 Content Owner；平台差异停留在 Provider Operation/Mapper，不在 Content Repository 建第二套平台表或平台专用摄取路径。

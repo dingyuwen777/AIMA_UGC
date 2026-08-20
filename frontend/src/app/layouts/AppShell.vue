@@ -1,8 +1,10 @@
 <script setup lang="ts">
-// App Shell 只拥有应用级导航与布局，不承载 Import Feature 状态。
+withDefaults(defineProps<{ sectionTitle?: string }>(), { sectionTitle: '采集运行中心' })
+
+// App Shell 只拥有应用级导航与布局，不承载 Feature 状态。
 const navigation = [
   { label: '首页', icon: '⌂', disabled: true },
-  { label: '声音广场', icon: '◌', disabled: true },
+  { label: '声音广场', icon: '◌', to: '/voice-plaza' },
   { label: '采集运行中心', icon: '▣', to: '/collection-runtime' },
   { label: '智能洞察', icon: '◇', disabled: true },
   { label: '销售漏斗', icon: '▽', disabled: true },
@@ -60,7 +62,7 @@ const navigation = [
     <section class="workspace">
       <header class="topbar">
         <div class="breadcrumb">
-          业务工作台 <span>/</span> <strong>采集运行中心</strong>
+          业务工作台 <span>/</span> <strong>{{ sectionTitle }}</strong>
         </div>
         <div
           class="topbar-actions"

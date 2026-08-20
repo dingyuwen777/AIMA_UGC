@@ -77,7 +77,7 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
     runtime = create_scheduler_runtime()
     with runtime.database.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, accounts RESTART IDENTITY CASCADE"
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
         )
     try:
         session = runtime.database.new_session()
@@ -191,6 +191,8 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
         assert registry.supported_types == (
             "collection.run.v1",
             "ingestion.import-excel.v1",
+            "analysis.content-label.v1",
+            "reporting.content-export-excel.v1",
         )
         assert worker.run_once() is True
         assert worker.run_once() is False
@@ -213,6 +215,6 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
     finally:
         with runtime.database.engine.begin() as connection:
             connection.exec_driver_sql(
-                "TRUNCATE TABLE jobs, artifacts, accounts RESTART IDENTITY CASCADE"
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
             )
         runtime.close()
