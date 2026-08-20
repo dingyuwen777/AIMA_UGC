@@ -30,6 +30,7 @@ from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 from aima_ugc.modules.system.models import ProviderConfig
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
+from aima_ugc.platform.storage import ArtifactService
 from pydantic import SecretStr
 from sqlalchemy import func, select
 
@@ -360,5 +361,46 @@ def test_failed_database_stage_can_retry_without_business_duplicate(
             )
             assert statuses.count("failed") == 1
             assert statuses.count("succeeded") == 2
+    finally:
+        session.close()
+
+
+def test_artifact_link_failure_marks_batch_failed_without_content(
+    database_runtime: DatabaseRuntime,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    xlsx_path = tmp_path / "artifact-link-failure.xlsx"
+    xlsx_path.write_bytes(b"stage8a-artifact-link-failure")
+    unified_path = tmp_path / "artifact-link-failure.jsonl"
+    _write_unified(
+        unified_path,
+        _content(
+            external_content_id="stage8a-artifact-link-failure",
+            title="Artifact link failure",
+            like_count=1,
+        ),
+    )
+
+    def _fail_link(self: ArtifactService, artifact_id: object) -> object:
+        raise RuntimeError("stage8a-artifact-link-failure")
+
+    monkeypatch.setattr(ArtifactService, "link", _fail_link)
+
+    with pytest.raises(RuntimeError, match="stage8a-artifact-link-failure"):
+        ingest_excel_run_to_postgres(
+            input_path=xlsx_path,
+            unified_content_path=unified_path,
+            rows_seen=1,
+        )
+
+    session = database_runtime.new_session()
+    try:
+        with session.begin():
+            statuses = session.execute(
+                select(processing_import_batches_table.c.status)
+            ).scalars().all()
+            assert statuses == ["failed"]
+            assert session.scalar(select(func.count()).select_from(contents_table)) == 0
     finally:
         session.close()
