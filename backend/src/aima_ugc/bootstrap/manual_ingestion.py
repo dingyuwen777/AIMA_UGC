@@ -173,12 +173,13 @@ def _ingest_excel_run(
     finally:
         session.close()
 
-    # Batch 已经建立对输入 Artifact 的真实 FK 引用，此时才推进 Artifact stored → linked。
-    artifacts.link(input_artifact.id)
-
     rows_ingested = 0
     request_count = 0
     try:
+        # Batch 已经建立对输入 Artifact 的真实 FK 引用，此时才推进 Artifact stored → linked。
+        # 从 Batch 创建后的所有失败都必须进入同一失败收敛路径，避免留下 processing 僵尸批次。
+        artifacts.link(input_artifact.id)
+
         session = runtime.database.new_session()
         try:
             with session.begin():
