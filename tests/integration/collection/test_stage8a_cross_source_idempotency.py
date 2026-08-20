@@ -397,9 +397,9 @@ def test_artifact_link_failure_marks_batch_failed_without_content(
     session = database_runtime.new_session()
     try:
         with session.begin():
-            statuses = session.execute(
-                select(processing_import_batches_table.c.status)
-            ).scalars().all()
+            statuses = (
+                session.execute(select(processing_import_batches_table.c.status)).scalars().all()
+            )
             assert statuses == ["failed"]
             assert session.scalar(select(func.count()).select_from(contents_table)) == 0
     finally:

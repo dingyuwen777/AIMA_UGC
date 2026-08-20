@@ -157,8 +157,8 @@ result = run_kuaishou(
 五个平台的 `run_*()` 都支持相同的数据库开关：
 
 ```python
-write_to_database=False
-provider_config_id=None
+write_to_database = False
+provider_config_id = None
 ```
 
 只有 `write_to_database=True` 时 `provider_config_id` 才是必填；默认 file-only 不需要它，也不会装配数据库 Runtime。
