@@ -61,7 +61,9 @@ def test_word_chart_is_editable_office_chart_with_embedded_workbook(tmp_path: Pa
         assert "抖音" in chart_xml
         assert "小红书" in chart_xml
 
-        workbook = load_workbook(BytesIO(archive.read("word/embeddings/chart1.xlsx")), data_only=False)
+        workbook = load_workbook(
+            BytesIO(archive.read("word/embeddings/chart1.xlsx")), data_only=False
+        )
         try:
             sheet = workbook.active
             assert sheet["A1"].value == "日期/分类"
