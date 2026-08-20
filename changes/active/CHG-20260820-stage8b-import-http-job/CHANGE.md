@@ -11,12 +11,16 @@ updated: 2026-08-20
 depends_on: []
 affected_areas:
   - "ingestion"
+  - "collection"
+  - "analysis-relevance"
   - "http-api"
   - "job-runtime"
   - "system-keyword-catalog"
   - "openapi-orval"
 affected_paths:
   - "backend/src/aima_ugc/modules/ingestion/"
+  - "backend/src/aima_ugc/modules/collection/"
+  - "backend/src/aima_ugc/modules/analysis/"
   - "backend/src/aima_ugc/bootstrap/"
   - "backend/src/aima_ugc/platform/jobs/"
   - "backend/src/aima_ugc/adapters/persistence/postgres/"
@@ -55,6 +59,13 @@ Artifact Store 或 Job Runtime。
   “上传请求临时携带关键词”或“继续读取本地 `keyword_pack.txt`”作为正式事实源。当前仓库已有
   System Owner 的 `keyword_packs`、`keywords`、`keyword_pack_items` 及 PostgreSQL Repository，
   但尚无关键词 HTTP Contract/API，也没有冻结 Discovery / Relevance 的业务角色关系。
+- 用户进一步澄清：Discovery 是 TikHub 等 Provider 的搜索关键词；Relevance 是所有数据采集渠道在
+  Raw 经 Mapper 形成 Canonical 后、写入统一 Content 前执行的共同过滤清洗。TikHub 搜索结果也必须
+  经过 Relevance，而不是因为由关键词搜索得到就自动视为相关。
+- 当前 TikHub 生产链在 Search Raw/Candidate/Mapper 后直接进入决策、详情/评论与 fenced Content
+  Ingestion，没有正式 Relevance 门禁；当前 `collection_candidate_ingestions.result` 也没有
+  `filtered` 终态。Excel 的正式可复用实现目前是 `offline_content.py` 的 JSONL 文件包装，尚未提取成
+  可被 Collection 与 Import 共同调用的 Provider-neutral 单条 Canonical Relevance Service。
 
 # 成功标准
 
@@ -136,11 +147,21 @@ Artifact Store 或 Job Runtime。
 - 本决定保持 Stage 8B 的 HTTP / Job Productization 边界；不得借关键词管理 API 提前实现页面、App
   Shell、Store、E2E 或视觉验收。
 
-## 待用户决定：Discovery / Relevance 业务角色
+## 已确认：Discovery / Relevance 业务定义
 
-当前数据库只保存共享 Keyword Pack 父事实；Collection Plan 关联表示 Discovery 使用，Import 尚无正式
-Relevance 使用关系。必须确认二者是完全相同的业务角色，还是共享同一词包父事实但由各自的引用关系
-分别表达用途。该决定会影响公共 Contract、Job 快照、未来 UI 防误用与是否需要 Migration。
+- Discovery 只负责向 TikHub 等 Provider 发起搜索、发现候选数据。
+- Relevance 是来源无关的 Canonical 内容准入规则；Excel、TikHub 以及未来其他采集渠道都必须执行。
+- 正式顺序应是 `Raw/Source Artifact → Candidate（适用时）→ Mapper → Canonical → Relevance →
+  Dedup/Decision → Content Ingestion`。Raw/Source Artifact 必须保留，Mapper 保持纯映射，未通过
+  Relevance 的内容不得写入 Content。
+- 对 TikHub，Relevance 还必须位于不必要的 Detail/Comment/Reply 付费动作之前；但 Search 摘要字段
+  不完整时是直接过滤还是先补 Detail 再终判，仍是后续独立业务/费用门禁，不能静默决定。
+
+## 待用户决定：Relevance 配置作用域
+
+仓库能够实现统一 Relevance Service，但无法从现有事实判断 Relevance 词包是系统全局唯一配置，还是
+由每个 Collection Plan / Import 请求分别选择。该决定会影响 HTTP Contract、Collection Plan Schema、
+现有 Plan 兼容/回填、Run/Job Snapshot 和 Migration。
 
 ## 后续仍需按顺序冻结的技术/安全边界
 
@@ -150,8 +171,9 @@ Relevance 使用关系。必须确认二者是完全相同的业务角色，还�
 
 ## Migration、部署与回滚
 
-- 计划不新增 Schema/Migration；部署前数据库必须已在 `20260820_0019`，API 与 Worker 应同时升级，
-  并共享同一 PostgreSQL 与 ArtifactStore。
+- 不能再预设本阶段无 Schema/Migration：如果 Relevance 由 Collection Plan 显式选择，或需要为
+  Candidate 保存稳定 `filtered` 终态/决策证据，就必须新增正式 Revision；部署前数据库必须升级到
+  最终 Head，API 与 Worker 同时升级并共享同一 PostgreSQL 与 ArtifactStore。
 - 回滚先停止新导入并等待/处置已有 Import Job，再回退 API/Worker/Contract 代码；若最终没有新 Migration，
   现有 Batch/Job/Artifact/Content 数据无需回填或 downgrade。
 - 主要风险是上传资源耗尽、XLSX Zip Bomb、Worker 崩溃窗口、Batch/Job 终态漂移、错误泄露和重放重复；
@@ -162,7 +184,8 @@ Relevance 使用关系。必须确认二者是完全相同的业务角色，还�
 - [x] 调查当前实现和事实源
 - [x] 取得正式相关性 Filter 关键词必须由前端配置并写入 PostgreSQL 的用户决定
 - [x] 确认 Stage 8B 只交付关键词后端 Contract/API 与 Orval，Vue 页面留在 Stage 8F
-- [ ] 冻结 Discovery / Relevance 使用关系与正式关键词写入规范化语义
+- [x] 冻结 Discovery 与跨渠道 Relevance 的业务定义及共同 Canonical 边界
+- [ ] 冻结 Relevance 配置作用域、TikHub 摘要不足策略与正式关键词写入规范化语义
 - [ ] 冻结 Excel HTTP 传输与压缩/解压大小边界
 - [ ] 建立 HTTP Contract/Error/OpenAPI、API Service 和 Import Job/Worker 的失败测试并观察正确 Red
 - [ ] 完成最小实现
@@ -204,6 +227,9 @@ Relevance 使用关系。必须确认二者是完全相同的业务角色，还�
   `.runtime/secrets/postgres_password` 未执行到数据库；保留原错误，不作为测试失败或成功证据。
 - GitHub 连接器确认 PR `#88/#89` 已合并、当前无开放 PR；当前 main push workflow/status 接口未返回
   可见记录，历史 CI 不替代本 Stage 最终 Head CI。
+- Head `f697bc5` 的 CI、Stage 6 XHS、Stage 7 Keyword Packs、Provider Config、Plan Snapshot 与
+  Scheduler Runtime 六个 GitHub workflows 均成功；PR Review 线程为 0。该文档 Head 的成功不替代
+  后续实现最终 Head CI。
 
 # 文档影响
 
@@ -215,6 +241,7 @@ Relevance 使用关系。必须确认二者是完全相同的业务角色，还�
 # 交付
 
 - Commit：`a12eac4`（记录 Stage 8B 开发门禁）；后续实现继续使用中文提交。
-- PR：Draft PR `#97`（`feature/stage8b-import-http-job → main`）已创建；当前因正式 Filter
-  关键词来源待用户决定而保持 blocked/draft，最终 CI/Review 完成后才转 Ready 并正常合并。
+- PR：Draft PR `#97`（`feature/stage8b-import-http-job → main`）已创建；当前因 Relevance 配置作用域、
+  TikHub 摘要不足策略、正式 normalization 与上传安全边界待决定而保持 blocked/draft，最终 CI/Review
+  完成后才转 Ready 并正常合并。
 - 发布：不部署生产；只交付仓库代码、Migration 状态说明、生成物、测试与合并后 main 证据。
