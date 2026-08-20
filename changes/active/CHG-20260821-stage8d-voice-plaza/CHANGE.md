@@ -224,7 +224,7 @@ data_changes: ["analysis_content_results", "analysis_content_label_pairs", "anal
 # 交付
 
 - Branch：`feature/stage8d-voice-plaza`
-- Commit：待创建。
-- PR：待创建。
+- Implementation Commit：`deee4395c774241f402cc9efc6010817c968c2e5`。
+- PR：[#102](https://github.com/dingyuwen777/AIMA_UGC/pull/102)，Draft，最终 Head CI 运行中。
 - Merge：待完成。
 - Archive：待完成。
