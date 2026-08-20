@@ -23,6 +23,8 @@ jobs:
           python-version: 3.14.7
 
       - name: Install uv
+        id: install_uv
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -31,6 +33,8 @@ jobs:
           test "$(uv --version | awk '{print $2}')" = "${UV_VERSION}"
 
       - name: Sync locked environment
+        id: sync
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -39,6 +43,8 @@ jobs:
           uv run python -c "import aima_ugc"
 
       - name: Target reporting tests
+        id: target
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -49,6 +55,8 @@ jobs:
             tests/unit/collection/test_p1g_imports_run_all.py -q | tee /tmp/target-tests.txt
 
       - name: Repository static checks
+        id: static
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -61,12 +69,16 @@ jobs:
           uv run python scripts/quality/scan_secrets.py | tee -a /tmp/static-checks.txt
 
       - name: Full unit tests
+        id: unit
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
           uv run pytest tests/unit -q | tee /tmp/unit-tests.txt
 
       - name: Render a generated DOCX with LibreOffice
+        id: render
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -110,39 +122,51 @@ jobs:
           test -s /tmp/aima-report-verify/rendered/report.pdf
           stat --printf='%s\n' /tmp/aima-report-verify/rendered/report.pdf > /tmp/report-pdf-size.txt
 
-      - name: Record verified evidence on branch
+      - name: Record verification evidence on branch
+        if: always()
         shell: bash
         env:
           EVIDENCE_PATH: changes/active/CHG-20260820-offline-reporting/verification_evidence.json
+          INSTALL_UV_OUTCOME: ${{ steps.install_uv.outcome }}
+          SYNC_OUTCOME: ${{ steps.sync.outcome }}
+          TARGET_OUTCOME: ${{ steps.target.outcome }}
+          STATIC_OUTCOME: ${{ steps.static.outcome }}
+          UNIT_OUTCOME: ${{ steps.unit.outcome }}
+          RENDER_OUTCOME: ${{ steps.render.outcome }}
         run: |
           set -euo pipefail
-          uv run python - <<'PY'
+          python3 - <<'PY'
           import json
           import os
           from datetime import UTC, datetime
           from pathlib import Path
 
           def tail(path: str, lines: int = 8) -> list[str]:
-              text = Path(path).read_text(encoding='utf-8', errors='replace').splitlines()
+              file_path = Path(path)
+              if not file_path.is_file():
+                  return []
+              text = file_path.read_text(encoding='utf-8', errors='replace').splitlines()
               return text[-lines:]
 
+          checks = {
+              'install_uv': os.environ['INSTALL_UV_OUTCOME'],
+              'locked_environment': os.environ['SYNC_OUTCOME'],
+              'target_reporting_tests': os.environ['TARGET_OUTCOME'],
+              'repository_static_checks': os.environ['STATIC_OUTCOME'],
+              'full_unit_tests': os.environ['UNIT_OUTCOME'],
+              'libreoffice_docx_render': os.environ['RENDER_OUTCOME'],
+          }
           payload = {
               'schema_version': 'offline-reporting-verification.v1',
               'tested_sha': os.environ['GITHUB_SHA'],
               'runner_os': os.environ.get('RUNNER_OS'),
               'verified_at': datetime.now(UTC).isoformat(),
-              'result': 'success',
-              'checks': {
-                  'locked_environment': 'success',
-                  'target_reporting_tests': 'success',
-                  'repository_static_checks': 'success',
-                  'full_unit_tests': 'success',
-                  'libreoffice_docx_render': 'success',
-              },
+              'result': 'success' if all(value == 'success' for value in checks.values()) else 'failure',
+              'checks': checks,
               'target_tests_tail': tail('/tmp/target-tests.txt'),
               'static_checks_tail': tail('/tmp/static-checks.txt', 16),
               'unit_tests_tail': tail('/tmp/unit-tests.txt'),
-              'rendered_pdf_bytes': int(Path('/tmp/report-pdf-size.txt').read_text().strip()),
+              'rendered_pdf_bytes': int(Path('/tmp/report-pdf-size.txt').read_text().strip()) if Path('/tmp/report-pdf-size.txt').is_file() else None,
           }
           path = Path(os.environ['EVIDENCE_PATH'])
           path.parent.mkdir(parents=True, exist_ok=True)
@@ -153,3 +177,6 @@ jobs:
           git add -- "$EVIDENCE_PATH"
           git commit -m '验证：记录离线报告分支门禁结果 [skip ci]'
           git push origin "HEAD:${GITHUB_REF_NAME}"
+          if grep -q '"result": "failure"' "$EVIDENCE_PATH"; then
+            exit 1
+          fi
