@@ -378,9 +378,7 @@ def _require_known_excel_sources(path: Path, expected_source_values: set[str]) -
             try:
                 record = UnifiedContentRecordV1.model_validate_json(raw_line)
             except Exception as exc:
-                raise ValueError(
-                    f"Unified Content JSONL 第 {line_number} 行无法解析"
-                ) from exc
+                raise ValueError(f"Unified Content JSONL 第 {line_number} 行无法解析") from exc
             source_value = record.content.source.source_value
             if source_value not in expected_source_values:
                 raise ValueError(

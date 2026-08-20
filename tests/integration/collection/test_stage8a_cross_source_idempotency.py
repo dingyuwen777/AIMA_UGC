@@ -103,8 +103,7 @@ def _write_unified(path: Path, content: CanonicalContentV1, *, invalid_tail: boo
 def _write_unified_records(path: Path, contents: tuple[CanonicalContentV1, ...]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = "".join(
-        UnifiedContentRecordV1(content=content, matched_keywords=["爱玛"]).model_dump_json()
-        + "\n"
+        UnifiedContentRecordV1(content=content, matched_keywords=["爱玛"]).model_dump_json() + "\n"
         for content in contents
     )
     path.write_text(payload, encoding="utf-8")
