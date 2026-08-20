@@ -1014,9 +1014,14 @@ report_template.md
 
 ### 18.5 Mermaid 与 Word 图表
 
-Markdown 当前使用 Mermaid `pie` 与 `xychart`，分别承载饼图、柱状图和折线图。Word
-转换器解析本模板实际使用的两类 Mermaid，写入 Office 原生 Chart，并为每张图内嵌对应的
-XLSX 数据；图表数据与 Markdown 使用同一份统计结果。
+Markdown 当前使用 Mermaid `pie` 与 `xychart-beta`，分别承载饼图、柱状图和折线图。Word
+转换器同时兼容历史 `xychart` 输入，解析模板实际使用的两类 Mermaid，写入 Office 原生
+Chart，并为每张图内嵌对应的 XLSX 数据；图表数据与 Markdown 使用同一份统计结果。Word
+中的所有饼图百分比固定显示小数点后两位。
+
+统一 Excel 和报告只在展示层把 `xiaohongshu`、`douyin`、`weibo`、`bilibili`、
+`kuaishou` 显示为“小红书”“抖音”“微博”“哔哩哔哩”“快手”；Canonical JSONL、
+分析输入和数据库仍使用英文稳定平台 ID。未知平台保持原值，不因缺少展示映射而丢失。
 
 运行时不依赖 Mermaid 在线服务、Pandoc、LibreOffice、Matplotlib、pandas 或额外 Python 文档库。当前 Word 转换器不是通用 Markdown/Mermaid 排版引擎；模板如果加入未支持的 Mermaid 类型会明确失败，不会静默生成缺图 Word。
 

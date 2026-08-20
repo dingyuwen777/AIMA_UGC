@@ -154,6 +154,11 @@ Raw/来源定位
 外部 ID 一律按文本写入；一级/二级评论关系必须保留稳定 comment/root/parent ID，不能依赖 Excel 行位置猜关系。
 Excel 的“内容ID”来自归一化记录的 `external_content_id`，不是导出器临时生成的内部 UUID；隐藏该列只改变展示，不改变内容、标签和评论的归一化关联。
 
+“平台”列同样属于受控展示投影。Canonical、`UnifiedDataExcelV1` 输入记录和数据库继续使用
+英文稳定平台 ID；共享 Exporter 把当前已知的 `xiaohongshu`、`douyin`、`weibo`、
+`bilibili`、`kuaishou` 分别显示为“小红书”“抖音”“微博”“哔哩哔哩”“快手”。
+三个 Sheet 复用同一映射，未知平台保持原值。该规则不修改输入 Contract、关联键或上游数据。
+
 ### 3.1 源 Excel 表头和 Sheet 发现边界
 
 `aima-monitoring-excel.v1` 只把下列源表头作为 Sheet 必需列：
@@ -580,14 +585,14 @@ Report Dataset
 
 一级/二级标签的每日趋势需要时间维度，因此从“内容”Sheet 的 `发布时间` 与对应换行标签列统计；一级/二级总体频次仍以“标签明细”Sheet 为准。
 
-默认共享报告面向营销管理层直接阅读和汇报，不再把实现过程、模板、Workbook/Sheet、Markdown/Word 转换等技术说明放进最终正文。默认正文先展示确定性管理摘要和风险关注，再展开完整统计：
+默认共享报告面向营销管理层直接阅读和汇报，不再把实现过程、模板、Workbook/Sheet、Markdown/Word 转换等技术说明放进最终正文。默认正文先展示确定性管理摘要和正负面舆情重点关注，再展开完整统计：
 
 ```text
 管理摘要
-→ 内容/评论声量、覆盖平台、负面占比、声量峰值、主要平台、首要议题、热点关键词
+→ 内容/评论声量、覆盖平台、正面/中性/负面占比、声量峰值、主要平台、首要议题、热点关键词
 
-风险关注
-→ 负面平台分布、负面一级议题、负面二级议题
+舆情重点关注
+→ 客观情感概览、正面平台/一级/二级议题、负面平台/一级/二级议题
 
 平台与情感
 → 平台声量、平台 × 情感交叉结构、平台每日趋势
@@ -632,10 +637,10 @@ Markdown 图表使用 Mermaid fenced block。当前模板只使用：
 
 ```text
 pie
-xychart
+xychart-beta
 ```
 
-Markdown 仍保留 Mermaid 源码，并以受控注释保存 xychart 的系列名称，使“同一份 Markdown → Word”时不会丢失平台/情感等业务图例。Word 转换器只承诺支持本报告实际使用的 pie/bar/line 子集；对于未支持的 Mermaid 类型必须 fail closed，不能静默忽略导致 Markdown 与 Word 内容不一致。
+生成器固定输出 `xychart-beta`，以兼容当前目标 Markdown 阅读器；Word 转换器同时接受 `xychart-beta` 和历史 `xychart` 输入。Markdown 仍保留 Mermaid 源码，并以受控注释保存 XY 图的系列名称，使“同一份 Markdown → Word”时不会丢失平台/情感等业务图例。Word 转换器只承诺支持本报告实际使用的 pie/bar/line 子集；对于未支持的 Mermaid 类型必须 fail closed，不能静默忽略导致 Markdown 与 Word 内容不一致。
 
 Word 当前不再把图表写成静态 PNG，而是生成 Office 原生 Chart，并为每张图嵌入对应的 XLSX 数据包：
 
@@ -646,6 +651,12 @@ word/embeddings/chartN.xlsx
 ```
 
 因此支持 Office Chart 编辑的 Word 可以直接“编辑数据”，人工校验或调整分类、系列、数值、标题、图例和样式；报告仍以 Office 原生图表引擎保证正常展示。图表的业务数据必须与 Markdown 中同一份统计数据一致，禁止为了 Word 再计算第二套统计。
+
+Word 的通用显示规则为：ChartSpace 无外轮廓，折线系列宽度为 2.25 磅，所有饼图百分比
+标签固定显示小数点后两位；表格占满正文可用宽度并使用固定内容感知列宽、深蓝表头、
+隔行底色、单元格内边距和数值右对齐。报告读取旧 Excel 中的已知英文平台 ID 时，也使用
+与共享 Exporter 相同的中文展示映射；未知平台保持原值。显示规则不得改变 Markdown 表格、
+图表数据或报告统计口径。
 
 当前实现不引入 Pandoc、LibreOffice、Matplotlib、pandas 或在线 Mermaid 服务作为运行时依赖；内嵌图表数据复用仓库已经锁定的 openpyxl，OOXML 包由现有 Python 运行时生成。LibreOffice/Office 只可作为开发或交付视觉验证工具，不是生产报告生成依赖。不同办公软件版本允许存在主题颜色、字体和分页的轻微渲染差异，但不能影响图表数据、可编辑性或正文信息完整性。
 
