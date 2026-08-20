@@ -599,6 +599,9 @@ Stage 8 不作为一个巨型 PR 一次完成。按以下最小正式单元推�
 主要工作：
 
 - 上传/登记 Excel Source Artifact；
+- 复用 System Owner 现有 `keyword_packs`、`keywords`、`keyword_pack_items`，建立本阶段 Import
+  所需的最小关键词写入/读取 HTTP Contract；
+- Import 选择数据库词包并在持久化 Job 中冻结 Pack 身份、版本与实际执行关键词快照；
 - 创建 Processing/Import Batch；
 - 创建并查询持久化 Import Job；
 - Batch 状态、阶段、统计、错误摘要；
@@ -606,6 +609,9 @@ Stage 8 不作为一个巨型 PR 一次完成。按以下最小正式单元推�
 - 固定 OpenAPI；
 - 生成 Orval Client；
 - API/Contract/PostgreSQL Integration 测试。
+
+Stage 8B 不实现 Keyword Pack Vue 页面；本阶段生成的 Orval Client 供 Stage 8F 页面直接复用，不能
+为提前展示页面而手写平行 Client。
 
 ### 8C：采集运行中心首个完整前后端纵切
 
@@ -658,7 +664,7 @@ Stage 8 不作为一个巨型 PR 一次完成。按以下最小正式单元推�
 
 主要工作按已解决业务门禁推进：
 
-- Keyword Pack 页面/API；
+- Keyword Pack Vue 页面，以及页面需要但 Stage 8B Import 最小 Contract 未覆盖的管理 API；
 - Collection Plan 页面/API；
 - Provider Config/Secret 写入只在安全边界批准后实现；
 - App Shell；
