@@ -13,6 +13,7 @@ affected_areas:
   - "ingestion"
   - "http-api"
   - "job-runtime"
+  - "system-keyword-catalog"
   - "openapi-orval"
 affected_paths:
   - "backend/src/aima_ugc/modules/ingestion/"
@@ -49,7 +50,11 @@ Artifact Store 或 Job Runtime。
 - 当前公开 OpenAPI 只有 `/health/live` 与 `/health/ready`；Stage 8B Route、统一 HTTP 错误层、
   Import Job Payload/Handler 和查询 API 均不存在。
 - `imports_test/keyword_pack.txt` 被正式文档明确限定为本地人工入口配置；正式 Import 的相关性
-  词包来源和角色尚未批准，不能静默复用该调试文件。
+  词包不能静默复用该调试文件。
+- 用户已确认正式相关性 Filter 的关键词必须能够从前端配置并写入 PostgreSQL 保存；因此不采用
+  “上传请求临时携带关键词”或“继续读取本地 `keyword_pack.txt`”作为正式事实源。当前仓库已有
+  System Owner 的 `keyword_packs`、`keywords`、`keyword_pack_items` 及 PostgreSQL Repository，
+  但尚无关键词 HTTP Contract/API，也没有冻结 Discovery / Relevance 的业务角色关系。
 
 # 成功标准
 
@@ -111,21 +116,26 @@ Artifact Store 或 Job Runtime。
   Schema 无法保证正确性，必须先重新完成 L3 Schema 门禁，不能静默加列。
 - OpenSpec 目录当前不存在，本 Change 是当前仓库的唯一 Active Change 协议。
 
-## 待用户决定：正式相关性 Filter 的关键词来源
+## 已确认：正式相关性 Filter 的关键词事实源
 
-方案 A（推荐）：上传请求显式携带本次 `keywords`，Job Payload 持久化经校验的规范化列表；
-`profile` 固定为当前正式 Profile，`sheet_name` 只作为可选精确选择。它不复用调试词包，也不把
-Collection Keyword Pack 的角色误当 Import Relevance，Schema/Migration 为零，未来 UI 可明确展示
-本次输入。代价是调用方必须提交关键词。
+- 用户确认关键词应由前端页面配置并写入数据库，以便配置和保存。
+- 结合当前单一 Owner/不得新建平行 Repository 的约束，正式实现应复用 System Owner 已有的
+  `keyword_packs`、`keywords`、`keyword_pack_items`，而不是新建 Import 专用关键词表。
+- Import 创建 Contract 应引用数据库词包，并在持久化 Job 中冻结足以重放和审计的 Pack 身份、版本及
+  实际执行关键词快照；不能让排队中的 Job 因词包随后编辑而静默改变语义。
+- `imports_test/keyword_pack.txt` 继续只服务本地调试入口，不成为 HTTP/Worker 生产事实源。
 
-方案 B：请求携带现有 PostgreSQL `keyword_pack_id`，Worker 读取该 Pack。它能复用数据库配置，
-但仓库尚未批准“采集发现词包 = 导入相关性清洗词包”，会把两个业务角色静默合并，并增加
-对象存在/状态/快照/后续变更语义。
+## 待用户决定：关键词配置页面的 Stage 范围
 
-方案 C：Stage 8B 不做相关性过滤，所有合法 Canonical 行直接去重入库。Contract 最小，但改变
-Stage 8A 既有处理语义，也不满足 Blueprint 17 和本任务给出的 Reader → Mapper → Filter → Dedup 链。
+当前 Blueprint 把 Keyword Pack 页面/API 排在 Stage 8F，原始 Stage 8B 授权也明确禁止正式 Vue 业务
+页面；用户最新要求“可以在前端页面配置，然后写入数据库”可能表示最终产品要求，也可能要求把页面
+提前到本 Stage。推荐保持 Stage 边界：Stage 8B 只实现最小 Keyword Pack 写入/读取 HTTP Contract、
+Import 对 Pack 的选择/快照和生成 Orval Client，实际 Vue 配置页面仍在 Stage 8F 实现。这样本阶段仍是
+Import HTTP / Job Productization，且未来页面不需手写平行 Client。若用户明确要求本次就交付页面，
+必须先扩展本 Change 的前端范围、成功标准和 E2E/视觉验收，不能静默进入 Stage 8F。
 
-在用户决定前，不实现 HTTP Request、Job Payload、Handler 或依赖该语义的测试。
+页面范围确认后，仍需一次只解决下一个上游业务门禁：Discovery 与 Relevance 是同一业务角色，还是
+共享同一关键词父事实但由各自使用关系区分；当前数据库只保存词包父事实，没有角色字段。
 
 ## 后续仍需按顺序冻结的技术/安全边界
 
@@ -145,7 +155,9 @@ Stage 8A 既有处理语义，也不满足 Blueprint 17 和本任务给出的 Re
 # 任务
 
 - [x] 调查当前实现和事实源
-- [ ] 取得正式相关性 Filter 关键词来源的用户决定并同步本 Change/长期事实源
+- [x] 取得正式相关性 Filter 关键词必须由前端配置并写入 PostgreSQL 的用户决定
+- [ ] 确认关键词配置页面是否仍按 Blueprint 留在 Stage 8F
+- [ ] 冻结 Discovery / Relevance 使用关系与正式关键词写入规范化语义
 - [ ] 冻结 Excel HTTP 传输与压缩/解压大小边界
 - [ ] 建立 HTTP Contract/Error/OpenAPI、API Service 和 Import Job/Worker 的失败测试并观察正确 Red
 - [ ] 完成最小实现
