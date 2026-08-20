@@ -5,70 +5,46 @@
 
 ## 1. 本文负责什么
 
-本文是 Stage 8 的**数据入口、统一入库、手工调试可选入库、首个业务前端纵切与实施顺序**的详细长期事实源。
+本文是 Stage 8 的**数据入口、统一入库、手工调试可选入库、首个业务前端纵切与实施顺序**的唯一详细长期事实源。
 
-它负责：
+它解决以下问题：
 
-1. 第一版产品的主要/辅助数据入口；
-2. Excel、TikHub 和未来其他 Provider 如何收敛到同一 Canonical / Ingestion / PostgreSQL；
-3. Processing / Import Batch 的业务定位；
-4. File Import 与 TikHub 的合法来源链；
-5. `imports_test` / `tikhub_test` 的 file-only 与 database 两种模式；
-6. 手工数据库模式对 PostgreSQL 18、Schema 和 Provider Config 的前置条件；
-7. 数据库跨批次/跨来源去重与历史保留；
-8. Stage 8A—8F 的实施顺序和页面能力映射。
+1. 第一版产品以什么作为主要数据入口；
+2. Excel、TikHub 和未来其他 Provider 如何在同一个 Canonical / Ingestion / PostgreSQL 体系汇合；
+3. `imports_test` / `tikhub_test` 手工运行时怎样保持“文件优先可调试”同时允许显式写库；
+4. 手工写库时对本地 PostgreSQL 的前置条件是什么；
+5. 文件内去重与数据库跨来源去重各负责什么；
+6. 最新 Figma/页面目标中的哪些能力已经有后端、哪些只具备底层能力、哪些尚未实现；
+7. Stage 8 应按什么顺序开发，避免先批量做 API 或先批量画页面造成返工。
 
-本文不复制 Canonical 字段、具体 TikHub endpoint、OpenAPI 字段或完整数据库 DDL。机器事实形成后，以当前 Contract、Migration、代码、锁文件和测试为准。
+本文不复制 Canonical 字段、数据库列、OpenAPI 字段或 TikHub endpoint。机器事实形成后仍以当前 Contract、Migration、锁文件、代码和测试为准。
 
-## 2. 当前阶段事实
+## 2. 当前机器事实与目标状态必须分开
 
-### 2.1 已闭环
+截至本文固化时，当前机器事实为：
 
-- Stage 1—7 已闭环；
-- 临时 P1 已闭环；
-- **Stage 8A：Unified Manual Ingestion Foundation 已完成代码实现和 PostgreSQL 18 验证，当前等待 PR 集成闭环。**
+- `imports_test` 是脱离数据库的人工 Excel 调试入口，当前链路为 Excel → Canonical JSONL → 关键词清洗 → 稳定身份去重 → AI 打标 → Excel；
+- `tikhub_test` 是脱离数据库的五平台人工 TikHub 调试入口，当前逐请求保存 Raw、Canonical、run summary 与 Excel，并复用正式 Operation/分页/Mapper/Decision；
+- 正式 TikHub Collection/Scheduler/Worker 已经可以通过现有生产链进入 PostgreSQL；
+- Excel Mapper 已经输出 Provider-neutral `CanonicalContentV1`；
+- `ContentIngestionService` 是 Canonical Content/Comment 的统一生产摄取入口；
+- `PostgresContentRepository` 是 Content 业务表唯一 PostgreSQL 写 Owner；
+- 当前正式业务 OpenAPI 尚未建立批量业务接口，不能把 Figma 中的按钮、筛选、进度和 KPI 当成已经存在的 API；
+- 当前 `PostgresContentRepository` 的来源历史要求合法 `provider_attempt_id + raw_artifact_id`，Stage 8 不允许通过删校验、填假 ID 或直接 SQL 绕过来源链。
 
-Stage 8A 当前机器事实：
+因此本文中的 Import Batch、网页上传、任务进度、可选数据库写入、运行中心 API 等属于**已批准目标设计**，不是当前已经实现的机器事实。
 
-- `processing_import_batches` 已由 forward Migration `20260820_0019` 建立；
-- `ProviderRequestV1/provider_requests` 已一般化为 Collection Scope XOR Import Batch 双父级；
-- Excel File Import 不伪造 Collection Run/Scope/Candidate；
-- Excel 原始 XLSX 通过 `ArtifactService` 保存为 Input Artifact；
-- Import Batch 通过真实 non-billable Provider Request/Attempt 绑定 Input Artifact；
-- Canonical 后统一走 `ContentIngestionService → PostgresCompleteContentRepository → PostgresContentRepository`；
-- `imports_test` 默认 file-only，显式 `write_to_database=True` 后调用正式 File Import bootstrap；
-- `tikhub_test` 默认 file-only，显式数据库模式后复用正式 manual Collection Run/Scope、Provider Request/Attempt、ProviderDispatchService、Raw、Candidate-before-Mapper 和正式 Ingestion；
-- TikHub DB 模式同一次外部响应同时保留本地调试 Raw 镜像并进入正式 Raw Artifact，不发第二次付费请求，不从 JSONL 二次回灌；
-- 数据库/Schema 不可用时明确失败，不自动管理 Docker，不自动运行 Migration；
-- 同一 Excel 重复导入、Excel→TikHub 跨来源、较新 Observation 更新、数据库失败后重试均已由真实 PostgreSQL 18 集成测试覆盖。
+## 3. 已确认的第一版产品数据入口
 
-### 2.2 尚未实现
-
-Stage 8A 完成不代表以下能力已经存在：
-
-- Stage 8B 文件上传/Import Batch HTTP API；
-- Stage 8C 采集运行中心正式页面/API；
-- KPI/Cursor 页面查询；
-- Content Center；
-- TikHub 补采按钮；
-- Keyword Pack / Collection Plan 正式业务页面；
-- Analysis 数据库页面；
-- 新认证/权限系统；
-- 预算系统；
-- Redis/Kafka/RabbitMQ；
-- 正式 Vue/Figma 页面实现。
-
-这些能力必须按后续最小正式单元继续开发，不能把底层 Foundation 冒充成产品页面已经完成。
-
-## 3. 第一版产品数据入口
-
-固定采用：
+第一版产品固定采用：
 
 ```text
 Excel 手工导入 = 主要业务数据入口
 TikHub          = 辅助发现 / 补漏 / 补充详情与评论
 未来其他来源    = 继续通过 Provider Adapter / Mapper 接入
 ```
+
+这描述的是**产品数据入口优先级**，不是说 Excel 文件成为业务数据库。
 
 PostgreSQL 仍然是唯一业务事实库：
 
@@ -81,487 +57,572 @@ CanonicalContentV1 / CanonicalCommentV1
         ↓
 ContentIngestionService
         ↓
-Content Owner Repository
+PostgresContentRepository
         ↓
-PostgreSQL Current / Version / Metric / Coverage / Source History
+PostgreSQL Current / Version / Metric / Coverage
 ```
 
-Excel 文件、调试 JSONL、Raw、导出 Excel 都不是业务数据库。
+`02-采集系统与数据标准化.md` 中 TikHub 的关键词滚动发现、话题、账号、热榜、搜索建议等仍然是**Collection 子系统启用时的采集策略**；它们不再表示第一版产品整体的数据入口优先级高于 Excel。
 
-## 4. Canonical 之后只有一套业务数据库写入
+## 4. Canonical 之后只有一套数据库写入代码
+
+不同来源的差异必须在 Canonical 之前结束。
 
 ### 4.1 Excel
-
-P1 文件处理链保持：
 
 ```text
 Excel 文件
 → Excel Reader
 → Excel Mapper
-→ CanonicalContentV1
-→ 关键词相关性清洗
-→ 稳定身份批次去重
-→ UnifiedContentRecordV1 JSONL
-```
-
-Stage 8A 显式数据库阶段：
-
-```text
-原始 XLSX
-→ ArtifactService 保存 Input Artifact
-→ ProcessingImportBatch
-→ import-parent Provider Request / non-billable Attempt
-→ Attempt.raw_artifact_id = Input Artifact
-→ 读取既有 UnifiedContentRecordV1.content
-→ 用真实 Request / Attempt / Artifact 绑定 Canonical Source
-→ ContentIngestionService
-→ PostgresCompleteContentRepository
-→ PostgresContentRepository
+→ Canonical
+→ 相关性清洗 / 稳定身份去重
+→ 统一 Ingestion
 → PostgreSQL
 ```
-
-数据库阶段**不复制 Excel Reader/Mapper/Filter/Dedup**，也不把调试脚本变成第二套生产实现；它消费前一文件阶段已经产生并通过 Contract 的 Provider-neutral 内容记录，并将其来源绑定到正式 Import 执行事实。
 
 ### 4.2 TikHub
 
-默认 file-only：
-
 ```text
 TikHub HTTP
-→ 本地调试 Raw
-→ 生产 Mapper
-→ 本地 Canonical
-→ 本地 Excel / run summary
-```
-
-显式 DB 模式：
-
-```text
-manual Collection Run / keyword Scope
-→ Provider Request / billable Attempt
-→ ProviderDispatchService
-→ 同一次 TikHub HTTP
-→ 本地调试 Raw 镜像
-+ 正式 Raw Artifact
-→ Candidate-before-Mapper
-→ 生产 Mapper
+→ Raw Artifact
+→ TikHub Mapper
 → Canonical
-→ 本地 Canonical / Excel
-+ 正式 ContentIngestionService
-→ PostgreSQL
-```
-
-禁止做成：
-
-```text
-先跑 tikhub_test
-→ 导出 JSONL
-→ 再写 TikHubDatabaseWriter
+→ 统一 Ingestion
 → PostgreSQL
 ```
 
 ### 4.3 硬规则
 
-禁止新增：
+禁止：
 
 ```text
 ExcelDatabaseWriter
 TikHubDatabaseWriter
 OfficialApiDatabaseWriter
-imports_test 私有 Repository
-tikhub_test 私有 Repository
 ```
 
-所有 Provider-neutral Canonical 最终复用 Content Owner；调试入口只负责配置、调用和展示结果。
-
-## 5. 文件与数据库职责
+所有 Provider-neutral Canonical 最终都必须复用：
 
 ```text
-文件
-= 原始证据 / 可重放输入 / 调试产物 / 人工审阅派生物
-
-PostgreSQL
-= 唯一业务事实 / Current / History / Query / Frontend Source
+ContentIngestionService
+→ PostgresContentRepository
 ```
 
-数据库模式开启后：
+以后增加官方 API、Apify、自建采集器、其他 Excel Profile 或历史导入时，只增加必要的 Reader/Adapter/Mapper 和来源证据，不增加第二套 Content 业务表写入逻辑。
 
-- 既有文件仍保留；
-- 不因为 DB 成功删除文件；
-- 不因为文件存在就把 `output/runs` 当数据库；
-- 文件阶段成功而 DB 阶段失败时，文件继续保留；
-- DB 阶段必须报告失败；
-- 修复 DB/Schema/输入后允许重试；
-- 重试不允许制造第二条同身份业务内容。
+## 5. 文件和数据库同时保留，但职责不同
 
-## 6. 两层去重
+第一版手工采集与正式导入都遵循：
 
-### 6.1 批次内
+```text
+文件 = 原始证据 / 调试产物 / 可重放输入 / 人工审阅派生物
+数据库 = 业务事实、统一 Current、历史、查询和前端数据源
+```
 
-Excel P1 去重：
+开启数据库写入以后，不能因为数据库写入成功就删除本次已经生成的 Raw/Canonical/JSONL/Excel 文件。
+
+同样，也不能因为文件已经存在就把本地 `output/runs/` 当作正式业务数据库。
+
+如果文件阶段成功而数据库写入失败：
+
+- 已生成文件继续保留；
+- 数据库阶段明确失败；
+- 不把“文件已保存”冒充“业务已入库”；
+- 修复数据库或来源链后允许幂等重试入库；
+- 重试不能产生第二条同身份 Content/Comment。
+
+## 6. 两层去重必须同时存在
+
+### 6.1 批次内去重
+
+`imports_test` 当前已有 Provider-neutral 稳定身份去重：
 
 ```text
 (platform, external_content_id)
 ```
 
-TikHub 调试同一运行内也按稳定 Content/Comment ID 避免重复处理与重复详情/评论费用。
+`tikhub_test` 当前也按平台稳定内容 ID / 评论 ID 避免同一次运行重复处理和重复付费。
 
-作用：
+这一层用于：
 
 - 降低同批重复处理；
 - 避免同一内容重复 AI；
-- 避免同一帖子跨关键词重复详情/评论；
-- 形成清晰的冲突审计。
+- 避免同一帖子跨关键词重复详情/评论费用；
+- 输出清晰的批次统计和冲突审计。
 
-### 6.2 PostgreSQL 最终收敛
+### 6.2 数据库跨来源收敛
 
-Content：
+数据库仍然必须执行最终业务身份收敛。
+
+内容：
 
 ```text
 (platform, external_content_id)
 ```
 
-Comment：
+评论：
 
 ```text
 (content_id, external_comment_id)
 ```
 
-数据库层是跨批次、跨来源、跨时间的最终去重边界。
-
-示例：
+典型情况：
 
 ```text
 上午 Excel 导入 xhs + note_123
-→ 一个 Current Content
+→ 写入同一个 Content
 
-下午 TikHub 观察到同一个 xhs + note_123
-→ 仍是同一个 Current
-→ 合法较新字段/Version/Metric 更新
-→ 新 Attempt / Raw / Candidate / Source History 仍保留
+下午 TikHub 再观察到 xhs + note_123
+→ 更新同一个 Content 的 Current/Version/Metric/来源历史
+→ 不创建第二条业务内容
 ```
 
-## 7. Processing / Import Batch
+因此“Excel 已经去重”不能成为绕过数据库唯一约束/Upsert 的理由；数据库层是跨批次、跨来源、跨时间的最终去重边界。
 
-Stage 8 固定采用方案 B：Processing / Import Batch 是 Excel 主入口一次业务处理的父事实。
+重复 Observation 的来源证据和历史不得因为业务内容收敛而被静默删除。
 
-实际 Stage 8A Schema：
+## 7. 采用方案 B：Processing / Import Batch 是用户可理解的业务父记录
+
+Stage 8 固定采用方案 B：增加一个面向用户和页面的 **Processing / Import Batch（处理/导入批次）** 作为 Excel 主入口的业务执行父记录。
+
+它不是新的内容事实库，也不替代现有 `collection_run`。
+
+概念关系：
 
 ```text
-processing_import_batches
-├─ id
-├─ input_artifact_id   # NOT NULL FK artifacts
-├─ job_id              # 当前可空，unique FK jobs
-├─ status              # processing / succeeded / failed
-├─ stats               # 当前 rows_seen/rows_ingested/rows_rejected
-├─ error_summary
-├─ created_at
-├─ started_at
-└─ finished_at
+Processing / Import Batch
+│
+├─ Source Excel Artifact
+│
+├─ Import execution
+│   ├─ read / map
+│   ├─ relevance filter
+│   ├─ batch deduplicate
+│   └─ database ingestion
+│
+├─ downstream Job（能力真正产品化后）
+│   └─ Analysis 等
+│
+└─ optional supplement
+    └─ TikHub Collection Run
 ```
 
 规则：
 
-- Owner = `ingestion`；
-- 不复制 `contents/comments` 业务字段；
-- 当前同步人工入口允许 `job_id=null`；
-- Stage 8B 产品化后再冻结上传 API、持久 Job、页面进度的正式绑定；
-- TikHub 补采继续使用 Collection Run，不创建 TikHub Import Batch；
-- 一个 Import Batch 可以完全没有 TikHub 补采。
+- Batch 只保存执行身份、来源、阶段、统计、错误摘要、关联 Job/Run/Artifact 等业务执行事实；
+- Batch 不复制 `contents/comments` 业务字段；
+- 最终 Content/Comment 仍只归 Content Owner；
+- TikHub 补采继续复用 Collection Run，不复制一套 TikHub Batch；
+- 一个 Batch 可以没有 TikHub 补采；
+- TikHub 补采不是 Excel 数据入库成功的必要条件。
 
-## 8. File Import 正式来源链
+最终表名、字段和关系必须在 Stage 8A 的 L3 Change 中结合当前 Migration/Contract 冻结，不在 Blueprint 伪造机器 Schema。
 
-Stage 8A 最终采用：
+## 8. 来源追溯不能为了文件导入而降级
 
-```text
-Input Excel Artifact
-→ ProcessingImportBatch
-→ ProviderRequestV1(import_batch_id=...)
-→ non-billable ProviderAttempt
-→ Attempt.raw_artifact_id = Input Artifact
-→ Canonical Source
-→ Content Ingestion
-```
-
-`provider_requests` 约束：
+当前 PostgreSQL Content 历史要求合法：
 
 ```text
-scope_id        nullable FK collection_scopes
-import_batch_id nullable FK processing_import_batches
-
-CHECK exactly_one(scope_id, import_batch_id)
-UNIQUE(scope_id, request_fingerprint)
-UNIQUE(import_batch_id, request_fingerprint)
+provider_attempt_id
++
+raw_artifact_id
 ```
 
-这是对既有 Provider Request 来源父级的**最小一般化**：
+因此正式 Excel 入库和手工调试可选入库都必须先解决**文件来源如何进入正式来源链**。
 
-- Collection 历史仍使用 `scope_id`；
-- File Import 使用 `import_batch_id`；
-- Provider Attempt/Content 来源复合约束保持不变；
-- 不新增 FileAttempt/FileArtifact 第二套体系；
-- 不伪造 Collection Run/Scope；
-- 不删除 Content Repository 来源校验；
-- 不改写历史 Alembic Revision。
+Stage 8A 必须选择和验证最小兼容实现，原则固定为：
 
-File Import 不创建 Collection Candidate。逐行来源位置继续保存在 Canonical `source.item_locator`；真实来源父事实由 Artifact/Batch/Request/Attempt 保证。
+1. Excel 源文件/受控输入必须有不可变 Artifact/来源证据；
+2. 文件读取/导入必须形成可追溯执行 Attempt/等价正式来源事实；
+3. Canonical 写入前补齐当前 Content Owner 所需的合法来源引用；
+4. 不允许给 Excel 伪造随机 `provider_attempt_id/raw_artifact_id`；
+5. 不允许删除 `PostgresContentRepository` 的来源校验来“方便导入”；
+6. 如果复用现有 Collection/Provider Request/Attempt 能以最少代码保持语义清晰，应优先复用；如果真实 Schema 证明需要一般化文件来源 Contract，则必须作为同一个 L3 Change 设计 Migration/兼容/回滚，不能由调试脚本自行扩表。
 
-## 9. `imports_test` 两种模式
+这一步是 Stage 8A 的核心架构门禁。
 
-### 9.1 默认：file-only
+## 9. `imports_test` / `tikhub_test` 永久保留
 
-```python
-WRITE_TO_DATABASE = False
-```
+两个目录继续作为人工调试/验证入口，不删除。
 
-或：
+### 9.1 默认模式：只写文件
 
-```python
-run_all(write_to_database=False)
-```
-
-默认行为：
-
-- 不读取正式数据库配置；
-- 不要求 PostgreSQL；
-- 不管理 Docker；
-- 不运行 Alembic；
-- 继续保存 Canonical、过滤/去重 JSONL、Analysis、Excel 和 run summary；
-- 继续复用生产 Reader/Mapper/Analysis/Exporter。
-
-### 9.2 显式数据库模式
-
-```python
-run_all(write_to_database=True)
-```
-
-文件处理阶段完成后调用正式：
+当前行为保持兼容：
 
 ```text
-aima_ugc.bootstrap.manual_ingestion.ingest_excel_run_to_postgres
+WRITE_TO_DATABASE = False（目标默认）
 ```
 
-数据库模式：
+含义：
 
-- 使用当前仓库 `AIMA_DB_*`/Secret 配置；
-- 真实 `SELECT 1` 检查 PostgreSQL；
-- 检查 Stage 8A Schema/约束；
-- 不自动运行 Migration；
-- 不自动启动容器；
-- DB 失败向调用方抛错；
-- 已生成文件不删除。
+- 不要求 PostgreSQL 可用；
+- 不启动 API/Scheduler；
+- 不写业务数据库；
+- 继续保存既有 Raw/Canonical/JSONL/Excel/run summary；
+- 调试逻辑继续复用生产 Reader/Mapper/Decision/Analysis/Exporter。
 
-## 10. `tikhub_test` 两种模式
+正式实现时配置名称可以在当前 Change 中冻结，但语义必须保持“默认不写库，显式 opt-in”。
 
-### 10.1 默认：file-only
+### 9.2 可选模式：文件 + 数据库
 
-五平台公共入口和 `run_platform()` 都固定：
+显式开启：
 
-```python
-write_to_database=False
-provider_config_id=None
+```text
+WRITE_TO_DATABASE = True
 ```
 
-默认行为与 Stage 7 调试保持兼容，不装配数据库 Runtime。
+目标行为：
 
-### 10.2 显式数据库模式
-
-需要：
-
-```python
-write_to_database=True
-provider_config_id=<正式 provider_configs.id>
+```text
+先完成并保留本次文件产物
+→ 建立合法来源链
+→ Canonical
+→ 统一 Ingestion
+→ PostgreSQL
 ```
 
-前置检查：
+硬规则：
 
-1. PostgreSQL 18 可访问；
-2. Schema 已迁到 Stage 8A；
-3. `provider_config_id` 存在、启用、`provider=tikhub`；
-4. DB Provider Config `base_url` 与调试 `.env` 相同；
-5. 正式 `secret_ref` 读取的 API Key 与调试 `.env` API Key 相同；
-6. Secret 只做常量时间比较，不输出原文。
+- 文件仍然保留；
+- `imports_test` 不直接写 SQL；
+- `tikhub_test` 不直接写 SQL；
+- 二者都不得新建自己的 Repository；
+- 二者最终复用 ContentIngestionService/PostgresContentRepository；
+- `tikhub_test` 开启写库后优先复用既有正式 Collection/Provider/Raw/Candidate/Ingestion 执行链，而不是把调试文件再写出一套生产 Provider 路径；
+- `imports_test` 开启写库后复用正式 File Import/Processing Batch 执行入口；调试脚本只准备参数并调用正式实现。
 
-显式 DB 模式仍使用现有五平台 Operation/Mapper/Decision；同一网络请求的响应同时用于调试文件和正式来源链。
+## 10. 手工写库模式的本地数据库前置条件
 
-## 11. 数据库连接与 Migration 门禁
+`WRITE_TO_DATABASE = True` 时固定假设：
 
-调试数据库模式统一假设：
-
-> 开发者已经启动一个可访问的 PostgreSQL 18 开发数据库。
+> 开发者机器上已经有一个可访问的 PostgreSQL 18 开发数据库实例，通常就是开发者已经启动的本地数据库容器。
 
 调试入口只负责：
 
 ```text
-读取正式配置
+读取现有 AIMA_DB_* 配置
++ Secret 边界
 → 连接
-→ ping
-→ 校验必要 Schema
+→ 校验可用性/必要 Schema 前置条件
 → 执行正式摄取
 ```
 
-禁止：
+调试入口禁止：
 
-- `docker compose up/down`；
-- 创建/删除容器；
-- 自动 Alembic upgrade/downgrade；
-- 修改 Docker 配置；
-- DB 不可用后静默降级成功。
+- 自动 `docker compose up/down`；
+- 自动创建/删除数据库容器；
+- 自动执行破坏性 Migration；
+- 为了方便修改宿主机 Docker 配置；
+- 数据库不可用时静默退回“看起来成功”的文件模式。
 
-Stage 8A Migration：
+如果开发数据库未启动、连接失败或 Schema 不满足当前代码要求：
 
-```text
-20260818_0018
-→ 20260820_0019_stage8a_manual_ingestion
-```
+- DB stage 明确失败；
+- 已生成文件保留；
+- 给出可定位错误；
+- 不把文件阶段成功冒充数据库阶段成功。
 
-必须继续满足：
+Migration 仍由仓库既有 Alembic 入口显式执行，调试代码不代替 Migration 管理。
 
-- base → head；
-- previous → head；
-- downgrade/re-upgrade；
-- `alembic check`；
-- 真实 PostgreSQL 18。
+## 11. 正式网页 Excel 导入链
 
-## 12. AI / Analysis 边界
-
-Stage 8A 不改变 Blueprint 15 的 Analysis Contract、Prompt、taxonomy 或数据库 Owner。
-
-当前 `imports_test` 仍可以在数据库摄取前/后继续现有 P1 AI 文件处理。Stage 8A 只建立手工数据入口统一入库基础，不把 Analysis 数据库页面、分析 Query API 或正式异步分析 Job 提前塞入本阶段。
-
-因此 Blueprint 15 本轮无需修改。
-
-## 13. Stage 8 首个产品纵切目标
-
-Stage 8A 已完成底层 Foundation。下一步 Stage 8B 才开始产品化：
+Stage 8 正式网页入口目标为：
 
 ```text
-网页上传 Excel
-→ Input Artifact
-→ ProcessingImportBatch
-→ 持久 Job
-→ 复用 Stage 8A File Import / Ingestion
-→ 页面查询批次状态/统计/错误
+Vue
+→ 上传/选择 Excel
+→ FastAPI
+→ Processing / Import Batch
+→ Source Artifact
+→ 持久化 Job
+→ 正式 Excel Reader / Mapper
+→ Canonical
+→ 相关性过滤
+→ 稳定身份去重
+→ 合法来源链
+→ ContentIngestionService
+→ PostgresContentRepository
+→ PostgreSQL
+→ Query API
+→ Vue
 ```
 
-Stage 8B 不应重新实现 Reader/Mapper/Ingestion/Repository。
+长文件处理不能在单次 HTTP 请求生命周期内同步跑完。
 
-## 14. 页面能力与后端状态映射
+HTTP 只负责：
 
-| 页面/能力 | 当前后端状态 | Stage 8 处理方式 |
+- 创建 Batch/上传输入；
+- 返回 Batch/Job 身份；
+- 查询状态和统计；
+- 查询错误摘要；
+- 查询最终业务内容；
+- 需要时显式发起后续动作。
+
+Worker 执行实际文件处理和数据库摄取。
+
+## 12. AI 的 Stage 8 边界
+
+P1 已经存在可复用的 Analysis Service、Prompt/Taxonomy、Validator、LLM Adapter、checkpoint 和离线 JSONL 回写。
+
+但当前正式 Analysis PostgreSQL DDL/Migration/API/页面仍没有机器事实。因此：
+
+- Stage 8 不把 AI 标签塞进 `contents` 表；
+- 不为了让 Figma 的“AI 打标”阶段看起来完整而复制 JSONL 标签到前端假数据；
+- Stage 8 页面只有在正式 Analysis Job/Repository/HTTP Contract 已经通过对应 Change 落地后，才把 AI 阶段作为真实运行状态展示；
+- 在此之前，Figma 中 AI 阶段属于目标能力，可以隐藏、禁用或标记未接入，但不能冒充后端已支持；
+- 正式 Analysis 持久化继续遵守 Blueprint 15 和后续 Analysis 阶段的 Owner 边界。
+
+如果后续明确要求把“P1 AI 产品化”提前并入 Stage 8，必须作为 Stage 8 当前 L3 Change 的显式范围调整，同时同步 Blueprint 15、Migration、Job、API 和验收，不允许只改页面。
+
+## 13. 第一张正式页面：采集运行中心
+
+当前选定的第一个正式业务页面为：
+
+```text
+采集运行中心
+```
+
+首版页面从用户角度统一看“数据处理/采集运行”，但后端仍保持正确 Owner：
+
+- Excel 主入口对应 Processing/Import Batch；
+- TikHub 补采对应 Collection Run；
+- 内容结果对应 Content Query；
+- Job 对应 PostgreSQL Job Runtime；
+- 后续 Analysis 对应 Analysis Owner。
+
+页面不能通过一个万能表把这些 Owner 混成一套数据库模型。
+
+## 14. Figma / 页面能力映射门禁
+
+任何正式 Figma Frame 在开发前，都必须把用户可见能力逐项映射为：
+
+```text
+IMPLEMENTED
+= 后端机器能力与必要 Contract 已存在
+
+REUSE_BUT_PRODUCTIZE
+= 底层正式生产能力存在，但缺网页 API/持久化 Job/Query/编排等产品化闭环
+
+PLANNED
+= 页面目标存在，但后端当前没有对应正式能力
+```
+
+只有纯视觉状态可以不需要后端能力。
+
+当前“采集运行中心”目标页的基线映射：
+
+| 页面能力 | 当前状态 | Stage 8 处理 |
 | --- | --- | --- |
-| Excel Reader/Mapper | 已实现 | 直接复用 |
-| 关键词过滤/稳定去重 | 已实现 | 直接复用 |
-| Processing/Import Batch Schema/Repository | **Stage 8A 已实现** | Stage 8B 产品化 API/Job |
-| Excel 正式 DB Ingestion | **Stage 8A 已实现** | Stage 8B 从 HTTP/Job 调用 |
-| imports_test 可选 DB | **Stage 8A 已实现** | 永久保留调试入口 |
-| 正式 TikHub Collection→DB | 已实现 | 继续复用 |
-| tikhub_test 可选 DB | **Stage 8A 已实现** | 永久保留调试入口 |
-| 跨 Excel/TikHub Current 收敛 | **Stage 8A 已验证** | 继续保持 Owner 约束 |
-| Excel 上传 HTTP API | 未实现 | Stage 8B |
-| Import Batch Query/Progress API | 未实现 | Stage 8B |
-| 采集运行中心 API/页面 | 底层 Run/Job 已有，页面未实现 | Stage 8C |
-| Keyword Pack / Collection Plan 页面 | 底层 System/Collection 已有 | 后续纵切 |
-| Content Center 查询 | 未实现正式页面查询层 | 后续纵切 |
-| Analysis 数据库页面 | 未实现 | 后续纵切 |
+| Excel Reader / Mapper | REUSE_BUT_PRODUCTIZE | 复用，不重写 |
+| 关键词相关性清洗 | REUSE_BUT_PRODUCTIZE | 复用，不重写 |
+| 稳定身份批次去重 | REUSE_BUT_PRODUCTIZE | 复用，不重写 |
+| PostgreSQL Content Ingestion | IMPLEMENTED（对合法来源 Canonical） | 补 File Import 来源桥接，不新建 Writer |
+| TikHub 正式 Collection → PostgreSQL | IMPLEMENTED | 保持；作为辅助补采 |
+| `imports_test` 文件输出 | IMPLEMENTED | 永久保留 |
+| `tikhub_test` 文件输出 | IMPLEMENTED | 永久保留 |
+| `imports_test` 可选写库 | PLANNED | Stage 8A |
+| `tikhub_test` 可选写库 | PLANNED | Stage 8A/8E，复用正式 Collection |
+| Processing / Import Batch | PLANNED | Stage 8A |
+| 网页上传 Excel | PLANNED | Stage 8B |
+| Batch 列表/详情 | PLANNED | Stage 8B/8C |
+| 阶段进度/统计 | PLANNED | Stage 8A/8B |
+| KPI：处理中/今日完成/今日导入 | PLANNED | Stage 8C Query Read Model |
+| 筛选/分页 | PLANNED | Stage 8C HTTP Cursor/Query |
+| Job 状态 | REUSE_BUT_PRODUCTIZE | Stage 8B/8C API 化 |
+| 错误记录/安全摘要 | REUSE_BUT_PRODUCTIZE | Stage 8B/8C Query/API |
+| 查看处理内容 | REUSE_BUT_PRODUCTIZE | Stage 8D Content Query/API |
+| AI 打标核心 | REUSE_BUT_PRODUCTIZE | 正式持久化前不冒充已接入 |
+| AI 数据库/页面状态 | PLANNED | 按 Blueprint 15/后续明确 Change |
+| TikHub 补采按钮 | PLANNED | Stage 8E |
 
-不能因为底层表/Service 已有就把页面标记成“已完成”。
+以后 Figma 修改如果增加按钮、筛选项、状态或统计，必须先更新本能力映射/当前 Change，再决定是否需要 HTTP Contract、Query、Job、Schema 或只改前端。
 
-## 15. Stage 8 实施顺序
+## 15. Stage 8 固定采用 Contract-First Vertical Slice
 
-### Stage 8A：Unified Manual Ingestion Foundation — 已实现，待 PR 集成
+不采用：
 
-本阶段机器闭环包括：
+```text
+先把所有后端 API 做完
+→ 再设计整个前端
+```
 
-- ProcessingImportBatch；
-- Provider Request 双父级；
-- File Import 合法 Artifact/Attempt 来源链；
-- Excel 正式数据库摄取；
-- imports_test 默认 file-only + 可选 DB；
-- tikhub_test 默认 file-only + 可选 DB；
-- PostgreSQL/Schema fail-closed；
-- 跨来源去重和历史；
-- 失败重试幂等；
-- Migration/Contract/PG18 测试。
+也不采用：
 
-### Stage 8B：Excel Upload + Import Batch HTTP/Job — 下一正式单元
+```text
+先把所有 Figma 页面画完
+→ 再让后端追着页面补接口
+```
 
-目标：
+固定流程：
 
-- 正式上传 API；
-- Input Artifact；
-- 创建 Import Batch；
-- 持久 Job；
-- 查询状态/进度/统计/错误；
-- HTTP 幂等与权限边界按当前仓库门禁冻结；
-- 复用 Stage 8A，不重写 Ingestion。
+```text
+业务目标
+→ 页面信息结构 / 粗 Figma
+→ UI → Backend Capability Matrix
+→ 明确页面需要的数据和行为
+→ Pydantic HTTP Contract
+→ API/Contract Test
+→ 固定 OpenAPI
+→ Orval 生成 TypeScript Client
+→ 后端 Service/Query 与正式 Figma/Vue 并行
+→ 真实联调
+→ E2E
+→ 视觉验收
+```
 
-### Stage 8C：Collection Run Center
+Figma 决定已确认视觉/交互目标；Pydantic/OpenAPI 决定 HTTP 数据语义；Vue/测试决定当前运行实现。
 
-把已有 Plan/Run/Scope/Job/Provider 状态形成最小业务运行中心，不提前扩展 KPI/Content Center。
+## 16. Stage 8 实施顺序
 
-### Stage 8D：Keyword / Plan Productization
+Stage 8 不作为一个巨型 PR 一次完成。按以下最小正式单元推进；每个单元仍必须重新从当时 main 事实判断是否已闭环。
 
-把已有词包、Provider Config、Plan Capability 形成产品化配置纵切。
+### 8A：Unified Manual Ingestion Foundation
 
-### Stage 8E：Content Center
+目标：先证明“手工文件/TikHub 调试数据最终可以安全、幂等地进入同一 PostgreSQL Content 体系”。
 
-建立正式 Query Repository/Read Model/Query Service/API/页面，不允许 Router 直接 SQL。
+主要工作：
 
-### Stage 8F：Analysis / Reporting Productization
+- 冻结 Processing / Import Batch 的最小业务边界；
+- 结合当前 Schema 决定文件 Source Artifact / Attempt / Candidate 如何满足正式来源链；
+- 不降低 `provider_attempt_id/raw_artifact_id` 等当前来源约束；
+- 建立 File Import 正式执行 Service/Job 边界；
+- 复用现有 Excel Reader/Mapper/Filter/Dedup；
+- 复用 ContentIngestionService/PostgresContentRepository；
+- 建立 `imports_test` 默认文件-only + 显式数据库写入模式；
+- 建立 `tikhub_test` 默认文件-only + 显式数据库写入模式，优先复用正式 Collection 运行链；
+- 数据库模式假定本地 PostgreSQL 18 容器/实例已启动，调试代码不管理容器和 Migration；
+- 证明 Excel 与 TikHub 同一内容 ID 最终收敛到同一 Content；
+- 文件阶段成功、DB 阶段失败时可安全重试。
 
-在 Blueprint 15/Reporting 已批准 Contract 之上继续，不反向污染 Stage 8A 数据入口。
+这是下一步应首先开发的正式单元。
 
-若后续 Blueprint 对 Stage 8B—8F 有更细子阶段，以最新已批准 Change/Blueprint 为准；一个对话默认仍只完成一个最小正式单元。
+### 8B：Import HTTP / Job Productization
 
-## 16. Stage 8A 验收事实
+目标：把 8A 的正式 Import 能力暴露为浏览器可用的 Contract，而不是让网页调用调试脚本。
 
-Stage 8A 只有在以下条件都满足时才允许进入 Review/集成：
+主要工作：
 
-1. `imports_test` 默认不依赖数据库；
-2. `tikhub_test` 默认不依赖数据库；
-3. 两个入口既有文件输出兼容；
-4. 显式 DB 模式可写 PostgreSQL；
-5. DB/Schema 不可用明确失败；
-6. 调试入口不管理 Docker/Migration；
-7. 没有新增平行 Content/Comment Writer；
-8. Canonical 后统一 Content Ingestion；
-9. File Import 使用真实 Artifact/Attempt；
-10. 不伪造来源 ID；
-11. 同一 Excel 重复导入只有一个 Current；
-12. Excel/TikHub 同身份只有一个 Current；
-13. 较新 Observation 可以生成新的 Current/Version/Metric；
-14. 来源历史保留；
-15. DB 阶段失败后可重试；
-16. Unit/Contract/PostgreSQL Integration 通过；
-17. Migration 全门禁通过；
-18. 文档与代码一致；
-19. Diff 无无关修改；
-20. Active Change 记录新鲜证据；
-21. PR/CI/Branch Protection 按仓库流程闭环。
+- 上传/登记 Excel Source Artifact；
+- 创建 Processing/Import Batch；
+- 创建并查询持久化 Import Job；
+- Batch 状态、阶段、统计、错误摘要；
+- 统一 HTTP 错误和 request_id；
+- 固定 OpenAPI；
+- 生成 Orval Client；
+- API/Contract/PostgreSQL Integration 测试。
 
-## 17. 回滚与兼容
+### 8C：采集运行中心首个完整前后端纵切
 
-Stage 8A 是向前兼容 Schema 扩展：
+目标：实现当前选定 Figma 的首个正式业务页面。
 
-- 旧 Collection Request 继续使用 `scope_id`；
-- 新 File Import Request 使用 `import_batch_id`；
-- 不重写历史数据；
-- 不修改 Content 业务唯一键；
-- 不修改现有 TikHub Operation/Mapper 公共语义；
-- 不修改 imports_test/tikhub_test 默认 file-only 行为。
+主要工作：
 
-回滚顺序：
+- App/Shared/Feature 最小前端骨架；
+- Processing Batch 列表/详情 Query Read Model；
+- 必要的 KPI、筛选、Cursor、状态；
+- Job 轮询；
+- Loading/Empty/Error；
+- Feature API/Store；
+- Vue 页面；
+- Playwright E2E 可执行入口；
+- Figma 视觉验收。
 
-1. 关闭新的 DB opt-in 使用；
-2. 停止产生 import-parent Provider Request；
-3. 确认/处理已引用 Import Batch 的新来源事实；
-4. 应用普通 Git revert；
-5. 仅在数据引用条件允许时执行 Alembic downgrade `0019 → 0018`；
-6. 不 force push、不改写历史 Revision。
+首版页面只展示真实后端已经提供的阶段/字段；未落地 AI 或其他目标能力不得用 Mock 冒充生产支持。
 
-## 18. 当前下一步
+### 8D：内容中心
 
-Stage 8A 集成闭环后，**下一正式最小单元只能是 Stage 8B**。
+目标：前端不区分 Excel/TikHub 来源读取统一 PostgreSQL Content。
 
-不要在 Stage 8A 的 PR 中提前实现 Stage 8B/8C，也不要因为 Stage 8A 已具备底层数据库入口就开始正式 Vue/Figma 页面代码。
+主要工作：
+
+- Content 列表 Query；
+- Content 详情；
+- 评论/coverage（已有数据时）；
+- 来源/Batch/Run 过滤；
+- Cursor；
+- 统一时间与 64 位 ID；
+- 从“采集运行中心 → 查看处理内容”跳转并带合法查询条件。
+
+### 8E：TikHub 辅助补采
+
+目标：TikHub 从独立后台能力变成可从业务上下文显式发起的辅助补充来源。
+
+主要工作：
+
+- 从 Batch/Content 上下文明确补采目标；
+- 复用正式 Collection Run/Job；
+- 不在 UI 暴露 Provider 私有 cursor/search_id/page 等；
+- 通过 Capability 只暴露真实业务参数；
+- 补采结果仍进入同一 ContentIngestionService/PostgreSQL；
+- 页面能从 Batch 看到关联的补采 Run 状态。
+
+### 8F：Keyword / Plan / Stage 8 Integration
+
+目标：完成剩余 Stage 8 配置页和整体集成。
+
+主要工作按已解决业务门禁推进：
+
+- Keyword Pack 页面/API；
+- Collection Plan 页面/API；
+- Provider Config/Secret 写入只在安全边界批准后实现；
+- App Shell；
+- 跨页面 E2E；
+- 文档/生成物一致性；
+- 完整适用 CI；
+- Stage 8 收口。
+
+关键词 Discovery/Relevance、Alias、正式 normalization 等尚未批准的业务语义仍不能由 Agent 静默选择。
+
+## 17. Stage 8A 验收底线
+
+8A 至少必须证明：
+
+1. `imports_test` 默认运行仍完全不要求数据库；
+2. `tikhub_test` 默认运行仍完全不要求数据库；
+3. 两个调试入口的既有文件输出兼容；
+4. 开启写库时，数据库不可用会明确失败且不会破坏文件产物；
+5. 调试入口不自动启动/停止 PostgreSQL 容器，不自动执行 Migration；
+6. Excel Mapper 和 TikHub Mapper 仍输出统一 Canonical；
+7. Excel/TikHub 不增加平行数据库 Writer；
+8. 数据库写入复用 ContentIngestionService/PostgresContentRepository；
+9. 同一 `(platform, external_content_id)` 跨 Excel/TikHub/重复运行只形成一个当前 Content；
+10. 更晚合法 Observation 仍可推进 Current/Version/Metric；
+11. 文件来源具备合法、可审计、可重放的 Artifact/Attempt/来源链；
+12. 不使用伪造来源 ID 绕过 PostgreSQL 外键/来源约束；
+13. DB 写入失败后幂等重试不会制造业务重复；
+14. 新 Migration（若需要）有 base→head、上一正式 Revision→head、downgrade/re-upgrade 与 `alembic check`；
+15. 相关 Blueprint/API/测试说明与机器事实同步。
+
+## 18. 文档同步规则
+
+- 第一版数据入口优先级、Processing Batch、手工可选入库、Stage 8 子阶段变化：更新本文；
+- Provider/Raw/Mapper/Canonical/Collection 通用来源链变化：按需同步 `02/08`；
+- PostgreSQL Table/Owner/Migration/Artifact 变化：同步 `03` 与机器 Migration；
+- HTTP Contract、错误、Cursor、Job API、Query 边界变化：同步 `04`、固定 OpenAPI、生成 Client 和 `docs/API接口说明.md`；
+- Excel Workbook/Exporter 契约变化：同步 `13`；
+- Analysis Prompt/Contract/数据库 Owner 变化：同步 `15`；
+- Figma/页面组织/Design-to-Code 规则变化：同步 `16`；
+- 具体页面只发生视觉调整且不改变长期规则时，不修改本文。
+
+## 19. 最终固定原则
+
+```text
+Excel 是第一版主要数据输入，不是业务数据库
+TikHub 是辅助补充，不是第二套数据模型
+
+来源差异截止在 Mapper
+Canonical 后只有一套 Ingestion
+PostgreSQL 是唯一业务事实库
+文件证据和调试产物继续保留
+
+imports_test / tikhub_test 永久保留
+默认不写数据库
+显式开启才写库
+写库时假定本地 PostgreSQL 18 容器/实例已经启动
+调试脚本不管理容器、不跑 Migration、不写 SQL
+
+先做 Stage 8A 统一手工摄取纵切
+再做 HTTP
+再做第一个 Vue/Figma 页面
+不要用目标 UI 冒充后端已经存在
+```
