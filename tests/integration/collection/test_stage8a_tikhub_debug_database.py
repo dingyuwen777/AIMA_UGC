@@ -94,7 +94,7 @@ def test_tikhub_debug_database_uses_formal_source_chain_and_sends_once(
                     version=1,
                 )
             )
-            keyword = keywords.create_keyword(
+            keyword = keywords.get_or_create_keyword(
                 Keyword(
                     id=uuid4(),
                     text="爱玛",

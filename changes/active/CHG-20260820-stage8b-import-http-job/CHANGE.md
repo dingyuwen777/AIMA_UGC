@@ -403,6 +403,10 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 - CI 修复仅通过正式 `RelevanceSnapshotV1`、Keyword Catalog Repository 与 Global Relevance Repository
   补齐上述测试前置事实；没有增加默认词包、测试旁路或降低断言。三文件 Ruff format/check 退出码 0；
   PostgreSQL Green 等待修复 Head 的新鲜 PR CI。
+- 第一版测试前置修复 Head `b3cf0a4` 进一步得到正确的数据库 Red：`keyword_packs` 清理会级联删除 Pack
+  Item，但不会删除 System Owner 独立维护的 Keyword Catalog 父事实；同一工作流后续再次 `create_keyword`
+  因 `uq_keywords_normalized_text` 拒绝重复“爱玛”。修复改为正式 Repository 已提供的
+  `get_or_create_keyword`，复用目录父事实；不扩大清理范围、不删除共享关键词，也不放宽唯一约束。
 
 # 文档影响
 
