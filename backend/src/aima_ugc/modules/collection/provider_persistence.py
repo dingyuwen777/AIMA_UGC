@@ -16,7 +16,8 @@ class ProviderRequestRecord:
     """`provider_requests` 当前持久化快照。"""
 
     id: UUID
-    scope_id: UUID
+    scope_id: UUID | None
+    import_batch_id: UUID | None
     provider_config_id: UUID | None
     provider: str
     operation: str
@@ -73,8 +74,12 @@ class ProviderScopeNotFoundError(LookupError):
     """Provider Request 引用的 Collection Scope 不存在。"""
 
 
+class ProviderImportBatchNotFoundError(LookupError):
+    """Provider Request 引用的 Processing / Import Batch 不存在。"""
+
+
 class ProviderRequestLineageMismatchError(ValueError):
-    """Provider Contract 的 Run/平台/配置与数据库来源不一致。"""
+    """Provider Contract 与数据库来源父事实不一致。"""
 
 
 class ProviderPersistenceConflictError(RuntimeError):
@@ -125,7 +130,7 @@ class ProviderPersistenceService:
         *,
         provider_config_id: UUID | None = None,
     ) -> ProviderRequestRecord:
-        """按 Scope + fingerprint 建立或复用逻辑 Request。"""
+        """按来源父级 + fingerprint 建立或复用逻辑 Request。"""
         if provider_config_id is None:
             return self._repository.create_or_get_request(request)
         return self._repository.create_or_get_request(
@@ -139,7 +144,7 @@ class ProviderPersistenceService:
         request: ProviderRequestV1,
         attempt_id: UUID,
     ) -> PreparedProviderAttempt:
-        """原子建立或复用 Request 与一个不执行外部 I/O 的 reserved Attempt。"""
+        """原子建立或复用 Request 与一个不计费的 reserved Attempt。"""
         persisted_request = self.ensure_request(request)
         attempt = self._repository.create_or_get_non_billable_attempt(
             provider_request_id=persisted_request.id,
