@@ -530,8 +530,8 @@
     {
       "kind": "documentation",
       "path": "frontend/README.md",
-      "sha256": "389d9e813a4b5ddd4a150e79d30ee38ecddc2217888081ae5f900d373cb188ce",
-      "size": 3192,
+      "sha256": "717e02fb889f5d99a8adda027c92154fa3cc98f7ec3ea6d2f7cdab29dfae1706",
+      "size": 3315,
       "title": "AIMA_UGC 前端开发入口"
     },
     {
@@ -580,12 +580,12 @@
       "size": 92829
     }
   ],
-  "generated_at": "2026-08-20T16:52:12+00:00",
+  "generated_at": "2026-08-20T17:00:09+00:00",
   "generator_version": "0.1.0",
   "git": {
-    "indexed_at_commit": "73767990a700e984dd2267f3778ec382c11179b3",
+    "indexed_at_commit": "9a7c7ca99807f8f4bc9feec1a89fd688b2fae81b",
     "repository": true,
-    "worktree_candidate_digest": "a2aa74e55534d7bb932be1cc65d721ab352b443dccf4263e3660c9a4492bdaca"
+    "worktree_candidate_digest": "838efa7d01b4df2858af9a14cb95b4de23598123a522beb1aed2e8920780af21"
   },
   "package_scripts": {
     "frontend/package.json": {

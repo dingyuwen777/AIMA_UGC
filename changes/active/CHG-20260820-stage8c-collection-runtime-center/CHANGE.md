@@ -199,6 +199,9 @@ Contract 和 Orval Client 为唯一数据入口。
   展示统一安全摘要和 `request_id`。
 - 实际按组件导入 Element Plus 的失败证据已记录；未升级依赖、未改 `skipLibCheck=false`、未关闭门禁。
   严重/重要问题清零，无延期为“以后优化”的本 Stage Bug。
+- PR #100 首个 Head 的 20/21 checks 成功；Stage 1 在 Playwright 启动前因前序 smoke 占用 `5173`、
+  CI 又按配置禁止复用既有 server 而失败。该 CI Red 与页面实现无关，但属于真实门禁缺陷；修复为
+  Playwright 独占 `4173`，保留联调 `5173` 语义，随后以新 Head 重跑全部 checks。
 
 # 验证
 

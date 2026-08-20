@@ -69,4 +69,5 @@ npm --prefix frontend run test:e2e
 ```
 
 Vitest 使用生成 Client Mock 验证 Feature API/Store；Playwright 使用固定 Contract 形状的网络 Mock 验证
-页面、详情 Drawer 和上传创建 Job。它们不替代后端 API、PostgreSQL、Worker 或 Fencing 集成测试。
+页面、详情 Drawer 和上传创建 Job。Playwright 固定使用独立开发端口 `4173`，避免与本地联调/CI smoke
+的 `5173` 进程互相复用或抢占。它们不替代后端 API、PostgreSQL、Worker 或 Fencing 集成测试。
