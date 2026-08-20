@@ -55,11 +55,7 @@ def test_generate_report_accepts_explicit_processed_excel(
         captured["template_path"] = template_path
         return _report_summary(excel_path=input_path, output_dir=output_dir)
 
-    monkeypatch.setattr(
-        imports_entry,
-        "generate_excel_report",
-        fake_generate_excel_report,
-    )
+    monkeypatch.setattr(imports_entry, "generate_excel_report", fake_generate_excel_report)
 
     result = imports_entry.generate_report(
         excel_path=excel_path,
@@ -76,14 +72,12 @@ def test_generate_report_accepts_explicit_processed_excel(
     }
 
 
-def test_run_all_uses_explicit_processed_excel_without_reenabling_disabled_stages(
+def test_run_all_appends_report_after_labeled_excel(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     output_root = tmp_path / "output"
     source = tmp_path / "source.xlsx"
-    processed_excel = tmp_path / "processed.xlsx"
-    processed_excel.write_bytes(b"xlsx")
     monkeypatch.setattr(imports_entry, "OUTPUT_ROOT", output_root)
     monkeypatch.setattr(imports_entry, "INPUT_XLSX_FILES", source)
     calls: list[str] = []
@@ -92,11 +86,7 @@ def test_run_all_uses_explicit_processed_excel_without_reenabling_disabled_stage
         calls.append(name)
         return _StageSummary()
 
-    monkeypatch.setattr(
-        imports_entry,
-        "convert",
-        lambda *, run_dir: fake_stage("convert"),
-    )
+    monkeypatch.setattr(imports_entry, "convert", lambda *, run_dir: fake_stage("convert"))
     monkeypatch.setattr(
         imports_entry,
         "filter_keywords",
@@ -107,12 +97,18 @@ def test_run_all_uses_explicit_processed_excel_without_reenabling_disabled_stage
         "deduplicate",
         lambda *, run_dir: fake_stage("deduplicate"),
     )
+    monkeypatch.setattr(
+        imports_entry,
+        "label_sentiment",
+        lambda *, run_dir: fake_stage("label_sentiment"),
+    )
 
-    def disabled_stage_must_not_run(*args: object, **kwargs: object) -> None:
-        raise AssertionError("当前人工 run_all 不得静默恢复 AI/最终 Excel 阶段")
+    def fake_export(*, run_dir: Path) -> _StageSummary:
+        calls.append("export_labeled_excel")
+        (run_dir / "labeled_data.xlsx").write_bytes(b"xlsx")
+        return _StageSummary()
 
-    monkeypatch.setattr(imports_entry, "label_sentiment", disabled_stage_must_not_run)
-    monkeypatch.setattr(imports_entry, "export_labeled_excel", disabled_stage_must_not_run)
+    monkeypatch.setattr(imports_entry, "export_labeled_excel", fake_export)
 
     def fake_generate_report(
         *,
@@ -120,63 +116,78 @@ def test_run_all_uses_explicit_processed_excel_without_reenabling_disabled_stage
         run_dir: Path | None = None,
         output_dir: Path | None = None,
     ) -> ReportGenerationSummary:
-        assert excel_path == processed_excel
         assert run_dir is None
+        assert excel_path is not None
         assert output_dir is not None
         calls.append("generate_report")
-        return _report_summary(excel_path=processed_excel, output_dir=output_dir)
+        return _report_summary(excel_path=excel_path, output_dir=output_dir)
 
     monkeypatch.setattr(imports_entry, "generate_report", fake_generate_report)
 
-    result = imports_entry.run_all(
-        run_id="report-hook",
-        write_to_database=False,
-        report_excel_path=processed_excel,
-    )
+    result = imports_entry.run_all(run_id="report-hook", write_to_database=False)
 
     payload = json.loads(result.run_summary_path.read_text(encoding="utf-8"))
     expected_report_dir = result.run_dir / "reports"
-    assert calls == ["convert", "filter_keywords", "deduplicate", "generate_report"]
-    assert [item["stage"] for item in payload["stages"]] == [
+    assert calls == [
         "convert",
         "filter_keywords",
         "deduplicate",
+        "label_sentiment",
+        "export_labeled_excel",
         "generate_report",
     ]
-    assert payload["report_input_excel"] == str(processed_excel)
+    assert [item["stage"] for item in payload["stages"]] == calls
+    assert payload["report_input_excel"] == str(result.labeled_excel_path)
     assert payload["report_markdown"] == str(expected_report_dir / "report.md")
     assert payload["report_word"] == str(expected_report_dir / "report.docx")
     assert result.report_markdown_path == expected_report_dir / "report.md"
     assert result.report_word_path == expected_report_dir / "report.docx"
 
 
-def test_run_all_records_report_skip_when_default_labeled_excel_is_absent(
+def test_run_all_can_override_report_input_excel(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     output_root = tmp_path / "output"
     source = tmp_path / "source.xlsx"
+    processed_excel = tmp_path / "processed.xlsx"
+    processed_excel.write_bytes(b"xlsx")
     monkeypatch.setattr(imports_entry, "OUTPUT_ROOT", output_root)
     monkeypatch.setattr(imports_entry, "INPUT_XLSX_FILES", source)
 
     monkeypatch.setattr(imports_entry, "convert", lambda *, run_dir: _StageSummary())
     monkeypatch.setattr(imports_entry, "filter_keywords", lambda *, run_dir: _StageSummary())
     monkeypatch.setattr(imports_entry, "deduplicate", lambda *, run_dir: _StageSummary())
+    monkeypatch.setattr(imports_entry, "label_sentiment", lambda *, run_dir: _StageSummary())
 
-    def report_must_not_run(*args: object, **kwargs: object) -> None:
-        raise AssertionError("没有实际报告 Excel 时不得调用 Report Renderer")
+    def fake_export(*, run_dir: Path) -> _StageSummary:
+        (run_dir / "labeled_data.xlsx").write_bytes(b"xlsx")
+        return _StageSummary()
 
-    monkeypatch.setattr(imports_entry, "generate_report", report_must_not_run)
+    monkeypatch.setattr(imports_entry, "export_labeled_excel", fake_export)
 
-    result = imports_entry.run_all(run_id="report-skip", write_to_database=False)
+    captured: dict[str, Path] = {}
+
+    def fake_generate_report(
+        *,
+        excel_path: Path | None = None,
+        run_dir: Path | None = None,
+        output_dir: Path | None = None,
+    ) -> ReportGenerationSummary:
+        assert excel_path is not None
+        assert output_dir is not None
+        assert run_dir is None
+        captured["excel_path"] = excel_path
+        return _report_summary(excel_path=excel_path, output_dir=output_dir)
+
+    monkeypatch.setattr(imports_entry, "generate_report", fake_generate_report)
+
+    result = imports_entry.run_all(
+        run_id="report-override",
+        write_to_database=False,
+        report_excel_path=processed_excel,
+    )
 
     payload = json.loads(result.run_summary_path.read_text(encoding="utf-8"))
-    report_stage = payload["stages"][-1]
-    assert report_stage["stage"] == "generate_report"
-    assert report_stage["summary"]["status"] == "skipped"
-    assert report_stage["summary"]["reason"] == "report_input_excel_not_found"
-    assert payload["report_input_excel"] == str(result.run_dir / "labeled_data.xlsx")
-    assert "report_markdown" not in payload
-    assert "report_word" not in payload
-    assert result.report_markdown_path is None
-    assert result.report_word_path is None
+    assert captured["excel_path"] == processed_excel
+    assert payload["report_input_excel"] == str(processed_excel)
