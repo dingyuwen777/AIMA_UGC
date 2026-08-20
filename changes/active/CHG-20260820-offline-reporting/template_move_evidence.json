@@ -1,12 +1,24 @@
 {
-  "tested_sha": "ed3e8025f2cbac3574bdeee4a7ef8293e825fdd9",
+  "tested_sha": "8afec275adcba0a532928a7d0af5f2278905db88",
   "setup": "success",
-  "apply": "success",
+  "apply": "failure",
   "tail": [
-    "5 files left unchanged",
-    "All checks passed!",
-    "Success: no issues found in 6 source files",
-    "...................                                                      [100%]",
-    "19 passed in 4.66s"
+    "Traceback (most recent call last):",
+    "  File \"/home/runner/work/AIMA_UGC/AIMA_UGC/changes/active/CHG-20260820-offline-reporting/apply_template_move.py\", line 16, in <module>",
+    "    replace_required(",
+    "    ~~~~~~~~~~~~~~~~^",
+    "        excel_report,",
+    "        ^^^^^^^^^^^^^",
+    "        'from .markdown_word import WordConversionSummary, convert_markdown_to_docx\\n\\n_BEIJING = ZoneInfo(\"Asia/Shanghai\")\\n',",
+    "        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+    "        'from .markdown_word import WordConversionSummary, convert_markdown_to_docx\\n\\nDEFAULT_REPORT_TEMPLATE_PATH = Path(__file__).with_name(\"report_template.md\")\\n\\n_BEIJING = ZoneInfo(\"Asia/Shanghai\")\\n',",
+    "        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+    "    )",
+    "    ^",
+    "  File \"/home/runner/work/AIMA_UGC/AIMA_UGC/changes/active/CHG-20260820-offline-reporting/apply_template_move.py\", line 9, in replace_required",
+    "    raise RuntimeError(",
+    "        f\"{path}: expected at least {count} occurrences, found {actual}: {old!r}\"",
+    "    )",
+    "RuntimeError: backend/src/aima_ugc/platform/reporting/excel_report.py: expected at least 1 occurrences, found 0: 'from .markdown_word import WordConversionSummary, convert_markdown_to_docx\\n\\n_BEIJING = ZoneInfo(\"Asia/Shanghai\")\\n'"
   ]
 }
