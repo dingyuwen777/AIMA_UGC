@@ -8,6 +8,15 @@ describe('frontend bootstrap', () => {
     expect(routes.map((route) => route.name)).toContain('home')
   })
 
+  it('registers the formal collection runtime route', () => {
+    expect(routes).toContainEqual(
+      expect.objectContaining({
+        path: '/collection-runtime',
+        name: 'collection-runtime',
+      }),
+    )
+  })
+
   it('loads Vue Test Utils', () => {
     expect(config.global).toBeDefined()
   })

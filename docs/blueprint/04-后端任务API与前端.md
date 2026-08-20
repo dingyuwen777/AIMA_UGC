@@ -132,10 +132,12 @@ Batch 的 Relevance 审计快照完全一致。每个 Attempt 固定 1800 秒、
 /api/v1/jobs
 ```
 
-当前已实现的 Stage 8B 路径为：
+当前 Import / Relevance 及采集运行中心已实现路径为：
 
 ```text
 POST /api/v1/import-batches
+GET  /api/v1/import-batches
+GET  /api/v1/import-batches/summary
 GET  /api/v1/import-batches/{batch_id}
 GET  /api/v1/jobs/{job_id}
 POST /api/v1/keyword-packs
@@ -146,8 +148,10 @@ GET  /api/v1/relevance-config
 ```
 
 `POST /api/v1/import-batches` 只接受一个 multipart `file`，返回 202 后由持久 Worker 处理；Job 查询当前
-只公开 Stage 8B Import Job，其他内部 Job 类型不因共用 `jobs` 表而自动变成公共 Contract。Keyword Pack
-页面仍属于 Stage 8F，Stage 8B 只提供受控环境下的后端 Contract 与生成 Client。
+只公开 Import Job，其他内部 Job 类型不因共用 `jobs` 表而自动变成公共 Contract。列表只读
+`Processing Import Batch + ingestion.import-excel.v1 Job`，按 `created_at DESC, id DESC` 稳定排序，并
+支持 Batch/Job UUID、公开状态/阶段和带时区创建时间范围。Summary 在 PostgreSQL 聚合处理中、北京时间
+今日完成和今日成功入库行数，不从当前页推算。Keyword Pack 页面仍属于 Stage 8F。
 
 路径使用名词和复数。业务动作只在无法自然表达为资源变化时使用：
 
@@ -216,6 +220,10 @@ HTTP 返回 UTC ISO-8601：
 ```
 
 Cursor 是不透明字符串，至少包含版本、稳定排序字段、ID、查询条件 Hash 和过期时间，并使用服务端密钥签名后传给前端。只做 Base64 编码不构成防篡改；Cursor 用到另一组过滤/排序条件时返回明确 400，不得静默复用。
+
+Import Batch Cursor 当前使用独立 HMAC-SHA256 Secret、30 分钟有效期并绑定全部查询条件和固定排序；
+Secret 缺失/不合格时列表返回统一 503，响应和日志不暴露 Secret 或文件路径。前端只保存并原样回传
+`next_cursor`，不得解析或自行构造。
 
 小型配置列表可以不分页。管理页面如果使用页码，必须有稳定 `ORDER BY`。
 

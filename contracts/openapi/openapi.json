@@ -186,6 +186,39 @@
         "title": "ImportBatchCreatedResponse",
         "type": "object"
       },
+      "ImportBatchListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ImportBatchResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "has_more"
+        ],
+        "title": "ImportBatchListResponse",
+        "type": "object"
+      },
       "ImportBatchResponse": {
         "additionalProperties": false,
         "properties": {
@@ -230,6 +263,17 @@
           "job": {
             "$ref": "#/components/schemas/JobStatusResponse"
           },
+          "source_filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Filename"
+          },
           "stage": {
             "$ref": "#/components/schemas/ImportStage"
           },
@@ -249,15 +293,7 @@
             "$ref": "#/components/schemas/ImportStatsResponse"
           },
           "status": {
-            "enum": [
-              "queued",
-              "running",
-              "succeeded",
-              "failed",
-              "cancelled"
-            ],
-            "title": "Status",
-            "type": "string"
+            "$ref": "#/components/schemas/ImportBatchStatus"
           }
         },
         "required": [
@@ -270,6 +306,49 @@
           "job"
         ],
         "title": "ImportBatchResponse",
+        "type": "object"
+      },
+      "ImportBatchStatus": {
+        "enum": [
+          "queued",
+          "running",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "type": "string"
+      },
+      "ImportBatchSummaryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "completed_today_count": {
+            "minimum": 0.0,
+            "title": "Completed Today Count",
+            "type": "integer"
+          },
+          "processing_count": {
+            "minimum": 0.0,
+            "title": "Processing Count",
+            "type": "integer"
+          },
+          "rows_ingested_today": {
+            "minimum": 0.0,
+            "title": "Rows Ingested Today",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "processing_count",
+          "completed_today_count",
+          "rows_ingested_today",
+          "as_of"
+        ],
+        "title": "ImportBatchSummaryResponse",
         "type": "object"
       },
       "ImportJobResultResponse": {
@@ -659,6 +738,180 @@
   "openapi": "3.1.0",
   "paths": {
     "/api/v1/import-batches": {
+      "get": {
+        "operationId": "listImportBatches",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "identifier",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Identifier"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ImportBatchStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stage",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ImportStage"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stage"
+            }
+          },
+          {
+            "in": "query",
+            "name": "created_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "created_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportBatchListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "List Import Batches",
+        "tags": [
+          "imports"
+        ]
+      },
       "post": {
         "operationId": "createImportBatch",
         "requestBody": {
@@ -724,6 +977,47 @@
           }
         },
         "summary": "Create Import Batch",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/import-batches/summary": {
+      "get": {
+        "operationId": "getImportBatchSummary",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportBatchSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Import Batch Summary",
         "tags": [
           "imports"
         ]

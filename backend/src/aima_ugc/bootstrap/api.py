@@ -10,7 +10,7 @@ from functools import partial
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from fastapi import FastAPI, File, Request, Response, UploadFile, status
+from fastapi import FastAPI, File, Query, Request, Response, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ConfigDict
 from starlette.concurrency import run_in_threadpool
@@ -24,7 +24,10 @@ from aima_ugc.contracts.http import (
     HttpErrorItem,
     HttpErrorResponse,
     ImportBatchCreatedResponse,
+    ImportBatchListQuery,
+    ImportBatchListResponse,
     ImportBatchResponse,
+    ImportBatchSummaryResponse,
     JobStatusResponse,
     KeywordPackCreateRequest,
     KeywordPackKeywordCreateRequest,
@@ -32,9 +35,11 @@ from aima_ugc.contracts.http import (
 )
 from aima_ugc.modules.ingestion.http import (
     ImportConflict,
+    ImportCursorUnavailable,
     ImportHttpService,
     ImportResourceNotFound,
     ImportUploadTooLarge,
+    InvalidImportCursor,
     InvalidImportFile,
     RelevanceConfigurationError,
 )
@@ -292,6 +297,29 @@ def create_app(
             code="relevance_config_unavailable",
         )
 
+    @application.exception_handler(InvalidImportCursor)
+    async def invalid_import_cursor(request: Request, _: InvalidImportCursor) -> JSONResponse:
+        return _error_response(
+            status_code=400,
+            request_id=_request_id(request),
+            title="分页游标不合法",
+            detail="分页游标无效、已过期或与当前查询条件不匹配。",
+            code="invalid_import_cursor",
+            field="query.cursor",
+        )
+
+    @application.exception_handler(ImportCursorUnavailable)
+    async def import_cursor_unavailable(
+        request: Request, _: ImportCursorUnavailable
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=503,
+            request_id=_request_id(request),
+            title="分页服务暂不可用",
+            detail="分页服务配置不可用，请使用 request_id 联系管理员。",
+            code="import_cursor_unavailable",
+        )
+
     @application.exception_handler(StarletteHttpException)
     async def http_error(request: Request, exc: StarletteHttpException) -> JSONResponse:
         return _error_response(
@@ -398,6 +426,36 @@ def create_app(
             )
         finally:
             await file.close()
+
+    @application.get(
+        "/api/v1/import-batches",
+        operation_id="listImportBatches",
+        response_model=ImportBatchListResponse,
+        responses={
+            400: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            503: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    def list_import_batches(
+        query: Annotated[ImportBatchListQuery, Query()],
+    ) -> ImportBatchListResponse:
+        return current_import_service().list_import_batches(query)
+
+    @application.get(
+        "/api/v1/import-batches/summary",
+        operation_id="getImportBatchSummary",
+        response_model=ImportBatchSummaryResponse,
+        responses={
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    def get_import_batch_summary() -> ImportBatchSummaryResponse:
+        return current_import_service().get_import_batch_summary()
 
     @application.get(
         "/api/v1/import-batches/{batch_id}",

@@ -68,7 +68,9 @@
 
 ## 当前开发状态
 
-**Stage 1—7、临时 P1、Stage 8A 与 Stage 8B 已闭环。Stage 8B 已在 `main` 建立 Import HTTP / Durable Job / 全局 Relevance Productization，并完成最终 PR Head 新鲜 CI、两阶段 Review、正常合并、Change 归档和合并后 `main` 验证。Stage 8B 没有实现 Vue 页面、Content Center 或 Stage 8C—8F 能力。**
+**Stage 1—7、临时 P1、Stage 8A 与 Stage 8B 已闭环。Stage 8C 当前 Active Change 已建立采集运行中心
+机器实现；正式闭环仍以该 Change 的最终 PR Head CI、两阶段 Review、正常合并、归档和合并后 `main`
+验证为准。在这些证据完成前不得仅凭页面或本文宣布 Stage 8C 已闭环。**
 
 Stage 8A 与 Stage 8B 当前 `main` 机器边界：
 
@@ -82,6 +84,9 @@ Stage 8A 与 Stage 8B 当前 `main` 机器边界：
 - Stage 8B 为单个 `.xlsx` 建立 multipart HTTP 上传、Source Artifact、Processing Import Batch 与持久化 `ingestion.import-excel.v1` Job；Router 不执行长任务，Worker 复用 Stage 8A 正式 Reader/Mapper/Ingestion；
 - 系统全局唯一启用的 Relevance Keyword Pack 保存在 PostgreSQL，Import Job 和 Collection Run 冻结配置快照；所有渠道都在 Mapper 后、正式 Content Ingestion 前执行同一 Relevance Service；
 - Import Batch 和 Import Job 支持按 ID 查询，固定响应、统一错误结构和 `request_id` 已进入 OpenAPI，并由现有 Orval 流程生成 TypeScript Client；
+- Stage 8C 增加只读 Batch 列表、北京时间 Summary、查询绑定的 HMAC Cursor，以及通过 Feature
+  API/Pinia/生成 Client 调用的 Vue 采集运行中心；页面只覆盖 Excel Import，不冒充 Content Center、
+  TikHub 补采或 Relevance 配置页面；
 - 数据库模式只连接开发者已经准备好的 PostgreSQL 18，不管理 Docker，不自动执行 Alembic Migration，Schema 不满足要求时关闭失败。
 
 Stage 7 已完成并固化：
@@ -116,11 +121,14 @@ P1 已固化的长期能力：
 - 具体长期 Excel 与 Analysis 规则分别由 Blueprint 13 和 15 维护；
 - `imports_test` / `tikhub_test` 永久保留人工调试入口，默认 file-only；Stage 8A 的显式 PostgreSQL 模式不得反向破坏默认离线调试能力。
 
-## 下一正式阶段
+## 当前 Active Stage
 
 ### Stage 8C：采集运行中心首个完整前后端纵切
 
-Stage 8B 已正常闭环；下一个最小正式单元是 **Stage 8C**。8C 只完成采集运行中心的首个正式 Vue/Figma 前后端纵切；系统全局 Relevance Keyword Pack 配置页面仍按已批准边界留到 Stage 8F。
+Stage 8B 已正常闭环；当前唯一 Active 最小正式单元是 **Stage 8C**。8C 只完成采集运行中心的首个正式
+Vue 前后端纵切；系统全局 Relevance Keyword Pack 配置页面仍按已批准边界留到 Stage 8F。当前 Stage
+经用户批准使用固定 PNG 作为一次性视觉例外；例外、资产哈希和未来 Figma 兼容边界只记录在当前
+Change，不修改 Blueprint 16 的长期 Figma 规则。
 
 开始 Stage 8C 时仍必须重新从当时 `main` 恢复事实：
 
@@ -149,7 +157,8 @@ Stage 8C 的目标边界以 Blueprint 16 和 17 为准：先确认 Figma 事实�
 - 已落地的是平台通用 Analysis 核心与无数据库验证入口；正式数据库 DDL/Migration、Analysis Job/API/页面仍需按 Blueprint 15 和对应正式阶段闭环；
 - 日请求量、数据量、Worker 并发、Raw/数据库日增量、磁盘容量、SLO、RPO、RTO；
 - 生产镜像 variant/digest、离线 Release、安全发布与恢复演练；
-- Stage 8C+ 正式业务页面及 Provider 凭据写入能力；凭据仍必须通过安全 SecretStore/SecretService，不能把数据库明文 Secret 当捷径；
+- Stage 8D+ 其余正式业务页面及 Provider 凭据写入能力；凭据仍必须通过安全
+  SecretStore/SecretService，不能把数据库明文 Secret 当捷径；
 - 未来如重新需要 Budget/Cost Guard，必须创建新的 L3 Change，不得复活当前已删除接口。
 
 ## 修改规则

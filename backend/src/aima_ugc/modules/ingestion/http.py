@@ -9,12 +9,16 @@ from aima_ugc.contracts.http import (
     GlobalRelevanceConfigRequest,
     GlobalRelevanceConfigResponse,
     ImportBatchCreatedResponse,
+    ImportBatchListQuery,
+    ImportBatchListResponse,
     ImportBatchResponse,
+    ImportBatchSummaryResponse,
     JobStatusResponse,
     KeywordPackCreateRequest,
     KeywordPackKeywordCreateRequest,
     KeywordPackResponse,
 )
+from aima_ugc.modules.ingestion.import_batch_cursor import InvalidImportCursor
 
 
 class ImportResourceNotFound(LookupError):
@@ -37,6 +41,10 @@ class RelevanceConfigurationError(RuntimeError):
     """全局 Relevance 配置缺失、停用或为空。"""
 
 
+class ImportCursorUnavailable(RuntimeError):
+    """Cursor 签名 Secret 不可安全读取。"""
+
+
 class ImportHttpService(Protocol):
     def create_import(
         self,
@@ -48,6 +56,10 @@ class ImportHttpService(Protocol):
     ) -> ImportBatchCreatedResponse: ...
 
     def get_import_batch(self, batch_id: UUID) -> ImportBatchResponse: ...
+
+    def list_import_batches(self, query: ImportBatchListQuery) -> ImportBatchListResponse: ...
+
+    def get_import_batch_summary(self) -> ImportBatchSummaryResponse: ...
 
     def get_job(self, job_id: UUID) -> JobStatusResponse: ...
 
@@ -71,8 +83,10 @@ class ImportHttpService(Protocol):
 __all__ = [
     "ImportHttpService",
     "ImportConflict",
+    "ImportCursorUnavailable",
     "ImportResourceNotFound",
     "ImportUploadTooLarge",
     "InvalidImportFile",
+    "InvalidImportCursor",
     "RelevanceConfigurationError",
 ]
