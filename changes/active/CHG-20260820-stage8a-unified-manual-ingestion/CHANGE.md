@@ -32,18 +32,18 @@ data_changes: [processing_import_batches, provider_requests]
 
 # Stage 8A：Unified Manual Ingestion Foundation
 
-## 结果与边界
+## 当前结果
 
 Stage 8A 只建立统一手工入库 Foundation，不进入 Stage 8B/8C，不开发正式前端。
 
 - `processing_import_batches` 是 Excel File Import 的最小业务父事实。
 - `ProviderRequestV1/provider_requests` 恰好属于 Collection Scope 或 Import Batch 之一。
 - Excel 不制造 Collection Run/Scope/Candidate：Input Artifact → Import Batch → import-parent Request/non-billable Attempt → Canonical Source → Content Ingestion。
-- TikHub DB 模式仍走 manual Collection → Request/Attempt → Raw → Candidate-before-Mapper → Canonical → fenced Ingestion。
+- TikHub DB 模式走 manual Collection → Request/Attempt → Raw → Candidate-before-Mapper → Canonical → fenced Ingestion。
 - `imports_test` / `tikhub_test` 默认 file-only，显式 opt-in 才访问 PostgreSQL。
 - Canonical 后没有 Excel/TikHub 私有 Writer；跨来源最终由 Content Owner 收敛 Current 并保留历史。
 
-不在 8A 实现 HTTP API、正式前端、Analysis 数据库存储、认证权限、预算系统或新基础设施。
+非目标：HTTP API、正式前端、Analysis 数据库存储、认证权限、预算系统和新基础设施。
 
 ## 方案选择
 
@@ -73,7 +73,7 @@ provider_requests
   INDEX(import_batch_id, created_at)
 ```
 
-已有 Attempt 后来源父级/provider/operation 不可修改。存在 File Import Request 时 downgrade 明确拒绝，避免丢失 provenance。
+已有 Attempt 后来源身份不可修改。存在 File Import Request 时 downgrade 明确拒绝，避免丢失 provenance。
 
 ## Excel DB 链
 
@@ -83,7 +83,7 @@ XLSX → Reader/Mapper → Canonical JSONL → filter → deduplicate
 → Canonical Source → ContentIngestionService → Content Owner → PostgreSQL
 ```
 
-`imports_test` 默认 `WRITE_TO_DATABASE=False`；支持 `run_all(..., write_to_database=False)` 和 `ingest_database(run_dir=...)`。DB 模式顺序为 `convert → filter → deduplicate → database_ingestion → AI → Excel`；DB 失败时已生成文件保留，后续阶段不自动继续。
+`imports_test` 默认 `WRITE_TO_DATABASE=False`；支持 `run_all(..., write_to_database=False)` 与 `ingest_database(run_dir=...)`。DB 模式顺序为 `convert → filter → deduplicate → database_ingestion → AI → Excel`；DB 失败时已生成文件保留，后续阶段不自动继续。
 
 ## TikHub DB 链
 
@@ -127,7 +127,7 @@ alembic check: no drift
 
 同一 job 成功完成 Architecture、Table Ownership、Secret、Docs、Contract compatibility、base roundtrip 和 previous-revision roundtrip。专属 PG18 覆盖 TikHub DB 单次 Fake Transport、重复 Excel、Excel→TikHub 跨来源收敛、较新 Observation 推进 Version/Metric、DB 失败后幂等重试。
 
-后续文档收口产生新的分支 head，所以**最终合并必须以 PR 实际最新 head 的新鲜 CI 为准**；历史绿灯不能替代最终 head 验证。
+后续只发生文档收口，**最终合并必须以 PR 实际最新 head 的新鲜 CI 为准**；历史绿灯不能替代最终验证。
 
 ## 文档
 
@@ -155,4 +155,4 @@ alembic check: no drift
 
 ## 中断恢复
 
-稳定导航：repo `dingyuwen777/AIMA_UGC`，上述 branch，PR #88，本 Active Change，Migration `20260820_0019`。恢复时重新读取目标分支 `AGENTS.md` → Skill → Change → PR 最新 head/CI；不在 Change 中维护动态分支 SHA。
+稳定导航：repo `dingyuwen777/AIMA_UGC`，上述 branch，PR #88，本 Active Change，Migration `20260820_0019`。恢复时重新读取目标分支 `AGENTS.md` → Skill → Change → PR 最新 head/CI；不维护动态分支 SHA。
