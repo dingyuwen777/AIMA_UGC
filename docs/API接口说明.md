@@ -93,7 +93,11 @@ HTTP 时间使用 UTC ISO-8601。前端负责按用户时区显示。
 
 ### 4.3 错误
 
-业务 API 逐步统一为稳定错误结构；失败不得用 HTTP 200 冒充成功。公开错误不暴露 SQL、Secret、Token、服务器内部路径或原始异常。
+业务 API 使用固定的 `type/title/status/detail/request_id/errors[]` Pydantic 错误结构；失败不得用 HTTP
+200 冒充成功。`errors[]` 项固定包含可空 `field`、`code` 和 `message`。公开错误不暴露 SQL、Secret、
+Token、服务器内部路径、堆栈或原始异常；响应头 `x-request-id` 与响应体 `request_id` 相同。
+未处理的 500 错误会以 `api.request_failed` 记录同一 `request_id`、方法、路径和异常类型，不记录原始
+异常消息或堆栈，避免连接串与 Secret 进入日志。
 
 ### 4.4 分页
 
@@ -105,7 +109,7 @@ HTTP 时间使用 UTC ISO-8601。前端负责按用户时区显示。
 
 ## 5. 当前已经实现的公开接口
 
-当前仓库仍处于基础设施开发阶段，业务 API 尚未批量实现。以下表格只列出当前已经存在于固定 OpenAPI 的接口。
+以下只列出当前已经存在于固定 OpenAPI 的接口。完整字段、枚举、默认值和错误响应以固定 OpenAPI 为准。
 
 ### 5.1 `GET /health/live`
 
@@ -123,12 +127,50 @@ HTTP 时间使用 UTC ISO-8601。前端负责按用户时区显示。
 - 未就绪：HTTP 503。
 - 响应只暴露各组件 `ok/error`，不返回连接串、Secret 或原始异常。
 
+### 5.3 `POST /api/v1/import-batches`
+
+- `operation_id`：`createImportBatch`。
+- 请求：`multipart/form-data`，且只允许一个 `file` 字段；只接受合法 `.xlsx`。
+- 成功：HTTP 202，返回 `batch_id`、`job_id` 与 `queued`；请求结束后由持久化 Worker 继续处理。
+- 安全边界：multipart body 最大 550 MiB，文件最大 500 MiB；XLSX 解压总量、单成员、成员数和压缩比
+  另有固定上限。资源超限返回 413，文件/OOXML/成员路径不合法返回 422。
+- 前置条件：必须已经通过 Relevance 配置 API 选择一个启用且有有效关键词的全局 Pack，否则返回 409。
+- 当前未实现 HTTP actor 幂等或公网认证；该写接口只用于受控部署环境。
+
+### 5.4 `GET /api/v1/import-batches/{batch_id}`
+
+- `operation_id`：`getImportBatch`。
+- 返回固定 Batch 状态、阶段、计数统计、安全错误摘要、时间和关联 Job 快照。
+- Batch 状态由关联 Job 当前事实投影；不存在返回 404，非法 UUID 返回统一 422。
+
+### 5.5 `GET /api/v1/jobs/{job_id}`
+
+- `operation_id`：`getJob`。
+- 当前公开查询只接受 Stage 8B `ingestion.import-excel.v1` Job，返回状态、Attempt/max_attempts、进度、
+  安全错误码、时间与成功结果；其他内部 Job 类型不自动成为公共 API。
+- 不存在或不是当前公开类型返回 404。
+
+### 5.6 Keyword Pack
+
+- `POST /api/v1/keyword-packs`：`createKeywordPack`，创建启用的空 Pack；同名返回 409。
+- `POST /api/v1/keyword-packs/{pack_id}/keywords`：`addKeywordToPack`，添加或复用关键词；只接收原始
+  `text`，数据库唯一身份由后端生成。
+- `GET /api/v1/keyword-packs/{pack_id}`：`getKeywordPack`，读取 Pack 和稳定排序的关键词项。
+- Stage 8B 只提供生成 Client 所需的最小 Contract；正式 Vue 配置页面属于 Stage 8F。
+
+### 5.7 Global Relevance Config
+
+- `PUT /api/v1/relevance-config`：`setGlobalRelevanceConfig`，用外键选择系统唯一 Keyword Pack；Pack
+  不存在返回 404，停用或没有有效关键词返回 409。
+- `GET /api/v1/relevance-config`：`getGlobalRelevanceConfig`，返回 Pack/Config 版本和实际有效关键词；
+  尚未配置或不可用返回 409。
+- Import Job 与 Collection Run 创建时冻结该快照，后续配置变化不会改写排队或运行中的执行语义。
+
 ## 6. 规划中的业务 API 分类
 
-以下资源路径来自当前 Blueprint，是后续业务阶段的目标边界；**未实现前不得把本节视为现有 API。** 实际接口只有进入对应阶段、建立 Pydantic Contract、固定 OpenAPI 和测试后才算存在。
+以下其余资源路径来自当前 Blueprint，是后续业务阶段的目标边界；**未实现前不得把本节视为现有 API。** 实际接口只有进入对应阶段、建立 Pydantic Contract、固定 OpenAPI 和测试后才算存在。
 
 ```text
-/api/v1/keyword-packs
 /api/v1/collection-plans
 /api/v1/collection-runs
 /api/v1/contents
@@ -136,7 +178,6 @@ HTTP 时间使用 UTC ISO-8601。前端负责按用户时区显示。
 /api/v1/analysis-runs
 /api/v1/alerts
 /api/v1/reports
-/api/v1/jobs
 ```
 
 典型业务动作规划为：

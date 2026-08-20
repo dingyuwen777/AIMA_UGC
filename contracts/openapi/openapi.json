@@ -1,6 +1,76 @@
 {
   "components": {
     "schemas": {
+      "Body_createImportBatch": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_createImportBatch",
+        "type": "object"
+      },
+      "GlobalRelevanceConfigRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "keyword_pack_id": {
+            "format": "uuid",
+            "title": "Keyword Pack Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "keyword_pack_id"
+        ],
+        "title": "GlobalRelevanceConfigRequest",
+        "type": "object"
+      },
+      "GlobalRelevanceConfigResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "effective_keywords": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Effective Keywords",
+            "type": "array"
+          },
+          "keyword_pack_id": {
+            "format": "uuid",
+            "title": "Keyword Pack Id",
+            "type": "string"
+          },
+          "keyword_pack_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Keyword Pack Version",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "keyword_pack_id",
+          "keyword_pack_version",
+          "version",
+          "effective_keywords",
+          "updated_at"
+        ],
+        "title": "GlobalRelevanceConfigResponse",
+        "type": "object"
+      },
       "HealthResponse": {
         "additionalProperties": false,
         "description": "进程存活检查响应。",
@@ -15,6 +85,509 @@
           "status"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "HttpErrorItem": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "HttpErrorItem",
+        "type": "object"
+      },
+      "HttpErrorResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "errors": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/HttpErrorItem"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "detail",
+          "request_id"
+        ],
+        "title": "HttpErrorResponse",
+        "type": "object"
+      },
+      "ImportBatchCreatedResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "batch_id": {
+            "format": "uuid",
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "status": {
+            "const": "queued",
+            "default": "queued",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "batch_id",
+          "job_id"
+        ],
+        "title": "ImportBatchCreatedResponse",
+        "type": "object"
+      },
+      "ImportBatchResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Summary"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "input_artifact_id": {
+            "format": "uuid",
+            "title": "Input Artifact Id",
+            "type": "string"
+          },
+          "job": {
+            "$ref": "#/components/schemas/JobStatusResponse"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/ImportStage"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/ImportStatsResponse"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "input_artifact_id",
+          "status",
+          "stage",
+          "stats",
+          "created_at",
+          "job"
+        ],
+        "title": "ImportBatchResponse",
+        "type": "object"
+      },
+      "ImportJobResultResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "batch_id": {
+            "format": "uuid",
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "rows_ingested": {
+            "minimum": 0.0,
+            "title": "Rows Ingested",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "batch_id",
+          "rows_ingested"
+        ],
+        "title": "ImportJobResultResponse",
+        "type": "object"
+      },
+      "ImportStage": {
+        "enum": [
+          "queued",
+          "reading",
+          "mapping",
+          "filtering",
+          "deduplicating",
+          "ingesting",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "type": "string"
+      },
+      "ImportStatsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "duplicates_removed": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Duplicates Removed",
+            "type": "integer"
+          },
+          "rows_filtered_out": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Rows Filtered Out",
+            "type": "integer"
+          },
+          "rows_ingested": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Rows Ingested",
+            "type": "integer"
+          },
+          "rows_matched": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Rows Matched",
+            "type": "integer"
+          },
+          "rows_rejected": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Rows Rejected",
+            "type": "integer"
+          },
+          "rows_seen": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Rows Seen",
+            "type": "integer"
+          }
+        },
+        "title": "ImportStatsResponse",
+        "type": "object"
+      },
+      "JobStatusResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt": {
+            "minimum": 0.0,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "job_type": {
+            "title": "Job Type",
+            "type": "string"
+          },
+          "max_attempts": {
+            "exclusiveMinimum": 0.0,
+            "title": "Max Attempts",
+            "type": "integer"
+          },
+          "progress": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Progress",
+            "type": "integer"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImportJobResultResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "job_type",
+          "status",
+          "attempt",
+          "max_attempts",
+          "progress",
+          "created_at"
+        ],
+        "title": "JobStatusResponse",
+        "type": "object"
+      },
+      "KeywordPackCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "KeywordPackCreateRequest",
+        "type": "object"
+      },
+      "KeywordPackKeywordCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "note": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Note",
+            "type": "string"
+          },
+          "priority": {
+            "default": 100,
+            "title": "Priority",
+            "type": "integer"
+          },
+          "text": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "KeywordPackKeywordCreateRequest",
+        "type": "object"
+      },
+      "KeywordPackResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "keywords": {
+            "items": {
+              "$ref": "#/components/schemas/KeywordResponse"
+            },
+            "title": "Keywords",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "enabled",
+          "version",
+          "keywords"
+        ],
+        "title": "KeywordPackResponse",
+        "type": "object"
+      },
+      "KeywordResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "platform": {
+            "default": "all",
+            "title": "Platform",
+            "type": "string"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "enabled",
+          "priority",
+          "note"
+        ],
+        "title": "KeywordResponse",
         "type": "object"
       },
       "ReadinessChecks": {
@@ -85,6 +658,510 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/import-batches": {
+      "post": {
+        "operationId": "createImportBatch",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_createImportBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportBatchCreatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Content Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Create Import Batch",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/import-batches/{batch_id}": {
+      "get": {
+        "operationId": "getImportBatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportBatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Import Batch",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/jobs/{job_id}": {
+      "get": {
+        "operationId": "getJob",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/keyword-packs": {
+      "post": {
+        "operationId": "createKeywordPack",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KeywordPackCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeywordPackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Create Keyword Pack",
+        "tags": [
+          "keywords"
+        ]
+      }
+    },
+    "/api/v1/keyword-packs/{pack_id}": {
+      "get": {
+        "operationId": "getKeywordPack",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeywordPackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Keyword Pack",
+        "tags": [
+          "keywords"
+        ]
+      }
+    },
+    "/api/v1/keyword-packs/{pack_id}/keywords": {
+      "post": {
+        "operationId": "addKeywordToPack",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KeywordPackKeywordCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeywordPackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Add Keyword",
+        "tags": [
+          "keywords"
+        ]
+      }
+    },
+    "/api/v1/relevance-config": {
+      "get": {
+        "operationId": "getGlobalRelevanceConfig",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalRelevanceConfigResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Global Relevance",
+        "tags": [
+          "relevance"
+        ]
+      },
+      "put": {
+        "operationId": "setGlobalRelevanceConfig",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GlobalRelevanceConfigRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalRelevanceConfigResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Set Global Relevance",
+        "tags": [
+          "relevance"
+        ]
+      }
+    },
     "/health/live": {
       "get": {
         "description": "返回进程存活状态，不检查外部依赖。",

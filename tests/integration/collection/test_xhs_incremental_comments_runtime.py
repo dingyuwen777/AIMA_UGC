@@ -255,6 +255,13 @@ def test_xhs_incremental_comments_stop_after_safe_known_comment_boundary(
                 trigger_type="api",
                 config_snapshot={
                     "schema_version": "collection-run-config.v1",
+                    "relevance": {
+                        "schema_version": "relevance-snapshot.v1",
+                        "keyword_pack_id": str(uuid4()),
+                        "keyword_pack_version": 1,
+                        "config_version": 1,
+                        "effective_keywords": ["脱敏"],
+                    },
                     "detail_policy": "on_change",
                     "comment_policy": "adaptive",
                     "platforms": [

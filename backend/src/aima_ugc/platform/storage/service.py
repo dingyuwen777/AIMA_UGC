@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
+from typing import BinaryIO
 from uuid import UUID, uuid4
 
 from .models import ArtifactRecord
 from .ports import ArtifactMetadataPort, ArtifactStore
 
 _KIND_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
+_SUFFIX_PATTERN = re.compile(r"^\.[a-z0-9]{1,16}$")
 
 
 class ArtifactService:
@@ -71,6 +73,57 @@ class ArtifactService:
                 pass
             raise
 
+        return self.confirm_stored_bytes(
+            artifact_id,
+            sha256=stored.sha256,
+            byte_size=stored.byte_size,
+            stored_at=datetime.now(UTC),
+        )
+
+    def store_stream(
+        self,
+        *,
+        kind: str,
+        content_type: str,
+        retention_class: str,
+        source: BinaryIO,
+        max_bytes: int,
+        filename_suffix: str = "",
+        encoding: str | None = None,
+    ) -> ArtifactRecord:
+        """把有界输入流落入同一 Artifact 生命周期，不在内存聚合完整文件。"""
+
+        if not _KIND_PATTERN.fullmatch(kind):
+            raise ValueError("Artifact kind 必须是安全的稳定标识")
+        if not content_type:
+            raise ValueError("Artifact content_type 不能为空")
+        if not retention_class:
+            raise ValueError("Artifact retention_class 不能为空")
+        if filename_suffix and not _SUFFIX_PATTERN.fullmatch(filename_suffix):
+            raise ValueError("Artifact filename_suffix 必须是安全的小写扩展名")
+
+        artifact_id = uuid4()
+        storage_key = f"{kind}/{artifact_id}{filename_suffix}"
+        pending = ArtifactRecord(
+            id=artifact_id,
+            kind=kind,
+            storage_backend=self._store.backend_name,
+            storage_key=storage_key,
+            content_type=content_type,
+            encoding=encoding,
+            retention_class=retention_class,
+            storage_status="pending",
+            created_at=datetime.now(UTC),
+        )
+        self._metadata.create_pending(pending)
+        try:
+            stored = self._store.put_stream(storage_key, source, max_bytes=max_bytes)
+        except Exception:
+            try:
+                self._metadata.mark_error(artifact_id)
+            except Exception:
+                pass
+            raise
         return self.confirm_stored_bytes(
             artifact_id,
             sha256=stored.sha256,

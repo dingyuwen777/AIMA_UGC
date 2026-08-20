@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Protocol
+from typing import BinaryIO, Protocol
 from uuid import UUID
 
 from .models import ArtifactRecord, StoredBytes
@@ -16,6 +16,16 @@ class ArtifactStore(Protocol):
     def backend_name(self) -> str: ...
 
     def put(self, storage_key: str, data: bytes) -> StoredBytes: ...
+
+    def put_stream(
+        self,
+        storage_key: str,
+        source: BinaryIO,
+        *,
+        max_bytes: int,
+    ) -> StoredBytes: ...
+
+    def copy_to(self, storage_key: str, destination: BinaryIO) -> StoredBytes: ...
 
     def read(self, storage_key: str) -> bytes: ...
 

@@ -33,9 +33,16 @@ Stage 8A 已建立 Unified Manual Ingestion Foundation；当前机器事实为�
 - `processing_import_batches` 已作为 Excel File Import 的最小业务父事实；
 - `ProviderRequestV1/provider_requests` 已一般化为 Collection Scope / Import Batch 恰好一个来源父级；
 - Excel File Import 使用真实 Input Artifact + Import Batch + import-parent Request/non-billable Attempt 建立来源链，不制造虚假的 Collection Run/Scope/Candidate，也不伪造 `provider_attempt_id/raw_artifact_id`；
-- 当前正式业务 OpenAPI 仍未建立 Stage 8B 批量上传/Import Batch API，不能把 Figma 中的按钮、筛选、进度和 KPI 当成已经存在的 API。
+- Stage 8B 已建立单文件 multipart Excel 上传、Batch/Import Job 查询、Keyword Pack 最小管理和系统全局
+  Relevance 配置的 Pydantic HTTP Contract；固定 OpenAPI 与 Orval Fetch Client 由同一生成链维护；
+- `ingestion.import-excel.v1` 已注册到既有 PostgreSQL Job Runtime/Worker：HTTP 只保存 Artifact 并在同一
+  PostgreSQL 事务创建 Job、Batch 和 Artifact 关联，Worker 从冻结输入执行正式 Stage 8A 链；
+- 同一个 Provider-neutral Relevance Service 已接入 Excel 与 TikHub；Collection Run/Import 创建时冻结全局
+  Pack/Config 版本与有效关键词，TikHub 最终未命中保留 `filtered` Candidate 账本而不写 Content；
+- Stage 8B 仍没有正式 Vue 页面、Batch 列表/KPI/Cursor Read Model、Content Center 或 TikHub 补采 UI。
 
-因此：**Stage 8A 的底层统一手工入库能力已经是机器事实；网页上传、持久化 Import Job 产品化、运行中心 API/页面等 Stage 8B+ 能力仍只是后续目标，不得提前写成已实现。**
+因此：**Stage 8A Foundation 与 Stage 8B Import HTTP/Job/Relevance 产品化已经是机器事实；正式运行中心
+页面及其列表/KPI/Cursor Query 仍属于 Stage 8C，不得把生成 Client 冒充页面已经实现。**
 
 ## 3. 已确认的第一版产品数据入口
 
@@ -232,7 +239,7 @@ Processing / Import Batch
 - 一个 Batch 可以没有 TikHub 补采；
 - TikHub 补采不是 Excel 数据入库成功的必要条件。
 
-Stage 8A 已将机器结构冻结为 `processing_import_batches`：当前只保存 `id`、`input_artifact_id`、可空唯一 `job_id`、`status`、最小 `stats`、`error_summary` 与创建/开始/结束时间；Owner 为 `ingestion`。当前同步人工入口允许 `job_id = null`，Stage 8B 再产品化 HTTP/持久 Job 绑定，不提前为页面堆字段。
+Stage 8A 已将机器结构冻结为 `processing_import_batches`；Stage 8B 沿用该结构，只保存 `id`、`input_artifact_id`、可空唯一 `job_id`、`status`、最小 `stats`、`error_summary` 与创建/开始/结束时间，Owner 仍为 `ingestion`。同步人工入口继续允许 `job_id = null`；Stage 8B HTTP 入口则在同一事务中绑定持久 Job，不为未来页面预建字段。
 
 因此一个多 Excel 人工 run 对应多个最小 Import Batch，每个 Batch 对应一个原始 Excel Artifact；
 “一个人工 run”不是数据库新增父表，也不把多个文件塞进单个 `input_artifact_id`。某个源文件的记录
@@ -392,10 +399,10 @@ Migration 仍由仓库既有 Alembic 入口显式执行，调试代码不代替 
 
 ## 11. 正式网页 Excel 导入链
 
-Stage 8 正式网页入口目标为：
+Stage 8B 当前后端入口为：
 
 ```text
-Vue
+Browser / API Client
 → 上传/选择 Excel
 → FastAPI
 → Processing / Import Batch
@@ -409,8 +416,8 @@ Vue
 → ContentIngestionService
 → PostgresContentRepository
 → PostgreSQL
-→ Query API
-→ Vue
+→ Batch / Job Query API
+→ OpenAPI / Orval Client
 ```
 
 长文件处理不能在单次 HTTP 请求生命周期内同步跑完。
@@ -421,12 +428,12 @@ HTTP 只负责：
 - 返回 Batch/Job 身份；
 - 查询状态和统计；
 - 查询错误摘要；
-- 查询最终业务内容；
-- 需要时显式发起后续动作。
 
 Worker 执行实际文件处理和数据库摄取。
 
-**本节属于 Stage 8B 目标；Stage 8A 没有新增 HTTP Route/OpenAPI/生成 Client。**
+当前上传仅接受一个 `.xlsx` `file`，Router 不处理工作簿。ArtifactStore 的临时/正式 storage key 都由
+系统生成；原文件名只作 Batch 审计元数据，Worker 在 Windows/Linux 均使用固定临时名，避免宿主路径
+规则改变处理语义。Stage 8B 已生成 Client，但 Vue 页面仍属于 Stage 8C/8F。
 
 ## 12. AI 的 Stage 8 边界
 
@@ -517,13 +524,14 @@ PLANNED
 | `imports_test` 可选写库 | IMPLEMENTED | Stage 8A 已实现，默认仍 file-only |
 | `tikhub_test` 可选写库 | IMPLEMENTED | Stage 8A 已实现，复用正式 Collection |
 | Processing / Import Batch | IMPLEMENTED | Stage 8A 已建立最小机器结构 |
-| 网页上传 Excel | PLANNED | Stage 8B |
-| Batch 列表/详情 | PLANNED | Stage 8B/8C |
-| 阶段进度/统计 | REUSE_BUT_PRODUCTIZE | Stage 8A 有最小状态/统计；Stage 8B/8C 产品化查询 |
+| 网页可调用的 Excel 上传 API | IMPLEMENTED | Stage 8B 已交付 multipart 202 Contract/Orval；Vue 入口在 8C |
+| Batch 详情 | IMPLEMENTED | Stage 8B 已交付按 ID 查询 |
+| Batch 列表 | PLANNED | Stage 8C Query Read Model |
+| 阶段进度/统计 | IMPLEMENTED | Stage 8B 按 Batch ID 返回阶段、固定计数与关联 Job |
 | KPI：处理中/今日完成/今日导入 | PLANNED | Stage 8C Query Read Model |
 | 筛选/分页 | PLANNED | Stage 8C HTTP Cursor/Query |
-| Job 状态 | REUSE_BUT_PRODUCTIZE | Stage 8B/8C API 化 |
-| 错误记录/安全摘要 | REUSE_BUT_PRODUCTIZE | Stage 8A 有 Batch error_summary；Stage 8B/8C Query/API |
+| Import Job 状态 | IMPLEMENTED | Stage 8B 按 ID 查询；8C 负责页面轮询 |
+| 错误记录/安全摘要 | IMPLEMENTED | Stage 8B 固定 Error Contract/request_id 与 Batch/Job 摘要 |
 | 查看处理内容 | REUSE_BUT_PRODUCTIZE | Stage 8D Content Query/API |
 | AI 打标核心 | REUSE_BUT_PRODUCTIZE | 复用现有 Service/Prompt/Validator；正式 DB 模式最终必须持久化成功 Analysis |
 | Analysis PostgreSQL Persistence | PLANNED | 独立 L3 Change；Result + Label Pairs + 幂等/历史/current Analysis |
@@ -590,7 +598,7 @@ Stage 8 不作为一个巨型 PR 一次完成。按以下最小正式单元推�
 - 证明 Excel 与 TikHub 同一内容 ID 最终收敛到同一 Content；
 - 文件阶段成功、DB 阶段失败时可安全重试。
 
-**当前状态：上述 Stage 8A 机器实现、Migration 与 PostgreSQL 18 自动化验收已经落地；本阶段在 PR/CI/Review 集成闭环完成后才标记正式闭环。下一正式单元仍是 8B。**
+**当前状态：Stage 8A 机器实现、Migration、PostgreSQL 18 自动化验收与 Change 归档均已闭环。**
 
 ### 8B：Import HTTP / Job Productization
 
@@ -636,6 +644,10 @@ Stage 8B 不实现 Keyword Pack Vue 页面；本阶段生成的 Orval Client 供
 运行证据证明全量重试不能满足要求时，才能通过新的 L3 Change 冻结检查点 Contract、Schema/Migration、
 分块事务与部分数据可见性、处理中间 Artifact 保留/清理、Fencing、幂等和回滚后实现；当前不得预建
 未使用的检查点表、Service 或兼容字段。
+
+**当前机器状态：上述 Stage 8B HTTP、Artifact、Batch/Job、Worker、全局 Relevance、TikHub 门禁、
+Migration、固定 OpenAPI 与 Orval Client 已落地；是否达到正式闭环仍必须以对应 Active/归档 Change 的
+最终 PR CI、Review、合并和合并后 main 新鲜证据为准。Stage 8B 没有实现 Vue 页面。**
 
 ### 8C：采集运行中心首个完整前后端纵切
 
@@ -752,9 +764,9 @@ imports_test / tikhub_test 永久保留
 写库时假定本地 PostgreSQL 18 容器/实例已经启动
 调试脚本不管理容器、不跑 Migration、不写 SQL
 
-Stage 8A 先完成统一手工摄取 Foundation
-下一正式单元是 Stage 8B HTTP / Job Productization
-再进入 Stage 8C 第一个 Vue/Figma 页面
+Stage 8A 已完成统一手工摄取 Foundation
+Stage 8B 已建立 Import HTTP / Job / 全局 Relevance Productization
+下一正式最小单元是 Stage 8C 第一个 Vue/Figma 页面
 离线单批报告读 Excel；正式系统报告读 PostgreSQL Read Model
 报告源显式选择，不按数据库可用性自动切换
 不要用目标 UI 冒充后端已经存在

@@ -24,6 +24,7 @@
 - `keyword_packs`：`system`；
 - `keywords`：`system`；
 - `keyword_pack_items`：`system`；
+- `global_relevance_config`：`system`；
 - `audit_events`：`system`。
 
 `provider_configs.id` 是 Provider 配置实例的稳定 UUID。同一种 Provider 可以有多个配置实例；配置实例不绑定平台，Collection 的 Plan/平台策略通过 `provider_config_id` 选择它。Provider 类型不允许对同一稳定 UUID 原地改成另一 Provider；切换 Provider 时创建新配置并改引用。
@@ -34,17 +35,22 @@
 `(pack_id, keyword_id, platform)` 作为复合身份，`platform='all'` 只表示父事实中的全平台词；Collection
 创建 Run 时再按正式 Plan 关系展开并冻结为明确平台关键词列表。
 
-## 关键词管理进入 Stage 8 前的产品门禁
+## Keyword Pack 与全局 Relevance
 
 `imports_test` 当前有自己的本地相关性清洗词包文件，并在离线清洗时使用 NFKC、casefold、去空白以及
 忽略 `-/_/·` 的匹配规范化。Stage 8B 继续保留这套更强的 Relevance 匹配规则；它与数据库身份规则
 有意不同。同一词包内若多个数据库关键词收敛为同一匹配文本，运行时按稳定优先级/顺序保留第一个有效
 匹配项，数据库和管理 API 仍保留各自词条。
 
-Stage 8B 已批准的业务边界是：Discovery 词包只决定 TikHub 等 Provider 搜索什么；Relevance 是所有
+当前业务边界是：Discovery 词包只决定 TikHub 等 Provider 搜索什么；Relevance 是所有
 来源在 Mapper 形成 Canonical 后、写入 Content 前执行的统一准入过滤。Relevance 词包是系统全局唯一
 配置，Import/Collection 不允许分别覆盖；每个 Job/Run 仍必须冻结 Pack ID、版本和实际关键词快照。
 全局配置使用正式外键关系，不能把 Keyword Pack UUID 作为无约束 JSON 设置。
+
+正式写入/读取入口由 Stage 8B 的 Pydantic HTTP Contract、`PostgresKeywordCatalogRepository` 与
+`PostgresGlobalRelevanceRepository` 共同维护。全局配置缺失、Pack 停用或没有启用关键词时，Import 与
+Collection Run 创建均 fail closed；Snapshot 是版本化 Pydantic Contract，不让可变数据库配置渗入已排队
+Job/Run。Keyword Pack Vue 页面仍属于 Stage 8F。
 
 后续正式开发 Alias 关系前仍必须由业务 Owner 明确以下语义，不能由实现者静默选择默认值：
 

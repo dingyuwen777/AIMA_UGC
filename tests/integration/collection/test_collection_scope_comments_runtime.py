@@ -170,6 +170,13 @@ def test_scope_runtime_fetches_and_ingests_root_comments(
                 trigger_type="api",
                 config_snapshot={
                     "schema_version": "collection-run-config.v1",
+                    "relevance": {
+                        "schema_version": "relevance-snapshot.v1",
+                        "keyword_pack_id": str(uuid4()),
+                        "keyword_pack_version": 1,
+                        "config_version": 1,
+                        "effective_keywords": ["脱敏"],
+                    },
                     "detail_policy": "on_change",
                     "comment_policy": "adaptive",
                     "platforms": [

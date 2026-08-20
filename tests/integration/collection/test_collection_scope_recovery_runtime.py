@@ -168,6 +168,13 @@ def test_takeover_reconciles_search_raw_then_formal_scope_replays_without_resend
                 trigger_type="api",
                 config_snapshot={
                     "schema_version": "collection-run-config.v1",
+                    "relevance": {
+                        "schema_version": "relevance-snapshot.v1",
+                        "keyword_pack_id": str(uuid4()),
+                        "keyword_pack_version": 1,
+                        "config_version": 1,
+                        "effective_keywords": ["脱敏"],
+                    },
                     "detail_policy": "on_change",
                     "comment_policy": "adaptive",
                     "platforms": [

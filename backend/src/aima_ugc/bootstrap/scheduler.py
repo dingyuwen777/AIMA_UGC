@@ -13,6 +13,10 @@ from aima_ugc.adapters.persistence.postgres.collection_planning import (
     PostgresCollectionPlanningRepository,
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
+from aima_ugc.adapters.persistence.postgres.relevance import (
+    GlobalRelevanceUnavailable,
+    PostgresGlobalRelevanceRepository,
+)
 from aima_ugc.adapters.persistence.postgres.scheduled_keywords import (
     MissingScheduledKeywordPackError,
     PostgresScheduledKeywordSnapshotReader,
@@ -22,6 +26,7 @@ from aima_ugc.adapters.providers.registry import build_default_provider_registry
 from aima_ugc.adapters.providers.tikhub.transport import (
     DEFAULT_TIKHUB_REQUEST_TIMEOUT_SECONDS,
 )
+from aima_ugc.contracts.analysis import RelevanceSnapshotV1
 from aima_ugc.contracts.collection import ProviderPlatformCapabilityV1
 from aima_ugc.modules.collection.collection_run_job import (
     COLLECTION_RUN_JOB_TYPE,
@@ -129,6 +134,7 @@ def run_scheduler_once(
                     keyword_catalog = PostgresScheduledKeywordSnapshotReader(session).read(
                         plan.keyword_pack_ids
                     )
+                    relevance_snapshot, _ = PostgresGlobalRelevanceRepository(session).snapshot()
                     scope_snapshot = build_scheduled_scope_snapshot(
                         plan_platforms=tuple(item.platform for item in plan.platforms),
                         entries=keyword_catalog.entries,
@@ -178,6 +184,7 @@ def run_scheduler_once(
                             keyword_packs=scope_snapshot.keyword_packs,
                             keyword_scope_count=len(scope_snapshot.scopes),
                             job_timeout_seconds=job_timeout_seconds,
+                            relevance_snapshot=relevance_snapshot,
                         ),
                         scopes=scope_snapshot.scopes,
                         occurrence_id=occurrence.id,
@@ -192,6 +199,7 @@ def run_scheduler_once(
                     skipped += len(decision.skipped)
             except (
                 MissingScheduledKeywordPackError,
+                GlobalRelevanceUnavailable,
                 ScheduleExpressionError,
                 SchedulerBacklogLimitError,
                 ValueError,
@@ -323,6 +331,7 @@ def _scheduled_run_snapshot(
     keyword_packs: tuple[ScheduledKeywordPackSnapshot, ...],
     keyword_scope_count: int,
     job_timeout_seconds: int,
+    relevance_snapshot: RelevanceSnapshotV1,
 ) -> dict[str, object]:
     """冻结调度时可安全持久化的 Plan/Provider/词包执行事实，不复制 Secret 值。"""
     return {
@@ -355,4 +364,5 @@ def _scheduled_run_snapshot(
             for item in keyword_packs
         ],
         "keyword_scope_count": keyword_scope_count,
+        "relevance": relevance_snapshot.model_dump(mode="json"),
     }

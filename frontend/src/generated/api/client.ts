@@ -4,6 +4,24 @@
  * AIMA_UGC API
  * OpenAPI spec version: 0.1.0
  */
+export interface BodyCreateImportBatch {
+  file: Blob;
+}
+
+export interface GlobalRelevanceConfigRequest {
+  keyword_pack_id: string;
+}
+
+export interface GlobalRelevanceConfigResponse {
+  effective_keywords: string[];
+  keyword_pack_id: string;
+  /** @exclusiveMinimum 0 */
+  keyword_pack_version: number;
+  updated_at: string;
+  /** @exclusiveMinimum 0 */
+  version: number;
+}
+
 /**
  * 进程存活检查响应。
  */
@@ -11,6 +29,159 @@ export const HealthResponseValue = {
   status: 'ok',
 } as const;
 export type HealthResponse = typeof HealthResponseValue;
+
+export interface HttpErrorItem {
+  code: string;
+  field?: string | null;
+  message: string;
+}
+
+export interface HttpErrorResponse {
+  detail: string;
+  errors?: HttpErrorItem[];
+  request_id: string;
+  status: number;
+  title: string;
+  type: string;
+}
+
+export interface ImportBatchCreatedResponse {
+  batch_id: string;
+  job_id: string;
+  status?: 'queued';
+}
+
+export type ImportBatchResponseStatus = typeof ImportBatchResponseStatus[keyof typeof ImportBatchResponseStatus];
+
+
+export const ImportBatchResponseStatus = {
+  queued: 'queued',
+  running: 'running',
+  succeeded: 'succeeded',
+  failed: 'failed',
+  cancelled: 'cancelled',
+} as const;
+
+export interface ImportJobResultResponse {
+  batch_id: string;
+  /** @minimum 0 */
+  rows_ingested: number;
+}
+
+export type JobStatusResponseStatus = typeof JobStatusResponseStatus[keyof typeof JobStatusResponseStatus];
+
+
+export const JobStatusResponseStatus = {
+  queued: 'queued',
+  running: 'running',
+  succeeded: 'succeeded',
+  failed: 'failed',
+  cancelled: 'cancelled',
+} as const;
+
+export interface JobStatusResponse {
+  /** @minimum 0 */
+  attempt: number;
+  created_at: string;
+  error_code?: string | null;
+  finished_at?: string | null;
+  id: string;
+  job_type: string;
+  /** @exclusiveMinimum 0 */
+  max_attempts: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  progress: number;
+  result?: ImportJobResultResponse | null;
+  started_at?: string | null;
+  status: JobStatusResponseStatus;
+}
+
+export type ImportStage = typeof ImportStage[keyof typeof ImportStage];
+
+
+export const ImportStage = {
+  queued: 'queued',
+  reading: 'reading',
+  mapping: 'mapping',
+  filtering: 'filtering',
+  deduplicating: 'deduplicating',
+  ingesting: 'ingesting',
+  succeeded: 'succeeded',
+  failed: 'failed',
+  cancelled: 'cancelled',
+} as const;
+
+export interface ImportStatsResponse {
+  /** @minimum 0 */
+  duplicates_removed?: number;
+  /** @minimum 0 */
+  rows_filtered_out?: number;
+  /** @minimum 0 */
+  rows_ingested?: number;
+  /** @minimum 0 */
+  rows_matched?: number;
+  /** @minimum 0 */
+  rows_rejected?: number;
+  /** @minimum 0 */
+  rows_seen?: number;
+}
+
+export interface ImportBatchResponse {
+  created_at: string;
+  error_summary?: string | null;
+  finished_at?: string | null;
+  id: string;
+  input_artifact_id: string;
+  job: JobStatusResponse;
+  stage: ImportStage;
+  started_at?: string | null;
+  stats: ImportStatsResponse;
+  status: ImportBatchResponseStatus;
+}
+
+export interface KeywordPackCreateRequest {
+  /** @maxLength 2000 */
+  description?: string;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  name: string;
+}
+
+export interface KeywordPackKeywordCreateRequest {
+  enabled?: boolean;
+  /** @maxLength 1000 */
+  note?: string;
+  priority?: number;
+  /**
+     * @minLength 1
+     * @maxLength 500
+     */
+  text: string;
+}
+
+export interface KeywordResponse {
+  enabled: boolean;
+  id: string;
+  note: string;
+  platform?: string;
+  priority: number;
+  text: string;
+}
+
+export interface KeywordPackResponse {
+  description: string;
+  enabled: boolean;
+  id: string;
+  keywords: KeywordResponse[];
+  name: string;
+  /** @exclusiveMinimum 0 */
+  version: number;
+}
 
 export type ReadinessChecksArtifactStore = typeof ReadinessChecksArtifactStore[keyof typeof ReadinessChecksArtifactStore];
 
@@ -60,6 +231,257 @@ export interface ReadinessResponse {
   checks: ReadinessChecks;
   status: ReadinessResponseStatus;
 }
+
+export const getCreateImportBatchUrl = () => {
+
+
+
+
+  return `/api/v1/import-batches`
+}
+
+/**
+ * @summary Create Import Batch
+ */
+export const createImportBatch = async (bodyCreateImportBatch: BodyCreateImportBatch, options?: RequestInit): Promise<ImportBatchCreatedResponse> => {
+    const formData = new FormData();
+formData.append(`file`, bodyCreateImportBatch.file);
+
+  const res = await fetch(getCreateImportBatchUrl(),
+  {
+    ...options,
+    method: 'POST'
+    ,
+    body: formData
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ImportBatchCreatedResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetImportBatchUrl = (batchId: string,) => {
+
+
+
+
+  return `/api/v1/import-batches/${batchId}`
+}
+
+/**
+ * @summary Get Import Batch
+ */
+export const getImportBatch = async (batchId: string, options?: RequestInit): Promise<ImportBatchResponse> => {
+
+  const res = await fetch(getGetImportBatchUrl(batchId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ImportBatchResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetJobUrl = (jobId: string,) => {
+
+
+
+
+  return `/api/v1/jobs/${jobId}`
+}
+
+/**
+ * @summary Get Job
+ */
+export const getJob = async (jobId: string, options?: RequestInit): Promise<JobStatusResponse> => {
+
+  const res = await fetch(getGetJobUrl(jobId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: JobStatusResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCreateKeywordPackUrl = () => {
+
+
+
+
+  return `/api/v1/keyword-packs`
+}
+
+/**
+ * @summary Create Keyword Pack
+ */
+export const createKeywordPack = async (keywordPackCreateRequest: KeywordPackCreateRequest, options?: RequestInit): Promise<KeywordPackResponse> => {
+
+  const res = await fetch(getCreateKeywordPackUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(keywordPackCreateRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: KeywordPackResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetKeywordPackUrl = (packId: string,) => {
+
+
+
+
+  return `/api/v1/keyword-packs/${packId}`
+}
+
+/**
+ * @summary Get Keyword Pack
+ */
+export const getKeywordPack = async (packId: string, options?: RequestInit): Promise<KeywordPackResponse> => {
+
+  const res = await fetch(getGetKeywordPackUrl(packId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: KeywordPackResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getAddKeywordToPackUrl = (packId: string,) => {
+
+
+
+
+  return `/api/v1/keyword-packs/${packId}/keywords`
+}
+
+/**
+ * @summary Add Keyword
+ */
+export const addKeywordToPack = async (packId: string,
+    keywordPackKeywordCreateRequest: KeywordPackKeywordCreateRequest, options?: RequestInit): Promise<KeywordPackResponse> => {
+
+  const res = await fetch(getAddKeywordToPackUrl(packId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(keywordPackKeywordCreateRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: KeywordPackResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetGlobalRelevanceConfigUrl = () => {
+
+
+
+
+  return `/api/v1/relevance-config`
+}
+
+/**
+ * @summary Get Global Relevance
+ */
+export const getGlobalRelevanceConfig = async ( options?: RequestInit): Promise<GlobalRelevanceConfigResponse> => {
+
+  const res = await fetch(getGetGlobalRelevanceConfigUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: GlobalRelevanceConfigResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getSetGlobalRelevanceConfigUrl = () => {
+
+
+
+
+  return `/api/v1/relevance-config`
+}
+
+/**
+ * @summary Set Global Relevance
+ */
+export const setGlobalRelevanceConfig = async (globalRelevanceConfigRequest: GlobalRelevanceConfigRequest, options?: RequestInit): Promise<GlobalRelevanceConfigResponse> => {
+
+  const res = await fetch(getSetGlobalRelevanceConfigUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(globalRelevanceConfigRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: GlobalRelevanceConfigResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
 
 export const getHealthLiveUrl = () => {
 

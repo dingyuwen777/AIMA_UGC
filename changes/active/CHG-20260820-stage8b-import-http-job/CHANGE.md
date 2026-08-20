@@ -28,8 +28,12 @@ affected_paths:
   - "contracts/openapi/"
   - "frontend/src/generated/api/"
   - "docs/"
-contracts: []
-data_changes: []
+contracts:
+  - "HTTP Pydantic → OpenAPI → Orval：Import Batch / Import Job / Keyword Pack / Global Relevance / Error"
+  - "RelevanceSnapshotV1"
+  - "ingestion.import-excel.v1 Job Payload"
+data_changes:
+  - "20260820_0020：global_relevance_config、关键词 NFKC/casefold 身份迁移、Candidate filtered 终态"
 ---
 
 # 目标
@@ -70,30 +74,30 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 
 # 成功标准
 
-- [ ] HTTP 上传/登记只接受经批准的 Excel 输入，并通过统一 ArtifactService 保存 Source Artifact。
-- [ ] 单个上传 `.xlsx`（文件本身即 ZIP 压缩包）最大 500 MiB；API 必须流式计数和落盘，不能把整个
+- [x] HTTP 上传/登记只接受经批准的 Excel 输入，并通过统一 ArtifactService 保存 Source Artifact。
+- [x] 单个上传 `.xlsx`（文件本身即 ZIP 压缩包）最大 500 MiB；API 必须流式计数和落盘，不能把整个
   上传或 Artifact 读入内存，超过限制返回统一 `413`。
-- [ ] 创建请求在同一 PostgreSQL 业务边界建立 Processing Import Batch 与持久化 Import Job，
+- [x] 创建请求在同一 PostgreSQL 业务边界建立 Processing Import Batch 与持久化 Import Job，
   返回 `202 Accepted`、Batch ID、Job ID 和 queued 状态；Router 不执行长文件处理。
-- [ ] Import Job 使用版本化 Pydantic Payload，由现有 Job Runtime/Worker 认领、接管、重试、
+- [x] Import Job 使用版本化 Pydantic Payload，由现有 Job Runtime/Worker 认领、接管、重试、
   Fencing、取消和终态转换；未知 Worker 不会认领该类型。
-- [ ] Worker 调用生产 Excel Reader/Mapper、生产相关性 Filter/稳定身份 Dedup 和 Stage 8A 正式
+- [x] Worker 调用生产 Excel Reader/Mapper、生产相关性 Filter/稳定身份 Dedup 和 Stage 8A 正式
   File Import/Content Ingestion，不调用 `imports_test` 作为生产实现。
-- [ ] PostgreSQL 只允许零或一条 System Owner 的全局 Relevance 配置，并用真实外键引用一个现有
+- [x] PostgreSQL 只允许零或一条 System Owner 的全局 Relevance 配置，并用真实外键引用一个现有
   Keyword Pack；未配置、Pack 停用或没有有效关键词时，正式 Import/Collection 必须 fail closed。
-- [ ] 关键词 HTTP 写入只接受原始 `text`，后端以 `trim → NFKC → casefold` 生成数据库唯一身份；内部
+- [x] 关键词 HTTP 写入只接受原始 `text`，后端以 `trim → NFKC → casefold` 生成数据库唯一身份；内部
   空白和 `-/_/·` 在数据库身份中保留，而 Relevance 匹配继续忽略它们。
-- [ ] Import Job 与 Collection Run 创建时冻结同一全局 Pack 的 ID、版本和实际有效关键词快照；排队/运行
+- [x] Import Job 与 Collection Run 创建时冻结同一全局 Pack 的 ID、版本和实际有效关键词快照；排队/运行
   期间修改全局配置或词包不会改变本次执行。
-- [ ] Excel/Import 与 TikHub Collection 调用同一个 Provider-neutral Canonical Relevance Service；
+- [x] Excel/Import 与 TikHub Collection 调用同一个 Provider-neutral Canonical Relevance Service；
   TikHub Search 未命中时必须通过现有 Provider Runtime 最多请求一次 Detail 再终判；最终未通过者保留
   Raw/Candidate 与 `filtered` 账本事实，不写 Content，也不继续 Comment/Reply 等后续付费动作。
-- [ ] Batch 查询返回稳定 status、stage、stats、error summary、时间和关联 Job 快照；Job 查询不复制
+- [x] Batch 查询返回稳定 status、stage、stats、error summary、时间和关联 Job 快照；Job 查询不复制
   第二套状态真相。
-- [ ] 正常、非法 Excel、错误 Artifact/Batch/Job、失败/重试与未处理异常均返回统一错误 Contract，
+- [x] 正常、非法 Excel、错误 Artifact/Batch/Job、失败/重试与未处理异常均返回统一错误 Contract，
   含 request_id 且不泄露路径、SQL、Secret 或堆栈。
 - [ ] Job 重放、Lease takeover 和终态后重入不产生重复 Current Content，并保留合法来源历史。
-- [ ] 固定 OpenAPI 无漂移，Orval Client 由生成流程产生并通过前端 lint、双 typecheck、test、build。
+- [x] 固定 OpenAPI 无漂移，Orval Client 由生成流程产生并通过前端 lint、双 typecheck、test、build。
 - [ ] API/Contract/Job/Worker/PostgreSQL 18 测试、两阶段 Review、全部适用本地门禁与最终 PR CI 通过。
 - [ ] PR 正常合并，合并后 main 获得新鲜验证，Change 标记 done 并归档；Stage 8C 未开始。
 
@@ -106,7 +110,7 @@ Content Ingestion、Artifact Store 或 Job Runtime。
   Excel/TikHub 当前生产链接入。
 - 全局 Relevance 配置与 Collection Candidate `filtered` 终态的必要 Schema/Migration。
 - Processing Import Batch 创建/详情查询和关联 Job 状态查询。
-- `file.import.v1` 等最终确认名称的版本化 Job Payload、Handler 和 Worker Registry 注册。
+- `ingestion.import-excel.v1` 版本化 Job Payload、Handler 和 Worker Registry 注册。
 - 统一 HTTP 错误 Contract、request_id 中间件与 FastAPI/Starlette 异常转换。
 - 复用现有生产 Reader/Mapper/Filter/Dedup、Artifact、Job、Content Ingestion/PostgreSQL 来源链。
 - API、Contract、Job/Worker、PostgreSQL Integration 与必要安全边界测试。
@@ -259,6 +263,14 @@ Content Ingestion、Artifact Store 或 Job Runtime。
   独立 L3 优化方向，但必须先基于真实容量证据重新冻结公共 Contract、Schema/Migration、分块事务、
   部分数据可见性、Artifact 保留/清理、Fencing 与回滚，不能在本阶段预埋 dormant 实现。
 
+## 已确认：Import Job Payload 与运行平台
+
+- Import Job 的版本化 Payload 冻结完整 `RelevanceSnapshotV1`，满足 Pack ID、Pack Version、Config
+  Version 与实际有效关键词随 Job 固化的决定；Worker 用当前 Fence 的 Job ID 反查唯一 Batch，并核对
+  Payload 与 Batch 审计快照一致，不在 Payload 重复 Batch/Artifact 外键身份。
+- 用户确认 Windows 是本地开发环境，正式部署目标是 Linux/Docker。上传文件名只作审计事实，不能参与
+  Worker 临时路径；Worker 使用固定 `source.xlsx`，ZIP/文件名校验同时覆盖 Windows 与 POSIX 路径语义。
+
 ## 后续仍需按顺序冻结的技术/安全边界
 
 - Excel 上传、Job 和 Relevance 的业务/Contract 上游决定已经冻结，可以进入 Red；实现证据若发现新的
@@ -272,8 +284,9 @@ Content Ingestion、Artifact Store 或 Job Runtime。
   历史 Revision，不为现有数据库伪造词包，历史规范化冲突时拒绝升级而不自动合并数据。
 - 部署前数据库必须升级到最终 Head；先通过正式 API 完成全局配置，再同时启动/恢复 API、Worker、
   Scheduler，并共享同一 PostgreSQL 与 ArtifactStore。
-- 回滚先停止新导入并等待/处置已有 Import Job，再回退 API/Worker/Contract 代码；若最终没有新 Migration，
-  现有 Batch/Job/Artifact/Content 数据无需回填或 downgrade。
+- 回滚先停止新导入并等待/处置已有 Import Job，再回退 API/Worker/Contract 代码。`20260820_0020`
+  downgrade 会删除全局配置并恢复旧 Candidate 结果约束；存在 `filtered` 账本事实时会拒绝降级，必须保留
+  当前 Revision 或先按正式数据处置方案迁移。关键词 NFKC/casefold 身份不会逆向恢复，回滚前依赖备份。
 - 主要风险是上传资源耗尽、XLSX Zip Bomb、Worker 崩溃窗口、Batch/Job 终态漂移、错误泄露和重放重复；
   必须分别由大小/压缩边界、Artifact 完整性、Fencing/幂等、组合查询和统一异常测试证明。
 
@@ -289,12 +302,37 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 - [x] 冻结 Import Job 为 30 分钟、最大 10 次的全量重试，并把断点续跑留作未来独立 L3 优化方向
 - [x] 冻结 Excel HTTP 为单文件 multipart 一步创建 Artifact/Batch/Job，并批准锁定 multipart 解析依赖
 - [x] 完整冻结 Excel HTTP、500/550 MiB、ZIP 解压边界与 Job Deadline
-- [ ] 建立 HTTP Contract/Error/OpenAPI、API Service 和 Import Job/Worker 的失败测试并观察正确 Red
-- [ ] 完成最小实现
-- [ ] 同步受影响文档
-- [ ] 完成需求符合性 Review 与代码质量 Review，修复所有严重/重要问题
-- [ ] 取得新鲜验证证据
+- [x] 建立 HTTP Contract/Error/OpenAPI、API Service 和 Import Job/Worker 的失败测试并观察正确 Red
+- [x] 完成最小实现
+- [x] 同步受影响文档
+- [x] 完成需求符合性 Review 与代码质量 Review，修复所有严重/重要问题
+- [ ] 取得最终 PR Head 与合并后 main 的新鲜验证证据
 - [ ] Draft PR → 最终 Head CI → Ready → 正常 Merge → 合并后 main 验证 → Change 归档
+
+# 两阶段 Review
+
+## 需求符合性 Review
+
+- Stage 8B 成功标准已逐项核对：HTTP/Artifact/Batch/Durable Job/Worker/查询/Error/OpenAPI/Orval 与全局
+  Relevance 均在范围内；没有实现 Vue、Content Center、TikHub 补采页面或 Stage 8C—8F 页面能力。
+- Excel Worker 复用 Stage 8A 生产 Reader/Mapper、共享 Relevance/Dedup 与同一个 Content Ingestion 写入
+  内核；Router 不执行 Excel、不直接 SQL，没有平行 Repository/Mapper/Client/Job Runtime。
+- Review 发现初版只把 Relevance 快照放在 Batch `stats`，未满足“Import Job 冻结快照”的批准决定；已补
+  Job Payload 回归测试并把 `RelevanceSnapshotV1` 固化到版本化 Payload，同时保留 Fence→Batch 反查与
+  Payload/Batch 一致性核对，避免复制 Batch/Artifact 身份。
+
+## 代码质量 Review
+
+- Review 覆盖事务、Fencing、Retry/Deadline、幂等、Artifact/文件生命周期、Windows/Linux 路径、ZIP
+  安全、错误传播、Secret、Migration upgrade/downgrade 与重复实现。
+- 发现 TikHub Search 未命中、Detail 最终命中且响应映射出多个 Candidate 时，只记录最后一个 Detail 的
+  重要账本缺口；回归测试先得到预期 Red，随后修复为 Search 与全部 Detail Candidate 收敛到同一 Content。
+- 发现无 `Content-Length` 的 multipart 实际字节超限会被 Starlette 解析层吞为 400；回归测试先得到
+  `400 != 413`，随后在 multipart 解析期间暂存响应并以统一 413 Error Contract 覆盖，声明长度与实际
+  流式计数两条路径均 Green。
+- 发现 500 响应虽返回 `request_id` 但日志无法定位；已增加 `api.request_failed` 安全事件，只记录
+  request_id、方法、路径和异常类型，不记录原始异常消息/堆栈，并由 Secret 回归测试证明。
+- 严重/重要问题当前为 0；PostgreSQL 运行证据仍等待 PR CI，不能用本地缺 Secret 的失败冒充 Green。
 
 # 验证
 
@@ -341,6 +379,22 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 - Head `f697bc5` 的 CI、Stage 6 XHS、Stage 7 Keyword Packs、Provider Config、Plan Snapshot 与
   Scheduler Runtime 六个 GitHub workflows 均成功；PR Review 线程为 0。该文档 Head 的成功不替代
   后续实现最终 Head CI。
+- 初始 Red 包括：缺少 Relevance/XLSX/Import Job/HTTP 模块的 ImportError、缺少
+  `global_relevance_config` 表、缺少 Stage 8B Route/Artifact streaming、Candidate `filtered` 约束与
+  Relevance 固定 Schema；均先确认失败原因后实施最小 Green，失败测试未删除。
+- Review 新 Red：多 Detail 命中测试只记录最后一个 Candidate；Import Job Payload 拒绝 Relevance 快照；
+  无 Content-Length multipart 超限返回 400；500 错误没有 request_id 日志。修复后目标测试分别为
+  `3 passed`、`3 passed`、`2 passed` 与 `1 passed`。
+- `uv run pytest tests/unit tests/contracts tests/api -q`：退出码 0，`555 passed, 1 skipped`；两个 warning
+  分别为既有 Starlette TestClient 弃用提示和测试主动创建重复 ZIP 成员的标准库提示。
+- `uv run ruff format --check backend tests scripts migrations/versions/20260820_0020_stage8b_relevance.py`
+  与对应 `ruff check`：退出码 0；`uv run mypy backend/src`：退出码 0，195 个源码文件无问题。
+- Architecture、Table Ownership、Secret Scan、Docs Check、Contract Generation/Compatibility 均退出码 0；
+  `uv lock --check`、Wheel/sdist build 通过；`uv run alembic heads` 返回 `20260820_0020 (head)`。
+- `npm run generate:api`、lint、TypeScript 7/Vue 双 typecheck、Vitest `2 passed` 与 Vite build 均退出码 0。
+- 本机 Windows 开发环境缺少 `.runtime/secrets/postgres_password`；`alembic current/check` 与
+  `tests/integration/ingestion` 均在首次 Secret 读取处失败，3 条 Integration 未连接数据库。这是环境阻塞
+  证据，不是 Green；最终 PostgreSQL 18、Migration 生命周期、Worker/Fencing/幂等证据由 PR CI 获取。
 
 # 文档影响
 

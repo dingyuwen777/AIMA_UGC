@@ -10,7 +10,14 @@ from uuid import UUID
 from aima_ugc.contracts.canonical import CanonicalCommentV1, CanonicalContentV1
 
 CandidateKind = Literal["content", "comment"]
-IngestionStatus = Literal["ingested", "duplicate", "invalid", "unsupported", "failed"]
+IngestionStatus = Literal[
+    "ingested",
+    "duplicate",
+    "filtered",
+    "invalid",
+    "unsupported",
+    "failed",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,7 +124,7 @@ class CandidateIngestionService:
                 error_detail=error_detail,
             )
         if isinstance(canonical, CanonicalContentV1):
-            target_type: CandidateKind = "content"
+            target_type: CandidateKind | None = "content"
             identity = f"{canonical.platform}:{canonical.external_content_id}"
         else:
             target_type = "comment"
@@ -125,7 +132,9 @@ class CandidateIngestionService:
                 f"{canonical.platform}:{canonical.external_content_id}:"
                 f"{canonical.external_comment_id}"
             )
-        if target_id is None:
+        if result == "filtered":
+            target_type = None
+        if target_id is None and result != "filtered":
             raise ValueError("成功映射的 Candidate Ingestion 必须提供目标 ID")
         return self._repository.append_ingestion(
             candidate_id=candidate_id,

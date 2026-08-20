@@ -3,6 +3,7 @@
 from uuid import UUID
 
 from sqlalchemy import func, insert, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
@@ -119,6 +120,32 @@ class PostgresKeywordCatalogRepository:
         )
         return _keyword_from_row(row)
 
+    def get_or_create_keyword(self, keyword: Keyword) -> Keyword:
+        now = func.clock_timestamp()
+        row = (
+            self._session.execute(
+                pg_insert(keywords_table)
+                .values(
+                    id=keyword.id,
+                    text=keyword.text,
+                    normalized_text=keyword.normalized_text,
+                    enabled=keyword.enabled,
+                    created_at=now,
+                    updated_at=now,
+                )
+                .on_conflict_do_nothing(index_elements=[keywords_table.c.normalized_text])
+                .returning(keywords_table)
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is not None:
+            return _keyword_from_row(row)
+        existing = self.get_keyword_by_normalized_text(keyword.normalized_text)
+        if existing is None:  # pragma: no cover - 唯一约束冲突后记录必然存在
+            raise RuntimeError("关键词唯一冲突后无法读取既有记录")
+        return existing
+
     def add_item(self, item: KeywordPackItem) -> KeywordPackItem:
         row = (
             self._session.execute(
@@ -148,6 +175,103 @@ class PostgresKeywordCatalogRepository:
         if updated_pack != item.pack_id:
             raise RuntimeError(f"词包成员写入后无法提升版本: {item.pack_id}")
         return _item_from_row(row)
+
+    def add_item_if_missing(self, item: KeywordPackItem) -> KeywordPackItem:
+        row = (
+            self._session.execute(
+                pg_insert(keyword_pack_items_table)
+                .values(
+                    pack_id=item.pack_id,
+                    keyword_id=item.keyword_id,
+                    platform=item.platform,
+                    priority=item.priority,
+                    enabled=item.enabled,
+                    note=item.note,
+                )
+                .on_conflict_do_nothing(
+                    index_elements=[
+                        keyword_pack_items_table.c.pack_id,
+                        keyword_pack_items_table.c.keyword_id,
+                        keyword_pack_items_table.c.platform,
+                    ]
+                )
+                .returning(keyword_pack_items_table)
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is None:
+            existing = (
+                self._session.execute(
+                    select(keyword_pack_items_table).where(
+                        keyword_pack_items_table.c.pack_id == item.pack_id,
+                        keyword_pack_items_table.c.keyword_id == item.keyword_id,
+                        keyword_pack_items_table.c.platform == item.platform,
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            return _item_from_row(existing)
+        updated_pack = self._session.execute(
+            update(keyword_packs_table)
+            .where(keyword_packs_table.c.id == item.pack_id)
+            .values(
+                version=keyword_packs_table.c.version + 1,
+                updated_at=func.clock_timestamp(),
+            )
+            .returning(keyword_packs_table.c.id)
+        ).scalar_one_or_none()
+        if updated_pack != item.pack_id:
+            raise RuntimeError(f"词包成员写入后无法提升版本: {item.pack_id}")
+        return _item_from_row(row)
+
+    def list_keywords_for_pack(self, pack_id: UUID) -> list[tuple[Keyword, KeywordPackItem]]:
+        rows = (
+            self._session.execute(
+                select(
+                    keywords_table.c.id.label("keyword_id"),
+                    keywords_table.c.text.label("keyword_text"),
+                    keywords_table.c.normalized_text,
+                    keywords_table.c.enabled.label("keyword_enabled"),
+                    keyword_pack_items_table.c.platform,
+                    keyword_pack_items_table.c.priority,
+                    keyword_pack_items_table.c.enabled.label("item_enabled"),
+                    keyword_pack_items_table.c.note,
+                )
+                .join(
+                    keyword_pack_items_table,
+                    keyword_pack_items_table.c.keyword_id == keywords_table.c.id,
+                )
+                .where(keyword_pack_items_table.c.pack_id == pack_id)
+                .order_by(
+                    keyword_pack_items_table.c.priority,
+                    keyword_pack_items_table.c.platform,
+                    keyword_pack_items_table.c.keyword_id,
+                )
+            )
+            .mappings()
+            .all()
+        )
+        return [
+            (
+                Keyword(
+                    id=row["keyword_id"],
+                    text=row["keyword_text"],
+                    normalized_text=row["normalized_text"],
+                    enabled=row["keyword_enabled"],
+                ),
+                KeywordPackItem(
+                    pack_id=pack_id,
+                    keyword_id=row["keyword_id"],
+                    platform=row["platform"],
+                    priority=row["priority"],
+                    enabled=row["item_enabled"],
+                    note=row["note"],
+                ),
+            )
+            for row in rows
+        ]
 
     def list_items(self, pack_id: UUID) -> list[KeywordPackItem]:
         rows = (

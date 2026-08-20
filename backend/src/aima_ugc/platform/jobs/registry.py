@@ -6,8 +6,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
-from .models import JobExecutionContextProtocol, JobHandlerResult
+from .models import JobExecutionContextProtocol, JobHandlerResult, JobRecord
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,6 +20,7 @@ class JobDefinition:
     payload_model: type[BaseModel]
     handler: Callable[[BaseModel, JobExecutionContextProtocol], JobHandlerResult]
     retry_on_timeout: bool
+    terminal_callback: Callable[[Session, JobRecord], None] | None
 
 
 class JobRegistry:
@@ -35,6 +37,7 @@ class JobRegistry:
         payload_model: type[BaseModel],
         handler: Callable[[BaseModel, JobExecutionContextProtocol], JobHandlerResult],
         retry_on_timeout: bool,
+        terminal_callback: Callable[[Session, JobRecord], None] | None = None,
     ) -> None:
         if job_type in self._definitions:
             raise ValueError(f"job type already registered: {job_type}")
@@ -44,6 +47,7 @@ class JobRegistry:
             payload_model=payload_model,
             handler=handler,
             retry_on_timeout=retry_on_timeout,
+            terminal_callback=terminal_callback,
         )
 
     @property

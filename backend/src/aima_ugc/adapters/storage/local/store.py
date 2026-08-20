@@ -5,12 +5,15 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+from io import BytesIO
 from pathlib import Path
+from typing import BinaryIO
 from uuid import uuid4
 
-from aima_ugc.platform.storage import StoredBytes
+from aima_ugc.platform.storage import ArtifactSizeLimitError, StoredBytes
 
 _SEGMENT_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_STREAM_CHUNK_BYTES = 1024 * 1024
 
 
 class LocalArtifactStore:
@@ -67,15 +70,32 @@ class LocalArtifactStore:
         return target
 
     def put(self, storage_key: str, data: bytes) -> StoredBytes:
+        return self.put_stream(storage_key, BytesIO(data), max_bytes=len(data))
+
+    def put_stream(
+        self,
+        storage_key: str,
+        source: BinaryIO,
+        *,
+        max_bytes: int,
+    ) -> StoredBytes:
         target = self._target(storage_key, create_parent=True)
         if target.exists():
             raise FileExistsError(storage_key)
+        if max_bytes < 0:
+            raise ValueError("max_bytes 不能为负数")
 
         temp = target.parent / f".{target.name}.{uuid4().hex}.tmp"
-        digest = hashlib.sha256(data).hexdigest()
+        digest = hashlib.sha256()
+        byte_size = 0
         try:
             with temp.open("xb") as handle:
-                handle.write(data)
+                while chunk := source.read(_STREAM_CHUNK_BYTES):
+                    byte_size += len(chunk)
+                    if byte_size > max_bytes:
+                        raise ArtifactSizeLimitError("Artifact 实际字节超过上限")
+                    digest.update(chunk)
+                    handle.write(chunk)
                 handle.flush()
                 os.fsync(handle.fileno())
             if os.name != "nt":
@@ -90,13 +110,26 @@ class LocalArtifactStore:
         finally:
             temp.unlink(missing_ok=True)
 
-        return StoredBytes(sha256=digest, byte_size=len(data))
+        return StoredBytes(sha256=digest.hexdigest(), byte_size=byte_size)
 
     def read(self, storage_key: str) -> bytes:
         target = self._target(storage_key, create_parent=False)
         if not target.is_file():
             raise FileNotFoundError(storage_key)
         return target.read_bytes()
+
+    def copy_to(self, storage_key: str, destination: BinaryIO) -> StoredBytes:
+        target = self._target(storage_key, create_parent=False)
+        if not target.is_file():
+            raise FileNotFoundError(storage_key)
+        digest = hashlib.sha256()
+        byte_size = 0
+        with target.open("rb") as source:
+            while chunk := source.read(_STREAM_CHUNK_BYTES):
+                digest.update(chunk)
+                byte_size += len(chunk)
+                destination.write(chunk)
+        return StoredBytes(sha256=digest.hexdigest(), byte_size=byte_size)
 
     def exists(self, storage_key: str) -> bool:
         target = self._target(storage_key, create_parent=False)

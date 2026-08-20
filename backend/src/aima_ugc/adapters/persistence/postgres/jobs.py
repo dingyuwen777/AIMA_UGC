@@ -331,6 +331,28 @@ class PostgresJobRepository:
             raise LeaseLostError("job lease is no longer current")
         return _row_to_job(row)
 
+    def validate_current_execution(self, fence: JobExecutionFence) -> JobRecord:
+        """事务开始时无锁验证 Fence；提交前仍必须调用 lock_current_execution。"""
+
+        now = func.clock_timestamp()
+        row = (
+            self._session.execute(
+                select(jobs_table).where(
+                    jobs_table.c.id == fence.job_id,
+                    jobs_table.c.status == "running",
+                    jobs_table.c.lease_token == fence.lease_token,
+                    jobs_table.c.cancel_requested_at.is_(None),
+                    jobs_table.c.lease_expires_at > now,
+                    jobs_table.c.attempt_deadline_at > now,
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is None:
+            raise LeaseLostError("job lease is no longer current")
+        return _row_to_job(row)
+
     def lock_expired_execution(self, job_id: UUID) -> JobRecord | None:
         """只锁住已无有效执行租约的 Job，供保守恢复使用。"""
         now = func.clock_timestamp()

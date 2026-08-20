@@ -111,6 +111,11 @@ class CollectionRunJobPayloadV1(BaseModel):
 
 不能把无版本 dict 长期塞进 Job 表。当前 `collection.run.v1` Payload 只保存 schema 身份；Handler 使用当前 `JobExecutionFence.job_id` 反查 Run，Provider Secret 通过 Run 中的 `provider_config_id → secret_ref` 在服务端边界解析，不能进入 Job Payload。
 
+Stage 8B 的 `ingestion.import-excel.v1` 使用版本化 Payload，冻结完整 `RelevanceSnapshotV1`，但不复制
+Batch/Artifact ID、文件路径或 Secret。Worker 以当前 Fence 的 Job ID 反查唯一 Processing Import Batch，
+从受外键约束的 Batch 取得 Source Artifact 与固定 `aima-monitoring-excel.v1` Profile，并核对 Payload 与
+Batch 的 Relevance 审计快照完全一致。每个 Attempt 固定 1800 秒、最多 10 次。
+
 ## 4. API 规则
 
 ### 4.1 路径
@@ -126,6 +131,23 @@ class CollectionRunJobPayloadV1(BaseModel):
 /api/v1/reports
 /api/v1/jobs
 ```
+
+当前已实现的 Stage 8B 路径为：
+
+```text
+POST /api/v1/import-batches
+GET  /api/v1/import-batches/{batch_id}
+GET  /api/v1/jobs/{job_id}
+POST /api/v1/keyword-packs
+POST /api/v1/keyword-packs/{pack_id}/keywords
+GET  /api/v1/keyword-packs/{pack_id}
+PUT  /api/v1/relevance-config
+GET  /api/v1/relevance-config
+```
+
+`POST /api/v1/import-batches` 只接受一个 multipart `file`，返回 202 后由持久 Worker 处理；Job 查询当前
+只公开 Stage 8B Import Job，其他内部 Job 类型不因共用 `jobs` 表而自动变成公共 Contract。Keyword Pack
+页面仍属于 Stage 8F，Stage 8B 只提供受控环境下的后端 Contract 与生成 Client。
 
 路径使用名词和复数。业务动作只在无法自然表达为资源变化时使用：
 
@@ -155,7 +177,7 @@ HTTP 返回 UTC ISO-8601：
 
 ```json
 {
-  "type": "validation_error",
+  "type": "https://aima.example/problems/request_validation_error",
   "title": "参数错误",
   "status": 422,
   "detail": "关键词不能为空",

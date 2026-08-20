@@ -27,6 +27,9 @@ from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.persistence.postgres.provider_dispatch import (
     PostgresProviderDispatchPersistence,
 )
+from aima_ugc.adapters.persistence.postgres.relevance import (
+    PostgresGlobalRelevanceRepository,
+)
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
 from aima_ugc.adapters.providers.tikhub.pricing import load_tikhub_pricing
 from aima_ugc.adapters.providers.tikhub.runtime import TikHubOperationCall, TikHubPlatform
@@ -373,6 +376,7 @@ class TikHubDebugDatabaseSession:
         try:
             with session.begin():
                 jobs = PostgresJobRepository(session)
+                relevance_snapshot, _ = PostgresGlobalRelevanceRepository(session).snapshot()
                 job = jobs.enqueue(
                     job_type=debug_job_type,
                     payload_version="tikhub-debug-collection.v1",
@@ -397,6 +401,7 @@ class TikHubDebugDatabaseSession:
                         "detail_policy": "on_change",
                         "comment_policy": "adaptive",
                         "decision_policy": policy.model_dump(mode="json"),
+                        "relevance": relevance_snapshot.model_dump(mode="json"),
                         "platforms": [
                             {
                                 "platform": self._platform,
