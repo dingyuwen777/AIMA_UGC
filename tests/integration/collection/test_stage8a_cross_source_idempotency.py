@@ -8,6 +8,10 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from aima_ugc.adapters.persistence.postgres.keywords import PostgresKeywordCatalogRepository
+from aima_ugc.adapters.persistence.postgres.relevance import (
+    PostgresGlobalRelevanceRepository,
+)
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
 from aima_ugc.adapters.providers.fake import FakeProviderTransport
 from aima_ugc.adapters.providers.tikhub import runtime as tikhub_runtime
@@ -30,7 +34,7 @@ from aima_ugc.modules.content.tables import (
     contents_table,
 )
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
-from aima_ugc.modules.system.models import ProviderConfig
+from aima_ugc.modules.system.models import Keyword, KeywordPack, KeywordPackItem, ProviderConfig
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.storage import ArtifactService
@@ -46,14 +50,14 @@ def database_runtime() -> Iterator[DatabaseRuntime]:
     runtime = DatabaseRuntime(load_settings())
     with runtime.engine.begin() as connection:
         connection.exec_driver_sql(
-            "TRUNCATE TABLE jobs, artifacts, accounts RESTART IDENTITY CASCADE"
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
         )
     try:
         yield runtime
     finally:
         with runtime.engine.begin() as connection:
             connection.exec_driver_sql(
-                "TRUNCATE TABLE jobs, artifacts, accounts RESTART IDENTITY CASCADE"
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
             )
         runtime.dispose()
 
@@ -118,6 +122,35 @@ def _create_provider_config(database_runtime: DatabaseRuntime) -> tuple[Provider
     session = database_runtime.new_session()
     try:
         with session.begin():
+            keywords = PostgresKeywordCatalogRepository(session)
+            pack = keywords.create_pack(
+                KeywordPack(
+                    id=uuid4(),
+                    name=f"stage8a-cross-relevance-{uuid4()}",
+                    description="Stage 8B 全局相关性测试前置事实",
+                    enabled=True,
+                    version=1,
+                )
+            )
+            keyword = keywords.create_keyword(
+                Keyword(
+                    id=uuid4(),
+                    text="爱玛",
+                    normalized_text="爱玛",
+                    enabled=True,
+                )
+            )
+            keywords.add_item(
+                KeywordPackItem(
+                    pack_id=pack.id,
+                    keyword_id=keyword.id,
+                    platform="all",
+                    priority=10,
+                    enabled=True,
+                    note="Stage 8A Cross Source Integration",
+                )
+            )
+            PostgresGlobalRelevanceRepository(session).set(pack.id)
             provider_config = PostgresProviderConfigRepository(session).create(
                 ProviderConfig(
                     id=uuid4(),

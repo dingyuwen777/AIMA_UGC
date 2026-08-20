@@ -395,6 +395,14 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 - 本机 Windows 开发环境缺少 `.runtime/secrets/postgres_password`；`alembic current/check` 与
   `tests/integration/ingestion` 均在首次 Secret 读取处失败，3 条 Integration 未连接数据库。这是环境阻塞
   证据，不是 Green；最终 PostgreSQL 18、Migration 生命周期、Worker/Fencing/幂等证据由 PR CI 获取。
+- 实现 Head `7352aed` 的主 CI Stage 1/2/3A/Windows、Stage 4、Stage 5A、Stage 6 Unit/Quality、全部
+  Stage 7、Audit PostgreSQL 均通过；其中 Stage 3A 已覆盖 Migration 生命周期与 Stage 8B Ingestion
+  PostgreSQL 测试。Stage 5B/5C/5D 与 Stage 6 PostgreSQL 共同暴露 3 条既有 Collection Integration
+  测试未建立新的全局 Relevance 前置事实：直接 Run 快照缺 `relevance`，两条数据库测试缺启用且非空的
+  Global Relevance Keyword Pack。该 Red 证明 fail-closed 生效，不是生产实现应放宽的错误。
+- CI 修复仅通过正式 `RelevanceSnapshotV1`、Keyword Catalog Repository 与 Global Relevance Repository
+  补齐上述测试前置事实；没有增加默认词包、测试旁路或降低断言。三文件 Ruff format/check 退出码 0；
+  PostgreSQL Green 等待修复 Head 的新鲜 PR CI。
 
 # 文档影响
 
@@ -406,7 +414,8 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 
 # 交付
 
-- Commit：`a12eac4`（记录 Stage 8B 开发门禁）；后续实现继续使用中文提交。
+- Commit：`a12eac4`（记录 Stage 8B 开发门禁）、`7352aed`（Stage 8B 正式实现）；CI 前置事实修复
+  将作为独立中文提交，便于审计 Red → Green。
 - PR：Draft PR `#97`（`feature/stage8b-import-http-job → main`）已创建；上游决定已冻结，开始执行
   Red → Green；最终 CI/Review
   完成后才转 Ready 并正常合并。

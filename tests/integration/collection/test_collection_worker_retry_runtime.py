@@ -14,6 +14,7 @@ from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfig
 from aima_ugc.adapters.providers.fake import FakeProviderTransport
 from aima_ugc.bootstrap.runtime import PlatformRuntime
 from aima_ugc.bootstrap.scheduler import create_scheduler_runtime
+from aima_ugc.contracts.analysis import RelevanceSnapshotV1
 from aima_ugc.entrypoints.worker_main import create_collection_job_registry, create_job_worker
 from aima_ugc.modules.collection.execution import (
     CollectionExecutionService,
@@ -123,6 +124,12 @@ def test_http_500_retries_same_logical_request_with_new_provider_attempt(
                     "schema_version": "collection-run-config.v1",
                     "detail_policy": "on_change",
                     "comment_policy": "adaptive",
+                    "relevance": RelevanceSnapshotV1(
+                        keyword_pack_id=uuid4(),
+                        keyword_pack_version=1,
+                        config_version=1,
+                        effective_keywords=("爱玛",),
+                    ).model_dump(mode="json"),
                     "platforms": [
                         {
                             "platform": "xhs",
