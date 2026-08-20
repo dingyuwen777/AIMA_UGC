@@ -1,5 +1,5 @@
 {
-  "tested_sha": "371d1b37022e1af431dad76a3cb74183c2606ed6",
+  "tested_sha": "ce2068f5a5babe3974c9f1be16037bee75a54185",
   "outcome": "failure",
   "tail": [
     "=================================== FAILURES ===================================",
@@ -17,6 +17,6 @@
     "tests/unit/platform/test_reporting_default_template.py:31: AttributeError",
     "=========================== short test summary info ============================",
     "FAILED tests/unit/platform/test_reporting_default_template.py::test_reporting_owns_default_markdown_template - AttributeError: module 'aima_ugc.platform.reporting' has no attribute 'DEFAULT_REPORT_TEMPLATE_PATH'",
-    "1 failed in 0.57s"
+    "1 failed in 0.30s"
   ]
 }
