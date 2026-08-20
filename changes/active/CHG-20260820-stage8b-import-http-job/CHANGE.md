@@ -197,6 +197,7 @@ Stage 8A 既有处理语义，也不满足 Blueprint 17 和本任务给出的 Re
 
 # 交付
 
-- Commit：尚未创建；用户已授权完成本 Stage 所需的中文提交。
-- PR：尚未创建；后续只创建一个 Draft PR，最终 CI/Review 完成后转 Ready 并正常合并。
+- Commit：`a12eac4`（记录 Stage 8B 开发门禁）；后续实现继续使用中文提交。
+- PR：Draft PR `#97`（`feature/stage8b-import-http-job → main`）已创建；当前因正式 Filter
+  关键词来源待用户决定而保持 blocked/draft，最终 CI/Review 完成后才转 Ready 并正常合并。
 - 发布：不部署生产；只交付仓库代码、Migration 状态说明、生成物、测试与合并后 main 证据。
