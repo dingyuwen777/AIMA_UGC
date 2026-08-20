@@ -1,4 +1,5 @@
 name: Offline Reporting Template Red
+# 显式触发共享默认模板 Red 验证。
 
 on:
   push:
