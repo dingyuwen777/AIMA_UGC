@@ -71,6 +71,8 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 # 成功标准
 
 - [ ] HTTP 上传/登记只接受经批准的 Excel 输入，并通过统一 ArtifactService 保存 Source Artifact。
+- [ ] 单个上传 `.xlsx`（文件本身即 ZIP 压缩包）最大 500 MiB；API 必须流式计数和落盘，不能把整个
+  上传或 Artifact 读入内存，超过限制返回统一 `413`。
 - [ ] 创建请求在同一 PostgreSQL 业务边界建立 Processing Import Batch 与持久化 Import Job，
   返回 `202 Accepted`、Batch ID、Job ID 和 queued 状态；Router 不执行长文件处理。
 - [ ] Import Job 使用版本化 Pydantic Payload，由现有 Job Runtime/Worker 认领、接管、重试、
@@ -208,10 +210,21 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 - 新 Migration 按批准算法重算已有 `normalized_text`；如果历史数据发生唯一身份冲突，Migration 必须
   fail closed 并报告冲突，由运维/业务人工合并，不能静默删除关键词或自动改写 Pack 关系。
 
+## 已确认：Excel 压缩文件上传上限
+
+- 用户确认单个 `.xlsx` 文件最大为 500 MiB；这里的“压缩文件”就是浏览器实际上传的 Excel 文件本身，
+  不是另行上传 `.zip`，也不代表解压后 XML 上限。
+- 处理耗时不能只按上传字节估算，还受解压后 XML 总量、有效单元格/行数、共享字符串、样式、磁盘和
+  PostgreSQL 写入影响；Batch/Job API 只承诺可查询阶段/进度/统计，不在缺少容量基准时承诺 ETA。
+- 仓库当前最大已跟踪 Excel 样例约 14.4 MiB、131,320 输入行，ZIP 解压后约 100.6 MiB，整体约 7 倍，
+  最大单成员压缩比约 10.7:1；该样例只是校准证据，不是 500 MiB 文件的性能承诺。
+- 为避免 500 MiB 上传同时导致 API/Worker 读取 500 MiB 内存，正式实现必须增量扩展现有
+  ArtifactService/ArtifactStore 为有界流式写入和读取，不能新建平行文件存储体系。
+
 ## 后续仍需按顺序冻结的技术/安全边界
 
-- Excel HTTP 传输形态与最大压缩/解压大小；仓库只要求限制扩展名、MIME、大小和 Zip Bomb，尚无数值。
-  解决关键词来源后，再一次只提出这个上游问题。
+- Excel HTTP 传输形态、500 MiB 对应的最大解压总量/单成员/成员数/压缩比，以及 Import Job Attempt
+  Deadline；仓库只有 24 小时调试 Job 先例，没有正式 Import 容量/SLO，不能静默沿用。
 - 当前认证已正式延期；本 Stage 不把受控环境 API 描述为公网生产就绪。
 
 ## Migration、部署与回滚
@@ -235,7 +248,7 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 - [x] 冻结 Relevance 词包为系统全局唯一配置，并确定执行快照与 fail-closed 部署边界
 - [x] 冻结 TikHub Search 未命中时先请求一次 Detail 再终判的召回优先策略
 - [x] 冻结正式关键词数据库身份与 Relevance 匹配的两级规范化语义
-- [ ] 冻结 Excel HTTP 传输与压缩/解压大小边界
+- [ ] 完整冻结 Excel HTTP 传输、已确认 500 MiB 压缩文件对应的解压边界与 Job Deadline
 - [ ] 建立 HTTP Contract/Error/OpenAPI、API Service 和 Import Job/Worker 的失败测试并观察正确 Red
 - [ ] 完成最小实现
 - [ ] 同步受影响文档
@@ -296,7 +309,8 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 # 交付
 
 - Commit：`a12eac4`（记录 Stage 8B 开发门禁）；后续实现继续使用中文提交。
-- PR：Draft PR `#97`（`feature/stage8b-import-http-job → main`）已创建；当前因上传安全边界待决定而
+- PR：Draft PR `#97`（`feature/stage8b-import-http-job → main`）已创建；当前因 500 MiB 上传对应的
+  解压边界与 Job Deadline 待决定而
   保持 blocked/draft，最终 CI/Review
   完成后才转 Ready 并正常合并。
 - 发布：不部署生产；只交付仓库代码、Migration 状态说明、生成物、测试与合并后 main 证据。
