@@ -30,6 +30,7 @@ from aima_ugc.contracts.export import (
     UnifiedDataExcelLabelPairV1,
     UnifiedDataExcelV1,
 )
+from aima_ugc.platform.presentation import platform_display_name
 
 _BEIJING = ZoneInfo("Asia/Shanghai")
 _CONTENT_SHEET = "内容"
@@ -600,7 +601,7 @@ def _content_values(
 ) -> tuple[tuple[_ExcelCellValue, bool, bool], ...]:
     analysis = content.analysis if include_analysis else None
     return (
-        (content.platform, False, False),
+        (platform_display_name(content.platform), False, False),
         (content.external_content_id, True, False),
         (content.source_item_id, True, False),
         (content.content_type, False, False),
@@ -671,7 +672,7 @@ def _comment_cells(
     column_indices: tuple[int, ...],
 ) -> list[Cell]:
     native_values: tuple[tuple[_ExcelCellValue, bool, bool], ...] = (
-        (comment.platform, False, False),
+        (platform_display_name(comment.platform), False, False),
         (comment.external_content_id, True, False),
         (comment.level, False, False),
         (comment.external_comment_id, True, False),

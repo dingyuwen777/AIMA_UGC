@@ -216,6 +216,7 @@ def test_shared_exporter_writes_provider_neutral_workbook_and_reopens(tmp_path: 
         ]
 
         content_row = content_sheet[2]
+        assert content_row[0].value == "小红书"
         assert content_row[1].value == "00123456789012345678"
         assert content_row[1].number_format == "@"
         assert content_row[2].value == "00000042"
@@ -234,6 +235,7 @@ def test_shared_exporter_writes_provider_neutral_workbook_and_reopens(tmp_path: 
         assert content_row[32].value == "partial 1/2"
 
         comment_row = comment_sheet[2]
+        assert comment_row[0].value == "小红书"
         assert comment_row[1].value == "00123456789012345678"
         assert comment_row[1].number_format == "@"
         assert comment_row[3].value == "000000000000000001"
@@ -272,7 +274,7 @@ def test_shared_exporter_supports_ordered_projection_and_reference_style(tmp_pat
         sheet = workbook["内容"]
         assert tuple(cell.value for cell in sheet[1]) == columns
         assert tuple(cell.value for cell in sheet[2]) == (
-            "xiaohongshu",
+            "小红书",
             "'=dangerous title",
             "中文正文 😀",
             "'@dangerous author",
@@ -353,7 +355,7 @@ def test_shared_exporter_projects_all_sheet_columns_and_sizes_secondary_label_ro
         assert tuple(cell.value for cell in comment_sheet[1]) == comment_columns
         assert tuple(cell.value for cell in content_sheet[2]) == (
             "骑行性能\n售后服务响应及时且处理专业",
-            "xiaohongshu",
+            "小红书",
         )
         assert tuple(cell.value for cell in label_sheet[2]) == (
             "骑行性能",

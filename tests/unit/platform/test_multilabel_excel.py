@@ -114,7 +114,7 @@ def test_multilabel_excel_keeps_one_content_row_and_expands_filterable_label_det
         assert rows == [
             (
                 "content-001",
-                "xiaohongshu",
+                "小红书",
                 "爱玛体验",
                 "混合",
                 "骑行性能",
@@ -123,7 +123,7 @@ def test_multilabel_excel_keeps_one_content_row_and_expands_filterable_label_det
             ),
             (
                 "content-001",
-                "xiaohongshu",
+                "小红书",
                 "爱玛体验",
                 "混合",
                 "售后服务",
