@@ -1,4 +1,4 @@
-# Excel 离线导入、清洗与 AI 多标签打标
+# Excel 离线导入、清洗、AI 多标签打标与报告
 
 本目录提供一个可以直接运行的人工入口：
 
@@ -10,6 +10,7 @@
 → 可选 PostgreSQL 正式入库
 → DeepSeek / OpenAI-compatible AI 多标签打标
 → 最终 Excel
+→ Markdown / Word 数据报告
 ```
 
 入口：
@@ -18,7 +19,7 @@
 backend/src/aima_ugc/adapters/providers/imports_test/test.py
 ```
 
-脚本复用系统正式 Reader、Mapper、关键词过滤、去重、Analysis Service、LLM Adapter 和共享 Excel Exporter。默认 `WRITE_TO_DATABASE = False`，因此普通人工文件调试不要求数据库或 Scheduler；只有显式开启数据库模式时才连接已经由开发者准备好的 PostgreSQL 18，并调用正式 File Import / Content Ingestion 实现。
+脚本复用系统正式 Reader、Mapper、关键词过滤、去重、Analysis Service、LLM Adapter、共享 Excel Exporter 和 Provider-neutral Report Renderer。默认 `WRITE_TO_DATABASE = False`，因此普通人工文件调试不要求数据库或 Scheduler；只有显式开启数据库模式时才连接已经由开发者准备好的 PostgreSQL 18，并调用正式 File Import / Content Ingestion 实现。报告阶段只读最终统一 Excel，不反向修改 Canonical、Analysis、数据库或 Excel 数据。
 
 ## 1. 先修改 `test.py` 顶部配置
 
@@ -28,6 +29,7 @@ backend/src/aima_ugc/adapters/providers/imports_test/test.py
 INPUT_XLSX = Path(r"E:\path\to\source.xlsx")
 OUTPUT_ROOT = Path(__file__).with_name("output")
 KEYWORD_PACK_FILE = Path(__file__).with_name("keyword_pack.txt")
+REPORT_TEMPLATE_FILE = Path(__file__).with_name("report_template.md")
 
 SHEET_NAME = "文章"
 PROFILE = "aima-monitoring-excel.v1"
@@ -107,6 +109,8 @@ Taxonomy版本
 Raw/来源定位
 评论覆盖
 ```
+
+报告当前依赖最终 Excel 的以下展示列：`平台`、`发布时间`、`命中关键词`、`情感标签`、`一级标签`、`二级标签`。因此使用本人工入口默认列时可以直接生成报告；如果手工修改 `EXCEL_CONTENT_COLUMNS` 并删除这些列，报告会明确拒绝，而不会猜测缺失数据。
 
 ## 3. 配置清洗词包
 
@@ -407,6 +411,9 @@ output/
       │  ├─ attempts.jsonl
       │  └─ failed.jsonl
       ├─ labeled_data.xlsx
+      ├─ reports/
+      │  ├─ report.md
+      │  └─ report.docx
       └─ run_summary.json
 ```
 
@@ -426,7 +433,15 @@ llm_http_requests
 transport_retries
 ```
 
-这些字段可以用来确认实际请求量、重试量和并发峰值。
+此外顶层会写出：
+
+```text
+labeled_excel
+report_markdown
+report_word
+```
+
+`stages` 最后一项是 `generate_report`，可查看报告读取的内容/标签/评论行数、日期范围和 Word 图表数量。
 
 ## 10. 单步运行
 
@@ -442,9 +457,10 @@ ingest_database(run_dir=run_dir)
 
 label_sentiment(run_dir=run_dir)
 export_labeled_excel(run_dir=run_dir)
+generate_report(run_dir=run_dir)
 ```
 
-依赖上一步产物的函数必须传同一个 `run_dir`。`run_all(write_to_database=True)` 会在去重完成后、AI 打标前执行同一个 `ingest_database()` 正式数据库阶段。
+依赖上一步产物的函数必须传同一个 `run_dir`。`run_all(write_to_database=True)` 会在去重完成后、AI 打标前执行同一个 `ingest_database()` 正式数据库阶段；报告始终位于最终 Excel 之后。
 
 ## 11. AI 多标签与 Excel
 
@@ -538,6 +554,8 @@ aima-monitoring-excel.v1
 - **词包为空**：检查 `KEYWORD_PACK_FILE` 是否正确、文件是否只剩注释和空行。
 - **数据库连接失败**：只影响显式数据库阶段；已经生成的 Canonical/filtered/deduplicated 文件保留。启动既定 PostgreSQL 18 开发实例并修复 `AIMA_DB_*` / Secret 配置后重试，不要让脚本自动管理容器。
 - **Stage 8A Schema 不匹配**：先由开发者显式运行仓库 Alembic Migration，再重试；`imports_test` 自身不会执行 Migration。
+- **报告缺少必要列**：恢复最终 Excel 的默认报告依赖列，不要让报告层猜测或伪造统计字段。
+- **Word 转换提示不支持 Mermaid**：当前 Word 转换只支持本报告模板使用的 `pie` 和 `xychart`。新增其他 Mermaid 类型前，应先扩展转换器和测试，不能接受 Word 静默丢图。
 
 ## 15. 未来正式网页关键词配置
 
@@ -618,4 +636,113 @@ Stage 8A 已保留 `imports_test` 的默认 file-only 行为，并实现显式 P
 - 文件阶段已经写出的 Canonical/filtered/deduplicated 产物不会因数据库阶段失败被删除；数据库失败会直接向调用方抛错，不静默降级为“文件模式成功”；
 - 修复数据库/Schema/输入后可重新执行数据库阶段，正式唯一约束和 Ingestion 保证业务 Current 幂等收敛。
 
-注意：`run_all()` 的数据库阶段位于 AI 打标之前。如果数据库阶段失败，本次在它之前已经生成的文件会保留，但后续 AI/最终 labeled Excel 不会继续执行；需要保留并继续后续阶段时，修复问题后使用同一 `run_dir` 继续调用对应单步函数。
+注意：`run_all()` 的数据库阶段位于 AI 打标之前。如果数据库阶段失败，本次在它之前已经生成的文件会保留，但后续 AI/最终 labeled Excel/报告不会继续执行；需要保留并继续后续阶段时，修复问题后使用同一 `run_dir` 继续调用对应单步函数。
+
+## 18. 报告生成、模板和 Word 转换
+
+### 18.1 `run_all()` 自动生成什么
+
+最终 Excel 成功后，`run_all()` 会自动调用：
+
+```python
+generate_report(run_dir=run_dir)
+```
+
+生成：
+
+```text
+reports/report.md
+reports/report.docx
+```
+
+报告不会再次调用 LLM，也不会写数据库。它只以 `labeled_data.xlsx` 为输入，统计后生成派生文件。
+
+### 18.2 可以直接指定已经处理好的 Excel
+
+不需要重跑 convert/filter/deduplicate/LLM。可以直接：
+
+```python
+from pathlib import Path
+
+from aima_ugc.adapters.providers.imports_test.test import generate_report
+
+result = generate_report(
+    excel_path=Path(r"E:\path\to\labeled_data.xlsx"),
+    output_dir=Path(r"E:\path\to\reports"),
+)
+
+print(result.markdown_path)
+print(result.word_path)
+```
+
+`output_dir` 可以省略。省略时，显式 Excel 的报告默认写到该 Excel 同目录下的 `reports/`。
+
+### 18.3 报告统计内容
+
+默认模板系统展示：
+
+- 内容总量、评论总量、标签对总量、平台数、一级/二级标签数、日期范围；
+- 每个平台内容量、占比、评论量；
+- 各平台每日内容量；
+- 情感分布与每日趋势；
+- 全部一级标签数量/占比及每日趋势；
+- 全部二级标签数量/占比及每日趋势；
+- 完整一级 → 二级标签对数量；
+- 命中关键词数量/占比；
+- 报告依赖字段的缺失、时间解析和一级/二级标签行数一致性检查。
+
+统计口径固定为：
+
+```text
+内容总量、平台、情感、每日趋势、关键词
+→ “内容” Sheet
+
+一级/二级标签总体频次、标签对频次
+→ “标签明细” Sheet
+
+评论总量、各平台评论量
+→ “评论” Sheet
+```
+
+完整统计始终保留在 Markdown 表格里。一级/二级标签折线图和 Top 图为了可读性限制展示序列数量，但不会删除表格中的完整数据。
+
+### 18.4 只维护 Markdown 模板
+
+报告正文模板只有：
+
+```text
+backend/src/aima_ugc/adapters/providers/imports_test/report_template.md
+```
+
+Python 负责把统计值填入模板占位符，先产生完整 `report.md`；Word 转换器随后**读取这个已经生成的 Markdown 文件**产生 `report.docx`。因此：
+
+```text
+修改 report_template.md 的正文
+→ 下一次 report.md 同步变化
+→ 下一次 report.docx 同步变化
+```
+
+不得再维护一份平行 Word 正文模板，否则会产生双事实源。
+
+### 18.5 Mermaid 与 Word 图表
+
+Markdown 使用 Mermaid fenced block。当前模板使用：
+
+```text
+pie
+xychart
+```
+
+用于饼图、柱状图和折线图。Word 转换器解析本模板实际使用的这两类 Mermaid 图，把它们转换为内嵌 PNG，同时保留表格中的完整中文图例和数据。这样 Word 不需要调用 Mermaid 在线服务，也不要求系统安装 Pandoc、LibreOffice 或额外 Python 绘图库。
+
+当前 Word 转换器不是通用 Markdown/Mermaid 排版引擎。它支持本报告需要的标题、正文、引用、列表、Markdown 表格、代码块、`pie` 与 `xychart`。模板如果加入未支持的 Mermaid 类型，转换会明确失败，不会静默生成一份缺图 Word。
+
+### 18.6 失败边界
+
+报告是最终 Excel 之后的派生阶段：
+
+- 报告读取 Excel 时使用只读模式；
+- 不对输入 Excel 执行保存、修复或二次格式化；
+- 报告失败会向调用方抛出错误，不能把 `run_all()` 伪装成完整成功；
+- 已经成功生成的 `labeled_data.xlsx` 不会因为报告失败被删除或回滚；
+- 修复模板或报告输入后，可以直接对同一个 Excel 重新调用 `generate_report(...)`。
