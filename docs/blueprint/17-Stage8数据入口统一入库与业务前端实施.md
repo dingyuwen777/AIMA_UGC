@@ -606,6 +606,9 @@ Stage 8 不作为一个巨型 PR 一次完成。按以下最小正式单元推�
 - Import Job 与 Collection Run 创建时冻结全局 Pack 身份、版本与实际执行关键词快照；
 - 把现有 Excel 关键词判定提取为 Provider-neutral Canonical Relevance Service，并接入正式
   Excel/TikHub 当前生产链；未通过的 TikHub Candidate 保留 Raw/账本，不写 Content；
+- TikHub Search Canonical 未命中时，必须通过现有 Provider Runtime 最多请求一次 Detail 并重新映射后
+  终判；Detail 命中则复用该次结果继续既有采集决策，最终未命中才记为 `filtered`，且不再请求
+  Comment/Reply。Search 已命中时不为 Relevance 额外请求 Detail；
 - 创建 Processing/Import Batch；
 - 创建并查询持久化 Import Job；
 - Batch 状态、阶段、统计、错误摘要；

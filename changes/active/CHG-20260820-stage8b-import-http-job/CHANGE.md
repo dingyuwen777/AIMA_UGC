@@ -82,7 +82,8 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 - [ ] Import Job 与 Collection Run 创建时冻结同一全局 Pack 的 ID、版本和实际有效关键词快照；排队/运行
   期间修改全局配置或词包不会改变本次执行。
 - [ ] Excel/Import 与 TikHub Collection 调用同一个 Provider-neutral Canonical Relevance Service；
-  TikHub 未通过者保留 Raw/Candidate 与 `filtered` 账本事实，不写 Content，也不继续不必要的付费动作。
+  TikHub Search 未命中时必须通过现有 Provider Runtime 最多请求一次 Detail 再终判；最终未通过者保留
+  Raw/Candidate 与 `filtered` 账本事实，不写 Content，也不继续 Comment/Reply 等后续付费动作。
 - [ ] Batch 查询返回稳定 status、stage、stats、error summary、时间和关联 Job 快照；Job 查询不复制
   第二套状态真相。
 - [ ] 正常、非法 Excel、错误 Artifact/Batch/Job、失败/重试与未处理异常均返回统一错误 Contract，
@@ -165,7 +166,20 @@ Content Ingestion、Artifact Store 或 Job Runtime。
   Dedup/Decision → Content Ingestion`。Raw/Source Artifact 必须保留，Mapper 保持纯映射，未通过
   Relevance 的内容不得写入 Content。
 - 对 TikHub，Relevance 还必须位于不必要的 Detail/Comment/Reply 付费动作之前；但 Search 摘要字段
-  不完整时是直接过滤还是先补 Detail 再终判，仍是后续独立业务/费用门禁，不能静默决定。
+  不完整或未命中时不能仅凭摘要直接过滤。
+
+## 已确认：TikHub Search 未命中的 Detail 终判策略
+
+- 用户选择召回优先方案：只要 TikHub Search Canonical 没有命中全局 Relevance 关键词，无论是否已观察到
+  非空 `title`/`text`，都必须通过现有 Provider Request/Attempt/Raw Runtime 最多请求一次 Detail，重新
+  Mapper 为 Canonical 后再执行最终 Relevance 判定。
+- Search 已命中时不为了 Relevance 额外请求 Detail，后续是否因现有采集决策需要 Detail 仍遵循既有
+  `detail_policy=on_change` 语义。
+- Detail 命中后必须复用该次 Detail Canonical 和请求结果继续既有采集决策，不能再发第二次相同 Detail；
+  Detail 最终未命中或仍无可匹配文本时记为 `filtered`，保留 Search/Detail Raw 与 Candidate，不写 Content，
+  不请求 Comment/Reply。
+- Detail 请求或映射发生技术失败时沿用现有 Provider/Job 分类重试与审计语义，不能把技术失败伪装为
+  `filtered`。该方案明确以增加未命中候选的 Detail 成本换取更低的相关内容漏失风险。
 
 ## 已确认：Relevance 配置作用域
 
@@ -202,7 +216,8 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 - [x] 确认 Stage 8B 只交付关键词后端 Contract/API 与 Orval，Vue 页面留在 Stage 8F
 - [x] 冻结 Discovery 与跨渠道 Relevance 的业务定义及共同 Canonical 边界
 - [x] 冻结 Relevance 词包为系统全局唯一配置，并确定执行快照与 fail-closed 部署边界
-- [ ] 冻结 TikHub 摘要不足策略与正式关键词写入规范化语义
+- [x] 冻结 TikHub Search 未命中时先请求一次 Detail 再终判的召回优先策略
+- [ ] 冻结正式关键词写入规范化语义
 - [ ] 冻结 Excel HTTP 传输与压缩/解压大小边界
 - [ ] 建立 HTTP Contract/Error/OpenAPI、API Service 和 Import Job/Worker 的失败测试并观察正确 Red
 - [ ] 完成最小实现
@@ -223,8 +238,8 @@ Content Ingestion、Artifact Store 或 Job Runtime。
   → 验证方式：目标 Unit + `tests/integration/jobs`/Stage 8B PostgreSQL 测试。
 - [Relevance Red] → 修改范围：Provider-neutral Relevance Service、全局配置快照、Excel/TikHub 入口与
   Candidate `filtered` 账本测试
-  → 预期结果：同一 Canonical/关键词在所有来源得到同一判定，未命中不写 Content/不继续付费动作，
-  配置缺失与失效 fail closed
+  → 预期结果：同一 Canonical/关键词在所有来源得到同一判定；TikHub Search 未命中只请求一次 Detail
+  并复用其 Canonical 终判，最终未命中不写 Content/不请求 Comment/Reply；配置缺失与失效 fail closed
   → 验证方式：目标 Unit + Collection/Import PostgreSQL Integration。
 - [最小 Green] → 修改范围：Ingestion Application Service、PostgreSQL Repository 增量、API/Worker bootstrap
   → 预期结果：202 创建 Batch/Job，Worker 复用正式 pipeline，查询返回组合状态
@@ -264,7 +279,7 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 # 交付
 
 - Commit：`a12eac4`（记录 Stage 8B 开发门禁）；后续实现继续使用中文提交。
-- PR：Draft PR `#97`（`feature/stage8b-import-http-job → main`）已创建；当前因 TikHub 摘要不足策略、
-  正式 normalization 与上传安全边界待决定而保持 blocked/draft，最终 CI/Review
+- PR：Draft PR `#97`（`feature/stage8b-import-http-job → main`）已创建；当前因正式 normalization 与
+  上传安全边界待决定而保持 blocked/draft，最终 CI/Review
   完成后才转 Ready 并正常合并。
 - 发布：不部署生产；只交付仓库代码、Migration 状态说明、生成物、测试与合并后 main 证据。
