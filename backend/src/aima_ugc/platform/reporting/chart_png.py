@@ -176,7 +176,7 @@ def _draw_line(canvas: _Canvas, spec: ChartSpec) -> None:
         for x, value in zip(x_positions, values, strict=True):
             y = _value_to_y(value, y_min, y_max, top, bottom)
             points.append((x, y))
-        for first, second in zip(points, points[1:]):
+        for first, second in zip(points, points[1:], strict=False):
             canvas.line(*first, *second, color, thickness=4)
         for x, y in points:
             canvas.circle(x, y, 5, color)
