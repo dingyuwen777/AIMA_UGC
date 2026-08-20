@@ -1,4 +1,5 @@
 name: Offline Reporting Final Verify
+# Workflow 已存在后通过本提交显式触发最终验证。
 
 on:
   push:
