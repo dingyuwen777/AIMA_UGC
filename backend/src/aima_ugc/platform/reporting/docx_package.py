@@ -7,7 +7,7 @@ import re
 import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Final
+from typing import Final, cast
 from xml.etree import ElementTree as ET
 from xml.sax.saxutils import escape
 
@@ -337,7 +337,7 @@ def _number_text(value: float) -> str:
 
 
 def _serialize_xml(element: ET.Element) -> bytes:
-    return ET.tostring(element, encoding="utf-8", xml_declaration=True)
+    return cast(bytes, ET.tostring(element, encoding="utf-8", xml_declaration=True))
 
 
 def _content_types_xml() -> str:
