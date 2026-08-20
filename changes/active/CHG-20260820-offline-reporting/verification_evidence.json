@@ -1,8 +1,8 @@
 {
   "schema_version": "offline-reporting-verification.v1",
-  "tested_sha": "128aaab3d155463db5778eb2340529b637e34392",
+  "tested_sha": "7037206e4bf85bfd69af7a6955b7e9e5d73e62aa",
   "runner_os": "Linux",
-  "verified_at": "2026-08-20T04:26:12.949452+00:00",
+  "verified_at": "2026-08-20T04:28:23.165556+00:00",
   "result": "failure",
   "checks": {
     "install_uv": "success",
@@ -14,25 +14,13 @@
   },
   "target_tests_tail": [
     "..................                                                       [100%]",
-    "18 passed in 2.88s"
+    "18 passed in 2.95s"
   ],
   "static_checks_tail": [
-    "unformatted: File would be reformatted",
-    "   --> backend/src/aima_ugc/platform/reporting/docx_package.py:386:13",
-    "    |",
-    "385 |         relationships.append(",
-    "    -             ",
-    "    -                 f'<Relationship Id=\"rId{index}\" '",
-    "    -                 'Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" '",
-    "    -                 f'Target=\"media/{escape(name)}\"/>'",
-    "    -             ",
-    "386 +             f'<Relationship Id=\"rId{index}\" '",
-    "387 +             'Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" '",
-    "388 +             f'Target=\"media/{escape(name)}\"/>'",
-    "389 |         )",
-    "    |",
-    "",
-    "1 file would be reformatted, 347 files already formatted"
+    "348 files already formatted",
+    "All checks passed!",
+    "backend/src/aima_ugc/platform/reporting/docx_package.py:340: error: Returning Any from function declared to return \"bytes\"  [no-any-return]",
+    "Found 1 error in 1 file (checked 183 source files)"
   ],
   "unit_tests_tail": [
     "........................................................................ [ 17%]",
@@ -41,7 +29,7 @@
     "........................................................................ [ 70%]",
     "........................................................................ [ 87%]",
     "..................................................                       [100%]",
-    "410 passed in 4.81s"
+    "410 passed in 5.07s"
   ],
   "render_tail": [
     "Processing triggers for hicolor-icon-theme (0.17-2) ...",
@@ -61,5 +49,5 @@
     "Warning: failed to launch javaldx - java may not function correctly",
     "convert /tmp/aima-report-verify/report/report.docx as a Writer document -> /tmp/aima-report-verify/rendered/report.pdf using filter : writer_pdf_Export"
   ],
-  "rendered_pdf_bytes": 190732
+  "rendered_pdf_bytes": 190730
 }
