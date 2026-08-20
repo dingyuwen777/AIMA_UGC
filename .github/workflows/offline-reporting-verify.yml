@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - feature/offline-reporting
+    paths-ignore:
+      - changes/active/CHG-20260820-offline-reporting/verification_evidence.json
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
@@ -44,24 +46,25 @@ jobs:
             tests/unit/platform/test_offline_reporting.py \
             tests/unit/platform/test_imports_test_reporting.py \
             tests/unit/platform/test_docx_package_structure.py \
-            tests/unit/collection/test_p1g_imports_run_all.py -q
+            tests/unit/collection/test_p1g_imports_run_all.py -q | tee /tmp/target-tests.txt
 
       - name: Repository static checks
         shell: bash
         run: |
           set -euo pipefail
-          uv run ruff format --check backend tests scripts
-          uv run ruff check backend tests scripts
-          uv run mypy backend/src
-          uv run python scripts/quality/check_architecture.py
-          uv run python scripts/quality/check_docs.py
-          uv run python scripts/quality/scan_secrets.py
+          : > /tmp/static-checks.txt
+          uv run ruff format --check backend tests scripts | tee -a /tmp/static-checks.txt
+          uv run ruff check backend tests scripts | tee -a /tmp/static-checks.txt
+          uv run mypy backend/src | tee -a /tmp/static-checks.txt
+          uv run python scripts/quality/check_architecture.py | tee -a /tmp/static-checks.txt
+          uv run python scripts/quality/check_docs.py | tee -a /tmp/static-checks.txt
+          uv run python scripts/quality/scan_secrets.py | tee -a /tmp/static-checks.txt
 
       - name: Full unit tests
         shell: bash
         run: |
           set -euo pipefail
-          uv run pytest tests/unit -q
+          uv run pytest tests/unit -q | tee /tmp/unit-tests.txt
 
       - name: Render a generated DOCX with LibreOffice
         shell: bash
@@ -105,3 +108,48 @@ jobs:
           mkdir -p /tmp/aima-report-verify/rendered
           libreoffice --headless --convert-to pdf --outdir /tmp/aima-report-verify/rendered /tmp/aima-report-verify/report/report.docx
           test -s /tmp/aima-report-verify/rendered/report.pdf
+          stat --printf='%s\n' /tmp/aima-report-verify/rendered/report.pdf > /tmp/report-pdf-size.txt
+
+      - name: Record verified evidence on branch
+        shell: bash
+        env:
+          EVIDENCE_PATH: changes/active/CHG-20260820-offline-reporting/verification_evidence.json
+        run: |
+          set -euo pipefail
+          uv run python - <<'PY'
+          import json
+          import os
+          from datetime import UTC, datetime
+          from pathlib import Path
+
+          def tail(path: str, lines: int = 8) -> list[str]:
+              text = Path(path).read_text(encoding='utf-8', errors='replace').splitlines()
+              return text[-lines:]
+
+          payload = {
+              'schema_version': 'offline-reporting-verification.v1',
+              'tested_sha': os.environ['GITHUB_SHA'],
+              'runner_os': os.environ.get('RUNNER_OS'),
+              'verified_at': datetime.now(UTC).isoformat(),
+              'result': 'success',
+              'checks': {
+                  'locked_environment': 'success',
+                  'target_reporting_tests': 'success',
+                  'repository_static_checks': 'success',
+                  'full_unit_tests': 'success',
+                  'libreoffice_docx_render': 'success',
+              },
+              'target_tests_tail': tail('/tmp/target-tests.txt'),
+              'static_checks_tail': tail('/tmp/static-checks.txt', 16),
+              'unit_tests_tail': tail('/tmp/unit-tests.txt'),
+              'rendered_pdf_bytes': int(Path('/tmp/report-pdf-size.txt').read_text().strip()),
+          }
+          path = Path(os.environ['EVIDENCE_PATH'])
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "$EVIDENCE_PATH"
+          git commit -m '验证：记录离线报告分支门禁结果 [skip ci]'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
