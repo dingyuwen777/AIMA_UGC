@@ -26,7 +26,15 @@ backend/src/aima_ugc/adapters/providers/imports_test/test.py
 常用配置：
 
 ```python
-INPUT_XLSX = Path(r"E:\path\to\source.xlsx")
+# 单文件：自动走单文件转换。
+INPUT_XLSX_FILES = Path(r"E:\path\to\source.xlsx")
+
+# 多文件：改为 Path 元组，按顺序合并到同一个 run。
+INPUT_XLSX_FILES = (
+    Path(r"E:\path\to\source-1.xlsx"),
+    Path(r"E:\path\to\source-2.xlsx"),
+)
+
 OUTPUT_ROOT = Path(__file__).with_name("output")
 KEYWORD_PACK_FILE = Path(__file__).with_name("keyword_pack.txt")
 REPORT_TEMPLATE_FILE = Path(__file__).with_name("report_template.md")
@@ -47,9 +55,28 @@ MAX_TRANSPORT_RETRIES = 4
 MAX_VALIDATION_RETRIES = 2
 ```
 
+Excel 输入只有 `INPUT_XLSX_FILES` 一个配置入口。它接受一个 `Path` 或非空的
+`Path` 元组；空元组会在转换前报错，其他类型不受支持。
+
 当前没有 `LLM_BATCH_SIZE` 配置。**不会把 20 条内容拼进一次模型请求。**
 
 `LLM_CONCURRENCY = 250` 表示最大在飞 HTTP 请求数，不是每个请求包含 250 条数据。
+
+多 Excel 固定采用：
+
+```text
+按 INPUT_XLSX_FILES 顺序读取
+→ 合并到同一 canonical/contents.jsonl
+→ 全局关键词过滤
+→ 全局稳定身份去重
+→ 一次 AI 打标阶段
+→ 一个 labeled_data.xlsx
+→ 一份 Markdown / Word 报告
+```
+
+同一稳定身份由配置中靠前文件的记录代表。不同目录下也不允许使用相同文件名，因为
+Canonical `source_value` 使用文件名保存来源；文件名重复会在合并前直接失败，避免来源混淆。
+任一文件出现坏行时，整个合并 Canonical JSONL 都不会发布。
 
 ## 2. 配置最终 Excel 列
 
@@ -110,7 +137,7 @@ Raw/来源定位
 评论覆盖
 ```
 
-报告当前依赖最终 Excel 的以下展示列：`平台`、`发布时间`、`命中关键词`、`情感标签`、`一级标签`、`二级标签`。因此使用本人工入口默认列时可以直接生成报告；如果手工修改 `EXCEL_CONTENT_COLUMNS` 并删除这些列，报告会明确拒绝，而不会猜测缺失数据。
+报告当前依赖最终 Excel 的以下内容列：`平台`、`发布时间`、`命中关键词`、`情感标签`、`一级标签`、`二级标签`。使用默认列可以直接生成报告；如果手工删除这些列，报告会明确拒绝，而不会猜测或伪造统计字段。
 
 ## 3. 配置清洗词包
 
@@ -204,7 +231,63 @@ AIMA_LLM_MODEL=
 
 只有 Base URL、API Key、Model 必填。真实 `.env` 已被仓库忽略；不要把 API Key 写进源码、README、测试、日志或提交记录。
 
+每个配置项的含义和取值来源：
+
+| 配置 | 含义 | 从哪里查看 |
+| --- | --- | --- |
+| `AIMA_LLM_BASE_URL` | OpenAI-compatible API 根地址；代码从它提取 provider host | 模型供应商官方 API 接入文档；DeepSeek 为 `https://api.deepseek.com` |
+| `AIMA_LLM_API_KEY` | 调用模型的 Secret | 模型供应商控制台创建；不能从价格页复制，也不能提交 Git |
+| `AIMA_LLM_MODEL` | 请求使用的精确模型 ID | 供应商官方模型/价格页；必须与价格目录的 `model` 完全一致 |
+| `AIMA_LLM_TIMEOUT_SECONDS` | 单个 HTTP 请求超时秒数 | 根据实际响应延迟调整；未配置使用代码默认 60 秒 |
+
+`.env` 不保存单价、生效时间或人工价格版本。运行时调用参数与公开价格事实职责不同，混在一起
+既不能提高计算精度，也会增加误配置。
+
 当前入口使用 OpenAI-compatible Chat Completions Adapter，JSON mode 默认开启，本地 Validator 仍会再次严格校验模型结果。
+
+### 4.1 价格配置与其他模型
+
+价格目录：
+
+```text
+backend/src/aima_ugc/adapters/llm/pricing.toml
+```
+
+计费与请求审计由全平台共享 LLM Adapter 持有，完整边界见
+`backend/src/aima_ugc/adapters/llm/README.md`。本入口只提供当前人工 run 的配置和审计文件位置，
+不维护一套 Excel 专用计费实现。
+
+一个文本模型只配置计算和核验真正需要的字段：
+
+| 字段 | 含义 | 从哪里查看 |
+| --- | --- | --- |
+| `provider` | Base URL 的小写 host，例如 `api.deepseek.com` | 供应商官方 API 地址；网关有自己的 host 和可能不同的价格，不能冒用原厂价格 |
+| `model` | 精确模型 ID | 供应商官方模型/价格页 |
+| `currency` | 价格页使用的三字母币种，例如 `CNY` | 官方价格页 |
+| `input_per_million` | 无缓存拆分模型每百万输入 token 单价 | 官方价格页；与下面两项二选一 |
+| `input_cache_hit_per_million` | 每百万缓存命中输入 token 单价 | 官方价格页和 API usage 定义 |
+| `input_cache_miss_per_million` | 每百万缓存未命中输入 token 单价 | 官方价格页和 API usage 定义 |
+| `output_per_million` | 每百万输出 token 单价 | 官方价格页 |
+| `source_url` | 上述价格的官方依据 | 供应商官方价格页面，不使用二手报价 |
+
+`schema_version` 只是 TOML 解析格式，正常换模型时不修改。代码根据规范化后的 provider、model、
+币种、单价和来源 URL 自动计算价格快照 SHA-256，不需要手工维护 `pricing_version` 或
+`effective_from`。
+
+更换模型时只做两件事：
+
+1. 把 `.env` 的 `AIMA_LLM_MODEL` 改为供应商官方模型 ID；
+2. 如果 `pricing.toml` 还没有该 `provider + model`，按官方价格页增加一项并运行价格测试。
+
+普通输入/输出两档计价，以及缓存命中/未命中/输出三档计价的文本模型可以直接配置。图片、
+音频、按请求、阶梯折扣或其他 token 分类不能套用这个公式，需要先扩展计费维度和测试。
+没有匹配价格或 API usage 缺少必要分类时，标签处理仍继续，但费用明确记为不可计算，不使用
+默认价格猜测。
+
+DeepSeek 当前价格和 usage 字段以以下官方页面为准：
+
+- <https://api-docs.deepseek.com/zh-cn/quick_start/pricing/>
+- <https://api-docs.deepseek.com/zh-cn/api/create-chat-completion/>
 
 ## 5. 250 并发实际怎么运行
 
@@ -401,7 +484,8 @@ output/
 └─ runs/
    └─ <run-id>/
       ├─ canonical/
-      │  └─ contents.jsonl
+      │  ├─ contents.jsonl
+      │  └─ conversion_summary.json
       ├─ filtered/
       │  └─ contents.jsonl
       ├─ deduplicated/
@@ -409,6 +493,7 @@ output/
       ├─ analysis/
       │  ├─ checkpoints.jsonl
       │  ├─ attempts.jsonl
+      │  ├─ llm_requests.jsonl
       │  └─ failed.jsonl
       ├─ labeled_data.xlsx
       ├─ reports/
@@ -431,17 +516,49 @@ llm_attempts
 peak_in_flight
 llm_http_requests
 transport_retries
+llm_request_audit_path
+llm_calculated_http_requests
+llm_uncalculated_http_requests
+llm_input_tokens
+llm_input_cache_hit_tokens
+llm_input_cache_miss_tokens
+llm_output_tokens
+llm_total_cost_amount
+llm_cost_currency
 ```
 
-此外顶层会写出：
+这些字段可以用来确认实际请求量、重试量、并发峰值和本次 run 的可计算费用。
+
+报告完成后，`run_summary.json` 顶层还会增加：
 
 ```text
-labeled_excel
 report_markdown
 report_word
 ```
 
-`stages` 最后一项是 `generate_report`，可查看报告读取的内容/标签/评论行数、日期范围和 Word 图表数量。
+`stages` 最后一项是 `generate_report`，包含本次报告读取的内容、标签、评论行数、日期范围和 Word 图表数量。
+
+费用公式：
+
+```text
+普通模型费用
+= input_tokens × input_per_million / 1,000,000
++ output_tokens × output_per_million / 1,000,000
+
+缓存拆分模型费用
+= cache_hit_tokens × cache_hit_price / 1,000,000
++ cache_miss_tokens × cache_miss_price / 1,000,000
++ output_tokens × output_price / 1,000,000
+```
+
+`analysis/llm_requests.jsonl` 一行对应一个物理 HTTP 请求，包含空 `content`、Validation Retry
+和 Transport Retry，保存 token 分类、实际使用的单价、价格来源、自动快照哈希与计算费用；
+不保存 Prompt、标题、正文、作者或 Provider 响应正文。`attempts.jsonl` 仍表示逻辑 Validation
+Attempt，两者不能混为一个计数。
+
+本地结果是按官方单价和 Provider 返回 usage 得到的可复算计算值，不是供应商账单。如果服务端
+已经处理请求但响应在网络中丢失，本地拿不到 usage，会把该请求记为费用未知；最终扣款仍以
+供应商账单为准。
 
 ## 10. 单步运行
 
@@ -458,9 +575,17 @@ ingest_database(run_dir=run_dir)
 label_sentiment(run_dir=run_dir)
 export_labeled_excel(run_dir=run_dir)
 generate_report(run_dir=run_dir)
+
+# 可选：价格目录变化后生成派生复算报告；不覆盖原请求审计。
+recalculate_cost(run_dir=run_dir)
 ```
 
 依赖上一步产物的函数必须传同一个 `run_dir`。`run_all(write_to_database=True)` 会在去重完成后、AI 打标前执行同一个 `ingest_database()` 正式数据库阶段；报告始终位于最终 Excel 之后。
+
+复算输出为 `analysis/cost_recalculation.json`。它读取原始 token 事实并使用当前
+`pricing.toml` 计算，不修改 `llm_requests.jsonl`、checkpoint、标签或业务 JSONL。用新价格复算
+旧请求只能解释为“按新价格模拟重估”，不能改写成调用当时的实际费用；本功能上线前的历史
+attempt 没有缓存拆分 token，无法准确补算。
 
 ## 11. AI 多标签与 Excel
 
@@ -541,6 +666,9 @@ aima-monitoring-excel.v1
 
 无法映射的平台、非法日期/粉丝数、缺稳定身份等都会 fail closed，不发布半份 canonical 业务 JSONL。
 
+多文件还要求每个输入 Excel 的文件名唯一。`canonical/conversion_summary.json` 保存本次实际输入
+路径和各文件行数，使后续单步数据库入库不依赖再次手工传入行数。
+
 ## 14. 常见排错
 
 - **HTTP 401**：API Key/认证失败；canary 后立即停止，不会扩到 250。
@@ -550,12 +678,15 @@ aima-monitoring-excel.v1
 - **HTTP 200 但 `message.content` 为空**：Provider 的 JSON Output 偶发空结果按 Transport Retry 处理；超过限制仍停止新调度，避免无限调用和费用失控。
 - **标签校验失败**：查看 `analysis/attempts.jsonl` 和 `analysis/failed.jsonl`。
 - **程序中途终止**：不要删除 `analysis/checkpoints.jsonl`；修复问题后在同一 run 上继续 `label_sentiment(run_dir=...)` 可恢复成功项。
+- **费用不可计算**：查看 `analysis/llm_requests.jsonl` 的 `cost.unavailable_reason`；通常是价格目录没有对应模型、usage 缺字段或网络未返回响应。
+- **费用复算**：更新官方单价后调用 `recalculate_cost(run_dir=...)`；它生成派生报告，不覆盖历史单价快照。
+- **多 Excel 文件名重复**：重命名文件使 basename 唯一；系统不会用绝对路径污染 Canonical 来源字段来绕过冲突。
 - **run_id 已存在**：不要覆盖旧 run，使用新 run ID。
 - **词包为空**：检查 `KEYWORD_PACK_FILE` 是否正确、文件是否只剩注释和空行。
 - **数据库连接失败**：只影响显式数据库阶段；已经生成的 Canonical/filtered/deduplicated 文件保留。启动既定 PostgreSQL 18 开发实例并修复 `AIMA_DB_*` / Secret 配置后重试，不要让脚本自动管理容器。
 - **Stage 8A Schema 不匹配**：先由开发者显式运行仓库 Alembic Migration，再重试；`imports_test` 自身不会执行 Migration。
 - **报告缺少必要列**：恢复最终 Excel 的默认报告依赖列，不要让报告层猜测或伪造统计字段。
-- **Word 转换提示不支持 Mermaid**：当前 Word 转换只支持本报告模板使用的 `pie` 和 `xychart`。新增其他 Mermaid 类型前，应先扩展转换器和测试，不能接受 Word 静默丢图。
+- **Word 转换提示不支持 Mermaid**：当前只支持本报告使用的 `pie` 和 `xychart`；新增类型前先扩展转换器和测试。
 
 ## 15. 未来正式网页关键词配置
 
@@ -619,6 +750,13 @@ Stage 8A 已保留 `imports_test` 的默认 file-only 行为，并实现显式 P
 → PostgreSQL Current / Version / Metric / 来源历史
 ```
 
+多 Excel run 在文件阶段先全局过滤和去重；显式数据库阶段再按保留下来的
+`content.source.source_value` 分配记录，并为每个源 Excel 分别建立 Input Artifact、Processing
+Import Batch 和 import-parent Request/Attempt。某个文件的记录如果全部在过滤/去重阶段被移除，
+它仍有自己的成功 Import Batch，`rows_ingested=0`，不会把其他文件记录错误绑定到该 Artifact。
+各源文件 Batch 按配置顺序独立提交；如果后一个 Batch 失败，前面已成功的 Batch 不回滚。修复原因后
+可对同一 `run_dir` 重跑数据库阶段，正式内容身份与唯一约束会幂等收敛，不会制造第二条 Current。
+
 数据库模式的前置条件：
 
 - 开发者已经启动可访问的 PostgreSQL 18；
@@ -642,7 +780,7 @@ Stage 8A 已保留 `imports_test` 的默认 file-only 行为，并实现显式 P
 
 ### 18.1 `run_all()` 自动生成什么
 
-最终 Excel 成功后，`run_all()` 会自动调用：
+最终 Excel 成功后，`run_all()` 自动调用：
 
 ```python
 generate_report(run_dir=run_dir)
@@ -659,7 +797,7 @@ reports/report.docx
 
 ### 18.2 可以直接指定已经处理好的 Excel
 
-不需要重跑 convert/filter/deduplicate/LLM。可以直接：
+不需要重跑 convert/filter/deduplicate/LLM：
 
 ```python
 from pathlib import Path
@@ -679,7 +817,7 @@ print(result.word_path)
 
 ### 18.3 报告统计内容
 
-默认模板系统展示：
+默认模板展示：
 
 - 内容总量、评论总量、标签对总量、平台数、一级/二级标签数、日期范围；
 - 每个平台内容量、占比、评论量；
@@ -691,7 +829,7 @@ print(result.word_path)
 - 命中关键词数量/占比；
 - 报告依赖字段的缺失、时间解析和一级/二级标签行数一致性检查。
 
-统计口径固定为：
+统计口径：
 
 ```text
 内容总量、平台、情感、每日趋势、关键词
@@ -714,35 +852,28 @@ print(result.word_path)
 backend/src/aima_ugc/adapters/providers/imports_test/report_template.md
 ```
 
-Python 负责把统计值填入模板占位符，先产生完整 `report.md`；Word 转换器随后**读取这个已经生成的 Markdown 文件**产生 `report.docx`。因此：
+固定链路：
 
 ```text
-修改 report_template.md 的正文
-→ 下一次 report.md 同步变化
-→ 下一次 report.docx 同步变化
+report_template.md
+→ 填充统计值
+→ report.md
+→ Word 转换器读取 report.md
+→ report.docx
 ```
 
-不得再维护一份平行 Word 正文模板，否则会产生双事实源。
+因此修改模板正文、标题或章节顺序后，下一次 Markdown 和 Word 会一起变化。不得再维护一份平行 Word 正文模板。
 
 ### 18.5 Mermaid 与 Word 图表
 
-Markdown 使用 Mermaid fenced block。当前模板使用：
+Markdown 当前使用 Mermaid `pie` 与 `xychart`，分别承载饼图、柱状图和折线图。Word 转换器解析本模板实际使用的两类 Mermaid，把图表转换为 DOCX 内嵌 PNG，同时用 Word 表格保留完整中文图例和数据。
 
-```text
-pie
-xychart
-```
-
-用于饼图、柱状图和折线图。Word 转换器解析本模板实际使用的这两类 Mermaid 图，把它们转换为内嵌 PNG，同时保留表格中的完整中文图例和数据。这样 Word 不需要调用 Mermaid 在线服务，也不要求系统安装 Pandoc、LibreOffice 或额外 Python 绘图库。
-
-当前 Word 转换器不是通用 Markdown/Mermaid 排版引擎。它支持本报告需要的标题、正文、引用、列表、Markdown 表格、代码块、`pie` 与 `xychart`。模板如果加入未支持的 Mermaid 类型，转换会明确失败，不会静默生成一份缺图 Word。
+运行时不依赖 Mermaid 在线服务、Pandoc、LibreOffice、Matplotlib、pandas 或额外 Python 文档库。当前 Word 转换器不是通用 Markdown/Mermaid 排版引擎；模板如果加入未支持的 Mermaid 类型会明确失败，不会静默生成缺图 Word。
 
 ### 18.6 失败边界
 
-报告是最终 Excel 之后的派生阶段：
-
-- 报告读取 Excel 时使用只读模式；
-- 不对输入 Excel 执行保存、修复或二次格式化；
-- 报告失败会向调用方抛出错误，不能把 `run_all()` 伪装成完整成功；
-- 已经成功生成的 `labeled_data.xlsx` 不会因为报告失败被删除或回滚；
-- 修复模板或报告输入后，可以直接对同一个 Excel 重新调用 `generate_report(...)`。
+- 报告使用只读方式打开输入 Excel；
+- 不对输入 Workbook 保存、修复或二次格式化；
+- 报告失败会向调用方抛错，不能把 `run_all()` 伪装成完整成功；
+- 已经成功生成的 `labeled_data.xlsx` 不会因报告失败被删除或回滚；
+- 修复模板或输入后，可以直接对同一个 Excel 重新调用 `generate_report(...)`。
