@@ -166,10 +166,7 @@ def _draw_line(canvas: _Canvas, spec: ChartSpec) -> None:
     left, top, right, bottom = _draw_plot_frame(canvas)
     y_min, y_max = _resolved_y_range(spec)
     count = len(spec.categories)
-    x_positions = [
-        left + int((right - left) * index / max(1, count - 1))
-        for index in range(count)
-    ]
+    x_positions = [left + int((right - left) * index / max(1, count - 1)) for index in range(count)]
     for series_index, values in enumerate(spec.series):
         color = _PALETTE[series_index % len(_PALETTE)]
         points: list[tuple[int, int]] = []
@@ -225,10 +222,7 @@ def _draw_pie(canvas: _Canvas, spec: ChartSpec) -> None:
             if angle < 0:
                 angle += math.tau
             slice_index = 0
-            while (
-                slice_index < len(cumulative) - 1
-                and angle > cumulative[slice_index]
-            ):
+            while slice_index < len(cumulative) - 1 and angle > cumulative[slice_index]:
                 slice_index += 1
             canvas.set_pixel(x, y, _PALETTE[slice_index % len(_PALETTE)])
 
@@ -271,9 +265,4 @@ def _value_to_y(
 def _png_chunk(kind: bytes, payload: bytes) -> bytes:
     crc = binascii.crc32(kind)
     crc = binascii.crc32(payload, crc) & 0xFFFFFFFF
-    return (
-        struct.pack(">I", len(payload))
-        + kind
-        + payload
-        + struct.pack(">I", crc)
-    )
+    return struct.pack(">I", len(payload)) + kind + payload + struct.pack(">I", crc)

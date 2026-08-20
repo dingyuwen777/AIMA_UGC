@@ -17,9 +17,7 @@ _NUMBERED_RE = re.compile(r"^\d+[.)]\s+(.+)$")
 _TABLE_SEPARATOR_RE = re.compile(r"^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*:?-{3,}:?\s*\|?\s*$")
 _PIE_ITEM_RE = re.compile(r'^\s*"(.*)"\s*:\s*(-?\d+(?:\.\d+)?)\s*$')
 _XY_SERIES_RE = re.compile(r"^\s*(line|bar)\s*\[(.*)]\s*$")
-_Y_AXIS_RE = re.compile(
-    r'^\s*y-axis\s+"[^"]*"\s+(-?\d+(?:\.\d+)?)\s*-->\s*(-?\d+(?:\.\d+)?)\s*$'
-)
+_Y_AXIS_RE = re.compile(r'^\s*y-axis\s+"[^"]*"\s+(-?\d+(?:\.\d+)?)\s*-->\s*(-?\d+(?:\.\d+)?)\s*$')
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,11 +112,7 @@ def _parse_markdown(markdown: str, builder: DocxBuilder) -> None:
 
         paragraph_lines = [line.strip()]
         index += 1
-        while (
-            index < len(lines)
-            and lines[index].strip()
-            and not _starts_block(lines, index)
-        ):
+        while index < len(lines) and lines[index].strip() and not _starts_block(lines, index):
             paragraph_lines.append(lines[index].strip())
             index += 1
         builder.add_paragraph(" ".join(paragraph_lines))
@@ -265,11 +259,7 @@ def _parse_mermaid_xy(lines: list[str]) -> ChartSpec:
         series_match = _XY_SERIES_RE.match(line)
         if series_match:
             kinds.add(series_match.group(1))
-            raw_values = [
-                part.strip()
-                for part in series_match.group(2).split(",")
-                if part.strip()
-            ]
+            raw_values = [part.strip() for part in series_match.group(2).split(",") if part.strip()]
             try:
                 parsed_values = tuple(float(value) for value in raw_values)
             except ValueError as exc:

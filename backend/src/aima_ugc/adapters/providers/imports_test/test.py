@@ -379,7 +379,9 @@ def run_all(
 
     run_summary_path = run_dir / "run_summary.json"
     labeled_excel_path = _labeled_output_path(run_dir)
-    report_input_path = Path(report_excel_path) if report_excel_path is not None else labeled_excel_path
+    report_input_path = (
+        Path(report_excel_path) if report_excel_path is not None else labeled_excel_path
+    )
     if not report_input_path.is_file():
         raise FileNotFoundError(f"报告 Excel 不存在: {report_input_path}")
     report = generate_report(

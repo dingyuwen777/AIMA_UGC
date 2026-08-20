@@ -391,12 +391,12 @@ def _build_template_replacements(
     dates = sorted(stats.daily_content)
     platform_series = [label for label, _ in _sorted_counter(stats.platform_counts)]
     sentiment_series = [label for label, _ in _sorted_counter(stats.sentiment_counts)]
-    primary_series = [
-        label for label, _ in _sorted_counter(stats.primary_counts)
-    ][:_PRIMARY_CHART_LIMIT]
-    secondary_series = [
-        label for label, _ in _sorted_counter(stats.secondary_counts)
-    ][:_SECONDARY_CHART_LIMIT]
+    primary_series = [label for label, _ in _sorted_counter(stats.primary_counts)][
+        :_PRIMARY_CHART_LIMIT
+    ]
+    secondary_series = [label for label, _ in _sorted_counter(stats.secondary_counts)][
+        :_SECONDARY_CHART_LIMIT
+    ]
 
     return {
         "GENERATED_AT": _format_generated_at(generated_at),
@@ -422,9 +422,7 @@ def _build_template_replacements(
             sentiment_series,
             stats.daily_sentiment,
         ),
-        "SENTIMENT_DAILY_TABLE": _daily_long_table(
-            "情感标签", dates, stats.daily_sentiment
-        ),
+        "SENTIMENT_DAILY_TABLE": _daily_long_table("情感标签", dates, stats.daily_sentiment),
         "PRIMARY_TABLE": _markdown_table(("一级标签", "标签对数量", "标签对占比"), primary_rows),
         "PRIMARY_BAR_CHART": _mermaid_bar(
             "一级标签 Top 分布",
@@ -438,7 +436,9 @@ def _build_template_replacements(
             stats.daily_primary,
         ),
         "PRIMARY_DAILY_TABLE": _daily_long_table("一级标签", dates, stats.daily_primary),
-        "SECONDARY_TABLE": _markdown_table(("二级标签", "标签对数量", "标签对占比"), secondary_rows),
+        "SECONDARY_TABLE": _markdown_table(
+            ("二级标签", "标签对数量", "标签对占比"), secondary_rows
+        ),
         "SECONDARY_BAR_CHART": _mermaid_bar(
             "二级标签 Top 分布",
             _top_counter(stats.secondary_counts, _SECONDARY_CHART_LIMIT),
@@ -516,8 +516,7 @@ def _series_legend(series: Sequence[str]) -> str:
     if not series:
         return "图例：暂无可展示序列。"
     parts = [
-        f"**{index}** = {_markdown_inline(label)}"
-        for index, label in enumerate(series, start=1)
+        f"**{index}** = {_markdown_inline(label)}" for index, label in enumerate(series, start=1)
     ]
     return "图例：" + "；".join(parts) + "。"
 

@@ -327,11 +327,7 @@ def verify_docx(path: Path, *, expected_charts: int) -> None:
             raise OSError(f"DOCX 包结构缺失: {'、'.join(sorted(missing))}")
         for xml_name in required:
             ET.fromstring(archive.read(xml_name))
-        media = [
-            name
-            for name in names
-            if name.startswith("word/media/") and name.endswith(".png")
-        ]
+        media = [name for name in names if name.startswith("word/media/") and name.endswith(".png")]
         if len(media) != expected_charts:
             raise OSError("DOCX 图表媒体数量校验失败")
 
