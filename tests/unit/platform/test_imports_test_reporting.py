@@ -4,6 +4,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from pytest import MonkeyPatch
+
 from aima_ugc.adapters.providers.imports_test import test as imports_entry
 from aima_ugc.platform.reporting import ReportGenerationSummary
 
@@ -34,7 +36,7 @@ def _report_summary(*, excel_path: Path, output_dir: Path) -> ReportGenerationSu
 
 
 def test_generate_report_accepts_explicit_processed_excel(
-    monkeypatch: object,
+    monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     excel_path = tmp_path / "finished.xlsx"
@@ -53,7 +55,7 @@ def test_generate_report_accepts_explicit_processed_excel(
         captured["template_path"] = template_path
         return _report_summary(excel_path=input_path, output_dir=output_dir)
 
-    monkeypatch.setattr(  # type: ignore[attr-defined]
+    monkeypatch.setattr(
         imports_entry,
         "generate_excel_report",
         fake_generate_excel_report,
@@ -75,37 +77,37 @@ def test_generate_report_accepts_explicit_processed_excel(
 
 
 def test_run_all_appends_report_stage_and_summary_paths(
-    monkeypatch: object,
+    monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    monkeypatch.setattr(imports_entry, "OUTPUT_ROOT", tmp_path)  # type: ignore[attr-defined]
+    monkeypatch.setattr(imports_entry, "OUTPUT_ROOT", tmp_path)
     calls: list[str] = []
 
     def fake_stage(name: str) -> _StageSummary:
         calls.append(name)
         return _StageSummary()
 
-    monkeypatch.setattr(  # type: ignore[attr-defined]
+    monkeypatch.setattr(
         imports_entry,
         "convert",
         lambda *, run_dir: fake_stage("convert"),
     )
-    monkeypatch.setattr(  # type: ignore[attr-defined]
+    monkeypatch.setattr(
         imports_entry,
         "filter_keywords",
         lambda *, run_dir: fake_stage("filter_keywords"),
     )
-    monkeypatch.setattr(  # type: ignore[attr-defined]
+    monkeypatch.setattr(
         imports_entry,
         "deduplicate",
         lambda *, run_dir: fake_stage("deduplicate"),
     )
-    monkeypatch.setattr(  # type: ignore[attr-defined]
+    monkeypatch.setattr(
         imports_entry,
         "label_sentiment",
         lambda *, run_dir: fake_stage("label_sentiment"),
     )
-    monkeypatch.setattr(  # type: ignore[attr-defined]
+    monkeypatch.setattr(
         imports_entry,
         "export_labeled_excel",
         lambda *, run_dir: fake_stage("export_labeled_excel"),
@@ -126,7 +128,7 @@ def test_run_all_appends_report_stage_and_summary_paths(
             output_dir=run_dir / "reports",
         )
 
-    monkeypatch.setattr(  # type: ignore[attr-defined]
+    monkeypatch.setattr(
         imports_entry,
         "generate_report",
         fake_generate_report,
