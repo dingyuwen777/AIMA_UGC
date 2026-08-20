@@ -93,6 +93,11 @@ replace_required(
     "`backend/src/aima_ugc/platform/reporting/report_template.md`，人工入口不再维护第二份模板路径。\n\n"
     "Excel 输入只有 `INPUT_XLSX_FILES` 一个配置入口。它接受一个 `Path` 或非空的\n",
 )
+replace_required(
+    imports_readme,
+    "backend/src/aima_ugc/adapters/providers/imports_test/report_template.md",
+    "backend/src/aima_ugc/platform/reporting/report_template.md",
+)
 
 reporting_readme = "backend/src/aima_ugc/platform/reporting/README.md"
 replace_required(
