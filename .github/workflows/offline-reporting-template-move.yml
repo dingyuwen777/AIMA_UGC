@@ -1,0 +1,113 @@
+name: Offline Reporting Template Move
+
+on:
+  push:
+    branches:
+      - feature/offline-reporting
+    paths-ignore:
+      - changes/active/CHG-20260820-offline-reporting/template_move_evidence.json
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+      - name: Install locked environment
+        id: setup
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv sync --locked
+      - name: Apply migration and target verification
+        id: apply
+        continue-on-error: true
+        if: steps.setup.outcome == 'success'
+        run: |
+          set -o pipefail
+          {
+            python3 changes/active/CHG-20260820-offline-reporting/apply_template_move.py
+            uv run ruff format \
+              backend/src/aima_ugc/platform/reporting/excel_report.py \
+              backend/src/aima_ugc/platform/reporting/__init__.py \
+              backend/src/aima_ugc/adapters/providers/imports_test/test.py \
+              tests/unit/platform/test_imports_test_reporting.py \
+              tests/unit/platform/test_reporting_default_template.py
+            uv run ruff check \
+              backend/src/aima_ugc/platform/reporting \
+              backend/src/aima_ugc/adapters/providers/imports_test/test.py \
+              tests/unit/platform/test_imports_test_reporting.py \
+              tests/unit/platform/test_reporting_default_template.py
+            uv run mypy backend/src/aima_ugc/platform/reporting backend/src/aima_ugc/adapters/providers/imports_test/test.py
+            uv run pytest \
+              tests/unit/platform/test_reporting_default_template.py \
+              tests/unit/platform/test_offline_reporting.py \
+              tests/unit/platform/test_imports_test_reporting.py \
+              tests/unit/platform/test_docx_package_structure.py \
+              tests/unit/collection/test_p1g_imports_run_all.py \
+              tests/unit/collection/test_imports_test_run_directory.py -q
+            if grep -R --line-number --fixed-strings 'imports_test/report_template.md' \
+                backend/src/aima_ugc docs tests; then
+              echo '旧模板路径仍有引用' >&2
+              exit 1
+            fi
+            if grep -R --line-number --fixed-strings 'REPORT_TEMPLATE_FILE' \
+                backend/src/aima_ugc tests; then
+              echo 'imports_test 私有模板常量仍有引用' >&2
+              exit 1
+            fi
+          } 2>&1 | tee /tmp/template-move.txt
+      - name: Record result and publish only verified code
+        if: always()
+        env:
+          SETUP_OUTCOME: ${{ steps.setup.outcome }}
+          APPLY_OUTCOME: ${{ steps.apply.outcome }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          log = Path('/tmp/template-move.txt')
+          payload = {
+              'tested_sha': os.environ['GITHUB_SHA'],
+              'setup': os.environ['SETUP_OUTCOME'],
+              'apply': os.environ['APPLY_OUTCOME'],
+              'tail': log.read_text(encoding='utf-8', errors='replace').splitlines()[-40:] if log.is_file() else [],
+          }
+          path = Path('changes/active/CHG-20260820-offline-reporting/template_move_evidence.json')
+          path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if [[ "$SETUP_OUTCOME" == "success" && "$APPLY_OUTCOME" == "success" ]]; then
+            git add -- \
+              backend/src/aima_ugc/platform/reporting/excel_report.py \
+              backend/src/aima_ugc/platform/reporting/__init__.py \
+              backend/src/aima_ugc/platform/reporting/report_template.md \
+              backend/src/aima_ugc/adapters/providers/imports_test/test.py \
+              backend/src/aima_ugc/adapters/providers/imports_test/README.md \
+              backend/src/aima_ugc/adapters/providers/imports_test/report_template.md \
+              backend/src/aima_ugc/platform/reporting/README.md \
+              tests/unit/platform/test_imports_test_reporting.py \
+              tests/unit/platform/test_reporting_default_template.py \
+              docs/blueprint/13-统一数据Excel导出与调试复用.md \
+              changes/active/CHG-20260820-offline-reporting/template_red_evidence.json \
+              changes/active/CHG-20260820-offline-reporting/template_move_trigger.txt \
+              changes/active/CHG-20260820-offline-reporting/template_move_evidence.json
+            git commit -m '实现：统一报告模板归属到 reporting 模块'
+          else
+            git add -- changes/active/CHG-20260820-offline-reporting/template_move_evidence.json
+            git commit -m '诊断：记录报告模板迁移失败证据 [skip ci]'
+          fi
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+          test "$SETUP_OUTCOME" = "success"
+          test "$APPLY_OUTCOME" = "success"
