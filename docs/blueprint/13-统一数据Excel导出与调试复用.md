@@ -420,7 +420,7 @@ Provider / File Import
 backend/src/aima_ugc/platform/reporting/
 ```
 
-它不是 `imports_test` 私有统计脚本。`imports_test` 只提供默认 Markdown 模板和人工调用入口；统计、Markdown 渲染、Word 转换和图表嵌入属于 Provider-neutral 平台能力。
+它不是 `imports_test` 私有统计脚本。默认 Markdown 模板、统计、Markdown 渲染、Word 转换和图表嵌入都属于 Provider-neutral 平台能力；`imports_test` 只提供人工调用入口。
 
 ### 13.1 输入输出边界
 
@@ -475,11 +475,13 @@ Sheet: 内容 / 标签明细 / 评论
 
 ### 13.3 Markdown 是报告正文唯一模板
 
-具体人工入口模板当前为：
+默认共享模板当前为：
 
 ```text
-backend/src/aima_ugc/adapters/providers/imports_test/report_template.md
+backend/src/aima_ugc/platform/reporting/report_template.md
 ```
+
+`generate_excel_report()` 默认使用该模板；需要特定展示时允许调用方显式传入 `template_path=`，但不能复制一套平台私有 Report Renderer。
 
 固定规则：
 
@@ -532,4 +534,4 @@ PostgreSQL Query Read Model
 → Web 报告中心
 ```
 
-应复用同一统计/渲染边界或通过独立 Change 演进，不得把 `imports_test` 的路径、run 目录或本地模板位置提升为正式 HTTP/数据库 Contract。
+应复用同一统计/渲染边界或通过独立 Change 演进，不得把 `imports_test` 的路径或 run 目录提升为正式 HTTP/数据库 Contract；共享默认模板属于 Report Renderer 自身资源。

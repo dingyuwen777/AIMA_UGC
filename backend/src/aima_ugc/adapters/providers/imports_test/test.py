@@ -53,7 +53,6 @@ os.environ.pop("SSLKEYLOGFILE", None)
 INPUT_XLSX_FILES: Path | tuple[Path, ...] = Path(r"E:\Desktop\08_18数据\测试数据.xlsx")
 OUTPUT_ROOT = Path(__file__).with_name("output")
 KEYWORD_PACK_FILE = Path(__file__).with_name("keyword_pack.txt")
-REPORT_TEMPLATE_FILE = Path(__file__).with_name("report_template.md")
 
 SHEET_NAME = "文章"
 PROFILE = "aima-monitoring-excel.v1"
@@ -337,7 +336,6 @@ def generate_report(
     return generate_excel_report(
         input_path=source_path,
         output_dir=target_dir,
-        template_path=REPORT_TEMPLATE_FILE,
     )
 
 

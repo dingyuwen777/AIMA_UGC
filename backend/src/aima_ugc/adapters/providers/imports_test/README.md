@@ -37,7 +37,6 @@ INPUT_XLSX_FILES = (
 
 OUTPUT_ROOT = Path(__file__).with_name("output")
 KEYWORD_PACK_FILE = Path(__file__).with_name("keyword_pack.txt")
-REPORT_TEMPLATE_FILE = Path(__file__).with_name("report_template.md")
 
 SHEET_NAME = "文章"
 PROFILE = "aima-monitoring-excel.v1"
@@ -54,6 +53,9 @@ MAX_TRANSPORT_RETRIES = 4
 # HTTP 成功但模型 JSON/标签校验失败的额外重试次数。
 MAX_VALIDATION_RETRIES = 2
 ```
+
+报告默认模板由 `aima_ugc.platform.reporting` 统一维护在
+`backend/src/aima_ugc/platform/reporting/report_template.md`，人工入口不再维护第二份模板路径。
 
 Excel 输入只有 `INPUT_XLSX_FILES` 一个配置入口。它接受一个 `Path` 或非空的
 `Path` 元组；空元组会在转换前报错，其他类型不受支持。
@@ -849,7 +851,7 @@ print(result.word_path)
 报告正文模板只有：
 
 ```text
-backend/src/aima_ugc/adapters/providers/imports_test/report_template.md
+backend/src/aima_ugc/platform/reporting/report_template.md
 ```
 
 固定链路：

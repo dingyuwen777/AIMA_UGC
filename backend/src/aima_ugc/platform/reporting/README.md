@@ -14,7 +14,6 @@ from aima_ugc.platform.reporting import generate_excel_report
 summary = generate_excel_report(
     input_path=Path("labeled_data.xlsx"),
     output_dir=Path("reports"),
-    template_path=Path("report_template.md"),
 )
 ```
 
@@ -25,7 +24,7 @@ reports/report.md
 reports/report.docx
 ```
 
-`generate_excel_report()` 只读输入 Workbook，不调用 LLM、不写 PostgreSQL，也不保存或二次格式化输入 Excel。
+`generate_excel_report()` 默认使用本目录的 `report_template.md`；调用方也可显式传入 `template_path=` 覆盖模板。函数只读输入 Workbook，不调用 LLM、不写 PostgreSQL，也不保存或二次格式化输入 Excel。
 
 ## 输入约束
 
@@ -140,7 +139,7 @@ result = generate_report(
 )
 ```
 
-`imports_test/report_template.md` 是当前人工入口的默认报告模板，不属于数据库或 HTTP Contract。
+默认报告模板固定由本模块维护在 `backend/src/aima_ugc/platform/reporting/report_template.md`；`imports_test` 只复用该默认模板，不拥有第二份模板事实源。
 
 ## 自动化测试
 

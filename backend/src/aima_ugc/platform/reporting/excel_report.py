@@ -16,6 +16,8 @@ from openpyxl import load_workbook
 
 from .markdown_word import WordConversionSummary, convert_markdown_to_docx
 
+DEFAULT_REPORT_TEMPLATE_PATH = Path(__file__).with_name("report_template.md")
+
 _BEIJING = ZoneInfo("Asia/Shanghai")
 _CONTENT_SHEET = "内容"
 _LABEL_SHEET = "标签明细"
@@ -79,7 +81,7 @@ def generate_excel_report(
     *,
     input_path: Path,
     output_dir: Path,
-    template_path: Path,
+    template_path: Path | None = None,
     markdown_name: str = "report.md",
     word_name: str = "report.docx",
     generated_at: datetime | None = None,
@@ -87,7 +89,7 @@ def generate_excel_report(
     """只读统一 Excel，按 Markdown 模板生成报告并转换为 Word。"""
 
     source_path = Path(input_path)
-    template = Path(template_path)
+    template = DEFAULT_REPORT_TEMPLATE_PATH if template_path is None else Path(template_path)
     target_dir = Path(output_dir)
     if source_path.suffix.lower() != ".xlsx":
         raise ValueError("报告输入必须是 .xlsx 文件")

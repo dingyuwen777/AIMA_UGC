@@ -5,7 +5,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from aima_ugc.adapters.providers.imports_test import test as imports_entry
-from aima_ugc.platform.reporting import ReportGenerationSummary
+from aima_ugc.platform.reporting import (
+    DEFAULT_REPORT_TEMPLATE_PATH,
+    ReportGenerationSummary,
+)
 from pytest import MonkeyPatch
 
 
@@ -22,7 +25,7 @@ def _report_summary(*, excel_path: Path, output_dir: Path) -> ReportGenerationSu
     word_path.write_bytes(b"docx")
     return ReportGenerationSummary(
         source_excel_path=excel_path,
-        template_path=imports_entry.REPORT_TEMPLATE_FILE,
+        template_path=DEFAULT_REPORT_TEMPLATE_PATH,
         markdown_path=markdown_path,
         word_path=word_path,
         content_rows=3,
@@ -47,11 +50,11 @@ def test_generate_report_accepts_explicit_processed_excel(
         *,
         input_path: Path,
         output_dir: Path,
-        template_path: Path,
+        template_path: Path | None = None,
     ) -> ReportGenerationSummary:
         captured["input_path"] = input_path
         captured["output_dir"] = output_dir
-        captured["template_path"] = template_path
+        assert template_path is None
         return _report_summary(excel_path=input_path, output_dir=output_dir)
 
     monkeypatch.setattr(imports_entry, "generate_excel_report", fake_generate_excel_report)
@@ -67,7 +70,6 @@ def test_generate_report_accepts_explicit_processed_excel(
     assert captured == {
         "input_path": excel_path,
         "output_dir": output_dir,
-        "template_path": imports_entry.REPORT_TEMPLATE_FILE,
     }
 
 

@@ -1,14 +1,12 @@
 {
-  "tested_sha": "419375d153a4428d5bdd21e8eaa363bdb83ed174",
+  "tested_sha": "ed3e8025f2cbac3574bdeee4a7ef8293e825fdd9",
   "setup": "success",
-  "apply": "failure",
+  "apply": "success",
   "tail": [
     "5 files left unchanged",
     "All checks passed!",
     "Success: no issues found in 6 source files",
     "...................                                                      [100%]",
-    "19 passed in 4.21s",
-    "backend/src/aima_ugc/adapters/providers/imports_test/README.md:854:backend/src/aima_ugc/adapters/providers/imports_test/report_template.md",
-    "旧模板路径仍有引用"
+    "19 passed in 4.66s"
   ]
 }
