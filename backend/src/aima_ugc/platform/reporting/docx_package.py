@@ -204,7 +204,8 @@ class DocxBuilder:
         pieces = text.split("\n")
         for index, piece in enumerate(pieces):
             if index > 0:
-                ET.SubElement(paragraph, f"{{{_W}}}br")
+                break_run = ET.SubElement(paragraph, f"{{{_W}}}r")
+                ET.SubElement(break_run, f"{{{_W}}}br")
             if not piece and len(pieces) > 1:
                 continue
             run = ET.SubElement(paragraph, f"{{{_W}}}r")
@@ -307,7 +308,7 @@ class DocxBuilder:
 
 
 def verify_docx(path: Path, *, expected_charts: int) -> None:
-    """重新打开 DOCX 包并校验最低结构和图表媒体数量。"""
+    """重新打开 DOCX 包并校验 ZIP、关键 XML 和图表媒体数量。"""
 
     required = {
         "[Content_Types].xml",
@@ -317,12 +318,15 @@ def verify_docx(path: Path, *, expected_charts: int) -> None:
         "word/_rels/document.xml.rels",
     }
     with zipfile.ZipFile(path) as archive:
+        corrupt_member = archive.testzip()
+        if corrupt_member is not None:
+            raise OSError(f"DOCX ZIP CRC 校验失败: {corrupt_member}")
         names = set(archive.namelist())
         missing = required.difference(names)
         if missing:
             raise OSError(f"DOCX 包结构缺失: {'、'.join(sorted(missing))}")
-        ET.fromstring(archive.read("word/document.xml"))
-        ET.fromstring(archive.read("word/styles.xml"))
+        for xml_name in required:
+            ET.fromstring(archive.read(xml_name))
         media = [
             name
             for name in names
