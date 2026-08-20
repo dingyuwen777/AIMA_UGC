@@ -1,26 +1,29 @@
 {
   "schema_version": "offline-reporting-verification.v1",
-  "tested_sha": "31dbfa26cd0266e231f2a86dd8f57285006856bd",
+  "tested_sha": "5ef2f292922d8a8777c93a62f7715a2522b85bab",
   "runner_os": "Linux",
-  "verified_at": "2026-08-20T04:29:54.189931+00:00",
-  "result": "failure",
+  "verified_at": "2026-08-20T04:31:49.097777+00:00",
+  "result": "success",
   "checks": {
     "install_uv": "success",
     "locked_environment": "success",
     "target_reporting_tests": "success",
-    "repository_static_checks": "failure",
+    "repository_static_checks": "success",
     "full_unit_tests": "success",
     "libreoffice_docx_render": "success"
   },
   "target_tests_tail": [
     "..................                                                       [100%]",
-    "18 passed in 3.36s"
+    "18 passed in 3.82s"
   ],
   "static_checks_tail": [
     "348 files already formatted",
     "All checks passed!",
-    "backend/src/aima_ugc/platform/reporting/docx_package.py:340: error: Returning Any from function declared to return \"bytes\"  [no-any-return]",
-    "Found 1 error in 1 file (checked 183 source files)"
+    "Success: no issues found in 183 source files",
+    "Stage 1–7 架构骨架与硬边界检查通过。",
+    "TABLE_OWNER_OK: account_external_ids:content, accounts:content, artifacts:platform, audit_events:system, collection_candidate_ingestions:collection, collection_candidates:collection, collection_content_actions:collection, collection_plan_decision_policies:collection, collection_plan_keyword_packs:collection, collection_plan_platforms:collection, collection_plans:collection, collection_runs:collection, collection_schedule_occurrences:collection, collection_scopes:collection, comment_coverage_observations:content, comment_locations:content, comment_media:content, comment_mentions:content, comment_metric_observations:content, comment_thread_coverage_observations:content, comment_versions:content, comments:content, content_external_ids:content, content_locations:content, content_media:content, content_mentions:content, content_metric_observations:content, content_topics:content, content_versions:content, contents:content, job_attempt_events:platform, jobs:platform, keyword_pack_items:system, keyword_packs:system, keywords:system, processing_import_batches:ingestion, provider_configs:system, provider_request_attempts:collection, provider_requests:collection, system_settings:system",
+    "文档入口与本地链接检查通过。",
+    "源码、Provider 证据、Change 与文档 Secret 扫描通过。"
   ],
   "unit_tests_tail": [
     "........................................................................ [ 17%]",
@@ -29,7 +32,7 @@
     "........................................................................ [ 70%]",
     "........................................................................ [ 87%]",
     "..................................................                       [100%]",
-    "410 passed in 5.09s"
+    "410 passed in 5.51s"
   ],
   "render_tail": [
     "Processing triggers for hicolor-icon-theme (0.17-2) ...",
@@ -49,5 +52,5 @@
     "Warning: failed to launch javaldx - java may not function correctly",
     "convert /tmp/aima-report-verify/report/report.docx as a Writer document -> /tmp/aima-report-verify/rendered/report.pdf using filter : writer_pdf_Export"
   ],
-  "rendered_pdf_bytes": 190731
+  "rendered_pdf_bytes": 191091
 }
