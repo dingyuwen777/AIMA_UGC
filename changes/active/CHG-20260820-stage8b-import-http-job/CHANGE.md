@@ -1,7 +1,7 @@
 ---
 schema: rvc-change/v1
 id: "CHG-20260820-stage8b-import-http-job"
-title: "Stage 8B Import HTTP / Job Productization"
+title: "Stage 8B Import HTTP / Job 与统一 Relevance Productization"
 level: L3
 status: blocked
 owner: "AI coding agent"
@@ -36,8 +36,9 @@ data_changes: []
 
 把 Stage 8A 已存在的正式 Excel File Import 产品化为浏览器和未来 Vue 前端可稳定调用的
 HTTP Contract、Source Artifact、Processing Import Batch、持久化 Import Job、Worker、状态查询、
-固定 OpenAPI 与 Orval Client；不复制 Reader、Mapper、Filter、Dedup、Content Ingestion、
-Artifact Store 或 Job Runtime。
+固定 OpenAPI 与 Orval Client；同时把现有 Excel 相关性判定提取为所有来源共用的 Canonical
+Relevance 准入能力，并接入当前正式 Excel/TikHub 数据链；不复制 Reader、Mapper、Filter、Dedup、
+Content Ingestion、Artifact Store 或 Job Runtime。
 
 # 背景与当前事实
 
@@ -76,6 +77,12 @@ Artifact Store 或 Job Runtime。
   Fencing、取消和终态转换；未知 Worker 不会认领该类型。
 - [ ] Worker 调用生产 Excel Reader/Mapper、生产相关性 Filter/稳定身份 Dedup 和 Stage 8A 正式
   File Import/Content Ingestion，不调用 `imports_test` 作为生产实现。
+- [ ] PostgreSQL 只允许零或一条 System Owner 的全局 Relevance 配置，并用真实外键引用一个现有
+  Keyword Pack；未配置、Pack 停用或没有有效关键词时，正式 Import/Collection 必须 fail closed。
+- [ ] Import Job 与 Collection Run 创建时冻结同一全局 Pack 的 ID、版本和实际有效关键词快照；排队/运行
+  期间修改全局配置或词包不会改变本次执行。
+- [ ] Excel/Import 与 TikHub Collection 调用同一个 Provider-neutral Canonical Relevance Service；
+  TikHub 未通过者保留 Raw/Candidate 与 `filtered` 账本事实，不写 Content，也不继续不必要的付费动作。
 - [ ] Batch 查询返回稳定 status、stage、stats、error summary、时间和关联 Job 快照；Job 查询不复制
   第二套状态真相。
 - [ ] 正常、非法 Excel、错误 Artifact/Batch/Job、失败/重试与未处理异常均返回统一错误 Contract，
@@ -88,8 +95,11 @@ Artifact Store 或 Job Runtime。
 # 范围
 
 - Excel Source Artifact 的一个正式 HTTP 入口。
-- 复用现有 System Keyword Catalog 的最小 Pydantic 写入/读取 HTTP Contract，使未来前端能够配置并
-  保存 Import Relevance 关键词；只实现本 Stage Import 所需能力。
+- 复用现有 System Keyword Catalog 的最小 Pydantic 写入/读取 HTTP Contract，并建立全局唯一
+  Relevance 配置 HTTP Contract，使未来前端能够配置和保存正式过滤关键词。
+- Provider-neutral 单条 Canonical Relevance Service、既有 JSONL Filter 包装复用，以及正式
+  Excel/TikHub 当前生产链接入。
+- 全局 Relevance 配置与 Collection Candidate `filtered` 终态的必要 Schema/Migration。
 - Processing Import Batch 创建/详情查询和关联 Job 状态查询。
 - `file.import.v1` 等最终确认名称的版本化 Job Payload、Handler 和 Worker Registry 注册。
 - 统一 HTTP 错误 Contract、request_id 中间件与 FastAPI/Starlette 异常转换。
@@ -136,8 +146,8 @@ Artifact Store 或 Job Runtime。
 - 用户确认关键词应由前端页面配置并写入数据库，以便配置和保存。
 - 结合当前单一 Owner/不得新建平行 Repository 的约束，正式实现应复用 System Owner 已有的
   `keyword_packs`、`keywords`、`keyword_pack_items`，而不是新建 Import 专用关键词表。
-- Import 创建 Contract 应引用数据库词包，并在持久化 Job 中冻结足以重放和审计的 Pack 身份、版本及
-  实际执行关键词快照；不能让排队中的 Job 因词包随后编辑而静默改变语义。
+- Import 创建不允许调用方临时覆盖正式关键词；Service 必须读取全局配置，并在持久化 Job 中冻结足以
+  重放和审计的 Pack 身份、版本及实际执行关键词快照，不能让排队中的 Job 因词包随后编辑而静默改变语义。
 - `imports_test/keyword_pack.txt` 继续只服务本地调试入口，不成为 HTTP/Worker 生产事实源。
 
 ## 已确认：关键词配置页面的 Stage 范围
@@ -157,11 +167,16 @@ Artifact Store 或 Job Runtime。
 - 对 TikHub，Relevance 还必须位于不必要的 Detail/Comment/Reply 付费动作之前；但 Search 摘要字段
   不完整时是直接过滤还是先补 Detail 再终判，仍是后续独立业务/费用门禁，不能静默决定。
 
-## 待用户决定：Relevance 配置作用域
+## 已确认：Relevance 配置作用域
 
-仓库能够实现统一 Relevance Service，但无法从现有事实判断 Relevance 词包是系统全局唯一配置，还是
-由每个 Collection Plan / Import 请求分别选择。该决定会影响 HTTP Contract、Collection Plan Schema、
-现有 Plan 兼容/回填、Run/Job Snapshot 和 Migration。
+- 用户确认 Relevance 词包是系统全局唯一配置；Collection Plan、Import Request 和其他来源不能分别
+  覆盖或绕过它。
+- 采用零或一条 System Owner 全局配置记录，并通过 `keyword_pack_id` 外键引用现有 Keyword Pack；不用
+  无外键的 `system_settings` JSON UUID，也不给每个 Plan 增加重复关联。
+- Migration 不伪造默认词包或关键词。配置记录不存在时，所有正式数据执行 fail closed；部署顺序必须是
+  `Migration → 通过正式 API 配置全局 Relevance Pack → 启动/恢复 Scheduler 与 Worker`。
+- 每个 Import Job / Collection Run 仍冻结 Pack ID、Pack Version 与实际有效关键词快照；全局唯一不等于
+  运行时反复读取可变配置。
 
 ## 后续仍需按顺序冻结的技术/安全边界
 
@@ -171,9 +186,10 @@ Artifact Store 或 Job Runtime。
 
 ## Migration、部署与回滚
 
-- 不能再预设本阶段无 Schema/Migration：如果 Relevance 由 Collection Plan 显式选择，或需要为
-  Candidate 保存稳定 `filtered` 终态/决策证据，就必须新增正式 Revision；部署前数据库必须升级到
-  最终 Head，API 与 Worker 同时升级并共享同一 PostgreSQL 与 ArtifactStore。
+- 本阶段需要新增正式 Revision：建立零或一条全局 Relevance 配置及 Keyword Pack 外键，并扩展
+  Collection Candidate Ingestion 的稳定 `filtered` 终态；不修改历史 Revision，不为现有数据库伪造词包。
+- 部署前数据库必须升级到最终 Head；先通过正式 API 完成全局配置，再同时启动/恢复 API、Worker、
+  Scheduler，并共享同一 PostgreSQL 与 ArtifactStore。
 - 回滚先停止新导入并等待/处置已有 Import Job，再回退 API/Worker/Contract 代码；若最终没有新 Migration，
   现有 Batch/Job/Artifact/Content 数据无需回填或 downgrade。
 - 主要风险是上传资源耗尽、XLSX Zip Bomb、Worker 崩溃窗口、Batch/Job 终态漂移、错误泄露和重放重复；
@@ -185,7 +201,8 @@ Artifact Store 或 Job Runtime。
 - [x] 取得正式相关性 Filter 关键词必须由前端配置并写入 PostgreSQL 的用户决定
 - [x] 确认 Stage 8B 只交付关键词后端 Contract/API 与 Orval，Vue 页面留在 Stage 8F
 - [x] 冻结 Discovery 与跨渠道 Relevance 的业务定义及共同 Canonical 边界
-- [ ] 冻结 Relevance 配置作用域、TikHub 摘要不足策略与正式关键词写入规范化语义
+- [x] 冻结 Relevance 词包为系统全局唯一配置，并确定执行快照与 fail-closed 部署边界
+- [ ] 冻结 TikHub 摘要不足策略与正式关键词写入规范化语义
 - [ ] 冻结 Excel HTTP 传输与压缩/解压大小边界
 - [ ] 建立 HTTP Contract/Error/OpenAPI、API Service 和 Import Job/Worker 的失败测试并观察正确 Red
 - [ ] 完成最小实现
@@ -204,6 +221,11 @@ Artifact Store 或 Job Runtime。
 - [Job/Worker Red] → 修改范围：Import Job Payload/Handler、Registry 与 Job 测试
   → 预期结果：证明创建、Claim/takeover、失败/重试/终态重入和取消边界
   → 验证方式：目标 Unit + `tests/integration/jobs`/Stage 8B PostgreSQL 测试。
+- [Relevance Red] → 修改范围：Provider-neutral Relevance Service、全局配置快照、Excel/TikHub 入口与
+  Candidate `filtered` 账本测试
+  → 预期结果：同一 Canonical/关键词在所有来源得到同一判定，未命中不写 Content/不继续付费动作，
+  配置缺失与失效 fail closed
+  → 验证方式：目标 Unit + Collection/Import PostgreSQL Integration。
 - [最小 Green] → 修改范围：Ingestion Application Service、PostgreSQL Repository 增量、API/Worker bootstrap
   → 预期结果：202 创建 Batch/Job，Worker 复用正式 pipeline，查询返回组合状态
   → 验证方式：目标 API/Contract/Worker/PostgreSQL Integration。
@@ -235,13 +257,14 @@ Artifact Store 或 Job Runtime。
 
 - 实现后必须同步 Blueprint 04 的 HTTP/Error/Job 当前事实、Blueprint 17 的 Stage 8B 状态、
   Blueprint README 下一阶段、`docs/API接口说明.md` 与 `docs/测试与调试说明.md`。
-- 若 Schema 不变，Blueprint 03 只更新 Stage 8B Batch/Job 当前机器语义，不制造 Migration 叙事。
-- Excel Workbook/Exporter、Analysis、Provider Operation 没有变化时不修改 Blueprint 13/15/平台文档。
+- Blueprint 02/08/17 与 System/Analysis/Collection README 必须同步跨来源 Relevance 当前边界；
+  Blueprint 03 同步全局配置、Candidate `filtered` 终态和 Migration Head。
+- Excel Workbook/Exporter、AI Analysis、Provider Operation 没有变化时不修改 Blueprint 13/15/平台文档。
 
 # 交付
 
 - Commit：`a12eac4`（记录 Stage 8B 开发门禁）；后续实现继续使用中文提交。
-- PR：Draft PR `#97`（`feature/stage8b-import-http-job → main`）已创建；当前因 Relevance 配置作用域、
-  TikHub 摘要不足策略、正式 normalization 与上传安全边界待决定而保持 blocked/draft，最终 CI/Review
+- PR：Draft PR `#97`（`feature/stage8b-import-http-job → main`）已创建；当前因 TikHub 摘要不足策略、
+  正式 normalization 与上传安全边界待决定而保持 blocked/draft，最终 CI/Review
   完成后才转 Ready 并正常合并。
 - 发布：不部署生产；只交付仓库代码、Migration 状态说明、生成物、测试与合并后 main 证据。

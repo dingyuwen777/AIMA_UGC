@@ -34,11 +34,15 @@
 
 `imports_test` 当前有自己的本地相关性清洗词包文件，并在离线清洗时使用 NFKC、casefold、去空白以及忽略 `-/_/·` 的匹配规范化。这个行为只定义本地离线清洗怎样判断“帖子是否相关”，**不等同于已经冻结 `keywords.normalized_text` 的正式数据库写入算法**。
 
-正式开发关键词管理 API/前端页面前，必须由业务 Owner 明确以下语义，不能由实现者静默选择默认值：
+Stage 8B 已批准的业务边界是：Discovery 词包只决定 TikHub 等 Provider 搜索什么；Relevance 是所有
+来源在 Mapper 形成 Canonical 后、写入 Content 前执行的统一准入过滤。Relevance 词包是系统全局唯一
+配置，Import/Collection 不允许分别覆盖；每个 Job/Run 仍必须冻结 Pack ID、版本和实际关键词快照。
+全局配置使用正式外键关系，不能把 Keyword Pack UUID 作为无约束 JSON 设置。
 
-1. **采集发现词包**和**结果相关性清洗词包**是否是同一业务角色，还是同一个词包可被分别用于 Discovery / Relevance；特别是清洗词包中大量车型不代表 Provider 搜索必须逐车型发请求。
-2. 真正业务别名、俗称是否需要“标准词 → 多别名”的正式关系；如果需要，必须再明确别名与 `keywords.normalized_text` 唯一身份、Keyword Pack 成员、Run Snapshot、前端编辑/去重的关系。
-3. 正式关键词写入边界采用什么规范化算法以及如何处理历史数据冲突；在 API Contract 与 Migration/兼容策略批准前，不把 `imports_test` 的本地匹配规则直接当成数据库唯一键规则。
+正式开发关键词写入边界前仍必须由业务 Owner 明确以下语义，不能由实现者静默选择默认值：
+
+1. 真正业务别名、俗称是否需要“标准词 → 多别名”的正式关系；如果需要，必须再明确别名与 `keywords.normalized_text` 唯一身份、Keyword Pack 成员、Run Snapshot、前端编辑/去重的关系。
+2. 正式关键词写入边界采用什么规范化算法以及如何处理历史数据冲突；在 API Contract 与 Migration/兼容策略批准前，不把 `imports_test` 的本地匹配规则直接当成数据库唯一键规则。
 
 这些决定应在对应 Stage 8 Change 中固化到 HTTP Contract、正式文档和必要的数据模型；未决定前可以继续使用当前 Stage 7 Keyword Pack 父事实，但不得提前制造第二套 Keyword/别名数据库结构。
 

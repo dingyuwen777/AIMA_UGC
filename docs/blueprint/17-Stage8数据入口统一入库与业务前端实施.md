@@ -601,7 +601,11 @@ Stage 8 不作为一个巨型 PR 一次完成。按以下最小正式单元推�
 - 上传/登记 Excel Source Artifact；
 - 复用 System Owner 现有 `keyword_packs`、`keywords`、`keyword_pack_items`，建立本阶段 Import
   所需的最小关键词写入/读取 HTTP Contract；
-- Import 选择数据库词包并在持久化 Job 中冻结 Pack 身份、版本与实际执行关键词快照；
+- 建立一个通过外键引用 Keyword Pack 的系统全局 Relevance 配置；Import/Collection 不允许按请求或
+  Plan 覆盖，配置缺失时正式执行 fail closed；
+- Import Job 与 Collection Run 创建时冻结全局 Pack 身份、版本与实际执行关键词快照；
+- 把现有 Excel 关键词判定提取为 Provider-neutral Canonical Relevance Service，并接入正式
+  Excel/TikHub 当前生产链；未通过的 TikHub Candidate 保留 Raw/账本，不写 Content；
 - 创建 Processing/Import Batch；
 - 创建并查询持久化 Import Job；
 - Batch 状态、阶段、统计、错误摘要；
