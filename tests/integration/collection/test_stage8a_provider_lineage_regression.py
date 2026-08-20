@@ -28,9 +28,7 @@ from sqlalchemy.exc import IntegrityError
 def database_runtime() -> Iterator[DatabaseRuntime]:
     runtime = DatabaseRuntime(load_settings())
     with runtime.engine.begin() as connection:
-        connection.exec_driver_sql(
-            "TRUNCATE TABLE provider_configs, jobs RESTART IDENTITY CASCADE"
-        )
+        connection.exec_driver_sql("TRUNCATE TABLE provider_configs, jobs RESTART IDENTITY CASCADE")
     try:
         yield runtime
     finally:
@@ -100,9 +98,7 @@ def test_stage8a_keeps_provider_config_immutable_after_attempt(
                 request_params={"keyword": "爱玛"},
                 pagination_input={"page": 1},
             )
-            stored = ProviderPersistenceService(
-                PostgresProviderRepository(session)
-            ).ensure_request(
+            stored = ProviderPersistenceService(PostgresProviderRepository(session)).ensure_request(
                 request,
                 provider_config_id=first_config.id,
             )
