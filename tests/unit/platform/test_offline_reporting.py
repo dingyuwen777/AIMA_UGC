@@ -239,8 +239,10 @@ def test_generate_excel_report_is_complete_and_does_not_modify_input(
         names = set(archive.namelist())
         assert "word/document.xml" in names
         assert "word/styles.xml" in names
-        media = [name for name in names if name.startswith("word/media/")]
-        assert len(media) >= 7
+        charts = [name for name in names if name.startswith("word/charts/chart")]
+        embeddings = [name for name in names if name.startswith("word/embeddings/chart")]
+        assert len(charts) >= 7
+        assert len(embeddings) >= 7
         document = archive.read("word/document.xml").decode("utf-8")
         assert "爱玛舆情数据报告" in document
         assert "品牌评价" in document
