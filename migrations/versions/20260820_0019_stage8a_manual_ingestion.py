@@ -138,13 +138,19 @@ def _replace_provider_request_lineage_guard(*, include_import_batch: bool) -> No
     op.execute("DROP FUNCTION IF EXISTS guard_provider_request_lineage()")
 
     if include_import_batch:
-        old_row = "ROW(OLD.scope_id, OLD.import_batch_id, OLD.provider, OLD.operation)"
-        new_row = "ROW(NEW.scope_id, NEW.import_batch_id, NEW.provider, NEW.operation)"
-        update_columns = "scope_id, import_batch_id, provider, operation"
+        old_row = (
+            "ROW(OLD.scope_id, OLD.import_batch_id, OLD.provider_config_id, "
+            "OLD.provider, OLD.operation)"
+        )
+        new_row = (
+            "ROW(NEW.scope_id, NEW.import_batch_id, NEW.provider_config_id, "
+            "NEW.provider, NEW.operation)"
+        )
+        update_columns = "scope_id, import_batch_id, provider_config_id, provider, operation"
     else:
-        old_row = "ROW(OLD.scope_id, OLD.provider, OLD.operation)"
-        new_row = "ROW(NEW.scope_id, NEW.provider, NEW.operation)"
-        update_columns = "scope_id, provider, operation"
+        old_row = "ROW(OLD.scope_id, OLD.provider_config_id, OLD.provider, OLD.operation)"
+        new_row = "ROW(NEW.scope_id, NEW.provider_config_id, NEW.provider, NEW.operation)"
+        update_columns = "scope_id, provider_config_id, provider, operation"
 
     op.execute(
         f"""
