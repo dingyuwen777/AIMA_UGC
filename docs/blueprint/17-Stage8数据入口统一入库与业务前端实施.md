@@ -24,7 +24,7 @@
 Stage 8A 已建立 Unified Manual Ingestion Foundation；当前机器事实为：
 
 - `imports_test` 仍保留人工 Excel 文件链，并支持一个人工 run 按显式顺序合并一个或多个 Excel：Excel → Canonical JSONL → 关键词清洗 → 稳定身份去重 → AI 打标 → Excel；默认 `WRITE_TO_DATABASE = False`，不要求 PostgreSQL；
-- `imports_test` 显式 `write_to_database=True` 或单独调用 `ingest_database(run_dir=...)` 时，复用正式 File Import bootstrap 写入 PostgreSQL；
+- `imports_test` 显式 `write_to_database=True` 或单独调用 `ingest_database(run_dir=...)` 时，当前 Stage 8A 只复用正式 File Import bootstrap 写入 PostgreSQL Content；该数据库阶段发生在 AI 打标之前，成功 AI Analysis 目前仍只回写 JSONL/Excel，这是**当前机器限制而不是长期目标**；
 - `tikhub_test` 五个平台 `run_*()` 默认 `write_to_database=False`，仍逐请求保存本地 Raw、Canonical、run summary 与 Excel；
 - `tikhub_test` 显式 DB 模式要求正式 `provider_config_id`，复用 manual Collection Run/Scope、Provider Request/Attempt、Provider Dispatch、正式 Raw、Candidate-before-Mapper 和 fenced Ingestion；同一次 Provider 响应同时写本地调试 Raw 与正式 Raw Artifact，不为写库额外发送第二次 TikHub 请求；
 - 正式 TikHub Collection/Scheduler/Worker 继续通过既有生产链进入 PostgreSQL；
@@ -333,6 +333,28 @@ provider_config_id=<正式 provider_configs.id>
 - `imports_test` 多文件 run 先全局过滤/去重，再按唯一源文件名分别调用正式 File Import 入口；同名文件在付费或写库前 fail closed，避免来源绑定歧义；
 - 数据库阶段失败必须向调用方暴露，不静默退回 file-only 成功。
 
+### 9.3 已批准的后续数据库完整写入目标
+
+一旦 Blueprint 15 的正式 Analysis Persistence 通过独立 L3 Change 落地，`imports_test`/正式 Import Job 的数据库模式不能停留在“只写 Content”。目标链路固定为：
+
+```text
+File/TikHub/其他来源
+→ Canonical
+→ ContentIngestionService
+→ Content Owner PostgreSQL
+→ stable content_id
+→ Analysis Service / Validator
+→ Analysis Owner PostgreSQL
+→ JSONL / Excel（需要时）
+```
+
+规则：
+
+- 同一份 Validator 成功 Analysis 同时服务文件输出和数据库持久化，不能二次调用模型；
+- Content 成功但 Analysis DB 写入失败时，必须让 Batch/Job/人工调用方看到 partial/failed Analysis 阶段，并允许幂等补写；
+- file-only 模式仍不要求 PostgreSQL，也不因为未来 Analysis DB 存在而改变；
+- 当前 Stage 8A 不补做这部分 Schema/Migration，本节只把后续开发目标固化，防止未来实现遗漏。
+
 ## 10. 手工写库模式的本地数据库前置条件
 
 显式数据库模式固定假设：
@@ -408,17 +430,43 @@ Worker 执行实际文件处理和数据库摄取。
 
 ## 12. AI 的 Stage 8 边界
 
-P1 已经存在可复用的 Analysis Service、Prompt/Taxonomy、Validator、LLM Adapter、checkpoint 和离线 JSONL 回写。
+P1 已经存在可复用的 Analysis Service、Prompt/Taxonomy、Validator、LLM Adapter、checkpoint、费用审计和离线 JSONL 回写；Stage 8A 也已经能把 Content 写入 PostgreSQL。
 
-但当前正式 Analysis PostgreSQL DDL/Migration/API/页面仍没有机器事实。因此：
+当前机器事实仍是：正式 Analysis PostgreSQL DDL/Migration/Repository/Job/HTTP Contract 尚未落地，`imports_test(write_to_database=True)` 当前只持久化 Content，AI 成功结果随后进入 JSONL/Excel。
+
+已经批准的目标状态为：
+
+```text
+PostgreSQL Content
+→ stable content_id
+
+Analysis Service
+→ Validator success
+→ Analysis Owner Repository
+→ PostgreSQL Analysis Result + Label Pairs
+```
+
+因此后续硬门禁：
 
 - Stage 8 不把 AI 标签塞进 `contents` 表；
-- 不为了让 Figma 的“AI 打标”阶段看起来完整而复制 JSONL 标签到前端假数据；
-- Stage 8 页面只有在正式 Analysis Job/Repository/HTTP Contract 已经通过对应 Change 落地后，才把 AI 阶段作为真实运行状态展示；
-- 在此之前，Figma 中 AI 阶段属于目标能力，可以隐藏、禁用或标记未接入，但不能冒充后端已支持；
-- 正式 Analysis 持久化继续遵守 Blueprint 15 和后续 Analysis 阶段的 Owner 边界。
+- 正式数据库模式最终必须同时拥有 Content 与成功 Analysis，不能让 Excel 成为唯一带标签的数据事实；
+- Analysis Persistence 必须作为独立 L3 Change 落 DDL/Migration/Repository/Job/事务/幂等/current Analysis，并同步 Blueprint 03/15；
+- 在 Analysis Persistence 落地前，页面不能把 AI 数据库状态冒充已实现，也不能通过前端 Mock 替代；
+- **任何依赖数据库 AI 标签的正式报告、Dashboard、跨批次趋势或 AI 页面，在 Analysis Persistence + current Analysis Query Read Model 完成前不得进入实现闭环。**
 
-如果后续明确要求把“P1 AI 产品化”提前并入 Stage 8，必须作为 Stage 8 当前 L3 Change 的显式范围调整，同时同步 Blueprint 15、Migration、Job、API 和验收，不允许只改页面。
+报告数据源固定按场景选择：
+
+```text
+imports_test 本次离线 run 报告
+→ labeled_data.xlsx
+
+正式系统报告 / 跨批次趋势 / Dashboard
+→ PostgreSQL Report Read Model
+```
+
+即使 `imports_test` 开启 `write_to_database=True`，本次 run 的离线报告也继续读取本次 Excel 快照；禁止根据数据库是否启动自动切换报告源。数据库正式报告通过 Query Repository/Read Model 读取 Content + current Analysis 等事实，再适配为统一 Report Dataset，复用 Blueprint 13 的同一 Renderer/Markdown 模板。
+
+本次只固化目标，不在 Stage 8A 现有代码中偷偷补 Analysis 表或迁移，也不重排 8B—8F 编号。后续如果将 Analysis Persistence 产品化纳入某个 Stage 8 正式单元，必须先建立独立 L3 Change 并以当时最新 main 重新确认范围。
 
 ## 13. 第一张正式页面：采集运行中心
 
@@ -477,8 +525,10 @@ PLANNED
 | Job 状态 | REUSE_BUT_PRODUCTIZE | Stage 8B/8C API 化 |
 | 错误记录/安全摘要 | REUSE_BUT_PRODUCTIZE | Stage 8A 有 Batch error_summary；Stage 8B/8C Query/API |
 | 查看处理内容 | REUSE_BUT_PRODUCTIZE | Stage 8D Content Query/API |
-| AI 打标核心 | REUSE_BUT_PRODUCTIZE | 正式持久化前不冒充已接入 |
-| AI 数据库/页面状态 | PLANNED | 按 Blueprint 15/后续明确 Change |
+| AI 打标核心 | REUSE_BUT_PRODUCTIZE | 复用现有 Service/Prompt/Validator；正式 DB 模式最终必须持久化成功 Analysis |
+| Analysis PostgreSQL Persistence | PLANNED | 独立 L3 Change；Result + Label Pairs + 幂等/历史/current Analysis |
+| AI 数据库/页面状态 | PLANNED | Analysis Persistence + Query Read Model 完成前不得冒充已接入 |
+| 正式数据库报告/跨批次趋势 | PLANNED | 先完成 Analysis Persistence，再建立 PostgreSQL Report Read Model；Renderer 继续复用 Blueprint 13 |
 | TikHub 补采按钮 | PLANNED | Stage 8E |
 
 以后 Figma 修改如果增加按钮、筛选项、状态或统计，必须先更新本能力映射/当前 Change，再决定是否需要 HTTP Contract、Query、Job、Schema 或只改前端。
@@ -662,6 +712,7 @@ TikHub 是辅助补充，不是第二套数据模型
 来源差异截止在 Mapper
 Canonical 后只有一套 Ingestion
 PostgreSQL 是唯一业务事实库
+正式数据库模式最终同时持久化 Content 与成功 Analysis
 文件证据和调试产物继续保留
 
 imports_test / tikhub_test 永久保留
@@ -673,5 +724,7 @@ imports_test / tikhub_test 永久保留
 Stage 8A 先完成统一手工摄取 Foundation
 下一正式单元是 Stage 8B HTTP / Job Productization
 再进入 Stage 8C 第一个 Vue/Figma 页面
+离线单批报告读 Excel；正式系统报告读 PostgreSQL Read Model
+报告源显式选择，不按数据库可用性自动切换
 不要用目标 UI 冒充后端已经存在
 ```
