@@ -1,4 +1,5 @@
 name: Offline Reporting Template Move
+# 显式触发最新 feature HEAD 上的可审计迁移。
 
 on:
   push:
