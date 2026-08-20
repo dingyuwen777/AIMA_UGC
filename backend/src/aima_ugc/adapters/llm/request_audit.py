@@ -194,9 +194,14 @@ def recalculate_llm_request_costs(
     for payload in payloads:
         provider = _required_payload_text(payload, "provider")
         model = _required_payload_text(payload, "model")
+        started_at = _required_payload_datetime(payload, "started_at")
         usage = _usage_from_payload(payload)
         try:
-            price = pricing_catalog.price_for(provider=provider, model=model)
+            price = pricing_catalog.price_for(
+                provider=provider,
+                model=model,
+                at=started_at,
+            )
             calculation = price.calculate(usage)
         except (LLMPriceNotConfiguredError, ValueError) as exc:
             recalculated.append(
@@ -336,9 +341,9 @@ def _usage_payload(usage: LLMTokenUsage) -> dict[str, int | None]:
 def _price_payload(price: LLMModelPrice) -> dict[str, str | None]:
     return {
         "input_per_million": _decimal_text(price.input_per_million),
-        "input_cache_hit_per_million": _decimal_text(price.input_cache_hit_per_million),
-        "input_cache_miss_per_million": _decimal_text(price.input_cache_miss_per_million),
-        "output_per_million": _decimal_text(price.output_per_million),
+        "input_cache_hit_per_million": _decimal_text(price.input_cache_hit_per_million_tokens),
+        "input_cache_miss_per_million": _decimal_text(price.input_cache_miss_per_million_tokens),
+        "output_per_million": _decimal_text(price.output_per_million_tokens),
         "source_url": price.source_url,
         "snapshot_sha256": price.snapshot_sha256,
     }
@@ -349,6 +354,17 @@ def _required_payload_text(payload: dict[str, object], key: str) -> str:
     if not isinstance(value, str) or not value:
         raise ValueError(f"LLM 请求审计 {key} 必须为非空字符串")
     return value
+
+
+def _required_payload_datetime(payload: dict[str, object], key: str) -> datetime:
+    value = _required_payload_text(payload, key)
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(f"LLM 请求审计 {key} 必须为 ISO-8601 时间") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"LLM 请求审计 {key} 必须包含时区")
+    return parsed
 
 
 def _optional_payload_int(value: object, field_name: str) -> int | None:

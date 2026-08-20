@@ -20,7 +20,6 @@ from aima_ugc.modules.analysis.content_labeling import (
 from .pricing import (
     LLMCostCalculation,
     LLMModelPrice,
-    LLMPriceNotConfiguredError,
     LLMPricingCatalog,
     LLMTokenUsage,
 )
@@ -94,18 +93,15 @@ class OpenAICompatibleContentLabelingLLM:
         self._provider_name = actual_provider_name
         self._use_json_mode = use_json_mode
         self._request_audit = request_audit
-        self._price: LLMModelPrice | None = None
+        self._pricing_catalog = pricing_catalog
         self._pricing_unavailable_reason: str | None = None
         if pricing_catalog is None:
             self._pricing_unavailable_reason = "pricing_catalog_not_configured"
-        else:
-            try:
-                self._price = pricing_catalog.price_for(
-                    provider=actual_provider_name,
-                    model=model,
-                )
-            except LLMPriceNotConfiguredError:
-                self._pricing_unavailable_reason = "model_price_not_configured"
+        elif not pricing_catalog.has_price(
+            provider=actual_provider_name,
+            model=model,
+        ):
+            self._pricing_unavailable_reason = "model_price_not_configured"
         self._owns_client = client is None
         self._client = client or httpx.Client(
             base_url=normalized_base_url,
@@ -154,6 +150,15 @@ class OpenAICompatibleContentLabelingLLM:
         usage = LLMTokenUsage(input_tokens=None, output_tokens=None)
         calculation: LLMCostCalculation | None = None
         cost_unavailable_reason = self._pricing_unavailable_reason
+        price = (
+            self._pricing_catalog.price_for(
+                provider=self._provider_name,
+                model=self._model,
+                at=started_at,
+            )
+            if self._pricing_catalog is not None and self._pricing_unavailable_reason is None
+            else None
+        )
         body: dict[str, object] = {
             "model": self._model,
             "messages": [
@@ -203,7 +208,7 @@ class OpenAICompatibleContentLabelingLLM:
 
             usage = _usage(payload)
             calculation, cost_unavailable_reason = _calculate_cost(
-                price=self._price,
+                price=price,
                 usage=usage,
                 pricing_unavailable_reason=self._pricing_unavailable_reason,
             )
@@ -220,11 +225,11 @@ class OpenAICompatibleContentLabelingLLM:
                 pricing_snapshot_sha256=(
                     calculation.pricing_snapshot_sha256
                     if calculation is not None
-                    else self._price.snapshot_sha256
-                    if self._price is not None
+                    else price.snapshot_sha256
+                    if price is not None
                     else None
                 ),
-                pricing_source_url=self._price.source_url if self._price is not None else None,
+                pricing_source_url=price.source_url if price is not None else None,
             )
         except OpenAICompatibleLLMError as exc:
             error_code = exc.error_code
@@ -249,7 +254,7 @@ class OpenAICompatibleContentLabelingLLM:
                         status_code=status_code,
                         error_code=error_code,
                         usage=usage,
-                        price=self._price,
+                        price=price,
                         calculation=calculation,
                         cost_unavailable_reason=cost_unavailable_reason,
                     )
@@ -424,12 +429,12 @@ def _request_audit_record(
         output_tokens=usage.output_tokens,
         input_per_million=price.input_per_million if price is not None else None,
         input_cache_hit_per_million=(
-            price.input_cache_hit_per_million if price is not None else None
+            price.input_cache_hit_per_million_tokens if price is not None else None
         ),
         input_cache_miss_per_million=(
-            price.input_cache_miss_per_million if price is not None else None
+            price.input_cache_miss_per_million_tokens if price is not None else None
         ),
-        output_per_million=price.output_per_million if price is not None else None,
+        output_per_million=price.output_per_million_tokens if price is not None else None,
         pricing_source_url=price.source_url if price is not None else None,
         pricing_snapshot_sha256=price.snapshot_sha256 if price is not None else None,
         cost_amount=calculation.amount if calculation is not None else None,

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import httpx
 import pytest
 from aima_ugc.adapters.llm import RetryingContentLabelingLLM
+from aima_ugc.adapters.llm import openai_compatible as openai_compatible_module
+from aima_ugc.adapters.llm import pricing as pricing_module
 from aima_ugc.adapters.llm.openai_compatible import (
     OpenAICompatibleContentLabelingLLM,
     OpenAICompatibleLLMError,
@@ -223,8 +226,23 @@ def test_openai_compatible_empty_content_uses_explicit_bounded_retry(
     assert retrying.total_retries == 1
 
 
-def test_openai_compatible_calculates_deepseek_cost_from_exact_cache_usage() -> None:
+def test_openai_compatible_uses_physical_request_start_time_for_price_period(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     records: list[LLMHTTPRequestAudit] = []
+
+    class IdleCatalogDateTime(datetime):
+        @classmethod
+        def now(cls, tz: object = None) -> datetime:
+            return datetime(2026, 8, 20, 0, 0, tzinfo=UTC)
+
+    class PeakRequestDateTime(datetime):
+        @classmethod
+        def now(cls, tz: object = None) -> datetime:
+            return datetime(2026, 8, 20, 1, 0, tzinfo=UTC)
+
+    monkeypatch.setattr(pricing_module, "datetime", IdleCatalogDateTime)
+    monkeypatch.setattr(openai_compatible_module, "datetime", PeakRequestDateTime)
 
     def handler(_: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -261,15 +279,16 @@ def test_openai_compatible_calculates_deepseek_cost_from_exact_cache_usage() -> 
     assert response.input_cache_hit_tokens == 20
     assert response.input_cache_miss_tokens == 11
     assert response.output_tokens == 17
-    assert response.cost_amount == Decimal("0.0001355")
+    assert response.cost_amount == Decimal("0.000564")
     assert response.cost_currency == "CNY"
     assert len(records) == 1
     assert records[0].status == "completed"
-    assert records[0].cost_amount == Decimal("0.0001355")
+    assert records[0].started_at == datetime(2026, 8, 20, 1, 0, tzinfo=UTC)
+    assert records[0].cost_amount == Decimal("0.000564")
     assert records[0].cost_currency == "CNY"
-    assert records[0].input_cache_hit_per_million == Decimal("0.025")
-    assert records[0].input_cache_miss_per_million == Decimal("3")
-    assert records[0].output_per_million == Decimal("6")
+    assert records[0].input_cache_hit_per_million == Decimal("0.30")
+    assert records[0].input_cache_miss_per_million == Decimal("9.0")
+    assert records[0].output_per_million == Decimal("27.0")
     assert records[0].pricing_source_url.endswith("/quick_start/pricing/")
 
 
@@ -278,6 +297,13 @@ def test_empty_content_retry_audits_cost_of_every_paid_http_response(
 ) -> None:
     records: list[LLMHTTPRequestAudit] = []
     calls = 0
+
+    class IdleRequestDateTime(datetime):
+        @classmethod
+        def now(cls, tz: object = None) -> datetime:
+            return datetime(2026, 8, 20, 0, 0, tzinfo=UTC)
+
+    monkeypatch.setattr(openai_compatible_module, "datetime", IdleRequestDateTime)
 
     def handler(_: httpx.Request) -> httpx.Response:
         nonlocal calls
@@ -318,4 +344,4 @@ def test_empty_content_retry_audits_cost_of_every_paid_http_response(
     assert [record.status for record in records] == ["protocol_error", "completed"]
     assert records[0].logical_request_id == records[1].logical_request_id
     assert records[0].http_request_id != records[1].http_request_id
-    assert sum(record.cost_amount or Decimal("0") for record in records) == Decimal("0.0000304")
+    assert sum(record.cost_amount or Decimal("0") for record in records) == Decimal("0.0000609")
