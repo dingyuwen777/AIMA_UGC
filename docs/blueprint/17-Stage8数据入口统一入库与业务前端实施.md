@@ -614,6 +614,10 @@ Stage 8 不作为一个巨型 PR 一次完成。按以下最小正式单元推�
   Comment/Reply。Search 已命中时不为 Relevance 额外请求 Detail；
 - 创建 Processing/Import Batch；
 - 创建并查询持久化 Import Job；
+- Import Job 每个 Attempt 最长 30 分钟，最大 10 次；每次从冻结的 Source Artifact 与 Relevance 快照
+  重新执行完整导入，Heartbeat 不延长 Deadline，多次 Attempt 不累计处理中间进度；
+- 重试保持整批事务回滚和稳定身份幂等，所有业务可见提交必须验证当前 Job Fence；单文件 500 MiB
+  接受上限不构成 30 分钟完成或 ETA 承诺，连续超时在第 10 次后终态失败；
 - Batch 状态、阶段、统计、错误摘要；
 - 统一 HTTP 错误和 request_id；
 - 固定 OpenAPI；
@@ -622,6 +626,11 @@ Stage 8 不作为一个巨型 PR 一次完成。按以下最小正式单元推�
 
 Stage 8B 不实现 Keyword Pack Vue 页面；本阶段生成的 Orval Client 供 Stage 8F 页面直接复用，不能
 为提前展示页面而手写平行 Client。
+
+跨 Attempt 的阶段/分块检查点和断点续跑是已识别的后续优化方向，不属于 Stage 8B。只有真实容量或
+运行证据证明全量重试不能满足要求时，才能通过新的 L3 Change 冻结检查点 Contract、Schema/Migration、
+分块事务与部分数据可见性、处理中间 Artifact 保留/清理、Fencing、幂等和回滚后实现；当前不得预建
+未使用的检查点表、Service 或兼容字段。
 
 ### 8C：采集运行中心首个完整前后端纵切
 

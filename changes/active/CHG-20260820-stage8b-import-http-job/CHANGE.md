@@ -221,14 +221,22 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 - 为避免 500 MiB 上传同时导致 API/Worker 读取 500 MiB 内存，正式实现必须增量扩展现有
   ArtifactService/ArtifactStore 为有界流式写入和读取，不能新建平行文件存储体系。
 
+## 已确认：Import Job Attempt Deadline 与重试恢复语义
+
+- 用户选择保持当前 Job Runtime 的标准全量重试语义：Import Job 单次 Attempt Deadline 固定为
+  30 分钟（`timeout_seconds=1800`），最大 Attempt 固定为 10（`max_attempts=10`）。
+- 每个新 Attempt 都从冻结的 Source Artifact 和 Relevance 快照重新执行完整 Reader/Mapper/Filter/Dedup/
+  Ingestion 链，不把多次 Attempt 的运行时间或处理中间进度累计为一个 5 小时工作窗口。
+- 500 MiB 是 HTTP 接受的单文件上限，不是 30 分钟内完成的容量或 SLO 承诺；若同一输入每次都稳定超过
+  Deadline，Job 在第 10 次超时后终态失败。API/文档不得承诺 ETA。
+- 每次失败的业务事务必须回滚；重试依靠稳定内容身份和数据库约束幂等收敛。所有 Batch/Content 等业务
+  可见提交必须在同一事务验证当前 Job Fence，使已超时的旧 Token 不能与下一 Attempt 并发提交。
+- Stage 8B 不新增跨 Attempt 分段检查点。未来可把“阶段/分块检查点 + 中间 Artifact + 断点续跑”作为
+  独立 L3 优化方向，但必须先基于真实容量证据重新冻结公共 Contract、Schema/Migration、分块事务、
+  部分数据可见性、Artifact 保留/清理、Fencing 与回滚，不能在本阶段预埋 dormant 实现。
+
 ## 后续仍需按顺序冻结的技术/安全边界
 
-- 用户提出 Import Job 单次 Attempt Deadline 为 30 分钟、最大 Attempt 为 10。当前 Stage 8A 数据库阶段
-  会在一个 PostgreSQL 事务内处理整份去重 JSONL，Batch 只有终态统计，没有持久化处理游标；Excel
-  Reader/Filter/Dedup 也没有跨 Attempt 检查点。因此 10 次 Attempt 当前会从头重跑，不能把有效处理时间
-  累计成 5 小时。若旧 Attempt 超时后仍在执行，业务提交还必须在同一事务验证当前 Job Fence，避免旧
-  Token 与新 Attempt 并发提交。是否把“30 分钟 × 10 次”定义为必须跨 Attempt 断点续跑，属于会改变
-  Schema、事务和幂等协议的待确认决定；确认前不能只写两个参数制造虚假恢复语义。
 - Excel HTTP 传输形态，以及 500 MiB 对应的最大解压总量/单成员/成员数/压缩比仍待冻结。
 - 当前认证已正式延期；本 Stage 不把受控环境 API 描述为公网生产就绪。
 
@@ -253,7 +261,7 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 - [x] 冻结 Relevance 词包为系统全局唯一配置，并确定执行快照与 fail-closed 部署边界
 - [x] 冻结 TikHub Search 未命中时先请求一次 Detail 再终判的召回优先策略
 - [x] 冻结正式关键词数据库身份与 Relevance 匹配的两级规范化语义
-- [ ] 冻结 30 分钟 Attempt、最大 10 次是否要求持久化分段检查点与跨 Attempt 续跑
+- [x] 冻结 Import Job 为 30 分钟、最大 10 次的全量重试，并把断点续跑留作未来独立 L3 优化方向
 - [ ] 完整冻结 Excel HTTP 传输、已确认 500 MiB 压缩文件对应的解压边界与 Job Deadline
 - [ ] 建立 HTTP Contract/Error/OpenAPI、API Service 和 Import Job/Worker 的失败测试并观察正确 Red
 - [ ] 完成最小实现
@@ -298,6 +306,8 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 - `uv run pytest tests/unit/database/test_stage8a_import_schema.py tests/contracts/test_stage8a_provider_request.py tests/unit/collection/test_manual_ingestion_multi.py -q`：退出码 0，`8 passed`。
 - `uv run alembic current` / `alembic check` 与 Stage 8A PostgreSQL Integration：因本机缺少
   `.runtime/secrets/postgres_password` 未执行到数据库；保留原错误，不作为测试失败或成功证据。
+- `uv run python scripts/quality/check_docs.py`：退出码 0，Import Job 全量重试与未来断点续跑方向的
+  Blueprint/Change 文档入口和本地链接检查通过。
 - GitHub 连接器确认 PR `#88/#89` 已合并、当前无开放 PR；当前 main push workflow/status 接口未返回
   可见记录，历史 CI 不替代本 Stage 最终 Head CI。
 - Head `f697bc5` 的 CI、Stage 6 XHS、Stage 7 Keyword Packs、Provider Config、Plan Snapshot 与
@@ -315,7 +325,7 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 # 交付
 
 - Commit：`a12eac4`（记录 Stage 8B 开发门禁）；后续实现继续使用中文提交。
-- PR：Draft PR `#97`（`feature/stage8b-import-http-job → main`）已创建；当前因 30 分钟 Attempt 是否要求
-  跨 Attempt 断点续跑，以及 500 MiB 上传对应的解压安全边界待决定而保持 blocked/draft，最终 CI/Review
+- PR：Draft PR `#97`（`feature/stage8b-import-http-job → main`）已创建；当前因 500 MiB 上传对应的
+  解压安全边界待决定而保持 blocked/draft，最终 CI/Review
   完成后才转 Ready 并正常合并。
 - 发布：不部署生产；只交付仓库代码、Migration 状态说明、生成物、测试与合并后 main 证据。
