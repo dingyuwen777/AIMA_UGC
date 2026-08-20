@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260820-stage8b-import-http-job"
 title: "Stage 8B Import HTTP / Job 与统一 Relevance Productization"
 level: L3
-status: in_progress
+status: done
 owner: "AI coding agent"
 branch: "feature/stage8b-import-http-job"
 created: 2026-08-20
@@ -35,6 +35,12 @@ contracts:
 data_changes:
   - "20260820_0020：global_relevance_config、关键词 NFKC/casefold 身份迁移、Candidate filtered 终态"
 ---
+
+# 完成结论
+
+Stage 8B 已完成实现、Red → Green、PostgreSQL 18 验证、两阶段 Review、OpenAPI/Orval 固定、实现 PR
+合并和合并后 `main` 新鲜验证；本 Change 已进入 `done` 并归档。正式范围止于 Import HTTP / Job 与
+跨来源 Relevance 产品化，没有实现 Vue 页面或 Stage 8C；下一正式最小开发单元是 Stage 8C。
 
 # 目标
 
@@ -307,8 +313,8 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 - [x] 同步受影响文档
 - [x] 完成需求符合性 Review 与代码质量 Review，修复所有严重/重要问题
 - [x] 取得最终实现 PR Head 的新鲜本地与 GitHub CI 证据
-- [ ] 取得合并后 main 的新鲜验证证据
-- [ ] Draft PR → 最终 Head CI → Ready → 正常 Merge → 合并后 main 验证 → Change 归档
+- [x] 取得合并后 main 的新鲜验证证据
+- [x] Draft PR → 最终 Head CI → Ready → 正常 Merge → 合并后 main 验证 → Change 归档
 
 # 两阶段 Review
 
@@ -419,7 +425,15 @@ Content Ingestion、Artifact Store 或 Job Runtime。
   `uv lock --check`、sdist/Wheel、源码导入和 `alembic heads` 均退出码 0；代码 Head 为
   `20260820_0020`，工作区无生成物漂移。
 - 最终复核时远端 `main` 仍为任务基线 `43a0bdcebc7abc7f7c796f255c2af6e53b0fb8ea`，与 Head 的
-  merge-base 一致；没有需要同步的新上游提交。证据固化提交仍须取得自身的新鲜 CI 后再转 Ready。
+  merge-base 一致；没有需要同步的新上游提交。
+- 最终 PR Head `84535ceb351bdf86c05e845a194452324b98bc3b` 的 25 项 Checks 全部成功，PR 随后从
+  Draft 转为 Ready，并以普通 merge commit 正常合入 `main`；PR #97 Merge Commit 为
+  `9f6a9fec2f0c06f89f3301c61ad12b894ba82d1b`。
+- 合并后本地 `main@9f6a9fe` 重新运行 Unit/Contract/API `555 passed, 1 skipped, 2 warnings`、Ruff、
+  mypy、Architecture、Table Ownership、Secret、Docs、Contract、Orval Drift、前端 lint/typecheck/test/build、
+  锁文件与 `alembic heads`，均退出码 0；工作区无生成物内容漂移，Migration Head 为 `20260820_0020`。
+- Merge Commit 触发的 11 个 `main` push workflows 全部成功：CI、Stage 4、Stage 5A/5B/5C/5D、
+  Stage 6、Stage 7 Keyword/Plan/Provider/Scheduler。归档 PR 只改变 Change 生命周期与路径。
 
 # 文档影响
 
@@ -432,7 +446,8 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 # 交付
 
 - Commit：`a12eac4`（记录 Stage 8B 开发门禁）、`7352aed`（Stage 8B 正式实现）、`b3cf0a4`
-  （补齐采集相关性测试前置事实）、`17e238a`（复用 Keyword Catalog 父事实）；均为中文提交且未重写历史。
-- PR：Draft PR `#97`（`feature/stage8b-import-http-job → main`）的最终实现 Head CI 与两阶段 Review
-  已通过；本 Change 证据固化提交取得新鲜 CI 后才转 Ready 并正常合并。
+  （补齐采集相关性测试前置事实）、`17e238a`（复用 Keyword Catalog 父事实）、`84535ce`
+  （固化最终验证证据）；均为中文提交且未重写历史。
+- PR：`#97`（`feature/stage8b-import-http-job → main`）最终 Head 25/25 Checks 成功、Review 线程 0，
+  已正常合并；Merge Commit `9f6a9fec2f0c06f89f3301c61ad12b894ba82d1b` 的 11 个 main workflows 成功。
 - 发布：不部署生产；只交付仓库代码、Migration 状态说明、生成物、测试与合并后 main 证据。
