@@ -696,7 +696,7 @@ def _top_counter_text(counter: Counter[str], denominator: int) -> str:
     return f"{item[0]} / {item[1]}（{_percentage(item[1], denominator)}）"
 
 
-def _quality_rows(counter: Counter[str]) -> list[tuple[object, ...]]:
+def _quality_rows(counter: Counter[str]) -> list[tuple[str, int]]:
     labels = {
         "内容缺失平台": "缺失平台",
         "内容缺失情感标签": "缺失情感判断",
