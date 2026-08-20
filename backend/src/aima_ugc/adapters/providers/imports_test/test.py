@@ -339,11 +339,11 @@ def run_all(
         )
         stages.append(_stage_payload("database_ingestion", database_ingestion))
 
-    # labeling = label_sentiment(run_dir=run_dir)
-    # stages.append(_stage_payload("label_sentiment", labeling))
-    #
-    # labeled_export = export_labeled_excel(run_dir=run_dir)
-    # stages.append(_stage_payload("export_labeled_excel", labeled_export))
+    labeling = label_sentiment(run_dir=run_dir)
+    stages.append(_stage_payload("label_sentiment", labeling))
+
+    labeled_export = export_labeled_excel(run_dir=run_dir)
+    stages.append(_stage_payload("export_labeled_excel", labeled_export))
 
     run_summary_path = run_dir / "run_summary.json"
     labeled_excel_path = _labeled_output_path(run_dir)
