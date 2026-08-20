@@ -383,11 +383,9 @@ def _document_rels_xml(images: list[tuple[str, bytes, int, int]]) -> str:
     ]
     for index, (name, _, _, _) in enumerate(images, start=2):
         relationships.append(
-            
-                f'<Relationship Id="rId{index}" '
-                'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" '
-                f'Target="media/{escape(name)}"/>'
-            
+            f'<Relationship Id="rId{index}" '
+            'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" '
+            f'Target="media/{escape(name)}"/>'
         )
     return (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
