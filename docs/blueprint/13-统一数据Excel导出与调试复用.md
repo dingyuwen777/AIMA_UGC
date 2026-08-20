@@ -215,7 +215,7 @@ analysis/checkpoints.jsonl
 
 用于恢复、费用安全和审计，但 checkpoint 不是下游业务事实源；成功 Analysis 必须回写原 `deduplicated/contents.jsonl`。
 
-最终 Excel 只读取这份统一 JSONL，不再 join 第二份业务 Analysis 文件，也不从 Excel 回读进入关键词、去重、AI 或数据库流程。
+最终 Excel 只读取这份统一 JSONL，不再 join 第二份业务 Analysis 文件，也不从 Excel 回读进入关键词、去重、AI 或数据库流程。Report Renderer 可以把最终 Excel 当作**只读派生视图输入**，但不得把报告统计反写为上游业务事实。
 
 ## 7. 唯一共享 Exporter
 
@@ -361,6 +361,8 @@ Provider / File Import
 → UnifiedDataExcelV1
 → Shared Excel Exporter
 → 可选列投影
+→ .xlsx
+→ Report Renderer（只读派生，可选）
 ```
 
 因此：
@@ -369,7 +371,8 @@ Provider / File Import
 - 隐藏某个 Excel 列不代表系统删除该字段；
 - Excel 列名不能反向成为数据库 Schema；
 - LLM 不能直接依赖 Excel 私有列绕过 Analysis 输入边界；
-- 正式入库时 Content 与 Analysis 仍分别由各自 Owner 持久化。
+- 正式入库时 Content 与 Analysis 仍分别由各自 Owner 持久化；
+- Report Renderer 只能消费已存在的数据视图，不能反向修改 Canonical、Analysis、数据库或统一 Excel Contract。
 
 ## 12. 长期维护规则
 
@@ -408,3 +411,127 @@ Provider / File Import
 - raw/labeled 同内容展示配置，标签明细 Sheet 结构也一致；
 - 业务中间处理不依赖 Excel 回读；
 - 数据明细 Excel 与 Report Renderer 相互独立。
+
+## 13. 当前离线 Report Renderer
+
+当前第一个正式可复用的离线报告实现位于：
+
+```text
+backend/src/aima_ugc/platform/reporting/
+```
+
+它不是 `imports_test` 私有统计脚本。默认 Markdown 模板、统计、Markdown 渲染、Word 转换和图表嵌入都属于 Provider-neutral 平台能力；`imports_test` 只提供人工调用入口。
+
+### 13.1 输入输出边界
+
+当前离线链路固定为：
+
+```text
+统一数据 Excel（只读）
+→ Report Statistics
+→ Markdown Template Rendering
+→ report.md
+→ Markdown → Word
+→ report.docx
+```
+
+`run_all()` 的默认输入是本次 run 的 `labeled_data.xlsx`；也允许显式指定任何符合当前统一 Workbook 结构和报告必要列要求的处理后 `.xlsx`。
+
+报告当前要求：
+
+```text
+Sheet: 内容 / 标签明细 / 评论
+
+内容必要列:
+平台 / 发布时间 / 命中关键词 / 情感标签 / 一级标签 / 二级标签
+
+标签明细必要列:
+平台 / 情感标签 / 一级标签 / 二级标签
+
+评论必要列:
+平台
+```
+
+这是**报告读取要求**，不是新的 Excel Contract。通用 Excel Exporter 的完整字段定义仍由本文第 3 节维护。
+
+### 13.2 统计口径
+
+完整统计遵循现有 Workbook 语义：
+
+```text
+内容总量、平台、情感、关键词、按日趋势
+→ 内容 Sheet
+
+一级/二级总体频次、一级→二级标签对
+→ 标签明细 Sheet
+
+评论总量、平台评论量
+→ 评论 Sheet
+```
+
+一级/二级标签的每日趋势需要时间维度，因此从“内容”Sheet 的 `发布时间` 与对应换行标签列统计；一级/二级总体频次仍以“标签明细”Sheet 为准。
+
+报告必须保留完整平台、标签、标签对、关键词和每日非零数据表格。图表允许为了阅读性只显示 Top N 序列，但不得因为图表裁剪丢失完整表格数据，也不得修改上游数据。
+
+### 13.3 Markdown 是报告正文唯一模板
+
+默认共享模板当前为：
+
+```text
+backend/src/aima_ugc/platform/reporting/report_template.md
+```
+
+`generate_excel_report()` 默认使用该模板；需要特定展示时允许调用方显式传入 `template_path=`，但不能复制一套平台私有 Report Renderer。
+
+固定规则：
+
+```text
+模板 Markdown
+→ 填充统计数据
+→ 生成完整 report.md
+→ Word 转换器读取 report.md
+→ report.docx
+```
+
+不得再维护第二套 Word 正文模板。模板普通文本、标题和顺序发生变化时，下一次 Markdown 与 Word 必须一起变化。
+
+### 13.4 Mermaid 与 Word
+
+Markdown 图表使用 Mermaid fenced block。当前模板只使用：
+
+```text
+pie
+xychart
+```
+
+Word 转换器只承诺支持本报告实际使用的 Mermaid 子集，并将其转换为 DOCX 内嵌 PNG；Markdown 仍保留 Mermaid 源码。对于未支持的 Mermaid 类型必须 fail closed，不能静默忽略导致 Markdown 与 Word 内容不一致。
+
+当前实现不引入 Pandoc、LibreOffice、Matplotlib、pandas 或在线 Mermaid 服务作为运行时依赖；DOCX/PNG 由已有 Python 运行时和标准库生成。LibreOffice 只可作为开发/交付验证工具，不是生产报告生成依赖。
+
+### 13.5 失败和数据安全边界
+
+Report Renderer 必须：
+
+- 使用只读方式打开输入 Excel；
+- 不对输入 Workbook 调用保存、二次格式化或“修复”；
+- 不调用 LLM，不写数据库，不产生新的 Canonical/Analysis 事实；
+- Markdown 使用临时文件 + `os.replace` 原子发布；
+- DOCX 生成后重新打开 ZIP/XML 校验最低包结构和媒体数量；
+- 报告失败时明确失败，不能把完整 `run_all()` 宣称成功；
+- 已经成功生成的最终 Excel 不因报告失败被删除或回滚，可以修复报告后直接重新生成。
+
+### 13.6 与未来正式报告中心的关系
+
+当前能力解决“已处理统一 Excel → 人工可交付报告”的独立离线路径，不提前实现正式 Stage 8B+ 网页报告中心。
+
+未来如果增加：
+
+```text
+PostgreSQL Query Read Model
+→ 持久化 Report Job
+→ Artifact 权限/生命周期
+→ API
+→ Web 报告中心
+```
+
+应复用同一统计/渲染边界或通过独立 Change 演进，不得把 `imports_test` 的路径或 run 目录提升为正式 HTTP/数据库 Contract；共享默认模板属于 Report Renderer 自身资源。

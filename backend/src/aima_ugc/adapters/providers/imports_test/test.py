@@ -45,13 +45,12 @@ from aima_ugc.platform.export import (
     ExcelExportSummary,
     export_unified_content_jsonl_to_excel,
 )
+from aima_ugc.platform.reporting import ReportGenerationSummary, generate_excel_report
 
 os.environ.pop("SSLKEYLOGFILE", None)
 
 # 配置一个 Path 走单文件转换；配置多个 Path 的有序元组合并到同一个 run。
-INPUT_XLSX_FILES: Path | tuple[Path, ...] = (
-        Path(r"E:\Desktop\08_18数据\测试数据.xlsx")
-    )
+INPUT_XLSX_FILES: Path | tuple[Path, ...] = Path(r"E:\Desktop\08_18数据\测试数据.xlsx")
 OUTPUT_ROOT = Path(__file__).with_name("output")
 KEYWORD_PACK_FILE = Path(__file__).with_name("keyword_pack.txt")
 
@@ -93,6 +92,8 @@ class P1RunSummary:
     run_dir: Path
     run_summary_path: Path
     labeled_excel_path: Path
+    report_markdown_path: Path
+    report_word_path: Path
 
 
 def prepare_run_dir(*, run_id: str | None = None) -> Path:
@@ -310,12 +311,41 @@ def export_labeled_excel(
     )
 
 
+def generate_report(
+    *,
+    excel_path: Path | None = None,
+    run_dir: Path | None = None,
+    output_dir: Path | None = None,
+) -> ReportGenerationSummary:
+    """从最终统一 Excel 独立生成 Markdown/Word 报告。"""
+
+    if excel_path is not None and run_dir is not None:
+        raise ValueError("excel_path 与 run_dir 只能指定一个")
+    if excel_path is None and run_dir is None:
+        raise ValueError("必须指定 excel_path 或既有 run_dir")
+
+    if excel_path is not None:
+        source_path = Path(excel_path)
+        target_dir = Path(output_dir) if output_dir is not None else source_path.parent / "reports"
+    else:
+        assert run_dir is not None
+        actual_run_dir = _stage_run_dir(run_dir)
+        source_path = _labeled_output_path(actual_run_dir)
+        target_dir = Path(output_dir) if output_dir is not None else actual_run_dir / "reports"
+
+    return generate_excel_report(
+        input_path=source_path,
+        output_dir=target_dir,
+    )
+
+
 def run_all(
     *,
     run_id: str | None = None,
     write_to_database: bool = WRITE_TO_DATABASE,
+    report_excel_path: Path | None = None,
 ) -> P1RunSummary:
-    """创建一次独立 run 目录并按固定顺序执行完整链路。"""
+    """创建一次独立 run，最终 Excel 完成后生成同一份 Markdown/Word 报告。"""
 
     actual_run_id = _resolve_run_id(run_id)
     run_dir = prepare_run_dir(run_id=actual_run_id)
@@ -347,6 +377,17 @@ def run_all(
 
     run_summary_path = run_dir / "run_summary.json"
     labeled_excel_path = _labeled_output_path(run_dir)
+    report_input_path = (
+        Path(report_excel_path) if report_excel_path is not None else labeled_excel_path
+    )
+    if not report_input_path.is_file():
+        raise FileNotFoundError(f"报告 Excel 不存在: {report_input_path}")
+    report = generate_report(
+        excel_path=report_input_path,
+        output_dir=run_dir / "reports",
+    )
+    stages.append(_stage_payload("generate_report", report))
+
     input_paths = _input_xlsx_files()
     run_payload: dict[str, object] = {
         "schema_version": "p1-run-summary.v2",
@@ -356,19 +397,21 @@ def run_all(
         "run_dir": str(run_dir),
         "keyword_pack_file": str(KEYWORD_PACK_FILE),
         "labeled_excel": str(labeled_excel_path),
+        "report_input_excel": str(report_input_path),
+        "report_markdown": str(report.markdown_path),
+        "report_word": str(report.word_path),
         "stages": stages,
     }
     if len(input_paths) == 1:
         run_payload["source_xlsx"] = str(input_paths[0])
-    _atomic_write_json(
-        run_summary_path,
-        run_payload,
-    )
+    _atomic_write_json(run_summary_path, run_payload)
     return P1RunSummary(
         run_id=actual_run_id,
         run_dir=run_dir,
         run_summary_path=run_summary_path,
         labeled_excel_path=labeled_excel_path,
+        report_markdown_path=report.markdown_path,
+        report_word_path=report.word_path,
     )
 
 
@@ -547,5 +590,7 @@ if __name__ == "__main__":
         "run_all 完成: "
         f"run_id={result.run_id}, "
         f"labeled_excel={result.labeled_excel_path}, "
+        f"report_markdown={result.report_markdown_path}, "
+        f"report_word={result.report_word_path}, "
         f"run_summary={result.run_summary_path}"
     )
