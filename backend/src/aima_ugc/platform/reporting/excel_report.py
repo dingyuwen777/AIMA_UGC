@@ -482,7 +482,9 @@ def _build_template_replacements(
             [daily_content_values],
             kind="line",
             series_names=("内容声量",),
-        ) if dates else "暂无可展示图表。",
+        )
+        if dates
+        else "暂无可展示图表。",
         "PLATFORM_TABLE": _markdown_table(("平台", "内容量", "内容占比", "评论量"), platform_rows),
         "PLATFORM_PIE_CHART": _mermaid_pie("各平台内容占比", stats.platform_counts),
         "PLATFORM_SENTIMENT_TABLE": _markdown_table(
@@ -598,7 +600,10 @@ def _platform_sentiment_chart(stats: _ReportStats, sentiments: Sequence[str]) ->
     if not platforms or not sentiments:
         return "暂无可展示图表。"
     series_values = [
-        [stats.platform_sentiment.get(platform, Counter()).get(sentiment, 0) for platform in platforms]
+        [
+            stats.platform_sentiment.get(platform, Counter()).get(sentiment, 0)
+            for platform in platforms
+        ]
         for sentiment in sentiments
     ]
     return _mermaid_xychart(
