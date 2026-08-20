@@ -1,5 +1,6 @@
 name: Offline Reporting Template Move
 # 显式触发最新 feature HEAD 上的可审计迁移。
+# run_all 共享模板回归测试已修正后再次触发。
 
 on:
   push:
