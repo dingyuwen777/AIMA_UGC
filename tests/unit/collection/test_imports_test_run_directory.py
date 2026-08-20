@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from aima_ugc.adapters.providers.imports_test import test as imports_test
+from aima_ugc.platform.reporting import DEFAULT_REPORT_TEMPLATE_PATH
 
 
 def test_default_run_id_uses_beijing_offset_format() -> None:
@@ -48,7 +49,7 @@ def test_run_all_uses_one_isolated_run_directory_for_every_stage(
         calls.append(("generate_report", report_dir.parent))
         return imports_test.ReportGenerationSummary(
             source_excel_path=Path(excel_path),
-            template_path=imports_test.REPORT_TEMPLATE_FILE,
+            template_path=DEFAULT_REPORT_TEMPLATE_PATH,
             markdown_path=report_dir / "report.md",
             word_path=report_dir / "report.docx",
             content_rows=0,
