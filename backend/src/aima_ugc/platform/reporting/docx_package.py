@@ -10,7 +10,6 @@ from io import BytesIO
 from pathlib import Path
 from typing import Final, cast
 from xml.etree import ElementTree as ET
-from xml.sax.saxutils import escape
 
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
@@ -29,12 +28,8 @@ _DCTERMS: Final = "http://purl.org/dc/terms/"
 _XSI: Final = "http://www.w3.org/2001/XMLSchema-instance"
 _CHART_REL: Final = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart"
 _PACKAGE_REL: Final = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/package"
-_CHART_CONTENT_TYPE: Final = (
-    "application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
-)
-_XLSX_CONTENT_TYPE: Final = (
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)
+_CHART_CONTENT_TYPE: Final = "application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
+_XLSX_CONTENT_TYPE: Final = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 for prefix, uri in (("w", _W), ("r", _R), ("wp", _WP), ("a", _A), ("c", _C)):
     ET.register_namespace(prefix, uri)
@@ -317,9 +312,7 @@ def verify_docx(path: Path, *, expected_charts: int) -> None:
             ET.fromstring(archive.read(xml_name))
 
         chart_parts = sorted(
-            name
-            for name in names
-            if re.fullmatch(r"word/charts/chart\d+\.xml", name) is not None
+            name for name in names if re.fullmatch(r"word/charts/chart\d+\.xml", name) is not None
         )
         embeddings = sorted(
             name
@@ -331,9 +324,7 @@ def verify_docx(path: Path, *, expected_charts: int) -> None:
             for name in names
             if re.fullmatch(r"word/charts/_rels/chart\d+\.xml\.rels", name) is not None
         )
-        if not (
-            len(chart_parts) == len(embeddings) == len(chart_rels) == expected_charts
-        ):
+        if not (len(chart_parts) == len(embeddings) == len(chart_rels) == expected_charts):
             raise OSError("DOCX 可编辑图表包数量校验失败")
 
         for chart_name, rel_name, workbook_name in zip(
