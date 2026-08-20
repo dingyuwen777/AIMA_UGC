@@ -1,5 +1,5 @@
 {
-  "candidate_path_digest": "aea37fce06179197d010d38e14a06579010e82754e725ee4df38c2725303c201",
+  "candidate_path_digest": "c69ee56fe8eb643c6a77896fe3fa5124f02b69358929a859088b7baad82e4215",
   "directories": [
     {
       "count": 4,
@@ -58,6 +58,13 @@
         "documentation"
       ],
       "path": "backend/src/aima_ugc/modules/system"
+    },
+    {
+      "count": 1,
+      "kinds": [
+        "documentation"
+      ],
+      "path": "backend/src/aima_ugc/platform/reporting"
     },
     {
       "count": 3,
@@ -183,9 +190,9 @@
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/adapters/providers/imports_test/README.md",
-      "sha256": "68448ddd31bfbe0b747bbb095dd994ad8787468f4b6595f95356f7411bee60aa",
-      "size": 24708,
-      "title": "Excel 离线导入、清洗与 AI 多标签打标"
+      "sha256": "6cbafa7285e3e59b5e02ede156b7d785f36007333ff63623b95a21c18dc1a0e2",
+      "size": 35249,
+      "title": "Excel 离线导入、清洗、AI 多标签打标与报告"
     },
     {
       "kind": "documentation",
@@ -221,6 +228,13 @@
       "sha256": "e6254359ea9ea6c9128cf096eb1c7d0653ad4376ff8487d6f44a5d043c6f9cc1",
       "size": 4103,
       "title": "System 模块"
+    },
+    {
+      "kind": "documentation",
+      "path": "backend/src/aima_ugc/platform/reporting/README.md",
+      "sha256": "67ee7b787030ca9e231942c9b6d6a2a864ab1a53f1c323eda8c626d09295c5e4",
+      "size": 8078,
+      "title": "Provider-neutral 离线报告"
     },
     {
       "kind": "contract",
@@ -348,8 +362,8 @@
     {
       "kind": "documentation",
       "path": "docs/blueprint/03-数据库与文件存储.md",
-      "sha256": "131ce24583f671385274c576b3a57a725ca8a7c60dfb5c7386539c4263d3bb52",
-      "size": 60370,
+      "sha256": "70698cbcdad1b6d917d001f56ea3ff0cb570f7bada357f5e3b27c7c75f451651",
+      "size": 61597,
       "title": "数据库与文件存储"
     },
     {
@@ -418,15 +432,15 @@
     {
       "kind": "documentation",
       "path": "docs/blueprint/13-统一数据Excel导出与调试复用.md",
-      "sha256": "044f9174628c96181feac413d5284996972a6a9431b011c9f28461e2caf1f2d1",
-      "size": 12000,
+      "sha256": "300bda0428e7029c185f35689d038118f84d6b852bb561b4ef38380345fc3303",
+      "size": 25354,
       "title": "统一数据 Excel 导出与调试复用"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/15-舆情AI打标与统一分析契约.md",
-      "sha256": "039db2140ea116d62b78b881a5f8c5464a36d0a6f67cee7d804f6f148199b725",
-      "size": 35455,
+      "sha256": "1fdaaa9c034c82d1b96e33246b409c33504bec81e84a6f325572c5b98e109515",
+      "size": 40227,
       "title": "舆情 AI 打标与统一分析契约"
     },
     {
@@ -439,8 +453,8 @@
     {
       "kind": "documentation",
       "path": "docs/blueprint/17-Stage8数据入口统一入库与业务前端实施.md",
-      "sha256": "1eca315e65988b53143eea5217e0bb05c4dcfc72e1af95093c8979aa78bbc4e5",
-      "size": 28283,
+      "sha256": "63a054ea7c81942000aabe8bb9e148dc9bb8e2db504a7c6c1e69bb1cd5301b09",
+      "size": 31251,
       "title": "Stage 8 数据入口、统一入库与业务前端实施"
     },
     {
@@ -495,8 +509,8 @@
     {
       "kind": "documentation",
       "path": "docs/测试与调试说明.md",
-      "sha256": "c1d003b885695755e11222d33ef7ed7a28cd4584728ce140b855a039122a63a6",
-      "size": 31201,
+      "sha256": "e634f8dc0825ac6b0e91ee59592bda7749b29c8356c379368f83f4fc86895d31",
+      "size": 31322,
       "title": "AIMA_UGC 测试与调试说明"
     },
     {
@@ -552,12 +566,12 @@
       "size": 91336
     }
   ],
-  "generated_at": "2026-08-20T02:49:35+00:00",
+  "generated_at": "2026-08-20T08:44:13+00:00",
   "generator_version": "0.1.0",
   "git": {
-    "indexed_at_commit": "4db91659d3ceef5e459109217a7916849b76fdb8",
+    "indexed_at_commit": "197be81c83f3c5e934b9f4b98549362a525c2ac9",
     "repository": true,
-    "worktree_candidate_digest": "3408f605c9cb57d04822955762790e4f5a26d925876a16b94e9641a2e890b58f"
+    "worktree_candidate_digest": "a042871d224aaf66c651d335d5adfa2d06ca6a1c091bd79b97f7808b964b2071"
   },
   "package_scripts": {
     "frontend/package.json": {
