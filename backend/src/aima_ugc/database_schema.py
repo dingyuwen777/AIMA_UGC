@@ -48,6 +48,7 @@ from aima_ugc.modules.ingestion.tables import (
 )
 from aima_ugc.modules.system.tables import (
     audit_events_table,
+    global_relevance_config_table,
     keyword_pack_items_table,
     keyword_packs_table,
     keywords_table,
@@ -67,6 +68,7 @@ __all__ = [
     "accounts_table",
     "artifacts_table",
     "audit_events_table",
+    "global_relevance_config_table",
     "collection_candidate_ingestions_table",
     "collection_candidates_table",
     "collection_content_actions_table",

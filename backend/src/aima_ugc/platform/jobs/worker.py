@@ -241,6 +241,7 @@ class JobWorker:
                     lease_token=lease_token,
                     error_code="invalid_payload",
                 )
+                self._notify_terminal(session, failed)
         finally:
             session.close()
         return failed
@@ -283,9 +284,16 @@ class JobWorker:
                     persisted = repository.mark_cancelled(job_id=job_id, lease_token=lease_token)
                 else:
                     raise ValueError(f"unsupported Job outcome: {result.outcome}")
+                if persisted.status in {"succeeded", "failed", "cancelled"}:
+                    self._notify_terminal(session, persisted)
         finally:
             session.close()
         return persisted
+
+    def _notify_terminal(self, session: Session, job: JobRecord) -> None:
+        callback = self._registry.get(job.job_type).terminal_callback
+        if callback is not None:
+            callback(session, job)
 
 
 class JobReaper:
@@ -312,6 +320,10 @@ class JobReaper:
                     timeout_retry_job_types=self._registry.timeout_retry_types,
                     retry_delay_seconds=self._retry_delay_seconds,
                 )
+                if job is not None and job.status in {"failed", "cancelled"}:
+                    callback = self._registry.get(job.job_type).terminal_callback
+                    if callback is not None:
+                        callback(session, job)
         finally:
             session.close()
         return job is not None

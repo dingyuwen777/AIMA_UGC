@@ -21,6 +21,10 @@ class ArtifactStateConflict(RuntimeError):
     """Artifact 当前状态不允许请求的状态转换。"""
 
 
+class ArtifactSizeLimitError(ValueError):
+    """Artifact 实际流式字节超过调用方批准上限。"""
+
+
 @dataclass(frozen=True, slots=True)
 class StoredBytes:
     """ArtifactStore 成功写入的完整性结果。"""

@@ -56,6 +56,7 @@ from aima_ugc.adapters.providers.tikhub.runtime import (
     map_content,
     mapping_context,
 )
+from aima_ugc.contracts.analysis import RelevanceSnapshotV1
 from aima_ugc.contracts.canonical import CanonicalCommentV1, CanonicalContentV1
 from aima_ugc.contracts.collection import (
     CollectionDecisionPolicyV1,
@@ -66,6 +67,7 @@ from aima_ugc.contracts.collection import (
     ReplyDecisionRequestV1,
 )
 from aima_ugc.contracts.provider import JsonObject, ProviderRequestV1
+from aima_ugc.modules.analysis import RelevanceKeyword, RelevanceService
 from aima_ugc.modules.collection.collection_run_executor import (
     CollectionScopeExecutionResult,
     CollectionScopeRetryableError,
@@ -141,6 +143,12 @@ class _ExecutedCall:
 
 
 @dataclass(frozen=True, slots=True)
+class _DetailCandidate:
+    content: CanonicalContentV1
+    candidate_id: UUID
+
+
+@dataclass(frozen=True, slots=True)
 class _CommentFetchOutcome:
     completed: bool
     technical_partial: bool = False
@@ -175,6 +183,7 @@ class _ScopeStats:
     content_count: int = 0
     comment_count: int = 0
     technical_partial_results: int = 0
+    filtered_content_count: int = 0
 
     @classmethod
     def from_payload(cls, payload: dict[str, object]) -> _ScopeStats:
@@ -193,6 +202,7 @@ class _ScopeStats:
                 payload,
                 "technical_partial_results",
             ),
+            filtered_content_count=_payload_int(payload, "filtered_content_count"),
         )
 
     def sync_counts(self, counts: CollectionScopeExecutionCounts) -> None:
@@ -215,6 +225,7 @@ class _ScopeStats:
             "comment_requests": self.comment_requests,
             "sub_comment_requests": self.sub_comment_requests,
             "technical_partial_results": self.technical_partial_results,
+            "filtered_content_count": self.filtered_content_count,
             "provider_requests": self.requested_count,
         }
 
@@ -266,6 +277,7 @@ class TikHubCollectionScopeExecutor:
         capability = _capability(platform)
         _validate_decision_policy(run)
         policy = _decision_policy(run)
+        relevance = _relevance_service(run)
 
         stats = _ScopeStats.from_payload(scope.stats)
         self._refresh_counts(scope=scope, context=context, stats=stats)
@@ -363,6 +375,7 @@ class TikHubCollectionScopeExecutor:
                         policy=policy,
                         context=context,
                         stats=stats,
+                        relevance=relevance,
                     )
 
                 advance = advance_search(
@@ -459,7 +472,39 @@ class TikHubCollectionScopeExecutor:
         policy: CollectionDecisionPolicyV1,
         context: JobExecutionContextProtocol,
         stats: _ScopeStats,
+        relevance: RelevanceService,
     ) -> None:
+        search_content = content
+        prefetched_details: tuple[_DetailCandidate, ...] = ()
+        detail_prefetched = False
+        if not relevance.evaluate(content).matched:
+            details = self._fetch_detail_candidates(
+                run=run,
+                scope=scope,
+                content=content,
+                provider_config=provider_config,
+                context=context,
+                stats=stats,
+            )
+            detail = details[-1]
+            if not relevance.evaluate(detail.content).matched:
+                self._content_writer.record_candidate_filtered(
+                    candidate_id=search_candidate_id,
+                    canonical=content,
+                    fence=context.fence,
+                )
+                for candidate in details:
+                    self._content_writer.record_candidate_filtered(
+                        candidate_id=candidate.candidate_id,
+                        canonical=candidate.content,
+                        fence=context.fence,
+                    )
+                stats.filtered_content_count += 1
+                return
+            content = detail.content
+            prefetched_details = details
+            detail_prefetched = True
+
         action = self._content_actions.get(
             scope_id=scope.id,
             external_content_id=content.external_content_id,
@@ -496,12 +541,48 @@ class TikHubCollectionScopeExecutor:
                 fence=context.fence,
             )
 
-        search_ingestion = self._content_writer.ingest_content(
-            canonical=content,
-            fence=context.fence,
-            candidate_id=search_candidate_id,
+        candidates = (
+            (
+                _DetailCandidate(search_content, search_candidate_id),
+                *prefetched_details,
+            )
+            if detail_prefetched
+            else (_DetailCandidate(content, search_candidate_id),)
         )
-        content_id = search_ingestion.target_id
+        content_id: UUID | None = None
+        for candidate in candidates:
+            ingestion = self._content_writer.ingest_content(
+                canonical=candidate.content,
+                fence=context.fence,
+                candidate_id=candidate.candidate_id,
+            )
+            if content_id is not None and ingestion.target_id != content_id:
+                raise RuntimeError("Search/Detail 摄取未收敛到同一 Content")
+            content_id = ingestion.target_id
+        if content_id is None:  # pragma: no cover - candidates 固定非空
+            raise RuntimeError("Search/Detail 未产生 Content")
+        if (
+            detail_prefetched
+            and action.decision.detail_action == "fetch"
+            and not action.detail_completed
+        ):
+            post_detail = self._decision_service.decide(
+                CollectionDecisionRequestV1(
+                    current=ContentObservationV1(
+                        comment_count=_observed_comment_count(content),
+                        business_changed=False,
+                    ),
+                    previous=_previous_from_action(action),
+                    policy=policy,
+                    capability=capability,
+                )
+            )
+            action = self._content_actions.complete_detail(
+                action_id=action.id,
+                decision=post_detail,
+                resolved_comment_count=_observed_comment_count(content),
+                fence=context.fence,
+            )
         if action.comments_completed:
             return
 
@@ -510,6 +591,7 @@ class TikHubCollectionScopeExecutor:
         if (
             action.decision.detail_action == "fetch"
             and not action.detail_completed
+            and not detail_prefetched
             and not context.cancel_requested()
         ):
             comment_source = self._fetch_detail(
@@ -590,6 +672,40 @@ class TikHubCollectionScopeExecutor:
         context: JobExecutionContextProtocol,
         stats: _ScopeStats,
     ) -> CanonicalContentV1:
+        details = self._fetch_detail_candidates(
+            run=run,
+            scope=scope,
+            content=content,
+            provider_config=provider_config,
+            context=context,
+            stats=stats,
+        )
+        latest_detail: CanonicalContentV1 | None = None
+        for detail in details:
+            detail_ingestion = self._content_writer.ingest_content(
+                canonical=detail.content,
+                fence=context.fence,
+                candidate_id=detail.candidate_id,
+            )
+            if detail_ingestion.target_id != content_id:
+                raise RuntimeError("Detail 与 Search 摄取未收敛到同一 Content")
+            latest_detail = detail.content
+        if latest_detail is None:  # pragma: no cover - 前置非空校验保证
+            raise RuntimeError("TikHub Detail 未产生 Canonical Content")
+        return latest_detail
+
+    def _fetch_detail_candidates(
+        self,
+        *,
+        run: CollectionRunRecord,
+        scope: CollectionScopeRecord,
+        content: CanonicalContentV1,
+        provider_config: ProviderConfig,
+        context: JobExecutionContextProtocol,
+        stats: _ScopeStats,
+    ) -> tuple[_DetailCandidate, ...]:
+        """通过正式 Provider/Raw/Mapper 获取一次 Detail，但不提前写 Content。"""
+
         platform = _tikhub_platform(scope.platform)
         detail_call = build_detail_call(platform, content)
         executed = self._execute_call(
@@ -604,7 +720,7 @@ class TikHubCollectionScopeExecutor:
         detail_items = extract_detail_items(platform, executed.body)
         if not detail_items:
             raise ValueError("TikHub Detail 响应未包含可映射内容")
-        latest_detail: CanonicalContentV1 | None = None
+        mapped: list[_DetailCandidate] = []
         for raw_item in detail_items:
             item_locator = _stable_item_locator(
                 detail_call.operation,
@@ -653,17 +769,8 @@ class TikHubCollectionScopeExecutor:
                     error_code="detail_content_identity_mismatch",
                 )
                 raise ValueError("TikHub Detail 与 Search Content 身份不一致")
-            detail_ingestion = self._content_writer.ingest_content(
-                canonical=detail_content,
-                fence=context.fence,
-                candidate_id=candidate_id,
-            )
-            if detail_ingestion.target_id != content_id:
-                raise RuntimeError("Detail 与 Search 摄取未收敛到同一 Content")
-            latest_detail = detail_content
-        if latest_detail is None:  # pragma: no cover - 前置非空校验保证
-            raise RuntimeError("TikHub Detail 未产生 Canonical Content")
-        return latest_detail
+            mapped.append(_DetailCandidate(content=detail_content, candidate_id=candidate_id))
+        return tuple(mapped)
 
     def _fetch_comments(
         self,
@@ -1629,6 +1736,17 @@ def _decision_policy(
     if not isinstance(payload, dict):
         raise ValueError("Collection Run Snapshot decision_policy 必须为对象")
     return CollectionDecisionPolicyV1.model_validate(payload)
+
+
+def _relevance_service(run: CollectionRunRecord) -> RelevanceService:
+    payload = run.config_snapshot.get("relevance")
+    snapshot = RelevanceSnapshotV1.model_validate(payload)
+    return RelevanceService(
+        tuple(
+            RelevanceKeyword(text=text, priority=priority)
+            for priority, text in enumerate(snapshot.effective_keywords)
+        )
+    )
 
 
 def _validate_decision_policy(run: CollectionRunRecord) -> None:

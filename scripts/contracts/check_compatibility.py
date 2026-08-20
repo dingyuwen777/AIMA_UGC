@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 OPENAPI_TARGET = ROOT / "contracts" / "openapi" / "openapi.json"
 ANALYSIS_TARGETS = [
     "contracts/analysis/content-record.v1.schema.json",
+    "contracts/analysis/relevance-snapshot.v1.schema.json",
 ]
 CANONICAL_TARGETS = [
     "contracts/canonical/content.v1.schema.json",

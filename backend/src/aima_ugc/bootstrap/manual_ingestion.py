@@ -9,6 +9,7 @@ from pathlib import Path
 from uuid import UUID, uuid4, uuid5
 
 from sqlalchemy import inspect
+from sqlalchemy.orm import Session
 
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataGateway,
@@ -25,7 +26,7 @@ from aima_ugc.contracts.provider import ProviderAttemptV1, ProviderBillingV1, Pr
 from aima_ugc.modules.collection.provider_persistence import ProviderPersistenceService
 from aima_ugc.modules.content.ingestion import ContentIngestionService
 from aima_ugc.platform.database import DatabaseRuntime
-from aima_ugc.platform.storage import ArtifactService
+from aima_ugc.platform.storage import ArtifactRecord, ArtifactService
 
 from .runtime import PlatformRuntime, create_platform_runtime
 
@@ -63,6 +64,14 @@ class MultiFileImportDatabaseSummary:
     rows_seen: int
     rows_ingested: int
     rows_rejected: int
+    provider_request_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class FileImportWriteSummary:
+    """Stage 8A/8B 共用数据库写入内核的事务内结果。"""
+
+    rows_ingested: int
     provider_request_count: int
 
 
@@ -247,93 +256,17 @@ def _ingest_excel_run(
         session = runtime.database.new_session()
         try:
             with session.begin():
-                provider_repository = PostgresProviderRepository(session)
-                provider_service = ProviderPersistenceService(provider_repository)
-                content_service = ContentIngestionService(
-                    PostgresCompleteContentRepository(session)
-                )
-                lineage_by_platform: dict[str, tuple[UUID, UUID]] = {}
-
-                with unified_content_path.open("rb") as handle:
-                    for line_number, raw_line in enumerate(handle, start=1):
-                        if not raw_line.strip():
-                            continue
-                        try:
-                            record = UnifiedContentRecordV1.model_validate_json(raw_line)
-                        except Exception as exc:
-                            raise ValueError(
-                                f"Unified Content JSONL 第 {line_number} 行无法解析"
-                            ) from exc
-                        content = record.content
-                        if (
-                            source_value_filter is not None
-                            and content.source.source_value != source_value_filter
-                        ):
-                            continue
-                        lineage = lineage_by_platform.get(content.platform)
-                        if lineage is None:
-                            request_id = uuid5(batch_id, f"provider-request:{content.platform}")
-                            attempt_id = uuid5(batch_id, f"provider-attempt:{content.platform}")
-                            request = ProviderRequestV1.create_for_import(
-                                request_id=request_id,
-                                import_batch_id=batch_id,
-                                provider="imports",
-                                platform=content.platform,
-                                operation="excel_import",
-                                request_params={
-                                    "input_artifact_sha256": input_artifact.sha256,
-                                    "profile": content.source.source_type or "unknown",
-                                },
-                                pagination_input={},
-                            )
-                            prepared = provider_service.prepare_non_billable_attempt(
-                                request=request,
-                                attempt_id=attempt_id,
-                            )
-                            dispatching = provider_repository.mark_dispatching(prepared.attempt.id)
-                            if dispatching.dispatch_started_at is None:
-                                raise RuntimeError("File Import Attempt 未进入 dispatching")
-                            completed_at = datetime.now(UTC)
-                            terminal = ProviderAttemptV1(
-                                attempt_id=dispatching.id,
-                                provider_request_id=prepared.request.id,
-                                attempt_no=dispatching.attempt_no,
-                                dispatch_status="completed",
-                                dispatch_started_at=dispatching.dispatch_started_at,
-                                completed_at=completed_at,
-                                raw_artifact_id=input_artifact.id,
-                                billing=ProviderBillingV1(status="not_billable"),
-                                created_at=dispatching.created_at,
-                            )
-                            provider_repository.finalize_dispatch(
-                                attempt=terminal,
-                                raw_artifact_id=input_artifact.id,
-                            )
-                            lineage = (prepared.request.id, dispatching.id)
-                            lineage_by_platform[content.platform] = lineage
-                            request_count += 1
-
-                        request_id, attempt_id = lineage
-                        source = content.source.model_copy(
-                            update={
-                                "provider_name": "imports",
-                                "operation": "excel_import",
-                                "provider_request_id": str(request_id),
-                                "provider_attempt_id": str(attempt_id),
-                                "raw_artifact_id": input_artifact.id,
-                            }
-                        )
-                        content_service.ingest_content(
-                            content.model_copy(update={"source": source})
-                        )
-                        rows_ingested += 1
-
-                PostgresProcessingImportBatchRepository(session).mark_succeeded(
-                    batch_id,
+                write_summary = ingest_unified_content_batch(
+                    session=session,
+                    batch_id=batch_id,
+                    input_artifact=input_artifact,
+                    unified_content_path=unified_content_path,
                     rows_seen=rows_seen,
-                    rows_ingested=rows_ingested,
                     rows_rejected=rows_rejected,
+                    source_value_filter=source_value_filter,
                 )
+                rows_ingested = write_summary.rows_ingested
+                request_count = write_summary.provider_request_count
         finally:
             session.close()
     except Exception as exc:
@@ -359,6 +292,108 @@ def _ingest_excel_run(
         rows_seen=rows_seen,
         rows_ingested=rows_ingested,
         rows_rejected=rows_rejected,
+        provider_request_count=request_count,
+    )
+
+
+def ingest_unified_content_batch(
+    *,
+    session: Session,
+    batch_id: UUID,
+    input_artifact: ArtifactRecord,
+    unified_content_path: Path,
+    rows_seen: int,
+    rows_rejected: int,
+    source_value_filter: str | None = None,
+) -> FileImportWriteSummary:
+    """在调用方事务中复用 Stage 8A 正式来源链与 Content Ingestion。"""
+
+    if input_artifact.sha256 is None:
+        raise RuntimeError("File Import 输入 Artifact 缺少 SHA-256")
+    provider_repository = PostgresProviderRepository(session)
+    provider_service = ProviderPersistenceService(provider_repository)
+    content_service = ContentIngestionService(PostgresCompleteContentRepository(session))
+    lineage_by_platform: dict[str, tuple[UUID, UUID]] = {}
+    rows_ingested = 0
+    request_count = 0
+
+    with unified_content_path.open("rb") as handle:
+        for line_number, raw_line in enumerate(handle, start=1):
+            if not raw_line.strip():
+                continue
+            try:
+                record = UnifiedContentRecordV1.model_validate_json(raw_line)
+            except Exception as exc:
+                raise ValueError(f"Unified Content JSONL 第 {line_number} 行无法解析") from exc
+            content = record.content
+            if (
+                source_value_filter is not None
+                and content.source.source_value != source_value_filter
+            ):
+                continue
+            lineage = lineage_by_platform.get(content.platform)
+            if lineage is None:
+                request_id = uuid5(batch_id, f"provider-request:{content.platform}")
+                attempt_id = uuid5(batch_id, f"provider-attempt:{content.platform}")
+                request = ProviderRequestV1.create_for_import(
+                    request_id=request_id,
+                    import_batch_id=batch_id,
+                    provider="imports",
+                    platform=content.platform,
+                    operation="excel_import",
+                    request_params={
+                        "input_artifact_sha256": input_artifact.sha256,
+                        "profile": content.source.source_type or "unknown",
+                    },
+                    pagination_input={},
+                )
+                prepared = provider_service.prepare_non_billable_attempt(
+                    request=request,
+                    attempt_id=attempt_id,
+                )
+                dispatching = provider_repository.mark_dispatching(prepared.attempt.id)
+                if dispatching.dispatch_started_at is None:
+                    raise RuntimeError("File Import Attempt 未进入 dispatching")
+                terminal = ProviderAttemptV1(
+                    attempt_id=dispatching.id,
+                    provider_request_id=prepared.request.id,
+                    attempt_no=dispatching.attempt_no,
+                    dispatch_status="completed",
+                    dispatch_started_at=dispatching.dispatch_started_at,
+                    completed_at=datetime.now(UTC),
+                    raw_artifact_id=input_artifact.id,
+                    billing=ProviderBillingV1(status="not_billable"),
+                    created_at=dispatching.created_at,
+                )
+                provider_repository.finalize_dispatch(
+                    attempt=terminal,
+                    raw_artifact_id=input_artifact.id,
+                )
+                lineage = (prepared.request.id, dispatching.id)
+                lineage_by_platform[content.platform] = lineage
+                request_count += 1
+
+            request_id, attempt_id = lineage
+            source = content.source.model_copy(
+                update={
+                    "provider_name": "imports",
+                    "operation": "excel_import",
+                    "provider_request_id": str(request_id),
+                    "provider_attempt_id": str(attempt_id),
+                    "raw_artifact_id": input_artifact.id,
+                }
+            )
+            content_service.ingest_content(content.model_copy(update={"source": source}))
+            rows_ingested += 1
+
+    PostgresProcessingImportBatchRepository(session).mark_succeeded(
+        batch_id,
+        rows_seen=rows_seen,
+        rows_ingested=rows_ingested,
+        rows_rejected=rows_rejected,
+    )
+    return FileImportWriteSummary(
+        rows_ingested=rows_ingested,
         provider_request_count=request_count,
     )
 
@@ -389,8 +424,10 @@ def _require_known_excel_sources(path: Path, expected_source_values: set[str]) -
 
 __all__ = [
     "FileImportDatabaseSummary",
+    "FileImportWriteSummary",
     "MultiFileImportDatabaseSummary",
     "ingest_excel_files_run_to_postgres",
     "ingest_excel_run_to_postgres",
+    "ingest_unified_content_batch",
     "require_stage8a_schema",
 ]

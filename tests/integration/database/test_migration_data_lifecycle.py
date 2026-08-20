@@ -82,6 +82,42 @@ def _upgrade(database: str, revision: str) -> None:
         command.upgrade(Config(str(_ROOT / "alembic.ini")), revision)
 
 
+def _downgrade(database: str, revision: str) -> None:
+    with _migration_target(database):
+        command.downgrade(Config(str(_ROOT / "alembic.ini")), revision)
+
+
+def _seed_keyword(
+    database: str,
+    *,
+    text_value: str,
+    normalized_text: str,
+) -> None:
+    engine = _engine(database)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO keywords(
+                      id, text, normalized_text, enabled, created_at, updated_at
+                    ) VALUES (
+                      :id, :text, :normalized_text, TRUE, :created_at, :updated_at
+                    )
+                    """
+                ),
+                {
+                    "id": uuid4(),
+                    "text": text_value,
+                    "normalized_text": normalized_text,
+                    "created_at": _NOW,
+                    "updated_at": _NOW,
+                },
+            )
+    finally:
+        engine.dispose()
+
+
 def _seed_budget_reservation(database: str, *, status: str) -> None:
     settled_amount = 1 if status == "settled" else None
     engine = _engine(database)
@@ -303,5 +339,111 @@ def test_0016_to_0017_backfills_only_existing_current_fields(
             assert comment_fields[field] == comment["seen"]
         assert "parent_comment_id" not in comment_fields
         assert "metrics.reply_count" not in comment_fields
+    finally:
+        engine.dispose()
+
+
+def test_0019_to_0020_normalizes_keyword_identity_and_round_trips_schema(
+    migration_database: str,
+) -> None:
+    _upgrade(migration_database, "20260820_0019")
+    _seed_keyword(
+        migration_database,
+        text_value="  ＡＩＭＡ  ",
+        normalized_text=f"legacy-{uuid4()}",
+    )
+
+    _upgrade(migration_database, "20260820_0020")
+    engine = _engine(migration_database)
+    try:
+        assert "global_relevance_config" in set(inspect(engine).get_table_names())
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT normalized_text FROM keywords")) == "aima"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+                "20260820_0020"
+            )
+    finally:
+        engine.dispose()
+
+    _downgrade(migration_database, "20260820_0019")
+    engine = _engine(migration_database)
+    try:
+        assert "global_relevance_config" not in set(inspect(engine).get_table_names())
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT normalized_text FROM keywords")) == "aima"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+                "20260820_0019"
+            )
+    finally:
+        engine.dispose()
+
+    _upgrade(migration_database, "20260820_0020")
+
+
+def test_0019_to_0020_blocks_nfkc_identity_collision_before_schema_change(
+    migration_database: str,
+) -> None:
+    _upgrade(migration_database, "20260820_0019")
+    _seed_keyword(
+        migration_database,
+        text_value="ＡＩＭＡ",
+        normalized_text=f"fullwidth-{uuid4()}",
+    )
+    _seed_keyword(
+        migration_database,
+        text_value="aima",
+        normalized_text=f"ascii-{uuid4()}",
+    )
+
+    with pytest.raises(RuntimeError, match="NFKC/casefold 身份冲突"):
+        _upgrade(migration_database, "20260820_0020")
+
+    engine = _engine(migration_database)
+    try:
+        assert "global_relevance_config" not in set(inspect(engine).get_table_names())
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+                "20260820_0019"
+            )
+            assert connection.scalar(text("SELECT count(*) FROM keywords")) == 2
+    finally:
+        engine.dispose()
+
+
+def test_0020_downgrade_refuses_to_erase_filtered_candidate_semantics(
+    migration_database: str,
+) -> None:
+    _upgrade(migration_database, "20260820_0020")
+    engine = _engine(migration_database)
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO collection_candidate_ingestions(
+                      id, candidate_id, ingestion_no, observed_fields,
+                      result, processed_at
+                    ) VALUES (
+                      :id, :candidate_id, 1, '[]'::jsonb,
+                      'filtered', :processed_at
+                    )
+                    """
+                ),
+                {"id": uuid4(), "candidate_id": uuid4(), "processed_at": _NOW},
+            )
+    finally:
+        engine.dispose()
+
+    with pytest.raises(RuntimeError, match="不能安全 downgrade"):
+        _downgrade(migration_database, "20260820_0019")
+
+    engine = _engine(migration_database)
+    try:
+        assert "global_relevance_config" in set(inspect(engine).get_table_names())
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+                "20260820_0020"
+            )
     finally:
         engine.dispose()

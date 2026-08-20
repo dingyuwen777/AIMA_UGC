@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
+from aima_ugc.contracts.canonical import CanonicalContentV1, CanonicalSourceV1
 from aima_ugc.modules.collection.candidates import (
     CandidateIngestionRecord,
     CandidateIngestionService,
@@ -76,3 +77,32 @@ def test_successful_ingestion_requires_canonical_and_target(
         )
 
     assert repository.append_calls == []
+
+
+def test_filtered_candidate_preserves_canonical_identity_without_content_target() -> None:
+    repository = _CandidateRepository()
+    service = CandidateIngestionService(repository)
+    observed_at = datetime(2026, 8, 20, tzinfo=UTC)
+    canonical = CanonicalContentV1(
+        platform="xhs",
+        external_content_id="content-1",
+        content_type="note",
+        observed_at=observed_at,
+        source=CanonicalSourceV1(
+            provider_name="tikhub",
+            operation="search",
+            observed_at=observed_at,
+        ),
+        observed_fields=["content_type"],
+    )
+
+    service.record_ingestion(
+        candidate_id=uuid4(),
+        canonical=canonical,
+        target_id=None,
+        result="filtered",
+    )
+
+    assert repository.append_calls[0]["canonical_identity"] == "xhs:content-1"
+    assert repository.append_calls[0]["target_type"] is None
+    assert repository.append_calls[0]["target_id"] is None

@@ -77,6 +77,16 @@ class PostgresArtifactMetadataRepository:
         )
         return _artifact_from_row(row) if row is not None else None
 
+    def get(self, artifact_id: UUID) -> ArtifactRecord | None:
+        row = (
+            self._session.execute(
+                select(artifacts_table).where(artifacts_table.c.id == artifact_id)
+            )
+            .mappings()
+            .one_or_none()
+        )
+        return _artifact_from_row(row) if row is not None else None
+
     def mark_stored(
         self,
         artifact_id: UUID,

@@ -31,6 +31,13 @@ from .offline_labeling import (
     label_unified_content_jsonl,
 )
 from .prompt_snapshot import FrozenPromptTaxonomyLoader
+from .relevance import (
+    RelevanceDecision,
+    RelevanceKeyword,
+    RelevanceService,
+    normalize_keyword_match_text,
+    normalize_keyword_storage_text,
+)
 
 __all__ = [
     "CONTENT_LABELING_PROMPT_PATH",
@@ -55,7 +62,12 @@ __all__ = [
     "PromptTaxonomyError",
     "PromptTaxonomyLoader",
     "RuntimeTaxonomyValidator",
+    "RelevanceDecision",
+    "RelevanceKeyword",
+    "RelevanceService",
     "deduplicate_content_jsonl",
     "filter_canonical_content_jsonl",
     "label_unified_content_jsonl",
+    "normalize_keyword_match_text",
+    "normalize_keyword_storage_text",
 ]

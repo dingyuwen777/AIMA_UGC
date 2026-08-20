@@ -1,9 +1,11 @@
 import hashlib
 import os
 import subprocess
+from io import BytesIO
 
 import pytest
 from aima_ugc.adapters.storage.local import LocalArtifactStore
+from aima_ugc.platform.storage import ArtifactSizeLimitError
 
 
 def test_local_store_writes_atomically_and_is_immutable(tmp_path) -> None:
@@ -76,3 +78,23 @@ def test_local_store_rejects_parent_symlink_escape(tmp_path) -> None:
         store.put("link/escape", b"data")
 
     assert not (outside / "escape").exists()
+
+
+def test_local_store_streams_and_enforces_actual_byte_limit(tmp_path) -> None:
+    store = LocalArtifactStore(tmp_path / "artifacts")
+
+    stored = store.put_stream(
+        "file-import/raw.xlsx",
+        BytesIO(b"streamed-xlsx"),
+        max_bytes=20,
+    )
+    copied = BytesIO()
+    copied_summary = store.copy_to("file-import/raw.xlsx", copied)
+
+    assert stored.byte_size == copied_summary.byte_size == len(b"streamed-xlsx")
+    assert stored.sha256 == copied_summary.sha256
+    assert copied.getvalue() == b"streamed-xlsx"
+
+    with pytest.raises(ArtifactSizeLimitError):
+        store.put_stream("file-import/too-large.xlsx", BytesIO(b"12345"), max_bytes=4)
+    assert store.exists("file-import/too-large.xlsx") is False

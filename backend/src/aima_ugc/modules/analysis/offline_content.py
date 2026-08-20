@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,8 +14,13 @@ from pydantic import ValidationError
 
 from aima_ugc.contracts.analysis import UnifiedContentRecordV1
 from aima_ugc.contracts.canonical import CanonicalContentV1
-
-_IGNORED_KEYWORD_CONNECTORS = frozenset({"-", "_", "·"})
+from aima_ugc.modules.analysis.relevance import (
+    RelevanceKeyword,
+    RelevanceService,
+)
+from aima_ugc.modules.analysis.relevance import (
+    normalize_keyword_match_text as normalize_keyword_match_text,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,23 +62,6 @@ class _SeenIdentity:
     byte_offset: int
 
 
-@dataclass(frozen=True, slots=True)
-class _PreparedKeyword:
-    display_text: str
-    match_text: str
-
-
-def normalize_keyword_match_text(value: str) -> str:
-    """把关键词或待匹配文本归一化为仅用于相关性清洗的匹配文本。"""
-
-    normalized = unicodedata.normalize("NFKC", value).casefold()
-    return "".join(
-        character
-        for character in normalized
-        if not character.isspace() and character not in _IGNORED_KEYWORD_CONNECTORS
-    )
-
-
 def filter_canonical_content_jsonl(
     *,
     input_path: Path,
@@ -85,7 +72,12 @@ def filter_canonical_content_jsonl(
 
     source_path = Path(input_path)
     target_path = Path(output_path)
-    prepared_keywords = _prepare_keywords(keywords)
+    relevance = RelevanceService(
+        tuple(
+            RelevanceKeyword(text=keyword, priority=priority)
+            for priority, keyword in enumerate(keywords)
+        )
+    )
     target_path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = target_path.with_name(f".{target_path.name}.tmp")
     temp_path.unlink(missing_ok=True)
@@ -101,20 +93,12 @@ def filter_canonical_content_jsonl(
             for line_number, raw_line in enumerate(input_file, start=1):
                 rows_seen += 1
                 content = _parse_canonical_line(raw_line, source_path, line_number)
-                searchable_fields = (
-                    normalize_keyword_match_text(content.title or ""),
-                    normalize_keyword_match_text(content.text or ""),
-                )
-                matched_keywords = [
-                    keyword.display_text
-                    for keyword in prepared_keywords
-                    if any(keyword.match_text in field for field in searchable_fields)
-                ]
-                if not matched_keywords:
+                decision = relevance.evaluate(content)
+                if not decision.matched:
                     continue
                 record = UnifiedContentRecordV1(
                     content=content,
-                    matched_keywords=matched_keywords,
+                    matched_keywords=list(decision.matched_keywords),
                 )
                 _write_model(output_file, record)
                 rows_written += 1
@@ -220,30 +204,6 @@ def deduplicate_content_jsonl(
     temp_conflict_path.replace(conflict_path)
     temp_path.replace(target_path)
     return summary
-
-
-def _prepare_keywords(keywords: Iterable[str]) -> tuple[_PreparedKeyword, ...]:
-    prepared: list[_PreparedKeyword] = []
-    seen_match_texts: set[str] = set()
-    for raw_keyword in keywords:
-        display_text = raw_keyword.strip()
-        if not display_text:
-            raise ValueError("keywords 不能包含空字符串")
-        match_text = normalize_keyword_match_text(display_text)
-        if not match_text:
-            raise ValueError("keywords 规范化后不能为空")
-        if match_text in seen_match_texts:
-            continue
-        prepared.append(
-            _PreparedKeyword(
-                display_text=display_text,
-                match_text=match_text,
-            )
-        )
-        seen_match_texts.add(match_text)
-    if not prepared:
-        raise ValueError("keywords 至少需要一个非空关键词")
-    return tuple(prepared)
 
 
 def _parse_canonical_line(raw_line: bytes, path: Path, line_number: int) -> CanonicalContentV1:

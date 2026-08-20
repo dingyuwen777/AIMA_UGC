@@ -323,6 +323,12 @@ jobs:
           set -euo pipefail
           uv run pytest tests/integration/database -q
 
+      - name: Stage 8B import HTTP and Worker integration tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest tests/integration/ingestion -q
+
       - name: Downgrade and re-upgrade from base
         shell: bash
         run: |

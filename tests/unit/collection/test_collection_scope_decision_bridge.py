@@ -7,13 +7,18 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 from aima_ugc.adapters.providers.tikhub.capabilities import BILIBILI_TIKHUB_CAPABILITY
-from aima_ugc.bootstrap.collection_scope import TikHubCollectionScopeExecutor, _ExecutedCall
+from aima_ugc.bootstrap.collection_scope import (
+    TikHubCollectionScopeExecutor,
+    _DetailCandidate,
+    _ExecutedCall,
+)
 from aima_ugc.contracts.canonical import (
     CanonicalContentV1,
     CanonicalMetricsV1,
     CanonicalSourceV1,
 )
 from aima_ugc.contracts.collection import CollectionDecisionPolicyV1, PreviousContentStateV1
+from aima_ugc.modules.analysis import RelevanceKeyword, RelevanceService
 from aima_ugc.modules.collection.decision import CollectionDecisionService
 
 _NOW = datetime(2026, 8, 18, 2, 0, tzinfo=UTC)
@@ -28,8 +33,17 @@ class _StateReader:
 
 
 class _Writer:
-    def ingest_content(self, **_kwargs: object) -> SimpleNamespace:
-        return SimpleNamespace(target_id=uuid4())
+    def __init__(self) -> None:
+        self.filtered: list[object] = []
+        self.ingested: list[object] = []
+        self.target_id = uuid4()
+
+    def ingest_content(self, **kwargs: object) -> SimpleNamespace:
+        self.ingested.append(kwargs["candidate_id"])
+        return SimpleNamespace(target_id=self.target_id)
+
+    def record_candidate_filtered(self, **kwargs: object) -> None:
+        self.filtered.append(kwargs["candidate_id"])
 
 
 class _Actions:
@@ -145,8 +159,110 @@ def test_bilibili_search_missing_comment_count_fetches_detail_before_incremental
         policy=CollectionDecisionPolicyV1(),
         context=_Context(),  # type: ignore[arg-type]
         stats=SimpleNamespace(technical_partial_results=0),  # type: ignore[arg-type]
+        relevance=SimpleNamespace(  # type: ignore[arg-type]
+            evaluate=lambda _content: SimpleNamespace(matched=True)
+        ),
     )
 
     assert detail_calls == ["detail"]
     assert comment_actions == ["fetch_incremental"]
     assert executor._content_actions.completed_comments is True  # type: ignore[attr-defined]
+
+
+def test_search_and_single_detail_nonmatch_are_filtered_before_content_ingestion() -> None:
+    search_content = _content(comment_count=None, comment_count_observed=False).model_copy(
+        update={"title": "其他品牌"}
+    )
+    detail_content = _content(comment_count=0, comment_count_observed=True).model_copy(
+        update={"text": "仍然无关"}
+    )
+    executor = object.__new__(TikHubCollectionScopeExecutor)
+    writer = _Writer()
+    executor._content_writer = writer  # type: ignore[attr-defined]
+    detail_candidate_id = uuid4()
+    detail_calls: list[str] = []
+
+    def fake_detail(**_kwargs: object) -> tuple[_DetailCandidate, ...]:
+        detail_calls.append("detail")
+        return (_DetailCandidate(detail_content, detail_candidate_id),)
+
+    executor._fetch_detail_candidates = fake_detail  # type: ignore[method-assign]
+    stats = SimpleNamespace(filtered_content_count=0)
+    search_candidate_id = uuid4()
+
+    executor._process_search_content(
+        run=SimpleNamespace(),  # type: ignore[arg-type]
+        scope=SimpleNamespace(platform="bilibili"),  # type: ignore[arg-type]
+        content=search_content,
+        search_executed=SimpleNamespace(),  # type: ignore[arg-type]
+        search_candidate_id=search_candidate_id,
+        provider_config=SimpleNamespace(),  # type: ignore[arg-type]
+        capability=BILIBILI_TIKHUB_CAPABILITY,
+        policy=CollectionDecisionPolicyV1(),
+        context=_Context(),  # type: ignore[arg-type]
+        stats=stats,  # type: ignore[arg-type]
+        relevance=RelevanceService((RelevanceKeyword(text="爱玛", priority=1),)),
+    )
+
+    assert detail_calls == ["detail"]
+    assert writer.filtered == [search_candidate_id, detail_candidate_id]
+    assert stats.filtered_content_count == 1
+
+
+def test_detail_match_accounts_for_search_and_all_detail_candidates() -> None:
+    search_content = _content(comment_count=None, comment_count_observed=False).model_copy(
+        update={"title": "其他品牌"}
+    )
+    first_detail = _content(comment_count=0, comment_count_observed=True).model_copy(
+        update={"text": "详情补充"}
+    )
+    final_detail = _content(comment_count=0, comment_count_observed=True).model_copy(
+        update={"text": "爱玛最终详情"}
+    )
+    executor = object.__new__(TikHubCollectionScopeExecutor)
+    writer = _Writer()
+    executor._content_writer = writer  # type: ignore[attr-defined]
+    executor._content_state = _StateReader()  # type: ignore[attr-defined]
+    executor._content_actions = _Actions()  # type: ignore[attr-defined]
+    executor._decision_service = CollectionDecisionService()  # type: ignore[attr-defined]
+
+    detail_candidate_ids = (uuid4(), uuid4())
+    executor._fetch_detail_candidates = lambda **_kwargs: (  # type: ignore[method-assign]
+        _DetailCandidate(first_detail, detail_candidate_ids[0]),
+        _DetailCandidate(final_detail, detail_candidate_ids[1]),
+    )
+    executor._fetch_comments = lambda **_kwargs: SimpleNamespace(  # type: ignore[method-assign]
+        completed=True,
+        technical_partial=False,
+    )
+    executor._record_non_fetch_coverage = (  # type: ignore[method-assign]
+        lambda **_kwargs: None
+    )
+    search_candidate_id = uuid4()
+
+    executor._process_search_content(
+        run=SimpleNamespace(),  # type: ignore[arg-type]
+        scope=SimpleNamespace(
+            id=uuid4(),
+            source_type="keyword_search",
+            source_value="爱玛",
+            platform="bilibili",
+        ),  # type: ignore[arg-type]
+        content=search_content,
+        search_executed=_ExecutedCall(
+            request_id=uuid4(),
+            attempt_id=uuid4(),
+            raw_artifact_id=uuid4(),
+            observed_at=_NOW,
+            body={},
+        ),
+        search_candidate_id=search_candidate_id,
+        provider_config=SimpleNamespace(),  # type: ignore[arg-type]
+        capability=BILIBILI_TIKHUB_CAPABILITY,
+        policy=CollectionDecisionPolicyV1(),
+        context=_Context(),  # type: ignore[arg-type]
+        stats=SimpleNamespace(technical_partial_results=0, filtered_content_count=0),  # type: ignore[arg-type]
+        relevance=RelevanceService((RelevanceKeyword(text="爱玛", priority=1),)),
+    )
+
+    assert writer.ingested == [search_candidate_id, *detail_candidate_ids]

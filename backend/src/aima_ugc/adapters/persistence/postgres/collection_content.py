@@ -196,6 +196,42 @@ class PostgresFencedCollectionIngestionWriter:
         finally:
             session.close()
 
+    def record_candidate_filtered(
+        self,
+        *,
+        candidate_id: UUID,
+        canonical: CanonicalContentV1,
+        fence: JobExecutionFence,
+    ) -> None:
+        """保留已成功映射但未通过全局 Relevance 的 Candidate 终态。"""
+
+        attempt_id = _provider_attempt_id(canonical)
+        raw_artifact_id = _raw_artifact_id(canonical)
+        session = self._session_factory()
+        try:
+            with session.begin():
+                _lock_matching_attempt(
+                    session,
+                    attempt_id=attempt_id,
+                    raw_artifact_id=raw_artifact_id,
+                    fence=fence,
+                )
+                _require_candidate_attempt(
+                    session,
+                    candidate_id=candidate_id,
+                    attempt_id=attempt_id,
+                )
+                CandidateIngestionService(PostgresCandidateRepository(session)).record_ingestion(
+                    candidate_id=candidate_id,
+                    canonical=canonical,
+                    target_id=None,
+                    result="filtered",
+                    error_code=None,
+                    error_detail=None,
+                )
+        finally:
+            session.close()
+
     def ingest_content(
         self,
         *,

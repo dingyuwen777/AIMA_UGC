@@ -66,7 +66,7 @@ collection_candidate_ingestions_table = Table(
     UniqueConstraint("candidate_id", "ingestion_no"),
     CheckConstraint("ingestion_no >= 1", name="ingestion_no_positive"),
     CheckConstraint(
-        "result in ('ingested','duplicate','invalid','unsupported','failed')",
+        "result in ('ingested','duplicate','filtered','invalid','unsupported','failed')",
         name="result_allowed",
     ),
     CheckConstraint(

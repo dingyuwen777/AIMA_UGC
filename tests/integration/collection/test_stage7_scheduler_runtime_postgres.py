@@ -10,6 +10,9 @@ import pytest
 from aima_ugc.adapters.persistence.postgres.collection_planning import (
     PostgresCollectionPlanningRepository,
 )
+from aima_ugc.adapters.persistence.postgres.relevance import (
+    PostgresGlobalRelevanceRepository,
+)
 from aima_ugc.bootstrap.scheduler import create_scheduler_runtime, run_scheduler_once
 from aima_ugc.modules.collection.corrective_tables import (
     collection_plan_decision_policies_table,
@@ -28,6 +31,7 @@ from aima_ugc.modules.collection.tables import (
     collection_scopes_table,
 )
 from aima_ugc.modules.system.tables import (
+    global_relevance_config_table,
     keyword_pack_items_table,
     keyword_packs_table,
     keywords_table,
@@ -52,6 +56,7 @@ def scheduler_runtime():
             connection.execute(delete(collection_plans_table))
             connection.execute(delete(job_attempt_events_table))
             connection.execute(delete(jobs_table))
+            connection.execute(delete(global_relevance_config_table))
             connection.execute(delete(keyword_pack_items_table))
             connection.execute(delete(keywords_table))
             connection.execute(delete(keyword_packs_table))
@@ -116,6 +121,7 @@ def _create_plan(scheduler_runtime):
                     note="scheduler runtime fixture",
                 )
             )
+            PostgresGlobalRelevanceRepository(session).set(keyword_pack_id)
             plan = CollectionPlanningService(
                 PostgresCollectionPlanningRepository(session)
             ).create_plan(

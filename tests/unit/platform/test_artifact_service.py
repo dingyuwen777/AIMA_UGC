@@ -1,5 +1,6 @@
 from dataclasses import replace
 from datetime import datetime
+from io import BytesIO
 from uuid import UUID
 
 from aima_ugc.adapters.storage.local import LocalArtifactStore
@@ -70,3 +71,21 @@ def test_artifact_service_owns_pending_stored_linked_lifecycle(tmp_path) -> None
     linked = service.link(stored.id)
     assert linked.storage_status == "linked"
     assert linked.linked_at is not None
+
+
+def test_artifact_service_streams_source_with_a_safe_filename_suffix(tmp_path) -> None:
+    metadata = FakeArtifactMetadata()
+    store = LocalArtifactStore(tmp_path / "artifacts")
+    service = ArtifactService(metadata=metadata, store=store)
+
+    record = service.store_stream(
+        kind="file-import.raw",
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        retention_class="raw",
+        source=BytesIO(b"xlsx"),
+        max_bytes=10,
+        filename_suffix=".xlsx",
+    )
+
+    assert record.byte_size == 4
+    assert record.storage_key.endswith(".xlsx")

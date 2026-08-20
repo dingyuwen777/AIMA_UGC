@@ -92,6 +92,19 @@ keyword_pack_items_table = Table(
     info={"owner": "system"},
 )
 
+global_relevance_config_table = Table(
+    "global_relevance_config",
+    metadata,
+    Column("singleton_key", Text(), primary_key=True),
+    Column("keyword_pack_id", Uuid(), ForeignKey("keyword_packs.id"), nullable=False),
+    Column("version", Integer(), nullable=False, server_default=text("1")),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    CheckConstraint("singleton_key = 'global'", name="singleton_key_global"),
+    CheckConstraint("version > 0", name="version_positive"),
+    info={"owner": "system"},
+)
+
 audit_events_table = Table(
     "audit_events",
     metadata,

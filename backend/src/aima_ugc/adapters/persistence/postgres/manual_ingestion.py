@@ -5,7 +5,9 @@ from __future__ import annotations
 from typing import cast
 from uuid import UUID
 
+from sqlalchemy import cast as sql_cast
 from sqlalchemy import func, insert, select, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
@@ -25,6 +27,7 @@ class PostgresProcessingImportBatchRepository:
         batch_id: UUID,
         input_artifact_id: UUID,
         job_id: UUID | None = None,
+        stats: dict[str, object] | None = None,
     ) -> ProcessingImportBatchRecord:
         row = (
             self._session.execute(
@@ -34,9 +37,9 @@ class PostgresProcessingImportBatchRepository:
                     input_artifact_id=input_artifact_id,
                     job_id=job_id,
                     status="processing",
-                    stats={},
+                    stats=stats or {},
                     created_at=func.clock_timestamp(),
-                    started_at=func.clock_timestamp(),
+                    started_at=(func.clock_timestamp() if job_id is None else None),
                 )
                 .returning(*processing_import_batches_table.c)
             )
@@ -57,6 +60,7 @@ class PostgresProcessingImportBatchRepository:
             batch_id,
             status="succeeded",
             stats={
+                "stage": "succeeded",
                 "rows_seen": rows_seen,
                 "rows_ingested": rows_ingested,
                 "rows_rejected": rows_rejected,
@@ -79,6 +83,7 @@ class PostgresProcessingImportBatchRepository:
             batch_id,
             status="failed",
             stats={
+                "stage": "failed",
                 "rows_seen": rows_seen,
                 "rows_ingested": rows_ingested,
                 "rows_rejected": rows_rejected,
@@ -98,15 +103,62 @@ class PostgresProcessingImportBatchRepository:
         )
         return _row_to_batch(row) if row is not None else None
 
+    def get_by_job_id(
+        self,
+        job_id: UUID,
+        *,
+        for_update: bool = False,
+    ) -> ProcessingImportBatchRecord | None:
+        statement = select(processing_import_batches_table).where(
+            processing_import_batches_table.c.job_id == job_id
+        )
+        if for_update:
+            statement = statement.with_for_update()
+        row = self._session.execute(statement).mappings().one_or_none()
+        return _row_to_batch(row) if row is not None else None
+
+    def update_progress(
+        self,
+        batch_id: UUID,
+        *,
+        stage: str,
+        stats: dict[str, object],
+    ) -> ProcessingImportBatchRecord:
+        values: dict[str, object] = {"stats": {**stats, "stage": stage}}
+        if stage == "reading":
+            values["started_at"] = func.coalesce(
+                processing_import_batches_table.c.started_at,
+                func.clock_timestamp(),
+            )
+        row = (
+            self._session.execute(
+                update(processing_import_batches_table)
+                .where(
+                    processing_import_batches_table.c.id == batch_id,
+                    processing_import_batches_table.c.status == "processing",
+                )
+                .values(**values)
+                .returning(*processing_import_batches_table.c)
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is None:
+            raise RuntimeError(f"Processing / Import Batch 不存在或已结束: {batch_id}")
+        return _row_to_batch(row)
+
     def _finish(
         self,
         batch_id: UUID,
         *,
         status: str,
-        stats: dict[str, int],
+        stats: dict[str, object],
         error_summary: str | None,
     ) -> ProcessingImportBatchRecord:
-        if any(value < 0 for value in stats.values()):
+        if any(
+            isinstance(value, int) and not isinstance(value, bool) and value < 0
+            for value in stats.values()
+        ):
             raise ValueError("Import Batch 计数不能为负数")
         row = (
             self._session.execute(
@@ -117,7 +169,7 @@ class PostgresProcessingImportBatchRepository:
                 )
                 .values(
                     status=status,
-                    stats=stats,
+                    stats=processing_import_batches_table.c.stats.op("||")(sql_cast(stats, JSONB)),
                     error_summary=error_summary,
                     finished_at=func.clock_timestamp(),
                 )

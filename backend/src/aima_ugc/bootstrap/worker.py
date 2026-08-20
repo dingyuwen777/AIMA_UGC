@@ -20,6 +20,7 @@ from aima_ugc.modules.collection.collection_run_job import (
     register_collection_run_job,
 )
 from aima_ugc.modules.collection.providers import ProviderTransport, RawArtifactService
+from aima_ugc.modules.ingestion import ImportJobHandler, register_import_job
 from aima_ugc.modules.system.models import ProviderConfig
 from aima_ugc.platform.config import PlatformSettings
 from aima_ugc.platform.jobs import JobReaper, JobRegistry, JobWorker
@@ -27,6 +28,7 @@ from aima_ugc.platform.security import read_secret_file, validate_secret_ref
 from aima_ugc.platform.storage import ArtifactService
 
 from .collection_scope import TikHubCollectionScopeExecutor
+from .import_worker import PostgresImportJobExecutor, import_job_terminal_callback
 from .runtime import PlatformRuntime, create_platform_runtime
 
 
@@ -101,6 +103,11 @@ def create_collection_job_registry(
     )
     registry = JobRegistry()
     register_collection_run_job(registry, CollectionRunJobHandler(executor))
+    register_import_job(
+        registry,
+        ImportJobHandler(PostgresImportJobExecutor(runtime)),
+        terminal_callback=import_job_terminal_callback,
+    )
     return registry
 
 

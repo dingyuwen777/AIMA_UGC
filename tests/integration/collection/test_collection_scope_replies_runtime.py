@@ -196,6 +196,13 @@ def _execute_reply_case(
             )
             snapshot: dict[str, object] = {
                 "schema_version": "collection-run-config.v1",
+                "relevance": {
+                    "schema_version": "relevance-snapshot.v1",
+                    "keyword_pack_id": str(uuid4()),
+                    "keyword_pack_version": 1,
+                    "config_version": 1,
+                    "effective_keywords": ["脱敏"],
+                },
                 "detail_policy": "on_change",
                 "comment_policy": "adaptive",
                 "platforms": [

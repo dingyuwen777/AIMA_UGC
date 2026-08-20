@@ -68,9 +68,9 @@
 
 ## 当前开发状态
 
-**Stage 1—7 已闭环，临时 P1 已闭环。Stage 8A 已建立 Unified Manual Ingestion Foundation：Excel 仍是第一版主要人工数据入口，TikHub 仍是辅助来源；两类人工调试入口默认保持 file-only，并可显式把同一业务数据接入正式 PostgreSQL Content 体系。Stage 8A 没有实现网页上传、运行中心、Content Center、正式 Analysis 数据库页面或其他 Stage 8B+ 产品能力。**
+**Stage 1—7、临时 P1 与 Stage 8A 已闭环。Stage 8B 当前 Active Change 已在开发分支建立 Import HTTP / Durable Job / 全局 Relevance Productization 的机器实现；是否正式闭环仍以最终 PR Head 新鲜 CI、两阶段 Review、正常合并、Change 归档和合并后 `main` 验证为准。Stage 8B 没有实现 Vue 页面、Content Center 或 Stage 8C—8F 能力。**
 
-Stage 8A 当前机器边界：
+Stage 8A 与当前 Stage 8B 开发分支机器边界：
 
 - `processing_import_batches` 作为 Excel File Import 的最小业务父事实；
 - `provider_requests` 支持 Collection Scope / Import Batch 恰好一个父级，既有 Collection 来源语义保持兼容；
@@ -79,6 +79,9 @@ Stage 8A 当前机器边界：
 - `tikhub_test` 五个平台 `run_*()` 默认 `write_to_database=False`，显式数据库模式要求稳定 `provider_config_id`，复用 manual Collection / Provider Dispatch / Raw / Candidate-before-Mapper / fenced Ingestion；
 - TikHub 数据库模式同一次外部请求同时保留本地调试 Raw 和正式 Raw Artifact，不从 JSONL/Excel 二次回灌，也不因写库额外再发一次 Provider 请求；
 - PostgreSQL 仍按 `(platform, external_content_id)` 与评论稳定身份收敛跨批次、跨来源 Current，并保留 Version/Metric/来源历史；
+- Stage 8B 为单个 `.xlsx` 建立 multipart HTTP 上传、Source Artifact、Processing Import Batch 与持久化 `ingestion.import-excel.v1` Job；Router 不执行长任务，Worker 复用 Stage 8A 正式 Reader/Mapper/Ingestion；
+- 系统全局唯一启用的 Relevance Keyword Pack 保存在 PostgreSQL，Import Job 和 Collection Run 冻结配置快照；所有渠道都在 Mapper 后、正式 Content Ingestion 前执行同一 Relevance Service；
+- Import Batch 和 Import Job 支持按 ID 查询，固定响应、统一错误结构和 `request_id` 已进入 OpenAPI，并由现有 Orval 流程生成 TypeScript Client；
 - 数据库模式只连接开发者已经准备好的 PostgreSQL 18，不管理 Docker，不自动执行 Alembic Migration，Schema 不满足要求时关闭失败。
 
 Stage 7 已完成并固化：
@@ -115,11 +118,11 @@ P1 已固化的长期能力：
 
 ## 下一正式阶段
 
-### Stage 8B：Import HTTP / Job Productization
+### Stage 8C：采集运行中心首个完整前后端纵切
 
-Stage 8A 完成集成闭环后，下一个最小正式单元是 **Stage 8B**。8B 只把已经存在的正式 File Import Foundation 产品化为浏览器/API 可用的 Contract 与持久化 Job，不重新设计 Stage 8A 的来源链，也不提前进入 Stage 8C 正式业务页面。
+Stage 8B 正常闭环后，下一个最小正式单元是 **Stage 8C**。8C 只完成采集运行中心的首个正式 Vue/Figma 前后端纵切；系统全局 Relevance Keyword Pack 配置页面仍按已批准边界留到 Stage 8F。
 
-开始 Stage 8B 时仍必须重新从当时 `main` 恢复事实：
+开始 Stage 8C 时仍必须重新从当时 `main` 恢复事实：
 
 ```text
 AGENTS.md
@@ -135,7 +138,7 @@ AGENTS.md
 → 当前 main / Contract / Migration / OpenAPI / generated client / backend Router/Service / frontend 结构与测试
 ```
 
-Stage 8B 的目标边界以 Blueprint 17 为准：上传/登记 Excel Source Artifact、创建/查询 Processing Import Batch、持久化 Import Job、状态/阶段/统计/错误摘要、统一 HTTP 错误与 request_id、固定 OpenAPI、生成 Orval Client，以及 API/Contract/PostgreSQL Integration。Stage 8C 的采集运行中心 Vue/Figma 页面不属于 8B。
+Stage 8C 的目标边界以 Blueprint 16 和 17 为准：先确认 Figma 事实源和页面验收标准，再补齐页面实际需要的 Batch 列表/KPI/Cursor Read Model，复用 Stage 8B 生成的 Orval Client 完成首个运行中心纵切，不提前进入 Content Center、TikHub 补采页面或 Stage 8D—8F。
 
 ### 独立于 Stage 8A 的后续门禁
 
@@ -146,7 +149,7 @@ Stage 8B 的目标边界以 Blueprint 17 为准：上传/登记 Excel Source Art
 - 已落地的是平台通用 Analysis 核心与无数据库验证入口；正式数据库 DDL/Migration、Analysis Job/API/页面仍需按 Blueprint 15 和对应正式阶段闭环；
 - 日请求量、数据量、Worker 并发、Raw/数据库日增量、磁盘容量、SLO、RPO、RTO；
 - 生产镜像 variant/digest、离线 Release、安全发布与恢复演练；
-- Stage 8B+ 正式业务 API/页面及 Provider 凭据写入能力；凭据仍必须通过安全 SecretStore/SecretService，不能把数据库明文 Secret 当捷径；
+- Stage 8C+ 正式业务页面及 Provider 凭据写入能力；凭据仍必须通过安全 SecretStore/SecretService，不能把数据库明文 Secret 当捷径；
 - 未来如重新需要 Budget/Cost Guard，必须创建新的 L3 Change，不得复活当前已删除接口。
 
 ## 修改规则
