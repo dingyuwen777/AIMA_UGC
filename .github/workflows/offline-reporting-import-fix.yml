@@ -1,0 +1,81 @@
+name: Offline Reporting Import Fix
+
+on:
+  push:
+    branches:
+      - feature/offline-reporting
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Install locked environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv sync --locked
+
+      - name: Fix import ordering only in task files
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff check --fix \
+            backend/src/aima_ugc/adapters/providers/imports_test/test.py \
+            backend/src/aima_ugc/platform/reporting/__init__.py \
+            backend/src/aima_ugc/platform/reporting/chart_png.py \
+            backend/src/aima_ugc/platform/reporting/docx_package.py \
+            backend/src/aima_ugc/platform/reporting/excel_report.py \
+            backend/src/aima_ugc/platform/reporting/markdown_word.py \
+            tests/unit/collection/test_imports_test_run_directory.py \
+            tests/unit/collection/test_p1g_imports_run_all.py \
+            tests/unit/platform/test_docx_package_structure.py \
+            tests/unit/platform/test_imports_test_reporting.py \
+            tests/unit/platform/test_offline_reporting.py
+
+      - name: Commit only task-file fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- \
+            backend/src/aima_ugc/adapters/providers/imports_test/test.py \
+            backend/src/aima_ugc/platform/reporting/__init__.py \
+            backend/src/aima_ugc/platform/reporting/chart_png.py \
+            backend/src/aima_ugc/platform/reporting/docx_package.py \
+            backend/src/aima_ugc/platform/reporting/excel_report.py \
+            backend/src/aima_ugc/platform/reporting/markdown_word.py \
+            tests/unit/collection/test_imports_test_run_directory.py \
+            tests/unit/collection/test_p1g_imports_run_all.py \
+            tests/unit/platform/test_docx_package_structure.py \
+            tests/unit/platform/test_imports_test_reporting.py \
+            tests/unit/platform/test_offline_reporting.py; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- \
+            backend/src/aima_ugc/adapters/providers/imports_test/test.py \
+            backend/src/aima_ugc/platform/reporting/__init__.py \
+            backend/src/aima_ugc/platform/reporting/chart_png.py \
+            backend/src/aima_ugc/platform/reporting/docx_package.py \
+            backend/src/aima_ugc/platform/reporting/excel_report.py \
+            backend/src/aima_ugc/platform/reporting/markdown_word.py \
+            tests/unit/collection/test_imports_test_run_directory.py \
+            tests/unit/collection/test_p1g_imports_run_all.py \
+            tests/unit/platform/test_docx_package_structure.py \
+            tests/unit/platform/test_imports_test_reporting.py \
+            tests/unit/platform/test_offline_reporting.py
+          git commit -m '修复：整理离线报告导入顺序 [skip ci]'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
