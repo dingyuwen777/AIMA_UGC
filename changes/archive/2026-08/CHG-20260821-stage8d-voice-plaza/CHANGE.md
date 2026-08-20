@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260821-stage8d-voice-plaza"
 title: "Stage 8D 声音广场、Analysis 持久化与 Excel 导出产品化"
 level: L3
-status: in_progress
+status: done
 owner: "codex"
 branch: "feature/stage8d-voice-plaza"
 created: 2026-08-21
@@ -28,6 +28,13 @@ contracts:
   - "analysis.content-label.v1 / reporting.content-export-excel.v1 Job Payload"
 data_changes: ["analysis_content_results", "analysis_content_label_pairs", "analysis_content_requests", "analysis_content_request_items", "reporting_data_exports", "reporting_data_export_items"]
 ---
+
+# 完成结论
+
+Stage 8D 已完成实现、Red → Green、PostgreSQL 18.4 与浏览器验证、两阶段 Review、固定 OpenAPI/Orval、
+实现 PR 合并和合并后 `main` 新鲜 CI；本 Change 进入 `done` 并归档。正式范围止于声音广场、持久化
+Analysis 与 Excel 导出产品化，没有实现 Stage 8E TikHub 辅助补采或 Stage 8F Relevance 配置页面；
+下一正式最小开发单元是 Stage 8E TikHub 辅助补采。
 
 # 背景与当前事实
 
@@ -54,7 +61,7 @@ data_changes: ["analysis_content_results", "analysis_content_label_pairs", "anal
 - [x] 导出支持当前全部查询结果、当前页和显式选择项；创建持久化 Job 后由 Worker 复用共享 Excel exporter，产物登记为 Artifact，HTTP 请求不执行长任务。
 - [x] 导出严格冻结请求时的过滤条件/排序或 Content ID 集合；未分析项不静默剔除，完成统计明确报告总数、已分析数和未分析数。
 - [x] OpenAPI Drift、Orval 生成、前后端质量门禁、真实 PostgreSQL Migration/Integration、Job fencing/retry/idempotency 均通过。
-- [ ] 两阶段 Review、最终 PR Head 新鲜 CI、正常合并、合并后 main 验证和 Change 归档全部完成。
+- [x] 两阶段 Review、最终 PR Head 新鲜 CI、正常合并、合并后 main 验证和 Change 归档全部完成。
 
 # 范围
 
@@ -142,8 +149,8 @@ data_changes: ["analysis_content_results", "analysis_content_label_pairs", "anal
 - [x] 同步真正受影响的 Blueprint/API/运维文档
 - [x] 运行真实 PostgreSQL、Migration、后端/前端/生成物和质量门禁
 - [x] 完成需求符合性 Review 与代码质量 Review，严重/重要问题清零
-- [ ] Commit、Draft PR、Review、最终 Head 新鲜 CI、Ready、正常合并
-- [ ] 合并后 main 验证、Change done/归档、归档 PR 和分支清理
+- [x] Commit、Draft PR、Review、最终 Head 新鲜 CI、Ready、正常合并
+- [x] 合并后 main 验证、Change done/归档和独立归档交付
 
 # 验证
 
@@ -212,7 +219,14 @@ data_changes: ["analysis_content_results", "analysis_content_label_pairs", "anal
 - Contract/Frontend：OpenAPI `--check`、Compatibility 与 Orval SHA-256 无漂移；Vitest `13 passed`、
   ESLint、TypeScript 6/7、Vite build、Playwright `5 passed` 均通过；npm 生产/全部依赖 audit 均为
   `found 0 vulnerabilities`。
-- GitHub Actions：待最终 PR Head 执行。
+- 实现 PR 最终 Head `7f87d7403bdf1056b2f578f2ad803c8de1cbd551` 的 26/26 checks 全部成功；
+  PR 无 Review 评论或变更请求，从 Draft 转 Ready 后以普通 Merge Commit 正常合并。
+- Merge Commit `c6eeb93ed2b198abe7675323aa1657c8b9956fc5` 上重新运行本地完整后端测试为
+  `705 passed, 1 skipped`，前端 Vitest `13 passed`、Playwright `5 passed`，Migration Head/Drift、
+  OpenAPI/Orval、Ruff、mypy、Architecture、Table Ownership、Secret、Docs、Lint、Typecheck 与 Build
+  均通过；该 Commit 触发的 11/11 GitHub push workflows 全部成功。
+- 合并后第一次受限进程验证因 Windows 临时目录 ACL 和 Vite 子进程 `EPERM` 未进入业务断言；复核 ACL
+  后在同一机器用户上下文、不改测试集合或门禁重跑并全部成功。
 
 # 文档影响
 
@@ -224,7 +238,9 @@ data_changes: ["analysis_content_results", "analysis_content_label_pairs", "anal
 # 交付
 
 - Branch：`feature/stage8d-voice-plaza`
-- Implementation Commit：`deee4395c774241f402cc9efc6010817c968c2e5`。
-- PR：[#102](https://github.com/dingyuwen777/AIMA_UGC/pull/102)，Draft，最终 Head CI 运行中。
-- Merge：待完成。
-- Archive：待完成。
+- Commit：`deee4395c774241f402cc9efc6010817c968c2e5`（实现）、
+  `7f87d7403bdf1056b2f578f2ad803c8de1cbd551`（记录 PR 恢复点）。
+- PR：[#102 Stage 8D：实现声音广场与持久化分析导出](https://github.com/dingyuwen777/AIMA_UGC/pull/102)，
+  最终 Head 26/26 checks 成功，已合并。
+- Merge Commit：`c6eeb93ed2b198abe7675323aa1657c8b9956fc5`。
+- Archive：`changes/archive/2026-08/CHG-20260821-stage8d-voice-plaza/CHANGE.md`，通过独立归档 PR 交付。
