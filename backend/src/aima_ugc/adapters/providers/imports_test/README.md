@@ -358,14 +358,18 @@ backend/src/aima_ugc/adapters/llm/pricing.toml
 | `model` | 精确模型 ID | 供应商官方模型/价格页 |
 | `currency` | 价格页使用的三字母币种，例如 `CNY` | 官方价格页 |
 | `input_per_million` | 无缓存拆分模型每百万输入 token 单价 | 官方价格页；与下面两项二选一 |
-| `input_cache_hit_per_million` | 每百万缓存命中输入 token 单价 | 官方价格页和 API usage 定义 |
-| `input_cache_miss_per_million` | 每百万缓存未命中输入 token 单价 | 官方价格页和 API usage 定义 |
-| `output_per_million` | 每百万输出 token 单价 | 官方价格页 |
+| `input_cache_hit_per_million_tokens` | 输入（缓存命中），每百万 tokens 单价 | 官方价格页和 API usage 定义 |
+| `input_cache_miss_per_million_tokens` | 输入（缓存未命中），每百万 tokens 单价 | 官方价格页和 API usage 定义 |
+| `output_per_million_tokens` | 输出，每百万 tokens 单价 | 官方价格页 |
 | `source_url` | 上述价格的官方依据 | 供应商官方价格页面，不使用二手报价 |
+| `effective_date` | 本条价格在 AIMA 价格目录中的生效日期，格式 `YYYY-MM-DD` | 价格维护变更的启用日期；若供应商没有单独公布生效日，不得写成“供应商公告日” |
 
 `schema_version` 只是 TOML 解析格式，正常换模型时不修改。代码根据规范化后的 provider、model、
-币种、单价和来源 URL 自动计算价格快照 SHA-256，不需要手工维护 `pricing_version` 或
-`effective_from`。
+币种、单价和来源 URL 自动计算价格快照 SHA-256，不需要手工维护 `pricing_version`。
+`effective_date` 是可读、可校验的目录元数据，不参与 token 费用公式或既有审计快照 Hash。
+
+旧 TOML 的 `input_cache_hit_per_million`、`input_cache_miss_per_million`、
+`output_per_million` 可在兼容期读取，但运行时会发出 `FutureWarning`；新配置不要继续使用旧字段。
 
 更换模型时只做两件事：
 
@@ -381,6 +385,10 @@ DeepSeek 当前价格和 usage 字段以以下官方页面为准：
 
 - <https://api-docs.deepseek.com/zh-cn/quick_start/pricing/>
 - <https://api-docs.deepseek.com/zh-cn/api/create-chat-completion/>
+
+2026-08-20 核验的 `deepseek-v4-pro` 人民币价格为：输入（缓存命中）0.025 CNY / 百万 tokens、
+输入（缓存未命中）3 CNY / 百万 tokens、输出 6 CNY / 百万 tokens。当前 `pricing.toml` 已与该
+一手价格页一致；价格数值没有因本次字段改名而变化。
 
 ## 5. 250 并发实际怎么运行
 
@@ -638,12 +646,12 @@ report_date_range
 ```text
 普通模型费用
 = input_tokens × input_per_million / 1,000,000
-+ output_tokens × output_per_million / 1,000,000
++ output_tokens × output_per_million_tokens / 1,000,000
 
 缓存拆分模型费用
-= cache_hit_tokens × cache_hit_price / 1,000,000
-+ cache_miss_tokens × cache_miss_price / 1,000,000
-+ output_tokens × output_price / 1,000,000
+= cache_hit_tokens × input_cache_hit_per_million_tokens / 1,000,000
++ cache_miss_tokens × input_cache_miss_per_million_tokens / 1,000,000
++ output_tokens × output_per_million_tokens / 1,000,000
 ```
 
 `analysis/llm_requests.jsonl` 一行对应一个物理 HTTP 请求，包含空 `content`、Validation Retry

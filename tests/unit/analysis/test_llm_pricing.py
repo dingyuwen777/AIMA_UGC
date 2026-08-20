@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -29,11 +30,17 @@ def test_default_catalog_calculates_deepseek_v4_pro_cache_split_cost() -> None:
 
     assert price.currency == "CNY"
     assert price.input_per_million is None
-    assert price.input_cache_hit_per_million == Decimal("0.025")
-    assert price.input_cache_miss_per_million == Decimal("3")
-    assert price.output_per_million == Decimal("6")
+    assert price.input_cache_hit_per_million_tokens == Decimal("0.025")
+    assert price.input_cache_miss_per_million_tokens == Decimal("3")
+    assert price.output_per_million_tokens == Decimal("6")
     assert price.source_url == "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"
-    assert len(price.snapshot_sha256) == 64
+    assert price.effective_date == date(2026, 8, 20)
+    assert not hasattr(price, "input_cache_hit_per_million")
+    assert not hasattr(price, "input_cache_miss_per_million")
+    assert not hasattr(price, "output_per_million")
+    assert price.snapshot_sha256 == (
+        "46464f3373b9953111aa1957d652103bd0e69e1ee9023d89332c9cb801db69fe"
+    )
     assert calculation.amount == Decimal("0.0001355")
     assert calculation.currency == "CNY"
     assert calculation.pricing_snapshot_sha256 == price.snapshot_sha256
@@ -49,8 +56,9 @@ def test_catalog_supports_flat_input_output_text_model_without_extra_mode_config
         model = "model-a"
         currency = "USD"
         input_per_million = "2"
-        output_per_million = "8"
+        output_per_million_tokens = "8"
         source_url = "https://llm.example/pricing"
+        effective_date = "2026-08-20"
         """
     )
 
@@ -59,6 +67,25 @@ def test_catalog_supports_flat_input_output_text_model_without_extra_mode_config
 
     assert calculation.amount == Decimal("0.004")
     assert calculation.currency == "USD"
+
+
+def test_deepseek_official_example_uses_exact_decimal_cost() -> None:
+    price = load_llm_pricing().price_for(
+        provider="api.deepseek.com",
+        model="deepseek-v4-pro",
+    )
+
+    calculation = price.calculate(
+        LLMTokenUsage(
+            input_tokens=1_000_000,
+            output_tokens=100_000,
+            input_cache_hit_tokens=800_000,
+            input_cache_miss_tokens=200_000,
+        )
+    )
+
+    assert calculation.amount == Decimal("1.22")
+    assert calculation.currency == "CNY"
 
 
 def test_cache_split_price_refuses_incomplete_or_inconsistent_usage() -> None:
@@ -91,9 +118,9 @@ def test_unknown_model_has_no_silent_fallback_price() -> None:
 @pytest.mark.parametrize(
     "rate_fields",
     (
-        'input_per_million = "1"\ninput_cache_hit_per_million = "0.1"\n'
-        'input_cache_miss_per_million = "1"',
-        'input_cache_hit_per_million = "0.1"',
+        'input_per_million = "1"\ninput_cache_hit_per_million_tokens = "0.1"\n'
+        'input_cache_miss_per_million_tokens = "1"',
+        'input_cache_hit_per_million_tokens = "0.1"',
     ),
 )
 def test_catalog_rejects_ambiguous_or_incomplete_input_rates(rate_fields: str) -> None:
@@ -107,7 +134,70 @@ def test_catalog_rejects_ambiguous_or_incomplete_input_rates(rate_fields: str) -
             model = "model-a"
             currency = "USD"
             {rate_fields}
-            output_per_million = "8"
+            output_per_million_tokens = "8"
             source_url = "https://llm.example/pricing"
+            effective_date = "2026-08-20"
+            """
+        )
+
+
+def test_catalog_reads_legacy_rate_fields_with_warning() -> None:
+    with pytest.warns(FutureWarning, match="旧字段"):
+        catalog = LLMPricingCatalog.from_toml(
+            """
+            schema_version = "llm-pricing.v1"
+
+            [[models]]
+            provider = "api.deepseek.com"
+            model = "deepseek-v4-pro"
+            currency = "CNY"
+            input_cache_hit_per_million = "0.025"
+            input_cache_miss_per_million = "3"
+            output_per_million = "6"
+            source_url = "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"
+            """
+        )
+
+    price = catalog.price_for(provider="api.deepseek.com", model="deepseek-v4-pro")
+    assert price.input_cache_hit_per_million_tokens == Decimal("0.025")
+    assert price.input_cache_miss_per_million_tokens == Decimal("3")
+    assert price.output_per_million_tokens == Decimal("6")
+    assert price.effective_date is None
+
+
+def test_catalog_rejects_mixed_new_and_legacy_names() -> None:
+    with pytest.raises(ValueError, match="不能同时配置"):
+        LLMPricingCatalog.from_toml(
+            """
+            schema_version = "llm-pricing.v1"
+
+            [[models]]
+            provider = "api.deepseek.com"
+            model = "deepseek-v4-pro"
+            currency = "CNY"
+            input_cache_hit_per_million_tokens = "0.025"
+            input_cache_hit_per_million = "0.025"
+            input_cache_miss_per_million_tokens = "3"
+            output_per_million_tokens = "6"
+            source_url = "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"
+            effective_date = "2026-08-20"
+            """
+        )
+
+
+def test_catalog_requires_effective_date_for_new_names() -> None:
+    with pytest.raises(ValueError, match="effective_date"):
+        LLMPricingCatalog.from_toml(
+            """
+            schema_version = "llm-pricing.v1"
+
+            [[models]]
+            provider = "api.deepseek.com"
+            model = "deepseek-v4-pro"
+            currency = "CNY"
+            input_cache_hit_per_million_tokens = "0.025"
+            input_cache_miss_per_million_tokens = "3"
+            output_per_million_tokens = "6"
+            source_url = "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"
             """
         )

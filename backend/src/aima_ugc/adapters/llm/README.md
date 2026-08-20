@@ -20,18 +20,37 @@ Analysis 业务层只定义 `ContentLabelingLLMPort`、标签语义和 Validatio
 
 ## 当前价格与以后换模型
 
-现阶段 `pricing.toml` 只配置实际使用的 `api.deepseek.com / deepseek-v4-pro`。文件不保存 API Key、
-人工生效时间或人工价格版本；每个请求会冻结实际单价、官方来源 URL 和由规范化价格内容自动生成的
-SHA-256。
+现阶段 `pricing.toml` 只配置实际使用的 `api.deepseek.com / deepseek-v4-pro`。文件不保存 API Key
+或人工价格版本；每项价格保存它在 AIMA 价格目录中的 `effective_date`。每个请求会冻结实际单价、
+官方来源 URL 和由规范化价格内容自动生成的 SHA-256；日期不参与费用公式，也不改变相同价格事实的
+既有快照 Hash。
+
+2026-08-20 核验 DeepSeek 官方价格页后，当前人民币价格仍为：
+
+| 官方价格项 | 单价 |
+| --- | ---: |
+| 输入（缓存命中），每百万 tokens | 0.025 CNY |
+| 输入（缓存未命中），每百万 tokens | 3 CNY |
+| 输出，每百万 tokens | 6 CNY |
+
+一手来源：<https://api-docs.deepseek.com/zh-cn/quick_start/pricing/>。
 
 以后换其他文本模型时：
 
 1. 从供应商官方 API 文档确认 Base URL、精确模型 ID 和 usage 字段；
 2. 从官方价格页确认币种与每百万 token 单价；
 3. 在 `pricing.toml` 新增准确的 `provider + model` 项；
-4. 普通模型配置 `input_per_million + output_per_million`，缓存拆分模型配置
-   `input_cache_hit_per_million + input_cache_miss_per_million + output_per_million`；
-5. 增加价格解析、usage 映射和费用计算测试。
+4. 普通模型配置 `input_per_million + output_per_million_tokens`，缓存拆分模型配置
+   `input_cache_hit_per_million_tokens + input_cache_miss_per_million_tokens +
+   output_per_million_tokens`；
+5. 配置 `effective_date = "YYYY-MM-DD"`。它表示该价格项在 AIMA 目录中的生效日期；供应商页面
+   没有单独公布价格生效日时，不得把核验日写成供应商公告日；
+6. 增加价格解析、usage 映射和费用计算测试。
+
+旧 TOML 的 `input_cache_hit_per_million`、`input_cache_miss_per_million` 和
+`output_per_million` 仍可兼容读取，但会产生 `FutureWarning`；新配置和 `LLMModelPrice` 只使用包含
+`per_million_tokens` 的正式字段。`llm-http-request.v1` 历史审计 JSON 继续保留旧键名，这是已发布
+审计格式，不是新的价格配置 Schema。
 
 若图片、音频、按请求或阶梯折扣不符合现有两种文本公式，必须先扩展共享计费维度，不能把它们
 伪装成文本 token 价格。没有匹配价格或 usage 分类不足时，模型业务处理保持兼容，但费用明确标记

@@ -424,12 +424,12 @@ def _request_audit_record(
         output_tokens=usage.output_tokens,
         input_per_million=price.input_per_million if price is not None else None,
         input_cache_hit_per_million=(
-            price.input_cache_hit_per_million if price is not None else None
+            price.input_cache_hit_per_million_tokens if price is not None else None
         ),
         input_cache_miss_per_million=(
-            price.input_cache_miss_per_million if price is not None else None
+            price.input_cache_miss_per_million_tokens if price is not None else None
         ),
-        output_per_million=price.output_per_million if price is not None else None,
+        output_per_million=price.output_per_million_tokens if price is not None else None,
         pricing_source_url=price.source_url if price is not None else None,
         pricing_snapshot_sha256=price.snapshot_sha256 if price is not None else None,
         cost_amount=calculation.amount if calculation is not None else None,

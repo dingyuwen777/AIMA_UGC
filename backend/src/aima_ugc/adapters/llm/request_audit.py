@@ -336,9 +336,9 @@ def _usage_payload(usage: LLMTokenUsage) -> dict[str, int | None]:
 def _price_payload(price: LLMModelPrice) -> dict[str, str | None]:
     return {
         "input_per_million": _decimal_text(price.input_per_million),
-        "input_cache_hit_per_million": _decimal_text(price.input_cache_hit_per_million),
-        "input_cache_miss_per_million": _decimal_text(price.input_cache_miss_per_million),
-        "output_per_million": _decimal_text(price.output_per_million),
+        "input_cache_hit_per_million": _decimal_text(price.input_cache_hit_per_million_tokens),
+        "input_cache_miss_per_million": _decimal_text(price.input_cache_miss_per_million_tokens),
+        "output_per_million": _decimal_text(price.output_per_million_tokens),
         "source_url": price.source_url,
         "snapshot_sha256": price.snapshot_sha256,
     }
