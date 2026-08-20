@@ -16,11 +16,16 @@ from pydantic import SecretStr
 from aima_ugc.adapters.llm import (
     DEFAULT_LLM_TRANSPORT_MAX_RETRIES,
     DEFAULT_OPENAI_COMPATIBLE_TIMEOUT_SECONDS,
+    LLMRequestAuditWriter,
     OpenAICompatibleContentLabelingLLM,
     RetryingContentLabelingLLM,
+    load_llm_pricing,
+    recalculate_llm_request_costs,
 )
 from aima_ugc.adapters.providers.imports import (
+    ExcelBatchConversionSummary,
     ExcelConversionSummary,
+    convert_excel_files_to_canonical_jsonl,
     convert_excel_to_canonical_jsonl,
 )
 from aima_ugc.adapters.providers.imports_test.keyword_pack import load_keyword_pack
@@ -44,7 +49,8 @@ from aima_ugc.platform.reporting import ReportGenerationSummary, generate_excel_
 
 os.environ.pop("SSLKEYLOGFILE", None)
 
-INPUT_XLSX = Path(r"E:\path\to\source.xlsx")
+# 配置一个 Path 走单文件转换；配置多个 Path 的有序元组合并到同一个 run。
+INPUT_XLSX_FILES: Path | tuple[Path, ...] = Path(r"E:\path\to\source.xlsx")
 OUTPUT_ROOT = Path(__file__).with_name("output")
 KEYWORD_PACK_FILE = Path(__file__).with_name("keyword_pack.txt")
 REPORT_TEMPLATE_FILE = Path(__file__).with_name("report_template.md")
@@ -109,16 +115,32 @@ def _stage_run_dir(run_dir: Path | None) -> Path:
     return actual
 
 
-def convert(*, run_dir: Path | None = None) -> ExcelConversionSummary:
+def convert(
+    *,
+    run_dir: Path | None = None,
+) -> ExcelConversionSummary | ExcelBatchConversionSummary:
     """执行 XLSX → Canonical JSONL。"""
 
     actual_run_dir = _stage_run_dir(run_dir)
-    return convert_excel_to_canonical_jsonl(
-        input_path=INPUT_XLSX,
-        output_path=actual_run_dir / "canonical" / "contents.jsonl",
-        profile_name=PROFILE,
-        sheet_name=SHEET_NAME,
-    )
+    input_paths = _input_xlsx_files()
+    if len(input_paths) > 1:
+        summary: ExcelConversionSummary | ExcelBatchConversionSummary = (
+            convert_excel_files_to_canonical_jsonl(
+                input_paths=input_paths,
+                output_path=actual_run_dir / "canonical" / "contents.jsonl",
+                profile_name=PROFILE,
+                sheet_name=SHEET_NAME,
+            )
+        )
+    else:
+        summary = convert_excel_to_canonical_jsonl(
+            input_path=input_paths[0],
+            output_path=actual_run_dir / "canonical" / "contents.jsonl",
+            profile_name=PROFILE,
+            sheet_name=SHEET_NAME,
+        )
+    _write_conversion_manifest(actual_run_dir, _source_rows(summary))
+    return summary
 
 
 def filter_keywords(*, run_dir: Path | None = None) -> ContentFilterSummary:
@@ -147,6 +169,7 @@ def ingest_database(
     *,
     run_dir: Path | None = None,
     rows_seen: int | None = None,
+    source_rows: tuple[tuple[Path, int], ...] | None = None,
 ) -> object:
     """显式数据库阶段；默认主链不调用，且本入口不管理 Docker/Migration。"""
 
@@ -155,13 +178,28 @@ def ingest_database(
     deduplicated_path = actual_run_dir / "deduplicated" / "contents.jsonl"
     resolved_rows_seen = rows_seen if rows_seen is not None else _count_jsonl_rows(canonical_path)
 
+    resolved_source_rows = source_rows or _load_conversion_source_rows(actual_run_dir)
+    if resolved_source_rows is None:
+        input_paths = _input_xlsx_files()
+        resolved_source_rows = ((input_paths[0], resolved_rows_seen),)
+
     # 延迟导入保证默认 file-only 模式不装配数据库 Runtime。
-    from aima_ugc.bootstrap.manual_ingestion import ingest_excel_run_to_postgres
+    from aima_ugc.bootstrap.manual_ingestion import (
+        ingest_excel_files_run_to_postgres,
+        ingest_excel_run_to_postgres,
+    )
+
+    if len(resolved_source_rows) > 1:
+        return ingest_excel_files_run_to_postgres(
+            source_rows=resolved_source_rows,
+            unified_content_path=deduplicated_path,
+            rows_rejected=0,
+        )
 
     return ingest_excel_run_to_postgres(
-        input_path=INPUT_XLSX,
+        input_path=resolved_source_rows[0][0],
         unified_content_path=deduplicated_path,
-        rows_seen=resolved_rows_seen,
+        rows_seen=resolved_source_rows[0][1],
         rows_rejected=0,
     )
 
@@ -197,34 +235,65 @@ def label_sentiment(*, run_dir: Path | None = None) -> OfflineContentLabelingSum
     # 一次 run 只读取/解析一次 Prompt，所有 250 个并发请求共享同一个不可变口径。
     recovery_taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
     prompt_loader = FrozenPromptTaxonomyLoader(recovery_taxonomy)
-    with OpenAICompatibleContentLabelingLLM(
-        base_url=_require_env(env, "AIMA_LLM_BASE_URL"),
-        api_key=SecretStr(_require_env(env, "AIMA_LLM_API_KEY")),
-        model=_require_env(env, "AIMA_LLM_MODEL"),
-        timeout_seconds=timeout_seconds,
-        max_connections=LLM_CONCURRENCY,
-    ) as base_llm:
-        llm = RetryingContentLabelingLLM(
-            inner=base_llm,
-            max_retries=MAX_TRANSPORT_RETRIES,
-        )
-        service = ContentLabelingService(
-            prompt_loader=prompt_loader,
-            llm=llm,
-        )
-        summary = label_unified_content_jsonl(
-            input_path=actual_run_dir / "deduplicated" / "contents.jsonl",
-            analysis_dir=actual_run_dir / "analysis",
-            service=service,
-            max_validation_retries=MAX_VALIDATION_RETRIES,
-            max_concurrency=LLM_CONCURRENCY,
-            recovery_taxonomy=recovery_taxonomy,
-        )
-        return replace(
-            summary,
-            llm_http_requests=llm.total_requests,
-            transport_retries=llm.total_retries,
-        )
+    request_audit_path = actual_run_dir / "analysis" / "llm_requests.jsonl"
+    audit_writer = LLMRequestAuditWriter(request_audit_path)
+    with audit_writer:
+        with OpenAICompatibleContentLabelingLLM(
+            base_url=_require_env(env, "AIMA_LLM_BASE_URL"),
+            api_key=SecretStr(_require_env(env, "AIMA_LLM_API_KEY")),
+            model=_require_env(env, "AIMA_LLM_MODEL"),
+            timeout_seconds=timeout_seconds,
+            max_connections=LLM_CONCURRENCY,
+            pricing_catalog=load_llm_pricing(),
+            request_audit=audit_writer.record,
+        ) as base_llm:
+            llm = RetryingContentLabelingLLM(
+                inner=base_llm,
+                max_retries=MAX_TRANSPORT_RETRIES,
+            )
+            service = ContentLabelingService(
+                prompt_loader=prompt_loader,
+                llm=llm,
+            )
+            summary = label_unified_content_jsonl(
+                input_path=actual_run_dir / "deduplicated" / "contents.jsonl",
+                analysis_dir=actual_run_dir / "analysis",
+                service=service,
+                max_validation_retries=MAX_VALIDATION_RETRIES,
+                max_concurrency=LLM_CONCURRENCY,
+                recovery_taxonomy=recovery_taxonomy,
+            )
+            llm_http_requests = llm.total_requests
+            transport_retries = llm.total_retries
+
+    cost_summary = audit_writer.summary
+    if audit_writer.session_request_count != llm_http_requests:
+        raise RuntimeError("LLM HTTP 请求数与费用审计记录数不一致")
+    return replace(
+        summary,
+        llm_http_requests=llm_http_requests,
+        transport_retries=transport_retries,
+        llm_request_audit_path=request_audit_path,
+        llm_calculated_http_requests=cost_summary.calculated_request_count,
+        llm_uncalculated_http_requests=cost_summary.uncalculated_request_count,
+        llm_input_tokens=cost_summary.input_tokens,
+        llm_input_cache_hit_tokens=cost_summary.input_cache_hit_tokens,
+        llm_input_cache_miss_tokens=cost_summary.input_cache_miss_tokens,
+        llm_output_tokens=cost_summary.output_tokens,
+        llm_total_cost_amount=cost_summary.total_cost_amount,
+        llm_cost_currency=cost_summary.cost_currency,
+    )
+
+
+def recalculate_cost(*, run_dir: Path | None = None) -> object:
+    """按当前价格目录生成派生费用报告，不覆盖原请求审计。"""
+
+    actual_run_dir = _stage_run_dir(run_dir)
+    return recalculate_llm_request_costs(
+        input_path=actual_run_dir / "analysis" / "llm_requests.jsonl",
+        output_path=actual_run_dir / "analysis" / "cost_recalculation.json",
+        pricing_catalog=load_llm_pricing(),
+    )
 
 
 def export_labeled_excel(
@@ -293,9 +362,11 @@ def run_all(
     stages.append(_stage_payload("deduplicate", deduplication))
 
     if write_to_database:
+        source_rows = _source_rows(conversion)
         database_ingestion = ingest_database(
             run_dir=run_dir,
             rows_seen=conversion.rows_seen,
+            source_rows=source_rows,
         )
         stages.append(_stage_payload("database_ingestion", database_ingestion))
 
@@ -310,20 +381,24 @@ def run_all(
 
     run_summary_path = run_dir / "run_summary.json"
     labeled_excel_path = _labeled_output_path(run_dir)
+    input_paths = _input_xlsx_files()
+    run_payload: dict[str, object] = {
+        "schema_version": "p1-run-summary.v2",
+        "run_id": actual_run_id,
+        "source_xlsx_files": [str(path) for path in input_paths],
+        "output_root": str(OUTPUT_ROOT),
+        "run_dir": str(run_dir),
+        "keyword_pack_file": str(KEYWORD_PACK_FILE),
+        "labeled_excel": str(labeled_excel_path),
+        "report_markdown": str(report.markdown_path),
+        "report_word": str(report.word_path),
+        "stages": stages,
+    }
+    if len(input_paths) == 1:
+        run_payload["source_xlsx"] = str(input_paths[0])
     _atomic_write_json(
         run_summary_path,
-        {
-            "schema_version": "p1-run-summary.v1",
-            "run_id": actual_run_id,
-            "source_xlsx": str(INPUT_XLSX),
-            "output_root": str(OUTPUT_ROOT),
-            "run_dir": str(run_dir),
-            "keyword_pack_file": str(KEYWORD_PACK_FILE),
-            "labeled_excel": str(labeled_excel_path),
-            "report_markdown": str(report.markdown_path),
-            "report_word": str(report.word_path),
-            "stages": stages,
-        },
+        run_payload,
     )
     return P1RunSummary(
         run_id=actual_run_id,
@@ -340,6 +415,68 @@ def _count_jsonl_rows(path: Path) -> int:
         raise FileNotFoundError(path)
     with path.open("rb") as handle:
         return sum(1 for line in handle if line.strip())
+
+
+def _input_xlsx_files() -> tuple[Path, ...]:
+    configured = INPUT_XLSX_FILES
+    if isinstance(configured, Path):
+        return (configured,)
+    if not isinstance(configured, tuple):
+        raise TypeError("INPUT_XLSX_FILES 必须配置为一个 Path 或 Path 元组")
+    input_paths = tuple(Path(path) for path in configured)
+    if not input_paths:
+        raise ValueError("INPUT_XLSX_FILES 至少需要配置一个 Excel")
+    return input_paths
+
+
+def _source_rows(
+    summary: ExcelConversionSummary | ExcelBatchConversionSummary,
+) -> tuple[tuple[Path, int], ...]:
+    if isinstance(summary, ExcelBatchConversionSummary):
+        return tuple((item.input_path, item.rows_seen) for item in summary.files)
+    return ((summary.input_path, summary.rows_seen),)
+
+
+def _write_conversion_manifest(
+    run_dir: Path,
+    source_rows: tuple[tuple[Path, int], ...],
+) -> None:
+    _atomic_write_json(
+        Path(run_dir) / "canonical" / "conversion_summary.json",
+        {
+            "schema_version": "excel-conversion-run.v1",
+            "sources": [
+                {"input_path": str(input_path), "rows_seen": rows_seen}
+                for input_path, rows_seen in source_rows
+            ],
+        },
+    )
+
+
+def _load_conversion_source_rows(
+    run_dir: Path,
+) -> tuple[tuple[Path, int], ...] | None:
+    manifest_path = Path(run_dir) / "canonical" / "conversion_summary.json"
+    if not manifest_path.is_file():
+        return None
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict) or payload.get("schema_version") != "excel-conversion-run.v1":
+        raise ValueError(f"转换清单格式不支持: {manifest_path}")
+    sources = payload.get("sources")
+    if not isinstance(sources, list) or not sources:
+        raise ValueError(f"转换清单缺少 sources: {manifest_path}")
+    parsed: list[tuple[Path, int]] = []
+    for item in sources:
+        if not isinstance(item, dict):
+            raise ValueError(f"转换清单 source 不是 object: {manifest_path}")
+        input_path = item.get("input_path")
+        rows_seen = item.get("rows_seen")
+        if not isinstance(input_path, str) or not input_path:
+            raise ValueError(f"转换清单 input_path 不合法: {manifest_path}")
+        if isinstance(rows_seen, bool) or not isinstance(rows_seen, int) or rows_seen < 0:
+            raise ValueError(f"转换清单 rows_seen 不合法: {manifest_path}")
+        parsed.append((Path(input_path), rows_seen))
+    return tuple(parsed)
 
 
 def _resolve_run_id(run_id: str | None) -> str:
