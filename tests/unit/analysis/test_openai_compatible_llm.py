@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from decimal import Decimal
 
 import httpx
 import pytest
@@ -9,6 +10,8 @@ from aima_ugc.adapters.llm.openai_compatible import (
     OpenAICompatibleContentLabelingLLM,
     OpenAICompatibleLLMError,
 )
+from aima_ugc.adapters.llm.pricing import load_llm_pricing
+from aima_ugc.adapters.llm.request_audit import LLMHTTPRequestAudit
 from aima_ugc.modules.analysis.content_labeling import (
     ContentLabelingLLMRequest,
     ContentLabelingModelItem,
@@ -218,3 +221,105 @@ def test_openai_compatible_empty_content_uses_explicit_bounded_retry(
     assert calls == 2
     assert retrying.total_requests == 2
     assert retrying.total_retries == 1
+
+
+def test_openai_compatible_calculates_deepseek_cost_from_exact_cache_usage() -> None:
+    records: list[LLMHTTPRequestAudit] = []
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": '{"items":[]}'}}],
+                "usage": {
+                    "prompt_tokens": 31,
+                    "prompt_cache_hit_tokens": 20,
+                    "prompt_cache_miss_tokens": 11,
+                    "completion_tokens": 17,
+                    "total_tokens": 48,
+                },
+            },
+        )
+
+    client = httpx.Client(
+        base_url="https://api.deepseek.com/",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        adapter = OpenAICompatibleContentLabelingLLM(
+            api_key=SecretStr("secret"),
+            model="deepseek-v4-pro",
+            client=client,
+            pricing_catalog=load_llm_pricing(),
+            request_audit=records.append,
+        )
+        response = adapter.complete(_request())
+    finally:
+        client.close()
+
+    assert response.input_tokens == 31
+    assert response.input_cache_hit_tokens == 20
+    assert response.input_cache_miss_tokens == 11
+    assert response.output_tokens == 17
+    assert response.cost_amount == Decimal("0.0001355")
+    assert response.cost_currency == "CNY"
+    assert len(records) == 1
+    assert records[0].status == "completed"
+    assert records[0].cost_amount == Decimal("0.0001355")
+    assert records[0].cost_currency == "CNY"
+    assert records[0].input_cache_hit_per_million == Decimal("0.025")
+    assert records[0].input_cache_miss_per_million == Decimal("3")
+    assert records[0].output_per_million == Decimal("6")
+    assert records[0].pricing_source_url.endswith("/quick_start/pricing/")
+
+
+def test_empty_content_retry_audits_cost_of_every_paid_http_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    records: list[LLMHTTPRequestAudit] = []
+    calls = 0
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {"message": {"content": "" if calls == 1 else '{"items":[]}'}}
+                ],
+                "usage": {
+                    "prompt_tokens": 10,
+                    "prompt_cache_hit_tokens": 8,
+                    "prompt_cache_miss_tokens": 2,
+                    "completion_tokens": calls,
+                    "total_tokens": 10 + calls,
+                },
+            },
+        )
+
+    client = httpx.Client(
+        base_url="https://api.deepseek.com/",
+        transport=httpx.MockTransport(handler),
+    )
+    monkeypatch.setattr("aima_ugc.adapters.llm.retrying.time.sleep", lambda _: None)
+    try:
+        adapter = OpenAICompatibleContentLabelingLLM(
+            api_key=SecretStr("secret"),
+            model="deepseek-v4-pro",
+            client=client,
+            pricing_catalog=load_llm_pricing(),
+            request_audit=records.append,
+        )
+        retrying = RetryingContentLabelingLLM(inner=adapter, max_retries=1)
+        response = retrying.complete(_request())
+    finally:
+        client.close()
+
+    assert response.raw_text == '{"items":[]}'
+    assert [record.status for record in records] == ["protocol_error", "completed"]
+    assert records[0].logical_request_id == records[1].logical_request_id
+    assert records[0].http_request_id != records[1].http_request_id
+    assert sum(record.cost_amount or Decimal("0") for record in records) == Decimal(
+        "0.0000304"
+    )

@@ -2,9 +2,16 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
+from aima_ugc.adapters.providers.imports import (
+    ExcelBatchConversionSummary,
+    ExcelSourceConversionSummary,
+)
 from aima_ugc.adapters.providers.imports_test import test as imports_test_entry
+from aima_ugc.bootstrap import manual_ingestion
 from aima_ugc.modules.analysis import OfflineContentLabelingSummary
 
 
@@ -130,6 +137,31 @@ def test_label_sentiment_only_requires_three_llm_env_values_and_wires_concurrenc
         def __init__(self, **kwargs):
             captured["retry_kwargs"] = kwargs
 
+    class FakeAuditWriter:
+        def __init__(self, path: Path) -> None:
+            captured["audit_path"] = path
+            self.session_request_count = 17
+            self.summary = SimpleNamespace(
+                request_count=17,
+                calculated_request_count=17,
+                uncalculated_request_count=0,
+                input_tokens=310,
+                input_cache_hit_tokens=200,
+                input_cache_miss_tokens=110,
+                output_tokens=170,
+                total_cost_amount=Decimal("0.001355"),
+                cost_currency="CNY",
+            )
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            return None
+
+        def record(self, _audit: object) -> None:
+            return None
+
     def fake_adapter(**kwargs):
         captured.update(kwargs)
         return FakeAdapter()
@@ -153,6 +185,7 @@ def test_label_sentiment_only_requires_three_llm_env_values_and_wires_concurrenc
     monkeypatch.setattr(imports_test_entry, "OUTPUT_ROOT", tmp_path / "output")
     monkeypatch.setattr(imports_test_entry, "OpenAICompatibleContentLabelingLLM", fake_adapter)
     monkeypatch.setattr(imports_test_entry, "RetryingContentLabelingLLM", FakeRetrying)
+    monkeypatch.setattr(imports_test_entry, "LLMRequestAuditWriter", FakeAuditWriter)
     monkeypatch.setattr(imports_test_entry, "label_unified_content_jsonl", fake_label)
 
     result = imports_test_entry.label_sentiment()
@@ -165,7 +198,122 @@ def test_label_sentiment_only_requires_three_llm_env_values_and_wires_concurrenc
     assert captured["timeout_seconds"] == 60.0
     assert captured["max_connections"] == 250
     assert "api_key" in captured
+    assert "pricing_catalog" in captured
+    assert callable(captured["request_audit"])
     assert "provider_name" not in captured
     assert "use_json_mode" not in captured
     assert captured["retry_kwargs"]["max_retries"] == 4
     assert captured["label_kwargs"]["max_concurrency"] == 250
+    assert result.llm_total_cost_amount == Decimal("0.001355")
+    assert result.llm_cost_currency == "CNY"
+
+
+def test_imports_test_convert_uses_multiple_excel_files_in_one_configured_run(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    first = tmp_path / "first.xlsx"
+    second = tmp_path / "second.xlsx"
+    output_root = tmp_path / "output"
+    run_dir = output_root / "runs" / "multi"
+    run_dir.mkdir(parents=True)
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(imports_test_entry, "OUTPUT_ROOT", output_root)
+    monkeypatch.setattr(imports_test_entry, "INPUT_XLSX_FILES", (first, second))
+
+    def fake_convert(**kwargs):
+        captured.update(kwargs)
+        output_path = kwargs["output_path"]
+        return ExcelBatchConversionSummary(
+            input_paths=(first, second),
+            output_path=output_path,
+            error_path=output_path.with_name("conversion_errors.jsonl"),
+            files=(
+                ExcelSourceConversionSummary(first, 2, 2, 0),
+                ExcelSourceConversionSummary(second, 3, 3, 0),
+            ),
+            rows_seen=5,
+            rows_written=5,
+            rows_rejected=0,
+        )
+
+    monkeypatch.setattr(imports_test_entry, "convert_excel_files_to_canonical_jsonl", fake_convert)
+
+    imports_test_entry.convert(run_dir=run_dir)
+
+    assert captured == {
+        "input_paths": (first, second),
+        "output_path": run_dir / "canonical" / "contents.jsonl",
+        "profile_name": imports_test_entry.PROFILE,
+        "sheet_name": imports_test_entry.SHEET_NAME,
+    }
+    manifest = json.loads(
+        (run_dir / "canonical" / "conversion_summary.json").read_text(encoding="utf-8")
+    )
+    assert manifest["sources"] == [
+        {"input_path": str(first), "rows_seen": 2},
+        {"input_path": str(second), "rows_seen": 3},
+    ]
+
+
+def test_run_summary_lists_all_source_excel_files(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    first = tmp_path / "first.xlsx"
+    second = tmp_path / "second.xlsx"
+    output_root = tmp_path / "output"
+    monkeypatch.setattr(imports_test_entry, "OUTPUT_ROOT", output_root)
+    monkeypatch.setattr(imports_test_entry, "INPUT_XLSX_FILES", (first, second))
+
+    def stage(name: str):
+        def run(*args, **kwargs):
+            return _DummySummary(stage=name)
+
+        return run
+
+    monkeypatch.setattr(imports_test_entry, "convert", stage("convert"))
+    monkeypatch.setattr(imports_test_entry, "filter_keywords", stage("filter_keywords"))
+    monkeypatch.setattr(imports_test_entry, "deduplicate", stage("deduplicate"))
+    monkeypatch.setattr(imports_test_entry, "label_sentiment", stage("label_sentiment"))
+    monkeypatch.setattr(imports_test_entry, "export_labeled_excel", stage("export_labeled_excel"))
+
+    summary = imports_test_entry.run_all(run_id="multi")
+    payload = json.loads(summary.run_summary_path.read_text(encoding="utf-8"))
+
+    assert payload["schema_version"] == "p1-run-summary.v2"
+    assert payload["source_xlsx_files"] == [str(first), str(second)]
+    assert "source_xlsx" not in payload
+
+
+def test_multi_file_database_stage_recovers_source_rows_from_conversion_manifest(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    first = tmp_path / "first.xlsx"
+    second = tmp_path / "second.xlsx"
+    run_dir = tmp_path / "output" / "runs" / "multi"
+    (run_dir / "canonical").mkdir(parents=True)
+    (run_dir / "deduplicated").mkdir()
+    (run_dir / "canonical" / "contents.jsonl").write_text("", encoding="utf-8")
+    (run_dir / "deduplicated" / "contents.jsonl").write_text("", encoding="utf-8")
+    imports_test_entry._write_conversion_manifest(
+        run_dir,
+        ((first, 2), (second, 3)),
+    )
+    captured: dict[str, object] = {}
+
+    def fake_multi(**kwargs):
+        captured.update(kwargs)
+        return _DummySummary(stage="database_ingestion")
+
+    monkeypatch.setattr(manual_ingestion, "ingest_excel_files_run_to_postgres", fake_multi)
+
+    imports_test_entry.ingest_database(run_dir=run_dir, rows_seen=5)
+
+    assert captured == {
+        "source_rows": ((first, 2), (second, 3)),
+        "unified_content_path": run_dir / "deduplicated" / "contents.jsonl",
+        "rows_rejected": 0,
+    }

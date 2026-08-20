@@ -275,8 +275,48 @@ LLM 成功
 ```text
 analysis/checkpoints.jsonl
 analysis/attempts.jsonl
+analysis/llm_requests.jsonl
 analysis/failed.jsonl
 ```
+
+`attempts.jsonl` 表示逻辑 Validation Attempt；`llm_requests.jsonl` 表示真实物理 HTTP 请求。
+一次 Validation Attempt 可能因为网络、429/可恢复 5xx 或空 `content` 产生多个物理请求，费用必须
+按后者统计，不能只看最终成功响应。
+
+物理请求审计不保存 Prompt、标题、正文、作者或 Provider 响应正文，只保存：
+
+```text
+http_request_id / logical_request_id
+provider / model
+started_at / completed_at
+HTTP/协议结果
+input / cache-hit / cache-miss / output tokens
+每百万 token 单价
+官方价格来源 URL
+自动价格快照 SHA-256
+计算费用或不可计算原因
+```
+
+包内 `adapters/llm/pricing.toml` 是最小价格目录。它按 `provider + model` 精确匹配，不使用
+跨模型默认单价；价格内容本身生成 SHA-256，因此不维护没有计算作用的人工生效时间或版本号。
+一次 `label_sentiment()` 开始时只加载一次不可变价格目录，运行中的文件修改不会改变已发请求的
+单价快照。
+
+价格、物理请求审计和复算的 Owner 是平台无关的 `adapters/llm`，不是 `imports_test`。当前人工
+入口只是第一个装配者；任何后续 Analysis Job 或其他内容来源都必须复用同一 Adapter 能力，不能
+按小红书、抖音、微博、快手、哔哩哔哩或 Excel 分别复制计费代码。
+
+当前支持两类文本 token 计价：
+
+```text
+input + output
+cache-hit input + cache-miss input + output
+```
+
+模型未配置、usage 缺少计价必需分类或响应在网络中丢失时，标签处理保持原有语义，费用明确记为
+不可计算。这里的金额是按官方单价与 Provider usage 得到的可复算计算值，不冒充供应商最终账单。
+`imports_test.recalculate_cost()` 可以用当前价格目录生成独立派生报告，但不会覆盖原物理请求审计、
+checkpoint 或标签；用新价格复算旧 token 只能作为模拟重估。
 
 `OfflineContentLabelingSummary` 记录：
 
@@ -290,6 +330,14 @@ llm_attempts
 peak_in_flight
 llm_http_requests
 transport_retries
+llm_calculated_http_requests
+llm_uncalculated_http_requests
+llm_input_tokens
+llm_input_cache_hit_tokens
+llm_input_cache_miss_tokens
+llm_output_tokens
+llm_total_cost_amount
+llm_cost_currency
 ```
 
 `imports_test/run_summary.json` 会把该 Summary 一起保存，便于判断本次是否真正跑到 250 并发、发生多少 Transport Retry、多少内容来自 checkpoint 恢复。

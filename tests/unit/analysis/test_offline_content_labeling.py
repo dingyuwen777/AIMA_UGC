@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ from aima_ugc.modules.analysis import (
     PromptTaxonomyLoader,
     label_unified_content_jsonl,
 )
+from aima_ugc.modules.analysis.content_labeling import ContentLabelingLLMResponse
 
 OBSERVED_AT = datetime(2026, 8, 18, 12, 0, tzinfo=UTC)
 
@@ -223,3 +225,43 @@ def test_offline_labeling_skips_records_already_labeled_in_business_jsonl(tmp_pa
     assert second_summary.rows_failed == 0
     assert second_summary.llm_attempts == 0
     assert second_fake.calls == []
+
+
+def test_offline_labeling_attempt_keeps_usage_and_pricing_snapshot(tmp_path: Path) -> None:
+    input_path = tmp_path / "deduplicated" / "contents.jsonl"
+    analysis_dir = tmp_path / "analysis"
+    _write_records(input_path, [_record("content-1")])
+    fake = FakeContentLabelingLLM(
+        responses=[
+            ContentLabelingLLMResponse(
+                raw_text=_valid_response(),
+                input_tokens=31,
+                input_cache_hit_tokens=20,
+                input_cache_miss_tokens=11,
+                output_tokens=17,
+                cost_amount=Decimal("0.0001355"),
+                cost_currency="CNY",
+                pricing_snapshot_sha256="a" * 64,
+                pricing_source_url="https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+            )
+        ]
+    )
+
+    label_unified_content_jsonl(
+        input_path=input_path,
+        analysis_dir=analysis_dir,
+        service=_service(fake),
+        max_validation_retries=0,
+        max_concurrency=1,
+    )
+
+    attempt = _read_jsonl(analysis_dir / "attempts.jsonl")[0]
+    assert attempt["schema_version"] == "content-label-attempt.v2"
+    assert attempt["logical_request_id"]
+    assert attempt["input_tokens"] == 31
+    assert attempt["input_cache_hit_tokens"] == 20
+    assert attempt["input_cache_miss_tokens"] == 11
+    assert attempt["output_tokens"] == 17
+    assert attempt["cost_amount"] == "0.0001355"
+    assert attempt["cost_currency"] == "CNY"
+    assert attempt["pricing_snapshot_sha256"] == "a" * 64

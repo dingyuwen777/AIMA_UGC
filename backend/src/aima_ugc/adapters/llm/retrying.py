@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import random
 import time
+from dataclasses import replace
 from threading import Lock
+from uuid import uuid4
 
 from aima_ugc.modules.analysis.content_labeling import (
     ContentLabelingLLMPort,
@@ -57,10 +59,15 @@ class RetryingContentLabelingLLM:
     def complete(self, request: ContentLabelingLLMRequest) -> ContentLabelingLLMResponse:
         """完成一个逻辑 Validation Attempt；Transient Transport 失败才重试。"""
 
+        actual_request = (
+            request
+            if request.logical_request_id is not None
+            else replace(request, logical_request_id=uuid4().hex)
+        )
         for transport_attempt in range(1, self._max_retries + 2):
             self._record_request()
             try:
-                return self._inner.complete(request)
+                return self._inner.complete(actual_request)
             except OpenAICompatibleLLMError as exc:
                 if not exc.retryable or transport_attempt > self._max_retries:
                     raise

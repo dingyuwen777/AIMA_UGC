@@ -7,6 +7,21 @@ from .openai_compatible import (
     OpenAICompatibleContentLabelingLLM,
     OpenAICompatibleLLMError,
 )
+from .pricing import (
+    LLMCostCalculation,
+    LLMModelPrice,
+    LLMPriceNotConfiguredError,
+    LLMPricingCatalog,
+    LLMTokenUsage,
+    load_llm_pricing,
+)
+from .request_audit import (
+    LLMHTTPRequestAudit,
+    LLMRequestAuditSummary,
+    LLMRequestAuditWriter,
+    recalculate_llm_request_costs,
+    summarize_llm_request_audit,
+)
 from .retrying import DEFAULT_LLM_TRANSPORT_MAX_RETRIES, RetryingContentLabelingLLM
 
 __all__ = [
@@ -17,4 +32,15 @@ __all__ = [
     "OpenAICompatibleContentLabelingLLM",
     "OpenAICompatibleLLMError",
     "RetryingContentLabelingLLM",
+    "LLMCostCalculation",
+    "LLMHTTPRequestAudit",
+    "LLMModelPrice",
+    "LLMPriceNotConfiguredError",
+    "LLMPricingCatalog",
+    "LLMRequestAuditSummary",
+    "LLMRequestAuditWriter",
+    "LLMTokenUsage",
+    "load_llm_pricing",
+    "recalculate_llm_request_costs",
+    "summarize_llm_request_audit",
 ]

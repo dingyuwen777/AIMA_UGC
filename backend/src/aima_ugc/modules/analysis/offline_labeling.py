@@ -7,6 +7,7 @@ import os
 from collections.abc import Iterable, Iterator
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 from typing import TextIO
 
@@ -41,6 +42,15 @@ class OfflineContentLabelingSummary:
     peak_in_flight: int = 0
     llm_http_requests: int = 0
     transport_retries: int = 0
+    llm_request_audit_path: Path | None = None
+    llm_calculated_http_requests: int = 0
+    llm_uncalculated_http_requests: int = 0
+    llm_input_tokens: int = 0
+    llm_input_cache_hit_tokens: int = 0
+    llm_input_cache_miss_tokens: int = 0
+    llm_output_tokens: int = 0
+    llm_total_cost_amount: Decimal | None = None
+    llm_cost_currency: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -457,7 +467,7 @@ def _attempt_payload(
     source: _SourceRow,
 ) -> dict[str, object]:
     return {
-        "schema_version": "content-label-attempt.v1",
+        "schema_version": "content-label-attempt.v2",
         "batch_no": source.line_number,
         "attempt_no": attempt.attempt_no,
         "item_nos": [1],
@@ -477,10 +487,15 @@ def _attempt_payload(
         "taxonomy_sha256": attempt.taxonomy_sha256,
         "started_at": attempt.started_at.isoformat(),
         "completed_at": attempt.completed_at.isoformat(),
+        "logical_request_id": attempt.logical_request_id,
         "input_tokens": attempt.input_tokens,
         "output_tokens": attempt.output_tokens,
+        "input_cache_hit_tokens": attempt.input_cache_hit_tokens,
+        "input_cache_miss_tokens": attempt.input_cache_miss_tokens,
         "cost_amount": str(attempt.cost_amount) if attempt.cost_amount is not None else None,
         "cost_currency": attempt.cost_currency,
+        "pricing_snapshot_sha256": attempt.pricing_snapshot_sha256,
+        "pricing_source_url": attempt.pricing_source_url,
     }
 
 

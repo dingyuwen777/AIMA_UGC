@@ -1,5 +1,5 @@
 {
-  "candidate_path_digest": "27085fa26cc9542a657d50af4f6b3c271d679fa52ddbfa240f079782bfb6d847",
+  "candidate_path_digest": "aea37fce06179197d010d38e14a06579010e82754e725ee4df38c2725303c201",
   "directories": [
     {
       "count": 4,
@@ -9,6 +9,13 @@
         "manifest"
       ],
       "path": ""
+    },
+    {
+      "count": 1,
+      "kinds": [
+        "documentation"
+      ],
+      "path": "backend/src/aima_ugc/adapters/llm"
     },
     {
       "count": 1,
@@ -109,7 +116,7 @@
       "path": "docs"
     },
     {
-      "count": 15,
+      "count": 17,
       "kinds": [
         "documentation"
       ],
@@ -168,23 +175,30 @@
     },
     {
       "kind": "documentation",
+      "path": "backend/src/aima_ugc/adapters/llm/README.md",
+      "sha256": "cd46b6a51190ad754526c19e2cdc3fb9e5778017c956ba52e5f70e4cc2805de4",
+      "size": 3132,
+      "title": "全平台共享 LLM Adapter、计费与请求审计"
+    },
+    {
+      "kind": "documentation",
       "path": "backend/src/aima_ugc/adapters/providers/imports_test/README.md",
-      "sha256": "3b916d9086380a3cca0de6b6c3012a2281b507af8d3c6947fefdc5787d728008",
-      "size": 13863,
+      "sha256": "b6408eed3d75a052f45b359ff54ce31f9361d18fa1014566bd53800f20e8774a",
+      "size": 24590,
       "title": "Excel 离线导入、清洗与 AI 多标签打标"
     },
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/adapters/providers/tikhub_test/README.md",
-      "sha256": "513d1bede20242ed9ebc492d3bc27a0e04996b2ea7c2102fe0983992b6dc6d91",
-      "size": 9255,
+      "sha256": "753e9dc9041dfa17235d5085adcba439dbf030b0f104dac7b9d04da216d9bb12",
+      "size": 14273,
       "title": "TikHub 五平台独立测试 / 调试"
     },
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/modules/analysis/README.md",
-      "sha256": "cde08098872122f4e8379afe86d12c311fbcdb9a4c5e67c3aa50f85d0d3102f1",
-      "size": 10972,
+      "sha256": "b41fc7c03aba3b48c9cbc0261bc6b3cedc65d0f851845b6c22d9322f93d5704d",
+      "size": 13137,
       "title": "Analysis 模块"
     },
     {
@@ -307,8 +321,8 @@
     {
       "kind": "contract",
       "path": "contracts/provider/request.v1.schema.json",
-      "sha256": "3e8f2dde692a232faf9bd06ac6f3f4f647cf92938672dc69b8336c5a7de2e779",
-      "size": 1269
+      "sha256": "0d2f021722a21669538b6254a86c8a73a66b944d002eef6842ba647bbf052de4",
+      "size": 1468
     },
     {
       "kind": "documentation",
@@ -327,15 +341,15 @@
     {
       "kind": "documentation",
       "path": "docs/blueprint/02-采集系统与数据标准化.md",
-      "sha256": "dd91208dbfa8b58cc680e29672d25ed877da0829f437de8a8c35d09fe319b28a",
-      "size": 33775,
+      "sha256": "4c55a27fde757b6469cac4cba2790626b7286e38ce7ac75a9a490cf294e810da",
+      "size": 39120,
       "title": "采集系统与数据标准化"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/03-数据库与文件存储.md",
-      "sha256": "add379ca6f347ce31c17ca2d6dbe801e6adcbf7507208ea543ef6e1a0ea0f749",
-      "size": 53324,
+      "sha256": "131ce24583f671385274c576b3a57a725ca8a7c60dfb5c7386539c4263d3bb52",
+      "size": 60370,
       "title": "数据库与文件存储"
     },
     {
@@ -411,15 +425,29 @@
     {
       "kind": "documentation",
       "path": "docs/blueprint/15-舆情AI打标与统一分析契约.md",
-      "sha256": "ca18b0582d999f736e1736d67cde88e85d834de46c8f031848d35f4404518ccd",
-      "size": 33396,
+      "sha256": "039db2140ea116d62b78b881a5f8c5464a36d0a6f67cee7d804f6f148199b725",
+      "size": 35455,
       "title": "舆情 AI 打标与统一分析契约"
     },
     {
       "kind": "documentation",
+      "path": "docs/blueprint/16-前端页面架构与Figma设计工作流.md",
+      "sha256": "a4b8d588b4440a0f6594f312f7070205df977bfbfce013eb5b2ffb28d39d07e0",
+      "size": 17236,
+      "title": "前端页面架构与 Figma 设计工作流"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/blueprint/17-Stage8数据入口统一入库与业务前端实施.md",
+      "sha256": "1eca315e65988b53143eea5217e0bb05c4dcfc72e1af95093c8979aa78bbc4e5",
+      "size": 28283,
+      "title": "Stage 8 数据入口、统一入库与业务前端实施"
+    },
+    {
+      "kind": "documentation",
       "path": "docs/blueprint/README.md",
-      "sha256": "8b5cb28053bb29df0892396c936a0a0606fc230d0f26873c06fbb3a8594761d9",
-      "size": 17015,
+      "sha256": "0a3a106bb7f8b3674147bca5f80dc5e0ee8fcf4f7c444f45b91c8ce6ef121a11",
+      "size": 21226,
       "title": "AIMA_UGC Blueprint 导航"
     },
     {
@@ -467,8 +495,8 @@
     {
       "kind": "documentation",
       "path": "docs/测试与调试说明.md",
-      "sha256": "8e96d9d381f2d167d1b1a6013ac92189619b148645add1002bf0745e285be3f5",
-      "size": 27888,
+      "sha256": "c1d003b885695755e11222d33ef7ed7a28cd4584728ce140b855a039122a63a6",
+      "size": 31201,
       "title": "AIMA_UGC 测试与调试说明"
     },
     {
@@ -524,12 +552,12 @@
       "size": 91336
     }
   ],
-  "generated_at": "2026-08-19T13:23:47+00:00",
+  "generated_at": "2026-08-20T02:24:39+00:00",
   "generator_version": "0.1.0",
   "git": {
-    "indexed_at_commit": "d03e3bd98e4944484db0bb8ba9e76d72e5d0802d",
+    "indexed_at_commit": "414f610004b30cb98178a67a29f5024dd725355e",
     "repository": true,
-    "worktree_candidate_digest": "70f6274ce13a98a77f9df7a65780f18197cee70d478612a544a66459f00e0aa6"
+    "worktree_candidate_digest": "29810e837114231b64d3420dfc73bae40f0a249b5ac056dad3b940bb5c516489"
   },
   "package_scripts": {
     "frontend/package.json": {

@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any, Self
 from urllib.parse import urlsplit
+from uuid import uuid4
 
 import httpx
 from pydantic import SecretStr
@@ -13,6 +16,15 @@ from aima_ugc.modules.analysis.content_labeling import (
     ContentLabelingLLMRequest,
     ContentLabelingLLMResponse,
 )
+
+from .pricing import (
+    LLMCostCalculation,
+    LLMModelPrice,
+    LLMPriceNotConfiguredError,
+    LLMPricingCatalog,
+    LLMTokenUsage,
+)
+from .request_audit import LLMHTTPRequestAudit, LLMHTTPRequestStatus
 
 DEFAULT_OPENAI_COMPATIBLE_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_OPENAI_COMPATIBLE_TIMEOUT_SECONDS = 60.0
@@ -51,6 +63,8 @@ class OpenAICompatibleContentLabelingLLM:
         max_connections: int = DEFAULT_OPENAI_COMPATIBLE_MAX_CONNECTIONS,
         use_json_mode: bool = True,
         client: httpx.Client | None = None,
+        pricing_catalog: LLMPricingCatalog | None = None,
+        request_audit: Callable[[LLMHTTPRequestAudit], None] | None = None,
     ) -> None:
         actual_base_url = str(client.base_url) if client is not None else base_url
         normalized_base_url = _normalize_base_url(actual_base_url)
@@ -79,6 +93,19 @@ class OpenAICompatibleContentLabelingLLM:
         self._model = model
         self._provider_name = actual_provider_name
         self._use_json_mode = use_json_mode
+        self._request_audit = request_audit
+        self._price: LLMModelPrice | None = None
+        self._pricing_unavailable_reason: str | None = None
+        if pricing_catalog is None:
+            self._pricing_unavailable_reason = "pricing_catalog_not_configured"
+        else:
+            try:
+                self._price = pricing_catalog.price_for(
+                    provider=actual_provider_name,
+                    model=model,
+                )
+            except LLMPriceNotConfiguredError:
+                self._pricing_unavailable_reason = "model_price_not_configured"
         self._owns_client = client is None
         self._client = client or httpx.Client(
             base_url=normalized_base_url,
@@ -118,6 +145,15 @@ class OpenAICompatibleContentLabelingLLM:
     def complete(self, request: ContentLabelingLLMRequest) -> ContentLabelingLLMResponse:
         """发送一次 Chat Completions 请求；Transport Retry 由更外层显式策略负责。"""
 
+        started_at = datetime.now(UTC)
+        http_request_id = uuid4().hex
+        logical_request_id = request.logical_request_id or http_request_id
+        status: LLMHTTPRequestStatus = "network_error"
+        status_code: int | None = None
+        error_code: str | None = None
+        usage = LLMTokenUsage(input_tokens=None, output_tokens=None)
+        calculation: LLMCostCalculation | None = None
+        cost_unavailable_reason = self._pricing_unavailable_reason
         body: dict[str, object] = {
             "model": self._model,
             "messages": [
@@ -129,45 +165,93 @@ class OpenAICompatibleContentLabelingLLM:
             body["response_format"] = {"type": "json_object"}
 
         try:
-            response = self._client.post(
-                "chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self._api_key.get_secret_value()}",
-                    "Accept": "application/json",
-                    "Content-Type": "application/json",
-                    "User-Agent": "AIMA_UGC/1.0",
-                },
-                json=body,
+            try:
+                response = self._client.post(
+                    "chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self._api_key.get_secret_value()}",
+                        "Accept": "application/json",
+                        "Content-Type": "application/json",
+                        "User-Agent": "AIMA_UGC/1.0",
+                    },
+                    json=body,
+                )
+            except httpx.HTTPError as exc:
+                raise OpenAICompatibleLLMError(
+                    "OpenAI-compatible LLM 网络请求失败",
+                    error_code="network_error",
+                    retryable=True,
+                ) from exc
+
+            status_code = response.status_code
+            if status_code < 200 or status_code >= 300:
+                raise OpenAICompatibleLLMError(
+                    f"OpenAI-compatible LLM 请求失败: HTTP {status_code}",
+                    error_code=f"http_{status_code}",
+                    retryable=status_code in _RETRYABLE_HTTP_STATUS_CODES,
+                    status_code=status_code,
+                )
+
+            try:
+                payload: Any = response.json()
+            except ValueError as exc:
+                raise OpenAICompatibleLLMError(
+                    "OpenAI-compatible LLM 返回了不可解析的 HTTP JSON",
+                    error_code="invalid_http_json",
+                    retryable=False,
+                ) from exc
+
+            usage = _usage(payload)
+            calculation, cost_unavailable_reason = _calculate_cost(
+                price=self._price,
+                usage=usage,
+                pricing_unavailable_reason=self._pricing_unavailable_reason,
             )
-        except httpx.HTTPError as exc:
-            raise OpenAICompatibleLLMError(
-                "OpenAI-compatible LLM 网络请求失败",
-                error_code="network_error",
-                retryable=True,
-            ) from exc
-
-        if response.status_code < 200 or response.status_code >= 300:
-            raise OpenAICompatibleLLMError(
-                f"OpenAI-compatible LLM 请求失败: HTTP {response.status_code}",
-                error_code=f"http_{response.status_code}",
-                retryable=response.status_code in _RETRYABLE_HTTP_STATUS_CODES,
-                status_code=response.status_code,
+            raw_text = _response_content(payload)
+            status = "completed"
+            return ContentLabelingLLMResponse(
+                raw_text=raw_text,
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                input_cache_hit_tokens=usage.input_cache_hit_tokens,
+                input_cache_miss_tokens=usage.input_cache_miss_tokens,
+                cost_amount=calculation.amount if calculation is not None else None,
+                cost_currency=calculation.currency if calculation is not None else None,
+                pricing_snapshot_sha256=(
+                    calculation.pricing_snapshot_sha256
+                    if calculation is not None
+                    else self._price.snapshot_sha256 if self._price is not None else None
+                ),
+                pricing_source_url=self._price.source_url if self._price is not None else None,
             )
-
-        try:
-            payload: Any = response.json()
-        except ValueError as exc:
-            raise OpenAICompatibleLLMError(
-                "OpenAI-compatible LLM 返回了不可解析的 HTTP JSON",
-                error_code="invalid_http_json",
-                retryable=False,
-            ) from exc
-
-        return ContentLabelingLLMResponse(
-            raw_text=_response_content(payload),
-            input_tokens=_usage_token(payload, "prompt_tokens"),
-            output_tokens=_usage_token(payload, "completion_tokens"),
-        )
+        except OpenAICompatibleLLMError as exc:
+            error_code = exc.error_code
+            if exc.error_code == "network_error":
+                status = "network_error"
+            elif exc.status_code is not None:
+                status = "http_error"
+            else:
+                status = "protocol_error"
+            raise
+        finally:
+            if self._request_audit is not None:
+                self._request_audit(
+                    _request_audit_record(
+                        http_request_id=http_request_id,
+                        logical_request_id=logical_request_id,
+                        provider=self._provider_name,
+                        model=self._model,
+                        started_at=started_at,
+                        completed_at=datetime.now(UTC),
+                        status=status,
+                        status_code=status_code,
+                        error_code=error_code,
+                        usage=usage,
+                        price=self._price,
+                        calculation=calculation,
+                        cost_unavailable_reason=cost_unavailable_reason,
+                    )
+                )
 
 
 def _normalize_base_url(value: str) -> str:
@@ -281,6 +365,79 @@ def _usage_token(payload: Any, key: str) -> int | None:
     if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
         return value
     return None
+
+
+def _usage(payload: Any) -> LLMTokenUsage:
+    return LLMTokenUsage(
+        input_tokens=_usage_token(payload, "prompt_tokens"),
+        output_tokens=_usage_token(payload, "completion_tokens"),
+        input_cache_hit_tokens=_usage_token(payload, "prompt_cache_hit_tokens"),
+        input_cache_miss_tokens=_usage_token(payload, "prompt_cache_miss_tokens"),
+    )
+
+
+def _calculate_cost(
+    *,
+    price: LLMModelPrice | None,
+    usage: LLMTokenUsage,
+    pricing_unavailable_reason: str | None,
+) -> tuple[LLMCostCalculation | None, str | None]:
+    if price is None:
+        return None, pricing_unavailable_reason or "model_price_not_configured"
+    try:
+        return price.calculate(usage), None
+    except ValueError as exc:
+        return None, f"usage_not_calculable:{str(exc).strip()}"[:300]
+
+
+def _request_audit_record(
+    *,
+    http_request_id: str,
+    logical_request_id: str,
+    provider: str,
+    model: str,
+    started_at: datetime,
+    completed_at: datetime,
+    status: LLMHTTPRequestStatus,
+    status_code: int | None,
+    error_code: str | None,
+    usage: LLMTokenUsage,
+    price: LLMModelPrice | None,
+    calculation: LLMCostCalculation | None,
+    cost_unavailable_reason: str | None,
+) -> LLMHTTPRequestAudit:
+    return LLMHTTPRequestAudit(
+        http_request_id=http_request_id,
+        logical_request_id=logical_request_id,
+        provider=provider,
+        model=model,
+        started_at=started_at,
+        completed_at=completed_at,
+        status=status,
+        status_code=status_code,
+        error_code=error_code,
+        input_tokens=usage.input_tokens,
+        input_cache_hit_tokens=usage.input_cache_hit_tokens,
+        input_cache_miss_tokens=usage.input_cache_miss_tokens,
+        output_tokens=usage.output_tokens,
+        input_per_million=price.input_per_million if price is not None else None,
+        input_cache_hit_per_million=(
+            price.input_cache_hit_per_million if price is not None else None
+        ),
+        input_cache_miss_per_million=(
+            price.input_cache_miss_per_million if price is not None else None
+        ),
+        output_per_million=price.output_per_million if price is not None else None,
+        pricing_source_url=price.source_url if price is not None else None,
+        pricing_snapshot_sha256=price.snapshot_sha256 if price is not None else None,
+        cost_amount=calculation.amount if calculation is not None else None,
+        cost_currency=calculation.currency if calculation is not None else None,
+        cost_unavailable_reason=(
+            None
+            if calculation is not None
+            else cost_unavailable_reason or "usage_unavailable"
+        ),
+    )
 
 
 __all__ = [

@@ -7,7 +7,9 @@ from pathlib import Path
 
 import pytest
 from aima_ugc.adapters.providers.imports import (
+    ExcelBatchImportRejectedRowsError,
     ExcelImportRejectedRowsError,
+    convert_excel_files_to_canonical_jsonl,
     convert_excel_to_canonical_jsonl,
 )
 from aima_ugc.adapters.providers.imports.excel_profile import get_excel_import_profile
@@ -294,3 +296,159 @@ def test_convert_clears_previous_error_file_before_fatal_workbook_error(tmp_path
         )
 
     assert not error_path.exists()
+
+
+def test_convert_multiple_excel_files_preserves_configured_order_and_source(
+    tmp_path: Path,
+) -> None:
+    first = tmp_path / "first.xlsx"
+    second = tmp_path / "second.xlsx"
+    output = tmp_path / "output" / "canonical" / "contents.jsonl"
+    _write_workbook(
+        first,
+        (
+            1,
+            "爱玛",
+            "SOURCE-001",
+            "第一份",
+            "正文一",
+            "微博",
+            None,
+            datetime(2026, 8, 18, 12, 30),
+            None,
+            "作者甲",
+            None,
+            "https://weibo.com/123456/AbCdEf12",
+            10,
+        ),
+    )
+    _write_workbook(
+        second,
+        (
+            1,
+            "爱玛",
+            "SOURCE-002",
+            "第二份",
+            "正文二",
+            "小红书",
+            None,
+            datetime(2026, 8, 18, 12, 31),
+            None,
+            "作者乙",
+            None,
+            "https://www.xiaohongshu.com/explore/64abcdef1234567890abcdef",
+            20,
+        ),
+    )
+
+    summary = convert_excel_files_to_canonical_jsonl(
+        input_paths=(first, second),
+        output_path=output,
+        profile_name="aima-monitoring-excel.v1",
+        sheet_name="文章",
+    )
+
+    records = [
+        CanonicalContentV1.model_validate_json(line)
+        for line in output.read_bytes().splitlines()
+    ]
+    assert [record.title for record in records] == ["第一份", "第二份"]
+    assert [record.source.source_value for record in records] == ["first.xlsx", "second.xlsx"]
+    assert summary.input_paths == (first, second)
+    assert summary.rows_seen == 2
+    assert summary.rows_written == 2
+    assert summary.rows_rejected == 0
+    assert [(item.input_path, item.rows_seen) for item in summary.files] == [
+        (first, 1),
+        (second, 1),
+    ]
+
+
+def test_convert_multiple_excel_files_rejects_duplicate_source_filenames(
+    tmp_path: Path,
+) -> None:
+    first = tmp_path / "a" / "source.xlsx"
+    second = tmp_path / "b" / "SOURCE.XLSX"
+    first.parent.mkdir()
+    second.parent.mkdir()
+    _write_workbook(first)
+    _write_workbook(second)
+    output = tmp_path / "output" / "canonical" / "contents.jsonl"
+
+    with pytest.raises(ValueError, match="文件名重复"):
+        convert_excel_files_to_canonical_jsonl(
+            input_paths=(first, second),
+            output_path=output,
+            profile_name="aima-monitoring-excel.v1",
+            sheet_name="文章",
+        )
+
+    assert not output.exists()
+
+
+def test_convert_multiple_excel_files_fails_atomically_and_identifies_source_error(
+    tmp_path: Path,
+) -> None:
+    first = tmp_path / "first.xlsx"
+    second = tmp_path / "second.xlsx"
+    output = tmp_path / "output" / "canonical" / "contents.jsonl"
+    _write_workbook(
+        first,
+        (
+            1,
+            "爱玛",
+            "SOURCE-001",
+            "有效行",
+            "正文",
+            "微博",
+            None,
+            datetime(2026, 8, 18, 12, 30),
+            None,
+            "作者",
+            None,
+            "https://weibo.com/123456/AbCdEf12",
+            10,
+        ),
+    )
+    _write_workbook(
+        second,
+        (
+            1,
+            "爱玛",
+            None,
+            "无稳定身份",
+            "正文",
+            "小红书",
+            None,
+            datetime(2026, 8, 18, 12, 31),
+            None,
+            "作者",
+            None,
+            None,
+            10,
+        ),
+    )
+
+    with pytest.raises(ExcelBatchImportRejectedRowsError) as exc_info:
+        convert_excel_files_to_canonical_jsonl(
+            input_paths=(first, second),
+            output_path=output,
+            profile_name="aima-monitoring-excel.v1",
+            sheet_name="文章",
+        )
+
+    assert not output.exists()
+    assert exc_info.value.summary.rows_seen == 2
+    assert exc_info.value.summary.rows_written == 1
+    errors = [
+        json.loads(line)
+        for line in exc_info.value.summary.error_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert errors == [
+        {
+            "input_name": "second.xlsx",
+            "row_number": 2,
+            "code": "content_identity_missing",
+            "message": "无法从平台原生 URL、文章编号或规范化 URL 构造稳定内容身份",
+        }
+    ]

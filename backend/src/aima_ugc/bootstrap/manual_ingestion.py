@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -48,6 +49,17 @@ class FileImportDatabaseSummary:
 
     batch_id: UUID
     input_artifact_id: UUID
+    rows_seen: int
+    rows_ingested: int
+    rows_rejected: int
+    provider_request_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class MultiFileImportDatabaseSummary:
+    """一次多 Excel 数据库阶段的按源 Batch 汇总。"""
+
+    batches: tuple[FileImportDatabaseSummary, ...]
     rows_seen: int
     rows_ingested: int
     rows_rejected: int
@@ -130,6 +142,57 @@ def ingest_excel_run_to_postgres(
         runtime.close()
 
 
+def ingest_excel_files_run_to_postgres(
+    *,
+    source_rows: Sequence[tuple[Path, int]],
+    unified_content_path: Path,
+    rows_rejected: int = 0,
+) -> MultiFileImportDatabaseSummary:
+    """把全局去重结果按原 Excel 来源写入独立 Artifact/Import Batch。"""
+
+    sources = tuple((Path(path), rows_seen) for path, rows_seen in source_rows)
+    if not sources:
+        raise ValueError("多 Excel 数据库入库至少需要一个源文件")
+    if rows_rejected != 0:
+        raise ValueError("多 Excel fail-closed 转换不得携带被拒绝行进入数据库阶段")
+    names: set[str] = set()
+    for input_path, rows_seen in sources:
+        if not input_path.is_file():
+            raise FileNotFoundError(input_path)
+        if isinstance(rows_seen, bool) or not isinstance(rows_seen, int) or rows_seen < 0:
+            raise ValueError("File Import 行计数不能为负数")
+        normalized = input_path.name.casefold()
+        if normalized in names:
+            raise ValueError(f"多 Excel 文件名重复，无法唯一分配数据库来源: {input_path.name}")
+        names.add(normalized)
+
+    unified_path = Path(unified_content_path)
+    _require_known_excel_sources(unified_path, {path.name for path, _ in sources})
+    runtime = create_platform_runtime("manual-ingestion")
+    try:
+        batches = tuple(
+            _ingest_excel_run(
+                input_path=input_path,
+                unified_content_path=unified_path,
+                rows_seen=rows_seen,
+                rows_rejected=0,
+                job_id=None,
+                runtime=runtime,
+                source_value_filter=input_path.name,
+            )
+            for input_path, rows_seen in sources
+        )
+    finally:
+        runtime.close()
+    return MultiFileImportDatabaseSummary(
+        batches=batches,
+        rows_seen=sum(item.rows_seen for item in batches),
+        rows_ingested=sum(item.rows_ingested for item in batches),
+        rows_rejected=sum(item.rows_rejected for item in batches),
+        provider_request_count=sum(item.provider_request_count for item in batches),
+    )
+
+
 def _ingest_excel_run(
     *,
     input_path: Path,
@@ -138,6 +201,7 @@ def _ingest_excel_run(
     rows_rejected: int,
     job_id: UUID | None,
     runtime: PlatformRuntime,
+    source_value_filter: str | None = None,
 ) -> FileImportDatabaseSummary:
     require_stage8a_schema(runtime.database)
     if rows_seen < 0 or rows_rejected < 0:
@@ -201,6 +265,11 @@ def _ingest_excel_run(
                                 f"Unified Content JSONL 第 {line_number} 行无法解析"
                             ) from exc
                         content = record.content
+                        if (
+                            source_value_filter is not None
+                            and content.source.source_value != source_value_filter
+                        ):
+                            continue
                         lineage = lineage_by_platform.get(content.platform)
                         if lineage is None:
                             request_id = uuid5(batch_id, f"provider-request:{content.platform}")
@@ -299,8 +368,31 @@ def _safe_error_summary(error: Exception) -> str:
     return f"{type(error).__name__}: {message}"[:2000] if message else type(error).__name__
 
 
+def _require_known_excel_sources(path: Path, expected_source_values: set[str]) -> None:
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    with path.open("rb") as handle:
+        for line_number, raw_line in enumerate(handle, start=1):
+            if not raw_line.strip():
+                continue
+            try:
+                record = UnifiedContentRecordV1.model_validate_json(raw_line)
+            except Exception as exc:
+                raise ValueError(
+                    f"Unified Content JSONL 第 {line_number} 行无法解析"
+                ) from exc
+            source_value = record.content.source.source_value
+            if source_value not in expected_source_values:
+                raise ValueError(
+                    f"Unified Content JSONL 第 {line_number} 行来源不属于本次 Excel 输入: "
+                    f"{source_value}"
+                )
+
+
 __all__ = [
     "FileImportDatabaseSummary",
+    "MultiFileImportDatabaseSummary",
+    "ingest_excel_files_run_to_postgres",
     "ingest_excel_run_to_postgres",
     "require_stage8a_schema",
 ]
