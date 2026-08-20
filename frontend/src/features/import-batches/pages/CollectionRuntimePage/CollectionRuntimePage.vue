@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 import AppShell from '../../../../app/layouts/AppShell.vue'
 import { useImportBatchesStore } from '../../store'
@@ -10,6 +11,7 @@ import ImportKpiCards from './components/ImportKpiCards.vue'
 import ImportUploadDialog from './components/ImportUploadDialog.vue'
 
 const store = useImportBatchesStore()
+const router = useRouter()
 const uploadOpen = ref(false)
 const notice = ref<string | null>(null)
 const detailOpen = computed({
@@ -58,6 +60,10 @@ function showNotice(message: string): void {
   window.setTimeout(() => {
     if (notice.value === message) notice.value = null
   }, 2600)
+}
+
+async function viewContents(batchId: string): Promise<void> {
+  await router.push({ name: 'voice-plaza', query: { source_identifier: batchId } })
 }
 </script>
 
@@ -125,6 +131,7 @@ function showNotice(message: string): void {
       :item="store.selected"
       @refresh="store.selected && store.openDetail(store.selected.id)"
       @copy="copy"
+      @view-contents="viewContents"
     />
     <ImportUploadDialog
       v-model="uploadOpen"

@@ -14,6 +14,10 @@ from aima_ugc.adapters.persistence.postgres.collection_run_execution import (
     PostgresCollectionRunExecutionGateway,
 )
 from aima_ugc.adapters.providers.tikhub.transport import TikHubHttpTransport
+from aima_ugc.modules.analysis.content_analysis_job import (
+    ContentAnalysisJobHandler,
+    register_content_analysis_job,
+)
 from aima_ugc.modules.collection.collection_run_executor import CollectionRunExecutor
 from aima_ugc.modules.collection.collection_run_job import (
     CollectionRunJobHandler,
@@ -21,13 +25,19 @@ from aima_ugc.modules.collection.collection_run_job import (
 )
 from aima_ugc.modules.collection.providers import ProviderTransport, RawArtifactService
 from aima_ugc.modules.ingestion import ImportJobHandler, register_import_job
+from aima_ugc.modules.reporting.data_export_job import (
+    DataExportJobHandler,
+    register_data_export_job,
+)
 from aima_ugc.modules.system.models import ProviderConfig
 from aima_ugc.platform.config import PlatformSettings
 from aima_ugc.platform.jobs import JobReaper, JobRegistry, JobWorker
 from aima_ugc.platform.security import read_secret_file, validate_secret_ref
 from aima_ugc.platform.storage import ArtifactService
 
+from .analysis_worker import PostgresContentAnalysisJobExecutor
 from .collection_scope import TikHubCollectionScopeExecutor
+from .export_worker import PostgresDataExportJobExecutor
 from .import_worker import PostgresImportJobExecutor, import_job_terminal_callback
 from .runtime import PlatformRuntime, create_platform_runtime
 
@@ -107,6 +117,14 @@ def create_collection_job_registry(
         registry,
         ImportJobHandler(PostgresImportJobExecutor(runtime)),
         terminal_callback=import_job_terminal_callback,
+    )
+    register_content_analysis_job(
+        registry,
+        ContentAnalysisJobHandler(PostgresContentAnalysisJobExecutor(runtime)),
+    )
+    register_data_export_job(
+        registry,
+        DataExportJobHandler(PostgresDataExportJobExecutor(runtime)),
     )
     return registry
 

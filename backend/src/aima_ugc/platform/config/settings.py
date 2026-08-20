@@ -27,6 +27,13 @@ class PlatformSettings(BaseModel):
     db_name: str = Field(default="aima_ugc", min_length=1)
     db_user: str = Field(default="aima_ugc", min_length=1)
     db_connect_timeout_seconds: int = Field(default=3, ge=1, le=60)
+    llm_base_url: str | None = None
+    llm_provider_name: str | None = None
+    llm_model: str | None = None
+    llm_timeout_seconds: float = Field(default=60.0, gt=0, le=1800)
+    llm_max_connections: int = Field(default=10, ge=1, le=100)
+    llm_validation_retries: int = Field(default=1, ge=0, le=3)
+    analysis_batch_size: int = Field(default=20, ge=1, le=100)
 
     @property
     def artifact_dir(self) -> Path:
@@ -43,6 +50,16 @@ class PlatformSettings(BaseModel):
         """返回 Import Batch Cursor 签名密钥文件，不读取 Secret 内容。"""
         return self.secret_dir / "import_batch_cursor_signing_key"
 
+    @property
+    def content_cursor_signing_key_file(self) -> Path:
+        """返回声音广场 Cursor 签名密钥文件，不读取 Secret 内容。"""
+        return self.secret_dir / "content_cursor_signing_key"
+
+    @property
+    def llm_api_key_file(self) -> Path:
+        """返回正式 Analysis LLM API Key 文件，不读取 Secret 内容。"""
+        return self.secret_dir / "llm_api_key"
+
 
 _ENV_TO_FIELD = {
     "AIMA_DATA_DIR": "data_dir",
@@ -57,6 +74,13 @@ _ENV_TO_FIELD = {
     "AIMA_DB_NAME": "db_name",
     "AIMA_DB_USER": "db_user",
     "AIMA_DB_CONNECT_TIMEOUT_SECONDS": "db_connect_timeout_seconds",
+    "AIMA_LLM_BASE_URL": "llm_base_url",
+    "AIMA_LLM_PROVIDER_NAME": "llm_provider_name",
+    "AIMA_LLM_MODEL": "llm_model",
+    "AIMA_LLM_TIMEOUT_SECONDS": "llm_timeout_seconds",
+    "AIMA_LLM_MAX_CONNECTIONS": "llm_max_connections",
+    "AIMA_LLM_VALIDATION_RETRIES": "llm_validation_retries",
+    "AIMA_ANALYSIS_BATCH_SIZE": "analysis_batch_size",
 }
 
 _DEFAULTS = {

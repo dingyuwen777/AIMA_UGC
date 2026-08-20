@@ -432,13 +432,18 @@ Scheduler 不直接执行 Job。多 Scheduler 实例和任一提交边界崩溃�
 
 ## 8. Worker Registry
 
-当前 Stage 7 正式 Collection Job 类型是：
+当前正式 Worker Registry 包含：
 
 ```text
 collection.run.v1
+ingestion.import-excel.v1
+analysis.content-label.v1
+reporting.content-export-excel.v1
 ```
 
-它必须由唯一 Handler 注册并消费 Scheduler 创建的 Run/Scope。其他未来采集、分析、报告、导出或维护 Job 只有在对应 Contract/Handler 真正实现后才能加入 Registry；未知 Job 类型不能被任意 Worker 认领。
+每个 Job Type 只有一个正式 Handler。Analysis/Export 复用同一 Lease/Fencing/Heartbeat/Attempt Deadline/
+Reaper Runtime；Analysis 只由用户显式请求创建，Export 只保存稳定父 ID Payload。未知 Job 类型不能被
+任意 Worker 认领，Router 不在请求生命周期执行模型或生成 Excel。
 
 跨模块的可靠触发使用同一 PostgreSQL Unit of Work：业务 Owner 在提交内容/分析/告警事实时，同时插入版本化 Job；Worker 再以内部幂等键消费。不得先提交业务数据、随后在另一个事务“尽力创建 Job”。当前规模不因此引入新消息中间件。
 
@@ -457,6 +462,10 @@ features/collection/
 ├─ models.ts
 └─ tests/
 ```
+
+Stage 8C/8D 当前实际 Feature 为 `features/import-batches/` 与 `features/voice-plaza/`。声音广场保持
+Page/私有组件/Store/API/生成 Client 分层；一次性截图只影响可替换视觉层，后续 Figma 重做不得改变
+`/voice-plaza`、Pydantic/Orval Contract、筛选快照、全部标签数组或显式 Analysis/Export 操作语义。
 
 页面只使用本 Feature 的公开入口和 `shared/`。跨 Feature 共享业务状态时，把 Owner 放在真正拥有该业务的 Feature，不复制 Store。
 

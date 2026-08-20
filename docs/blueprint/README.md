@@ -68,9 +68,8 @@
 
 ## 当前开发状态
 
-**Stage 1—7、临时 P1、Stage 8A、Stage 8B 与 Stage 8C 已闭环。Stage 8C 已由最终 PR Head
-21/21 checks、两阶段 Review、正常合并、Change 归档和合并后 `main` 新鲜 CI 共同证明；下一正式最小
-开发单元是 Stage 8D 内容中心。**
+**Stage 1—7、临时 P1、Stage 8A、Stage 8B、Stage 8C 与 Stage 8D 已闭环。Stage 8D 的完整交付证据
+由对应归档 Change 维护；下一正式最小开发单元是 Stage 8E TikHub 辅助补采。**
 
 Stage 8A 与 Stage 8B 当前 `main` 机器边界：
 
@@ -123,13 +122,14 @@ P1 已固化的长期能力：
 
 ## 下一正式最小开发单元
 
-### Stage 8D：内容中心
+### Stage 8E：TikHub 辅助补采
 
-Stage 8C 已完成采集运行中心的首个正式 Vue 前后端纵切；系统全局 Relevance Keyword Pack 配置页面
-仍按已批准边界留到 Stage 8F。8C 经用户批准使用固定 PNG 作为一次性视觉例外；例外、资产哈希和未来
-Figma 兼容边界保存在归档 Change，不修改 Blueprint 16 的长期 Figma 规则。
+Stage 8D 已完成用户可见“声音广场”、统一 Content Query/详情、current Analysis 持久化与全部标签展示、
+显式 Analysis Job，以及 durable Excel Export/Artifact 下载。系统全局 Relevance Keyword Pack 配置页面
+仍按已批准边界留到 Stage 8F。Stage 8D 经用户批准使用固定截图作为一次性视觉例外；例外、资产哈希和
+未来 Figma 兼容边界保存在对应 Change，不修改 Blueprint 16 的长期 Figma 规则。
 
-开始 Stage 8D 时仍必须重新从当时 `main` 恢复事实：
+开始 Stage 8E 时仍必须重新从当时 `main` 恢复事实：
 
 ```text
 AGENTS.md
@@ -141,24 +141,26 @@ AGENTS.md
 → docs/blueprint/03-数据库与文件存储.md
 → docs/blueprint/04-后端任务API与前端.md
 → docs/API接口说明.md
-→ changes/active 与 Stage 8C 归档 Change
+→ changes/active 与 Stage 8D 归档 Change
 → 当前 main / Content Contract / Migration / OpenAPI / generated client / backend Query/Service / frontend 结构与测试
 ```
 
-Stage 8D 的目标边界以 Blueprint 16 和 17 为准：前端从统一 PostgreSQL Content Read Model 读取内容列表
-和详情，复用既有 App/Shared/Feature 与 OpenAPI→Orval 链；不提前实现 Stage 8E TikHub 补采或 Stage 8F
-Relevance/Plan 配置页面。
+Stage 8E 的目标边界以 Blueprint 17 为准：从 Batch/Content 上下文显式发起 TikHub 辅助补采，复用
+正式 Collection Run/Job 与统一 Content Ingestion；不向 UI 泄露 Provider 私有分页参数，不提前实现
+Stage 8F Relevance/Plan 配置页面。
 
 ### 独立于 Stage 8A 的后续门禁
 
 以下事项仍需要未来阶段/Release 独立处理：
 
 - Raw、个人信息、导出和审计的访问/保留/删除与合规规则；
-- 已落地的共享 Excel Exporter 只是统一写出核心；正式系统级大批量导出仍需未来 API/Job/Artifact/权限/生命周期闭环；
-- 已落地的是平台通用 Analysis 核心与无数据库验证入口；正式数据库 DDL/Migration、Analysis Job/API/页面仍需按 Blueprint 15 和对应正式阶段闭环；
+- Stage 8D 已接入正式 Export API/Job/Artifact；公网下载权限和已批准的自动保留/删除期限仍需未来
+  Authentication/Authorization 与数据治理阶段闭环；
+- Stage 8D 已接入正式 Analysis DDL/Migration/Job/API/页面；自动随采集触发仍明确不实现，若未来需要
+  必须另立 L3 Change 评估费用、调度和失败语义；
 - 日请求量、数据量、Worker 并发、Raw/数据库日增量、磁盘容量、SLO、RPO、RTO；
 - 生产镜像 variant/digest、离线 Release、安全发布与恢复演练；
-- Stage 8D+ 其余正式业务页面及 Provider 凭据写入能力；凭据仍必须通过安全
+- Stage 8E+ 其余正式业务页面及 Provider 凭据写入能力；凭据仍必须通过安全
   SecretStore/SecretService，不能把数据库明文 Secret 当捷径；
 - 未来如重新需要 Budget/Cost Guard，必须创建新的 L3 Change，不得复活当前已删除接口。
 

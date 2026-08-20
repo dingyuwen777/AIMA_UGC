@@ -17,6 +17,7 @@ from .content_labeling import (
     PromptTaxonomyError,
     PromptTaxonomyLoader,
     RuntimeTaxonomyValidator,
+    content_labeling_input_hash,
 )
 from .offline_content import (
     ContentDeduplicationConflictError,
@@ -62,6 +63,7 @@ __all__ = [
     "PromptTaxonomyError",
     "PromptTaxonomyLoader",
     "RuntimeTaxonomyValidator",
+    "content_labeling_input_hash",
     "RelevanceDecision",
     "RelevanceKeyword",
     "RelevanceService",

@@ -560,6 +560,12 @@ def _input_hash(item: ContentLabelingModelItem) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def content_labeling_input_hash(content: CanonicalContentV1) -> str:
+    """返回正式模型输入的稳定 Hash，供持久化幂等与 current 校验复用。"""
+
+    return _input_hash(_to_model_item(content, item_no=1))
+
+
 def _all_invalid(expected_item_nos: Sequence[int], *error_codes: str) -> _ValidationResult:
     codes = _unique_error_codes(error_codes)
     return _ValidationResult(
@@ -585,6 +591,7 @@ __all__ = [
     "ContentLabelingModelItem",
     "ContentLabelingService",
     "ContentLabelingValidationError",
+    "content_labeling_input_hash",
     "FakeContentLabelingLLM",
     "PromptTaxonomy",
     "PromptTaxonomyError",

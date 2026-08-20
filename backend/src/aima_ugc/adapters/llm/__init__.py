@@ -6,6 +6,7 @@ from .openai_compatible import (
     DEFAULT_OPENAI_COMPATIBLE_TIMEOUT_SECONDS,
     OpenAICompatibleContentLabelingLLM,
     OpenAICompatibleLLMError,
+    resolve_openai_compatible_provider_name,
 )
 from .pricing import (
     LLMCostCalculation,
@@ -31,6 +32,7 @@ __all__ = [
     "DEFAULT_OPENAI_COMPATIBLE_TIMEOUT_SECONDS",
     "OpenAICompatibleContentLabelingLLM",
     "OpenAICompatibleLLMError",
+    "resolve_openai_compatible_provider_name",
     "RetryingContentLabelingLLM",
     "LLMCostCalculation",
     "LLMHTTPRequestAudit",

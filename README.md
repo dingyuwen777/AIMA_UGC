@@ -157,15 +157,19 @@ Stage 6 没有启用真实 HTTP Transport、预算 Reservation/Settlement、公�
 
 Stage 7 的真实 Provider 兼容证据由受控 Probe、合法脱敏 Fixture 与 `docs/blueprint/10`—`12` 维护；一次 HTTP 200 不等于长期稳定性承诺。
 
-### Stage 8A—8C：统一 File Import 与采集运行中心
+### Stage 8A—8D：统一 File Import、采集运行中心与声音广场
 
 - Stage 8A/8B 已把 Excel 主入口接入 Source Artifact、Processing Import Batch、持久化 Import Job、
   既有 Worker/正式 File Import、全局 Relevance 与 Content Ingestion，并固定 OpenAPI/Orval Client；
 - Stage 8C 已增加 Batch 列表、北京时间 Summary、查询绑定 HMAC Cursor，以及通过
   Feature API/Pinia/生成 Client 调用的 Vue 采集运行中心；
-- 正式页面路由为 `/collection-runtime`；根路径继续组合相同 Feature Page 作为兼容入口；
-- 本页只产品化 Excel Import 运行事实，不包含 Content Center、TikHub 补采页面、Relevance 配置页面、
-  AI 持久化或报告；下一正式最小开发单元是 Stage 8D 内容中心。
+- Stage 8D 新增 `/voice-plaza` 声音广场：统一查询 Excel/TikHub 等来源入库的 Content，展示详情、
+  评论 Coverage、当前有效 AI 情感及全部有序一级/二级标签；采集运行中心可按 Batch 跳转查看处理内容；
+- Analysis Result/Label Pair 已独立持久化；页面只在用户显式确认后创建 durable Analysis Job，导入/采集
+  不会自动触发付费模型；
+- Excel 导出由 durable Export Job 冻结 Content ID/Version，复用共享 Exporter，登记 Artifact 后下载；
+  未打标内容不会被丢弃，AI 列为空并计入未打标统计；
+- 本阶段不包含 Stage 8E TikHub 辅助补采或 Stage 8F Relevance/Plan 配置页面。
 
 Stage 8C 已由最终 PR Head 21/21 checks、两阶段 Review、正常合并、Change 归档和合并后 `main`
 新鲜 CI 共同闭环，不能由 README 或页面存在单独证明。
@@ -191,9 +195,12 @@ scripts\setup_dev_environment.cmd
 ```text
 <AIMA_SECRET_DIR>/postgres_password
 <AIMA_SECRET_DIR>/import_batch_cursor_signing_key
+<AIMA_SECRET_DIR>/content_cursor_signing_key
 ```
 
-后者是 Stage 8C Import Batch Cursor 的独立 HMAC Key，至少 32 个 UTF-8 字节；不得与数据库密码复用。
+两个 Cursor Key 分别用于 Import Batch 与声音广场查询，均至少 32 个 UTF-8 字节且不得与数据库密码
+或彼此复用。启用真实 AI 分析时还需提供 `<AIMA_SECRET_DIR>/llm_api_key`，并显式配置
+`AIMA_LLM_BASE_URL`、`AIMA_LLM_MODEL`；`AIMA_LLM_PROVIDER_NAME` 可覆盖由 Base URL 推导的稳定 Provider 名。
 
 默认本地目录为：
 
@@ -341,26 +348,20 @@ TikHub / 官方 API / Apify / 自建采集器 / 文件导入 / 其他 Provider
 
 ## 下一阶段
 
-实施顺序由 [`docs/blueprint/06-开发约束与分阶段实施.md`](docs/blueprint/06-开发约束与分阶段实施.md) 和 `07` 的 Go/No-Go 共同约束：
+下一正式最小开发单元是 **Stage 8E：TikHub 辅助补采**。开始前仍须从当时最新 `main` 重新确认
+Blueprint、Contract、Migration、OpenAPI/Orval、Content Query、Collection Runtime、Active Change、
+相关 PR 和 CI，不能仅凭本 README 判断阶段状态。
 
 ```text
-阶段 0：继续补齐产品、页面、五平台能力、真实 Fixture、容量/SLO/RPO/RTO 等业务事实
-        ↘ 与不依赖业务选择的工作并行
-阶段 1：已完成
-阶段 2：Platform 基础已完成
-阶段 3A：数据库/Alembic/Artifact Metadata/System/Audit 基础已完成
-阶段 3B：Canonical Pydantic / JSON Schema / 固定示例已完成
-阶段 4：PostgreSQL Job Runtime 已完成
-阶段 5A：Provider-neutral Request/Attempt、Fake Transport 与 Raw Artifact 已建立
-阶段 5B：Collection Run/Scope 父事实与第三条 Migration 已建立
-阶段 5C：Provider Request/Attempt 最终表、第四条 Migration 与幂等创建已建立
-阶段 5D：受 Fencing 约束的 dispatch、Raw 关联和崩溃恢复已建立
-阶段 6：小红书 TikHub App V2 端到端纵切已建立
-→ 阶段 7：其余平台与 Collection/Scheduler（等待对应业务决策）
-→ 后续阶段按蓝图逐步扩展
+Stage 8D 声音广场 / current Analysis / durable Excel Export 已闭环
+→ Stage 8E 从 Batch/Content 上下文显式发起 TikHub 辅助补采
+→ 复用正式 Collection Run / Job / Provider / Ingestion
+→ 不提前实现 Stage 8F Relevance / Plan 配置页面
 ```
 
-Stage 0 未全部完成不影响已经建立的 Stage 5A—6 基础。小红书 TikHub App V2 的本次 Operation 和脱敏 Fixture 已形成 Stage 6 事实；其余平台、真实付费 Transport/预算、隐私保留、容量或 Scheduler 策略仍必须等待对应门禁，尤其不得用 Fake/空页 Probe 冒充五平台或生产兼容性验收。
+具体成功标准、范围和非目标以
+[`docs/blueprint/17-Stage8数据入口统一入库与业务前端实施.md`](docs/blueprint/17-Stage8数据入口统一入库与业务前端实施.md)
+为准；Stage 8E 不自动开启真实付费 Provider，也不改变当前未接入公网生产认证的边界。
 
 ## 多人协作
 

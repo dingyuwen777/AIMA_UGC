@@ -15,6 +15,1156 @@
         "title": "Body_createImportBatch",
         "type": "object"
       },
+      "CommentCoverageResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "collected_count": {
+            "minimum": 0.0,
+            "title": "Collected Count",
+            "type": "integer"
+          },
+          "coverage": {
+            "title": "Coverage",
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "reported_total": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported Total"
+          }
+        },
+        "required": [
+          "coverage",
+          "collected_count",
+          "observed_at"
+        ],
+        "title": "CommentCoverageResponse",
+        "type": "object"
+      },
+      "ContentAnalysisCreatedResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "status": {
+            "const": "queued",
+            "default": "queued",
+            "title": "Status",
+            "type": "string"
+          },
+          "target_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Target Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "request_id",
+          "job_id",
+          "target_count"
+        ],
+        "title": "ContentAnalysisCreatedResponse",
+        "type": "object"
+      },
+      "ContentAnalysisJobResultResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "failed": {
+            "minimum": 0.0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "stale": {
+            "minimum": 0.0,
+            "title": "Stale",
+            "type": "integer"
+          },
+          "succeeded": {
+            "minimum": 0.0,
+            "title": "Succeeded",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "request_id",
+          "succeeded",
+          "failed",
+          "stale"
+        ],
+        "title": "ContentAnalysisJobResultResponse",
+        "type": "object"
+      },
+      "ContentAnalysisResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "analyzed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analyzed At"
+          },
+          "labels": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ContentLabelPairResponse"
+            },
+            "title": "Labels",
+            "type": "array"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "model_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Provider"
+          },
+          "sentiment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sentiment"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ContentAnalysisStatus"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "ContentAnalysisResponse",
+        "type": "object"
+      },
+      "ContentAnalysisStatus": {
+        "enum": [
+          "pending",
+          "completed",
+          "stale"
+        ],
+        "type": "string"
+      },
+      "ContentAnalysisSubmitRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "targets": {
+            "$ref": "#/components/schemas/ContentTargetSelection"
+          }
+        },
+        "required": [
+          "targets"
+        ],
+        "title": "ContentAnalysisSubmitRequest",
+        "type": "object"
+      },
+      "ContentCommentResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "author_display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Display Name"
+          },
+          "external_comment_id": {
+            "title": "External Comment Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "like_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Like Count"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "reply_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply Count"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "required": [
+          "id",
+          "external_comment_id"
+        ],
+        "title": "ContentCommentResponse",
+        "type": "object"
+      },
+      "ContentDetailResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis": {
+            "$ref": "#/components/schemas/ContentAnalysisResponse"
+          },
+          "author_display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Display Name"
+          },
+          "comment_coverage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CommentCoverageResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "comments": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ContentCommentResponse"
+            },
+            "title": "Comments",
+            "type": "array"
+          },
+          "content_type": {
+            "title": "Content Type",
+            "type": "string"
+          },
+          "content_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Url"
+          },
+          "external_content_id": {
+            "title": "External Content Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "title": "Last Seen At",
+            "type": "string"
+          },
+          "media": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ContentMediaResponse"
+            },
+            "title": "Media",
+            "type": "array"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/ContentMetricsResponse"
+          },
+          "platform": {
+            "title": "Platform",
+            "type": "string"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ContentSourceResponse"
+          },
+          "source_records": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ContentSourceResponse"
+            },
+            "title": "Source Records",
+            "type": "array"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "id",
+          "platform",
+          "external_content_id",
+          "content_type",
+          "last_seen_at",
+          "metrics",
+          "analysis",
+          "source"
+        ],
+        "title": "ContentDetailResponse",
+        "type": "object"
+      },
+      "ContentFilterSnapshot": {
+        "additionalProperties": false,
+        "description": "可序列化并冻结到 Analysis/Export Request 的查询条件。",
+        "properties": {
+          "analysis_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContentAnalysisStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "content_types": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Content Types",
+            "type": "array"
+          },
+          "platforms": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Platforms",
+            "type": "array"
+          },
+          "primary_label": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Label"
+          },
+          "published_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published From"
+          },
+          "published_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published To"
+          },
+          "search": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Search"
+          },
+          "secondary_label": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secondary Label"
+          },
+          "sentiment": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sentiment"
+          },
+          "source_identifier": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Identifier"
+          }
+        },
+        "title": "ContentFilterSnapshot",
+        "type": "object"
+      },
+      "ContentLabelPairResponse": {
+        "additionalProperties": false,
+        "description": "按模型重要性顺序返回的一个一级/二级标签对。",
+        "properties": {
+          "primary_label": {
+            "title": "Primary Label",
+            "type": "string"
+          },
+          "secondary_label": {
+            "title": "Secondary Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "primary_label",
+          "secondary_label"
+        ],
+        "title": "ContentLabelPairResponse",
+        "type": "object"
+      },
+      "ContentListItemResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis": {
+            "$ref": "#/components/schemas/ContentAnalysisResponse"
+          },
+          "author_display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Display Name"
+          },
+          "content_type": {
+            "title": "Content Type",
+            "type": "string"
+          },
+          "content_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Url"
+          },
+          "external_content_id": {
+            "title": "External Content Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "title": "Last Seen At",
+            "type": "string"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/ContentMetricsResponse"
+          },
+          "platform": {
+            "title": "Platform",
+            "type": "string"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ContentSourceResponse"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "id",
+          "platform",
+          "external_content_id",
+          "content_type",
+          "last_seen_at",
+          "metrics",
+          "analysis",
+          "source"
+        ],
+        "title": "ContentListItemResponse",
+        "type": "object"
+      },
+      "ContentListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ContentListItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "has_more"
+        ],
+        "title": "ContentListResponse",
+        "type": "object"
+      },
+      "ContentMediaResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "alt_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alt Text"
+          },
+          "media_type": {
+            "title": "Media Type",
+            "type": "string"
+          },
+          "position": {
+            "minimum": 0.0,
+            "title": "Position",
+            "type": "integer"
+          },
+          "preview_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preview Url"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "position",
+          "media_type"
+        ],
+        "title": "ContentMediaResponse",
+        "type": "object"
+      },
+      "ContentMetricsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "comment_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment Count"
+          },
+          "favorite_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Favorite Count"
+          },
+          "like_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Like Count"
+          },
+          "play_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Play Count"
+          },
+          "repost_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repost Count"
+          },
+          "share_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share Count"
+          },
+          "view_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "View Count"
+          }
+        },
+        "title": "ContentMetricsResponse",
+        "type": "object"
+      },
+      "ContentSourceResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "collection_run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Run Id"
+          },
+          "import_batch_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Import Batch Id"
+          },
+          "provider_attempt_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Attempt Id"
+          },
+          "provider_name": {
+            "title": "Provider Name",
+            "type": "string"
+          },
+          "raw_artifact_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Artifact Id"
+          }
+        },
+        "required": [
+          "provider_name"
+        ],
+        "title": "ContentSourceResponse",
+        "type": "object"
+      },
+      "ContentTargetSelection": {
+        "additionalProperties": false,
+        "description": "HTTP 层选择语义；Service 会立刻冻结 Content ID + Version。",
+        "properties": {
+          "content_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "title": "Content Ids",
+            "type": "array"
+          },
+          "filters": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContentFilterSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scope": {
+            "enum": [
+              "query",
+              "selected"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope"
+        ],
+        "title": "ContentTargetSelection",
+        "type": "object"
+      },
+      "DataExportCreatedResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "export_id": {
+            "format": "uuid",
+            "title": "Export Id",
+            "type": "string"
+          },
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "status": {
+            "const": "queued",
+            "default": "queued",
+            "title": "Status",
+            "type": "string"
+          },
+          "target_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Target Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "export_id",
+          "job_id",
+          "target_count"
+        ],
+        "title": "DataExportCreatedResponse",
+        "type": "object"
+      },
+      "DataExportJobResultResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "analyzed_count": {
+            "minimum": 0.0,
+            "title": "Analyzed Count",
+            "type": "integer"
+          },
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "comment_count": {
+            "minimum": 0.0,
+            "title": "Comment Count",
+            "type": "integer"
+          },
+          "content_count": {
+            "minimum": 0.0,
+            "title": "Content Count",
+            "type": "integer"
+          },
+          "export_id": {
+            "format": "uuid",
+            "title": "Export Id",
+            "type": "string"
+          },
+          "unanalyzed_count": {
+            "minimum": 0.0,
+            "title": "Unanalyzed Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "export_id",
+          "artifact_id",
+          "content_count",
+          "analyzed_count",
+          "unanalyzed_count",
+          "comment_count"
+        ],
+        "title": "DataExportJobResultResponse",
+        "type": "object"
+      },
+      "DataExportListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DataExportResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "DataExportListResponse",
+        "type": "object"
+      },
+      "DataExportResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Id"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "job": {
+            "$ref": "#/components/schemas/JobStatusResponse"
+          },
+          "stats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DataExportStatsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "job",
+          "created_at"
+        ],
+        "title": "DataExportResponse",
+        "type": "object"
+      },
+      "DataExportStatsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "analyzed_count": {
+            "minimum": 0.0,
+            "title": "Analyzed Count",
+            "type": "integer"
+          },
+          "comment_count": {
+            "minimum": 0.0,
+            "title": "Comment Count",
+            "type": "integer"
+          },
+          "content_count": {
+            "minimum": 0.0,
+            "title": "Content Count",
+            "type": "integer"
+          },
+          "unanalyzed_count": {
+            "minimum": 0.0,
+            "title": "Unanalyzed Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "content_count",
+          "analyzed_count",
+          "unanalyzed_count",
+          "comment_count"
+        ],
+        "title": "DataExportStatsResponse",
+        "type": "object"
+      },
+      "DataExportSubmitRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "format": {
+            "const": "xlsx",
+            "default": "xlsx",
+            "title": "Format",
+            "type": "string"
+          },
+          "targets": {
+            "$ref": "#/components/schemas/ContentTargetSelection"
+          }
+        },
+        "required": [
+          "targets"
+        ],
+        "title": "DataExportSubmitRequest",
+        "type": "object"
+      },
       "GlobalRelevanceConfigRequest": {
         "additionalProperties": false,
         "properties": {
@@ -491,9 +1641,16 @@
                 "$ref": "#/components/schemas/ImportJobResultResponse"
               },
               {
+                "$ref": "#/components/schemas/ContentAnalysisJobResultResponse"
+              },
+              {
+                "$ref": "#/components/schemas/DataExportJobResultResponse"
+              },
+              {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Result"
           },
           "started_at": {
             "anyOf": [
@@ -737,6 +1894,660 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/content-analysis-jobs/{job_id}": {
+      "get": {
+        "operationId": "getContentAnalysisJob",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Content Analysis Job",
+        "tags": [
+          "contents"
+        ]
+      }
+    },
+    "/api/v1/content-analysis-requests": {
+      "post": {
+        "operationId": "createContentAnalysis",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContentAnalysisSubmitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentAnalysisCreatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Create Content Analysis",
+        "tags": [
+          "contents"
+        ]
+      }
+    },
+    "/api/v1/contents": {
+      "get": {
+        "operationId": "listContents",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "platforms",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 20,
+              "title": "Platforms",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "content_types",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 20,
+              "title": "Content Types",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "analysis_status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ContentAnalysisStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Analysis Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sentiment",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sentiment"
+            }
+          },
+          {
+            "in": "query",
+            "name": "primary_label",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Primary Label"
+            }
+          },
+          {
+            "in": "query",
+            "name": "secondary_label",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Secondary Label"
+            }
+          },
+          {
+            "in": "query",
+            "name": "published_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Published From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "published_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Published To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_identifier",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Identifier"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "List Contents",
+        "tags": [
+          "contents"
+        ]
+      }
+    },
+    "/api/v1/contents/{content_id}": {
+      "get": {
+        "operationId": "getContent",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "content_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Content Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Content",
+        "tags": [
+          "contents"
+        ]
+      }
+    },
+    "/api/v1/data-exports": {
+      "get": {
+        "operationId": "listDataExports",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataExportListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Data Exports",
+        "tags": [
+          "exports"
+        ]
+      },
+      "post": {
+        "operationId": "createDataExport",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DataExportSubmitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataExportCreatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Create Data Export",
+        "tags": [
+          "exports"
+        ]
+      }
+    },
+    "/api/v1/data-exports/{export_id}": {
+      "get": {
+        "operationId": "getDataExport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataExportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Data Export",
+        "tags": [
+          "exports"
+        ]
+      }
+    },
+    "/api/v1/data-exports/{export_id}/download": {
+      "get": {
+        "operationId": "downloadDataExport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Excel 导出文件"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Download Data Export",
+        "tags": [
+          "exports"
+        ]
+      }
+    },
     "/api/v1/import-batches": {
       "get": {
         "operationId": "listImportBatches",

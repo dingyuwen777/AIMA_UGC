@@ -60,6 +60,26 @@ class ImportJobResultResponse(BaseModel):
     rows_ingested: int = Field(ge=0)
 
 
+class ContentAnalysisJobResultResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    request_id: UUID
+    succeeded: int = Field(ge=0)
+    failed: int = Field(ge=0)
+    stale: int = Field(ge=0)
+
+
+class DataExportJobResultResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    export_id: UUID
+    artifact_id: UUID
+    content_count: int = Field(ge=0)
+    analyzed_count: int = Field(ge=0)
+    unanalyzed_count: int = Field(ge=0)
+    comment_count: int = Field(ge=0)
+
+
 class JobStatusResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -70,7 +90,12 @@ class JobStatusResponse(BaseModel):
     max_attempts: int = Field(gt=0)
     progress: int = Field(ge=0, le=100)
     error_code: str | None = None
-    result: ImportJobResultResponse | None = None
+    result: (
+        ImportJobResultResponse
+        | ContentAnalysisJobResultResponse
+        | DataExportJobResultResponse
+        | None
+    ) = None
     created_at: datetime
     started_at: datetime | None = None
     finished_at: datetime | None = None
@@ -220,7 +245,270 @@ class GlobalRelevanceConfigResponse(BaseModel):
     updated_at: datetime
 
 
+type ContentAnalysisStatus = Literal["pending", "completed", "stale"]
+
+
+class ContentLabelPairResponse(BaseModel):
+    """按模型重要性顺序返回的一个一级/二级标签对。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    primary_label: str
+    secondary_label: str
+
+
+class ContentAnalysisResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: ContentAnalysisStatus
+    sentiment: str | None = None
+    labels: tuple[ContentLabelPairResponse, ...] = ()
+    analyzed_at: datetime | None = None
+    model_provider: str | None = None
+    model: str | None = None
+
+    @model_validator(mode="after")
+    def validate_completed_shape(self) -> ContentAnalysisResponse:
+        if self.status == "completed":
+            if self.sentiment is None or self.analyzed_at is None or not self.labels:
+                raise ValueError("completed Analysis 必须包含情感、标签与分析时间")
+        elif self.sentiment is not None or self.labels or self.analyzed_at is not None:
+            raise ValueError("非 completed Analysis 不能携带结果字段")
+        return self
+
+
+class ContentMetricsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    like_count: int | None = Field(default=None, ge=0)
+    comment_count: int | None = Field(default=None, ge=0)
+    favorite_count: int | None = Field(default=None, ge=0)
+    share_count: int | None = Field(default=None, ge=0)
+    repost_count: int | None = Field(default=None, ge=0)
+    view_count: int | None = Field(default=None, ge=0)
+    play_count: int | None = Field(default=None, ge=0)
+
+
+class ContentSourceResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider_name: str
+    provider_attempt_id: UUID | None = None
+    raw_artifact_id: UUID | None = None
+    import_batch_id: UUID | None = None
+    collection_run_id: UUID | None = None
+
+
+class ContentMediaResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    position: int = Field(ge=0)
+    media_type: str
+    url: str | None = None
+    preview_url: str | None = None
+    alt_text: str | None = None
+
+
+class ContentListItemResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    platform: str
+    external_content_id: str
+    content_type: str
+    title: str | None = None
+    text: str | None = None
+    author_display_name: str | None = None
+    published_at: datetime | None = None
+    last_seen_at: datetime
+    content_url: str | None = None
+    metrics: ContentMetricsResponse
+    analysis: ContentAnalysisResponse
+    source: ContentSourceResponse
+
+
+class ContentFilterSnapshot(BaseModel):
+    """可序列化并冻结到 Analysis/Export Request 的查询条件。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    search: str | None = Field(default=None, min_length=1, max_length=500)
+    platforms: tuple[str, ...] = Field(default=(), max_length=20)
+    content_types: tuple[str, ...] = Field(default=(), max_length=20)
+    analysis_status: ContentAnalysisStatus | None = None
+    sentiment: str | None = Field(default=None, min_length=1, max_length=128)
+    primary_label: str | None = Field(default=None, min_length=1, max_length=256)
+    secondary_label: str | None = Field(default=None, min_length=1, max_length=256)
+    published_from: datetime | None = None
+    published_to: datetime | None = None
+    source_identifier: UUID | None = None
+
+    @field_validator("published_from", "published_to")
+    @classmethod
+    def validate_aware_datetime(cls, value: datetime | None) -> datetime | None:
+        if value is not None and (value.tzinfo is None or value.utcoffset() is None):
+            raise ValueError("时间筛选必须包含时区")
+        return value
+
+    @model_validator(mode="after")
+    def validate_date_order(self) -> ContentFilterSnapshot:
+        if (
+            self.published_from is not None
+            and self.published_to is not None
+            and self.published_from > self.published_to
+        ):
+            raise ValueError("published_from 不能晚于 published_to")
+        return self
+
+
+class ContentListQuery(ContentFilterSnapshot):
+    model_config = ConfigDict(extra="forbid")
+
+    cursor: str | None = Field(default=None, min_length=1, max_length=4096)
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class ContentListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: tuple[ContentListItemResponse, ...]
+    next_cursor: str | None = None
+    has_more: bool
+
+
+class ContentCommentResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    external_comment_id: str
+    author_display_name: str | None = None
+    text: str | None = None
+    published_at: datetime | None = None
+    like_count: int | None = Field(default=None, ge=0)
+    reply_count: int | None = Field(default=None, ge=0)
+
+
+class CommentCoverageResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    coverage: str
+    reported_total: int | None = Field(default=None, ge=0)
+    collected_count: int = Field(ge=0)
+    observed_at: datetime
+
+
+class ContentDetailResponse(ContentListItemResponse):
+    model_config = ConfigDict(extra="forbid")
+
+    media: tuple[ContentMediaResponse, ...] = ()
+    comments: tuple[ContentCommentResponse, ...] = ()
+    comment_coverage: CommentCoverageResponse | None = None
+    source_records: tuple[ContentSourceResponse, ...] = ()
+
+
+class ContentTargetSelection(BaseModel):
+    """HTTP 层选择语义；Service 会立刻冻结 Content ID + Version。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    scope: Literal["query", "selected"]
+    filters: ContentFilterSnapshot | None = None
+    content_ids: tuple[UUID, ...] = Field(default=(), max_length=1000)
+
+    @model_validator(mode="after")
+    def validate_scope(self) -> ContentTargetSelection:
+        if self.scope == "selected":
+            if not self.content_ids or self.filters is not None:
+                raise ValueError("selected 必须且只能提供非空 content_ids")
+        elif self.content_ids:
+            raise ValueError("query 不能提供 content_ids")
+        if len(self.content_ids) != len(set(self.content_ids)):
+            raise ValueError("content_ids 不能重复")
+        return self
+
+
+class ContentAnalysisSubmitRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    targets: ContentTargetSelection
+
+
+class ContentAnalysisCreatedResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    request_id: UUID
+    job_id: UUID
+    target_count: int = Field(gt=0)
+    status: Literal["queued"] = "queued"
+
+
+class DataExportSubmitRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    targets: ContentTargetSelection
+    format: Literal["xlsx"] = "xlsx"
+
+
+class DataExportCreatedResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    export_id: UUID
+    job_id: UUID
+    target_count: int = Field(gt=0)
+    status: Literal["queued"] = "queued"
+
+
+class DataExportStatsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    content_count: int = Field(ge=0)
+    analyzed_count: int = Field(ge=0)
+    unanalyzed_count: int = Field(ge=0)
+    comment_count: int = Field(ge=0)
+
+
+class DataExportResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    job: JobStatusResponse
+    artifact_id: UUID | None = None
+    filename: str | None = None
+    stats: DataExportStatsResponse | None = None
+    created_at: datetime
+    completed_at: datetime | None = None
+
+
+class DataExportListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: tuple[DataExportResponse, ...]
+
+
 __all__ = [
+    "CommentCoverageResponse",
+    "ContentAnalysisCreatedResponse",
+    "ContentAnalysisJobResultResponse",
+    "ContentAnalysisResponse",
+    "ContentAnalysisStatus",
+    "ContentAnalysisSubmitRequest",
+    "ContentCommentResponse",
+    "ContentDetailResponse",
+    "ContentFilterSnapshot",
+    "ContentLabelPairResponse",
+    "ContentListItemResponse",
+    "ContentListQuery",
+    "ContentListResponse",
+    "ContentMediaResponse",
+    "ContentMetricsResponse",
+    "ContentSourceResponse",
+    "ContentTargetSelection",
+    "DataExportCreatedResponse",
+    "DataExportJobResultResponse",
+    "DataExportListResponse",
+    "DataExportResponse",
+    "DataExportStatsResponse",
+    "DataExportSubmitRequest",
     "GlobalRelevanceConfigRequest",
     "GlobalRelevanceConfigResponse",
     "HttpErrorItem",

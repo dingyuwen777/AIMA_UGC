@@ -9,6 +9,7 @@ const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   refresh: []
   copy: [value: string]
+  viewContents: [batchId: string]
 }>()
 const activeTab = ref('overview')
 
@@ -181,6 +182,12 @@ const stageRows = computed(() => {
             >
               复制 Batch ID
             </button><button
+              type="button"
+              :disabled="item.stats.rows_ingested === 0"
+              @click="emit('viewContents', item.id)"
+            >
+              查看处理内容
+            </button><button
               class="primary"
               type="button"
               @click="emit('refresh')"
@@ -244,7 +251,8 @@ h3 { margin: 18px 0 12px; font-size: 14px; }
 .error-card { padding: 15px; border: 1px solid #ffc7cc; border-radius: 7px; color: #b4232d; background: #fff5f6; }
 .error-card p { margin-bottom: 0; }
 .empty-error { padding: 50px 0; color: #8992a3; text-align: center; }
-.drawer-footer { position: absolute; right: 0; bottom: 0; left: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 14px 20px; border-top: 1px solid var(--aima-border); background: #fff; }
+.drawer-footer { position: absolute; right: 0; bottom: 0; left: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; padding: 14px 20px; border-top: 1px solid var(--aima-border); background: #fff; }
 .drawer-footer button { height: 40px; border: 1px solid #d8dde6; border-radius: 6px; background: #fff; cursor: pointer; }
 .drawer-footer .primary { border-color: var(--aima-primary); color: #fff; background: var(--aima-primary); }
+.drawer-footer button:disabled { color: #a3aab6; cursor: default; }
 </style>

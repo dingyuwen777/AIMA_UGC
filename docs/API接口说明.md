@@ -185,6 +185,42 @@ Token、服务器内部路径、堆栈或原始异常；响应头 `x-request-id`
   尚未配置或不可用返回 409。
 - Import Job 与 Collection Run 创建时冻结该快照，后续配置变化不会改写排队或运行中的执行语义。
 
+### 5.10 Content / 声音广场查询
+
+- `GET /api/v1/contents`：`listContents`。查询统一 PostgreSQL Content Read Model，不区分 Excel、
+  TikHub 或未来其他来源；支持文本、平台、内容类型、时间、来源 Batch/Run、AI 状态/情感/一级/二级
+  标签过滤。文本搜索覆盖标题、正文、作者和外部内容 ID；Batch/Run 来源筛选匹配 Content 全部版本的
+  来源账本，因此后续渠道更新 Current 后仍可从原 Batch/Run 找回相关内容。
+- 分页默认 20、最大 100；按发布时间（缺失时用 last-seen）和 Content ID 倒序，使用绑定完整查询条件、
+  30 分钟过期的 HMAC Cursor。非法、篡改、过期或跨查询复用返回统一 400。
+- 列表的 `analysis.labels` 是按模型合法顺序返回的结构化 `{primary_label, secondary_label}` 数组；调用方
+  必须展示全部标签对，不能只取首项。只有匹配当前 Content Version 和当前选定 Prompt/Taxonomy/
+  Provider/Model 的成功结果是 `completed`；存在其他历史时返回 `stale`，从未分析为 `pending`。
+- `GET /api/v1/contents/{content_id}`：`getContent`。除列表字段外返回合法媒体元数据、最多 100 条当前
+  评论、最新 Coverage 和来源记录；没有图片时不会伪造缩略图。不存在返回 404。
+
+### 5.11 显式 Content Analysis
+
+- `POST /api/v1/content-analysis-requests`：`createContentAnalysis`。接收显式选择的 Content ID，或当前
+  查询过滤快照；服务立即冻结 Content ID + Version，并在同一事务创建 Analysis Request 与
+  `analysis.content-label.v1` durable Job，成功返回 202。
+- `GET /api/v1/content-analysis-jobs/{job_id}`：`getContentAnalysisJob`。返回状态、Attempt、进度、错误码
+  和成功/失败/stale 统计；HTTP 请求不会等待模型完成。
+- 只有用户显式提交才调用模型；Import/Collection 默认不自动触发付费 Analysis。模型 Secret 只从
+  Secret 文件装配，不进入 Payload、数据库、日志或响应。
+
+### 5.12 声音广场 Excel 导出
+
+- `POST /api/v1/data-exports`：`createDataExport`。冻结显式选择或当前查询结果的 Content ID + Version，
+  创建 `reporting.content-export-excel.v1` durable Job，返回 202；Router 不生成 Excel。
+- `GET /api/v1/data-exports`：`listDataExports`；`GET /api/v1/data-exports/{export_id}`：`getDataExport`。
+  状态来自关联 Job，完成统计包含总内容、已打标、未打标和评论数。
+- `GET /api/v1/data-exports/{export_id}/download`：`downloadDataExport`。只有 Job 成功且 Artifact 已 linked
+  才返回 XLSX binary；未就绪返回 409，不存在返回 404。响应不暴露 storage key 或服务器路径。
+- Worker 复用唯一 `UnifiedDataExcelV1 → export_unified_data_excel`；未打标/stale 内容仍导出，AI 列为空，
+  不会被静默丢弃。当前没有已批准的自动删除期限。
+- 当前认证尚未实现，上述写入与下载只适用于受信部署边界，不得直接宣称可公网开放。
+
 ## 6. 规划中的业务 API 分类
 
 以下其余资源路径来自当前 Blueprint，是后续业务阶段的目标边界；**未实现前不得把本节视为现有 API。** 实际接口只有进入对应阶段、建立 Pydantic Contract、固定 OpenAPI 和测试后才算存在。
@@ -192,7 +228,6 @@ Token、服务器内部路径、堆栈或原始异常；响应头 `x-request-id`
 ```text
 /api/v1/collection-plans
 /api/v1/collection-runs
-/api/v1/contents
 /api/v1/comments
 /api/v1/analysis-runs
 /api/v1/alerts

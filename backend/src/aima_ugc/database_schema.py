@@ -1,5 +1,11 @@
 """当前应用 Schema 的机器注册入口。"""
 
+from aima_ugc.modules.analysis.tables import (
+    analysis_content_label_pairs_table,
+    analysis_content_request_items_table,
+    analysis_content_requests_table,
+    analysis_content_results_table,
+)
 from aima_ugc.modules.collection.candidate_tables import (
     collection_candidate_ingestions_table,
     collection_candidates_table,
@@ -46,6 +52,10 @@ from aima_ugc.modules.ingestion.tables import (
     processing_import_batches_table,
     register_ingestion_schema,
 )
+from aima_ugc.modules.reporting.tables import (
+    reporting_data_export_items_table,
+    reporting_data_exports_table,
+)
 from aima_ugc.modules.system.tables import (
     audit_events_table,
     global_relevance_config_table,
@@ -64,6 +74,10 @@ register_content_source_constraints()
 register_ingestion_schema()
 
 __all__ = [
+    "analysis_content_label_pairs_table",
+    "analysis_content_request_items_table",
+    "analysis_content_requests_table",
+    "analysis_content_results_table",
     "account_external_ids_table",
     "accounts_table",
     "artifacts_table",
@@ -105,5 +119,7 @@ __all__ = [
     "provider_configs_table",
     "provider_request_attempts_table",
     "provider_requests_table",
+    "reporting_data_export_items_table",
+    "reporting_data_exports_table",
     "system_settings_table",
 ]

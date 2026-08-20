@@ -118,6 +118,13 @@ class LocalArtifactStore:
             raise FileNotFoundError(storage_key)
         return target.read_bytes()
 
+    def open_read(self, storage_key: str) -> BinaryIO:
+        """打开经路径与符号链接校验的只读流；调用方负责关闭。"""
+        target = self._target(storage_key, create_parent=False)
+        if not target.is_file():
+            raise FileNotFoundError(storage_key)
+        return target.open("rb")
+
     def copy_to(self, storage_key: str, destination: BinaryIO) -> StoredBytes:
         target = self._target(storage_key, create_parent=False)
         if not target.is_file():

@@ -1,5 +1,5 @@
 {
-  "candidate_path_digest": "39e17f778ae3f72e18f2a2e346d0d439305e73bc0f4ebeffb9c77ca2b78b0a67",
+  "candidate_path_digest": "7064e842ef5f956771ed2e38a4d2748bc953bcba3aabc119f14c5bce752fbc4f",
   "directories": [
     {
       "count": 4,
@@ -51,6 +51,13 @@
         "documentation"
       ],
       "path": "backend/src/aima_ugc/modules/content"
+    },
+    {
+      "count": 1,
+      "kinds": [
+        "documentation"
+      ],
+      "path": "backend/src/aima_ugc/modules/reporting"
     },
     {
       "count": 1,
@@ -177,8 +184,8 @@
     {
       "kind": "documentation",
       "path": "README.md",
-      "sha256": "2fa6d1f284389be5d170b57ea727ad0fa056baf83837e00e253f4f5fe268a3dd",
-      "size": 26368,
+      "sha256": "adaff6783128f41110fff41aca44d363736410f4d142844b100314f6e5aa6eba",
+      "size": 26435,
       "title": "AIMA_UGC"
     },
     {
@@ -205,8 +212,8 @@
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/modules/analysis/README.md",
-      "sha256": "b41fc7c03aba3b48c9cbc0261bc6b3cedc65d0f851845b6c22d9322f93d5704d",
-      "size": 13137,
+      "sha256": "47e1b715e62ed85645f6ea61f052a492b96871625a1b97df4b80fbdca5ed1c3d",
+      "size": 13410,
       "title": "Analysis 模块"
     },
     {
@@ -219,9 +226,16 @@
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/modules/content/README.md",
-      "sha256": "d95b0dc89f3e8b1e5b80b8863a8fc14376bda286f5d1d50ba07d2264241fcf0c",
-      "size": 5169,
+      "sha256": "09127ea2fdfc8a3f56369ae8392ac56bf890234c10fa41574560ad411b9c7c6f",
+      "size": 5911,
       "title": "Content 模块"
+    },
+    {
+      "kind": "documentation",
+      "path": "backend/src/aima_ugc/modules/reporting/README.md",
+      "sha256": "25a7eb826eee4bc3ae46664265117e2c1a06074b02b4acd45608ba998d22a8b9",
+      "size": 899,
+      "title": "Reporting 模块"
     },
     {
       "kind": "documentation",
@@ -324,8 +338,8 @@
     {
       "kind": "contract",
       "path": "contracts/openapi/openapi.json",
-      "sha256": "f58ed78c17343ec7d2322994f253ce8985bc8c04c574aa278c7c6ce2513b9cd6",
-      "size": 40034
+      "sha256": "fa2c527fe66fd6f359ea4668224ab48d1504de8ab09349e46f0946acde4f7be2",
+      "size": 87532
     },
     {
       "kind": "contract",
@@ -348,8 +362,8 @@
     {
       "kind": "documentation",
       "path": "docs/API接口说明.md",
-      "sha256": "af513b56c497b2198bfc5f5468bdaf558b14871a0650e6243f859f631042e0a2",
-      "size": 10195,
+      "sha256": "7b1a212b1625c70d9501fe797547bc9076a4e75edd13935d639735f339c2e7b8",
+      "size": 13239,
       "title": "AIMA_UGC API 接口说明"
     },
     {
@@ -369,15 +383,15 @@
     {
       "kind": "documentation",
       "path": "docs/blueprint/03-数据库与文件存储.md",
-      "sha256": "5d52321337da3eaf93c546dfa22c8b3a13f6b92be3a565d7338e5e6451e4bc24",
-      "size": 64185,
+      "sha256": "6e8ab36c15f5456a4959104dffa28f9510dcab8e65827c99d03b63a826fba7c5",
+      "size": 65314,
       "title": "数据库与文件存储"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/04-后端任务API与前端.md",
-      "sha256": "7d0b2c5f489f468e6965dfc9d66b90d75e5cf2c90a422fd03110ace429801309",
-      "size": 26601,
+      "sha256": "dee7cc2d6f06de3abc1567af30fa9a3dfe467c61dbdbe13c27e397b76c6651fe",
+      "size": 27099,
       "title": "后端任务、API 与前端"
     },
     {
@@ -439,15 +453,15 @@
     {
       "kind": "documentation",
       "path": "docs/blueprint/13-统一数据Excel导出与调试复用.md",
-      "sha256": "e7b08059509794939ad986512578977e4996b15cd64832fa878bb2bf2e633f95",
-      "size": 26561,
+      "sha256": "742321b6af967625b0edddc0f8edc093557423cd5811e9bb7a206d85356dfa00",
+      "size": 26833,
       "title": "统一数据 Excel 导出与调试复用"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/15-舆情AI打标与统一分析契约.md",
-      "sha256": "06d3ce9a1a429c669137f91554bfa267cae699d053fe174ad8baa6a42e84ef3f",
-      "size": 41290,
+      "sha256": "01aaea980eaeca9ec109c2a13593d853f4945643f969a68d38b88b9a654920f2",
+      "size": 41799,
       "title": "舆情 AI 打标与统一分析契约"
     },
     {
@@ -460,15 +474,15 @@
     {
       "kind": "documentation",
       "path": "docs/blueprint/17-Stage8数据入口统一入库与业务前端实施.md",
-      "sha256": "5ffc532d9d4c315bf09e34b6f0988947d8c554c955ba739aae0c3f155fe15fab",
-      "size": 36461,
+      "sha256": "6d76c3c84fa3b889eae6e2feba1a0306b877a18ef02d6f71b7530affd9616995",
+      "size": 37734,
       "title": "Stage 8 数据入口、统一入库与业务前端实施"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/README.md",
-      "sha256": "792388b79057609f7bc2e9d4298dd451d59701c58c78300ce481b7a1bc3afbff",
-      "size": 21977,
+      "sha256": "d0ddf4cf173931ae52ab128a2dad94fb791ce38460fda99325cd78c0ec822f46",
+      "size": 22106,
       "title": "AIMA_UGC Blueprint 导航"
     },
     {
@@ -516,22 +530,22 @@
     {
       "kind": "documentation",
       "path": "docs/测试与调试说明.md",
-      "sha256": "bd95bf35289866d4380fa496657a645e4a1d58c7b8f749155a9109ed9d0eb787",
-      "size": 33843,
+      "sha256": "d4bb613c21d1baf3b5ee1ce5d4b9a5711d9ff588400554bd2bbb89e65560d1dd",
+      "size": 35098,
       "title": "AIMA_UGC 测试与调试说明"
     },
     {
       "kind": "documentation",
       "path": "docs/环境运行与部署.md",
-      "sha256": "e839f3c1cbd839a57c8aa25d6af8236cc98395a8cd6329fc71f26390858082b2",
-      "size": 21076,
+      "sha256": "4fd99cd93f5d868166e1239c1fd70de4ba1c4785b2ac20bb7826f9efd75b8924",
+      "size": 21699,
       "title": "环境、运行与部署"
     },
     {
       "kind": "documentation",
       "path": "frontend/README.md",
-      "sha256": "37fd700c4e132ba851061510d46de38a68718e349165c13445e3be4c11e63ccb",
-      "size": 3388,
+      "sha256": "f3b0a3b73982f7e304d8b5aa0d9c495c4597e5ca7a41fb93b3dafc6d011f836c",
+      "size": 3770,
       "title": "AIMA_UGC 前端开发入口"
     },
     {
@@ -580,12 +594,12 @@
       "size": 92829
     }
   ],
-  "generated_at": "2026-08-20T17:07:38+00:00",
+  "generated_at": "2026-08-20T19:37:05+00:00",
   "generator_version": "0.1.0",
   "git": {
-    "indexed_at_commit": "9f98ab1e0080270455b725806380fca0e097cdca",
+    "indexed_at_commit": "deee4395c774241f402cc9efc6010817c968c2e5",
     "repository": true,
-    "worktree_candidate_digest": "2544b02736d4bc522d1f68552e792297e111295b773d40183e029bff85db2a5c"
+    "worktree_candidate_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
   },
   "package_scripts": {
     "frontend/package.json": {
