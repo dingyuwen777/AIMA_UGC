@@ -598,8 +598,10 @@ Stage 8 不作为一个巨型 PR 一次完成。按以下最小正式单元推�
 
 主要工作：
 
-- 上传/登记单个 Excel Source Artifact；`.xlsx` 文件本身最大 500 MiB，必须有界流式写入/读取，不把
-  整个上传或 Artifact 载入内存；
+- 使用一个 `multipart/form-data` `file` 字段一步上传并创建 Import；文件流式保存为 Source Artifact，
+  再由 Service/UoW 创建 Batch + Job 并返回 `202`，不建立先上传 Artifact 再创建 Import 的两步协议；
+- `.xlsx` 文件本身最大 500 MiB，必须有界流式写入/读取，不把整个上传或 Artifact 载入内存；multipart
+  解析依赖由根 Python 工程精确锁定，应用仍必须独立执行实际字节计数、请求体限制与 XLSX 安全校验；
 - 复用 System Owner 现有 `keyword_packs`、`keywords`、`keyword_pack_items`，建立本阶段 Import
   所需的最小关键词写入/读取 HTTP Contract；
 - 建立一个通过外键引用 Keyword Pack 的系统全局 Relevance 配置；Import/Collection 不允许按请求或

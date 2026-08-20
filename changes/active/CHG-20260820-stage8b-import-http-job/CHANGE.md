@@ -221,6 +221,18 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 - 为避免 500 MiB 上传同时导致 API/Worker 读取 500 MiB 内存，正式实现必须增量扩展现有
   ArtifactService/ArtifactStore 为有界流式写入和读取，不能新建平行文件存储体系。
 
+## 已确认：Excel HTTP 上传传输形态
+
+- 用户选择一步 `multipart/form-data` 上传：创建 Import 的 HTTP 请求只接受一个 `file` 字段，文件流式
+  保存为 Source Artifact 后，在正式 Service/UoW 中创建 Processing Import Batch 与 Durable Import Job，
+  返回 `202 Accepted`；Router 不读取整份文件、不执行 Excel 处理，也不直接写数据库。
+- Stage 8B 不建立“先上传 Artifact、再用 `artifact_id` 创建 Import”的两步公共协议，因当前没有独立
+  上传会话、续传或孤儿 Artifact 清理需求，新增两步状态只会扩大 Contract 和生命周期。
+- 使用 FastAPI `UploadFile` 的标准 multipart Contract，并新增、精确锁定 `python-multipart==0.0.32`；
+  该依赖只负责解析表单文件，不替代应用层实际字节计数、请求体上限、XLSX 结构校验或 Artifact 流式写入。
+- OpenAPI 必须把文件字段生成为 binary，Orval 必须从固定 OpenAPI 生成对应 TypeScript Client；不得手写
+  第二套浏览器上传 Client。
+
 ## 已确认：Import Job Attempt Deadline 与重试恢复语义
 
 - 用户选择保持当前 Job Runtime 的标准全量重试语义：Import Job 单次 Attempt Deadline 固定为
@@ -237,7 +249,7 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 
 ## 后续仍需按顺序冻结的技术/安全边界
 
-- Excel HTTP 传输形态，以及 500 MiB 对应的最大解压总量/单成员/成员数/压缩比仍待冻结。
+- 500 MiB 对应的最大解压总量/单成员/成员数/压缩比仍待冻结。
 - 当前认证已正式延期；本 Stage 不把受控环境 API 描述为公网生产就绪。
 
 ## Migration、部署与回滚
@@ -262,6 +274,7 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 - [x] 冻结 TikHub Search 未命中时先请求一次 Detail 再终判的召回优先策略
 - [x] 冻结正式关键词数据库身份与 Relevance 匹配的两级规范化语义
 - [x] 冻结 Import Job 为 30 分钟、最大 10 次的全量重试，并把断点续跑留作未来独立 L3 优化方向
+- [x] 冻结 Excel HTTP 为单文件 multipart 一步创建 Artifact/Batch/Job，并批准锁定 multipart 解析依赖
 - [ ] 完整冻结 Excel HTTP 传输、已确认 500 MiB 压缩文件对应的解压边界与 Job Deadline
 - [ ] 建立 HTTP Contract/Error/OpenAPI、API Service 和 Import Job/Worker 的失败测试并观察正确 Red
 - [ ] 完成最小实现
@@ -306,8 +319,8 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 - `uv run pytest tests/unit/database/test_stage8a_import_schema.py tests/contracts/test_stage8a_provider_request.py tests/unit/collection/test_manual_ingestion_multi.py -q`：退出码 0，`8 passed`。
 - `uv run alembic current` / `alembic check` 与 Stage 8A PostgreSQL Integration：因本机缺少
   `.runtime/secrets/postgres_password` 未执行到数据库；保留原错误，不作为测试失败或成功证据。
-- `uv run python scripts/quality/check_docs.py`：退出码 0，Import Job 全量重试与未来断点续跑方向的
-  Blueprint/Change 文档入口和本地链接检查通过。
+- `uv run python scripts/quality/check_docs.py`：退出码 0，Import Job 全量重试、未来断点续跑方向与 multipart
+  一步上传的 Blueprint/Change 文档入口和本地链接检查通过。
 - GitHub 连接器确认 PR `#88/#89` 已合并、当前无开放 PR；当前 main push workflow/status 接口未返回
   可见记录，历史 CI 不替代本 Stage 最终 Head CI。
 - Head `f697bc5` 的 CI、Stage 6 XHS、Stage 7 Keyword Packs、Provider Config、Plan Snapshot 与
