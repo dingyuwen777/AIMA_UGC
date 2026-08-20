@@ -1,3 +1,4 @@
+# Temporary branch-only migration helper; removed before merge.
 from pathlib import Path
 
 path = Path("docs/blueprint/13-统一数据Excel导出与调试复用.md")
