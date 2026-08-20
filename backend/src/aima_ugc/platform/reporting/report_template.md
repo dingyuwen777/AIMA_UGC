@@ -17,23 +17,41 @@
 
 {{DAILY_CONTENT_CHART}}
 
-## 2. 舆情风险关注
+## 2. 舆情重点关注
 
 {{RISK_SUMMARY}}
 
-### 2.1 负面内容平台分布
+### 2.1 正面内容平台分布
+
+{{POSITIVE_PLATFORM_TABLE}}
+
+{{POSITIVE_PLATFORM_BAR_CHART}}
+
+### 2.2 正面一级议题
+
+{{POSITIVE_PRIMARY_TABLE}}
+
+{{POSITIVE_PRIMARY_BAR_CHART}}
+
+### 2.3 正面二级议题
+
+{{POSITIVE_SECONDARY_TABLE}}
+
+{{POSITIVE_SECONDARY_BAR_CHART}}
+
+### 2.4 负面内容平台分布
 
 {{NEGATIVE_PLATFORM_TABLE}}
 
 {{NEGATIVE_PLATFORM_BAR_CHART}}
 
-### 2.2 负面一级议题
+### 2.5 负面一级议题
 
 {{NEGATIVE_PRIMARY_TABLE}}
 
 {{NEGATIVE_PRIMARY_BAR_CHART}}
 
-### 2.3 负面二级议题
+### 2.6 负面二级议题
 
 {{NEGATIVE_SECONDARY_TABLE}}
 

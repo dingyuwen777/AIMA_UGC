@@ -15,6 +15,8 @@ from zoneinfo import ZoneInfo
 
 from openpyxl import load_workbook
 
+from aima_ugc.platform.presentation import platform_display_name
+
 from .markdown_word import WordConversionSummary, convert_markdown_to_docx
 
 DEFAULT_REPORT_TEMPLATE_PATH = Path(__file__).with_name("report_template.md")
@@ -38,6 +40,7 @@ _KEYWORD_SPLIT_RE = re.compile(r"[；;\n]+")
 _PRIMARY_CHART_LIMIT = 8
 _SECONDARY_CHART_LIMIT = 10
 _KEYWORD_CHART_LIMIT = 12
+_POSITIVE_CHART_LIMIT = 8
 _NEGATIVE_CHART_LIMIT = 8
 _SENTIMENT_PREFERRED_ORDER = ("正面", "中性", "负面", "混合")
 
@@ -79,6 +82,9 @@ class _ReportStats:
     daily_primary: dict[date, Counter[str]]
     daily_secondary: dict[date, Counter[str]]
     platform_sentiment: dict[str, Counter[str]]
+    positive_platform_counts: Counter[str]
+    positive_primary_counts: Counter[str]
+    positive_secondary_counts: Counter[str]
     negative_platform_counts: Counter[str]
     negative_primary_counts: Counter[str]
     negative_secondary_counts: Counter[str]
@@ -181,6 +187,9 @@ def _collect_stats(
         daily_primary: defaultdict[date, Counter[str]] = defaultdict(Counter)
         daily_secondary: defaultdict[date, Counter[str]] = defaultdict(Counter)
         platform_sentiment: defaultdict[str, Counter[str]] = defaultdict(Counter)
+        positive_platform_counts: Counter[str] = Counter()
+        positive_primary_counts: Counter[str] = Counter()
+        positive_secondary_counts: Counter[str] = Counter()
         negative_platform_counts: Counter[str] = Counter()
         negative_primary_counts: Counter[str] = Counter()
         negative_secondary_counts: Counter[str] = Counter()
@@ -226,6 +235,8 @@ def _collect_stats(
             if platform is None:
                 quality_counts["内容缺失平台"] += 1
                 platform = "（未填写）"
+            else:
+                platform = platform_display_name(platform)
             platform_counts[platform] += 1
 
             sentiment = _clean_text(_row_value(row, content_headers, "情感标签"))
@@ -234,7 +245,9 @@ def _collect_stats(
             else:
                 sentiment_counts[sentiment] += 1
                 platform_sentiment[platform][sentiment] += 1
-                if sentiment == "负面":
+                if sentiment == "正面":
+                    positive_platform_counts[platform] += 1
+                elif sentiment == "负面":
                     negative_platform_counts[platform] += 1
 
             primary_labels = _split_multiline(_row_value(row, content_headers, "一级标签"))
@@ -336,7 +349,8 @@ def _collect_stats(
                         continue
 
             label_rows += 1
-            platform = _clean_text(_row_value(row, label_headers, "平台")) or "（未填写）"
+            platform = _clean_text(_row_value(row, label_headers, "平台"))
+            platform = "（未填写）" if platform is None else platform_display_name(platform)
             sentiment = _clean_text(_row_value(row, label_headers, "情感标签"))
             label_primary = _clean_text(_row_value(row, label_headers, "一级标签"))
             label_secondary = _clean_text(_row_value(row, label_headers, "二级标签"))
@@ -348,13 +362,17 @@ def _collect_stats(
                 quality_counts["标签明细缺失一级标签"] += 1
             else:
                 primary_counts[label_primary] += 1
-                if sentiment == "负面":
+                if sentiment == "正面":
+                    positive_primary_counts[label_primary] += 1
+                elif sentiment == "负面":
                     negative_primary_counts[label_primary] += 1
             if label_secondary is None:
                 quality_counts["标签明细缺失二级标签"] += 1
             else:
                 secondary_counts[label_secondary] += 1
-                if sentiment == "负面":
+                if sentiment == "正面":
+                    positive_secondary_counts[label_secondary] += 1
+                elif sentiment == "负面":
                     negative_secondary_counts[label_secondary] += 1
             if label_primary is not None and label_secondary is not None:
                 label_pair_counts[(label_primary, label_secondary)] += 1
@@ -404,6 +422,8 @@ def _collect_stats(
             if platform is None:
                 quality_counts["评论缺失平台"] += 1
                 platform = "（未填写）"
+            else:
+                platform = platform_display_name(platform)
             comment_platform_counts[platform] += 1
 
         dates = sorted(daily_content)
@@ -435,6 +455,9 @@ def _collect_stats(
             daily_primary=dict(daily_primary),
             daily_secondary=dict(daily_secondary),
             platform_sentiment=dict(platform_sentiment),
+            positive_platform_counts=positive_platform_counts,
+            positive_primary_counts=positive_primary_counts,
+            positive_secondary_counts=positive_secondary_counts,
             negative_platform_counts=negative_platform_counts,
             negative_primary_counts=negative_primary_counts,
             negative_secondary_counts=negative_secondary_counts,
@@ -666,9 +689,24 @@ def _build_template_replacements(
 
     platform_sentiment_rows = _platform_sentiment_rows(stats, sentiment_series)
     platform_sentiment_chart = _platform_sentiment_chart(stats, sentiment_series)
+    positive_total = stats.sentiment_counts.get("正面", 0)
+    positive_label_total = sum(stats.positive_primary_counts.values())
     negative_total = stats.sentiment_counts.get("负面", 0)
     negative_label_total = sum(stats.negative_primary_counts.values())
 
+    positive_platform_rows = [
+        (label, count, _percentage(count, positive_total))
+        for label, count in _sorted_counter(stats.positive_platform_counts)
+    ]
+    positive_primary_rows = [
+        (label, count, _percentage(count, positive_label_total))
+        for label, count in _sorted_counter(stats.positive_primary_counts)
+    ]
+    positive_secondary_total = sum(stats.positive_secondary_counts.values())
+    positive_secondary_rows = [
+        (label, count, _percentage(count, positive_secondary_total))
+        for label, count in _sorted_counter(stats.positive_secondary_counts)
+    ]
     negative_platform_rows = [
         (label, count, _percentage(count, negative_total))
         for label, count in _sorted_counter(stats.negative_platform_counts)
@@ -691,6 +729,15 @@ def _build_template_replacements(
             ("内容声量", stats.content_rows),
             ("评论互动", stats.comment_rows),
             ("覆盖平台", len(stats.platform_counts)),
+            (
+                "正面内容",
+                f"{positive_total}（{_percentage(positive_total, stats.content_rows)}）",
+            ),
+            (
+                "中性内容",
+                f"{stats.sentiment_counts.get('中性', 0)}（"
+                f"{_percentage(stats.sentiment_counts.get('中性', 0), stats.content_rows)}）",
+            ),
             (
                 "负面内容",
                 f"{negative_total}（{_percentage(negative_total, stats.content_rows)}）",
@@ -752,6 +799,27 @@ def _build_template_replacements(
             stats.daily_sentiment,
         ),
         "SENTIMENT_DAILY_TABLE": _daily_long_table("情感标签", dates, stats.daily_sentiment),
+        "POSITIVE_PLATFORM_TABLE": _markdown_table(
+            ("平台", "正面内容量", "占全部正面内容"), positive_platform_rows
+        ),
+        "POSITIVE_PLATFORM_BAR_CHART": _mermaid_bar(
+            "正面内容平台分布",
+            _top_counter(stats.positive_platform_counts, _POSITIVE_CHART_LIMIT),
+        ),
+        "POSITIVE_PRIMARY_TABLE": _markdown_table(
+            ("一级议题", "正面标签量", "正面标签占比"), positive_primary_rows
+        ),
+        "POSITIVE_PRIMARY_BAR_CHART": _mermaid_bar(
+            "正面一级议题 Top 分布",
+            _top_counter(stats.positive_primary_counts, _POSITIVE_CHART_LIMIT),
+        ),
+        "POSITIVE_SECONDARY_TABLE": _markdown_table(
+            ("二级议题", "正面标签量", "正面标签占比"), positive_secondary_rows
+        ),
+        "POSITIVE_SECONDARY_BAR_CHART": _mermaid_bar(
+            "正面二级议题 Top 分布",
+            _top_counter(stats.positive_secondary_counts, _POSITIVE_CHART_LIMIT),
+        ),
         "NEGATIVE_PLATFORM_TABLE": _markdown_table(
             ("平台", "负面内容量", "占全部负面内容"), negative_platform_rows
         ),
@@ -858,6 +926,8 @@ def _platform_sentiment_chart(stats: _ReportStats, sentiments: Sequence[str]) ->
 
 
 def _executive_summary(stats: _ReportStats) -> str:
+    positive = stats.sentiment_counts.get("正面", 0)
+    neutral = stats.sentiment_counts.get("中性", 0)
     negative = stats.sentiment_counts.get("负面", 0)
     peak_date, peak_count = _peak_day(stats.daily_content)
     platform = _top_item(stats.platform_counts)
@@ -871,8 +941,10 @@ def _executive_summary(stats: _ReportStats) -> str:
             f"**{stats.comment_rows}** 条评论，覆盖 **{len(stats.platform_counts)}** 个平台。"
         ),
         (
-            f"- **情感结构：** 负面内容 **{negative}** 条，占全部内容 "
-            f"**{_percentage(negative, stats.content_rows)}**。"
+            f"- **情感结构：** 正面 **{positive}** 条（"
+            f"{_percentage(positive, stats.content_rows)}），中性 **{neutral}** 条（"
+            f"{_percentage(neutral, stats.content_rows)}），负面 **{negative}** 条（"
+            f"{_percentage(negative, stats.content_rows)}）。"
         ),
     ]
     if platform is not None:
@@ -896,26 +968,50 @@ def _executive_summary(stats: _ReportStats) -> str:
 
 
 def _risk_summary(stats: _ReportStats) -> str:
+    positive = stats.sentiment_counts.get("正面", 0)
+    neutral = stats.sentiment_counts.get("中性", 0)
     negative = stats.sentiment_counts.get("负面", 0)
-    if negative <= 0:
-        return (
-            "本期未观察到被标记为负面的内容。建议继续关注混合情绪、突发声量峰值和"
-            "高频议题变化，避免单一时点的低风险状态掩盖后续波动。"
-        )
-    platform = _top_item(stats.negative_platform_counts)
-    primary = _top_item(stats.negative_primary_counts)
-    secondary = _top_item(stats.negative_secondary_counts)
     parts = [
-        f"本期共识别 **{negative}** 条负面内容，占全部内容 "
-        f"**{_percentage(negative, stats.content_rows)}**。"
+        f"**客观概览：** 本期正面内容 **{positive}** 条（"
+        f"{_percentage(positive, stats.content_rows)}），中性内容 **{neutral}** 条（"
+        f"{_percentage(neutral, stats.content_rows)}），负面内容 **{negative}** 条（"
+        f"{_percentage(negative, stats.content_rows)}）。"
     ]
-    if platform is not None:
-        parts.append(f"负面声量主要集中在 **{platform[0]}**，共 {platform[1]} 条。")
-    if primary is not None:
-        parts.append(f"一级风险议题以 **{primary[0]}** 最集中。")
-    if secondary is not None:
-        parts.append(f"具体风险点中 **{secondary[0]}** 出现最多。")
-    parts.append("建议优先核验高频负面议题对应内容与评论语境，并结合业务处置进展持续跟踪。")
+
+    positive_platform = _top_item(stats.positive_platform_counts)
+    positive_primary = _top_item(stats.positive_primary_counts)
+    positive_secondary = _top_item(stats.positive_secondary_counts)
+    if positive <= 0:
+        parts.append("**正向表现：** 本期未观察到被标记为正面的内容。")
+    else:
+        positive_parts = [f"**正向表现：** 共识别 {positive} 条正面内容"]
+        if positive_platform is not None:
+            positive_parts.append(
+                f"主要集中在 **{positive_platform[0]}**（{positive_platform[1]} 条）"
+            )
+        if positive_primary is not None:
+            positive_parts.append(f"高频一级议题为 **{positive_primary[0]}**")
+        if positive_secondary is not None:
+            positive_parts.append(f"具体亮点以 **{positive_secondary[0]}** 最集中")
+        parts.append("，".join(positive_parts) + "。")
+
+    negative_platform = _top_item(stats.negative_platform_counts)
+    negative_primary = _top_item(stats.negative_primary_counts)
+    negative_secondary = _top_item(stats.negative_secondary_counts)
+    if negative <= 0:
+        parts.append(
+            "**风险观察：** 本期未观察到被标记为负面的内容；仍需结合混合情绪、"
+            "突发声量峰值和高频议题变化持续观察。"
+        )
+    else:
+        risk_parts = [f"**风险观察：** 共识别 {negative} 条负面内容"]
+        if negative_platform is not None:
+            risk_parts.append(f"主要集中在 **{negative_platform[0]}**（{negative_platform[1]} 条）")
+        if negative_primary is not None:
+            risk_parts.append(f"高频一级风险议题为 **{negative_primary[0]}**")
+        if negative_secondary is not None:
+            risk_parts.append(f"具体风险点以 **{negative_secondary[0]}** 最集中")
+        parts.append("，".join(risk_parts) + "。建议结合原始内容与评论语境持续核验。")
     return " ".join(parts)
 
 
@@ -1082,7 +1178,7 @@ def _mermaid_xychart(
     names = tuple(series_names or (f"系列 {index}" for index in range(1, len(series_values) + 1)))
     lines = [
         "```mermaid",
-        "xychart",
+        "xychart-beta",
         f'    title "{_mermaid_text(title)}"',
         f"    %% series {json.dumps(names, ensure_ascii=False)}",
         f"    x-axis [{quoted_categories}]",

@@ -30,9 +30,50 @@ _CHART_REL: Final = "http://schemas.openxmlformats.org/officeDocument/2006/relat
 _PACKAGE_REL: Final = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/package"
 _CHART_CONTENT_TYPE: Final = "application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
 _XLSX_CONTENT_TYPE: Final = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+_TABLE_TOTAL_WIDTH_TWIPS: Final = 9300
+_TABLE_HEADER_FILL: Final = "1F4E78"
+_TABLE_ALTERNATE_FILL: Final = "F4F7FA"
+_TABLE_TEXT_COLOR: Final = "27364B"
+# DrawingML 线宽使用 EMU；1 磅等于 12,700 EMU。
+_LINE_WIDTH_2_25_PT_EMU: Final = "28575"
 
 for prefix, uri in (("w", _W), ("r", _R), ("wp", _WP), ("a", _A), ("c", _C)):
     ET.register_namespace(prefix, uri)
+
+
+def _table_column_widths(
+    headers: tuple[str, ...],
+    rows: tuple[tuple[str, ...], ...],
+) -> tuple[int, ...]:
+    if not headers:
+        raise ValueError("Word 表格至少需要一列")
+    if any(len(row) != len(headers) for row in rows):
+        raise ValueError("Word 表格数据列数与表头不一致")
+
+    weights: list[int] = []
+    for column_index, header in enumerate(headers):
+        values = (header, *(row[column_index] for row in rows))
+        display_width = max(_text_display_width(value) for value in values)
+        weights.append(min(max(display_width, 8), 32))
+
+    weight_total = sum(weights)
+    widths = [round(_TABLE_TOTAL_WIDTH_TWIPS * weight / weight_total) for weight in weights]
+    widths[-1] += _TABLE_TOTAL_WIDTH_TWIPS - sum(widths)
+    return tuple(widths)
+
+
+def _text_display_width(value: str) -> int:
+    lines = value.replace("<br>", "\n").splitlines() or [""]
+    return max(sum(2 if ord(character) > 127 else 1 for character in line) for line in lines)
+
+
+def _table_cell_alignment(value: str, column_index: int) -> str:
+    if column_index == 0:
+        return "left"
+    normalized = value.strip().replace(",", "")
+    if re.fullmatch(r"[+-]?\d+(?:\.\d+)?(?:%|条|个)?(?:（[^）]+）)?", normalized):
+        return "right"
+    return "left"
 
 
 class DocxBuilder:
@@ -69,11 +110,12 @@ class DocxBuilder:
     def add_table(self, headers: tuple[str, ...], rows: tuple[tuple[str, ...], ...]) -> None:
         table = ET.SubElement(self.body, f"{{{_W}}}tbl")
         self.table_count += 1
+        column_widths = _table_column_widths(headers, rows)
         tbl_pr = ET.SubElement(table, f"{{{_W}}}tblPr")
         ET.SubElement(
             tbl_pr,
             f"{{{_W}}}tblW",
-            {f"{{{_W}}}w": "0", f"{{{_W}}}type": "auto"},
+            {f"{{{_W}}}w": "5000", f"{{{_W}}}type": "pct"},
         )
         borders = ET.SubElement(tbl_pr, f"{{{_W}}}tblBorders")
         for side in ("top", "left", "bottom", "right", "insideH", "insideV"):
@@ -83,12 +125,40 @@ class DocxBuilder:
                 {
                     f"{{{_W}}}val": "single",
                     f"{{{_W}}}sz": "4",
-                    f"{{{_W}}}color": "D9D9D9",
+                    f"{{{_W}}}color": "D9E2F3",
                 },
             )
-        self._add_table_row(table, headers, header=True)
-        for row in rows:
-            self._add_table_row(table, row, header=False)
+        ET.SubElement(tbl_pr, f"{{{_W}}}tblLayout", {f"{{{_W}}}type": "fixed"})
+        cell_margins = ET.SubElement(tbl_pr, f"{{{_W}}}tblCellMar")
+        for side, margin_width in (
+            ("top", "100"),
+            ("left", "120"),
+            ("bottom", "100"),
+            ("right", "120"),
+        ):
+            ET.SubElement(
+                cell_margins,
+                f"{{{_W}}}{side}",
+                {f"{{{_W}}}w": margin_width, f"{{{_W}}}type": "dxa"},
+            )
+        table_grid = ET.SubElement(table, f"{{{_W}}}tblGrid")
+        for width in column_widths:
+            ET.SubElement(table_grid, f"{{{_W}}}gridCol", {f"{{{_W}}}w": str(width)})
+        self._add_table_row(
+            table,
+            headers,
+            header=True,
+            row_index=0,
+            column_widths=column_widths,
+        )
+        for row_index, row in enumerate(rows, start=1):
+            self._add_table_row(
+                table,
+                row,
+                header=False,
+                row_index=row_index,
+                column_widths=column_widths,
+            )
 
     def add_code_block(self, code: str) -> None:
         for line in code.splitlines() or ("",):
@@ -140,18 +210,62 @@ class DocxBuilder:
         values: tuple[str, ...],
         *,
         header: bool,
+        row_index: int,
+        column_widths: tuple[int, ...],
     ) -> None:
         row = ET.SubElement(table, f"{{{_W}}}tr")
+        tr_pr = ET.SubElement(row, f"{{{_W}}}trPr")
+        ET.SubElement(tr_pr, f"{{{_W}}}cantSplit")
         if header:
-            tr_pr = ET.SubElement(row, f"{{{_W}}}trPr")
+            ET.SubElement(
+                tr_pr,
+                f"{{{_W}}}trHeight",
+                {f"{{{_W}}}val": "420", f"{{{_W}}}hRule": "atLeast"},
+            )
             ET.SubElement(tr_pr, f"{{{_W}}}tblHeader")
-        for value in values:
+        for column_index, value in enumerate(values):
             cell = ET.SubElement(row, f"{{{_W}}}tc")
             tc_pr = ET.SubElement(cell, f"{{{_W}}}tcPr")
+            ET.SubElement(
+                tc_pr,
+                f"{{{_W}}}tcW",
+                {
+                    f"{{{_W}}}w": str(column_widths[column_index]),
+                    f"{{{_W}}}type": "dxa",
+                },
+            )
             if header:
-                ET.SubElement(tc_pr, f"{{{_W}}}shd", {f"{{{_W}}}fill": "EAF2F8"})
+                ET.SubElement(tc_pr, f"{{{_W}}}shd", {f"{{{_W}}}fill": _TABLE_HEADER_FILL})
+            elif row_index % 2 == 0:
+                ET.SubElement(tc_pr, f"{{{_W}}}shd", {f"{{{_W}}}fill": _TABLE_ALTERNATE_FILL})
+            ET.SubElement(tc_pr, f"{{{_W}}}vAlign", {f"{{{_W}}}val": "center"})
             paragraph = ET.SubElement(cell, f"{{{_W}}}p")
-            self._add_inline_runs(paragraph, value.replace("<br>", "\n"), bold=header)
+            p_pr = ET.SubElement(paragraph, f"{{{_W}}}pPr")
+            ET.SubElement(
+                p_pr,
+                f"{{{_W}}}spacing",
+                {
+                    f"{{{_W}}}before": "0",
+                    f"{{{_W}}}after": "0",
+                    f"{{{_W}}}line": "276",
+                    f"{{{_W}}}lineRule": "auto",
+                },
+            )
+            alignment = "center" if header else _table_cell_alignment(value, column_index)
+            ET.SubElement(p_pr, f"{{{_W}}}jc", {f"{{{_W}}}val": alignment})
+            self._add_inline_runs(
+                paragraph,
+                value.replace("<br>", "\n"),
+                bold=header or (not header and column_index == 0),
+                color=(
+                    "FFFFFF"
+                    if header
+                    else _TABLE_HEADER_FILL
+                    if column_index == 0
+                    else _TABLE_TEXT_COLOR
+                ),
+                font_size="21",
+            )
 
     def _add_inline_runs(
         self,
@@ -161,6 +275,8 @@ class DocxBuilder:
         bold: bool = False,
         italic: bool = False,
         code: bool = False,
+        color: str | None = None,
+        font_size: str | None = None,
     ) -> None:
         token_re = re.compile(r"(\*\*[^*]+\*\*|`[^`]+`)")
         cursor = 0
@@ -172,6 +288,8 @@ class DocxBuilder:
                     bold=bold,
                     italic=italic,
                     code=code,
+                    color=color,
+                    font_size=font_size,
                 )
             token = match.group(0)
             if token.startswith("**"):
@@ -181,6 +299,8 @@ class DocxBuilder:
                     bold=True,
                     italic=italic,
                     code=code,
+                    color=color,
+                    font_size=font_size,
                 )
             else:
                 self._add_run(
@@ -189,6 +309,8 @@ class DocxBuilder:
                     bold=bold,
                     italic=italic,
                     code=True,
+                    color=color,
+                    font_size=font_size,
                 )
             cursor = match.end()
         if cursor < len(text) or not text:
@@ -198,6 +320,8 @@ class DocxBuilder:
                 bold=bold,
                 italic=italic,
                 code=code,
+                color=color,
+                font_size=font_size,
             )
 
     def _add_run(
@@ -208,6 +332,8 @@ class DocxBuilder:
         bold: bool,
         italic: bool,
         code: bool,
+        color: str | None = None,
+        font_size: str | None = None,
     ) -> None:
         pieces = text.split("\n")
         for index, piece in enumerate(pieces):
@@ -217,7 +343,7 @@ class DocxBuilder:
             if not piece and len(pieces) > 1:
                 continue
             run = ET.SubElement(paragraph, f"{{{_W}}}r")
-            if bold or italic or code:
+            if bold or italic or code or color is not None or font_size is not None:
                 r_pr = ET.SubElement(run, f"{{{_W}}}rPr")
                 if bold:
                     ET.SubElement(r_pr, f"{{{_W}}}b")
@@ -228,6 +354,11 @@ class DocxBuilder:
                     fonts.set(f"{{{_W}}}ascii", "Consolas")
                     fonts.set(f"{{{_W}}}hAnsi", "Consolas")
                     fonts.set(f"{{{_W}}}eastAsia", "Microsoft YaHei")
+                if color is not None:
+                    ET.SubElement(r_pr, f"{{{_W}}}color", {f"{{{_W}}}val": color})
+                if font_size is not None:
+                    ET.SubElement(r_pr, f"{{{_W}}}sz", {f"{{{_W}}}val": font_size})
+                    ET.SubElement(r_pr, f"{{{_W}}}szCs", {f"{{{_W}}}val": font_size})
             node = ET.SubElement(run, f"{{{_W}}}t")
             node.set(f"{{{_XML}}}space", "preserve")
             node.text = piece
@@ -410,6 +541,9 @@ def _chart_xml(spec: ChartSpec, *, chart_index: int) -> bytes:
     ET.SubElement(chart, f"{{{_C}}}plotVisOnly", {"val": "1"})
     ET.SubElement(chart, f"{{{_C}}}dispBlanksAs", {"val": "zero"})
     ET.SubElement(chart, f"{{{_C}}}showDLblsOverMax", {"val": "0"})
+    shape_properties = ET.SubElement(root, f"{{{_C}}}spPr")
+    outline = ET.SubElement(shape_properties, f"{{{_A}}}ln")
+    ET.SubElement(outline, f"{{{_A}}}noFill")
     external = ET.SubElement(root, f"{{{_C}}}externalData", {f"{{{_R}}}id": "rId1"})
     ET.SubElement(external, f"{{{_C}}}autoUpdate", {"val": "0"})
     return _serialize_xml(root)
@@ -435,6 +569,11 @@ def _add_pie_chart(plot_area: ET.Element, spec: ChartSpec) -> None:
     ET.SubElement(node, f"{{{_C}}}varyColors", {"val": "1"})
     _add_series(node, spec, 0, marker=False)
     labels = ET.SubElement(node, f"{{{_C}}}dLbls")
+    ET.SubElement(
+        labels,
+        f"{{{_C}}}numFmt",
+        {"formatCode": "0.00%", "sourceLinked": "0"},
+    )
     ET.SubElement(labels, f"{{{_C}}}showLegendKey", {"val": "0"})
     ET.SubElement(labels, f"{{{_C}}}showVal", {"val": "0"})
     ET.SubElement(labels, f"{{{_C}}}showCatName", {"val": "0"})
@@ -490,6 +629,12 @@ def _add_series(parent: ET.Element, spec: ChartSpec, index: int, *, marker: bool
         (_series_names(spec)[index],),
     )
     if marker:
+        shape_properties = ET.SubElement(series, f"{{{_C}}}spPr")
+        ET.SubElement(
+            shape_properties,
+            f"{{{_A}}}ln",
+            {"w": _LINE_WIDTH_2_25_PT_EMU},
+        )
         marker_node = ET.SubElement(series, f"{{{_C}}}marker")
         ET.SubElement(marker_node, f"{{{_C}}}symbol", {"val": "circle"})
         ET.SubElement(marker_node, f"{{{_C}}}size", {"val": "5"})

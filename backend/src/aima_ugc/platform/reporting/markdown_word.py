@@ -33,7 +33,7 @@ class WordConversionSummary:
 
 
 def convert_markdown_to_docx(markdown_path: Path, output_path: Path) -> WordConversionSummary:
-    """转换报告 Markdown；Mermaid 支持本报告使用的 pie/xychart。"""
+    """转换报告 Markdown；Mermaid 支持 pie 及 xychart/xychart-beta。"""
 
     source = Path(markdown_path)
     target = Path(output_path)

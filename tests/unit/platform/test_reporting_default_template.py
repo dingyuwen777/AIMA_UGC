@@ -60,10 +60,16 @@ def test_default_report_is_ready_for_management_presentation(tmp_path: Path) -> 
 
     assert markdown.startswith("# 爱玛品牌舆情分析报告")
     assert "## 1. 管理摘要" in markdown
-    assert "## 2. 舆情风险关注" in markdown
+    assert "## 2. 舆情重点关注" in markdown
     assert "平台 × 情感" in markdown
+    assert "正向表现" in markdown
+    assert "风险观察" in markdown
+    assert "正面内容" in markdown
     assert "负面内容" in markdown
+    assert "| 平台 | 正面内容量 | 占全部正面内容 |" in markdown
     assert "| 平台 | 负面内容量 | 占全部负面内容 |" in markdown
+    assert "### 2.1 正面内容平台分布" in markdown
+    assert "### 2.4 负面内容平台分布" in markdown
     assert "声量峰值" in markdown
     assert "客服与服务态度" in markdown
 

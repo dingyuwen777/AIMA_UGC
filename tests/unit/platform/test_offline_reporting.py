@@ -39,7 +39,7 @@ def _make_workbook(path: Path) -> None:
     )
     content.append(
         (
-            "抖音",
+            "douyin",
             "A",
             "正文A",
             "甲",
@@ -53,7 +53,7 @@ def _make_workbook(path: Path) -> None:
     )
     content.append(
         (
-            "抖音",
+            "douyin",
             "B",
             "正文B",
             "乙",
@@ -67,7 +67,7 @@ def _make_workbook(path: Path) -> None:
     )
     content.append(
         (
-            "小红书",
+            "xiaohongshu",
             "C",
             "正文C",
             "丙",
@@ -96,7 +96,7 @@ def _make_workbook(path: Path) -> None:
     labels.append(
         (
             "1",
-            "抖音",
+            "douyin",
             "A",
             "2026-08-18 08:00:00",
             "正面",
@@ -108,7 +108,7 @@ def _make_workbook(path: Path) -> None:
     labels.append(
         (
             "1",
-            "抖音",
+            "douyin",
             "A",
             "2026-08-18 08:00:00",
             "正面",
@@ -120,7 +120,7 @@ def _make_workbook(path: Path) -> None:
     labels.append(
         (
             "2",
-            "抖音",
+            "douyin",
             "B",
             "2026-08-19 09:00:00",
             "负面",
@@ -132,7 +132,7 @@ def _make_workbook(path: Path) -> None:
     labels.append(
         (
             "3",
-            "小红书",
+            "xiaohongshu",
             "C",
             "2026-08-19 10:00:00",
             "中性",
@@ -162,7 +162,7 @@ def _make_workbook(path: Path) -> None:
     )
     comments.append(
         (
-            "抖音",
+            "douyin",
             "1",
             "root",
             "c1",
@@ -235,9 +235,10 @@ def test_generate_excel_report_is_complete_and_does_not_modify_input(
     assert "| 2026-08-19 | 售后服务 | 1 |" in markdown
     assert "| 2026-08-19 | 推荐与购买意愿 | 1 |" in markdown
     assert markdown.count("```mermaid") >= 7
-    assert "xychart" in markdown
-    assert "xychart-beta" not in markdown
+    assert "xychart-beta" in markdown
     assert "pie showData" in markdown
+    assert "douyin" not in markdown
+    assert "xiaohongshu" not in markdown
     assert summary.word_path.is_file()
 
     with zipfile.ZipFile(summary.word_path) as archive:
@@ -252,6 +253,11 @@ def test_generate_excel_report_is_complete_and_does_not_modify_input(
         assert "爱玛舆情数据报告" in document
         assert "品牌评价" in document
         assert "客服与服务态度" in document
+        chart_xml = "".join(archive.read(name).decode("utf-8") for name in charts)
+        assert "抖音" in chart_xml
+        assert "小红书" in chart_xml
+        assert "douyin" not in chart_xml
+        assert "xiaohongshu" not in chart_xml
         ElementTree.fromstring(archive.read("word/document.xml"))
 
 
