@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260820-llm-pricing-official-terms"
 title: "LLM价格配置字段对齐供应商官方术语"
 level: L3
-status: ready_for_review
+status: done
 owner: "codex"
 branch: "feature/llm-pricing-official-terms"
 created: 2026-08-20
@@ -163,6 +163,8 @@ data_changes: []
   `.uv-cache`。
 - 官方核验：DeepSeek “模型 & 价格”页列出 `deepseek-v4-pro` 当前空闲价格 0.15 / 4.5 / 13.5、
   高峰价格 0.30 / 9 / 27 CNY / 百万 tokens；高峰时段为北京时间 09:00–12:00、14:00–18:00。
+- PR #96 修正提交的 20 个 GitHub Actions 检查全部通过，包含 Stage 1、PostgreSQL、Provider、
+  Scheduler、质量门禁和 Windows bootstrap；远端隔离环境补足了本地缺少 PostgreSQL Secret 的验证。
 
 # 文档影响
 
@@ -177,6 +179,6 @@ data_changes: []
 
 - Commit：`541e8ef`（字段与兼容修复）、`0abc1c8`（项目索引）、`322d93b`（通用分时价格与
   DeepSeek 当前价格修正）；提交信息均为中文。
-- PR：Draft PR #96，等待推送当前修正和 CI；CI 通过并完成最终 Change 归档后转为 Ready，随后
-  squash merge。
+- PR：Draft PR #96 的修正提交已推送，归档前 20 个 GitHub Actions 检查全部通过；归档提交复验后
+  转为 Ready 并 squash merge。
 - 发布：不单独发布；合并后随正常发布流程生效。
