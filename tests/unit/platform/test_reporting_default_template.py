@@ -12,7 +12,9 @@ def _make_minimal_workbook(path: Path) -> None:
     content.title = "内容"
     content.append(("平台", "发布时间", "命中关键词", "情感标签", "一级标签", "二级标签"))
     content.append(("抖音", "2026-08-20 10:00:00", "爱玛", "负面", "售后服务", "客服与服务态度"))
-    content.append(("小红书", "2026-08-20 11:00:00", "爱玛；新品", "正面", "品牌评价", "口碑与信任"))
+    content.append(
+        ("小红书", "2026-08-20 11:00:00", "爱玛；新品", "正面", "品牌评价", "口碑与信任")
+    )
 
     labels = workbook.create_sheet("标签明细")
     labels.append(("平台", "情感标签", "一级标签", "二级标签"))
