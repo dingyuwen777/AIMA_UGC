@@ -93,8 +93,8 @@ class P1RunSummary:
     run_dir: Path
     run_summary_path: Path
     labeled_excel_path: Path
-    report_markdown_path: Path | None = None
-    report_word_path: Path | None = None
+    report_markdown_path: Path
+    report_word_path: Path
 
 
 def prepare_run_dir(*, run_id: str | None = None) -> Path:
@@ -347,7 +347,7 @@ def run_all(
     write_to_database: bool = WRITE_TO_DATABASE,
     report_excel_path: Path | None = None,
 ) -> P1RunSummary:
-    """创建一次独立 run；报告只在存在实际处理后 Excel 时生成。"""
+    """创建一次独立 run，最终 Excel 完成后生成同一份 Markdown/Word 报告。"""
 
     actual_run_id = _resolve_run_id(run_id)
     run_dir = prepare_run_dir(run_id=actual_run_id)
@@ -371,36 +371,22 @@ def run_all(
         )
         stages.append(_stage_payload("database_ingestion", database_ingestion))
 
-    # 保留当前人工调试配置：AI 打标与最终 Excel 导出目前未自动执行。
-    # labeling = label_sentiment(run_dir=run_dir)
-    # stages.append(_stage_payload("label_sentiment", labeling))
-    #
-    # labeled_export = export_labeled_excel(run_dir=run_dir)
-    # stages.append(_stage_payload("export_labeled_excel", labeled_export))
+    labeling = label_sentiment(run_dir=run_dir)
+    stages.append(_stage_payload("label_sentiment", labeling))
+
+    labeled_export = export_labeled_excel(run_dir=run_dir)
+    stages.append(_stage_payload("export_labeled_excel", labeled_export))
 
     run_summary_path = run_dir / "run_summary.json"
     labeled_excel_path = _labeled_output_path(run_dir)
     report_input_path = Path(report_excel_path) if report_excel_path is not None else labeled_excel_path
-    report: ReportGenerationSummary | None = None
-    if report_excel_path is not None and not report_input_path.is_file():
-        raise FileNotFoundError(f"指定的报告 Excel 不存在: {report_input_path}")
-    if report_input_path.is_file():
-        report = generate_report(
-            excel_path=report_input_path,
-            output_dir=run_dir / "reports",
-        )
-        stages.append(_stage_payload("generate_report", report))
-    else:
-        stages.append(
-            {
-                "stage": "generate_report",
-                "summary": {
-                    "status": "skipped",
-                    "reason": "report_input_excel_not_found",
-                    "input_path": str(report_input_path),
-                },
-            }
-        )
+    if not report_input_path.is_file():
+        raise FileNotFoundError(f"报告 Excel 不存在: {report_input_path}")
+    report = generate_report(
+        excel_path=report_input_path,
+        output_dir=run_dir / "reports",
+    )
+    stages.append(_stage_payload("generate_report", report))
 
     input_paths = _input_xlsx_files()
     run_payload: dict[str, object] = {
@@ -412,21 +398,20 @@ def run_all(
         "keyword_pack_file": str(KEYWORD_PACK_FILE),
         "labeled_excel": str(labeled_excel_path),
         "report_input_excel": str(report_input_path),
+        "report_markdown": str(report.markdown_path),
+        "report_word": str(report.word_path),
         "stages": stages,
     }
     if len(input_paths) == 1:
         run_payload["source_xlsx"] = str(input_paths[0])
-    if report is not None:
-        run_payload["report_markdown"] = str(report.markdown_path)
-        run_payload["report_word"] = str(report.word_path)
     _atomic_write_json(run_summary_path, run_payload)
     return P1RunSummary(
         run_id=actual_run_id,
         run_dir=run_dir,
         run_summary_path=run_summary_path,
         labeled_excel_path=labeled_excel_path,
-        report_markdown_path=report.markdown_path if report is not None else None,
-        report_word_path=report.word_path if report is not None else None,
+        report_markdown_path=report.markdown_path,
+        report_word_path=report.word_path,
     )
 
 
@@ -605,7 +590,7 @@ if __name__ == "__main__":
         "run_all 完成: "
         f"run_id={result.run_id}, "
         f"labeled_excel={result.labeled_excel_path}, "
-        f"report_markdown={result.report_markdown_path or '未生成'}, "
-        f"report_word={result.report_word_path or '未生成'}, "
+        f"report_markdown={result.report_markdown_path}, "
+        f"report_word={result.report_word_path}, "
         f"run_summary={result.run_summary_path}"
     )
