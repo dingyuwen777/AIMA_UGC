@@ -1,4 +1,5 @@
 name: Offline Reporting Post-Merge Verify
+# 显式触发对已合并 main@46a077c 的新鲜验证。
 
 on:
   push:
