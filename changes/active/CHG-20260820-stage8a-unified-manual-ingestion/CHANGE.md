@@ -32,16 +32,18 @@ data_changes: [processing_import_batches, provider_requests]
 
 # Stage 8A：Unified Manual Ingestion Foundation
 
-## 当前结果
+## 结果与边界
 
 Stage 8A 只建立统一手工入库 Foundation，不进入 Stage 8B/8C，不开发正式前端。
 
 - `processing_import_batches` 是 Excel File Import 的最小业务父事实。
 - `ProviderRequestV1/provider_requests` 恰好属于 Collection Scope 或 Import Batch 之一。
-- Excel 不制造 Collection Run/Scope/Candidate：Input Artifact → Import Batch → import-parent Request/non-billable Attempt → Canonical Source →正式 Content Ingestion。
+- Excel 不制造 Collection Run/Scope/Candidate：Input Artifact → Import Batch → import-parent Request/non-billable Attempt → Canonical Source → Content Ingestion。
 - TikHub DB 模式仍走 manual Collection → Request/Attempt → Raw → Candidate-before-Mapper → Canonical → fenced Ingestion。
 - `imports_test` / `tikhub_test` 默认 file-only，显式 opt-in 才访问 PostgreSQL。
 - Canonical 后没有 Excel/TikHub 私有 Writer；跨来源最终由 Content Owner 收敛 Current 并保留历史。
+
+不在 8A 实现 HTTP API、正式前端、Analysis 数据库存储、认证权限、预算系统或新基础设施。
 
 ## 方案选择
 
@@ -125,7 +127,7 @@ alembic check: no drift
 
 同一 job 成功完成 Architecture、Table Ownership、Secret、Docs、Contract compatibility、base roundtrip 和 previous-revision roundtrip。专属 PG18 覆盖 TikHub DB 单次 Fake Transport、重复 Excel、Excel→TikHub 跨来源收敛、较新 Observation 推进 Version/Metric、DB 失败后幂等重试。
 
-后续仅文档收口会产生新的分支 head，所以**最终合并必须以 PR 实际最新 head 的新鲜 CI 为准**；历史绿灯不能替代最终 head 验证。
+后续文档收口产生新的分支 head，所以**最终合并必须以 PR 实际最新 head 的新鲜 CI 为准**；历史绿灯不能替代最终 head 验证。
 
 ## 文档
 
