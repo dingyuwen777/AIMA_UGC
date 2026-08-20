@@ -102,9 +102,18 @@ DOCX 生成后会重新打开并检查：
 backend/src/aima_ugc/adapters/providers/imports_test/test.py
 ```
 
-`run_all()` 在最终 `labeled_data.xlsx` 成功后调用同一报告实现。
+当前人工调试版 `run_all()` 保留最新仓库事实：AI 打标和 `labeled_data.xlsx` 导出暂时被注释，不会为了报告而静默恢复。因此报告接线按“实际文件存在才生成”处理：
 
-也可以只指定一个已经处理好的 Excel：
+```text
+run_all(report_excel_path=<已处理 Excel>)
+→ 使用显式 Excel 生成 reports/report.md + report.docx
+
+run_all()
+→ 如果本 run 已经存在 labeled_data.xlsx，则生成报告
+→ 如果不存在，则在 run_summary.json 中把 generate_report 记为 skipped
+```
+
+也可以完全绕过 `run_all()`，只指定一个已经处理好的 Excel：
 
 ```python
 from pathlib import Path
@@ -124,7 +133,7 @@ result = generate_report(
 核心报告行为：
 
 ```bash
-uv run pytest tests/unit/platform/test_offline_reporting.py -q
+uv run pytest tests/unit/platform/test_offline_reporting.py tests/unit/platform/test_docx_package_structure.py -q
 ```
 
 `imports_test` 接线：
@@ -138,9 +147,12 @@ uv run pytest tests/unit/platform/test_imports_test_reporting.py tests/unit/coll
 - 统计口径正确；
 - 输入 Excel Hash 在报告前后不变；
 - 模板文字同时进入 Markdown 和 Word；
-- DOCX 包含可解析 OOXML 和图表媒体；
+- DOCX ZIP/关键 OOXML/图表媒体结构可校验；
+- Word 换行节点使用合法 `w:r > w:br` 层级；
 - 未支持 Mermaid 类型关闭失败；
-- `run_all()` 在最终 Excel 后追加报告阶段，并保留既有多 Excel/费用审计语义。
+- 显式 `report_excel_path` 能生成报告，同时不恢复当前已禁用的 AI/Excel 阶段；
+- 默认没有最终 Excel 时明确记录报告跳过；
+- 既有多 Excel、数据库来源和 LLM 费用审计语义保持不变。
 
 测试和当前 CI 结果才是验证事实，本 README 不替代测试断言。
 
@@ -149,4 +161,5 @@ uv run pytest tests/unit/platform/test_imports_test_reporting.py tests/unit/coll
 - 当前是离线文件报告，不是正式网页报告中心；
 - 不生成新的 AI 结论，只统计已有结构化数据；
 - Word 转换不是通用 Markdown/Mermaid 引擎，只支持当前报告需要的子集；
+- 当前人工 `run_all()` 是否能自动获得最终 Excel，取决于调用前是否已有 `labeled_data.xlsx` 或是否显式传入 `report_excel_path`；
 - 正式 Report Job、Artifact 权限/API、PostgreSQL Read Model 或 Web 页面如后续需要，必须作为对应阶段独立演进。
