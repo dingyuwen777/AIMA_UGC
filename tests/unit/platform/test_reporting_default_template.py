@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from openpyxl import Workbook
-
 from aima_ugc.platform import reporting
+from openpyxl import Workbook
 
 
 def _make_minimal_workbook(path: Path) -> None:
