@@ -183,8 +183,8 @@
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/adapters/providers/imports_test/README.md",
-      "sha256": "b6408eed3d75a052f45b359ff54ce31f9361d18fa1014566bd53800f20e8774a",
-      "size": 24590,
+      "sha256": "68448ddd31bfbe0b747bbb095dd994ad8787468f4b6595f95356f7411bee60aa",
+      "size": 24708,
       "title": "Excel 离线导入、清洗与 AI 多标签打标"
     },
     {
@@ -552,12 +552,12 @@
       "size": 91336
     }
   ],
-  "generated_at": "2026-08-20T02:24:39+00:00",
+  "generated_at": "2026-08-20T02:49:35+00:00",
   "generator_version": "0.1.0",
   "git": {
-    "indexed_at_commit": "414f610004b30cb98178a67a29f5024dd725355e",
+    "indexed_at_commit": "4db91659d3ceef5e459109217a7916849b76fdb8",
     "repository": true,
-    "worktree_candidate_digest": "29810e837114231b64d3420dfc73bae40f0a249b5ac056dad3b940bb5c516489"
+    "worktree_candidate_digest": "3408f605c9cb57d04822955762790e4f5a26d925876a16b94e9641a2e890b58f"
   },
   "package_scripts": {
     "frontend/package.json": {

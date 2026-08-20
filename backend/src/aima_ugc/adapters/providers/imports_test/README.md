@@ -25,10 +25,10 @@ backend/src/aima_ugc/adapters/providers/imports_test/test.py
 常用配置：
 
 ```python
-# 单文件兼容配置；INPUT_XLSX_FILES = None 时使用它。
-INPUT_XLSX = Path(r"E:\path\to\source.xlsx")
+# 单文件：自动走单文件转换。
+INPUT_XLSX_FILES = Path(r"E:\path\to\source.xlsx")
 
-# 多文件配置；按元组顺序合并到同一个 run。单文件时保持 None 即可。
+# 多文件：改为 Path 元组，按顺序合并到同一个 run。
 INPUT_XLSX_FILES = (
     Path(r"E:\path\to\source-1.xlsx"),
     Path(r"E:\path\to\source-2.xlsx"),
@@ -52,6 +52,9 @@ MAX_TRANSPORT_RETRIES = 4
 # HTTP 成功但模型 JSON/标签校验失败的额外重试次数。
 MAX_VALIDATION_RETRIES = 2
 ```
+
+Excel 输入只有 `INPUT_XLSX_FILES` 一个配置入口。它接受一个 `Path` 或非空的
+`Path` 元组；空元组会在转换前报错，其他类型不受支持。
 
 当前没有 `LLM_BATCH_SIZE` 配置。**不会把 20 条内容拼进一次模型请求。**
 

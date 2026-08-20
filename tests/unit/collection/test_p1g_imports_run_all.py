@@ -6,8 +6,10 @@ from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from aima_ugc.adapters.providers.imports import (
     ExcelBatchConversionSummary,
+    ExcelConversionSummary,
     ExcelSourceConversionSummary,
 )
 from aima_ugc.adapters.providers.imports_test import test as imports_test_entry
@@ -27,7 +29,7 @@ def test_p1g_run_all_uses_default_chain_without_raw_excel(
     calls: list[str] = []
     output_root = tmp_path / "output"
     monkeypatch.setattr(imports_test_entry, "OUTPUT_ROOT", output_root)
-    monkeypatch.setattr(imports_test_entry, "INPUT_XLSX", tmp_path / "source.xlsx")
+    monkeypatch.setattr(imports_test_entry, "INPUT_XLSX_FILES", tmp_path / "source.xlsx")
 
     def stage(name: str):
         def run(*args, **kwargs):
@@ -75,7 +77,7 @@ def test_p1g_export_labeled_excel_uses_source_run_id_and_column_config(
     source = tmp_path / "爱玛监测.xlsx"
     captured: dict[str, object] = {}
     monkeypatch.setattr(imports_test_entry, "OUTPUT_ROOT", output_root)
-    monkeypatch.setattr(imports_test_entry, "INPUT_XLSX", source)
+    monkeypatch.setattr(imports_test_entry, "INPUT_XLSX_FILES", source)
 
     def fake_export(
         *,
@@ -255,6 +257,68 @@ def test_imports_test_convert_uses_multiple_excel_files_in_one_configured_run(
         {"input_path": str(first), "rows_seen": 2},
         {"input_path": str(second), "rows_seen": 3},
     ]
+
+
+def test_imports_test_convert_uses_single_path_from_the_only_input_config(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "single.xlsx"
+    output_root = tmp_path / "output"
+    run_dir = output_root / "runs" / "single"
+    run_dir.mkdir(parents=True)
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(imports_test_entry, "OUTPUT_ROOT", output_root)
+    monkeypatch.setattr(imports_test_entry, "INPUT_XLSX_FILES", source)
+
+    def fake_convert(**kwargs):
+        captured.update(kwargs)
+        output_path = kwargs["output_path"]
+        return ExcelConversionSummary(
+            input_path=source,
+            output_path=output_path,
+            error_path=output_path.with_name("conversion_errors.jsonl"),
+            rows_seen=2,
+            rows_written=2,
+            rows_rejected=0,
+        )
+
+    def multi_must_not_run(**kwargs):
+        raise AssertionError("单个 Path 不得调用多文件 Converter")
+
+    monkeypatch.setattr(imports_test_entry, "convert_excel_to_canonical_jsonl", fake_convert)
+    monkeypatch.setattr(
+        imports_test_entry,
+        "convert_excel_files_to_canonical_jsonl",
+        multi_must_not_run,
+    )
+
+    imports_test_entry.convert(run_dir=run_dir)
+
+    assert not hasattr(imports_test_entry, "INPUT_XLSX")
+    assert captured == {
+        "input_path": source,
+        "output_path": run_dir / "canonical" / "contents.jsonl",
+        "profile_name": imports_test_entry.PROFILE,
+        "sheet_name": imports_test_entry.SHEET_NAME,
+    }
+    manifest = json.loads(
+        (run_dir / "canonical" / "conversion_summary.json").read_text(encoding="utf-8")
+    )
+    assert manifest["sources"] == [{"input_path": str(source), "rows_seen": 2}]
+
+
+def test_imports_test_convert_rejects_empty_input_config_before_conversion(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    run_dir = tmp_path / "output" / "runs" / "empty"
+    run_dir.mkdir(parents=True)
+    monkeypatch.setattr(imports_test_entry, "INPUT_XLSX_FILES", ())
+
+    with pytest.raises(ValueError, match="至少需要配置一个 Excel"):
+        imports_test_entry.convert(run_dir=run_dir)
 
 
 def test_run_summary_lists_all_source_excel_files(

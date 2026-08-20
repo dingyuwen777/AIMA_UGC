@@ -48,9 +48,8 @@ from aima_ugc.platform.export import (
 
 os.environ.pop("SSLKEYLOGFILE", None)
 
-INPUT_XLSX = Path(r"E:\path\to\source.xlsx")
-# 多文件时按这里的顺序合并；None 表示继续使用上面的单文件兼容配置。
-INPUT_XLSX_FILES: tuple[Path, ...] | None = None
+# 配置一个 Path 走单文件转换；配置多个 Path 的有序元组合并到同一个 run。
+INPUT_XLSX_FILES: Path | tuple[Path, ...] = Path(r"E:\path\to\source.xlsx")
 OUTPUT_ROOT = Path(__file__).with_name("output")
 KEYWORD_PACK_FILE = Path(__file__).with_name("keyword_pack.txt")
 
@@ -379,9 +378,12 @@ def _count_jsonl_rows(path: Path) -> int:
 
 
 def _input_xlsx_files() -> tuple[Path, ...]:
-    if INPUT_XLSX_FILES is None:
-        return (Path(INPUT_XLSX),)
-    input_paths = tuple(Path(path) for path in INPUT_XLSX_FILES)
+    configured = INPUT_XLSX_FILES
+    if isinstance(configured, Path):
+        return (configured,)
+    if not isinstance(configured, tuple):
+        raise TypeError("INPUT_XLSX_FILES 必须配置为一个 Path 或 Path 元组")
+    input_paths = tuple(Path(path) for path in configured)
     if not input_paths:
         raise ValueError("INPUT_XLSX_FILES 至少需要配置一个 Excel")
     return input_paths
