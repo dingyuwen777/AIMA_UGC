@@ -26,8 +26,6 @@ backend/src/aima_ugc/adapters/providers/imports_test/test.py
 
 ```python
 # 单文件：自动走单文件转换。
-INPUT_XLSX_FILES = Path(r"E:\path\to\source.xlsx")
-
 # 多文件：改为 Path 元组，按顺序合并到同一个 run。
 INPUT_XLSX_FILES = (
     Path(r"E:\path\to\source-1.xlsx"),

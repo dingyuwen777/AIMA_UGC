@@ -49,7 +49,9 @@ from aima_ugc.platform.export import (
 os.environ.pop("SSLKEYLOGFILE", None)
 
 # 配置一个 Path 走单文件转换；配置多个 Path 的有序元组合并到同一个 run。
-INPUT_XLSX_FILES: Path | tuple[Path, ...] = Path(r"E:\path\to\source.xlsx")
+INPUT_XLSX_FILES: Path | tuple[Path, ...] = (
+        Path(r"E:\Desktop\08_18数据\测试数据.xlsx")
+    )
 OUTPUT_ROOT = Path(__file__).with_name("output")
 KEYWORD_PACK_FILE = Path(__file__).with_name("keyword_pack.txt")
 
@@ -337,11 +339,11 @@ def run_all(
         )
         stages.append(_stage_payload("database_ingestion", database_ingestion))
 
-    labeling = label_sentiment(run_dir=run_dir)
-    stages.append(_stage_payload("label_sentiment", labeling))
-
-    labeled_export = export_labeled_excel(run_dir=run_dir)
-    stages.append(_stage_payload("export_labeled_excel", labeled_export))
+    # labeling = label_sentiment(run_dir=run_dir)
+    # stages.append(_stage_payload("label_sentiment", labeling))
+    #
+    # labeled_export = export_labeled_excel(run_dir=run_dir)
+    # stages.append(_stage_payload("export_labeled_excel", labeled_export))
 
     run_summary_path = run_dir / "run_summary.json"
     labeled_excel_path = _labeled_output_path(run_dir)
