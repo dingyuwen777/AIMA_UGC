@@ -360,6 +360,7 @@ def _series_names(spec: ChartSpec) -> tuple[str, ...]:
 def _chart_workbook_bytes(spec: ChartSpec) -> bytes:
     workbook = Workbook()
     sheet = workbook.active
+    assert sheet is not None
     sheet.title = "数据"
     names = _series_names(spec)
     sheet.cell(row=1, column=1, value="日期/分类")
