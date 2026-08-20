@@ -22,20 +22,7 @@ class _DummySummary:
     stage: str
 
 
-@dataclass(frozen=True, slots=True)
-class _DummyReportSummary:
-    markdown_path: Path
-    word_path: Path
-
-
-def _report_summary(run_dir: Path) -> _DummyReportSummary:
-    return _DummyReportSummary(
-        markdown_path=run_dir / "reports" / "report.md",
-        word_path=run_dir / "reports" / "report.docx",
-    )
-
-
-def test_p1g_run_all_uses_default_chain_without_raw_excel(
+def test_p1g_run_all_preserves_current_manual_chain_and_records_report_skip(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -51,43 +38,37 @@ def test_p1g_run_all_uses_default_chain_without_raw_excel(
 
         return run
 
-    def report_stage(*, run_dir: Path, **kwargs):
-        calls.append("generate_report")
-        return _report_summary(run_dir)
-
     monkeypatch.setattr(imports_test_entry, "convert", stage("convert"))
     monkeypatch.setattr(imports_test_entry, "filter_keywords", stage("filter_keywords"))
     monkeypatch.setattr(imports_test_entry, "deduplicate", stage("deduplicate"))
-    monkeypatch.setattr(imports_test_entry, "label_sentiment", stage("label_sentiment"))
-    monkeypatch.setattr(
-        imports_test_entry, "export_labeled_excel", stage("export_labeled_excel"), raising=False
-    )
-    monkeypatch.setattr(imports_test_entry, "generate_report", report_stage)
 
-    def raw_must_not_run(*args, **kwargs):
-        raise AssertionError("run_all 不得调用 export_raw_excel")
+    def disabled_stage_must_not_run(*args, **kwargs):
+        raise AssertionError("当前人工 run_all 不得调用已禁用阶段")
 
-    monkeypatch.setattr(imports_test_entry, "export_raw_excel", raw_must_not_run)
+    monkeypatch.setattr(imports_test_entry, "label_sentiment", disabled_stage_must_not_run)
+    monkeypatch.setattr(imports_test_entry, "export_labeled_excel", disabled_stage_must_not_run)
+    monkeypatch.setattr(imports_test_entry, "export_raw_excel", disabled_stage_must_not_run)
+    monkeypatch.setattr(imports_test_entry, "generate_report", disabled_stage_must_not_run)
 
     summary = imports_test_entry.run_all(run_id="20260818T160000Z")
 
-    assert calls == [
-        "convert",
-        "filter_keywords",
-        "deduplicate",
-        "label_sentiment",
-        "export_labeled_excel",
-        "generate_report",
-    ]
+    assert calls == ["convert", "filter_keywords", "deduplicate"]
     assert summary.run_id == "20260818T160000Z"
     run_dir = output_root / "runs" / "20260818T160000Z"
     assert summary.run_dir == run_dir
     assert summary.run_summary_path == run_dir / "run_summary.json"
+    assert summary.report_markdown_path is None
+    assert summary.report_word_path is None
     payload = json.loads(summary.run_summary_path.read_text(encoding="utf-8"))
     assert payload["run_id"] == "20260818T160000Z"
-    assert [item["stage"] for item in payload["stages"]] == calls
-    assert payload["report_markdown"] == str(run_dir / "reports" / "report.md")
-    assert payload["report_word"] == str(run_dir / "reports" / "report.docx")
+    assert [item["stage"] for item in payload["stages"]] == [
+        "convert",
+        "filter_keywords",
+        "deduplicate",
+        "generate_report",
+    ]
+    assert payload["stages"][-1]["summary"]["status"] == "skipped"
+    assert payload["stages"][-1]["summary"]["reason"] == "report_input_excel_not_found"
 
 
 def test_p1g_export_labeled_excel_uses_source_run_id_and_column_config(
@@ -342,7 +323,7 @@ def test_imports_test_convert_rejects_empty_input_config_before_conversion(
         imports_test_entry.convert(run_dir=run_dir)
 
 
-def test_run_summary_lists_all_source_excel_files(
+def test_run_summary_lists_all_source_excel_files_and_report_skip(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -358,15 +339,9 @@ def test_run_summary_lists_all_source_excel_files(
 
         return run
 
-    def report_stage(*, run_dir: Path, **kwargs):
-        return _report_summary(run_dir)
-
     monkeypatch.setattr(imports_test_entry, "convert", stage("convert"))
     monkeypatch.setattr(imports_test_entry, "filter_keywords", stage("filter_keywords"))
     monkeypatch.setattr(imports_test_entry, "deduplicate", stage("deduplicate"))
-    monkeypatch.setattr(imports_test_entry, "label_sentiment", stage("label_sentiment"))
-    monkeypatch.setattr(imports_test_entry, "export_labeled_excel", stage("export_labeled_excel"))
-    monkeypatch.setattr(imports_test_entry, "generate_report", report_stage)
 
     summary = imports_test_entry.run_all(run_id="multi")
     payload = json.loads(summary.run_summary_path.read_text(encoding="utf-8"))
@@ -374,8 +349,10 @@ def test_run_summary_lists_all_source_excel_files(
     assert payload["schema_version"] == "p1-run-summary.v2"
     assert payload["source_xlsx_files"] == [str(first), str(second)]
     assert "source_xlsx" not in payload
-    assert payload["report_markdown"] == str(summary.run_dir / "reports" / "report.md")
-    assert payload["report_word"] == str(summary.run_dir / "reports" / "report.docx")
+    assert payload["stages"][-1]["stage"] == "generate_report"
+    assert payload["stages"][-1]["summary"]["status"] == "skipped"
+    assert "report_markdown" not in payload
+    assert "report_word" not in payload
 
 
 def test_multi_file_database_stage_recovers_source_rows_from_conversion_manifest(
