@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260820-analysis-persistence-report-source
 title: Analysis持久化与报告数据源边界
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: docs/analysis-persistence-report-source
 created: 2026-08-20
@@ -35,16 +35,22 @@ data_changes:
 
 # 当前机器事实
 
-当前 `main@a70ce7528ce983b72dde33e1a251cac658b28468`：
+基线：
+
+```text
+main@a70ce7528ce983b72dde33e1a251cac658b28468
+```
+
+当前实现：
 
 - `imports_test.run_all(write_to_database=True)` 在 AI 打标前先把去重后的 Content 通过正式 File Import/Content Ingestion 写入 PostgreSQL；
 - AI 成功后回写 `deduplicated/contents.jsonl`，随后导出 `labeled_data.xlsx`；
 - 当前离线 Report Renderer 固定读取统一 Excel；
 - 当前尚无正式 Analysis PostgreSQL DDL/Migration/Repository/Job/HTTP Contract；
-- Blueprint 15 已有未来 Analysis 父结果 + 标签对子事实方向，但还没有把“正式 DB 模式必须持久化成功 Analysis”写成硬规则；
-- Blueprint 03 与 15 对未来 Analysis 表名/结构描述存在不一致，需要统一为逻辑模型并把正式 DDL 名称留给后续 Analysis 持久化 Change 冻结。
+- Blueprint 15 原有未来 Analysis 父结果 + 标签对子事实方向，但此前没有把“正式 DB 模式必须持久化成功 Analysis”写成硬规则；
+- Blueprint 03 与 15 此前对未来 Analysis 表名/结构描述不一致。
 
-# 已确认决策
+# 用户确认与方案比较
 
 用户已确认：
 
@@ -57,17 +63,15 @@ AI 打标完成的数据也必须进入数据库。
 不能因为数据库启动了就让同一个离线命令静默换数据源。
 ```
 
-## 方案比较
-
-### 方案 A：只把 Content 入库，Analysis 长期只留 JSONL/Excel
+## 方案 A：只把 Content 入库，Analysis 长期只留 JSONL/Excel
 
 优点：实现最少。
 
 缺点：PostgreSQL 无法成为完整业务事实源；正式页面/跨批次报告无法可靠使用 AI 标签；Excel 与数据库长期分叉。
 
-不采用。
+**不采用。**
 
-### 方案 B：Content 与 Analysis 分 Owner 持久化，报告源按场景显式选择
+## 方案 B：Content 与 Analysis 分 Owner 持久化，报告源按场景显式选择
 
 - Content 先通过 Content Owner 入库并取得稳定 `content_id`；
 - AI 通过 Validator 后，同一份 Analysis 同时用于 JSONL/Excel 与 Analysis Owner PostgreSQL 持久化；
@@ -75,28 +79,44 @@ AI 打标完成的数据也必须进入数据库。
 - 正式系统报告使用 PostgreSQL Query/Read Model；
 - 两种来源统一转成 Report Dataset，再复用同一 Statistics/Renderer/Markdown 模板。
 
-优点：职责清晰、可追溯、支持长期查询和历史、不会让报告层依赖某个输入来源。
+**采用。**
 
-采用。
-
-### 方案 C：数据库可用就自动读数据库，不可用就读 Excel
+## 方案 C：数据库可用就自动读数据库，不可用就读 Excel
 
 优点：调用表面简单。
 
 缺点：同一命令会因环境状态产生不同数据范围；数据库可能包含历史/TikHub/其他 Batch，无法自然代表本次 run；可复现性差。
 
-禁止采用。
+**禁止采用。**
 
-# 数据与兼容边界
+# 已固化设计
 
-- 当前不创建 Analysis 表、不写 Migration、不改变现有 `imports_test` 运行行为；本轮只冻结未来设计。
-- 正式 Analysis 持久化实现必须作为后续独立 L3 Change 冻结具体表名、字段、唯一约束、Migration、Job/事务边界和 Query 语义。
-- 不把 AI 标签塞进 `contents` 表，也不把多标签塞进逗号/换行字符串或 PostgreSQL ENUM。
-- 已通过 Validator 的 Analysis 是 JSONL/Excel 与 PostgreSQL 的同一逻辑事实，不能从 Excel 反向解析后再写数据库。
-- 相同 Analysis identity 必须幂等；输入、Prompt/Taxonomy 或模型身份变化时保留新的历史结果，不覆盖旧分析事实。
-- AI 失败不得写猜测标签；成功项可以独立持久化，失败项保持可重试/可观察。
+## Analysis 持久化
 
-# 报告边界
+```text
+ContentIngestionService
+→ Content Owner PostgreSQL
+→ stable content_id
+
+Analysis Service
+→ LLM
+→ Runtime Taxonomy Validator
+→ 合法 ContentLabelAnalysisV2
+   ├→ JSONL / Excel
+   └→ Analysis Owner PostgreSQL
+```
+
+硬规则：
+
+- AI 标签不进入 `contents` 表；
+- PostgreSQL Analysis、JSONL、Excel 消费同一份 Validator 成功结构，不从 Excel 反向解析后再入库，也不因写库二次调用模型；
+- Analysis 使用“结果父事实 + 标签对子事实”逻辑模型；具体表名/DDL 留给后续 Analysis Persistence L3 Change + Migration 冻结；
+- 相同 `content_id + input_hash + prompt_sha256 + taxonomy_sha256 + provider/model` identity 必须幂等；输入/Prompt/Taxonomy/模型变化形成新的历史分析结果；
+- Query 层提供确定性的 `current_analysis`，默认匹配当前 Content 输入版本/Hash 与当前选定 Analysis 配置的最新成功结果；
+- Analysis Result 与 Label Pairs 同一短事务提交；外部 LLM HTTP 不放进数据库事务；
+- AI 失败不写猜测结果；Content 成功而 Analysis 持久化失败时必须暴露 partial/failed Analysis 阶段并允许幂等补写。
+
+## 报告数据源
 
 ```text
 离线/人工单批：
@@ -114,14 +134,22 @@ PostgreSQL
 → report.md / report.docx / Web
 ```
 
-Report Renderer 禁止直接 SQL；PostgreSQL 读取必须经过 Query Repository/Read Model。
+硬规则：
+
+- `imports_test` 的本次 run 报告即使 `write_to_database=True` 也继续读取本次 Excel 快照；
+- 正式系统报告、跨 Batch、7/30/90 天趋势和 Dashboard 使用 PostgreSQL Read Model；
+- 禁止按 PostgreSQL 是否启动/可达自动切换数据源；
+- Report Renderer 不直接 SQL；数据库读取通过 Query Repository/Read Model；
+- 两种来源复用同一个 Provider-neutral Report Dataset、统计实现、Renderer 和 `platform/reporting/report_template.md`；
+- 正式数据库报告在 Analysis Persistence + current Analysis Query Read Model 落地前不得冒充已支持。
 
 # 本轮范围
 
-- 同步 Blueprint 03/13/15/17；
-- 消除 Analysis 未来表描述冲突；
-- 固化 AI 成功结果必须进入正式 PostgreSQL 的长期目标；
-- 固化 Excel/数据库报告源按场景显式选择的规则。
+- [x] 更新 Blueprint 03：Analysis Owner/逻辑结果模型，明确当前未落机器 Schema，消除与 Blueprint 15 的表描述冲突。
+- [x] 更新 Blueprint 13：离线 Excel 报告 vs PostgreSQL 正式报告、显式数据源、统一 Report Dataset/Renderer。
+- [x] 更新 Blueprint 15：Analysis 成功结果正式持久化、幂等/历史/current Analysis、事务与报告关系。
+- [x] 更新 Blueprint 17：Stage 8A 当前只写 Content 的机器限制、后续完整写入目标、数据库报告/AI 页面硬门禁。
+- [x] 保持 Stage 8B—8F 既有编号，不在本轮重排阶段。
 
 # 非目标
 
@@ -130,35 +158,48 @@ Report Renderer 禁止直接 SQL；PostgreSQL 读取必须经过 Query Repositor
 - 不实现数据库版 Report Source；
 - 不新增 Report Job/API/Web 页面；
 - 不调整 Stage 8A 已闭环机器实现；
-- 不重排已经确定的 Stage 8B—8F 编号，本轮只增加进入后续数据库报告/AI页面前的硬门禁。
+- 不修改代码、Contract、依赖或部署配置。
 
-# 任务
+# 验证证据
 
-- [x] 读取当前 main、AGENTS、Skill 和相关 Blueprint。
-- [x] 确认当前机器行为与目标行为的差异。
-- [ ] 更新 Blueprint 15：Analysis 持久化硬规则、历史/幂等、JSONL/Excel 同源。
-- [ ] 更新 Blueprint 17：Stage 8 当前机器事实、正式 DB 模式目标、后续实现门禁。
-- [ ] 更新 Blueprint 13：离线 Excel 报告 vs PostgreSQL 正式报告、显式数据源、统一 Report Dataset/Renderer。
-- [ ] 更新 Blueprint 03：Analysis 逻辑表/Owner 规划与“未落地”状态，消除与 Blueprint 15 的冲突。
-- [ ] 检查四份文档互相引用和表述一致性。
+本轮为纯设计文档变更，不伪造 TDD。文档更新通过临时 GitHub Actions 在锁定 Python/uv 环境中执行，只有下列检查成功后才提交四份 Blueprint：
 
-# 验证
+```text
+uv sync --locked
+uv run python scripts/quality/check_docs.py
+uv run python scripts/quality/scan_secrets.py
+设计关键字/边界断言
+```
 
-本轮为纯设计文档变更，不伪造 TDD。替代验证：
+临时 workflow 的提交步骤位于上述检查之后；四份 Blueprint 已实际提交，说明这些检查完成后没有失败阻断。
 
-- `scripts/quality/check_docs.py`；
-- `scripts/quality/scan_secrets.py`；
-- 检查 Blueprint 03/13/15/17 不再存在互相冲突的 Analysis 持久化/报告源描述；
-- 确认没有代码、Migration、Contract、依赖文件变化。
+收尾后重新比较：
+
+```text
+base main = a70ce7528ce983b72dde33e1a251cac658b28468
+head = docs/analysis-persistence-report-source
+behind_by = 0
+最终 diff 仅 5 个文件：
+- 本 Change
+- Blueprint 03
+- Blueprint 13
+- Blueprint 15
+- Blueprint 17
+```
+
+没有代码、Migration、Contract、依赖、测试或运行配置变化。
 
 # Migration / 部署 / 回滚
 
 - Migration：本轮无；后续 Analysis Persistence L3 Change 才创建。
 - 部署：无运行时变化。
-- 回滚：本轮只修改 Blueprint，可通过回退文档提交恢复；不会影响数据库或线上数据。
+- 兼容：当前 `imports_test`/数据库/报告运行行为不变；本轮只是把未来目标变成正式设计门禁。
+- 回滚：只需回退文档提交，不影响数据库或线上数据。
 
 # Git / 交付
 
 - 分支：`docs/analysis-persistence-report-source`。
+- Change：`ready_for_review`。
 - PR：未创建。
 - 合并：未执行。
+- 发布/部署：未执行。
