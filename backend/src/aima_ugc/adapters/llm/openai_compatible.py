@@ -220,7 +220,9 @@ class OpenAICompatibleContentLabelingLLM:
                 pricing_snapshot_sha256=(
                     calculation.pricing_snapshot_sha256
                     if calculation is not None
-                    else self._price.snapshot_sha256 if self._price is not None else None
+                    else self._price.snapshot_sha256
+                    if self._price is not None
+                    else None
                 ),
                 pricing_source_url=self._price.source_url if self._price is not None else None,
             )
@@ -433,9 +435,7 @@ def _request_audit_record(
         cost_amount=calculation.amount if calculation is not None else None,
         cost_currency=calculation.currency if calculation is not None else None,
         cost_unavailable_reason=(
-            None
-            if calculation is not None
-            else cost_unavailable_reason or "usage_unavailable"
+            None if calculation is not None else cost_unavailable_reason or "usage_unavailable"
         ),
     )
 

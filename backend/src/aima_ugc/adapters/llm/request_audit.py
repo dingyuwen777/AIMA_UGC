@@ -69,12 +69,8 @@ class LLMHTTPRequestAudit:
             },
             "pricing": {
                 "input_per_million": _decimal_text(self.input_per_million),
-                "input_cache_hit_per_million": _decimal_text(
-                    self.input_cache_hit_per_million
-                ),
-                "input_cache_miss_per_million": _decimal_text(
-                    self.input_cache_miss_per_million
-                ),
+                "input_cache_hit_per_million": _decimal_text(self.input_cache_hit_per_million),
+                "input_cache_miss_per_million": _decimal_text(self.input_cache_miss_per_million),
                 "output_per_million": _decimal_text(self.output_per_million),
                 "source_url": self.pricing_source_url,
                 "snapshot_sha256": self.pricing_snapshot_sha256,

@@ -73,12 +73,8 @@ class LLMModelPrice:
             "model": self.model,
             "currency": self.currency,
             "input_per_million": _decimal_text(self.input_per_million),
-            "input_cache_hit_per_million": _decimal_text(
-                self.input_cache_hit_per_million
-            ),
-            "input_cache_miss_per_million": _decimal_text(
-                self.input_cache_miss_per_million
-            ),
+            "input_cache_hit_per_million": _decimal_text(self.input_cache_hit_per_million),
+            "input_cache_miss_per_million": _decimal_text(self.input_cache_miss_per_million),
             "output_per_million": _decimal_text(self.output_per_million),
             "source_url": self.source_url,
         }
@@ -204,9 +200,7 @@ class LLMPricingCatalog:
 def load_llm_pricing() -> LLMPricingCatalog:
     """读取包内价格目录；每个 Adapter run 只需加载一次。"""
 
-    content = (
-        files("aima_ugc.adapters.llm").joinpath("pricing.toml").read_text(encoding="utf-8")
-    )
+    content = files("aima_ugc.adapters.llm").joinpath("pricing.toml").read_text(encoding="utf-8")
     return LLMPricingCatalog.from_toml(content)
 
 

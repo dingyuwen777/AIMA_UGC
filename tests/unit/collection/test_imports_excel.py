@@ -349,8 +349,7 @@ def test_convert_multiple_excel_files_preserves_configured_order_and_source(
     )
 
     records = [
-        CanonicalContentV1.model_validate_json(line)
-        for line in output.read_bytes().splitlines()
+        CanonicalContentV1.model_validate_json(line) for line in output.read_bytes().splitlines()
     ]
     assert [record.title for record in records] == ["第一份", "第二份"]
     assert [record.source.source_value for record in records] == ["first.xlsx", "second.xlsx"]
