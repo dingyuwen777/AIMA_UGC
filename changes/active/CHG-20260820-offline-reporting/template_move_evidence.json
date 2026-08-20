@@ -1,5 +1,5 @@
 {
-  "tested_sha": "07c9d5728ccd9baba2f5e9eaca4eacf8bc86c47b",
+  "tested_sha": "d755bf4114a6e2843630f7a8e579c41440f1c303",
   "setup": "success",
   "apply": "failure",
   "tail": [
@@ -42,6 +42,6 @@
     "tests/unit/collection/test_imports_test_run_directory.py:51: AttributeError",
     "=========================== short test summary info ============================",
     "FAILED tests/unit/collection/test_imports_test_run_directory.py::test_run_all_uses_one_isolated_run_directory_for_every_stage - AttributeError: module 'aima_ugc.adapters.providers.imports_test.test' has no attribute 'REPORT_TEMPLATE_FILE'",
-    "1 failed, 18 passed in 4.66s"
+    "1 failed, 18 passed in 4.62s"
   ]
 }
