@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260820-offline-reporting
 title: 离线数据报告与 Markdown Word 导出
 level: L2
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: feature/offline-reporting
 created: 2026-08-20
@@ -17,6 +17,7 @@ affected_paths:
   - backend/src/aima_ugc/adapters/providers/imports_test/
   - tests/unit/platform/
   - tests/unit/collection/test_p1g_imports_run_all.py
+  - tests/unit/collection/test_imports_test_run_directory.py
   - docs/blueprint/13-统一数据Excel导出与调试复用.md
 contracts: []
 data_changes: []
@@ -46,7 +47,7 @@ data_changes: []
 - [x] Word 支持本报告需要的标题、段落、列表、表格和 Mermaid 图；未知 Mermaid 类型明确失败。
 - [x] 报告只读输入 Excel，不写数据库、不调用 LLM、不改变上游事实。
 - [x] 未新增 Migration、公共 HTTP Contract、第三方运行时服务或 Python 依赖升级。
-- [ ] 在最终融合分支上取得目标测试、Ruff、Mypy、文档检查等新鲜执行证据。
+- [x] 已在最终稳定业务源码上取得目标测试、Ruff、Mypy、架构/Owner/文档/Secret、全量 unit 和 LibreOffice 渲染的新鲜证据。
 
 # 范围
 
@@ -81,6 +82,7 @@ data_changes: []
 5. Mermaid 使用 `pie` / `xychart`，Word 转换只支持本模板使用的子集并 fail closed。
 6. Change 期间 `main` 多次并发变化：先加入多 Excel/LLM 费用审计，再临时注释 AI/Excel，随后 `3a6ffbe...` 明确恢复完整打标流程；本 Change 每次都以最新机器事实为准，最终按 `3a6ffbe...` 保留完整链路并追加报告。
 7. DOCX `w:br` 固定放在 `w:r` 内；生成后校验 ZIP CRC、关键 OOXML/XML 和图表媒体数。
+8. `xml.etree.ElementTree.tostring(..., encoding="utf-8")` 的标准库类型存根返回值通过 `typing.cast(bytes, ...)` 明确给 mypy；不改变运行时字节序列化行为。
 
 # 任务
 
@@ -91,10 +93,25 @@ data_changes: []
 - [x] 融合多 Excel、费用审计和最新恢复的完整 `run_all()` 链路。
 - [x] 同步相关 README/Blueprint。
 - [x] 增加输入 Excel Hash、模板同步、未知 Mermaid、OOXML 换行和 `run_all()` 接线回归测试。
-- [x] `compare_commits(main, feature/offline-reporting)` 已确认 merge-base 为 `3a6ffbe759f0dfde2c67d8d4d97d336fe2571702`，`behind_by=0`。
-- [ ] 执行最终验证门禁。
+- [x] 更新既有 `run_all()` 隔离目录测试，使其覆盖最终 Excel 与报告仍使用同一个 run 目录。
+- [x] `compare_commits(main, feature/offline-reporting)` 最终确认 merge-base 为 `3a6ffbe759f0dfde2c67d8d4d97d336fe2571702`，`behind_by=0`。
+- [x] 执行最终验证门禁并记录机器证据。
 
 # 验证
+
+最终机器证据保存于：
+
+```text
+changes/active/CHG-20260820-offline-reporting/verification_evidence.json
+```
+
+被测业务源码状态：
+
+```text
+5ef2f292922d8a8777c93a62f7715a2522b85bab
+```
+
+验证环境：GitHub Actions `ubuntu-24.04` / Python 3.14.7 / 仓库锁定 uv 环境。
 
 目标测试：
 
@@ -103,32 +120,63 @@ uv run pytest \
   tests/unit/platform/test_offline_reporting.py \
   tests/unit/platform/test_imports_test_reporting.py \
   tests/unit/platform/test_docx_package_structure.py \
-  tests/unit/collection/test_p1g_imports_run_all.py -q
+  tests/unit/collection/test_p1g_imports_run_all.py \
+  tests/unit/collection/test_imports_test_run_directory.py -q
 ```
 
-静态与仓库检查：
+结果：
+
+```text
+18 passed in 3.82s
+```
+
+静态与仓库门禁：
 
 ```bash
 uv run ruff format --check backend tests scripts
 uv run ruff check backend tests scripts
 uv run mypy backend/src
 uv run python scripts/quality/check_architecture.py
+uv run python scripts/quality/check_table_ownership.py
 uv run python scripts/quality/check_docs.py
 uv run python scripts/quality/scan_secrets.py
+```
+
+结果：
+
+```text
+348 files already formatted
+All checks passed!
+Success: no issues found in 183 source files
+Stage 1–7 架构骨架与硬边界检查通过
+TABLE_OWNER_OK
+文档入口与本地链接检查通过
+源码、Provider 证据、Change 与文档 Secret 扫描通过
+```
+
+全量 unit：
+
+```bash
 uv run pytest tests/unit -q
 ```
 
-## 已有但不作为最终门禁的证据
+结果：
 
-- 开发早期 Red 测试因报告 API 不存在而正确失败；实现后核心 3/3 通过。
-- 开发早期样例 DOCX 经 LibreOffice 渲染为 9 页，未观察到空白页、图片缺失或明显裁切。
-- 上述证据早于后续主分支融合和 OOXML 修正，因此不冒充最终分支验证。
+```text
+410 passed in 5.51s
+```
 
-## 当前验证阻塞
+DOCX 格式与渲染验证：
 
-- 当前执行环境克隆 GitHub 时 DNS 无法解析 `github.com`，不能本地拉取最终分支运行命令。
-- 临时 feature-branch Actions 验证尝试无法通过当前连接器取得可核验 push-run 结果，已删除临时 workflow；没有把未知结果当作通过。
-- 因此当前 Change 保持 `in_progress`，直到最终分支取得新鲜验证证据。
+```text
+报告生成器生成 report.md + report.docx
+DOCX 内部校验 ZIP CRC、关键 OOXML/XML、图表媒体数量
+样例 Word 包含 9 张图表
+LibreOffice Writer headless 成功打开 DOCX 并转为 PDF
+PDF 大小：191091 bytes
+```
+
+LibreOffice 输出存在 `javaldx` Java 警告，但 Writer 转换成功且生成了非空 PDF；本功能不依赖 Java。未使用 Microsoft Word 实机交叉验证，因此剩余风险仅是不同 Office 渲染器的细微版式差异，不影响 DOCX 包结构和已验证内容完整性。
 
 # 文档影响
 
@@ -140,8 +188,9 @@ uv run pytest tests/unit -q
 
 # 交付
 
-- 最新融合基线：`main@3a6ffbe759f0dfde2c67d8d4d97d336fe2571702`，已确认 `behind_by=0`；交付前继续核对主分支是否前进。
+- 最新融合基线：`main@3a6ffbe759f0dfde2c67d8d4d97d336fe2571702`；最终比较确认 `behind_by=0`。
 - 分支：`feature/offline-reporting`。
+- Change：`ready_for_review`，继续保留在 `changes/active/`，未归档。
 - PR：未创建。
 - 合并：未执行；用户明确要求本轮不要合并 `main`。
 - 发布/部署：未执行。
