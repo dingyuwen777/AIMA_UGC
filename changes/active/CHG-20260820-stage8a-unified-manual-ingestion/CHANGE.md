@@ -127,7 +127,7 @@ alembic check: no drift
 
 同一 job 成功完成 Architecture、Table Ownership、Secret、Docs、Contract compatibility、base roundtrip 和 previous-revision roundtrip。专属 PG18 覆盖 TikHub DB 单次 Fake Transport、重复 Excel、Excel→TikHub 跨来源收敛、较新 Observation 推进 Version/Metric、DB 失败后幂等重试。
 
-后续只发生文档收口，**最终合并必须以 PR 实际最新 head 的新鲜 CI 为准**；历史绿灯不能替代最终验证。
+后续文档收口产生新的分支 head，所以**最终合并必须以 PR 实际最新 head 的新鲜 CI 为准**；历史绿灯不能替代最终验证。
 
 ## 文档
 
