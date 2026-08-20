@@ -14,7 +14,11 @@ from aima_ugc.contracts.canonical import (
     CanonicalMetricsV1,
     CanonicalSourceV1,
 )
-from aima_ugc.contracts.export import UnifiedDataExcelAnalysisV1, UnifiedDataExcelV1
+from aima_ugc.contracts.export import (
+    UnifiedDataExcelAnalysisV1,
+    UnifiedDataExcelLabelPairV1,
+    UnifiedDataExcelV1,
+)
 from aima_ugc.platform.export import (
     export_unified_data_excel,
     project_canonical_comment,
@@ -111,6 +115,29 @@ def _export_record() -> UnifiedDataExcelV1:
                 raw_locator="raw/comments.json#item[0]",
             ),
         ),
+    )
+
+
+def _multilabel_export_record() -> UnifiedDataExcelV1:
+    record = _export_record()
+    analysis = UnifiedDataExcelAnalysisV1(
+        sentiment="正面",
+        primary_label="产品体验\n服务体验",
+        secondary_label="骑行性能\n售后服务响应及时且处理专业",
+        label_pairs=(
+            UnifiedDataExcelLabelPairV1(
+                primary_label="产品体验",
+                secondary_label="骑行性能",
+            ),
+            UnifiedDataExcelLabelPairV1(
+                primary_label="服务体验",
+                secondary_label="售后服务响应及时且处理专业",
+            ),
+        ),
+    )
+    return UnifiedDataExcelV1(
+        content=record.content.model_copy(update={"analysis": analysis}),
+        comments=record.comments,
     )
 
 
@@ -299,6 +326,119 @@ def test_shared_exporter_supports_ordered_projection_and_reference_style(tmp_pat
         workbook.close()
 
 
+def test_shared_exporter_projects_all_sheet_columns_and_sizes_secondary_label_rows(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "all-sheet-projection.xlsx"
+    content_columns = ("二级标签", "平台")
+    label_detail_columns = ("二级标签", "正文", "作者", "一级标签")
+    comment_columns = ("标题", "正文", "评论内容", "作者")
+
+    export_unified_data_excel(
+        (_multilabel_export_record(),),
+        output,
+        include_analysis=True,
+        content_columns=content_columns,
+        label_detail_columns=label_detail_columns,
+        comment_columns=comment_columns,
+    )
+
+    workbook = load_workbook(output, data_only=False)
+    try:
+        content_sheet = workbook["内容"]
+        label_sheet = workbook["标签明细"]
+        comment_sheet = workbook["评论"]
+        assert tuple(cell.value for cell in content_sheet[1]) == content_columns
+        assert tuple(cell.value for cell in label_sheet[1]) == label_detail_columns
+        assert tuple(cell.value for cell in comment_sheet[1]) == comment_columns
+        assert tuple(cell.value for cell in content_sheet[2]) == (
+            "骑行性能\n售后服务响应及时且处理专业",
+            "xiaohongshu",
+        )
+        assert tuple(cell.value for cell in label_sheet[2]) == (
+            "骑行性能",
+            "中文正文 😀",
+            "'@dangerous author",
+            "产品体验",
+        )
+        assert tuple(cell.value for cell in label_sheet[3]) == (
+            "售后服务响应及时且处理专业",
+            "中文正文 😀",
+            "'@dangerous author",
+            "服务体验",
+        )
+        assert tuple(cell.value for cell in comment_sheet[2]) == (
+            "'=dangerous title",
+            "中文正文 😀",
+            "'+formula-like comment",
+            "评论者",
+        )
+        assert content_sheet.auto_filter.ref == "A1:B2"
+        assert label_sheet.auto_filter.ref == "A1:D3"
+        assert comment_sheet.auto_filter.ref == "A1:D2"
+        assert content_sheet.column_dimensions["A"].width == pytest.approx(24)
+        assert label_sheet.column_dimensions["A"].width == pytest.approx(24)
+        assert comment_sheet.column_dimensions["A"].width == pytest.approx(50)
+        assert content_sheet["A2"].alignment.wrap_text is True
+        assert label_sheet["A3"].alignment.wrap_text is True
+        assert content_sheet.row_dimensions[2].height == pytest.approx(43.5)
+        assert label_sheet.row_dimensions[2].height == pytest.approx(14.5)
+        assert label_sheet.row_dimensions[3].height == pytest.approx(29)
+        assert comment_sheet.row_dimensions[2].height is None
+    finally:
+        workbook.close()
+
+
+def test_secondary_label_row_height_is_capped_and_skipped_when_hidden(
+    tmp_path: Path,
+) -> None:
+    long_secondary_label = "\n".join("超长二级标签" for _ in range(29))
+    record = _export_record()
+    analysis = UnifiedDataExcelAnalysisV1(
+        sentiment="正面",
+        primary_label="产品体验",
+        secondary_label=long_secondary_label,
+        label_pairs=(
+            UnifiedDataExcelLabelPairV1(
+                primary_label="产品体验",
+                secondary_label=long_secondary_label,
+            ),
+        ),
+    )
+    long_label_record = UnifiedDataExcelV1(
+        content=record.content.model_copy(update={"analysis": analysis}),
+        comments=record.comments,
+    )
+    visible_output = tmp_path / "visible-secondary-label.xlsx"
+    hidden_output = tmp_path / "hidden-secondary-label.xlsx"
+
+    export_unified_data_excel(
+        (long_label_record,),
+        visible_output,
+        include_analysis=True,
+        content_columns=("二级标签",),
+        label_detail_columns=("二级标签",),
+    )
+    export_unified_data_excel(
+        (long_label_record,),
+        hidden_output,
+        include_analysis=True,
+        content_columns=("平台",),
+        label_detail_columns=("一级标签",),
+    )
+
+    visible_workbook = load_workbook(visible_output, data_only=False)
+    hidden_workbook = load_workbook(hidden_output, data_only=False)
+    try:
+        assert visible_workbook["内容"].row_dimensions[2].height == pytest.approx(409)
+        assert visible_workbook["标签明细"].row_dimensions[2].height == pytest.approx(409)
+        assert hidden_workbook["内容"].row_dimensions[2].height is None
+        assert hidden_workbook["标签明细"].row_dimensions[2].height is None
+    finally:
+        visible_workbook.close()
+        hidden_workbook.close()
+
+
 @pytest.mark.parametrize(
     ("columns", "message"),
     [
@@ -318,6 +458,31 @@ def test_shared_exporter_rejects_invalid_content_projection(
             tmp_path / "invalid.xlsx",
             include_analysis=True,
             content_columns=columns,
+        )
+
+
+@pytest.mark.parametrize("parameter", ["label_detail_columns", "comment_columns"])
+@pytest.mark.parametrize(
+    ("columns", "message"),
+    [
+        ((), "至少包含一列"),
+        (("平台", "平台"), "重复"),
+        (("平台", "不存在的列"), "不支持"),
+        ("平台", "不能是单个字符串"),
+    ],
+)
+def test_shared_exporter_rejects_invalid_label_and_comment_projections(
+    tmp_path: Path,
+    parameter: str,
+    columns: tuple[str, ...] | str,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        export_unified_data_excel(
+            (_export_record(),),
+            tmp_path / "invalid.xlsx",
+            include_analysis=True,
+            **{parameter: columns},
         )
 
 

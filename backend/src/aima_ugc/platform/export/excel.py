@@ -6,8 +6,10 @@ import os
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from datetime import datetime
+from math import ceil
 from pathlib import Path
 from typing import Any
+from unicodedata import east_asian_width
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
@@ -93,12 +95,21 @@ _COMMENT_HEADERS = (
     "来源Provider",
     "Raw/来源定位",
 )
+_LABEL_AVAILABLE_HEADERS = _CONTENT_HEADERS
+_COMMENT_CONTENT_HEADERS = tuple(
+    header for header in _CONTENT_HEADERS if header not in _COMMENT_HEADERS
+)
+_COMMENT_AVAILABLE_HEADERS = _COMMENT_HEADERS + _COMMENT_CONTENT_HEADERS
 _CONTENT_HEADER_INDEX = {header: index for index, header in enumerate(_CONTENT_HEADERS)}
+_LABEL_HEADER_INDEX = {header: index for index, header in enumerate(_LABEL_AVAILABLE_HEADERS)}
+_COMMENT_HEADER_INDEX = {header: index for index, header in enumerate(_COMMENT_AVAILABLE_HEADERS)}
 _HEADER_FONT = Font(name="Calibri", size=11, bold=True, color="FF000000")
 _BODY_FONT = Font(name="Calibri", size=11, color="FF000000")
 _HEADER_FILL = PatternFill(fill_type="solid", fgColor="FFFFC000")
 _HEADER_ROW_HEIGHT = 16.5
 _DEFAULT_ROW_HEIGHT = 14.5
+_MAX_ROW_HEIGHT = 409.0
+_SECONDARY_LABEL_HEADER = "二级标签"
 _CONTENT_COLUMN_WIDTHS = {
     "平台": 15,
     "内容ID": 34,
@@ -135,6 +146,7 @@ _CONTENT_COLUMN_WIDTHS = {
     "评论覆盖": 20,
 }
 _LABEL_COLUMN_WIDTHS = {
+    **_CONTENT_COLUMN_WIDTHS,
     "内容ID": 34,
     "平台": 15,
     "标题": 50,
@@ -144,6 +156,7 @@ _LABEL_COLUMN_WIDTHS = {
     "内容链接": 34,
 }
 _COMMENT_COLUMN_WIDTHS = {
+    **_CONTENT_COLUMN_WIDTHS,
     "平台": 15,
     "内容ID": 34,
     "评论层级": 12,
@@ -247,6 +260,8 @@ def export_unified_content_jsonl_to_excel(
     output_path: Path,
     include_analysis: bool,
     content_columns: Iterable[str] | None = None,
+    label_detail_columns: Iterable[str] | None = None,
+    comment_columns: Iterable[str] | None = None,
 ) -> ExcelExportSummary:
     """直接从 UnifiedContentRecordV1 JSONL 派生 Excel，不回读源 XLSX。"""
 
@@ -255,6 +270,8 @@ def export_unified_content_jsonl_to_excel(
         Path(output_path),
         include_analysis=include_analysis,
         content_columns=content_columns,
+        label_detail_columns=label_detail_columns,
+        comment_columns=comment_columns,
     )
 
 
@@ -264,10 +281,29 @@ def export_unified_data_excel(
     *,
     include_analysis: bool,
     content_columns: Iterable[str] | None = None,
+    label_detail_columns: Iterable[str] | None = None,
+    comment_columns: Iterable[str] | None = None,
 ) -> ExcelExportSummary:
     """使用 write-only Workbook 流式写出 UnifiedDataExcelV1 的受控展示视图。"""
 
-    content_headers, content_indices = _resolve_content_columns(content_columns)
+    content_headers, content_indices = _resolve_columns(
+        content_columns,
+        default_headers=_CONTENT_HEADERS,
+        header_index=_CONTENT_HEADER_INDEX,
+        config_name="内容",
+    )
+    label_headers, label_indices = _resolve_columns(
+        label_detail_columns,
+        default_headers=_LABEL_HEADERS,
+        header_index=_LABEL_HEADER_INDEX,
+        config_name="标签明细",
+    )
+    comment_headers, comment_indices = _resolve_columns(
+        comment_columns,
+        default_headers=_COMMENT_HEADERS,
+        header_index=_COMMENT_HEADER_INDEX,
+        config_name="评论",
+    )
     target_path = Path(output_path)
     if target_path.suffix.lower() != ".xlsx":
         raise ValueError("统一 Excel 导出目标必须使用 .xlsx 扩展名")
@@ -280,11 +316,11 @@ def export_unified_data_excel(
     label_sheet = workbook.create_sheet(_LABEL_SHEET)
     comment_sheet = workbook.create_sheet(_COMMENT_SHEET)
     _configure_sheet(content_sheet, content_headers, _CONTENT_COLUMN_WIDTHS)
-    _configure_sheet(label_sheet, _LABEL_HEADERS, _LABEL_COLUMN_WIDTHS)
-    _configure_sheet(comment_sheet, _COMMENT_HEADERS, _COMMENT_COLUMN_WIDTHS)
+    _configure_sheet(label_sheet, label_headers, _LABEL_COLUMN_WIDTHS)
+    _configure_sheet(comment_sheet, comment_headers, _COMMENT_COLUMN_WIDTHS)
     content_sheet.append(_header_cells(content_sheet, content_headers))
-    label_sheet.append(_header_cells(label_sheet, _LABEL_HEADERS))
-    comment_sheet.append(_header_cells(comment_sheet, _COMMENT_HEADERS))
+    label_sheet.append(_header_cells(label_sheet, label_headers))
+    comment_sheet.append(_header_cells(comment_sheet, comment_headers))
 
     content_rows = 0
     label_rows = 0
@@ -295,6 +331,14 @@ def export_unified_data_excel(
     try:
         for record in records:
             content = record.content
+            content_analysis = content.analysis if include_analysis else None
+            _set_secondary_label_row_height(
+                content_sheet,
+                row_number=content_rows + 2,
+                headers=content_headers,
+                value=(content_analysis.secondary_label if content_analysis is not None else None),
+                column_width=_CONTENT_COLUMN_WIDTHS[_SECONDARY_LABEL_HEADER],
+            )
             content_sheet.append(
                 _content_cells(
                     content_sheet,
@@ -308,18 +352,40 @@ def export_unified_data_excel(
                 first_content_id = content.external_content_id
             if include_analysis:
                 for pair in _analysis_label_pairs(content.analysis):
-                    label_sheet.append(_label_detail_cells(label_sheet, content, pair))
+                    _set_secondary_label_row_height(
+                        label_sheet,
+                        row_number=label_rows + 2,
+                        headers=label_headers,
+                        value=pair.secondary_label,
+                        column_width=_LABEL_COLUMN_WIDTHS[_SECONDARY_LABEL_HEADER],
+                    )
+                    label_sheet.append(
+                        _label_detail_cells(
+                            label_sheet,
+                            content,
+                            pair,
+                            column_indices=label_indices,
+                        )
+                    )
                     label_rows += 1
                     if first_label_content_id is None:
                         first_label_content_id = content.external_content_id
             for comment in record.comments:
-                comment_sheet.append(_comment_cells(comment_sheet, comment))
+                comment_sheet.append(
+                    _comment_cells(
+                        comment_sheet,
+                        content,
+                        comment,
+                        include_analysis=include_analysis,
+                        column_indices=comment_indices,
+                    )
+                )
                 comment_rows += 1
                 if first_comment_id is None:
                     first_comment_id = comment.external_comment_id
         _set_auto_filter(content_sheet, len(content_headers), content_rows)
-        _set_auto_filter(label_sheet, len(_LABEL_HEADERS), label_rows)
-        _set_auto_filter(comment_sheet, len(_COMMENT_HEADERS), comment_rows)
+        _set_auto_filter(label_sheet, len(label_headers), label_rows)
+        _set_auto_filter(comment_sheet, len(comment_headers), comment_rows)
         workbook.save(temp_path)
     except BaseException:
         temp_path.unlink(missing_ok=True)
@@ -331,6 +397,8 @@ def export_unified_data_excel(
         _verify_workbook(
             temp_path,
             content_headers=content_headers,
+            label_headers=label_headers,
+            comment_headers=comment_headers,
             content_rows=content_rows,
             label_rows=label_rows,
             comment_rows=comment_rows,
@@ -351,19 +419,23 @@ def export_unified_data_excel(
     )
 
 
-def _resolve_content_columns(
-    content_columns: Iterable[str] | None,
+def _resolve_columns(
+    columns: Iterable[str] | None,
+    *,
+    default_headers: tuple[str, ...],
+    header_index: dict[str, int],
+    config_name: str,
 ) -> tuple[tuple[str, ...], tuple[int, ...]]:
-    if content_columns is None:
-        return _CONTENT_HEADERS, tuple(range(len(_CONTENT_HEADERS)))
-    if isinstance(content_columns, str):
-        raise ValueError("内容列配置必须是列名序列，不能是单个字符串")
+    if columns is None:
+        return default_headers, tuple(header_index[header] for header in default_headers)
+    if isinstance(columns, str):
+        raise ValueError(f"{config_name}列配置必须是列名序列，不能是单个字符串")
 
-    headers = tuple(content_columns)
+    headers = tuple(columns)
     if not headers:
-        raise ValueError("内容列配置至少包含一列")
+        raise ValueError(f"{config_name}列配置至少包含一列")
     if any(not isinstance(header, str) or not header for header in headers):
-        raise ValueError("内容列配置中的每一项都必须是非空字符串")
+        raise ValueError(f"{config_name}列配置中的每一项都必须是非空字符串")
 
     seen: set[str] = set()
     duplicates: list[str] = []
@@ -372,13 +444,13 @@ def _resolve_content_columns(
             duplicates.append(header)
         seen.add(header)
     if duplicates:
-        raise ValueError(f"内容列配置包含重复列: {'、'.join(duplicates)}")
+        raise ValueError(f"{config_name}列配置包含重复列: {'、'.join(duplicates)}")
 
-    unknown = [header for header in headers if header not in _CONTENT_HEADER_INDEX]
+    unknown = [header for header in headers if header not in header_index]
     if unknown:
-        raise ValueError(f"内容列配置包含不支持的列: {'、'.join(unknown)}")
+        raise ValueError(f"{config_name}列配置包含不支持的列: {'、'.join(unknown)}")
 
-    return headers, tuple(_CONTENT_HEADER_INDEX[header] for header in headers)
+    return headers, tuple(header_index[header] for header in headers)
 
 
 def _configure_sheet(sheet: Any, headers: tuple[str, ...], widths: dict[str, int]) -> None:
@@ -404,6 +476,35 @@ def _configure_sheet(sheet: Any, headers: tuple[str, ...], widths: dict[str, int
 def _set_auto_filter(sheet: Any, column_count: int, data_rows: int) -> None:
     last_column = get_column_letter(column_count)
     sheet.auto_filter.ref = f"A1:{last_column}{data_rows + 1}"
+
+
+def _set_secondary_label_row_height(
+    sheet: Any,
+    *,
+    row_number: int,
+    headers: tuple[str, ...],
+    value: str | None,
+    column_width: int,
+) -> None:
+    if _SECONDARY_LABEL_HEADER not in headers:
+        return
+    line_count = _wrapped_display_line_count(value, column_width=column_width)
+    sheet.row_dimensions[row_number].height = min(
+        _MAX_ROW_HEIGHT,
+        _DEFAULT_ROW_HEIGHT * line_count,
+    )
+
+
+def _wrapped_display_line_count(value: str | None, *, column_width: int) -> int:
+    if not value:
+        return 1
+    return sum(
+        max(1, ceil(_excel_display_width(line) / column_width)) for line in value.split("\n")
+    )
+
+
+def _excel_display_width(value: str) -> int:
+    return sum(2 if east_asian_width(character) in {"A", "F", "W"} else 1 for character in value)
 
 
 def _iter_unified_content_jsonl(path: Path) -> Iterator[UnifiedDataExcelV1]:
@@ -478,8 +579,27 @@ def _content_cells(
     *,
     column_indices: tuple[int, ...],
 ) -> list[Cell]:
+    values = _content_values(content, include_analysis=include_analysis)
+    return [
+        _data_cell(
+            sheet,
+            value,
+            text_id=text_id,
+            hyperlink=link,
+            wrap_text=index == _CONTENT_HEADER_INDEX[_SECONDARY_LABEL_HEADER],
+        )
+        for index in column_indices
+        for value, text_id, link in (values[index],)
+    ]
+
+
+def _content_values(
+    content: UnifiedDataExcelContentV1,
+    *,
+    include_analysis: bool,
+) -> tuple[tuple[_ExcelCellValue, bool, bool], ...]:
     analysis = content.analysis if include_analysis else None
-    values: tuple[tuple[_ExcelCellValue, bool, bool], ...] = (
+    return (
         (content.platform, False, False),
         (content.external_content_id, True, False),
         (content.source_item_id, True, False),
@@ -514,53 +634,66 @@ def _content_cells(
         (content.raw_locator, False, False),
         (content.coverage, False, False),
     )
-    return [
-        _data_cell(sheet, value, text_id=text_id, hyperlink=link)
-        for index in column_indices
-        for value, text_id, link in (values[index],)
-    ]
 
 
 def _label_detail_cells(
     sheet: Any,
     content: UnifiedDataExcelContentV1,
     pair: UnifiedDataExcelLabelPairV1,
+    *,
+    column_indices: tuple[int, ...],
 ) -> list[Cell]:
     analysis = content.analysis
     if analysis is None:
         raise ValueError("标签明细只能从存在 Analysis 的内容生成")
-    values: tuple[tuple[_ExcelCellValue, bool, bool], ...] = (
-        (content.external_content_id, True, False),
-        (content.platform, False, False),
-        (content.title, False, False),
-        (analysis.sentiment, False, False),
-        (pair.primary_label, False, False),
-        (pair.secondary_label, False, False),
-        (content.content_url, False, True),
-    )
+    values = list(_content_values(content, include_analysis=True))
+    values[_CONTENT_HEADER_INDEX["一级标签"]] = (pair.primary_label, False, False)
+    values[_CONTENT_HEADER_INDEX["二级标签"]] = (pair.secondary_label, False, False)
     return [
-        _data_cell(sheet, value, text_id=text_id, hyperlink=hyperlink)
-        for value, text_id, hyperlink in values
+        _data_cell(
+            sheet,
+            value,
+            text_id=text_id,
+            hyperlink=hyperlink,
+            wrap_text=index == _LABEL_HEADER_INDEX[_SECONDARY_LABEL_HEADER],
+        )
+        for index in column_indices
+        for value, text_id, hyperlink in (values[index],)
     ]
 
 
-def _comment_cells(sheet: Any, comment: UnifiedDataExcelCommentV1) -> list[Cell]:
-    values: tuple[tuple[_ExcelCellValue, bool], ...] = (
-        (comment.platform, False),
-        (comment.external_content_id, True),
-        (comment.level, False),
-        (comment.external_comment_id, True),
-        (comment.root_comment_id, True),
-        (comment.parent_comment_id, True),
-        (comment.author_display_name, False),
-        (comment.text, False),
-        (_display_datetime(comment.published_at), False),
-        (comment.like_count, False),
-        (comment.reply_count, False),
-        (comment.source_provider, False),
-        (comment.raw_locator, False),
+def _comment_cells(
+    sheet: Any,
+    content: UnifiedDataExcelContentV1,
+    comment: UnifiedDataExcelCommentV1,
+    *,
+    include_analysis: bool,
+    column_indices: tuple[int, ...],
+) -> list[Cell]:
+    native_values: tuple[tuple[_ExcelCellValue, bool, bool], ...] = (
+        (comment.platform, False, False),
+        (comment.external_content_id, True, False),
+        (comment.level, False, False),
+        (comment.external_comment_id, True, False),
+        (comment.root_comment_id, True, False),
+        (comment.parent_comment_id, True, False),
+        (comment.author_display_name, False, False),
+        (comment.text, False, False),
+        (_display_datetime(comment.published_at), False, False),
+        (comment.like_count, False, False),
+        (comment.reply_count, False, False),
+        (comment.source_provider, False, False),
+        (comment.raw_locator, False, False),
     )
-    return [_data_cell(sheet, value, text_id=text_id) for value, text_id in values]
+    content_values = _content_values(content, include_analysis=include_analysis)
+    values = native_values + tuple(
+        content_values[_CONTENT_HEADER_INDEX[header]] for header in _COMMENT_CONTENT_HEADERS
+    )
+    return [
+        _data_cell(sheet, value, text_id=text_id, hyperlink=hyperlink)
+        for index in column_indices
+        for value, text_id, hyperlink in (values[index],)
+    ]
 
 
 def _header_cells(sheet: Any, headers: tuple[str, ...]) -> list[Cell]:
@@ -579,6 +712,7 @@ def _data_cell(
     *,
     text_id: bool = False,
     hyperlink: bool = False,
+    wrap_text: bool = False,
 ) -> Cell:
     safe_value = _safe_excel_value(value)
     cell = WriteOnlyCell(sheet, value=safe_value)
@@ -588,7 +722,7 @@ def _data_cell(
     if hyperlink and isinstance(value, str) and _is_http_url(value):
         cell.hyperlink = value
         cell.style = "Hyperlink"
-    if isinstance(safe_value, str) and "\n" in safe_value:
+    if wrap_text or isinstance(safe_value, str) and "\n" in safe_value:
         cell.alignment = Alignment(wrap_text=True, vertical="top")
     return cell
 
@@ -616,6 +750,8 @@ def _verify_workbook(
     path: Path,
     *,
     content_headers: tuple[str, ...],
+    label_headers: tuple[str, ...],
+    comment_headers: tuple[str, ...],
     content_rows: int,
     label_rows: int,
     comment_rows: int,
@@ -639,17 +775,19 @@ def _verify_workbook(
         )
         _verify_sheet(
             workbook[_LABEL_SHEET],
-            _LABEL_HEADERS,
+            label_headers,
             expected_rows=label_rows,
             first_id=first_label_content_id,
-            id_column=1,
+            id_column=(label_headers.index("内容ID") + 1 if "内容ID" in label_headers else None),
         )
         _verify_sheet(
             workbook[_COMMENT_SHEET],
-            _COMMENT_HEADERS,
+            comment_headers,
             expected_rows=comment_rows,
             first_id=first_comment_id,
-            id_column=4,
+            id_column=(
+                comment_headers.index("评论ID") + 1 if "评论ID" in comment_headers else None
+            ),
         )
     finally:
         workbook.close()
