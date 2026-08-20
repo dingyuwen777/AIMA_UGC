@@ -434,6 +434,9 @@ Content Ingestion、Artifact Store 或 Job Runtime。
   锁文件与 `alembic heads`，均退出码 0；工作区无生成物内容漂移，Migration Head 为 `20260820_0020`。
 - Merge Commit 触发的 11 个 `main` push workflows 全部成功：CI、Stage 4、Stage 5A/5B/5C/5D、
   Stage 6、Stage 7 Keyword/Plan/Provider/Scheduler。归档 PR 只改变 Change 生命周期与路径。
+- 归档合并后文档复核发现 Blueprint README 仍把 Stage 8B 描述为 Active 开发分支，形成导航事实漂移；
+  已用回归式文本检查确认并最小修正为“Stage 8B 已在 main 闭环、下一正式单元为 Stage 8C”，不修改业务
+  Blueprint、Contract、Schema 或代码行为。
 
 # 文档影响
 

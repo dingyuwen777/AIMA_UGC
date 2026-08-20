@@ -68,9 +68,9 @@
 
 ## 当前开发状态
 
-**Stage 1—7、临时 P1 与 Stage 8A 已闭环。Stage 8B 当前 Active Change 已在开发分支建立 Import HTTP / Durable Job / 全局 Relevance Productization 的机器实现；是否正式闭环仍以最终 PR Head 新鲜 CI、两阶段 Review、正常合并、Change 归档和合并后 `main` 验证为准。Stage 8B 没有实现 Vue 页面、Content Center 或 Stage 8C—8F 能力。**
+**Stage 1—7、临时 P1、Stage 8A 与 Stage 8B 已闭环。Stage 8B 已在 `main` 建立 Import HTTP / Durable Job / 全局 Relevance Productization，并完成最终 PR Head 新鲜 CI、两阶段 Review、正常合并、Change 归档和合并后 `main` 验证。Stage 8B 没有实现 Vue 页面、Content Center 或 Stage 8C—8F 能力。**
 
-Stage 8A 与当前 Stage 8B 开发分支机器边界：
+Stage 8A 与 Stage 8B 当前 `main` 机器边界：
 
 - `processing_import_batches` 作为 Excel File Import 的最小业务父事实；
 - `provider_requests` 支持 Collection Scope / Import Batch 恰好一个父级，既有 Collection 来源语义保持兼容；
@@ -120,7 +120,7 @@ P1 已固化的长期能力：
 
 ### Stage 8C：采集运行中心首个完整前后端纵切
 
-Stage 8B 正常闭环后，下一个最小正式单元是 **Stage 8C**。8C 只完成采集运行中心的首个正式 Vue/Figma 前后端纵切；系统全局 Relevance Keyword Pack 配置页面仍按已批准边界留到 Stage 8F。
+Stage 8B 已正常闭环；下一个最小正式单元是 **Stage 8C**。8C 只完成采集运行中心的首个正式 Vue/Figma 前后端纵切；系统全局 Relevance Keyword Pack 配置页面仍按已批准边界留到 Stage 8F。
 
 开始 Stage 8C 时仍必须重新从当时 `main` 恢复事实：
 
