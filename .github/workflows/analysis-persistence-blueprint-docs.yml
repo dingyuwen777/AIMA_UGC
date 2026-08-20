@@ -1,0 +1,82 @@
+name: Analysis Persistence Blueprint Docs
+
+on:
+  push:
+    branches:
+      - docs/analysis-persistence-report-source
+    paths-ignore:
+      - docs/blueprint/03-数据库与文件存储.md
+      - docs/blueprint/13-统一数据Excel导出与调试复用.md
+      - docs/blueprint/15-舆情AI打标与统一分析契约.md
+      - docs/blueprint/17-Stage8数据入口统一入库与业务前端实施.md
+
+permissions:
+  contents: write
+
+jobs:
+  update-docs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+      - name: Install locked uv environment
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv sync --locked
+      - name: Apply approved Blueprint decision
+        run: |
+          set -euo pipefail
+          uv run python changes/active/CHG-20260820-analysis-persistence-report-source/apply_blueprint_decision.py
+      - name: Validate docs and design invariants
+        run: |
+          set -euo pipefail
+          uv run python scripts/quality/check_docs.py
+          uv run python scripts/quality/scan_secrets.py
+          uv run python - <<'PY'
+          from pathlib import Path
+
+          checks = {
+              'docs/blueprint/03-数据库与文件存储.md': [
+                  '正式 Analysis 持久化落地后',
+                  'Content Analysis Label Pair',
+              ],
+              'docs/blueprint/13-统一数据Excel导出与调试复用.md': [
+                  '报告数据源与统一 Report Dataset',
+                  '禁止',
+                  'PostgreSQL Report Source',
+              ],
+              'docs/blueprint/15-舆情AI打标与统一分析契约.md': [
+                  '正式 Analysis PostgreSQL 持久化目标',
+                  '正式数据库模式',
+                  'current_analysis',
+              ],
+              'docs/blueprint/17-Stage8数据入口统一入库与业务前端实施.md': [
+                  '当前机器限制而不是长期目标',
+                  'Analysis PostgreSQL Persistence',
+                  '正式数据库模式最终同时持久化 Content 与成功 Analysis',
+              ],
+          }
+          for path, needles in checks.items():
+              text = Path(path).read_text(encoding='utf-8')
+              for needle in needles:
+                  if needle not in text:
+                      raise SystemExit(f'{path}: missing {needle}')
+          print('ANALYSIS_PERSISTENCE_BLUEPRINT_OK')
+          PY
+      - name: Commit Blueprint docs only
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- \
+            docs/blueprint/03-数据库与文件存储.md \
+            docs/blueprint/13-统一数据Excel导出与调试复用.md \
+            docs/blueprint/15-舆情AI打标与统一分析契约.md \
+            docs/blueprint/17-Stage8数据入口统一入库与业务前端实施.md
+          git diff --cached --quiet && exit 0
+          git commit -m '文档：固化AI Analysis入库与报告数据源边界'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
