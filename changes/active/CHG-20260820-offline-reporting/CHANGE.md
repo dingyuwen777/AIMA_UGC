@@ -91,7 +91,7 @@ data_changes: []
 - [x] 融合多 Excel、费用审计和最新恢复的完整 `run_all()` 链路。
 - [x] 同步相关 README/Blueprint。
 - [x] 增加输入 Excel Hash、模板同步、未知 Mermaid、OOXML 换行和 `run_all()` 接线回归测试。
-- [ ] 再次融合最新 `main` 并确认 `behind=0`。
+- [x] `compare_commits(main, feature/offline-reporting)` 已确认 merge-base 为 `3a6ffbe759f0dfde2c67d8d4d97d336fe2571702`，`behind_by=0`。
 - [ ] 执行最终验证门禁。
 
 # 验证
@@ -140,7 +140,7 @@ uv run pytest tests/unit -q
 
 # 交付
 
-- 最新已观察主分支：`main@3a6ffbe759f0dfde2c67d8d4d97d336fe2571702`；交付前再次确认。
+- 最新融合基线：`main@3a6ffbe759f0dfde2c67d8d4d97d336fe2571702`，已确认 `behind_by=0`；交付前继续核对主分支是否前进。
 - 分支：`feature/offline-reporting`。
 - PR：未创建。
 - 合并：未执行；用户明确要求本轮不要合并 `main`。
