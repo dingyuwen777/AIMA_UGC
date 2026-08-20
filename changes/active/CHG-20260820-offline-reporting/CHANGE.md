@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260820-offline-reporting
 title: 离线数据报告与 Markdown Word 导出
 level: L2
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: feature/offline-reporting
 created: 2026-08-20
@@ -57,7 +57,8 @@ backend/src/aima_ugc/platform/reporting/report_template.md
 - [x] 默认模板由 `platform.reporting` 维护，`generate_excel_report()` 不传 `template_path` 时使用共享默认模板；显式 `template_path=` 仍兼容。
 - [x] `imports_test` 已移除私有 `REPORT_TEMPLATE_FILE` 和私有 `report_template.md`。
 - [x] 未新增 Migration、公共 HTTP Contract、第三方运行时服务或 Python 依赖升级。
-- [ ] 在最新 `main` 基线上重新取得完整门禁证据、PR/合并状态与合并后验证。
+- [x] 已在当前 `main` 基线之上的稳定 feature 源码取得完整门禁、Wheel/模板打包、既有 main 能力保留与 LibreOffice 渲染的新鲜证据。
+- [ ] PR/正式 CI/Review、合并及合并后验证尚未完成。
 
 # 范围
 
@@ -65,7 +66,7 @@ backend/src/aima_ugc/platform/reporting/report_template.md
 - `imports_test/test.py`：独立 `generate_report()` 与 `run_all()` 接线，只消费共享 Report Renderer；
 - 报告与 `run_all()` 回归测试；
 - `imports_test` README、Report 模块 README、Blueprint 13；
-- 最新 `main` 与本 Change 的兼容集成、PR/合并及合并后验证。
+- 当前 `main` 与本 Change 的兼容集成、PR/合并及合并后验证。
 
 # 非目标
 
@@ -104,7 +105,7 @@ main = 3a6ffbe759f0dfde2c67d8d4d97d336fe2571702
 → export_labeled_excel
 ```
 
-当前 `feature/offline-reporting` 的 merge-base 就是上述 `main`，此前比较为 `behind_by=0`。因此本 Change 不是把旧实现覆盖到新主分支，而是在同一最新机器基线上追加报告能力。
+`feature/offline-reporting` 的 merge-base 是上述 `main`，最新比较为 `behind_by=0`。因此本 Change 不是用旧实现覆盖主分支，而是在同一机器基线上追加报告能力。
 
 # 关键决策
 
@@ -117,7 +118,7 @@ main = 3a6ffbe759f0dfde2c67d8d4d97d336fe2571702
 7. DOCX `w:br` 固定放在 `w:r` 内；生成后校验 ZIP CRC、关键 OOXML/XML 和图表媒体数。
 8. `xml.etree.ElementTree.tostring(..., encoding="utf-8")` 的标准库类型存根返回值通过 `typing.cast(bytes, ...)` 明确给 mypy；不改变运行时字节序列化行为。
 9. 默认 Markdown 模板归 `platform.reporting` 所有；`generate_excel_report()` 默认读取模块内模板，调用方仍可显式传入 `template_path=` 覆盖，保持已有公共调用兼容。
-10. 用户已明确授权本轮完成后推送到 `main`；仍按仓库 Git/PR/CI 门禁执行，不绕过验证。
+10. 用户已明确授权本轮完成后合并到 `main`；仍按仓库 PR/CI/Review/合并后验证门禁执行，不绕过任何检查。
 
 # 任务
 
@@ -129,81 +130,102 @@ main = 3a6ffbe759f0dfde2c67d8d4d97d336fe2571702
 - [x] 同步相关 README/Blueprint。
 - [x] 增加输入 Excel Hash、模板同步、未知 Mermaid、OOXML 换行和 `run_all()` 接线回归测试。
 - [x] 更新既有 `run_all()` 隔离目录测试，使其覆盖最终 Excel 与报告仍使用同一个 run 目录。
-- [x] 新增共享默认模板 Red 测试，并确认当前实现因缺少 `DEFAULT_REPORT_TEMPLATE_PATH` 正确失败：`1 failed`。
+- [x] 新增共享默认模板 Red 测试，并确认因缺少 `DEFAULT_REPORT_TEMPLATE_PATH` 正确失败：`1 failed`。
 - [x] 把默认模板迁移到 `platform/reporting/report_template.md`，移除 `imports_test` 私有模板和模板常量。
 - [x] 迁移后的相关 Ruff/Mypy 与目标测试通过：`19 passed`。
-- [ ] 清理迁移专用临时 workflow/脚本/诊断文件。
-- [ ] 基于最新 `main` 执行完整目标测试、全量 Unit、Ruff、Mypy、架构/Owner/文档/Secret、Wheel/模板打包和 DOCX 实际渲染验证。
-- [ ] 创建 PR、确认 CI/Review、按授权合并到 `main`。
-- [ ] 在合并后的 `main` 再次验证报告默认模板、既有 imports/LLM 功能和仓库门禁，完成后归档 Change。
+- [x] 清理模板迁移和最终验证专用临时 workflow/脚本/诊断文件。
+- [x] 基于当前 `main` 基线执行完整目标测试、全量 Unit、Ruff、Mypy、架构/Owner/文档/Secret、Wheel/模板打包、最新 main 能力保留和 DOCX 实际渲染验证。
+- [ ] 创建 PR、确认正式 CI/Review、按授权合并到 `main`。
+- [ ] 在合并后的 `main` 再次核对报告默认模板、既有 imports/LLM 功能与正式 CI；成功后归档 Change。
 
 # 验证
 
-## 上一版报告能力完整证据
-
-上一版默认模板仍位于 `imports_test` 时，业务源码状态 `5ef2f292922d8a8777c93a62f7715a2522b85bab` 已通过：
+最终 feature 机器证据保存于：
 
 ```text
-目标测试：18 passed
-全量 unit：410 passed
-Ruff format/check：通过
-Mypy：183 source files 无问题
-Architecture / Table Owner / Docs / Secret：通过
-DOCX：9 张图表，LibreOffice Writer 成功转 PDF
+changes/active/CHG-20260820-offline-reporting/verification_evidence.json
 ```
 
-该证据只证明上一版实现，不替代模板迁移后的最终验证。
-
-## 共享默认模板 Red → Green
-
-Red 证据：
+被测源码状态：
 
 ```text
-测试：tests/unit/platform/test_reporting_default_template.py
-结果：1 failed
-原因：aima_ugc.platform.reporting 尚无 DEFAULT_REPORT_TEMPLATE_PATH
+abd5b71f9ae0929e5c7aafa41a036d61aec39548
 ```
 
-Green/迁移目标验证：
+验证环境：GitHub Actions `ubuntu-24.04` / Python 3.14.7 / 仓库锁定 uv 环境。
+
+## 共享默认模板 Red
 
 ```text
-Ruff：通过
-Mypy：6 个直接相关源文件无问题
-目标/回归测试：19 passed
-旧 imports_test/report_template.md 引用扫描：无残留
-imports_test.REPORT_TEMPLATE_FILE 扫描：无残留
+tests/unit/platform/test_reporting_default_template.py
+1 failed
+原因：迁移前 aima_ugc.platform.reporting 无 DEFAULT_REPORT_TEMPLATE_PATH
 ```
 
-该迁移验证由临时 runner 完成；迁移专用 runner 文件在最终集成前必须清理。
+该失败由目标行为尚未实现导致，随后进入 Green。
 
-## 最终计划
+## 最终 feature 验证
 
-最终 feature/PR 必须重新运行：
-
-```bash
-uv lock --check
-uv sync --locked
-uv run ruff format --check backend tests scripts
-uv run ruff check backend tests scripts
-uv run mypy backend/src
-uv run pytest tests/unit -q
-uv run python scripts/quality/check_architecture.py
-uv run python scripts/quality/check_table_ownership.py
-uv run python scripts/quality/check_docs.py
-uv run python scripts/quality/scan_secrets.py
-uv build --wheel
-```
-
-并额外验证：
+目标与回归测试：
 
 ```text
-DEFAULT_REPORT_TEMPLATE_PATH 指向 platform/reporting/report_template.md
-共享模板进入 Wheel/安装包
-report.md / report.docx 生成
-DOCX ZIP/XML/媒体校验
-LibreOffice Writer 打开并转 PDF
-最新 main 的多 Excel、LLM 费用审计、数据库来源和 run_all 阶段顺序未被裁剪
+19 passed in 4.26s
 ```
+
+全量 Unit：
+
+```text
+411 passed in 6.08s
+```
+
+静态与仓库门禁：
+
+```text
+349 files already formatted
+Ruff: All checks passed
+Mypy: 183 source files 无问题
+Architecture: 通过
+Table Owner: 通过
+Docs: 通过
+Secret scan: 通过
+```
+
+Wheel 与模板：
+
+```text
+uv build --wheel 成功
+Wheel 安装成功
+安装后的共享模板实际存在于：
+site-packages/aima_ugc/platform/reporting/report_template.md
+模板包含 OVERVIEW_TABLE / PLATFORM_PIE_CHART 等关键占位符
+```
+
+既有 `main` 能力保留检查：
+
+```text
+imports_test 中仍存在：
+INPUT_XLSX_FILES
+ExcelBatchConversionSummary / convert_excel_files_to_canonical_jsonl
+多源 ingest_excel_files_run_to_postgres
+LLMRequestAuditWriter / load_llm_pricing / recalculate_llm_request_costs
+label_sentiment → export_labeled_excel
+以及新增 generate_report
+```
+
+结果：`imports_test 最新 main 能力与报告接线并存检查通过`。
+
+DOCX 实际渲染：
+
+```text
+共享默认模板生成 report.md + report.docx
+Word 内嵌图表：9
+LibreOffice Writer headless 成功打开并转 PDF
+PDF：190773 bytes
+```
+
+LibreOffice 输出仍有 `javaldx` Java 警告，但 Writer 转换成功且生成非空 PDF；生产报告生成不依赖 Java。未使用 Microsoft Word 实机交叉验证，剩余风险是不同 Office 渲染器可能存在细微分页/字体差异。
+
+测试 SHA 之后只有验证证据提交、临时验证 workflow 删除和本文状态更新；生产代码与测试逻辑未再变化。
 
 # 文档影响
 
@@ -215,9 +237,9 @@ LibreOffice Writer 打开并转 PDF
 
 # 交付
 
-- 基线：当前 `main@3a6ffbe759f0dfde2c67d8d4d97d336fe2571702`。
+- 基线：`main@3a6ffbe759f0dfde2c67d8d4d97d336fe2571702`。
 - 分支：`feature/offline-reporting`。
-- Change：模板迁移与主分支集成期间为 `in_progress`。
-- PR：待最终 feature 验证后创建。
-- 合并：用户已授权；仅在 PR/CI/验证满足仓库门禁后执行。
+- Change：`ready_for_review`。
+- PR：待创建。
+- 合并：用户已授权；仅在正式 PR CI/Review 满足仓库门禁后执行。
 - 发布/部署：不在本次范围。
