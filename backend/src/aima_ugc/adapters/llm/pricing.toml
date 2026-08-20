@@ -2,8 +2,10 @@ schema_version = "llm-pricing.v1"
 
 # provider：LLM Adapter Base URL 的小写 host；从供应商官方 API 接入文档查看。
 # model：发给供应商的精确模型 ID；从供应商官方模型/价格页查看。
-# currency 和所有 per_million_tokens 单价：从 source_url 指向的官方价格页查看。
-# input_per_million 与完整的 cache_hit/cache_miss 两项二选一；不要同时配置。
+# currency、timezone、time_ranges 和所有单价：从 source_url 指向的官方价格页查看。
+# 供应商只有全天单价时，直接在 [[models]] 配置单价；存在分时价格时改用
+# [[models.price_periods]]。无 time_ranges 的时段是全天默认价，显式范围按 [start, end) 优先匹配。
+# 每个价格时段内，input_per_million 与完整的 cache_hit/cache_miss 两项二选一；不要同时配置。
 # effective_date：本条价格在 AIMA 价格目录中的生效日期，格式固定为 YYYY-MM-DD。
 # 系统按币种、单价和来源等规范化价格内容生成快照 SHA-256，不配置人工版本号。
 
@@ -11,8 +13,19 @@ schema_version = "llm-pricing.v1"
 provider = "api.deepseek.com"
 model = "deepseek-v4-pro"
 currency = "CNY"
-input_cache_hit_per_million_tokens = "0.025"
-input_cache_miss_per_million_tokens = "3"
-output_per_million_tokens = "6"
 source_url = "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"
 effective_date = "2026-08-20"
+timezone = "Asia/Shanghai"
+
+[[models.price_periods]]
+name = "off_peak"
+input_cache_hit_per_million_tokens = "0.15"
+input_cache_miss_per_million_tokens = "4.5"
+output_per_million_tokens = "13.5"
+
+[[models.price_periods]]
+name = "peak"
+time_ranges = ["09:00-12:00", "14:00-18:00"]
+input_cache_hit_per_million_tokens = "0.30"
+input_cache_miss_per_million_tokens = "9.0"
+output_per_million_tokens = "27.0"

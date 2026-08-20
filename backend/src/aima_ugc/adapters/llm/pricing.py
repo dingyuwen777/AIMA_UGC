@@ -6,12 +6,13 @@ import hashlib
 import json
 import tomllib
 import warnings
-from dataclasses import dataclass
-from datetime import date
+from dataclasses import dataclass, field
+from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from importlib.resources import files
 from typing import Any
 from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 class LLMPriceNotConfiguredError(LookupError):
@@ -124,10 +125,53 @@ class LLMModelPrice:
 
 
 @dataclass(frozen=True, slots=True)
+class _LocalTimeRange:
+    start_second: int
+    end_second: int
+
+    def contains(self, second_of_day: int) -> bool:
+        if self.start_second < self.end_second:
+            return self.start_second <= second_of_day < self.end_second
+        return second_of_day >= self.start_second or second_of_day < self.end_second
+
+    def segments(self) -> tuple[tuple[int, int], ...]:
+        if self.start_second < self.end_second:
+            return ((self.start_second, self.end_second),)
+        return ((self.start_second, 86_400), (0, self.end_second))
+
+
+@dataclass(frozen=True, slots=True)
+class _LLMPricePeriod:
+    name: str
+    time_ranges: tuple[_LocalTimeRange, ...]
+    price: LLMModelPrice
+
+
+@dataclass(frozen=True, slots=True)
+class _LLMModelSchedule:
+    provider: str
+    model: str
+    timezone: ZoneInfo
+    default_price: LLMModelPrice
+    scheduled_periods: tuple[_LLMPricePeriod, ...]
+
+    def price_at(self, at: datetime) -> LLMModelPrice:
+        if at.tzinfo is None or at.utcoffset() is None:
+            raise ValueError("LLM Pricing 分时选价要求带时区的请求时间")
+        local = at.astimezone(self.timezone)
+        second_of_day = local.hour * 3600 + local.minute * 60 + local.second
+        for period in self.scheduled_periods:
+            if any(item.contains(second_of_day) for item in period.time_ranges):
+                return period.price
+        return self.default_price
+
+
+@dataclass(frozen=True, slots=True)
 class LLMPricingCatalog:
-    """没有跨模型 fallback 的文本 LLM 价格目录。"""
+    """没有跨模型 fallback、支持每模型独立分时规则的文本 LLM 价格目录。"""
 
     models: tuple[LLMModelPrice, ...]
+    _schedules: tuple[_LLMModelSchedule, ...] = field(default=(), repr=False)
 
     @classmethod
     def from_toml(cls, content: str) -> LLMPricingCatalog:
@@ -142,6 +186,7 @@ class LLMPricingCatalog:
             raise ValueError("LLM Pricing models 必须为非空数组")
 
         parsed: list[LLMModelPrice] = []
+        schedules: list[_LLMModelSchedule] = []
         seen: set[tuple[str, str]] = set()
         for index, raw in enumerate(raw_models):
             if not isinstance(raw, dict):
@@ -153,78 +198,106 @@ class LLMPricingCatalog:
                 raise ValueError(f"LLM Pricing provider/model 重复: {provider}/{model}")
             seen.add(identity)
 
-            currency = _required_text(raw, "currency")
-            if len(currency) != 3 or not currency.isascii() or not currency.isupper():
-                raise ValueError("LLM Pricing currency 必须为大写三字母币种")
+            currency = _currency(_required_text(raw, "currency"))
             source_url = _source_url(_required_text(raw, "source_url"))
-
-            output_raw, output_field, output_legacy = _rate_value(
-                raw,
-                current="output_per_million_tokens",
-                legacy="output_per_million",
-            )
-            hit_raw, hit_field, hit_legacy = _rate_value(
-                raw,
-                current="input_cache_hit_per_million_tokens",
-                legacy="input_cache_hit_per_million",
-            )
-            miss_raw, miss_field, miss_legacy = _rate_value(
-                raw,
-                current="input_cache_miss_per_million_tokens",
-                legacy="input_cache_miss_per_million",
-            )
-            legacy_fields = tuple(
-                field for field in (output_legacy, hit_legacy, miss_legacy) if field is not None
-            )
-            if legacy_fields:
-                warnings.warn(
-                    "LLM Pricing 使用旧字段 "
-                    f"{', '.join(legacy_fields)}；请迁移到包含 per_million_tokens 的新字段",
-                    FutureWarning,
-                    stacklevel=2,
-                )
-
-            output_price = _positive_decimal(output_raw, output_field)
-            input_price = _optional_positive_decimal(
-                raw.get("input_per_million"),
-                "input_per_million",
-            )
-            hit_price = _optional_positive_decimal(hit_raw, hit_field)
-            miss_price = _optional_positive_decimal(miss_raw, miss_field)
-            has_flat = input_price is not None
-            has_complete_cache = hit_price is not None and miss_price is not None
-            if has_flat == has_complete_cache or (hit_price is None) != (miss_price is None):
-                raise ValueError(
-                    "LLM Pricing 输入单价必须二选一：input_per_million，或完整缓存命中/未命中单价"
-                )
-
-            effective_date = _effective_date(
-                raw.get("effective_date"),
-                required=not legacy_fields,
-            )
-            parsed.append(
-                LLMModelPrice(
+            raw_periods = raw.get("price_periods")
+            if raw_periods is None:
+                price, legacy_fields = _model_price(
+                    raw,
                     provider=provider,
                     model=model,
                     currency=currency,
-                    input_per_million=input_price,
-                    input_cache_hit_per_million_tokens=hit_price,
-                    input_cache_miss_per_million_tokens=miss_price,
-                    output_per_million_tokens=output_price,
+                    source_url=source_url,
+                    effective_date=_effective_date(
+                        raw.get("effective_date"),
+                        required=not _has_legacy_rate_field(raw),
+                    ),
+                    allow_legacy=True,
+                )
+                if "timezone" in raw:
+                    raise ValueError("LLM Pricing timezone 仅用于 price_periods 分时配置")
+                _warn_legacy_fields(legacy_fields)
+                parsed.append(price)
+                continue
+
+            if _has_any_rate_field(raw):
+                raise ValueError("LLM Pricing 模型级单价与 price_periods 不能同时配置")
+            if not isinstance(raw_periods, list) or not raw_periods:
+                raise ValueError("LLM Pricing price_periods 必须为非空数组")
+            timezone = _timezone(_required_text(raw, "timezone"))
+            effective_date = _effective_date(raw.get("effective_date"), required=True)
+            default_price: LLMModelPrice | None = None
+            scheduled_periods: list[_LLMPricePeriod] = []
+            seen_period_names: set[str] = set()
+            for period_index, raw_period in enumerate(raw_periods):
+                if not isinstance(raw_period, dict):
+                    raise ValueError(
+                        f"LLM Pricing models[{index}].price_periods[{period_index}] 必须为对象"
+                    )
+                name = _required_text(raw_period, "name")
+                if name in seen_period_names:
+                    raise ValueError(f"LLM Pricing price_periods.name 重复: {name}")
+                seen_period_names.add(name)
+                period_price, legacy_fields = _model_price(
+                    raw_period,
+                    provider=provider,
+                    model=model,
+                    currency=currency,
                     source_url=source_url,
                     effective_date=effective_date,
+                    allow_legacy=False,
+                )
+                if legacy_fields:  # pragma: no cover - allow_legacy=False 已保证
+                    raise RuntimeError("LLM Pricing 分时价格旧字段状态无效")
+                ranges = _time_ranges(raw_period.get("time_ranges"))
+                if not ranges:
+                    if default_price is not None:
+                        raise ValueError("LLM Pricing 每个模型只能配置一个默认价格时段")
+                    default_price = period_price
+                else:
+                    scheduled_periods.append(
+                        _LLMPricePeriod(
+                            name=name,
+                            time_ranges=ranges,
+                            price=period_price,
+                        )
+                    )
+            if default_price is None:
+                raise ValueError("LLM Pricing price_periods 必须包含一个默认价格时段")
+            _validate_no_overlapping_ranges(scheduled_periods)
+            parsed.append(default_price)
+            schedules.append(
+                _LLMModelSchedule(
+                    provider=provider,
+                    model=model,
+                    timezone=timezone,
+                    default_price=default_price,
+                    scheduled_periods=tuple(scheduled_periods),
                 )
             )
-        return cls(models=tuple(parsed))
+        return cls(models=tuple(parsed), _schedules=tuple(schedules))
 
-    def price_for(self, *, provider: str, model: str) -> LLMModelPrice:
+    def price_for(
+        self,
+        *,
+        provider: str,
+        model: str,
+        at: datetime | None = None,
+    ) -> LLMModelPrice:
         identity = (_provider(provider), model)
+        for schedule in self._schedules:
+            if (schedule.provider, schedule.model) == identity:
+                return schedule.price_at(at or datetime.now(UTC))
         for price in self.models:
             if (price.provider, price.model) == identity:
                 return price
         raise LLMPriceNotConfiguredError(
             f"LLM Pricing 未配置 provider/model: {identity[0]}/{identity[1]}"
         )
+
+    def has_price(self, *, provider: str, model: str) -> bool:
+        identity = (_provider(provider), model)
+        return any((price.provider, price.model) == identity for price in self.models)
 
 
 def load_llm_pricing() -> LLMPricingCatalog:
@@ -241,6 +314,19 @@ def _provider(value: str) -> str:
     return normalized
 
 
+def _currency(value: str) -> str:
+    if len(value) != 3 or not value.isascii() or not value.isupper():
+        raise ValueError("LLM Pricing currency 必须为大写三字母币种")
+    return value
+
+
+def _timezone(value: str) -> ZoneInfo:
+    try:
+        return ZoneInfo(value)
+    except ZoneInfoNotFoundError as exc:
+        raise ValueError(f"LLM Pricing timezone 不是有效 IANA 时区: {value}") from exc
+
+
 def _required_text(mapping: dict[str, Any], key: str) -> str:
     value = mapping.get(key)
     if not isinstance(value, str) or not value.strip():
@@ -253,6 +339,149 @@ def _source_url(value: str) -> str:
     if parsed.scheme != "https" or parsed.hostname is None or parsed.username or parsed.password:
         raise ValueError("LLM Pricing source_url 必须是无凭据 HTTPS URL")
     return value
+
+
+def _model_price(
+    mapping: dict[str, Any],
+    *,
+    provider: str,
+    model: str,
+    currency: str,
+    source_url: str,
+    effective_date: date | None,
+    allow_legacy: bool,
+) -> tuple[LLMModelPrice, tuple[str, ...]]:
+    if not allow_legacy and _has_legacy_rate_field(mapping):
+        raise ValueError("LLM Pricing price_periods 只接受包含 per_million_tokens 的正式字段")
+
+    output_raw, output_field, output_legacy = _rate_value(
+        mapping,
+        current="output_per_million_tokens",
+        legacy="output_per_million",
+    )
+    hit_raw, hit_field, hit_legacy = _rate_value(
+        mapping,
+        current="input_cache_hit_per_million_tokens",
+        legacy="input_cache_hit_per_million",
+    )
+    miss_raw, miss_field, miss_legacy = _rate_value(
+        mapping,
+        current="input_cache_miss_per_million_tokens",
+        legacy="input_cache_miss_per_million",
+    )
+    legacy_fields = tuple(
+        field for field in (output_legacy, hit_legacy, miss_legacy) if field is not None
+    )
+    output_price = _positive_decimal(output_raw, output_field)
+    input_price = _optional_positive_decimal(
+        mapping.get("input_per_million"),
+        "input_per_million",
+    )
+    hit_price = _optional_positive_decimal(hit_raw, hit_field)
+    miss_price = _optional_positive_decimal(miss_raw, miss_field)
+    has_flat = input_price is not None
+    has_complete_cache = hit_price is not None and miss_price is not None
+    if has_flat == has_complete_cache or (hit_price is None) != (miss_price is None):
+        raise ValueError(
+            "LLM Pricing 输入单价必须二选一：input_per_million，或完整缓存命中/未命中单价"
+        )
+    return (
+        LLMModelPrice(
+            provider=provider,
+            model=model,
+            currency=currency,
+            input_per_million=input_price,
+            input_cache_hit_per_million_tokens=hit_price,
+            input_cache_miss_per_million_tokens=miss_price,
+            output_per_million_tokens=output_price,
+            source_url=source_url,
+            effective_date=effective_date,
+        ),
+        legacy_fields,
+    )
+
+
+def _has_legacy_rate_field(mapping: dict[str, Any]) -> bool:
+    return any(
+        field_name in mapping
+        for field_name in (
+            "input_cache_hit_per_million",
+            "input_cache_miss_per_million",
+            "output_per_million",
+        )
+    )
+
+
+def _has_any_rate_field(mapping: dict[str, Any]) -> bool:
+    return "input_per_million" in mapping or any(
+        field_name in mapping
+        for field_name in (
+            "input_cache_hit_per_million_tokens",
+            "input_cache_miss_per_million_tokens",
+            "output_per_million_tokens",
+            "input_cache_hit_per_million",
+            "input_cache_miss_per_million",
+            "output_per_million",
+        )
+    )
+
+
+def _warn_legacy_fields(fields: tuple[str, ...]) -> None:
+    if not fields:
+        return
+    warnings.warn(
+        f"LLM Pricing 使用旧字段 {', '.join(fields)}；请迁移到包含 per_million_tokens 的新字段",
+        FutureWarning,
+        stacklevel=3,
+    )
+
+
+def _time_ranges(value: object) -> tuple[_LocalTimeRange, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list) or not value:
+        raise ValueError("LLM Pricing time_ranges 必须为非空字符串数组")
+    parsed: list[_LocalTimeRange] = []
+    for item in value:
+        if not isinstance(item, str) or item != item.strip() or item.count("-") != 1:
+            raise ValueError("LLM Pricing time_ranges 必须使用 HH:MM-HH:MM")
+        start_text, end_text = item.split("-", maxsplit=1)
+        start_second = _clock_second(start_text)
+        end_second = _clock_second(end_text)
+        if start_second == end_second:
+            raise ValueError("LLM Pricing time_ranges 起止时间不能相同")
+        parsed.append(
+            _LocalTimeRange(
+                start_second=start_second,
+                end_second=end_second,
+            )
+        )
+    return tuple(parsed)
+
+
+def _clock_second(value: str) -> int:
+    parts = value.split(":")
+    if len(parts) != 2 or any(
+        len(part) != 2 or not part.isascii() or not part.isdigit() for part in parts
+    ):
+        raise ValueError("LLM Pricing time_ranges 必须使用 HH:MM-HH:MM")
+    hour, minute = (int(part) for part in parts)
+    if hour > 23 or minute > 59:
+        raise ValueError("LLM Pricing time_ranges 包含无效时间")
+    return hour * 3600 + minute * 60
+
+
+def _validate_no_overlapping_ranges(periods: list[_LLMPricePeriod]) -> None:
+    segments: list[tuple[int, int, str]] = []
+    for period in periods:
+        for time_range in period.time_ranges:
+            segments.extend((start, end, period.name) for start, end in time_range.segments())
+    segments.sort()
+    for previous, current in zip(segments, segments[1:], strict=False):
+        if current[0] < previous[1]:
+            raise ValueError(
+                f"LLM Pricing price_periods 时间范围重叠: {previous[2]} / {current[2]}"
+            )
 
 
 def _rate_value(
