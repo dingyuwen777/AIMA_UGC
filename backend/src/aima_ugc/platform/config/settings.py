@@ -38,6 +38,11 @@ class PlatformSettings(BaseModel):
         """返回 PostgreSQL 密码文件，不读取 Secret 内容。"""
         return self.secret_dir / "postgres_password"
 
+    @property
+    def import_batch_cursor_signing_key_file(self) -> Path:
+        """返回 Import Batch Cursor 签名密钥文件，不读取 Secret 内容。"""
+        return self.secret_dir / "import_batch_cursor_signing_key"
+
 
 _ENV_TO_FIELD = {
     "AIMA_DATA_DIR": "data_dir",

@@ -51,17 +51,6 @@ export interface ImportBatchCreatedResponse {
   status?: 'queued';
 }
 
-export type ImportBatchResponseStatus = typeof ImportBatchResponseStatus[keyof typeof ImportBatchResponseStatus];
-
-
-export const ImportBatchResponseStatus = {
-  queued: 'queued',
-  running: 'running',
-  succeeded: 'succeeded',
-  failed: 'failed',
-  cancelled: 'cancelled',
-} as const;
-
 export interface ImportJobResultResponse {
   batch_id: string;
   /** @minimum 0 */
@@ -129,6 +118,17 @@ export interface ImportStatsResponse {
   rows_seen?: number;
 }
 
+export type ImportBatchStatus = typeof ImportBatchStatus[keyof typeof ImportBatchStatus];
+
+
+export const ImportBatchStatus = {
+  queued: 'queued',
+  running: 'running',
+  succeeded: 'succeeded',
+  failed: 'failed',
+  cancelled: 'cancelled',
+} as const;
+
 export interface ImportBatchResponse {
   created_at: string;
   error_summary?: string | null;
@@ -136,10 +136,27 @@ export interface ImportBatchResponse {
   id: string;
   input_artifact_id: string;
   job: JobStatusResponse;
+  source_filename?: string | null;
   stage: ImportStage;
   started_at?: string | null;
   stats: ImportStatsResponse;
-  status: ImportBatchResponseStatus;
+  status: ImportBatchStatus;
+}
+
+export interface ImportBatchListResponse {
+  has_more: boolean;
+  items: ImportBatchResponse[];
+  next_cursor?: string | null;
+}
+
+export interface ImportBatchSummaryResponse {
+  as_of: string;
+  /** @minimum 0 */
+  completed_today_count: number;
+  /** @minimum 0 */
+  processing_count: number;
+  /** @minimum 0 */
+  rows_ingested_today: number;
 }
 
 export interface KeywordPackCreateRequest {
@@ -232,6 +249,58 @@ export interface ReadinessResponse {
   status: ReadinessResponseStatus;
 }
 
+export type ListImportBatchesParams = {
+identifier?: string | null;
+status?: ImportBatchStatus | null;
+stage?: ImportStage | null;
+created_from?: string | null;
+created_to?: string | null;
+cursor?: string | null;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+};
+
+export const getListImportBatchesUrl = (params?: ListImportBatchesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/import-batches?${stringifiedParams}` : `/api/v1/import-batches`
+}
+
+/**
+ * @summary List Import Batches
+ */
+export const listImportBatches = async (params?: ListImportBatchesParams, options?: RequestInit): Promise<ImportBatchListResponse> => {
+
+  const res = await fetch(getListImportBatchesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ImportBatchListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
 export const getCreateImportBatchUrl = () => {
 
 
@@ -260,6 +329,37 @@ formData.append(`file`, bodyCreateImportBatch.file);
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: ImportBatchCreatedResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetImportBatchSummaryUrl = () => {
+
+
+
+
+  return `/api/v1/import-batches/summary`
+}
+
+/**
+ * @summary Get Import Batch Summary
+ */
+export const getImportBatchSummary = async ( options?: RequestInit): Promise<ImportBatchSummaryResponse> => {
+
+  const res = await fetch(getGetImportBatchSummaryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ImportBatchSummaryResponse = body ? JSON.parse(body) : {}
   return data
 }
 

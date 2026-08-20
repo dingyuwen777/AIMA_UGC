@@ -137,20 +137,39 @@ Token、服务器内部路径、堆栈或原始异常；响应头 `x-request-id`
 - 前置条件：必须已经通过 Relevance 配置 API 选择一个启用且有有效关键词的全局 Pack，否则返回 409。
 - 当前未实现 HTTP actor 幂等或公网认证；该写接口只用于受控部署环境。
 
-### 5.4 `GET /api/v1/import-batches/{batch_id}`
+### 5.4 `GET /api/v1/import-batches`
+
+- `operation_id`：`listImportBatches`。
+- 用途：为采集运行中心返回 Excel Import Batch 列表；只读取关联
+  `ingestion.import-excel.v1` Job，不把其他 Job 类型混入该 Read Model。
+- 筛选：`identifier` 精确匹配 Batch ID 或 Job ID；`status`、`stage`、`created_from`、
+  `created_to` 为可选条件。时间必须带时区，默认按 `created_at DESC, id DESC` 排序。
+- 分页：默认 20、最大 100；响应返回 `items/next_cursor/has_more`。Cursor 由服务端签名、绑定当前
+  查询条件并在 30 分钟后过期；前端只原样回传，非法、过期、篡改或跨查询复用返回统一 400。
+- 安全：Cursor 签名配置不可用时关闭失败并返回统一 503，不暴露 Secret 内容或文件路径。
+
+### 5.5 `GET /api/v1/import-batches/summary`
+
+- `operation_id`：`getImportBatchSummary`。
+- 用途：返回采集运行中心的三个数据库聚合事实：处理中 Batch 数、北京时间今日成功完成数、北京时间
+  今日成功 Batch 的 `rows_ingested` 合计；不从当前 Cursor 页在前端推算。
+- `processing_count` 统计关联 Job 为 `queued/running` 的 Batch；“今日”按 `Asia/Shanghai` 自然日
+  切分后转换为 UTC 查询边界；`as_of` 返回本次统计的 UTC 时间。
+
+### 5.6 `GET /api/v1/import-batches/{batch_id}`
 
 - `operation_id`：`getImportBatch`。
-- 返回固定 Batch 状态、阶段、计数统计、安全错误摘要、时间和关联 Job 快照。
+- 返回固定 Batch 状态、阶段、计数统计、安全错误摘要、时间、可空安全原文件名和关联 Job 快照。
 - Batch 状态由关联 Job 当前事实投影；不存在返回 404，非法 UUID 返回统一 422。
 
-### 5.5 `GET /api/v1/jobs/{job_id}`
+### 5.7 `GET /api/v1/jobs/{job_id}`
 
 - `operation_id`：`getJob`。
 - 当前公开查询只接受 Stage 8B `ingestion.import-excel.v1` Job，返回状态、Attempt/max_attempts、进度、
   安全错误码、时间与成功结果；其他内部 Job 类型不自动成为公共 API。
 - 不存在或不是当前公开类型返回 404。
 
-### 5.6 Keyword Pack
+### 5.8 Keyword Pack
 
 - `POST /api/v1/keyword-packs`：`createKeywordPack`，创建启用的空 Pack；同名返回 409。
 - `POST /api/v1/keyword-packs/{pack_id}/keywords`：`addKeywordToPack`，添加或复用关键词；只接收原始
@@ -158,7 +177,7 @@ Token、服务器内部路径、堆栈或原始异常；响应头 `x-request-id`
 - `GET /api/v1/keyword-packs/{pack_id}`：`getKeywordPack`，读取 Pack 和稳定排序的关键词项。
 - Stage 8B 只提供生成 Client 所需的最小 Contract；正式 Vue 配置页面属于 Stage 8F。
 
-### 5.7 Global Relevance Config
+### 5.9 Global Relevance Config
 
 - `PUT /api/v1/relevance-config`：`setGlobalRelevanceConfig`，用外键选择系统唯一 Keyword Pack；Pack
   不存在返回 404，停用或没有有效关键词返回 409。

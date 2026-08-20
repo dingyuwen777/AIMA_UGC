@@ -143,6 +143,7 @@ jobs:
           npm --prefix frontend run test -- --run
           npm --prefix frontend run build
           npm --prefix frontend exec -- playwright --version
+          npm --prefix frontend run test:e2e
 
   stage2-platform:
     name: Stage 2 Platform

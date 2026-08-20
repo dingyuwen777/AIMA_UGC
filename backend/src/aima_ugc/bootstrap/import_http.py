@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import hashlib
+import json
+from datetime import UTC, datetime, timedelta
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import BinaryIO, cast
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.exc import IntegrityError
 
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataGateway,
     PostgresArtifactMetadataRepository,
+)
+from aima_ugc.adapters.persistence.postgres.import_batch_queries import (
+    PostgresImportBatchQueryRepository,
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.persistence.postgres.keywords import PostgresKeywordCatalogRepository
@@ -27,7 +33,11 @@ from aima_ugc.contracts.http import (
     GlobalRelevanceConfigRequest,
     GlobalRelevanceConfigResponse,
     ImportBatchCreatedResponse,
+    ImportBatchListQuery,
+    ImportBatchListResponse,
     ImportBatchResponse,
+    ImportBatchStatus,
+    ImportBatchSummaryResponse,
     ImportJobResultResponse,
     ImportStage,
     ImportStatsResponse,
@@ -41,10 +51,15 @@ from aima_ugc.modules.analysis import normalize_keyword_storage_text
 from aima_ugc.modules.ingestion import ProcessingImportBatchRecord
 from aima_ugc.modules.ingestion.http import (
     ImportConflict,
+    ImportCursorUnavailable,
     ImportResourceNotFound,
     ImportUploadTooLarge,
     InvalidImportFile,
     RelevanceConfigurationError,
+)
+from aima_ugc.modules.ingestion.import_batch_cursor import (
+    ImportBatchCursorCodec,
+    ImportBatchCursorPosition,
 )
 from aima_ugc.modules.ingestion.import_job import (
     IMPORT_JOB_MAX_ATTEMPTS,
@@ -53,6 +68,7 @@ from aima_ugc.modules.ingestion.import_job import (
     IMPORT_JOB_TYPE,
     ImportJobPayload,
 )
+from aima_ugc.modules.ingestion.query import ImportBatchReadQuery, ImportBatchReadRecord
 from aima_ugc.modules.ingestion.xlsx_security import (
     MAX_XLSX_FILE_BYTES,
     InvalidXlsxError,
@@ -61,19 +77,27 @@ from aima_ugc.modules.ingestion.xlsx_security import (
 )
 from aima_ugc.modules.system.models import Keyword, KeywordPack, KeywordPackItem
 from aima_ugc.platform.jobs import JobRecord
+from aima_ugc.platform.security import SecretFileError, read_secret_file
 from aima_ugc.platform.storage import ArtifactService, ArtifactSizeLimitError
 
 from .runtime import PlatformRuntime
 
 _XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 _IMPORT_PROFILE = "aima-monitoring-excel.v1"
+_SHANGHAI = ZoneInfo("Asia/Shanghai")
 
 
 class PostgresImportHttpService:
     """Router 之后的事务、Artifact 与 Job 编排；不执行 Excel 长任务。"""
 
-    def __init__(self, runtime: PlatformRuntime) -> None:
+    def __init__(
+        self,
+        runtime: PlatformRuntime,
+        *,
+        cursor_signing_secret: bytes | None = None,
+    ) -> None:
         self._runtime = runtime
+        self._cursor_signing_secret = cursor_signing_secret
 
     def create_import(
         self,
@@ -167,6 +191,80 @@ class PostgresImportHttpService:
                 return _batch_response(batch, job)
         finally:
             session.close()
+
+    def list_import_batches(self, query: ImportBatchListQuery) -> ImportBatchListResponse:
+        codec = self._cursor_codec()
+        query_hash = _import_batch_query_hash(query)
+        position = (
+            codec.decode(query.cursor, query_hash=query_hash) if query.cursor is not None else None
+        )
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                rows = PostgresImportBatchQueryRepository(session).list_batches(
+                    ImportBatchReadQuery(
+                        identifier=query.identifier,
+                        status=query.status,
+                        stage=query.stage,
+                        created_from=query.created_from,
+                        created_to=query.created_to,
+                        position=position,
+                        limit=query.limit + 1,
+                    )
+                )
+        finally:
+            session.close()
+        has_more = len(rows) > query.limit
+        page = rows[: query.limit]
+        next_cursor = None
+        if has_more and page:
+            last = page[-1]
+            next_cursor = codec.encode(
+                ImportBatchCursorPosition(created_at=last.created_at, batch_id=last.batch_id),
+                query_hash=query_hash,
+            )
+        return ImportBatchListResponse(
+            items=tuple(_query_batch_response(row) for row in page),
+            next_cursor=next_cursor,
+            has_more=has_more,
+        )
+
+    def get_import_batch_summary(self) -> ImportBatchSummaryResponse:
+        as_of = datetime.now(UTC)
+        local_now = as_of.astimezone(_SHANGHAI)
+        today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+        tomorrow_start = today_start + timedelta(days=1)
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                summary = PostgresImportBatchQueryRepository(session).summary(
+                    today_start_utc=today_start.astimezone(UTC),
+                    tomorrow_start_utc=tomorrow_start.astimezone(UTC),
+                )
+        finally:
+            session.close()
+        return ImportBatchSummaryResponse(
+            processing_count=summary.processing_count,
+            completed_today_count=summary.completed_today_count,
+            rows_ingested_today=summary.rows_ingested_today,
+            as_of=as_of,
+        )
+
+    def _cursor_codec(self) -> ImportBatchCursorCodec:
+        secret = self._cursor_signing_secret
+        if secret is None:
+            try:
+                value = read_secret_file(
+                    self._runtime.settings.import_batch_cursor_signing_key_file,
+                    root=self._runtime.settings.secret_dir,
+                ).get_secret_value()
+                secret = value.encode("utf-8")
+            except SecretFileError as exc:
+                raise ImportCursorUnavailable from exc
+        try:
+            return ImportBatchCursorCodec(secret=secret)
+        except ValueError as exc:
+            raise ImportCursorUnavailable from exc
 
     def get_job(self, job_id: UUID) -> JobStatusResponse:
         session = self._runtime.database.new_session()
@@ -343,15 +441,6 @@ def _relevance_response(
 
 
 def _job_response(job: JobRecord) -> JobStatusResponse:
-    result: ImportJobResultResponse | None = None
-    if isinstance(job.result, dict):
-        batch_id = job.result.get("batch_id")
-        rows_ingested = job.result.get("rows_ingested")
-        if isinstance(batch_id, str) and isinstance(rows_ingested, int):
-            result = ImportJobResultResponse(
-                batch_id=UUID(batch_id),
-                rows_ingested=rows_ingested,
-            )
     return JobStatusResponse(
         id=job.id,
         job_type=job.job_type,
@@ -360,7 +449,7 @@ def _job_response(job: JobRecord) -> JobStatusResponse:
         max_attempts=job.max_attempts,
         progress=job.progress,
         error_code=job.error_code,
-        result=result,
+        result=_job_result_response(job.result),
         created_at=job.created_at,
         started_at=job.started_at,
         finished_at=job.finished_at,
@@ -379,6 +468,7 @@ def _batch_response(batch: ProcessingImportBatchRecord, job: JobRecord) -> Impor
     return ImportBatchResponse(
         id=batch.id,
         input_artifact_id=batch.input_artifact_id,
+        source_filename=_source_filename(batch.stats),
         status=status,
         stage=cast(ImportStage, stage),
         stats=ImportStatsResponse(
@@ -390,6 +480,78 @@ def _batch_response(batch: ProcessingImportBatchRecord, job: JobRecord) -> Impor
         finished_at=batch.finished_at or job.finished_at,
         job=_job_response(job),
     )
+
+
+def _query_batch_response(record: ImportBatchReadRecord) -> ImportBatchResponse:
+    job = JobStatusResponse(
+        id=record.job_id,
+        job_type=record.job_type,
+        status=cast(ImportBatchStatus, record.status),
+        attempt=record.attempt,
+        max_attempts=record.max_attempts,
+        progress=record.progress,
+        error_code=record.job_error_code,
+        result=_job_result_response(record.job_result),
+        created_at=record.job_created_at,
+        started_at=record.job_started_at,
+        finished_at=record.job_finished_at,
+    )
+    return ImportBatchResponse(
+        id=record.batch_id,
+        input_artifact_id=record.input_artifact_id,
+        source_filename=record.source_filename,
+        status=cast(ImportBatchStatus, record.status),
+        stage=cast(ImportStage, record.stage),
+        stats=ImportStatsResponse(
+            **{name: _stat(record.stats, name) for name in ImportStatsResponse.model_fields}
+        ),
+        error_summary=record.error_summary or record.job_error_code,
+        created_at=record.created_at,
+        started_at=record.started_at,
+        finished_at=record.finished_at or record.job_finished_at,
+        job=job,
+    )
+
+
+def _job_result_response(value: object) -> ImportJobResultResponse | None:
+    if not isinstance(value, dict):
+        return None
+    batch_id = value.get("batch_id")
+    rows_ingested = value.get("rows_ingested")
+    if (
+        not isinstance(batch_id, str)
+        or not isinstance(rows_ingested, int)
+        or isinstance(rows_ingested, bool)
+        or rows_ingested < 0
+    ):
+        return None
+    try:
+        parsed_batch_id = UUID(batch_id)
+    except ValueError:
+        return None
+    return ImportJobResultResponse(batch_id=parsed_batch_id, rows_ingested=rows_ingested)
+
+
+def _source_filename(stats: dict[str, object]) -> str | None:
+    value = stats.get("source_filename")
+    return value if isinstance(value, str) and value else None
+
+
+def _import_batch_query_hash(query: ImportBatchListQuery) -> str:
+    def timestamp(value: datetime | None) -> str | None:
+        return value.astimezone(UTC).isoformat() if value is not None else None
+
+    payload = {
+        "created_from": timestamp(query.created_from),
+        "created_to": timestamp(query.created_to),
+        "identifier": str(query.identifier) if query.identifier is not None else None,
+        "limit": query.limit,
+        "sort": "created_at_desc,id_desc",
+        "stage": query.stage,
+        "status": query.status,
+    }
+    raw = json.dumps(payload, ensure_ascii=True, separators=(",", ":"), sort_keys=True).encode()
+    return hashlib.sha256(raw).hexdigest()
 
 
 def _stat(stats: dict[str, object], name: str) -> int:

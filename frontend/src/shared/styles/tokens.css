@@ -1,0 +1,41 @@
+:root {
+  color: #172033;
+  background: #f5f7fb;
+  font-family:
+    Inter, "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --aima-primary: #f50057;
+  --aima-primary-soft: #fff0f5;
+  --aima-border: #e6e9ef;
+  --aima-muted: #667085;
+  --aima-surface: #ffffff;
+  --aima-success: #16a05d;
+  --aima-warning: #f59e0b;
+  --aima-danger: #e5484d;
+  --aima-info: #2563eb;
+  --aima-radius: 10px;
+  --el-color-primary: var(--aima-primary);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #f5f7fb;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}

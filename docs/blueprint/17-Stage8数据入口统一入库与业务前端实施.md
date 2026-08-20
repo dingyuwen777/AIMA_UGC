@@ -526,10 +526,10 @@ PLANNED
 | Processing / Import Batch | IMPLEMENTED | Stage 8A 已建立最小机器结构 |
 | 网页可调用的 Excel 上传 API | IMPLEMENTED | Stage 8B 已交付 multipart 202 Contract/Orval；Vue 入口在 8C |
 | Batch 详情 | IMPLEMENTED | Stage 8B 已交付按 ID 查询 |
-| Batch 列表 | PLANNED | Stage 8C Query Read Model |
+| Batch 列表 | IMPLEMENTED | Stage 8C Query Read Model；稳定 Cursor、状态/阶段/时间/ID 筛选 |
 | 阶段进度/统计 | IMPLEMENTED | Stage 8B 按 Batch ID 返回阶段、固定计数与关联 Job |
-| KPI：处理中/今日完成/今日导入 | PLANNED | Stage 8C Query Read Model |
-| 筛选/分页 | PLANNED | Stage 8C HTTP Cursor/Query |
+| KPI：处理中/今日完成/今日导入 | IMPLEMENTED | Stage 8C PostgreSQL Summary；今日按 Asia/Shanghai |
+| 筛选/分页 | IMPLEMENTED | Stage 8C HTTP 签名 Cursor/Query |
 | Import Job 状态 | IMPLEMENTED | Stage 8B 按 ID 查询；8C 负责页面轮询 |
 | 错误记录/安全摘要 | IMPLEMENTED | Stage 8B 固定 Error Contract/request_id 与 Batch/Job 摘要 |
 | 查看处理内容 | REUSE_BUT_PRODUCTIZE | Stage 8D Content Query/API |
@@ -667,6 +667,10 @@ Migration、固定 OpenAPI 与 Orval Client 已落地；是否达到正式闭环
 
 首版页面只展示真实后端已经提供的阶段/字段；未落地 AI 或其他目标能力不得用 Mock 冒充生产支持。
 
+当前 Active Change 已实现上述列表、Summary、签名 Cursor、生成 Client、Feature API/Store、Vue 页面和
+Playwright 机器能力；用户批准的 PNG 仅作为本 Stage 一次性视觉例外。是否正式闭环仍必须由最终 PR
+Head CI、两阶段 Review、正常合并、Change 归档和合并后 `main` 新鲜验证共同证明。
+
 ### 8D：内容中心
 
 目标：前端不区分 Excel/TikHub 来源读取统一 PostgreSQL Content。
@@ -766,7 +770,7 @@ imports_test / tikhub_test 永久保留
 
 Stage 8A 已完成统一手工摄取 Foundation
 Stage 8B 已建立 Import HTTP / Job / 全局 Relevance Productization
-下一正式最小单元是 Stage 8C 第一个 Vue/Figma 页面
+Stage 8C 当前实现第一个 Vue 采集运行中心页面；正式闭环后下一最小单元是 Stage 8D 内容中心
 离线单批报告读 Excel；正式系统报告读 PostgreSQL Read Model
 报告源显式选择，不按数据库可用性自动切换
 不要用目标 UI 冒充后端已经存在

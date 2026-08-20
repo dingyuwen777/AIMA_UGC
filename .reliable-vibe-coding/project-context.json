@@ -1,5 +1,5 @@
 {
-  "candidate_path_digest": "c69ee56fe8eb643c6a77896fe3fa5124f02b69358929a859088b7baad82e4215",
+  "candidate_path_digest": "39e17f778ae3f72e18f2a2e346d0d439305e73bc0f4ebeffb9c77ca2b78b0a67",
   "directories": [
     {
       "count": 4,
@@ -67,7 +67,7 @@
       "path": "backend/src/aima_ugc/platform/reporting"
     },
     {
-      "count": 3,
+      "count": 4,
       "kinds": [
         "contract"
       ],
@@ -137,8 +137,9 @@
       "path": "docs/collection"
     },
     {
-      "count": 2,
+      "count": 3,
       "kinds": [
+        "documentation",
         "manifest"
       ],
       "path": "frontend"
@@ -176,8 +177,8 @@
     {
       "kind": "documentation",
       "path": "README.md",
-      "sha256": "88c135e200ff74c45819f2587f3509d2f7cc6b604e79848f1f57821ad5753d18",
-      "size": 25262,
+      "sha256": "db04a285ef7450bcf2f22bbd61bf94b145da0b8218c3883f095f69d880544907",
+      "size": 26387,
       "title": "AIMA_UGC"
     },
     {
@@ -225,8 +226,8 @@
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/modules/system/README.md",
-      "sha256": "e6254359ea9ea6c9128cf096eb1c7d0653ad4376ff8487d6f44a5d043c6f9cc1",
-      "size": 4103,
+      "sha256": "806d8c398835fc7696d324c36f0cddfc17c3258ee78a492fdd6d324307314b46",
+      "size": 4739,
       "title": "System 模块"
     },
     {
@@ -253,6 +254,12 @@
       "path": "contracts/analysis/content-record.v1.schema.json",
       "sha256": "44ce51db3d1d6cb66203dd4fe3d2a030bc80e66e20035c030a048329a96aa26b",
       "size": 13653
+    },
+    {
+      "kind": "contract",
+      "path": "contracts/analysis/relevance-snapshot.v1.schema.json",
+      "sha256": "42b84cba14e02087065884cf09375259ac690b2523cfa77fb89b71f3175948d8",
+      "size": 764
     },
     {
       "kind": "contract",
@@ -317,8 +324,8 @@
     {
       "kind": "contract",
       "path": "contracts/openapi/openapi.json",
-      "sha256": "680706c7c6530f4bf7b652725b038dc5f827feef6ee9d8f135276cc450dab075",
-      "size": 3617
+      "sha256": "f58ed78c17343ec7d2322994f253ce8985bc8c04c574aa278c7c6ce2513b9cd6",
+      "size": 40034
     },
     {
       "kind": "contract",
@@ -341,8 +348,8 @@
     {
       "kind": "documentation",
       "path": "docs/API接口说明.md",
-      "sha256": "be198aba82ecea7a701d732d7f61e8cd0d192457df3a828bf7240ea14e11f10f",
-      "size": 6050,
+      "sha256": "f10f58fb7326513c6b14162cfd1a50b0005c94af8c3cf82299ed2857c73bc03f",
+      "size": 10171,
       "title": "AIMA_UGC API 接口说明"
     },
     {
@@ -355,22 +362,22 @@
     {
       "kind": "documentation",
       "path": "docs/blueprint/02-采集系统与数据标准化.md",
-      "sha256": "4c55a27fde757b6469cac4cba2790626b7286e38ce7ac75a9a490cf294e810da",
-      "size": 39120,
+      "sha256": "4857d2b352a047d88043f5b828392008b1bd587752cfa0a6ae582c4d6ab48cb4",
+      "size": 39440,
       "title": "采集系统与数据标准化"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/03-数据库与文件存储.md",
-      "sha256": "70698cbcdad1b6d917d001f56ea3ff0cb570f7bada357f5e3b27c7c75f451651",
-      "size": 61597,
+      "sha256": "5d52321337da3eaf93c546dfa22c8b3a13f6b92be3a565d7338e5e6451e4bc24",
+      "size": 64185,
       "title": "数据库与文件存储"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/04-后端任务API与前端.md",
-      "sha256": "e05ec74f8d789ba8066d308656f4d5f8e7230bc8a493941755cdad216738a7c7",
-      "size": 24779,
+      "sha256": "b08c957dbfd7e88206ecc4f852a444a909bbbceb39460f925ee09557b0ebe1dd",
+      "size": 26586,
       "title": "后端任务、API 与前端"
     },
     {
@@ -397,8 +404,8 @@
     {
       "kind": "documentation",
       "path": "docs/blueprint/08-采集策略与平台能力.md",
-      "sha256": "36bf7d2045133257357e32edec476f9d5b4a55c27f1550b1054802405ead1fca",
-      "size": 29708,
+      "sha256": "e5ec0993470a180f886941de62e72e17d19a97c9f308bd08bb00148451d7611b",
+      "size": 30343,
       "title": "采集策略与平台能力"
     },
     {
@@ -453,15 +460,15 @@
     {
       "kind": "documentation",
       "path": "docs/blueprint/17-Stage8数据入口统一入库与业务前端实施.md",
-      "sha256": "63a054ea7c81942000aabe8bb9e148dc9bb8e2db504a7c6c1e69bb1cd5301b09",
-      "size": 31251,
+      "sha256": "6fb26f7a3323b4d1667f8ea728c923537a3a2da10a7233c311782e87534b3ddc",
+      "size": 36474,
       "title": "Stage 8 数据入口、统一入库与业务前端实施"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/README.md",
-      "sha256": "0a3a106bb7f8b3674147bca5f80dc5e0ee8fcf4f7c444f45b91c8ce6ef121a11",
-      "size": 21226,
+      "sha256": "84dceae9933f1ffe82e1688487e337fb18bcf331eaed502dbd8f7713c6b0506a",
+      "size": 22176,
       "title": "AIMA_UGC Blueprint 导航"
     },
     {
@@ -509,16 +516,23 @@
     {
       "kind": "documentation",
       "path": "docs/测试与调试说明.md",
-      "sha256": "e634f8dc0825ac6b0e91ee59592bda7749b29c8356c379368f83f4fc86895d31",
-      "size": 31322,
+      "sha256": "dc342873e513cbafca3a5517617934915584be9222346fa7dc1f22a5147b4bea",
+      "size": 33810,
       "title": "AIMA_UGC 测试与调试说明"
     },
     {
       "kind": "documentation",
       "path": "docs/环境运行与部署.md",
-      "sha256": "2de3c6e2d0909324c82b8d4fd197fbf96cdc815ad78ea0aafbeda4bf2c975b34",
-      "size": 20171,
+      "sha256": "3149d76eaa7dbb84270234503b9341ce8163c106f81d2b45c567499755479997",
+      "size": 21031,
       "title": "环境、运行与部署"
+    },
+    {
+      "kind": "documentation",
+      "path": "frontend/README.md",
+      "sha256": "717e02fb889f5d99a8adda027c92154fa3cc98f7ec3ea6d2f7cdab29dfae1706",
+      "size": 3315,
+      "title": "AIMA_UGC 前端开发入口"
     },
     {
       "kind": "manifest",
@@ -529,14 +543,14 @@
     {
       "kind": "manifest",
       "path": "frontend/package.json",
-      "sha256": "1a1d3ca3099cb705dd63ed1e691797d9778efd62b79d858635e4bbc800b8307d",
-      "size": 1378
+      "sha256": "93598df08ea30bc698b9bce8ab2389877d9fe665272de40e3b09819ab739564c",
+      "size": 1410
     },
     {
       "kind": "manifest",
       "path": "pyproject.toml",
-      "sha256": "b6b3e68c6316a24463ab2cfe618703bef9f4bba3a2079d28d9176243dcecec7d",
-      "size": 1104
+      "sha256": "d6a3a5d7ad22895376ccded691fb4caaa3830633a9e362239a3abc65a463b012",
+      "size": 1146
     },
     {
       "kind": "documentation",
@@ -562,16 +576,16 @@
     {
       "kind": "manifest",
       "path": "uv.lock",
-      "sha256": "d753f01300bf275c878d5dc348b4f28d6372bd3e100a34741e67a3c436727343",
-      "size": 91336
+      "sha256": "e0604a44ffdf04d09e72954fa169f1d9944b1cb2e81c4a78b2eadb238bda0385",
+      "size": 92829
     }
   ],
-  "generated_at": "2026-08-20T10:30:31+00:00",
+  "generated_at": "2026-08-20T17:00:09+00:00",
   "generator_version": "0.1.0",
   "git": {
-    "indexed_at_commit": "066ca4fdeef6bd13c71b652ccd3a442cfd096dd7",
+    "indexed_at_commit": "9a7c7ca99807f8f4bc9feec1a89fd688b2fae81b",
     "repository": true,
-    "worktree_candidate_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    "worktree_candidate_digest": "838efa7d01b4df2858af9a14cb95b4de23598123a522beb1aed2e8920780af21"
   },
   "package_scripts": {
     "frontend/package.json": {
@@ -580,6 +594,7 @@
       "generate:api": "orval --config orval.config.mjs",
       "lint": "eslint . --max-warnings=0",
       "test": "vitest",
+      "test:e2e": "playwright test",
       "typecheck": "npm run typecheck:ts7 && npm run typecheck:vue",
       "typecheck:ts7": "node ./node_modules/@typescript/native/lib/tsc.js --project tsconfig.native.json --noEmit",
       "typecheck:vue": "vue-tsc --noEmit"
