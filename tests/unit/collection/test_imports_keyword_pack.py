@@ -16,12 +16,13 @@ def test_imports_test_uses_separate_keyword_pack_file() -> None:
     assert path.is_file()
 
 
-def test_keyword_pack_loader_keeps_102_source_model_rows_and_brand_keyword() -> None:
+def test_keyword_pack_loader_keeps_102_source_model_rows_and_brand_keywords() -> None:
     pack = load_keyword_pack(imports_test.KEYWORD_PACK_FILE)
 
-    assert pack.source_keyword_count == 103
-    assert pack.effective_keyword_count == 96
+    assert pack.source_keyword_count == 104
+    assert pack.effective_keyword_count == 97
     assert pack.keywords[0] == "爱玛"
+    assert pack.keywords[1] == "AIMA"
     assert "元宇宙Pony" in pack.keywords
     assert "凌志26M" in pack.keywords
     assert "黑翼S3 60" in pack.keywords
