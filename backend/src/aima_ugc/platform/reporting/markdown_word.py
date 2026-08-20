@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from .chart_png import ChartSpec
+from .chart_spec import ChartSpec
 from .docx_package import DocxBuilder, verify_docx
 
 _FENCE_RE = re.compile(r"^```([A-Za-z0-9_-]*)\s*$")
@@ -18,6 +18,7 @@ _TABLE_SEPARATOR_RE = re.compile(r"^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*:?-{3,}:?\s*\
 _PIE_ITEM_RE = re.compile(r'^\s*"(.*)"\s*:\s*(-?\d+(?:\.\d+)?)\s*$')
 _XY_SERIES_RE = re.compile(r"^\s*(line|bar)\s*\[(.*)]\s*$")
 _Y_AXIS_RE = re.compile(r'^\s*y-axis\s+"[^"]*"\s+(-?\d+(?:\.\d+)?)\s*-->\s*(-?\d+(?:\.\d+)?)\s*$')
+_SERIES_META_PREFIX = "%% series "
 
 
 @dataclass(frozen=True, slots=True)
@@ -212,6 +213,8 @@ def _parse_mermaid_pie(lines: list[str]) -> ChartSpec:
         if stripped.startswith("title "):
             title = stripped.removeprefix("title ").strip().strip('"')
             continue
+        if stripped.startswith("%%"):
+            continue
         match = _PIE_ITEM_RE.match(line)
         if match:
             labels.append(match.group(1))
@@ -225,6 +228,7 @@ def _parse_mermaid_pie(lines: list[str]) -> ChartSpec:
         title=title,
         categories=tuple(labels),
         series=(tuple(values),),
+        series_names=("数量",),
         pie_labels=tuple(labels),
     )
 
@@ -234,12 +238,25 @@ def _parse_mermaid_xy(lines: list[str]) -> ChartSpec:
     categories: tuple[str, ...] = ()
     series: list[tuple[float, ...]] = []
     kinds: set[str] = set()
+    series_names: tuple[str, ...] = ()
     y_min = 0.0
     y_max: float | None = None
     for line in lines[1:]:
         stripped = line.strip()
         if stripped.startswith("title "):
             title = stripped.removeprefix("title ").strip().strip('"')
+            continue
+        if stripped.startswith(_SERIES_META_PREFIX):
+            raw = stripped.removeprefix(_SERIES_META_PREFIX).strip()
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise ValueError("无法解析 Mermaid series 元数据") from exc
+            if not isinstance(parsed, list) or not all(isinstance(item, str) for item in parsed):
+                raise ValueError("Mermaid series 元数据必须是字符串数组")
+            series_names = tuple(parsed)
+            continue
+        if stripped.startswith("%%"):
             continue
         if stripped.startswith("x-axis "):
             raw = stripped.removeprefix("x-axis ").strip()
@@ -273,11 +290,16 @@ def _parse_mermaid_xy(lines: list[str]) -> ChartSpec:
         raise ValueError("同一 Mermaid xychart 不支持混合 line/bar")
     if any(len(values) != len(categories) for values in series):
         raise ValueError("Mermaid xychart 序列长度与 x-axis 不一致")
+    if series_names and len(series_names) != len(series):
+        raise ValueError("Mermaid series 名称数量与数据序列数量不一致")
+    if not series_names:
+        series_names = tuple(f"系列 {index}" for index in range(1, len(series) + 1))
     return ChartSpec(
         kind=next(iter(kinds)),
         title=title,
         categories=categories,
         series=tuple(series),
+        series_names=series_names,
         y_min=y_min,
         y_max=y_max,
     )
