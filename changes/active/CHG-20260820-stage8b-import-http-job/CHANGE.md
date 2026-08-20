@@ -306,7 +306,8 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 - [x] 完成最小实现
 - [x] 同步受影响文档
 - [x] 完成需求符合性 Review 与代码质量 Review，修复所有严重/重要问题
-- [ ] 取得最终 PR Head 与合并后 main 的新鲜验证证据
+- [x] 取得最终实现 PR Head 的新鲜本地与 GitHub CI 证据
+- [ ] 取得合并后 main 的新鲜验证证据
 - [ ] Draft PR → 最终 Head CI → Ready → 正常 Merge → 合并后 main 验证 → Change 归档
 
 # 两阶段 Review
@@ -332,7 +333,9 @@ Content Ingestion、Artifact Store 或 Job Runtime。
   流式计数两条路径均 Green。
 - 发现 500 响应虽返回 `request_id` 但日志无法定位；已增加 `api.request_failed` 安全事件，只记录
   request_id、方法、路径和异常类型，不记录原始异常消息/堆栈，并由 Secret 回归测试证明。
-- 严重/重要问题当前为 0；PostgreSQL 运行证据仍等待 PR CI，不能用本地缺 Secret 的失败冒充 Green。
+- 最终实现 Head `17e238a` 再次完成两阶段复核：需求范围仍止于 Stage 8B，没有 Vue/Stage 8C 能力；
+  代码质量复核确认新增测试复用 System Owner Keyword Catalog 父事实，未用更大 TRUNCATE 范围掩盖
+  生命周期。PR Review 线程与 Reviews 均为 0，严重/重要问题为 0。
 
 # 验证
 
@@ -407,6 +410,16 @@ Content Ingestion、Artifact Store 或 Job Runtime。
   Item，但不会删除 System Owner 独立维护的 Keyword Catalog 父事实；同一工作流后续再次 `create_keyword`
   因 `uq_keywords_normalized_text` 拒绝重复“爱玛”。修复改为正式 Repository 已提供的
   `get_or_create_keyword`，复用目录父事实；不扩大清理范围、不删除共享关键词，也不放宽唯一约束。
+- 最终实现 Head `17e238a89ef2c98973ccff0c49c333eed9b59d71` 的 25 项 GitHub Checks 全部成功：主 CI
+  Stage 1/2/3A/Windows、Stage 4、Stage 5A/5B/5C/5D、Stage 6 Unit/Quality/PostgreSQL、四组
+  Stage 7 Unit/Quality/PostgreSQL 与 Audit PostgreSQL。PR 为 `MERGEABLE/CLEAN`，Review 线程 0。
+- 同一最终实现 Head 上重新运行本地门禁：Unit/Contract/API `555 passed, 1 skipped, 2 warnings`；
+  371 文件 Ruff format、Ruff check、mypy 195 files、Architecture、Table Ownership、Secret、Docs、
+  Contract Generation/Compatibility、OpenAPI→Orval drift、前端 lint/双 typecheck/Vitest 2 tests/build、
+  `uv lock --check`、sdist/Wheel、源码导入和 `alembic heads` 均退出码 0；代码 Head 为
+  `20260820_0020`，工作区无生成物漂移。
+- 最终复核时远端 `main` 仍为任务基线 `43a0bdcebc7abc7f7c796f255c2af6e53b0fb8ea`，与 Head 的
+  merge-base 一致；没有需要同步的新上游提交。证据固化提交仍须取得自身的新鲜 CI 后再转 Ready。
 
 # 文档影响
 
@@ -418,9 +431,8 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 
 # 交付
 
-- Commit：`a12eac4`（记录 Stage 8B 开发门禁）、`7352aed`（Stage 8B 正式实现）；CI 前置事实修复
-  将作为独立中文提交，便于审计 Red → Green。
-- PR：Draft PR `#97`（`feature/stage8b-import-http-job → main`）已创建；上游决定已冻结，开始执行
-  Red → Green；最终 CI/Review
-  完成后才转 Ready 并正常合并。
+- Commit：`a12eac4`（记录 Stage 8B 开发门禁）、`7352aed`（Stage 8B 正式实现）、`b3cf0a4`
+  （补齐采集相关性测试前置事实）、`17e238a`（复用 Keyword Catalog 父事实）；均为中文提交且未重写历史。
+- PR：Draft PR `#97`（`feature/stage8b-import-http-job → main`）的最终实现 Head CI 与两阶段 Review
+  已通过；本 Change 证据固化提交取得新鲜 CI 后才转 Ready 并正常合并。
 - 发布：不部署生产；只交付仓库代码、Migration 状态说明、生成物、测试与合并后 main 证据。
