@@ -113,12 +113,16 @@ def test_p1g_export_labeled_excel_uses_source_run_id_and_column_config(
         output_path: Path,
         include_analysis: bool,
         content_columns: tuple[str, ...],
+        label_detail_columns: tuple[str, ...],
+        comment_columns: tuple[str, ...],
     ):
         captured.update(
             input_path=input_path,
             output_path=output_path,
             include_analysis=include_analysis,
             content_columns=content_columns,
+            label_detail_columns=label_detail_columns,
+            comment_columns=comment_columns,
         )
         return _DummySummary(stage="export_labeled_excel")
 
@@ -132,6 +136,8 @@ def test_p1g_export_labeled_excel_uses_source_run_id_and_column_config(
         "output_path": run_dir / "labeled_data.xlsx",
         "include_analysis": True,
         "content_columns": imports_test_entry.EXCEL_CONTENT_COLUMNS,
+        "label_detail_columns": imports_test_entry.EXCEL_LABEL_DETAIL_COLUMNS,
+        "comment_columns": imports_test_entry.EXCEL_COMMENT_COLUMNS,
     }
 
 

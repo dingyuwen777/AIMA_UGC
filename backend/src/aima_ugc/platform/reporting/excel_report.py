@@ -56,6 +56,9 @@ class ReportGenerationSummary:
     start_date: str | None
     end_date: str | None
     word_chart_count: int
+    content_rows_excluded_by_period: int = 0
+    label_rows_excluded_by_period: int = 0
+    comment_rows_excluded_by_period: int = 0
 
 
 @dataclass(slots=True)
@@ -82,6 +85,11 @@ class _ReportStats:
     quality_counts: Counter[str]
     start_date: date | None
     end_date: date | None
+    period_start_date: date | None
+    period_end_date: date | None
+    content_rows_excluded_by_period: int
+    label_rows_excluded_by_period: int
+    comment_rows_excluded_by_period: int
 
 
 def generate_excel_report(
@@ -92,6 +100,7 @@ def generate_excel_report(
     markdown_name: str = "report.md",
     word_name: str = "report.docx",
     generated_at: datetime | None = None,
+    report_date_range: tuple[date, date] | None = None,
 ) -> ReportGenerationSummary:
     """只读统一 Excel，按 Markdown 模板生成报告并转换为 Word。"""
 
@@ -111,7 +120,8 @@ def generate_excel_report(
     if Path(word_name).name != word_name or not word_name.lower().endswith(".docx"):
         raise ValueError("word_name 必须是当前目录下的 .docx 文件名")
 
-    stats = _collect_stats(source_path)
+    actual_date_range = _validate_report_date_range(report_date_range)
+    stats = _collect_stats(source_path, report_date_range=actual_date_range)
     actual_generated_at = generated_at or datetime.now(_BEIJING)
     replacements = _build_template_replacements(
         stats,
@@ -135,13 +145,22 @@ def generate_excel_report(
         content_rows=stats.content_rows,
         label_rows=stats.label_rows,
         comment_rows=stats.comment_rows,
-        start_date=stats.start_date.isoformat() if stats.start_date is not None else None,
-        end_date=stats.end_date.isoformat() if stats.end_date is not None else None,
+        start_date=(
+            stats.period_start_date.isoformat() if stats.period_start_date is not None else None
+        ),
+        end_date=stats.period_end_date.isoformat() if stats.period_end_date is not None else None,
         word_chart_count=word_summary.chart_count,
+        content_rows_excluded_by_period=stats.content_rows_excluded_by_period,
+        label_rows_excluded_by_period=stats.label_rows_excluded_by_period,
+        comment_rows_excluded_by_period=stats.comment_rows_excluded_by_period,
     )
 
 
-def _collect_stats(path: Path) -> _ReportStats:
+def _collect_stats(
+    path: Path,
+    *,
+    report_date_range: tuple[date, date] | None,
+) -> _ReportStats:
     workbook = load_workbook(path, read_only=True, data_only=False)
     try:
         expected = {_CONTENT_SHEET, _LABEL_SHEET, _COMMENT_SHEET}
@@ -166,13 +185,42 @@ def _collect_stats(path: Path) -> _ReportStats:
         negative_primary_counts: Counter[str] = Counter()
         negative_secondary_counts: Counter[str] = Counter()
         quality_counts: Counter[str] = Counter()
+        expected_label_platform_counts: Counter[str] = Counter()
+        expected_label_sentiment_counts: Counter[str] = Counter()
+        expected_primary_counts: Counter[str] = Counter()
+        expected_secondary_counts: Counter[str] = Counter()
+        expected_label_pair_counts: Counter[tuple[str, str]] = Counter()
+        included_content_ids: set[str] = set()
+        included_content_rows_without_id = 0
+        content_rows_excluded_by_period = 0
+        label_rows_excluded_by_period = 0
+        comment_rows_excluded_by_period = 0
 
         content_rows = 0
         content_sheet = workbook[_CONTENT_SHEET]
         content_headers = _header_index(content_sheet, _REQUIRED_CONTENT_HEADERS)
-        for row in content_sheet.iter_rows(min_row=2, values_only=True):
+        for sheet_row_number, row in enumerate(
+            content_sheet.iter_rows(min_row=2, values_only=True),
+            start=2,
+        ):
             if _row_is_empty(row):
                 continue
+
+            raw_published_at = _row_value(row, content_headers, "发布时间")
+            published_date, invalid_date = _parse_date(raw_published_at)
+            if report_date_range is not None:
+                published_date = _required_period_date(
+                    raw_published_at,
+                    parsed=published_date,
+                    invalid=invalid_date,
+                    sheet_name=_CONTENT_SHEET,
+                    header_name="发布时间",
+                    sheet_row_number=sheet_row_number,
+                )
+                if not _date_in_range(published_date, report_date_range):
+                    content_rows_excluded_by_period += 1
+                    continue
+
             content_rows += 1
             platform = _clean_text(_row_value(row, content_headers, "平台"))
             if platform is None:
@@ -198,14 +246,26 @@ def _collect_stats(path: Path) -> _ReportStats:
             if len(primary_labels) != len(secondary_labels):
                 quality_counts["内容一级二级标签行数不一致"] += 1
 
+            expected_primary_counts.update(primary_labels)
+            expected_secondary_counts.update(secondary_labels)
+            for primary, secondary in zip(primary_labels, secondary_labels, strict=False):
+                expected_label_pair_counts[(primary, secondary)] += 1
+                expected_label_platform_counts[platform] += 1
+                expected_label_sentiment_counts[sentiment or "（未填写）"] += 1
+
+            if "内容ID" in content_headers:
+                content_id = _clean_text(_row_value(row, content_headers, "内容ID"))
+                if content_id is None:
+                    included_content_rows_without_id += 1
+                else:
+                    included_content_ids.add(content_id)
+
             keywords = _split_keywords(_row_value(row, content_headers, "命中关键词"))
             if not keywords:
                 quality_counts["内容缺失命中关键词"] += 1
             else:
                 keyword_counts.update(dict.fromkeys(keywords, 1))
 
-            raw_published_at = _row_value(row, content_headers, "发布时间")
-            published_date, invalid_date = _parse_date(raw_published_at)
             if raw_published_at is None or _clean_text(raw_published_at) is None:
                 quality_counts["内容缺失发布时间"] += 1
             elif invalid_date:
@@ -223,34 +283,122 @@ def _collect_stats(path: Path) -> _ReportStats:
         label_rows = 0
         label_sheet = workbook[_LABEL_SHEET]
         label_headers = _header_index(label_sheet, _REQUIRED_LABEL_HEADERS)
-        for row in label_sheet.iter_rows(min_row=2, values_only=True):
+        label_has_period_date = "发布时间" in label_headers
+        label_can_join_content = "内容ID" in label_headers and "内容ID" in content_headers
+        if (
+            report_date_range is not None
+            and not label_has_period_date
+            and not label_can_join_content
+        ):
+            raise ValueError(
+                "指定报告周期时，Sheet 标签明细必须包含 发布时间，或与 Sheet 内容同时包含 内容ID"
+            )
+        if (
+            report_date_range is not None
+            and not label_has_period_date
+            and included_content_rows_without_id
+        ):
+            raise ValueError("按 内容ID 筛选报告周期时，Sheet 内容存在缺失 内容ID 的记录")
+
+        label_platform_counts: Counter[str] = Counter()
+        label_sentiment_counts: Counter[str] = Counter()
+        for sheet_row_number, row in enumerate(
+            label_sheet.iter_rows(min_row=2, values_only=True),
+            start=2,
+        ):
             if _row_is_empty(row):
                 continue
+
+            if report_date_range is not None:
+                if label_has_period_date:
+                    raw_published_at = _row_value(row, label_headers, "发布时间")
+                    published_date, invalid_date = _parse_date(raw_published_at)
+                    published_date = _required_period_date(
+                        raw_published_at,
+                        parsed=published_date,
+                        invalid=invalid_date,
+                        sheet_name=_LABEL_SHEET,
+                        header_name="发布时间",
+                        sheet_row_number=sheet_row_number,
+                    )
+                    if not _date_in_range(published_date, report_date_range):
+                        label_rows_excluded_by_period += 1
+                        continue
+                else:
+                    content_id = _clean_text(_row_value(row, label_headers, "内容ID"))
+                    if content_id is None:
+                        raise ValueError(
+                            f"Sheet {_LABEL_SHEET} 第 {sheet_row_number} 行缺失 内容ID，"
+                            "无法按报告周期关联内容"
+                        )
+                    if content_id not in included_content_ids:
+                        label_rows_excluded_by_period += 1
+                        continue
+
             label_rows += 1
+            platform = _clean_text(_row_value(row, label_headers, "平台")) or "（未填写）"
             sentiment = _clean_text(_row_value(row, label_headers, "情感标签"))
-            primary = _clean_text(_row_value(row, label_headers, "一级标签"))
-            secondary = _clean_text(_row_value(row, label_headers, "二级标签"))
-            if primary is None:
+            label_primary = _clean_text(_row_value(row, label_headers, "一级标签"))
+            label_secondary = _clean_text(_row_value(row, label_headers, "二级标签"))
+            label_platform_counts[platform] += 1
+            label_sentiment_counts[sentiment or "（未填写）"] += 1
+            if sentiment is None:
+                quality_counts["标签明细缺失情感标签"] += 1
+            if label_primary is None:
                 quality_counts["标签明细缺失一级标签"] += 1
             else:
-                primary_counts[primary] += 1
+                primary_counts[label_primary] += 1
                 if sentiment == "负面":
-                    negative_primary_counts[primary] += 1
-            if secondary is None:
+                    negative_primary_counts[label_primary] += 1
+            if label_secondary is None:
                 quality_counts["标签明细缺失二级标签"] += 1
             else:
-                secondary_counts[secondary] += 1
+                secondary_counts[label_secondary] += 1
                 if sentiment == "负面":
-                    negative_secondary_counts[secondary] += 1
-            if primary is not None and secondary is not None:
-                label_pair_counts[(primary, secondary)] += 1
+                    negative_secondary_counts[label_secondary] += 1
+            if label_primary is not None and label_secondary is not None:
+                label_pair_counts[(label_primary, label_secondary)] += 1
+
+        _validate_label_reconciliation(
+            expected_rows=sum(expected_label_pair_counts.values()),
+            actual_rows=label_rows,
+            expected_platforms=expected_label_platform_counts,
+            actual_platforms=label_platform_counts,
+            expected_sentiments=expected_label_sentiment_counts,
+            actual_sentiments=label_sentiment_counts,
+            expected_primary=expected_primary_counts,
+            actual_primary=primary_counts,
+            expected_secondary=expected_secondary_counts,
+            actual_secondary=secondary_counts,
+            expected_pairs=expected_label_pair_counts,
+            actual_pairs=label_pair_counts,
+        )
 
         comment_rows = 0
         comment_sheet = workbook[_COMMENT_SHEET]
         comment_headers = _header_index(comment_sheet, _REQUIRED_COMMENT_HEADERS)
-        for row in comment_sheet.iter_rows(min_row=2, values_only=True):
+        for sheet_row_number, row in enumerate(
+            comment_sheet.iter_rows(min_row=2, values_only=True),
+            start=2,
+        ):
             if _row_is_empty(row):
                 continue
+            if report_date_range is not None:
+                if "评论时间" not in comment_headers:
+                    raise ValueError("指定报告周期且存在评论时，Sheet 评论必须包含 评论时间")
+                raw_commented_at = _row_value(row, comment_headers, "评论时间")
+                commented_date, invalid_date = _parse_date(raw_commented_at)
+                commented_date = _required_period_date(
+                    raw_commented_at,
+                    parsed=commented_date,
+                    invalid=invalid_date,
+                    sheet_name=_COMMENT_SHEET,
+                    header_name="评论时间",
+                    sheet_row_number=sheet_row_number,
+                )
+                if not _date_in_range(commented_date, report_date_range):
+                    comment_rows_excluded_by_period += 1
+                    continue
             comment_rows += 1
             platform = _clean_text(_row_value(row, comment_headers, "平台"))
             if platform is None:
@@ -259,6 +407,17 @@ def _collect_stats(path: Path) -> _ReportStats:
             comment_platform_counts[platform] += 1
 
         dates = sorted(daily_content)
+        if content_rows_excluded_by_period:
+            quality_counts["报告周期外内容"] = content_rows_excluded_by_period
+        if label_rows_excluded_by_period:
+            quality_counts["报告周期外标签记录"] = label_rows_excluded_by_period
+        if comment_rows_excluded_by_period:
+            quality_counts["报告周期外评论"] = comment_rows_excluded_by_period
+        if report_date_range is None:
+            period_start_date = dates[0] if dates else None
+            period_end_date = dates[-1] if dates else None
+        else:
+            period_start_date, period_end_date = report_date_range
         return _ReportStats(
             content_rows=content_rows,
             label_rows=label_rows,
@@ -282,9 +441,87 @@ def _collect_stats(path: Path) -> _ReportStats:
             quality_counts=quality_counts,
             start_date=dates[0] if dates else None,
             end_date=dates[-1] if dates else None,
+            period_start_date=period_start_date,
+            period_end_date=period_end_date,
+            content_rows_excluded_by_period=content_rows_excluded_by_period,
+            label_rows_excluded_by_period=label_rows_excluded_by_period,
+            comment_rows_excluded_by_period=comment_rows_excluded_by_period,
         )
     finally:
         workbook.close()
+
+
+def _validate_report_date_range(
+    value: tuple[date, date] | None,
+) -> tuple[date, date] | None:
+    if value is None:
+        return None
+    if not isinstance(value, tuple) or len(value) != 2:
+        raise TypeError("report_date_range 必须是 (开始日期, 结束日期) 元组或 None")
+    start_date, end_date = value
+    if any(not isinstance(item, date) or isinstance(item, datetime) for item in value):
+        raise TypeError("report_date_range 的开始日期和结束日期必须是 datetime.date")
+    if start_date > end_date:
+        raise ValueError("report_date_range 的开始日期不能晚于结束日期")
+    return start_date, end_date
+
+
+def _required_period_date(
+    raw_value: Any,
+    *,
+    parsed: date | None,
+    invalid: bool,
+    sheet_name: str,
+    header_name: str,
+    sheet_row_number: int,
+) -> date:
+    if raw_value is None or _clean_text(raw_value) is None:
+        raise ValueError(
+            f"Sheet {sheet_name} 第 {sheet_row_number} 行缺失 {header_name}，无法按报告周期筛选"
+        )
+    if invalid or parsed is None:
+        raise ValueError(
+            f"Sheet {sheet_name} 第 {sheet_row_number} 行的 {header_name} 无法解析，"
+            "无法按报告周期筛选"
+        )
+    return parsed
+
+
+def _date_in_range(value: date, report_date_range: tuple[date, date]) -> bool:
+    start_date, end_date = report_date_range
+    return start_date <= value <= end_date
+
+
+def _validate_label_reconciliation(
+    *,
+    expected_rows: int,
+    actual_rows: int,
+    expected_platforms: Counter[str],
+    actual_platforms: Counter[str],
+    expected_sentiments: Counter[str],
+    actual_sentiments: Counter[str],
+    expected_primary: Counter[str],
+    actual_primary: Counter[str],
+    expected_secondary: Counter[str],
+    actual_secondary: Counter[str],
+    expected_pairs: Counter[tuple[str, str]],
+    actual_pairs: Counter[tuple[str, str]],
+) -> None:
+    mismatches: list[str] = []
+    if expected_rows != actual_rows:
+        mismatches.append("标签记录数")
+    if expected_platforms != actual_platforms:
+        mismatches.append("平台")
+    if expected_sentiments != actual_sentiments:
+        mismatches.append("情感标签")
+    if expected_primary != actual_primary:
+        mismatches.append("一级标签")
+    if expected_secondary != actual_secondary:
+        mismatches.append("二级标签")
+    if expected_pairs != actual_pairs:
+        mismatches.append("一级/二级标签对")
+    if mismatches:
+        raise ValueError(f"内容与标签明细统计不一致: {'、'.join(mismatches)}")
 
 
 def _header_index(sheet: Any, required: Sequence[str]) -> dict[str, int]:
@@ -361,9 +598,14 @@ def _build_template_replacements(
     source_path: Path,
     generated_at: datetime,
 ) -> dict[str, str]:
-    start = stats.start_date.isoformat() if stats.start_date is not None else "无有效日期"
-    end = stats.end_date.isoformat() if stats.end_date is not None else "无有效日期"
+    start = (
+        stats.period_start_date.isoformat() if stats.period_start_date is not None else "无有效日期"
+    )
+    end = stats.period_end_date.isoformat() if stats.period_end_date is not None else "无有效日期"
     period = f"{start} ~ {end}"
+    data_start = stats.start_date.isoformat() if stats.start_date is not None else "无有效日期"
+    data_end = stats.end_date.isoformat() if stats.end_date is not None else "无有效日期"
+    data_period = f"{data_start} ~ {data_end}"
     dates = sorted(stats.daily_content)
 
     overview = _markdown_table(
@@ -375,7 +617,7 @@ def _build_template_replacements(
             ("平台数", len(stats.platform_counts)),
             ("一级标签数", len(stats.primary_counts)),
             ("二级标签数", len(stats.secondary_counts)),
-            ("数据日期范围", period),
+            ("实际数据日期范围", data_period),
         ),
     )
 
@@ -511,7 +753,7 @@ def _build_template_replacements(
         ),
         "SENTIMENT_DAILY_TABLE": _daily_long_table("情感标签", dates, stats.daily_sentiment),
         "NEGATIVE_PLATFORM_TABLE": _markdown_table(
-            ("平台", "负面内容量", "负面内容占比"), negative_platform_rows
+            ("平台", "负面内容量", "占全部负面内容"), negative_platform_rows
         ),
         "NEGATIVE_PLATFORM_BAR_CHART": _mermaid_bar(
             "负面内容平台分布",
@@ -706,6 +948,10 @@ def _quality_rows(counter: Counter[str]) -> list[tuple[str, int]]:
         "内容缺失命中关键词": "缺失命中关键词",
         "内容缺失发布时间": "缺失发布时间",
         "内容发布时间无法解析": "发布时间无法识别",
+        "报告周期外内容": "报告周期外内容（未纳入统计）",
+        "报告周期外标签记录": "报告周期外标签记录（未纳入统计）",
+        "报告周期外评论": "报告周期外评论（未纳入统计）",
+        "标签明细缺失情感标签": "标签记录缺失情感标签",
         "标签明细缺失一级标签": "标签记录缺失一级议题",
         "标签明细缺失二级标签": "标签记录缺失二级议题",
         "评论缺失平台": "评论缺失平台",

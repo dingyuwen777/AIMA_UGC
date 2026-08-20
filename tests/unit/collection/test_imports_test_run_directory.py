@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -41,10 +42,12 @@ def test_run_all_uses_one_isolated_run_directory_for_every_stage(
         excel_path: Path | None = None,
         run_dir: Path | None = None,
         output_dir: Path | None = None,
+        report_date_range: tuple[date, date] | None = None,
     ) -> imports_test.ReportGenerationSummary:
         assert excel_path is not None
         assert run_dir is None
         assert output_dir is not None
+        assert report_date_range == imports_test.REPORT_DATE_RANGE
         report_dir = Path(output_dir)
         calls.append(("generate_report", report_dir.parent))
         return imports_test.ReportGenerationSummary(
@@ -90,6 +93,7 @@ def test_run_all_uses_one_isolated_run_directory_for_every_stage(
     assert payload["report_input_excel"] == str(run_dir / "labeled_data.xlsx")
     assert payload["report_markdown"] == str(run_dir / "reports" / "report.md")
     assert payload["report_word"] == str(run_dir / "reports" / "report.docx")
+    assert payload["report_date_range"] == ["2026-08-13", "2026-08-19"]
     assert not (tmp_path / "run_summary.json").exists()
 
 

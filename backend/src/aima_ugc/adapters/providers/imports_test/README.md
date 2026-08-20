@@ -38,11 +38,18 @@ INPUT_XLSX_FILES = (
 OUTPUT_ROOT = Path(__file__).with_name("output")
 KEYWORD_PACK_FILE = Path(__file__).with_name("keyword_pack.txt")
 
-SHEET_NAME = "文章"
+# None 表示自动扫描所有 Sheet；也可填写精确 Sheet 名强制指定。
+SHEET_NAME = None
 PROFILE = "aima-monitoring-excel.v1"
 WRITE_TO_DATABASE = False
 
-ENABLE_REAL_LLM = False
+# 仅限制报告统计；范围包含开始日和结束日。None 表示报告使用全部日期。
+REPORT_DATE_RANGE = (
+    date(2026, 8, 13),
+    date(2026, 8, 19),
+)
+
+ENABLE_REAL_LLM = True
 
 # 一条内容 = 一次独立 LLM 请求；最多同时 250 个请求。
 LLM_CONCURRENCY = 250
@@ -64,6 +71,10 @@ Excel 输入只有 `INPUT_XLSX_FILES` 一个配置入口。它接受一个 `Path
 
 `LLM_CONCURRENCY = 250` 表示最大在飞 HTTP 请求数，不是每个请求包含 250 条数据。
 
+`ENABLE_REAL_LLM = True` 表示人工执行到 AI 打标阶段时默认发送真实付费请求；仅导入模块或
+运行普通自动测试不会触发模型。若本次只想处理到去重/导出，请不要调用打标阶段，或先将该
+开关改为 `False`。模型费用仍按实际请求、重试和服务商计费规则产生。
+
 多 Excel 固定采用：
 
 ```text
@@ -73,14 +84,18 @@ Excel 输入只有 `INPUT_XLSX_FILES` 一个配置入口。它接受一个 `Path
 → 全局稳定身份去重
 → 一次 AI 打标阶段
 → 一个 labeled_data.xlsx
-→ 一份 Markdown / Word 报告
+→ 按 REPORT_DATE_RANGE 统计的一份 Markdown / Word 报告
 ```
+
+`REPORT_DATE_RANGE` 只在最终报告生成时生效。Canonical、关键词过滤、去重、数据库写入、
+AI 打标和 `labeled_data.xlsx` 始终处理全部输入数据；报告不会因此减少模型请求或修改最终
+Excel。报告周期使用北京时间自然日闭区间。
 
 同一稳定身份由配置中靠前文件的记录代表。不同目录下也不允许使用相同文件名，因为
 Canonical `source_value` 使用文件名保存来源；文件名重复会在合并前直接失败，避免来源混淆。
 任一文件出现坏行时，整个合并 Canonical JSONL 都不会发布。
 
-## 2. 配置最终 Excel 列
+## 2. 配置最终 Excel 三个 Sheet 的列
 
 默认“内容”Sheet 只显示：
 
@@ -99,7 +114,43 @@ EXCEL_CONTENT_COLUMNS = (
 )
 ```
 
-元组顺序就是 Excel 列顺序。可以删除、增加或调整已有共享列；空配置、重复列或未知列会直接报错。
+默认“标签明细”Sheet 显示：
+
+```python
+EXCEL_LABEL_DETAIL_COLUMNS = (
+    "平台",
+    "标题",
+    "正文",
+    "作者",
+    "发布时间",
+    "内容链接",
+    "命中关键词",
+    "情感标签",
+    "一级标签",
+    "二级标签",
+)
+```
+
+默认“评论”Sheet 显示：
+
+```python
+EXCEL_COMMENT_COLUMNS = (
+    "平台",
+    "标题",
+    "正文",
+    "评论内容",
+    "作者",
+    "评论时间",
+    "评论点赞",
+    "回复数",
+    "评论层级",
+    "评论ID",
+    "根评论ID",
+    "父评论ID",
+)
+```
+
+三个元组分别控制对应 Sheet，元组顺序就是 Excel 列顺序。可以删除、增加或调整该 Sheet 的已有共享列；空配置、重复列或未知列会直接报错。
 
 当前可选内容列：
 
@@ -139,7 +190,47 @@ Raw/来源定位
 评论覆盖
 ```
 
-报告当前依赖最终 Excel 的以下内容列：`平台`、`发布时间`、`命中关键词`、`情感标签`、`一级标签`、`二级标签`。使用默认列可以直接生成报告；如果手工删除这些列，报告会明确拒绝，而不会猜测或伪造统计字段。
+“标签明细”可以选择全部内容共享列；其中“一级标签”“二级标签”按当前标签对逐行展开，其他列来自同一个归一化内容记录。
+
+“评论”可以选择全部评论共享列，也可以选择对应归一化内容的共享列。重名列沿用评论语义：`作者`、`来源Provider`、`Raw/来源定位` 分别表示评论作者和评论来源；`平台`、`内容ID` 是内容与评论共享的稳定关联。
+
+标签明细的完整默认列为：
+
+```text
+内容ID
+平台
+标题
+情感标签
+一级标签
+二级标签
+内容链接
+```
+
+评论的完整默认列为：
+
+```text
+平台
+内容ID
+评论层级
+评论ID
+根评论ID
+父评论ID
+作者
+评论内容
+评论时间
+评论点赞
+回复数
+来源Provider
+Raw/来源定位
+```
+
+报告当前依赖：
+
+- “内容”：`平台`、`发布时间`、`命中关键词`、`情感标签`、`一级标签`、`二级标签`；
+- “标签明细”：`平台`、`情感标签`、`一级标签`、`二级标签`；
+- “评论”：`平台`。
+
+使用默认列可以直接生成报告；如果删除这些依赖列，报告会明确拒绝，而不会猜测或伪造统计字段。
 
 ## 3. 配置清洗词包
 
@@ -536,9 +627,11 @@ llm_cost_currency
 ```text
 report_markdown
 report_word
+report_date_range
 ```
 
-`stages` 最后一项是 `generate_report`，包含本次报告读取的内容、标签、评论行数、日期范围和 Word 图表数量。
+`stages` 最后一项是 `generate_report`，包含周期内的内容、标签、评论行数、报告日期范围、
+周期外排除行数和 Word 图表数量。
 
 费用公式：
 
@@ -576,7 +669,7 @@ ingest_database(run_dir=run_dir)
 
 label_sentiment(run_dir=run_dir)
 export_labeled_excel(run_dir=run_dir)
-generate_report(run_dir=run_dir)
+generate_report(run_dir=run_dir, report_date_range=REPORT_DATE_RANGE)
 
 # 可选：价格目录变化后生成派生复算报告；不覆盖原请求审计。
 recalculate_cost(run_dir=run_dir)
@@ -614,7 +707,9 @@ attempt 没有缓存拆分 token，无法准确补算。
 
 “内容”Sheet 保持一条内容一行；多个一级/二级标签在各自单元格内换行，并按标签对顺序对应。
 
-“标签明细”Sheet 一个标签对一行，适合直接使用 Excel 普通筛选。例如同一内容同时属于两个一级标签，在两个标签各自筛选时都会出现。
+“标签明细”Sheet 直接从同一个归一化 `UnifiedContentRecordV1` 的内容事实和 Analysis 标签对派生，一个标签对一行，适合直接使用 Excel 普通筛选。例如同一内容同时属于两个一级标签，在两个标签各自筛选时都会出现。
+
+“内容ID”是归一化记录的 `external_content_id` 的展示列，不是导出时临时创建的数据库内部 ID。隐藏该列只改变 Excel 展示，不影响内容、标签明细和评论的关联。
 
 统计帖子总数以“内容”Sheet 为准；做标签筛选/频次/组合统计使用“标签明细”Sheet。
 
@@ -627,6 +722,7 @@ attempt 没有缓存拆分 token，无法准确补算。
 - 表头背景 `#FFC000`；
 - Calibri 11pt，表头粗体；
 - 表头行高 16.5，正文默认行高 14.5；
+- “内容”和“标签明细”显示“二级标签”时，按该单元格的换行和显示宽度设置 14.5–409 的确定性行高并自动换行；隐藏该列时不设置数据行高度；
 - 显示网格线；
 - 不合并单元格；
 - HTTP/HTTPS 链接可点击；
@@ -636,10 +732,17 @@ attempt 没有缓存拆分 token，无法准确补算。
 
 ## 13. 源 Excel 要求
 
-默认 Sheet：
+工作表选择：
 
 ```text
-文章
+SHEET_NAME = None
+→ 扫描所有 Sheet
+→ “文章”符合表头要求时优先选择
+→ 否则选择唯一符合要求的 Sheet
+→ 多个非默认 Sheet 同时符合时拒绝猜测，需要显式配置 SHEET_NAME
+
+SHEET_NAME = "具体 Sheet 名"
+→ 只校验和读取指定 Sheet，不自动切换
 ```
 
 Profile：
@@ -648,23 +751,22 @@ Profile：
 aima-monitoring-excel.v1
 ```
 
-必须存在以下 13 个表头，允许额外列：
+只强制校验生成平台、标题、正文、作者、发布时间和内容链接所需的 6 个源表头：
 
 ```text
-序号
-监测项名称
-文章编号
+媒体名称（中文）
 标题
 内文
-媒体名称（中文）
-版面
-出版日期
-媒体类型
 作者
-全文情感
+出版日期
 原文链接
-粉丝数
 ```
+
+它们分别映射为“平台 / 标题 / 正文 / 作者 / 发布时间 / 内容链接”。这里校验的是第一行列名是否存在，不新增“每个单元格都必须非空”的规则。
+
+“文章编号”和“粉丝数”存在时仍会按现有 Mapper 使用，但不是 Sheet 资格的必需列。序号、监测项名称、版面、媒体类型和全文情感等无关列可缺失，额外列也允许存在；无关列即使重名也不阻断导入，只有 6 个必需列自身重名才会因语义歧义报错。导入器不读取或校验字体、字号、颜色、边框和其他视觉样式。
+
+部分来源工具会把 XLSX 的 Worksheet dimension 错写为 `A1:A1`。Reader 在流式读取前会重置这个不可信元数据，再以实际首行表头判断 Sheet，不会因错误范围只看到 A 列。
 
 无法映射的平台、非法日期/粉丝数、缺稳定身份等都会 fail closed，不发布半份 canonical 业务 JSONL。
 
@@ -683,6 +785,8 @@ aima-monitoring-excel.v1
 - **费用不可计算**：查看 `analysis/llm_requests.jsonl` 的 `cost.unavailable_reason`；通常是价格目录没有对应模型、usage 缺字段或网络未返回响应。
 - **费用复算**：更新官方单价后调用 `recalculate_cost(run_dir=...)`；它生成派生报告，不覆盖历史单价快照。
 - **多 Excel 文件名重复**：重命名文件使 basename 唯一；系统不会用绝对路径污染 Canonical 来源字段来绕过冲突。
+- **未找到符合要求的 Sheet**：根据错误中列出的 Sheet 和缺失列，确认首行包含 6 个必需源表头；样式不会导致该错误。
+- **自动发现到多个 Sheet**：把 `SHEET_NAME` 改为要使用的精确 Sheet 名，避免系统猜测业务页。
 - **run_id 已存在**：不要覆盖旧 run，使用新 run ID。
 - **词包为空**：检查 `KEYWORD_PACK_FILE` 是否正确、文件是否只剩注释和空行。
 - **数据库连接失败**：只影响显式数据库阶段；已经生成的 Canonical/filtered/deduplicated 文件保留。启动既定 PostgreSQL 18 开发实例并修复 `AIMA_DB_*` / Secret 配置后重试，不要让脚本自动管理容器。
@@ -785,7 +889,11 @@ Import Batch 和 import-parent Request/Attempt。某个文件的记录如果全�
 最终 Excel 成功后，`run_all()` 自动调用：
 
 ```python
-generate_report(run_dir=run_dir)
+generate_report(
+    excel_path=run_dir / "labeled_data.xlsx",
+    output_dir=run_dir / "reports",
+    report_date_range=REPORT_DATE_RANGE,
+)
 ```
 
 生成：
@@ -802,6 +910,7 @@ reports/report.docx
 不需要重跑 convert/filter/deduplicate/LLM：
 
 ```python
+from datetime import date
 from pathlib import Path
 
 from aima_ugc.adapters.providers.imports_test.test import generate_report
@@ -809,6 +918,7 @@ from aima_ugc.adapters.providers.imports_test.test import generate_report
 result = generate_report(
     excel_path=Path(r"E:\path\to\labeled_data.xlsx"),
     output_dir=Path(r"E:\path\to\reports"),
+    report_date_range=(date(2026, 8, 13), date(2026, 8, 19)),
 )
 
 print(result.markdown_path)
@@ -816,6 +926,11 @@ print(result.word_path)
 ```
 
 `output_dir` 可以省略。省略时，显式 Excel 的报告默认写到该 Excel 同目录下的 `reports/`。
+`report_date_range` 是包含首尾日期的闭区间；传 `None` 时保持原有全量报告行为。
+
+如果使用本目录的 `generate_report.py`，直接修改文件顶部的 `INPUT_EXCEL` 和
+`REPORT_DATE_RANGE`。脚本按周期写入 `output/reports/YYYYMMDD-YYYYMMDD/`，避免不同周期
+报告互相覆盖；全量报告写入 `output/reports/all/`。
 
 ### 18.3 报告统计内容
 
@@ -844,6 +959,18 @@ print(result.word_path)
 → “评论” Sheet
 ```
 
+指定 `report_date_range` 后：
+
+```text
+内容 → 按“发布时间”筛选
+标签明细 → 优先按“发布时间”筛选；旧版表格可用两页“内容ID”关联
+评论 → 按“评论时间”筛选
+```
+
+指定周期时，参与筛选的日期缺失或无法解析会明确失败；“内容”和“标签明细”在周期内的
+标签记录数、平台、情感、一级/二级标签和标签对必须完全一致，否则拒绝生成报告。周期外
+排除数量进入报告数据质量表，不会混入任何统计或图表。
+
 完整统计始终保留在 Markdown 表格里。一级/二级标签折线图和 Top 图为了可读性限制展示序列数量，但不会删除表格中的完整数据。
 
 ### 18.4 只维护 Markdown 模板
@@ -868,7 +995,9 @@ report_template.md
 
 ### 18.5 Mermaid 与 Word 图表
 
-Markdown 当前使用 Mermaid `pie` 与 `xychart`，分别承载饼图、柱状图和折线图。Word 转换器解析本模板实际使用的两类 Mermaid，把图表转换为 DOCX 内嵌 PNG，同时用 Word 表格保留完整中文图例和数据。
+Markdown 当前使用 Mermaid `pie` 与 `xychart`，分别承载饼图、柱状图和折线图。Word
+转换器解析本模板实际使用的两类 Mermaid，写入 Office 原生 Chart，并为每张图内嵌对应的
+XLSX 数据；图表数据与 Markdown 使用同一份统计结果。
 
 运行时不依赖 Mermaid 在线服务、Pandoc、LibreOffice、Matplotlib、pandas 或额外 Python 文档库。当前 Word 转换器不是通用 Markdown/Mermaid 排版引擎；模板如果加入未支持的 Mermaid 类型会明确失败，不会静默生成缺图 Word。
 

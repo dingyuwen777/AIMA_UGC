@@ -6,7 +6,7 @@ import json
 import os
 import re
 from dataclasses import asdict, dataclass, is_dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -50,13 +50,24 @@ from aima_ugc.platform.reporting import ReportGenerationSummary, generate_excel_
 os.environ.pop("SSLKEYLOGFILE", None)
 
 # 配置一个 Path 走单文件转换；配置多个 Path 的有序元组合并到同一个 run。
-INPUT_XLSX_FILES: Path | tuple[Path, ...] = Path(r"E:\Desktop\08_18数据\测试数据.xlsx")
+INPUT_XLSX_FILES: Path | tuple[Path, ...] = (
+    Path(r"E:\Desktop\08_18数据\惠科data(0813-0816).xlsx"),
+    Path(r"E:\Desktop\08_18数据\惠科data(0817-0819).xlsx"),
+)
 OUTPUT_ROOT = Path(__file__).with_name("output")
 KEYWORD_PACK_FILE = Path(__file__).with_name("keyword_pack.txt")
 
-SHEET_NAME = "文章"
+# None 表示自动扫描工作簿；如需强制指定某页，改成对应 Sheet 名。
+SHEET_NAME: str | None = None
 PROFILE = "aima-monitoring-excel.v1"
 WRITE_TO_DATABASE = False
+
+# 只限制报告统计，不影响转换、关键词过滤、去重、AI 打标或最终 Excel 全量数据。
+# None 表示报告使用 Excel 内全部日期；日期范围包含开始日和结束日。
+REPORT_DATE_RANGE: tuple[date, date] | None = (
+    date(2026, 8, 13),
+    date(2026, 8, 19),
+)
 
 # 最终 Excel 的“内容”Sheet 展示列；顺序就是导出顺序。
 EXCEL_CONTENT_COLUMNS = (
@@ -72,7 +83,37 @@ EXCEL_CONTENT_COLUMNS = (
     "二级标签",
 )
 
-ENABLE_REAL_LLM = False
+# 最终 Excel 的“标签明细”Sheet 展示列；顺序就是导出顺序。
+EXCEL_LABEL_DETAIL_COLUMNS = (
+    "平台",
+    "标题",
+    "正文",
+    "作者",
+    "发布时间",
+    "内容链接",
+    "命中关键词",
+    "情感标签",
+    "一级标签",
+    "二级标签",
+)
+
+# 最终 Excel 的“评论”Sheet 展示列；顺序就是导出顺序。
+EXCEL_COMMENT_COLUMNS = (
+    "平台",
+    "标题",
+    "正文",
+    "评论内容",
+    "作者",
+    "评论时间",
+    "评论点赞",
+    "回复数",
+    "评论层级",
+    "评论ID",
+    "根评论ID",
+    "父评论ID",
+)
+
+ENABLE_REAL_LLM = True
 # 一条内容一次独立 LLM 请求；同时最多 250 个请求在飞。
 LLM_CONCURRENCY = 250
 MAX_VALIDATION_RETRIES = 2
@@ -212,14 +253,16 @@ def export_raw_excel(*, run_dir: Path | None = None) -> ExcelExportSummary:
         output_path=actual_run_dir / "raw_data.xlsx",
         include_analysis=False,
         content_columns=EXCEL_CONTENT_COLUMNS,
+        label_detail_columns=EXCEL_LABEL_DETAIL_COLUMNS,
+        comment_columns=EXCEL_COMMENT_COLUMNS,
     )
 
 
 def label_sentiment(*, run_dir: Path | None = None) -> OfflineContentLabelingSummary:
-    """显式启用真实 LLM 后，以单条请求和有界并发打标当前 run。"""
+    """使用真实 LLM，以单条请求和有界并发打标当前 run。"""
 
     if not ENABLE_REAL_LLM:
-        raise RuntimeError("真实 LLM 默认关闭；确认费用后将 ENABLE_REAL_LLM 改为 True")
+        raise RuntimeError("真实 LLM 未启用；如需打标请将 ENABLE_REAL_LLM 设为 True")
 
     actual_run_dir = _stage_run_dir(run_dir)
     env = _load_env_file(ENV_FILE)
@@ -308,6 +351,8 @@ def export_labeled_excel(
         output_path=_labeled_output_path(actual_run_dir),
         include_analysis=True,
         content_columns=EXCEL_CONTENT_COLUMNS,
+        label_detail_columns=EXCEL_LABEL_DETAIL_COLUMNS,
+        comment_columns=EXCEL_COMMENT_COLUMNS,
     )
 
 
@@ -316,6 +361,7 @@ def generate_report(
     excel_path: Path | None = None,
     run_dir: Path | None = None,
     output_dir: Path | None = None,
+    report_date_range: tuple[date, date] | None = None,
 ) -> ReportGenerationSummary:
     """从最终统一 Excel 独立生成 Markdown/Word 报告。"""
 
@@ -336,6 +382,7 @@ def generate_report(
     return generate_excel_report(
         input_path=source_path,
         output_dir=target_dir,
+        report_date_range=report_date_range,
     )
 
 
@@ -385,6 +432,7 @@ def run_all(
     report = generate_report(
         excel_path=report_input_path,
         output_dir=run_dir / "reports",
+        report_date_range=REPORT_DATE_RANGE,
     )
     stages.append(_stage_payload("generate_report", report))
 
@@ -400,6 +448,11 @@ def run_all(
         "report_input_excel": str(report_input_path),
         "report_markdown": str(report.markdown_path),
         "report_word": str(report.word_path),
+        "report_date_range": (
+            [day.isoformat() for day in REPORT_DATE_RANGE]
+            if REPORT_DATE_RANGE is not None
+            else None
+        ),
         "stages": stages,
     }
     if len(input_paths) == 1:

@@ -9,6 +9,7 @@
 ## 生产入口
 
 ```python
+from datetime import date
 from pathlib import Path
 
 from aima_ugc.platform.reporting import generate_excel_report
@@ -16,6 +17,7 @@ from aima_ugc.platform.reporting import generate_excel_report
 summary = generate_excel_report(
     input_path=Path("labeled_data.xlsx"),
     output_dir=Path("reports"),
+    report_date_range=(date(2026, 8, 13), date(2026, 8, 19)),
 )
 ```
 
@@ -26,7 +28,10 @@ reports/report.md
 reports/report.docx
 ```
 
-`generate_excel_report()` 默认使用本目录的 `report_template.md`；调用方也可显式传入 `template_path=` 覆盖模板。函数只读输入 Workbook，不调用 LLM、不写 PostgreSQL，也不保存或二次格式化输入 Excel。
+`report_date_range` 是可选的北京时间自然日闭区间，只限制报告统计；传 `None` 时使用 Excel
+全部日期。`generate_excel_report()` 默认使用本目录的 `report_template.md`；调用方也可显式
+传入 `template_path=` 覆盖模板。函数只读输入 Workbook，不调用 LLM、不写 PostgreSQL，
+也不保存或二次格式化输入 Excel。
 
 ## 输入约束
 
@@ -45,6 +50,18 @@ reports/report.docx
 标签明细：平台 / 情感标签 / 一级标签 / 二级标签
 评论：平台
 ```
+
+指定 `report_date_range` 时还要求：
+
+```text
+内容：按“发布时间”筛选
+标签明细：优先按“发布时间”筛选；没有该列时要求内容页和标签明细页同时包含“内容ID”
+评论：存在评论记录时按“评论时间”筛选
+```
+
+周期范围包含开始日和结束日。筛选所需日期缺失或无法解析时直接失败，不会把无法归属周期的
+记录静默计入或排除。周期内“内容”和“标签明细”的记录数、平台、情感、一级/二级标签及
+标签对会交叉核对，不一致时拒绝生成报告。
 
 这些是 Report Renderer 的读取要求，不是新的 `UnifiedDataExcelV1` Contract。统一 Excel 的正式字段和共享 Exporter 仍由 `aima_ugc.platform.export` 与 Blueprint 13 维护。
 
@@ -179,6 +196,7 @@ from aima_ugc.adapters.providers.imports_test.test import generate_report
 result = generate_report(
     excel_path=Path(r"E:\path\to\labeled_data.xlsx"),
     output_dir=Path(r"E:\path\to\reports"),
+    report_date_range=(date(2026, 8, 13), date(2026, 8, 19)),
 )
 ```
 

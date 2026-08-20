@@ -25,10 +25,36 @@ _EXPECTED_IMPORTS_COLUMNS = (
     "一级标签",
     "二级标签",
 )
+_EXPECTED_IMPORTS_LABEL_DETAIL_COLUMNS = (
+    "平台",
+    "标题",
+    "正文",
+    "作者",
+    "发布时间",
+    "内容链接",
+    "命中关键词",
+    "情感标签",
+    "一级标签",
+    "二级标签",
+)
+_EXPECTED_IMPORTS_COMMENT_COLUMNS = (
+    "平台",
+    "标题",
+    "正文",
+    "评论内容",
+    "作者",
+    "评论时间",
+    "评论点赞",
+    "回复数",
+    "评论层级",
+    "评论ID",
+    "根评论ID",
+    "父评论ID",
+)
 
 
-def test_imports_test_real_llm_is_disabled_by_default() -> None:
-    assert imports_test_entry.ENABLE_REAL_LLM is False
+def test_imports_test_real_llm_is_enabled_by_default() -> None:
+    assert imports_test_entry.ENABLE_REAL_LLM is True
 
 
 def test_imports_test_export_raw_excel_uses_configured_review_columns(
@@ -75,6 +101,8 @@ def test_imports_test_export_raw_excel_uses_configured_review_columns(
     )
 
     assert imports_test_entry.EXCEL_CONTENT_COLUMNS == _EXPECTED_IMPORTS_COLUMNS
+    assert imports_test_entry.EXCEL_LABEL_DETAIL_COLUMNS == _EXPECTED_IMPORTS_LABEL_DETAIL_COLUMNS
+    assert imports_test_entry.EXCEL_COMMENT_COLUMNS == _EXPECTED_IMPORTS_COMMENT_COLUMNS
 
     summary = imports_test_entry.export_raw_excel(run_dir=run_dir)
 
@@ -85,7 +113,13 @@ def test_imports_test_export_raw_excel_uses_configured_review_columns(
     try:
         assert workbook.sheetnames == ["内容", "标签明细", "评论"]
         content_sheet = workbook["内容"]
+        label_sheet = workbook["标签明细"]
+        comment_sheet = workbook["评论"]
         assert tuple(cell.value for cell in content_sheet[1]) == _EXPECTED_IMPORTS_COLUMNS
+        assert (
+            tuple(cell.value for cell in label_sheet[1]) == _EXPECTED_IMPORTS_LABEL_DETAIL_COLUMNS
+        )
+        assert tuple(cell.value for cell in comment_sheet[1]) == _EXPECTED_IMPORTS_COMMENT_COLUMNS
         assert tuple(cell.value for cell in content_sheet[2]) == (
             "imports",
             "离线内容",
@@ -104,7 +138,7 @@ def test_imports_test_export_raw_excel_uses_configured_review_columns(
         workbook.close()
 
 
-def test_imports_test_label_sentiment_requires_explicit_real_llm_opt_in(
+def test_imports_test_label_sentiment_refuses_to_run_when_real_llm_is_disabled(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

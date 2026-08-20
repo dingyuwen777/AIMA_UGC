@@ -37,7 +37,7 @@ TikHub、小红书、抖音、微博、B站、快手、文件导入或未来其�
 
 **数据契约完整字段不等于每次人工查看都必须显示所有列。**
 
-共享 Exporter 允许调用方通过一个有序列名序列，从**已经存在的共享内容列**中选择最终显示哪些列以及列顺序：
+共享 Exporter 允许调用方分别为三个 Sheet 提供有序列名序列，从各 Sheet **已经存在的共享列**中选择最终显示哪些列以及列顺序：
 
 ```python
 content_columns = (
@@ -46,16 +46,28 @@ content_columns = (
     "正文",
     "情感标签",
 )
+
+label_detail_columns = (
+    "一级标签",
+    "二级标签",
+    "标题",
+)
+
+comment_columns = (
+    "平台",
+    "评论内容",
+    "评论时间",
+)
 ```
 
 规则固定为：
 
-- 不传 `content_columns`：输出当前完整内容列，保持既有默认行为；
+- `content_columns`、`label_detail_columns`、`comment_columns` 分别控制“内容”“标签明细”“评论”Sheet；
+- 任一参数不传：该 Sheet 输出当前完整默认列，保持既有调用方行为；
 - 传入配置：只显示配置中的已知列，顺序与配置完全一致；
 - 空配置、重复列、未知列直接拒绝；
 - 列投影只影响最终视图，不删除 `UnifiedDataExcelV1` 中的数据；
-- 调用方不能通过该配置新增自定义列名、公式列、私有字段或第二套字段语义；
-- 评论列当前保持共享完整定义，后续若确有选择需求，再在同一共享 Exporter 中用相同原则扩展。
+- 调用方不能通过这些配置新增自定义列名、公式列、私有字段或第二套字段语义。
 
 因此“选择显示列”是 Viewer/Exporter 层能力，不反向改变 Canonical、Analysis 或数据库 Schema。
 
@@ -107,6 +119,18 @@ Raw/来源定位
 评论覆盖
 ```
 
+当前完整标签明细列为：
+
+```text
+内容ID
+平台
+标题
+情感标签
+一级标签
+二级标签
+内容链接
+```
+
 当前评论列为：
 
 ```text
@@ -125,7 +149,27 @@ Raw/来源定位
 Raw/来源定位
 ```
 
+“标签明细”允许选择全部内容共享列；其中“一级标签”“二级标签”替换为当前展开标签对，其他列来自同一个归一化内容记录。“评论”允许选择上述评论列，也允许选择对应归一化内容的共享列；重名列保持既有评论语义，`作者`、`来源Provider`、`Raw/来源定位` 分别表示评论作者和评论来源，`平台`、`内容ID` 是两者共享的稳定关联。
+
 外部 ID 一律按文本写入；一级/二级评论关系必须保留稳定 comment/root/parent ID，不能依赖 Excel 行位置猜关系。
+Excel 的“内容ID”来自归一化记录的 `external_content_id`，不是导出器临时生成的内部 UUID；隐藏该列只改变展示，不改变内容、标签和评论的归一化关联。
+
+### 3.1 源 Excel 表头和 Sheet 发现边界
+
+`aima-monitoring-excel.v1` 只把下列源表头作为 Sheet 必需列：
+
+```text
+媒体名称（中文）  -> 平台
+标题              -> 标题
+内文              -> 正文
+作者              -> 作者
+出版日期          -> 发布时间
+原文链接          -> 内容链接
+```
+
+表头校验只判断第一行的精确列名是否存在；不要求序号、监测项名称、文章编号、版面、媒体类型、全文情感或粉丝数等其他列，也不将额外列视为错误。无关列重名也不阻断导入；只有上述 6 个必需列自身重名时，才会因映射语义歧义拒绝。“文章编号”和“粉丝数”存在时 Mapper 仍可使用，但不影响 Sheet 资格。列名存在不等于强制该列每个单元格非空；每行平台和稳定内容身份等仍按 Mapper 现有规则 fail closed。
+
+`sheet_name=None` 时 Reader 扫描全部 Sheet：符合要求的“文章”优先，否则选择唯一符合的 Sheet；多个非默认候选时拒绝猜测并要求显式指定。传入具体 Sheet 名时只读取该页，不静默切换。Reader 会在 `read_only=True` 流式读取前重置来源文件不可信的 Worksheet dimension，避免实际多列文件因元数据误写为 `A1:A1` 而只读取 A 列。字体、字号、颜色、边框等视觉样式不进入 Reader/Mapper 校验边界。
 
 ## 4. AI 标签列
 
@@ -146,9 +190,9 @@ Taxonomy版本
 
 - 情感标签仍为单值；一级/二级标签由 Analysis 的一个或多个合法标签对投影；
 - `内容` Sheet 保持一条内容一行，一级和二级单元格按同一标签对顺序用换行符逐行展示，两个单元格行与行对应；
-- `标签明细` Sheet 一个标签对一行，固定保存内容ID、平台、标题、情感、一级、二级、内容链接，用于 Excel 原生下拉筛选和标签统计；同一内容因此可以在标签明细中出现多行，但不会在内容 Sheet 重复；
+- `标签明细` Sheet 直接从同一个归一化 `UnifiedContentRecordV1` 的内容事实和 Analysis 标签对派生，一个标签对一行；完整默认列为内容ID、平台、标题、情感、一级、二级、内容链接，同一内容因此可以在标签明细中出现多行，但不会在内容 Sheet 重复；
 - 没有合法 Analysis 时内容标签列保持为空，标签明细只保留表头，不用源 Excel 的“全文情感”或其他上游标签填充；
-- 是否显示内容 Sheet 的 Analysis 列由 `content_columns` 决定，但不改变 Analysis 数据或标签明细关系。
+- 是否显示某列分别由三个 Sheet 的列配置决定，但不改变 Analysis 数据或内容、标签、评论的关联。
 
 ## 5. raw 与 labeled 使用同一展示配置
 
@@ -159,6 +203,8 @@ Taxonomy版本
 ```text
 三个 Sheet 定义
 content_columns
+label_detail_columns
+comment_columns
 列顺序
 公共样式
 数据安全规则
@@ -236,15 +282,27 @@ imports_test ────┼→ platform/export/excel.py
 共享入口：
 
 ```python
-export_unified_data_excel(..., include_analysis=..., content_columns=...)
-export_unified_content_jsonl_to_excel(..., include_analysis=..., content_columns=...)
+export_unified_data_excel(
+    ...,
+    include_analysis=...,
+    content_columns=...,
+    label_detail_columns=...,
+    comment_columns=...,
+)
+export_unified_content_jsonl_to_excel(
+    ...,
+    include_analysis=...,
+    content_columns=...,
+    label_detail_columns=...,
+    comment_columns=...,
+)
 ```
 
-`content_columns` 是可选展示参数；`None` 表示完整默认内容列。
+三个列参数都是可选展示参数；`None` 表示对应 Sheet 的完整默认列。
 
 调用方可以做的只有：
 
-- 选择共享 Exporter 已知的内容列；
+- 选择共享 Exporter 为对应 Sheet 定义的已知列；
 - 调整这些已知列的顺序；
 - 决定是否填充 Analysis。
 
@@ -278,12 +336,15 @@ export_unified_content_jsonl_to_excel(..., include_analysis=..., content_columns
 正文字体                    Calibri 11pt
 表头行高                    16.5
 正文默认行高                14.5
+二级标签自适应行高          14.5 到 409
 页面方向                    portrait
 左右页边距                  0.7
 上下页边距                  0.75
 页眉/页脚边距               0.3
 HTTP(S) 链接                可点击 Hyperlink
 ```
+
+当“内容”或“标签明细”Sheet 显示“二级标签”列时，导出器按该单元格的显式换行和中文/东亚字符显示宽度估算实际行数，以每行 14.5 磅设置确定性行高，并限制在 Excel 的 409 磅上限内；该单元格启用自动换行。隐藏“二级标签”时不设置数据行高度，“评论”Sheet 不参与该规则。该计算在流式写出当前行时完成，不扫描全表，也不二次重写 Workbook。
 
 列宽使用按字段语义固定的有界宽度，例如：
 
@@ -345,7 +406,7 @@ Workbook(write_only=True)
 - URL 只在合法 HTTP/HTTPS 时建立链接；
 - 不把 Secret、Token、Cookie 或本地敏感配置写入 Workbook；
 - 不合法/缺失 Analysis 不伪造标签；
-- `content_columns` 不允许越过共享列集合读取任意对象属性；
+- 三个列配置都不允许越过对应 Sheet 的共享列集合读取任意对象属性；
 - 输出完成后重新打开并核对 Sheet、实际表头、行数和可用的关键 ID；
 - 大批量导出进入正式系统后仍遵守持久化 Job、Artifact 生命周期、权限和保留规则。
 
@@ -367,7 +428,7 @@ Provider / File Import
 
 因此：
 
-- 修改 `content_columns` 不修改 Canonical；
+- 修改任一 Sheet 的列配置不修改 Canonical；
 - 隐藏某个 Excel 列不代表系统删除该字段；
 - Excel 列名不能反向成为数据库 Schema；
 - LLM 不能直接依赖 Excel 私有列绕过 Analysis 输入边界；
@@ -380,7 +441,7 @@ Provider / File Import
 
 ### 只想改变人工查看的列
 
-优先修改调用方的 `content_columns` 配置：
+优先修改调用方对应的 `content_columns`、`label_detail_columns` 或 `comment_columns` 配置：
 
 ```text
 选择已有列
@@ -407,8 +468,8 @@ Provider / File Import
 - 一个 `UnifiedDataExcelV1` Provider-neutral 数据契约；
 - 一个共享 Excel Exporter；
 - 默认完整视图向后兼容；
-- 允许对已知内容列做受控有序投影；
-- raw/labeled 同内容展示配置，标签明细 Sheet 结构也一致；
+- 允许对三个 Sheet 的已知列分别做受控有序投影；
+- raw/labeled 使用相同的三组展示配置；
 - 业务中间处理不依赖 Excel 回读；
 - 数据明细 Excel 与 Report Renderer 相互独立。
 
@@ -452,6 +513,15 @@ Sheet: 内容 / 标签明细 / 评论
 平台
 ```
 
+调用方可通过 `report_date_range=(开始日期, 结束日期)` 显式指定北京时间自然日闭区间。
+指定周期时增加以下条件读取要求：
+
+```text
+内容：发布时间
+标签明细：发布时间；没有该列时，内容与标签明细必须同时包含内容ID
+存在评论记录时：评论时间
+```
+
 这是**报告读取要求**，不是新的 Excel Contract。通用 Excel Exporter 的完整字段定义仍由本文第 3 节维护。
 
 ### 13.2 报告数据源与统一 Report Dataset
@@ -486,6 +556,12 @@ Report Dataset
 5. 两种 Source 只负责把数据适配为同一 Report Dataset；平台、情感、标签、关键词、趋势等统计规则与 Markdown/Word Renderer 只有一套。
 6. 数据库版报告在正式启用前必须先满足 Blueprint 15 的 Analysis 持久化/current Analysis 和对应 Query Read Model；数据库缺少 AI Analysis 时不得静默回退 Excel 或伪造标签。
 7. 调用方需要特定来源时必须显式选择 Source/Scope；Excel 路径、Import Batch、日期窗口、平台等 Scope 必须可观察、可复现。
+8. 日期窗口只属于 Report Scope；Excel Import、关键词过滤、去重、Analysis 和统一 Excel
+   继续保留全量数据。离线报告按内容发布时间、标签对应内容发布时间和评论时间筛选，范围
+   包含首尾自然日。
+9. 指定日期窗口后，筛选所需日期缺失或无法解析必须 fail closed；周期内内容与标签明细的
+   标签记录数、平台、情感、一级/二级标签和标签对必须交叉一致，不能用部分 Sheet 的全量
+   统计混入周期报告。
 
 ### 13.3 统计口径与默认管理层视图
 
@@ -580,6 +656,9 @@ Report Renderer 必须：
 - 使用只读方式打开输入 Excel；
 - 不对输入 Workbook 调用保存、二次格式化或“修复”；
 - 不调用 LLM，不写数据库，不产生新的 Canonical/Analysis 事实；
+- 日期窗口只筛选内存中的报告统计，不改写输入 Excel 或上游全量产物；
+- 周期外内容、标签和评论数量必须进入报告数据质量说明；
+- 内容与标签明细的周期内统计不一致时明确失败；
 - Markdown 使用临时文件 + `os.replace` 原子发布；
 - DOCX 生成后重新打开 ZIP/XML，校验最低包结构、Office Chart、Relationship 数量，并验证每张图内嵌 XLSX 数据包可打开；
 - 报告失败时明确失败，不能把完整 `run_all()` 宣称成功；

@@ -63,6 +63,7 @@ def test_default_report_is_ready_for_management_presentation(tmp_path: Path) -> 
     assert "## 2. 舆情风险关注" in markdown
     assert "平台 × 情感" in markdown
     assert "负面内容" in markdown
+    assert "| 平台 | 负面内容量 | 占全部负面内容 |" in markdown
     assert "声量峰值" in markdown
     assert "客服与服务态度" in markdown
 

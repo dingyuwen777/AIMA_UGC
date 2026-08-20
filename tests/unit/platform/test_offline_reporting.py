@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import zipfile
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from xml.etree import ElementTree
 
 import pytest
 from aima_ugc.platform.reporting import convert_markdown_to_docx, generate_excel_report
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 
 def _sha256(path: Path) -> str:
@@ -86,6 +86,7 @@ def _make_workbook(path: Path) -> None:
             "内容ID",
             "平台",
             "标题",
+            "发布时间",
             "情感标签",
             "一级标签",
             "二级标签",
@@ -97,6 +98,7 @@ def _make_workbook(path: Path) -> None:
             "1",
             "抖音",
             "A",
+            "2026-08-18 08:00:00",
             "正面",
             "品牌评价",
             "口碑与信任",
@@ -108,6 +110,7 @@ def _make_workbook(path: Path) -> None:
             "1",
             "抖音",
             "A",
+            "2026-08-18 08:00:00",
             "正面",
             "外观设计",
             "整体造型与颜值",
@@ -119,6 +122,7 @@ def _make_workbook(path: Path) -> None:
             "2",
             "抖音",
             "B",
+            "2026-08-19 09:00:00",
             "负面",
             "售后服务",
             "客服与服务态度",
@@ -130,6 +134,7 @@ def _make_workbook(path: Path) -> None:
             "3",
             "小红书",
             "C",
+            "2026-08-19 10:00:00",
             "中性",
             "品牌评价",
             "推荐与购买意愿",
@@ -248,6 +253,89 @@ def test_generate_excel_report_is_complete_and_does_not_modify_input(
         assert "品牌评价" in document
         assert "客服与服务态度" in document
         ElementTree.fromstring(archive.read("word/document.xml"))
+
+
+def test_generate_excel_report_filters_all_statistics_by_report_date_range(
+    tmp_path: Path,
+) -> None:
+    xlsx = tmp_path / "labeled_data.xlsx"
+    template = tmp_path / "report_template.md"
+    _make_workbook(xlsx)
+    _template(template)
+    before = _sha256(xlsx)
+
+    summary = generate_excel_report(
+        input_path=xlsx,
+        output_dir=tmp_path / "reports",
+        template_path=template,
+        report_date_range=(date(2026, 8, 19), date(2026, 8, 19)),
+        generated_at=datetime(2026, 8, 20, 10, 30, 0),
+    )
+
+    assert _sha256(xlsx) == before
+    assert summary.start_date == "2026-08-19"
+    assert summary.end_date == "2026-08-19"
+    assert summary.content_rows == 2
+    assert summary.label_rows == 2
+    assert summary.comment_rows == 0
+    assert summary.content_rows_excluded_by_period == 1
+    assert summary.label_rows_excluded_by_period == 2
+    assert summary.comment_rows_excluded_by_period == 1
+
+    markdown = summary.markdown_path.read_text(encoding="utf-8")
+    assert "| 内容总量 | 2 |" in markdown
+    assert "| 标签对总量 | 2 |" in markdown
+    assert "| 评论总量 | 0 |" in markdown
+    assert "| 品牌评价 | 1 | 50.00% |" in markdown
+    assert "| 报告周期外内容（未纳入统计） | 1 |" in markdown
+    assert "| 报告周期外标签记录（未纳入统计） | 2 |" in markdown
+    assert "| 报告周期外评论（未纳入统计） | 1 |" in markdown
+    assert "2026-08-18" not in markdown
+
+
+def test_generate_excel_report_rejects_label_detail_drift(tmp_path: Path) -> None:
+    xlsx = tmp_path / "labeled_data.xlsx"
+    template = tmp_path / "report_template.md"
+    _make_workbook(xlsx)
+    _template(template)
+    workbook = load_workbook(xlsx)
+    workbook["标签明细"]["F2"] = "被篡改的一级标签"
+    workbook.save(xlsx)
+    workbook.close()
+
+    with pytest.raises(ValueError, match="内容与标签明细统计不一致"):
+        generate_excel_report(
+            input_path=xlsx,
+            output_dir=tmp_path / "reports",
+            template_path=template,
+        )
+
+
+def test_report_period_can_filter_label_details_by_content_id(tmp_path: Path) -> None:
+    xlsx = tmp_path / "labeled_data.xlsx"
+    template = tmp_path / "report_template.md"
+    _make_workbook(xlsx)
+    _template(template)
+    workbook = load_workbook(xlsx)
+    content = workbook["内容"]
+    content.insert_cols(1)
+    content["A1"] = "内容ID"
+    for row_number, content_id in enumerate(("1", "2", "3"), start=2):
+        content.cell(row=row_number, column=1, value=content_id)
+    workbook["标签明细"].delete_cols(4)
+    workbook.save(xlsx)
+    workbook.close()
+
+    summary = generate_excel_report(
+        input_path=xlsx,
+        output_dir=tmp_path / "reports",
+        template_path=template,
+        report_date_range=(date(2026, 8, 19), date(2026, 8, 19)),
+    )
+
+    assert summary.content_rows == 2
+    assert summary.label_rows == 2
+    assert summary.label_rows_excluded_by_period == 2
 
 
 def test_template_text_flows_into_markdown_and_word(tmp_path: Path) -> None:
