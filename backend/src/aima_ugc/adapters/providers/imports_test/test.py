@@ -40,12 +40,14 @@ from aima_ugc.platform.export import (
     ExcelExportSummary,
     export_unified_content_jsonl_to_excel,
 )
+from aima_ugc.platform.reporting import ReportGenerationSummary, generate_excel_report
 
 os.environ.pop("SSLKEYLOGFILE", None)
 
 INPUT_XLSX = Path(r"E:\path\to\source.xlsx")
 OUTPUT_ROOT = Path(__file__).with_name("output")
 KEYWORD_PACK_FILE = Path(__file__).with_name("keyword_pack.txt")
+REPORT_TEMPLATE_FILE = Path(__file__).with_name("report_template.md")
 
 SHEET_NAME = "文章"
 PROFILE = "aima-monitoring-excel.v1"
@@ -85,6 +87,8 @@ class P1RunSummary:
     run_dir: Path
     run_summary_path: Path
     labeled_excel_path: Path
+    report_markdown_path: Path
+    report_word_path: Path
 
 
 def prepare_run_dir(*, run_id: str | None = None) -> Path:
@@ -239,6 +243,35 @@ def export_labeled_excel(
     )
 
 
+def generate_report(
+    *,
+    excel_path: Path | None = None,
+    run_dir: Path | None = None,
+    output_dir: Path | None = None,
+) -> ReportGenerationSummary:
+    """从最终统一 Excel 独立生成 Markdown/Word 报告。"""
+
+    if excel_path is not None and run_dir is not None:
+        raise ValueError("excel_path 与 run_dir 只能指定一个")
+    if excel_path is None and run_dir is None:
+        raise ValueError("必须指定 excel_path 或既有 run_dir")
+
+    if excel_path is not None:
+        source_path = Path(excel_path)
+        target_dir = Path(output_dir) if output_dir is not None else source_path.parent / "reports"
+    else:
+        assert run_dir is not None
+        actual_run_dir = _stage_run_dir(run_dir)
+        source_path = _labeled_output_path(actual_run_dir)
+        target_dir = Path(output_dir) if output_dir is not None else actual_run_dir / "reports"
+
+    return generate_excel_report(
+        input_path=source_path,
+        output_dir=target_dir,
+        template_path=REPORT_TEMPLATE_FILE,
+    )
+
+
 def run_all(
     *,
     run_id: str | None = None,
@@ -272,6 +305,9 @@ def run_all(
     labeled_export = export_labeled_excel(run_dir=run_dir)
     stages.append(_stage_payload("export_labeled_excel", labeled_export))
 
+    report = generate_report(run_dir=run_dir)
+    stages.append(_stage_payload("generate_report", report))
+
     run_summary_path = run_dir / "run_summary.json"
     labeled_excel_path = _labeled_output_path(run_dir)
     _atomic_write_json(
@@ -284,6 +320,8 @@ def run_all(
             "run_dir": str(run_dir),
             "keyword_pack_file": str(KEYWORD_PACK_FILE),
             "labeled_excel": str(labeled_excel_path),
+            "report_markdown": str(report.markdown_path),
+            "report_word": str(report.word_path),
             "stages": stages,
         },
     )
@@ -292,6 +330,8 @@ def run_all(
         run_dir=run_dir,
         run_summary_path=run_summary_path,
         labeled_excel_path=labeled_excel_path,
+        report_markdown_path=report.markdown_path,
+        report_word_path=report.word_path,
     )
 
 
@@ -408,5 +448,7 @@ if __name__ == "__main__":
         "run_all 完成: "
         f"run_id={result.run_id}, "
         f"labeled_excel={result.labeled_excel_path}, "
+        f"report_markdown={result.report_markdown_path}, "
+        f"report_word={result.report_word_path}, "
         f"run_summary={result.run_summary_path}"
     )
