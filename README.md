@@ -161,14 +161,14 @@ Stage 7 的真实 Provider 兼容证据由受控 Probe、合法脱敏 Fixture �
 
 - Stage 8A/8B 已把 Excel 主入口接入 Source Artifact、Processing Import Batch、持久化 Import Job、
   既有 Worker/正式 File Import、全局 Relevance 与 Content Ingestion，并固定 OpenAPI/Orval Client；
-- Stage 8C 当前 Active Change 增加 Batch 列表、北京时间 Summary、查询绑定 HMAC Cursor，以及通过
+- Stage 8C 已增加 Batch 列表、北京时间 Summary、查询绑定 HMAC Cursor，以及通过
   Feature API/Pinia/生成 Client 调用的 Vue 采集运行中心；
 - 正式页面路由为 `/collection-runtime`；根路径继续组合相同 Feature Page 作为兼容入口；
 - 本页只产品化 Excel Import 运行事实，不包含 Content Center、TikHub 补采页面、Relevance 配置页面、
-  AI 持久化或报告。Stage 8C 正式闭环后，下一最小单元才是 Stage 8D 内容中心。
+  AI 持久化或报告；下一正式最小开发单元是 Stage 8D 内容中心。
 
-Stage 8C 是否完成仍以最终 PR Head CI、两阶段 Review、正常合并、Change 归档和合并后 `main` 新鲜验证
-为准，不能由 README 或页面存在单独证明。
+Stage 8C 已由最终 PR Head 21/21 checks、两阶段 Review、正常合并、Change 归档和合并后 `main`
+新鲜 CI 共同闭环，不能由 README 或页面存在单独证明。
 
 ## 环境、启动与部署
 

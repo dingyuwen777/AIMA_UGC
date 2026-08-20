@@ -667,9 +667,9 @@ Migration、固定 OpenAPI 与 Orval Client 已落地；是否达到正式闭环
 
 首版页面只展示真实后端已经提供的阶段/字段；未落地 AI 或其他目标能力不得用 Mock 冒充生产支持。
 
-当前 Active Change 已实现上述列表、Summary、签名 Cursor、生成 Client、Feature API/Store、Vue 页面和
-Playwright 机器能力；用户批准的 PNG 仅作为本 Stage 一次性视觉例外。是否正式闭环仍必须由最终 PR
-Head CI、两阶段 Review、正常合并、Change 归档和合并后 `main` 新鲜验证共同证明。
+Stage 8C 已实现上述列表、Summary、签名 Cursor、生成 Client、Feature API/Store、Vue 页面和
+Playwright 机器能力；用户批准的 PNG 仅作为本 Stage 一次性视觉例外。最终 PR Head 21/21 checks、
+两阶段 Review、正常合并、Change 归档和合并后 `main` 新鲜 CI 已共同完成正式闭环。
 
 ### 8D：内容中心
 
@@ -770,7 +770,7 @@ imports_test / tikhub_test 永久保留
 
 Stage 8A 已完成统一手工摄取 Foundation
 Stage 8B 已建立 Import HTTP / Job / 全局 Relevance Productization
-Stage 8C 当前实现第一个 Vue 采集运行中心页面；正式闭环后下一最小单元是 Stage 8D 内容中心
+Stage 8C 已实现并闭环第一个 Vue 采集运行中心页面；下一正式最小单元是 Stage 8D 内容中心
 离线单批报告读 Excel；正式系统报告读 PostgreSQL Read Model
 报告源显式选择，不按数据库可用性自动切换
 不要用目标 UI 冒充后端已经存在

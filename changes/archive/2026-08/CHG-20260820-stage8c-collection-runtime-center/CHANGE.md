@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260820-stage8c-collection-runtime-center"
 title: "Stage 8C 采集运行中心首个前后端纵切"
 level: L3
-status: in_progress
+status: done
 owner: "codex"
 branch: "feature/stage8c-collection-runtime-center"
 created: 2026-08-20
@@ -29,6 +29,13 @@ contracts:
   - "HTTP Pydantic → OpenAPI → Orval：Import Batch List / Summary / Detail / Job"
 data_changes: []
 ---
+
+# 完成结论
+
+Stage 8C 已完成实现、Red → Green、PostgreSQL 18 与浏览器验证、两阶段 Review、固定 OpenAPI/Orval、
+实现 PR 合并和合并后 `main` 新鲜 CI；本 Change 进入 `done` 并归档。正式范围止于 Excel Import
+采集运行中心首个前后端纵切，没有实现 Content Center、TikHub 补采或 Relevance 配置页面；下一正式
+最小开发单元是 Stage 8D 内容中心。
 
 # 目标
 
@@ -56,21 +63,21 @@ Contract 和 Orval Client 为唯一数据入口。
 
 # 成功标准
 
-- [ ] `GET /api/v1/import-batches` 通过正式 Pydantic Contract 返回稳定排序、查询绑定且签名的 Cursor
+- [x] `GET /api/v1/import-batches` 通过正式 Pydantic Contract 返回稳定排序、查询绑定且签名的 Cursor
   列表；支持 Batch ID/Job ID、status、stage、created_at 时间范围筛选。
-- [ ] `GET /api/v1/import-batches/summary` 返回用户批准的三项 KPI：处理中、北京时间今日完成、北京
+- [x] `GET /api/v1/import-batches/summary` 返回用户批准的三项 KPI：处理中、北京时间今日完成、北京
   时间今日成功导入行数；前端不从当前页推算全局 KPI。
-- [ ] 列表显示 `source_filename`、Batch/Job 状态、阶段、固定统计、时间与安全错误摘要；既有详情和
+- [x] 列表显示 `source_filename`、Batch/Job 状态、阶段、固定统计、时间与安全错误摘要；既有详情和
   Job API 保持兼容。
-- [ ] Cursor 使用 HMAC-SHA256、查询条件指纹和过期时间，篡改、过期或跨查询复用返回统一 400
+- [x] Cursor 使用 HMAC-SHA256、查询条件指纹和过期时间，篡改、过期或跨查询复用返回统一 400
   Error Contract；Secret 不进 URL、日志、数据库或仓库。
-- [ ] Vue 按 App/Shared/Feature/Page 分层实现原型的桌面 Normal 页面，并具备 Loading、Empty、Error、
+- [x] Vue 按 App/Shared/Feature/Page 分层实现原型的桌面 Normal 页面，并具备 Loading、Empty、Error、
   上传、筛选、Cursor、详情 Drawer 与非终态 5 秒轮询。
-- [ ] 页面关闭、终态或组件卸载会停止轮询；浏览器不可见时暂停，恢复可见后立即刷新。
-- [ ] 固定 OpenAPI 与 Orval Client 无漂移，生成 TypeScript 可编译；Playwright 有可执行 E2E 入口。
-- [ ] 目标测试经历正确原因的 Red → Green，适用后端、PostgreSQL、前端、E2E、生成物与质量门禁在
+- [x] 页面关闭、终态或组件卸载会停止轮询；浏览器不可见时暂停，恢复可见后立即刷新。
+- [x] 固定 OpenAPI 与 Orval Client 无漂移，生成 TypeScript 可编译；Playwright 有可执行 E2E 入口。
+- [x] 目标测试经历正确原因的 Red → Green，适用后端、PostgreSQL、前端、E2E、生成物与质量门禁在
   最终 Head 获得新鲜证据。
-- [ ] 两阶段 Review 严重/重要问题清零，PR 正常合并，合并后 main 新鲜验证成功，Change 完成归档。
+- [x] 两阶段 Review 严重/重要问题清零，PR 正常合并，合并后 main 新鲜验证成功，Change 完成归档。
 
 # 范围
 
@@ -168,7 +175,7 @@ Contract 和 Orval Client 为唯一数据入口。
 - [x] 建立 Playwright E2E 可执行入口并覆盖关键流程
 - [x] 同步受影响 Blueprint/API/前端/测试/部署文档
 - [x] 完成需求符合性与代码质量 Review；问题补回归 Red → Green
-- [ ] 最终 Head 完整门禁、PR CI、Review、Merge、main 验证与 Change 归档
+- [x] 最终 Head 完整门禁、PR CI、Review、Merge、main 验证与 Change 归档
 
 # 两阶段 Review
 
@@ -234,7 +241,13 @@ Contract 和 Orval Client 为唯一数据入口。
 - OpenAPI/JSON Schema Drift 与 Compatibility 成功；Orval 连续两次生成哈希一致
   `E072B68D43BA47211BB441E2E4749D577373D50A0D3ACF5C60138DC5EC2CA485`。
 - 完整 Ruff format/check、mypy 198 source、Architecture、Table Ownership、Secret Scan、Docs Check、
-  前端 Lint、TS7/Vue typecheck、Vitest 8/8、Build 与 Chrome Playwright 3/3 成功。最终 PR Head CI 尚待执行。
+  前端 Lint、TS7/Vue typecheck、Vitest 8/8、Build 与 Chrome Playwright 3/3 成功。
+- PR #100 首个实现 Head 获得 20/21 checks 成功；Stage 1 因同一 CI Job 内 5173 端口被前序 smoke
+  占用而正确失败。修复后最终 Head `5cfdb27c7f679fe0bc1599bc282553f6650223eb` 的 21/21 checks 全部
+  成功，Stage 1 包含 Chrome Playwright 3/3；Review 评论和变更请求均为 0。
+- PR #100 从 Draft 转 Ready 后按仓库惯例以普通 merge commit 正常合并；Merge Commit 为
+  `9f98ab1e0080270455b725806380fca0e097cdca`。合并后本地从远端快进到同一 `main`，工作区干净，
+  Migration Head 为 `20260820_0020`；该 Merge Commit 触发的 7/7 GitHub push workflows 全部成功。
 
 # 文档影响
 
@@ -245,6 +258,10 @@ Contract 和 Orval Client 为唯一数据入口。
 # 交付
 
 - Branch：`feature/stage8c-collection-runtime-center`
-- 实现 Commit：`864e77eb16ad198de4028dccea6e520f493e1a85`（`实现 Stage 8C 采集运行中心纵切`）
-- PR：[#100 实现 Stage 8C 采集运行中心纵切](https://github.com/dingyuwen777/AIMA_UGC/pull/100)，当前 Draft
-- 发布：尚未合并；等待最终 PR Head 新鲜 CI 后转 Ready，Change 保持 Active
+- Commit：`864e77eb16ad198de4028dccea6e520f493e1a85`（实现纵切）、
+  `9a7c7ca99807f8f4bc9feec1a89fd688b2fae81b`（记录恢复点）、
+  `5cfdb27c7f679fe0bc1599bc282553f6650223eb`（修复 Playwright CI 端口冲突）。
+- PR：[#100 实现 Stage 8C 采集运行中心纵切](https://github.com/dingyuwen777/AIMA_UGC/pull/100)，
+  最终 Head 21/21 checks 成功，已合并。
+- Merge Commit：`9f98ab1e0080270455b725806380fca0e097cdca`。
+- 发布：未执行生产部署；交付代码、Contract、生成 Client、前端资产、测试与部署 Secret 要求。

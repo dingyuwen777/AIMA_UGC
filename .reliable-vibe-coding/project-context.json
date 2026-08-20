@@ -177,8 +177,8 @@
     {
       "kind": "documentation",
       "path": "README.md",
-      "sha256": "db04a285ef7450bcf2f22bbd61bf94b145da0b8218c3883f095f69d880544907",
-      "size": 26387,
+      "sha256": "2fa6d1f284389be5d170b57ea727ad0fa056baf83837e00e253f4f5fe268a3dd",
+      "size": 26368,
       "title": "AIMA_UGC"
     },
     {
@@ -348,8 +348,8 @@
     {
       "kind": "documentation",
       "path": "docs/API接口说明.md",
-      "sha256": "f10f58fb7326513c6b14162cfd1a50b0005c94af8c3cf82299ed2857c73bc03f",
-      "size": 10171,
+      "sha256": "af513b56c497b2198bfc5f5468bdaf558b14871a0650e6243f859f631042e0a2",
+      "size": 10195,
       "title": "AIMA_UGC API 接口说明"
     },
     {
@@ -376,8 +376,8 @@
     {
       "kind": "documentation",
       "path": "docs/blueprint/04-后端任务API与前端.md",
-      "sha256": "b08c957dbfd7e88206ecc4f852a444a909bbbceb39460f925ee09557b0ebe1dd",
-      "size": 26586,
+      "sha256": "7d0b2c5f489f468e6965dfc9d66b90d75e5cf2c90a422fd03110ace429801309",
+      "size": 26601,
       "title": "后端任务、API 与前端"
     },
     {
@@ -460,15 +460,15 @@
     {
       "kind": "documentation",
       "path": "docs/blueprint/17-Stage8数据入口统一入库与业务前端实施.md",
-      "sha256": "6fb26f7a3323b4d1667f8ea728c923537a3a2da10a7233c311782e87534b3ddc",
-      "size": 36474,
+      "sha256": "5ffc532d9d4c315bf09e34b6f0988947d8c554c955ba739aae0c3f155fe15fab",
+      "size": 36461,
       "title": "Stage 8 数据入口、统一入库与业务前端实施"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/README.md",
-      "sha256": "84dceae9933f1ffe82e1688487e337fb18bcf331eaed502dbd8f7713c6b0506a",
-      "size": 22176,
+      "sha256": "792388b79057609f7bc2e9d4298dd451d59701c58c78300ce481b7a1bc3afbff",
+      "size": 21977,
       "title": "AIMA_UGC Blueprint 导航"
     },
     {
@@ -516,22 +516,22 @@
     {
       "kind": "documentation",
       "path": "docs/测试与调试说明.md",
-      "sha256": "dc342873e513cbafca3a5517617934915584be9222346fa7dc1f22a5147b4bea",
-      "size": 33810,
+      "sha256": "bd95bf35289866d4380fa496657a645e4a1d58c7b8f749155a9109ed9d0eb787",
+      "size": 33843,
       "title": "AIMA_UGC 测试与调试说明"
     },
     {
       "kind": "documentation",
       "path": "docs/环境运行与部署.md",
-      "sha256": "3149d76eaa7dbb84270234503b9341ce8163c106f81d2b45c567499755479997",
-      "size": 21031,
+      "sha256": "e839f3c1cbd839a57c8aa25d6af8236cc98395a8cd6329fc71f26390858082b2",
+      "size": 21076,
       "title": "环境、运行与部署"
     },
     {
       "kind": "documentation",
       "path": "frontend/README.md",
-      "sha256": "717e02fb889f5d99a8adda027c92154fa3cc98f7ec3ea6d2f7cdab29dfae1706",
-      "size": 3315,
+      "sha256": "37fd700c4e132ba851061510d46de38a68718e349165c13445e3be4c11e63ccb",
+      "size": 3388,
       "title": "AIMA_UGC 前端开发入口"
     },
     {
@@ -543,8 +543,8 @@
     {
       "kind": "manifest",
       "path": "frontend/package.json",
-      "sha256": "93598df08ea30bc698b9bce8ab2389877d9fe665272de40e3b09819ab739564c",
-      "size": 1410
+      "sha256": "98a274864971e6a9c751159e2a87355858afdd75af4b1da51908a90d37ec4274",
+      "size": 1414
     },
     {
       "kind": "manifest",
@@ -580,12 +580,12 @@
       "size": 92829
     }
   ],
-  "generated_at": "2026-08-20T17:00:09+00:00",
+  "generated_at": "2026-08-20T17:07:38+00:00",
   "generator_version": "0.1.0",
   "git": {
-    "indexed_at_commit": "9a7c7ca99807f8f4bc9feec1a89fd688b2fae81b",
+    "indexed_at_commit": "9f98ab1e0080270455b725806380fca0e097cdca",
     "repository": true,
-    "worktree_candidate_digest": "838efa7d01b4df2858af9a14cb95b4de23598123a522beb1aed2e8920780af21"
+    "worktree_candidate_digest": "2544b02736d4bc522d1f68552e792297e111295b773d40183e029bff85db2a5c"
   },
   "package_scripts": {
     "frontend/package.json": {

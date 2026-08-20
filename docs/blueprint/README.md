@@ -68,9 +68,9 @@
 
 ## 当前开发状态
 
-**Stage 1—7、临时 P1、Stage 8A 与 Stage 8B 已闭环。Stage 8C 当前 Active Change 已建立采集运行中心
-机器实现；正式闭环仍以该 Change 的最终 PR Head CI、两阶段 Review、正常合并、归档和合并后 `main`
-验证为准。在这些证据完成前不得仅凭页面或本文宣布 Stage 8C 已闭环。**
+**Stage 1—7、临时 P1、Stage 8A、Stage 8B 与 Stage 8C 已闭环。Stage 8C 已由最终 PR Head
+21/21 checks、两阶段 Review、正常合并、Change 归档和合并后 `main` 新鲜 CI 共同证明；下一正式最小
+开发单元是 Stage 8D 内容中心。**
 
 Stage 8A 与 Stage 8B 当前 `main` 机器边界：
 
@@ -121,16 +121,15 @@ P1 已固化的长期能力：
 - 具体长期 Excel 与 Analysis 规则分别由 Blueprint 13 和 15 维护；
 - `imports_test` / `tikhub_test` 永久保留人工调试入口，默认 file-only；Stage 8A 的显式 PostgreSQL 模式不得反向破坏默认离线调试能力。
 
-## 当前 Active Stage
+## 下一正式最小开发单元
 
-### Stage 8C：采集运行中心首个完整前后端纵切
+### Stage 8D：内容中心
 
-Stage 8B 已正常闭环；当前唯一 Active 最小正式单元是 **Stage 8C**。8C 只完成采集运行中心的首个正式
-Vue 前后端纵切；系统全局 Relevance Keyword Pack 配置页面仍按已批准边界留到 Stage 8F。当前 Stage
-经用户批准使用固定 PNG 作为一次性视觉例外；例外、资产哈希和未来 Figma 兼容边界只记录在当前
-Change，不修改 Blueprint 16 的长期 Figma 规则。
+Stage 8C 已完成采集运行中心的首个正式 Vue 前后端纵切；系统全局 Relevance Keyword Pack 配置页面
+仍按已批准边界留到 Stage 8F。8C 经用户批准使用固定 PNG 作为一次性视觉例外；例外、资产哈希和未来
+Figma 兼容边界保存在归档 Change，不修改 Blueprint 16 的长期 Figma 规则。
 
-开始 Stage 8C 时仍必须重新从当时 `main` 恢复事实：
+开始 Stage 8D 时仍必须重新从当时 `main` 恢复事实：
 
 ```text
 AGENTS.md
@@ -142,11 +141,13 @@ AGENTS.md
 → docs/blueprint/03-数据库与文件存储.md
 → docs/blueprint/04-后端任务API与前端.md
 → docs/API接口说明.md
-→ changes/active
-→ 当前 main / Contract / Migration / OpenAPI / generated client / backend Router/Service / frontend 结构与测试
+→ changes/active 与 Stage 8C 归档 Change
+→ 当前 main / Content Contract / Migration / OpenAPI / generated client / backend Query/Service / frontend 结构与测试
 ```
 
-Stage 8C 的目标边界以 Blueprint 16 和 17 为准：先确认 Figma 事实源和页面验收标准，再补齐页面实际需要的 Batch 列表/KPI/Cursor Read Model，复用 Stage 8B 生成的 Orval Client 完成首个运行中心纵切，不提前进入 Content Center、TikHub 补采页面或 Stage 8D—8F。
+Stage 8D 的目标边界以 Blueprint 16 和 17 为准：前端从统一 PostgreSQL Content Read Model 读取内容列表
+和详情，复用既有 App/Shared/Feature 与 OpenAPI→Orval 链；不提前实现 Stage 8E TikHub 补采或 Stage 8F
+Relevance/Plan 配置页面。
 
 ### 独立于 Stage 8A 的后续门禁
 
