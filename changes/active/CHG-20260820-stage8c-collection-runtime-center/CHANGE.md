@@ -242,6 +242,6 @@ Contract 和 Orval Client 为唯一数据入口。
 # 交付
 
 - Branch：`feature/stage8c-collection-runtime-center`
-- Commit：尚未创建
-- PR：尚未创建
-- 发布：尚未合并；Change 保持 Active
+- 实现 Commit：`864e77eb16ad198de4028dccea6e520f493e1a85`（`实现 Stage 8C 采集运行中心纵切`）
+- PR：[#100 实现 Stage 8C 采集运行中心纵切](https://github.com/dingyuwen777/AIMA_UGC/pull/100)，当前 Draft
+- 发布：尚未合并；等待最终 PR Head 新鲜 CI 后转 Ready，Change 保持 Active
