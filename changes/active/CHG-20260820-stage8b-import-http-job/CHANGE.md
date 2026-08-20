@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260820-stage8b-import-http-job"
 title: "Stage 8B Import HTTP / Job 与统一 Relevance Productization"
 level: L3
-status: blocked
+status: in_progress
 owner: "AI coding agent"
 branch: "feature/stage8b-import-http-job"
 created: 2026-08-20
@@ -233,6 +233,18 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 - OpenAPI 必须把文件字段生成为 binary，Orval 必须从固定 OpenAPI 生成对应 TypeScript Client；不得手写
   第二套浏览器上传 Client。
 
+## 已确认：XLSX 上传与解压安全阈值
+
+- 用户确认 multipart HTTP 请求体最大 550 MiB，给单个 500 MiB `.xlsx` 文件保留最多 50 MiB 的协议
+  开销；请求仍只允许一个 `file` 字段，不能用额外文件或表单字段消耗这部分余量。
+- 实际 `.xlsx` 文件最大 500 MiB；ZIP 中央目录声明的解压后总大小最大 5 GiB、单成员最大 4 GiB、
+  成员数最大 2,048，整体压缩比和任一非空成员压缩比均最大 100:1。
+- 上传阶段流式计数实际 HTTP body 与文件字节，并校验 ZIP/OOXML 中央目录；拒绝加密成员、重复成员名、
+  绝对/穿越/反斜杠路径、不支持的压缩算法和缺少必要 OOXML 部件。Router 不解压整份文件。
+- HTTP body、文件字节、解压总量、单成员、成员数或压缩比超过上限统一返回 `413`；扩展名、ZIP 或
+  OOXML 结构不合法返回 `422`。错误使用统一 Pydantic Error Contract/request_id，不回显内部路径或堆栈。
+- Worker 继续用生产 Reader 的只读流式模式处理 Artifact；安全阈值不构成容量或完成时间承诺。
+
 ## 已确认：Import Job Attempt Deadline 与重试恢复语义
 
 - 用户选择保持当前 Job Runtime 的标准全量重试语义：Import Job 单次 Attempt Deadline 固定为
@@ -249,7 +261,8 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 
 ## 后续仍需按顺序冻结的技术/安全边界
 
-- 500 MiB 对应的最大解压总量/单成员/成员数/压缩比仍待冻结。
+- Excel 上传、Job 和 Relevance 的业务/Contract 上游决定已经冻结，可以进入 Red；实现证据若发现新的
+  公共语义或安全取舍，仍必须重新进入用户决策门禁。
 - 当前认证已正式延期；本 Stage 不把受控环境 API 描述为公网生产就绪。
 
 ## Migration、部署与回滚
@@ -275,7 +288,7 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 - [x] 冻结正式关键词数据库身份与 Relevance 匹配的两级规范化语义
 - [x] 冻结 Import Job 为 30 分钟、最大 10 次的全量重试，并把断点续跑留作未来独立 L3 优化方向
 - [x] 冻结 Excel HTTP 为单文件 multipart 一步创建 Artifact/Batch/Job，并批准锁定 multipart 解析依赖
-- [ ] 完整冻结 Excel HTTP 传输、已确认 500 MiB 压缩文件对应的解压边界与 Job Deadline
+- [x] 完整冻结 Excel HTTP、500/550 MiB、ZIP 解压边界与 Job Deadline
 - [ ] 建立 HTTP Contract/Error/OpenAPI、API Service 和 Import Job/Worker 的失败测试并观察正确 Red
 - [ ] 完成最小实现
 - [ ] 同步受影响文档
@@ -319,8 +332,10 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 - `uv run pytest tests/unit/database/test_stage8a_import_schema.py tests/contracts/test_stage8a_provider_request.py tests/unit/collection/test_manual_ingestion_multi.py -q`：退出码 0，`8 passed`。
 - `uv run alembic current` / `alembic check` 与 Stage 8A PostgreSQL Integration：因本机缺少
   `.runtime/secrets/postgres_password` 未执行到数据库；保留原错误，不作为测试失败或成功证据。
-- `uv run python scripts/quality/check_docs.py`：退出码 0，Import Job 全量重试、未来断点续跑方向与 multipart
-  一步上传的 Blueprint/Change 文档入口和本地链接检查通过。
+- `uv run python scripts/quality/check_docs.py`：退出码 0，Import Job、multipart 一步上传及最终 500/550 MiB
+  与 ZIP 安全阈值的 Blueprint/Change 文档入口和本地链接检查通过。
+- `uv run python .agents/skills/reliable-vibe-coding/scripts/rvc.py status --root . --json`：退出码 0，唯一
+  Active Change 为本 Change、状态 `in_progress`、冲突数 0。
 - GitHub 连接器确认 PR `#88/#89` 已合并、当前无开放 PR；当前 main push workflow/status 接口未返回
   可见记录，历史 CI 不替代本 Stage 最终 Head CI。
 - Head `f697bc5` 的 CI、Stage 6 XHS、Stage 7 Keyword Packs、Provider Config、Plan Snapshot 与
@@ -338,7 +353,7 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 # 交付
 
 - Commit：`a12eac4`（记录 Stage 8B 开发门禁）；后续实现继续使用中文提交。
-- PR：Draft PR `#97`（`feature/stage8b-import-http-job → main`）已创建；当前因 500 MiB 上传对应的
-  解压安全边界待决定而保持 blocked/draft，最终 CI/Review
+- PR：Draft PR `#97`（`feature/stage8b-import-http-job → main`）已创建；上游决定已冻结，开始执行
+  Red → Green；最终 CI/Review
   完成后才转 Ready 并正常合并。
 - 发布：不部署生产；只交付仓库代码、Migration 状态说明、生成物、测试与合并后 main 证据。

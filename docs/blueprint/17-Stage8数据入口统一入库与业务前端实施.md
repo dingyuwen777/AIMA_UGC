@@ -602,6 +602,9 @@ Stage 8 不作为一个巨型 PR 一次完成。按以下最小正式单元推�
   再由 Service/UoW 创建 Batch + Job 并返回 `202`，不建立先上传 Artifact 再创建 Import 的两步协议；
 - `.xlsx` 文件本身最大 500 MiB，必须有界流式写入/读取，不把整个上传或 Artifact 载入内存；multipart
   解析依赖由根 Python 工程精确锁定，应用仍必须独立执行实际字节计数、请求体限制与 XLSX 安全校验；
+- multipart HTTP 请求体最大 550 MiB；XLSX 中央目录声明的解压总大小最大 5 GiB、单成员最大 4 GiB、
+  成员数最大 2,048，整体和单成员压缩比最大 100:1。资源上限超出返回统一 `413`，扩展名、ZIP/OOXML
+  结构、加密/重复/不安全成员名或不支持压缩算法不合法返回统一 `422`；上传 Router 不解压整份文件；
 - 复用 System Owner 现有 `keyword_packs`、`keywords`、`keyword_pack_items`，建立本阶段 Import
   所需的最小关键词写入/读取 HTTP Contract；
 - 建立一个通过外键引用 Keyword Pack 的系统全局 Relevance 配置；Import/Collection 不允许按请求或
