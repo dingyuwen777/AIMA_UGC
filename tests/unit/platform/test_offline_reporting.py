@@ -82,11 +82,61 @@ def _make_workbook(path: Path) -> None:
     )
 
     labels = workbook.create_sheet("标签明细")
-    labels.append(("内容ID", "平台", "标题", "情感标签", "一级标签", "二级标签", "内容链接"))
-    labels.append(("1", "抖音", "A", "正面", "品牌评价", "口碑与信任", "https://example.test/a"))
-    labels.append(("1", "抖音", "A", "正面", "外观设计", "整体造型与颜值", "https://example.test/a"))
-    labels.append(("2", "抖音", "B", "负面", "售后服务", "客服与服务态度", "https://example.test/b"))
-    labels.append(("3", "小红书", "C", "中性", "品牌评价", "推荐与购买意愿", "https://example.test/c"))
+    labels.append(
+        (
+            "内容ID",
+            "平台",
+            "标题",
+            "情感标签",
+            "一级标签",
+            "二级标签",
+            "内容链接",
+        )
+    )
+    labels.append(
+        (
+            "1",
+            "抖音",
+            "A",
+            "正面",
+            "品牌评价",
+            "口碑与信任",
+            "https://example.test/a",
+        )
+    )
+    labels.append(
+        (
+            "1",
+            "抖音",
+            "A",
+            "正面",
+            "外观设计",
+            "整体造型与颜值",
+            "https://example.test/a",
+        )
+    )
+    labels.append(
+        (
+            "2",
+            "抖音",
+            "B",
+            "负面",
+            "售后服务",
+            "客服与服务态度",
+            "https://example.test/b",
+        )
+    )
+    labels.append(
+        (
+            "3",
+            "小红书",
+            "C",
+            "中性",
+            "品牌评价",
+            "推荐与购买意愿",
+            "https://example.test/c",
+        )
+    )
 
     comments = workbook.create_sheet("评论")
     comments.append(
@@ -153,7 +203,9 @@ def _template(path: Path, extra: str = "") -> None:
     )
 
 
-def test_generate_excel_report_is_complete_and_does_not_modify_input(tmp_path: Path) -> None:
+def test_generate_excel_report_is_complete_and_does_not_modify_input(
+    tmp_path: Path,
+) -> None:
     xlsx = tmp_path / "labeled_data.xlsx"
     template = tmp_path / "report_template.md"
     _make_workbook(xlsx)
@@ -209,7 +261,8 @@ def test_template_text_flows_into_markdown_and_word(tmp_path: Path) -> None:
         template_path=template,
     )
 
-    assert "这句文字只维护在 Markdown 模板。" in summary.markdown_path.read_text(encoding="utf-8")
+    markdown_text = summary.markdown_path.read_text(encoding="utf-8")
+    assert "这句文字只维护在 Markdown 模板。" in markdown_text
     with zipfile.ZipFile(summary.word_path) as archive:
         document = archive.read("word/document.xml").decode("utf-8")
         assert "这句文字只维护在 Markdown 模板。" in document
