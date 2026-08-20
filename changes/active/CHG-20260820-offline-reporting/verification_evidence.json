@@ -1,0 +1,48 @@
+{
+  "schema_version": "offline-reporting-verification.v1",
+  "tested_sha": "17b08978156efe9058e23b5e5e15b70ecb14ad02",
+  "runner_os": "Linux",
+  "verified_at": "2026-08-20T04:12:47.809520+00:00",
+  "result": "failure",
+  "checks": {
+    "install_uv": "success",
+    "locked_environment": "success",
+    "target_reporting_tests": "success",
+    "repository_static_checks": "failure",
+    "full_unit_tests": "failure",
+    "libreoffice_docx_render": "failure"
+  },
+  "target_tests_tail": [
+    "...............                                                          [100%]",
+    "15 passed in 3.17s"
+  ],
+  "static_checks_tail": [
+    "    -             and not _starts_block(lines, index)",
+    "    -         ):",
+    "115 +         while index < len(lines) and lines[index].strip() and not _starts_block(lines, index):",
+    "116 |             paragraph_lines.append(lines[index].strip())",
+    "--------------------------------------------------------------------------------",
+    "261 |             kinds.add(series_match.group(1))",
+    "    -             raw_values = [",
+    "    -                 part.strip()",
+    "    -                 for part in series_match.group(2).split(\",\")",
+    "    -                 if part.strip()",
+    "    -             ]",
+    "262 +             raw_values = [part.strip() for part in series_match.group(2).split(\",\") if part.strip()]",
+    "263 |             try:",
+    "    |",
+    "",
+    "5 files would be reformatted, 343 files already formatted"
+  ],
+  "unit_tests_tail": [
+    "        if not report_input_path.is_file():",
+    ">           raise FileNotFoundError(f\"报告 Excel 不存在: {report_input_path}\")",
+    "E           FileNotFoundError: 报告 Excel 不存在: /tmp/pytest-of-runner/pytest-1/test_run_all_uses_one_isolated0/runs/20260819T142000.000001+0800/labeled_data.xlsx",
+    "",
+    "backend/src/aima_ugc/adapters/providers/imports_test/test.py:384: FileNotFoundError",
+    "=========================== short test summary info ============================",
+    "FAILED tests/unit/collection/test_imports_test_run_directory.py::test_run_all_uses_one_isolated_run_directory_for_every_stage - FileNotFoundError: 报告 Excel 不存在: /tmp/pytest-of-runner/pytest-1/test_run_all_uses_one_isolated0/runs/20260819T142000.000001+0800/labeled_data.xlsx",
+    "1 failed, 409 passed in 4.67s"
+  ],
+  "rendered_pdf_bytes": null
+}
