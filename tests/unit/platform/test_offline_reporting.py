@@ -7,9 +7,8 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 import pytest
-from openpyxl import Workbook
-
 from aima_ugc.platform.reporting import convert_markdown_to_docx, generate_excel_report
+from openpyxl import Workbook
 
 
 def _sha256(path: Path) -> str:

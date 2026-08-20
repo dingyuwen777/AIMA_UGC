@@ -4,10 +4,9 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from pytest import MonkeyPatch
-
 from aima_ugc.adapters.providers.imports_test import test as imports_entry
 from aima_ugc.platform.reporting import ReportGenerationSummary
+from pytest import MonkeyPatch
 
 
 @dataclass(frozen=True, slots=True)
