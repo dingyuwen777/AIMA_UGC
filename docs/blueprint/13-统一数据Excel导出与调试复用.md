@@ -454,7 +454,40 @@ Sheet: 内容 / 标签明细 / 评论
 
 这是**报告读取要求**，不是新的 Excel Contract。通用 Excel Exporter 的完整字段定义仍由本文第 3 节维护。
 
-### 13.2 统计口径
+### 13.2 报告数据源与统一 Report Dataset
+
+**当前机器实现只有 Excel Report Source。** `imports_test.run_all()` 的离线报告无论是否同时开启 Content 数据库写入，仍读取本次 run 的 `labeled_data.xlsx`，因为它代表本次处理完成后的明确批次快照。
+
+长期固定为两个显式 Source Adapter，共同进入一个 Provider-neutral Report Dataset/Context：
+
+```text
+离线单批 / 人工交付
+labeled_data.xlsx
+→ Excel Report Source
+→ Report Dataset
+
+正式系统 / 跨批次 / 时间窗口 / Dashboard
+PostgreSQL
+→ Query Repository / Report Read Model
+→ Report Dataset
+
+Report Dataset
+→ Statistics
+→ Markdown Template / Renderer
+→ report.md / report.docx / Web
+```
+
+硬规则：
+
+1. **禁止** `if database_available: read_database else: read_excel` 这类环境驱动自动切换；同一命令不能因为某台机器启动了 PostgreSQL 就改变报告范围。
+2. `imports_test` 的“本次 run 报告”默认永远是 Excel 快照，即使 `write_to_database=True`；数据库里可能同时存在历史 Excel、TikHub、其他 Batch 和其他时间数据，不能天然代表本次 run。
+3. 正式系统报告、跨 Batch 趋势、7/30/90 天窗口和 Dashboard 默认使用 PostgreSQL Report Read Model；它们不能依赖本地 `output/runs/`。
+4. PostgreSQL Report Source 必须通过 Query Repository/Read Model 读取 Content、current Analysis、Comments/必要维度；Report Renderer 不直接 SQL，也不成为表 Owner。
+5. 两种 Source 只负责把数据适配为同一 Report Dataset；平台、情感、标签、关键词、趋势等统计规则与 Markdown/Word Renderer 只有一套。
+6. 数据库版报告在正式启用前必须先满足 Blueprint 15 的 Analysis 持久化/current Analysis 和对应 Query Read Model；数据库缺少 AI Analysis 时不得静默回退 Excel 或伪造标签。
+7. 调用方需要特定来源时必须显式选择 Source/Scope；Excel 路径、Import Batch、日期窗口、平台等 Scope 必须可观察、可复现。
+
+### 13.3 统计口径
 
 完整统计遵循现有 Workbook 语义：
 
@@ -473,7 +506,7 @@ Sheet: 内容 / 标签明细 / 评论
 
 报告必须保留完整平台、标签、标签对、关键词和每日非零数据表格。图表允许为了阅读性只显示 Top N 序列，但不得因为图表裁剪丢失完整表格数据，也不得修改上游数据。
 
-### 13.3 Markdown 是报告正文唯一模板
+### 13.4 Markdown 是报告正文唯一模板
 
 默认共享模板当前为：
 
@@ -495,7 +528,7 @@ backend/src/aima_ugc/platform/reporting/report_template.md
 
 不得再维护第二套 Word 正文模板。模板普通文本、标题和顺序发生变化时，下一次 Markdown 与 Word 必须一起变化。
 
-### 13.4 Mermaid 与 Word
+### 13.5 Mermaid 与 Word
 
 Markdown 图表使用 Mermaid fenced block。当前模板只使用：
 
@@ -508,7 +541,7 @@ Word 转换器只承诺支持本报告实际使用的 Mermaid 子集，并将其
 
 当前实现不引入 Pandoc、LibreOffice、Matplotlib、pandas 或在线 Mermaid 服务作为运行时依赖；DOCX/PNG 由已有 Python 运行时和标准库生成。LibreOffice 只可作为开发/交付验证工具，不是生产报告生成依赖。
 
-### 13.5 失败和数据安全边界
+### 13.6 失败和数据安全边界
 
 Report Renderer 必须：
 
@@ -520,9 +553,9 @@ Report Renderer 必须：
 - 报告失败时明确失败，不能把完整 `run_all()` 宣称成功；
 - 已经成功生成的最终 Excel 不因报告失败被删除或回滚，可以修复报告后直接重新生成。
 
-### 13.6 与未来正式报告中心的关系
+### 13.7 与未来正式报告中心的关系
 
-当前能力解决“已处理统一 Excel → 人工可交付报告”的独立离线路径，不提前实现正式 Stage 8B+ 网页报告中心。
+当前能力解决“已处理统一 Excel → 人工可交付报告”的独立离线路径，不提前实现正式网页报告中心。正式报告中心必须优先读取 PostgreSQL Report Read Model，而不是回扫人工 Excel 目录；数据库数据源的前置条件是 Content + current Analysis 等正式 Query 能力已经落地。
 
 未来如果增加：
 
