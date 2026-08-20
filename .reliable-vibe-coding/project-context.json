@@ -176,22 +176,22 @@
     {
       "kind": "documentation",
       "path": "README.md",
-      "sha256": "99d6626cc058386424ad167937d455fe24b1ba2ebb362015d29cb66bb603a382",
-      "size": 25263,
+      "sha256": "88c135e200ff74c45819f2587f3509d2f7cc6b604e79848f1f57821ad5753d18",
+      "size": 25262,
       "title": "AIMA_UGC"
     },
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/adapters/llm/README.md",
-      "sha256": "f602847ee3b50fdd718d67c3cb678f45d5339ab43621974377b7a7d1e75e4276",
-      "size": 5124,
+      "sha256": "dcc7359f236d74cda5776f4de35c8249fc58b2bc9ece54d34c93e78e44152550",
+      "size": 5161,
       "title": "全平台共享 LLM Adapter、计费与请求审计"
     },
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/adapters/providers/imports_test/README.md",
-      "sha256": "468bc5836c23d5e3d4ba4d96b2a4e4f80dfbedd1ef6bdf3682908dbf29d30c41",
-      "size": 37360,
+      "sha256": "839949b3315aa1c3360eaecd5575d9bfabf9a2c641609440e466d95e2df33e4a",
+      "size": 37824,
       "title": "Excel 离线导入、清洗、AI 多标签打标与报告"
     },
     {
@@ -204,8 +204,8 @@
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/modules/analysis/README.md",
-      "sha256": "a31fe4c00a9d298516d0da59615f63e3b5d1fe3eb8186568454a1030716f2322",
-      "size": 13194,
+      "sha256": "b41fc7c03aba3b48c9cbc0261bc6b3cedc65d0f851845b6c22d9322f93d5704d",
+      "size": 13137,
       "title": "Analysis 模块"
     },
     {
@@ -232,8 +232,8 @@
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/platform/reporting/README.md",
-      "sha256": "5ada226e7419fbec52de0682273ca3156cc20be61d2b5ebfcbda600c60624edf",
-      "size": 8106,
+      "sha256": "7673a9b2b34b51573feab063de39612d422aa45e279aa0341afd26991fa7048f",
+      "size": 9435,
       "title": "Provider-neutral 离线报告"
     },
     {
@@ -390,8 +390,8 @@
     {
       "kind": "documentation",
       "path": "docs/blueprint/07-技术决策与实施门禁.md",
-      "sha256": "de7b74e2ee1d7443f64d9137c4ded22d6ca35880a3a579db78392aef51217589",
-      "size": 56616,
+      "sha256": "ba9544653e943451bbe4b7d95415c0fae2c2c505a7417623b1ca89c55d41b227",
+      "size": 56612,
       "title": "技术决策与实施门禁"
     },
     {
@@ -432,15 +432,15 @@
     {
       "kind": "documentation",
       "path": "docs/blueprint/13-统一数据Excel导出与调试复用.md",
-      "sha256": "8e30646365ce8757cace89014af3bb6f272a9cb1667f96ea7c1e67bc0e050200",
-      "size": 25377,
+      "sha256": "e7b08059509794939ad986512578977e4996b15cd64832fa878bb2bf2e633f95",
+      "size": 26561,
       "title": "统一数据 Excel 导出与调试复用"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/15-舆情AI打标与统一分析契约.md",
-      "sha256": "421cc5a3bc79d0c52225f6f79d9a9a7ace615e0fe77940231e692d3e857b3f03",
-      "size": 41277,
+      "sha256": "06d3ce9a1a429c669137f91554bfa267cae699d053fe174ad8baa6a42e84ef3f",
+      "size": 41290,
       "title": "舆情 AI 打标与统一分析契约"
     },
     {
@@ -509,15 +509,15 @@
     {
       "kind": "documentation",
       "path": "docs/测试与调试说明.md",
-      "sha256": "1196f254850f1df2eb09aa9f1e933d67ee1e6d25b5b39cf68856744c78fd6d8c",
-      "size": 31324,
+      "sha256": "e634f8dc0825ac6b0e91ee59592bda7749b29c8356c379368f83f4fc86895d31",
+      "size": 31322,
       "title": "AIMA_UGC 测试与调试说明"
     },
     {
       "kind": "documentation",
       "path": "docs/环境运行与部署.md",
-      "sha256": "9c3613c9c2a540fce5ef2e37253ab2e603b4183626761f3d7d1a809555b82b12",
-      "size": 20189,
+      "sha256": "2de3c6e2d0909324c82b8d4fd197fbf96cdc815ad78ea0aafbeda4bf2c975b34",
+      "size": 20171,
       "title": "环境、运行与部署"
     },
     {
@@ -535,8 +535,8 @@
     {
       "kind": "manifest",
       "path": "pyproject.toml",
-      "sha256": "039ca363f4204bd596acda28fe516199e767914f02e4304adea48f72f4269777",
-      "size": 1113
+      "sha256": "b6b3e68c6316a24463ab2cfe618703bef9f4bba3a2079d28d9176243dcecec7d",
+      "size": 1104
     },
     {
       "kind": "documentation",
@@ -562,14 +562,14 @@
     {
       "kind": "manifest",
       "path": "uv.lock",
-      "sha256": "9f7fdb4f5cf86729e19ec063e97e1eb10bfc1cfbf7247f7fdf7fdefd6e6c6b83",
-      "size": 92004
+      "sha256": "d753f01300bf275c878d5dc348b4f28d6372bd3e100a34741e67a3c436727343",
+      "size": 91336
     }
   ],
-  "generated_at": "2026-08-20T10:05:49+00:00",
+  "generated_at": "2026-08-20T10:30:31+00:00",
   "generator_version": "0.1.0",
   "git": {
-    "indexed_at_commit": "322d93bcd177b8281ac4db6d2aee11928f0f6b26",
+    "indexed_at_commit": "066ca4fdeef6bd13c71b652ccd3a442cfd096dd7",
     "repository": true,
     "worktree_candidate_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
   },
