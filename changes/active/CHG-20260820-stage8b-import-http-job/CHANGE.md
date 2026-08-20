@@ -79,6 +79,8 @@ Content Ingestion、Artifact Store 或 Job Runtime。
   File Import/Content Ingestion，不调用 `imports_test` 作为生产实现。
 - [ ] PostgreSQL 只允许零或一条 System Owner 的全局 Relevance 配置，并用真实外键引用一个现有
   Keyword Pack；未配置、Pack 停用或没有有效关键词时，正式 Import/Collection 必须 fail closed。
+- [ ] 关键词 HTTP 写入只接受原始 `text`，后端以 `trim → NFKC → casefold` 生成数据库唯一身份；内部
+  空白和 `-/_/·` 在数据库身份中保留，而 Relevance 匹配继续忽略它们。
 - [ ] Import Job 与 Collection Run 创建时冻结同一全局 Pack 的 ID、版本和实际有效关键词快照；排队/运行
   期间修改全局配置或词包不会改变本次执行。
 - [ ] Excel/Import 与 TikHub Collection 调用同一个 Provider-neutral Canonical Relevance Service；
@@ -192,6 +194,20 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 - 每个 Import Job / Collection Run 仍冻结 Pack ID、Pack Version 与实际有效关键词快照；全局唯一不等于
   运行时反复读取可变配置。
 
+## 已确认：关键词数据库身份与 Relevance 匹配规范化
+
+- 用户选择兼容性优先方案：HTTP 只接收关键词原始 `text`，后端先去除首尾空白，再以 Unicode NFKC 与
+  `casefold` 生成 `keywords.normalized_text`；前端和其他 HTTP 调用方不能提交或覆盖该字段。
+- 数据库身份保留内部空白和 `-/_/·`，因此 `爱 玛` / `爱玛`、`AIMA-500` / `AIMA500` 可以作为不同
+  Keyword 父事实保存；`ＡＩＭＡ` / `aima` 仍属于同一数据库身份。
+- Relevance 匹配保持既有更强规则：NFKC、casefold 后删除全部空白及 `-/_/·`。同一 Pack 中多个数据库
+  Keyword 如果收敛为同一匹配文本，按 Pack 的稳定优先级/顺序保留第一个有效匹配项，避免重复执行；
+  数据库和管理 API 仍保留各自词条。
+- Stage 8B 不新增 Alias/同义词关系表；业务别名可以作为独立关键词加入全局 Relevance Pack。正式 Alias
+  关系语义继续留给 Stage 8F 的独立业务门禁。
+- 新 Migration 按批准算法重算已有 `normalized_text`；如果历史数据发生唯一身份冲突，Migration 必须
+  fail closed 并报告冲突，由运维/业务人工合并，不能静默删除关键词或自动改写 Pack 关系。
+
 ## 后续仍需按顺序冻结的技术/安全边界
 
 - Excel HTTP 传输形态与最大压缩/解压大小；仓库只要求限制扩展名、MIME、大小和 Zip Bomb，尚无数值。
@@ -201,7 +217,8 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 ## Migration、部署与回滚
 
 - 本阶段需要新增正式 Revision：建立零或一条全局 Relevance 配置及 Keyword Pack 外键，并扩展
-  Collection Candidate Ingestion 的稳定 `filtered` 终态；不修改历史 Revision，不为现有数据库伪造词包。
+  Collection Candidate Ingestion 的稳定 `filtered` 终态，同时按已批准算法重算已有关键词身份；不修改
+  历史 Revision，不为现有数据库伪造词包，历史规范化冲突时拒绝升级而不自动合并数据。
 - 部署前数据库必须升级到最终 Head；先通过正式 API 完成全局配置，再同时启动/恢复 API、Worker、
   Scheduler，并共享同一 PostgreSQL 与 ArtifactStore。
 - 回滚先停止新导入并等待/处置已有 Import Job，再回退 API/Worker/Contract 代码；若最终没有新 Migration，
@@ -217,7 +234,7 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 - [x] 冻结 Discovery 与跨渠道 Relevance 的业务定义及共同 Canonical 边界
 - [x] 冻结 Relevance 词包为系统全局唯一配置，并确定执行快照与 fail-closed 部署边界
 - [x] 冻结 TikHub Search 未命中时先请求一次 Detail 再终判的召回优先策略
-- [ ] 冻结正式关键词写入规范化语义
+- [x] 冻结正式关键词数据库身份与 Relevance 匹配的两级规范化语义
 - [ ] 冻结 Excel HTTP 传输与压缩/解压大小边界
 - [ ] 建立 HTTP Contract/Error/OpenAPI、API Service 和 Import Job/Worker 的失败测试并观察正确 Red
 - [ ] 完成最小实现
@@ -279,7 +296,7 @@ Content Ingestion、Artifact Store 或 Job Runtime。
 # 交付
 
 - Commit：`a12eac4`（记录 Stage 8B 开发门禁）；后续实现继续使用中文提交。
-- PR：Draft PR `#97`（`feature/stage8b-import-http-job → main`）已创建；当前因正式 normalization 与
-  上传安全边界待决定而保持 blocked/draft，最终 CI/Review
+- PR：Draft PR `#97`（`feature/stage8b-import-http-job → main`）已创建；当前因上传安全边界待决定而
+  保持 blocked/draft，最终 CI/Review
   完成后才转 Ready 并正常合并。
 - 发布：不部署生产；只交付仓库代码、Migration 状态说明、生成物、测试与合并后 main 证据。

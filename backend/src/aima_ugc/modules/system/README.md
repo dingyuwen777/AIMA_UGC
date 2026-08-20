@@ -28,23 +28,30 @@
 
 `provider_configs.id` 是 Provider 配置实例的稳定 UUID。同一种 Provider 可以有多个配置实例；配置实例不绑定平台，Collection 的 Plan/平台策略通过 `provider_config_id` 选择它。Provider 类型不允许对同一稳定 UUID 原地改成另一 Provider；切换 Provider 时创建新配置并改引用。
 
-`keywords.normalized_text` 是关键词稳定去重字段，数据库保证唯一；当前 System 父事实不自行猜测 NFKC、casefold、空白折叠等规范化算法，正式写入 API/导入边界后再按批准 Contract 产生该值。`keyword_pack_items` 使用 `(pack_id, keyword_id, platform)` 作为复合身份，`platform='all'` 只表示父事实中的全平台词；Collection 创建 Run 时再按正式 Plan 关系展开并冻结为明确平台关键词列表。
+`keywords.normalized_text` 是关键词稳定去重字段，数据库保证唯一。正式 HTTP 写入只接收原始 `text`，
+后端先去除首尾空白，再用 Unicode NFKC 与 `casefold` 生成该字段；内部空白和 `-/_/·` 仍参与数据库
+身份，因此 `AIMA-500` 与 `AIMA500` 可以是两个父事实。`keyword_pack_items` 使用
+`(pack_id, keyword_id, platform)` 作为复合身份，`platform='all'` 只表示父事实中的全平台词；Collection
+创建 Run 时再按正式 Plan 关系展开并冻结为明确平台关键词列表。
 
 ## 关键词管理进入 Stage 8 前的产品门禁
 
-`imports_test` 当前有自己的本地相关性清洗词包文件，并在离线清洗时使用 NFKC、casefold、去空白以及忽略 `-/_/·` 的匹配规范化。这个行为只定义本地离线清洗怎样判断“帖子是否相关”，**不等同于已经冻结 `keywords.normalized_text` 的正式数据库写入算法**。
+`imports_test` 当前有自己的本地相关性清洗词包文件，并在离线清洗时使用 NFKC、casefold、去空白以及
+忽略 `-/_/·` 的匹配规范化。Stage 8B 继续保留这套更强的 Relevance 匹配规则；它与数据库身份规则
+有意不同。同一词包内若多个数据库关键词收敛为同一匹配文本，运行时按稳定优先级/顺序保留第一个有效
+匹配项，数据库和管理 API 仍保留各自词条。
 
 Stage 8B 已批准的业务边界是：Discovery 词包只决定 TikHub 等 Provider 搜索什么；Relevance 是所有
 来源在 Mapper 形成 Canonical 后、写入 Content 前执行的统一准入过滤。Relevance 词包是系统全局唯一
 配置，Import/Collection 不允许分别覆盖；每个 Job/Run 仍必须冻结 Pack ID、版本和实际关键词快照。
 全局配置使用正式外键关系，不能把 Keyword Pack UUID 作为无约束 JSON 设置。
 
-正式开发关键词写入边界前仍必须由业务 Owner 明确以下语义，不能由实现者静默选择默认值：
+后续正式开发 Alias 关系前仍必须由业务 Owner 明确以下语义，不能由实现者静默选择默认值：
 
 1. 真正业务别名、俗称是否需要“标准词 → 多别名”的正式关系；如果需要，必须再明确别名与 `keywords.normalized_text` 唯一身份、Keyword Pack 成员、Run Snapshot、前端编辑/去重的关系。
-2. 正式关键词写入边界采用什么规范化算法以及如何处理历史数据冲突；在 API Contract 与 Migration/兼容策略批准前，不把 `imports_test` 的本地匹配规则直接当成数据库唯一键规则。
 
-这些决定应在对应 Stage 8 Change 中固化到 HTTP Contract、正式文档和必要的数据模型；未决定前可以继续使用当前 Stage 7 Keyword Pack 父事实，但不得提前制造第二套 Keyword/别名数据库结构。
+Stage 8B 不新增 Alias 表；业务别名先作为独立关键词加入词包。后续决定应在对应 Stage 8 Change 中固化
+到 HTTP Contract、正式文档和必要的数据模型，不得提前制造第二套 Keyword/别名数据库结构。
 
 ## 外部依赖和 Port
 

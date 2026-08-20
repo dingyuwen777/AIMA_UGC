@@ -603,6 +603,8 @@ Stage 8 不作为一个巨型 PR 一次完成。按以下最小正式单元推�
   所需的最小关键词写入/读取 HTTP Contract；
 - 建立一个通过外键引用 Keyword Pack 的系统全局 Relevance 配置；Import/Collection 不允许按请求或
   Plan 覆盖，配置缺失时正式执行 fail closed；
+- 关键词 HTTP 写入只接收原始文本，后端用 `trim → NFKC → casefold` 生成数据库唯一身份，并保留内部
+  空白和 `-/_/·`；Relevance 匹配仍额外忽略这些字符，过滤等价词按 Pack 稳定顺序只执行一次；
 - Import Job 与 Collection Run 创建时冻结全局 Pack 身份、版本与实际执行关键词快照；
 - 把现有 Excel 关键词判定提取为 Provider-neutral Canonical Relevance Service，并接入正式
   Excel/TikHub 当前生产链；未通过的 TikHub Candidate 保留 Raw/账本，不写 Content；
@@ -680,7 +682,8 @@ Stage 8B 不实现 Keyword Pack Vue 页面；本阶段生成的 Orval Client 供
 - 完整适用 CI；
 - Stage 8 收口。
 
-关键词 Discovery/Relevance、Alias、正式 normalization 等尚未批准的业务语义仍不能由 Agent 静默选择。
+Alias 正式关系等尚未批准的业务语义仍不能由 Agent 静默选择；Discovery/Relevance 边界与正式关键词
+数据库/匹配 normalization 已在 Stage 8B 固化。
 
 ## 17. Stage 8A 验收底线
 
