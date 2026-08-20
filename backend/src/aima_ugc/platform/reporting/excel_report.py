@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from collections import Counter, defaultdict
@@ -37,6 +38,8 @@ _KEYWORD_SPLIT_RE = re.compile(r"[；;\n]+")
 _PRIMARY_CHART_LIMIT = 8
 _SECONDARY_CHART_LIMIT = 10
 _KEYWORD_CHART_LIMIT = 12
+_NEGATIVE_CHART_LIMIT = 8
+_SENTIMENT_PREFERRED_ORDER = ("正面", "中性", "负面", "混合")
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +75,10 @@ class _ReportStats:
     daily_sentiment: dict[date, Counter[str]]
     daily_primary: dict[date, Counter[str]]
     daily_secondary: dict[date, Counter[str]]
+    platform_sentiment: dict[str, Counter[str]]
+    negative_platform_counts: Counter[str]
+    negative_primary_counts: Counter[str]
+    negative_secondary_counts: Counter[str]
     quality_counts: Counter[str]
     start_date: date | None
     end_date: date | None
@@ -154,6 +161,10 @@ def _collect_stats(path: Path) -> _ReportStats:
         daily_sentiment: defaultdict[date, Counter[str]] = defaultdict(Counter)
         daily_primary: defaultdict[date, Counter[str]] = defaultdict(Counter)
         daily_secondary: defaultdict[date, Counter[str]] = defaultdict(Counter)
+        platform_sentiment: defaultdict[str, Counter[str]] = defaultdict(Counter)
+        negative_platform_counts: Counter[str] = Counter()
+        negative_primary_counts: Counter[str] = Counter()
+        negative_secondary_counts: Counter[str] = Counter()
         quality_counts: Counter[str] = Counter()
 
         content_rows = 0
@@ -174,6 +185,9 @@ def _collect_stats(path: Path) -> _ReportStats:
                 quality_counts["内容缺失情感标签"] += 1
             else:
                 sentiment_counts[sentiment] += 1
+                platform_sentiment[platform][sentiment] += 1
+                if sentiment == "负面":
+                    negative_platform_counts[platform] += 1
 
             primary_labels = _split_multiline(_row_value(row, content_headers, "一级标签"))
             secondary_labels = _split_multiline(_row_value(row, content_headers, "二级标签"))
@@ -213,16 +227,21 @@ def _collect_stats(path: Path) -> _ReportStats:
             if _row_is_empty(row):
                 continue
             label_rows += 1
+            sentiment = _clean_text(_row_value(row, label_headers, "情感标签"))
             primary = _clean_text(_row_value(row, label_headers, "一级标签"))
             secondary = _clean_text(_row_value(row, label_headers, "二级标签"))
             if primary is None:
                 quality_counts["标签明细缺失一级标签"] += 1
             else:
                 primary_counts[primary] += 1
+                if sentiment == "负面":
+                    negative_primary_counts[primary] += 1
             if secondary is None:
                 quality_counts["标签明细缺失二级标签"] += 1
             else:
                 secondary_counts[secondary] += 1
+                if sentiment == "负面":
+                    negative_secondary_counts[secondary] += 1
             if primary is not None and secondary is not None:
                 label_pair_counts[(primary, secondary)] += 1
 
@@ -256,6 +275,10 @@ def _collect_stats(path: Path) -> _ReportStats:
             daily_sentiment=dict(daily_sentiment),
             daily_primary=dict(daily_primary),
             daily_secondary=dict(daily_secondary),
+            platform_sentiment=dict(platform_sentiment),
+            negative_platform_counts=negative_platform_counts,
+            negative_primary_counts=negative_primary_counts,
+            negative_secondary_counts=negative_secondary_counts,
             quality_counts=quality_counts,
             start_date=dates[0] if dates else None,
             end_date=dates[-1] if dates else None,
@@ -340,6 +363,9 @@ def _build_template_replacements(
 ) -> dict[str, str]:
     start = stats.start_date.isoformat() if stats.start_date is not None else "无有效日期"
     end = stats.end_date.isoformat() if stats.end_date is not None else "无有效日期"
+    period = f"{start} ~ {end}"
+    dates = sorted(stats.daily_content)
+
     overview = _markdown_table(
         ("指标", "数量/范围"),
         (
@@ -349,12 +375,9 @@ def _build_template_replacements(
             ("平台数", len(stats.platform_counts)),
             ("一级标签数", len(stats.primary_counts)),
             ("二级标签数", len(stats.secondary_counts)),
-            ("数据日期范围", f"{start} ~ {end}"),
+            ("数据日期范围", period),
         ),
     )
-    quality_rows = [(name, count) for name, count in _sorted_counter(stats.quality_counts)]
-    if not quality_rows:
-        quality_rows = [("未发现统计字段缺失/异常", 0)]
 
     platform_rows: list[tuple[object, ...]] = []
     for platform, count in _sorted_counter(stats.platform_counts):
@@ -390,9 +413,8 @@ def _build_template_replacements(
         )
     ]
 
-    dates = sorted(stats.daily_content)
     platform_series = [label for label, _ in _sorted_counter(stats.platform_counts)]
-    sentiment_series = [label for label, _ in _sorted_counter(stats.sentiment_counts)]
+    sentiment_series = _ordered_sentiments(stats.sentiment_counts)
     primary_series = [label for label, _ in _sorted_counter(stats.primary_counts)][
         :_PRIMARY_CHART_LIMIT
     ]
@@ -400,13 +422,76 @@ def _build_template_replacements(
         :_SECONDARY_CHART_LIMIT
     ]
 
+    platform_sentiment_rows = _platform_sentiment_rows(stats, sentiment_series)
+    platform_sentiment_chart = _platform_sentiment_chart(stats, sentiment_series)
+    negative_total = stats.sentiment_counts.get("负面", 0)
+    negative_label_total = sum(stats.negative_primary_counts.values())
+
+    negative_platform_rows = [
+        (label, count, _percentage(count, negative_total))
+        for label, count in _sorted_counter(stats.negative_platform_counts)
+    ]
+    negative_primary_rows = [
+        (label, count, _percentage(count, negative_label_total))
+        for label, count in _sorted_counter(stats.negative_primary_counts)
+    ]
+    negative_secondary_total = sum(stats.negative_secondary_counts.values())
+    negative_secondary_rows = [
+        (label, count, _percentage(count, negative_secondary_total))
+        for label, count in _sorted_counter(stats.negative_secondary_counts)
+    ]
+
+    peak_date, peak_count = _peak_day(stats.daily_content)
+    executive_metrics = _markdown_table(
+        ("关键指标", "本期表现"),
+        (
+            ("监测周期", period),
+            ("内容声量", stats.content_rows),
+            ("评论互动", stats.comment_rows),
+            ("覆盖平台", len(stats.platform_counts)),
+            (
+                "负面内容",
+                f"{negative_total}（{_percentage(negative_total, stats.content_rows)}）",
+            ),
+            (
+                "声量峰值",
+                f"{peak_date.isoformat()} / {peak_count} 条" if peak_date is not None else "暂无",
+            ),
+            ("主要平台", _top_counter_text(stats.platform_counts, stats.content_rows)),
+            ("首要一级议题", _top_counter_text(stats.primary_counts, stats.label_rows)),
+            ("首要二级议题", _top_counter_text(stats.secondary_counts, stats.label_rows)),
+            ("热点关键词", _top_counter_text(stats.keyword_counts, stats.content_rows)),
+        ),
+    )
+
+    quality_rows = _quality_rows(stats.quality_counts)
+    daily_content_values = tuple(stats.daily_content.get(day, 0) for day in dates)
+
     return {
         "GENERATED_AT": _format_generated_at(generated_at),
         "SOURCE_FILE": _markdown_inline(str(source_path)),
+        "REPORT_PERIOD": period,
+        "EXECUTIVE_SUMMARY": _executive_summary(stats),
+        "EXECUTIVE_METRICS_TABLE": executive_metrics,
+        "RISK_SUMMARY": _risk_summary(stats),
         "OVERVIEW_TABLE": overview,
-        "DATA_QUALITY_TABLE": _markdown_table(("数据完整性检查", "数量"), quality_rows),
+        "DATA_QUALITY_TABLE": _markdown_table(("数据质量检查", "数量"), quality_rows),
+        "DAILY_CONTENT_CHART": _mermaid_xychart(
+            "每日舆情声量走势",
+            [day.isoformat() for day in dates],
+            [daily_content_values],
+            kind="line",
+            series_names=("内容声量",),
+        )
+        if dates
+        else "暂无可展示图表。",
         "PLATFORM_TABLE": _markdown_table(("平台", "内容量", "内容占比", "评论量"), platform_rows),
         "PLATFORM_PIE_CHART": _mermaid_pie("各平台内容占比", stats.platform_counts),
+        "PLATFORM_SENTIMENT_TABLE": _markdown_table(
+            ("平台", *sentiment_series, "合计", "负面占比"),
+            platform_sentiment_rows,
+        ),
+        "PLATFORM_SENTIMENT_CHART": platform_sentiment_chart,
         "PLATFORM_DAILY_LEGEND": _series_legend(platform_series),
         "PLATFORM_DAILY_CHART": _mermaid_daily_lines(
             "各平台每日内容量",
@@ -416,23 +501,44 @@ def _build_template_replacements(
         ),
         "PLATFORM_DAILY_TABLE": _daily_long_table("平台", dates, stats.daily_platform),
         "SENTIMENT_TABLE": _markdown_table(("情感标签", "内容量", "内容占比"), sentiment_rows),
-        "SENTIMENT_PIE_CHART": _mermaid_pie("情感标签占比", stats.sentiment_counts),
+        "SENTIMENT_PIE_CHART": _mermaid_pie("情感结构", stats.sentiment_counts),
         "SENTIMENT_DAILY_LEGEND": _series_legend(sentiment_series),
         "SENTIMENT_DAILY_CHART": _mermaid_daily_lines(
-            "情感标签每日趋势",
+            "情感每日趋势",
             dates,
             sentiment_series,
             stats.daily_sentiment,
         ),
         "SENTIMENT_DAILY_TABLE": _daily_long_table("情感标签", dates, stats.daily_sentiment),
+        "NEGATIVE_PLATFORM_TABLE": _markdown_table(
+            ("平台", "负面内容量", "负面内容占比"), negative_platform_rows
+        ),
+        "NEGATIVE_PLATFORM_BAR_CHART": _mermaid_bar(
+            "负面内容平台分布",
+            _top_counter(stats.negative_platform_counts, _NEGATIVE_CHART_LIMIT),
+        ),
+        "NEGATIVE_PRIMARY_TABLE": _markdown_table(
+            ("一级议题", "负面标签量", "负面标签占比"), negative_primary_rows
+        ),
+        "NEGATIVE_PRIMARY_BAR_CHART": _mermaid_bar(
+            "负面一级议题 Top 分布",
+            _top_counter(stats.negative_primary_counts, _NEGATIVE_CHART_LIMIT),
+        ),
+        "NEGATIVE_SECONDARY_TABLE": _markdown_table(
+            ("二级议题", "负面标签量", "负面标签占比"), negative_secondary_rows
+        ),
+        "NEGATIVE_SECONDARY_BAR_CHART": _mermaid_bar(
+            "负面二级议题 Top 分布",
+            _top_counter(stats.negative_secondary_counts, _NEGATIVE_CHART_LIMIT),
+        ),
         "PRIMARY_TABLE": _markdown_table(("一级标签", "标签对数量", "标签对占比"), primary_rows),
         "PRIMARY_BAR_CHART": _mermaid_bar(
-            "一级标签 Top 分布",
+            "一级议题 Top 分布",
             _top_counter(stats.primary_counts, _PRIMARY_CHART_LIMIT),
         ),
         "PRIMARY_DAILY_LEGEND": _series_legend(primary_series),
         "PRIMARY_DAILY_CHART": _mermaid_daily_lines(
-            "一级标签每日趋势（Top 序列）",
+            "一级议题每日趋势（Top 序列）",
             dates,
             primary_series,
             stats.daily_primary,
@@ -442,12 +548,12 @@ def _build_template_replacements(
             ("二级标签", "标签对数量", "标签对占比"), secondary_rows
         ),
         "SECONDARY_BAR_CHART": _mermaid_bar(
-            "二级标签 Top 分布",
+            "二级议题 Top 分布",
             _top_counter(stats.secondary_counts, _SECONDARY_CHART_LIMIT),
         ),
         "SECONDARY_DAILY_LEGEND": _series_legend(secondary_series),
         "SECONDARY_DAILY_CHART": _mermaid_daily_lines(
-            "二级标签每日趋势（Top 序列）",
+            "二级议题每日趋势（Top 序列）",
             dates,
             secondary_series,
             stats.daily_secondary,
@@ -458,10 +564,154 @@ def _build_template_replacements(
         ),
         "KEYWORD_TABLE": _markdown_table(("命中关键词", "内容量", "内容占比"), keyword_rows),
         "KEYWORD_BAR_CHART": _mermaid_bar(
-            "命中关键词 Top 分布",
+            "热点关键词 Top 分布",
             _top_counter(stats.keyword_counts, _KEYWORD_CHART_LIMIT),
         ),
     }
+
+
+def _ordered_sentiments(counter: Counter[str]) -> list[str]:
+    ordered = [label for label in _SENTIMENT_PREFERRED_ORDER if counter.get(label, 0) > 0]
+    extras = sorted(label for label in counter if label not in _SENTIMENT_PREFERRED_ORDER)
+    return [*ordered, *extras]
+
+
+def _platform_sentiment_rows(
+    stats: _ReportStats,
+    sentiments: Sequence[str],
+) -> list[tuple[object, ...]]:
+    rows: list[tuple[object, ...]] = []
+    for platform, total in _sorted_counter(stats.platform_counts):
+        counts = stats.platform_sentiment.get(platform, Counter())
+        negative = counts.get("负面", 0)
+        rows.append(
+            (
+                platform,
+                *(counts.get(sentiment, 0) for sentiment in sentiments),
+                total,
+                _percentage(negative, total),
+            )
+        )
+    return rows
+
+
+def _platform_sentiment_chart(stats: _ReportStats, sentiments: Sequence[str]) -> str:
+    platforms = [label for label, _ in _sorted_counter(stats.platform_counts)]
+    if not platforms or not sentiments:
+        return "暂无可展示图表。"
+    series_values = [
+        [
+            stats.platform_sentiment.get(platform, Counter()).get(sentiment, 0)
+            for platform in platforms
+        ]
+        for sentiment in sentiments
+    ]
+    return _mermaid_xychart(
+        "平台 × 情感结构",
+        platforms,
+        series_values,
+        kind="bar",
+        series_names=tuple(sentiments),
+    )
+
+
+def _executive_summary(stats: _ReportStats) -> str:
+    negative = stats.sentiment_counts.get("负面", 0)
+    peak_date, peak_count = _peak_day(stats.daily_content)
+    platform = _top_item(stats.platform_counts)
+    primary = _top_item(stats.primary_counts)
+    secondary = _top_item(stats.secondary_counts)
+    keyword = _top_item(stats.keyword_counts)
+
+    lines = [
+        (
+            f"- **总体声量：** 本期共观察 **{stats.content_rows}** 条公开内容、"
+            f"**{stats.comment_rows}** 条评论，覆盖 **{len(stats.platform_counts)}** 个平台。"
+        ),
+        (
+            f"- **情感结构：** 负面内容 **{negative}** 条，占全部内容 "
+            f"**{_percentage(negative, stats.content_rows)}**。"
+        ),
+    ]
+    if platform is not None:
+        lines.append(
+            f"- **渠道重心：** **{platform[0]}** 声量最高，共 {platform[1]} 条，"
+            f"占比 {_percentage(platform[1], stats.content_rows)}。"
+        )
+    if peak_date is not None:
+        lines.append(f"- **声量峰值：** **{peak_date.isoformat()}** 达到 {peak_count} 条内容。")
+    if primary is not None and secondary is not None:
+        lines.append(
+            f"- **议题焦点：** 一级议题以 **{primary[0]}** 最集中，"
+            f"二级议题以 **{secondary[0]}** 最集中。"
+        )
+    if keyword is not None:
+        lines.append(
+            f"- **热点关键词：** **{keyword[0]}** 命中 {keyword[1]} 条内容，"
+            f"覆盖 {_percentage(keyword[1], stats.content_rows)} 的内容样本。"
+        )
+    return "\n".join(lines)
+
+
+def _risk_summary(stats: _ReportStats) -> str:
+    negative = stats.sentiment_counts.get("负面", 0)
+    if negative <= 0:
+        return (
+            "本期未观察到被标记为负面的内容。建议继续关注混合情绪、突发声量峰值和"
+            "高频议题变化，避免单一时点的低风险状态掩盖后续波动。"
+        )
+    platform = _top_item(stats.negative_platform_counts)
+    primary = _top_item(stats.negative_primary_counts)
+    secondary = _top_item(stats.negative_secondary_counts)
+    parts = [
+        f"本期共识别 **{negative}** 条负面内容，占全部内容 "
+        f"**{_percentage(negative, stats.content_rows)}**。"
+    ]
+    if platform is not None:
+        parts.append(f"负面声量主要集中在 **{platform[0]}**，共 {platform[1]} 条。")
+    if primary is not None:
+        parts.append(f"一级风险议题以 **{primary[0]}** 最集中。")
+    if secondary is not None:
+        parts.append(f"具体风险点中 **{secondary[0]}** 出现最多。")
+    parts.append("建议优先核验高频负面议题对应内容与评论语境，并结合业务处置进展持续跟踪。")
+    return " ".join(parts)
+
+
+def _peak_day(counter: Counter[date]) -> tuple[date | None, int]:
+    if not counter:
+        return None, 0
+    day, count = min(counter.items(), key=lambda item: (-item[1], item[0]))
+    return day, count
+
+
+def _top_item(counter: Counter[str]) -> tuple[str, int] | None:
+    items = _sorted_counter(counter)
+    return items[0] if items else None
+
+
+def _top_counter_text(counter: Counter[str], denominator: int) -> str:
+    item = _top_item(counter)
+    if item is None:
+        return "暂无"
+    return f"{item[0]} / {item[1]}（{_percentage(item[1], denominator)}）"
+
+
+def _quality_rows(counter: Counter[str]) -> list[tuple[str, int]]:
+    labels = {
+        "内容缺失平台": "缺失平台",
+        "内容缺失情感标签": "缺失情感判断",
+        "内容缺失一级标签": "缺失一级议题",
+        "内容缺失二级标签": "缺失二级议题",
+        "内容一级二级标签行数不一致": "一级/二级议题对应关系异常",
+        "内容缺失命中关键词": "缺失命中关键词",
+        "内容缺失发布时间": "缺失发布时间",
+        "内容发布时间无法解析": "发布时间无法识别",
+        "标签明细缺失一级标签": "标签记录缺失一级议题",
+        "标签明细缺失二级标签": "标签记录缺失二级议题",
+        "评论缺失平台": "评论缺失平台",
+    }
+    rows = [(labels.get(name, name), count) for name, count in _sorted_counter(counter)]
+    return rows or [("未发现影响本报告统计的字段缺失或异常", 0)]
 
 
 def _render_template(template: str, replacements: Mapping[str, str]) -> str:
@@ -539,7 +789,13 @@ def _mermaid_bar(title: str, counter: Counter[str]) -> str:
         return "暂无可展示图表。"
     labels = [label for label, _ in items]
     values = [count for _, count in items]
-    return _mermaid_xychart(title, labels, [values], kind="bar")
+    return _mermaid_xychart(
+        title,
+        labels,
+        [values],
+        kind="bar",
+        series_names=("数量",),
+    )
 
 
 def _mermaid_daily_lines(
@@ -551,7 +807,13 @@ def _mermaid_daily_lines(
     if not dates or not series:
         return "暂无可展示图表。"
     matrix = [[values.get(day, Counter()).get(label, 0) for day in dates] for label in series]
-    return _mermaid_xychart(title, [day.isoformat() for day in dates], matrix, kind="line")
+    return _mermaid_xychart(
+        title,
+        [day.isoformat() for day in dates],
+        matrix,
+        kind="line",
+        series_names=tuple(series),
+    )
 
 
 def _mermaid_xychart(
@@ -560,16 +822,23 @@ def _mermaid_xychart(
     series_values: Sequence[Sequence[int]],
     *,
     kind: str,
+    series_names: Sequence[str] | None = None,
 ) -> str:
     if kind not in {"bar", "line"}:
         raise ValueError(kind)
+    if not categories or not series_values:
+        return "暂无可展示图表。"
+    if series_names is not None and len(series_names) != len(series_values):
+        raise ValueError("图表系列名称数量与数据序列数量不一致")
     max_value = max((value for series in series_values for value in series), default=0)
     y_max = max(1, max_value + max(1, (max_value + 9) // 10))
     quoted_categories = ", ".join(f'"{_mermaid_text(label)}"' for label in categories)
+    names = tuple(series_names or (f"系列 {index}" for index in range(1, len(series_values) + 1)))
     lines = [
         "```mermaid",
         "xychart",
         f'    title "{_mermaid_text(title)}"',
+        f"    %% series {json.dumps(names, ensure_ascii=False)}",
         f"    x-axis [{quoted_categories}]",
         f'    y-axis "数量" 0 --> {y_max}',
     ]
