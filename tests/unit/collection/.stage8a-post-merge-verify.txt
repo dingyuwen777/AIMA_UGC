@@ -1,0 +1,1 @@
+Stage 8A post-merge verification marker. Not a test; remove before archive PR merge.
