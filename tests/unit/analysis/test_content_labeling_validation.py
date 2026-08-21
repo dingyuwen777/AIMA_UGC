@@ -38,9 +38,15 @@ def _label_item(taxonomy: PromptTaxonomy, *, item_no: int) -> dict[str, object]:
     primary = taxonomy.primary_labels[0]
     return {
         "item_no": item_no,
+        "relevance": "relevant",
+        "voice_type": "unknown",
         "sentiment": taxonomy.sentiments[0],
-        "primary_label": primary,
-        "secondary_label": taxonomy.labels[primary][0],
+        "labels": [
+            {
+                "primary_label": primary,
+                "secondary_label": taxonomy.labels[primary][0],
+            }
+        ],
     }
 
 
@@ -53,7 +59,7 @@ def _valid_response(taxonomy: PromptTaxonomy, item_nos: tuple[int, ...]) -> str:
 
 def _missing_required_field(taxonomy: PromptTaxonomy) -> str:
     item = _label_item(taxonomy, item_no=1)
-    item.pop("secondary_label")
+    item.pop("voice_type")
     return json.dumps({"items": [item]}, ensure_ascii=False)
 
 
@@ -75,21 +81,29 @@ def _unexpected_item_no(taxonomy: PromptTaxonomy) -> str:
     )
 
 
+def _first_label(item: dict[str, object]) -> dict[str, object]:
+    labels = item["labels"]
+    assert isinstance(labels, list) and len(labels) == 1
+    label = labels[0]
+    assert isinstance(label, dict)
+    return label
+
+
 def _unknown_primary(taxonomy: PromptTaxonomy) -> str:
     item = _label_item(taxonomy, item_no=1)
-    item["primary_label"] = "不存在的一级标签"
+    _first_label(item)["primary_label"] = "不存在的一级标签"
     return json.dumps({"items": [item]}, ensure_ascii=False)
 
 
 def _array_label(taxonomy: PromptTaxonomy) -> str:
     item = _label_item(taxonomy, item_no=1)
-    item["primary_label"] = [taxonomy.primary_labels[0]]
+    _first_label(item)["primary_label"] = [taxonomy.primary_labels[0]]
     return json.dumps({"items": [item]}, ensure_ascii=False)
 
 
 def _empty_label(taxonomy: PromptTaxonomy) -> str:
     item = _label_item(taxonomy, item_no=1)
-    item["secondary_label"] = ""
+    _first_label(item)["secondary_label"] = ""
     return json.dumps({"items": [item]}, ensure_ascii=False)
 
 
