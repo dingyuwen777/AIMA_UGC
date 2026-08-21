@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260821-stage8e-tikhub-supplement"
 title: "Stage 8E TikHub 辅助补采与统一运行中心"
 level: L3
-status: in_progress
+status: done
 owner: "codex"
 branch: "feature/stage8e-tikhub-supplement"
 created: 2026-08-21
@@ -54,25 +54,25 @@ TikHub Collection Run 在同一“全部运行”列表集中查询，同时后�
 
 # 成功标准
 
-- [ ] `POST /api/v1/collection-runs` 只创建持久化 Collection Run/Scopes 与既有 `collection.run.v1` Job，
+- [x] `POST /api/v1/collection-runs` 只创建持久化 Collection Run/Scopes 与既有 `collection.run.v1` Job，
   Router 不发送 TikHub 请求、不执行长任务。
-- [ ] `discovery` 模式接收一次性关键词并冻结到 Run/Scope，不写 `keyword_packs`，不创建 Plan；每个平台
+- [x] `discovery` 模式接收一次性关键词并冻结到 Run/Scope，不写 `keyword_packs`，不创建 Plan；每个平台
   显式选择已启用且 Registry/Capability 支持的 `provider_config_id`。
-- [ ] `batch_supplement` 模式只接受存在的 Import Batch，并为该 Batch 实际来源账本关联的当前 Content
+- [x] `batch_supplement` 模式只接受存在的 Import Batch，并为该 Batch 实际来源账本关联的当前 Content
   建立 `content/content_enrichment` Scope；Batch 与 Run 通过真实可空外键关联，一个 Batch 可有多个 Run。
-- [ ] 两种模式都复用正式 Provider Request/Attempt、Raw、Mapper、全局 Relevance、Candidate、
+- [x] 两种模式都复用正式 Provider Request/Attempt、Raw、Mapper、全局 Relevance、Candidate、
   Fenced Ingestion 与 PostgreSQL Content Owner；不新建平行 TikHub Writer/Mapper/Job。
-- [ ] Capability HTTP 只返回 Provider Config 的稳定 ID/显示名与业务能力，不返回 Secret、Base URL、
+- [x] Capability HTTP 只返回 Provider Config 的稳定 ID/显示名与业务能力，不返回 Secret、Base URL、
   endpoint、cursor、page、search_id 或 Pricing 私有事实。
-- [ ] `GET /api/v1/collection-runtime/runs` 使用稳定签名 Cursor 集中返回 Excel Import 与 TikHub Run；
+- [x] `GET /api/v1/collection-runtime/runs` 使用稳定签名 Cursor 集中返回 Excel Import 与 TikHub Run；
   `GET /api/v1/collection-runtime/summary` 的三个 KPI 聚合两类运行，不由前端拼页计算。
-- [ ] `GET /api/v1/collection-runs/{run_id}` 返回 Run、Scope、关联 Batch 与 Job 的固定状态/进度/统计/
+- [x] `GET /api/v1/collection-runs/{run_id}` 返回 Run、Scope、关联 Batch 与 Job 的固定状态/进度/统计/
   安全错误摘要；不存在、非法请求、无可执行目标和 Provider Config 冲突使用统一 Error Contract/request_id。
-- [ ] Pydantic → OpenAPI → Orval → Feature API/Pinia/Vue 完整闭环；页面默认“全部运行”，并提供
+- [x] Pydantic → OpenAPI → Orval → Feature API/Pinia/Vue 完整闭环；页面默认“全部运行”，并提供
   `Excel 导入`、`TikHub 辅助补采` 过滤和两种 TikHub 创建模式。
-- [ ] Job claim/takeover、Fencing、Retry、Deadline、Raw 恢复与 Content 幂等在真实 PostgreSQL 18 上验证；
+- [x] Job claim/takeover、Fencing、Retry、Deadline、Raw 恢复与 Content 幂等在真实 PostgreSQL 18 上验证；
   普通 CI 使用 Fake Transport，不产生真实 TikHub 费用。
-- [ ] Migration 多路径、前后端质量门禁、两阶段 Review、最终 PR Head CI、正常合并、归档及合并后
+- [x] Migration 多路径、前后端质量门禁、两阶段 Review、最终 PR Head CI、正常合并、归档及合并后
   `main` 新鲜验证全部完成。
 
 # 范围
@@ -182,7 +182,7 @@ TikHub Collection Run 在同一“全部运行”列表集中查询，同时后�
 - [x] 同步真正受影响的 Blueprint、API、测试与部署说明
 - [x] 执行真实 PostgreSQL、Migration、后端/前端/生成物与安全质量门禁
 - [x] 完成需求符合性 Review 与代码质量 Review，严重/重要问题清零
-- [ ] Commit、Draft PR、CI/Review、Ready、正常合并、main 验证与 Change 归档
+- [x] Commit、Draft PR、CI/Review、Ready、正常合并、main 验证与 Change 归档
 
 # 验证
 
@@ -227,7 +227,15 @@ TikHub Collection Run 在同一“全部运行”列表集中查询，同时后�
 - 批准 PNG 的 SHA-256 重新核对为
   `343E61427D6E94F5DC814A9040925F6BCEF3D8E493B2A2AA95062D1BAEFDCCE5`；1600×1000 桌面实现截图已
   人工检查，完整 Playwright 重跑已清理条件性临时截图，工作树没有提交这些验证产物。
-- GitHub 最终 PR Head CI、合并与合并后 `main` 证据仍待 Git 交付阶段完成。
+- PR #104 的最终 Head `f0c8ba62a98e7a7c9cdc795c840d7912f46385f2` 为 25/25 checks 成功，
+  0 个未解决 Review Thread；PR 转 Ready 后以普通 merge commit 合并，没有绕过 Branch Protection。
+- 合并提交 `2c978b117118745b4fb3ab6efef31e7d3b1812a1` 的 `main` push 事件适用 24/24 checks 成功；
+  `Audit PostgreSQL Regression` 只在 PR 事件适用，已包含在前述 PR 25/25 中。
+- 合并后本地 `main` 新鲜验证：非数据库后端 594 passed / 1 skipped，PostgreSQL Integration 130 passed，
+  Frontend Vitest 5 files / 17 tests、Playwright 6/6，Lint、TypeScript 7、`vue-tsc`、Build、Ruff、mypy
+  224 files、Architecture、Table Owner、Secret、Docs、OpenAPI/Orval drift/compatibility 全部退出码 0。
+- 合并后 PostgreSQL 18.4 Migration 再次执行 `0022 → 0021 → head` 与 `head → base → head`，最终
+  `alembic current` 为 `20260821_0022 (head)`，`alembic check` 无新操作。
 
 ## 两阶段 Review
 
@@ -267,7 +275,9 @@ TikHub Collection Run 在同一“全部运行”列表集中查询，同时后�
 
 # 交付
 
-- Branch：`feature/stage8e-tikhub-supplement`
-- Commit：未创建。
-- PR：未创建。
-- 发布：未执行；本任务目标为正常合并到 `main`，不是外部生产部署。
+- 实现 Branch：`feature/stage8e-tikhub-supplement`
+- 实现 Commit：`f0c8ba62a98e7a7c9cdc795c840d7912f46385f2`（`实现 Stage 8E TikHub 辅助补采`）
+- 实现 PR：[#104](https://github.com/dingyuwen777/AIMA_UGC/pull/104)，已于 2026-08-21 正常合并
+- Merge Commit：`2c978b117118745b4fb3ab6efef31e7d3b1812a1`
+- Change 归档：`changes/archive/2026-08/CHG-20260821-stage8e-tikhub-supplement/CHANGE.md`
+- 发布：未执行外部生产部署；数据库与应用部署/回滚顺序已在本 Change 和正式部署文档固化。
