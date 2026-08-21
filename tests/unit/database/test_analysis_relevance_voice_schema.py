@@ -1,6 +1,5 @@
-from sqlalchemy import CheckConstraint
-
 from aima_ugc.modules.analysis.tables import analysis_content_results_table
+from sqlalchemy import CheckConstraint
 
 
 def test_analysis_result_schema_persists_relevance_and_voice_type() -> None:
