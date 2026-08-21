@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  apply-and-red-green:
+  apply-and-diagnose:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-24.04
     steps:
@@ -29,122 +29,102 @@ jobs:
         with:
           node-version: 24.19.0
 
-      - name: Install locked environments
+      - name: Apply, verify and publish diagnostics
         shell: bash
         run: |
-          set -euo pipefail
+          set +e
+          LOG=changes/active/CHG-20260821-analysis-relevance-voice-type/runner-diagnostic.log
+          : > "$LOG"
+          exec_step() {
+            echo "\n===== $1 =====" | tee -a "$LOG"
+            shift
+            "$@" 2>&1 | tee -a "$LOG"
+            return ${PIPESTATUS[0]}
+          }
+
           UV_VERSION="$(tr -d '\r\n' < .uv-version)"
-          python -m pip install "uv==${UV_VERSION}"
-          uv lock --check
-          uv sync --locked
-          npm ci --prefix frontend
+          exec_step "install uv" python -m pip install "uv==${UV_VERSION}"
+          STATUS=$?
+          if [ "$STATUS" -eq 0 ]; then exec_step "lock check" uv lock --check; STATUS=$?; fi
+          if [ "$STATUS" -eq 0 ]; then exec_step "uv sync" uv sync --locked; STATUS=$?; fi
+          if [ "$STATUS" -eq 0 ]; then exec_step "npm ci" npm ci --prefix frontend; STATUS=$?; fi
+          if [ "$STATUS" -eq 0 ]; then exec_step "apply migration" uv run python scripts/dev/apply_analysis_relevance_voice_v3.py; STATUS=$?; fi
+          if [ "$STATUS" -eq 0 ]; then exec_step "generate contracts" uv run python scripts/contracts/generate.py; STATUS=$?; fi
+          if [ "$STATUS" -eq 0 ]; then exec_step "generate frontend client" npm --prefix frontend run generate:api; STATUS=$?; fi
+          if [ "$STATUS" -eq 0 ]; then
+            exec_step "format" uv run ruff format \
+              backend/src/aima_ugc/contracts/analysis \
+              backend/src/aima_ugc/modules/analysis/content_labeling.py \
+              backend/src/aima_ugc/modules/analysis/offline_labeling.py \
+              backend/src/aima_ugc/modules/analysis/persistence.py \
+              backend/src/aima_ugc/modules/analysis/tables.py \
+              backend/src/aima_ugc/adapters/persistence/postgres/analysis.py \
+              backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py \
+              backend/src/aima_ugc/bootstrap/analysis_worker.py \
+              backend/src/aima_ugc/bootstrap/content_http.py \
+              backend/src/aima_ugc/contracts/http.py \
+              backend/src/aima_ugc/contracts/export/models.py \
+              backend/src/aima_ugc/platform/export/excel.py \
+              migrations/versions/20260821_0023_analysis_relevance_voice_type.py \
+              scripts/contracts/generate.py \
+              tests/unit/analysis/test_analysis_relevance_voice_v3.py \
+              tests/unit/analysis/test_multilabel_analysis_v2.py \
+              tests/unit/analysis/test_content_labeling.py
+            STATUS=$?
+          fi
+          if [ "$STATUS" -eq 0 ]; then
+            exec_step "green target tests" uv run pytest \
+              tests/unit/analysis/test_analysis_relevance_voice_v3.py \
+              tests/unit/analysis/test_content_labeling.py \
+              tests/unit/analysis/test_multilabel_analysis_v2.py -q
+            STATUS=$?
+          fi
+          if [ "$STATUS" -eq 0 ]; then exec_step "ruff" uv run ruff check backend/src/aima_ugc tests/unit/analysis; STATUS=$?; fi
+          if [ "$STATUS" -eq 0 ]; then exec_step "mypy" uv run mypy backend/src/aima_ugc; STATUS=$?; fi
+          if [ "$STATUS" -eq 0 ]; then exec_step "contract check" uv run python scripts/contracts/generate.py --check; STATUS=$?; fi
+          if [ "$STATUS" -eq 0 ]; then exec_step "frontend typecheck" npm --prefix frontend run typecheck; STATUS=$?; fi
 
-      - name: Apply V3 migration
-        run: uv run python scripts/dev/apply_analysis_relevance_voice_v3.py
-
-      - name: Generate contracts and client
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run python scripts/contracts/generate.py
-          npm --prefix frontend run generate:api
-
-      - name: Format task Python files
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run ruff format \
-            backend/src/aima_ugc/contracts/analysis \
-            backend/src/aima_ugc/modules/analysis/content_labeling.py \
-            backend/src/aima_ugc/modules/analysis/offline_labeling.py \
-            backend/src/aima_ugc/modules/analysis/persistence.py \
-            backend/src/aima_ugc/modules/analysis/tables.py \
-            backend/src/aima_ugc/adapters/persistence/postgres/analysis.py \
-            backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py \
-            backend/src/aima_ugc/bootstrap/analysis_worker.py \
-            backend/src/aima_ugc/bootstrap/content_http.py \
-            backend/src/aima_ugc/contracts/http.py \
-            backend/src/aima_ugc/contracts/export/models.py \
-            backend/src/aima_ugc/platform/export/excel.py \
-            migrations/versions/20260821_0023_analysis_relevance_voice_type.py \
-            scripts/contracts/generate.py \
-            tests/unit/analysis/test_analysis_relevance_voice_v3.py \
-            tests/unit/analysis/test_multilabel_analysis_v2.py \
-            tests/unit/analysis/test_content_labeling.py
-
-      - name: Green target tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run pytest \
-            tests/unit/analysis/test_analysis_relevance_voice_v3.py \
-            tests/unit/analysis/test_content_labeling.py \
-            tests/unit/analysis/test_multilabel_analysis_v2.py \
-            -q
-
-      - name: Static gates for touched Python
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run ruff check \
-            backend/src/aima_ugc/contracts/analysis \
-            backend/src/aima_ugc/modules/analysis/content_labeling.py \
-            backend/src/aima_ugc/modules/analysis/offline_labeling.py \
-            backend/src/aima_ugc/modules/analysis/persistence.py \
-            backend/src/aima_ugc/modules/analysis/tables.py \
-            backend/src/aima_ugc/adapters/persistence/postgres/analysis.py \
-            backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py \
-            backend/src/aima_ugc/bootstrap/analysis_worker.py \
-            backend/src/aima_ugc/bootstrap/content_http.py \
-            backend/src/aima_ugc/contracts/http.py \
-            backend/src/aima_ugc/contracts/export/models.py \
-            backend/src/aima_ugc/platform/export/excel.py \
-            migrations/versions/20260821_0023_analysis_relevance_voice_type.py \
-            scripts/contracts/generate.py \
-            tests/unit/analysis/test_analysis_relevance_voice_v3.py \
-            tests/unit/analysis/test_multilabel_analysis_v2.py \
-            tests/unit/analysis/test_content_labeling.py
-          uv run mypy backend/src/aima_ugc
-          uv run python scripts/contracts/generate.py --check
-          npm --prefix frontend run typecheck
-
-      - name: Commit generated implementation
-        shell: bash
-        run: |
-          set -euo pipefail
+          echo "\nFINAL_STATUS=$STATUS" | tee -a "$LOG"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- \
-            backend/src/aima_ugc/contracts/analysis/content_label.py \
-            backend/src/aima_ugc/contracts/analysis/content_record.py \
-            backend/src/aima_ugc/contracts/analysis/__init__.py \
-            backend/src/aima_ugc/modules/analysis/prompt_taxonomy.py \
-            backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md \
-            backend/src/aima_ugc/modules/analysis/content_labeling.py \
-            backend/src/aima_ugc/modules/analysis/offline_labeling.py \
-            backend/src/aima_ugc/modules/analysis/persistence.py \
-            backend/src/aima_ugc/modules/analysis/tables.py \
-            backend/src/aima_ugc/adapters/persistence/postgres/analysis.py \
-            backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py \
-            backend/src/aima_ugc/bootstrap/analysis_worker.py \
-            backend/src/aima_ugc/bootstrap/content_http.py \
-            backend/src/aima_ugc/modules/content/query.py \
-            backend/src/aima_ugc/contracts/http.py \
-            backend/src/aima_ugc/contracts/export/models.py \
-            backend/src/aima_ugc/platform/export/excel.py \
-            backend/src/aima_ugc/adapters/providers/imports_test/test.py \
-            migrations/versions/20260821_0023_analysis_relevance_voice_type.py \
-            scripts/contracts/generate.py \
-            contracts/analysis/content-label-analysis.v3.schema.json \
-            contracts/analysis/content-record.v1.schema.json \
-            contracts/export/unified-data-excel.v1.schema.json \
-            contracts/openapi/openapi.json \
-            frontend/src/generated/api/client.ts \
-            tests/unit/analysis/test_multilabel_analysis_v2.py \
-            tests/unit/analysis/test_content_labeling.py
-          if git diff --cached --quiet; then
-            echo "No generated implementation changes to commit."
-            exit 0
+
+          if [ "$STATUS" -eq 0 ]; then
+            git add -- \
+              backend/src/aima_ugc/contracts/analysis/content_label.py \
+              backend/src/aima_ugc/contracts/analysis/content_record.py \
+              backend/src/aima_ugc/contracts/analysis/__init__.py \
+              backend/src/aima_ugc/modules/analysis/prompt_taxonomy.py \
+              backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md \
+              backend/src/aima_ugc/modules/analysis/content_labeling.py \
+              backend/src/aima_ugc/modules/analysis/offline_labeling.py \
+              backend/src/aima_ugc/modules/analysis/persistence.py \
+              backend/src/aima_ugc/modules/analysis/tables.py \
+              backend/src/aima_ugc/adapters/persistence/postgres/analysis.py \
+              backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py \
+              backend/src/aima_ugc/bootstrap/analysis_worker.py \
+              backend/src/aima_ugc/bootstrap/content_http.py \
+              backend/src/aima_ugc/modules/content/query.py \
+              backend/src/aima_ugc/contracts/http.py \
+              backend/src/aima_ugc/contracts/export/models.py \
+              backend/src/aima_ugc/platform/export/excel.py \
+              backend/src/aima_ugc/adapters/providers/imports_test/test.py \
+              migrations/versions/20260821_0023_analysis_relevance_voice_type.py \
+              scripts/contracts/generate.py \
+              contracts/analysis/content-label-analysis.v3.schema.json \
+              contracts/analysis/content-record.v1.schema.json \
+              contracts/export/unified-data-excel.v1.schema.json \
+              contracts/openapi/openapi.json \
+              frontend/src/generated/api/client.ts \
+              tests/unit/analysis/test_multilabel_analysis_v2.py \
+              tests/unit/analysis/test_content_labeling.py
           fi
-          git commit -m "增加AI语义相关性与发声类型分类"
-          git push origin HEAD:feature/analysis-relevance-voice-type
+          git add -- "$LOG"
+          if ! git diff --cached --quiet; then
+            if [ "$STATUS" -eq 0 ]; then
+              git commit -m "增加AI语义相关性与发声类型分类"
+            else
+              git commit -m "记录AI V3迁移失败诊断"
+            fi
+            git push origin HEAD:feature/analysis-relevance-voice-type
+          fi
+          exit "$STATUS"
