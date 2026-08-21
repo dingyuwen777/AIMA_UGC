@@ -1,318 +1,551 @@
 # AIMA_UGC
 
-AIMA_UGC 是爱玛舆情监控系统的新一代实现。它把多平台采集、Excel 手工导入、统一入库、AI 分析、查询展示和数据导出放在一套可追溯、可恢复的技术主链里。
+AIMA_UGC 是爱玛 UGC 舆情采集、统一入库、AI 分析、查询和导出的实现仓库。
 
-如果你第一次接触这个仓库，不需要先理解所有框架名。先记住这条主线：
-
-```text
-TikHub / Excel / 其他来源
-→ 保留原始证据
-→ 转成系统统一数据
-→ 去重、保存历史
-→ PostgreSQL
-→ AI 分析 / 查询 / 导出 / 报告
-→ Vue 页面
-```
-
-## 1. 当前已经实现什么
-
-### 数据采集与导入
-
-- TikHub 五个平台：小红书、抖音、微博、B站、快手；
-- 定时 Collection Plan + Scheduler；
-- 手工 TikHub 调试入口 `tikhub_test`；
-- Excel 文件正式导入；
-- Excel 离线调试/处理入口 `imports_test`；
-- Provider Raw、Request/Attempt、Candidate、来源追溯。
-
-### 数据存储
-
-- PostgreSQL 18；
-- 账号、内容、评论 Current；
-- 内容/评论版本历史；
-- 点赞、评论、播放等 Metric Observation；
-- Processing Import Batch；
-- 持久化 Job；
-- Analysis 和正式 Excel Export 业务表。
-
-### 业务处理
-
-- 统一 Relevance Keyword Pack；
-- AI Semantic Relevance；
-- 发声类型 `voice_type`；
-- 情感；
-- 一级/二级舆情标签；
-- 正式 Excel Export；
-- 离线 `report.md + report.docx` 舆情报告。
-
-### 前端
-
-当前已经有正式业务页面/Feature，包括：
+如果第一次接触项目，先不要从某个页面或某个脚本开始猜系统。先记住当前生产主链：
 
 ```text
-analysis
-export
-import-excel
-jobs
-keyword-planning
-overview
-providers
-runs
-settings
-voice-plaza
-```
-
-所以当前前端**不是只有 health demo**。
-
-## 2. 当前还没有完成什么
-
-以下能力仍不能写成已实现：
-
-- 企业登录/正式认证授权；
-- 完整离线生产 Release 闭环；
-- PostgreSQL + Artifact 协调 Backup/Restore 写屏障；
-- Stage 9 中尚未正式开发的 Monitoring 业务，例如告警、VOC/工单等。
-
-当前 Stage 1—7、临时 P1、Stage 8A—8F 已闭环；下一正式方向是 **Stage 9 Analysis and Monitoring**。
-
-Stage 名称只是开发导航。某个功能是否真的存在，仍要看当前代码、Migration、Contract 和测试。
-
-## 3. 一条数据怎样进入系统
-
-### TikHub 正式采集
-
-```text
-Collection Plan / Run / Scope
-→ Provider Request / Attempt
-→ Raw Artifact
-→ Candidate
-→ Mapper
-→ Canonical
+TikHub / Excel
+→ 保存 Raw 或 Input Artifact
+→ Reader / Operation / Mapper
+→ CanonicalContentV1 / CanonicalCommentV1
 → Relevance
-→ Ingestion
-→ Content Owner
-→ PostgreSQL
+→ ContentIngestionService
+→ PostgreSQL Content Owner
+→ Current / Version / Metric / Coverage
+→ Analysis / Query / Excel Export / 离线 Word Report
+→ Vue 业务页面
 ```
 
-### Excel 正式导入
+这条链路的代码导航见：
+
+- [`docs/代码结构与修改导航.md`](docs/代码结构与修改导航.md)
+- [`docs/blueprint/01-总体架构与技术选型.md`](docs/blueprint/01-总体架构与技术选型.md)
+
+---
+
+## 1. 当前代码真实包含哪些模块
+
+后端当前业务模块目录：
 
 ```text
-Input Artifact
-→ Processing Import Batch
-→ Provider Request / Attempt
+backend/src/aima_ugc/modules/
+├─ system/
+├─ collection/
+├─ content/
+├─ ingestion/
+├─ analysis/
+└─ reporting/
+```
+
+当前代码**没有** `monitoring/`、`dashboard/` 业务模块。它们可以是后续方向，但不能在当前文档里写成已经实现。
+
+公共基础能力主要位于：
+
+```text
+backend/src/aima_ugc/platform/
+├─ config/
+├─ database/
+├─ jobs/
+├─ logging/
+├─ security/
+├─ storage/
+├─ export/
+└─ reporting/
+```
+
+外部实现位于：
+
+```text
+backend/src/aima_ugc/adapters/
+├─ providers/tikhub/
+├─ providers/imports_test/
+├─ persistence/postgres/
+├─ llm/
+└─ storage/
+```
+
+---
+
+## 2. 当前四个正式进程
+
+| 进程 | 启动入口 | 真实装配 |
+| --- | --- | --- |
+| API | `backend/src/aima_ugc/entrypoints/api_main.py` | `backend/src/aima_ugc/bootstrap/api.py` |
+| Worker | `backend/src/aima_ugc/entrypoints/worker_main.py` | `backend/src/aima_ugc/bootstrap/worker.py` |
+| Scheduler | `backend/src/aima_ugc/entrypoints/scheduler_main.py` | `backend/src/aima_ugc/bootstrap/scheduler.py` |
+| Migration | `backend/src/aima_ugc/entrypoints/migrate_main.py` | `backend/src/aima_ugc/bootstrap/migration.py` |
+
+职责边界：
+
+```text
+API
+→ 接收 HTTP、做短查询、创建 Job
+
+Worker
+→ 执行 Collection / Import / Analysis / Export 等长任务
+
+Scheduler
+→ 把到期 Plan 转成 Occurrence / Run / Job
+
+Migration
+→ 独立执行 Alembic Schema 升级
+```
+
+Scheduler 不直接请求 TikHub；API 不在 HTTP 请求里跑长时间采集或批量 AI。
+
+---
+
+## 3. 当前 Worker 注册了哪些长任务
+
+真实注册代码：
+
+```text
+backend/src/aima_ugc/bootstrap/worker.py
+```
+
+当前正式 Job 类型：
+
+```text
+collection.run.v1
+ingestion.import-excel.v1
+analysis.content-label.v1
+reporting.content-export-excel.v1
+```
+
+对应生产执行器：
+
+```text
+Collection
+→ modules/collection/collection_run_job.py
+→ bootstrap/collection_scope.py
+
+Excel Import
+→ modules/ingestion/import_job.py
+→ bootstrap/import_worker.py
+
+AI Analysis
+→ modules/analysis/content_analysis_job.py
+→ bootstrap/analysis_worker.py
+
+Excel Export
+→ modules/reporting/data_export_job.py
+→ bootstrap/export_worker.py
+```
+
+Job Runtime 的 Lease、Heartbeat、Deadline、Fencing、Retry 等公共语义位于：
+
+```text
+backend/src/aima_ugc/platform/jobs/
+```
+
+---
+
+## 4. TikHub 当前怎么接入
+
+TikHub 当前正式支持五个平台：
+
+```text
+xhs
+ douyin
+weibo
+bilibili
+kuaishou
+```
+
+每个平台的请求构造和分页逻辑在：
+
+```text
+backend/src/aima_ugc/adapters/providers/tikhub/operations/
+```
+
+Provider JSON → Canonical 的字段映射在：
+
+```text
+backend/src/aima_ugc/adapters/providers/tikhub/mappers/
+```
+
+HTTP 发送边界：
+
+```text
+backend/src/aima_ugc/adapters/providers/tikhub/transport.py
+```
+
+Capability / Runtime：
+
+```text
+backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py
+backend/src/aima_ugc/adapters/providers/tikhub/runtime.py
+```
+
+真实响应字段和验证证据：
+
+- [`docs/appendix/TikHub五平台真实响应与字段映射.md`](docs/appendix/TikHub五平台真实响应与字段映射.md)
+- [`docs/appendix/TikHub多接口验证与备用策略.md`](docs/appendix/TikHub多接口验证与备用策略.md)
+- [`docs/appendix/TikHub接口选型与真实验证台账.md`](docs/appendix/TikHub接口选型与真实验证台账.md)
+- `tests/fixtures/providers/tikhub/`
+
+---
+
+## 5. Excel 导入为什么和 TikHub 能共用一套业务数据
+
+Excel 的正式主链：
+
+```text
+POST /api/v1/import-batches
+→ Input Artifact
+→ processing_import_batches
+→ ingestion.import-excel.v1 Job
+→ Import Worker
 → Excel Reader / Mapper
 → Canonical
 → Relevance
-→ 同一个 Ingestion / Content Owner
-→ PostgreSQL
+→ ContentIngestionService
+→ PostgreSQL Content Owner
 ```
 
-两种入口在 Canonical 之后共享同一套业务去重、版本和指标历史逻辑。
-
-更详细的白话说明见 [`docs/appendix/数据入口与统一入库.md`](docs/appendix/数据入口与统一入库.md)。
-
-## 4. 为什么有 Raw、Canonical 和 Ingestion
-
-### Raw
-
-保存第三方当时真实返回的原始证据。Mapper 写错时可以重新回放，不需要重新付费调用 Provider。
-
-### Canonical
-
-把“小红书字段、抖音字段、Excel 列”转换成系统统一语言。
-
-### Ingestion
-
-负责真正写数据库：
-
-- 同一内容身份去重；
-- Current 更新；
-- Version；
-- Metric Observation；
-- 来源关系；
-- 字段 freshness。
-
-因此 Provider 不能直接写 `contents`，Mapper 也不能自己查数据库判断重复。
-
-## 5. 为什么耗时任务要走 Job
-
-Excel 导入、TikHub 采集、AI、导出都可能运行很久。
-
-当前使用 PostgreSQL 持久 Job：
+关键代码：
 
 ```text
-API 创建 Job
-→ 立即返回
-→ Worker 后台认领
-→ Lease / Heartbeat / Deadline / Fencing
-→ 更新进度和结果
+backend/src/aima_ugc/bootstrap/import_http.py
+backend/src/aima_ugc/bootstrap/import_worker.py
+backend/src/aima_ugc/bootstrap/manual_ingestion.py
+backend/src/aima_ugc/modules/ingestion/
+backend/src/aima_ugc/modules/content/ingestion.py
 ```
 
-即使浏览器关闭或 Worker 重启，任务事实仍在数据库里。
+TikHub 和 Excel 在 Canonical 之后复用同一 Content Ingestion，因此最终跨批次、跨来源去重不靠各入口各写一套 SQL。
 
-Scheduler 只负责把到期计划变成 Occurrence/Run/Job，不直接请求 TikHub。
+详细实现：
 
-## 6. AI 当前怎么工作
+- [`docs/appendix/数据入口与统一入库实现.md`](docs/appendix/数据入口与统一入库实现.md)
 
-当前 Content Labeling V3 一次模型调用完成：
+人工离线调试入口：
 
 ```text
-relevance
-voice_type
-sentiment
-labels
+backend/src/aima_ugc/adapters/providers/imports_test/
+backend/src/aima_ugc/adapters/providers/tikhub_test/
 ```
 
-`voice_type` 是发声类型唯一业务事实，当前合法值是：
+这些入口必须复用生产 Reader、Mapper、Ingestion、AI、Exporter，不得复制业务实现。
+
+---
+
+## 6. Content 当前如何保存历史
+
+Content 领域入口：
 
 ```text
-user_voice           普通用户发声
-creator_marketing    创作者/KOL/KOC 营销表达
-brand_official       品牌官方
-dealer_promotion     经销商/门店推广
-media_information    媒体/资讯表达
-other_organization   其他机构
-unknown              证据不足，无法可靠判断
+backend/src/aima_ugc/modules/content/ingestion.py
 ```
 
-系统不再同时保存一个重复的“是否真实用户发声”布尔字段。需要判断真实用户发声时，以 `voice_type=user_voice` 为唯一业务依据。
+核心类：
 
-AI 语义相关性 `relevance` 保存在 Analysis Result，不是 `contents` 上的一个平行布尔列。
+```text
+ContentIngestionService
+```
 
-完整 taxonomy / Prompt 的唯一业务事实源：
+表定义主要位于：
+
+```text
+backend/src/aima_ugc/modules/content/tables.py
+backend/src/aima_ugc/modules/content/extended_tables.py
+```
+
+核心业务身份：
+
+```text
+Content
+= (platform, external_content_id)
+
+Comment
+= (content_id, external_comment_id)
+```
+
+主要事实层：
+
+```text
+Current
+→ contents / comments
+
+正文和稳定业务字段历史
+→ content_versions / comment_versions
+
+点赞、评论、播放等变化
+→ content_metric_observations / comment_metric_observations
+
+评论采集完整度
+→ comment_coverage_observations 等 Coverage 表
+```
+
+不要把“本次 Provider 没返回字段”理解成“字段值为 0”。字段 freshness 和 `observed_fields` 负责防止旧/稀疏 Observation 错误覆盖 Current。
+
+数据库设计与调试：
+
+- [`docs/blueprint/03-数据库与文件存储.md`](docs/blueprint/03-数据库与文件存储.md)
+- [`docs/appendix/PostgreSQL查询与调试实战.md`](docs/appendix/PostgreSQL查询与调试实战.md)
+
+---
+
+## 7. AI 当前怎么实现
+
+AI 业务代码：
+
+```text
+backend/src/aima_ugc/modules/analysis/
+```
+
+唯一 Prompt / taxonomy 业务事实源：
 
 ```text
 backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md
 ```
 
-白话说明见 [`docs/appendix/AI舆情分析与打标.md`](docs/appendix/AI舆情分析与打标.md)。
+核心 Service：
 
-## 7. 文档应该怎么找
+```text
+backend/src/aima_ugc/modules/analysis/content_labeling.py
+```
 
-### 第一次进入仓库
+当前 V3 一条分析结果包含：
 
-按顺序读：
+```text
+relevance
+voice_type
+sentiment
+labels[]
+```
 
-1. [`AGENTS.md`](AGENTS.md) — 所有开发和 Agent 的统一规则；
-2. [`.agents/skills/reliable-vibe-coding/SKILL.md`](.agents/skills/reliable-vibe-coding/SKILL.md) — 任务分级、Change、开发和验证流程；
-3. [`docs/blueprint/README.md`](docs/blueprint/README.md) — 核心架构导航；
-4. [`docs/blueprint/07-技术决策与实施门禁.md`](docs/blueprint/07-技术决策与实施门禁.md) — 已确认的跨模块决定；
-5. 再按任务读取对应模块、Contract、Migration、实现和测试。
+`voice_type` 当前合法机器值由 Contract、Prompt、Validator 和数据库约束共同保护：
 
-### 文档分层
+```text
+user_voice
+creator_marketing
+brand_official
+dealer_promotion
+media_information
+other_organization
+unknown
+```
+
+真实用户发声的唯一业务判断：
+
+```text
+voice_type = user_voice
+```
+
+正式持久化表定义：
+
+```text
+backend/src/aima_ugc/modules/analysis/tables.py
+```
+
+当前正式表：
+
+```text
+analysis_content_results
+analysis_content_requests
+analysis_content_request_items
+analysis_content_label_pairs
+```
+
+AI Semantic Relevance 保存在 `analysis_content_results.relevance`。当前 `contents` 表没有平行的 `is_relevant` AI 列。
+
+详细实现：
+
+- [`docs/appendix/AI舆情打标与分析实现.md`](docs/appendix/AI舆情打标与分析实现.md)
+- [`backend/src/aima_ugc/modules/analysis/README.md`](backend/src/aima_ugc/modules/analysis/README.md)
+
+---
+
+## 8. 当前查询和前端实际做到哪里
+
+后端 Content 查询入口：
+
+```text
+backend/src/aima_ugc/bootstrap/content_http.py
+backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
+```
+
+这里把：
+
+```text
+Content Current
++ 当前匹配的 Analysis
++ 来源链
+```
+
+投影给声音广场和 Analysis 目标冻结。
+
+默认列表行为会排除当前 AI Analysis 明确判定为 `irrelevant` 的内容；单条详情读取可以用于审计查看。精确行为以 `content_queries.py` 为准。
+
+当前 Vue Router：
+
+```text
+frontend/src/app/routes.ts
+```
+
+当前实际注册的业务路由：
+
+```text
+/
+/voice-plaza
+/collection-runtime
+/collection-strategy
+```
+
+当前正式业务 Feature 目录：
+
+```text
+frontend/src/features/voice-plaza/
+frontend/src/features/import-batches/
+frontend/src/features/collection-strategy/
+```
+
+因此不能把后端已经存在的 Analysis / Export / Job API 自动写成“已有独立 Vue 页面”。
+
+前端修改导航：
+
+- [`docs/guides/Figma与前端设计开发工作流.md`](docs/guides/Figma与前端设计开发工作流.md)
+- [`docs/代码结构与修改导航.md`](docs/代码结构与修改导航.md)
+
+---
+
+## 9. Excel Export 和 Word Report 是两套不同能力
+
+### 正式 PostgreSQL Excel Export
+
+```text
+HTTP
+→ bootstrap/reporting_http.py
+→ reporting.content-export-excel.v1 Job
+→ bootstrap/export_worker.py
+→ platform/export/excel.py
+→ Artifact
+```
+
+正式表：
+
+```text
+reporting_data_exports
+reporting_data_export_items
+```
+
+详情见：
+
+- [`docs/appendix/Excel统一数据导出与离线调试.md`](docs/appendix/Excel统一数据导出与离线调试.md)
+
+### 离线 Markdown / Word 舆情报告
+
+实现目录：
+
+```text
+backend/src/aima_ugc/platform/reporting/
+```
+
+人工入口：
+
+```text
+backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py
+```
+
+详情见：
+
+- [`docs/appendix/Word舆情报告生成与排版实现.md`](docs/appendix/Word舆情报告生成与排版实现.md)
+- [`backend/src/aima_ugc/platform/reporting/README.md`](backend/src/aima_ugc/platform/reporting/README.md)
+
+---
+
+## 10. 技术版本事实
+
+当前运行版本不要从文档中的历史数字猜，优先看锁定文件。
+
+当前仓库：
+
+```text
+Python: .python-version = 3.14.7
+Node:   .node-version   = 24.19.0
+uv:     .uv-version     = 0.12.3
+```
+
+Python 依赖：
+
+```text
+pyproject.toml
+uv.lock
+```
+
+前端依赖：
+
+```text
+frontend/package.json
+frontend/package-lock.json
+```
+
+发现上游新版本不等于本项目应该立即升级；依赖升级需要单独任务和完整兼容验证。
+
+---
+
+## 11. 文档怎么读
+
+### 第一次接触代码
+
+推荐顺序：
+
+1. [`AGENTS.md`](AGENTS.md)
+2. [`.agents/skills/reliable-vibe-coding/SKILL.md`](.agents/skills/reliable-vibe-coding/SKILL.md)
+3. [`docs/代码结构与修改导航.md`](docs/代码结构与修改导航.md)
+4. [`docs/blueprint/README.md`](docs/blueprint/README.md)
+5. [`docs/blueprint/07-技术决策与实施门禁.md`](docs/blueprint/07-技术决策与实施门禁.md)
+6. 再读目标模块 README、Contract、Migration、实现和测试
+
+### 文档职责
 
 ```text
 docs/blueprint/
-→ 长期架构：为什么这样设计
+→ 长期架构、为什么这样设计、哪些边界不能随便改
 
 模块 README
-→ 当前代码：具体在哪里、怎么实现
+→ 当前模块代码结构、主要类/函数、修改入口
 
 docs/appendix/
-→ 专题细节：SQL、Scheduler、TikHub、Excel、AI、Word 报告
+→ 具体专题实现、真实字段、SQL、状态机、调试和操作
 
 docs/guides/
-→ 开发工作流：例如 Figma
+→ 开发流程，例如 Figma → Frontend
 
 docs/collection/
-→ 五个平台当前采集实现
+→ 五个平台当前采集能力、Operation、Mapper、Fixture 入口
+
+docs/代码结构与修改导航.md
+→ 常见开发任务应该改哪些文件、跑哪些测试
 
 代码 / Contract / Migration / generated / tests / locks
 → 精确机器事实
 
 changes/archive/
-→ 历史为什么改过
+→ 历史为什么这样改
 ```
 
-## 8. 常用专题入口
+---
 
-| 想解决的问题 | 文档 |
-| --- | --- |
-| 看整体架构 | [`docs/blueprint/01-总体架构与技术选型.md`](docs/blueprint/01-总体架构与技术选型.md) |
-| 理解 Raw / Mapper / Canonical / Ingestion | [`docs/blueprint/02-采集系统与数据标准化.md`](docs/blueprint/02-采集系统与数据标准化.md) |
-| 理解数据库设计 | [`docs/blueprint/03-数据库与文件存储.md`](docs/blueprint/03-数据库与文件存储.md) |
-| API / Job / 前端怎么协作 | [`docs/blueprint/04-后端任务API与前端.md`](docs/blueprint/04-后端任务API与前端.md) |
-| 日志、安全、部署 | [`docs/blueprint/05-日志安全部署与运维.md`](docs/blueprint/05-日志安全部署与运维.md) |
-| 开发、测试、CI、Git | [`docs/blueprint/06-开发约束与分阶段实施.md`](docs/blueprint/06-开发约束与分阶段实施.md) |
-| 当前已确认硬决定 | [`docs/blueprint/07-技术决策与实施门禁.md`](docs/blueprint/07-技术决策与实施门禁.md) |
-| 采集策略/Provider/评论 | [`docs/blueprint/08-采集策略与平台能力.md`](docs/blueprint/08-采集策略与平台能力.md) |
-| PostgreSQL 查询/调试 | [`docs/appendix/PostgreSQL调试与常用SQL.md`](docs/appendix/PostgreSQL调试与常用SQL.md) |
-| Scheduler 恢复 | [`docs/appendix/Scheduler运行与恢复.md`](docs/appendix/Scheduler运行与恢复.md) |
-| TikHub 真实响应 | [`docs/appendix/TikHub真实响应结构.md`](docs/appendix/TikHub真实响应结构.md) |
-| TikHub 接口选型 | [`docs/appendix/TikHub接口验证与选型台账.md`](docs/appendix/TikHub接口验证与选型台账.md) |
-| Excel 导入/导出/离线处理 | [`docs/appendix/Excel导入导出与离线处理.md`](docs/appendix/Excel导入导出与离线处理.md) |
-| AI 打标 | [`docs/appendix/AI舆情分析与打标.md`](docs/appendix/AI舆情分析与打标.md) |
-| Word 舆情报告 | [`docs/appendix/Word舆情报告.md`](docs/appendix/Word舆情报告.md) |
-| Figma 工作流 | [`docs/guides/前端与Figma工作流.md`](docs/guides/前端与Figma工作流.md) |
-| HTTP API | [`docs/API接口说明.md`](docs/API接口说明.md) |
-| 测试与调试 | [`docs/测试与调试说明.md`](docs/测试与调试说明.md) |
-| 环境与部署 | [`docs/环境运行与部署.md`](docs/环境运行与部署.md) |
+## 12. 当前明确不要写成“已经完成”的能力
 
-## 9. 仓库目录
+当前代码事实不能证明以下能力已经完整闭环：
 
-```text
-AIMA_UGC/
-├─ AGENTS.md
-├─ pyproject.toml
-├─ uv.lock
-├─ backend/src/aima_ugc/
-│  ├─ entrypoints/      进程/API入口
-│  ├─ bootstrap/        生产装配
-│  ├─ modules/          业务模块
-│  ├─ platform/         Job/Artifact/日志/数据库等基础设施
-│  ├─ adapters/         Provider/PostgreSQL 等外部实现
-│  └─ contracts/        手写 Pydantic 契约
-├─ frontend/src/
-│  ├─ app/
-│  ├─ pages/
-│  ├─ features/
-│  ├─ shared/
-│  └─ generated/api/
-├─ migrations/versions/
-├─ contracts/
-├─ tests/
-├─ scripts/
-├─ docs/
-│  ├─ blueprint/
-│  ├─ appendix/
-│  ├─ guides/
-│  └─ collection/
-└─ changes/
-```
+- 企业登录 / 正式认证授权；
+- 完整离线生产 Release 流程；
+- PostgreSQL + Artifact 协调 Backup/Restore 写屏障；
+- `monitoring` 领域的告警、VOC、工单等正式模块；
+- 独立 `dashboard` 业务模块。
 
-## 10. 本地开发
+如果后续实现这些能力，必须用当时的代码、Contract、Migration 和测试同步文档。
 
-本地配置模板：
+---
 
-```text
-env.local.example
-```
+## 13. 常用验证入口
 
-其中只放非敏感配置。PostgreSQL 密码、LLM API Key、Cursor signing key 等 Secret 通过 `AIMA_SECRET_DIR` 下的只读文件提供，不提交 Git。
-
-详细安装、Windows 一键初始化、本地 API/Vite/PostgreSQL 启动方式见：
-
-[`docs/环境运行与部署.md`](docs/环境运行与部署.md)
-
-不要从 README 复制旧版本号或旧命令；实际版本由：
-
-```text
-.python-version
-.node-version
-.uv-version
-pyproject.toml
-uv.lock
-frontend/package.json
-frontend/package-lock.json
-```
-
-维护。
-
-## 11. 测试与质量门禁
-
-仓库已有后端 Unit/Contract/API/Integration、PostgreSQL Migration、前端 Unit/E2E、架构检查、表 Owner 检查、Secret 扫描和文档检查。
-
-常用入口：
+后端常用：
 
 ```bash
 uv run ruff format --check backend tests scripts
@@ -329,45 +562,6 @@ python scripts/quality/check_docs.py
 
 前端准确命令以 `frontend/package.json` 为准。
 
-任何“完成、修复、可合并”的结论都必须基于当前分支最新代码的实际验证结果，不能复用旧 CI 结论。
+数据库 Migration 测试和 PostgreSQL Integration 不使用 SQLite 冒充真实行为。
 
-## 12. 当前关键边界
-
-### 数据库
-
-- PostgreSQL 是唯一业务事实库；
-- 一个表只有一个写 Owner；
-- 正式结构变化用 Alembic；
-- 不用文档维护第二套 DDL。
-
-### Provider
-
-- Provider 不直接写业务表；
-- 一个 Attempt 最多一次真实发送；
-- 完整 Raw 存在时优先 replay；
-- 当前不自动跨 TikHub API family fallback。
-
-### 预算
-
-Provider 和 LLM 都可以记录费用事实，但当前没有请求次数/金额 Budget Guard。
-
-### 认证
-
-正式企业认证尚未完成，不能把当前业务 API 直接描述成已具备公网生产权限控制。
-
-### 发布与恢复
-
-完整离线 Release 和 PostgreSQL + Artifact 协调 Backup/Restore 尚未闭环。
-
-## 13. 文档与代码冲突怎么办
-
-不要简单“以文档为准”或“以代码为准”。
-
-```text
-先读当前代码 / Contract / Migration / 测试
-→ 再看已批准决策
-→ 判断是代码偏离设计，还是文档过期
-→ 同一任务修正正确的一方
-```
-
-旧聊天、模型记忆和历史 Stage 文档不能替代当前仓库事实。
+所有“已修复、已完成、可合并”的结论，都要基于当前分支最新 HEAD 的新鲜验证和 CI。
