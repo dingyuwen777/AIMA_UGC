@@ -61,9 +61,9 @@ def test_excel_analysis_uses_voice_type_as_the_only_user_voice_fact() -> None:
         )
 
 
-def test_prompt_v4_focuses_voice_classification_on_combined_visible_evidence() -> None:
-    assert PROMPT_VERSION == "content-labeling.v4"
-    assert CONTENT_LABELING_PROMPT_PATH.name == "content_labeling_v4.md"
+def test_prompt_v3_focuses_voice_classification_on_combined_visible_evidence() -> None:
+    assert PROMPT_VERSION == "content-labeling.v3"
+    assert CONTENT_LABELING_PROMPT_PATH.name == "content_labeling_v3.md"
 
     prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
     assert "is_user_voice" not in prompt
