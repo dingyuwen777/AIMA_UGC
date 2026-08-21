@@ -1,53 +1,65 @@
 # PostgreSQL 调试与常用 SQL
 
-这篇文档的目的很简单：**当页面、Job、导入或 AI 结果看起来不对时，可以直接去 PostgreSQL 验证事实。**
+这篇文档的目的很简单：**页面、Job、导入、采集或 AI 结果看起来不对时，可以直接去 PostgreSQL 核对真实业务事实。**
 
-它不是第二份数据库设计文档。精确表结构仍以 `backend/src/aima_ugc/**/tables.py`、`migrations/versions/` 和数据库实际 `\d+` 结果为准。
+它不是第二份数据库 Schema。精确结构始终以：
 
-## 1. 先理解数据库在系统里负责什么
+```text
+backend/src/aima_ugc/database_schema.py
+backend/src/aima_ugc/**/tables.py
+migrations/versions/
+数据库实际 \d+ 结果
+```
 
-AIMA_UGC 把 PostgreSQL 当作业务事实库：
+为准。
+
+## 1. 先理解数据库负责什么
+
+AIMA_UGC 把 PostgreSQL 当作唯一业务事实库：
 
 ```text
 外部 Provider / Excel
 → Raw / Input Artifact
 → Mapper
 → Canonical
-→ Ingestion / 各模块 Owner
+→ 各模块 Service / Owner
 → PostgreSQL
 ```
 
-数据库里保存的是：
+数据库主要保存：
 
-- 当前内容、评论、账号；
+- 账号、内容、评论 Current；
 - 内容/评论版本和指标历史；
-- 采集 Plan、Run、Scope、Provider Request/Attempt；
-- Excel Import Batch；
+- Collection Plan、Run、Scope、Provider Request/Attempt；
+- Processing Import Batch；
 - 持久化 Job；
-- AI 分析结果；
+- AI Analysis Result；
 - Excel Export 任务；
 - Artifact 元数据、系统配置和审计事实。
 
-真正的大文件，例如 Raw、导出文件和报告，默认放文件系统；数据库保存它们的 Artifact 元数据和关系。
+真正的大文件，例如 Provider Raw、输入/导出 Excel、Word 报告，默认由 ArtifactStore/文件系统保存；数据库保存它们的身份、状态和业务关系。
 
-## 2. 连接前先做安全确认
+## 2. 连接 PostgreSQL
 
-默认本地非敏感配置见仓库根 `env.local.example`：
+本地非敏感配置以根目录 `env.local.example` 为准，当前常用变量是：
 
 ```text
-AIMA_DB_HOST=127.0.0.1
-AIMA_DB_PORT=5432
-AIMA_DB_NAME=aima_ugc
-AIMA_DB_USER=aima_ugc
+AIMA_DB_HOST
+AIMA_DB_PORT
+AIMA_DB_NAME
+AIMA_DB_USER
+AIMA_SECRET_DIR
 ```
 
-密码不写在该文件，而是放在：
+数据库密码放在：
 
 ```text
 <AIMA_SECRET_DIR>/postgres_password
 ```
 
-### 2.1 Bash / Linux / macOS
+不要把密码写进 Git、Issue、截图或命令脚本。
+
+### Bash / Linux / macOS
 
 ```bash
 export PGPASSWORD="$(cat "$AIMA_SECRET_DIR/postgres_password")"
@@ -59,7 +71,7 @@ psql \
 unset PGPASSWORD
 ```
 
-### 2.2 PowerShell
+### PowerShell
 
 ```powershell
 $env:PGPASSWORD = (Get-Content "$env:AIMA_SECRET_DIR\postgres_password" -Raw).Trim()
@@ -71,7 +83,7 @@ psql `
 Remove-Item Env:PGPASSWORD
 ```
 
-如果只是排障，优先使用只读账号；不要把生产数据库密码复制进命令历史、截图、Issue 或日志。
+生产排障优先使用只读账号。
 
 ## 3. 进入 psql 后先确认自己连的是哪一个库
 
@@ -83,19 +95,21 @@ SELECT current_database(), current_user, now();
 常用 psql 命令：
 
 ```text
-\dt                  列表
-\d+ contents         看 contents 当前真实结构
-\di                   看索引
-\x on                 宽记录改成纵向显示
+\dt                  列出表
+\d+ contents         查看表的当前真实列、约束、索引
+\di                   列出索引
+\x on                 宽记录纵向显示
 \timing on            显示 SQL 执行时间
 \q                    退出
 ```
 
-第一次接触某张表时，**先 `\d+ 表名`，再写 SQL**。不要只凭本文猜字段。
+**第一次操作任何表，都先 `\d+ 表名`。** 文档可能落后，数据库本身不会因为文档写错而改变。
 
-## 4. 最常用：看最近内容有没有真正入库
+## 4. 看最近内容有没有入库
 
-当前内容表是 `contents`。平台内容身份由 `(platform, external_content_id)` 唯一收敛。
+当前内容表：`contents`。
+
+内容稳定身份由 `(platform, external_content_id)` 唯一收敛。
 
 ```sql
 SELECT
@@ -108,17 +122,17 @@ SELECT
     current_version,
     current_like_count,
     current_comment_count,
-    is_relevant,
-    relevance_score,
-    last_seen_at
+    current_share_count,
+    current_view_count,
+    first_seen_at,
+    last_seen_at,
+    updated_at
 FROM contents
 ORDER BY last_seen_at DESC
 LIMIT 20;
 ```
 
-`is_relevant` 等相关性列由当前 Migration 链加入 `contents`。如果你连接的是未升级到当前 head 的旧数据库，应先执行 `\d+ contents` 和 Alembic 检查，而不是认为应用代码有问题。
-
-按平台查一条内容：
+按平台和外部 ID 查一条：
 
 ```sql
 SELECT *
@@ -127,25 +141,16 @@ WHERE platform = 'xhs'
   AND external_content_id = '这里填真实外部ID';
 ```
 
-只看默认业务应该展示的相关内容：
+当前 `contents` 表**没有** `is_relevant` 或 `relevance_score` 这类 AI 相关性列。AI 相关性在 Analysis Result 中查询，见后文。
 
-```sql
-SELECT id, platform, external_content_id, title, published_at
-FROM contents
-WHERE is_relevant = true
-ORDER BY published_at DESC NULLS LAST, id DESC
-LIMIT 50;
-```
+## 5. 看内容为什么变成当前值
 
-> 应用查询层默认过滤无关内容。数据库仍保留必要审计事实，因此排障时可以显式查看 `is_relevant = false`。
-
-## 5. 看“当前值为什么变成这样”：内容版本与指标历史
-
-内容正文或稳定业务字段变化时，会产生 `content_versions`；点赞、评论等指标观察写 `content_metric_observations`。
+### 5.1 正文/稳定业务字段历史
 
 ```sql
 SELECT
     version_no,
+    content_type,
     title,
     text,
     provider_attempt_id,
@@ -156,21 +161,35 @@ WHERE content_id = '这里填 contents.id'
 ORDER BY version_no;
 ```
 
+### 5.2 点赞、评论等指标历史
+
 ```sql
 SELECT
     reason,
     business_date,
+    observation_key,
     like_count,
     comment_count,
     share_count,
+    repost_count,
+    favorite_count,
     view_count,
+    play_count,
     observed_at
 FROM content_metric_observations
 WHERE content_id = '这里填 contents.id'
 ORDER BY observed_at;
 ```
 
-这两张历史表非常重要：它们能区分“内容正文变了”和“只是互动数字变了”。
+白话理解：
+
+```text
+正文变了
+→ content_versions
+
+正文没变，点赞/评论等数字变了
+→ content_metric_observations
+```
 
 ## 6. 看评论
 
@@ -182,21 +201,27 @@ SELECT
     root_comment_id,
     parent_comment_id,
     text,
+    is_by_content_author,
     current_like_count,
     current_reply_count,
+    current_version,
     published_at,
     last_seen_at
 FROM comments
 WHERE content_id = '这里填 contents.id'
-ORDER BY published_at, id
+ORDER BY published_at NULLS LAST, id
 LIMIT 100;
 ```
 
-评论正文历史看 `comment_versions`，指标历史看 `comment_metric_observations`。
+评论正文历史：`comment_versions`。
 
-## 7. 看采集链：Plan → Run → Scope → Provider Request → Attempt
+评论指标历史：`comment_metric_observations`。
 
-### 7.1 计划
+评论抓取完整度：`comment_coverage_observations` 及 thread coverage 相关表。
+
+## 7. 看采集链：Plan → Run → Scope → Request → Attempt
+
+### 7.1 Collection Plan
 
 ```sql
 SELECT
@@ -206,13 +231,16 @@ SELECT
     schedule_expr,
     timezone,
     schedule_version,
+    misfire_policy,
+    max_catch_up_runs,
     next_run_at,
-    last_scheduled_at
+    last_scheduled_at,
+    updated_at
 FROM collection_plans
 ORDER BY updated_at DESC;
 ```
 
-### 7.2 最近运行
+### 7.2 最近 Collection Run
 
 ```sql
 SELECT
@@ -220,6 +248,11 @@ SELECT
     r.trigger_type,
     r.status AS run_status,
     r.import_batch_id,
+    r.requested_count,
+    r.succeeded_count,
+    r.failed_count,
+    r.content_count,
+    r.comment_count,
     r.created_at,
     r.started_at,
     r.finished_at,
@@ -246,15 +279,24 @@ SELECT
     status,
     progress,
     stop_reason,
-    stats
+    stats,
+    started_at,
+    finished_at
 FROM collection_scopes
 WHERE run_id = '这里填 collection_runs.id'
-ORDER BY platform, source_type, source_value;
+ORDER BY platform, source_type, source_value, operation_group;
 ```
 
-### 7.4 Provider 请求和真实 Attempt
+### 7.4 Provider Request
 
-`provider_requests` 是“一个逻辑请求”；`provider_request_attempts` 是“实际发送/读取的一次尝试”。重试时 Request 可以不变，但会增加 Attempt。
+正式 Migration 后 `provider_requests` 的父级恰好一个：
+
+```text
+Collection → scope_id
+File Import → import_batch_id
+```
+
+先用 `\d+ provider_requests` 确认当前数据库已经升级到对应 Revision。
 
 ```sql
 SELECT
@@ -268,6 +310,7 @@ SELECT
     attempt_count,
     estimated_cost,
     actual_cost,
+    cost_currency,
     created_at,
     completed_at,
     error_code
@@ -275,6 +318,8 @@ FROM provider_requests
 ORDER BY created_at DESC
 LIMIT 50;
 ```
+
+### 7.5 Provider Attempt
 
 ```sql
 SELECT
@@ -286,7 +331,9 @@ SELECT
     external_request_id,
     raw_artifact_id,
     billing_status,
+    estimated_cost,
     actual_cost,
+    cost_currency,
     potential_duplicate_charge,
     error_code,
     created_at,
@@ -296,7 +343,7 @@ WHERE provider_request_id = '这里填 provider_requests.id'
 ORDER BY attempt_no;
 ```
 
-如果 `dispatch_status='unknown'`，不要简单理解为“失败后再发一次就行”。这表示外部结果可能不确定，代码会保守处理潜在重复计费。
+如果 `dispatch_status='unknown'`，不要直接“再发一次”。它表示外部结果可能不确定，系统会保留潜在重复计费事实。
 
 ## 8. 看 Scheduler 有没有漏跑或重复跑
 
@@ -314,13 +361,19 @@ ORDER BY scheduled_for DESC
 LIMIT 50;
 ```
 
-当前策略是 `latest_only`：停机跨过多个周期后，更早到期点会记录 `skipped / misfire_superseded`，只把最新到期点入队。看到 skipped 不等于 Scheduler 丢数据。
+当前 `latest_only` 策略下，停机跨过多个周期后，更早的到期点会明确记录：
+
+```text
+skipped / misfire_superseded
+```
+
+只把最新到期点入队。看到 `skipped` 不等于 Scheduler 丢任务。
 
 详细解释见 [`Scheduler运行与恢复.md`](Scheduler运行与恢复.md)。
 
 ## 9. 看 Excel Import Batch
 
-当前表名：`processing_import_batches`。
+当前表：`processing_import_batches`。
 
 ```sql
 SELECT
@@ -338,20 +391,25 @@ ORDER BY created_at DESC
 LIMIT 30;
 ```
 
-它是文件导入的父事实。Excel 导入不需要伪造 Collection Run/Scope；来源关系通过 Import Batch → Provider Request/Attempt → Artifact → Ingestion 保留。
+Import Batch 是文件导入父事实，不伪造 Collection Run/Scope。
 
 ## 10. 看持久化 Job
+
+### 最近 Job
 
 ```sql
 SELECT
     id,
     job_type,
+    payload_version,
     status,
     attempt,
+    lease_takeover_count,
     max_attempts,
     progress,
     available_at,
     lease_owner,
+    heartbeat_at,
     lease_expires_at,
     attempt_deadline_at,
     error_code,
@@ -362,13 +420,14 @@ ORDER BY created_at DESC
 LIMIT 50;
 ```
 
-只看正在运行：
+### 正在运行
 
 ```sql
 SELECT
     id,
     job_type,
     attempt,
+    lease_takeover_count,
     lease_owner,
     heartbeat_at,
     lease_expires_at,
@@ -379,7 +438,7 @@ WHERE status = 'running'
 ORDER BY updated_at DESC;
 ```
 
-看某个 Job 的 Attempt 历史：
+### Attempt 事件历史
 
 ```sql
 SELECT
@@ -396,92 +455,160 @@ WHERE job_id = '这里填 jobs.id'
 ORDER BY event_seq;
 ```
 
-## 11. 看 AI 分析结果
+## 11. 看 AI Analysis
 
-当前 AI 结果不是只存在 Excel/JSONL；正式分析会写 `analysis_results`，标签对写 `analysis_label_pairs`。
+当前正式结果表不是 `analysis_results`，而是：
+
+```text
+analysis_content_results
+```
+
+### 最近分析结果
 
 ```sql
 SELECT
     id,
     content_id,
+    content_version,
+    job_id,
     schema_version,
-    status,
-    model_provider,
-    model_name,
-    prompt_version,
+    relevance,
     voice_type,
     sentiment,
-    input_tokens,
-    output_tokens,
-    cost_amount,
-    cost_currency,
-    completed_at,
+    prompt_version,
+    prompt_sha256,
+    taxonomy_sha256,
+    model_provider,
+    model,
+    analyzed_at,
     created_at
-FROM analysis_results
+FROM analysis_content_results
 ORDER BY created_at DESC
 LIMIT 30;
 ```
 
-当前 `voice_type` 的合法业务值是：
+当前 `voice_type` 的合法机器值：
 
 ```text
-professional_media
-influencer_self_media
-ordinary_user
+user_voice
+creator_marketing
+brand_official
+dealer_promotion
+media_information
+other_organization
+unknown
 ```
 
-它是“发声类型”的唯一业务事实，不再另存一个重复的“是否真实用户发声”布尔字段。
+真实用户发声对应：
 
-看一个结果的标签：
+```text
+voice_type = 'user_voice'
+```
+
+查 AI 判定为无关的结果：
 
 ```sql
 SELECT
-    position,
+    id,
+    content_id,
+    content_version,
+    voice_type,
+    analyzed_at
+FROM analysis_content_results
+WHERE relevance = 'irrelevant'
+ORDER BY analyzed_at DESC;
+```
+
+注意：这是 **Analysis Result**，不是 `contents.is_relevant`。
+
+### 一个结果的标签
+
+```sql
+SELECT
+    ordinal,
     primary_label,
     secondary_label
-FROM analysis_label_pairs
-WHERE analysis_result_id = '这里填 analysis_results.id'
-ORDER BY position;
+FROM analysis_content_label_pairs
+WHERE analysis_result_id = '这里填 analysis_content_results.id'
+ORDER BY ordinal;
 ```
 
-精确 taxonomy 不在数据库附录复制，唯一业务事实见：
+### 一次正式 Analysis 请求
+
+父表：
 
 ```text
-backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md
+analysis_content_requests
 ```
 
+冻结的内容项：
+
+```text
+analysis_content_request_items
+```
+
+第一次排障时建议先：
+
+```sql
+\d+ analysis_content_requests
+\d+ analysis_content_request_items
+```
+
+再按当前列查询，避免把某次历史字段名当长期 Contract。
+
+### 当前没有什么
+
+`analysis_content_results` 当前**没有** `input_tokens / output_tokens / cost_amount / cost_currency` 这些列。离线调用成本能力不能写成数据库已持久化成本事实。
+
+完整 AI 业务规则见 [`AI舆情分析与打标.md`](AI舆情分析与打标.md)。
+
 ## 12. 看正式 Excel Export
+
+当前表：
+
+```text
+reporting_data_exports
+reporting_data_export_items
+```
+
+### 最近导出
 
 ```sql
 SELECT
     id,
     job_id,
-    export_type,
-    source_type,
-    status,
-    total_items,
-    exported_items,
     artifact_id,
-    error_code,
+    format,
+    request_snapshot,
+    stats,
     created_at,
-    finished_at
-FROM reporting_exports
+    completed_at
+FROM reporting_data_exports
 ORDER BY created_at DESC
 LIMIT 30;
 ```
 
-一个导出任务冻结了哪些内容：
+### 本次冻结了哪些 Content 版本
 
 ```sql
-SELECT position, content_id
-FROM reporting_export_items
-WHERE export_id = '这里填 reporting_exports.id'
-ORDER BY position;
+SELECT
+    ordinal,
+    content_id,
+    content_version
+FROM reporting_data_export_items
+WHERE export_id = '这里填 reporting_data_exports.id'
+ORDER BY ordinal;
 ```
 
-## 13. 看表、索引和数据库大小
+当前正式 Job 类型：
 
-最大的表：
+```text
+reporting.content-export-excel.v1
+```
+
+## 13. 看数据库和索引大小
+
+最大的业务表：
 
 ```sql
 SELECT
@@ -492,7 +619,7 @@ ORDER BY pg_total_relation_size(relid) DESC
 LIMIT 20;
 ```
 
-某张表的索引：
+查看 `contents` 当前索引：
 
 ```sql
 SELECT indexname, indexdef
@@ -534,50 +661,50 @@ WHERE xact_start IS NOT NULL
 ORDER BY xact_start;
 ```
 
-## 14. EXPLAIN：查询慢时先看数据库准备怎么执行
+## 14. 查询慢时先用 EXPLAIN
 
-先用不真正执行的版本：
+先看执行计划，不真正执行：
 
 ```sql
 EXPLAIN
-SELECT id, title
+SELECT id, title, last_seen_at
 FROM contents
 WHERE platform = 'xhs'
-  AND is_relevant = true
 ORDER BY last_seen_at DESC
 LIMIT 20;
 ```
 
-确认在测试/只读环境可接受后，再用：
+确认是测试/只读查询并且可以实际运行后：
 
 ```sql
 EXPLAIN (ANALYZE, BUFFERS)
-SELECT id, title
+SELECT id, title, last_seen_at
 FROM contents
 WHERE platform = 'xhs'
-  AND is_relevant = true
 ORDER BY last_seen_at DESC
 LIMIT 20;
 ```
 
-`ANALYZE` 会真实执行 SQL。对 `UPDATE/DELETE` 不要随手使用。
+`ANALYZE` 会真正执行 SQL。不要随手对 `UPDATE/DELETE` 使用。
 
-## 15. INSERT / UPDATE：为什么默认不建议直接改业务表
+## 15. INSERT / UPDATE 为什么默认不建议直接改业务表
 
-AIMA_UGC 的业务写入通常不只是“一张表插一行”。例如一条内容入库可能同时涉及：
+AIMA_UGC 的一条业务写入往往同时影响：
 
 ```text
-来源 Attempt/Artifact
-→ 内容 Current
+来源 Attempt / Artifact
+→ Content Current
 → Version
 → Metric Observation
 → 来源账本
-→ 下游 Job
+→ 必要的下游 Job
 ```
 
-直接 SQL 很容易绕过 Owner、幂等、版本、Fencing 或来源校验。所以：
+直接 SQL 很容易绕过 Owner、幂等、版本、Fencing 或来源约束。
 
-- 正常业务数据：优先调用正式 Service/Repository/API/调试入口；
+因此：
+
+- 正常业务数据：优先正式 Service / Repository / API / 调试入口；
 - 数据库排障：优先 `SELECT`；
 - 必须人工改数据：先备份、确认 Owner/Migration/约束，并在隔离环境验证。
 
@@ -588,7 +715,6 @@ AIMA_UGC 的业务写入通常不只是“一张表插一行”。例如一条�
 ```sql
 BEGIN;
 
--- 先查看真实结构
 \d+ 目标表
 
 -- 下面只是 SQL 语法模板，不是 AIMA 某张业务表的固定 Contract
@@ -606,19 +732,9 @@ ROLLBACK;
 
 不要把模板字段直接复制到生产库。
 
-### 15.2 修改前至少先做这三步
+### 15.2 高风险语句
 
-```sql
--- 1. 精确确认目标
-SELECT * FROM 目标表 WHERE 主键字段 = '明确ID';
-
--- 2. 开事务
-BEGIN;
-
--- 3. 修改并看 RETURNING；不确定就 ROLLBACK
-```
-
-以下语句属于高风险：
+以下操作不能用“试一下”的方式在生产库执行：
 
 ```text
 UPDATE ... 没有 WHERE
@@ -628,11 +744,9 @@ DROP TABLE / DROP DATABASE
 ALTER TABLE
 ```
 
-生产环境不要把“试一下”当调试方法。
-
 ## 16. Alembic：确认数据库版本
 
-从仓库根目录运行：
+从仓库根运行：
 
 ```bash
 uv run alembic current
@@ -640,73 +754,76 @@ uv run alembic heads
 uv run alembic history
 ```
 
-升级到当前仓库 head：
+升级：
 
 ```bash
 uv run alembic upgrade head
 ```
 
-新增 Migration 后检查模型与 Migration 是否一致：
+模型与 Migration 一致性：
 
 ```bash
 uv run alembic check
 ```
 
-`downgrade` 只在明确允许的隔离测试库按对应 Migration 规则使用。某些 Revision 在存在新业务事实后会故意拒绝安全 downgrade，不能为了让命令成功而绕过保护。
+`downgrade` 只在明确允许的隔离测试库使用。某些 Revision 在存在新业务事实后会故意拒绝危险 downgrade，不能为了让命令成功而绕过保护。
 
 ## 17. 常见排障顺序
 
-### 页面没有数据
+### 页面没有内容
 
 ```text
-1. 查 contents / 对应业务表是否有数据
-2. 查 is_relevant 等默认过滤条件
-3. 查 API/Query Repository 的查询条件
-4. 再查前端 Feature API / Store
+1. 查 contents 是否有目标数据
+2. 查 HTTP Query 参数/筛选条件
+3. 如果涉及 AI，查 analysis_content_results
+4. 再查 Query Repository / API
+5. 最后查前端 Feature / Store
 ```
 
 ### Excel 导入一直处理中
 
 ```text
-1. 查 processing_import_batches
-2. 查关联 jobs
-3. 查 job_attempt_events
-4. 查 provider_requests / provider_request_attempts
-5. 查 worker.log
+1. processing_import_batches
+2. jobs
+3. job_attempt_events
+4. provider_requests / provider_request_attempts
+5. worker.log
 ```
 
-### TikHub 采集有 Run 但没有内容
+### TikHub 有 Run 但没有 Content
 
 ```text
-1. 查 collection_runs
-2. 查 collection_scopes
-3. 查 provider_requests
-4. 查 provider_request_attempts.raw_artifact_id
-5. 查 Candidate / Ingestion 账本
-6. 再看 Mapper / relevance 过滤
+1. collection_runs
+2. collection_scopes
+3. provider_requests
+4. provider_request_attempts / raw_artifact_id
+5. Candidate / Candidate Ingestion ledger
+6. Mapper
+7. 规则 Relevance 是否得到 filtered
 ```
 
 ### AI 页面没有标签
 
 ```text
-1. 查 contents 是否存在且默认相关
-2. 查 analysis_results 是否 succeeded
-3. 查 voice_type / sentiment
-4. 查 analysis_label_pairs
-5. 查对应 Job 与 worker.log
+1. contents 是否存在目标 Content
+2. analysis_content_requests / items 是否创建
+3. 对应 Job 是否成功
+4. analysis_content_results 是否有结果
+5. relevance 是否 irrelevant
+6. analysis_content_label_pairs 是否存在
 ```
 
 ## 18. 精确事实去哪里看
 
-- 数据表注册入口：`backend/src/aima_ugc/database_schema.py`
-- Content 表：`backend/src/aima_ugc/modules/content/tables.py`
-- Collection 表：`backend/src/aima_ugc/modules/collection/*.py`
+- 数据表注册：`backend/src/aima_ugc/database_schema.py`
+- Content：`backend/src/aima_ugc/modules/content/tables.py`
+- Collection：`backend/src/aima_ugc/modules/collection/*.py`
 - Import Batch：`backend/src/aima_ugc/modules/ingestion/tables.py`
 - Analysis：`backend/src/aima_ugc/modules/analysis/tables.py`
 - Reporting：`backend/src/aima_ugc/modules/reporting/tables.py`
 - Job：`backend/src/aima_ugc/platform/jobs/tables.py`
 - Migration：`migrations/versions/`
-- 本地数据库配置示例：`env.local.example`
-- 架构原则：[`../blueprint/03-数据库与文件存储.md`](../blueprint/03-数据库与文件存储.md)
+- 本地数据库配置：`env.local.example`
+- 数据架构原则：[`../blueprint/03-数据库与文件存储.md`](../blueprint/03-数据库与文件存储.md)
 
-数据库结构发生变化时，应先改代码/Migration/测试，再同步本文中受影响的调试示例；不能反过来让本文成为 Schema 事实源。
+数据库结构发生变化时，应先改代码/Migration/测试，再同步本文中受影响的 SQL 示例；不能反过来让附录成为 Schema 事实源。
