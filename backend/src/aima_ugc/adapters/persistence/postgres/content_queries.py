@@ -82,7 +82,10 @@ class PostgresContentQueryRepository:
         return self._records(rows)
 
     def get_content(self, content_id: UUID) -> ContentReadRecord | None:
-        statement, _ = self._base_statement(ContentFilterSnapshot())
+        statement, _ = self._base_statement(
+            ContentFilterSnapshot(),
+            include_irrelevant=True,
+        )
         row = (
             self._session.execute(statement.where(contents_table.c.id == content_id))
             .mappings()
@@ -240,6 +243,7 @@ class PostgresContentQueryRepository:
         filters: ContentFilterSnapshot,
         *,
         targets_only: bool = False,
+        include_irrelevant: bool = False,
     ) -> tuple[Any, dict[str, Any]]:
         content = contents_table
         version = content_versions_table
@@ -316,6 +320,7 @@ class PostgresContentQueryRepository:
             analysis=analysis,
             has_any_analysis=has_any_analysis,
             version=version,
+            include_irrelevant=include_irrelevant,
         )
         return statement, {"sort_at": sort_at}
 
@@ -449,12 +454,14 @@ def _apply_filters(
     analysis: Any,
     has_any_analysis: Any,
     version: Any,
+    include_irrelevant: bool,
 ) -> Any:
     content = contents_table
     if filters.relevance is None:
-        statement = statement.where(
-            or_(analysis.c.id.is_(None), analysis.c.relevance != "irrelevant")
-        )
+        if not include_irrelevant:
+            statement = statement.where(
+                or_(analysis.c.id.is_(None), analysis.c.relevance != "irrelevant")
+            )
     else:
         statement = statement.where(analysis.c.relevance == filters.relevance)
     if filters.voice_type is not None:
