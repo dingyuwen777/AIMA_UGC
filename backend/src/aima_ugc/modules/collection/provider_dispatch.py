@@ -162,7 +162,7 @@ def _log_provider_started(preparation: ProviderDispatchPreparation) -> None:
     attempt = preparation.attempt
     log_event(
         logger,
-        logging.INFO,
+        logging.DEBUG,
         "provider.request.started",
         "Provider Request 已进入发送边界。",
         provider_request_id=str(request.request_id),
@@ -183,11 +183,9 @@ def _log_provider_terminal(
     artifact: ArtifactRecord | None,
 ) -> None:
     request = preparation.request
-    event = (
-        "provider.request.completed"
-        if attempt.dispatch_status == "completed"
-        else "provider.request.failed"
-    )
+    completed = attempt.dispatch_status == "completed"
+    event = "provider.request.completed" if completed else "provider.request.failed"
+    level = logging.DEBUG if completed else logging.WARNING
     duration_ms: int | None = None
     if attempt.dispatch_started_at is not None and attempt.completed_at is not None:
         duration_ms = max(
@@ -196,7 +194,7 @@ def _log_provider_terminal(
         )
     log_event(
         logger,
-        logging.INFO,
+        level,
         event,
         "Provider Request 状态已持久化。",
         provider_request_id=str(request.request_id),
@@ -219,4 +217,5 @@ def _log_provider_terminal(
         cost_unit=attempt.cost_unit,
         potential_duplicate_charge=attempt.potential_duplicate_charge,
         error_code=attempt.error_code,
+        error_detail=attempt.error_detail,
     )
