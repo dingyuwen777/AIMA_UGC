@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import zipfile
 from io import BytesIO
 from pathlib import Path
@@ -8,13 +7,9 @@ from xml.etree import ElementTree as ET
 
 from aima_ugc.platform.reporting import convert_markdown_to_docx
 from openpyxl import load_workbook
+from PIL import Image
 
 _W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-
-_PNG_16_9 = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAABAAAAAJCAIAAAC+O8xKAAAAF0lEQVR4nGP8//8/AymAiSTVQAwYGAAA"
-    "d3wDCcYLY6cAAAAASUVORK5CYII="
-)
 
 
 def _table_caption(table: ET.Element) -> str | None:
@@ -22,12 +17,18 @@ def _table_caption(table: ET.Element) -> str | None:
     return None if caption is None else caption.get(f"{{{_W}}}val")
 
 
+def _write_png(path: Path) -> None:
+    image = Image.new("RGB", (160, 90), "white")
+    image.save(path, format="PNG")
+    image.close()
+
+
 def test_primary_overview_keeps_kpis_ranking_and_wordcloud_in_one_visual_group(
     tmp_path: Path,
 ) -> None:
     assets = tmp_path / "assets"
     assets.mkdir()
-    (assets / "primary.png").write_bytes(_PNG_16_9)
+    _write_png(assets / "primary.png")
     markdown = tmp_path / "report.md"
     output = tmp_path / "report.docx"
     markdown.write_text(
