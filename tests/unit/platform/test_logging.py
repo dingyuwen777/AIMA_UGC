@@ -3,6 +3,7 @@ import logging
 import re
 from datetime import UTC, datetime
 
+import pytest
 from aima_ugc.platform.config import PlatformSettings
 from aima_ugc.platform.logging import (
     AimaLogFormatter,
@@ -12,12 +13,12 @@ from aima_ugc.platform.logging import (
 )
 
 
-def test_log_timestamp_uses_beijing_time() -> None:
+def test_log_prefix_uses_beijing_time_filename_and_line() -> None:
     record = logging.LogRecord(
         name="aima_ugc.test.logging",
         level=logging.INFO,
-        pathname=__file__,
-        lineno=1,
+        pathname="/tmp/_client.py",
+        lineno=1090,
         msg="固定时刻",
         args=(),
         exc_info=None,
@@ -26,7 +27,29 @@ def test_log_timestamp_uses_beijing_time() -> None:
 
     line = AimaLogFormatter(service="api").format(record)
 
-    assert line.startswith("[2026-08-18 14:10:08.637] [INFO]")
+    assert line.startswith("[2026-08-18 14:10:08.637 _client.py L1090] [INFO] ")
+    assert "service=" not in line
+    assert "source=" not in line
+    assert "event=log.message" in line
+
+
+def test_log_event_reports_actual_caller_instead_of_logging_helper(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    logger = logging.getLogger("aima_ugc.test.logging.caller")
+
+    with caplog.at_level(logging.INFO, logger=logger.name):
+        expected_line = _emit_from_test_caller(logger)
+
+    record = next(record for record in caplog.records if getattr(record, "event", None) == "test.caller")
+    assert record.filename == "test_logging.py"
+    assert record.lineno == expected_line
+
+
+def _emit_from_test_caller(logger: logging.Logger) -> int:
+    expected_line = __import__("inspect").currentframe().f_lineno + 1  # type: ignore[union-attr]
+    log_event(logger, logging.INFO, "test.caller", "定位真实调用点")
+    return expected_line
 
 
 def test_logging_redacts_escapes_and_rotates_to_gzip(tmp_path) -> None:
@@ -75,6 +98,10 @@ def test_logging_redacts_escapes_and_rotates_to_gzip(tmp_path) -> None:
     assert "Bearer ***" in output
     assert 'password="***"' in output
     assert r"line1\nline2" in output
-    assert "service=api" in output
+    assert "service=" not in output
+    assert "source=" not in output
     assert "event=test.event" in output
-    assert re.search(r"\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}\] \[INFO\]", output)
+    assert re.search(
+        r"\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} test_logging\.py L\d+\] \[INFO\]",
+        output,
+    )
