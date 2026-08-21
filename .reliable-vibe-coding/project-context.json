@@ -594,12 +594,12 @@
       "size": 99997
     }
   ],
-  "generated_at": "2026-08-21T06:26:59+00:00",
+  "generated_at": "2026-08-21T06:30:06+00:00",
   "generator_version": "0.1.0",
   "git": {
-    "indexed_at_commit": "38ea961a5f3dfbd84f5f4e6fa9aeb5153b8f1018",
+    "indexed_at_commit": "481424cb97015a51f93d4c1bcc9b56cbd04324c1",
     "repository": true,
-    "worktree_candidate_digest": "06734e4d70020365303e625f594892bdcc8b1bee4d9dc8081be1afbc9a881594"
+    "worktree_candidate_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
   },
   "package_scripts": {
     "frontend/package.json": {

@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260821-stage8f-collection-strategy"
 title: "Stage 8F 采集策略配置与整体集成"
 level: L3
-status: in_progress
+status: ready_for_review
 owner: "codex"
 branch: "feature/stage8f-collection-strategy"
 created: 2026-08-21
@@ -180,6 +180,6 @@ data_changes:
 
 # 交付
 
-- Commit：
-- PR：
+- Commit：`481424cb97015a51f93d4c1bcc9b56cbd04324c1`（正式实现）
+- PR：`#110` `https://github.com/dingyuwen777/AIMA_UGC/pull/110`（Draft，等待最终 Head CI/Review）
 - 发布：不操作外部生产；交付仓库代码、生成物、部署/回滚说明和验证证据。
