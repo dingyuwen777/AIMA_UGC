@@ -6,6 +6,7 @@ const navigation = [
   { label: '首页', icon: '⌂', disabled: true },
   { label: '声音广场', icon: '◌', to: '/voice-plaza' },
   { label: '采集运行中心', icon: '▣', to: '/collection-runtime' },
+  { label: '采集策略', icon: '◎', to: '/collection-strategy' },
   { label: '智能洞察', icon: '◇', disabled: true },
   { label: '销售漏斗', icon: '▽', disabled: true },
   { label: '热点捕捉', icon: '♨', disabled: true },

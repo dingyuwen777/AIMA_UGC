@@ -175,7 +175,10 @@ Token、服务器内部路径、堆栈或原始异常；响应头 `x-request-id`
 - `POST /api/v1/keyword-packs/{pack_id}/keywords`：`addKeywordToPack`，添加或复用关键词；只接收原始
   `text`，数据库唯一身份由后端生成。
 - `GET /api/v1/keyword-packs/{pack_id}`：`getKeywordPack`，读取 Pack 和稳定排序的关键词项。
-- Stage 8B 只提供生成 Client 所需的最小 Contract；正式 Vue 配置页面属于 Stage 8F。
+- `GET /api/v1/keyword-packs`：`listKeywordPacks`，按更新时间和 ID 稳定分页查询摘要，可按名称和启用状态
+  筛选，返回关键词数量。
+- `PUT /api/v1/keyword-packs/{pack_id}/enabled`：`updateKeywordPackEnabled`。停用当前全局 Relevance
+  或启用中 Plan 引用的 Pack 返回 409；不存在返回 404；无状态变化时保持 Pack 版本不变。
 
 ### 5.9 Global Relevance Config
 
@@ -205,7 +208,23 @@ Token、服务器内部路径、堆栈或原始异常；响应头 `x-request-id`
   与 Collection Run 聚合处理中、北京时间今日完成及今日入库/采集内容；不从当前页在浏览器计算。
 - Stage 8E Discovery 关键词只冻结在 Run，不保存为 Keyword Pack 或 Plan；持久配置属于 Stage 8F。
 
-### 5.11 Content / 声音广场查询
+### 5.11 Collection Plan / 采集策略
+
+- `POST /api/v1/collection-plans`：`createCollectionPlan`。只创建五字段 Cron 周期 Plan，接受名称、
+  `schedule_expr`、1—5 个 `platform/provider_config_id`、1—20 个 Discovery Pack ID 和启用状态；不接受
+  单次模式、Plan 级 Relevance、Secret、Base URL 或任意 Provider JSON。成功返回 201，且不会创建
+  Run/Job、调用 TikHub 或产生 Provider 费用。
+- `GET /api/v1/collection-plans`：`listCollectionPlans`。按更新时间和 ID 稳定分页，支持名称/Plan UUID、
+  启用状态和平台筛选，并返回全局启用 Plan 数量。
+- `GET /api/v1/collection-plans/{plan_id}`：`getCollectionPlan`，返回周期、时区、版本、下次/上次调度、
+  固定采集策略、平台/Provider 与 Discovery Pack 关联。
+- `PUT /api/v1/collection-plans/{plan_id}/enabled`：`updateCollectionPlanEnabled`。启停递增
+  `schedule_version` 并清空调度 cursor；重新启用前重新验证 Pack、Provider Capability 与全局 Relevance。
+  旧 Scheduler cursor 因版本不匹配关闭失败，停用期间不补跑。
+- `/collection-strategy` Vue 页面通过生成 Orval Client 使用上述接口和全局 Relevance 接口；一次性主动
+  发现继续使用 Stage 8E `/collection-runtime`，不在配置页重复实现。
+
+### 5.12 Content / 声音广场查询
 
 - `GET /api/v1/contents`：`listContents`。查询统一 PostgreSQL Content Read Model，不区分 Excel、
   TikHub 或未来其他来源；支持文本、平台、内容类型、时间、来源 Batch/Run、AI 状态/情感/一级/二级
@@ -219,7 +238,7 @@ Token、服务器内部路径、堆栈或原始异常；响应头 `x-request-id`
 - `GET /api/v1/contents/{content_id}`：`getContent`。除列表字段外返回合法媒体元数据、最多 100 条当前
   评论、最新 Coverage 和来源记录；没有图片时不会伪造缩略图。不存在返回 404。
 
-### 5.12 显式 Content Analysis
+### 5.13 显式 Content Analysis
 
 - `POST /api/v1/content-analysis-requests`：`createContentAnalysis`。接收显式选择的 Content ID，或当前
   查询过滤快照；服务立即冻结 Content ID + Version，并在同一事务创建 Analysis Request 与
@@ -229,7 +248,7 @@ Token、服务器内部路径、堆栈或原始异常；响应头 `x-request-id`
 - 只有用户显式提交才调用模型；Import/Collection 默认不自动触发付费 Analysis。模型 Secret 只从
   Secret 文件装配，不进入 Payload、数据库、日志或响应。
 
-### 5.13 声音广场 Excel 导出
+### 5.14 声音广场 Excel 导出
 
 - `POST /api/v1/data-exports`：`createDataExport`。冻结显式选择或当前查询结果的 Content ID + Version，
   创建 `reporting.content-export-excel.v1` durable Job，返回 202；Router 不生成 Excel。
@@ -246,7 +265,6 @@ Token、服务器内部路径、堆栈或原始异常；响应头 `x-request-id`
 以下其余资源路径来自当前 Blueprint，是后续业务阶段的目标边界；**未实现前不得把本节视为现有 API。** 实际接口只有进入对应阶段、建立 Pydantic Contract、固定 OpenAPI 和测试后才算存在。
 
 ```text
-/api/v1/collection-plans
 /api/v1/collection-runs
 /api/v1/comments
 /api/v1/analysis-runs

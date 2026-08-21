@@ -20,6 +20,10 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from aima_ugc.contracts.http import (
     CollectionCapabilitiesResponse,
+    CollectionPlanCreateRequest,
+    CollectionPlanListQuery,
+    CollectionPlanListResponse,
+    CollectionPlanResponse,
     CollectionRunCreatedResponse,
     CollectionRunCreateRequest,
     CollectionRunResponse,
@@ -47,7 +51,11 @@ from aima_ugc.contracts.http import (
     JobStatusResponse,
     KeywordPackCreateRequest,
     KeywordPackKeywordCreateRequest,
+    KeywordPackListQuery,
+    KeywordPackListResponse,
     KeywordPackResponse,
+    KeywordPackSummaryResponse,
+    ResourceEnabledRequest,
 )
 from aima_ugc.modules.collection.http import (
     CollectionConflict,
@@ -55,6 +63,12 @@ from aima_ugc.modules.collection.http import (
     CollectionResourceNotFound,
     CollectionRuntimeCursorUnavailable,
     InvalidCollectionRuntimeCursor,
+)
+from aima_ugc.modules.collection.strategy_http import (
+    CollectionStrategyConflict,
+    CollectionStrategyHttpService,
+    CollectionStrategyInvalid,
+    CollectionStrategyResourceNotFound,
 )
 from aima_ugc.modules.content.http import (
     ContentCursorUnavailable,
@@ -213,6 +227,7 @@ def create_app(
     content_service: ContentHttpService | None = None,
     reporting_service: ReportingHttpService | None = None,
     collection_service: CollectionHttpService | None = None,
+    strategy_service: CollectionStrategyHttpService | None = None,
 ) -> FastAPI:
     """创建 API 应用；默认 runtime 延迟到启动或第一次 readiness 检查。"""
     runtime: PlatformRuntime | None = None
@@ -278,6 +293,18 @@ def create_app(
         from aima_ugc.bootstrap.collection_http import PostgresCollectionHttpService
 
         return PostgresCollectionHttpService(resolved_runtime)
+
+    def current_strategy_service() -> CollectionStrategyHttpService:
+        if strategy_service is not None:
+            return strategy_service
+        resolved_runtime = get_runtime()
+        if resolved_runtime is None:
+            raise RuntimeError("Collection Strategy Service 依赖不可用")
+        from aima_ugc.bootstrap.collection_strategy_http import (
+            PostgresCollectionStrategyHttpService,
+        )
+
+        return PostgresCollectionStrategyHttpService(resolved_runtime)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -479,6 +506,42 @@ def create_app(
             title="分页服务暂不可用",
             detail="采集运行分页服务配置不可用，请使用 request_id 联系管理员。",
             code="collection_runtime_cursor_unavailable",
+        )
+
+    @application.exception_handler(CollectionStrategyResourceNotFound)
+    async def collection_strategy_not_found(
+        request: Request, _: CollectionStrategyResourceNotFound
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=404,
+            request_id=_request_id(request),
+            title="采集策略资源不存在",
+            detail="请求的词包、采集计划或 Provider 配置不存在。",
+            code="collection_strategy_not_found",
+        )
+
+    @application.exception_handler(CollectionStrategyConflict)
+    async def collection_strategy_conflict(
+        request: Request, _: CollectionStrategyConflict
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=409,
+            request_id=_request_id(request),
+            title="采集策略无法保存",
+            detail="当前词包、全局相关性、Provider 或计划状态不允许该操作。",
+            code="collection_strategy_conflict",
+        )
+
+    @application.exception_handler(CollectionStrategyInvalid)
+    async def collection_strategy_invalid(
+        request: Request, _: CollectionStrategyInvalid
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=422,
+            request_id=_request_id(request),
+            title="采集策略不合法",
+            detail="采集策略未通过领域规则校验。",
+            code="collection_strategy_invalid",
         )
 
     @application.exception_handler(DataExportResourceNotFound)
@@ -900,6 +963,21 @@ def create_app(
     def create_keyword_pack(request: KeywordPackCreateRequest) -> KeywordPackResponse:
         return current_import_service().create_keyword_pack(request)
 
+    @application.get(
+        "/api/v1/keyword-packs",
+        operation_id="listKeywordPacks",
+        response_model=KeywordPackListResponse,
+        responses={
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["keywords"],
+    )
+    def list_keyword_packs(
+        query: Annotated[KeywordPackListQuery, Query()],
+    ) -> KeywordPackListResponse:
+        return current_strategy_service().list_keyword_packs(query)
+
     @application.post(
         "/api/v1/keyword-packs/{pack_id}/keywords",
         operation_id="addKeywordToPack",
@@ -930,6 +1008,24 @@ def create_app(
         return current_import_service().get_keyword_pack(pack_id)
 
     @application.put(
+        "/api/v1/keyword-packs/{pack_id}/enabled",
+        operation_id="updateKeywordPackEnabled",
+        response_model=KeywordPackSummaryResponse,
+        responses={
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["keywords"],
+    )
+    def update_keyword_pack_enabled(
+        pack_id: UUID,
+        request: ResourceEnabledRequest,
+    ) -> KeywordPackSummaryResponse:
+        return current_strategy_service().set_keyword_pack_enabled(pack_id, request)
+
+    @application.put(
         "/api/v1/relevance-config",
         operation_id="setGlobalRelevanceConfig",
         response_model=GlobalRelevanceConfigResponse,
@@ -958,6 +1054,69 @@ def create_app(
     )
     def get_global_relevance() -> GlobalRelevanceConfigResponse:
         return current_import_service().get_global_relevance()
+
+    @application.post(
+        "/api/v1/collection-plans",
+        operation_id="createCollectionPlan",
+        response_model=CollectionPlanResponse,
+        status_code=status.HTTP_201_CREATED,
+        responses={
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["collection-strategy"],
+    )
+    def create_collection_plan(request: CollectionPlanCreateRequest) -> CollectionPlanResponse:
+        return current_strategy_service().create_plan(request)
+
+    @application.get(
+        "/api/v1/collection-plans",
+        operation_id="listCollectionPlans",
+        response_model=CollectionPlanListResponse,
+        responses={
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["collection-strategy"],
+    )
+    def list_collection_plans(
+        query: Annotated[CollectionPlanListQuery, Query()],
+    ) -> CollectionPlanListResponse:
+        return current_strategy_service().list_plans(query)
+
+    @application.get(
+        "/api/v1/collection-plans/{plan_id}",
+        operation_id="getCollectionPlan",
+        response_model=CollectionPlanResponse,
+        responses={
+            404: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["collection-strategy"],
+    )
+    def get_collection_plan(plan_id: UUID) -> CollectionPlanResponse:
+        return current_strategy_service().get_plan(plan_id)
+
+    @application.put(
+        "/api/v1/collection-plans/{plan_id}/enabled",
+        operation_id="updateCollectionPlanEnabled",
+        response_model=CollectionPlanResponse,
+        responses={
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["collection-strategy"],
+    )
+    def update_collection_plan_enabled(
+        plan_id: UUID,
+        request: ResourceEnabledRequest,
+    ) -> CollectionPlanResponse:
+        return current_strategy_service().set_plan_enabled(plan_id, request)
 
     return application
 

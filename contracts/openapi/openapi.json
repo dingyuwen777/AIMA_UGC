@@ -73,6 +73,244 @@
         "title": "CollectionCapabilityResponse",
         "type": "object"
       },
+      "CollectionPlanCreateRequest": {
+        "additionalProperties": false,
+        "description": "Stage 8F 周期 Plan 创建 Contract；一次性运行继续使用 Stage 8E。",
+        "properties": {
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "keyword_pack_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Keyword Pack Ids",
+            "type": "array"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "platforms": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionPlanPlatformRequest"
+            },
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Platforms",
+            "type": "array"
+          },
+          "schedule_expr": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Schedule Expr",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "schedule_expr",
+          "platforms",
+          "keyword_pack_ids"
+        ],
+        "title": "CollectionPlanCreateRequest",
+        "type": "object"
+      },
+      "CollectionPlanListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled_count": {
+            "minimum": 0.0,
+            "title": "Enabled Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionPlanResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "enabled_count",
+          "offset",
+          "limit"
+        ],
+        "title": "CollectionPlanListResponse",
+        "type": "object"
+      },
+      "CollectionPlanPlatformRequest": {
+        "additionalProperties": false,
+        "description": "Plan 只选择稳定 Provider Config，不接收 Provider 私有配置。",
+        "properties": {
+          "platform": {
+            "$ref": "#/components/schemas/CollectionPlatform"
+          },
+          "provider_config_id": {
+            "format": "uuid",
+            "title": "Provider Config Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform",
+          "provider_config_id"
+        ],
+        "title": "CollectionPlanPlatformRequest",
+        "type": "object"
+      },
+      "CollectionPlanPlatformResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "platform": {
+            "$ref": "#/components/schemas/CollectionPlatform"
+          },
+          "provider_config_id": {
+            "format": "uuid",
+            "title": "Provider Config Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform",
+          "provider_config_id"
+        ],
+        "title": "CollectionPlanPlatformResponse",
+        "type": "object"
+      },
+      "CollectionPlanResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "comment_policy": {
+            "const": "adaptive",
+            "title": "Comment Policy",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "detail_policy": {
+            "const": "on_change",
+            "title": "Detail Policy",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "keyword_pack_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Keyword Pack Ids",
+            "type": "array"
+          },
+          "last_scheduled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Scheduled At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "next_run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Run At"
+          },
+          "platforms": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionPlanPlatformResponse"
+            },
+            "title": "Platforms",
+            "type": "array"
+          },
+          "schedule_expr": {
+            "title": "Schedule Expr",
+            "type": "string"
+          },
+          "schedule_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Schedule Version",
+            "type": "integer"
+          },
+          "timezone": {
+            "const": "Asia/Shanghai",
+            "title": "Timezone",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "enabled",
+          "schedule_expr",
+          "timezone",
+          "schedule_version",
+          "detail_policy",
+          "comment_policy",
+          "platforms",
+          "keyword_pack_ids",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CollectionPlanResponse",
+        "type": "object"
+      },
       "CollectionPlatform": {
         "enum": [
           "xhs",
@@ -2484,6 +2722,42 @@
         "title": "KeywordPackKeywordCreateRequest",
         "type": "object"
       },
+      "KeywordPackListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/KeywordPackSummaryResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "offset",
+          "limit"
+        ],
+        "title": "KeywordPackListResponse",
+        "type": "object"
+      },
       "KeywordPackResponse": {
         "additionalProperties": false,
         "properties": {
@@ -2526,6 +2800,48 @@
           "keywords"
         ],
         "title": "KeywordPackResponse",
+        "type": "object"
+      },
+      "KeywordPackSummaryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "keyword_count": {
+            "minimum": 0.0,
+            "title": "Keyword Count",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "enabled",
+          "version",
+          "keyword_count"
+        ],
+        "title": "KeywordPackSummaryResponse",
         "type": "object"
       },
       "KeywordResponse": {
@@ -2627,6 +2943,20 @@
         ],
         "title": "ReadinessResponse",
         "type": "object"
+      },
+      "ResourceEnabledRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "ResourceEnabledRequest",
+        "type": "object"
       }
     }
   },
@@ -2664,6 +2994,337 @@
         "summary": "Get Collection Capabilities",
         "tags": [
           "collection"
+        ]
+      }
+    },
+    "/api/v1/collection-plans": {
+      "get": {
+        "operationId": "listCollectionPlans",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "enabled",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Enabled"
+            }
+          },
+          {
+            "in": "query",
+            "name": "platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CollectionPlatform"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Platform"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionPlanListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Collection Plans",
+        "tags": [
+          "collection-strategy"
+        ]
+      },
+      "post": {
+        "operationId": "createCollectionPlan",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionPlanCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionPlanResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Create Collection Plan",
+        "tags": [
+          "collection-strategy"
+        ]
+      }
+    },
+    "/api/v1/collection-plans/{plan_id}": {
+      "get": {
+        "operationId": "getCollectionPlan",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionPlanResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Collection Plan",
+        "tags": [
+          "collection-strategy"
+        ]
+      }
+    },
+    "/api/v1/collection-plans/{plan_id}/enabled": {
+      "put": {
+        "operationId": "updateCollectionPlanEnabled",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResourceEnabledRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionPlanResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Update Collection Plan Enabled",
+        "tags": [
+          "collection-strategy"
         ]
       }
     },
@@ -4102,6 +4763,104 @@
       }
     },
     "/api/v1/keyword-packs": {
+      "get": {
+        "operationId": "listKeywordPacks",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "enabled",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Enabled"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeywordPackListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Keyword Packs",
+        "tags": [
+          "keywords"
+        ]
+      },
       "post": {
         "operationId": "createKeywordPack",
         "requestBody": {
@@ -4220,6 +4979,89 @@
           }
         },
         "summary": "Get Keyword Pack",
+        "tags": [
+          "keywords"
+        ]
+      }
+    },
+    "/api/v1/keyword-packs/{pack_id}/enabled": {
+      "put": {
+        "operationId": "updateKeywordPackEnabled",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResourceEnabledRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeywordPackSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Update Keyword Pack Enabled",
         "tags": [
           "keywords"
         ]

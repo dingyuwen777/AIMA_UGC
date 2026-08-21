@@ -1,5 +1,6 @@
 """关键词与词包 PostgreSQL Repository。"""
 
+from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy import func, insert, select, update
@@ -13,6 +14,14 @@ from aima_ugc.modules.system.tables import (
     keyword_packs_table,
     keywords_table,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class KeywordPackSummaryRecord:
+    """配置页读取的词包摘要，不复制关键词明细。"""
+
+    pack: KeywordPack
+    keyword_count: int
 
 
 def _pack_from_row(row: RowMapping) -> KeywordPack:
@@ -60,6 +69,97 @@ class PostgresKeywordCatalogRepository:
             .one_or_none()
         )
         return None if row is None else _pack_from_row(row)
+
+    def get_pack_for_update(self, pack_id: UUID) -> KeywordPack | None:
+        """锁定词包父记录，串行化启停、Relevance 与 Plan 保存。"""
+        row = (
+            self._session.execute(
+                select(keyword_packs_table)
+                .where(keyword_packs_table.c.id == pack_id)
+                .with_for_update()
+            )
+            .mappings()
+            .one_or_none()
+        )
+        return None if row is None else _pack_from_row(row)
+
+    def list_pack_summaries(
+        self,
+        *,
+        search: str | None,
+        enabled: bool | None,
+        offset: int,
+        limit: int,
+    ) -> tuple[KeywordPackSummaryRecord, ...]:
+        """按更新时间稳定读取配置页摘要。"""
+        conditions = []
+        if search is not None:
+            pattern = f"%{search.strip()}%"
+            conditions.append(keyword_packs_table.c.name.ilike(pattern))
+        if enabled is not None:
+            conditions.append(keyword_packs_table.c.enabled.is_(enabled))
+        rows = (
+            self._session.execute(
+                select(
+                    *keyword_packs_table.c,
+                    func.count(keyword_pack_items_table.c.keyword_id).label("keyword_count"),
+                )
+                .outerjoin(
+                    keyword_pack_items_table,
+                    keyword_pack_items_table.c.pack_id == keyword_packs_table.c.id,
+                )
+                .where(*conditions)
+                .group_by(*keyword_packs_table.c)
+                .order_by(keyword_packs_table.c.updated_at.desc(), keyword_packs_table.c.id)
+                .offset(offset)
+                .limit(limit)
+            )
+            .mappings()
+            .all()
+        )
+        return tuple(
+            KeywordPackSummaryRecord(
+                pack=_pack_from_row(row),
+                keyword_count=row["keyword_count"],
+            )
+            for row in rows
+        )
+
+    def count_packs(self, *, search: str | None, enabled: bool | None) -> int:
+        conditions = []
+        if search is not None:
+            conditions.append(keyword_packs_table.c.name.ilike(f"%{search.strip()}%"))
+        if enabled is not None:
+            conditions.append(keyword_packs_table.c.enabled.is_(enabled))
+        return int(
+            self._session.scalar(
+                select(func.count()).select_from(keyword_packs_table).where(*conditions)
+            )
+            or 0
+        )
+
+    def set_pack_enabled(self, pack_id: UUID, *, enabled: bool) -> KeywordPack | None:
+        """切换词包状态并提升版本；无变化时保持版本稳定。"""
+        current = self.get_pack_for_update(pack_id)
+        if current is None:
+            return None
+        if current.enabled == enabled:
+            return current
+        row = (
+            self._session.execute(
+                update(keyword_packs_table)
+                .where(keyword_packs_table.c.id == pack_id)
+                .values(
+                    enabled=enabled,
+                    version=keyword_packs_table.c.version + 1,
+                    updated_at=func.clock_timestamp(),
+                )
+                .returning(keyword_packs_table)
+            )
+            .mappings()
+            .one()
+        )
+        return _pack_from_row(row)
 
     def create_pack(self, pack: KeywordPack) -> KeywordPack:
         now = func.clock_timestamp()
