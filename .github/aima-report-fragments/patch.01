@@ -16,15 +16,25 @@ replace_once(
     "          sudo apt-get install -y --no-install-recommends fonts-noto-cjk\n\n"
     "      - name: Verify runtime versions\n",
 )
-replace_once(
-    ci,
-    "      - name: Install frozen Python environment\n",
+ci_text = ci.read_text(encoding="utf-8")
+stage2_marker = "  stage2-platform:\n"
+if ci_text.count(stage2_marker) != 1:
+    raise RuntimeError("CI 中 Stage 2 Platform 标记不唯一")
+stage2_start = ci_text.index(stage2_marker)
+stage2_tail = ci_text[stage2_start:]
+stage2_install = "      - name: Install frozen Python environment\n"
+if stage2_tail.count(stage2_install) < 1:
+    raise RuntimeError("Stage 2 Platform 缺少锁定 Python 环境安装步骤")
+stage2_tail = stage2_tail.replace(
+    stage2_install,
     "      - name: Install report validation CJK font\n"
     "        run: |\n"
     "          sudo apt-get update -qq\n"
     "          sudo apt-get install -y --no-install-recommends fonts-noto-cjk\n\n"
-    "      - name: Install frozen Python environment\n",
+    + stage2_install,
+    1,
 )
+ci.write_text(ci_text[:stage2_start] + stage2_tail, encoding="utf-8")
 
 readme = ROOT / "backend/src/aima_ugc/platform/reporting/README.md"
 replace_once(
