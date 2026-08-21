@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260821-report-word-visual-refresh
 title: 横向 A4 Word 舆情报告视觉重构
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: feature/report-landscape-word-visuals
 created: 2026-08-21
@@ -37,6 +37,7 @@ data_changes: []
 - [x] 更换合法 `labeled_data.xlsx` 后，Ranking、Office Chart、Word Cloud、Markdown 和 DOCX 全部自动重生成；输入 Excel Hash 不变。
 - [x] DOCX ZIP/XML/Chart/XLSX/media/relationships/图片结构均可校验，并实际生成样例做页面级渲染检查。
 - [x] reporting 目标测试、imports_test 相关回归、Ruff、Mypy 和仓库适用质量门禁获得本轮新鲜证据。
+- [x] PR 合并到 `main` 后，以完全相同的 main 文件树执行新鲜 CI 并全部通过。
 
 # 范围
 
@@ -73,7 +74,7 @@ data_changes: []
 - 情感每日趋势固定拆分为主趋势（正面、中性）和低量级趋势（负面、混合），不使用双 Y 轴。
 - 中文词云不提交字体文件；运行时解析系统 CJK 字体，找不到可用字体时明确失败。CI 使用系统包 `fonts-noto-cjk` 验证 Linux 路径。
 - 依赖只新增 Pillow 12.3.0，并由现有 uv 锁文件精确锁定；没有升级其他无关依赖。
-- Git 从最新 main 建立本 feature 分支；验证通过后仍通过 PR 与仓库门禁集成，不绕过失败检查。
+- 开发通过专用 feature 分支和 PR 集成；中间运输/验证 workflow 已在最终实现树中全部清理。
 
 # 任务
 
@@ -85,7 +86,7 @@ data_changes: []
 - [x] 更新默认模板与视觉映射，保持统计和 imports_test 接线不变。
 - [x] 同步受影响 README / Blueprint 长期事实。
 - [x] 完成需求符合性复核、代码质量复核、目标/回归/静态/结构/视觉验证。
-- [ ] 完成 PR 合并、main 合并后验证与 Change 归档。
+- [x] 完成 PR 合并、main 合并后验证与 Change 归档。
 
 # 验证
 
@@ -105,21 +106,30 @@ GitHub Actions 集成验证 run `32450181453`（Python 3.14.7、uv 0.12.3、Noto
 - `uv run mypy backend/src`：**Success: no issues found in 227 source files**。
 - 实际生成 `report.md`、`report.docx`、`assets/primary_topics_wordcloud.png`、`assets/keyword_wordcloud.png`；artifact `report-visual-sample` ID `9435412615`，ZIP SHA-256 `06cf3a460754e0b93e4bfecf57867c5b7bb8f8beecac781b31a90db7a63eaf31`。
 
-## 正式 PR 门禁
+## 合并前正式 PR 门禁
 
-feature head `3a1e05e777bbdfe5a0dca9ae33b4c4a2987053c0`：
+最终 feature head `3da16090866bb727b08cb458cfad965d932d259b`：
 
-- CI run `32450508065`：`Stage 1`、`Stage 2 Platform`、`Stage 3A Database`、`Windows bootstrap` **全部 success**。
-- `Stage 1-7 Audit Correctness` run `32450508017`：success。
-- `Stage 6 XHS Vertical Slice` run `32450508027`：success。
-- `Stage 7 Provider Config Routing` run `32450508023`：success。
-- `Stage 7 Keyword Packs` run `32450508062`：success。
-- `Stage 7 Plan Occurrence Run Snapshot` run `32450508042`：success。
-- `Stage 7 Scheduler Runtime` run `32450508053`：success。
+- CI run `32450843854`：`Stage 1`、`Stage 2 Platform`、`Stage 3A Database`、`Windows bootstrap` 全部 success。
+- `Stage 1-7 Audit Correctness` run `32450843842`：success。
+- `Stage 6 XHS Vertical Slice` run `32450843845`：success。
+- `Stage 7 Provider Config Routing` run `32450843939`：success。
+- `Stage 7 Keyword Packs` run `32450843855`：success。
+- `Stage 7 Plan Occurrence Run Snapshot` run `32450843869`：success。
+- `Stage 7 Scheduler Runtime` run `32450843840`：success。
+
+## 合并与 main 合并后验证
+
+- 实现 PR：#106 `横向 A4 Word 舆情报告视觉重构`。
+- 合并方式：Squash Merge。
+- main merge commit：`5a7621ae2f012a2eb102991274b88e70480fae3a`，GitHub 返回 merged=true；随后读取 `main` 确认它精确指向该 SHA。
+- 由于当前 GitHub 连接器的按 commit workflow 查询只暴露 pull_request 事件，本轮从上述 main SHA 建立临时验证分支并创建 PR #107；该 PR 只有一个同 tree 空提交，**0 changed files**，因此测试文件树与 main `5a7621ae...` 完全一致。
+- Post-merge CI run `32451192719`：`Stage 1`、`Stage 2 Platform`、`Stage 3A Database`、`Windows bootstrap` **全部 success**。其中 Stage 1 的 Backend and repository checks、Wheel 和 Frontend checks 全部 success；Stage 2 的 platform unit/integration/readiness 全部 success；Stage 3A 的数据库/Migration 往返全部 success。
+- PR #107 已按设计关闭且未合并，不会向 main 引入空提交。
 
 ## 生成物与视觉验证
 
-- 下载上述 `report-visual-sample` artifact，ZIP 中包含 `report.docx` 172851 bytes、`report.md` 11728 bytes 和两张词云 PNG。
+- 下载 `report-visual-sample` artifact，ZIP 中包含 `report.docx` 172851 bytes、`report.md` 11728 bytes 和两张词云 PNG。
 - 使用 `/home/oai/skills/docx/render_docx.py report.docx --output_dir ... --emit_pdf` 由 LibreOffice 实际重新打开并渲染：**25 页 PNG + PDF 全部生成成功**。
 - 逐页检查未发现空白页、中文乱码、文字/表格/图表裁切、明显遮挡、词云图片丢失或比例失真；重复表头、横向 bar、数值标签、情感语义色和两张词云均实际可见。
 - 稀疏样例的词云页存在较多留白，来源于样例词条数量少，不是渲染失败。
@@ -134,8 +144,8 @@ feature head `3a1e05e777bbdfe5a0dca9ae33b4c4a2987053c0`：
 
 # 交付
 
-- 实现 Commit：`8b7b7a042a91f53a0c60c0d91faf57bce7d17d4b`（`实现横向A4舆情报告视觉重构`）。
-- CI/清理 Commit：`3a1e05e777bbdfe5a0dca9ae33b4c4a2987053c0`（`完善报告视觉CI环境并清理临时流程`）。
-- PR：#106 `横向 A4 Word 舆情报告视觉重构`，当前等待从 Draft 转为 Review 后按门禁合并。
-- Merge / main 合并后验证 / Change 归档：待执行。
+- 正式 main 提交：`5a7621ae2f012a2eb102991274b88e70480fae3a`（`重构横向A4 Word舆情报告视觉`）。
+- 实现 PR：#106，已合并。
+- 合并后验证 PR：#107，0 changed files，验证成功后已关闭且未合并。
+- 本 Change 已满足归档门禁，迁入 `changes/archive/2026-08/CHG-20260821-report-word-visual-refresh/CHANGE.md`。
 - 发布/部署：未执行；本 Change 不包含生产发布。
