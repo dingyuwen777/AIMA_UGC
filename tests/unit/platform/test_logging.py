@@ -10,6 +10,7 @@ from aima_ugc.platform.logging import (
     AimaLogFormatter,
     configure_service_logging,
     log_event,
+    log_exception_event,
     shutdown_service_logging,
 )
 
@@ -55,6 +56,33 @@ def _emit_from_test_caller(logger: logging.Logger) -> int:
     expected_line = frame.f_lineno + 1
     log_event(logger, logging.INFO, "test.caller", "定位真实调用点")
     return expected_line
+
+
+def test_exception_event_keeps_safe_stack_without_raw_exception_message(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    logger = logging.getLogger("aima_ugc.test.logging.exception")
+    try:
+        raise RuntimeError("postgresql://secret@host/internal")
+    except RuntimeError as exc:
+        with caplog.at_level(logging.ERROR, logger=logger.name):
+            log_exception_event(
+                logger,
+                logging.ERROR,
+                "test.exception",
+                "安全异常",
+                exc,
+                request_id="req-1",
+            )
+
+    record = next(record for record in caplog.records if record.event == "test.exception")
+    assert record.exc_info is None
+    assert record.error_type == "RuntimeError"
+    assert "test_logging.py" in record.exception
+    assert "RuntimeError" in record.exception
+    assert "secret" not in record.exception
+    assert "postgresql://" not in record.exception
+    assert "secret" not in caplog.text
 
 
 def test_logging_redacts_escapes_and_rotates_to_gzip(tmp_path) -> None:

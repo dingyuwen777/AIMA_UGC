@@ -9,7 +9,7 @@ from uuid import UUID
 
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol, LeaseLostError
-from aima_ugc.platform.logging import log_event
+from aima_ugc.platform.logging import log_event, log_exception_event
 
 from .execution import CollectionExecution, CollectionRunRecord, CollectionScopeRecord
 
@@ -463,12 +463,14 @@ def _log_scope_completed(
         "comment_count": comment_count,
     }
     if error is not None:
-        fields["error_type"] = type(error).__name__
-        logger.error(
+        fields.pop("event")
+        log_exception_event(
+            logger,
+            logging.ERROR,
+            "collection.scope.completed",
             "Collection Scope 执行出现未预期异常，已隔离为失败终态。",
-            extra=fields,
-            exc_info=(type(error), error, error.__traceback__),
-            stacklevel=2,
+            error,
+            **fields,
         )
         return
 

@@ -12,7 +12,7 @@ from uuid import UUID
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from aima_ugc.platform.logging import log_event
+from aima_ugc.platform.logging import log_event, log_exception_event
 
 from .models import JobExecutionFence, JobHandlerResult, JobRecord, LeaseLostError
 from .registry import JobRegistry
@@ -136,14 +136,13 @@ class _HeartbeatLoop:
                 self._context._set_heartbeat_error(exc)
                 return
             except Exception as exc:
-                logger.warning(
+                log_exception_event(
+                    logger,
+                    logging.WARNING,
+                    "job.heartbeat_failed",
                     "Job Heartbeat 执行失败。",
-                    extra={
-                        "event": "job.heartbeat_failed",
-                        "job_id": str(self._context._job_id),
-                        "error_type": type(exc).__name__,
-                    },
-                    exc_info=(type(exc), exc, exc.__traceback__),
+                    exc,
+                    job_id=str(self._context._job_id),
                 )
                 self._context._set_heartbeat_error(exc)
                 return
@@ -222,18 +221,17 @@ class JobWorker:
             try:
                 result = definition.handler(payload, context)
             except Exception as exc:
-                logger.error(
+                log_exception_event(
+                    logger,
+                    logging.ERROR,
+                    "job.execution_failed",
                     "Job Handler 执行出现未预期异常。",
-                    extra={
-                        "event": "job.execution_failed",
-                        "job_id": str(job.id),
-                        "job_type": job.job_type,
-                        "worker_id": self._worker_id,
-                        "attempt": job.attempt,
-                        "duration_ms": _elapsed_ms(started),
-                        "error_type": type(exc).__name__,
-                    },
-                    exc_info=(type(exc), exc, exc.__traceback__),
+                    exc,
+                    job_id=str(job.id),
+                    job_type=job.job_type,
+                    worker_id=self._worker_id,
+                    attempt=job.attempt,
+                    duration_ms=_elapsed_ms(started),
                 )
                 raise
         finally:

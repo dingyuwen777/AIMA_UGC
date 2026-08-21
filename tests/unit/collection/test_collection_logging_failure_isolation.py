@@ -150,7 +150,10 @@ def test_logging_does_not_break_scope_exception_isolation(
     assert scope_record.levelno == logging.ERROR
     assert scope_record.requested_count == 0
     assert scope_record.error_type == "RuntimeError"
-    assert scope_record.exc_info is not None
+    assert scope_record.exc_info is None
+    assert "collection_run_executor.py" in scope_record.exception
+    assert "RuntimeError" in scope_record.exception
+    assert "scope failed before producing a terminal result" not in scope_record.exception
     assert scope_record.run_id == str(execution.run.id)
     assert scope_record.job_id == str(execution.run.job_id)
     assert scope_record.scope_id == str(execution.scopes[0].id)

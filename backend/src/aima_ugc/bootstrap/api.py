@@ -94,6 +94,7 @@ from aima_ugc.modules.reporting.http import (
     ReportingHttpService,
 )
 from aima_ugc.platform.health import ReadinessReport
+from aima_ugc.platform.logging import log_exception_event
 
 from .runtime import PlatformRuntime, create_platform_runtime
 
@@ -578,16 +579,15 @@ def create_app(
     @application.exception_handler(Exception)
     async def unexpected_error(request: Request, exc: Exception) -> JSONResponse:
         request_id = _request_id(request)
-        _LOGGER.error(
+        log_exception_event(
+            _LOGGER,
+            logging.ERROR,
+            "api.request_failed",
             "API 请求处理失败",
-            extra={
-                "event": "api.request_failed",
-                "request_id": request_id,
-                "method": request.method,
-                "path": request.url.path,
-                "error_type": type(exc).__name__,
-            },
-            exc_info=(type(exc), exc, exc.__traceback__),
+            exc,
+            request_id=request_id,
+            method=request.method,
+            path=request.url.path,
         )
         return _error_response(
             status_code=500,
