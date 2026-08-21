@@ -25,7 +25,13 @@ def _add_value_reference(parent: ET.Element, spec: ChartSpec, series_index: int)
         node.text = _number_text(number)
 
 
-def _add_category_axis(parent: ET.Element, axis_id: int, cross_axis_id: int, *, horizontal: bool) -> None:
+def _add_category_axis(
+    parent: ET.Element,
+    axis_id: int,
+    cross_axis_id: int,
+    *,
+    horizontal: bool,
+) -> None:
     axis = ET.SubElement(parent, f"{{{_C}}}catAx")
     ET.SubElement(axis, f"{{{_C}}}axId", {"val": str(axis_id)})
     scaling = ET.SubElement(axis, f"{{{_C}}}scaling")
@@ -40,7 +46,14 @@ def _add_category_axis(parent: ET.Element, axis_id: int, cross_axis_id: int, *, 
     ET.SubElement(axis, f"{{{_C}}}lblOffset", {"val": "100"})
 
 
-def _add_value_axis(parent: ET.Element, spec: ChartSpec, axis_id: int, cross_axis_id: int, *, horizontal: bool) -> None:
+def _add_value_axis(
+    parent: ET.Element,
+    spec: ChartSpec,
+    axis_id: int,
+    cross_axis_id: int,
+    *,
+    horizontal: bool,
+) -> None:
     axis = ET.SubElement(parent, f"{{{_C}}}valAx")
     ET.SubElement(axis, f"{{{_C}}}axId", {"val": str(axis_id)})
     scaling = ET.SubElement(axis, f"{{{_C}}}scaling")
@@ -55,7 +68,11 @@ def _add_value_axis(parent: ET.Element, spec: ChartSpec, axis_id: int, cross_axi
     line = ET.SubElement(sp_pr, f"{{{_A}}}ln", {"w": "6350"})
     solid = ET.SubElement(line, f"{{{_A}}}solidFill")
     ET.SubElement(solid, f"{{{_A}}}srgbClr", {"val": theme.DIVIDER_COLOR})
-    ET.SubElement(axis, f"{{{_C}}}numFmt", {"formatCode": "#,##0", "sourceLinked": "0"})
+    ET.SubElement(
+        axis,
+        f"{{{_C}}}numFmt",
+        {"formatCode": "#,##0", "sourceLinked": "0"},
+    )
     ET.SubElement(axis, f"{{{_C}}}tickLblPos", {"val": "nextTo"})
     ET.SubElement(axis, f"{{{_C}}}crossAx", {"val": str(cross_axis_id)})
     ET.SubElement(axis, f"{{{_C}}}crosses", {"val": "autoZero"})
@@ -70,7 +87,12 @@ def _add_legend(parent: ET.Element, *, position: str) -> None:
 
 
 def _semantic_color(label: str, index: int) -> str:
-    mapping = {"正面": theme.POSITIVE_COLOR, "中性": theme.NEUTRAL_COLOR, "负面": theme.NEGATIVE_COLOR, "混合": theme.MIXED_COLOR}
+    mapping = {
+        "正面": theme.POSITIVE_COLOR,
+        "中性": theme.NEUTRAL_COLOR,
+        "负面": theme.NEGATIVE_COLOR,
+        "混合": theme.MIXED_COLOR,
+    }
     if label in mapping:
         return mapping[label]
     palette = (theme.ACCENT_BLUE, "6F8FC5", "90A6C8", "4F6F9F", "9AA9BD")
@@ -104,18 +126,31 @@ def _serialize_xml(element: ET.Element) -> bytes:
 
 
 def _content_types_xml(chart_count: int, image_count: int) -> str:
-    chart_overrides = "\n".join(f'  <Override PartName="/word/charts/chart{index}.xml" ContentType="{_CHART_CONTENT_TYPE}"/>' for index in range(1, chart_count + 1))
-    png_default = '  <Default Extension="png" ContentType="image/png"/>' if image_count else ""
+    chart_overrides = "\n".join(
+        (
+            f'  <Override PartName="/word/charts/chart{index}.xml" '
+            f'ContentType="{_CHART_CONTENT_TYPE}"/>'
+        )
+        for index in range(1, chart_count + 1)
+    )
+    png_default = (
+        '  <Default Extension="png" ContentType="image/png"/>' if image_count else ""
+    )
     return f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="rels"
+           ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
   <Default Extension="xlsx" ContentType="{_XLSX_CONTENT_TYPE}"/>
 {png_default}
-  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
-  <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
-  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
-  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+  <Override PartName="/word/document.xml"
+            ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+  <Override PartName="/word/styles.xml"
+            ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+  <Override PartName="/docProps/core.xml"
+            ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+  <Override PartName="/docProps/app.xml"
+            ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
 {chart_overrides}
 </Types>"""
 
@@ -123,19 +158,43 @@ def _content_types_xml(chart_count: int, image_count: int) -> str:
 def _root_rels_xml() -> str:
     return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
-  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
-  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+  <Relationship Id="rId1"
+                Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"
+                Target="word/document.xml"/>
+  <Relationship Id="rId2"
+                Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties"
+                Target="docProps/core.xml"/>
+  <Relationship Id="rId3"
+                Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties"
+                Target="docProps/app.xml"/>
 </Relationships>"""
 
 
 def _document_rels_xml(chart_count: int, image_count: int) -> str:
-    relationships = ['<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>']
+    relationships = [
+        (
+            '<Relationship Id="rId1" '
+            'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" '
+            'Target="styles.xml"/>'
+        )
+    ]
     for index in range(1, chart_count + 1):
-        relationships.append(f'<Relationship Id="rId{index + 1}" Type="{_CHART_REL}" Target="charts/chart{index}.xml"/>')
+        relationships.append(
+            f'<Relationship Id="rId{index + 1}" Type="{_CHART_REL}" '
+            f'Target="charts/chart{index}.xml"/>'
+        )
     for index in range(1, image_count + 1):
-        relationships.append(f'<Relationship Id="rId{1000 + index}" Type="{_IMAGE_REL}" Target="media/image{index}.png"/>')
-    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n  ' + "\n  ".join(relationships) + "\n</Relationships>"
+        relationships.append(
+            f'<Relationship Id="rId{1000 + index}" Type="{_IMAGE_REL}" '
+            f'Target="media/image{index}.png"/>'
+        )
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+        '<Relationships '
+        'xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n  '
+        + "\n  ".join(relationships)
+        + "\n</Relationships>"
+    )
 
 
 def _chart_rels_xml(index: int) -> str:
@@ -149,8 +208,29 @@ def _styles_xml() -> str:
     return f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:styles xmlns:w="{_W}">
   <w:docDefaults>
-    <w:rPrDefault><w:rPr><w:rFonts w:ascii="Aptos" w:hAnsi="Aptos" w:eastAsia="Microsoft YaHei"/><w:sz w:val="20"/><w:szCs w:val="20"/><w:color w:val="{theme.TEXT_COLOR}"/></w:rPr></w:rPrDefault>
-    <w:pPrDefault><w:pPr><w:spacing w:after="90" w:line="260" w:lineRule="auto"/></w:pPr></w:pPrDefault>
+    <w:rPrDefault>
+      <w:rPr>
+        <w:rFonts w:ascii="Aptos" w:hAnsi="Aptos" w:eastAsia="Microsoft YaHei"/>
+        <w:sz w:val="20"/><w:szCs w:val="20"/>
+        <w:color w:val="{theme.TEXT_COLOR}"/>
+      </w:rPr>
+    </w:rPrDefault>
+    <w:pPrDefault>
+      <w:pPr><w:spacing w:after="90" w:line="260" w:lineRule="auto"/></w:pPr>
+    </w:pPrDefault>
   </w:docDefaults>
-  <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>
-  <w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:pPr><w:keepNext/><w:keepLines/><w:spacing w:before="260" w:after="150"/></w:pPr><w:rPr><w:b/><w:sz w:val="44"/><w:szCs w:val="44"/><w:color w:val="{theme.TITLE_COLOR}"/></w:rPr></w:style>
+  <w:style w:type="paragraph" w:default="1" w:styleId="Normal">
+    <w:name w:val="Normal"/>
+  </w:style>
+  <w:style w:type="paragraph" w:styleId="Heading1">
+    <w:name w:val="heading 1"/>
+    <w:basedOn w:val="Normal"/><w:next w:val="Normal"/>
+    <w:pPr>
+      <w:keepNext/><w:keepLines/>
+      <w:spacing w:before="260" w:after="150"/>
+    </w:pPr>
+    <w:rPr>
+      <w:b/><w:sz w:val="44"/><w:szCs w:val="44"/>
+      <w:color w:val="{theme.TITLE_COLOR}"/>
+    </w:rPr>
+  </w:style>
