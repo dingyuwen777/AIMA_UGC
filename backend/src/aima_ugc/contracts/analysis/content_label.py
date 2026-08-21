@@ -122,10 +122,6 @@ class ContentLabelAnalysisV3(BaseModel):
         return self.relevance == "relevant"
 
     @property
-    def is_user_voice(self) -> bool:
-        return self.voice_type == "user_voice"
-
-    @property
     def primary_label(self) -> str | None:
         return self.labels[0].primary_label if self.labels else None
 

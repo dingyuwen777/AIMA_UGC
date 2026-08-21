@@ -290,7 +290,6 @@ class PostgresDataExportRepository:
             projected[cast(UUID, row["content_id"])] = UnifiedDataExcelAnalysisV1(
                 relevance=cast(ContentRelevance, row["relevance"]),
                 voice_type=voice_type,
-                is_user_voice=voice_type == "user_voice",
                 sentiment=cast(str | None, row["sentiment"]),
                 primary_label="\n".join(item.primary_label for item in pairs),
                 secondary_label="\n".join(item.secondary_label for item in pairs),

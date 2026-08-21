@@ -11,12 +11,11 @@ from pydantic import ValidationError
 ANALYZED_AT = datetime(2026, 8, 21, 12, 0, tzinfo=UTC)
 
 
-def test_content_analysis_response_exposes_relevance_voice_type_and_derived_user_voice() -> None:
+def test_content_analysis_response_exposes_relevance_and_voice_type_only() -> None:
     relevant = ContentAnalysisResponse(
         status="completed",
         relevance="relevant",
         voice_type="user_voice",
-        is_user_voice=True,
         sentiment="正面",
         labels=(
             ContentLabelPairResponse(
@@ -32,7 +31,6 @@ def test_content_analysis_response_exposes_relevance_voice_type_and_derived_user
         status="completed",
         relevance="irrelevant",
         voice_type="media_information",
-        is_user_voice=False,
         sentiment=None,
         labels=(),
         analyzed_at=ANALYZED_AT,
@@ -42,33 +40,17 @@ def test_content_analysis_response_exposes_relevance_voice_type_and_derived_user
 
     assert relevant.relevance == "relevant"
     assert relevant.voice_type == "user_voice"
-    assert relevant.is_user_voice is True
+    assert "is_user_voice" not in relevant.model_dump()
     assert irrelevant.relevance == "irrelevant"
+    assert irrelevant.voice_type == "media_information"
     assert irrelevant.sentiment is None
     assert irrelevant.labels == ()
 
-    # is_user_voice 是 voice_type 的确定性派生值，Contract 必须拒绝两者互相矛盾。
-    with pytest.raises(ValidationError):
-        ContentAnalysisResponse(
-            status="completed",
-            relevance="relevant",
-            voice_type="user_voice",
-            is_user_voice=False,
-            sentiment="正面",
-            labels=(
-                ContentLabelPairResponse(
-                    primary_label="品牌评价",
-                    secondary_label="口碑与信任",
-                ),
-            ),
-            analyzed_at=ANALYZED_AT,
-        )
     with pytest.raises(ValidationError):
         ContentAnalysisResponse(
             status="completed",
             relevance="irrelevant",
             voice_type="unknown",
-            is_user_voice=False,
             sentiment="中性",
             labels=(),
             analyzed_at=ANALYZED_AT,

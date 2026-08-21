@@ -16,25 +16,26 @@ UnifiedContentRecordV1
 当前新成功结果使用：
 
 ```text
-ContentLabelAnalysisV2
+ContentLabelAnalysisV3
 ```
 
 每条结果：
 
-- 恰好一个 `sentiment`；
-- 至少一个 `labels` 标签对；
+- 恰好一个 `relevance` 和一个 `voice_type`；
+- `relevance=relevant` 时恰好一个 `sentiment` 且至少一个 `labels` 标签对；
+- `relevance=irrelevant` 时 `sentiment=null` 且 `labels=[]`；
 - 每个标签对保存 `primary_label + secondary_label`；
 - 同一条内容可以有多个一级、多个二级标签；
 - 二级标签始终和所属一级一起保存，父子关系不会丢失。
 
-历史 `ContentLabelAnalysisV1` 只保留读取兼容。Canonical、Analysis V2 Contract 和 Excel Contract 不因为并发执行方式改变。
+历史 `ContentLabelAnalysisV1/V2` 只保留读取兼容。Canonical、Analysis V3 Contract 和 Excel Contract 不因为并发执行方式改变。`voice_type` 是发声类型唯一业务事实。
 
 ## 2. Prompt / Taxonomy
 
 唯一 Prompt/Taxonomy 事实源：
 
 ```text
-backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v2.md
+backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md
 ```
 
 具体情感标签、一级/二级标签、父子关系、判断标准和示例都只维护在该 Markdown。Python 只约束结构和合法性，不复制第二套业务标签枚举。
@@ -59,6 +60,8 @@ backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v2.md
 title
 text
 author.display_name
+author.bio
+author.verification_label
 ```
 
 不会发送内容 ID、URL、互动指标、Provider 私有字段、Raw 定位或源 Excel 情感。
@@ -80,8 +83,9 @@ Service 本身仍支持 `Sequence[CanonicalContentV1]`，便于测试和后续�
 
 - JSON 结构；
 - item 对应；
-- sentiment 合法；
-- labels 非空；
+- relevance / voice_type 合法；
+- relevant/irrelevant 的 sentiment 与 labels 条件结构一致；
+- sentiment 与 labels 的 Taxonomy 合法性；
 - 标签对不重复；
 - 一级标签存在；
 - 二级标签属于对应一级。
@@ -379,7 +383,7 @@ Prompt/Taxonomy
 → OpenAI-compatible Adapter
 → 显式 Transport Retry
 → 本地 Validator
-→ ContentLabelAnalysisV2
+→ ContentLabelAnalysisV3
 → Analysis Result + ordered Label Pair PostgreSQL Owner Repository
 → current Analysis Query Read Model
 ```

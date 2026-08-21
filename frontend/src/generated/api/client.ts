@@ -367,7 +367,6 @@ export const ContentVoiceType = {
 
 export interface ContentAnalysisResponse {
   analyzed_at?: string | null;
-  is_user_voice?: boolean | null;
   labels?: ContentLabelPairResponse[];
   model?: string | null;
   model_provider?: string | null;

@@ -60,9 +60,8 @@ def test_p1g_labeled_excel_reads_analysis_from_same_deduplicated_jsonl(tmp_path:
     try:
         row = next(workbook["内容"].iter_rows(min_row=2, max_row=2, values_only=True))
         # V1 历史结果没有 voice_type，兼容导出必须明确展示为“无法判断”。
-        assert row[24:32] == (
+        assert row[24:31] == (
             "无法判断",
-            "否",
             "正面",
             "一级测试",
             "二级测试",
