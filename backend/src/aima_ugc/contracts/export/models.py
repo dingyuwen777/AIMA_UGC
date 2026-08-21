@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from aima_ugc.contracts.analysis import ContentRelevance, ContentVoiceType
 
@@ -36,11 +36,6 @@ class UnifiedDataExcelAnalysisV1(_ExportBaseModel):
     prompt_version: str | None = Field(default=None, max_length=256)
     taxonomy_version: str | None = Field(default=None, max_length=256)
 
-    @field_validator("is_user_voice")
-    @classmethod
-    def validate_user_voice(cls, value: bool, info: object) -> bool:
-        return value
-
     @field_validator("label_pairs")
     @classmethod
     def validate_unique_label_pairs(
@@ -50,6 +45,12 @@ class UnifiedDataExcelAnalysisV1(_ExportBaseModel):
         if len(keys) != len(set(keys)):
             raise ValueError("Excel Analysis label_pairs 不能重复")
         return value
+
+    @model_validator(mode="after")
+    def validate_user_voice_consistency(self) -> UnifiedDataExcelAnalysisV1:
+        if self.is_user_voice != (self.voice_type == "user_voice"):
+            raise ValueError("Excel Analysis is_user_voice 必须由 voice_type 派生")
+        return self
 
 
 class UnifiedDataExcelContentV1(_ExportBaseModel):
