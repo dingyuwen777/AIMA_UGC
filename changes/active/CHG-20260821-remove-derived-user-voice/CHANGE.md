@@ -135,7 +135,7 @@ data_changes: []
 - 数据库：无 Schema 变化，无 Migration，无数据回填。
 - HTTP：删除 `ContentAnalysisResponse.is_user_voice` 是破坏性 Contract 变化；后端与同仓库前端 generated client 必须同版本部署。
 - Excel：删除“是否用户真实发声”列会使列序号左移；仓库内所有固定列测试与调试配置同步更新。
-- Prompt：语义规则发生实质变化。若仓库现有 `prompt_version` 语义要求内容版本升级，则升级 Prompt 版本并保留旧 Prompt 供历史审计；若精确内容仅以 `prompt_sha256` 区分，则必须在实现中明确记录依据，不能静默混用。
+- Prompt：继续使用仓库已固定的 `content-labeling.v3` 路径/版本；判断标准与示例允许在该 Markdown 内迭代，精确 Prompt 内容由 `prompt_sha256` 区分并进入 Analysis 审计，因此本次不人为创建 V4。
 - 回滚：回退同一应用提交及其 OpenAPI/generated client/Excel Contract/Prompt；数据库无需 downgrade。
 
 # 实施任务
@@ -151,7 +151,7 @@ data_changes: []
 → 验证方式：unit/contract/API/Stage 8D integration
 
 [3] Green：优化 Prompt 发声类型规则
-→ 修改范围：Prompt Markdown、prompt_taxonomy.py（如需版本升级）、Analysis tests
+→ 修改范围：Prompt Markdown、Analysis tests
 → 预期结果：模型综合作者与内容证据分类，输出结构不增加字段
 → 验证方式：Prompt loader/LLM payload/validator tests
 
@@ -167,7 +167,7 @@ data_changes: []
 
 # 验证证据
 
-尚未完成。按 Red → Green 记录本轮真实 CI、命令、退出状态和失败数。
+Red 已确认：PR #128 head `614fa641484e3d9929fff9ffb9a5ef32a400153d` 的 CI Stage 1 在 Contract 阶段得到 56 passed / 3 failed；三个失败分别证明 HTTP completed Analysis 仍要求 `is_user_voice`、Excel Analysis 仍要求该派生字段、Prompt 仍包含该字段且缺少新的主体/表达目的联合证据规则。同期 546 个既有 unit tests、Stage 2 Platform、Stage 3A Database 均通过，失败原因与目标行为一致。Green 证据待本轮实现后补充。
 
 # 文档影响
 
@@ -177,5 +177,6 @@ data_changes: []
 
 - 基线 main：`01ad60d9662ea1b9523637bb1dbf8b1a79aacd63`
 - 分支：`feature/remove-derived-user-voice-final2`
-- PR：待创建
+- PR：`#128 移除重复用户发声字段并优化发声类型判定`（Draft / in_progress）
+- 临时 Runner：PR #129 已通过原生 CI 并合并，只用于本 Change 的生成与 Green 验证，业务合并后必须删除。
 - 合并：待执行
