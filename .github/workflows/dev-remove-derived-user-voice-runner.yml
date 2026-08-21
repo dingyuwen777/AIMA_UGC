@@ -57,6 +57,37 @@ jobs:
                   line = line[10:]
               lines.append(line)
           script = '\n'.join(lines) + '\n'
+
+          # The feature script intentionally fails closed on exact repository facts.
+          # Main currently has two stale README V2 mentions; normalize one so the
+          # embedded migration can update the remaining occurrence and end with V3 in both places.
+          analysis_readme = Path('backend/src/aima_ugc/modules/analysis/README.md')
+          readme_text = analysis_readme.read_text(encoding='utf-8')
+          readme_needle = 'ContentLabelAnalysisV2\n'
+          if readme_text.count(readme_needle) != 2:
+              raise SystemExit('Analysis README V2 occurrence count changed')
+          readme_head, readme_tail = readme_text.rsplit(readme_needle, 1)
+          analysis_readme.write_text(
+              readme_head + 'ContentLabelAnalysisV3\n' + readme_tail,
+              encoding='utf-8',
+          )
+
+          # The Change was already updated with the approved prompt-version decision
+          # and Red evidence to trigger this run. Normalize only the temporary worktree
+          # back to the embedded script's expected input; the script writes the same
+          # approved final facts again before commit.
+          change_path = Path('changes/active/CHG-20260821-remove-derived-user-voice/CHANGE.md')
+          change_text = change_path.read_text(encoding='utf-8')
+          current_prompt = '- Prompt：继续使用仓库已固定的 `content-labeling.v3` 路径/版本；判断标准与示例允许在该 Markdown 内迭代，精确 Prompt 内容由 `prompt_sha256` 区分并进入 Analysis 审计，因此本次不人为创建 V4。\n'
+          legacy_prompt = '- Prompt：语义规则发生实质变化。若仓库现有 `prompt_version` 语义要求内容版本升级，则升级 Prompt 版本并保留旧 Prompt 供历史审计；若精确内容仅以 `prompt_sha256` 区分，则必须在实现中明确记录依据，不能静默混用。\n'
+          current_red = 'Red 已确认：PR #128 head `614fa641484e3d9929fff9ffb9a5ef32a400153d` 的 CI Stage 1 在 Contract 阶段得到 56 passed / 3 failed；三个失败分别证明 HTTP completed Analysis 仍要求 `is_user_voice`、Excel Analysis 仍要求该派生字段、Prompt 仍包含该字段且缺少新的主体/表达目的联合证据规则。同期 546 个既有 unit tests、Stage 2 Platform、Stage 3A Database 均通过，失败原因与目标行为一致。Green 证据待本轮实现后补充。\n'
+          legacy_red = '尚未完成。按 Red → Green 记录本轮真实 CI、命令、退出状态和失败数。\n'
+          if current_prompt not in change_text or current_red not in change_text:
+              raise SystemExit('Change trigger facts no longer match expected approved state')
+          change_text = change_text.replace(current_prompt, legacy_prompt, 1)
+          change_text = change_text.replace(current_red, legacy_red, 1)
+          change_path.write_text(change_text, encoding='utf-8')
+
           Path('/tmp/apply_remove_user_voice.py').write_text(script, encoding='utf-8')
           PY
           python /tmp/apply_remove_user_voice.py
