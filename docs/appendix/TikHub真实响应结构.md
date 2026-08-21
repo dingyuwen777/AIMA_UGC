@@ -4,9 +4,7 @@
 > Provider：TikHub  
 > Real Probe Base URL：`https://api.tikhub.io`  
 > 搜索关键词：`爱玛`  
-> 适用范围：五平台 Search / Detail / Comments / Sub-comments / Replies 的响应结构查询
-
-本文从原 `docs/blueprint/10-TikHub真实响应结构附录.md` 迁移到 Appendix。**迁移只改变文档职责，不降低信息密度。** 长期 Provider-neutral 架构见 `docs/blueprint/02-采集系统与数据标准化.md` 与 `docs/blueprint/08-采集策略与平台能力.md`；本文继续保留真实 Endpoint、JSON 路径、Fixture、评论树映射和实证边界。
+> 适用范围：Stage 7 五平台 Search / Detail / Comments / Sub-comments / Replies 的响应结构查询
 
 ## 1. 本附录的用途
 
@@ -456,7 +454,7 @@ Web 已验证可用，但**不是当前默认 Capability 主链，也没有 App 
 
 价格只表示 **2026-08-16 Real Probe 的 endpoint-info 快照**，不是运行时永久常量。生产发送仍以版本化 Pricing + endpoint-level verified 事实为准。
 
-2026-08-16 的 Operation 选型已经批准并在当前机器实现中落地：**App 一级/二级为正式主链，Web 为 verified backup，不做自动 fallback。** 因此本附录不能再把 Web 写成“当前主链”或把 App 切换写成待批准建议。
+2026-08-16 的 Operation 选型已经批准并在当前 Stage 7 机器实现中落地：**App 一级/二级为正式主链，Web 为 verified backup，不做自动 fallback。** 因此本附录不能再把 Web 写成“当前主链”或把 App 切换写成待批准建议。
 
 ## 9. Canonical 统一规则
 
@@ -503,83 +501,3 @@ Provider endpoint、版本或响应结构变化时：
 8. 价格变化只更新 Pricing 事实，不把本文 Probe 快照当运行时价格源。
 
 禁止从 TikHub 文档示例、历史聊天或旧接口响应人工拼一个“真实 Fixture”。
-
-## 11. 从这篇文档追到当前代码
-
-如果目标是“读懂实现”，不要只停在 Endpoint 表。按下面顺序往代码走：
-
-### 11.1 先找某个平台怎样构造请求
-
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/operations/xiaohongshu.py
-backend/src/aima_ugc/adapters/providers/tikhub/operations/douyin.py
-backend/src/aima_ugc/adapters/providers/tikhub/operations/weibo.py
-backend/src/aima_ugc/adapters/providers/tikhub/operations/bilibili.py
-backend/src/aima_ugc/adapters/providers/tikhub/operations/kuaishou.py
-```
-
-这些文件回答：
-
-```text
-业务 operation 名叫什么？
-实际 HTTP method / endpoint 是什么？
-业务参数怎样变成 Provider 参数？
-分页状态怎样推进？
-响应里的业务 item 怎样被 extractor 找出来？
-```
-
-不要从本文复制 Endpoint 去另写 HTTP 请求；生产事实仍以这些 Operation 为准。
-
-### 11.2 再看 Provider JSON 怎样变成 Canonical
-
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/mappers/xiaohongshu.py
-backend/src/aima_ugc/adapters/providers/tikhub/mappers/douyin.py
-backend/src/aima_ugc/adapters/providers/tikhub/mappers/weibo.py
-backend/src/aima_ugc/adapters/providers/tikhub/mappers/bilibili.py
-backend/src/aima_ugc/adapters/providers/tikhub/mappers/kuaishou.py
-backend/src/aima_ugc/adapters/providers/tikhub/mappers/common.py
-```
-
-这里回答：
-
-```text
-真实 JSON 哪个字段 → Canonical 哪个字段？
-数字 ID 为什么转字符串？
-缺字段为什么保持 unknown/null 而不是写 0？
-评论 root / parent 怎样确定？
-observed_fields 怎样生成？
-```
-
-### 11.3 再看整个 TikHub Runtime 怎样把 Operation 串起来
-
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/runtime.py
-backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py
-backend/src/aima_ugc/adapters/providers/tikhub/transport.py
-```
-
-- `runtime.py`：生产 TikHub 能力怎样被装配并执行；
-- `capabilities.py`：Provider + Platform 当前允许哪些业务 Operation；
-- `transport.py`：真正的 HTTP 发送边界、Origin/Secret/错误处理；
-- `pricing.py` + `pricing.toml`：当前 endpoint Pricing 的运行时事实，不用本文中的历史 Probe 价格代替。
-
-### 11.4 最后用 Fixture 和测试验证理解是否正确
-
-```text
-tests/fixtures/providers/tikhub/
-tests/unit/collection/
-tests/contracts/
-```
-
-例如你想确认“微博一级评论为什么从 `data.items[].data` 取”：
-
-```text
-本文找到真实路径
-→ 打开 tests/fixtures/providers/tikhub/weibo/comments_page1.sanitized.json
-→ 打开 operations/weibo.py 看 extractor
-→ 打开 mappers/weibo.py 看字段映射
-→ 跑对应 unit/contract test
-```
-
-这个顺序能把“文档说明”落回真实代码和可重复验证证据。
