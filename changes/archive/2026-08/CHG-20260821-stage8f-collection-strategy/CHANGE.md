@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260821-stage8f-collection-strategy"
 title: "Stage 8F 采集策略配置与整体集成"
 level: L3
-status: ready_for_review
+status: done
 owner: "codex"
 branch: "feature/stage8f-collection-strategy"
 created: 2026-08-21
@@ -41,17 +41,17 @@ data_changes:
 
 # 成功标准
 
-- [ ] `采集策略` 作为一级业务导航进入 App Shell，不归入“管理员页面”，保持现有页面路由兼容。
-- [ ] Keyword Pack 支持列表、创建、详情、增补关键词和启停；不硬删除历史引用，不发明 Alias 关系。
-- [ ] 系统全局 Relevance 继续只有一份配置，只能引用已启用且至少有一个有效关键词的 Pack；Plan 无覆盖字段。
-- [ ] Collection Plan 支持列表、详情、创建和启停；平台必须选择既有启用 Provider Config，业务参数只接受
+- [x] `采集策略` 作为一级业务导航进入 App Shell，不归入“管理员页面”，保持现有页面路由兼容。
+- [x] Keyword Pack 支持列表、创建、详情、增补关键词和启停；不硬删除历史引用，不发明 Alias 关系。
+- [x] 系统全局 Relevance 继续只有一份配置，只能引用已启用且至少有一个有效关键词的 Pack；Plan 无覆盖字段。
+- [x] Collection Plan 支持列表、详情、创建和启停；平台必须选择既有启用 Provider Config，业务参数只接受
   当前 Capability/首版固定策略可表达的字段，不接受任意 Provider JSON、Secret 或私有分页状态。
-- [ ] Plan 启停与 Scheduler 并发使用数据库条件更新；失效调度 cursor 不会产生旧版本 Occurrence。
-- [ ] 页面 KPI、三个配置页签、Loading/Empty/Error、Plan 新建抽屉和详情均来自真实 HTTP 数据。
-- [ ] Pydantic HTTP Contract、固定 OpenAPI、Orval Client、Feature API/Pinia/Vue、Contract/API/PostgreSQL/
+- [x] Plan 启停与 Scheduler 并发使用数据库条件更新；失效调度 cursor 不会产生旧版本 Occurrence。
+- [x] 页面 KPI、三个配置页签、Loading/Empty/Error、Plan 新建抽屉和详情均来自真实 HTTP 数据。
+- [x] Pydantic HTTP Contract、固定 OpenAPI、Orval Client、Feature API/Pinia/Vue、Contract/API/PostgreSQL/
   Frontend/E2E 测试和文档形成同一闭环。
-- [ ] 当前 `20260821_0022` Schema 已足够时不制造 Migration；若实现事实推翻该判断，必须先重新过数据门禁。
-- [ ] 两阶段 Review、最终 Head 全部门禁、PR、正常合并、归档及合并后 main 新鲜验证完成。
+- [x] 当前 `20260821_0022` Schema 已足够时不制造 Migration；若实现事实推翻该判断，必须先重新过数据门禁。
+- [x] 两阶段 Review、最终 Head 全部门禁、PR、正常合并、归档及合并后 main 新鲜验证完成。
 
 # 范围
 
@@ -119,7 +119,7 @@ data_changes:
 - [x] 建立失败测试或说明测试例外
 - [x] 完成最小实现
 - [x] 同步受影响文档
-- [x] 取得本地最终 Head 新鲜验证证据；PR/CI/main 合并证据待 GitHub 交付完成后补充
+- [x] 取得最终 Head、本地验证、PR/CI、正常合并及合并后 `main` 新鲜验证证据
 
 # 验证
 
@@ -136,9 +136,9 @@ data_changes:
 
 - 初始基线为 `b0c658061303294d3124b34bde028791c6464c72`；报告视觉变更合并后，本分支已安全快进到
   `38ea961a5f3dfbd84f5f4e6fa9aeb5153b8f1018`，该 `main` 无开放 PR 且现有 workflow 全部成功。
-- `rvc status` 初始无 Active Change；当前已建立本唯一 L3 Change。
-- 当前 Migration Head 文件为 `20260821_0022_stage8e_collection_run_batch.py`；数据库生命周期证据待本 Change
-  最终 PostgreSQL 18 验证，不能用历史 CI 替代。
+- `rvc status` 初始无 Active Change；实施期间只建立本 L3 Change，归档前再次确认进行中 Change 为 0。
+- 实施时 Migration Head 文件为 `20260821_0022_stage8e_collection_run_batch.py`；最终已用 PostgreSQL 18.4
+  完成 Migration 生命周期验证，未使用历史 CI 替代。
 - 工作区有用户未跟踪 `env.local`；本 Change 不读取、不修改、不暂存该文件。
 - 初始 Backend Red：Contract/API 测试因缺少 `aima_ugc.modules.collection.strategy_http` 正确失败；
   初始 Frontend Red：缺少 Collection Strategy Feature API 与 `/collection-strategy` Route 正确失败。
@@ -150,6 +150,12 @@ data_changes:
   `20260821_0021 → head`、`base → head`、两次 `alembic current/check` 通过；往返后 Stage 8F 4 passed。
 - 最终 Frontend：Orval 8.24.0 重新生成；ESLint、TS7、vue-tsc、22 Vitest、production build 与全部
   8 Playwright E2E 通过。视觉基线文件已检查为 `1585×992`、1,187,411 bytes。
+- PR `#110` 最终 Head `9d7d1f9453ebf4ffbb2a17d5ae9ec0232178d275` 的 24/24 GitHub check-run 全部成功，
+  无 Review 意见，GitHub 判定 `MERGEABLE / CLEAN`；PR 已于 2026-08-21 正常合并。
+- Merge Commit `d5573f7e3114ffbdc2a5ebe0fcea701a7b7c44c7` 的合并后本地验证：Contract/API 8 passed，
+  OpenAPI Drift、Architecture、Table Ownership、Secret、Docs、Frontend ESLint/TS7/vue-tsc、22 Vitest 与 build 通过。
+- 同一 Merge Commit 在 `main` 新触发的 10 个 GitHub workflow、23 个 check-run 全部成功，包含 PostgreSQL 18、
+  Windows、Unit、Quality 与 Contract/Platform 门禁；本地 `main` 与 `origin/main` 均指向该提交。
 
 # 两阶段 Review
 
@@ -180,6 +186,8 @@ data_changes:
 
 # 交付
 
-- Commit：`481424cb97015a51f93d4c1bcc9b56cbd04324c1`（正式实现）
-- PR：`#110` `https://github.com/dingyuwen777/AIMA_UGC/pull/110`（Draft，等待最终 Head CI/Review）
+- Commit：`481424cb97015a51f93d4c1bcc9b56cbd04324c1`（正式实现）、
+  `9d7d1f9453ebf4ffbb2a17d5ae9ec0232178d275`（最终交付记录）
+- PR：`#110` `https://github.com/dingyuwen777/AIMA_UGC/pull/110`（已正常合并）
+- Merge Commit：`d5573f7e3114ffbdc2a5ebe0fcea701a7b7c44c7`
 - 发布：不操作外部生产；交付仓库代码、生成物、部署/回滚说明和验证证据。
