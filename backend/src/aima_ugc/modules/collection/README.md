@@ -1,158 +1,384 @@
 # Collection 模块
 
-Collection 是采集业务 Owner。它负责把已经通过 Contract / Provider 边界确定的采集输入组织成可追踪的 Plan、Occurrence、Run、Scope、Provider Request / Attempt 和 Candidate 事实；它不拥有 HTTP Router、Provider 私有分页协议或 Canonical 业务表。Provider Billing/成本字段只作为执行审计事实，当前模块不实现预算账本。
+Collection 负责回答：**什么时候采、这次采什么、外部请求有没有真正执行、执行到哪一步、数据来自哪里。**
 
-## 1. 稳定边界
+它不拥有最终帖子/评论 Current，也不把 TikHub 私有 JSON 直接写入业务表。
 
-当前模块具备以下父事实与执行边界：
-
-1. `planning.py`
-   - `CollectionPlanDefinition`：Plan 的稳定创建输入；首版只允许 `Asia/Shanghai + latest_only + max_catch_up_runs=0`；
-   - `PlanPlatformDefinition`：以 `platform + provider_config_id` 固定 Provider 配置选择，`config` 只保存平台业务配置 object；
-   - `CollectionPlanningService`：在持久化前校验首版策略、Cron、至少一个平台/词包、平台/词包关系唯一性和 Decision Policy；Scheduler 在入队前继续校验 Provider Config、Registry/Capability 与每个平台至少一个可执行 Scope。
-2. `scheduler.py` + `bootstrap/scheduler.py`
-   - 解析首版五字段数值 Cron；
-   - 按 `latest_only` 计算停机恢复；
-   - 对 Plan 使用 PostgreSQL 行锁重读当前状态；
-   - 在一个短事务中校验 Provider/关键词执行面、冻结 Run Snapshot，并编排 skipped Occurrence、Job、enqueued Occurrence、scheduled Run 与 cursor 推进；单个非法 Plan 回滚并记录 `scheduler.plan.rejected`，不终止其他 Plan；
-   - Scheduled Job Deadline 取 Cron 周期间隔与按 Scope 数、共享分页技术上限、TikHub 单请求 timeout 和安全余量推导的 Provider 执行窗口下限中的较大值；这是有限技术容量边界，不是 Budget；
-   - 不直接执行 Provider HTTP，也不建立第二套内存任务队列。
-3. `execution.py` / `collection_run_job.py` / `collection_run_executor.py`
-   - `CollectionExecutionService`：创建 Run / Scope 父事实；
-   - `manual` / `api` / `backfill` Run 可选择性绑定 `manual_plan_id`，但不得绑定 Occurrence；
-   - `scheduled` Run 必须绑定唯一 `occurrence_id`，不得重复保存 `manual_plan_id`；
-   - `collection.run.v1` Job Payload 只保存稳定 schema 身份，不复制 `run_id`、Plan 或 Secret；Handler 通过当前 `JobExecutionFence.job_id` 反查正式 Run；
-   - `CollectionRunExecutor` 在 Lease takeover / Job retry 时跳过已经终态的 Scope，并从 Scope durable stats 复用已完成计数，不重新执行已完成业务副作用；
-   - running Scope 的 `pagination_state / progress / stats` 通过 Fenced `checkpoint_scope()` 持久化；Scope 页进度不再直接改 Job progress，Job progress 只由 Run Executor 按 Scope 完成度推进；
-   - 可重试 Provider 错误先保存 Scope checkpoint，再返回 `JobHandlerResult.retry()` 交给 PostgreSQL Job Runtime；普通 Scope 业务失败仍隔离在当前 Scope；
-   - `collection.run.v1` 明确 `retry_on_timeout = false`：Attempt Deadline 到期后不自动重排整个 Collection Run，避免在外部结果不确定时产生隐式重复费用。
-4. `provider_persistence.py` / `provider_dispatch.py` / `provider_recovery.py`
-   - Provider Request / Attempt 的持久化、正式 Dispatch、失败归因与 Recovery；
-   - Provider Request 是逻辑请求，同一 request fingerprint 在 Job retry / takeover 中复用；
-   - 新的外部重发必须建立新的 Provider Attempt；429、408、425、5xx 以及 Transport `not_sent/unknown` 才进入当前自动 retry 边界，其他 4xx 不做无条件重试；
-   - `dispatching` Attempt 在正式 Scope 开始时先经 `ProviderAttemptReconciler` 收敛：`stored/linked` Raw 必须按 metadata 的 SHA-256/字节数、gzip 与 Raw Envelope Contract 全部校验后才能 replay；如果确定性 Raw 文件已经原子落盘但 metadata 仍为 `pending`，Recovery 可以先校验 gzip/Envelope，再重新计算 SHA-256/字节数并以状态 CAS 把该 Artifact 确认为 `stored`，随后复用同一 finalize/link 链，**禁止再次发送 Provider**；
-   - `pending` 只允许在 Recovery 专用路径做上述确认，普通 replay 仍拒绝未完整存储 Artifact；文件缺失、损坏、来源不一致或 metadata 状态异常都保守收敛为 `unknown`；
-   - Raw 完整性失败而降级 `unknown` 时写 `provider_raw_recovery_rejected` warning，记录 Attempt ID、Artifact ID 和安全错误摘要，不记录 Raw 内容、请求参数或 Secret。
-5. `candidates.py` / `candidate_tables.py` 与 Provider Mapper / Ingestion
-   - Raw → Candidate → Mapper → Canonical / Ingestion 的统一纵向边界；Candidate 在 Mapper 前按稳定 Raw item locator 建立，Mapper/身份校验失败也追加 `invalid/failed` Ingestion ledger；
-   - Mapper 不访问数据库、不发 HTTP；Provider 不直接写业务表；
-   - Scope 请求/成功/失败计数和 Content/Comment 计数从 PostgreSQL Attempt/Candidate durable 事实恢复，不只依赖进程内计数。
-6. `bootstrap/collection_scope.py` + `bootstrap/worker.py`
-   - `TikHubCollectionScopeExecutor` 复用既有五平台 TikHub Operation、Provider Dispatch/Recovery、Raw、Mapper、Decision 和 fenced Ingestion 执行正式 Scope；
-   - Search 决策为 `defer_until_detail` 时，Detail 摄取后必须使用最新 Canonical 再计算评论动作；只重算评论决策，不重复发 Detail；
-   - Search 首次 Decision 先写 `collection_content_actions` durable action/checkpoint；Job retry/Lease takeover 恢复未完成 Detail/Comments，而不是在 Search 已更新 Current 后重新计算并跳过原动作；
-   - Mapper/回放的 `observed_at` 使用对应 Raw Envelope 的完成时间，旧 Raw replay 不用恢复时钟回滚 Current；
-   - 评论/二级回复的 target 是“是否继续请求下一页”的软目标：当前已经返回并付费的响应页全部 Mapper/Ingestion 后，才决定是否再请求下一页；Provider 仍有下一页时 target 命中只能形成 `partial`；
-   - 内容级评论和每个 root thread 分别保存 Coverage；显式最新空评论/回复页可把更旧的 Provider reported count 收敛为 0，`complete` 受 Owner 与数据库一致性约束；
-   - `create_collection_job_registry(...)` 用现有 Artifact/Raw/Provider/Collection 组件组装 `collection.run.v1`；默认 Worker 按受批准 Base URL 复用 TikHub HTTP Client/连接池，并由 `PlatformRuntime.close()` 统一释放；
-   - 默认 Secret 只通过 `secret_ref` 在 `AIMA_SECRET_DIR` 下解析；TikHub Transport 只允许批准的 `https://api.tikhub.io` Origin 接收 Bearer Secret。
-7. `xhs_replay.py`
-   - 只回放已经持久化的 XHS Raw；
-   - 复用正式 Mapper / Ingestion；
-   - 故意不持有 Provider Client / Transport，因此不会因回放再次产生外部 HTTP。
-
-## 2. Plan / Occurrence / Run / Scheduler
-
-当前 Collection-owned 数据事实：
-
-- `collection_plans`
-  - 唯一 `name`；
-  - 首版 `timezone = Asia/Shanghai`；
-  - `schedule_version >= 1`；
-  - 首版 `misfire_policy = latest_only`；
-  - 首版 `max_catch_up_runs = 0`；
-  - `next_run_at` / `last_scheduled_at` 由 Scheduler Runtime 推进。
-- `collection_plan_platforms`
-  - 一个 Plan 的同一平台只允许一条关系；
-  - 通过稳定 `provider_config_id` 引用 `provider_configs`；
-  - `config` 必须为 JSON object，并由领域入口拒绝 Secret 形态字段；不得保存 API Key、Token、Cookie 或 Provider 私有分页状态。
-- `collection_plan_keyword_packs`
-  - Plan 与 `keyword_packs` 使用真实关联表；不把关系塞入 JSON。
-- `collection_schedule_occurrences`
-  - `(plan_id, schedule_version, scheduled_for)` 唯一；
-  - `enqueued` 必须有 `job_id`，`skipped` 必须无 Job 且有 `skip_reason`；
-  - `job_id` 唯一。
-- `collection_runs`
-  - 一个 Run 只绑定一个 Job；
-  - `scheduled` Run 必须通过 `occurrence_id` 关联 Plan / Schedule Version；
-  - `manual` / `api` / `backfill` 保持兼容，并可选记录 `manual_plan_id`；
-  - `config_snapshot` 是运行时不可变配置快照，不替代 Plan/Occurrence 的关系身份。
-- `collection_scopes`
-  - 每个平台/来源的最小可恢复执行单元；
-  - `pagination_state / progress / stats` 是 durable checkpoint，不把 Provider 私有 cursor 塞回 Plan；
-  - 终态 Scope 在 Job takeover/retry 后不得重复执行。
-
-数据库使用 deferred constraint trigger 在事务提交前检查跨表一致性：
-
-- `enqueued` Occurrence 必须恰有一个反向 `scheduled` Run；
-- Occurrence 与 Run 必须引用同一个 Job；
-- `skipped` Occurrence 不允许存在 Run。
-
-Scheduler 停机恢复固定为：
+先看主链：
 
 ```text
-更早的 due slot → skipped / misfire_superseded
-最新 due slot → enqueued
-未来首个 slot → next_run_at
+Plan
+→ Occurrence（定时场景）
+→ Run
+→ Scope
+→ Provider Request
+→ Provider Attempt
+→ Raw Artifact
+→ Candidate
+→ Mapper
+→ Canonical
+→ Relevance
+→ Content Ingestion / Owner
+→ PostgreSQL
 ```
 
-不额外补跑历史 Run。完整设计见 `docs/blueprint/09-Scheduler运行与恢复策略.md`。
+File Import 不是 Collection Run，具体见 `modules/ingestion` 和 `docs/appendix/数据入口与统一入库.md`。
 
-## 3. PostgreSQL 写入口
+## 1. Collection 拥有哪些事实
 
-- `adapters/persistence/postgres/collection_planning.py`
-  - Plan / PlanPlatform / PlanKeywordPack / Occurrence 的 Collection 写入口；
-  - 提供 Scheduler 预扫、`FOR UPDATE` 重读与带 `schedule_version` 的 cursor 更新；
-  - Repository 不自行 `commit()`，事务由调用方持有。
-- `adapters/persistence/postgres/collection.py`
-  - Run / Scope 的 Collection 写入口；
-  - 保留 `manual/api/backfill` 兼容性并支持 Plan / Occurrence 绑定。
-- `adapters/persistence/postgres/collection_run_execution.py`
-  - live Worker 的 Run/Scope 执行 Gateway；
-  - start/checkpoint/finish 都先验证当前 Job Fence，不允许旧 Worker 在 Lease takeover 后继续写。
-- `adapters/persistence/postgres/collection_provider_execution.py`
-  - 同一逻辑 Provider Request 的 Attempt 恢复、可重发边界和 Scope durable 计数读取；
-  - 成功且带完整 Raw 的 Request 直接复用；`dispatching` 必须先 Recovery；终态可重试失败才允许建立新的 Attempt。
-- `adapters/persistence/postgres/collection_content.py`
-  - Collection 到 Content Owner 的 Fenced Ingestion/Coverage 边界；
-  - Collection 不直接写 Content/Comment/Coverage 表。
+### Plan
 
-`database_schema.py` 只注册当前机器 Schema；正式结构变化必须通过 Alembic Revision 演进。首版 Scheduler 策略通过 `0014` 约束，预算回撤通过 `20260817_0015` 完成，评论 Coverage 可观测字段和来源幂等约束由 `20260817_0016` 建立，Current 字段级 freshness 由 `20260817_0017` 建立；`20260818_0018` 新增 Decision Policy、durable content action、Canonical 子实体、thread Coverage 与 Attempt↔Raw 复合来源约束。禁止改写已发布历史 Revision。
+长期采集计划：
 
-## 4. Secret、Job、Provider 与配置边界
+- 什么时候执行；
+- 哪些平台；
+- 使用哪个 `provider_config_id`；
+- 使用哪些关键词包；
+- 详情/评论策略；
+- Decision Policy。
 
-- Provider Secret 只通过 `provider_configs.secret_ref` 间接引用，不进入 Plan、Run、Scope、Raw、Job Payload 或日志明文；
-- Plan 平台 `config` 是业务配置，不是 Provider HTTP 参数仓库；
-- Provider 私有 cursor、page、search_id、签名或认证字段不进入 Plan；
-- Scheduler 只创建任务事实，真实 Provider HTTP 必须经过 Provider Billing/Pricing、Dispatch 与 Raw 边界；
-- Provider Billing、Pricing、成本快照和 `potential_duplicate_charge` 是执行/审计事实，不是请求次数或金额预算；当前不存在 Budget Account、Reservation Ledger 或发送预算门禁；
-- 同一 Attempt 最多一次外部发送；重发只能新建 Attempt；完整 Raw 存在时必须 replay，不得为了 Job retry 再收费一次；
-- 当前不自动做 Provider/App/Web fallback；各平台 Operation 的备用方案必须由独立决策/验证启用。
+Plan 不保存 Token、Cookie、Provider cursor 或某次请求状态。
 
-## 5. 当前阶段边界
+### Occurrence
 
-Stage 1—7 已存在完整机器实现：Scheduler → Occurrence → `collection.run.v1` Job → Run/Scope → Worker → TikHub 五平台 Provider Operation → Raw → Mapper → Canonical → Candidate/Ingestion → Content Owner/PostgreSQL。
+“某个 Plan 版本在某个逻辑时间点应该触发一次”。
 
-`worker_main.py`、`bootstrap/worker.py` 和 Platform Job Runtime 已提供正式 Worker/JobReaper 装配与 `run_once()` 执行能力；当前 Stage 1—7 并没有再定义一套常驻 Supervisor/服务管理循环。常驻进程的启动、守护、重启和 Release 部署编排属于后续 Release/生产运行边界，不能为了让文档看起来“完整”在本阶段伪造第二套进程管理器。
+唯一身份：
 
-Stage 1—7 当前机器基线已经包含 durable action/retry 恢复、Raw observation-time replay、可执行 Plan fail-closed、不可变 Run Snapshot、有限 Deadline sizing、Candidate-before-Mapper ledger、Canonical 子实体、内容级与线程级 Coverage、字段 freshness、来源复合约束及五平台 Capability/Operation。**Stage 8 HTTP CRUD/业务页面/认证授权，以及 Release 阶段 Docker/离线发布/协调 Backup-Restore 仍未开始，不得把上述 Stage 1—7 能力外推为这些后续能力已经实现。**
+```text
+(plan_id, schedule_version, scheduled_for)
+```
 
-当前必须继续保持：
+### Run
 
-- 五平台 Operation / Mapper / Capability 的已验证边界；
-- 快手 App comments/sub-comments 正式主链，一级评论真实 `subCommentCount` 可映射 `metrics.reply_count`；
-- 不建立自动 Provider/App/Web fallback；
-- Provider Secret 只走 `secret_ref`，TikHub Bearer Secret 只发送到批准的 `https://api.tikhub.io` Origin；
-- 当前不恢复请求/金额预算、Budget Account、Reservation Ledger 或 dormant Budget 接口。
+一次完整业务运行。Run 绑定一个 PostgreSQL Job，并冻结当次执行需要的配置快照。
 
-## 6. 调试与测试原则
+当前支持：
 
-- 调试入口复用正式 `CollectionPlanningService` / `CollectionExecutionService` / Repository / Provider Operation，不另写第二套 SQL 或 Provider 实现；
-- PostgreSQL 集成测试验证真实 FK、Unique、Check、行锁、并发 first-insert、Fencing、Raw Recovery 和 deferred constraint，而不是只验证 Mock；
-- Scheduler 专项验证 new-plan 初始化、latest-only、重复 tick、并发 Scheduler 和 Migration round-trip；
-- Worker 纵切使用 `FakeProviderTransport` 验证真实生产装配；普通 CI 不产生付费 TikHub 请求；
-- Provider 可重试错误必须验证“同一逻辑 Request + 新 Attempt”，同时保留旧 Attempt/Raw/费用事实；
-- Recovery 必须验证 `dispatching + 已完整 Raw + Lease takeover` 后正式 Scope 不再次发送 Provider，并覆盖 pending metadata/文件已落盘的崩溃窗口与损坏 Raw 的 warning 降级路径；
-- 评论测试必须覆盖 Detail 后重决策、整页保留、target 跨页、空页、reported_total=0、Coverage 来源幂等；
-- 新 Migration 至少验证上一正式 Revision → head、base → head、downgrade / upgrade 与 `alembic check`；
-- 真实 Provider Probe 仅在 Fixture/Contract/一手文档不足以确认真实接口形态时人工显式运行，并设置请求/分页上限；不能把 Real Probe 当普通 CI，也不能把付费请求成功替代单元/集成测试。
+```text
+scheduled
+manual
+api
+backfill
+```
+
+Stage 8E 后 Run 还可以通过 `import_batch_id` 与一次业务批次关联，用于运行中心统一展示 Excel Import 和 TikHub Run。
+
+### Scope
+
+一个 Run 内最小可恢复执行单元，例如：
+
+```text
+xhs + keyword=爱玛 + discovery
+```
+
+Scope 保存 `pagination_state / progress / stats` 等 durable checkpoint。Worker 重试或 Lease takeover 时，已经终态的 Scope 不重复执行。
+
+### Provider Request / Attempt
+
+```text
+Request
+→ 一个逻辑外部请求
+
+Attempt
+→ 一次真实执行尝试
+```
+
+同一逻辑 Request 可以因为明确可重试失败创建新 Attempt，但同一 Attempt 最多发送一次。
+
+### Candidate
+
+Raw 里的一项内容/评论在 Mapper 前先建立 Candidate 来源账本。
+
+这样 Mapper 即使失败，也能回答：
+
+> 哪个 Run/Scope/Attempt/Raw 的哪一项没能进入 Canonical？
+
+## 2. Scheduler 当前怎么工作
+
+主要代码：
+
+```text
+modules/collection/scheduler.py
+bootstrap/scheduler.py
+entrypoints/scheduler_main.py
+```
+
+当前固定：
+
+```text
+timezone = Asia/Shanghai
+misfire_policy = latest_only
+max_catch_up_runs = 0
+```
+
+Scheduler 只创建任务事实，不直接发 TikHub HTTP。
+
+一次正常入队：
+
+```text
+扫描到 Plan 到期
+→ PostgreSQL 行锁重读 Plan
+→ 重新校验 Provider/关键词/Capability
+→ 冻结 Run Snapshot
+→ 创建 Job + Occurrence + Run
+→ 推进 next_run_at
+→ 同一短事务提交
+```
+
+停机恢复时，更早到期 slot 保存为 `skipped / misfire_superseded`，只执行最新一个到期 slot。
+
+详细解释见：
+
+[`../../../../../docs/appendix/Scheduler运行与恢复.md`](../../../../../docs/appendix/Scheduler运行与恢复.md)
+
+## 3. Collection Job 怎么执行
+
+正式 Job 类型：
+
+```text
+collection.run.v1
+```
+
+主要代码：
+
+```text
+execution.py
+collection_run_job.py
+collection_run_executor.py
+bootstrap/collection_scope.py
+bootstrap/worker.py
+```
+
+Job Payload 不复制 `run_id`、Plan、Secret 等可以通过受约束关系反查的事实。Handler 使用当前 `job_id` 反查正式 Run。
+
+`CollectionRunExecutor`：
+
+1. 验证当前 Job Fence；
+2. 读取 Run/Scope；
+3. 跳过已经终态的 Scope；
+4. 执行待处理 Scope；
+5. 持久化 checkpoint；
+6. 汇总 Run/Job 进度和终态。
+
+`collection.run.v1` 当前 `retry_on_timeout=false`。Attempt Deadline 到期后不自动重排整次 Collection Run，避免外部结果未知时隐式重复计费。
+
+## 4. Provider Dispatch / Recovery
+
+主要代码：
+
+```text
+provider_persistence.py
+provider_dispatch.py
+provider_recovery.py
+```
+
+核心原则：
+
+```text
+同一 Attempt 最多一次真实发送
+→ 真正重发必须新 Attempt
+```
+
+当前自动可重试边界只覆盖明确允许的 Transport/HTTP 情况，例如部分 408/425/429/5xx 和 `not_sent/unknown` 恢复路径；其他 4xx 不无条件重试。
+
+### Raw 已存在时
+
+如果 Attempt 对应完整 Raw 已经保存：
+
+```text
+校验 metadata SHA-256 / bytes / gzip / Raw Envelope
+→ replay
+→ 禁止再次 Provider 请求
+```
+
+如果文件已原子落盘但 Artifact metadata 还停在 `pending`，Recovery 允许在专用路径重新校验后 CAS 确认 `stored`，再继续 link/replay。
+
+文件缺失、损坏或来源不一致则保守收敛为 `unknown`，并记录安全 warning；日志不打印 Raw、请求参数或 Secret。
+
+## 5. 正式 TikHub Scope 怎么走
+
+`TikHubCollectionScopeExecutor` 复用五个平台生产 Operation：
+
+```text
+Search
+→ Raw
+→ Candidate
+→ Mapper
+→ Canonical
+→ Relevance/Ingestion
+→ Decision
+→ 可选 Detail
+→ 用最新 Canonical 重算评论决策
+→ 可选 Comments/Sub-comments
+→ Coverage
+```
+
+Search 首次 Decision 会保存 durable content action/checkpoint。Job retry/Lease takeover 恢复未完成 Detail/Comments，而不是因为 Current 已更新就重新计算后跳过原动作。
+
+旧 Raw replay 使用 Raw Envelope 的真实 `observed_at`，不会拿“今天的恢复时间”回滚/污染 Current freshness。
+
+## 6. 评论 Target 和 Coverage
+
+评论 Target 只决定“还要不要请求下一页”。
+
+例如目标 50 条、每页 20 条：第 3 页返回以后已经拿到 60 条，这 20 条全部 Mapper/Ingestion，再停止后续请求。
+
+不能只保存前 10 条，因为整页已经付费返回。
+
+内容级和 root thread 分别保存 Coverage，表达：
+
+- fetched 数量；
+- Provider reported 数量；
+- complete/partial；
+- stop reason。
+
+数据库里有 50 条评论不等于“评论完整”。
+
+## 7. Plan / Occurrence / Run 的数据库约束
+
+当前长期重要约束：
+
+### `collection_plans`
+
+- `name` 唯一；
+- `timezone=Asia/Shanghai`；
+- `schedule_version >= 1`；
+- `latest_only`；
+- `max_catch_up_runs=0`；
+- Scheduler 推进 `next_run_at / last_scheduled_at`。
+
+### `collection_plan_platforms`
+
+- 同一 Plan 同一平台只允许一条；
+- 使用稳定 `provider_config_id`；
+- `config` 是平台业务配置，不保存 Secret/Provider cursor。
+
+### `collection_plan_keyword_packs`
+
+Plan 与 Keyword Pack 使用真实关联表，不塞 JSON 字符串。
+
+### `collection_schedule_occurrences`
+
+- `(plan_id, schedule_version, scheduled_for)` 唯一；
+- `enqueued` 必须有 Job；
+- `skipped` 没有 Job，并有 `skip_reason`；
+- `job_id` 唯一。
+
+### `collection_runs`
+
+- 一个 Run 一个 Job；
+- `scheduled` 通过 `occurrence_id` 绑定调度身份；
+- `manual/api/backfill` 保持人工/接口触发语义；
+- `config_snapshot` 只是执行快照，不替代关系身份。
+
+数据库 deferred constraint trigger 还会在事务提交前验证 Occurrence/Run/Job 跨表一致性。
+
+精确列与约束仍以 `tables.py + migrations/versions/` 为准。
+
+## 8. PostgreSQL Repository 写入口
+
+主要入口：
+
+```text
+adapters/persistence/postgres/collection_planning.py
+→ Plan / Platform / Keyword Pack / Occurrence / Scheduler cursor
+
+adapters/persistence/postgres/collection.py
+→ Run / Scope
+
+adapters/persistence/postgres/collection_run_execution.py
+→ Worker 下 Run/Scope 的 fenced start/checkpoint/finish
+
+adapters/persistence/postgres/collection_provider_execution.py
+→ Request/Attempt 恢复与 durable stats
+
+adapters/persistence/postgres/collection_content.py
+→ Collection 调 Content Owner 的 fenced Ingestion/Coverage 边界
+```
+
+Repository 不自行 `commit()`；事务由调用方 Unit of Work 持有。
+
+Collection 不直接写 Content/Comment/Coverage 表。
+
+## 9. Secret、Provider Config 和费用
+
+- `provider_configs.secret_ref` 只保存 Secret 引用；
+- Plan/Run/Scope/Raw/Job Payload 不保存 Secret；
+- TikHub Bearer Secret 只发送到批准的 `https://api.tikhub.io` Origin；
+- Plan `config` 不作为 Provider HTTP 私有参数仓库；
+- Provider cursor/page/search_id 不写回 Plan。
+
+Provider Request/Attempt 保存 Billing/Pricing/成本/`potential_duplicate_charge` 是为了执行审计。
+
+当前没有：
+
+```text
+Budget Account
+Reservation Ledger
+请求次数预算
+金额预算
+发送前 Budget Guard
+```
+
+## 10. 当前已经实现到哪里
+
+Collection 不能再写成“只有 Stage 1—7”。当前系统已经完成 Stage 8A—8F：
+
+- Excel 正式 Import Batch；
+- 全局 Relevance；
+- 采集运行中心；
+- 声音广场；
+- 一次性 Discovery / Batch 补采；
+- Keyword/Relevance/Plan 产品化；
+- Analysis/Excel Export 等下游能力。
+
+这些业务 API/页面已经存在。
+
+当前仍未闭环：
+
+- 企业正式认证授权；
+- 完整离线生产 Release；
+- 协调 Backup/Restore 写屏障；
+- Stage 9 尚未正式实现的 Monitoring 业务。
+
+不要把“Stage 8 已完成”和“认证/Release 也已完成”混为一件事。
+
+## 11. 独立调试
+
+### `tikhub_test`
+
+默认可以只保存本地调试产物，不写业务数据库。
+
+显式 `write_to_database=True` 后复用正式 manual Collection / Provider Dispatch / Raw / Candidate / Mapper / Ingestion；不会为了写库再发第二次 TikHub 请求。
+
+### Raw Replay
+
+`xhs_replay.py` 只回放已经保存的 XHS Raw，故意不持有 Provider Transport，因此不会重新产生外部请求。
+
+所有 Probe/调试必须复用生产 Operation/Mapper，不复制 endpoint 和业务规则。
+
+## 12. 测试重点
+
+- Plan 校验与 fail-closed；
+- `latest_only`、重复 tick、并发 Scheduler；
+- Job retry/Lease takeover 后不重复已终态 Scope；
+- Provider 同 Request + 新 Attempt；
+- Raw Recovery 完整/损坏/pending 崩溃窗口；
+- Candidate-before-Mapper；
+- Detail 后评论重决策；
+- 评论整页保留、Target 跨页、空页；
+- Coverage 来源幂等；
+- Fencing 防旧 Worker 写入；
+- Migration old→head / downgrade-upgrade / `alembic check`。
+
+真实付费 TikHub Probe 不进普通 CI。
+
+## 13. 深入阅读
+
+- 长期采集架构：[`../../../../../docs/blueprint/08-采集策略与平台能力.md`](../../../../../docs/blueprint/08-采集策略与平台能力.md)
+- 数据标准化：[`../../../../../docs/blueprint/02-采集系统与数据标准化.md`](../../../../../docs/blueprint/02-采集系统与数据标准化.md)
+- Scheduler：[`../../../../../docs/appendix/Scheduler运行与恢复.md`](../../../../../docs/appendix/Scheduler运行与恢复.md)
+- TikHub：[`../../../../../docs/appendix/TikHub真实响应结构.md`](../../../../../docs/appendix/TikHub真实响应结构.md)
+- 平台实现：[`../../../../../docs/collection/README.md`](../../../../../docs/collection/README.md)
+- PostgreSQL：[`../../../../../docs/appendix/PostgreSQL调试与常用SQL.md`](../../../../../docs/appendix/PostgreSQL调试与常用SQL.md)
