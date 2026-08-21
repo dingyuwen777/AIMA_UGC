@@ -94,7 +94,6 @@ from aima_ugc.modules.reporting.http import (
     ReportingHttpService,
 )
 from aima_ugc.platform.health import ReadinessReport
-from aima_ugc.platform.logging import log_event
 
 from .runtime import PlatformRuntime, create_platform_runtime
 
