@@ -30,7 +30,20 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          cat .github/aima-report-payload/part.* > /tmp/aima.b64
+          cat \
+            .github/aima-report-payload/part.00 \
+            .github/aima-report-payload/part.010 \
+            .github/aima-report-payload/part.011 \
+            .github/aima-report-payload/part.012 \
+            .github/aima-report-payload/part.013 \
+            .github/aima-report-payload/part.02 \
+            .github/aima-report-payload/part.030 \
+            .github/aima-report-payload/part.031 \
+            .github/aima-report-payload/part.032 \
+            .github/aima-report-payload/part.033 \
+            .github/aima-report-payload/part.04 \
+            .github/aima-report-payload/part.05 \
+            > /tmp/aima.b64
           base64 -d /tmp/aima.b64 > /tmp/aima.tar.xz
           test "$(sha256sum /tmp/aima.tar.xz | cut -d' ' -f1)" = "ba0635796ea8ba6716191fb584cfaa8ed9a4c4951ff63fd73c653b36e8237cd2"
           tar -xJf /tmp/aima.tar.xz -C .
