@@ -59,7 +59,10 @@ def test_p1g_labeled_excel_reads_analysis_from_same_deduplicated_jsonl(tmp_path:
     workbook = load_workbook(output_path, read_only=True, data_only=False)
     try:
         row = next(workbook["内容"].iter_rows(min_row=2, max_row=2, values_only=True))
-        assert row[24:30] == (
+        assert row[24:33] == (
+            "relevant",
+            "unknown",
+            "否",
             "正面",
             "一级测试",
             "二级测试",
