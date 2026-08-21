@@ -47,6 +47,7 @@ def test_content_analysis_response_exposes_relevance_voice_type_and_derived_user
     assert irrelevant.sentiment is None
     assert irrelevant.labels == ()
 
+    # is_user_voice 是 voice_type 的确定性派生值，Contract 必须拒绝两者互相矛盾。
     with pytest.raises(ValidationError):
         ContentAnalysisResponse(
             status="completed",
