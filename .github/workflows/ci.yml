@@ -29,6 +29,11 @@ jobs:
         with:
           node-version: 24.19.0
 
+      - name: Install report validation CJK font
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+
       - name: Verify runtime versions
         shell: bash
         run: |
@@ -179,6 +184,11 @@ jobs:
         uses: actions/setup-python@v6.2.0
         with:
           python-version: 3.14.7
+
+      - name: Install report validation CJK font
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
 
       - name: Install frozen Python environment
         shell: bash

@@ -654,13 +654,20 @@ word/embeddings/chartN.xlsx
 
 因此支持 Office Chart 编辑的 Word 可以直接“编辑数据”，人工校验或调整分类、系列、数值、标题、图例和样式；报告仍以 Office 原生图表引擎保证正常展示。图表的业务数据必须与 Markdown 中同一份统计数据一致，禁止为了 Word 再计算第二套统计。
 
-Word 的通用显示规则为：ChartSpace 无外轮廓，折线系列宽度为 2.25 磅，所有饼图百分比
-标签固定显示小数点后两位；表格占满正文可用宽度并使用固定内容感知列宽、深蓝表头、
-隔行底色、单元格内边距和数值右对齐。报告读取旧 Excel 中的已知英文平台 ID 时，也使用
-与共享 Exporter 相同的中文展示映射；未知平台保持原值。显示规则不得改变 Markdown 表格、
-图表数据或报告统计口径。
+Word 的展示层固定为 A4 横向、约 15 mm 页边距和克制的研究报告主题。普通数据表使用
+Editorial Table（浅表头、轻横向分隔、无重外框/竖线）；Top 统计在 Markdown 中通过最小
+`<!-- aima:table-style=ranking -->` 元数据转换为 Word 原生 Ranking，文字、数量和占比保持
+可编辑。Office bar/line 显示数据标签，长分类优先横向 bar；情感每日趋势在 Word 展示为
+正面+中性主趋势和负面+混合低量级趋势，两张图仍各自保留内嵌 XLSX，不使用双 Y 轴。
+饼图仍为可编辑 Office Chart，百分比保留两位小数。
 
-当前实现不引入 Pandoc、LibreOffice、Matplotlib、pandas 或在线 Mermaid 服务作为运行时依赖；内嵌图表数据复用仓库已经锁定的 openpyxl，OOXML 包由现有 Python 运行时生成。LibreOffice/Office 只可作为开发或交付视觉验证工具，不是生产报告生成依赖。不同办公软件版本允许存在主题颜色、字体和分页的轻微渲染差异，但不能影响图表数据、可编辑性或正文信息完整性。
+一级议题和热点关键词词云是唯一允许图片化的统计视觉：由 Pillow 直接消费同一份报告
+Counter，以 sqrt 频次权重、确定性全水平布局和蓝/蓝灰色阶生成约 300 DPI PNG，Markdown
+使用标准图片语法，DOCX 打包到 `word/media/` 并校验 Relationship、Content Type 和图片
+可打开性。运行环境必须提供 CJK 字体，缺失时 fail closed；仓库不提交字体文件。当前仍不
+引入 Pandoc、LibreOffice、Matplotlib、pandas、`wordcloud` 库、在线服务或 `python-docx`；
+内嵌图表数据继续复用 openpyxl。LibreOffice/Office 只作为开发或交付视觉验证工具。
+以上展示规则不得改变 Markdown 表格/图表数据、平台映射或报告统计口径。
 
 ### 13.6 失败和数据安全边界
 
