@@ -60,6 +60,8 @@ def _valid_response() -> str:
             "items": [
                 {
                     "item_no": 1,
+                    "relevance": "relevant",
+                    "voice_type": "user_voice",
                     "sentiment": taxonomy.sentiments[0],
                     "labels": [
                         {
@@ -135,6 +137,7 @@ def test_offline_labeling_uses_single_item_requests_and_bounded_sliding_window(
     )
 
     assert summary.rows_succeeded == 7
+    assert summary.rows_irrelevant_removed == 0
     assert summary.peak_in_flight == 3
     assert llm.peak_active == 3
     assert llm.item_counts == [1] * 7
