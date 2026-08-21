@@ -1,14 +1,26 @@
 import {
+  createCollectionRun,
   createImportBatch,
+  getCollectionCapabilities,
+  getCollectionRun,
+  getCollectionRuntimeSummary,
   getImportBatch,
   getImportBatchSummary,
+  listCollectionRuntimeRuns,
   listImportBatches,
+  type CollectionCapabilitiesResponse,
+  type CollectionRunCreateRequest,
+  type CollectionRunCreatedResponse,
+  type CollectionRunResponse,
+  type CollectionRuntimeListResponse,
+  type CollectionRuntimeSummaryResponse,
   type HttpErrorResponse,
   type ImportBatchCreatedResponse,
   type ImportBatchListResponse,
   type ImportBatchResponse,
   type ImportBatchSummaryResponse,
   type ListImportBatchesParams,
+  type ListCollectionRuntimeRunsParams,
 } from '../../generated/api/client'
 
 export class ImportApiError extends Error {
@@ -54,4 +66,28 @@ export async function fetchImportBatchDetail(batchId: string): Promise<ImportBat
 
 export async function uploadImportBatch(file: File): Promise<ImportBatchCreatedResponse> {
   return unwrap(await createImportBatch({ file }))
+}
+
+export async function fetchCollectionRuntimeList(
+  params: ListCollectionRuntimeRunsParams,
+): Promise<CollectionRuntimeListResponse> {
+  return unwrap(await listCollectionRuntimeRuns(params))
+}
+
+export async function fetchCollectionRuntimeSummary(): Promise<CollectionRuntimeSummaryResponse> {
+  return unwrap(await getCollectionRuntimeSummary())
+}
+
+export async function fetchCollectionCapabilities(): Promise<CollectionCapabilitiesResponse> {
+  return unwrap(await getCollectionCapabilities())
+}
+
+export async function createTikHubCollectionRun(
+  request: CollectionRunCreateRequest,
+): Promise<CollectionRunCreatedResponse> {
+  return unwrap(await createCollectionRun(request))
+}
+
+export async function fetchCollectionRunDetail(runId: string): Promise<CollectionRunResponse> {
+  return unwrap(await getCollectionRun(runId))
 }

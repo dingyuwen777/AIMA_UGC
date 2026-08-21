@@ -15,6 +15,748 @@
         "title": "Body_createImportBatch",
         "type": "object"
       },
+      "CollectionCapabilitiesResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionCapabilityResponse"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "provider_configs": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionProviderConfigResponse"
+            },
+            "title": "Provider Configs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "provider_configs",
+          "capabilities"
+        ],
+        "title": "CollectionCapabilitiesResponse",
+        "type": "object"
+      },
+      "CollectionCapabilityResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "operations": {
+            "items": {
+              "enum": [
+                "keyword_search",
+                "content_detail",
+                "comments",
+                "sub_comments"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Operations",
+            "type": "array"
+          },
+          "platform": {
+            "$ref": "#/components/schemas/CollectionPlatform"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "platform",
+          "operations"
+        ],
+        "title": "CollectionCapabilityResponse",
+        "type": "object"
+      },
+      "CollectionPlatform": {
+        "enum": [
+          "xhs",
+          "douyin",
+          "weibo",
+          "bilibili",
+          "kuaishou"
+        ],
+        "type": "string"
+      },
+      "CollectionProviderConfigResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "display_name"
+        ],
+        "title": "CollectionProviderConfigResponse",
+        "type": "object"
+      },
+      "CollectionRunCreateRequest": {
+        "additionalProperties": false,
+        "description": "Stage 8E 一次性发现或基于 Batch 补采请求。",
+        "properties": {
+          "import_batch_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Import Batch Id"
+          },
+          "include_comments": {
+            "default": true,
+            "title": "Include Comments",
+            "type": "boolean"
+          },
+          "include_sub_comments": {
+            "default": false,
+            "title": "Include Sub Comments",
+            "type": "boolean"
+          },
+          "keywords": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Keywords",
+            "type": "array"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/CollectionRunMode"
+          },
+          "platforms": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionRunPlatformRequest"
+            },
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Platforms",
+            "type": "array"
+          }
+        },
+        "required": [
+          "mode",
+          "platforms"
+        ],
+        "title": "CollectionRunCreateRequest",
+        "type": "object"
+      },
+      "CollectionRunCreatedResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "import_batch_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Import Batch Id"
+          },
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/CollectionRunMode"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "const": "queued",
+            "default": "queued",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "job_id",
+          "mode"
+        ],
+        "title": "CollectionRunCreatedResponse",
+        "type": "object"
+      },
+      "CollectionRunMode": {
+        "enum": [
+          "discovery",
+          "batch_supplement"
+        ],
+        "type": "string"
+      },
+      "CollectionRunPlatformRequest": {
+        "additionalProperties": false,
+        "description": "一次手工 Collection Run 的平台与正式 Provider Config 选择。",
+        "properties": {
+          "platform": {
+            "$ref": "#/components/schemas/CollectionPlatform"
+          },
+          "provider_config_id": {
+            "format": "uuid",
+            "title": "Provider Config Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform",
+          "provider_config_id"
+        ],
+        "title": "CollectionRunPlatformRequest",
+        "type": "object"
+      },
+      "CollectionRunResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt": {
+            "minimum": 0.0,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Summary"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "import_batch_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Import Batch Id"
+          },
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "keywords": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Keywords",
+            "type": "array"
+          },
+          "max_attempts": {
+            "exclusiveMinimum": 0.0,
+            "title": "Max Attempts",
+            "type": "integer"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/CollectionRunMode"
+          },
+          "platforms": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionPlatform"
+            },
+            "title": "Platforms",
+            "type": "array"
+          },
+          "progress": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Progress",
+            "type": "integer"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionScopeResponse"
+            },
+            "title": "Scopes",
+            "type": "array"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/CollectionRunStatsResponse"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CollectionRuntimeStatus"
+          }
+        },
+        "required": [
+          "run_id",
+          "job_id",
+          "mode",
+          "status",
+          "stage",
+          "progress",
+          "attempt",
+          "max_attempts",
+          "platforms",
+          "stats",
+          "scopes",
+          "created_at"
+        ],
+        "title": "CollectionRunResponse",
+        "type": "object"
+      },
+      "CollectionRunStatsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "comment_count": {
+            "minimum": 0.0,
+            "title": "Comment Count",
+            "type": "integer"
+          },
+          "content_count": {
+            "minimum": 0.0,
+            "title": "Content Count",
+            "type": "integer"
+          },
+          "failed_count": {
+            "minimum": 0.0,
+            "title": "Failed Count",
+            "type": "integer"
+          },
+          "filtered_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Filtered Count",
+            "type": "integer"
+          },
+          "requested_count": {
+            "minimum": 0.0,
+            "title": "Requested Count",
+            "type": "integer"
+          },
+          "succeeded_count": {
+            "minimum": 0.0,
+            "title": "Succeeded Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "requested_count",
+          "succeeded_count",
+          "failed_count",
+          "content_count",
+          "comment_count"
+        ],
+        "title": "CollectionRunStatsResponse",
+        "type": "object"
+      },
+      "CollectionRuntimeItemResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "collection_run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Run Id"
+          },
+          "collection_stats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CollectionRunStatsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Summary"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "import_batch_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Import Batch Id"
+          },
+          "import_stats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImportStatsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "keywords": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Keywords",
+            "type": "array"
+          },
+          "platforms": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CollectionPlatform"
+            },
+            "title": "Platforms",
+            "type": "array"
+          },
+          "progress": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Progress",
+            "type": "integer"
+          },
+          "record_id": {
+            "format": "uuid",
+            "title": "Record Id",
+            "type": "string"
+          },
+          "record_type": {
+            "$ref": "#/components/schemas/CollectionRuntimeRecordType"
+          },
+          "source_filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Filename"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CollectionRuntimeStatus"
+          }
+        },
+        "required": [
+          "record_id",
+          "job_id",
+          "record_type",
+          "display_name",
+          "status",
+          "progress",
+          "stage",
+          "created_at"
+        ],
+        "title": "CollectionRuntimeItemResponse",
+        "type": "object"
+      },
+      "CollectionRuntimeListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionRuntimeItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "has_more"
+        ],
+        "title": "CollectionRuntimeListResponse",
+        "type": "object"
+      },
+      "CollectionRuntimeRecordType": {
+        "enum": [
+          "excel_import",
+          "tikhub_discovery",
+          "tikhub_batch_supplement"
+        ],
+        "type": "string"
+      },
+      "CollectionRuntimeStatus": {
+        "enum": [
+          "queued",
+          "running",
+          "partial_success",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "type": "string"
+      },
+      "CollectionRuntimeSummaryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "completed_today_count": {
+            "minimum": 0.0,
+            "title": "Completed Today Count",
+            "type": "integer"
+          },
+          "contents_ingested_today": {
+            "minimum": 0.0,
+            "title": "Contents Ingested Today",
+            "type": "integer"
+          },
+          "processing_count": {
+            "minimum": 0.0,
+            "title": "Processing Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "processing_count",
+          "completed_today_count",
+          "contents_ingested_today",
+          "as_of"
+        ],
+        "title": "CollectionRuntimeSummaryResponse",
+        "type": "object"
+      },
+      "CollectionScopeResponse": {
+        "additionalProperties": false,
+        "description": "Provider-neutral Scope 进度；不公开 Provider 私有分页状态。",
+        "properties": {
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "operation_group": {
+            "title": "Operation Group",
+            "type": "string"
+          },
+          "platform": {
+            "$ref": "#/components/schemas/CollectionPlatform"
+          },
+          "progress": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Progress",
+            "type": "integer"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/CollectionRunStatsResponse"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CollectionRuntimeStatus"
+          },
+          "stop_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Reason"
+          }
+        },
+        "required": [
+          "id",
+          "platform",
+          "source_type",
+          "operation_group",
+          "status",
+          "progress",
+          "stats"
+        ],
+        "title": "CollectionScopeResponse",
+        "type": "object"
+      },
       "CommentCoverageResponse": {
         "additionalProperties": false,
         "properties": {
@@ -1894,6 +2636,405 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/collection-capabilities": {
+      "get": {
+        "operationId": "getCollectionCapabilities",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionCapabilitiesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Collection Capabilities",
+        "tags": [
+          "collection"
+        ]
+      }
+    },
+    "/api/v1/collection-runs": {
+      "post": {
+        "operationId": "createCollectionRun",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionRunCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionRunCreatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Create Collection Run",
+        "tags": [
+          "collection"
+        ]
+      }
+    },
+    "/api/v1/collection-runs/{run_id}": {
+      "get": {
+        "operationId": "getCollectionRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Collection Run",
+        "tags": [
+          "collection"
+        ]
+      }
+    },
+    "/api/v1/collection-runtime/runs": {
+      "get": {
+        "operationId": "listCollectionRuntimeRuns",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "record_types",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "$ref": "#/components/schemas/CollectionRuntimeRecordType"
+              },
+              "maxItems": 3,
+              "title": "Record Types",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CollectionRuntimeStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stage",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stage"
+            }
+          },
+          {
+            "in": "query",
+            "name": "created_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "created_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionRuntimeListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "List Collection Runtime Runs",
+        "tags": [
+          "collection"
+        ]
+      }
+    },
+    "/api/v1/collection-runtime/summary": {
+      "get": {
+        "operationId": "getCollectionRuntimeSummary",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionRuntimeSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Collection Runtime Summary",
+        "tags": [
+          "collection"
+        ]
+      }
+    },
     "/api/v1/content-analysis-jobs/{job_id}": {
       "get": {
         "operationId": "getContentAnalysisJob",

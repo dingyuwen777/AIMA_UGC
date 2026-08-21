@@ -103,6 +103,11 @@ collection_runs_table = Table(
     Column("job_id", Uuid(), ForeignKey("jobs.id"), nullable=False),
     Column("manual_plan_id", Uuid(), ForeignKey("collection_plans.id")),
     Column("occurrence_id", Uuid(), ForeignKey("collection_schedule_occurrences.id")),
+    Column(
+        "import_batch_id",
+        Uuid(),
+        ForeignKey("processing_import_batches.id"),
+    ),
     Column("trigger_type", Text(), nullable=False),
     Column("config_snapshot", JSONB(), nullable=False),
     Column("status", Text(), nullable=False),
@@ -327,6 +332,11 @@ provider_request_attempts_table = Table(
 Index(
     "ix_collection_runs_status_created_at",
     collection_runs_table.c.status,
+    collection_runs_table.c.created_at.desc(),
+)
+Index(
+    "ix_collection_runs_import_batch_id_created_at",
+    collection_runs_table.c.import_batch_id,
     collection_runs_table.c.created_at.desc(),
 )
 Index(

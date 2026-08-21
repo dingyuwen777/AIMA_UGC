@@ -2,33 +2,45 @@ import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
 
 import type {
+  CollectionCapabilitiesResponse,
+  CollectionRunCreateRequest,
+  CollectionRunCreatedResponse,
+  CollectionRunResponse,
+  CollectionRuntimeItemResponse,
+  CollectionRuntimeRecordType,
+  CollectionRuntimeStatus,
+  CollectionRuntimeSummaryResponse,
   ImportBatchCreatedResponse,
-  ImportBatchListResponse,
   ImportBatchResponse,
-  ImportBatchStatus,
-  ImportBatchSummaryResponse,
-  ImportStage,
-  ListImportBatchesParams,
+  ListCollectionRuntimeRunsParams,
 } from '../../generated/api/client'
 import {
-  ImportApiError,
+  createTikHubCollectionRun,
+  fetchCollectionCapabilities,
+  fetchCollectionRunDetail,
+  fetchCollectionRuntimeList,
+  fetchCollectionRuntimeSummary,
   fetchImportBatchDetail,
   fetchImportBatchList,
-  fetchImportBatchSummary,
+  ImportApiError,
   uploadImportBatch,
 } from './api'
 
-export interface ImportBatchFilters {
-  identifier: string
-  status: '' | ImportBatchStatus
-  stage: '' | ImportStage
+export type CollectionRuntimeTab = 'all' | 'excel' | 'tikhub'
+
+export interface CollectionRuntimeFilters {
+  search: string
+  status: '' | CollectionRuntimeStatus
+  recordType: '' | CollectionRuntimeRecordType
+  stage: string
   createdFrom: string
   createdTo: string
 }
 
-const EMPTY_FILTERS: ImportBatchFilters = {
-  identifier: '',
+const EMPTY_FILTERS: CollectionRuntimeFilters = {
+  search: '',
   status: '',
+  recordType: '',
   stage: '',
   createdFrom: '',
   createdTo: '',
@@ -50,16 +62,21 @@ function errorMessage(error: unknown): string {
   return '请求失败，请稍后重试。'
 }
 
-export const useImportBatchesStore = defineStore('import-batches', () => {
-  const filters = reactive<ImportBatchFilters>({ ...EMPTY_FILTERS })
-  const items = ref<ImportBatchResponse[]>([])
-  const summary = ref<ImportBatchSummaryResponse | null>(null)
-  const selected = ref<ImportBatchResponse | null>(null)
+export const useImportBatchesStore = defineStore('collection-runtime', () => {
+  const filters = reactive<CollectionRuntimeFilters>({ ...EMPTY_FILTERS })
+  const activeTab = ref<CollectionRuntimeTab>('all')
+  const items = ref<CollectionRuntimeItemResponse[]>([])
+  const summary = ref<CollectionRuntimeSummaryResponse | null>(null)
+  const selectedBatch = ref<ImportBatchResponse | null>(null)
+  const selectedRun = ref<CollectionRunResponse | null>(null)
+  const capabilities = ref<CollectionCapabilitiesResponse | null>(null)
+  const batchOptions = ref<ImportBatchResponse[]>([])
   const nextCursor = ref<string | null>(null)
   const hasMore = ref(false)
   const loading = ref(false)
   const loadingNext = ref(false)
   const uploading = ref(false)
+  const creating = ref(false)
   const error = ref<string | null>(null)
   let pollHandle: ReturnType<typeof setInterval> | undefined
   let pollDocument: Document | undefined
@@ -68,15 +85,32 @@ export const useImportBatchesStore = defineStore('import-batches', () => {
   const hasActiveJobs = computed(
     () =>
       items.value.some((item) => item.status === 'queued' || item.status === 'running') ||
-      selected.value?.status === 'queued' ||
-      selected.value?.status === 'running',
+      selectedBatch.value?.status === 'queued' ||
+      selectedBatch.value?.status === 'running' ||
+      selectedRun.value?.status === 'queued' ||
+      selectedRun.value?.status === 'running',
   )
 
-  function listParams(cursor?: string): ListImportBatchesParams {
+  function selectedRecordTypes(): CollectionRuntimeRecordType[] | undefined {
+    if (activeTab.value === 'excel') return ['excel_import']
+    if (activeTab.value === 'tikhub') {
+      if (
+        filters.recordType === 'tikhub_discovery' ||
+        filters.recordType === 'tikhub_batch_supplement'
+      ) {
+        return [filters.recordType]
+      }
+      return ['tikhub_discovery', 'tikhub_batch_supplement']
+    }
+    return filters.recordType ? [filters.recordType] : undefined
+  }
+
+  function listParams(cursor?: string): ListCollectionRuntimeRunsParams {
     return {
-      identifier: filters.identifier.trim() || undefined,
+      search: filters.search.trim() || undefined,
+      record_types: selectedRecordTypes(),
       status: filters.status || undefined,
-      stage: filters.stage || undefined,
+      stage: filters.stage.trim() || undefined,
       created_from: shanghaiDateStart(filters.createdFrom),
       created_to: shanghaiDateEnd(filters.createdTo),
       cursor,
@@ -84,26 +118,28 @@ export const useImportBatchesStore = defineStore('import-batches', () => {
     }
   }
 
-  function applyPage(page: ImportBatchListResponse): void {
-    items.value = page.items
-    nextCursor.value = page.next_cursor ?? null
-    hasMore.value = page.has_more
-  }
-
   async function refresh(silent = false): Promise<void> {
     const version = ++refreshVersion
     if (!silent) loading.value = true
     error.value = null
     try {
-      const [page, kpis, detail] = await Promise.all([
-        fetchImportBatchList(listParams()),
-        fetchImportBatchSummary(),
-        selected.value ? fetchImportBatchDetail(selected.value.id) : Promise.resolve(null),
+      const [page, kpis, batchDetail, runDetail] = await Promise.all([
+        fetchCollectionRuntimeList(listParams()),
+        fetchCollectionRuntimeSummary(),
+        selectedBatch.value
+          ? fetchImportBatchDetail(selectedBatch.value.id)
+          : Promise.resolve(null),
+        selectedRun.value
+          ? fetchCollectionRunDetail(selectedRun.value.run_id)
+          : Promise.resolve(null),
       ])
       if (version !== refreshVersion) return
-      applyPage(page)
+      items.value = page.items
+      nextCursor.value = page.next_cursor ?? null
+      hasMore.value = page.has_more
       summary.value = kpis
-      if (detail !== null) selected.value = detail
+      if (batchDetail !== null) selectedBatch.value = batchDetail
+      if (runDetail !== null) selectedRun.value = runDetail
     } catch (reason) {
       if (version === refreshVersion) error.value = errorMessage(reason)
     } finally {
@@ -116,7 +152,7 @@ export const useImportBatchesStore = defineStore('import-batches', () => {
     loadingNext.value = true
     error.value = null
     try {
-      const page = await fetchImportBatchList(listParams(nextCursor.value))
+      const page = await fetchCollectionRuntimeList(listParams(nextCursor.value))
       items.value = [...items.value, ...page.items]
       nextCursor.value = page.next_cursor ?? null
       hasMore.value = page.has_more
@@ -127,17 +163,36 @@ export const useImportBatchesStore = defineStore('import-batches', () => {
     }
   }
 
-  async function openDetail(batchId: string): Promise<void> {
+  async function setTab(tab: CollectionRuntimeTab): Promise<void> {
+    activeTab.value = tab
+    if (tab === 'excel' && filters.recordType !== 'excel_import') filters.recordType = ''
+    if (tab === 'tikhub' && filters.recordType === 'excel_import') filters.recordType = ''
+    await refresh()
+  }
+
+  async function openBatchDetail(batchId: string): Promise<void> {
     error.value = null
+    selectedRun.value = null
     try {
-      selected.value = await fetchImportBatchDetail(batchId)
+      selectedBatch.value = await fetchImportBatchDetail(batchId)
+    } catch (reason) {
+      error.value = errorMessage(reason)
+    }
+  }
+
+  async function openRunDetail(runId: string): Promise<void> {
+    error.value = null
+    selectedBatch.value = null
+    try {
+      selectedRun.value = await fetchCollectionRunDetail(runId)
     } catch (reason) {
       error.value = errorMessage(reason)
     }
   }
 
   function closeDetail(): void {
-    selected.value = null
+    selectedBatch.value = null
+    selectedRun.value = null
   }
 
   async function upload(file: File): Promise<ImportBatchCreatedResponse | null> {
@@ -152,6 +207,45 @@ export const useImportBatchesStore = defineStore('import-batches', () => {
       return null
     } finally {
       uploading.value = false
+    }
+  }
+
+  async function loadCreationOptions(selectedBatchId?: string | null): Promise<void> {
+    error.value = null
+    try {
+      const [providerCapabilities, batches] = await Promise.all([
+        fetchCollectionCapabilities(),
+        fetchImportBatchList({ limit: 100 }),
+      ])
+      capabilities.value = providerCapabilities
+      batchOptions.value = batches.items
+      if (
+        selectedBatchId &&
+        !batchOptions.value.some((batch) => batch.id === selectedBatchId)
+      ) {
+        const selected = await fetchImportBatchDetail(selectedBatchId)
+        batchOptions.value = [selected, ...batchOptions.value]
+      }
+    } catch (reason) {
+      error.value = errorMessage(reason)
+    }
+  }
+
+  async function createRun(
+    request: CollectionRunCreateRequest,
+  ): Promise<CollectionRunCreatedResponse | null> {
+    creating.value = true
+    error.value = null
+    try {
+      const created = await createTikHubCollectionRun(request)
+      await refresh(true)
+      await openRunDetail(created.run_id)
+      return created
+    } catch (reason) {
+      error.value = errorMessage(reason)
+      return null
+    } finally {
+      creating.value = false
     }
   }
 
@@ -187,20 +281,29 @@ export const useImportBatchesStore = defineStore('import-batches', () => {
 
   return {
     filters,
+    activeTab,
     items,
     summary,
-    selected,
+    selectedBatch,
+    selectedRun,
+    capabilities,
+    batchOptions,
     hasMore,
     loading,
     loadingNext,
     uploading,
+    creating,
     error,
     hasActiveJobs,
     refresh,
     loadNext,
-    openDetail,
+    setTab,
+    openBatchDetail,
+    openRunDetail,
     closeDetail,
     upload,
+    loadCreationOptions,
+    createRun,
     resetFilters,
     startPolling,
     stopPolling,

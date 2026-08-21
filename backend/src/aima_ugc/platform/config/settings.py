@@ -56,6 +56,11 @@ class PlatformSettings(BaseModel):
         return self.secret_dir / "content_cursor_signing_key"
 
     @property
+    def collection_runtime_cursor_signing_key_file(self) -> Path:
+        """返回统一采集运行 Cursor 签名密钥文件，不读取 Secret 内容。"""
+        return self.secret_dir / "collection_runtime_cursor_signing_key"
+
+    @property
     def llm_api_key_file(self) -> Path:
         """返回正式 Analysis LLM API Key 文件，不读取 Secret 内容。"""
         return self.secret_dir / "llm_api_key"

@@ -8,6 +8,226 @@ export interface BodyCreateImportBatch {
   file: Blob;
 }
 
+export type CollectionCapabilityResponseOperationsItem = typeof CollectionCapabilityResponseOperationsItem[keyof typeof CollectionCapabilityResponseOperationsItem];
+
+
+export const CollectionCapabilityResponseOperationsItem = {
+  keyword_search: 'keyword_search',
+  content_detail: 'content_detail',
+  comments: 'comments',
+  sub_comments: 'sub_comments',
+} as const;
+
+export type CollectionPlatform = typeof CollectionPlatform[keyof typeof CollectionPlatform];
+
+
+export const CollectionPlatform = {
+  xhs: 'xhs',
+  douyin: 'douyin',
+  weibo: 'weibo',
+  bilibili: 'bilibili',
+  kuaishou: 'kuaishou',
+} as const;
+
+export interface CollectionCapabilityResponse {
+  /** @minItems 1 */
+  operations: CollectionCapabilityResponseOperationsItem[];
+  platform: CollectionPlatform;
+  provider: string;
+}
+
+export interface CollectionProviderConfigResponse {
+  display_name: string;
+  id: string;
+  provider: string;
+}
+
+export interface CollectionCapabilitiesResponse {
+  capabilities: CollectionCapabilityResponse[];
+  provider_configs: CollectionProviderConfigResponse[];
+}
+
+export type CollectionRunMode = typeof CollectionRunMode[keyof typeof CollectionRunMode];
+
+
+export const CollectionRunMode = {
+  discovery: 'discovery',
+  batch_supplement: 'batch_supplement',
+} as const;
+
+/**
+ * 一次手工 Collection Run 的平台与正式 Provider Config 选择。
+ */
+export interface CollectionRunPlatformRequest {
+  platform: CollectionPlatform;
+  provider_config_id: string;
+}
+
+/**
+ * Stage 8E 一次性发现或基于 Batch 补采请求。
+ */
+export interface CollectionRunCreateRequest {
+  import_batch_id?: string | null;
+  include_comments?: boolean;
+  include_sub_comments?: boolean;
+  /** @maxItems 100 */
+  keywords?: string[];
+  mode: CollectionRunMode;
+  /**
+     * @minItems 1
+     * @maxItems 5
+     */
+  platforms: CollectionRunPlatformRequest[];
+}
+
+export interface CollectionRunCreatedResponse {
+  import_batch_id?: string | null;
+  job_id: string;
+  mode: CollectionRunMode;
+  run_id: string;
+  status?: 'queued';
+}
+
+export interface CollectionRunStatsResponse {
+  /** @minimum 0 */
+  comment_count: number;
+  /** @minimum 0 */
+  content_count: number;
+  /** @minimum 0 */
+  failed_count: number;
+  /** @minimum 0 */
+  filtered_count?: number;
+  /** @minimum 0 */
+  requested_count: number;
+  /** @minimum 0 */
+  succeeded_count: number;
+}
+
+export type CollectionRuntimeStatus = typeof CollectionRuntimeStatus[keyof typeof CollectionRuntimeStatus];
+
+
+export const CollectionRuntimeStatus = {
+  queued: 'queued',
+  running: 'running',
+  partial_success: 'partial_success',
+  succeeded: 'succeeded',
+  failed: 'failed',
+  cancelled: 'cancelled',
+} as const;
+
+/**
+ * Provider-neutral Scope 进度；不公开 Provider 私有分页状态。
+ */
+export interface CollectionScopeResponse {
+  finished_at?: string | null;
+  id: string;
+  operation_group: string;
+  platform: CollectionPlatform;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  progress: number;
+  source_type: string;
+  started_at?: string | null;
+  stats: CollectionRunStatsResponse;
+  status: CollectionRuntimeStatus;
+  stop_reason?: string | null;
+}
+
+export interface CollectionRunResponse {
+  /** @minimum 0 */
+  attempt: number;
+  created_at: string;
+  error_code?: string | null;
+  error_summary?: string | null;
+  finished_at?: string | null;
+  import_batch_id?: string | null;
+  job_id: string;
+  keywords?: string[];
+  /** @exclusiveMinimum 0 */
+  max_attempts: number;
+  mode: CollectionRunMode;
+  platforms: CollectionPlatform[];
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  progress: number;
+  run_id: string;
+  scopes: CollectionScopeResponse[];
+  stage: string;
+  started_at?: string | null;
+  stats: CollectionRunStatsResponse;
+  status: CollectionRuntimeStatus;
+}
+
+export interface ImportStatsResponse {
+  /** @minimum 0 */
+  duplicates_removed?: number;
+  /** @minimum 0 */
+  rows_filtered_out?: number;
+  /** @minimum 0 */
+  rows_ingested?: number;
+  /** @minimum 0 */
+  rows_matched?: number;
+  /** @minimum 0 */
+  rows_rejected?: number;
+  /** @minimum 0 */
+  rows_seen?: number;
+}
+
+export type CollectionRuntimeRecordType = typeof CollectionRuntimeRecordType[keyof typeof CollectionRuntimeRecordType];
+
+
+export const CollectionRuntimeRecordType = {
+  excel_import: 'excel_import',
+  tikhub_discovery: 'tikhub_discovery',
+  tikhub_batch_supplement: 'tikhub_batch_supplement',
+} as const;
+
+export interface CollectionRuntimeItemResponse {
+  collection_run_id?: string | null;
+  collection_stats?: CollectionRunStatsResponse | null;
+  created_at: string;
+  display_name: string;
+  error_code?: string | null;
+  error_summary?: string | null;
+  finished_at?: string | null;
+  import_batch_id?: string | null;
+  import_stats?: ImportStatsResponse | null;
+  job_id: string;
+  keywords?: string[];
+  platforms?: CollectionPlatform[];
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  progress: number;
+  record_id: string;
+  record_type: CollectionRuntimeRecordType;
+  source_filename?: string | null;
+  stage: string;
+  started_at?: string | null;
+  status: CollectionRuntimeStatus;
+}
+
+export interface CollectionRuntimeListResponse {
+  has_more: boolean;
+  items: CollectionRuntimeItemResponse[];
+  next_cursor?: string | null;
+}
+
+export interface CollectionRuntimeSummaryResponse {
+  as_of: string;
+  /** @minimum 0 */
+  completed_today_count: number;
+  /** @minimum 0 */
+  contents_ingested_today: number;
+  /** @minimum 0 */
+  processing_count: number;
+}
+
 export interface CommentCoverageResponse {
   /** @minimum 0 */
   collected_count: number;
@@ -325,21 +545,6 @@ export const ImportStage = {
   cancelled: 'cancelled',
 } as const;
 
-export interface ImportStatsResponse {
-  /** @minimum 0 */
-  duplicates_removed?: number;
-  /** @minimum 0 */
-  rows_filtered_out?: number;
-  /** @minimum 0 */
-  rows_ingested?: number;
-  /** @minimum 0 */
-  rows_matched?: number;
-  /** @minimum 0 */
-  rows_rejected?: number;
-  /** @minimum 0 */
-  rows_seen?: number;
-}
-
 export type ImportBatchStatus = typeof ImportBatchStatus[keyof typeof ImportBatchStatus];
 
 
@@ -471,6 +676,24 @@ export interface ReadinessResponse {
   status: ReadinessResponseStatus;
 }
 
+export type ListCollectionRuntimeRunsParams = {
+search?: string | null;
+/**
+ * @maxItems 3
+ */
+record_types?: CollectionRuntimeRecordType[];
+status?: CollectionRuntimeStatus | null;
+stage?: string | null;
+created_from?: string | null;
+created_to?: string | null;
+cursor?: string | null;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+};
+
 export type ListContentsParams = {
 search?: string | null;
 /**
@@ -509,6 +732,176 @@ cursor?: string | null;
  */
 limit?: number;
 };
+
+export const getGetCollectionCapabilitiesUrl = () => {
+
+
+
+
+  return `/api/v1/collection-capabilities`
+}
+
+/**
+ * @summary Get Collection Capabilities
+ */
+export const getCollectionCapabilities = async ( options?: RequestInit): Promise<CollectionCapabilitiesResponse> => {
+
+  const res = await fetch(getGetCollectionCapabilitiesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CollectionCapabilitiesResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCreateCollectionRunUrl = () => {
+
+
+
+
+  return `/api/v1/collection-runs`
+}
+
+/**
+ * @summary Create Collection Run
+ */
+export const createCollectionRun = async (collectionRunCreateRequest: CollectionRunCreateRequest, options?: RequestInit): Promise<CollectionRunCreatedResponse> => {
+
+  const res = await fetch(getCreateCollectionRunUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(collectionRunCreateRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CollectionRunCreatedResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetCollectionRunUrl = (runId: string,) => {
+
+
+
+
+  return `/api/v1/collection-runs/${runId}`
+}
+
+/**
+ * @summary Get Collection Run
+ */
+export const getCollectionRun = async (runId: string, options?: RequestInit): Promise<CollectionRunResponse> => {
+
+  const res = await fetch(getGetCollectionRunUrl(runId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CollectionRunResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getListCollectionRuntimeRunsUrl = (params?: ListCollectionRuntimeRunsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    const explodeParameters = ["record_types"];
+
+    if (Array.isArray(value) && explodeParameters.includes(key)) {
+      value.forEach((v) => {
+        normalizedParams.append(key, v === null ? 'null' : String(v));
+      });
+      return;
+    }
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/collection-runtime/runs?${stringifiedParams}` : `/api/v1/collection-runtime/runs`
+}
+
+/**
+ * @summary List Collection Runtime Runs
+ */
+export const listCollectionRuntimeRuns = async (params?: ListCollectionRuntimeRunsParams, options?: RequestInit): Promise<CollectionRuntimeListResponse> => {
+
+  const res = await fetch(getListCollectionRuntimeRunsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CollectionRuntimeListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetCollectionRuntimeSummaryUrl = () => {
+
+
+
+
+  return `/api/v1/collection-runtime/summary`
+}
+
+/**
+ * @summary Get Collection Runtime Summary
+ */
+export const getCollectionRuntimeSummary = async ( options?: RequestInit): Promise<CollectionRuntimeSummaryResponse> => {
+
+  const res = await fetch(getGetCollectionRuntimeSummaryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CollectionRuntimeSummaryResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
 
 export const getGetContentAnalysisJobUrl = (jobId: string,) => {
 

@@ -90,6 +90,14 @@ class PostgresProviderConfigRepository:
         )
         return None if row is None else _provider_config_from_row(row)
 
+    def list_enabled(self) -> tuple[ProviderConfig, ...]:
+        rows = self._session.execute(
+            select(provider_configs_table)
+            .where(provider_configs_table.c.enabled.is_(True))
+            .order_by(provider_configs_table.c.display_name, provider_configs_table.c.id)
+        ).mappings()
+        return tuple(_provider_config_from_row(row) for row in rows)
+
     def create(self, config: ProviderConfig) -> ProviderConfig:
         now = func.clock_timestamp()
         row = (

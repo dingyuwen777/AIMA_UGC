@@ -68,8 +68,8 @@
 
 ## 当前开发状态
 
-**Stage 1—7、临时 P1、Stage 8A、Stage 8B、Stage 8C 与 Stage 8D 已闭环。Stage 8D 的完整交付证据
-由对应归档 Change 维护；下一正式最小开发单元是 Stage 8E TikHub 辅助补采。**
+**Stage 1—7、临时 P1 与 Stage 8A—8E 已闭环。Stage 8E 的完整交付证据由对应归档 Change 维护；
+下一正式最小开发单元是 Stage 8F Keyword / Relevance / Plan 与 Stage 8 集成。**
 
 Stage 8A 与 Stage 8B 当前 `main` 机器边界：
 
@@ -84,8 +84,12 @@ Stage 8A 与 Stage 8B 当前 `main` 机器边界：
 - 系统全局唯一启用的 Relevance Keyword Pack 保存在 PostgreSQL，Import Job 和 Collection Run 冻结配置快照；所有渠道都在 Mapper 后、正式 Content Ingestion 前执行同一 Relevance Service；
 - Import Batch 和 Import Job 支持按 ID 查询，固定响应、统一错误结构和 `request_id` 已进入 OpenAPI，并由现有 Orval 流程生成 TypeScript Client；
 - Stage 8C 增加只读 Batch 列表、北京时间 Summary、查询绑定的 HMAC Cursor，以及通过 Feature
-  API/Pinia/生成 Client 调用的 Vue 采集运行中心；页面只覆盖 Excel Import，不冒充 Content Center、
-  TikHub 补采或 Relevance 配置页面；
+  API/Pinia/生成 Client 调用的 Vue 采集运行中心；
+- Stage 8D 增加渠道无关的“声音广场”、Content 详情/Coverage、current Analysis 全部有序标签，以及
+  显式 durable Analysis/Excel Export；没有真实媒体时保持文本优先；
+- Stage 8E 在采集运行中心集中查询 Excel Import 与 TikHub Run；一次性 Discovery 和 Batch 补采均创建
+  既有 `collection.run.v1` Job，Batch 补采通过可空外键关联 Import Batch，并复用正式 Detail/Comment、
+  Raw、Mapper、全局 Relevance 与 Fenced Content Ingestion；
 - 数据库模式只连接开发者已经准备好的 PostgreSQL 18，不管理 Docker，不自动执行 Alembic Migration，Schema 不满足要求时关闭失败。
 
 Stage 7 已完成并固化：
@@ -122,32 +126,15 @@ P1 已固化的长期能力：
 
 ## 下一正式最小开发单元
 
-### Stage 8E：TikHub 辅助补采
+### Stage 8F：Keyword / Relevance / Plan 与 Stage 8 Integration
 
-Stage 8D 已完成用户可见“声音广场”、统一 Content Query/详情、current Analysis 持久化与全部标签展示、
-显式 Analysis Job，以及 durable Excel Export/Artifact 下载。系统全局 Relevance Keyword Pack 配置页面
-仍按已批准边界留到 Stage 8F。Stage 8D 经用户批准使用固定截图作为一次性视觉例外；例外、资产哈希和
-未来 Figma 兼容边界保存在对应 Change，不修改 Blueprint 16 的长期 Figma 规则。
+Stage 8E 已完成采集运行中心的 Excel/TikHub 集中视图、一次性 Discovery、基于 Import Batch 的补采、
+Collection Run 详情及生成 Client/Vue 闭环。系统全局 Relevance 仍与 Discovery 搜索词分离；Stage 8E
+输入的关键词只属于一次 Run，不保存成词包。
 
-开始 Stage 8E 时仍必须重新从当时 `main` 恢复事实：
-
-```text
-AGENTS.md
-→ .agents/skills/reliable-vibe-coding/SKILL.md
-→ docs/blueprint/README.md
-→ docs/blueprint/07-技术决策与实施门禁.md
-→ docs/blueprint/17-Stage8数据入口统一入库与业务前端实施.md
-→ docs/blueprint/02-采集系统与数据标准化.md
-→ docs/blueprint/03-数据库与文件存储.md
-→ docs/blueprint/04-后端任务API与前端.md
-→ docs/API接口说明.md
-→ changes/active 与 Stage 8D 归档 Change
-→ 当前 main / Content Contract / Migration / OpenAPI / generated client / backend Query/Service / frontend 结构与测试
-```
-
-Stage 8E 的目标边界以 Blueprint 17 为准：从 Batch/Content 上下文显式发起 TikHub 辅助补采，复用
-正式 Collection Run/Job 与统一 Content Ingestion；不向 UI 泄露 Provider 私有分页参数，不提前实现
-Stage 8F Relevance/Plan 配置页面。
+Stage 8F 从当时最新 `main` 重新恢复事实后，最小范围是把已存在的 Keyword Pack/全局 Relevance 与
+Collection Plan 机器能力产品化为保存/配置页面，完成 Stage 8 跨页面集成。Provider Config/Secret 写入、
+认证权限、自动付费运行、Budget/Cost Guard 与 Release 能力仍需各自已批准边界，不能借收口阶段扩入。
 
 ### 独立于 Stage 8A 的后续门禁
 

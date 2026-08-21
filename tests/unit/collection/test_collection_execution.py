@@ -28,6 +28,7 @@ class RecordingCollectionRepository:
         scopes,
         manual_plan_id,
         occurrence_id,
+        import_batch_id,
     ) -> CollectionExecution:
         self.calls.append(
             {
@@ -37,6 +38,7 @@ class RecordingCollectionRepository:
                 "scopes": scopes,
                 "manual_plan_id": manual_plan_id,
                 "occurrence_id": occurrence_id,
+                "import_batch_id": import_batch_id,
             }
         )
         return self.result
@@ -71,8 +73,25 @@ def test_service_creates_supported_run_with_immutable_scope_sequence() -> None:
             "scopes": tuple(scopes),
             "manual_plan_id": None,
             "occurrence_id": None,
+            "import_batch_id": None,
         }
     ]
+
+
+def test_service_passes_optional_import_batch_binding_to_repository() -> None:
+    repository = RecordingCollectionRepository()
+    service = CollectionExecutionService(repository)
+    import_batch_id = uuid4()
+
+    service.create_run(
+        job_id=uuid4(),
+        trigger_type="api",
+        config_snapshot={},
+        scopes=(),
+        import_batch_id=import_batch_id,
+    )
+
+    assert repository.calls[0]["import_batch_id"] == import_batch_id
 
 
 @pytest.mark.parametrize("trigger_type", ["manual", "api", "backfill"])

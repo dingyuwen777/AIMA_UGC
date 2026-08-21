@@ -52,6 +52,7 @@ class CollectionRunRecord:
     comment_count: int
     error_summary: str | None
     created_at: datetime
+    import_batch_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,6 +98,7 @@ class CollectionExecutionRepository(Protocol):
         scopes: tuple[CollectionScopeDefinition, ...],
         manual_plan_id: UUID | None,
         occurrence_id: UUID | None,
+        import_batch_id: UUID | None,
     ) -> CollectionExecution: ...
 
 
@@ -129,6 +131,7 @@ class CollectionExecutionService:
         scopes: tuple[CollectionScopeDefinition, ...] | list[CollectionScopeDefinition],
         manual_plan_id: UUID | None = None,
         occurrence_id: UUID | None = None,
+        import_batch_id: UUID | None = None,
     ) -> CollectionExecution:
         """创建 queued Run/Scopes；事务提交或回滚由调用方负责。"""
         if trigger_type not in self._SUPPORTED_TRIGGERS:
@@ -158,4 +161,5 @@ class CollectionExecutionService:
             scopes=scope_sequence,
             manual_plan_id=manual_plan_id,
             occurrence_id=occurrence_id,
+            import_batch_id=import_batch_id,
         )

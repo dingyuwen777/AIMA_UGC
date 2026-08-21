@@ -2,8 +2,12 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const featureApi = vi.hoisted(() => ({
+  fetchCollectionRuntimeList: vi.fn(),
+  fetchCollectionRuntimeSummary: vi.fn(),
+  fetchCollectionRunDetail: vi.fn(),
+  fetchCollectionCapabilities: vi.fn(),
+  createTikHubCollectionRun: vi.fn(),
   fetchImportBatchList: vi.fn(),
-  fetchImportBatchSummary: vi.fn(),
   fetchImportBatchDetail: vi.fn(),
   uploadImportBatch: vi.fn(),
 }))
@@ -16,15 +20,15 @@ describe('import batches store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
-    featureApi.fetchImportBatchList.mockResolvedValue({
+    featureApi.fetchCollectionRuntimeList.mockResolvedValue({
       items: [],
       has_more: false,
       next_cursor: null,
     })
-    featureApi.fetchImportBatchSummary.mockResolvedValue({
+    featureApi.fetchCollectionRuntimeSummary.mockResolvedValue({
       processing_count: 0,
       completed_today_count: 0,
-      rows_ingested_today: 0,
+      contents_ingested_today: 0,
       as_of: '2026-08-21T00:00:00Z',
     })
   })
@@ -39,21 +43,21 @@ describe('import batches store', () => {
 
     await store.refresh()
 
-    expect(featureApi.fetchImportBatchList).toHaveBeenCalledOnce()
-    expect(featureApi.fetchImportBatchSummary).toHaveBeenCalledOnce()
+    expect(featureApi.fetchCollectionRuntimeList).toHaveBeenCalledOnce()
+    expect(featureApi.fetchCollectionRuntimeSummary).toHaveBeenCalledOnce()
     expect(store.summary?.processing_count).toBe(0)
     expect(store.loading).toBe(false)
   })
 
   it('appends the next cursor page without replacing existing rows', async () => {
-    featureApi.fetchImportBatchList
+    featureApi.fetchCollectionRuntimeList
       .mockResolvedValueOnce({
-        items: [{ id: 'batch-1' }],
+        items: [{ record_id: 'batch-1' }],
         has_more: true,
         next_cursor: 'next-page',
       })
       .mockResolvedValueOnce({
-        items: [{ id: 'batch-2' }],
+        items: [{ record_id: 'batch-2' }],
         has_more: false,
         next_cursor: null,
       })
@@ -62,8 +66,8 @@ describe('import batches store', () => {
 
     await store.loadNext()
 
-    expect(store.items.map((item) => item.id)).toEqual(['batch-1', 'batch-2'])
-    expect(featureApi.fetchImportBatchList).toHaveBeenLastCalledWith(
+    expect(store.items.map((item) => item.record_id)).toEqual(['batch-1', 'batch-2'])
+    expect(featureApi.fetchCollectionRuntimeList).toHaveBeenLastCalledWith(
       expect.objectContaining({ cursor: 'next-page' }),
     )
   })
@@ -74,8 +78,8 @@ describe('import batches store', () => {
       visibilityState: 'hidden' as DocumentVisibilityState,
     })
     vi.stubGlobal('document', documentStub)
-    featureApi.fetchImportBatchList.mockResolvedValue({
-      items: [{ id: 'batch-1', status: 'running' }],
+    featureApi.fetchCollectionRuntimeList.mockResolvedValue({
+      items: [{ record_id: 'batch-1', status: 'running' }],
       has_more: false,
       next_cursor: null,
     })
@@ -85,13 +89,13 @@ describe('import batches store', () => {
     vi.clearAllMocks()
 
     await vi.advanceTimersByTimeAsync(5000)
-    expect(featureApi.fetchImportBatchList).not.toHaveBeenCalled()
+    expect(featureApi.fetchCollectionRuntimeList).not.toHaveBeenCalled()
 
     documentStub.visibilityState = 'visible'
     documentStub.dispatchEvent(new Event('visibilitychange'))
     await vi.runAllTicks()
 
-    expect(featureApi.fetchImportBatchList).toHaveBeenCalledOnce()
+    expect(featureApi.fetchCollectionRuntimeList).toHaveBeenCalledOnce()
     store.stopPolling()
   })
 })

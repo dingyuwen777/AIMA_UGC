@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import unicodedata
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from aima_ugc.contracts.collection.models import BusinessOperation
 
 type ImportBatchStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 
@@ -170,6 +173,246 @@ class ImportBatchSummaryResponse(BaseModel):
     processing_count: int = Field(ge=0)
     completed_today_count: int = Field(ge=0)
     rows_ingested_today: int = Field(ge=0)
+    as_of: datetime
+
+
+type CollectionPlatform = Literal["xhs", "douyin", "weibo", "bilibili", "kuaishou"]
+type CollectionRunMode = Literal["discovery", "batch_supplement"]
+type CollectionRuntimeRecordType = Literal[
+    "excel_import",
+    "tikhub_discovery",
+    "tikhub_batch_supplement",
+]
+type CollectionRuntimeStatus = Literal[
+    "queued",
+    "running",
+    "partial_success",
+    "succeeded",
+    "failed",
+    "cancelled",
+]
+
+
+class CollectionRunPlatformRequest(BaseModel):
+    """一次手工 Collection Run 的平台与正式 Provider Config 选择。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    platform: CollectionPlatform
+    provider_config_id: UUID
+
+
+class CollectionRunCreateRequest(BaseModel):
+    """Stage 8E 一次性发现或基于 Batch 补采请求。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: CollectionRunMode
+    keywords: tuple[str, ...] = Field(default=(), max_length=100)
+    import_batch_id: UUID | None = None
+    platforms: tuple[CollectionRunPlatformRequest, ...] = Field(min_length=1, max_length=5)
+    include_comments: bool = True
+    include_sub_comments: bool = False
+
+    @field_validator("keywords", mode="before")
+    @classmethod
+    def normalize_keywords(cls, value: object) -> object:
+        if not isinstance(value, (list, tuple)):
+            return value
+        if len(value) > 100:
+            raise ValueError("一次性 Discovery 关键词最多 100 个")
+        normalized: list[object] = []
+        identities: set[str] = set()
+        for raw in value:
+            if not isinstance(raw, str):
+                normalized.append(raw)
+                continue
+            text = unicodedata.normalize("NFKC", raw.strip())
+            if not text:
+                raise ValueError("一次性 Discovery 关键词不能为空")
+            if len(text) > 500:
+                raise ValueError("一次性 Discovery 关键词最多 500 个字符")
+            identity = text.casefold()
+            if identity in identities:
+                continue
+            identities.add(identity)
+            normalized.append(text)
+        return tuple(normalized)
+
+    @model_validator(mode="after")
+    def validate_mode_and_options(self) -> CollectionRunCreateRequest:
+        platforms = [item.platform for item in self.platforms]
+        if len(platforms) != len(set(platforms)):
+            raise ValueError("同一次 Collection Run 的目标平台不得重复")
+        if self.mode == "discovery":
+            if not self.keywords:
+                raise ValueError("主动发现必须提供至少一个一次性 Discovery 关键词")
+            if self.import_batch_id is not None:
+                raise ValueError("主动发现不能关联 Import Batch")
+        else:
+            if self.import_batch_id is None:
+                raise ValueError("基于 Batch 补采必须提供 import_batch_id")
+            if self.keywords:
+                raise ValueError("基于 Batch 补采不能提交 Discovery 关键词")
+        if self.include_sub_comments and not self.include_comments:
+            raise ValueError("采集二级回复时必须同时启用评论采集")
+        return self
+
+
+class CollectionRunCreatedResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: UUID
+    job_id: UUID
+    mode: CollectionRunMode
+    import_batch_id: UUID | None = None
+    status: Literal["queued"] = "queued"
+
+
+class CollectionRunStatsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    requested_count: int = Field(ge=0)
+    succeeded_count: int = Field(ge=0)
+    failed_count: int = Field(ge=0)
+    content_count: int = Field(ge=0)
+    comment_count: int = Field(ge=0)
+    filtered_count: int = Field(default=0, ge=0)
+
+
+class CollectionScopeResponse(BaseModel):
+    """Provider-neutral Scope 进度；不公开 Provider 私有分页状态。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    platform: CollectionPlatform
+    source_type: str
+    operation_group: str
+    status: CollectionRuntimeStatus
+    progress: int = Field(ge=0, le=100)
+    stats: CollectionRunStatsResponse
+    stop_reason: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
+class CollectionRunResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: UUID
+    job_id: UUID
+    mode: CollectionRunMode
+    import_batch_id: UUID | None = None
+    status: CollectionRuntimeStatus
+    stage: str
+    progress: int = Field(ge=0, le=100)
+    attempt: int = Field(ge=0)
+    max_attempts: int = Field(gt=0)
+    platforms: tuple[CollectionPlatform, ...]
+    keywords: tuple[str, ...] = ()
+    stats: CollectionRunStatsResponse
+    scopes: tuple[CollectionScopeResponse, ...]
+    error_summary: str | None = None
+    error_code: str | None = None
+    created_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
+class CollectionProviderConfigResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    provider: str
+    display_name: str
+
+
+class CollectionCapabilityResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str
+    platform: CollectionPlatform
+    operations: tuple[BusinessOperation, ...] = Field(min_length=1)
+
+
+class CollectionCapabilitiesResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider_configs: tuple[CollectionProviderConfigResponse, ...]
+    capabilities: tuple[CollectionCapabilityResponse, ...]
+
+
+class CollectionRuntimeListQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    search: str | None = Field(default=None, min_length=1, max_length=500)
+    record_types: tuple[CollectionRuntimeRecordType, ...] = Field(default=(), max_length=3)
+    status: CollectionRuntimeStatus | None = None
+    stage: str | None = Field(default=None, min_length=1, max_length=100)
+    created_from: datetime | None = None
+    created_to: datetime | None = None
+    cursor: str | None = Field(default=None, min_length=1, max_length=4096)
+    limit: int = Field(default=20, ge=1, le=100)
+
+    @field_validator("created_from", "created_to")
+    @classmethod
+    def validate_aware_datetime(cls, value: datetime | None) -> datetime | None:
+        if value is not None and (value.tzinfo is None or value.utcoffset() is None):
+            raise ValueError("时间筛选必须包含时区")
+        return value
+
+    @model_validator(mode="after")
+    def validate_filters(self) -> CollectionRuntimeListQuery:
+        if len(self.record_types) != len(set(self.record_types)):
+            raise ValueError("运行记录类型筛选不得重复")
+        if (
+            self.created_from is not None
+            and self.created_to is not None
+            and self.created_from > self.created_to
+        ):
+            raise ValueError("created_from 不能晚于 created_to")
+        return self
+
+
+class CollectionRuntimeItemResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    record_id: UUID
+    job_id: UUID
+    record_type: CollectionRuntimeRecordType
+    display_name: str
+    status: CollectionRuntimeStatus
+    progress: int = Field(ge=0, le=100)
+    stage: str
+    import_batch_id: UUID | None = None
+    collection_run_id: UUID | None = None
+    source_filename: str | None = None
+    platforms: tuple[CollectionPlatform, ...] = ()
+    keywords: tuple[str, ...] = ()
+    import_stats: ImportStatsResponse | None = None
+    collection_stats: CollectionRunStatsResponse | None = None
+    error_summary: str | None = None
+    error_code: str | None = None
+    created_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
+class CollectionRuntimeListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: tuple[CollectionRuntimeItemResponse, ...]
+    next_cursor: str | None = None
+    has_more: bool
+
+
+class CollectionRuntimeSummaryResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    processing_count: int = Field(ge=0)
+    completed_today_count: int = Field(ge=0)
+    contents_ingested_today: int = Field(ge=0)
     as_of: datetime
 
 
@@ -487,6 +730,23 @@ class DataExportListResponse(BaseModel):
 
 __all__ = [
     "CommentCoverageResponse",
+    "CollectionCapabilitiesResponse",
+    "CollectionCapabilityResponse",
+    "CollectionPlatform",
+    "CollectionProviderConfigResponse",
+    "CollectionRunCreateRequest",
+    "CollectionRunCreatedResponse",
+    "CollectionRunMode",
+    "CollectionRunPlatformRequest",
+    "CollectionRunResponse",
+    "CollectionRunStatsResponse",
+    "CollectionScopeResponse",
+    "CollectionRuntimeItemResponse",
+    "CollectionRuntimeListQuery",
+    "CollectionRuntimeListResponse",
+    "CollectionRuntimeRecordType",
+    "CollectionRuntimeStatus",
+    "CollectionRuntimeSummaryResponse",
     "ContentAnalysisCreatedResponse",
     "ContentAnalysisJobResultResponse",
     "ContentAnalysisResponse",
