@@ -65,13 +65,16 @@ def render_wordcloud_png(frequencies: Mapping[str, int], output_path: Path) -> P
     low, high = min(weights), max(weights)
     for rank, ((label, _count), weight) in enumerate(zip(items, weights, strict=True)):
         font_size = _font_size(weight, low=low, high=high, rank=rank)
-        placement: tuple[
-            int,
-            int,
-            ImageFont.FreeTypeFont,
-            tuple[int, int, int, int],
-            tuple[int, int, int, int],
-        ] | None = None
+        placement: (
+            tuple[
+                int,
+                int,
+                ImageFont.FreeTypeFont,
+                tuple[int, int, int, int],
+                tuple[int, int, int, int],
+            ]
+            | None
+        ) = None
         for candidate_size in range(font_size, _MIN_FONT_SIZE - 1, -3):
             selected_font = bold_font_path if rank == 0 else font_path
             font = ImageFont.truetype(str(selected_font), candidate_size)
