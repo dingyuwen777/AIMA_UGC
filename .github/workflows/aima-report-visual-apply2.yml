@@ -38,7 +38,6 @@ jobs:
             .github/aima-report-payload/part.04 \
             .github/aima-report-payload/part.05 \
             > /tmp/aima.b64
-          test "$(sha256sum /tmp/aima.b64 | cut -d' ' -f1)" = "0c790986020a399f51605d1b36186a28c0b56dfbb6b6e9357168ac84fa3a5c46"
           base64 -d /tmp/aima.b64 > /tmp/aima.tar.xz
           test "$(sha256sum /tmp/aima.tar.xz | cut -d' ' -f1)" = "ba0635796ea8ba6716191fb584cfaa8ed9a4c4951ff63fd73c653b36e8237cd2"
           tar -xJf /tmp/aima.tar.xz -C .
