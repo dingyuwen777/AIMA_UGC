@@ -66,7 +66,6 @@ _CONTENT_HEADERS = (
     "投币数",
     "下载数",
     "命中关键词",
-    "相关性",
     "发声类型",
     "是否用户真实发声",
     "情感标签",
@@ -118,6 +117,15 @@ _HEADER_ROW_HEIGHT = 16.5
 _DEFAULT_ROW_HEIGHT = 14.5
 _MAX_ROW_HEIGHT = 409.0
 _SECONDARY_LABEL_HEADER = "二级标签"
+_VOICE_TYPE_DISPLAY_NAMES = {
+    "user_voice": "真实用户发声",
+    "creator_marketing": "达人/创作者营销",
+    "brand_official": "品牌官方传播",
+    "dealer_promotion": "经销商/门店推广",
+    "media_information": "媒体/资讯转载",
+    "other_organization": "其他机构传播",
+    "unknown": "无法判断",
+}
 _CONTENT_COLUMN_WIDTHS = {
     "平台": 15,
     "内容ID": 34,
@@ -143,7 +151,6 @@ _CONTENT_COLUMN_WIDTHS = {
     "投币数": 12,
     "下载数": 12,
     "命中关键词": 20,
-    "相关性": 12,
     "发声类型": 18,
     "是否用户真实发声": 16,
     "情感标签": 12,
@@ -596,6 +603,13 @@ def _analysis_label_pairs(
     )
 
 
+def _voice_type_display_name(value: str) -> str:
+    try:
+        return _VOICE_TYPE_DISPLAY_NAMES[value]
+    except KeyError as exc:
+        raise ValueError(f"不支持的发声类型: {value}") from exc
+
+
 def _content_cells(
     sheet: Any,
     content: UnifiedDataExcelContentV1,
@@ -648,8 +662,11 @@ def _content_values(
         (content.coin_count, False, False),
         (content.download_count, False, False),
         ("；".join(content.matched_keywords) or None, False, False),
-        (analysis.relevance if analysis is not None else None, False, False),
-        (analysis.voice_type if analysis is not None else None, False, False),
+        (
+            _voice_type_display_name(analysis.voice_type) if analysis is not None else None,
+            False,
+            False,
+        ),
         (
             "是"
             if analysis is not None and analysis.is_user_voice

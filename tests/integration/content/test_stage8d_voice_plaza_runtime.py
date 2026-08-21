@@ -364,16 +364,14 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
             rows = list(content_sheet.iter_rows(values_only=True))
             headers = list(rows[0])
             data_rows = rows[1:]
-            relevance_index = headers.index("相关性")
+            assert "相关性" not in headers
             voice_type_index = headers.index("发声类型")
             user_voice_index = headers.index("是否用户真实发声")
             secondary_index = headers.index("二级标签")
             assert len(data_rows) == 2
-            assert data_rows[0][relevance_index] == "relevant"
-            assert data_rows[0][voice_type_index] == "user_voice"
+            assert data_rows[0][voice_type_index] == "真实用户发声"
             assert data_rows[0][user_voice_index] == "是"
             assert data_rows[0][secondary_index] == "实际续航表现\n客服与服务态度"
-            assert data_rows[1][relevance_index] is None
             assert data_rows[1][voice_type_index] is None
             assert data_rows[1][user_voice_index] is None
             assert data_rows[1][secondary_index] is None
@@ -475,9 +473,7 @@ def test_irrelevant_analysis_is_auditable_but_hidden_from_default_voice_plaza(
                 connection.scalar(
                     select(func.count())
                     .select_from(analysis_content_label_pairs_table)
-                    .where(
-                        analysis_content_label_pairs_table.c.analysis_result_id == stored.id
-                    )
+                    .where(analysis_content_label_pairs_table.c.analysis_result_id == stored.id)
                 )
                 == 0
             )
@@ -485,9 +481,7 @@ def test_irrelevant_analysis_is_auditable_but_hidden_from_default_voice_plaza(
                 select(
                     analysis_content_request_items_table.c.status,
                     analysis_content_request_items_table.c.analysis_result_id,
-                ).where(
-                    analysis_content_request_items_table.c.request_id == created.request_id
-                )
+                ).where(analysis_content_request_items_table.c.request_id == created.request_id)
             ).one()
             assert request_item.status == "succeeded"
             assert request_item.analysis_result_id == stored.id

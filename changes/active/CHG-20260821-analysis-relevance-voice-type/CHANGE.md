@@ -64,7 +64,7 @@ data_changes:
 - [ ] 正式 Analysis Result 表可持久化 relevant 与 irrelevant 历史；历史 V1/V2 数据迁移为 `relevant + unknown`，不丢标签和情感。
 - [ ] 默认 Content 查询、查询型 Analysis target 和查询型 Export 不返回当前配置已判 irrelevant 的内容；显式 `relevance=irrelevant` 可用于审计查看。
 - [ ] Content HTTP Analysis 响应暴露 `relevance`、`voice_type`、`is_user_voice`；旧 pending/stale 仍保持空分析字段。
-- [ ] Excel 在包含 Analysis 时增加“相关性 / 发声类型 / 是否用户真实发声”列；irrelevant 只有在显式审计数据源传入时才可能出现。
+- [ ] Excel 不展示“相关性”列；“发声类型”按稳定英文枚举映射为中文，“是否用户真实发声”由 `voice_type == user_voice` 派生为“是/否”；业务 Excel 不输出 irrelevant 行。
 - [ ] Contract JSON Schema、OpenAPI、TypeScript Client 按仓库生成流程同步。
 - [ ] 目标测试、Analysis/Content/Export 相关测试、Migration/Contract、四项质量门禁和完整 CI 通过。
 
@@ -125,6 +125,9 @@ data_changes:
 结论：当前不采用。
 
 用户已明确：发声类型需要按“用户真实体验/个人表达、营销推广、官方传播、媒体转载等”合理分类，并授权按该目标细化类型。采用上面的 7 类，其中 `is_user_voice` 仅由 `voice_type == user_voice` 派生，避免数据库存两份可能不一致的事实。
+
+- 用户后续进一步确认：所有判断必须在同一次 AI 打标过程中完成；Excel 删除“相关性”列；发声类型显示中文；判定无关的完整业务记录从最终离线数据集删除。`is_user_voice` 继续作为同一打标结果中 `voice_type` 的确定性派生字段，不增加第二次模型调用或第二份可冲突事实。
+- 用户新增开发规范决定：实施方案、代码、Contract、Schema、Migration、配置、测试或运行行为与正式 Blueprint/README/API 文档不一致时，必须在同一任务中确认正确事实源并同步修正实现或文档；该门禁同步固化到 `reliable-vibe-coding` Skill。
 
 # 相关性规则
 
