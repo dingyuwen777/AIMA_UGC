@@ -1,0 +1,130 @@
+name: DEV Remove Derived User Voice Runner
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    if: github.event.pull_request.number == 128 && github.event.pull_request.head.ref == 'feature/remove-derived-user-voice-final2'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout feature head
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/remove-derived-user-voice-final2
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24.19.0
+
+      - name: Install locked environments
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+          npm ci --prefix frontend
+
+      - name: Apply implementation script from feature runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/dev-remove-derived-user-voice.yml').read_text(encoding='utf-8')
+          marker = "          python - <<'PY'\n"
+          start = workflow.index(marker) + len(marker)
+          end = workflow.index("\n          PY\n", start)
+          body = workflow[start:end]
+          lines = []
+          for line in body.splitlines():
+              if line.startswith('          '):
+                  line = line[10:]
+              lines.append(line)
+          script = '\n'.join(lines) + '\n'
+          Path('/tmp/apply_remove_user_voice.py').write_text(script, encoding='utf-8')
+          PY
+          python /tmp/apply_remove_user_voice.py
+
+      - name: Format and generate contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff format backend tests scripts
+          uv run python scripts/contracts/generate.py
+          npm --prefix frontend run generate:api
+
+      - name: Focused Green validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest \
+            tests/contracts/test_user_voice_single_source_contract.py \
+            tests/contracts/test_analysis_relevance_voice_http.py \
+            tests/contracts/test_stage8d_http.py \
+            tests/api/test_stage8d_contents.py \
+            tests/unit/analysis/test_analysis_relevance_voice_v3.py \
+            tests/unit/platform/test_excel_export.py \
+            tests/unit/platform/test_p1g_labeled_excel.py \
+            tests/unit/collection/test_imports_test_export.py \
+            -q
+          uv run ruff format --check backend tests scripts
+          uv run ruff check backend tests scripts
+          uv run mypy backend/src
+          uv run python scripts/contracts/generate.py --check
+          uv run python scripts/contracts/check_compatibility.py
+          uv run python scripts/quality/check_docs.py
+          npm --prefix frontend run typecheck
+          npm --prefix frontend run build
+
+      - name: Commit verified feature changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -- .github/workflows/dev-remove-derived-user-voice.yml
+          git add -- \
+            backend/src/aima_ugc/contracts/analysis/content_label.py \
+            backend/src/aima_ugc/contracts/http.py \
+            backend/src/aima_ugc/contracts/export/models.py \
+            backend/src/aima_ugc/bootstrap/content_http.py \
+            backend/src/aima_ugc/adapters/persistence/postgres/reporting.py \
+            backend/src/aima_ugc/platform/export/excel.py \
+            backend/src/aima_ugc/adapters/providers/imports_test/test.py \
+            backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md \
+            backend/src/aima_ugc/modules/analysis/README.md \
+            backend/src/aima_ugc/adapters/providers/imports_test/README.md \
+            docs/blueprint/13-统一数据Excel导出与调试复用.md \
+            docs/blueprint/15-舆情AI打标与统一分析契约.md \
+            changes/active/CHG-20260821-remove-derived-user-voice/CHANGE.md \
+            tests/contracts/test_user_voice_single_source_contract.py \
+            tests/contracts/test_analysis_relevance_voice_http.py \
+            tests/contracts/test_stage8d_http.py \
+            tests/api/test_stage8d_contents.py \
+            tests/unit/analysis/test_analysis_relevance_voice_v3.py \
+            tests/integration/content/test_stage8d_voice_plaza_runtime.py \
+            tests/unit/platform/test_excel_export.py \
+            tests/unit/platform/test_p1g_labeled_excel.py \
+            tests/unit/collection/test_imports_test_export.py \
+            contracts/export/unified-data-excel.v1.schema.json \
+            contracts/openapi/openapi.json \
+            frontend/src/generated/api/client.ts
+          git diff --cached --check
+          git commit -m "收敛发声类型单一事实并优化AI判定"
+          git push origin HEAD:feature/remove-derived-user-voice-final2
