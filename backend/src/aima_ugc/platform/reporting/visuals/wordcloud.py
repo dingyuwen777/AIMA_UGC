@@ -78,7 +78,13 @@ def render_wordcloud_png(frequencies: Mapping[str, int], output_path: Path) -> P
         for candidate_size in range(font_size, _MIN_FONT_SIZE - 1, -3):
             selected_font = bold_font_path if rank == 0 else font_path
             font = ImageFont.truetype(str(selected_font), candidate_size)
-            bbox = draw.textbbox((0, 0), label, font=font)
+            raw_bbox = draw.textbbox((0, 0), label, font=font)
+            bbox = (
+                int(round(raw_bbox[0])),
+                int(round(raw_bbox[1])),
+                int(round(raw_bbox[2])),
+                int(round(raw_bbox[3])),
+            )
             text_width = int(math.ceil(bbox[2] - bbox[0]))
             text_height = int(math.ceil(bbox[3] - bbox[1]))
             position = _find_position(text_width, text_height, placed)
