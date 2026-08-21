@@ -2,9 +2,9 @@
 
 本文件是 AIMA_UGC 所有 AI Coding Agent 和人工开发者的统一入口。
 
-先记住一条原则：**不要从聊天或旧文档猜当前实现。先找到当前机器事实，再做最小、可验证的修改。**
+先记住一条原则：**不要从聊天、历史 Stage 或旧文档猜当前实现。先找到当前机器事实，再做最小、可验证的修改。**
 
-精确机器事实由代码、Pydantic Contract、生成 OpenAPI/JSON Schema、Alembic Migration、测试和锁文件维护；长期架构由 `docs/blueprint/` 维护；专题细节和调试由 `docs/appendix/` 维护；开发工作流由 `docs/guides/` 维护。
+精确机器事实由代码、Pydantic Contract、生成 OpenAPI/JSON Schema、Alembic Migration、测试和锁文件维护；长期架构由 `docs/blueprint/` 维护；专题实现和调试由 `docs/appendix/` 维护；开发工作流由 `docs/guides/` 维护。
 
 ## 1. 开始前
 
@@ -13,30 +13,34 @@
 1. 先读本文件；
 2. 读取 `.agents/skills/reliable-vibe-coding/SKILL.md` 并按其任务路由执行；该 Skill 不存在或无法读取时明确报告，不能假装已应用；
 3. 再读 `docs/blueprint/README.md` 和 `docs/blueprint/07-技术决策与实施门禁.md`；
-4. 按任务读取对应 Blueprint、Appendix/Guide、模块 README、Contract、Migration、依赖、实现和测试；
-5. 只读取与任务直接相关的内容，不用“全仓全部读一遍”代替真正理解调用链；
-6. 能从仓库确认的事实先自行确认；
-7. 文档与机器事实冲突时，先判断是实现缺陷、文档过期还是新决策，再在同一任务修正正确的一方；
-8. 不从旧系统、历史聊天、模型记忆或单个文件猜测当前实现。
+4. 如果需要快速找到真实代码入口，读 `docs/代码结构与修改导航.md`；
+5. 按任务读取对应 Blueprint、Appendix/Guide、模块 README、Contract、Migration、依赖、实现和测试；
+6. 只读取与任务直接相关的内容，不用“全仓全部读一遍”代替真正理解调用链；
+7. 能从仓库确认的事实先自行确认；
+8. 文档与机器事实冲突时，先判断是实现缺陷、文档过期还是新决策，再在同一任务修正正确的一方；
+9. 不从旧系统、历史聊天、模型记忆或单个文件猜测当前实现。
 
 常见任务导航：
 
 | 任务 | 先读 |
 | --- | --- |
+| 不知道代码在哪、准备实际修改 | `docs/代码结构与修改导航.md` |
 | 总体架构/模块边界 | `docs/blueprint/01-总体架构与技术选型.md` |
 | Provider、Raw、Mapper、Canonical、Ingestion | `docs/blueprint/02-采集系统与数据标准化.md` |
-| PostgreSQL、Schema、Migration、Artifact | `docs/blueprint/03-数据库与文件存储.md`；需要直接 SQL 时再读 `docs/appendix/PostgreSQL调试与常用SQL.md` |
+| PostgreSQL、Schema、Migration、Artifact | `docs/blueprint/03-数据库与文件存储.md`；需要直接 SQL 时再读 `docs/appendix/PostgreSQL查询与调试实战.md` |
 | API、Job、Worker、前端 | `docs/blueprint/04-后端任务API与前端.md` |
 | 日志、安全、部署、备份 | `docs/blueprint/05-日志安全部署与运维.md` + `docs/环境运行与部署.md` |
 | 开发/测试/CI/Git/Stage | `docs/blueprint/06-开发约束与分阶段实施.md` |
 | 重大跨模块决定 | `docs/blueprint/07-技术决策与实施门禁.md` |
 | Collection Plan、Capability、Decision、评论 | `docs/blueprint/08-采集策略与平台能力.md` + `docs/collection/README.md` |
-| Scheduler 运行/停机恢复 | `docs/appendix/Scheduler运行与恢复.md` |
-| TikHub 字段/接口选型 | `docs/appendix/TikHub真实响应结构.md`、`docs/appendix/TikHub接口验证与选型台账.md` + 目标平台文档 |
-| Excel 导入/统一入库 | `docs/appendix/数据入口与统一入库.md`、`docs/appendix/Excel导入导出与离线处理.md` |
-| AI 相关性/发声类型/情感/标签 | `docs/appendix/AI舆情分析与打标.md` + `backend/src/aima_ugc/modules/analysis/README.md` + 当前 Prompt |
-| Word 舆情报告 | `docs/appendix/Word舆情报告.md` + `backend/src/aima_ugc/platform/reporting/README.md` |
-| Figma / Design-to-Code | `docs/guides/前端与Figma工作流.md` + `docs/blueprint/04-后端任务API与前端.md` |
+| Scheduler 运行/停机恢复 | `docs/appendix/Scheduler调度执行与停机恢复.md` |
+| TikHub 真实字段/Mapper | `docs/appendix/TikHub五平台真实响应与字段映射.md` + 目标平台文档 |
+| TikHub API family / 备用接口 | `docs/appendix/TikHub多接口验证与备用策略.md`、`docs/appendix/TikHub接口选型与真实验证台账.md` |
+| Excel 导入/统一入库 | `docs/appendix/数据入口与统一入库实现.md` |
+| Excel 数据明细导出/离线调试 | `docs/appendix/Excel统一数据导出与离线调试.md` |
+| AI 相关性/发声类型/情感/标签 | `docs/appendix/AI舆情打标与分析实现.md` + `backend/src/aima_ugc/modules/analysis/README.md` + 当前 Prompt |
+| Word 舆情报告 | `docs/appendix/Word舆情报告生成与排版实现.md` + `backend/src/aima_ugc/platform/reporting/README.md` |
+| Figma / Design-to-Code | `docs/guides/Figma与前端设计开发工作流.md` + `docs/blueprint/04-后端任务API与前端.md` |
 
 任务开始时按 Skill 判定 L1–L3。L2/L3 先写计划并创建/认领要求的 Change。仓库存在 `openspec/` 后，涉及新能力、行为、数据、接口、架构或安全变化的任务必须按当前 OpenSpec 规则更新对应 change 并通过校验；纯机械文档/格式任务按 Skill 例外处理。不得自行创建与 OpenSpec 工具产物冲突的平行目录。
 
@@ -66,7 +70,7 @@
 
 版本政策：精确版本以 `.python-version`、`.node-version`、`.uv-version`、`uv.lock`、`package-lock.json` 和镜像/Release 锁定事实为准。禁止运行时或构建时解析 `latest`，禁止因为发现新版本就在普通功能任务里升级；升级是独立任务，必须核验官方发布、兼容/安全影响并执行完整门禁。
 
-没有实际问题证据不得主动引入微服务、Redis、Kafka、RabbitMQ、MongoDB、OpenSearch、Kubernetes或多数据库兼容层。
+没有实际问题证据不得主动引入微服务、Redis、Kafka、RabbitMQ、MongoDB、OpenSearch、Kubernetes 或多数据库兼容层。
 
 ## 3. 编码前
 
@@ -237,13 +241,7 @@ AI taxonomy 不允许在 Python、Blueprint、Excel 文档和前端各维护一�
 
 ## 9. Job、Scheduler 与 Provider 恢复
 
-长任务必须走持久化 Job，例如：
-
-- 采集/回补/评论；
-- Excel Import；
-- AI Analysis；
-- Excel Export；
-- 报告/清理等真正长任务。
+当前 Worker 实际注册的持久长任务以 `backend/src/aima_ugc/bootstrap/worker.py` 为准，目前包括 Collection Run、Excel Import、Content Analysis 和 Excel Export。未来把其他长任务产品化时也必须走同一持久 Job Runtime，而不是在 HTTP 请求中长时间执行。
 
 Job 必须支持：
 
@@ -274,9 +272,9 @@ Provider 恢复：
 - Transport 禁止在一次调用中隐藏自动网络重试；
 - 当前不自动跨 TikHub App/Web/V1/V2/V3 API family fallback。
 
-当前版本**不实现请求/金额预算、Budget Account、Reservation Ledger 或发送前 Budget/Cost Guard**。Provider Request/Attempt 和 Analysis 可以保存成本审计事实，但成本记录不等于预算控制。未来预算能力必须通过新的 L3 Change 明确 Contract、Schema、Migration、发送前边界和验证。
+当前版本**不实现请求/金额预算、Budget Account、Reservation Ledger 或发送前 Budget/Cost Guard**。Provider Request/Attempt 可以保存持久 Billing/成本审计事实；LLM 离线/运行调用可以产生 token/cost 元数据，但当前 `analysis_content_results` 不保存 token/cost 列。成本记录不等于预算控制。未来预算能力必须通过新的 L3 Change 明确 Contract、Schema、Migration、发送前边界和验证。
 
-进入 Release 阶段实现协调 Backup/Restore 后，业务写 Unit of Work、Artifact 生命周期和文件 rename/delete 必须参与统一共享/独占 advisory 写屏障，并在取得共享锁后复核维护 epoch；Backup Set 持有独占锁直到数据库与文件捕获完成。当前 Stage 8 已闭环，但**完整 Release 写屏障/协调 Backup-Restore 仍未实现**，不得在文档、测试或交付中伪造为已完成。
+进入正式协调 Backup/Restore 实现后，业务写 Unit of Work、Artifact 生命周期和文件 rename/delete 必须参与统一共享/独占 advisory 写屏障，并在取得共享锁后复核维护 epoch；Backup Set 持有独占锁直到数据库与文件捕获完成。**当前完整 Release 写屏障/协调 Backup-Restore 尚未实现**，不得在文档、测试或交付中伪造为已完成。
 
 正常 Heartbeat 不写 INFO。Secret 不进 Job Payload。
 
@@ -401,13 +399,16 @@ docs/blueprint/01—08
 → 当前代码具体实现、Owner、入口、常见修改点
 
 docs/appendix/
-→ PostgreSQL、Scheduler、TikHub、Excel、AI、Word 报告等专题细节/调试
+→ PostgreSQL、Scheduler、TikHub、Excel、AI、Word 报告等专题实现和调试
 
 docs/guides/
 → Figma 等开发过程指南
 
 docs/collection/
 → 五个平台当前采集实现
+
+docs/代码结构与修改导航.md
+→ 常见开发任务如何定位到真实代码、Contract、表和测试
 
 Contract / Migration / tables.py / generated / tests / locks
 → 精确机器事实
@@ -441,7 +442,8 @@ changes/archive/
 → 输出是什么
 → 数据/调用怎么走
 → 当前代码在哪里
-→ 最小例子
+→ 要改这个行为应该改哪里
+→ 如何验证/调试
 → 限制/未实现
 → 精确事实源
 ```
@@ -453,9 +455,12 @@ changes/archive/
 - 能不用术语就不要为了显得专业而堆术语；
 - 是否引用代码、表名、类名、命令，以是否帮助理解/调试为判断标准；
 - 允许给短、真实、可验证的例子；
-- 不复制第二套完整 Schema、OpenAPI、Prompt taxonomy 或 Migration SQL；
+- Provider 真实 JSON 路径、状态机、执行流程、关键 SQL、恢复边界等理解实现必须知道的内容可以在 Appendix 直接展开；
+- 固定且精确的数据结构优先导航到 `tables.py`、Contract、Prompt、Migration，避免复制第二套会漂移的 Schema；
+- 不复制第二套完整 OpenAPI、Prompt taxonomy 或 Migration SQL；
 - 不用“企业级、先进、高可用”等空泛词替代具体机制；
 - “已实现/未实现/默认行为/限制”必须有当前代码、Migration、Contract、测试或配置依据；
+- 迁移文档职责时只迁移位置和结构，不得因为“精简”删除仍然有效的技术细节；
 - 用户确认的长期业务/技术决定或明确延期，必须在同一任务落到正式事实源，不能只存在于聊天或 Change 历史。
 
 ## 15. Git
