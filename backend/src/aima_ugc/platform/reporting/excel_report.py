@@ -18,6 +18,7 @@ from openpyxl import load_workbook
 from aima_ugc.platform.presentation import platform_display_name
 
 from .markdown_word import WordConversionSummary, convert_markdown_to_docx
+from .visuals.wordcloud import render_wordcloud_png
 
 DEFAULT_REPORT_TEMPLATE_PATH = Path(__file__).with_name("report_template.md")
 
@@ -128,13 +129,19 @@ def generate_excel_report(
 
     actual_date_range = _validate_report_date_range(report_date_range)
     stats = _collect_stats(source_path, report_date_range=actual_date_range)
+    template_text = template.read_text(encoding="utf-8")
+    visual_replacements = _build_visual_replacements(
+        stats,
+        target_dir=target_dir,
+        template_text=template_text,
+    )
     actual_generated_at = generated_at or datetime.now(_BEIJING)
     replacements = _build_template_replacements(
         stats,
         source_path=source_path,
         generated_at=actual_generated_at,
     )
-    template_text = template.read_text(encoding="utf-8")
+    replacements.update(visual_replacements)
     markdown = _render_template(template_text, replacements)
 
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -160,6 +167,34 @@ def generate_excel_report(
         label_rows_excluded_by_period=stats.label_rows_excluded_by_period,
         comment_rows_excluded_by_period=stats.comment_rows_excluded_by_period,
     )
+
+
+def _build_visual_replacements(
+    stats: _ReportStats,
+    *,
+    target_dir: Path,
+    template_text: str,
+) -> dict[str, str]:
+    """只把当前统计结果投影为报告图片资产，不重新计算业务统计。"""
+
+    replacements = {
+        "PRIMARY_WORDCLOUD": "",
+        "KEYWORD_WORDCLOUD": "",
+    }
+    assets_dir = target_dir / "assets"
+    if "{{PRIMARY_WORDCLOUD}}" in template_text:
+        primary_path = render_wordcloud_png(
+            stats.primary_counts,
+            assets_dir / "primary_topics_wordcloud.png",
+        )
+        replacements["PRIMARY_WORDCLOUD"] = f"![一级议题词云](assets/{primary_path.name})"
+    if "{{KEYWORD_WORDCLOUD}}" in template_text:
+        keyword_path = render_wordcloud_png(
+            stats.keyword_counts,
+            assets_dir / "keyword_wordcloud.png",
+        )
+        replacements["KEYWORD_WORDCLOUD"] = f"![热点关键词词云](assets/{keyword_path.name})"
+    return replacements
 
 
 def _collect_stats(
@@ -721,35 +756,13 @@ def _build_template_replacements(
         for label, count in _sorted_counter(stats.negative_secondary_counts)
     ]
 
-    peak_date, peak_count = _peak_day(stats.daily_content)
     executive_metrics = _markdown_table(
         ("关键指标", "本期表现"),
         (
-            ("监测周期", period),
             ("内容声量", stats.content_rows),
             ("评论互动", stats.comment_rows),
             ("覆盖平台", len(stats.platform_counts)),
-            (
-                "正面内容",
-                f"{positive_total}（{_percentage(positive_total, stats.content_rows)}）",
-            ),
-            (
-                "中性内容",
-                f"{stats.sentiment_counts.get('中性', 0)}（"
-                f"{_percentage(stats.sentiment_counts.get('中性', 0), stats.content_rows)}）",
-            ),
-            (
-                "负面内容",
-                f"{negative_total}（{_percentage(negative_total, stats.content_rows)}）",
-            ),
-            (
-                "声量峰值",
-                f"{peak_date.isoformat()} / {peak_count} 条" if peak_date is not None else "暂无",
-            ),
-            ("主要平台", _top_counter_text(stats.platform_counts, stats.content_rows)),
-            ("首要一级议题", _top_counter_text(stats.primary_counts, stats.label_rows)),
-            ("首要二级议题", _top_counter_text(stats.secondary_counts, stats.label_rows)),
-            ("热点关键词", _top_counter_text(stats.keyword_counts, stats.content_rows)),
+            ("负面占比", _percentage(negative_total, stats.content_rows)),
         ),
     )
 
@@ -1084,7 +1097,7 @@ def _markdown_table(headers: Sequence[object], rows: Iterable[Sequence[object]])
 def _markdown_cell(value: object) -> str:
     if value is None:
         return ""
-    text = str(value)
+    text = f"{value:,}" if isinstance(value, int) and not isinstance(value, bool) else str(value)
     return text.replace("\\", "\\\\").replace("|", "\\|").replace("\n", "<br>")
 
 

@@ -26,6 +26,8 @@ summary = generate_excel_report(
 ```text
 reports/report.md
 reports/report.docx
+reports/assets/primary_topics_wordcloud.png
+reports/assets/keyword_wordcloud.png
 ```
 
 `report_date_range` 是可选的北京时间自然日闭区间，只限制报告统计；传 `None` 时使用 Excel
@@ -146,10 +148,11 @@ word/embeddings/chartN.xlsx
 
 因此在支持 Office Chart 编辑的 Word 中，可以选中图表并使用“编辑数据”修改分类、系列和数值；图表仍由 Office 原生引擎显示，可继续调整标题、图例、样式和布局。
 
-当前 Word 视觉规则统一为：图表区不显示外轮廓，折线系列宽度为 2.25 磅，所有饼图的
-百分比标签固定显示小数点后两位；表格使用正文可用宽度、固定且按内容分配的列宽、深蓝
-表头、隔行底色、单元格内边距和数值右对齐。上述规则只改变显示样式，不改变 Markdown
-表格或图表数据。
+当前 Word 使用 A4 横向页面和约 15 mm 页边距。普通表格采用白底/浅灰表头、仅保留轻量
+横向分隔、数值右对齐和重复表头；Top 统计由可编辑文字、数量、占比和 OOXML 占比条组成
+Ranking，而不是图片或额外 Chart。柱状图/折线图继续使用 Office 原生 Chart + 内嵌 XLSX，
+显示数据标签；长分类优先横向条形图。情感每日趋势在 Word 中拆为正面/中性主趋势和
+负面/混合低量级趋势，不使用双 Y 轴。饼图保留可编辑能力并使用克制的蓝灰/语义色。
 
 Markdown 仍保留 Mermaid 源码，Word 只负责把当前支持的 pie/bar/line 语义转换为可编辑 Office Chart。未支持的 Mermaid 类型必须直接失败，不能静默丢图。
 
@@ -162,7 +165,12 @@ DOCX 生成后会重新打开并检查：
 - 每张 Chart 的 Relationship；
 - 每张图内嵌 XLSX 数据包可正常打开。
 
-运行时不依赖 Pandoc、LibreOffice、Matplotlib、pandas、在线 Mermaid 服务或额外 Word Python 库；内嵌图表数据复用仓库已锁定的 openpyxl。
+词云由 Pillow 根据同一份报告统计结果确定性生成 300 DPI PNG，使用 sqrt 频次权重、全水平排布
+和 2–3 个蓝/蓝灰层级；Word 只把词云作为图片打包到 `word/media/`，精确数量仍由 Ranking
+保留。运行环境必须提供可用 CJK 字体：Windows 优先微软雅黑，Linux 优先 Noto Sans CJK /
+Source Han Sans，也可通过 `AIMA_REPORT_CJK_FONT` 指向现有字体；缺失时明确失败。运行时不依赖
+Pandoc、LibreOffice、Matplotlib、pandas、`wordcloud` 库、在线 Mermaid 服务或 `python-docx`；
+内嵌图表数据继续复用 openpyxl。
 
 不同 Office/LibreOffice 版本对主题颜色、字体和分页可能存在轻微视觉差异，因此交付前仍应按目标办公软件做最终视觉抽查；结构测试不能替代所有桌面端渲染差异。
 
@@ -197,6 +205,8 @@ labeled_data.xlsx
 ```text
 reports/report.md
 reports/report.docx
+reports/assets/primary_topics_wordcloud.png
+reports/assets/keyword_wordcloud.png
 ```
 
 `run_all(report_excel_path=...)` 可以显式覆盖报告输入 Excel；但如果只是对一个已经处理好的 Excel 出报告，更直接的方式是绕过前序处理：
@@ -238,7 +248,8 @@ uv run pytest tests/unit/platform/test_imports_test_reporting.py tests/unit/coll
 - DOCX ZIP/关键 OOXML/Office Chart/内嵌 XLSX 结构可校验；
 - 图表系列名称和数值进入内嵌数据工作簿；
 - 已知英文平台 ID 在 Excel、Markdown、Word 和图表中统一显示中文，未知平台保持原值；
-- Word 图表无外轮廓、折线为 2.25 磅、饼图百分比为两位小数，表格使用统一可读样式；
+- Word 为 A4 横向，Editorial Table/Ranking/KPI 分层明确，bar/line 有数据标签，饼图百分比为两位小数；
+- 一级议题与热点关键词词云来自对应统计 Counter，PNG 可重开且正确打包到 `word/media/`；
 - Word 换行节点使用合法 `w:r > w:br` 层级；
 - 未支持 Mermaid 类型关闭失败；
 - `run_all()` 在最终 Excel 后追加报告阶段；

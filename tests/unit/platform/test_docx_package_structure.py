@@ -17,7 +17,7 @@ _C = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 _PKG_REL = "http://schemas.openxmlformats.org/package/2006/relationships"
 
 _PNG_1X1 = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z3i8AAAAASUVORK5CYII="
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC"
 )
 
 
@@ -92,9 +92,7 @@ def test_word_chart_is_editable_office_chart_with_embedded_workbook(tmp_path: Pa
         assert "小红书" in chart_xml
         chart = ET.fromstring(chart_xml_bytes)
         assert chart.find(f"./{{{_C}}}spPr/{{{_A}}}ln/{{{_A}}}noFill") is not None
-        line_outlines = chart.findall(
-            f".//{{{_C}}}lineChart/{{{_C}}}ser/{{{_C}}}spPr/{{{_A}}}ln"
-        )
+        line_outlines = chart.findall(f".//{{{_C}}}lineChart/{{{_C}}}ser/{{{_C}}}spPr/{{{_A}}}ln")
         assert len(line_outlines) == 2
         assert all(outline.get("w") == "28575" for outline in line_outlines)
 

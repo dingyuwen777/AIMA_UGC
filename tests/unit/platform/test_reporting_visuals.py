@@ -104,5 +104,7 @@ def test_default_report_generates_landscape_ranking_and_wordcloud_assets(tmp_pat
         assert page is not None
         assert page.get(f"{{{_W}}}orient") == "landscape"
         assert "01" in archive.read("word/document.xml").decode("utf-8")
-        chart_parts = sorted(name for name in names if name.startswith("word/charts/chart") and name.endswith(".xml"))
+        chart_parts = sorted(
+            name for name in names if name.startswith("word/charts/chart") and name.endswith(".xml")
+        )
         assert len(chart_parts) >= 2

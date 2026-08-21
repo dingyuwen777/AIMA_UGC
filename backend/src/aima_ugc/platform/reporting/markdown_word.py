@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from .chart_spec import ChartSpec
@@ -18,7 +18,10 @@ _TABLE_SEPARATOR_RE = re.compile(r"^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*:?-{3,}:?\s*\
 _PIE_ITEM_RE = re.compile(r'^\s*"(.*)"\s*:\s*(-?\d+(?:\.\d+)?)\s*$')
 _XY_SERIES_RE = re.compile(r"^\s*(line|bar)\s*\[(.*)]\s*$")
 _Y_AXIS_RE = re.compile(r'^\s*y-axis\s+"[^"]*"\s+(-?\d+(?:\.\d+)?)\s*-->\s*(-?\d+(?:\.\d+)?)\s*$')
+_IMAGE_RE = re.compile(r"^!\[([^\]]*)]\(([^)]+)\)\s*$")
+_AIMA_COMMENT_RE = re.compile(r"^<!--\s*aima:([a-z0-9_-]+)=([a-z0-9_-]+)\s*-->$", re.IGNORECASE)
 _SERIES_META_PREFIX = "%% series "
+_BAR_DIRECTION_META_PREFIX = "%% bar-direction "
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +33,7 @@ class WordConversionSummary:
     paragraph_count: int
     table_count: int
     chart_count: int
+    image_count: int = 0
 
 
 def convert_markdown_to_docx(markdown_path: Path, output_path: Path) -> WordConversionSummary:
@@ -45,25 +49,48 @@ def convert_markdown_to_docx(markdown_path: Path, output_path: Path) -> WordConv
         raise FileNotFoundError(source)
 
     builder = DocxBuilder()
-    _parse_markdown(source.read_text(encoding="utf-8"), builder)
+    _parse_markdown(source.read_text(encoding="utf-8"), builder, asset_root=source.parent)
     target.parent.mkdir(parents=True, exist_ok=True)
     builder.save(target)
-    verify_docx(target, expected_charts=builder.chart_count)
+    verify_docx(
+        target,
+        expected_charts=builder.chart_count,
+        expected_images=builder.image_count,
+    )
     return WordConversionSummary(
         markdown_path=source,
         output_path=target,
         paragraph_count=builder.paragraph_count,
         table_count=builder.table_count,
         chart_count=builder.chart_count,
+        image_count=builder.image_count,
     )
 
 
-def _parse_markdown(markdown: str, builder: DocxBuilder) -> None:
+def _parse_markdown(markdown: str, builder: DocxBuilder, *, asset_root: Path) -> None:
     lines = markdown.splitlines()
     index = 0
+    table_style: str | None = None
+    chart_presentation: str | None = None
     while index < len(lines):
         line = lines[index]
         if not line.strip():
+            index += 1
+            continue
+
+        metadata = _parse_aima_comment(line.strip())
+        if metadata is not None:
+            key, value = metadata
+            if key == "table-style":
+                if table_style is not None:
+                    raise ValueError("连续 table-style 元数据没有对应 Markdown 表格")
+                table_style = value
+            elif key == "chart-presentation":
+                if chart_presentation is not None:
+                    raise ValueError("连续 chart-presentation 元数据没有对应 Mermaid 图表")
+                chart_presentation = value
+            else:
+                raise ValueError(f"不支持的 AIMA Markdown 元数据: {key}")
             index += 1
             continue
 
@@ -72,51 +99,163 @@ def _parse_markdown(markdown: str, builder: DocxBuilder) -> None:
             language = fence.group(1).lower()
             block, index = _collect_fence(lines, index + 1)
             if language == "mermaid":
-                builder.add_chart(_parse_mermaid(block))
+                spec = _parse_mermaid(block)
+                _add_chart_with_presentation(builder, spec, chart_presentation)
+                chart_presentation = None
             else:
+                if chart_presentation is not None:
+                    raise ValueError("chart-presentation 后必须紧跟 Mermaid 图表")
                 builder.add_code_block(block)
             continue
 
         heading = _HEADING_RE.match(line)
         if heading:
+            _ensure_no_pending_metadata(table_style, chart_presentation)
             level = len(heading.group(1))
             builder.add_paragraph(heading.group(2).strip(), style=f"Heading{level}")
             index += 1
             continue
 
+        image = _IMAGE_RE.match(line.strip())
+        if image:
+            _ensure_no_pending_metadata(table_style, chart_presentation)
+            image_path = _resolve_markdown_image(asset_root, image.group(2))
+            builder.add_image(image_path, alt_text=image.group(1).strip())
+            index += 1
+            continue
+
         if line.lstrip().startswith(">"):
+            _ensure_no_pending_metadata(table_style, chart_presentation)
             builder.add_paragraph(line.lstrip()[1:].lstrip(), italic=True)
             index += 1
             continue
 
         if _looks_like_table(lines, index):
+            if chart_presentation is not None:
+                raise ValueError("chart-presentation 后必须紧跟 Mermaid 图表")
             headers, rows, index = _collect_table(lines, index)
-            builder.add_table(headers, rows)
+            if table_style is None or table_style == "editorial":
+                builder.add_table(headers, rows)
+            elif table_style == "ranking":
+                builder.add_ranking(headers, rows)
+            elif table_style == "kpi":
+                builder.add_kpi_table(headers, rows)
+            else:
+                raise ValueError(f"不支持的 Word 表格样式: {table_style}")
+            table_style = None
             continue
 
         bullet = _BULLET_RE.match(line)
         if bullet:
+            _ensure_no_pending_metadata(table_style, chart_presentation)
             builder.add_paragraph("• " + bullet.group(1).strip())
             index += 1
             continue
 
         numbered = _NUMBERED_RE.match(line)
         if numbered:
+            _ensure_no_pending_metadata(table_style, chart_presentation)
             builder.add_paragraph(line.strip())
             index += 1
             continue
 
         if line.strip() == "---":
-            builder.add_paragraph("―" * 24, align="center")
+            _ensure_no_pending_metadata(table_style, chart_presentation)
+            builder.add_separator()
             index += 1
             continue
 
+        _ensure_no_pending_metadata(table_style, chart_presentation)
         paragraph_lines = [line.strip()]
         index += 1
         while index < len(lines) and lines[index].strip() and not _starts_block(lines, index):
             paragraph_lines.append(lines[index].strip())
             index += 1
         builder.add_paragraph(" ".join(paragraph_lines))
+
+    _ensure_no_pending_metadata(table_style, chart_presentation)
+
+
+def _parse_aima_comment(line: str) -> tuple[str, str] | None:
+    match = _AIMA_COMMENT_RE.fullmatch(line)
+    if match is None:
+        return None
+    return match.group(1).lower(), match.group(2).lower()
+
+
+def _ensure_no_pending_metadata(table_style: str | None, chart_presentation: str | None) -> None:
+    if table_style is not None:
+        raise ValueError("table-style 后必须紧跟 Markdown 表格")
+    if chart_presentation is not None:
+        raise ValueError("chart-presentation 后必须紧跟 Mermaid 图表")
+
+
+def _resolve_markdown_image(asset_root: Path, raw_target: str) -> Path:
+    target = raw_target.strip()
+    if target.startswith("<") and target.endswith(">"):
+        target = target[1:-1].strip()
+    if not target:
+        raise ValueError("Markdown 图片路径为空")
+    if "://" in target or target.startswith("data:"):
+        raise ValueError("Word 报告不支持远程或 data: Markdown 图片")
+    candidate = Path(target)
+    if candidate.is_absolute():
+        raise ValueError("Word 报告 Markdown 图片必须使用相对路径")
+    root = asset_root.resolve()
+    resolved = (root / candidate).resolve()
+    if resolved != root and root not in resolved.parents:
+        raise ValueError("Markdown 图片路径不能离开报告目录")
+    return resolved
+
+
+def _add_chart_with_presentation(
+    builder: DocxBuilder,
+    spec: ChartSpec,
+    presentation: str | None,
+) -> None:
+    if presentation is None or presentation == "default":
+        builder.add_chart(spec)
+        return
+    if presentation != "sentiment-split":
+        raise ValueError(f"不支持的 Word 图表展示方式: {presentation}")
+    if spec.kind != "line":
+        raise ValueError("sentiment-split 仅支持折线图")
+
+    names = spec.series_names or tuple(f"系列 {index}" for index in range(1, len(spec.series) + 1))
+    main_names = {"正面", "中性"}
+    low_names = {"负面", "混合"}
+    main_indices = [index for index, name in enumerate(names) if name in main_names]
+    low_indices = [index for index, name in enumerate(names) if name in low_names]
+    other_indices = [
+        index
+        for index, name in enumerate(names)
+        if name not in main_names and name not in low_names
+    ]
+    main_indices.extend(other_indices)
+
+    groups = (("主趋势", main_indices), ("低量级趋势", low_indices))
+    rendered = 0
+    for suffix, indices in groups:
+        if not indices:
+            continue
+        group_series = tuple(spec.series[index] for index in indices)
+        if not any(any(value != 0 for value in values) for values in group_series):
+            continue
+        group_names = tuple(names[index] for index in indices)
+        max_value = max((value for values in group_series for value in values), default=0.0)
+        y_max = max(1.0, max_value + max(1.0, (max_value + 9) // 10))
+        builder.add_chart(
+            replace(
+                spec,
+                title=f"{spec.title} · {suffix}",
+                series=group_series,
+                series_names=group_names,
+                y_max=y_max,
+            )
+        )
+        rendered += 1
+    if rendered == 0:
+        builder.add_chart(spec)
 
 
 def _collect_fence(lines: list[str], start: int) -> tuple[str, int]:
@@ -186,6 +325,8 @@ def _starts_block(lines: list[str], index: int) -> bool:
         or _HEADING_RE.match(line)
         or _BULLET_RE.match(line)
         or _NUMBERED_RE.match(line)
+        or _IMAGE_RE.match(line.strip())
+        or _AIMA_COMMENT_RE.fullmatch(line.strip())
         or line.lstrip().startswith(">")
         or line.strip() == "---"
         or _looks_like_table(lines, index)
@@ -241,6 +382,7 @@ def _parse_mermaid_xy(lines: list[str]) -> ChartSpec:
     series_names: tuple[str, ...] = ()
     y_min = 0.0
     y_max: float | None = None
+    bar_direction: str | None = None
     for line in lines[1:]:
         stripped = line.strip()
         if stripped.startswith("title "):
@@ -255,6 +397,12 @@ def _parse_mermaid_xy(lines: list[str]) -> ChartSpec:
             if not isinstance(parsed, list) or not all(isinstance(item, str) for item in parsed):
                 raise ValueError("Mermaid series 元数据必须是字符串数组")
             series_names = tuple(parsed)
+            continue
+        if stripped.startswith(_BAR_DIRECTION_META_PREFIX):
+            value = stripped.removeprefix(_BAR_DIRECTION_META_PREFIX).strip().lower()
+            if value not in {"horizontal", "vertical"}:
+                raise ValueError("Mermaid bar-direction 只支持 horizontal 或 vertical")
+            bar_direction = "bar" if value == "horizontal" else "col"
             continue
         if stripped.startswith("%%"):
             continue
@@ -294,12 +442,19 @@ def _parse_mermaid_xy(lines: list[str]) -> ChartSpec:
         raise ValueError("Mermaid series 名称数量与数据序列数量不一致")
     if not series_names:
         series_names = tuple(f"系列 {index}" for index in range(1, len(series) + 1))
+    kind = next(iter(kinds))
+    if bar_direction is not None and kind != "bar":
+        raise ValueError("bar-direction 只能用于 bar 图表")
     return ChartSpec(
-        kind=next(iter(kinds)),
+        kind=kind,
         title=title,
         categories=categories,
         series=tuple(series),
         series_names=series_names,
         y_min=y_min,
         y_max=y_max,
+        # Word 中分类排名优先横向；显式元数据仍可要求纵向。
+        bar_direction=(
+            bar_direction if bar_direction is not None else ("bar" if kind == "bar" else "col")
+        ),
     )
