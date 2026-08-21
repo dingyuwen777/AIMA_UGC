@@ -1,6 +1,6 @@
-# PostgreSQL 调试与常用 SQL
+# PostgreSQL 查询与调试实战
 
-这篇文档的目的很简单：**页面、Job、导入、采集或 AI 结果看起来不对时，可以直接去 PostgreSQL 核对真实业务事实。**
+这篇文档的目的很简单：**页面、Job、导入、采集或 AI 结果看起来不对时，可以直接去 PostgreSQL 核对真实业务事实，并能顺着表回到对应 Owner 代码。**
 
 它不是第二份数据库 Schema。精确结构始终以：
 
@@ -12,6 +12,11 @@ migrations/versions/
 ```
 
 为准。
+
+如果不知道某张表为什么存在、由谁写，先看：
+
+- [`../blueprint/03-数据库与文件存储.md`](../blueprint/03-数据库与文件存储.md)
+- [`../代码结构与修改导航.md`](../代码结构与修改导航.md)
 
 ## 1. 先理解数据库负责什么
 
@@ -39,9 +44,44 @@ AIMA_UGC 把 PostgreSQL 当作唯一业务事实库：
 
 真正的大文件，例如 Provider Raw、输入/导出 Excel、Word 报告，默认由 ArtifactStore/文件系统保存；数据库保存它们的身份、状态和业务关系。
 
+### 1.1 当前表 Owner 快速地图
+
+```text
+Content
+→ backend/src/aima_ugc/modules/content/tables.py
+→ backend/src/aima_ugc/adapters/persistence/postgres/
+
+Collection
+→ backend/src/aima_ugc/modules/collection/*tables.py
+→ backend/src/aima_ugc/adapters/persistence/postgres/collection*.py
+
+Ingestion
+→ backend/src/aima_ugc/modules/ingestion/tables.py
+
+Analysis
+→ backend/src/aima_ugc/modules/analysis/tables.py
+→ backend/src/aima_ugc/adapters/persistence/postgres/analysis.py
+
+Reporting Export
+→ backend/src/aima_ugc/modules/reporting/tables.py
+→ backend/src/aima_ugc/adapters/persistence/postgres/reporting.py
+
+Job / Artifact
+→ backend/src/aima_ugc/platform/jobs/
+→ backend/src/aima_ugc/platform/storage/
+```
+
+正常业务写入优先走这些 Owner 的 Service/Repository，不把本附录 SQL 当第二套写接口。
+
 ## 2. 连接 PostgreSQL
 
-本地非敏感配置以根目录 `env.local.example` 为准，当前常用变量是：
+本地非敏感配置以根目录 `env.local.example` 和当前 `PlatformSettings` 为准。当前变量映射代码：
+
+```text
+backend/src/aima_ugc/platform/config/settings.py
+```
+
+常用变量：
 
 ```text
 AIMA_DB_HOST
@@ -51,7 +91,7 @@ AIMA_DB_USER
 AIMA_SECRET_DIR
 ```
 
-数据库密码放在：
+数据库密码文件：
 
 ```text
 <AIMA_SECRET_DIR>/postgres_password
@@ -97,10 +137,10 @@ SELECT current_database(), current_user, now();
 ```text
 \dt                  列出表
 \d+ contents         查看表的当前真实列、约束、索引
-\di                   列出索引
-\x on                 宽记录纵向显示
-\timing on            显示 SQL 执行时间
-\q                    退出
+\di                  列出索引
+\x on                宽记录纵向显示
+\timing on           显示 SQL 执行时间
+\q                   退出
 ```
 
 **第一次操作任何表，都先 `\d+ 表名`。** 文档可能落后，数据库本身不会因为文档写错而改变。
@@ -190,6 +230,8 @@ ORDER BY observed_at;
 正文没变，点赞/评论等数字变了
 → content_metric_observations
 ```
+
+如果怀疑“旧数据把新字段覆盖了”，还应检查 `contents.field_observed_at`，并回到 `modules/content/ingestion.py` 看字段 freshness 规则。
 
 ## 6. 看评论
 
@@ -289,14 +331,14 @@ ORDER BY platform, source_type, source_value, operation_group;
 
 ### 7.4 Provider Request
 
-正式 Migration 后 `provider_requests` 的父级恰好一个：
+当前 `provider_requests` 的父级恰好一个：
 
 ```text
 Collection → scope_id
 File Import → import_batch_id
 ```
 
-先用 `\d+ provider_requests` 确认当前数据库已经升级到对应 Revision。
+先用 `\d+ provider_requests` 确认实际数据库已经升级到当前 Revision。
 
 ```sql
 SELECT
@@ -369,7 +411,7 @@ skipped / misfire_superseded
 
 只把最新到期点入队。看到 `skipped` 不等于 Scheduler 丢任务。
 
-详细解释见 [`Scheduler运行与恢复.md`](Scheduler运行与恢复.md)。
+详细解释见 [`Scheduler调度执行与停机恢复.md`](Scheduler调度执行与停机恢复.md)。
 
 ## 9. 看 Excel Import Batch
 
@@ -392,6 +434,18 @@ LIMIT 30;
 ```
 
 Import Batch 是文件导入父事实，不伪造 Collection Run/Scope。
+
+来源反查可以继续：
+
+```text
+processing_import_batches.id
+→ provider_requests.import_batch_id
+→ provider_request_attempts
+→ content_versions.provider_attempt_id
+→ contents
+```
+
+详细链路见 [`数据入口与统一入库实现.md`](数据入口与统一入库实现.md)。
 
 ## 10. 看持久化 Job
 
@@ -455,9 +509,11 @@ WHERE job_id = '这里填 jobs.id'
 ORDER BY event_seq;
 ```
 
+如果 Job 一直 `running`，不要只看 `heartbeat_at`；还要看 `lease_expires_at`、`attempt_deadline_at` 和 Reaper/Worker 日志，Heartbeat 不能无限延长 Attempt Deadline。
+
 ## 11. 看 AI Analysis
 
-当前正式结果表不是 `analysis_results`，而是：
+当前正式结果表：
 
 ```text
 analysis_content_results
@@ -487,7 +543,7 @@ ORDER BY created_at DESC
 LIMIT 30;
 ```
 
-当前 `voice_type` 的合法机器值：
+当前 `voice_type` 合法机器值：
 
 ```text
 user_voice
@@ -499,13 +555,13 @@ other_organization
 unknown
 ```
 
-真实用户发声对应：
+真实用户发声：
 
 ```text
 voice_type = 'user_voice'
 ```
 
-查 AI 判定为无关的结果：
+查 AI 判定为无关：
 
 ```sql
 SELECT
@@ -519,7 +575,7 @@ WHERE relevance = 'irrelevant'
 ORDER BY analyzed_at DESC;
 ```
 
-注意：这是 **Analysis Result**，不是 `contents.is_relevant`。
+注意：这是 Analysis Result，不是 `contents.is_relevant`。
 
 ### 一个结果的标签
 
@@ -535,32 +591,37 @@ ORDER BY ordinal;
 
 ### 一次正式 Analysis 请求
 
-父表：
-
 ```text
 analysis_content_requests
-```
+→ 请求父事实
 
-冻结的内容项：
-
-```text
 analysis_content_request_items
+→ 冻结 content_id + content_version + ordinal
 ```
 
-第一次排障时建议先：
+第一次排障先：
 
 ```sql
 \d+ analysis_content_requests
 \d+ analysis_content_request_items
 ```
 
-再按当前列查询，避免把某次历史字段名当长期 Contract。
+再按当前真实列查询。
 
 ### 当前没有什么
 
-`analysis_content_results` 当前**没有** `input_tokens / output_tokens / cost_amount / cost_currency` 这些列。离线调用成本能力不能写成数据库已持久化成本事实。
+`analysis_content_results` 当前**没有**：
 
-完整 AI 业务规则见 [`AI舆情分析与打标.md`](AI舆情分析与打标.md)。
+```text
+input_tokens
+output_tokens
+cost_amount
+cost_currency
+```
+
+运行/离线调用能统计 token/cost，不等于 Result 表已经持久化成本。
+
+完整 AI 实现见 [`AI舆情打标与分析实现.md`](AI舆情打标与分析实现.md)。
 
 ## 12. 看正式 Excel Export
 
@@ -605,6 +666,16 @@ ORDER BY ordinal;
 ```text
 reporting.content-export-excel.v1
 ```
+
+如果 Job succeeded 但无法下载，继续查：
+
+```text
+reporting_data_exports.artifact_id
+→ artifacts
+→ ArtifactStore 对应 storage_key
+```
+
+正式 Export 实现见 `backend/src/aima_ugc/modules/reporting/README.md`。
 
 ## 13. 看数据库和索引大小
 
@@ -744,6 +815,8 @@ DROP TABLE / DROP DATABASE
 ALTER TABLE
 ```
 
+Migration 管理的 Schema 不应靠手工 `ALTER TABLE` 演进。
+
 ## 16. Alembic：确认数据库版本
 
 从仓库根运行：
@@ -775,9 +848,16 @@ uv run alembic check
 ```text
 1. 查 contents 是否有目标数据
 2. 查 HTTP Query 参数/筛选条件
-3. 如果涉及 AI，查 analysis_content_results
-4. 再查 Query Repository / API
-5. 最后查前端 Feature / Store
+3. 查当前 Analysis Identity / analysis_content_results
+4. 看 content_queries.py 是否默认排除了 current irrelevant
+5. 再查 API
+6. 最后查前端 Feature / generated Client
+```
+
+当前声音广场查询：
+
+```text
+backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
 ```
 
 ### Excel 导入一直处理中
@@ -797,9 +877,10 @@ uv run alembic check
 2. collection_scopes
 3. provider_requests
 4. provider_request_attempts / raw_artifact_id
-5. Candidate / Candidate Ingestion ledger
+5. collection_candidates / candidate ingestions
 6. Mapper
-7. 规则 Relevance 是否得到 filtered
+7. Rule Relevance / Decision
+8. Content Ingestion
 ```
 
 ### AI 页面没有标签
@@ -808,22 +889,36 @@ uv run alembic check
 1. contents 是否存在目标 Content
 2. analysis_content_requests / items 是否创建
 3. 对应 Job 是否成功
-4. analysis_content_results 是否有结果
-5. relevance 是否 irrelevant
-6. analysis_content_label_pairs 是否存在
+4. analysis_content_results 是否有当前版本结果
+5. 当前 Prompt/Taxonomy/Model identity 是否匹配
+6. relevance 是否 irrelevant
+7. analysis_content_label_pairs 是否存在
 ```
+
+### Scheduler 到点没跑
+
+```text
+1. collection_plans.next_run_at
+2. collection_schedule_occurrences
+3. collection_runs
+4. jobs
+5. collection_scopes
+```
+
+如果已有 enqueued Occurrence + Job，Scheduler 已完成职责，应继续查 Worker。
 
 ## 18. 精确事实去哪里看
 
 - 数据表注册：`backend/src/aima_ugc/database_schema.py`
-- Content：`backend/src/aima_ugc/modules/content/tables.py`
-- Collection：`backend/src/aima_ugc/modules/collection/*.py`
+- Content：`backend/src/aima_ugc/modules/content/tables.py`、`extended_tables.py`
+- Collection：`backend/src/aima_ugc/modules/collection/*tables.py`
 - Import Batch：`backend/src/aima_ugc/modules/ingestion/tables.py`
 - Analysis：`backend/src/aima_ugc/modules/analysis/tables.py`
 - Reporting：`backend/src/aima_ugc/modules/reporting/tables.py`
 - Job：`backend/src/aima_ugc/platform/jobs/tables.py`
 - Migration：`migrations/versions/`
-- 本地数据库配置：`env.local.example`
+- 运行配置：`backend/src/aima_ugc/platform/config/settings.py`
+- 本地配置示例：`env.local.example`
 - 数据架构原则：[`../blueprint/03-数据库与文件存储.md`](../blueprint/03-数据库与文件存储.md)
 
 数据库结构发生变化时，应先改代码/Migration/测试，再同步本文中受影响的 SQL 示例；不能反过来让附录成为 Schema 事实源。
