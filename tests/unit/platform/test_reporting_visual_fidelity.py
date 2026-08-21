@@ -164,9 +164,7 @@ def test_dominant_split_keeps_office_charts_editable_and_reduces_series_per_char
     assert summary.chart_count == 2
 
     with zipfile.ZipFile(output) as archive:
-        first = load_workbook(
-            BytesIO(archive.read("word/embeddings/chart1.xlsx")), data_only=False
-        )
+        first = load_workbook(BytesIO(archive.read("word/embeddings/chart1.xlsx")), data_only=False)
         second = load_workbook(
             BytesIO(archive.read("word/embeddings/chart2.xlsx")), data_only=False
         )

@@ -348,7 +348,9 @@ def _add_sentiment_split(builder: ReportDocxBuilder, spec: ChartSpec) -> None:
     main_indices = [index for index, name in enumerate(names) if name in main_names]
     low_indices = [index for index, name in enumerate(names) if name in low_names]
     other_indices = [
-        index for index, name in enumerate(names) if name not in main_names and name not in low_names
+        index
+        for index, name in enumerate(names)
+        if name not in main_names and name not in low_names
     ]
     main_indices.extend(other_indices)
     groups = (("主趋势", main_indices), ("低量级趋势", low_indices))

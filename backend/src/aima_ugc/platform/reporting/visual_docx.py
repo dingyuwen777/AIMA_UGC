@@ -179,8 +179,7 @@ class ReportDocxBuilder(DocxBuilder):
             chunk = dimensions[start : start + _COMPACT_DAILY_DIMENSIONS_PER_TABLE]
             matrix_headers = (headers[0], *chunk)
             matrix_rows = tuple(
-                (day, *(values.get((day, dimension), "—") for dimension in chunk))
-                for day in dates
+                (day, *(values.get((day, dimension), "—") for dimension in chunk)) for day in dates
             )
             self._append_compact_matrix(matrix_headers, matrix_rows)
         self._add_after_layout_spacing()
@@ -318,12 +317,16 @@ class ReportDocxBuilder(DocxBuilder):
             tr = ET.SubElement(table, f"{{{_W}}}tr")
             tr_pr = ET.SubElement(tr, f"{{{_W}}}trPr")
             ET.SubElement(tr_pr, f"{{{_W}}}cantSplit")
-            for column, value in enumerate((f"{rank:02d}", row_values[0], row_values[1], row_values[2])):
+            for column, value in enumerate(
+                (f"{rank:02d}", row_values[0], row_values[1], row_values[2])
+            ):
                 width = (760, 3_420, 1_500, 1_450)[column]
                 cell = self._new_cell(tr, width, pad=45)
                 p = ET.SubElement(cell, f"{{{_W}}}p")
                 p_pr = ET.SubElement(p, f"{{{_W}}}pPr")
-                ET.SubElement(p_pr, f"{{{_W}}}spacing", {f"{{{_W}}}before": "16", f"{{{_W}}}after": "12"})
+                ET.SubElement(
+                    p_pr, f"{{{_W}}}spacing", {f"{{{_W}}}before": "16", f"{{{_W}}}after": "12"}
+                )
                 align = "right" if column >= 2 else "left"
                 ET.SubElement(p_pr, f"{{{_W}}}jc", {f"{{{_W}}}val": align})
                 self._add_run(
@@ -406,7 +409,9 @@ class ReportDocxBuilder(DocxBuilder):
                         continue
                     p = ET.SubElement(cell, f"{{{_W}}}p")
                     p_pr = ET.SubElement(p, f"{{{_W}}}pPr")
-                    ET.SubElement(p_pr, f"{{{_W}}}spacing", {f"{{{_W}}}before": "10", f"{{{_W}}}after": "10"})
+                    ET.SubElement(
+                        p_pr, f"{{{_W}}}spacing", {f"{{{_W}}}before": "10", f"{{{_W}}}after": "10"}
+                    )
                     ET.SubElement(
                         p_pr,
                         f"{{{_W}}}jc",
@@ -451,7 +456,9 @@ class ReportDocxBuilder(DocxBuilder):
                     ET.SubElement(cell_pr, f"{{{_W}}}shd", {f"{{{_W}}}fill": theme.SOFT_BACKGROUND})
                 p = ET.SubElement(cell, f"{{{_W}}}p")
                 p_pr = ET.SubElement(p, f"{{{_W}}}pPr")
-                ET.SubElement(p_pr, f"{{{_W}}}spacing", {f"{{{_W}}}before": "10", f"{{{_W}}}after": "10"})
+                ET.SubElement(
+                    p_pr, f"{{{_W}}}spacing", {f"{{{_W}}}before": "10", f"{{{_W}}}after": "10"}
+                )
                 ET.SubElement(
                     p_pr,
                     f"{{{_W}}}jc",
@@ -491,7 +498,9 @@ class ReportDocxBuilder(DocxBuilder):
                     ET.SubElement(cell_pr, f"{{{_W}}}shd", {f"{{{_W}}}fill": theme.SOFT_BACKGROUND})
                 p = ET.SubElement(cell, f"{{{_W}}}p")
                 p_pr = ET.SubElement(p, f"{{{_W}}}pPr")
-                ET.SubElement(p_pr, f"{{{_W}}}spacing", {f"{{{_W}}}before": "9", f"{{{_W}}}after": "9"})
+                ET.SubElement(
+                    p_pr, f"{{{_W}}}spacing", {f"{{{_W}}}before": "9", f"{{{_W}}}after": "9"}
+                )
                 ET.SubElement(
                     p_pr,
                     f"{{{_W}}}jc",
@@ -536,7 +545,9 @@ class ReportDocxBuilder(DocxBuilder):
         paragraph = ET.SubElement(parent, f"{{{_W}}}p")
         p_pr = ET.SubElement(paragraph, f"{{{_W}}}pPr")
         ET.SubElement(p_pr, f"{{{_W}}}jc", {f"{{{_W}}}val": "center"})
-        self._append_chart_inline(paragraph, self.chart_count, width_emu=width_emu, height_emu=height_emu)
+        self._append_chart_inline(
+            paragraph, self.chart_count, width_emu=width_emu, height_emu=height_emu
+        )
 
     def _append_chart_inline(
         self,
