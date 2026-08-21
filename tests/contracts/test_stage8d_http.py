@@ -36,6 +36,9 @@ def _item() -> ContentListItemResponse:
         metrics=ContentMetricsResponse(like_count=12, comment_count=3),
         analysis=ContentAnalysisResponse(
             status="completed",
+            relevance="relevant",
+            voice_type="user_voice",
+            is_user_voice=True,
             sentiment="负面",
             labels=(
                 ContentLabelPairResponse(primary_label="产品体验", secondary_label="续航表现"),
