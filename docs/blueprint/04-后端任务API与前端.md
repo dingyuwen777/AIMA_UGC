@@ -250,7 +250,7 @@ Worker 定期证明自己还活着。
 collection.run.v1
 ingestion.import-excel.v1
 analysis.content-label.v1
-reporting.export-excel.v1
+reporting.content-export-excel.v1
 ```
 
 Payload 只保存稳定执行输入，不复制数据库可以通过受约束关系反查的事实，也不保存 Secret。
