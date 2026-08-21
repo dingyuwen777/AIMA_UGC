@@ -157,11 +157,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git rm -r -- .github/aima-report-fragments .github/workflows/aima-report-integrate.yml
+          # Actions token 没有 workflows 权限；workflow 变更由当前 GitHub 连接另行原子提交。
+          git checkout -- .github/workflows/ci.yml
+          git rm -r -- .github/aima-report-fragments
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- \
-            .github/workflows/ci.yml \
             pyproject.toml uv.lock \
             backend/src/aima_ugc/platform/reporting/README.md \
             backend/src/aima_ugc/platform/reporting/chart_spec.py \
