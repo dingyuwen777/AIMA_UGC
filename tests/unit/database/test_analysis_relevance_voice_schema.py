@@ -18,7 +18,10 @@ def test_analysis_result_schema_persists_relevance_and_voice_type() -> None:
         if isinstance(constraint, CheckConstraint)
     }
     assert "relevance in ('relevant','irrelevant')" in check_sql
-    assert any("voice_type in" in expression and "user_voice" in expression for expression in check_sql)
+    assert any(
+        "voice_type in" in expression and "user_voice" in expression
+        for expression in check_sql
+    )
     assert any(
         "relevance = 'relevant'" in expression
         and "sentiment is not null" in expression
