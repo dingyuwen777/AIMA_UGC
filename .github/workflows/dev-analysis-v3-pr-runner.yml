@@ -56,52 +56,75 @@ jobs:
           if [ "$STATUS" -eq 0 ]; then
             python - <<'PY' 2>&1 | tee -a "$LOG"
           from pathlib import Path
+          import re
 
-          def replace_once(path: Path, old: str, new: str) -> None:
+          def sub_once(path: Path, pattern: str, replacement: str | re.Match[str], *, flags: int = 0) -> None:
               text = path.read_text(encoding="utf-8")
-              if text.count(old) != 1:
-                  raise SystemExit(f"{path}: 期望唯一替换片段，实际 {text.count(old)}")
-              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+              if callable(replacement):
+                  new, count = re.subn(pattern, replacement, text, count=1, flags=flags)
+              else:
+                  new, count = re.subn(pattern, replacement, text, count=1, flags=flags)
+              if count != 1:
+                  raise SystemExit(f"{path}: pattern {pattern!r} matched {count}, expected 1")
+              path.write_text(new, encoding="utf-8")
 
           excel_path = Path("backend/src/aima_ugc/platform/export/excel.py")
           text = excel_path.read_text(encoding="utf-8")
           for name in ("primary_label", "secondary_label"):
               broken = f'{name} = "' + "\n" + '".join'
               fixed = f'{name} = "\\n".join'
-              if broken not in text:
-                  raise SystemExit(f"未找到预期的生成字符串错误: {name}")
+              if text.count(broken) != 1:
+                  raise SystemExit(
+                      f"{excel_path}: broken newline for {name!r} matched {text.count(broken)}, expected 1"
+                  )
               text = text.replace(broken, fixed, 1)
           excel_path.write_text(text, encoding="utf-8")
 
           labeling_path = Path("backend/src/aima_ugc/modules/analysis/content_labeling.py")
-          replace_once(
+          labeling = labeling_path.read_text(encoding="utf-8")
+          typing_match = re.search(r"^from typing import (?P<imports>[^\n]+)$", labeling, flags=re.MULTILINE)
+          if typing_match is None:
+              raise SystemExit(f"{labeling_path}: typing import not found")
+          imports = [item.strip() for item in typing_match.group("imports").split(",")]
+          if "cast" not in imports:
+              imports.append("cast")
+              labeling = (
+                  labeling[: typing_match.start()]
+                  + "from typing import "
+                  + ", ".join(imports)
+                  + labeling[typing_match.end() :]
+              )
+          labeling_path.write_text(labeling, encoding="utf-8")
+
+          sub_once(
               labeling_path,
-              "from typing import Any, Literal, Protocol",
-              "from typing import Any, Literal, Protocol, cast",
+              r"(self\.validate_label_pairs\(\s*sentiment=)sentiment(,\s*labels=label_pairs,\s*\))",
+              r"\1cast(str, sentiment)\2",
+              flags=re.DOTALL,
           )
-          replace_once(
+          sub_once(
               labeling_path,
-              """                        sentiment=sentiment,\n                        labels=label_pairs,\n""",
-              """                        sentiment=cast(str, sentiment),\n                        labels=label_pairs,\n""",
-          )
-          replace_once(
-              labeling_path,
-              """                relevance=relevance,\n                voice_type=voice_type,\n""",
-              """                relevance=cast(Literal[\"relevant\", \"irrelevant\"], relevance),\n                voice_type=voice_type,\n""",
+              r"(valid_items\[item_no\]\s*=\s*_ValidatedLabel\(\s*relevance=)relevance(,\s*voice_type=voice_type,)",
+              r'\1cast(Literal["relevant", "irrelevant"], relevance)\2',
+              flags=re.DOTALL,
           )
 
           http_path = Path("backend/src/aima_ugc/bootstrap/content_http.py")
-          replace_once(
+          http = http_path.read_text(encoding="utf-8")
+          analysis_import = "from aima_ugc.contracts.analysis import ContentRelevance, ContentVoiceType\n"
+          if analysis_import not in http:
+              anchor = "from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository\n"
+              if http.count(anchor) != 1:
+                  raise SystemExit(f"{http_path}: jobs import anchor matched {http.count(anchor)}, expected 1")
+              http = http.replace(anchor, anchor + analysis_import, 1)
+              http_path.write_text(http, encoding="utf-8")
+          sub_once(
               http_path,
-              "from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository\nfrom aima_ugc.contracts.http import (",
-              "from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository\nfrom aima_ugc.contracts.analysis import ContentRelevance, ContentVoiceType\nfrom aima_ugc.contracts.http import (",
+              r"relevance=record\.analysis\.relevance,\s*voice_type=record\.analysis\.voice_type,",
+              'relevance=cast(ContentRelevance, record.analysis.relevance),\n            voice_type=cast(ContentVoiceType, record.analysis.voice_type),',
+              flags=re.DOTALL,
           )
-          replace_once(
-              http_path,
-              """            relevance=record.analysis.relevance,\n            voice_type=record.analysis.voice_type,\n""",
-              """            relevance=cast(ContentRelevance, record.analysis.relevance),\n            voice_type=cast(ContentVoiceType, record.analysis.voice_type),\n""",
-          )
-          print("已修复一次性生成代码的换行字面量与 Mypy 类型收窄。")
+          print("已按唯一代码结构修复生成结果的换行字面量与 Mypy 类型收窄。")
           PY
             STATUS=${PIPESTATUS[0]}
           fi
