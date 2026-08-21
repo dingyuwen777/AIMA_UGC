@@ -241,4 +241,4 @@ uv run python scripts/quality/check_docs.py
 - 最终功能 head：`4a75b045299f6be44ee5db918d568e199f120c01`
 - 合并提交：`f23f667e3f03e617c283b0e3b46de99bb7dfe175`
 - 合并时间：2026-08-21
-- 临时开发 Runner Workflow 已通过 PR #124 从 `main` 清理，不属于长期实现。
+- 临时开发 Runner Workflow 已通过 PR #125 从 `main` 清理，不属于长期实现。
