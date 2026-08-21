@@ -1,110 +1,446 @@
 # Collection 模块
 
-Collection 负责回答：**什么时候采、这次采什么、外部请求有没有真正执行、执行到哪一步、数据来自哪里。**
+Collection 负责“**什么时候采、采什么、通过哪个 Provider 采、一次采集运行到哪一步、外部请求到底发了几次、Raw/Candidate/Scope 如何追溯**”。
 
-它不拥有最终帖子/评论 Current，也不把 TikHub 私有 JSON 直接写入业务表。
+它不拥有最终 Content Current，也不把 TikHub JSON 直接写进 `contents`。
 
-先看主链：
+如果第一次读这个模块，先记住主链：
 
 ```text
-Plan
-→ Occurrence（定时场景）
-→ Run
+Plan / API Run
+→ Collection Run
 → Scope
 → Provider Request
 → Provider Attempt
 → Raw Artifact
 → Candidate
+→ Operation / Mapper
+→ Canonical
+→ Relevance / Decision
+→ ContentIngestionService
+→ Content Owner
+```
+
+系统级设计：
+
+- `docs/blueprint/02-采集系统与数据标准化.md`
+- `docs/blueprint/08-采集策略与平台能力.md`
+- `docs/appendix/Scheduler调度执行与停机恢复.md`
+- `docs/appendix/TikHub五平台真实响应与字段映射.md`
+
+---
+
+## 1. Collection 拥有什么，不拥有什么
+
+### Collection Owner 的事实
+
+当前主要表：
+
+```text
+collection_plans
+collection_plan_platforms
+collection_plan_keyword_packs
+collection_plan_decision_policies
+collection_schedule_occurrences
+collection_runs
+collection_scopes
+collection_content_actions
+provider_requests
+provider_request_attempts
+collection_candidates
+collection_candidate_ingestions
+```
+
+精确 Schema：
+
+```text
+modules/collection/tables.py
+modules/collection/candidate_tables.py
+modules/collection/corrective_tables.py
+modules/collection/scheduler_schema.py
+```
+
+### Collection 不拥有
+
+```text
+contents / comments
+→ content Owner
+
+processing_import_batches
+→ ingestion Owner
+
+analysis_content_*
+→ analysis Owner
+
+jobs
+→ platform/jobs Owner
+
+artifacts
+→ platform/storage Owner
+```
+
+Collection 可以在同一事务里协调这些 Owner 的公开 Repository/Service，但不能自己偷偷 UPDATE 别人的表。
+
+---
+
+## 2. 当前目录应该怎么读
+
+### 2.1 Plan / Scheduler
+
+```text
+planning.py
+→ Plan 领域模型、平台/词包配置和领域校验
+
+scheduler.py
+→ Cron 计算、latest_only、misfire 决策
+
+scheduled_scopes.py
+→ 从 Plan + Keyword Pack 展开实际 Scope
+
+scheduler_schema.py
+→ Scheduler 相关数据库补充约束注册
+```
+
+生产 Scheduler 装配不在本目录，而在：
+
+```text
+backend/src/aima_ugc/bootstrap/scheduler.py
+```
+
+PostgreSQL Plan / Occurrence Repository：
+
+```text
+backend/src/aima_ugc/adapters/persistence/postgres/collection_planning.py
+```
+
+### 2.2 Run / Scope
+
+```text
+execution.py
+→ Collection Run / Scope 的领域记录和创建边界
+
+collection_run_job.py
+→ collection.run.v1 Job Payload / Handler
+
+collection_run_executor.py
+→ Run 的总体执行器、Scope 生命周期、Run 终态
+
+execution_limits.py
+→ Provider 执行上限的技术边界
+
+run_snapshot.py
+→ Run Snapshot 中稳定执行事实的结构
+```
+
+真正把 TikHub、Raw、Mapper、Ingestion 串起来：
+
+```text
+backend/src/aima_ugc/bootstrap/collection_scope.py
+```
+
+### 2.3 Provider Request / Attempt
+
+```text
+provider_persistence.py
+→ Request / Attempt 领域 Port 和持久化边界
+
+provider_dispatch.py
+→ 一次 Attempt 的真实发送、Raw、失败收口
+
+provider_recovery.py
+→ takeover/recovery；已有完整 Raw 时避免再次发送
+
+provider_routing.py
+→ Provider Config / Registry / Capability 路由
+
+providers/
+→ Provider-neutral Protocol / Raw Service 等公共接口
+```
+
+TikHub 的具体 HTTP endpoint 不在 Collection Domain 里硬编码，而在：
+
+```text
+backend/src/aima_ugc/adapters/providers/tikhub/
+```
+
+### 2.4 Candidate / Decision
+
+```text
+candidates.py
+candidate_tables.py
+→ Raw 之后、Mapper 之前的 Candidate 来源账本
+
+decision.py
+corrective_tables.py
+→ Detail / Comment / Refresh 等 Decision Pipeline 与持久 action/checkpoint
+```
+
+Candidate 的意义不是再造一份 Content，而是记录：
+
+> 这次 Provider 响应里发现了什么来源项，以及这个来源项后来有没有成功进入 Canonical/Ingestion。
+
+### 2.5 HTTP / Runtime Read Model
+
+```text
+http.py
+→ Collection HTTP Port / 异常
+
+strategy_http.py
+→ Plan / Keyword Strategy HTTP Port
+
+runtime_query.py
+runtime_cursor.py
+→ 采集运行中心的只读模型和 Cursor
+```
+
+生产 HTTP 实现：
+
+```text
+backend/src/aima_ugc/bootstrap/collection_http.py
+backend/src/aima_ugc/bootstrap/collection_strategy_http.py
+```
+
+---
+
+## 3. 一次正式 Collection Run 怎样执行
+
+### 3.1 创建 Run
+
+当前 API：
+
+```text
+POST /api/v1/collection-runs
+```
+
+入口：
+
+```text
+bootstrap/api.py
+→ bootstrap/collection_http.py
+```
+
+Run 创建时会冻结当前需要的执行事实，例如：
+
+- 目标平台；
+- Provider Config；
+- 一次性关键词或 Batch supplement 来源；
+- Relevance Snapshot；
+- Include Comments / Sub-comments；
+- 技术执行限制。
+
+随后创建：
+
+```text
+collection.run.v1 Job
++ collection_runs
++ collection_scopes
+```
+
+### 3.2 Worker 消费 Run
+
+```text
+bootstrap/worker.py
+→ CollectionRunJobHandler
+→ CollectionRunExecutor
+→ TikHubCollectionScopeExecutor
+```
+
+`CollectionRunExecutor` 负责 Run/Scope 生命周期；`TikHubCollectionScopeExecutor` 负责真正的 Provider 执行、Raw、Candidate、Mapper、Ingestion。
+
+### 3.3 0 Scope 为什么 fail closed
+
+一个 Collection Run 如果没有任何可执行 Scope，不应该被记成“成功但什么都没做”。
+
+当前 `CollectionRunExecutor` 对 0 Scope Run 关闭失败；相关回归测试位于：
+
+```text
+tests/unit/collection/
+```
+
+---
+
+## 4. Provider Request 和 Attempt 为什么分开
+
+### Request
+
+代表逻辑业务请求，例如：
+
+```text
+对 xhs 搜索关键词“爱玛”第一页
+```
+
+### Attempt
+
+代表一次真实发送尝试。
+
+```text
+Request #A
+├─ Attempt 1
+└─ Attempt 2（只有明确需要重发时才创建）
+```
+
+硬规则：
+
+```text
+一个 Attempt 最多一次真实网络发送
+```
+
+Transport 不允许偷偷自动重试同一个 Attempt。
+
+这样才能准确回答：
+
+- 实际发了几次；
+- 哪次响应生成了 Raw；
+- 哪次可能重复计费；
+- 网络结果未知时是否可以安全重发。
+
+---
+
+## 5. Provider Recovery 怎么工作
+
+最重要规则：
+
+```text
+完整且校验通过的 Raw 已经存在
+→ 优先 replay
+→ 不再次请求 Provider
+```
+
+代码：
+
+```text
+provider_recovery.py
+provider_dispatch.py
+```
+
+网络失败要区分：
+
+```text
+not_sent
+→ 可以证明没有发出去
+
+unknown
+→ 可能已经发出，结果未知
+```
+
+`unknown` 不能简单当作“没发过”立即重发，否则可能产生重复调用/重复计费。
+
+当前不自动从 TikHub App API 切到 Web API，也不自动从 V2 切到 V1。API family 备用策略见：
+
+```text
+docs/appendix/TikHub多接口验证与备用策略.md
+```
+
+---
+
+## 6. Raw 为什么必须先于 Mapper
+
+主链要求：
+
+```text
+Provider Response
+→ 先写不可变 Raw Artifact
+→ 再 Extract / Candidate / Mapper
+```
+
+这样 Mapper 出 Bug 时可以：
+
+```text
+旧 Raw
+→ 修 Mapper
+→ replay
+→ 不重新付费请求 TikHub
+```
+
+XHS 当前还有专门的 Raw Replay 实现：
+
+```text
+xhs_replay.py
+```
+
+Raw 不等于业务 Current。Raw 只保存“Provider 当时返回了什么”。
+
+---
+
+## 7. Candidate 为什么在 Mapper 前
+
+Candidate 解决一个审计问题：
+
+> Provider 响应里明明有一个来源项，但最后数据库为什么没有对应 Content？
+
+如果直接：
+
+```text
+Raw → Mapper → Content
+```
+
+Mapper 失败或 Relevance 过滤后，很难知道来源项在哪里丢失。
+
+所以当前：
+
+```text
+Raw
+→ Candidate（来源项身份）
 → Mapper
 → Canonical
-→ Relevance
-→ Content Ingestion / Owner
-→ PostgreSQL
+→ Decision / Relevance
+→ Ingestion
+→ Candidate Ingestion 结果
 ```
 
-File Import 不是 Collection Run，具体见 `modules/ingestion` 和 `docs/appendix/数据入口与统一入库.md`。
+Candidate 不复制最终业务字段，也不代替 Content。
 
-## 1. Collection 拥有哪些事实
+---
 
-### Plan
+## 8. Decision Pipeline 做什么
 
-长期采集计划：
-
-- 什么时候执行；
-- 哪些平台；
-- 使用哪个 `provider_config_id`；
-- 使用哪些关键词包；
-- 详情/评论策略；
-- Decision Policy。
-
-Plan 不保存 Token、Cookie、Provider cursor 或某次请求状态。
-
-### Occurrence
-
-“某个 Plan 版本在某个逻辑时间点应该触发一次”。
-
-唯一身份：
+Collection 不应该每次发现内容都无脑：
 
 ```text
-(plan_id, schedule_version, scheduled_for)
+抓 Detail
+抓所有评论
+抓所有二级回复
 ```
 
-### Run
+这会产生大量重复成本。
 
-一次完整业务运行。Run 绑定一个 PostgreSQL Job，并冻结当次执行需要的配置快照。
-
-当前支持：
+当前 Decision 相关代码：
 
 ```text
-scheduled
-manual
-api
-backfill
+decision.py
+collection_content_actions
 ```
 
-Stage 8E 后 Run 还可以通过 `import_batch_id` 与一次业务批次关联，用于运行中心统一展示 Excel Import 和 TikHub Run。
+它根据：
 
-### Scope
+- 当前已有 Content；
+- 指标变化；
+- 评论覆盖；
+- Detail/Comment Policy；
+- 已完成 Action/Checkpoint；
 
-一个 Run 内最小可恢复执行单元，例如：
+决定后续是否需要：
 
 ```text
-xhs + keyword=爱玛 + discovery
+fetch_detail
+fetch_comments
+fetch_sub_comments
+skip / refresh
 ```
 
-Scope 保存 `pagination_state / progress / stats` 等 durable checkpoint。Worker 重试或 Lease takeover 时，已经终态的 Scope 不重复执行。
+具体平台能力和采集策略见 Blueprint 08。
 
-### Provider Request / Attempt
+---
+
+## 9. Scheduler 当前怎样创建 Run
+
+当前领域算法：
 
 ```text
-Request
-→ 一个逻辑外部请求
-
-Attempt
-→ 一次真实执行尝试
+scheduler.py
 ```
 
-同一逻辑 Request 可以因为明确可重试失败创建新 Attempt，但同一 Attempt 最多发送一次。
-
-### Candidate
-
-Raw 里的一项内容/评论在 Mapper 前先建立 Candidate 来源账本。
-
-这样 Mapper 即使失败，也能回答：
-
-> 哪个 Run/Scope/Attempt/Raw 的哪一项没能进入 Canonical？
-
-## 2. Scheduler 当前怎么工作
-
-主要代码：
-
-```text
-modules/collection/scheduler.py
-bootstrap/scheduler.py
-entrypoints/scheduler_main.py
-```
-
-当前固定：
+固定恢复策略：
 
 ```text
 timezone = Asia/Shanghai
@@ -112,273 +448,270 @@ misfire_policy = latest_only
 max_catch_up_runs = 0
 ```
 
-Scheduler 只创建任务事实，不直接发 TikHub HTTP。
-
-一次正常入队：
+Scheduler tick：
 
 ```text
-扫描到 Plan 到期
-→ PostgreSQL 行锁重读 Plan
-→ 重新校验 Provider/关键词/Capability
-→ 冻结 Run Snapshot
-→ 创建 Job + Occurrence + Run
-→ 推进 next_run_at
-→ 同一短事务提交
+扫描 due Plan
+→ 每个 Plan 独立短事务
+→ SELECT ... FOR UPDATE
+→ 计算逻辑 slot
+→ skipped old occurrences
+→ enqueue latest occurrence
+→ Job + scheduled Run + Scope
+→ 推进 cursor
+→ commit
 ```
 
-停机恢复时，更早到期 slot 保存为 `skipped / misfire_superseded`，只执行最新一个到期 slot。
-
-详细解释见：
-
-[`../../../../../docs/appendix/Scheduler运行与恢复.md`](../../../../../docs/appendix/Scheduler运行与恢复.md)
-
-## 3. Collection Job 怎么执行
-
-正式 Job 类型：
+Occurrence 唯一身份：
 
 ```text
-collection.run.v1
+(plan_id, schedule_version, scheduled_for)
 ```
 
-主要代码：
+详细代码和恢复案例：
+
+```text
+docs/appendix/Scheduler调度执行与停机恢复.md
+```
+
+---
+
+## 10. 当前 HTTP 能力
+
+Collection Runtime：
+
+```text
+GET  /api/v1/collection-capabilities
+POST /api/v1/collection-runs
+GET  /api/v1/collection-runs/{run_id}
+GET  /api/v1/collection-runtime/runs
+GET  /api/v1/collection-runtime/summary
+```
+
+Strategy：
+
+```text
+POST /api/v1/collection-plans
+GET  /api/v1/collection-plans
+GET  /api/v1/collection-plans/{plan_id}
+PUT  /api/v1/collection-plans/{plan_id}/enabled
+
+GET  /api/v1/keyword-packs
+PUT  /api/v1/keyword-packs/{pack_id}/enabled
+```
+
+完整 Route 以：
+
+```text
+backend/src/aima_ugc/bootstrap/api.py
+```
+
+为准。
+
+---
+
+## 11. 采集运行中心不是一张万能表
+
+前端 `/collection-runtime` 需要同时展示：
+
+```text
+Excel Import
+TikHub Discovery Run
+TikHub Batch Supplement Run
+```
+
+当前做法是 Query Read Model：
+
+```text
+PostgreSQL 不同 Owner 表
+→ Query Adapter / UNION
+→ CollectionRuntimeItemResponse
+→ 前端
+```
+
+相关代码：
+
+```text
+runtime_query.py
+runtime_cursor.py
+backend/src/aima_ugc/adapters/persistence/postgres/collection_runtime_queries.py
+```
+
+不能因为页面想统一展示，就把 Import Batch 和 Collection Run 合并成一张业务表。
+
+---
+
+## 12. TikHub 具体实现去哪里看
+
+### Operation
+
+```text
+backend/src/aima_ugc/adapters/providers/tikhub/operations/
+```
+
+回答：
+
+- endpoint；
+- method；
+- 参数；
+- 分页；
+- item extractor。
+
+### Mapper
+
+```text
+backend/src/aima_ugc/adapters/providers/tikhub/mappers/
+```
+
+回答：
+
+- Provider JSON → Canonical；
+- `observed_fields`；
+- 评论 root/parent；
+- 外部 ID 归一化。
+
+### Capability
+
+```text
+backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py
+```
+
+回答：某个平台当前正式支持哪些 Search/Detail/Comment/Reply 能力。
+
+### Runtime / Transport / Pricing
+
+```text
+runtime.py
+transport.py
+pricing.py
+pricing.toml
+```
+
+真实响应/Fixture：
+
+```text
+docs/appendix/TikHub五平台真实响应与字段映射.md
+tests/fixtures/providers/tikhub/
+```
+
+---
+
+## 13. 修改 Collection 时常见改法
+
+### 换一个 TikHub endpoint
+
+通常先改：
+
+```text
+adapters/providers/tikhub/operations/<platform>.py
+```
+
+如果响应结构变了，再改：
+
+```text
+mappers/<platform>.py
+Fixture
+Mapper/Operation Test
+Capability / Pricing（按影响）
+```
+
+不要直接改 `collection_run_executor.py`。
+
+### 改 Scheduler 策略
+
+```text
+scheduler.py
+→ scheduler domain test
+→ bootstrap/scheduler.py
+→ collection_planning Repository
+→ Schema/Migration（如约束变化）
+→ Scheduler Appendix
+```
+
+### 改 Detail/Comment Decision
+
+```text
+decision.py
+→ action/checkpoint persistence
+→ collection_scope.py
+→ Unit / Integration Test
+```
+
+### 改 Run/Scope 状态
 
 ```text
 execution.py
-collection_run_job.py
 collection_run_executor.py
-bootstrap/collection_scope.py
-bootstrap/worker.py
+tables.py
+Postgres Run Repository
+Migration（如果数据库约束变化）
 ```
 
-Job Payload 不复制 `run_id`、Plan、Secret 等可以通过受约束关系反查的事实。Handler 使用当前 `job_id` 反查正式 Run。
+---
 
-`CollectionRunExecutor`：
+## 14. 调试一条采集链怎么查
 
-1. 验证当前 Job Fence；
-2. 读取 Run/Scope；
-3. 跳过已经终态的 Scope；
-4. 执行待处理 Scope；
-5. 持久化 checkpoint；
-6. 汇总 Run/Job 进度和终态。
-
-`collection.run.v1` 当前 `retry_on_timeout=false`。Attempt Deadline 到期后不自动重排整次 Collection Run，避免外部结果未知时隐式重复计费。
-
-## 4. Provider Dispatch / Recovery
-
-主要代码：
+建议顺序：
 
 ```text
-provider_persistence.py
-provider_dispatch.py
-provider_recovery.py
+1. collection_runs
+2. collection_scopes
+3. provider_requests
+4. provider_request_attempts
+5. Raw Artifact
+6. collection_candidates
+7. collection_candidate_ingestions
+8. contents / comments
 ```
 
-核心原则：
+SQL 示例：
 
 ```text
-同一 Attempt 最多一次真实发送
-→ 真正重发必须新 Attempt
+docs/appendix/PostgreSQL查询与调试实战.md
 ```
 
-当前自动可重试边界只覆盖明确允许的 Transport/HTTP 情况，例如部分 408/425/429/5xx 和 `not_sent/unknown` 恢复路径；其他 4xx 不无条件重试。
-
-### Raw 已存在时
-
-如果 Attempt 对应完整 Raw 已经保存：
+如果 Provider 返回字段不对：
 
 ```text
-校验 metadata SHA-256 / bytes / gzip / Raw Envelope
-→ replay
-→ 禁止再次 Provider 请求
-```
-
-如果文件已原子落盘但 Artifact metadata 还停在 `pending`，Recovery 允许在专用路径重新校验后 CAS 确认 `stored`，再继续 link/replay。
-
-文件缺失、损坏或来源不一致则保守收敛为 `unknown`，并记录安全 warning；日志不打印 Raw、请求参数或 Secret。
-
-## 5. 正式 TikHub Scope 怎么走
-
-`TikHubCollectionScopeExecutor` 复用五个平台生产 Operation：
-
-```text
-Search
-→ Raw
-→ Candidate
+Raw Fixture
+→ Operation extractor
 → Mapper
-→ Canonical
-→ Relevance/Ingestion
-→ Decision
-→ 可选 Detail
-→ 用最新 Canonical 重算评论决策
-→ 可选 Comments/Sub-comments
-→ Coverage
+→ Canonical Contract
 ```
 
-Search 首次 Decision 会保存 durable content action/checkpoint。Job retry/Lease takeover 恢复未完成 Detail/Comments，而不是因为 Current 已更新就重新计算后跳过原动作。
-
-旧 Raw replay 使用 Raw Envelope 的真实 `observed_at`，不会拿“今天的恢复时间”回滚/污染 Current freshness。
-
-## 6. 评论 Target 和 Coverage
-
-评论 Target 只决定“还要不要请求下一页”。
-
-例如目标 50 条、每页 20 条：第 3 页返回以后已经拿到 60 条，这 20 条全部 Mapper/Ingestion，再停止后续请求。
-
-不能只保存前 10 条，因为整页已经付费返回。
-
-内容级和 root thread 分别保存 Coverage，表达：
-
-- fetched 数量；
-- Provider reported 数量；
-- complete/partial；
-- stop reason。
-
-数据库里有 50 条评论不等于“评论完整”。
-
-## 7. Plan / Occurrence / Run 的数据库约束
-
-当前长期重要约束：
-
-### `collection_plans`
-
-- `name` 唯一；
-- `timezone=Asia/Shanghai`；
-- `schedule_version >= 1`；
-- `latest_only`；
-- `max_catch_up_runs=0`；
-- Scheduler 推进 `next_run_at / last_scheduled_at`。
-
-### `collection_plan_platforms`
-
-- 同一 Plan 同一平台只允许一条；
-- 使用稳定 `provider_config_id`；
-- `config` 是平台业务配置，不保存 Secret/Provider cursor。
-
-### `collection_plan_keyword_packs`
-
-Plan 与 Keyword Pack 使用真实关联表，不塞 JSON 字符串。
-
-### `collection_schedule_occurrences`
-
-- `(plan_id, schedule_version, scheduled_for)` 唯一；
-- `enqueued` 必须有 Job；
-- `skipped` 没有 Job，并有 `skip_reason`；
-- `job_id` 唯一。
-
-### `collection_runs`
-
-- 一个 Run 一个 Job；
-- `scheduled` 通过 `occurrence_id` 绑定调度身份；
-- `manual/api/backfill` 保持人工/接口触发语义；
-- `config_snapshot` 只是执行快照，不替代关系身份。
-
-数据库 deferred constraint trigger 还会在事务提交前验证 Occurrence/Run/Job 跨表一致性。
-
-精确列与约束仍以 `tables.py + migrations/versions/` 为准。
-
-## 8. PostgreSQL Repository 写入口
-
-主要入口：
+如果 Content 没入库但 Candidate 有：
 
 ```text
-adapters/persistence/postgres/collection_planning.py
-→ Plan / Platform / Keyword Pack / Occurrence / Scheduler cursor
-
-adapters/persistence/postgres/collection.py
-→ Run / Scope
-
-adapters/persistence/postgres/collection_run_execution.py
-→ Worker 下 Run/Scope 的 fenced start/checkpoint/finish
-
-adapters/persistence/postgres/collection_provider_execution.py
-→ Request/Attempt 恢复与 durable stats
-
-adapters/persistence/postgres/collection_content.py
-→ Collection 调 Content Owner 的 fenced Ingestion/Coverage 边界
+Candidate Ingestion
+→ Relevance / Decision
+→ Mapper error
+→ Content Ingestion error
 ```
 
-Repository 不自行 `commit()`；事务由调用方 Unit of Work 持有。
+---
 
-Collection 不直接写 Content/Comment/Coverage 表。
+## 15. 测试入口
 
-## 9. Secret、Provider Config 和费用
-
-- `provider_configs.secret_ref` 只保存 Secret 引用；
-- Plan/Run/Scope/Raw/Job Payload 不保存 Secret；
-- TikHub Bearer Secret 只发送到批准的 `https://api.tikhub.io` Origin；
-- Plan `config` 不作为 Provider HTTP 私有参数仓库；
-- Provider cursor/page/search_id 不写回 Plan。
-
-Provider Request/Attempt 保存 Billing/Pricing/成本/`potential_duplicate_charge` 是为了执行审计。
-
-当前没有：
+主要测试：
 
 ```text
-Budget Account
-Reservation Ledger
-请求次数预算
-金额预算
-发送前 Budget Guard
+tests/unit/collection/
+tests/contracts/
+tests/integration/
+tests/fixtures/providers/tikhub/
 ```
 
-## 10. 当前已经实现到哪里
+修改不同能力时不要只跑一个“大而全”的测试：
 
-Collection 不能再写成“只有 Stage 1—7”。当前系统已经完成 Stage 8A—8F：
+```text
+Scheduler 改动
+→ scheduler unit + PostgreSQL scheduler integration
 
-- Excel 正式 Import Batch；
-- 全局 Relevance；
-- 采集运行中心；
-- 声音广场；
-- 一次性 Discovery / Batch 补采；
-- Keyword/Relevance/Plan 产品化；
-- Analysis/Excel Export 等下游能力。
+Provider shape 改动
+→ fixture + operation/mapper contract tests
 
-这些业务 API/页面已经存在。
+Run executor 改动
+→ collection executor unit + Worker vertical slice
+```
 
-当前仍未闭环：
-
-- 企业正式认证授权；
-- 完整离线生产 Release；
-- 协调 Backup/Restore 写屏障；
-- Stage 9 尚未正式实现的 Monitoring 业务。
-
-不要把“Stage 8 已完成”和“认证/Release 也已完成”混为一件事。
-
-## 11. 独立调试
-
-### `tikhub_test`
-
-默认可以只保存本地调试产物，不写业务数据库。
-
-显式 `write_to_database=True` 后复用正式 manual Collection / Provider Dispatch / Raw / Candidate / Mapper / Ingestion；不会为了写库再发第二次 TikHub 请求。
-
-### Raw Replay
-
-`xhs_replay.py` 只回放已经保存的 XHS Raw，故意不持有 Provider Transport，因此不会重新产生外部请求。
-
-所有 Probe/调试必须复用生产 Operation/Mapper，不复制 endpoint 和业务规则。
-
-## 12. 测试重点
-
-- Plan 校验与 fail-closed；
-- `latest_only`、重复 tick、并发 Scheduler；
-- Job retry/Lease takeover 后不重复已终态 Scope；
-- Provider 同 Request + 新 Attempt；
-- Raw Recovery 完整/损坏/pending 崩溃窗口；
-- Candidate-before-Mapper；
-- Detail 后评论重决策；
-- 评论整页保留、Target 跨页、空页；
-- Coverage 来源幂等；
-- Fencing 防旧 Worker 写入；
-- Migration old→head / downgrade-upgrade / `alembic check`。
-
-真实付费 TikHub Probe 不进普通 CI。
-
-## 13. 深入阅读
-
-- 长期采集架构：[`../../../../../docs/blueprint/08-采集策略与平台能力.md`](../../../../../docs/blueprint/08-采集策略与平台能力.md)
-- 数据标准化：[`../../../../../docs/blueprint/02-采集系统与数据标准化.md`](../../../../../docs/blueprint/02-采集系统与数据标准化.md)
-- Scheduler：[`../../../../../docs/appendix/Scheduler运行与恢复.md`](../../../../../docs/appendix/Scheduler运行与恢复.md)
-- TikHub：[`../../../../../docs/appendix/TikHub真实响应结构.md`](../../../../../docs/appendix/TikHub真实响应结构.md)
-- 平台实现：[`../../../../../docs/collection/README.md`](../../../../../docs/collection/README.md)
-- PostgreSQL：[`../../../../../docs/appendix/PostgreSQL调试与常用SQL.md`](../../../../../docs/appendix/PostgreSQL调试与常用SQL.md)
+最终仍以 PR 最新 HEAD 的完整 CI 为准。
