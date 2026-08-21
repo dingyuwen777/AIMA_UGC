@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260821-report-visual-fidelity
 title: Word 报告视觉还原与信息密度优化
 level: L2
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: fix/report-visual-fidelity
 created: 2026-08-21
@@ -32,7 +32,7 @@ data_changes: []
 - [x] 词云仍由同一统计 Counter 自动生成，但一级议题词云采用更接近编辑设计的稳定布局和克制多色强调。
 - [x] 普通日明细在 Word 中提高横向 A4 的信息密度，减少重复日期造成的无意义长页，同时 report.md 的完整数据保持不变。
 - [x] 输入 Excel、统计口径、日期筛选、imports_test 接线、Office Chart 内嵌 XLSX 和词云自动重生成语义不变。
-- [ ] 目标测试、相关回归、Ruff、Mypy 和 DOCX 结构校验取得最终 head 的新鲜证据，并完成最终页面级视觉检查。
+- [x] 目标测试、相关回归、Ruff、Mypy、DOCX 结构校验和实际页面级视觉检查均取得本轮新鲜证据。
 
 # 范围
 
@@ -58,10 +58,12 @@ data_changes: []
 
 # 已确认关键决策
 
-- 用户明确要求以最新生成 DOCX 的真实效果为依据继续修改，而不是只满足 OOXML 结构测试。
-- 目标视觉是 A4 横向专业研究/咨询报告，尽可能复现此前确认的“标题/说明 + KPI + 左侧 Top Ranking + 右侧词云”的视觉关系，避免默认 Excel 和 AI Dashboard 味。
+- 用户明确要求以真实生成 DOCX 的效果为依据继续修改，而不是只满足 OOXML 结构测试。
+- 目标视觉是 A4 横向专业研究/咨询报告，尽可能保持“标题/说明 + KPI + 左侧 Top Ranking + 右侧词云”的视觉关系，避免默认 Excel 和 AI Dashboard 味。
 - 不加入图标、奖牌、星标或逐行小饼图/圆环；这类装饰与信息语义无关，且会增强模板感。
 - 对过长列表采用“Top 视觉 + 紧凑完整明细”两层表达；完整数据不裁剪。
+- 一级议题固定为 3 个 KPI + 9 项紧凑 Ranking + 右侧词云；为保证整页紧凑，一级议题 Ranking 不再逐项显示进度条，精确数量与占比仍保留。
+- 对正负面等 Ranking + Chart 组合，图表高度根据 Top 条目数自适应；只有 1—2 项数据时不再使用接近半页高的图表。
 - 对多系列趋势采用同一统计数据的分层 Office Chart，不使用第二 Y 轴、不图片化。
 - 词云优先保留 Pillow 自定义 Editorial 布局。已核对 `wordcloud` 三方库可从 frequency dict 生成并支持水平偏好、固定随机种子和自定义颜色，但标准随机碰撞布局更适合密集传统词云；本报告更需要对 4—9 个少词场景的中心聚簇、层级和留白进行可控编辑式布局，因此本轮不新增依赖。
 - 词云最多展示 36 个词，使用 sqrt 权重并进一步温和压缩字号差异；全部水平，第一名可使用系统 CJK 粗体，颜色以海军蓝/主蓝/青绿/柔紫/蓝灰为主，仅少量低饱和赭色点缀。每个词从视觉中心寻找最近空位，完成后按真实字形边界裁切并受限放大回固定画布，使少词不显空、多词不挤成一团。
@@ -69,12 +71,12 @@ data_changes: []
 # 任务
 
 - [x] 重新读取规则、Blueprint、归档 Change、当前 reporting 实现和相关测试。
-- [x] 实际渲染并检查用户最新 DOCX，确认长 Ranking、分页、留白和多系列标签重叠是主要视觉缺陷。
+- [x] 实际渲染并检查生成 DOCX，确认长 Ranking、分页、留白和多系列标签重叠是主要视觉缺陷。
 - [x] 先增加能表达目标视觉结构和紧凑数据展示的失败测试并确认 Red。
 - [x] 实现更高保真的横向组合布局、紧凑 Ranking/完整明细、趋势分层和自适应词云布局。
-- [x] 更新默认模板与 reporting README；Blueprint 13 同步正在最终收敛。
-- [ ] 完成最终 head 的需求符合性、代码质量、目标/回归/静态/结构/视觉验证。
-- [x] 创建 Draft PR #111；合并仍等待用户另行授权。
+- [x] 更新默认模板、reporting README 和 Blueprint 13 的长期设计说明。
+- [x] 完成需求符合性、代码质量、目标/回归/静态/结构/视觉验证。
+- [x] 创建 PR #111；合并仍等待用户另行授权。
 
 # 验证
 
@@ -88,40 +90,129 @@ data_changes: []
 
 失败原因与本 Change 目标一一对应，不是环境噪音。
 
-## 当前实现与中间验证
+## 最终生产代码验证
 
-- 新增 `ReportDocxBuilder`，以 Word 原生 OOXML 组合 KPI、Ranking、Office Chart、词云图片和紧凑明细。
-- 默认模板把 5.1 组织为同一区域的 KPI + 左 Ranking + 右词云；长 Ranking 只给 Top 项使用进度条，剩余项目双列紧凑展示。
-- 平台/一级/二级多系列趋势新增 `dominant-split`；情感趋势继续使用 `sentiment-split`。各组仍是 Office Chart + 内嵌 XLSX。
-- 每日完整长表在 Markdown 中不变，Word 使用 `compact-daily` 透视为横向矩阵。
-- 词云修复原实现“后续词随排名被强制推向外圈”的根因，加入真实 glyph bbox 碰撞、中心聚簇、自适应聚焦和克制多色层级。
-- CI run `32458174357` 的 Stage 2 Platform 已 **success**，Stage 1 当时只剩词云 `textbbox` 静态类型不一致；该类型问题已按真实返回值修正，等待最终 head CI 重新确认。
-- PR 视觉预览 run `32458174299` 已使用 Ubuntu 24.04 + Noto CJK + LibreOffice 实际生成并重新打开 `report.docx`，转换为 PDF 与 30 页 PNG 后成功上传 artifact `report-visual-preview`（ID `9437982007`）。代表性 5.1 页面实际呈现为 3 个 KPI、左侧 9 项 Ranking、右侧紧凑词云；长二级议题页面实际呈现 Top 8 + 横向条形图 + 双列完整剩余明细。该预览把同量级旧版长报告的约 60+ 页压缩到 30 页，同时未删除 Markdown 完整数据。
+生产代码最终视觉实现提交为 `da4afd15ae470535ded8e44626dae5cc865c4669`；其后的提交仅更新 Change/PR 交付记录或删除临时验证工作流，不改变 reporting 生产行为。
 
-最终完成前仍需在最新生产代码 head 上重新取得 CI 与视觉 artifact；上面的预览只作为中间证据，不替代最终验证。
+该提交对应 CI run `32461816373` 已完成且全部 Job 成功：
 
-# 验证计划
+```text
+Stage 1              success
+Stage 2 Platform     success
+Stage 3A Database    success
+Windows bootstrap    success
+```
 
-目标测试至少覆盖：
+Stage 1 实际执行结果：
 
-- Word 原生左右组合布局同时包含 Ranking 与 PNG/Office Chart；
-- 一级议题组合页具有 KPI 数据且保持文字/数字可编辑；
-- 超长 Ranking 的 Top 展示和剩余紧凑完整明细不丢条目；
-- 新的趋势 presentation 仍生成 Office Chart + XLSX，并减少单图系列数量；
-- Word 日明细横向压缩/透视后仍与 Markdown 原始完整数据等价；
-- 词云确定性、稀疏/稠密视觉密度、中文字体 fail-closed、PNG 打包继续成立；
-- 既有 A4 Landscape、图表编辑、日期筛选、imports_test 等回归不变。
+```text
+uv run ruff format --check backend tests scripts
+→ 428 files already formatted
 
-完成时记录本轮实际命令、退出码、失败数、CI 和视觉渲染证据。
+uv run ruff check backend tests scripts
+→ All checks passed!
+
+uv run mypy backend/src
+→ Success: no issues found in 230 source files
+
+uv run pytest tests/unit -q
+→ 534 passed, 1 warning in 7.68s
+
+uv run pytest tests/contracts -q
+→ 54 passed in 3.30s
+
+uv run pytest tests/api -q
+→ 27 passed, 1 warning in 1.95s
+
+scripts/quality/check_architecture.py
+→ 通过
+
+scripts/quality/check_table_ownership.py
+→ 通过
+
+scripts/quality/scan_secrets.py
+→ 通过
+
+scripts/quality/check_docs.py
+→ 通过
+
+uv build --wheel + 独立 venv 安装/导入
+→ 通过，版本 0.1.0
+
+frontend lint / typecheck / build
+→ 全部通过
+
+frontend unit
+→ 22 passed
+
+Playwright E2E
+→ 8 passed
+```
+
+Stage 2 Platform 实际执行结果：
+
+```text
+uv run pytest tests/unit/platform -q
+→ 79 passed in 4.88s
+
+uv run pytest tests/integration/platform -q
+→ 1 passed in 0.53s
+
+真实 readiness HTTP smoke
+→ 通过
+```
+
+同一生产代码提交关联的仓库工作流均成功：CI、Stage 6 XHS Vertical Slice、Stage 7 Scheduler Runtime、Stage 1-7 Audit Correctness、Stage 7 Plan Occurrence Run Snapshot、Stage 7 Keyword Packs、Stage 7 Provider Config Routing。
+
+## DOCX / 页面级视觉验证
+
+PR 视觉预览 run `32461816343` 在同一生产代码提交上使用 Ubuntu 24.04 + Noto CJK + LibreOffice 实际执行：
+
+```text
+生成代表性统一数据 Excel
+→ generate_excel_report()
+→ report.md
+→ report.docx
+→ LibreOffice headless 重新打开并转换 PDF
+→ Poppler 渲染全部页面 PNG
+→ artifact 上传成功
+```
+
+Artifact：`report-visual-preview`，ID `9439204556`。
+
+实际结构检查：
+
+```text
+DOCX ZIP testzip        None
+DOCX ZIP entries        75
+Office Chart parts      22
+Embedded XLSX           22
+Embedded PNG            2
+PDF pages               29
+PDF page size           A4 Landscape
+Wordcloud PNG           1600 × 900，约 300 DPI
+```
+
+29 页预览已逐页检查：未发现空白页、图片丢失、明显裁切、横向溢出或大规模数据标签互相遮挡。关键页面结果：
+
+- 一级议题在同一页展示 3 个 KPI、左侧 9 项紧凑 Ranking、右侧词云，不再被分页拆开；
+- 一级议题词云以“品牌评价”为主视觉中心，其余词使用蓝/青绿/柔紫/蓝灰和少量赭色，未发现词条重叠；
+- 热点关键词词云在词较多时保持密度和呼吸感，没有随机旋转和彩虹配色；
+- 长二级议题使用 Top 8 + 横向条形图 + 双列完整剩余明细，完整数据未丢失；
+- 低数据量负面分布的图表高度按条目数缩减，避免单条数据占用半页；
+- 完整每日明细在 Word 中转换为横向紧凑矩阵，Markdown 的完整长表仍保留。
+
+未使用 Microsoft Word 实机做最终渲染，因此不能宣称 Microsoft Word 像素级完全一致；LibreOffice 实际重开/渲染、DOCX OOXML/ZIP 校验和 Office Chart 内嵌 XLSX 校验共同作为当前替代验证。不同 Office 版本仍可能产生轻微字体、主题色和分页差异。
 
 # 文档影响
 
 - `backend/src/aima_ugc/platform/reporting/README.md`：已同步组合布局、Top + 完整明细、分层趋势、紧凑每日矩阵和自适应 Editorial Word Cloud 的长期行为。
-- `docs/blueprint/13-统一数据Excel导出与调试复用.md`：正在同步同一长期边界；不记录修改流水账。
+- `docs/blueprint/13-统一数据Excel导出与调试复用.md`：已同步同一长期边界；不记录修改流水账。
+- 不涉及 Contract、Migration、API 或依赖版本变更。
 
 # Git / PR / 发布
 
 - 分支：`fix/report-visual-fidelity`
-- PR：#111 `改进横向 Word 报告视觉还原度`，Draft / Open / 未合并。
+- PR：#111 `改进横向 Word 报告视觉还原度`，Open / 未合并。
 - Merge：未授权，当前不执行。
 - 发布/部署：不属于本 Change。
