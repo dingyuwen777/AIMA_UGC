@@ -1,366 +1,406 @@
 # AI 舆情分析与打标
 
-这篇文档回答：**一条帖子进入 AI 后，系统到底让模型判断什么、为什么这些结果不直接塞进 Canonical、无关数据和“真实用户发声”现在怎么处理。**
+这篇文档回答：**一条内容进入 AI 后，模型到底判断什么；“真实用户发声”怎么表达；无关内容怎么处理；这些结果为什么单独属于 Analysis，而不是 Canonical。**
 
-## 1. 先看当前完整流程
+## 1. 先看完整流程
 
 当前 Content Labeling V3 一次模型调用完成四件事：
 
 ```text
-内容 + 最小作者公开信息
+标题 + 正文 + 最小作者公开信息
         ↓
       LLM
         ↓
-1. relevance   是否与当前监测主题相关
-2. voice_type  谁在发声
-3. sentiment   情感
+1. relevance   是否与爱玛舆情有实质语义关系
+2. voice_type  这条内容属于哪类发声
+3. sentiment   对爱玛的情感
 4. labels      一级/二级业务标签
         ↓
-结构校验 / 业务校验
+结构校验 + 业务校验
         ↓
 离线结果 或 PostgreSQL Analysis Result
 ```
 
-这样做的原因不是“把越多任务塞一次调用越高级”，而是这四个判断高度依赖同一段语义。一次判断可以避免：
+为什么放在一次调用里？因为四个判断依赖同一段语义。拆成几次模型请求会重复读取同一内容，也更容易出现前后判断互相矛盾。
 
-- 同一内容被模型重复读取多次；
-- “先判相关、再判用户、再判情感”产生互相矛盾的上下文；
-- 多次请求增加延迟和费用。
+## 2. 为什么 AI 结果不放进 Canonical
 
-## 2. 为什么 AI 结果不属于 Canonical
-
-Canonical 表达的是外部平台可以观察到的事实，例如：
+Canonical 保存的是外部可以观察到的事实，例如：
 
 ```text
-帖子正文
-作者昵称
+标题
+正文
+作者展示名
 发布时间
 点赞数
 评论数
 ```
 
-AI 标签是系统根据模型和 Prompt 推导出的结果。同一条帖子换模型、Prompt 或版本后，结果可能变化。
+AI 分析是系统根据某个 Prompt、Taxonomy 和模型推导出来的结论。同一条内容以后换 Prompt 或模型，结果可能变化。
 
-所以边界是：
+因此长期边界是：
 
 ```text
 Canonical = 外部事实
 Analysis  = 派生判断
 ```
 
-不要给 `CanonicalContentV1` 增加情感、一级标签、二级标签、发声类型等字段。
+不要给 `CanonicalContentV1` 增加 sentiment、labels、voice_type 或 AI relevance。
 
 ## 3. 模型实际看到什么
 
-当前模型输入刻意保持最小，只给判断真正需要的内容：
+当前 V3 Prompt 的每个 item 只提供：
 
-- 标题；
-- 正文；
-- 作者 display name；
-- 作者 bio；
-- 作者 verification label。
+```text
+title
+text
+author.display_name
+author.bio
+author.verification_label
+```
 
-不会因为数据库里有更多字段就全部塞给模型。
+不会因为数据库里还有平台、URL、互动指标、粉丝数等字段，就全部送给模型。
 
-这样能：
+原因很实际：
 
-- 降低 Token；
-- 减少不相关噪音；
-- 让 Prompt 更稳定；
-- 避免把没有必要的个人/平台信息送给模型。
+- 降低无关噪音；
+- 减少 Token；
+- 避免模型根据未授权字段“猜身份”；
+- 让同一 Prompt 在不同平台保持一致输入语义。
 
-## 4. Prompt 才是业务标签规则的唯一事实源
+`item_no` 只用于当前批次请求/响应配对，不是业务 ID。
 
-当前唯一正式 Prompt：
+## 4. Prompt 是业务规则唯一事实源
+
+当前正式 Prompt：
 
 ```text
 backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md
 ```
 
-里面定义：
+它定义：
 
-- relevance 的判定要求；
-- voice_type 证据规则；
-- sentiment；
-- 一级/二级 taxonomy；
-- 输出格式和限制。
+- `relevant / irrelevant`；
+- 7 类 `voice_type`；
+- 4 类 sentiment；
+- 9 个一级、39 个二级标签；
+- 一级/二级合法配对；
+- 输出结构和判断规则。
 
-本文不复制“9 个一级、39 个二级”完整表。原因很直接：如果 Prompt 改了而附录忘了改，就会出现两份业务真相。
+本文不复制完整 taxonomy。否则 Prompt 改了、附录没改，就会形成两套业务真相。
 
-Python 代码负责：
+Python 的职责是：
 
 ```text
-加载 Prompt
+加载当前 Prompt
 → 调模型
-→ 解析结构
-→ 校验字段是否合法
+→ 解析 JSON
+→ 校验结构/枚举/taxonomy 关系
 → 保存结果
 ```
 
-Python 不应该偷偷维护另一套 taxonomy。
+Python 不应该再硬编码另一份完整 taxonomy。
 
-## 5. relevance：相关性怎么理解
-
-`relevance` 不是“有没有命中一个字”。它回答：
-
-> 这条内容是否真正属于当前监测主题，值得进入后续舆情分析。
-
-系统现在有两层相关性能力：
+## 5. 两层 Relevance 不要混在一起
 
 ### 5.1 规则 Relevance
 
-Canonical 之后、正式 Ingestion 前使用全局 Relevance Keyword Pack 做统一规则过滤。
+在 Canonical 后、正式 Content Ingestion 前执行：
 
-它的价值是：
+```text
+Canonical
+→ Global Relevance Service
+→ relevant：继续 Ingestion
+→ filtered：来源账本记录 filtered，不写成 Content
+```
 
-- Excel 和 TikHub 走同一口径；
-- 很明显无关的数据可以更早过滤；
-- 结果可解释、成本低。
+这层是低成本、可解释的关键词/规则过滤，Excel 和 TikHub 共用同一正式服务。
 
 ### 5.2 AI Semantic Relevance
 
-AI V3 再根据完整语义判断内容是否真正相关，解决“关键词碰巧出现，但内容主题其实无关”的情况。
+AI V3 对已经进入 Analysis 的内容做语义复核：
 
-当前数据库 `contents` 有相关性投影字段；默认业务查询只看 `is_relevant=true`。审计时可以显式查看无关记录。
+```text
+relevance = relevant | irrelevant
+```
 
-## 6. 无关数据怎么处理
+它解决“关键词碰撞但正文其实无关”等规则过滤难以判断的问题。
 
-这里要区分**离线文件结果**和**正式数据库事实**。
+数据库事实在：
+
+```text
+analysis_content_results.relevance
+```
+
+当前 `contents` 表没有 `is_relevant` 这类 AI 投影列。HTTP `ContentFilterSnapshot.relevance` 可以显式筛选相关性，但是否默认应用某个筛选条件要看当前调用方/Query Service，不能从字段存在推断默认行为。
+
+## 6. 无关内容怎么处理
+
+必须区分离线文件链路和正式数据库 Analysis。
 
 ### 离线处理
 
-AI 判定无关后：
+当前离线分析链路对 `irrelevant`：
 
 ```text
 最终业务 JSONL / Excel / report
-→ 不再保留这条业务记录
+→ 不再输出这条业务记录
 
 checkpoint
-→ 保留最小处理决策，便于恢复
+→ 保留恢复所需的最小处理决策
 
 原始输入 / Raw
-→ 不因为业务过滤被销毁
+→ 不因为业务过滤而被销毁
 ```
 
-所以用户看到的最终文件会“删除无关记录”。
+这里的“删除”是从**最终业务结果文件**中排除，不等于把原始证据永久删掉。
 
-### 正式数据库
+### 正式数据库 Analysis
 
-数据库需要保留来源和分析审计，因此不靠物理 DELETE 表达业务相关性：
+正式分析会把结果保存进 `analysis_content_results`，包括 `relevance=irrelevant` 的审计事实。
+
+不能因为 AI 一次判定无关，就直接 `DELETE contents` 或删除来源 Raw。
+
+## 7. voice_type：真实用户发声现在怎么表达
+
+当前 `voice_type` 只有以下 7 个合法机器值：
 
 ```text
-contents.is_relevant
-→ 默认业务查询过滤
-→ 显式审计查询仍可查看
+user_voice
+creator_marketing
+brand_official
+dealer_promotion
+media_information
+other_organization
+unknown
 ```
 
-这能避免 AI 一次误判就永久丢失原始事实。
+白话解释：
 
-## 7. voice_type：现在怎么判断“真实用户发声”
+| 值 | 含义 |
+| --- | --- |
+| `user_voice` | 普通个人的真实体验、观点、咨询、投诉、购买/推荐意愿等非组织化表达 |
+| `creator_marketing` | 达人/KOL/KOC/博主以合作、种草、带货、导购、转化为主要目的的内容 |
+| `brand_official` | 爱玛品牌或明确品牌官方/工作人员身份发布的品牌传播 |
+| `dealer_promotion` | 经销商、门店、销售围绕报价、优惠、现车、到店、留资、成交等获客内容 |
+| `media_information` | 媒体、新闻、行业资讯号、聚合号的报道、转载或资讯内容 |
+| `other_organization` | 政府、协会、学校、非品牌企业等其他机构的通知/合作/公共事务传播 |
+| `unknown` | 综合可见证据仍无法可靠判断 |
 
-当前唯一业务字段是 `voice_type`：
+### 为什么不再加“是否真实用户”布尔字段
+
+因为它和 `voice_type` 会重复表达同一业务事实。
+
+当前规则：
 
 ```text
-professional_media
-influencer_self_media
-ordinary_user
+真实用户发声
+→ voice_type = user_voice
 ```
 
-可以白话理解为：
+页面/报表需要“真实用户占比”时，从 `voice_type` 统计，不再保存平行 bool。
+
+### 为什么不能只看账号名分类
+
+Prompt 明确要求组合两类证据：
 
 ```text
-professional_media
-→ 媒体、机构、官方等职业化发声
+主体证据
+→ 展示名、简介、认证文案看起来像谁
 
-influencer_self_media
-→ 达人、KOL、自媒体、营销型创作者等
-
-ordinary_user
-→ 没有明显职业传播/营销身份的普通用户发声
+表达目的证据
+→ 当前标题/正文为什么这样说
 ```
 
-AI 会结合正文语气和最小作者公开信息判断，而不是只看昵称里有没有“官方”“测评”等字样。
-
-### 为什么不再加 `is_real_user_voice` 布尔字段
-
-因为它会和 `voice_type` 重复表达同一事实：
-
-```text
-ordinary_user → true ?
-influencer_self_media → false ?
-professional_media → false ?
-```
-
-如果同时保存两列，就可能出现互相矛盾的数据。
-
-因此当前规则是：
-
-> `voice_type` 是发声类型唯一事实；页面或报表需要“普通用户占比”时，在查询/统计层从它计算。
+例如一个“骑行博主”写自费长期使用体验，没有合作/导购证据，仍可判 `user_voice`；不能因为作者是博主就自动判营销。
 
 ## 8. sentiment 和 labels 的关系
 
-只有相关内容才需要完整舆情标签。
-
-V3 业务语义：
+当前 sentiment 只有：
 
 ```text
-relevant
-→ 必须有合法 sentiment
-→ 必须有合法 labels
+正面
+中性
+负面
+混合
+```
 
-irrelevant
+V3 约束：
+
+```text
+relevance = relevant
+→ sentiment 必须是上面四类之一
+→ labels 至少一个合法一级/二级标签对
+
+relevance = irrelevant
 → sentiment = null
 → labels = []
 ```
 
-这样能避免“内容都无关，却还硬给一个负面标签”的假数据。
+这样不会出现“内容已经无关，却硬给一个负面标签”的假数据。
 
-## 9. 为什么标签对要单独保存
+## 9. 数据库里怎么保存 Analysis
 
-数据库里：
-
-```text
-analysis_results
-→ 一次分析父结果
-
-analysis_label_pairs
-→ 这次结果里的有序一级/二级标签对
-```
-
-不把多标签保存成：
+当前正式表：
 
 ```text
-"品牌评价,产品质量,售后服务"
+analysis_content_results
+analysis_content_requests
+analysis_content_request_items
+analysis_content_label_pairs
 ```
 
-因为逗号字符串无法可靠表达一级/二级配对，也不方便查询和排序。
+### `analysis_content_results`
 
-## 10. Analysis Result 为什么要带版本/模型/Prompt 信息
+一条已完成分析结果，主要保存：
 
-AI 结果不是永久真理。需要回答：
+- `content_id + content_version`；
+- `job_id`；
+- `schema_version`；
+- `relevance`；
+- `voice_type`；
+- `sentiment`；
+- `prompt_version / prompt_sha256 / taxonomy_sha256`；
+- `model_provider / model`；
+- `input_hash`；
+- `analyzed_at / created_at`。
+
+这些字段让系统以后能够回答：
+
+> 这条结论是针对内容哪一版、用哪个 Prompt/Taxonomy/模型得到的？
+
+### `analysis_content_label_pairs`
+
+保存一个结果里的有序一级/二级标签对：
 
 ```text
-用哪个模型？
-哪个 Provider？
-哪个 Prompt 版本？
-输入/输出多少 Token？
-成本多少？
-什么时候完成？
-失败是什么类型？
+analysis_result_id
+ordinal
+primary_label
+secondary_label
 ```
 
-当前 `analysis_results` 保存这些执行事实。最新成功结果被选为当前业务 Analysis，但旧结果仍可以用于审计和比较。
+不把多个标签塞成逗号字符串。
+
+### `analysis_content_requests` / `analysis_content_request_items`
+
+一次正式批量 Analysis 请求先冻结目标 Content 和版本，再交给 Job 执行，避免任务运行期间查询集合变化。
+
+精确列/约束以 `modules/analysis/tables.py` 和 Migration 为准。
+
+## 10. 正式数据库分析怎么走
+
+当前正式 Job：
+
+```text
+analysis.content-label.v1
+```
+
+流程：
+
+```text
+用户/系统创建 Analysis 请求
+→ 冻结 request items
+→ 创建 Job
+→ Worker 读取目标 Content 版本
+→ 调 Content Labeling V3
+→ Validator 校验
+→ Analysis Owner 写 Result + Label Pairs
+→ Request Item 收敛 succeeded / failed / stale
+```
+
+Router 不在一个 HTTP 请求里同步等待大批量 LLM。
 
 ## 11. Validation Retry 和 Transport Retry 不是一回事
 
 ### Validation Retry
 
-模型请求已经成功返回，但内容不符合约定结构或业务规则，例如：
+模型 HTTP 已成功返回，但结果不合法，例如：
 
-```text
-JSON 格式错
-voice_type 不在允许值
-relevant=true 但没有 sentiment
-一级/二级标签组合非法
-```
+- 不是要求的 JSON；
+- `voice_type` 不在 7 类里；
+- `relevant` 却没有 sentiment；
+- `irrelevant` 却返回 labels；
+- 一级/二级标签组合非法。
 
-这种情况可以带着校验错误再次让模型修正。
+上层可以带着校验错误要求模型修正。
 
 ### Transport Retry
 
-网络请求本身失败，例如超时、连接错误、5xx。
+网络层失败，例如连接失败、超时、5xx。
 
-基础 OpenAI-compatible Adapter 的一次 `complete()` 就对应一次 HTTP 请求，不在内部偷偷自动重发。是否重试由上层明确决定和记录。
+基础 OpenAI-compatible Adapter 的一次 `complete()` 对应一次 HTTP 请求，不在内部偷偷重发。是否重试由上层明确决定。
 
-把两种 Retry 混起来，会让请求次数和费用无法解释。
+把两种 Retry 混起来，会让请求次数和失败原因无法解释。
 
 ## 12. 离线批量分析为什么需要 checkpoint
 
-九万条数据这类批处理不应该因为第 89999 条失败就从头再来。
+处理大量 Excel 数据时，不能因为最后一条失败就全部重跑。
 
-离线分析使用持久 checkpoint 记录已经完成的稳定身份及最小结果：
+当前离线思路：
 
 ```text
 输入记录
-→ 有界并发请求
+→ 有界并发调用
 → 校验
-→ checkpoint
+→ 持久 checkpoint
 → 单写入器输出
 ```
 
-重启后从 checkpoint 恢复，已经成功的记录不重复调用模型。
+重启后从 checkpoint 恢复，已经完成的稳定身份不重复调用模型。
 
-## 13. 正式数据库分析怎么走
+## 13. 成本信息怎么理解
 
-Stage 8D 后正式链路是：
+当前正式 `analysis_content_results` 表**没有** token/cost 列，所以不能写成“数据库 Analysis Result 已保存本次 token 和价格”。
 
-```text
-用户/系统创建 Analysis 请求
-→ analysis.content-label.v1 Job
-→ Worker 查询目标 Content
-→ 调当前 Content Labeling V3
-→ 校验
-→ Analysis Owner 写 analysis_results / analysis_label_pairs
-→ 更新当前相关性投影
-```
+离线 LLM 处理与价格计算能力应以当前 Analysis 模块、Provider Adapter、运行产物和价格配置实现为准；如果以后要把 token/cost 作为正式数据库业务事实，需要新的明确 Schema/Migration，而不是只改文档。
 
-Router 不在 HTTP 请求里直接等待批量 LLM。
+当前也没有 AI 金额 Budget Guard。能计算/显示费用不等于“超过金额会禁止调用”。
 
-## 14. 成本怎么看
-
-Analysis 会保存：
-
-- input/output token；
-- provider/model；
-- 价格快照/计算结果；
-- cost amount/currency。
-
-价格配置使用供应商官方“输入缓存命中/输入缓存未命中/输出、每百万 tokens”语义，不使用模糊的内部简称作为对外配置语言。
-
-当前系统**没有 AI 金额预算硬上限**。有成本记录不等于有发送前 Budget Guard。
-
-## 15. 最小例子
+## 14. 最小例子
 
 输入：
 
 ```text
 标题：爱玛这车刹车手感怎么样？
 正文：我骑了三个月，续航还行，但是后刹有点软……
-作者：普通昵称，无机构认证，简介为日常生活内容
+作者：普通昵称；简介主要是日常生活；没有明显机构/营销证据
 ```
 
-合理结果形态可能是：
+一个合法的结果形态可能是：
 
 ```text
 relevance = relevant
-voice_type = ordinary_user
-sentiment = mixed / 对应当前 Prompt 允许值
-labels = [当前 taxonomy 中合法的一组一级/二级标签]
+voice_type = user_voice
+sentiment = 混合
+labels = [当前 Prompt taxonomy 中合法的一组一级/二级标签]
 ```
 
-这里故意不手写具体 taxonomy 名称，避免示例变成第二事实源。
+这里不复制具体标签列表，避免示例变成第二套 taxonomy。
 
-## 16. 当前代码入口
+## 15. 当前代码入口
 
 | 想看什么 | 位置 |
 | --- | --- |
-| 模块说明 | `backend/src/aima_ugc/modules/analysis/README.md` |
+| 模块当前实现 | `backend/src/aima_ugc/modules/analysis/README.md` |
 | V3 Prompt | `backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md` |
-| Analysis Contract/Validator | `backend/src/aima_ugc/modules/analysis/` |
-| PostgreSQL 表 | `backend/src/aima_ugc/modules/analysis/tables.py` |
+| 表结构 | `backend/src/aima_ugc/modules/analysis/tables.py` |
 | relevance/voice_type Migration | `migrations/versions/20260821_0023_analysis_relevance_voice_type.py` |
-| 正式 API 装配 | `backend/src/aima_ugc/bootstrap/api.py` |
+| 正式 Job | `backend/src/aima_ugc/modules/analysis/content_analysis_job.py` |
+| HTTP Contract | `backend/src/aima_ugc/contracts/http.py` |
 | 数据库调试 | [`PostgreSQL调试与常用SQL.md`](PostgreSQL调试与常用SQL.md) |
 
-## 17. 常见误区
+## 16. 常见误区
 
 - 把 AI 标签塞进 Canonical；
-- Python 再维护一份 taxonomy；
+- Python/文档再维护一份完整 taxonomy；
 - 为“真实用户”再加第二个 bool；
-- AI 判无关后直接 DELETE 正式数据库来源事实；
+- 把 `voice_type` 写成已经过期的三分类或其他历史分类；
+- 把规则 Relevance 和 AI Semantic Relevance 混成一个字段；
+- 假设 `contents.is_relevant` 存在；
+- AI 判无关后直接 DELETE Content/Raw；
 - 让 Router 同步跑大批量 LLM；
 - 一个 Adapter 调用内部悄悄发多次 HTTP；
-- 只看模型自然语言输出，不做结构和业务校验；
-- 用“模型看起来挺准”代替 Fixture/测试/人工抽样验证。
+- 把离线成本计算写成数据库已持久化 token/cost。
 
-长期边界见 [`../blueprint/04-后端任务API与前端.md`](../blueprint/04-后端任务API与前端.md)；数据分层见 [`../blueprint/02-采集系统与数据标准化.md`](../blueprint/02-采集系统与数据标准化.md)。
+长期边界见 [`../blueprint/07-技术决策与实施门禁.md`](../blueprint/07-技术决策与实施门禁.md) 和 [`../blueprint/02-采集系统与数据标准化.md`](../blueprint/02-采集系统与数据标准化.md)。
