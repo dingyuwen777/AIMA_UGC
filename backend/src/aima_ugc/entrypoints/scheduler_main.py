@@ -19,21 +19,31 @@ def run_scheduler_loop(
     poll_seconds: float = _SCHEDULER_POLL_SECONDS,
     sleep: Callable[[float], None] = time.sleep,
 ) -> None:
-    """持续执行短事务 Scheduler tick；业务任务仍交给 PostgreSQL Job Runtime。"""
+    """持续执行短事务 Scheduler tick；空轮询只记 DEBUG。"""
     if poll_seconds <= 0:
         raise ValueError("Scheduler poll_seconds 必须大于 0")
 
     while True:
+        started = time.perf_counter()
         result = run_scheduler_once(runtime)
+        duration_ms = max(0, round((time.perf_counter() - started) * 1000))
+        if result.failed:
+            level = logging.WARNING
+        elif result.initialized or result.enqueued or result.skipped:
+            level = logging.INFO
+        else:
+            level = logging.DEBUG
         log_event(
             runtime.logger,
-            logging.INFO,
+            level,
             "scheduler.tick.completed",
             "Scheduler tick 已完成",
             scanned=result.scanned,
             initialized=result.initialized,
             enqueued=result.enqueued,
             skipped=result.skipped,
+            failed=result.failed,
+            duration_ms=duration_ms,
         )
         sleep(poll_seconds)
 
