@@ -1,4 +1,4 @@
-name: DEV Analysis V3 Finalize V2
+name: DEV Analysis V3 Finalize V3
 
 on:
   pull_request:
@@ -49,7 +49,11 @@ jobs:
         with:
           python-version: 3.14.7
 
-      - name: Install locked environment
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24.19.0
+
+      - name: Install locked environments
         shell: bash
         run: |
           set -euo pipefail
@@ -57,11 +61,12 @@ jobs:
           python -m pip install "uv==${UV_VERSION}"
           uv lock --check
           uv sync --locked
+          npm ci --prefix frontend
           mkdir -p "${AIMA_DATA_DIR}" "${AIMA_LOG_DIR}" "${AIMA_SECRET_DIR}"
           printf '%s\n' 'analysis-v3-ci' > "${AIMA_SECRET_DIR}/postgres_password"
           chmod 600 "${AIMA_SECRET_DIR}/postgres_password"
 
-      - name: Apply final patch
+      - name: Apply final production docs and skill patch
         shell: bash
         run: |
           set -euo pipefail
@@ -72,7 +77,7 @@ jobs:
               p = Path(path)
               text = p.read_text(encoding="utf-8")
               if text.count(old) < count:
-                  raise SystemExit(f"missing expected block in {path}: {old[:100]!r}")
+                  raise SystemExit(f"missing expected block in {path}: {old[:120]!r}")
               p.write_text(text.replace(old, new, count), encoding="utf-8")
 
           path = "tests/unit/platform/test_excel_export.py"
@@ -134,13 +139,18 @@ jobs:
               text += '''\n\n## AI 语义相关性与发声类型\n\n`label_sentiment()` 复用正式 `ContentLabelingService`，每条内容一次 LLM 请求同时完成相关性、发声类型、情感和多标签判断。判定为 `irrelevant` 的完整内容行会在最终原子回写时从 `deduplicated/contents.jsonl` 删除；checkpoint 仅保留最小恢复决策，不作为业务数据源。最终 Excel 不显示“相关性”列，只显示中文“发声类型”和派生的“是否用户真实发声”。\n'''
           p.write_text(text, encoding="utf-8")
 
+          path = ".agents/skills/reliable-vibe-coding/SKILL.md"
+          old = '''### 9. 同步当前事实\n\n代码变更后语义检查 README、API/Contract、Schema、Migration、架构、配置示例和运维说明是否受影响。\n\n- 正式文档描述系统现在是什么，不写变更流水账。\n- Change 记录为什么改变、当时的约束和验证证据。\n- 行为不变且文档不受影响时，记录判断依据，不制造无关文档修改。'''
+          new = '''### 9. 同步当前事实\n\n代码变更后语义检查 Blueprint、README、API/Contract、Schema、Migration、架构、配置示例、测试说明和运维说明是否受影响。这是交付门禁，不是可选收尾。\n\n- 实施过程中或验证阶段一旦发现实现方案、代码、Contract、Schema、Migration、配置、测试或实际运行行为与正式 Blueprint、README、API/接口文档不一致，不得静默以代码为准或以文档为准。先依据用户已确认决策、适用 `AGENTS.md` 和仓库当前事实确定正确事实源：实现偏离正式约束时修正实现；已确认方案改变系统事实时，在同一任务中同步更新所有受影响的正式文档。\n- 正式文档描述系统现在是什么，不写变更流水账；已经失效的说明必须在同一任务中删除或改正，不为未实现功能提前写正式说明。\n- Change 记录为什么改变、当时的约束和验证证据，但 `CHANGE.md` 不能代替 Blueprint、README、Contract/API 文档等正式事实源。\n- 行为不变且文档确实不受影响时，记录判断依据，不制造无关文档修改。\n- 文档与实现尚未同步、受影响文档尚未检查，或只能证明其中一方正确时，不得把任务标记为完成、`ready_for_review`、可合并或可发布。'''
+          replace(path, old, new)
+
           path = "changes/active/CHG-20260821-analysis-relevance-voice-type/CHANGE.md"
           p = Path(path)
           text = p.read_text(encoding="utf-8")
           text = text.replace('- [ ] Excel 在包含 Analysis 时增加“相关性 / 发声类型 / 是否用户真实发声”列；irrelevant 只有在显式审计数据源传入时才可能出现。', '- [ ] Excel 不展示“相关性”列；“发声类型”按稳定英文枚举映射为中文，“是否用户真实发声”由 `voice_type == user_voice` 派生为“是/否”；业务 Excel 不输出 irrelevant 行。')
-          decision = '\n- 用户后续进一步确认：所有判断必须在同一次 AI 打标过程中完成；Excel 删除“相关性”列；发声类型显示中文；判定无关的完整业务记录从最终离线数据集删除。`is_user_voice` 继续作为同一打标结果中 `voice_type` 的确定性派生字段，不增加第二次模型调用或第二份可冲突事实。\n'
+          decision = '\n- 用户后续进一步确认：所有判断必须在同一次 AI 打标过程中完成；Excel 删除“相关性”列；发声类型显示中文；判定无关的完整业务记录从最终离线数据集删除。`is_user_voice` 继续作为同一打标结果中 `voice_type` 的确定性派生字段，不增加第二次模型调用或第二份可冲突事实。\n- 用户新增开发规范决定：实施方案、代码、Contract、Schema、Migration、配置、测试或运行行为与正式 Blueprint/README/API 文档不一致时，必须在同一任务中确认正确事实源并同步修正实现或文档；该门禁同步固化到 `reliable-vibe-coding` Skill。\n'
           needle = '用户已明确：发声类型需要按“用户真实体验/个人表达、营销推广、官方传播、媒体转载等”合理分类，并授权按该目标细化类型。采用上面的 7 类，其中 `is_user_voice` 仅由 `voice_type == user_voice` 派生，避免数据库存两份可能不一致的事实。\n'
-          if decision.strip() not in text:
+          if '用户新增开发规范决定' not in text:
               text = text.replace(needle, needle + decision, 1)
           p.write_text(text, encoding="utf-8")
           PY
@@ -152,7 +162,14 @@ jobs:
             tests/unit/platform/test_excel_export.py \
             tests/integration/content/test_stage8d_voice_plaza_runtime.py
 
-      - name: Verify
+      - name: Regenerate repository contracts and API client
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/contracts/generate.py
+          npm --prefix frontend run generate:api
+
+      - name: Verify final candidate
         shell: bash
         run: |
           set -euo pipefail
@@ -163,15 +180,17 @@ jobs:
           uv run ruff check backend tests scripts
           uv run mypy backend/src
           uv run python scripts/contracts/generate.py --check
+          uv run python scripts/contracts/check_compatibility.py
           uv run python scripts/quality/check_docs.py
 
-      - name: Commit and push
+      - name: Commit and push verified candidate
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- \
+            .agents/skills/reliable-vibe-coding/SKILL.md \
             backend/src/aima_ugc/platform/export/excel.py \
             backend/src/aima_ugc/adapters/providers/imports_test/test.py \
             backend/src/aima_ugc/adapters/persistence/postgres/reporting.py \
@@ -180,6 +199,8 @@ jobs:
             docs/blueprint/13-统一数据Excel导出与调试复用.md \
             docs/blueprint/15-舆情AI打标与统一分析契约.md \
             backend/src/aima_ugc/adapters/providers/imports_test/README.md \
-            changes/active/CHG-20260821-analysis-relevance-voice-type/CHANGE.md
-          git commit -m "固化AI发声分类与Excel展示规则"
+            changes/active/CHG-20260821-analysis-relevance-voice-type/CHANGE.md \
+            contracts \
+            frontend/src/generated/api
+          git commit -m "固化AI相关性发声分类与文档同步门禁"
           git push origin HEAD:feature/analysis-relevance-voice-type
