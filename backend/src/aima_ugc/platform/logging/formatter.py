@@ -66,9 +66,7 @@ def safe_exception_traceback(error: BaseException) -> str:
     frames = traceback.extract_tb(error.__traceback__)[-_MAX_TRACEBACK_FRAMES:]
     lines = ["Traceback (most recent call last):"]
     for frame in frames:
-        lines.append(
-            f'  File "{Path(frame.filename).name}", line {frame.lineno}, in {frame.name}'
-        )
+        lines.append(f'  File "{Path(frame.filename).name}", line {frame.lineno}, in {frame.name}')
     lines.append(type(error).__name__)
     return _redact_text("\n".join(lines))
 
