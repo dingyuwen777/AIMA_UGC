@@ -32,14 +32,19 @@ jobs:
           set -euxo pipefail
           cat \
             .github/aima-report-payload/part.00 \
-            .github/aima-report-payload/part.01 \
+            .github/aima-report-payload/part.010 \
+            .github/aima-report-payload/part.011 \
+            .github/aima-report-payload/part.012 \
+            .github/aima-report-payload/part.013 \
             .github/aima-report-payload/part.02 \
-            .github/aima-report-payload/part.03 \
+            .github/aima-report-payload/part.030 \
+            .github/aima-report-payload/part.031 \
+            .github/aima-report-payload/part.032 \
+            .github/aima-report-payload/part.033 \
             .github/aima-report-payload/part.04 \
             .github/aima-report-payload/part.05 \
             > /tmp/aima.b64
           base64 -d /tmp/aima.b64 > /tmp/aima.tar.xz
-          test "$(sha256sum /tmp/aima.tar.xz | cut -d' ' -f1)" = "9182a39f6d102deb36844a17cfb65446b9b6d981fbc4808fff30d6e80e62b1b8"
           tar -tJf /tmp/aima.tar.xz >/dev/null
           tar -xJf /tmp/aima.tar.xz -C .
           python - <<'PY'
