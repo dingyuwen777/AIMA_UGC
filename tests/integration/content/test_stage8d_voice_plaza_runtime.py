@@ -235,7 +235,6 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
         assert analyzed.analysis.status == "completed"
         assert analyzed.analysis.relevance == "relevant"
         assert analyzed.analysis.voice_type == "user_voice"
-        assert analyzed.analysis.is_user_voice is True
         assert [item.secondary_label for item in analyzed.analysis.labels] == [
             "实际续航表现",
             "客服与服务态度",
@@ -293,7 +292,6 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
         assert current.analysis.model_provider == "fake"
         assert current.analysis.relevance == "relevant"
         assert current.analysis.voice_type == "user_voice"
-        assert current.analysis.is_user_voice is True
         assert [label.secondary_label for label in current.analysis.labels] == [
             "实际续航表现",
             "客服与服务态度",
@@ -366,14 +364,12 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
             data_rows = rows[1:]
             assert "相关性" not in headers
             voice_type_index = headers.index("发声类型")
-            user_voice_index = headers.index("是否用户真实发声")
+            assert "是否用户真实发声" not in headers
             secondary_index = headers.index("二级标签")
             assert len(data_rows) == 2
             assert data_rows[0][voice_type_index] == "真实用户发声"
-            assert data_rows[0][user_voice_index] == "是"
             assert data_rows[0][secondary_index] == "实际续航表现\n客服与服务态度"
             assert data_rows[1][voice_type_index] is None
-            assert data_rows[1][user_voice_index] is None
             assert data_rows[1][secondary_index] is None
         finally:
             workbook.close()

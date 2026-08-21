@@ -627,7 +627,6 @@ class ContentAnalysisResponse(BaseModel):
     status: ContentAnalysisStatus
     relevance: ContentRelevance | None = None
     voice_type: ContentVoiceType | None = None
-    is_user_voice: bool | None = None
     sentiment: str | None = None
     labels: tuple[ContentLabelPairResponse, ...] = ()
     analyzed_at: datetime | None = None
@@ -637,10 +636,8 @@ class ContentAnalysisResponse(BaseModel):
     @model_validator(mode="after")
     def validate_completed_shape(self) -> ContentAnalysisResponse:
         if self.status == "completed":
-            if self.relevance is None or self.voice_type is None or self.is_user_voice is None:
+            if self.relevance is None or self.voice_type is None:
                 raise ValueError("completed Analysis 必须包含相关性与发声类型")
-            if self.is_user_voice != (self.voice_type == "user_voice"):
-                raise ValueError("is_user_voice 必须由 voice_type 派生")
             if self.relevance == "relevant":
                 if self.sentiment is None or self.analyzed_at is None or not self.labels:
                     raise ValueError("relevant completed Analysis 必须包含情感、标签与分析时间")
@@ -652,7 +649,6 @@ class ContentAnalysisResponse(BaseModel):
                 for value in (
                     self.relevance,
                     self.voice_type,
-                    self.is_user_voice,
                     self.sentiment,
                     self.analyzed_at,
                 )

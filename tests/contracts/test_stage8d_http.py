@@ -38,7 +38,6 @@ def _item() -> ContentListItemResponse:
             status="completed",
             relevance="relevant",
             voice_type="user_voice",
-            is_user_voice=True,
             sentiment="负面",
             labels=(
                 ContentLabelPairResponse(primary_label="产品体验", secondary_label="续航表现"),

@@ -1114,17 +1114,6 @@
             ],
             "title": "Analyzed At"
           },
-          "is_user_voice": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Is User Voice"
-          },
           "labels": {
             "default": [],
             "items": {

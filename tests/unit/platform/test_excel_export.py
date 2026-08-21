@@ -99,7 +99,6 @@ def _export_record() -> UnifiedDataExcelV1:
             matched_keywords=("keyword-a", "keyword-b"),
             analysis=UnifiedDataExcelAnalysisV1(
                 voice_type="creator_marketing",
-                is_user_voice=False,
                 sentiment="sentiment-test",
                 primary_label="primary-test",
                 secondary_label="secondary-test",
@@ -192,7 +191,6 @@ def test_shared_exporter_writes_provider_neutral_workbook_and_reopens(tmp_path: 
             "下载数",
             "命中关键词",
             "发声类型",
-            "是否用户真实发声",
             "情感标签",
             "一级标签",
             "二级标签",
@@ -233,10 +231,10 @@ def test_shared_exporter_writes_provider_neutral_workbook_and_reopens(tmp_path: 
             "https://example.invalid/content/00123456789012345678"
         )
         assert content_row[23].value == "keyword-a；keyword-b"
-        assert all(content_row[index].value is None for index in range(24, 32))
-        assert content_row[32].value == "tikhub"
-        assert content_row[33].value == "raw/search.json#item[0]"
-        assert content_row[34].value == "partial 1/2"
+        assert all(content_row[index].value is None for index in range(24, 31))
+        assert content_row[31].value == "tikhub"
+        assert content_row[32].value == "raw/search.json#item[0]"
+        assert content_row[33].value == "partial 1/2"
 
         comment_row = comment_sheet[2]
         assert comment_row[0].value == "小红书"
@@ -519,10 +517,9 @@ def test_raw_and_labeled_exports_keep_same_schema(tmp_path: Path) -> None:
             cell.value for cell in next(labeled_workbook["内容"].iter_rows(min_row=2, max_row=2))
         ]
         assert raw_values[:24] == labeled_values[:24]
-        assert raw_values[24:32] == [None] * 8
-        assert labeled_values[24:32] == [
+        assert raw_values[24:31] == [None] * 7
+        assert labeled_values[24:31] == [
             "达人/创作者营销",
-            "否",
             "sentiment-test",
             "primary-test",
             "secondary-test",
@@ -530,7 +527,7 @@ def test_raw_and_labeled_exports_keep_same_schema(tmp_path: Path) -> None:
             "prompt-test",
             "taxonomy-test",
         ]
-        assert raw_values[32:] == labeled_values[32:]
+        assert raw_values[31:] == labeled_values[31:]
     finally:
         raw_workbook.close()
         labeled_workbook.close()

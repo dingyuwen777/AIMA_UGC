@@ -140,9 +140,7 @@ def test_v3_contract_enforces_relevance_dependent_shape_and_voice_type() -> None
 
     assert relevant.schema_version == "content-label-analysis.v3"
     assert relevant.is_relevant is True
-    assert relevant.is_user_voice is True
     assert irrelevant.is_relevant is False
-    assert irrelevant.is_user_voice is False
 
     record = UnifiedContentRecordV1(
         content=_content(),

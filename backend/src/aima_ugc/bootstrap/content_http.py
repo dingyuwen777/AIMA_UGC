@@ -230,11 +230,6 @@ def _item_response(record: ContentReadRecord) -> ContentListItemResponse:
             status=cast(ContentAnalysisStatus, record.analysis.status),
             relevance=cast(ContentRelevance, record.analysis.relevance),
             voice_type=cast(ContentVoiceType, record.analysis.voice_type),
-            is_user_voice=(
-                record.analysis.voice_type == "user_voice"
-                if record.analysis.voice_type is not None
-                else None
-            ),
             sentiment=record.analysis.sentiment,
             labels=tuple(
                 ContentLabelPairResponse(primary_label=primary, secondary_label=secondary)

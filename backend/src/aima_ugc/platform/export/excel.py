@@ -67,7 +67,6 @@ _CONTENT_HEADERS = (
     "下载数",
     "命中关键词",
     "发声类型",
-    "是否用户真实发声",
     "情感标签",
     "一级标签",
     "二级标签",
@@ -152,7 +151,6 @@ _CONTENT_COLUMN_WIDTHS = {
     "下载数": 12,
     "命中关键词": 20,
     "发声类型": 18,
-    "是否用户真实发声": 16,
     "情感标签": 12,
     "一级标签": 20,
     "二级标签": 24,
@@ -570,7 +568,6 @@ def _iter_unified_content_jsonl(path: Path) -> Iterator[UnifiedDataExcelV1]:
                 analysis = UnifiedDataExcelAnalysisV1(
                     relevance=relevance,
                     voice_type=voice_type,
-                    is_user_voice=voice_type == "user_voice",
                     sentiment=record.analysis.sentiment,
                     primary_label=primary_label,
                     secondary_label=secondary_label,
@@ -664,15 +661,6 @@ def _content_values(
         ("；".join(content.matched_keywords) or None, False, False),
         (
             _voice_type_display_name(analysis.voice_type) if analysis is not None else None,
-            False,
-            False,
-        ),
-        (
-            "是"
-            if analysis is not None and analysis.is_user_voice
-            else "否"
-            if analysis is not None
-            else None,
             False,
             False,
         ),

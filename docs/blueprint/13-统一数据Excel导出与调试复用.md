@@ -109,7 +109,6 @@ Workbook 固定三个 Sheet：
 下载数
 命中关键词
 发声类型
-是否用户真实发声
 情感标签
 一级标签
 二级标签
@@ -186,7 +185,6 @@ Excel 的“内容ID”来自归一化记录的 `external_content_id`，不是�
 
 ```text
 发声类型
-是否用户真实发声
 情感标签
 一级标签
 二级标签
@@ -199,7 +197,7 @@ Taxonomy版本
 
 - “相关性”不进入 Excel 展示列。离线打标已从最终 `deduplicated/contents.jsonl` 删除 `irrelevant` 内容；正式查询型导出同样默认排除当前分析判定的无关内容，因此导出表不重复展示恒为 relevant 的字段；
 - `voice_type` 在 Contract/数据库中保持稳定英文枚举，Excel 仅做中文展示映射：`user_voice → 真实用户发声`、`creator_marketing → 达人/创作者营销`、`brand_official → 品牌官方传播`、`dealer_promotion → 经销商/门店推广`、`media_information → 媒体/资讯转载`、`other_organization → 其他机构传播`、`unknown → 无法判断`；
-- “是否用户真实发声”不由模型重复输出，而由 `voice_type == user_voice` 唯一派生为“是/否”，避免双字段冲突；
+- `voice_type` 是发声类型唯一业务事实；Excel 只展示“发声类型”这一列，需要筛选真实用户发声时直接使用 `voice_type = user_voice`；
 - 情感标签仍为单值；一级/二级标签由 Analysis 的一个或多个合法标签对投影；
 - `内容` Sheet 保持一条内容一行，一级和二级单元格按同一标签对顺序用换行符逐行展示，两个单元格行与行对应；
 - `标签明细` Sheet 直接从同一个归一化 `UnifiedContentRecordV1` 的内容事实和 Analysis 标签对派生，一个标签对一行；完整默认列为内容ID、平台、标题、情感、一级、二级、内容链接，同一内容因此可以在标签明细中出现多行，但不会在内容 Sheet 重复；
@@ -245,7 +243,6 @@ labeled
 内容链接
 命中关键词
 发声类型
-是否用户真实发声
 情感标签
 一级标签
 二级标签
