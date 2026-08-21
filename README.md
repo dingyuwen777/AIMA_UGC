@@ -166,13 +166,13 @@ labels
 `voice_type` 是发声类型唯一业务事实，当前合法值是：
 
 ```text
-user_voice             普通用户发声
-official_media         官方媒体
-industry_media         行业媒体
-self_media             自媒体
-kol_koc                KOL / KOC
-brand_official         品牌官方
-ecommerce_merchant     电商商家
+user_voice           普通用户发声
+creator_marketing    创作者/KOL/KOC 营销表达
+brand_official       品牌官方
+dealer_promotion     经销商/门店推广
+media_information    媒体/资讯表达
+other_organization   其他机构
+unknown              证据不足，无法可靠判断
 ```
 
 系统不再同时保存一个重复的“是否真实用户发声”布尔字段。需要判断真实用户发声时，以 `voice_type=user_voice` 为唯一业务依据。
