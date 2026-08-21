@@ -1,93 +1,642 @@
 # Content 模块
 
-`content` 是 Canonical Content/Comment 业务状态、版本历史、指标历史、评论 Coverage 和账号身份的唯一写 Owner。Collection 只能通过 Content Service/Repository 写入，Provider/Mapper 不得直接写这些业务表。
+Content 是 AIMA_UGC 的**核心业务事实 Owner**。它负责把来自 TikHub、Excel 等不同来源的 Canonical Observation 收敛为同一套账号、内容、评论 Current，并保存正文历史、指标历史、评论覆盖和查询 Read Model。
 
-## 当前职责
+如果你要理解“同一个帖子为什么不会重复插入”“旧 Search 为什么不会把 Detail 的正文清空”“点赞下降为什么也要记录”“声音广场的数据从哪里来”，就从这个模块开始。
 
-- 维护 `accounts` / `account_external_ids`；
-- 维护 `contents` / `content_versions` / `content_metric_observations`；
-- 维护 `comments` / `comment_versions` / `comment_metric_observations`；
-- 维护 `comment_coverage_observations`；
-- 按 `platform + external_content_id`、`content_id + external_comment_id` 和账号平台身份做 PostgreSQL 幂等收敛；
-- 保存 Canonical 的当前值与稀疏历史事实，不把未观察字段伪造成当前或历史值；
-- 通过 `provider_attempt_id + raw_artifact_id` 保持来源链。
-
-Stage 8D 新增 Provider-neutral 只读边界：
+系统数据链：
 
 ```text
-PostgreSQL Content Current / Version / Metric / Comment / Coverage / Source
-→ PostgresContentQueryRepository
-→ Content HTTP Service
-→ Pydantic / OpenAPI / Orval
-→ Vue 声音广场
-```
-
-查询支持标题、正文、作者、外部 ID、平台、内容类型、发布时间、来源 Batch/Run、AI 状态、情感和
-一级/二级标签过滤，以及绑定查询条件的 HMAC Cursor。Repository 只读 Content/Analysis/Collection
-Owner 的事实；不会成为第二个写 Owner。当前 AI 投影必须同时匹配 Content Version 和进程选定的
-Prompt/Taxonomy/Provider/Model 身份；其他成功历史保留，但页面状态为 `stale`，不能冒充当前结果。
-
-## 当前五平台边界
-
-Stage 7 已接通 TikHub 的小红书、抖音、微博、B站、快手正式 Operation/Mapper。五个平台最终都进入同一 Canonical V1 和本 Content Owner；平台差异停留在 Provider Operation/Mapper，不在 Content Repository 建第二套平台表或平台专用摄取路径。
-
-当前正式主链：
-
-```text
-Provider Adapter
-→ Raw Artifact
+Provider / Excel
 → Mapper
-→ Canonical Content / Comment
-→ Collection Candidate / Ingestion Ledger
+→ Canonical
 → ContentIngestionService
-→ PostgresContentRepository
-→ PostgreSQL Current / History
+→ Content PostgreSQL Owner
+→ Current / Version / Metric / Coverage
+→ Query Repository
+→ API / Analysis / Export
 ```
 
-## Current 与 History 语义
+相关：
 
-- `contents` / `comments` / `accounts` 保存当前业务视图；历史事实保存在版本表和指标 Observation 表。
-- 同一业务身份首次并发发现时，由 PostgreSQL UNIQUE + `ON CONFLICT` 收敛为同一记录，不能依赖“先查再插”避免竞争。
-- `last_seen_at` 是实体级“最近一次看见”时间并单调向前；`first_seen_at` 可以被更早的补录 Observation 向前扩展。
-- Current 的稀疏字段不能只用整行 `last_seen_at` 判断新旧。`accounts`、`contents`、`comments` 使用内部 `field_observed_at` JSONB 记录**每个已观察字段**的 freshness；同一字段只接受 `observed_at >=` 该字段已有 freshness 的 Observation。
-- 因此，较旧 Observation 可以补充更晚 Observation **从未观察过**的字段；如果更晚 Observation 已经明确观察过某字段，即使值是合法 `NULL`，较旧 Observation 也不得把它回滚成旧值。
-- `field_observed_at` 只保存字段路径和带时区时间，不保存第二份业务值；稳定业务字段仍使用关系列，指标历史仍使用 Metric Observation。
-- Content/Comment 业务字段在字段级合并后发生变化时才推进 `current_version` 并追加 Version；旧 Observation 补入此前未知字段也属于新的 Current 业务事实，因此可以形成新版本。
-- 指标历史是稀疏事实：只有 `observed_fields` 明确观察到的指标才写值，未观察指标保存 `NULL`，不得从 Current 静默带入。
-- 正常时间顺序下 A → B → A 仍然是三个有效观察事实；“防止旧 Observation 回滚某字段”不等于删除真实回变历史。
+- [`../../../../../docs/blueprint/03-数据库与文件存储.md`](../../../../../docs/blueprint/03-数据库与文件存储.md)
+- [`../../../../../docs/appendix/数据入口与统一入库实现.md`](../../../../../docs/appendix/数据入口与统一入库实现.md)
+- [`../../../../../docs/代码结构与修改导航.md`](../../../../../docs/代码结构与修改导航.md)
 
-## 账号稳定身份
+---
 
-- `accounts.external_account_id` 是平台主稳定身份；`account_external_ids` 保存已确认的备用稳定 ID。
-- 同一 `account_id + id_type` 重复出现相同值是幂等。
-- 如果同一 `account_id + id_type` 出现不同值，当前语义为 **fail-closed**：抛出稳定身份冲突，不静默覆盖旧值，也不根据 Observation 到达顺序猜哪个 ID 正确。
-- 如果未来真实 Provider 证据证明某类 alternate ID 实际是可变属性，应通过新的身份语义 Change 重新设计，而不是放宽当前稳定 ID 约束。
+## 1. 当前代码地图
 
-## 评论 Coverage
+```text
+backend/src/aima_ugc/modules/content/
+├─ ingestion.py
+├─ query.py
+├─ content_cursor.py
+├─ http.py
+├─ tables.py
+├─ extended_tables.py
+├─ account_tables.py
+└─ source_constraints.py
+```
 
-每次正式评论采集/明确不采集都应形成可审计 Coverage 事实。当前 Schema 记录：
+### `ingestion.py`
 
-- `coverage`: `complete | partial | not_requested | unavailable`；
-- `reported_total`；
-- `collected_count`；
-- `sample_mode`；
-- `sort_mode`；
-- `target_count`；
-- `stop_reason`；
-- `observed_at`；
-- `provider_attempt_id` / `raw_artifact_id`。
+领域摄取入口：
 
-同一 `content_id + provider_attempt_id + raw_artifact_id` 来源幂等。Stage 7 的 50/50/5 是请求深度软目标：已经由 Provider 返回并付费的当前页必须全部 Mapper/Ingestion，达到 target 只控制是否继续请求下一页。
+```text
+ContentIngestionService
+ContentIngestionRepository Protocol
+```
 
-## 不能做的事
+同时提供轻量 `InMemoryContentRepository`，用于无数据库情况下验证一部分 freshness/Version/Metric 领域语义。
 
-- 不在 Content Repository 调 Provider HTTP；
-- 不在 Mapper 内访问数据库；
-- 不让 Collection/Router 绕过 Content Owner 直接写 Content/Comment 表；
-- 不把平台原始 JSON 作为 Current 业务模型；
-- 不用实体级 `last_seen_at` 替代字段级 freshness；
-- 不因旧 Observation 到达较晚而回滚已经被更新 Observation 明确观察过的 Current 字段；
-- 不把 `NULL`/未观察字段猜成 `0` 或沿用旧值写入历史；
-- 不静默覆盖已经建立的稳定 alternate ID。
+### `tables.py`
 
-正式架构、采集决策和 Schema 语义分别以 `docs/blueprint/01-总体架构与技术选型.md`、`02-采集系统与数据标准化.md`、`03-数据库与文件存储.md`、`08-采集策略与平台能力.md` 为长期事实源。
+核心 Current/History：
+
+```text
+accounts
+contents
+content_versions
+content_metric_observations
+comments
+comment_versions
+comment_metric_observations
+comment_coverage_observations
+```
+
+### `extended_tables.py`
+
+内容/评论扩展实体和关系，例如：
+
+```text
+external ids
+media
+topics
+mentions
+locations
+thread coverage
+```
+
+精确结构直接看当前文件和 Migration。
+
+### `query.py`
+
+定义 Provider-neutral Content Read Model，不写 SQL。
+
+### `content_cursor.py`
+
+声音广场 Content 列表 Cursor 编解码和 query-hash 绑定。
+
+### `http.py`
+
+Content HTTP Port / 应用异常，不直接 SQL。
+
+---
+
+## 2. 真正 PostgreSQL 写入在哪里
+
+Domain Service 不自己写 SQL。
+
+PostgreSQL 实现位于：
+
+```text
+backend/src/aima_ugc/adapters/persistence/postgres/
+```
+
+Collection 调 Content Owner 的边界：
+
+```text
+collection_content.py
+```
+
+Content 查询：
+
+```text
+content_queries.py
+```
+
+生产装配：
+
+```text
+backend/src/aima_ugc/bootstrap/collection_scope.py
+backend/src/aima_ugc/bootstrap/manual_ingestion.py
+backend/src/aima_ugc/bootstrap/content_http.py
+```
+
+如果看到 Provider/Router 直接 `INSERT INTO contents`，就违反了当前 Owner 边界。
+
+---
+
+## 3. Content 身份怎样定义
+
+```text
+(platform, external_content_id)
+```
+
+数据库有对应 UNIQUE 约束。
+
+例如：
+
+```text
+Excel 导入
+platform=xhs
+external_content_id=note_123
+
+TikHub 后续又采到
+platform=xhs
+external_content_id=note_123
+```
+
+最终是**同一条 Content Current**，不会因为来源不同创建两条业务内容。
+
+不要用：
+
+- 标题；
+- URL；
+- 作者名；
+
+作为最终 Content 身份。
+
+---
+
+## 4. Comment 身份怎样定义
+
+评论是在具体 Content 内收敛：
+
+```text
+(content_id, external_comment_id)
+```
+
+根评论/父评论是关系事实：
+
+```text
+root_comment_id
+parent_comment_id
+```
+
+没有 Provider 明确父关系时保留 `parent_comment_id = null`，不靠文本/用户名/数组位置猜。
+
+---
+
+## 5. 为什么同时有 Current、Version、Metric
+
+### Current
+
+用于页面和普通查询：
+
+```text
+contents
+comments
+```
+
+例如：
+
+```text
+当前标题
+当前正文
+当前点赞
+当前评论数
+最后一次观察时间
+```
+
+### Version
+
+记录稳定业务字段变化：
+
+```text
+content_versions
+comment_versions
+```
+
+例如正文：
+
+```text
+A
+→ B
+→ A
+```
+
+当前规则允许形成三个业务版本；Version 和“以前是否出现过相同正文”不是一回事。
+
+### Metric Observation
+
+互动指标频繁变化，不应每次点赞 +1 就创建正文 Version：
+
+```text
+content_metric_observations
+comment_metric_observations
+```
+
+当前原因包括：
+
+```text
+initial
+changed
+daily_checkpoint
+```
+
+因此：
+
+```text
+正文改变
+→ Version
+
+点赞/评论/播放改变
+→ Metric Observation
+```
+
+---
+
+## 6. 指标为什么允许下降
+
+真实平台可能出现：
+
+- 用户取消点赞；
+- 评论被删除；
+- 平台修正播放量；
+- Provider 返回更正值。
+
+所以当前不能：
+
+```python
+current_like_count = max(old, new)
+```
+
+只要 Provider 本次**明确观察**到新的合法值，即使从 100 降到 98，也应该记录真实变化。
+
+---
+
+## 7. `observed_fields` 是什么
+
+不同 Observation 字段密度不同。
+
+例如：
+
+```text
+10:00 Detail
+→ text="完整正文"
+→ observed_fields 包含 text
+
+12:00 Search 卡片
+→ Provider 没返回正文
+→ observed_fields 不包含 text
+```
+
+12:00 这条 Observation 不能把数据库正文清空。
+
+Canonical 会显式携带：
+
+```text
+observed_fields
+```
+
+含义：
+
+```text
+字段在 observed_fields
+→ 本次明确观察到，可参与更新
+
+字段不在 observed_fields
+→ 本次未知，不覆盖旧值
+```
+
+---
+
+## 8. `field_observed_at` 为什么存在
+
+Current 表保存：
+
+```text
+field_observed_at JSONB
+```
+
+用于字段级 freshness。
+
+例子：
+
+```text
+10:00 Search 观察 title
+11:00 Detail 观察 title + text
+10:30 一个延迟 Observation 才到达
+```
+
+10:30 的旧值不能回滚 11:00 已经明确观察过的字段。
+
+但如果 10:30 观察了一个数据库以前从没见过的字段，这个字段仍可以被补入。
+
+所以当前不是简单：
+
+```text
+整条记录 last-write-wins
+```
+
+而是：
+
+```text
+字段级 observation freshness
+```
+
+核心规则落在 Content Owner Repository；领域 Fake 也覆盖基本行为。
+
+---
+
+## 9. Source Lineage 怎样进入 Content Version
+
+`content_versions` / `comment_versions` 会保存：
+
+```text
+provider_attempt_id
+raw_artifact_id
+observed_at
+```
+
+因此一条业务 Version 可以反查：
+
+```text
+Content Version
+→ Provider Attempt
+→ Provider Request
+→ Collection Scope/Run
+或
+→ Import Batch
+
+同时
+→ Raw/Input Artifact
+```
+
+这也是为什么 Content 去重后不能删除来源证据。
+
+SQL：
+
+[`../../../../../docs/appendix/PostgreSQL查询与调试实战.md`](../../../../../docs/appendix/PostgreSQL查询与调试实战.md)
+
+---
+
+## 10. Comment Coverage 为什么归 Content Owner
+
+评论是否完整是内容当前业务事实的一部分，不是 Provider 临时 cursor。
+
+当前保存：
+
+```text
+coverage
+reported_total
+collected_count
+sample_mode
+sort_mode
+target_count
+stop_reason
+observed_at
+```
+
+用途：
+
+- 告诉页面/报告评论是否只是 partial；
+- 给 Collection Decision 判断后续是否值得继续抓；
+- 不把“程序停止了”误写成“所有评论抓完了”。
+
+精确表：
+
+```text
+comment_coverage_observations
+comment_thread_coverage_observations
+```
+
+---
+
+## 11. 声音广场的 Query 并不是只查 `contents`
+
+生产查询：
+
+```text
+backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
+```
+
+它会组合：
+
+```text
+Content Current
++ Current Version author snapshot/source
++ Current Analysis Identity 对应 Analysis
++ Label Pairs
++ Provider/Raw/Run/Batch Source
+```
+
+列表 Application Service：
+
+```text
+backend/src/aima_ugc/bootstrap/content_http.py
+```
+
+### 当前 Analysis 状态
+
+```text
+completed
+→ 当前 Content Version 有当前 Prompt/Taxonomy/Model Identity 的 Analysis
+
+stale
+→ 当前版本没有当前 Analysis，但历史有 Analysis
+
+pending
+→ 从未分析
+```
+
+### 默认 irrelevant 过滤
+
+列表未显式指定 `relevance` 时：
+
+```text
+current Analysis = irrelevant
+→ 默认排除
+
+没有当前 Analysis
+→ 仍显示
+```
+
+单条详情可以审计 irrelevant Content。
+
+AI relevance 不存 `contents.is_relevant`。
+
+---
+
+## 12. 当前 Content HTTP
+
+```text
+GET /api/v1/contents
+GET /api/v1/contents/{content_id}
+POST /api/v1/content-analysis-requests
+GET /api/v1/content-analysis-jobs/{job_id}
+```
+
+Content 列表/详情是这个模块的 Read Model；Analysis 写入仍归 Analysis Owner。
+
+精确 HTTP Contract：
+
+```text
+backend/src/aima_ugc/contracts/http.py
+```
+
+---
+
+## 13. Content Cursor 为什么绑定查询条件
+
+当前列表 Cursor 不是裸数据库 ID。
+
+代码：
+
+```text
+content_cursor.py
+bootstrap/content_http.py
+```
+
+Application Service 会对：
+
+```text
+ContentFilterSnapshot
+```
+
+计算 query hash，并在 Cursor 中绑定。
+
+因此：
+
+```text
+平台=xhs 的 cursor
+```
+
+不能拿去继续：
+
+```text
+平台=weibo
+```
+
+的查询。
+
+前端只原样保存/回传 `next_cursor`。
+
+---
+
+## 14. 修改不同问题应该改哪里
+
+### 改 Content 身份
+
+高风险：
+
+```text
+Canonical stable identity
+→ tables.py UNIQUE
+→ PostgreSQL Owner Repository
+→ Migration / 数据迁移
+→ 所有入口/查询/测试
+```
+
+不能只改一个 Dedup 函数。
+
+### 改 Current/Version 规则
+
+```text
+modules/content/ingestion.py
+→ PostgreSQL Content Repository
+→ tables.py / Migration（如果结构变化）
+→ unit + integration
+```
+
+### 新增一个稳定 Content 字段
+
+```text
+Canonical Contract
+→ Provider/File Mapper
+→ contents/current + content_versions（按语义）
+→ Migration
+→ Owner Repository
+→ Query/API/Export/Frontend（按需要）
+```
+
+### 只新增 Provider 私有字段
+
+先判断是否真是跨来源长期业务事实。不是的话，不应为了保存“所有 Raw 字段”扩大 Content Schema；Raw Artifact 已保留原始证据。
+
+### 改声音广场筛选
+
+```text
+ContentFilterSnapshot / ContentListQuery
+→ modules/content/query.py
+→ content_queries.py
+→ Cursor query hash
+→ API Test
+→ OpenAPI / generated Client
+→ voice-plaza Feature
+```
+
+---
+
+## 15. 常见故障
+
+### 同一帖子重复两条
+
+检查：
+
+```text
+platform
+external_content_id
+Mapper stable ID
+contents UNIQUE
+Repository upsert
+```
+
+不要先增加标题/URL fuzzy dedup。
+
+### 新正文被旧 Search 清空
+
+检查：
+
+```text
+Canonical observed_fields
+field_observed_at
+Mapper 是否错误声明 text 已观察
+```
+
+### 点赞没产生历史
+
+检查：
+
+```text
+metrics.like_count 是否在 observed_fields
+当前值/新值
+Metric Observation reason
+```
+
+### 声音广场看不到已入库内容
+
+按顺序：
+
+```text
+contents
+→ 查询 filter
+→ 当前 Analysis Identity
+→ current irrelevant 默认过滤
+→ Cursor
+→ API
+→ Frontend
+```
+
+---
+
+## 16. 测试重点
+
+- Content/Comment stable identity；
+- Current First/Last Seen；
+- `observed_fields`；
+- field freshness；
+- A→B→A Version；
+- 指标变化/下降；
+- daily checkpoint；
+- Source Attempt/Raw；
+- Coverage；
+- Query current Analysis；
+- stale/pending/completed；
+- default irrelevant filtering；
+- Cursor query binding；
+- PostgreSQL UNIQUE/并发。
+
+最终 PostgreSQL 行为必须由 Integration Test 验证，不能只依赖 InMemory Fake。
