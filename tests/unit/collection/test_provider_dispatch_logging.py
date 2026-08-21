@@ -148,7 +148,7 @@ def _service(outcome: ProviderTransportResponse | ProviderTransportFailure):
 
 
 @pytest.mark.parametrize(
-    ("outcome", "terminal_event", "terminal_status"),
+    ("outcome", "terminal_event", "terminal_status", "terminal_level", "error_detail"),
     [
         (
             ProviderTransportResponse(
@@ -158,6 +158,8 @@ def _service(outcome: ProviderTransportResponse | ProviderTransportFailure):
             ),
             "provider.request.completed",
             "completed",
+            logging.DEBUG,
+            None,
         ),
         (
             ProviderTransportFailure.not_sent(
@@ -166,6 +168,8 @@ def _service(outcome: ProviderTransportResponse | ProviderTransportFailure):
             ),
             "provider.request.failed",
             "not_sent",
+            logging.WARNING,
+            "连接建立前失败",
         ),
         (
             ProviderTransportFailure.unknown(
@@ -174,6 +178,8 @@ def _service(outcome: ProviderTransportResponse | ProviderTransportFailure):
             ),
             "provider.request.failed",
             "unknown",
+            logging.WARNING,
+            "发送后结果未知",
         ),
     ],
 )
@@ -182,10 +188,12 @@ def test_provider_dispatch_emits_safe_stable_lifecycle_events(
     outcome: ProviderTransportResponse | ProviderTransportFailure,
     terminal_event: str,
     terminal_status: str,
+    terminal_level: int,
+    error_detail: str | None,
 ) -> None:
     service, request, attempt_id, fence = _service(outcome)
 
-    with caplog.at_level(logging.INFO, logger="aima_ugc.modules.collection.provider_dispatch"):
+    with caplog.at_level(logging.DEBUG, logger="aima_ugc.modules.collection.provider_dispatch"):
         service.dispatch(
             attempt_id=attempt_id,
             fence=fence,
@@ -199,6 +207,8 @@ def test_provider_dispatch_emits_safe_stable_lifecycle_events(
     records = [record for record in caplog.records if hasattr(record, "event")]
     assert [record.event for record in records] == ["provider.request.started", terminal_event]
     started, terminal = records
+    assert started.levelno == logging.DEBUG
+    assert terminal.levelno == terminal_level
     assert started.provider_request_id == str(request.request_id)
     assert started.provider_attempt_id == str(attempt_id)
     assert started.run_id == str(request.run_id)
@@ -207,6 +217,8 @@ def test_provider_dispatch_emits_safe_stable_lifecycle_events(
     assert started.operation == "keyword_search"
     assert terminal.status == terminal_status
     assert terminal.provider_attempt_id == str(attempt_id)
+    assert terminal.duration_ms == 250
+    assert getattr(terminal, "error_detail", None) == error_detail
     for record in records:
         assert "request_params" not in record.__dict__
         assert "transport_request" not in record.__dict__
