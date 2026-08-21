@@ -53,6 +53,23 @@ jobs:
           if [ "$STATUS" -eq 0 ]; then exec_step "uv sync" uv sync --locked; STATUS=$?; fi
           if [ "$STATUS" -eq 0 ]; then exec_step "npm ci" npm ci --prefix frontend; STATUS=$?; fi
           if [ "$STATUS" -eq 0 ]; then exec_step "apply migration" uv run python scripts/dev/apply_analysis_relevance_voice_v3.py; STATUS=$?; fi
+          if [ "$STATUS" -eq 0 ]; then
+            python - <<'PY' 2>&1 | tee -a "$LOG"
+          from pathlib import Path
+
+          path = Path("backend/src/aima_ugc/platform/export/excel.py")
+          text = path.read_text(encoding="utf-8")
+          for name in ("primary_label", "secondary_label"):
+              broken = f'{name} = "' + "\n" + '".join'
+              fixed = f'{name} = "\\n".join'
+              if broken not in text:
+                  raise SystemExit(f"未找到预期的生成字符串错误: {name}")
+              text = text.replace(broken, fixed, 1)
+          path.write_text(text, encoding="utf-8")
+          print("已修复一次性脚本在 re.sub replacement 中产生的换行字面量。")
+          PY
+            STATUS=${PIPESTATUS[0]}
+          fi
           if [ "$STATUS" -eq 0 ]; then exec_step "generate contracts" uv run python scripts/contracts/generate.py; STATUS=$?; fi
           if [ "$STATUS" -eq 0 ]; then exec_step "generate frontend client" npm --prefix frontend run generate:api; STATUS=$?; fi
           if [ "$STATUS" -eq 0 ]; then
@@ -122,13 +139,8 @@ jobs:
               tests/unit/analysis/test_multilabel_analysis_v2.py \
               tests/unit/analysis/test_content_labeling.py
           fi
-          git add -- "$LOG"
           if ! git diff --cached --quiet; then
-            if [ "$STATUS" -eq 0 ]; then
-              git commit -m "增加AI语义相关性与发声类型分类"
-            else
-              git commit -m "记录AI V3迁移失败诊断"
-            fi
+            git commit -m "增加AI语义相关性与发声类型分类"
             git push origin HEAD:feature/analysis-relevance-voice-type
           fi
           exit "$STATUS"
