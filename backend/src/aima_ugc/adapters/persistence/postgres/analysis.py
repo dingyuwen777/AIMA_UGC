@@ -229,18 +229,19 @@ class PostgresAnalysisRepository:
             .returning(analysis_content_results_table.c.id)
         )
         if created_id is not None:
-            self._session.execute(
-                insert(analysis_content_label_pairs_table),
-                [
-                    {
-                        "analysis_result_id": created_id,
-                        "ordinal": label.ordinal,
-                        "primary_label": label.primary_label,
-                        "secondary_label": label.secondary_label,
-                    }
-                    for label in result.labels
-                ],
-            )
+            if result.labels:
+                self._session.execute(
+                    insert(analysis_content_label_pairs_table),
+                    [
+                        {
+                            "analysis_result_id": created_id,
+                            "ordinal": label.ordinal,
+                            "primary_label": label.primary_label,
+                            "secondary_label": label.secondary_label,
+                        }
+                        for label in result.labels
+                    ],
+                )
             persisted_id = cast(UUID, created_id)
         else:
             persisted_id = cast(
