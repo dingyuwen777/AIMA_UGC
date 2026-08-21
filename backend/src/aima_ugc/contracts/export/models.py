@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
+from aima_ugc.contracts.analysis import ContentRelevance, ContentVoiceType
+
 
 class _ExportBaseModel(BaseModel):
     """统一导出契约拒绝未声明字段，避免调用方私自扩展 Workbook Schema。"""
@@ -23,13 +25,21 @@ class UnifiedDataExcelLabelPairV1(_ExportBaseModel):
 class UnifiedDataExcelAnalysisV1(_ExportBaseModel):
     """Excel 展示所需的分析投影；兼容单标签字符串并可携带完整标签对。"""
 
-    sentiment: str = Field(min_length=1, max_length=128)
-    primary_label: str = Field(min_length=1, max_length=4096)
-    secondary_label: str = Field(min_length=1, max_length=4096)
+    relevance: ContentRelevance = "relevant"
+    voice_type: ContentVoiceType = "unknown"
+    is_user_voice: bool = False
+    sentiment: str | None = Field(default=None, min_length=1, max_length=128)
+    primary_label: str = Field(default="", max_length=4096)
+    secondary_label: str = Field(default="", max_length=4096)
     label_pairs: tuple[UnifiedDataExcelLabelPairV1, ...] = ()
     model: str | None = Field(default=None, max_length=256)
     prompt_version: str | None = Field(default=None, max_length=256)
     taxonomy_version: str | None = Field(default=None, max_length=256)
+
+    @field_validator("is_user_voice")
+    @classmethod
+    def validate_user_voice(cls, value: bool, info: object) -> bool:
+        return value
 
     @field_validator("label_pairs")
     @classmethod

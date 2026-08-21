@@ -4,9 +4,8 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import aima_ugc.modules.analysis.offline_labeling as offline_labeling
 import pytest
-from pydantic import ValidationError
-
 from aima_ugc.contracts.analysis import (
     ContentLabelAnalysisV3,
     ContentLabelPairV2,
@@ -21,7 +20,7 @@ from aima_ugc.modules.analysis import (
     PromptTaxonomyLoader,
     label_unified_content_jsonl,
 )
-import aima_ugc.modules.analysis.offline_labeling as offline_labeling
+from pydantic import ValidationError
 
 OBSERVED_AT = datetime(2026, 8, 21, 11, 30, tzinfo=UTC)
 HASH_A = "a" * 64
@@ -165,9 +164,7 @@ def test_v3_contract_enforces_relevance_dependent_shape_and_voice_type() -> None
             relevance="relevant",
             voice_type="not-a-real-type",
             sentiment="中性",
-            labels=(
-                ContentLabelPairV2(primary_label="品牌评价", secondary_label="口碑与信任"),
-            ),
+            labels=(ContentLabelPairV2(primary_label="品牌评价", secondary_label="口碑与信任"),),
             **_base_fields(),
         )
 

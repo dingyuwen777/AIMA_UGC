@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from aima_ugc.contracts.analysis import ContentLabelAnalysisV2
+from aima_ugc.contracts.analysis import ContentLabelAnalysisV3
 from aima_ugc.contracts.canonical import CanonicalContentV1
 
 
@@ -35,7 +35,9 @@ class AnalysisContentResult:
     content_version: int
     job_id: UUID
     schema_version: str
-    sentiment: str
+    relevance: str
+    voice_type: str
+    sentiment: str | None
     prompt_version: str
     prompt_sha256: str
     taxonomy_sha256: str
@@ -53,7 +55,7 @@ class AnalysisContentResult:
         content_id: UUID,
         content_version: int,
         job_id: UUID,
-        analysis: ContentLabelAnalysisV2,
+        analysis: ContentLabelAnalysisV3,
     ) -> AnalysisContentResult:
         if content_version < 1:
             raise ValueError("content_version 必须大于等于 1")
@@ -63,6 +65,8 @@ class AnalysisContentResult:
             content_version=content_version,
             job_id=job_id,
             schema_version=analysis.schema_version,
+            relevance=analysis.relevance,
+            voice_type=analysis.voice_type,
             sentiment=analysis.sentiment,
             prompt_version=analysis.prompt_version,
             prompt_sha256=analysis.prompt_sha256,

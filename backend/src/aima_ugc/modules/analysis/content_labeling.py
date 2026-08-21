@@ -9,15 +9,16 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, cast
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from aima_ugc.contracts.analysis import (
     ContentLabelAnalysis,
-    ContentLabelAnalysisV2,
+    ContentLabelAnalysisV3,
     ContentLabelPairV2,
+    ContentVoiceType,
 )
 from aima_ugc.contracts.canonical import CanonicalContentV1
 
@@ -49,6 +50,8 @@ class ContentLabelingModelItem:
     title: str
     text: str
     author_display_name: str
+    author_bio: str
+    author_verification_label: str
 
     def model_payload(self) -> dict[str, object]:
         """生成允许发送给模型的唯一业务字段形状。"""
@@ -57,7 +60,11 @@ class ContentLabelingModelItem:
             "item_no": self.item_no,
             "title": self.title,
             "text": self.text,
-            "author": {"display_name": self.author_display_name},
+            "author": {
+                "display_name": self.author_display_name,
+                "bio": self.author_bio,
+                "verification_label": self.author_verification_label,
+            },
         }
 
 
@@ -159,49 +166,39 @@ class _ModelLabelPair(BaseModel):
     secondary_label: str = Field(min_length=1)
 
 
-class _ModelLabelItemV2(BaseModel):
+class _ModelLabelItemV3(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     item_no: int = Field(ge=1)
-    sentiment: str = Field(min_length=1)
-    labels: list[_ModelLabelPair] = Field(min_length=1)
-
-
-class _ModelLabelItemV1(BaseModel):
-    """兼容历史单标签模型响应；新 Prompt 不再要求该形状。"""
-
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    item_no: int = Field(ge=1)
-    sentiment: str = Field(min_length=1)
-    primary_label: str = Field(min_length=1)
-    secondary_label: str = Field(min_length=1)
+    relevance: Literal["relevant", "irrelevant"]
+    voice_type: ContentVoiceType
+    sentiment: str | None = None
+    labels: list[_ModelLabelPair] = Field(default_factory=list)
 
 
 def _parse_model_label_item(
     value: dict[str, Any],
-) -> tuple[str, tuple[ContentLabelPairV2, ...]]:
-    if "labels" in value:
-        parsed_v2 = _ModelLabelItemV2.model_validate(value)
-        return parsed_v2.sentiment, tuple(
+) -> tuple[str, ContentVoiceType, str | None, tuple[ContentLabelPairV2, ...]]:
+    parsed = _ModelLabelItemV3.model_validate(value)
+    return (
+        parsed.relevance,
+        parsed.voice_type,
+        parsed.sentiment,
+        tuple(
             ContentLabelPairV2(
                 primary_label=pair.primary_label,
                 secondary_label=pair.secondary_label,
             )
-            for pair in parsed_v2.labels
-        )
-    parsed_v1 = _ModelLabelItemV1.model_validate(value)
-    return parsed_v1.sentiment, (
-        ContentLabelPairV2(
-            primary_label=parsed_v1.primary_label,
-            secondary_label=parsed_v1.secondary_label,
+            for pair in parsed.labels
         ),
     )
 
 
 @dataclass(frozen=True, slots=True)
 class _ValidatedLabel:
-    sentiment: str
+    relevance: Literal["relevant", "irrelevant"]
+    voice_type: ContentVoiceType
+    sentiment: str | None
     labels: tuple[ContentLabelPairV2, ...]
 
 
@@ -323,20 +320,42 @@ class RuntimeTaxonomyValidator:
                 continue
 
             try:
-                sentiment, label_pairs = _parse_model_label_item(candidates[0])
+                relevance, voice_type, sentiment, label_pairs = _parse_model_label_item(
+                    candidates[0]
+                )
             except ValidationError:
                 item_errors[item_no] = ("invalid_item_structure",)
                 aggregate_errors.append("invalid_item_structure")
                 continue
 
-            try:
-                self.validate_label_pairs(sentiment=sentiment, labels=label_pairs)
-            except ContentLabelingValidationError as exc:
-                item_errors[item_no] = exc.error_codes
-                aggregate_errors.extend(exc.error_codes)
+            shape_errors: list[str] = []
+            if relevance == "relevant":
+                if sentiment is None:
+                    shape_errors.append("relevant_missing_sentiment")
+                if not label_pairs:
+                    shape_errors.append("relevant_missing_labels")
+                if not shape_errors:
+                    try:
+                        self.validate_label_pairs(
+                            sentiment=cast(str, sentiment),
+                            labels=label_pairs,
+                        )
+                    except ContentLabelingValidationError as exc:
+                        shape_errors.extend(exc.error_codes)
+            else:
+                if sentiment is not None:
+                    shape_errors.append("irrelevant_has_sentiment")
+                if label_pairs:
+                    shape_errors.append("irrelevant_has_labels")
+            if shape_errors:
+                codes = _unique_error_codes(shape_errors)
+                item_errors[item_no] = codes
+                aggregate_errors.extend(codes)
                 continue
 
             valid_items[item_no] = _ValidatedLabel(
+                relevance=cast(Literal["relevant", "irrelevant"], relevance),
+                voice_type=voice_type,
                 sentiment=sentiment,
                 labels=label_pairs,
             )
@@ -481,7 +500,9 @@ class ContentLabelingService:
             )
 
             for item_no, validated in validation.valid_items.items():
-                successful[item_no] = ContentLabelAnalysisV2(
+                successful[item_no] = ContentLabelAnalysisV3(
+                    relevance=validated.relevance,
+                    voice_type=validated.voice_type,
                     sentiment=validated.sentiment,
                     labels=validated.labels,
                     prompt_version=taxonomy.prompt_version,
@@ -535,13 +556,19 @@ class ContentLabelingService:
 
 def _to_model_item(content: CanonicalContentV1, *, item_no: int) -> ContentLabelingModelItem:
     author_display_name = ""
-    if content.author is not None and content.author.display_name is not None:
-        author_display_name = content.author.display_name
+    author_bio = ""
+    author_verification_label = ""
+    if content.author is not None:
+        author_display_name = content.author.display_name or ""
+        author_bio = content.author.bio or ""
+        author_verification_label = content.author.verification_label or ""
     return ContentLabelingModelItem(
         item_no=item_no,
         title=content.title or "",
         text=content.text or "",
         author_display_name=author_display_name,
+        author_bio=author_bio,
+        author_verification_label=author_verification_label,
     )
 
 
@@ -549,7 +576,11 @@ def _input_hash(item: ContentLabelingModelItem) -> str:
     payload = {
         "title": item.title,
         "text": item.text,
-        "author": {"display_name": item.author_display_name},
+        "author": {
+            "display_name": item.author_display_name,
+            "bio": item.author_bio,
+            "verification_label": item.author_verification_label,
+        },
     }
     encoded = json.dumps(
         payload,

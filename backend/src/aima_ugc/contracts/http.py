@@ -9,6 +9,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from aima_ugc.contracts.analysis import ContentRelevance, ContentVoiceType
 from aima_ugc.contracts.collection.models import BusinessOperation
 
 type ImportBatchStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
@@ -624,6 +625,9 @@ class ContentAnalysisResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: ContentAnalysisStatus
+    relevance: ContentRelevance | None = None
+    voice_type: ContentVoiceType | None = None
+    is_user_voice: bool | None = None
     sentiment: str | None = None
     labels: tuple[ContentLabelPairResponse, ...] = ()
     analyzed_at: datetime | None = None
@@ -633,9 +637,28 @@ class ContentAnalysisResponse(BaseModel):
     @model_validator(mode="after")
     def validate_completed_shape(self) -> ContentAnalysisResponse:
         if self.status == "completed":
-            if self.sentiment is None or self.analyzed_at is None or not self.labels:
-                raise ValueError("completed Analysis 必须包含情感、标签与分析时间")
-        elif self.sentiment is not None or self.labels or self.analyzed_at is not None:
+            if self.relevance is None or self.voice_type is None or self.is_user_voice is None:
+                raise ValueError("completed Analysis 必须包含相关性与发声类型")
+            if self.is_user_voice != (self.voice_type == "user_voice"):
+                raise ValueError("is_user_voice 必须由 voice_type 派生")
+            if self.relevance == "relevant":
+                if self.sentiment is None or self.analyzed_at is None or not self.labels:
+                    raise ValueError("relevant completed Analysis 必须包含情感、标签与分析时间")
+            elif self.sentiment is not None or self.labels or self.analyzed_at is None:
+                raise ValueError("irrelevant completed Analysis 只能携带分类和分析时间")
+        elif (
+            any(
+                value is not None
+                for value in (
+                    self.relevance,
+                    self.voice_type,
+                    self.is_user_voice,
+                    self.sentiment,
+                    self.analyzed_at,
+                )
+            )
+            or self.labels
+        ):
             raise ValueError("非 completed Analysis 不能携带结果字段")
         return self
 
@@ -699,6 +722,8 @@ class ContentFilterSnapshot(BaseModel):
     platforms: tuple[str, ...] = Field(default=(), max_length=20)
     content_types: tuple[str, ...] = Field(default=(), max_length=20)
     analysis_status: ContentAnalysisStatus | None = None
+    relevance: ContentRelevance | None = None
+    voice_type: ContentVoiceType | None = None
     sentiment: str | None = Field(default=None, min_length=1, max_length=128)
     primary_label: str | None = Field(default=None, min_length=1, max_length=256)
     secondary_label: str | None = Field(default=None, min_length=1, max_length=256)

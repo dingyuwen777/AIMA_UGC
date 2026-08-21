@@ -28,6 +28,8 @@ class ContentReadQuery:
 class ContentAnalysisRead:
     result_id: UUID | None
     status: str
+    relevance: str | None
+    voice_type: str | None
     sentiment: str | None
     labels: tuple[tuple[str, str], ...]
     analyzed_at: datetime | None

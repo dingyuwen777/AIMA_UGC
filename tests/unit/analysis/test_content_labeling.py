@@ -81,9 +81,10 @@ def _valid_response(taxonomy: PromptTaxonomy, item_nos: tuple[int, ...]) -> str:
             "items": [
                 {
                     "item_no": item_no,
+                    "relevance": "relevant",
+                    "voice_type": "unknown",
                     "sentiment": sentiment,
-                    "primary_label": primary,
-                    "secondary_label": secondary,
+                    "labels": [{"primary_label": primary, "secondary_label": secondary}],
                 }
                 for item_no in item_nos
             ]
@@ -299,7 +300,7 @@ def test_model_request_only_contains_approved_business_fields_and_fills_missing_
             "item_no": 1,
             "title": "",
             "text": "",
-            "author": {"display_name": ""},
+            "author": {"display_name": "", "bio": "", "verification_label": ""},
         }
     ]
     serialized = json.dumps(fake.calls[0].model_payload(), ensure_ascii=False)
@@ -348,9 +349,17 @@ def test_prompt_and_taxonomy_hashes_change_at_the_correct_boundary(tmp_path: Pat
                     "items": [
                         {
                             "item_no": 1,
+                            "relevance": "relevant",
+                            "voice_type": "unknown",
                             "sentiment": "不存在的情感",
-                            "primary_label": taxonomy.primary_labels[0],
-                            "secondary_label": taxonomy.labels[taxonomy.primary_labels[0]][0],
+                            "labels": [
+                                {
+                                    "primary_label": taxonomy.primary_labels[0],
+                                    "secondary_label": taxonomy.labels[taxonomy.primary_labels[0]][
+                                        0
+                                    ],
+                                }
+                            ],
                         }
                     ]
                 },
@@ -364,9 +373,17 @@ def test_prompt_and_taxonomy_hashes_change_at_the_correct_boundary(tmp_path: Pat
                     "items": [
                         {
                             "item_no": 1,
+                            "relevance": "relevant",
+                            "voice_type": "unknown",
                             "sentiment": taxonomy.sentiments[0],
-                            "primary_label": taxonomy.primary_labels[0],
-                            "secondary_label": taxonomy.labels[taxonomy.primary_labels[1]][0],
+                            "labels": [
+                                {
+                                    "primary_label": taxonomy.primary_labels[0],
+                                    "secondary_label": taxonomy.labels[taxonomy.primary_labels[1]][
+                                        0
+                                    ],
+                                }
+                            ],
                         }
                     ]
                 },
@@ -438,16 +455,14 @@ def test_successful_item_is_not_retried_when_another_item_needs_validation_retry
                     "relevance": "relevant",
                     "voice_type": "unknown",
                     "sentiment": sentiment,
-                    "primary_label": primary,
-                    "secondary_label": secondary,
+                    "labels": [{"primary_label": primary, "secondary_label": secondary}],
                 },
                 {
                     "item_no": 2,
                     "relevance": "relevant",
                     "voice_type": "unknown",
                     "sentiment": "不存在的情感",
-                    "primary_label": primary,
-                    "secondary_label": secondary,
+                    "labels": [{"primary_label": primary, "secondary_label": secondary}],
                 },
             ]
         },

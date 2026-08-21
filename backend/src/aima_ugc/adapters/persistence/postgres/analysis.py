@@ -13,7 +13,7 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
-from aima_ugc.contracts.analysis import ContentLabelAnalysisV2, ContentLabelPairV2
+from aima_ugc.contracts.analysis import ContentLabelAnalysisV3
 from aima_ugc.contracts.canonical import (
     CanonicalAuthorV1,
     CanonicalContentV1,
@@ -169,7 +169,7 @@ class PostgresAnalysisRepository:
         *,
         fence: JobExecutionFence,
         work_item: AnalysisWorkItem,
-        analysis: ContentLabelAnalysisV2,
+        analysis: ContentLabelAnalysisV3,
     ) -> AnalysisContentResult | None:
         job = PostgresJobRepository(self._session).lock_current_execution(fence)
         request_job_id = self._session.scalar(
@@ -213,6 +213,8 @@ class PostgresAnalysisRepository:
                 content_version=result.content_version,
                 job_id=result.job_id,
                 schema_version=result.schema_version,
+                relevance=result.relevance,
+                voice_type=result.voice_type,
                 sentiment=result.sentiment,
                 prompt_version=result.prompt_version,
                 prompt_sha256=result.prompt_sha256,
@@ -255,7 +257,7 @@ class PostgresAnalysisRepository:
                     )
                 ),
             )
-            _assert_same_labels(self._session, persisted_id, analysis.labels)
+            _assert_same_analysis(self._session, persisted_id, analysis)
 
         self._session.execute(
             update(analysis_content_request_items_table)
@@ -311,16 +313,23 @@ class PostgresAnalysisRepository:
 
 def _row_to_work_item(row: RowMapping) -> AnalysisWorkItem:
     author_snapshot = row["author_snapshot"]
-    display_name = (
-        str(author_snapshot.get("display_name"))
-        if isinstance(author_snapshot, dict) and author_snapshot.get("display_name") is not None
-        else None
-    )
+    display_name = _snapshot_text(author_snapshot, "display_name")
+    bio = _snapshot_text(author_snapshot, "bio")
+    verification_label = _snapshot_text(author_snapshot, "verification_label")
     observed_fields = ["content_type", "title", "text"]
     author = None
-    if display_name is not None:
-        author = CanonicalAuthorV1(display_name=display_name)
-        observed_fields.append("author.display_name")
+    if any(value is not None for value in (display_name, bio, verification_label)):
+        author = CanonicalAuthorV1(
+            display_name=display_name,
+            bio=bio,
+            verification_label=verification_label,
+        )
+        if display_name is not None:
+            observed_fields.append("author.display_name")
+        if bio is not None:
+            observed_fields.append("author.bio")
+        if verification_label is not None:
+            observed_fields.append("author.verification_label")
     content = CanonicalContentV1(
         platform=cast(str, row["platform"]),
         external_content_id=cast(str, row["external_content_id"]),
@@ -354,11 +363,28 @@ def _row_to_work_item(row: RowMapping) -> AnalysisWorkItem:
     )
 
 
-def _assert_same_labels(
+def _assert_same_analysis(
     session: Session,
     result_id: UUID,
-    labels: tuple[ContentLabelPairV2, ...],
+    analysis: ContentLabelAnalysisV3,
 ) -> None:
+    persisted_result = session.execute(
+        select(
+            analysis_content_results_table.c.schema_version,
+            analysis_content_results_table.c.relevance,
+            analysis_content_results_table.c.voice_type,
+            analysis_content_results_table.c.sentiment,
+        ).where(analysis_content_results_table.c.id == result_id)
+    ).one()
+    expected_result = (
+        analysis.schema_version,
+        analysis.relevance,
+        analysis.voice_type,
+        analysis.sentiment,
+    )
+    if tuple(persisted_result) != expected_result:
+        raise ValueError("Analysis 幂等身份对应的相关性/发声类型/情感不一致")
+
     rows = session.execute(
         select(
             analysis_content_label_pairs_table.c.primary_label,
@@ -368,9 +394,15 @@ def _assert_same_labels(
         .order_by(analysis_content_label_pairs_table.c.ordinal)
     )
     persisted = tuple((cast(str, row[0]), cast(str, row[1])) for row in rows)
-    expected = tuple((item.primary_label, item.secondary_label) for item in labels)
+    expected = tuple((item.primary_label, item.secondary_label) for item in analysis.labels)
     if persisted != expected:
         raise ValueError("Analysis 幂等身份对应的标签集合不一致")
+
+
+def _snapshot_text(snapshot: object, key: str) -> str | None:
+    if not isinstance(snapshot, dict) or snapshot.get(key) is None:
+        return None
+    return str(snapshot[key])
 
 
 def _http_url(value: object) -> AnyHttpUrl | None:

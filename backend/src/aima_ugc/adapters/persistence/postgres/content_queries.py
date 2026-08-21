@@ -296,6 +296,8 @@ class PostgresContentQueryRepository:
                 content.c.current_view_count,
                 content.c.current_play_count,
                 analysis.c.id.label("analysis_result_id"),
+                analysis.c.relevance,
+                analysis.c.voice_type,
                 analysis.c.sentiment,
                 analysis.c.analyzed_at,
                 analysis.c.model_provider,
@@ -349,7 +351,9 @@ class PostgresContentQueryRepository:
                 analysis = ContentAnalysisRead(
                     result_id=result_id,
                     status="completed",
-                    sentiment=cast(str, row["sentiment"]),
+                    relevance=cast(str, row["relevance"]),
+                    voice_type=cast(str, row["voice_type"]),
+                    sentiment=cast(str | None, row["sentiment"]),
                     labels=ordered,
                     analyzed_at=cast(datetime, row["analyzed_at"]),
                     model_provider=cast(str, row["model_provider"]),
@@ -359,6 +363,8 @@ class PostgresContentQueryRepository:
                 analysis = ContentAnalysisRead(
                     result_id=None,
                     status="stale" if bool(row["has_any_analysis"]) else "pending",
+                    relevance=None,
+                    voice_type=None,
                     sentiment=None,
                     labels=(),
                     analyzed_at=None,
@@ -410,6 +416,8 @@ def _latest_analysis_subquery(
         result.c.id,
         result.c.content_id,
         result.c.content_version,
+        result.c.relevance,
+        result.c.voice_type,
         result.c.sentiment,
         result.c.analyzed_at,
         result.c.model_provider,
@@ -443,6 +451,14 @@ def _apply_filters(
     version: Any,
 ) -> Any:
     content = contents_table
+    if filters.relevance is None:
+        statement = statement.where(
+            or_(analysis.c.id.is_(None), analysis.c.relevance != "irrelevant")
+        )
+    else:
+        statement = statement.where(analysis.c.relevance == filters.relevance)
+    if filters.voice_type is not None:
+        statement = statement.where(analysis.c.voice_type == filters.voice_type)
     if filters.search is not None:
         pattern = f"%{_escape_like(filters.search)}%"
         statement = statement.where(

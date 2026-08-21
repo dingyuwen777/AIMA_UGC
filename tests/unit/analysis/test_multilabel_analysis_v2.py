@@ -7,6 +7,7 @@ import pytest
 from aima_ugc.contracts.analysis import (
     ContentLabelAnalysisV1,
     ContentLabelAnalysisV2,
+    ContentLabelAnalysisV3,
     ContentLabelPairV2,
     UnifiedContentRecordV1,
 )
@@ -132,6 +133,8 @@ def test_service_returns_v2_with_multiple_valid_label_pairs() -> None:
             "items": [
                 {
                     "item_no": 1,
+                    "relevance": "relevant",
+                    "voice_type": "unknown",
                     "sentiment": taxonomy.sentiments[0],
                     "labels": [
                         {
@@ -157,7 +160,7 @@ def test_service_returns_v2_with_multiple_valid_label_pairs() -> None:
 
     analysis = result.items[0].analysis
     assert result.items[0].analysis_status == "succeeded"
-    assert isinstance(analysis, ContentLabelAnalysisV2)
+    assert isinstance(analysis, ContentLabelAnalysisV3)
     assert analysis is not None
     assert [(pair.primary_label, pair.secondary_label) for pair in analysis.labels] == [
         (first_primary, taxonomy.labels[first_primary][0]),
@@ -178,6 +181,8 @@ def test_duplicate_label_pair_is_retryable_and_not_silently_deduplicated() -> No
             "items": [
                 {
                     "item_no": 1,
+                    "relevance": "relevant",
+                    "voice_type": "unknown",
                     "sentiment": taxonomy.sentiments[0],
                     "labels": [pair, pair],
                 }
@@ -190,6 +195,8 @@ def test_duplicate_label_pair_is_retryable_and_not_silently_deduplicated() -> No
             "items": [
                 {
                     "item_no": 1,
+                    "relevance": "relevant",
+                    "voice_type": "unknown",
                     "sentiment": taxonomy.sentiments[0],
                     "labels": [pair],
                 }

@@ -13,7 +13,11 @@ from typing import TextIO
 
 from pydantic import TypeAdapter, ValidationError
 
-from aima_ugc.contracts.analysis import ContentLabelAnalysis, UnifiedContentRecordV1
+from aima_ugc.contracts.analysis import (
+    ContentLabelAnalysis,
+    ContentLabelAnalysisV3,
+    UnifiedContentRecordV1,
+)
 
 from .content_labeling import (
     ContentLabelingAttempt,
@@ -39,6 +43,7 @@ class OfflineContentLabelingSummary:
     rows_succeeded: int
     rows_failed: int
     llm_attempts: int
+    rows_irrelevant_removed: int = 0
     peak_in_flight: int = 0
     llm_http_requests: int = 0
     transport_retries: int = 0
@@ -184,11 +189,14 @@ def label_unified_content_jsonl(
             _flush_and_sync(attempt_file)
             _flush_and_sync(failed_file)
 
-    if rows_recovered or rows_succeeded:
+    rows_irrelevant_removed = (
         _rewrite_source_in_original_order(
             source_path,
             checkpoint_index=checkpoint_index,
         )
+        if rows_seen
+        else 0
+    )
 
     return OfflineContentLabelingSummary(
         input_path=source_path,
@@ -199,6 +207,7 @@ def label_unified_content_jsonl(
         rows_succeeded=rows_succeeded,
         rows_failed=rows_failed,
         llm_attempts=llm_attempts,
+        rows_irrelevant_removed=rows_irrelevant_removed,
         peak_in_flight=peak_in_flight,
     )
 
@@ -503,9 +512,10 @@ def _rewrite_source_in_original_order(
     source_path: Path,
     *,
     checkpoint_index: dict[_CheckpointKey, ContentLabelAnalysis],
-) -> None:
+) -> int:
     temp_path = source_path.with_name(f".{source_path.name}.labeling.tmp")
     temp_path.unlink(missing_ok=True)
+    removed = 0
     try:
         with (
             source_path.open("rb") as input_file,
@@ -518,10 +528,17 @@ def _rewrite_source_in_original_order(
                     analysis = checkpoint_index.get(_checkpoint_key(record, input_hash))
                     if analysis is not None:
                         record = _rewrite_record(record, analysis)
+                if (
+                    isinstance(record.analysis, ContentLabelAnalysisV3)
+                    and not record.analysis.is_relevant
+                ):
+                    removed += 1
+                    continue
                 output_file.write(record.model_dump_json())
                 output_file.write("\n")
             _flush_and_sync(output_file)
         os.replace(temp_path, source_path)
+        return removed
     except BaseException:
         temp_path.unlink(missing_ok=True)
         raise
