@@ -1,12 +1,56 @@
-# Provider-neutral 离线报告
+# Provider-neutral 离线舆情报告
 
 本目录实现从**处理完成的统一数据 Excel**生成 Markdown / Word 舆情报告的只读派生能力。
 
-默认报告面向营销管理层和领导汇报：先给管理摘要、核心指标和正负面舆情重点关注，再展开平台、情感、议题、关键词与趋势，完整统计明细保留在后半部分。生成正文不暴露 Excel/Sheet/模板/转换器等实现术语，可以直接作为业务报告阅读和展示。
+它和 `modules/reporting/` 的正式 PostgreSQL Excel Export 不是同一件事：
 
-本模块不负责 Provider Raw、Canonical、Analysis 打标、数据库写入或 Excel 导出本身，也不调用 LLM 生成新的主观结论；管理摘要和风险摘要均由既有结构化统计确定性计算。
+```text
+modules/reporting/
+→ 正式 data export HTTP / Job / PostgreSQL
+→ 产出统一数据明细 XLSX
 
-## 生产入口
+platform/reporting/
+→ 读取已经生成好的统一 XLSX
+→ 计算报告统计
+→ 生成 report.md
+→ 生成横向 A4 report.docx
+```
+
+详细专题说明见：
+
+[`../../../../../docs/appendix/Word舆情报告生成与排版实现.md`](../../../../../docs/appendix/Word舆情报告生成与排版实现.md)
+
+统一数据 Excel 规则见：
+
+[`../../../../../docs/appendix/Excel统一数据导出与离线调试.md`](../../../../../docs/appendix/Excel统一数据导出与离线调试.md)
+
+---
+
+## 1. 先看代码地图
+
+| 文件 | 当前职责 | 想改什么时先看 |
+| --- | --- | --- |
+| `excel_report.py` | 读取统一 Workbook、筛选日期、统计平台/情感/议题/关键词、构造 Report Context | 统计口径、报告数据来源、日期筛选 |
+| `report_template.md` | Markdown 正文唯一模板 | 标题、章节顺序、说明文字 |
+| `markdown_word.py` | 解析当前支持的 Markdown/展示元数据并驱动 Word | Markdown → DOCX 转换规则 |
+| `visual_docx.py` | A4 横向页面、KPI、Ranking、表格、组合布局、词云等视觉组件 | Word 排版、页面密度、字号/间距 |
+| `chart_spec.py` | 从 Mermaid/报告数据形成 Office Chart 规格 | bar/line/pie 语义、系列分组 |
+| `chart_png.py` | 需要静态位图的确定性视觉资产 | 词云/PNG 生成边界 |
+| `docx_package.py` | OOXML Chart、关系、内嵌 XLSX、ZIP 包装与结构校验 | Office Chart/OOXML/嵌入工作簿 |
+| `__init__.py` | 对外导出 `generate_excel_report` 等稳定入口 | 调用方入口 |
+
+人工入口：
+
+```text
+backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py
+backend/src/aima_ugc/adapters/providers/imports_test/test.py
+```
+
+如果只是改 Word 视觉，通常不应该修改 Canonical、Content Ingestion、AI Prompt 或 PostgreSQL Schema。
+
+---
+
+## 2. 生产入口
 
 ```python
 from datetime import date
@@ -30,14 +74,21 @@ reports/assets/primary_topics_wordcloud.png
 reports/assets/keyword_wordcloud.png
 ```
 
-`report_date_range` 是可选的北京时间自然日闭区间，只限制报告统计；传 `None` 时使用 Excel
-全部日期。`generate_excel_report()` 默认使用本目录的 `report_template.md`；调用方也可显式
-传入 `template_path=` 覆盖模板。函数只读输入 Workbook，不调用 LLM、不写 PostgreSQL，
-也不保存或二次格式化输入 Excel。
+`report_date_range` 是可选的北京时间自然日闭区间，只限制报告统计；传 `None` 时使用 Excel 全部日期。`generate_excel_report()` 默认使用本目录的 `report_template.md`；调用方也可显式传入 `template_path=` 覆盖模板。
 
-## 输入约束
+该函数：
 
-输入必须是当前统一 Workbook 结构：
+- 只读输入 Workbook；
+- 不调用 LLM；
+- 不写 PostgreSQL；
+- 不反向修改输入 Excel；
+- 不创建第二套 Content/Analysis 事实。
+
+---
+
+## 3. 输入约束
+
+输入必须是当前统一 Workbook：
 
 ```text
 内容
@@ -45,7 +96,7 @@ reports/assets/keyword_wordcloud.png
 评论
 ```
 
-报告当前最低读取列：
+当前报告最低读取列：
 
 ```text
 内容：平台 / 发布时间 / 命中关键词 / 情感标签 / 一级标签 / 二级标签
@@ -57,17 +108,52 @@ reports/assets/keyword_wordcloud.png
 
 ```text
 内容：按“发布时间”筛选
-标签明细：优先按“发布时间”筛选；没有该列时要求内容页和标签明细页同时包含“内容ID”
+标签明细：优先按“发布时间”筛选；没有该列时要求内容页和标签明细页同时有“内容ID”
 评论：存在评论记录时按“评论时间”筛选
 ```
 
-周期范围包含开始日和结束日。筛选所需日期缺失或无法解析时直接失败，不会把无法归属周期的
-记录静默计入或排除。周期内“内容”和“标签明细”的记录数、平台、情感、一级/二级标签及
-标签对会交叉核对，不一致时拒绝生成报告。
+周期包含开始日和结束日。筛选所需日期缺失或无法解析时直接失败，不会把无法归属周期的记录静默计入或排除。
 
-这些是 Report Renderer 的读取要求，不是新的 `UnifiedDataExcelV1` Contract。统一 Excel 的正式字段和共享 Exporter 仍由 `aima_ugc.platform.export` 与 Blueprint 13 维护。
+周期内“内容”和“标签明细”的记录数、平台、情感、一级/二级标签及标签对会交叉核对，不一致时拒绝生成报告。
 
-## 默认管理层报告内容
+这些是 Report Renderer 的读取要求，不是新的 `UnifiedDataExcelV1` Contract；统一 Excel 的机器/共享实现仍看：
+
+```text
+backend/src/aima_ugc/contracts/export.py
+backend/src/aima_ugc/platform/export/excel.py
+```
+
+---
+
+## 4. 数据如何变成报告
+
+完整链路：
+
+```text
+统一 Excel
+→ excel_report.py
+   ├─ 读取 3 个 Sheet
+   ├─ 日期筛选
+   ├─ 数据一致性校验
+   ├─ 平台统计
+   ├─ 情感统计
+   ├─ 一级/二级标签统计
+   ├─ 标签对统计
+   ├─ 关键词统计
+   └─ 日趋势统计
+→ Report Context
+→ report_template.md 占位符替换
+→ report.md
+→ markdown_word.py
+→ visual_docx.py / chart_spec.py / docx_package.py
+→ report.docx
+```
+
+词云直接消费同一 Report Context Counter；不会重新扫描 Excel 建第二套统计。
+
+---
+
+## 5. 默认管理层报告内容
 
 默认报告至少覆盖：
 
@@ -106,98 +192,229 @@ reports/assets/keyword_wordcloud.png
 数据质量说明
 ```
 
-完整表格保存全部平台、标签、标签对、关键词和每日非零数据。为了保持图表可读性，部分图表只展示总体数量最高的 Top N 序列，但不会裁剪完整统计表。
+完整表格保存全部平台、标签、标签对、关键词和每日非零数据。部分图表为了可读性会限制每张图的系列数量，但**不能裁剪底层完整统计表**。
 
-报告读取到已知平台 ID 时统一使用中文展示名：`xiaohongshu`、`douyin`、`weibo`、
-`bilibili`、`kuaishou` 分别展示为“小红书”“抖音”“微博”“哔哩哔哩”“快手”。
-输入已经是中文时保持中文；未知平台保持原值，避免新平台在展示映射更新前丢失。该投影只影响
-Markdown、Word 表格和图表文字，不修改输入 Excel 或底层稳定平台 ID。
-
-## Markdown 与 Word
-
-报告正文只维护 Markdown 模板：
+已知平台 ID 的中文投影：
 
 ```text
-Markdown 模板
+xiaohongshu → 小红书
+douyin      → 抖音
+weibo       → 微博
+bilibili    → 哔哩哔哩
+kuaishou    → 快手
+```
+
+输入已经是中文时保持中文；未知平台保留原值。这个映射只影响展示，不修改输入数据身份。
+
+---
+
+## 6. Markdown 为什么是正文唯一模板
+
+```text
+report_template.md
 → 统计占位符替换
 → report.md
 → convert_markdown_to_docx()
 → report.docx
 ```
 
-Word 不维护第二套正文。因此修改 `report_template.md` 的标题、正文、章节顺序或普通说明后，下次生成的 Markdown 和 Word 会一起变化；无需再单独维护一份 Word 正文代码。
+Word 不维护第二套正文。
 
-Markdown 图表继续使用本报告支持的 Mermaid 子集：
+因此如果要改：
+
+- 章节标题；
+- 说明文字；
+- 章节顺序；
+- 管理摘要措辞；
+
+优先改：
+
+```text
+report_template.md
+```
+
+而不是在 `visual_docx.py` 再写一套正文字符串。
+
+---
+
+## 7. Markdown 图表与 Word Office Chart
+
+Markdown 当前使用支持子集：
 
 ```text
 pie
 xychart-beta
 ```
 
-生成器使用 `xychart-beta`，以兼容当前目标 Markdown 阅读器；Word 转换器同时接受
-`xychart-beta` 和历史 `xychart` 输入，因此已有报告仍可继续转换。
+Word 转换器还兼容历史 `xychart` 输入。
 
-### Word 图表可编辑
-
-Word 不再把这些图表转换成静态 PNG。当前转换器会把图表写成 Office 原生 Chart，并为每张图内嵌对应的 XLSX 数据：
+Word 不把柱状图/折线图/饼图都转成 PNG，而是写 Office 原生 Chart，并为每张图嵌入对应 XLSX：
 
 ```text
 word/charts/chartN.xml
 word/embeddings/chartN.xlsx
 ```
 
-因此在支持 Office Chart 编辑的 Word 中，可以选中图表并使用“编辑数据”修改分类、系列和数值；图表仍由 Office 原生引擎显示，可继续调整标题、图例、样式和布局。
+因此在支持 Office Chart 编辑的 Word 中可以继续：
 
-当前 Word 使用 A4 横向页面和约 15 mm 页边距。普通数据表保持白底、浅表头、轻横向分隔、
-数值右对齐和重复表头；面向领导阅读的 Top 统计不再把全部条目逐项拉成长进度条，而是使用
-“Top 重点 Ranking + 对应图表/词云 + 其余完整紧凑明细”的两层表达。Top Ranking 的排名、
-标签、数量、占比和细比例条都是 Word 原生 OOXML，可继续编辑；其余完整条目采用双列紧凑
-明细，数据没有裁剪。
+- 编辑数据；
+- 调整标题；
+- 调整图例；
+- 修改样式/布局。
 
-一级议题使用一个横向组合区域：上方是标签对总量、一级议题数和 Top1 占比三个克制 KPI，
-下方左侧是一级议题 Ranking，右侧是词云。这里不加入图标、奖牌、星标或逐行小饼图/圆环图；
-Top1 只通过字重和主强调蓝轻度突出。平台分布和情感结构这类窄表可以与对应 Office Chart
-并排；平台 × 情感等宽矩阵仍使用完整横向表格后接图表，避免把多列数据硬塞进半页宽度。
+精确 OOXML 打包实现：
 
-柱状图/折线图继续使用 Office 原生 Chart + 内嵌 XLSX，并显示数据标签；长分类使用横向条形图。
-多系列每日趋势按可读性分层：情感趋势继续拆为正面/中性主趋势和负面/混合低量级趋势；平台、
-一级议题和二级议题趋势在系列较多时把最高声量主序列单独展示，其余每组最多四个系列，避免
-单张图中几十个数值标签重叠。所有分层图仍来自同一统计结果、使用绝对数量，不使用双 Y 轴，
-并保持内嵌 XLSX 可编辑能力。
+```text
+docx_package.py
+```
 
-完整每日明细在 `report.md` 中仍保留日期/维度/数量长表，Word 展示层利用横向 A4 宽度把它们
-透视为按日期为行、维度为列的紧凑矩阵；维度过多时每组最多五列分块展示。因此 Markdown 的
-完整数据语义不变，Word 只优化信息密度和扫读效率。
+图表规格：
 
-Markdown 仍保留 Mermaid 源码，Word 只负责把当前支持的 pie/bar/line 语义转换为可编辑 Office Chart。未支持的 Mermaid 类型必须直接失败，不能静默丢图。
+```text
+chart_spec.py
+```
 
-DOCX 生成后会重新打开并检查：
+未支持的 Mermaid 类型必须直接失败，不能静默丢图。
+
+---
+
+## 8. 当前 Word 版式
+
+当前 Word 是：
+
+```text
+A4 横向
+约 15 mm 页边距
+```
+
+普通数据表：
+
+- 白底；
+- 浅表头；
+- 轻横向分隔；
+- 数值右对齐；
+- 重复表头。
+
+领导阅读 Top 数据采用两层表达：
+
+```text
+Top 重点 Ranking
++ 对应图表/词云
++ 其余完整紧凑明细
+```
+
+不是把几十个条目全部拉成长进度条。
+
+一级议题组合区域：
+
+```text
+上方：标签对总量 / 一级议题数 / Top1 占比 KPI
+下方左：一级议题 Ranking
+下方右：词云
+```
+
+平台分布、情感结构等窄表可以和图表并排；平台 × 情感等宽矩阵保留完整横向表格后接图表。
+
+这些视觉实现主要在：
+
+```text
+visual_docx.py
+```
+
+---
+
+## 9. 多系列趋势为什么拆图
+
+如果把几十个平台/一级标签/二级标签全塞在一张图：
+
+- 图例挤满；
+- 数据标签互相覆盖；
+- Word 很难读。
+
+当前策略：
+
+- 情感趋势拆成主量级与低量级组；
+- 平台/一级/二级趋势在系列较多时把最高声量主序列单独展示；
+- 其余每组最多四个系列；
+- 都使用绝对数量；
+- 不使用双 Y 轴；
+- 每张图仍保留 Office Chart + 内嵌 XLSX。
+
+完整每日数据仍保留在 Markdown 长表中。
+
+Word 展示层会把每日长表投影成：
+
+```text
+日期为行
+维度为列
+```
+
+的紧凑矩阵，维度过多时每组最多五列分块。
+
+---
+
+## 10. 词云如何生成
+
+词云直接消费报告 Counter，不建立第二套统计。
+
+当前实现是确定性的 Pillow Editorial Word Cloud：
+
+- 最多 36 个词；
+- `sqrt` 频次权重；
+- 进一步压缩字号差异；
+- 所有词水平；
+- 从视觉中心向外寻找最近空位；
+- 按真实字形边界碰撞；
+- 最终裁切并放大回 1600×900；
+- 约 300 DPI PNG；
+- 不使用随机旋转、图形 mask、阴影、图标和彩虹配色。
+
+4–9 个词的稀疏场景也会重新利用画布，不缩成中央很小一团。
+
+运行环境必须有 CJK 字体：
+
+```text
+Windows：优先微软雅黑
+Linux：优先 Noto Sans CJK / Source Han Sans
+```
+
+也可以通过：
+
+```text
+AIMA_REPORT_CJK_FONT
+```
+
+指定现有字体路径。缺失时明确失败。
+
+---
+
+## 11. DOCX 生成后怎样自检
+
+生成后不是只看文件是否存在，还会重新打开并检查：
 
 - ZIP CRC；
 - 必需 OOXML 文件；
 - 关键 XML 可解析；
 - Office Chart 数量；
-- 每张 Chart 的 Relationship；
-- 每张图内嵌 XLSX 数据包可正常打开；
-- PNG 图片可重新打开且 Relationship 不悬空。
+- Chart Relationship；
+- 每张图内嵌 XLSX 能打开；
+- PNG 能重新打开；
+- 图片 Relationship 不悬空。
 
-词云继续直接消费同一份报告 Counter，不建立第二套统计。当前实现采用 Pillow 自定义
-Editorial Word Cloud，而不是默认随机词云：最多取 36 个词，使用 sqrt 频次权重并进一步温和
-压缩字号差异；所有词保持水平，第一名可使用系统 CJK 粗体，主体使用海军蓝、主蓝、青绿、柔紫
-和蓝灰，只有少数次级词使用低饱和赭色点缀。布局从视觉中心向外寻找最近空位，完成后再按实际
-字形边界裁切并受限放大回 1600×900 画布，所以只有 4–9 个词时也不会缩成中央的一小团，词很多
-时又保留必要的呼吸感。布局完全确定性，不使用图形 mask、随机旋转、阴影、图标或彩虹配色。
+结构验证主要由：
 
-词云以约 300 DPI PNG 打包到 `word/media/`，因此 Word 中不可通过“编辑数据”重新布局词云；
-精确数量仍由旁边的原生 Ranking 保留，下一次重新生成报告时词云会根据新的 Counter 自动更新。
-运行环境必须提供可用 CJK 字体：Windows 优先微软雅黑，Linux 优先 Noto Sans CJK /
-Source Han Sans，也可通过 `AIMA_REPORT_CJK_FONT` 指向现有字体；缺失时明确失败。当前实现不依赖
-Pandoc、LibreOffice、Matplotlib、pandas、`wordcloud` 库、在线 Mermaid 服务或 `python-docx`；
-内嵌图表数据继续复用 openpyxl。
+```text
+docx_package.py
+相关 unit tests
+```
 
-不同 Office/LibreOffice 版本对主题颜色、字体和分页可能存在轻微视觉差异，因此交付前仍应按目标办公软件做最终视觉抽查；结构测试不能替代所有桌面端渲染差异。
+完成。
 
-## `imports_test` 如何复用
+但不同 Office/LibreOffice 版本仍可能出现字体、主题色、分页细节差异，所以正式视觉交付需要目标办公软件抽查；结构测试不能替代所有渲染差异。
+
+---
+
+## 12. `imports_test` 如何复用
 
 人工入口：
 
@@ -205,7 +422,7 @@ Pandoc、LibreOffice、Matplotlib、pandas、`wordcloud` 库、在线 Mermaid �
 backend/src/aima_ugc/adapters/providers/imports_test/test.py
 ```
 
-当前 `run_all()` 完整人工链路为：
+当前 `run_all()` 人工链：
 
 ```text
 convert
@@ -217,13 +434,13 @@ convert
 → generate_report
 ```
 
-默认报告读取本次 run 的：
+默认报告读取：
 
 ```text
 labeled_data.xlsx
 ```
 
-并生成：
+生成：
 
 ```text
 reports/report.md
@@ -232,9 +449,10 @@ reports/assets/primary_topics_wordcloud.png
 reports/assets/keyword_wordcloud.png
 ```
 
-`run_all(report_excel_path=...)` 可以显式覆盖报告输入 Excel；但如果只是对一个已经处理好的 Excel 出报告，更直接的方式是绕过前序处理：
+只对已经处理好的 Excel 出报告时，直接调用：
 
 ```python
+from datetime import date
 from pathlib import Path
 
 from aima_ugc.adapters.providers.imports_test.test import generate_report
@@ -246,46 +464,108 @@ result = generate_report(
 )
 ```
 
-默认报告模板固定由本模块维护在 `backend/src/aima_ugc/platform/reporting/report_template.md`；`imports_test` 只复用该默认模板，不拥有第二份模板事实源。
+`imports_test` 不拥有第二份 Report Template。
 
-## 自动化测试
+---
 
-核心报告行为：
+## 13. 修改不同问题应该改哪里
+
+### 改统计口径
+
+```text
+excel_report.py
+→ 对应统计 unit test
+→ report_template.md（如果展示字段变化）
+```
+
+不要先改 Word OOXML。
+
+### 改报告正文
+
+```text
+report_template.md
+→ default template test
+→ Markdown / Word 一致性 test
+```
+
+### 改页面布局/Ranking/KPI
+
+```text
+visual_docx.py
+→ reporting/docx layout tests
+→ 真实 DOCX 视觉抽查
+```
+
+### 改 Office Chart
+
+```text
+chart_spec.py
+→ docx_package.py
+→ chart structure tests
+→ 内嵌 XLSX 校验
+```
+
+### 改词云
+
+```text
+chart_png.py / 对应词云实现
+→ 稀疏/稠密 fixture test
+→ PNG reopen
+→ DOCX media relationship test
+```
+
+### 改 Excel 输入字段
+
+先判断是不是统一 Excel Contract 变化：
+
+```text
+backend/src/aima_ugc/contracts/export.py
+backend/src/aima_ugc/platform/export/excel.py
+```
+
+如果是，只改 Report Reader 会造成正式 Export 和 Report 语义分叉。
+
+---
+
+## 14. 自动化测试
+
+核心：
 
 ```bash
-uv run pytest tests/unit/platform/test_offline_reporting.py tests/unit/platform/test_docx_package_structure.py tests/unit/platform/test_reporting_default_template.py -q
+uv run pytest \
+  tests/unit/platform/test_offline_reporting.py \
+  tests/unit/platform/test_docx_package_structure.py \
+  tests/unit/platform/test_reporting_default_template.py -q
 ```
 
 `imports_test` 接线：
 
 ```bash
-uv run pytest tests/unit/platform/test_imports_test_reporting.py tests/unit/collection/test_p1g_imports_run_all.py -q
+uv run pytest \
+  tests/unit/platform/test_imports_test_reporting.py \
+  tests/unit/collection/test_p1g_imports_run_all.py -q
 ```
 
-测试应证明：
+测试重点包括：
 
-- 默认正文适合管理层直接阅读，不泄漏实现术语；
-- 管理摘要、平台×情感与正负面重点关注统计正确；
-- 输入 Excel Hash 在报告前后不变；
-- 模板文字同时进入 Markdown 和 Word；
-- DOCX ZIP/关键 OOXML/Office Chart/内嵌 XLSX 结构可校验；
-- 图表系列名称和数值进入内嵌数据工作簿；
-- 已知英文平台 ID 在 Excel、Markdown、Word 和图表中统一显示中文，未知平台保持原值；
-- Word 为 A4 横向，Editorial Table、KPI、Top Ranking、紧凑完整明细和组合布局分层明确；
-- bar/line 有数据标签，长分类为横向条形图，分层趋势仍保持 Office Chart + 内嵌 XLSX；
-- Markdown 完整每日长表与 Word 紧凑矩阵包含相同的日期、维度和数值；
-- 一级议题与热点关键词词云来自对应统计 Counter，稀疏/稠密样例均保持确定性、合理视觉密度，PNG 可重开且正确打包到 `word/media/`；
-- Word 换行节点使用合法 `w:r > w:br` 层级；
-- 未支持 Mermaid / AIMA 展示元数据关闭失败；
-- `run_all()` 在最终 Excel 后追加报告阶段；
-- 显式 `report_excel_path` 能覆盖报告输入；
-- 既有多 Excel、数据库来源和 LLM 费用审计语义保持不变。
+- 管理摘要/平台×情感/正负面统计正确；
+- 输入 Excel Hash 不变化；
+- 模板文字同时进入 Markdown 与 Word；
+- DOCX ZIP/OOXML/Office Chart/嵌入 XLSX 正确；
+- 平台中文映射一致；
+- A4 横向、KPI、Ranking、紧凑明细布局；
+- 图表系列和数据标签；
+- Markdown 每日长表与 Word 紧凑矩阵数据一致；
+- 稀疏/稠密词云确定性和可打开；
+- 不支持的 Mermaid/展示元数据关闭失败；
+- `run_all()` 接线不破坏既有 Excel/数据库/LLM 语义。
 
-测试和当前 CI 结果才是验证事实，本 README 不替代测试断言。
+---
 
-## 当前限制
+## 15. 当前限制
 
 - 当前是离线文件报告，不是正式网页报告中心；
 - 不生成新的 AI 结论，只统计已有结构化数据；
-- Word 转换不是通用 Markdown/Mermaid/Office Chart 引擎，只支持当前报告需要的子集；
-- 正式 Report Job、Artifact 权限/API、PostgreSQL Read Model 或 Web 页面如后续需要，必须作为对应阶段独立演进。
+- Word 转换只支持当前报告需要的 Markdown/Mermaid/Office Chart 子集，不是通用转换引擎；
+- 当前没有正式 Report Job、Report PostgreSQL Read Model 或 Report Web 页面；
+- 正式 Excel Data Export 由 `modules/reporting/` 负责，不应和本目录混为一个 Owner。
