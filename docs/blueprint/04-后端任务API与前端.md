@@ -160,7 +160,9 @@ UNION 集中投影 Excel Import Batch、TikHub Discovery Run 与 Batch Supplemen
 合并成万能业务表；Summary 在 PostgreSQL 跨两个 Owner 聚合处理中、北京时间今日完成和今日入库/采集
 内容，不从当前页推算。Collection Capability 只公开启用 Config 的稳定 ID/显示名与
 `provider + platform + business operations`，不暴露 Secret、Base URL 或 Provider 私有 Operation/分页。
-Keyword Pack 页面仍属于 Stage 8F。
+Stage 8F 已增加 Keyword Pack 摘要/启停与周期 Collection Plan 列表、详情、创建、启停 HTTP Contract；
+配置写入只修改既有 System/Collection 父事实，不创建 Run/Job 或执行 Provider 请求。`/collection-strategy`
+只使用生成 Client，Stage 8E 的一次性 Discovery 仍走 `/api/v1/collection-runs`。
 
 路径使用名词和复数。业务动作只在无法自然表达为资源变化时使用：
 
@@ -476,12 +478,14 @@ features/collection/
 └─ tests/
 ```
 
-Stage 8C—8E 当前实际 Feature 为 `features/import-batches/` 与 `features/voice-plaza/`。为保持既有
+Stage 8C—8F 当前实际 Feature 为 `features/import-batches/`、`features/voice-plaza/` 与
+`features/collection-strategy/`。为保持既有
 `/collection-runtime` Route、Feature API/Store 和后续 Figma 兼容，Stage 8E 在前一个目录内增量加入
 统一 Excel/TikHub 运行列表、两种 TikHub 创建模式与 Run 详情，没有复制第二套 Collection Store/API。
 声音广场保持
 Page/私有组件/Store/API/生成 Client 分层；一次性截图只影响可替换视觉层，后续 Figma 重做不得改变
-`/voice-plaza`、Pydantic/Orval Contract、筛选快照、全部标签数组或显式 Analysis/Export 操作语义。
+`/voice-plaza`、`/collection-strategy`、Pydantic/Orval Contract、筛选快照、全部标签数组、周期 Plan 或
+显式 Analysis/Export 操作语义。
 
 页面只使用本 Feature 的公开入口和 `shared/`。跨 Feature 共享业务状态时，把 Owner 放在真正拥有该业务的 Feature，不复制 Store。
 

@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, insert, or_, select, update
+from sqlalchemy import String, func, insert, or_, select, update
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
@@ -102,6 +102,118 @@ class PostgresCollectionPlanningRepository:
         """读取 Plan 聚合快照，不修改事务状态。"""
         return self._get_plan(plan_id, for_update=False)
 
+    def list_plans(
+        self,
+        *,
+        search: str | None,
+        enabled: bool | None,
+        platform: str | None,
+        offset: int,
+        limit: int,
+    ) -> tuple[CollectionPlanRecord, ...]:
+        """按更新时间稳定分页读取 Plan 聚合。"""
+        statement = select(collection_plans_table.c.id).where(
+            collection_plans_table.c.schedule_expr.is_not(None)
+        )
+        if search is not None:
+            pattern = f"%{search.strip()}%"
+            statement = statement.where(
+                or_(
+                    collection_plans_table.c.name.ilike(pattern),
+                    collection_plans_table.c.id.cast(String).ilike(pattern),
+                )
+            )
+        if enabled is not None:
+            statement = statement.where(collection_plans_table.c.enabled.is_(enabled))
+        if platform is not None:
+            statement = statement.where(
+                collection_plans_table.c.id.in_(
+                    select(collection_plan_platforms_table.c.plan_id).where(
+                        collection_plan_platforms_table.c.platform == platform
+                    )
+                )
+            )
+        plan_ids = tuple(
+            cast(UUID, value)
+            for value in self._session.execute(
+                statement.order_by(
+                    collection_plans_table.c.updated_at.desc(),
+                    collection_plans_table.c.id,
+                )
+                .offset(offset)
+                .limit(limit)
+            ).scalars()
+        )
+        records: list[CollectionPlanRecord] = []
+        for plan_id in plan_ids:
+            record = self.get_plan(plan_id)
+            if record is not None:  # pragma: no branch - 同一事务快照中的父记录存在
+                records.append(record)
+        return tuple(records)
+
+    def count_plans(
+        self,
+        *,
+        search: str | None,
+        enabled: bool | None,
+        platform: str | None,
+    ) -> int:
+        statement = (
+            select(func.count())
+            .select_from(collection_plans_table)
+            .where(collection_plans_table.c.schedule_expr.is_not(None))
+        )
+        if search is not None:
+            pattern = f"%{search.strip()}%"
+            statement = statement.where(
+                or_(
+                    collection_plans_table.c.name.ilike(pattern),
+                    collection_plans_table.c.id.cast(String).ilike(pattern),
+                )
+            )
+        if enabled is not None:
+            statement = statement.where(collection_plans_table.c.enabled.is_(enabled))
+        if platform is not None:
+            statement = statement.where(
+                collection_plans_table.c.id.in_(
+                    select(collection_plan_platforms_table.c.plan_id).where(
+                        collection_plan_platforms_table.c.platform == platform
+                    )
+                )
+            )
+        return int(self._session.scalar(statement) or 0)
+
+    def count_enabled_plans(self) -> int:
+        return int(
+            self._session.scalar(
+                select(func.count())
+                .select_from(collection_plans_table)
+                .where(
+                    collection_plans_table.c.enabled.is_(True),
+                    collection_plans_table.c.schedule_expr.is_not(None),
+                )
+            )
+            or 0
+        )
+
+    def has_enabled_plan_for_keyword_pack(self, pack_id: UUID) -> bool:
+        """判断词包是否仍被启用 Plan 引用。"""
+        return (
+            self._session.scalar(
+                select(collection_plans_table.c.id)
+                .join(
+                    collection_plan_keyword_packs_table,
+                    collection_plan_keyword_packs_table.c.plan_id == collection_plans_table.c.id,
+                )
+                .where(
+                    collection_plan_keyword_packs_table.c.keyword_pack_id == pack_id,
+                    collection_plans_table.c.enabled.is_(True),
+                )
+                .limit(1)
+            )
+            is not None
+        )
+
     def list_schedulable_plan_ids(self, *, now: datetime, limit: int = 100) -> tuple[UUID, ...]:
         """短事务预扫需要初始化或已经到期的 Plan ID，不在此处抢锁。"""
         if now.utcoffset() is None:
@@ -129,6 +241,33 @@ class PostgresCollectionPlanningRepository:
     def get_plan_for_update(self, plan_id: UUID) -> CollectionPlanRecord | None:
         """在当前事务锁定一个 Plan，并重新读取最新调度事实。"""
         return self._get_plan(plan_id, for_update=True)
+
+    def set_plan_enabled(
+        self,
+        plan_id: UUID,
+        *,
+        enabled: bool,
+    ) -> CollectionPlanRecord | None:
+        """串行切换 Plan；新版本清空 cursor，重新启用不补跑停用期间 slot。"""
+        current = self.get_plan_for_update(plan_id)
+        if current is None:
+            return None
+        if current.enabled == enabled:
+            return current
+        self._session.execute(
+            update(collection_plans_table)
+            .where(
+                collection_plans_table.c.id == plan_id,
+                collection_plans_table.c.schedule_version == current.schedule_version,
+            )
+            .values(
+                enabled=enabled,
+                schedule_version=collection_plans_table.c.schedule_version + 1,
+                next_run_at=None,
+                updated_at=func.clock_timestamp(),
+            )
+        )
+        return self.get_plan(plan_id)
 
     def update_schedule_cursor(
         self,

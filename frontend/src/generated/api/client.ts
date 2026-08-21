@@ -47,6 +47,79 @@ export interface CollectionCapabilitiesResponse {
   provider_configs: CollectionProviderConfigResponse[];
 }
 
+/**
+ * Plan 只选择稳定 Provider Config，不接收 Provider 私有配置。
+ */
+export interface CollectionPlanPlatformRequest {
+  platform: CollectionPlatform;
+  provider_config_id: string;
+}
+
+/**
+ * Stage 8F 周期 Plan 创建 Contract；一次性运行继续使用 Stage 8E。
+ */
+export interface CollectionPlanCreateRequest {
+  enabled?: boolean;
+  /**
+     * @minItems 1
+     * @maxItems 20
+     */
+  keyword_pack_ids: string[];
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  name: string;
+  /**
+     * @minItems 1
+     * @maxItems 5
+     */
+  platforms: CollectionPlanPlatformRequest[];
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  schedule_expr: string;
+}
+
+export interface CollectionPlanPlatformResponse {
+  platform: CollectionPlatform;
+  provider_config_id: string;
+}
+
+export interface CollectionPlanResponse {
+  comment_policy: 'adaptive';
+  created_at: string;
+  detail_policy: 'on_change';
+  enabled: boolean;
+  id: string;
+  keyword_pack_ids: string[];
+  last_scheduled_at?: string | null;
+  name: string;
+  next_run_at?: string | null;
+  platforms: CollectionPlanPlatformResponse[];
+  schedule_expr: string;
+  /** @exclusiveMinimum 0 */
+  schedule_version: number;
+  timezone: 'Asia/Shanghai';
+  updated_at: string;
+}
+
+export interface CollectionPlanListResponse {
+  /** @minimum 0 */
+  enabled_count: number;
+  items: CollectionPlanResponse[];
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  limit: number;
+  /** @minimum 0 */
+  offset: number;
+  /** @minimum 0 */
+  total: number;
+}
+
 export type CollectionRunMode = typeof CollectionRunMode[keyof typeof CollectionRunMode];
 
 
@@ -608,6 +681,30 @@ export interface KeywordPackKeywordCreateRequest {
   text: string;
 }
 
+export interface KeywordPackSummaryResponse {
+  description: string;
+  enabled: boolean;
+  id: string;
+  /** @minimum 0 */
+  keyword_count: number;
+  name: string;
+  /** @exclusiveMinimum 0 */
+  version: number;
+}
+
+export interface KeywordPackListResponse {
+  items: KeywordPackSummaryResponse[];
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  limit: number;
+  /** @minimum 0 */
+  offset: number;
+  /** @minimum 0 */
+  total: number;
+}
+
 export interface KeywordResponse {
   enabled: boolean;
   id: string;
@@ -676,6 +773,25 @@ export interface ReadinessResponse {
   status: ReadinessResponseStatus;
 }
 
+export interface ResourceEnabledRequest {
+  enabled: boolean;
+}
+
+export type ListCollectionPlansParams = {
+search?: string | null;
+enabled?: boolean | null;
+platform?: CollectionPlatform | null;
+/**
+ * @minimum 0
+ */
+offset?: number;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+};
+
 export type ListCollectionRuntimeRunsParams = {
 search?: string | null;
 /**
@@ -733,6 +849,20 @@ cursor?: string | null;
 limit?: number;
 };
 
+export type ListKeywordPacksParams = {
+search?: string | null;
+enabled?: boolean | null;
+/**
+ * @minimum 0
+ */
+offset?: number;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+};
+
 export const getGetCollectionCapabilitiesUrl = () => {
 
 
@@ -759,6 +889,138 @@ export const getCollectionCapabilities = async ( options?: RequestInit): Promise
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: CollectionCapabilitiesResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getListCollectionPlansUrl = (params?: ListCollectionPlansParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/collection-plans?${stringifiedParams}` : `/api/v1/collection-plans`
+}
+
+/**
+ * @summary List Collection Plans
+ */
+export const listCollectionPlans = async (params?: ListCollectionPlansParams, options?: RequestInit): Promise<CollectionPlanListResponse> => {
+
+  const res = await fetch(getListCollectionPlansUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CollectionPlanListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCreateCollectionPlanUrl = () => {
+
+
+
+
+  return `/api/v1/collection-plans`
+}
+
+/**
+ * @summary Create Collection Plan
+ */
+export const createCollectionPlan = async (collectionPlanCreateRequest: CollectionPlanCreateRequest, options?: RequestInit): Promise<CollectionPlanResponse> => {
+
+  const res = await fetch(getCreateCollectionPlanUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(collectionPlanCreateRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CollectionPlanResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetCollectionPlanUrl = (planId: string,) => {
+
+
+
+
+  return `/api/v1/collection-plans/${planId}`
+}
+
+/**
+ * @summary Get Collection Plan
+ */
+export const getCollectionPlan = async (planId: string, options?: RequestInit): Promise<CollectionPlanResponse> => {
+
+  const res = await fetch(getGetCollectionPlanUrl(planId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CollectionPlanResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getUpdateCollectionPlanEnabledUrl = (planId: string,) => {
+
+
+
+
+  return `/api/v1/collection-plans/${planId}/enabled`
+}
+
+/**
+ * @summary Update Collection Plan Enabled
+ */
+export const updateCollectionPlanEnabled = async (planId: string,
+    resourceEnabledRequest: ResourceEnabledRequest, options?: RequestInit): Promise<CollectionPlanResponse> => {
+
+  const res = await fetch(getUpdateCollectionPlanEnabledUrl(planId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(resourceEnabledRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CollectionPlanResponse = body ? JSON.parse(body) : {}
   return data
 }
 
@@ -1329,6 +1591,44 @@ export const getJob = async (jobId: string, options?: RequestInit): Promise<JobS
 
 
 
+export const getListKeywordPacksUrl = (params?: ListKeywordPacksParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/keyword-packs?${stringifiedParams}` : `/api/v1/keyword-packs`
+}
+
+/**
+ * @summary List Keyword Packs
+ */
+export const listKeywordPacks = async (params?: ListKeywordPacksParams, options?: RequestInit): Promise<KeywordPackListResponse> => {
+
+  const res = await fetch(getListKeywordPacksUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: KeywordPackListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
 export const getCreateKeywordPackUrl = () => {
 
 
@@ -1386,6 +1686,38 @@ export const getKeywordPack = async (packId: string, options?: RequestInit): Pro
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: KeywordPackResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getUpdateKeywordPackEnabledUrl = (packId: string,) => {
+
+
+
+
+  return `/api/v1/keyword-packs/${packId}/enabled`
+}
+
+/**
+ * @summary Update Keyword Pack Enabled
+ */
+export const updateKeywordPackEnabled = async (packId: string,
+    resourceEnabledRequest: ResourceEnabledRequest, options?: RequestInit): Promise<KeywordPackSummaryResponse> => {
+
+  const res = await fetch(getUpdateKeywordPackEnabledUrl(packId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(resourceEnabledRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: KeywordPackSummaryResponse = body ? JSON.parse(body) : {}
   return data
 }
 

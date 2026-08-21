@@ -472,6 +472,41 @@ class KeywordPackResponse(BaseModel):
     keywords: tuple[KeywordResponse, ...]
 
 
+class KeywordPackListQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    search: str | None = Field(default=None, min_length=1, max_length=200)
+    enabled: bool | None = None
+    offset: int = Field(default=0, ge=0)
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class KeywordPackSummaryResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    name: str
+    description: str
+    enabled: bool
+    version: int = Field(gt=0)
+    keyword_count: int = Field(ge=0)
+
+
+class KeywordPackListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: tuple[KeywordPackSummaryResponse, ...]
+    total: int = Field(ge=0)
+    offset: int = Field(ge=0)
+    limit: int = Field(ge=1, le=100)
+
+
+class ResourceEnabledRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
+
+
 class GlobalRelevanceConfigRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -486,6 +521,91 @@ class GlobalRelevanceConfigResponse(BaseModel):
     version: int = Field(gt=0)
     effective_keywords: tuple[str, ...]
     updated_at: datetime
+
+
+class CollectionPlanPlatformRequest(BaseModel):
+    """Plan 只选择稳定 Provider Config，不接收 Provider 私有配置。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    platform: CollectionPlatform
+    provider_config_id: UUID
+
+
+class CollectionPlanCreateRequest(BaseModel):
+    """Stage 8F 周期 Plan 创建 Contract；一次性运行继续使用 Stage 8E。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=200)
+    schedule_expr: str = Field(min_length=1, max_length=100)
+    platforms: tuple[CollectionPlanPlatformRequest, ...] = Field(min_length=1, max_length=5)
+    keyword_pack_ids: tuple[UUID, ...] = Field(min_length=1, max_length=20)
+    enabled: bool = True
+
+    @field_validator("name", "schedule_expr", mode="before")
+    @classmethod
+    def normalize_required_text(cls, value: object) -> object:
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                raise ValueError("Plan 名称和 Cron 表达式不能为空")
+        return value
+
+    @model_validator(mode="after")
+    def validate_unique_relations(self) -> CollectionPlanCreateRequest:
+        platforms = [item.platform for item in self.platforms]
+        if len(platforms) != len(set(platforms)):
+            raise ValueError("同一 Plan 的目标平台不得重复")
+        if len(self.keyword_pack_ids) != len(set(self.keyword_pack_ids)):
+            raise ValueError("同一 Plan 的 Discovery 词包不得重复")
+        return self
+
+
+class CollectionPlanPlatformResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    platform: CollectionPlatform
+    provider_config_id: UUID
+
+
+class CollectionPlanResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    name: str
+    enabled: bool
+    schedule_expr: str
+    timezone: Literal["Asia/Shanghai"]
+    schedule_version: int = Field(gt=0)
+    next_run_at: datetime | None = None
+    last_scheduled_at: datetime | None = None
+    detail_policy: Literal["on_change"]
+    comment_policy: Literal["adaptive"]
+    platforms: tuple[CollectionPlanPlatformResponse, ...]
+    keyword_pack_ids: tuple[UUID, ...]
+    created_at: datetime
+    updated_at: datetime
+
+
+class CollectionPlanListQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    search: str | None = Field(default=None, min_length=1, max_length=200)
+    enabled: bool | None = None
+    platform: CollectionPlatform | None = None
+    offset: int = Field(default=0, ge=0)
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class CollectionPlanListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: tuple[CollectionPlanResponse, ...]
+    total: int = Field(ge=0)
+    enabled_count: int = Field(ge=0)
+    offset: int = Field(ge=0)
+    limit: int = Field(ge=1, le=100)
 
 
 type ContentAnalysisStatus = Literal["pending", "completed", "stale"]
@@ -732,6 +852,12 @@ __all__ = [
     "CommentCoverageResponse",
     "CollectionCapabilitiesResponse",
     "CollectionCapabilityResponse",
+    "CollectionPlanCreateRequest",
+    "CollectionPlanListQuery",
+    "CollectionPlanListResponse",
+    "CollectionPlanPlatformRequest",
+    "CollectionPlanPlatformResponse",
+    "CollectionPlanResponse",
     "CollectionPlatform",
     "CollectionProviderConfigResponse",
     "CollectionRunCreateRequest",
@@ -784,7 +910,11 @@ __all__ = [
     "ImportStage",
     "JobStatusResponse",
     "KeywordPackCreateRequest",
+    "KeywordPackListQuery",
+    "KeywordPackListResponse",
     "KeywordPackKeywordCreateRequest",
     "KeywordPackResponse",
+    "KeywordPackSummaryResponse",
     "KeywordResponse",
+    "ResourceEnabledRequest",
 ]
