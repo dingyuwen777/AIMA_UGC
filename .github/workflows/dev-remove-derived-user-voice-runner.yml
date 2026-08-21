@@ -65,6 +65,27 @@ jobs:
           PY
           python /tmp/apply_remove_user_voice.py
 
+      - name: Sync README fact discovered by residual scan
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('backend/src/aima_ugc/adapters/providers/imports_test/README.md')
+          text = path.read_text(encoding='utf-8')
+          old = ('`label_sentiment()` 复用正式 `ContentLabelingService`，每条内容一次 LLM 请求同时完成相关性、发声类型、情感和多标签判断。'
+                 '判定为 `irrelevant` 的完整内容行会在最终原子回写时从 `deduplicated/contents.jsonl` 删除；checkpoint 仅保留最小恢复决策，不作为业务数据源。'
+                 '最终 Excel 不显示“相关性”列，只显示中文“发声类型”和派生的“是否用户真实发声”。')
+          new = ('`label_sentiment()` 复用正式 `ContentLabelingService`，每条内容一次 LLM 请求同时完成相关性、发声类型、情感和多标签判断。'
+                 '判定为 `irrelevant` 的完整内容行会在最终原子回写时从 `deduplicated/contents.jsonl` 删除；checkpoint 仅保留最小恢复决策，不作为业务数据源。'
+                 '最终 Excel 不显示“相关性”列，发声分类只显示中文“发声类型”。')
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'imports_test README residual fact expected once, found {count}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
       - name: Format and generate contracts
         shell: bash
         run: |
