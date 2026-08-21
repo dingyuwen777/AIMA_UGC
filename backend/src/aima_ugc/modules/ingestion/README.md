@@ -1,12 +1,65 @@
 # Ingestion 模块
 
-Ingestion 模块当前最重要的职责是：**把一个上传的 Excel 文件变成一次可追踪、可恢复的正式 Import Batch。**
+Ingestion 模块当前负责**文件导入的业务父事实、Import Job 和 XLSX 输入边界**。
 
-这里的 `ingestion` 不等于 Content Owner 里的“把 Canonical 写进内容表”。它主要拥有 File Import 的父事实和正式 `ingestion.import-excel.v1` Job；真正的帖子/评论 Current、Version、Metric 最终仍由 Content Owner 写入。
+这里容易和 `content.ingestion` 混淆，所以先区分：
 
-## 1. 为什么 Excel 导入需要单独的 Import Batch
+```text
+modules/ingestion/
+→ “这次 Excel 导入是什么、输入文件是谁、Job 是谁、处理到哪一步”
 
-TikHub 正式采集天然有：
+modules/content/ingestion.py
+→ “一条 Canonical Content/Comment 怎样真正写入 Current/Version/Metric”
+```
+
+Excel 最终写 `contents/comments` 仍通过 Content Owner，不在本模块另写一套业务 SQL。
+
+---
+
+## 1. 当前正式 Excel 主链
+
+```text
+POST /api/v1/import-batches
+→ multipart XLSX 安全校验
+→ Input Artifact
+→ processing_import_batches
+→ ingestion.import-excel.v1 Job
+→ Worker
+→ Excel Reader / Mapper
+→ Canonical
+→ Relevance
+→ ContentIngestionService
+→ Content Owner Repository
+→ PostgreSQL
+```
+
+生产 HTTP：
+
+```text
+backend/src/aima_ugc/bootstrap/import_http.py
+```
+
+生产 Worker：
+
+```text
+backend/src/aima_ugc/bootstrap/import_worker.py
+```
+
+手工复用装配：
+
+```text
+backend/src/aima_ugc/bootstrap/manual_ingestion.py
+```
+
+详细跨模块链路：
+
+[`../../../../../docs/appendix/数据入口与统一入库实现.md`](../../../../../docs/appendix/数据入口与统一入库实现.md)
+
+---
+
+## 2. 为什么 Excel 需要 Import Batch，而不是假 Collection Run
+
+TikHub 采集天然有：
 
 ```text
 Run
@@ -14,9 +67,9 @@ Run
 → Provider Request / Attempt
 ```
 
-Excel 文件没有真实的“搜索 Run/Scope”。如果为了复用表结构硬造一个假的 Collection Run，会让来源追溯变得不真实。
+Excel 没有“搜索一个平台关键词”这种真实 Scope。如果为了复用 Collection 表而硬造一个假的 Run/Scope，会让来源事实失真。
 
-所以当前 File Import 使用：
+因此当前 File Import 使用：
 
 ```text
 Input Artifact
@@ -24,179 +77,405 @@ Input Artifact
 → import-parent Provider Request / Attempt
 → Excel Reader / Mapper
 → Canonical
-→ Relevance
-→ Content Ingestion / Owner
-→ PostgreSQL
+→ Content Ingestion
 ```
 
-## 2. 当前数据库父事实
+这让 Excel 也能复用 Provider Request/Attempt/Artifact 的来源追溯，但不会伪造 Collection 行为。
 
-表：
+---
+
+## 3. `processing_import_batches` 当前保存什么
+
+表定义：
 
 ```text
-processing_import_batches
+backend/src/aima_ugc/modules/ingestion/tables.py
 ```
 
-当前字段只包括这类父级信息：
+当前字段职责：
 
-- `input_artifact_id`：用户上传的原始 Excel Artifact；
-- `job_id`：正式 Import Job；
-- `status`；
-- `stats`：运行统计 JSONB；
-- `error_summary`；
-- 创建/开始/完成时间。
+```text
+id
+→ Batch 身份
 
-精确字段以 `tables.py` 和 `migrations/versions/20260820_0019_stage8a_manual_ingestion.py` 为准。
+input_artifact_id
+→ 原始 XLSX Artifact
 
-不要在 README 里再维护一份完整 DDL。
+job_id
+→ 正式 Import Job；同步人工入口允许为空
 
-## 3. Provider Request 为什么也可以属于 Import Batch
+status
+→ processing / succeeded / failed 的数据库父事实
 
-Stage 8A Migration 让 `provider_requests` 的来源父级变成“恰好一个”：
+stats JSONB
+→ 行数等运行统计
+
+error_summary
+→ 安全错误摘要
+
+created_at / started_at / finished_at
+→ 生命周期时间
+```
+
+精确列、FK、Check Constraint 直接看 `tables.py` 和对应 Migration，不在 README 复制第二套 DDL。
+
+当前 `processing_import_batches` 不保存：
+
+- 标题/正文；
+- 平台内容 ID；
+- AI 标签；
+- 每条内容的 Current；
+- TikHub Run/Scope 的平行副本。
+
+---
+
+## 4. Provider Request 如何同时支持 Collection 和 File Import
+
+`provider_requests` 当前来源父级恰好一个：
 
 ```text
 Collection 来源
-→ scope_id 有值
-→ import_batch_id 为空
+→ scope_id IS NOT NULL
+→ import_batch_id IS NULL
 
 File Import 来源
-→ scope_id 为空
-→ import_batch_id 有值
+→ scope_id IS NULL
+→ import_batch_id IS NOT NULL
 ```
 
-这样 File Import 可以复用 Request/Attempt/Artifact 来源账本，同时不伪造 Collection Scope。
-
-## 4. 正式 Job
-
-当前 Job 类型：
+这个约束由：
 
 ```text
-ingestion.import-excel.v1
+backend/src/aima_ugc/modules/ingestion/tables.py
 ```
 
-主要代码：
+在当前 metadata 中注册，并由 Migration 建立数据库事实。
+
+这样可以追溯：
 
 ```text
-import_job.py
+Content Version
+→ Provider Attempt
+→ Provider Request
+→ Import Batch
+→ Input Artifact
 ```
 
-Job 由 API 创建后交给 Worker 执行。Router 不在上传 HTTP 请求里同步处理整个 Excel。
+而不用制造假的 Collection Scope。
+
+---
+
+## 5. 正式 `ingestion.import-excel.v1` Job
+
+Job 领域入口：
+
+```text
+backend/src/aima_ugc/modules/ingestion/import_job.py
+```
+
+Worker Registry 接线：
+
+```text
+backend/src/aima_ugc/bootstrap/worker.py
+```
+
+执行器：
+
+```text
+backend/src/aima_ugc/bootstrap/import_worker.py
+```
 
 白话流程：
 
 ```text
-用户上传 .xlsx
-→ API 校验文件和资源限制
-→ 保存 Input Artifact
-→ 创建 Import Batch + Job
-→ 202 返回
-→ Worker 后台读文件/映射/入库
+用户上传 Excel
+→ API 保存 Input Artifact
+→ 同事务创建 Batch + Job
+→ 202 Accepted
+→ Worker 根据 job_id 反查唯一 Batch
+→ 读取 Batch 的 input_artifact_id
+→ 执行正式导入
 → 更新 Batch stats / status
+→ Job 进入终态
 ```
 
-## 5. XLSX 安全为什么单独做
+Job Payload 不需要复制文件路径、Secret 或所有 Batch 字段；业务关系由数据库 FK 维护。
 
-`.xlsx` 本质上是 ZIP 包。一个看起来很小的文件，解压后可能非常大，也可能包含异常数量的成员。
+---
 
-当前 `xlsx_security.py` 会限制：
+## 6. XLSX 安全边界
 
-- multipart body 大小；
-- Excel 文件大小；
+`.xlsx` 本质是 ZIP。看起来只有几十 MB 的恶意文件，解压后可能膨胀到非常大。
+
+当前安全实现：
+
+```text
+backend/src/aima_ugc/modules/ingestion/xlsx_security.py
+```
+
+保护包括：
+
+- multipart/body 上限；
+- XLSX 文件大小；
 - ZIP member 数量；
 - 单 member 解压大小；
 - 总解压大小；
-- 压缩比。
+- 压缩比；
+- 基本 XLSX 结构合法性。
 
-这些限制是为了防止超大上传和 Zip Bomb，不是普通业务字段校验。
+具体阈值直接看代码，因为这类数字可能随安全策略调整；文档重点记录为什么存在和修改入口。
 
-具体阈值以代码为准，README 不复制一份容易过期的数字表。
-
-## 6. Batch 查询和 Cursor
-
-当前模块已有：
+修改这些上限时必须同步：
 
 ```text
+xlsx_security.py
+bootstrap/api.py 的 multipart 接收边界
+API Test
+环境/运维文档（如果影响用户上传限制）
+```
+
+---
+
+## 7. Import Batch 查询和 Cursor
+
+领域/HTTP 边界：
+
+```text
+http.py
 query.py
 import_batch_cursor.py
-http.py
 ```
 
-Import Batch 可以通过正式 HTTP 查询列表、摘要和详情；列表 Cursor 使用查询绑定的签名语义，前端只原样保存/回传，不自己解析业务内容。
-
-精确 URL 和 Response 字段见：
-
-- `docs/API接口说明.md`；
-- `contracts/openapi/openapi.json`；
-- 生成 TypeScript Client。
-
-## 7. 和 `imports_test` 的关系
-
-`imports_test` 是人工/离线调试入口。
-
-默认可以只做：
+生产 Service：
 
 ```text
-Excel 读取
-→ 清洗/去重
-→ 可选 AI
-→ Excel/报告
+backend/src/aima_ugc/bootstrap/import_http.py
 ```
 
-而不连接 PostgreSQL。
+当前 HTTP：
 
-显式数据库模式才进入正式 Import Batch / Provider Request/Attempt / Content Ingestion 主链。
+```text
+POST /api/v1/import-batches
+GET  /api/v1/import-batches
+GET  /api/v1/import-batches/summary
+GET  /api/v1/import-batches/{batch_id}
+GET  /api/v1/jobs/{job_id}
+```
+
+列表 Cursor 会绑定查询条件，前端只原样回传 `next_cursor`，不解析内部结构。
+
+精确字段：
+
+```text
+backend/src/aima_ugc/contracts/http.py
+contracts/openapi/openapi.json
+```
+
+---
+
+## 8. Relevance 在导入链哪里发生
+
+这里的 Relevance 是**规则/关键词相关性清洗**，不是 AI Semantic Relevance。
+
+正式主链：
+
+```text
+Excel Mapper
+→ Canonical
+→ 全局 Relevance Snapshot
+→ 匹配/过滤
+→ Dedup
+→ Content Ingestion
+```
+
+全局配置来自 System 的：
+
+```text
+global_relevance_config
+keyword_packs / keywords / keyword_pack_items
+```
+
+Import 创建时冻结实际 Pack/Config/有效关键词，不让 Worker 运行到一半读取到一套新配置。
+
+AI 的 `relevance = relevant/irrelevant` 属于 `analysis_content_results`，不要和这里混在一起。
+
+---
+
+## 9. 和 `imports_test` 的关系
+
+人工入口：
+
+```text
+backend/src/aima_ugc/adapters/providers/imports_test/
+```
+
+默认离线模式可以：
+
+```text
+Excel
+→ Canonical JSONL
+→ 规则相关性
+→ Dedup
+→ 可选 AI
+→ 共享 Excel
+→ 可选 Report
+```
+
+不要求 PostgreSQL。
+
+只有显式数据库模式才进入正式数据库主链。
 
 原则：
 
-> 调试入口复用生产实现，但默认不产生生产副作用。
+> 调试入口可以方便，但不能复制生产 Reader/Mapper/AI/Exporter/Content Writer。
 
-## 8. 和 Content 模块的关系
+`imports_test/README.md` 是人工运行的详细说明；系统长期数据边界仍以本 README + Appendix + 生产代码为准。
 
-Ingestion 模块不直接拥有 `contents` / `comments`。
+---
 
-```text
-Excel Reader / Mapper
-→ Canonical
-→ Relevance
-→ Content Ingestion Service
-→ Content Owner Repository
+## 10. 和 Content 模块的关系
+
+本模块不会自己写：
+
+```sql
+INSERT INTO contents ...
 ```
 
-因此：
+真正业务摄取入口：
 
-- Excel 不自己写一套 `INSERT contents`；
-- File Import 和 TikHub 最终共享稳定 `(platform, external_content_id)` 内容身份；
-- Current/Version/Metric 的规则只维护一套。
+```text
+backend/src/aima_ugc/modules/content/ingestion.py
+ContentIngestionService
+```
 
-## 9. 当前代码入口
+因此 Excel 与 TikHub 最终共享：
 
-| 能力 | 文件 |
-| --- | --- |
-| Import Batch 领域记录 | `__init__.py` |
-| HTTP 边界 | `http.py` |
-| Batch Cursor | `import_batch_cursor.py` |
-| Job Payload/Handler | `import_job.py` |
-| Query 模型/服务 | `query.py` |
-| PostgreSQL Table | `tables.py` |
-| XLSX 资源安全 | `xlsx_security.py` |
+```text
+(platform, external_content_id)
+```
 
-正式 PostgreSQL Repository、API 装配和 Worker Executor 还会跨到 `adapters/persistence/postgres/`、`bootstrap/api.py`、`bootstrap/worker.py` 等位置；修改时按调用链继续读取，不要只看本目录。
+的 Content 身份，以及同一套：
 
-## 10. 测试重点
+```text
+Current
+Version
+Metric Observation
+field freshness
+source lineage
+```
 
-- 非 `.xlsx` / 损坏 ZIP / 资源上限拒绝；
-- Input Artifact 与 Batch/Job 原子关系；
-- `provider_requests` 恰好一个来源父级；
-- Import Job retry/恢复不重复产生业务副作用；
-- Relevance 与 TikHub 使用同一正式服务；
-- 同一外部内容跨 Excel/TikHub 最终收敛到同一 Content Current；
-- Batch Cursor 与查询条件绑定；
-- Migration 0019 old→head / downgrade 安全边界。
+规则。
 
-## 11. 深入阅读
+---
 
-- 统一入口：[`../../../../../docs/appendix/数据入口与统一入库.md`](../../../../../docs/appendix/数据入口与统一入库.md)
-- Excel 离线处理：[`../../../../../docs/appendix/Excel导入导出与离线处理.md`](../../../../../docs/appendix/Excel导入导出与离线处理.md)
-- 数据主链：[`../../../../../docs/blueprint/02-采集系统与数据标准化.md`](../../../../../docs/blueprint/02-采集系统与数据标准化.md)
-- 数据库：[`../../../../../docs/blueprint/03-数据库与文件存储.md`](../../../../../docs/blueprint/03-数据库与文件存储.md)
-- API/Job：[`../../../../../docs/blueprint/04-后端任务API与前端.md`](../../../../../docs/blueprint/04-后端任务API与前端.md)
+## 11. 当前文件地图
+
+| 文件 | 作用 | 常见修改场景 |
+| --- | --- | --- |
+| `tables.py` | Import Batch + import-parent Provider Request 结构 | 改 Batch Schema/来源父级约束 |
+| `import_job.py` | Job Payload/Handler | 改 Import Job 版本或 Handler 语义 |
+| `http.py` | HTTP Port/领域异常 | 改应用层接口边界 |
+| `query.py` | Batch Read Model | 改列表/摘要领域投影 |
+| `import_batch_cursor.py` | Batch Cursor 编解码 | 改分页安全/过期语义 |
+| `xlsx_security.py` | XLSX 资源安全 | 改上传/ZIP 安全边界 |
+
+跨目录生产实现：
+
+```text
+bootstrap/import_http.py
+bootstrap/import_worker.py
+bootstrap/manual_ingestion.py
+adapters/persistence/postgres/
+```
+
+---
+
+## 12. 修改场景
+
+### 增加 Import Batch 字段
+
+```text
+先确认确实属于 Batch 父事实
+→ tables.py
+→ 新 Migration
+→ Postgres Import Repository / Query
+→ HTTP Contract（如果公开）
+→ API/Integration Test
+```
+
+不要把 Content 业务字段塞进 Batch。
+
+### 修改 Excel Reader/Mapper
+
+不要从 `modules/ingestion/` 猜。先沿生产执行器找到实际 Reader/Mapper，再修改对应 Fixture/Test。
+
+### 修改数据库去重
+
+去 Content Owner：
+
+```text
+modules/content/ingestion.py
+Content PostgreSQL Repository
+```
+
+不是在 Import Batch 里做第二套跨批次 Upsert。
+
+---
+
+## 13. 调试一批 Excel
+
+推荐查：
+
+```text
+1. artifacts              → 输入文件是否保存
+2. processing_import_batches
+3. jobs
+4. provider_requests       → import_batch_id
+5. provider_request_attempts
+6. contents / content_versions
+```
+
+SQL：
+
+[`../../../../../docs/appendix/PostgreSQL查询与调试实战.md`](../../../../../docs/appendix/PostgreSQL查询与调试实战.md)
+
+如果文件阶段成功但数据库没内容，重点看：
+
+```text
+Batch stats
+→ Request/Attempt
+→ Relevance 是否过滤
+→ Dedup
+→ Content Ingestion
+```
+
+---
+
+## 14. 测试重点
+
+- 非 XLSX / 损坏 ZIP / Zip Bomb 关闭失败；
+- Input Artifact + Batch + Job 同事务关系；
+- `provider_requests` 来源父级恰好一个；
+- Worker retry 不产生第二个业务 Content；
+- Rule Relevance 使用冻结 Snapshot；
+- Excel/TikHub 同身份最终收敛；
+- Cursor 与查询条件绑定；
+- Migration old→head / downgrade-upgrade（适用时）。
+
+主要测试入口：
+
+```text
+tests/unit/
+tests/api/
+tests/integration/
+```
+
+---
+
+## 15. 深入阅读
+
+- [`../../../../../docs/appendix/数据入口与统一入库实现.md`](../../../../../docs/appendix/数据入口与统一入库实现.md)
+- [`../../../../../docs/appendix/Excel统一数据导出与离线调试.md`](../../../../../docs/appendix/Excel统一数据导出与离线调试.md)
+- [`../../../../../docs/blueprint/02-采集系统与数据标准化.md`](../../../../../docs/blueprint/02-采集系统与数据标准化.md)
+- [`../../../../../docs/blueprint/03-数据库与文件存储.md`](../../../../../docs/blueprint/03-数据库与文件存储.md)
+- [`../../../../../docs/blueprint/04-后端任务API与前端.md`](../../../../../docs/blueprint/04-后端任务API与前端.md)
