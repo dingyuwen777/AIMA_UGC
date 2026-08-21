@@ -66,7 +66,7 @@ class ReportDocxBuilder(DocxBuilder):
         left = self._new_cell(visual_row, _PRIMARY_LEFT_WIDTH, pad=105)
         right = self._new_cell(visual_row, _PRIMARY_RIGHT_WIDTH, pad=150)
         self._append_section_label(left, "一级议题 Top 分布")
-        self._append_ranking_table(left, rows, start_rank=1, show_progress=True)
+        self._append_ranking_table(left, rows, start_rank=1, show_progress=False)
         self._append_section_label(right, "一级议题词云")
         self._append_image(
             right,
@@ -112,7 +112,9 @@ class ReportDocxBuilder(DocxBuilder):
         self._append_section_label(left, f"Top {limit}")
         self._append_ranking_table(left, top_rows, start_rank=1, show_progress=True)
         if chart is not None:
-            self._append_chart(right, chart, width_emu=4_650_000, height_emu=3_250_000)
+            self._append_chart(
+                right, chart, width_emu=4_650_000, height_emu=_ranking_visual_height(limit)
+            )
         else:
             assert image_path is not None
             self._append_image(
@@ -670,6 +672,18 @@ class ReportDocxBuilder(DocxBuilder):
         self.paragraph_count += 1
         p_pr = ET.SubElement(paragraph, f"{{{_W}}}pPr")
         ET.SubElement(p_pr, f"{{{_W}}}spacing", {f"{{{_W}}}after": "80"})
+
+
+def _ranking_visual_height(item_count: int) -> int:
+    """少量条目使用更矮的图表，避免一条数据占满半页。"""
+
+    if item_count <= 2:
+        return 1_900_000
+    if item_count <= 4:
+        return 2_350_000
+    if item_count <= 6:
+        return 2_850_000
+    return 3_250_000
 
 
 def _parse_integer(value: str) -> int:

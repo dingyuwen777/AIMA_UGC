@@ -53,6 +53,7 @@ def test_primary_overview_keeps_kpis_ranking_and_wordcloud_in_one_visual_group(
 
     captions = {_table_caption(table) for table in document.findall(f".//{{{_W}}}tbl")}
     assert "AIMAPrimaryOverview" in captions
+    assert "AIMAProgress" not in captions
     for expected in ("标签对总量", "48,718", "一级议题", "3", "TOP1 占比", "57.96%"):
         assert expected in text
     assert "品牌评价" in text
