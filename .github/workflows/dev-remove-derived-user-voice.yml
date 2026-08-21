@@ -28,6 +28,14 @@ jobs:
         with:
           node-version: 24.19.0
 
+      - name: Inspect actual current occurrences
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '--- current user-voice occurrences ---'
+          git grep -n -E 'is_user_voice|是否用户真实发声' -- \
+            backend/src tests docs contracts frontend/src/generated/api || true
+
       - name: Install locked environments
         shell: bash
         run: |
@@ -38,77 +46,81 @@ jobs:
           uv sync --locked
           npm ci --prefix frontend
 
-      - name: Apply single-source voice-type change
+      - name: Apply changes against inspected current files
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
 
-          def replace(path: str, old: str, new: str, *, expected: int = 1) -> None:
-              target = Path(path)
-              text = target.read_text(encoding="utf-8")
+          def read(path: str) -> str:
+              return Path(path).read_text(encoding="utf-8")
+
+          def write(path: str, text: str) -> None:
+              Path(path).write_text(text, encoding="utf-8")
+
+          def replace_exact(path: str, old: str, new: str, *, expected: int = 1) -> None:
+              text = read(path)
               count = text.count(old)
               if count != expected:
-                  raise SystemExit(f"{path}: expected {expected} occurrences, found {count}: {old!r}")
-              target.write_text(text.replace(old, new), encoding="utf-8")
+                  raise SystemExit(
+                      f"{path}: expected {expected} occurrences, found {count}: {old!r}"
+                  )
+              write(path, text.replace(old, new))
 
           def remove_line(path: str, line: str, *, expected: int = 1) -> None:
-              replace(path, line + "\n", "", expected=expected)
+              replace_exact(path, line + "\n", "", expected=expected)
 
-          # Analysis model: voice_type is the only voice fact; no convenience boolean property.
-          replace(
+          # 1. Analysis Contract: voice_type is the only persisted/serialized voice fact.
+          replace_exact(
               "backend/src/aima_ugc/contracts/analysis/content_label.py",
               "    @property\n    def is_user_voice(self) -> bool:\n        return self.voice_type == \"user_voice\"\n\n",
               "",
           )
 
-          # Public HTTP contract: remove the duplicate response field and consistency requirement.
+          # 2. HTTP Contract and projection.
           http_path = "backend/src/aima_ugc/contracts/http.py"
           remove_line(http_path, "    is_user_voice: bool | None = None")
-          replace(
+          replace_exact(
               http_path,
               "            if self.relevance is None or self.voice_type is None or self.is_user_voice is None:\n                raise ValueError(\"completed Analysis 必须包含相关性与发声类型\")\n            if self.is_user_voice != (self.voice_type == \"user_voice\"):\n                raise ValueError(\"is_user_voice 必须由 voice_type 派生\")\n",
               "            if self.relevance is None or self.voice_type is None:\n                raise ValueError(\"completed Analysis 必须包含相关性与发声类型\")\n",
           )
-          replace(
+          replace_exact(
               http_path,
               "                    self.voice_type,\n                    self.is_user_voice,\n                    self.sentiment,\n",
               "                    self.voice_type,\n                    self.sentiment,\n",
           )
+          replace_exact(
+              "backend/src/aima_ugc/bootstrap/content_http.py",
+              "            is_user_voice=(\n                record.analysis.voice_type == \"user_voice\"\n                if record.analysis.voice_type is not None\n                else None\n            ),\n",
+              "",
+          )
 
-          # Excel analysis contract: same single-source rule.
+          # 3. Excel Contract and all producer/view projections.
           export_model_path = "backend/src/aima_ugc/contracts/export/models.py"
-          replace(
+          replace_exact(
               export_model_path,
               "from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator\n",
               "from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator\n",
           )
           remove_line(export_model_path, "    is_user_voice: bool = False")
-          replace(
+          replace_exact(
               export_model_path,
               "\n    @model_validator(mode=\"after\")\n    def validate_user_voice_consistency(self) -> UnifiedDataExcelAnalysisV1:\n        if self.is_user_voice != (self.voice_type == \"user_voice\"):\n            raise ValueError(\"Excel Analysis is_user_voice 必须由 voice_type 派生\")\n        return self\n",
               "",
           )
-
-          # HTTP and PostgreSQL export projections no longer create a second fact.
-          replace(
-              "backend/src/aima_ugc/bootstrap/content_http.py",
-              "            is_user_voice=(\n                record.analysis.voice_type == \"user_voice\"\n                if record.analysis.voice_type is not None\n                else None\n            ),\n",
-              "",
-          )
-          replace(
+          replace_exact(
               "backend/src/aima_ugc/adapters/persistence/postgres/reporting.py",
               "                is_user_voice=voice_type == \"user_voice\",\n",
               "",
           )
 
-          # Excel view: keep only Chinese voice type; remove the redundant yes/no column.
           excel_path = "backend/src/aima_ugc/platform/export/excel.py"
           remove_line(excel_path, '    "是否用户真实发声",')
           remove_line(excel_path, '    "是否用户真实发声": 16,')
-          replace(excel_path, '                    is_user_voice=voice_type == "user_voice",\n', "")
-          replace(
+          replace_exact(excel_path, '                    is_user_voice=voice_type == "user_voice",\n', "")
+          replace_exact(
               excel_path,
               "        (\n            \"是\"\n            if analysis is not None and analysis.is_user_voice\n            else \"否\"\n            if analysis is not None\n            else None,\n            False,\n            False,\n        ),\n",
               "",
@@ -117,11 +129,11 @@ jobs:
           imports_entry = "backend/src/aima_ugc/adapters/providers/imports_test/test.py"
           remove_line(imports_entry, '    "是否用户真实发声",', expected=2)
 
-          # Prompt: replace the entire voice section with multi-evidence classification rules.
-          prompt_path = Path("backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md")
-          prompt = prompt_path.read_text(encoding="utf-8")
+          # 4. Prompt: same model call, but voice_type classification uses combined visible evidence.
+          prompt_path = "backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md"
+          prompt = read(prompt_path)
           start = prompt.index("## 内容发声类型判断标准")
-          end = prompt.index("## 情感判断标准")
+          end = prompt.index("## 情感判断标准", start)
           voice_section = '''## 内容发声类型判断标准
 
 `voice_type` 是**当前内容的发声属性**，不是对账号真实身份、职业或商业合作关系作事实认定。每条内容只能使用以下 7 个机器值之一：
@@ -153,7 +165,7 @@ jobs:
 2. **`user_voice` vs `dealer_promotion`**
    - 普通用户讨论门店价格、销售态度、优惠是否划算、到店体验，仍是 `user_voice`。
    - 作者呈现为门店/经销商/销售，且正文包含报价、现车、限时优惠、到店、私信留资、联系方式、招商、成交引导等获客目的时，判 `dealer_promotion`。
-   - 即使门店销售用第一人称“我给大家推荐”，只要主要目的是获客成交，也不是 `user_voice`。
+   - 即使门店销售使用第一人称，只要主要目的是获客成交，也不是 `user_voice`。
 
 3. **`brand_official` vs `dealer_promotion`**
    - 品牌官方产品发布、品牌活动、代言官宣、公司声明、统一品牌传播判 `brand_official`。
@@ -167,7 +179,7 @@ jobs:
 5. **`media_information` vs `user_voice`**
    - 标题/正文主要是新闻事实、行业信息、公告摘编或转载，个人表达很少，判 `media_information`。
    - 用户转发新闻后加入大量自己的使用经历、评价、投诉或购买判断，且个人表达成为主体时，可判 `user_voice`。
-   - 只加一句“转发看看”“分享一下”不足以把媒体内容改成用户真实发声。
+   - 只加一句“转发看看”“分享一下”不足以把媒体内容改成个人发声。
 
 6. **`other_organization` 与其他机构类**
    - 政府、协会、学校、非品牌企业等发布通知、合作、公共事务，判 `other_organization`。
@@ -175,7 +187,7 @@ jobs:
 
 7. **`unknown` 的使用**
    - 证据不足时使用 `unknown`，不要为了提高分类覆盖率硬猜。
-   - 但作者资料缺失不等于必须 `unknown`：如果标题/正文已经清楚显示个人体验、门店获客、媒体报道等目的，应按内容证据正常分类。
+   - 作者资料缺失不等于必须 `unknown`：如果标题/正文已经清楚显示个人体验、门店获客、媒体报道等目的，应按内容证据正常分类。
    - 极短、模板化或主体/目的均含混的内容，才应优先 `unknown`。
 
 ### 判断顺序
@@ -203,70 +215,93 @@ jobs:
               "- 没有输出 `is_user_voice`、解释文字、Markdown 或其他额外字段。",
               "- 没有输出解释文字、Markdown 或其他额外字段。",
           )
-          if "is_user_voice" in prompt:
-              raise SystemExit("Prompt still contains is_user_voice")
-          prompt_path.write_text(prompt, encoding="utf-8")
+          write(prompt_path, prompt)
 
-          # Blueprint 13: voice type is the only displayed voice classification.
+          # 5. Blueprint 13: remove the duplicate Excel/API concept from current design.
           bp13 = "docs/blueprint/13-统一数据Excel导出与调试复用.md"
-          remove_line(bp13, "是否用户真实发声", expected=3)
-          replace(
-              bp13,
-              "- “是否用户真实发声”不由模型重复输出，而由 `voice_type == user_voice` 唯一派生为“是/否”，避免双字段冲突；\n",
-              "- `voice_type` 是发声类型唯一业务事实；Excel 不再维护或展示额外的二值“是否用户真实发声”列，需要筛选真实用户发声时直接使用 `voice_type = user_voice`；\n",
-          )
+          lines = [line for line in read(bp13).splitlines() if line != "是否用户真实发声"]
+          bp13_text = "\n".join(lines) + "\n"
+          old_bp13 = "- “是否用户真实发声”不由模型重复输出，而由 `voice_type == user_voice` 唯一派生为“是/否”，避免双字段冲突；"
+          new_bp13 = "- `voice_type` 是发声类型唯一业务事实；Excel 只展示“发声类型”这一列，需要筛选真实用户发声时直接使用 `voice_type = user_voice`；"
+          if bp13_text.count(old_bp13) != 1:
+              raise SystemExit("Blueprint 13 voice-type paragraph changed unexpectedly")
+          bp13_text = bp13_text.replace(old_bp13, new_bp13)
+          write(bp13, bp13_text)
 
-          # Blueprint 15: same single-source contract + combined-evidence prompt rule.
+          # 6. Blueprint 15: same single-source contract and prompt evidence rule.
           bp15 = "docs/blueprint/15-舆情AI打标与统一分析契约.md"
-          replace(
+          replace_exact(
               bp15,
               "历史 `ContentLabelAnalysisV1/V2` 保留用于读取旧 JSONL/checkpoint；当前 Service 新生成的成功结果使用 `ContentLabelAnalysisV3`。V3 在**同一次 LLM 调用**中完成 `relevance + voice_type + sentiment + labels`：先做语义相关性复核，再做内容发声类型判断，只有 relevant 内容继续输出情感和标签。`is_user_voice` 不要求模型重复输出，系统按 `voice_type == user_voice` 唯一派生。\n",
               "历史 `ContentLabelAnalysisV1/V2` 保留用于读取旧 JSONL/checkpoint；当前 Service 新生成的成功结果使用 `ContentLabelAnalysisV3`。V3 在**同一次 LLM 调用**中完成 `relevance + voice_type + sentiment + labels`：先做语义相关性复核，再做内容发声类型判断，只有 relevant 内容继续输出情感和标签。`voice_type` 是发声类型唯一业务事实，不再定义或暴露额外的二值用户发声字段。\n",
           )
-          replace(
+          replace_exact(
               bp15,
               "`voice_type` 机器值固定为：`user_voice`、`creator_marketing`、`brand_official`、`dealer_promotion`、`media_information`、`other_organization`、`unknown`。判断的是当前内容发声属性，不声称认定账号真实法律身份。\n",
               "`voice_type` 机器值固定为：`user_voice`、`creator_marketing`、`brand_official`、`dealer_promotion`、`media_information`、`other_organization`、`unknown`。判断的是当前内容发声属性，不声称认定账号真实法律身份。Prompt 必须综合标题、正文与作者展示名/公开简介/认证文案：标题和正文用于识别当前表达目的，作者信息作为主体证据；两者冲突时以当前内容主要表达目的为主，单一昵称、单一营销词或创作者身份不得机械决定类型，证据不足时使用 `unknown`。\n",
           )
-          replace(
+          replace_exact(
               bp15,
               "Excel 不展示“相关性”列，因为正常业务导出只消费 relevant 集合；发声类型在 Excel 中映射为中文，“是否用户真实发声”由 `voice_type == user_voice` 派生。\n",
-              "Excel 不展示“相关性”列，因为正常业务导出只消费 relevant 集合；发声类型在 Excel 中映射为中文，并且只展示这一份分类事实，不再增加二值用户发声列。\n",
+              "Excel 不展示“相关性”列，因为正常业务导出只消费 relevant 集合；发声类型在 Excel 中映射为中文，并且只展示这一份分类事实，不再增加第二个二值发声列。\n",
           )
 
-          # Analysis README was stale at V2; synchronize only the directly affected current-analysis sections.
+          # 7. Module READMEs: synchronize stale current facts found in the actual files.
           analysis_readme = "backend/src/aima_ugc/modules/analysis/README.md"
-          replace(analysis_readme, "ContentLabelAnalysisV2\n", "ContentLabelAnalysisV3\n")
-          replace(
+          replace_exact(
+              analysis_readme,
+              "当前新成功结果使用：\n\n```text\nContentLabelAnalysisV2\n```\n",
+              "当前新成功结果使用：\n\n```text\nContentLabelAnalysisV3\n```\n",
+          )
+          replace_exact(
               analysis_readme,
               "- 恰好一个 `sentiment`；\n- 至少一个 `labels` 标签对；\n",
               "- 恰好一个 `relevance` 和一个 `voice_type`；\n- `relevance=relevant` 时恰好一个 `sentiment` 且至少一个 `labels` 标签对；\n- `relevance=irrelevant` 时 `sentiment=null` 且 `labels=[]`；\n",
           )
-          replace(
+          replace_exact(
               analysis_readme,
               "历史 `ContentLabelAnalysisV1` 只保留读取兼容。Canonical、Analysis V2 Contract 和 Excel Contract 不因为并发执行方式改变。\n",
-              "历史 `ContentLabelAnalysisV1/V2` 只保留读取兼容。Canonical、Analysis V3 Contract 和 Excel Contract 不因为并发执行方式改变。`voice_type` 是发声类型唯一业务事实，不维护额外二值用户发声字段。\n",
+              "历史 `ContentLabelAnalysisV1/V2` 只保留读取兼容。Canonical、Analysis V3 Contract 和 Excel Contract 不因为并发执行方式改变。`voice_type` 是发声类型唯一业务事实。\n",
           )
-          replace(analysis_readme, "backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v2.md", "backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md")
-          replace(
+          replace_exact(
+              analysis_readme,
+              "backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v2.md",
+              "backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md",
+          )
+          replace_exact(
               analysis_readme,
               "title\ntext\nauthor.display_name\n",
               "title\ntext\nauthor.display_name\nauthor.bio\nauthor.verification_label\n",
           )
-          replace(
+          replace_exact(
               analysis_readme,
               "- JSON 结构；\n- item 对应；\n- sentiment 合法；\n- labels 非空；\n",
               "- JSON 结构；\n- item 对应；\n- relevance / voice_type 合法；\n- relevant/irrelevant 的 sentiment 与 labels 条件结构一致；\n- sentiment 与 labels 的 Taxonomy 合法性；\n",
           )
+          replace_exact(
+              analysis_readme,
+              "→ ContentLabelAnalysisV2\n→ Analysis Result + ordered Label Pair PostgreSQL Owner Repository\n",
+              "→ ContentLabelAnalysisV3\n→ Analysis Result + ordered Label Pair PostgreSQL Owner Repository\n",
+          )
 
-          # imports_test README: expose the one remaining voice column in its configured review view.
           imports_readme = "backend/src/aima_ugc/adapters/providers/imports_test/README.md"
-          replace(imports_readme, '    "命中关键词",\n    "情感标签",', '    "命中关键词",\n    "发声类型",\n    "情感标签",', expected=2)
-          replace(imports_readme, "命中关键词\n情感标签\n", "命中关键词\n发声类型\n情感标签\n")
+          replace_exact(
+              imports_readme,
+              '    "命中关键词",\n    "情感标签",',
+              '    "命中关键词",\n    "发声类型",\n    "情感标签",',
+              expected=2,
+          )
+          replace_exact(
+              imports_readme,
+              "命中关键词\n情感标签\n一级标签\n",
+              "命中关键词\n发声类型\n情感标签\n一级标签\n",
+          )
 
-          # Contract/API tests.
-          Path("tests/contracts/test_analysis_relevance_voice_http.py").write_text('''from datetime import UTC, datetime\n\nimport pytest\nfrom aima_ugc.contracts.http import (\n    ContentAnalysisResponse,\n    ContentFilterSnapshot,\n    ContentLabelPairResponse,\n)\nfrom pydantic import ValidationError\n\nANALYZED_AT = datetime(2026, 8, 21, 12, 0, tzinfo=UTC)\n\n\ndef test_content_analysis_response_exposes_relevance_and_voice_type_only() -> None:\n    relevant = ContentAnalysisResponse(\n        status="completed",\n        relevance="relevant",\n        voice_type="user_voice",\n        sentiment="正面",\n        labels=(\n            ContentLabelPairResponse(\n                primary_label="品牌评价",\n                secondary_label="口碑与信任",\n            ),\n        ),\n        analyzed_at=ANALYZED_AT,\n        model_provider="fake",\n        model="fake-v3",\n    )\n    irrelevant = ContentAnalysisResponse(\n        status="completed",\n        relevance="irrelevant",\n        voice_type="media_information",\n        sentiment=None,\n        labels=(),\n        analyzed_at=ANALYZED_AT,\n        model_provider="fake",\n        model="fake-v3",\n    )\n\n    assert relevant.relevance == "relevant"\n    assert relevant.voice_type == "user_voice"\n    assert "is_user_voice" not in relevant.model_dump()\n    assert irrelevant.relevance == "irrelevant"\n    assert irrelevant.voice_type == "media_information"\n    assert irrelevant.sentiment is None\n    assert irrelevant.labels == ()\n\n    with pytest.raises(ValidationError):\n        ContentAnalysisResponse(\n            status="completed",\n            relevance="irrelevant",\n            voice_type="unknown",\n            sentiment="中性",\n            labels=(),\n            analyzed_at=ANALYZED_AT,\n        )\n\n\ndef test_content_filter_snapshot_can_explicitly_query_relevance_and_voice_type() -> None:\n    filters = ContentFilterSnapshot(\n        relevance="irrelevant",\n        voice_type="media_information",\n    )\n\n    assert filters.relevance == "irrelevant"\n    assert filters.voice_type == "media_information"\n''', encoding="utf-8")
-
+          # 8. Existing tests are consumers of the public contract; update them to the new single fact.
+          write(
+              "tests/contracts/test_analysis_relevance_voice_http.py",
+              '''from datetime import UTC, datetime\n\nimport pytest\nfrom aima_ugc.contracts.http import (\n    ContentAnalysisResponse,\n    ContentFilterSnapshot,\n    ContentLabelPairResponse,\n)\nfrom pydantic import ValidationError\n\nANALYZED_AT = datetime(2026, 8, 21, 12, 0, tzinfo=UTC)\n\n\ndef test_content_analysis_response_exposes_relevance_and_voice_type_only() -> None:\n    relevant = ContentAnalysisResponse(\n        status="completed",\n        relevance="relevant",\n        voice_type="user_voice",\n        sentiment="正面",\n        labels=(\n            ContentLabelPairResponse(\n                primary_label="品牌评价",\n                secondary_label="口碑与信任",\n            ),\n        ),\n        analyzed_at=ANALYZED_AT,\n        model_provider="fake",\n        model="fake-v3",\n    )\n    irrelevant = ContentAnalysisResponse(\n        status="completed",\n        relevance="irrelevant",\n        voice_type="media_information",\n        sentiment=None,\n        labels=(),\n        analyzed_at=ANALYZED_AT,\n        model_provider="fake",\n        model="fake-v3",\n    )\n\n    assert relevant.relevance == "relevant"\n    assert relevant.voice_type == "user_voice"\n    assert "is_user_voice" not in relevant.model_dump()\n    assert irrelevant.relevance == "irrelevant"\n    assert irrelevant.voice_type == "media_information"\n    assert irrelevant.sentiment is None\n    assert irrelevant.labels == ()\n\n    with pytest.raises(ValidationError):\n        ContentAnalysisResponse(\n            status="completed",\n            relevance="irrelevant",\n            voice_type="unknown",\n            sentiment="中性",\n            labels=(),\n            analyzed_at=ANALYZED_AT,\n        )\n\n\ndef test_content_filter_snapshot_can_explicitly_query_relevance_and_voice_type() -> None:\n    filters = ContentFilterSnapshot(\n        relevance="irrelevant",\n        voice_type="media_information",\n    )\n\n    assert filters.relevance == "irrelevant"\n    assert filters.voice_type == "media_information"\n''',
+          )
           remove_line("tests/contracts/test_stage8d_http.py", "            is_user_voice=True,")
           remove_line("tests/api/test_stage8d_contents.py", "                is_user_voice=True,")
           remove_line("tests/unit/analysis/test_analysis_relevance_voice_v3.py", "    assert relevant.is_user_voice is True")
@@ -275,7 +310,7 @@ jobs:
           integration = "tests/integration/content/test_stage8d_voice_plaza_runtime.py"
           remove_line(integration, "        assert analyzed.analysis.is_user_voice is True")
           remove_line(integration, "        assert current.analysis.is_user_voice is True")
-          replace(
+          replace_exact(
               integration,
               '            user_voice_index = headers.index("是否用户真实发声")\n',
               '            assert "是否用户真实发声" not in headers\n',
@@ -283,18 +318,21 @@ jobs:
           remove_line(integration, '            assert data_rows[0][user_voice_index] == "是"')
           remove_line(integration, "            assert data_rows[1][user_voice_index] is None")
 
-          # Excel unit expectations shift left by one analysis column.
           excel_test = "tests/unit/platform/test_excel_export.py"
           remove_line(excel_test, "                is_user_voice=False,")
           remove_line(excel_test, '            "是否用户真实发声",')
-          replace(excel_test, "        assert all(content_row[index].value is None for index in range(24, 32))\n        assert content_row[32].value == \"tikhub\"\n        assert content_row[33].value == \"raw/search.json#item[0]\"\n        assert content_row[34].value == \"partial 1/2\"\n", "        assert all(content_row[index].value is None for index in range(24, 31))\n        assert content_row[31].value == \"tikhub\"\n        assert content_row[32].value == \"raw/search.json#item[0]\"\n        assert content_row[33].value == \"partial 1/2\"\n")
-          replace(
+          replace_exact(
+              excel_test,
+              "        assert all(content_row[index].value is None for index in range(24, 32))\n        assert content_row[32].value == \"tikhub\"\n        assert content_row[33].value == \"raw/search.json#item[0]\"\n        assert content_row[34].value == \"partial 1/2\"\n",
+              "        assert all(content_row[index].value is None for index in range(24, 31))\n        assert content_row[31].value == \"tikhub\"\n        assert content_row[32].value == \"raw/search.json#item[0]\"\n        assert content_row[33].value == \"partial 1/2\"\n",
+          )
+          replace_exact(
               excel_test,
               "        assert raw_values[24:32] == [None] * 8\n        assert labeled_values[24:32] == [\n            \"达人/创作者营销\",\n            \"否\",\n            \"sentiment-test\",\n            \"primary-test\",\n            \"secondary-test\",\n            \"model-test\",\n            \"prompt-test\",\n            \"taxonomy-test\",\n        ]\n        assert raw_values[32:] == labeled_values[32:]\n",
               "        assert raw_values[24:31] == [None] * 7\n        assert labeled_values[24:31] == [\n            \"达人/创作者营销\",\n            \"sentiment-test\",\n            \"primary-test\",\n            \"secondary-test\",\n            \"model-test\",\n            \"prompt-test\",\n            \"taxonomy-test\",\n        ]\n        assert raw_values[31:] == labeled_values[31:]\n",
           )
 
-          replace(
+          replace_exact(
               "tests/unit/platform/test_p1g_labeled_excel.py",
               "        assert row[24:32] == (\n            \"无法判断\",\n            \"否\",\n            \"正面\",\n            \"一级测试\",\n            \"二级测试\",\n            \"test-model\",\n            \"content-labeling.v1\",\n            \"b\" * 64,\n        )\n",
               "        assert row[24:31] == (\n            \"无法判断\",\n            \"正面\",\n            \"一级测试\",\n            \"二级测试\",\n            \"test-model\",\n            \"content-labeling.v1\",\n            \"b\" * 64,\n        )\n",
@@ -302,51 +340,44 @@ jobs:
 
           collection_test = "tests/unit/collection/test_imports_test_export.py"
           remove_line(collection_test, '    "是否用户真实发声",', expected=2)
-          # Raw row had one placeholder for the removed analysis column in each configured sheet row.
-          replace(
+          replace_exact(
               collection_test,
               "            \"keyword-a\",\n            None,\n            None,\n            None,\n            None,\n            None,\n        )\n",
               "            \"keyword-a\",\n            None,\n            None,\n            None,\n            None,\n        )\n",
           )
-
-          # Record Red evidence and the resolved prompt-version rule.
-          change = "changes/active/CHG-20260821-remove-derived-user-voice/CHANGE.md"
-          replace(
-              change,
-              "- Prompt：语义规则发生实质变化。若仓库现有 `prompt_version` 语义要求内容版本升级，则升级 Prompt 版本并保留旧 Prompt 供历史审计；若精确内容仅以 `prompt_sha256` 区分，则必须在实现中明确记录依据，不能静默混用。\n",
-              "- Prompt：继续使用仓库已固定的 `content-labeling.v3` 路径/版本；判断标准与示例允许在该 Markdown 内迭代，精确 Prompt 内容由 `prompt_sha256` 区分并进入 Analysis 审计，因此本次不人为创建 V4。\n",
-          )
-          replace(
-              change,
-              "尚未完成。按 Red → Green 记录本轮真实 CI、命令、退出状态和失败数。\n",
-              "Red 已确认：PR #128 head `614fa641484e3d9929fff9ffb9a5ef32a400153d` 的 CI Stage 1 在 Contract 阶段得到 56 passed / 3 failed；三个失败分别证明 HTTP completed Analysis 仍要求 `is_user_voice`、Excel Analysis 仍要求该派生字段、Prompt 仍包含该字段且缺少新的主体/表达目的联合证据规则。同期 546 个既有 unit tests、Stage 2 Platform、Stage 3A Database 均通过，失败原因与目标行为一致。Green 证据待本轮实现后补充。\n",
-          )
-
-          # Production/current-design paths must no longer expose the redundant concept.
-          for path in [
-              "backend/src/aima_ugc/contracts/analysis/content_label.py",
-              "backend/src/aima_ugc/contracts/http.py",
-              "backend/src/aima_ugc/contracts/export/models.py",
-              "backend/src/aima_ugc/bootstrap/content_http.py",
-              "backend/src/aima_ugc/adapters/persistence/postgres/reporting.py",
-              "backend/src/aima_ugc/platform/export/excel.py",
-              "backend/src/aima_ugc/adapters/providers/imports_test/test.py",
-              "backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md",
-              "docs/blueprint/13-统一数据Excel导出与调试复用.md",
-              "docs/blueprint/15-舆情AI打标与统一分析契约.md",
-          ]:
-              content = Path(path).read_text(encoding="utf-8")
-              if "is_user_voice" in content or "是否用户真实发声" in content:
-                  raise SystemExit(f"redundant user-voice field remains in {path}")
           PY
 
-      - name: Format and generate contracts
+      - name: Format and generate machine contracts
         shell: bash
         run: |
           set -euo pipefail
           uv run ruff format backend tests scripts
           uv run python scripts/contracts/generate.py
           npm --prefix frontend run generate:api
+
+      - name: Verify current production facts have no duplicate field
+        shell: bash
+        run: |
+          set -euo pipefail
+          paths=(
+            backend/src/aima_ugc/contracts
+            backend/src/aima_ugc/bootstrap/content_http.py
+            backend/src/aima_ugc/adapters/persistence/postgres/reporting.py
+            backend/src/aima_ugc/platform/export/excel.py
+            backend/src/aima_ugc/adapters/providers/imports_test/test.py
+            backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md
+            backend/src/aima_ugc/modules/analysis/README.md
+            backend/src/aima_ugc/adapters/providers/imports_test/README.md
+            docs/blueprint/13-统一数据Excel导出与调试复用.md
+            docs/blueprint/15-舆情AI打标与统一分析契约.md
+            contracts/openapi/openapi.json
+            contracts/export/unified-data-excel.v1.schema.json
+            frontend/src/generated/api/client.ts
+          )
+          if git grep -n -E 'is_user_voice|是否用户真实发声' -- "${paths[@]}"; then
+            echo 'duplicate user-voice field still exists in current production/design facts' >&2
+            exit 1
+          fi
 
       - name: Focused Green validation
         shell: bash
@@ -371,7 +402,7 @@ jobs:
           npm --prefix frontend run typecheck
           npm --prefix frontend run build
 
-      - name: Commit verified implementation and self-delete runner
+      - name: Commit verified implementation and remove temporary feature runner
         shell: bash
         run: |
           set -euo pipefail
@@ -391,7 +422,6 @@ jobs:
             backend/src/aima_ugc/adapters/providers/imports_test/README.md \
             docs/blueprint/13-统一数据Excel导出与调试复用.md \
             docs/blueprint/15-舆情AI打标与统一分析契约.md \
-            changes/active/CHG-20260821-remove-derived-user-voice/CHANGE.md \
             tests/contracts/test_user_voice_single_source_contract.py \
             tests/contracts/test_analysis_relevance_voice_http.py \
             tests/contracts/test_stage8d_http.py \
@@ -405,5 +435,6 @@ jobs:
             contracts/openapi/openapi.json \
             frontend/src/generated/api/client.ts
           git diff --cached --check
+          git status --short
           git commit -m "收敛发声类型单一事实并优化AI判定"
           git push origin HEAD:feature/remove-derived-user-voice-final2
