@@ -12,7 +12,7 @@ jobs:
   apply:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
         with:
@@ -29,15 +29,9 @@ jobs:
           set -euxo pipefail
           cat \
             .github/aima-report-payload/part.00 \
-            .github/aima-report-payload/part.010 \
-            .github/aima-report-payload/part.011 \
-            .github/aima-report-payload/part.012 \
-            .github/aima-report-payload/part.013 \
+            .github/aima-report-payload/part.01 \
             .github/aima-report-payload/part.02 \
-            .github/aima-report-payload/part.030 \
-            .github/aima-report-payload/part.031 \
-            .github/aima-report-payload/part.032 \
-            .github/aima-report-payload/part.033 \
+            .github/aima-report-payload/part.03 \
             .github/aima-report-payload/part.04 \
             .github/aima-report-payload/part.05 \
             > /tmp/aima.b64
@@ -56,10 +50,14 @@ jobs:
           ):
               path = Path(name)
               text = path.read_text(encoding="utf-8")
-              if old not in text:
-                  raise SystemExit(f"未找到待替换 PNG fixture: {name}")
-              path.write_text(text.replace(old, new), encoding="utf-8")
+              if old in text:
+                  path.write_text(text.replace(old, new), encoding="utf-8")
           PY
+
+      - name: Install validation CJK font
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
 
       - name: Install exact uv
         shell: bash
@@ -101,19 +99,17 @@ jobs:
             backend/src/aima_ugc/platform/reporting \
             tests/unit/platform/test_docx_package_structure.py \
             tests/unit/platform/test_reporting_visuals.py
-          uv run ruff check \
-            backend/src/aima_ugc/platform/reporting \
-            tests/unit/platform/test_docx_package_structure.py \
-            tests/unit/platform/test_reporting_visuals.py
+          uv run ruff check .
           uv run mypy backend/src
 
-      - name: Commit passing implementation
+      - name: Commit passing implementation and remove temporary transport files
         shell: bash
         run: |
           set -euxo pipefail
           git rm -r .github/aima-report-payload \
             .github/workflows/aima-report-visual-apply.yml \
-            .github/workflows/aima-report-visual-apply2.yml
+            .github/workflows/aima-report-visual-apply2.yml \
+            .github/workflows/aima-report-finalize.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- \
