@@ -279,15 +279,34 @@ class CollectionRunExecutor:
             except LeaseLostError:
                 raise
             except CollectionScopeRetryableError as exc:
+                checkpoint_progress = max(scope.progress, exc.progress)
                 self._gateway.checkpoint_scope(
                     scope.id,
                     fence=fence,
                     pagination_state=exc.pagination_state,
-                    progress=max(scope.progress, exc.progress),
+                    progress=checkpoint_progress,
                     stats=exc.stats,
                 )
+                log_event(
+                    logger,
+                    logging.WARNING,
+                    "collection.scope.retry_scheduled",
+                    "Collection Scope 已保存 checkpoint，等待 Job 重试。",
+                    run_id=str(run.id),
+                    job_id=str(run.job_id),
+                    scope_id=str(scope.id),
+                    platform=scope.platform,
+                    operation_group=scope.operation_group,
+                    progress=checkpoint_progress,
+                    error_code=exc.error_code,
+                    requested_count=exc.requested_count,
+                    succeeded_count=exc.succeeded_count,
+                    failed_count=exc.failed_count,
+                    content_count=exc.content_count,
+                    comment_count=exc.comment_count,
+                )
                 return JobHandlerResult.retry(exc.error_code)
-            except Exception:
+            except Exception as exc:
                 failed_scopes += 1
                 self._gateway.finish_scope(
                     scope.id,
@@ -307,6 +326,7 @@ class CollectionRunExecutor:
                     failed_count=_log_stat_int(scope.stats, "failed_count"),
                     content_count=_log_stat_int(scope.stats, "content_count"),
                     comment_count=_log_stat_int(scope.stats, "comment_count"),
+                    error=exc,
                 )
             else:
                 totals.add(scope_result)
@@ -390,9 +410,15 @@ class CollectionRunExecutor:
             comment_count=totals.comment_count,
             error_summary=error_summary,
         )
+        if status == "failed":
+            level = logging.ERROR
+        elif status == "partial_success":
+            level = logging.WARNING
+        else:
+            level = logging.INFO
         log_event(
             logger,
-            logging.INFO,
+            level,
             "collection.run.completed",
             "Collection Run 已进入终态。",
             run_id=str(run.id),
@@ -419,24 +445,48 @@ def _log_scope_completed(
     failed_count: int,
     content_count: int,
     comment_count: int,
+    error: Exception | None = None,
 ) -> None:
+    fields: dict[str, object] = {
+        "event": "collection.scope.completed",
+        "run_id": str(run.id),
+        "job_id": str(run.job_id),
+        "scope_id": str(scope.id),
+        "platform": scope.platform,
+        "operation_group": scope.operation_group,
+        "status": status,
+        "stop_reason": stop_reason,
+        "requested_count": requested_count,
+        "succeeded_count": succeeded_count,
+        "failed_count": failed_count,
+        "content_count": content_count,
+        "comment_count": comment_count,
+    }
+    if error is not None:
+        fields["error_type"] = type(error).__name__
+        logger.error(
+            "Collection Scope 执行出现未预期异常，已隔离为失败终态。",
+            extra=fields,
+            exc_info=(type(error), error, error.__traceback__),
+            stacklevel=2,
+        )
+        return
+
+    if status == "failed":
+        level = logging.ERROR
+    elif status == "partial_success":
+        level = logging.WARNING
+    elif status == "succeeded":
+        level = logging.DEBUG
+    else:
+        level = logging.INFO
+    fields.pop("event")
     log_event(
         logger,
-        logging.INFO,
+        level,
         "collection.scope.completed",
         "Collection Scope 已进入终态。",
-        run_id=str(run.id),
-        job_id=str(run.job_id),
-        scope_id=str(scope.id),
-        platform=scope.platform,
-        operation_group=scope.operation_group,
-        status=status,
-        stop_reason=stop_reason,
-        requested_count=requested_count,
-        succeeded_count=succeeded_count,
-        failed_count=failed_count,
-        content_count=content_count,
-        comment_count=comment_count,
+        **fields,
     )
 
 
