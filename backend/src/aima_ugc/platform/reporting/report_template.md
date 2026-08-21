@@ -81,7 +81,6 @@
 
 ### 3.2 平台 × 情感对比
 
-<!-- aima:layout=table-chart -->
 {{PLATFORM_SENTIMENT_TABLE}}
 
 {{PLATFORM_SENTIMENT_CHART}}
