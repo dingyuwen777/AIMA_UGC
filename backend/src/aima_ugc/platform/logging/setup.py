@@ -11,7 +11,7 @@ from collections.abc import Mapping
 
 from aima_ugc.platform.config import PlatformSettings
 
-from .formatter import AimaLogFormatter
+from .formatter import AimaLogFormatter, safe_exception_traceback
 
 _LOG_FILES: Mapping[str, str] = {
     "api": "api.log",
@@ -98,3 +98,19 @@ def log_event(
         extra={"event": event, **fields},
         stacklevel=2,
     )
+
+
+def log_exception_event(
+    logger: logging.Logger,
+    level: int,
+    event: str,
+    message: str,
+    error: BaseException,
+    **fields: object,
+) -> None:
+    """记录安全异常调用栈；不把异常原始 message/source line 放入 LogRecord。"""
+
+    payload = {"event": event, **fields}
+    payload.setdefault("error_type", type(error).__name__)
+    payload["exception"] = safe_exception_traceback(error)
+    logger.log(level, message, extra=payload, stacklevel=2)
