@@ -148,11 +148,26 @@ word/embeddings/chartN.xlsx
 
 因此在支持 Office Chart 编辑的 Word 中，可以选中图表并使用“编辑数据”修改分类、系列和数值；图表仍由 Office 原生引擎显示，可继续调整标题、图例、样式和布局。
 
-当前 Word 使用 A4 横向页面和约 15 mm 页边距。普通表格采用白底/浅灰表头、仅保留轻量
-横向分隔、数值右对齐和重复表头；Top 统计由可编辑文字、数量、占比和 OOXML 占比条组成
-Ranking，而不是图片或额外 Chart。柱状图/折线图继续使用 Office 原生 Chart + 内嵌 XLSX，
-显示数据标签；长分类优先横向条形图。情感每日趋势在 Word 中拆为正面/中性主趋势和
-负面/混合低量级趋势，不使用双 Y 轴。饼图保留可编辑能力并使用克制的蓝灰/语义色。
+当前 Word 使用 A4 横向页面和约 15 mm 页边距。普通数据表保持白底、浅表头、轻横向分隔、
+数值右对齐和重复表头；面向领导阅读的 Top 统计不再把全部条目逐项拉成长进度条，而是使用
+“Top 重点 Ranking + 对应图表/词云 + 其余完整紧凑明细”的两层表达。Top Ranking 的排名、
+标签、数量、占比和细比例条都是 Word 原生 OOXML，可继续编辑；其余完整条目采用双列紧凑
+明细，数据没有裁剪。
+
+一级议题使用一个横向组合区域：上方是标签对总量、一级议题数和 Top1 占比三个克制 KPI，
+下方左侧是一级议题 Ranking，右侧是词云。这里不加入图标、奖牌、星标或逐行小饼图/圆环图；
+Top1 只通过字重和主强调蓝轻度突出。平台分布和情感结构这类窄表可以与对应 Office Chart
+并排；平台 × 情感等宽矩阵仍使用完整横向表格后接图表，避免把多列数据硬塞进半页宽度。
+
+柱状图/折线图继续使用 Office 原生 Chart + 内嵌 XLSX，并显示数据标签；长分类使用横向条形图。
+多系列每日趋势按可读性分层：情感趋势继续拆为正面/中性主趋势和负面/混合低量级趋势；平台、
+一级议题和二级议题趋势在系列较多时把最高声量主序列单独展示，其余每组最多四个系列，避免
+单张图中几十个数值标签重叠。所有分层图仍来自同一统计结果、使用绝对数量，不使用双 Y 轴，
+并保持内嵌 XLSX 可编辑能力。
+
+完整每日明细在 `report.md` 中仍保留日期/维度/数量长表，Word 展示层利用横向 A4 宽度把它们
+透视为按日期为行、维度为列的紧凑矩阵；维度过多时每组最多五列分块展示。因此 Markdown 的
+完整数据语义不变，Word 只优化信息密度和扫读效率。
 
 Markdown 仍保留 Mermaid 源码，Word 只负责把当前支持的 pie/bar/line 语义转换为可编辑 Office Chart。未支持的 Mermaid 类型必须直接失败，不能静默丢图。
 
@@ -163,12 +178,20 @@ DOCX 生成后会重新打开并检查：
 - 关键 XML 可解析；
 - Office Chart 数量；
 - 每张 Chart 的 Relationship；
-- 每张图内嵌 XLSX 数据包可正常打开。
+- 每张图内嵌 XLSX 数据包可正常打开；
+- PNG 图片可重新打开且 Relationship 不悬空。
 
-词云由 Pillow 根据同一份报告统计结果确定性生成 300 DPI PNG，使用 sqrt 频次权重、全水平排布
-和 2–3 个蓝/蓝灰层级；Word 只把词云作为图片打包到 `word/media/`，精确数量仍由 Ranking
-保留。运行环境必须提供可用 CJK 字体：Windows 优先微软雅黑，Linux 优先 Noto Sans CJK /
-Source Han Sans，也可通过 `AIMA_REPORT_CJK_FONT` 指向现有字体；缺失时明确失败。运行时不依赖
+词云继续直接消费同一份报告 Counter，不建立第二套统计。当前实现采用 Pillow 自定义
+Editorial Word Cloud，而不是默认随机词云：最多取 36 个词，使用 sqrt 频次权重并进一步温和
+压缩字号差异；所有词保持水平，第一名可使用系统 CJK 粗体，主体使用海军蓝、主蓝、青绿、柔紫
+和蓝灰，只有少数次级词使用低饱和赭色点缀。布局从视觉中心向外寻找最近空位，完成后再按实际
+字形边界裁切并受限放大回 1600×900 画布，所以只有 4–9 个词时也不会缩成中央的一小团，词很多
+时又保留必要的呼吸感。布局完全确定性，不使用图形 mask、随机旋转、阴影、图标或彩虹配色。
+
+词云以约 300 DPI PNG 打包到 `word/media/`，因此 Word 中不可通过“编辑数据”重新布局词云；
+精确数量仍由旁边的原生 Ranking 保留，下一次重新生成报告时词云会根据新的 Counter 自动更新。
+运行环境必须提供可用 CJK 字体：Windows 优先微软雅黑，Linux 优先 Noto Sans CJK /
+Source Han Sans，也可通过 `AIMA_REPORT_CJK_FONT` 指向现有字体；缺失时明确失败。当前实现不依赖
 Pandoc、LibreOffice、Matplotlib、pandas、`wordcloud` 库、在线 Mermaid 服务或 `python-docx`；
 内嵌图表数据继续复用 openpyxl。
 
@@ -248,10 +271,12 @@ uv run pytest tests/unit/platform/test_imports_test_reporting.py tests/unit/coll
 - DOCX ZIP/关键 OOXML/Office Chart/内嵌 XLSX 结构可校验；
 - 图表系列名称和数值进入内嵌数据工作簿；
 - 已知英文平台 ID 在 Excel、Markdown、Word 和图表中统一显示中文，未知平台保持原值；
-- Word 为 A4 横向，Editorial Table/Ranking/KPI 分层明确，bar/line 有数据标签，饼图百分比为两位小数；
-- 一级议题与热点关键词词云来自对应统计 Counter，PNG 可重开且正确打包到 `word/media/`；
+- Word 为 A4 横向，Editorial Table、KPI、Top Ranking、紧凑完整明细和组合布局分层明确；
+- bar/line 有数据标签，长分类为横向条形图，分层趋势仍保持 Office Chart + 内嵌 XLSX；
+- Markdown 完整每日长表与 Word 紧凑矩阵包含相同的日期、维度和数值；
+- 一级议题与热点关键词词云来自对应统计 Counter，稀疏/稠密样例均保持确定性、合理视觉密度，PNG 可重开且正确打包到 `word/media/`；
 - Word 换行节点使用合法 `w:r > w:br` 层级；
-- 未支持 Mermaid 类型关闭失败；
+- 未支持 Mermaid / AIMA 展示元数据关闭失败；
 - `run_all()` 在最终 Excel 后追加报告阶段；
 - 显式 `report_excel_path` 能覆盖报告输入；
 - 既有多 Excel、数据库来源和 LLM 费用审计语义保持不变。
