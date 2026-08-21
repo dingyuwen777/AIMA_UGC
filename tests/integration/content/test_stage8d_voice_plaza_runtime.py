@@ -130,6 +130,26 @@ def _analysis_registry(runtime, response: str) -> JobRegistry:  # type: ignore[n
     return registry
 
 
+def _relevant_response(*, sentiment: str = "负面", voice_type: str = "user_voice") -> str:
+    return (
+        '{"items":[{"item_no":1,"relevance":"relevant","voice_type":"'
+        + voice_type
+        + '","sentiment":"'
+        + sentiment
+        + '","labels":['
+        '{"primary_label":"电池、续航与充电","secondary_label":"实际续航表现"},'
+        '{"primary_label":"售后服务","secondary_label":"客服与服务态度"}]}]}'
+    )
+
+
+def _irrelevant_response(*, voice_type: str = "media_information") -> str:
+    return (
+        '{"items":[{"item_no":1,"relevance":"irrelevant","voice_type":"'
+        + voice_type
+        + '","sentiment":null,"labels":[]}]}'
+    )
+
+
 class _VersionChangingLabelingService:
     def __init__(self, runtime, delegate, content_id):  # type: ignore[no-untyped-def]
         self._runtime = runtime
@@ -198,11 +218,7 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
             targets=ContentTargetSelection(scope="selected", content_ids=(content_ids[0],))
         )
         created = content_service.create_analysis(analysis_request, request_id="stage8d-test")
-        response = (
-            '{"items":[{"item_no":1,"sentiment":"负面","labels":['
-            '{"primary_label":"电池、续航与充电","secondary_label":"实际续航表现"},'
-            '{"primary_label":"售后服务","secondary_label":"客服与服务态度"}]}]}'
-        )
+        response = _relevant_response()
         analysis_worker = create_job_worker(
             runtime=runtime,
             registry=_analysis_registry(runtime, response),
@@ -217,6 +233,9 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
         analyzed = next(item for item in page.items if item.id == content_ids[0])
         pending = next(item for item in page.items if item.id == content_ids[1])
         assert analyzed.analysis.status == "completed"
+        assert analyzed.analysis.relevance == "relevant"
+        assert analyzed.analysis.voice_type == "user_voice"
+        assert analyzed.analysis.is_user_voice is True
         assert [item.secondary_label for item in analyzed.analysis.labels] == [
             "实际续航表现",
             "客服与服务态度",
@@ -249,6 +268,8 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
                     content_version=1,
                     job_id=repeated.job_id,
                     schema_version="content-label-analysis.v2",
+                    relevance="relevant",
+                    voice_type="unknown",
                     sentiment="正面",
                     prompt_version=taxonomy.prompt_version,
                     prompt_sha256=taxonomy.prompt_sha256,
@@ -270,6 +291,9 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
             )
         current = content_service.get_content(content_ids[0])
         assert current.analysis.model_provider == "fake"
+        assert current.analysis.relevance == "relevant"
+        assert current.analysis.voice_type == "user_voice"
+        assert current.analysis.is_user_voice is True
         assert [label.secondary_label for label in current.analysis.labels] == [
             "实际续航表现",
             "客服与服务态度",
@@ -277,6 +301,8 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
         filtered = content_service.list_contents(
             ContentListQuery(
                 analysis_status="completed",
+                relevance="relevant",
+                voice_type="user_voice",
                 sentiment="负面",
                 primary_label="电池、续航与充电",
                 secondary_label="实际续航表现",
@@ -338,9 +364,18 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
             rows = list(content_sheet.iter_rows(values_only=True))
             headers = list(rows[0])
             data_rows = rows[1:]
+            relevance_index = headers.index("相关性")
+            voice_type_index = headers.index("发声类型")
+            user_voice_index = headers.index("是否用户真实发声")
             secondary_index = headers.index("二级标签")
             assert len(data_rows) == 2
+            assert data_rows[0][relevance_index] == "relevant"
+            assert data_rows[0][voice_type_index] == "user_voice"
+            assert data_rows[0][user_voice_index] == "是"
             assert data_rows[0][secondary_index] == "实际续航表现\n客服与服务态度"
+            assert data_rows[1][relevance_index] is None
+            assert data_rows[1][voice_type_index] is None
+            assert data_rows[1][user_voice_index] is None
             assert data_rows[1][secondary_index] is None
         finally:
             workbook.close()
@@ -359,6 +394,127 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
             ContentListQuery(source_identifier=batch_id)
         )
         assert {item.id for item in original_batch_page.items} == set(content_ids)
+    finally:
+        with runtime.database.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+            )
+        runtime.close()
+
+
+def test_irrelevant_analysis_is_auditable_but_hidden_from_default_voice_plaza(
+    tmp_path: Path,
+) -> None:
+    settings = load_settings().model_copy(
+        update={
+            "data_dir": tmp_path / "data",
+            "log_dir": tmp_path / "logs",
+            "llm_base_url": "https://fake.example/v1",
+            "llm_provider_name": "fake",
+            "llm_model": "fake-content-labeler-v1",
+        }
+    )
+    runtime = create_worker_runtime(settings=settings)
+    with runtime.database.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+        )
+    try:
+        import_client = TestClient(
+            create_app(import_service=PostgresImportHttpService(runtime))
+        )
+        _seed_import(import_client)
+        import_worker = create_job_worker(
+            runtime=runtime,
+            registry=create_collection_job_registry(runtime=runtime),
+            worker_id="stage8d-irrelevant-import",
+            lease_seconds=120,
+            retry_delay_seconds=0,
+        )
+        assert import_worker.run_once() is True
+
+        with runtime.database.engine.begin() as connection:
+            content_ids = tuple(
+                connection.execute(
+                    select(contents_table.c.id).order_by(contents_table.c.published_at)
+                ).scalars()
+            )
+        assert len(content_ids) == 2
+
+        content_service = PostgresContentHttpService(
+            runtime,
+            cursor_signing_secret=b"stage8d-test-content-cursor-key-32-bytes-minimum",
+        )
+        created = content_service.create_analysis(
+            ContentAnalysisSubmitRequest(
+                targets=ContentTargetSelection(scope="selected", content_ids=(content_ids[0],))
+            ),
+            request_id="stage8d-irrelevant",
+        )
+        worker = create_job_worker(
+            runtime=runtime,
+            registry=_analysis_registry(runtime, _irrelevant_response()),
+            worker_id="stage8d-irrelevant-analysis",
+            lease_seconds=120,
+            retry_delay_seconds=0,
+        )
+        assert worker.run_once() is True
+        assert content_service.get_analysis_job(created.job_id).status == "succeeded"
+
+        with runtime.database.engine.begin() as connection:
+            stored = connection.execute(
+                select(
+                    analysis_content_results_table.c.id,
+                    analysis_content_results_table.c.relevance,
+                    analysis_content_results_table.c.voice_type,
+                    analysis_content_results_table.c.sentiment,
+                ).where(analysis_content_results_table.c.content_id == content_ids[0])
+            ).one()
+            assert stored.relevance == "irrelevant"
+            assert stored.voice_type == "media_information"
+            assert stored.sentiment is None
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(analysis_content_label_pairs_table)
+                    .where(
+                        analysis_content_label_pairs_table.c.analysis_result_id == stored.id
+                    )
+                )
+                == 0
+            )
+            request_item = connection.execute(
+                select(
+                    analysis_content_request_items_table.c.status,
+                    analysis_content_request_items_table.c.analysis_result_id,
+                ).where(analysis_content_request_items_table.c.request_id == created.request_id)
+            ).one()
+            assert request_item.status == "succeeded"
+            assert request_item.analysis_result_id == stored.id
+
+        default_page = content_service.list_contents(ContentListQuery())
+        assert [item.id for item in default_page.items] == [content_ids[1]]
+        assert default_page.items[0].analysis.status == "pending"
+
+        audited_page = content_service.list_contents(
+            ContentListQuery(
+                relevance="irrelevant",
+                voice_type="media_information",
+            )
+        )
+        assert [item.id for item in audited_page.items] == [content_ids[0]]
+        audited = audited_page.items[0]
+        assert audited.analysis.status == "completed"
+        assert audited.analysis.relevance == "irrelevant"
+        assert audited.analysis.voice_type == "media_information"
+        assert audited.analysis.is_user_voice is False
+        assert audited.analysis.sentiment is None
+        assert audited.analysis.labels == ()
+
+        direct = content_service.get_content(content_ids[0])
+        assert direct.analysis.relevance == "irrelevant"
+        assert direct.analysis.voice_type == "media_information"
+        assert direct.analysis.is_user_voice is False
     finally:
         with runtime.database.engine.begin() as connection:
             connection.exec_driver_sql(
@@ -414,7 +570,8 @@ def test_analysis_content_version_change_during_llm_marks_request_item_stale(
             prompt_loader=FrozenPromptTaxonomyLoader(taxonomy),
             llm=FakeContentLabelingLLM(
                 responses=[
-                    '{"items":[{"item_no":1,"sentiment":"中性","labels":['
+                    '{"items":[{"item_no":1,"relevance":"relevant",'
+                    '"voice_type":"user_voice","sentiment":"中性","labels":['
                     '{"primary_label":"电池、续航与充电","secondary_label":"实际续航表现"}]}]}'
                 ]
             ),
