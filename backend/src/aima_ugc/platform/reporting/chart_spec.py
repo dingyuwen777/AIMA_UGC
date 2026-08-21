@@ -17,3 +17,4 @@ class ChartSpec:
     pie_labels: tuple[str, ...] = ()
     y_min: float = 0.0
     y_max: float | None = None
+    bar_direction: str = "col"

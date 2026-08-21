@@ -1,0 +1,193 @@
+"""以最小 OOXML 子集生成并校验报告 DOCX。"""
+
+from __future__ import annotations
+
+import os
+import re
+import zipfile
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from io import BytesIO
+from pathlib import Path
+from typing import Final, cast
+from xml.etree import ElementTree as ET
+
+from openpyxl import Workbook
+from openpyxl.utils import get_column_letter
+from PIL import Image
+
+from .chart_spec import ChartSpec
+from .visuals import theme
+
+_W: Final = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+_R: Final = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+_WP: Final = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+_A: Final = "http://schemas.openxmlformats.org/drawingml/2006/main"
+_C: Final = "http://schemas.openxmlformats.org/drawingml/2006/chart"
+_PIC: Final = "http://schemas.openxmlformats.org/drawingml/2006/picture"
+_XML: Final = "http://www.w3.org/XML/1998/namespace"
+_CP: Final = "http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
+_DC: Final = "http://purl.org/dc/elements/1.1/"
+_DCTERMS: Final = "http://purl.org/dc/terms/"
+_XSI: Final = "http://www.w3.org/2001/XMLSchema-instance"
+_CHART_REL: Final = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart"
+_IMAGE_REL: Final = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
+_PACKAGE_REL: Final = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/package"
+_CHART_CONTENT_TYPE: Final = "application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
+_XLSX_CONTENT_TYPE: Final = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+_LINE_WIDTH_2_25_PT_EMU: Final = "28575"
+
+for prefix, uri in (("w", _W), ("r", _R), ("wp", _WP), ("a", _A), ("c", _C), ("pic", _PIC)):
+    ET.register_namespace(prefix, uri)
+
+
+@dataclass(frozen=True, slots=True)
+class _ImageAsset:
+    path: Path
+    alt_text: str
+    width_emu: int
+    height_emu: int
+
+
+def _table_column_widths(headers: tuple[str, ...], rows: tuple[tuple[str, ...], ...]) -> tuple[int, ...]:
+    if not headers:
+        raise ValueError("Word 表格至少需要一列")
+    if any(len(row) != len(headers) for row in rows):
+        raise ValueError("Word 表格数据列数与表头不一致")
+    weights: list[int] = []
+    for column_index, header in enumerate(headers):
+        values = (header, *(row[column_index] for row in rows))
+        display_width = max(_text_display_width(value) for value in values)
+        weights.append(min(max(display_width, 8), 42))
+    weight_total = sum(weights)
+    widths = [round(theme.CONTENT_WIDTH_TWIPS * weight / weight_total) for weight in weights]
+    widths[-1] += theme.CONTENT_WIDTH_TWIPS - sum(widths)
+    return tuple(widths)
+
+
+def _text_display_width(value: str) -> int:
+    lines = value.replace("<br>", "\n").splitlines() or [""]
+    return max(sum(2 if ord(character) > 127 else 1 for character in line) for line in lines)
+
+
+def _table_cell_alignment(value: str, column_index: int) -> str:
+    if column_index == 0:
+        return "left"
+    normalized = value.strip().replace(",", "")
+    if re.fullmatch(r"[+-]?\d+(?:\.\d+)?(?:%|条|个)?(?:（[^）]+）)?", normalized):
+        return "right"
+    return "left"
+
+
+class DocxBuilder:
+    """把已解析的报告块写成一个最小但完整的 DOCX 包。"""
+
+    def __init__(self) -> None:
+        self.document = ET.Element(f"{{{_W}}}document")
+        self.body = ET.SubElement(self.document, f"{{{_W}}}body")
+        self.charts: list[ChartSpec] = []
+        self.images: list[_ImageAsset] = []
+        self.paragraph_count = 0
+        self.table_count = 0
+        self.chart_count = 0
+        self.image_count = 0
+
+    def add_paragraph(
+        self,
+        text: str = "",
+        *,
+        style: str | None = None,
+        bold: bool = False,
+        italic: bool = False,
+        code: bool = False,
+        align: str | None = None,
+    ) -> None:
+        paragraph = ET.SubElement(self.body, f"{{{_W}}}p")
+        self.paragraph_count += 1
+        if style is not None or align is not None:
+            p_pr = ET.SubElement(paragraph, f"{{{_W}}}pPr")
+            if style is not None:
+                ET.SubElement(p_pr, f"{{{_W}}}pStyle", {f"{{{_W}}}val": style})
+                if style in {"Heading1", "Heading2", "Heading3"}:
+                    ET.SubElement(p_pr, f"{{{_W}}}keepNext")
+                    ET.SubElement(p_pr, f"{{{_W}}}keepLines")
+            if align is not None:
+                ET.SubElement(p_pr, f"{{{_W}}}jc", {f"{{{_W}}}val": align})
+        self._add_inline_runs(paragraph, text, bold=bold, italic=italic, code=code)
+
+    def add_separator(self) -> None:
+        paragraph = ET.SubElement(self.body, f"{{{_W}}}p")
+        self.paragraph_count += 1
+        p_pr = ET.SubElement(paragraph, f"{{{_W}}}pPr")
+        borders = ET.SubElement(p_pr, f"{{{_W}}}pBdr")
+        ET.SubElement(
+            borders,
+            f"{{{_W}}}bottom",
+            {
+                f"{{{_W}}}val": "single",
+                f"{{{_W}}}sz": "4",
+                f"{{{_W}}}space": "1",
+                f"{{{_W}}}color": theme.DIVIDER_COLOR,
+            },
+        )
+
+    def add_table(self, headers: tuple[str, ...], rows: tuple[tuple[str, ...], ...]) -> None:
+        table = ET.SubElement(self.body, f"{{{_W}}}tbl")
+        self.table_count += 1
+        column_widths = _table_column_widths(headers, rows)
+        tbl_pr = ET.SubElement(table, f"{{{_W}}}tblPr")
+        ET.SubElement(tbl_pr, f"{{{_W}}}tblW", {f"{{{_W}}}w": "5000", f"{{{_W}}}type": "pct"})
+        borders = ET.SubElement(tbl_pr, f"{{{_W}}}tblBorders")
+        for side in ("top", "left", "bottom", "right", "insideV"):
+            ET.SubElement(borders, f"{{{_W}}}{side}", {f"{{{_W}}}val": "nil"})
+        ET.SubElement(
+            borders,
+            f"{{{_W}}}insideH",
+            {f"{{{_W}}}val": "single", f"{{{_W}}}sz": "4", f"{{{_W}}}color": theme.DIVIDER_COLOR},
+        )
+        ET.SubElement(tbl_pr, f"{{{_W}}}tblLayout", {f"{{{_W}}}type": "fixed"})
+        self._add_cell_margins(tbl_pr, top=120, left=150, bottom=120, right=150)
+        table_grid = ET.SubElement(table, f"{{{_W}}}tblGrid")
+        for width in column_widths:
+            ET.SubElement(table_grid, f"{{{_W}}}gridCol", {f"{{{_W}}}w": str(width)})
+        self._add_table_row(table, headers, header=True, column_widths=column_widths)
+        for row in rows:
+            self._add_table_row(table, row, header=False, column_widths=column_widths)
+
+    def add_ranking(self, headers: tuple[str, ...], rows: tuple[tuple[str, ...], ...]) -> None:
+        if len(headers) < 3:
+            raise ValueError("Ranking 表至少需要标签、数量、占比三列")
+        outer = ET.SubElement(self.body, f"{{{_W}}}tbl")
+        self.table_count += 1
+        outer_pr = ET.SubElement(outer, f"{{{_W}}}tblPr")
+        ET.SubElement(outer_pr, f"{{{_W}}}tblW", {f"{{{_W}}}w": "5000", f"{{{_W}}}type": "pct"})
+        borders = ET.SubElement(outer_pr, f"{{{_W}}}tblBorders")
+        for side in ("top", "left", "bottom", "right", "insideH", "insideV"):
+            ET.SubElement(borders, f"{{{_W}}}{side}", {f"{{{_W}}}val": "nil"})
+        for index, row_values in enumerate(rows, start=1):
+            row = ET.SubElement(outer, f"{{{_W}}}tr")
+            tr_pr = ET.SubElement(row, f"{{{_W}}}trPr")
+            ET.SubElement(tr_pr, f"{{{_W}}}cantSplit")
+            cell = ET.SubElement(row, f"{{{_W}}}tc")
+            cell_pr = ET.SubElement(cell, f"{{{_W}}}tcPr")
+            ET.SubElement(cell_pr, f"{{{_W}}}tcW", {f"{{{_W}}}w": "5000", f"{{{_W}}}type": "pct"})
+            paragraph = ET.SubElement(cell, f"{{{_W}}}p")
+            p_pr = ET.SubElement(paragraph, f"{{{_W}}}pPr")
+            ET.SubElement(p_pr, f"{{{_W}}}keepNext")
+            ET.SubElement(p_pr, f"{{{_W}}}spacing", {f"{{{_W}}}before": "80", f"{{{_W}}}after": "55"})
+            rank = f"{index:02d}"
+            self._add_run(paragraph, rank + "  ", bold=True, italic=False, code=False, color=theme.ACCENT_BLUE if index == 1 else theme.SECONDARY_TEXT_COLOR, font_size="20")
+            self._add_run(paragraph, row_values[0], bold=index == 1, italic=False, code=False, color=theme.TEXT_COLOR, font_size="20")
+            self._add_run(paragraph, "    ", bold=False, italic=False, code=False)
+            self._add_run(paragraph, row_values[1], bold=True, italic=False, code=False, color=theme.TEXT_COLOR, font_size="20")
+            self._add_run(paragraph, "    ", bold=False, italic=False, code=False)
+            self._add_run(paragraph, row_values[2], bold=False, italic=False, code=False, color=theme.SECONDARY_TEXT_COLOR, font_size="19")
+            percentage = _parse_percentage(row_values[2])
+            self._add_progress_table(cell, percentage, top=index == 1)
+
+    def add_kpi_table(self, headers: tuple[str, ...], rows: tuple[tuple[str, ...], ...]) -> None:
+        if len(headers) != 2:
+            self.add_table(headers, rows)
+            return
+        columns = 4
+        table = ET.SubElement(self.body, f"{{{_W}}}tbl")

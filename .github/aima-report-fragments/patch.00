@@ -1,0 +1,345 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+ROOT = Path.cwd()
+
+
+def replace_once(path: Path, old: str, new: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    count = text.count(old)
+    if count != 1:
+        raise RuntimeError(f"{path}: 期望精确匹配 1 次，实际 {count} 次")
+    path.write_text(text.replace(old, new), encoding="utf-8")
+
+
+def replace_all_expected(path: Path, old: str, new: str, expected: int) -> None:
+    text = path.read_text(encoding="utf-8")
+    count = text.count(old)
+    if count != expected:
+        raise RuntimeError(f"{path}: 期望匹配 {expected} 次，实际 {count} 次")
+    path.write_text(text.replace(old, new), encoding="utf-8")
+
+
+excel = ROOT / "backend/src/aima_ugc/platform/reporting/excel_report.py"
+replace_once(
+    excel,
+    "from .markdown_word import WordConversionSummary, convert_markdown_to_docx\n",
+    "from .markdown_word import WordConversionSummary, convert_markdown_to_docx\n"
+    "from .visuals.wordcloud import render_wordcloud_png\n",
+)
+replace_once(
+    excel,
+    "    actual_date_range = _validate_report_date_range(report_date_range)\n"
+    "    stats = _collect_stats(source_path, report_date_range=actual_date_range)\n"
+    "    actual_generated_at = generated_at or datetime.now(_BEIJING)\n"
+    "    replacements = _build_template_replacements(\n"
+    "        stats,\n"
+    "        source_path=source_path,\n"
+    "        generated_at=actual_generated_at,\n"
+    "    )\n"
+    "    template_text = template.read_text(encoding=\"utf-8\")\n"
+    "    markdown = _render_template(template_text, replacements)\n\n"
+    "    target_dir.mkdir(parents=True, exist_ok=True)\n",
+    "    actual_date_range = _validate_report_date_range(report_date_range)\n"
+    "    stats = _collect_stats(source_path, report_date_range=actual_date_range)\n"
+    "    template_text = template.read_text(encoding=\"utf-8\")\n"
+    "    visual_replacements = _build_visual_replacements(\n"
+    "        stats,\n"
+    "        target_dir=target_dir,\n"
+    "        template_text=template_text,\n"
+    "    )\n"
+    "    actual_generated_at = generated_at or datetime.now(_BEIJING)\n"
+    "    replacements = _build_template_replacements(\n"
+    "        stats,\n"
+    "        source_path=source_path,\n"
+    "        generated_at=actual_generated_at,\n"
+    "    )\n"
+    "    replacements.update(visual_replacements)\n"
+    "    markdown = _render_template(template_text, replacements)\n\n"
+    "    target_dir.mkdir(parents=True, exist_ok=True)\n",
+)
+insert_anchor = "\n\ndef _collect_stats(\n"
+visual_helper = '''
+
+def _build_visual_replacements(
+    stats: _ReportStats,
+    *,
+    target_dir: Path,
+    template_text: str,
+) -> dict[str, str]:
+    """只把当前统计结果投影为报告图片资产，不重新计算业务统计。"""
+
+    replacements = {
+        "PRIMARY_WORDCLOUD": "",
+        "KEYWORD_WORDCLOUD": "",
+    }
+    assets_dir = target_dir / "assets"
+    if "{{PRIMARY_WORDCLOUD}}" in template_text:
+        primary_path = render_wordcloud_png(
+            stats.primary_counts,
+            assets_dir / "primary_topics_wordcloud.png",
+        )
+        replacements["PRIMARY_WORDCLOUD"] = (
+            f"![一级议题词云](assets/{primary_path.name})"
+        )
+    if "{{KEYWORD_WORDCLOUD}}" in template_text:
+        keyword_path = render_wordcloud_png(
+            stats.keyword_counts,
+            assets_dir / "keyword_wordcloud.png",
+        )
+        replacements["KEYWORD_WORDCLOUD"] = (
+            f"![热点关键词词云](assets/{keyword_path.name})"
+        )
+    return replacements
+'''
+replace_once(excel, insert_anchor, visual_helper + insert_anchor)
+replace_once(
+    excel,
+    '''    peak_date, peak_count = _peak_day(stats.daily_content)
+    executive_metrics = _markdown_table(
+        ("关键指标", "本期表现"),
+        (
+            ("监测周期", period),
+            ("内容声量", stats.content_rows),
+            ("评论互动", stats.comment_rows),
+            ("覆盖平台", len(stats.platform_counts)),
+            (
+                "正面内容",
+                f"{positive_total}（{_percentage(positive_total, stats.content_rows)}）",
+            ),
+            (
+                "中性内容",
+                f"{stats.sentiment_counts.get('中性', 0)}（"
+                f"{_percentage(stats.sentiment_counts.get('中性', 0), stats.content_rows)}）",
+            ),
+            (
+                "负面内容",
+                f"{negative_total}（{_percentage(negative_total, stats.content_rows)}）",
+            ),
+            (
+                "声量峰值",
+                f"{peak_date.isoformat()} / {peak_count} 条" if peak_date is not None else "暂无",
+            ),
+            ("主要平台", _top_counter_text(stats.platform_counts, stats.content_rows)),
+            ("首要一级议题", _top_counter_text(stats.primary_counts, stats.label_rows)),
+            ("首要二级议题", _top_counter_text(stats.secondary_counts, stats.label_rows)),
+            ("热点关键词", _top_counter_text(stats.keyword_counts, stats.content_rows)),
+        ),
+    )
+''',
+    '''    executive_metrics = _markdown_table(
+        ("关键指标", "本期表现"),
+        (
+            ("内容声量", stats.content_rows),
+            ("评论互动", stats.comment_rows),
+            ("覆盖平台", len(stats.platform_counts)),
+            ("负面占比", _percentage(negative_total, stats.content_rows)),
+        ),
+    )
+''',
+)
+replace_once(
+    excel,
+    '''def _markdown_cell(value: object) -> str:
+    if value is None:
+        return ""
+    text = str(value)
+    return text.replace("\\\\", "\\\\\\\\").replace("|", "\\\\|").replace("\\n", "<br>")
+''',
+    '''def _markdown_cell(value: object) -> str:
+    if value is None:
+        return ""
+    text = f"{value:,}" if isinstance(value, int) and not isinstance(value, bool) else str(value)
+    return text.replace("\\\\", "\\\\\\\\").replace("|", "\\\\|").replace("\\n", "<br>")
+''',
+)
+
+# 默认 Markdown 继续是唯一正文事实源；只增加最小 Word presentation 元数据和标准图片语法。
+template = ROOT / "backend/src/aima_ugc/platform/reporting/report_template.md"
+template.write_text('''# 爱玛品牌舆情分析报告
+
+**监测周期：** {{REPORT_PERIOD}}  
+**报告生成：** {{GENERATED_AT}}
+
+---
+
+## 1. 管理摘要
+
+{{EXECUTIVE_SUMMARY}}
+
+### 1.1 核心指标
+
+<!-- aima:table-style=kpi -->
+{{EXECUTIVE_METRICS_TABLE}}
+
+### 1.2 每日舆情声量走势
+
+{{DAILY_CONTENT_CHART}}
+
+## 2. 舆情重点关注
+
+{{RISK_SUMMARY}}
+
+### 2.1 正面内容平台分布
+
+<!-- aima:table-style=ranking -->
+{{POSITIVE_PLATFORM_TABLE}}
+
+{{POSITIVE_PLATFORM_BAR_CHART}}
+
+### 2.2 正面一级议题
+
+<!-- aima:table-style=ranking -->
+{{POSITIVE_PRIMARY_TABLE}}
+
+{{POSITIVE_PRIMARY_BAR_CHART}}
+
+### 2.3 正面二级议题
+
+<!-- aima:table-style=ranking -->
+{{POSITIVE_SECONDARY_TABLE}}
+
+{{POSITIVE_SECONDARY_BAR_CHART}}
+
+### 2.4 负面内容平台分布
+
+<!-- aima:table-style=ranking -->
+{{NEGATIVE_PLATFORM_TABLE}}
+
+{{NEGATIVE_PLATFORM_BAR_CHART}}
+
+### 2.5 负面一级议题
+
+<!-- aima:table-style=ranking -->
+{{NEGATIVE_PRIMARY_TABLE}}
+
+{{NEGATIVE_PRIMARY_BAR_CHART}}
+
+### 2.6 负面二级议题
+
+<!-- aima:table-style=ranking -->
+{{NEGATIVE_SECONDARY_TABLE}}
+
+{{NEGATIVE_SECONDARY_BAR_CHART}}
+
+## 3. 平台声量与情感结构
+
+### 3.1 平台声量分布
+
+{{PLATFORM_TABLE}}
+
+{{PLATFORM_PIE_CHART}}
+
+### 3.2 平台 × 情感对比
+
+{{PLATFORM_SENTIMENT_TABLE}}
+
+{{PLATFORM_SENTIMENT_CHART}}
+
+### 3.3 平台每日声量变化
+
+{{PLATFORM_DAILY_LEGEND}}
+
+{{PLATFORM_DAILY_CHART}}
+
+## 4. 整体情感表现
+
+### 4.1 情感结构
+
+{{SENTIMENT_TABLE}}
+
+{{SENTIMENT_PIE_CHART}}
+
+### 4.2 情感每日趋势
+
+主趋势突出正面与中性的绝对声量，负面与混合单列为低量级趋势；两者均使用相同统计结果与绝对数量。
+
+{{SENTIMENT_DAILY_LEGEND}}
+
+<!-- aima:chart-presentation=sentiment-split -->
+{{SENTIMENT_DAILY_CHART}}
+
+## 5. 核心议题分析
+
+### 5.1 一级议题分布
+
+一级议题以精确排名保留数量与占比，同时用词云辅助识别结构重心。
+
+<!-- aima:table-style=ranking -->
+{{PRIMARY_TABLE}}
+
+{{PRIMARY_WORDCLOUD}}
+
+### 5.2 一级议题每日变化
+
+{{PRIMARY_DAILY_LEGEND}}
+
+{{PRIMARY_DAILY_CHART}}
+
+### 5.3 二级议题分布
+
+<!-- aima:table-style=ranking -->
+{{SECONDARY_TABLE}}
+
+{{SECONDARY_BAR_CHART}}
+
+### 5.4 二级议题每日变化
+
+{{SECONDARY_DAILY_LEGEND}}
+
+{{SECONDARY_DAILY_CHART}}
+
+### 5.5 一级与二级议题结构
+
+{{LABEL_PAIR_TABLE}}
+
+## 6. 热点关键词
+
+<!-- aima:table-style=ranking -->
+{{KEYWORD_TABLE}}
+
+{{KEYWORD_WORDCLOUD}}
+
+## 7. 数据概览与趋势明细
+
+### 7.1 数据规模
+
+{{OVERVIEW_TABLE}}
+
+### 7.2 平台每日明细
+
+{{PLATFORM_DAILY_TABLE}}
+
+### 7.3 情感每日明细
+
+{{SENTIMENT_DAILY_TABLE}}
+
+### 7.4 一级议题每日明细
+
+{{PRIMARY_DAILY_TABLE}}
+
+### 7.5 二级议题每日明细
+
+{{SECONDARY_DAILY_TABLE}}
+
+## 8. 数据质量说明
+
+{{DATA_QUALITY_TABLE}}
+
+- **内容总量：** 去重后纳入本期分析的有效公开内容数量。
+- **评论总量：** 纳入本期数据范围的公开评论数量。
+- **标签对总量：** 一条内容可同时涉及多个议题，因此标签数量可能高于内容数量。
+- **关键词覆盖：** 同一条内容可同时命中多个关键词，各关键词占比不要求相加等于 100%。
+- **趋势日期：** 按内容发布时间所在自然日统计；无法识别发布时间的记录不进入每日趋势，并在数据质量检查中单独列示。
+- **图表与明细：** 部分图表聚焦数量最高的主要议题以保证可读性，完整统计仍保留在对应明细中。
+''', encoding="utf-8")
+
+pyproject = ROOT / "pyproject.toml"
+replace_once(
+    pyproject,
+    '    "openpyxl==3.1.5",\n',
+    '    "openpyxl==3.1.5",\n    "pillow==12.3.0",\n',
+)
+
+# 修复上一轮 Red 测试里故意放入的无效 PNG fixture；生产校验必须由 Pillow 真正重开图片。

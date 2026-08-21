@@ -1,0 +1,215 @@
+        group_names = tuple(names[index] for index in indices)
+        max_value = max((value for values in group_series for value in values), default=0.0)
+        y_max = max(1.0, max_value + max(1.0, (max_value + 9) // 10))
+        builder.add_chart(
+            replace(
+                spec,
+                title=f"{spec.title} · {suffix}",
+                series=group_series,
+                series_names=group_names,
+                y_max=y_max,
+            )
+        )
+        rendered += 1
+    if rendered == 0:
+        builder.add_chart(spec)
+
+
+def _collect_fence(lines: list[str], start: int) -> tuple[str, int]:
+    block: list[str] = []
+    index = start
+    while index < len(lines):
+        if lines[index].strip() == "```":
+            return "\n".join(block), index + 1
+        block.append(lines[index])
+        index += 1
+    raise ValueError("Markdown 代码块没有闭合")
+
+
+def _looks_like_table(lines: list[str], index: int) -> bool:
+    return (
+        index + 1 < len(lines)
+        and "|" in lines[index]
+        and bool(_TABLE_SEPARATOR_RE.match(lines[index + 1]))
+    )
+
+
+def _collect_table(
+    lines: list[str],
+    start: int,
+) -> tuple[tuple[str, ...], tuple[tuple[str, ...], ...], int]:
+    headers = _split_table_row(lines[start])
+    index = start + 2
+    rows: list[tuple[str, ...]] = []
+    while index < len(lines) and lines[index].strip() and "|" in lines[index]:
+        row = _split_table_row(lines[index])
+        if len(row) != len(headers):
+            raise ValueError("Markdown 表格列数不一致")
+        rows.append(row)
+        index += 1
+    return headers, tuple(rows), index
+
+
+def _split_table_row(line: str) -> tuple[str, ...]:
+    text = line.strip()
+    if text.startswith("|"):
+        text = text[1:]
+    if text.endswith("|"):
+        text = text[:-1]
+    cells: list[str] = []
+    current: list[str] = []
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if char == "\\" and index + 1 < len(text) and text[index + 1] == "|":
+            current.append("|")
+            index += 2
+            continue
+        if char == "|":
+            cells.append("".join(current).strip())
+            current = []
+        else:
+            current.append(char)
+        index += 1
+    cells.append("".join(current).strip())
+    return tuple(cells)
+
+
+def _starts_block(lines: list[str], index: int) -> bool:
+    line = lines[index]
+    return bool(
+        _FENCE_RE.match(line)
+        or _HEADING_RE.match(line)
+        or _BULLET_RE.match(line)
+        or _NUMBERED_RE.match(line)
+        or _IMAGE_RE.match(line.strip())
+        or _AIMA_COMMENT_RE.fullmatch(line.strip())
+        or line.lstrip().startswith(">")
+        or line.strip() == "---"
+        or _looks_like_table(lines, index)
+    )
+
+
+def _parse_mermaid(block: str) -> ChartSpec:
+    lines = [line.rstrip() for line in block.splitlines() if line.strip()]
+    if not lines:
+        raise ValueError("Mermaid 图表为空")
+    first = lines[0].strip()
+    if first.startswith("pie"):
+        return _parse_mermaid_pie(lines)
+    if first in {"xychart", "xychart-beta"}:
+        return _parse_mermaid_xy(lines)
+    raise ValueError(f"不支持的 Mermaid 图表类型: {first}")
+
+
+def _parse_mermaid_pie(lines: list[str]) -> ChartSpec:
+    title = ""
+    labels: list[str] = []
+    values: list[float] = []
+    for line in lines[1:]:
+        stripped = line.strip()
+        if stripped.startswith("title "):
+            title = stripped.removeprefix("title ").strip().strip('"')
+            continue
+        if stripped.startswith("%%"):
+            continue
+        match = _PIE_ITEM_RE.match(line)
+        if match:
+            labels.append(match.group(1))
+            values.append(float(match.group(2)))
+            continue
+        raise ValueError(f"无法解析 Mermaid pie 行: {stripped}")
+    if not labels:
+        raise ValueError("Mermaid pie 没有数据")
+    return ChartSpec(
+        kind="pie",
+        title=title,
+        categories=tuple(labels),
+        series=(tuple(values),),
+        series_names=("数量",),
+        pie_labels=tuple(labels),
+    )
+
+
+def _parse_mermaid_xy(lines: list[str]) -> ChartSpec:
+    title = ""
+    categories: tuple[str, ...] = ()
+    series: list[tuple[float, ...]] = []
+    kinds: set[str] = set()
+    series_names: tuple[str, ...] = ()
+    y_min = 0.0
+    y_max: float | None = None
+    bar_direction: str | None = None
+    for line in lines[1:]:
+        stripped = line.strip()
+        if stripped.startswith("title "):
+            title = stripped.removeprefix("title ").strip().strip('"')
+            continue
+        if stripped.startswith(_SERIES_META_PREFIX):
+            raw = stripped.removeprefix(_SERIES_META_PREFIX).strip()
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise ValueError("无法解析 Mermaid series 元数据") from exc
+            if not isinstance(parsed, list) or not all(isinstance(item, str) for item in parsed):
+                raise ValueError("Mermaid series 元数据必须是字符串数组")
+            series_names = tuple(parsed)
+            continue
+        if stripped.startswith(_BAR_DIRECTION_META_PREFIX):
+            value = stripped.removeprefix(_BAR_DIRECTION_META_PREFIX).strip().lower()
+            if value not in {"horizontal", "vertical"}:
+                raise ValueError("Mermaid bar-direction 只支持 horizontal 或 vertical")
+            bar_direction = "bar" if value == "horizontal" else "col"
+            continue
+        if stripped.startswith("%%"):
+            continue
+        if stripped.startswith("x-axis "):
+            raw = stripped.removeprefix("x-axis ").strip()
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise ValueError("无法解析 Mermaid x-axis") from exc
+            if not isinstance(parsed, list) or not all(isinstance(item, str) for item in parsed):
+                raise ValueError("Mermaid x-axis 必须是字符串数组")
+            categories = tuple(parsed)
+            continue
+        y_match = _Y_AXIS_RE.match(line)
+        if y_match:
+            y_min = float(y_match.group(1))
+            y_max = float(y_match.group(2))
+            continue
+        series_match = _XY_SERIES_RE.match(line)
+        if series_match:
+            kinds.add(series_match.group(1))
+            raw_values = [part.strip() for part in series_match.group(2).split(",") if part.strip()]
+            try:
+                parsed_values = tuple(float(value) for value in raw_values)
+            except ValueError as exc:
+                raise ValueError("Mermaid xychart 序列包含非数字") from exc
+            series.append(parsed_values)
+            continue
+        raise ValueError(f"无法解析 Mermaid xychart 行: {stripped}")
+    if not categories or not series:
+        raise ValueError("Mermaid xychart 缺少 x-axis 或数据序列")
+    if len(kinds) != 1:
+        raise ValueError("同一 Mermaid xychart 不支持混合 line/bar")
+    if any(len(values) != len(categories) for values in series):
+        raise ValueError("Mermaid xychart 序列长度与 x-axis 不一致")
+    if series_names and len(series_names) != len(series):
+        raise ValueError("Mermaid series 名称数量与数据序列数量不一致")
+    if not series_names:
+        series_names = tuple(f"系列 {index}" for index in range(1, len(series) + 1))
+    kind = next(iter(kinds))
+    if bar_direction is not None and kind != "bar":
+        raise ValueError("bar-direction 只能用于 bar 图表")
+    return ChartSpec(
+        kind=kind,
+        title=title,
+        categories=categories,
+        series=tuple(series),
+        series_names=series_names,
+        y_min=y_min,
+        y_max=y_max,
+        # Word 中分类排名优先横向；显式元数据仍可要求纵向。
+        bar_direction=(bar_direction if bar_direction is not None else ("bar" if kind == "bar" else "col")),
+    )

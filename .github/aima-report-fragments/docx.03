@@ -1,0 +1,182 @@
+    return spec.series_names or tuple(f"系列 {index}" for index in range(1, len(spec.series) + 1))
+
+
+def _chart_workbook_bytes(spec: ChartSpec) -> bytes:
+    workbook = Workbook()
+    sheet = workbook.active
+    assert sheet is not None
+    sheet.title = "数据"
+    names = _series_names(spec)
+    sheet.cell(row=1, column=1, value="日期/分类")
+    for column, name in enumerate(names, start=2):
+        sheet.cell(row=1, column=column, value=name)
+    for row, category in enumerate(spec.categories, start=2):
+        sheet.cell(row=row, column=1, value=category)
+        for column, values in enumerate(spec.series, start=2):
+            sheet.cell(row=row, column=column, value=values[row - 2])
+    sheet.column_dimensions["A"].width = 24
+    for column in range(2, len(names) + 2):
+        sheet.column_dimensions[get_column_letter(column)].width = 16
+    buffer = BytesIO()
+    workbook.save(buffer)
+    workbook.close()
+    return buffer.getvalue()
+
+
+def _chart_xml(spec: ChartSpec, *, chart_index: int) -> bytes:
+    root = ET.Element(f"{{{_C}}}chartSpace")
+    ET.SubElement(root, f"{{{_C}}}date1904", {"val": "0"})
+    ET.SubElement(root, f"{{{_C}}}lang", {"val": "zh-CN"})
+    ET.SubElement(root, f"{{{_C}}}roundedCorners", {"val": "0"})
+    ET.SubElement(root, f"{{{_C}}}style", {"val": "10"})
+    chart = ET.SubElement(root, f"{{{_C}}}chart")
+    if spec.title:
+        _add_chart_title(chart, spec.title)
+    ET.SubElement(chart, f"{{{_C}}}autoTitleDeleted", {"val": "0"})
+    plot_area = ET.SubElement(chart, f"{{{_C}}}plotArea")
+    ET.SubElement(plot_area, f"{{{_C}}}layout")
+    if spec.kind == "pie":
+        _add_pie_chart(plot_area, spec)
+        _add_legend(chart, position="r")
+    else:
+        category_axis_id = 48650112 + chart_index * 10
+        value_axis_id = category_axis_id + 1
+        if spec.kind == "bar":
+            _add_bar_chart(plot_area, spec, category_axis_id, value_axis_id)
+        else:
+            _add_line_chart(plot_area, spec, category_axis_id, value_axis_id)
+        horizontal = spec.kind == "bar" and spec.bar_direction == "bar"
+        _add_category_axis(plot_area, category_axis_id, value_axis_id, horizontal=horizontal)
+        _add_value_axis(plot_area, spec, value_axis_id, category_axis_id, horizontal=horizontal)
+        if len(spec.series) > 1:
+            _add_legend(chart, position="b")
+    ET.SubElement(chart, f"{{{_C}}}plotVisOnly", {"val": "1"})
+    ET.SubElement(chart, f"{{{_C}}}dispBlanksAs", {"val": "zero"})
+    ET.SubElement(chart, f"{{{_C}}}showDLblsOverMax", {"val": "0"})
+    shape_properties = ET.SubElement(root, f"{{{_C}}}spPr")
+    outline = ET.SubElement(shape_properties, f"{{{_A}}}ln")
+    ET.SubElement(outline, f"{{{_A}}}noFill")
+    external = ET.SubElement(root, f"{{{_C}}}externalData", {f"{{{_R}}}id": "rId1"})
+    ET.SubElement(external, f"{{{_C}}}autoUpdate", {"val": "0"})
+    return _serialize_xml(root)
+
+
+def _add_chart_title(parent: ET.Element, title: str) -> None:
+    title_node = ET.SubElement(parent, f"{{{_C}}}title")
+    tx = ET.SubElement(title_node, f"{{{_C}}}tx")
+    rich = ET.SubElement(tx, f"{{{_C}}}rich")
+    ET.SubElement(rich, f"{{{_A}}}bodyPr")
+    ET.SubElement(rich, f"{{{_A}}}lstStyle")
+    paragraph = ET.SubElement(rich, f"{{{_A}}}p")
+    run = ET.SubElement(paragraph, f"{{{_A}}}r")
+    ET.SubElement(run, f"{{{_A}}}rPr", {"lang": "zh-CN", "sz": "1200", "b": "1"})
+    text = ET.SubElement(run, f"{{{_A}}}t")
+    text.text = title
+    ET.SubElement(title_node, f"{{{_C}}}layout")
+    ET.SubElement(title_node, f"{{{_C}}}overlay", {"val": "0"})
+
+
+def _add_pie_chart(plot_area: ET.Element, spec: ChartSpec) -> None:
+    node = ET.SubElement(plot_area, f"{{{_C}}}pieChart")
+    ET.SubElement(node, f"{{{_C}}}varyColors", {"val": "0"})
+    series = _add_series(node, spec, 0, marker=False)
+    for index, label in enumerate(spec.categories):
+        point = ET.SubElement(series, f"{{{_C}}}dPt")
+        ET.SubElement(point, f"{{{_C}}}idx", {"val": str(index)})
+        sp_pr = ET.SubElement(point, f"{{{_C}}}spPr")
+        fill = ET.SubElement(sp_pr, f"{{{_A}}}solidFill")
+        ET.SubElement(fill, f"{{{_A}}}srgbClr", {"val": _semantic_color(label, index)})
+    labels = ET.SubElement(node, f"{{{_C}}}dLbls")
+    ET.SubElement(labels, f"{{{_C}}}numFmt", {"formatCode": "0.00%", "sourceLinked": "0"})
+    ET.SubElement(labels, f"{{{_C}}}showLegendKey", {"val": "0"})
+    ET.SubElement(labels, f"{{{_C}}}showVal", {"val": "0"})
+    ET.SubElement(labels, f"{{{_C}}}showCatName", {"val": "1"})
+    ET.SubElement(labels, f"{{{_C}}}showSerName", {"val": "0"})
+    ET.SubElement(labels, f"{{{_C}}}showPercent", {"val": "1"})
+    ET.SubElement(labels, f"{{{_C}}}showLeaderLines", {"val": "1"})
+    ET.SubElement(node, f"{{{_C}}}firstSliceAng", {"val": "270"})
+
+
+def _add_bar_chart(plot_area: ET.Element, spec: ChartSpec, category_axis_id: int, value_axis_id: int) -> None:
+    node = ET.SubElement(plot_area, f"{{{_C}}}barChart")
+    ET.SubElement(node, f"{{{_C}}}barDir", {"val": spec.bar_direction})
+    ET.SubElement(node, f"{{{_C}}}grouping", {"val": "clustered"})
+    ET.SubElement(node, f"{{{_C}}}varyColors", {"val": "0"})
+    for index in range(len(spec.series)):
+        _add_series(node, spec, index, marker=False)
+    _add_data_labels(node, position="outEnd")
+    ET.SubElement(node, f"{{{_C}}}gapWidth", {"val": "90"})
+    ET.SubElement(node, f"{{{_C}}}axId", {"val": str(category_axis_id)})
+    ET.SubElement(node, f"{{{_C}}}axId", {"val": str(value_axis_id)})
+
+
+def _add_line_chart(plot_area: ET.Element, spec: ChartSpec, category_axis_id: int, value_axis_id: int) -> None:
+    node = ET.SubElement(plot_area, f"{{{_C}}}lineChart")
+    ET.SubElement(node, f"{{{_C}}}grouping", {"val": "standard"})
+    ET.SubElement(node, f"{{{_C}}}varyColors", {"val": "0"})
+    for index in range(len(spec.series)):
+        _add_series(node, spec, index, marker=True)
+    _add_data_labels(node, position="t")
+    ET.SubElement(node, f"{{{_C}}}marker", {"val": "1"})
+    ET.SubElement(node, f"{{{_C}}}smooth", {"val": "0"})
+    ET.SubElement(node, f"{{{_C}}}axId", {"val": str(category_axis_id)})
+    ET.SubElement(node, f"{{{_C}}}axId", {"val": str(value_axis_id)})
+
+
+def _add_data_labels(parent: ET.Element, *, position: str) -> None:
+    labels = ET.SubElement(parent, f"{{{_C}}}dLbls")
+    ET.SubElement(labels, f"{{{_C}}}numFmt", {"formatCode": "#,##0", "sourceLinked": "0"})
+    ET.SubElement(labels, f"{{{_C}}}dLblPos", {"val": position})
+    ET.SubElement(labels, f"{{{_C}}}showLegendKey", {"val": "0"})
+    ET.SubElement(labels, f"{{{_C}}}showVal", {"val": "1"})
+    ET.SubElement(labels, f"{{{_C}}}showCatName", {"val": "0"})
+    ET.SubElement(labels, f"{{{_C}}}showSerName", {"val": "0"})
+
+
+def _add_series(
+    parent: ET.Element, spec: ChartSpec, index: int, *, marker: bool
+) -> ET.Element:
+    series = ET.SubElement(parent, f"{{{_C}}}ser")
+    ET.SubElement(series, f"{{{_C}}}idx", {"val": str(index)})
+    ET.SubElement(series, f"{{{_C}}}order", {"val": str(index)})
+    name_column = get_column_letter(index + 2)
+    _add_string_reference(series, "tx", f"'数据'!${name_column}$1", (_series_names(spec)[index],))
+    if spec.kind != "pie":
+        shape_properties = ET.SubElement(series, f"{{{_C}}}spPr")
+        series_color = _semantic_color(_series_names(spec)[index], index)
+        fill = ET.SubElement(shape_properties, f"{{{_A}}}solidFill")
+        ET.SubElement(fill, f"{{{_A}}}srgbClr", {"val": series_color})
+        outline = ET.SubElement(
+            shape_properties,
+            f"{{{_A}}}ln",
+            {"w": _LINE_WIDTH_2_25_PT_EMU if marker else "12700"},
+        )
+        outline_fill = ET.SubElement(outline, f"{{{_A}}}solidFill")
+        ET.SubElement(outline_fill, f"{{{_A}}}srgbClr", {"val": series_color})
+    if marker:
+        marker_node = ET.SubElement(series, f"{{{_C}}}marker")
+        ET.SubElement(marker_node, f"{{{_C}}}symbol", {"val": "circle"})
+        ET.SubElement(marker_node, f"{{{_C}}}size", {"val": "5"})
+    _add_category_reference(series, spec.categories)
+    _add_value_reference(series, spec, index)
+    if marker:
+        ET.SubElement(series, f"{{{_C}}}smooth", {"val": "0"})
+    return series
+
+
+def _add_string_reference(parent: ET.Element, container_name: str, formula: str, values: tuple[str, ...]) -> None:
+    container = ET.SubElement(parent, f"{{{_C}}}{container_name}")
+    ref = ET.SubElement(container, f"{{{_C}}}strRef")
+    formula_node = ET.SubElement(ref, f"{{{_C}}}f")
+    formula_node.text = formula
+    cache = ET.SubElement(ref, f"{{{_C}}}strCache")
+    ET.SubElement(cache, f"{{{_C}}}ptCount", {"val": str(len(values))})
+    for index, value in enumerate(values):
+        point = ET.SubElement(cache, f"{{{_C}}}pt", {"idx": str(index)})
+        node = ET.SubElement(point, f"{{{_C}}}v")
+        node.text = value
+
+
+def _add_category_reference(parent: ET.Element, categories: tuple[str, ...]) -> None:
+    category = ET.SubElement(parent, f"{{{_C}}}cat")
+    ref = ET.SubElement(category, f"{{{_C}}}strRef")
