@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260821-remove-derived-user-voice
 title: 移除重复 is_user_voice 公共字段并优化发声类型判定
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: feature/remove-derived-user-voice-final2
 created: 2026-08-21
@@ -23,7 +23,6 @@ affected_paths:
   - backend/src/aima_ugc/adapters/persistence/postgres/reporting.py
   - backend/src/aima_ugc/platform/export/excel.py
   - backend/src/aima_ugc/adapters/providers/imports_test/test.py
-  - backend/src/aima_ugc/modules/analysis/prompt_taxonomy.py
   - backend/src/aima_ugc/modules/analysis/prompts
   - contracts
   - frontend/src/generated/api
@@ -45,16 +44,16 @@ data_changes: []
 
 # 成功标准
 
-- [ ] LLM 输出仍只包含 `relevance + voice_type + sentiment + labels`，不存在 `is_user_voice`。
-- [ ] Prompt 明确要求综合作者 `display_name/bio/verification_label` 与标题/正文，不按单一昵称或单一营销词机械分类。
-- [ ] Prompt 对 `user_voice / creator_marketing / brand_official / dealer_promotion / media_information / other_organization / unknown` 给出可执行的证据组合、冲突处理和边界规则。
-- [ ] `ContentLabelAnalysisV3` 不提供 `is_user_voice` 字段或同名便利属性；需要判断用户发声时直接比较 `voice_type == 'user_voice'`。
-- [ ] PostgreSQL Schema 不变化，继续只持久化 `voice_type`，不新增/删除数据库列，因此不需要 Migration。
-- [ ] `ContentAnalysisResponse` 删除 `is_user_voice`，OpenAPI 和前端 generated client 同步删除该字段。
-- [ ] `UnifiedDataExcelAnalysisV1` 删除 `is_user_voice`，共享 Excel 删除“是否用户真实发声”列，只保留中文“发声类型”。
-- [ ] `imports_test` 默认内容/标签明细列同步删除“是否用户真实发声”。
-- [ ] Blueprint 13/15 与相关 README 同步为“voice_type 唯一事实”；不保留与实现冲突的当前设计说明。
-- [ ] Red 测试先证明当前公共 Contract/Excel 仍暴露重复字段；Green 后目标测试、Contract 生成、前端生成物、Ruff、Mypy、相关集成和完整 CI 通过。
+- [x] LLM 输出仍只包含 `relevance + voice_type + sentiment + labels`，不存在 `is_user_voice`。
+- [x] Prompt 明确要求综合作者 `display_name/bio/verification_label` 与标题/正文，不按单一昵称或单一营销词机械分类。
+- [x] Prompt 对 `user_voice / creator_marketing / brand_official / dealer_promotion / media_information / other_organization / unknown` 给出可执行的证据组合、冲突处理和边界规则。
+- [x] `ContentLabelAnalysisV3` 不提供 `is_user_voice` 字段或同名便利属性；需要判断用户发声时直接比较 `voice_type == 'user_voice'`。
+- [x] PostgreSQL Schema 不变化，继续只持久化 `voice_type`，不新增/删除数据库列，因此不需要 Migration。
+- [x] `ContentAnalysisResponse` 删除 `is_user_voice`，OpenAPI 和前端 generated client 同步删除该字段。
+- [x] `UnifiedDataExcelAnalysisV1` 删除 `is_user_voice`，共享 Excel 删除“是否用户真实发声”列，只保留中文“发声类型”。
+- [x] `imports_test` 默认内容/标签明细列同步删除“是否用户真实发声”。
+- [x] Blueprint 13/15 与相关 README 同步为“voice_type 唯一事实”；不保留与实现冲突的当前设计说明。
+- [x] Red 测试先证明当前公共 Contract/Excel 仍暴露重复字段；Green 后目标测试、Contract 生成、前端生成物、Ruff、Mypy、相关集成和永久 CI 已通过。
 
 # 范围与非目标
 
@@ -132,10 +131,11 @@ data_changes: []
 
 # 兼容、部署与回滚
 
-- 数据库：无 Schema 变化，无 Migration，无数据回填。
+- 数据库：当前 `analysis_content_results` 实际表定义只持久化 `relevance / voice_type / sentiment` 等字段，不存在 `is_user_voice` 列；本次无 Schema 变化、无 Migration、无数据回填。
 - HTTP：删除 `ContentAnalysisResponse.is_user_voice` 是破坏性 Contract 变化；后端与同仓库前端 generated client 必须同版本部署。
-- Excel：删除“是否用户真实发声”列会使列序号左移；仓库内所有固定列测试与调试配置同步更新。
+- Excel：删除“是否用户真实发声”列会使后续列序号左移；仓库内固定列测试、`imports_test` 展示配置和正式导出投影已同步。
 - Prompt：继续使用仓库已固定的 `content-labeling.v3` 路径/版本；判断标准与示例允许在该 Markdown 内迭代，精确 Prompt 内容由 `prompt_sha256` 区分并进入 Analysis 审计，因此本次不人为创建 V4。
+- 部署顺序：后端 Contract/OpenAPI 与同版本前端 generated client 一起发布；Excel 消费方按新列结构使用。数据库不需要先行迁移。
 - 回滚：回退同一应用提交及其 OpenAPI/generated client/Excel Contract/Prompt；数据库无需 downgrade。
 
 # 实施任务
@@ -167,16 +167,60 @@ data_changes: []
 
 # 验证证据
 
-Red 已确认：PR #128 head `614fa641484e3d9929fff9ffb9a5ef32a400153d` 的 CI Stage 1 在 Contract 阶段得到 56 passed / 3 failed；三个失败分别证明 HTTP completed Analysis 仍要求 `is_user_voice`、Excel Analysis 仍要求该派生字段、Prompt 仍包含该字段且缺少新的主体/表达目的联合证据规则。同期 546 个既有 unit tests、Stage 2 Platform、Stage 3A Database 均通过，失败原因与目标行为一致。Green 证据待本轮实现后补充。
+## Red
+
+PR #128 head `614fa641484e3d9929fff9ffb9a5ef32a400153d` 的 CI Stage 1 在 Contract 阶段得到 `56 passed / 3 failed`；三个失败分别证明 HTTP completed Analysis 仍要求 `is_user_voice`、Excel Analysis 仍要求该派生字段、Prompt 仍包含该字段且缺少新的主体/表达目的联合证据规则。同期 546 个既有 unit tests、Stage 2 Platform、Stage 3A Database 均通过，失败原因与目标行为一致。
+
+## Focused Green
+
+一次性受控 Runner 在候选工作树中实际完成：
+
+- 目标测试：`41 passed`，另有 1 条既有 Starlette/httpx deprecation warning；
+- `uv run ruff format --check backend tests scripts`：434 files already formatted；
+- `uv run ruff check backend tests scripts`：All checks passed；
+- `uv run mypy backend/src`：230 source files 无问题；
+- `uv run python scripts/contracts/generate.py --check`：OpenAPI/Analysis/Canonical/Provider/Collection/Export Contract 已同步；
+- `uv run python scripts/contracts/check_compatibility.py`：候选生成 Schema 进入 index 后通过漂移检查；
+- `uv run python scripts/quality/check_docs.py`：通过；
+- `npm --prefix frontend run typecheck`：通过；
+- `npm --prefix frontend run build`：通过；
+- 生产代码、Prompt、Blueprint、OpenAPI、Export Schema、generated client 的 `is_user_voice|是否用户真实发声` 残留扫描通过。
+
+## 永久 CI
+
+候选 head `56d14a823d29638efb9d4367e3d2f164dcda9c21` 的永久工作流已实际完成：
+
+- `CI`：success；其中 Stage 1、Stage 2 Platform、Stage 3A Database、Windows bootstrap 均 success；
+- `Stage 5A Provider Raw`：success；
+- `Stage 5B Collection Execution`：success；
+- `Stage 5C Provider Persistence`：success；
+- `Stage 5D Provider Dispatch`：success；
+- `Stage 6 XHS Vertical Slice`：success；
+- `Stage 7 Keyword Packs`：success；
+- `Stage 7 Provider Config Routing`：success；
+- `Stage 7 Plan Occurrence Run Snapshot`：success；
+- `Stage 7 Scheduler Runtime`：success；
+- `Stage 1-7 Audit Correctness`：success。
+
+Stage 6 在前一候选曾得到 `105 passed / 1 failed`，唯一失败是 irrelevant 审计集成测试仍访问已删除的 `ContentAnalysisResponse.is_user_voice`；重新读取当前 feature 文件后确认同一测试实际有两处旧断言，并在 `56d14a823d29638efb9d4367e3d2f164dcda9c21` 前全部删除，随后 Stage 6 Unit / Quality / PostgreSQL integration 与全部 migration round-trip 均 success。
+
+旧 `DEV Remove Derived User Voice Runner` 在 cleanup 前的 PR 事件快照中会因 feature 执行脚本已按设计自删除而报 `FileNotFoundError`；它不属于产品质量门禁。该一次性 Runner 已通过 PR #134 从 `main` 删除。当前 Change 更新后的 head 仍需在 cleanup 后的 `main` 上执行最后一轮永久 PR CI，全部成功后才允许合并。
 
 # 文档影响
 
-必须同步 Blueprint 13、Blueprint 15、Analysis README、imports_test README；如 `docs/API接口说明.md` 当前显式描述该响应字段，则同任务同步删除。归档 Change 只保存历史原因，不回写旧历史事实。
+- Blueprint 13 已同步为 Excel/调试视图只保留“发声类型”，不维护二值用户发声列；
+- Blueprint 15 已同步为 `voice_type` 唯一发声类型事实，并记录作者主体证据 + 标题/正文表达目的证据的 Prompt 规则；
+- Analysis README 已从实际过期的 V2 当前说明同步到 V3，并补齐 relevance/voice_type、作者 bio/verification 输入和 Validator 事实；
+- imports_test README 已同步默认发声类型列及最终 Excel 语义；
+- `docs/API接口说明.md` 已检查，当前没有手工枚举 `is_user_voice` 字段，不维护第二份字段 Schema，因此无需修改；
+- OpenAPI、Export JSON Schema、前端 generated client 已由仓库生成器同步，不手工修改生成物。
 
 # Git / PR
 
-- 基线 main：`01ad60d9662ea1b9523637bb1dbf8b1a79aacd63`
+- 初始基线 main：`01ad60d9662ea1b9523637bb1dbf8b1a79aacd63`
 - 分支：`feature/remove-derived-user-voice-final2`
-- PR：`#128 移除重复用户发声字段并优化发声类型判定`（Draft / in_progress）
-- 临时 Runner：PR #129 已通过原生 CI 并合并，只用于本 Change 的生成与 Green 验证，业务合并后必须删除。
-- 合并：待执行
+- PR：`#128 移除重复用户发声字段并优化发声类型判定`（Draft → 待转 ready_for_review）
+- 业务候选提交：`b1c1a8948edeaab68bcf75a9f245cf71f8ab2c7a`；为触发永久 CI 创建了相同文件树的用户侧 trigger commit；Stage 6 残留测试修复提交为 `56d14a823d29638efb9d4367e3d2f164dcda9c21`。
+- 一次性开发 Runner 仅用于受控生成/Green 验证；中间 Runner 修正均依据实际 Actions 日志处理。最终 main Runner 已通过 PR #134 清理，不属于长期仓库能力。
+- 本 Change 未创建 Migration、未升级依赖。
+- 合并：待当前 head 在 cleanup 后 main 上完成最后一轮永久 CI 后执行；合并后再将 Change 标记 `done` 并归档到 `changes/archive/2026-08/`。
