@@ -94,6 +94,14 @@ jobs:
             STATUS=$?
           fi
           if [ "$STATUS" -eq 0 ]; then
+            exec_step "ruff autofix" uv run ruff check --fix \
+              backend/src/aima_ugc/contracts/analysis/content_label.py \
+              backend/src/aima_ugc/contracts/export/models.py \
+              backend/src/aima_ugc/adapters/persistence/postgres/analysis.py \
+              tests/unit/analysis/test_analysis_relevance_voice_v3.py
+            STATUS=$?
+          fi
+          if [ "$STATUS" -eq 0 ]; then
             exec_step "green target tests" uv run pytest \
               tests/unit/analysis/test_analysis_relevance_voice_v3.py \
               tests/unit/analysis/test_content_labeling.py \
@@ -136,6 +144,7 @@ jobs:
               contracts/export/unified-data-excel.v1.schema.json \
               contracts/openapi/openapi.json \
               frontend/src/generated/api/client.ts \
+              tests/unit/analysis/test_analysis_relevance_voice_v3.py \
               tests/unit/analysis/test_multilabel_analysis_v2.py \
               tests/unit/analysis/test_content_labeling.py
           fi
