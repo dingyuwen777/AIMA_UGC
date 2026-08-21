@@ -1,43 +1,106 @@
-# TikHub 五平台真实响应结构附录
+# TikHub 五平台真实响应与字段映射
 
-> 实证日期：2026-08-15 至 2026-08-16  
+> 真实结构实证日期：2026-08-15 至 2026-08-16  
 > Provider：TikHub  
 > Real Probe Base URL：`https://api.tikhub.io`  
-> 搜索关键词：`爱玛`  
-> 适用范围：Stage 7 五平台 Search / Detail / Comments / Sub-comments / Replies 的响应结构查询
+> 验证关键词：`爱玛`
 
-## 1. 本附录的用途
+本文回答开发中最具体的问题：
 
-本文是五个平台 TikHub **真实响应结构的人类查询入口**。它解决开发时频繁需要回答的几类问题：
+> TikHub 当前某个平台到底调用哪个 Endpoint？真实 JSON 从哪个路径取 item？Operation 怎样分页？Mapper 怎样把字段转成 Canonical？出现结构漂移时应该改哪些代码和测试？
 
-- 某个平台实际返回的帖子/视频列表在哪个 JSON 路径；
-- 内容 ID、评论 ID、分页游标、评论树字段从哪里取得；
-- 某个字段是 TikHub 当前真实返回，还是代码自己猜出来的；
-- Mapper 为什么把某个 Provider 字段映射到某个 Canonical 字段；
-- 某个 Capability 是否已经有真实非空响应证据。
+这里的真实响应证据来自仓库 Sanitized Fixture；当前生产事实则由 **Operation + Mapper + Capability + Fixture + Test** 共同确认。本文保留人类理解必须知道的 JSON 路径和实证结论，但不建立第二套完整 Provider Schema。
 
-仓库不会保存未经脱敏的真实用户数据。本文中的“真实原始响应”指：**由真实 TikHub 请求取得、在提交仓库前完成 Secret/直接标识脱敏，同时保留 JSON 层级、字段名、数据类型和 Mapper 所需代表值的 Sanitized Fixture**。
+---
 
-完整机器事实位于：
+## 1. 先看代码地图
+
+### 请求和分页
+
+```text
+backend/src/aima_ugc/adapters/providers/tikhub/operations/
+├─ xiaohongshu.py
+├─ douyin.py
+├─ weibo.py
+├─ bilibili.py
+└─ kuaishou.py
+```
+
+这里决定：
+
+- 当前生产 Endpoint；
+- HTTP method；
+- 业务参数 → TikHub 参数；
+- cursor/page/search_id 等分页推进；
+- 怎样从 Raw Response 找到业务 item。
+
+### 字段映射
+
+```text
+backend/src/aima_ugc/adapters/providers/tikhub/mappers/
+├─ common.py
+├─ xiaohongshu.py
+├─ douyin.py
+├─ weibo.py
+├─ bilibili.py
+└─ kuaishou.py
+```
+
+这里决定：
+
+```text
+Provider JSON 字段
+→ CanonicalContentV1 / CanonicalCommentV1
+→ observed_fields
+```
+
+### 当前能力、HTTP 和价格
+
+```text
+capabilities.py
+→ 当前 Provider + Platform 正式支持什么业务 Operation
+
+runtime.py
+→ TikHub Runtime 如何注册/执行 Operation 与 Mapper
+
+transport.py
+→ 真正的一次 HTTP 发送边界
+
+pricing.py / pricing.toml
+→ 当前运行时 endpoint Pricing 事实
+```
+
+### 真实响应 Fixture
 
 ```text
 tests/fixtures/providers/tikhub/
 ```
 
-本文不建立第二套 Provider Schema。若本文摘要与 Fixture、Operation、Mapper 或测试冲突，以当前 Fixture + 生产代码 + 测试为准，并在同一任务修正文档。
+如果本文和当前 Operation/Mapper/Fixture/Test 冲突，以当前机器事实为准，并修正文档。
 
-## 2. 真实 Probe 边界
+---
 
-本轮验证采用最小结构采样，不进行全量爬取：
+## 2. Real Probe 当时怎样做
+
+实证使用受限采样，不做全量抓取：
 
 ```text
-Search: 每个平台最多 1 页
-Detail: 从 Search 结果选 1 条可用内容，最多 1 次；XHS 额外分别验证图文/视频
-Comments: 每个平台最多 1 页
-Sub-comments / Replies: 找到有回复的根评论后最多 1 页
+Search
+→ 每个平台最多 1 页
+
+Detail
+→ 从 Search 结果选 1 条真实内容
+→ XHS 额外验证图文和视频
+
+Comments
+→ 每个平台最多 1 页
+
+Sub-comments / Replies
+→ 找到确实存在回复的根评论
+→ 最多 1 页
 ```
 
-跨接口身份链在脱敏前使用真实 Provider ID 串联：
+跨接口使用真实 Provider ID 串联：
 
 ```text
 Search content_id
@@ -46,31 +109,53 @@ Search content_id
 → Sub-comments / Replies
 ```
 
-因此 Fixture 用于结构回归，Real Probe 用于证明跨接口真实 ID 可以工作。Fixture 中的脱敏 ID 不要求跨文件保持真实原值。
+提交仓库前才做脱敏。因此：
 
-## 3. 五平台证据总览
+- Real Probe 证明跨接口真实 ID 可用；
+- Sanitized Fixture 用于后续结构回归；
+- Fixture 中脱敏后的 ID 不需要保持原真实值。
 
-| 平台 | Search | Detail | 一级评论 | 二级评论/回复 | 当前 Canonical 结论 |
+---
+
+## 3. 五平台当前证据总览
+
+| 平台 | Search | Detail | 一级评论 | 二级评论/回复 | 当前结论 |
 | --- | --- | --- | --- | --- | --- |
-| 小红书 | 非空 | 图文、视频非空 | 非空 | 非空 | `CanonicalContentV1` / `CanonicalCommentV1` 可表达 |
-| 抖音 | 非空 | 非空 | 非空 | 非空 | 可表达 |
-| 微博 | 非空 | 非空 | 非空 | 非空 | 可表达 |
-| B站 | 非空 | 非空 | 非空 | 非空 | 可表达 |
-| 快手 | 非空 | 非空 | **App 主链非空；Web 备用同样本非空** | **App 主链与 Web 备用同样本均实测非空** | 可表达；App 当前正式主链 |
+| 小红书 | 非空 | 图文/视频均非空 | 非空 | 非空 | 当前 Canonical 可表达 |
+| 抖音 | 非空 | 非空 | 非空 | 非空 | 当前 Canonical 可表达 |
+| 微博 | 非空 | 非空 | 非空 | 非空 | 当前 Canonical 可表达 |
+| B站 | 非空 | 非空 | 非空 | 非空 | 当前 Canonical 可表达 |
+| 快手 | 非空 | 非空 | App 主链非空，Web 备用同样本非空 | App/Web 同样本均实测非空 | App 当前正式主链 |
 
-真实 Fixture 已通过生产 Extractor / Mapper → Canonical → Ingestion → PostgreSQL 18 纵切验证。当前样本没有证明需要把 Provider 私有字段加入 Canonical V1 公共 Contract。
+这些 Fixture 已经用于生产 Extractor / Mapper → Canonical，并在相关纵切中进入 PostgreSQL Ingestion；现有证据没有要求为 Provider 私有结构扩大 Canonical V1。
 
-## 4. 小红书 Xiaohongshu
+---
 
-### 4.1 Search
+# 4. 小红书 Xiaohongshu
 
-Endpoint：
+当前生产 Operation：
+
+```text
+backend/src/aima_ugc/adapters/providers/tikhub/operations/xiaohongshu.py
+```
+
+当前 Mapper：
+
+```text
+backend/src/aima_ugc/adapters/providers/tikhub/mappers/xiaohongshu.py
+```
+
+Operation 当前还包含 App V1 / Web V3 的显式 A/B Candidate Builder，但它们不等于自动 fallback。
+
+## 4.1 Search
+
+当前主 Endpoint：
 
 ```text
 GET /api/v1/xiaohongshu/app_v2/search_notes
 ```
 
-主要真实结构：
+真实主要结构：
 
 ```json
 {
@@ -94,309 +179,593 @@ GET /api/v1/xiaohongshu/app_v2/search_notes
 }
 ```
 
-业务 item 容器：`data.data.items[]`。生产 extractor 再提取其中可映射的笔记事实。
+业务 item 容器：
 
-完整脱敏响应：[`xhs/search_notes_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/xhs/search_notes_page1.sanitized.json)
+```text
+data.data.items[]
+```
 
-### 4.2 Detail
+当前 `XhsSearchPagination` 还会从响应中观察：
 
-图文：`GET /api/v1/xiaohongshu/app_v2/get_image_note_detail`  
-视频：`GET /api/v1/xiaohongshu/app_v2/get_video_note_detail`
+```text
+search_id
+search_session_id
+next_page
+has_more
+```
 
-已观察 item 路径：
+并对空页、重复页、分页不前进做停止判断。
+
+Fixture：
+
+[`../../tests/fixtures/providers/tikhub/xhs/search_notes_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/xhs/search_notes_page1.sanitized.json)
+
+## 4.2 Detail
+
+图文：
+
+```text
+GET /api/v1/xiaohongshu/app_v2/get_image_note_detail
+```
+
+视频：
+
+```text
+GET /api/v1/xiaohongshu/app_v2/get_video_note_detail
+```
+
+真实 item 路径：
 
 ```text
 图文: data.data[0].note_list[0]
 视频: data.data[0]
 ```
 
-完整脱敏响应：
+Fixture：
 
-- [`xhs/image_detail.sanitized.json`](../../tests/fixtures/providers/tikhub/xhs/image_detail.sanitized.json)
-- [`xhs/video_detail.sanitized.json`](../../tests/fixtures/providers/tikhub/xhs/video_detail.sanitized.json)
+- [`../../tests/fixtures/providers/tikhub/xhs/image_detail.sanitized.json`](../../tests/fixtures/providers/tikhub/xhs/image_detail.sanitized.json)
+- [`../../tests/fixtures/providers/tikhub/xhs/video_detail.sanitized.json`](../../tests/fixtures/providers/tikhub/xhs/video_detail.sanitized.json)
 
-### 4.3 一级评论
+## 4.3 一级评论
 
-Endpoint：`GET /api/v1/xiaohongshu/app_v2/get_note_comments`
+```text
+GET /api/v1/xiaohongshu/app_v2/get_note_comments
+```
 
-主要列表路径：
+真实列表：
 
 ```text
 data.data.comments[]
 ```
 
-真实根评论已经观察到 `sub_comments[]`、点赞和回复数，可形成：
+根评论可以观察到：
+
+- 评论 ID；
+- 用户；
+- 文本；
+- 点赞；
+- 回复数；
+- 内嵌 `sub_comments[]`（样本存在时）。
+
+Canonical 根评论：
 
 ```text
-一级评论:
 root_comment_id = external_comment_id
 parent_comment_id = null
 ```
 
-完整脱敏响应：[`xhs/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/xhs/comments_page1.sanitized.json)
+Fixture：
 
-### 4.4 二级评论
+[`../../tests/fixtures/providers/tikhub/xhs/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/xhs/comments_page1.sanitized.json)
 
-Endpoint：`GET /api/v1/xiaohongshu/app_v2/get_note_sub_comments`
+## 4.4 二级评论
 
-主要列表路径：
+```text
+GET /api/v1/xiaohongshu/app_v2/get_note_sub_comments
+```
+
+真实列表：
 
 ```text
 data.data.comments[]
 ```
 
-完整脱敏响应：[`xhs/sub_comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/xhs/sub_comments_page1.sanitized.json)
+Fixture：
 
-## 5. 抖音 Douyin
+[`../../tests/fixtures/providers/tikhub/xhs/sub_comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/xhs/sub_comments_page1.sanitized.json)
 
-### 5.1 Search
+---
 
-Endpoint：
+# 5. 抖音 Douyin
+
+Operation：
+
+```text
+backend/src/aima_ugc/adapters/providers/tikhub/operations/douyin.py
+```
+
+Mapper：
+
+```text
+backend/src/aima_ugc/adapters/providers/tikhub/mappers/douyin.py
+```
+
+当前主 Search 是 V2；代码中有 V1 Candidate Builder，仅用于显式 A/B。
+
+## 5.1 Search
 
 ```text
 POST /api/v1/douyin/search/fetch_video_search_v2
 ```
 
-主要真实结构：
+真实业务列表：
 
 ```text
 data.business_data[]
 ```
 
-业务 item 中包含真实 `aweme_info` 内容事实。分页状态来自 TikHub Search V2 的业务配置/next-page 响应，Provider 私有 `cursor/search_id/backtrace` 不进入 Canonical。
+业务 item 中包含 `aweme_info`。
 
-完整脱敏响应：[`douyin/search_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/douyin/search_page1.sanitized.json)
+当前 `DouyinSearchPagination` 会从真实 `business_config/next_page` 等位置处理：
 
-### 5.2 Detail
+```text
+cursor
+search_id
+backtrace
+has_more
+```
 
-Endpoint：`GET /api/v1/douyin/app/v3/fetch_one_video_v3`
+这些 Provider 私有分页字段不会进入 Canonical Content。
 
-主要 item 路径：
+Fixture：
+
+[`../../tests/fixtures/providers/tikhub/douyin/search_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/douyin/search_page1.sanitized.json)
+
+## 5.2 Detail
+
+```text
+GET /api/v1/douyin/app/v3/fetch_one_video_v3
+```
+
+真实 item：
 
 ```text
 data.aweme_detail
 ```
 
-已真实观察播放、下载、转发、视频时长等字段。
+已真实观察视频时长、播放、下载、转发等可映射事实。
 
-完整脱敏响应：[`douyin/detail.sanitized.json`](../../tests/fixtures/providers/tikhub/douyin/detail.sanitized.json)
+Fixture：
 
-### 5.3 一级评论
+[`../../tests/fixtures/providers/tikhub/douyin/detail.sanitized.json`](../../tests/fixtures/providers/tikhub/douyin/detail.sanitized.json)
 
-Endpoint：`GET /api/v1/douyin/app/v3/fetch_video_comments`
+## 5.3 一级评论
 
-主要列表路径：
+```text
+GET /api/v1/douyin/app/v3/fetch_video_comments
+```
+
+真实列表：
 
 ```text
 data.comments[]
 ```
 
-已真实观察评论 ID、用户、点赞数、回复数等。
+Fixture：
 
-完整脱敏响应：[`douyin/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/douyin/comments_page1.sanitized.json)
+[`../../tests/fixtures/providers/tikhub/douyin/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/douyin/comments_page1.sanitized.json)
 
-### 5.4 评论回复
+## 5.4 评论回复
 
-Endpoint：`GET /api/v1/douyin/app/v3/fetch_video_comment_replies`
+```text
+GET /api/v1/douyin/app/v3/fetch_video_comment_replies
+```
 
-主要列表路径：
+真实列表：
 
 ```text
 data.comments[]
 ```
 
-真实响应提供 `root_comment_id`、`reply_id` / `reply_to_reply_id` 等回复关系事实。Mapper 在 Provider 明确提供直接父回复时使用该字段，不靠文本或数组位置猜父子关系。
+样本提供：
 
-完整脱敏响应：[`douyin/replies_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/douyin/replies_page1.sanitized.json)
+```text
+root_comment_id
+reply_id / reply_to_reply_id
+```
 
-## 6. 微博 Weibo
+当 Provider 明确给出直接父回复时，Mapper 才写 `parent_comment_id`；不根据用户名或数组位置猜。
 
-### 6.1 Search
+Fixture：
 
-Endpoint：`GET /api/v1/weibo/web/fetch_search`
+[`../../tests/fixtures/providers/tikhub/douyin/replies_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/douyin/replies_page1.sanitized.json)
 
-主要真实结构：
+---
+
+# 6. 微博 Weibo
+
+Operation：
+
+```text
+backend/src/aima_ugc/adapters/providers/tikhub/operations/weibo.py
+```
+
+Mapper：
+
+```text
+backend/src/aima_ugc/adapters/providers/tikhub/mappers/weibo.py
+```
+
+当前主 Search 使用 Web；代码里保留 App Search All Candidate。一级评论当前主链使用 App，另有 Web V2 Candidate；二级评论当前使用 Web V2。
+
+## 6.1 Search
+
+```text
+GET /api/v1/weibo/web/fetch_search
+```
+
+真实结构：
 
 ```text
 data.data.cards[].mblog
 ```
 
-这是 Real Probe 纠正过的结构，不能假设微博 Search 与其他平台共享 `items/results` 形式。
+这是 Real Probe 纠正过的结构。不能假设微博也有统一 `items/results`。
 
-完整脱敏响应：[`weibo/search_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/weibo/search_page1.sanitized.json)
+当前 Search 业务参数包括：
 
-### 6.2 Detail
+```text
+keyword
+page
+search_type
+可选 time_scope
+```
 
-Endpoint：`GET /api/v1/weibo/app/fetch_status_detail`
+Fixture：
 
-主要 item 路径：
+[`../../tests/fixtures/providers/tikhub/weibo/search_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/weibo/search_page1.sanitized.json)
+
+## 6.2 Detail
+
+```text
+GET /api/v1/weibo/app/fetch_status_detail
+```
+
+真实 item：
 
 ```text
 data.detailInfo.status
 ```
 
-完整脱敏响应：[`weibo/detail.sanitized.json`](../../tests/fixtures/providers/tikhub/weibo/detail.sanitized.json)
+Operation 当前会 fail closed：缺少这个路径时直接视为响应结构错误，而不是到处猜对象位置。
 
-### 6.3 一级评论
+Fixture：
 
-Endpoint：`GET /api/v1/weibo/app/fetch_status_comments`
+[`../../tests/fixtures/providers/tikhub/weibo/detail.sanitized.json`](../../tests/fixtures/providers/tikhub/weibo/detail.sanitized.json)
 
-主要列表路径：
+## 6.3 一级评论
+
+```text
+GET /api/v1/weibo/app/fetch_status_comments
+```
+
+真实列表：
 
 ```text
 data.items[].data
 ```
 
-分页的真实 `max_id` 位于响应 `data.moreInfo.params.max_id`。
+真实分页 `max_id`：
 
-完整脱敏响应：[`weibo/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/weibo/comments_page1.sanitized.json)
+```text
+data.moreInfo.params.max_id
+```
 
-### 6.4 二级评论
+Fixture：
 
-Endpoint：`GET /api/v1/weibo/web_v2/fetch_post_sub_comments`
+[`../../tests/fixtures/providers/tikhub/weibo/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/weibo/comments_page1.sanitized.json)
 
-主要列表路径：
+## 6.4 二级评论
+
+```text
+GET /api/v1/weibo/web_v2/fetch_post_sub_comments
+```
+
+真实列表：
 
 ```text
 data.data[]
 ```
 
-真实响应中的 `reply_comment` 可用于确认直接父评论；`rootid/rootidstr` 不应被误当原内容 ID。
+`reply_comment` 可用于确认直接父评论；`rootid/rootidstr` 不应被误当原内容 ID。
 
-完整脱敏响应：[`weibo/sub_comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/weibo/sub_comments_page1.sanitized.json)
+Fixture：
 
-## 7. B站 Bilibili
+[`../../tests/fixtures/providers/tikhub/weibo/sub_comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/weibo/sub_comments_page1.sanitized.json)
 
-### 7.1 Search
+---
 
-Endpoint：`GET /api/v1/bilibili/app/fetch_search_by_type`
+# 7. B站 Bilibili
 
-主要列表路径：
+Operation：
+
+```text
+backend/src/aima_ugc/adapters/providers/tikhub/operations/bilibili.py
+```
+
+Mapper：
+
+```text
+backend/src/aima_ugc/adapters/providers/tikhub/mappers/bilibili.py
+```
+
+当前 App 是主链；Search/Detail/Comments/Reply 都存在显式 Web Candidate Builder，但不会自动切换。
+
+## 7.1 Search
+
+```text
+GET /api/v1/bilibili/app/fetch_search_by_type
+```
+
+真实列表：
 
 ```text
 data.data.items[]
 ```
 
-真实 Search 已观察 `aid/bvid`、标题、正文摘要、UP 主、播放量、弹幕量等；当前 Search Fixture 没有证明 `comment_count`，因此 Search Capability 不宣称 `observes_comment_count=True`。
+当前正式 Search 只允许：
 
-完整脱敏响应：[`bilibili/search_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/bilibili/search_page1.sanitized.json)
+```text
+search_type = video
+```
 
-### 7.2 Detail
+当前样本观察到：
 
-Endpoint：`GET /api/v1/bilibili/app/fetch_one_video`
+- `aid/bvid`；
+- 标题；
+- 摘要；
+- UP 主；
+- 播放量；
+- 弹幕量。
 
-主要 item 路径：
+Search Fixture 没有证明 `comment_count`，所以 Capability 不应仅凭平台常识宣称 Search 已观察评论数。
+
+Fixture：
+
+[`../../tests/fixtures/providers/tikhub/bilibili/search_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/bilibili/search_page1.sanitized.json)
+
+## 7.2 Detail
+
+```text
+GET /api/v1/bilibili/app/fetch_one_video
+```
+
+真实 item：
 
 ```text
 data.data
 ```
 
-已真实观察 `aid/bvid`、评论数、收藏、投币、封面和时长等。
+Fixture：
 
-完整脱敏响应：[`bilibili/detail.sanitized.json`](../../tests/fixtures/providers/tikhub/bilibili/detail.sanitized.json)
+[`../../tests/fixtures/providers/tikhub/bilibili/detail.sanitized.json`](../../tests/fixtures/providers/tikhub/bilibili/detail.sanitized.json)
 
-### 7.3 一级评论
+## 7.3 一级评论
 
-Endpoint：`GET /api/v1/bilibili/app/fetch_video_comments`
+```text
+GET /api/v1/bilibili/app/fetch_video_comments
+```
 
-主要列表路径：
+真实列表：
 
 ```text
 data.data.replies[]
 ```
 
-分页真实路径包含 `data.data.cursor.pagination_reply.next_offset`。
+当前请求使用 `mode` 映射 `latest/hot`，首屏明确发送：
 
-完整脱敏响应：[`bilibili/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/bilibili/comments_page1.sanitized.json)
+```text
+next_offset = 0
+```
 
-### 7.4 回复详情
+真实下一页路径：
 
-Endpoint：`GET /api/v1/bilibili/app/fetch_reply_detail`
+```text
+data.data.cursor.pagination_reply.next_offset
+```
 
-真实回复树路径：
+Fixture：
+
+[`../../tests/fixtures/providers/tikhub/bilibili/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/bilibili/comments_page1.sanitized.json)
+
+## 7.4 回复详情
+
+```text
+GET /api/v1/bilibili/app/fetch_reply_detail
+```
+
+真实回复树：
 
 ```text
 data.data.root
 data.data.root.replies[]
 ```
 
-已观察 `rpid/root/parent/ctime/like/rcount`，因此可以把 Provider 数字/字符串 ID 归一化为 Canonical 字符串评论树。
+已观察：
 
-完整脱敏响应：[`bilibili/replies_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/bilibili/replies_page1.sanitized.json)
+```text
+rpid
+root
+parent
+ctime
+like
+rcount
+```
 
-## 8. 快手 Kuaishou
+Provider 数字 ID 最终转为 Canonical 字符串身份。
 
-### 8.1 Search
+Fixture：
 
-当前主 Endpoint：`GET /api/v1/kuaishou/app/search_video_v2`
+[`../../tests/fixtures/providers/tikhub/bilibili/replies_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/bilibili/replies_page1.sanitized.json)
 
-主要真实结构：
+---
+
+# 8. 快手 Kuaishou
+
+Operation：
+
+```text
+backend/src/aima_ugc/adapters/providers/tikhub/operations/kuaishou.py
+```
+
+Mapper：
+
+```text
+backend/src/aima_ugc/adapters/providers/tikhub/mappers/kuaishou.py
+```
+
+当前代码事实非常明确：
+
+```text
+Search / Detail / Comments / Sub-comments
+→ App 主链
+
+Web Comments / Sub-comments
+→ 已验证备用
+→ 不自动 fallback
+```
+
+## 8.1 Search
+
+当前主 Endpoint：
+
+```text
+GET /api/v1/kuaishou/app/search_video_v2
+```
+
+真实结构：
 
 ```text
 data.mixFeeds[].feed
 ```
 
-分页游标：`data.pcursor`。
+分页：
 
-完整脱敏响应：[`kuaishou/search_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/kuaishou/search_page1.sanitized.json)
+```text
+data.pcursor
+```
 
-### 8.2 Detail
+当前 `KuaishouSearchPagination` 对以下情况停止：
 
-Endpoint：`GET /api/v1/kuaishou/app/fetch_one_video`
+```text
+response_data_unavailable
+empty_page
+cursor_unavailable
+pagination_not_advanced
+```
 
-主要 item 路径：
+Fixture：
+
+[`../../tests/fixtures/providers/tikhub/kuaishou/search_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/kuaishou/search_page1.sanitized.json)
+
+代码里还有：
+
+```text
+/api/v1/kuaishou/app/search_comprehensive
+```
+
+Candidate，但它包含非视频对象，语义不等价，不能自动当成 `search_video_v2` 的备用。
+
+## 8.2 Detail
+
+```text
+GET /api/v1/kuaishou/app/fetch_one_video
+```
+
+真实 item：
 
 ```text
 data.photos[0]
 ```
 
-完整脱敏响应：[`kuaishou/detail.sanitized.json`](../../tests/fixtures/providers/tikhub/kuaishou/detail.sanitized.json)
+Fixture：
 
-### 8.3 当前 App 一级评论主链
+[`../../tests/fixtures/providers/tikhub/kuaishou/detail.sanitized.json`](../../tests/fixtures/providers/tikhub/kuaishou/detail.sanitized.json)
 
-正式 Endpoint：`GET /api/v1/kuaishou/app/fetch_video_comment`
+## 8.3 当前 App 一级评论主链
 
-主要列表路径：
+```text
+GET /api/v1/kuaishou/app/fetch_video_comment
+```
+
+真实列表：
 
 ```text
 data.rootComments[]
 ```
 
-当前 App 根评论真实响应已经证明存在：
+真实根评论样本已证明存在：
 
 ```text
-comment_id                  # 评论 ID
-content                     # 文本
-likedCount                  # 点赞数
-subCommentCount             # integer，实际回复数量
-displaySubCommentCount      # boolean，回复数/入口显示标志
-user_id                     # 用户 ID
-timestamp                   # 发布时间
+comment_id
+content
+likedCount
+subCommentCount
+displaySubCommentCount
+user_id
+timestamp
 ```
 
-这里必须区分：
+必须区分：
 
-- `subCommentCount` 是实际回复数量，生产 Mapper 在字段存在时映射为 `CanonicalCommentV1.metrics.reply_count` 并声明 `metrics.reply_count` 已观察；
-- `displaySubCommentCount` 是布尔显示标志，不能转换成 `0/1` 充当回复数；
-- 字段缺失时 `reply_count` 保持未知，不从 `subCommentsMap` 长度猜总数。
+```text
+subCommentCount
+→ integer
+→ 实际回复数量
+→ 可映射 Canonical metrics.reply_count
 
-真实 App endpoint ledger 中同一轮样本已经出现 `subCommentCount=25/2/11` 等非零值，因此 `supports_reply_count=true` 有真实 Provider 证据和生产 Mapper 双重支撑。
 
-App 一级响应还可能包含：
+displaySubCommentCount
+→ boolean
+→ 是否展示回复入口/数量类 UI 信号
+→ 不能转成 0/1 当回复数
+```
+
+字段缺失时：
+
+```text
+reply_count = unknown/null
+```
+
+不能从 `subCommentsMap` 的当前数组长度猜“总回复数”。
+
+当前同轮 endpoint ledger 曾观察到非零 `subCommentCount`，所以 `supports_reply_count=true` 有真实响应和 Mapper 证据。
+
+App 一级响应可能同时包含：
 
 ```text
 data.subCommentsMap.<root>.subComments[]
 ```
 
-不能仅取 `rootComments[0]` 就推断该根评论有二级回复。Real Probe 应优先选择 `subCommentCount > 0`，或在仅需发现候选时参考 `displaySubCommentCount == true` / 非空 `subCommentsMap`。
+Real Probe 选二级评论候选时，不能简单取 `rootComments[0]`；应选择有：
 
-正式结构证据：[`endpoint_ledger/2026-08-16/kuaishou.sanitized.json`](../../tests/fixtures/providers/tikhub/endpoint_ledger/2026-08-16/kuaishou.sanitized.json)
+```text
+subCommentCount > 0
+```
 
-### 8.4 当前 App 二级评论主链
+或其他明确回复存在证据的根评论。
 
-正式 Endpoint：`GET /api/v1/kuaishou/app/fetch_video_sub_comments`
+正式 ledger：
 
-请求使用：
+[`../../tests/fixtures/providers/tikhub/endpoint_ledger/2026-08-16/kuaishou.sanitized.json`](../../tests/fixtures/providers/tikhub/endpoint_ledger/2026-08-16/kuaishou.sanitized.json)
+
+## 8.4 当前 App 二级评论主链
+
+```text
+GET /api/v1/kuaishou/app/fetch_video_sub_comments
+```
+
+请求参数：
 
 ```text
 photo_id
@@ -405,42 +774,53 @@ pcursor
 count
 ```
 
-2026-08-16 同样本 A/B Probe 已确认 App endpoint 对明确有回复的根评论返回：
+当前 `count` 领域校验：
+
+```text
+1..20
+```
+
+同样本 Real Probe：
 
 ```text
 HTTP 200
 data.subComments[] 非空
 ```
 
-`root_comment_id` 由请求上下文明确提供；如果响应没有可靠直接父评论 ID，Mapper 保留 `parent_comment_id = null`，不根据数组位置、用户名或语义不明字段猜测。
+`root_comment_id` 来自请求上下文。如果响应没有可靠“直接父评论 ID”，Mapper 保留：
 
-正式结构证据同样保存在：[`endpoint_ledger/2026-08-16/kuaishou.sanitized.json`](../../tests/fixtures/providers/tikhub/endpoint_ledger/2026-08-16/kuaishou.sanitized.json)
+```text
+parent_comment_id = null
+```
 
-### 8.5 Web 评论链：已验证备用，不自动 fallback
+不根据数组位置/用户名猜。
 
-Web 备用 Endpoint：
+## 8.5 Web 评论链：验证过，但不是生产自动 fallback
+
+备用 Endpoint：
 
 ```text
 GET /api/v1/kuaishou/web/fetch_one_video_comment
 GET /api/v1/kuaishou/web/fetch_one_video_sub_comment
 ```
 
-2026-08-16 的同样本 A/B Probe 已纠正早先一次空页结论：选择具有明确回复数证据的真实根评论后，Web 一级和二级同样返回 HTTP 200 且非空。Web 二级主要路径为：
+2026-08-16 同样本 A/B 证明：
 
 ```text
-data.subComments[]
+Web 一级 HTTP 200 + 非空
+Web 二级 HTTP 200 + data.subComments[] 非空
 ```
 
-历史 Web 脱敏 Fixture 继续保留：
+历史 Fixture：
 
-- [`kuaishou/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/kuaishou/comments_page1.sanitized.json)
-- [`kuaishou/sub_comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/kuaishou/sub_comments_page1.sanitized.json)
+- [`../../tests/fixtures/providers/tikhub/kuaishou/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/kuaishou/comments_page1.sanitized.json)
+- [`../../tests/fixtures/providers/tikhub/kuaishou/sub_comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/kuaishou/sub_comments_page1.sanitized.json)
 
-Web 样本中的 `reply_to` 当前没有足够证据证明一定是另一个评论 ID，所以 Mapper 不把它猜成 `parent_comment_id`；`root_comment_id` 由请求上下文明确提供。
+Web 样本 `reply_to` 没有足够证据证明一定是另一个评论 ID，所以不猜成 `parent_comment_id`。
 
-Web 已验证可用，但**不是当前默认 Capability 主链，也没有 App 失败后的自动 Web fallback**。如未来回切 Web，必须通过显式 Operation/Capability/Pricing/测试/文档变更完成。
+当前生产 `build_video_comments_request()` / `build_video_sub_comments_request()` 明确委托 App builder，不会自动调用 Web。
 
-### 8.6 Web vs App 评论 API 同样本 A/B 实证
+## 8.6 Web / App 同样本 A/B 证据
 
 | 项目 | Web | App |
 | --- | --- | --- |
@@ -448,56 +828,282 @@ Web 已验证可用，但**不是当前默认 Capability 主链，也没有 App 
 | 一级评论非空 | 是 | 是 |
 | 二级评论 HTTP | 200 | 200 |
 | `data.subComments[]` 非空 | 是 | 是 |
-| 一级响应内嵌部分二级回复 | 当前样本有 `subCommentsMap` | 当前样本有大量 `subCommentsMap.<root>.subComments[]` |
-| Probe 时 endpoint_cost / 一级 | 0.002 USD | 0.001 USD |
-| Probe 时 endpoint_cost / 二级 | 0.010 USD | 0.001 USD |
+| 一级响应内嵌部分二级回复 | 样本有 `subCommentsMap` | 样本有 `subCommentsMap.<root>.subComments[]` |
+| 2026-08-16 Probe endpoint_cost / 一级 | 0.002 USD | 0.001 USD |
+| 2026-08-16 Probe endpoint_cost / 二级 | 0.010 USD | 0.001 USD |
 
-价格只表示 **2026-08-16 Real Probe 的 endpoint-info 快照**，不是运行时永久常量。生产发送仍以版本化 Pricing + endpoint-level verified 事实为准。
+上表价格只是历史 Probe 快照，**不是运行时价格配置**。
 
-2026-08-16 的 Operation 选型已经批准并在当前 Stage 7 机器实现中落地：**App 一级/二级为正式主链，Web 为 verified backup，不做自动 fallback。** 因此本附录不能再把 Web 写成“当前主链”或把 App 切换写成待批准建议。
-
-## 9. Canonical 统一规则
-
-### 9.1 外部 ID
-
-所有 Provider 外部 ID 最终统一保存为字符串：
+当前价格事实看：
 
 ```text
-platform + external_content_id
-platform + external_comment_id
+backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml
 ```
 
-即使 TikHub 在快手/B站响应中返回 JSON number，Mapper 也转换为字符串，不让数据库主身份受第三方 JSON 数字类型影响。
-
-### 9.2 评论树
+当前生产选型：
 
 ```text
-一级评论:
+App 一级/二级
+→ 正式主链
+
+Web 一级/二级
+→ verified backup
+→ 不自动 fallback
+```
+
+---
+
+# 9. Canonical 统一规则
+
+## 9.1 外部 ID 一律是字符串
+
+业务身份：
+
+```text
+Content
+= platform + external_content_id
+
+Comment
+= content_id + external_comment_id
+```
+
+即使 TikHub 返回 JSON number，Mapper 也转换为字符串。原因：
+
+- 避免大整数溢出；
+- 避免前导零丢失；
+- 不让第三方 JSON 类型决定数据库业务身份。
+
+精确 Contract：
+
+```text
+backend/src/aima_ugc/contracts/canonical.py
+```
+
+## 9.2 评论树只写有证据的父子关系
+
+根评论：
+
+```text
 root_comment_id = external_comment_id
 parent_comment_id = null
-
-二级/更深回复:
-root_comment_id = 已知根评论 ID
-parent_comment_id = 仅在 Provider 明确给出“直接父评论 ID”时写入
 ```
 
-缺乏直接父评论证据时保留 `parent_comment_id = null`，不能从用户名、数组位置、`reply_to` 等语义不明确字段猜测。
+二级/更深回复：
 
-### 9.3 稀疏观察字段
+```text
+root_comment_id = 已知根评论 ID
+parent_comment_id = Provider 明确提供直接父评论 ID 时才写
+```
 
-TikHub 不同 Operation 返回字段集合不同。Mapper 只把本次真实观察到的字段加入 `observed_fields`，未返回字段不是 `0/false/空字符串` 的同义词。
+没有证据就保留 `null`。
 
-## 10. Fixture 与文档维护规则
+不能从：
+
+- 用户名；
+- 数组顺序；
+- 文本 @；
+- 语义不明确的 `reply_to`；
+
+猜直接父评论。
+
+## 9.3 未返回字段不是 0
+
+不同 Operation 的字段密度不同。
+
+例如 Search 没返回：
+
+```text
+comment_count
+```
+
+不能写：
+
+```text
+comment_count = 0
+```
+
+Mapper 只把本次真实看到的字段加入：
+
+```text
+observed_fields
+```
+
+Content Owner 之后使用 `field_observed_at` 做字段级 freshness。
+
+---
+
+# 10. 从一条 Fixture 追到数据库：实际学习方法
+
+假设你要理解微博一级评论。
+
+### 第一步：看真实 JSON
+
+```text
+tests/fixtures/providers/tikhub/weibo/comments_page1.sanitized.json
+```
+
+确认：
+
+```text
+data.items[].data
+```
+
+### 第二步：看 Operation
+
+```text
+operations/weibo.py
+```
+
+找到：
+
+```python
+build_status_comments_request(...)
+extract_comment_items(...)
+```
+
+确认 Endpoint、参数、`max_id` 分页。
+
+### 第三步：看 Mapper
+
+```text
+mappers/weibo.py
+```
+
+确认：
+
+```text
+评论 ID
+作者
+正文
+published_at
+like/reply metrics
+root/parent
+observed_fields
+```
+
+怎样进入 `CanonicalCommentV1`。
+
+### 第四步：看 Contract
+
+```text
+backend/src/aima_ugc/contracts/canonical.py
+```
+
+确认系统允许保存哪些公共字段。
+
+### 第五步：看 Ingestion
+
+```text
+backend/src/aima_ugc/modules/content/ingestion.py
+```
+
+再沿 PostgreSQL Owner 看：
+
+```text
+comments
+comment_versions
+comment_metric_observations
+```
+
+这样文档、Fixture、代码和数据库能够串成完整学习链。
+
+---
+
+# 11. Endpoint 或响应结构变化时怎么改
+
+## 场景 A：Endpoint 变了，但响应结构没变
+
+```text
+operations/<platform>.py
+→ Request builder test
+→ Pricing/Capability（如果 endpoint 身份变化）
+→ Real Probe
+→ 本文 / 平台文档
+```
+
+一般不需要改 Canonical。
+
+## 场景 B：JSON 路径变了
+
+```text
+先保存新的 Sanitized Fixture
+→ Operation Extractor Test 先失败
+→ 修改 extractor
+→ Mapper Test
+→ Canonical Contract Test
+→ 必要的 PostgreSQL 纵切
+```
+
+## 场景 C：TikHub 新增了一个业务字段
+
+```text
+真实 Fixture 证明字段存在
+→ 判断现有 Canonical 能否表达
+→ 能表达：改 Mapper + observed_fields + tests
+→ 不能表达：先做 Canonical Contract 设计
+→ 再评估 Content Schema / API / Frontend
+```
+
+不要看到 Provider 多一个字段就直接加数据库列。
+
+## 场景 D：想启用备用 API family
+
+先看：
+
+[`TikHub多接口验证与备用策略.md`](TikHub多接口验证与备用策略.md)
+
+当前备用接口必须显式选型，不能在 Transport 里偷偷自动 fallback。
+
+---
+
+# 12. Fixture 与 Real Probe 维护规则
 
 Provider endpoint、版本或响应结构变化时：
 
-1. 先用生产 Operation 做显式、受限的 Real Probe；
-2. 在提交前完成 Secret/直接标识脱敏；
-3. 保存/更新 `tests/fixtures/providers/tikhub/<platform>/`；
-4. 先让真实 Fixture 回归暴露结构漂移；
-5. 再修改 Operation / Pagination / Mapper / Capability；
-6. 真实 Fixture 必须继续通过 Canonical Contract 和必要的 PostgreSQL Ingestion 纵切；
-7. 同步本文的路径/证据状态；
-8. 价格变化只更新 Pricing 事实，不把本文 Probe 快照当运行时价格源。
+1. 先用**生产 Operation**做显式、受限 Real Probe；
+2. 不在普通 CI 自动产生真实付费请求；
+3. 提交前完成 Secret/直接标识脱敏；
+4. 保存/更新：
 
-禁止从 TikHub 文档示例、历史聊天或旧接口响应人工拼一个“真实 Fixture”。
+```text
+tests/fixtures/providers/tikhub/<platform>/
+```
+
+5. 先让 Fixture 回归暴露结构漂移；
+6. 再修改 Operation / Pagination / Mapper / Capability；
+7. Fixture 继续通过 Canonical Contract；
+8. 关键链路继续通过 PostgreSQL Ingestion 纵切；
+9. 同步平台文档和本附录；
+10. Pricing 变化更新运行时 Pricing，不用旧 Probe 价格覆盖配置。
+
+禁止：
+
+- 从 TikHub 官网示例手工拼“真实 Fixture”；
+- 用历史聊天作为当前 JSON 结构事实；
+- 为了让测试通过删掉真实 Fixture 字段；
+- 在日志/Fixture 中提交真实 Secret。
+
+---
+
+# 13. 五个平台的人类导航
+
+平台级当前说明：
+
+- [`../collection/xiaohongshu.md`](../collection/xiaohongshu.md)
+- [`../collection/douyin.md`](../collection/douyin.md)
+- [`../collection/weibo.md`](../collection/weibo.md)
+- [`../collection/bilibili.md`](../collection/bilibili.md)
+- [`../collection/kuaishou.md`](../collection/kuaishou.md)
+
+接口家族验证与备用边界：
+
+- [`TikHub多接口验证与备用策略.md`](TikHub多接口验证与备用策略.md)
+
+真实 Probe / 选型历史台账：
+
+- [`TikHub接口选型与真实验证台账.md`](TikHub接口选型与真实验证台账.md)
+
+采集总架构：
+
+- [`../blueprint/02-采集系统与数据标准化.md`](../blueprint/02-采集系统与数据标准化.md)
+- [`../blueprint/08-采集策略与平台能力.md`](../blueprint/08-采集策略与平台能力.md)
