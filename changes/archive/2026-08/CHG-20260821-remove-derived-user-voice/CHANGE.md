@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260821-remove-derived-user-voice
 title: 移除重复 is_user_voice 公共字段并优化发声类型判定
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: feature/remove-derived-user-voice-final2
 created: 2026-08-21
@@ -53,7 +53,7 @@ data_changes: []
 - [x] `UnifiedDataExcelAnalysisV1` 删除 `is_user_voice`，共享 Excel 删除“是否用户真实发声”列，只保留中文“发声类型”。
 - [x] `imports_test` 默认内容/标签明细列同步删除“是否用户真实发声”。
 - [x] Blueprint 13/15 与相关 README 同步为“voice_type 唯一事实”；不保留与实现冲突的当前设计说明。
-- [x] Red 测试先证明当前公共 Contract/Excel 仍暴露重复字段；Green 后目标测试、Contract 生成、前端生成物、Ruff、Mypy、相关集成和永久 CI 已通过。
+- [x] Red 测试先证明当前公共 Contract/Excel 仍暴露重复字段；Green 后目标测试、Contract 生成、前端生成物、Ruff、Mypy、相关集成和完整永久 CI 通过。
 
 # 范围与非目标
 
@@ -136,13 +136,13 @@ data_changes: []
 - Excel：删除“是否用户真实发声”列会使后续列序号左移；仓库内固定列测试、`imports_test` 展示配置和正式导出投影已同步。
 - Prompt：继续使用仓库已固定的 `content-labeling.v3` 路径/版本；判断标准与示例允许在该 Markdown 内迭代，精确 Prompt 内容由 `prompt_sha256` 区分并进入 Analysis 审计，因此本次不人为创建 V4。
 - 部署顺序：后端 Contract/OpenAPI 与同版本前端 generated client 一起发布；Excel 消费方按新列结构使用。数据库不需要先行迁移。
-- 回滚：回退同一应用提交及其 OpenAPI/generated client/Excel Contract/Prompt；数据库无需 downgrade。
+- 回滚：回退应用合并提交及其 OpenAPI/generated client/Excel Contract/Prompt；数据库无需 downgrade。
 
 # 实施任务
 
 [1] Red：增加公共 Contract/Excel/Prompt 目标测试并观察正确失败
 → 修改范围：tests/contracts、tests/unit/platform、tests/unit/analysis
-→ 预期结果：当前实现仍存在 `is_user_voice`、旧 Excel 列和旧 Prompt 规则，因此测试失败
+→ 预期结果：旧实现仍存在 `is_user_voice`、旧 Excel 列和旧 Prompt 规则，因此测试失败
 → 验证方式：PR CI 读取失败用例与原因
 
 [2] Green：删除派生公共字段并同步正式投影
@@ -188,23 +188,23 @@ PR #128 head `614fa641484e3d9929fff9ffb9a5ef32a400153d` 的 CI Stage 1 在 Contr
 
 ## 永久 CI
 
-候选 head `56d14a823d29638efb9d4367e3d2f164dcda9c21` 的永久工作流已实际完成：
+中间候选 `56d14a823d29638efb9d4367e3d2f164dcda9c21` 已证明 Stage 6 残留断言修复后永久工作流恢复全绿。最终 cleanup 后候选 head `cf3bd343b5cccaf602435b01c375861ee955beda` 的永久工作流全部实际成功：
 
-- `CI`：success；其中 Stage 1、Stage 2 Platform、Stage 3A Database、Windows bootstrap 均 success；
-- `Stage 5A Provider Raw`：success；
-- `Stage 5B Collection Execution`：success；
-- `Stage 5C Provider Persistence`：success；
-- `Stage 5D Provider Dispatch`：success；
-- `Stage 6 XHS Vertical Slice`：success；
-- `Stage 7 Keyword Packs`：success；
-- `Stage 7 Provider Config Routing`：success；
-- `Stage 7 Plan Occurrence Run Snapshot`：success；
-- `Stage 7 Scheduler Runtime`：success；
-- `Stage 1-7 Audit Correctness`：success。
+- `CI` run #1750：success；其中 Stage 1、Stage 2 Platform、Stage 3A Database、Windows bootstrap 均 success；
+- `Stage 5A Provider Raw` run #1241：success；
+- `Stage 5B Collection Execution` run #1199：success；
+- `Stage 5C Provider Persistence` run #1196：success；
+- `Stage 5D Provider Dispatch` run #1197：success；
+- `Stage 6 XHS Vertical Slice` run #1565：success；
+- `Stage 7 Keyword Packs` run #1360：success；
+- `Stage 7 Provider Config Routing` run #1473：success；
+- `Stage 7 Plan Occurrence Run Snapshot` run #1358：success；
+- `Stage 7 Scheduler Runtime` run #1700：success；
+- `Stage 1-7 Audit Correctness` run #698：success。
 
-Stage 6 在前一候选曾得到 `105 passed / 1 failed`，唯一失败是 irrelevant 审计集成测试仍访问已删除的 `ContentAnalysisResponse.is_user_voice`；重新读取当前 feature 文件后确认同一测试实际有两处旧断言，并在 `56d14a823d29638efb9d4367e3d2f164dcda9c21` 前全部删除，随后 Stage 6 Unit / Quality / PostgreSQL integration 与全部 migration round-trip 均 success。
+Stage 6 在更早候选曾得到 `105 passed / 1 failed`，唯一失败是 irrelevant 审计集成测试仍访问已删除的 `ContentAnalysisResponse.is_user_voice`；重新读取当前 feature 文件后确认同一测试实际有两处旧断言，并全部删除，随后 Stage 6 Unit / Quality / PostgreSQL integration 与全部 migration round-trip 均 success。
 
-旧 `DEV Remove Derived User Voice Runner` 在 cleanup 前的 PR 事件快照中会因 feature 执行脚本已按设计自删除而报 `FileNotFoundError`；它不属于产品质量门禁。该一次性 Runner 已通过 PR #134 从 `main` 删除。当前 Change 更新后的 head 仍需在 cleanup 后的 `main` 上执行最后一轮永久 PR CI，全部成功后才允许合并。
+一次性开发 Runner 在完成生成/Green 验证后已失去用途；cleanup 前事件快照曾因 feature 执行脚本已自删除而出现 `FileNotFoundError`。PR #134 已将 main 上该 Runner 删除，最终候选的工作流列表中不存在任何 `DEV Remove Derived User Voice Runner`。
 
 # 文档影响
 
@@ -218,9 +218,12 @@ Stage 6 在前一候选曾得到 `105 passed / 1 failed`，唯一失败是 irrel
 # Git / PR
 
 - 初始基线 main：`01ad60d9662ea1b9523637bb1dbf8b1a79aacd63`
+- 主分支业务合并前基线包含一次性 Runner 清理 PR #134；#134 merge commit：`cb74dbf76a8a9f18acafc83bc849c77f481d2b6b`。
 - 分支：`feature/remove-derived-user-voice-final2`
-- PR：`#128 移除重复用户发声字段并优化发声类型判定`（Draft → 待转 ready_for_review）
-- 业务候选提交：`b1c1a8948edeaab68bcf75a9f245cf71f8ab2c7a`；为触发永久 CI 创建了相同文件树的用户侧 trigger commit；Stage 6 残留测试修复提交为 `56d14a823d29638efb9d4367e3d2f164dcda9c21`。
-- 一次性开发 Runner 仅用于受控生成/Green 验证；中间 Runner 修正均依据实际 Actions 日志处理。最终 main Runner 已通过 PR #134 清理，不属于长期仓库能力。
+- PR：`#128 移除重复用户发声字段并优化发声类型判定`，已合并。
+- 最终 PR 候选 head：`cf3bd343b5cccaf602435b01c375861ee955beda`。
+- #128 merge commit：`f91e306d6719c68ae19c85974708454db2c13aef`；merge tree：`c7fa882c6593e79e012452564ab70ea090c0d82a`。
+- 一次性开发 Runner 仅用于受控生成/Green 验证，最终已从 main 和业务 PR diff 清理，不属于长期仓库能力。
 - 本 Change 未创建 Migration、未升级依赖。
-- 合并：待当前 head 在 cleanup 后 main 上完成最后一轮永久 CI 后执行；合并后再将 Change 标记 `done` 并归档到 `changes/archive/2026-08/`。
+- 开发交付期间曾误在 main 创建空 `noop` 文件（`314722b15605735768f6ace509c1a21d4ef376e6`），随即通过 `11c6128f201bccccb13b8749e373706de5dc94b4` 删除；删除后 main tree 恢复为误写前相同 tree，最终业务文件树不包含该文件。该操作异常不影响最终功能内容，但保留 Git 历史事实。
+- 当前归档动作只把本 Change 标记 `done` 并移动到 `changes/archive/2026-08/`；归档 PR 通过常规 CI 后合并。
