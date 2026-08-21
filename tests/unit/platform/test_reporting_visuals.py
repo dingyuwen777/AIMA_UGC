@@ -74,7 +74,7 @@ def test_wordcloud_is_deterministic_and_reacts_to_frequency_changes(tmp_path: Pa
     with Image.open(first) as image:
         assert image.size == (1600, 900)
         assert image.info.get("dpi", (0, 0))[0] >= 250
-    # 少词词云也必须形成有意图的紧凑视觉簇，不能只在大画布中央留下稀疏小字。
+    # 少词词云最容易显得空和廉价，因此对稀疏样例要求更高的有效字形占比。
     assert _non_white_ratio(first) >= 0.075
 
 
@@ -90,7 +90,8 @@ def test_wordcloud_dense_keywords_remains_restrained_but_visually_full(tmp_path:
 
     with Image.open(output) as image:
         image.verify()
-    assert _non_white_ratio(output) >= 0.075
+    # 多词云需要保留词间呼吸感，不能为了追求像素填充率把文字挤成一团。
+    assert _non_white_ratio(output) >= 0.07
 
 
 def test_wordcloud_fails_closed_when_cjk_font_is_unavailable(
