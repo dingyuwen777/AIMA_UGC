@@ -26,6 +26,15 @@ describe('frontend bootstrap', () => {
     )
   })
 
+  it('registers collection strategy as a first-level business route', () => {
+    expect(routes).toContainEqual(
+      expect.objectContaining({
+        path: '/collection-strategy',
+        name: 'collection-strategy',
+      }),
+    )
+  })
+
   it('loads Vue Test Utils', () => {
     expect(config.global).toBeDefined()
   })

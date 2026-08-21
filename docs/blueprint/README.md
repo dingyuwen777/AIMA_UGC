@@ -68,8 +68,8 @@
 
 ## 当前开发状态
 
-**Stage 1—7、临时 P1 与 Stage 8A—8E 已闭环。Stage 8E 的完整交付证据由对应归档 Change 维护；
-下一正式最小开发单元是 Stage 8F Keyword / Relevance / Plan 与 Stage 8 集成。**
+**Stage 1—7、临时 P1 与 Stage 8A—8F 已闭环。Stage 8F 完成 Keyword / Relevance / Plan 产品化与
+Stage 8 整体集成；下一正式阶段是 Stage 9 Analysis and Monitoring。**
 
 Stage 8A 与 Stage 8B 当前 `main` 机器边界：
 
@@ -90,6 +90,9 @@ Stage 8A 与 Stage 8B 当前 `main` 机器边界：
 - Stage 8E 在采集运行中心集中查询 Excel Import 与 TikHub Run；一次性 Discovery 和 Batch 补采均创建
   既有 `collection.run.v1` Job，Batch 补采通过可空外键关联 Import Batch，并复用正式 Detail/Comment、
   Raw、Mapper、全局 Relevance 与 Fenced Content Ingestion；
+- Stage 8F 增加一级路由 `/collection-strategy`，通过 Keyword Pack、全局唯一 Relevance 和周期
+  Collection Plan 三个配置页签复用既有 PostgreSQL Owner、Scheduler/Worker 与 Provider Capability；
+  保存配置不创建 Run/Job、不调用 TikHub，Stage 8E 继续负责一次性主动发现；
 - 数据库模式只连接开发者已经准备好的 PostgreSQL 18，不管理 Docker，不自动执行 Alembic Migration，Schema 不满足要求时关闭失败。
 
 Stage 7 已完成并固化：
@@ -126,15 +129,12 @@ P1 已固化的长期能力：
 
 ## 下一正式最小开发单元
 
-### Stage 8F：Keyword / Relevance / Plan 与 Stage 8 Integration
+### Stage 9：Analysis and Monitoring
 
-Stage 8E 已完成采集运行中心的 Excel/TikHub 集中视图、一次性 Discovery、基于 Import Batch 的补采、
-Collection Run 详情及生成 Client/Vue 闭环。系统全局 Relevance 仍与 Discovery 搜索词分离；Stage 8E
-输入的关键词只属于一次 Run，不保存成词包。
-
-Stage 8F 从当时最新 `main` 重新恢复事实后，最小范围是把已存在的 Keyword Pack/全局 Relevance 与
-Collection Plan 机器能力产品化为保存/配置页面，完成 Stage 8 跨页面集成。Provider Config/Secret 写入、
-认证权限、自动付费运行、Budget/Cost Guard 与 Release 能力仍需各自已批准边界，不能借收口阶段扩入。
+Stage 8 已完成数据入口、采集运行中心、声音广场、显式 Analysis/Excel Export、TikHub 辅助采集和采集
+策略配置的核心页面闭环。下一阶段必须从最新 `main` 重新恢复事实，再从 Stage 9 的 LLM/标签既有能力与
+尚未产品化的 Monitoring、告警、VOC、工单边界中切出一个最小正式单元；不得因 Stage 8D 已有显式 AI
+打标就把 Stage 9 整体误判为完成，也不得自动进入 Reporting 或 Release。
 
 ### 独立于 Stage 8A 的后续门禁
 

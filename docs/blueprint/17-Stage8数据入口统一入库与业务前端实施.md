@@ -735,21 +735,33 @@ Pydantic/OpenAPI/Orval Contract、Feature API/Store、两种运行模式与统�
 
 ### 8F：Keyword / Plan / Stage 8 Integration
 
-目标：完成剩余 Stage 8 配置页和整体集成。
+目标：完成剩余 Stage 8 配置页和整体集成。当前正式边界为：
 
-主要工作按已解决业务门禁推进：
+- `/collection-strategy` 是 App Shell 一级业务路由，不属于管理员页面；Feature 保持
+  Page/私有组件/Pinia/Feature API/Orval 分层，Vue SFC 使用 scoped style，不建立全局 CSS 或平行 Client；
+- Keyword Pack 支持稳定排序的摘要列表、创建、详情、增补关键词和启停；不硬删除历史引用，当前全局
+  Relevance 或启用中的 Plan 正在引用时关闭失败；
+- Relevance 仍是系统全局唯一配置，只能选择启用且有有效关键词的 Pack；Excel、TikHub 与未来来源在
+  Mapper 后共用该准入规则，Plan 请求与持久化均没有覆盖字段；
+- Collection Plan 只支持五字段 Cron 周期计划的创建、列表、详情和启停；一次性主动发现继续由 Stage 8E
+  `discovery` 负责，不在配置页建立第二入口；
+- Plan 只选择已启用、Registry 可路由且具备 `keyword_search` 的稳定 Provider Config ID，不接收 Secret、
+  Base URL、Provider 私有配置或任意 JSON；保存 Plan 不创建 Run/Job，也不调用 TikHub；
+- Plan 启停在数据库锁内递增 `schedule_version` 并清空 `next_run_at`，旧 Scheduler cursor 被 fencing
+  拒绝；重新启用从当前时间之后的下一个 Cron 时刻开始，不补跑停用期间 slot；
+- 小型配置列表使用稳定 `updated_at DESC, id` 排序和 offset/limit；Plan 搜索覆盖名称与 UUID；
+- Pydantic HTTP Contract → 固定 OpenAPI → Orval TypeScript Client 是唯一公共调用链，统一错误响应保留
+  `request_id` 且不泄露内部异常或 Secret；
+- 复用既有 `keyword_packs/global_relevance_config/collection_plans` 及关联表，Migration Head 保持
+  `20260821_0022`，不为页面制造新 Revision。
 
-- Keyword Pack Vue 页面，以及页面需要但 Stage 8B Import 最小 Contract 未覆盖的管理 API；
-- Collection Plan 页面/API；
-- Provider Config/Secret 写入只在安全边界批准后实现；
-- App Shell；
-- 跨页面 E2E；
-- 文档/生成物一致性；
-- 完整适用 CI；
-- Stage 8 收口。
+用户批准 `docs/assets/stage8f/collection-strategy-prototype.png` 作为本阶段一次性 PNG 视觉基线，且确认
+移除图中的“单次运行”。该 Change 级例外不改变 Blueprint 16 的 Figma-first 长期规则；未来 Figma
+重新生成视觉代码时只替换页面组件/样式，必须保持 `/collection-strategy`、Pydantic/OpenAPI/Orval
+Contract、Feature API/Store、三个页签、周期 Plan 和全局 Relevance 语义兼容。
 
-Alias 正式关系等尚未批准的业务语义仍不能由 Agent 静默选择；Discovery/Relevance 边界与正式关键词
-数据库/匹配 normalization 已在 Stage 8B 固化。
+Provider Config/Secret 写入、Alias 关系、请求/金额 Budget、认证授权、自动付费运行和任意 Plan 编辑均
+不属于 Stage 8F；后续需要时必须重新通过相应 L3 决策门禁。
 
 ## 17. Stage 8A 验收底线
 
@@ -805,8 +817,8 @@ imports_test / tikhub_test 永久保留
 
 Stage 8A 已完成统一手工摄取 Foundation
 Stage 8B 已建立 Import HTTP / Job / 全局 Relevance Productization
-Stage 8C 已实现并闭环第一个 Vue 采集运行中心页面；Stage 8D 已实现声音广场、current Analysis 与
-durable Excel Export；下一正式最小单元是 Stage 8E TikHub 辅助补采
+Stage 8C 已实现采集运行中心；Stage 8D 已实现声音广场、current Analysis 与 durable Excel Export；
+Stage 8E 已实现一次性 Discovery、Batch 补采和统一运行列表；Stage 8F 已实现采集策略页并完成 Stage 8 收口
 离线单批报告读 Excel；正式系统报告读 PostgreSQL Read Model
 报告源显式选择，不按数据库可用性自动切换
 不要用目标 UI 冒充后端已经存在
