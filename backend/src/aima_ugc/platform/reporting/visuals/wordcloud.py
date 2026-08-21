@@ -8,15 +8,27 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Final
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 from .theme import ACCENT_BLUE, SECONDARY_TEXT_COLOR, TITLE_COLOR
 
 _CANVAS_SIZE: Final = (1600, 900)
-_MIN_FONT_SIZE: Final = 30
-_MAX_FONT_SIZE: Final = 104
-_PADDING: Final = 10
-_COLORS: Final = (TITLE_COLOR, ACCENT_BLUE, SECONDARY_TEXT_COLOR)
+_MIN_FONT_SIZE: Final = 26
+_MAX_FONT_SIZE: Final = 122
+_MAX_WORDS: Final = 36
+_PADDING: Final = 9
+_OUTPUT_MARGIN: Final = 72
+_MAX_FOCUS_SCALE: Final = 1.75
+# 主体仍然使用蓝/蓝灰；少量青绿、柔紫和赭色只负责拉开层级，不做彩虹词云。
+_PALETTE: Final = (
+    TITLE_COLOR,
+    ACCENT_BLUE,
+    "238C8C",
+    "6F6AA8",
+    "56748D",
+    "7C8A9A",
+    "C47A32",
+)
 
 
 def render_wordcloud_png(frequencies: Mapping[str, int], output_path: Path) -> Path:
@@ -28,7 +40,9 @@ def render_wordcloud_png(frequencies: Mapping[str, int], output_path: Path) -> P
         if str(label).strip() and int(count) > 0
     ]
     items.sort(key=lambda item: (-item[1], item[0]))
+    items = items[:_MAX_WORDS]
     font_path = resolve_cjk_font()
+    bold_font_path = resolve_cjk_bold_font(font_path)
     image = Image.new("RGB", _CANVAS_SIZE, "white")
     draw = ImageDraw.Draw(image)
     if not items:
@@ -50,35 +64,37 @@ def render_wordcloud_png(frequencies: Mapping[str, int], output_path: Path) -> P
     weights = [math.sqrt(count) for _, count in items]
     low, high = min(weights), max(weights)
     for rank, ((label, _count), weight) in enumerate(zip(items, weights, strict=True)):
-        font_size = _font_size(weight, low=low, high=high)
-        placement = None
-        text_width = 0
-        text_height = 0
-        for candidate_size in range(font_size, _MIN_FONT_SIZE - 1, -4):
-            font = ImageFont.truetype(str(font_path), candidate_size)
+        font_size = _font_size(weight, low=low, high=high, rank=rank)
+        placement: tuple[int, int, ImageFont.FreeTypeFont, tuple[int, int, int, int]] | None = None
+        for candidate_size in range(font_size, _MIN_FONT_SIZE - 1, -3):
+            selected_font = bold_font_path if rank == 0 else font_path
+            font = ImageFont.truetype(str(selected_font), candidate_size)
             bbox = draw.textbbox((0, 0), label, font=font)
             text_width = int(math.ceil(bbox[2] - bbox[0]))
             text_height = int(math.ceil(bbox[3] - bbox[1]))
-            placement = _find_position(text_width, text_height, placed)
-            if placement is not None:
-                break
-        if placement is None:
-            continue
-        x, y = placement
-        color = _COLORS[min(rank * len(_COLORS) // max(1, len(items)), len(_COLORS) - 1)]
-        draw.text((x, y), label, fill=f"#{color}", font=font)
-        placed.append(
-            (
+            position = _find_position(text_width, text_height, placed)
+            if position is None:
+                continue
+            x, y = position
+            rect = (
                 x - _PADDING,
                 y - _PADDING,
                 x + text_width + _PADDING,
                 y + text_height + _PADDING,
             )
-        )
+            placement = (x, y, font, rect)
+            break
+        if placement is None:
+            continue
+        x, y, font, rect = placement
+        draw.text((x, y), label, fill=f"#{_color_for_rank(rank)}", font=font)
+        placed.append(rect)
 
     if not placed:
         raise RuntimeError("词云布局失败：没有任何词条可放入画布")
-    return _save_png(image, output_path)
+    focused = _focus_content(image)
+    image.close()
+    return _save_png(focused, output_path)
 
 
 def _save_png(image: Image.Image, output_path: Path) -> Path:
@@ -103,10 +119,18 @@ def resolve_cjk_font() -> Path:
     )
 
 
+def resolve_cjk_bold_font(fallback: Path) -> Path:
+    """优先为首要词寻找同族粗体；缺失时退回已验证可用的常规 CJK 字体。"""
+
+    for path in _candidate_bold_font_paths():
+        if path.is_file():
+            return path
+    return fallback
+
+
 def _candidate_font_paths() -> tuple[Path, ...]:
     return (
         Path(r"C:\Windows\Fonts\msyh.ttc"),
-        Path(r"C:\Windows\Fonts\msyhbd.ttc"),
         Path(r"C:\Windows\Fonts\simhei.ttf"),
         Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
         Path("/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf"),
@@ -116,11 +140,41 @@ def _candidate_font_paths() -> tuple[Path, ...]:
     )
 
 
-def _font_size(weight: float, *, low: float, high: float) -> int:
+def _candidate_bold_font_paths() -> tuple[Path, ...]:
+    return (
+        Path(r"C:\Windows\Fonts\msyhbd.ttc"),
+        Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"),
+        Path("/usr/share/fonts/opentype/noto/NotoSansCJKsc-Bold.otf"),
+        Path("/usr/share/fonts/opentype/adobe-source-han-sans/SourceHanSansSC-Bold.otf"),
+        Path("/System/Library/Fonts/PingFang.ttc"),
+    )
+
+
+def _font_size(weight: float, *, low: float, high: float, rank: int) -> int:
     if high <= low:
-        return 64
-    ratio = (weight - low) / (high - low)
-    return round(_MIN_FONT_SIZE + ratio * (_MAX_FONT_SIZE - _MIN_FONT_SIZE))
+        size = 64
+    else:
+        ratio = (weight - low) / (high - low)
+        # sqrt 已经压缩极端频次；再用温和曲线，避免第一名吞掉整幅图。
+        ratio = math.pow(ratio, 0.72)
+        size = round(_MIN_FONT_SIZE + ratio * (_MAX_FONT_SIZE - _MIN_FONT_SIZE))
+    if rank == 0:
+        return max(size, 112)
+    if rank == 1:
+        return max(size, 72)
+    if rank == 2:
+        return max(size, 64)
+    return size
+
+
+def _color_for_rank(rank: int) -> str:
+    if rank == 0:
+        return _PALETTE[0]
+    # 暖色只在少数次级词出现，避免蓝灰单调但不让颜色抢过信息层级。
+    if rank in {4, 12, 23}:
+        return _PALETTE[-1]
+    cool_palette = _PALETTE[1:-1]
+    return cool_palette[(rank * 2) % len(cool_palette)]
 
 
 def _find_position(
@@ -131,12 +185,13 @@ def _find_position(
     canvas_width, canvas_height = _CANVAS_SIZE
     cx = canvas_width // 2
     cy = canvas_height // 2
-    start_step = 0 if not placed else min(520, 72 * len(placed))
-    for step in range(start_step, 900):
-        angle = step * 0.58
-        radius = 5 + step * 1.05
+    # 每个词都从视觉中心重新寻找最近空位，而不是按词序强制向外推。
+    # 这样 5~12 个词也会形成有意图的紧凑簇，不会散成一圈显得廉价。
+    for step in range(1700):
+        angle = step * 0.52
+        radius = 2 + step * 0.64
         x = round(cx + math.cos(angle) * radius - width / 2)
-        y = round(cy + math.sin(angle) * radius * 0.56 - height / 2)
+        y = round(cy + math.sin(angle) * radius * 0.54 - height / 2)
         rect = (
             x - _PADDING,
             y - _PADDING,
@@ -153,6 +208,43 @@ def _find_position(
         if all(not _intersects(rect, other) for other in placed):
             return x, y
     return None
+
+
+def _focus_content(image: Image.Image) -> Image.Image:
+    """把紧凑词簇放大到稳定画布，避免少词词云被巨大空白包围。"""
+
+    white = Image.new("RGB", image.size, "white")
+    difference = ImageChops.difference(image, white).convert("L")
+    bbox = difference.getbbox()
+    white.close()
+    difference.close()
+    if bbox is None:
+        return image.copy()
+
+    left, top, right, bottom = bbox
+    crop_padding = 32
+    crop = image.crop(
+        (
+            max(0, left - crop_padding),
+            max(0, top - crop_padding),
+            min(image.width, right + crop_padding),
+            min(image.height, bottom + crop_padding),
+        )
+    )
+    target_width = _CANVAS_SIZE[0] - 2 * _OUTPUT_MARGIN
+    target_height = _CANVAS_SIZE[1] - 2 * _OUTPUT_MARGIN
+    scale = min(target_width / crop.width, target_height / crop.height, _MAX_FOCUS_SCALE)
+    resized = crop.resize(
+        (max(1, round(crop.width * scale)), max(1, round(crop.height * scale))),
+        Image.Resampling.LANCZOS,
+    )
+    crop.close()
+    canvas = Image.new("RGB", _CANVAS_SIZE, "white")
+    x = (_CANVAS_SIZE[0] - resized.width) // 2
+    y = (_CANVAS_SIZE[1] - resized.height) // 2
+    canvas.paste(resized, (x, y))
+    resized.close()
+    return canvas
 
 
 def _intersects(
