@@ -112,14 +112,14 @@ class ReportDocxBuilder(DocxBuilder):
         self._append_section_label(left, f"Top {limit}")
         self._append_ranking_table(left, top_rows, start_rank=1, show_progress=True)
         if chart is not None:
-            self._append_chart(right, chart, width_emu=5_000_000, height_emu=3_250_000)
+            self._append_chart(right, chart, width_emu=4_650_000, height_emu=3_250_000)
         else:
             assert image_path is not None
             self._append_image(
                 right,
                 image_path,
                 alt_text=alt_text,
-                max_width_emu=5_000_000,
+                max_width_emu=4_650_000,
                 max_height_emu=3_300_000,
             )
         ET.SubElement(left, f"{{{_W}}}p")
@@ -148,7 +148,7 @@ class ReportDocxBuilder(DocxBuilder):
         left = self._new_cell(visual_row, _VISUAL_LEFT_WIDTH, pad=80)
         right = self._new_cell(visual_row, _VISUAL_RIGHT_WIDTH, pad=130)
         self._append_editorial_table(left, headers, rows)
-        self._append_chart(right, chart, width_emu=5_000_000, height_emu=3_250_000)
+        self._append_chart(right, chart, width_emu=4_650_000, height_emu=3_250_000)
         ET.SubElement(left, f"{{{_W}}}p")
         ET.SubElement(right, f"{{{_W}}}p")
         self._add_after_layout_spacing()
