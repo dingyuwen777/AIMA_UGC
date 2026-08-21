@@ -16,7 +16,7 @@ _CANVAS_SIZE: Final = (1600, 900)
 _MIN_FONT_SIZE: Final = 26
 _MAX_FONT_SIZE: Final = 122
 _MAX_WORDS: Final = 36
-_PADDING: Final = 9
+_PADDING: Final = 14
 _OUTPUT_MARGIN: Final = 72
 _MAX_FOCUS_SCALE: Final = 1.75
 # 主体仍然使用蓝/蓝灰；少量青绿、柔紫和赭色只负责拉开层级，不做彩虹词云。
@@ -65,7 +65,13 @@ def render_wordcloud_png(frequencies: Mapping[str, int], output_path: Path) -> P
     low, high = min(weights), max(weights)
     for rank, ((label, _count), weight) in enumerate(zip(items, weights, strict=True)):
         font_size = _font_size(weight, low=low, high=high, rank=rank)
-        placement: tuple[int, int, ImageFont.FreeTypeFont, tuple[int, int, int, int]] | None = None
+        placement: tuple[
+            int,
+            int,
+            ImageFont.FreeTypeFont,
+            tuple[int, int, int, int],
+            tuple[int, int, int, int],
+        ] | None = None
         for candidate_size in range(font_size, _MIN_FONT_SIZE - 1, -3):
             selected_font = bold_font_path if rank == 0 else font_path
             font = ImageFont.truetype(str(selected_font), candidate_size)
@@ -82,12 +88,18 @@ def render_wordcloud_png(frequencies: Mapping[str, int], output_path: Path) -> P
                 x + text_width + _PADDING,
                 y + text_height + _PADDING,
             )
-            placement = (x, y, font, rect)
+            placement = (x, y, font, bbox, rect)
             break
         if placement is None:
             continue
-        x, y, font, rect = placement
-        draw.text((x, y), label, fill=f"#{_color_for_rank(rank)}", font=font)
+        x, y, font, bbox, rect = placement
+        # textbbox 的 left/top 不一定为 0；把实际字形框锚定到布局矩形，避免大字号词互相压住。
+        draw.text(
+            (x - bbox[0], y - bbox[1]),
+            label,
+            fill=f"#{_color_for_rank(rank)}",
+            font=font,
+        )
         placed.append(rect)
 
     if not placed:
