@@ -435,12 +435,16 @@ def test_successful_item_is_not_retried_when_another_item_needs_validation_retry
             "items": [
                 {
                     "item_no": 1,
+                    "relevance": "relevant",
+                    "voice_type": "unknown",
                     "sentiment": sentiment,
                     "primary_label": primary,
                     "secondary_label": secondary,
                 },
                 {
                     "item_no": 2,
+                    "relevance": "relevant",
+                    "voice_type": "unknown",
                     "sentiment": "不存在的情感",
                     "primary_label": primary,
                     "secondary_label": secondary,
