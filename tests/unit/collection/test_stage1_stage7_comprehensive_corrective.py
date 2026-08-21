@@ -122,7 +122,7 @@ def test_long_term_docs_match_stage1_stage7_machine_facts() -> None:
     assert "当前 L3 Corrective Change" not in collection_readme
 
     assert "durable content action/checkpoint" in collection_readme
-    assert "Candidate 在 Mapper 前" in blueprint_02
+    assert "Mapper 前建立" in blueprint_02
     assert "Decision Pipeline" in blueprint_08
     assert "latest_only" in scheduler_appendix
     assert "(plan_id, schedule_version, scheduled_for)" in scheduler_appendix
