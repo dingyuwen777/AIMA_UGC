@@ -18,6 +18,7 @@ from aima_ugc.platform.health import CheckStatus, ReadinessReport
 from aima_ugc.platform.logging import (
     configure_service_logging,
     log_event,
+    log_exception_event,
     shutdown_service_logging,
 )
 from aima_ugc.platform.security import SecretFileError
@@ -83,10 +84,13 @@ class PlatformRuntime:
             closer = self._resource_closers.pop()
             try:
                 closer()
-            except Exception:
-                self.logger.exception(
+            except Exception as exc:
+                log_exception_event(
+                    self.logger,
+                    logging.ERROR,
+                    "service.resource_close_failed",
                     "runtime resource close failed",
-                    extra={"event": "service.resource_close_failed"},
+                    exc,
                 )
         self.database.dispose()
         shutdown_service_logging(self.logger)

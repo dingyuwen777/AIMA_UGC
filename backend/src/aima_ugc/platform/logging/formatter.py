@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Final
@@ -14,6 +15,7 @@ _BEIJING: Final = ZoneInfo("Asia/Shanghai")
 _FIELD_LIMIT: Final = 2_048
 _EXCEPTION_LIMIT: Final = 4_096
 _LINE_LIMIT: Final = 8_192
+_MAX_TRACEBACK_FRAMES: Final = 20
 
 _STANDARD_LOG_RECORD_KEYS: Final = frozenset(
     logging.makeLogRecord({}).__dict__.keys()
@@ -58,6 +60,17 @@ def _redact_text(value: str) -> str:
     return redacted
 
 
+def safe_exception_traceback(error: BaseException) -> str:
+    """保留异常调用栈定位，但不复制异常消息和源代码行，避免 Secret 经其他 Handler 泄露。"""
+
+    frames = traceback.extract_tb(error.__traceback__)[-_MAX_TRACEBACK_FRAMES:]
+    lines = ["Traceback (most recent call last):"]
+    for frame in frames:
+        lines.append(f'  File "{Path(frame.filename).name}", line {frame.lineno}, in {frame.name}')
+    lines.append(type(error).__name__)
+    return _redact_text("\n".join(lines))
+
+
 def _redact_value(value: object, *, key: str | None = None) -> object:
     """递归脱敏 dict/list/tuple；敏感键不允许把子值先转成字符串后再猜。"""
     if key is not None and _SENSITIVE_KEY_PATTERN.search(key):
@@ -92,7 +105,8 @@ def _render_value(key: str, value: object) -> tuple[str, bool]:
 
     redacted = _redact_value(value, key=key)
     if isinstance(redacted, str):
-        rendered, truncated = _truncate(redacted, _FIELD_LIMIT)
+        limit = _EXCEPTION_LIMIT if key == "exception" else _FIELD_LIMIT
+        rendered, truncated = _truncate(redacted, limit)
         return json.dumps(rendered, ensure_ascii=False), truncated
 
     serialized = json.dumps(redacted, ensure_ascii=False, separators=(",", ":"), default=str)
@@ -101,24 +115,24 @@ def _render_value(key: str, value: object) -> tuple[str, bool]:
 
 
 class AimaLogFormatter(logging.Formatter):
-    """输出北京时间毫秒时间、稳定事件字段和安全的一行日志。"""
+    """输出北京时间毫秒时间、调用文件/行号和安全的一行结构化日志。"""
 
     def __init__(self, *, service: str) -> None:
+        # 保留 service 参数以兼容既有配置入口；进程身份由 api.log/worker.log/scheduler.log 表达，
+        # 不再把同一事实重复写入每一行。
         super().__init__()
         self._service = service
 
     def format(self, record: logging.LogRecord) -> str:
         moment = datetime.fromtimestamp(record.created, tz=_BEIJING)
         timestamp = moment.strftime("%Y-%m-%d %H:%M:%S.") + f"{moment.microsecond // 1000:03d}"
-        source = f"{Path(record.pathname).name}:{record.lineno}"
+        source = Path(record.pathname).name
         event = str(getattr(record, "event", "log.message"))
 
         message, truncated = _truncate(_redact_text(record.getMessage()), _FIELD_LIMIT)
         parts = [
-            f"[{timestamp}]",
+            f"[{timestamp} {source} L{record.lineno}]",
             f"[{record.levelname}]",
-            f"service={self._service}",
-            f"source={source}",
             f"event={event}",
         ]
 
@@ -134,8 +148,8 @@ class AimaLogFormatter(logging.Formatter):
             truncated = truncated or field_truncated
             parts.append(f"{key}={rendered}")
 
-        if record.exc_info:
-            exception = _redact_text(self.formatException(record.exc_info))
+        if record.exc_info and record.exc_info[1] is not None:
+            exception = safe_exception_traceback(record.exc_info[1])
             exception, exception_truncated = _truncate(exception, _EXCEPTION_LIMIT)
             truncated = truncated or exception_truncated
             parts.append(f"exception={json.dumps(exception, ensure_ascii=False)}")

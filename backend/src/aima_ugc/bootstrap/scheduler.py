@@ -213,6 +213,7 @@ def run_scheduler_once(
                     "Scheduler 已对非法 Plan fail closed，并继续处理其他 Plan。",
                     plan_id=str(plan_id),
                     error_type=type(exc).__name__,
+                    error_detail=str(exc),
                 )
         finally:
             session.close()

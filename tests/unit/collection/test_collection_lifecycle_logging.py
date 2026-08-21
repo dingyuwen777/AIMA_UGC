@@ -160,7 +160,7 @@ def test_collection_executor_emits_stable_run_and_scope_events(
     context = _Context(execution.run.job_id)
 
     with caplog.at_level(
-        logging.INFO, logger="aima_ugc.modules.collection.collection_run_executor"
+        logging.DEBUG, logger="aima_ugc.modules.collection.collection_run_executor"
     ):
         result = CollectionRunExecutor(
             gateway=_Gateway(execution),
@@ -173,6 +173,11 @@ def test_collection_executor_emits_stable_run_and_scope_events(
         "collection.run.started",
         "collection.scope.completed",
         "collection.run.completed",
+    ]
+    assert [record.levelno for record in records] == [
+        logging.INFO,
+        logging.DEBUG,
+        logging.INFO,
     ]
     assert records[0].run_id == str(execution.run.id)
     assert records[0].job_id == str(execution.run.job_id)

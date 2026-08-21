@@ -92,12 +92,12 @@ def _worker(runtime: DatabaseRuntime, outcome: str) -> JobWorker:
 
 
 @pytest.mark.parametrize(
-    ("outcome", "terminal_event"),
+    ("outcome", "terminal_event", "terminal_level"),
     [
-        ("succeeded", "job.completed"),
-        ("retry", "job.retry_scheduled"),
-        ("failed", "job.failed"),
-        ("cancelled", "job.cancelled"),
+        ("succeeded", "job.completed", logging.INFO),
+        ("retry", "job.retry_scheduled", logging.WARNING),
+        ("failed", "job.failed", logging.ERROR),
+        ("cancelled", "job.cancelled", logging.INFO),
     ],
 )
 def test_job_worker_emits_stable_lifecycle_events(
@@ -105,6 +105,7 @@ def test_job_worker_emits_stable_lifecycle_events(
     caplog: pytest.LogCaptureFixture,
     outcome: str,
     terminal_event: str,
+    terminal_level: int,
 ) -> None:
     _enqueue(database_runtime, key=f"job-log-{outcome}-{uuid4()}")
     worker = _worker(database_runtime, outcome)
@@ -118,6 +119,10 @@ def test_job_worker_emits_stable_lifecycle_events(
     assert records[0].job_type == "audit.logging.v1"
     assert records[0].worker_id == "audit-worker"
     assert records[0].attempt == 1
-    assert records[-1].job_id == records[0].job_id
+    terminal = records[-1]
+    assert terminal.job_id == records[0].job_id
+    assert terminal.levelno == terminal_level
+    assert isinstance(terminal.duration_ms, int)
+    assert terminal.duration_ms >= 0
     assert "lease_token" not in records[0].__dict__
     assert "payload" not in records[0].__dict__
