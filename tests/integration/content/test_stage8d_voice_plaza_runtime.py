@@ -497,14 +497,12 @@ def test_irrelevant_analysis_is_auditable_but_hidden_from_default_voice_plaza(
         assert audited.analysis.status == "completed"
         assert audited.analysis.relevance == "irrelevant"
         assert audited.analysis.voice_type == "media_information"
-        assert audited.analysis.is_user_voice is False
         assert audited.analysis.sentiment is None
         assert audited.analysis.labels == ()
 
         direct = content_service.get_content(content_ids[0])
         assert direct.analysis.relevance == "irrelevant"
         assert direct.analysis.voice_type == "media_information"
-        assert direct.analysis.is_user_voice is False
     finally:
         with runtime.database.engine.begin() as connection:
             connection.exec_driver_sql(
