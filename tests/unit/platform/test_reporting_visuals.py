@@ -9,7 +9,7 @@ import pytest
 from aima_ugc.platform.reporting import generate_excel_report
 from aima_ugc.platform.reporting.visuals import wordcloud
 from openpyxl import Workbook
-from PIL import Image
+from PIL import Image, ImageChops
 
 _W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 
@@ -42,6 +42,20 @@ def _make_visual_workbook(path: Path) -> None:
     workbook.close()
 
 
+def _non_white_ratio(path: Path) -> float:
+    with Image.open(path) as image:
+        rgb = image.convert("RGB")
+    white = Image.new("RGB", rgb.size, "white")
+    difference = ImageChops.difference(rgb, white).convert("L")
+    histogram = difference.histogram()
+    changed = sum(histogram[5:])
+    total = rgb.width * rgb.height
+    difference.close()
+    white.close()
+    rgb.close()
+    return changed / total
+
+
 def test_wordcloud_is_deterministic_and_reacts_to_frequency_changes(tmp_path: Path) -> None:
     font = Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc")
     if not font.is_file():
@@ -60,6 +74,23 @@ def test_wordcloud_is_deterministic_and_reacts_to_frequency_changes(tmp_path: Pa
     with Image.open(first) as image:
         assert image.size == (1600, 900)
         assert image.info.get("dpi", (0, 0))[0] >= 250
+    # 少词词云也必须形成有意图的紧凑视觉簇，不能只在大画布中央留下稀疏小字。
+    assert _non_white_ratio(first) >= 0.075
+
+
+def test_wordcloud_dense_keywords_remains_restrained_but_visually_full(tmp_path: Path) -> None:
+    font = Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc")
+    if not font.is_file():
+        pytest.skip("当前测试环境未安装 Noto Sans CJK")
+    frequencies = {"爱玛": 44000}
+    frequencies.update({f"车型 {index:02d}": max(1, 500 - index * 11) for index in range(1, 56)})
+    output = tmp_path / "dense.png"
+
+    wordcloud.render_wordcloud_png(frequencies, output)
+
+    with Image.open(output) as image:
+        image.verify()
+    assert _non_white_ratio(output) >= 0.075
 
 
 def test_wordcloud_fails_closed_when_cjk_font_is_unavailable(
