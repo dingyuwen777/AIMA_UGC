@@ -1,382 +1,367 @@
 # AIMA_UGC
 
-AIMA_UGC 是爱玛舆情监控系统的 Greenfield 重构仓库。目标是从零建立一个可长期维护、可验证、支持多人并行开发的多平台舆情系统。
+AIMA_UGC 是爱玛舆情监控系统的新一代实现。它把多平台采集、Excel 手工导入、统一入库、AI 分析、查询展示和数据导出放在一套可追溯、可恢复的技术主链里。
 
-## 当前状态
-
-**Stage 1—7 的工程基线、Platform/数据库/Canonical、PostgreSQL Job Runtime、Provider Request/Attempt + Raw、Collection Run/Scope、五平台 TikHub Operation/Mapper/Ingestion，以及 Scheduler/正式 Worker 主链已经建立。** 当前仓库具备可安装 Python package、FastAPI/Vue 最小工程、固定 OpenAPI 与生成 TypeScript Client、本地前后端联调、Windows x64 开发环境引导、PostgreSQL 18 Schema/Migration、Provider/平台无关 Canonical V1 与 Provider V1 Contract，以及 `Scheduler → Occurrence → Job → Run/Scope → Provider → Raw → Mapper → Canonical → Content Owner` 的持久化执行链。
-
-Stage 8A—8E 已依次建立正式 Excel Import、全局 Relevance、采集运行中心、声音广场，以及 TikHub
-一次性主动发现/Batch 补采的前后端产品化链路。当前五平台生产实现使用同一 Collection/Content 边界，
-普通 CI 通过 Fake Transport + 合法脱敏 Fixture 验证，不产生付费 TikHub 请求；真实 Provider Probe 仅在
-明确授权和请求上限下作为外部兼容证据。当前没有请求/金额 Budget、Budget Account 或 Reservation Ledger。
-
-五平台无数据库 TikHub 独立调试入口见 [`backend/src/aima_ugc/adapters/providers/tikhub_test/README.md`](backend/src/aima_ugc/adapters/providers/tikhub_test/README.md)。它复用生产 Runtime/Operation/Mapper/Decision，支持单/多关键词，输出 Raw、Canonical、`run_summary.json`、跨运行 state 和原始数据 Excel；当前评论增量只对真实排序证据充分的小红书、B站开启。源码仍不能直接视为公网生产交付：Stage 8 业务 API/页面/认证授权，以及 Release 阶段的 Docker/离线发布、协调 Backup/Restore、生产镜像与恢复演练仍需后续正式门禁。
-
-事实源规则：
-
-- 代码、Pydantic Contract、生成 OpenAPI/Client、锁文件和测试是已落地机器事实；
-- Blueprint 描述系统长期设计和尚未满足的门禁；
-- 文档与机器事实冲突时，必须先判断是实现缺陷、文档过期还是新决策，再在同一任务中修正；
-- 不从旧系统、历史聊天或单个文件猜测当前实现。
-
-## 开发前必须读取
-
-任何分析、设计、编码、Review、PR、CI 或交付任务，都从以下入口开始：
-
-1. [`AGENTS.md`](AGENTS.md)：仓库统一开发规范和硬约束；
-2. [`.agents/skills/reliable-vibe-coding/SKILL.md`](.agents/skills/reliable-vibe-coding/SKILL.md)：任务分级、Change、开发、协作和验证流程；
-3. [`docs/blueprint/README.md`](docs/blueprint/README.md)：Blueprint 导航和当前阶段；
-4. [`docs/blueprint/07-技术决策与实施门禁.md`](docs/blueprint/07-技术决策与实施门禁.md)：已确认决策、初始化版本快照和阶段 Go/No-Go；
-5. 再按当前任务读取对应 Blueprint、模块 README、Contract、Migration、依赖、实现和测试。
-
-只读取与当前任务直接相关的内容，不把整套文档机械加载为上下文。
-
-## 已建立的工程事实
-
-### Stage 1：工程与前端工具链
-
-- Python `3.14.7` 由 `.python-version` 固定，uv `0.12.3` 由 `.uv-version` 固定；
-- 根目录是唯一 Python/uv 工程，源码固定在 `backend/src/aima_ugc/`；
-- `uv_build` 已验证 Wheel 构建、隔离安装和直接 import；本地 `.env` 与 Provider 调试 `output/` 不进入源码分发包或 Wheel；
-- FastAPI 已提供 `GET /health/live`；Uvicorn 是锁定运行依赖；
-- Node/npm、Vue/Vite/Pinia、TypeScript 7 native + Vue SFC compatibility 类型链已锁定；
-- Pydantic → FastAPI OpenAPI → Orval Fetch Client 的生成链已建立，生成物禁止手改；
-- Windows x64 一键开发环境引导、本地 Uvicorn + Vite 双服务 smoke 和完整 CI 已建立。
-
-### Stage 2：Platform 基础
-
-当前业务无关 Platform 位于 `backend/src/aima_ugc/platform/` 和 `backend/src/aima_ugc/bootstrap/`：
-
-- `Config`：只读取代码明确声明的 `AIMA_*` 环境变量；当前不自动加载 `.env` 或 `env.local.example`；
-- `Secret`：PostgreSQL 密码只从 `<AIMA_SECRET_DIR>/postgres_password` 文件读取，不放入环境变量；
-- `Logging`：API/Worker/Scheduler 使用统一北京时间毫秒日志、敏感信息脱敏和 `20 MiB × 10` gzip 轮转基础；
-- `DatabaseRuntime`：同步 SQLAlchemy 2 + psycopg 3，提供真实 `SELECT 1`、Session Factory 和连接池释放，不自动建表、不自动跑 Migration；
-- `GET /health/ready`：检查 PostgreSQL、Artifact 根目录和日志目录；全部可用返回 200，否则返回 503，并且不返回连接串、Secret 或原始异常；
-- `ArtifactStore`：只按 `storage_key` 存取字节；Local 实现提供路径逃逸防护、同 key 不覆盖和原子写；
-- `ArtifactService`：负责 ID、元数据 Port 以及 `pending → stored → linked`；Stage 3A 已用 PostgreSQL `artifacts` Table/Repository 实现正式元数据持久化；
-- API、Worker、Scheduler、Migration 共用 Platform bootstrap；Stage 7 已接通 Scheduler Runtime、正式 Collection Job Registry/JobWorker 与 TikHub Scope 执行链，Worker 进程的常驻服务管理仍属于后续部署/Release 形态。
-
-Stage 2 CI 使用隔离 PostgreSQL `18.4` 验证真实连接和 readiness。Stage 3A 另有独立 PostgreSQL 18.4 Job 验证 `upgrade head → alembic check → Repository 集成 → downgrade base → upgrade head → alembic check`。这些仍只是开发/CI 基线，不等于生产镜像 variant 或 Release digest 已批准。
-
-### Stage 3A：数据库与基础持久化
-
-- 根目录 `alembic.ini` + `migrations/` 是 Schema 演进入口，API/Worker/Scheduler 不自动迁移；
-- 首条 Revision `20260813_0001` 建立 `artifacts`、`system_settings`、`audit_events`；
-- `aima_ugc.database_schema` 注册当前应用 Table，`Table.info['owner']` 是表写 Owner 机器事实；
-- `artifacts` Owner=`platform`，`system_settings`/`audit_events` Owner=`system`；
-- PostgreSQL Artifact Repository 使用条件更新推进 `pending → stored → linked/error`，非法状态转换关闭失败；
-- System Settings 只保存非敏感 JSON 设置；Audit actor 使用 `system/principal` Provider 中立语义；
-- 当前仍不实现本地登录、Session、飞书/OIDC、具体 Role/Permission Schema、API 幂等 actor 表或自动 Retention 删除。
-
-### Stage 3B：Canonical 数据契约 V1
-
-- `backend/src/aima_ugc/contracts/canonical/` 是 Canonical Pydantic 唯一手写事实源；
-- `contracts/canonical/` 保存确定性生成的 Content/Comment/Aggregate JSON Schema 和固定脱敏示例；
-- 写入原子 Contract 为 `CanonicalContentV1` / `CanonicalCommentV1`，读取完整帖子视图为 `CanonicalContentAggregateV1`；
-- TikHub、官方 API、Apify、自建采集器、文件/历史导入等均是 Canonical 之前的 Provider Adapter；
-- 已批准作者/评论者方案 B：尽量保留平台明确公开的账号 ID、备用 ID、昵称/handle、主页/头像、简介、认证、地区和公开统计；
-- 内容指标覆盖点赞、评论、分享、转发、收藏、浏览/播放、弹幕、投币、下载等；评论覆盖点赞/回复数；`null` 表示未知，`0` 表示明确观察到零；
-- 原子 Observation 使用 `observed_fields` 支持稀疏更新；读取 Aggregate 使用 `comment_coverage` 区分评论抓全、部分、未请求和不可用；
-- 数据库目标是关系化 Current + Version + Metric Observation；整棵帖子评论树只在 Query/Read Model 层组装，本阶段不创建业务表 Migration。
-
-### Stage 4：PostgreSQL Job Runtime
-
-- `backend/src/aima_ugc/platform/jobs/` 提供版本化 Payload Registry、Job 模型和正式 Worker；
-- 第二条 Revision `20260814_0002` 建立 `jobs` 与 `job_attempt_events`，两表 Owner 均为 `platform`；
-- `job_type + internal_idempotency_key` 只表达系统内部幂等，同键异 Payload 关闭失败；
-- PostgreSQL Repository 支持 queued 原子 Claim、Deadline 前过期 Lease 的同 Attempt takeover、Heartbeat、Fencing、进度、重试、取消和 Reaper；
-- Heartbeat 不延长 Attempt Deadline，陈旧 Lease Token 不能续租或提交终态；Attempt 事件只保存 Token SHA-256 指纹；
-- Worker Handler 在数据库事务外执行，Fake Handler 通过同一正式 Worker 入口形成独立验证闭环；
-- `.github/workflows/stage4-job-runtime.yml` 使用 PostgreSQL 18.4 验证 Job Runtime，以及 `base → head` 和上一正式 Revision → head 两条 Migration 路径。
-
-Stage 4 不实现 Scheduler、Provider Request/Raw、Collection/Content 业务表或最终多级预算 Ledger。后续阶段不得为提前实现预算而建立缺少最终外键的临时表。
-
-### Stage 5A：Provider-neutral Request/Attempt 与 Raw Artifact
-
-- `backend/src/aima_ugc/contracts/provider/` 是 Provider Request、Attempt、费用、安全错误和 Raw Envelope 的 Pydantic V1 事实源；
-- `contracts/provider/` 保存确定性生成的 Request、Attempt 和 Raw Envelope JSON Schema；
-- `ProviderClient` 每个 Attempt 最多调用一次注入的 `ProviderTransport`，不隐藏自动网络重试；
-- `FakeProviderTransport` 可验证成功、HTTP 429/5xx、发送前失败和发送结果未知，不访问网络、不需要 Token；
-- `RawArtifactService` 递归脱敏，使用确定性 JSON + gzip，经正式 `ArtifactService + LocalArtifactStore` 保存不可覆盖 Raw，并在回放时重新校验 SHA-256、大小、gzip 和 Contract；
-- 网络结果未知固定记录 `unknown` 费用和 `potential_duplicate_charge`，不承诺零重复计费；
-- `.github/workflows/stage5a-provider-raw.yml` 提供独立 Provider/Raw Contract、测试与质量门禁。
-
-Stage 5A 没有真实 Provider、平台 Operation、Mapper、Provider/Collection 数据库表、预算、Worker 注册或生产 Probe；它的独立 Raw 测试只推进 Artifact 到 `stored`，Stage 5D 的 terminal 短事务再建立 Attempt 引用并标记 `linked`。
-
-### Stage 5B：Collection Run/Scope 父事实
-
-- 第三条 Revision `20260814_0003` 建立 `collection_runs` 与 `collection_scopes`，两表 Owner 均为 `collection`；
-- `collection_runs.job_id` 是 `jobs.id` 的非空唯一外键，一 Job 只能绑定一个 Run；
-- 本阶段只支持 `manual/api/backfill`，不创建无父表支撑的 `manual_plan_id/occurrence_id`，也不接受 `scheduled`；
-- `CollectionExecutionService` 预检触发类型和 Scope 身份重复，`PostgresCollectionRepository` 在调用方持有的事务中原子创建 queued Run/Scopes；
-- Scope 身份由 `(run_id, platform, source_type, source_value, operation_group)` 数据库唯一约束保护；
-- `.github/workflows/stage5b-collection-execution.yml` 使用 PostgreSQL 18.4 验证真实 FK/Unique、Repository、第三条 Migration 和双 downgrade/re-upgrade 路径。
-
-Stage 5B 不实现 Plan/Occurrence/Scheduler、Collection Worker/状态转换、Provider 持久化、预算、真实网络、HTTP API 或前端。Blueprint 尚未冻结 Scope 的完整状态枚举，因此当前数据库不擅自增加白名单；创建入口只写 `queued`。
-
-### Stage 5C：Provider 持久化基础
-
-- 第四条 Revision `20260814_0004` 按最终 Blueprint 字段建立 `provider_requests` 与 `provider_request_attempts`；
-- `provider_requests.scope_id → collection_scopes.id`、`provider_request_attempts.provider_request_id → provider_requests.id` 和可空 `raw_artifact_id → artifacts.id` 都是真实外键；
-- `(scope_id, request_fingerprint)` 保护逻辑 Request 幂等，Repository 校验 Provider Request 的 Run/Platform 与 Scope 父链一致；
-- `ProviderPersistenceService → PostgresProviderRepository` 只创建或读取 `pending` Request，并串行分配未发送、不计费的 `reserved` Attempt；同一 Attempt ID 重放不重复递增；
-- Repository 保持 caller-owned transaction，不提交事务、不执行 Provider 或 Artifact I/O；数据库触发器冻结 Scope、Request 和 Attempt 的关键来源身份；
-- `.github/workflows/stage5c-provider-persistence.yml` 使用 PostgreSQL 18.4 验证最终 FK/Unique/Check/Index/Trigger、并发 Attempt 编号、第四条 Migration 和双 downgrade/re-upgrade 路径。
-
-Stage 5C 不实现 dispatch、网络调用、费用预留或结算、Raw 写入/关联、Artifact `linked`、Job Fencing/CAS、Reconciler、Candidate/Ingestion、HTTP API 或前端。这些执行语义属于 Stage 5D。
-
-### Stage 5D：Provider Dispatch 与崩溃恢复
-
-- `JobExecutionFence` 把当前 Job ID 与 Lease Token 作为内部执行凭证，Token 不进入 Payload、日志或 `repr`；
-- `ProviderDispatchService` 先在短事务中验证 Fence 并 CAS `reserved → dispatching`，再于事务外调用一次正式 Provider Client，最后以短事务提交 terminal 结果；
-- `completed/unknown` 先由正式 Raw/Artifact 链落盘并校验，再一次性关联 Attempt、推进 Artifact `stored → linked`；
-- `ProviderAttemptReconciler` 接管遗留 `dispatching` 时优先恢复确定性路径上的完整 Raw；没有可用 Raw 才保守记为 `unknown`，不复发同一 Attempt；
-- 第五条 Revision `20260814_0005` 固定 Request 状态白名单和 terminal Attempt 的一次性 Raw 关联规则；
-- `.github/workflows/stage5d-provider-dispatch.yml` 使用 PostgreSQL 18.4 验证 Fencing、一次调用、Raw 恢复、无 Raw Reaper 和迁移路径。
-
-Stage 5D 只使用不计费 Attempt 和 Fake Transport，不访问真实 Provider、不产生费用，也不包含预算 Reservation/Settlement、具体平台 Operation、Collection Job Handler、Candidate/Ingestion、HTTP API 或前端。
-
-### Stage 6：小红书 TikHub App V2 端到端纵切
-
-- `adapters/providers/tikhub/operations/xiaohongshu.py` 唯一定义搜索、图文/视频详情、一级/二级评论 App V2 endpoint、参数和分页停止语义；
-- `adapters/providers/tikhub/mappers/xiaohongshu.py` 只把已确认 Raw/上下文映射为 Canonical Content/Comment，不发 HTTP、不读数据库；
-- `collection_candidates/collection_candidate_ingestions` 保存逐项来源和每次摄取结果，数据库 Trigger 禁止 UPDATE/DELETE，成功结果必须关联 Canonical 身份和 Content/Comment 目标；
-- Content Owner 关系表保存 Account、Content/Comment Current、Version、Metric Observation 与评论覆盖，`observed_fields` 控制稀疏更新，允许 `A → B → A` 形成新版本并记录指标下降；
-- `collection.xhs.raw-replay.v1` Job 只接受已完成且 `linked` 的已存 Raw，通过正式 Mapper/Ingestion/Owner Repository 回放，不持有 Provider Client，因而不会为了重试再次调用外部 Provider；
-- `20260814_0006`—`20260814_0009` 建立 Stage 6 表和约束；`.github/workflows/stage6-xhs-vertical-slice.yml` 验证空库、Stage 5D、首条 Stage 6 和上一条 Stage 6 Revision 到 `head` 的升级路径。
-
-Stage 6 没有启用真实 HTTP Transport、预算 Reservation/Settlement、公开 HTTP API 或前端。2026-08-14 的受控真实搜索 Probe 只确认当前 HTTP 200 响应包装、分页会话字段和空页停止结构；实时返回项为空，非空字段映射仍以仓库中的合法脱敏 Fixture 和自动化测试为证据，不能据此宣称详情/评论或生产采集已经验收。
-
-### Stage 7：五平台采集、计划调度与正式 Worker
-
-- 小红书、抖音、微博、B站、快手均通过 TikHub 平台 Operation/Extractor/Mapper 进入同一 Canonical/Content Owner，不建立平台专用业务表；
-- `provider_configs.secret_ref` 固定 Provider 配置与 Secret 边界，Provider Request/Attempt 保存 Billing/成本快照和潜在重复计费审计事实，但当前没有 Budget 发送门禁；
-- Keyword Pack、Collection Plan/Plan Platform、Occurrence 和 `latest_only` Scheduler Runtime 已关系化持久化；
-- `collection.run.v1` 正式链路由 JobWorker 驱动 `CollectionRunExecutor → TikHubCollectionScopeExecutor`，支持 Scope durable checkpoint、终态 Scope 跳过、Provider 可重试错误跨 Job Attempt 恢复；
-- 遗留 `dispatching` Attempt 先由 Reconciler 校验确定性 Raw：完整 Raw 存在时直接恢复并 replay，禁止因 Worker takeover 再次发送同一 Provider 请求；
-- 评论/回复 target 是跨页软目标，当前已经返回的整页全部摄取；评论采集同时记录 complete/partial/not_requested/unavailable Coverage 及 sample/sort/target/stop reason；
-- Account/Content/Comment 首次并发插入由 PostgreSQL 唯一约束 + `ON CONFLICT` 收敛；较旧乱序 Observation 不覆盖较新的 Current，但仍可保留合法历史事实。
-
-Stage 7 的真实 Provider 兼容证据由受控 Probe、合法脱敏 Fixture 与 `docs/blueprint/10`—`12` 维护；一次 HTTP 200 不等于长期稳定性承诺。
-
-### Stage 8A—8E：统一 File Import、采集运行中心、声音广场与 TikHub 补采
-
-- Stage 8A/8B 已把 Excel 主入口接入 Source Artifact、Processing Import Batch、持久化 Import Job、
-  既有 Worker/正式 File Import、全局 Relevance 与 Content Ingestion，并固定 OpenAPI/Orval Client；
-- Stage 8C 已增加 Batch 列表、北京时间 Summary、查询绑定 HMAC Cursor，以及通过
-  Feature API/Pinia/生成 Client 调用的 Vue 采集运行中心；
-- Stage 8D 新增 `/voice-plaza` 声音广场：统一查询 Excel/TikHub 等来源入库的 Content，展示详情、
-  评论 Coverage、当前有效 AI 情感及全部有序一级/二级标签；采集运行中心可按 Batch 跳转查看处理内容；
-- Analysis Result/Label Pair 已独立持久化；页面只在用户显式确认后创建 durable Analysis Job，导入/采集
-  不会自动触发付费模型；
-- Excel 导出由 durable Export Job 冻结 Content ID/Version，复用共享 Exporter，登记 Artifact 后下载；
-  未打标内容不会被丢弃，AI 列为空并计入未打标统计；
-- Stage 8E 在同一采集运行中心集中显示 Excel/TikHub 运行，新增一次性 Discovery 与基于 Import Batch 的
-  详情/评论补采；复用正式 Collection Run/Job、Raw、Mapper、全局 Relevance 与 Fenced Ingestion；
-- 本阶段不包含 Stage 8F Discovery 词包保存、Relevance/Plan 配置页面。
-
-Stage 8C 已由最终 PR Head 21/21 checks、两阶段 Review、正常合并、Change 归档和合并后 `main`
-新鲜 CI 共同闭环，不能由 README 或页面存在单独证明。
-
-## 环境、启动与部署
-
-完整操作说明见 [`docs/环境运行与部署.md`](docs/环境运行与部署.md)。
-
-### Windows x64：推荐一键初始化
-
-首次开发优先直接双击：
+如果你第一次接触这个仓库，不需要先理解所有框架名。先记住这条主线：
 
 ```text
-scripts\setup_dev_environment.cmd
+TikHub / Excel / 其他来源
+→ 保留原始证据
+→ 转成系统统一数据
+→ 去重、保存历史
+→ PostgreSQL
+→ AI 分析 / 查询 / 导出 / 报告
+→ Vue 页面
 ```
 
-它从仓库机器事实读取 Python / Node / npm / uv 目标版本，在中国大陆开发机固定使用清华 TUNA / npmmirror 国内源，并在工具版本满足后执行锁定依赖安装。旧 Python/Node 的主动卸载会先询问，默认保留；镜像失败不会静默切到境外运行时源。
+## 1. 当前已经实现什么
 
-### Stage 2 本地运行配置
+### 数据采集与导入
 
-`env.local.example` 是**示例，不会被代码自动加载**。至少需要给后端进程提供对应的 `AIMA_*` 环境变量，并创建：
+- TikHub 五个平台：小红书、抖音、微博、B站、快手；
+- 定时 Collection Plan + Scheduler；
+- 手工 TikHub 调试入口 `tikhub_test`；
+- Excel 文件正式导入；
+- Excel 离线调试/处理入口 `imports_test`；
+- Provider Raw、Request/Attempt、Candidate、来源追溯。
+
+### 数据存储
+
+- PostgreSQL 18；
+- 账号、内容、评论 Current；
+- 内容/评论版本历史；
+- 点赞、评论、播放等 Metric Observation；
+- Processing Import Batch；
+- 持久化 Job；
+- Analysis 和正式 Excel Export 业务表。
+
+### 业务处理
+
+- 统一 Relevance Keyword Pack；
+- AI Semantic Relevance；
+- 发声类型 `voice_type`；
+- 情感；
+- 一级/二级舆情标签；
+- 正式 Excel Export；
+- 离线 `report.md + report.docx` 舆情报告。
+
+### 前端
+
+当前已经有正式业务页面/Feature，包括：
 
 ```text
-<AIMA_SECRET_DIR>/postgres_password
-<AIMA_SECRET_DIR>/import_batch_cursor_signing_key
-<AIMA_SECRET_DIR>/content_cursor_signing_key
-<AIMA_SECRET_DIR>/collection_runtime_cursor_signing_key
+analysis
+export
+import-excel
+jobs
+keyword-planning
+overview
+providers
+runs
+settings
+voice-plaza
 ```
 
-三个 Cursor Key 分别用于 Import Batch、声音广场与 Excel/TikHub 统一运行查询，均至少 32 个 UTF-8
-字节且不得与数据库密码或彼此复用。启用真实 AI 分析时还需提供 `<AIMA_SECRET_DIR>/llm_api_key`，并显式配置
-`AIMA_LLM_BASE_URL`、`AIMA_LLM_MODEL`；`AIMA_LLM_PROVIDER_NAME` 可覆盖由 Base URL 推导的稳定 Provider 名。
+所以当前前端**不是只有 health demo**。
 
-默认本地目录为：
+## 2. 当前还没有完成什么
+
+以下能力仍不能写成已实现：
+
+- 企业登录/正式认证授权；
+- 完整离线生产 Release 闭环；
+- PostgreSQL + Artifact 协调 Backup/Restore 写屏障；
+- Stage 9 中尚未正式开发的 Monitoring 业务，例如告警、VOC/工单等。
+
+当前 Stage 1—7、临时 P1、Stage 8A—8F 已闭环；下一正式方向是 **Stage 9 Analysis and Monitoring**。
+
+Stage 名称只是开发导航。某个功能是否真的存在，仍要看当前代码、Migration、Contract 和测试。
+
+## 3. 一条数据怎样进入系统
+
+### TikHub 正式采集
 
 ```text
-.runtime/data
-.runtime/logs
-.runtime/secrets
+Collection Plan / Run / Scope
+→ Provider Request / Attempt
+→ Raw Artifact
+→ Candidate
+→ Mapper
+→ Canonical
+→ Relevance
+→ Ingestion
+→ Content Owner
+→ PostgreSQL
 ```
 
-`.runtime/` 已被 Git 忽略。具体 PostgreSQL 准备和 Windows / PowerShell 注入方式见运行文档。
+### Excel 正式导入
 
-## 本地启动
+```text
+Input Artifact
+→ Processing Import Batch
+→ Provider Request / Attempt
+→ Excel Reader / Mapper
+→ Canonical
+→ Relevance
+→ 同一个 Ingestion / Content Owner
+→ PostgreSQL
+```
 
-使用两个终端，均从仓库根执行。
+两种入口在 Canonical 之后共享同一套业务去重、版本和指标历史逻辑。
 
-终端 1：
+更详细的白话说明见 [`docs/appendix/数据入口与统一入库.md`](docs/appendix/数据入口与统一入库.md)。
+
+## 4. 为什么有 Raw、Canonical 和 Ingestion
+
+### Raw
+
+保存第三方当时真实返回的原始证据。Mapper 写错时可以重新回放，不需要重新付费调用 Provider。
+
+### Canonical
+
+把“小红书字段、抖音字段、Excel 列”转换成系统统一语言。
+
+### Ingestion
+
+负责真正写数据库：
+
+- 同一内容身份去重；
+- Current 更新；
+- Version；
+- Metric Observation；
+- 来源关系；
+- 字段 freshness。
+
+因此 Provider 不能直接写 `contents`，Mapper 也不能自己查数据库判断重复。
+
+## 5. 为什么耗时任务要走 Job
+
+Excel 导入、TikHub 采集、AI、导出都可能运行很久。
+
+当前使用 PostgreSQL 持久 Job：
+
+```text
+API 创建 Job
+→ 立即返回
+→ Worker 后台认领
+→ Lease / Heartbeat / Deadline / Fencing
+→ 更新进度和结果
+```
+
+即使浏览器关闭或 Worker 重启，任务事实仍在数据库里。
+
+Scheduler 只负责把到期计划变成 Occurrence/Run/Job，不直接请求 TikHub。
+
+## 6. AI 当前怎么工作
+
+当前 Content Labeling V3 一次模型调用完成：
+
+```text
+relevance
+voice_type
+sentiment
+labels
+```
+
+`voice_type` 是发声类型唯一业务事实：
+
+```text
+professional_media
+influencer_self_media
+ordinary_user
+```
+
+不再同时保存一个重复的“是否真实用户发声”布尔字段。
+
+完整 taxonomy / Prompt 的唯一业务事实源：
+
+```text
+backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md
+```
+
+白话说明见 [`docs/appendix/AI舆情分析与打标.md`](docs/appendix/AI舆情分析与打标.md)。
+
+## 7. 文档应该怎么找
+
+### 第一次进入仓库
+
+按顺序读：
+
+1. [`AGENTS.md`](AGENTS.md) — 所有开发和 Agent 的统一规则；
+2. [`.agents/skills/reliable-vibe-coding/SKILL.md`](.agents/skills/reliable-vibe-coding/SKILL.md) — 任务分级、Change、开发和验证流程；
+3. [`docs/blueprint/README.md`](docs/blueprint/README.md) — 核心架构导航；
+4. [`docs/blueprint/07-技术决策与实施门禁.md`](docs/blueprint/07-技术决策与实施门禁.md) — 已确认的跨模块决定；
+5. 再按任务读取对应模块、Contract、Migration、实现和测试。
+
+### 文档分层
+
+```text
+docs/blueprint/
+→ 长期架构：为什么这样设计
+
+模块 README
+→ 当前代码：具体在哪里、怎么实现
+
+docs/appendix/
+→ 专题细节：SQL、Scheduler、TikHub、Excel、AI、Word 报告
+
+docs/guides/
+→ 开发工作流：例如 Figma
+
+docs/collection/
+→ 五个平台当前采集实现
+
+代码 / Contract / Migration / generated / tests / locks
+→ 精确机器事实
+
+changes/archive/
+→ 历史为什么改过
+```
+
+## 8. 常用专题入口
+
+| 想解决的问题 | 文档 |
+| --- | --- |
+| 看整体架构 | [`docs/blueprint/01-总体架构与技术选型.md`](docs/blueprint/01-总体架构与技术选型.md) |
+| 理解 Raw / Mapper / Canonical / Ingestion | [`docs/blueprint/02-采集系统与数据标准化.md`](docs/blueprint/02-采集系统与数据标准化.md) |
+| 理解数据库设计 | [`docs/blueprint/03-数据库与文件存储.md`](docs/blueprint/03-数据库与文件存储.md) |
+| API / Job / 前端怎么协作 | [`docs/blueprint/04-后端任务API与前端.md`](docs/blueprint/04-后端任务API与前端.md) |
+| 日志、安全、部署 | [`docs/blueprint/05-日志安全部署与运维.md`](docs/blueprint/05-日志安全部署与运维.md) |
+| 开发、测试、CI、Git | [`docs/blueprint/06-开发约束与分阶段实施.md`](docs/blueprint/06-开发约束与分阶段实施.md) |
+| 当前已确认硬决定 | [`docs/blueprint/07-技术决策与实施门禁.md`](docs/blueprint/07-技术决策与实施门禁.md) |
+| 采集策略/Provider/评论 | [`docs/blueprint/08-采集策略与平台能力.md`](docs/blueprint/08-采集策略与平台能力.md) |
+| PostgreSQL 查询/调试 | [`docs/appendix/PostgreSQL调试与常用SQL.md`](docs/appendix/PostgreSQL调试与常用SQL.md) |
+| Scheduler 恢复 | [`docs/appendix/Scheduler运行与恢复.md`](docs/appendix/Scheduler运行与恢复.md) |
+| TikHub 真实响应 | [`docs/appendix/TikHub真实响应结构.md`](docs/appendix/TikHub真实响应结构.md) |
+| TikHub 接口选型 | [`docs/appendix/TikHub接口验证与选型台账.md`](docs/appendix/TikHub接口验证与选型台账.md) |
+| Excel 导入/导出/离线处理 | [`docs/appendix/Excel导入导出与离线处理.md`](docs/appendix/Excel导入导出与离线处理.md) |
+| AI 打标 | [`docs/appendix/AI舆情分析与打标.md`](docs/appendix/AI舆情分析与打标.md) |
+| Word 舆情报告 | [`docs/appendix/Word舆情报告.md`](docs/appendix/Word舆情报告.md) |
+| Figma 工作流 | [`docs/guides/前端与Figma工作流.md`](docs/guides/前端与Figma工作流.md) |
+| HTTP API | [`docs/API接口说明.md`](docs/API接口说明.md) |
+| 测试与调试 | [`docs/测试与调试说明.md`](docs/测试与调试说明.md) |
+| 环境与部署 | [`docs/环境运行与部署.md`](docs/环境运行与部署.md) |
+
+## 9. 仓库目录
+
+```text
+AIMA_UGC/
+├─ AGENTS.md
+├─ pyproject.toml
+├─ uv.lock
+├─ backend/src/aima_ugc/
+│  ├─ entrypoints/      进程/API入口
+│  ├─ bootstrap/        生产装配
+│  ├─ modules/          业务模块
+│  ├─ platform/         Job/Artifact/日志/数据库等基础设施
+│  ├─ adapters/         Provider/PostgreSQL 等外部实现
+│  └─ contracts/        手写 Pydantic 契约
+├─ frontend/src/
+│  ├─ app/
+│  ├─ pages/
+│  ├─ features/
+│  ├─ shared/
+│  └─ generated/api/
+├─ migrations/versions/
+├─ contracts/
+├─ tests/
+├─ scripts/
+├─ docs/
+│  ├─ blueprint/
+│  ├─ appendix/
+│  ├─ guides/
+│  └─ collection/
+└─ changes/
+```
+
+## 10. 本地开发
+
+本地配置模板：
+
+```text
+env.local.example
+```
+
+其中只放非敏感配置。PostgreSQL 密码、LLM API Key、Cursor signing key 等 Secret 通过 `AIMA_SECRET_DIR` 下的只读文件提供，不提交 Git。
+
+详细安装、Windows 一键初始化、本地 API/Vite/PostgreSQL 启动方式见：
+
+[`docs/环境运行与部署.md`](docs/环境运行与部署.md)
+
+不要从 README 复制旧版本号或旧命令；实际版本由：
+
+```text
+.python-version
+.node-version
+.uv-version
+pyproject.toml
+uv.lock
+frontend/package.json
+frontend/package-lock.json
+```
+
+维护。
+
+## 11. 测试与质量门禁
+
+仓库已有后端 Unit/Contract/API/Integration、PostgreSQL Migration、前端 Unit/E2E、架构检查、表 Owner 检查、Secret 扫描和文档检查。
+
+常用入口：
 
 ```bash
-uv run uvicorn aima_ugc.entrypoints.api_main:app --host 127.0.0.1 --port 8090 --reload --reload-dir backend/src
-```
-
-终端 2：
-
-```bash
-npm --prefix frontend run dev
-```
-
-浏览器入口：
-
-```text
-http://127.0.0.1:5173/
-```
-
-存活检查不依赖数据库：
-
-```text
-http://127.0.0.1:8090/health/live
-```
-
-依赖就绪检查：
-
-```text
-http://127.0.0.1:8090/health/ready
-```
-
-`/health/ready` 只有在 PostgreSQL、Artifact 目录和日志目录都可用时返回 200；否则返回 503。
-
-前端 Vite 继续把 `/health` 与 `/api` 代理到本地 FastAPI。两个服务启动后可以运行：
-
-```bash
-uv run python scripts/dev/check_local_stack.py
-```
-
-该 smoke 仍只验证 Stage 1 的前后端启动/代理；Stage 2 的 PostgreSQL/readiness 真实验证由 CI 的 `Stage 2 Platform` Job 负责。
-
-## 核心质量检查
-
-```bash
-uv lock --check
-uv run python -c "import aima_ugc"
 uv run ruff format --check backend tests scripts
 uv run ruff check backend tests scripts
 uv run mypy backend/src
 uv run pytest tests/unit -q
 uv run pytest tests/contracts -q
 uv run pytest tests/api -q
-uv run python scripts/contracts/generate.py --check
-uv run python scripts/contracts/check_compatibility.py
-uv run python scripts/quality/check_architecture.py
-uv run python scripts/quality/check_table_ownership.py
-uv run python scripts/quality/scan_secrets.py
-uv run python scripts/quality/check_docs.py
-npm --prefix frontend audit --omit=dev --audit-level=high
-npm --prefix frontend audit --audit-level=high
-npm --prefix frontend run lint
-npm --prefix frontend run typecheck
-npm --prefix frontend run test -- --run
-npm --prefix frontend run build
+python scripts/quality/check_architecture.py
+python scripts/quality/check_table_ownership.py
+python scripts/quality/scan_secrets.py
+python scripts/quality/check_docs.py
 ```
 
-Platform 单元测试可独立运行：
+前端准确命令以 `frontend/package.json` 为准。
 
-```bash
-uv run pytest tests/unit/platform -q
-```
+任何“完成、修复、可合并”的结论都必须基于当前分支最新代码的实际验证结果，不能复用旧 CI 结论。
 
-Job Registry 与正式 Worker 的纯逻辑测试可独立运行：
+## 12. 当前关键边界
 
-```bash
-uv run pytest tests/unit/jobs -q
-```
+### 数据库
 
-Provider Client、Fake Transport、Raw Artifact 与 Provider Contract 可独立运行且不需要数据库：
+- PostgreSQL 是唯一业务事实库；
+- 一个表只有一个写 Owner；
+- 正式结构变化用 Alembic；
+- 不用文档维护第二套 DDL。
 
-```bash
-uv run pytest tests/unit/collection tests/integration/collection/test_raw_artifact.py tests/contracts/test_provider_v1.py -q
-uv run pytest tests/unit/content tests/integration/content -q
-```
+### Provider
 
-Collection Run/Scope Repository 需要隔离 PostgreSQL 18、对应 `AIMA_*` / Secret 配置和最新 Migration：
+- Provider 不直接写业务表；
+- 一个 Attempt 最多一次真实发送；
+- 完整 Raw 存在时优先 replay；
+- 当前不自动跨 TikHub API family fallback。
 
-```bash
-uv run alembic upgrade head
-uv run pytest tests/integration/collection/test_collection_repository.py -q
-uv run pytest tests/integration/collection/test_provider_repository.py -q
-uv run pytest tests/integration/collection/test_provider_dispatch.py -q
-```
+### 预算
 
-`tests/integration/collection/test_raw_artifact.py` 使用隔离目录、正式 ArtifactService 和 Local ArtifactStore，不访问网络或数据库；同目录的 Repository/Dispatch 测试和 `tests/integration/content/` 使用真实 PostgreSQL。普通本地机器不要在未准备数据库时机械执行数据库测试。Job Runtime、Collection 父事实、Provider 持久化、Dispatch/恢复、Content/Ingestion、五平台规范化与 Scheduler 的完整回归分别由 Stage 4/5/6/7 正式 Workflow 维护；Collection 恢复、Coverage、Provider retry 和 Content 并发/乱序回归也包含在对应 PostgreSQL Integration 中。统一测试入口见 [`docs/测试与调试说明.md`](docs/测试与调试说明.md)。
+Provider 和 LLM 都可以记录费用事实，但当前没有请求次数/金额 Budget Guard。
 
-修改 HTTP Contract 后，先重新生成固定 OpenAPI 和前端 Client，再提交生成物：
+### 认证
 
-```bash
-uv run python scripts/contracts/generate.py
-npm --prefix frontend run generate:api
-```
+正式企业认证尚未完成，不能把当前业务 API 直接描述成已具备公网生产权限控制。
 
-## 系统目标架构
+### 发布与恢复
 
-系统采用模块化单体，API、Worker、Scheduler 和 Migration 分进程运行。核心数据链路固定为：
+完整离线 Release 和 PostgreSQL + Artifact 协调 Backup/Restore 尚未闭环。
+
+## 13. 文档与代码冲突怎么办
+
+不要简单“以文档为准”或“以代码为准”。
 
 ```text
-TikHub / 官方 API / Apify / 自建采集器 / 文件导入 / 其他 Provider
-→ 不可变 Raw Artifact
-→ 对应 Mapper
-→ Canonical Contract
-→ Ingestion Service
-→ Owner Repository
-→ PostgreSQL
-→ Query Repository / Read Model
-→ API / Analysis / Monitoring / Reporting
+先读当前代码 / Contract / Migration / 测试
+→ 再看已批准决策
+→ 判断是代码偏离设计，还是文档过期
+→ 同一任务修正正确的一方
 ```
 
-主要技术基线：
-
-- Python 3.14 + FastAPI + Pydantic 2 + SQLAlchemy 2 + Alembic + psycopg 3；
-- 根目录唯一 Python/uv 工程，Python 源码位于 `backend/src/aima_ugc/`；
-- PostgreSQL 18 作为业务事实库和当前规模的持久化 Job 基础设施；
-- Vue 3 + TypeScript + Vite + Pinia；
-- Pydantic → OpenAPI/JSON Schema → TypeScript Client；
-- Local ArtifactStore 为默认字节存储，可在真实需求出现后替换为 S3 类实现；
-- Docker Compose 离线 Release，生产服务器不现场 `git pull` 或构建。
-
-完整架构与目录目标见 [`docs/blueprint/01-总体架构与技术选型.md`](docs/blueprint/01-总体架构与技术选型.md)。
-
-## 下一阶段
-
-下一正式最小开发单元是 **Stage 8F：Keyword / Plan / Stage 8 Integration**。开始前仍须从当时最新
-`main` 重新确认 Blueprint、Contract、Migration、OpenAPI/Orval、Content/Collection Runtime、Active Change、
-相关 PR 和 CI，不能仅凭本 README 判断阶段状态。
-
-```text
-Stage 8E 统一运行中心 / 一次性 Discovery / Batch 补采已闭环
-→ Stage 8F 保存 Discovery 词包并产品化 Keyword / Relevance / Collection Plan 配置
-→ 保持 Discovery 与全局 Relevance 语义分离
-→ 完成 Stage 8 跨页面集成，不扩入 Release 或认证阶段
-```
-
-具体成功标准、范围和非目标以
-[`docs/blueprint/17-Stage8数据入口统一入库与业务前端实施.md`](docs/blueprint/17-Stage8数据入口统一入库与业务前端实施.md)
-为准；Stage 8F 不得静默发明认证、权限、Provider Secret 写入或自动付费采集语义。
-
-## 多人协作
-
-行为变化、新功能、多文件修改和高风险任务按 Skill 使用 `changes/active/<change-id>/CHANGE.md` 记录 Owner、分支、影响路径、Contract、数据变化和依赖；共享 Contract、Schema、Migration 和数据语义必须有明确 Owner，不允许多个分支分别猜测同一公共语义。
-
-Git 和 CI 的具体要求以 `AGENTS.md`、Skill 和 `06` 为准。没有本轮实际执行的验证证据，不得宣称功能完成、测试通过或可发布。
-
-## Blueprint 导航
-
-所有领域设计入口见 [`docs/blueprint/README.md`](docs/blueprint/README.md)。
-
-唯一初始化版本快照、Stage 1 工具链、Stage 2 Platform、Stage 3A 数据库基础、Stage 4 Job Runtime、Stage 5A—5D 和 Stage 6 已确认决策见 [`docs/blueprint/07-技术决策与实施门禁.md`](docs/blueprint/07-技术决策与实施门禁.md)。
+旧聊天、模型记忆和历史 Stage 文档不能替代当前仓库事实。
