@@ -1,79 +1,78 @@
-# 统一数据 Excel 导出与调试复用
+# Excel 统一数据导出与离线调试
 
-## 1. 定位
+本文解释 AIMA_UGC 为什么只有一套 Provider-neutral Excel 数据明细格式，以及：
 
-本设计负责**帖子/评论数据明细 Excel 的唯一公共数据契约与共享导出实现**。它不是 Provider Raw、Canonical 持久化格式，也不是管理层分析报告或 Report Renderer。
+- 正式 PostgreSQL Export；
+- `imports_test` 离线输出；
+- TikHub 调试输出；
 
-长期数据方向：
+怎样复用同一个共享 Exporter，而不是各写一套 Workbook。
 
-```text
-Provider Raw / 文件输入 / PostgreSQL Read Model
-→ Provider-neutral UnifiedContentRecordV1 / Export Read Model
-→ UnifiedDataExcelV1
-→ 唯一共享 Excel Exporter
-→ 受控展示投影
-→ .xlsx
-```
-
-分析结果可以作为可选结构化列进入数据明细 Excel，但数据明细和分析报告继续是不同产物：
+当前机器入口：
 
 ```text
-数据明细 Excel
-= 内容/评论事实 + 可选结构化标签
+统一 Excel Contract
+→ backend/src/aima_ugc/contracts/export/models.py
 
-Report
-= 趋势、统计、图表、结论、解释和管理层汇报
+共享 Exporter
+→ backend/src/aima_ugc/platform/export/excel.py
+
+正式 PostgreSQL Export
+→ backend/src/aima_ugc/modules/reporting/
+→ backend/src/aima_ugc/bootstrap/reporting_http.py
+→ backend/src/aima_ugc/bootstrap/export_worker.py
+
+离线 imports_test
+→ backend/src/aima_ugc/adapters/providers/imports_test/
 ```
 
-## 2. 数据契约与展示列是两层概念
+---
 
-系统长期只维护一个 Provider-neutral Excel 输入契约：
+## 1. 为什么需要统一 Excel Contract
+
+如果每个平台自己输出：
+
+```text
+xiaohongshu.xlsx
+ douyin.xlsx
+weibo.xlsx
+```
+
+并各自定义字段，后续：
+
+- AI 列无法统一；
+- 报告要写五套 Reader；
+- 前端/人工审阅对字段理解不一致；
+- 平台新增/切换 Provider 会影响整个下游。
+
+所以当前先统一成：
 
 ```text
 UnifiedDataExcelV1
 ```
 
-TikHub、小红书、抖音、微博、B站、快手、文件导入或未来其他 Provider 都不能各自定义新的 Excel 业务字段。平台/Provider 差异必须在 Mapper/Canonical 或批准的 Export Read Model 之前解决；共享 Exporter 只消费 Provider-neutral 数据。
+精确定义：
 
-**数据契约完整字段不等于每次人工查看都必须显示所有列。**
-
-共享 Exporter 允许调用方分别为三个 Sheet 提供有序列名序列，从各 Sheet **已经存在的共享列**中选择最终显示哪些列以及列顺序：
-
-```python
-content_columns = (
-    "平台",
-    "标题",
-    "正文",
-    "情感标签",
-)
-
-label_detail_columns = (
-    "一级标签",
-    "二级标签",
-    "标题",
-)
-
-comment_columns = (
-    "平台",
-    "评论内容",
-    "评论时间",
-)
+```text
+backend/src/aima_ugc/contracts/export/models.py
 ```
 
-规则固定为：
+它由：
 
-- `content_columns`、`label_detail_columns`、`comment_columns` 分别控制“内容”“标签明细”“评论”Sheet；
-- 任一参数不传：该 Sheet 输出当前完整默认列，保持既有调用方行为；
-- 传入配置：只显示配置中的已知列，顺序与配置完全一致；
-- 空配置、重复列、未知列直接拒绝；
-- 列投影只影响最终视图，不删除 `UnifiedDataExcelV1` 中的数据；
-- 调用方不能通过这些配置新增自定义列名、公式列、私有字段或第二套字段语义。
+```text
+UnifiedDataExcelContentV1
+UnifiedDataExcelCommentV1
+UnifiedDataExcelAnalysisV1
+UnifiedDataExcelLabelPairV1
+```
 
-因此“选择显示列”是 Viewer/Exporter 层能力，不反向改变 Canonical、Analysis 或数据库 Schema。
+组成。
 
-## 3. 当前共享 Workbook 字段
+这些 Model `extra="forbid"`，调用方不能随便塞私有字段形成第二套 Workbook Schema。
 
-Workbook 固定三个 Sheet：
+---
+
+## 2. 当前 Workbook 固定三张 Sheet
 
 ```text
 内容
@@ -81,7 +80,15 @@ Workbook 固定三个 Sheet：
 评论
 ```
 
-当前完整内容列为：
+共享实现：
+
+```text
+backend/src/aima_ugc/platform/export/excel.py
+```
+
+### 2.1 内容 Sheet
+
+当前完整默认列由 `_CONTENT_HEADERS` 定义：
 
 ```text
 平台
@@ -120,7 +127,11 @@ Raw/来源定位
 评论覆盖
 ```
 
-当前完整标签明细列为：
+精确顺序直接看 `_CONTENT_HEADERS`，文档只用于人类快速理解。
+
+### 2.2 标签明细 Sheet
+
+默认：
 
 ```text
 内容ID
@@ -132,7 +143,22 @@ Raw/来源定位
 内容链接
 ```
 
-当前评论列为：
+一条 Content 可以有多个合法标签对：
+
+```text
+内容 Sheet
+→ 一条 Content 一行
+→ 一级/二级标签单元格按同一标签对顺序换行
+
+标签明细 Sheet
+→ 一个标签对一行
+```
+
+这样既适合人工快速看内容，又适合 Excel 透视/筛选标签关系。
+
+### 2.3 评论 Sheet
+
+默认：
 
 ```text
 平台
@@ -150,158 +176,27 @@ Raw/来源定位
 Raw/来源定位
 ```
 
-“标签明细”允许选择全部内容共享列；其中“一级标签”“二级标签”替换为当前展开标签对，其他列来自同一个归一化内容记录。“评论”允许选择上述评论列，也允许选择对应归一化内容的共享列；重名列保持既有评论语义，`作者`、`来源Provider`、`Raw/来源定位` 分别表示评论作者和评论来源，`平台`、`内容ID` 是两者共享的稳定关联。
-
-外部 ID 一律按文本写入；一级/二级评论关系必须保留稳定 comment/root/parent ID，不能依赖 Excel 行位置猜关系。
-Excel 的“内容ID”来自归一化记录的 `external_content_id`，不是导出器临时生成的内部 UUID；隐藏该列只改变展示，不改变内容、标签和评论的归一化关联。
-
-“平台”列同样属于受控展示投影。Canonical、`UnifiedDataExcelV1` 输入记录和数据库继续使用
-英文稳定平台 ID；共享 Exporter 把当前已知的 `xiaohongshu`、`douyin`、`weibo`、
-`bilibili`、`kuaishou` 分别显示为“小红书”“抖音”“微博”“哔哩哔哩”“快手”。
-三个 Sheet 复用同一映射，未知平台保持原值。该规则不修改输入 Contract、关联键或上游数据。
-
-### 3.1 源 Excel 表头和 Sheet 发现边界
-
-`aima-monitoring-excel.v1` 只把下列源表头作为 Sheet 必需列：
+评论和内容通过稳定：
 
 ```text
-媒体名称（中文）  -> 平台
-标题              -> 标题
-内文              -> 正文
-作者              -> 作者
-出版日期          -> 发布时间
-原文链接          -> 内容链接
+platform
+external_content_id
 ```
 
-表头校验只判断第一行的精确列名是否存在；不要求序号、监测项名称、文章编号、版面、媒体类型、全文情感或粉丝数等其他列，也不将额外列视为错误。无关列重名也不阻断导入；只有上述 6 个必需列自身重名时，才会因映射语义歧义拒绝。“文章编号”和“粉丝数”存在时 Mapper 仍可使用，但不影响 Sheet 资格。列名存在不等于强制该列每个单元格非空；每行平台和稳定内容身份等仍按 Mapper 现有规则 fail closed。
+关联，不依赖 Excel 行号。
 
-`sheet_name=None` 时 Reader 扫描全部 Sheet：符合要求的“文章”优先，否则选择唯一符合的 Sheet；多个非默认候选时拒绝猜测并要求显式指定。传入具体 Sheet 名时只读取该页，不静默切换。Reader 会在 `read_only=True` 流式读取前重置来源文件不可信的 Worksheet dimension，避免实际多列文件因元数据误写为 `A1:A1` 而只读取 A 列。字体、字号、颜色、边框等视觉样式不进入 Reader/Mapper 校验边界。
+---
 
-## 4. AI 标签列
+## 3. `UnifiedDataExcelV1` 和 Workbook 展示列不是一回事
 
-平台通用 AI 标签 Contract 由 [`15-舆情AI打标与统一分析契约.md`](15-舆情AI打标与统一分析契约.md) 维护。
-
-共享内容视图支持以下 Analysis 列：
-
-```text
-发声类型
-情感标签
-一级标签
-二级标签
-分析模型
-Prompt版本
-Taxonomy版本
-```
-
-其中：
-
-- “相关性”不进入 Excel 展示列。离线打标已从最终 `deduplicated/contents.jsonl` 删除 `irrelevant` 内容；正式查询型导出同样默认排除当前分析判定的无关内容，因此导出表不重复展示恒为 relevant 的字段；
-- `voice_type` 在 Contract/数据库中保持稳定英文枚举，Excel 仅做中文展示映射：`user_voice → 真实用户发声`、`creator_marketing → 达人/创作者营销`、`brand_official → 品牌官方传播`、`dealer_promotion → 经销商/门店推广`、`media_information → 媒体/资讯转载`、`other_organization → 其他机构传播`、`unknown → 无法判断`；
-- `voice_type` 是发声类型唯一业务事实；Excel 只展示“发声类型”这一列，需要筛选真实用户发声时直接使用 `voice_type = user_voice`；
-- 情感标签仍为单值；一级/二级标签由 Analysis 的一个或多个合法标签对投影；
-- `内容` Sheet 保持一条内容一行，一级和二级单元格按同一标签对顺序用换行符逐行展示，两个单元格行与行对应；
-- `标签明细` Sheet 直接从同一个归一化 `UnifiedContentRecordV1` 的内容事实和 Analysis 标签对派生，一个标签对一行；完整默认列为内容ID、平台、标题、情感、一级、二级、内容链接，同一内容因此可以在标签明细中出现多行，但不会在内容 Sheet 重复；
-- 没有合法 Analysis 时内容标签列保持为空，标签明细只保留表头，不用源 Excel 的“全文情感”或其他上游标签填充；
-- 是否显示某列分别由三个 Sheet 的列配置决定，但不改变 Analysis 数据或内容、标签、评论的关联。
-
-## 5. raw 与 labeled 使用同一展示配置
-
-原始人工审阅和打标后视图不能维护两套 Workbook 代码。
-
-同一次调用场景下，raw/labeled 必须使用同一个：
-
-```text
-三个 Sheet 定义
-content_columns
-label_detail_columns
-comment_columns
-列顺序
-公共样式
-数据安全规则
-```
-
-区别只在：
-
-```text
-raw
-→ include_analysis = false
-→ Analysis 列即使被选择也留空
-
-labeled
-→ include_analysis = true
-→ 从 UnifiedContentRecordV1.analysis 填入合法 Analysis 值
-```
-
-`imports_test` 当前默认内容视图为：
-
-```text
-平台
-标题
-正文
-作者
-发布时间
-内容链接
-命中关键词
-发声类型
-情感标签
-一级标签
-二级标签
-```
-
-这是该人工入口的**默认展示配置**，不是 `UnifiedDataExcelV1` 的字段裁剪，也不改变 TikHub 或未来正式导出在未传配置时的完整默认视图。
-
-## 6. 同源 JSONL 闭环
-
-文件处理链继续保持：
-
-```text
-source.xlsx
-→ canonical/contents.jsonl
-→ filtered/contents.jsonl
-→ deduplicated/contents.jsonl（UnifiedContentRecordV1，analysis 初始为空）
-→ AI 打标（同一次 LLM 调用完成 relevance + voice_type + sentiment + labels）
-→ 原子回写同一个 deduplicated/contents.jsonl（relevant 写回 Analysis；irrelevant 行删除）
-→ shared Excel Exporter
-```
-
-模型成功结果可以先写：
-
-```text
-analysis/checkpoints.jsonl
-```
-
-用于恢复、费用安全和审计，但 checkpoint 不是下游业务事实源；成功 Analysis 必须回写原 `deduplicated/contents.jsonl`。
-
-最终 Excel 只读取这份统一 JSONL，不再 join 第二份业务 Analysis 文件，也不从 Excel 回读进入关键词、去重、AI 或数据库流程。Report Renderer 可以把最终 Excel 当作**只读派生视图输入**，但不得把报告统计反写为上游业务事实。
-
-## 7. 唯一共享 Exporter
-
-共享实现固定在：
-
-```text
-backend/src/aima_ugc/platform/export/excel.py
-```
-
-调用关系：
-
-```text
-tikhub_test ─────────────┐
-imports_test ────────────┼→ platform/export/excel.py
-Stage 8D durable Export ─┘
-```
+Contract 保存统一业务投影；Excel 列配置只是**展示投影**。
 
 共享入口：
 
 ```python
 export_unified_data_excel(
-    ...,
-    include_analysis=...,
-    content_columns=...,
-    label_detail_columns=...,
-    comment_columns=...,
-)
-export_unified_content_jsonl_to_excel(
-    ...,
+    records,
+    output_path,
     include_analysis=...,
     content_columns=...,
     label_detail_columns=...,
@@ -309,412 +204,610 @@ export_unified_content_jsonl_to_excel(
 )
 ```
 
-三个列参数都是可选展示参数；`None` 表示对应 Sheet 的完整默认列。
-
-调用方可以做的只有：
-
-- 选择共享 Exporter 为对应 Sheet 定义的已知列；
-- 调整这些已知列的顺序；
-- 决定是否填充 Analysis。
-
-调用方不得复制或自行维护：
-
-- Workbook 创建/保存；
-- 自定义新字段或平行列字典；
-- ID 文本格式；
-- URL/超链接；
-- Formula Injection 防护；
-- 时间显示；
-- 字体、填充、列宽、行高、冻结窗格、筛选等公共样式；
-- 大文件写出策略；
-- 导出后重新打开校验。
-
-如果未来 Architecture Check 证明共享实现目录需要调整，可以通过独立 Change 最小迁移；**一个 Provider-neutral 数据契约 + 一个共享 Exporter** 的边界不变。
-
-## 8. 公共 Excel 样式
-
-当前共享样式参考业务 Excel `文章` Sheet 的稳定视觉规则，并直接固化为代码；运行时不依赖本地模板文件。
-
-固定规则：
+三个列参数：
 
 ```text
-冻结首行                    A2
-自动筛选                    首行到实际数据区
-显示网格线                  是
-合并单元格                  否
-表头填充                    #FFC000
-表头字体                    Calibri 11pt bold
-正文字体                    Calibri 11pt
-表头行高                    16.5
-正文默认行高                14.5
-二级标签自适应行高          14.5 到 409
-页面方向                    portrait
-左右页边距                  0.7
-上下页边距                  0.75
-页眉/页脚边距               0.3
-HTTP(S) 链接                可点击 Hyperlink
+None
+→ 使用该 Sheet 默认完整列
+
+传入有序列名序列
+→ 只输出这些已知列
+→ 顺序按传入值
 ```
 
-当“内容”或“标签明细”Sheet 显示“二级标签”列时，导出器按该单元格的显式换行和中文/东亚字符显示宽度估算实际行数，以每行 14.5 磅设置确定性行高，并限制在 Excel 的 409 磅上限内；该单元格启用自动换行。隐藏“二级标签”时不设置数据行高度，“评论”Sheet 不参与该规则。该计算在流式写出当前行时完成，不扫描全表，也不二次重写 Workbook。
+当前 `_resolve_columns()` 会拒绝：
 
-列宽使用按字段语义固定的有界宽度，例如：
+- 单个字符串冒充序列；
+- 空列配置；
+- 重复列；
+- 未知列。
+
+所以调用方可以：
 
 ```text
-标题/正文/Raw定位           50
-内容ID/来源项ID/URL/Hash    34
-作者/关键词/一级标签等      20 左右
-时间/数值/情感标签          12 左右
-平台/Provider               15
+选列
+调顺序
 ```
 
-不扫描全部数据自动计算列宽，因为对约 9 万行数据没有必要，会增加额外时间和内存成本。
+但不能：
 
-样式属于共享 Exporter；调用方不得为了“看起来不一样”在导出后再次打开 Workbook 做第二次格式化。
+```text
+自己新增“平台私有列”
+自己改列语义
+自己再维护一份表头字典
+```
 
-## 9. 大文件实现规则
+---
 
-仓库继续锁定 openpyxl。现有 90,000 × 13 测量已证明当前方案在既定规模下能够正确完成且无 OOM 证据，因此不新增 pandas。
+## 4. Canonical 怎样投影到 Excel
 
-读取大 XLSX：
+内容：
 
 ```python
-load_workbook(
-    path,
-    read_only=True,
-    data_only=True,
-)
+project_canonical_content(...)
 ```
 
-并使用：
+评论：
 
 ```python
-iter_rows(values_only=True)
+project_canonical_comment(...)
 ```
 
-最终 XLSX 使用：
+位置：
+
+```text
+platform/export/excel.py
+```
+
+例如：
+
+```text
+CanonicalContentV1.metrics.like_count
+→ Excel “点赞”
+
+CanonicalContentV1.author.display_name
+→ Excel “作者”
+
+CanonicalCommentV1.root_comment_id
+→ Excel “根评论ID”
+```
+
+Exporter 不修改 Canonical，也不从 Excel 反推业务事实。
+
+---
+
+## 5. Analysis 怎样进入 Excel
+
+Excel 展示使用：
+
+```text
+UnifiedDataExcelAnalysisV1
+```
+
+当前包括：
+
+```text
+relevance
+voice_type
+sentiment
+primary_label
+secondary_label
+label_pairs
+model
+prompt_version
+taxonomy_version
+```
+
+但 Workbook 当前**不展示“相关性”列**。
+
+原因：
+
+- 正式查询型导出默认排除当前 Analysis 明确 irrelevant 的内容；
+- 离线最终业务 JSONL 也可根据离线处理语义排除 irrelevant；
+- 重复展示一个几乎恒为 relevant 的列价值低。
+
+`voice_type` Excel 中文投影由 `_VOICE_TYPE_DISPLAY_NAMES` 唯一实现：
+
+```text
+user_voice         → 真实用户发声
+creator_marketing  → 达人/创作者营销
+brand_official     → 品牌官方传播
+dealer_promotion   → 经销商/门店推广
+media_information → 媒体/资讯转载
+other_organization → 其他机构传播
+unknown            → 无法判断
+```
+
+这个中文映射只影响 Excel 展示。数据库/Contract 仍保存英文稳定机器值。
+
+AI 完整业务语义见：
+
+[`AI舆情打标与分析实现.md`](AI舆情打标与分析实现.md)
+
+---
+
+## 6. raw / labeled 为什么共用一个 Exporter
+
+离线调试时可能需要：
+
+```text
+raw_data.xlsx
+labeled_data.xlsx
+```
+
+不能因此写两套 Workbook。
+
+当前做法：
+
+```text
+include_analysis = false
+→ Analysis 列留空
+
+include_analysis = true
+→ 从 record.analysis 填入 Analysis
+```
+
+Sheet、列定义、ID 文本格式、样式、安全规则全部共用。
+
+这样 AI 改列或 Workbook 改样式时只改一处。
+
+---
+
+## 7. `UnifiedContentRecordV1` JSONL 怎样直接导出 Excel
+
+当前入口：
+
+```python
+export_unified_content_jsonl_to_excel(...)
+```
+
+它逐行读取：
+
+```text
+UnifiedContentRecordV1 JSONL
+```
+
+并转换成 `UnifiedDataExcelV1`。
+
+空行直接失败：
+
+```text
+第 N 行为空，拒绝导出
+```
+
+非法 JSON/Contract 直接失败：
+
+```text
+第 N 行不是合法 UnifiedContentRecordV1
+```
+
+不会“跳过坏行继续生成看似成功的 Excel”。
+
+---
+
+## 8. 离线 JSONL 的业务链
+
+`imports_test` 当前典型链：
+
+```text
+source.xlsx
+→ canonical/contents.jsonl
+→ filtered/contents.jsonl
+→ deduplicated/contents.jsonl
+→ 可选 AI 回写/过滤
+→ shared Excel Exporter
+```
+
+AI checkpoint 可以存在：
+
+```text
+analysis/checkpoints.jsonl
+```
+
+用于恢复和调用审计，但它不是下游业务数据源。
+
+最终 Excel 直接从统一 JSONL 读取，不需要 join 第二份 Excel/CSV 标签文件。
+
+---
+
+## 9. 正式 PostgreSQL Export 怎样复用同一个 Excel
+
+正式 API：
+
+```text
+POST /api/v1/data-exports
+```
+
+主链：
+
+```text
+冻结 content_id + content_version
+→ reporting_data_export_items
+→ reporting.content-export-excel.v1 Job
+→ PostgresDataExportRepository.load_records()
+→ UnifiedDataExcelV1
+→ export_unified_data_excel()
+→ Artifact
+```
+
+所以：
+
+```text
+正式数据库导出
+imports_test 离线导出
+```
+
+最终都进入：
+
+```text
+platform/export/excel.py
+```
+
+这就是“一套 Excel 实现”的实际代码边界。
+
+正式 Reporting 说明：
+
+```text
+backend/src/aima_ugc/modules/reporting/README.md
+```
+
+---
+
+## 10. 正式 Export 为什么能拿到指定 Content Version
+
+数据库 Export 创建时冻结：
+
+```text
+content_id
+content_version
+ordinal
+```
+
+Worker 读取 `content_versions` 的指定版本正文，而不是执行时的最新正文。
+
+同时互动指标当前来自 Content Current；Analysis 只读取指定版本且匹配当前 Analysis Identity 的最新结果。
+
+所以一个正式 Export Record 实际可能组合：
+
+```text
+冻结版本的标题/正文/作者快照
++ 当前互动指标
++ 冻结版本的当前合法 Analysis
++ 评论
++ 评论 Coverage
++ 来源 Provider/Raw
+```
+
+精确投影：
+
+```text
+backend/src/aima_ugc/adapters/persistence/postgres/reporting.py
+```
+
+---
+
+## 11. 当前 Excel 样式
+
+样式也由共享 Exporter 统一维护。
+
+当前主要规则：
+
+```text
+冻结首行 = A2
+显示网格线 = true
+自动筛选 = 首行到实际数据区
+表头填充 = #FFC000
+表头字体 = Calibri 11 bold
+正文字体 = Calibri 11
+表头行高 = 16.5
+正文默认行高 = 14.5
+```
+
+列宽由：
+
+```text
+_CONTENT_COLUMN_WIDTHS
+_LABEL_COLUMN_WIDTHS
+_COMMENT_COLUMN_WIDTHS
+```
+
+维护。
+
+二级标签支持按中文/宽字符显示宽度估算换行行数，并自适应行高，最大不会无限增长。
+
+如果只是调整 Workbook 视觉，优先改这些共享常量/函数，而不是在 `imports_test` 或 `export_worker.py` 复制格式代码。
+
+---
+
+## 12. 大文件为什么用 write-only Workbook
+
+当前：
 
 ```python
 Workbook(write_only=True)
 ```
 
-统一 Exporter 不得为了展示配置或样式：
+原因：大量 Content/Comment 导出时，普通 Workbook 会把全部 Cell 对象长期留在内存。
 
-- 把完整 Cell 对象长期常驻内存；
-- 扫描全表自动列宽；
-- 使用大量 merge cell；
-- 导出完整文件后再二次打开重写所有数据；
-- 引入 pandas 复制一套 Excel 路径。
+正式 Export Worker 本身也分页从 PostgreSQL 读取，然后让共享 Exporter 流式写 Workbook。
 
-只有新的真实负载证明现有方案不能满足需求时，才通过独立 Change 比较替代实现。
-
-## 10. 安全与可打开性
-
-共享 Exporter统一保证：
-
-- 外部 ID 不因 Excel 数字格式丢失精度或前导零；
-- 外部文本防 Formula Injection；
-- 中文、emoji 和长文本可读取；
-- URL 只在合法 HTTP/HTTPS 时建立链接；
-- 不把 Secret、Token、Cookie 或本地敏感配置写入 Workbook；
-- 不合法/缺失 Analysis 不伪造标签；
-- 三个列配置都不允许越过对应 Sheet 的共享列集合读取任意对象属性；
-- 输出完成后重新打开并核对 Sheet、实际表头、行数和可用的关键 ID；
-- Stage 8D 正式声音广场导出已通过持久化 Job 分页读取冻结 Content Version、调用本共享 Exporter 并登记
-  Artifact；未打标内容保留且 AI 列为空。当前认证与自动保留/删除期限尚未批准，下载只用于受信部署
-  边界，不能据此宣称公网权限或自动生命周期已经闭环。
-
-## 11. 与 Canonical、Analysis、数据库和 Report 的关系
-
-统一 Excel 是可读视图，不是上游数据 Schema：
+因此“大量数据导出”有两层内存控制：
 
 ```text
-Provider / File Import
+PostgreSQL 分页读
++ openpyxl write-only 写
+```
+
+---
+
+## 13. Formula Injection 防护
+
+Excel 中字符串如果以这些字符开始：
+
+```text
+=
++
+-
+@
+Tab
+CR
+```
+
+某些办公软件可能把它解释为公式。
+
+当前 `_safe_excel_value()` 会自动前置单引号：
+
+```text
+=1+1
+→ '=1+1
+```
+
+这个保护适用于所有字符串数据。
+
+不要在调用方“预先 escape”一套，否则容易出现双重转义/遗漏。
+
+---
+
+## 14. ID 为什么强制文本格式
+
+外部 ID 可能：
+
+- 超过 Excel/JavaScript 安全整数；
+- 有前导零；
+- 看起来像科学计数法。
+
+当前 ID 列使用：
+
+```text
+number_format = "@"
+```
+
+主要包括：
+
+```text
+内容ID
+来源项ID
+评论ID
+根评论ID
+父评论ID
+```
+
+Exporter 不把这些 ID 转成 int。
+
+---
+
+## 15. URL 为什么只允许 HTTP/HTTPS 超链接
+
+当前 `_is_http_url()` 只对：
+
+```text
+http://
+https://
+```
+
+且存在 `netloc` 的值创建 Excel Hyperlink。
+
+这样不会把任意自定义 scheme 或奇怪文本自动变成可点击链接。
+
+---
+
+## 16. 时间怎样显示
+
+统一 Excel 展示使用北京时间：
+
+```text
+YYYY-MM-DD HH:MM:SS
+Asia/Shanghai
+```
+
+函数：
+
+```text
+_display_datetime()
+```
+
+输入 Contract 仍要求 aware datetime；Excel 的北京时间是人工展示投影，不改变数据库 UTC 时间语义。
+
+---
+
+## 17. 导出为什么先写临时文件再原子替换
+
+当前流程：
+
+```text
+.<name>.tmp.xlsx
+→ workbook.save()
+→ _verify_workbook()
+→ os.replace(temp, target)
+```
+
+失败时删除临时文件。
+
+这样可以避免：
+
+- 生成中途崩溃却留下一个看起来像最终结果的半文件；
+- 保存成功但 Workbook 结构不完整仍覆盖旧文件。
+
+---
+
+## 18. 保存后会再验证什么
+
+`_verify_workbook()` 会重新：
+
+```text
+load_workbook(read_only=True)
+```
+
+并检查：
+
+- Sheet 名和顺序；
+- 表头；
+- 实际行数；
+- 关键第一条 ID。
+
+验证通过才 `os.replace()` 成最终目标。
+
+这不是“openpyxl save 没报错就算成功”。
+
+---
+
+## 19. 源 Excel Reader 和输出 Excel 是两回事
+
+File Import 的源 Excel Reader 负责：
+
+```text
+Excel 文件
 → Canonical
-→ Analysis Service（可选）
-→ UnifiedContentRecordV1 / Query Export Read Model
-→ UnifiedDataExcelV1
-→ Shared Excel Exporter
-→ 可选列投影
+```
+
+共享 Exporter 负责：
+
+```text
+UnifiedDataExcelV1
 → .xlsx
-→ Report Renderer（只读派生，可选）
 ```
 
-因此：
+不要让 Exporter 反过来承担导入 Profile 解析。
 
-- 修改任一 Sheet 的列配置不修改 Canonical；
-- 隐藏某个 Excel 列不代表系统删除该字段；
-- Excel 列名不能反向成为数据库 Schema；
-- LLM 不能直接依赖 Excel 私有列绕过 Analysis 输入边界；
-- 正式入库时 Content 与 Analysis 仍分别由各自 Owner 持久化；
-- Report Renderer 只能消费已存在的数据视图，不能反向修改 Canonical、Analysis、数据库或统一 Excel Contract。
-
-## 12. 长期维护规则
-
-后续修改 Excel 时按以下原则判断：
-
-### 只想改变人工查看的列
-
-优先修改调用方对应的 `content_columns`、`label_detail_columns` 或 `comment_columns` 配置：
+当前 File Import 详细入口：
 
 ```text
-选择已有列
-删除已有列
-调整列顺序
+backend/src/aima_ugc/adapters/providers/imports/
+backend/src/aima_ugc/bootstrap/import_worker.py
 ```
 
-不需要改 `UnifiedDataExcelV1`，也不需要复制 Exporter。
+统一入库见：
 
-### 想新增一个系统从未存在的导出字段
+[`数据入口与统一入库实现.md`](数据入口与统一入库实现.md)
 
-先确认该字段的真实数据来源和 Owner，再决定是否需要调整 Export Read Model / Contract；不能只在某个测试脚本中硬塞一列。
+---
 
-### 想改变所有 Excel 的公共格式
+## 20. 修改 Excel 时应该改哪里
 
-只修改共享 Exporter 和对应共享测试；TikHub、文件导入和未来正式导出自动复用。
-
-### 想改变某个调用方的默认列
-
-只修改该调用方的列配置，并保证 raw/labeled 使用同一个配置。
-
-长期保持：
-
-- 一个 `UnifiedDataExcelV1` Provider-neutral 数据契约；
-- 一个共享 Excel Exporter；
-- 默认完整视图向后兼容；
-- 允许对三个 Sheet 的已知列分别做受控有序投影；
-- raw/labeled 使用相同的三组展示配置；
-- 业务中间处理不依赖 Excel 回读；
-- 数据明细 Excel 与 Report Renderer 相互独立。
-
-## 13. 当前离线 Report Renderer
-
-当前第一个正式可复用的离线报告实现位于：
+### 改公共列
 
 ```text
-backend/src/aima_ugc/platform/reporting/
+contracts/export/models.py
+→ platform/export/excel.py
+→ Export tests
+→ 正式 Reporting Projection（如果新增数据源字段）
+→ imports_test / Report（按影响）
 ```
 
-它不是 `imports_test` 私有统计脚本。默认 Markdown 模板、统计、Markdown 渲染、Word 转换和图表嵌入都属于 Provider-neutral 平台能力；`imports_test` 只提供人工调用入口。
+### 只改默认显示列
 
-### 13.1 输入输出边界
-
-当前离线链路固定为：
+如果只是某个人工入口的展示配置：
 
 ```text
-统一数据 Excel（只读）
-→ Report Statistics
-→ Markdown Template Rendering
-→ report.md
-→ Markdown → Word
-→ report.docx
+调用方 content_columns / label_detail_columns / comment_columns
 ```
 
-`run_all()` 的默认输入是本次 run 的 `labeled_data.xlsx`；也允许显式指定任何符合当前统一 Workbook 结构和报告必要列要求的处理后 `.xlsx`。
+不要删 Contract 字段。
 
-报告当前要求：
+### 改 `voice_type` 中文显示
 
 ```text
-Sheet: 内容 / 标签明细 / 评论
-
-内容必要列:
-平台 / 发布时间 / 命中关键词 / 情感标签 / 一级标签 / 二级标签
-
-标签明细必要列:
-平台 / 情感标签 / 一级标签 / 二级标签
-
-评论必要列:
-平台
+platform/export/excel.py
+→ _VOICE_TYPE_DISPLAY_NAMES
+→ 当前 Analysis Contract/Prompt 是否一致
+→ Excel tests
 ```
 
-调用方可通过 `report_date_range=(开始日期, 结束日期)` 显式指定北京时间自然日闭区间。
-指定周期时增加以下条件读取要求：
+### 改 Workbook 视觉
 
 ```text
-内容：发布时间
-标签明细：发布时间；没有该列时，内容与标签明细必须同时包含内容ID
-存在评论记录时：评论时间
+_HEADER_FONT
+_BODY_FONT
+_HEADER_FILL
+*_COLUMN_WIDTHS
+_configure_sheet()
 ```
 
-这是**报告读取要求**，不是新的 Excel Contract。通用 Excel Exporter 的完整字段定义仍由本文第 3 节维护。
-
-### 13.2 报告数据源与统一 Report Dataset
-
-**当前机器实现只有 Excel Report Source。** `imports_test.run_all()` 的离线报告无论是否同时开启 Content 数据库写入，仍读取本次 run 的 `labeled_data.xlsx`，因为它代表本次处理完成后的明确批次快照。
-
-长期固定为两个显式 Source Adapter，共同进入一个 Provider-neutral Report Dataset/Context：
+### 改安全规则
 
 ```text
-离线单批 / 人工交付
-labeled_data.xlsx
-→ Excel Report Source
-→ Report Dataset
-
-正式系统 / 跨批次 / 时间窗口 / Dashboard
-PostgreSQL
-→ Query Repository / Report Read Model
-→ Report Dataset
-
-Report Dataset
-→ Statistics
-→ Markdown Template / Renderer
-→ report.md / report.docx / Web
+_safe_excel_value()
+_is_http_url()
 ```
 
-硬规则：
+必须补安全回归，不允许为了显示方便移除 Formula Injection 保护。
 
-1. **禁止** `if database_available: read_database else: read_excel` 这类环境驱动自动切换；同一命令不能因为某台机器启动了 PostgreSQL 就改变报告范围。
-2. `imports_test` 的“本次 run 报告”默认永远是 Excel 快照，即使 `write_to_database=True`；数据库里可能同时存在历史 Excel、TikHub、其他 Batch 和其他时间数据，不能天然代表本次 run。
-3. 正式系统报告、跨 Batch 趋势、7/30/90 天窗口和 Dashboard 默认使用 PostgreSQL Report Read Model；它们不能依赖本地 `output/runs/`。
-4. PostgreSQL Report Source 必须通过 Query Repository/Read Model 读取 Content、current Analysis、Comments/必要维度；Report Renderer 不直接 SQL，也不成为表 Owner。
-5. 两种 Source 只负责把数据适配为同一 Report Dataset；平台、情感、标签、关键词、趋势等统计规则与 Markdown/Word Renderer 只有一套。
-6. 数据库版报告在正式启用前必须先满足 Blueprint 15 的 Analysis 持久化/current Analysis 和对应 Query Read Model；数据库缺少 AI Analysis 时不得静默回退 Excel 或伪造标签。
-7. 调用方需要特定来源时必须显式选择 Source/Scope；Excel 路径、Import Batch、日期窗口、平台等 Scope 必须可观察、可复现。
-8. 日期窗口只属于 Report Scope；Excel Import、关键词过滤、去重、Analysis 和统一 Excel
-   继续保留全量数据。离线报告按内容发布时间、标签对应内容发布时间和评论时间筛选，范围
-   包含首尾自然日。
-9. 指定日期窗口后，筛选所需日期缺失或无法解析必须 fail closed；周期内内容与标签明细的
-   标签记录数、平台、情感、一级/二级标签和标签对必须交叉一致，不能用部分 Sheet 的全量
-   统计混入周期报告。
+---
 
-### 13.3 统计口径与默认管理层视图
+## 21. 调试输出 Excel
 
-完整统计继续遵循现有 Workbook 语义：
+如果生成文件不对，先分层定位。
+
+### 数据缺失
 
 ```text
-内容总量、平台、情感、关键词、按日趋势
-→ 内容 Sheet
-
-一级/二级总体频次、一级→二级标签对
-→ 标签明细 Sheet
-
-评论总量、平台评论量
-→ 评论 Sheet
+先看输入 UnifiedDataExcelV1 / UnifiedContentRecordV1
+→ 数据是否本来就没有
 ```
 
-一级/二级标签的每日趋势需要时间维度，因此从“内容”Sheet 的 `发布时间` 与对应换行标签列统计；一级/二级总体频次仍以“标签明细”Sheet 为准。
-
-默认共享报告面向营销管理层直接阅读和汇报，不再把实现过程、模板、Workbook/Sheet、Markdown/Word 转换等技术说明放进最终正文。默认正文先展示确定性管理摘要和正负面舆情重点关注，再展开完整统计：
+### Analysis 列空
 
 ```text
-管理摘要
-→ 内容/评论声量、覆盖平台、正面/中性/负面占比、声量峰值、主要平台、首要议题、热点关键词
-
-舆情重点关注
-→ 客观情感概览、正面平台/一级/二级议题、负面平台/一级/二级议题
-
-平台与情感
-→ 平台声量、平台 × 情感交叉结构、平台每日趋势
-
-整体情感
-→ 情感结构、情感每日趋势
-
-核心议题与关键词
-→ 一级/二级/标签对、关键词及对应趋势
-
-完整统计与数据质量
-→ 全量明细、缺失/异常计数和业务口径说明
+include_analysis 是否 true
+→ record.analysis 是否存在
+→ 正式 Export 是否匹配当前 Analysis Identity
 ```
 
-这些摘要全部由既有结构化字段确定性计算，不新增 LLM 请求，不生成脱离数据的主观结论。报告必须保留完整平台、标签、标签对、关键词和每日非零数据表格；图表允许为了阅读性只显示 Top N 序列，但不得因为图表裁剪丢失完整表格数据，也不得修改上游数据。
-
-### 13.4 Markdown 是报告正文唯一模板
-
-默认共享模板当前为：
+### Sheet/行数不对
 
 ```text
-backend/src/aima_ugc/platform/reporting/report_template.md
+ExcelExportSummary
+→ _verify_workbook()
+→ 输入 record 数量 / comment 数量 / label_pairs
 ```
 
-`generate_excel_report()` 默认使用该模板；需要特定展示时允许调用方显式传入 `template_path=`，但不能复制一套平台私有 Report Renderer。
-
-固定规则：
+### 某列没显示
 
 ```text
-模板 Markdown
-→ 填充统计数据
-→ 生成完整 report.md
-→ Word 转换器读取 report.md
-→ report.docx
+content_columns / label_detail_columns / comment_columns
+→ 是否主动做了列投影
 ```
 
-不得再维护第二套 Word 正文模板。模板普通文本、标题和顺序发生变化时，下一次 Markdown 与 Word 必须一起变化。
+### ID 变科学计数法
 
-### 13.5 Mermaid 与可编辑 Word 图表
+应该检查共享 Exporter 的文本 ID 格式，不要在业务层把 ID 改成前缀字符串。
 
-Markdown 图表使用 Mermaid fenced block。当前模板只使用：
+---
 
-```text
-pie
-xychart-beta
-```
+## 22. 测试应该覆盖什么
 
-生成器固定输出 `xychart-beta`，以兼容当前目标 Markdown 阅读器；Word 转换器同时接受 `xychart-beta` 和历史 `xychart` 输入。Markdown 仍保留 Mermaid 源码，并以受控注释保存 XY 图的系列名称，使“同一份 Markdown → Word”时不会丢失平台/情感等业务图例。Word 转换器只承诺支持本报告实际使用的 pie/bar/line 子集；对于未支持的 Mermaid 类型必须 fail closed，不能静默忽略导致 Markdown 与 Word 内容不一致。
+- 三个固定 Sheet；
+- 默认表头和自定义列投影；
+- 空/重复/未知列关闭失败；
+- `include_analysis=false/true`；
+- 多标签一对多标签明细；
+- `voice_type` 中文映射；
+- ID 文本格式；
+- Formula Injection；
+- HTTP/HTTPS Hyperlink；
+- 北京时间显示；
+- write-only 大数据写出；
+- 临时文件 + reopen verification；
+- 正式 Export / imports_test 复用同一实现。
 
-Word 当前不再把图表写成静态 PNG，而是生成 Office 原生 Chart，并为每张图嵌入对应的 XLSX 数据包：
-
-```text
-word/charts/chartN.xml
-word/charts/_rels/chartN.xml.rels
-word/embeddings/chartN.xlsx
-```
-
-因此支持 Office Chart 编辑的 Word 可以直接“编辑数据”，人工校验或调整分类、系列、数值、标题、图例和样式；报告仍以 Office 原生图表引擎保证正常展示。图表的业务数据必须与 Markdown 中同一份统计数据一致，禁止为了 Word 再计算第二套统计。
-
-Word 的展示层固定为 A4 横向、约 15 mm 页边距和克制的研究报告主题。普通数据表使用
-Editorial Table（浅表头、轻横向分隔、无重外框/竖线）；面向领导扫读的 Top 统计在 Word 中
-采用“Top 重点 Ranking + 对应图表/词云 + 其余完整紧凑明细”的两层表达，排名、标签、数量、
-占比和细比例条保持 Word 原生可编辑，剩余条目以双列紧凑明细保留，不因视觉裁剪丢失数据。
-一级议题进一步使用组合视图：上方为标签对总量、一级议题数和 Top1 占比，左侧为完整一级
-议题 Ranking，右侧为词云；该视图不加入图标、奖牌、星标或逐行小饼图/圆环图。平台分布和
-情感结构等窄表允许与图表并排，平台 × 情感等宽矩阵保持完整横向表格，避免多列数据被硬塞进
-半页宽度。
-
-Office bar/line 继续显示数据标签，长分类优先横向 bar；情感每日趋势仍拆为正面+中性主趋势和
-负面+混合低量级趋势。平台、一级议题和二级议题等系列较多的每日趋势把最高声量主序列单独
-展示，其余每组最多四个系列，所有分层图仍各自保留内嵌 XLSX、使用绝对数量且不使用双 Y 轴。
-`report.md` 中完整的日期/维度/数量长表继续保留；Word 展示层利用横向 A4 宽度按日期为行、
-维度为列透视为紧凑矩阵，维度过多时每组最多五列分块，只有展示形态变化，数据语义不变。
-饼图仍为可编辑 Office Chart，百分比保留两位小数。
-
-一级议题和热点关键词词云是唯一允许图片化的统计视觉：由 Pillow 直接消费同一份报告 Counter，
-最多展示 36 个词，以 sqrt 频次权重并进一步温和压缩字号差异；全部水平排布，第一名可使用系统
-CJK 粗体，主体采用海军蓝、主蓝、青绿、柔紫和蓝灰，仅少量次级词使用低饱和赭色点缀。布局
-从视觉中心寻找最近空位，完成后按实际字形边界裁切并受限放大回固定 1600×900 画布，因此少词
-样例不会缩成中央小团，多词样例仍保留必要呼吸感。布局确定性，不使用随机旋转、图形 mask、
-阴影、图标或彩虹配色。PNG 以约 300 DPI 输出，Markdown 使用标准图片语法，DOCX 打包到
-`word/media/` 并校验 Relationship、Content Type 和图片可打开性。运行环境必须提供 CJK 字体，
-缺失时 fail closed；仓库不提交字体文件。当前仍不引入 Pandoc、LibreOffice、Matplotlib、
-pandas、`wordcloud` 库、在线服务或 `python-docx`；内嵌图表数据继续复用 openpyxl。
-LibreOffice/Office 只作为开发或交付视觉验证工具。以上展示规则不得改变 Markdown 表格/图表
-数据、平台映射或报告统计口径。
-
-### 13.6 失败和数据安全边界
-
-Report Renderer 必须：
-
-- 使用只读方式打开输入 Excel；
-- 不对输入 Workbook 调用保存、二次格式化或“修复”；
-- 不调用 LLM，不写数据库，不产生新的 Canonical/Analysis 事实；
-- 日期窗口只筛选内存中的报告统计，不改写输入 Excel 或上游全量产物；
-- 周期外内容、标签和评论数量必须进入报告数据质量说明；
-- 内容与标签明细的周期内统计不一致时明确失败；
-- Markdown 使用临时文件 + `os.replace` 原子发布；
-- DOCX 生成后重新打开 ZIP/XML，校验最低包结构、Office Chart、Relationship 数量，并验证每张图内嵌 XLSX 数据包可打开；
-- 报告失败时明确失败，不能把完整 `run_all()` 宣称成功；
-- 已经成功生成的最终 Excel 不因报告失败被删除或回滚，可以修复报告后直接重新生成。
-
-### 13.7 与未来正式报告中心的关系
-
-当前能力解决“已处理统一 Excel → 人工可交付报告”的独立离线路径，不提前实现正式网页报告中心。正式报告中心必须优先读取 PostgreSQL Report Read Model，而不是回扫人工 Excel 目录；数据库数据源的前置条件是 Content + current Analysis 等正式 Query 能力已经落地。
-
-未来如果增加：
-
-```text
-PostgreSQL Query Read Model
-→ 持久化 Report Job
-→ Artifact 权限/生命周期
-→ API
-→ Web 报告中心
-```
-
-应复用同一统计/渲染边界或通过独立 Change 演进，不得把 `imports_test` 的路径或 run 目录提升为正式 HTTP/数据库 Contract；共享默认模板属于 Report Renderer 自身资源。
+目标测试以当前 `tests/unit/` 中 Excel/Reporting/Imports 相关文件为准；最终以 PR 最新 HEAD CI 为准。
