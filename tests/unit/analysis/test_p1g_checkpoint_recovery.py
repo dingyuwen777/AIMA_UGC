@@ -49,9 +49,15 @@ def _valid_response(loader: PromptTaxonomyLoader | None = None) -> str:
             "items": [
                 {
                     "item_no": 1,
+                    "relevance": "relevant",
+                    "voice_type": "user_voice",
                     "sentiment": taxonomy.sentiments[0],
-                    "primary_label": primary,
-                    "secondary_label": taxonomy.labels[primary][0],
+                    "labels": [
+                        {
+                            "primary_label": primary,
+                            "secondary_label": taxonomy.labels[primary][0],
+                        }
+                    ],
                 }
             ]
         },
