@@ -1,13 +1,12 @@
 from datetime import UTC, datetime
 
 import pytest
-from pydantic import ValidationError
-
 from aima_ugc.contracts.http import (
     ContentAnalysisResponse,
     ContentFilterSnapshot,
     ContentLabelPairResponse,
 )
+from pydantic import ValidationError
 
 ANALYZED_AT = datetime(2026, 8, 21, 12, 0, tzinfo=UTC)
 
