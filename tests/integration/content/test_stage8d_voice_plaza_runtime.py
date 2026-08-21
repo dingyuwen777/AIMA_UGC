@@ -420,9 +420,7 @@ def test_irrelevant_analysis_is_auditable_but_hidden_from_default_voice_plaza(
             "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
         )
     try:
-        import_client = TestClient(
-            create_app(import_service=PostgresImportHttpService(runtime))
-        )
+        import_client = TestClient(create_app(import_service=PostgresImportHttpService(runtime)))
         _seed_import(import_client)
         import_worker = create_job_worker(
             runtime=runtime,
@@ -487,7 +485,9 @@ def test_irrelevant_analysis_is_auditable_but_hidden_from_default_voice_plaza(
                 select(
                     analysis_content_request_items_table.c.status,
                     analysis_content_request_items_table.c.analysis_result_id,
-                ).where(analysis_content_request_items_table.c.request_id == created.request_id)
+                ).where(
+                    analysis_content_request_items_table.c.request_id == created.request_id
+                )
             ).one()
             assert request_item.status == "succeeded"
             assert request_item.analysis_result_id == stored.id
