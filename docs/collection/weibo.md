@@ -1,48 +1,302 @@
-# 微博采集逻辑
+# 微博采集实现
 
-## 1. 当前状态
+本文说明微博当前 TikHub 生产链为什么是 **Web Search + App Detail/Comments + Web V2 SubComments** 的混合实现，以及相关 Operation、Mapper、Capability、Fixture 和候选接口在哪里。
 
-微博已建立 Web Search、App Detail/一级评论、Web V2 二级评论 Operation，生产 Extractor/Mapper、合法脱敏真实 Fixture、Capability/Registry、Canonical/Ingestion、正式 Collection Worker 与 `tikhub_test` 独立调试入口。
+真实 JSON 路径：
 
-## 2. 正式 Operation
+[`../appendix/TikHub五平台真实响应与字段映射.md`](../appendix/TikHub五平台真实响应与字段映射.md)
 
-| 业务动作 | Endpoint |
-| --- | --- |
-| 搜索 | `GET /api/v1/weibo/web/fetch_search` |
-| 详情 | `GET /api/v1/weibo/app/fetch_status_detail` |
-| 一级评论 | `GET /api/v1/weibo/app/fetch_status_comments` |
-| 二级评论 | `GET /api/v1/weibo/web_v2/fetch_post_sub_comments` |
-
-不同 API family 是固定职责，不是 fallback。一级评论生产 extractor 只接收具有稳定 `idstr/mid/id` 的真实评论；展示卡片不进入 Comment Mapper。分页优先消费 `data.moreInfo.params.max_id`，当前真实形状缺少 `moreInfo` 时按 Provider 末页处理，不猜另一个私有游标路径。
-
-## 3. 为什么当前不开增量
-
-一级评论可发送 `sort_type=1`，但 2026-08-18 当前真实 Probe 的 20 条有效评论：
+## 1. 当前代码
 
 ```text
-time_count = 20
-time_nonincreasing = false
+Operation / Pagination
+→ backend/src/aima_ugc/adapters/providers/tikhub/operations/weibo.py
+
+Mapper
+→ backend/src/aima_ugc/adapters/providers/tikhub/mappers/weibo.py
+
+Capability
+→ backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py
+
+Fixture
+→ tests/fixtures/providers/tikhub/weibo/
 ```
 
-因此参数名“latest”不足以证明安全历史边界：
+## 2. 当前正式主 Operation
+
+```text
+Search
+GET /api/v1/weibo/web/fetch_search
+
+Detail
+GET /api/v1/weibo/app/fetch_status_detail
+
+Comments
+GET /api/v1/weibo/app/fetch_status_comments
+
+SubComments
+GET /api/v1/weibo/web_v2/fetch_post_sub_comments
+```
+
+这里刻意没有为了“版本整齐”强制全部使用 App 或 Web。接口选择按**每个业务 Operation 的真实结构、分页、Mapper 和验证证据**决定。
+
+## 3. Search Capability
+
+当前业务搜索模式：
+
+```text
+general
+latest
+hot
+```
+
+时间：
+
+```text
+all
+hour
+day
+week
+month
+```
+
+当前：
+
+```text
+native_time_filter = true
+observes_comment_count = true
+```
+
+微博当前 Search 的业务维度不要再拆成一套虚构的 `sort × video/image/article` 组合；精确合法输入以 `capabilities.py + operations/weibo.py` 为准。
+
+## 4. Search 真实响应
+
+当前 Web Search 真实业务对象：
+
+```text
+data.data.cards[].mblog
+```
+
+Fixture：
+
+```text
+tests/fixtures/providers/tikhub/weibo/search_page1.sanitized.json
+```
+
+这一结构曾由 Real Probe 纠正，不能把其他平台的 `items[]` 模板套过来。
+
+当前 Search 参数还可以表达 Web `time_scope`；这也是为什么 App Search All Candidate 不能简单视为完全等价备用。
+
+## 5. Detail
+
+当前：
+
+```text
+GET /api/v1/weibo/app/fetch_status_detail
+```
+
+真实内容：
+
+```text
+data.detailInfo.status
+```
+
+Fixture：
+
+```text
+tests/fixtures/providers/tikhub/weibo/detail.sanitized.json
+```
+
+当前 Operation 对这个核心路径 fail closed：找不到时不在响应其他位置漫游猜测。
+
+## 6. 一级评论
+
+当前：
+
+```text
+GET /api/v1/weibo/app/fetch_status_comments
+```
+
+真实评论项：
+
+```text
+data.items[].data
+```
+
+真实下一页 `max_id`：
+
+```text
+data.moreInfo.params.max_id
+```
+
+Fixture：
+
+```text
+tests/fixtures/providers/tikhub/weibo/comments_page1.sanitized.json
+```
+
+Capability：
+
+```text
+comment_sort_modes = hot / latest
+supports_reply_count = true
+supports_sub_comments = true
+supports_incremental_comment_sort = false
+```
+
+## 7. 二级评论
+
+当前正式：
+
+```text
+GET /api/v1/weibo/web_v2/fetch_post_sub_comments
+```
+
+真实列表：
+
+```text
+data.data[]
+```
+
+真实 `reply_comment` 可以帮助 Mapper 确定直接父评论；`rootid/rootidstr` 不能误当微博原内容 ID。
+
+Fixture：
+
+```text
+tests/fixtures/providers/tikhub/weibo/sub_comments_page1.sanitized.json
+```
+
+## 8. 为什么微博当前不声明最新评论增量
+
+Capability：
 
 ```text
 supports_incremental_comment_sort = false
 ```
 
-`comment_count` 增加时继续 `refresh_controlled`；不变时默认跳过评论。
-
-## 4. Pipeline 与调试
+即使业务参数有 `latest`，当前真实样本/排序语义仍不足以让通用 Collection 安全执行：
 
 ```text
-fetch_search → Raw → Mapper → status_id identity/compare → Decision
-→ 必要时 Detail → Comments/Sub-comments → Raw → Mapper → Canonical → Ingestion
+遇到 known comment
+→ 停止后续页
 ```
 
-```python
-from aima_ugc.adapters.providers.tikhub_test import run_weibo
+因此走受控刷新并记录 Coverage。
 
-run_weibo(keyword="爱玛", sort_mode="latest", published_within="day")
+如果未来要开启，需要用当前正式 Comments Operation 重新证明：
+
+- 稳定 newest-first；
+- 分页顺序；
+- 已知 ID 边界不会漏同页新项。
+
+## 9. App Search All Candidate
+
+代码中有：
+
+```text
+GET /api/v1/weibo/app/fetch_search_all
 ```
 
-当前没有 Budget/Cost Guard；调试输出 Raw、Canonical、`run_summary.json`、state 和原始数据 Excel。
+当前历史 A/B 曾得到：
+
+```text
+Web unique = 10
+App unique = 11
+shared = 9
+union = 12
+Jaccard = 0.75
+```
+
+这说明两者高度重合，但并不是完全相同的集合。
+
+此外：
+
+```text
+Web Search 可表达 time_scope
+App Candidate 不伪造这个 Web 私有参数
+```
+
+所以当前仍是显式候选，不自动 fallback。
+
+## 10. Web V2 一级评论 Candidate
+
+代码还保留：
+
+```text
+GET /api/v1/weibo/web_v2/fetch_post_comments
+```
+
+作为 App Comments 的候选。
+
+历史同一真实内容 A/B 曾得到双方 1/1 稳定评论 ID 一致，但 Raw shape 不同，当前一级评论主链仍是 App。
+
+## 11. 为什么一个平台可以混用不同 API family
+
+架构判断单位是：
+
+```text
+Provider + Platform + Business Operation
+```
+
+而不是：
+
+```text
+“微博只能全 App”
+或
+“微博只能全 Web”
+```
+
+因为 Search、Detail、Comments、SubComments 本身是不同能力，可能在不同 family 上有更稳定的结构和分页。
+
+但每次真实 Request/Attempt/Raw 都会记录实际 operation/endpoint 事实，来源链不会因为混用 family 变模糊。
+
+## 12. 要改什么时改哪里
+
+### Search 切 App
+
+```text
+operations/weibo.py candidate
+→ 同条件 Real A/B
+→ Pagination/Extractor
+→ Mapper/Fixture
+→ Pricing
+→ Capability
+→ Tests
+→ 本文/TikHub台账
+```
+
+### Comments 切 Web V2
+
+```text
+同一 content_id A/B
+→ 评论稳定 ID / reply_count / pagination
+→ Mapper
+→ Capability
+→ Coverage/Decision tests
+```
+
+### JSON path 变化
+
+```text
+新 Sanitized Fixture
+→ extractor / mappers/weibo.py
+→ Canonical Contract Test
+```
+
+## 13. 调试顺序
+
+```text
+Run/Scope
+→ Request/Attempt
+→ Web/App Raw Artifact
+→ Candidate
+→ 对应 Operation Extractor
+→ mappers/weibo.py
+→ Canonical
+→ Relevance/Decision
+→ Content/Comment
+```
+
+SQL：
+
+[`../appendix/PostgreSQL查询与调试实战.md`](../appendix/PostgreSQL查询与调试实战.md)
