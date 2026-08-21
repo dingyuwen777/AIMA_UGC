@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - feature/report-landscape-word-visuals
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
