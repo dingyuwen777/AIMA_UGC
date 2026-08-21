@@ -91,5 +91,10 @@ def log_event(
     message: str,
     **fields: object,
 ) -> None:
-    """记录稳定事件；敏感值仍会在 Formatter 最后一层再次脱敏。"""
-    logger.log(level, message, extra={"event": event, **fields})
+    """记录稳定事件；stacklevel 跳过统一 helper，使前缀指向实际调用代码。"""
+    logger.log(
+        level,
+        message,
+        extra={"event": event, **fields},
+        stacklevel=2,
+    )
