@@ -1,0 +1,131 @@
+name: AIMA Report Visual Apply 2
+
+on:
+  push:
+    branches:
+      - feature/report-landscape-word-visuals
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feature/report-landscape-word-visuals
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14.7'
+
+      - name: Apply implementation payload
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cat \
+            .github/aima-report-payload/part.00 \
+            .github/aima-report-payload/part.010 \
+            .github/aima-report-payload/part.011 \
+            .github/aima-report-payload/part.012 \
+            .github/aima-report-payload/part.013 \
+            .github/aima-report-payload/part.02 \
+            .github/aima-report-payload/part.030 \
+            .github/aima-report-payload/part.031 \
+            .github/aima-report-payload/part.032 \
+            .github/aima-report-payload/part.033 \
+            .github/aima-report-payload/part.04 \
+            .github/aima-report-payload/part.05 \
+            > /tmp/aima.b64
+          test "$(sha256sum /tmp/aima.b64 | cut -d' ' -f1)" = "0c790986020a399f51605d1b36186a28c0b56dfbb6b6e9357168ac84fa3a5c46"
+          base64 -d /tmp/aima.b64 > /tmp/aima.tar.xz
+          test "$(sha256sum /tmp/aima.tar.xz | cut -d' ' -f1)" = "ba0635796ea8ba6716191fb584cfaa8ed9a4c4951ff63fd73c653b36e8237cd2"
+          tar -xJf /tmp/aima.tar.xz -C .
+          python - <<'PY'
+          from pathlib import Path
+
+          old = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z3i8AAAAASUVORK5CYII="
+          new = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC"
+          for name in (
+              "tests/unit/platform/test_docx_package_structure.py",
+              "tests/unit/platform/test_reporting_visuals.py",
+          ):
+              path = Path(name)
+              text = path.read_text(encoding="utf-8")
+              if old not in text:
+                  raise SystemExit(f"未找到待替换 PNG fixture: {name}")
+              path.write_text(text.replace(old, new), encoding="utf-8")
+          PY
+
+      - name: Install exact uv
+        shell: bash
+        run: |
+          set -euxo pipefail
+          UV_VERSION="$(cat .uv-version)"
+          python -m pip install --disable-pip-version-check "uv==${UV_VERSION}"
+
+      - name: Lock and sync
+        run: |
+          uv lock
+          uv lock --check
+          uv sync --locked
+
+      - name: Format changed Python scope
+        run: |
+          uv run ruff format \
+            backend/src/aima_ugc/platform/reporting \
+            tests/unit/platform/test_docx_package_structure.py \
+            tests/unit/platform/test_reporting_visuals.py
+
+      - name: Target tests
+        run: |
+          uv run pytest \
+            tests/unit/platform/test_docx_package_structure.py \
+            tests/unit/platform/test_reporting_visuals.py \
+            tests/unit/platform/test_offline_reporting.py \
+            tests/unit/platform/test_reporting_default_template.py -q
+
+      - name: Wiring regression
+        run: |
+          uv run pytest \
+            tests/unit/platform/test_imports_test_reporting.py \
+            tests/unit/collection/test_p1g_imports_run_all.py -q
+
+      - name: Static checks
+        run: |
+          uv run ruff format --check \
+            backend/src/aima_ugc/platform/reporting \
+            tests/unit/platform/test_docx_package_structure.py \
+            tests/unit/platform/test_reporting_visuals.py
+          uv run ruff check \
+            backend/src/aima_ugc/platform/reporting \
+            tests/unit/platform/test_docx_package_structure.py \
+            tests/unit/platform/test_reporting_visuals.py
+          uv run mypy backend/src
+
+      - name: Commit passing implementation
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git rm -r .github/aima-report-payload \
+            .github/workflows/aima-report-visual-apply.yml \
+            .github/workflows/aima-report-visual-apply2.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- \
+            pyproject.toml uv.lock \
+            backend/src/aima_ugc/platform/reporting/__init__.py \
+            backend/src/aima_ugc/platform/reporting/chart_spec.py \
+            backend/src/aima_ugc/platform/reporting/docx_package.py \
+            backend/src/aima_ugc/platform/reporting/markdown_word.py \
+            backend/src/aima_ugc/platform/reporting/report_template.md \
+            backend/src/aima_ugc/platform/reporting/visual_report.py \
+            backend/src/aima_ugc/platform/reporting/visuals \
+            tests/unit/platform/test_docx_package_structure.py \
+            tests/unit/platform/test_reporting_visuals.py
+          git commit -m "实现横向A4报告视觉重构"
+          git push origin HEAD:feature/report-landscape-word-visuals
