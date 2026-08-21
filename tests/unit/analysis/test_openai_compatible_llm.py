@@ -32,6 +32,8 @@ def _request(*, previous_errors: tuple[str, ...] = ()) -> ContentLabelingLLMRequ
                 title="爱玛标题",
                 text="正文",
                 author_display_name="作者",
+                author_bio="骑行体验分享",
+                author_verification_label="",
             ),
         ),
         previous_validation_error_codes=previous_errors,
@@ -49,8 +51,9 @@ def test_openai_compatible_adapter_sends_one_minimal_chat_completion_request() -
                 "choices": [
                     {
                         "message": {
-                            "content": '{"items":[{"item_no":1,"sentiment":"中性",'
-                            '"primary_label":"一级","secondary_label":"二级"}]}'
+                            "content": '{"items":[{"item_no":1,"relevance":"relevant",'
+                            '"voice_type":"user_voice","sentiment":"中性","labels":'
+                            '[{"primary_label":"一级","secondary_label":"二级"}]}]}'
                         }
                     }
                 ],
@@ -90,7 +93,11 @@ def test_openai_compatible_adapter_sends_one_minimal_chat_completion_request() -
                 "item_no": 1,
                 "title": "爱玛标题",
                 "text": "正文",
-                "author": {"display_name": "作者"},
+                "author": {
+                    "display_name": "作者",
+                    "bio": "骑行体验分享",
+                    "verification_label": "",
+                },
             }
         ]
     }

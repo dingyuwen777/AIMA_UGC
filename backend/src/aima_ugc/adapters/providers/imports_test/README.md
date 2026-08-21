@@ -1032,3 +1032,8 @@ Chart，并为每张图内嵌对应的 XLSX 数据；图表数据与 Markdown �
 - 报告失败会向调用方抛错，不能把 `run_all()` 伪装成完整成功；
 - 已经成功生成的 `labeled_data.xlsx` 不会因报告失败被删除或回滚；
 - 修复模板或输入后，可以直接对同一个 Excel 重新调用 `generate_report(...)`。
+
+
+## AI 语义相关性与发声类型
+
+`label_sentiment()` 复用正式 `ContentLabelingService`，每条内容一次 LLM 请求同时完成相关性、发声类型、情感和多标签判断。判定为 `irrelevant` 的完整内容行会在最终原子回写时从 `deduplicated/contents.jsonl` 删除；checkpoint 仅保留最小恢复决策，不作为业务数据源。最终 Excel 不显示“相关性”列，只显示中文“发声类型”和派生的“是否用户真实发声”。

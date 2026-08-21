@@ -24,7 +24,9 @@ analysis_content_results_table = Table(
     Column("content_version", Integer(), nullable=False),
     Column("job_id", Uuid(), ForeignKey("jobs.id"), nullable=False),
     Column("schema_version", Text(), nullable=False),
-    Column("sentiment", Text(), nullable=False),
+    Column("relevance", Text(), nullable=False),
+    Column("voice_type", Text(), nullable=False),
+    Column("sentiment", Text()),
     Column("prompt_version", Text(), nullable=False),
     Column("prompt_sha256", Text(), nullable=False),
     Column("taxonomy_sha256", Text(), nullable=False),
@@ -44,6 +46,17 @@ analysis_content_results_table = Table(
         name="uq_analysis_content_results_identity",
     ),
     CheckConstraint("content_version >= 1", name="content_version_positive"),
+    CheckConstraint("relevance in ('relevant','irrelevant')", name="relevance_allowed"),
+    CheckConstraint(
+        "voice_type in ('user_voice','creator_marketing','brand_official','dealer_promotion',"
+        "'media_information','other_organization','unknown')",
+        name="voice_type_allowed",
+    ),
+    CheckConstraint(
+        "(relevance = 'relevant' and sentiment is not null) or "
+        "(relevance = 'irrelevant' and sentiment is null)",
+        name="relevance_sentiment_consistent",
+    ),
     CheckConstraint("char_length(input_hash) = 64", name="input_hash_sha256_length"),
     CheckConstraint("char_length(prompt_sha256) = 64", name="prompt_sha256_length"),
     CheckConstraint("char_length(taxonomy_sha256) = 64", name="taxonomy_sha256_length"),
@@ -84,7 +97,10 @@ analysis_content_request_items_table = Table(
     Column("status", Text(), nullable=False, server_default=text("'pending'")),
     Column("error_code", Text()),
     UniqueConstraint("request_id", "ordinal", name="uq_analysis_content_request_items_ordinal"),
-    CheckConstraint("content_version >= 1", name="content_version_positive"),
+    CheckConstraint(
+        "content_version >= 1",
+        name="content_version_positive",
+    ),
     CheckConstraint("ordinal >= 0", name="ordinal_nonnegative"),
     CheckConstraint(
         "status in ('pending','succeeded','failed','stale')",

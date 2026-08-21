@@ -11,6 +11,7 @@ from sqlalchemy import and_, func, insert, or_, select, update
 from sqlalchemy.orm import Session
 
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
+from aima_ugc.contracts.analysis import ContentRelevance, ContentVoiceType
 from aima_ugc.contracts.export import (
     UnifiedDataExcelAnalysisV1,
     UnifiedDataExcelCommentV1,
@@ -285,8 +286,12 @@ class PostgresDataExportRepository:
                     labels[cast(UUID, row["id"])], key=lambda item: item[0]
                 )
             )
+            voice_type = cast(ContentVoiceType, row["voice_type"])
             projected[cast(UUID, row["content_id"])] = UnifiedDataExcelAnalysisV1(
-                sentiment=cast(str, row["sentiment"]),
+                relevance=cast(ContentRelevance, row["relevance"]),
+                voice_type=voice_type,
+                is_user_voice=voice_type == "user_voice",
+                sentiment=cast(str | None, row["sentiment"]),
                 primary_label="\n".join(item.primary_label for item in pairs),
                 secondary_label="\n".join(item.secondary_label for item in pairs),
                 label_pairs=pairs,

@@ -6,10 +6,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from aima_ugc.contracts.canonical import CanonicalContentV1
 
-from .content_label import ContentLabelAnalysisV1, ContentLabelAnalysisV2
+from .content_label import ContentLabelAnalysisV1, ContentLabelAnalysisV2, ContentLabelAnalysisV3
 
 ContentLabelAnalysis = Annotated[
-    ContentLabelAnalysisV1 | ContentLabelAnalysisV2,
+    ContentLabelAnalysisV1 | ContentLabelAnalysisV2 | ContentLabelAnalysisV3,
     Field(discriminator="schema_version"),
 ]
 

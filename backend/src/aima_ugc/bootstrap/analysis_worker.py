@@ -12,7 +12,7 @@ from aima_ugc.adapters.llm import (
 )
 from aima_ugc.adapters.llm.request_audit import LLMHTTPRequestAudit
 from aima_ugc.adapters.persistence.postgres.analysis import PostgresAnalysisRepository
-from aima_ugc.contracts.analysis import ContentLabelAnalysisV2
+from aima_ugc.contracts.analysis import ContentLabelAnalysisV3
 from aima_ugc.modules.analysis import (
     CONTENT_LABELING_PROMPT_PATH,
     ContentLabelingService,
@@ -100,7 +100,7 @@ class PostgresContentAnalysisJobExecutor:
                         with session.begin():
                             repository = PostgresAnalysisRepository(session)
                             if result.analysis_status == "succeeded" and isinstance(
-                                result.analysis, ContentLabelAnalysisV2
+                                result.analysis, ContentLabelAnalysisV3
                             ):
                                 repository.persist_success(
                                     fence=fence,

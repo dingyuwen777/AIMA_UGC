@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from aima_ugc.contracts.analysis import ContentRelevance, ContentVoiceType
 
 
 class _ExportBaseModel(BaseModel):
@@ -23,9 +25,12 @@ class UnifiedDataExcelLabelPairV1(_ExportBaseModel):
 class UnifiedDataExcelAnalysisV1(_ExportBaseModel):
     """Excel 展示所需的分析投影；兼容单标签字符串并可携带完整标签对。"""
 
-    sentiment: str = Field(min_length=1, max_length=128)
-    primary_label: str = Field(min_length=1, max_length=4096)
-    secondary_label: str = Field(min_length=1, max_length=4096)
+    relevance: ContentRelevance = "relevant"
+    voice_type: ContentVoiceType = "unknown"
+    is_user_voice: bool = False
+    sentiment: str | None = Field(default=None, min_length=1, max_length=128)
+    primary_label: str = Field(default="", max_length=4096)
+    secondary_label: str = Field(default="", max_length=4096)
     label_pairs: tuple[UnifiedDataExcelLabelPairV1, ...] = ()
     model: str | None = Field(default=None, max_length=256)
     prompt_version: str | None = Field(default=None, max_length=256)
@@ -40,6 +45,12 @@ class UnifiedDataExcelAnalysisV1(_ExportBaseModel):
         if len(keys) != len(set(keys)):
             raise ValueError("Excel Analysis label_pairs 不能重复")
         return value
+
+    @model_validator(mode="after")
+    def validate_user_voice_consistency(self) -> UnifiedDataExcelAnalysisV1:
+        if self.is_user_voice != (self.voice_type == "user_voice"):
+            raise ValueError("Excel Analysis is_user_voice 必须由 voice_type 派生")
+        return self
 
 
 class UnifiedDataExcelContentV1(_ExportBaseModel):

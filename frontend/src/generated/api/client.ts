@@ -335,6 +335,14 @@ export interface ContentLabelPairResponse {
   secondary_label: string;
 }
 
+export type ContentRelevance = typeof ContentRelevance[keyof typeof ContentRelevance];
+
+
+export const ContentRelevance = {
+  relevant: 'relevant',
+  irrelevant: 'irrelevant',
+} as const;
+
 export type ContentAnalysisStatus = typeof ContentAnalysisStatus[keyof typeof ContentAnalysisStatus];
 
 
@@ -344,13 +352,29 @@ export const ContentAnalysisStatus = {
   stale: 'stale',
 } as const;
 
+export type ContentVoiceType = typeof ContentVoiceType[keyof typeof ContentVoiceType];
+
+
+export const ContentVoiceType = {
+  user_voice: 'user_voice',
+  creator_marketing: 'creator_marketing',
+  brand_official: 'brand_official',
+  dealer_promotion: 'dealer_promotion',
+  media_information: 'media_information',
+  other_organization: 'other_organization',
+  unknown: 'unknown',
+} as const;
+
 export interface ContentAnalysisResponse {
   analyzed_at?: string | null;
+  is_user_voice?: boolean | null;
   labels?: ContentLabelPairResponse[];
   model?: string | null;
   model_provider?: string | null;
+  relevance?: ContentRelevance | null;
   sentiment?: string | null;
   status: ContentAnalysisStatus;
+  voice_type?: ContentVoiceType | null;
 }
 
 /**
@@ -365,10 +389,12 @@ export interface ContentFilterSnapshot {
   primary_label?: string | null;
   published_from?: string | null;
   published_to?: string | null;
+  relevance?: ContentRelevance | null;
   search?: string | null;
   secondary_label?: string | null;
   sentiment?: string | null;
   source_identifier?: string | null;
+  voice_type?: ContentVoiceType | null;
 }
 
 export type ContentTargetSelectionScope = typeof ContentTargetSelectionScope[keyof typeof ContentTargetSelectionScope];
@@ -821,6 +847,8 @@ platforms?: string[];
  */
 content_types?: string[];
 analysis_status?: ContentAnalysisStatus | null;
+relevance?: ContentRelevance | null;
+voice_type?: ContentVoiceType | null;
 sentiment?: string | null;
 primary_label?: string | null;
 secondary_label?: string | null;

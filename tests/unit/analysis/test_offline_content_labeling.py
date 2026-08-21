@@ -64,6 +64,8 @@ def _valid_response() -> str:
             "items": [
                 {
                     "item_no": 1,
+                    "relevance": "relevant",
+                    "voice_type": "user_voice",
                     "sentiment": taxonomy.sentiments[0],
                     "labels": [
                         {
@@ -86,6 +88,8 @@ def _invalid_response() -> str:
             "items": [
                 {
                     "item_no": 1,
+                    "relevance": "relevant",
+                    "voice_type": "user_voice",
                     "sentiment": "不存在的情感",
                     "labels": [
                         {
@@ -125,6 +129,7 @@ def test_offline_labeling_checkpoints_success_and_isolates_failed_item(tmp_path:
     assert summary.rows_seen == 2
     assert summary.rows_succeeded == 1
     assert summary.rows_failed == 1
+    assert summary.rows_irrelevant_removed == 0
     assert summary.llm_attempts == 2
     assert all(len(call.items) == 1 for call in fake.calls)
     records = [UnifiedContentRecordV1.model_validate(item) for item in _read_jsonl(input_path)]
@@ -156,6 +161,7 @@ def test_offline_labeling_validation_retry_retries_only_same_single_content(tmp_
 
     assert summary.rows_succeeded == 1
     assert summary.rows_failed == 0
+    assert summary.rows_irrelevant_removed == 0
     assert summary.llm_attempts == 2
     assert len(fake.calls) == 2
     assert [item.item_no for item in fake.calls[0].items] == [1]
@@ -223,6 +229,7 @@ def test_offline_labeling_skips_records_already_labeled_in_business_jsonl(tmp_pa
     assert second_summary.rows_already_labeled == 1
     assert second_summary.rows_succeeded == 0
     assert second_summary.rows_failed == 0
+    assert second_summary.rows_irrelevant_removed == 0
     assert second_summary.llm_attempts == 0
     assert second_fake.calls == []
 

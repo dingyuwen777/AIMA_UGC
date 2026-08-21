@@ -1114,6 +1114,17 @@
             ],
             "title": "Analyzed At"
           },
+          "is_user_voice": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is User Voice"
+          },
           "labels": {
             "default": [],
             "items": {
@@ -1144,6 +1155,16 @@
             ],
             "title": "Model Provider"
           },
+          "relevance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContentRelevance"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "sentiment": {
             "anyOf": [
               {
@@ -1157,6 +1178,16 @@
           },
           "status": {
             "$ref": "#/components/schemas/ContentAnalysisStatus"
+          },
+          "voice_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContentVoiceType"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -1471,6 +1502,16 @@
             ],
             "title": "Published To"
           },
+          "relevance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContentRelevance"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "search": {
             "anyOf": [
               {
@@ -1521,6 +1562,16 @@
               }
             ],
             "title": "Source Identifier"
+          },
+          "voice_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContentVoiceType"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "title": "ContentFilterSnapshot",
@@ -1827,6 +1878,13 @@
         "title": "ContentMetricsResponse",
         "type": "object"
       },
+      "ContentRelevance": {
+        "enum": [
+          "relevant",
+          "irrelevant"
+        ],
+        "type": "string"
+      },
       "ContentSourceResponse": {
         "additionalProperties": false,
         "properties": {
@@ -1927,6 +1985,18 @@
         ],
         "title": "ContentTargetSelection",
         "type": "object"
+      },
+      "ContentVoiceType": {
+        "enum": [
+          "user_voice",
+          "creator_marketing",
+          "brand_official",
+          "dealer_promotion",
+          "media_information",
+          "other_organization",
+          "unknown"
+        ],
+        "type": "string"
       },
       "DataExportCreatedResponse": {
         "additionalProperties": false,
@@ -3874,6 +3944,38 @@
                 }
               ],
               "title": "Analysis Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "relevance",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ContentRelevance"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Relevance"
+            }
+          },
+          {
+            "in": "query",
+            "name": "voice_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ContentVoiceType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Voice Type"
             }
           },
           {

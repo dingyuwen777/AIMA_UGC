@@ -67,9 +67,15 @@ class _TaxonomyBenchmarkLLM:
             "items": [
                 {
                     "item_no": item.item_no,
+                    "relevance": "relevant",
+                    "voice_type": "user_voice",
                     "sentiment": self._sentiment,
-                    "primary_label": self._primary,
-                    "secondary_label": self._secondary,
+                    "labels": [
+                        {
+                            "primary_label": self._primary,
+                            "secondary_label": self._secondary,
+                        }
+                    ],
                 }
                 for item in request.items
             ]
