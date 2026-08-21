@@ -185,7 +185,27 @@ Token、服务器内部路径、堆栈或原始异常；响应头 `x-request-id`
   尚未配置或不可用返回 409。
 - Import Job 与 Collection Run 创建时冻结该快照，后续配置变化不会改写排队或运行中的执行语义。
 
-### 5.10 Content / 声音广场查询
+### 5.10 TikHub Collection / 统一运行中心
+
+- `GET /api/v1/collection-capabilities`：`getCollectionCapabilities`。只返回已启用且 Registry 可路由的
+  Provider Config 稳定 ID/显示名，以及 `provider/platform/business operations`；不返回 Secret、
+  Base URL、endpoint、Provider Operation、私有分页或 Pricing。
+- `POST /api/v1/collection-runs`：`createCollectionRun`，成功返回 202。`discovery` 接收本次 Run 的一次性
+  关键词；`batch_supplement` 接收一个已有 `import_batch_id` 且不得提交关键词。两种模式都显式选择
+  1—5 个平台及其 `provider_config_id`，可选评论/二级回复，并在同一事务创建 Run/Scope 与既有
+  `collection.run.v1` Job。请求结束后 Worker 执行 TikHub/Raw/Mapper/全局 Relevance/Ingestion；Router
+  不执行长任务。当前没有 HTTP actor 幂等或公网认证，只适用于受信部署边界。
+- `GET /api/v1/collection-runs/{run_id}`：`getCollectionRun`。返回固定 Run/Job 状态、阶段、Attempt、平台、
+  一次性关键词、关联 Batch、Scope 进度/统计与安全错误摘要；不公开 Provider 私有游标或 Raw。
+- `GET /api/v1/collection-runtime/runs`：`listCollectionRuntimeRuns`。用只读 UNION 集中返回
+  `excel_import/tikhub_discovery/tikhub_batch_supplement`，支持文本、类型、状态、阶段和带时区创建时间
+  筛选；默认 20、最大 100，使用绑定完整查询、30 分钟过期的 HMAC Cursor。签名配置不可用返回 503，
+  非法/篡改/过期/跨查询复用返回 400。
+- `GET /api/v1/collection-runtime/summary`：`getCollectionRuntimeSummary`。在 PostgreSQL 跨 Import Batch
+  与 Collection Run 聚合处理中、北京时间今日完成及今日入库/采集内容；不从当前页在浏览器计算。
+- Stage 8E Discovery 关键词只冻结在 Run，不保存为 Keyword Pack 或 Plan；持久配置属于 Stage 8F。
+
+### 5.11 Content / 声音广场查询
 
 - `GET /api/v1/contents`：`listContents`。查询统一 PostgreSQL Content Read Model，不区分 Excel、
   TikHub 或未来其他来源；支持文本、平台、内容类型、时间、来源 Batch/Run、AI 状态/情感/一级/二级
@@ -199,7 +219,7 @@ Token、服务器内部路径、堆栈或原始异常；响应头 `x-request-id`
 - `GET /api/v1/contents/{content_id}`：`getContent`。除列表字段外返回合法媒体元数据、最多 100 条当前
   评论、最新 Coverage 和来源记录；没有图片时不会伪造缩略图。不存在返回 404。
 
-### 5.11 显式 Content Analysis
+### 5.12 显式 Content Analysis
 
 - `POST /api/v1/content-analysis-requests`：`createContentAnalysis`。接收显式选择的 Content ID，或当前
   查询过滤快照；服务立即冻结 Content ID + Version，并在同一事务创建 Analysis Request 与
@@ -209,7 +229,7 @@ Token、服务器内部路径、堆栈或原始异常；响应头 `x-request-id`
 - 只有用户显式提交才调用模型；Import/Collection 默认不自动触发付费 Analysis。模型 Secret 只从
   Secret 文件装配，不进入 Payload、数据库、日志或响应。
 
-### 5.12 声音广场 Excel 导出
+### 5.13 声音广场 Excel 导出
 
 - `POST /api/v1/data-exports`：`createDataExport`。冻结显式选择或当前查询结果的 Content ID + Version，
   创建 `reporting.content-export-excel.v1` durable Job，返回 202；Router 不生成 Excel。

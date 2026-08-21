@@ -31,6 +31,10 @@ from aima_ugc.adapters.persistence.postgres.collection_provider_execution import
 from aima_ugc.adapters.persistence.postgres.collection_run_execution import (
     PostgresCollectionRunExecutionGateway,
 )
+from aima_ugc.adapters.persistence.postgres.collection_targets import (
+    CollectionEnrichmentTarget,
+    PostgresCollectionTargetReader,
+)
 from aima_ugc.adapters.persistence.postgres.provider_dispatch import (
     PostgresProviderDispatchPersistence,
     PostgresProviderRecoveryPersistence,
@@ -57,8 +61,13 @@ from aima_ugc.adapters.providers.tikhub.runtime import (
     mapping_context,
 )
 from aima_ugc.contracts.analysis import RelevanceSnapshotV1
-from aima_ugc.contracts.canonical import CanonicalCommentV1, CanonicalContentV1
+from aima_ugc.contracts.canonical import (
+    CanonicalCommentV1,
+    CanonicalContentV1,
+    CanonicalSourceV1,
+)
 from aima_ugc.contracts.collection import (
+    CollectionDecisionContextV1,
     CollectionDecisionPolicyV1,
     CollectionDecisionRequestV1,
     ContentObservationV1,
@@ -266,9 +275,15 @@ class TikHubCollectionScopeExecutor:
         scope: CollectionScopeRecord,
         context: JobExecutionContextProtocol,
     ) -> CollectionScopeExecutionResult:
-        """执行当前正式 keyword_search/content_discovery Scope。"""
-        if scope.source_type != "keyword_search" or scope.operation_group != "content_discovery":
-            raise ValueError("TikHub Scope Runtime 当前只支持 keyword_search/content_discovery")
+        """执行关键词发现或既有 Import Batch Content 的正式补采 Scope。"""
+        is_discovery = (
+            scope.source_type == "keyword_search" and scope.operation_group == "content_discovery"
+        )
+        is_enrichment = (
+            scope.source_type == "content" and scope.operation_group == "content_enrichment"
+        )
+        if not is_discovery and not is_enrichment:
+            raise ValueError("TikHub Scope Runtime 不支持当前 source_type/operation_group")
 
         self._reconciler.recover_inherited(context.fence)
         platform = _tikhub_platform(scope.platform)
@@ -278,6 +293,17 @@ class TikHubCollectionScopeExecutor:
         _validate_decision_policy(run)
         policy = _decision_policy(run)
         relevance = _relevance_service(run)
+
+        if is_enrichment:
+            return self._execute_content_enrichment(
+                run=run,
+                scope=scope,
+                provider_config=provider_config,
+                capability=capability,
+                policy=policy,
+                context=context,
+                relevance=relevance,
+            )
 
         stats = _ScopeStats.from_payload(scope.stats)
         self._refresh_counts(scope=scope, context=context, stats=stats)
@@ -445,6 +471,232 @@ class TikHubCollectionScopeExecutor:
             stats=stats,
         )
 
+    def _execute_content_enrichment(
+        self,
+        *,
+        run: CollectionRunRecord,
+        scope: CollectionScopeRecord,
+        provider_config: ProviderConfig,
+        capability: ProviderPlatformCapabilityV1,
+        policy: CollectionDecisionPolicyV1,
+        context: JobExecutionContextProtocol,
+        relevance: RelevanceService,
+    ) -> CollectionScopeExecutionResult:
+        """以 Batch 来源账本中的 Content 身份执行详情、评论与回复补采。"""
+
+        stats = _ScopeStats.from_payload(scope.stats)
+        pagination_state = dict(scope.pagination_state)
+        self._refresh_counts(scope=scope, context=context, stats=stats)
+        try:
+            if context.cancel_requested():
+                return _result(
+                    status="cancelled",
+                    stop_reason="cancelled",
+                    pagination_state=pagination_state,
+                    stats=stats,
+                )
+            target = self._load_enrichment_target(run=run, scope=scope)
+            if target.platform != scope.platform:
+                raise ValueError("补采 Scope 平台与 Batch Content 平台不一致")
+            seed = CanonicalContentV1(
+                platform=target.platform,
+                external_content_id=target.external_content_id,
+                content_type=target.content_type,
+                observed_at=self._observed_at(),
+                observed_fields=["content_type"],
+                source=CanonicalSourceV1(
+                    provider_name="tikhub",
+                    source_type=scope.source_type,
+                    source_value=scope.source_value,
+                    observed_at=self._observed_at(),
+                ),
+            )
+            details = self._fetch_detail_candidates(
+                run=run,
+                scope=scope,
+                content=seed,
+                provider_config=provider_config,
+                context=context,
+                stats=stats,
+            )
+            latest = details[-1].content
+            prior = self._content_state.evaluate(latest)
+            if prior is None:
+                raise ValueError("补采目标 Content 在执行期不存在")
+            if not relevance.evaluate(latest).matched:
+                for candidate in details:
+                    self._content_writer.record_candidate_filtered(
+                        candidate_id=candidate.candidate_id,
+                        canonical=candidate.content,
+                        fence=context.fence,
+                    )
+                stats.filtered_content_count += 1
+                self._refresh_counts(scope=scope, context=context, stats=stats)
+                return _result(
+                    status="succeeded",
+                    stop_reason="relevance_filtered",
+                    pagination_state=pagination_state,
+                    stats=stats,
+                )
+
+            decision = self._decision_service.decide(
+                CollectionDecisionRequestV1(
+                    current=ContentObservationV1(
+                        comment_count=_observed_comment_count(latest),
+                        business_changed=False,
+                    ),
+                    previous=prior.previous,
+                    policy=policy,
+                    capability=capability,
+                )
+            )
+            attempt_id, raw_artifact_id = _canonical_source_ids(latest)
+            action = self._content_actions.get_or_create(
+                scope_id=scope.id,
+                external_content_id=latest.external_content_id,
+                search_provider_attempt_id=attempt_id,
+                search_raw_artifact_id=raw_artifact_id,
+                search_observed_at=latest.observed_at,
+                previous_exists=True,
+                previous_comment_count=prior.previous.comment_count,
+                initial_business_changed=prior.business_changed,
+                decision=decision,
+                resolved_comment_count=_observed_comment_count(latest),
+                fence=context.fence,
+            )
+            for candidate in details:
+                ingestion = self._content_writer.ingest_content(
+                    canonical=candidate.content,
+                    fence=context.fence,
+                    candidate_id=candidate.candidate_id,
+                )
+                if ingestion.target_id != target.content_id:
+                    raise RuntimeError("Batch Detail 未收敛到原 Content")
+
+            if action.comments_completed:
+                self._refresh_counts(scope=scope, context=context, stats=stats)
+                return _result(
+                    status="succeeded",
+                    stop_reason=None,
+                    pagination_state=pagination_state,
+                    stats=stats,
+                )
+            if context.cancel_requested():
+                self._refresh_counts(scope=scope, context=context, stats=stats)
+                return _result(
+                    status="cancelled",
+                    stop_reason="cancelled",
+                    pagination_state=pagination_state,
+                    stats=stats,
+                )
+
+            technical_partial = False
+            if action.decision.comment_action in _COMMENT_FETCH_ACTIONS:
+                outcome = self._fetch_comments(
+                    run=run,
+                    scope=scope,
+                    content=latest,
+                    content_id=target.content_id,
+                    provider_config=provider_config,
+                    capability=capability,
+                    policy=policy,
+                    context=context,
+                    stats=stats,
+                    comment_action=action.decision.comment_action,
+                    comment_target=action.decision.comment_target,
+                    reported_total_override=action.resolved_comment_count,
+                )
+                technical_partial = outcome.technical_partial
+                if outcome.completed:
+                    self._content_actions.complete_comments(
+                        action_id=action.id,
+                        fence=context.fence,
+                    )
+            else:
+                self._record_non_fetch_coverage(
+                    content_id=target.content_id,
+                    content=latest,
+                    context=context,
+                    comment_reason=action.decision.comment_reason,
+                    comment_target=action.decision.comment_target,
+                )
+                self._content_actions.complete_comments(
+                    action_id=action.id,
+                    fence=context.fence,
+                )
+            if context.cancel_requested():
+                self._refresh_counts(scope=scope, context=context, stats=stats)
+                return _result(
+                    status="cancelled",
+                    stop_reason="cancelled",
+                    pagination_state=pagination_state,
+                    stats=stats,
+                )
+            if technical_partial:
+                stats.technical_partial_results += 1
+            self._refresh_counts(scope=scope, context=context, stats=stats)
+            return _result(
+                status="partial_success" if technical_partial else "succeeded",
+                stop_reason=None,
+                pagination_state=pagination_state,
+                stats=stats,
+            )
+        except LeaseLostError:
+            raise
+        except _ProviderCallFailed as exc:
+            self._refresh_counts(scope=scope, context=context, stats=stats)
+            if exc.retryable:
+                raise CollectionScopeRetryableError(
+                    error_code=exc.error_code,
+                    pagination_state=pagination_state,
+                    progress=scope.progress,
+                    stats=stats.payload(),
+                    requested_count=stats.requested_count,
+                    succeeded_count=stats.succeeded_count,
+                    failed_count=stats.failed_count,
+                    content_count=stats.content_count,
+                    comment_count=stats.comment_count,
+                ) from exc
+            return _result(
+                status="failed",
+                stop_reason=exc.error_code,
+                pagination_state=pagination_state,
+                stats=stats,
+            )
+        except Exception:
+            self._refresh_counts(scope=scope, context=context, stats=stats)
+            return _result(
+                status="failed",
+                stop_reason="scope_execution_failed",
+                pagination_state=pagination_state,
+                stats=stats,
+            )
+
+    def _load_enrichment_target(
+        self,
+        *,
+        run: CollectionRunRecord,
+        scope: CollectionScopeRecord,
+    ) -> CollectionEnrichmentTarget:
+        if run.import_batch_id is None:
+            raise ValueError("content_enrichment Run 缺少 import_batch_id")
+        try:
+            content_id = UUID(scope.source_value)
+        except ValueError as exc:
+            raise ValueError("content_enrichment source_value 必须为 Content UUID") from exc
+        session = self._session_factory()
+        try:
+            with session.begin():
+                target = PostgresCollectionTargetReader(session).get_batch_target(
+                    batch_id=run.import_batch_id,
+                    content_id=content_id,
+                )
+        finally:
+            session.close()
+        if target is None:
+            raise ValueError("补采目标不属于 Run 关联的 Import Batch")
+        return target
+
     def _refresh_counts(
         self,
         *,
@@ -521,6 +773,9 @@ class TikHubCollectionScopeExecutor:
                         business_changed=(prior.business_changed if prior is not None else False),
                     ),
                     previous=prior.previous if prior is not None else None,
+                    context=CollectionDecisionContextV1(
+                        manual_deep_collection=_manual_deep_collection(run),
+                    ),
                     policy=policy,
                     capability=capability,
                 )
@@ -914,7 +1169,18 @@ class TikHubCollectionScopeExecutor:
                         capability=capability,
                     )
                 )
-                if reply_decision.action in _REPLY_FETCH_ACTIONS and not context.cancel_requested():
+                if not _include_sub_comments(run):
+                    self._record_non_fetch_thread_coverage(
+                        content_id=content_id,
+                        root_comment=comment,
+                        platform=platform,
+                        context=context,
+                        reason="sub_comments_disabled",
+                        target_count=None,
+                    )
+                elif (
+                    reply_decision.action in _REPLY_FETCH_ACTIONS and not context.cancel_requested()
+                ):
                     reply_outcome = self._fetch_sub_comments(
                         run=run,
                         scope=scope,
@@ -1747,6 +2013,19 @@ def _relevance_service(run: CollectionRunRecord) -> RelevanceService:
             for priority, text in enumerate(snapshot.effective_keywords)
         )
     )
+
+
+def _manual_deep_collection(run: CollectionRunRecord) -> bool:
+    snapshot = getattr(run, "config_snapshot", {})
+    value = snapshot.get("manual_deep_collection") if isinstance(snapshot, dict) else None
+    return value if isinstance(value, bool) else False
+
+
+def _include_sub_comments(run: CollectionRunRecord) -> bool:
+    snapshot = getattr(run, "config_snapshot", {})
+    value = snapshot.get("include_sub_comments") if isinstance(snapshot, dict) else None
+    # Stage 7 既有 Scheduler Snapshot 没有该字段，保持原有默认抓取行为。
+    return value if isinstance(value, bool) else True
 
 
 def _validate_decision_policy(run: CollectionRunRecord) -> None:

@@ -42,6 +42,7 @@ from aima_ugc.modules.collection.execution_limits import (
     provider_execution_window_floor_seconds,
 )
 from aima_ugc.modules.collection.planning import CollectionPlanningService, CollectionPlanRecord
+from aima_ugc.modules.collection.run_snapshot import provider_run_snapshot
 from aima_ugc.modules.collection.scheduled_scopes import (
     ScheduledKeywordPackSnapshot,
     build_scheduled_scope_snapshot,
@@ -51,7 +52,6 @@ from aima_ugc.modules.collection.scheduler import (
     SchedulerBacklogLimitError,
     resolve_scheduler_plan,
 )
-from aima_ugc.modules.system.models import ProviderConfig
 from aima_ugc.platform.config import PlatformSettings
 from aima_ugc.platform.logging import log_event
 
@@ -239,24 +239,10 @@ def _resolve_provider_snapshots(
             raise ValueError(f"Plan 引用 Provider Config 不存在: {item.provider_config_id}")
         route = registry.resolve(config=provider_config, platform=item.platform)
         _validate_search_config(route.capability, item.config)
-        snapshots.append(_provider_snapshot(provider_config, item.platform, item.config))
+        snapshots.append(
+            provider_run_snapshot(provider_config, platform=item.platform, config=item.config)
+        )
     return tuple(snapshots)
-
-
-def _provider_snapshot(
-    provider_config: ProviderConfig,
-    platform: str,
-    config: dict[str, object],
-) -> dict[str, object]:
-    return {
-        "platform": platform,
-        "provider_config_id": str(provider_config.id),
-        "provider": provider_config.provider,
-        "base_url": provider_config.base_url,
-        # 只冻结 Secret 引用身份；Secret 文件内容仍可在同一 ref 下合规轮换。
-        "secret_ref": provider_config.secret_ref,
-        "config": dict(config),
-    }
 
 
 def _validate_search_config(

@@ -53,6 +53,12 @@ AIMA_UGC 的前端需要同时满足两件事：
 
 新页面或正式改版开始编码前，应先有可识别的 Figma 目标 Frame/Node；如果页面只修改业务行为而视觉完全不变，可以直接基于当前页面实现和 Contract 处理，不强制为了形式重新画一张设计稿。
 
+Stage 8E 因当时没有 Figma 文件，由用户批准
+`docs/assets/stage8e/tikhub-supplement-centralized-runs-prototype.png` 作为一次性视觉基线；资产哈希、批准
+范围与验收证据由该 Stage 的 Change 维护。这是单次例外，不把 PNG 提升为长期设计事实源。后续 Figma
+重做可以替换页面私有 Vue 组件和 scoped 样式，但必须保持现有 route、Pydantic/OpenAPI/Orval Contract、
+Feature API/Pinia Store、一次性 Discovery、Batch 补采与统一运行列表语义兼容。
+
 如果 Figma 与当前已发布代码不一致：
 
 - 尚未实现的新设计，以已确认 Figma 作为目标；

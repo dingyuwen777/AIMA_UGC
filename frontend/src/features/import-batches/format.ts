@@ -1,4 +1,10 @@
-import type { ImportBatchStatus, ImportStage } from '../../generated/api/client'
+import type {
+  CollectionPlatform,
+  CollectionRuntimeRecordType,
+  CollectionRuntimeStatus,
+  ImportBatchStatus,
+  ImportStage,
+} from '../../generated/api/client'
 
 export const statusLabels: Record<ImportBatchStatus, string> = {
   queued: '排队中',
@@ -18,6 +24,47 @@ export const stageLabels: Record<ImportStage, string> = {
   succeeded: '已完成',
   failed: '处理失败',
   cancelled: '已取消',
+}
+
+export const runtimeStatusLabels: Record<CollectionRuntimeStatus, string> = {
+  queued: '排队中',
+  running: '运行中',
+  partial_success: '部分成功',
+  succeeded: '已完成',
+  failed: '失败',
+  cancelled: '已取消',
+}
+
+export const recordTypeLabels: Record<CollectionRuntimeRecordType, string> = {
+  excel_import: 'Excel 导入',
+  tikhub_discovery: 'TikHub 发现',
+  tikhub_batch_supplement: '批次补采',
+}
+
+export const platformLabels: Record<CollectionPlatform, string> = {
+  xhs: '小红书',
+  douyin: '抖音',
+  weibo: '微博',
+  bilibili: 'B站',
+  kuaishou: '快手',
+}
+
+const runtimeStageLabels: Record<string, string> = {
+  queued: '等待处理',
+  reading: 'Excel 读取',
+  mapping: '字段映射',
+  filtering: '相关性过滤',
+  deduplicating: '去重',
+  ingesting: '内容入库',
+  content_discovery: 'TikHub 采集中',
+  content_enrichment: '内容补采',
+  succeeded: '已完成',
+  failed: '处理失败',
+  cancelled: '已取消',
+}
+
+export function runtimeStageLabel(value: string): string {
+  return runtimeStageLabels[value] ?? value
 }
 
 export function formatNumber(value: number | undefined): string {

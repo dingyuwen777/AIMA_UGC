@@ -19,6 +19,13 @@ from starlette.responses import JSONResponse, StreamingResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from aima_ugc.contracts.http import (
+    CollectionCapabilitiesResponse,
+    CollectionRunCreatedResponse,
+    CollectionRunCreateRequest,
+    CollectionRunResponse,
+    CollectionRuntimeListQuery,
+    CollectionRuntimeListResponse,
+    CollectionRuntimeSummaryResponse,
     ContentAnalysisCreatedResponse,
     ContentAnalysisSubmitRequest,
     ContentDetailResponse,
@@ -41,6 +48,13 @@ from aima_ugc.contracts.http import (
     KeywordPackCreateRequest,
     KeywordPackKeywordCreateRequest,
     KeywordPackResponse,
+)
+from aima_ugc.modules.collection.http import (
+    CollectionConflict,
+    CollectionHttpService,
+    CollectionResourceNotFound,
+    CollectionRuntimeCursorUnavailable,
+    InvalidCollectionRuntimeCursor,
 )
 from aima_ugc.modules.content.http import (
     ContentCursorUnavailable,
@@ -198,6 +212,7 @@ def create_app(
     import_service: ImportHttpService | None = None,
     content_service: ContentHttpService | None = None,
     reporting_service: ReportingHttpService | None = None,
+    collection_service: CollectionHttpService | None = None,
 ) -> FastAPI:
     """创建 API 应用；默认 runtime 延迟到启动或第一次 readiness 检查。"""
     runtime: PlatformRuntime | None = None
@@ -253,6 +268,16 @@ def create_app(
         from aima_ugc.bootstrap.reporting_http import PostgresReportingHttpService
 
         return PostgresReportingHttpService(resolved_runtime)
+
+    def current_collection_service() -> CollectionHttpService:
+        if collection_service is not None:
+            return collection_service
+        resolved_runtime = get_runtime()
+        if resolved_runtime is None:
+            raise RuntimeError("Collection Service 依赖不可用")
+        from aima_ugc.bootstrap.collection_http import PostgresCollectionHttpService
+
+        return PostgresCollectionHttpService(resolved_runtime)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -409,6 +434,53 @@ def create_app(
             code="content_cursor_unavailable",
         )
 
+    @application.exception_handler(CollectionResourceNotFound)
+    async def collection_resource_not_found(
+        request: Request, _: CollectionResourceNotFound
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=404,
+            request_id=_request_id(request),
+            title="采集资源不存在",
+            detail="请求的采集运行、导入批次、内容或 Provider 配置不存在。",
+            code="collection_resource_not_found",
+        )
+
+    @application.exception_handler(CollectionConflict)
+    async def collection_conflict(request: Request, _: CollectionConflict) -> JSONResponse:
+        return _error_response(
+            status_code=409,
+            request_id=_request_id(request),
+            title="采集运行无法创建",
+            detail="当前配置或资源状态不允许创建采集运行。",
+            code="collection_conflict",
+        )
+
+    @application.exception_handler(InvalidCollectionRuntimeCursor)
+    async def invalid_collection_runtime_cursor(
+        request: Request, _: InvalidCollectionRuntimeCursor
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=400,
+            request_id=_request_id(request),
+            title="分页游标不合法",
+            detail="分页游标无效、已过期或与当前查询条件不匹配。",
+            code="invalid_collection_runtime_cursor",
+            field="query.cursor",
+        )
+
+    @application.exception_handler(CollectionRuntimeCursorUnavailable)
+    async def collection_runtime_cursor_unavailable(
+        request: Request, _: CollectionRuntimeCursorUnavailable
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=503,
+            request_id=_request_id(request),
+            title="分页服务暂不可用",
+            detail="采集运行分页服务配置不可用，请使用 request_id 联系管理员。",
+            code="collection_runtime_cursor_unavailable",
+        )
+
     @application.exception_handler(DataExportResourceNotFound)
     async def data_export_resource_not_found(
         request: Request, _: DataExportResourceNotFound
@@ -493,6 +565,82 @@ def create_app(
                 log_directory=report.log_directory,
             ),
         )
+
+    @application.get(
+        "/api/v1/collection-capabilities",
+        operation_id="getCollectionCapabilities",
+        response_model=CollectionCapabilitiesResponse,
+        responses={500: {"model": HttpErrorResponse}},
+        tags=["collection"],
+    )
+    def get_collection_capabilities() -> CollectionCapabilitiesResponse:
+        return current_collection_service().get_capabilities()
+
+    @application.post(
+        "/api/v1/collection-runs",
+        operation_id="createCollectionRun",
+        response_model=CollectionRunCreatedResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+        responses={
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["collection"],
+    )
+    def create_collection_run(
+        body: CollectionRunCreateRequest,
+        request: Request,
+    ) -> CollectionRunCreatedResponse:
+        return current_collection_service().create_run(
+            body,
+            request_id=_request_id(request),
+        )
+
+    @application.get(
+        "/api/v1/collection-runs/{run_id}",
+        operation_id="getCollectionRun",
+        response_model=CollectionRunResponse,
+        responses={
+            404: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["collection"],
+    )
+    def get_collection_run(run_id: UUID) -> CollectionRunResponse:
+        return current_collection_service().get_run(run_id)
+
+    @application.get(
+        "/api/v1/collection-runtime/runs",
+        operation_id="listCollectionRuntimeRuns",
+        response_model=CollectionRuntimeListResponse,
+        responses={
+            400: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            503: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["collection"],
+    )
+    def list_collection_runtime_runs(
+        query: Annotated[CollectionRuntimeListQuery, Query()],
+    ) -> CollectionRuntimeListResponse:
+        return current_collection_service().list_runtime_runs(query)
+
+    @application.get(
+        "/api/v1/collection-runtime/summary",
+        operation_id="getCollectionRuntimeSummary",
+        response_model=CollectionRuntimeSummaryResponse,
+        responses={
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["collection"],
+    )
+    def get_collection_runtime_summary() -> CollectionRuntimeSummaryResponse:
+        return current_collection_service().get_runtime_summary()
 
     @application.get(
         "/api/v1/contents",

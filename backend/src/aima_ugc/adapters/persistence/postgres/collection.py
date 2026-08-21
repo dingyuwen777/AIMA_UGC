@@ -38,6 +38,7 @@ class PostgresCollectionRepository:
         scopes: tuple[CollectionScopeDefinition, ...],
         manual_plan_id: UUID | None = None,
         occurrence_id: UUID | None = None,
+        import_batch_id: UUID | None = None,
     ) -> CollectionExecution:
         """在当前事务创建一个 queued Run 及其 queued Scopes。"""
         run_id = uuid4()
@@ -49,6 +50,7 @@ class PostgresCollectionRepository:
                     job_id=job_id,
                     manual_plan_id=manual_plan_id,
                     occurrence_id=occurrence_id,
+                    import_batch_id=import_batch_id,
                     trigger_type=trigger_type,
                     config_snapshot=config_snapshot,
                     status="queued",
@@ -88,6 +90,16 @@ class PostgresCollectionRepository:
         row = (
             self._session.execute(
                 select(collection_runs_table).where(collection_runs_table.c.job_id == job_id)
+            )
+            .mappings()
+            .one_or_none()
+        )
+        return _row_to_run(row) if row is not None else None
+
+    def get_run(self, run_id: UUID) -> CollectionRunRecord | None:
+        row = (
+            self._session.execute(
+                select(collection_runs_table).where(collection_runs_table.c.id == run_id)
             )
             .mappings()
             .one_or_none()
@@ -317,6 +329,7 @@ def _row_to_run(row: RowMapping) -> CollectionRunRecord:
         comment_count=cast(int, row["comment_count"]),
         error_summary=cast(str | None, row["error_summary"]),
         created_at=row["created_at"],
+        import_batch_id=cast(UUID | None, row["import_batch_id"]),
     )
 
 

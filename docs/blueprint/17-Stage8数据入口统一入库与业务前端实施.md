@@ -537,7 +537,8 @@ PLANNED
 | Analysis PostgreSQL Persistence | PLANNED | 独立 L3 Change；Result + Label Pairs + 幂等/历史/current Analysis |
 | AI 数据库/页面状态 | PLANNED | Analysis Persistence + Query Read Model 完成前不得冒充已接入 |
 | 正式数据库报告/跨批次趋势 | PLANNED | 先完成 Analysis Persistence，再建立 PostgreSQL Report Read Model；Renderer 继续复用 Blueprint 13 |
-| TikHub 补采按钮 | PLANNED | Stage 8E |
+| TikHub 补采按钮 | IMPLEMENTED | Stage 8E：一次性主动发现 + Batch 补采，共用正式 Run/Job |
+| Excel/TikHub 全部运行列表 | IMPLEMENTED | Stage 8E：跨 Owner 只读 UNION，不建立万能父表 |
 
 以后 Figma 修改如果增加按钮、筛选项、状态或统计，必须先更新本能力映射/当前 Change，再决定是否需要 HTTP Contract、Query、Job、Schema 或只改前端。
 
@@ -702,16 +703,35 @@ Pydantic/Orval Contract、筛选和操作语义兼容。
 
 ### 8E：TikHub 辅助补采
 
-目标：TikHub 从独立后台能力变成可从业务上下文显式发起的辅助补充来源。
+目标：TikHub 从独立后台能力变成采集运行中心中可显式发起、可查询的辅助来源，同时保留 Excel 与
+TikHub 所有运行记录的集中视图。
 
-主要工作：
+当前正式边界：
 
-- 从 Batch/Content 上下文明确补采目标；
-- 复用正式 Collection Run/Job；
-- 不在 UI 暴露 Provider 私有 cursor/search_id/page 等；
-- 通过 Capability 只暴露真实业务参数；
-- 补采结果仍进入同一 ContentIngestionService/PostgreSQL；
-- 页面能从 Batch 看到关联的补采 Run 状态。
+- `discovery` 接收最多 100 个一次性关键词并冻结到本次 Run/Scope，不写 Discovery Keyword Pack，
+  不创建或修改 Collection Plan；词包保存和 Plan 配置留到 Stage 8F；
+- `batch_supplement` 只从 Import Batch 的正式 Version → Attempt → Request 来源账本解析 Content，不接受
+  浏览器提交外部帖子 ID；`collection_runs.import_batch_id` 是可空外键，一个 Batch 可关联多个 Run；
+- 两种模式都在同一短事务创建 `collection.run.v1` Job、Run 和 Scope；HTTP Router 不调用 TikHub，
+  Worker 复用 Provider Request/Attempt、Raw、Mapper、全局 Relevance、Candidate、Fenced
+  `ContentIngestionService` 与 PostgreSQL Content Owner；
+- Batch 补采 Scope 使用 `content/content_enrichment`，先补详情并执行冻结的全局 Relevance；未命中只
+  追加 `filtered` Candidate，不删除既有 Excel Content；命中后按请求选项补评论/二级回复；
+- `GET /api/v1/collection-capabilities` 只公开已启用 Provider Config 的稳定 ID/显示名，以及
+  `provider + platform + business operations`；不公开 Secret、Base URL、endpoint、Provider Operation、
+  cursor/search_id/page 或 Pricing；
+- `GET /api/v1/collection-runtime/runs` 通过只读 UNION 集中返回 Excel Import Batch、TikHub 主动发现
+  Run 和 Batch 补采 Run，使用绑定查询的 30 分钟 HMAC Cursor；Summary 在 PostgreSQL 跨两个 Owner
+  聚合处理中、北京时间今日完成与今日入库/采集内容；
+- `/collection-runtime` 保持同一路由和 Feature API/Pinia/Orval 边界，新增“全部运行/Excel 导入/
+  TikHub 辅助补采”、两种创建模式与 Collection Run 详情；声音广场不显示渠道专属入口；
+- 当前无认证，写接口仅适用于受信部署边界；创建页面提示真实 TikHub 请求可能产生费用，本阶段不实现
+  请求/金额 Budget、ETA、Provider Config/Secret 管理、自动 fallback 或真实付费 Probe。
+
+Stage 8E 经用户批准使用
+`docs/assets/stage8e/tikhub-supplement-centralized-runs-prototype.png` 作为一次性 PNG 视觉基线。该例外
+不改变 Blueprint 16 的 Figma-first 长期规则；未来 Figma 重做只替换可视组件/样式，必须保持 route、
+Pydantic/OpenAPI/Orval Contract、Feature API/Store、两种运行模式与统一列表语义兼容。
 
 ### 8F：Keyword / Plan / Stage 8 Integration
 

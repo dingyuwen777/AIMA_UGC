@@ -145,13 +145,22 @@ POST /api/v1/keyword-packs/{pack_id}/keywords
 GET  /api/v1/keyword-packs/{pack_id}
 PUT  /api/v1/relevance-config
 GET  /api/v1/relevance-config
+GET  /api/v1/collection-capabilities
+POST /api/v1/collection-runs
+GET  /api/v1/collection-runs/{run_id}
+GET  /api/v1/collection-runtime/runs
+GET  /api/v1/collection-runtime/summary
 ```
 
 `POST /api/v1/import-batches` 只接受一个 multipart `file`，返回 202 后由持久 Worker 处理；Job 查询当前
 只公开 Import Job，其他内部 Job 类型不因共用 `jobs` 表而自动变成公共 Contract。列表只读
 `Processing Import Batch + ingestion.import-excel.v1 Job`，按 `created_at DESC, id DESC` 稳定排序，并
-支持 Batch/Job UUID、公开状态/阶段和带时区创建时间范围。Summary 在 PostgreSQL 聚合处理中、北京时间
-今日完成和今日成功入库行数，不从当前页推算。Keyword Pack 页面仍属于 Stage 8F。
+支持 Batch/Job UUID、公开状态/阶段和带时区创建时间范围。Stage 8E 新增的统一运行 Read Model 用只读
+UNION 集中投影 Excel Import Batch、TikHub Discovery Run 与 Batch Supplement Run，不把两个 Owner
+合并成万能业务表；Summary 在 PostgreSQL 跨两个 Owner 聚合处理中、北京时间今日完成和今日入库/采集
+内容，不从当前页推算。Collection Capability 只公开启用 Config 的稳定 ID/显示名与
+`provider + platform + business operations`，不暴露 Secret、Base URL 或 Provider 私有 Operation/分页。
+Keyword Pack 页面仍属于 Stage 8F。
 
 路径使用名词和复数。业务动作只在无法自然表达为资源变化时使用：
 
@@ -224,6 +233,10 @@ Cursor 是不透明字符串，至少包含版本、稳定排序字段、ID、�
 Import Batch Cursor 当前使用独立 HMAC-SHA256 Secret、30 分钟有效期并绑定全部查询条件和固定排序；
 Secret 缺失/不合格时列表返回统一 503，响应和日志不暴露 Secret 或文件路径。前端只保存并原样回传
 `next_cursor`，不得解析或自行构造。
+
+Stage 8E 统一运行列表使用独立 `collection_runtime_cursor_signing_key`，同样为至少 32 UTF-8 字节、
+30 分钟有效且绑定完整查询。它不能与 Import Batch、声音广场 Cursor 或数据库密码复用；配置不可用时
+统一列表关闭失败，Run 按 ID 查询与 Worker 不依赖该 Key。
 
 小型配置列表可以不分页。管理页面如果使用页码，必须有稳定 `ORDER BY`。
 
@@ -463,7 +476,10 @@ features/collection/
 └─ tests/
 ```
 
-Stage 8C/8D 当前实际 Feature 为 `features/import-batches/` 与 `features/voice-plaza/`。声音广场保持
+Stage 8C—8E 当前实际 Feature 为 `features/import-batches/` 与 `features/voice-plaza/`。为保持既有
+`/collection-runtime` Route、Feature API/Store 和后续 Figma 兼容，Stage 8E 在前一个目录内增量加入
+统一 Excel/TikHub 运行列表、两种 TikHub 创建模式与 Run 详情，没有复制第二套 Collection Store/API。
+声音广场保持
 Page/私有组件/Store/API/生成 Client 分层；一次性截图只影响可替换视觉层，后续 Figma 重做不得改变
 `/voice-plaza`、Pydantic/Orval Contract、筛选快照、全部标签数组或显式 Analysis/Export 操作语义。
 

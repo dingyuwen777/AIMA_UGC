@@ -330,11 +330,11 @@ jobs:
           set -euo pipefail
           uv run pytest tests/integration/ingestion -q
 
-      - name: Stage 8D previous revision downgrade and re-upgrade
+      - name: Stage 8E previous revision downgrade and re-upgrade
         shell: bash
         run: |
           set -euo pipefail
-          uv run alembic downgrade 20260820_0020
+          uv run alembic downgrade 20260821_0021
           uv run alembic upgrade head
           uv run alembic current
           uv run alembic check

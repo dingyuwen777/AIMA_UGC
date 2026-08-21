@@ -6,7 +6,10 @@ AIMA_UGC 是爱玛舆情监控系统的 Greenfield 重构仓库。目标是从�
 
 **Stage 1—7 的工程基线、Platform/数据库/Canonical、PostgreSQL Job Runtime、Provider Request/Attempt + Raw、Collection Run/Scope、五平台 TikHub Operation/Mapper/Ingestion，以及 Scheduler/正式 Worker 主链已经建立。** 当前仓库具备可安装 Python package、FastAPI/Vue 最小工程、固定 OpenAPI 与生成 TypeScript Client、本地前后端联调、Windows x64 开发环境引导、PostgreSQL 18 Schema/Migration、Provider/平台无关 Canonical V1 与 Provider V1 Contract，以及 `Scheduler → Occurrence → Job → Run/Scope → Provider → Raw → Mapper → Canonical → Content Owner` 的持久化执行链。
 
-Stage 8 尚未开始。当前五平台生产实现使用同一 Collection/Content 边界，普通 CI 通过 Fake Transport + 合法脱敏 Fixture 验证，不产生付费 TikHub 请求；真实 Provider Probe 仅在明确授权和请求上限下作为外部兼容证据。当前没有请求/金额 Budget、Budget Account 或 Reservation Ledger。
+Stage 8A—8E 已依次建立正式 Excel Import、全局 Relevance、采集运行中心、声音广场，以及 TikHub
+一次性主动发现/Batch 补采的前后端产品化链路。当前五平台生产实现使用同一 Collection/Content 边界，
+普通 CI 通过 Fake Transport + 合法脱敏 Fixture 验证，不产生付费 TikHub 请求；真实 Provider Probe 仅在
+明确授权和请求上限下作为外部兼容证据。当前没有请求/金额 Budget、Budget Account 或 Reservation Ledger。
 
 五平台无数据库 TikHub 独立调试入口见 [`backend/src/aima_ugc/adapters/providers/tikhub_test/README.md`](backend/src/aima_ugc/adapters/providers/tikhub_test/README.md)。它复用生产 Runtime/Operation/Mapper/Decision，支持单/多关键词，输出 Raw、Canonical、`run_summary.json`、跨运行 state 和原始数据 Excel；当前评论增量只对真实排序证据充分的小红书、B站开启。源码仍不能直接视为公网生产交付：Stage 8 业务 API/页面/认证授权，以及 Release 阶段的 Docker/离线发布、协调 Backup/Restore、生产镜像与恢复演练仍需后续正式门禁。
 
@@ -157,7 +160,7 @@ Stage 6 没有启用真实 HTTP Transport、预算 Reservation/Settlement、公�
 
 Stage 7 的真实 Provider 兼容证据由受控 Probe、合法脱敏 Fixture 与 `docs/blueprint/10`—`12` 维护；一次 HTTP 200 不等于长期稳定性承诺。
 
-### Stage 8A—8D：统一 File Import、采集运行中心与声音广场
+### Stage 8A—8E：统一 File Import、采集运行中心、声音广场与 TikHub 补采
 
 - Stage 8A/8B 已把 Excel 主入口接入 Source Artifact、Processing Import Batch、持久化 Import Job、
   既有 Worker/正式 File Import、全局 Relevance 与 Content Ingestion，并固定 OpenAPI/Orval Client；
@@ -169,7 +172,9 @@ Stage 7 的真实 Provider 兼容证据由受控 Probe、合法脱敏 Fixture �
   不会自动触发付费模型；
 - Excel 导出由 durable Export Job 冻结 Content ID/Version，复用共享 Exporter，登记 Artifact 后下载；
   未打标内容不会被丢弃，AI 列为空并计入未打标统计；
-- 本阶段不包含 Stage 8E TikHub 辅助补采或 Stage 8F Relevance/Plan 配置页面。
+- Stage 8E 在同一采集运行中心集中显示 Excel/TikHub 运行，新增一次性 Discovery 与基于 Import Batch 的
+  详情/评论补采；复用正式 Collection Run/Job、Raw、Mapper、全局 Relevance 与 Fenced Ingestion；
+- 本阶段不包含 Stage 8F Discovery 词包保存、Relevance/Plan 配置页面。
 
 Stage 8C 已由最终 PR Head 21/21 checks、两阶段 Review、正常合并、Change 归档和合并后 `main`
 新鲜 CI 共同闭环，不能由 README 或页面存在单独证明。
@@ -196,10 +201,11 @@ scripts\setup_dev_environment.cmd
 <AIMA_SECRET_DIR>/postgres_password
 <AIMA_SECRET_DIR>/import_batch_cursor_signing_key
 <AIMA_SECRET_DIR>/content_cursor_signing_key
+<AIMA_SECRET_DIR>/collection_runtime_cursor_signing_key
 ```
 
-两个 Cursor Key 分别用于 Import Batch 与声音广场查询，均至少 32 个 UTF-8 字节且不得与数据库密码
-或彼此复用。启用真实 AI 分析时还需提供 `<AIMA_SECRET_DIR>/llm_api_key`，并显式配置
+三个 Cursor Key 分别用于 Import Batch、声音广场与 Excel/TikHub 统一运行查询，均至少 32 个 UTF-8
+字节且不得与数据库密码或彼此复用。启用真实 AI 分析时还需提供 `<AIMA_SECRET_DIR>/llm_api_key`，并显式配置
 `AIMA_LLM_BASE_URL`、`AIMA_LLM_MODEL`；`AIMA_LLM_PROVIDER_NAME` 可覆盖由 Base URL 推导的稳定 Provider 名。
 
 默认本地目录为：
@@ -348,20 +354,20 @@ TikHub / 官方 API / Apify / 自建采集器 / 文件导入 / 其他 Provider
 
 ## 下一阶段
 
-下一正式最小开发单元是 **Stage 8E：TikHub 辅助补采**。开始前仍须从当时最新 `main` 重新确认
-Blueprint、Contract、Migration、OpenAPI/Orval、Content Query、Collection Runtime、Active Change、
+下一正式最小开发单元是 **Stage 8F：Keyword / Plan / Stage 8 Integration**。开始前仍须从当时最新
+`main` 重新确认 Blueprint、Contract、Migration、OpenAPI/Orval、Content/Collection Runtime、Active Change、
 相关 PR 和 CI，不能仅凭本 README 判断阶段状态。
 
 ```text
-Stage 8D 声音广场 / current Analysis / durable Excel Export 已闭环
-→ Stage 8E 从 Batch/Content 上下文显式发起 TikHub 辅助补采
-→ 复用正式 Collection Run / Job / Provider / Ingestion
-→ 不提前实现 Stage 8F Relevance / Plan 配置页面
+Stage 8E 统一运行中心 / 一次性 Discovery / Batch 补采已闭环
+→ Stage 8F 保存 Discovery 词包并产品化 Keyword / Relevance / Collection Plan 配置
+→ 保持 Discovery 与全局 Relevance 语义分离
+→ 完成 Stage 8 跨页面集成，不扩入 Release 或认证阶段
 ```
 
 具体成功标准、范围和非目标以
 [`docs/blueprint/17-Stage8数据入口统一入库与业务前端实施.md`](docs/blueprint/17-Stage8数据入口统一入库与业务前端实施.md)
-为准；Stage 8E 不自动开启真实付费 Provider，也不改变当前未接入公网生产认证的边界。
+为准；Stage 8F 不得静默发明认证、权限、Provider Secret 写入或自动付费采集语义。
 
 ## 多人协作
 
