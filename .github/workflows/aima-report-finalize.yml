@@ -30,15 +30,9 @@ jobs:
           if test ! -f backend/src/aima_ugc/platform/reporting/visual_report.py; then
             cat \
               .github/aima-report-payload/part.00 \
-              .github/aima-report-payload/part.010 \
-              .github/aima-report-payload/part.011 \
-              .github/aima-report-payload/part.012 \
-              .github/aima-report-payload/part.013 \
+              .github/aima-report-payload/part.01 \
               .github/aima-report-payload/part.02 \
-              .github/aima-report-payload/part.030 \
-              .github/aima-report-payload/part.031 \
-              .github/aima-report-payload/part.032 \
-              .github/aima-report-payload/part.033 \
+              .github/aima-report-payload/part.03 \
               .github/aima-report-payload/part.04 \
               .github/aima-report-payload/part.05 \
               > /tmp/aima.b64
