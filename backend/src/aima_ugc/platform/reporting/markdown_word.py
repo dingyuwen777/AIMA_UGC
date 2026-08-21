@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import dataclass, replace
 from pathlib import Path
 
 from .chart_spec import ChartSpec
-from .docx_package import DocxBuilder, verify_docx
+from .docx_package import verify_docx
+from .visual_docx import ReportDocxBuilder
 
 _FENCE_RE = re.compile(r"^```([A-Za-z0-9_-]*)\s*$")
 _HEADING_RE = re.compile(r"^(#{1,3})\s+(.+)$")
@@ -48,7 +50,7 @@ def convert_markdown_to_docx(markdown_path: Path, output_path: Path) -> WordConv
     if not source.is_file():
         raise FileNotFoundError(source)
 
-    builder = DocxBuilder()
+    builder = ReportDocxBuilder()
     _parse_markdown(source.read_text(encoding="utf-8"), builder, asset_root=source.parent)
     target.parent.mkdir(parents=True, exist_ok=True)
     builder.save(target)
@@ -67,11 +69,12 @@ def convert_markdown_to_docx(markdown_path: Path, output_path: Path) -> WordConv
     )
 
 
-def _parse_markdown(markdown: str, builder: DocxBuilder, *, asset_root: Path) -> None:
+def _parse_markdown(markdown: str, builder: ReportDocxBuilder, *, asset_root: Path) -> None:
     lines = markdown.splitlines()
     index = 0
     table_style: str | None = None
     chart_presentation: str | None = None
+    layout_style: str | None = None
     while index < len(lines):
         line = lines[index]
         if not line.strip():
@@ -89,6 +92,10 @@ def _parse_markdown(markdown: str, builder: DocxBuilder, *, asset_root: Path) ->
                 if chart_presentation is not None:
                     raise ValueError("连续 chart-presentation 元数据没有对应 Mermaid 图表")
                 chart_presentation = value
+            elif key == "layout":
+                if layout_style is not None:
+                    raise ValueError("连续 layout 元数据没有对应视觉组合")
+                layout_style = value
             else:
                 raise ValueError(f"不支持的 AIMA Markdown 元数据: {key}")
             index += 1
@@ -96,6 +103,8 @@ def _parse_markdown(markdown: str, builder: DocxBuilder, *, asset_root: Path) ->
 
         fence = _FENCE_RE.match(line)
         if fence:
+            if layout_style is not None:
+                raise ValueError("layout 后必须紧跟其声明的 Markdown 视觉组合")
             language = fence.group(1).lower()
             block, index = _collect_fence(lines, index + 1)
             if language == "mermaid":
@@ -110,7 +119,7 @@ def _parse_markdown(markdown: str, builder: DocxBuilder, *, asset_root: Path) ->
 
         heading = _HEADING_RE.match(line)
         if heading:
-            _ensure_no_pending_metadata(table_style, chart_presentation)
+            _ensure_no_pending_metadata(table_style, chart_presentation, layout_style)
             level = len(heading.group(1))
             builder.add_paragraph(heading.group(2).strip(), style=f"Heading{level}")
             index += 1
@@ -118,14 +127,14 @@ def _parse_markdown(markdown: str, builder: DocxBuilder, *, asset_root: Path) ->
 
         image = _IMAGE_RE.match(line.strip())
         if image:
-            _ensure_no_pending_metadata(table_style, chart_presentation)
+            _ensure_no_pending_metadata(table_style, chart_presentation, layout_style)
             image_path = _resolve_markdown_image(asset_root, image.group(2))
             builder.add_image(image_path, alt_text=image.group(1).strip())
             index += 1
             continue
 
         if line.lstrip().startswith(">"):
-            _ensure_no_pending_metadata(table_style, chart_presentation)
+            _ensure_no_pending_metadata(table_style, chart_presentation, layout_style)
             builder.add_paragraph(line.lstrip()[1:].lstrip(), italic=True)
             index += 1
             continue
@@ -133,39 +142,56 @@ def _parse_markdown(markdown: str, builder: DocxBuilder, *, asset_root: Path) ->
         if _looks_like_table(lines, index):
             if chart_presentation is not None:
                 raise ValueError("chart-presentation 后必须紧跟 Mermaid 图表")
-            headers, rows, index = _collect_table(lines, index)
+            headers, rows, after_table = _collect_table(lines, index)
+            if layout_style is not None:
+                index = _render_layout_table(
+                    lines,
+                    after_table,
+                    builder=builder,
+                    asset_root=asset_root,
+                    layout_style=layout_style,
+                    table_style=table_style,
+                    headers=headers,
+                    rows=rows,
+                )
+                table_style = None
+                layout_style = None
+                continue
             if table_style is None or table_style == "editorial":
                 builder.add_table(headers, rows)
             elif table_style == "ranking":
                 builder.add_ranking(headers, rows)
             elif table_style == "kpi":
                 builder.add_kpi_table(headers, rows)
+            elif table_style == "compact-daily":
+                builder.add_compact_daily(headers, rows)
             else:
                 raise ValueError(f"不支持的 Word 表格样式: {table_style}")
             table_style = None
+            index = after_table
             continue
 
         bullet = _BULLET_RE.match(line)
         if bullet:
-            _ensure_no_pending_metadata(table_style, chart_presentation)
+            _ensure_no_pending_metadata(table_style, chart_presentation, layout_style)
             builder.add_paragraph("• " + bullet.group(1).strip())
             index += 1
             continue
 
         numbered = _NUMBERED_RE.match(line)
         if numbered:
-            _ensure_no_pending_metadata(table_style, chart_presentation)
+            _ensure_no_pending_metadata(table_style, chart_presentation, layout_style)
             builder.add_paragraph(line.strip())
             index += 1
             continue
 
         if line.strip() == "---":
-            _ensure_no_pending_metadata(table_style, chart_presentation)
+            _ensure_no_pending_metadata(table_style, chart_presentation, layout_style)
             builder.add_separator()
             index += 1
             continue
 
-        _ensure_no_pending_metadata(table_style, chart_presentation)
+        _ensure_no_pending_metadata(table_style, chart_presentation, layout_style)
         paragraph_lines = [line.strip()]
         index += 1
         while index < len(lines) and lines[index].strip() and not _starts_block(lines, index):
@@ -173,7 +199,89 @@ def _parse_markdown(markdown: str, builder: DocxBuilder, *, asset_root: Path) ->
             index += 1
         builder.add_paragraph(" ".join(paragraph_lines))
 
-    _ensure_no_pending_metadata(table_style, chart_presentation)
+    _ensure_no_pending_metadata(table_style, chart_presentation, layout_style)
+
+
+def _render_layout_table(
+    lines: list[str],
+    after_table: int,
+    *,
+    builder: ReportDocxBuilder,
+    asset_root: Path,
+    layout_style: str,
+    table_style: str | None,
+    headers: tuple[str, ...],
+    rows: tuple[tuple[str, ...], ...],
+) -> int:
+    if table_style != "ranking" and layout_style in {
+        "primary-overview",
+        "ranking-chart",
+        "ranking-image",
+    }:
+        raise ValueError(f"{layout_style} 必须与 table-style=ranking 配合")
+    visual_index = _next_nonempty_index(lines, after_table)
+    if layout_style == "primary-overview":
+        image, next_index = _consume_image(lines, visual_index, asset_root=asset_root)
+        builder.add_primary_overview(
+            headers,
+            rows,
+            image_path=image[0],
+            alt_text=image[1],
+        )
+        return next_index
+    if layout_style == "ranking-image":
+        image, next_index = _consume_image(lines, visual_index, asset_root=asset_root)
+        builder.add_ranking_visual(
+            headers,
+            rows,
+            top_n=10,
+            image_path=image[0],
+            alt_text=image[1],
+        )
+        return next_index
+    if layout_style == "ranking-chart":
+        spec, next_index = _consume_mermaid(lines, visual_index)
+        builder.add_ranking_visual(headers, rows, top_n=8, chart=spec)
+        return next_index
+    if layout_style == "table-chart":
+        spec, next_index = _consume_mermaid(lines, visual_index)
+        builder.add_table_visual(headers, rows, chart=spec)
+        return next_index
+    raise ValueError(f"不支持的 Word 组合布局: {layout_style}")
+
+
+def _consume_image(
+    lines: list[str],
+    index: int,
+    *,
+    asset_root: Path,
+) -> tuple[tuple[Path, str], int]:
+    if index >= len(lines):
+        raise ValueError("组合布局缺少 Markdown 图片")
+    image = _IMAGE_RE.match(lines[index].strip())
+    if image is None:
+        raise ValueError("组合布局要求表格后紧跟 Markdown 图片")
+    return (
+        (_resolve_markdown_image(asset_root, image.group(2)), image.group(1).strip()),
+        index + 1,
+    )
+
+
+def _consume_mermaid(lines: list[str], index: int) -> tuple[ChartSpec, int]:
+    if index >= len(lines):
+        raise ValueError("组合布局缺少 Mermaid 图表")
+    fence = _FENCE_RE.match(lines[index])
+    if fence is None or fence.group(1).lower() != "mermaid":
+        raise ValueError("组合布局要求表格后紧跟 Mermaid 图表")
+    block, next_index = _collect_fence(lines, index + 1)
+    return _parse_mermaid(block), next_index
+
+
+def _next_nonempty_index(lines: list[str], start: int) -> int:
+    index = start
+    while index < len(lines) and not lines[index].strip():
+        index += 1
+    return index
 
 
 def _parse_aima_comment(line: str) -> tuple[str, str] | None:
@@ -183,11 +291,17 @@ def _parse_aima_comment(line: str) -> tuple[str, str] | None:
     return match.group(1).lower(), match.group(2).lower()
 
 
-def _ensure_no_pending_metadata(table_style: str | None, chart_presentation: str | None) -> None:
+def _ensure_no_pending_metadata(
+    table_style: str | None,
+    chart_presentation: str | None,
+    layout_style: str | None,
+) -> None:
     if table_style is not None:
         raise ValueError("table-style 后必须紧跟 Markdown 表格")
     if chart_presentation is not None:
         raise ValueError("chart-presentation 后必须紧跟 Mermaid 图表")
+    if layout_style is not None:
+        raise ValueError("layout 后必须紧跟其声明的 Markdown 视觉组合")
 
 
 def _resolve_markdown_image(asset_root: Path, raw_target: str) -> Path:
@@ -209,18 +323,25 @@ def _resolve_markdown_image(asset_root: Path, raw_target: str) -> Path:
 
 
 def _add_chart_with_presentation(
-    builder: DocxBuilder,
+    builder: ReportDocxBuilder,
     spec: ChartSpec,
     presentation: str | None,
 ) -> None:
     if presentation is None or presentation == "default":
         builder.add_chart(spec)
         return
-    if presentation != "sentiment-split":
-        raise ValueError(f"不支持的 Word 图表展示方式: {presentation}")
     if spec.kind != "line":
-        raise ValueError("sentiment-split 仅支持折线图")
+        raise ValueError(f"{presentation} 仅支持折线图")
+    if presentation == "sentiment-split":
+        _add_sentiment_split(builder, spec)
+        return
+    if presentation == "dominant-split":
+        _add_dominant_split(builder, spec)
+        return
+    raise ValueError(f"不支持的 Word 图表展示方式: {presentation}")
 
+
+def _add_sentiment_split(builder: ReportDocxBuilder, spec: ChartSpec) -> None:
     names = spec.series_names or tuple(f"系列 {index}" for index in range(1, len(spec.series) + 1))
     main_names = {"正面", "中性"}
     low_names = {"负面", "混合"}
@@ -232,30 +353,57 @@ def _add_chart_with_presentation(
         if name not in main_names and name not in low_names
     ]
     main_indices.extend(other_indices)
-
     groups = (("主趋势", main_indices), ("低量级趋势", low_indices))
     rendered = 0
     for suffix, indices in groups:
-        if not indices:
-            continue
-        group_series = tuple(spec.series[index] for index in indices)
-        if not any(any(value != 0 for value in values) for values in group_series):
-            continue
-        group_names = tuple(names[index] for index in indices)
-        max_value = max((value for values in group_series for value in values), default=0.0)
-        y_max = max(1.0, max_value + max(1.0, (max_value + 9) // 10))
-        builder.add_chart(
-            replace(
-                spec,
-                title=f"{spec.title} · {suffix}",
-                series=group_series,
-                series_names=group_names,
-                y_max=y_max,
-            )
-        )
-        rendered += 1
+        if _add_compact_group(builder, spec, names, suffix, indices):
+            rendered += 1
     if rendered == 0:
         builder.add_chart(spec)
+
+
+def _add_dominant_split(builder: ReportDocxBuilder, spec: ChartSpec) -> None:
+    names = spec.series_names or tuple(f"系列 {index}" for index in range(1, len(spec.series) + 1))
+    active = [
+        index for index, values in enumerate(spec.series) if any(value != 0 for value in values)
+    ]
+    if len(active) <= 4:
+        builder.add_compact_chart(spec)
+        return
+    groups: list[tuple[str, list[int]]] = [("主序列", [active[0]])]
+    remainder = active[1:]
+    for start in range(0, len(remainder), 4):
+        chunk = remainder[start : start + 4]
+        groups.append((f"次序列 {start // 4 + 1}", chunk))
+    for suffix, indices in groups:
+        _add_compact_group(builder, spec, names, suffix, indices)
+
+
+def _add_compact_group(
+    builder: ReportDocxBuilder,
+    spec: ChartSpec,
+    names: tuple[str, ...],
+    suffix: str,
+    indices: list[int],
+) -> bool:
+    if not indices:
+        return False
+    group_series = tuple(spec.series[index] for index in indices)
+    if not any(any(value != 0 for value in values) for values in group_series):
+        return False
+    group_names = tuple(names[index] for index in indices)
+    max_value = max((value for values in group_series for value in values), default=0.0)
+    y_max = max(1.0, max_value + max(1.0, math.ceil(max(0.0, max_value) / 10.0)))
+    builder.add_compact_chart(
+        replace(
+            spec,
+            title=f"{spec.title} · {suffix}",
+            series=group_series,
+            series_names=group_names,
+            y_max=y_max,
+        )
+    )
+    return True
 
 
 def _collect_fence(lines: list[str], start: int) -> tuple[str, int]:
@@ -453,7 +601,6 @@ def _parse_mermaid_xy(lines: list[str]) -> ChartSpec:
         series_names=series_names,
         y_min=y_min,
         y_max=y_max,
-        # Word 中分类排名优先横向；显式元数据仍可要求纵向。
         bar_direction=(
             bar_direction if bar_direction is not None else ("bar" if kind == "bar" else "col")
         ),
