@@ -197,7 +197,7 @@ class JobWorker:
                 payload_version=job.payload_version,
                 payload=job.payload,
             )
-        except (ValidationError, ValueError):
+        except ValidationError, ValueError:
             failed = self._fail_invalid_payload(job.id, job.lease_token)
             _log_job_terminal(
                 failed,

@@ -42,7 +42,9 @@ def test_log_event_reports_actual_caller_instead_of_logging_helper(
     with caplog.at_level(logging.INFO, logger=logger.name):
         expected_line = _emit_from_test_caller(logger)
 
-    record = next(record for record in caplog.records if getattr(record, "event", None) == "test.caller")
+    record = next(
+        record for record in caplog.records if getattr(record, "event", None) == "test.caller"
+    )
     assert record.filename == "test_logging.py"
     assert record.lineno == expected_line
 

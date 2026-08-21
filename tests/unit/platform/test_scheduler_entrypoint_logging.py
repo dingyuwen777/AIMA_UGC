@@ -17,10 +17,22 @@ class _StopLoop(RuntimeError):
 @pytest.mark.parametrize(
     ("result", "expected_level"),
     [
-        (SchedulerTickResult(scanned=0, initialized=0, enqueued=0, skipped=0, failed=0), logging.DEBUG),
-        (SchedulerTickResult(scanned=3, initialized=1, enqueued=0, skipped=0, failed=0), logging.INFO),
-        (SchedulerTickResult(scanned=3, initialized=0, enqueued=1, skipped=1, failed=0), logging.INFO),
-        (SchedulerTickResult(scanned=3, initialized=0, enqueued=0, skipped=0, failed=1), logging.WARNING),
+        (
+            SchedulerTickResult(scanned=0, initialized=0, enqueued=0, skipped=0, failed=0),
+            logging.DEBUG,
+        ),
+        (
+            SchedulerTickResult(scanned=3, initialized=1, enqueued=0, skipped=0, failed=0),
+            logging.INFO,
+        ),
+        (
+            SchedulerTickResult(scanned=3, initialized=0, enqueued=1, skipped=1, failed=0),
+            logging.INFO,
+        ),
+        (
+            SchedulerTickResult(scanned=3, initialized=0, enqueued=0, skipped=0, failed=1),
+            logging.WARNING,
+        ),
     ],
 )
 def test_scheduler_tick_only_uses_info_when_work_happened(
