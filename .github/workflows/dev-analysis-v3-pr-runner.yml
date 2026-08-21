@@ -57,16 +57,51 @@ jobs:
             python - <<'PY' 2>&1 | tee -a "$LOG"
           from pathlib import Path
 
-          path = Path("backend/src/aima_ugc/platform/export/excel.py")
-          text = path.read_text(encoding="utf-8")
+          def replace_once(path: Path, old: str, new: str) -> None:
+              text = path.read_text(encoding="utf-8")
+              if text.count(old) != 1:
+                  raise SystemExit(f"{path}: 期望唯一替换片段，实际 {text.count(old)}")
+              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          excel_path = Path("backend/src/aima_ugc/platform/export/excel.py")
+          text = excel_path.read_text(encoding="utf-8")
           for name in ("primary_label", "secondary_label"):
               broken = f'{name} = "' + "\n" + '".join'
               fixed = f'{name} = "\\n".join'
               if broken not in text:
                   raise SystemExit(f"未找到预期的生成字符串错误: {name}")
               text = text.replace(broken, fixed, 1)
-          path.write_text(text, encoding="utf-8")
-          print("已修复一次性脚本在 re.sub replacement 中产生的换行字面量。")
+          excel_path.write_text(text, encoding="utf-8")
+
+          labeling_path = Path("backend/src/aima_ugc/modules/analysis/content_labeling.py")
+          replace_once(
+              labeling_path,
+              "from typing import Any, Literal, Protocol",
+              "from typing import Any, Literal, Protocol, cast",
+          )
+          replace_once(
+              labeling_path,
+              """                        sentiment=sentiment,\n                        labels=label_pairs,\n""",
+              """                        sentiment=cast(str, sentiment),\n                        labels=label_pairs,\n""",
+          )
+          replace_once(
+              labeling_path,
+              """                relevance=relevance,\n                voice_type=voice_type,\n""",
+              """                relevance=cast(Literal[\"relevant\", \"irrelevant\"], relevance),\n                voice_type=voice_type,\n""",
+          )
+
+          http_path = Path("backend/src/aima_ugc/bootstrap/content_http.py")
+          replace_once(
+              http_path,
+              "from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository\nfrom aima_ugc.contracts.http import (",
+              "from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository\nfrom aima_ugc.contracts.analysis import ContentRelevance, ContentVoiceType\nfrom aima_ugc.contracts.http import (",
+          )
+          replace_once(
+              http_path,
+              """            relevance=record.analysis.relevance,\n            voice_type=record.analysis.voice_type,\n""",
+              """            relevance=cast(ContentRelevance, record.analysis.relevance),\n            voice_type=cast(ContentVoiceType, record.analysis.voice_type),\n""",
+          )
+          print("已修复一次性生成代码的换行字面量与 Mypy 类型收窄。")
           PY
             STATUS=${PIPESTATUS[0]}
           fi
