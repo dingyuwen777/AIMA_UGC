@@ -22,7 +22,11 @@ _COLORS: Final = (TITLE_COLOR, ACCENT_BLUE, SECONDARY_TEXT_COLOR)
 def render_wordcloud_png(frequencies: Mapping[str, int], output_path: Path) -> Path:
     """按 sqrt 权重渲染稳定水平词云；无可用中文字体时明确失败。"""
 
-    items = [(str(label).strip(), int(count)) for label, count in frequencies.items() if str(label).strip() and int(count) > 0]
+    items = [
+        (str(label).strip(), int(count))
+        for label, count in frequencies.items()
+        if str(label).strip() and int(count) > 0
+    ]
     items.sort(key=lambda item: (-item[1], item[0]))
     font_path = resolve_cjk_font()
     image = Image.new("RGB", _CANVAS_SIZE, "white")
@@ -32,7 +36,10 @@ def render_wordcloud_png(frequencies: Mapping[str, int], output_path: Path) -> P
         message = "暂无可展示数据"
         bbox = draw.textbbox((0, 0), message, font=font)
         draw.text(
-            ((_CANVAS_SIZE[0] - (bbox[2] - bbox[0])) / 2, (_CANVAS_SIZE[1] - (bbox[3] - bbox[1])) / 2),
+            (
+                (_CANVAS_SIZE[0] - (bbox[2] - bbox[0])) / 2,
+                (_CANVAS_SIZE[1] - (bbox[3] - bbox[1])) / 2,
+            ),
             message,
             fill=f"#{SECONDARY_TEXT_COLOR}",
             font=font,
@@ -45,11 +52,13 @@ def render_wordcloud_png(frequencies: Mapping[str, int], output_path: Path) -> P
     for rank, ((label, _count), weight) in enumerate(zip(items, weights, strict=True)):
         font_size = _font_size(weight, low=low, high=high)
         placement = None
+        text_width = 0
+        text_height = 0
         for candidate_size in range(font_size, _MIN_FONT_SIZE - 1, -4):
             font = ImageFont.truetype(str(font_path), candidate_size)
             bbox = draw.textbbox((0, 0), label, font=font)
-            text_width = bbox[2] - bbox[0]
-            text_height = bbox[3] - bbox[1]
+            text_width = int(math.ceil(bbox[2] - bbox[0]))
+            text_height = int(math.ceil(bbox[3] - bbox[1]))
             placement = _find_position(text_width, text_height, placed)
             if placement is not None:
                 break
@@ -58,7 +67,14 @@ def render_wordcloud_png(frequencies: Mapping[str, int], output_path: Path) -> P
         x, y = placement
         color = _COLORS[min(rank * len(_COLORS) // max(1, len(items)), len(_COLORS) - 1)]
         draw.text((x, y), label, fill=f"#{color}", font=font)
-        placed.append((x - _PADDING, y - _PADDING, x + text_width + _PADDING, y + text_height + _PADDING))
+        placed.append(
+            (
+                x - _PADDING,
+                y - _PADDING,
+                x + text_width + _PADDING,
+                y + text_height + _PADDING,
+            )
+        )
 
     if not placed:
         raise RuntimeError("词云布局失败：没有任何词条可放入画布")
@@ -107,7 +123,11 @@ def _font_size(weight: float, *, low: float, high: float) -> int:
     return round(_MIN_FONT_SIZE + ratio * (_MAX_FONT_SIZE - _MIN_FONT_SIZE))
 
 
-def _find_position(width: int, height: int, placed: list[tuple[int, int, int, int]]) -> tuple[int, int] | None:
+def _find_position(
+    width: int,
+    height: int,
+    placed: list[tuple[int, int, int, int]],
+) -> tuple[int, int] | None:
     canvas_width, canvas_height = _CANVAS_SIZE
     cx = canvas_width // 2
     cy = canvas_height // 2
@@ -117,15 +137,28 @@ def _find_position(width: int, height: int, placed: list[tuple[int, int, int, in
         radius = 5 + step * 1.05
         x = round(cx + math.cos(angle) * radius - width / 2)
         y = round(cy + math.sin(angle) * radius * 0.56 - height / 2)
-        rect = (x - _PADDING, y - _PADDING, x + width + _PADDING, y + height + _PADDING)
-        if rect[0] < 22 or rect[1] < 22 or rect[2] > canvas_width - 22 or rect[3] > canvas_height - 22:
+        rect = (
+            x - _PADDING,
+            y - _PADDING,
+            x + width + _PADDING,
+            y + height + _PADDING,
+        )
+        if (
+            rect[0] < 22
+            or rect[1] < 22
+            or rect[2] > canvas_width - 22
+            or rect[3] > canvas_height - 22
+        ):
             continue
         if all(not _intersects(rect, other) for other in placed):
             return x, y
     return None
 
 
-def _intersects(first: tuple[int, int, int, int], second: tuple[int, int, int, int]) -> bool:
+def _intersects(
+    first: tuple[int, int, int, int],
+    second: tuple[int, int, int, int],
+) -> bool:
     return not (
         first[2] <= second[0]
         or first[0] >= second[2]
