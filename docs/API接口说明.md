@@ -1,294 +1,822 @@
-# AIMA_UGC API 接口说明
+# AIMA_UGC HTTP API 实现说明
 
-本文是面向开发、联调、测试和维护人员的 **AIMA_UGC 人类可读 API 说明入口**。
+本文面向前端开发、接口联调和后端开发，说明**当前代码真正注册的 HTTP API、每组接口背后的 Application Service/Job/数据 Owner，以及修改接口时需要同步什么**。
 
-它帮助人快速理解“系统有哪些公开 API、每个接口解决什么问题、前端怎样调用、成功/失败如何判断”。它不是第二套机器 Contract。
-
-## 1. 事实源与生成关系
-
-HTTP 接口的唯一手写事实源是后端 Pydantic Request/Response Model 与 FastAPI Route。固定机器契约由应用生成：
+精确机器事实始终以：
 
 ```text
-Pydantic Request / Response
-→ FastAPI Route + 稳定 operation_id
-→ contracts/openapi/openapi.json
-→ Orval
-→ frontend/src/generated/api/
+backend/src/aima_ugc/contracts/http.py
+backend/src/aima_ugc/bootstrap/api.py
+contracts/openapi/openapi.json
+frontend/src/generated/api/
 ```
 
-其中：
+为准。
 
-- `backend/src/aima_ugc/` 中的 Pydantic HTTP Contract 与 Route 是手写实现事实；
-- `contracts/openapi/openapi.json` 是仓库固定、可机器校验的 OpenAPI 契约；
-- `frontend/src/generated/api/` 是由 OpenAPI 生成的 TypeScript Client，禁止手工修改；
-- **本文只负责给人解释接口用途和使用方式，不复制第二份完整字段 Schema。** 字段类型、必填/可选、枚举、响应结构等精确定义以固定 OpenAPI 和对应 Pydantic Contract 为准。
+本文不会提前写不存在的 `/alerts`、`/reports` 等未来 URL；接口真正进入 FastAPI Route + OpenAPI + Test 后，才属于当前 API。
 
-如果本文与代码、固定 OpenAPI 或测试冲突，必须先判断是实现缺陷还是本文过期，并在同一任务中修正；不能静默把本文当作机器事实覆盖代码。
+---
 
-## 2. 文档维护规则
+# 1. API 调用链
 
-任何新增、删除或实质修改公开 HTTP API 的任务，在完成前必须同时检查并按需更新本文。至少覆盖：
-
-- 业务用途；
-- HTTP 方法与路径；
-- 稳定 `operation_id`；
-- 主要请求输入；
-- 主要成功响应；
-- 重要错误与状态码；
-- 是否创建异步 Job；
-- 权限/身份要求（进入真实认证阶段后）；
-- 分页、幂等、时间和 ID 等特殊规则；
-- 前端应使用的生成 Client / Feature API 调用边界；
-- 必要的最小调用示例。
-
-以下内容不要在本文手工维护第二份完整定义：
-
-- 所有 Request/Response 字段逐项类型表；
-- 完整 JSON Schema；
-- 自动生成 TypeScript 类型；
-- Provider 私有字段；
-- 数据库表结构。
-
-这些内容应分别由 Pydantic、OpenAPI、生成 Client、Canonical Contract 和 Migration/Schema 维护。
-
-## 3. 前端调用原则
-
-前端调用链固定为：
+普通查询：
 
 ```text
-Vue Page / Component
-→ Feature Store / Feature API
-→ OpenAPI 生成 TypeScript Client
-→ FastAPI Router
-→ Application / Query Service
-```
-
-页面和按钮不得各自手写 `fetch` / `axios` URL、重复定义 Request/Response Type，或绕过生成 Client 建立第二套 API Contract。
-
-一个需要前端使用的业务功能，默认按以下顺序闭环：
-
-```text
-后端业务能力
-→ Pydantic HTTP Contract
+Vue Feature
+→ generated API Client
 → FastAPI Route
-→ API/Contract Test
-→ 固定 OpenAPI
-→ 生成 TypeScript Client
-→ Feature API / Store
-→ Vue 页面或组件
-→ E2E
+→ Query/Application Service
+→ PostgreSQL Query Repository
+→ Response Model
 ```
 
-后端内部的 Repository、Mapper、Provider Adapter、Worker Lease/Fencing、Migration 等能力不因为“存在功能”就自动暴露 HTTP API；只有需要浏览器或外部受支持调用方使用的业务边界才建立公开 Route。
-
-## 4. 全局 HTTP 约定
-
-### 4.1 ID
-
-公开 HTTP API 中的业务 ID 以字符串传输，避免 JavaScript 超过安全整数范围。
-
-### 4.2 时间
-
-HTTP 时间使用 UTC ISO-8601。前端负责按用户时区显示。
-
-### 4.3 错误
-
-业务 API 使用固定的 `type/title/status/detail/request_id/errors[]` Pydantic 错误结构；失败不得用 HTTP
-200 冒充成功。`errors[]` 项固定包含可空 `field`、`code` 和 `message`。公开错误不暴露 SQL、Secret、
-Token、服务器内部路径、堆栈或原始异常；响应头 `x-request-id` 与响应体 `request_id` 相同。
-未处理的 500 错误会以 `api.request_failed` 记录同一 `request_id`、方法、路径和异常类型，不记录原始
-异常消息或堆栈，避免连接串与 Secret 进入日志。
-
-### 4.4 分页
-
-大列表使用不透明 Cursor；Cursor 必须绑定稳定排序和查询条件，不能由前端解析其内部结构。
-
-### 4.5 长任务
-
-采集、回补、批量 AI、报告、导入导出等长任务通过持久化 Job 执行。HTTP API 负责创建/查询/取消 Job，而不是在请求生命周期中运行长任务。
-
-## 5. 当前已经实现的公开接口
-
-以下只列出当前已经存在于固定 OpenAPI 的接口。完整字段、枚举、默认值和错误响应以固定 OpenAPI 为准。
-
-### 5.1 `GET /health/live`
-
-- `operation_id`：`healthLive`
-- 用途：判断 API 进程是否存活；不检查 PostgreSQL、Artifact 或日志目录等外部依赖。
-- 成功：HTTP 200。
-- 主要响应：`status = "ok"`。
-- 前端用途：通常用于服务存活诊断，不作为业务页面是否可正常工作的充分依据。
-
-### 5.2 `GET /health/ready`
-
-- `operation_id`：`healthReady`
-- 用途：检查 PostgreSQL、Artifact 根目录和日志目录是否就绪。
-- 成功：依赖全部就绪时 HTTP 200。
-- 未就绪：HTTP 503。
-- 响应只暴露各组件 `ok/error`，不返回连接串、Secret 或原始异常。
-
-### 5.3 `POST /api/v1/import-batches`
-
-- `operation_id`：`createImportBatch`。
-- 请求：`multipart/form-data`，且只允许一个 `file` 字段；只接受合法 `.xlsx`。
-- 成功：HTTP 202，返回 `batch_id`、`job_id` 与 `queued`；请求结束后由持久化 Worker 继续处理。
-- 安全边界：multipart body 最大 550 MiB，文件最大 500 MiB；XLSX 解压总量、单成员、成员数和压缩比
-  另有固定上限。资源超限返回 413，文件/OOXML/成员路径不合法返回 422。
-- 前置条件：必须已经通过 Relevance 配置 API 选择一个启用且有有效关键词的全局 Pack，否则返回 409。
-- 当前未实现 HTTP actor 幂等或公网认证；该写接口只用于受控部署环境。
-
-### 5.4 `GET /api/v1/import-batches`
-
-- `operation_id`：`listImportBatches`。
-- 用途：为采集运行中心返回 Excel Import Batch 列表；只读取关联
-  `ingestion.import-excel.v1` Job，不把其他 Job 类型混入该 Read Model。
-- 筛选：`identifier` 精确匹配 Batch ID 或 Job ID；`status`、`stage`、`created_from`、
-  `created_to` 为可选条件。时间必须带时区，默认按 `created_at DESC, id DESC` 排序。
-- 分页：默认 20、最大 100；响应返回 `items/next_cursor/has_more`。Cursor 由服务端签名、绑定当前
-  查询条件并在 30 分钟后过期；前端只原样回传，非法、过期、篡改或跨查询复用返回统一 400。
-- 安全：Cursor 签名配置不可用时关闭失败并返回统一 503，不暴露 Secret 内容或文件路径。
-
-### 5.5 `GET /api/v1/import-batches/summary`
-
-- `operation_id`：`getImportBatchSummary`。
-- 用途：返回采集运行中心的三个数据库聚合事实：处理中 Batch 数、北京时间今日成功完成数、北京时间
-  今日成功 Batch 的 `rows_ingested` 合计；不从当前 Cursor 页在前端推算。
-- `processing_count` 统计关联 Job 为 `queued/running` 的 Batch；“今日”按 `Asia/Shanghai` 自然日
-  切分后转换为 UTC 查询边界；`as_of` 返回本次统计的 UTC 时间。
-
-### 5.6 `GET /api/v1/import-batches/{batch_id}`
-
-- `operation_id`：`getImportBatch`。
-- 返回固定 Batch 状态、阶段、计数统计、安全错误摘要、时间、可空安全原文件名和关联 Job 快照。
-- Batch 状态由关联 Job 当前事实投影；不存在返回 404，非法 UUID 返回统一 422。
-
-### 5.7 `GET /api/v1/jobs/{job_id}`
-
-- `operation_id`：`getJob`。
-- 当前公开查询只接受 Stage 8B `ingestion.import-excel.v1` Job，返回状态、Attempt/max_attempts、进度、
-  安全错误码、时间与成功结果；其他内部 Job 类型不自动成为公共 API。
-- 不存在或不是当前公开类型返回 404。
-
-### 5.8 Keyword Pack
-
-- `POST /api/v1/keyword-packs`：`createKeywordPack`，创建启用的空 Pack；同名返回 409。
-- `POST /api/v1/keyword-packs/{pack_id}/keywords`：`addKeywordToPack`，添加或复用关键词；只接收原始
-  `text`，数据库唯一身份由后端生成。
-- `GET /api/v1/keyword-packs/{pack_id}`：`getKeywordPack`，读取 Pack 和稳定排序的关键词项。
-- `GET /api/v1/keyword-packs`：`listKeywordPacks`，按更新时间和 ID 稳定分页查询摘要，可按名称和启用状态
-  筛选，返回关键词数量。
-- `PUT /api/v1/keyword-packs/{pack_id}/enabled`：`updateKeywordPackEnabled`。停用当前全局 Relevance
-  或启用中 Plan 引用的 Pack 返回 409；不存在返回 404；无状态变化时保持 Pack 版本不变。
-
-### 5.9 Global Relevance Config
-
-- `PUT /api/v1/relevance-config`：`setGlobalRelevanceConfig`，用外键选择系统唯一 Keyword Pack；Pack
-  不存在返回 404，停用或没有有效关键词返回 409。
-- `GET /api/v1/relevance-config`：`getGlobalRelevanceConfig`，返回 Pack/Config 版本和实际有效关键词；
-  尚未配置或不可用返回 409。
-- Import Job 与 Collection Run 创建时冻结该快照，后续配置变化不会改写排队或运行中的执行语义。
-
-### 5.10 TikHub Collection / 统一运行中心
-
-- `GET /api/v1/collection-capabilities`：`getCollectionCapabilities`。只返回已启用且 Registry 可路由的
-  Provider Config 稳定 ID/显示名，以及 `provider/platform/business operations`；不返回 Secret、
-  Base URL、endpoint、Provider Operation、私有分页或 Pricing。
-- `POST /api/v1/collection-runs`：`createCollectionRun`，成功返回 202。`discovery` 接收本次 Run 的一次性
-  关键词；`batch_supplement` 接收一个已有 `import_batch_id` 且不得提交关键词。两种模式都显式选择
-  1—5 个平台及其 `provider_config_id`，可选评论/二级回复，并在同一事务创建 Run/Scope 与既有
-  `collection.run.v1` Job。请求结束后 Worker 执行 TikHub/Raw/Mapper/全局 Relevance/Ingestion；Router
-  不执行长任务。当前没有 HTTP actor 幂等或公网认证，只适用于受信部署边界。
-- `GET /api/v1/collection-runs/{run_id}`：`getCollectionRun`。返回固定 Run/Job 状态、阶段、Attempt、平台、
-  一次性关键词、关联 Batch、Scope 进度/统计与安全错误摘要；不公开 Provider 私有游标或 Raw。
-- `GET /api/v1/collection-runtime/runs`：`listCollectionRuntimeRuns`。用只读 UNION 集中返回
-  `excel_import/tikhub_discovery/tikhub_batch_supplement`，支持文本、类型、状态、阶段和带时区创建时间
-  筛选；默认 20、最大 100，使用绑定完整查询、30 分钟过期的 HMAC Cursor。签名配置不可用返回 503，
-  非法/篡改/过期/跨查询复用返回 400。
-- `GET /api/v1/collection-runtime/summary`：`getCollectionRuntimeSummary`。在 PostgreSQL 跨 Import Batch
-  与 Collection Run 聚合处理中、北京时间今日完成及今日入库/采集内容；不从当前页在浏览器计算。
-- Stage 8E Discovery 关键词只冻结在 Run，不保存为 Keyword Pack 或 Plan；持久配置属于 Stage 8F。
-
-### 5.11 Collection Plan / 采集策略
-
-- `POST /api/v1/collection-plans`：`createCollectionPlan`。只创建五字段 Cron 周期 Plan，接受名称、
-  `schedule_expr`、1—5 个 `platform/provider_config_id`、1—20 个 Discovery Pack ID 和启用状态；不接受
-  单次模式、Plan 级 Relevance、Secret、Base URL 或任意 Provider JSON。成功返回 201，且不会创建
-  Run/Job、调用 TikHub 或产生 Provider 费用。
-- `GET /api/v1/collection-plans`：`listCollectionPlans`。按更新时间和 ID 稳定分页，支持名称/Plan UUID、
-  启用状态和平台筛选，并返回全局启用 Plan 数量。
-- `GET /api/v1/collection-plans/{plan_id}`：`getCollectionPlan`，返回周期、时区、版本、下次/上次调度、
-  固定采集策略、平台/Provider 与 Discovery Pack 关联。
-- `PUT /api/v1/collection-plans/{plan_id}/enabled`：`updateCollectionPlanEnabled`。启停递增
-  `schedule_version` 并清空调度 cursor；重新启用前重新验证 Pack、Provider Capability 与全局 Relevance。
-  旧 Scheduler cursor 因版本不匹配关闭失败，停用期间不补跑。
-- `/collection-strategy` Vue 页面通过生成 Orval Client 使用上述接口和全局 Relevance 接口；一次性主动
-  发现继续使用 Stage 8E `/collection-runtime`，不在配置页重复实现。
-
-### 5.12 Content / 声音广场查询
-
-- `GET /api/v1/contents`：`listContents`。查询统一 PostgreSQL Content Read Model，不区分 Excel、
-  TikHub 或未来其他来源；支持文本、平台、内容类型、时间、来源 Batch/Run、AI 状态/情感/一级/二级
-  标签过滤。文本搜索覆盖标题、正文、作者和外部内容 ID；Batch/Run 来源筛选匹配 Content 全部版本的
-  来源账本，因此后续渠道更新 Current 后仍可从原 Batch/Run 找回相关内容。
-- 分页默认 20、最大 100；按发布时间（缺失时用 last-seen）和 Content ID 倒序，使用绑定完整查询条件、
-  30 分钟过期的 HMAC Cursor。非法、篡改、过期或跨查询复用返回统一 400。
-- 列表的 `analysis.labels` 是按模型合法顺序返回的结构化 `{primary_label, secondary_label}` 数组；调用方
-  必须展示全部标签对，不能只取首项。只有匹配当前 Content Version 和当前选定 Prompt/Taxonomy/
-  Provider/Model 的成功结果是 `completed`；存在其他历史时返回 `stale`，从未分析为 `pending`。
-- `GET /api/v1/contents/{content_id}`：`getContent`。除列表字段外返回合法媒体元数据、最多 100 条当前
-  评论、最新 Coverage 和来源记录；没有图片时不会伪造缩略图。不存在返回 404。
-
-### 5.13 显式 Content Analysis
-
-- `POST /api/v1/content-analysis-requests`：`createContentAnalysis`。接收显式选择的 Content ID，或当前
-  查询过滤快照；服务立即冻结 Content ID + Version，并在同一事务创建 Analysis Request 与
-  `analysis.content-label.v1` durable Job，成功返回 202。
-- `GET /api/v1/content-analysis-jobs/{job_id}`：`getContentAnalysisJob`。返回状态、Attempt、进度、错误码
-  和成功/失败/stale 统计；HTTP 请求不会等待模型完成。
-- 只有用户显式提交才调用模型；Import/Collection 默认不自动触发付费 Analysis。模型 Secret 只从
-  Secret 文件装配，不进入 Payload、数据库、日志或响应。
-
-### 5.14 声音广场 Excel 导出
-
-- `POST /api/v1/data-exports`：`createDataExport`。冻结显式选择或当前查询结果的 Content ID + Version，
-  创建 `reporting.content-export-excel.v1` durable Job，返回 202；Router 不生成 Excel。
-- `GET /api/v1/data-exports`：`listDataExports`；`GET /api/v1/data-exports/{export_id}`：`getDataExport`。
-  状态来自关联 Job，完成统计包含总内容、已打标、未打标和评论数。
-- `GET /api/v1/data-exports/{export_id}/download`：`downloadDataExport`。只有 Job 成功且 Artifact 已 linked
-  才返回 XLSX binary；未就绪返回 409，不存在返回 404。响应不暴露 storage key 或服务器路径。
-- Worker 复用唯一 `UnifiedDataExcelV1 → export_unified_data_excel`；未打标/stale 内容仍导出，AI 列为空，
-  不会被静默丢弃。当前没有已批准的自动删除期限。
-- 当前认证尚未实现，上述写入与下载只适用于受信部署边界，不得直接宣称可公网开放。
-
-## 6. 规划中的业务 API 分类
-
-以下其余资源路径来自当前 Blueprint，是后续业务阶段的目标边界；**未实现前不得把本节视为现有 API。** 实际接口只有进入对应阶段、建立 Pydantic Contract、固定 OpenAPI 和测试后才算存在。
+耗时任务：
 
 ```text
-/api/v1/collection-runs
-/api/v1/comments
-/api/v1/analysis-runs
+Vue / HTTP Client
+→ FastAPI Route
+→ 同一事务创建业务父事实 + Job
+→ 202 Accepted
+→ Worker 认领 Job
+→ 执行业务
+→ 更新业务父事实 / Job Result
+→ 前端轮询查询
+```
+
+Router 不直接 SQL，也不直接请求 TikHub/LLM。
+
+---
+
+# 2. 统一 Contract 与错误结构
+
+HTTP Request/Response：
+
+```text
+backend/src/aima_ugc/contracts/http.py
+```
+
+统一错误：
+
+```text
+HttpErrorResponse
+```
+
+主要结构：
+
+```json
+{
+  "type": "https://aima.example/problems/xxx",
+  "title": "错误标题",
+  "status": 422,
+  "detail": "可安全展示的说明",
+  "request_id": "...",
+  "errors": []
+}
+```
+
+规则：
+
+- 业务失败不返回 200；
+- 未找到通常是 404；
+- 状态冲突/结果未就绪通常是 409；
+- 请求 Contract 不合法通常是 422；
+- 未预期异常返回安全 500，不暴露 SQL、Secret、内部路径或 traceback；
+- `request_id` 用来关联应用日志。
+
+错误处理的精确实现看 `bootstrap/api.py`。
+
+---
+
+# 3. Health API
+
+## `GET /health/live`
+
+作用：进程是否存活并能响应 HTTP。
+
+不是：
+
+- 数据库完整业务检查；
+- TikHub 实时 Probe；
+- LLM 可用性证明。
+
+## `GET /health/ready`
+
+当前 Readiness 会检查关键本地/基础依赖边界，包括：
+
+- PostgreSQL；
+- ArtifactStore；
+- 日志目录。
+
+代码：
+
+```text
+backend/src/aima_ugc/bootstrap/api.py
+backend/src/aima_ugc/platform/health.py
+```
+
+---
+
+# 4. Collection Runtime API
+
+代码：
+
+```text
+backend/src/aima_ugc/bootstrap/collection_http.py
+backend/src/aima_ugc/modules/collection/http.py
+backend/src/aima_ugc/adapters/persistence/postgres/collection_runtime_queries.py
+```
+
+## 4.1 `GET /api/v1/collection-capabilities`
+
+用于前端获取当前可以用于手工 Collection Run 的 Provider Config 和平台 Capability。
+
+不要在前端自己维护：
+
+```text
+某个平台有哪些排序
+是否支持评论
+是否支持二级评论
+```
+
+这类业务支持应由后端 Capability 驱动。
+
+## 4.2 `POST /api/v1/collection-runs`
+
+创建一次手工 Collection Run。
+
+Request：
+
+```text
+CollectionRunCreateRequest
+```
+
+当前模式：
+
+```text
+discovery
+→ 提交一次性 keywords
+→ 不允许 import_batch_id
+
+batch_supplement
+→ 必须 import_batch_id
+→ 不允许同时提交 discovery keywords
+```
+
+平台选择：
+
+```text
+platform + provider_config_id
+```
+
+并可控制：
+
+```text
+include_comments
+include_sub_comments
+```
+
+如果抓二级评论，必须同时启用一级评论。
+
+成功返回：
+
+```text
+run_id
+job_id
+mode
+import_batch_id
+status=queued
+```
+
+HTTP 只创建 Run/Scope/Job，不同步完成 TikHub 采集。
+
+## 4.3 `GET /api/v1/collection-runs/{run_id}`
+
+读取一个 Run 当前状态、平台、关键词、Scope 进度、统计、错误摘要等。
+
+Response：
+
+```text
+CollectionRunResponse
+```
+
+Scope 返回 Provider-neutral 进度，不把 TikHub `cursor/search_id` 等私有分页状态公开给前端。
+
+## 4.4 `GET /api/v1/collection-runtime/runs`
+
+采集运行中心统一列表。
+
+当前 Read Model 可以同时投影：
+
+```text
+excel_import
+tikhub_discovery
+tikhub_batch_supplement
+```
+
+数据库并没有因此把 Import Batch 和 Collection Run 合成一张表；统一是在 Query 层完成。
+
+Query：
+
+```text
+CollectionRuntimeListQuery
+```
+
+支持当前 Contract 中的：
+
+- search；
+- record_types；
+- status；
+- stage；
+- created_from / created_to；
+- opaque cursor；
+- limit。
+
+精确字段以 `contracts/http.py` 为准。
+
+## 4.5 `GET /api/v1/collection-runtime/summary`
+
+返回运行中心 KPI，例如：
+
+```text
+processing_count
+completed_today_count
+contents_ingested_today
+as_of
+```
+
+这些是运行中心 Read Model，不是持久化 KPI 业务表。
+
+---
+
+# 5. Excel Import API
+
+代码：
+
+```text
+backend/src/aima_ugc/bootstrap/import_http.py
+backend/src/aima_ugc/bootstrap/import_worker.py
+backend/src/aima_ugc/modules/ingestion/
+```
+
+详细实现：
+
+[`appendix/数据入口与统一入库实现.md`](appendix/数据入口与统一入库实现.md)
+
+## 5.1 `POST /api/v1/import-batches`
+
+当前接受一个 multipart：
+
+```text
+file
+```
+
+API 阶段：
+
+```text
+接收/校验上传边界
+→ 保存 Input Artifact
+→ 冻结 Relevance Snapshot
+→ 创建 Processing Import Batch
+→ 创建 ingestion.import-excel.v1 Job
+→ 202
+```
+
+真正 Excel Reader/Mapper/Filter/Dedup/Ingestion 由 Worker 完成。
+
+成功返回：
+
+```text
+ImportBatchCreatedResponse
+→ batch_id
+→ job_id
+→ status=queued
+```
+
+## 5.2 `GET /api/v1/import-batches`
+
+分页查询 Batch。
+
+Query：
+
+```text
+ImportBatchListQuery
+```
+
+当前支持：
+
+```text
+identifier
+status
+stage
+created_from
+created_to
+cursor
+limit
+```
+
+返回：
+
+```text
+items
+next_cursor
+has_more
+```
+
+## 5.3 `GET /api/v1/import-batches/summary`
+
+返回导入运行摘要：
+
+```text
+processing_count
+completed_today_count
+rows_ingested_today
+as_of
+```
+
+## 5.4 `GET /api/v1/import-batches/{batch_id}`
+
+查看单个 Batch，包括：
+
+```text
+input_artifact_id
+source_filename
+status
+stage
+stats
+error_summary
+job
+生命周期时间
+```
+
+精确字段由 `ImportBatchResponse` 维护。
+
+## 5.5 `GET /api/v1/jobs/{job_id}`
+
+当前这个通用 Job 查询入口由 Import HTTP Service 暴露，并可以读取当前允许公开的 Job 状态/Result。
+
+不要因此假设：
+
+> `jobs` 表里的任何内部 Job 类型都自动成为公共 API。
+
+Analysis 目前还有自己的：
+
+```text
+GET /api/v1/content-analysis-jobs/{job_id}
+```
+
+---
+
+# 6. Content / 声音广场 API
+
+代码：
+
+```text
+backend/src/aima_ugc/bootstrap/content_http.py
+backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
+backend/src/aima_ugc/modules/content/query.py
+backend/src/aima_ugc/modules/content/content_cursor.py
+```
+
+前端：
+
+```text
+frontend/src/features/voice-plaza/
+```
+
+## 6.1 `GET /api/v1/contents`
+
+用于声音广场列表和 Analysis/Export 的查询条件基础。
+
+Query Contract：
+
+```text
+ContentListQuery
+ContentFilterSnapshot
+```
+
+当前查询层可以组合：
+
+- Content Current；
+- 当前 Content Version；
+- 当前 Analysis Identity 匹配的最新 Analysis；
+- 当前来源 Request/Attempt/Raw；
+- 作者展示信息；
+- Current Metrics。
+
+默认语义：
+
+```text
+未显式指定 relevance
+→ 排除 current Analysis 明确 irrelevant
+→ 没有当前 Analysis 的 Content 仍显示
+```
+
+Analysis 状态：
+
+```text
+completed
+→ 当前 Content Version 有当前 Analysis Identity 结果
+
+stale
+→ 当前版本没有当前结果，但该 Content 历史有 Analysis
+
+pending
+→ 从未有 Analysis
+```
+
+当前 AI relevance 不在 `contents.is_relevant`，而在 `analysis_content_results.relevance`。
+
+## 6.2 `GET /api/v1/contents/{content_id}`
+
+读取详情，包括当前列表字段以及：
+
+- media；
+- comments；
+- latest comment coverage；
+- source_records。
+
+单条详情使用审计友好读取，可以查看 current Analysis 为 irrelevant 的真实 Content，不会物理隐藏/删除业务事实。
+
+---
+
+# 7. Content Analysis API
+
+代码：
+
+```text
+backend/src/aima_ugc/bootstrap/content_http.py
+backend/src/aima_ugc/bootstrap/analysis_worker.py
+backend/src/aima_ugc/modules/analysis/
+```
+
+详细实现：
+
+[`appendix/AI舆情打标与分析实现.md`](appendix/AI舆情打标与分析实现.md)
+
+## 7.1 `POST /api/v1/content-analysis-requests`
+
+Request：
+
+```text
+ContentAnalysisSubmitRequest
+```
+
+当前 target scope：
+
+```text
+query
+→ 根据 ContentFilterSnapshot 冻结当时目标
+
+selected
+→ 根据指定 content_ids 冻结目标
+```
+
+无论哪种，API 都会把：
+
+```text
+content_id + current_version
+```
+
+冻结进 `analysis_content_request_items`，然后同事务创建：
+
+```text
+analysis.content-label.v1 Job
+```
+
+因此 Worker 后续分析的是请求创建时版本，不重新解释排队期间已经变化的 Content Current。
+
+成功返回：
+
+```text
+request_id
+job_id
+target_count
+```
+
+## 7.2 `GET /api/v1/content-analysis-jobs/{job_id}`
+
+查询正式 Content Analysis Job。
+
+成功 Job Result：
+
+```text
+request_id
+succeeded
+failed
+stale
+```
+
+精确字段：`ContentAnalysisJobResultResponse`。
+
+---
+
+# 8. 正式 Excel Export API
+
+代码：
+
+```text
+backend/src/aima_ugc/bootstrap/reporting_http.py
+backend/src/aima_ugc/bootstrap/export_worker.py
+backend/src/aima_ugc/modules/reporting/
+```
+
+详细：
+
+- `backend/src/aima_ugc/modules/reporting/README.md`
+- [`appendix/Excel统一数据导出与离线调试.md`](appendix/Excel统一数据导出与离线调试.md)
+
+## 8.1 `POST /api/v1/data-exports`
+
+创建正式 Excel Export。
+
+和 Analysis 一样，创建时会冻结目标：
+
+```text
+content_id
+content_version
+ordinal
+```
+
+随后创建：
+
+```text
+reporting.content-export-excel.v1 Job
+```
+
+Worker 后续使用冻结版本生成 XLSX Artifact。
+
+## 8.2 `GET /api/v1/data-exports`
+
+查询 Export 列表，支持当前 Contract 定义的分页/筛选。
+
+## 8.3 `GET /api/v1/data-exports/{export_id}`
+
+查看单个 Export 的：
+
+- Job/状态；
+- Artifact 是否就绪；
+- Request Snapshot；
+- Stats；
+- 时间等。
+
+## 8.4 `GET /api/v1/data-exports/{export_id}/download`
+
+只有：
+
+```text
+artifact_id 已关联
++ Artifact 已可读取
+```
+
+才允许下载。
+
+结果尚未就绪时返回状态冲突，而不是给空文件。
+
+注意：当前没有 Word Report 的正式 `/reports` API。离线 Word Report 属于 `platform/reporting/`。
+
+---
+
+# 9. Keyword Pack / Relevance API
+
+当前 Route：
+
+```text
+POST /api/v1/keyword-packs
+GET  /api/v1/keyword-packs
+POST /api/v1/keyword-packs/{pack_id}/keywords
+GET  /api/v1/keyword-packs/{pack_id}
+PUT  /api/v1/keyword-packs/{pack_id}/enabled
+PUT  /api/v1/relevance-config
+GET  /api/v1/relevance-config
+```
+
+代码主要由：
+
+```text
+backend/src/aima_ugc/bootstrap/api.py
+backend/src/aima_ugc/modules/system/
+```
+
+提供。
+
+## 9.1 Keyword Pack
+
+当前关键词写入只接受原始 `text`，数据库唯一身份和匹配归一化是两层不同规则。
+
+关系属性如：
+
+```text
+priority
+enabled
+note
+platform
+```
+
+属于 pack item，不属于全局 Keyword 身份。
+
+## 9.2 Global Relevance
+
+```text
+PUT /api/v1/relevance-config
+```
+
+选择全局 Rule Relevance Keyword Pack。
+
+Import/Collection 创建运行事实时冻结有效配置/关键词，Worker 不在执行中途重新读取一套变化后的配置。
+
+这层 Relevance 是确定性关键词规则，不是 AI Semantic Relevance。
+
+---
+
+# 10. Collection Plan API
+
+代码：
+
+```text
+backend/src/aima_ugc/bootstrap/collection_strategy_http.py
+backend/src/aima_ugc/modules/collection/planning.py
+```
+
+当前：
+
+```text
+POST /api/v1/collection-plans
+GET  /api/v1/collection-plans
+GET  /api/v1/collection-plans/{plan_id}
+PUT  /api/v1/collection-plans/{plan_id}/enabled
+```
+
+当前 Plan 固定长期调度边界包括：
+
+```text
+timezone = Asia/Shanghai
+misfire_policy = latest_only
+max_catch_up_runs = 0
+```
+
+完整 Scheduler 语义：
+
+[`appendix/Scheduler调度执行与停机恢复.md`](appendix/Scheduler调度执行与停机恢复.md)
+
+不要在 API 文档提前声明并不存在的“全量 Plan 编辑 URL”。具体可编辑字段以当前 Request Model/Route 为准。
+
+---
+
+# 11. Cursor 分页
+
+当前多个列表使用不透明 Cursor，而不是简单 `page=1&offset=20`。
+
+原因：业务数据持续新增，Offset 更容易出现跳项/重复。
+
+Content Cursor：
+
+```text
+backend/src/aima_ugc/modules/content/content_cursor.py
+```
+
+Import Batch Cursor：
+
+```text
+backend/src/aima_ugc/modules/ingestion/import_batch_cursor.py
+```
+
+Collection Runtime Cursor：
+
+```text
+backend/src/aima_ugc/modules/collection/runtime_cursor.py
+```
+
+前端只做：
+
+```text
+收到 next_cursor
+→ 下一次原样传回
+```
+
+禁止：
+
+- 解析内部 Cursor；
+- 自己改时间/ID；
+- 把一个筛选条件的 Cursor 用到另一组筛选；
+- 用数据库密码当 Cursor signing key。
+
+---
+
+# 12. 当前前端与 API 对应关系
+
+真实路由：
+
+```text
+frontend/src/app/routes.ts
+```
+
+当前页面：
+
+```text
+/voice-plaza
+→ contents / content-analysis
+
+/collection-runtime
+→ import-batches / collection-runs / collection-runtime
+
+/collection-strategy
+→ keyword-packs / relevance-config / collection-plans
+```
+
+当前后端已经有 `data-exports` API，但没有独立 `/export` 前端 Route；不能把“API 已实现”写成“页面已实现”。
+
+生成 Client：
+
+```text
+frontend/src/generated/api/
+```
+
+禁止手改。
+
+---
+
+# 13. 修改 API 时的完整影响面
+
+## 新增/修改 Query 字段
+
+```text
+contracts/http.py
+→ Query Service/Repository
+→ Cursor query hash（如果改变结果集）
+→ API Test
+→ OpenAPI
+→ generated Client
+→ Frontend Feature
+→ 本文
+```
+
+## 新增长任务
+
+```text
+业务父事实
+→ Job Payload/Handler
+→ Worker Registry
+→ Executor
+→ Retry/Deadline/Fencing
+→ API Contract
+→ API + Integration Tests
+```
+
+## 修改 Response
+
+```text
+兼容性判断
+→ Pydantic Response
+→ Route
+→ API Test
+→ OpenAPI regenerate
+→ Orval regenerate
+→ Frontend typecheck/test
+```
+
+不要只让前端 `as any` 绕过后端 Contract 变化。
+
+---
+
+# 14. 本地联调时怎么确认 API 事实
+
+不要仅靠本文手写 curl 作为 Contract 事实。
+
+推荐：
+
+```text
+1. 看 contracts/http.py
+2. 看 bootstrap/api.py Route
+3. 看 contracts/openapi/openapi.json
+4. 用 FastAPI/OpenAPI 或 generated Client 发请求
+5. 看 API tests
+```
+
+如果需要人工请求，可根据当前 OpenAPI 构造 curl/Postman，但 Request Body/Query 字段以 OpenAPI 为准。
+
+---
+
+# 15. 当前明确不存在的 API
+
+当前 `bootstrap/api.py` 没有：
+
+```text
 /api/v1/alerts
 /api/v1/reports
+/api/v1/client-events
+独立 /analysis-runs 资源
+企业登录/Session API
 ```
 
-典型业务动作规划为：
+未来实现后再加入本文。
 
-```text
-POST /api/v1/collection-plans/{id}/runs
-POST /api/v1/jobs/{id}/cancel
-POST /api/v1/comments/{id}/reviews
-```
+---
 
-## 7. 如何确认本文没有落后
+# 16. 相关文档
 
-修改或新增 HTTP Contract 后，应从仓库根执行当前已有的 Contract 门禁：
-
-```bash
-uv run python scripts/contracts/generate.py
-npm --prefix frontend run generate:api
-uv run python scripts/contracts/generate.py --check
-uv run python scripts/contracts/check_compatibility.py
-```
-
-并运行与本次 API 相关的 Unit / Contract / API / Frontend / E2E 检查。最终以本轮实际测试、固定 OpenAPI 零漂移和 CI 结果证明接口可用，不能只因为本文已经更新就宣称 API 完成。
+- API/Job/Frontend 架构：[`blueprint/04-后端任务API与前端.md`](blueprint/04-后端任务API与前端.md)
+- 数据入口：[`appendix/数据入口与统一入库实现.md`](appendix/数据入口与统一入库实现.md)
+- Analysis：[`appendix/AI舆情打标与分析实现.md`](appendix/AI舆情打标与分析实现.md)
+- Excel Export：[`appendix/Excel统一数据导出与离线调试.md`](appendix/Excel统一数据导出与离线调试.md)
+- PostgreSQL：[`appendix/PostgreSQL查询与调试实战.md`](appendix/PostgreSQL查询与调试实战.md)
+- 代码修改导航：[`代码结构与修改导航.md`](代码结构与修改导航.md)
