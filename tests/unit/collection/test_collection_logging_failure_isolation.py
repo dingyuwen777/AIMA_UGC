@@ -133,7 +133,7 @@ def test_logging_does_not_break_scope_exception_isolation(
     context = _Context(execution.run.job_id)
 
     with caplog.at_level(
-        logging.INFO, logger="aima_ugc.modules.collection.collection_run_executor"
+        logging.DEBUG, logger="aima_ugc.modules.collection.collection_run_executor"
     ):
         result = CollectionRunExecutor(
             gateway=_Gateway(execution),
@@ -147,7 +147,15 @@ def test_logging_does_not_break_scope_exception_isolation(
         if getattr(record, "event", None) == "collection.scope.completed"
     )
     assert scope_record.status == "failed"
+    assert scope_record.levelno == logging.ERROR
     assert scope_record.requested_count == 0
+    assert scope_record.error_type == "RuntimeError"
+    assert scope_record.exc_info is not None
+    assert scope_record.run_id == str(execution.run.id)
+    assert scope_record.job_id == str(execution.run.job_id)
+    assert scope_record.scope_id == str(execution.scopes[0].id)
+    assert scope_record.platform == "xhs"
+    assert scope_record.operation_group == "content_discovery"
     run_record = next(
         record
         for record in caplog.records
