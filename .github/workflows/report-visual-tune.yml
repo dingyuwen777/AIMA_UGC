@@ -1,9 +1,9 @@
 name: Report visual tune helper
 
 on:
-  pull_request:
+  push:
     branches:
-      - main
+      - fix/report-visual-fidelity
 
 permissions:
   contents: write
