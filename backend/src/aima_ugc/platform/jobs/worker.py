@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable
 from threading import Event, Lock, Thread
 from typing import TYPE_CHECKING
@@ -130,16 +131,20 @@ class _HeartbeatLoop:
                     "job.lease_lost",
                     "Job Lease 已失效。",
                     job_id=str(self._context._job_id),
+                    error_type=type(exc).__name__,
                 )
                 self._context._set_heartbeat_error(exc)
                 return
             except Exception as exc:
-                log_event(
-                    logger,
-                    logging.WARNING,
-                    "job.heartbeat_failed",
+                logger.warning(
                     "Job Heartbeat 执行失败。",
-                    job_id=str(self._context._job_id),
+                    extra={
+                        "event": "job.heartbeat_failed",
+                        "job_id": str(self._context._job_id),
+                        "error_type": type(exc).__name__,
+                    },
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                    stacklevel=2,
                 )
                 self._context._set_heartbeat_error(exc)
                 return
@@ -185,6 +190,7 @@ class JobWorker:
         if job.lease_token is None:
             raise RuntimeError("claimed job is missing lease token")
 
+        started = time.perf_counter()
         _log_job_started(job, worker_id=self._worker_id)
         try:
             payload = self._registry.validate_payload(
@@ -192,13 +198,14 @@ class JobWorker:
                 payload_version=job.payload_version,
                 payload=job.payload,
             )
-        except ValidationError, ValueError:
+        except (ValidationError, ValueError):
             failed = self._fail_invalid_payload(job.id, job.lease_token)
             _log_job_terminal(
                 failed,
                 event="job.failed",
                 worker_id=self._worker_id,
                 error_code="invalid_payload",
+                duration_ms=_elapsed_ms(started),
             )
             return True
 
@@ -213,7 +220,24 @@ class JobWorker:
         heartbeat_loop = _HeartbeatLoop(context, lease_seconds=self._lease_seconds)
         heartbeat_loop.start()
         try:
-            result = definition.handler(payload, context)
+            try:
+                result = definition.handler(payload, context)
+            except Exception as exc:
+                logger.error(
+                    "Job Handler 执行出现未预期异常。",
+                    extra={
+                        "event": "job.execution_failed",
+                        "job_id": str(job.id),
+                        "job_type": job.job_type,
+                        "worker_id": self._worker_id,
+                        "attempt": job.attempt,
+                        "duration_ms": _elapsed_ms(started),
+                        "error_type": type(exc).__name__,
+                    },
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                    stacklevel=2,
+                )
+                raise
         finally:
             heartbeat_loop.stop()
         context._raise_heartbeat_error()
@@ -229,6 +253,7 @@ class JobWorker:
             event=event,
             worker_id=self._worker_id,
             error_code=result.error_code,
+            duration_ms=_elapsed_ms(started),
         )
         return True
 
@@ -326,6 +351,19 @@ class JobReaper:
                         callback(session, job)
         finally:
             session.close()
+        if job is not None:
+            log_event(
+                logger,
+                logging.WARNING,
+                "job.reaped",
+                "Job Reaper 已处理超时或取消任务。",
+                job_id=str(job.id),
+                job_type=job.job_type,
+                status=job.status,
+                attempt=job.attempt,
+                max_attempts=job.max_attempts,
+                error_code=job.error_code,
+            )
         return job is not None
 
 
@@ -350,10 +388,17 @@ def _log_job_terminal(
     event: str,
     worker_id: str,
     error_code: str | None,
+    duration_ms: int,
 ) -> None:
+    if event == "job.failed":
+        level = logging.ERROR
+    elif event == "job.retry_scheduled":
+        level = logging.WARNING
+    else:
+        level = logging.INFO
     log_event(
         logger,
-        logging.INFO,
+        level,
         event,
         "Job 状态已持久化。",
         job_id=str(job.id),
@@ -362,5 +407,10 @@ def _log_job_terminal(
         max_attempts=job.max_attempts,
         worker_id=worker_id,
         status=job.status,
+        duration_ms=duration_ms,
         error_code=error_code or job.error_code,
     )
+
+
+def _elapsed_ms(started: float) -> int:
+    return max(0, round((time.perf_counter() - started) * 1000))
