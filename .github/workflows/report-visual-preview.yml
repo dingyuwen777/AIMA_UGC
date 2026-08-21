@@ -1,9 +1,9 @@
 name: Report visual preview
 
 on:
-  push:
+  pull_request:
     branches:
-      - fix/report-visual-fidelity
+      - main
 
 permissions:
   contents: read
