@@ -8,7 +8,7 @@ from xml.etree import ElementTree as ET
 from PIL import Image
 
 from .chart_spec import ChartSpec
-from .docx_package import DocxBuilder, _A, _C, _PIC, _R, _W, _WP, _ImageAsset
+from .docx_package import _A, _C, _PIC, _R, _W, _WP, DocxBuilder, _ImageAsset
 from .visuals import theme
 
 _PRIMARY_LEFT_WIDTH = 8_050
