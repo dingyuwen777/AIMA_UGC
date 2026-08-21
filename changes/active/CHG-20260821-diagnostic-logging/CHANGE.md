@@ -29,17 +29,17 @@ data_changes: []
 
 # 目标
 
-让 app/api、scheduler、worker 的文件日志优先服务于故障定位：每行开头直接显示 UTC 毫秒时间、真实调用文件名和源码行号、日志级别；去掉由日志文件名即可判断的 `service=` 重复字段；减少周期性空轮询噪音，并补齐真正影响定位的外部 Provider、Job、Collection 异常信息。
+让 app/api、scheduler、worker 的文件日志优先服务于故障定位：每行开头直接显示北京时间毫秒时间、真实调用文件名和源码行号、日志级别；去掉由日志文件名即可判断的 `service=` 重复字段；减少周期性空轮询噪音，并补齐真正影响定位的外部 Provider、Job、Collection 异常信息。
 
 目标行格式：
 
 ```text
-[2026-08-05T11:48:14.113Z _client.py L1090] [INFO] event=http.request.completed status_code=200 duration_ms=183 message="..."
+[2026-08-21 16:48:14.113 _client.py L1090] [INFO] event=http.request.completed status_code=200 duration_ms=183 message="..."
 ```
 
 # 成功标准
 
-- [ ] 所有 AIMA Formatter 输出使用 UTC ISO-8601 毫秒 `Z` 时间。
+- [ ] 所有 AIMA Formatter 输出使用 Asia/Shanghai（北京时间）与 `YYYY-MM-DD HH:mm:ss.SSS` 格式。
 - [ ] 第一段前缀同时包含 `filename` 与 `L<lineno>`，第二段为 `[LEVEL]`。
 - [ ] `log_event()` 记录的 caller 跳过统一 helper，定位到实际调用代码。
 - [ ] 每行不再输出 `service=api|scheduler|worker`；进程类型继续只由 `api.log / scheduler.log / worker.log` 文件名区分。
@@ -87,7 +87,7 @@ data_changes: []
 
 # TDD / 验证
 
-1. 先修改/新增测试，使当前实现因为旧时间格式、`service=`、caller、空 tick INFO 等原因 Red。
+1. 先修改/新增测试，使当前实现因为旧前缀、`service=`、caller、空 tick INFO 等原因 Red。
 2. 再做最小实现和异常路径补强。
 3. 执行目标测试、相关 Collection/Job/API/Provider 回归、Ruff、Mypy 和仓库现有 CI。
 4. 通过 PR 合并到 main，不绕过现有门禁。
