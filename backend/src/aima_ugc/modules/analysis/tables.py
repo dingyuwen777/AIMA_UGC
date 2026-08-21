@@ -84,7 +84,10 @@ analysis_content_request_items_table = Table(
     Column("status", Text(), nullable=False, server_default=text("'pending'")),
     Column("error_code", Text()),
     UniqueConstraint("request_id", "ordinal", name="uq_analysis_content_request_items_ordinal"),
-    CheckConstraint("content_version >= 1", name="content_version_positive"),
+    CheckConstraint(
+        "content_version >= 1",
+        name="content_version_positive",
+    ),
     CheckConstraint("ordinal >= 0", name="ordinal_nonnegative"),
     CheckConstraint(
         "status in ('pending','succeeded','failed','stale')",
