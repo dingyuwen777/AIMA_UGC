@@ -55,7 +55,10 @@ def test_primary_overview_keeps_kpis_ranking_and_wordcloud_in_one_visual_group(
     for expected in ("标签对总量", "48,718", "一级议题", "3", "TOP1 占比", "57.96%"):
         assert expected in text
     assert "品牌评价" in text
-    assert document.find(".//{http://schemas.openxmlformats.org/drawingml/2006/picture}pic") is not None
+    assert (
+        document.find(".//{http://schemas.openxmlformats.org/drawingml/2006/picture}pic")
+        is not None
+    )
 
 
 def test_ranking_chart_layout_limits_progress_rows_but_keeps_full_editable_detail(
@@ -64,8 +67,7 @@ def test_ranking_chart_layout_limits_progress_rows_but_keeps_full_editable_detai
     markdown = tmp_path / "report.md"
     output = tmp_path / "report.docx"
     rows = "\n".join(
-        f"| 议题 {index:02d} | {1000 - index} | {20 - index / 10:.2f}% |"
-        for index in range(1, 13)
+        f"| 议题 {index:02d} | {1000 - index} | {20 - index / 10:.2f}% |" for index in range(1, 13)
     )
     markdown.write_text(
         "### 二级议题\n\n"
@@ -122,7 +124,16 @@ def test_compact_daily_table_pivots_long_form_without_losing_values(tmp_path: Pa
 
     captions = {_table_caption(table) for table in document.findall(f".//{{{_W}}}tbl")}
     assert "AIMACompactDaily" in captions
-    for expected in ("2026-08-18", "2026-08-19", "抖音", "小红书", "4,117", "842", "4,507", "859"):
+    for expected in (
+        "2026-08-18",
+        "2026-08-19",
+        "抖音",
+        "小红书",
+        "4,117",
+        "842",
+        "4,507",
+        "859",
+    ):
         assert expected in text
 
 
@@ -153,8 +164,12 @@ def test_dominant_split_keeps_office_charts_editable_and_reduces_series_per_char
     assert summary.chart_count == 2
 
     with zipfile.ZipFile(output) as archive:
-        first = load_workbook(BytesIO(archive.read("word/embeddings/chart1.xlsx")), data_only=False)
-        second = load_workbook(BytesIO(archive.read("word/embeddings/chart2.xlsx")), data_only=False)
+        first = load_workbook(
+            BytesIO(archive.read("word/embeddings/chart1.xlsx")), data_only=False
+        )
+        second = load_workbook(
+            BytesIO(archive.read("word/embeddings/chart2.xlsx")), data_only=False
+        )
         try:
             assert first.active.max_column == 2
             assert second.active.max_column == 5
