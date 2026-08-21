@@ -1,4 +1,5 @@
 import gzip
+import inspect
 import logging
 import re
 from datetime import UTC, datetime
@@ -47,7 +48,9 @@ def test_log_event_reports_actual_caller_instead_of_logging_helper(
 
 
 def _emit_from_test_caller(logger: logging.Logger) -> int:
-    expected_line = __import__("inspect").currentframe().f_lineno + 1  # type: ignore[union-attr]
+    frame = inspect.currentframe()
+    assert frame is not None
+    expected_line = frame.f_lineno + 1
     log_event(logger, logging.INFO, "test.caller", "定位真实调用点")
     return expected_line
 

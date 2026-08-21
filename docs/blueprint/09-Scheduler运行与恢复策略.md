@@ -210,16 +210,24 @@ Provider Config
 
 ## 9. 日志与可观测性
 
-Scheduler 的有用日志至少应能回答：
+Scheduler 的日志必须优先回答“本次 tick 是否真的做了工作、哪个 Plan 为什么被拒绝”，而不是证明进程每 30 秒还活着。
 
-- 本次预扫多少 Plan；
-- 初始化多少 Plan cursor；
-- 入队多少最新 Occurrence；
-- 因 `misfire_superseded` 跳过多少历史 slot；
-- 哪个 Plan 因非法策略、非法 Cron 或异常 backlog fail closed；
-- 一个 tick 是否完成。
+`scheduler.tick.completed` 固定携带：
 
-日志不得包含 Provider Secret、Cookie、Authorization、完整第三方 Raw 或其他敏感数据。
+```text
+scanned
+initialized
+enqueued
+skipped
+failed
+duration_ms
+```
+
+级别规则：没有初始化、入队、skip 或失败的空 tick 只记 DEBUG；初始化 cursor、实际入队或产生 `misfire_superseded` skip 时记 INFO；只要存在失败 Plan，tick 汇总提升为 WARNING。单个非法策略、非法 Cron、异常 backlog、缺 Provider/词包/Scope/Capability 的 Plan 继续 fail closed，并单独记录 `scheduler.plan.rejected` ERROR，包含 `plan_id`、`error_type` 与安全 `error_detail`，但不得终止同一 tick 的其他 Plan。
+
+所有面向人阅读的北京时间日志遵循 Blueprint 05：`YYYY-MM-DD HH:mm:ss.SSS`，调用文件名和源码行号直接位于日志前缀；不重复输出 `service=scheduler`。持久化的 `scheduled_for / next_run_at / last_scheduled_at` 仍是带时区的机器时间，不受日志显示格式影响。
+
+日志不得包含 Provider Secret、Cookie、Authorization、完整第三方 Raw、完整请求参数或其他敏感数据。
 
 ## 10. Stage 7 验收
 

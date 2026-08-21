@@ -144,7 +144,6 @@ class _HeartbeatLoop:
                         "error_type": type(exc).__name__,
                     },
                     exc_info=(type(exc), exc, exc.__traceback__),
-                    stacklevel=2,
                 )
                 self._context._set_heartbeat_error(exc)
                 return
@@ -235,7 +234,6 @@ class JobWorker:
                         "error_type": type(exc).__name__,
                     },
                     exc_info=(type(exc), exc, exc.__traceback__),
-                    stacklevel=2,
                 )
                 raise
         finally:

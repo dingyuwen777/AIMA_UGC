@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import logging
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
+from aima_ugc.bootstrap.runtime import PlatformRuntime
 from aima_ugc.bootstrap.scheduler import SchedulerTickResult
 from aima_ugc.entrypoints import scheduler_main
 
@@ -28,7 +30,7 @@ def test_scheduler_tick_only_uses_info_when_work_happened(
     expected_level: int,
 ) -> None:
     logger = logging.getLogger("aima_ugc.test.scheduler.loop")
-    runtime = SimpleNamespace(logger=logger)
+    runtime = cast(PlatformRuntime, SimpleNamespace(logger=logger))
     monkeypatch.setattr(scheduler_main, "run_scheduler_once", lambda _runtime: result)
 
     def stop_after_first_tick(_seconds: float) -> None:
@@ -36,7 +38,7 @@ def test_scheduler_tick_only_uses_info_when_work_happened(
 
     with caplog.at_level(logging.DEBUG, logger=logger.name):
         with pytest.raises(_StopLoop):
-            scheduler_main.run_scheduler_loop(runtime, sleep=stop_after_first_tick)  # type: ignore[arg-type]
+            scheduler_main.run_scheduler_loop(runtime, sleep=stop_after_first_tick)
 
     records = [
         record
