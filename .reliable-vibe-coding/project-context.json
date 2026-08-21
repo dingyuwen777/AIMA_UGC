@@ -184,8 +184,8 @@
     {
       "kind": "documentation",
       "path": "README.md",
-      "sha256": "adaff6783128f41110fff41aca44d363736410f4d142844b100314f6e5aa6eba",
-      "size": 26435,
+      "sha256": "519fd8207cd4cf02f1d41521924a719b8d9b437c15c0eb58cfebb21964c877ff",
+      "size": 26974,
       "title": "AIMA_UGC"
     },
     {
@@ -212,8 +212,8 @@
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/modules/analysis/README.md",
-      "sha256": "47e1b715e62ed85645f6ea61f052a492b96871625a1b97df4b80fbdca5ed1c3d",
-      "size": 13410,
+      "sha256": "263512e6a4db55816df4ca274f592d53b8a0ae78d7f1031beea824ed09f3207a",
+      "size": 13479,
       "title": "Analysis 模块"
     },
     {
@@ -226,15 +226,15 @@
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/modules/content/README.md",
-      "sha256": "09127ea2fdfc8a3f56369ae8392ac56bf890234c10fa41574560ad411b9c7c6f",
-      "size": 5911,
+      "sha256": "19d43c7ced362917cac8a1d8c4e6f6b49927d131c2e7fd1dfb33dfe79fe6c825",
+      "size": 5928,
       "title": "Content 模块"
     },
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/modules/reporting/README.md",
-      "sha256": "25a7eb826eee4bc3ae46664265117e2c1a06074b02b4acd45608ba998d22a8b9",
-      "size": 899,
+      "sha256": "0351ef9ad4ff9ff12795db1c7fb7255ffafd6884219973e4533de06680ebf778",
+      "size": 919,
       "title": "Reporting 模块"
     },
     {
@@ -338,8 +338,8 @@
     {
       "kind": "contract",
       "path": "contracts/openapi/openapi.json",
-      "sha256": "fa2c527fe66fd6f359ea4668224ab48d1504de8ab09349e46f0946acde4f7be2",
-      "size": 87532
+      "sha256": "b8021b3f0b0c1a6e52c184a697e227a87f7683afd9d74d145442163e2f5c12bc",
+      "size": 118233
     },
     {
       "kind": "contract",
@@ -362,8 +362,8 @@
     {
       "kind": "documentation",
       "path": "docs/API接口说明.md",
-      "sha256": "7b1a212b1625c70d9501fe797547bc9076a4e75edd13935d639735f339c2e7b8",
-      "size": 13239,
+      "sha256": "891219614f3f4631e52b78a33a1fd828948b048248bd8e22d48898712be4ff48",
+      "size": 15215,
       "title": "AIMA_UGC API 接口说明"
     },
     {
@@ -376,22 +376,22 @@
     {
       "kind": "documentation",
       "path": "docs/blueprint/02-采集系统与数据标准化.md",
-      "sha256": "4857d2b352a047d88043f5b828392008b1bd587752cfa0a6ae582c4d6ab48cb4",
-      "size": 39440,
+      "sha256": "6479b082e1dad6ebcee4d387ad6245268f48826eea823add740f2674e9cceed9",
+      "size": 39909,
       "title": "采集系统与数据标准化"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/03-数据库与文件存储.md",
-      "sha256": "6e8ab36c15f5456a4959104dffa28f9510dcab8e65827c99d03b63a826fba7c5",
-      "size": 65314,
+      "sha256": "cb70ee6d643496f7a2a8f438e474480ddd7722d7281357c6e995bc0b46a63a2c",
+      "size": 66281,
       "title": "数据库与文件存储"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/04-后端任务API与前端.md",
-      "sha256": "dee7cc2d6f06de3abc1567af30fa9a3dfe467c61dbdbe13c27e397b76c6651fe",
-      "size": 27099,
+      "sha256": "79f3b1e8c39cf992fff0b15b3c1f360187466ca1c164717afaf8faf1d2926669",
+      "size": 28260,
       "title": "后端任务、API 与前端"
     },
     {
@@ -418,8 +418,8 @@
     {
       "kind": "documentation",
       "path": "docs/blueprint/08-采集策略与平台能力.md",
-      "sha256": "e5ec0993470a180f886941de62e72e17d19a97c9f308bd08bb00148451d7611b",
-      "size": 30343,
+      "sha256": "d15839beb9a6259a8fb7f214a698be6e09b3e2e591eea6f9f570708862e764ff",
+      "size": 30787,
       "title": "采集策略与平台能力"
     },
     {
@@ -453,36 +453,36 @@
     {
       "kind": "documentation",
       "path": "docs/blueprint/13-统一数据Excel导出与调试复用.md",
-      "sha256": "742321b6af967625b0edddc0f8edc093557423cd5811e9bb7a206d85356dfa00",
-      "size": 26833,
+      "sha256": "4cee1b345522a09fea4cb2742419cb732113257b9a7dbd408864d5e88556b5e3",
+      "size": 26850,
       "title": "统一数据 Excel 导出与调试复用"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/15-舆情AI打标与统一分析契约.md",
-      "sha256": "01aaea980eaeca9ec109c2a13593d853f4945643f969a68d38b88b9a654920f2",
-      "size": 41799,
+      "sha256": "020198edb36c3af93d0848bb78b5b36ac977fc1618d972722ab9476452a25ab0",
+      "size": 41815,
       "title": "舆情 AI 打标与统一分析契约"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/16-前端页面架构与Figma设计工作流.md",
-      "sha256": "a4b8d588b4440a0f6594f312f7070205df977bfbfce013eb5b2ffb28d39d07e0",
-      "size": 17236,
+      "sha256": "d672686f05bde7fd439e03bad84a36fa196b92667fee7673609db1bce365b767",
+      "size": 17768,
       "title": "前端页面架构与 Figma 设计工作流"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/17-Stage8数据入口统一入库与业务前端实施.md",
-      "sha256": "6d76c3c84fa3b889eae6e2feba1a0306b877a18ef02d6f71b7530affd9616995",
-      "size": 37734,
+      "sha256": "84bfd84dabb24519953bbde300e05c9befa5b6c4cd1821e51c2e21dd38ce027c",
+      "size": 40034,
       "title": "Stage 8 数据入口、统一入库与业务前端实施"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/README.md",
-      "sha256": "d0ddf4cf173931ae52ab128a2dad94fb791ce38460fda99325cd78c0ec822f46",
-      "size": 22106,
+      "sha256": "c118b7711f6afc965e29544c436994a92103f52a9cb1d3eff5a2b1d46f6f970b",
+      "size": 21804,
       "title": "AIMA_UGC Blueprint 导航"
     },
     {
@@ -530,22 +530,22 @@
     {
       "kind": "documentation",
       "path": "docs/测试与调试说明.md",
-      "sha256": "d4bb613c21d1baf3b5ee1ce5d4b9a5711d9ff588400554bd2bbb89e65560d1dd",
-      "size": 35098,
+      "sha256": "892ceb8e07f68dab2e1bb7d2f3a5c59bfb53b7c582f579cf9cfa80ded12842b1",
+      "size": 36283,
       "title": "AIMA_UGC 测试与调试说明"
     },
     {
       "kind": "documentation",
       "path": "docs/环境运行与部署.md",
-      "sha256": "4fd99cd93f5d868166e1239c1fd70de4ba1c4785b2ac20bb7826f9efd75b8924",
-      "size": 21699,
+      "sha256": "b08409cc9f42efc25d672021e73aa1f6bedf054b741ed06e521054b69fa1ba79",
+      "size": 22269,
       "title": "环境、运行与部署"
     },
     {
       "kind": "documentation",
       "path": "frontend/README.md",
-      "sha256": "f3b0a3b73982f7e304d8b5aa0d9c495c4597e5ca7a41fb93b3dafc6d011f836c",
-      "size": 3770,
+      "sha256": "2deafde82626dee84770064b9333a6ee73e853bd814ec9c03d18124e8a2a2532",
+      "size": 3785,
       "title": "AIMA_UGC 前端开发入口"
     },
     {
@@ -594,10 +594,10 @@
       "size": 92829
     }
   ],
-  "generated_at": "2026-08-20T19:37:05+00:00",
+  "generated_at": "2026-08-21T01:59:06+00:00",
   "generator_version": "0.1.0",
   "git": {
-    "indexed_at_commit": "deee4395c774241f402cc9efc6010817c968c2e5",
+    "indexed_at_commit": "f0c8ba62a98e7a7c9cdc795c840d7912f46385f2",
     "repository": true,
     "worktree_candidate_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
   },
