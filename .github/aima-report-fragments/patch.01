@@ -37,10 +37,11 @@ stage2_tail = stage2_tail.replace(
 ci.write_text(ci_text[:stage2_start] + stage2_tail, encoding="utf-8")
 
 readme = ROOT / "backend/src/aima_ugc/platform/reporting/README.md"
-replace_once(
+replace_all_expected(
     readme,
     "reports/report.md\nreports/report.docx\n",
     "reports/report.md\nreports/report.docx\nreports/assets/primary_topics_wordcloud.png\nreports/assets/keyword_wordcloud.png\n",
+    2,
 )
 replace_once(
     readme,
