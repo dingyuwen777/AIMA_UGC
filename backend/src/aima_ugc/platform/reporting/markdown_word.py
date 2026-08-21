@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -390,7 +391,7 @@ def _add_compact_group(
         return False
     group_names = tuple(names[index] for index in indices)
     max_value = max((value for values in group_series for value in values), default=0.0)
-    y_max = max(1.0, max_value + max(1.0, math_ceil_tenth(max_value)))
+    y_max = max(1.0, max_value + max(1.0, math.ceil(max(0.0, max_value) / 10.0)))
     builder.add_compact_chart(
         replace(
             spec,
@@ -401,10 +402,6 @@ def _add_compact_group(
         )
     )
     return True
-
-
-def math_ceil_tenth(value: float) -> float:
-    return max(1.0, math.ceil(max(0.0, value) / 10.0))
 
 
 def _collect_fence(lines: list[str], start: int) -> tuple[str, int]:
