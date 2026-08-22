@@ -40,10 +40,15 @@ _INVALID_MACHINE_VALUES = (
     "BILIBILI",
     "KUAISHOU",
 )
-_LEGACY_PLATFORM_TOKENS = ("xhs", "red", "dy", "wb", "ks", "bili")
-_LEGACY_PATTERNS = {
-    token: re.compile(rf"(?<![A-Za-z0-9_-]){token}(?![A-Za-z0-9_-])")
-    for token in _LEGACY_PLATFORM_TOKENS
+_FORBIDDEN_MACHINE_LITERALS = tuple(
+    value for value in _INVALID_MACHINE_VALUES if value not in {"all", "twitter"}
+)
+_FORBIDDEN_LITERAL_PATTERNS = {
+    value: re.compile(rf"[\"']{re.escape(value)}[\"']")
+    for value in _FORBIDDEN_MACHINE_LITERALS
+}
+_ENCODED_LEGACY_PATTERNS = {
+    "collection.xhs": re.compile(r"[\"']collection\.xhs\.[^\"']*[\"']"),
 }
 _SCAN_ROOTS = (
     "backend/src",
@@ -130,8 +135,9 @@ def test_database_platform_identity_constraints_use_the_same_five_values() -> No
         assert f"'{value}'" in scope_sql
 
 
-def test_current_machine_facts_do_not_reintroduce_platform_alias_tokens() -> None:
+def test_current_machine_facts_do_not_reintroduce_platform_alias_literals() -> None:
     violations: list[str] = []
+    patterns = {**_FORBIDDEN_LITERAL_PATTERNS, **_ENCODED_LEGACY_PATTERNS}
     for root_name in _SCAN_ROOTS:
         root = _REPO_ROOT / root_name
         if not root.exists():
@@ -145,12 +151,12 @@ def test_current_machine_facts_do_not_reintroduce_platform_alias_tokens() -> Non
             for line_number, line in enumerate(
                 path.read_text(encoding="utf-8").splitlines(), start=1
             ):
-                for token, pattern in _LEGACY_PATTERNS.items():
+                for value, pattern in patterns.items():
                     if pattern.search(line):
                         violations.append(
-                            f"{relative}:{line_number}: legacy={token}: {line.strip()}"
+                            f"{relative}:{line_number}: forbidden={value}: {line.strip()}"
                         )
     assert not violations, (
-        "当前机器事实仍包含平台缩写/别名；平台身份只能使用五个正式值。\n"
+        "当前机器事实仍包含平台缩写/别名/大小写变体；平台身份只能使用五个正式值。\n"
         + "\n".join(violations)
     )
