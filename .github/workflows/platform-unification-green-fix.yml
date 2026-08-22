@@ -44,6 +44,17 @@ jobs:
           set -euo pipefail
           uv run python scripts/contracts/generate.py
           npm --prefix frontend run generate:api
+          git diff --check
+      - name: Commit generated fixes to development branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m '修复平台统一完整名称残留'
+          git push origin HEAD:refactor/unify-platform-identifiers
       - name: Run focused regression tests
         shell: bash
         run: |
@@ -54,14 +65,3 @@ jobs:
             tests/unit/collection/test_provider_persistence.py \
             tests/unit/collection/test_imports_test_export.py \
             -q
-          git diff --check
-      - name: Commit fixes
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          git diff --cached --check
-          git commit -m '修复平台统一完整名称残留'
-          git push origin HEAD:refactor/unify-platform-identifiers
