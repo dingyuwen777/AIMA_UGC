@@ -6,6 +6,7 @@ from typing import Protocol
 from uuid import UUID
 
 from aima_ugc.contracts.http import (
+    CollectionBatchSupplementEligibilityResponse,
     CollectionCapabilitiesResponse,
     CollectionRunCreatedResponse,
     CollectionRunCreateRequest,
@@ -36,6 +37,11 @@ class CollectionHttpService(Protocol):
     """Router 可调用的 Stage 8E 最小 Application Service。"""
 
     def get_capabilities(self) -> CollectionCapabilitiesResponse: ...
+
+    def get_batch_supplement_eligibility(
+        self,
+        batch_id: UUID,
+    ) -> CollectionBatchSupplementEligibilityResponse: ...
 
     def create_run(
         self,
