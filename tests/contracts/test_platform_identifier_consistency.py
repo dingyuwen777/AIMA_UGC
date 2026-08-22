@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import get_args
 from uuid import UUID
 
 import pytest
@@ -71,10 +70,13 @@ _EXCLUDED_FILES = {
 
 
 def _check_sql(table: object, name: str) -> str:
+    table_name = getattr(table, "name", None)
+    assert isinstance(table_name, str)
+    expected_name = f"ck_{table_name}_{name}"
     constraints = [
         str(item.sqltext)
         for item in table.constraints  # type: ignore[attr-defined]
-        if getattr(item, "name", None) == name
+        if getattr(item, "name", None) == expected_name
     ]
     assert len(constraints) == 1
     return constraints[0]
@@ -85,17 +87,22 @@ def _is_excluded(relative: str) -> bool:
 
 
 def test_platform_name_contract_is_exactly_five_values() -> None:
-    assert get_args(PlatformName) == _EXPECTED
     assert PLATFORM_NAMES == _EXPECTED
-    assert get_args(PlatformScope) == ("all", *_EXPECTED)
     assert PLATFORM_SCOPES == ("all", *_EXPECTED)
 
-    adapter = TypeAdapter(PlatformName)
+    name_adapter = TypeAdapter(PlatformName)
+    scope_adapter = TypeAdapter(PlatformScope)
     for platform in _EXPECTED:
-        assert adapter.validate_python(platform) == platform
+        assert name_adapter.validate_python(platform) == platform
+        assert scope_adapter.validate_python(platform) == platform
+    assert scope_adapter.validate_python("all") == "all"
+
     for invalid in _INVALID_MACHINE_VALUES:
         with pytest.raises(ValidationError):
-            adapter.validate_python(invalid)
+            name_adapter.validate_python(invalid)
+    for invalid in ("xhs", "red", "dy", "wb", "ks", "bili", "twitter"):
+        with pytest.raises(ValidationError):
+            scope_adapter.validate_python(invalid)
 
 
 @pytest.mark.parametrize(
