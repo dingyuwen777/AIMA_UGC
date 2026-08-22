@@ -155,9 +155,7 @@ def _provider_lookup_ids(
     hostname = (parts.hostname or "").casefold()
 
     # TikHub 小红书 App V2 Detail/Comments 原生支持 share_text，短链无需先付费解析 ID。
-    if platform == "xiaohongshu" and _host_matches(
-        hostname, ("xhslink.com", "xhslink.cn")
-    ):
+    if platform == "xiaohongshu" and _host_matches(hostname, ("xhslink.com", "xhslink.cn")):
         return {"share_text": normalized_url}
 
     # 其余平台的分享链接先保留类型，只有对应 Runtime 已验证后才会成为付费补采资格。
