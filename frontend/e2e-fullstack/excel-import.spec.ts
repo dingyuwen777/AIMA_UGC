@@ -67,7 +67,7 @@ test('结构合法但业务字段非法的 Excel 由真实 Worker 进入 failed 
   await detail.getByRole('button', { name: '处理阶段' }).click()
   await expect(detail.getByText('任务已失败。', { exact: false })).toBeVisible()
   await expect(detail.getByText('失败前最后完成阶段', { exact: false })).toBeVisible()
-  await expect(detail.getByText('等待中')).toHaveCount(0)
+  await expect(detail.locator('.stage-row')).toHaveCount(0)
 
   await detail.getByRole('button', { name: 'Job 状态' }).click()
   await expect(detail.getByText('失败', { exact: true })).toBeVisible()
