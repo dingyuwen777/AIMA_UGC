@@ -63,6 +63,8 @@ kuaishou
 
 外部 Provider Raw/原始 Fixture 保留第三方真实字节；历史 Change、已执行旧 Migration 保留历史事实。Excel 等外部输入可以识别明确的中文平台展示名称，但进入系统后立即归一化到五个正式机器值。
 
+**完整名称大小写兼容只存在于外部输入边界：** HTTP Request/Query、Excel 等外部输入可以接受 `XIAOHONGSHU / Xiaohongshu / xiaohongshu` 这类完整正式名称的大小写和首尾空白差异，并立即归一化为小写正式值；`xhs / red / dy / wb / ks / bili` 等简称/别名仍全部拒绝。数据库、Contract 输出、Job、日志/事件和持久化只保存小写正式值。
+
 **展示层与机器值分离：** Excel 最终展示列继续使用 `小红书 / 抖音 / 微博 / 哔哩哔哩 / 快手`，展示映射的输入只能是五个正式机器值，不接受平台简称或中文展示名反向冒充机器值。
 
 关键词“适用于全部平台”使用 `platform_scope=all`，`all` 不再占用平台身份字段。
@@ -70,12 +72,13 @@ kuaishou
 # 可观察成功标准
 
 - [ ] `PlatformName` / `CollectionPlatform` 只允许 `xiaohongshu / douyin / weibo / bilibili / kuaishou`；
+- [ ] HTTP Request/Query 与 Excel 等外部输入接受完整正式平台名的大小写差异并立即归一化为小写，仍拒绝 `xhs / red / dy / wb / ks / bili` 等简称/别名；
 - [ ] Provider Capability、Canonical Content/Comment Mapper 只输出五个正式平台机器值；
 - [ ] Excel Profile 只把明确中文展示名或正式机器值归一化为五个正式值，不接受 `xhs / red / dy / wb / ks / bili` 等平台简称作为机器输入；
 - [ ] Excel 最终展示列使用 `小红书 / 抖音 / 微博 / 哔哩哔哩 / 快手`，但内部记录与 Contract 仍保持正式机器值；
 - [ ] `platform_display_name()` 只接受 `PlatformName`，不维护中文/简称反向兼容映射；
 - [ ] Collection Plan / Run / Scope / Batch Supplement / Frontend generated client 全部使用五个正式平台机器值；
-- [ ] 删除运行时平台 alias/双值转换，不保留兼容层；
+- [ ] 删除运行时平台 alias/双值转换，不保留简称兼容层；
 - [ ] 当前有效源码路径、类/函数/常量、Job type、schema version、Workflow 名称、日志/事件机器标识、配置、测试与正式文档不继续使用平台简称；
 - [ ] 第三方 Raw Artifact/Raw Fixture、历史归档 Change、旧 Migration 不因本任务伪造性改写；本 Migration 和 Migration 生命周期测试可以显式引用旧值以完成一次性迁移验证；
 - [ ] 新 Alembic Migration 一次性迁移当前持久化平台字段中的旧小红书机器值，并为稳定平台身份列增加五值 CHECK；
@@ -96,7 +99,7 @@ kuaishou
 
 1. Pydantic 平台 Contract、OpenAPI、generated client；
 2. TikHub Capability、Mapper、Collection Runtime、Content、Frontend 的平台机器值；
-3. Excel Import 平台输入归一化规则与 Excel 中文展示边界；
+3. Excel Import 平台输入归一化规则、HTTP 完整名称大小写归一化与 Excel 中文展示边界；
 4. PostgreSQL 稳定平台列、关键词 `platform_scope`、当前固定 JSON 快照；
 5. 一次性 Alembic Migration；
 6. 当前有效源码/测试/Workflow/日志事件相关命名中的平台简称；
@@ -125,7 +128,11 @@ kuaishou
 
 > Excel 导出属于人类展示，平台列应显示中文：`小红书 / 抖音 / 微博 / 哔哩哔哩 / 快手`。
 
-因此本 Change 不设置平台 alias 兼容窗口，但保留单向的“正式机器值 → 中文展示文案”转换。
+用户后续明确补充：
+
+> 完整平台名称可以保持大小写兼容。
+
+因此本 Change 不设置平台简称/别名兼容窗口；只在外部输入边界允许完整正式名称大小写归一化，内部和持久化始终使用小写正式值，并保留单向的“正式机器值 → 中文展示文案”转换。
 
 # L3 方案比较
 
@@ -137,9 +144,9 @@ kuaishou
 
 结论：拒绝。
 
-## 方案 B：全系统五个正式机器值 + 一次性 Migration + 单向中文展示
+## 方案 B：全系统五个正式机器值 + 外部完整名称大小写归一化 + 一次性 Migration + 单向中文展示
 
-优点：Contract、Canonical、Collection、Content、Frontend、数据库只剩一套机器身份；Excel/UI 等展示仍可读；后续无需 alias。
+优点：Contract、Canonical、Collection、Content、Frontend、数据库只剩一套机器身份；外部调用方不受大小写差异影响；Excel/UI 等展示仍可读；后续无需 alias。
 
 代价：公共 HTTP Contract 与 persisted data 均变化，需要 Migration、generated client 和完整回归。
 
@@ -203,8 +210,8 @@ Alembic downgrade
 # 风险
 
 - **数据身份冲突**：Migration fail closed，不静默丢历史；
-- **Contract 破坏性变化**：同一 PR 同步 OpenAPI/generated/frontend/tests，不提供兼容值；
-- **遗漏平台简称**：Contract + DB CHECK + 当前仓库静态扫描三层门禁；
+- **Contract 破坏性变化**：同一 PR 同步 OpenAPI/generated/frontend/tests；不提供简称兼容，只允许完整正式名称大小写归一化；
+- **遗漏平台简称**：Contract + DB CHECK + 当前仓库静态扫描三层门禁；简称扫描只针对平台身份上下文，避免误伤 `wb` 等非平台技术字符串；
 - **展示层误伤**：Excel 保留中文展示，但展示函数输入仍是严格五值；
 - **Raw 证据污染**：第三方 Raw/Fixture 不改写；
 - **旧历史被改写**：archive Change / 已发布旧 Migration 不修改。
@@ -213,7 +220,7 @@ Alembic downgrade
 
 1. Red：平台一致性 Contract/扫描门禁确认旧平台身份真实失败；
 2. 统一 HTTP Contract、Capability、Mapper、Excel Profile、Collection / Content / Frontend 机器值；
-3. 删除运行时平台 alias；
+3. 删除运行时平台 alias，并为外部完整正式名称增加大小写归一化；
 4. 新增 `20260822_0024` 数据 Migration 与 PostgreSQL Integration；
 5. 重新生成 OpenAPI / frontend generated client；
 6. 收口当前源码路径、符号、Workflow、日志/事件命名中的平台简称；
