@@ -1,12 +1,25 @@
 # AIMA_UGC Blueprint 导航
 
-`docs/blueprint/` 只维护**长期架构、领域边界和跨模块技术决定**。
+`docs/blueprint/` 保存系统长期架构、关键技术设计、跨模块决定，以及仍会影响后续开发的详细设计材料。
 
-如果第一次接触项目，可以把 Blueprint 理解成“系统说明书的骨架”：它告诉你系统为什么这样拆、数据怎样流、哪些边界不能随便改变；它不负责保存每个 TikHub JSON 路径、每条 SQL、每个页面截图或某次 Stage 的施工流水。
+文档治理的目标不是把 Blueprint 变短，而是让读者知道：
 
-如果你的目标是**马上定位代码并准备修改**，先读：
+```text
+为什么这样设计
+→ 当前代码在哪里
+→ 详细实现去哪里看
+→ 后续还要开发什么
+→ 怎样一直做到生产上线
+```
 
-[`../代码结构与修改导航.md`](../代码结构与修改导航.md)
+如果第一次接触仓库，建议先读：
+
+1. [`../../AGENTS.md`](../../AGENTS.md)
+2. [`../代码结构与修改导航.md`](../代码结构与修改导航.md)
+3. 本文
+4. [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md)
+5. [`../roadmap/生产上线实施路线.md`](../roadmap/生产上线实施路线.md)
+6. 再按当前任务下钻 Blueprint、Appendix、模块 README、代码和测试
 
 ---
 
@@ -17,16 +30,19 @@ AGENTS.md
 → 所有开发/AI Agent 的统一规则入口
 
 docs/代码结构与修改导航.md
-→ 常见开发任务如何定位到真实源码、Contract、表和测试
+→ 常见开发任务怎样定位真实源码、Contract、表和测试
 
 docs/blueprint/
-→ 为什么这样设计、长期边界是什么
+→ 长期架构 + 关键详细设计 + 当前仍有效的历史阶段技术方案
+
+docs/roadmap/
+→ 当前做到哪里、还缺什么、如何继续开发到生产上线
 
 模块 README
-→ 当前模块具体怎么实现、Owner、主要类/函数、常见修改点
+→ 当前模块代码怎样实现、Owner、主调用链、常见修改入口
 
 docs/appendix/
-→ PostgreSQL、Scheduler、TikHub、Excel、AI、Word 报告等专题实现和调试
+→ PostgreSQL、Scheduler、TikHub、Excel、AI、Word、生产部署等专题实现/调试
 
 docs/guides/
 → Figma 等开发过程指南
@@ -38,30 +54,42 @@ docs/collection/
 → 精确机器事实
 
 changes/archive/
-→ 历史为什么改过、当时如何验证
+→ 某次变更为什么发生、当时怎样验证
 ```
 
-核心 Blueprint 固定为 `01`—`08`。具体专题不再通过不断新增 `09、10、11...` 扩大核心蓝图。
+### 为什么现在仍保留 Blueprint 09—17
+
+本轮不会为了目录更整齐而删除原 `09—17`。
+
+原因很直接：这些文件中仍有大量：
+
+- Scheduler 恢复细节；
+- TikHub 真实字段/接口验证证据；
+- Excel 统一导出设计；
+- AI 分析技术细节；
+- Figma/前端设计约束；
+- Stage 8 已批准和已实现的方案；
+
+这些内容仍会帮助后续开发和生产上线。
+
+当前策略：
+
+```text
+01—08
+→ 核心架构和跨模块长期设计
+
+09—17
+→ 暂时保留的详细设计/阶段技术材料
+
+Appendix / Guide
+→ 在原内容基础上勘误、补代码地图、补调试路径后的专题入口
+```
+
+只有未来能够逐主题证明“旧内容已经完整迁移、当前事实已经勘误、所有导航已经更新、后续开发路线没有信息丢失”，才考虑删除旧文件。
 
 ---
 
-## 2. 第一次进入仓库怎么读
-
-推荐顺序：
-
-1. 根目录 [`../../AGENTS.md`](../../AGENTS.md)；
-2. [`.agents/skills/reliable-vibe-coding/SKILL.md`](../../.agents/skills/reliable-vibe-coding/SKILL.md)；
-3. [`../代码结构与修改导航.md`](../代码结构与修改导航.md)；
-4. 本文；
-5. [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md)；
-6. 再按任务选下面一篇 Blueprint；
-7. 最后读取对应模块 README、Contract、Migration、实现和测试。
-
-不要把“一次读完所有文档”当成事实调查。进入具体任务后，只读与当前调用链直接相关的材料。
-
----
-
-## 3. 八篇核心 Blueprint 分别解决什么
+## 2. 核心 Blueprint 01—08
 
 | 文档 | 解决的问题 | 读完后应该知道什么 |
 | --- | --- | --- |
@@ -69,14 +97,57 @@ changes/archive/
 | [`02-采集系统与数据标准化.md`](02-采集系统与数据标准化.md) | TikHub/Excel 为什么能进入同一套业务数据？ | Raw、Mapper、Canonical、Relevance、Ingestion、来源追溯 |
 | [`03-数据库与文件存储.md`](03-数据库与文件存储.md) | 什么放 PostgreSQL，什么放文件？ | Current/Version/Metric、表 Owner、Artifact、Job、Migration |
 | [`04-后端任务API与前端.md`](04-后端任务API与前端.md) | 页面点按钮后请求怎么走？ | API、Job、Worker、Scheduler、OpenAPI Client、前端边界 |
-| [`05-日志安全部署与运维.md`](05-日志安全部署与运维.md) | 出问题去哪看、Secret 怎么保护、怎么部署？ | 日志、安全、Secret、健康检查、部署、当前未闭环恢复能力 |
+| [`05-日志安全部署与运维.md`](05-日志安全部署与运维.md) | 出问题去哪看、Secret 怎么保护、怎样进入生产？ | 日志、安全、Secret、健康、部署与恢复长期边界 |
 | [`06-开发约束与分阶段实施.md`](06-开发约束与分阶段实施.md) | 在这个仓库怎么可靠开发？ | Change、TDD、CI、Git、文档同步、验收 |
 | [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md) | 哪些跨模块决定已经拍板？ | 不能被普通任务偷偷改变的架构/兼容/门禁 |
-| [`08-采集策略与平台能力.md`](08-采集策略与平台能力.md) | Plan 怎样选择 Provider/Platform，何时抓详情/评论？ | Capability、Decision、评论、Provider Billing、采集策略 |
+| [`08-采集策略与平台能力.md`](08-采集策略与平台能力.md) | Plan 怎样选择 Provider/Platform，何时抓详情/评论？ | Capability、Decision、评论、Billing、采集策略 |
 
 ---
 
-## 4. 专题问题应该去哪看
+## 3. Blueprint 09—17：详细设计保留区
+
+这些文件当前仍然存在，不应被当成“已经删除”。
+
+| 文档 | 当前用途 | 更便于实操的入口 |
+| --- | --- | --- |
+| [`09-Scheduler运行与恢复策略.md`](09-Scheduler运行与恢复策略.md) | Scheduler 原详细设计和恢复约束 | [`../appendix/Scheduler调度执行与停机恢复.md`](../appendix/Scheduler调度执行与停机恢复.md) |
+| [`10-TikHub真实响应结构附录.md`](10-TikHub真实响应结构附录.md) | 五平台真实响应/Fixture/字段证据 | [`../appendix/TikHub五平台真实响应与字段映射.md`](../appendix/TikHub五平台真实响应与字段映射.md) |
+| [`11-TikHub多接口验证与备用策略.md`](11-TikHub多接口验证与备用策略.md) | 多 API family 验证逻辑 | [`../appendix/TikHub多接口验证与备用策略.md`](../appendix/TikHub多接口验证与备用策略.md) |
+| [`12-TikHub真实请求响应与接口选型台账.md`](12-TikHub真实请求响应与接口选型台账.md) | 真实 Probe 与接口选型证据 | [`../appendix/TikHub接口选型与真实验证台账.md`](../appendix/TikHub接口选型与真实验证台账.md) |
+| [`13-统一数据Excel导出与调试复用.md`](13-统一数据Excel导出与调试复用.md) | 统一 Excel Contract/Exporter 原详细设计 | [`../appendix/Excel统一数据导出与离线调试.md`](../appendix/Excel统一数据导出与离线调试.md) |
+| [`15-舆情AI打标与统一分析契约.md`](15-舆情AI打标与统一分析契约.md) | Analysis 原详细设计、业务规则演进 | [`../appendix/AI舆情打标与分析实现.md`](../appendix/AI舆情打标与分析实现.md) |
+| [`16-前端页面架构与Figma设计工作流.md`](16-前端页面架构与Figma设计工作流.md) | 前端/Figma 原完整方案 | [`../guides/Figma与前端设计开发工作流.md`](../guides/Figma与前端设计开发工作流.md) |
+| [`17-Stage8数据入口统一入库与业务前端实施.md`](17-Stage8数据入口统一入库与业务前端实施.md) | Stage 8 批次/页面/数据入口完整实施设计 | [`../appendix/数据入口与统一入库实现.md`](../appendix/数据入口与统一入库实现.md) + Roadmap |
+
+新文档不能简单总结这些原文然后丢掉字段、状态机、接口证据或实施边界。
+
+---
+
+## 4. 生产上线和未完成阶段去哪看
+
+[`../roadmap/生产上线实施路线.md`](../roadmap/生产上线实施路线.md)
+
+这篇必须长期保留：
+
+```text
+Stage 0—12 原设计目标
++ 当前代码状态
++ 已完成/部分完成/待实现/已被替代
++ 下一阶段开发顺序
++ Stage 11 Production Release
++ Stage 12 旧数据迁移
++ Go-Live 验收清单
+```
+
+重要原则：
+
+> 未完成阶段不能因为“当前代码没有实现”就从文档里删除。
+
+如果设计仍被批准且是生产目标的一部分，它必须继续留在 Roadmap/Blueprint 中，并明确写“待实现”。
+
+---
+
+## 5. 专题问题应该去哪看
 
 ### PostgreSQL / SQL
 
@@ -95,21 +166,12 @@ changes/archive/
 
 [`../appendix/Scheduler调度执行与停机恢复.md`](../appendix/Scheduler调度执行与停机恢复.md)
 
-适合：
-
-- `latest_only`；
-- Occurrence；
-- 停机恢复；
-- 多 Scheduler 防重；
-- Plan → Job → Run 事务；
-- Scheduler 与 Worker 恢复区别。
-
 ### TikHub
 
 - [`../collection/README.md`](../collection/README.md)：五平台当前能力、代码入口；
 - [`../appendix/TikHub五平台真实响应与字段映射.md`](../appendix/TikHub五平台真实响应与字段映射.md)：真实 JSON 路径、Fixture、Operation/Mapper；
-- [`../appendix/TikHub多接口验证与备用策略.md`](../appendix/TikHub多接口验证与备用策略.md)：App/Web/V1/V2/V3 如何验证、为什么不自动 fallback；
-- [`../appendix/TikHub接口选型与真实验证台账.md`](../appendix/TikHub接口选型与真实验证台账.md)：已经做过的真实 Probe 和接口选型证据。
+- [`../appendix/TikHub多接口验证与备用策略.md`](../appendix/TikHub多接口验证与备用策略.md)：App/Web/V1/V2/V3 如何验证；
+- [`../appendix/TikHub接口选型与真实验证台账.md`](../appendix/TikHub接口选型与真实验证台账.md)：真实 Probe 与选型证据。
 
 ### Excel / 手工导入 / 统一入库
 
@@ -134,9 +196,15 @@ backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md
 
 [`../guides/Figma与前端设计开发工作流.md`](../guides/Figma与前端设计开发工作流.md)
 
+### 生产 Release / 上线
+
+- [`../roadmap/生产上线实施路线.md`](../roadmap/生产上线实施路线.md)
+- [`../环境运行与部署.md`](../环境运行与部署.md)
+- [`05-日志安全部署与运维.md`](05-日志安全部署与运维.md)
+
 ---
 
-## 5. API、测试和部署入口
+## 6. API、测试和部署入口
 
 ### HTTP API
 
@@ -162,33 +230,36 @@ Pydantic Request/Response
 
 ---
 
-## 6. 事实冲突怎么处理
+## 7. 事实冲突怎么处理
 
-优先级不是简单“代码永远比文档高”。正确做法是：
+正确优先级：
 
 ```text
-本轮用户明确决定 / 已批准 OpenSpec Change（存在时）
-→ 当前代码、Migration、Contract、生成物、锁文件和测试
+本轮用户明确批准的决定 / 正式 Change
+→ 当前代码、Migration、Contract、generated、tests、locks
 → 07 的跨模块已确认决策
-→ 01—08 领域 Blueprint
+→ 01—08 核心 Blueprint
+→ 09—17 仍有效详细设计 / Roadmap
 → 模块 README / collection / appendix / guide
-→ 根 README 导航摘要
+→ 根 README 摘要
 → 历史 Change / 旧聊天
 ```
 
-遇到冲突先判断：
+但要注意两类不同内容：
 
-- 实现是否偏离了已批准架构；
-- 文档是否只是过期；
-- 是否有新决策已经形成但没同步。
+```text
+“当前已经实现什么”
+→ 必须服从当前机器事实
 
-确定正确事实后，同一任务把受影响代码/文档收口。
+“已批准但尚未实现什么”
+→ 不能因为代码不存在就删除；要保留并标待实现
+```
+
+如果旧设计被后续正式决策替代，例如旧 Provider Budget Ledger，则保留演进说明，同时明确禁止继续按旧方案开发。
 
 ---
 
-## 7. 当前系统实现边界
-
-下面只写当前仓库代码能证明的事实。
+## 8. 当前系统实现边界
 
 ### 当前后端业务模块
 
@@ -201,7 +272,7 @@ analysis
 reporting
 ```
 
-当前没有 `monitoring/` 或 `dashboard/` 业务模块。
+当前没有正式 `monitoring/`、`alerts/`、`voc/`、`tickets/` 或 `dashboard/` 业务模块。
 
 ### 当前持久长任务
 
@@ -225,29 +296,22 @@ reporting.content-export-excel.v1
 /collection-strategy
 ```
 
-当前正式业务 Feature：
+### 当前生产 Release 状态
+
+仓库当前根目录没有：
 
 ```text
-frontend/src/features/voice-plaza/
-frontend/src/features/import-batches/
-frontend/src/features/collection-strategy/
+Dockerfile
+compose.yaml
+compose.production.yaml
+env.production.example
 ```
 
-后端 API 已存在不等于一定存在独立 Vue 页面。
-
-### 当前明确未闭环
-
-- 企业登录 / 正式认证授权；
-- 完整离线生产 Release；
-- PostgreSQL + Artifact 协调 Backup/Restore 写屏障；
-- Monitoring 告警、VOC、工单等正式业务模块；
-- 独立 Dashboard 业务模块。
-
-历史 Stage 进度只作为变更历史保存在 `changes/archive/`，不能代替当前代码事实。
+因此完整离线生产 Release 仍是 Roadmap 中的待实现阶段，不能写成当前已经可以执行的命令。
 
 ---
 
-## 8. 文档应该怎么写
+## 9. 文档应该怎么写
 
 正式文档优先回答：
 
@@ -265,28 +329,33 @@ frontend/src/features/collection-strategy/
 
 要求：
 
-- 面向基础一般的开发者和需要理解系统方案的人；
-- 必要术语第一次出现要用白话解释；
+- 面向开发者，也面向需要理解整个系统技术方案的人；
+- 必要术语第一次出现用白话解释；
 - 能用代码路径、真实表、真实 Fixture 说明就不要写空泛概念；
-- Provider JSON 路径、状态机、调试 SQL、恢复边界等理解实现必须知道的内容，可以在 Appendix 直接展开；
-- 固定且精确的数据结构可以直接导航到 `tables.py`、Contract、Prompt、Migration，避免复制第二套会漂移的 Schema；
-- 不用“企业级、先进、高可用”等词替代具体机制；
-- “已实现/未实现/默认行为/限制”必须能从当前仓库事实验证；
+- Provider JSON 路径、状态机、SQL、恢复边界等理解实现必须知道的内容应直接展开；
+- 固定且容易漂移的完整 Schema/Contract 可以导航到代码，不手工复制第二套；
+- 已批准但未实现的设计必须明确标注“待实现”，不能删除；
 - 文档迁移只改变职责和结构，不以“精简”为理由删除仍然有效的技术细节。
 
 ---
 
-## 9. 文档变大时放哪里
+## 10. 文档变大时放哪里
 
 ```text
 改变长期系统架构/边界？
-→ 更新 01—08 对应 Blueprint
+→ 更新核心 Blueprint
+
+某个详细技术设计仍影响多个阶段？
+→ 可以继续保留 Blueprint 详细设计，直到完整迁移被验证
 
 某个模块当前实现细节？
-→ 更新模块 README
+→ 模块 README
 
 某个专题的大篇幅实现/调试？
 → docs/appendix/
+
+下一阶段/生产上线顺序？
+→ docs/roadmap/
 
 开发操作流程？
 → docs/guides/
@@ -298,4 +367,4 @@ frontend/src/features/collection-strategy/
 → 代码 / Contract / Migration / generated / tests
 ```
 
-这能避免 Blueprint 随每个功能无限增长，同时又不会把真正有用的技术细节删掉。
+目录职责服务于开发，不为目录整洁牺牲可用信息。
