@@ -51,11 +51,12 @@ class ExcelImportProfile:
         if text is None:
             raise ExcelImportRowError("platform_missing", "媒体名称（中文）不能为空")
 
-        formal = _FORMAL_PLATFORM_NAMES.get(text)
+        folded = text.casefold()
+        formal = _FORMAL_PLATFORM_NAMES.get(folded)
         if formal is not None:
             return formal
 
-        compact = re.sub(r"\s+", "", text.casefold())
+        compact = re.sub(r"\s+", "", folded)
         for keyword, platform in _PLATFORM_SOURCE_KEYWORDS:
             if keyword in compact:
                 return platform
