@@ -112,7 +112,7 @@ def _seed_config_and_relevance(runtime) -> UUID:  # type: ignore[no-untyped-def]
             insert(keyword_pack_items_table).values(
                 pack_id=pack_id,
                 keyword_id=keyword_id,
-                platform="all",
+                platform_scope="all",
                 priority=10,
                 enabled=True,
                 note="stage8e",
