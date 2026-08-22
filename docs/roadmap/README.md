@@ -48,6 +48,12 @@ Change / changes/archive
 旧历史数据迁移
 ```
 
+### 固定续接提示词
+
+- [`../guides/AIMA持续开发与内网上线通用提示词.md`](../guides/AIMA持续开发与内网上线通用提示词.md)：在新的 ChatGPT / GitHub Coding Agent 会话中直接复制使用。提示词不会保存当前 SHA、PR 或 Stage 完成状态，而是要求每次读取当前 `main`、Active Change、Roadmap、Contract、代码和测试重新判断下一最小正式单元。
+
+这份提示词用于**启动持续开发工作流**，不是新的事实源。阶段状态仍以本 Roadmap 和当前机器事实为准。
+
 ### 长期完整生产路线
 
 - [`生产上线实施路线.md`](生产上线实施路线.md)：Stage 0—12 的长期实施路线、完整 Production Go/No-Go、认证、Release、Backup/Restore、回滚和生产强化。
