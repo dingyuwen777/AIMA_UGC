@@ -6,7 +6,7 @@ import hashlib
 import math
 import re
 from dataclasses import dataclass
-from urllib.parse import parse_qs, urlsplit, urlunsplit
+from urllib.parse import SplitResult, parse_qs, urlsplit, urlunsplit
 
 from .models import ExcelImportRowError
 
@@ -135,10 +135,10 @@ def _native_content_id(*, platform: str, normalized_url: str | None) -> str | No
     return _native_query_content_id(platform=platform, parts=parts)
 
 
-def _native_query_content_id(*, platform: str, parts: object) -> str | None:
+def _native_query_content_id(*, platform: str, parts: SplitResult) -> str | None:
     """只解析平台已知、可直接证明为 native ID 的 Query 参数。"""
 
-    query = parse_qs(getattr(parts, "query", ""), keep_blank_values=False)
+    query = parse_qs(parts.query, keep_blank_values=False)
     if platform == "douyin":
         values = query.get("modal_id") or ()
         if values and values[0].isdigit():
