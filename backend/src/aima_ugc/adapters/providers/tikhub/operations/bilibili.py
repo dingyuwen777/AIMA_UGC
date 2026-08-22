@@ -306,6 +306,12 @@ def _video_identity_params(
 ) -> dict[str, object]:
     normalized_av = _optional_id(av_id)
     normalized_bv = _optional_id(bv_id)
+    if normalized_bv is None and normalized_av is not None:
+        if normalized_av.casefold().startswith("bv"):
+            normalized_bv = normalized_av
+            normalized_av = None
+        elif normalized_av.casefold().startswith("av"):
+            normalized_av = normalized_av[2:]
     if (normalized_av is None) == (normalized_bv is None):
         raise ValueError("av_id 与 bv_id 必须二选一")
     if normalized_av is not None:
