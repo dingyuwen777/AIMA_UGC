@@ -109,7 +109,9 @@ def test_long_term_docs_match_stage1_stage7_machine_facts() -> None:
     )
     blueprint_02 = Path("docs/blueprint/02-采集系统与数据标准化.md").read_text(encoding="utf-8")
     blueprint_08 = Path("docs/blueprint/08-采集策略与平台能力.md").read_text(encoding="utf-8")
-    blueprint_09 = Path("docs/blueprint/09-Scheduler运行与恢复策略.md").read_text(encoding="utf-8")
+    scheduler_appendix = Path("docs/appendix/Scheduler调度执行与停机恢复.md").read_text(
+        encoding="utf-8"
+    )
 
     assert "当前机器 Registry 只接线已经有实现事实的 `tikhub + xhs`" not in blueprint_02
     assert "当前 main 实际只有小红书 Operation/Mapper" not in blueprint_02
@@ -119,7 +121,8 @@ def test_long_term_docs_match_stage1_stage7_machine_facts() -> None:
     assert "collection_content_actions" in collection_readme
     assert "Candidate 在 Mapper 前" in blueprint_02
     assert "durable content action" in blueprint_08
-    assert "可执行性门禁与 Job Deadline" in blueprint_09
+    assert "计算 Job Deadline" in scheduler_appendix
+    assert "latest_only" in scheduler_appendix
 
 
 class _Context:
