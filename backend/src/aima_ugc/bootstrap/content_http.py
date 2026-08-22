@@ -112,6 +112,7 @@ class PostgresContentHttpService:
                     media=repository.list_media(content_id),
                     comments=repository.list_comments(content_id),
                     comment_coverage=repository.latest_comment_coverage(content_id),
+                    supplement_status=repository.latest_supplement_status(content_id),
                     source_records=repository.list_source_records(content_id),
                 )
         finally:
