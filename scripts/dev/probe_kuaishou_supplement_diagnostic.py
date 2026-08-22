@@ -17,6 +17,7 @@ from aima_ugc.adapters.providers.tikhub.runtime import (
     build_detail_call,
     extract_comment_items,
     extract_detail_items,
+    map_comment,
     map_content,
     mapping_context,
 )
@@ -151,6 +152,27 @@ def main() -> int:
                     continue
                 comments = extract_comment_items("kuaishou", comments_response.body)
                 print(f"row={row} stage=comments_extract item_count={len(comments)}")
+                if not comments:
+                    continue
+                first = comments[0]
+                print(
+                    f"row={row} stage=comment_shape keys={','.join(sorted(str(key) for key in first))}"
+                )
+                mapped = map_comment(
+                    platform="kuaishou",
+                    raw=first,
+                    context=_mapping_context(
+                        operation=comments_call.operation,
+                        external_content_id=detail.external_content_id,
+                    ),
+                    item_locator="diagnostic-comment:0",
+                    is_root=True,
+                )
+                same_content = mapped.external_content_id == detail.external_content_id
+                print(
+                    f"row={row} stage=comment_map result=ok same_content={str(same_content).lower()} "
+                    f"comment_id_present={str(bool(mapped.external_comment_id)).lower()}"
+                )
             except Exception as exc:
                 print(f"row={row} stage=comments result={type(exc).__name__}")
     print(f"request_count={probe.request_count} planned_cost_usd={probe.cumulative_planned_cost}")
