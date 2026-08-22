@@ -16,6 +16,7 @@ def test_batch_supplement_eligibility_exposes_only_platform_target_counts() -> N
     )
 
     assert response.batch_id == batch_id
+    assert len(response.targets) == 2
     assert [(item.platform, item.target_count) for item in response.targets] == [
         ("xiaohongshu", 3),
         ("weibo", 1),
