@@ -1,19 +1,20 @@
 # AIMA_UGC 专题附录
 
-本目录放**需要讲清具体实现、真实限制和调试方法，但不应该全塞进核心 Blueprint 的专题内容**。
+本目录放**需要讲清具体实现、真实限制和调试方法，但不应该塞进核心 Blueprint 的专题内容**。
 
 如果把整个文档体系看成一张地图：
 
-- [`../blueprint/README.md`](../blueprint/README.md)：长期架构、详细设计保留区和边界；
+- [`../blueprint/README.md`](../blueprint/README.md)：核心长期架构、边界和关键技术方向；
 - [`../roadmap/README.md`](../roadmap/README.md)：当前做到哪里、还要怎么开发到生产上线；
 - [`../代码结构与修改导航.md`](../代码结构与修改导航.md)：从业务问题快速找到真实代码；
 - 模块 README：当前模块实现、Owner、主要类/函数和修改入口；
 - 本目录：某个专题的完整实现流程、真实字段、状态机、SQL、排障、修改面；
-- Contract、Migration、SQLAlchemy Table、生成 OpenAPI/Client、测试和锁文件：精确机器事实。
+- Contract、Migration、SQLAlchemy Table、生成 OpenAPI/Client、测试和锁文件：精确机器事实；
+- `changes/archive/`：已完成 Stage/Change 为什么这样设计、当时怎样验收。
 
 附录不是“摘要层”。一篇附录如果删掉了开发者理解实现必须知道的 Endpoint、JSON 路径、状态、错误边界、恢复方式、调用链、部署步骤或调试方法，就是失败的文档重构。
 
-原 `docs/blueprint/09—17` 当前继续保留。Appendix 是在这些详细设计基础上做**勘误、补充、代码导航和实操增强**，不是用几页摘要替代旧文档后把原知识删除。
+原 Blueprint 09—17 是 Stage 7、P1、Stage 8 开发过程中逐渐形成的详细专题/实施文档。对应阶段完成后，其**当前有效技术内容由本目录、Guide、模块 README 和核心 Blueprint 01—08 承接；历史施工过程由 `changes/archive/` 承接**，因此不需要继续占用核心 Blueprint。
 
 ---
 
@@ -42,7 +43,44 @@
 
 ---
 
-## 2. 每篇附录必须达到什么标准
+## 2. 从原 Blueprint 09—17 迁下来的主题
+
+当前长期承载关系：
+
+```text
+Scheduler 运行/恢复
+→ Scheduler调度执行与停机恢复.md
+
+TikHub 真实响应/Mapper/Fixture
+→ TikHub五平台真实响应与字段映射.md
+
+TikHub 多 API family / 备用策略
+→ TikHub多接口验证与备用策略.md
+
+TikHub Probe / 接口选型台账
+→ TikHub接口选型与真实验证台账.md
+
+统一 Excel / 离线调试
+→ Excel统一数据导出与离线调试.md
+
+AI 打标 / Relevance / Voice Type / Validator / Retry / Persistence
+→ AI舆情打标与分析实现.md
+→ backend/src/aima_ugc/modules/analysis/README.md
+→ 当前 Prompt
+
+Stage 8 数据入口/统一入库
+→ 数据入口与统一入库实现.md
+
+Frontend/Figma
+→ docs/guides/Figma与前端设计开发工作流.md
+→ frontend/README.md
+```
+
+如果需要知道“当时为什么拆成 8A/8B/8C、某个 PR 是怎样验收的”，查对应 `changes/archive/`，而不是在当前技术文档里维持施工日志。
+
+---
+
+## 3. 每篇附录必须达到什么标准
 
 不是为了“有一篇文档”而写，而是要让读者能沿着文档落到代码和实际操作。
 
@@ -112,7 +150,7 @@ AI taxonomy
 
 ---
 
-## 3. 当前事实与待实现设计要分开写
+## 4. 当前事实与待实现设计要分开写
 
 这是生产文档最容易出错的地方。
 
@@ -129,7 +167,7 @@ Dockerfile / compose.yaml / production env / Release Bundle
 因此附录可以完整写 Production Release 目标设计，但必须明确：
 
 ```text
-“这是待实现目标”
+这是待实现目标
 ```
 
 不能给读者一种“仓库里已经有脚本，照着执行就行”的错觉。
@@ -144,11 +182,11 @@ Monitoring Alert/VOC/Ticket
 → 当前没有正式模块
 ```
 
-未实现但已批准的后续技术方案不能删除；应放 Roadmap/相关设计文档，并标注状态。
+未实现但已批准的后续技术方案不能因清理已完成 Stage 文档被删除；应留在 Roadmap/核心长期设计中，并标注状态。
 
 ---
 
-## 4. 文档与代码不一致时怎么办
+## 5. 文档与代码不一致时怎么办
 
 不要简单把代码抄进文档，也不要因为旧文档写得详细就默认它仍正确。
 
@@ -157,17 +195,17 @@ Monitoring Alert/VOC/Ticket
 ```text
 先找当前代码 / Contract / Migration / Fixture / Test
 → 看已批准长期决策和 Roadmap
-→ 判断旧文档哪一段过期、哪一段仍是待实现设计
-→ 保留仍有效的技术细节
-→ 修正过期事实
-→ 补缺失的代码入口、修改入口和验证方法
+→ 判断旧文档哪一段过期、哪一段仍是未来设计
+→ 把当前有效技术事实放到正确的 Appendix/README/Blueprint
+→ 把未完成目标保留在 Roadmap
+→ 把历史过程留给 Change Archive
 ```
 
-旧文档是“不能丢失哪些知识”的重要基线，但不是当前实现的唯一事实源。
+旧文档是迁移时“不能丢失哪些知识”的检查清单，但不是当前实现的永久事实源。
 
 ---
 
-## 5. 什么不放这里
+## 6. 什么不放这里
 
 - 单次 PR 的过程流水；
 - 历史 SHA 作为长期当前事实；
