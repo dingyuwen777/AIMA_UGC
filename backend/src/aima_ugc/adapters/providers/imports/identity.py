@@ -44,6 +44,8 @@ _NATIVE_PATH_PATTERNS = {
     ),
     "kuaishou": (re.compile(r"^/short-video/([^/?#]+)", re.IGNORECASE),),
 }
+_WEIBO_BASE62_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+_WEIBO_BASE62_VALUES = {char: index for index, char in enumerate(_WEIBO_BASE62_ALPHABET)}
 
 
 def resolve_content_identity(
@@ -121,7 +123,8 @@ def _native_content_id(*, platform: str, normalized_url: str | None) -> str | No
     for pattern in patterns:
         match = pattern.match(parts.path)
         if match is not None:
-            return match.group(1)
+            value = match.group(1)
+            return _weibo_url_id_to_status_id(value) if platform == "weibo" else value
     return _native_query_content_id(platform=platform, parts=parts)
 
 
@@ -181,6 +184,32 @@ def _provider_lookup_ids(
     if platform == "weibo" and "/tv/show/" in parts.path.casefold():
         return {"weibo_video_url": normalized_url}
     return {}
+
+
+def _weibo_url_id_to_status_id(value: str) -> str:
+    """把微博 permalink 的 Base62 BID 确定性转换为数字 MID/status_id。"""
+
+    if value.isdigit():
+        return value
+    if not value or any(char not in _WEIBO_BASE62_VALUES for char in value):
+        return value
+
+    groups: list[str] = []
+    end = len(value)
+    while end > 0:
+        start = max(0, end - 4)
+        groups.append(value[start:end])
+        end = start
+    groups.reverse()
+
+    decimal_groups: list[str] = []
+    for index, group in enumerate(groups):
+        decoded = 0
+        for char in group:
+            decoded = decoded * 62 + _WEIBO_BASE62_VALUES[char]
+        decimal = str(decoded)
+        decimal_groups.append(decimal if index == 0 else decimal.zfill(7))
+    return "".join(decimal_groups)
 
 
 def _normalize_native_external_id(platform: str, native_id: str) -> str:
