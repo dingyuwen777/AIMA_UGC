@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
 from aima_ugc.contracts.analysis import ContentRelevance, ContentVoiceType
+from aima_ugc.contracts.platform import PlatformName
 
 
 class _ExportBaseModel(BaseModel):
@@ -49,7 +50,7 @@ class UnifiedDataExcelAnalysisV1(_ExportBaseModel):
 class UnifiedDataExcelContentV1(_ExportBaseModel):
     """统一数据 Excel 的单条内容投影。"""
 
-    platform: str = Field(min_length=1, max_length=64)
+    platform: PlatformName
     external_content_id: str = Field(min_length=1, max_length=512)
     source_item_id: str | None = Field(default=None, max_length=512)
     content_type: str | None = Field(default=None, max_length=64)
@@ -82,7 +83,7 @@ class UnifiedDataExcelContentV1(_ExportBaseModel):
 class UnifiedDataExcelCommentV1(_ExportBaseModel):
     """统一数据 Excel 的单条评论投影。"""
 
-    platform: str = Field(min_length=1, max_length=64)
+    platform: PlatformName
     external_content_id: str = Field(min_length=1, max_length=512)
     level: str = Field(min_length=1, max_length=64)
     external_comment_id: str = Field(min_length=1, max_length=512)
