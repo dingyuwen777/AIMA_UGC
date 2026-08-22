@@ -1,15 +1,12 @@
 <script setup lang="ts">
 withDefaults(defineProps<{ sectionTitle?: string }>(), { sectionTitle: '采集运行中心' })
 
-// App Shell 只拥有应用级导航与布局，不承载 Feature 状态。
+// App Shell 只展示当前首版真实可达页面，未来能力不以无效菜单项占位。
 const navigation = [
-  { label: '首页', icon: '⌂', disabled: true },
+  { label: '首页', icon: '⌂', to: '/' },
   { label: '声音广场', icon: '◌', to: '/voice-plaza' },
   { label: '采集运行中心', icon: '▣', to: '/collection-runtime' },
   { label: '采集策略', icon: '◎', to: '/collection-strategy' },
-  { label: '智能洞察', icon: '◇', disabled: true },
-  { label: '销售漏斗', icon: '▽', disabled: true },
-  { label: '热点捕捉', icon: '♨', disabled: true },
 ]
 </script>
 
@@ -27,37 +24,16 @@ const navigation = [
       </div>
 
       <nav aria-label="业务导航">
-        <template
+        <RouterLink
           v-for="item in navigation"
           :key="item.label"
+          class="nav-item"
+          :to="item.to"
         >
-          <RouterLink
-            v-if="item.to"
-            class="nav-item"
-            :to="item.to"
-          >
-            <span class="nav-icon">{{ item.icon }}</span>
-            {{ item.label }}
-          </RouterLink>
-          <span
-            v-else
-            class="nav-item nav-item--disabled"
-            :aria-disabled="item.disabled"
-          >
-            <span class="nav-icon">{{ item.icon }}</span>
-            {{ item.label }}
-          </span>
-        </template>
+          <span class="nav-icon">{{ item.icon }}</span>
+          {{ item.label }}
+        </RouterLink>
       </nav>
-
-      <div class="sidebar-footer">
-        <div class="nav-item nav-item--disabled">
-          <span class="nav-icon">♢</span>管理员页面
-        </div>
-        <div class="nav-item nav-item--disabled">
-          <span class="nav-icon">?</span>帮助与反馈
-        </div>
-      </div>
     </aside>
 
     <section class="workspace">
@@ -167,10 +143,6 @@ nav {
   content: '';
 }
 
-.nav-item--disabled {
-  cursor: default;
-}
-
 .nav-icon {
   width: 20px;
   color: #657087;
@@ -180,21 +152,6 @@ nav {
 
 .router-link-active .nav-icon {
   color: var(--aima-primary);
-}
-
-.sidebar-footer {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 0 12px 18px;
-}
-
-.sidebar-footer::before {
-  width: calc(100% - 16px);
-  margin: auto 8px 12px;
-  border-top: 1px solid var(--aima-border);
-  content: '';
 }
 
 .workspace {

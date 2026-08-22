@@ -274,6 +274,17 @@ src/views/HomeView.vue
 src/shared/
 ```
 
+当前 App Shell 只展示已经有真实路由且属于公司内网 V1 的入口：
+
+```text
+首页
+声音广场
+采集运行中心
+采集策略
+```
+
+未来能力如果还没有正式页面，不以 disabled 或无效按钮占位；等真实能力形成后，再按“Feature → Page → Route → App Shell → Test”同步加入。
+
 全局样式只放真正跨页面 Token/reset。
 
 页面私有视觉优先留在 Page/Component，避免改一处全局 CSS 把多个页面一起破坏。
@@ -515,13 +526,42 @@ HTTP
 frontend/tests/
 ```
 
-E2E：
+快速 Browser E2E：
 
 ```text
 frontend/e2e/
+frontend/playwright.config.ts
 ```
 
-提交前：
+这组测试会 Mock `/api/v1/**`，用于快速验证页面、按钮、Drawer/Dialog、前端状态和常见 HTTP 返回，不作为真实后端链证明。
+
+Stage 8F 真实 Full-stack Browser Acceptance：
+
+```text
+frontend/e2e-fullstack/
+frontend/playwright.fullstack.config.ts
+tests/fullstack/
+.github/workflows/stage8f-fullstack.yml
+```
+
+它使用隔离 PostgreSQL、真实 FastAPI、正式 PostgreSQL Job Worker 和生产 Excel Reader/Mapper/Ingestion，不 Mock `/api/v1/**`。固定核心链是：
+
+```text
+Excel fixture
+→ Browser 上传
+→ Vue / generated client
+→ FastAPI
+→ Import Batch + Job
+→ Worker
+→ PostgreSQL Content
+→ 采集运行中心完成
+→ 查看入库内容
+→ Voice Plaza 显示本批数据
+```
+
+普通 CI 不为这条验收调用真实付费 TikHub 或 LLM。
+
+提交前常规前端检查：
 
 ```bash
 npm --prefix frontend run lint
@@ -531,7 +571,17 @@ npm --prefix frontend run build
 npm --prefix frontend run test:e2e
 ```
 
-这些前端测试不能替代后端 API、PostgreSQL、Worker、Fencing、Provider 或 Migration 集成测试。
+在已经准备好隔离 PostgreSQL、API、Worker、测试 Secret 和 Excel fixture 的完整测试环境中，可单独运行：
+
+```bash
+npm --prefix frontend run test:e2e:fullstack
+```
+
+永久 CI 会通过 `.github/workflows/stage8f-fullstack.yml` 自动建立上述隔离环境并执行这条真实链。完整能力矩阵和边界见：
+
+[`../docs/appendix/Stage8F前后端能力矩阵与真实验收.md`](../docs/appendix/Stage8F前后端能力矩阵与真实验收.md)
+
+这些前端测试仍不能替代 Job Fencing、Provider、Migration 或其他后端专项集成测试；各层验证应继续各自负责真实边界。
 
 ---
 
@@ -560,4 +610,5 @@ npm --prefix frontend run test:e2e
 - Collection 策略：`docs/blueprint/08-采集策略与平台能力.md`
 - AI：`docs/appendix/AI舆情打标与分析实现.md`
 - Excel Export：`docs/appendix/Excel统一数据导出与离线调试.md`
+- Stage 8F 能力矩阵与真实验收：`docs/appendix/Stage8F前后端能力矩阵与真实验收.md`
 - 后续阶段/Production Go-Live：`docs/roadmap/生产上线实施路线.md`
