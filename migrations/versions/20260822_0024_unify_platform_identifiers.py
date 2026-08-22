@@ -136,7 +136,10 @@ def upgrade() -> None:
             """
             UPDATE jobs
             SET job_type = CASE WHEN job_type = :old THEN :new ELSE job_type END,
-                payload_version = CASE WHEN payload_version = :old THEN :new ELSE payload_version END,
+                payload_version = CASE
+                    WHEN payload_version = :old THEN :new
+                    ELSE payload_version
+                END,
                 payload = CASE
                     WHEN payload->>'schema_version' = :old
                     THEN jsonb_set(payload, '{schema_version}', to_jsonb(CAST(:new AS text)))
