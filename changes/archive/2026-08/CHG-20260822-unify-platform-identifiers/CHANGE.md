@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260822-unify-platform-identifiers
 title: 五平台机器标识统一
 level: L3
-status: ready_for_review
+status: done
 owner: chatgpt
 branch: refactor/unify-platform-identifiers
 created: 2026-08-22
@@ -91,7 +91,7 @@ kuaishou
 - [x] Stage 8F 真实 Excel Full-stack Acceptance 继续通过；
 - [x] Blueprint / Appendix / Collection README / Frontend README 与代码一致；
 - [x] 合并前两阶段 Review 无未解决严重/重要问题；
-- [ ] PR 合并到 `main` 后 Change 归档。
+- [x] PR #149 已合并到 `main`，Change 进入独立归档流程。
 
 # 范围
 
@@ -194,7 +194,7 @@ Alembic downgrade
 → 恢复旧代码
 ```
 
-当前项目尚未生产部署；合并前仍必须在隔离 PostgreSQL 验证 upgrade、冲突 fail-closed、downgrade/re-upgrade 与 schema drift。
+当前项目尚未生产部署；合并前已在隔离 PostgreSQL 验证 upgrade、冲突 fail-closed、downgrade/re-upgrade 与 schema drift。
 
 # 部署顺序
 
@@ -255,7 +255,7 @@ npm --prefix frontend run test:e2e
 npm --prefix frontend run test:e2e:fullstack
 ```
 
-最终以仓库永久 GitHub Actions 的最新 PR HEAD 结果作为合并门禁。
+最终以仓库永久 GitHub Actions 的最新 PR HEAD 结果作为实现合并门禁；归档移动继续使用独立 PR 与其自身最新 HEAD CI。
 
 # 文档影响
 
@@ -280,13 +280,25 @@ npm --prefix frontend run test:e2e:fullstack
 091fe8b78c118e31a2491b9477705679d6516058
 ```
 
-分支：
+实现分支：
 
 ```text
 refactor/unify-platform-identifiers
 ```
 
-PR：`#149 统一五平台机器标识为完整名称`。
+实现 PR：`#149 统一五平台机器标识为完整名称`。
+
+最终实现 PR HEAD：
+
+```text
+c8e25000cc93a452bc84c7a1abbaa94128870930
+```
+
+实现 merge commit：
+
+```text
+c891512eb719165f8fec9cfde2c639291861cbec
+```
 
 ## Red / Green 与根因修复
 
@@ -300,33 +312,27 @@ PR：`#149 统一五平台机器标识为完整名称`。
 
 这些修复没有降低门禁、没有增加平台别名兼容层，也没有修改 Provider Raw Fixture 字节。
 
-## 新鲜 CI
+## 最终新鲜 CI
 
-业务实现验证 HEAD：
-
-```text
-d0e1782146b7f5b33ad7307a63f0779359d4bb63
-```
-
-该 HEAD 的 13 个永久 PR Workflow 全部 `success`：
+最终实现 PR HEAD `c8e25000cc93a452bc84c7a1abbaa94128870930` 的 13 个永久 PR Workflow 全部 `success`：
 
 ```text
-CI #2049
-Stage 4 Job Runtime #883
-Stage 5A Provider Raw #1428
-Stage 5B Collection Execution #1386
-Stage 5C Provider Persistence #1383
-Stage 5D Provider Dispatch #1443
-Stage 6 Xiaohongshu Vertical Slice #47
-Stage 7 Keyword Packs #1659
-Stage 7 Provider Config Routing #1772
-Stage 7 Plan Occurrence Run Snapshot #1657
-Stage 7 Scheduler Runtime #1999
-Stage 8F Full-stack Acceptance #176
-Stage 1-7 Audit Correctness #941
+CI #2050
+Stage 4 Job Runtime #884
+Stage 5A Provider Raw #1429
+Stage 5B Collection Execution #1387
+Stage 5C Provider Persistence #1384
+Stage 5D Provider Dispatch #1444
+Stage 6 Xiaohongshu Vertical Slice #48
+Stage 7 Keyword Packs #1660
+Stage 7 Provider Config Routing #1773
+Stage 7 Plan Occurrence Run Snapshot #1658
+Stage 7 Scheduler Runtime #2000
+Stage 8F Full-stack Acceptance #177
+Stage 1-7 Audit Correctness #942
 ```
 
-`CI #2049` 内部：
+`CI #2050` 内部：
 
 ```text
 Stage 1            success
@@ -338,8 +344,6 @@ Windows bootstrap  success
 Stage 1 实际覆盖并成功：generated Contract/client 漂移检查、Ruff、mypy、Backend Unit/Contract/API、Architecture/Table Owner/Secret/Docs、Wheel、Frontend lint、TypeScript 7 + Vue typecheck、Frontend Unit、production build 和 Mock Playwright E2E。Stage 3A 覆盖空库 Migration、Repository/Import Integration 与 downgrade/re-upgrade。Stage 8F 使用隔离 PostgreSQL、真实 FastAPI、正式 Worker 和生产 Excel Reader/Mapper/Ingestion 完成真实 Browser Acceptance。
 
 Provider Fixture 目录从旧简称路径重命名为正式路径时，JSON/README blob 内容保持不变；外部 Content/Comment ID 回归测试也从真实 Fixture 读取 ID，确认本 Change 没有伪造第三方身份。
-
-本 Change 证据提交后仍必须以 PR 最新 HEAD 重新执行永久 CI，只有最新 HEAD 门禁全绿才允许 Ready/merge。
 
 ## 两阶段 Review
 
@@ -363,12 +367,22 @@ Provider Fixture 目录从旧简称路径重命名为正式路径时，JSON/READ
 - 未手工维护第二套 generated Client/HTTP Contract；
 - 未保留运行时 `xhs/red` alias 转换；
 - Migration fail closed，不在冲突时静默删/并历史；
-- PR #149 当前无外部 review、inline review thread 或普通 PR 评论。
+- PR #149 合并前无外部 review、inline review thread 或普通 PR 评论。
 
-## 待完成 Git 收尾
+# 归档结果
 
-- PR #149 转 Ready；
-- PR #149 合并到 `main`；
-- 从合并后的新 `main` 创建独立归档分支和归档 PR；
-- 归档 PR 永久 CI 全绿后合并；
-- 最终确认 Active Change 已消失、Archive Change 为 `done`，并记录真实 merge commit。
+实现 PR #149 已合并到 `main`，真实 merge commit 为 `c891512eb719165f8fec9cfde2c639291861cbec`。
+
+归档从该新 `main` 创建独立分支：
+
+```text
+chore/archive-unify-platform-identifiers
+```
+
+本归档只把 Change 标记为 `done` 并从 `changes/active/` 移至：
+
+```text
+changes/archive/2026-08/CHG-20260822-unify-platform-identifiers/CHANGE.md
+```
+
+归档 PR 自身的编号、CI 与 merge commit 由 GitHub PR/Commit 历史作为事实源，避免在归档文件中形成必须再次修改自身才能记录的循环依赖。
