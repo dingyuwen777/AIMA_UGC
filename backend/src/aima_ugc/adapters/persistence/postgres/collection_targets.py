@@ -7,12 +7,11 @@ from dataclasses import dataclass
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import and_, select
+from sqlalchemy import select
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
 from aima_ugc.contracts.platform import PlatformName, require_platform_name
-from aima_ugc.modules.analysis.persistence import AnalysisConfigurationIdentity
 from aima_ugc.modules.analysis.tables import analysis_content_results_table
 from aima_ugc.modules.collection.tables import (
     provider_request_attempts_table,
@@ -22,8 +21,10 @@ from aima_ugc.modules.content.extended_tables import content_external_ids_table
 from aima_ugc.modules.content.tables import content_versions_table, contents_table
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 
+# 这里只列当前生产 Runtime 已验证能够直接消费的 lookup identity。
+# share/short URL 可以被 Import 识别和保存，但在正式 Resolver/身份合并闭环前不得直接计费补采。
 _LOOKUP_ID_PRIORITY: dict[PlatformName, tuple[str, ...]] = {
-    "xiaohongshu": ("note_id", "share_text"),
+    "xiaohongshu": ("note_id",),
     "douyin": ("aweme_id",),
     "weibo": ("status_id",),
     "bilibili": ("av_id", "bv_id"),
@@ -43,16 +44,10 @@ class CollectionEnrichmentTarget:
 
 
 class PostgresCollectionTargetReader:
-    """按来源账本、当前 AI 结果与 Provider lookup identity 读取补采目标。"""
+    """按来源账本、最新 AI 结果与 Provider lookup identity 读取补采目标。"""
 
-    def __init__(
-        self,
-        session: Session,
-        *,
-        analysis_identity: AnalysisConfigurationIdentity | None = None,
-    ) -> None:
+    def __init__(self, session: Session) -> None:
         self._session = session
-        self._analysis_identity = analysis_identity
 
     def batch_exists(self, batch_id: UUID) -> bool:
         return (
@@ -71,7 +66,7 @@ class PostgresCollectionTargetReader:
         platforms: tuple[PlatformName, ...],
     ) -> tuple[CollectionEnrichmentTarget, ...]:
         rows = self._candidate_rows(batch_id=batch_id, platforms=platforms)
-        return self._eligible_targets(rows)
+        return self._eligible_targets(rows, exclude_irrelevant=True)
 
     def get_batch_target(
         self,
@@ -79,10 +74,13 @@ class PostgresCollectionTargetReader:
         batch_id: UUID,
         content_id: UUID,
     ) -> CollectionEnrichmentTarget | None:
-        """执行期复核 Scope 目标仍属于 Batch 且仍满足当前补采资格。"""
+        """执行期复核 Scope 目标仍属于 Batch 且仍有可用 lookup identity。
+
+        相关性只在创建 Run 时冻结资格；避免排队期间新的 AI 结果把已创建 Scope 变成执行错误。
+        """
 
         rows = self._candidate_rows(batch_id=batch_id, content_id=content_id)
-        targets = self._eligible_targets(rows)
+        targets = self._eligible_targets(rows, exclude_irrelevant=False)
         return targets[0] if targets else None
 
     def _candidate_rows(
@@ -124,13 +122,19 @@ class PostgresCollectionTargetReader:
     def _eligible_targets(
         self,
         rows: tuple[RowMapping, ...],
+        *,
+        exclude_irrelevant: bool,
     ) -> tuple[CollectionEnrichmentTarget, ...]:
         if not rows:
             return ()
         content_ids = tuple(cast(UUID, row["id"]) for row in rows)
         alternate_ids = self._alternate_ids(content_ids)
         tikhub_content_ids = self._tikhub_content_ids(content_ids)
-        irrelevant_content_ids = self._current_irrelevant_content_ids(content_ids)
+        irrelevant_content_ids = (
+            self._latest_current_irrelevant_content_ids(content_ids)
+            if exclude_irrelevant
+            else set()
+        )
 
         targets: list[CollectionEnrichmentTarget] = []
         for row in rows:
@@ -197,28 +201,32 @@ class PostgresCollectionTargetReader:
         )
         return {cast(UUID, row[0]) for row in rows}
 
-    def _current_irrelevant_content_ids(self, content_ids: tuple[UUID, ...]) -> set[UUID]:
-        identity = self._analysis_identity
-        if identity is None:
-            return set()
+    def _latest_current_irrelevant_content_ids(
+        self,
+        content_ids: tuple[UUID, ...],
+    ) -> set[UUID]:
         analysis = analysis_content_results_table
         content = contents_table
-        rows = self._session.execute(
-            select(analysis.c.content_id)
+        latest = (
+            select(
+                analysis.c.content_id,
+                analysis.c.relevance,
+            )
             .select_from(analysis.join(content, content.c.id == analysis.c.content_id))
             .where(
                 analysis.c.content_id.in_(content_ids),
                 analysis.c.content_version == content.c.current_version,
-                analysis.c.relevance == "irrelevant",
-                and_(
-                    analysis.c.prompt_version == identity.prompt_version,
-                    analysis.c.prompt_sha256 == identity.prompt_sha256,
-                    analysis.c.taxonomy_sha256 == identity.taxonomy_sha256,
-                    analysis.c.model_provider == identity.model_provider,
-                    analysis.c.model == identity.model,
-                ),
             )
-            .distinct()
+            .distinct(analysis.c.content_id)
+            .order_by(
+                analysis.c.content_id,
+                analysis.c.analyzed_at.desc(),
+                analysis.c.id.desc(),
+            )
+            .subquery()
+        )
+        rows = self._session.execute(
+            select(latest.c.content_id).where(latest.c.relevance == "irrelevant")
         )
         return {cast(UUID, row[0]) for row in rows}
 
