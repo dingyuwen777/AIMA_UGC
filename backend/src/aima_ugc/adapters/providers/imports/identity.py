@@ -6,7 +6,7 @@ import hashlib
 import math
 import re
 from dataclasses import dataclass
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 from .models import ExcelImportRowError
 
@@ -34,8 +34,8 @@ _NATIVE_PATH_PATTERNS = {
     ),
     "douyin": (re.compile(r"^/(?:video|note)/(\d+)", re.IGNORECASE),),
     "weibo": (
-        re.compile(r"^/(?:status|detail)/([A-Za-z0-9]+)", re.IGNORECASE),
-        re.compile(r"^/\d+/([A-Za-z0-9]+)", re.IGNORECASE),
+        re.compile(r"^/(?:status|detail)/(\d+)", re.IGNORECASE),
+        re.compile(r"^/\d+/(\d+)", re.IGNORECASE),
     ),
     "bilibili": (
         re.compile(r"^/video/((?:BV[A-Za-z0-9]+)|(?:av\d+))", re.IGNORECASE),
@@ -122,6 +122,17 @@ def _native_content_id(*, platform: str, normalized_url: str | None) -> str | No
         match = pattern.match(parts.path)
         if match is not None:
             return match.group(1)
+    return _native_query_content_id(platform=platform, parts=parts)
+
+
+def _native_query_content_id(*, platform: str, parts: object) -> str | None:
+    """只解析平台已知、可直接证明为 native ID 的 Query 参数。"""
+
+    query = parse_qs(getattr(parts, "query", ""), keep_blank_values=False)
+    if platform == "douyin":
+        values = query.get("modal_id") or ()
+        if values and values[0].isdigit():
+            return values[0]
     return None
 
 
@@ -154,17 +165,21 @@ def _provider_lookup_ids(
     parts = urlsplit(normalized_url)
     hostname = (parts.hostname or "").casefold()
 
-    # TikHub 小红书 App V2 Detail/Comments 原生支持 share_text，短链无需先付费解析 ID。
+    # TikHub 小红书 App V2 Detail/Comments 支持 share_text；当前补采仍需先满足身份收敛门禁。
     if platform == "xiaohongshu" and _host_matches(hostname, ("xhslink.com", "xhslink.cn")):
         return {"share_text": normalized_url}
 
-    # 其余平台的分享链接先保留类型，只有对应 Runtime 已验证后才会成为付费补采资格。
+    # 其余平台分享链接先保留类型；Detail→native ID→Comments 的身份闭环未完成前不直接计费补采。
     if platform == "douyin" and hostname == "v.douyin.com":
         return {"douyin_share_url": normalized_url}
     if platform == "bilibili" and hostname == "b23.tv":
         return {"bilibili_share_url": normalized_url}
-    if platform == "kuaishou" and hostname == "v.kuaishou.com":
+    if platform == "kuaishou" and (
+        hostname == "v.kuaishou.com" or urlsplit(normalized_url).path.casefold().startswith("/f/")
+    ):
         return {"kuaishou_share_url": normalized_url}
+    if platform == "weibo" and "/tv/show/" in urlsplit(normalized_url).path.casefold():
+        return {"weibo_video_url": normalized_url}
     return {}
 
 
