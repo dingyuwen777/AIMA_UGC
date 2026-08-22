@@ -8,6 +8,7 @@
 为什么这样设计
 → 当前代码在哪里
 → 详细实现去哪里看
+→ 原阶段设计怎样追溯
 → 后续还要开发什么
 → 怎样一直做到生产上线
 ```
@@ -33,7 +34,7 @@ docs/代码结构与修改导航.md
 → 常见开发任务怎样定位真实源码、Contract、表和测试
 
 docs/blueprint/
-→ 长期架构 + 关键详细设计 + 当前仍有效的历史阶段技术方案
+→ 长期架构 + 关键详细设计 + 当前实现导航 + 原阶段设计/验收记录
 
 docs/roadmap/
 → 当前做到哪里、还缺什么、如何继续开发到生产上线
@@ -57,35 +58,40 @@ changes/archive/
 → 某次变更为什么发生、当时怎样验证
 ```
 
-### 为什么现在仍保留 Blueprint 09—17
+### 为什么原 Blueprint 09—17 的内容仍然保留
 
-本轮不会为了目录更整齐而删除原 `09—17`。
+本轮不会为了目录更整齐而删除原 `09—17` 的有效技术内容。
 
-原因很直接：这些文件中仍有大量：
+原因很直接：其中仍有大量：
 
-- Scheduler 恢复细节；
+- Scheduler 恢复细节和 Stage 7 验收证据；
 - TikHub 真实字段/接口验证证据；
 - Excel 统一导出设计；
-- AI 分析技术细节；
-- Figma/前端设计约束；
-- Stage 8 已批准和已实现的方案；
+- AI taxonomy、Validator、Retry、离线运行等设计演进；
+- Figma/前端设计原则和 Stage 8 工作流；
+- Stage 8 数据入口、页面和实施顺序的完整方案。
 
-这些内容仍会帮助后续开发和生产上线。
-
-当前策略：
+但“内容保留”不等于“过去写的当前状态继续冒充今天事实”。因此本轮采用两种方式：
 
 ```text
-01—08
-→ 核心架构和跨模块长期设计
+仍然直接符合当前实现的详细文档
+→ 保持原编号文件，做当前事实勘误/补充
 
-09—17
-→ 暂时保留的详细设计/阶段技术材料
-
-Appendix / Guide
-→ 在原内容基础上勘误、补代码地图、补调试路径后的专题入口
+包含大量历史阶段状态的详细文档
+→ 原编号路径升级为当前实现导航
+→ 原正文用原 Blob 原样保存在同编号“设计/阶段记录”文件
 ```
 
-只有未来能够逐主题证明“旧内容已经完整迁移、当前事实已经勘误、所有导航已经更新、后续开发路线没有信息丢失”，才考虑删除旧文件。
+当前采用第二种方式的文件：
+
+```text
+09 Scheduler
+15 AI Analysis
+16 Frontend/Figma
+17 Stage 8
+```
+
+也就是说：**原文没有丢，只是把“今天怎么做”和“当时为什么这样设计”分开了。**
 
 ---
 
@@ -98,28 +104,76 @@ Appendix / Guide
 | [`03-数据库与文件存储.md`](03-数据库与文件存储.md) | 什么放 PostgreSQL，什么放文件？ | Current/Version/Metric、表 Owner、Artifact、Job、Migration |
 | [`04-后端任务API与前端.md`](04-后端任务API与前端.md) | 页面点按钮后请求怎么走？ | API、Job、Worker、Scheduler、OpenAPI Client、前端边界 |
 | [`05-日志安全部署与运维.md`](05-日志安全部署与运维.md) | 出问题去哪看、Secret 怎么保护、怎样进入生产？ | 日志、安全、Secret、健康、部署与恢复长期边界 |
-| [`06-开发约束与分阶段实施.md`](06-开发约束与分阶段实施.md) | 在这个仓库怎么可靠开发？ | Change、TDD、CI、Git、文档同步、验收 |
+| [`06-开发约束与分阶段实施.md`](06-开发约束与分阶段实施.md) | 在这个仓库怎么可靠开发？ | Change、TDD、CI、Git、文档同步、验收；阶段状态转到 Roadmap |
 | [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md) | 哪些跨模块决定已经拍板？ | 不能被普通任务偷偷改变的架构/兼容/门禁 |
 | [`08-采集策略与平台能力.md`](08-采集策略与平台能力.md) | Plan 怎样选择 Provider/Platform，何时抓详情/评论？ | Capability、Decision、评论、Billing、采集策略 |
 
 ---
 
-## 3. Blueprint 09—17：详细设计保留区
+## 3. Blueprint 09—17：当前导航与详细设计保留区
 
-这些文件当前仍然存在，不应被当成“已经删除”。
+### 3.1 Scheduler
 
-| 文档 | 当前用途 | 更便于实操的入口 |
-| --- | --- | --- |
-| [`09-Scheduler运行与恢复策略.md`](09-Scheduler运行与恢复策略.md) | Scheduler 原详细设计和恢复约束 | [`../appendix/Scheduler调度执行与停机恢复.md`](../appendix/Scheduler调度执行与停机恢复.md) |
-| [`10-TikHub真实响应结构附录.md`](10-TikHub真实响应结构附录.md) | 五平台真实响应/Fixture/字段证据 | [`../appendix/TikHub五平台真实响应与字段映射.md`](../appendix/TikHub五平台真实响应与字段映射.md) |
-| [`11-TikHub多接口验证与备用策略.md`](11-TikHub多接口验证与备用策略.md) | 多 API family 验证逻辑 | [`../appendix/TikHub多接口验证与备用策略.md`](../appendix/TikHub多接口验证与备用策略.md) |
-| [`12-TikHub真实请求响应与接口选型台账.md`](12-TikHub真实请求响应与接口选型台账.md) | 真实 Probe 与接口选型证据 | [`../appendix/TikHub接口选型与真实验证台账.md`](../appendix/TikHub接口选型与真实验证台账.md) |
-| [`13-统一数据Excel导出与调试复用.md`](13-统一数据Excel导出与调试复用.md) | 统一 Excel Contract/Exporter 原详细设计 | [`../appendix/Excel统一数据导出与离线调试.md`](../appendix/Excel统一数据导出与离线调试.md) |
-| [`15-舆情AI打标与统一分析契约.md`](15-舆情AI打标与统一分析契约.md) | Analysis 原详细设计、业务规则演进 | [`../appendix/AI舆情打标与分析实现.md`](../appendix/AI舆情打标与分析实现.md) |
-| [`16-前端页面架构与Figma设计工作流.md`](16-前端页面架构与Figma设计工作流.md) | 前端/Figma 原完整方案 | [`../guides/Figma与前端设计开发工作流.md`](../guides/Figma与前端设计开发工作流.md) |
-| [`17-Stage8数据入口统一入库与业务前端实施.md`](17-Stage8数据入口统一入库与业务前端实施.md) | Stage 8 批次/页面/数据入口完整实施设计 | [`../appendix/数据入口与统一入库实现.md`](../appendix/数据入口与统一入库实现.md) + Roadmap |
+当前实现入口：
 
-新文档不能简单总结这些原文然后丢掉字段、状态机、接口证据或实施边界。
+- [`09-Scheduler运行与恢复策略.md`](09-Scheduler运行与恢复策略.md)
+- [`../appendix/Scheduler调度执行与停机恢复.md`](../appendix/Scheduler调度执行与停机恢复.md)
+
+Stage 7 完整设计/验收原文：
+
+- [`09-Scheduler设计与Stage7验收记录.md`](09-Scheduler设计与Stage7验收记录.md)
+
+### 3.2 TikHub 真实响应和接口选型
+
+这些文件本身仍是详细证据文档，并与增强 Appendix 配合使用：
+
+- [`10-TikHub真实响应结构附录.md`](10-TikHub真实响应结构附录.md) ↔ [`../appendix/TikHub五平台真实响应与字段映射.md`](../appendix/TikHub五平台真实响应与字段映射.md)
+- [`11-TikHub多接口验证与备用策略.md`](11-TikHub多接口验证与备用策略.md) ↔ [`../appendix/TikHub多接口验证与备用策略.md`](../appendix/TikHub多接口验证与备用策略.md)
+- [`12-TikHub真实请求响应与接口选型台账.md`](12-TikHub真实请求响应与接口选型台账.md) ↔ [`../appendix/TikHub接口选型与真实验证台账.md`](../appendix/TikHub接口选型与真实验证台账.md)
+
+### 3.3 Excel
+
+- [`13-统一数据Excel导出与调试复用.md`](13-统一数据Excel导出与调试复用.md)：原完整设计；
+- [`../appendix/Excel统一数据导出与离线调试.md`](../appendix/Excel统一数据导出与离线调试.md)：当前实现/代码/调试入口。
+
+### 3.4 AI Analysis
+
+当前实现入口：
+
+- [`15-舆情AI打标与统一分析契约.md`](15-舆情AI打标与统一分析契约.md)
+- [`../appendix/AI舆情打标与分析实现.md`](../appendix/AI舆情打标与分析实现.md)
+- `backend/src/aima_ugc/modules/analysis/README.md`
+- `backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md`
+
+P1/Stage 8 完整设计演进原文：
+
+- [`15-舆情AI打标与统一分析设计演进记录.md`](15-舆情AI打标与统一分析设计演进记录.md)
+
+### 3.5 Frontend / Figma
+
+当前实现入口：
+
+- [`16-前端页面架构与Figma设计工作流.md`](16-前端页面架构与Figma设计工作流.md)
+- [`../guides/Figma与前端设计开发工作流.md`](../guides/Figma与前端设计开发工作流.md)
+- `frontend/README.md`
+
+Stage 8 完整设计原文：
+
+- [`16-前端Figma设计与Stage8实施记录.md`](16-前端Figma设计与Stage8实施记录.md)
+
+### 3.6 Stage 8
+
+当前实现入口：
+
+- [`17-Stage8数据入口统一入库与业务前端实施.md`](17-Stage8数据入口统一入库与业务前端实施.md)
+- [`../appendix/数据入口与统一入库实现.md`](../appendix/数据入口与统一入库实现.md)
+- [`../roadmap/生产上线实施路线.md`](../roadmap/生产上线实施路线.md)
+
+Stage 8 A—F 完整实施设计/阶段快照原文：
+
+- [`17-Stage8实施设计与阶段快照.md`](17-Stage8实施设计与阶段快照.md)
+
+这些“设计/阶段记录”文件用于保留技术理由和演进证据；判断今天是否已实现，必须回到当前编号入口、代码、Contract、Migration 和测试。
 
 ---
 
@@ -199,6 +253,7 @@ backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md
 ### 生产 Release / 上线
 
 - [`../roadmap/生产上线实施路线.md`](../roadmap/生产上线实施路线.md)
+- [`../appendix/生产部署与离线Release方案.md`](../appendix/生产部署与离线Release方案.md)
 - [`../环境运行与部署.md`](../环境运行与部署.md)
 - [`05-日志安全部署与运维.md`](05-日志安全部署与运维.md)
 
@@ -239,7 +294,8 @@ Pydantic Request/Response
 → 当前代码、Migration、Contract、generated、tests、locks
 → 07 的跨模块已确认决策
 → 01—08 核心 Blueprint
-→ 09—17 仍有效详细设计 / Roadmap
+→ 当前实现导航 / Roadmap
+→ 详细设计与阶段记录（用于解释设计理由，不覆盖今天机器事实）
 → 模块 README / collection / appendix / guide
 → 根 README 摘要
 → 历史 Change / 旧聊天
@@ -346,7 +402,7 @@ env.production.example
 → 更新核心 Blueprint
 
 某个详细技术设计仍影响多个阶段？
-→ 可以继续保留 Blueprint 详细设计，直到完整迁移被验证
+→ 保留详细设计/阶段记录，同时提供当前实现入口
 
 某个模块当前实现细节？
 → 模块 README
