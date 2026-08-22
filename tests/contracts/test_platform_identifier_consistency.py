@@ -21,6 +21,7 @@ from aima_ugc.modules.collection.tables import (
 )
 from aima_ugc.modules.content.tables import accounts_table, contents_table
 from aima_ugc.modules.system.tables import keyword_pack_items_table
+from aima_ugc.platform.presentation import platform_display_name
 from pydantic import TypeAdapter, ValidationError
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -52,8 +53,7 @@ _FORBIDDEN_EXACT_LITERALS = (
     "KUAISHOU",
 )
 _FORBIDDEN_LITERAL_PATTERNS = {
-    value: re.compile(rf"[\"']{re.escape(value)}[\"']")
-    for value in _FORBIDDEN_EXACT_LITERALS
+    value: re.compile(rf"[\"']{re.escape(value)}[\"']") for value in _FORBIDDEN_EXACT_LITERALS
 }
 _XIAOHONGSHU_ALIAS_PATTERN = re.compile(r"xhs", re.IGNORECASE)
 _RED_PLATFORM_ALIAS_PATTERN = re.compile(
@@ -136,6 +136,16 @@ def test_excel_profile_maps_source_labels_only_to_formal_platforms() -> None:
     for invalid in _INVALID_MACHINE_VALUES:
         with pytest.raises(ValueError):
             profile.resolve_platform(invalid)
+
+
+def test_excel_platform_display_names_are_chinese() -> None:
+    assert {platform: platform_display_name(platform) for platform in PLATFORM_NAMES} == {
+        "xiaohongshu": "小红书",
+        "douyin": "抖音",
+        "weibo": "微博",
+        "bilibili": "哔哩哔哩",
+        "kuaishou": "快手",
+    }
 
 
 def test_database_platform_identity_constraints_use_the_same_five_values() -> None:
