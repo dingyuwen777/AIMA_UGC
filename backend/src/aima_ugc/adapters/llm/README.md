@@ -179,7 +179,38 @@ input_cache_miss_per_million_tokens
 output_per_million_tokens
 ```
 
-具体数字不要从 README 复制到代码；运行时只读取 `pricing.toml`。需要人工核对当前价格时，看该文件的 `source_url`。
+### 5.1 当前人类可读价格快照
+
+下面这张表是为了让开发者快速估算一次运行的大致费用；**运行时不会读取 README，真正计费只读取 `pricing.toml`。** 如果 TOML 发生价格变更，这张表也必须在同一任务同步，否则宁可删表也不能长期保留过期报价。
+
+当前 `pricing.toml` 对应：
+
+| 官方价格项 | 空闲时段 `off_peak` | 高峰时段 `peak` |
+| --- | ---: | ---: |
+| 输入（缓存命中），每百万 tokens | `0.15 CNY` | `0.30 CNY` |
+| 输入（缓存未命中），每百万 tokens | `4.5 CNY` | `9.0 CNY` |
+| 输出，每百万 tokens | `13.5 CNY` | `27.0 CNY` |
+
+高峰时段按北京时间：
+
+```text
+09:00–12:00
+14:00–18:00
+```
+
+区间按 `[start, end)` 解释，因此：
+
+```text
+09:00 / 14:00
+→ 进入 peak
+
+12:00 / 18:00
+→ 回到 off_peak
+```
+
+当前价格来源 URL 和 `effective_date` 直接看 `pricing.toml`。不要从二手博客或 README 复制一个数字写回配置。
+
+### 5.2 配置与历史兼容
 
 旧配置字段：
 
@@ -319,7 +350,7 @@ pricing.toml
 4. 根据真实生效语义设置 effective_date
 5. 如果有分时价格，确认 IANA timezone 和 [start, end) 边界
 6. 跑 pricing / request audit 相关测试
-7. 检查 AI 附录是否有受影响的解释性内容
+7. 检查本 README 的人类可读快照和 AI 附录是否受影响
 ```
 
 不要把“今天核验价格的日期”自动当成供应商价格生效日期。
