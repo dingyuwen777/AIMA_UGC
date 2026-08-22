@@ -1,4 +1,4 @@
-"""平台机器标识在 Contract、数据库与当前代码中必须保持唯一。"""
+"""平台机器标识在 Contract、数据库与当前有效系统中必须保持唯一。"""
 
 from __future__ import annotations
 
@@ -40,17 +40,28 @@ _INVALID_MACHINE_VALUES = (
     "BILIBILI",
     "KUAISHOU",
 )
-_FORBIDDEN_MACHINE_LITERALS = tuple(
-    value for value in _INVALID_MACHINE_VALUES if value not in {"all", "twitter"}
+_FORBIDDEN_EXACT_LITERALS = (
+    "dy",
+    "wb",
+    "ks",
+    "bili",
+    "XIAOHONGSHU",
+    "DOUYIN",
+    "WEIBO",
+    "BILIBILI",
+    "KUAISHOU",
 )
 _FORBIDDEN_LITERAL_PATTERNS = {
     value: re.compile(rf"[\"']{re.escape(value)}[\"']")
-    for value in _FORBIDDEN_MACHINE_LITERALS
+    for value in _FORBIDDEN_EXACT_LITERALS
 }
-_ENCODED_LEGACY_PATTERNS = {
-    "collection.xhs": re.compile(r"[\"']collection\.xhs\.[^\"']*[\"']"),
-}
+_XIAOHONGSHU_ALIAS_PATTERN = re.compile(r"xhs", re.IGNORECASE)
+_RED_PLATFORM_ALIAS_PATTERN = re.compile(
+    r"(?:platform|platform_scope)\s*(?:=|:)\s*[\"']red[\"']",
+    re.IGNORECASE,
+)
 _SCAN_ROOTS = (
+    ".github",
     "backend/src",
     "frontend/src",
     "frontend/tests",
@@ -67,7 +78,10 @@ _EXCLUDED_PREFIXES = (
     "migrations/versions/",
     "tests/fixtures/providers/tikhub/",
 )
-_EXCLUDED_FILES = {"tests/contracts/test_platform_identifier_consistency.py"}
+_EXCLUDED_FILES = {
+    "tests/contracts/test_platform_identifier_consistency.py",
+    "tests/integration/database/test_migration_data_lifecycle.py",
+}
 
 
 def _check_sql(table: object, name: str) -> str:
@@ -78,6 +92,10 @@ def _check_sql(table: object, name: str) -> str:
     ]
     assert len(constraints) == 1
     return constraints[0]
+
+
+def _is_excluded(relative: str) -> bool:
+    return relative in _EXCLUDED_FILES or relative.startswith(_EXCLUDED_PREFIXES)
 
 
 def test_platform_name_contract_is_exactly_five_values() -> None:
@@ -98,14 +116,17 @@ def test_excel_profile_maps_source_labels_only_to_formal_platforms() -> None:
     profile = get_excel_import_profile("aima-monitoring-excel.v1")
     source_labels = {
         "小红书": "xiaohongshu",
+        "小红书 APP": "xiaohongshu",
         "xiaohongshu": "xiaohongshu",
         "抖音": "douyin",
+        "抖音 APP": "douyin",
         "douyin": "douyin",
         "微博": "weibo",
         "新浪微博": "weibo",
         "weibo": "weibo",
         "B站": "bilibili",
         "哔哩哔哩": "bilibili",
+        "哔哩哔哩APP": "bilibili",
         "bilibili": "bilibili",
         "快手": "kuaishou",
         "kuaishou": "kuaishou",
@@ -135,9 +156,26 @@ def test_database_platform_identity_constraints_use_the_same_five_values() -> No
         assert f"'{value}'" in scope_sql
 
 
-def test_current_machine_facts_do_not_reintroduce_platform_alias_literals() -> None:
+def test_current_paths_do_not_use_xiaohongshu_abbreviation() -> None:
     violations: list[str] = []
-    patterns = {**_FORBIDDEN_LITERAL_PATTERNS, **_ENCODED_LEGACY_PATTERNS}
+    for root_name in _SCAN_ROOTS:
+        root = _REPO_ROOT / root_name
+        if not root.exists():
+            continue
+        for path in root.rglob("*"):
+            relative = path.relative_to(_REPO_ROOT).as_posix()
+            if _is_excluded(relative):
+                continue
+            if _XIAOHONGSHU_ALIAS_PATTERN.search(relative):
+                violations.append(relative)
+    assert not violations, (
+        "当前有效仓库路径仍包含小红书平台缩写；路径也必须使用 xiaohongshu。\n"
+        + "\n".join(violations)
+    )
+
+
+def test_current_machine_facts_do_not_reintroduce_platform_aliases() -> None:
+    violations: list[str] = []
     for root_name in _SCAN_ROOTS:
         root = _REPO_ROOT / root_name
         if not root.exists():
@@ -146,17 +184,25 @@ def test_current_machine_facts_do_not_reintroduce_platform_alias_literals() -> N
             if not path.is_file() or path.suffix not in _TEXT_SUFFIXES:
                 continue
             relative = path.relative_to(_REPO_ROOT).as_posix()
-            if relative in _EXCLUDED_FILES or relative.startswith(_EXCLUDED_PREFIXES):
+            if _is_excluded(relative):
                 continue
             for line_number, line in enumerate(
                 path.read_text(encoding="utf-8").splitlines(), start=1
             ):
-                for value, pattern in patterns.items():
+                if _XIAOHONGSHU_ALIAS_PATTERN.search(line):
+                    violations.append(
+                        f"{relative}:{line_number}: forbidden=xiaohongshu abbreviation: {line.strip()}"
+                    )
+                for value, pattern in _FORBIDDEN_LITERAL_PATTERNS.items():
                     if pattern.search(line):
                         violations.append(
                             f"{relative}:{line_number}: forbidden={value}: {line.strip()}"
                         )
+                if _RED_PLATFORM_ALIAS_PATTERN.search(line):
+                    violations.append(
+                        f"{relative}:{line_number}: forbidden=red platform alias: {line.strip()}"
+                    )
     assert not violations, (
-        "当前机器事实仍包含平台缩写/别名/大小写变体；平台身份只能使用五个正式值。\n"
+        "当前有效机器事实仍包含平台缩写/别名/大小写变体；平台身份只能使用五个正式值。\n"
         + "\n".join(violations)
     )
