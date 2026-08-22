@@ -1,11 +1,13 @@
-"""用用户 Excel 的真实公开帖子链接验证 TikHub Detail + 一级评论补采。
+"""用五个平台各一条已验证 Excel 公共链接复核 TikHub Detail + 一级评论补采。
 
 该脚本只用于显式受控 Probe：
 - API Key 只从环境变量读取，不写文件、不打印；
-- 样本来自 ``tests/fixtures/imports/excel_provider_lookup_samples.json``，并记录源 Excel SHA-256；
+- 固定样本来自 ``tests/fixtures/imports/excel_provider_lookup_samples.json``；
+- fixture 必须且只能为五个平台各一条链接，禁止运行时搜索或候选遍历；
 - 每条链接必须先经过生产 Excel Converter/identity parser，再进入正式 TikHub Runtime；
-- 请求必须经过生产 Operation / TikHubOperationProbe / Transport / Extractor / Mapper；
-- 原帖删除、私密、无评论或 Provider 暂不可用时尝试同平台下一个 Excel 候选；
+- 请求经过生产 Operation / TikHubOperationProbe / Transport / Extractor / Mapper；
+- 一次完整 Probe 最多 10 次请求：每个平台恰好 Detail + 一级评论各一次；
+- 固定样本若失效则明确失败，后续通过独立维护动作替换该平台样本；
 - 不写 PostgreSQL，不保存 Provider Raw Response。
 """
 
@@ -74,13 +76,10 @@ _DEFAULT_SAMPLES = Path("tests/fixtures/imports/excel_provider_lookup_samples.js
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="验证真实 Excel 帖子链接 → TikHub 详情/评论补采")
+    parser = argparse.ArgumentParser(description="验证固定五平台 Excel 链接 → TikHub 详情/评论补采")
     parser.add_argument("--samples", type=Path, default=_DEFAULT_SAMPLES)
-    parser.add_argument("--max-candidates-per-platform", type=int, default=6)
     parser.add_argument("--output", type=Path, default=Path("tikhub-excel-supplement-probe.json"))
     args = parser.parse_args()
-    if args.max_candidates_per_platform < 1 or args.max_candidates_per_platform > 10:
-        raise ValueError("max-candidates-per-platform 必须在 1..10")
 
     api_key = os.environ.get("TIKHUB_API_KEY", "").strip()
     if not api_key:
@@ -88,8 +87,8 @@ def main() -> int:
     base_url = os.environ.get("TIKHUB_BASE_URL", "https://api.tikhub.io").strip()
     samples = _load_samples(args.samples)
 
-    # 五个平台各最多 6 个候选；每个候选至多 Detail + Comments 两次付费请求。
-    limits = TikHubProbeLimits(max_requests=60, max_estimated_cost=Decimal("1.00"))
+    # 五个平台各固定 Detail + Comments 两次请求；预算硬上限只服务显式 Probe。
+    limits = TikHubProbeLimits(max_requests=10, max_estimated_cost=Decimal("0.10"))
     results: list[dict[str, object]] = []
     with TikHubHttpTransport(base_url=base_url) as transport:
         probe = TikHubOperationProbe(
@@ -98,14 +97,11 @@ def main() -> int:
             limits=limits,
         )
         for platform in _PLATFORMS:
-            results.append(
-                _probe_platform(
-                    probe=probe,
-                    platform=platform,
-                    samples=samples["platforms"][platform][: args.max_candidates_per_platform],
-                )
-            )
+            sample = cast(list[dict[str, object]], samples["platforms"][platform])[0]
+            results.append(_probe_platform(probe=probe, platform=platform, sample=sample))
 
+    if probe.request_count != 10:
+        raise RuntimeError(f"固定五平台 Probe 预期 10 次请求，实际 {probe.request_count} 次")
     payload = {
         "verified_at": datetime.now(UTC).isoformat(),
         "source": samples["source"],
@@ -116,7 +112,7 @@ def main() -> int:
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    # 仅输出脱敏验收摘要；不输出 URL、API Key 或 Raw Response。
+    # 只输出非敏感验收摘要；不输出 URL、API Key、Comment ID 或 Raw Response。
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
 
@@ -132,15 +128,15 @@ def _load_samples(path: Path) -> dict[str, Any]:
         raise ValueError("Excel Probe 样本缺少源文件名或 SHA-256")
     for platform in _PLATFORMS:
         items = platforms.get(platform)
-        if not isinstance(items, list) or not items:
-            raise ValueError(f"{platform}: Excel Probe 样本为空")
-        for item in items:
-            if not isinstance(item, dict):
-                raise ValueError(f"{platform}: Excel Probe 样本项类型非法")
-            if not isinstance(item.get("url"), str) or not isinstance(item.get("article_id"), str):
-                raise ValueError(f"{platform}: Excel Probe 样本缺少公开 URL/文章编号")
-            if not isinstance(item.get("row"), int):
-                raise ValueError(f"{platform}: Excel Probe 样本缺少来源行号")
+        if not isinstance(items, list) or len(items) != 1:
+            raise ValueError(f"{platform}: 固定 Excel Probe 样本必须恰好一条")
+        item = items[0]
+        if not isinstance(item, dict):
+            raise ValueError(f"{platform}: Excel Probe 样本项类型非法")
+        if not isinstance(item.get("url"), str) or not isinstance(item.get("article_id"), str):
+            raise ValueError(f"{platform}: Excel Probe 样本缺少公开 URL/文章编号")
+        if not isinstance(item.get("row"), int):
+            raise ValueError(f"{platform}: Excel Probe 样本缺少来源行号")
     return cast(dict[str, Any], payload)
 
 
@@ -148,32 +144,25 @@ def _probe_platform(
     *,
     probe: TikHubOperationProbe,
     platform: TikHubPlatform,
-    samples: list[dict[str, object]],
+    sample: dict[str, object],
 ) -> dict[str, object]:
-    failures: list[str] = []
-    for sample in samples:
-        try:
-            imported = _roundtrip_excel(platform=platform, sample=sample)
-            lookup_types = _assert_lookup_identity(platform, imported)
-            detail = _probe_detail(probe=probe, platform=platform, imported=imported)
-            comment_id = _probe_comments(probe=probe, platform=platform, detail=detail)
-        except Exception as exc:
-            failures.append(type(exc).__name__)
-            continue
-        return {
-            "platform": platform,
-            "source_row": sample["row"],
-            "lookup_types": lookup_types,
-            "detail": "ok",
-            "comments": "ok",
-            "sample_comment_id_present": bool(comment_id),
-            "failed_candidates_before_success": len(failures),
-        }
-
-    raise RuntimeError(
-        f"{platform}: {len(samples)} 个 Excel 候选均无法完成 Detail→Comments；"
-        f"失败类型={','.join(failures)}"
-    )
+    try:
+        imported = _roundtrip_excel(platform=platform, sample=sample)
+        lookup_types = _assert_lookup_identity(platform, imported)
+        detail = _probe_detail(probe=probe, platform=platform, imported=imported)
+        _probe_comments(probe=probe, platform=platform, detail=detail)
+    except Exception as exc:
+        raise RuntimeError(
+            f"{platform}: 固定 Excel Probe 样本已失效或 Provider 链路失败；"
+            "请先通过显式维护验证替换该平台单条样本"
+        ) from exc
+    return {
+        "platform": platform,
+        "source_row": sample["row"],
+        "lookup_types": lookup_types,
+        "detail": "ok",
+        "comments": "ok",
+    }
 
 
 def _roundtrip_excel(
@@ -196,7 +185,7 @@ def _roundtrip_excel(
                 article_id,
                 _MEDIA_NAMES[platform],
                 f"{platform} Excel Probe",
-                "真实 Excel URL 的受控 TikHub 补采验证",
+                "固定真实 Excel URL 的受控 TikHub 补采验证",
                 "probe",
                 datetime.now(UTC).replace(tzinfo=None),
                 url,
@@ -253,7 +242,7 @@ def _probe_comments(
     probe: TikHubOperationProbe,
     platform: TikHubPlatform,
     detail: CanonicalContentV1,
-) -> str:
+) -> None:
     call = build_comments_call(
         platform=platform,
         external_content_id=detail.external_content_id,
@@ -279,7 +268,6 @@ def _probe_comments(
         raise RuntimeError(f"{platform}: Comment 与 Content 身份不一致")
     if not comment.external_comment_id:
         raise RuntimeError(f"{platform}: Comment 缺少 Provider comment ID")
-    return comment.external_comment_id
 
 
 def _execute(probe: TikHubOperationProbe, call: TikHubOperationCall) -> ProviderTransportResponse:
