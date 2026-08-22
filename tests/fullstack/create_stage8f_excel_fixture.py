@@ -11,7 +11,8 @@ from openpyxl import Workbook
 def main() -> int:
     if len(sys.argv) not in {2, 3}:
         raise SystemExit(
-            "用法: python tests/fullstack/create_stage8f_excel_fixture.py <output.xlsx> [success|worker-failure]"
+            "用法: python tests/fullstack/create_stage8f_excel_fixture.py "
+            "<output.xlsx> [success|worker-failure]"
         )
 
     output = Path(sys.argv[1])
