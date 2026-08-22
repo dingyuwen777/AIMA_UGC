@@ -52,6 +52,8 @@ def test_xiaohongshu_real_sub_comment_preserves_root_and_direct_parent() -> None
     raw = _fixture("xiaohongshu", "sub_comments_page1.sanitized.json")["data"]["data"]["comments"][
         0
     ]
+    raw_reply_id = str(raw["id"])
+    raw_parent_id = str(raw["target_comment"]["id"])
     mapped = map_xiaohongshu_comment(
         raw,
         XiaohongshuMappingContext(
@@ -60,16 +62,16 @@ def test_xiaohongshu_real_sub_comment_preserves_root_and_direct_parent() -> None
             raw_artifact_id=_RAW_ID,
             operation="get_note_sub_comments",
             source_type="comment",
-            source_value="xiaohongshu-comment-root-1",
+            source_value=raw_parent_id,
             observed_at=_OBSERVED_AT,
-            root_comment_id="xiaohongshu-comment-root-1",
+            root_comment_id=raw_parent_id,
         ),
         item_locator="data.data.comments[0]",
         is_root=False,
     )
-    assert mapped.root_comment_id == "xiaohongshu-comment-root-1"
-    assert mapped.parent_comment_id == "xiaohongshu-comment-root-1"
-    assert mapped.external_comment_id == "xiaohongshu-comment-reply-2"
+    assert mapped.root_comment_id == raw_parent_id
+    assert mapped.parent_comment_id == raw_parent_id
+    assert mapped.external_comment_id == raw_reply_id
 
 
 def test_douyin_real_reply_prefers_direct_reply_to_reply_parent() -> None:
