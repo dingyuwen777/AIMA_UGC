@@ -1,164 +1,189 @@
 # AIMA_UGC 前端开发入口
 
-这篇 README 的目标不是介绍 Vue 是什么，而是让第一次进入前端代码的人能快速回答：
+这篇 README 用来回答：
 
 - 当前到底有哪些页面和路由；
 - 页面数据从哪里来；
 - 改一个页面应该先改 Page、Store、Feature API 还是后端 Contract；
 - 哪些文件是生成物，不能手改；
+- Figma 页面应该怎样落到当前 Vue 代码；
 - 改完要跑哪些测试。
 
-精确 HTTP 字段由后端 Pydantic Contract、`contracts/openapi/openapi.json` 和 `src/generated/api/` 维护。本文负责解释当前代码怎么组织和怎么改，不复制第二套接口 Schema。
+精确 HTTP 字段由后端 Pydantic Contract、`contracts/openapi/openapi.json` 和 `src/generated/api/` 维护。本文解释当前前端怎么组织和怎么改，不复制第二套接口 Schema。
 
-## 1. 当前技术栈和启动入口
+---
 
-当前前端是：
+## 1. 当前技术栈
 
 ```text
 Vue 3
-+ TypeScript
-+ Vite
-+ Vue Router
-+ Pinia
-+ OpenAPI / Orval 生成 Client
+TypeScript
+Vite
+Vue Router
+Pinia
+Element Plus
+ECharts
+OpenAPI / Orval generated client
 ```
 
 程序入口：
 
 ```text
 src/main.ts
-→ 创建 Vue App
-→ 安装 Pinia / Router
+→ Vue App
+→ Pinia / Router
 → App.vue
-→ RouterView / 当前页面
+→ RouterView
 ```
 
-路由事实源：
+路由唯一事实源：
 
 ```text
 src/app/routes.ts
 ```
 
-不要从菜单文案、截图或历史 Stage 文档猜当前有哪些页面。
+不要从菜单、截图或历史 Stage 文档猜当前页面。
+
+---
 
 ## 2. 当前真实路由
 
-`src/app/routes.ts` 当前只注册四个路由：
-
-| 路径 | 页面 | 真实代码入口 |
+| 路径 | 页面 | 代码入口 |
 | --- | --- | --- |
-| `/` | 首页兼容入口 | `src/views/HomeView.vue`，内部直接复用 `CollectionRuntimePage` |
+| `/` | 首页兼容入口 | `src/views/HomeView.vue`，复用 `CollectionRuntimePage` |
 | `/collection-runtime` | 采集运行中心 | `src/features/import-batches/pages/CollectionRuntimePage/CollectionRuntimePage.vue` |
 | `/collection-strategy` | 采集策略 | `src/features/collection-strategy/pages/CollectionStrategyPage/CollectionStrategyPage.vue` |
 | `/voice-plaza` | 声音广场 | `src/features/voice-plaza/pages/VoicePlazaPage/VoicePlazaPage.vue` |
 
-这里有一个容易误解的历史目录名：**采集运行中心当前仍位于 `features/import-batches/`**。这是因为页面最早从 Excel Import Batch 演进而来，后续已经扩展为 Excel/TikHub 统一运行中心。不要为了“目录看起来更漂亮”在无关任务里随手重命名；如果未来确实要改 Feature 名，需要同步路由、测试、导入路径和文档，并按独立重构处理。
+注意：采集运行中心目前仍在：
 
-当前代码没有独立的 `analysis`、`reports`、`jobs`、`settings`、`dashboard` 页面目录。后端存在 Analysis/Export/Job API，不等于前端已经为每一种能力建立独立页面。
+```text
+features/import-batches/
+```
 
-## 3. 先理解前端的数据调用链
+这是页面从 Excel Import Batch 演进到 Excel/TikHub 统一运行中心留下的目录名。不要在无关任务里为了“看起来更漂亮”重命名；真正重构时需同步路由、测试、导入路径和文档。
 
-当前业务页面遵循：
+当前没有独立：
+
+```text
+analysis/
+reports/
+jobs/
+settings/
+dashboard/
+```
+
+页面。后端有对应 API/表，不等于已经有独立前端页面。
+
+---
+
+## 3. 前端数据调用链
+
+当前固定：
 
 ```text
 Page / 页面私有组件
-→ Pinia Store
+→ Pinia Store / local state
 → Feature api.ts
 → src/generated/api/
 → HTTP
 → FastAPI
 ```
 
-职责分开是为了避免三种常见问题：
+目的：避免
 
 ```text
-页面里到处直接 fetch
+页面到处直接 fetch
 Store 自己拼 URL
-前端手写一套和后端不同的 Request/Response Type
+前端复制后端 Request/Response Type
 ```
 
-### 3.1 Page / Component
+---
+
+## 4. Page / Store / API / Generated Client 分别负责什么
+
+### Page / Component
 
 负责：
 
-- 页面布局和交互；
+- 布局和交互；
 - 调用 Store action；
-- 展示 loading / error / empty / data；
-- Drawer、表单、筛选、按钮等用户行为。
+- Loading / Error / Empty / Data；
+- Drawer、表单、筛选、按钮。
 
 不负责：
 
-- 手写 `/api/v1/...` URL；
+- 手写业务 URL；
 - 复制后端类型；
-- 解析数据库字段；
-- 自己实现 Cursor 签名或后端业务规则。
+- 直接理解数据库字段；
+- 实现 Cursor 签名；
+- 复制 AI/Provider 业务规则。
 
-### 3.2 Store
+### Store
 
-每个 Feature 的 `store.ts` 负责页面状态和业务交互编排，例如：
+负责：
 
-- 当前列表和筛选条件；
+- 列表/筛选；
 - 当前详情；
-- 下一页 Cursor；
+- Cursor；
 - 页面轮询；
 - 提交后的刷新；
-- loading/error 状态。
+- 多组件共享的 loading/error/Job 状态。
 
-Store 不应该复制生成 Client，也不应该把页面 CSS/布局逻辑塞进状态层。
+不把页面 CSS 塞进 Store，也不缓存服务端事实替代 PostgreSQL。
 
-### 3.3 Feature API
+### Feature API
 
-每个 Feature 的 `api.ts` 是页面与生成 Client 之间的薄边界：
+`api.ts` 是 Feature 与 generated client 的薄边界：
 
 ```text
-Feature 业务调用
-→ api.ts
+页面语义函数
 → generated client
 ```
 
-这里可以做：
+允许：
 
-- 组合生成 Client 调用；
-- 把生成层异常收敛成 Feature 能处理的错误；
-- 提供更符合当前页面语义的函数名。
+- 组合生成 Client；
+- 收敛 Feature 错误；
+- 提供更符合页面语义的函数名。
 
-这里不能重新定义 HTTP Contract。
+不允许重新定义 HTTP Contract。
 
-### 3.4 Generated Client
-
-目录：
+### Generated Client
 
 ```text
 src/generated/api/
 ```
 
-它来自：
+生成链：
 
 ```text
-后端 Pydantic Request/Response
+Pydantic Request/Response
 → FastAPI OpenAPI
 → contracts/openapi/openapi.json
 → Orval
 → src/generated/api/
 ```
 
-**禁止手工修改生成目录。**
+**禁止手工修改。**
 
-如果前端类型“不对”，先判断：
+如果前端类型不对：
 
 ```text
-后端 Contract 本身不对？
-→ 改后端 Pydantic + API Test + OpenAPI，再重新生成
+后端 Contract 错
+→ 改 Pydantic / Route / API Test / OpenAPI / 重新生成
 
-后端 Contract 正确，只是页面使用方式不对？
-→ 改 Feature api.ts / store.ts / Page
+后端 Contract 对，页面用错
+→ 改 Feature api.ts / Store / Page
 ```
 
-## 4. 三个当前业务 Feature
+---
 
-### 4.1 `features/import-batches`：采集运行中心
+## 5. 当前三个业务 Feature
 
-当前主要文件：
+### 5.1 `features/import-batches`：采集运行中心
+
+主要文件：
 
 ```text
 src/features/import-batches/
@@ -168,30 +193,26 @@ src/features/import-batches/
 └─ pages/CollectionRuntimePage/
 ```
 
-它当前不只是 Excel Import 页面，而是承接：
+当前承接：
 
 - Excel Import Batch 列表和上传；
 - Excel/TikHub 统一运行列表；
 - 运行摘要；
 - 一次性 TikHub Discovery；
 - Import Batch 补采；
-- Run/Batch 详情和状态展示。
+- Run/Batch 详情和状态。
 
-对应后端主要接口见 `docs/API接口说明.md` 的 Import Batch、Collection Run、Collection Runtime 部分。
+修改导航：
 
-常见修改：
-
-| 要改什么 | 先看 |
+| 需求 | 先看 |
 | --- | --- |
 | 页面布局/按钮/Drawer | `pages/CollectionRuntimePage/` |
 | 筛选、轮询、分页、详情状态 | `store.ts` |
-| 调用哪个后端接口 | `api.ts` |
-| 时间、状态等展示格式 | `format.ts` |
-| API 字段/业务语义 | 后端 Contract / Route，不在前端私造字段 |
+| 后端接口调用 | `api.ts` |
+| 时间/状态格式 | `format.ts` |
+| API 字段/业务语义 | 后端 Contract / Service |
 
-### 4.2 `features/collection-strategy`：采集策略
-
-当前主要文件：
+### 5.2 `features/collection-strategy`：采集策略
 
 ```text
 src/features/collection-strategy/
@@ -200,27 +221,16 @@ src/features/collection-strategy/
 └─ pages/CollectionStrategyPage/
 ```
 
-页面负责当前已经落地的：
+当前负责：
 
 - Keyword Pack；
 - 全局 Relevance Config；
 - 周期 Collection Plan；
-- Plan 启停和当前配置展示。
+- Plan 启停和配置展示。
 
-它不直接运行 TikHub。保存 Plan/词包只是修改配置事实；真正执行由 Scheduler 到期创建 Occurrence/Run/Job。
+页面不直接运行 TikHub。保存 Plan/词包是修改配置事实，真正执行由 Scheduler 生成 Occurrence/Run/Job。
 
-常见修改：
-
-| 要改什么 | 先看 |
-| --- | --- |
-| 页面区域、表单、交互 | `pages/CollectionStrategyPage/` |
-| 配置加载/保存状态 | `store.ts` |
-| Keyword Pack/Relevance/Plan HTTP 调用 | `api.ts` |
-| 增加新的 Plan 业务字段 | 先改后端 Contract/领域规则，再重新生成 Client |
-
-### 4.3 `features/voice-plaza`：声音广场
-
-当前主要文件：
+### 5.3 `features/voice-plaza`：声音广场
 
 ```text
 src/features/voice-plaza/
@@ -230,68 +240,62 @@ src/features/voice-plaza/
 └─ pages/VoicePlazaPage/
 ```
 
-当前页面组合：
+当前组合：
 
-- Content 列表和详情；
-- 平台/文本/时间/Analysis 等筛选；
-- 当前 Analysis 状态展示；
-- 用户显式提交 AI Analysis；
+- Content 列表/详情；
+- 平台/文本/时间/Analysis 筛选；
+- Analysis current/stale/pending；
+- 显式提交 AI Analysis；
 - 创建正式 Excel Export；
-- 查询 Export 状态并下载 Artifact。
+- 查询 Export 状态和下载 Artifact。
 
-这里要特别区分：
+注意两条不同能力：
 
 ```text
-“声音广场导出 Excel”
-→ 正式 reporting.content-export-excel.v1 Job
+声音广场 Excel Export
+→ reporting.content-export-excel.v1
 
-“离线 Word 舆情报告”
+离线 Markdown / Word Report
 → backend/src/aima_ugc/platform/reporting/
-→ 当前不是声音广场里的独立报告页面
+→ 当前没有独立报告中心页面
 ```
 
-常见修改：
+---
 
-| 要改什么 | 先看 |
-| --- | --- |
-| 列表/详情布局 | `pages/VoicePlazaPage/` |
-| 过滤、选择、Analysis/Export 状态 | `store.ts` |
-| Content/Analysis/Export HTTP | `api.ts` |
-| 展示格式 | `format.ts` |
-| Analysis 分类规则 | 后端 Prompt/Analysis，不在 Vue 里复制 taxonomy |
+## 6. App Shell、Shared 和全局样式
 
-## 5. App Shell、路由和全局样式
-
-应用级代码：
+应用级：
 
 ```text
-src/app/router.ts        创建 Router
-src/app/routes.ts        路由表事实源
-src/app/layouts/         应用级布局
-src/views/HomeView.vue   根路由兼容入口
-src/shared/              跨 Feature 的真正共享代码
+src/app/router.ts
+src/app/routes.ts
+src/app/layouts/
+src/views/HomeView.vue
+src/shared/
 ```
 
-全局样式只放真正跨页面的 Token/reset。页面私有视觉优先留在对应 Page/Component 中，避免一个全局 CSS 修改把三个业务页面同时破坏。
+全局样式只放真正跨页面 Token/reset。
 
-如果新增页面：
+页面私有视觉优先留在 Page/Component，避免改一处全局 CSS 把多个页面一起破坏。
+
+新增页面：
 
 ```text
-先确认后端/产品能力已经存在
+确认产品/后端能力
 → 新建或扩展 Feature
-→ 增加页面
-→ 在 routes.ts 注册
-→ 如需导航，在 App Layout 同步入口
-→ 补 routes/unit/E2E
+→ Page
+→ routes.ts
+→ App Layout 导航（需要时）
+→ Unit / Routes / E2E
 ```
 
-不要只在左侧菜单加一行就认为页面能力已经完成。
+只在菜单加一行不算完成页面能力。
 
-## 6. Figma / 截图与代码的边界
+---
 
-Figma 负责视觉和交互设计，不是后端数据事实源。
+## 7. Figma 与代码的边界
 
-设计稿可以决定：
+Figma 负责：
 
 - 信息层级；
 - 布局；
@@ -299,106 +303,92 @@ Figma 负责视觉和交互设计，不是后端数据事实源。
 - 交互；
 - 字号、间距、颜色等视觉 Token。
 
-设计稿不能自行决定：
+Figma 不负责：
 
-- 新 API 字段；
-- 数据库 Schema；
+- API 字段；
+- Schema；
 - Analysis taxonomy；
 - Job 状态；
 - Provider Capability；
 - 权限/安全语义。
 
-如果设计要求的新数据当前 Contract 没有，先回到后端事实确认是否需要正式能力变更，而不是在前端 Mock 一个字段后长期保留。
+如果设计需要 Contract 没有的数据，必须回到后端确认正式能力变更，不长期保留 Mock 字段。
 
-完整工作流见：
+完整当前工作流：
 
-```text
-docs/guides/Figma与前端设计开发工作流.md
-docs/blueprint/16-前端页面架构与Figma设计工作流.md
-```
+[`../docs/guides/Figma与前端设计开发工作流.md`](../docs/guides/Figma与前端设计开发工作流.md)
 
-### 6.1 当前仍有效的历史视觉基线
+---
 
-正式 Figma 设计资产还没有完全取代此前已批准的页面参考图，所以这些文件目前仍是理解现有页面视觉演进的重要证据：
+## 8. 当前视觉基线
+
+正式 Figma 设计资产尚未完全替代早期已批准视觉参考，仓库当前仍保留：
 
 ```text
 docs/assets/stage8c/collection-runtime-center-prototype.png
 
 docs/assets/stage8d/voice-plaza-list-reference.jpg
 docs/assets/stage8d/voice-plaza-detail-reference.jpg
+
+docs/assets/stage8e/tikhub-supplement-centralized-runs-prototype.png
 ```
 
-它们分别对应采集运行中心和声音广场当时批准的一次性视觉基线；精确批准背景、资产 hash 和验收证据保存在对应归档 Change。
+这些图片是页面视觉演进证据，不是长期 API/业务事实。
 
-这里要避免两种错误：
+未来正式 Figma Frame 建立后，需要明确：
 
 ```text
-有历史 PNG
-→ 就永远不允许 Figma 改版       # 错
-
-有了 Figma
-→ 历史参考图和已实现页面语义全都失效 # 也错
+Figma 接管哪些视觉/交互
+Vue 哪些业务语义保持
+旧 PNG 是否只作历史参考
 ```
 
-未来正式 Figma Frame 建立后，应通过新的前端 Change 明确：
+不要让 PNG、Figma 和代码长期成为三套平行事实。
 
-```text
-哪些视觉/交互由 Figma 接管
-哪些业务语义仍由 Contract/Store/测试约束
-旧 PNG 是否仅作为历史参考
-```
+---
 
-不要让 PNG、Figma 和当前代码长期形成三套没有优先级的设计事实。
+## 9. Element Plus / TypeScript 7 当前兼容边界
 
-### 6.2 Element Plus 与 TypeScript 7 当前兼容边界
-
-当前 `frontend/package.json` 仍锁定：
+当前锁定依赖以 `package.json` / lock 为准，目前包括：
 
 ```text
 element-plus = 2.14.4
 @typescript/native = TypeScript 7.0.2
 ```
 
-当前 `tsconfig.json` 仍是：
+当前：
 
 ```text
 skipLibCheck = false
 ```
 
-历史 Stage 8C 已验证：在这组锁定依赖下，直接按组件使用 Element Plus 会暴露其依赖声明与 TypeScript 7 原生检查的兼容问题。为避免把页面开发变成“顺手升级依赖”或“关闭类型门禁”，当时页面使用 Vue SFC 中的原生语义表单、按钮、表格等完成首屏。
+Stage 8C 曾实际验证：在这组依赖下，直接使用部分 Element Plus 类型声明会暴露 TypeScript 7 兼容问题。
 
-这个决定的含义不是：
+因此禁止为了页面任务：
 
 ```text
-AIMA_UGC 永久禁止 Element Plus
+静默升级依赖
+skipLibCheck = true
+降低 typecheck
 ```
 
-而是：
+这不等于永久禁止 Element Plus。
+
+如果后续页面确实需要系统性使用：
 
 ```text
-Element Plus 仍是长期基础控件方向
-但当前版本兼容性问题不能通过
-- 静默升级依赖
-- skipLibCheck=true
-- 降低 typecheck
-来绕过
-```
-
-如果后续 Figma 改版确实需要大量 Element Plus 组件，正确做法是建立独立技术 Change：
-
-```text
-确认当前 Element Plus / TypeScript 版本兼容性
-→ 评估是否升级
-→ 更新 package.json + package-lock.json
+独立技术 Change
+→ 核对当时版本兼容性
+→ 必要时更新 package + lock
 → typecheck / unit / build / E2E
-→ 再在业务页面采用
+→ 再扩展页面
 ```
 
-不要在普通页面任务里顺便改变整个前端类型检查基线。
+---
 
-## 7. 公共 HTTP Contract 变化后的正确流程
+## 10. HTTP Contract 变化流程
 
-从仓库根执行：
+从仓库根：
 
 ```bash
 uv run python scripts/contracts/generate.py
@@ -406,93 +396,132 @@ npm --prefix frontend run generate:api
 uv run python scripts/contracts/generate.py --check
 ```
 
-实际开发还需要检查生成差异是否符合预期，不能把“大量意外 generated diff”直接提交。
-
-典型链路：
+典型链：
 
 ```text
-改 Pydantic Request/Response
-→ 改 FastAPI Route/Service
-→ API/Contract 测试
-→ 生成 OpenAPI
-→ Orval 生成 Client
-→ 修改 Feature api.ts/store/Page
-→ 前端 Unit/E2E
+Pydantic Request/Response
+→ FastAPI Route/Service
+→ API/Contract Test
+→ OpenAPI
+→ Orval Client
+→ Feature api.ts / Store / Page
+→ Unit / E2E
 ```
 
-## 8. 本地运行
+检查 generated diff 是否符合预期，不能把大量意外生成差异直接提交。
 
-后端在 `127.0.0.1:8090` 启动后，从仓库根执行：
+---
+
+## 11. Figma → Vue 推荐 Vertical Slice
+
+```text
+业务目标
+→ 当前 Capability/Contract 调查
+→ 页面信息结构 / Figma
+→ 需要变化时先冻结 HTTP Contract
+→ API/Contract Test
+→ OpenAPI / generated Client
+→ 后端与前端并行
+→ Feature API / Store
+→ Vue Page
+→ Unit / E2E
+→ 浏览器视觉验收
+```
+
+不采用：
+
+```text
+一次性生成全部未来页面
+→ 再追着补后端
+```
+
+也不采用：
+
+```text
+先实现全部未来 API
+→ 再决定页面怎么用
+```
+
+每次完成一个可以独立验收的纵切。
+
+---
+
+## 12. 本地运行
+
+后端在 `127.0.0.1:8090` 启动后：
 
 ```bash
 npm --prefix frontend run dev
 ```
 
-Vite 当前开发服务器监听 `127.0.0.1:5173`，并把 `/api` 与 `/health` 代理给后端。精确配置以 `frontend/vite.config.ts` 为准。
+Vite 当前监听 `127.0.0.1:5173`，并代理 `/api`、`/health` 到后端。精确配置看 `vite.config.ts`。
 
-本地运行不能替代后端 PostgreSQL/Worker 集成验证；页面能打开也不等于异步 Job 已正确执行。
+页面能打开不等于 PostgreSQL/Worker/异步 Job 正常。
 
-## 9. 改代码时怎么快速定位
+---
 
-### 改页面样式，但不改业务
+## 13. 常见问题怎么定位
+
+### 只改页面样式
 
 ```text
-目标 Page / Component
+Page / Component
 → 必要时 shared token
-→ 对应 Vitest / Playwright
+→ Unit / E2E / 视觉核对
 ```
 
-不要改 generated client、Store 业务语义或后端 Contract。
+不要改 generated Client 或后端业务语义。
 
-### 改一个按钮提交的数据
+### 按钮提交数据不对
 
 ```text
-先看 Feature api.ts
-→ 看 generated client 的真实 Request Type
-→ 回到 backend/src/aima_ugc/contracts/http.py 确认 Contract
-→ 如果 Contract 不支持，走完整后端 Contract Change
+Feature api.ts
+→ generated Request Type
+→ backend Pydantic Contract
 ```
+
+Contract 不支持时走完整后端 Change。
 
 ### 页面筛选结果不对
 
 ```text
-Page 当前输入
-→ Store 保存的 filter
-→ Feature api.ts 传参
-→ generated client
-→ docs/API接口说明.md
+Page input
+→ Store filter
+→ Feature api.ts
+→ generated Client
+→ API doc
 → 后端 Query Service / Repository
 ```
 
-不要先在页面做第二次业务过滤来掩盖后端查询错误。
+不要先在 Vue 做第二套业务过滤掩盖后端错误。
 
-### Analysis/Export 一直处理中
-
-前端只展示 Job/业务状态。排障应继续到：
+### Analysis / Export 一直处理中
 
 ```text
-HTTP API
-→ PostgreSQL jobs / analysis_content_requests / reporting_data_exports
+HTTP
+→ jobs
+→ analysis_content_requests / reporting_data_exports
 → Worker
-→ 对应模块 README / PostgreSQL 附录
+→ 对应模块 README / PostgreSQL Appendix
 ```
 
-## 10. 测试
+---
 
-当前前端 Unit 事实入口在 `frontend/tests/`：
+## 14. 测试
+
+当前 Unit：
 
 ```text
-collection-runtime.spec.ts
-collection-strategy.spec.ts
-import-batches-api.spec.ts
-import-batches-store.spec.ts
-routes.spec.ts
-voice-plaza.spec.ts
+frontend/tests/
 ```
 
-E2E 入口在 `frontend/e2e/`。
+E2E：
 
-提交前执行：
+```text
+frontend/e2e/
+```
+
+提交前：
 
 ```bash
 npm --prefix frontend run lint
@@ -502,30 +531,33 @@ npm --prefix frontend run build
 npm --prefix frontend run test:e2e
 ```
 
-这些测试证明前端逻辑和固定 HTTP Contract 的交互；它们不能替代后端 API、PostgreSQL、Worker、Fencing、Provider 或 Migration 集成测试。
+这些前端测试不能替代后端 API、PostgreSQL、Worker、Fencing、Provider 或 Migration 集成测试。
 
-## 11. 当前限制
+---
 
-当前前端已经有三类业务界面：采集运行中心、采集策略、声音广场；根 `/` 只是复用采集运行中心的兼容入口。
+## 15. 当前未实现的前端能力
 
 当前没有：
 
-- 登录/认证页面；
+- 登录/认证闭环；
 - 独立 Analysis 管理中心；
 - 独立 Job 管理中心；
 - 独立 Excel Export 管理中心；
 - 正式 Word 报告中心；
-- Stage 9 Monitoring/Alert/Dashboard 页面。
+- Monitoring/Alert/VOC/Ticket/Dashboard 页面。
 
-不要根据后端已有表或 API 推导这些页面已经实现。
+后续是否实现、何时实现看：
 
-## 12. 继续阅读
+[`../docs/roadmap/生产上线实施路线.md`](../docs/roadmap/生产上线实施路线.md)
 
-- 当前前后端/API/Job 边界：`docs/blueprint/04-后端任务API与前端.md`
-- 原前端/Figma详细设计：`docs/blueprint/16-前端页面架构与Figma设计工作流.md`
+---
+
+## 16. 继续阅读
+
+- API/Job/Frontend 长期边界：`docs/blueprint/04-后端任务API与前端.md`
 - 人类可读 API：`docs/API接口说明.md`
-- 前端/Figma 实操工作流：`docs/guides/Figma与前端设计开发工作流.md`
-- 采集策略实现：`docs/blueprint/08-采集策略与平台能力.md`
+- Figma/Design-to-Code：`docs/guides/Figma与前端设计开发工作流.md`
+- Collection 策略：`docs/blueprint/08-采集策略与平台能力.md`
 - AI：`docs/appendix/AI舆情打标与分析实现.md`
 - Excel Export：`docs/appendix/Excel统一数据导出与离线调试.md`
-- 后续阶段与生产上线：`docs/roadmap/生产上线实施路线.md`
+- 后续阶段/Production Go-Live：`docs/roadmap/生产上线实施路线.md`
