@@ -6,6 +6,7 @@ on:
       - feature/provider-lookup-supplement-eligibility
     paths:
       - ".github/workflows/dev-provider-lookup-validation.yml"
+      - "scripts/dev/apply_provider_lookup_followup.py"
       - "scripts/dev/probe_excel_tikhub_supplement.py"
       - "backend/src/aima_ugc/adapters/providers/imports/**"
       - "backend/src/aima_ugc/adapters/providers/tikhub/**"
@@ -21,9 +22,9 @@ permissions:
   contents: write
 
 jobs:
-  generate-contracts:
+  implement-and-generate:
     if: github.actor != 'github-actions[bot]'
-    name: Generate contracts and verify identity tests
+    name: Apply follow-up, generate contracts, verify targets
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -49,38 +50,11 @@ jobs:
           uv sync --locked
           npm ci --prefix frontend
 
-      - name: Align manual Excel columns and identity expectations
+      - name: Apply guarded follow-up implementation
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-
-          columns_path = Path("backend/src/aima_ugc/adapters/providers/imports_test/test.py")
-          text = columns_path.read_text(encoding="utf-8")
-          replacements = {
-              'EXCEL_CONTENT_COLUMNS = (\n    "平台",\n': 'EXCEL_CONTENT_COLUMNS = (\n    "平台",\n    "内容ID",\n',
-              'EXCEL_LABEL_DETAIL_COLUMNS = (\n    "平台",\n': 'EXCEL_LABEL_DETAIL_COLUMNS = (\n    "内容ID",\n    "平台",\n',
-              'EXCEL_COMMENT_COLUMNS = (\n    "平台",\n': 'EXCEL_COMMENT_COLUMNS = (\n    "平台",\n    "内容ID",\n',
-          }
-          for old, new in replacements.items():
-              if old not in text:
-                  if new in text:
-                      continue
-                  raise SystemExit(f"expected imports_test column block not found: {old!r}")
-              text = text.replace(old, new, 1)
-          columns_path.write_text(text, encoding="utf-8")
-
-          test_path = Path("tests/unit/collection/test_imports_excel.py")
-          test_text = test_path.read_text(encoding="utf-8")
-          old = 'assert source_fallback.alternate_ids == {}'
-          new = 'assert source_fallback.alternate_ids == {"source_article_id": "SOURCE-002"}'
-          if old in test_text:
-              test_text = test_text.replace(old, new, 1)
-          elif new not in test_text:
-              raise SystemExit("expected source_article_id fallback assertion not found")
-          test_path.write_text(test_text, encoding="utf-8")
-          PY
+          uv run python scripts/dev/apply_provider_lookup_followup.py
 
       - name: Generate OpenAPI and frontend client
         shell: bash
@@ -89,47 +63,83 @@ jobs:
           uv run python scripts/contracts/generate.py
           npm --prefix frontend run generate:api
           uv run ruff format \
+            backend/src/aima_ugc/contracts/http.py \
+            backend/src/aima_ugc/bootstrap/api.py \
+            backend/src/aima_ugc/bootstrap/collection_http.py \
+            backend/src/aima_ugc/modules/collection/http.py \
+            backend/src/aima_ugc/adapters/providers/imports/identity.py \
             backend/src/aima_ugc/adapters/providers/imports_test/test.py \
             tests/unit/collection/test_imports_excel.py \
+            tests/unit/collection/test_provider_lookup_identity.py \
+            tests/contracts/test_collection_batch_supplement_eligibility_http.py \
+            tests/contracts/test_content_supplement_http.py \
+            tests/api/test_stage8e_collection_runs.py \
             scripts/dev/probe_excel_tikhub_supplement.py
 
-      - name: Verify generated result and target tests
+      - name: Verify target backend and frontend behavior
         shell: bash
         run: |
           set -euo pipefail
           uv run python scripts/contracts/generate.py --check
           uv run ruff check \
-            backend/src/aima_ugc/adapters/providers/imports_test/test.py \
+            backend/src/aima_ugc/contracts/http.py \
+            backend/src/aima_ugc/bootstrap/api.py \
+            backend/src/aima_ugc/bootstrap/collection_http.py \
+            backend/src/aima_ugc/modules/collection/http.py \
+            backend/src/aima_ugc/adapters/providers/imports/identity.py \
             tests/unit/collection/test_imports_excel.py \
             tests/unit/collection/test_provider_lookup_identity.py \
+            tests/contracts/test_collection_batch_supplement_eligibility_http.py \
+            tests/contracts/test_content_supplement_http.py \
+            tests/api/test_stage8e_collection_runs.py \
             scripts/dev/probe_excel_tikhub_supplement.py
           uv run pytest \
             tests/unit/collection/test_imports_excel.py \
-            tests/unit/collection/test_provider_lookup_identity.py -q
+            tests/unit/collection/test_provider_lookup_identity.py \
+            tests/contracts/test_collection_batch_supplement_eligibility_http.py \
+            tests/contracts/test_content_supplement_http.py \
+            tests/api/test_stage8e_collection_runs.py -q
           npm --prefix frontend run typecheck
+          npm --prefix frontend run test -- --run
 
-      - name: Commit generated and normalized files to feature branch
+      - name: Commit implementation and generated files to feature branch
         shell: bash
         run: |
           set -euo pipefail
           git add \
+            backend/src/aima_ugc/contracts/http.py \
+            backend/src/aima_ugc/bootstrap/api.py \
+            backend/src/aima_ugc/bootstrap/collection_http.py \
+            backend/src/aima_ugc/modules/collection/http.py \
+            backend/src/aima_ugc/adapters/providers/imports/identity.py \
             backend/src/aima_ugc/adapters/providers/imports_test/test.py \
-            tests/unit/collection/test_imports_excel.py \
-            scripts/dev/probe_excel_tikhub_supplement.py \
+            frontend/src/features/import-batches/api.ts \
             contracts/openapi/openapi.json \
-            frontend/src/generated/api
+            frontend/src/generated/api \
+            tests/unit/collection/test_imports_excel.py \
+            tests/unit/collection/test_provider_lookup_identity.py \
+            tests/contracts/test_collection_batch_supplement_eligibility_http.py \
+            tests/contracts/test_content_supplement_http.py \
+            tests/api/test_stage8e_collection_runs.py \
+            docs/blueprint/02-采集系统与数据标准化.md \
+            docs/blueprint/08-采集策略与平台能力.md \
+            docs/appendix/数据入口与统一入库实现.md \
+            docs/appendix/TikHub五平台真实响应与字段映射.md \
+            docs/appendix/Stage8F前后端能力矩阵与真实验收.md \
+            docs/collection/README.md \
+            backend/src/aima_ugc/adapters/providers/imports_test/README.md
           if git diff --cached --quiet; then
-            echo "No generated or normalized changes to commit."
+            echo "No guarded follow-up changes to commit."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "生成补采契约并修正身份测试"
+          git commit -m "完成补采资格接口并同步正式文档"
           git push origin "HEAD:${GITHUB_REF_NAME}"
 
   real-tikhub-probe:
     if: github.actor != 'github-actions[bot]'
-    needs: generate-contracts
+    needs: implement-and-generate
     name: Real TikHub Excel supplement probe
     runs-on: ubuntu-24.04
     env:
@@ -197,8 +207,7 @@ jobs:
           import os
           from pathlib import Path
 
-          result_path = Path("/tmp/tikhub-excel-supplement-probe.json")
-          payload = json.loads(result_path.read_text(encoding="utf-8"))
+          payload = json.loads(Path("/tmp/tikhub-excel-supplement-probe.json").read_text(encoding="utf-8"))
           change_path = Path("changes/active/CHG-20260822-provider-lookup-supplement-eligibility/CHANGE.md")
           text = change_path.read_text(encoding="utf-8")
           marker = "## 五平台真实 Excel → TikHub 补采验证"
@@ -209,23 +218,20 @@ jobs:
               marker,
               "",
               f"GitHub Actions Run：`{os.environ['PROBE_RUN_ID']}`。",
-              f"验证时间：`{payload['verified_at']}`；关键词：`{payload['keyword']}`；真实请求数：`{payload['request_count']}`；预计费用上限内累计：`{payload['cumulative_planned_cost_usd']} USD`。",
+              f"验证时间：`{payload['verified_at']}`；关键词：`{payload['keyword']}`；真实请求数：`{payload['request_count']}`；预计费用累计：`{payload['cumulative_planned_cost_usd']} USD`。",
               "",
-              "| 平台 | Excel 链接解析 | Detail | 一级评论 | 失效候选跳过数 |",
+              "| 平台 | typed lookup | Detail | 一级评论 | 跳过失效候选 |",
               "| --- | --- | --- | --- | ---: |",
           ]
           for item in payload["platforms"]:
-              lookup = ", ".join(item["lookup_types"])
               lines.append(
-                  f"| {item['platform']} | `{lookup}` | {item['detail']} | {item['comments']} | {item['failed_candidates_before_success']} |"
+                  f"| {item['platform']} | `{', '.join(item['lookup_types'])}` | {item['detail']} | {item['comments']} | {item['failed_candidates_before_success']} |"
               )
-          lines.extend(
-              [
-                  "",
-                  "验证链：生产 TikHub Search 选取当前仍有评论的真实内容 → 构造标准平台 URL → 临时 Excel → 生产 Excel Parser → typed lookup identity → 生产 Detail Operation/Transport/Extractor/Mapper → 生产 Comments Operation/Transport/Extractor/Mapper。失效、删除或私密候选只作为跳过样本，不计为平台能力失败。API Key 未写入仓库、PR、Change 或日志。",
-                  "",
-              ]
-          )
+          lines.extend([
+              "",
+              "验证链：生产 TikHub Search 选择当前仍有评论的真实内容 → 构造标准平台 URL → 临时 Excel → 生产 Excel Parser → typed lookup identity → 生产 Detail Operation/Transport/Extractor/Mapper → 生产 Comments Operation/Transport/Extractor/Mapper。删除、私密或失效候选只跳过，不把空响应伪装成功。API Key 未写入仓库、PR、Change 或日志。",
+              "",
+          ])
           change_path.write_text(text.rstrip() + "\n" + "\n".join(lines), encoding="utf-8")
           PY
           git add changes/active/CHG-20260822-provider-lookup-supplement-eligibility/CHANGE.md
