@@ -6,183 +6,26 @@ on:
       - feature/provider-lookup-supplement-eligibility
     paths:
       - ".github/workflows/dev-provider-lookup-validation.yml"
-      - "scripts/dev/apply_provider_lookup_followup.py"
       - "scripts/dev/probe_excel_tikhub_supplement.py"
+      - "tests/fixtures/imports/excel_provider_lookup_samples.json"
       - "backend/src/aima_ugc/adapters/providers/imports/**"
       - "backend/src/aima_ugc/adapters/providers/tikhub/**"
-      - "backend/src/aima_ugc/adapters/persistence/postgres/collection_targets.py"
-      - "backend/src/aima_ugc/bootstrap/collection_http.py"
-      - "backend/src/aima_ugc/bootstrap/content_http.py"
-      - "backend/src/aima_ugc/contracts/http.py"
-      - "frontend/src/features/**"
-      - "tests/**"
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   issues: write
   pull-requests: write
 
 jobs:
-  implement-and-generate:
-    if: github.actor != 'github-actions[bot]'
-    name: Apply follow-up, generate contracts, verify targets
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7.0.1
-        with:
-          fetch-depth: 0
-
-      - name: Setup Python
-        uses: actions/setup-python@v6.2.0
-        with:
-          python-version: "3.14.7"
-
-      - name: Setup Node
-        uses: actions/setup-node@v6.4.0
-        with:
-          node-version: "24.19.0"
-
-      - name: Install frozen environments
-        id: install
-        shell: bash
-        run: |
-          set -euo pipefail
-          python -m pip install "uv==$(tr -d '\r\n' < .uv-version)"
-          uv sync --locked
-          npm ci --prefix frontend
-
-      - name: Apply guarded follow-up implementation
-        id: apply
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run python scripts/dev/apply_provider_lookup_followup.py
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("backend/src/aima_ugc/contracts/http.py")
-          text = path.read_text(encoding="utf-8")
-          old = "    targets: tuple[CollectionBatchSupplementTargetResponse, ...] = ()"
-          new = "    targets: tuple[CollectionBatchSupplementTargetResponse, ...]"
-          if old in text:
-              text = text.replace(old, new, 1)
-              path.write_text(text, encoding="utf-8")
-          elif new not in text:
-              raise SystemExit("CollectionBatchSupplementEligibilityResponse.targets anchor missing")
-          PY
-
-      - name: Generate OpenAPI and frontend client
-        id: generate
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run python scripts/contracts/generate.py
-          npm --prefix frontend run generate:api
-          uv run ruff check --fix scripts/dev/probe_excel_tikhub_supplement.py
-          uv run ruff format \
-            backend/src/aima_ugc/contracts/http.py \
-            backend/src/aima_ugc/bootstrap/api.py \
-            backend/src/aima_ugc/bootstrap/collection_http.py \
-            backend/src/aima_ugc/modules/collection/http.py \
-            backend/src/aima_ugc/adapters/providers/imports/identity.py \
-            backend/src/aima_ugc/adapters/providers/imports_test/test.py \
-            tests/unit/collection/test_imports_excel.py \
-            tests/unit/collection/test_provider_lookup_identity.py \
-            tests/contracts/test_collection_batch_supplement_eligibility_http.py \
-            tests/contracts/test_content_supplement_http.py \
-            tests/api/test_stage8e_collection_runs.py \
-            scripts/dev/probe_excel_tikhub_supplement.py
-
-      - name: Verify target backend and frontend behavior
-        id: verify
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run python scripts/contracts/generate.py --check
-          uv run ruff check \
-            backend/src/aima_ugc/contracts/http.py \
-            backend/src/aima_ugc/bootstrap/api.py \
-            backend/src/aima_ugc/bootstrap/collection_http.py \
-            backend/src/aima_ugc/modules/collection/http.py \
-            backend/src/aima_ugc/adapters/providers/imports/identity.py \
-            tests/unit/collection/test_imports_excel.py \
-            tests/unit/collection/test_provider_lookup_identity.py \
-            tests/contracts/test_collection_batch_supplement_eligibility_http.py \
-            tests/contracts/test_content_supplement_http.py \
-            tests/api/test_stage8e_collection_runs.py \
-            scripts/dev/probe_excel_tikhub_supplement.py
-          uv run pytest \
-            tests/unit/collection/test_imports_excel.py \
-            tests/unit/collection/test_provider_lookup_identity.py \
-            tests/contracts/test_collection_batch_supplement_eligibility_http.py \
-            tests/contracts/test_content_supplement_http.py \
-            tests/api/test_stage8e_collection_runs.py -q
-          npm --prefix frontend run typecheck
-          npm --prefix frontend run test -- --run
-
-      - name: Commit implementation and generated files to feature branch
-        id: commit
-        shell: bash
-        run: |
-          set -euo pipefail
-          git add \
-            backend/src/aima_ugc/contracts/http.py \
-            backend/src/aima_ugc/bootstrap/api.py \
-            backend/src/aima_ugc/bootstrap/collection_http.py \
-            backend/src/aima_ugc/modules/collection/http.py \
-            backend/src/aima_ugc/adapters/providers/imports/identity.py \
-            backend/src/aima_ugc/adapters/providers/imports_test/test.py \
-            frontend/src/features/import-batches/api.ts \
-            contracts/openapi/openapi.json \
-            frontend/src/generated/api \
-            tests/unit/collection/test_imports_excel.py \
-            tests/unit/collection/test_provider_lookup_identity.py \
-            tests/contracts/test_collection_batch_supplement_eligibility_http.py \
-            tests/contracts/test_content_supplement_http.py \
-            tests/api/test_stage8e_collection_runs.py \
-            scripts/dev/probe_excel_tikhub_supplement.py \
-            docs/blueprint/02-采集系统与数据标准化.md \
-            docs/blueprint/08-采集策略与平台能力.md \
-            docs/appendix/数据入口与统一入库实现.md \
-            docs/appendix/TikHub五平台真实响应与字段映射.md \
-            docs/appendix/Stage8F前后端能力矩阵与真实验收.md \
-            docs/collection/README.md \
-            backend/src/aima_ugc/adapters/providers/imports_test/README.md
-          if git diff --cached --quiet; then
-            echo "No guarded follow-up changes to commit."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "完成补采资格接口并同步正式文档"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
-
-      - name: Report implementation stage status to PR
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          INSTALL_OUTCOME: ${{ steps.install.outcome }}
-          APPLY_OUTCOME: ${{ steps.apply.outcome }}
-          GENERATE_OUTCOME: ${{ steps.generate.outcome }}
-          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
-          COMMIT_OUTCOME: ${{ steps.commit.outcome }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          gh pr comment 151 --repo "$GITHUB_REPOSITORY" --body "[dev-provider-lookup-validation] run=${GITHUB_RUN_ID} implement: install=${INSTALL_OUTCOME}; apply=${APPLY_OUTCOME}; generate=${GENERATE_OUTCOME}; verify=${VERIFY_OUTCOME}; commit=${COMMIT_OUTCOME}. No secret/raw data included."
-
   real-tikhub-probe:
-    if: github.actor != 'github-actions[bot]'
-    needs: implement-and-generate
     name: Real TikHub Excel supplement probe
     runs-on: ubuntu-24.04
     env:
-      TIKHUB_API_KEY: ${{ secrets.TIKHUB_API_KEY }}
       TIKHUB_BASE_URL: https://api.tikhub.io
+      PROBE_BRANCH: feature/provider-lookup-supplement-eligibility
     steps:
-      - name: Checkout latest feature branch
+      - name: Checkout feature branch
         uses: actions/checkout@v7.0.1
         with:
           ref: feature/provider-lookup-supplement-eligibility
@@ -194,32 +37,71 @@ jobs:
           python-version: "3.14.7"
 
       - name: Install frozen Python environment
-        id: install
         shell: bash
         run: |
           set -euo pipefail
           python -m pip install "uv==$(tr -d '\r\n' < .uv-version)"
           uv sync --locked
 
-      - name: Require protected TikHub secret
-        id: secret
+      - name: Publish one-time public key and receive encrypted credential
+        id: credential
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
+          PRIVATE_KEY=/tmp/aima-tikhub-probe-private.pem
+          PUBLIC_KEY_B64=/tmp/aima-tikhub-probe-public.b64
+          CIPHER_B64=/tmp/aima-tikhub-probe-key.b64
+          CIPHER_BIN=/tmp/aima-tikhub-probe-key.bin
+          PLAIN_KEY=/tmp/aima-tikhub-probe-key.txt
+          CIPHER_PATH=".github/probe-input/tikhub-key-${GITHUB_RUN_ID}.b64"
+
+          openssl genpkey -quiet -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "${PRIVATE_KEY}"
+          openssl pkey -in "${PRIVATE_KEY}" -pubout -outform DER | base64 -w0 > "${PUBLIC_KEY_B64}"
+          PUBLIC_KEY="$(cat "${PUBLIC_KEY_B64}")"
+          gh pr comment 151 --repo "${GITHUB_REPOSITORY}" --body "[dev-provider-lookup-key] run=${GITHUB_RUN_ID} public_key_spki_base64=${PUBLIC_KEY}"
+
+          found=0
+          for _ in $(seq 1 120); do
+            git fetch --quiet origin "${PROBE_BRANCH}"
+            if git show "origin/${PROBE_BRANCH}:${CIPHER_PATH}" > "${CIPHER_B64}" 2>/dev/null; then
+              found=1
+              break
+            fi
+            sleep 5
+          done
+          if [[ "${found}" != "1" ]]; then
+            echo "Encrypted TikHub probe credential was not supplied for this run."
+            exit 2
+          fi
+
+          base64 -d < "${CIPHER_B64}" > "${CIPHER_BIN}"
+          openssl pkeyutl -decrypt \
+            -inkey "${PRIVATE_KEY}" \
+            -in "${CIPHER_BIN}" \
+            -pkeyopt rsa_padding_mode:oaep \
+            -pkeyopt rsa_oaep_md:sha256 \
+            -pkeyopt rsa_mgf1_md:sha256 \
+            > "${PLAIN_KEY}"
+          TIKHUB_API_KEY="$(cat "${PLAIN_KEY}")"
           if [[ -z "${TIKHUB_API_KEY}" ]]; then
-            echo "Repository Actions Secret TIKHUB_API_KEY is not configured."
+            echo "Decrypted TikHub probe credential is empty."
             exit 2
           fi
           echo "::add-mask::${TIKHUB_API_KEY}"
+          printf 'TIKHUB_API_KEY=%s\n' "${TIKHUB_API_KEY}" >> "${GITHUB_ENV}"
+          printf 'cipher_path=%s\n' "${CIPHER_PATH}" >> "${GITHUB_OUTPUT}"
+          rm -f "${PRIVATE_KEY}" "${PUBLIC_KEY_B64}" "${CIPHER_B64}" "${CIPHER_BIN}" "${PLAIN_KEY}"
 
-      - name: Verify five-platform Excel URL to Detail and Comments
+      - name: Verify five-platform uploaded Excel URL to Detail and Comments
         id: probe
         shell: bash
         run: |
           set -euo pipefail
           uv run python scripts/dev/probe_excel_tikhub_supplement.py \
-            --keyword "爱玛" \
-            --max-candidates-per-platform 3 \
+            --samples tests/fixtures/imports/excel_provider_lookup_samples.json \
+            --max-candidates-per-platform 6 \
             --output /tmp/tikhub-excel-supplement-probe.json
           python - <<'PY'
           import json
@@ -232,63 +114,40 @@ jobs:
           for item in platforms:
               if item.get("detail") != "ok" or item.get("comments") != "ok":
                   raise SystemExit(f"platform probe incomplete: {item.get('platform')}")
-          print("Five-platform Excel URL → TikHub Detail + Comments probe passed.")
+          print("Five-platform uploaded Excel URL → TikHub Detail + Comments probe passed.")
           PY
 
-      - name: Record non-secret real probe evidence in Change
-        id: evidence
-        shell: bash
-        env:
-          PROBE_RUN_ID: ${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          payload = json.loads(Path("/tmp/tikhub-excel-supplement-probe.json").read_text(encoding="utf-8"))
-          change_path = Path("changes/active/CHG-20260822-provider-lookup-supplement-eligibility/CHANGE.md")
-          text = change_path.read_text(encoding="utf-8")
-          marker = "## 五平台真实 Excel → TikHub 补采验证"
-          if marker in text:
-              raise SystemExit("real probe evidence section already exists")
-          lines = [
-              "",
-              marker,
-              "",
-              f"GitHub Actions Run：`{os.environ['PROBE_RUN_ID']}`。",
-              f"验证时间：`{payload['verified_at']}`；关键词：`{payload['keyword']}`；真实请求数：`{payload['request_count']}`；预计费用累计：`{payload['cumulative_planned_cost_usd']} USD`。",
-              "",
-              "| 平台 | typed lookup | Detail | 一级评论 | 跳过失效候选 |",
-              "| --- | --- | --- | --- | ---: |",
-          ]
-          for item in payload["platforms"]:
-              lines.append(
-                  f"| {item['platform']} | `{', '.join(item['lookup_types'])}` | {item['detail']} | {item['comments']} | {item['failed_candidates_before_success']} |"
-              )
-          lines.extend([
-              "",
-              "验证链：生产 TikHub Search 选择当前仍有评论的真实内容 → 构造标准平台 URL → 临时 Excel → 生产 Excel Parser → typed lookup identity → 生产 Detail Operation/Transport/Extractor/Mapper → 生产 Comments Operation/Transport/Extractor/Mapper。删除、私密或失效候选只跳过，不把空响应伪装成功。API Key 未写入仓库、PR、Change 或日志。",
-              "",
-          ])
-          change_path.write_text(text.rstrip() + "\n" + "\n".join(lines), encoding="utf-8")
-          PY
-          git add changes/active/CHG-20260822-provider-lookup-supplement-eligibility/CHANGE.md
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "记录五平台真实补采验证证据"
-          git push origin "HEAD:feature/provider-lookup-supplement-eligibility"
-
-      - name: Report real probe status to PR
+      - name: Report non-secret real probe summary to PR
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
-          INSTALL_OUTCOME: ${{ steps.install.outcome }}
-          SECRET_OUTCOME: ${{ steps.secret.outcome }}
           PROBE_OUTCOME: ${{ steps.probe.outcome }}
-          EVIDENCE_OUTCOME: ${{ steps.evidence.outcome }}
+          CREDENTIAL_OUTCOME: ${{ steps.credential.outcome }}
         shell: bash
         run: |
           set -euo pipefail
-          gh pr comment 151 --repo "$GITHUB_REPOSITORY" --body "[dev-provider-lookup-validation] run=${GITHUB_RUN_ID} real-probe: install=${INSTALL_OUTCOME}; secret=${SECRET_OUTCOME}; probe=${PROBE_OUTCOME}; evidence=${EVIDENCE_OUTCOME}. No secret/raw data included."
+          if [[ -f /tmp/tikhub-excel-supplement-probe.json ]]; then
+            python - <<'PY' > /tmp/probe-summary.md
+          import json
+          from pathlib import Path
+
+          p = json.loads(Path("/tmp/tikhub-excel-supplement-probe.json").read_text(encoding="utf-8"))
+          print(f"[dev-provider-lookup-real-probe] source_sha256={p['source_sha256']} requests={p['request_count']} planned_cost_usd={p['cumulative_planned_cost_usd']}")
+          print("")
+          print("| platform | source row | Detail | Comments | invalid/deleted candidates skipped |")
+          print("| --- | ---: | --- | --- | ---: |")
+          for item in p["platforms"]:
+              print(f"| {item['platform']} | {item['source_row']} | {item['detail']} | {item['comments']} | {item['failed_candidates_before_success']} |")
+          PY
+            gh pr comment 151 --repo "${GITHUB_REPOSITORY}" --body-file /tmp/probe-summary.md
+          else
+            gh pr comment 151 --repo "${GITHUB_REPOSITORY}" --body "[dev-provider-lookup-real-probe] run=${GITHUB_RUN_ID} credential=${CREDENTIAL_OUTCOME}; probe=${PROBE_OUTCOME}. No secret/raw data included."
+          fi
+
+      - name: Remove credential from runner environment
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          unset TIKHUB_API_KEY
+          rm -f /tmp/aima-tikhub-probe-* /tmp/tikhub-excel-supplement-probe.json
