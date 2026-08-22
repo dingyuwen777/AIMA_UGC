@@ -1,0 +1,41 @@
+name: Platform Unification Green Fix
+
+on:
+  push:
+    branches:
+      - refactor/unify-platform-identifiers
+
+permissions:
+  contents: write
+
+jobs:
+  apply-once:
+    if: github.event.head_commit.message == '执行平台统一 Green 修复'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: '3.14.7'
+      - name: Install locked environment
+        shell: bash
+        run: |
+          python -m pip install 'uv==0.12.3'
+          uv sync --locked
+      - name: Apply targeted fixes and Ruff mechanical cleanup
+        shell: bash
+        run: |
+          python scripts/dev/_fix_platform_unification_green.py
+          uv run ruff check --fix backend tests scripts migrations/versions/20260822_0024_unify_platform_identifiers.py
+          uv run ruff format backend tests scripts migrations/versions/20260822_0024_unify_platform_identifiers.py
+      - name: Commit fixes
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m '修复平台统一首轮 Green 问题'
+          git push origin HEAD:refactor/unify-platform-identifiers
