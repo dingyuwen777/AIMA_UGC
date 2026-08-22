@@ -52,7 +52,7 @@ from aima_ugc.platform.storage import ArtifactService
 from pydantic import SecretStr
 from sqlalchemy import func, select, update
 
-_FIXTURES = Path("tests/fixtures/providers/tikhub/xhs")
+_FIXTURES = Path("tests/fixtures/providers/tikhub/xiaohongshu")
 _OBSERVED_AT = datetime(2026, 8, 17, 6, 0, tzinfo=UTC)
 
 
@@ -179,7 +179,7 @@ def test_takeover_reconciles_search_raw_then_formal_scope_replays_without_resend
                     "comment_policy": "adaptive",
                     "platforms": [
                         {
-                            "platform": "xhs",
+                            "platform": "xiaohongshu",
                             "provider_config_id": str(provider_config.id),
                             "config": {
                                 "sort_mode": "latest",
@@ -191,7 +191,7 @@ def test_takeover_reconciles_search_raw_then_formal_scope_replays_without_resend
                 },
                 scopes=(
                     CollectionScopeDefinition(
-                        platform="xhs",
+                        platform="xiaohongshu",
                         source_type="keyword_search",
                         source_value="爱玛",
                         operation_group="content_discovery",
@@ -216,7 +216,7 @@ def test_takeover_reconciles_search_raw_then_formal_scope_replays_without_resend
         "content_type": "all",
     }
     call = build_search_call(
-        platform="xhs",
+        platform="xiaohongshu",
         keyword=scope.source_value,
         config=platform_config,
         state={},
@@ -231,7 +231,7 @@ def test_takeover_reconciles_search_raw_then_formal_scope_replays_without_resend
         run_id=execution.run.id,
         scope_id=scope.id,
         provider="tikhub",
-        platform="xhs",
+        platform="xiaohongshu",
         operation=call.operation,
         request_params=request_params,
         pagination_input=dict(call.pagination_input or {}),

@@ -7,7 +7,7 @@ from aima_ugc.contracts.collection import (
 
 XHS_TIKHUB_CAPABILITY = ProviderPlatformCapabilityV1(
     provider="tikhub",
-    platform="xhs",
+    platform="xiaohongshu",
     operations=(
         ProviderOperationCapabilityV1(
             business_operation="keyword_search",

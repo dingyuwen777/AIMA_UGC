@@ -16,7 +16,7 @@ from aima_ugc.adapters.providers.tikhub.operations.xiaohongshu import (
     extract_search_items,
 )
 
-_FIXTURE = Path("tests/fixtures/providers/tikhub/xhs/search_notes_page1.sanitized.json")
+_FIXTURE = Path("tests/fixtures/providers/tikhub/xiaohongshu/search_notes_page1.sanitized.json")
 
 
 def _search_fixture() -> dict[str, object]:

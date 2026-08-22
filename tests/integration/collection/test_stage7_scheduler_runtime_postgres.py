@@ -115,7 +115,7 @@ def _create_plan(scheduler_runtime):
                 insert(keyword_pack_items_table).values(
                     pack_id=keyword_pack_id,
                     keyword_id=keyword_id,
-                    platform="xhs",
+                    platform="xiaohongshu",
                     priority=10,
                     enabled=True,
                     note="scheduler runtime fixture",
@@ -138,7 +138,7 @@ def _create_plan(scheduler_runtime):
                     created_by=None,
                     platforms=(
                         PlanPlatformDefinition(
-                            platform="xhs",
+                            platform="xiaohongshu",
                             provider_config_id=provider_config_id,
                             config={},
                         ),

@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from aima_ugc.contracts.analysis import ContentRelevance, ContentVoiceType
 from aima_ugc.contracts.collection.models import BusinessOperation
+from aima_ugc.contracts.platform import PlatformName, PlatformScope
 
 type ImportBatchStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 
@@ -177,7 +178,7 @@ class ImportBatchSummaryResponse(BaseModel):
     as_of: datetime
 
 
-type CollectionPlatform = Literal["xhs", "douyin", "weibo", "bilibili", "kuaishou"]
+type CollectionPlatform = PlatformName
 type CollectionRunMode = Literal["discovery", "batch_supplement"]
 type CollectionRuntimeRecordType = Literal[
     "excel_import",
@@ -456,7 +457,7 @@ class KeywordResponse(BaseModel):
 
     id: UUID
     text: str
-    platform: str = "all"
+    platform_scope: PlatformScope = "all"
     enabled: bool
     priority: int
     note: str
@@ -695,7 +696,7 @@ class ContentListItemResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: UUID
-    platform: str
+    platform: PlatformName
     external_content_id: str
     content_type: str
     title: str | None = None
@@ -715,7 +716,7 @@ class ContentFilterSnapshot(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     search: str | None = Field(default=None, min_length=1, max_length=500)
-    platforms: tuple[str, ...] = Field(default=(), max_length=20)
+    platforms: tuple[PlatformName, ...] = Field(default=(), max_length=5)
     content_types: tuple[str, ...] = Field(default=(), max_length=20)
     analysis_status: ContentAnalysisStatus | None = None
     relevance: ContentRelevance | None = None

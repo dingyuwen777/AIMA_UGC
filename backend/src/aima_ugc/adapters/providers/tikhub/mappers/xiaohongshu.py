@@ -75,7 +75,7 @@ def map_content(
         observed_fields.append("locations")
 
     return CanonicalContentV1(
-        platform="xhs",
+        platform="xiaohongshu",
         external_content_id=external_id,
         content_type=_content_type(item),
         title=title,
@@ -145,7 +145,7 @@ def map_comment(
             observed_fields.append("parent_comment_id")
 
     return CanonicalCommentV1(
-        platform="xhs",
+        platform="xiaohongshu",
         external_content_id=external_content_id,
         external_comment_id=external_comment_id,
         root_comment_id=root_comment_id,

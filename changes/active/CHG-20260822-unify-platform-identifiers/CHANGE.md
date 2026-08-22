@@ -59,7 +59,7 @@ kuaishou
 
 小红书不再同时存在 `xhs` 与 `xiaohongshu` 两套内部身份。运行时代码、公共 HTTP Contract、generated client、Collection Plan/Run/Scope、TikHub Capability/Mapper、Canonical、Content、前端、测试和正式文档统一使用 `xiaohongshu`。
 
-外部输入中的中文“`小红书`”仍作为源数据映射到 `xiaohongshu`；不再接受 `xhs` / `red` 作为 Excel 机器别名。历史 Change 与旧 Migration 保留当时事实，不改写历史。
+外部输入中的中文平台名称只在入口映射到正式五值；不接受平台缩写/别名作为内部机器值。关键词全平台适用语义改为 `platform_scope=all`，不再占用平台身份字段。历史 Change 与旧 Migration 保留当时事实，不改写历史。
 
 # 可观察成功标准
 
@@ -159,7 +159,7 @@ collection_scopes(run_id, platform, source_type, source_value, operation_group)
 
 ## 回滚
 
-Downgrade 仅作为版本回滚机制，把本 Migration 统一后的正式小红书平台值恢复为旧 `xhs` 语义；它不代表运行时继续兼容旧值。
+平台数据归一化不可从最终值推断旧来源，因此 Alembic downgrade 只回退 Schema/字段名；生产级数据回滚必须恢复升级前 PostgreSQL 备份。当前项目尚未生产部署，合并前通过隔离数据库完整验证该路径。
 
 # 部署顺序
 

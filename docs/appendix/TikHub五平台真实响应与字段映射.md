@@ -198,7 +198,7 @@ has_more
 
 Fixture：
 
-[`../../tests/fixtures/providers/tikhub/xhs/search_notes_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/xhs/search_notes_page1.sanitized.json)
+[`../../tests/fixtures/providers/tikhub/xiaohongshu/search_notes_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/xiaohongshu/search_notes_page1.sanitized.json)
 
 ## 4.2 Detail
 
@@ -223,8 +223,8 @@ GET /api/v1/xiaohongshu/app_v2/get_video_note_detail
 
 Fixture：
 
-- [`../../tests/fixtures/providers/tikhub/xhs/image_detail.sanitized.json`](../../tests/fixtures/providers/tikhub/xhs/image_detail.sanitized.json)
-- [`../../tests/fixtures/providers/tikhub/xhs/video_detail.sanitized.json`](../../tests/fixtures/providers/tikhub/xhs/video_detail.sanitized.json)
+- [`../../tests/fixtures/providers/tikhub/xiaohongshu/image_detail.sanitized.json`](../../tests/fixtures/providers/tikhub/xiaohongshu/image_detail.sanitized.json)
+- [`../../tests/fixtures/providers/tikhub/xiaohongshu/video_detail.sanitized.json`](../../tests/fixtures/providers/tikhub/xiaohongshu/video_detail.sanitized.json)
 
 ## 4.3 一级评论
 
@@ -256,7 +256,7 @@ parent_comment_id = null
 
 Fixture：
 
-[`../../tests/fixtures/providers/tikhub/xhs/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/xhs/comments_page1.sanitized.json)
+[`../../tests/fixtures/providers/tikhub/xiaohongshu/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/xiaohongshu/comments_page1.sanitized.json)
 
 ## 4.4 二级评论
 
@@ -272,7 +272,7 @@ data.data.comments[]
 
 Fixture：
 
-[`../../tests/fixtures/providers/tikhub/xhs/sub_comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/xhs/sub_comments_page1.sanitized.json)
+[`../../tests/fixtures/providers/tikhub/xiaohongshu/sub_comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/xiaohongshu/sub_comments_page1.sanitized.json)
 
 ---
 

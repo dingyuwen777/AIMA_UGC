@@ -67,17 +67,17 @@ def test_service_persists_run_and_scopes_bound_to_real_job(
                 trigger_type="backfill",
                 config_snapshot={
                     "schema_version": "collection-run-config.v1",
-                    "platforms": ["xhs", "dy"],
+                    "platforms": ["xiaohongshu", "douyin"],
                 },
                 scopes=(
                     CollectionScopeDefinition(
-                        platform="xhs",
+                        platform="xiaohongshu",
                         source_type="keyword_search",
                         source_value="爱玛",
                         operation_group="content_discovery",
                     ),
                     CollectionScopeDefinition(
-                        platform="dy",
+                        platform="douyin",
                         source_type="keyword_search",
                         source_value="爱玛电动车",
                         operation_group="content_discovery",
@@ -88,7 +88,7 @@ def test_service_persists_run_and_scopes_bound_to_real_job(
         assert created.run.job_id == job.id
         assert created.run.trigger_type == "backfill"
         assert created.run.status == "queued"
-        assert created.run.config_snapshot["platforms"] == ["xhs", "dy"]
+        assert created.run.config_snapshot["platforms"] == ["xiaohongshu", "douyin"]
         assert created.run.requested_count == 0
         assert {scope.status for scope in created.scopes} == {"queued"}
         assert {scope.progress for scope in created.scopes} == {0}
@@ -101,8 +101,8 @@ def test_service_persists_run_and_scopes_bound_to_real_job(
 
         assert stored_run == created.run
         assert {scope.identity for scope in stored_scopes} == {
-            ("xhs", "keyword_search", "爱玛", "content_discovery"),
-            ("dy", "keyword_search", "爱玛电动车", "content_discovery"),
+            ("xiaohongshu", "keyword_search", "爱玛", "content_discovery"),
+            ("douyin", "keyword_search", "爱玛电动车", "content_discovery"),
         }
     finally:
         session.close()
@@ -123,7 +123,7 @@ def test_repository_tracks_live_run_and_scope_lifecycle(
                 config_snapshot={},
                 scopes=(
                     CollectionScopeDefinition(
-                        platform="xhs",
+                        platform="xiaohongshu",
                         source_type="keyword_search",
                         source_value="爱玛",
                         operation_group="content_discovery",
@@ -205,7 +205,7 @@ def test_repository_rejects_invalid_lifecycle_regression(
                 config_snapshot={},
                 scopes=(
                     CollectionScopeDefinition(
-                        platform="xhs",
+                        platform="xiaohongshu",
                         source_type="keyword_search",
                         source_value="爱玛",
                         operation_group="content_discovery",
@@ -250,7 +250,7 @@ def test_database_rejects_missing_job_and_duplicate_scope_identity(
     session = database_runtime.new_session()
     repository = PostgresCollectionRepository(session)
     duplicate = CollectionScopeDefinition(
-        platform="xhs",
+        platform="xiaohongshu",
         source_type="keyword_search",
         source_value="爱玛",
         operation_group="content_discovery",

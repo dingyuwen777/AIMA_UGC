@@ -290,13 +290,13 @@ def test_real_search_fixtures_normalize_and_persist_for_all_five_platforms(
 
             xhs_chain = _insert_source_chain(
                 session,
-                platform="xhs",
+                platform="xiaohongshu",
                 operation="search_notes",
                 source_value="爱玛",
                 operation_group="content_discovery",
             )
             xhs_item = xiaohongshu.extract_search_items(
-                _fixture("xhs", "search_notes_page1.sanitized.json")
+                _fixture("xiaohongshu", "search_notes_page1.sanitized.json")
             )[1]
             xhs_canonical = map_xhs_content(
                 xhs_item,
@@ -370,7 +370,7 @@ def test_real_search_fixtures_normalize_and_persist_for_all_five_platforms(
                 mapped_results.append((canonical, result.target_id))
 
         assert {canonical.platform for canonical, _ in mapped_results} == {
-            "xhs",
+            "xiaohongshu",
             "douyin",
             "weibo",
             "bilibili",
@@ -415,11 +415,11 @@ def test_real_root_comment_fixtures_persist_canonical_comment_semantics(
             service = ContentIngestionService(PostgresContentRepository(session))
             cases = (
                 (
-                    "xhs",
+                    "xiaohongshu",
                     "xhs-note-1",
                     "get_note_comments",
                     xiaohongshu.extract_comment_items(
-                        _fixture("xhs", "comments_page1.sanitized.json")
+                        _fixture("xiaohongshu", "comments_page1.sanitized.json")
                     )[0],
                     XhsMappingContext,
                     map_xhs_comment,
@@ -490,7 +490,7 @@ def test_real_root_comment_fixtures_persist_canonical_comment_semantics(
                     source_value=content_id,
                     operation_group="comments",
                 )
-                if platform == "xhs":
+                if platform == "xiaohongshu":
                     context = XhsMappingContext(
                         provider_request_id=str(comment_chain.request_id),
                         provider_attempt_id=str(comment_chain.attempt_id),
@@ -518,7 +518,7 @@ def test_real_root_comment_fixtures_persist_canonical_comment_semantics(
                 results.append((canonical, result.target_id))
 
         assert {canonical.platform for canonical, _ in results} == {
-            "xhs",
+            "xiaohongshu",
             "douyin",
             "weibo",
             "kuaishou",

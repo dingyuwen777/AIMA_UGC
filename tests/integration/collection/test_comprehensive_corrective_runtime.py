@@ -46,7 +46,7 @@ from aima_ugc.platform.storage import ArtifactService
 from pydantic import SecretStr
 from sqlalchemy import func, select
 
-_FIXTURES = Path("tests/fixtures/providers/tikhub/xhs")
+_FIXTURES = Path("tests/fixtures/providers/tikhub/xiaohongshu")
 
 
 @dataclass
@@ -216,7 +216,7 @@ def test_scope_persists_durable_actions_extensions_and_thread_coverage(
                     },
                     "platforms": [
                         {
-                            "platform": "xhs",
+                            "platform": "xiaohongshu",
                             "provider_config_id": str(provider_config.id),
                             "config": {
                                 "sort_mode": "latest",
@@ -228,7 +228,7 @@ def test_scope_persists_durable_actions_extensions_and_thread_coverage(
                 },
                 scopes=(
                     CollectionScopeDefinition(
-                        platform="xhs",
+                        platform="xiaohongshu",
                         source_type="keyword_search",
                         source_value="爱玛",
                         operation_group="content_discovery",
@@ -313,7 +313,7 @@ def test_scope_persists_durable_actions_extensions_and_thread_coverage(
         root_comment_id=persisted_thread["root_comment_id"],
         provider_attempt_id=persisted_thread["provider_attempt_id"],
         raw_artifact_id=persisted_thread["raw_artifact_id"],
-        platform="xhs",
+        platform="xiaohongshu",
         fence=fence,
         coverage=persisted_thread["coverage"],
         reported_total=persisted_thread["reported_total"],
@@ -330,7 +330,7 @@ def test_scope_persists_durable_actions_extensions_and_thread_coverage(
             root_comment_id=persisted_thread["root_comment_id"],
             provider_attempt_id=persisted_thread["provider_attempt_id"],
             raw_artifact_id=persisted_thread["raw_artifact_id"],
-            platform="xhs",
+            platform="xiaohongshu",
             fence=fence,
             coverage="complete",
             reported_total=2,

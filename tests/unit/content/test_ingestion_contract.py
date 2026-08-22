@@ -28,7 +28,7 @@ SOURCE = CanonicalSourceV1(
 
 def _content(*, title: str, likes: int, observed_at: datetime = OBSERVED_AT) -> CanonicalContentV1:
     return CanonicalContentV1(
-        platform="xhs",
+        platform="xiaohongshu",
         external_content_id="note-1",
         content_type="image",
         title=title,
@@ -51,7 +51,7 @@ def test_sparse_update_a_b_a_and_metric_decrease_keep_history() -> None:
     assert first.version_no == 1
     assert second.version_no == 2
     assert third.version_no == 3
-    current = repository.get_content("xhs", "note-1")
+    current = repository.get_content("xiaohongshu", "note-1")
     assert current is not None
     assert current.title == "A"
     assert current.text == "保留正文"
@@ -67,7 +67,7 @@ def test_unobserved_field_is_not_cleared_and_daily_checkpoint_is_singleton() -> 
 
     next_observed_at = datetime(2026, 8, 15, 2, 0, tzinfo=UTC)
     sparse = CanonicalContentV1(
-        platform="xhs",
+        platform="xiaohongshu",
         external_content_id="note-1",
         content_type="image",
         title="A",
@@ -80,7 +80,7 @@ def test_unobserved_field_is_not_cleared_and_daily_checkpoint_is_singleton() -> 
     service.ingest_content(sparse)
     service.ingest_content(sparse)
 
-    current = repository.get_content("xhs", "note-1")
+    current = repository.get_content("xiaohongshu", "note-1")
     assert current is not None
     assert current.text == "保留正文"
     reasons = [item.reason for item in repository.metric_observations]

@@ -56,7 +56,7 @@ def _clear_collection_data(connection) -> None:
     connection.execute(delete(jobs_table))
 
 
-def _create_scope(runtime: DatabaseRuntime, *, key: str, platform: str = "xhs"):
+def _create_scope(runtime: DatabaseRuntime, *, key: str, platform: str = "xiaohongshu"):
     session = runtime.new_session()
     try:
         with session.begin():
@@ -96,7 +96,7 @@ def _request(*, request_id: UUID, run_id: UUID, scope_id: UUID, provider: str = 
         run_id=run_id,
         scope_id=scope_id,
         provider=provider,
-        platform="xhs",
+        platform="xiaohongshu",
         operation="search_notes",
         request_params={"keyword": "爱玛"},
         pagination_input={"page": 1},
@@ -194,7 +194,7 @@ def test_repository_closes_failed_on_id_or_logical_request_conflicts(
             run_id=run.id,
             scope_id=scope.id,
             provider="fake",
-            platform="xhs",
+            platform="xiaohongshu",
             operation="search_notes",
             request_params={"keyword": "爱玛电动车"},
             pagination_input={"page": 1},

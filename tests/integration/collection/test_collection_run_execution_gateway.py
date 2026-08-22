@@ -68,7 +68,7 @@ def _prepare_claimed_execution(
                 config_snapshot={},
                 scopes=(
                     CollectionScopeDefinition(
-                        platform="xhs",
+                        platform="xiaohongshu",
                         source_type="keyword_search",
                         source_value="爱玛",
                         operation_group="content_discovery",

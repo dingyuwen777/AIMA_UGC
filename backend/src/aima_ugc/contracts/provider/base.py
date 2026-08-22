@@ -7,11 +7,9 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, SecretStr
 
+from aima_ugc.contracts.platform import PlatformName
+
 ProviderName = Annotated[
-    str,
-    Field(min_length=1, max_length=64, pattern=r"^[a-z0-9][a-z0-9_-]*$"),
-]
-PlatformName = Annotated[
     str,
     Field(min_length=1, max_length=64, pattern=r"^[a-z0-9][a-z0-9_-]*$"),
 ]

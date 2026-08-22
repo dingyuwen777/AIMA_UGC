@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
+from aima_ugc.contracts.platform import PlatformName, PlatformScope
+
 from .execution import CollectionScopeDefinition
 
 
@@ -19,7 +21,7 @@ class ScheduledKeywordEntry:
     keyword_text: str
     keyword_normalized_text: str
     keyword_enabled: bool
-    item_platform: str
+    item_platform_scope: PlatformScope
     priority: int
     item_enabled: bool
 
@@ -43,11 +45,11 @@ class ScheduledScopeSnapshot:
 
 def build_scheduled_scope_snapshot(
     *,
-    plan_platforms: tuple[str, ...],
+    plan_platforms: tuple[PlatformName, ...],
     entries: tuple[ScheduledKeywordEntry, ...],
     keyword_packs: tuple[ScheduledKeywordPackSnapshot, ...] = (),
 ) -> ScheduledScopeSnapshot:
-    """展开 `platform=all` 并按稳定关键词身份去重，不读取外部状态。"""
+    """展开 `platform_scope=all` 并按稳定关键词身份去重，不读取外部状态。"""
     normalized_platforms = tuple(
         platform.strip() for platform in plan_platforms if platform.strip()
     )
@@ -74,7 +76,7 @@ def build_scheduled_scope_snapshot(
             item.keyword_normalized_text,
             str(item.keyword_id),
             str(item.pack_id),
-            item.item_platform,
+            item.item_platform_scope,
         ),
     )
     seen: set[tuple[str, UUID]] = set()
@@ -85,10 +87,10 @@ def build_scheduled_scope_snapshot(
         if not entry.keyword_text.strip() or not entry.keyword_normalized_text.strip():
             raise ValueError("scheduled keyword entry 文本不得为空")
 
-        if entry.item_platform == "all":
+        if entry.item_platform_scope == "all":
             target_platforms = normalized_platforms
-        elif entry.item_platform in platform_set:
-            target_platforms = (entry.item_platform,)
+        elif entry.item_platform_scope in platform_set:
+            target_platforms = (entry.item_platform_scope,)
         else:
             target_platforms = ()
 

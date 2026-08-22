@@ -160,7 +160,7 @@ def _plan_request(provider_id: UUID, pack_id: UUID) -> CollectionPlanCreateReque
         schedule_expr="0 9 * * *",
         platforms=(
             CollectionPlanPlatformRequest(
-                platform="xhs",
+                platform="xiaohongshu",
                 provider_config_id=provider_id,
             ),
         ),
@@ -175,7 +175,7 @@ def test_strategy_service_creates_queryable_plan_without_creating_job(runtime) -
 
     packs = service.list_keyword_packs(KeywordPackListQuery(limit=20))
     created = service.create_plan(_plan_request(provider_id, discovery_pack_id))
-    listing = service.list_plans(CollectionPlanListQuery(platform="xhs", limit=20))
+    listing = service.list_plans(CollectionPlanListQuery(platform="xiaohongshu", limit=20))
     by_plan_id = service.list_plans(CollectionPlanListQuery(search=str(created.id)[:12], limit=20))
     loaded = service.get_plan(created.id)
 

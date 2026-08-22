@@ -32,7 +32,7 @@ from aima_ugc.platform.jobs.tables import jobs_table
 from pydantic import SecretStr
 from sqlalchemy import func, select
 
-_FIXTURES = Path("tests/fixtures/providers/tikhub/xhs")
+_FIXTURES = Path("tests/fixtures/providers/tikhub/xiaohongshu")
 
 
 @pytest.fixture
@@ -132,7 +132,7 @@ def test_http_500_retries_same_logical_request_with_new_provider_attempt(
                     ).model_dump(mode="json"),
                     "platforms": [
                         {
-                            "platform": "xhs",
+                            "platform": "xiaohongshu",
                             "provider_config_id": str(provider_config.id),
                             "config": {
                                 "sort_mode": "latest",
@@ -144,7 +144,7 @@ def test_http_500_retries_same_logical_request_with_new_provider_attempt(
                 },
                 scopes=(
                     CollectionScopeDefinition(
-                        platform="xhs",
+                        platform="xiaohongshu",
                         source_type="keyword_search",
                         source_value="爱玛",
                         operation_group="content_discovery",

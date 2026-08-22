@@ -73,7 +73,7 @@ describe('collection runtime feature', () => {
     generated.createCollectionRun.mockResolvedValue({ run_id: 'run-1', job_id: 'job-1', mode: 'discovery', status: 'queued' })
     await createTikHubCollectionRun({
       mode: 'discovery', keywords: ['爱玛', 'Q7'],
-      platforms: [{ platform: 'xhs', provider_config_id: 'provider-1' }],
+      platforms: [{ platform: 'xiaohongshu', provider_config_id: 'provider-1' }],
       include_comments: true, include_sub_comments: false,
     })
     expect(generated.createCollectionRun).toHaveBeenCalledWith(expect.objectContaining({ mode: 'discovery', keywords: ['爱玛', 'Q7'] }))
@@ -112,13 +112,13 @@ describe('collection runtime feature', () => {
     expect(store.batchOptions.map((item) => item.id)).toEqual(['usable-batch'])
   })
 
-  it('maps Collection xhs to the stored xiaohongshu platform when probing Batch content', async () => {
+  it('maps Collection xiaohongshu to the stored xiaohongshu platform when probing Batch content', async () => {
     generated.listContents.mockImplementation(async (params: { platforms?: string[] }) => ({
       items: params.platforms?.[0] === 'xiaohongshu' ? [{ id: 'content-1' }] : [],
       has_more: false,
       next_cursor: null,
     }))
-    await expect(fetchBatchContentPlatforms('batch-1', ['xhs', 'douyin'])).resolves.toEqual(['xhs'])
+    await expect(fetchBatchContentPlatforms('batch-1', ['xiaohongshu', 'douyin'])).resolves.toEqual(['xiaohongshu'])
     expect(generated.listContents).toHaveBeenCalledWith({
       source_identifier: 'batch-1', platforms: ['xiaohongshu'], limit: 1,
     })
@@ -131,7 +131,7 @@ describe('collection runtime feature', () => {
       next_cursor: null,
     }))
 
-    await expect(fetchBatchContentPlatforms('batch-irrelevant', ['xhs'])).resolves.toEqual(['xhs'])
+    await expect(fetchBatchContentPlatforms('batch-irrelevant', ['xiaohongshu'])).resolves.toEqual(['xiaohongshu'])
     expect(generated.listContents).toHaveBeenNthCalledWith(2, {
       source_identifier: 'batch-irrelevant',
       platforms: ['xiaohongshu'],

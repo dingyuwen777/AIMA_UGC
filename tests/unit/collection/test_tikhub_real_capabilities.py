@@ -30,7 +30,7 @@ def test_real_probe_backed_capabilities_cover_all_five_platforms() -> None:
         KUAISHOU_TIKHUB_CAPABILITY,
     )
     assert {item.platform for item in capabilities} == {
-        "xhs",
+        "xiaohongshu",
         "douyin",
         "weibo",
         "bilibili",
@@ -77,8 +77,8 @@ def test_real_comment_shape_controls_reply_count_and_incremental_claims() -> Non
 
 
 def test_search_capabilities_expose_only_runtime_supported_business_values() -> None:
-    xhs = _operation(XHS_TIKHUB_CAPABILITY, "keyword_search")
-    assert set(xhs.supported_content_types) == {"all", "video", "image"}
+    xiaohongshu = _operation(XHS_TIKHUB_CAPABILITY, "keyword_search")
+    assert set(xiaohongshu.supported_content_types) == {"all", "video", "image"}
 
     douyin = _operation(DOUYIN_TIKHUB_CAPABILITY, "keyword_search")
     assert set(douyin.supported_sort_modes) == {"general", "most_liked", "latest"}
@@ -126,7 +126,7 @@ def test_default_registry_resolves_all_real_verified_tikhub_platforms() -> None:
         enabled=True,
     )
 
-    for platform in ("xhs", "douyin", "weibo", "bilibili", "kuaishou"):
+    for platform in ("xiaohongshu", "douyin", "weibo", "bilibili", "kuaishou"):
         route = registry.resolve(config=config, platform=platform)
         assert route.platform == platform
         assert route.provider == "tikhub"

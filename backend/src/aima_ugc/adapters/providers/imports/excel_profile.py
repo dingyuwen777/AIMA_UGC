@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
+
+from aima_ugc.contracts.platform import PlatformName
 
 from .models import ExcelImportRowError
 
@@ -18,11 +19,9 @@ _REQUIRED_HEADERS = (
     "原文链接",
 )
 
-_PLATFORM_ALIASES = {
+_PLATFORM_LABELS: dict[str, PlatformName] = {
     "小红书": "xiaohongshu",
     "xiaohongshu": "xiaohongshu",
-    "xhs": "xiaohongshu",
-    "red": "xiaohongshu",
     "抖音": "douyin",
     "douyin": "douyin",
     "微博": "weibo",
@@ -34,16 +33,6 @@ _PLATFORM_ALIASES = {
     "快手": "kuaishou",
     "kuaishou": "kuaishou",
 }
-_PLATFORM_KEYWORD_ALIASES = (
-    ("新浪微博", "weibo"),
-    ("哔哩哔哩", "bilibili"),
-    ("小红书", "xiaohongshu"),
-    ("抖音", "douyin"),
-    ("微博", "weibo"),
-    ("快手", "kuaishou"),
-    ("b站", "bilibili"),
-)
-_PLATFORM_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,28 +43,16 @@ class ExcelImportProfile:
     default_sheet_name: str
     required_headers: tuple[str, ...]
 
-    def resolve_platform(self, value: object) -> str:
+    def resolve_platform(self, value: object) -> PlatformName:
         text = _non_empty_text(value)
         if text is None:
             raise ExcelImportRowError("platform_missing", "媒体名称（中文）不能为空")
-
-        folded = text.casefold()
-        alias = _PLATFORM_ALIASES.get(folded)
-        if alias is not None:
-            return alias
-
-        candidate = re.sub(r"\s+", "_", folded)
-        if _PLATFORM_PATTERN.fullmatch(candidate):
-            return candidate
-
-        compact = re.sub(r"\s+", "", folded)
-        for keyword, platform in _PLATFORM_KEYWORD_ALIASES:
-            if keyword in compact:
-                return platform
-
+        platform = _PLATFORM_LABELS.get(text)
+        if platform is not None:
+            return platform
         raise ExcelImportRowError(
             "platform_unmapped",
-            "媒体名称（中文）无法安全映射为 Canonical platform",
+            "媒体名称（中文）只能映射到系统五个平台机器标识",
         )
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from aima_ugc.contracts.collection import ProviderPlatformCapabilityV1, ProviderPlatformRouteV1
+from aima_ugc.contracts.platform import PlatformName
 from aima_ugc.contracts.collection.provider_config import normalize_provider_base_url
 from aima_ugc.modules.system.models import ProviderConfig
 
@@ -42,7 +43,7 @@ class ProviderRegistry:
             raise ValueError("Provider Registry 存在重复 Provider")
         self._registrations = {item.provider: item for item in registrations}
 
-    def resolve(self, *, config: ProviderConfig, platform: str) -> ProviderPlatformRouteV1:
+    def resolve(self, *, config: ProviderConfig, platform: PlatformName) -> ProviderPlatformRouteV1:
         if not config.enabled:
             raise ValueError(f"Provider 配置已禁用: {config.id}")
         registration = self._registrations.get(config.provider)

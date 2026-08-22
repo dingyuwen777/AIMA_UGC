@@ -136,7 +136,7 @@ def _fixture(
         run_id=run_id,
         scope_id=scope_id,
         provider="fake_provider",
-        platform="xhs",
+        platform="xiaohongshu",
         operation="keyword_search",
         request_params={"keyword": "爱玛"},
     )

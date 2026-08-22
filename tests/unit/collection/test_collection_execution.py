@@ -50,7 +50,7 @@ def test_service_creates_supported_run_with_immutable_scope_sequence() -> None:
     job_id = uuid4()
     scopes = [
         CollectionScopeDefinition(
-            platform="xhs",
+            platform="xiaohongshu",
             source_type="keyword_search",
             source_value="爱玛",
             operation_group="content_discovery",

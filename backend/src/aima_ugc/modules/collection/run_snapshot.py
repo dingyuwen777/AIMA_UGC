@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from aima_ugc.contracts.platform import PlatformName
 from aima_ugc.modules.system.models import ProviderConfig
 
 
 def provider_run_snapshot(
     provider_config: ProviderConfig,
     *,
-    platform: str,
+    platform: PlatformName,
     config: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """冻结非 Secret 执行事实；只保存 Secret 引用身份。"""

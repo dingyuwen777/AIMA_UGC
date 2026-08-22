@@ -42,7 +42,7 @@ export const recordTypeLabels: Record<CollectionRuntimeRecordType, string> = {
 }
 
 export const platformLabels: Record<CollectionPlatform, string> = {
-  xhs: '小红书',
+  xiaohongshu: '小红书',
   douyin: '抖音',
   weibo: '微博',
   bilibili: 'B站',

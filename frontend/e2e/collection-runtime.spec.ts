@@ -37,9 +37,9 @@ const runtimeItem = {
   status: 'running', stage: 'filtering', progress: 67, import_stats: importDetail.stats, collection_stats: null, platforms: [], keywords: [], created_at: '2026-08-21T01:30:42Z', started_at: '2026-08-21T01:30:42Z', finished_at: null, error_code: null, error_summary: null,
 }
 const runDetail = {
-  run_id: runId, job_id: collectionJobId, mode: 'discovery', import_batch_id: null, keywords: ['爱玛', 'Q7'], platforms: ['xhs'], status: 'queued', stage: 'queued', progress: 0, attempt: 0, max_attempts: 2,
+  run_id: runId, job_id: collectionJobId, mode: 'discovery', import_batch_id: null, keywords: ['爱玛', 'Q7'], platforms: ['xiaohongshu'], status: 'queued', stage: 'queued', progress: 0, attempt: 0, max_attempts: 2,
   stats: { requested_count: 0, succeeded_count: 0, failed_count: 0, content_count: 0, comment_count: 0, filtered_count: 0 },
-  scopes: [{ id: '72345678-1234-5678-1234-567812345678', platform: 'xhs', source_type: 'keyword_search', operation_group: 'content_discovery', status: 'queued', progress: 0, stats: { requested_count: 0, succeeded_count: 0, failed_count: 0, content_count: 0, comment_count: 0, filtered_count: 0 } }],
+  scopes: [{ id: '72345678-1234-5678-1234-567812345678', platform: 'xiaohongshu', source_type: 'keyword_search', operation_group: 'content_discovery', status: 'queued', progress: 0, stats: { requested_count: 0, succeeded_count: 0, failed_count: 0, content_count: 0, comment_count: 0, filtered_count: 0 } }],
   error_code: null, error_summary: null, created_at: '2026-08-21T02:00:00Z', started_at: null, finished_at: null,
 }
 
@@ -49,7 +49,7 @@ test.beforeEach(async ({ page }) => {
     const url = new URL(request.url())
     if (url.pathname === '/api/v1/collection-runtime/summary') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ processing_count: 12, completed_today_count: 86, contents_ingested_today: 3284, as_of: '2026-08-21T02:00:00Z' }) })
     if (url.pathname === '/api/v1/collection-runtime/runs') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [runtimeItem], next_cursor: null, has_more: false }) })
-    if (url.pathname === '/api/v1/collection-capabilities') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ provider_configs: [{ id: providerConfigId, provider: 'tikhub', display_name: 'TikHub 主配置' }], capabilities: [{ provider: 'tikhub', platform: 'xhs', operations: ['keyword_search', 'content_detail', 'comments', 'sub_comments'] }, { provider: 'tikhub', platform: 'douyin', operations: ['keyword_search', 'content_detail', 'comments', 'sub_comments'] }] }) })
+    if (url.pathname === '/api/v1/collection-capabilities') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ provider_configs: [{ id: providerConfigId, provider: 'tikhub', display_name: 'TikHub 主配置' }], capabilities: [{ provider: 'tikhub', platform: 'xiaohongshu', operations: ['keyword_search', 'content_detail', 'comments', 'sub_comments'] }, { provider: 'tikhub', platform: 'douyin', operations: ['keyword_search', 'content_detail', 'comments', 'sub_comments'] }] }) })
     if (url.pathname === '/api/v1/collection-runs' && request.method() === 'POST') return route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ run_id: runId, job_id: collectionJobId, mode: 'discovery', status: 'queued' }) })
     if (url.pathname === `/api/v1/collection-runs/${runId}`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify(runDetail) })
     if (url.pathname === '/api/v1/import-batches' && request.method() === 'POST') return route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ batch_id: batchId, job_id: importJobId, status: 'queued' }) })
@@ -104,7 +104,7 @@ test('creates a TikHub supplement Run only for a platform that exists in the Bat
   await drawer.getByRole('button', { name: /小红书/ }).click()
   const requestPromise = page.waitForRequest((request) => new URL(request.url()).pathname === '/api/v1/collection-runs' && request.method() === 'POST')
   await drawer.getByRole('button', { name: '创建补采任务' }).click()
-  expect((await requestPromise).postDataJSON()).toMatchObject({ mode: 'batch_supplement', import_batch_id: batchId, platforms: [{ platform: 'xhs', provider_config_id: providerConfigId }] })
+  expect((await requestPromise).postDataJSON()).toMatchObject({ mode: 'batch_supplement', import_batch_id: batchId, platforms: [{ platform: 'xiaohongshu', provider_config_id: providerConfigId }] })
 })
 
 test('re-probes Batch platform eligibility when switching A to B and back to A', async ({ page }) => {

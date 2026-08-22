@@ -49,7 +49,9 @@ def _fixture(platform: str, name: str) -> dict[str, object]:
 
 
 def test_xhs_real_sub_comment_preserves_root_and_direct_parent() -> None:
-    raw = _fixture("xhs", "sub_comments_page1.sanitized.json")["data"]["data"]["comments"][0]
+    raw = _fixture("xiaohongshu", "sub_comments_page1.sanitized.json")["data"]["data"]["comments"][
+        0
+    ]
     mapped = map_xhs_comment(
         raw,
         XhsMappingContext(

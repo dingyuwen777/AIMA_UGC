@@ -117,7 +117,7 @@ class PostgresCollectionHttpService:
                 capabilities: dict[tuple[str, str], CollectionCapabilityResponse] = {}
                 for config in configs:
                     config_has_route = False
-                    for platform in ("xhs", "douyin", "weibo", "bilibili", "kuaishou"):
+                    for platform in ("xiaohongshu", "douyin", "weibo", "bilibili", "kuaishou"):
                         try:
                             route = registry.resolve(config=config, platform=platform)
                         except ValueError:
@@ -597,7 +597,7 @@ def _runtime_platforms(
             isinstance(platform, str)
             and platform
             in {
-                "xhs",
+                "xiaohongshu",
                 "douyin",
                 "weibo",
                 "bilibili",
@@ -610,7 +610,7 @@ def _runtime_platforms(
 
 
 def _collection_platform(value: str) -> CollectionPlatform:
-    if value not in {"xhs", "douyin", "weibo", "bilibili", "kuaishou"}:
+    if value not in {"xiaohongshu", "douyin", "weibo", "bilibili", "kuaishou"}:
         raise CollectionConflict
     return cast(CollectionPlatform, value)
 

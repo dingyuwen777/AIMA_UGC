@@ -391,7 +391,7 @@ def _run_xhs(
     search_body = _capture(
         probe=probe,
         output=output,
-        platform="xhs",
+        platform="xiaohongshu",
         label="search_notes",
         request=xiaohongshu.build_search_notes_request(
             keyword=KEYWORD,
@@ -414,7 +414,7 @@ def _run_xhs(
     _capture(
         probe=probe,
         output=output,
-        platform="xhs",
+        platform="xiaohongshu",
         label="image_detail",
         request=xiaohongshu.build_image_detail_request(note_id=image_note_id),
         pseudonyms=pseudo,
@@ -423,7 +423,7 @@ def _run_xhs(
     comments_body = _capture(
         probe=probe,
         output=output,
-        platform="xhs",
+        platform="xiaohongshu",
         label="comments",
         request=xiaohongshu.build_note_comments_request(note_id=image_note_id),
         pseudonyms=pseudo,
@@ -439,7 +439,7 @@ def _run_xhs(
     _capture(
         probe=probe,
         output=output,
-        platform="xhs",
+        platform="xiaohongshu",
         label="sub_comments",
         request=xiaohongshu.build_sub_comments_request(
             note_id=image_note_id,
@@ -452,7 +452,7 @@ def _run_xhs(
     video_search = _capture(
         probe=probe,
         output=output,
-        platform="xhs",
+        platform="xiaohongshu",
         label="search_notes_video_supporting",
         request=xiaohongshu.build_search_notes_request(
             keyword=KEYWORD,
@@ -471,7 +471,7 @@ def _run_xhs(
     _capture(
         probe=probe,
         output=output,
-        platform="xhs",
+        platform="xiaohongshu",
         label="video_detail",
         request=xiaohongshu.build_video_detail_request(note_id=video_note_id),
         pseudonyms=pseudo,
@@ -749,7 +749,8 @@ def run() -> None:
     credential = SecretStr(_required_env("AIMA_TIKHUB_PROBE_TOKEN"))
     manifest: list[dict[str, object]] = []
     pseudonyms = {
-        platform: Pseudonymizer() for platform in ("xhs", "douyin", "weibo", "bilibili", "kuaishou")
+        platform: Pseudonymizer()
+        for platform in ("xiaohongshu", "douyin", "weibo", "bilibili", "kuaishou")
     }
 
     with TikHubHttpTransport(base_url=BASE_URL) as transport:
@@ -761,7 +762,7 @@ def run() -> None:
                 max_estimated_cost=MAX_ESTIMATED_COST,
             ),
         )
-        _run_xhs(probe, output, pseudonyms["xhs"], manifest)
+        _run_xhs(probe, output, pseudonyms["xiaohongshu"], manifest)
         _run_douyin(probe, output, pseudonyms["douyin"], manifest)
         _run_weibo(probe, output, pseudonyms["weibo"], manifest)
         _run_bilibili(probe, output, pseudonyms["bilibili"], manifest)

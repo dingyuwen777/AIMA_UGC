@@ -17,7 +17,7 @@ Capability
 → backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py
 
 真实 Fixture
-→ tests/fixtures/providers/tikhub/xhs/
+→ tests/fixtures/providers/tikhub/xiaohongshu/
 ```
 
 生产 Collection 串联：
@@ -100,7 +100,7 @@ item.note
 Fixture：
 
 ```text
-tests/fixtures/providers/tikhub/xhs/search_notes_page1.sanitized.json
+tests/fixtures/providers/tikhub/xiaohongshu/search_notes_page1.sanitized.json
 ```
 
 Operation 中的 Extractor 是生产字段事实；不要从本文复制一段 JSONPath 后在其他脚本再实现一套。
@@ -150,8 +150,8 @@ XHS 当前不同内容类型使用不同 Detail Endpoint。
 Fixture：
 
 ```text
-xhs/image_detail.sanitized.json
-xhs/video_detail.sanitized.json
+xiaohongshu/image_detail.sanitized.json
+xiaohongshu/video_detail.sanitized.json
 ```
 
 Search Mapper 能识别内容类型；Decision 需要 Detail 时，生产链选择正确的 Detail Operation。

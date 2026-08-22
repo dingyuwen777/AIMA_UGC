@@ -71,7 +71,7 @@ def _content(
     source_value: str = "stage8a.xlsx",
 ) -> CanonicalContentV1:
     return CanonicalContentV1(
-        platform="xhs",
+        platform="xiaohongshu",
         external_content_id=external_content_id,
         content_type="note",
         title=title,
@@ -144,7 +144,7 @@ def _create_provider_config(database_runtime: DatabaseRuntime) -> tuple[Provider
                 KeywordPackItem(
                     pack_id=pack.id,
                     keyword_id=keyword.id,
-                    platform="all",
+                    platform_scope="all",
                     priority=10,
                     enabled=True,
                     note="Stage 8A Cross Source Integration",
@@ -197,7 +197,7 @@ def test_repeated_excel_and_later_tikhub_converge_to_one_current_with_history(
 
     provider_config, secret_path = _create_provider_config(database_runtime)
     bridge = create_tikhub_debug_database_session(
-        platform="xhs",
+        platform="xiaohongshu",
         keywords=("爱玛",),
         run_id=f"stage8a-cross-{uuid4().hex}",
         provider_config_id=provider_config.id,
@@ -217,7 +217,7 @@ def test_repeated_excel_and_later_tikhub_converge_to_one_current_with_history(
     dispatched_attempt_id = None
     try:
         call = tikhub_runtime.build_search_call(
-            platform="xhs",
+            platform="xiaohongshu",
             keyword="爱玛",
             config={
                 "sort_mode": "latest",
@@ -242,7 +242,7 @@ def test_repeated_excel_and_later_tikhub_converge_to_one_current_with_history(
             discovered_at=dispatched.observed_at,
         )
         canonical = tikhub_runtime.map_content(
-            platform="xhs",
+            platform="xiaohongshu",
             raw={
                 "id": _SHARED_CONTENT_ID,
                 "type": "normal",
@@ -276,7 +276,7 @@ def test_repeated_excel_and_later_tikhub_converge_to_one_current_with_history(
             rows = (
                 session.execute(
                     select(contents_table).where(
-                        contents_table.c.platform == "xhs",
+                        contents_table.c.platform == "xiaohongshu",
                         contents_table.c.external_content_id == _SHARED_CONTENT_ID,
                     )
                 )
@@ -402,7 +402,7 @@ def test_failed_database_stage_can_retry_without_business_duplicate(
                     select(func.count())
                     .select_from(contents_table)
                     .where(
-                        contents_table.c.platform == "xhs",
+                        contents_table.c.platform == "xiaohongshu",
                         contents_table.c.external_content_id == "stage8a-retry-content",
                     )
                 )
@@ -438,7 +438,7 @@ def test_failed_database_stage_can_retry_without_business_duplicate(
             current = (
                 session.execute(
                     select(contents_table).where(
-                        contents_table.c.platform == "xhs",
+                        contents_table.c.platform == "xiaohongshu",
                         contents_table.c.external_content_id == "stage8a-retry-content",
                     )
                 )

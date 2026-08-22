@@ -140,11 +140,11 @@ backend/src/aima_ugc/bootstrap/content_http.py
 
 ```text
 Excel 导入
-platform=xhs
+platform=xiaohongshu
 external_content_id=note_123
 
 TikHub 后续又采到
-platform=xhs
+platform=xiaohongshu
 external_content_id=note_123
 ```
 
@@ -501,7 +501,7 @@ ContentFilterSnapshot
 因此：
 
 ```text
-平台=xhs 的 cursor
+平台=xiaohongshu 的 cursor
 ```
 
 不能拿去继续：

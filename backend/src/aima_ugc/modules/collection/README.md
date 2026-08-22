@@ -266,7 +266,7 @@ tests/unit/collection/
 代表逻辑业务请求，例如：
 
 ```text
-对 xhs 搜索关键词“爱玛”第一页
+对 xiaohongshu 搜索关键词“爱玛”第一页
 ```
 
 ### Attempt

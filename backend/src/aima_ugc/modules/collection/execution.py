@@ -7,6 +7,8 @@ from datetime import datetime
 from typing import Literal, Protocol, cast
 from uuid import UUID
 
+from aima_ugc.contracts.platform import PlatformName
+
 type CollectionRunTrigger = Literal["scheduled", "manual", "api", "backfill"]
 type CollectionRunStatus = Literal[
     "queued",
@@ -22,7 +24,7 @@ type CollectionRunStatus = Literal[
 class CollectionScopeDefinition:
     """创建 Scope 所需的稳定业务身份。"""
 
-    platform: str
+    platform: PlatformName
     source_type: str
     source_value: str
     operation_group: str
@@ -61,7 +63,7 @@ class CollectionScopeRecord:
 
     id: UUID
     run_id: UUID
-    platform: str
+    platform: PlatformName
     source_type: str
     source_value: str
     operation_group: str

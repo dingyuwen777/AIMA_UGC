@@ -313,7 +313,7 @@
       },
       "CollectionPlatform": {
         "enum": [
-          "xhs",
+          "xiaohongshu",
           "douyin",
           "weibo",
           "bilibili",
@@ -1360,8 +1360,7 @@
             "$ref": "#/components/schemas/ContentMetricsResponse"
           },
           "platform": {
-            "title": "Platform",
-            "type": "string"
+            "$ref": "#/components/schemas/PlatformName"
           },
           "published_at": {
             "anyOf": [
@@ -1448,9 +1447,9 @@
           "platforms": {
             "default": [],
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/PlatformName"
             },
-            "maxItems": 20,
+            "maxItems": 5,
             "title": "Platforms",
             "type": "array"
           },
@@ -1636,8 +1635,7 @@
             "$ref": "#/components/schemas/ContentMetricsResponse"
           },
           "platform": {
-            "title": "Platform",
-            "type": "string"
+            "$ref": "#/components/schemas/PlatformName"
           },
           "published_at": {
             "anyOf": [
@@ -2919,10 +2917,9 @@
             "title": "Note",
             "type": "string"
           },
-          "platform": {
-            "default": "all",
-            "title": "Platform",
-            "type": "string"
+          "platform_scope": {
+            "$ref": "#/components/schemas/PlatformScope",
+            "default": "all"
           },
           "priority": {
             "title": "Priority",
@@ -2942,6 +2939,27 @@
         ],
         "title": "KeywordResponse",
         "type": "object"
+      },
+      "PlatformName": {
+        "enum": [
+          "xiaohongshu",
+          "douyin",
+          "weibo",
+          "bilibili",
+          "kuaishou"
+        ],
+        "type": "string"
+      },
+      "PlatformScope": {
+        "enum": [
+          "all",
+          "xiaohongshu",
+          "douyin",
+          "weibo",
+          "bilibili",
+          "kuaishou"
+        ],
+        "type": "string"
       },
       "ReadinessChecks": {
         "additionalProperties": false,
@@ -3898,9 +3916,9 @@
             "schema": {
               "default": [],
               "items": {
-                "type": "string"
+                "$ref": "#/components/schemas/PlatformName"
               },
-              "maxItems": 20,
+              "maxItems": 5,
               "title": "Platforms",
               "type": "array"
             }

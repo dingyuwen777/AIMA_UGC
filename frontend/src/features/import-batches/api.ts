@@ -94,18 +94,11 @@ export async function fetchCollectionRunDetail(runId: string): Promise<Collectio
   return unwrap(await getCollectionRun(runId))
 }
 
-const contentPlatformByCollection: Record<CollectionPlatform, string> = {
-  xhs: 'xiaohongshu',
-  douyin: 'douyin',
-  weibo: 'weibo',
-  bilibili: 'bilibili',
-  kuaishou: 'kuaishou',
-}
 
 async function batchHasPlatformContent(batchId: string, platform: CollectionPlatform): Promise<boolean> {
   const params = {
     source_identifier: batchId,
-    platforms: [contentPlatformByCollection[platform]],
+    platforms: [platform],
     limit: 1,
   }
   const visible = unwrap(await listContents(params))

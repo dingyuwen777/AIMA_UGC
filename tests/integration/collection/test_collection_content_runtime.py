@@ -96,7 +96,7 @@ def _create_live_source(runtime: DatabaseRuntime, *, source_value: str) -> _Live
                 config_snapshot={"schema_version": "collection-run-config.v1"},
                 scopes=(
                     CollectionScopeDefinition(
-                        platform="xhs",
+                        platform="xiaohongshu",
                         source_type="keyword_search",
                         source_value=source_value,
                         operation_group="content_discovery",
@@ -177,7 +177,7 @@ def _canonical(
 ) -> CanonicalContentV1:
     content_id = external_content_id or f"note-runtime-{source.attempt_id}"
     return CanonicalContentV1(
-        platform="xhs",
+        platform="xiaohongshu",
         external_content_id=content_id,
         content_type="image",
         title="标题 A",
@@ -231,7 +231,7 @@ def _content_id_for_external(
             return session.scalar(
                 select(contents_table.c.id)
                 .where(
-                    contents_table.c.platform == "xhs",
+                    contents_table.c.platform == "xiaohongshu",
                     contents_table.c.external_content_id == external_content_id,
                 )
                 .limit(1)

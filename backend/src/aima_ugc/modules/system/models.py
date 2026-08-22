@@ -7,6 +7,8 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
+from aima_ugc.contracts.platform import PlatformScope
+
 from pydantic import JsonValue
 
 from aima_ugc.contracts.collection import ProviderConfigV1
@@ -93,7 +95,7 @@ class KeywordPackItem:
 
     pack_id: UUID
     keyword_id: UUID
-    platform: str
+    platform_scope: PlatformScope
     priority: int
     enabled: bool
     note: str

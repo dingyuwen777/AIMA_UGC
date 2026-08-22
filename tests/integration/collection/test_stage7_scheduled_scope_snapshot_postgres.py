@@ -104,7 +104,7 @@ def test_scheduler_freezes_keyword_pack_version_and_explicit_platform_scopes(
                 KeywordPackItem(
                     pack_id=pack.id,
                     keyword_id=aima.id,
-                    platform="all",
+                    platform_scope="all",
                     priority=10,
                     enabled=True,
                     note="all platforms",
@@ -114,10 +114,10 @@ def test_scheduler_freezes_keyword_pack_version_and_explicit_platform_scopes(
                 KeywordPackItem(
                     pack_id=pack.id,
                     keyword_id=ev.id,
-                    platform="xhs",
+                    platform_scope="xiaohongshu",
                     priority=20,
                     enabled=True,
-                    note="xhs only",
+                    note="xiaohongshu only",
                 )
             )
             PostgresGlobalRelevanceRepository(session).set(pack.id)
@@ -127,7 +127,7 @@ def test_scheduler_freezes_keyword_pack_version_and_explicit_platform_scopes(
                     provider="tikhub",
                     display_name="TikHub XHS",
                     base_url="https://api.tikhub.io",
-                    secret_ref="providers/tikhub/test/xhs",
+                    secret_ref="providers/tikhub/test/xiaohongshu",
                     enabled=True,
                 )
             )
@@ -156,7 +156,7 @@ def test_scheduler_freezes_keyword_pack_version_and_explicit_platform_scopes(
                     created_by=None,
                     platforms=(
                         PlanPlatformDefinition(
-                            platform="xhs",
+                            platform="xiaohongshu",
                             provider_config_id=xhs_config.id,
                             config={},
                         ),
@@ -197,9 +197,9 @@ def test_scheduler_freezes_keyword_pack_version_and_explicit_platform_scopes(
             (row["platform"], row["source_type"], row["source_value"], row["operation_group"])
             for row in scopes
         } == {
-            ("xhs", "keyword_search", "爱玛", "content_discovery"),
+            ("xiaohongshu", "keyword_search", "爱玛", "content_discovery"),
             ("douyin", "keyword_search", "爱玛", "content_discovery"),
-            ("xhs", "keyword_search", "电动车", "content_discovery"),
+            ("xiaohongshu", "keyword_search", "电动车", "content_discovery"),
         }
         assert run["config_snapshot"]["keyword_pack_ids"] == [str(pack.id)]
         assert run["config_snapshot"]["keyword_packs"] == [

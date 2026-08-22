@@ -20,7 +20,7 @@ const plan = {
   last_scheduled_at: null,
   detail_policy: 'on_change',
   comment_policy: 'adaptive',
-  platforms: [{ platform: 'xhs', provider_config_id: providerId }],
+  platforms: [{ platform: 'xiaohongshu', provider_config_id: providerId }],
   keyword_pack_ids: [packId],
   created_at: '2026-08-21T00:00:00Z',
   updated_at: '2026-08-21T00:00:00Z',
@@ -47,7 +47,7 @@ test.beforeEach(async ({ page }) => {
       return
     }
     if (url.pathname === '/api/v1/collection-capabilities') {
-      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ provider_configs: [{ id: providerId, provider: 'tikhub', display_name: 'TikHub 主配置' }], capabilities: [{ provider: 'tikhub', platform: 'xhs', operations: ['keyword_search'] }] }) })
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ provider_configs: [{ id: providerId, provider: 'tikhub', display_name: 'TikHub 主配置' }], capabilities: [{ provider: 'tikhub', platform: 'xiaohongshu', operations: ['keyword_search'] }] }) })
       return
     }
     if (url.pathname === '/api/v1/collection-plans' && request.method() === 'GET') {
@@ -108,7 +108,7 @@ test('creates only a periodic Collection Plan from the approved drawer', async (
     name: '爱玛新品自动采集',
     schedule_expr: '0 9 * * *',
     keyword_pack_ids: [packId],
-    platforms: [{ platform: 'xhs', provider_config_id: providerId }],
+    platforms: [{ platform: 'xiaohongshu', provider_config_id: providerId }],
     enabled: true,
   })
   expect(payload).not.toHaveProperty('schedule_mode')

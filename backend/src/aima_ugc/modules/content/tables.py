@@ -18,7 +18,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
+from aima_ugc.contracts.platform import PLATFORM_NAMES
 from aima_ugc.platform.database.metadata import metadata
+
+_PLATFORM_CHECK = "platform in (" + ",".join(f"'{value}'" for value in PLATFORM_NAMES) + ")"
 
 accounts_table = Table(
     "accounts",
@@ -48,6 +51,7 @@ accounts_table = Table(
     ),
     Column("updated_at", DateTime(timezone=True), nullable=False),
     UniqueConstraint("platform", "external_account_id"),
+    CheckConstraint(_PLATFORM_CHECK, name="platform_allowed"),
     CheckConstraint(
         "jsonb_typeof(field_observed_at) = 'object'",
         name="field_observed_at_object",
@@ -91,6 +95,7 @@ contents_table = Table(
     ),
     Column("updated_at", DateTime(timezone=True), nullable=False),
     UniqueConstraint("platform", "external_content_id"),
+    CheckConstraint(_PLATFORM_CHECK, name="platform_allowed"),
     CheckConstraint("current_version >= 1", name="current_version_positive"),
     CheckConstraint(
         "jsonb_typeof(field_observed_at) = 'object'",

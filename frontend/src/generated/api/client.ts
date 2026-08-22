@@ -22,7 +22,7 @@ export type CollectionPlatform = typeof CollectionPlatform[keyof typeof Collecti
 
 
 export const CollectionPlatform = {
-  xhs: 'xhs',
+  xiaohongshu: 'xiaohongshu',
   douyin: 'douyin',
   weibo: 'weibo',
   bilibili: 'bilibili',
@@ -376,6 +376,17 @@ export interface ContentAnalysisResponse {
   voice_type?: ContentVoiceType | null;
 }
 
+export type PlatformName = typeof PlatformName[keyof typeof PlatformName];
+
+
+export const PlatformName = {
+  xiaohongshu: 'xiaohongshu',
+  douyin: 'douyin',
+  weibo: 'weibo',
+  bilibili: 'bilibili',
+  kuaishou: 'kuaishou',
+} as const;
+
 /**
  * 可序列化并冻结到 Analysis/Export Request 的查询条件。
  */
@@ -383,8 +394,8 @@ export interface ContentFilterSnapshot {
   analysis_status?: ContentAnalysisStatus | null;
   /** @maxItems 20 */
   content_types?: string[];
-  /** @maxItems 20 */
-  platforms?: string[];
+  /** @maxItems 5 */
+  platforms?: PlatformName[];
   primary_label?: string | null;
   published_from?: string | null;
   published_to?: string | null;
@@ -467,7 +478,7 @@ export interface ContentDetailResponse {
   last_seen_at: string;
   media?: ContentMediaResponse[];
   metrics: ContentMetricsResponse;
-  platform: string;
+  platform: PlatformName;
   published_at?: string | null;
   source: ContentSourceResponse;
   source_records?: ContentSourceResponse[];
@@ -484,7 +495,7 @@ export interface ContentListItemResponse {
   id: string;
   last_seen_at: string;
   metrics: ContentMetricsResponse;
-  platform: string;
+  platform: PlatformName;
   published_at?: string | null;
   source: ContentSourceResponse;
   text?: string | null;
@@ -730,11 +741,23 @@ export interface KeywordPackListResponse {
   total: number;
 }
 
+export type PlatformScope = typeof PlatformScope[keyof typeof PlatformScope];
+
+
+export const PlatformScope = {
+  all: 'all',
+  xiaohongshu: 'xiaohongshu',
+  douyin: 'douyin',
+  weibo: 'weibo',
+  bilibili: 'bilibili',
+  kuaishou: 'kuaishou',
+} as const;
+
 export interface KeywordResponse {
   enabled: boolean;
   id: string;
   note: string;
-  platform?: string;
+  platform_scope?: PlatformScope;
   priority: number;
   text: string;
 }
@@ -838,9 +861,9 @@ limit?: number;
 export type ListContentsParams = {
 search?: string | null;
 /**
- * @maxItems 20
+ * @maxItems 5
  */
-platforms?: string[];
+platforms?: PlatformName[];
 /**
  * @maxItems 20
  */

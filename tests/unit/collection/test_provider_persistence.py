@@ -53,7 +53,7 @@ def _request() -> ProviderRequestV1:
         run_id=uuid4(),
         scope_id=uuid4(),
         provider="fake",
-        platform="xhs",
+        platform="xiaohongshu",
         operation="search_notes",
         request_params={"keyword": "爱玛"},
         pagination_input={"page": 1},

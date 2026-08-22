@@ -57,7 +57,7 @@ def _common_context(context_type: type, operation: str, content_id: str):
 
 
 def test_xhs_real_root_and_embedded_reply_map_comment_tree() -> None:
-    root = _fixture("xhs")["data"]["data"]["comments"][0]
+    root = _fixture("xiaohongshu")["data"]["data"]["comments"][0]
     context = XhsMappingContext(
         provider_request_id="request-comment-fixture-1",
         provider_attempt_id="attempt-comment-fixture-1",

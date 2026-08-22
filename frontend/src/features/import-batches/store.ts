@@ -49,7 +49,7 @@ const EMPTY_FILTERS: CollectionRuntimeFilters = {
 }
 
 const SUPPORTED_PLATFORMS: CollectionPlatform[] = [
-  'xhs',
+  'xiaohongshu',
   'douyin',
   'weibo',
   'bilibili',

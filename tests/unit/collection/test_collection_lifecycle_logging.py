@@ -137,7 +137,7 @@ def _execution() -> CollectionExecution:
             CollectionScopeRecord(
                 id=uuid4(),
                 run_id=run_id,
-                platform="xhs",
+                platform="xiaohongshu",
                 source_type="keyword_search",
                 source_value="爱玛",
                 operation_group="content_discovery",
@@ -182,7 +182,7 @@ def test_collection_executor_emits_stable_run_and_scope_events(
     assert records[0].run_id == str(execution.run.id)
     assert records[0].job_id == str(execution.run.job_id)
     assert records[1].scope_id == str(execution.scopes[0].id)
-    assert records[1].platform == "xhs"
+    assert records[1].platform == "xiaohongshu"
     assert records[1].status == "succeeded"
     assert records[2].status == "succeeded"
     assert records[2].content_count == 2

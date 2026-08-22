@@ -47,7 +47,7 @@ def _item_from_row(row: RowMapping) -> KeywordPackItem:
     return KeywordPackItem(
         pack_id=row["pack_id"],
         keyword_id=row["keyword_id"],
-        platform=row["platform"],
+        platform_scope=row["platform_scope"],
         priority=row["priority"],
         enabled=row["enabled"],
         note=row["note"],
@@ -253,7 +253,7 @@ class PostgresKeywordCatalogRepository:
                 .values(
                     pack_id=item.pack_id,
                     keyword_id=item.keyword_id,
-                    platform=item.platform,
+                    platform_scope=item.platform_scope,
                     priority=item.priority,
                     enabled=item.enabled,
                     note=item.note,
@@ -283,7 +283,7 @@ class PostgresKeywordCatalogRepository:
                 .values(
                     pack_id=item.pack_id,
                     keyword_id=item.keyword_id,
-                    platform=item.platform,
+                    platform_scope=item.platform_scope,
                     priority=item.priority,
                     enabled=item.enabled,
                     note=item.note,
@@ -292,7 +292,7 @@ class PostgresKeywordCatalogRepository:
                     index_elements=[
                         keyword_pack_items_table.c.pack_id,
                         keyword_pack_items_table.c.keyword_id,
-                        keyword_pack_items_table.c.platform,
+                        keyword_pack_items_table.c.platform_scope,
                     ]
                 )
                 .returning(keyword_pack_items_table)
@@ -306,7 +306,7 @@ class PostgresKeywordCatalogRepository:
                     select(keyword_pack_items_table).where(
                         keyword_pack_items_table.c.pack_id == item.pack_id,
                         keyword_pack_items_table.c.keyword_id == item.keyword_id,
-                        keyword_pack_items_table.c.platform == item.platform,
+                        keyword_pack_items_table.c.platform_scope == item.platform_scope,
                     )
                 )
                 .mappings()
@@ -334,7 +334,7 @@ class PostgresKeywordCatalogRepository:
                     keywords_table.c.text.label("keyword_text"),
                     keywords_table.c.normalized_text,
                     keywords_table.c.enabled.label("keyword_enabled"),
-                    keyword_pack_items_table.c.platform,
+                    keyword_pack_items_table.c.platform_scope,
                     keyword_pack_items_table.c.priority,
                     keyword_pack_items_table.c.enabled.label("item_enabled"),
                     keyword_pack_items_table.c.note,
@@ -346,7 +346,7 @@ class PostgresKeywordCatalogRepository:
                 .where(keyword_pack_items_table.c.pack_id == pack_id)
                 .order_by(
                     keyword_pack_items_table.c.priority,
-                    keyword_pack_items_table.c.platform,
+                    keyword_pack_items_table.c.platform_scope,
                     keyword_pack_items_table.c.keyword_id,
                 )
             )
@@ -364,7 +364,7 @@ class PostgresKeywordCatalogRepository:
                 KeywordPackItem(
                     pack_id=pack_id,
                     keyword_id=row["keyword_id"],
-                    platform=row["platform"],
+                    platform_scope=row["platform_scope"],
                     priority=row["priority"],
                     enabled=row["item_enabled"],
                     note=row["note"],
@@ -380,7 +380,7 @@ class PostgresKeywordCatalogRepository:
                 .where(keyword_pack_items_table.c.pack_id == pack_id)
                 .order_by(
                     keyword_pack_items_table.c.priority,
-                    keyword_pack_items_table.c.platform,
+                    keyword_pack_items_table.c.platform_scope,
                     keyword_pack_items_table.c.keyword_id,
                 )
             )

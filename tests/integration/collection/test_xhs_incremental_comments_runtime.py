@@ -42,7 +42,7 @@ from aima_ugc.platform.storage import ArtifactService
 from pydantic import SecretStr
 from sqlalchemy import insert, select
 
-_FIXTURES = Path("tests/fixtures/providers/tikhub/xhs")
+_FIXTURES = Path("tests/fixtures/providers/tikhub/xiaohongshu")
 _OBSERVED_AT = datetime(2026, 8, 18, 0, 20, tzinfo=UTC)
 _CONTENT_EXTERNAL_ID = "note-fixture-1"
 _KNOWN_COMMENT_ID = "xhs-comment-known-1"
@@ -189,7 +189,7 @@ def _seed_previous_content(runtime: DatabaseRuntime) -> UUID:
             session.execute(
                 insert(contents_table).values(
                     id=content_id,
-                    platform="xhs",
+                    platform="xiaohongshu",
                     external_content_id=_CONTENT_EXTERNAL_ID,
                     content_type="image",
                     first_seen_at=_OBSERVED_AT,
@@ -266,7 +266,7 @@ def test_xhs_incremental_comments_stop_after_safe_known_comment_boundary(
                     "comment_policy": "adaptive",
                     "platforms": [
                         {
-                            "platform": "xhs",
+                            "platform": "xiaohongshu",
                             "provider_config_id": str(provider_config.id),
                             "config": {
                                 "sort_mode": "latest",
@@ -278,7 +278,7 @@ def test_xhs_incremental_comments_stop_after_safe_known_comment_boundary(
                 },
                 scopes=(
                     CollectionScopeDefinition(
-                        platform="xhs",
+                        platform="xiaohongshu",
                         source_type="keyword_search",
                         source_value="爱玛",
                         operation_group="content_discovery",

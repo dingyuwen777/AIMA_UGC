@@ -43,7 +43,7 @@ def _entry(
 
 def test_all_platform_keyword_expands_to_explicit_plan_platform_scopes() -> None:
     snapshot = build_scheduled_scope_snapshot(
-        plan_platforms=("xhs", "douyin"),
+        plan_platforms=("xiaohongshu", "douyin"),
         entries=(
             _entry(
                 pack_id=_PACK_A,
@@ -60,16 +60,16 @@ def test_all_platform_keyword_expands_to_explicit_plan_platform_scopes() -> None
                 keyword_id=_KEYWORD_EV,
                 text="电动车",
                 normalized_text="电动车",
-                item_platform="xhs",
+                item_platform="xiaohongshu",
                 priority=20,
             ),
         ),
     )
 
     assert [scope.identity for scope in snapshot.scopes] == [
-        ("xhs", "keyword_search", "爱玛", "content_discovery"),
+        ("xiaohongshu", "keyword_search", "爱玛", "content_discovery"),
         ("douyin", "keyword_search", "爱玛", "content_discovery"),
-        ("xhs", "keyword_search", "电动车", "content_discovery"),
+        ("xiaohongshu", "keyword_search", "电动车", "content_discovery"),
     ]
     assert [(pack.pack_id, pack.version, pack.enabled) for pack in snapshot.keyword_packs] == [
         (_PACK_A, 3, True)
@@ -78,7 +78,7 @@ def test_all_platform_keyword_expands_to_explicit_plan_platform_scopes() -> None
 
 def test_duplicate_keyword_from_multiple_packs_produces_one_scope_per_platform() -> None:
     snapshot = build_scheduled_scope_snapshot(
-        plan_platforms=("xhs",),
+        plan_platforms=("xiaohongshu",),
         entries=(
             _entry(
                 pack_id=_PACK_A,
@@ -95,14 +95,14 @@ def test_duplicate_keyword_from_multiple_packs_produces_one_scope_per_platform()
                 keyword_id=_KEYWORD_AIMA,
                 text="爱玛",
                 normalized_text="爱玛",
-                item_platform="xhs",
+                item_platform="xiaohongshu",
                 priority=5,
             ),
         ),
     )
 
     assert [scope.identity for scope in snapshot.scopes] == [
-        ("xhs", "keyword_search", "爱玛", "content_discovery")
+        ("xiaohongshu", "keyword_search", "爱玛", "content_discovery")
     ]
     assert [(pack.pack_id, pack.version) for pack in snapshot.keyword_packs] == [
         (_PACK_A, 1),
@@ -114,7 +114,7 @@ def test_disabled_or_non_plan_entries_do_not_create_scopes_but_pack_versions_sta
     None
 ):
     snapshot = build_scheduled_scope_snapshot(
-        plan_platforms=("xhs", "douyin"),
+        plan_platforms=("xiaohongshu", "douyin"),
         entries=(
             _entry(
                 pack_id=_PACK_A,
@@ -152,7 +152,7 @@ def test_disabled_or_non_plan_entries_do_not_create_scopes_but_pack_versions_sta
 
 def test_scope_order_is_deterministic_by_priority_then_keyword_and_plan_platform_order() -> None:
     snapshot = build_scheduled_scope_snapshot(
-        plan_platforms=("weibo", "xhs"),
+        plan_platforms=("weibo", "xiaohongshu"),
         entries=(
             _entry(
                 pack_id=_PACK_A,
@@ -175,7 +175,7 @@ def test_scope_order_is_deterministic_by_priority_then_keyword_and_plan_platform
 
     assert [scope.identity for scope in snapshot.scopes] == [
         ("weibo", "keyword_search", "爱玛", "content_discovery"),
-        ("xhs", "keyword_search", "爱玛", "content_discovery"),
+        ("xiaohongshu", "keyword_search", "爱玛", "content_discovery"),
         ("weibo", "keyword_search", "电动车", "content_discovery"),
-        ("xhs", "keyword_search", "电动车", "content_discovery"),
+        ("xiaohongshu", "keyword_search", "电动车", "content_discovery"),
     ]

@@ -42,7 +42,7 @@ from aima_ugc.platform.storage.tables import artifacts_table
 from pydantic import SecretStr
 from sqlalchemy import func, select
 
-_FIXTURES = Path("tests/fixtures/providers/tikhub/xhs")
+_FIXTURES = Path("tests/fixtures/providers/tikhub/xiaohongshu")
 _OBSERVED_AT = datetime(2026, 8, 17, 4, 0, tzinfo=UTC)
 
 
@@ -167,7 +167,7 @@ def test_scope_runtime_dispatches_search_and_detail_then_ingests_canonical_conte
                     "comment_policy": "adaptive",
                     "platforms": [
                         {
-                            "platform": "xhs",
+                            "platform": "xiaohongshu",
                             "provider_config_id": str(provider_config.id),
                             "config": {
                                 "sort_mode": "latest",
@@ -179,7 +179,7 @@ def test_scope_runtime_dispatches_search_and_detail_then_ingests_canonical_conte
                 },
                 scopes=(
                     CollectionScopeDefinition(
-                        platform="xhs",
+                        platform="xiaohongshu",
                         source_type="keyword_search",
                         source_value="爱玛",
                         operation_group="content_discovery",
@@ -237,7 +237,7 @@ def test_scope_runtime_dispatches_search_and_detail_then_ingests_canonical_conte
             )
             assert session.scalar(select(func.count()).select_from(artifacts_table)) == 2
             content = session.execute(select(contents_table)).mappings().one()
-        assert content["platform"] == "xhs"
+        assert content["platform"] == "xiaohongshu"
         assert content["external_content_id"] == "note-fixture-1"
         assert content["title"] == "脱敏图文标题"
         assert content["current_comment_count"] == 0

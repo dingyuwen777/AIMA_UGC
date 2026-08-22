@@ -137,7 +137,7 @@ GET /api/v1/xiaohongshu/app_v2/get_note_sub_comments
 真实 Fixture：
 
 ```text
-tests/fixtures/providers/tikhub/xhs/
+tests/fixtures/providers/tikhub/xiaohongshu/
 ```
 
 已验证的业务链：

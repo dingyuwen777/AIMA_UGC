@@ -8,20 +8,23 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from aima_ugc.contracts.platform import PlatformName
 from aima_ugc.contracts.provider import RawEnvelopeV1
 from aima_ugc.modules.collection.providers import RawArtifactService
 from aima_ugc.platform.jobs import JobHandlerResult, JobRegistry
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol
 from aima_ugc.platform.storage import ArtifactRecord
 
-XHS_RAW_REPLAY_JOB_TYPE = "collection.xhs.raw-replay.v1"
-XHS_RAW_REPLAY_PAYLOAD_VERSION = "collection.xhs.raw-replay.v1"
+XHS_RAW_REPLAY_JOB_TYPE = "collection.xiaohongshu.raw-replay.v1"
+XHS_RAW_REPLAY_PAYLOAD_VERSION = "collection.xiaohongshu.raw-replay.v1"
 
 
 class XhsRawReplayJobPayload(BaseModel):
     """只保存已存在 Provider Attempt 身份，不携带 Raw 或 Secret。"""
 
-    schema_version: Literal["collection.xhs.raw-replay.v1"] = "collection.xhs.raw-replay.v1"
+    schema_version: Literal["collection.xiaohongshu.raw-replay.v1"] = (
+        "collection.xiaohongshu.raw-replay.v1"
+    )
     provider_attempt_id: UUID
 
 
@@ -32,7 +35,7 @@ class XhsReplaySource:
     provider_attempt_id: UUID
     provider_request_id: UUID
     provider: str
-    platform: str
+    platform: PlatformName
     operation: str
     source_type: str
     source_value: str
@@ -102,8 +105,8 @@ def register_xhs_raw_replay_job(registry: JobRegistry, handler: XhsRawReplayHand
 
 
 def _validate_replay_source(source: XhsReplaySource, envelope: RawEnvelopeV1) -> None:
-    if source.provider != "tikhub" or source.platform != "xhs":
-        raise ValueError("XHS Raw Replay 只接受 tikhub/xhs 来源")
+    if source.provider != "tikhub" or source.platform != "xiaohongshu":
+        raise ValueError("XHS Raw Replay 只接受 tikhub/xiaohongshu 来源")
     if envelope.provider != source.provider or envelope.platform != source.platform:
         raise ValueError("Raw Envelope Provider/Platform 与数据库来源链不一致")
     if envelope.operation != source.operation:

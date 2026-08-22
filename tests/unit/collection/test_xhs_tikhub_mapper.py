@@ -51,7 +51,7 @@ def test_real_search_wrapper_maps_observed_content_fields() -> None:
     }
     result = map_content(raw, _context(operation="search_notes"), item_locator="note:note-1")
     assert isinstance(result, CanonicalContentV1)
-    assert result.platform == "xhs"
+    assert result.platform == "xiaohongshu"
     assert result.external_content_id == "note-1"
     assert result.content_type == "image"
     assert result.metrics.like_count == 12

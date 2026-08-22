@@ -110,7 +110,7 @@ class PostgresGlobalRelevanceRepository:
                 .where(global_relevance_config_table.c.singleton_key == "global")
                 .order_by(
                     keyword_pack_items_table.c.priority,
-                    keyword_pack_items_table.c.platform,
+                    keyword_pack_items_table.c.platform_scope,
                     keyword_pack_items_table.c.keyword_id,
                 )
             )

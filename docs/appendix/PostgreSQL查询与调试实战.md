@@ -177,7 +177,7 @@ LIMIT 20;
 ```sql
 SELECT *
 FROM contents
-WHERE platform = 'xhs'
+WHERE platform = 'xiaohongshu'
   AND external_content_id = '这里填真实外部ID';
 ```
 
@@ -740,7 +740,7 @@ ORDER BY xact_start;
 EXPLAIN
 SELECT id, title, last_seen_at
 FROM contents
-WHERE platform = 'xhs'
+WHERE platform = 'xiaohongshu'
 ORDER BY last_seen_at DESC
 LIMIT 20;
 ```
@@ -751,7 +751,7 @@ LIMIT 20;
 EXPLAIN (ANALYZE, BUFFERS)
 SELECT id, title, last_seen_at
 FROM contents
-WHERE platform = 'xhs'
+WHERE platform = 'xiaohongshu'
 ORDER BY last_seen_at DESC
 LIMIT 20;
 ```

@@ -90,7 +90,7 @@ def _source(runtime: DatabaseRuntime, *, observed_at: datetime, suffix: str) -> 
                 insert(collection_scopes_table).values(
                     id=scope_id,
                     run_id=run_id,
-                    platform="xhs",
+                    platform="xiaohongshu",
                     source_type="keyword_search",
                     source_value=suffix,
                     operation_group="content_discovery",
@@ -165,7 +165,7 @@ def test_older_sparse_content_can_fill_field_never_seen_by_newer_observation(
     newer_at = datetime(2026, 8, 17, 12, 0, tzinfo=UTC)
     older_at = datetime(2026, 8, 17, 10, 0, tzinfo=UTC)
     newer = CanonicalContentV1(
-        platform="xhs",
+        platform="xiaohongshu",
         external_content_id="audit-sparse-content",
         content_type="note",
         title="NEW",
@@ -175,7 +175,7 @@ def test_older_sparse_content_can_fill_field_never_seen_by_newer_observation(
         observed_fields=["content_type", "title", "metrics.like_count"],
     )
     older = CanonicalContentV1(
-        platform="xhs",
+        platform="xiaohongshu",
         external_content_id="audit-sparse-content",
         content_type="note",
         text="OLDER DETAIL TEXT",
@@ -210,7 +210,7 @@ def test_newer_explicit_null_blocks_older_non_null_value(
     newer_at = datetime(2026, 8, 17, 12, 0, tzinfo=UTC)
     older_at = datetime(2026, 8, 17, 10, 0, tzinfo=UTC)
     newer = CanonicalContentV1(
-        platform="xhs",
+        platform="xiaohongshu",
         external_content_id="audit-explicit-null-content",
         content_type="note",
         title=None,
@@ -219,7 +219,7 @@ def test_newer_explicit_null_blocks_older_non_null_value(
         observed_fields=["content_type", "title"],
     )
     older = CanonicalContentV1(
-        platform="xhs",
+        platform="xiaohongshu",
         external_content_id="audit-explicit-null-content",
         content_type="note",
         title="OLDER TITLE",
@@ -253,7 +253,7 @@ def test_older_sparse_comment_can_fill_field_never_seen_by_newer_observation(
     newer_at = datetime(2026, 8, 17, 12, 0, tzinfo=UTC)
     older_at = datetime(2026, 8, 17, 10, 0, tzinfo=UTC)
     parent = CanonicalContentV1(
-        platform="xhs",
+        platform="xiaohongshu",
         external_content_id="audit-comment-parent",
         content_type="note",
         observed_at=older_at,
@@ -261,7 +261,7 @@ def test_older_sparse_comment_can_fill_field_never_seen_by_newer_observation(
         observed_fields=["content_type"],
     )
     newer = CanonicalCommentV1(
-        platform="xhs",
+        platform="xiaohongshu",
         external_content_id="audit-comment-parent",
         external_comment_id="audit-comment",
         root_comment_id="audit-comment",
@@ -271,7 +271,7 @@ def test_older_sparse_comment_can_fill_field_never_seen_by_newer_observation(
         observed_fields=["root_comment_id", "text"],
     )
     older = CanonicalCommentV1(
-        platform="xhs",
+        platform="xiaohongshu",
         external_content_id="audit-comment-parent",
         external_comment_id="audit-comment",
         root_comment_id="audit-comment",
@@ -315,7 +315,7 @@ def test_older_sparse_account_can_fill_field_never_seen_by_newer_observation(
         bio="OLDER BIO",
     )
     newer = CanonicalContentV1(
-        platform="xhs",
+        platform="xiaohongshu",
         external_content_id="audit-account-content-new",
         content_type="note",
         author=newer_author,
@@ -328,7 +328,7 @@ def test_older_sparse_account_can_fill_field_never_seen_by_newer_observation(
         ],
     )
     older = CanonicalContentV1(
-        platform="xhs",
+        platform="xiaohongshu",
         external_content_id="audit-account-content-old",
         content_type="note",
         author=older_author,
@@ -350,7 +350,7 @@ def test_older_sparse_account_can_fill_field_never_seen_by_newer_observation(
         account = (
             session.execute(
                 select(accounts_table).where(
-                    accounts_table.c.platform == "xhs",
+                    accounts_table.c.platform == "xiaohongshu",
                     accounts_table.c.external_account_id == "audit-account",
                 )
             )
@@ -379,7 +379,7 @@ def test_alternate_stable_id_conflict_fails_closed_instead_of_overwriting(
         alternate_ids={"red_id": "red-conflict-2"},
     )
     first = CanonicalContentV1(
-        platform="xhs",
+        platform="xiaohongshu",
         external_content_id="audit-alt-content-1",
         content_type="note",
         author=first_author,
@@ -392,7 +392,7 @@ def test_alternate_stable_id_conflict_fails_closed_instead_of_overwriting(
         ],
     )
     second = CanonicalContentV1(
-        platform="xhs",
+        platform="xiaohongshu",
         external_content_id="audit-alt-content-2",
         content_type="note",
         author=second_author,

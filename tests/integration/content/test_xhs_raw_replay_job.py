@@ -41,7 +41,7 @@ from aima_ugc.platform.jobs import JobRegistry, JobWorker
 from aima_ugc.platform.storage import ArtifactService
 from sqlalchemy import insert, select
 
-_FIXTURE = Path("tests/fixtures/providers/tikhub/xhs/search_notes_page1.sanitized.json")
+_FIXTURE = Path("tests/fixtures/providers/tikhub/xiaohongshu/search_notes_page1.sanitized.json")
 _NOW = datetime(2026, 8, 5, 10, 0, 12, tzinfo=UTC)
 
 
@@ -92,7 +92,7 @@ def test_job_replays_linked_raw_without_second_provider_call(tmp_path: Path) -> 
                     id=run_id,
                     job_id=source_job.id,
                     trigger_type="backfill",
-                    config_snapshot={"platforms": ["xhs"]},
+                    config_snapshot={"platforms": ["xiaohongshu"]},
                     status="running",
                     created_at=_NOW,
                 )
@@ -101,7 +101,7 @@ def test_job_replays_linked_raw_without_second_provider_call(tmp_path: Path) -> 
                 insert(collection_scopes_table).values(
                     id=scope_id,
                     run_id=run_id,
-                    platform="xhs",
+                    platform="xiaohongshu",
                     source_type="keyword_search",
                     source_value="爱玛",
                     operation_group="content_discovery",
@@ -113,7 +113,7 @@ def test_job_replays_linked_raw_without_second_provider_call(tmp_path: Path) -> 
                 run_id=run_id,
                 scope_id=scope_id,
                 provider="tikhub",
-                platform="xhs",
+                platform="xiaohongshu",
                 operation="search_notes",
                 request_params={"keyword": "爱玛"},
             )
@@ -172,10 +172,10 @@ def test_job_replays_linked_raw_without_second_provider_call(tmp_path: Path) -> 
 
         with session.begin():
             replay_job = PostgresJobRepository(session).enqueue(
-                job_type="collection.xhs.raw-replay.v1",
-                payload_version="collection.xhs.raw-replay.v1",
+                job_type="collection.xiaohongshu.raw-replay.v1",
+                payload_version="collection.xiaohongshu.raw-replay.v1",
                 payload={
-                    "schema_version": "collection.xhs.raw-replay.v1",
+                    "schema_version": "collection.xiaohongshu.raw-replay.v1",
                     "provider_attempt_id": str(attempt_id),
                 },
                 internal_idempotency_key=f"stage6-replay:{attempt_id}",
@@ -209,7 +209,7 @@ def test_job_replays_linked_raw_without_second_provider_call(tmp_path: Path) -> 
             content_ids = (
                 session.execute(
                     select(contents_table.c.id).where(
-                        contents_table.c.platform == "xhs",
+                        contents_table.c.platform == "xiaohongshu",
                         contents_table.c.external_content_id.in_(
                             ["note-fixture-1", "note-fixture-2"]
                         ),

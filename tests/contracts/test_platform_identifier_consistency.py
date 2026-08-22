@@ -1,13 +1,26 @@
-"""平台机器标识必须统一使用完整名称。"""
+"""平台机器标识在 Contract、数据库与当前代码中必须保持唯一。"""
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import get_args
+
+import pytest
+from pydantic import TypeAdapter, ValidationError
+
+from aima_ugc.adapters.providers.imports.excel_profile import get_excel_import_profile
+from aima_ugc.contracts.platform import PLATFORM_NAMES, PLATFORM_SCOPES, PlatformName, PlatformScope
+from aima_ugc.modules.collection.tables import (
+    collection_plan_platforms_table,
+    collection_scopes_table,
+)
+from aima_ugc.modules.content.tables import accounts_table, contents_table
+from aima_ugc.modules.system.tables import keyword_pack_items_table
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_LEGACY_PLATFORM = "x" + "hs"
-_LEGACY_PATTERN = re.compile(rf"(?<![A-Za-z0-9_]){_LEGACY_PLATFORM}(?![A-Za-z0-9_])")
+_LEGACY_TOKEN = "x" + "hs"
+_LEGACY_PATTERN = re.compile(rf"(?<![A-Za-z0-9_-]){_LEGACY_TOKEN}(?![A-Za-z0-9_-])")
 _SCAN_ROOTS = (
     "backend/src",
     "frontend/src",
@@ -25,11 +38,77 @@ _EXCLUDED_PREFIXES = (
     "migrations/versions/",
     "tests/fixtures/providers/tikhub/",
 )
+_EXCLUDED_FILES = {
+    "tests/contracts/test_platform_identifier_consistency.py",
+    "scripts/dev/_unify_platform_identifiers_once.py",
+}
+_EXPECTED = ("xiaohongshu", "douyin", "weibo", "bilibili", "kuaishou")
 
 
-def test_current_platform_identifiers_do_not_use_legacy_xhs() -> None:
-    """当前机器事实不得重新引入旧小红书缩写；历史证据与 Migration 除外。"""
+def _check_sql(table, name: str) -> str:  # type: ignore[no-untyped-def]
+    constraints = [
+        str(item.sqltext) for item in table.constraints if getattr(item, "name", None) == name
+    ]
+    assert len(constraints) == 1
+    return constraints[0]
 
+
+def test_platform_name_contract_is_exactly_five_values() -> None:
+    assert get_args(PlatformName) == _EXPECTED
+    assert PLATFORM_NAMES == _EXPECTED
+    assert get_args(PlatformScope) == ("all", *_EXPECTED)
+    assert PLATFORM_SCOPES == ("all", *_EXPECTED)
+
+    adapter = TypeAdapter(PlatformName)
+    for platform in _EXPECTED:
+        assert adapter.validate_python(platform) == platform
+    for invalid in ("xhs", "red", "dy", "wb", "ks", "bili", "all", "twitter", "XIAOHONGSHU"):
+        with pytest.raises(ValidationError):
+            adapter.validate_python(invalid)
+
+
+def test_excel_profile_maps_source_labels_only_to_formal_platforms() -> None:
+    profile = get_excel_import_profile("aima-monitoring-excel.v1")
+    source_labels = {
+        "小红书": "xiaohongshu",
+        "xiaohongshu": "xiaohongshu",
+        "抖音": "douyin",
+        "douyin": "douyin",
+        "微博": "weibo",
+        "新浪微博": "weibo",
+        "weibo": "weibo",
+        "B站": "bilibili",
+        "哔哩哔哩": "bilibili",
+        "bilibili": "bilibili",
+        "快手": "kuaishou",
+        "kuaishou": "kuaishou",
+    }
+    for source, expected in source_labels.items():
+        assert profile.resolve_platform(source) == expected
+    for invalid in ("xhs", "red", "dy", "wb", "ks", "bili", "twitter", "XIAOHONGSHU"):
+        with pytest.raises(ValueError):
+            profile.resolve_platform(invalid)
+
+
+def test_database_platform_identity_constraints_use_the_same_five_values() -> None:
+    for table in (
+        accounts_table,
+        contents_table,
+        collection_plan_platforms_table,
+        collection_scopes_table,
+    ):
+        sql = _check_sql(table, "platform_allowed")
+        for value in _EXPECTED:
+            assert f"'{value}'" in sql
+        assert "'all'" not in sql
+
+    scope_sql = _check_sql(keyword_pack_items_table, "platform_scope_allowed")
+    assert "'all'" in scope_sql
+    for value in _EXPECTED:
+        assert f"'{value}'" in scope_sql
+
+
+def test_current_machine_facts_do_not_reintroduce_legacy_xhs_token() -> None:
     violations: list[str] = []
     for root_name in _SCAN_ROOTS:
         root = _REPO_ROOT / root_name
@@ -39,16 +118,13 @@ def test_current_platform_identifiers_do_not_use_legacy_xhs() -> None:
             if not path.is_file() or path.suffix not in _TEXT_SUFFIXES:
                 continue
             relative = path.relative_to(_REPO_ROOT).as_posix()
-            if relative == "tests/contracts/test_platform_identifier_consistency.py":
+            if relative in _EXCLUDED_FILES or relative.startswith(_EXCLUDED_PREFIXES):
                 continue
-            if relative.startswith(_EXCLUDED_PREFIXES):
-                continue
-            text = path.read_text(encoding="utf-8")
-            for line_number, line in enumerate(text.splitlines(), start=1):
+            for line_number, line in enumerate(
+                path.read_text(encoding="utf-8").splitlines(), start=1
+            ):
                 if _LEGACY_PATTERN.search(line):
                     violations.append(f"{relative}:{line_number}: {line.strip()}")
-
     assert not violations, (
-        "当前代码/Contract/generated/测试/正式文档仍包含旧平台机器值；"
-        "统一使用 xiaohongshu。\n" + "\n".join(violations)
+        "当前机器事实仍包含旧小红书平台缩写；平台身份只能使用五个正式值。\n" + "\n".join(violations)
     )

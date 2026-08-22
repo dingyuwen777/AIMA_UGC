@@ -75,17 +75,17 @@ def test_platform_route_requires_config_capability_identity_match() -> None:
     route = ProviderPlatformRouteV1(
         provider_config_id=config_id,
         provider="tikhub",
-        platform="xhs",
+        platform="xiaohongshu",
         capability=XHS_TIKHUB_CAPABILITY,
     )
     assert route.provider_config_id == config_id
-    assert route.capability.platform == "xhs"
+    assert route.capability.platform == "xiaohongshu"
 
     with pytest.raises(ValidationError, match="Capability"):
         ProviderPlatformRouteV1(
             provider_config_id=config_id,
             provider="other-provider",
-            platform="xhs",
+            platform="xiaohongshu",
             capability=XHS_TIKHUB_CAPABILITY,
         )
 

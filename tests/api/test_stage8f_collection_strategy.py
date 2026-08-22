@@ -40,7 +40,7 @@ def _plan(enabled: bool = True) -> dict[str, object]:
         "last_scheduled_at": None,
         "detail_policy": "on_change",
         "comment_policy": "adaptive",
-        "platforms": [{"platform": "xhs", "provider_config_id": str(CONFIG_ID)}],
+        "platforms": [{"platform": "xiaohongshu", "provider_config_id": str(CONFIG_ID)}],
         "keyword_pack_ids": [str(PACK_ID)],
         "created_at": NOW,
         "updated_at": NOW,
@@ -100,7 +100,7 @@ def test_stage8f_creates_lists_reads_and_disables_periodic_plan() -> None:
     body = {
         "name": "爱玛新品周期采集",
         "schedule_expr": "0 9 * * *",
-        "platforms": [{"platform": "xhs", "provider_config_id": str(CONFIG_ID)}],
+        "platforms": [{"platform": "xiaohongshu", "provider_config_id": str(CONFIG_ID)}],
         "keyword_pack_ids": [str(PACK_ID)],
         "enabled": True,
     }
@@ -125,7 +125,7 @@ def test_stage8f_rejects_single_run_or_plan_level_relevance_fields() -> None:
     base = {
         "name": "非法计划",
         "schedule_expr": "0 9 * * *",
-        "platforms": [{"platform": "xhs", "provider_config_id": str(CONFIG_ID)}],
+        "platforms": [{"platform": "xiaohongshu", "provider_config_id": str(CONFIG_ID)}],
         "keyword_pack_ids": [str(PACK_ID)],
     }
 
@@ -156,7 +156,7 @@ def test_stage8f_conflict_does_not_leak_internal_details() -> None:
         json={
             "name": "冲突计划",
             "schedule_expr": "0 9 * * *",
-            "platforms": [{"platform": "xhs", "provider_config_id": str(CONFIG_ID)}],
+            "platforms": [{"platform": "xiaohongshu", "provider_config_id": str(CONFIG_ID)}],
             "keyword_pack_ids": [str(PACK_ID)],
         },
     )
@@ -183,7 +183,7 @@ def test_stage8f_not_found_and_domain_invalid_keep_request_id_contract() -> None
         json={
             "name": "非法 Cron",
             "schedule_expr": "not-a-cron",
-            "platforms": [{"platform": "xhs", "provider_config_id": str(CONFIG_ID)}],
+            "platforms": [{"platform": "xiaohongshu", "provider_config_id": str(CONFIG_ID)}],
             "keyword_pack_ids": [str(PACK_ID)],
         },
     )

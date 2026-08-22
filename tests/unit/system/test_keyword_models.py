@@ -24,7 +24,7 @@ def test_keyword_catalog_models_keep_explicit_identity_and_item_metadata() -> No
     item = KeywordPackItem(
         pack_id=pack_id,
         keyword_id=keyword_id,
-        platform="all",
+        platform_scope="all",
         priority=10,
         enabled=True,
         note="品牌英文全角写法",

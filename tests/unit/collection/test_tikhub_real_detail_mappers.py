@@ -67,7 +67,9 @@ def _common_context(context_type: type, operation: str):
 
 
 def test_xhs_image_and_video_detail_normalize_media_topics_location_and_metrics() -> None:
-    image_items = xiaohongshu.extract_detail_items(_fixture("xhs", "image_detail.sanitized.json"))
+    image_items = xiaohongshu.extract_detail_items(
+        _fixture("xiaohongshu", "image_detail.sanitized.json")
+    )
     assert len(image_items) == 1
     image = map_xhs_content(
         image_items[0],
@@ -93,7 +95,9 @@ def test_xhs_image_and_video_detail_normalize_media_topics_location_and_metrics(
     assert image.locations[0].location_type == "ip_region"
     assert image.locations[0].label == "上海"
 
-    video_items = xiaohongshu.extract_detail_items(_fixture("xhs", "video_detail.sanitized.json"))
+    video_items = xiaohongshu.extract_detail_items(
+        _fixture("xiaohongshu", "video_detail.sanitized.json")
+    )
     video = map_xhs_content(
         video_items[0],
         XhsMappingContext(

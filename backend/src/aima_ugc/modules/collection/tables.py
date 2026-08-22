@@ -17,7 +17,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
+from aima_ugc.contracts.platform import PLATFORM_NAMES
 from aima_ugc.platform.database.metadata import metadata
+
+_PLATFORM_CHECK = "platform in (" + ",".join(f"'{value}'" for value in PLATFORM_NAMES) + ")"
 
 collection_plans_table = Table(
     "collection_plans",
@@ -59,7 +62,7 @@ collection_plan_platforms_table = Table(
     Column("platform", Text(), primary_key=True),
     Column("provider_config_id", Uuid(), ForeignKey("provider_configs.id"), nullable=False),
     Column("config", JSONB(), nullable=False, server_default=text("'{}'::jsonb")),
-    CheckConstraint("char_length(platform) > 0", name="platform_nonempty"),
+    CheckConstraint(_PLATFORM_CHECK, name="platform_allowed"),
     CheckConstraint("jsonb_typeof(config) = 'object'", name="config_object"),
     info={"owner": "collection"},
 )
@@ -161,6 +164,7 @@ collection_scopes_table = Table(
     Column("started_at", DateTime(timezone=True)),
     Column("finished_at", DateTime(timezone=True)),
     UniqueConstraint("run_id", "platform", "source_type", "source_value", "operation_group"),
+    CheckConstraint(_PLATFORM_CHECK, name="platform_allowed"),
     info={"owner": "collection"},
 )
 

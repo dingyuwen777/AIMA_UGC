@@ -139,7 +139,7 @@ def test_completed_http_400_is_not_resent_after_worker_takeover(
                     "comment_policy": "adaptive",
                     "platforms": [
                         {
-                            "platform": "xhs",
+                            "platform": "xiaohongshu",
                             "provider_config_id": str(provider_config.id),
                             "config": {
                                 "sort_mode": "latest",
@@ -151,7 +151,7 @@ def test_completed_http_400_is_not_resent_after_worker_takeover(
                 },
                 scopes=(
                     CollectionScopeDefinition(
-                        platform="xhs",
+                        platform="xiaohongshu",
                         source_type="keyword_search",
                         source_value="爱玛",
                         operation_group="content_discovery",
@@ -171,7 +171,7 @@ def test_completed_http_400_is_not_resent_after_worker_takeover(
     old_fence = JobExecutionFence(job_id=job.id, lease_token=claimed.lease_token)
     scope = execution.scopes[0]
     call = build_search_call(
-        platform="xhs",
+        platform="xiaohongshu",
         keyword=scope.source_value,
         config={
             "sort_mode": "latest",
@@ -190,7 +190,7 @@ def test_completed_http_400_is_not_resent_after_worker_takeover(
         run_id=execution.run.id,
         scope_id=scope.id,
         provider="tikhub",
-        platform="xhs",
+        platform="xiaohongshu",
         operation=call.operation,
         request_params=request_params,
         pagination_input=dict(call.pagination_input or {}),

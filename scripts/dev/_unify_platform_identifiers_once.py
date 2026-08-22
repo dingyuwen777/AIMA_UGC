@@ -134,7 +134,9 @@ def patch_contract_types() -> None:
         'type CollectionPlatform = Literal["xiaohongshu", "douyin", "weibo", "bilibili", "kuaishou"]',
         "type CollectionPlatform = PlatformName",
     )
-    text = text.replace('    platform: str = "all"\n', '    platform_scope: PlatformScope = "all"\n')
+    text = text.replace(
+        '    platform: str = "all"\n', '    platform_scope: PlatformScope = "all"\n'
+    )
     text = text.replace("    platform: str\n", "    platform: PlatformName\n")
     text = text.replace(
         "    platforms: tuple[str, ...] = Field(default=(), max_length=20)\n",
@@ -177,7 +179,9 @@ def patch_collection_targets() -> None:
         count=1,
     )
     text = text.replace("        stored_platforms = _stored_platforms(platforms)\n", "")
-    text = text.replace("content.c.platform.in_(stored_platforms)", "content.c.platform.in_(platforms)")
+    text = text.replace(
+        "content.c.platform.in_(stored_platforms)", "content.c.platform.in_(platforms)"
+    )
     text = re.sub(
         r"\n\ndef _stored_platforms\(platforms: tuple\[str, \.\.\.\]\) -> tuple\[str, \.\.\.\]:.*?\n\ndef _target",
         "\n\ndef _target",
@@ -235,11 +239,14 @@ def patch_keyword_scope() -> None:
             "from aima_ugc.platform.database.metadata import metadata\n",
             "from aima_ugc.contracts.platform import PLATFORM_SCOPES\n"
             "from aima_ugc.platform.database.metadata import metadata\n\n"
-            "_PLATFORM_SCOPE_CHECK = \"platform_scope in (\" + \",\".join(\n"
+            '_PLATFORM_SCOPE_CHECK = "platform_scope in (" + ",".join(\n'
             "    f\"'{value}'\" for value in PLATFORM_SCOPES\n"
-            ") + \")\"\n",
+            ') + ")"\n',
         )
-    text = text.replace('    Column("platform", Text(), primary_key=True),\n', '    Column("platform_scope", Text(), primary_key=True),\n')
+    text = text.replace(
+        '    Column("platform", Text(), primary_key=True),\n',
+        '    Column("platform_scope", Text(), primary_key=True),\n',
+    )
     text = text.replace(
         '    CheckConstraint("char_length(platform) > 0", name="platform_nonempty"),\n',
         '    CheckConstraint(_PLATFORM_SCOPE_CHECK, name="platform_scope_allowed"),\n',
@@ -249,19 +256,29 @@ def patch_keyword_scope() -> None:
     path = "backend/src/aima_ugc/adapters/persistence/postgres/keywords.py"
     text = read(path)
     text = text.replace('platform=row["platform"]', 'platform_scope=row["platform_scope"]')
-    text = text.replace("keyword_pack_items_table.c.platform", "keyword_pack_items_table.c.platform_scope")
+    text = text.replace(
+        "keyword_pack_items_table.c.platform", "keyword_pack_items_table.c.platform_scope"
+    )
     text = text.replace("item.platform", "item.platform_scope")
     text = text.replace("platform=item.platform_scope", "platform_scope=item.platform_scope")
     write(path, text)
 
     path = "backend/src/aima_ugc/bootstrap/import_http.py"
     text = read(path)
-    text = text.replace('                        platform="all",\n', '                        platform_scope="all",\n')
-    text = text.replace("                platform=item.platform,\n", "                platform_scope=item.platform_scope,\n")
+    text = text.replace(
+        '                        platform="all",\n',
+        '                        platform_scope="all",\n',
+    )
+    text = text.replace(
+        "                platform=item.platform,\n",
+        "                platform_scope=item.platform_scope,\n",
+    )
     write(path, text)
 
     path = "backend/src/aima_ugc/adapters/persistence/postgres/relevance.py"
-    text = read(path).replace("keyword_pack_items_table.c.platform,", "keyword_pack_items_table.c.platform_scope,")
+    text = read(path).replace(
+        "keyword_pack_items_table.c.platform,", "keyword_pack_items_table.c.platform_scope,"
+    )
     write(path, text)
 
     path = "backend/src/aima_ugc/modules/collection/scheduled_scopes.py"
@@ -272,16 +289,27 @@ def patch_keyword_scope() -> None:
             "from uuid import UUID\n\nfrom aima_ugc.contracts.platform import PlatformName, PlatformScope\n",
         )
     text = text.replace("item_platform", "item_platform_scope")
-    text = text.replace("    item_platform_scope: str\n", "    item_platform_scope: PlatformScope\n")
-    text = text.replace("    plan_platforms: tuple[str, ...],\n", "    plan_platforms: tuple[PlatformName, ...],\n")
+    text = text.replace(
+        "    item_platform_scope: str\n", "    item_platform_scope: PlatformScope\n"
+    )
+    text = text.replace(
+        "    plan_platforms: tuple[str, ...],\n", "    plan_platforms: tuple[PlatformName, ...],\n"
+    )
     text = text.replace("`platform=all`", "`platform_scope=all`")
     write(path, text)
 
     path = "backend/src/aima_ugc/adapters/persistence/postgres/scheduled_keywords.py"
     text = read(path)
-    text = text.replace("keyword_pack_items_table.c.platform.label(\"item_platform\")", "keyword_pack_items_table.c.platform_scope.label(\"item_platform_scope\")")
-    text = text.replace("keyword_pack_items_table.c.platform,", "keyword_pack_items_table.c.platform_scope,")
-    text = text.replace("item_platform=row[\"item_platform\"]", "item_platform_scope=row[\"item_platform_scope\"]")
+    text = text.replace(
+        'keyword_pack_items_table.c.platform.label("item_platform")',
+        'keyword_pack_items_table.c.platform_scope.label("item_platform_scope")',
+    )
+    text = text.replace(
+        "keyword_pack_items_table.c.platform,", "keyword_pack_items_table.c.platform_scope,"
+    )
+    text = text.replace(
+        'item_platform=row["item_platform"]', 'item_platform_scope=row["item_platform_scope"]'
+    )
     write(path, text)
 
     # KeywordPackItem 构造器的字段名是本次 Schema 语义修改的一部分。
@@ -289,7 +317,10 @@ def patch_keyword_scope() -> None:
         root = ROOT / root_name
         for file_path in root.rglob("*.py"):
             relative = file_path.relative_to(ROOT).as_posix()
-            if relative.startswith("migrations/") or relative == "scripts/dev/_unify_platform_identifiers_once.py":
+            if (
+                relative.startswith("migrations/")
+                or relative == "scripts/dev/_unify_platform_identifiers_once.py"
+            ):
                 continue
             source = file_path.read_text(encoding="utf-8")
             updated = re.sub(
@@ -305,7 +336,9 @@ def patch_keyword_scope() -> None:
     text = read(path)
     text = text.replace('"platform",\n', '"platform_scope",\n')
     text = text.replace('"platform",\n        )', '"platform_scope",\n        )')
-    text = text.replace('("pack_id", "keyword_id", "platform")', '("pack_id", "keyword_id", "platform_scope")')
+    text = text.replace(
+        '("pack_id", "keyword_id", "platform")', '("pack_id", "keyword_id", "platform_scope")'
+    )
     write(path, text)
 
 
@@ -359,15 +392,23 @@ def patch_database_platform_checks() -> None:
             "from aima_ugc.platform.database.metadata import metadata\n",
             "from aima_ugc.contracts.platform import PLATFORM_NAMES\n"
             "from aima_ugc.platform.database.metadata import metadata\n\n"
-            "_PLATFORM_CHECK = \"platform in (\" + \",\".join(\n"
+            '_PLATFORM_CHECK = "platform in (" + ",".join(\n'
             "    f\"'{value}'\" for value in PLATFORM_NAMES\n"
-            ") + \")\"\n",
+            ') + ")"\n',
         )
     account_marker = '    UniqueConstraint("platform", "external_account_id"),\n'
     if 'name="platform_allowed"' not in text.split("contents_table", 1)[0]:
-        text = text.replace(account_marker, account_marker + '    CheckConstraint(_PLATFORM_CHECK, name="platform_allowed"),\n', 1)
+        text = text.replace(
+            account_marker,
+            account_marker + '    CheckConstraint(_PLATFORM_CHECK, name="platform_allowed"),\n',
+            1,
+        )
     content_marker = '    UniqueConstraint("platform", "external_content_id"),\n'
-    text = text.replace(content_marker, content_marker + '    CheckConstraint(_PLATFORM_CHECK, name="platform_allowed"),\n', 1)
+    text = text.replace(
+        content_marker,
+        content_marker + '    CheckConstraint(_PLATFORM_CHECK, name="platform_allowed"),\n',
+        1,
+    )
     write(path, text)
 
     path = "backend/src/aima_ugc/modules/collection/tables.py"
@@ -377,9 +418,9 @@ def patch_database_platform_checks() -> None:
             "from aima_ugc.platform.database.metadata import metadata\n",
             "from aima_ugc.contracts.platform import PLATFORM_NAMES\n"
             "from aima_ugc.platform.database.metadata import metadata\n\n"
-            "_PLATFORM_CHECK = \"platform in (\" + \",\".join(\n"
+            '_PLATFORM_CHECK = "platform in (" + ",".join(\n'
             "    f\"'{value}'\" for value in PLATFORM_NAMES\n"
-            ") + \")\"\n",
+            ') + ")"\n',
         )
     text = text.replace(
         '    CheckConstraint("char_length(platform) > 0", name="platform_nonempty"),\n',
@@ -387,7 +428,11 @@ def patch_database_platform_checks() -> None:
         1,
     )
     scope_marker = '    UniqueConstraint("run_id", "platform", "source_type", "source_value", "operation_group"),\n'
-    text = text.replace(scope_marker, scope_marker + '    CheckConstraint(_PLATFORM_CHECK, name="platform_allowed"),\n', 1)
+    text = text.replace(
+        scope_marker,
+        scope_marker + '    CheckConstraint(_PLATFORM_CHECK, name="platform_allowed"),\n',
+        1,
+    )
     write(path, text)
 
 
@@ -556,7 +601,9 @@ def patch_docs_and_change() -> None:
     path = "docs/appendix/Stage8F前后端能力矩阵与真实验收.md"
     text = read(path)
     text = text.replace("`xiaohongshu` / `xiaohongshu`", "`xiaohongshu`")
-    text = text.replace("stored platform = xiaohongshu 或 xiaohongshu", "stored platform = xiaohongshu")
+    text = text.replace(
+        "stored platform = xiaohongshu 或 xiaohongshu", "stored platform = xiaohongshu"
+    )
     text = text.replace("这条兼容链", "这条统一链")
     text = text.replace("兼容映射", "统一平台身份")
     write(path, text)
@@ -573,13 +620,15 @@ def patch_docs_and_change() -> None:
     path = "docs/blueprint/07-技术决策与实施门禁.md"
     text = read(path)
     if "平台机器身份只允许五个完整名称" not in text:
-        text += '''\n\n# 平台机器身份：只允许五个完整名称\n\n系统内部平台身份固定为：\n\n```text\nxiaohongshu\ndouyin\nweibo\nbilibili\nkuaishou\n```\n\n这五个值贯穿 Provider Capability、Canonical、Collection Plan/Run/Scope、Content、HTTP Contract、generated Client、Frontend 与 PostgreSQL。\n\n禁止把平台缩写、品牌别名、大小写变体或 `all` 通配符写入平台身份字段。外部 Excel 的中文媒体名称只在入口 Profile 映射一次；“词包适用于全部平台”使用 `platform_scope=all`，不再冒充平台身份。PostgreSQL 平台身份列必须有五值 CHECK 作为最终完整性门禁。\n'''
+        text += """\n\n# 平台机器身份：只允许五个完整名称\n\n系统内部平台身份固定为：\n\n```text\nxiaohongshu\ndouyin\nweibo\nbilibili\nkuaishou\n```\n\n这五个值贯穿 Provider Capability、Canonical、Collection Plan/Run/Scope、Content、HTTP Contract、generated Client、Frontend 与 PostgreSQL。\n\n禁止把平台缩写、品牌别名、大小写变体或 `all` 通配符写入平台身份字段。外部 Excel 的中文媒体名称只在入口 Profile 映射一次；“词包适用于全部平台”使用 `platform_scope=all`，不再冒充平台身份。PostgreSQL 平台身份列必须有五值 CHECK 作为最终完整性门禁。\n"""
     write(path, text)
 
     path = "changes/active/CHG-20260822-unify-platform-identifiers/CHANGE.md"
     text = read(path)
     text = text.replace(
-        "关键词“全平台”会作为 scope 语义单独处理，不再冒充平台身份。" if "关键词“全平台”会作为 scope 语义单独处理，不再冒充平台身份。" in text else "外部输入中的中文“`小红书`”仍作为源数据映射到 `xiaohongshu`；不再接受 `xhs` / `red` 作为 Excel 机器别名。历史 Change 与旧 Migration 保留当时事实，不改写历史。",
+        "关键词“全平台”会作为 scope 语义单独处理，不再冒充平台身份。"
+        if "关键词“全平台”会作为 scope 语义单独处理，不再冒充平台身份。" in text
+        else "外部输入中的中文“`小红书`”仍作为源数据映射到 `xiaohongshu`；不再接受 `xhs` / `red` 作为 Excel 机器别名。历史 Change 与旧 Migration 保留当时事实，不改写历史。",
         "外部输入中的中文平台名称只在入口映射到正式五值；不接受平台缩写/别名作为内部机器值。关键词全平台适用语义改为 `platform_scope=all`，不再占用平台身份字段。历史 Change 与旧 Migration 保留当时事实，不改写历史。",
     )
     text = text.replace(

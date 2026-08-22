@@ -13,7 +13,7 @@ from aima_ugc.adapters.providers.tikhub.runtime import (
 def test_sub_comment_calls_use_current_primary_operations() -> None:
     assert (
         build_sub_comments_call(
-            platform="xhs",
+            platform="xiaohongshu",
             external_content_id="note-1",
             root_comment_id="comment-1",
         ).path
@@ -55,7 +55,7 @@ def test_sub_comment_calls_use_current_primary_operations() -> None:
 
 def test_runtime_extracts_platform_specific_sub_comment_shapes() -> None:
     assert extract_sub_comment_items(
-        "xhs", {"data": {"data": {"comments": [{"id": "xhs-reply"}]}}}
+        "xiaohongshu", {"data": {"data": {"comments": [{"id": "xhs-reply"}]}}}
     ) == ({"id": "xhs-reply"},)
     assert extract_sub_comment_items(
         "douyin", {"data": {"comments": [{"cid": "douyin-reply"}]}}
@@ -73,8 +73,8 @@ def test_runtime_extracts_platform_specific_sub_comment_shapes() -> None:
 
 
 def test_comment_pagination_uses_existing_platform_state_models() -> None:
-    xhs = advance_comments(
-        platform="xhs",
+    xiaohongshu = advance_comments(
+        platform="xiaohongshu",
         state={"cursor": "before", "index": 0, "page_area": "UNFOLDED"},
         body={
             "data": {
@@ -88,7 +88,7 @@ def test_comment_pagination_uses_existing_platform_state_models() -> None:
             }
         },
     )
-    assert xhs.next_state == {"cursor": "after", "index": 1, "page_area": "UNFOLDED"}
+    assert xiaohongshu.next_state == {"cursor": "after", "index": 1, "page_area": "UNFOLDED"}
 
     douyin = advance_comments(
         platform="douyin",
@@ -120,7 +120,7 @@ def test_comment_pagination_uses_existing_platform_state_models() -> None:
 def test_sub_comment_pagination_stops_on_provider_exhaustion() -> None:
     assert (
         advance_sub_comments(
-            platform="xhs",
+            platform="xiaohongshu",
             state={"cursor": "before", "index": 1, "page_area": "UNFOLDED"},
             body={
                 "data": {"data": {"comments": [{"id": "1"}], "cursor": "end", "has_more": False}}

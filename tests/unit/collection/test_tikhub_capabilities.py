@@ -25,7 +25,7 @@ def _operation(name: str):
 def test_xhs_tikhub_capability_matches_current_executable_operations() -> None:
     assert XHS_TIKHUB_CAPABILITY.schema_version == "provider-platform-capability.v1"
     assert XHS_TIKHUB_CAPABILITY.provider == "tikhub"
-    assert XHS_TIKHUB_CAPABILITY.platform == "xhs"
+    assert XHS_TIKHUB_CAPABILITY.platform == "xiaohongshu"
 
     search = _operation("keyword_search")
     assert search.provider_operations == ("search_notes",)

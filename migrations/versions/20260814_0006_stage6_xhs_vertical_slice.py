@@ -71,7 +71,9 @@ def upgrade() -> None:
         sa.Column("current_download_count", sa.BigInteger()),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(
-            ["author_account_id"], ["accounts.id"], name=op.f("fk_contents_author_account_id_accounts")
+            ["author_account_id"],
+            ["accounts.id"],
+            name=op.f("fk_contents_author_account_id_accounts"),
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_contents")),
         sa.UniqueConstraint(
@@ -113,15 +115,15 @@ def upgrade() -> None:
             name=op.f("fk_content_versions_provider_attempt_id_provider_request_attempts"),
         ),
         sa.ForeignKeyConstraint(
-            ["raw_artifact_id"], ["artifacts.id"], name=op.f("fk_content_versions_raw_artifact_id_artifacts")
+            ["raw_artifact_id"],
+            ["artifacts.id"],
+            name=op.f("fk_content_versions_raw_artifact_id_artifacts"),
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_content_versions")),
         sa.UniqueConstraint(
             "content_id", "version_no", name=op.f("uq_content_versions_content_id_version_no")
         ),
-        sa.CheckConstraint(
-            "version_no >= 1", name=op.f("ck_content_versions_version_no_positive")
-        ),
+        sa.CheckConstraint("version_no >= 1", name=op.f("ck_content_versions_version_no_positive")),
     )
     op.create_table(
         "content_metric_observations",
@@ -144,19 +146,27 @@ def upgrade() -> None:
         sa.Column("download_count", sa.BigInteger()),
         sa.Column("observed_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(
-            ["content_id"], ["contents.id"], name=op.f("fk_content_metric_observations_content_id_contents")
+            ["content_id"],
+            ["contents.id"],
+            name=op.f("fk_content_metric_observations_content_id_contents"),
         ),
         sa.ForeignKeyConstraint(
             ["provider_attempt_id"],
             ["provider_request_attempts.id"],
-            name=op.f("fk_content_metric_observations_provider_attempt_id_provider_request_attempts"),
+            name=op.f(
+                "fk_content_metric_observations_provider_attempt_id_provider_request_attempts"
+            ),
         ),
         sa.ForeignKeyConstraint(
-            ["raw_artifact_id"], ["artifacts.id"], name=op.f("fk_content_metric_observations_raw_artifact_id_artifacts")
+            ["raw_artifact_id"],
+            ["artifacts.id"],
+            name=op.f("fk_content_metric_observations_raw_artifact_id_artifacts"),
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_content_metric_observations")),
         sa.UniqueConstraint(
-            "content_id", "observation_key", name=op.f("uq_content_metric_observations_content_id_observation_key")
+            "content_id",
+            "observation_key",
+            name=op.f("uq_content_metric_observations_content_id_observation_key"),
         ),
         sa.CheckConstraint(
             "reason in ('initial','changed','daily_checkpoint')",
@@ -193,11 +203,15 @@ def upgrade() -> None:
             ["content_id"], ["contents.id"], name=op.f("fk_comments_content_id_contents")
         ),
         sa.ForeignKeyConstraint(
-            ["author_account_id"], ["accounts.id"], name=op.f("fk_comments_author_account_id_accounts")
+            ["author_account_id"],
+            ["accounts.id"],
+            name=op.f("fk_comments_author_account_id_accounts"),
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_comments")),
         sa.UniqueConstraint(
-            "content_id", "external_comment_id", name=op.f("uq_comments_content_id_external_comment_id")
+            "content_id",
+            "external_comment_id",
+            name=op.f("uq_comments_content_id_external_comment_id"),
         ),
         sa.CheckConstraint(
             "current_version >= 1", name=op.f("ck_comments_current_version_positive")
@@ -231,15 +245,15 @@ def upgrade() -> None:
             name=op.f("fk_comment_versions_provider_attempt_id_provider_request_attempts"),
         ),
         sa.ForeignKeyConstraint(
-            ["raw_artifact_id"], ["artifacts.id"], name=op.f("fk_comment_versions_raw_artifact_id_artifacts")
+            ["raw_artifact_id"],
+            ["artifacts.id"],
+            name=op.f("fk_comment_versions_raw_artifact_id_artifacts"),
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_comment_versions")),
         sa.UniqueConstraint(
             "comment_id", "version_no", name=op.f("uq_comment_versions_comment_id_version_no")
         ),
-        sa.CheckConstraint(
-            "version_no >= 1", name=op.f("ck_comment_versions_version_no_positive")
-        ),
+        sa.CheckConstraint("version_no >= 1", name=op.f("ck_comment_versions_version_no_positive")),
     )
     op.create_table(
         "comment_metric_observations",
@@ -254,19 +268,27 @@ def upgrade() -> None:
         sa.Column("reply_count", sa.BigInteger()),
         sa.Column("observed_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(
-            ["comment_id"], ["comments.id"], name=op.f("fk_comment_metric_observations_comment_id_comments")
+            ["comment_id"],
+            ["comments.id"],
+            name=op.f("fk_comment_metric_observations_comment_id_comments"),
         ),
         sa.ForeignKeyConstraint(
             ["provider_attempt_id"],
             ["provider_request_attempts.id"],
-            name=op.f("fk_comment_metric_observations_provider_attempt_id_provider_request_attempts"),
+            name=op.f(
+                "fk_comment_metric_observations_provider_attempt_id_provider_request_attempts"
+            ),
         ),
         sa.ForeignKeyConstraint(
-            ["raw_artifact_id"], ["artifacts.id"], name=op.f("fk_comment_metric_observations_raw_artifact_id_artifacts")
+            ["raw_artifact_id"],
+            ["artifacts.id"],
+            name=op.f("fk_comment_metric_observations_raw_artifact_id_artifacts"),
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_comment_metric_observations")),
         sa.UniqueConstraint(
-            "comment_id", "observation_key", name=op.f("uq_comment_metric_observations_comment_id_observation_key")
+            "comment_id",
+            "observation_key",
+            name=op.f("uq_comment_metric_observations_comment_id_observation_key"),
         ),
         sa.CheckConstraint(
             "reason in ('initial','changed','daily_checkpoint')",
@@ -291,15 +313,21 @@ def upgrade() -> None:
         sa.Column("collected_count", sa.BigInteger(), nullable=False, server_default=sa.text("0")),
         sa.Column("observed_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(
-            ["content_id"], ["contents.id"], name=op.f("fk_comment_coverage_observations_content_id_contents")
+            ["content_id"],
+            ["contents.id"],
+            name=op.f("fk_comment_coverage_observations_content_id_contents"),
         ),
         sa.ForeignKeyConstraint(
             ["provider_attempt_id"],
             ["provider_request_attempts.id"],
-            name=op.f("fk_comment_coverage_observations_provider_attempt_id_provider_request_attempts"),
+            name=op.f(
+                "fk_comment_coverage_observations_provider_attempt_id_provider_request_attempts"
+            ),
         ),
         sa.ForeignKeyConstraint(
-            ["raw_artifact_id"], ["artifacts.id"], name=op.f("fk_comment_coverage_observations_raw_artifact_id_artifacts")
+            ["raw_artifact_id"],
+            ["artifacts.id"],
+            name=op.f("fk_comment_coverage_observations_raw_artifact_id_artifacts"),
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_comment_coverage_observations")),
         sa.CheckConstraint(
@@ -323,7 +351,9 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["provider_request_attempt_id"],
             ["provider_request_attempts.id"],
-            name=op.f("fk_collection_candidates_provider_request_attempt_id_provider_request_attempts"),
+            name=op.f(
+                "fk_collection_candidates_provider_request_attempt_id_provider_request_attempts"
+            ),
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_collection_candidates")),
         sa.UniqueConstraint(
@@ -347,7 +377,12 @@ def upgrade() -> None:
         sa.Column("ingestion_no", sa.Integer(), nullable=False),
         sa.Column("canonical_version", sa.Text()),
         sa.Column("canonical_identity", sa.Text()),
-        sa.Column("observed_fields", postgresql.JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")),
+        sa.Column(
+            "observed_fields",
+            postgresql.JSONB(),
+            nullable=False,
+            server_default=sa.text("'[]'::jsonb"),
+        ),
         sa.Column("target_type", sa.Text()),
         sa.Column("content_id", sa.Uuid()),
         sa.Column("comment_id", sa.Uuid()),
@@ -356,17 +391,25 @@ def upgrade() -> None:
         sa.Column("error_detail", sa.Text()),
         sa.Column("processed_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(
-            ["candidate_id"], ["collection_candidates.id"], name=op.f("fk_collection_candidate_ingestions_candidate_id_collection_candidates")
+            ["candidate_id"],
+            ["collection_candidates.id"],
+            name=op.f("fk_collection_candidate_ingestions_candidate_id_collection_candidates"),
         ),
         sa.ForeignKeyConstraint(
-            ["content_id"], ["contents.id"], name=op.f("fk_collection_candidate_ingestions_content_id_contents")
+            ["content_id"],
+            ["contents.id"],
+            name=op.f("fk_collection_candidate_ingestions_content_id_contents"),
         ),
         sa.ForeignKeyConstraint(
-            ["comment_id"], ["comments.id"], name=op.f("fk_collection_candidate_ingestions_comment_id_comments")
+            ["comment_id"],
+            ["comments.id"],
+            name=op.f("fk_collection_candidate_ingestions_comment_id_comments"),
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_collection_candidate_ingestions")),
         sa.UniqueConstraint(
-            "candidate_id", "ingestion_no", name=op.f("uq_collection_candidate_ingestions_candidate_id_ingestion_no")
+            "candidate_id",
+            "ingestion_no",
+            name=op.f("uq_collection_candidate_ingestions_candidate_id_ingestion_no"),
         ),
         sa.CheckConstraint(
             "ingestion_no >= 1",
@@ -440,9 +483,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute("DROP TRIGGER IF EXISTS trg_candidate_ingestion_target_valid ON collection_candidate_ingestions")
+    op.execute(
+        "DROP TRIGGER IF EXISTS trg_candidate_ingestion_target_valid ON collection_candidate_ingestions"
+    )
     op.execute("DROP FUNCTION IF EXISTS validate_candidate_ingestion_target()")
-    op.execute("DROP TRIGGER IF EXISTS trg_collection_candidate_source_valid ON collection_candidates")
+    op.execute(
+        "DROP TRIGGER IF EXISTS trg_collection_candidate_source_valid ON collection_candidates"
+    )
     op.execute("DROP FUNCTION IF EXISTS validate_collection_candidate_source()")
     op.drop_table("collection_candidate_ingestions")
     op.drop_table("collection_candidates")

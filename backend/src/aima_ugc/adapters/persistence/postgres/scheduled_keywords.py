@@ -51,7 +51,7 @@ class PostgresScheduledKeywordSnapshotReader:
                     keyword_packs_table.c.version.label("pack_version"),
                     keyword_packs_table.c.enabled.label("pack_enabled"),
                     keyword_pack_items_table.c.keyword_id,
-                    keyword_pack_items_table.c.platform.label("item_platform"),
+                    keyword_pack_items_table.c.platform_scope.label("item_platform_scope"),
                     keyword_pack_items_table.c.priority,
                     keyword_pack_items_table.c.enabled.label("item_enabled"),
                     keywords_table.c.text.label("keyword_text"),
@@ -71,7 +71,7 @@ class PostgresScheduledKeywordSnapshotReader:
                 .order_by(
                     keyword_packs_table.c.id,
                     keyword_pack_items_table.c.priority,
-                    keyword_pack_items_table.c.platform,
+                    keyword_pack_items_table.c.platform_scope,
                     keyword_pack_items_table.c.keyword_id,
                 )
             )
@@ -101,7 +101,7 @@ class PostgresScheduledKeywordSnapshotReader:
                     keyword_text=row["keyword_text"],
                     keyword_normalized_text=row["keyword_normalized_text"],
                     keyword_enabled=row["keyword_enabled"],
-                    item_platform=row["item_platform"],
+                    item_platform_scope=row["item_platform_scope"],
                     priority=row["priority"],
                     item_enabled=row["item_enabled"],
                 )

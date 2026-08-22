@@ -47,7 +47,7 @@ from aima_ugc.platform.storage import ArtifactService
 from pydantic import SecretStr
 from sqlalchemy import select
 
-_FIXTURES = Path("tests/fixtures/providers/tikhub/xhs")
+_FIXTURES = Path("tests/fixtures/providers/tikhub/xiaohongshu")
 _OBSERVED_AT = datetime(2026, 8, 17, 5, 0, tzinfo=UTC)
 
 
@@ -207,7 +207,7 @@ def _execute_reply_case(
                 "comment_policy": "adaptive",
                 "platforms": [
                     {
-                        "platform": "xhs",
+                        "platform": "xiaohongshu",
                         "provider_config_id": str(provider_config.id),
                         "config": {
                             "sort_mode": "latest",
@@ -225,7 +225,7 @@ def _execute_reply_case(
                 config_snapshot=snapshot,
                 scopes=(
                     CollectionScopeDefinition(
-                        platform="xhs",
+                        platform="xiaohongshu",
                         source_type="keyword_search",
                         source_value="爱玛",
                         operation_group="content_discovery",

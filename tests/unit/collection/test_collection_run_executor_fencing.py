@@ -131,7 +131,7 @@ def _execution() -> CollectionExecution:
     scope = CollectionScopeRecord(
         id=uuid4(),
         run_id=run_id,
-        platform="xhs",
+        platform="xiaohongshu",
         source_type="keyword_search",
         source_value="爱玛",
         operation_group="content_discovery",

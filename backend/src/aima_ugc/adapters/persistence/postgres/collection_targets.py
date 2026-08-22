@@ -17,21 +17,6 @@ from aima_ugc.modules.collection.tables import (
 from aima_ugc.modules.content.tables import content_versions_table, contents_table
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 
-# Collection 公共 Contract 使用 `xhs`，而历史/File Import Canonical 使用 `xiaohongshu`。
-# 这里只在 Collection 边界做显式兼容，不改 Content 的持久身份，也不把别名扩散到其他模块。
-_COLLECTION_TO_CONTENT_PLATFORMS: dict[str, tuple[str, ...]] = {
-    "xhs": ("xhs", "xiaohongshu"),
-    "douyin": ("douyin",),
-    "weibo": ("weibo",),
-    "bilibili": ("bilibili",),
-    "kuaishou": ("kuaishou",),
-}
-_CONTENT_TO_COLLECTION_PLATFORM = {
-    stored: public
-    for public, stored_values in _COLLECTION_TO_CONTENT_PLATFORMS.items()
-    for stored in stored_values
-}
-
 
 @dataclass(frozen=True, slots=True)
 class CollectionEnrichmentTarget:
@@ -67,7 +52,6 @@ class PostgresCollectionTargetReader:
         version = content_versions_table
         attempt = provider_request_attempts_table
         request = provider_requests_table
-        stored_platforms = _stored_platforms(platforms)
         rows = self._session.execute(
             select(
                 content.c.id,
@@ -82,7 +66,7 @@ class PostgresCollectionTargetReader:
             )
             .where(
                 request.c.import_batch_id == batch_id,
-                content.c.platform.in_(stored_platforms),
+                content.c.platform.in_(platforms),
             )
             .distinct()
             .order_by(content.c.platform, content.c.id)
@@ -126,20 +110,10 @@ class PostgresCollectionTargetReader:
         return None if row is None else _target(row)
 
 
-def _stored_platforms(platforms: tuple[str, ...]) -> tuple[str, ...]:
-    values: list[str] = []
-    for platform in platforms:
-        for stored in _COLLECTION_TO_CONTENT_PLATFORMS.get(platform, (platform,)):
-            if stored not in values:
-                values.append(stored)
-    return tuple(values)
-
-
 def _target(row: RowMapping) -> CollectionEnrichmentTarget:
-    stored_platform = cast(str, row["platform"])
     return CollectionEnrichmentTarget(
         content_id=cast(UUID, row["id"]),
-        platform=_CONTENT_TO_COLLECTION_PLATFORM.get(stored_platform, stored_platform),
+        platform=cast(str, row["platform"]),
         external_content_id=cast(str, row["external_content_id"]),
         content_type=cast(str, row["content_type"]),
     )
