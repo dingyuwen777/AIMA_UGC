@@ -76,6 +76,19 @@ test('shows the approved collection strategy workspace and global relevance', as
   await expect(page.getByText('爱玛电动车')).toBeVisible()
 })
 
+test('disables Keyword Pack stop actions when current backend facts forbid them', async ({ page }) => {
+  await page.goto('/collection-strategy')
+  await page.getByRole('button', { name: '关键词包' }).click()
+
+  const planPackRow = page.locator('.pack-row').filter({ hasText: '爱玛新品发现' })
+  await expect(planPackRow.getByRole('button', { name: '停用' })).toBeDisabled()
+  await expect(planPackRow.getByRole('button', { name: '停用' })).toHaveAttribute('title', /Collection Plan/)
+
+  const relevancePackRow = page.locator('.pack-row').filter({ hasText: '爱玛核心相关词' })
+  await expect(relevancePackRow.getByRole('button', { name: '停用' })).toBeDisabled()
+  await expect(relevancePackRow.getByRole('button', { name: '停用' })).toHaveAttribute('title', /Relevance/)
+})
+
 test('creates only a periodic Collection Plan from the approved drawer', async ({ page }) => {
   await page.goto('/collection-strategy')
   await page.getByRole('button', { name: /新建采集计划/ }).click()
