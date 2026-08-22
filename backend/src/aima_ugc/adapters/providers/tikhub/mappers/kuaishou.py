@@ -36,14 +36,14 @@ def map_content(
     if "photo_id" not in item:
         raise ValueError("快手内容缺少 photo_id")
 
-    external_id = required_string(item, "photo_id")
-    observed_fields: list[str] = ["content_type"]
+    provider_photo_id = required_string(item, "photo_id")
+    external_id = context.external_content_id or provider_photo_id
+    observed_fields: list[str] = ["content_type", "alternate_ids"]
 
-    alternate_ids: dict[str, str] = {}
+    alternate_ids: dict[str, str] = {"photo_id": provider_photo_id}
     kwai_id = optional_string(item, "kwaiId", "kwai_id")
     if kwai_id is not None:
         alternate_ids["kwai_id"] = kwai_id
-        observed_fields.append("alternate_ids")
 
     text = optional_string(item, "caption")
     if text is not None:
@@ -88,7 +88,7 @@ def map_comment(
 ) -> CanonicalCommentV1:
     """把真实快手 rootComments/sub-comments 映射为统一评论树节点。"""
     external_comment_id = required_string(raw, "comment_id", "commentId")
-    external_content_id = optional_string(raw, "photo_id", "photoId") or context.external_content_id
+    external_content_id = context.external_content_id or optional_string(raw, "photo_id", "photoId")
     if external_content_id is None:
         raise ValueError("快手评论缺少 photo_id 且上下文未提供 external_content_id")
 
