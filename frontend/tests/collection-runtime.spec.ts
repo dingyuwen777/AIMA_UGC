@@ -5,12 +5,12 @@ const generated = vi.hoisted(() => ({
   listCollectionRuntimeRuns: vi.fn(),
   getCollectionRuntimeSummary: vi.fn(),
   getCollectionCapabilities: vi.fn(),
+  getCollectionBatchSupplementEligibility: vi.fn(),
   createCollectionRun: vi.fn(),
   getCollectionRun: vi.fn(),
   listImportBatches: vi.fn(),
   getImportBatch: vi.fn(),
   createImportBatch: vi.fn(),
-  listContents: vi.fn(),
 }))
 
 vi.mock('../src/generated/api/client', () => generated)
@@ -61,7 +61,10 @@ describe('collection runtime feature', () => {
       contents_ingested_today: 0,
       as_of: '2026-08-21T00:00:00Z',
     })
-    generated.listContents.mockResolvedValue({ items: [], has_more: false, next_cursor: null })
+    generated.getCollectionBatchSupplementEligibility.mockImplementation(async (batchId: string) => ({
+      batch_id: batchId,
+      targets: [],
+    }))
   })
 
   it('delegates the unified list query to the Orval client', async () => {
@@ -112,31 +115,23 @@ describe('collection runtime feature', () => {
     expect(store.batchOptions.map((item) => item.id)).toEqual(['usable-batch'])
   })
 
-  it('maps Collection xiaohongshu to the stored xiaohongshu platform when probing Batch content', async () => {
-    generated.listContents.mockImplementation(async (params: { platforms?: string[] }) => ({
-      items: params.platforms?.[0] === 'xiaohongshu' ? [{ id: 'content-1' }] : [],
-      has_more: false,
-      next_cursor: null,
-    }))
-    await expect(fetchBatchContentPlatforms('batch-1', ['xiaohongshu', 'douyin'])).resolves.toEqual(['xiaohongshu'])
-    expect(generated.listContents).toHaveBeenCalledWith({
-      source_identifier: 'batch-1', platforms: ['xiaohongshu'], limit: 1,
+  it('uses backend supplement eligibility instead of probing Voice Plaza content', async () => {
+    generated.getCollectionBatchSupplementEligibility.mockResolvedValue({
+      batch_id: 'batch-1',
+      targets: [{ platform: 'xiaohongshu', target_count: 2 }],
     })
+
+    await expect(fetchBatchContentPlatforms('batch-1', ['xiaohongshu', 'douyin'])).resolves.toEqual(['xiaohongshu'])
+    expect(generated.getCollectionBatchSupplementEligibility).toHaveBeenCalledWith('batch-1')
   })
 
-  it('keeps a Batch platform eligible when its only current Content is AI irrelevant', async () => {
-    generated.listContents.mockImplementation(async (params: { relevance?: string }) => ({
-      items: params.relevance === 'irrelevant' ? [{ id: 'content-irrelevant' }] : [],
-      has_more: false,
-      next_cursor: null,
-    }))
-
-    await expect(fetchBatchContentPlatforms('batch-irrelevant', ['xiaohongshu'])).resolves.toEqual(['xiaohongshu'])
-    expect(generated.listContents).toHaveBeenNthCalledWith(2, {
-      source_identifier: 'batch-irrelevant',
-      platforms: ['xiaohongshu'],
-      limit: 1,
-      relevance: 'irrelevant',
+  it('does not offer a platform when backend eligibility excludes its current irrelevant content', async () => {
+    generated.getCollectionBatchSupplementEligibility.mockResolvedValue({
+      batch_id: 'batch-irrelevant',
+      targets: [],
     })
+
+    await expect(fetchBatchContentPlatforms('batch-irrelevant', ['xiaohongshu'])).resolves.toEqual([])
+    expect(generated.getCollectionBatchSupplementEligibility).toHaveBeenCalledWith('batch-irrelevant')
   })
 })
