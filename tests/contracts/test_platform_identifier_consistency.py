@@ -5,9 +5,16 @@ from __future__ import annotations
 import re
 from pathlib import Path
 from typing import get_args
+from uuid import UUID
 
 import pytest
 from aima_ugc.adapters.providers.imports.excel_profile import get_excel_import_profile
+from aima_ugc.contracts.http import (
+    CollectionPlanListQuery,
+    CollectionPlanPlatformRequest,
+    CollectionRunPlatformRequest,
+    ContentFilterSnapshot,
+)
 from aima_ugc.contracts.platform import (
     PLATFORM_NAMES,
     PLATFORM_SCOPES,
@@ -109,6 +116,36 @@ def test_platform_abbreviations_remain_invalid_external_inputs() -> None:
     for invalid in ("xhs", "red", "dy", "wb", "ks", "bili"):
         with pytest.raises(ValueError):
             normalize_platform_name(invalid)
+
+
+def test_http_platform_inputs_normalize_formal_name_case_only() -> None:
+    config_id = UUID("00000000-0000-0000-0000-000000000001")
+
+    assert (
+        CollectionRunPlatformRequest(
+            platform="XIAOHONGSHU",
+            provider_config_id=config_id,
+        ).platform
+        == "xiaohongshu"
+    )
+    assert (
+        CollectionPlanPlatformRequest(
+            platform="Douyin",
+            provider_config_id=config_id,
+        ).platform
+        == "douyin"
+    )
+    assert CollectionPlanListQuery(platform="WEIBO").platform == "weibo"
+    assert ContentFilterSnapshot(platforms=("BiliBili", " KUAISHOU ")).platforms == (
+        "bilibili",
+        "kuaishou",
+    )
+
+    for invalid in ("xhs", "red", "dy", "wb", "ks", "bili"):
+        with pytest.raises(ValidationError):
+            CollectionPlanListQuery(platform=invalid)
+        with pytest.raises(ValidationError):
+            ContentFilterSnapshot(platforms=(invalid,))
 
 
 def test_excel_profile_maps_source_labels_only_to_formal_platforms() -> None:
