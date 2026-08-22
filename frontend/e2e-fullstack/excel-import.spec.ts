@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 
 const importedTitle = '爱玛 Stage8F 浏览器真实导入'
 
@@ -18,14 +18,14 @@ async function configureRelevance(request: APIRequestContext, suffix: string): P
   expect(relevanceResponse.status()).toBe(200)
 }
 
-async function uploadExcel(page: Parameters<typeof test>[0] extends never ? never : any, fixturePath: string) {
+async function uploadExcel(page: Page, fixturePath: string): Promise<{ batch_id: string; job_id: string }> {
   await page.goto('/collection-runtime')
   await expect(page.getByRole('heading', { name: '采集运行中心' })).toBeVisible()
   await page.getByRole('button', { name: /导入 Excel/ }).click()
   await expect(page.getByRole('dialog', { name: '导入 Excel' })).toBeVisible()
   await page.locator('input[type="file"]').setInputFiles(fixturePath)
   const createdResponsePromise = page.waitForResponse(
-    (response: { request: () => { method: () => string }; url: () => string }) =>
+    (response) =>
       response.request().method() === 'POST' &&
       new URL(response.url()).pathname === '/api/v1/import-batches',
   )
