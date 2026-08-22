@@ -4,7 +4,7 @@
 
 先记住一条原则：**不要从聊天、历史 Stage 或旧文档猜当前实现。先找到当前机器事实，再做最小、可验证的修改。**
 
-精确机器事实由代码、Pydantic Contract、生成 OpenAPI/JSON Schema、Alembic Migration、测试和锁文件维护；长期架构由 `docs/blueprint/` 维护；专题实现和调试由 `docs/appendix/` 维护；开发工作流由 `docs/guides/` 维护。
+精确机器事实由代码、Pydantic Contract、生成 OpenAPI/JSON Schema、Alembic Migration、测试和锁文件维护；长期架构和关键详细设计由 `docs/blueprint/` 维护；未完成阶段与生产上线顺序由 `docs/roadmap/` 维护；专题实现和调试由 `docs/appendix/` 维护；开发工作流由 `docs/guides/` 维护。
 
 ## 1. 开始前
 
@@ -13,12 +13,13 @@
 1. 先读本文件；
 2. 读取 `.agents/skills/reliable-vibe-coding/SKILL.md` 并按其任务路由执行；该 Skill 不存在或无法读取时明确报告，不能假装已应用；
 3. 再读 `docs/blueprint/README.md` 和 `docs/blueprint/07-技术决策与实施门禁.md`；
-4. 如果需要快速找到真实代码入口，读 `docs/代码结构与修改导航.md`；
-5. 按任务读取对应 Blueprint、Appendix/Guide、模块 README、Contract、Migration、依赖、实现和测试；
-6. 只读取与任务直接相关的内容，不用“全仓全部读一遍”代替真正理解调用链；
-7. 能从仓库确认的事实先自行确认；
-8. 文档与机器事实冲突时，先判断是实现缺陷、文档过期还是新决策，再在同一任务修正正确的一方；
-9. 不从旧系统、历史聊天、模型记忆或单个文件猜测当前实现。
+4. 如果任务涉及“下一阶段做什么”、生产部署、认证、Release、Backup/Restore、回滚或旧数据迁移，必须再读 `docs/roadmap/生产上线实施路线.md`；
+5. 如果需要快速找到真实代码入口，读 `docs/代码结构与修改导航.md`；
+6. 按任务读取对应 Blueprint、Roadmap、Appendix/Guide、模块 README、Contract、Migration、依赖、实现和测试；
+7. 只读取与任务直接相关的内容，不用“全仓全部读一遍”代替真正理解调用链；
+8. 能从仓库确认的事实先自行确认；
+9. 文档与机器事实冲突时，先判断是实现缺陷、文档过期、待实现设计还是新决策，再在同一任务修正正确的一方；
+10. 不从旧系统、历史聊天、模型记忆或单个文件猜测当前实现。
 
 常见任务导航：
 
@@ -29,8 +30,10 @@
 | Provider、Raw、Mapper、Canonical、Ingestion | `docs/blueprint/02-采集系统与数据标准化.md` |
 | PostgreSQL、Schema、Migration、Artifact | `docs/blueprint/03-数据库与文件存储.md`；需要直接 SQL 时再读 `docs/appendix/PostgreSQL查询与调试实战.md` |
 | API、Job、Worker、前端 | `docs/blueprint/04-后端任务API与前端.md` |
-| 日志、安全、部署、备份 | `docs/blueprint/05-日志安全部署与运维.md` + `docs/环境运行与部署.md` |
-| 开发/测试/CI/Git/Stage | `docs/blueprint/06-开发约束与分阶段实施.md` |
+| 日志、安全、运行边界 | `docs/blueprint/05-日志安全部署与运维.md` |
+| 当前开发环境怎么运行 | `docs/环境运行与部署.md` |
+| 下一阶段、生产上线、Release/Backup/回滚 | `docs/roadmap/生产上线实施路线.md` + `docs/appendix/生产部署与离线Release方案.md` |
+| 开发/测试/CI/Git | `docs/blueprint/06-开发约束与分阶段实施.md` |
 | 重大跨模块决定 | `docs/blueprint/07-技术决策与实施门禁.md` |
 | Collection Plan、Capability、Decision、评论 | `docs/blueprint/08-采集策略与平台能力.md` + `docs/collection/README.md` |
 | Scheduler 运行/停机恢复 | `docs/appendix/Scheduler调度执行与停机恢复.md` |
@@ -60,11 +63,11 @@
 - PostgreSQL 持久化 Job；
 - Local ArtifactStore 默认实现，可在真实需要时替换 S3；
 - 应用 `.log` 为主要人工排障日志，Docker stdout/stderr 为辅助；
-- Docker Compose 离线 Release 是长期部署方向，但完整 Release/协调 Backup-Restore 当前尚未闭环。
+- Docker Compose 离线 Release 是长期部署方向，但 Dockerfile/Compose/完整 Release/协调 Backup-Restore 当前尚未闭环。
 
 采用方案 A：仓库根目录是唯一 Python/uv 工程根，保存 `pyproject.toml`、`uv.lock`、`.python-version`、`tests/`、`scripts/` 和 `migrations/`；源码在 `backend/src/aima_ugc/`。禁止创建 `backend/pyproject.toml`、`backend/uv.lock`、`backend/tests/` 或用 `uv --project backend` 形成第二套命令。
 
-唯一 `Dockerfile` 与 Docker build context 都在仓库根；使用 target 构建后端/前端镜像，不把 `backend/` 或 `frontend/` 当独立 context。
+Stage 11 实现 Docker/Compose 时，唯一 `Dockerfile` 与 Docker build context 目标固定在仓库根；后端/前端通过不同 target 构建，不把 `backend/` 或 `frontend/` 当独立 context。**当前仓库根还没有 Dockerfile/Compose，不得把目标设计写成当前机器事实。**
 
 打包问题必须修根因：禁止用临时 `PYTHONPATH`、改变工作目录、修改 `sys.path` 或先删除产物来掩盖 package discovery/构建配置问题。
 
@@ -389,17 +392,23 @@ uv run python scripts/quality/check_docs.py
 
 ## 14. 文档
 
-文档职责固定：
+文档职责：
 
 ```text
 docs/blueprint/01—08
-→ 长期架构、为什么这样设计、稳定门禁
+→ 核心长期架构、为什么这样设计、稳定门禁
+
+docs/blueprint/09—17
+→ 当前继续保留的详细设计、真实验证材料和 Stage 8 技术方案；不得因目录治理直接删除
+
+docs/roadmap/
+→ Stage 0—12 当前状态、未完成开发、生产上线顺序和 Go/No-Go
 
 模块 README
 → 当前代码具体实现、Owner、入口、常见修改点
 
 docs/appendix/
-→ PostgreSQL、Scheduler、TikHub、Excel、AI、Word 报告等专题实现和调试
+→ PostgreSQL、Scheduler、TikHub、Excel、AI、Word 报告、生产 Release 等专题实现和调试
 
 docs/guides/
 → Figma 等开发过程指南
@@ -417,7 +426,9 @@ changes/archive/
 → 历史为什么改过、当时验证证据
 ```
 
-核心 Blueprint 固定为 `01`—`08`；不要因为新增一个具体业务场景就继续追加 `09、10、11...`。只有真正新增长期架构领域且无法合理放入现有 01—08 时，才通过文档治理 Change 调整核心结构。
+文档结构服务于开发，不为“核心文件数量漂亮”牺牲信息。`09—17` 只有在逐主题证明有效内容已完整迁移、当前事实已勘误、所有链接已更新、后续 Stage/生产路线没有信息丢失后，才允许通过独立文档治理 Change 删除或移动；本轮默认保留。
+
+未完成但仍批准的 Stage/生产设计不能因为当前代码不存在而删掉；应放在 `docs/roadmap/` 或相关详细设计中并标记“待实现”。历史方案若被后续正式决策替代，则保留演进说明并明确“禁止照旧实现”。
 
 代码完成前检查系统事实是否变化：
 
@@ -430,9 +441,10 @@ changes/archive/
 - 日志；
 - 启动部署；
 - 调试测试；
-- 用户行为。
+- 用户行为；
+- Roadmap 阶段状态/生产 Go-No-Go。
 
-受影响就在同一任务更新，不受影响不制造文档差异。长期文档描述合并后的当前系统，不写成变更日志；历史过程留在 Change。
+受影响就在同一任务更新，不受影响不制造文档差异。长期文档描述合并后的当前系统；阶段状态和待实现路线放 Roadmap；历史过程留在 Change。
 
 正式文档的写法必须从实际问题出发：
 
@@ -451,15 +463,16 @@ changes/archive/
 写作要求：
 
 - 假设读者基础一般；
+- 面向开发者，也面向需要理解系统技术方案的人；
 - 必要术语第一次出现用白话解释；
 - 能不用术语就不要为了显得专业而堆术语；
 - 是否引用代码、表名、类名、命令，以是否帮助理解/调试为判断标准；
 - 允许给短、真实、可验证的例子；
-- Provider 真实 JSON 路径、状态机、执行流程、关键 SQL、恢复边界等理解实现必须知道的内容可以在 Appendix 直接展开；
+- Provider 真实 JSON 路径、状态机、执行流程、关键 SQL、恢复边界、部署/回滚机制等理解实现必须知道的内容可以在 Appendix 直接展开；
 - 固定且精确的数据结构优先导航到 `tables.py`、Contract、Prompt、Migration，避免复制第二套会漂移的 Schema；
 - 不复制第二套完整 OpenAPI、Prompt taxonomy 或 Migration SQL；
 - 不用“企业级、先进、高可用”等空泛词替代具体机制；
-- “已实现/未实现/默认行为/限制”必须有当前代码、Migration、Contract、测试或配置依据；
+- “当前已实现/当前未实现/已批准待实现/已被替代/默认行为/限制”必须有仓库事实或正式决策依据；
 - 迁移文档职责时只迁移位置和结构，不得因为“精简”删除仍然有效的技术细节；
 - 用户确认的长期业务/技术决定或明确延期，必须在同一任务落到正式事实源，不能只存在于聊天或 Change 历史。
 
@@ -509,6 +522,7 @@ revert/
 - 实际验证命令、退出码和结果；
 - 未验证内容及风险；
 - 兼容、依赖、Migration、部署、回滚；
+- Roadmap 当前阶段与下一正式单元；
 - 分支、提交、PR、CI、合并和清理状态。
 
 禁止只说“已完成”“测试通过”。
