@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260822-current-implementation-audit
 title: 当前代码实现与文档一致性审计
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: docs/current-implementation-audit-20260822
 created: 2026-08-22
@@ -40,7 +40,7 @@ data_changes: []
 - [x] 关键业务/逻辑方案按正确文档层表达；精确 Schema/Prompt/OpenAPI 仍由机器事实维护，不复制第二份。
 - [x] 已批准但未实现的生产目标仍只保留为 Roadmap/正式设计，不误写成当前机器事实。
 - [x] 后续阶段按当前代码重新评估，明确合理项、需要重排项、需要用户上游决策项和下一最小正式开发单元。
-- [x] 实质文档内容 HEAD `22a0b21e01f31868dcbb5d04d5ec634f72a9c2c8` 的本轮新鲜 CI/专项 Workflow 全部通过；本次仅收口 Change/PR 元数据后，仍以 PR 最新 HEAD 的新鲜 Workflow 为最终合并门禁。
+- [x] PR 最新 HEAD `a68a4093255723c9ab8dbfcc08d1c25ac2c707c8` 的主 CI 与所有本轮触发的 Stage 6/7 专项 Workflow 全部成功，并已通过 PR 合并到 `main`。
 
 # 范围
 
@@ -215,26 +215,26 @@ Stage 12 Legacy Migration（仅首发需要旧数据时）
 - [x] 复核当前机器事实与主要正式文档。
 - [x] 修正发现的文档冲突与遗漏。
 - [x] 更新 Roadmap 阶段评估与下一步建议。
-- [x] 实质文档内容 HEAD 的本轮新鲜 CI/专项 Workflow 全部通过；最终仍检查 PR 最新 HEAD。
-- [x] 创建 Draft PR #139；当前 Change 进入 `ready_for_review`，满足最新 HEAD 门禁后可把 PR 标记 Ready。归档只在 PR 实际合并后进行。
+- [x] PR 最新 HEAD 的新鲜 CI 与专项 Workflow 全部通过。
+- [x] PR #139 已合并到 `main`；本 Change 按完成门禁归档。
 
 # 验证结果
 
-实质文档内容 HEAD：
+最终 PR HEAD：
 
 ```text
-22a0b21e01f31868dcbb5d04d5ec634f72a9c2c8
+a68a4093255723c9ab8dbfcc08d1c25ac2c707c8
 ```
 
 新鲜 Workflow：
 
 ```text
-CI #1847                                  success
-Stage 6 XHS Vertical Slice #1662         success
-Stage 7 Keyword Packs #1457              success
-Stage 7 Provider Config Routing #1570    success
-Stage 7 Plan Occurrence Run Snapshot #1455 success
-Stage 7 Scheduler Runtime #1797          success
+CI #1848                                      success
+Stage 6 XHS Vertical Slice #1663             success
+Stage 7 Keyword Packs #1458                  success
+Stage 7 Provider Config Routing #1571        success
+Stage 7 Plan Occurrence Run Snapshot #1456   success
+Stage 7 Scheduler Runtime #1798               success
 ```
 
 主 CI 中：
@@ -246,7 +246,11 @@ Stage 7 Scheduler Runtime #1797          success
 
 其中 `Backend and repository checks` 包含当前仓库的 Ruff/mypy/pytest 与架构、table ownership、secret、docs 等质量门禁，未为本轮文档修改绕过任何检查。
 
-本次提交只更新 Change 交付状态与上述验证记录；它会产生新的 PR HEAD，因此**真正允许合并时仍必须以 PR 最新 HEAD 的新鲜 Workflow 为准**。
+PR #139 已使用 merge commit 合并到 `main`：
+
+```text
+ec7c0defc5b7bc28d3b3e78d7f0b6f9bd97ac1ed
+```
 
 # 文档影响
 
@@ -264,9 +268,11 @@ changes/active → changes/archive（两个已合并历史 Change）
 
 # Git / PR / 发布
 
-- 分支：`docs/current-implementation-audit-20260822`
+- 工作分支：`docs/current-implementation-audit-20260822`
 - PR：#139 `校正文档当前实现事实并重排生产阶段依赖`
-- 当前 PR 状态：Draft；本 Change 为 `ready_for_review`，待最新 HEAD 新鲜 Workflow 全绿后将 PR 标记 Ready。
-- Merge：仅在 PR 最新 HEAD 质量门禁通过且有合并授权后执行。
-- 归档：仅在 PR 实际合并后把本 Change 移入 `changes/archive/`。
-- 发布/生产部署：不属于本 Change。
+- PR 状态：merged
+- Merge commit：`ec7c0defc5b7bc28d3b3e78d7f0b6f9bd97ac1ed`
+- Change：done，归档至 `changes/archive/2026-08/CHG-20260822-current-implementation-audit/`
+- 发布/生产部署：不属于本 Change；系统仍为 Production No-Go。
+
+归档移动本身只改变 Change 文件位置和最终状态；其归档 PR/merge SHA 可由 Git 历史追溯，不在本 Change 内形成自引用循环。
