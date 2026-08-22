@@ -265,6 +265,45 @@ def test_batch_supplement_targets_require_lookup_identity_and_exclude_current_ir
     assert [target.content_id for target in targets] == [eligible_id]
 
 
+def test_typed_lookup_that_does_not_match_stable_content_identity_is_not_eligible(
+    runtime,
+) -> None:  # type: ignore[no-untyped-def]
+    batch_id, job_id, attempt_id, artifact_id = _seed_batch(runtime)
+    eligible_id = _insert_content(
+        runtime,
+        attempt_id=attempt_id,
+        artifact_id=artifact_id,
+        external_content_id="eligible-note",
+        lookup_id=True,
+        job_id=job_id,
+        irrelevant=False,
+    )
+    mismatched_id = _insert_content(
+        runtime,
+        attempt_id=attempt_id,
+        artifact_id=artifact_id,
+        external_content_id="SOURCE-ARTICLE-ONLY",
+        lookup_id=False,
+        job_id=job_id,
+        irrelevant=False,
+    )
+    with runtime.database.engine.begin() as connection:
+        connection.execute(
+            insert(content_external_ids_table).values(
+                content_id=mismatched_id,
+                id_type="note_id",
+                external_id="real-provider-note-id",
+                provider_attempt_id=attempt_id,
+                raw_artifact_id=artifact_id,
+                observed_at=datetime.now(UTC),
+            )
+        )
+
+    targets = _read_targets(runtime, batch_id=batch_id, identity=_CURRENT_ANALYSIS_IDENTITY)
+
+    assert [target.content_id for target in targets] == [eligible_id]
+
+
 def test_stale_irrelevant_analysis_does_not_block_supplement_target(runtime) -> None:  # type: ignore[no-untyped-def]
     batch_id, job_id, attempt_id, artifact_id = _seed_batch(runtime)
     content_id = _insert_content(
