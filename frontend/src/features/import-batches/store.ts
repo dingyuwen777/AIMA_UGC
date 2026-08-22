@@ -73,7 +73,7 @@ function errorMessage(error: unknown): string {
 }
 
 function isSupplementBatch(batch: ImportBatchResponse): boolean {
-  return batch.status === 'succeeded' && batch.stats.rows_ingested > 0
+  return batch.status === 'succeeded' && (batch.stats.rows_ingested ?? 0) > 0
 }
 
 export const useImportBatchesStore = defineStore('collection-runtime', () => {
