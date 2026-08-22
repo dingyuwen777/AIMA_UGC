@@ -354,4 +354,4 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     previousPlanPage,
     nextPlanPage,
   }
-}
+})
