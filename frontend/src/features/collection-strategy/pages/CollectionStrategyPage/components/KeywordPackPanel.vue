@@ -26,8 +26,18 @@ const keyword = ref('')
       <div class="table-head">
         <strong>Discovery 关键词包</strong><span>共 {{ packs.length }} 个</span>
       </div>
-      <div v-if="loading" class="state">正在读取关键词包…</div>
-      <div v-else-if="packs.length === 0" class="state">暂无 Discovery 词包，请先新建词包。</div>
+      <div
+        v-if="loading"
+        class="state"
+      >
+        正在读取关键词包…
+      </div>
+      <div
+        v-else-if="packs.length === 0"
+        class="state"
+      >
+        暂无 Discovery 词包，请先新建词包。
+      </div>
       <div
         v-for="pack in packs"
         v-else
@@ -61,14 +71,32 @@ const keyword = ref('')
         </div>
         <p>{{ selected.description || '暂无描述' }}</p>
         <div class="keyword-list">
-          <span v-for="item in selected.keywords" :key="`${item.id}-${item.platform}`">{{ item.text }}<small>{{ item.platform === 'all' ? '全部平台' : item.platform }}</small></span>
+          <span
+            v-for="item in selected.keywords"
+            :key="`${item.id}-${item.platform}`"
+          >{{ item.text }}<small>{{ item.platform === 'all' ? '全部平台' : item.platform }}</small></span>
           <em v-if="selected.keywords.length === 0">当前词包还没有关键词。</em>
         </div>
         <form @submit.prevent="emit('addKeyword', selected.id, keyword.trim()); keyword = ''">
-          <input v-model="keyword" maxlength="500" placeholder="新增关键词" required><button type="submit" :disabled="saving || !keyword.trim()">添加</button>
+          <input
+            v-model="keyword"
+            maxlength="500"
+            placeholder="新增关键词"
+            required
+          ><button
+            type="submit"
+            :disabled="saving || !keyword.trim()"
+          >
+            添加
+          </button>
         </form>
       </template>
-      <div v-else class="state">选择左侧词包查看关键词明细。</div>
+      <div
+        v-else
+        class="state"
+      >
+        选择左侧词包查看关键词明细。
+      </div>
     </aside>
   </section>
 </template>
