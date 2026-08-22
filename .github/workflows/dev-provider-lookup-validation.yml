@@ -59,6 +59,19 @@ jobs:
         run: |
           set -euo pipefail
           uv run python scripts/dev/apply_provider_lookup_followup.py
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("backend/src/aima_ugc/contracts/http.py")
+          text = path.read_text(encoding="utf-8")
+          old = "    targets: tuple[CollectionBatchSupplementTargetResponse, ...] = ()"
+          new = "    targets: tuple[CollectionBatchSupplementTargetResponse, ...]"
+          if old in text:
+              text = text.replace(old, new, 1)
+              path.write_text(text, encoding="utf-8")
+          elif new not in text:
+              raise SystemExit("CollectionBatchSupplementEligibilityResponse.targets anchor missing")
+          PY
 
       - name: Generate OpenAPI and frontend client
         id: generate
