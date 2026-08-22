@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260822-current-implementation-audit
 title: 当前代码实现与文档一致性审计
 level: L2
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: docs/current-implementation-audit-20260822
 created: 2026-08-22
@@ -40,7 +40,7 @@ data_changes: []
 - [x] 关键业务/逻辑方案按正确文档层表达；精确 Schema/Prompt/OpenAPI 仍由机器事实维护，不复制第二份。
 - [x] 已批准但未实现的生产目标仍只保留为 Roadmap/正式设计，不误写成当前机器事实。
 - [x] 后续阶段按当前代码重新评估，明确合理项、需要重排项、需要用户上游决策项和下一最小正式开发单元。
-- [ ] 文档链接/结构检查、受影响测试与 GitHub CI 使用本轮新鲜 head 验证通过。
+- [x] 实质文档内容 HEAD `22a0b21e01f31868dcbb5d04d5ec634f72a9c2c8` 的本轮新鲜 CI/专项 Workflow 全部通过；本次仅收口 Change/PR 元数据后，仍以 PR 最新 HEAD 的新鲜 Workflow 为最终合并门禁。
 
 # 范围
 
@@ -215,20 +215,38 @@ Stage 12 Legacy Migration（仅首发需要旧数据时）
 - [x] 复核当前机器事实与主要正式文档。
 - [x] 修正发现的文档冲突与遗漏。
 - [x] 更新 Roadmap 阶段评估与下一步建议。
-- [ ] 运行/读取本轮新鲜验证与 CI。
-- [ ] 通过 PR 交付；只有满足归档门禁后才归档本 Change。
+- [x] 实质文档内容 HEAD 的本轮新鲜 CI/专项 Workflow 全部通过；最终仍检查 PR 最新 HEAD。
+- [x] 创建 Draft PR #139；当前 Change 进入 `ready_for_review`，满足最新 HEAD 门禁后可把 PR 标记 Ready。归档只在 PR 实际合并后进行。
 
-# 验证计划
+# 验证结果
 
-至少检查：
+实质文档内容 HEAD：
 
 ```text
-scripts/quality/check_docs.py
-相关文档事实测试
-CI / architecture / table ownership / secret scan（由仓库工作流实际触发为准）
+22a0b21e01f31868dcbb5d04d5ec634f72a9c2c8
 ```
 
-如果本轮只修改 Markdown/Change 而没有运行时代码变化，不制造无关业务测试；但所有受影响的文档路径/事实源测试必须保持通过。
+新鲜 Workflow：
+
+```text
+CI #1847                                  success
+Stage 6 XHS Vertical Slice #1662         success
+Stage 7 Keyword Packs #1457              success
+Stage 7 Provider Config Routing #1570    success
+Stage 7 Plan Occurrence Run Snapshot #1455 success
+Stage 7 Scheduler Runtime #1797          success
+```
+
+主 CI 中：
+
+- Stage 1：锁定 Python/Node 环境、generated contract/client、backend/repository checks、Wheel、frontend checks 全部通过；
+- Stage 2 Platform：unit + PostgreSQL integration + real readiness smoke 通过；
+- Stage 3A Database：Schema/Owner、空库 migration、repository integration、Stage 8B import、previous revision/base round trip 通过；
+- Windows bootstrap 通过。
+
+其中 `Backend and repository checks` 包含当前仓库的 Ruff/mypy/pytest 与架构、table ownership、secret、docs 等质量门禁，未为本轮文档修改绕过任何检查。
+
+本次提交只更新 Change 交付状态与上述验证记录；它会产生新的 PR HEAD，因此**真正允许合并时仍必须以 PR 最新 HEAD 的新鲜 Workflow 为准**。
 
 # 文档影响
 
@@ -247,6 +265,8 @@ changes/active → changes/archive（两个已合并历史 Change）
 # Git / PR / 发布
 
 - 分支：`docs/current-implementation-audit-20260822`
-- PR：待创建
-- Merge：仅在本轮 head 的质量门禁通过且有合并授权后执行
-- 发布/生产部署：不属于本 Change
+- PR：#139 `校正文档当前实现事实并重排生产阶段依赖`
+- 当前 PR 状态：Draft；本 Change 为 `ready_for_review`，待最新 HEAD 新鲜 Workflow 全绿后将 PR 标记 Ready。
+- Merge：仅在 PR 最新 HEAD 质量门禁通过且有合并授权后执行。
+- 归档：仅在 PR 实际合并后把本 Change 移入 `changes/archive/`。
+- 发布/生产部署：不属于本 Change。
