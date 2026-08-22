@@ -1,5 +1,6 @@
 {
   "source": "惠科data(0817-0819).xlsx",
+  "source_sha256": "8199f1b025a556998c8daa3c8b087f43494a1b84b13d932c1b3fb392f61ef37b",
   "sheet": "文章",
   "note": "仅保留用户上传 Excel 中的公开帖子 URL、来源行号和来源文章编号；不包含正文、作者、密钥或 TikHub Raw。",
   "platforms": {
