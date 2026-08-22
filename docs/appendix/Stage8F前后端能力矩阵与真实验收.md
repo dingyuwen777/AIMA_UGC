@@ -92,15 +92,24 @@ Import Batch status = succeeded
 AND rows_ingested > 0
 ```
 
-选择具体 Batch 后，前端复用正式 `GET /api/v1/contents`，对五个平台各做最多一次 `limit=1` 的存在性探测：
+选择具体 Batch 后，前端复用正式 `GET /api/v1/contents` 对每个平台做有界存在性探测，而不是枚举整批 Content：
 
 ```text
+第一次：
 source_identifier = batch_id
 platforms = [目标 Content 平台]
 limit = 1
+
+如果第一次为空，再补一次：
+source_identifier = batch_id
+platforms = [目标 Content 平台]
+relevance = irrelevant
+limit = 1
 ```
 
-因此不会为了资格判断扫描整批 Content，也不会仅凭 Excel 文件名猜平台。
+第二次查询是必要的，因为声音广场默认列表会隐藏当前 AI 明确判定为 `irrelevant` 的 Content，而后端 Batch Supplement target reader 按正式来源账本读取目标，不应用声音广场展示过滤。如果某个平台只有 `irrelevant` Content，它仍然是合法补采目标。
+
+首版五个平台因此每个平台最多两次 `limit=1` 查询，最坏 10 次小查询；不会扫描整批数据，也不会仅凭 Excel 文件名猜平台。用户切换 Batch 时会失效上一 Batch 的平台资格并重新探测；从 A 切到 B 再切回 A 也不会复用 B 的资格快照。
 
 平台按钮还必须同时满足当前 Provider Config 的正式 Capability：
 
@@ -211,7 +220,7 @@ GET /api/v1/collection-plans?enabled=true
 | 五平台筛选 | 小红书、抖音、微博、B站、快手；另有 `file` | Filters | 已完整闭环 | `frontend/tests/voice-plaza.spec.ts` |
 | Batch / Run 来源筛选 | 后端 `source_identifier` 沿 Content Version → Provider Request/Attempt → Import Batch 或 Collection Run 查询 | Route query / Filters → API | 已完整闭环 | PostgreSQL Integration + Real Full-stack Batch 链 |
 | Analysis pending/stale/completed | Content Query 投影当前匹配 Analysis | Store / Table / Detail | 已完整闭环 | Backend Integration + Unit/Mock E2E |
-| AI Analysis Request / Job | `POST /api/v1/content-analysis-requests`、`GET /api/v1/content-analysis-jobs/{job_id}` | Voice Page / Store | 已完整闭环 | Backend Fake/Fixture + 前端 Mock；普通 CI 不调用付费 LLM |
+| AI Analysis Request / Job | `POST /api/v1/content-analysis-requests`、`GET /api/v1/content-analysis-jobs/{job_id}` | Voice Page / Store；Job 状态显示为排队中/处理中/已完成/失败/已取消 | 已完整闭环 | Backend Fake/Fixture + 前端 Mock；普通 CI 不调用付费 LLM |
 | Excel Export | `POST/GET /api/v1/data-exports*` | Voice Page / Export Dialog | 已完整闭环；空 selected/page/query 不创建 Job | Reporting Backend + Unit/Mock E2E |
 | Artifact Download | `GET /api/v1/data-exports/{export_id}/download` | Export Dialog | 已完整闭环；未就绪不允许下载 | Backend 409/Artifact Test + 前端 Unit/Mock E2E |
 
@@ -308,7 +317,7 @@ Full-stack Workflow 固定：
 npm --prefix frontend run test:e2e
 → Mock API
 → 快速验证按钮、Dialog/Drawer、enabled/disabled、状态和常见错误
-→ 覆盖词包停用资格、Batch 补采资格、Import 失败终态、空 Export 等 UI 行为
+→ 覆盖词包停用资格、Plan 资格、Batch 补采资格与切换刷新、Import 失败终态、AI Job 状态、空 Export 等 UI 行为
 
 npm --prefix frontend run test:e2e:fullstack
 → 真实 API + PostgreSQL + Worker
