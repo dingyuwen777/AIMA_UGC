@@ -34,6 +34,7 @@ const importBatchId = ref('')
 const includeComments = ref(true)
 const includeSubComments = ref(false)
 const validation = ref<string | null>(null)
+const lastRequestedBatchId = ref('')
 const supportedPlatforms: CollectionPlatform[] = [
   'xhs',
   'douyin',
@@ -78,10 +79,17 @@ const canSubmit = computed(() => {
   return !!importBatchId.value && !props.loadingBatchPlatforms
 })
 
+function requestBatchPlatforms(batchId: string): void {
+  if (!batchId || lastRequestedBatchId.value === batchId) return
+  lastRequestedBatchId.value = batchId
+  emit('batchChange', batchId)
+}
+
 watch(
   () => props.modelValue,
   (open) => {
     if (!open) return
+    lastRequestedBatchId.value = props.initialBatchId ?? ''
     mode.value = props.initialBatchId ? 'batch_supplement' : 'discovery'
     importBatchId.value = props.initialBatchId ?? ''
     keywordInput.value = ''
@@ -100,16 +108,18 @@ watch(
 watch(mode, () => {
   platforms.value = []
   validation.value = null
-  if (mode.value === 'batch_supplement' && importBatchId.value) {
-    emit('batchChange', importBatchId.value)
+  if (mode.value === 'batch_supplement') {
+    requestBatchPlatforms(importBatchId.value)
+  } else {
+    lastRequestedBatchId.value = ''
   }
 })
 
 watch(importBatchId, (batchId, previous) => {
   platforms.value = []
   validation.value = null
-  if (mode.value === 'batch_supplement' && batchId && batchId !== props.initialBatchId && batchId !== previous) {
-    emit('batchChange', batchId)
+  if (mode.value === 'batch_supplement' && batchId !== previous) {
+    requestBatchPlatforms(batchId)
   }
 })
 
