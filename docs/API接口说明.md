@@ -547,7 +547,11 @@ Worker 后续使用冻结版本生成 XLSX Artifact。
 
 ## 8.2 `GET /api/v1/data-exports`
 
-查询 Export 列表，支持当前 Contract 定义的分页/筛选。
+查询最近的 Export 列表。
+
+**当前这个 Route 没有 Query 参数，也没有 Cursor/分页/筛选 Contract。** `bootstrap/api.py` 直接调用 `PostgresReportingHttpService.list_exports()`，由 Reporting Repository 读取当前最近记录并返回 `DataExportListResponse.items`。
+
+不要把 `POST /api/v1/data-exports` 创建 Export 时使用的 `ContentFilterSnapshot` 误写成“Export 列表筛选”。如果后续需要按状态、日期等过滤或分页列表，必须正式修改 HTTP Contract、Route/Service/Repository、OpenAPI/generated Client 和测试后再更新本文。
 
 ## 8.3 `GET /api/v1/data-exports/{export_id}`
 
