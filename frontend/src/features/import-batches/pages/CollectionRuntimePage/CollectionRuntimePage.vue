@@ -107,44 +107,13 @@ async function viewContents(batchId: string): Promise<void> {
     <div class="page-header">
       <div><h1>采集运行中心</h1><p>统一查看 Excel 导入与 TikHub 辅助补采运行</p></div>
       <div class="page-actions">
-        <button
-          type="button"
-          @click="store.refresh()"
-        >
-          ↻&nbsp; 刷新数据
-        </button><button
-          class="primary"
-          type="button"
-          @click="uploadOpen = true"
-        >
-          ⇧&nbsp; 导入 Excel
-        </button><button
-          class="outline-primary"
-          type="button"
-          @click="openCreate()"
-        >
-          ＋&nbsp; 新建 TikHub 补采
-        </button>
+        <button type="button" @click="store.refresh()">↻&nbsp; 刷新数据</button><button class="primary" type="button" @click="uploadOpen = true">⇧&nbsp; 导入 Excel</button><button class="outline-primary" type="button" @click="openCreate()">＋&nbsp; 新建 TikHub 补采</button>
       </div>
     </div>
 
-    <CollectionRuntimeKpiCards
-      :summary="store.summary"
-      :loading="store.loading"
-    />
-    <nav
-      class="runtime-tabs"
-      aria-label="运行类型"
-    >
-      <button
-        v-for="tab in [{ value: 'all', label: '全部运行' }, { value: 'excel', label: 'Excel 导入' }, { value: 'tikhub', label: 'TikHub 辅助补采' }] as const"
-        :key="tab.value"
-        type="button"
-        :class="{ active: store.activeTab === tab.value }"
-        @click="store.setTab(tab.value)"
-      >
-        {{ tab.label }}
-      </button>
+    <CollectionRuntimeKpiCards :summary="store.summary" :loading="store.loading" />
+    <nav class="runtime-tabs" aria-label="运行类型">
+      <button v-for="tab in [{ value: 'all', label: '全部运行' }, { value: 'excel', label: 'Excel 导入' }, { value: 'tikhub', label: 'TikHub 辅助补采' }] as const" :key="tab.value" type="button" :class="{ active: store.activeTab === tab.value }" @click="store.setTab(tab.value)">{{ tab.label }}</button>
     </nav>
     <CollectionRuntimeFilters
       v-model:search="store.filters.search"
@@ -157,66 +126,27 @@ async function viewContents(batchId: string): Promise<void> {
       @search="search"
       @reset="reset"
     />
-    <div
-      v-if="store.error"
-      class="page-error"
-      role="alert"
-    >
-      !&nbsp; {{ store.error }}
-    </div>
+    <div v-if="store.error" class="page-error" role="alert">!&nbsp; {{ store.error }}</div>
 
-    <div class="list-heading">
-      <strong>采集运行记录</strong><span>创建时间：最新优先</span>
-    </div>
-    <CollectionRuntimeTable
-      :items="store.items"
-      :loading="store.loading"
-      @select="selectItem"
-      @supplement="openCreate"
-    />
-    <div class="pagination">
-      <span>已加载 {{ store.items.length }} 条</span><button
-        type="button"
-        :disabled="!store.hasMore || store.loadingNext"
-        @click="store.loadNext()"
-      >
-        {{ store.loadingNext ? '加载中…' : store.hasMore ? '下一页 →' : '已加载全部' }}
-      </button>
-    </div>
+    <div class="list-heading"><strong>采集运行记录</strong><span>创建时间：最新优先</span></div>
+    <CollectionRuntimeTable :items="store.items" :loading="store.loading" @select="selectItem" @supplement="openCreate" />
+    <div class="pagination"><span>已加载 {{ store.items.length }} 条</span><button type="button" :disabled="!store.hasMore || store.loadingNext" @click="store.loadNext()">{{ store.loadingNext ? '加载中…' : store.hasMore ? '下一页 →' : '已加载全部' }}</button></div>
 
-    <ImportBatchDetailDrawer
-      v-model="batchDetailOpen"
-      :item="store.selectedBatch"
-      @refresh="store.selectedBatch && store.openBatchDetail(store.selectedBatch.id)"
-      @copy="copy"
-      @view-contents="viewContents"
-    />
-    <CollectionRunDetailDrawer
-      v-model="runDetailOpen"
-      :item="store.selectedRun"
-      @refresh="store.selectedRun && store.openRunDetail(store.selectedRun.run_id)"
-      @copy="copy"
-    />
-    <ImportUploadDialog
-      v-model="uploadOpen"
-      :uploading="store.uploading"
-      @submit="upload"
-    />
+    <ImportBatchDetailDrawer v-model="batchDetailOpen" :item="store.selectedBatch" @refresh="store.selectedBatch && store.openBatchDetail(store.selectedBatch.id)" @copy="copy" @view-contents="viewContents" />
+    <CollectionRunDetailDrawer v-model="runDetailOpen" :item="store.selectedRun" @refresh="store.selectedRun && store.openRunDetail(store.selectedRun.run_id)" @copy="copy" />
+    <ImportUploadDialog v-model="uploadOpen" :uploading="store.uploading" @submit="upload" />
     <TikHubSupplementDrawer
       v-model="supplementOpen"
       :capabilities="store.capabilities"
       :batches="store.batchOptions"
+      :batch-content-platforms="store.batchContentPlatforms"
+      :loading-batch-platforms="store.loadingBatchPlatforms"
       :creating="store.creating"
       :initial-batch-id="initialBatchId"
+      @batch-change="store.loadBatchPlatforms"
       @submit="createRun"
     />
-    <div
-      v-if="notice"
-      class="notice"
-      role="status"
-    >
-      ✓ {{ notice }}
-    </div>
+    <div v-if="notice" class="notice" role="status">✓ {{ notice }}</div>
   </AppShell>
 </template>
 
