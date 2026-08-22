@@ -36,7 +36,6 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/dev/_fix_platform_unification_green.py
-          uv run ruff check --fix backend tests scripts migrations/versions/20260822_0024_unify_platform_identifiers.py
           uv run ruff format backend tests scripts migrations/versions/20260822_0024_unify_platform_identifiers.py
       - name: Regenerate contracts and frontend client
         shell: bash
@@ -45,7 +44,7 @@ jobs:
           uv run python scripts/contracts/generate.py
           npm --prefix frontend run generate:api
           git diff --check
-      - name: Commit generated fixes to development branch
+      - name: Commit mechanical fixes to development branch
         shell: bash
         run: |
           set -euo pipefail
@@ -55,14 +54,15 @@ jobs:
           git diff --cached --check
           if git diff --cached --quiet; then
             echo 'No mechanical fixes to commit.'
-            exit 0
+          else
+            git commit -m '收口五平台完整名称与生成物'
+            git push origin HEAD:refactor/unify-platform-identifiers
           fi
-          git commit -m '收口五平台完整名称与生成物'
-          git push origin HEAD:refactor/unify-platform-identifiers
-      - name: Run focused regression tests
+      - name: Run focused quality and regression tests
         shell: bash
         run: |
           set -euo pipefail
+          uv run ruff check backend tests scripts migrations/versions/20260822_0024_unify_platform_identifiers.py
           uv run pytest \
             tests/contracts/test_platform_identifier_consistency.py \
             tests/unit/collection/test_scheduled_scope_snapshot.py \
