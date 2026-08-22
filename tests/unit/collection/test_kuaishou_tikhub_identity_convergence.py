@@ -26,7 +26,9 @@ def _context(*, external_content_id: str) -> KuaishouMappingContext:
     )
 
 
-def test_kuaishou_detail_preserves_requested_content_identity_and_records_provider_photo_id() -> None:
+def test_kuaishou_detail_preserves_requested_content_identity_and_records_provider_photo_id() -> (
+    None
+):
     mapped = map_content(
         {
             "photo_id": "provider-photo-id",
