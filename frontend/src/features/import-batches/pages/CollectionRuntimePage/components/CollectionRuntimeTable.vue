@@ -23,35 +23,93 @@ function statusClass(item: CollectionRuntimeItemResponse): string {
 </script>
 
 <template>
-  <section class="runtime-list" aria-label="采集运行记录">
-    <div class="table-head"><span>任务 / 执行 ID</span><span>类型</span><span>状态与进度</span><span>当前阶段</span><span>处理统计</span><span>关联对象</span><span>创建时间</span><span>操作</span></div>
-    <div v-if="loading && items.length === 0" class="table-state" role="status">正在加载运行记录…</div>
-    <div v-else-if="items.length === 0" class="table-state"><strong>暂无采集运行</strong><span>可导入 Excel，或创建一次 TikHub 辅助补采。</span></div>
-    <article v-for="item in items" :key="`${item.record_type}:${item.record_id}`" class="table-row">
-      <div class="identity"><strong>{{ item.display_name }}</strong><span>{{ item.record_type === 'excel_import' ? 'Batch' : 'Run' }} ID: {{ shortId(item.record_id) }}</span></div>
-      <div><span :class="`type-pill type-pill--${item.record_type}`">{{ recordTypeLabels[item.record_type] }}</span></div>
-      <div class="progress-cell"><div><i :class="statusClass(item)" />{{ runtimeStatusLabels[item.status] }} <b>{{ item.progress }}%</b></div><div class="progress-track"><span :style="{ width: `${item.progress}%` }" /></div></div>
-      <div><span class="stage-pill">{{ runtimeStageLabel(item.stage) }}</span></div>
-      <div v-if="item.import_stats" class="stats-cell">
-        <span>读取<strong>{{ formatNumber(item.import_stats.rows_seen) }}</strong></span><span>命中<strong>{{ formatNumber(item.import_stats.rows_matched) }}</strong></span><span>过滤<strong>{{ formatNumber(item.import_stats.rows_filtered_out) }}</strong></span><span>入库<strong>{{ formatNumber(item.import_stats.rows_ingested) }}</strong></span>
+  <section
+    class="runtime-list"
+    aria-label="采集运行记录"
+  >
+    <div class="table-head">
+      <span>任务 / 执行 ID</span><span>类型</span><span>状态与进度</span><span>当前阶段</span><span>处理统计</span><span>关联对象</span><span>创建时间</span><span>操作</span>
+    </div>
+    <div
+      v-if="loading && items.length === 0"
+      class="table-state"
+      role="status"
+    >
+      正在加载运行记录…
+    </div>
+    <div
+      v-else-if="items.length === 0"
+      class="table-state"
+    >
+      <strong>暂无采集运行</strong><span>可导入 Excel，或创建一次 TikHub 辅助补采。</span>
+    </div>
+    <article
+      v-for="item in items"
+      :key="`${item.record_type}:${item.record_id}`"
+      class="table-row"
+    >
+      <div class="identity">
+        <strong>{{ item.display_name }}</strong>
+        <span>{{ item.record_type === 'excel_import' ? 'Batch' : 'Run' }} ID: {{ shortId(item.record_id) }}</span>
       </div>
-      <div v-else class="stats-cell">
-        <span>请求<strong>{{ formatNumber(item.collection_stats?.requested_count) }}</strong></span><span>成功<strong>{{ formatNumber(item.collection_stats?.succeeded_count) }}</strong></span><span>内容<strong>{{ formatNumber(item.collection_stats?.content_count) }}</strong></span><span>评论<strong>{{ formatNumber(item.collection_stats?.comment_count) }}</strong></span>
+      <div><span :class="`type-pill type-pill--${item.record_type}`">{{ recordTypeLabels[item.record_type] }}</span></div>
+      <div class="progress-cell">
+        <div><i :class="statusClass(item)" />{{ runtimeStatusLabels[item.status] }} <b>{{ item.progress }}%</b></div>
+        <div class="progress-track">
+          <span :style="{ width: `${item.progress}%` }" />
+        </div>
+      </div>
+      <div><span class="stage-pill">{{ runtimeStageLabel(item.stage) }}</span></div>
+      <div
+        v-if="item.import_stats"
+        class="stats-cell"
+      >
+        <span>读取<strong>{{ formatNumber(item.import_stats.rows_seen) }}</strong></span>
+        <span>命中<strong>{{ formatNumber(item.import_stats.rows_matched) }}</strong></span>
+        <span>过滤<strong>{{ formatNumber(item.import_stats.rows_filtered_out) }}</strong></span>
+        <span>入库<strong>{{ formatNumber(item.import_stats.rows_ingested) }}</strong></span>
+      </div>
+      <div
+        v-else
+        class="stats-cell"
+      >
+        <span>请求<strong>{{ formatNumber(item.collection_stats?.requested_count) }}</strong></span>
+        <span>成功<strong>{{ formatNumber(item.collection_stats?.succeeded_count) }}</strong></span>
+        <span>内容<strong>{{ formatNumber(item.collection_stats?.content_count) }}</strong></span>
+        <span>评论<strong>{{ formatNumber(item.collection_stats?.comment_count) }}</strong></span>
       </div>
       <div class="related">
-        <template v-if="item.import_batch_id"><span>Batch ID</span><strong>{{ shortId(item.import_batch_id) }}</strong></template>
-        <template v-else><span>平台</span><strong>{{ item.platforms?.map((platform) => platformLabels[platform]).join(' / ') || '—' }}</strong></template>
+        <template v-if="item.import_batch_id">
+          <span>Batch ID</span><strong>{{ shortId(item.import_batch_id) }}</strong>
+        </template>
+        <template v-else>
+          <span>平台</span><strong>{{ item.platforms?.map((platform) => platformLabels[platform]).join(' / ') || '—' }}</strong>
+        </template>
       </div>
-      <div class="time-cell"><span>{{ formatDateTime(item.created_at) }}</span><span>{{ elapsed(item.started_at, item.finished_at) }}</span></div>
+      <div class="time-cell">
+        <span>{{ formatDateTime(item.created_at) }}</span><span>{{ elapsed(item.started_at, item.finished_at) }}</span>
+      </div>
       <div class="actions">
-        <button type="button" @click="$emit('select', item)">查看详情</button>
+        <button
+          type="button"
+          @click="$emit('select', item)"
+        >
+          查看详情
+        </button>
         <button
           v-if="item.record_type === 'excel_import' && item.import_batch_id && item.status === 'succeeded' && (item.import_stats?.rows_ingested ?? 0) > 0"
           type="button"
           @click="$emit('supplement', item.import_batch_id)"
-        >基于批次补采</button>
+        >
+          基于批次补采
+        </button>
       </div>
-      <div v-if="item.error_summary" class="row-error">⚠ {{ item.error_summary }}</div>
+      <div
+        v-if="item.error_summary"
+        class="row-error"
+      >
+        ⚠ {{ item.error_summary }}
+      </div>
     </article>
   </section>
 </template>
