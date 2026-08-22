@@ -466,6 +466,16 @@ export interface ContentSourceResponse {
   raw_artifact_id?: string | null;
 }
 
+/**
+ * 声音广场只读补采状态；不公开 Provider 私有请求与原始错误详情。
+ */
+export interface ContentSupplementStatusResponse {
+  run_id: string;
+  status: CollectionRuntimeStatus;
+  stop_reason?: string | null;
+  updated_at: string;
+}
+
 export interface ContentDetailResponse {
   analysis: ContentAnalysisResponse;
   author_display_name?: string | null;
@@ -482,6 +492,7 @@ export interface ContentDetailResponse {
   published_at?: string | null;
   source: ContentSourceResponse;
   source_records?: ContentSourceResponse[];
+  supplement_status?: ContentSupplementStatusResponse | null;
   text?: string | null;
   title?: string | null;
 }

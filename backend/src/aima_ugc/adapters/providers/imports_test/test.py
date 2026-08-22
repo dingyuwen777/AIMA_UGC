@@ -72,6 +72,7 @@ REPORT_DATE_RANGE: tuple[date, date] | None = (
 # 最终 Excel 的“内容”Sheet 展示列；顺序就是导出顺序。
 EXCEL_CONTENT_COLUMNS = (
     "平台",
+    "内容ID",
     "标题",
     "正文",
     "作者",
@@ -86,6 +87,7 @@ EXCEL_CONTENT_COLUMNS = (
 
 # 最终 Excel 的“标签明细”Sheet 展示列；顺序就是导出顺序。
 EXCEL_LABEL_DETAIL_COLUMNS = (
+    "内容ID",
     "平台",
     "标题",
     "正文",
@@ -102,6 +104,7 @@ EXCEL_LABEL_DETAIL_COLUMNS = (
 # 最终 Excel 的“评论”Sheet 展示列；顺序就是导出顺序。
 EXCEL_COMMENT_COLUMNS = (
     "平台",
+    "内容ID",
     "标题",
     "正文",
     "评论内容",

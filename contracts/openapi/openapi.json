@@ -1385,6 +1385,16 @@
             "title": "Source Records",
             "type": "array"
           },
+          "supplement_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContentSupplementStatusResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "text": {
             "anyOf": [
               {
@@ -1932,6 +1942,43 @@
           "provider_name"
         ],
         "title": "ContentSourceResponse",
+        "type": "object"
+      },
+      "ContentSupplementStatusResponse": {
+        "additionalProperties": false,
+        "description": "声音广场只读补采状态；不公开 Provider 私有请求与原始错误详情。",
+        "properties": {
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CollectionRuntimeStatus"
+          },
+          "stop_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Reason"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "status",
+          "updated_at"
+        ],
+        "title": "ContentSupplementStatusResponse",
         "type": "object"
       },
       "ContentTargetSelection": {
