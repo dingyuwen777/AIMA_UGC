@@ -7,11 +7,10 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from aima_ugc.contracts.platform import PlatformScope
-
 from pydantic import JsonValue
 
 from aima_ugc.contracts.collection import ProviderConfigV1
+from aima_ugc.contracts.platform import PlatformScope
 
 ActorKind = Literal["system", "principal"]
 
@@ -91,7 +90,7 @@ class Keyword:
 
 @dataclass(frozen=True, slots=True)
 class KeywordPackItem:
-    """词包内关键词的平台级关联属性。"""
+    """词包内关键词的平台适用范围属性。"""
 
     pack_id: UUID
     keyword_id: UUID
