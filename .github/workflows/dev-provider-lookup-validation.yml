@@ -67,6 +67,7 @@ jobs:
           set -euo pipefail
           uv run python scripts/contracts/generate.py
           npm --prefix frontend run generate:api
+          uv run ruff check --fix scripts/dev/probe_excel_tikhub_supplement.py
           uv run ruff format \
             backend/src/aima_ugc/contracts/http.py \
             backend/src/aima_ugc/bootstrap/api.py \
@@ -128,6 +129,7 @@ jobs:
             tests/contracts/test_collection_batch_supplement_eligibility_http.py \
             tests/contracts/test_content_supplement_http.py \
             tests/api/test_stage8e_collection_runs.py \
+            scripts/dev/probe_excel_tikhub_supplement.py \
             docs/blueprint/02-采集系统与数据标准化.md \
             docs/blueprint/08-采集策略与平台能力.md \
             docs/appendix/数据入口与统一入库实现.md \
