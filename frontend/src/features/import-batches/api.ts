@@ -7,8 +7,10 @@ import {
   getImportBatch,
   getImportBatchSummary,
   listCollectionRuntimeRuns,
+  listContents,
   listImportBatches,
   type CollectionCapabilitiesResponse,
+  type CollectionPlatform,
   type CollectionRunCreateRequest,
   type CollectionRunCreatedResponse,
   type CollectionRunResponse,
@@ -90,4 +92,31 @@ export async function createTikHubCollectionRun(
 
 export async function fetchCollectionRunDetail(runId: string): Promise<CollectionRunResponse> {
   return unwrap(await getCollectionRun(runId))
+}
+
+const contentPlatformByCollection: Record<CollectionPlatform, string> = {
+  xhs: 'xiaohongshu',
+  douyin: 'douyin',
+  weibo: 'weibo',
+  bilibili: 'bilibili',
+  kuaishou: 'kuaishou',
+}
+
+export async function fetchBatchContentPlatforms(
+  batchId: string,
+  platforms: readonly CollectionPlatform[],
+): Promise<CollectionPlatform[]> {
+  const matches = await Promise.all(
+    platforms.map(async (platform) => {
+      const page = unwrap(
+        await listContents({
+          source_identifier: batchId,
+          platforms: [contentPlatformByCollection[platform]],
+          limit: 1,
+        }),
+      )
+      return page.items.length > 0 ? platform : null
+    }),
+  )
+  return matches.filter((platform): platform is CollectionPlatform => platform !== null)
 }
