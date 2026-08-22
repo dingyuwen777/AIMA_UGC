@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import type { DataExportResponse } from '../../../../../generated/api/client'
 import { formatDateTime, formatNumber } from '../../../format'
@@ -21,6 +21,11 @@ const scope = ref<'query' | 'selected' | 'page'>('selected')
 
 watch(() => props.modelValue, (open) => {
   if (open) scope.value = props.selectedCount > 0 ? 'selected' : props.pageCount > 0 ? 'page' : 'query'
+})
+
+const canSubmit = computed(() => {
+  if (scope.value === 'selected') return props.selectedCount > 0
+  return props.pageCount > 0
 })
 
 const statusLabels = {
@@ -73,11 +78,12 @@ const statusLabels = {
               type="radio"
               value="page"
               :disabled="pageCount === 0"
-            ><span><strong>当前页内容</strong><small>冻结已加载 {{ pageCount }} 条</small></span></label><label :class="{ active: scope === 'query' }"><input
+            ><span><strong>当前页内容</strong><small>冻结已加载 {{ pageCount }} 条</small></span></label><label :class="{ active: scope === 'query', disabled: pageCount === 0 }"><input
               v-model="scope"
               type="radio"
               value="query"
-            ><span><strong>全部查询结果</strong><small>按当前筛选条件冻结</small></span></label>
+              :disabled="pageCount === 0"
+            ><span><strong>全部查询结果</strong><small>{{ pageCount > 0 ? '按当前筛选条件冻结' : '当前筛选没有可导出内容' }}</small></span></label>
           </div><p class="analysis-note">
             未完成 AI 打标的内容不会被丢弃：仍会导出，AI 情感和标签列留空，并在结果统计中提示。
           </p><div class="records-title">
@@ -120,7 +126,7 @@ const statusLabels = {
           </button><button
             class="primary"
             type="button"
-            :disabled="submitting"
+            :disabled="submitting || !canSubmit"
             @click="emit('submit', scope)"
           >
             {{ submitting ? '正在创建…' : '创建 Excel 导出' }}
