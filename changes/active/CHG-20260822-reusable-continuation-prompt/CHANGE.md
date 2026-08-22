@@ -14,10 +14,9 @@ affected_areas:
   - development_workflow
   - roadmap_navigation
 affected_paths:
-  - AGENTS.md
-  - docs/guides
+  - docs/guides/AIMA持续开发与内网上线通用提示词.md
+  - docs/guides/README.md
   - docs/roadmap/README.md
-  - docs/roadmap/内网V1上线实施计划.md
 contracts: []
 data_changes: []
 ---
@@ -39,8 +38,7 @@ Stage 8F 前后端闭环
 # 范围
 
 - 新增一份仓库内长期保存的通用提示词 Guide；
-- 在 `AGENTS.md` 增加持续开发/内网上线的导航入口；
-- 在 Roadmap README 与内网 V1 计划中加入提示词入口；
+- 在 Guide README 与 Roadmap README 增加固定入口；
 - 明确未来每个新会话的 Git/CI/Change/PR/合并/归档工作流；
 - 保留当前已批准的内网 V1 范围，但要求以后以当前 `main` 的更新正式决策为准。
 
@@ -50,11 +48,12 @@ Stage 8F 前后端闭环
 - 不修改 HTTP Contract、Schema、Migration 或依赖；
 - 不在本 Change 中开始 Stage 8F 代码开发；
 - 不执行公司服务器部署；
+- 不修改 `AGENTS.md` 的统一规则正文；
 - 不把历史 SHA 或当前 PR 状态固化进通用提示词。
 
 # 必须保持不变
 
-- `AGENTS.md` 仍是统一入口；
+- `AGENTS.md` 仍是统一入口，并由通用提示词强制每次先读；
 - Reliable Vibe Coding 的 Change / CI / PR / Branch Protection 门禁不降低；
 - 当前代码、Contract、Migration、generated、tests 和锁文件仍是精确机器事实；
 - 后续 Agent 不得从聊天或提示词猜实现；
@@ -74,11 +73,11 @@ Stage 8F 前后端闭环
 
 # 成功标准
 
-- [ ] 新增可直接复制使用的通用提示词文档；
-- [ ] 提示词不包含需要长期维护的 SHA/PR/当前 Stage 假事实；
-- [ ] 提示词明确仓库事实恢复顺序、Active Change/PR/CI 判断、单元执行、验证、合并和归档；
-- [ ] 提示词与当前内网 V1 路线和长期 Production Roadmap 一致；
-- [ ] `AGENTS.md`、Roadmap README、内网 V1 计划都能导航到该提示词；
+- [x] 新增可直接复制使用的通用提示词文档；
+- [x] 提示词不包含需要长期维护的 SHA/PR/当前 Stage 完成状态；
+- [x] 提示词明确仓库事实恢复顺序、Active Change/PR/CI 判断、单元执行、验证、合并和归档；
+- [x] 提示词与当前内网 V1 路线和长期 Production Roadmap 一致；
+- [x] Guide README 与 Roadmap README 都能导航到该提示词；
 - [ ] 当前 PR 最新 HEAD 的仓库 CI/专项 Workflow 全部通过；
 - [ ] PR 合并后归档本 Change。
 
@@ -88,7 +87,7 @@ Stage 8F 前后端闭环
 
 - 仓库 docs/架构质量门禁；
 - 链接和路径可解析；
-- 通用提示词人工逐条对照 `AGENTS.md`、Reliable Vibe Coding 和当前 Roadmap；
+- 通用提示词人工逐条对照 `AGENTS.md`、Reliable Vibe Coding、内网 V1 Roadmap 与完整 Production Roadmap；
 - 当前 PR HEAD 的完整仓库 CI 与专项 Workflow。
 
 # Git / PR
