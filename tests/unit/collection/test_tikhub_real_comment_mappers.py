@@ -182,3 +182,30 @@ def test_kuaishou_app_root_comment_maps_proven_sub_comment_count() -> None:
 
     assert mapped.metrics.reply_count == 25
     assert "metrics.reply_count" in mapped.observed_fields
+
+
+def test_kuaishou_current_camel_case_comment_shape_maps_to_canonical_root() -> None:
+    raw = {
+        "commentId": "908850553827",
+        "authorId": "ks-user-1",
+        "authorName": "<redacted-string>",
+        "content": "<redacted-string>",
+        "likedCount": 9,
+        "subCommentCount": 3,
+        "timestamp": 1720000000000,
+    }
+    mapped = map_kuaishou_comment(
+        raw,
+        _common_context(KuaishouMappingContext, "fetch_video_comment", "3xgarycnydawq3g"),
+        item_locator="data.rootComments[0]",
+        is_root=True,
+    )
+
+    assert mapped.external_content_id == "3xgarycnydawq3g"
+    assert mapped.external_comment_id == "908850553827"
+    assert mapped.root_comment_id == "908850553827"
+    assert mapped.author is not None
+    assert mapped.author.external_account_id == "ks-user-1"
+    assert mapped.author.display_name == "<redacted-string>"
+    assert mapped.metrics.like_count == 9
+    assert mapped.metrics.reply_count == 3
