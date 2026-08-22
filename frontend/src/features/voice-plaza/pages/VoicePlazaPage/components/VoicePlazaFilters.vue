@@ -48,7 +48,7 @@ function value(event: Event): string {
     <label><span>平台</span><select
       :value="platform"
       @change="emit('update:platform', value($event))"
-    ><option value="">全部平台</option><option value="xiaohongshu">小红书</option><option value="douyin">抖音</option><option value="kuaishou">快手</option><option value="file">Excel 导入</option></select></label>
+    ><option value="">全部平台</option><option value="xiaohongshu">小红书</option><option value="douyin">抖音</option><option value="weibo">微博</option><option value="bilibili">B站</option><option value="kuaishou">快手</option><option value="file">Excel 导入</option></select></label>
     <label><span>AI 情感</span><select
       :value="sentiment"
       @change="emit('update:sentiment', value($event))"
