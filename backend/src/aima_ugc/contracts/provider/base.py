@@ -7,7 +7,7 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, SecretStr
 
-from aima_ugc.contracts.platform import PlatformName
+from aima_ugc.contracts.platform import PlatformName as PlatformName
 
 ProviderName = Annotated[
     str,
