@@ -1,0 +1,82 @@
+name: Platform Migration Diagnostic
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    if: github.event.pull_request.head.ref == 'refactor/unify-platform-identifiers'
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_DB: aima_ugc
+          POSTGRES_USER: aima_ugc
+          POSTGRES_PASSWORD: diagnostic-ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aima_ugc -d aima_ugc"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AIMA_DATA_DIR: .runtime/ci-platform-diagnostic/data
+      AIMA_LOG_DIR: .runtime/ci-platform-diagnostic/logs
+      AIMA_SECRET_DIR: .runtime/ci-platform-diagnostic/secrets
+      AIMA_DB_HOST: 127.0.0.1
+      AIMA_DB_PORT: 5432
+      AIMA_DB_NAME: aima_ugc
+      AIMA_DB_USER: aima_ugc
+      AIMA_DB_CONNECT_TIMEOUT_SECONDS: 3
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+      - name: Install locked environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv sync --locked
+          mkdir -p "${AIMA_SECRET_DIR}"
+          printf '%s\n' 'diagnostic-ci' > "${AIMA_SECRET_DIR}/postgres_password"
+          chmod 600 "${AIMA_SECRET_DIR}/postgres_password"
+      - name: Inspect 0023 platform constraints
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run alembic upgrade 20260821_0023
+          uv run python - <<'PY'
+          from sqlalchemy import text
+          from aima_ugc.platform.config import load_settings
+          from aima_ugc.platform.database import DatabaseRuntime
+
+          runtime = DatabaseRuntime(load_settings())
+          try:
+              with runtime.engine.connect() as connection:
+                  rows = connection.execute(text("""
+                      SELECT c.conrelid::regclass::text AS table_name,
+                             c.conname,
+                             pg_get_constraintdef(c.oid) AS definition
+                      FROM pg_constraint c
+                      WHERE c.contype = 'c'
+                        AND c.conrelid::regclass::text IN (
+                          'accounts','contents','collection_plan_platforms',
+                          'collection_scopes','keyword_pack_items'
+                        )
+                      ORDER BY table_name, c.conname
+                  """)).mappings().all()
+                  for row in rows:
+                      print(f"PLATFORM_DIAGNOSTIC {row['table_name']} | {row['conname']} | {row['definition']}")
+          finally:
+              runtime.dispose()
+          PY
