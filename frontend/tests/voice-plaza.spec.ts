@@ -1,3 +1,4 @@
+import { mount } from '@vue/test-utils'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from '@vue/server-renderer'
 import { createPinia, setActivePinia } from 'pinia'
@@ -16,6 +17,7 @@ const generated = vi.hoisted(() => ({
 
 vi.mock('../src/generated/api/client', () => generated)
 
+import VoicePlazaFilters from '../src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaFilters.vue'
 import VoicePlazaTable from '../src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaTable.vue'
 import { VoicePlazaApiError, fetchContents, fetchDataExportFile } from '../src/features/voice-plaza/api'
 import { useVoicePlazaStore } from '../src/features/voice-plaza/store'
@@ -61,6 +63,35 @@ describe('voice plaza', () => {
       items: [item],
     })
     expect(generated.listContents).toHaveBeenCalledWith({ sentiment: '负面', limit: 20 })
+  })
+
+  it('offers every currently supported content platform in the platform filter', () => {
+    const wrapper = mount(VoicePlazaFilters, {
+      props: {
+        search: '',
+        platform: '',
+        contentType: '',
+        analysisStatus: '',
+        sentiment: '',
+        primaryLabel: '',
+        secondaryLabel: '',
+        publishedFrom: '',
+        publishedTo: '',
+        sourceIdentifier: '',
+      },
+    })
+
+    const options = wrapper.findAll('select').at(0)?.findAll('option') ?? []
+    const values = options.map((option) => option.attributes('value'))
+    expect(values).toEqual([
+      '',
+      'xiaohongshu',
+      'douyin',
+      'weibo',
+      'bilibili',
+      'kuaishou',
+      'file',
+    ])
   })
 
   it('renders every ordered primary and secondary AI label pair in the label column', async () => {
