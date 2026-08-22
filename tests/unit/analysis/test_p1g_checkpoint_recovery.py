@@ -22,7 +22,7 @@ def _record() -> UnifiedContentRecordV1:
     return UnifiedContentRecordV1(
         content=CanonicalContentV1(
             observed_fields=["title", "text"],
-            platform="imports",
+            platform="xiaohongshu",
             external_content_id="content-1",
             content_type="unknown",
             title="爱玛新品",
