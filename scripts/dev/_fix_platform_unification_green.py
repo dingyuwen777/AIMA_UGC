@@ -28,13 +28,6 @@ def _excluded(path: Path) -> bool:
     return relative in _EXCLUDED_FILES or relative.startswith(_EXCLUDED_PREFIXES)
 
 
-def _replace_if_present(path: str, old: str, new: str) -> None:
-    target = ROOT / path
-    text = target.read_text(encoding="utf-8")
-    if old in text:
-        target.write_text(text.replace(old, new), encoding="utf-8")
-
-
 def _replace_platform_aliases_in_active_text() -> None:
     legacy_lower = _LEGACY_XIAOHONGSHU
     legacy_camel = legacy_lower.capitalize()
@@ -61,9 +54,7 @@ def _replace_platform_aliases_in_active_text() -> None:
         for alias, formal in exact_aliases.items():
             updated = re.sub(
                 rf"([\"']){re.escape(alias)}\1",
-                lambda match, replacement=formal: (
-                    f"{match.group(1)}{replacement}{match.group(1)}"
-                ),
+                lambda match, replacement=formal: f"{match.group(1)}{replacement}{match.group(1)}",
                 updated,
             )
         if updated != text:
@@ -90,31 +81,7 @@ def _rename_active_paths() -> None:
         path.rename(target)
 
 
-def _fix_semantic_regressions() -> None:
-    _replace_if_present(
-        "tests/unit/collection/test_scheduled_scope_snapshot.py",
-        "item_platform",
-        "item_platform_scope",
-    )
-    _replace_if_present(
-        "backend/src/aima_ugc/platform/export/excel.py",
-        "from aima_ugc.platform.presentation import platform_display_name\n",
-        "",
-    )
-    _replace_if_present(
-        "backend/src/aima_ugc/platform/export/excel.py",
-        "platform_display_name(content.platform)",
-        "content.platform",
-    )
-    _replace_if_present(
-        "backend/src/aima_ugc/platform/export/excel.py",
-        "platform_display_name(comment.platform)",
-        "comment.platform",
-    )
-
-
 def main() -> int:
-    _fix_semantic_regressions()
     _replace_platform_aliases_in_active_text()
     _rename_active_paths()
     return 0
