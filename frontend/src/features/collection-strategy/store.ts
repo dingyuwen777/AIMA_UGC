@@ -122,6 +122,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
       planTotal.value = planPage.total
       enabledPlanCount.value = planPage.enabled_count
       enabledPlanPackIds.value = [...new Set(enabledPlans.flatMap((plan) => plan.keyword_pack_ids))]
+      packDetails.value = {}
       await loadPackDetails(planPage.items.flatMap((plan) => plan.keyword_pack_ids))
     } catch (reason) {
       error.value = errorMessage(reason)
