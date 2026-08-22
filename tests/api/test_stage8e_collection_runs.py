@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 RUN_ID = UUID("11111111-1111-4111-8111-111111111111")
 JOB_ID = UUID("22222222-2222-4222-8222-222222222222")
 CONFIG_ID = UUID("33333333-3333-4333-8333-333333333333")
+BATCH_ID = UUID("44444444-4444-4444-8444-444444444444")
 
 
 class _FakeCollectionService:
@@ -22,6 +23,16 @@ class _FakeCollectionService:
                 }
             ],
             "capabilities": [],
+        }
+
+    def get_batch_supplement_eligibility(self, batch_id):  # type: ignore[no-untyped-def]
+        assert batch_id == BATCH_ID
+        return {
+            "batch_id": str(BATCH_ID),
+            "targets": [
+                {"platform": "xiaohongshu", "target_count": 2},
+                {"platform": "weibo", "target_count": 1},
+            ],
         }
 
     def create_run(self, request, *, request_id):  # type: ignore[no-untyped-def]
@@ -77,6 +88,21 @@ class _FakeCollectionService:
             "contents_ingested_today": 3,
             "as_of": datetime(2026, 8, 21, 0, 0, tzinfo=UTC).isoformat(),
         }
+
+
+def test_batch_supplement_eligibility_is_queryable() -> None:
+    client = TestClient(create_app(collection_service=_FakeCollectionService()))
+
+    response = client.get(f"/api/v1/import-batches/{BATCH_ID}/supplement-eligibility")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "batch_id": str(BATCH_ID),
+        "targets": [
+            {"platform": "xiaohongshu", "target_count": 2},
+            {"platform": "weibo", "target_count": 1},
+        ],
+    }
 
 
 def test_create_discovery_collection_run_returns_202() -> None:

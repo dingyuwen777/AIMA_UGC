@@ -364,6 +364,24 @@ class CollectionCapabilitiesResponse(BaseModel):
     capabilities: tuple[CollectionCapabilityResponse, ...]
 
 
+class CollectionBatchSupplementTargetResponse(BaseModel):
+    """一个平台当前真实可创建 Batch Supplement Scope 的目标数。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    platform: CollectionPlatform
+    target_count: int = Field(gt=0)
+
+
+class CollectionBatchSupplementEligibilityResponse(BaseModel):
+    """前端 Batch Supplement 平台资格；不公开 Provider 私有身份或 AI 结果正文。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    batch_id: UUID
+    targets: tuple[CollectionBatchSupplementTargetResponse, ...]
+
+
 class CollectionRuntimeListQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -435,6 +453,17 @@ class CollectionRuntimeSummaryResponse(BaseModel):
     completed_today_count: int = Field(ge=0)
     contents_ingested_today: int = Field(ge=0)
     as_of: datetime
+
+
+class ContentSupplementStatusResponse(BaseModel):
+    """声音广场只读补采状态；不公开 Provider 私有请求与原始错误详情。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: UUID
+    status: CollectionRuntimeStatus
+    stop_reason: str | None = None
+    updated_at: datetime
 
 
 class KeywordPackCreateRequest(BaseModel):
@@ -823,6 +852,7 @@ class ContentDetailResponse(ContentListItemResponse):
     media: tuple[ContentMediaResponse, ...] = ()
     comments: tuple[ContentCommentResponse, ...] = ()
     comment_coverage: CommentCoverageResponse | None = None
+    supplement_status: ContentSupplementStatusResponse | None = None
     source_records: tuple[ContentSourceResponse, ...] = ()
 
 
@@ -907,6 +937,8 @@ class DataExportListResponse(BaseModel):
 
 __all__ = [
     "CommentCoverageResponse",
+    "CollectionBatchSupplementEligibilityResponse",
+    "CollectionBatchSupplementTargetResponse",
     "CollectionCapabilitiesResponse",
     "CollectionCapabilityResponse",
     "CollectionPlanCreateRequest",
@@ -945,6 +977,7 @@ __all__ = [
     "ContentMediaResponse",
     "ContentMetricsResponse",
     "ContentSourceResponse",
+    "ContentSupplementStatusResponse",
     "ContentTargetSelection",
     "DataExportCreatedResponse",
     "DataExportJobResultResponse",

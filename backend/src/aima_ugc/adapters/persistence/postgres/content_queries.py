@@ -12,11 +12,13 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
 from aima_ugc.contracts.http import (
+    CollectionRuntimeStatus,
     CommentCoverageResponse,
     ContentCommentResponse,
     ContentFilterSnapshot,
     ContentMediaResponse,
     ContentSourceResponse,
+    ContentSupplementStatusResponse,
 )
 from aima_ugc.contracts.platform import require_platform_name
 from aima_ugc.modules.analysis.persistence import AnalysisConfigurationIdentity
@@ -25,6 +27,7 @@ from aima_ugc.modules.analysis.tables import (
     analysis_content_results_table,
 )
 from aima_ugc.modules.collection.tables import (
+    collection_runs_table,
     collection_scopes_table,
     provider_request_attempts_table,
     provider_requests_table,
@@ -204,6 +207,48 @@ class PostgresContentQueryRepository:
             reported_total=cast(int | None, row["reported_total"]),
             collected_count=cast(int, row["collected_count"]),
             observed_at=cast(datetime, row["observed_at"]),
+        )
+
+    def latest_supplement_status(self, content_id: UUID) -> ContentSupplementStatusResponse | None:
+        """返回该 Content 最近一次 Batch Supplement Scope 状态。"""
+
+        run = collection_runs_table
+        scope = collection_scopes_table
+        updated_at = func.coalesce(
+            scope.c.finished_at,
+            scope.c.started_at,
+            run.c.finished_at,
+            run.c.started_at,
+            run.c.created_at,
+        ).label("updated_at")
+        row = (
+            self._session.execute(
+                select(
+                    run.c.id.label("run_id"),
+                    scope.c.status,
+                    scope.c.stop_reason,
+                    updated_at,
+                )
+                .select_from(scope.join(run, run.c.id == scope.c.run_id))
+                .where(
+                    run.c.import_batch_id.is_not(None),
+                    scope.c.source_type == "content",
+                    scope.c.source_value == str(content_id),
+                    scope.c.operation_group == "content_enrichment",
+                )
+                .order_by(run.c.created_at.desc(), run.c.id.desc(), scope.c.id.desc())
+                .limit(1)
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is None:
+            return None
+        return ContentSupplementStatusResponse(
+            run_id=cast(UUID, row["run_id"]),
+            status=cast(CollectionRuntimeStatus, row["status"]),
+            stop_reason=cast(str | None, row["stop_reason"]),
+            updated_at=cast(datetime, row["updated_at"]),
         )
 
     def list_source_records(self, content_id: UUID) -> tuple[ContentSourceResponse, ...]:

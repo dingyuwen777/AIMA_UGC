@@ -355,3 +355,11 @@ Candidate
 - 快手 Comprehensive Search 作为 Video Search 备用；
 - B站 Search comment_count 观察；
 - Provider 私有字段直接进入公共 API/数据库。
+
+---
+
+## Batch Supplement 内容身份门禁
+
+Batch Supplement 只消费 `content_external_ids` 中当前 Runtime 已验证的 typed Provider lookup identity；TikHub 原生历史 Content 可按平台安全解释既有 `external_content_id`。`source_article_id`、`url_sha256:*` 和尚未完成身份收敛的分享链接不直接发送给付费 Provider。
+
+创建 Run 时排除当前 Analysis identity 明确 `irrelevant` 的 Content；执行期不重新改变已冻结 Scope 资格。首次补采固定先 Detail，再按用户选项决定 Comments/SubComments。

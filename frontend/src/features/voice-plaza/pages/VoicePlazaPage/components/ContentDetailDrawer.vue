@@ -4,6 +4,26 @@ import { contentSummary, formatDateTime, formatNumber, labelPairText, platformLa
 
 defineProps<{ modelValue: boolean; item: ContentDetailResponse | null; loading: boolean }>()
 defineEmits<{ 'update:modelValue': [open: boolean] }>()
+
+function supplementTitle(status: string): string {
+  if (status === 'failed') return '内容补充失败'
+  if (status === 'partial_success') return '内容补充不完整'
+  if (status === 'cancelled') return '内容补充已取消'
+  return '内容补充进行中'
+}
+
+function supplementMessage(status: string): string {
+  if (status === 'failed') {
+    return '暂时无法获取完整详情与评论。已保留原始导入内容，可在采集中心查看失败原因并重新发起补充。'
+  }
+  if (status === 'partial_success') {
+    return '已获取部分详情或评论，仍有部分数据未成功补充。可在采集中心查看结果并按需重试。'
+  }
+  if (status === 'cancelled') {
+    return '内容补充已取消，当前展示已入库内容。可在采集中心重新发起补充。'
+  }
+  return '正在补充完整详情与评论，当前先展示已入库内容。'
+}
 </script>
 
 <template>
@@ -53,6 +73,15 @@ defineEmits<{ 'update:modelValue': [open: boolean] }>()
               target="_blank"
               rel="noopener noreferrer"
             >查看原始链接 ↗</a>
+          </section>
+
+          <section
+            v-if="item.supplement_status && item.supplement_status.status !== 'succeeded'"
+            class="supplement-status"
+            :class="`supplement-status--${item.supplement_status.status}`"
+          >
+            <h4>{{ supplementTitle(item.supplement_status.status) }}</h4>
+            <p>{{ supplementMessage(item.supplement_status.status) }}</p>
           </section>
 
           <section>
@@ -135,6 +164,12 @@ section { margin-bottom: 17px; padding: 17px; border: 1px solid var(--aima-borde
 .hero h3 { margin: 14px 0 9px; font-size: 20px; line-height: 1.45; }
 .hero p, section p { color: #5f697b; font-size: 13px; line-height: 1.7; }
 .hero a { color: var(--aima-primary); font-size: 12px; text-decoration: none; }
+.supplement-status { border-color: #dfe5ee; background: #f7f9fc; }
+.supplement-status h4 { margin-bottom: 6px; }
+.supplement-status p { margin: 0; }
+.supplement-status--failed { border-color: #f0cbd0; background: #fff7f8; }
+.supplement-status--partial_success { border-color: #eadbbd; background: #fffbf2; }
+.supplement-status--running, .supplement-status--queued { border-color: #ccdeef; background: #f5f9fd; }
 h4 { margin: 0 0 13px; color: #30394a; font-size: 14px; }
 .label-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 9px; }
 .label-grid span { padding: 7px 9px; border: 1px solid #d9e6f7; border-radius: 5px; color: #396b9e; background: #f4f8fe; font-size: 12px; }

@@ -34,6 +34,8 @@ from aima_ugc.contracts.collection import (
 )
 from aima_ugc.contracts.collection.models import BusinessOperation
 from aima_ugc.contracts.http import (
+    CollectionBatchSupplementEligibilityResponse,
+    CollectionBatchSupplementTargetResponse,
     CollectionCapabilitiesResponse,
     CollectionCapabilityResponse,
     CollectionPlatform,
@@ -89,10 +91,18 @@ from aima_ugc.modules.collection.runtime_query import (
 )
 from aima_ugc.platform.security import SecretFileError, read_secret_file
 
+from .analysis_identity import current_analysis_identity
 from .runtime import PlatformRuntime
 
 _COLLECTION_JOB_MAX_ATTEMPTS = 2
 _SHANGHAI = ZoneInfo("Asia/Shanghai")
+_ALL_COLLECTION_PLATFORMS: tuple[CollectionPlatform, ...] = (
+    "xiaohongshu",
+    "douyin",
+    "weibo",
+    "bilibili",
+    "kuaishou",
+)
 
 
 class PostgresCollectionHttpService:
@@ -144,6 +154,40 @@ class PostgresCollectionHttpService:
                 return CollectionCapabilitiesResponse(
                     provider_configs=tuple(public_configs),
                     capabilities=tuple(capabilities[key] for key in sorted(capabilities)),
+                )
+        finally:
+            session.close()
+
+    def get_batch_supplement_eligibility(
+        self,
+        batch_id: UUID,
+    ) -> CollectionBatchSupplementEligibilityResponse:
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                reader = PostgresCollectionTargetReader(
+                    session,
+                    analysis_identity=current_analysis_identity(self._runtime.settings),
+                )
+                if not reader.batch_exists(batch_id):
+                    raise CollectionResourceNotFound
+                targets = reader.list_batch_targets(
+                    batch_id=batch_id,
+                    platforms=_ALL_COLLECTION_PLATFORMS,
+                )
+                counts: dict[CollectionPlatform, int] = {}
+                for target in targets:
+                    counts[target.platform] = counts.get(target.platform, 0) + 1
+                return CollectionBatchSupplementEligibilityResponse(
+                    batch_id=batch_id,
+                    targets=tuple(
+                        CollectionBatchSupplementTargetResponse(
+                            platform=platform,
+                            target_count=counts[platform],
+                        )
+                        for platform in _ALL_COLLECTION_PLATFORMS
+                        if platform in counts
+                    ),
                 )
         finally:
             session.close()
@@ -383,8 +427,8 @@ class PostgresCollectionHttpService:
             snapshots.append(provider_run_snapshot(config, platform=selection.platform))
         return tuple(snapshots)
 
-    @staticmethod
     def _build_scopes(
+        self,
         session: Session,
         request: CollectionRunCreateRequest,
     ) -> tuple[CollectionScopeDefinition, ...]:
@@ -400,7 +444,10 @@ class PostgresCollectionHttpService:
                 for keyword in request.keywords
             )
         assert request.import_batch_id is not None
-        reader = PostgresCollectionTargetReader(session)
+        reader = PostgresCollectionTargetReader(
+            session,
+            analysis_identity=current_analysis_identity(self._runtime.settings),
+        )
         if not reader.batch_exists(request.import_batch_id):
             raise CollectionResourceNotFound
         selected_platforms = tuple(selection.platform for selection in request.platforms)

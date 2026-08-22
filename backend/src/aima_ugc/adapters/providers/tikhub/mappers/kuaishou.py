@@ -36,14 +36,14 @@ def map_content(
     if "photo_id" not in item:
         raise ValueError("快手内容缺少 photo_id")
 
-    external_id = required_string(item, "photo_id")
-    observed_fields: list[str] = ["content_type"]
+    provider_photo_id = required_string(item, "photo_id")
+    external_id = context.external_content_id or provider_photo_id
+    observed_fields: list[str] = ["content_type", "alternate_ids"]
 
-    alternate_ids: dict[str, str] = {}
+    alternate_ids: dict[str, str] = {"photo_id": provider_photo_id}
     kwai_id = optional_string(item, "kwaiId", "kwai_id")
     if kwai_id is not None:
         alternate_ids["kwai_id"] = kwai_id
-        observed_fields.append("alternate_ids")
 
     text = optional_string(item, "caption")
     if text is not None:
@@ -87,8 +87,8 @@ def map_comment(
     is_root: bool,
 ) -> CanonicalCommentV1:
     """把真实快手 rootComments/sub-comments 映射为统一评论树节点。"""
-    external_comment_id = required_string(raw, "comment_id")
-    external_content_id = optional_string(raw, "photo_id") or context.external_content_id
+    external_comment_id = required_string(raw, "comment_id", "commentId")
+    external_content_id = context.external_content_id or optional_string(raw, "photo_id", "photoId")
     if external_content_id is None:
         raise ValueError("快手评论缺少 photo_id 且上下文未提供 external_content_id")
 
@@ -103,7 +103,7 @@ def map_comment(
     like_count, like_observed = count(raw, "likedCount", "like_count")
     if like_observed:
         observed_fields.append("metrics.like_count")
-    reply_count, reply_observed = count(raw, "subCommentCount")
+    reply_count, reply_observed = count(raw, "subCommentCount", "sub_comment_count")
     if reply_observed:
         observed_fields.append("metrics.reply_count")
 
@@ -142,7 +142,12 @@ def map_comment(
 
 
 def _kuaishou_parent_comment_id(raw: dict[str, Any], root_comment_id: str | None) -> str | None:
-    for key in ("reply_comment_id", "replyCommentId", "parent_comment_id"):
+    for key in (
+        "reply_comment_id",
+        "replyCommentId",
+        "parent_comment_id",
+        "parentCommentId",
+    ):
         value = optional_string(raw, key)
         if value not in {None, "0", root_comment_id}:
             return value
@@ -200,8 +205,8 @@ def _first_http_url(value: object) -> AnyHttpUrl | None:
 def _map_content_author(
     raw: dict[str, Any],
 ) -> tuple[CanonicalAuthorV1 | None, tuple[str, ...]]:
-    external_id = optional_string(raw, "user_id")
-    display_name = optional_string(raw, "user_name")
+    external_id = optional_string(raw, "user_id", "userId")
+    display_name = optional_string(raw, "user_name", "userName")
     verified = optional_bool(raw, "verified")
     fields: list[str] = []
     if external_id is not None:
@@ -225,9 +230,9 @@ def _map_content_author(
 def _map_comment_author(
     raw: dict[str, Any],
 ) -> tuple[CanonicalAuthorV1 | None, tuple[str, ...]]:
-    external_id = optional_string(raw, "user_id", "author_id")
-    display_name = optional_string(raw, "author_name")
-    verified = optional_bool(raw, "authorVerified")
+    external_id = optional_string(raw, "user_id", "userId", "author_id", "authorId")
+    display_name = optional_string(raw, "author_name", "authorName")
+    verified = optional_bool(raw, "authorVerified", "author_verified")
     fields: list[str] = []
     if external_id is not None:
         fields.append("external_account_id")
@@ -249,13 +254,13 @@ def _map_comment_author(
 
 def _map_metrics(raw: dict[str, Any]) -> tuple[CanonicalMetricsV1, tuple[str, ...]]:
     mappings = {
-        "like_count": ("like_count",),
-        "comment_count": ("comment_count",),
-        "favorite_count": ("collect_count",),
-        "share_count": ("share_count",),
-        "repost_count": ("forward_count",),
-        "view_count": ("view_count",),
-        "download_count": ("downloadCount",),
+        "like_count": ("like_count", "likeCount"),
+        "comment_count": ("comment_count", "commentCount"),
+        "favorite_count": ("collect_count", "collectCount"),
+        "share_count": ("share_count", "shareCount"),
+        "repost_count": ("forward_count", "forwardCount"),
+        "view_count": ("view_count", "viewCount"),
+        "download_count": ("downloadCount", "download_count"),
     }
     values: dict[str, int | None] = {}
     observed: list[str] = []
