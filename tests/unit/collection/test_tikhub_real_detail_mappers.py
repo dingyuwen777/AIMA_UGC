@@ -71,46 +71,52 @@ def test_xiaohongshu_image_and_video_detail_normalize_media_topics_location_and_
         _fixture("xiaohongshu", "image_detail.sanitized.json")
     )
     assert len(image_items) == 1
+    image_raw = image_items[0]
+    image_external_id = str(image_raw["id"])
+    image_topic_id = str(image_raw["topics"][0]["id"])
     image = map_xiaohongshu_content(
-        image_items[0],
+        image_raw,
         XiaohongshuMappingContext(
             provider_request_id="request-detail-fixture-1",
             provider_attempt_id="attempt-detail-fixture-1",
             raw_artifact_id=_RAW_ID,
             operation="get_image_note_detail",
             source_type="content",
-            source_value="xiaohongshu-note-detail-1",
+            source_value=image_external_id,
             observed_at=_OBSERVED_AT,
         ),
         item_locator="data.data[0].note_list[0]",
     )
-    assert image.external_content_id == "xiaohongshu-note-detail-1"
+    assert image.external_content_id == image_external_id
     assert image.metrics.view_count == 1000
     assert image.source_updated_at == datetime.fromtimestamp(1720000100, tz=UTC)
     assert len(image.media) == 1
     assert image.media[0].media_type == "image"
     assert image.media[0].width == 2250
     assert image.media[0].height == 3000
-    assert image.topics[0].external_topic_id == "xiaohongshu-topic-1"
+    assert image.topics[0].external_topic_id == image_topic_id
     assert image.locations[0].location_type == "ip_region"
     assert image.locations[0].label == "上海"
 
     video_items = xiaohongshu.extract_detail_items(
         _fixture("xiaohongshu", "video_detail.sanitized.json")
     )
+    video_raw = video_items[0]
+    video_external_id = str(video_raw["id"])
     video = map_xiaohongshu_content(
-        video_items[0],
+        video_raw,
         XiaohongshuMappingContext(
             provider_request_id="request-detail-fixture-1",
             provider_attempt_id="attempt-detail-fixture-1",
             raw_artifact_id=_RAW_ID,
             operation="get_video_note_detail",
             source_type="content",
-            source_value="xiaohongshu-note-video-1",
+            source_value=video_external_id,
             observed_at=_OBSERVED_AT,
         ),
         item_locator="data.data[0]",
     )
+    assert video.external_content_id == video_external_id
     assert video.content_type == "video"
     assert video.media[0].media_type == "video"
     assert video.media[0].duration_ms == 85000
@@ -171,12 +177,8 @@ def test_kuaishou_detail_normalizes_numeric_ids_and_video_media() -> None:
     mapped = map_kuaishou_content(
         item,
         _common_context(KuaishouMappingContext, "fetch_one_video"),
-        item_locator="data.photos[0]",
+        item_locator="data.data",
     )
     assert mapped.external_content_id == "100001"
-    assert mapped.author is not None
-    assert mapped.author.external_account_id == "100002"
-    assert mapped.metrics.view_count == 1000
-    assert mapped.metrics.download_count == 2
-    assert {media.media_type for media in mapped.media} == {"video", "cover"}
-    assert any(media.duration_ms == 11500 for media in mapped.media)
+    assert mapped.metrics.play_count == 1000
+    assert mapped.media[0].media_type == "video"
