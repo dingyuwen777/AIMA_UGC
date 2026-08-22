@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 const batchId = '12345678-1234-5678-1234-567812345678'
+const secondBatchId = '13345678-1234-5678-1234-567812345678'
 const importJobId = '22345678-1234-5678-1234-567812345678'
 const runId = '42345678-1234-5678-1234-567812345678'
 const collectionJobId = '52345678-1234-5678-1234-567812345678'
@@ -18,6 +19,13 @@ const usableImport = {
   status: 'succeeded', stage: 'succeeded', finished_at: '2026-08-21T01:32:00Z',
   stats: { ...importDetail.stats, rows_ingested: 1 },
   job: { ...importDetail.job, status: 'succeeded', progress: 100, finished_at: '2026-08-21T01:32:00Z' },
+}
+const secondUsableImport = {
+  ...usableImport,
+  id: secondBatchId,
+  source_filename: '爱玛抖音批次.xlsx',
+  input_artifact_id: '33345678-1234-5678-1234-567812345678',
+  job: { ...usableImport.job, id: '23345678-1234-5678-1234-567812345678' },
 }
 const failedImport = {
   ...importDetail,
@@ -41,16 +49,20 @@ test.beforeEach(async ({ page }) => {
     const url = new URL(request.url())
     if (url.pathname === '/api/v1/collection-runtime/summary') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ processing_count: 12, completed_today_count: 86, contents_ingested_today: 3284, as_of: '2026-08-21T02:00:00Z' }) })
     if (url.pathname === '/api/v1/collection-runtime/runs') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [runtimeItem], next_cursor: null, has_more: false }) })
-    if (url.pathname === '/api/v1/collection-capabilities') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ provider_configs: [{ id: providerConfigId, provider: 'tikhub', display_name: 'TikHub 主配置' }], capabilities: [{ provider: 'tikhub', platform: 'xhs', operations: ['keyword_search', 'content_detail', 'comments', 'sub_comments'] }] }) })
+    if (url.pathname === '/api/v1/collection-capabilities') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ provider_configs: [{ id: providerConfigId, provider: 'tikhub', display_name: 'TikHub 主配置' }], capabilities: [{ provider: 'tikhub', platform: 'xhs', operations: ['keyword_search', 'content_detail', 'comments', 'sub_comments'] }, { provider: 'tikhub', platform: 'douyin', operations: ['keyword_search', 'content_detail', 'comments', 'sub_comments'] }] }) })
     if (url.pathname === '/api/v1/collection-runs' && request.method() === 'POST') return route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ run_id: runId, job_id: collectionJobId, mode: 'discovery', status: 'queued' }) })
     if (url.pathname === `/api/v1/collection-runs/${runId}`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify(runDetail) })
     if (url.pathname === '/api/v1/import-batches' && request.method() === 'POST') return route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ batch_id: batchId, job_id: importJobId, status: 'queued' }) })
-    if (url.pathname === '/api/v1/import-batches') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [usableImport], next_cursor: null, has_more: false }) })
+    if (url.pathname === '/api/v1/import-batches') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [usableImport, secondUsableImport], next_cursor: null, has_more: false }) })
     if (url.pathname === `/api/v1/import-batches/${batchId}`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify(importDetail) })
+    if (url.pathname === `/api/v1/import-batches/${secondBatchId}`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify(secondUsableImport) })
     if (url.pathname === '/api/v1/contents') {
+      const sourceIdentifier = url.searchParams.get('source_identifier')
       const platform = url.searchParams.getAll('platforms')
-      const items = platform.includes('xiaohongshu') ? [{ id: 'content-1' }] : []
-      return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items, next_cursor: null, has_more: false }) })
+      const hasContent =
+        (sourceIdentifier === batchId && platform.includes('xiaohongshu')) ||
+        (sourceIdentifier === secondBatchId && platform.includes('douyin'))
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: hasContent ? [{ id: 'content-1' }] : [], next_cursor: null, has_more: false }) })
     }
     await route.fulfill({ status: 404, body: 'not mocked' })
   })
@@ -88,10 +100,30 @@ test('creates a TikHub supplement Run only for a platform that exists in the Bat
   await drawer.getByRole('button', { name: '基于已有批次补采' }).click()
   await drawer.getByLabel('Excel Import Batch').selectOption(batchId)
   await expect(drawer.getByRole('button', { name: /小红书/ })).toBeVisible()
+  await expect(drawer.getByRole('button', { name: /抖音/ })).toHaveCount(0)
   await drawer.getByRole('button', { name: /小红书/ }).click()
   const requestPromise = page.waitForRequest((request) => new URL(request.url()).pathname === '/api/v1/collection-runs' && request.method() === 'POST')
   await drawer.getByRole('button', { name: '创建补采任务' }).click()
   expect((await requestPromise).postDataJSON()).toMatchObject({ mode: 'batch_supplement', import_batch_id: batchId, platforms: [{ platform: 'xhs', provider_config_id: providerConfigId }] })
+})
+
+test('re-probes Batch platform eligibility when switching A to B and back to A', async ({ page }) => {
+  await page.goto('/collection-runtime')
+  await page.getByRole('button', { name: /新建 TikHub 补采/ }).click()
+  const drawer = page.getByRole('dialog', { name: '新建 TikHub 辅助补采' })
+  await drawer.getByRole('button', { name: '基于已有批次补采' }).click()
+
+  await drawer.getByLabel('Excel Import Batch').selectOption(batchId)
+  await expect(drawer.getByRole('button', { name: /小红书/ })).toBeVisible()
+  await expect(drawer.getByRole('button', { name: /抖音/ })).toHaveCount(0)
+
+  await drawer.getByLabel('Excel Import Batch').selectOption(secondBatchId)
+  await expect(drawer.getByRole('button', { name: /抖音/ })).toBeVisible()
+  await expect(drawer.getByRole('button', { name: /小红书/ })).toHaveCount(0)
+
+  await drawer.getByLabel('Excel Import Batch').selectOption(batchId)
+  await expect(drawer.getByRole('button', { name: /小红书/ })).toBeVisible()
+  await expect(drawer.getByRole('button', { name: /抖音/ })).toHaveCount(0)
 })
 
 test('explains failed Import terminal state without inventing pending stages', async ({ page }) => {
