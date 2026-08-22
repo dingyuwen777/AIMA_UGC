@@ -3,21 +3,46 @@ schema: rvc-change/v1
 id: CHG-20260821-report-visual-fidelity
 title: Word 报告视觉还原与信息密度优化
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: fix/report-visual-fidelity
 created: 2026-08-21
-updated: 2026-08-21
+updated: 2026-08-22
 depends_on: []
 affected_areas:
   - reporting
 affected_paths:
   - backend/src/aima_ugc/platform/reporting
   - tests/unit/platform
-  - docs/blueprint/13-统一数据Excel导出与调试复用.md
+  - docs/appendix/Word舆情报告生成与排版实现.md
 contracts: []
 data_changes: []
 ---
+
+# 归档说明
+
+本 Change 的运行时代码已通过 PR #111 合并到 `main`，合并提交：
+
+```text
+36e8ed6c23b73c08a85f632fe06725aaae97905c
+```
+
+原 Active Change 长期停留在 `ready_for_review` 并写着“未合并”，属于文档状态遗漏，不代表实现仍待交付。2026-08-22 当前实现一致性审计按真实 Git 状态归档。
+
+本 Change 实施时曾更新旧路径：
+
+```text
+docs/blueprint/13-统一数据Excel导出与调试复用.md
+```
+
+后续文档治理已删除旧 Blueprint 13。当前 Word 报告的有效长期实现说明由：
+
+```text
+docs/appendix/Word舆情报告生成与排版实现.md
+backend/src/aima_ugc/platform/reporting/README.md
+```
+
+承载；正式 PostgreSQL Excel Export 则由 Reporting 模块 README 与 Excel Appendix 承载。旧 Blueprint 13 只属于历史实施事实。
 
 # 目标
 
@@ -74,9 +99,9 @@ data_changes: []
 - [x] 实际渲染并检查生成 DOCX，确认长 Ranking、分页、留白和多系列标签重叠是主要视觉缺陷。
 - [x] 先增加能表达目标视觉结构和紧凑数据展示的失败测试并确认 Red。
 - [x] 实现更高保真的横向组合布局、紧凑 Ranking/完整明细、趋势分层和自适应词云布局。
-- [x] 更新默认模板、reporting README 和 Blueprint 13 的长期设计说明。
+- [x] 更新默认模板、reporting README 和当时的长期设计说明；当前长期承载已迁移到 Word 报告 Appendix。
 - [x] 完成需求符合性、代码质量、目标/回归/静态/结构/视觉验证。
-- [x] 创建 PR #111；合并仍等待用户另行授权。
+- [x] PR #111 已合并。
 
 # 验证
 
@@ -206,13 +231,14 @@ Wordcloud PNG           1600 × 900，约 300 DPI
 
 # 文档影响
 
-- `backend/src/aima_ugc/platform/reporting/README.md`：已同步组合布局、Top + 完整明细、分层趋势、紧凑每日矩阵和自适应 Editorial Word Cloud 的长期行为。
-- `docs/blueprint/13-统一数据Excel导出与调试复用.md`：已同步同一长期边界；不记录修改流水账。
+- `backend/src/aima_ugc/platform/reporting/README.md`：同步组合布局、Top + 完整明细、分层趋势、紧凑每日矩阵和自适应 Editorial Word Cloud 的长期行为。
+- `docs/appendix/Word舆情报告生成与排版实现.md`：当前承载同一长期边界与实现/调试说明。
 - 不涉及 Contract、Migration、API 或依赖版本变更。
 
 # Git / PR / 发布
 
 - 分支：`fix/report-visual-fidelity`
-- PR：#111 `改进横向 Word 报告视觉还原度`，Open / 未合并。
-- Merge：未授权，当前不执行。
+- PR：#111 `改进横向 Word 报告视觉还原度`
+- PR 最终状态：已合并。
+- Merge commit：`36e8ed6c23b73c08a85f632fe06725aaae97905c`。
 - 发布/部署：不属于本 Change。

@@ -3,11 +3,11 @@ schema: rvc-change/v1
 id: CHG-20260821-diagnostic-logging
 title: 诊断友好的运行日志格式与关键事件优化
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: fix/diagnostic-logging
 created: 2026-08-21
-updated: 2026-08-21
+updated: 2026-08-22
 depends_on: []
 affected_areas:
   - logging
@@ -27,10 +27,40 @@ affected_paths:
   - backend/src/aima_ugc/modules/collection/provider_dispatch.py
   - tests
   - docs/blueprint/05-日志安全部署与运维.md
-  - docs/blueprint/09-Scheduler运行与恢复策略.md
+  - docs/appendix/Scheduler调度执行与停机恢复.md
 contracts: []
 data_changes: []
 ---
+
+# 归档说明
+
+本 Change 的运行时代码已通过 PR #113 合并到 `main`，合并提交：
+
+```text
+a86b80a4d9c3246b9dcb3f5a688497c82565d084
+```
+
+原 Active Change 长期停留在 `ready_for_review`，属于文档状态遗漏，不代表代码仍未合并。2026-08-22 当前实现一致性审计按真实 Git 状态归档。
+
+本 Change 实施时曾更新旧路径：
+
+```text
+docs/blueprint/09-Scheduler运行与恢复策略.md
+```
+
+后续文档治理已删除旧 Blueprint 09，并把当前有效 Scheduler 技术内容迁移到：
+
+```text
+docs/appendix/Scheduler调度执行与停机恢复.md
+```
+
+日志长期边界继续由：
+
+```text
+docs/blueprint/05-日志安全部署与运维.md
+```
+
+维护。旧路径只属于历史实施事实，不再是当前导航。
 
 # 目标
 
@@ -56,7 +86,7 @@ data_changes: []
 - [x] API 未预期 500 使用安全调用栈日志并保留 request_id/method/path/error_type；正常 API/health 不增加逐请求 INFO 噪音。
 - [x] 原始异常 message/source line 不进入 LogRecord；安全调用栈只保留文件名、行号、函数和异常类型，避免 Secret 经其他 Handler 泄露。
 - [x] 既有日志脱敏、换行转义、轮转 gzip、大小限制继续通过。
-- [x] Blueprint 05 与 Scheduler Blueprint 09 已同步最终长期规则；北京时间人工展示统一为 `YYYY-MM-DD HH:mm:ss.SSS`，机器交换时间仍保留时区信息。
+- [x] 当时的长期文档已同步；当前 Scheduler 细节由 Appendix 承载，北京时间人工展示统一为 `YYYY-MM-DD HH:mm:ss.SSS`，机器交换时间仍保留时区信息。
 
 # 日志分层规则
 
@@ -134,4 +164,6 @@ CI run `32472487022` 的 Stage 2 Platform 在仅加入目标测试时实际得�
 
 - 分支：`fix/diagnostic-logging`
 - PR：#113 `优化运行日志诊断信息与降噪`
-- 当前状态：ready_for_review；最终文档收口提交后需再读取该 head 的 CI，再按用户授权通过 PR 合并到 `main`。
+- PR 最终状态：已合并。
+- Merge commit：`a86b80a4d9c3246b9dcb3f5a688497c82565d084`。
+- 当前长期文档：`docs/blueprint/05-日志安全部署与运维.md` + `docs/appendix/Scheduler调度执行与停机恢复.md`。
