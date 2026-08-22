@@ -16,6 +16,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import URL, create_engine, inspect, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import IntegrityError
 
 _ROOT = Path(__file__).resolve().parents[3]
 _NOW = datetime(2026, 8, 17, 8, 30, tzinfo=UTC)
@@ -488,8 +489,9 @@ def test_0023_to_0024_unifies_platform_machine_values(migration_database: str) -
             connection.execute(
                 text(
                     """
-                    INSERT INTO keyword_packs(id, name, description, enabled, version, created_at, updated_at)
-                    VALUES (:id, :name, '', TRUE, 1, :seen, :seen)
+                    INSERT INTO keyword_packs(
+                      id, name, description, enabled, version, created_at, updated_at
+                    ) VALUES (:id, :name, '', TRUE, 1, :seen, :seen)
                     """
                 ),
                 {"id": pack_id, "name": f"platform-migration-{pack_id}", "seen": _NOW},
@@ -506,8 +508,9 @@ def test_0023_to_0024_unifies_platform_machine_values(migration_database: str) -
             connection.execute(
                 text(
                     """
-                    INSERT INTO keyword_pack_items(pack_id, keyword_id, platform, priority, enabled, note)
-                    VALUES (:pack_id, :keyword_id, 'all', 10, TRUE, '')
+                    INSERT INTO keyword_pack_items(
+                      pack_id, keyword_id, platform, priority, enabled, note
+                    ) VALUES (:pack_id, :keyword_id, 'all', 10, TRUE, '')
                     """
                 ),
                 {"pack_id": pack_id, "keyword_id": keyword_id},
@@ -549,7 +552,7 @@ def test_0023_to_0024_unifies_platform_machine_values(migration_database: str) -
                 )
                 == "all"
             )
-            with pytest.raises(Exception):
+            with pytest.raises(IntegrityError):
                 connection.execute(
                     text("UPDATE contents SET platform = 'invalid-platform' WHERE id = :id"),
                     {"id": content_id},
@@ -595,8 +598,8 @@ def test_0023_to_0024_blocks_duplicate_content_identity(migration_database: str)
             platforms = (
                 connection.execute(
                     text(
-                        "SELECT platform FROM contents WHERE external_content_id = 'platform-conflict' "
-                        "ORDER BY platform"
+                        "SELECT platform FROM contents "
+                        "WHERE external_content_id = 'platform-conflict' ORDER BY platform"
                     )
                 )
                 .scalars()
