@@ -177,8 +177,12 @@ def test_kuaishou_detail_normalizes_numeric_ids_and_video_media() -> None:
     mapped = map_kuaishou_content(
         item,
         _common_context(KuaishouMappingContext, "fetch_one_video"),
-        item_locator="data.data",
+        item_locator="data.photos[0]",
     )
     assert mapped.external_content_id == "100001"
-    assert mapped.metrics.play_count == 1000
-    assert mapped.media[0].media_type == "video"
+    assert mapped.author is not None
+    assert mapped.author.external_account_id == "100002"
+    assert mapped.metrics.view_count == 1000
+    assert mapped.metrics.download_count == 2
+    assert {media.media_type for media in mapped.media} == {"video", "cover"}
+    assert any(media.duration_ms == 11500 for media in mapped.media)
