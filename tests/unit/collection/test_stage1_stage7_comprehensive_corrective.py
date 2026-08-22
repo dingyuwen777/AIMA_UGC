@@ -109,23 +109,17 @@ def test_long_term_docs_match_stage1_stage7_machine_facts() -> None:
     )
     blueprint_02 = Path("docs/blueprint/02-采集系统与数据标准化.md").read_text(encoding="utf-8")
     blueprint_08 = Path("docs/blueprint/08-采集策略与平台能力.md").read_text(encoding="utf-8")
-    scheduler_appendix_path = Path("docs/appendix/Scheduler运行与恢复.md")
-    legacy_scheduler_blueprint = Path("docs/blueprint/09-Scheduler运行与恢复策略.md")
-
-    assert scheduler_appendix_path.is_file()
-    assert not legacy_scheduler_blueprint.exists()
-    scheduler_appendix = scheduler_appendix_path.read_text(encoding="utf-8")
+    blueprint_09 = Path("docs/blueprint/09-Scheduler运行与恢复策略.md").read_text(encoding="utf-8")
 
     assert "当前机器 Registry 只接线已经有实现事实的 `tikhub + xhs`" not in blueprint_02
     assert "当前 main 实际只有小红书 Operation/Mapper" not in blueprint_02
     assert "Stage 7 仍未闭环的核心是正式 `collection.run.v1` live Worker" not in blueprint_02
     assert "当前 L3 Corrective Change" not in collection_readme
 
-    assert "durable content action/checkpoint" in collection_readme
-    assert "Mapper 前建立" in blueprint_02
-    assert "Decision Pipeline" in blueprint_08
-    assert "latest_only" in scheduler_appendix
-    assert "(plan_id, schedule_version, scheduled_for)" in scheduler_appendix
+    assert "collection_content_actions" in collection_readme
+    assert "Candidate 在 Mapper 前" in blueprint_02
+    assert "durable content action" in blueprint_08
+    assert "可执行性门禁与 Job Deadline" in blueprint_09
 
 
 class _Context:
@@ -180,6 +174,7 @@ class _Gateway:
         error_summary,
     ):  # type: ignore[no-untyped-def]
         assert run_id == self.execution.run.id
+        assert fence.job_id == self.execution.run.job_id
         self.finished_status = status
         return self.execution.run
 
