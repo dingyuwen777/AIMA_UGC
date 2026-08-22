@@ -1,6 +1,6 @@
 """AIMA_UGC 唯一平台机器身份 Contract。"""
 
-from typing import Literal, cast
+from typing import Literal
 
 type PlatformName = Literal[
     "xiaohongshu",
@@ -32,7 +32,7 @@ def require_platform_name(value: str) -> PlatformName:
     """校验内部机器值已经是五个平台之一，不做任何别名或大小写转换。"""
     if value not in PLATFORM_NAMES:
         raise ValueError(f"非法平台机器标识: {value}")
-    return cast(PlatformName, value)
+    return value
 
 
 def normalize_platform_name(value: str) -> PlatformName:
