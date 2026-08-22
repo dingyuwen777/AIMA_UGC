@@ -37,7 +37,7 @@ const packDetail = {
   keywords: [{
     id: '22222222-2222-4222-8222-222222222222',
     text: '爱玛',
-    platform: 'all',
+    platform_scope: 'all',
     enabled: true,
     priority: 100,
     note: '',
