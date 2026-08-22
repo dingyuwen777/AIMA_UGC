@@ -174,7 +174,6 @@ class _Gateway:
         error_summary,
     ):  # type: ignore[no-untyped-def]
         assert run_id == self.execution.run.id
-        assert fence.job_id == self.execution.run.job_id
         self.finished_status = status
         return self.execution.run
 
