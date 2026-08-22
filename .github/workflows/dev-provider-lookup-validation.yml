@@ -20,6 +20,8 @@ on:
 
 permissions:
   contents: write
+  issues: write
+  pull-requests: write
 
 jobs:
   implement-and-generate:
@@ -43,6 +45,7 @@ jobs:
           node-version: "24.19.0"
 
       - name: Install frozen environments
+        id: install
         shell: bash
         run: |
           set -euo pipefail
@@ -51,12 +54,14 @@ jobs:
           npm ci --prefix frontend
 
       - name: Apply guarded follow-up implementation
+        id: apply
         shell: bash
         run: |
           set -euo pipefail
           uv run python scripts/dev/apply_provider_lookup_followup.py
 
       - name: Generate OpenAPI and frontend client
+        id: generate
         shell: bash
         run: |
           set -euo pipefail
@@ -77,6 +82,7 @@ jobs:
             scripts/dev/probe_excel_tikhub_supplement.py
 
       - name: Verify target backend and frontend behavior
+        id: verify
         shell: bash
         run: |
           set -euo pipefail
@@ -103,6 +109,7 @@ jobs:
           npm --prefix frontend run test -- --run
 
       - name: Commit implementation and generated files to feature branch
+        id: commit
         shell: bash
         run: |
           set -euo pipefail
@@ -137,6 +144,20 @@ jobs:
           git commit -m "完成补采资格接口并同步正式文档"
           git push origin "HEAD:${GITHUB_REF_NAME}"
 
+      - name: Report implementation stage status to PR
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          APPLY_OUTCOME: ${{ steps.apply.outcome }}
+          GENERATE_OUTCOME: ${{ steps.generate.outcome }}
+          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
+          COMMIT_OUTCOME: ${{ steps.commit.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh pr comment 151 --repo "$GITHUB_REPOSITORY" --body "[dev-provider-lookup-validation] run=${GITHUB_RUN_ID} implement: install=${INSTALL_OUTCOME}; apply=${APPLY_OUTCOME}; generate=${GENERATE_OUTCOME}; verify=${VERIFY_OUTCOME}; commit=${COMMIT_OUTCOME}. No secret/raw data included."
+
   real-tikhub-probe:
     if: github.actor != 'github-actions[bot]'
     needs: implement-and-generate
@@ -158,6 +179,7 @@ jobs:
           python-version: "3.14.7"
 
       - name: Install frozen Python environment
+        id: install
         shell: bash
         run: |
           set -euo pipefail
@@ -165,6 +187,7 @@ jobs:
           uv sync --locked
 
       - name: Require protected TikHub secret
+        id: secret
         shell: bash
         run: |
           set -euo pipefail
@@ -175,6 +198,7 @@ jobs:
           echo "::add-mask::${TIKHUB_API_KEY}"
 
       - name: Verify five-platform Excel URL to Detail and Comments
+        id: probe
         shell: bash
         run: |
           set -euo pipefail
@@ -197,6 +221,7 @@ jobs:
           PY
 
       - name: Record non-secret real probe evidence in Change
+        id: evidence
         shell: bash
         env:
           PROBE_RUN_ID: ${{ github.run_id }}
@@ -239,3 +264,16 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "记录五平台真实补采验证证据"
           git push origin "HEAD:feature/provider-lookup-supplement-eligibility"
+
+      - name: Report real probe status to PR
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          SECRET_OUTCOME: ${{ steps.secret.outcome }}
+          PROBE_OUTCOME: ${{ steps.probe.outcome }}
+          EVIDENCE_OUTCOME: ${{ steps.evidence.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh pr comment 151 --repo "$GITHUB_REPOSITORY" --body "[dev-provider-lookup-validation] run=${GITHUB_RUN_ID} real-probe: install=${INSTALL_OUTCOME}; secret=${SECRET_OUTCOME}; probe=${PROBE_OUTCOME}; evidence=${EVIDENCE_OUTCOME}. No secret/raw data included."
