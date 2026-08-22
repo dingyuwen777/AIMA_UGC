@@ -4,7 +4,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from aima_ugc.contracts.platform import PlatformName
+from aima_ugc.contracts.platform import PlatformName as PlatformName
 
 Identifier = Annotated[str, Field(min_length=1, max_length=512)]
 ObservedFieldPath = Annotated[
