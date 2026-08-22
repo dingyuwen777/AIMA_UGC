@@ -310,7 +310,91 @@ Figma 负责视觉和交互设计，不是后端数据事实源。
 
 如果设计要求的新数据当前 Contract 没有，先回到后端事实确认是否需要正式能力变更，而不是在前端 Mock 一个字段后长期保留。
 
-完整工作流见 `docs/guides/` 中的前端/Figma 指南。
+完整工作流见：
+
+```text
+docs/guides/Figma与前端设计开发工作流.md
+docs/blueprint/16-前端页面架构与Figma设计工作流.md
+```
+
+### 6.1 当前仍有效的历史视觉基线
+
+正式 Figma 设计资产还没有完全取代此前已批准的页面参考图，所以这些文件目前仍是理解现有页面视觉演进的重要证据：
+
+```text
+docs/assets/stage8c/collection-runtime-center-prototype.png
+
+docs/assets/stage8d/voice-plaza-list-reference.jpg
+docs/assets/stage8d/voice-plaza-detail-reference.jpg
+```
+
+它们分别对应采集运行中心和声音广场当时批准的一次性视觉基线；精确批准背景、资产 hash 和验收证据保存在对应归档 Change。
+
+这里要避免两种错误：
+
+```text
+有历史 PNG
+→ 就永远不允许 Figma 改版       # 错
+
+有了 Figma
+→ 历史参考图和已实现页面语义全都失效 # 也错
+```
+
+未来正式 Figma Frame 建立后，应通过新的前端 Change 明确：
+
+```text
+哪些视觉/交互由 Figma 接管
+哪些业务语义仍由 Contract/Store/测试约束
+旧 PNG 是否仅作为历史参考
+```
+
+不要让 PNG、Figma 和当前代码长期形成三套没有优先级的设计事实。
+
+### 6.2 Element Plus 与 TypeScript 7 当前兼容边界
+
+当前 `frontend/package.json` 仍锁定：
+
+```text
+element-plus = 2.14.4
+@typescript/native = TypeScript 7.0.2
+```
+
+当前 `tsconfig.json` 仍是：
+
+```text
+skipLibCheck = false
+```
+
+历史 Stage 8C 已验证：在这组锁定依赖下，直接按组件使用 Element Plus 会暴露其依赖声明与 TypeScript 7 原生检查的兼容问题。为避免把页面开发变成“顺手升级依赖”或“关闭类型门禁”，当时页面使用 Vue SFC 中的原生语义表单、按钮、表格等完成首屏。
+
+这个决定的含义不是：
+
+```text
+AIMA_UGC 永久禁止 Element Plus
+```
+
+而是：
+
+```text
+Element Plus 仍是长期基础控件方向
+但当前版本兼容性问题不能通过
+- 静默升级依赖
+- skipLibCheck=true
+- 降低 typecheck
+来绕过
+```
+
+如果后续 Figma 改版确实需要大量 Element Plus 组件，正确做法是建立独立技术 Change：
+
+```text
+确认当前 Element Plus / TypeScript 版本兼容性
+→ 评估是否升级
+→ 更新 package.json + package-lock.json
+→ typecheck / unit / build / E2E
+→ 再在业务页面采用
+```
+
+不要在普通页面任务里顺便改变整个前端类型检查基线。
 
 ## 7. 公共 HTTP Contract 变化后的正确流程
 
@@ -438,8 +522,10 @@ npm --prefix frontend run test:e2e
 ## 12. 继续阅读
 
 - 当前前后端/API/Job 边界：`docs/blueprint/04-后端任务API与前端.md`
+- 原前端/Figma详细设计：`docs/blueprint/16-前端页面架构与Figma设计工作流.md`
 - 人类可读 API：`docs/API接口说明.md`
-- 前端/Figma 工作流：`docs/guides/`
+- 前端/Figma 实操工作流：`docs/guides/Figma与前端设计开发工作流.md`
 - 采集策略实现：`docs/blueprint/08-采集策略与平台能力.md`
 - AI：`docs/appendix/AI舆情打标与分析实现.md`
 - Excel Export：`docs/appendix/Excel统一数据导出与离线调试.md`
+- 后续阶段与生产上线：`docs/roadmap/生产上线实施路线.md`
