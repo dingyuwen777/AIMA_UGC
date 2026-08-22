@@ -88,7 +88,7 @@ describe('voice plaza', () => {
       ['weibo', '微博'],
       ['bilibili', 'B站'],
       ['kuaishou', '快手'],
-      ['file', '文件导入'],
+      ['file', 'Excel 导入'],
     ]) {
       expect(html).toContain(`value="${value}"`)
       expect(html).toContain(label)
