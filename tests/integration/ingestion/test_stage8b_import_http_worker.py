@@ -3,9 +3,10 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
+from aima_ugc.adapters.persistence.postgres.collection_targets import PostgresCollectionTargetReader
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
@@ -141,6 +142,19 @@ def test_http_upload_worker_and_status_query_use_formal_stage8a_ingestion(tmp_pa
         assert batch.json()["stats"]["rows_ingested"] == 1
         assert job.json()["status"] == "succeeded"
         assert job.json()["attempt"] == 1
+
+        session = runtime.database.new_session()
+        try:
+            with session.begin():
+                supplement_targets = PostgresCollectionTargetReader(session).list_batch_targets(
+                    batch_id=UUID(created.json()["batch_id"]),
+                    platforms=("xhs",),
+                )
+        finally:
+            session.close()
+        assert len(supplement_targets) == 1
+        assert supplement_targets[0].platform == "xhs"
+        assert supplement_targets[0].external_content_id == "stage8b-content-1"
 
         with runtime.database.engine.begin() as connection:
             assert connection.scalar(select(func.count()).select_from(contents_table)) == 1
