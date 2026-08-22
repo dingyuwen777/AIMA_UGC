@@ -5,21 +5,20 @@ import type {
   CollectionCapabilitiesResponse,
   CollectionPlanCreateRequest,
   CollectionPlanResponse,
-  CollectionPlatform,
   GlobalRelevanceConfigResponse,
   KeywordPackResponse,
   KeywordPackSummaryResponse,
 } from '../../generated/api/client'
 import {
-  addPackKeyword,
   CollectionStrategyApiError,
+  addPackKeyword,
   createPack,
   createPlan,
   fetchCapabilities,
-  fetchGlobalRelevance,
+  fetchKeywordPacks,
   fetchPack,
   fetchPlans,
-  fetchKeywordPacks,
+  fetchRelevance,
   setGlobalRelevance,
   setPackEnabled,
   setPlanEnabled,
@@ -31,19 +30,19 @@ export type StrategyTab = 'keywords' | 'relevance' | 'plans'
 interface PlanFilters {
   search: string
   enabled: '' | 'true' | 'false'
-  platform: '' | CollectionPlatform
+  platform: string
 }
 
-function errorMessage(reason: unknown): string {
-  if (reason instanceof CollectionStrategyApiError) {
-    return `${reason.message}（request_id: ${reason.requestId}）`
+function errorMessage(error: unknown): string {
+  if (error instanceof CollectionStrategyApiError) {
+    return `${error.message}（request_id: ${error.requestId}）`
   }
-  if (reason instanceof Error && reason.message) return reason.message
+  if (error instanceof Error && error.message) return error.message
   return '请求失败，请稍后重试。'
 }
 
 export const useCollectionStrategyStore = defineStore('collection-strategy', () => {
-  const activeTab = ref<StrategyTab>('plans')
+  const activeTab = ref<StrategyTab>('keywords')
   const packs = ref<KeywordPackSummaryResponse[]>([])
   const packTotal = ref(0)
   const relevance = ref<GlobalRelevanceConfigResponse | null>(null)
@@ -97,7 +96,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     loading.value = true
     error.value = null
     try {
-      const relevancePromise = fetchGlobalRelevance().catch((reason: unknown) => {
+      const relevancePromise = fetchRelevance().catch((reason: unknown) => {
         if (reason instanceof CollectionStrategyApiError && reason.status === 409) return null
         throw reason
       })
@@ -106,7 +105,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
         relevancePromise,
         fetchCapabilities(),
         fetchPlans({
-          search: filters.search.trim() || undefined,
+          search: filters.search || undefined,
           enabled: filters.enabled ? filters.enabled === 'true' : undefined,
           platform: filters.platform || undefined,
           offset: planOffset.value,
@@ -222,7 +221,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     return planExecutionReason({
       keywordPackIds: request.keyword_pack_ids,
       platforms: request.platforms,
-      requireRelevance: request.enabled,
+      requireRelevance: request.enabled ?? true,
       relevanceAvailable: relevance.value !== null,
       packDetails: packDetails.value,
       capabilities: capabilities.value,
@@ -285,7 +284,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     saving.value = true
     error.value = null
     try {
-      selectedPlan.value = await setPlanEnabled(plan.id, !plan.enabled)
+      await setPlanEnabled(plan.id, !plan.enabled)
       await refresh()
     } catch (reason) {
       error.value = errorMessage(reason)
@@ -307,7 +306,6 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
   }
 
   async function previousPlanPage(): Promise<void> {
-    if (planOffset.value === 0) return
     planOffset.value = Math.max(0, planOffset.value - planLimit)
     await refresh()
   }
@@ -356,4 +354,4 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     previousPlanPage,
     nextPlanPage,
   }
-})
+}
