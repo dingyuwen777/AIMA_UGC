@@ -82,9 +82,7 @@ def test_live_locator_is_stable_for_same_raw_item_and_changes_with_raw_identity(
     assert "items[" not in locator
 
 
-def test_xiaohongshu_live_and_douyin_article_are_not_exposed_without_full_mapper_detail_support() -> (
-    None
-):
+def test_xiaohongshu_live_and_douyin_article_require_full_mapper_support() -> None:
     assert "live" not in _search(XIAOHONGSHU_TIKHUB_CAPABILITY).supported_content_types
     assert "article" not in _search(DOUYIN_TIKHUB_CAPABILITY).supported_content_types
 
