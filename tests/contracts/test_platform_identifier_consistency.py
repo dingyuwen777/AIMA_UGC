@@ -26,32 +26,8 @@ from pydantic import TypeAdapter, ValidationError
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _EXPECTED = ("xiaohongshu", "douyin", "weibo", "bilibili", "kuaishou")
-_INVALID_MACHINE_VALUES = (
-    "xhs",
-    "red",
-    "dy",
-    "wb",
-    "ks",
-    "bili",
-    "all",
-    "twitter",
-    "XIAOHONGSHU",
-    "DOUYIN",
-    "WEIBO",
-    "BILIBILI",
-    "KUAISHOU",
-)
-_FORBIDDEN_EXACT_LITERALS = (
-    "dy",
-    "wb",
-    "ks",
-    "bili",
-    "XIAOHONGSHU",
-    "DOUYIN",
-    "WEIBO",
-    "BILIBILI",
-    "KUAISHOU",
-)
+_INVALID_MACHINE_VALUES = ("xhs", "red", "dy", "wb", "ks", "bili", "all", "twitter")
+_FORBIDDEN_EXACT_LITERALS = ("dy", "wb", "ks", "bili")
 _FORBIDDEN_LITERAL_PATTERNS = {
     value: re.compile(rf"[\"']{re.escape(value)}[\"']") for value in _FORBIDDEN_EXACT_LITERALS
 }
@@ -118,18 +94,24 @@ def test_excel_profile_maps_source_labels_only_to_formal_platforms() -> None:
         "小红书": "xiaohongshu",
         "小红书 APP": "xiaohongshu",
         "xiaohongshu": "xiaohongshu",
+        "XIAOHONGSHU": "xiaohongshu",
+        "Xiaohongshu": "xiaohongshu",
         "抖音": "douyin",
         "抖音 APP": "douyin",
         "douyin": "douyin",
+        "DOUYIN": "douyin",
         "微博": "weibo",
         "新浪微博": "weibo",
         "weibo": "weibo",
+        "WEIBO": "weibo",
         "B站": "bilibili",
         "哔哩哔哩": "bilibili",
         "哔哩哔哩APP": "bilibili",
         "bilibili": "bilibili",
+        "BILIBILI": "bilibili",
         "快手": "kuaishou",
         "kuaishou": "kuaishou",
+        "KUAISHOU": "kuaishou",
     }
     for source, expected in source_labels.items():
         assert profile.resolve_platform(source) == expected
@@ -213,6 +195,6 @@ def test_current_machine_facts_do_not_reintroduce_platform_aliases() -> None:
                         f"{relative}:{line_number}: forbidden=red platform alias: {line.strip()}"
                     )
     assert not violations, (
-        "当前有效机器事实仍包含平台缩写/别名/大小写变体；平台身份只能使用五个正式值。\n"
+        "当前有效机器事实仍包含平台缩写/别名；平台身份只能使用五个正式值。\n"
         + "\n".join(violations)
     )
