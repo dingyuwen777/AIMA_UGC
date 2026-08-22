@@ -1,307 +1,357 @@
-# 采集能力说明
+# 五平台采集实现导航
 
-本文描述当前仓库已经落地的采集主链、Stage 7 已完成运行事实以及后续阶段仍受门禁约束的能力。长期设计以 `docs/blueprint/` 为准，机器事实以代码、Migration、Contract、Fixture 与测试为准。
-
-五个平台 TikHub 真实响应的人类查询入口见 [`../blueprint/10-TikHub真实响应结构附录.md`](../blueprint/10-TikHub真实响应结构附录.md)。同平台 App/Web/V1/V2/V3 的验证与备用规则见 [`../blueprint/11-TikHub多接口验证与备用策略.md`](../blueprint/11-TikHub多接口验证与备用策略.md)。
-
-## 1. 当前稳定主链
-
-采集主链保持：
+本文是 `docs/collection/` 的入口。目标不是重复 Blueprint，而是让开发者快速回答：
 
 ```text
-Plan / Run / Scope
-→ Provider Request / Attempt
-→ Raw Artifact
-→ Provider + Platform Mapper
-→ Canonical
-→ Ingestion
-→ Owner Repository
-→ PostgreSQL
+这个平台当前生产用哪个 TikHub Operation？
+Search/Detail/Comments/Replies 各在哪里？
+Mapper 文件在哪？
+真实 Fixture 在哪？
+当前 Capability 支持哪些排序/时间/增量能力？
+想换 endpoint 或修字段时应该改哪些文件？
 ```
 
-边界要求：
+系统采集架构先看：
 
-- Provider 负责外部 API 调用，不直接写业务表；
-- Raw Artifact 先于 Mapper 保存；
-- Mapper 只做纯映射，不访问数据库、不发 HTTP；
-- Canonical 表由对应业务 Owner 写入；
-- Provider 私有 cursor / page / search_id 等分页状态只留在 Provider Adapter / Request / Attempt 的内部边界；
-- Secret 不进入代码、日志、Raw、Fixture、Job Payload、Plan 配置或数据库明文。
+- [`../blueprint/02-采集系统与数据标准化.md`](../blueprint/02-采集系统与数据标准化.md)
+- [`../blueprint/08-采集策略与平台能力.md`](../blueprint/08-采集策略与平台能力.md)
 
-## 2. Run / Scope 与 Provider 执行
+真实 JSON 路径：
 
-`CollectionExecutionService + PostgresCollectionRepository` 创建 Run / Scope 父事实，一个 Run 只绑定一个正式 Job。
+- [`../appendix/TikHub五平台真实响应与字段映射.md`](../appendix/TikHub五平台真实响应与字段映射.md)
 
-当前 Run 触发方式：
+接口家族/备用：
 
-- `manual`
-- `api`
-- `backfill`
-- `scheduled`
+- [`../appendix/TikHub多接口验证与备用策略.md`](../appendix/TikHub多接口验证与备用策略.md)
+- [`../appendix/TikHub接口选型与真实验证台账.md`](../appendix/TikHub接口选型与真实验证台账.md)
 
-其中：
+---
 
-- `manual/api/backfill` 保持既有兼容行为，并可选记录 `manual_plan_id`；
-- `scheduled` 必须绑定唯一 `occurrence_id`，不得同时写 `manual_plan_id`；
-- Run 的 `config_snapshot` 保存该次执行不可变配置快照，Plan / Schedule Version 的关系身份以数据库 FK 为准；
-- Scheduler 创建 scheduled Run 时会冻结实际可执行关键词 Scope，避免 Job 入队后重新读取已经变化的词包内容。
-
-Provider Request / Attempt、Dispatch、Recovery 继续复用现有 Stage 5D / Stage 7 生产实现；Billing/成本字段用于执行审计，当前没有请求次数/金额预算、Budget Account、Reservation Ledger 或发送预算门禁。
-
-## 3. Stage 7 Plan 与 Scheduler 事实
-
-当前数据库已经存在：
-
-- `collection_plans`
-- `collection_plan_platforms`
-- `collection_plan_keyword_packs`
-- `collection_schedule_occurrences`
-- `collection_runs.manual_plan_id`
-- `collection_runs.occurrence_id`
-
-### 3.1 Plan 与已批准恢复策略
-
-首版 Plan 固定：
+## 1. 五平台当前代码入口
 
 ```text
-timezone = Asia/Shanghai
-misfire_policy = latest_only
-max_catch_up_runs = 0
+backend/src/aima_ugc/adapters/providers/tikhub/
+├─ capabilities.py
+├─ runtime.py
+├─ transport.py
+├─ pricing.py
+├─ pricing.toml
+├─ operations/
+│  ├─ xiaohongshu.py
+│  ├─ douyin.py
+│  ├─ weibo.py
+│  ├─ bilibili.py
+│  └─ kuaishou.py
+└─ mappers/
+   ├─ common.py
+   ├─ xiaohongshu.py
+   ├─ douyin.py
+   ├─ weibo.py
+   ├─ bilibili.py
+   └─ kuaishou.py
 ```
 
-领域层和数据库都拒绝与该策略冲突的 Plan。完整语义见 [Scheduler 运行与恢复策略](../blueprint/09-Scheduler运行与恢复策略.md)。
-
-停机恢复若累计多个到期 slot：
-
-- 最新一个创建 `enqueued` Occurrence；
-- 更早的 slot 创建 `skipped` Occurrence；
-- `skip_reason = misfire_superseded`；
-- 不额外执行历史 Run；
-- `last_scheduled_at` 推进到最新已处理 slot；
-- `next_run_at` 推进到第一个未来 slot。
-
-### 3.2 Plan → Platform
-
-Plan 的平台配置通过 `collection_plan_platforms` 保存：
-
-- 一个 Plan 的同一 `platform` 只能出现一次；
-- Provider 选择通过稳定 `provider_config_id` 引用 `provider_configs`；
-- `config` 只保存平台业务配置 JSON object；
-- API Key、Token、Cookie、Password 等 Secret 形态字段由领域入口拒绝；
-- Provider 私有分页状态不属于 Plan 配置。
-
-### 3.3 Plan → Keyword Pack / Scope Snapshot
-
-Plan 与关键词包通过 `collection_plan_keyword_packs` 建立真实关联，不把词包 ID 列表塞入 Plan JSON。
-
-Scheduler 在创建实际 Run 时读取当时有效的词包版本并展开为明确的平台关键词 Scope：
-
-- `platform=all` 只展开到该 Plan 已显式配置的平台；
-- 停用关键词不进入 Scope；
-- 同平台同关键词去重；
-- 词包版本写入审计快照；
-- Worker 后续消费持久化 Scope，而不是重新解释当前可变词包。
-
-### 3.4 Schedule Occurrence
-
-Occurrence 唯一身份为：
+生产 Collection 串联：
 
 ```text
-(plan_id, schedule_version, scheduled_for)
+backend/src/aima_ugc/bootstrap/collection_scope.py
 ```
 
-状态只允许：
-
-- `enqueued`：必须有唯一 `job_id`，不得有 `skip_reason`；
-- `skipped`：不得有 Job，必须有非空 `skip_reason`。
-
-数据库 deferred constraint 在事务提交前验证：
-
-- `enqueued` Occurrence 恰好有一个反向 `scheduled` Run；
-- Occurrence 与 Run 使用同一个 Job；
-- `skipped` Occurrence 没有 Run。
-
-### 3.5 Scheduler Runtime
-
-Scheduler 已实现首版持久化 Runtime：
+Collection Domain：
 
 ```text
-预扫可调度 Plan ID
-→ 每个 Plan 独立短事务
-→ SELECT ... FOR UPDATE 重读当前 Plan
-→ 解析五字段数值 Cron
-→ 计算 latest-only 决策
-→ 冻结关键词 Scope
-→ 写 skipped Occurrence
-→ 写 Job
-→ 写 enqueued Occurrence
-→ 写 scheduled Run / Scope
-→ 推进 last_scheduled_at / next_run_at
-→ commit
+backend/src/aima_ugc/modules/collection/
 ```
 
-当前五字段 Cron 支持数字、`*`、列表、范围和步长，不支持秒字段、年份字段、月份/星期英文名称或 Quartz 扩展。
-
-多 Scheduler 可以同时预扫同一 Plan，但最终决定在 PostgreSQL 行锁内完成；第二个 Scheduler 必须重读已推进后的 cursor，因此不能重复创建同一 Occurrence/Run/Job。
-
-Scheduler 创建的 `collection.run.v1` Job 已接入正式 Worker 装配：
+真实 Fixture：
 
 ```text
-Scheduler
-→ Occurrence / scheduled Run / Scope
-→ PostgreSQL Job
-→ Production JobRegistry / JobWorker
-→ CollectionRunJobHandler
-→ CollectionRunExecutor
-→ TikHubCollectionScopeExecutor
-→ Provider / Raw / Mapper / Canonical / Ingestion
+tests/fixtures/providers/tikhub/
 ```
 
-自动化纵切使用 `FakeProviderTransport`，验证正式生产装配和数据库链路，不在普通 CI 产生 TikHub 付费请求。
+---
 
-## 4. 五平台 TikHub 真实兼容事实
+## 2. 当前生产主链
 
-2026-08-15 至 2026-08-16 已通过 GitHub-hosted Runner 对 `https://api.tikhub.io` 做受限 Real Probe，关键词使用“爱玛”，不做全量翻页。
-
-当前仓库已经保存五个平台真实脱敏 Fixture：
-
-```text
-tests/fixtures/providers/tikhub/xhs/
-tests/fixtures/providers/tikhub/douyin/
-tests/fixtures/providers/tikhub/weibo/
-tests/fixtures/providers/tikhub/bilibili/
-tests/fixtures/providers/tikhub/kuaishou/
-```
-
-真实结构覆盖：
-
-| 平台 | Search | Detail | 一级评论 | 二级评论/回复 |
+| 平台 | Search | Detail | Comments | Replies/Sub-comments |
 | --- | --- | --- | --- | --- |
-| 小红书 | 非空 | 图文/视频非空 | 非空 | 非空 |
-| 抖音 | 非空 | 非空 | 非空 | 非空 |
-| 微博 | 非空 | 非空 | 非空 | 非空 |
-| B站 | 非空 | 非空 | 非空 | 非空 |
-| 快手 | 非空 | 非空 | **Web 与 App 同样本均非空** | **Web 与 App 同样本均非空** |
+| 小红书 | App V2 `search_notes` | App V2 image/video detail | App V2 `get_note_comments` | App V2 `get_note_sub_comments` |
+| 抖音 | Search V2 | App V3 one video | App V3 comments | App V3 replies |
+| 微博 | Web Search | App detail | App comments | Web V2 sub comments |
+| B站 | App search by type | App one video | App comments | App reply detail |
+| 快手 | App video search V2 | App one video | App comments | App sub comments |
 
-五个平台真实 Search/Detail/Comments/Replies 已由生产 Extractor / Mapper 构造合法 Canonical；真实 Fixture 还通过 PostgreSQL 18 Ingestion 纵切验证，因此当前 Canonical V1 的核心统一结构已经有真实 Provider 证据。
+Endpoint 精确路径不要从这个摘要猜，打开目标平台 `operations/*.py` 或真实响应附录。
 
-### 4.1 当前默认 TikHub Capability
+---
 
-默认 Registry 已覆盖：
+## 3. 当前评论增量资格
+
+机器事实：
 
 ```text
-xhs
-douyin
-weibo
-bilibili
-kuaishou
+backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py
 ```
 
-Capability 只公开当前真实响应和 Operation 已证明的能力，不因为 TikHub 文档存在某个字段/参数就自动声明支持。
+当前：
 
-
-当前评论增量资格：
-
-| 平台 | 增量 | 当前证据/限制 |
+| 平台 | `supports_incremental_comment_sort` | 含义 |
 | --- | --- | --- |
-| 小红书 | `true` | `latest_v2` + 当前真实评论时间严格非增 |
-| B站 | `true` | `mode=2` + 首屏 `next_offset=0`，当前真实 20 条时间严格非增 |
-| 抖音 | `false` | 评论 Operation 无已批准最新评论排序参数 |
-| 微博 | `false` | `sort_type=1` 当前真实 20 条时间不是严格非增 |
-| 快手 | `false` | 当前真实 94 条评论时间不是严格非增 |
+| 小红书 | `true` | 当前正式 latest 评论链有可靠增量边界 |
+| 抖音 | `false` | 当前正式 Comments 未承诺可靠 newest-first 增量 |
+| 微博 | `false` | 当前正式排序证据不足以声明安全增量 |
+| B站 | `true` | 当前 latest 模式和分页证据支持已知评论边界停止 |
+| 快手 | `false` | 当前评论时间/排序不满足统一安全增量条件 |
 
-`true` 平台在 `comment_count` 增加时走统一 `fetch_incremental`，并使用生产 `known_comment_reached` 安全边界；`false` 平台走受控刷新。任何当前页都先完整保存 Raw 并完成 Mapper/Ingestion，边界只阻止下一次付费请求。
+这不是“接口有没有 cursor”的判断。
 
-快手正式评论 Capability 已切换为 App：
-
-```text
-comments = fetch_video_comment
-comments.supports_reply_count = true
-comments.supports_sub_comments = true
-sub_comments = fetch_video_sub_comments
-```
-
-Web `fetch_one_video_comment` / `fetch_one_video_sub_comment` 已由真实同样本 A/B 证明可用，但只保留为显式 `verified_backup`，不进入默认 Capability，也不做自动 fallback。
-
-### 4.2 快手 Web/App A/B 与搜索可比性
-
-快手早先一次 Web `subComments=[]` 已被重新调查：旧 Probe 直接选择第一条根评论，没有确认其存在回复。
-
-2026-08-16 对同一个有回复作品、同一个具有 `displaySubCommentCount/subCommentCount` 正向证据的根评论分别调用 Web/App：
-
-- Web 一级评论 HTTP 200 且非空；
-- App 一级评论 HTTP 200 且非空；
-- Web 二级评论 HTTP 200 且 `data.subComments[]` 非空；
-- App 二级评论 HTTP 200 且 `data.subComments[]` 非空；
-- App 一级响应能直接带部分 `subCommentsMap.<root>.subComments[]`；
-- 当次 endpoint-info：Web 一级 0.002 USD、Web 二级 0.010 USD；App 一级 0.001 USD、App 二级 0.001 USD。
-
-用户已批准 App 为正式评论主链；App 一级/二级价格已经进入版本化 Pricing。Web 只作为已验证备用记录。
-
-快手 Web family 当前没有与关键词视频搜索同语义的 Web Search，因此不能回答“同一关键词 App/Web 搜索结果数量和内容是否一致”。该项状态为：
+增量语义：
 
 ```text
-not_equivalent / no_same_semantic_web_search
+请求当前页
+→ 当前页完整保存 Raw
+→ 当前页所有新 Observation 先 Mapper/Ingest
+→ 遇到稳定已知 Comment ID 边界
+→ 才停止后续页
 ```
 
-App `search_comprehensive` 是不同语义候选，只能在未来 A/B 中比较其视频子集，不能当作 Web 搜索替身。
+Capability=false 的平台走受控刷新，不套用同一逻辑。
 
-### 4.3 其他平台 API family 候选
+---
 
-当前代码只增加显式 A/B candidate builder，不修改其他平台默认 Capability：
+## 4. 当前 Capability 关键差异
 
-- 抖音：Video Search V2 主链 vs Video Search V1 候选；
-- 微博：Web Search 主链 vs App Search All 候选；App 一级评论主链 vs Web V2 Comments 候选；
-- B站：App Search/Comments/Reply 主链 vs 对应 Web 候选；
-- 小红书：保持 App V2 主链，其他 family 需要当前 endpoint 级重新确认后再实验。
+| 平台 | Native time filter | Search observes comment_count | Reply count | Sub-comments |
+| --- | --- | --- | --- | --- |
+| XHS | 是 | 是 | 是 | 是 |
+| Douyin | 是 | 是 | 是 | 是 |
+| Weibo | 是 | 是 | 是 | 是 |
+| Bilibili | 否 | 否 | 是 | 是 |
+| Kuaishou | 否 | 是 | 是 | 是 |
 
-候选只允许使用以下状态：
+为什么需要这个表：
+
+- B站当前不能在 UI 写“原生 7 天过滤”；
+- B站 Search 没有真实证据就不能把 `comment_count` 当 0；
+- 快手虽然支持回复数/二级评论，但不代表它支持安全最新评论增量。
+
+精确排序/时间/内容类型枚举看 `capabilities.py` 和 Blueprint 08。
+
+---
+
+## 5. Provider Request/Attempt 和 Raw
+
+五个平台统一执行规则：
 
 ```text
-verified_backup
-candidate_pending_probe
-not_equivalent
+Provider Request
+→ 逻辑请求
+
+Provider Attempt
+→ 一次真实发送
+
+Raw Artifact
+→ 该 Attempt 返回的不可变响应
 ```
 
-即使候选达到 `verified_backup`，也只表示显式备用证据已经建立，不自动注册生产 fallback。任何自动 Provider/App/Web fallback 都必须作为独立设计重新批准。
+一个 Attempt 最多一次 HTTP。
 
-统一比较记录包括：主/候选结果数、去重稳定 ID 数、交集、仅主、仅候选、并集、Jaccard、排序/分页差异、结构兼容和 endpoint-level 价格。两边都返回空集合时保持 inconclusive，不得升级候选状态。
+如果已有完整 Raw：
 
-## 5. 其他 Stage 7 已落地能力
+```text
+replay
+→ 不重复请求 Provider
+```
 
-当前还已经建立：
+网络结果未知时：
 
-- Provider Config Registry / `secret_ref` 路由；
-- Keyword / Keyword Pack 与数据库级并发串行化；
-- 五平台 TikHub Operation / Mapper / Capability / Registry 的真实响应基础；
-- endpoint-level Pricing 与 Provider Request/Attempt Billing 审计；
-- XHS 已存 Raw Replay Job Handler，用于把既有 Raw 重新走正式 Mapper / Ingestion，不重新发 Provider HTTP；
-- TikHub HTTP Transport 的 Secret 注入、一次发送和错误状态边界；
-- API family 稳定 ID 集合比较模块与显式候选 Operation builder；
-- `create_collection_job_registry(...)` 与正式 Worker entrypoint，复用现有 Artifact/Raw/Provider/Collection 组件消费 `collection.run.v1`。
+```text
+dispatch_status=unknown
+→ 不假设没有发出
+→ 保留 potential_duplicate_charge 审计
+```
 
-当前系统不实现请求次数预算、金额预算、Budget Account、Reservation Ledger、Run/评论 Budget 或 dormant Budget 接口。Provider Billing、Pricing、成本快照和 `potential_duplicate_charge` 只属于执行/审计事实。
+生产代码：
 
-## 6. Stage 7 闭环状态
+```text
+modules/collection/provider_dispatch.py
+modules/collection/provider_recovery.py
+```
 
-Stage 7 已完成正式采集与调度闭环：
+---
 
-- `collection.run.v1` live Worker 已接通 Scheduler / Job / Run / Scope / Provider / Raw / Mapper / Canonical / Ingestion 正式链；
-- PR #55 最终 head 已通过完整相关 CI 和两阶段 Review，并正常合入 `main`；
-- 合并后 `main` 已重新取得新鲜 CI；
-- `CHG-20260815-stage7-completion` 由当前归档 PR #56 更新为 `done` 并移入 `changes/archive/2026-08/`；
-- 快手 App 评论/二级评论主链、无自动 Provider/App/Web fallback、`secret_ref` Secret 边界和预算功能回撤均保持不变。
+## 6. Search 后为什么不一定全部抓 Detail/Comments
 
-下一正式阶段是 Stage 8，但本归档 PR #56 不开始 Stage 8。Stage 8 必须重新按当前 `main`、HTTP Contract、OpenAPI、生成 Client 与前端实际结构建立自己的需求和验收门禁。
+当前有统一 Decision Pipeline：
 
-## 7. 测试与调试
+```text
+Search Candidate
+→ Rule Relevance
+→ 已有 Content/Metric/Coverage
+→ Decision
+   ├─ fetch_detail?
+   ├─ fetch_comments?
+   └─ fetch_sub_comments?
+→ durable content action/checkpoint
+```
 
-- 长期无数据库 TikHub 调试入口为 `backend/src/aima_ugc/adapters/providers/tikhub_test/README.md`；它复用生产 Runtime/Operation/Mapper/Decision，不实现第二套路径；
-- Real Probe 默认不进普通 CI，必须显式授权、设置请求数/分页上限并在运行前核对预计费用，Secret 不落盘；
-- 普通回归使用已经合法脱敏的真实 Fixture，不重复产生 TikHub 费用；
-- API family A/B 只使用显式候选 builder，不能注册隐式 fallback；
-- Scheduler 专项验证 latest-only、并发去重、重复 tick 幂等、Plan 行锁重读、Scope Snapshot、Migration drift 与 round-trip；
-- Worker 纵切使用 Fake Transport 证明正式生产 Registry/JobWorker/Collection Scope 链路，不用付费 HTTP 代替可重复回归；
-- 数据库变化验证 Alembic 上一正式 Revision → head、base → head、downgrade / upgrade 与 `alembic check`；
-- Contract / Ruff / mypy / Architecture / Table Ownership / Secret / Docs 门禁必须保持绿色；
-- 不能用 Fixture 测试冒充本轮真实 TikHub 成功调用，也不能用旧版本 Provider 响应冒充当前 Operation 兼容性证据。
+代码：
+
+```text
+backend/src/aima_ugc/modules/collection/decision.py
+backend/src/aima_ugc/bootstrap/collection_scope.py
+```
+
+目的：
+
+- 避免同一个帖子跨关键词重复 Detail；
+- 评论数没变化且上次 Coverage 已完整时避免重复抓；
+- 已为 Relevance 获取的 Detail 后续直接复用；
+- Worker takeover 后从持久 Action/Raw 恢复，而不是重新付费。
+
+---
+
+## 7. 五个平台分别去哪看
+
+- [`xiaohongshu.md`](xiaohongshu.md)
+- [`douyin.md`](douyin.md)
+- [`weibo.md`](weibo.md)
+- [`bilibili.md`](bilibili.md)
+- [`kuaishou.md`](kuaishou.md)
+
+每篇应该包含：
+
+```text
+当前主 Operation
+真实 Endpoint
+Mapper
+Fixture
+Capability
+分页/评论关键边界
+备用 family 状态
+常见修改路径
+```
+
+---
+
+## 8. 改平台代码的固定顺序
+
+### Endpoint 变化
+
+```text
+Operation Builder
+→ Fixture/Real Probe
+→ Operation Test
+→ Pricing/Capability（按影响）
+→ 平台文档
+```
+
+### JSON shape 变化
+
+```text
+真实 Sanitized Fixture
+→ Extractor / Mapper Test
+→ Mapper
+→ Canonical Contract Test
+→ 必要 PostgreSQL Vertical Slice
+```
+
+### 打开新 Capability
+
+```text
+真实接口证据
+→ Operation 能表达
+→ Fixture
+→ Mapper/分页
+→ Capability
+→ Contract/API/Frontend（如果公开）
+→ Tests
+```
+
+不能只改一个 Capability bool。
+
+### 切换 App/Web/V1/V2/V3
+
+先做：
+
+```text
+同输入 A/B
+→ stable ID 集合
+→ Pricing
+→ pagination
+→ shape
+→ candidate status
+```
+
+再决定是否切生产主链。
+
+---
+
+## 9. 真实验证怎么做
+
+普通 CI 不发 TikHub 真实付费请求。
+
+真实 Probe 必须：
+
+- 显式；
+- 限定请求数/页数；
+- 先确认 Pricing；
+- 使用生产 Operation；
+- 保存 Sanitized Fixture；
+- Secret 不进日志/Fixture；
+- 不默认写生产业务库。
+
+Fixture 是回归证据，TikHub 文档示例不是“真实 Fixture”。
+
+---
+
+## 10. 调试一条平台采集
+
+推荐：
+
+```text
+Collection Run
+→ Scope
+→ Provider Request
+→ Attempt
+→ Raw Artifact
+→ Candidate
+→ Mapper
+→ Candidate Ingestion
+→ Content / Comment
+```
+
+数据库 SQL：
+
+[`../appendix/PostgreSQL查询与调试实战.md`](../appendix/PostgreSQL查询与调试实战.md)
+
+如果 Response 字段问题：
+
+```text
+Raw Fixture
+→ Operation extractor
+→ Mapper
+→ Canonical
+```
+
+如果 HTTP 200 但数据库没 Content：
+
+```text
+Candidate
+→ Rule Relevance
+→ Mapper Contract
+→ Decision
+→ Content Ingestion
+```
+
+---
+
+## 11. 当前没有的统一采集能力
+
+- 自动 API family fallback；
+- 所有平台统一时间过滤；
+- 所有平台统一 newest comment 增量；
+- Provider 请求/金额 Budget Guard；
+- 快手 Comprehensive Search 作为 Video Search 备用；
+- B站 Search comment_count 观察；
+- Provider 私有字段直接进入公共 API/数据库。

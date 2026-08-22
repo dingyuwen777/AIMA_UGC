@@ -1,191 +1,319 @@
 # AIMA_UGC Blueprint 导航
 
-`docs/blueprint/` 是爱玛舆情监控系统 Greenfield 重构的设计基线目录。这里描述系统应该如何实现、哪些决策已经确认、哪些条件尚未满足，以及各阶段何时允许继续推进。
+`docs/blueprint/` 只维护**长期有效的系统架构、边界、关键技术方向和跨模块决定**。
 
-本目录只维护长期有效的当前设计，不记录聊天过程，也不复制代码、Schema、Migration 或锁文件中的机器事实。
+它不是实现手册，也不是 Stage 施工记录。
 
-## 使用顺序
+如果第一次接触仓库，建议先读：
 
-处理任何仓库任务时：
+1. [`../../AGENTS.md`](../../AGENTS.md)
+2. [`../代码结构与修改导航.md`](../代码结构与修改导航.md)
+3. 本文
+4. [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md)
+5. [`../roadmap/生产上线实施路线.md`](../roadmap/生产上线实施路线.md)
+6. 再按当前任务下钻对应 Appendix、Guide、模块 README、Contract、Migration、代码和测试
 
-1. 先读取仓库根目录 [`AGENTS.md`](../../AGENTS.md)；
-2. 按 `AGENTS.md` 读取 [`.agents/skills/reliable-vibe-coding/SKILL.md`](../../.agents/skills/reliable-vibe-coding/SKILL.md)；
-3. 读取本文和 [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md)；
-4. 再按当前任务读取对应领域 Blueprint；
-5. **涉及 Provider、TikHub、采集 Plan、关键词发现、详情/评论策略、Provider Billing/成本事实、未来 Budget/Cost Guard 扩展或平台 Operation 时，必须再读取 [`08-采集策略与平台能力.md`](08-采集策略与平台能力.md)，然后读取 [`../collection/README.md`](../collection/README.md) 和目标平台文档；**
-6. 涉及 Scheduler、TikHub API family 验证或真实响应结构时，再分别读取 `09`—`12` 中与当前任务直接相关的文档；
-7. **涉及帖子/评论数据 Excel、`.xlsx` 审阅、共享 Exporter、`tikhub_test` 或 `imports_test` Excel 复用时，必须读取 [`13-统一数据Excel导出与调试复用.md`](13-统一数据Excel导出与调试复用.md)。**
-8. **涉及正式前端页面结构、页面级隔离、Shared/Feature 边界、Figma、Design-to-Code、Figma MCP、Design Token、公共组件或视觉验收时，必须读取 [`16-前端页面架构与Figma设计工作流.md`](16-前端页面架构与Figma设计工作流.md)。**
-9. **涉及 Stage 8 的 Excel 主数据入口、Processing/Import Batch、统一入库、`imports_test`/`tikhub_test` 可选写库、采集运行中心或 Stage 8 子阶段实施时，必须读取 [`17-Stage8数据入口统一入库与业务前端实施.md`](17-Stage8数据入口统一入库与业务前端实施.md)。**
-10. **涉及 AI 情感/一级/二级标签、Prompt、模型输入、分析结果版本、JSONL 回写或未来 Analysis 数据库存储时，必须读取 [`15-舆情AI打标与统一分析契约.md`](15-舆情AI打标与统一分析契约.md)。**
-11. 进入具体实现后，只继续读取相关模块 README、Contract、Migration、依赖、Operation/Mapper、Fixture、实现和测试。
+---
 
-不要因为存在 Blueprint 就跳过代码和测试事实，也不要一次性读取所有文档代替针对当前任务的现状调查。
-
-实际开发机配置、Windows x64 一键环境初始化、本地启动、Stage 2 PostgreSQL/readiness 配置以及生产部署当前状态见 [`../环境运行与部署.md`](../环境运行与部署.md)。该文档是操作入口，不替代本目录的架构和门禁事实。
-
-人类可读的统一 HTTP API 说明入口固定为 [`../API接口说明.md`](../API接口说明.md)。该文档用于开发、联调和测试人员理解接口用途与调用方式；HTTP 的机器事实仍由 Pydantic Request/Response、FastAPI Route、固定 `contracts/openapi/openapi.json`、生成 Client 和测试维护，API 说明文档不得成为第二套字段 Schema。
-
-人类可读的统一测试与调试入口固定为 [`../测试与调试说明.md`](../测试与调试说明.md)。它负责解释测试分层、独立验证方式、Fixture/Fake/Probe、运行入口和成功判据；测试代码、Contract、Fixture、Migration、本轮执行结果和 CI 才是验证事实，说明文档不得复制第二套断言或期望值清单。
-
-采集逻辑的人类可读开发入口固定为 [`../collection/README.md`](../collection/README.md)。它负责讲清通用 Decision Pipeline、Provider Config/平台选择、Provider Billing/成本审计、评论抽样、Deep Collection、Business Pipeline Probe，以及小红书/抖音/微博/B站/快手各自的 TikHub Operation、业务参数、内部分页、代码/Fixture/测试状态。平台文档不得把“已批准目标实现”写成“当前代码已完成”。
-
-## 事实源优先级
-
-仓库进入实现阶段后，发生冲突时按以下顺序处理：
+## 1. Blueprint 和其他文档分别负责什么
 
 ```text
-已批准的 OpenSpec change（仓库建立后）
-→ 当前代码、Migration、Contract、锁文件、生成物和测试事实
-→ 07 中的已确认跨文档决策和初始化版本快照
-→ 对应领域 Blueprint
-→ docs/collection/ 平台实现说明
-→ README 导航和摘要
+Blueprint
+→ 系统为什么这样设计
+→ 哪些边界长期不能随便改
+→ 主要技术方向是什么
+
+Roadmap
+→ 当前做到哪里
+→ 下一阶段做什么
+→ 哪些能力尚未完成
+→ 怎样一直做到生产服务器上线
+
+模块 README
+→ 当前模块代码怎样实现
+→ Owner、入口、调用链、修改位置
+
+Appendix
+→ Scheduler、TikHub、Excel、AI、PostgreSQL、Word、Production Release 等大篇幅技术细节和调试
+
+Guide
+→ Figma 等开发过程工作流
+
+代码 / Contract / Migration / generated / tests / locks
+→ 精确机器事实
+
+changes/archive
+→ 某次变更为什么发生、当时怎样验证
 ```
 
-机器事实与已批准设计不一致时，不能静默覆盖任何一方。必须先确认是实现缺陷、文档过期还是新决策，再在同一任务中修正。
+原则：
 
-## 文档索引
+> Blueprint 控制“方向和边界”，Appendix/README 解释“具体怎样实现”，Roadmap 保证“后续开发路线不丢”。
 
-| 文档 | 负责内容 | 什么时候读取 |
+---
+
+## 2. 当前核心 Blueprint
+
+当前核心 Blueprint 固定为 `01—08`：
+
+| 文档 | 解决的问题 | 关键结论 |
 | --- | --- | --- |
-| [`01-总体架构与技术选型.md`](01-总体架构与技术选型.md) | 模块化单体、运行组件、目录、依赖方向、可替换边界 | 总体架构、目录、模块边界、技术路线、跨模块设计 |
-| [`02-采集系统与数据标准化.md`](02-采集系统与数据标准化.md) | Plan/Run/Scope/Request/Attempt/Candidate、Provider Adapter、Raw、Mapper、Canonical、分页、刷新基础 | Provider、Raw、Mapper、Canonical、来源链、通用采集基础 |
-| [`03-数据库与文件存储.md`](03-数据库与文件存储.md) | PostgreSQL、表与约束、Owner、Current/Version/Metric、Artifact、Job、Provider Billing、历史预算回撤与备份一致性 | Schema、Migration、Repository、Artifact、数据历史、幂等、Provider Billing |
-| [`04-后端任务API与前端.md`](04-后端任务API与前端.md) | Router/Service/Repository、HTTP Contract、错误、Cursor、Auth、Job Runtime、前端调用边界 | API、Job、前端 Client、认证授权、业务服务、长任务 |
-| [`05-日志安全部署与运维.md`](05-日志安全部署与运维.md) | 日志、审计、Secret、安全、Docker Compose、离线 Release、备份、回滚、运维 | 日志、安全、配置、部署、Release、备份恢复 |
-| [`06-开发约束与分阶段实施.md`](06-开发约束与分阶段实施.md) | TDD、独立验证、测试分层、CI、Git、文档同步、Review、正式阶段顺序 | 制定计划、测试/调试、CI、Git、交付、正式阶段判断 |
-| [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md) | 已确认跨文档决策、唯一初始化版本快照、未决门禁、阶段 Go/No-Go | 每个任务都先读；技术版本、重大决策、阶段门禁 |
-| [`08-采集策略与平台能力.md`](08-采集策略与平台能力.md) | Stage 7 Provider Config/平台选择、五平台 Operation、Decision/Capability、评论、Provider Billing、Deep/Probe、未来 Budget/Cost Guard 边界 | TikHub/Provider、平台采集、Plan、评论、Capability、Probe |
-| [`09-Scheduler运行与恢复策略.md`](09-Scheduler运行与恢复策略.md) | `latest_only` Scheduler、Occurrence、停机恢复、并发和正式 Worker 闭环 | Scheduler、Occurrence、scheduled Run、Worker 调度链 |
-| [`10-TikHub真实响应结构附录.md`](10-TikHub真实响应结构附录.md) | 五平台已脱敏真实响应结构的人类查询入口 | Mapper/Extractor、Fixture 字段定位、真实响应核查 |
-| [`11-TikHub多接口验证与备用策略.md`](11-TikHub多接口验证与备用策略.md) | 同业务语义 API family A/B、候选状态、显式备用与禁止自动 fallback | App/Web/V1/V2/V3 候选验证、备用接口策略 |
-| [`12-TikHub真实请求响应与接口选型台账.md`](12-TikHub真实请求响应与接口选型台账.md) | 五平台主 endpoint、真实请求/响应、价格事实和接口选型证据 | TikHub 主链核查、Real Probe、endpoint 选型与历史 A/B |
-| [`13-统一数据Excel导出与调试复用.md`](13-统一数据Excel导出与调试复用.md) | 唯一 `UnifiedDataExcelV1`、raw/labeled 同契约、同源 JSONL→Excel、共享 Exporter 与调试复用门禁 | Excel、`.xlsx`、`openpyxl`、`tikhub_test`/`imports_test`、系统级统一导出 |
-| [`15-舆情AI打标与统一分析契约.md`](15-舆情AI打标与统一分析契约.md) | 全平台通用 4 情感 + 9 一级 + 39 二级 taxonomy、最小模型输入、Markdown Prompt、Analysis Contract、JSONL 回写与数据库 Owner 边界 | AI 打标、Prompt 调优、模型 Adapter、Analysis 结果、数据库/Excel 消费 |
-| [`16-前端页面架构与Figma设计工作流.md`](16-前端页面架构与Figma设计工作流.md) | Vue 页面级隔离、App/Shared/Feature/Page 边界、Figma 设计事实源、MCP Design-to-Code、Design Token、频繁改版与视觉验收 | Stage 8、前端页面、Figma、公共组件、设计系统、Design-to-Code、视觉验收 |
-| [`17-Stage8数据入口统一入库与业务前端实施.md`](17-Stage8数据入口统一入库与业务前端实施.md) | Excel 主数据入口、TikHub 辅助补采、Processing/Import Batch、统一 Canonical→Ingestion→PostgreSQL、手工调试可选写库、UI 能力映射和 Stage 8A—8F | Stage 8、正式导入、统一入库、`imports_test`/`tikhub_test` 写库、采集运行中心 |
+| [`01-总体架构与技术选型.md`](01-总体架构与技术选型.md) | 整个系统怎样拆？ | 模块化单体、API/Worker/Scheduler/Migration 分进程、当前技术栈和依赖方向 |
+| [`02-采集系统与数据标准化.md`](02-采集系统与数据标准化.md) | 不同数据来源怎样进入同一体系？ | Provider/File → Raw/Input → Mapper → Canonical → Relevance → Ingestion → PostgreSQL |
+| [`03-数据库与文件存储.md`](03-数据库与文件存储.md) | 什么放数据库，什么放文件？ | PostgreSQL 唯一业务事实库、Current/Version/Metric、Artifact、表 Owner、Migration |
+| [`04-后端任务API与前端.md`](04-后端任务API与前端.md) | API、Job、Worker、Scheduler、前端怎样协作？ | 长任务 durable Job、OpenAPI generated Client、前后端边界 |
+| [`05-日志安全部署与运维.md`](05-日志安全部署与运维.md) | 日志、安全、Secret、生产运行怎么定？ | 日志/Secret/Health/Artifact/部署恢复长期边界 |
+| [`06-开发约束与分阶段实施.md`](06-开发约束与分阶段实施.md) | 怎么可靠开发和交付？ | Change、TDD、CI、Git、文档同步、验收方法；阶段进度不在这里维护 |
+| [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md) | 哪些跨模块决定已经拍板？ | 普通任务不能静默改变的技术决定和门禁 |
+| [`08-采集策略与平台能力.md`](08-采集策略与平台能力.md) | Collection Plan 怎样决定抓什么？ | Capability、Decision、Detail/Comment、Provider Billing、采集策略 |
 
-## 当前开发状态
+新增一个具体业务场景或某个 Provider 细节时，优先放 Appendix/模块 README；不要继续按 `09、10、11...` 扩张 Blueprint。
 
-**Stage 1—7、临时 P1 与 Stage 8A—8F 已闭环。Stage 8F 完成 Keyword / Relevance / Plan 产品化与
-Stage 8 整体集成；下一正式阶段是 Stage 9 Analysis and Monitoring。**
+只有真正出现**新的长期架构领域**，且无法合理归入现有 01—08 时，才通过新的文档治理 Change 调整核心结构。
 
-Stage 8A 与 Stage 8B 当前 `main` 机器边界：
+---
 
-- `processing_import_batches` 作为 Excel File Import 的最小业务父事实；
-- `provider_requests` 支持 Collection Scope / Import Batch 恰好一个父级，既有 Collection 来源语义保持兼容；
-- Excel 数据库模式使用 Input Artifact → Processing Import Batch → import-parent Provider Request / non-billable Attempt → Canonical → 正式 Content Ingestion，不伪造 Collection Run/Scope/Candidate；
-- `imports_test` 默认 `WRITE_TO_DATABASE=False`，显式数据库阶段才装配 PostgreSQL Runtime；
-- `tikhub_test` 五个平台 `run_*()` 默认 `write_to_database=False`，显式数据库模式要求稳定 `provider_config_id`，复用 manual Collection / Provider Dispatch / Raw / Candidate-before-Mapper / fenced Ingestion；
-- TikHub 数据库模式同一次外部请求同时保留本地调试 Raw 和正式 Raw Artifact，不从 JSONL/Excel 二次回灌，也不因写库额外再发一次 Provider 请求；
-- PostgreSQL 仍按 `(platform, external_content_id)` 与评论稳定身份收敛跨批次、跨来源 Current，并保留 Version/Metric/来源历史；
-- Stage 8B 为单个 `.xlsx` 建立 multipart HTTP 上传、Source Artifact、Processing Import Batch 与持久化 `ingestion.import-excel.v1` Job；Router 不执行长任务，Worker 复用 Stage 8A 正式 Reader/Mapper/Ingestion；
-- 系统全局唯一启用的 Relevance Keyword Pack 保存在 PostgreSQL，Import Job 和 Collection Run 冻结配置快照；所有渠道都在 Mapper 后、正式 Content Ingestion 前执行同一 Relevance Service；
-- Import Batch 和 Import Job 支持按 ID 查询，固定响应、统一错误结构和 `request_id` 已进入 OpenAPI，并由现有 Orval 流程生成 TypeScript Client；
-- Stage 8C 增加只读 Batch 列表、北京时间 Summary、查询绑定的 HMAC Cursor，以及通过 Feature
-  API/Pinia/生成 Client 调用的 Vue 采集运行中心；
-- Stage 8D 增加渠道无关的“声音广场”、Content 详情/Coverage、current Analysis 全部有序标签，以及
-  显式 durable Analysis/Excel Export；没有真实媒体时保持文本优先；
-- Stage 8E 在采集运行中心集中查询 Excel Import 与 TikHub Run；一次性 Discovery 和 Batch 补采均创建
-  既有 `collection.run.v1` Job，Batch 补采通过可空外键关联 Import Batch，并复用正式 Detail/Comment、
-  Raw、Mapper、全局 Relevance 与 Fenced Content Ingestion；
-- Stage 8F 增加一级路由 `/collection-strategy`，通过 Keyword Pack、全局唯一 Relevance 和周期
-  Collection Plan 三个配置页签复用既有 PostgreSQL Owner、Scheduler/Worker 与 Provider Capability；
-  保存配置不创建 Run/Job、不调用 TikHub，Stage 8E 继续负责一次性主动发现；
-- 数据库模式只连接开发者已经准备好的 PostgreSQL 18，不管理 Docker，不自动执行 Alembic Migration，Schema 不满足要求时关闭失败。
+## 3. 原 Blueprint 09—17 去哪里了
 
-Stage 7 已完成并固化：
+原 `09—17` 主要是在 Stage 7、P1、Stage 8 开发过程中形成的详细实现/验证材料。对应阶段已经完成后，这些内容不再继续占用核心 Blueprint。
 
-- 版本化 Collection Decision / Reply Decision / Provider Platform Capability Contract 与纯 Decision Service；
-- 同一 Provider 类型多 Config、`provider_config_id` 路由、`secret_ref` Secret 边界；
-- Keyword / Keyword Pack System 父事实与 PostgreSQL Repository；
-- 五个平台 TikHub 主 Operation、Extractor/Mapper、合法脱敏真实 Fixture、Capability/Registry 和 Canonical/PostgreSQL 兼容证据；
-- 快手正式评论主链为 App `fetch_video_comment` / `fetch_video_sub_comments`，Web 仅为显式 `verified_backup`，不存在自动 fallback；
-- Provider Request/Attempt Billing、endpoint Pricing、成本快照与 `potential_duplicate_charge` 审计事实；
-- 当前**没有**请求次数预算、金额预算、Budget Account、Reservation Ledger、Run/评论 Budget、发送预算门禁或 dormant Budget 接口；历史 `20260815_0012/0013/0014` 不改写，`20260817_0015` 负责向前删除已撤回预算结构，同时保留 Provider Billing/成本审计事实；
-- Plan → Platform / Keyword Pack、Occurrence、Run/Scope Snapshot，首版固定 `Asia/Shanghai + latest_only + max_catch_up_runs=0`；
-- Scheduler Runtime：更早到期 slot 写 `skipped/misfire_superseded`，只执行最新到期 slot；Occurrence / Job / scheduled Run / Scope / cursor 在正式 PostgreSQL 事务边界内编排；
-- `collection.run.v1` 正式 Worker：`Production JobRegistry / JobWorker → CollectionRunJobHandler → CollectionRunExecutor → TikHubCollectionScopeExecutor → Provider Request/Attempt → Raw → Mapper → Canonical → fenced Ingestion`；
-- Worker 默认 Secret 从 `runtime.settings.secret_dir + validated secret_ref` 读取；默认 TikHub Transport 的自持 HTTP Client 在每次发送后关闭；TikHub Bearer Secret 默认出站 Origin 为 `https://api.tikhub.dev`，显式兼容既有 `https://api.tikhub.io`，其他 Origin 在发送 Secret 前拒绝；
-- Real Provider Probe 与 API family A/B 的受控事实入口；真实 Probe 不进入普通 CI，也不能把一次 HTTP 200 当长期稳定性承诺。
+当前有效事实已经迁移到：
 
-Stage 7 的实现 PR 为 `#55`，最终实现 head 为 `056e8f5684b19f6b40c4e7c4755593aee3336a7a`，正常合并后的 `main` commit 为 `737151a179a4b941c8bdc553cc77c4286bcb6d27`；最终 PR head 和合并后 `main` 都取得了新鲜 11/11 workflow 成功证据。完整归档证据见：
+| 原主题 | 当前正式入口 |
+| --- | --- |
+| Scheduler 运行、Cron、`latest_only`、并发、防重、停机恢复 | [`../appendix/Scheduler调度执行与停机恢复.md`](../appendix/Scheduler调度执行与停机恢复.md) + Collection README + 04/07/08 |
+| TikHub 五平台真实响应、JSON 路径、Mapper、Fixture | [`../appendix/TikHub五平台真实响应与字段映射.md`](../appendix/TikHub五平台真实响应与字段映射.md) + [`../collection/README.md`](../collection/README.md) |
+| TikHub App/Web/V1/V2/V3 验证和备用接口 | [`../appendix/TikHub多接口验证与备用策略.md`](../appendix/TikHub多接口验证与备用策略.md) |
+| TikHub 真实 Probe/接口选型台账 | [`../appendix/TikHub接口选型与真实验证台账.md`](../appendix/TikHub接口选型与真实验证台账.md) |
+| 统一 Excel 数据导出/离线调试 | [`../appendix/Excel统一数据导出与离线调试.md`](../appendix/Excel统一数据导出与离线调试.md) |
+| AI 打标、相关性、发声类型、Validator、Retry、持久化 | [`../appendix/AI舆情打标与分析实现.md`](../appendix/AI舆情打标与分析实现.md) + `backend/src/aima_ugc/modules/analysis/README.md` + 当前 Prompt |
+| 前端页面结构、Figma/Design-to-Code | [`../guides/Figma与前端设计开发工作流.md`](../guides/Figma与前端设计开发工作流.md) + `frontend/README.md` |
+| Stage 8 Excel/TikHub 统一入库、Import Batch、页面/API/Job | [`../appendix/数据入口与统一入库实现.md`](../appendix/数据入口与统一入库实现.md) + API/Frontend README + Roadmap |
+
+历史阶段为什么这样拆、当时哪些能力尚未实现、当时的验收证据，继续由：
 
 ```text
-changes/archive/2026-08/CHG-20260815-stage7-completion/CHANGE.md
+changes/archive/
 ```
 
-P1 已固化的长期能力：
+保存。
 
-- 文件 Excel Provider 使用 Canonical/Provider-neutral 边界；Stage 8A 只在显式数据库阶段把已经生成的 Provider-neutral 记录接入正式 PostgreSQL 来源链；
-- `UnifiedContentRecordV1` 承载关键词命中与可空 Analysis，Canonical 不承载 AI 标签；
-- `UnifiedDataExcelV1` 与唯一共享 Exporter 同时服务 `imports_test`、`tikhub_test` 和后续正式导出；
-- raw/labeled Excel 使用同一 Workbook Contract，业务中间处理不从 Excel 回读；
-- 全平台内容 Analysis 复用同一 Prompt/Taxonomy、Runtime Validator、LLM Port/Adapter 和有界 Validation Retry；
-- 成功 Analysis 先 checkpoint，再原子回写同一个 Provider-neutral JSONL；
-- 具体长期 Excel 与 Analysis 规则分别由 Blueprint 13 和 15 维护；
-- `imports_test` / `tikhub_test` 永久保留人工调试入口，默认 file-only；Stage 8A 的显式 PostgreSQL 模式不得反向破坏默认离线调试能力。
+---
 
-## 下一正式最小开发单元
+## 4. 未完成阶段去哪看
 
-### Stage 9：Analysis and Monitoring
+[`../roadmap/生产上线实施路线.md`](../roadmap/生产上线实施路线.md)
 
-Stage 8 已完成数据入口、采集运行中心、声音广场、显式 Analysis/Excel Export、TikHub 辅助采集和采集
-策略配置的核心页面闭环。下一阶段必须从最新 `main` 重新恢复事实，再从 Stage 9 的 LLM/标签既有能力与
-尚未产品化的 Monitoring、告警、VOC、工单边界中切出一个最小正式单元；不得因 Stage 8D 已有显式 AI
-打标就把 Stage 9 整体误判为完成，也不得自动进入 Reporting 或 Release。
+这是后续持续开发的正式导航，不因 Blueprint 清理而消失。
 
-### 独立于 Stage 8A 的后续门禁
-
-以下事项仍需要未来阶段/Release 独立处理：
-
-- Raw、个人信息、导出和审计的访问/保留/删除与合规规则；
-- Stage 8D 已接入正式 Export API/Job/Artifact；公网下载权限和已批准的自动保留/删除期限仍需未来
-  Authentication/Authorization 与数据治理阶段闭环；
-- Stage 8D 已接入正式 Analysis DDL/Migration/Job/API/页面；自动随采集触发仍明确不实现，若未来需要
-  必须另立 L3 Change 评估费用、调度和失败语义；
-- 日请求量、数据量、Worker 并发、Raw/数据库日增量、磁盘容量、SLO、RPO、RTO；
-- 生产镜像 variant/digest、离线 Release、安全发布与恢复演练；
-- Stage 8E+ 其余正式业务页面及 Provider 凭据写入能力；凭据仍必须通过安全
-  SecretStore/SecretService，不能把数据库明文 Secret 当捷径；
-- 未来如重新需要 Budget/Cost Guard，必须创建新的 L3 Change，不得复活当前已删除接口。
-
-## 修改规则
-
-- `01`—`06` 描述各领域基础设计和正式阶段顺序；
-- `07` 保存跨文档已确认决策、版本快照和 Go/No-Go；
-- `08` 保存 Stage 7 已完成的采集业务语义、Provider Config/Operation Matrix、Capability、Provider Billing 和未来 Budget/Cost Guard 边界；
-- `09` 保存 Scheduler 当前唯一恢复语义；
-- `10`—`12` 保存真实响应/API family/endpoint 证据的人类核查入口；
-- `13` 永久保存唯一 `UnifiedDataExcelV1`、同源 JSONL→Excel、raw/labeled 同契约和共享 Exporter 复用门禁，并明确它不是 Report Renderer；
-- `15` 永久保存全平台 AI taxonomy、最小模型输入、Markdown Prompt、Analysis Contract、JSONL 回写和数据库 Analysis Owner 边界；
-- `16` 永久保存正式前端页面隔离、App/Shared/Feature/Page Owner、Figma 设计事实源、MCP Design-to-Code、Design Token、高频改版与视觉验收规则；
-- `17` 永久保存 Stage 8 Excel 主数据入口/TikHub 辅助、Processing/Import Batch、统一 Canonical→Ingestion→PostgreSQL、调试入口可选写库、UI 能力映射和 8A—8F 实施顺序；
-- `docs/collection/` 保存面向开发/调试的通用和平台抓取说明，并始终标记当前代码/Fixture/Probe 状态；
-- 实际代码、Contract、Migration、锁文件和测试建立后，不在 Blueprint 复制第二份机器事实；
-- 所有需要前端或其他受支持调用方使用的公开 HTTP API，都必须由 Pydantic Request/Response + FastAPI Route 生成固定 OpenAPI，再生成前端 TypeScript Client；内部 Repository、Mapper、Provider Adapter、Worker Runtime、Migration 等能力不因存在就自动暴露 HTTP API；
-- 公开 HTTP API 新增、删除或实质变化时，除同步固定 OpenAPI 和生成 Client 外，还必须同步 [`../API接口说明.md`](../API接口说明.md)；完整字段 Schema 仍只由机器 Contract 维护；
-- 前端业务功能默认采用“已确认 Figma Frame/页面需求 → UI/后端能力映射 → Pydantic HTTP Contract → FastAPI Route → API/Contract Test → 固定 OpenAPI → 生成 TypeScript Client → 后端与 Vue 并行 → E2E/视觉验收”的闭环；页面和按钮不得各自手写 URL 或重复定义 Request/Response Contract；页面结构、Figma/MCP 和设计资产的详细规则以 `16` 为准，Stage 8 首个页面的后端能力映射以 `17` 为准；
-- 对具有明确输入输出、独立业务价值、独立失败边界或可以脱离完整系统验证的能力，必须建立与风险匹配的独立验证闭环；调试/Probe 复用生产实现；
-- 修改 Provider Config/Provider/Operation/Mapper/分页/评论策略/Provider Billing/Capability 或未来 Budget/Cost Guard 时，必须按 08 的“文档同步规则”检查目标平台文档；
-- 修改 Excel 契约、共享 Exporter、`.xlsx` 审阅格式、`tikhub_test` 或 `imports_test` Excel 时，必须按 13 检查是否出现平行实现；
-- 修改 Stage 8 的 Import Batch、统一入库、手工调试可选写库、数据入口优先级或采集运行中心能力边界时，必须按 17 检查来源链、统一 Ingestion、数据库前置条件和 UI 能力映射；
-- 修改 AI 标签、Prompt、模型输入、Analysis Contract 或 Analysis 持久化语义时，必须按 15 检查标签闭集、父子映射、Prompt Hash 和兼容性；
-- 修改前端页面组织、Figma/MCP、Design Token、公共组件 Owner 或视觉验收规则时，必须按 16 检查是否引入平行组件、平行 Contract 或跨页面复制；
-- 设计发生实质变化时，按 `AGENTS.md` 和 Skill 的 L1/L2/L3 流程处理；
-- 受影响的文档才更新，不为形式保持“所有文档都有变化”；
-- 长期文档直接描述合并后的当前状态，不写成变更流水账。
-
-## 关键原则
+它必须持续回答：
 
 ```text
-先确定事实和边界
-→ 再建立机器 Contract
-→ 再实现最小纵切
-→ 让每个有价值的边界可以独立验证
-→ 用真实 Fixture / PostgreSQL / Probe / CI 证据验证
-→ 最后扩展并行开发
+已经完成什么
+部分完成什么
+仍待实现什么
+哪些旧方案已被后续决定替代
+下一最小正式单元是什么
+生产 Go-Live 还差什么
 ```
 
-不要让前端、后端、数据库和 Provider 分别定义同一个公共语义，也不要在没有测量证据时提前引入微服务、消息中间件或额外数据库。
+当前尤其要保留：
+
+- 企业认证 / 后端 Authorization；
+- Stage 9 Monitoring / Alert / VOC / Ticket（按产品目标确认）；
+- Stage 10 Word 报告是否正式产品化；
+- Stage 11 Docker/Compose/Production Config；
+- 离线 Release Bundle、固定 image digest、SBOM、来源验证；
+- PostgreSQL + Artifact 协调 Backup/Restore；
+- 发布、回滚、重启/reboot、容量、安全真实验收；
+- Stage 12 旧数据迁移（如果生产上线需要）。
+
+删除已完成阶段的详细 Blueprint **不能**删除这些未来目标。
+
+---
+
+## 5. 按专题去哪看
+
+### PostgreSQL / SQL
+
+[`../appendix/PostgreSQL查询与调试实战.md`](../appendix/PostgreSQL查询与调试实战.md)
+
+用于：
+
+- 查 Content/Comment Current；
+- 查 Version/Metric/Coverage；
+- 查 Run/Scope/Request/Attempt；
+- 查 Job/Import Batch/Analysis/Export；
+- `EXPLAIN`；
+- Alembic；
+- 安全事务调试。
+
+### Scheduler
+
+[`../appendix/Scheduler调度执行与停机恢复.md`](../appendix/Scheduler调度执行与停机恢复.md)
+
+### TikHub
+
+- [`../collection/README.md`](../collection/README.md)
+- [`../appendix/TikHub五平台真实响应与字段映射.md`](../appendix/TikHub五平台真实响应与字段映射.md)
+- [`../appendix/TikHub多接口验证与备用策略.md`](../appendix/TikHub多接口验证与备用策略.md)
+- [`../appendix/TikHub接口选型与真实验证台账.md`](../appendix/TikHub接口选型与真实验证台账.md)
+
+### Excel / 数据入口
+
+- [`../appendix/数据入口与统一入库实现.md`](../appendix/数据入口与统一入库实现.md)
+- [`../appendix/Excel统一数据导出与离线调试.md`](../appendix/Excel统一数据导出与离线调试.md)
+
+### AI
+
+- [`../appendix/AI舆情打标与分析实现.md`](../appendix/AI舆情打标与分析实现.md)
+- `backend/src/aima_ugc/modules/analysis/README.md`
+
+完整 Prompt / taxonomy 唯一业务事实源：
+
+```text
+backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md
+```
+
+### Word Report
+
+[`../appendix/Word舆情报告生成与排版实现.md`](../appendix/Word舆情报告生成与排版实现.md)
+
+### Figma / Frontend
+
+- [`../guides/Figma与前端设计开发工作流.md`](../guides/Figma与前端设计开发工作流.md)
+- `frontend/README.md`
+
+### Production Release
+
+- [`../roadmap/生产上线实施路线.md`](../roadmap/生产上线实施路线.md)
+- [`../appendix/生产部署与离线Release方案.md`](../appendix/生产部署与离线Release方案.md)
+- [`../环境运行与部署.md`](../环境运行与部署.md)
+- [`05-日志安全部署与运维.md`](05-日志安全部署与运维.md)
+
+---
+
+## 6. 事实优先级
+
+发生冲突时按内容类型判断，不机械“代码优先”或“文档优先”。
+
+```text
+本轮用户明确批准决定 / 正式 Change
+→ 当前代码、Contract、Migration、generated、tests、locks
+→ Blueprint 07 已确认跨模块决定
+→ 对应核心 Blueprint 01—08
+→ 模块 README / Appendix / Guide / Roadmap
+→ 根 README 摘要
+→ 历史 Change / 旧聊天
+```
+
+两种事实要分开：
+
+```text
+当前已经实现什么
+→ 必须由机器事实证明
+
+已批准但尚未实现什么
+→ Roadmap/正式设计必须保留，不能因为代码还没有就删除
+```
+
+如果旧方案已经被后续正式决定替代，例如 Provider Budget Account / Reservation Ledger，则保留历史原因，但当前开发不得从旧 Change 自动恢复该方案。
+
+---
+
+## 7. 当前系统实现边界
+
+### 后端业务模块
+
+```text
+system
+collection
+content
+ingestion
+analysis
+reporting
+```
+
+当前没有正式：
+
+```text
+monitoring
+alerts
+voc
+tickets
+dashboard
+```
+
+### Worker 当前持久 Job
+
+真实 Registry：
+
+```text
+backend/src/aima_ugc/bootstrap/worker.py
+```
+
+当前：
+
+```text
+collection.run.v1
+ingestion.import-excel.v1
+analysis.content-label.v1
+reporting.content-export-excel.v1
+```
+
+### 当前前端路由
+
+真实 Router：
+
+```text
+frontend/src/app/routes.ts
+```
+
+当前：
+
+```text
+/
+/voice-plaza
+/collection-runtime
+/collection-strategy
+```
+
+### 当前生产 Release
+
+仓库当前根目录没有：
+
+```text
+Dockerfile
+compose.yaml
+compose.production.yaml
+env.production.example
+```
+
+所以完整离线 Production Release 仍然是 Roadmap 中的待实现阶段。
+
+---
+
+## 8. Blueprint 写作规则
+
+Blueprint 只回答长期问题：
+
+```text
+为什么这样设计？
+模块边界是什么？
+谁拥有哪类事实？
+哪些跨模块机制不能随便改变？
+未来实现必须满足什么不变量？
+```
+
+不要在 Blueprint 复制：
+
+- 五个平台完整 Provider JSON；
+- 39 个 AI 标签表；
+- 完整数据库 DDL；
+- 完整 HTTP OpenAPI；
+- 某次 Stage 的施工顺序和 PR 过程；
+- 某个调试脚本的逐行使用说明。
+
+这些内容应分别进入 Appendix、模块 README、Contract/Migration、Guide 或 `changes/archive/`。
+
+文档结构服务于开发，不以“文件少”为目的；但也不允许 Blueprint 随每个业务功能无限增长。

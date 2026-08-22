@@ -29,27 +29,9 @@ from aima_ugc.modules.analysis.content_labeling import (
 OBSERVED_AT = datetime(2026, 8, 18, 10, 0, tzinfo=UTC)
 
 
-def _blueprint_taxonomy() -> dict[str, tuple[str, ...]]:
+def _analysis_docs() -> str:
     root = Path(__file__).resolve().parents[3]
-    text = (root / "docs" / "blueprint" / "15-舆情AI打标与统一分析契约.md").read_text(
-        encoding="utf-8"
-    )
-    section = text.split("### 5.1 完整父子关系", 1)[1].split("### 5.2 完整判断标准", 1)[0]
-    match = re.search(r"```text\s*(.*?)\s*```", section, flags=re.DOTALL)
-    assert match is not None
-    result: dict[str, list[str]] = {}
-    current_primary: str | None = None
-    for raw_line in match.group(1).splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-        if line.startswith(("├─ ", "└─ ")):
-            assert current_primary is not None
-            result[current_primary].append(line[3:])
-            continue
-        current_primary = line
-        result[current_primary] = []
-    return {primary: tuple(secondaries) for primary, secondaries in result.items()}
+    return (root / "docs" / "appendix" / "AI舆情打标与分析实现.md").read_text(encoding="utf-8")
 
 
 def _prompt_with_taxonomy_mutation(
@@ -145,13 +127,14 @@ def _label_content(
     )
 
 
-def test_prompt_taxonomy_matches_blueprint_9_primary_39_secondary_baseline() -> None:
+def test_prompt_taxonomy_has_expected_baseline_and_documented_unique_source() -> None:
     taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
-    blueprint = _blueprint_taxonomy()
+    docs = _analysis_docs()
 
-    assert dict(taxonomy.labels) == blueprint
     assert len(taxonomy.primary_labels) == 9
     assert len(taxonomy.all_secondary_labels) == 39
+    assert "backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md" in docs
+    assert "唯一完整标签事实" in docs
 
 
 def test_production_python_does_not_copy_concrete_taxonomy_labels() -> None:
