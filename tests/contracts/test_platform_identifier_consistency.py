@@ -7,20 +7,44 @@ from pathlib import Path
 from typing import get_args
 
 import pytest
-from pydantic import TypeAdapter, ValidationError
 
 from aima_ugc.adapters.providers.imports.excel_profile import get_excel_import_profile
-from aima_ugc.contracts.platform import PLATFORM_NAMES, PLATFORM_SCOPES, PlatformName, PlatformScope
+from aima_ugc.contracts.platform import (
+    PLATFORM_NAMES,
+    PLATFORM_SCOPES,
+    PlatformName,
+    PlatformScope,
+)
 from aima_ugc.modules.collection.tables import (
     collection_plan_platforms_table,
     collection_scopes_table,
 )
 from aima_ugc.modules.content.tables import accounts_table, contents_table
 from aima_ugc.modules.system.tables import keyword_pack_items_table
+from pydantic import TypeAdapter, ValidationError
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_LEGACY_TOKEN = "x" + "hs"
-_LEGACY_PATTERN = re.compile(rf"(?<![A-Za-z0-9_-]){_LEGACY_TOKEN}(?![A-Za-z0-9_-])")
+_EXPECTED = ("xiaohongshu", "douyin", "weibo", "bilibili", "kuaishou")
+_INVALID_MACHINE_VALUES = (
+    "xhs",
+    "red",
+    "dy",
+    "wb",
+    "ks",
+    "bili",
+    "all",
+    "twitter",
+    "XIAOHONGSHU",
+    "DOUYIN",
+    "WEIBO",
+    "BILIBILI",
+    "KUAISHOU",
+)
+_LEGACY_PLATFORM_TOKENS = ("xhs", "red", "dy", "wb", "ks", "bili")
+_LEGACY_PATTERNS = {
+    token: re.compile(rf"(?<![A-Za-z0-9_-]){token}(?![A-Za-z0-9_-])")
+    for token in _LEGACY_PLATFORM_TOKENS
+}
 _SCAN_ROOTS = (
     "backend/src",
     "frontend/src",
@@ -38,16 +62,14 @@ _EXCLUDED_PREFIXES = (
     "migrations/versions/",
     "tests/fixtures/providers/tikhub/",
 )
-_EXCLUDED_FILES = {
-    "tests/contracts/test_platform_identifier_consistency.py",
-    "scripts/dev/_unify_platform_identifiers_once.py",
-}
-_EXPECTED = ("xiaohongshu", "douyin", "weibo", "bilibili", "kuaishou")
+_EXCLUDED_FILES = {"tests/contracts/test_platform_identifier_consistency.py"}
 
 
-def _check_sql(table, name: str) -> str:  # type: ignore[no-untyped-def]
+def _check_sql(table: object, name: str) -> str:
     constraints = [
-        str(item.sqltext) for item in table.constraints if getattr(item, "name", None) == name
+        str(item.sqltext)
+        for item in table.constraints  # type: ignore[attr-defined]
+        if getattr(item, "name", None) == name
     ]
     assert len(constraints) == 1
     return constraints[0]
@@ -62,7 +84,7 @@ def test_platform_name_contract_is_exactly_five_values() -> None:
     adapter = TypeAdapter(PlatformName)
     for platform in _EXPECTED:
         assert adapter.validate_python(platform) == platform
-    for invalid in ("xhs", "red", "dy", "wb", "ks", "bili", "all", "twitter", "XIAOHONGSHU"):
+    for invalid in _INVALID_MACHINE_VALUES:
         with pytest.raises(ValidationError):
             adapter.validate_python(invalid)
 
@@ -85,7 +107,7 @@ def test_excel_profile_maps_source_labels_only_to_formal_platforms() -> None:
     }
     for source, expected in source_labels.items():
         assert profile.resolve_platform(source) == expected
-    for invalid in ("xhs", "red", "dy", "wb", "ks", "bili", "twitter", "XIAOHONGSHU"):
+    for invalid in _INVALID_MACHINE_VALUES:
         with pytest.raises(ValueError):
             profile.resolve_platform(invalid)
 
@@ -108,7 +130,7 @@ def test_database_platform_identity_constraints_use_the_same_five_values() -> No
         assert f"'{value}'" in scope_sql
 
 
-def test_current_machine_facts_do_not_reintroduce_legacy_xhs_token() -> None:
+def test_current_machine_facts_do_not_reintroduce_platform_alias_tokens() -> None:
     violations: list[str] = []
     for root_name in _SCAN_ROOTS:
         root = _REPO_ROOT / root_name
@@ -123,8 +145,12 @@ def test_current_machine_facts_do_not_reintroduce_legacy_xhs_token() -> None:
             for line_number, line in enumerate(
                 path.read_text(encoding="utf-8").splitlines(), start=1
             ):
-                if _LEGACY_PATTERN.search(line):
-                    violations.append(f"{relative}:{line_number}: {line.strip()}")
+                for token, pattern in _LEGACY_PATTERNS.items():
+                    if pattern.search(line):
+                        violations.append(
+                            f"{relative}:{line_number}: legacy={token}: {line.strip()}"
+                        )
     assert not violations, (
-        "当前机器事实仍包含旧小红书平台缩写；平台身份只能使用五个正式值。\n" + "\n".join(violations)
+        "当前机器事实仍包含平台缩写/别名；平台身份只能使用五个正式值。\n"
+        + "\n".join(violations)
     )
