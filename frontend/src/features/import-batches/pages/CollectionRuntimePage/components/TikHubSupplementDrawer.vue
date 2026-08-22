@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 
 import type {
   CollectionCapabilitiesResponse,
+  CollectionCapabilityResponseOperationsItem,
   CollectionPlatform,
   CollectionRunCreateRequest,
   CollectionRunMode,
@@ -51,8 +52,8 @@ const selectedProvider = computed(() =>
   props.capabilities?.provider_configs.find((item) => item.id === providerConfigId.value) ?? null,
 )
 
-const requiredOperations = computed(() => {
-  const operations = ['content_detail']
+const requiredOperations = computed<CollectionCapabilityResponseOperationsItem[]>(() => {
+  const operations: CollectionCapabilityResponseOperationsItem[] = ['content_detail']
   if (mode.value === 'discovery') operations.push('keyword_search')
   if (includeComments.value) operations.push('comments')
   if (includeSubComments.value) operations.push('sub_comments')
