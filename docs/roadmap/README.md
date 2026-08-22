@@ -28,15 +28,16 @@ Change / changes/archive
 
 ### 近期第一优先级
 
-- [`内网V1上线实施计划.md`](内网V1上线实施计划.md)：**当前近期开发的正式执行计划**。先完成 Stage 8F 前后端业务闭环，再做公司服务器最小部署与真实 Excel Smoke。
+- [`内网V1上线实施计划.md`](内网V1上线实施计划.md)：**当前近期开发的正式执行计划**。Stage 8F 已完成前后端业务闭环与真实 Excel Full-stack Acceptance；当前下一最小正式开发单元是 Internal V1-A，开始最小 Docker / Compose / Config 与持久化部署闭环。
 
 当前已经确认的首版范围：
 
 ```text
-先统一当前前端 / 后端功能
-→ Excel 页面导入必须真实闭环
-→ PostgreSQL / Worker / Voice Plaza 必须真实打通
-→ 部署到公司服务器
+已统一当前前端 / 后端首版功能
+→ Excel 页面真实导入链已有永久 Full-stack Acceptance
+→ PostgreSQL / Worker / Voice Plaza 真实打通
+→ 下一步建立最小可部署容器环境
+→ 再部署到公司服务器
 → 仅公司内部网络访问
 ```
 
@@ -68,8 +69,10 @@ Change / changes/archive
 当前 main
 ↓
 Stage 8F：前后端业务闭环与上线前验收
+→ 已完成
 ↓
 Internal V1-A：最小 Docker / Compose / Config
+→ 当前下一最小正式开发单元
 ↓
 Internal V1-B：公司服务器部署与真实业务 Smoke
 ↓
@@ -80,20 +83,15 @@ Internal V1-B：公司服务器部署与真实业务 Smoke
 完整 Production Go-Live
 ```
 
-Stage 8F 完成前，不应该因为“后端已有 API、前端已有页面”就直接进入部署。
-
-当前前端 Playwright 测试中存在 Mock API E2E，因此页面自动化通过本身不能证明真实：
+Stage 8F 的永久业务闭环证据入口：
 
 ```text
-Vue
-→ FastAPI
-→ PostgreSQL Job
-→ Worker
-→ PostgreSQL
-→ Vue
+docs/appendix/Stage8F前后端能力矩阵与真实验收.md
+.github/workflows/stage8f-fullstack.yml
+frontend/e2e-fullstack/excel-import.spec.ts
 ```
 
-已经闭环。当前最重要的 Full-stack Acceptance 固定为：
+其中真实 Excel Full-stack Acceptance 固定验证：
 
 ```text
 Excel fixture
@@ -105,6 +103,8 @@ Excel fixture
 → 查看入库内容
 → Voice Plaza 显示本批数据
 ```
+
+这条链不 Mock `/api/v1/**`。原有 Mock Playwright E2E 继续保留，负责快速前端交互回归，但不替代真实业务链证明。
 
 ## “内网 V1”与“完整 Production”有什么区别
 
@@ -151,8 +151,8 @@ Roadmap 使用四种状态：
 
 ## 最重要的原则
 
-1. **先闭环真实业务，再容器化。** 页面、按钮、Contract、Generated Client、Worker、PostgreSQL 和跨页面结果必须真实一致。
-2. **Mock E2E 不替代 Full-stack Acceptance。** Mock 用于快速前端回归；首版核心业务必须至少有一条不 Mock API 的真实链。
+1. **先闭环真实业务，再容器化。** Stage 8F 已完成这一门禁；当前 Internal V1-A 只容器化已经证明可工作的业务链，不重新设计前后端业务。
+2. **Mock E2E 不替代 Full-stack Acceptance。** Mock 用于快速前端回归；首版核心 Excel 链已经有不 Mock API 的永久真实验收。
 3. **允许延期必须明确写出来。** 当前登录/权限和历史迁移延期是已确认产品决定，不由后续 Agent 擅自恢复为内网 V1 阻塞项。
 4. **内网 V1 不等于完整 Production。** 长期 Production 门禁继续保留，不因快速上线被删除。
 5. **未完成阶段不能因为文档重构被删掉。** 它们是继续开发到完整生产上线的正式导航。
