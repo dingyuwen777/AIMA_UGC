@@ -115,7 +115,7 @@ def test_excel_standard_urls_record_typed_provider_lookup_ids() -> None:
         (
             "kuaishou",
             "https://live.kuaishou.com/u/3xsvp556vkpta2e/3xkfnk9freeuzuc",
-            "19a0d4934f7e7c0d11c90c1e6bb91426",
+            "cf624299f76ad8e562474703b9b74b7b",
             "photo_id",
             "3xkfnk9freeuzuc",
         ),
