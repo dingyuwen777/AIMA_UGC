@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import get_args
 
 import pytest
-
 from aima_ugc.adapters.providers.imports.excel_profile import get_excel_import_profile
 from aima_ugc.contracts.platform import (
     PLATFORM_NAMES,
