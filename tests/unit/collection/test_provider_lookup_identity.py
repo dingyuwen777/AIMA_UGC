@@ -66,6 +66,20 @@ def test_excel_standard_urls_record_typed_provider_lookup_ids() -> None:
         assert identity.alternate_ids[id_type] == expected_id
 
 
+def test_excel_douyin_modal_id_is_typed_aweme_lookup() -> None:
+    identity = resolve_content_identity(
+        platform="douyin",
+        canonical_url=(
+            "https://www.douyin.com/search/%E7%88%B1%E7%8E%9B?"
+            "modal_id=7531234567890123456&type=video"
+        ),
+        source_article_id=None,
+    )
+
+    assert identity.external_content_id == "7531234567890123456"
+    assert identity.alternate_ids["aweme_id"] == "7531234567890123456"
+
+
 def test_excel_bilibili_urls_preserve_av_bv_lookup_type() -> None:
     bv = resolve_content_identity(
         platform="bilibili",
@@ -84,15 +98,15 @@ def test_excel_bilibili_urls_preserve_av_bv_lookup_type() -> None:
     assert av.alternate_ids["av_id"] == "170001"
 
 
-def test_excel_ambiguous_weibo_permalink_is_not_marked_as_status_lookup() -> None:
+def test_excel_weibo_permalink_converts_base62_bid_to_numeric_status_id() -> None:
     identity = resolve_content_identity(
         platform="weibo",
-        canonical_url="https://weibo.com/1234567890/PabcdEF12",
+        canonical_url="https://weibo.com/2034565060/Hd1N2qpta",
         source_article_id=None,
     )
 
-    assert identity.external_content_id == "PabcdEF12"
-    assert "status_id" not in identity.alternate_ids
+    assert identity.external_content_id == "4331051486294436"
+    assert identity.alternate_ids["status_id"] == "4331051486294436"
 
 
 def test_bilibili_runtime_routes_bv_identity_to_bv_parameter() -> None:
