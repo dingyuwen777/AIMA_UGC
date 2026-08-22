@@ -4,7 +4,7 @@
 
 先记住一条原则：**不要从聊天、历史 Stage 或旧文档猜当前实现。先找到当前机器事实，再做最小、可验证的修改。**
 
-精确机器事实由代码、Pydantic Contract、生成 OpenAPI/JSON Schema、Alembic Migration、测试和锁文件维护；长期架构和关键详细设计由 `docs/blueprint/` 维护；未完成阶段与生产上线顺序由 `docs/roadmap/` 维护；专题实现和调试由 `docs/appendix/` 维护；开发工作流由 `docs/guides/` 维护。
+精确机器事实由代码、Pydantic Contract、生成 OpenAPI/JSON Schema、Alembic Migration、测试和锁文件维护；长期架构由 `docs/blueprint/` 维护；未完成阶段与生产上线顺序由 `docs/roadmap/` 维护；专题实现和调试由 `docs/appendix/` 维护；开发工作流由 `docs/guides/` 维护；历史阶段原因和验收证据由 `changes/archive/` 维护。
 
 ## 1. 开始前
 
@@ -395,11 +395,8 @@ uv run python scripts/quality/check_docs.py
 文档职责：
 
 ```text
-docs/blueprint/01—08
-→ 核心长期架构、为什么这样设计、稳定门禁
-
-docs/blueprint/09—17
-→ 当前继续保留的详细设计、真实验证材料和 Stage 8 技术方案；不得因目录治理直接删除
+docs/blueprint/
+→ README + 01—08 核心长期架构、为什么这样设计、稳定门禁
 
 docs/roadmap/
 → Stage 0—12 当前状态、未完成开发、生产上线顺序和 Go/No-Go
@@ -423,12 +420,23 @@ Contract / Migration / tables.py / generated / tests / locks
 → 精确机器事实
 
 changes/archive/
-→ 历史为什么改过、当时验证证据
+→ 历史为什么改过、已完成阶段/Change 的当时验证证据
 ```
 
-文档结构服务于开发，不为“核心文件数量漂亮”牺牲信息。`09—17` 只有在逐主题证明有效内容已完整迁移、当前事实已勘误、所有链接已更新、后续 Stage/生产路线没有信息丢失后，才允许通过独立文档治理 Change 删除或移动；本轮默认保留。
+核心 Blueprint 固定为 `01—08`。已完成阶段形成的 Scheduler、TikHub、Excel、AI、Figma、Stage 8 等大篇幅具体实现说明应进入 Appendix/Guide/模块 README；历史施工过程进入 `changes/archive/`，不要继续以 `09、10、11...` 方式让 Blueprint 无限增长。
 
-未完成但仍批准的 Stage/生产设计不能因为当前代码不存在而删掉；应放在 `docs/roadmap/` 或相关详细设计中并标记“待实现”。历史方案若被后续正式决策替代，则保留演进说明并明确“禁止照旧实现”。
+未完成但仍批准的 Stage/生产设计不能因为当前代码不存在而删掉；必须放在 `docs/roadmap/` 或当前适用的核心长期设计中，并明确“待实现”。历史方案若被后续正式决策替代，则保留演进说明并明确“禁止照旧实现”。
+
+迁移/删除旧详细文档前，必须证明：
+
+```text
+当前有效事实已有新承载
++ 相关测试/链接已经迁移
++ 未完成阶段已进入 Roadmap
++ 历史原因可从 changes/archive 追溯
+```
+
+不能为了目录整洁先删除知识再补。
 
 代码完成前检查系统事实是否变化：
 
@@ -444,7 +452,7 @@ changes/archive/
 - 用户行为；
 - Roadmap 阶段状态/生产 Go-No-Go。
 
-受影响就在同一任务更新，不受影响不制造文档差异。长期文档描述合并后的当前系统；阶段状态和待实现路线放 Roadmap；历史过程留在 Change。
+受影响就在同一任务更新，不受影响不制造文档差异。长期文档描述合并后的当前系统；阶段状态和待实现路线放 Roadmap；历史过程留在 Change/Archive。
 
 正式文档的写法必须从实际问题出发：
 
