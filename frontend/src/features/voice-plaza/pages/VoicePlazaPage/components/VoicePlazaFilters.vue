@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import type { ContentAnalysisStatus } from '../../../../../generated/api/client'
+import type { ContentAnalysisStatus, PlatformName } from '../../../../../generated/api/client'
 
 defineProps<{
   search: string
-  platform: string
+  platform: '' | PlatformName
   contentType: string
   analysisStatus: '' | ContentAnalysisStatus
   sentiment: string
@@ -16,7 +16,7 @@ defineProps<{
 
 const emit = defineEmits<{
   'update:search': [value: string]
-  'update:platform': [value: string]
+  'update:platform': [value: '' | PlatformName]
   'update:contentType': [value: string]
   'update:analysisStatus': [value: '' | ContentAnalysisStatus]
   'update:sentiment': [value: string]
@@ -47,8 +47,8 @@ function value(event: Event): string {
     ></label>
     <label><span>平台</span><select
       :value="platform"
-      @change="emit('update:platform', value($event))"
-    ><option value="">全部平台</option><option value="xiaohongshu">小红书</option><option value="douyin">抖音</option><option value="weibo">微博</option><option value="bilibili">B站</option><option value="kuaishou">快手</option><option value="file">Excel 导入</option></select></label>
+      @change="emit('update:platform', value($event) as '' | PlatformName)"
+    ><option value="">全部平台</option><option value="xiaohongshu">小红书</option><option value="douyin">抖音</option><option value="weibo">微博</option><option value="bilibili">B站</option><option value="kuaishou">快手</option></select></label>
     <label><span>AI 情感</span><select
       :value="sentiment"
       @change="emit('update:sentiment', value($event))"
