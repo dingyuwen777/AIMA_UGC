@@ -1,0 +1,159 @@
+name: Dev Provider Lookup Validation
+
+on:
+  push:
+    branches:
+      - feature/provider-lookup-supplement-eligibility
+    paths:
+      - ".github/workflows/dev-provider-lookup-validation.yml"
+      - "scripts/dev/probe_excel_tikhub_supplement.py"
+      - "backend/src/aima_ugc/adapters/providers/imports/**"
+      - "backend/src/aima_ugc/adapters/providers/tikhub/**"
+      - "backend/src/aima_ugc/adapters/persistence/postgres/collection_targets.py"
+      - "backend/src/aima_ugc/bootstrap/collection_http.py"
+      - "backend/src/aima_ugc/bootstrap/content_http.py"
+      - "backend/src/aima_ugc/contracts/http.py"
+      - "frontend/src/features/**"
+      - "tests/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate-contracts:
+    name: Generate contracts and manual Excel defaults
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.14.7"
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version: "24.19.0"
+
+      - name: Install frozen environments
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install "uv==$(tr -d '\r\n' < .uv-version)"
+          uv sync --locked
+          npm ci --prefix frontend
+
+      - name: Restore audit identity columns in manual Excel view
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("backend/src/aima_ugc/adapters/providers/imports_test/test.py")
+          text = path.read_text(encoding="utf-8")
+          replacements = {
+              'EXCEL_CONTENT_COLUMNS = (\n    "平台",\n': 'EXCEL_CONTENT_COLUMNS = (\n    "平台",\n    "内容ID",\n',
+              'EXCEL_LABEL_DETAIL_COLUMNS = (\n    "平台",\n': 'EXCEL_LABEL_DETAIL_COLUMNS = (\n    "内容ID",\n    "平台",\n',
+              'EXCEL_COMMENT_COLUMNS = (\n    "平台",\n': 'EXCEL_COMMENT_COLUMNS = (\n    "平台",\n    "内容ID",\n',
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  if new in text:
+                      continue
+                  raise SystemExit(f"expected imports_test column block not found: {old!r}")
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Generate OpenAPI and frontend client
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/contracts/generate.py
+          npm --prefix frontend run generate:api
+          uv run ruff format backend/src/aima_ugc/adapters/providers/imports_test/test.py
+
+      - name: Verify generated result
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/contracts/generate.py --check
+          uv run ruff check backend/src/aima_ugc/adapters/providers/imports_test/test.py
+          npm --prefix frontend run typecheck
+
+      - name: Commit generated files to feature branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add \
+            backend/src/aima_ugc/adapters/providers/imports_test/test.py \
+            contracts/openapi/openapi.json \
+            frontend/src/generated/api
+          if git diff --cached --quiet; then
+            echo "No generated changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "生成补采契约并恢复导出身份列"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+  real-tikhub-probe:
+    name: Real TikHub Excel supplement probe
+    runs-on: ubuntu-24.04
+    env:
+      TIKHUB_API_KEY: ${{ secrets.TIKHUB_API_KEY }}
+      TIKHUB_BASE_URL: https://api.tikhub.io
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.14.7"
+
+      - name: Install frozen Python environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install "uv==$(tr -d '\r\n' < .uv-version)"
+          uv sync --locked
+
+      - name: Require protected TikHub secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${TIKHUB_API_KEY}" ]]; then
+            echo "Repository Actions Secret TIKHUB_API_KEY is not configured."
+            exit 2
+          fi
+          echo "::add-mask::${TIKHUB_API_KEY}"
+
+      - name: Verify five-platform Excel URL to Detail and Comments
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/dev/probe_excel_tikhub_supplement.py \
+            --keyword "爱玛" \
+            --max-candidates-per-platform 3 \
+            --output /tmp/tikhub-excel-supplement-probe.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("/tmp/tikhub-excel-supplement-probe.json").read_text(encoding="utf-8"))
+          platforms = payload.get("platforms", [])
+          if len(platforms) != 5:
+              raise SystemExit("expected five verified platform results")
+          for item in platforms:
+              if item.get("detail") != "ok" or item.get("comments") != "ok":
+                  raise SystemExit(f"platform probe incomplete: {item.get('platform')}")
+          print("Five-platform Excel URL → TikHub Detail + Comments probe passed.")
+          PY
