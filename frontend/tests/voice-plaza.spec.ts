@@ -139,4 +139,18 @@ describe('voice plaza', () => {
     expect(store.error).toBe('analysis polling failed')
     store.stopPolling()
   })
+
+  it('does not create a query export when the current query has no content', async () => {
+    generated.createDataExport.mockResolvedValue({
+      export_id: 'export-empty',
+      job_id: 'job-empty',
+      target_count: 0,
+    })
+    const store = useVoicePlazaStore()
+
+    const created = await store.createExport('query')
+
+    expect(created).toBeNull()
+    expect(generated.createDataExport).not.toHaveBeenCalled()
+  })
 })

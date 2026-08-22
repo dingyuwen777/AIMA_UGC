@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 
 import type {
   CollectionCapabilitiesResponse,
+  CollectionCapabilityResponseOperationsItem,
   CollectionPlatform,
   CollectionRunCreateRequest,
   CollectionRunMode,
@@ -14,12 +15,15 @@ const props = defineProps<{
   modelValue: boolean
   capabilities: CollectionCapabilitiesResponse | null
   batches: ImportBatchResponse[]
+  batchContentPlatforms: CollectionPlatform[]
+  loadingBatchPlatforms: boolean
   creating: boolean
   initialBatchId?: string | null
 }>()
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   submit: [request: CollectionRunCreateRequest]
+  batchChange: [batchId: string]
 }>()
 
 const mode = ref<CollectionRunMode>('discovery')
@@ -31,6 +35,7 @@ const importBatchId = ref('')
 const includeComments = ref(true)
 const includeSubComments = ref(false)
 const validation = ref<string | null>(null)
+const lastRequestedBatchId = ref('')
 const supportedPlatforms: CollectionPlatform[] = [
   'xhs',
   'douyin',
@@ -43,21 +48,49 @@ function isCollectionPlatform(value: string): value is CollectionPlatform {
   return supportedPlatforms.includes(value as CollectionPlatform)
 }
 
+const selectedProvider = computed(() =>
+  props.capabilities?.provider_configs.find((item) => item.id === providerConfigId.value) ?? null,
+)
+
+const requiredOperations = computed<CollectionCapabilityResponseOperationsItem[]>(() => {
+  const operations: CollectionCapabilityResponseOperationsItem[] = ['content_detail']
+  if (mode.value === 'discovery') operations.push('keyword_search')
+  if (includeComments.value) operations.push('comments')
+  if (includeSubComments.value) operations.push('sub_comments')
+  return operations
+})
+
 const availablePlatforms = computed(() => {
-  const requiredOperation = mode.value === 'discovery' ? 'keyword_search' : 'content_detail'
+  const provider = selectedProvider.value
+  if (!provider) return []
   return (
     props.capabilities?.capabilities
-      .filter((item) => item.operations.includes(requiredOperation))
+      .filter((item) => item.provider === provider.provider)
+      .filter((item) => requiredOperations.value.every((operation) => item.operations.includes(operation)))
       .map((item) => item.platform)
       .filter(isCollectionPlatform)
+      .filter((platform) => mode.value !== 'batch_supplement' || props.batchContentPlatforms.includes(platform))
       .filter((value, index, values) => values.indexOf(value) === index) ?? []
   )
 })
+
+const canSubmit = computed(() => {
+  if (props.creating || !providerConfigId.value || platforms.value.length === 0) return false
+  if (mode.value === 'discovery') return keywords.value.length > 0 || keywordInput.value.trim().length > 0
+  return !!importBatchId.value && !props.loadingBatchPlatforms
+})
+
+function requestBatchPlatforms(batchId: string): void {
+  if (!batchId || lastRequestedBatchId.value === batchId) return
+  lastRequestedBatchId.value = batchId
+  emit('batchChange', batchId)
+}
 
 watch(
   () => props.modelValue,
   (open) => {
     if (!open) return
+    lastRequestedBatchId.value = props.initialBatchId ?? ''
     mode.value = props.initialBatchId ? 'batch_supplement' : 'discovery'
     importBatchId.value = props.initialBatchId ?? ''
     keywordInput.value = ''
@@ -74,9 +107,25 @@ watch(
 )
 
 watch(mode, () => {
-  platforms.value = platforms.value.filter((platform) =>
-    availablePlatforms.value.includes(platform),
-  )
+  platforms.value = []
+  validation.value = null
+  if (mode.value === 'batch_supplement') {
+    requestBatchPlatforms(importBatchId.value)
+  } else {
+    lastRequestedBatchId.value = ''
+  }
+})
+
+watch(importBatchId, (batchId, previous) => {
+  platforms.value = []
+  validation.value = null
+  if (mode.value === 'batch_supplement' && batchId !== previous) {
+    requestBatchPlatforms(batchId)
+  }
+})
+
+watch([providerConfigId, includeComments, includeSubComments, availablePlatforms], () => {
+  platforms.value = platforms.value.filter((platform) => availablePlatforms.value.includes(platform))
   validation.value = null
 })
 
@@ -110,8 +159,12 @@ function submit(): void {
     validation.value = '请选择本次运行使用的 TikHub Provider 配置。'
     return
   }
+  if (mode.value === 'batch_supplement' && props.loadingBatchPlatforms) {
+    validation.value = '正在核对该 Batch 可补采的平台，请稍后。'
+    return
+  }
   if (platforms.value.length === 0) {
-    validation.value = '请至少选择一个目标平台。'
+    validation.value = '当前 Batch、Provider 与采集内容组合没有可执行的平台。'
     return
   }
   if (mode.value === 'discovery' && keywords.value.length === 0) {
@@ -176,7 +229,7 @@ function submit(): void {
         </nav>
 
         <p class="mode-note">
-          {{ mode === 'discovery' ? '输入一次性 Discovery 关键词，主动从平台发现帖子；关键词仅冻结到本次 Run。' : '从已有 Excel Import Batch 的正式来源账本解析 Content，再补采详情与评论。' }}
+          {{ mode === 'discovery' ? '输入一次性 Discovery 关键词，主动从平台发现帖子；关键词仅冻结到本次 Run。' : '只允许选择已成功入库的 Excel Batch；平台必须在该 Batch 中真实存在，并满足当前 Provider 能力。' }}
         </p>
 
         <section v-if="mode === 'discovery'">
@@ -204,7 +257,7 @@ function submit(): void {
             v-model="importBatchId"
           >
             <option value="">
-              请选择已入库批次
+              请选择已成功入库批次
             </option>
             <option
               v-for="batch in batches"
@@ -237,7 +290,16 @@ function submit(): void {
 
         <section>
           <label>目标平台</label>
-          <div class="platform-grid">
+          <p
+            v-if="mode === 'batch_supplement' && loadingBatchPlatforms"
+            class="platform-state"
+          >
+            正在核对该 Batch 的真实 Content 平台…
+          </p>
+          <div
+            v-else
+            class="platform-grid"
+          >
             <button
               v-for="platform in availablePlatforms"
               :key="platform"
@@ -248,6 +310,12 @@ function submit(): void {
               {{ platformLabels[platform] }} <b v-if="platforms.includes(platform)">✓</b>
             </button>
           </div>
+          <p
+            v-if="!loadingBatchPlatforms && availablePlatforms.length === 0"
+            class="platform-state"
+          >
+            当前选择没有同时满足 Batch Content 与 Provider Capability 的平台。
+          </p>
         </section>
 
         <section>
@@ -299,7 +367,7 @@ function submit(): void {
           </button><button
             class="primary"
             type="button"
-            :disabled="creating"
+            :disabled="!canSubmit"
             @click="submit"
           >
             {{ creating ? '创建中…' : '创建补采任务' }}
@@ -333,6 +401,7 @@ select { padding: 0 11px; color: #3c4557; }
 .platform-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
 .platform-grid button { height: 42px; border: 1px solid #d9dee8; border-radius: 7px; color: #3c4557; background: #fff; cursor: pointer; font-size: 12px; }
 .platform-grid button.selected { border-color: #ff8bb4; color: var(--aima-primary); background: #fff5f8; }
+.platform-state { margin: 8px 0; color: #7b8494; font-size: 12px; }
 .content-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .option { position: relative; display: grid; min-height: 86px; grid-template-columns: 26px 1fr; align-content: center; padding: 10px; border: 1px solid #d9dee8; border-radius: 7px; cursor: pointer; }
 .option input { position: absolute; top: 8px; right: 8px; accent-color: var(--aima-primary); }

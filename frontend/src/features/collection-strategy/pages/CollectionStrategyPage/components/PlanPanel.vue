@@ -10,6 +10,7 @@ defineProps<{
   limit: number
   loading: boolean
   saving: boolean
+  toggleReason: (plan: CollectionPlanResponse) => string | null
 }>()
 const emit = defineEmits<{
   open: [plan: CollectionPlanResponse]
@@ -84,7 +85,8 @@ function nextRun(value?: string | null): string {
                 查看详情
               </button><button
                 type="button"
-                :disabled="saving"
+                :disabled="saving || !!toggleReason(plan)"
+                :title="toggleReason(plan) || undefined"
                 @click="emit('toggle', plan)"
               >
                 {{ plan.enabled ? '停用' : '启用' }}
@@ -121,7 +123,7 @@ function nextRun(value?: string | null): string {
 .table-heading { display: flex; align-items: center; justify-content: space-between; margin: 16px 0 10px; }.table-heading span { padding: 8px 10px; border: 1px solid var(--aima-border); border-radius: 6px; color: #697589; background: #fff; font-size: 12px; }
 .table-wrap { overflow: hidden; border: 1px solid var(--aima-border); border-radius: 8px; background: #fff; }table { width: 100%; border-collapse: collapse; font-size: 13px; }th { height: 45px; color: #596579; background: #fafbfc; font-weight: 500; text-align: left; }th,td { padding: 12px 13px; border-bottom: 1px solid #edf0f4; vertical-align: middle; }td strong,td small { display: block; }td small { max-width: 210px; margin-top: 5px; overflow: hidden; color: #7f899b; text-overflow: ellipsis; white-space: nowrap; }
 .status { display: inline-block; padding: 5px 8px; border-radius: 5px; font-size: 12px; }.enabled { color: #118852; background: #eaf8f1; }.disabled { color: #657084; background: #edf0f4; }
-.actions { min-width: 120px; }.actions button { display: block; width: 78px; margin: 4px 0; padding: 5px 7px; border: 1px solid #d8dee8; border-radius: 5px; color: #5b6576; background: #fff; cursor: pointer; }.actions .detail { border-color: #f7a5c1; color: var(--aima-primary); }.actions button:disabled { opacity: .5; }
+.actions { min-width: 120px; }.actions button { display: block; width: 78px; margin: 4px 0; padding: 5px 7px; border: 1px solid #d8dee8; border-radius: 5px; color: #5b6576; background: #fff; cursor: pointer; }.actions .detail { border-color: #f7a5c1; color: var(--aima-primary); }.actions button:disabled { color: #9aa3b2; cursor: not-allowed; opacity: .7; }
 .state { height: 180px; color: #8993a4; text-align: center; }
 .pagination { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 14px; color: #6f7a8d; font-size: 13px; }.pagination button { height: 34px; padding: 0 14px; border: 1px solid #d8dee8; border-radius: 6px; color: #526075; background: #fff; cursor: pointer; }.pagination button:disabled { opacity: .45; cursor: default; }
 </style>

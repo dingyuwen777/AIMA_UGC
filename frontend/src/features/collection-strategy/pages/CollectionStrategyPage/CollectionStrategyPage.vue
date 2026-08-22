@@ -122,6 +122,7 @@ function showNotice(message: string): void {
       :selected="store.selectedPack"
       :loading="store.loading"
       :saving="store.saving"
+      :toggle-reason="store.packToggleReason"
       @open="store.openPack"
       @toggle="store.togglePack"
       @add-keyword="addKeyword"
@@ -184,6 +185,7 @@ function showNotice(message: string): void {
         :limit="store.planLimit"
         :loading="store.loading"
         :saving="store.saving"
+        :toggle-reason="store.planToggleReason"
         @open="openPlan"
         @toggle="store.togglePlan"
         @previous="store.previousPlanPage"
@@ -199,9 +201,13 @@ function showNotice(message: string): void {
     <PlanCreateDrawer
       v-model="planDrawerOpen"
       :packs="store.enabledPacks"
+      :pack-details="store.packDetails"
       :capabilities="store.capabilities"
       :relevance-name="relevancePackName"
+      :relevance-available="store.relevance !== null"
       :saving="store.saving"
+      :loading-pack-details="store.loadingPackDetails"
+      @load-pack-details="store.loadPackDetails"
       @submit="savePlan"
     />
     <PlanDetailDrawer

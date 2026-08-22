@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 
 import type {
   CollectionCapabilitiesResponse,
+  CollectionPlatform,
   CollectionRunCreateRequest,
   CollectionRunCreatedResponse,
   CollectionRunResponse,
@@ -16,6 +17,7 @@ import type {
 } from '../../generated/api/client'
 import {
   createTikHubCollectionRun,
+  fetchBatchContentPlatforms,
   fetchCollectionCapabilities,
   fetchCollectionRunDetail,
   fetchCollectionRuntimeList,
@@ -46,6 +48,14 @@ const EMPTY_FILTERS: CollectionRuntimeFilters = {
   createdTo: '',
 }
 
+const SUPPORTED_PLATFORMS: CollectionPlatform[] = [
+  'xhs',
+  'douyin',
+  'weibo',
+  'bilibili',
+  'kuaishou',
+]
+
 function shanghaiDateStart(value: string): string | undefined {
   return value ? new Date(`${value}T00:00:00+08:00`).toISOString() : undefined
 }
@@ -62,6 +72,10 @@ function errorMessage(error: unknown): string {
   return '请求失败，请稍后重试。'
 }
 
+function isSupplementBatch(batch: ImportBatchResponse): boolean {
+  return batch.status === 'succeeded' && (batch.stats.rows_ingested ?? 0) > 0
+}
+
 export const useImportBatchesStore = defineStore('collection-runtime', () => {
   const filters = reactive<CollectionRuntimeFilters>({ ...EMPTY_FILTERS })
   const activeTab = ref<CollectionRuntimeTab>('all')
@@ -71,16 +85,19 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   const selectedRun = ref<CollectionRunResponse | null>(null)
   const capabilities = ref<CollectionCapabilitiesResponse | null>(null)
   const batchOptions = ref<ImportBatchResponse[]>([])
+  const batchContentPlatforms = ref<CollectionPlatform[]>([])
   const nextCursor = ref<string | null>(null)
   const hasMore = ref(false)
   const loading = ref(false)
   const loadingNext = ref(false)
   const uploading = ref(false)
   const creating = ref(false)
+  const loadingBatchPlatforms = ref(false)
   const error = ref<string | null>(null)
   let pollHandle: ReturnType<typeof setInterval> | undefined
   let pollDocument: Document | undefined
   let refreshVersion = 0
+  let batchPlatformVersion = 0
 
   const hasActiveJobs = computed(
     () =>
@@ -210,21 +227,41 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     }
   }
 
+  async function loadBatchPlatforms(batchId: string): Promise<void> {
+    const version = ++batchPlatformVersion
+    batchContentPlatforms.value = []
+    if (!batchId) return
+    loadingBatchPlatforms.value = true
+    error.value = null
+    try {
+      const platforms = await fetchBatchContentPlatforms(batchId, SUPPORTED_PLATFORMS)
+      if (version === batchPlatformVersion) batchContentPlatforms.value = platforms
+    } catch (reason) {
+      if (version === batchPlatformVersion) error.value = errorMessage(reason)
+    } finally {
+      if (version === batchPlatformVersion) loadingBatchPlatforms.value = false
+    }
+  }
+
   async function loadCreationOptions(selectedBatchId?: string | null): Promise<void> {
     error.value = null
+    batchContentPlatforms.value = []
     try {
       const [providerCapabilities, batches] = await Promise.all([
         fetchCollectionCapabilities(),
         fetchImportBatchList({ limit: 100 }),
       ])
       capabilities.value = providerCapabilities
-      batchOptions.value = batches.items
+      batchOptions.value = batches.items.filter(isSupplementBatch)
       if (
         selectedBatchId &&
         !batchOptions.value.some((batch) => batch.id === selectedBatchId)
       ) {
         const selected = await fetchImportBatchDetail(selectedBatchId)
-        batchOptions.value = [selected, ...batchOptions.value]
+        if (isSupplementBatch(selected)) batchOptions.value = [selected, ...batchOptions.value]
+      }
+      if (selectedBatchId && batchOptions.value.some((batch) => batch.id === selectedBatchId)) {
+        await loadBatchPlatforms(selectedBatchId)
       }
     } catch (reason) {
       error.value = errorMessage(reason)
@@ -288,11 +325,13 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     selectedRun,
     capabilities,
     batchOptions,
+    batchContentPlatforms,
     hasMore,
     loading,
     loadingNext,
     uploading,
     creating,
+    loadingBatchPlatforms,
     error,
     hasActiveJobs,
     refresh,
@@ -302,6 +341,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     openRunDetail,
     closeDetail,
     upload,
+    loadBatchPlatforms,
     loadCreationOptions,
     createRun,
     resetFilters,

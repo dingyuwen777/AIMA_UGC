@@ -206,7 +206,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
 
   async function createExport(scope: 'query' | 'selected' | 'page'): Promise<number | null> {
     if (scope === 'selected' && selectedIds.value.length === 0) return null
-    if (scope === 'page' && items.value.length === 0) return null
+    if ((scope === 'page' || scope === 'query') && items.value.length === 0) return null
     submittingExport.value = true
     error.value = null
     try {

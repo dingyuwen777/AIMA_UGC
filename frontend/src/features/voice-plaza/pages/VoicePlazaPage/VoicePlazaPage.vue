@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
 import AppShell from '../../../../app/layouts/AppShell.vue'
-import type { DataExportResponse } from '../../../../generated/api/client'
+import type { DataExportResponse, JobStatusResponse } from '../../../../generated/api/client'
 import { useVoicePlazaStore } from '../../store'
 import AnalysisSubmitDialog from './components/AnalysisSubmitDialog.vue'
 import ContentDetailDrawer from './components/ContentDetailDrawer.vue'
@@ -16,6 +16,13 @@ const route = useRoute()
 const analysisOpen = ref(false)
 const exportOpen = ref(false)
 const notice = ref<string | null>(null)
+const jobStatusLabels: Record<JobStatusResponse['status'], string> = {
+  queued: '排队中',
+  running: '处理中',
+  succeeded: '已完成',
+  failed: '失败',
+  cancelled: '已取消',
+}
 const detailOpen = computed({
   get: () => store.detail !== null || store.loadingDetail,
   set: (open: boolean) => { if (!open) store.closeDetail() },
@@ -123,7 +130,7 @@ function showNotice(message: string): void {
       class="job-banner"
       :class="`job-banner--${store.analysisJob.status}`"
     >
-      <span>AI 分析 Job：{{ store.analysisJob.status }} · {{ store.analysisJob.progress }}%</span><span v-if="store.analysisJob.error_code">{{ store.analysisJob.error_code }}</span>
+      <span>AI 分析 Job：{{ jobStatusLabels[store.analysisJob.status] }} · {{ store.analysisJob.progress }}%</span><span v-if="store.analysisJob.error_code">{{ store.analysisJob.error_code }}</span>
     </div>
 
     <div class="list-heading">

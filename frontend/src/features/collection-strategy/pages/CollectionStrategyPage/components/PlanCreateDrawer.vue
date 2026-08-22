@@ -5,17 +5,25 @@ import type {
   CollectionCapabilitiesResponse,
   CollectionPlanCreateRequest,
   CollectionPlatform,
+  KeywordPackResponse,
   KeywordPackSummaryResponse,
 } from '../../../../../generated/api/client'
+import { planExecutionReason } from '../../../eligibility'
 
 const props = defineProps<{
   packs: KeywordPackSummaryResponse[]
+  packDetails: Record<string, KeywordPackResponse>
   capabilities: CollectionCapabilitiesResponse | null
   relevanceName: string
+  relevanceAvailable: boolean
   saving: boolean
+  loadingPackDetails: boolean
 }>()
 const open = defineModel<boolean>({ required: true })
-const emit = defineEmits<{ submit: [request: CollectionPlanCreateRequest] }>()
+const emit = defineEmits<{
+  submit: [request: CollectionPlanCreateRequest]
+  loadPackDetails: [packIds: string[]]
+}>()
 
 const platformOptions: { value: CollectionPlatform; label: string }[] = [
   { value: 'xhs', label: '小红书' },
@@ -31,7 +39,23 @@ const selectedPacks = ref<string[]>([])
 const providerByPlatform = reactive<Partial<Record<CollectionPlatform, string>>>({})
 
 const selectedPlatforms = computed(() =>
-  platformOptions.filter((item) => providerByPlatform[item.value]),
+  platformOptions
+    .filter((item) => providerByPlatform[item.value])
+    .map((item) => ({
+      platform: item.value,
+      provider_config_id: providerByPlatform[item.value]!,
+    })),
+)
+
+const eligibilityReason = computed(() =>
+  planExecutionReason({
+    keywordPackIds: selectedPacks.value,
+    platforms: selectedPlatforms.value,
+    requireRelevance: enabled.value,
+    relevanceAvailable: props.relevanceAvailable,
+    packDetails: props.packDetails,
+    capabilities: props.capabilities,
+  }),
 )
 
 watch(open, (value) => {
@@ -42,6 +66,10 @@ watch(open, (value) => {
   selectedPacks.value = []
   for (const option of platformOptions) delete providerByPlatform[option.value]
 })
+
+watch(selectedPacks, (packIds) => {
+  if (packIds.length) emit('loadPackDetails', [...packIds])
+}, { deep: true })
 
 function configsFor(platform: CollectionPlatform) {
   const providers = new Set(
@@ -62,16 +90,12 @@ function togglePlatform(platform: CollectionPlatform): void {
 }
 
 function submit(): void {
-  if (!name.value.trim() || !scheduleExpr.value.trim()) return
-  if (selectedPacks.value.length === 0 || selectedPlatforms.value.length === 0) return
+  if (!name.value.trim() || !scheduleExpr.value.trim() || eligibilityReason.value) return
   emit('submit', {
     name: name.value.trim(),
     schedule_expr: scheduleExpr.value.trim(),
     keyword_pack_ids: selectedPacks.value,
-    platforms: selectedPlatforms.value.map((item) => ({
-      platform: item.value,
-      provider_config_id: providerByPlatform[item.value]!,
-    })),
+    platforms: selectedPlatforms.value,
     enabled: enabled.value,
   })
 }
@@ -151,13 +175,23 @@ function submit(): void {
         <div class="policy">
           <strong>5. 固定采集策略</strong><div><span>内容详情<b>变化时</b></span><span>评论<b>自适应</b></span></div>
         </div>
-        <div class="relevance">
-          <strong>◎ 全局相关性（系统全局，不可覆盖）</strong><span>{{ relevanceName || '尚未配置' }}</span><small>创建启用 Plan 前，后端会再次验证全局 Relevance。</small>
+        <div
+          class="relevance"
+          :class="{ invalid: enabled && !relevanceAvailable }"
+        >
+          <strong>◎ 全局相关性（系统全局，不可覆盖）</strong><span>{{ relevanceName || '尚未配置' }}</span><small>创建启用 Plan 前必须可用；后端仍会再次验证。</small>
         </div>
         <label class="switch"><strong>6. 创建后启用计划</strong><input
           v-model="enabled"
           type="checkbox"
         ></label>
+        <div
+          v-if="eligibilityReason && selectedPacks.length && selectedPlatforms.length"
+          class="eligibility"
+          role="status"
+        >
+          {{ loadingPackDetails ? '正在读取实时资格…' : eligibilityReason }}
+        </div>
         <div class="warning">
           ⚠ 计划执行会发起真实 TikHub 请求并可能产生费用；当前不提供预算或金额上限。
         </div>
@@ -171,7 +205,8 @@ function submit(): void {
         </button><button
           class="primary"
           type="button"
-          :disabled="saving || !name.trim() || !scheduleExpr.trim() || selectedPacks.length === 0 || selectedPlatforms.length === 0"
+          :disabled="saving || loadingPackDetails || !name.trim() || !scheduleExpr.trim() || !!eligibilityReason"
+          :title="eligibilityReason || undefined"
           @click="submit"
         >
           {{ saving ? '保存中…' : '保存采集计划' }}
@@ -189,7 +224,7 @@ header { display: flex; min-height: 84px; align-items: center; justify-content: 
 .platforms { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }.platform { min-height: 78px; padding: 10px; border: 1px solid #dfe4ec; border-radius: 7px; cursor: pointer; }.platform.active { border-color: var(--aima-primary); background: #fff5f8; }.platform span,.platform small { display: block; }.platform span { color: #263146; font-weight: 600; }.platform small { margin-top: 8px; color: #818b9d; }.platform select { height: 30px; margin-top: 7px; font-size: 11px; }
 .cron { display: flex; align-items: center; border: 1px solid #d9dee8; border-radius: 6px; }.cron input { border: 0 !important; }.cron em { padding: 0 10px; color: #576276; font-size: 12px; font-style: normal; white-space: nowrap; }label > small,.relevance small { display: block; margin-top: 7px; color: #8590a2; }
 .policy > div { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }.policy span { padding: 12px; border: 1px solid #e0e4eb; border-radius: 7px; color: #6a7588; }.policy b { display: block; margin-top: 5px; color: #263146; }
-.relevance { padding: 13px; border: 1px solid #bee6d2; border-radius: 7px; color: #167d50; background: #f0faf5; }.relevance strong,.relevance span { display: block; }.relevance span { margin-top: 6px; font-weight: 600; }
-.switch { display: flex; align-items: center; justify-content: space-between; }.switch strong { margin: 0; }.switch input { width: 20px; height: 20px; accent-color: var(--aima-primary); }.warning { padding: 12px; border: 1px solid #ffd2a3; border-radius: 7px; color: #b75c06; background: #fff8ef; font-size: 13px; }
+.relevance { padding: 13px; border: 1px solid #bee6d2; border-radius: 7px; color: #167d50; background: #f0faf5; }.relevance.invalid { border-color: #ffc7cc; color: #b4232d; background: #fff5f6; }.relevance strong,.relevance span { display: block; }.relevance span { margin-top: 6px; font-weight: 600; }
+.switch { display: flex; align-items: center; justify-content: space-between; }.switch strong { margin: 0; }.switch input { width: 20px; height: 20px; accent-color: var(--aima-primary); }.eligibility { margin: -10px 0 16px; padding: 11px 12px; border: 1px solid #ffc7cc; border-radius: 7px; color: #b4232d; background: #fff5f6; font-size: 12px; }.warning { padding: 12px; border: 1px solid #ffd2a3; border-radius: 7px; color: #b75c06; background: #fff8ef; font-size: 13px; }
 footer { display: flex; gap: 12px; padding: 16px 24px; border-top: 1px solid var(--aima-border); }footer button { height: 42px; flex: 1; border: 1px solid #d9dee7; border-radius: 7px; background: #fff; cursor: pointer; }.primary { border-color: var(--aima-primary) !important; color: #fff; background: var(--aima-primary) !important; }.primary:disabled { opacity: .5; cursor: default; }
 </style>

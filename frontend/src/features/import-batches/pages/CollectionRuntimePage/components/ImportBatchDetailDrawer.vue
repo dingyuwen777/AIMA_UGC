@@ -21,6 +21,9 @@ watch(
 )
 
 const stageOrder: ImportStage[] = ['reading', 'mapping', 'filtering', 'deduplicating', 'ingesting']
+const showStageTimeline = computed(() =>
+  props.item !== null && !['failed', 'cancelled'].includes(props.item.status),
+)
 const stageRows = computed(() => {
   const current = props.item?.stage ?? 'queued'
   const currentIndex = stageOrder.indexOf(current)
@@ -29,15 +32,18 @@ const stageRows = computed(() => {
     state:
       current === 'succeeded'
         ? 'done'
-        : current === 'failed' || current === 'cancelled'
-          ? 'pending'
-          : index < currentIndex
-            ? 'done'
-            : index === currentIndex
-              ? 'current'
-              : 'pending',
+        : index < currentIndex
+          ? 'done'
+          : index === currentIndex
+            ? 'current'
+            : 'pending',
   }))
 })
+const terminalStageMessage = computed(() =>
+  props.item?.status === 'cancelled'
+    ? '任务已取消。当前公开 Contract 不保存足以可靠重建“取消前最后完成阶段”的历史，因此这里不把未知阶段伪装成等待中。'
+    : '任务已失败。当前公开 Contract 不保存足以可靠重建“失败前最后完成阶段”的历史，因此这里不把未知阶段伪装成等待中。',
+)
 </script>
 
 <template>
@@ -125,7 +131,10 @@ const stageRows = computed(() => {
             class="tab-content"
           >
             <h3>处理阶段</h3>
-            <div class="stage-list">
+            <div
+              v-if="showStageTimeline"
+              class="stage-list"
+            >
               <div class="stage-row stage-row--done">
                 <i>✓</i><span>上传与 Artifact</span><b>成功</b>
               </div>
@@ -137,6 +146,15 @@ const stageRows = computed(() => {
               >
                 <i>{{ row.state === 'done' ? '✓' : row.state === 'current' ? '•' : '○' }}</i><span>{{ stageLabels[row.stage] }}</span><b>{{ row.state === 'done' ? '完成' : row.state === 'current' ? '进行中' : '等待中' }}</b>
               </div>
+            </div>
+            <div
+              v-else
+              class="terminal-stage"
+              :class="`terminal-stage--${item.status}`"
+            >
+              <strong>{{ statusLabels[item.status] }}</strong>
+              <p>{{ terminalStageMessage }}</p>
+              <small>请切换到“Job 状态”和“错误记录”查看可审计的终态事实。</small>
             </div>
           </section>
 
@@ -216,6 +234,7 @@ const stageRows = computed(() => {
 .status-tag { padding: 4px 8px; border-radius: 4px; color: #2563eb; background: #eef4ff; font-size: 12px; white-space: nowrap; }
 .status-tag--succeeded { color: #12804b; background: #eaf8f1; }
 .status-tag--failed { color: #d62f3a; background: #fff0f1; }
+.status-tag--cancelled { color: #687386; background: #eef1f5; }
 .fact-grid { display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; border: 1px solid var(--aima-border); border-radius: 8px; }
 .fact-grid > div { min-height: 69px; padding: 13px; border-right: 1px solid var(--aima-border); border-bottom: 1px solid var(--aima-border); }
 .fact-grid > div:nth-child(2n) { border-right: 0; }
@@ -247,6 +266,11 @@ h3 { margin: 18px 0 12px; font-size: 14px; }
 .stage-row--current { color: #263043; font-weight: 600; }
 .stage-row--current i { color: #fff; background: #2563eb; }
 .stage-row--current b { color: #2563eb; }
+.terminal-stage { margin-top: 12px; padding: 16px; border: 1px solid #ffc7cc; border-radius: 8px; color: #b4232d; background: #fff5f6; }
+.terminal-stage--cancelled { border-color: #d9dee7; color: #5f6879; background: #f7f8fa; }
+.terminal-stage strong, .terminal-stage small { display: block; }
+.terminal-stage p { line-height: 1.7; }
+.terminal-stage small { color: #7d8696; line-height: 1.6; }
 .info-note { margin-top: 16px; padding: 12px; border: 1px solid #bcd5ff; border-radius: 6px; color: #2563eb; background: #f1f6ff; font-size: 12px; }
 .error-card { padding: 15px; border: 1px solid #ffc7cc; border-radius: 7px; color: #b4232d; background: #fff5f6; }
 .error-card p { margin-bottom: 0; }

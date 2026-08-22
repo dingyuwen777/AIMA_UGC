@@ -8,6 +8,7 @@ defineProps<{
   selected: KeywordPackResponse | null
   loading: boolean
   saving: boolean
+  toggleReason: (pack: KeywordPackSummaryResponse) => string | null
 }>()
 
 const emit = defineEmits<{
@@ -54,7 +55,8 @@ const keyword = ref('')
         <button
           type="button"
           class="link-button"
-          :disabled="saving"
+          :disabled="saving || !!toggleReason(pack)"
+          :title="toggleReason(pack) || undefined"
           @click.stop="emit('toggle', pack)"
         >
           {{ pack.enabled ? '停用' : '启用' }}
@@ -108,7 +110,7 @@ const keyword = ref('')
 .pack-row.active { background: #fff7fa; box-shadow: inset 3px 0 var(--aima-primary); }
 .pack-row strong,.pack-row small { display: block; }.pack-row strong { color: #1e2838; }.pack-row small { margin-top: 5px; color: #818b9d; }
 .status { width: max-content; padding: 4px 8px; border-radius: 5px; font-size: 12px; }.enabled { color: #118852; background: #eaf8f1; }.disabled { color: #687386; background: #eef1f5; }
-.link-button { border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; }.link-button:disabled { opacity: .5; }
+.link-button { border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; }.link-button:disabled { color: #98a1b1; cursor: not-allowed; opacity: .75; }
 .detail-card { padding: 18px; }.detail-title { display: flex; justify-content: space-between; }.detail-title span,.detail-title strong { display: block; }.detail-title span { color: #7b8598; font-size: 12px; }.detail-title strong { margin-top: 5px; font-size: 18px; }.version { color: var(--aima-primary) !important; }
 .keyword-list { display: flex; max-height: 330px; flex-wrap: wrap; gap: 8px; overflow: auto; margin: 18px 0; }.keyword-list > span { padding: 7px 9px; border: 1px solid #dce4f0; border-radius: 6px; color: #344258; background: #f8faff; font-size: 13px; }.keyword-list small { margin-left: 5px; color: #8993a3; }.keyword-list em { color: #929aaa; font-style: normal; }
 form { display: flex; gap: 8px; }input { min-width: 0; height: 38px; flex: 1; padding: 0 10px; border: 1px solid #dce1e9; border-radius: 6px; }form button { width: 62px; border: 0; border-radius: 6px; color: #fff; background: var(--aima-primary); cursor: pointer; }

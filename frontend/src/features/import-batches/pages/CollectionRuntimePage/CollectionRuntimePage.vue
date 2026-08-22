@@ -206,8 +206,11 @@ async function viewContents(batchId: string): Promise<void> {
       v-model="supplementOpen"
       :capabilities="store.capabilities"
       :batches="store.batchOptions"
+      :batch-content-platforms="store.batchContentPlatforms"
+      :loading-batch-platforms="store.loadingBatchPlatforms"
       :creating="store.creating"
       :initial-batch-id="initialBatchId"
+      @batch-change="store.loadBatchPlatforms"
       @submit="createRun"
     />
     <div

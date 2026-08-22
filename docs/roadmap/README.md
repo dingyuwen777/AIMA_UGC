@@ -28,14 +28,16 @@ Change / changes/archive
 
 ### 近期第一优先级
 
-- [`内网V1上线实施计划.md`](内网V1上线实施计划.md)：**当前近期开发的正式执行计划**。Stage 8F 已完成前后端业务闭环与真实 Excel Full-stack Acceptance；当前下一最小正式开发单元是 Internal V1-A，开始最小 Docker / Compose / Config 与持久化部署闭环。
+- [`内网V1上线实施计划.md`](内网V1上线实施计划.md)：**当前近期开发的正式执行计划**。Stage 8F 已建立首版前后端能力矩阵，并把页面可操作资格、Excel 成功/失败 Job 终态、Batch Supplement 和 Voice Plaza 来源链纳入真实业务验收；当前下一最小正式开发单元是 Internal V1-A，开始最小 Docker / Compose / Config 与持久化部署闭环。
 
 当前已经确认的首版范围：
 
 ```text
 已统一当前前端 / 后端首版功能
-→ Excel 页面真实导入链已有永久 Full-stack Acceptance
+→ 页面 enabled/disabled 使用现有正式后端事实形成资格快照，服务端仍最终校验
+→ Excel 页面真实导入成功链与 Worker 失败链已有永久 Full-stack Acceptance
 → PostgreSQL / Worker / Voice Plaza 真实打通
+→ Excel Batch 小红书补采的 xiaohongshu/xhs 边界已有正式兼容和集成回归
 → 下一步建立最小可部署容器环境
 → 再部署到公司服务器
 → 仅公司内部网络访问
@@ -69,7 +71,7 @@ Change / changes/archive
 当前 main
 ↓
 Stage 8F：前后端业务闭环与上线前验收
-→ 已完成
+→ 已完成；精确完成证明必须以对应最终 HEAD 的 CI/Full-stack 结果为准
 ↓
 Internal V1-A：最小 Docker / Compose / Config
 → 当前下一最小正式开发单元
@@ -91,20 +93,30 @@ docs/appendix/Stage8F前后端能力矩阵与真实验收.md
 frontend/e2e-fullstack/excel-import.spec.ts
 ```
 
-其中真实 Excel Full-stack Acceptance 固定验证：
+其中真实 Excel Full-stack Acceptance 固定验证两条链：
 
 ```text
+成功：
 Excel fixture
 → 浏览器上传
 → Import Batch + Job
 → Worker
 → PostgreSQL Content
-→ 采集运行中心显示结果
+→ 采集运行中心 succeeded
 → 查看入库内容
 → Voice Plaza 显示本批数据
+
+失败：
+结构合法但业务字段非法 Excel
+→ 浏览器上传 202
+→ Import Batch + Job
+→ 正式 Worker
+→ failed / invalid_import
+→ 页面禁用查看入库内容
+→ 显示可审计失败终态且不伪造阶段历史
 ```
 
-这条链不 Mock `/api/v1/**`。原有 Mock Playwright E2E 继续保留，负责快速前端交互回归，但不替代真实业务链证明。
+这两条链不 Mock `/api/v1/**`。原有 Mock Playwright E2E 继续保留，负责快速前端交互、enabled/disabled、Drawer/Dialog 和常见错误回归，但不替代真实业务链证明。
 
 ## “内网 V1”与“完整 Production”有什么区别
 
@@ -151,10 +163,11 @@ Roadmap 使用四种状态：
 
 ## 最重要的原则
 
-1. **先闭环真实业务，再容器化。** Stage 8F 已完成这一门禁；当前 Internal V1-A 只容器化已经证明可工作的业务链，不重新设计前后端业务。
-2. **Mock E2E 不替代 Full-stack Acceptance。** Mock 用于快速前端回归；首版核心 Excel 链已经有不 Mock API 的永久真实验收。
-3. **允许延期必须明确写出来。** 当前登录/权限和历史迁移延期是已确认产品决定，不由后续 Agent 擅自恢复为内网 V1 阻塞项。
-4. **内网 V1 不等于完整 Production。** 长期 Production 门禁继续保留，不因快速上线被删除。
-5. **未完成阶段不能因为文档重构被删掉。** 它们是继续开发到完整生产上线的正式导航。
-6. **历史方案不能冒充当前方案。** 后续已经明确改变的设计要保留“为什么改”，同时标注已被替代。
-7. **Roadmap 不替代代码事实。** 精确类名、字段、表和 API 仍以当前代码/Contract/Migration 为准。
+1. **先闭环真实业务，再容器化。** Stage 8F 的严格门禁同时覆盖真实成功链、真实失败终态和页面业务资格；Internal V1-A 只容器化已经证明可工作的业务链，不重新设计前后端业务。
+2. **Mock E2E 不替代 Full-stack Acceptance。** Mock 用于快速前端回归；首版核心 Excel 链使用不 Mock API 的永久真实验收。
+3. **前端资格不能替代后端守卫。** 页面可以根据现有正式 API 决定按钮是否可用，但并发、陈旧页面和一致性仍由后端再次校验。
+4. **允许延期必须明确写出来。** 当前登录/权限和历史迁移延期是已确认产品决定，不由后续 Agent 擅自恢复为内网 V1 阻塞项。
+5. **内网 V1 不等于完整 Production。** 长期 Production 门禁继续保留，不因快速上线被删除。
+6. **未完成阶段不能因为文档重构被删掉。** 它们是继续开发到完整生产上线的正式导航。
+7. **历史方案不能冒充当前方案。** 后续已经明确改变的设计要保留“为什么改”，同时标注已被替代。
+8. **Roadmap 不替代代码事实。** 精确类名、字段、表和 API 仍以当前代码/Contract/Migration 为准。
