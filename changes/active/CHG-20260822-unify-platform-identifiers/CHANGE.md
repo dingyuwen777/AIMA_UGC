@@ -26,6 +26,7 @@ affected_paths:
   - backend/src/aima_ugc/modules/collection/
   - backend/src/aima_ugc/modules/content/
   - backend/src/aima_ugc/modules/system/
+  - backend/src/aima_ugc/platform/
   - frontend/src/
   - frontend/tests/
   - frontend/e2e/
@@ -33,6 +34,7 @@ affected_paths:
   - contracts/
   - migrations/versions/
   - tests/
+  - .github/workflows/
   - docs/blueprint/
   - docs/appendix/
   - docs/collection/
@@ -47,7 +49,7 @@ data_changes:
 
 # 目标
 
-把 AIMA_UGC 当前所有**内部机器平台标识**统一为且仅允许：
+AIMA_UGC 当前所有**内部平台机器身份**统一为且仅允许：
 
 ```text
 xiaohongshu
@@ -57,27 +59,34 @@ bilibili
 kuaishou
 ```
 
-小红书不再同时存在 `xhs` 与 `xiaohongshu` 两套内部身份。运行时代码、公共 HTTP Contract、generated client、Collection Plan/Run/Scope、TikHub Capability/Mapper、Canonical、Content、前端、测试和正式文档统一使用 `xiaohongshu`。
+运行时代码、公共 HTTP Contract、generated client、Collection Plan/Run/Scope、Provider Capability/Mapper、Canonical、Content、数据库、Job payload、日志/事件机器上下文、配置、当前源码/测试/Workflow 和正式文档均不得继续把平台简称当内部身份。
 
-外部输入中的中文平台名称只在入口映射到正式五值；不接受平台缩写/别名作为内部机器值。关键词全平台适用语义改为 `platform_scope=all`，不再占用平台身份字段。历史 Change 与旧 Migration 保留当时事实，不改写历史。
+外部 Provider Raw/原始 Fixture 保留第三方真实字节；历史 Change、已执行旧 Migration 保留历史事实。Excel 等外部输入可以识别明确的中文平台展示名称，但进入系统后立即归一化到五个正式机器值。
+
+**展示层与机器值分离：** Excel 最终展示列继续使用 `小红书 / 抖音 / 微博 / 哔哩哔哩 / 快手`，展示映射的输入只能是五个正式机器值，不接受平台简称或中文展示名反向冒充机器值。
+
+关键词“适用于全部平台”使用 `platform_scope=all`，`all` 不再占用平台身份字段。
 
 # 可观察成功标准
 
-- [ ] `CollectionPlatform` 只允许 `xiaohongshu / douyin / weibo / bilibili / kuaishou`；
-- [ ] TikHub 小红书 Capability、Canonical Content/Comment Mapper 输出 `xiaohongshu`；
-- [ ] Excel Profile 只把“小红书”与 `xiaohongshu` 映射到 `xiaohongshu`，不再接受 `xhs` / `red`；
-- [ ] Collection Plan / Run / Scope / Batch Supplement / Frontend generated client 全部使用 `xiaohongshu`；
-- [ ] 删除 `xhs <-> xiaohongshu` 运行时兼容映射，不保留兼容层；
-- [ ] 新 Alembic Migration 一次性迁移当前持久化平台字段中的旧 `xhs`；
+- [ ] `PlatformName` / `CollectionPlatform` 只允许 `xiaohongshu / douyin / weibo / bilibili / kuaishou`；
+- [ ] Provider Capability、Canonical Content/Comment Mapper 只输出五个正式平台机器值；
+- [ ] Excel Profile 只把明确中文展示名或正式机器值归一化为五个正式值，不接受 `xhs / red / dy / wb / ks / bili` 等平台简称作为机器输入；
+- [ ] Excel 最终展示列使用 `小红书 / 抖音 / 微博 / 哔哩哔哩 / 快手`，但内部记录与 Contract 仍保持正式机器值；
+- [ ] `platform_display_name()` 只接受 `PlatformName`，不维护中文/简称反向兼容映射；
+- [ ] Collection Plan / Run / Scope / Batch Supplement / Frontend generated client 全部使用五个正式平台机器值；
+- [ ] 删除运行时平台 alias/双值转换，不保留兼容层；
+- [ ] 当前有效源码路径、类/函数/常量、Job type、schema version、Workflow 名称、日志/事件机器标识、配置、测试与正式文档不继续使用平台简称；
+- [ ] 第三方 Raw Artifact/Raw Fixture、历史归档 Change、旧 Migration 不因本任务伪造性改写；本 Migration 和 Migration 生命周期测试可以显式引用旧值以完成一次性迁移验证；
+- [ ] 新 Alembic Migration 一次性迁移当前持久化平台字段中的旧小红书机器值，并为稳定平台身份列增加五值 CHECK；
 - [ ] Migration 在会造成业务身份唯一键冲突时 fail closed，不静默删除/合并 Content、Account 或历史来源；
-- [ ] Migration downgrade 明确恢复本 Migration 迁移的 `xiaohongshu -> xhs` 数据语义，且仅作为回滚能力存在；
-- [ ] 当前源码、generated、测试和正式文档存在永久门禁，禁止重新引入小写机器值 `xhs`（历史 Change、旧 Migration、原始第三方 Fixture 和本 Migration 除外）；
+- [ ] Migration downgrade 只恢复 Schema/字段名，不猜测哪些 `xiaohongshu` 行原先来自旧值；生产级数据回滚依赖升级前 PostgreSQL 备份；
 - [ ] OpenAPI / generated client 同步且 drift check 通过；
-- [ ] PostgreSQL 空库升级、Migration downgrade/re-upgrade、目标迁移数据测试通过；
+- [ ] PostgreSQL 空库升级、Migration downgrade/re-upgrade、目标迁移数据与冲突测试通过；
 - [ ] Backend Unit / Contract / API / Integration 相关测试通过；
 - [ ] Frontend lint / TypeScript 7 / Vue typecheck / Unit / build / Mock E2E 通过；
 - [ ] Stage 8F 真实 Excel Full-stack Acceptance 继续通过；
-- [ ] Blueprint / Appendix / Collection README 与代码一致；
+- [ ] Blueprint / Appendix / Collection README / Frontend README 与代码一致；
 - [ ] 合并前两阶段 Review 无未解决严重/重要问题；
 - [ ] PR 合并到 `main` 后 Change 归档。
 
@@ -85,46 +94,52 @@ kuaishou
 
 ## 修改
 
-1. Pydantic HTTP Contract / OpenAPI / generated client 的平台枚举；
-2. TikHub Capability、Mapper、Collection Runtime 和 Frontend 的小红书机器值；
-3. Excel Import 平台输入归一化规则；
-4. PostgreSQL 中保存平台值的稳定列，以及确实保存平台标识的当前 JSON 快照；
+1. Pydantic 平台 Contract、OpenAPI、generated client；
+2. TikHub Capability、Mapper、Collection Runtime、Content、Frontend 的平台机器值；
+3. Excel Import 平台输入归一化规则与 Excel 中文展示边界；
+4. PostgreSQL 稳定平台列、关键词 `platform_scope`、当前固定 JSON 快照；
 5. 一次性 Alembic Migration；
-6. 相关 Unit / Contract / API / PostgreSQL Integration / Browser E2E / Full-stack 测试；
-7. 当前正式文档；
-8. 永久平台标识一致性门禁。
+6. 当前有效源码/测试/Workflow/日志事件相关命名中的平台简称；
+7. Unit / Contract / API / PostgreSQL Integration / Browser E2E / Full-stack 测试；
+8. 当前正式文档；
+9. 永久平台标识一致性门禁。
 
 ## 不修改
 
-- TikHub endpoint 路径 `/xiaohongshu/...` 与真实 Provider JSON；
-- 第三方 Raw Artifact / 原始 Fixture 内容；
-- 外部内容 ID、评论 ID、Provider Operation 名称；
+- TikHub 等 Provider 返回的第三方 Raw 字节和真实 Provider JSON；
+- 第三方 Raw Fixture 内容；
+- 外部内容 ID、评论 ID；
+- `tikhub`、`imports` 等 provider/source 名称，它们不是 platform；
 - AI taxonomy / Prompt；
 - Job Runtime、Retry、费用策略；
 - Docker / Compose / Internal V1-A；
-- 历史 `changes/archive/` 与旧 Migration 文件名/内容。
+- 历史 `changes/archive/` 与已发布旧 Migration 文件内容。
 
 # 已确认上游决定
 
 用户明确要求：
 
-> 系统内部不需要 `xhs/xiaohongshu` 兼容，所有平台字段统一为 `xiaohongshu / douyin / weibo / bilibili / kuaishou`，系统性修改、避免兼容层，并在验证后合并到主分支。
+> 系统内部不需要平台简称兼容，所有平台字段统一为 `xiaohongshu / douyin / weibo / bilibili / kuaishou`；除 Provider Raw 原始数据外，包括日志等当前系统事实都不要平台简称；系统性修改、避免兼容层，并在验证后合并到主分支。
 
-因此本 Change 不设置兼容窗口，也不保留运行时 alias。
+用户同时明确：
+
+> Excel 导出属于人类展示，平台列应显示中文：`小红书 / 抖音 / 微博 / 哔哩哔哩 / 快手`。
+
+因此本 Change 不设置平台 alias 兼容窗口，但保留单向的“正式机器值 → 中文展示文案”转换。
 
 # L3 方案比较
 
-## 方案 A：保留 `xhs`，边界转换到 `xiaohongshu`
+## 方案 A：边界长期保留平台简称转换
 
 优点：公共 Contract 变化小。
 
-缺点：永久维护两套平台身份，已经实际造成 Excel Batch 与 Collection 补采断点；与用户“不要兼容层”决定冲突。
+缺点：永久维护两套平台身份，已经造成 Excel Batch 与 Collection 补采断点；与用户决定冲突。
 
 结论：拒绝。
 
-## 方案 B：全系统统一 `xiaohongshu` + 一次性 Migration
+## 方案 B：全系统五个正式机器值 + 一次性 Migration + 单向中文展示
 
-优点：从 Contract、Canonical、Collection、Content、Frontend 到数据库只剩一套机器身份；后续无需 alias；最容易长期维护和验证。
+优点：Contract、Canonical、Collection、Content、Frontend、数据库只剩一套机器身份；Excel/UI 等展示仍可读；后续无需 alias。
 
 代价：公共 HTTP Contract 与 persisted data 均变化，需要 Migration、generated client 和完整回归。
 
@@ -134,7 +149,7 @@ kuaishou
 
 优点：实现最少。
 
-缺点：旧 `xhs` 数据会变成不可见/重复身份，可能继续产生 `(platform, external_content_id)` 双记录。
+缺点：旧数据会变成不可见/重复身份，可能继续产生 `(platform, external_content_id)` 双记录。
 
 结论：拒绝。
 
@@ -142,9 +157,9 @@ kuaishou
 
 ## 升级
 
-Migration 从当前 head `20260821_0023` 之后新增 revision，统一旧数据库中的 `xhs` 平台值。
+Migration 从 `20260821_0023` 后新增 `20260822_0024`。
 
-升级前必须检测会造成唯一身份冲突的情况，至少包括：
+升级前检测会造成唯一身份冲突的历史数据，至少包括：
 
 ```text
 contents(platform, external_content_id)
@@ -153,13 +168,26 @@ collection_plan_platforms(plan_id, platform)
 collection_scopes(run_id, platform, source_type, source_value, operation_group)
 ```
 
-发现同一业务身份同时存在 `xhs` 与 `xiaohongshu` 时，Migration 明确失败，要求人工先处理冲突；不得猜测哪条历史应删除，也不得在 Migration 内静默合并 Content Version、Comment、Analysis、Export 或来源链。
+发现同一业务身份同时存在旧值和 `xiaohongshu` 时，Migration 明确失败并事务回滚；不得猜测哪条历史应删除，也不得在 Migration 内静默合并 Content Version、Comment、Analysis、Export 或来源链。
 
-无冲突时，Migration 一次性把所有当前正式持久化平台字段更新为 `xiaohongshu`。对 JSONB 只迁移仓库当前真实保存平台字段的固定快照结构，不对任意 JSON 文本做全文替换。
+无冲突时，一次性把仓库当前正式持久化位置更新为 `xiaohongshu`。JSONB 只迁移当前代码明确拥有的固定快照结构，不对任意 JSON 文本全文替换。
 
-## 回滚
+## Downgrade / 数据回滚
 
-平台数据归一化不可从最终值推断旧来源，因此 Alembic downgrade 只回退 Schema/字段名；生产级数据回滚必须恢复升级前 PostgreSQL 备份。当前项目尚未生产部署，合并前通过隔离数据库完整验证该路径。
+平台身份归一化不可从最终数据可靠推断旧来源。因此：
+
+```text
+Alembic downgrade
+→ 恢复本 Migration 引入的 Schema / 字段名
+→ 不把所有 xiaohongshu 数据猜回旧值
+
+生产级数据回滚
+→ 停止新进程
+→ 恢复升级前 PostgreSQL 备份
+→ 恢复旧代码
+```
+
+当前项目尚未生产部署；合并前仍必须在隔离 PostgreSQL 验证 upgrade、冲突 fail-closed、downgrade/re-upgrade 与 schema drift。
 
 # 部署顺序
 
@@ -170,33 +198,30 @@ collection_scopes(run_id, platform, source_type, source_value, operation_group)
 → 新 API/Worker/Scheduler 启动
 ```
 
-不允许新代码连接尚未迁移的旧库，也不允许旧代码继续向升级后的库写 `xhs`。
-
-# 回滚
-
-如果升级阶段因平台身份冲突失败：数据库事务回滚，旧代码保持可运行；先人工处理冲突后重试。
-
-如果新代码上线前需要整体回退：停止新进程 → Alembic downgrade 到 `20260821_0023` → 恢复旧代码。
+不允许新代码连接尚未迁移的旧库，也不允许旧代码继续向升级后的库写旧平台值。
 
 # 风险
 
-- **数据身份冲突**：以 Migration fail-closed 处理，不静默丢历史；
-- **Contract 破坏性变化**：同一 PR 同步 OpenAPI/generated/front-end/tests，不提供兼容值；
-- **遗漏机器值**：新增仓库扫描门禁；
-- **Raw 证据污染**：历史 Raw/Fixture 不做替换；
-- **旧历史被改写**：archive Change / 旧 Migration 不修改。
+- **数据身份冲突**：Migration fail closed，不静默丢历史；
+- **Contract 破坏性变化**：同一 PR 同步 OpenAPI/generated/frontend/tests，不提供兼容值；
+- **遗漏平台简称**：Contract + DB CHECK + 当前仓库静态扫描三层门禁；
+- **展示层误伤**：Excel 保留中文展示，但展示函数输入仍是严格五值；
+- **Raw 证据污染**：第三方 Raw/Fixture 不改写；
+- **旧历史被改写**：archive Change / 已发布旧 Migration 不修改。
 
 # 实施任务
 
-1. Red：新增平台 ID 门禁与核心 Contract/Mapper/Migration 期望，确认当前 `xhs` 状态真实失败；
-2. 统一 HTTP Contract、Capability、Mapper、Excel Profile、Collection / Frontend 机器值；
-3. 删除 Stage 8F 临时 `xhs/xiaohongshu` 兼容映射；
-4. 新增 `20260822_0024` 一次性数据 Migration 与 PostgreSQL Integration；
+1. Red：平台一致性 Contract/扫描门禁确认旧平台身份真实失败；
+2. 统一 HTTP Contract、Capability、Mapper、Excel Profile、Collection / Content / Frontend 机器值；
+3. 删除运行时平台 alias；
+4. 新增 `20260822_0024` 数据 Migration 与 PostgreSQL Integration；
 5. 重新生成 OpenAPI / frontend generated client；
-6. 更新全部受影响测试和正式文档；
-7. 执行目标、相关与全量永久 CI；
-8. 两阶段 Review，PR Ready 后合并；
-9. 归档 Change。
+6. 收口当前源码路径、符号、Workflow、日志/事件命名中的平台简称；
+7. 保留并验证 Excel 五平台中文展示；
+8. 更新测试和正式文档；
+9. 执行永久 CI；
+10. 两阶段 Review，PR Ready 后合并；
+11. 归档 Change。
 
 # 验证计划
 
@@ -223,7 +248,7 @@ npm --prefix frontend run test:e2e
 npm --prefix frontend run test:e2e:fullstack
 ```
 
-最终以仓库实际 GitHub Actions 永久 Workflow 为合并门禁。
+最终以仓库永久 GitHub Actions 的最新 PR HEAD 结果作为合并门禁。
 
 # 文档影响
 
@@ -231,6 +256,7 @@ npm --prefix frontend run test:e2e:fullstack
 
 - `docs/blueprint/02-采集系统与数据标准化.md`
 - `docs/blueprint/03-数据库与文件存储.md`
+- `docs/blueprint/05-日志安全部署与运维.md`
 - `docs/blueprint/07-技术决策与实施门禁.md`
 - `docs/blueprint/08-采集策略与平台能力.md`
 - `docs/appendix/数据入口与统一入库实现.md`
@@ -253,4 +279,6 @@ npm --prefix frontend run test:e2e:fullstack
 refactor/unify-platform-identifiers
 ```
 
-PR、Red/Green、CI、Review、merge 与 archive 证据在实施过程中持续补充。
+PR：`#149`。
+
+Red/Green、最终 CI、Review、merge 与 archive 证据在实施过程中持续补充。
