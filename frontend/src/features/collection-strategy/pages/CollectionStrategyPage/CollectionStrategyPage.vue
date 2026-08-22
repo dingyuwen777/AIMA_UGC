@@ -64,17 +64,57 @@ function showNotice(message: string): void {
     <div class="page-header">
       <div><h1>采集策略</h1><p>统一管理 Discovery 词包、全局相关性与周期采集计划</p></div>
       <div class="actions">
-        <button type="button" @click="store.refresh()">↻&nbsp; 刷新数据</button><button type="button" class="outline" @click="packDialogOpen = true">＋&nbsp; 新建词包</button><button type="button" class="primary" @click="planDrawerOpen = true">＋&nbsp; 新建采集计划</button>
+        <button
+          type="button"
+          @click="store.refresh()"
+        >
+          ↻&nbsp; 刷新数据
+        </button><button
+          type="button"
+          class="outline"
+          @click="packDialogOpen = true"
+        >
+          ＋&nbsp; 新建词包
+        </button><button
+          type="button"
+          class="primary"
+          @click="planDrawerOpen = true"
+        >
+          ＋&nbsp; 新建采集计划
+        </button>
       </div>
     </div>
 
-    <StrategyKpiCards :pack-count="store.packTotal" :relevance="store.relevance" :relevance-pack-name="relevancePackName" :enabled-plan-count="store.enabledPlanCount" :loading="store.loading" />
+    <StrategyKpiCards
+      :pack-count="store.packTotal"
+      :relevance="store.relevance"
+      :relevance-pack-name="relevancePackName"
+      :enabled-plan-count="store.enabledPlanCount"
+      :loading="store.loading"
+    />
 
-    <nav aria-label="采集策略类型" class="tabs">
-      <button v-for="tab in [{ value: 'keywords', label: '关键词包' }, { value: 'relevance', label: '全局相关性' }, { value: 'plans', label: '采集计划' }] as const" :key="tab.value" type="button" :class="{ active: store.activeTab === tab.value }" @click="store.activeTab = tab.value">{{ tab.label }}</button>
+    <nav
+      aria-label="采集策略类型"
+      class="tabs"
+    >
+      <button
+        v-for="tab in [{ value: 'keywords', label: '关键词包' }, { value: 'relevance', label: '全局相关性' }, { value: 'plans', label: '采集计划' }] as const"
+        :key="tab.value"
+        type="button"
+        :class="{ active: store.activeTab === tab.value }"
+        @click="store.activeTab = tab.value"
+      >
+        {{ tab.label }}
+      </button>
     </nav>
 
-    <div v-if="store.error" class="error" role="alert">!&nbsp; {{ store.error }}</div>
+    <div
+      v-if="store.error"
+      class="error"
+      role="alert"
+    >
+      !&nbsp; {{ store.error }}
+    </div>
 
     <KeywordPackPanel
       v-if="store.activeTab === 'keywords'"
@@ -88,11 +128,53 @@ function showNotice(message: string): void {
       @add-keyword="addKeyword"
     />
 
-    <RelevancePanel v-else-if="store.activeTab === 'relevance'" :packs="store.enabledPacks" :relevance="store.relevance" :saving="store.saving" @save="saveRelevance" />
+    <RelevancePanel
+      v-else-if="store.activeTab === 'relevance'"
+      :packs="store.enabledPacks"
+      :relevance="store.relevance"
+      :saving="store.saving"
+      @save="saveRelevance"
+    />
 
     <template v-else>
       <section class="filters">
-        <input v-model="store.filters.search" placeholder="搜索计划名称、Plan ID"><select v-model="store.filters.enabled"><option value="">全部状态</option><option value="true">已启用</option><option value="false">已停用</option></select><select v-model="store.filters.platform"><option value="">全部平台</option><option value="xhs">小红书</option><option value="douyin">抖音</option><option value="weibo">微博</option><option value="bilibili">B站</option><option value="kuaishou">快手</option></select><span /><button type="button" @click="store.resetPlanFilters(); store.firstPlanPage()">重置</button><button type="button" class="primary" @click="store.firstPlanPage()">查询</button>
+        <input
+          v-model="store.filters.search"
+          placeholder="搜索计划名称、Plan ID"
+        ><select v-model="store.filters.enabled">
+          <option value="">
+            全部状态
+          </option><option value="true">
+            已启用
+          </option><option value="false">
+            已停用
+          </option>
+        </select><select v-model="store.filters.platform">
+          <option value="">
+            全部平台
+          </option><option value="xhs">
+            小红书
+          </option><option value="douyin">
+            抖音
+          </option><option value="weibo">
+            微博
+          </option><option value="bilibili">
+            B站
+          </option><option value="kuaishou">
+            快手
+          </option>
+        </select><span /><button
+          type="button"
+          @click="store.resetPlanFilters(); store.firstPlanPage()"
+        >
+          重置
+        </button><button
+          type="button"
+          class="primary"
+          @click="store.firstPlanPage()"
+        >
+          查询
+        </button>
       </section>
       <PlanPanel
         :plans="store.plans"
@@ -111,7 +193,11 @@ function showNotice(message: string): void {
       />
     </template>
 
-    <KeywordPackCreateDialog v-model="packDialogOpen" :saving="store.saving" @submit="savePack" />
+    <KeywordPackCreateDialog
+      v-model="packDialogOpen"
+      :saving="store.saving"
+      @submit="savePack"
+    />
     <PlanCreateDrawer
       v-model="planDrawerOpen"
       :packs="store.enabledPacks"
@@ -124,8 +210,19 @@ function showNotice(message: string): void {
       @load-pack-details="store.loadPackDetails"
       @submit="savePlan"
     />
-    <PlanDetailDrawer v-model="planDetailOpen" :plan="store.selectedPlan" :packs="store.packs" :providers="providers" />
-    <div v-if="notice" class="notice" role="status">✓ {{ notice }}</div>
+    <PlanDetailDrawer
+      v-model="planDetailOpen"
+      :plan="store.selectedPlan"
+      :packs="store.packs"
+      :providers="providers"
+    />
+    <div
+      v-if="notice"
+      class="notice"
+      role="status"
+    >
+      ✓ {{ notice }}
+    </div>
   </AppShell>
 </template>
 
