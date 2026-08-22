@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import get_args
 
 import pytest
-from pydantic import TypeAdapter, ValidationError
 
 from aima_ugc.adapters.providers.imports.excel_profile import get_excel_import_profile
 from aima_ugc.contracts.platform import (
@@ -23,6 +22,7 @@ from aima_ugc.modules.collection.tables import (
 from aima_ugc.modules.content.tables import accounts_table, contents_table
 from aima_ugc.modules.system.tables import keyword_pack_items_table
 from aima_ugc.platform.presentation import platform_display_name
+from pydantic import TypeAdapter, ValidationError
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _EXPECTED = ("xiaohongshu", "douyin", "weibo", "bilibili", "kuaishou")
