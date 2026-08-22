@@ -417,14 +417,17 @@ def test_real_root_comment_fixtures_persist_canonical_comment_semantics(
     try:
         with session.begin_nested():
             service = ContentIngestionService(PostgresContentRepository(session))
+            xiaohongshu_comment = xiaohongshu.extract_comment_items(
+                _fixture("xiaohongshu", "comments_page1.sanitized.json")
+            )[0]
+            xiaohongshu_content_id = xiaohongshu_comment.get("note_id")
+            assert isinstance(xiaohongshu_content_id, str)
             cases = (
                 (
                     "xiaohongshu",
-                    "xiaohongshu-note-1",
+                    xiaohongshu_content_id,
                     "get_note_comments",
-                    xiaohongshu.extract_comment_items(
-                        _fixture("xiaohongshu", "comments_page1.sanitized.json")
-                    )[0],
+                    xiaohongshu_comment,
                     XiaohongshuMappingContext,
                     map_xiaohongshu_comment,
                     "data.data.comments[0]",
