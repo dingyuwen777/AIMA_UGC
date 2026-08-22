@@ -102,15 +102,43 @@ function submit(): void {
 </script>
 
 <template>
-  <div v-if="open" class="backdrop" @click.self="open = false">
-    <aside role="dialog" aria-label="新建采集计划" aria-modal="true">
+  <div
+    v-if="open"
+    class="backdrop"
+    @click.self="open = false"
+  >
+    <aside
+      role="dialog"
+      aria-label="新建采集计划"
+      aria-modal="true"
+    >
       <header>
-        <div><h2>新建采集计划</h2><p>保存 Discovery 词包与正式周期调度配置</p></div><button type="button" aria-label="关闭" @click="open = false">×</button>
+        <div><h2>新建采集计划</h2><p>保存 Discovery 词包与正式周期调度配置</p></div><button
+          type="button"
+          aria-label="关闭"
+          @click="open = false"
+        >
+          ×
+        </button>
       </header>
       <div class="body">
-        <label><strong>1. 计划名称</strong><input v-model="name" maxlength="200" placeholder="例如：爱玛新品口碑追踪"></label>
+        <label><strong>1. 计划名称</strong><input
+          v-model="name"
+          maxlength="200"
+          placeholder="例如：爱玛新品口碑追踪"
+        ></label>
         <fieldset>
-          <legend>2. Discovery 词包</legend><label v-for="pack in packs" :key="pack.id" class="check"><input v-model="selectedPacks" type="checkbox" :value="pack.id">{{ pack.name }} · v{{ pack.version }}</label><p v-if="packs.length === 0">请先创建启用且非空的 Discovery 词包。</p>
+          <legend>2. Discovery 词包</legend><label
+            v-for="pack in packs"
+            :key="pack.id"
+            class="check"
+          ><input
+            v-model="selectedPacks"
+            type="checkbox"
+            :value="pack.id"
+          >{{ pack.name }} · v{{ pack.version }}</label><p v-if="packs.length === 0">
+            请先创建启用且非空的 Discovery 词包。
+          </p>
         </fieldset>
         <fieldset>
           <legend>3. 目标平台与 Provider</legend><div class="platforms">
@@ -123,31 +151,66 @@ function submit(): void {
               @click="togglePlatform(option.value)"
               @keydown.enter="togglePlatform(option.value)"
             >
-              <span>{{ option.label }}</span><select v-if="providerByPlatform[option.value]" v-model="providerByPlatform[option.value]" @click.stop>
-                <option v-for="config in configsFor(option.value)" :key="config.id" :value="config.id">{{ config.display_name }}</option>
+              <span>{{ option.label }}</span><select
+                v-if="providerByPlatform[option.value]"
+                v-model="providerByPlatform[option.value]"
+                @click.stop
+              >
+                <option
+                  v-for="config in configsFor(option.value)"
+                  :key="config.id"
+                  :value="config.id"
+                >
+                  {{ config.display_name }}
+                </option>
               </select><small v-else>{{ configsFor(option.value).length ? '点击选择' : '暂无可用配置' }}</small>
             </div>
           </div>
         </fieldset>
-        <label><strong>4. 周期调度</strong><span class="cron"><input v-model="scheduleExpr" maxlength="100" aria-label="Cron 表达式"><em>Asia/Shanghai</em></span><small>首版使用五字段 Cron；一次性主动发现请前往采集运行中心。</small></label>
-        <div class="policy"><strong>5. 固定采集策略</strong><div><span>内容详情<b>变化时</b></span><span>评论<b>自适应</b></span></div></div>
-        <div class="relevance" :class="{ invalid: enabled && !relevanceAvailable }">
+        <label><strong>4. 周期调度</strong><span class="cron"><input
+          v-model="scheduleExpr"
+          maxlength="100"
+          aria-label="Cron 表达式"
+        ><em>Asia/Shanghai</em></span><small>首版使用五字段 Cron；一次性主动发现请前往采集运行中心。</small></label>
+        <div class="policy">
+          <strong>5. 固定采集策略</strong><div><span>内容详情<b>变化时</b></span><span>评论<b>自适应</b></span></div>
+        </div>
+        <div
+          class="relevance"
+          :class="{ invalid: enabled && !relevanceAvailable }"
+        >
           <strong>◎ 全局相关性（系统全局，不可覆盖）</strong><span>{{ relevanceName || '尚未配置' }}</span><small>创建启用 Plan 前必须可用；后端仍会再次验证。</small>
         </div>
-        <label class="switch"><strong>6. 创建后启用计划</strong><input v-model="enabled" type="checkbox"></label>
-        <div v-if="eligibilityReason && selectedPacks.length && selectedPlatforms.length" class="eligibility" role="status">
+        <label class="switch"><strong>6. 创建后启用计划</strong><input
+          v-model="enabled"
+          type="checkbox"
+        ></label>
+        <div
+          v-if="eligibilityReason && selectedPacks.length && selectedPlatforms.length"
+          class="eligibility"
+          role="status"
+        >
           {{ loadingPackDetails ? '正在读取实时资格…' : eligibilityReason }}
         </div>
-        <div class="warning">⚠ 计划执行会发起真实 TikHub 请求并可能产生费用；当前不提供预算或金额上限。</div>
+        <div class="warning">
+          ⚠ 计划执行会发起真实 TikHub 请求并可能产生费用；当前不提供预算或金额上限。
+        </div>
       </div>
       <footer>
-        <button type="button" @click="open = false">取消</button><button
+        <button
+          type="button"
+          @click="open = false"
+        >
+          取消
+        </button><button
           class="primary"
           type="button"
           :disabled="saving || loadingPackDetails || !name.trim() || !scheduleExpr.trim() || !!eligibilityReason"
           :title="eligibilityReason || undefined"
           @click="submit"
-        >{{ saving ? '保存中…' : '保存采集计划' }}</button>
+        >
+          {{ saving ? '保存中…' : '保存采集计划' }}
+        </button>
       </footer>
     </aside>
   </div>
