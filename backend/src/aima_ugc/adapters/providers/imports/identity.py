@@ -22,7 +22,7 @@ class ContentIdentity:
 
 _HOST_SUFFIXES = {
     "xiaohongshu": ("xiaohongshu.com", "xhslink.com", "xhslink.cn"),
-    "douyin": ("douyin.com",),
+    "douyin": ("douyin.com", "iesdouyin.com"),
     "weibo": ("weibo.com", "weibo.cn"),
     "bilibili": ("bilibili.com", "b23.tv"),
     "kuaishou": ("kuaishou.com",),
@@ -32,7 +32,10 @@ _NATIVE_PATH_PATTERNS = {
         re.compile(r"^/explore/([^/?#]+)", re.IGNORECASE),
         re.compile(r"^/discovery/item/([^/?#]+)", re.IGNORECASE),
     ),
-    "douyin": (re.compile(r"^/(?:video|note)/(\d+)", re.IGNORECASE),),
+    "douyin": (
+        re.compile(r"^/(?:video|note)/(\d+)", re.IGNORECASE),
+        re.compile(r"^/share/video/(\d+)", re.IGNORECASE),
+    ),
     "weibo": (
         re.compile(r"^/(?:status|detail)/([A-Za-z0-9]+)", re.IGNORECASE),
         re.compile(r"^/\d+/([A-Za-z0-9]+)", re.IGNORECASE),
@@ -42,7 +45,11 @@ _NATIVE_PATH_PATTERNS = {
         re.compile(r"^/opus/(\d+)", re.IGNORECASE),
         re.compile(r"^/read/(cv\d+)", re.IGNORECASE),
     ),
-    "kuaishou": (re.compile(r"^/short-video/([^/?#]+)", re.IGNORECASE),),
+    "kuaishou": (
+        re.compile(r"^/short-video/([^/?#]+)", re.IGNORECASE),
+        # 用户上传 Excel 中存在 live.kuaishou.com/u/{user}/{photo_id} 作品链接。
+        re.compile(r"^/u/[^/?#]+/([^/?#]+)", re.IGNORECASE),
+    ),
 }
 _WEIBO_BASE62_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 _WEIBO_BASE62_VALUES = {char: index for index, char in enumerate(_WEIBO_BASE62_ALPHABET)}
