@@ -57,18 +57,19 @@ changes/archive
 
 本轮用户最终确认：**Blueprint 编号 09—17 属于已完成阶段/专题形成的详细材料。如果其中仍有效的事实已经被其他正式文档完整承接，就不需要继续保留在 Blueprint。**
 
-因此本 Change 重新进入 `in_progress`，最终目标是把核心 Blueprint 收敛为 `01—08 + README`，而不是为了怕丢信息永久保存 09—17。
+因此最终目标是把核心 Blueprint 收敛为 `01—08 + README`，同时确保“去重不等于删知识”：当前实现细节进入 Appendix/模块 README，精确结构进入机器事实，未完成阶段进入 Roadmap，历史原因进入 `changes/archive/`。
 
 # 不允许丢失什么
 
-删除 Blueprint 09—17 前，必须先确认这些内容已经有新的正式承载：
+删除 Blueprint 09—17 前，必须确认以下知识仍有清晰、可落地的新入口：
 
 - Scheduler `latest_only`、Cron、Occurrence、并发、防重、事务、Deadline、恢复和排障；
 - TikHub 五平台真实响应结构、Endpoint、JSON 路径、Fixture、Mapper、接口 A/B 与备用策略、真实验证台账；
-- Excel 统一数据 Contract、Exporter、调试入口和正式数据库 Export 边界；
+- Excel 统一数据 Contract、Exporter、源文件 Reader/Sheet 发现、大文件/安全规则、离线调试、正式数据库 Export 边界；
+- Report Source、统计口径、Markdown 模板、Office Chart、OOXML、词云、数据一致性和失败边界；
 - AI `relevance / voice_type / sentiment / labels`、Prompt/Taxonomy、Validator、Retry、并发、Checkpoint、正式 PostgreSQL Analysis；
 - 前端 Feature/Page/Store/API、Figma/Design-to-Code、视觉基线和 Element Plus/TypeScript 当前兼容边界；
-- Stage 8 形成的 Excel/TikHub 统一入库、Import Batch、正式页面/API/Job、来源追溯等长期事实；
+- Stage 8 形成的 Excel/TikHub 统一入库、Import Batch、正式页面/API/Job、来源追溯、两层去重等长期事实；
 - 尚未完成的认证、Monitoring、Production Release、协调 Backup/Restore、旧数据迁移等后续开发路线。
 
 历史施工过程本身不需要在 Blueprint 重复保存；需要追溯时使用 `changes/archive/`。
@@ -104,18 +105,46 @@ changes/archive/
 → 历史原因和已完成阶段证据
 ```
 
-# Blueprint 09—17 迁移映射
+# Blueprint 09—17 内容承接矩阵
 
-| 原 Blueprint | 最终承载 |
-| --- | --- |
-| 09 Scheduler | `docs/appendix/Scheduler调度执行与停机恢复.md` + Collection README + 04/07/08 |
-| 10 TikHub 真实响应 | `docs/appendix/TikHub五平台真实响应与字段映射.md` + `docs/collection/` + Fixture |
-| 11 TikHub 多接口 | `docs/appendix/TikHub多接口验证与备用策略.md` |
-| 12 TikHub 验证台账 | `docs/appendix/TikHub接口选型与真实验证台账.md` + endpoint ledger Fixture |
-| 13 Excel | `docs/appendix/Excel统一数据导出与离线调试.md` + Reporting README |
-| 15 AI | `docs/appendix/AI舆情打标与分析实现.md` + Analysis README + 当前 Prompt |
-| 16 Frontend/Figma | `frontend/README.md` + `docs/guides/Figma与前端设计开发工作流.md` + Blueprint 04 |
-| 17 Stage 8 | `docs/appendix/数据入口与统一入库实现.md` + API/Frontend README + Roadmap |
+这里按“原文中的知识去哪了”而不是“一篇旧文档只对应一篇新文档”记录。
+
+| 原 Blueprint | 当前承载 | 保全重点 |
+| --- | --- | --- |
+| 09 Scheduler | `docs/appendix/Scheduler调度执行与停机恢复.md` + Collection README + Blueprint 04/07/08 | `latest_only`、Occurrence 唯一身份、事务、Job Deadline、多 Scheduler、防重、停机恢复、排障 |
+| 10 TikHub 真实响应 | `docs/appendix/TikHub五平台真实响应与字段映射.md` + `docs/collection/` + `tests/fixtures/providers/tikhub/` | 五平台 Endpoint、真实 JSON 路径、Pagination、Mapper、Fixture、快手 App/Web 证据 |
+| 11 TikHub 多接口 | `docs/appendix/TikHub多接口验证与备用策略.md` + TikHub Operation/Capability 代码 | App/Web/V1/V2/V3 A/B 方法、Candidate/verified backup、为何禁止自动 fallback |
+| 12 TikHub 验证台账 | `docs/appendix/TikHub接口选型与真实验证台账.md` + endpoint ledger Fixture + `pricing.toml` | 真实 Probe、主/备用接口、价格快照、A/B 数量/Jaccard、B站比较器勘误、快手 App/Web 结论 |
+| 13 Excel/Report | `docs/appendix/Excel统一数据导出与离线调试.md` + `docs/appendix/数据入口与统一入库实现.md` + `backend/.../imports_test/README.md` + `docs/appendix/Word舆情报告生成与排版实现.md` + Reporting README | UnifiedDataExcel、三 Sheet/列投影、源 Excel/Sheet、JSONL、共享 Exporter、write-only、安全/验证，以及 Report Source/统计/Markdown/Office Chart/OOXML/词云 |
+| 15 AI | `docs/appendix/AI舆情打标与分析实现.md` + Analysis README + `backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md` | V3 输入输出、相关性/发声类型、Validator、Validation/Transport Retry、离线并发/Checkpoint、正式 Job/表/current identity；完整 taxonomy 只留 Prompt |
+| 16 Frontend/Figma | `frontend/README.md` + `docs/guides/Figma与前端设计开发工作流.md` + Blueprint 04 | 当前 Route/Feature、Page/Store/API/generated Client、视觉基线、Element Plus/TS7 兼容、Figma→Vue Vertical Slice |
+| 17 Stage 8 | `docs/appendix/数据入口与统一入库实现.md` + `docs/API接口说明.md` + Frontend README + Ingestion/Content/Collection README + Roadmap | Excel/TikHub 四类入口、Canonical 汇合、Import Batch/来源链、两层去重、正式 API/Job/页面当前事实；后续阶段不在 Stage 8 文档继续维护 |
+
+## 刻意不复制、改为导航到机器事实的内容
+
+下列内容从旧长文退出并不属于“丢失”，因为继续人工复制反而会形成第二事实源：
+
+```text
+完整 SQLAlchemy 列/约束
+→ tables.py + Migration
+
+完整 HTTP Request/Response 字段
+→ Pydantic Contract + OpenAPI + generated Client
+
+完整 Canonical Schema
+→ contracts/canonical.py + generated JSON Schema
+
+完整 AI 9×39 taxonomy
+→ content_labeling_v3.md
+
+精确 TikHub 当前 endpoint/参数构造
+→ operations/*.py + capabilities.py
+
+精确 Excel Header/列常量
+→ contracts/export/models.py + platform/export/excel.py
+```
+
+Appendix/README 必须解释这些结构为什么存在、调用链如何工作、要改哪里和怎么验证，但不长期复制第二套机器 Schema。
 
 如果 CI 中还有测试直接依赖旧 Blueprint 路径，应把测试迁到新的正式事实源；不得通过保留过期 Blueprint 或删除/降低测试来绕过。
 
@@ -129,10 +158,10 @@ backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md
 
 现有 Analysis 单测曾直接解析 Blueprint 15 的 9×39 树作为重复文档基线。这与“Prompt 是唯一完整 taxonomy 事实源”的最终文档治理方向冲突。
 
-本轮应把测试改成：
+本轮将该测试改为：
 
 - 继续验证 Prompt 当前有 9 个一级、39 个二级；
-- 验证正式 AI Appendix/Analysis README 明确导航到 Prompt；
+- 验证正式 AI Appendix 明确导航到 Prompt；
 - 不再要求 Blueprint 复制一份完整 taxonomy。
 
 这样不是降低业务门禁，而是消除第二套 taxonomy 手工事实源。
@@ -151,10 +180,11 @@ Blueprint 09—17 删除不等于“后续都完成”。Roadmap 继续明确：
 
 生产阻塞
 → 企业认证/后端授权
-→ Stage 11 Dockerfile/Compose/Production Config
-→ 离线 Release Bundle / 固定 image digest / SBOM / 来源验证
-→ PostgreSQL + Artifact 协调 Backup/Restore
-→ 部署/回滚/重启/reboot/容量/安全真实验收
+→ Stage 11A Dockerfile/Compose/Production Config
+→ Stage 11B 离线 Release Bundle / 固定 image digest / SBOM / 来源验证
+→ Stage 11C PostgreSQL + Artifact 协调 Backup/Restore
+→ Stage 11D 部署/回滚自动化
+→ Stage 11E 重启/reboot/容量/安全/恢复的真实生产服务器验收
 
 按需
 → Stage 12 旧数据迁移与对账
@@ -183,20 +213,21 @@ Blueprint 09—17 删除不等于“后续都完成”。Roadmap 继续明确：
 # 成功标准
 
 - [ ] `docs/blueprint/` 最终只保留 README + 01—08 核心文档；
-- [ ] 原 09—17 的当前有效事实均能从 Appendix/Guide/模块 README/核心 Blueprint 找到；
+- [ ] 原 09—17 的当前有效事实均能从 Appendix/Guide/模块 README/核心 Blueprint/机器事实找到；
 - [ ] Stage 0—12 的当前状态、未完成阶段和生产上线阻塞项完整存在于 Roadmap；
 - [ ] PostgreSQL 调试附录使用真实当前表/Owner/Migration，不复制第二套 Schema；
 - [ ] Prompt 继续是完整 AI taxonomy 唯一业务事实源；测试不再依赖 Blueprint 15 复制 taxonomy；
-- [ ] 所有旧 Blueprint 09—17 本地链接和测试依赖完成迁移；
+- [ ] 所有旧 Blueprint 09—17 链接和测试依赖完成迁移；
 - [ ] 不修改运行时代码、Contract、Schema、Migration、generated、依赖；
-- [ ] `check_docs.py`、架构/Owner/Secret 门禁和相关业务测试通过；
+- [ ] 仅有必要的“文档事实源迁移测试”发生代码差异，不改变业务测试语义；
+- [ ] `check_docs.py`、架构/Owner/Secret 门禁和相关测试通过；
 - [ ] PR 最新 HEAD 的全部 GitHub Actions 成功后才进入合并。
 
-# 已有验证与当前失败
+# 已有验证与当前失败历史
 
-候选 HEAD `ab9d7d00aaee4fbb02e15aeef803e058add5f913` 曾取得主 CI 与全部 Stage 专项全绿。
+候选 HEAD `ab9d7d00aaee4fbb02e15aeef803e058add5f913` 曾取得主 CI 与全部 Stage 专项全绿，但该结果只属于当时的候选，不可用于最终合并证明。
 
-后续尝试把 Blueprint 15 改成当前导航后，Stage 5A 暴露了一个真实耦合：
+后续删除 Blueprint 15 时，Stage 5A 暴露了一个真实耦合：
 
 ```text
 tests/unit/analysis/test_content_labeling.py
@@ -204,15 +235,18 @@ tests/unit/analysis/test_content_labeling.py
 → 读取 ### 5.1 完整父子关系
 ```
 
-失败不是运行时代码缺陷，而是旧文档路径作为测试事实源的技术债。最终方案是迁移该测试到新的文档治理规则，而不是恢复 09—17 永久占用核心 Blueprint。
+这不是运行时代码缺陷，而是旧文档路径作为测试事实源的技术债。最终处理是把测试迁到 Prompt + AI Appendix 的新事实层级，而不是恢复 Blueprint 15 的第二套 taxonomy。
+
+Scheduler 文档回归测试同理迁移到 `docs/appendix/Scheduler调度执行与停机恢复.md`，继续验证 `latest_only` 和 Job Deadline 等关键语义，不以保留 Blueprint 09 作为通过条件。
 
 # 验证计划
 
-1. 完成 09—17 → Appendix/Guide/README/Roadmap 的迁移矩阵检查；
+1. 完成 09—17 → Appendix/Guide/README/Roadmap/机器事实的承接矩阵检查；
 2. 更新直接绑定旧 Blueprint 路径的文档回归测试；
-3. 删除 Blueprint 09—17 及本轮临时产生的同编号历史副本；
+3. 删除 Blueprint 09—17 及本轮临时产生的重复兼容页；
 4. 更新 `AGENTS.md`、根 README、Blueprint README、Appendix/Guide/Roadmap 导航；
-5. 运行 PR 最新 HEAD 的 GitHub Actions；
-6. 失败则读取具体 Job 日志修根因，不降低测试；
-7. 全绿后将 Change 标记 `ready_for_review`、解除 Draft、合并 main；
-8. 按仓库规则归档本 Change，并确认最终 main 新鲜状态。
+5. 核对 `docs/环境运行与部署.md`：保留详细开发环境内容，修正当前 Migration 和生产 No-Go 事实；
+6. 运行 PR 最新 HEAD 的 GitHub Actions；
+7. 失败则读取具体 Job 日志修根因，不降低测试；
+8. 全绿后将 Change 标记 `ready_for_review`、解除 Draft、合并 main；
+9. 按仓库规则归档本 Change，并确认最终 main 新鲜状态。
