@@ -43,7 +43,7 @@ function errorMessage(error: unknown): string {
 }
 
 export const useCollectionStrategyStore = defineStore('collection-strategy', () => {
-  const activeTab = ref<StrategyTab>('keywords')
+  const activeTab = ref<StrategyTab>('plans')
   const packs = ref<KeywordPackSummaryResponse[]>([])
   const packTotal = ref(0)
   const relevance = ref<GlobalRelevanceConfigResponse | null>(null)
