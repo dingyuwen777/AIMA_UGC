@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260822-reusable-continuation-prompt
 title: 固化持续开发与上线通用提示词
 level: L2
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: docs/reusable-continuation-prompt-20260822
 created: 2026-08-22
@@ -78,22 +78,56 @@ Stage 8F 前后端闭环
 - [x] 提示词明确仓库事实恢复顺序、Active Change/PR/CI 判断、单元执行、验证、合并和归档；
 - [x] 提示词与当前内网 V1 路线和长期 Production Roadmap 一致；
 - [x] Guide README 与 Roadmap README 都能导航到该提示词；
-- [ ] 当前 PR 最新 HEAD 的仓库 CI/专项 Workflow 全部通过；
+- [x] 实质内容 HEAD `b4959fd5502c7668428f240e473842d7092a502b` 的仓库 CI/专项 Workflow 全部通过；
+- [ ] 本次状态收口产生的新 PR HEAD 仍需新鲜 Workflow 全绿后才能合并；
 - [ ] PR 合并后归档本 Change。
 
-# 验证计划
+# 验证证据
 
-这是纯文档/开发工作流 Change，TDD 不适用。验证：
+实质内容 HEAD：
 
-- 仓库 docs/架构质量门禁；
-- 链接和路径可解析；
-- 通用提示词人工逐条对照 `AGENTS.md`、Reliable Vibe Coding、内网 V1 Roadmap 与完整 Production Roadmap；
-- 当前 PR HEAD 的完整仓库 CI 与专项 Workflow。
+```text
+b4959fd5502c7668428f240e473842d7092a502b
+```
+
+新鲜 GitHub Actions：
+
+```text
+CI #1857                                      success
+Stage 6 XHS Vertical Slice #1672             success
+Stage 7 Keyword Packs #1467                  success
+Stage 7 Provider Config Routing #1580        success
+Stage 7 Plan Occurrence Run Snapshot #1465   success
+Stage 7 Scheduler Runtime #1807               success
+```
+
+主 CI 中 Stage 1、Stage 2 Platform、Stage 3A Database、Windows bootstrap 全部成功，覆盖 locked environments、generated Contract/Client、backend/repository checks、frontend checks、PostgreSQL integration、readiness smoke 和 Migration round-trip。
+
+本次仅更新 Change 交付状态与验证记录；最终合并仍必须以 PR 最新 HEAD 的新鲜 Workflow 为准。
+
+# 文档结果
+
+新增：
+
+- `docs/guides/AIMA持续开发与内网上线通用提示词.md`
+
+同步导航：
+
+- `docs/guides/README.md`
+- `docs/roadmap/README.md`
+
+提示词是固定入口，不替代 `AGENTS.md`、Roadmap 或机器事实；SHA、PR、当前阶段状态继续由每次会话从 GitHub 当前状态读取。
+
+# 兼容、数据、Migration、部署
+
+本 Change 没有运行时代码、公共 HTTP Contract、Schema、Migration、依赖或生产部署变化。
+
+提示词明确：真实公司服务器部署只有在路线进入 Internal V1-B 且当前工具可确认服务器/凭据/网络事实时才执行，不得猜测外部环境。
 
 # Git / PR
 
 - 分支：`docs/reusable-continuation-prompt-20260822`
-- 当前状态：`in_progress`
-- PR：待创建
-- Merge：仅在最新 HEAD 门禁成功后通过 PR 合并
-- 归档：PR 实际合并后进行
+- PR：#143 `固化持续开发与内网上线通用提示词`
+- 当前状态：`ready_for_review`
+- Merge：PR 最新 HEAD 新鲜门禁全部成功、mergeable 且无阻塞 Review 后，通过 PR 合并 `main`
+- 归档：PR 实际合并后把本 Change 移入 `changes/archive/2026-08/`
