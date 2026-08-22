@@ -253,13 +253,24 @@ def _lookup_identity(
     alternate_ids: dict[str, str],
     has_tikhub_source: bool,
 ) -> tuple[str, str] | None:
+    """只返回当前 Runtime 可消费且与稳定 Content 身份一致的 lookup。
+
+    Worker 目前仍使用 ``external_content_id`` 构造 Detail/Comments 请求；因此 typed lookup
+    即使存在，只要它与稳定身份不是同一 Provider identity，就必须 fail closed。未来若要
+    支持二者不同，需要先实现显式 Resolver/身份合并和 Runtime lookup 参数传递。
+    """
+
+    stable_lookup = _legacy_tikhub_lookup(
+        platform=platform,
+        external_content_id=external_content_id,
+    )
     for id_type in _LOOKUP_ID_PRIORITY[platform]:
         value = alternate_ids.get(id_type)
-        if value:
+        if value and stable_lookup == (id_type, value):
             return id_type, value
     if not has_tikhub_source:
         return None
-    return _legacy_tikhub_lookup(platform=platform, external_content_id=external_content_id)
+    return stable_lookup
 
 
 def _legacy_tikhub_lookup(
