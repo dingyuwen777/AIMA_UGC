@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import cast
 from uuid import UUID
@@ -134,7 +135,7 @@ def _stored_platforms(platforms: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(values)
 
 
-def _target(row: dict[str, object]) -> CollectionEnrichmentTarget:
+def _target(row: Mapping[str, object]) -> CollectionEnrichmentTarget:
     stored_platform = cast(str, row["platform"])
     return CollectionEnrichmentTarget(
         content_id=cast(UUID, row["id"]),
