@@ -1,5 +1,5 @@
-import { createSSRApp, h } from 'vue'
 import { renderToString } from '@vue/server-renderer'
+import { createSSRApp, h } from 'vue'
 import { describe, expect, it } from 'vitest'
 
 import type { ContentDetailResponse } from '../src/generated/api/client'
@@ -24,11 +24,12 @@ const baseItem = {
 } as unknown as ContentDetailResponse
 
 async function render(item: ContentDetailResponse): Promise<string> {
-  return renderToString(
-    createSSRApp({
-      render: () => h(ContentDetailDrawer, { modelValue: true, item, loading: false }),
-    }),
-  )
+  const app = createSSRApp({
+    render: () => h(ContentDetailDrawer, { modelValue: true, item, loading: false }),
+  })
+  const context: { teleports?: Record<string, string> } = {}
+  const html = await renderToString(app, context)
+  return [html, ...Object.values(context.teleports ?? {})].join('')
 }
 
 describe('content supplement status', () => {
