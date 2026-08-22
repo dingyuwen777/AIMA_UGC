@@ -31,9 +31,7 @@ OBSERVED_AT = datetime(2026, 8, 18, 10, 0, tzinfo=UTC)
 
 def _analysis_docs() -> str:
     root = Path(__file__).resolve().parents[3]
-    return (root / "docs" / "appendix" / "AI舆情打标与分析实现.md").read_text(
-        encoding="utf-8"
-    )
+    return (root / "docs" / "appendix" / "AI舆情打标与分析实现.md").read_text(encoding="utf-8")
 
 
 def _prompt_with_taxonomy_mutation(
