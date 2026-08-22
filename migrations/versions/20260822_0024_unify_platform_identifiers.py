@@ -105,6 +105,34 @@ def _rewrite_run_platforms(old: str, new: str) -> None:
     )
 
 
+def _create_platform_constraints() -> None:
+    # 0023 中这些 allowed 约束尚不存在。这里直接发出最终物理 DDL，避免
+    # 把已经按 naming convention 格式化的名称再次交给 Alembic 命名包装。
+    op.execute(
+        f"ALTER TABLE accounts ADD CONSTRAINT ck_accounts_platform_allowed "
+        f"CHECK (platform in {_ALLOWED})"
+    )
+    op.execute(
+        f"ALTER TABLE contents ADD CONSTRAINT ck_contents_platform_allowed "
+        f"CHECK (platform in {_ALLOWED})"
+    )
+    op.execute(
+        "ALTER TABLE collection_plan_platforms "
+        "ADD CONSTRAINT ck_collection_plan_platforms_platform_allowed "
+        f"CHECK (platform in {_ALLOWED})"
+    )
+    op.execute(
+        "ALTER TABLE collection_scopes "
+        "ADD CONSTRAINT ck_collection_scopes_platform_allowed "
+        f"CHECK (platform in {_ALLOWED})"
+    )
+    op.execute(
+        "ALTER TABLE keyword_pack_items "
+        "ADD CONSTRAINT ck_keyword_pack_items_platform_scope_allowed "
+        f"CHECK (platform_scope in {_SCOPE_ALLOWED})"
+    )
+
+
 def upgrade() -> None:
     connection = op.get_bind()
     _assert_no_identity_conflicts(connection)
@@ -157,28 +185,7 @@ def upgrade() -> None:
         existing_type=sa.Text(),
         existing_nullable=False,
     )
-
-    op.create_check_constraint(
-        op.f("ck_accounts_platform_allowed"), "accounts", f"platform in {_ALLOWED}"
-    )
-    op.create_check_constraint(
-        op.f("ck_contents_platform_allowed"), "contents", f"platform in {_ALLOWED}"
-    )
-    op.create_check_constraint(
-        op.f("ck_collection_plan_platforms_platform_allowed"),
-        "collection_plan_platforms",
-        f"platform in {_ALLOWED}",
-    )
-    op.create_check_constraint(
-        op.f("ck_collection_scopes_platform_allowed"),
-        "collection_scopes",
-        f"platform in {_ALLOWED}",
-    )
-    op.create_check_constraint(
-        op.f("ck_keyword_pack_items_platform_scope_allowed"),
-        "keyword_pack_items",
-        f"platform_scope in {_SCOPE_ALLOWED}",
-    )
+    _create_platform_constraints()
 
 
 def downgrade() -> None:
