@@ -211,3 +211,22 @@ test('creates explicit analysis and durable Excel export jobs', async ({ page })
     targets: { scope: 'selected', content_ids: [contentId] },
   })
 })
+
+test('keeps export history visible but disables empty query export creation', async ({ page }) => {
+  await page.unroute('**/api/v1/contents**')
+  await page.route('**/api/v1/contents**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ items: [], next_cursor: null, has_more: false }),
+    })
+  })
+
+  await page.goto('/voice-plaza')
+  await expect(page.getByRole('button', { name: /AI 打标/ })).toBeDisabled()
+  await page.getByRole('button', { name: /导出记录/ }).click()
+  const dialog = page.getByRole('dialog', { name: '导出声音记录' })
+  await expect(dialog.getByText('当前筛选没有可导出内容')).toBeVisible()
+  await expect(dialog.getByRole('radio', { name: /全部查询结果/ })).toBeDisabled()
+  await expect(dialog.getByRole('button', { name: '创建 Excel 导出' })).toBeDisabled()
+  await expect(dialog.getByText('最近导出记录')).toBeVisible()
+})
