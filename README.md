@@ -20,7 +20,7 @@ TikHub / Excel
 最重要的三个导航：
 
 - [`docs/代码结构与修改导航.md`](docs/代码结构与修改导航.md)：准备改代码时从这里找文件；
-- [`docs/blueprint/README.md`](docs/blueprint/README.md)：理解整个技术方案和详细设计；
+- [`docs/blueprint/README.md`](docs/blueprint/README.md)：理解核心长期架构和技术边界；
 - [`docs/roadmap/生产上线实施路线.md`](docs/roadmap/生产上线实施路线.md)：看当前做到哪里、还要怎么开发直到生产服务器上线。
 
 ---
@@ -49,7 +49,7 @@ tickets/
 dashboard/
 ```
 
-这些仍可以是后续 Stage 的已批准/待确认产品方向，但不能写成已经实现。
+这些仍可以是后续 Stage 的产品方向，但不能写成已经实现。
 
 公共基础能力主要位于：
 
@@ -200,7 +200,7 @@ backend/src/aima_ugc/adapters/providers/tikhub/runtime.py
 - [`docs/appendix/TikHub接口选型与真实验证台账.md`](docs/appendix/TikHub接口选型与真实验证台账.md)
 - `tests/fixtures/providers/tikhub/`
 
-原 Blueprint 10—12 的详细内容当前仍保留，不因新增 Appendix 被删除。
+这类 Provider 细节已经从核心 Blueprint 下沉到 Appendix/Collection 文档，避免 Blueprint 随平台实现无限增长。
 
 ---
 
@@ -495,13 +495,13 @@ Frontend → frontend/package.json + frontend/package-lock.json
 4. [`docs/blueprint/README.md`](docs/blueprint/README.md)
 5. [`docs/blueprint/07-技术决策与实施门禁.md`](docs/blueprint/07-技术决策与实施门禁.md)
 6. [`docs/roadmap/生产上线实施路线.md`](docs/roadmap/生产上线实施路线.md)
-7. 再读当前模块 README、Contract、Migration、代码和测试
+7. 再读当前模块 README、Appendix/Guide、Contract、Migration、代码和测试
 
 文档职责：
 
 ```text
 docs/blueprint/
-→ 核心架构 + 仍有效详细设计；09—17 当前继续保留
+→ README + 01—08 核心长期架构
 
 docs/roadmap/
 → 未完成阶段、下一步、生产上线
@@ -522,8 +522,10 @@ docs/collection/
 → 精确机器事实
 
 changes/archive/
-→ 历史变更原因和验证证据
+→ 已完成阶段/Change 的历史原因和验证证据
 ```
+
+原 Blueprint 09—17 的当前有效内容已经由 Appendix/Guide/README 承接，历史阶段过程由 `changes/archive/` 追溯，不再作为核心 Blueprint 长期维护。
 
 ---
 
@@ -547,7 +549,7 @@ env.production.example
 - 固定生产镜像/digest；
 - PostgreSQL + Artifact 协调 Backup/Restore；
 - 正式恢复/回滚演练；
-- 生产服务器完整 Smoke/Soak/容量验收。
+- 生产服务器完整 Smoke/Soak/容量/安全验收。
 
 这些不是“以后再写文档”，而是正式 Roadmap 的未完成阶段：
 
@@ -555,31 +557,11 @@ env.production.example
 - [`docs/appendix/生产部署与离线Release方案.md`](docs/appendix/生产部署与离线Release方案.md)
 - [`docs/环境运行与部署.md`](docs/环境运行与部署.md)
 
-另外，原 Stage 9 的 Monitoring/告警/VOC/工单，以及 Stage 10 Word 报告产品化是否作为首次上线阻塞项，要按产品优先级决定；**认证、Release、持久化、备份恢复、回滚不能跳过。**
+另外，Stage 9 Monitoring/告警/VOC/工单，以及 Stage 10 Word 报告产品化是否作为首次上线阻塞项，要按产品优先级决定；**认证、Release、持久化、备份恢复、回滚不能跳过。**
 
 ---
 
-## 13. 旧 Blueprint 为什么还在
-
-`docs/blueprint/09—17` 当前继续保留原详细技术设计。
-
-新增 Appendix/Guide 的目的，是补当前代码地图、勘误和实操性，不是用短摘要替代原文。
-
-后续只有在确认：
-
-```text
-旧文档所有有效主题
-→ 已完整迁移
-→ 当前事实已校正
-→ 下一阶段/生产方案没有丢失
-→ 导航和 CI 已同步
-```
-
-后，才适合删除旧文件。本轮优先保证信息完整和后续开发连续性。
-
----
-
-## 14. 常用验证入口
+## 13. 常用验证入口
 
 后端常用：
 
