@@ -7,7 +7,10 @@ import pytest
 from aima_ugc.adapters.persistence.postgres.collection_targets import PostgresCollectionTargetReader
 from aima_ugc.bootstrap.worker import create_worker_runtime
 from aima_ugc.modules.analysis.tables import analysis_content_results_table
-from aima_ugc.modules.collection.tables import provider_request_attempts_table, provider_requests_table
+from aima_ugc.modules.collection.tables import (
+    provider_request_attempts_table,
+    provider_requests_table,
+)
 from aima_ugc.modules.content.extended_tables import content_external_ids_table
 from aima_ugc.modules.content.tables import content_versions_table, contents_table
 from aima_ugc.modules.ingestion.import_job import IMPORT_JOB_PAYLOAD_VERSION, IMPORT_JOB_TYPE
