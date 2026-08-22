@@ -2,6 +2,7 @@
 
 from uuid import UUID
 
+from aima_ugc.contracts.platform import PlatformScope
 from aima_ugc.modules.collection.scheduled_scopes import (
     ScheduledKeywordEntry,
     build_scheduled_scope_snapshot,
@@ -23,7 +24,7 @@ def _entry(
     text: str,
     normalized_text: str,
     keyword_enabled: bool = True,
-    item_platform: str = "all",
+    item_platform_scope: PlatformScope = "all",
     priority: int = 100,
     item_enabled: bool = True,
 ) -> ScheduledKeywordEntry:
@@ -35,7 +36,7 @@ def _entry(
         keyword_text=text,
         keyword_normalized_text=normalized_text,
         keyword_enabled=keyword_enabled,
-        item_platform=item_platform,
+        item_platform_scope=item_platform_scope,
         priority=priority,
         item_enabled=item_enabled,
     )
@@ -51,7 +52,7 @@ def test_all_platform_keyword_expands_to_explicit_plan_platform_scopes() -> None
                 keyword_id=_KEYWORD_AIMA,
                 text="爱玛",
                 normalized_text="爱玛",
-                item_platform="all",
+                item_platform_scope="all",
                 priority=10,
             ),
             _entry(
@@ -60,7 +61,7 @@ def test_all_platform_keyword_expands_to_explicit_plan_platform_scopes() -> None
                 keyword_id=_KEYWORD_EV,
                 text="电动车",
                 normalized_text="电动车",
-                item_platform="xiaohongshu",
+                item_platform_scope="xiaohongshu",
                 priority=20,
             ),
         ),
@@ -86,7 +87,7 @@ def test_duplicate_keyword_from_multiple_packs_produces_one_scope_per_platform()
                 keyword_id=_KEYWORD_AIMA,
                 text="爱玛",
                 normalized_text="爱玛",
-                item_platform="all",
+                item_platform_scope="all",
                 priority=20,
             ),
             _entry(
@@ -95,7 +96,7 @@ def test_duplicate_keyword_from_multiple_packs_produces_one_scope_per_platform()
                 keyword_id=_KEYWORD_AIMA,
                 text="爱玛",
                 normalized_text="爱玛",
-                item_platform="xiaohongshu",
+                item_platform_scope="xiaohongshu",
                 priority=5,
             ),
         ),
@@ -130,7 +131,7 @@ def test_disabled_or_non_plan_entries_do_not_create_scopes_but_pack_versions_sta
                 keyword_id=_KEYWORD_EV,
                 text="B站词",
                 normalized_text="B站词",
-                item_platform="bilibili",
+                item_platform_scope="bilibili",
             ),
             _entry(
                 pack_id=_PACK_B,
