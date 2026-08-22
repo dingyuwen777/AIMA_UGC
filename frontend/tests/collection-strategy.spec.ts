@@ -21,6 +21,15 @@ vi.mock('../src/generated/api/client', () => generated)
 import { createPlan, fetchKeywordPacks } from '../src/features/collection-strategy/api'
 import { useCollectionStrategyStore } from '../src/features/collection-strategy/store'
 
+const globalPack = {
+  id: '11111111-1111-4111-8111-111111111111',
+  name: '全局相关性词包',
+  description: '',
+  enabled: true,
+  version: 1,
+  keyword_count: 1,
+}
+
 describe('collection strategy feature', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -112,5 +121,29 @@ describe('collection strategy feature', () => {
       offset: 20,
       limit: 20,
     })
+  })
+
+  it('does not send a disable request for the keyword pack used by global relevance', async () => {
+    generated.listKeywordPacks.mockResolvedValue({
+      items: [globalPack],
+      total: 1,
+      offset: 0,
+      limit: 100,
+    })
+    generated.getGlobalRelevanceConfig.mockResolvedValue({
+      keyword_pack_id: globalPack.id,
+      keyword_pack_version: 1,
+      version: 1,
+      effective_keywords: ['爱玛'],
+      updated_at: '2026-08-22T00:00:00Z',
+    })
+    generated.updateKeywordPackEnabled.mockResolvedValue({ ...globalPack, enabled: false })
+    const store = useCollectionStrategyStore()
+    await store.refresh()
+
+    await store.togglePack(globalPack)
+
+    expect(generated.updateKeywordPackEnabled).not.toHaveBeenCalled()
+    expect(store.error).toContain('全局 Relevance')
   })
 })
