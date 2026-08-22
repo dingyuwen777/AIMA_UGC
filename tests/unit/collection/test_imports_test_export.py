@@ -123,7 +123,7 @@ def test_imports_test_export_raw_excel_uses_configured_review_columns(
         )
         assert tuple(cell.value for cell in comment_sheet[1]) == _EXPECTED_IMPORTS_COMMENT_COLUMNS
         assert tuple(cell.value for cell in content_sheet[2]) == (
-            "xiaohongshu",
+            "小红书",
             "离线内容",
             "正文",
             "作者甲",
