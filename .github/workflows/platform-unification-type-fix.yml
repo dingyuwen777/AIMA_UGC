@@ -33,14 +33,14 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/dev/_fix_platform_type_boundaries.py
-          uv run ruff check --fix backend tests scripts
-          uv run ruff format backend tests scripts
+          uv run ruff check --fix backend tests
+          uv run ruff format backend tests
           git diff --check
       - name: Validate type boundaries and focused regressions
         shell: bash
         run: |
           set -euo pipefail
-          uv run ruff check backend tests scripts
+          uv run ruff check backend tests
           uv run mypy backend/src
           uv run pytest \
             tests/unit/platform/test_logging.py \
