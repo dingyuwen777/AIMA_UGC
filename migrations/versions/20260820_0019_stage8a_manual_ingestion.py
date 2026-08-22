@@ -132,7 +132,9 @@ def downgrade() -> None:
 
 
 def _replace_provider_request_lineage_guard(*, include_import_batch: bool) -> None:
-    op.execute("DROP TRIGGER IF EXISTS trg_provider_request_lineage_immutable ON provider_requests")
+    op.execute(
+        "DROP TRIGGER IF EXISTS trg_provider_request_lineage_immutable ON provider_requests"
+    )
     op.execute("DROP FUNCTION IF EXISTS guard_provider_request_lineage()")
 
     if include_import_batch:
