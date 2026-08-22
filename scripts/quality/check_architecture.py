@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "backend" / "src" / "aima_ugc"
+MIGRATIONS = ROOT / "migrations" / "versions"
 
 
 def _path(value: str) -> Path:
@@ -25,7 +26,6 @@ REQUIRED = [
     _path("migrations/versions/20260814_0003_stage5b_collection_execution.py"),
     _path("migrations/versions/20260814_0004_stage5c_provider_persistence.py"),
     _path("migrations/versions/20260814_0005_stage5d_provider_dispatch.py"),
-    _path("migrations/versions/20260814_0006_stage6_xiaohongshu_vertical_slice.py"),
     _path("migrations/versions/20260814_0007_stage6_candidate_guard.py"),
     _path("migrations/versions/20260814_0008_stage6_account_external_ids.py"),
     _path("migrations/versions/20260814_0009_stage6_candidate_ledger_guards.py"),
@@ -93,6 +93,23 @@ FORBIDDEN = [
     _path("backend/uv.lock"),
     _path("backend/tests"),
 ]
+
+
+def _migration_revision_exists(revision: str) -> bool:
+    """历史 Migration 文件名不可改写，因此按稳定 Revision ID 验证其存在。"""
+    for path in MIGRATIONS.glob("*.py"):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except SyntaxError:
+            continue
+        for node in tree.body:
+            if not isinstance(node, ast.AnnAssign) or not isinstance(node.target, ast.Name):
+                continue
+            if node.target.id != "revision" or not isinstance(node.value, ast.Constant):
+                continue
+            if node.value.value == revision:
+                return True
+    return False
 
 
 def _imports(path: Path) -> set[str]:
@@ -172,6 +189,8 @@ def main() -> int:
     for path in REQUIRED:
         if not path.exists():
             errors.append(f"ARCH001 {path.relative_to(ROOT)}: Stage 1–7 必需文件不存在")
+    if not _migration_revision_exists("20260814_0006"):
+        errors.append("ARCH001 revision=20260814_0006: Stage 6 历史 Migration 不存在")
     for path in FORBIDDEN:
         if path.exists():
             errors.append(f"ARCH002 {path.relative_to(ROOT)}: 方案 A 禁止创建第二套 backend 工程")
