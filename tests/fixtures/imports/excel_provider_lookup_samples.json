@@ -1,0 +1,47 @@
+{
+  "source": "惠科data(0817-0819).xlsx",
+  "sheet": "文章",
+  "note": "仅保留用户上传 Excel 中的公开帖子 URL、来源行号和来源文章编号；不包含正文、作者、密钥或 TikHub Raw。",
+  "platforms": {
+    "xiaohongshu": [
+      {"row": 3, "article_id": "5e1968f135ce44ad838f650d3205d94d", "url": "https://www.xiaohongshu.com/explore/6a85c701000000001d0040e2"},
+      {"row": 4, "article_id": "eeb175f6b96ce3aa5dc3814d888a8132", "url": "https://www.xiaohongshu.com/explore/6a85c2d40000000006004335"},
+      {"row": 5, "article_id": "e1f6218605956f51bb41d70a35d2d1db", "url": "https://www.xiaohongshu.com/explore/6a85ad4100000000350175d1?app_platform=ios&source=app_share"},
+      {"row": 6, "article_id": "90cce0445aead403c2ddc63a25ac238", "url": "https://www.xiaohongshu.com/explore/6a85ad1c000000002c0058b3?app_platform=ios&source=app_share"},
+      {"row": 7, "article_id": "a0b96ffbc3cbe11334e16f48a88c0ea3", "url": "https://www.xiaohongshu.com/explore/6a85aa640000000005032707"},
+      {"row": 8, "article_id": "3ae6aab9502ef42b9a302b04cc24507", "url": "https://www.xiaohongshu.com/explore/6a859dc500000000060045d3"}
+    ],
+    "douyin": [
+      {"row": 10, "article_id": "4bbf18abf1abf7cd39f58ff5d1ce5d27", "url": "https://www.douyin.com/share/video/7675702103746898533"},
+      {"row": 22, "article_id": "b48827a69fd4278dcb325ad6c50b7c57", "url": "https://www.iesdouyin.com/share/video/7675628205508711089"},
+      {"row": 25, "article_id": "439263b497e4b3399608768dda192c08", "url": "https://www.douyin.com/share/video/7675587953960060529"},
+      {"row": 37, "article_id": "3b458352c789e337313c7e179bf42b07", "url": "https://www.douyin.com/share/video/7675563008827302769"},
+      {"row": 39, "article_id": "dec0cc2641359882a23c7922dd9fdee3", "url": "https://www.douyin.com/share/video/7675558950963651066"},
+      {"row": 47, "article_id": "988a799f9f7ed1697437db7b1fcf94db", "url": "https://www.douyin.com/share/video/7675528583591419048"}
+    ],
+    "weibo": [
+      {"row": 14, "article_id": "579408948a641a0bbc2b7f72bb60d6f5", "url": "http://weibo.com/1914372032/Re8y6x01w"},
+      {"row": 452, "article_id": "54d09cece281496d66ac477daaa898be", "url": "http://weibo.com/8265773356/ReaInANl3"},
+      {"row": 453, "article_id": "ab22f7c35670f336c83c3b88e99aa438", "url": "http://weibo.com/2954436561/ReaIk4hH9"},
+      {"row": 465, "article_id": "2c8866ad1c696274872c85dd35d5e8ef", "url": "http://weibo.com/7831785617/ReaHMAaGp"},
+      {"row": 485, "article_id": "3d760bec15a930ef6c78bdec5e237506", "url": "http://weibo.com/7794033920/ReaGOnSfh"},
+      {"row": 543, "article_id": "d325f0e50c5fed3eabb2d6314267bb15", "url": "http://weibo.com/7780364723/ReaEcmzaf"}
+    ],
+    "bilibili": [
+      {"row": 1770, "article_id": "e51256eaeb292f6216d21de4cd7dc058", "url": "https://www.bilibili.com/video/av117122567048434/"},
+      {"row": 2432, "article_id": "a7a649d6e3ca41356ca972ec3f657542", "url": "https://www.bilibili.com/video/av117119547215182/"},
+      {"row": 4964, "article_id": "38102561a73487bd1751d50d1d45c6ae", "url": "https://www.bilibili.com/video/av117121895894349/"},
+      {"row": 7224, "article_id": "d62ee37e38afbd74e5129b257972e5d0", "url": "https://www.bilibili.com/video/av117121476529398/"},
+      {"row": 9016, "article_id": "9a1aed74dd8ee64880a0b7f045839da5", "url": "https://www.bilibili.com/video/av117119630968430/"},
+      {"row": 9236, "article_id": "b1cc307ca49429fd19678c4ac72d909", "url": "https://www.bilibili.com/video/av117121107432573/"}
+    ],
+    "kuaishou": [
+      {"row": 456, "article_id": "cf624299f76ad8e562474703b9b74b7b", "url": "https://live.kuaishou.com/u/3xsvp556vkpta2e/3xkfnk9freeuzuc"},
+      {"row": 51, "article_id": "50bbb81bac5bfb3bb3de84c2e4c1c169", "url": "https://www.kuaishou.com/short-video/3x8hhinajs8pgpq"},
+      {"row": 101, "article_id": "29fe1ebea5584f1cde318440837d207f", "url": "https://www.kuaishou.com/short-video/3xsx8zpayhdcyd9"},
+      {"row": 523, "article_id": "492af3f80148b754ccca51206d567a", "url": "https://www.kuaishou.com/short-video/3xciyg72e4gq3za"},
+      {"row": 591, "article_id": "951ee43f676882e8566abb0c2e8199c8", "url": "https://www.kuaishou.com/short-video/3x7t4m2qkdffcbe"},
+      {"row": 596, "article_id": "9f9ff4143165ace9c8f16731918d1aa9", "url": "https://www.kuaishou.com/short-video/3xiutghi7jb2q5y"}
+    ]
+  }
+}
