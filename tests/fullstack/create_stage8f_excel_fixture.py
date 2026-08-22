@@ -10,7 +10,9 @@ from openpyxl import Workbook
 
 def main() -> int:
     if len(sys.argv) != 2:
-        raise SystemExit("用法: python tests/fullstack/create_stage8f_excel_fixture.py <output.xlsx>")
+        raise SystemExit(
+            "用法: python tests/fullstack/create_stage8f_excel_fixture.py <output.xlsx>"
+        )
 
     output = Path(sys.argv[1])
     output.parent.mkdir(parents=True, exist_ok=True)
