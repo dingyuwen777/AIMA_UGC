@@ -437,6 +437,17 @@ class CollectionRuntimeSummaryResponse(BaseModel):
     as_of: datetime
 
 
+class ContentSupplementStatusResponse(BaseModel):
+    """声音广场只读补采状态；不公开 Provider 私有请求与原始错误详情。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: UUID
+    status: CollectionRuntimeStatus
+    stop_reason: str | None = None
+    updated_at: datetime
+
+
 class KeywordPackCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -823,6 +834,7 @@ class ContentDetailResponse(ContentListItemResponse):
     media: tuple[ContentMediaResponse, ...] = ()
     comments: tuple[ContentCommentResponse, ...] = ()
     comment_coverage: CommentCoverageResponse | None = None
+    supplement_status: ContentSupplementStatusResponse | None = None
     source_records: tuple[ContentSourceResponse, ...] = ()
 
 
@@ -945,6 +957,7 @@ __all__ = [
     "ContentMediaResponse",
     "ContentMetricsResponse",
     "ContentSourceResponse",
+    "ContentSupplementStatusResponse",
     "ContentTargetSelection",
     "DataExportCreatedResponse",
     "DataExportJobResultResponse",
