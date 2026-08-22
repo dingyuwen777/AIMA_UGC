@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260822-stage8f-fullstack-acceptance
 title: Stage 8F 前后端业务闭环与真实 Excel 验收
 level: L2
-status: in_progress
+status: ready_for_review
 owner: chatgpt
 branch: feature/stage8f-fullstack-acceptance
 created: 2026-08-22
@@ -46,7 +46,7 @@ data_changes: []
 - [x] Full-stack Acceptance 使用隔离 PostgreSQL、真实生产 Import Reader/Mapper/Ingestion/Worker，且不调用真实付费 TikHub/LLM。
 - [x] Full-stack Acceptance 完成后清理隔离业务数据。
 - [x] 现有 Mock Playwright E2E 保留。
-- [ ] 最新 PR HEAD 的 Frontend lint/typecheck/unit/build/E2E、Backend/Integration、质量门禁与 Stage 8F Full-stack CI 全部通过。
+- [ ] 合并前最终 PR HEAD 的 Frontend lint/typecheck/unit/build/E2E、Backend/Integration、质量门禁与 Stage 8F Full-stack CI 全部通过；该事实以 GitHub 最新 HEAD CI 为准，并在归档 Change 记录最终 SHA/Run，避免为“记录最终 CI”再次改变待合并 HEAD。
 - [x] Roadmap、Frontend README 与实际实现同步。
 
 # 范围
@@ -91,9 +91,9 @@ data_changes: []
 - [x] Green：做最小前端修复并保持现有 Contract/Store 调用链不变。
 - [x] 建立真实 Excel Full-stack Acceptance harness、Playwright 用例和永久 CI 门禁。
 - [x] 建立并同步首版前后端能力矩阵。
-- [ ] 等待最新 PR HEAD 的完整回归与所有永久 CI。
-- [ ] 完成需求符合性 Review 与代码质量 Review。
-- [ ] 将 PR 从 Draft 转为可合并状态，确认最新 HEAD 全部门禁通过后按授权合并。
+- [x] 完成需求符合性 Review 与代码质量 Review；未发现严重/重要问题。
+- [ ] 等待本次 `ready_for_review` 元数据提交后的最终 PR HEAD 完整回归与所有永久 CI。
+- [ ] 将 PR 从 Draft 转为可合并状态，确认最终 HEAD 全部门禁通过后按授权合并。
 - [ ] 合并后归档 Change，并再次走正常 PR/CI 门禁。
 
 # 验证
@@ -137,7 +137,35 @@ HEAD `41218a990311e9daad0c611f7f6a2200597ca5e3`：
 - 测试后停止进程、TRUNCATE 隔离数据并核对 Content / Import Batch 为 0 success；
 - 该链没有创建 TikHub Run 或 Analysis Request，不调用真实付费 TikHub/LLM。
 
-同一 HEAD 的 `CI / Stage 3A Database` 已 success，包括 PostgreSQL repository integration 与 Stage 8B Import HTTP/Worker integration。`CI / Stage 1` 曾因新增 fixture 的 Ruff format 检查失败，随后仅按 Ruff 要求调整换行；最新 HEAD 需要重新取得完整绿色证据。
+HEAD `94b0dfccc3597094ef383350e9061cfa9cc41deb`：
+
+- 永久 `CI` run `32558443240` 全部 success：Stage 1、Stage 2 Platform、Stage 3A Database、Windows bootstrap；
+- Stage 1 包含 locked environment、generated contracts/client、仓库质量检查、Wheel build、Frontend lint/typecheck/unit/build/Mock Playwright E2E；
+- Stage 3A 包含 PostgreSQL repository integration 与 Stage 8B Import HTTP/Worker integration；
+- `Stage 8F Full-stack Acceptance` run `32558443223` success；
+- 同一 HEAD 的 Stage 6 与四条 Stage 7 永久 workflow 也全部 success。
+
+本文件切换为 `ready_for_review` 会产生一个仅 Change 元数据变化的新 HEAD。合并前必须再次确认该最终 HEAD 的全部永久 workflow success；最终 SHA/Run 在归档 Change 中记录，避免再次修改待合并 HEAD 形成自引用循环。
+
+## 两阶段 Review
+
+### 需求符合性
+
+- Stage 8F 核心 Excel 浏览器链已由不 Mock API 的真实测试覆盖；
+- App Shell、五平台筛选、Batch → Voice Plaza 缺口已修复；
+- 采集策略、Analysis、Export 继续复用当前正式能力和既有自动化测试；
+- 没有进入 Docker/Compose、认证、历史迁移或其他非目标；
+- Roadmap、能力矩阵和 Frontend README 已同步。
+
+### 代码质量
+
+- 没有手改 `frontend/src/generated/api/`，没有新增第二套 HTTP Contract；
+- 没有修改 Schema/Migration/Content 身份/Job Runtime；
+- Full-stack Worker harness 复用生产 Worker Registry 与 `JobWorker.run_once()`，不复制 Import 业务逻辑；
+- Full-stack 测试使用隔离 PostgreSQL，测试 Secret 为非生产固定值，普通 CI 不调用付费 Provider/LLM；
+- 测试清理只作用于隔离 CI PostgreSQL；
+- 没有新增或升级依赖，没有降低 lint/typecheck/security/docs/CI 门禁；
+- PR 变更范围与 Change 一致，未发现严重/重要 Review 问题；当前 PR 无外部 review、inline thread 或未解决评论。
 
 ## 开始事实
 
