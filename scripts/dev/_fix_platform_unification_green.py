@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 _TEXT_SUFFIXES = {".py", ".ts", ".vue", ".json", ".md", ".toml", ".yml", ".yaml"}
 _EXCLUDED_PREFIXES = (
+    ".github/workflows/",
     "changes/",
     "migrations/versions/",
     "tests/fixtures/providers/tikhub/",
