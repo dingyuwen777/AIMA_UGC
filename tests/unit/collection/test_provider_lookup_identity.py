@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import uuid4
 
+import pytest
 from aima_ugc.adapters.providers.imports.identity import resolve_content_identity
 from aima_ugc.adapters.providers.tikhub.runtime import build_comments_call, build_detail_call
 from aima_ugc.contracts.canonical import CanonicalContentV1, CanonicalSourceV1
@@ -64,6 +65,78 @@ def test_excel_standard_urls_record_typed_provider_lookup_ids() -> None:
         )
         assert identity.external_content_id == expected_id
         assert identity.alternate_ids[id_type] == expected_id
+
+
+@pytest.mark.parametrize(
+    ("platform", "url", "article_id", "id_type", "expected_id"),
+    (
+        (
+            "xiaohongshu",
+            "https://www.xiaohongshu.com/explore/6a85c701000000001d0040e2",
+            "5e1968f135ce44ad838f650d3205d94d",
+            "note_id",
+            "6a85c701000000001d0040e2",
+        ),
+        (
+            "douyin",
+            "https://www.douyin.com/share/video/7675702103746898533",
+            "4bbf18abf1abf7cd39f58ff5d1ce5d27",
+            "aweme_id",
+            "7675702103746898533",
+        ),
+        (
+            "douyin",
+            "https://www.iesdouyin.com/share/video/7675628205508711089",
+            "b48827a69fd4278dcb325ad6c50b7c57",
+            "aweme_id",
+            "7675628205508711089",
+        ),
+        (
+            "weibo",
+            "http://weibo.com/1914372032/Re8y6x01w",
+            "579408948a641a0bbc2b7f72bb60d6f5",
+            "status_id",
+            "5333694587864918",
+        ),
+        (
+            "bilibili",
+            "https://www.bilibili.com/video/av117119547215182/",
+            "a7a649d6e3ca41356ca972ec3f657542",
+            "av_id",
+            "117119547215182",
+        ),
+        (
+            "kuaishou",
+            "https://www.kuaishou.com/short-video/3x8hhinajs8pgpq",
+            "50bbb81bac5bfb3bb3de84c2e4c1c169",
+            "photo_id",
+            "3x8hhinajs8pgpq",
+        ),
+        (
+            "kuaishou",
+            "https://live.kuaishou.com/u/3xsvp556vkpta2e/3xkfnk9freeuzuc",
+            "19a0d4934f7e7c0d11c90c1e6bb91426",
+            "photo_id",
+            "3xkfnk9freeuzuc",
+        ),
+    ),
+)
+def test_uploaded_excel_urls_prefer_native_lookup_over_source_article_id(
+    platform: str,
+    url: str,
+    article_id: str,
+    id_type: str,
+    expected_id: str,
+) -> None:
+    identity = resolve_content_identity(
+        platform=platform,
+        canonical_url=url,
+        source_article_id=article_id,
+    )
+
+    assert identity.external_content_id == expected_id
+    assert identity.alternate_ids[id_type] == expected_id
+    assert identity.alternate_ids["source_article_id"] == article_id
 
 
 def test_excel_douyin_modal_id_is_typed_aweme_lookup() -> None:
