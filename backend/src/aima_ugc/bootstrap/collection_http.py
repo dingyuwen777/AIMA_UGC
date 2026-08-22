@@ -89,6 +89,7 @@ from aima_ugc.modules.collection.runtime_query import (
 )
 from aima_ugc.platform.security import SecretFileError, read_secret_file
 
+from .analysis_identity import current_analysis_identity
 from .runtime import PlatformRuntime
 
 _COLLECTION_JOB_MAX_ATTEMPTS = 2
@@ -383,8 +384,8 @@ class PostgresCollectionHttpService:
             snapshots.append(provider_run_snapshot(config, platform=selection.platform))
         return tuple(snapshots)
 
-    @staticmethod
     def _build_scopes(
+        self,
         session: Session,
         request: CollectionRunCreateRequest,
     ) -> tuple[CollectionScopeDefinition, ...]:
@@ -400,7 +401,10 @@ class PostgresCollectionHttpService:
                 for keyword in request.keywords
             )
         assert request.import_batch_id is not None
-        reader = PostgresCollectionTargetReader(session)
+        reader = PostgresCollectionTargetReader(
+            session,
+            analysis_identity=current_analysis_identity(self._runtime.settings),
+        )
         if not reader.batch_exists(request.import_batch_id):
             raise CollectionResourceNotFound
         selected_platforms = tuple(selection.platform for selection in request.platforms)
