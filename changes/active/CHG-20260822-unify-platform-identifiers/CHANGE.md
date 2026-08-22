@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260822-unify-platform-identifiers
 title: 五平台机器标识统一
 level: L3
-status: in_progress
+status: ready_for_review
 owner: chatgpt
 branch: refactor/unify-platform-identifiers
 created: 2026-08-22
@@ -71,26 +71,26 @@ kuaishou
 
 # 可观察成功标准
 
-- [ ] `PlatformName` / `CollectionPlatform` 只允许 `xiaohongshu / douyin / weibo / bilibili / kuaishou`；
-- [ ] HTTP Request/Query 与 Excel 等外部输入接受完整正式平台名的大小写差异并立即归一化为小写，仍拒绝 `xhs / red / dy / wb / ks / bili` 等简称/别名；
-- [ ] Provider Capability、Canonical Content/Comment Mapper 只输出五个正式平台机器值；
-- [ ] Excel Profile 只把明确中文展示名或正式机器值归一化为五个正式值，不接受 `xhs / red / dy / wb / ks / bili` 等平台简称作为机器输入；
-- [ ] Excel 最终展示列使用 `小红书 / 抖音 / 微博 / 哔哩哔哩 / 快手`，但内部记录与 Contract 仍保持正式机器值；
-- [ ] `platform_display_name()` 只接受 `PlatformName`，不维护中文/简称反向兼容映射；
-- [ ] Collection Plan / Run / Scope / Batch Supplement / Frontend generated client 全部使用五个正式平台机器值；
-- [ ] 删除运行时平台 alias/双值转换，不保留简称兼容层；
-- [ ] 当前有效源码路径、类/函数/常量、Job type、schema version、Workflow 名称、日志/事件机器标识、配置、测试与正式文档不继续使用平台简称；
-- [ ] 第三方 Raw Artifact/Raw Fixture、历史归档 Change、旧 Migration 不因本任务伪造性改写；本 Migration 和 Migration 生命周期测试可以显式引用旧值以完成一次性迁移验证；
-- [ ] 新 Alembic Migration 一次性迁移当前持久化平台字段中的旧小红书机器值，并为稳定平台身份列增加五值 CHECK；
-- [ ] Migration 在会造成业务身份唯一键冲突时 fail closed，不静默删除/合并 Content、Account 或历史来源；
-- [ ] Migration downgrade 只恢复 Schema/字段名，不猜测哪些 `xiaohongshu` 行原先来自旧值；生产级数据回滚依赖升级前 PostgreSQL 备份；
-- [ ] OpenAPI / generated client 同步且 drift check 通过；
-- [ ] PostgreSQL 空库升级、Migration downgrade/re-upgrade、目标迁移数据与冲突测试通过；
-- [ ] Backend Unit / Contract / API / Integration 相关测试通过；
-- [ ] Frontend lint / TypeScript 7 / Vue typecheck / Unit / build / Mock E2E 通过；
-- [ ] Stage 8F 真实 Excel Full-stack Acceptance 继续通过；
-- [ ] Blueprint / Appendix / Collection README / Frontend README 与代码一致；
-- [ ] 合并前两阶段 Review 无未解决严重/重要问题；
+- [x] `PlatformName` / `CollectionPlatform` 只允许 `xiaohongshu / douyin / weibo / bilibili / kuaishou`；
+- [x] HTTP Request/Query 与 Excel 等外部输入接受完整正式平台名的大小写差异并立即归一化为小写，仍拒绝 `xhs / red / dy / wb / ks / bili` 等简称/别名；
+- [x] Provider Capability、Canonical Content/Comment Mapper 只输出五个正式平台机器值；
+- [x] Excel Profile 只把明确中文展示名或正式机器值归一化为五个正式值，不接受 `xhs / red / dy / wb / ks / bili` 等平台简称作为机器输入；
+- [x] Excel 最终展示列使用 `小红书 / 抖音 / 微博 / 哔哩哔哩 / 快手`，但内部记录与 Contract 仍保持正式机器值；
+- [x] `platform_display_name()` 只接受 `PlatformName`，不维护中文/简称反向兼容映射；
+- [x] Collection Plan / Run / Scope / Batch Supplement / Frontend generated client 全部使用五个正式平台机器值；
+- [x] 删除运行时平台 alias/双值转换，不保留简称兼容层；
+- [x] 当前有效源码路径、类/函数/常量、Job type、schema version、Workflow 名称、日志/事件机器标识、配置、测试与正式文档不继续使用平台简称；
+- [x] 第三方 Raw Artifact/Raw Fixture、历史归档 Change、旧 Migration 不因本任务伪造性改写；本 Migration 和 Migration 生命周期测试可以显式引用旧值以完成一次性迁移验证；
+- [x] 新 Alembic Migration 一次性迁移当前持久化平台字段中的旧小红书机器值，并为稳定平台身份列增加五值 CHECK；
+- [x] Migration 在会造成业务身份唯一键冲突时 fail closed，不静默删除/合并 Content、Account 或历史来源；
+- [x] Migration downgrade 只恢复 Schema/字段名，不猜测哪些 `xiaohongshu` 行原先来自旧值；生产级数据回滚依赖升级前 PostgreSQL 备份；
+- [x] OpenAPI / generated client 同步且 drift check 通过；
+- [x] PostgreSQL 空库升级、Migration downgrade/re-upgrade、目标迁移数据与冲突测试通过；
+- [x] Backend Unit / Contract / API / Integration 相关测试通过；
+- [x] Frontend lint / TypeScript 7 / Vue typecheck / Unit / build / Mock E2E 通过；
+- [x] Stage 8F 真实 Excel Full-stack Acceptance 继续通过；
+- [x] Blueprint / Appendix / Collection README / Frontend README 与代码一致；
+- [x] 合并前两阶段 Review 无未解决严重/重要问题；
 - [ ] PR 合并到 `main` 后 Change 归档。
 
 # 范围
@@ -259,18 +259,18 @@ npm --prefix frontend run test:e2e:fullstack
 
 # 文档影响
 
-至少检查并同步：
+已检查并按受影响语义同步：
 
 - `docs/blueprint/02-采集系统与数据标准化.md`
 - `docs/blueprint/03-数据库与文件存储.md`
-- `docs/blueprint/05-日志安全部署与运维.md`
+- `docs/blueprint/05-日志安全部署与运维.md`（检查后无需制造无关修改）
 - `docs/blueprint/07-技术决策与实施门禁.md`
 - `docs/blueprint/08-采集策略与平台能力.md`
 - `docs/appendix/数据入口与统一入库实现.md`
 - `docs/appendix/TikHub五平台真实响应与字段映射.md`
 - `docs/appendix/Stage8F前后端能力矩阵与真实验收.md`
 - `docs/collection/README.md`
-- `frontend/README.md`
+- `frontend/README.md`（精确 HTTP 字段由 generated Contract 维护，检查后无需复制第二套平台枚举）
 
 # Git / PR / 验证证据
 
@@ -286,6 +286,89 @@ npm --prefix frontend run test:e2e:fullstack
 refactor/unify-platform-identifiers
 ```
 
-PR：`#149`。
+PR：`#149 统一五平台机器标识为完整名称`。
 
-Red/Green、最终 CI、Review、merge 与 archive 证据在实施过程中持续补充。
+## Red / Green 与根因修复
+
+本 Change 先通过平台标识一致性门禁暴露旧平台身份，再系统迁移 Contract、Schema、Runtime、Frontend、测试和正式文档。最终收尾阶段额外定位并修复了以下真实回归：
+
+- 集成测试曾把第三方 `external_content_id / external_comment_id` 跟着内部平台机器值改名；已改为从 Provider Fixture 读取并断言原样持久化，不修改生产 Mapper；
+- Stage 8E/8F 测试 seed 仍使用旧 `keyword_pack_items.platform`；已对齐 `platform_scope`；
+- Stage 6 根评论测试人工改写第三方 note ID，导致评论找不到父 Content；已改为读取 Fixture `note_id`；
+- 新 Contract 门禁对 Python 3.14 PEP 695 type alias 和 SQLAlchemy naming convention 的反射假设错误；已改为验证实际 `TypeAdapter` 行为和物理约束命名；
+- Stage 7 Workflow、Frontend Store/Component/E2E Mock 仍有旧字段或旧路径；均已对齐正式 `xiaohongshu` / `platform_scope` Contract。
+
+这些修复没有降低门禁、没有增加平台别名兼容层，也没有修改 Provider Raw Fixture 字节。
+
+## 新鲜 CI
+
+业务实现验证 HEAD：
+
+```text
+d0e1782146b7f5b33ad7307a63f0779359d4bb63
+```
+
+该 HEAD 的 13 个永久 PR Workflow 全部 `success`：
+
+```text
+CI #2049
+Stage 4 Job Runtime #883
+Stage 5A Provider Raw #1428
+Stage 5B Collection Execution #1386
+Stage 5C Provider Persistence #1383
+Stage 5D Provider Dispatch #1443
+Stage 6 Xiaohongshu Vertical Slice #47
+Stage 7 Keyword Packs #1659
+Stage 7 Provider Config Routing #1772
+Stage 7 Plan Occurrence Run Snapshot #1657
+Stage 7 Scheduler Runtime #1999
+Stage 8F Full-stack Acceptance #176
+Stage 1-7 Audit Correctness #941
+```
+
+`CI #2049` 内部：
+
+```text
+Stage 1            success
+Stage 2 Platform   success
+Stage 3A Database  success
+Windows bootstrap  success
+```
+
+Stage 1 实际覆盖并成功：generated Contract/client 漂移检查、Ruff、mypy、Backend Unit/Contract/API、Architecture/Table Owner/Secret/Docs、Wheel、Frontend lint、TypeScript 7 + Vue typecheck、Frontend Unit、production build 和 Mock Playwright E2E。Stage 3A 覆盖空库 Migration、Repository/Import Integration 与 downgrade/re-upgrade。Stage 8F 使用隔离 PostgreSQL、真实 FastAPI、正式 Worker 和生产 Excel Reader/Mapper/Ingestion 完成真实 Browser Acceptance。
+
+Provider Fixture 目录从旧简称路径重命名为正式路径时，JSON/README blob 内容保持不变；外部 Content/Comment ID 回归测试也从真实 Fixture 读取 ID，确认本 Change 没有伪造第三方身份。
+
+本 Change 证据提交后仍必须以 PR 最新 HEAD 重新执行永久 CI，只有最新 HEAD 门禁全绿才允许 Ready/merge。
+
+## 两阶段 Review
+
+### 需求符合性
+
+逐项复核 Change 成功标准、Contract、Migration、generated client、Provider/Canonical/Collection/Content、Excel 输入与中文展示、Frontend、测试和正式文档：
+
+- 内部机器值只有五个正式值；
+- 外部正式全名仅做大小写/空白归一化，平台简称仍拒绝；
+- `all` 只存在于 `platform_scope`；
+- Provider Raw/Fixture 内容、外部 Content/Comment ID、历史归档 Change、旧 Migration 均未被伪造性改写；
+- Migration 的冲突检测、不可逆数据回滚边界和停写→upgrade→新代码启动顺序与设计一致；
+- 没有进入 AI Prompt、Job Retry/费用策略、Docker/Compose/Internal V1-A 等非目标。
+
+### 代码质量
+
+重点检查正确性、输入边界、Schema/Migration、数据身份、generated Contract、异常/回滚、测试真实性、无关改动和维护成本：
+
+- 未发现尚未解决的严重/重要问题；
+- 未新增或升级依赖；
+- 未手工维护第二套 generated Client/HTTP Contract；
+- 未保留运行时 `xhs/red` alias 转换；
+- Migration fail closed，不在冲突时静默删/并历史；
+- PR #149 当前无外部 review、inline review thread 或普通 PR 评论。
+
+## 待完成 Git 收尾
+
+- PR #149 转 Ready；
+- PR #149 合并到 `main`；
+- 从合并后的新 `main` 创建独立归档分支和归档 PR；
+- 归档 PR 永久 CI 全绿后合并；
+- 最终确认 Active Change 已消失、Archive Change 为 `done`，并记录真实 merge commit。
