@@ -5,6 +5,7 @@ import type {
   CollectionCapabilitiesResponse,
   CollectionPlanCreateRequest,
   CollectionPlanResponse,
+  CollectionPlatform,
   GlobalRelevanceConfigResponse,
   KeywordPackResponse,
   KeywordPackSummaryResponse,
@@ -15,10 +16,10 @@ import {
   createPack,
   createPlan,
   fetchCapabilities,
+  fetchGlobalRelevance,
   fetchKeywordPacks,
   fetchPack,
   fetchPlans,
-  fetchRelevance,
   setGlobalRelevance,
   setPackEnabled,
   setPlanEnabled,
@@ -30,7 +31,7 @@ export type StrategyTab = 'keywords' | 'relevance' | 'plans'
 interface PlanFilters {
   search: string
   enabled: '' | 'true' | 'false'
-  platform: string
+  platform: '' | CollectionPlatform
 }
 
 function errorMessage(error: unknown): string {
@@ -96,7 +97,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     loading.value = true
     error.value = null
     try {
-      const relevancePromise = fetchRelevance().catch((reason: unknown) => {
+      const relevancePromise = fetchGlobalRelevance().catch((reason: unknown) => {
         if (reason instanceof CollectionStrategyApiError && reason.status === 409) return null
         throw reason
       })
@@ -105,7 +106,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
         relevancePromise,
         fetchCapabilities(),
         fetchPlans({
-          search: filters.search || undefined,
+          search: filters.search.trim() || undefined,
           enabled: filters.enabled ? filters.enabled === 'true' : undefined,
           platform: filters.platform || undefined,
           offset: planOffset.value,
