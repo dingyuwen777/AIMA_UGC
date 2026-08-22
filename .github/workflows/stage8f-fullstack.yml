@@ -76,12 +76,14 @@ jobs:
           uv run alembic current
           uv run alembic check
 
-      - name: Generate deterministic Excel fixture
+      - name: Generate deterministic Excel fixtures
         shell: bash
         run: |
           set -euo pipefail
-          uv run python tests/fullstack/create_stage8f_excel_fixture.py "${RUNNER_TEMP}/stage8f-fullstack.xlsx"
+          uv run python tests/fullstack/create_stage8f_excel_fixture.py "${RUNNER_TEMP}/stage8f-fullstack.xlsx" success
+          uv run python tests/fullstack/create_stage8f_excel_fixture.py "${RUNNER_TEMP}/stage8f-worker-failure.xlsx" worker-failure
           test -s "${RUNNER_TEMP}/stage8f-fullstack.xlsx"
+          test -s "${RUNNER_TEMP}/stage8f-worker-failure.xlsx"
 
       - name: Start real API and Worker
         shell: bash
@@ -114,6 +116,7 @@ jobs:
         shell: bash
         env:
           AIMA_STAGE8F_EXCEL_FIXTURE: ${{ runner.temp }}/stage8f-fullstack.xlsx
+          AIMA_STAGE8F_FAILURE_EXCEL_FIXTURE: ${{ runner.temp }}/stage8f-worker-failure.xlsx
         run: |
           set -euo pipefail
           npm --prefix frontend run test:e2e:fullstack
