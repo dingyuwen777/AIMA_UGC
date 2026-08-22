@@ -1,6 +1,8 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { CollectionPlanResponse } from '../src/generated/api/client'
+
 const generated = vi.hoisted(() => ({
   listKeywordPacks: vi.fn(),
   createKeywordPack: vi.fn(),
@@ -122,13 +124,13 @@ describe('collection strategy feature', () => {
     generated.getGlobalRelevanceConfig.mockRejectedValue({ status: 409, detail: 'not configured', request_id: 'r1' })
     const store = useCollectionStrategyStore()
     await store.refresh()
-    const plan = {
+    const plan: CollectionPlanResponse = {
       id: '33333333-3333-4333-8333-333333333333', name: '停用计划', enabled: false,
       schedule_expr: '0 9 * * *', timezone: 'Asia/Shanghai', schedule_version: 1,
       next_run_at: null, last_scheduled_at: null, detail_policy: 'on_change', comment_policy: 'adaptive',
       platforms: [{ platform: 'xhs', provider_config_id: 'provider-1' }],
       keyword_pack_ids: [globalPack.id], created_at: '2026-08-22T00:00:00Z', updated_at: '2026-08-22T00:00:00Z',
-    } as const
+    }
     await store.togglePlan(plan)
     expect(generated.updateCollectionPlanEnabled).not.toHaveBeenCalled()
     expect(store.error).toContain('全局 Relevance')
