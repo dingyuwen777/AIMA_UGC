@@ -63,7 +63,7 @@ jobs:
           gh pr comment 151 --repo "${GITHUB_REPOSITORY}" --body "[dev-provider-lookup-key] run=${GITHUB_RUN_ID} public_key_spki_base64=${PUBLIC_KEY}"
 
           found=0
-          for _ in $(seq 1 120); do
+          for _ in $(seq 1 60); do
             git fetch --quiet origin "${PROBE_BRANCH}"
             if git show "origin/${PROBE_BRANCH}:${CIPHER_PATH}" > "${CIPHER_B64}" 2>/dev/null; then
               found=1
@@ -94,7 +94,7 @@ jobs:
           printf 'cipher_path=%s\n' "${CIPHER_PATH}" >> "${GITHUB_OUTPUT}"
           rm -f "${PRIVATE_KEY}" "${PUBLIC_KEY_B64}" "${CIPHER_B64}" "${CIPHER_BIN}" "${PLAIN_KEY}"
 
-      - name: Verify five-platform uploaded Excel URL to Detail and Comments
+      - name: Discover first valid uploaded-Excel sample per platform
         id: probe
         shell: bash
         run: |
