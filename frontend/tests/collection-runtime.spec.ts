@@ -123,4 +123,20 @@ describe('collection runtime feature', () => {
       source_identifier: 'batch-1', platforms: ['xiaohongshu'], limit: 1,
     })
   })
+
+  it('keeps a Batch platform eligible when its only current Content is AI irrelevant', async () => {
+    generated.listContents.mockImplementation(async (params: { relevance?: string }) => ({
+      items: params.relevance === 'irrelevant' ? [{ id: 'content-irrelevant' }] : [],
+      has_more: false,
+      next_cursor: null,
+    }))
+
+    await expect(fetchBatchContentPlatforms('batch-irrelevant', ['xhs'])).resolves.toEqual(['xhs'])
+    expect(generated.listContents).toHaveBeenNthCalledWith(2, {
+      source_identifier: 'batch-irrelevant',
+      platforms: ['xiaohongshu'],
+      limit: 1,
+      relevance: 'irrelevant',
+    })
+  })
 })
