@@ -12,6 +12,7 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
 from aima_ugc.contracts.platform import PlatformName, require_platform_name
+from aima_ugc.modules.analysis.persistence import AnalysisConfigurationIdentity
 from aima_ugc.modules.analysis.tables import analysis_content_results_table
 from aima_ugc.modules.collection.tables import (
     provider_request_attempts_table,
@@ -21,7 +22,7 @@ from aima_ugc.modules.content.extended_tables import content_external_ids_table
 from aima_ugc.modules.content.tables import content_versions_table, contents_table
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 
-# 这里只列当前生产 Runtime 已验证能够直接消费的 lookup identity。
+# 这里只列当前生产 Runtime 已验证能够直接消费且能稳定收敛到原 Content 的 lookup identity。
 # share/short URL 可以被 Import 识别和保存，但在正式 Resolver/身份合并闭环前不得直接计费补采。
 _LOOKUP_ID_PRIORITY: dict[PlatformName, tuple[str, ...]] = {
     "xiaohongshu": ("note_id",),
@@ -44,10 +45,16 @@ class CollectionEnrichmentTarget:
 
 
 class PostgresCollectionTargetReader:
-    """按来源账本、最新 AI 结果与 Provider lookup identity 读取补采目标。"""
+    """按来源账本、当前 AI 身份与 Provider lookup identity 读取补采目标。"""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(
+        self,
+        session: Session,
+        *,
+        analysis_identity: AnalysisConfigurationIdentity | None = None,
+    ) -> None:
         self._session = session
+        self._analysis_identity = analysis_identity
 
     def batch_exists(self, batch_id: UUID) -> bool:
         return (
@@ -205,6 +212,9 @@ class PostgresCollectionTargetReader:
         self,
         content_ids: tuple[UUID, ...],
     ) -> set[UUID]:
+        identity = self._analysis_identity
+        if identity is None:
+            return set()
         analysis = analysis_content_results_table
         content = contents_table
         latest = (
@@ -216,6 +226,11 @@ class PostgresCollectionTargetReader:
             .where(
                 analysis.c.content_id.in_(content_ids),
                 analysis.c.content_version == content.c.current_version,
+                analysis.c.prompt_version == identity.prompt_version,
+                analysis.c.prompt_sha256 == identity.prompt_sha256,
+                analysis.c.taxonomy_sha256 == identity.taxonomy_sha256,
+                analysis.c.model_provider == identity.model_provider,
+                analysis.c.model == identity.model,
             )
             .distinct(analysis.c.content_id)
             .order_by(
