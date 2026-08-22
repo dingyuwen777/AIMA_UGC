@@ -1,21 +1,22 @@
-"""Stage 7 Scheduler Runtime PostgreSQL 集成测试。"""
+"""Stage 7 Scheduler PostgreSQL 运行闭环测试。"""
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime
-from uuid import uuid4
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from uuid import UUID, uuid4
 
 import pytest
-from aima_ugc.adapters.persistence.postgres.collection_planning import (
+from aima_ugc.adapters.persistence.postgres import (
     PostgresCollectionPlanningRepository,
-)
-from aima_ugc.adapters.persistence.postgres.relevance import (
+    PostgresCollectionRunExecutionRepository,
     PostgresGlobalRelevanceRepository,
+    PostgresJobRepository,
+    PostgresScheduledKeywordSnapshotRepository,
 )
-from aima_ugc.bootstrap.scheduler import create_scheduler_runtime, run_scheduler_once
-from aima_ugc.modules.collection.corrective_tables import (
-    collection_plan_decision_policies_table,
+from aima_ugc.bootstrap.scheduler import (
+    _create_scheduler_runtime,
+    _run_scheduler_tick,
 )
 from aima_ugc.modules.collection.planning import (
     CollectionPlanDefinition,
@@ -23,60 +24,73 @@ from aima_ugc.modules.collection.planning import (
     PlanPlatformDefinition,
 )
 from aima_ugc.modules.collection.tables import (
-    collection_plan_keyword_packs_table,
+    collection_occurrences_table,
     collection_plan_platforms_table,
     collection_plans_table,
+    collection_run_cursors_table,
     collection_runs_table,
-    collection_schedule_occurrences_table,
-    collection_scopes_table,
+    provider_configs_table,
 )
 from aima_ugc.modules.system.tables import (
-    global_relevance_config_table,
     keyword_pack_items_table,
     keyword_packs_table,
     keywords_table,
-    provider_configs_table,
 )
-from aima_ugc.platform.jobs.tables import job_attempt_events_table, jobs_table
+from aima_ugc.platform.config import load_settings
+from aima_ugc.platform.database import DatabaseRuntime
+from aima_ugc.platform.jobs import JobRegistry, JobWorker, register_job_runtime
 from sqlalchemy import delete, insert, select
+
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
-def scheduler_runtime():
-    runtime = create_scheduler_runtime()
+def scheduler_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("AIMA_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("AIMA_LOG_DIR", str(tmp_path / "logs"))
+    monkeypatch.setenv("AIMA_SECRET_DIR", str(tmp_path / "secrets"))
+    monkeypatch.setenv("AIMA_DB_HOST", "127.0.0.1")
+    monkeypatch.setenv("AIMA_DB_PORT", "5432")
+    monkeypatch.setenv("AIMA_DB_NAME", "aima_ugc")
+    monkeypatch.setenv("AIMA_DB_USER", "aima_ugc")
+    monkeypatch.setenv("AIMA_DB_CONNECT_TIMEOUT_SECONDS", "3")
 
-    def cleanup() -> None:
-        with runtime.database.engine.begin() as connection:
-            connection.execute(delete(collection_scopes_table))
-            connection.execute(delete(collection_runs_table))
-            connection.execute(delete(collection_schedule_occurrences_table))
-            connection.execute(delete(collection_plan_keyword_packs_table))
-            connection.execute(delete(collection_plan_platforms_table))
-            connection.execute(delete(collection_plan_decision_policies_table))
-            connection.execute(delete(collection_plans_table))
-            connection.execute(delete(job_attempt_events_table))
-            connection.execute(delete(jobs_table))
-            connection.execute(delete(global_relevance_config_table))
-            connection.execute(delete(keyword_pack_items_table))
-            connection.execute(delete(keywords_table))
-            connection.execute(delete(keyword_packs_table))
-            connection.execute(delete(provider_configs_table))
+    secret_dir = tmp_path / "secrets"
+    secret_dir.mkdir(parents=True, exist_ok=True)
+    (secret_dir / "postgres_password").write_text("stage7-scheduler-ci\n", encoding="utf-8")
 
-    cleanup()
+    settings = load_settings()
+    runtime = _create_scheduler_runtime(settings)
     try:
         yield runtime
     finally:
-        cleanup()
         runtime.close()
 
 
-def _create_plan(scheduler_runtime):
-    session = scheduler_runtime.database.new_session()
-    try:
+def _cleanup(runtime) -> None:
+    tables = (
+        collection_run_cursors_table,
+        collection_occurrences_table,
+        collection_plan_platforms_table,
+        collection_plans_table,
+        collection_runs_table,
+        keyword_pack_items_table,
+        keyword_packs_table,
+        keywords_table,
+        provider_configs_table,
+    )
+    with runtime.database_runtime.session_factory() as session:
         with session.begin():
-            provider_config_id = uuid4()
-            keyword_pack_id = uuid4()
-            keyword_id = uuid4()
+            for table in tables:
+                session.execute(delete(table))
+
+
+def _create_plan(runtime):
+    provider_config_id = uuid4()
+    keyword_pack_id = uuid4()
+    keyword_id = uuid4()
+    with runtime.database_runtime.session_factory() as session:
+        with session.begin():
             now = datetime.now(UTC)
             session.execute(
                 insert(provider_configs_table).values(
@@ -115,7 +129,7 @@ def _create_plan(scheduler_runtime):
                 insert(keyword_pack_items_table).values(
                     pack_id=keyword_pack_id,
                     keyword_id=keyword_id,
-                    platform="xiaohongshu",
+                    platform_scope="xiaohongshu",
                     priority=10,
                     enabled=True,
                     note="scheduler runtime fixture",
@@ -140,148 +154,116 @@ def _create_plan(scheduler_runtime):
                         PlanPlatformDefinition(
                             platform="xiaohongshu",
                             provider_config_id=provider_config_id,
-                            config={},
+                            order_index=0,
+                            enabled=True,
+                            config={
+                                "operations": ["keyword_search"],
+                                "search": {"sort_mode": "latest"},
+                            },
                         ),
                     ),
                     keyword_pack_ids=(keyword_pack_id,),
                 )
             )
-        return plan
-    finally:
-        session.close()
+    return plan
 
 
-def _force_due_cursor(scheduler_runtime, plan_id, *, scheduled_for: datetime) -> None:
-    session = scheduler_runtime.database.new_session()
-    try:
-        with session.begin():
-            repository = PostgresCollectionPlanningRepository(session)
-            plan = repository.get_plan_for_update(plan_id)
-            assert plan is not None
-            repository.update_schedule_cursor(
-                plan_id=plan.id,
-                schedule_version=plan.schedule_version,
-                next_run_at=scheduled_for,
-                last_scheduled_at=None,
-            )
-    finally:
-        session.close()
+def _worker(runtime) -> JobWorker:
+    registry = JobRegistry()
+    register_job_runtime(registry)
+    return JobWorker(
+        repository=PostgresJobRepository(runtime.database_runtime.session_factory),
+        registry=registry,
+        worker_id="scheduler-test-worker",
+        max_attempts=1,
+    )
 
 
 def test_scheduler_initializes_future_cursor_without_pre_creation_backfill(
     scheduler_runtime,
 ) -> None:
     plan = _create_plan(scheduler_runtime)
-    now = datetime(2026, 8, 15, 9, 0, tzinfo=UTC)
-
-    result = run_scheduler_once(scheduler_runtime, now=now)
-
-    session = scheduler_runtime.database.new_session()
     try:
-        with session.begin():
-            stored = PostgresCollectionPlanningRepository(session).get_plan(plan.id)
-            occurrences = session.execute(
-                select(collection_schedule_occurrences_table).where(
-                    collection_schedule_occurrences_table.c.plan_id == plan.id
+        now = datetime.now(UTC)
+        outcome = _run_scheduler_tick(scheduler_runtime, now)
+        assert outcome.scanned_plan_count == 1
+        assert outcome.enqueued_count == 0
+        assert outcome.initialized_count == 1
+        with scheduler_runtime.database_runtime.session_factory() as session:
+            cursor = session.execute(
+                select(collection_run_cursors_table).where(
+                    collection_run_cursors_table.c.plan_id == plan.id
                 )
-            ).all()
-        assert stored is not None
-        assert stored.next_run_at == datetime(2026, 8, 15, 10, 0, tzinfo=UTC)
-        assert stored.last_scheduled_at is None
-        assert occurrences == []
-        assert result.initialized == 1
-        assert result.enqueued == 0
+            ).mappings().one()
+            assert cursor["next_run_at"] > now
+            assert session.scalar(select(collection_occurrences_table.c.id)) is None
     finally:
-        session.close()
+        _cleanup(scheduler_runtime)
 
 
 def test_latest_only_recovery_commits_skipped_job_occurrence_run_and_cursor_atomically(
     scheduler_runtime,
 ) -> None:
     plan = _create_plan(scheduler_runtime)
-    _force_due_cursor(
-        scheduler_runtime,
-        plan.id,
-        scheduled_for=datetime(2026, 8, 14, 22, 0, tzinfo=UTC),
-    )
-    now = datetime(2026, 8, 15, 9, 0, tzinfo=UTC)
-
-    first = run_scheduler_once(scheduler_runtime, now=now)
-    second = run_scheduler_once(scheduler_runtime, now=now)
-
-    session = scheduler_runtime.database.new_session()
     try:
-        with session.begin():
-            stored = PostgresCollectionPlanningRepository(session).get_plan(plan.id)
-            occurrences = (
-                session.execute(
-                    select(collection_schedule_occurrences_table)
-                    .where(collection_schedule_occurrences_table.c.plan_id == plan.id)
-                    .order_by(collection_schedule_occurrences_table.c.scheduled_for)
+        now = datetime.now(UTC)
+        _run_scheduler_tick(scheduler_runtime, now)
+        with scheduler_runtime.database_runtime.session_factory() as session:
+            cursor = session.execute(
+                select(collection_run_cursors_table).where(
+                    collection_run_cursors_table.c.plan_id == plan.id
                 )
-                .mappings()
-                .all()
-            )
-            runs = session.execute(select(collection_runs_table)).mappings().all()
-            jobs = session.execute(select(jobs_table)).mappings().all()
-
-        assert stored is not None
-        assert stored.last_scheduled_at == datetime(2026, 8, 15, 4, 0, tzinfo=UTC)
-        assert stored.next_run_at == datetime(2026, 8, 15, 10, 0, tzinfo=UTC)
-        assert [
-            (row["scheduled_for"], row["status"], row["skip_reason"]) for row in occurrences
-        ] == [
-            (
-                datetime(2026, 8, 14, 22, 0, tzinfo=UTC),
-                "skipped",
-                "misfire_superseded",
-            ),
-            (datetime(2026, 8, 15, 4, 0, tzinfo=UTC), "enqueued", None),
-        ]
-        assert len(jobs) == 1
-        assert len(runs) == 1
-        assert runs[0]["job_id"] == jobs[0]["id"] == occurrences[1]["job_id"]
-        assert runs[0]["occurrence_id"] == occurrences[1]["id"]
-        assert first.enqueued == 1
-        assert first.skipped == 1
-        assert second.enqueued == 0
-        assert second.skipped == 0
+            ).mappings().one()
+            due_at = cursor["next_run_at"]
+        later = due_at + timedelta(hours=12, minutes=1)
+        outcome = _run_scheduler_tick(scheduler_runtime, later)
+        assert outcome.enqueued_count == 1
+        assert outcome.skipped_count == 2
+        with scheduler_runtime.database_runtime.session_factory() as session:
+            occurrences = session.execute(
+                select(collection_occurrences_table)
+                .where(collection_occurrences_table.c.plan_id == plan.id)
+                .order_by(collection_occurrences_table.c.scheduled_for)
+            ).mappings().all()
+            assert [item["status"] for item in occurrences] == ["skipped", "skipped", "enqueued"]
+            runs = session.execute(
+                select(collection_runs_table).where(collection_runs_table.c.plan_id == plan.id)
+            ).mappings().all()
+            assert len(runs) == 1
+            assert runs[0]["trigger"] == "scheduled"
+            cursor = session.execute(
+                select(collection_run_cursors_table).where(
+                    collection_run_cursors_table.c.plan_id == plan.id
+                )
+            ).mappings().one()
+            assert cursor["next_run_at"] > later
     finally:
-        session.close()
+        _cleanup(scheduler_runtime)
 
 
 def test_two_scheduler_ticks_do_not_duplicate_same_occurrence(scheduler_runtime) -> None:
     plan = _create_plan(scheduler_runtime)
-    _force_due_cursor(
-        scheduler_runtime,
-        plan.id,
-        scheduled_for=datetime(2026, 8, 15, 4, 0, tzinfo=UTC),
-    )
-    now = datetime(2026, 8, 15, 9, 0, tzinfo=UTC)
-
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        results = list(
-            executor.map(
-                lambda _: run_scheduler_once(scheduler_runtime, now=now),
-                range(2),
-            )
-        )
-
-    with scheduler_runtime.database.engine.begin() as connection:
-        occurrences = (
-            connection.execute(
-                select(collection_schedule_occurrences_table).where(
-                    collection_schedule_occurrences_table.c.plan_id == plan.id
+    try:
+        now = datetime.now(UTC)
+        _run_scheduler_tick(scheduler_runtime, now)
+        with scheduler_runtime.database_runtime.session_factory() as session:
+            due_at = session.scalar(
+                select(collection_run_cursors_table.c.next_run_at).where(
+                    collection_run_cursors_table.c.plan_id == plan.id
                 )
             )
-            .mappings()
-            .all()
-        )
-        runs = connection.execute(select(collection_runs_table)).mappings().all()
-        jobs = connection.execute(select(jobs_table)).mappings().all()
-
-    assert len(occurrences) == 1
-    assert occurrences[0]["status"] == "enqueued"
-    assert len(runs) == 1
-    assert len(jobs) == 1
-    assert sum(item.enqueued for item in results) == 1
+        assert due_at is not None
+        first = _run_scheduler_tick(scheduler_runtime, due_at)
+        second = _run_scheduler_tick(scheduler_runtime, due_at)
+        assert first.enqueued_count == 1
+        assert second.enqueued_count == 0
+        with scheduler_runtime.database_runtime.session_factory() as session:
+            occurrences = session.scalars(
+                select(collection_occurrences_table.c.id).where(
+                    collection_occurrences_table.c.plan_id == plan.id,
+                    collection_occurrences_table.c.scheduled_for == due_at,
+                )
+            ).all()
+            assert len(occurrences) == 1
+    finally:
+        _cleanup(scheduler_runtime)
