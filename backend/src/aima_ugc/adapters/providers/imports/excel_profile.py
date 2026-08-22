@@ -27,7 +27,7 @@ _PLATFORM_LABELS: dict[str, PlatformName] = {
     "微博": "weibo",
     "新浪微博": "weibo",
     "weibo": "weibo",
-    "b站": "bilibili",
+    "B站": "bilibili",
     "哔哩哔哩": "bilibili",
     "bilibili": "bilibili",
     "快手": "kuaishou",
