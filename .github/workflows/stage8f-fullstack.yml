@@ -1,0 +1,168 @@
+name: Stage 8F Full-stack Acceptance
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  excel-browser-fullstack:
+    name: Excel Browser Full-stack
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_DB: aima_ugc
+          POSTGRES_USER: aima_ugc
+          POSTGRES_PASSWORD: stage8f-ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aima_ugc -d aima_ugc"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AIMA_DATA_DIR: .runtime/ci-stage8f/data
+      AIMA_LOG_DIR: .runtime/ci-stage8f/logs
+      AIMA_SECRET_DIR: .runtime/ci-stage8f/secrets
+      AIMA_DB_HOST: 127.0.0.1
+      AIMA_DB_PORT: 5432
+      AIMA_DB_NAME: aima_ugc
+      AIMA_DB_USER: aima_ugc
+      AIMA_DB_CONNECT_TIMEOUT_SECONDS: 3
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24.19.0
+
+      - name: Install locked environments
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(npm --version)" = "11.17.0"
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+          npm ci --prefix frontend
+
+      - name: Prepare isolated runtime and migrate empty database
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${AIMA_DATA_DIR}" "${AIMA_LOG_DIR}" "${AIMA_SECRET_DIR}"
+          printf '%s\n' 'stage8f-ci' > "${AIMA_SECRET_DIR}/postgres_password"
+          printf '%s\n' 'stage8f-import-cursor-signing-key-000000000001' > "${AIMA_SECRET_DIR}/import_batch_cursor_signing_key"
+          printf '%s\n' 'stage8f-content-cursor-signing-key-000000000001' > "${AIMA_SECRET_DIR}/content_cursor_signing_key"
+          printf '%s\n' 'stage8f-runtime-cursor-signing-key-000000000001' > "${AIMA_SECRET_DIR}/collection_runtime_cursor_signing_key"
+          chmod 600 "${AIMA_SECRET_DIR}"/*
+          uv run alembic upgrade head
+          uv run alembic current
+          uv run alembic check
+
+      - name: Generate deterministic Excel fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python tests/fullstack/create_stage8f_excel_fixture.py "${RUNNER_TEMP}/stage8f-fullstack.xlsx"
+          test -s "${RUNNER_TEMP}/stage8f-fullstack.xlsx"
+
+      - name: Start real API and Worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          API_STDOUT="${RUNNER_TEMP}/stage8f-api.stdout.log"
+          WORKER_STDOUT="${RUNNER_TEMP}/stage8f-worker.stdout.log"
+          uv run uvicorn aima_ugc.entrypoints.api_main:app --host 127.0.0.1 --port 8090 >"${API_STDOUT}" 2>&1 &
+          echo "$!" > "${RUNNER_TEMP}/stage8f-api.pid"
+          uv run python tests/fullstack/run_stage8f_worker.py >"${WORKER_STDOUT}" 2>&1 &
+          echo "$!" > "${RUNNER_TEMP}/stage8f-worker.pid"
+
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8090/health/ready > "${RUNNER_TEMP}/stage8f-ready.json"; then
+              break
+            fi
+            if ! kill -0 "$(cat "${RUNNER_TEMP}/stage8f-api.pid")" 2>/dev/null; then
+              cat "${API_STDOUT}"
+              exit 1
+            fi
+            if ! kill -0 "$(cat "${RUNNER_TEMP}/stage8f-worker.pid")" 2>/dev/null; then
+              cat "${WORKER_STDOUT}"
+              exit 1
+            fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8090/health/ready > "${RUNNER_TEMP}/stage8f-ready.json"
+
+      - name: Run real Excel browser acceptance
+        shell: bash
+        env:
+          AIMA_STAGE8F_EXCEL_FIXTURE: ${{ runner.temp }}/stage8f-fullstack.xlsx
+        run: |
+          set -euo pipefail
+          npm --prefix frontend run test:e2e:fullstack
+
+      - name: Print runtime logs on failure
+        if: failure()
+        shell: bash
+        run: |
+          echo '--- API stdout ---'
+          cat "${RUNNER_TEMP}/stage8f-api.stdout.log" 2>/dev/null || true
+          echo '--- Worker stdout ---'
+          cat "${RUNNER_TEMP}/stage8f-worker.stdout.log" 2>/dev/null || true
+          echo '--- api.log ---'
+          cat "${AIMA_LOG_DIR}/api.log" 2>/dev/null || true
+          echo '--- worker.log ---'
+          cat "${AIMA_LOG_DIR}/worker.log" 2>/dev/null || true
+
+      - name: Clean isolated processes and data
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          for pid_file in "${RUNNER_TEMP}/stage8f-worker.pid" "${RUNNER_TEMP}/stage8f-api.pid"; do
+            if [[ -f "${pid_file}" ]]; then
+              pid="$(cat "${pid_file}")"
+              kill "${pid}" 2>/dev/null || true
+              wait "${pid}" 2>/dev/null || true
+            fi
+          done
+          uv run python - <<'PY'
+          from sqlalchemy import func, select
+
+          from aima_ugc.bootstrap.worker import create_worker_runtime
+          from aima_ugc.modules.content.tables import contents_table
+          from aima_ugc.modules.ingestion.tables import processing_import_batches_table
+
+          runtime = create_worker_runtime()
+          try:
+              with runtime.database.engine.begin() as connection:
+                  connection.exec_driver_sql(
+                      "TRUNCATE TABLE jobs, artifacts, keyword_packs, accounts RESTART IDENTITY CASCADE"
+                  )
+                  assert connection.scalar(select(func.count()).select_from(contents_table)) == 0
+                  assert (
+                      connection.scalar(
+                          select(func.count()).select_from(processing_import_batches_table)
+                      )
+                      == 0
+                  )
+          finally:
+              runtime.close()
+          PY
