@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
-from aima_ugc.contracts.platform import PlatformName, PlatformScope
+from aima_ugc.contracts.platform import PlatformName, PlatformScope, require_platform_name
 
 from .execution import CollectionScopeDefinition
 
@@ -50,9 +50,7 @@ def build_scheduled_scope_snapshot(
     keyword_packs: tuple[ScheduledKeywordPackSnapshot, ...] = (),
 ) -> ScheduledScopeSnapshot:
     """展开 `platform_scope=all` 并按稳定关键词身份去重，不读取外部状态。"""
-    normalized_platforms = tuple(
-        platform.strip() for platform in plan_platforms if platform.strip()
-    )
+    normalized_platforms = tuple(plan_platforms)
     if len(normalized_platforms) != len(set(normalized_platforms)):
         raise ValueError("scheduled scope plan_platforms 不得重复")
     platform_set = set(normalized_platforms)
@@ -89,10 +87,9 @@ def build_scheduled_scope_snapshot(
 
         if entry.item_platform_scope == "all":
             target_platforms = normalized_platforms
-        elif entry.item_platform_scope in platform_set:
-            target_platforms = (entry.item_platform_scope,)
         else:
-            target_platforms = ()
+            scoped_platform = require_platform_name(entry.item_platform_scope)
+            target_platforms = (scoped_platform,) if scoped_platform in platform_set else ()
 
         for platform in target_platforms:
             identity = (platform, entry.keyword_id)

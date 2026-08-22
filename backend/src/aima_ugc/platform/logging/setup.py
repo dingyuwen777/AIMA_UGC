@@ -25,7 +25,7 @@ def _gzip_namer(default_name: str) -> str:
 
 
 def _gzip_rotator(source: str, destination: str) -> None:
-    with open(source, "rb") as source_file, gzip.open(destination, "weibo") as destination_file:
+    with open(source, "rb") as source_file, gzip.open(destination, "wb") as destination_file:
         shutil.copyfileobj(source_file, destination_file)
     os.remove(source)
 

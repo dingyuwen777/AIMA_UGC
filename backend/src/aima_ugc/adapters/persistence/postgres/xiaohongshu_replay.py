@@ -22,6 +22,7 @@ from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
     map_content,
 )
 from aima_ugc.adapters.providers.tikhub.operations.xiaohongshu import extract_search_items
+from aima_ugc.contracts.platform import require_platform_name
 from aima_ugc.contracts.provider import RawEnvelopeV1
 from aima_ugc.modules.collection.candidates import CandidateIngestionService
 from aima_ugc.modules.collection.tables import (
@@ -89,7 +90,7 @@ class PostgresXiaohongshuReplaySourceReader:
                 provider_attempt_id=cast(UUID, row["attempt_id"]),
                 provider_request_id=cast(UUID, row["request_id"]),
                 provider=cast(str, row["provider"]),
-                platform=cast(str, row["platform"]),
+                platform=require_platform_name(cast(str, row["platform"])),
                 operation=cast(str, row["operation"]),
                 source_type=cast(str, row["source_type"]),
                 source_value=cast(str, row["source_value"]),

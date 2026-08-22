@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
+from aima_ugc.contracts.platform import PlatformName, require_platform_name
 from aima_ugc.modules.collection.tables import (
     provider_request_attempts_table,
     provider_requests_table,
@@ -21,7 +22,7 @@ from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 @dataclass(frozen=True, slots=True)
 class CollectionEnrichmentTarget:
     content_id: UUID
-    platform: str
+    platform: PlatformName
     external_content_id: str
     content_type: str
 
@@ -46,7 +47,7 @@ class PostgresCollectionTargetReader:
         self,
         *,
         batch_id: UUID,
-        platforms: tuple[str, ...],
+        platforms: tuple[PlatformName, ...],
     ) -> tuple[CollectionEnrichmentTarget, ...]:
         content = contents_table
         version = content_versions_table
@@ -113,7 +114,7 @@ class PostgresCollectionTargetReader:
 def _target(row: RowMapping) -> CollectionEnrichmentTarget:
     return CollectionEnrichmentTarget(
         content_id=cast(UUID, row["id"]),
-        platform=cast(str, row["platform"]),
+        platform=require_platform_name(cast(str, row["platform"])),
         external_content_id=cast(str, row["external_content_id"]),
         content_type=cast(str, row["content_type"]),
     )

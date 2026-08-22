@@ -13,6 +13,7 @@ from aima_ugc.contracts.platform import (
     PLATFORM_SCOPES,
     PlatformName,
     PlatformScope,
+    normalize_platform_name,
 )
 from aima_ugc.modules.collection.tables import (
     collection_plan_platforms_table,
@@ -30,6 +31,9 @@ _FORBIDDEN_EXACT_LITERALS = ("dy", "wb", "ks", "bili")
 _FORBIDDEN_LITERAL_PATTERNS = {
     value: re.compile(rf"[\"']{re.escape(value)}[\"']") for value in _FORBIDDEN_EXACT_LITERALS
 }
+_PLATFORM_CONTEXT_PATTERN = re.compile(
+    r"(?:platform(?:s|_scope)?|Platform(?:Name|Scope)?)", re.IGNORECASE
+)
 _XIAOHONGSHU_ALIAS_PATTERN = re.compile(r"xhs", re.IGNORECASE)
 _RED_PLATFORM_ALIAS_PATTERN = re.compile(
     r"(?:platform|platform_scope)\s*(?:=|:)\s*[\"']red[\"']",
@@ -85,6 +89,26 @@ def test_platform_name_contract_is_exactly_five_values() -> None:
     for invalid in _INVALID_MACHINE_VALUES:
         with pytest.raises(ValidationError):
             adapter.validate_python(invalid)
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("XIAOHONGSHU", "xiaohongshu"),
+        ("Douyin", "douyin"),
+        ("WEIBO", "weibo"),
+        ("BiliBili", "bilibili"),
+        (" KUAISHOU ", "kuaishou"),
+    ],
+)
+def test_formal_platform_input_is_case_insensitive(raw: str, expected: PlatformName) -> None:
+    assert normalize_platform_name(raw) == expected
+
+
+def test_platform_abbreviations_remain_invalid_external_inputs() -> None:
+    for invalid in ("xhs", "red", "dy", "wb", "ks", "bili"):
+        with pytest.raises(ValueError):
+            normalize_platform_name(invalid)
 
 
 def test_excel_profile_maps_source_labels_only_to_formal_platforms() -> None:
@@ -186,11 +210,12 @@ def test_current_machine_facts_do_not_reintroduce_platform_aliases() -> None:
                         f"forbidden=xiaohongshu abbreviation: {line.strip()}"
                     )
                     violations.append(detail)
-                for value, pattern in _FORBIDDEN_LITERAL_PATTERNS.items():
-                    if pattern.search(line):
-                        violations.append(
-                            f"{relative}:{line_number}: forbidden={value}: {line.strip()}"
-                        )
+                if _PLATFORM_CONTEXT_PATTERN.search(line):
+                    for value, pattern in _FORBIDDEN_LITERAL_PATTERNS.items():
+                        if pattern.search(line):
+                            violations.append(
+                                f"{relative}:{line_number}: forbidden={value}: {line.strip()}"
+                            )
                 if _RED_PLATFORM_ALIAS_PATTERN.search(line):
                     violations.append(
                         f"{relative}:{line_number}: forbidden=red platform alias: {line.strip()}"
