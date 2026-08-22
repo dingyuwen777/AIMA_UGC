@@ -124,11 +124,15 @@ def test_xiaohongshu_debug_runtime_reuses_production_flow_and_skips_unchanged_re
     output_root = tmp_path / "output"
     _write_env(env_file)
 
+    comments_response = _matching_comments()
+    replies_response = _matching_replies()
+    raw_root_comment_id = str(comments_response["data"]["data"]["comments"][0]["id"])
+    raw_reply_comment_id = str(replies_response["data"]["data"]["comments"][0]["id"])
     first_responses = [
         _fixture("search_notes_page1.sanitized.json"),
         _matching_detail(),
-        _matching_comments(),
-        _matching_replies(),
+        comments_response,
+        replies_response,
     ]
     first_requests: list[ProviderTransportRequest] = []
     monkeypatch.setattr(
@@ -174,14 +178,8 @@ def test_xiaohongshu_debug_runtime_reuses_production_flow_and_skips_unchanged_re
         comment_headers = [cell.value for cell in comment_sheet[1]]
         comment_id_column = comment_headers.index("评论ID") + 1
         assert comment_sheet.max_row == 3
-        assert (
-            comment_sheet.cell(row=2, column=comment_id_column).value
-            == "xiaohongshu-comment-root-1"
-        )
-        assert (
-            comment_sheet.cell(row=3, column=comment_id_column).value
-            == "xiaohongshu-comment-reply-2"
-        )
+        assert comment_sheet.cell(row=2, column=comment_id_column).value == raw_root_comment_id
+        assert comment_sheet.cell(row=3, column=comment_id_column).value == raw_reply_comment_id
     finally:
         workbook.close()
 
