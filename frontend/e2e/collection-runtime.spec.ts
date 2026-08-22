@@ -102,7 +102,7 @@ test('explains failed Import terminal state without inventing pending stages', a
   await detail.getByRole('button', { name: '处理阶段' }).click()
   await expect(detail.getByText('任务已失败。')).toBeVisible()
   await expect(detail.getByText('失败前最后完成阶段', { exact: false })).toBeVisible()
-  await expect(detail.getByText('等待中')).toHaveCount(0)
+  await expect(detail.locator('.stage-row')).toHaveCount(0)
 })
 
 test('shows the stable unified Error Contract request_id', async ({ page }) => {
