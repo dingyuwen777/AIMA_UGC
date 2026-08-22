@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 import pytest
 from aima_ugc.adapters.persistence.postgres.collection_targets import PostgresCollectionTargetReader
 from aima_ugc.bootstrap.worker import create_worker_runtime
+from aima_ugc.modules.analysis.persistence import AnalysisConfigurationIdentity
 from aima_ugc.modules.analysis.tables import analysis_content_results_table
 from aima_ugc.modules.collection.tables import (
     provider_request_attempts_table,
@@ -19,6 +20,14 @@ from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.storage.tables import artifacts_table
 from sqlalchemy import insert
+
+_CURRENT_ANALYSIS_IDENTITY = AnalysisConfigurationIdentity(
+    prompt_version="test-v1",
+    prompt_sha256="3" * 64,
+    taxonomy_sha256="4" * 64,
+    model_provider="test",
+    model="test-model",
+)
 
 
 @pytest.fixture
@@ -194,11 +203,11 @@ def _insert_content(
                     relevance="irrelevant",
                     voice_type="unknown",
                     sentiment=None,
-                    prompt_version="test-v1",
-                    prompt_sha256="3" * 64,
-                    taxonomy_sha256="4" * 64,
-                    model_provider="test",
-                    model="test-model",
+                    prompt_version=_CURRENT_ANALYSIS_IDENTITY.prompt_version,
+                    prompt_sha256=_CURRENT_ANALYSIS_IDENTITY.prompt_sha256,
+                    taxonomy_sha256=_CURRENT_ANALYSIS_IDENTITY.taxonomy_sha256,
+                    model_provider=_CURRENT_ANALYSIS_IDENTITY.model_provider,
+                    model=_CURRENT_ANALYSIS_IDENTITY.model,
                     input_hash="5" * 64,
                     analyzed_at=now,
                     created_at=now,
@@ -207,7 +216,21 @@ def _insert_content(
     return content_id
 
 
-def test_batch_supplement_targets_require_lookup_identity_and_exclude_irrelevant(runtime) -> None:  # type: ignore[no-untyped-def]
+def _read_targets(runtime, *, batch_id: UUID, identity: AnalysisConfigurationIdentity):  # type: ignore[no-untyped-def]
+    with runtime.database.new_session() as session:
+        with session.begin():
+            return PostgresCollectionTargetReader(
+                session,
+                analysis_identity=identity,
+            ).list_batch_targets(
+                batch_id=batch_id,
+                platforms=("xiaohongshu",),
+            )
+
+
+def test_batch_supplement_targets_require_lookup_identity_and_exclude_current_irrelevant(
+    runtime,
+) -> None:  # type: ignore[no-untyped-def]
     batch_id, job_id, attempt_id, artifact_id = _seed_batch(runtime)
     eligible_id = _insert_content(
         runtime,
@@ -237,11 +260,30 @@ def test_batch_supplement_targets_require_lookup_identity_and_exclude_irrelevant
         irrelevant=False,
     )
 
-    with runtime.database.new_session() as session:
-        with session.begin():
-            targets = PostgresCollectionTargetReader(session).list_batch_targets(
-                batch_id=batch_id,
-                platforms=("xiaohongshu",),
-            )
+    targets = _read_targets(runtime, batch_id=batch_id, identity=_CURRENT_ANALYSIS_IDENTITY)
 
     assert [target.content_id for target in targets] == [eligible_id]
+
+
+def test_stale_irrelevant_analysis_does_not_block_supplement_target(runtime) -> None:  # type: ignore[no-untyped-def]
+    batch_id, job_id, attempt_id, artifact_id = _seed_batch(runtime)
+    content_id = _insert_content(
+        runtime,
+        attempt_id=attempt_id,
+        artifact_id=artifact_id,
+        external_content_id="stale-analysis-note",
+        lookup_id=True,
+        job_id=job_id,
+        irrelevant=True,
+    )
+    changed_identity = AnalysisConfigurationIdentity(
+        prompt_version=_CURRENT_ANALYSIS_IDENTITY.prompt_version,
+        prompt_sha256=_CURRENT_ANALYSIS_IDENTITY.prompt_sha256,
+        taxonomy_sha256=_CURRENT_ANALYSIS_IDENTITY.taxonomy_sha256,
+        model_provider=_CURRENT_ANALYSIS_IDENTITY.model_provider,
+        model="new-model",
+    )
+
+    targets = _read_targets(runtime, batch_id=batch_id, identity=changed_identity)
+
+    assert [target.content_id for target in targets] == [content_id]
