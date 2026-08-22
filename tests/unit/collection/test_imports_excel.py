@@ -144,7 +144,10 @@ def test_convert_maps_profile_to_canonical_jsonl(tmp_path: Path) -> None:
     content = CanonicalContentV1.model_validate_json(lines[0])
     assert content.platform == "xiaohongshu"
     assert content.external_content_id == "64abcdef1234567890abcdef"
-    assert content.alternate_ids == {"source_article_id": "SOURCE-001"}
+    assert content.alternate_ids == {
+        "note_id": "64abcdef1234567890abcdef",
+        "source_article_id": "SOURCE-001",
+    }
     assert content.content_type == "unknown"
     assert content.title == "爱玛新品发布"
     assert content.text == "这是一条正文"
@@ -170,7 +173,10 @@ def test_identity_uses_native_then_article_then_normalized_url_hash() -> None:
         source_article_id="SOURCE-001",
     )
     assert native.external_content_id == "7531234567890123456"
-    assert native.alternate_ids == {"source_article_id": "SOURCE-001"}
+    assert native.alternate_ids == {
+        "aweme_id": "7531234567890123456",
+        "source_article_id": "SOURCE-001",
+    }
 
     source_fallback = resolve_content_identity(
         platform="custom_platform",
