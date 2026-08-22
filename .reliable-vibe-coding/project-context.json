@@ -170,7 +170,7 @@
       "kinds": [
         "documentation"
       ],
-      "path": "tests/fixtures/providers/tikhub/xhs"
+      "path": "tests/fixtures/providers/tikhub/xiaohongshu"
     }
   ],
   "documents": [
@@ -582,7 +582,7 @@
     },
     {
       "kind": "documentation",
-      "path": "tests/fixtures/providers/tikhub/xhs/README.md",
+      "path": "tests/fixtures/providers/tikhub/xiaohongshu/README.md",
       "sha256": "33c992113c253c28f3f033019726ee89f661fa9ffca15294ca6337ff8bfaf44e",
       "size": 1290,
       "title": "TikHub 小红书测试 Fixture"

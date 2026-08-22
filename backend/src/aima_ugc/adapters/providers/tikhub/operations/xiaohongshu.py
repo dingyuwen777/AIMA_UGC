@@ -31,7 +31,7 @@ _NOTE_TYPES = {
 
 
 @dataclass(frozen=True, slots=True)
-class XhsRequest:
+class XiaohongshuRequest:
     """一次小红书 Operation 的脱敏请求描述。"""
 
     path: str
@@ -39,7 +39,7 @@ class XhsRequest:
 
 
 @dataclass(frozen=True, slots=True)
-class XhsSearchPagination:
+class XiaohongshuSearchPagination:
     """搜索下一页状态和停止原因。"""
 
     next_page: int
@@ -56,7 +56,7 @@ class XhsSearchPagination:
         current_page: int,
         body: dict[str, Any],
         previous_item_ids: tuple[str, ...] = (),
-    ) -> XhsSearchPagination:
+    ) -> XiaohongshuSearchPagination:
         metadata = _find_mapping(body, required_any=("search_id", "search_session_id", "next_page"))
         page_data = _find_mapping(body, required_any=("items",))
         items = page_data.get("items")
@@ -102,7 +102,7 @@ class XhsSearchPagination:
 
 
 @dataclass(frozen=True, slots=True)
-class XhsCommentPagination:
+class XiaohongshuCommentPagination:
     """评论下一页状态和停止原因。"""
 
     cursor: str
@@ -119,7 +119,7 @@ class XhsCommentPagination:
         previous_index: int,
         page_area: str,
         body: dict[str, Any],
-    ) -> XhsCommentPagination:
+    ) -> XiaohongshuCommentPagination:
         data = _find_mapping(body, required_any=("comments", "cursor", "index", "pageArea"))
         comments = data.get("comments")
         if not isinstance(comments, list) or not comments:
@@ -153,7 +153,7 @@ def build_search_notes_request(
     source: str = "explore_feed",
     search_id: str | None = None,
     search_session_id: str | None = None,
-) -> XhsRequest:
+) -> XiaohongshuRequest:
     """接受规范化业务枚举；既有 Provider 原值仍兼容。"""
     normalized_keyword = keyword.strip()
     if not normalized_keyword:
@@ -172,7 +172,7 @@ def build_search_notes_request(
         params["search_id"] = search_id
     if search_session_id:
         params["search_session_id"] = search_session_id
-    return XhsRequest(f"{_BASE}/search_notes", params)
+    return XiaohongshuRequest(f"{_BASE}/search_notes", params)
 
 
 def build_app_v1_search_candidate_request(
@@ -184,7 +184,7 @@ def build_app_v1_search_candidate_request(
     time_filter: str = "不限",
     search_id: str | None = None,
     session_id: str | None = None,
-) -> XhsRequest:
+) -> XiaohongshuRequest:
     """构造 App V1 Search A/B 候选；不进入默认 Capability 或自动 fallback。"""
     normalized_keyword = keyword.strip()
     if not normalized_keyword:
@@ -202,40 +202,40 @@ def build_app_v1_search_candidate_request(
         params["search_id"] = search_id
     if session_id:
         params["session_id"] = session_id
-    return XhsRequest(f"{_APP_V1_BASE}/search_notes", params)
+    return XiaohongshuRequest(f"{_APP_V1_BASE}/search_notes", params)
 
 
 def build_web_v3_search_candidate_request(
     *, keyword: str, page: int = 1, sort: str = "general", note_type: int = 0
-) -> XhsRequest:
+) -> XiaohongshuRequest:
     """构造 Web V3 Search A/B 候选；不进入默认 Capability 或自动 fallback。"""
     normalized_keyword = keyword.strip()
     if not normalized_keyword:
         raise ValueError("keyword 不能为空")
     if page < 1:
         raise ValueError("page 必须从 1 开始")
-    return XhsRequest(
+    return XiaohongshuRequest(
         f"{_WEB_V3_BASE}/fetch_search_notes",
         {"keyword": normalized_keyword, "page": page, "sort": sort, "note_type": note_type},
     )
 
 
-def build_image_detail_request(*, note_id: str) -> XhsRequest:
-    return XhsRequest(f"{_BASE}/get_image_note_detail", {"note_id": note_id})
+def build_image_detail_request(*, note_id: str) -> XiaohongshuRequest:
+    return XiaohongshuRequest(f"{_BASE}/get_image_note_detail", {"note_id": note_id})
 
 
-def build_video_detail_request(*, note_id: str) -> XhsRequest:
-    return XhsRequest(f"{_BASE}/get_video_note_detail", {"note_id": note_id})
+def build_video_detail_request(*, note_id: str) -> XiaohongshuRequest:
+    return XiaohongshuRequest(f"{_BASE}/get_video_note_detail", {"note_id": note_id})
 
 
-def build_app_v1_detail_candidate_request(*, note_id: str) -> XhsRequest:
+def build_app_v1_detail_candidate_request(*, note_id: str) -> XiaohongshuRequest:
     """构造 App V1 笔记详情 A/B 候选。"""
-    return XhsRequest(f"{_APP_V1_BASE}/get_note_info", {"note_id": note_id})
+    return XiaohongshuRequest(f"{_APP_V1_BASE}/get_note_info", {"note_id": note_id})
 
 
-def build_web_v3_detail_candidate_request(*, note_id: str, xsec_token: str) -> XhsRequest:
+def build_web_v3_detail_candidate_request(*, note_id: str, xsec_token: str) -> XiaohongshuRequest:
     """构造 Web V3 笔记详情 A/B 候选；官方接口要求显式 xsec_token。"""
-    return XhsRequest(
+    return XiaohongshuRequest(
         f"{_WEB_V3_BASE}/fetch_note_detail",
         {"note_id": note_id, "xsec_token": xsec_token},
     )
@@ -243,8 +243,8 @@ def build_web_v3_detail_candidate_request(*, note_id: str, xsec_token: str) -> X
 
 def build_note_comments_request(
     *, note_id: str, cursor: str = "", index: int = 0, page_area: str = "UNFOLDED"
-) -> XhsRequest:
-    return XhsRequest(
+) -> XiaohongshuRequest:
+    return XiaohongshuRequest(
         f"{_BASE}/get_note_comments",
         {
             "note_id": note_id,
@@ -258,9 +258,9 @@ def build_note_comments_request(
 
 def build_app_v1_comments_candidate_request(
     *, note_id: str, start: str = "", sort_strategy: int = 1
-) -> XhsRequest:
+) -> XiaohongshuRequest:
     """构造 App V1 一级评论 A/B 候选。"""
-    return XhsRequest(
+    return XiaohongshuRequest(
         f"{_APP_V1_BASE}/get_note_comments",
         {"note_id": note_id, "start": start, "sort_strategy": sort_strategy},
     )
@@ -268,9 +268,9 @@ def build_app_v1_comments_candidate_request(
 
 def build_web_v3_comments_candidate_request(
     *, note_id: str, xsec_token: str, cursor: str = ""
-) -> XhsRequest:
+) -> XiaohongshuRequest:
     """构造 Web V3 一级评论 A/B 候选；官方接口要求显式 xsec_token。"""
-    return XhsRequest(
+    return XiaohongshuRequest(
         f"{_WEB_V3_BASE}/fetch_note_comments",
         {"note_id": note_id, "xsec_token": xsec_token, "cursor": cursor},
     )
@@ -278,8 +278,8 @@ def build_web_v3_comments_candidate_request(
 
 def build_sub_comments_request(
     *, note_id: str, comment_id: str, cursor: str = "", index: int = 1
-) -> XhsRequest:
-    return XhsRequest(
+) -> XiaohongshuRequest:
+    return XiaohongshuRequest(
         f"{_BASE}/get_note_sub_comments",
         {
             "note_id": note_id,
@@ -292,9 +292,9 @@ def build_sub_comments_request(
 
 def build_app_v1_sub_comments_candidate_request(
     *, note_id: str, comment_id: str, start: str = ""
-) -> XhsRequest:
+) -> XiaohongshuRequest:
     """构造 App V1 二级评论 A/B 候选。"""
-    return XhsRequest(
+    return XiaohongshuRequest(
         f"{_APP_V1_BASE}/get_sub_comments",
         {"note_id": note_id, "comment_id": comment_id, "start": start},
     )
@@ -307,11 +307,11 @@ def build_web_v3_sub_comments_candidate_request(
     xsec_token: str,
     num: int = 10,
     cursor: str = "",
-) -> XhsRequest:
+) -> XiaohongshuRequest:
     """构造 Web V3 二级评论 A/B 候选；官方接口要求显式 xsec_token。"""
     if num < 1:
         raise ValueError("num 必须大于 0")
-    return XhsRequest(
+    return XiaohongshuRequest(
         f"{_WEB_V3_BASE}/fetch_sub_comments",
         {
             "note_id": note_id,

@@ -74,11 +74,11 @@ verified_at = 2026-08-16
 
 | 平台/业务 | Endpoint | 当前配置 base_price USD/request |
 | --- | --- | ---: |
-| XHS Search | `/api/v1/xiaohongshu/app_v2/search_notes` | 0.010 |
-| XHS Image Detail | `/api/v1/xiaohongshu/app_v2/get_image_note_detail` | 0.010 |
-| XHS Video Detail | `/api/v1/xiaohongshu/app_v2/get_video_note_detail` | 0.010 |
-| XHS Comments | `/api/v1/xiaohongshu/app_v2/get_note_comments` | 0.010 |
-| XHS SubComments | `/api/v1/xiaohongshu/app_v2/get_note_sub_comments` | 0.010 |
+| xiaohongshu Search | `/api/v1/xiaohongshu/app_v2/search_notes` | 0.010 |
+| xiaohongshu Image Detail | `/api/v1/xiaohongshu/app_v2/get_image_note_detail` | 0.010 |
+| xiaohongshu Video Detail | `/api/v1/xiaohongshu/app_v2/get_video_note_detail` | 0.010 |
+| xiaohongshu Comments | `/api/v1/xiaohongshu/app_v2/get_note_comments` | 0.010 |
+| xiaohongshu SubComments | `/api/v1/xiaohongshu/app_v2/get_note_sub_comments` | 0.010 |
 | Douyin Search V2 | `/api/v1/douyin/search/fetch_video_search_v2` | 0.010 |
 | Douyin Detail | `/api/v1/douyin/app/v3/fetch_one_video_v3` | 0.001 |
 | Douyin Comments | `/api/v1/douyin/app/v3/fetch_video_comments` | 0.001 |
@@ -441,7 +441,7 @@ not_equivalent / no_same_semantic_web_search
 
 | 平台 | 对照 | 当前证据结论 |
 | --- | --- | --- |
-| XHS | App V2 vs 其他 family | 生产 App V2；其他 family 需 endpoint-specific 重新验证 |
+| xiaohongshu | App V2 vs 其他 family | 生产 App V2；其他 family 需 endpoint-specific 重新验证 |
 | 抖音 | Search V2 vs V1 | 历史首屏集合 7/7 相同，但 Raw shape 明显不同；Candidate 不能直接切主 |
 | 微博 | Web Search vs App Search All | 历史 Jaccard 0.75；不等价 |
 | 微博 | App Comments vs Web V2 | 历史同样本 1/1，但 Raw shape 不同 |

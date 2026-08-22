@@ -375,14 +375,14 @@ def _max_item(items: Iterable[dict[str, Any]], value_fn: Any) -> dict[str, Any]:
     return max(values, key=lambda item: int(value_fn(item) or 0))
 
 
-def _xhs_note(wrapper: dict[str, Any]) -> dict[str, Any]:
+def _xiaohongshu_note(wrapper: dict[str, Any]) -> dict[str, Any]:
     note = wrapper.get("note")
     if not isinstance(note, dict):
-        raise RuntimeError("XHS Search item 缺少 note")
+        raise RuntimeError("xiaohongshu Search item 缺少 note")
     return note
 
 
-def _run_xhs(
+def _run_xiaohongshu(
     probe: TikHubOperationProbe,
     output: Path,
     pseudo: Pseudonymizer,
@@ -405,12 +405,12 @@ def _run_xhs(
     )
     image_wrapper = _max_item(
         xiaohongshu.extract_search_items(search_body),
-        lambda item: _xhs_note(item).get("comments_count") or 0,
+        lambda item: _xiaohongshu_note(item).get("comments_count") or 0,
     )
-    image_note = _xhs_note(image_wrapper)
+    image_note = _xiaohongshu_note(image_wrapper)
     image_note_id = str(image_note.get("id") or image_note.get("note_id") or "")
     if not image_note_id:
-        raise RuntimeError("XHS 搜索缺少 note id")
+        raise RuntimeError("xiaohongshu 搜索缺少 note id")
     _capture(
         probe=probe,
         output=output,
@@ -435,7 +435,7 @@ def _run_xhs(
     )
     root_id = str(root.get("id") or root.get("comment_id") or "")
     if not root_id:
-        raise RuntimeError("XHS 一级评论缺少 id")
+        raise RuntimeError("xiaohongshu 一级评论缺少 id")
     _capture(
         probe=probe,
         output=output,
@@ -464,10 +464,12 @@ def _run_xhs(
         pseudonyms=pseudo,
         manifest=manifest,
     )
-    video_note = _xhs_note(_max_item(xiaohongshu.extract_search_items(video_search), lambda _: 0))
+    video_note = _xiaohongshu_note(
+        _max_item(xiaohongshu.extract_search_items(video_search), lambda _: 0)
+    )
     video_note_id = str(video_note.get("id") or video_note.get("note_id") or "")
     if not video_note_id:
-        raise RuntimeError("XHS 视频搜索缺少 note id")
+        raise RuntimeError("xiaohongshu 视频搜索缺少 note id")
     _capture(
         probe=probe,
         output=output,
@@ -762,7 +764,7 @@ def run() -> None:
                 max_estimated_cost=MAX_ESTIMATED_COST,
             ),
         )
-        _run_xhs(probe, output, pseudonyms["xiaohongshu"], manifest)
+        _run_xiaohongshu(probe, output, pseudonyms["xiaohongshu"], manifest)
         _run_douyin(probe, output, pseudonyms["douyin"], manifest)
         _run_weibo(probe, output, pseudonyms["weibo"], manifest)
         _run_bilibili(probe, output, pseudonyms["bilibili"], manifest)

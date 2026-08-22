@@ -90,7 +90,7 @@ Search
 
 Detail
 → 从 Search 结果选 1 条真实内容
-→ XHS 额外验证图文和视频
+→ xiaohongshu 额外验证图文和视频
 
 Comments
 → 每个平台最多 1 页
@@ -185,7 +185,7 @@ GET /api/v1/xiaohongshu/app_v2/search_notes
 data.data.items[]
 ```
 
-当前 `XhsSearchPagination` 还会从响应中观察：
+当前 `XiaohongshuSearchPagination` 还会从响应中观察：
 
 ```text
 search_id

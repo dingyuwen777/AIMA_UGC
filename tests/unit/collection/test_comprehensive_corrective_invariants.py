@@ -8,7 +8,7 @@ import pytest
 from aima_ugc.adapters.providers.tikhub.capabilities import (
     DOUYIN_TIKHUB_CAPABILITY,
     WEIBO_TIKHUB_CAPABILITY,
-    XHS_TIKHUB_CAPABILITY,
+    XIAOHONGSHU_TIKHUB_CAPABILITY,
 )
 from aima_ugc.bootstrap.collection_scope import (
     _coverage_for_stop,
@@ -82,8 +82,10 @@ def test_live_locator_is_stable_for_same_raw_item_and_changes_with_raw_identity(
     assert "items[" not in locator
 
 
-def test_xhs_live_and_douyin_article_are_not_exposed_without_full_mapper_detail_support() -> None:
-    assert "live" not in _search(XHS_TIKHUB_CAPABILITY).supported_content_types
+def test_xiaohongshu_live_and_douyin_article_are_not_exposed_without_full_mapper_detail_support() -> (
+    None
+):
+    assert "live" not in _search(XIAOHONGSHU_TIKHUB_CAPABILITY).supported_content_types
     assert "article" not in _search(DOUYIN_TIKHUB_CAPABILITY).supported_content_types
 
 

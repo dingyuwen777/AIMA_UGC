@@ -55,8 +55,8 @@ def test_sub_comment_calls_use_current_primary_operations() -> None:
 
 def test_runtime_extracts_platform_specific_sub_comment_shapes() -> None:
     assert extract_sub_comment_items(
-        "xiaohongshu", {"data": {"data": {"comments": [{"id": "xhs-reply"}]}}}
-    ) == ({"id": "xhs-reply"},)
+        "xiaohongshu", {"data": {"data": {"comments": [{"id": "xiaohongshu-reply"}]}}}
+    ) == ({"id": "xiaohongshu-reply"},)
     assert extract_sub_comment_items(
         "douyin", {"data": {"comments": [{"cid": "douyin-reply"}]}}
     ) == ({"cid": "douyin-reply"},)

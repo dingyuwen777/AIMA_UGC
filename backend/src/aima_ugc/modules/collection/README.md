@@ -352,10 +352,10 @@ Provider Response
 → 不重新付费请求 TikHub
 ```
 
-XHS 当前还有专门的 Raw Replay 实现：
+xiaohongshu 当前还有专门的 Raw Replay 实现：
 
 ```text
-xhs_replay.py
+xiaohongshu_replay.py
 ```
 
 Raw 不等于业务 Current。Raw 只保存“Provider 当时返回了什么”。

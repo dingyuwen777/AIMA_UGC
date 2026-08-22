@@ -350,7 +350,7 @@ output/
          │  ├─ contents.jsonl
          │  └─ comments.jsonl
          ├─ raw_data/
-         │  └─ xhs_raw_data.xlsx
+         │  └─ xiaohongshu_raw_data.xlsx
          └─ run_summary.json
 ```
 

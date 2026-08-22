@@ -121,11 +121,11 @@ def test_scheduler_freezes_keyword_pack_version_and_explicit_platform_scopes(
                 )
             )
             PostgresGlobalRelevanceRepository(session).set(pack.id)
-            xhs_config = provider_repository.create(
+            xiaohongshu_config = provider_repository.create(
                 ProviderConfig(
                     id=uuid4(),
                     provider="tikhub",
-                    display_name="TikHub XHS",
+                    display_name="TikHub xiaohongshu",
                     base_url="https://api.tikhub.io",
                     secret_ref="providers/tikhub/test/xiaohongshu",
                     enabled=True,
@@ -157,7 +157,7 @@ def test_scheduler_freezes_keyword_pack_version_and_explicit_platform_scopes(
                     platforms=(
                         PlanPlatformDefinition(
                             platform="xiaohongshu",
-                            provider_config_id=xhs_config.id,
+                            provider_config_id=xiaohongshu_config.id,
                             config={},
                         ),
                         PlanPlatformDefinition(

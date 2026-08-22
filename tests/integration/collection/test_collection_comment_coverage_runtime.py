@@ -139,7 +139,7 @@ def _comments_response(*, count: int, has_more: bool) -> dict[str, object]:
     comments: list[dict[str, object]] = []
     for index in range(count):
         root = deepcopy(template)
-        root["id"] = f"xhs-comment-{index + 1}"
+        root["id"] = f"xiaohongshu-comment-{index + 1}"
         root["note_id"] = "note-fixture-1"
         root["sub_comment_count"] = 0
         root["sub_comments"] = []

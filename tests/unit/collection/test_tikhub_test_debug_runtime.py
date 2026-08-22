@@ -116,7 +116,7 @@ def _write_env(path: Path) -> None:
     )
 
 
-def test_xhs_debug_runtime_reuses_production_flow_and_skips_unchanged_refresh(
+def test_xiaohongshu_debug_runtime_reuses_production_flow_and_skips_unchanged_refresh(
     tmp_path: Path,
     monkeypatch: Any,
 ) -> None:
@@ -174,8 +174,14 @@ def test_xhs_debug_runtime_reuses_production_flow_and_skips_unchanged_refresh(
         comment_headers = [cell.value for cell in comment_sheet[1]]
         comment_id_column = comment_headers.index("评论ID") + 1
         assert comment_sheet.max_row == 3
-        assert comment_sheet.cell(row=2, column=comment_id_column).value == "xhs-comment-root-1"
-        assert comment_sheet.cell(row=3, column=comment_id_column).value == "xhs-comment-reply-2"
+        assert (
+            comment_sheet.cell(row=2, column=comment_id_column).value
+            == "xiaohongshu-comment-root-1"
+        )
+        assert (
+            comment_sheet.cell(row=3, column=comment_id_column).value
+            == "xiaohongshu-comment-reply-2"
+        )
     finally:
         workbook.close()
 
@@ -208,7 +214,7 @@ def test_xhs_debug_runtime_reuses_production_flow_and_skips_unchanged_refresh(
     assert len(second_requests) == 1
 
 
-def test_xhs_multiple_keywords_search_each_keyword_but_deduplicate_downstream(
+def test_xiaohongshu_multiple_keywords_search_each_keyword_but_deduplicate_downstream(
     tmp_path: Path,
     monkeypatch: Any,
 ) -> None:

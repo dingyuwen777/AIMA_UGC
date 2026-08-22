@@ -22,7 +22,7 @@ from aima_ugc.contracts.canonical import (
 
 
 @dataclass(frozen=True, slots=True)
-class XhsMappingContext:
+class XiaohongshuMappingContext:
     """Mapper 显式采集上下文；不包含 Secret。"""
 
     provider_request_id: str
@@ -36,7 +36,7 @@ class XhsMappingContext:
 
 
 def map_content(
-    raw: dict[str, Any], context: XhsMappingContext, *, item_locator: str
+    raw: dict[str, Any], context: XiaohongshuMappingContext, *, item_locator: str
 ) -> CanonicalContentV1:
     """把搜索卡片或真实详情事实映射为一条原子 Content Observation。"""
     item = _unwrap_content(raw)
@@ -95,7 +95,7 @@ def map_content(
 
 def map_comment(
     raw: dict[str, Any],
-    context: XhsMappingContext,
+    context: XiaohongshuMappingContext,
     *,
     item_locator: str,
     is_root: bool,
@@ -161,7 +161,7 @@ def map_comment(
     )
 
 
-def _source(context: XhsMappingContext, item_locator: str) -> CanonicalSourceV1:
+def _source(context: XiaohongshuMappingContext, item_locator: str) -> CanonicalSourceV1:
     return CanonicalSourceV1(
         provider_name="tikhub",
         operation=context.operation,

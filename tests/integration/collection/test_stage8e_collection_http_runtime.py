@@ -47,7 +47,7 @@ from aima_ugc.platform.storage.tables import artifacts_table
 from pydantic import SecretStr
 from sqlalchemy import func, insert, select, update
 
-_XHS_FIXTURES = Path("tests/fixtures/providers/tikhub/xiaohongshu")
+_XIAOHONGSHU_FIXTURES = Path("tests/fixtures/providers/tikhub/xiaohongshu")
 
 
 @pytest.fixture
@@ -550,7 +550,9 @@ def _batch_detail_response(
     note_id: str = "stage8e-batch-note",
     title: str = "爱玛 Batch 内容已补全",
 ) -> dict[str, object]:
-    body = json.loads((_XHS_FIXTURES / "image_detail.sanitized.json").read_text(encoding="utf-8"))
+    body = json.loads(
+        (_XIAOHONGSHU_FIXTURES / "image_detail.sanitized.json").read_text(encoding="utf-8")
+    )
     outer = body["data"]
     assert isinstance(outer, dict)
     rows = outer["data"]
@@ -569,7 +571,9 @@ def _batch_detail_response(
 
 
 def _batch_comments_response() -> dict[str, object]:
-    body = json.loads((_XHS_FIXTURES / "comments_page1.sanitized.json").read_text(encoding="utf-8"))
+    body = json.loads(
+        (_XIAOHONGSHU_FIXTURES / "comments_page1.sanitized.json").read_text(encoding="utf-8")
+    )
     outer = body["data"]
     assert isinstance(outer, dict)
     page = outer["data"]

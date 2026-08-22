@@ -45,13 +45,13 @@ from aima_ugc.adapters.providers.tikhub.mappers.weibo import (
     map_content as map_weibo_content,
 )
 from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
-    XhsMappingContext,
+    XiaohongshuMappingContext,
 )
 from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
-    map_comment as map_xhs_comment,
+    map_comment as map_xiaohongshu_comment,
 )
 from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
-    map_content as map_xhs_content,
+    map_content as map_xiaohongshu_content,
 )
 from aima_ugc.adapters.providers.tikhub.operations import (
     bilibili,
@@ -238,8 +238,10 @@ def _common_context(
     )
 
 
-def _xhs_context(chain: SourceChain, *, operation: str, source_value: str) -> XhsMappingContext:
-    return XhsMappingContext(
+def _xiaohongshu_context(
+    chain: SourceChain, *, operation: str, source_value: str
+) -> XiaohongshuMappingContext:
+    return XiaohongshuMappingContext(
         provider_request_id=str(chain.request_id),
         provider_attempt_id=str(chain.attempt_id),
         raw_artifact_id=chain.artifact_id,
@@ -288,22 +290,24 @@ def test_real_search_fixtures_normalize_and_persist_for_all_five_platforms(
         with session.begin_nested():
             service = ContentIngestionService(PostgresContentRepository(session))
 
-            xhs_chain = _insert_source_chain(
+            xiaohongshu_chain = _insert_source_chain(
                 session,
                 platform="xiaohongshu",
                 operation="search_notes",
                 source_value="爱玛",
                 operation_group="content_discovery",
             )
-            xhs_item = xiaohongshu.extract_search_items(
+            xiaohongshu_item = xiaohongshu.extract_search_items(
                 _fixture("xiaohongshu", "search_notes_page1.sanitized.json")
             )[1]
-            xhs_canonical = map_xhs_content(
-                xhs_item,
-                _xhs_context(xhs_chain, operation="search_notes", source_value="爱玛"),
+            xiaohongshu_canonical = map_xiaohongshu_content(
+                xiaohongshu_item,
+                _xiaohongshu_context(
+                    xiaohongshu_chain, operation="search_notes", source_value="爱玛"
+                ),
                 item_locator="data.data.items[1]",
             )
-            xhs_result = service.ingest_content(xhs_canonical)
+            xiaohongshu_result = service.ingest_content(xiaohongshu_canonical)
 
             cases = (
                 (
@@ -346,7 +350,7 @@ def test_real_search_fixtures_normalize_and_persist_for_all_five_platforms(
                 ),
             )
             mapped_results: list[tuple[CanonicalContentV1, UUID]] = [
-                (xhs_canonical, xhs_result.target_id)
+                (xiaohongshu_canonical, xiaohongshu_result.target_id)
             ]
             for platform, operation, raw_item, context_type, mapper, locator in cases:
                 chain = _insert_source_chain(
@@ -416,13 +420,13 @@ def test_real_root_comment_fixtures_persist_canonical_comment_semantics(
             cases = (
                 (
                     "xiaohongshu",
-                    "xhs-note-1",
+                    "xiaohongshu-note-1",
                     "get_note_comments",
                     xiaohongshu.extract_comment_items(
                         _fixture("xiaohongshu", "comments_page1.sanitized.json")
                     )[0],
-                    XhsMappingContext,
-                    map_xhs_comment,
+                    XiaohongshuMappingContext,
+                    map_xiaohongshu_comment,
                     "data.data.comments[0]",
                 ),
                 (
@@ -491,7 +495,7 @@ def test_real_root_comment_fixtures_persist_canonical_comment_semantics(
                     operation_group="comments",
                 )
                 if platform == "xiaohongshu":
-                    context = XhsMappingContext(
+                    context = XiaohongshuMappingContext(
                         provider_request_id=str(comment_chain.request_id),
                         provider_attempt_id=str(comment_chain.attempt_id),
                         raw_artifact_id=comment_chain.artifact_id,

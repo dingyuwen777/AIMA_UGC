@@ -176,7 +176,7 @@ def _max_by(items: tuple[dict[str, Any], ...], value_fn: Any) -> dict[str, Any]:
     return max(items, key=lambda item: int(value_fn(item) or 0))
 
 
-def _xhs(client: httpx.Client, output: Path, manifest: list[dict[str, object]]) -> None:
+def _xiaohongshu(client: httpx.Client, output: Path, manifest: list[dict[str, object]]) -> None:
     search = xiaohongshu.build_search_notes_request(
         keyword=KEYWORD,
         page=1,
@@ -185,7 +185,7 @@ def _xhs(client: httpx.Client, output: Path, manifest: list[dict[str, object]]) 
         note_type="普通笔记",
     )
     search_body = _call_request(
-        client, search, label="xhs_search", output=output, manifest=manifest
+        client, search, label="xiaohongshu_search", output=output, manifest=manifest
     )
     items = xiaohongshu.extract_search_items(search_body)
     item = _max_by(
@@ -203,7 +203,7 @@ def _xhs(client: httpx.Client, output: Path, manifest: list[dict[str, object]]) 
     comments_body = _call_request(
         client,
         xiaohongshu.build_note_comments_request(note_id=note_id),
-        label="xhs_comments",
+        label="xiaohongshu_comments",
         output=output,
         manifest=manifest,
     )
@@ -220,7 +220,7 @@ def _xhs(client: httpx.Client, output: Path, manifest: list[dict[str, object]]) 
     _call_request(
         client,
         xiaohongshu.build_sub_comments_request(note_id=note_id, comment_id=comment_id),
-        label="xhs_sub_comments",
+        label="xiaohongshu_sub_comments",
         output=output,
         manifest=manifest,
     )
@@ -412,7 +412,7 @@ def main() -> None:
     output = _output()
     manifest: list[dict[str, object]] = []
     with _client() as client:
-        _xhs(client, output, manifest)
+        _xiaohongshu(client, output, manifest)
         _douyin(client, output, manifest)
         _weibo(client, output, manifest)
         _bilibili(client, output, manifest)

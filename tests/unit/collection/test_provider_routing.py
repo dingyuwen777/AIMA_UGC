@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 from aima_ugc.adapters.providers.registry import build_default_provider_registry
-from aima_ugc.adapters.providers.tikhub.capabilities import XHS_TIKHUB_CAPABILITY
+from aima_ugc.adapters.providers.tikhub.capabilities import XIAOHONGSHU_TIKHUB_CAPABILITY
 from aima_ugc.modules.collection.provider_routing import ProviderRegistration
 from aima_ugc.modules.system.models import ProviderConfig
 
@@ -27,7 +27,7 @@ def _config(
     )
 
 
-def test_default_registry_resolves_current_xhs_tikhub_capability() -> None:
+def test_default_registry_resolves_current_xiaohongshu_tikhub_capability() -> None:
     registry = build_default_provider_registry()
     config = _config()
 
@@ -71,13 +71,13 @@ def test_provider_registration_rejects_unsafe_or_duplicate_base_urls() -> None:
     with pytest.raises(ValueError, match="HTTPS"):
         ProviderRegistration(
             provider="tikhub",
-            capabilities=(XHS_TIKHUB_CAPABILITY,),
+            capabilities=(XIAOHONGSHU_TIKHUB_CAPABILITY,),
             allowed_base_urls=("http://api.tikhub.io",),
         )
 
     with pytest.raises(ValueError, match="重复 Base URL"):
         ProviderRegistration(
             provider="tikhub",
-            capabilities=(XHS_TIKHUB_CAPABILITY,),
+            capabilities=(XIAOHONGSHU_TIKHUB_CAPABILITY,),
             allowed_base_urls=("https://api.tikhub.io", "https://api.tikhub.io/"),
         )

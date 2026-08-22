@@ -11,9 +11,9 @@ from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataGateway,
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
-from aima_ugc.adapters.persistence.postgres.xhs_replay import (
-    PostgresXhsReplayIngestionWriter,
-    PostgresXhsReplaySourceReader,
+from aima_ugc.adapters.persistence.postgres.xiaohongshu_replay import (
+    PostgresXiaohongshuReplayIngestionWriter,
+    PostgresXiaohongshuReplaySourceReader,
 )
 from aima_ugc.adapters.providers.fake import FakeProviderTransport
 from aima_ugc.adapters.storage.local import LocalArtifactStore
@@ -29,9 +29,9 @@ from aima_ugc.modules.collection.tables import (
     provider_request_attempts_table,
     provider_requests_table,
 )
-from aima_ugc.modules.collection.xhs_replay import (
-    XhsRawReplayHandler,
-    register_xhs_raw_replay_job,
+from aima_ugc.modules.collection.xiaohongshu_replay import (
+    XiaohongshuRawReplayHandler,
+    register_xiaohongshu_raw_replay_job,
 )
 from aima_ugc.modules.content.account_tables import account_external_ids_table
 from aima_ugc.modules.content.tables import contents_table
@@ -186,12 +186,12 @@ def test_job_replays_linked_raw_without_second_provider_call(tmp_path: Path) -> 
             )
 
         registry = JobRegistry()
-        register_xhs_raw_replay_job(
+        register_xiaohongshu_raw_replay_job(
             registry,
-            XhsRawReplayHandler(
+            XiaohongshuRawReplayHandler(
                 raw_artifacts=raw_service,
-                source_reader=PostgresXhsReplaySourceReader(runtime.new_session),
-                ingestion_writer=PostgresXhsReplayIngestionWriter(runtime.new_session),
+                source_reader=PostgresXiaohongshuReplaySourceReader(runtime.new_session),
+                ingestion_writer=PostgresXiaohongshuReplayIngestionWriter(runtime.new_session),
             ),
         )
         worker = JobWorker(

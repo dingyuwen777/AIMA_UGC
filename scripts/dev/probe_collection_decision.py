@@ -7,17 +7,17 @@ import json
 from pathlib import Path
 from typing import Any
 
-from aima_ugc.adapters.providers.tikhub.capabilities import XHS_TIKHUB_CAPABILITY
+from aima_ugc.adapters.providers.tikhub.capabilities import XIAOHONGSHU_TIKHUB_CAPABILITY
 from aima_ugc.contracts.collection import CollectionDecisionRequestV1
 from aima_ugc.modules.collection import CollectionDecisionService
 
 
 def evaluate_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    """验证输入并返回正式生产 Decision；默认使用当前 XHS TikHub Capability。"""
+    """验证输入并返回正式生产 Decision；默认使用当前 xiaohongshu TikHub Capability。"""
     request_payload = dict(payload)
     request_payload.setdefault(
         "capability",
-        XHS_TIKHUB_CAPABILITY.model_dump(mode="json"),
+        XIAOHONGSHU_TIKHUB_CAPABILITY.model_dump(mode="json"),
     )
     request = CollectionDecisionRequestV1.model_validate(request_payload)
     decision = CollectionDecisionService().decide(request)

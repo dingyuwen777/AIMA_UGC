@@ -13,7 +13,7 @@ import pytest
 from aima_ugc.adapters.persistence.postgres.candidates import PostgresCandidateRepository
 from aima_ugc.adapters.persistence.postgres.content import PostgresContentRepository
 from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
-    XhsMappingContext,
+    XiaohongshuMappingContext,
     map_comment,
     map_content,
 )
@@ -184,9 +184,9 @@ def _insert_source_chain(
     return SourceChain(run_id, scope_id, request_id, attempt_id, artifact_id)
 
 
-def _mapping_context(chain: SourceChain, *, operation: str) -> XhsMappingContext:
+def _mapping_context(chain: SourceChain, *, operation: str) -> XiaohongshuMappingContext:
     assert chain.artifact_id is not None
-    return XhsMappingContext(
+    return XiaohongshuMappingContext(
         provider_request_id=str(chain.request_id),
         provider_attempt_id=str(chain.attempt_id),
         raw_artifact_id=chain.artifact_id,

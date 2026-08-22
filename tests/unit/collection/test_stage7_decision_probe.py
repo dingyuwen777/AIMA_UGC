@@ -27,7 +27,7 @@ def _run_probe(tmp_path: Path, payload: dict[str, object]) -> dict[str, object]:
     return parsed
 
 
-def test_probe_defaults_to_current_xhs_capability_and_returns_explainable_decision(
+def test_probe_defaults_to_current_xiaohongshu_capability_and_returns_explainable_decision(
     tmp_path: Path,
 ) -> None:
     decision = _run_probe(

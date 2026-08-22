@@ -283,8 +283,8 @@ def test_scope_persists_durable_actions_extensions_and_thread_coverage(
 
             comments = session.execute(select(comments_table)).mappings().all()
             assert {row["external_comment_id"] for row in comments} == {
-                "xhs-comment-root-1",
-                "xhs-comment-reply-2",
+                "xiaohongshu-comment-root-1",
+                "xiaohongshu-comment-reply-2",
             }
 
             root_coverage = (
@@ -298,7 +298,7 @@ def test_scope_persists_durable_actions_extensions_and_thread_coverage(
             thread_coverage = (
                 session.execute(select(comment_thread_coverage_observations_table)).mappings().one()
             )
-            assert thread_coverage["root_comment_id"] == "xhs-comment-root-1"
+            assert thread_coverage["root_comment_id"] == "xiaohongshu-comment-root-1"
             assert thread_coverage["coverage"] == "complete"
             assert thread_coverage["reported_total"] == 1
             assert thread_coverage["captured_count"] == 1

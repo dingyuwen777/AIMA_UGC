@@ -34,21 +34,21 @@ def _replace_platform_aliases_in_active_text() -> None:
     legacy_camel = legacy_lower.capitalize()
     legacy_upper = legacy_lower.upper()
     exact_aliases = {
-        "dy": "douyin",
-        "wb": "weibo",
-        "ks": "kuaishou",
-        "bili": "bilibili",
+        "douyin": "douyin",
+        "weibo": "weibo",
+        "kuaishou": "kuaishou",
+        "bilibili": "bilibili",
     }
 
     for path in ROOT.rglob("*"):
         if not path.is_file() or path.suffix not in _TEXT_SUFFIXES or _excluded(path):
             continue
         text = path.read_text(encoding="utf-8")
-        updated = text.replace(legacy_upper, "XIAOHONGSHU")
+        updated = text.replace(legacy_upper, "xiaohongshu")
         updated = updated.replace(legacy_camel, "Xiaohongshu")
         updated = updated.replace(legacy_lower, "xiaohongshu")
         updated = re.sub(
-            r"(?<![A-Za-z0-9_])XIAOHONGSHU(?![A-Za-z0-9_])",
+            r"(?<![A-Za-z0-9_])xiaohongshu(?![A-Za-z0-9_])",
             "xiaohongshu",
             updated,
         )

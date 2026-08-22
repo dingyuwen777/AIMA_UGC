@@ -18,7 +18,7 @@ from .mappers import bilibili as bilibili_mapper
 from .mappers import douyin as douyin_mapper
 from .mappers import kuaishou as kuaishou_mapper
 from .mappers import weibo as weibo_mapper
-from .mappers import xiaohongshu as xhs_mapper
+from .mappers import xiaohongshu as xiaohongshu_mapper
 from .mappers.common import TikHubMappingContext
 from .operations import bilibili, douyin, kuaishou, weibo, xiaohongshu
 
@@ -74,7 +74,7 @@ def build_search_call(
     cfg = config or {}
     paging = state or {}
     if platform == "xiaohongshu":
-        return _build_xhs_search(keyword=keyword, config=cfg, state=paging)
+        return _build_xiaohongshu_search(keyword=keyword, config=cfg, state=paging)
     if platform == "douyin":
         return _build_douyin_search(keyword=keyword, config=cfg, state=paging)
     if platform == "weibo":
@@ -84,7 +84,7 @@ def build_search_call(
     return _build_kuaishou_search(keyword=keyword, state=paging)
 
 
-def _build_xhs_search(
+def _build_xiaohongshu_search(
     *, keyword: str, config: dict[str, object], state: dict[str, object]
 ) -> TikHubOperationCall:
     request = xiaohongshu.build_search_notes_request(
@@ -196,7 +196,7 @@ def advance_search(
 ) -> TikHubPageAdvance:
     current = state or {}
     if platform == "xiaohongshu":
-        return _advance_xhs_search(current, body)
+        return _advance_xiaohongshu_search(current, body)
     if platform == "douyin":
         return _advance_douyin_search(current, body)
     if platform == "weibo":
@@ -206,8 +206,10 @@ def advance_search(
     return _advance_kuaishou_search(current, body)
 
 
-def _advance_xhs_search(state: dict[str, object], body: dict[str, Any]) -> TikHubPageAdvance:
-    result = xiaohongshu.XhsSearchPagination.from_response(
+def _advance_xiaohongshu_search(
+    state: dict[str, object], body: dict[str, Any]
+) -> TikHubPageAdvance:
+    result = xiaohongshu.XiaohongshuSearchPagination.from_response(
         current_page=_int_state(state, "page", default=1),
         body=body,
         previous_item_ids=tuple(_string_list(state.get("item_ids"))),
@@ -295,12 +297,12 @@ def extract_search_items(
 def build_detail_call(platform: TikHubPlatform, content: CanonicalContentV1) -> TikHubOperationCall:
     if platform == "xiaohongshu":
         if content.content_type == "video":
-            xhs_request = xiaohongshu.build_video_detail_request(
+            xiaohongshu_request = xiaohongshu.build_video_detail_request(
                 note_id=content.external_content_id
             )
             operation = "get_video_note_detail"
         else:
-            xhs_request = xiaohongshu.build_image_detail_request(
+            xiaohongshu_request = xiaohongshu.build_image_detail_request(
                 note_id=content.external_content_id
             )
             operation = "get_image_note_detail"
@@ -309,8 +311,8 @@ def build_detail_call(platform: TikHubPlatform, content: CanonicalContentV1) -> 
             "content_detail",
             operation,
             "GET",
-            xhs_request.path,
-            _json_object(xhs_request.params),
+            xiaohongshu_request.path,
+            _json_object(xiaohongshu_request.params),
         )
     if platform == "douyin":
         douyin_request = douyin.build_video_detail_request(aweme_id=content.external_content_id)
@@ -358,7 +360,7 @@ def build_comments_call(
 ) -> TikHubOperationCall:
     paging = state or {}
     if platform == "xiaohongshu":
-        xhs_request = xiaohongshu.build_note_comments_request(
+        xiaohongshu_request = xiaohongshu.build_note_comments_request(
             note_id=external_content_id,
             cursor=_str_state(paging, "cursor", default=""),
             index=_int_state(paging, "index", default=0),
@@ -369,8 +371,8 @@ def build_comments_call(
             "comments",
             "get_note_comments",
             "GET",
-            xhs_request.path,
-            _json_object(xhs_request.params),
+            xiaohongshu_request.path,
+            _json_object(xiaohongshu_request.params),
             pagination_input=_json_object(paging),
         )
     if platform == "douyin":
@@ -442,7 +444,7 @@ def build_sub_comments_call(
     """构造当前正式二级回复主 Operation；不做任何 App/Web 自动 fallback。"""
     paging = state or {}
     if platform == "xiaohongshu":
-        xhs_request = xiaohongshu.build_sub_comments_request(
+        xiaohongshu_request = xiaohongshu.build_sub_comments_request(
             note_id=external_content_id,
             comment_id=root_comment_id,
             cursor=_str_state(paging, "cursor", default=""),
@@ -453,8 +455,8 @@ def build_sub_comments_call(
             "sub_comments",
             "get_note_sub_comments",
             "GET",
-            xhs_request.path,
-            _json_object(xhs_request.params),
+            xiaohongshu_request.path,
+            _json_object(xiaohongshu_request.params),
             pagination_input=_json_object(paging),
         )
     if platform == "douyin":
@@ -526,7 +528,7 @@ def advance_comments(
     """按现有正式一级评论分页事实推进下一页。"""
     current = state or {}
     if platform == "xiaohongshu":
-        return _advance_xhs_comments(current, body, default_index=0)
+        return _advance_xiaohongshu_comments(current, body, default_index=0)
     if platform == "douyin":
         return _advance_douyin_comments(current, body)
     if platform == "weibo":
@@ -545,7 +547,7 @@ def advance_sub_comments(
     """按现有正式二级回复分页事实推进下一页。"""
     current = state or {}
     if platform == "xiaohongshu":
-        return _advance_xhs_comments(current, body, default_index=1)
+        return _advance_xiaohongshu_comments(current, body, default_index=1)
     if platform == "douyin":
         return _advance_douyin_comments(current, body)
     if platform == "weibo":
@@ -555,14 +557,14 @@ def advance_sub_comments(
     return _advance_kuaishou_comments(current, body, item_key="subComments")
 
 
-def _advance_xhs_comments(
+def _advance_xiaohongshu_comments(
     state: dict[str, object],
     body: dict[str, Any],
     *,
     default_index: int,
 ) -> TikHubPageAdvance:
     page_area = _str_state(state, "page_area", default="UNFOLDED")
-    result = xiaohongshu.XhsCommentPagination.from_response(
+    result = xiaohongshu.XiaohongshuCommentPagination.from_response(
         previous_cursor=_str_state(state, "cursor", default=""),
         previous_index=_int_state(state, "index", default=default_index),
         page_area=page_area,
@@ -714,7 +716,9 @@ def map_content(
     item_locator: str,
 ) -> CanonicalContentV1:
     if platform == "xiaohongshu":
-        return xhs_mapper.map_content(raw, _xhs_context(context), item_locator=item_locator)
+        return xiaohongshu_mapper.map_content(
+            raw, _xiaohongshu_context(context), item_locator=item_locator
+        )
     if platform == "douyin":
         return douyin_mapper.map_content(raw, context, item_locator=item_locator)
     if platform == "weibo":
@@ -733,9 +737,9 @@ def map_comment(
     is_root: bool,
 ) -> CanonicalCommentV1:
     if platform == "xiaohongshu":
-        return xhs_mapper.map_comment(
+        return xiaohongshu_mapper.map_comment(
             raw,
-            _xhs_context(context),
+            _xiaohongshu_context(context),
             item_locator=item_locator,
             is_root=is_root,
         )
@@ -773,8 +777,10 @@ def mapping_context(
     )
 
 
-def _xhs_context(context: TikHubMappingContext) -> xhs_mapper.XhsMappingContext:
-    return xhs_mapper.XhsMappingContext(
+def _xiaohongshu_context(
+    context: TikHubMappingContext,
+) -> xiaohongshu_mapper.XiaohongshuMappingContext:
+    return xiaohongshu_mapper.XiaohongshuMappingContext(
         provider_request_id=context.provider_request_id,
         provider_attempt_id=context.provider_attempt_id,
         raw_artifact_id=context.raw_artifact_id,

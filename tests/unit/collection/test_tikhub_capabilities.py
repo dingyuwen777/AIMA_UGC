@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from aima_ugc.adapters.providers.tikhub.capabilities import XHS_TIKHUB_CAPABILITY
+from aima_ugc.adapters.providers.tikhub.capabilities import XIAOHONGSHU_TIKHUB_CAPABILITY
 from aima_ugc.adapters.providers.tikhub.operations.xiaohongshu import (
     build_image_detail_request,
     build_note_comments_request,
@@ -17,15 +17,15 @@ from aima_ugc.adapters.providers.tikhub.operations.xiaohongshu import (
 def _operation(name: str):
     return next(
         operation
-        for operation in XHS_TIKHUB_CAPABILITY.operations
+        for operation in XIAOHONGSHU_TIKHUB_CAPABILITY.operations
         if operation.business_operation == name
     )
 
 
-def test_xhs_tikhub_capability_matches_current_executable_operations() -> None:
-    assert XHS_TIKHUB_CAPABILITY.schema_version == "provider-platform-capability.v1"
-    assert XHS_TIKHUB_CAPABILITY.provider == "tikhub"
-    assert XHS_TIKHUB_CAPABILITY.platform == "xiaohongshu"
+def test_xiaohongshu_tikhub_capability_matches_current_executable_operations() -> None:
+    assert XIAOHONGSHU_TIKHUB_CAPABILITY.schema_version == "provider-platform-capability.v1"
+    assert XIAOHONGSHU_TIKHUB_CAPABILITY.provider == "tikhub"
+    assert XIAOHONGSHU_TIKHUB_CAPABILITY.platform == "xiaohongshu"
 
     search = _operation("keyword_search")
     assert search.provider_operations == ("search_notes",)
@@ -60,7 +60,7 @@ def test_xhs_tikhub_capability_matches_current_executable_operations() -> None:
     assert replies.provider_operations == ("get_note_sub_comments",)
 
 
-def test_xhs_capability_operation_names_stay_aligned_with_request_builders() -> None:
+def test_xiaohongshu_capability_operation_names_stay_aligned_with_request_builders() -> None:
     assert build_search_notes_request(
         keyword="爱玛", page=1, sort_type="time_descending", time_filter="一天内"
     ).path.endswith("/search_notes")
@@ -75,7 +75,7 @@ def test_xhs_capability_operation_names_stay_aligned_with_request_builders() -> 
 
 
 def test_business_capability_never_exposes_provider_pagination_or_secret_fields() -> None:
-    payload = json.dumps(XHS_TIKHUB_CAPABILITY.model_dump(mode="json"), ensure_ascii=False)
+    payload = json.dumps(XIAOHONGSHU_TIKHUB_CAPABILITY.model_dump(mode="json"), ensure_ascii=False)
     for forbidden in (
         "search_id",
         "search_session_id",

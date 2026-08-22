@@ -94,7 +94,9 @@ def test_bilibili_web_candidates_are_explicit_and_do_not_replace_app_primary() -
     assert replies.params == {"bv_id": "BV1TEST", "pn": 1, "rpid": "9001"}
 
 
-def test_xhs_app_v1_candidates_match_same_business_inputs_without_becoming_primary() -> None:
+def test_xiaohongshu_app_v1_candidates_match_same_business_inputs_without_becoming_primary() -> (
+    None
+):
     search = build_app_v1_search_candidate_request(
         keyword="爱玛",
         page=1,
@@ -128,7 +130,7 @@ def test_xhs_app_v1_candidates_match_same_business_inputs_without_becoming_prima
     }
 
 
-def test_xhs_web_v3_candidates_require_xsec_for_protected_operations() -> None:
+def test_xiaohongshu_web_v3_candidates_require_xsec_for_protected_operations() -> None:
     search = build_web_v3_search_candidate_request(
         keyword="爱玛", page=1, sort="general", note_type=0
     )

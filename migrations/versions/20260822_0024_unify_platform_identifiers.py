@@ -66,8 +66,7 @@ def _assert_no_identity_conflicts(connection: Connection) -> None:
     conflicts = [name for name, sql in checks.items() if _exists(connection, sql)]
     if conflicts:
         raise RuntimeError(
-            "平台标识迁移冲突：同一业务身份同时存在旧值和正式值："
-            + ", ".join(conflicts)
+            "平台标识迁移冲突：同一业务身份同时存在旧值和正式值：" + ", ".join(conflicts)
         )
 
 

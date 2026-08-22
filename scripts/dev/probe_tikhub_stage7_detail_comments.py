@@ -129,7 +129,7 @@ def _from_request(request: Any, label: str) -> ProbeRequest:
     return ProbeRequest(label, method, str(request.path), dict(request.params), request.body)
 
 
-def _first_xhs_note(body: dict[str, Any]) -> dict[str, Any]:
+def _first_xiaohongshu_note(body: dict[str, Any]) -> dict[str, Any]:
     items = xiaohongshu.extract_search_items(body)
     if not items:
         raise RuntimeError("小红书搜索未取得非空 note")
@@ -190,22 +190,24 @@ def run() -> None:
         )
         image_search_body = _send(
             client,
-            _get(image_search.path, dict(image_search.params), "xhs_search_image"),
+            _get(image_search.path, dict(image_search.params), "xiaohongshu_search_image"),
             output=output,
             manifest=manifest,
         )
-        image_note_id = str(_first_xhs_note(image_search_body)["id"])
+        image_note_id = str(_first_xiaohongshu_note(image_search_body)["id"])
         image_detail = xiaohongshu.build_image_detail_request(note_id=image_note_id)
         _send(
             client,
-            _get(image_detail.path, dict(image_detail.params), "xhs_image_detail"),
+            _get(image_detail.path, dict(image_detail.params), "xiaohongshu_image_detail"),
             output=output,
             manifest=manifest,
         )
-        xhs_comments = xiaohongshu.build_note_comments_request(note_id=image_note_id)
+        xiaohongshu_comments = xiaohongshu.build_note_comments_request(note_id=image_note_id)
         _send(
             client,
-            _get(xhs_comments.path, dict(xhs_comments.params), "xhs_comments"),
+            _get(
+                xiaohongshu_comments.path, dict(xiaohongshu_comments.params), "xiaohongshu_comments"
+            ),
             output=output,
             manifest=manifest,
         )
@@ -219,15 +221,15 @@ def run() -> None:
         )
         video_search_body = _send(
             client,
-            _get(video_search.path, dict(video_search.params), "xhs_search_video"),
+            _get(video_search.path, dict(video_search.params), "xiaohongshu_search_video"),
             output=output,
             manifest=manifest,
         )
-        video_note_id = str(_first_xhs_note(video_search_body)["id"])
+        video_note_id = str(_first_xiaohongshu_note(video_search_body)["id"])
         video_detail = xiaohongshu.build_video_detail_request(note_id=video_note_id)
         _send(
             client,
-            _get(video_detail.path, dict(video_detail.params), "xhs_video_detail"),
+            _get(video_detail.path, dict(video_detail.params), "xiaohongshu_video_detail"),
             output=output,
             manifest=manifest,
         )

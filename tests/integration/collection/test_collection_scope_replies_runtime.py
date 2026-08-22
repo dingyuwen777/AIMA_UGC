@@ -296,7 +296,7 @@ def test_scope_runtime_reply_target_is_partial_when_provider_has_more(
             coverage = (
                 session.execute(select(comment_thread_coverage_observations_table)).mappings().one()
             )
-        assert set(comments) == {"xhs-comment-root-1", "xhs-comment-reply-2"}
+        assert set(comments) == {"xiaohongshu-comment-root-1", "xiaohongshu-comment-reply-2"}
         assert run_comment_count == 2
         assert coverage["coverage"] == "partial"
         assert coverage["reported_total"] == 1
@@ -324,7 +324,7 @@ def test_sub_comments_empty_page_overrides_stale_root_reply_count(
                 session.execute(select(comment_thread_coverage_observations_table)).mappings().one()
             )
             comment_ids = set(session.scalars(select(comments_table.c.external_comment_id)))
-        assert comment_ids == {"xhs-comment-root-1"}
+        assert comment_ids == {"xiaohongshu-comment-root-1"}
         assert coverage["coverage"] == "complete"
         assert coverage["reported_total"] == 0
         assert coverage["captured_count"] == 0

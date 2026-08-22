@@ -160,7 +160,7 @@ backend/src/aima_ugc/platform/jobs/
 正式支持五个平台：
 
 ```text
-xhs
+xiaohongshu
 douyin
 weibo
 bilibili

@@ -257,8 +257,8 @@ def test_scope_runtime_fetches_and_ingests_root_comments(
                     collection_runs_table.c.job_id == job.id
                 )
             )
-        assert comment["external_comment_id"] == "xhs-comment-root-1"
-        assert comment["root_comment_id"] == "xhs-comment-root-1"
+        assert comment["external_comment_id"] == "xiaohongshu-comment-root-1"
+        assert comment["root_comment_id"] == "xiaohongshu-comment-root-1"
         assert comment["parent_comment_id"] is None
         assert comment["text"] == "脱敏一级评论"
         assert run_comment_count == 1
