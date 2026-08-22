@@ -34,8 +34,8 @@ _NATIVE_PATH_PATTERNS = {
     ),
     "douyin": (re.compile(r"^/(?:video|note)/(\d+)", re.IGNORECASE),),
     "weibo": (
-        re.compile(r"^/(?:status|detail)/(\d+)", re.IGNORECASE),
-        re.compile(r"^/\d+/(\d+)", re.IGNORECASE),
+        re.compile(r"^/(?:status|detail)/([A-Za-z0-9]+)", re.IGNORECASE),
+        re.compile(r"^/\d+/([A-Za-z0-9]+)", re.IGNORECASE),
     ),
     "bilibili": (
         re.compile(r"^/video/((?:BV[A-Za-z0-9]+)|(?:av\d+))", re.IGNORECASE),
@@ -175,10 +175,10 @@ def _provider_lookup_ids(
     if platform == "bilibili" and hostname == "b23.tv":
         return {"bilibili_share_url": normalized_url}
     if platform == "kuaishou" and (
-        hostname == "v.kuaishou.com" or urlsplit(normalized_url).path.casefold().startswith("/f/")
+        hostname == "v.kuaishou.com" or parts.path.casefold().startswith("/f/")
     ):
         return {"kuaishou_share_url": normalized_url}
-    if platform == "weibo" and "/tv/show/" in urlsplit(normalized_url).path.casefold():
+    if platform == "weibo" and "/tv/show/" in parts.path.casefold():
         return {"weibo_video_url": normalized_url}
     return {}
 
