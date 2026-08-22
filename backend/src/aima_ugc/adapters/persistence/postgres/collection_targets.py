@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import cast
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
 from aima_ugc.modules.collection.tables import (
@@ -135,7 +135,7 @@ def _stored_platforms(platforms: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(values)
 
 
-def _target(row: Mapping[str, object]) -> CollectionEnrichmentTarget:
+def _target(row: RowMapping) -> CollectionEnrichmentTarget:
     stored_platform = cast(str, row["platform"])
     return CollectionEnrichmentTarget(
         content_id=cast(UUID, row["id"]),
