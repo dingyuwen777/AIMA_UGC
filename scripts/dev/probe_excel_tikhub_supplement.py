@@ -124,7 +124,9 @@ def _load_samples(path: Path) -> dict[str, Any]:
     platforms = payload.get("platforms")
     if not isinstance(platforms, dict) or set(platforms) != set(_PLATFORMS):
         raise ValueError("Excel Probe 样本必须且只能包含五个平台")
-    if not isinstance(payload.get("source"), str) or not isinstance(payload.get("source_sha256"), str):
+    if not isinstance(payload.get("source"), str) or not isinstance(
+        payload.get("source_sha256"), str
+    ):
         raise ValueError("Excel Probe 样本缺少源文件名或 SHA-256")
     for platform in _PLATFORMS:
         items = platforms.get(platform)
