@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from aima_ugc.contracts.collection import ProviderPlatformCapabilityV1, ProviderPlatformRouteV1
-from aima_ugc.contracts.platform import PlatformName
 from aima_ugc.contracts.collection.provider_config import normalize_provider_base_url
+from aima_ugc.contracts.platform import PlatformName
 from aima_ugc.modules.system.models import ProviderConfig
 
 
