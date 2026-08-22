@@ -1040,3 +1040,9 @@ Chart，并为每张图内嵌对应的 XLSX 数据；图表数据与 Markdown �
 ## AI 语义相关性与发声类型
 
 `label_sentiment()` 复用正式 `ContentLabelingService`，每条内容一次 LLM 请求同时完成相关性、发声类型、情感和多标签判断。判定为 `irrelevant` 的完整内容行会在最终原子回写时从 `deduplicated/contents.jsonl` 删除；checkpoint 仅保留最小恢复决策，不作为业务数据源。最终 Excel 不显示“相关性”列，发声分类只显示中文“发声类型”。
+
+---
+
+## 最终 Excel 的身份列
+
+人工 `imports_test` 最终 Excel 默认保留 `内容ID`；评论视图同时保留 `内容ID/评论ID/根评论ID/父评论ID`。这些列用于审计、去重与后续补采定位，不应因为报告展示简化而从人工数据交付中默认删除。

@@ -1,6 +1,7 @@
 import {
   createCollectionRun,
   createImportBatch,
+  getCollectionBatchSupplementEligibility,
   getCollectionCapabilities,
   getCollectionRun,
   getCollectionRuntimeSummary,
@@ -94,25 +95,11 @@ export async function fetchCollectionRunDetail(runId: string): Promise<Collectio
   return unwrap(await getCollectionRun(runId))
 }
 
-async function batchHasPlatformContent(batchId: string, platform: CollectionPlatform): Promise<boolean> {
-  const visible = unwrap(
-    await listContents({
-      source_identifier: batchId,
-      platforms: [platform],
-      limit: 1,
-    }),
-  )
-  return visible.items.length > 0
-}
-
 export async function fetchBatchContentPlatforms(
   batchId: string,
   platforms: readonly CollectionPlatform[],
 ): Promise<CollectionPlatform[]> {
-  const matches = await Promise.all(
-    platforms.map(async (platform) =>
-      (await batchHasPlatformContent(batchId, platform)) ? platform : null,
-    ),
-  )
-  return matches.filter((platform): platform is CollectionPlatform => platform !== null)
+  const eligibility = unwrap(await getCollectionBatchSupplementEligibility(batchId))
+  const eligible = new Set(eligibility.targets.map((item) => item.platform))
+  return platforms.filter((platform) => eligible.has(platform))
 }

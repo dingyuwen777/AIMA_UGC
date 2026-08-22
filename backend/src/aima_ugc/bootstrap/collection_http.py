@@ -34,6 +34,8 @@ from aima_ugc.contracts.collection import (
 )
 from aima_ugc.contracts.collection.models import BusinessOperation
 from aima_ugc.contracts.http import (
+    CollectionBatchSupplementEligibilityResponse,
+    CollectionBatchSupplementTargetResponse,
     CollectionCapabilitiesResponse,
     CollectionCapabilityResponse,
     CollectionPlatform,
@@ -94,6 +96,13 @@ from .runtime import PlatformRuntime
 
 _COLLECTION_JOB_MAX_ATTEMPTS = 2
 _SHANGHAI = ZoneInfo("Asia/Shanghai")
+_ALL_COLLECTION_PLATFORMS: tuple[CollectionPlatform, ...] = (
+    "xiaohongshu",
+    "douyin",
+    "weibo",
+    "bilibili",
+    "kuaishou",
+)
 
 
 class PostgresCollectionHttpService:
@@ -145,6 +154,40 @@ class PostgresCollectionHttpService:
                 return CollectionCapabilitiesResponse(
                     provider_configs=tuple(public_configs),
                     capabilities=tuple(capabilities[key] for key in sorted(capabilities)),
+                )
+        finally:
+            session.close()
+
+    def get_batch_supplement_eligibility(
+        self,
+        batch_id: UUID,
+    ) -> CollectionBatchSupplementEligibilityResponse:
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                reader = PostgresCollectionTargetReader(
+                    session,
+                    analysis_identity=current_analysis_identity(self._runtime.settings),
+                )
+                if not reader.batch_exists(batch_id):
+                    raise CollectionResourceNotFound
+                targets = reader.list_batch_targets(
+                    batch_id=batch_id,
+                    platforms=_ALL_COLLECTION_PLATFORMS,
+                )
+                counts: dict[CollectionPlatform, int] = {}
+                for target in targets:
+                    counts[target.platform] = counts.get(target.platform, 0) + 1
+                return CollectionBatchSupplementEligibilityResponse(
+                    batch_id=batch_id,
+                    targets=tuple(
+                        CollectionBatchSupplementTargetResponse(
+                            platform=platform,
+                            target_count=counts[platform],
+                        )
+                        for platform in _ALL_COLLECTION_PLATFORMS
+                        if platform in counts
+                    ),
                 )
         finally:
             session.close()

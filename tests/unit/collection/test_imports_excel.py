@@ -184,7 +184,7 @@ def test_identity_uses_native_then_article_then_normalized_url_hash() -> None:
         source_article_id="SOURCE-002",
     )
     assert source_fallback.external_content_id == "SOURCE-002"
-    assert source_fallback.alternate_ids == {}
+    assert source_fallback.alternate_ids == {"source_article_id": "SOURCE-002"}
 
     url_fallback = resolve_content_identity(
         platform="custom_platform",

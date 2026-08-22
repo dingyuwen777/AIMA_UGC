@@ -20,9 +20,6 @@ from tempfile import TemporaryDirectory
 from typing import Any
 from uuid import uuid4
 
-from openpyxl import Workbook
-from pydantic import SecretStr
-
 from aima_ugc.adapters.providers.imports import convert_excel_to_canonical_jsonl
 from aima_ugc.adapters.providers.tikhub.probe import (
     TikHubOperationProbe,
@@ -42,6 +39,8 @@ from aima_ugc.adapters.providers.tikhub.runtime import (
 )
 from aima_ugc.adapters.providers.tikhub.transport import TikHubHttpTransport
 from aima_ugc.contracts.canonical import CanonicalContentV1
+from openpyxl import Workbook
+from pydantic import SecretStr
 
 _PLATFORMS: tuple[TikHubPlatform, ...] = (
     "xiaohongshu",

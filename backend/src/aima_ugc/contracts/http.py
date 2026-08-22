@@ -364,6 +364,24 @@ class CollectionCapabilitiesResponse(BaseModel):
     capabilities: tuple[CollectionCapabilityResponse, ...]
 
 
+class CollectionBatchSupplementTargetResponse(BaseModel):
+    """一个平台当前真实可创建 Batch Supplement Scope 的目标数。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    platform: CollectionPlatform
+    target_count: int = Field(gt=0)
+
+
+class CollectionBatchSupplementEligibilityResponse(BaseModel):
+    """前端 Batch Supplement 平台资格；不公开 Provider 私有身份或 AI 结果正文。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    batch_id: UUID
+    targets: tuple[CollectionBatchSupplementTargetResponse, ...]
+
+
 class CollectionRuntimeListQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -919,6 +937,8 @@ class DataExportListResponse(BaseModel):
 
 __all__ = [
     "CommentCoverageResponse",
+    "CollectionBatchSupplementEligibilityResponse",
+    "CollectionBatchSupplementTargetResponse",
     "CollectionCapabilitiesResponse",
     "CollectionCapabilityResponse",
     "CollectionPlanCreateRequest",

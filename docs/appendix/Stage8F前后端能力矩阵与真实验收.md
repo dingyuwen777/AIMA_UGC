@@ -85,43 +85,24 @@ Batch error_summary
 
 ### 3.2 Batch Supplement 的前端资格
 
-“基于已有批次补采”只对以下 Batch 提供：
+“基于已有批次补采”首先要求 Import Batch 已成功入库且存在内容。选择 Batch 后，前端调用正式资格接口：
 
 ```text
-Import Batch status = succeeded
-AND rows_ingested > 0
+GET /api/v1/import-batches/{batch_id}/supplement-eligibility
 ```
 
-选择具体 Batch 后，前端复用正式 `GET /api/v1/contents` 对每个平台做有界存在性探测，而不是枚举整批 Content：
+后端按来源账本读取 Batch Content，并只统计同时满足以下条件的目标：
 
 ```text
-第一次：
-source_identifier = batch_id
-platforms = [目标 Content 平台]
-limit = 1
-
-如果第一次为空，再补一次：
-source_identifier = batch_id
-platforms = [目标 Content 平台]
-relevance = irrelevant
-limit = 1
+当前 AI Analysis identity 未明确 irrelevant
++ 存在当前正式 TikHub Runtime 可直接消费的 typed lookup identity
 ```
 
-第二次查询是必要的，因为声音广场默认列表会隐藏当前 AI 明确判定为 `irrelevant` 的 Content，而后端 Batch Supplement target reader 按正式来源账本读取目标，不应用声音广场展示过滤。如果某个平台只有 `irrelevant` Content，它仍然是合法补采目标。
+返回的是每个平台真实 `target_count`；前端据此启用平台按钮，再与 Provider Capability 的 `content_detail/comments/sub_comments` 组合判断。前端不再通过 `GET /contents` 或显式查询 `relevance=irrelevant` 猜测补采资格。
 
-首版五个平台因此每个平台最多两次 `limit=1` 查询，最坏 10 次小查询；不会扫描整批数据，也不会仅凭 Excel 文件名猜平台。用户切换 Batch 时会失效上一 Batch 的平台资格并重新探测；从 A 切到 B 再切回 A 也不会复用 B 的资格快照。
+来源文章编号、`url_sha256:*`、尚未完成身份收敛的短链/分享链仍可保留为数据库审计 Content，但不因此获得付费补采资格。当前 Analysis identity 下明确 `irrelevant` 的 Content 同样不进入普通 Batch Supplement；旧模型/旧 Prompt 结果为 stale，不永久阻断。
 
-平台按钮还必须同时满足当前 Provider Config 的正式 Capability：
-
-```text
-content_detail
-+ comments（用户选择评论时）
-+ sub_comments（用户选择二级回复时）
-```
-
-Discovery 模式还额外要求 `keyword_search`。
-
-前端资格用于避免用户组成注定失败的任务；`PostgresCollectionHttpService.create_run()` 仍然重新解析 Provider、Relevance、Batch target 和 Capability，是最终业务守卫。
+前端资格用于避免用户组成注定失败的任务；`PostgresCollectionHttpService.create_run()` 仍重新解析 Provider、Relevance、Batch target 和 Capability，是最终业务守卫。
 
 ### 3.3 小红书 `xiaohongshu` 边界
 
