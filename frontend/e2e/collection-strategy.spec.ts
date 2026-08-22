@@ -35,7 +35,7 @@ test.beforeEach(async ({ page }) => {
       return
     }
     if (url.pathname === `/api/v1/keyword-packs/${packId}`) {
-      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ...packs[0], keywords: [{ id: '55555555-5555-4555-8555-555555555555', text: '爱玛 Q7', platform: 'all', enabled: true, priority: 10, note: '' }] }) })
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ...packs[0], keywords: [{ id: '55555555-5555-4555-8555-555555555555', text: '爱玛 Q7', platform_scope: 'all', enabled: true, priority: 10, note: '' }] }) })
       return
     }
     if (url.pathname === '/api/v1/relevance-config' && request.method() === 'GET') {
