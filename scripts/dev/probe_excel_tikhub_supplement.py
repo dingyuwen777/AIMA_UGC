@@ -1,10 +1,11 @@
-"""从真实 TikHub 搜索结果构造 Excel 链接，并验证 Detail + 一级评论补采。
+"""用用户 Excel 的真实公开帖子链接验证 TikHub Detail + 一级评论补采。
 
 该脚本只用于显式受控 Probe：
 - API Key 只从环境变量读取，不写文件、不打印；
-- 请求必须经过生产 Operation / TikHubOperationProbe / Transport；
-- Excel 链接必须经过生产 imports Parser，再进入正式 Detail/Comments builder；
-- 原帖删除、私密或 Provider 返回不可用时尝试下一个搜索候选；
+- 样本来自 ``tests/fixtures/imports/excel_provider_lookup_samples.json``，并记录源 Excel SHA-256；
+- 每条链接必须先经过生产 Excel Converter/identity parser，再进入正式 TikHub Runtime；
+- 请求必须经过生产 Operation / TikHubOperationProbe / Transport / Extractor / Mapper；
+- 原帖删除、私密、无评论或 Provider 暂不可用时尝试同平台下一个 Excel 候选；
 - 不写 PostgreSQL，不保存 Provider Raw Response。
 """
 
@@ -17,28 +18,25 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from aima_ugc.adapters.providers.imports import convert_excel_to_canonical_jsonl
-from aima_ugc.adapters.providers.tikhub.probe import (
-    TikHubOperationProbe,
-    TikHubProbeLimits,
-)
+from aima_ugc.adapters.providers.tikhub.probe import TikHubOperationProbe, TikHubProbeLimits
 from aima_ugc.adapters.providers.tikhub.runtime import (
+    TikHubOperationCall,
     TikHubPlatform,
     build_comments_call,
     build_detail_call,
-    build_search_call,
     extract_comment_items,
     extract_detail_items,
-    extract_search_items,
     map_comment,
     map_content,
     mapping_context,
 )
 from aima_ugc.adapters.providers.tikhub.transport import TikHubHttpTransport
 from aima_ugc.contracts.canonical import CanonicalContentV1
+from aima_ugc.modules.collection.providers.transport import ProviderTransportResponse
 from openpyxl import Workbook
 from pydantic import SecretStr
 
@@ -63,7 +61,8 @@ _LOOKUP_TYPES: dict[TikHubPlatform, tuple[str, ...]] = {
     "bilibili": ("av_id", "bv_id"),
     "kuaishou": ("photo_id",),
 }
-_REQUIRED_HEADERS = (
+_HEADERS = (
+    "文章编号",
     "媒体名称（中文）",
     "标题",
     "内文",
@@ -71,24 +70,26 @@ _REQUIRED_HEADERS = (
     "出版日期",
     "原文链接",
 )
+_DEFAULT_SAMPLES = Path("tests/fixtures/imports/excel_provider_lookup_samples.json")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="验证 Excel 帖子链接 → TikHub 详情/评论补采")
-    parser.add_argument("--keyword", default="爱玛")
-    parser.add_argument("--max-candidates-per-platform", type=int, default=3)
+    parser = argparse.ArgumentParser(description="验证真实 Excel 帖子链接 → TikHub 详情/评论补采")
+    parser.add_argument("--samples", type=Path, default=_DEFAULT_SAMPLES)
+    parser.add_argument("--max-candidates-per-platform", type=int, default=6)
     parser.add_argument("--output", type=Path, default=Path("tikhub-excel-supplement-probe.json"))
     args = parser.parse_args()
-    if args.max_candidates_per_platform < 1 or args.max_candidates_per_platform > 5:
-        raise ValueError("max-candidates-per-platform 必须在 1..5")
+    if args.max_candidates_per_platform < 1 or args.max_candidates_per_platform > 10:
+        raise ValueError("max-candidates-per-platform 必须在 1..10")
 
     api_key = os.environ.get("TIKHUB_API_KEY", "").strip()
     if not api_key:
-        raise RuntimeError("GitHub Actions Secret TIKHUB_API_KEY 未配置")
+        raise RuntimeError("TikHub Probe 凭据未安全注入")
     base_url = os.environ.get("TIKHUB_BASE_URL", "https://api.tikhub.io").strip()
+    samples = _load_samples(args.samples)
 
-    # 五个平台各 1 次 Search + 最多 3 组 Detail/Comments；0.30 USD 足够当前 verified 价格上界。
-    limits = TikHubProbeLimits(max_requests=35, max_estimated_cost=Decimal("0.30"))
+    # 五个平台各最多 6 个候选；每个候选至多 Detail + Comments 两次付费请求。
+    limits = TikHubProbeLimits(max_requests=60, max_estimated_cost=Decimal("1.00"))
     results: list[dict[str, object]] = []
     with TikHubHttpTransport(base_url=base_url) as transport:
         probe = TikHubOperationProbe(
@@ -101,63 +102,59 @@ def main() -> int:
                 _probe_platform(
                     probe=probe,
                     platform=platform,
-                    keyword=args.keyword,
-                    max_candidates=args.max_candidates_per_platform,
+                    samples=samples["platforms"][platform][: args.max_candidates_per_platform],
                 )
             )
 
     payload = {
         "verified_at": datetime.now(UTC).isoformat(),
-        "keyword": args.keyword,
+        "source": samples["source"],
+        "source_sha256": samples["source_sha256"],
         "request_count": probe.request_count,
         "cumulative_planned_cost_usd": str(probe.cumulative_planned_cost),
         "platforms": results,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    # 仅输出脱敏验收摘要；不输出 URL、API Key 或 Raw Response。
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
+
+
+def _load_samples(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Excel Probe 样本必须是 JSON Object")
+    platforms = payload.get("platforms")
+    if not isinstance(platforms, dict) or set(platforms) != set(_PLATFORMS):
+        raise ValueError("Excel Probe 样本必须且只能包含五个平台")
+    if not isinstance(payload.get("source"), str) or not isinstance(payload.get("source_sha256"), str):
+        raise ValueError("Excel Probe 样本缺少源文件名或 SHA-256")
+    for platform in _PLATFORMS:
+        items = platforms.get(platform)
+        if not isinstance(items, list) or not items:
+            raise ValueError(f"{platform}: Excel Probe 样本为空")
+        for item in items:
+            if not isinstance(item, dict):
+                raise ValueError(f"{platform}: Excel Probe 样本项类型非法")
+            if not isinstance(item.get("url"), str) or not isinstance(item.get("article_id"), str):
+                raise ValueError(f"{platform}: Excel Probe 样本缺少公开 URL/文章编号")
+            if not isinstance(item.get("row"), int):
+                raise ValueError(f"{platform}: Excel Probe 样本缺少来源行号")
+    return cast(dict[str, Any], payload)
 
 
 def _probe_platform(
     *,
     probe: TikHubOperationProbe,
     platform: TikHubPlatform,
-    keyword: str,
-    max_candidates: int,
+    samples: list[dict[str, object]],
 ) -> dict[str, object]:
-    search_call = build_search_call(platform=platform, keyword=keyword)
-    search_response = probe.execute(search_call).response
-    search_body = _response_body(search_response.body)
-    candidates: list[CanonicalContentV1] = []
-    for raw_item in extract_search_items(platform, search_body):
-        try:
-            content = map_content(
-                platform=platform,
-                raw=raw_item,
-                context=_mapping_context(operation=search_call.operation, source_value=keyword),
-                item_locator=f"probe-search:{len(candidates)}",
-            )
-        except Exception:
-            continue
-        if (content.metrics.comment_count or 0) <= 0:
-            continue
-        if _content_url(platform, content) is None:
-            continue
-        candidates.append(content)
-        if len(candidates) >= max_candidates:
-            break
-
-    if not candidates:
-        raise RuntimeError(f"{platform}: 搜索结果中没有可验证且声明存在评论的内容")
-
     failures: list[str] = []
-    for candidate in candidates:
-        url = _content_url(platform, candidate)
-        assert url is not None
+    for sample in samples:
         try:
-            imported = _roundtrip_excel(platform=platform, url=url, candidate=candidate)
-            _assert_lookup_identity(platform, imported)
+            imported = _roundtrip_excel(platform=platform, sample=sample)
+            lookup_types = _assert_lookup_identity(platform, imported)
             detail = _probe_detail(probe=probe, platform=platform, imported=imported)
             comment_id = _probe_comments(probe=probe, platform=platform, detail=detail)
         except Exception as exc:
@@ -165,19 +162,16 @@ def _probe_platform(
             continue
         return {
             "platform": platform,
-            "url": url,
-            "external_content_id": imported.external_content_id,
-            "lookup_types": sorted(
-                key for key in imported.alternate_ids if key in _LOOKUP_TYPES[platform]
-            ),
+            "source_row": sample["row"],
+            "lookup_types": lookup_types,
             "detail": "ok",
             "comments": "ok",
-            "sample_comment_id": comment_id,
+            "sample_comment_id_present": bool(comment_id),
             "failed_candidates_before_success": len(failures),
         }
 
     raise RuntimeError(
-        f"{platform}: {len(candidates)} 个候选均无法完成 Excel→Detail→Comments；"
+        f"{platform}: {len(samples)} 个 Excel 候选均无法完成 Detail→Comments；"
         f"失败类型={','.join(failures)}"
     )
 
@@ -185,24 +179,26 @@ def _probe_platform(
 def _roundtrip_excel(
     *,
     platform: TikHubPlatform,
-    url: str,
-    candidate: CanonicalContentV1,
+    sample: dict[str, object],
 ) -> CanonicalContentV1:
-    with TemporaryDirectory(prefix=f"aima-{platform}-probe-") as temp_dir:
+    article_id = cast(str, sample["article_id"])
+    url = cast(str, sample["url"])
+    with TemporaryDirectory(prefix=f"aima-{platform}-excel-probe-") as temp_dir:
         root = Path(temp_dir)
         source = root / "probe.xlsx"
         output = root / "contents.jsonl"
         workbook = Workbook()
         worksheet = workbook.active
         worksheet.title = "文章"
-        worksheet.append(_REQUIRED_HEADERS)
+        worksheet.append(_HEADERS)
         worksheet.append(
             (
+                article_id,
                 _MEDIA_NAMES[platform],
-                candidate.title or f"{platform} probe",
-                candidate.text or "TikHub Excel supplement probe",
-                candidate.author.display_name if candidate.author is not None else "probe",
-                _excel_datetime(candidate.published_at),
+                f"{platform} Excel Probe",
+                "真实 Excel URL 的受控 TikHub 补采验证",
+                "probe",
+                datetime.now(UTC).replace(tzinfo=None),
                 url,
             )
         )
@@ -217,17 +213,12 @@ def _roundtrip_excel(
         )
         if summary.rows_written != 1:
             raise RuntimeError(f"{platform}: Excel Parser 未生成唯一 Content")
-        return CanonicalContentV1.model_validate_json(output.read_text(encoding="utf-8").strip())
-
-
-def _excel_datetime(value: datetime | None) -> datetime:
-    """openpyxl 不接受带时区的 datetime；Excel 仅承载本次 Probe 的输入样本。"""
-
-    if value is None:
-        return datetime.now(UTC).replace(tzinfo=None)
-    if value.tzinfo is None or value.utcoffset() is None:
-        return value
-    return value.astimezone(UTC).replace(tzinfo=None)
+        imported = CanonicalContentV1.model_validate_json(
+            output.read_text(encoding="utf-8").strip()
+        )
+        if imported.alternate_ids.get("source_article_id") != article_id:
+            raise RuntimeError(f"{platform}: Excel 来源文章编号未保留")
+        return imported
 
 
 def _probe_detail(
@@ -237,8 +228,8 @@ def _probe_detail(
     imported: CanonicalContentV1,
 ) -> CanonicalContentV1:
     call = build_detail_call(platform, imported)
-    response = probe.execute(call).response
-    body = _response_body(response.body)
+    response = _execute(probe, call)
+    body = _response_body(response)
     items = extract_detail_items(platform, body)
     if not items:
         raise RuntimeError(f"{platform}: Detail 无可映射内容")
@@ -268,8 +259,8 @@ def _probe_comments(
         external_content_id=detail.external_content_id,
         state=None,
     )
-    response = probe.execute(call).response
-    body = _response_body(response.body)
+    response = _execute(probe, call)
+    body = _response_body(response)
     items = extract_comment_items(platform, body)
     if not items:
         raise RuntimeError(f"{platform}: 一级评论响应为空")
@@ -291,29 +282,18 @@ def _probe_comments(
     return comment.external_comment_id
 
 
-def _content_url(platform: TikHubPlatform, content: CanonicalContentV1) -> str | None:
-    if platform == "xiaohongshu":
-        return f"https://www.xiaohongshu.com/explore/{content.external_content_id}"
-    if platform == "douyin":
-        return f"https://www.douyin.com/video/{content.external_content_id}"
-    if platform == "weibo":
-        if not content.external_content_id.isdigit():
-            return None
-        return f"https://weibo.com/detail/{content.external_content_id}"
-    if platform == "bilibili":
-        bv_id = content.alternate_ids.get("bv_id") or content.alternate_ids.get("bvid")
-        if bv_id:
-            return f"https://www.bilibili.com/video/{bv_id}"
-        av_id = content.alternate_ids.get("av_id") or content.external_content_id
-        return f"https://www.bilibili.com/video/av{av_id.removeprefix('av')}"
-    if platform == "kuaishou":
-        return f"https://www.kuaishou.com/short-video/{content.external_content_id}"
-    return None
+def _execute(probe: TikHubOperationProbe, call: TikHubOperationCall) -> ProviderTransportResponse:
+    response = probe.execute(call).response
+    if response.status_code < 200 or response.status_code >= 300:
+        raise RuntimeError("TikHub HTTP 响应非成功状态")
+    return response
 
 
-def _assert_lookup_identity(platform: TikHubPlatform, content: CanonicalContentV1) -> None:
-    if not any(content.alternate_ids.get(key) for key in _LOOKUP_TYPES[platform]):
+def _assert_lookup_identity(platform: TikHubPlatform, content: CanonicalContentV1) -> list[str]:
+    lookup_types = [key for key in _LOOKUP_TYPES[platform] if content.alternate_ids.get(key)]
+    if not lookup_types:
         raise RuntimeError(f"{platform}: Excel URL 未生成 typed Provider lookup identity")
+    return lookup_types
 
 
 def _mapping_context(
@@ -327,14 +307,15 @@ def _mapping_context(
         provider_attempt_id=str(uuid4()),
         raw_artifact_id=uuid4(),
         operation=operation,
-        source_type="real_probe",
+        source_type="real_excel_probe",
         source_value=source_value,
         observed_at=datetime.now(UTC),
         external_content_id=external_content_id,
     )
 
 
-def _response_body(value: object) -> dict[str, Any]:
+def _response_body(response: ProviderTransportResponse) -> dict[str, Any]:
+    value = response.body
     if not isinstance(value, dict):
         raise RuntimeError("TikHub 响应不是 JSON Object")
     status = value.get("code")
