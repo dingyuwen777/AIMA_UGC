@@ -1,20 +1,21 @@
 name: Platform Unification Green Fix
 
 on:
-  push:
+  pull_request:
     branches:
-      - refactor/unify-platform-identifiers
+      - main
 
 permissions:
   contents: write
 
 jobs:
-  apply-once:
-    if: github.event.head_commit.message == '执行平台统一 Green 修复'
+  apply:
+    if: github.event.pull_request.head.ref == 'refactor/unify-platform-identifiers'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          ref: refactor/unify-platform-identifiers
           fetch-depth: 0
       - uses: actions/setup-python@v6.2.0
         with:
@@ -27,9 +28,10 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install 'uv==0.12.3'
+          uv lock --check
           uv sync --locked
           npm --prefix frontend ci
-      - name: Apply targeted source renames and fixes
+      - name: Apply mechanical platform-name cleanup
         shell: bash
         run: |
           set -euo pipefail
@@ -51,7 +53,11 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
           git diff --cached --check
-          git commit -m '修复平台统一完整名称残留'
+          if git diff --cached --quiet; then
+            echo 'No mechanical fixes to commit.'
+            exit 0
+          fi
+          git commit -m '收口五平台完整名称与生成物'
           git push origin HEAD:refactor/unify-platform-identifiers
       - name: Run focused regression tests
         shell: bash
@@ -62,4 +68,5 @@ jobs:
             tests/unit/collection/test_scheduled_scope_snapshot.py \
             tests/unit/collection/test_provider_persistence.py \
             tests/unit/collection/test_imports_test_export.py \
+            tests/unit/platform/test_excel_export.py \
             -q
