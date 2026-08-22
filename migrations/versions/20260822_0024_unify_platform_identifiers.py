@@ -8,6 +8,7 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.engine import Connection
 
 revision: str = "20260822_0024"
 down_revision: str | Sequence[str] | None = "20260821_0023"
@@ -20,11 +21,11 @@ _OLD_REPLAY = "collection.xhs.raw-replay.v1"
 _NEW_REPLAY = "collection.xiaohongshu.raw-replay.v1"
 
 
-def _exists(connection: sa.Connection, sql: str) -> bool:
+def _exists(connection: Connection, sql: str) -> bool:
     return bool(connection.scalar(sa.text(f"SELECT EXISTS ({sql})")))
 
 
-def _assert_no_identity_conflicts(connection: sa.Connection) -> None:
+def _assert_no_identity_conflicts(connection: Connection) -> None:
     checks = {
         "accounts": """
             SELECT 1 FROM accounts old
@@ -65,7 +66,8 @@ def _assert_no_identity_conflicts(connection: sa.Connection) -> None:
     conflicts = [name for name, sql in checks.items() if _exists(connection, sql)]
     if conflicts:
         raise RuntimeError(
-            "平台标识迁移冲突：同一业务身份同时存在旧值和正式值：" + ", ".join(conflicts)
+            "平台标识迁移冲突：同一业务身份同时存在旧值和正式值："
+            + ", ".join(conflicts)
         )
 
 
@@ -107,6 +109,17 @@ def _rewrite_run_platforms(old: str, new: str) -> None:
 def upgrade() -> None:
     connection = op.get_bind()
     _assert_no_identity_conflicts(connection)
+
+    op.drop_constraint(
+        op.f("ck_collection_plan_platforms_platform_nonempty"),
+        "collection_plan_platforms",
+        type_="check",
+    )
+    op.drop_constraint(
+        op.f("ck_keyword_pack_items_platform_nonempty"),
+        "keyword_pack_items",
+        type_="check",
+    )
 
     for table in ("accounts", "contents", "collection_plan_platforms", "collection_scopes"):
         op.execute(f"UPDATE {table} SET platform = 'xiaohongshu' WHERE platform = 'xhs'")
@@ -167,9 +180,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # 平台身份合并是不可逆数据归一化：旧库可能原本同时存在 Excel=xiaohongshu
-    # 与 TikHub=xhs，升级后无法仅凭当前行可靠恢复来源。Downgrade 因此只回退
-    # Schema/字段名；真正的数据回滚必须恢复升级前数据库备份。
+    # 平台身份合并是不可逆数据归一化：升级后无法仅凭当前行可靠恢复来源。
+    # Downgrade 只回退 Schema/字段名；真正的数据回滚必须恢复升级前数据库备份。
     op.drop_constraint(
         op.f("ck_keyword_pack_items_platform_scope_allowed"),
         "keyword_pack_items",
@@ -193,4 +205,14 @@ def downgrade() -> None:
         new_column_name="platform",
         existing_type=sa.Text(),
         existing_nullable=False,
+    )
+    op.create_check_constraint(
+        op.f("ck_keyword_pack_items_platform_nonempty"),
+        "keyword_pack_items",
+        "char_length(platform) > 0",
+    )
+    op.create_check_constraint(
+        op.f("ck_collection_plan_platforms_platform_nonempty"),
+        "collection_plan_platforms",
+        "char_length(platform) > 0",
     )
