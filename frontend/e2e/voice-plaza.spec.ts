@@ -199,6 +199,7 @@ test('creates explicit analysis and durable Excel export jobs', async ({ page })
   await expect(page.getByText('此操作可能产生模型调用费用')).toBeVisible()
   await page.getByRole('button', { name: '确认并创建 Job' }).click()
   await expect(page.getByText(/已创建 AI 分析 Job/)).toBeVisible()
+  await expect(page.getByText('AI 分析 Job：排队中 · 0%')).toBeVisible()
   expect(analysisRequest).toMatchObject({ targets: { scope: 'query' } })
 
   await page.getByRole('button', { name: /导出记录/ }).click()
