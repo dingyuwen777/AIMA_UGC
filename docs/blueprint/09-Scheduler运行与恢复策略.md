@@ -1,249 +1,392 @@
-# Scheduler 运行与恢复策略
+# Scheduler 运行与恢复策略：当前实现导航
 
-> 状态：已批准、实现并完成 Stage 7 集成验收  
-> 首版时区：`Asia/Shanghai`  
-> 批准日期：2026-08-15
+本文保留 `09-Scheduler运行与恢复策略.md` 这个长期入口，但只描述**当前 Scheduler 已实现事实和修改导航**。
 
-本文冻结 AIMA_UGC 首版 Scheduler 的运行、停机恢复、并发和持久化语义。它补充 `04-后端任务API与前端.md` 中的 Scheduler 事务流程，以及 `07-技术决策与实施门禁.md`、`08-采集策略与平台能力.md` 中的 Scheduler 边界。
+Stage 7 当时的完整设计、验收过程和“Stage 8 未来如何修改 Plan”等时间快照没有删除，原样保存在：
 
-如果本文与未更新的旧摘要冲突，以本文的已批准 Scheduler 决策和当前机器实现/测试为准；旧摘要应删除“misfire 尚未决定”的表述，而不是保留两套语义。
+[`09-Scheduler设计与Stage7验收记录.md`](09-Scheduler设计与Stage7验收记录.md)
 
-## 1. 已批准的停机恢复方案
+当前更详细、面向调试的实现说明：
 
-首版固定：
+[`../appendix/Scheduler调度执行与停机恢复.md`](../appendix/Scheduler调度执行与停机恢复.md)
+
+---
+
+## 1. Scheduler 当前负责什么
+
+Scheduler 负责把**时间计划**变成**持久化执行事实**：
+
+```text
+Collection Plan
+→ 到期逻辑 slot
+→ Schedule Occurrence
+→ Collection Run / Scope
+→ collection.run.v1 Job
+→ Worker 执行真实 Collection
+```
+
+Scheduler 不负责：
+
+- 直接调用 TikHub；
+- 解析 Provider JSON；
+- 写 Content Current；
+- 调用 LLM；
+- 生成 Excel/Word。
+
+真实代码：
+
+```text
+领域调度算法
+→ backend/src/aima_ugc/modules/collection/scheduler.py
+
+Plan / Platform 配置
+→ backend/src/aima_ugc/modules/collection/planning.py
+
+Scope 推导
+→ backend/src/aima_ugc/modules/collection/scheduled_scopes.py
+
+生产事务编排
+→ backend/src/aima_ugc/bootstrap/scheduler.py
+
+常驻入口
+→ backend/src/aima_ugc/entrypoints/scheduler_main.py
+
+PostgreSQL Plan / Occurrence
+→ backend/src/aima_ugc/adapters/persistence/postgres/collection_planning.py
+
+Run / Scope
+→ backend/src/aima_ugc/adapters/persistence/postgres/collection_run_execution.py
+```
+
+---
+
+## 2. 当前固定停机恢复策略
+
+当前领域和数据库只允许：
 
 ```text
 misfire_policy = latest_only
 max_catch_up_runs = 0
 ```
 
-当 Scheduler 停机后恢复，若同一个 Plan 已累计多个到期逻辑调度点：
-
-1. 只把**最新一个**到期调度点创建为 `enqueued` Occurrence；
-2. 更早的到期调度点逐个记录为 `skipped` Occurrence；
-3. 跳过原因为稳定值：
+含义：Scheduler 停机后如果已经错过多个调度点：
 
 ```text
-misfire_superseded
+更早的 due slot
+→ skipped / misfire_superseded
+
+最新的 due slot
+→ enqueued
+
+下一个未来 slot
+→ next_run_at
 ```
 
-4. `max_catch_up_runs=0` 表示不再额外执行历史 Run；
-5. `last_scheduled_at` 推进到本次已处理的最新逻辑调度点；
-6. `next_run_at` 推进到严格位于当前 Scheduler 时间之后的下一个未来调度点。
-
-例如 Plan 为本地时间：
+例如：
 
 ```text
-00:00 / 06:00 / 12:00 / 18:00
-```
+Plan: 00:00 / 06:00 / 12:00 / 18:00
+05:00 停机
+17:00 恢复
 
-Scheduler 在 05:00 停机、17:00 恢复，则：
-
-```text
 06:00 → skipped / misfire_superseded
 12:00 → enqueued
 18:00 → next_run_at
 ```
 
-不补跑 06:00 的历史采集 Run。
+不会把所有历史周期集中补跑。
 
-## 2. 为什么采用 latest-only
+为什么这样做：舆情采集强调尽快恢复“当前视图”，历史漏数由重叠搜索窗口、backfill、稳定 ID 去重和后续观察补偿；停机恢复时集中重放所有周期会制造大量重复 Provider 请求。
 
-AIMA_UGC 是持续刷新型舆情监控系统，不是要求每一个调度批次都不可缺失的账务系统。恢复后的首要目标是尽快得到当前舆情状态，同时控制第三方 API 请求压力和重复采集。
+---
 
-`latest_only` 的收益：
+## 3. Cron 当前语义
 
-- 服务恢复后立即执行最近一个已错过周期，不额外等待下一个未来周期；
-- 不会因长时间停机形成 TikHub 集中补跑；
-- 避免大量重叠搜索窗口重复请求；
-- 历史漏数风险由搜索窗口重叠、backfill、去重和历史刷新机制负责补偿；
-- Scheduler 状态清晰，所有被覆盖的历史 slot 仍有 `skipped` 审计事实。
-
-以下方案首版不采用：
-
-- `bounded_catch_up`：恢复时额外执行最近 N 个历史周期；
-- `strict_skip`：错过的周期全部跳过并等待下一个未来周期。
-
-后续如需改变策略，必须作为新的高风险 Change 处理，同时修改数据库约束、Domain、Scheduler、测试、Blueprint 和成本/容量评估，不能只改前端参数。
-
-## 3. 首版 Schedule Expression
-
-首版 `schedule_expr` 使用**五字段数值 Cron**：
+当前 `schedule_expr` 是五字段 Cron：
 
 ```text
 minute hour day-of-month month day-of-week
 ```
 
-首版解析器支持：
+当前实现支持：
 
 - `*`；
-- 单个数字；
+- 数字；
 - 逗号列表；
-- `a-b` 范围；
-- `/n` 步长，例如 `*/6`、`1-23/2`。
+- 范围；
+- `/n` 步长。
 
-不支持月份/星期英文名称、秒字段、年份字段或 Quartz 扩展。
-
-示例：
+例如：
 
 ```text
 0 */6 * * *
 ```
 
-表示按 Plan 的 `timezone` 每 6 小时整点触发。首版 Plan 时区仍固定 `Asia/Shanghai`；持久化的 `next_run_at`、`last_scheduled_at`、Occurrence `scheduled_for` 使用带时区时间并按 UTC 统一比较。
-
-`day-of-month` 与 `day-of-week` 同时为限制条件时遵循常见 Cron OR 语义；其中任一字段为 `*` 时，另一个限制字段决定日期匹配。
-
-## 4. 新 Plan 初始化
-
-新建的定时 Plan 初始 `next_run_at` 可以为空。Scheduler 第一次扫描到它时：
-
-1. 锁定并重读 Plan；
-2. 从“当前时刻之后”计算第一个未来 Cron 时刻；
-3. 只写入 `next_run_at`；
-4. 不为 Plan 创建之前或 Scheduler 尚未初始化之前的时间点补造 Occurrence/Run。
-
-这样避免把“新建 Plan”错误解释为“历史停机积压”。
-
-## 5. Scheduler 事务边界
-
-Scheduler 不执行 TikHub HTTP，也不建立第二套内存任务队列。正式任务事实仍是 PostgreSQL Job Runtime。
-
-一次 tick：
+当前 Plan 时区固定为：
 
 ```text
-短事务预扫 schedulable Plan ID
-→ 每个 Plan 单独开启短事务
-→ SELECT Plan ... FOR UPDATE
+Asia/Shanghai
+```
+
+持久化 `scheduled_for / next_run_at / last_scheduled_at` 使用带时区机器时间；人工日志再按北京时间格式展示。
+
+Cron 的精确 Parser/边界以当前 `modules/collection/scheduler.py` 和测试为准，不从文档复制实现。
+
+---
+
+## 4. 新 Plan 为什么不补造历史 Run
+
+新建 Plan 初始 `next_run_at` 可以为空。
+
+Scheduler 第一次看到它时：
+
+```text
+FOR UPDATE 重读当前 Plan
+→ 从当前时刻之后计算第一个未来 Cron slot
+→ 只初始化 next_run_at
+→ 不创建 Plan 建立之前的 Occurrence/Run
+```
+
+“新 Plan 第一次启动”与“已有 Plan 停机后恢复”是两个不同场景，不能共用一套 backlog 逻辑。
+
+---
+
+## 5. Scheduler 的事务边界
+
+一次 tick 的核心流程：
+
+```text
+预扫 schedulable Plan ID
+→ 每个 Plan 独立短事务
+→ SELECT ... FOR UPDATE
 → 重读 enabled / schedule_version / schedule_expr / timezone
   / next_run_at / misfire_policy / max_catch_up_runs
-→ 计算 latest-only 决策
-→ 校验 Provider Config/Registry/Capability、词包与每个平台可执行 Scope
-→ 冻结 Provider/Decision/关键词/技术执行上限 Run Snapshot
-→ 推导有限 Job Deadline
-→ 写更早的 skipped Occurrence
-→ 通过 PostgresJobRepository 创建唯一 Job
-→ 写最新 enqueued Occurrence
-→ 通过 CollectionExecutionService 创建 scheduled Run
+→ 计算 latest_only 决策
+→ 校验 Provider Config / Registry / Capability / Keyword Pack
+→ 推导可执行 Scope
+→ 冻结 Run Snapshot / execution limits
+→ 计算 Job Deadline
+→ 写 skipped Occurrence
+→ 创建唯一 Job
+→ 写 enqueued Occurrence
+→ 创建 scheduled Run / Scope
 → 推进 last_scheduled_at / next_run_at
 → commit
 ```
 
-必须保持：
-
-- Job 由 Job Owner Repository 写；
-- Run 由 Collection Run Owner Repository 写；
-- Plan/Occurrence 由 Collection Planning Repository 写；
-- Scheduler 只负责跨 Owner 的同事务编排，不直接越权写别的 Owner 表；
-- `enqueued` Occurrence、Job、scheduled Run 和 cursor 推进必须同事务提交；
-- `skipped` Occurrence 不得关联 Job/Run。
-
-### 5.1 可执行性门禁与 Job Deadline
-
-Scheduler 对每个 due Plan 在同一短事务内验证 Provider Config 存在且可用、Provider+Platform 已注册且 Capability 接受平台业务配置、词包存在且每个目标平台至少产生一个可执行 Scope。非法 Cron、异常 backlog、缺失词包/Provider 或不支持配置只回滚该 Plan，增加失败计数并记录 `scheduler.plan.rejected`；不能退出整个 tick。0 Scope Run 即使被其他入口构造也必须在 `CollectionRunExecutor` fail closed，不能记成功。
-
-Scheduled Job 的不可续期 Deadline 不使用固定 300 秒，也不简单等于 Cron 周期。当前算法取：
+跨 Owner 编排仍遵守：
 
 ```text
-max(本次 scheduled_for → next logical slot 的秒数,
-    scope_count × (search/comment/sub-comment 技术页数上限之和)
-      × TikHub 单请求 timeout + 安全余量)
+Plan/Occurrence
+→ Collection Planning Owner
+
+Run/Scope
+→ Collection Run Owner
+
+Job
+→ Job Owner
 ```
 
-分页上限和 timeout 同时写入 Run Snapshot 的 `execution_limits` 作为可审计执行事实。该值只用于容量/超时保护，不是请求次数或金额 Budget，不改变“同一 Attempt 最多一次发送”和 Deadline 不可由 Heartbeat 无限延长的 Job Runtime 规则。
+Scheduler 负责同一事务中的编排，不通过直接 SQL 绕开 Owner。
 
-## 6. 并发与幂等
+---
 
-同一个 Plan 可以被多个 Scheduler 实例预扫到，但只能在数据库行锁内作最终决定。
+## 6. 可执行性门禁与 Job Deadline
 
-第一实例提交后，第二实例拿到 Plan 锁时必须重新读取最新 `next_run_at`。如果第一个实例已经推进到未来，第二个实例不得再次创建相同 Occurrence/Run/Job。
+Scheduler 在创建 Run/Job 前会验证：
 
-数据库继续以：
+- Provider Config 存在、启用；
+- Provider + Platform 已注册；
+- Capability 接受当前业务配置；
+- Keyword Pack/冻结关键词可用；
+- 每个平台至少能得到一个可执行 Scope。
+
+非法 Plan fail closed，只影响该 Plan，不应让整个 tick 退出。
+
+`collection.run.v1` 的 Deadline 不是固定 300 秒，也不简单等于 Cron 周期。当前算法会综合：
+
+```text
+scheduled_for 到下一个逻辑 slot 的窗口
+与
+Scope 数 × 技术分页上限 × Provider timeout + 安全余量
+```
+
+取足够保护真实执行的下限。
+
+这些 `execution_limits` 会进入 Run Snapshot 作为可审计执行事实。它们是技术上限，不是请求次数/金额 Budget。
+
+---
+
+## 7. 多 Scheduler 为什么不会重复入队
+
+同一个 Plan 可以被多个 Scheduler 预扫到，但最终决策必须在数据库行锁内完成。
+
+Occurrence 唯一身份：
 
 ```text
 (plan_id, schedule_version, scheduled_for)
 ```
 
-作为 Occurrence 唯一身份。
-
-Scheduler Job 的内部幂等键包含：
+第一个实例提交后：
 
 ```text
-plan_id + schedule_version + scheduled_for
+next_run_at 已推进
++ 唯一约束已建立
 ```
 
-事务提交前数据库 deferred constraint 继续保证：
+第二个实例拿锁后必须重读最新 Plan，不得重复创建同一 Occurrence/Run/Job。
 
-- `enqueued` Occurrence 恰有一个 scheduled Run；
-- Occurrence 与 Run 使用同一个 Job；
-- `skipped` Occurrence 没有 Run。
-
-若进程在事务提交前崩溃，整个事务回滚；下一次 tick 重新处理。若事务已提交，cursor 和唯一约束使重复 tick 不重复入队。
-
-## 7. Plan 变更和禁用
-
-预扫不是执行授权。Plan ID 进入预扫集合后，Scheduler 在 `FOR UPDATE` 内必须重新读取当前事实：
-
-- 已禁用 → 不创建新的 Occurrence/Job/Run；
-- `schedule_expr` 已取消 → 不创建新的定时任务；
-- `schedule_version` 已变化 → 只按锁内读到的新版本事实计算，绝不能继续提交旧版本 Occurrence；
-- 策略不再是 `latest_only` 或 `max_catch_up_runs != 0` → 首版 fail closed，不自行解释。
-
-Stage 8 未来修改 Plan 时必须负责正确提升 `schedule_version` 和重置/调整 Scheduler cursor；在 Stage 8 Contract 冻结前，不在本阶段提前发明编辑 API 语义。
-
-## 8. Provider 成本事实和故障保护
-
-`latest_only` 是 Scheduler 的恢复限流策略。当前系统**不实现**请求次数预算、金额预算、Budget Account、Reservation Ledger、Run/评论 Budget 或发送预算门禁，Scheduler 也不得借“恢复限流”重新引入这些能力。
-
-真实 Provider HTTP 仍保留以下执行与审计事实：
+崩溃语义：
 
 ```text
-Provider Config
-→ endpoint Pricing / Billing facts
+事务提交前崩溃
+→ 整个事务回滚
+→ 下一个 tick 重新处理
+
+事务提交后崩溃
+→ Occurrence / Job / Run / cursor 已一起存在
+→ 下个 tick 不重复入队
+```
+
+---
+
+## 8. 当前 Plan 编辑已经不是“未来 Stage 8”
+
+历史 Stage 7 文档曾写“Stage 8 未来修改 Plan 时再定义编辑 API”。该描述现在已经过期。
+
+当前已经存在采集策略前端和 Plan HTTP 能力，相关当前事实请看：
+
+```text
+frontend/src/features/collection-strategy/
+backend/src/aima_ugc/bootstrap/api.py
+backend/src/aima_ugc/contracts/http.py
+```
+
+真正修改 Plan 字段/编辑语义时，仍必须保证：
+
+```text
+schedule_version 正确提升
+→ Scheduler cursor 与新版本语义一致
+→ 旧版本 Occurrence 不被新版本复用
+→ API / generated Client / 前端 / 测试同步
+```
+
+精确当前 API 见 `docs/API接口说明.md`，不要从 Stage 7 验收记录判断当前页面是否存在。
+
+---
+
+## 9. Provider 费用与 Budget 的当前边界
+
+当前系统保留 Provider Request/Attempt 的 Pricing/Billing/费用审计事实，但**没有**：
+
+```text
+Budget Account
+Reservation Ledger
+发送前金额 Budget Guard
+```
+
+这不是 Stage 7 遗漏，而是后续正式决策明确移除的能力。
+
+未来如果重新需要预算硬限制，必须独立 L3 Change 重新设计 Contract、Schema、发送前并发门禁和 Migration。
+
+---
+
+## 10. 排障怎么判断是哪一层
+
+### 到点没有任何 Job
+
+```text
+collection_plans
+→ next_run_at / enabled / schedule_version
+→ collection_schedule_occurrences
+→ scheduler.log
+→ bootstrap/scheduler.py
+```
+
+### Occurrence 有了，但 Job/Run 不一致
+
+```text
+Occurrence
+→ Job
+→ Collection Run
+→ 同一事务/FK/唯一约束
+```
+
+### Job 已经创建，但 TikHub 没发送
+
+这已经不是 Scheduler 问题：
+
+```text
+jobs
+→ Worker Claim/Fence
+→ Collection Run / Scope
 → Provider Request / Attempt
-→ 成本快照 / potential_duplicate_charge 审计
+→ TikHub Transport
 ```
 
-这些 Pricing、Billing 和成本快照用于描述已经选择/发生的 Provider 请求与计费风险，不是预算能力，也不能作为 dormant Budget 接口的入口。未来如果需要 Budget / Cost Guard，必须新建 L3 Change，重新批准 Contract、Schema、发送门禁、并发语义和迁移。
+### 停机恢复后重复跑历史周期
 
-如果一个 Plan 的历史积压逻辑 slot 数异常巨大，Scheduler 应 fail closed 并要求人工确认，而不是在一个事务中无限创建 skipped 行。
-
-## 9. 日志与可观测性
-
-Scheduler 的日志必须优先回答“本次 tick 是否真的做了工作、哪个 Plan 为什么被拒绝”，而不是证明进程每 30 秒还活着。
-
-`scheduler.tick.completed` 固定携带：
+检查：
 
 ```text
-scanned
-initialized
-enqueued
-skipped
-failed
-duration_ms
+misfire_policy
+max_catch_up_runs
+scheduled_for
+Occurrence 唯一身份
+next_run_at
 ```
 
-级别规则：没有初始化、入队、skip 或失败的空 tick 只记 DEBUG；初始化 cursor、实际入队或产生 `misfire_superseded` skip 时记 INFO；只要存在失败 Plan，tick 汇总提升为 WARNING。单个非法策略、非法 Cron、异常 backlog、缺 Provider/词包/Scope/Capability 的 Plan 继续 fail closed，并单独记录 `scheduler.plan.rejected` ERROR，包含 `plan_id`、`error_type` 与安全 `error_detail`，但不得终止同一 tick 的其他 Plan。
+详细 SQL 和恢复例子见 Scheduler Appendix 和 PostgreSQL Appendix。
 
-所有面向人阅读的北京时间日志遵循 Blueprint 05：`YYYY-MM-DD HH:mm:ss.SSS`，调用文件名和源码行号直接位于日志前缀；不重复输出 `service=scheduler`。持久化的 `scheduled_for / next_run_at / last_scheduled_at` 仍是带时区的机器时间，不受日志显示格式影响。
+---
 
-日志不得包含 Provider Secret、Cookie、Authorization、完整第三方 Raw、完整请求参数或其他敏感数据。
+## 11. 修改 Scheduler 应该改哪些文件
 
-## 10. Stage 7 验收
+| 需求 | 修改入口 |
+| --- | --- |
+| 改 Cron 解析 | `modules/collection/scheduler.py` + unit tests |
+| 改 misfire 策略 | Scheduler Domain + Planning Contract/Table/Migration + Bootstrap + tests + 07/08/本页 |
+| 改 Plan 编辑后 cursor 行为 | Planning Service/Repository + HTTP Contract + Scheduler tests |
+| 改 Scope 推导 | `scheduled_scopes.py` + Capability/Plan 测试 |
+| 改 Scheduler 跨 Owner 事务 | `bootstrap/scheduler.py` + PostgreSQL integration |
+| 改 Occurrence/Run 唯一性 | Table/Migration/Repository + 并发测试 |
+| 改 Job Deadline | Scheduler executor-limit 计算 + Job/Collection integration |
 
-Scheduler Runtime 的 Stage 7 机器验收已完成，覆盖：
+这种修改通常不是“改一行 Cron”那么简单；只要改变持久语义或数据库约束，至少按 L2/L3 Change 处理。
 
-- Domain 拒绝非 `latest_only` 和 `max_catch_up_runs != 0`；
-- PostgreSQL 同样拒绝不批准的策略；
-- `0 */6 * * *` 在 `Asia/Shanghai` 的计算正确；
-- 新 Plan 只初始化未来 cursor，不造历史 Run；
-- 多个 due slot 恢复时更早 slot skipped、最新 slot enqueued；
-- Job + Occurrence + scheduled Run + cursor 同事务一致；
-- 同一时间重复 tick 不重复入队；
-- 两个 Scheduler 并发处理同一 Plan 最终只有一个有效 Job/Run/Occurrence；
-- Migration upgrade/downgrade、`alembic check` 和相关质量门禁通过；
-- Scheduler 创建的 `collection.run.v1` Job 可由正式 Worker Registry/JobWorker 消费并驱动 Collection Scope 执行，而不是只停留在入队事实；
-- 单个非法 Plan 不阻断同一 tick 的合法 Plan，缺 Provider/词包/Scope/Capability 组合关闭失败；
-- scheduled Run 冻结 Provider/Decision/关键词/技术执行上限，短周期 Cron 的 Job Deadline 仍不低于可计算的 Provider 执行窗口下限。
+---
 
-Stage 7 实现 PR #55 已正常合入 `main`，合并后 `main` 取得新鲜 CI；Stage 7 Completion Change 由当前归档 PR #56 完成生命周期归档。本文件不开始或预先定义 Stage 8 的接口实现。
+## 12. 当前验证入口
+
+重点包括：
+
+- Scheduler Domain unit；
+- Planning/PostgreSQL integration；
+- 多 Scheduler 并发；
+- Occurrence/Run/Job 同事务；
+- Worker 消费 `collection.run.v1`；
+- Stage 7 Scheduler Runtime Workflow；
+- Stage 1-7 Audit Correctness。
+
+当前具体测试文件以仓库 `tests/` 和 CI workflow 为准，不在本文维护第二份易漂移清单。
+
+---
+
+## 13. 设计演进记录
+
+Stage 7 的完整批准说明、验收列表、当时尚未进入 Stage 8 的边界原样保存在：
+
+[`09-Scheduler设计与Stage7验收记录.md`](09-Scheduler设计与Stage7验收记录.md)
+
+阅读它时：
+
+```text
+Scheduler 算法/事务/恢复原则
+→ 大部分仍是当前设计
+
+“Stage 8 未来...” / “不预定义 Stage 8...”
+→ 只解释当时阶段边界
+→ 当前实现以本页和代码为准
+```
+
+这样既不删掉设计理由和验收证据，也不会让阶段时间快照冒充今天的机器事实。
