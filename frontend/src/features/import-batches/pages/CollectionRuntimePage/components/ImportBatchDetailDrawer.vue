@@ -186,7 +186,7 @@ const stageRows = computed(() => {
               :disabled="item.stats.rows_ingested === 0"
               @click="emit('viewContents', item.id)"
             >
-              查看处理内容
+              查看入库内容
             </button><button
               class="primary"
               type="button"
