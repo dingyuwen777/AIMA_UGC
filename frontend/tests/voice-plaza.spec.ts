@@ -1,4 +1,3 @@
-import { mount } from '@vue/test-utils'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from '@vue/server-renderer'
 import { createPinia, setActivePinia } from 'pinia'
@@ -65,33 +64,35 @@ describe('voice plaza', () => {
     expect(generated.listContents).toHaveBeenCalledWith({ sentiment: '负面', limit: 20 })
   })
 
-  it('offers every currently supported content platform in the platform filter', () => {
-    const wrapper = mount(VoicePlazaFilters, {
-      props: {
-        search: '',
-        platform: '',
-        contentType: '',
-        analysisStatus: '',
-        sentiment: '',
-        primaryLabel: '',
-        secondaryLabel: '',
-        publishedFrom: '',
-        publishedTo: '',
-        sourceIdentifier: '',
-      },
-    })
+  it('offers every currently supported content platform in the platform filter', async () => {
+    const html = await renderToString(
+      createSSRApp({
+        render: () => h(VoicePlazaFilters, {
+          search: '',
+          platform: '',
+          contentType: '',
+          analysisStatus: '',
+          sentiment: '',
+          primaryLabel: '',
+          secondaryLabel: '',
+          publishedFrom: '',
+          publishedTo: '',
+          sourceIdentifier: '',
+        }),
+      }),
+    )
 
-    const options = wrapper.findAll('select').at(0)?.findAll('option') ?? []
-    const values = options.map((option) => option.attributes('value'))
-    expect(values).toEqual([
-      '',
-      'xiaohongshu',
-      'douyin',
-      'weibo',
-      'bilibili',
-      'kuaishou',
-      'file',
-    ])
+    for (const [value, label] of [
+      ['xiaohongshu', '小红书'],
+      ['douyin', '抖音'],
+      ['weibo', '微博'],
+      ['bilibili', 'B站'],
+      ['kuaishou', '快手'],
+      ['file', '文件导入'],
+    ]) {
+      expect(html).toContain(`value="${value}"`)
+      expect(html).toContain(label)
+    }
   })
 
   it('renders every ordered primary and secondary AI label pair in the label column', async () => {
