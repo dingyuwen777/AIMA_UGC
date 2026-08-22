@@ -203,7 +203,7 @@ def _roundtrip_excel(
                 candidate.title or f"{platform} probe",
                 candidate.text or "TikHub Excel supplement probe",
                 candidate.author.display_name if candidate.author is not None else "probe",
-                candidate.published_at or datetime.now(UTC),
+                _excel_datetime(candidate.published_at),
                 url,
             )
         )
@@ -219,6 +219,16 @@ def _roundtrip_excel(
         if summary.rows_written != 1:
             raise RuntimeError(f"{platform}: Excel Parser 未生成唯一 Content")
         return CanonicalContentV1.model_validate_json(output.read_text(encoding="utf-8").strip())
+
+
+def _excel_datetime(value: datetime | None) -> datetime:
+    """openpyxl 不接受带时区的 datetime；Excel 仅承载本次 Probe 的输入样本。"""
+
+    if value is None:
+        return datetime.now(UTC).replace(tzinfo=None)
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value
+    return value.astimezone(UTC).replace(tzinfo=None)
 
 
 def _probe_detail(
