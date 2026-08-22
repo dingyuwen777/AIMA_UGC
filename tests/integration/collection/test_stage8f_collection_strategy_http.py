@@ -126,7 +126,7 @@ def _seed_strategy_facts(runtime) -> tuple[UUID, UUID, UUID]:  # type: ignore[no
                     {
                         "pack_id": discovery_pack_id,
                         "keyword_id": discovery_keyword_id,
-                        "platform": "all",
+                        "platform_scope": "all",
                         "priority": 10,
                         "enabled": True,
                         "note": "Stage 8F Discovery",
@@ -134,7 +134,7 @@ def _seed_strategy_facts(runtime) -> tuple[UUID, UUID, UUID]:  # type: ignore[no
                     {
                         "pack_id": relevance_pack_id,
                         "keyword_id": relevance_keyword_id,
-                        "platform": "all",
+                        "platform_scope": "all",
                         "priority": 10,
                         "enabled": True,
                         "note": "Stage 8F Relevance",
@@ -252,7 +252,7 @@ def test_enabled_plan_requires_keyword_for_every_platform(runtime) -> None:  # t
         connection.execute(
             keyword_pack_items_table.update()
             .where(keyword_pack_items_table.c.pack_id == discovery_pack_id)
-            .values(platform="douyin")
+            .values(platform_scope="douyin")
         )
     service = PostgresCollectionStrategyHttpService(runtime)
 
