@@ -1,10 +1,10 @@
-name: Stage 6 XHS Vertical Slice
+name: Stage 6 Xiaohongshu Vertical Slice
 
 on:
   push:
     branches:
       - main
-      - feature/stage6-xhs-vertical-slice
+      - feature/stage6-xiaohongshu-vertical-slice
   pull_request:
     branches:
       - main
@@ -20,8 +20,8 @@ on:
       - "tests/integration/collection/**"
       - "tests/integration/content/**"
       - "tests/contracts/test_provider_v1.py"
-      - "tests/fixtures/providers/tikhub/xhs/**"
-      - ".github/workflows/stage6-xhs-vertical-slice.yml"
+      - "tests/fixtures/providers/tikhub/xiaohongshu/**"
+      - ".github/workflows/stage6-xiaohongshu-vertical-slice.yml"
       - "docs/blueprint/**"
       - "docs/测试与调试说明.md"
       - "changes/**"
@@ -31,7 +31,7 @@ permissions:
 
 jobs:
   unit:
-    name: Stage 6 XHS Unit
+    name: Stage 6 Xiaohongshu Unit
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
@@ -53,7 +53,7 @@ jobs:
           uv run pytest tests/unit/collection tests/unit/content tests/contracts/test_provider_v1.py -q
 
   postgres:
-    name: Stage 6 XHS PostgreSQL
+    name: Stage 6 Xiaohongshu PostgreSQL
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -168,7 +168,7 @@ jobs:
           uv run alembic check
 
   quality:
-    name: Stage 6 XHS Quality
+    name: Stage 6 Xiaohongshu Quality
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1

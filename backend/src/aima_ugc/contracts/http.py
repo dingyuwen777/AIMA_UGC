@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from aima_ugc.contracts.analysis import ContentRelevance, ContentVoiceType
 from aima_ugc.contracts.collection.models import BusinessOperation
+from aima_ugc.contracts.platform import PlatformName, PlatformScope, normalize_platform_name
 
 type ImportBatchStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 
@@ -177,7 +178,21 @@ class ImportBatchSummaryResponse(BaseModel):
     as_of: datetime
 
 
-type CollectionPlatform = Literal["xhs", "douyin", "weibo", "bilibili", "kuaishou"]
+type CollectionPlatform = PlatformName
+
+
+def _normalize_platform_input(value: object) -> object:
+    if isinstance(value, str):
+        return normalize_platform_name(value)
+    return value
+
+
+def _normalize_platform_inputs(value: object) -> object:
+    if isinstance(value, (list, tuple)):
+        return tuple(_normalize_platform_input(item) for item in value)
+    return value
+
+
 type CollectionRunMode = Literal["discovery", "batch_supplement"]
 type CollectionRuntimeRecordType = Literal[
     "excel_import",
@@ -201,6 +216,11 @@ class CollectionRunPlatformRequest(BaseModel):
 
     platform: CollectionPlatform
     provider_config_id: UUID
+
+    @field_validator("platform", mode="before")
+    @classmethod
+    def normalize_platform(cls, value: object) -> object:
+        return _normalize_platform_input(value)
 
 
 class CollectionRunCreateRequest(BaseModel):
@@ -456,7 +476,7 @@ class KeywordResponse(BaseModel):
 
     id: UUID
     text: str
-    platform: str = "all"
+    platform_scope: PlatformScope = "all"
     enabled: bool
     priority: int
     note: str
@@ -532,6 +552,11 @@ class CollectionPlanPlatformRequest(BaseModel):
     platform: CollectionPlatform
     provider_config_id: UUID
 
+    @field_validator("platform", mode="before")
+    @classmethod
+    def normalize_platform(cls, value: object) -> object:
+        return _normalize_platform_input(value)
+
 
 class CollectionPlanCreateRequest(BaseModel):
     """Stage 8F 周期 Plan 创建 Contract；一次性运行继续使用 Stage 8E。"""
@@ -596,6 +621,12 @@ class CollectionPlanListQuery(BaseModel):
     enabled: bool | None = None
     platform: CollectionPlatform | None = None
     offset: int = Field(default=0, ge=0)
+
+    @field_validator("platform", mode="before")
+    @classmethod
+    def normalize_platform(cls, value: object) -> object:
+        return _normalize_platform_input(value)
+
     limit: int = Field(default=20, ge=1, le=100)
 
 
@@ -695,7 +726,7 @@ class ContentListItemResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: UUID
-    platform: str
+    platform: PlatformName
     external_content_id: str
     content_type: str
     title: str | None = None
@@ -715,7 +746,7 @@ class ContentFilterSnapshot(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     search: str | None = Field(default=None, min_length=1, max_length=500)
-    platforms: tuple[str, ...] = Field(default=(), max_length=20)
+    platforms: tuple[PlatformName, ...] = Field(default=(), max_length=5)
     content_types: tuple[str, ...] = Field(default=(), max_length=20)
     analysis_status: ContentAnalysisStatus | None = None
     relevance: ContentRelevance | None = None
@@ -726,6 +757,11 @@ class ContentFilterSnapshot(BaseModel):
     published_from: datetime | None = None
     published_to: datetime | None = None
     source_identifier: UUID | None = None
+
+    @field_validator("platforms", mode="before")
+    @classmethod
+    def normalize_platforms(cls, value: object) -> object:
+        return _normalize_platform_inputs(value)
 
     @field_validator("published_from", "published_to")
     @classmethod

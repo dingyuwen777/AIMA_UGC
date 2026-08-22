@@ -37,7 +37,7 @@ const includeSubComments = ref(false)
 const validation = ref<string | null>(null)
 const lastRequestedBatchId = ref('')
 const supportedPlatforms: CollectionPlatform[] = [
-  'xhs',
+  'xiaohongshu',
   'douyin',
   'weibo',
   'bilibili',

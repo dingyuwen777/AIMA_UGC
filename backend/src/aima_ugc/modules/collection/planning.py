@@ -8,6 +8,7 @@ from typing import Literal, Protocol
 from uuid import UUID
 
 from aima_ugc.contracts.collection import CollectionDecisionPolicyV1
+from aima_ugc.contracts.platform import PlatformName
 
 _FIRST_RELEASE_TIMEZONE = "Asia/Shanghai"
 _FIRST_RELEASE_MISFIRE_POLICY = "latest_only"
@@ -77,7 +78,7 @@ class UnsupportedPlanDecisionPolicyError(ValueError):
 class PlanPlatformDefinition:
     """Plan 对一个平台的 Provider 配置选择与业务配置。"""
 
-    platform: str
+    platform: PlatformName
     provider_config_id: UUID
     config: dict[str, object]
 

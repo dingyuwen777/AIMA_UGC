@@ -1898,7 +1898,7 @@ def _comment_sample_mode(
 
 
 def _comment_sort_mode(platform: TikHubPlatform) -> str:
-    if platform in {"xhs", "weibo", "bilibili"}:
+    if platform in {"xiaohongshu", "weibo", "bilibili"}:
         return "latest"
     return "provider_default"
 
@@ -2061,7 +2061,7 @@ def _capability(
 
 def _tikhub_platform(value: str) -> TikHubPlatform:
     if value not in {
-        "xhs",
+        "xiaohongshu",
         "douyin",
         "weibo",
         "bilibili",

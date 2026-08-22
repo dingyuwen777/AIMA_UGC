@@ -36,7 +36,7 @@ export function planExecutionReason(input: PlanExecutionEligibilityInput): strin
       pack.keywords.some(
         (keyword) =>
           keyword.enabled &&
-          (keyword.platform === 'all' || keyword.platform === selection.platform),
+          (keyword.platform_scope === 'all' || keyword.platform_scope === selection.platform),
       ),
     )
     if (!hasKeyword) return `目标平台 ${selection.platform} 没有可用 Discovery 关键词。`

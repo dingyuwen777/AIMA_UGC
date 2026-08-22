@@ -47,7 +47,7 @@ from aima_ugc.platform.storage.tables import artifacts_table
 from pydantic import SecretStr
 from sqlalchemy import func, insert, select, update
 
-_XHS_FIXTURES = Path("tests/fixtures/providers/tikhub/xhs")
+_XIAOHONGSHU_FIXTURES = Path("tests/fixtures/providers/tikhub/xiaohongshu")
 
 
 @pytest.fixture
@@ -112,7 +112,7 @@ def _seed_config_and_relevance(runtime) -> UUID:  # type: ignore[no-untyped-def]
             insert(keyword_pack_items_table).values(
                 pack_id=pack_id,
                 keyword_id=keyword_id,
-                platform="all",
+                platform_scope="all",
                 priority=10,
                 enabled=True,
                 note="stage8e",
@@ -146,7 +146,7 @@ def test_discovery_run_creation_freezes_inputs_and_commits_job_run_scopes_atomic
             keywords=("爱玛", "Q7"),
             platforms=(
                 CollectionRunPlatformRequest(
-                    platform="xhs",
+                    platform="xiaohongshu",
                     provider_config_id=provider_config_id,
                 ),
             ),
@@ -225,7 +225,7 @@ def test_collection_run_rejects_disabled_provider_config(runtime) -> None:  # ty
                 keywords=("爱玛",),
                 platforms=(
                     CollectionRunPlatformRequest(
-                        platform="xhs",
+                        platform="xiaohongshu",
                         provider_config_id=provider_config_id,
                     ),
                 ),
@@ -323,7 +323,7 @@ def test_unified_runtime_list_cursor_filters_and_summary_aggregate_both_owners(
             keywords=("爱玛",),
             platforms=(
                 CollectionRunPlatformRequest(
-                    platform="xhs",
+                    platform="xiaohongshu",
                     provider_config_id=provider_config_id,
                 ),
             ),
@@ -445,7 +445,7 @@ def _insert_import_content(
         connection.execute(
             insert(contents_table).values(
                 id=content_id,
-                platform="xhs",
+                platform="xiaohongshu",
                 external_content_id=external_content_id,
                 content_type="image",
                 title=title,
@@ -482,7 +482,7 @@ def test_batch_supplement_targets_only_batch_lineage_and_links_run(runtime) -> N
             import_batch_id=batch_id,
             platforms=(
                 CollectionRunPlatformRequest(
-                    platform="xhs",
+                    platform="xiaohongshu",
                     provider_config_id=provider_config_id,
                 ),
             ),
@@ -521,7 +521,7 @@ def test_batch_supplement_targets_only_batch_lineage_and_links_run(runtime) -> N
                 import_batch_id=uuid4(),
                 platforms=(
                     CollectionRunPlatformRequest(
-                        platform="xhs",
+                        platform="xiaohongshu",
                         provider_config_id=provider_config_id,
                     ),
                 ),
@@ -550,7 +550,9 @@ def _batch_detail_response(
     note_id: str = "stage8e-batch-note",
     title: str = "爱玛 Batch 内容已补全",
 ) -> dict[str, object]:
-    body = json.loads((_XHS_FIXTURES / "image_detail.sanitized.json").read_text(encoding="utf-8"))
+    body = json.loads(
+        (_XIAOHONGSHU_FIXTURES / "image_detail.sanitized.json").read_text(encoding="utf-8")
+    )
     outer = body["data"]
     assert isinstance(outer, dict)
     rows = outer["data"]
@@ -569,7 +571,9 @@ def _batch_detail_response(
 
 
 def _batch_comments_response() -> dict[str, object]:
-    body = json.loads((_XHS_FIXTURES / "comments_page1.sanitized.json").read_text(encoding="utf-8"))
+    body = json.loads(
+        (_XIAOHONGSHU_FIXTURES / "comments_page1.sanitized.json").read_text(encoding="utf-8")
+    )
     outer = body["data"]
     assert isinstance(outer, dict)
     page = outer["data"]
@@ -596,7 +600,7 @@ def test_batch_supplement_worker_reuses_detail_mapper_relevance_and_ingestion(ru
             import_batch_id=batch_id,
             platforms=(
                 CollectionRunPlatformRequest(
-                    platform="xhs",
+                    platform="xiaohongshu",
                     provider_config_id=provider_config_id,
                 ),
             ),
@@ -689,7 +693,7 @@ def test_batch_supplement_rejects_mismatched_existing_content_before_ingestion(
             import_batch_id=batch_id,
             platforms=(
                 CollectionRunPlatformRequest(
-                    platform="xhs",
+                    platform="xiaohongshu",
                     provider_config_id=provider_config_id,
                 ),
             ),
@@ -759,7 +763,7 @@ def test_batch_supplement_can_fetch_comments_without_sub_comments(runtime) -> No
             import_batch_id=batch_id,
             platforms=(
                 CollectionRunPlatformRequest(
-                    platform="xhs",
+                    platform="xiaohongshu",
                     provider_config_id=provider_config_id,
                 ),
             ),
@@ -821,7 +825,7 @@ def test_batch_supplement_retries_provider_5xx_with_new_attempt(runtime) -> None
             import_batch_id=batch_id,
             platforms=(
                 CollectionRunPlatformRequest(
-                    platform="xhs",
+                    platform="xiaohongshu",
                     provider_config_id=provider_config_id,
                 ),
             ),

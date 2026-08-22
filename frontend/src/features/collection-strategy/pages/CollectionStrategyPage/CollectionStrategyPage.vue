@@ -152,7 +152,7 @@ function showNotice(message: string): void {
         </select><select v-model="store.filters.platform">
           <option value="">
             全部平台
-          </option><option value="xhs">
+          </option><option value="xiaohongshu">
             小红书
           </option><option value="douyin">
             抖音

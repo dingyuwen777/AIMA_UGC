@@ -46,7 +46,7 @@ from aima_ugc.platform.storage import ArtifactService
 from pydantic import SecretStr
 from sqlalchemy import func, select
 
-_FIXTURES = Path("tests/fixtures/providers/tikhub/xhs")
+_FIXTURES = Path("tests/fixtures/providers/tikhub/xiaohongshu")
 
 
 @dataclass
@@ -156,6 +156,20 @@ def _sub_comments_response() -> dict[str, object]:
     return body
 
 
+def _first_comment_id(body: dict[str, object]) -> str:
+    outer = body["data"]
+    assert isinstance(outer, dict)
+    page = outer["data"]
+    assert isinstance(page, dict)
+    comments = page["comments"]
+    assert isinstance(comments, list) and comments
+    comment = comments[0]
+    assert isinstance(comment, dict)
+    comment_id = comment["id"]
+    assert isinstance(comment_id, str)
+    return comment_id
+
+
 def _raw_service(runtime: DatabaseRuntime, root: Path) -> RawArtifactService:
     store = LocalArtifactStore(root)
     return RawArtifactService(
@@ -216,7 +230,7 @@ def test_scope_persists_durable_actions_extensions_and_thread_coverage(
                     },
                     "platforms": [
                         {
-                            "platform": "xhs",
+                            "platform": "xiaohongshu",
                             "provider_config_id": str(provider_config.id),
                             "config": {
                                 "sort_mode": "latest",
@@ -228,7 +242,7 @@ def test_scope_persists_durable_actions_extensions_and_thread_coverage(
                 },
                 scopes=(
                     CollectionScopeDefinition(
-                        platform="xhs",
+                        platform="xiaohongshu",
                         source_type="keyword_search",
                         source_value="爱玛",
                         operation_group="content_discovery",
@@ -245,12 +259,19 @@ def test_scope_persists_durable_actions_extensions_and_thread_coverage(
     finally:
         session.close()
 
+    comments_response = _comments_response()
+    sub_comments_response = _sub_comments_response()
+    expected_root_comment_id = _first_comment_id(comments_response)
+    expected_comment_ids = {
+        expected_root_comment_id,
+        _first_comment_id(sub_comments_response),
+    }
     transport = FakeProviderTransport(
         (
             ProviderTransportResponse(status_code=200, body=_search_response()),
             ProviderTransportResponse(status_code=200, body=_detail_response()),
-            ProviderTransportResponse(status_code=200, body=_comments_response()),
-            ProviderTransportResponse(status_code=200, body=_sub_comments_response()),
+            ProviderTransportResponse(status_code=200, body=comments_response),
+            ProviderTransportResponse(status_code=200, body=sub_comments_response),
         )
     )
     fence = JobExecutionFence(job_id=job.id, lease_token=claimed.lease_token)
@@ -282,10 +303,7 @@ def test_scope_persists_durable_actions_extensions_and_thread_coverage(
             assert session.scalar(select(func.count()).select_from(content_locations_table)) == 1
 
             comments = session.execute(select(comments_table)).mappings().all()
-            assert {row["external_comment_id"] for row in comments} == {
-                "xhs-comment-root-1",
-                "xhs-comment-reply-2",
-            }
+            assert {row["external_comment_id"] for row in comments} == expected_comment_ids
 
             root_coverage = (
                 session.execute(select(comment_coverage_observations_table)).mappings().one()
@@ -298,7 +316,7 @@ def test_scope_persists_durable_actions_extensions_and_thread_coverage(
             thread_coverage = (
                 session.execute(select(comment_thread_coverage_observations_table)).mappings().one()
             )
-            assert thread_coverage["root_comment_id"] == "xhs-comment-root-1"
+            assert thread_coverage["root_comment_id"] == expected_root_comment_id
             assert thread_coverage["coverage"] == "complete"
             assert thread_coverage["reported_total"] == 1
             assert thread_coverage["captured_count"] == 1
@@ -313,7 +331,7 @@ def test_scope_persists_durable_actions_extensions_and_thread_coverage(
         root_comment_id=persisted_thread["root_comment_id"],
         provider_attempt_id=persisted_thread["provider_attempt_id"],
         raw_artifact_id=persisted_thread["raw_artifact_id"],
-        platform="xhs",
+        platform="xiaohongshu",
         fence=fence,
         coverage=persisted_thread["coverage"],
         reported_total=persisted_thread["reported_total"],
@@ -330,7 +348,7 @@ def test_scope_persists_durable_actions_extensions_and_thread_coverage(
             root_comment_id=persisted_thread["root_comment_id"],
             provider_attempt_id=persisted_thread["provider_attempt_id"],
             raw_artifact_id=persisted_thread["raw_artifact_id"],
-            platform="xhs",
+            platform="xiaohongshu",
             fence=fence,
             coverage="complete",
             reported_total=2,

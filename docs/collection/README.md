@@ -123,7 +123,7 @@ Capability=false 的平台走受控刷新，不套用同一逻辑。
 
 | 平台 | Native time filter | Search observes comment_count | Reply count | Sub-comments |
 | --- | --- | --- | --- | --- |
-| XHS | 是 | 是 | 是 | 是 |
+| xiaohongshu | 是 | 是 | 是 | 是 |
 | Douyin | 是 | 是 | 是 | 是 |
 | Weibo | 是 | 是 | 是 | 是 |
 | Bilibili | 否 | 否 | 是 | 是 |

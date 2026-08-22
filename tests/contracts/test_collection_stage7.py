@@ -52,7 +52,7 @@ def test_platform_capability_rejects_duplicate_business_operations() -> None:
     with pytest.raises(ValidationError, match="重复"):
         ProviderPlatformCapabilityV1(
             provider="tikhub",
-            platform="xhs",
+            platform="xiaohongshu",
             operations=(operation, operation),
         )
 

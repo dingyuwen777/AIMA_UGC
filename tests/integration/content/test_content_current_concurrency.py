@@ -97,7 +97,7 @@ def _source(runtime: DatabaseRuntime, *, observed_at: datetime, suffix: str) -> 
                 insert(collection_scopes_table).values(
                     id=scope_id,
                     run_id=run_id,
-                    platform="xhs",
+                    platform="xiaohongshu",
                     source_type="keyword_search",
                     source_value=suffix,
                     operation_group="content_discovery",
@@ -184,7 +184,7 @@ def _content(
         )
         observed_fields.extend(["author.external_account_id", "author.display_name"])
     return CanonicalContentV1(
-        platform="xhs",
+        platform="xiaohongshu",
         external_content_id=external_id,
         content_type="note",
         title=title,
@@ -204,7 +204,7 @@ def _comment(
     external_comment_id: str,
 ) -> CanonicalCommentV1:
     return CanonicalCommentV1(
-        platform="xhs",
+        platform="xiaohongshu",
         external_content_id=external_content_id,
         external_comment_id=external_comment_id,
         root_comment_id=external_comment_id,
@@ -285,7 +285,7 @@ def test_sparse_metric_history_keeps_unobserved_metrics_null(
     observed_at = datetime(2026, 8, 17, 12, 0, tzinfo=UTC)
     source = _source(database_runtime, observed_at=observed_at, suffix="sparse")
     observation = CanonicalContentV1(
-        platform="xhs",
+        platform="xiaohongshu",
         external_content_id="note-sparse-metric",
         content_type="note",
         title="稀疏",
@@ -457,7 +457,7 @@ def test_concurrent_first_account_insert_converges_on_one_row(
     with database_runtime.engine.connect() as connection:
         rows = connection.execute(
             select(accounts_table.c.id).where(
-                accounts_table.c.platform == "xhs",
+                accounts_table.c.platform == "xiaohongshu",
                 accounts_table.c.external_account_id == "author-concurrent",
             )
         ).all()

@@ -18,7 +18,7 @@ def test_p1g_labeled_excel_reads_analysis_from_same_deduplicated_jsonl(tmp_path:
     record = UnifiedContentRecordV1(
         content=CanonicalContentV1(
             observed_fields=["title", "text"],
-            platform="imports",
+            platform="xiaohongshu",
             external_content_id="content-1",
             content_type="unknown",
             title="爱玛新品",

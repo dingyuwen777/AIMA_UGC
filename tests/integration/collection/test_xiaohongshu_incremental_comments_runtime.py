@@ -1,4 +1,4 @@
-"""XHS latest_v2 增量评论历史边界的 PostgreSQL/Fake Transport 纵切。"""
+"""xiaohongshu latest_v2 增量评论历史边界的 PostgreSQL/Fake Transport 纵切。"""
 
 from __future__ import annotations
 
@@ -42,11 +42,11 @@ from aima_ugc.platform.storage import ArtifactService
 from pydantic import SecretStr
 from sqlalchemy import insert, select
 
-_FIXTURES = Path("tests/fixtures/providers/tikhub/xhs")
+_FIXTURES = Path("tests/fixtures/providers/tikhub/xiaohongshu")
 _OBSERVED_AT = datetime(2026, 8, 18, 0, 20, tzinfo=UTC)
 _CONTENT_EXTERNAL_ID = "note-fixture-1"
-_KNOWN_COMMENT_ID = "xhs-comment-known-1"
-_NEW_COMMENT_ID = "xhs-comment-new-2"
+_KNOWN_COMMENT_ID = "xiaohongshu-comment-known-1"
+_NEW_COMMENT_ID = "xiaohongshu-comment-new-2"
 
 
 @dataclass
@@ -162,7 +162,7 @@ def _comments_page2_should_not_be_requested() -> dict[str, object]:
     page = outer["data"]
     assert isinstance(page, dict)
     root = _root_template()
-    root["id"] = "xhs-comment-too-old"
+    root["id"] = "xiaohongshu-comment-too-old"
     root["content"] = "如果请求到这一页说明增量停止失败"
     page["comments"] = [root]
     page["comment_count_l1"] = 12
@@ -189,7 +189,7 @@ def _seed_previous_content(runtime: DatabaseRuntime) -> UUID:
             session.execute(
                 insert(contents_table).values(
                     id=content_id,
-                    platform="xhs",
+                    platform="xiaohongshu",
                     external_content_id=_CONTENT_EXTERNAL_ID,
                     content_type="image",
                     first_seen_at=_OBSERVED_AT,
@@ -221,7 +221,7 @@ def _seed_previous_content(runtime: DatabaseRuntime) -> UUID:
     return content_id
 
 
-def test_xhs_incremental_comments_stop_after_safe_known_comment_boundary(
+def test_xiaohongshu_incremental_comments_stop_after_safe_known_comment_boundary(
     database_runtime: DatabaseRuntime,
     tmp_path: Path,
 ) -> None:
@@ -234,9 +234,9 @@ def test_xhs_incremental_comments_stop_after_safe_known_comment_boundary(
                 ProviderConfig(
                     id=uuid4(),
                     provider="tikhub",
-                    display_name="TikHub XHS Incremental Comments",
+                    display_name="TikHub xiaohongshu Incremental Comments",
                     base_url="https://api.tikhub.io",
-                    secret_ref="providers/tikhub/test/xhs-incremental-comments",
+                    secret_ref="providers/tikhub/test/xiaohongshu-incremental-comments",
                     enabled=True,
                 )
             )
@@ -244,7 +244,7 @@ def test_xhs_incremental_comments_stop_after_safe_known_comment_boundary(
                 job_type="collection.run.v1",
                 payload_version="collection.run.v1",
                 payload={"schema_version": "collection.run.v1"},
-                internal_idempotency_key=f"xhs-incremental-comments:{uuid4()}",
+                internal_idempotency_key=f"xiaohongshu-incremental-comments:{uuid4()}",
                 request_id=None,
                 priority=10,
                 max_attempts=2,
@@ -266,7 +266,7 @@ def test_xhs_incremental_comments_stop_after_safe_known_comment_boundary(
                     "comment_policy": "adaptive",
                     "platforms": [
                         {
-                            "platform": "xhs",
+                            "platform": "xiaohongshu",
                             "provider_config_id": str(provider_config.id),
                             "config": {
                                 "sort_mode": "latest",
@@ -278,7 +278,7 @@ def test_xhs_incremental_comments_stop_after_safe_known_comment_boundary(
                 },
                 scopes=(
                     CollectionScopeDefinition(
-                        platform="xhs",
+                        platform="xiaohongshu",
                         source_type="keyword_search",
                         source_value="爱玛",
                         operation_group="content_discovery",
@@ -288,7 +288,7 @@ def test_xhs_incremental_comments_stop_after_safe_known_comment_boundary(
         with session.begin():
             claimed = PostgresJobRepository(session).claim_next(
                 supported_job_types=("collection.run.v1",),
-                worker_id="xhs-incremental-comments-worker",
+                worker_id="xiaohongshu-incremental-comments-worker",
                 lease_seconds=120,
             )
         assert claimed is not None and claimed.lease_token is not None
@@ -353,7 +353,7 @@ def test_xhs_incremental_comments_stop_after_safe_known_comment_boundary(
             )
         assert _NEW_COMMENT_ID in comment_ids
         assert _KNOWN_COMMENT_ID in comment_ids
-        assert "xhs-comment-too-old" not in comment_ids
+        assert "xiaohongshu-comment-too-old" not in comment_ids
         assert coverage["coverage"] == "partial"
         assert coverage["sort_mode"] == "latest"
         assert coverage["stop_reason"] == "known_comment_reached"

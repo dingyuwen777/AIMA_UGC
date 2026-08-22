@@ -39,7 +39,7 @@ def test_keyword_catalog_round_trip_and_database_constraints() -> None:
     item = KeywordPackItem(
         pack_id=pack_id,
         keyword_id=keyword_id,
-        platform="all",
+        platform_scope="all",
         priority=10,
         enabled=True,
         note="默认全平台品牌词",
@@ -87,7 +87,7 @@ def test_keyword_catalog_round_trip_and_database_constraints() -> None:
         missing_pack_item = KeywordPackItem(
             pack_id=uuid4(),
             keyword_id=keyword_id,
-            platform="xhs",
+            platform_scope="xiaohongshu",
             priority=20,
             enabled=True,
             note="用于验证外键",
@@ -102,7 +102,7 @@ def test_keyword_catalog_round_trip_and_database_constraints() -> None:
         assert set(keyword_pack_items_table.c.keys()) == {
             "pack_id",
             "keyword_id",
-            "platform",
+            "platform_scope",
             "priority",
             "enabled",
             "note",
@@ -110,7 +110,7 @@ def test_keyword_catalog_round_trip_and_database_constraints() -> None:
         assert tuple(column.name for column in keyword_pack_items_table.primary_key.columns) == (
             "pack_id",
             "keyword_id",
-            "platform",
+            "platform_scope",
         )
         assert {
             foreign_key.target_fullname for foreign_key in keyword_pack_items_table.foreign_keys

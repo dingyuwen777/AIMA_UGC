@@ -37,7 +37,7 @@ def _plan(**overrides: object) -> CollectionPlanDefinition:
         "created_by": None,
         "platforms": (
             PlanPlatformDefinition(
-                platform="xhs",
+                platform="xiaohongshu",
                 provider_config_id=uuid4(),
                 config={"sort_mode": "latest"},
             ),
@@ -55,7 +55,7 @@ def test_plan_rejects_empty_execution_surface_and_secret_suffixes() -> None:
         _plan(keyword_pack_ids=())
     with pytest.raises(UnsafePlanConfigError, match="Secret"):
         PlanPlatformDefinition(
-            platform="xhs",
+            platform="xiaohongshu",
             provider_config_id=uuid4(),
             config={"nested": {"refresh_token": "must-not-persist"}},
         )
@@ -69,7 +69,7 @@ def test_comment_observed_fields_reject_unknown_nested_leaf() -> None:
     )
     with pytest.raises(ValidationError, match="observed_fields"):
         CanonicalCommentV1(
-            platform="xhs",
+            platform="xiaohongshu",
             external_content_id="content-1",
             external_comment_id="comment-1",
             observed_at=_NOW,
@@ -113,7 +113,7 @@ def test_long_term_docs_match_stage1_stage7_machine_facts() -> None:
         encoding="utf-8"
     )
 
-    assert "当前机器 Registry 只接线已经有实现事实的 `tikhub + xhs`" not in blueprint_02
+    assert "当前机器 Registry 只接线已经有实现事实的 `tikhub + xiaohongshu`" not in blueprint_02
     assert "当前 main 实际只有小红书 Operation/Mapper" not in blueprint_02
     assert "Stage 7 仍未闭环的核心是正式 `collection.run.v1` live Worker" not in blueprint_02
     assert "当前 L3 Corrective Change" not in collection_readme

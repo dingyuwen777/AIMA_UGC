@@ -327,7 +327,7 @@ class PostgresImportHttpService:
                     KeywordPackItem(
                         pack_id=pack_id,
                         keyword_id=keyword.id,
-                        platform="all",
+                        platform_scope="all",
                         priority=request.priority,
                         enabled=request.enabled,
                         note=request.note.strip(),
@@ -417,7 +417,7 @@ def _pack_response(
             KeywordResponse(
                 id=keyword.id,
                 text=keyword.text,
-                platform=item.platform,
+                platform_scope=item.platform_scope,
                 enabled=keyword.enabled and item.enabled,
                 priority=item.priority,
                 note=item.note,

@@ -8,31 +8,34 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from aima_ugc.contracts.platform import PlatformName
 from aima_ugc.contracts.provider import RawEnvelopeV1
 from aima_ugc.modules.collection.providers import RawArtifactService
 from aima_ugc.platform.jobs import JobHandlerResult, JobRegistry
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol
 from aima_ugc.platform.storage import ArtifactRecord
 
-XHS_RAW_REPLAY_JOB_TYPE = "collection.xhs.raw-replay.v1"
-XHS_RAW_REPLAY_PAYLOAD_VERSION = "collection.xhs.raw-replay.v1"
+XIAOHONGSHU_RAW_REPLAY_JOB_TYPE = "collection.xiaohongshu.raw-replay.v1"
+XIAOHONGSHU_RAW_REPLAY_PAYLOAD_VERSION = "collection.xiaohongshu.raw-replay.v1"
 
 
-class XhsRawReplayJobPayload(BaseModel):
+class XiaohongshuRawReplayJobPayload(BaseModel):
     """只保存已存在 Provider Attempt 身份，不携带 Raw 或 Secret。"""
 
-    schema_version: Literal["collection.xhs.raw-replay.v1"] = "collection.xhs.raw-replay.v1"
+    schema_version: Literal["collection.xiaohongshu.raw-replay.v1"] = (
+        "collection.xiaohongshu.raw-replay.v1"
+    )
     provider_attempt_id: UUID
 
 
 @dataclass(frozen=True, slots=True)
-class XhsReplaySource:
+class XiaohongshuReplaySource:
     """从数据库受约束来源链解析出的 Raw 回放上下文。"""
 
     provider_attempt_id: UUID
     provider_request_id: UUID
     provider: str
-    platform: str
+    platform: PlatformName
     operation: str
     source_type: str
     source_value: str
@@ -40,28 +43,30 @@ class XhsReplaySource:
 
 
 @dataclass(frozen=True, slots=True)
-class XhsReplaySummary:
+class XiaohongshuReplaySummary:
     content_count: int = 0
     comment_count: int = 0
 
 
-class XhsReplaySourceReader(Protocol):
-    def load(self, provider_attempt_id: UUID) -> XhsReplaySource: ...
+class XiaohongshuReplaySourceReader(Protocol):
+    def load(self, provider_attempt_id: UUID) -> XiaohongshuReplaySource: ...
 
 
-class XhsReplayIngestionWriter(Protocol):
-    def ingest(self, source: XhsReplaySource, envelope: RawEnvelopeV1) -> XhsReplaySummary: ...
+class XiaohongshuReplayIngestionWriter(Protocol):
+    def ingest(
+        self, source: XiaohongshuReplaySource, envelope: RawEnvelopeV1
+    ) -> XiaohongshuReplaySummary: ...
 
 
-class XhsRawReplayHandler:
+class XiaohongshuRawReplayHandler:
     """只回放已存 Raw；故意不接受 ProviderClient/Transport。"""
 
     def __init__(
         self,
         *,
         raw_artifacts: RawArtifactService,
-        source_reader: XhsReplaySourceReader,
-        ingestion_writer: XhsReplayIngestionWriter,
+        source_reader: XiaohongshuReplaySourceReader,
+        ingestion_writer: XiaohongshuReplayIngestionWriter,
     ) -> None:
         self._raw_artifacts = raw_artifacts
         self._source_reader = source_reader
@@ -72,8 +77,8 @@ class XhsRawReplayHandler:
         payload: BaseModel,
         context: JobExecutionContextProtocol,
     ) -> JobHandlerResult:
-        if not isinstance(payload, XhsRawReplayJobPayload):
-            raise TypeError("XHS Raw Replay Job Payload 类型错误")
+        if not isinstance(payload, XiaohongshuRawReplayJobPayload):
+            raise TypeError("xiaohongshu Raw Replay Job Payload 类型错误")
         source = self._source_reader.load(payload.provider_attempt_id)
         envelope = self._raw_artifacts.replay(source.artifact)
         _validate_replay_source(source, envelope)
@@ -90,20 +95,22 @@ class XhsRawReplayHandler:
         )
 
 
-def register_xhs_raw_replay_job(registry: JobRegistry, handler: XhsRawReplayHandler) -> None:
+def register_xiaohongshu_raw_replay_job(
+    registry: JobRegistry, handler: XiaohongshuRawReplayHandler
+) -> None:
     """把 Stage 6 Raw Replay Handler 注册到现有持久化 Job Runtime。"""
     registry.register(
-        job_type=XHS_RAW_REPLAY_JOB_TYPE,
-        payload_version=XHS_RAW_REPLAY_PAYLOAD_VERSION,
-        payload_model=XhsRawReplayJobPayload,
+        job_type=XIAOHONGSHU_RAW_REPLAY_JOB_TYPE,
+        payload_version=XIAOHONGSHU_RAW_REPLAY_PAYLOAD_VERSION,
+        payload_model=XiaohongshuRawReplayJobPayload,
         handler=handler,
         retry_on_timeout=True,
     )
 
 
-def _validate_replay_source(source: XhsReplaySource, envelope: RawEnvelopeV1) -> None:
-    if source.provider != "tikhub" or source.platform != "xhs":
-        raise ValueError("XHS Raw Replay 只接受 tikhub/xhs 来源")
+def _validate_replay_source(source: XiaohongshuReplaySource, envelope: RawEnvelopeV1) -> None:
+    if source.provider != "tikhub" or source.platform != "xiaohongshu":
+        raise ValueError("xiaohongshu Raw Replay 只接受 tikhub/xiaohongshu 来源")
     if envelope.provider != source.provider or envelope.platform != source.platform:
         raise ValueError("Raw Envelope Provider/Platform 与数据库来源链不一致")
     if envelope.operation != source.operation:

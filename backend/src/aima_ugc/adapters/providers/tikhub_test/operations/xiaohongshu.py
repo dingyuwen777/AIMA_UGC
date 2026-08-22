@@ -30,7 +30,7 @@ def run_xiaohongshu(
     provider_config_id: UUID | None = None,
 ) -> TikHubTestRunResult:
     return run_platform(
-        platform="xhs",
+        platform="xiaohongshu",
         keyword=keyword,
         keywords=keywords,
         search_config={

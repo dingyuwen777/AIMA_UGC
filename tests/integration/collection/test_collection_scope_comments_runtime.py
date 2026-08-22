@@ -43,7 +43,7 @@ from aima_ugc.platform.storage.tables import artifacts_table
 from pydantic import SecretStr
 from sqlalchemy import func, select
 
-_FIXTURES = Path("tests/fixtures/providers/tikhub/xhs")
+_FIXTURES = Path("tests/fixtures/providers/tikhub/xiaohongshu")
 _OBSERVED_AT = datetime(2026, 8, 17, 4, 30, tzinfo=UTC)
 
 
@@ -127,6 +127,20 @@ def _comments_response() -> dict[str, object]:
     return body
 
 
+def _first_comment_id(body: dict[str, object]) -> str:
+    outer = body["data"]
+    assert isinstance(outer, dict)
+    page = outer["data"]
+    assert isinstance(page, dict)
+    comments = page["comments"]
+    assert isinstance(comments, list) and comments
+    root = comments[0]
+    assert isinstance(root, dict)
+    comment_id = root["id"]
+    assert isinstance(comment_id, str)
+    return comment_id
+
+
 def _raw_service(runtime: DatabaseRuntime, root: Path) -> RawArtifactService:
     store = LocalArtifactStore(root)
     return RawArtifactService(
@@ -181,7 +195,7 @@ def test_scope_runtime_fetches_and_ingests_root_comments(
                     "comment_policy": "adaptive",
                     "platforms": [
                         {
-                            "platform": "xhs",
+                            "platform": "xiaohongshu",
                             "provider_config_id": str(provider_config.id),
                             "config": {
                                 "sort_mode": "latest",
@@ -193,7 +207,7 @@ def test_scope_runtime_fetches_and_ingests_root_comments(
                 },
                 scopes=(
                     CollectionScopeDefinition(
-                        platform="xhs",
+                        platform="xiaohongshu",
                         source_type="keyword_search",
                         source_value="爱玛",
                         operation_group="content_discovery",
@@ -210,11 +224,13 @@ def test_scope_runtime_fetches_and_ingests_root_comments(
     finally:
         session.close()
 
+    comments_response = _comments_response()
+    expected_comment_id = _first_comment_id(comments_response)
     transport = FakeProviderTransport(
         (
             ProviderTransportResponse(status_code=200, body=_search_response()),
             ProviderTransportResponse(status_code=200, body=_detail_response()),
-            ProviderTransportResponse(status_code=200, body=_comments_response()),
+            ProviderTransportResponse(status_code=200, body=comments_response),
         )
     )
     fence = JobExecutionFence(job_id=job.id, lease_token=claimed.lease_token)
@@ -257,8 +273,8 @@ def test_scope_runtime_fetches_and_ingests_root_comments(
                     collection_runs_table.c.job_id == job.id
                 )
             )
-        assert comment["external_comment_id"] == "xhs-comment-root-1"
-        assert comment["root_comment_id"] == "xhs-comment-root-1"
+        assert comment["external_comment_id"] == expected_comment_id
+        assert comment["root_comment_id"] == expected_comment_id
         assert comment["parent_comment_id"] is None
         assert comment["text"] == "脱敏一级评论"
         assert run_comment_count == 1

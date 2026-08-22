@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
-    XhsMappingContext,
+    XiaohongshuMappingContext,
     map_comment,
     map_content,
 )
@@ -14,8 +14,8 @@ OBSERVED_AT = datetime(2026, 8, 5, 10, 0, 12, tzinfo=UTC)
 RAW_ARTIFACT_ID = UUID("00000000-0000-0000-0000-000000000101")
 
 
-def _context(*, operation: str, root_comment_id: str | None = None) -> XhsMappingContext:
-    return XhsMappingContext(
+def _context(*, operation: str, root_comment_id: str | None = None) -> XiaohongshuMappingContext:
+    return XiaohongshuMappingContext(
         provider_request_id="request-1",
         provider_attempt_id="attempt-1",
         raw_artifact_id=RAW_ARTIFACT_ID,
@@ -51,7 +51,7 @@ def test_real_search_wrapper_maps_observed_content_fields() -> None:
     }
     result = map_content(raw, _context(operation="search_notes"), item_locator="note:note-1")
     assert isinstance(result, CanonicalContentV1)
-    assert result.platform == "xhs"
+    assert result.platform == "xiaohongshu"
     assert result.external_content_id == "note-1"
     assert result.content_type == "image"
     assert result.metrics.like_count == 12

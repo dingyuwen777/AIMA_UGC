@@ -15,13 +15,13 @@ from aima_ugc.modules.collection.providers.transport import (
 )
 from openpyxl import load_workbook
 
-_FIXTURE_ROOT = Path("tests/fixtures/providers/tikhub/xhs")
+_FIXTURE_ROOT = Path("tests/fixtures/providers/tikhub/xiaohongshu")
 
 
 def test_default_run_directory_uses_beijing_time_with_explicit_offset(tmp_path: Path) -> None:
     run_id = default_run_id(datetime(2026, 8, 18, 6, 10, 8, 637851, tzinfo=UTC))
 
-    store = RunOutputStore.create(output_root=tmp_path, platform="xhs", run_id=run_id)
+    store = RunOutputStore.create(output_root=tmp_path, platform="xiaohongshu", run_id=run_id)
 
     assert run_id == "20260818T141008.637851+0800"
     assert store.run_dir.name == "20260818T141008.637851+0800"
@@ -116,7 +116,7 @@ def _write_env(path: Path) -> None:
     )
 
 
-def test_xhs_debug_runtime_reuses_production_flow_and_skips_unchanged_refresh(
+def test_xiaohongshu_debug_runtime_reuses_production_flow_and_skips_unchanged_refresh(
     tmp_path: Path,
     monkeypatch: Any,
 ) -> None:
@@ -124,11 +124,15 @@ def test_xhs_debug_runtime_reuses_production_flow_and_skips_unchanged_refresh(
     output_root = tmp_path / "output"
     _write_env(env_file)
 
+    comments_response = _matching_comments()
+    replies_response = _matching_replies()
+    raw_root_comment_id = str(comments_response["data"]["data"]["comments"][0]["id"])
+    raw_reply_comment_id = str(replies_response["data"]["data"]["comments"][0]["id"])
     first_responses = [
         _fixture("search_notes_page1.sanitized.json"),
         _matching_detail(),
-        _matching_comments(),
-        _matching_replies(),
+        comments_response,
+        replies_response,
     ]
     first_requests: list[ProviderTransportRequest] = []
     monkeypatch.setattr(
@@ -174,8 +178,8 @@ def test_xhs_debug_runtime_reuses_production_flow_and_skips_unchanged_refresh(
         comment_headers = [cell.value for cell in comment_sheet[1]]
         comment_id_column = comment_headers.index("评论ID") + 1
         assert comment_sheet.max_row == 3
-        assert comment_sheet.cell(row=2, column=comment_id_column).value == "xhs-comment-root-1"
-        assert comment_sheet.cell(row=3, column=comment_id_column).value == "xhs-comment-reply-2"
+        assert comment_sheet.cell(row=2, column=comment_id_column).value == raw_root_comment_id
+        assert comment_sheet.cell(row=3, column=comment_id_column).value == raw_reply_comment_id
     finally:
         workbook.close()
 
@@ -208,7 +212,7 @@ def test_xhs_debug_runtime_reuses_production_flow_and_skips_unchanged_refresh(
     assert len(second_requests) == 1
 
 
-def test_xhs_multiple_keywords_search_each_keyword_but_deduplicate_downstream(
+def test_xiaohongshu_multiple_keywords_search_each_keyword_but_deduplicate_downstream(
     tmp_path: Path,
     monkeypatch: Any,
 ) -> None:

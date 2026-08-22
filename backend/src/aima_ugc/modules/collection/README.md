@@ -266,7 +266,7 @@ tests/unit/collection/
 代表逻辑业务请求，例如：
 
 ```text
-对 xhs 搜索关键词“爱玛”第一页
+对 xiaohongshu 搜索关键词“爱玛”第一页
 ```
 
 ### Attempt
@@ -352,10 +352,10 @@ Provider Response
 → 不重新付费请求 TikHub
 ```
 
-XHS 当前还有专门的 Raw Replay 实现：
+xiaohongshu 当前还有专门的 Raw Replay 实现：
 
 ```text
-xhs_replay.py
+xiaohongshu_replay.py
 ```
 
 Raw 不等于业务 Current。Raw 只保存“Provider 当时返回了什么”。

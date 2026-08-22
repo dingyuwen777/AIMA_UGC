@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 
 from openpyxl import load_workbook
 
+from aima_ugc.contracts.platform import normalize_platform_name
 from aima_ugc.platform.presentation import platform_display_name
 
 from .markdown_word import WordConversionSummary, convert_markdown_to_docx
@@ -43,6 +44,16 @@ _SECONDARY_CHART_LIMIT = 10
 _KEYWORD_CHART_LIMIT = 12
 _POSITIVE_CHART_LIMIT = 8
 _NEGATIVE_CHART_LIMIT = 8
+
+
+def _report_platform_label(value: str) -> str:
+    """兼容正式机器值大小写和已导出的中文展示文案。"""
+    try:
+        return platform_display_name(normalize_platform_name(value))
+    except ValueError:
+        return value
+
+
 _SENTIMENT_PREFERRED_ORDER = ("正面", "中性", "负面", "混合")
 
 
@@ -271,7 +282,7 @@ def _collect_stats(
                 quality_counts["内容缺失平台"] += 1
                 platform = "（未填写）"
             else:
-                platform = platform_display_name(platform)
+                platform = _report_platform_label(platform)
             platform_counts[platform] += 1
 
             sentiment = _clean_text(_row_value(row, content_headers, "情感标签"))
@@ -385,7 +396,7 @@ def _collect_stats(
 
             label_rows += 1
             platform = _clean_text(_row_value(row, label_headers, "平台"))
-            platform = "（未填写）" if platform is None else platform_display_name(platform)
+            platform = "（未填写）" if platform is None else _report_platform_label(platform)
             sentiment = _clean_text(_row_value(row, label_headers, "情感标签"))
             label_primary = _clean_text(_row_value(row, label_headers, "一级标签"))
             label_secondary = _clean_text(_row_value(row, label_headers, "二级标签"))
@@ -458,7 +469,7 @@ def _collect_stats(
                 quality_counts["评论缺失平台"] += 1
                 platform = "（未填写）"
             else:
-                platform = platform_display_name(platform)
+                platform = _report_platform_label(platform)
             comment_platform_counts[platform] += 1
 
         dates = sorted(daily_content)

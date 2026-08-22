@@ -26,10 +26,10 @@ from aima_ugc.adapters.providers.tikhub.mappers.weibo import (
     map_comment as map_weibo_comment,
 )
 from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
-    XhsMappingContext,
+    XiaohongshuMappingContext,
 )
 from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
-    map_comment as map_xhs_comment,
+    map_comment as map_xiaohongshu_comment,
 )
 
 _FIXTURE_ROOT = Path("tests/fixtures/providers/tikhub")
@@ -56,32 +56,36 @@ def _common_context(context_type: type, operation: str, content_id: str):
     )
 
 
-def test_xhs_real_root_and_embedded_reply_map_comment_tree() -> None:
-    root = _fixture("xhs")["data"]["data"]["comments"][0]
-    context = XhsMappingContext(
+def test_xiaohongshu_real_root_and_embedded_reply_map_comment_tree() -> None:
+    root = _fixture("xiaohongshu")["data"]["data"]["comments"][0]
+    raw_content_id = str(root["note_id"])
+    raw_root_id = str(root["id"])
+    context = XiaohongshuMappingContext(
         provider_request_id="request-comment-fixture-1",
         provider_attempt_id="attempt-comment-fixture-1",
         raw_artifact_id=_RAW_ID,
         operation="get_note_comments",
         source_type="content",
-        source_value="xhs-note-1",
+        source_value=raw_content_id,
         observed_at=_OBSERVED_AT,
     )
-    root_mapped = map_xhs_comment(
+    root_mapped = map_xiaohongshu_comment(
         root,
         context,
         item_locator="data.data.comments[0]",
         is_root=True,
     )
-    assert root_mapped.external_content_id == "xhs-note-1"
-    assert root_mapped.external_comment_id == "xhs-comment-root-1"
-    assert root_mapped.root_comment_id == "xhs-comment-root-1"
+    assert root_mapped.external_content_id == raw_content_id
+    assert root_mapped.external_comment_id == raw_root_id
+    assert root_mapped.root_comment_id == raw_root_id
     assert root_mapped.parent_comment_id is None
     assert root_mapped.metrics.like_count == 145
     assert root_mapped.metrics.reply_count == 119
 
     reply = root["sub_comments"][0]
-    reply_context = XhsMappingContext(
+    raw_reply_id = str(reply["id"])
+    raw_parent_id = str(reply["target_comment"]["id"])
+    reply_context = XiaohongshuMappingContext(
         provider_request_id=context.provider_request_id,
         provider_attempt_id=context.provider_attempt_id,
         raw_artifact_id=context.raw_artifact_id,
@@ -89,17 +93,17 @@ def test_xhs_real_root_and_embedded_reply_map_comment_tree() -> None:
         source_type=context.source_type,
         source_value=context.source_value,
         observed_at=context.observed_at,
-        root_comment_id="xhs-comment-root-1",
+        root_comment_id=raw_root_id,
     )
-    reply_mapped = map_xhs_comment(
+    reply_mapped = map_xiaohongshu_comment(
         reply,
         reply_context,
         item_locator="data.data.comments[0].sub_comments[0]",
         is_root=False,
     )
-    assert reply_mapped.root_comment_id == "xhs-comment-root-1"
-    assert reply_mapped.parent_comment_id == "xhs-comment-root-1"
-    assert reply_mapped.external_comment_id == "xhs-comment-reply-1"
+    assert reply_mapped.root_comment_id == raw_root_id
+    assert reply_mapped.parent_comment_id == raw_parent_id
+    assert reply_mapped.external_comment_id == raw_reply_id
 
 
 def test_douyin_real_root_comment_maps_to_canonical_tree_root() -> None:

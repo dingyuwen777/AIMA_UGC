@@ -341,7 +341,7 @@ backend/src/aima_ugc/adapters/providers/tikhub_test/output/
 
 ```text
 output/
-└─ xhs/
+└─ xiaohongshu/
    ├─ state.json
    └─ runs/
       └─ <run-id>/
@@ -350,7 +350,7 @@ output/
          │  ├─ contents.jsonl
          │  └─ comments.jsonl
          ├─ raw_data/
-         │  └─ xhs_raw_data.xlsx
+         │  └─ xiaohongshu_raw_data.xlsx
          └─ run_summary.json
 ```
 

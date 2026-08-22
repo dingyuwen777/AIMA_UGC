@@ -100,7 +100,7 @@ def _prepare_claimed_attempt(runtime: DatabaseRuntime):
                 config_snapshot={},
                 scopes=(
                     CollectionScopeDefinition(
-                        platform="xhs",
+                        platform="xiaohongshu",
                         source_type="keyword_search",
                         source_value="爱玛",
                         operation_group="content_discovery",
@@ -112,7 +112,7 @@ def _prepare_claimed_attempt(runtime: DatabaseRuntime):
                 run_id=execution.run.id,
                 scope_id=execution.scopes[0].id,
                 provider="fake_provider",
-                platform="xhs",
+                platform="xiaohongshu",
                 operation="keyword_search",
                 request_params={"keyword": "爱玛"},
             )

@@ -71,7 +71,7 @@ def _candidate(*, with_artifact: bool):
         run_id=uuid4(),
         scope_id=uuid4(),
         provider="fake_provider",
-        platform="xhs",
+        platform="xiaohongshu",
         operation="keyword_search",
         request_params={"keyword": "爱玛"},
     )

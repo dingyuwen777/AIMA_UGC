@@ -37,7 +37,7 @@ const packDetail = {
   keywords: [{
     id: '22222222-2222-4222-8222-222222222222',
     text: '爱玛',
-    platform: 'all',
+    platform_scope: 'all',
     enabled: true,
     priority: 100,
     note: '',
@@ -80,12 +80,12 @@ describe('collection strategy feature', () => {
     generated.createCollectionPlan.mockResolvedValue({ id: 'plan-1' })
     await createPlan({
       name: '爱玛周期采集', schedule_expr: '0 9 * * *',
-      platforms: [{ platform: 'xhs', provider_config_id: 'provider-1' }],
+      platforms: [{ platform: 'xiaohongshu', provider_config_id: 'provider-1' }],
       keyword_pack_ids: ['pack-1'], enabled: true,
     })
     expect(generated.createCollectionPlan).toHaveBeenCalledWith({
       name: '爱玛周期采集', schedule_expr: '0 9 * * *',
-      platforms: [{ platform: 'xhs', provider_config_id: 'provider-1' }],
+      platforms: [{ platform: 'xiaohongshu', provider_config_id: 'provider-1' }],
       keyword_pack_ids: ['pack-1'], enabled: true,
     })
     const payload = generated.createCollectionPlan.mock.calls[0]?.[0]
@@ -128,7 +128,7 @@ describe('collection strategy feature', () => {
       id: '33333333-3333-4333-8333-333333333333', name: '停用计划', enabled: false,
       schedule_expr: '0 9 * * *', timezone: 'Asia/Shanghai', schedule_version: 1,
       next_run_at: null, last_scheduled_at: null, detail_policy: 'on_change', comment_policy: 'adaptive',
-      platforms: [{ platform: 'xhs', provider_config_id: 'provider-1' }],
+      platforms: [{ platform: 'xiaohongshu', provider_config_id: 'provider-1' }],
       keyword_pack_ids: [globalPack.id], created_at: '2026-08-22T00:00:00Z', updated_at: '2026-08-22T00:00:00Z',
     }
     await store.togglePlan(plan)

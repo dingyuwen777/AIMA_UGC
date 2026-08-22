@@ -77,7 +77,7 @@ def _dispatch_fixture():
         run_id=run_id,
         scope_id=scope_id,
         provider="fake_provider",
-        platform="xhs",
+        platform="xiaohongshu",
         operation="keyword_search",
         request_params={"keyword": "敏感业务输入不得进入日志"},
     )
@@ -127,7 +127,7 @@ def test_raw_capture_emits_stored_event_without_raw_or_request_body(
     assert record.provider_attempt_id == str(attempt_id)
     assert record.run_id == str(run_id)
     assert record.scope_id == str(scope_id)
-    assert record.platform == "xhs"
+    assert record.platform == "xiaohongshu"
     assert record.operation == "keyword_search"
     assert record.status == "stored"
     assert record.byte_size == captured.artifact.byte_size
@@ -164,7 +164,7 @@ def test_raw_capture_logs_write_failure_without_raw_or_request_body(
     assert record.provider_attempt_id == str(attempt_id)
     assert record.run_id == str(run_id)
     assert record.scope_id == str(scope_id)
-    assert record.platform == "xhs"
+    assert record.platform == "xiaohongshu"
     assert record.operation == "keyword_search"
     assert record.error_code == "OSError"
     assert "request_params" not in record.__dict__

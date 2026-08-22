@@ -72,7 +72,7 @@ def test_imports_test_export_raw_excel_uses_configured_review_columns(
     published_at = datetime(2026, 8, 18, 5, 30, tzinfo=UTC)
     record = UnifiedContentRecordV1(
         content=CanonicalContentV1(
-            platform="imports",
+            platform="xiaohongshu",
             external_content_id="source-001",
             alternate_ids={"source_article_id": "article-001"},
             content_type="unknown",
@@ -123,7 +123,7 @@ def test_imports_test_export_raw_excel_uses_configured_review_columns(
         )
         assert tuple(cell.value for cell in comment_sheet[1]) == _EXPECTED_IMPORTS_COMMENT_COLUMNS
         assert tuple(cell.value for cell in content_sheet[2]) == (
-            "imports",
+            "小红书",
             "离线内容",
             "正文",
             "作者甲",

@@ -10,6 +10,8 @@ from uuid import UUID
 
 from pydantic import AwareDatetime, Field, model_validator
 
+from aima_ugc.contracts.platform import require_platform_name
+
 from .base import (
     JsonObject,
     OperationName,
@@ -86,7 +88,7 @@ class ProviderRequestV1(ProviderBaseModel):
             scope_id=scope_id,
             import_batch_id=None,
             provider=provider,
-            platform=platform,
+            platform=require_platform_name(platform),
             operation=operation,
             request_fingerprint=compute_request_fingerprint(
                 operation=operation,
@@ -118,7 +120,7 @@ class ProviderRequestV1(ProviderBaseModel):
             scope_id=None,
             import_batch_id=import_batch_id,
             provider=provider,
-            platform=platform,
+            platform=require_platform_name(platform),
             operation=operation,
             request_fingerprint=compute_request_fingerprint(
                 operation=operation,

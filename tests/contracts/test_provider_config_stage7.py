@@ -7,7 +7,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from aima_ugc.adapters.providers.tikhub.capabilities import XHS_TIKHUB_CAPABILITY
+from aima_ugc.adapters.providers.tikhub.capabilities import XIAOHONGSHU_TIKHUB_CAPABILITY
 from aima_ugc.contracts.collection import ProviderConfigV1, ProviderPlatformRouteV1
 from pydantic import ValidationError
 
@@ -75,18 +75,18 @@ def test_platform_route_requires_config_capability_identity_match() -> None:
     route = ProviderPlatformRouteV1(
         provider_config_id=config_id,
         provider="tikhub",
-        platform="xhs",
-        capability=XHS_TIKHUB_CAPABILITY,
+        platform="xiaohongshu",
+        capability=XIAOHONGSHU_TIKHUB_CAPABILITY,
     )
     assert route.provider_config_id == config_id
-    assert route.capability.platform == "xhs"
+    assert route.capability.platform == "xiaohongshu"
 
     with pytest.raises(ValidationError, match="Capability"):
         ProviderPlatformRouteV1(
             provider_config_id=config_id,
             provider="other-provider",
-            platform="xhs",
-            capability=XHS_TIKHUB_CAPABILITY,
+            platform="xiaohongshu",
+            capability=XIAOHONGSHU_TIKHUB_CAPABILITY,
         )
 
 

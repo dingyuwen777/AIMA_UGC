@@ -10,7 +10,7 @@ from aima_ugc.adapters.providers.tikhub.capabilities import (
     DOUYIN_TIKHUB_CAPABILITY,
     KUAISHOU_TIKHUB_CAPABILITY,
     WEIBO_TIKHUB_CAPABILITY,
-    XHS_TIKHUB_CAPABILITY,
+    XIAOHONGSHU_TIKHUB_CAPABILITY,
 )
 from aima_ugc.modules.system.models import ProviderConfig
 
@@ -23,14 +23,14 @@ def _operation(capability, business_operation: str):
 
 def test_real_probe_backed_capabilities_cover_all_five_platforms() -> None:
     capabilities = (
-        XHS_TIKHUB_CAPABILITY,
+        XIAOHONGSHU_TIKHUB_CAPABILITY,
         DOUYIN_TIKHUB_CAPABILITY,
         WEIBO_TIKHUB_CAPABILITY,
         BILIBILI_TIKHUB_CAPABILITY,
         KUAISHOU_TIKHUB_CAPABILITY,
     )
     assert {item.platform for item in capabilities} == {
-        "xhs",
+        "xiaohongshu",
         "douyin",
         "weibo",
         "bilibili",
@@ -44,7 +44,7 @@ def test_real_probe_backed_capabilities_cover_all_five_platforms() -> None:
 
 def test_reply_capabilities_match_real_nonempty_evidence() -> None:
     capabilities = (
-        XHS_TIKHUB_CAPABILITY,
+        XIAOHONGSHU_TIKHUB_CAPABILITY,
         DOUYIN_TIKHUB_CAPABILITY,
         WEIBO_TIKHUB_CAPABILITY,
         BILIBILI_TIKHUB_CAPABILITY,
@@ -56,15 +56,18 @@ def test_reply_capabilities_match_real_nonempty_evidence() -> None:
 
 
 def test_real_comment_shape_controls_reply_count_and_incremental_claims() -> None:
-    assert _operation(XHS_TIKHUB_CAPABILITY, "comments").supports_reply_count is True
+    assert _operation(XIAOHONGSHU_TIKHUB_CAPABILITY, "comments").supports_reply_count is True
     assert _operation(DOUYIN_TIKHUB_CAPABILITY, "comments").supports_reply_count is True
     assert _operation(WEIBO_TIKHUB_CAPABILITY, "comments").supports_reply_count is True
     assert _operation(BILIBILI_TIKHUB_CAPABILITY, "comments").supports_reply_count is True
     assert _operation(KUAISHOU_TIKHUB_CAPABILITY, "comments").supports_reply_count is True
 
-    # XHS latest_v2 与 B站 mode=2/next_offset=0 都有当前真实“最新优先”证据；
+    # xiaohongshu latest_v2 与 B站 mode=2/next_offset=0 都有当前真实“最新优先”证据；
     # 抖音缺少最新评论排序，微博/快手真实页顺序不满足安全历史边界。
-    assert _operation(XHS_TIKHUB_CAPABILITY, "comments").supports_incremental_comment_sort is True
+    assert (
+        _operation(XIAOHONGSHU_TIKHUB_CAPABILITY, "comments").supports_incremental_comment_sort
+        is True
+    )
     assert (
         _operation(BILIBILI_TIKHUB_CAPABILITY, "comments").supports_incremental_comment_sort is True
     )
@@ -77,8 +80,8 @@ def test_real_comment_shape_controls_reply_count_and_incremental_claims() -> Non
 
 
 def test_search_capabilities_expose_only_runtime_supported_business_values() -> None:
-    xhs = _operation(XHS_TIKHUB_CAPABILITY, "keyword_search")
-    assert set(xhs.supported_content_types) == {"all", "video", "image"}
+    xiaohongshu = _operation(XIAOHONGSHU_TIKHUB_CAPABILITY, "keyword_search")
+    assert set(xiaohongshu.supported_content_types) == {"all", "video", "image"}
 
     douyin = _operation(DOUYIN_TIKHUB_CAPABILITY, "keyword_search")
     assert set(douyin.supported_sort_modes) == {"general", "most_liked", "latest"}
@@ -126,7 +129,7 @@ def test_default_registry_resolves_all_real_verified_tikhub_platforms() -> None:
         enabled=True,
     )
 
-    for platform in ("xhs", "douyin", "weibo", "bilibili", "kuaishou"):
+    for platform in ("xiaohongshu", "douyin", "weibo", "bilibili", "kuaishou"):
         route = registry.resolve(config=config, platform=platform)
         assert route.platform == platform
         assert route.provider == "tikhub"

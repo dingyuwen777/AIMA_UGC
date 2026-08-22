@@ -19,6 +19,7 @@ from aima_ugc.contracts.export import (
     UnifiedDataExcelLabelPairV1,
     UnifiedDataExcelV1,
 )
+from aima_ugc.contracts.platform import require_platform_name
 from aima_ugc.modules.analysis.persistence import AnalysisConfigurationIdentity
 from aima_ugc.modules.analysis.tables import (
     analysis_content_label_pairs_table,
@@ -344,7 +345,7 @@ class PostgresDataExportRepository:
             author = row["author_snapshot"]
             grouped[cast(UUID, row["content_id"])].append(
                 UnifiedDataExcelCommentV1(
-                    platform=cast(str, row["platform"]),
+                    platform=require_platform_name(cast(str, row["platform"])),
                     external_content_id=cast(str, row["external_content_id"]),
                     level="reply" if row["parent_comment_id"] else "root",
                     external_comment_id=cast(str, row["external_comment_id"]),
@@ -399,7 +400,7 @@ def _content_projection(
     author = row["author_snapshot"]
     content_url = row["canonical_url"] or row["share_url"]
     return UnifiedDataExcelContentV1(
-        platform=cast(str, row["platform"]),
+        platform=require_platform_name(cast(str, row["platform"])),
         external_content_id=cast(str, row["external_content_id"]),
         content_type=cast(str, row["content_type"]),
         title=cast(str | None, row["title"]),

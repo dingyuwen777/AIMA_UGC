@@ -6,8 +6,8 @@ import json
 from pathlib import Path
 
 from aima_ugc.adapters.providers.tikhub.operations.xiaohongshu import (
-    XhsCommentPagination,
-    XhsSearchPagination,
+    XiaohongshuCommentPagination,
+    XiaohongshuSearchPagination,
     build_image_detail_request,
     build_note_comments_request,
     build_search_notes_request,
@@ -16,7 +16,7 @@ from aima_ugc.adapters.providers.tikhub.operations.xiaohongshu import (
     extract_search_items,
 )
 
-_FIXTURE = Path("tests/fixtures/providers/tikhub/xhs/search_notes_page1.sanitized.json")
+_FIXTURE = Path("tests/fixtures/providers/tikhub/xiaohongshu/search_notes_page1.sanitized.json")
 
 
 def _search_fixture() -> dict[str, object]:
@@ -36,7 +36,7 @@ def test_search_request_and_real_fixture_pagination_keep_session_state() -> None
     assert "search_id" not in request.params
 
     body = _search_fixture()
-    pagination = XhsSearchPagination.from_response(current_page=1, body=body)
+    pagination = XiaohongshuSearchPagination.from_response(current_page=1, body=body)
     assert pagination.should_continue is True
     assert pagination.next_page == 2
     assert pagination.search_id == "search-fixture-1"
@@ -57,14 +57,14 @@ def test_search_request_and_real_fixture_pagination_keep_session_state() -> None
 
 
 def test_search_pagination_stops_on_empty_or_nonadvancing_page() -> None:
-    empty = XhsSearchPagination.from_response(
+    empty = XiaohongshuSearchPagination.from_response(
         current_page=2,
         body={"data": {"data": {"items": []}, "next_page": 3}},
     )
     assert empty.should_continue is False
     assert empty.stop_reason == "empty_page"
 
-    nonadvancing = XhsSearchPagination.from_response(
+    nonadvancing = XiaohongshuSearchPagination.from_response(
         current_page=2,
         previous_item_ids=("note-1",),
         body={
@@ -77,7 +77,7 @@ def test_search_pagination_stops_on_empty_or_nonadvancing_page() -> None:
     assert nonadvancing.should_continue is False
     assert nonadvancing.stop_reason == "duplicate_page"
 
-    stalled = XhsSearchPagination.from_response(
+    stalled = XiaohongshuSearchPagination.from_response(
         current_page=2,
         body={
             "data": {
@@ -100,7 +100,7 @@ def test_detail_and_comment_requests_use_approved_app_v2_endpoints() -> None:
 
 
 def test_comment_pagination_preserves_cursor_index_and_page_area() -> None:
-    pagination = XhsCommentPagination.from_response(
+    pagination = XiaohongshuCommentPagination.from_response(
         previous_cursor="",
         previous_index=0,
         page_area="UNFOLDED",
@@ -121,7 +121,7 @@ def test_comment_pagination_preserves_cursor_index_and_page_area() -> None:
     assert pagination.index == 20
     assert pagination.page_area == "FOLDED"
 
-    sub_comment_cursor = XhsCommentPagination.from_response(
+    sub_comment_cursor = XiaohongshuCommentPagination.from_response(
         previous_cursor="",
         previous_index=1,
         page_area="UNFOLDED",
@@ -137,7 +137,7 @@ def test_comment_pagination_preserves_cursor_index_and_page_area() -> None:
     assert sub_comment_cursor.cursor == "child-cursor"
     assert sub_comment_cursor.index == 3
 
-    stalled = XhsCommentPagination.from_response(
+    stalled = XiaohongshuCommentPagination.from_response(
         previous_cursor="cursor-2",
         previous_index=20,
         page_area="UNFOLDED",

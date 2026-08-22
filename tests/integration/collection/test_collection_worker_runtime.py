@@ -31,7 +31,7 @@ from aima_ugc.platform.jobs.tables import jobs_table
 from pydantic import SecretStr
 from sqlalchemy import select
 
-_FIXTURES = Path("tests/fixtures/providers/tikhub/xhs")
+_FIXTURES = Path("tests/fixtures/providers/tikhub/xiaohongshu")
 
 
 def _fixture(name: str) -> dict[str, object]:
@@ -106,7 +106,7 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
                     KeywordPackItem(
                         pack_id=pack.id,
                         keyword_id=keyword.id,
-                        platform="xhs",
+                        platform_scope="xiaohongshu",
                         priority=10,
                         enabled=True,
                         note="worker vertical slice",
@@ -138,7 +138,7 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
                         created_by=None,
                         platforms=(
                             PlanPlatformDefinition(
-                                platform="xhs",
+                                platform="xiaohongshu",
                                 provider_config_id=provider_config.id,
                                 config={
                                     "sort_mode": "latest",

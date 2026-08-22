@@ -18,6 +18,7 @@ from aima_ugc.contracts.http import (
     ContentMediaResponse,
     ContentSourceResponse,
 )
+from aima_ugc.contracts.platform import require_platform_name
 from aima_ugc.modules.analysis.persistence import AnalysisConfigurationIdentity
 from aima_ugc.modules.analysis.tables import (
     analysis_content_label_pairs_table,
@@ -381,7 +382,7 @@ class PostgresContentQueryRepository:
                     id=cast(UUID, row["id"]),
                     current_version=cast(int, row["current_version"]),
                     sort_at=cast(datetime, row["sort_at"]),
-                    platform=cast(str, row["platform"]),
+                    platform=require_platform_name(cast(str, row["platform"])),
                     external_content_id=cast(str, row["external_content_id"]),
                     content_type=cast(str, row["content_type"]),
                     title=cast(str | None, row["title"]),

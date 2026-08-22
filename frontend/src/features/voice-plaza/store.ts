@@ -10,6 +10,7 @@ import type {
   DataExportResponse,
   JobStatusResponse,
   ListContentsParams,
+  PlatformName,
 } from '../../generated/api/client'
 import {
   VoicePlazaApiError,
@@ -25,7 +26,7 @@ import {
 
 export interface VoicePlazaFilters {
   search: string
-  platform: string
+  platform: '' | PlatformName
   contentType: string
   analysisStatus: '' | ContentAnalysisStatus
   sentiment: string

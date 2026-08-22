@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from aima_ugc.adapters.providers.tikhub.capabilities import (
     BILIBILI_TIKHUB_CAPABILITY,
-    XHS_TIKHUB_CAPABILITY,
+    XIAOHONGSHU_TIKHUB_CAPABILITY,
 )
 from aima_ugc.contracts.collection import (
     CollectionDecisionContextV1,
@@ -44,7 +44,7 @@ def _request(
             scheduled_refresh_checkpoint=scheduled_refresh_checkpoint,
         ),
         policy=CollectionDecisionPolicyV1(),
-        capability=XHS_TIKHUB_CAPABILITY,
+        capability=XIAOHONGSHU_TIKHUB_CAPABILITY,
     )
 
 
@@ -69,7 +69,7 @@ def test_existing_unchanged_comment_count_skips_detail_and_comments() -> None:
     assert decision.comment_reason == "comment_count_unchanged"
 
 
-def test_xhs_comment_count_increase_uses_incremental_latest_boundary() -> None:
+def test_xiaohongshu_comment_count_increase_uses_incremental_latest_boundary() -> None:
     decision = CollectionDecisionService().decide(
         _request(current_comment_count=41, previous_comment_count=35, existing=True)
     )
@@ -80,13 +80,13 @@ def test_xhs_comment_count_increase_uses_incremental_latest_boundary() -> None:
 
 
 def test_comment_count_increase_uses_incremental_only_when_capability_proves_it() -> None:
-    incremental_capability = XHS_TIKHUB_CAPABILITY.model_copy(
+    incremental_capability = XIAOHONGSHU_TIKHUB_CAPABILITY.model_copy(
         update={
             "operations": tuple(
                 operation.model_copy(update={"supports_incremental_comment_sort": True})
                 if operation.business_operation == "comments"
                 else operation
-                for operation in XHS_TIKHUB_CAPABILITY.operations
+                for operation in XIAOHONGSHU_TIKHUB_CAPABILITY.operations
             )
         }
     )
@@ -202,7 +202,7 @@ def test_reply_decision_uses_explicit_zero_positive_and_unknown_semantics() -> N
         ReplyDecisionRequestV1(
             reply_count=0,
             policy=CollectionDecisionPolicyV1(),
-            capability=XHS_TIKHUB_CAPABILITY,
+            capability=XIAOHONGSHU_TIKHUB_CAPABILITY,
         )
     )
     assert zero.action == "skip"
@@ -213,7 +213,7 @@ def test_reply_decision_uses_explicit_zero_positive_and_unknown_semantics() -> N
         ReplyDecisionRequestV1(
             reply_count=9,
             policy=CollectionDecisionPolicyV1(),
-            capability=XHS_TIKHUB_CAPABILITY,
+            capability=XIAOHONGSHU_TIKHUB_CAPABILITY,
         )
     )
     assert positive.action == "fetch_target"
@@ -224,7 +224,7 @@ def test_reply_decision_uses_explicit_zero_positive_and_unknown_semantics() -> N
         ReplyDecisionRequestV1(
             reply_count=None,
             policy=CollectionDecisionPolicyV1(),
-            capability=XHS_TIKHUB_CAPABILITY,
+            capability=XIAOHONGSHU_TIKHUB_CAPABILITY,
         )
     )
     assert unknown.action == "probe_first_page"
@@ -232,13 +232,13 @@ def test_reply_decision_uses_explicit_zero_positive_and_unknown_semantics() -> N
 
 
 def test_reply_target_is_absent_when_platform_has_no_sub_comment_capability() -> None:
-    no_replies_capability = XHS_TIKHUB_CAPABILITY.model_copy(
+    no_replies_capability = XIAOHONGSHU_TIKHUB_CAPABILITY.model_copy(
         update={
             "operations": tuple(
                 operation.model_copy(update={"supports_sub_comments": False})
                 if operation.business_operation == "comments"
                 else operation
-                for operation in XHS_TIKHUB_CAPABILITY.operations
+                for operation in XIAOHONGSHU_TIKHUB_CAPABILITY.operations
                 if operation.business_operation != "sub_comments"
             )
         }

@@ -17,11 +17,12 @@ from aima_ugc.adapters.persistence.postgres.content_complete import (
     PostgresCompleteContentRepository,
 )
 from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
-    XhsMappingContext,
+    XiaohongshuMappingContext,
     map_comment,
     map_content,
 )
 from aima_ugc.adapters.providers.tikhub.operations.xiaohongshu import extract_search_items
+from aima_ugc.contracts.platform import require_platform_name
 from aima_ugc.contracts.provider import RawEnvelopeV1
 from aima_ugc.modules.collection.candidates import CandidateIngestionService
 from aima_ugc.modules.collection.tables import (
@@ -29,7 +30,10 @@ from aima_ugc.modules.collection.tables import (
     provider_request_attempts_table,
     provider_requests_table,
 )
-from aima_ugc.modules.collection.xhs_replay import XhsReplaySource, XhsReplaySummary
+from aima_ugc.modules.collection.xiaohongshu_replay import (
+    XiaohongshuReplaySource,
+    XiaohongshuReplaySummary,
+)
 from aima_ugc.modules.content.ingestion import ContentIngestionService
 from aima_ugc.platform.storage import ArtifactRecord
 from aima_ugc.platform.storage.models import ArtifactStatus
@@ -38,13 +42,13 @@ from aima_ugc.platform.storage.tables import artifacts_table
 SessionFactory = Callable[[], Session]
 
 
-class PostgresXhsReplaySourceReader:
+class PostgresXiaohongshuReplaySourceReader:
     """只读数据库来源链，拒绝非 completed/linked Raw。"""
 
     def __init__(self, session_factory: SessionFactory) -> None:
         self._session_factory = session_factory
 
-    def load(self, provider_attempt_id: UUID) -> XhsReplaySource:
+    def load(self, provider_attempt_id: UUID) -> XiaohongshuReplaySource:
         session = self._session_factory()
         try:
             row = (
@@ -82,11 +86,11 @@ class PostgresXhsReplaySourceReader:
                 raise ValueError("Raw Replay 只接受 completed Provider Attempt")
             if row["storage_status"] != "linked":
                 raise ValueError("Raw Replay 只接受 linked Raw Artifact")
-            return XhsReplaySource(
+            return XiaohongshuReplaySource(
                 provider_attempt_id=cast(UUID, row["attempt_id"]),
                 provider_request_id=cast(UUID, row["request_id"]),
                 provider=cast(str, row["provider"]),
-                platform=cast(str, row["platform"]),
+                platform=require_platform_name(cast(str, row["platform"])),
                 operation=cast(str, row["operation"]),
                 source_type=cast(str, row["source_type"]),
                 source_value=cast(str, row["source_value"]),
@@ -96,16 +100,18 @@ class PostgresXhsReplaySourceReader:
             session.close()
 
 
-class PostgresXhsReplayIngestionWriter:
+class PostgresXiaohongshuReplayIngestionWriter:
     """在一个短事务内把已校验 Raw 转成 Candidate/Canonical/完整业务事实。"""
 
     def __init__(self, session_factory: SessionFactory) -> None:
         self._session_factory = session_factory
 
-    def ingest(self, source: XhsReplaySource, envelope: RawEnvelopeV1) -> XhsReplaySummary:
+    def ingest(
+        self, source: XiaohongshuReplaySource, envelope: RawEnvelopeV1
+    ) -> XiaohongshuReplaySummary:
         body = envelope.response.body if envelope.response is not None else None
         if not isinstance(body, dict):
-            raise ValueError("XHS Raw Replay 要求响应 body 为 JSON Object")
+            raise ValueError("xiaohongshu Raw Replay 要求响应 body 为 JSON Object")
         session = self._session_factory()
         try:
             with session.begin():
@@ -113,7 +119,7 @@ class PostgresXhsReplayIngestionWriter:
                 content: ContentIngestionService[PostgresIngestionResult] = ContentIngestionService(
                     PostgresCompleteContentRepository(session)
                 )
-                context = XhsMappingContext(
+                context = XiaohongshuMappingContext(
                     provider_request_id=str(source.provider_request_id),
                     provider_attempt_id=str(source.provider_attempt_id),
                     raw_artifact_id=source.artifact.id,
@@ -131,7 +137,7 @@ class PostgresXhsReplayIngestionWriter:
                         candidates=candidates,
                         content=content,
                     )
-                    return XhsReplaySummary(content_count=count)
+                    return XiaohongshuReplaySummary(content_count=count)
                 if source.operation in {"get_image_note_detail", "get_video_note_detail"}:
                     raw_item = _find_content_item(cast(dict[str, Any], body))
                     external_id = _external_id(raw_item)
@@ -150,7 +156,7 @@ class PostgresXhsReplayIngestionWriter:
                         target_id=result.target_id,
                         result="ingested",
                     )
-                    return XhsReplaySummary(content_count=1)
+                    return XiaohongshuReplaySummary(content_count=1)
                 if source.operation in {"get_note_comments", "get_note_sub_comments"}:
                     count = _ingest_comments(
                         body=cast(dict[str, Any], body),
@@ -161,8 +167,10 @@ class PostgresXhsReplayIngestionWriter:
                         is_root=source.operation == "get_note_comments",
                         observed_at=envelope.completed_at,
                     )
-                    return XhsReplaySummary(comment_count=count)
-                raise ValueError(f"Stage 6 不支持的 XHS Raw Replay Operation: {source.operation}")
+                    return XiaohongshuReplaySummary(comment_count=count)
+                raise ValueError(
+                    f"Stage 6 不支持的 xiaohongshu Raw Replay Operation: {source.operation}"
+                )
         finally:
             session.close()
 
@@ -170,8 +178,8 @@ class PostgresXhsReplayIngestionWriter:
 def _ingest_search_items(
     *,
     body: dict[str, Any],
-    source: XhsReplaySource,
-    context: XhsMappingContext,
+    source: XiaohongshuReplaySource,
+    context: XiaohongshuMappingContext,
     candidates: CandidateIngestionService,
     content: ContentIngestionService[PostgresIngestionResult],
 ) -> int:
@@ -201,8 +209,8 @@ def _ingest_search_items(
 def _ingest_comments(
     *,
     body: dict[str, Any],
-    source: XhsReplaySource,
-    context: XhsMappingContext,
+    source: XiaohongshuReplaySource,
+    context: XiaohongshuMappingContext,
     candidates: CandidateIngestionService,
     content: ContentIngestionService[PostgresIngestionResult],
     is_root: bool,

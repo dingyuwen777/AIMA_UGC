@@ -20,6 +20,7 @@ from aima_ugc.contracts.canonical import (
     CanonicalMetricsV1,
     CanonicalSourceV1,
 )
+from aima_ugc.contracts.platform import require_platform_name
 from aima_ugc.modules.analysis.persistence import AnalysisContentResult, AnalysisWorkItem
 from aima_ugc.modules.analysis.tables import (
     analysis_content_label_pairs_table,
@@ -332,7 +333,7 @@ def _row_to_work_item(row: RowMapping) -> AnalysisWorkItem:
         if verification_label is not None:
             observed_fields.append("author.verification_label")
     content = CanonicalContentV1(
-        platform=cast(str, row["platform"]),
+        platform=require_platform_name(cast(str, row["platform"])),
         external_content_id=cast(str, row["external_content_id"]),
         content_type=cast(str, row["content_type"]),
         title=cast(str | None, row["title"]),

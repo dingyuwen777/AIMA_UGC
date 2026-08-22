@@ -57,7 +57,7 @@ def test_run_platform_uses_config_default_env_without_cwd_search(
     monkeypatch.setattr(tikhub_test_runner._TikHubDebugRunner, "run", lambda self: self)
 
     result = tikhub_test_runner.run_platform(
-        platform="xhs",
+        platform="xiaohongshu",
         keyword="爱玛",
         output_root=tmp_path,
         run_id="default-env",
@@ -97,44 +97,44 @@ def test_debug_state_persists_content_and_comment_deduplication(tmp_path: Path) 
     state_file = tmp_path / "state.json"
     state = DebugState.load(state_file)
 
-    assert state.should_refresh_comments("xhs", "note-1", 3) is True
-    assert state.is_known_comment("xhs", "note-1", "comment-1") is False
+    assert state.should_refresh_comments("xiaohongshu", "note-1", 3) is True
+    assert state.is_known_comment("xiaohongshu", "note-1", "comment-1") is False
 
-    state.remember_content("xhs", "note-1", comment_count=3)
-    state.remember_comment("xhs", "note-1", "comment-1")
+    state.remember_content("xiaohongshu", "note-1", comment_count=3)
+    state.remember_comment("xiaohongshu", "note-1", "comment-1")
     state.save()
 
     reloaded = DebugState.load(state_file)
-    assert reloaded.should_refresh_comments("xhs", "note-1", 3) is False
-    assert reloaded.should_refresh_comments("xhs", "note-1", 4) is True
-    assert reloaded.should_refresh_comments("xhs", "note-1", 3, force=True) is True
-    assert reloaded.is_known_comment("xhs", "note-1", "comment-1") is True
+    assert reloaded.should_refresh_comments("xiaohongshu", "note-1", 3) is False
+    assert reloaded.should_refresh_comments("xiaohongshu", "note-1", 4) is True
+    assert reloaded.should_refresh_comments("xiaohongshu", "note-1", 3, force=True) is True
+    assert reloaded.is_known_comment("xiaohongshu", "note-1", "comment-1") is True
 
 
 def test_run_output_store_keeps_raw_and_canonical_without_database(tmp_path: Path) -> None:
     store = RunOutputStore.create(
         output_root=tmp_path,
-        platform="xhs",
+        platform="xiaohongshu",
         run_id="20260817T120000Z-test",
     )
     raw_body = {"data": {"items": [{"id": "note-1"}]}}
 
     raw = store.save_raw(operation="search_notes", body=raw_body, request_no=1)
-    store.append_canonical("contents", {"platform": "xhs", "external_content_id": "note-1"})
+    store.append_canonical("contents", {"platform": "xiaohongshu", "external_content_id": "note-1"})
     store.append_canonical(
         "comments",
         {
-            "platform": "xhs",
+            "platform": "xiaohongshu",
             "external_content_id": "note-1",
             "external_comment_id": "comment-1",
         },
     )
-    run_summary_path = store.write_run_summary({"platform": "xhs", "requests": 1})
+    run_summary_path = store.write_run_summary({"platform": "xiaohongshu", "requests": 1})
 
     assert json.loads(raw.path.read_text(encoding="utf-8")) == raw_body
     assert raw.artifact_id
     assert json.loads((store.canonical_dir / "contents.jsonl").read_text(encoding="utf-8")) == {
-        "platform": "xhs",
+        "platform": "xiaohongshu",
         "external_content_id": "note-1",
     }
     assert (

@@ -17,7 +17,7 @@ Capability
 → backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py
 
 真实 Fixture
-→ tests/fixtures/providers/tikhub/xhs/
+→ tests/fixtures/providers/tikhub/xiaohongshu/
 ```
 
 生产 Collection 串联：
@@ -100,14 +100,14 @@ item.note
 Fixture：
 
 ```text
-tests/fixtures/providers/tikhub/xhs/search_notes_page1.sanitized.json
+tests/fixtures/providers/tikhub/xiaohongshu/search_notes_page1.sanitized.json
 ```
 
 Operation 中的 Extractor 是生产字段事实；不要从本文复制一段 JSONPath 后在其他脚本再实现一套。
 
 ## 5. Search 分页
 
-当前 `XhsSearchPagination` 会维护：
+当前 `XiaohongshuSearchPagination` 会维护：
 
 ```text
 page
@@ -131,11 +131,11 @@ search_session_id
 - 分页状态不推进；
 - 重复页/安全上限等生产保护。
 
-如果要改 XHS 分页，先改 `operations/xiaohongshu.py` 的状态机和对应 Unit Test，不要在 `collection_scope.py` 增加小红书私有 cursor 逻辑。
+如果要改 xiaohongshu 分页，先改 `operations/xiaohongshu.py` 的状态机和对应 Unit Test，不要在 `collection_scope.py` 增加小红书私有 cursor 逻辑。
 
 ## 6. Detail 为什么分图文/视频
 
-XHS 当前不同内容类型使用不同 Detail Endpoint。
+xiaohongshu 当前不同内容类型使用不同 Detail Endpoint。
 
 真实路径：
 
@@ -150,8 +150,8 @@ XHS 当前不同内容类型使用不同 Detail Endpoint。
 Fixture：
 
 ```text
-xhs/image_detail.sanitized.json
-xhs/video_detail.sanitized.json
+xiaohongshu/image_detail.sanitized.json
+xiaohongshu/video_detail.sanitized.json
 ```
 
 Search Mapper 能识别内容类型；Decision 需要 Detail 时，生产链选择正确的 Detail Operation。
@@ -188,7 +188,7 @@ parent_comment_id = null
 
 二级回复的 parent 只有 Provider 有明确直接父 ID 时才写，不能根据用户名/数组位置猜。
 
-## 8. 为什么 XHS 可以做最新评论增量
+## 8. 为什么 xiaohongshu 可以做最新评论增量
 
 当前 Capability 明确：
 
@@ -210,9 +210,9 @@ latest comments page
 
 不能遇到当前页第一条旧评论就立刻丢掉同页后续新评论。
 
-## 9. XHS Raw Replay
+## 9. xiaohongshu Raw Replay
 
-当前 Collection 模块包含 XHS 已存 Raw Replay 能力，用于：
+当前 Collection 模块包含 xiaohongshu 已存 Raw Replay 能力，用于：
 
 ```text
 已有 Raw
@@ -224,7 +224,7 @@ latest comments page
 相关实现：
 
 ```text
-backend/src/aima_ugc/modules/collection/xhs_replay.py
+backend/src/aima_ugc/modules/collection/xiaohongshu_replay.py
 ```
 
 这体现通用规则：完整 Raw 已存在时优先重放，不重复付费请求 Provider。
@@ -266,7 +266,7 @@ operations/xiaohongshu.py
 → Canonical Contract Test
 ```
 
-### 新增 XHS 内容类型
+### 新增 xiaohongshu 内容类型
 
 先证明：
 
@@ -284,7 +284,7 @@ Fixture/Test 完整
 ```text
 Collection Run/Scope
 → Provider Request/Attempt
-→ XHS Raw Artifact
+→ xiaohongshu Raw Artifact
 → Candidate
 → xiaohongshu Operation Extractor
 → xiaohongshu Mapper

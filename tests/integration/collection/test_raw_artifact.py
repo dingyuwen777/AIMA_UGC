@@ -79,7 +79,7 @@ def test_raw_artifact_is_redacted_immutable_and_replayable() -> None:
         run_id=run_id,
         scope_id=scope_id,
         provider="fake_provider",
-        platform="xhs",
+        platform="xiaohongshu",
         operation="keyword_search",
         request_params={"keyword": "爱玛"},
         pagination_input={"page": 1},
@@ -119,7 +119,9 @@ def test_raw_artifact_is_redacted_immutable_and_replayable() -> None:
 
     captured = service.capture(request=request, dispatch=dispatch)
 
-    expected_suffix = f"raw/fake_provider/xhs/2026/08/14/{run_id}/{scope_id}/{attempt_id}.json.gz"
+    expected_suffix = (
+        f"raw/fake_provider/xiaohongshu/2026/08/14/{run_id}/{scope_id}/{attempt_id}.json.gz"
+    )
     assert captured.artifact.storage_key == expected_suffix
     assert captured.artifact.storage_status == "stored"
     assert captured.attempt.raw_artifact_id == captured.artifact.id
@@ -156,7 +158,7 @@ def test_raw_replay_rejects_tampered_bytes() -> None:
         run_id=uuid4(),
         scope_id=uuid4(),
         provider="fake_provider",
-        platform="xhs",
+        platform="xiaohongshu",
         operation="keyword_search",
         request_params={"keyword": "爱玛"},
     )
@@ -195,7 +197,7 @@ def test_raw_replay_converts_truncated_gzip_to_integrity_error() -> None:
         run_id=uuid4(),
         scope_id=uuid4(),
         provider="fake_provider",
-        platform="xhs",
+        platform="xiaohongshu",
         operation="keyword_search",
         request_params={"keyword": "爱玛"},
     )

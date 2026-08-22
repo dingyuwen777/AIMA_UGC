@@ -23,7 +23,7 @@ import { useVoicePlazaStore } from '../src/features/voice-plaza/store'
 
 const item = {
   id: '01991f80-6d5d-7dc8-95cb-c67c12345678',
-  platform: 'xiaohongshu',
+  platform: 'xiaohongshu' as const,
   external_content_id: 'note-1',
   content_type: 'note',
   title: '续航体验',
@@ -64,7 +64,7 @@ describe('voice plaza', () => {
     expect(generated.listContents).toHaveBeenCalledWith({ sentiment: '负面', limit: 20 })
   })
 
-  it('offers every currently supported content platform in the platform filter', async () => {
+  it('offers exactly the five supported content platforms in the platform filter', async () => {
     const html = await renderToString(
       createSSRApp({
         render: () => h(VoicePlazaFilters, {
@@ -88,11 +88,11 @@ describe('voice plaza', () => {
       ['weibo', '微博'],
       ['bilibili', 'B站'],
       ['kuaishou', '快手'],
-      ['file', 'Excel 导入'],
     ]) {
       expect(html).toContain(`value="${value}"`)
       expect(html).toContain(label)
     }
+    expect(html).not.toContain('value="file"')
   })
 
   it('renders every ordered primary and secondary AI label pair in the label column', async () => {

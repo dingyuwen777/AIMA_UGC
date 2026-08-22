@@ -73,8 +73,8 @@ const keyword = ref('')
         <div class="keyword-list">
           <span
             v-for="item in selected.keywords"
-            :key="`${item.id}-${item.platform}`"
-          >{{ item.text }}<small>{{ item.platform === 'all' ? '全部平台' : item.platform }}</small></span>
+            :key="`${item.id}-${item.platform_scope}`"
+          >{{ item.text }}<small>{{ item.platform_scope === 'all' ? '全部平台' : item.platform_scope }}</small></span>
           <em v-if="selected.keywords.length === 0">当前词包还没有关键词。</em>
         </div>
         <form @submit.prevent="emit('addKeyword', selected.id, keyword.trim()); keyword = ''">

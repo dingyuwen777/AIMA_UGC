@@ -140,7 +140,7 @@ class _Pseudonymizer:
 
 
 def _search_requests() -> tuple[SearchProbeRequest, ...]:
-    xhs = build_search_notes_request(
+    xiaohongshu = build_search_notes_request(
         keyword=KEYWORD,
         page=1,
         sort_type="general",
@@ -151,7 +151,7 @@ def _search_requests() -> tuple[SearchProbeRequest, ...]:
     bilibili = build_bilibili_search_request(keyword=KEYWORD)
     kuaishou = build_kuaishou_search_request(keyword=KEYWORD)
     return (
-        SearchProbeRequest("xhs", "GET", xhs.path, dict(xhs.params)),
+        SearchProbeRequest("xiaohongshu", "GET", xiaohongshu.path, dict(xiaohongshu.params)),
         SearchProbeRequest(
             "douyin",
             douyin.method,

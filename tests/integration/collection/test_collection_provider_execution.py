@@ -90,7 +90,7 @@ def _claimed_scope(
                 config_snapshot={"schema_version": "collection-run-config.v1"},
                 scopes=(
                     CollectionScopeDefinition(
-                        platform="xhs",
+                        platform="xiaohongshu",
                         source_type="keyword_search",
                         source_value=source_value,
                         operation_group="content_discovery",
@@ -119,7 +119,7 @@ def _request(*, run_id: UUID, scope_id: UUID, keyword: str) -> ProviderRequestV1
         run_id=run_id,
         scope_id=scope_id,
         provider="tikhub",
-        platform="xhs",
+        platform="xiaohongshu",
         operation="search_notes",
         request_params={"keyword": keyword, "sort_type": "time_descending"},
         pagination_input={},

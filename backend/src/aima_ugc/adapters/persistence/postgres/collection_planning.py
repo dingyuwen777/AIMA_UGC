@@ -11,6 +11,7 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
 from aima_ugc.contracts.collection import CollectionDecisionPolicyV1
+from aima_ugc.contracts.platform import require_platform_name
 from aima_ugc.modules.collection.corrective_tables import collection_plan_decision_policies_table
 from aima_ugc.modules.collection.planning import (
     CollectionOccurrenceStatus,
@@ -371,7 +372,7 @@ class PostgresCollectionPlanningRepository:
 
 def _row_to_platform(row: RowMapping) -> PlanPlatformDefinition:
     return PlanPlatformDefinition(
-        platform=cast(str, row["platform"]),
+        platform=require_platform_name(cast(str, row["platform"])),
         provider_config_id=cast(UUID, row["provider_config_id"]),
         config=cast(dict[str, object], row["config"]),
     )

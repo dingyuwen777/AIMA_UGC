@@ -84,7 +84,7 @@ def test_filtered_candidate_preserves_canonical_identity_without_content_target(
     service = CandidateIngestionService(repository)
     observed_at = datetime(2026, 8, 20, tzinfo=UTC)
     canonical = CanonicalContentV1(
-        platform="xhs",
+        platform="xiaohongshu",
         external_content_id="content-1",
         content_type="note",
         observed_at=observed_at,
@@ -103,6 +103,6 @@ def test_filtered_candidate_preserves_canonical_identity_without_content_target(
         result="filtered",
     )
 
-    assert repository.append_calls[0]["canonical_identity"] == "xhs:content-1"
+    assert repository.append_calls[0]["canonical_identity"] == "xiaohongshu:content-1"
     assert repository.append_calls[0]["target_type"] is None
     assert repository.append_calls[0]["target_id"] is None

@@ -106,7 +106,7 @@ def _plan_definition(provider_config_id, keyword_pack_id) -> CollectionPlanDefin
         created_by=None,
         platforms=(
             PlanPlatformDefinition(
-                platform="xhs",
+                platform="xiaohongshu",
                 provider_config_id=provider_config_id,
                 config={"sort_mode": "latest"},
             ),
@@ -148,7 +148,7 @@ def test_repository_persists_plan_platform_and_keyword_pack_relations(
         assert stored.schedule_version == 1
         assert stored.misfire_policy == "latest_only"
         assert stored.max_catch_up_runs == 0
-        assert stored.platforms[0].platform == "xhs"
+        assert stored.platforms[0].platform == "xiaohongshu"
         assert stored.platforms[0].provider_config_id == provider_config_id
         assert stored.platforms[0].config == {"sort_mode": "latest"}
         assert stored.keyword_pack_ids == (keyword_pack_id,)

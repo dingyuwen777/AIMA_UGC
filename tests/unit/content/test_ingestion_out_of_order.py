@@ -15,7 +15,7 @@ def _observation(
     observed_fields: list[str],
 ) -> CanonicalContentV1:
     return CanonicalContentV1(
-        platform="xhs",
+        platform="xiaohongshu",
         external_content_id="audit-inmemory-order",
         content_type="image",
         title=title,
@@ -56,7 +56,7 @@ def test_inmemory_older_observation_does_not_regress_newer_field() -> None:
         )
     )
 
-    current = repository.get_content("xhs", "audit-inmemory-order")
+    current = repository.get_content("xiaohongshu", "audit-inmemory-order")
     assert current is not None
     assert current.title == "NEW"
     assert current.last_seen_at == newer_at
@@ -83,7 +83,7 @@ def test_inmemory_older_sparse_observation_can_fill_never_observed_field() -> No
         )
     )
 
-    current = repository.get_content("xhs", "audit-inmemory-order")
+    current = repository.get_content("xiaohongshu", "audit-inmemory-order")
     assert current is not None
     assert current.title == "NEW"
     assert current.text == "OLDER DETAIL"
@@ -111,7 +111,7 @@ def test_inmemory_newer_explicit_null_blocks_older_non_null_value() -> None:
         )
     )
 
-    current = repository.get_content("xhs", "audit-inmemory-order")
+    current = repository.get_content("xiaohongshu", "audit-inmemory-order")
     assert current is not None
     assert current.text is None
     assert current.last_seen_at == newer_at

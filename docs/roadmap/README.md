@@ -37,7 +37,7 @@ Change / changes/archive
 → 页面 enabled/disabled 使用现有正式后端事实形成资格快照，服务端仍最终校验
 → Excel 页面真实导入成功链与 Worker 失败链已有永久 Full-stack Acceptance
 → PostgreSQL / Worker / Voice Plaza 真实打通
-→ Excel Batch 小红书补采的 xiaohongshu/xhs 边界已有正式兼容和集成回归
+→ Excel 与 TikHub 的小红书平台身份统一为 xiaohongshu，并有集成回归
 → 下一步建立最小可部署容器环境
 → 再部署到公司服务器
 → 仅公司内部网络访问

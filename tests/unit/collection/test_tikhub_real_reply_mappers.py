@@ -32,10 +32,10 @@ from aima_ugc.adapters.providers.tikhub.mappers.weibo import (
     map_comment as map_weibo_comment,
 )
 from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
-    XhsMappingContext,
+    XiaohongshuMappingContext,
 )
 from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
-    map_comment as map_xhs_comment,
+    map_comment as map_xiaohongshu_comment,
 )
 from aima_ugc.adapters.providers.tikhub.operations import bilibili, kuaishou
 
@@ -48,26 +48,30 @@ def _fixture(platform: str, name: str) -> dict[str, object]:
     return json.loads((_ROOT / platform / name).read_text(encoding="utf-8"))
 
 
-def test_xhs_real_sub_comment_preserves_root_and_direct_parent() -> None:
-    raw = _fixture("xhs", "sub_comments_page1.sanitized.json")["data"]["data"]["comments"][0]
-    mapped = map_xhs_comment(
+def test_xiaohongshu_real_sub_comment_preserves_root_and_direct_parent() -> None:
+    raw = _fixture("xiaohongshu", "sub_comments_page1.sanitized.json")["data"]["data"]["comments"][
+        0
+    ]
+    raw_reply_id = str(raw["id"])
+    raw_parent_id = str(raw["target_comment"]["id"])
+    mapped = map_xiaohongshu_comment(
         raw,
-        XhsMappingContext(
+        XiaohongshuMappingContext(
             provider_request_id="request-reply-1",
             provider_attempt_id="attempt-reply-1",
             raw_artifact_id=_RAW_ID,
             operation="get_note_sub_comments",
             source_type="comment",
-            source_value="xhs-comment-root-1",
+            source_value=raw_parent_id,
             observed_at=_OBSERVED_AT,
-            root_comment_id="xhs-comment-root-1",
+            root_comment_id=raw_parent_id,
         ),
         item_locator="data.data.comments[0]",
         is_root=False,
     )
-    assert mapped.root_comment_id == "xhs-comment-root-1"
-    assert mapped.parent_comment_id == "xhs-comment-root-1"
-    assert mapped.external_comment_id == "xhs-comment-reply-2"
+    assert mapped.root_comment_id == raw_parent_id
+    assert mapped.parent_comment_id == raw_parent_id
+    assert mapped.external_comment_id == raw_reply_id
 
 
 def test_douyin_real_reply_prefers_direct_reply_to_reply_parent() -> None:

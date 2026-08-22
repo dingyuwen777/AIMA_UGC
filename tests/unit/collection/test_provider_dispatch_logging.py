@@ -94,7 +94,7 @@ def _service(outcome: ProviderTransportResponse | ProviderTransportFailure):
         run_id=uuid4(),
         scope_id=uuid4(),
         provider="fake_provider",
-        platform="xhs",
+        platform="xiaohongshu",
         operation="keyword_search",
         request_params={"keyword": "敏感业务输入不应进入日志"},
     )
@@ -213,7 +213,7 @@ def test_provider_dispatch_emits_safe_stable_lifecycle_events(
     assert started.provider_attempt_id == str(attempt_id)
     assert started.run_id == str(request.run_id)
     assert started.scope_id == str(request.scope_id)
-    assert started.platform == "xhs"
+    assert started.platform == "xiaohongshu"
     assert started.operation == "keyword_search"
     assert terminal.status == terminal_status
     assert terminal.provider_attempt_id == str(attempt_id)

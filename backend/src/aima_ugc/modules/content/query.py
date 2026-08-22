@@ -7,6 +7,7 @@ from datetime import datetime
 from uuid import UUID
 
 from aima_ugc.contracts.http import ContentFilterSnapshot
+from aima_ugc.contracts.platform import PlatformName
 
 from .content_cursor import ContentCursorPosition
 
@@ -51,7 +52,7 @@ class ContentReadRecord:
     id: UUID
     current_version: int
     sort_at: datetime
-    platform: str
+    platform: PlatformName
     external_content_id: str
     content_type: str
     title: str | None

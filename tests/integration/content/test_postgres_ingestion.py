@@ -13,7 +13,7 @@ import pytest
 from aima_ugc.adapters.persistence.postgres.candidates import PostgresCandidateRepository
 from aima_ugc.adapters.persistence.postgres.content import PostgresContentRepository
 from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
-    XhsMappingContext,
+    XiaohongshuMappingContext,
     map_comment,
     map_content,
 )
@@ -46,7 +46,7 @@ from aima_ugc.platform.storage.tables import artifacts_table
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.exc import DBAPIError
 
-_FIXTURE = Path("tests/fixtures/providers/tikhub/xhs/search_notes_page1.sanitized.json")
+_FIXTURE = Path("tests/fixtures/providers/tikhub/xiaohongshu/search_notes_page1.sanitized.json")
 OBSERVED_AT = datetime(2026, 8, 5, 10, 0, 12, tzinfo=UTC)
 
 
@@ -118,7 +118,7 @@ def _insert_source_chain(
             id=run_id,
             job_id=job_id,
             trigger_type="backfill",
-            config_snapshot={"platforms": ["xhs"]},
+            config_snapshot={"platforms": ["xiaohongshu"]},
             status="queued",
             created_at=now,
         )
@@ -127,7 +127,7 @@ def _insert_source_chain(
         insert(collection_scopes_table).values(
             id=scope_id,
             run_id=run_id,
-            platform="xhs",
+            platform="xiaohongshu",
             source_type="keyword_search",
             source_value=source_value,
             operation_group=("content_discovery" if operation == "search_notes" else "comments"),
@@ -184,9 +184,9 @@ def _insert_source_chain(
     return SourceChain(run_id, scope_id, request_id, attempt_id, artifact_id)
 
 
-def _mapping_context(chain: SourceChain, *, operation: str) -> XhsMappingContext:
+def _mapping_context(chain: SourceChain, *, operation: str) -> XiaohongshuMappingContext:
     assert chain.artifact_id is not None
-    return XhsMappingContext(
+    return XiaohongshuMappingContext(
         provider_request_id=str(chain.request_id),
         provider_attempt_id=str(chain.attempt_id),
         raw_artifact_id=chain.artifact_id,
@@ -236,7 +236,7 @@ def test_real_search_fixture_ingests_content_and_candidate_lineage(
             .mappings()
             .one()
         )
-        assert content_row["platform"] == "xhs"
+        assert content_row["platform"] == "xiaohongshu"
         assert content_row["external_content_id"] == "note-fixture-1"
         assert content_row["title"] == "脱敏标题 A"
         assert content_row["current_comment_count"] == 1
@@ -509,7 +509,7 @@ def test_raw_replay_and_sparse_author_do_not_duplicate_or_clear_history(
         account = (
             session.execute(
                 select(accounts_table).where(
-                    accounts_table.c.platform == "xhs",
+                    accounts_table.c.platform == "xiaohongshu",
                     accounts_table.c.external_account_id == "user-replay",
                 )
             )

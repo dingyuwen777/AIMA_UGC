@@ -47,7 +47,7 @@ from aima_ugc.platform.storage import ArtifactService
 from pydantic import SecretStr
 from sqlalchemy import select
 
-_FIXTURES = Path("tests/fixtures/providers/tikhub/xhs")
+_FIXTURES = Path("tests/fixtures/providers/tikhub/xiaohongshu")
 _OBSERVED_AT = datetime(2026, 8, 17, 5, 0, tzinfo=UTC)
 
 
@@ -153,6 +153,20 @@ def _sub_comments_response(
     return body
 
 
+def _first_comment_id(body: dict[str, object]) -> str:
+    outer = body["data"]
+    assert isinstance(outer, dict)
+    page = outer["data"]
+    assert isinstance(page, dict)
+    comments = page["comments"]
+    assert isinstance(comments, list) and comments
+    comment = comments[0]
+    assert isinstance(comment, dict)
+    comment_id = comment["id"]
+    assert isinstance(comment_id, str)
+    return comment_id
+
+
 def _raw_service(runtime: DatabaseRuntime, root: Path) -> RawArtifactService:
     store = LocalArtifactStore(root)
     return RawArtifactService(
@@ -207,7 +221,7 @@ def _execute_reply_case(
                 "comment_policy": "adaptive",
                 "platforms": [
                     {
-                        "platform": "xhs",
+                        "platform": "xiaohongshu",
                         "provider_config_id": str(provider_config.id),
                         "config": {
                             "sort_mode": "latest",
@@ -225,7 +239,7 @@ def _execute_reply_case(
                 config_snapshot=snapshot,
                 scopes=(
                     CollectionScopeDefinition(
-                        platform="xhs",
+                        platform="xiaohongshu",
                         source_type="keyword_search",
                         source_value="爱玛",
                         operation_group="content_discovery",
@@ -272,10 +286,16 @@ def test_scope_runtime_reply_target_is_partial_when_provider_has_more(
     database_runtime: DatabaseRuntime,
     tmp_path: Path,
 ) -> None:
+    comments_response = _comments_response()
+    sub_comments = _sub_comments_response(has_more=True)
+    expected_comment_ids = {
+        _first_comment_id(comments_response),
+        _first_comment_id(sub_comments),
+    }
     result, transport, job_id = _execute_reply_case(
         database_runtime=database_runtime,
         tmp_path=tmp_path,
-        sub_comments=_sub_comments_response(has_more=True),
+        sub_comments=sub_comments,
         decision_policy={"reply_target_per_root": 1},
     )
     assert result.outcome == "succeeded"
@@ -296,7 +316,7 @@ def test_scope_runtime_reply_target_is_partial_when_provider_has_more(
             coverage = (
                 session.execute(select(comment_thread_coverage_observations_table)).mappings().one()
             )
-        assert set(comments) == {"xhs-comment-root-1", "xhs-comment-reply-2"}
+        assert set(comments) == expected_comment_ids
         assert run_comment_count == 2
         assert coverage["coverage"] == "partial"
         assert coverage["reported_total"] == 1
@@ -310,6 +330,7 @@ def test_sub_comments_empty_page_overrides_stale_root_reply_count(
     database_runtime: DatabaseRuntime,
     tmp_path: Path,
 ) -> None:
+    expected_root_comment_id = _first_comment_id(_comments_response())
     result, transport, _job_id = _execute_reply_case(
         database_runtime=database_runtime,
         tmp_path=tmp_path,
@@ -324,7 +345,7 @@ def test_sub_comments_empty_page_overrides_stale_root_reply_count(
                 session.execute(select(comment_thread_coverage_observations_table)).mappings().one()
             )
             comment_ids = set(session.scalars(select(comments_table.c.external_comment_id)))
-        assert comment_ids == {"xhs-comment-root-1"}
+        assert comment_ids == {expected_root_comment_id}
         assert coverage["coverage"] == "complete"
         assert coverage["reported_total"] == 0
         assert coverage["captured_count"] == 0

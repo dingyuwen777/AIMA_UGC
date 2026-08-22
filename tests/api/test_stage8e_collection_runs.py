@@ -48,7 +48,7 @@ class _FakeCollectionService:
             "progress": 0,
             "attempt": 0,
             "max_attempts": 2,
-            "platforms": ["xhs"],
+            "platforms": ["xiaohongshu"],
             "keywords": ["爱玛", "爱玛 Q7"],
             "stats": {
                 "requested_count": 0,
@@ -88,7 +88,7 @@ def test_create_discovery_collection_run_returns_202() -> None:
         json={
             "mode": "discovery",
             "keywords": [" 爱玛 ", "爱玛 Q7"],
-            "platforms": [{"platform": "xhs", "provider_config_id": str(CONFIG_ID)}],
+            "platforms": [{"platform": "xiaohongshu", "provider_config_id": str(CONFIG_ID)}],
             "include_comments": True,
             "include_sub_comments": False,
         },
@@ -113,7 +113,7 @@ def test_create_collection_run_rejects_cross_mode_fields_with_request_id() -> No
         json={
             "mode": "batch_supplement",
             "keywords": ["不应出现"],
-            "platforms": [{"platform": "xhs", "provider_config_id": str(CONFIG_ID)}],
+            "platforms": [{"platform": "xiaohongshu", "provider_config_id": str(CONFIG_ID)}],
         },
     )
 

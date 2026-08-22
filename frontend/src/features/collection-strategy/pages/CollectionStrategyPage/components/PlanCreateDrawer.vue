@@ -26,7 +26,7 @@ const emit = defineEmits<{
 }>()
 
 const platformOptions: { value: CollectionPlatform; label: string }[] = [
-  { value: 'xhs', label: '小红书' },
+  { value: 'xiaohongshu', label: '小红书' },
   { value: 'douyin', label: '抖音' },
   { value: 'weibo', label: '微博' },
   { value: 'bilibili', label: 'B站' },

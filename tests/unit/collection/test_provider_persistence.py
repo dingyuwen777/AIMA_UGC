@@ -53,7 +53,7 @@ def _request() -> ProviderRequestV1:
         run_id=uuid4(),
         scope_id=uuid4(),
         provider="fake",
-        platform="xhs",
+        platform="xiaohongshu",
         operation="search_notes",
         request_params={"keyword": "爱玛"},
         pagination_input={"page": 1},
@@ -88,7 +88,7 @@ def test_service_can_idempotently_ensure_request_without_creating_attempt() -> N
         run_id=uuid4(),
         scope_id=uuid4(),
         provider="fake",
-        platform="dy",
+        platform="douyin",
         operation="search_videos",
     )
 

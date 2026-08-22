@@ -31,7 +31,6 @@ from aima_ugc.contracts.http import (
     CollectionPlanListResponse,
     CollectionPlanPlatformResponse,
     CollectionPlanResponse,
-    CollectionPlatform,
     KeywordPackListQuery,
     KeywordPackListResponse,
     KeywordPackSummaryResponse,
@@ -303,7 +302,7 @@ def _plan_response(record: CollectionPlanRecord) -> CollectionPlanResponse:
         comment_policy=cast(Literal["adaptive"], record.comment_policy),
         platforms=tuple(
             CollectionPlanPlatformResponse(
-                platform=cast(CollectionPlatform, item.platform),
+                platform=item.platform,
                 provider_config_id=item.provider_config_id,
             )
             for item in record.platforms

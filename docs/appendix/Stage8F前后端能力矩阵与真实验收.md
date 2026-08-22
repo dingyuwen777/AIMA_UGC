@@ -123,7 +123,7 @@ Discovery 模式还额外要求 `keyword_search`。
 
 前端资格用于避免用户组成注定失败的任务；`PostgresCollectionHttpService.create_run()` 仍然重新解析 Provider、Relevance、Batch target 和 Capability，是最终业务守卫。
 
-### 3.3 小红书 `xiaohongshu` / `xhs` 边界
+### 3.3 小红书 `xiaohongshu` 边界
 
 当前两个领域使用的机器值不同：
 
@@ -132,7 +132,7 @@ File Import / Content Canonical
 → xiaohongshu
 
 Collection / TikHub 公共 Contract
-→ xhs
+→ xiaohongshu
 ```
 
 不修改 Content 持久身份，也不在全仓复制别名。兼容只放在 Collection 读取 Batch target 的边界：
@@ -144,12 +144,12 @@ backend/src/aima_ugc/adapters/persistence/postgres/collection_targets.py
 行为固定为：
 
 ```text
-Collection 请求 xhs
-→ 可匹配 Batch 中 stored platform = xhs 或 xiaohongshu
-→ 返回 CollectionEnrichmentTarget.platform = xhs
+Collection 请求 xiaohongshu
+→ 可匹配 Batch 中 stored platform = xiaohongshu
+→ 返回 CollectionEnrichmentTarget.platform = xiaohongshu
 ```
 
-真实 Excel Worker 入库后用 `platforms=("xhs",)` 读取补采目标的 PostgreSQL 集成测试固定验证这条兼容链。
+真实 Excel Worker 入库后用 `platforms=("xiaohongshu",)` 读取补采目标的 PostgreSQL 集成测试固定验证这条统一链。
 
 ---
 

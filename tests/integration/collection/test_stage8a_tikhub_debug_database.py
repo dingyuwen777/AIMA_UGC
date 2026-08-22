@@ -37,7 +37,7 @@ from aima_ugc.platform.storage.tables import artifacts_table
 from pydantic import SecretStr
 from sqlalchemy import func, select
 
-_FIXTURE = Path("tests/fixtures/providers/tikhub/xhs/search_notes_page1.sanitized.json")
+_FIXTURE = Path("tests/fixtures/providers/tikhub/xiaohongshu/search_notes_page1.sanitized.json")
 
 
 @pytest.fixture
@@ -106,7 +106,7 @@ def test_tikhub_debug_database_uses_formal_source_chain_and_sends_once(
                 KeywordPackItem(
                     pack_id=pack.id,
                     keyword_id=keyword.id,
-                    platform="all",
+                    platform_scope="all",
                     priority=10,
                     enabled=True,
                     note="Stage 8A TikHub Debug Integration",
@@ -127,7 +127,7 @@ def test_tikhub_debug_database_uses_formal_source_chain_and_sends_once(
         session.close()
 
     bridge = create_tikhub_debug_database_session(
-        platform="xhs",
+        platform="xiaohongshu",
         keywords=("爱玛",),
         run_id=f"stage8a-{uuid4().hex}",
         provider_config_id=provider_config.id,
@@ -147,7 +147,7 @@ def test_tikhub_debug_database_uses_formal_source_chain_and_sends_once(
     mirrored: list[ProviderTransportResponse] = []
     try:
         call = tikhub_runtime.build_search_call(
-            platform="xhs",
+            platform="xiaohongshu",
             keyword="爱玛",
             config={
                 "sort_mode": "latest",
@@ -164,7 +164,7 @@ def test_tikhub_debug_database_uses_formal_source_chain_and_sends_once(
         )
         body = dispatched.response.body
         assert isinstance(body, dict)
-        items = tikhub_runtime.extract_search_items("xhs", body)
+        items = tikhub_runtime.extract_search_items("xiaohongshu", body)
         assert len(items) == 1
         item_locator = "search.page[1].items[0]"
         candidate_id = bridge.discover_candidate(
@@ -175,7 +175,7 @@ def test_tikhub_debug_database_uses_formal_source_chain_and_sends_once(
             discovered_at=dispatched.observed_at,
         )
         content = tikhub_runtime.map_content(
-            platform="xhs",
+            platform="xiaohongshu",
             raw=items[0],
             context=tikhub_runtime.mapping_context(
                 provider_request_id=str(dispatched.provider_request_id),

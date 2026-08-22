@@ -16,6 +16,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import URL, create_engine, inspect, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import IntegrityError
 
 _ROOT = Path(__file__).resolve().parents[3]
 _NOW = datetime(2026, 8, 17, 8, 30, tzinfo=UTC)
@@ -224,7 +225,7 @@ def test_0016_to_0017_backfills_only_existing_current_fields(
                       id, platform, external_account_id, handle, display_name,
                       first_seen_at, last_seen_at, updated_at
                     ) VALUES (
-                      :id, 'xhs', 'account-old', 'old-handle', NULL,
+                      :id, 'xiaohongshu', 'account-old', 'old-handle', NULL,
                       :seen, :seen, :seen
                     )
                     """
@@ -240,7 +241,7 @@ def test_0016_to_0017_backfills_only_existing_current_fields(
                       last_seen_at, current_version, current_like_count,
                       current_comment_count, updated_at
                     ) VALUES (
-                      :id, 'xhs', 'content-old', 'image',
+                      :id, 'xiaohongshu', 'content-old', 'image',
                       '历史标题', NULL, :author_id, :seen,
                       :seen, 1, 9, NULL, :seen
                     )
@@ -445,5 +446,165 @@ def test_0020_downgrade_refuses_to_erase_filtered_candidate_semantics(
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
                 "20260820_0020"
             )
+    finally:
+        engine.dispose()
+
+
+def test_0023_to_0024_unifies_platform_machine_values(migration_database: str) -> None:
+    _upgrade(migration_database, "20260821_0023")
+    account_id = uuid4()
+    content_id = uuid4()
+    pack_id = uuid4()
+    keyword_id = uuid4()
+    engine = _engine(migration_database)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO accounts(
+                      id, platform, external_account_id, first_seen_at, last_seen_at,
+                      field_observed_at, updated_at
+                    ) VALUES (
+                      :id, 'xhs', 'platform-migration-account', :seen, :seen, '{}'::jsonb, :seen
+                    )
+                    """
+                ),
+                {"id": account_id, "seen": _NOW},
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO contents(
+                      id, platform, external_content_id, content_type, author_account_id,
+                      first_seen_at, last_seen_at, current_version, field_observed_at, updated_at
+                    ) VALUES (
+                      :id, 'xhs', 'platform-migration-content', 'image', :author_id,
+                      :seen, :seen, 1, '{}'::jsonb, :seen
+                    )
+                    """
+                ),
+                {"id": content_id, "author_id": account_id, "seen": _NOW},
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO keyword_packs(
+                      id, name, description, enabled, version, created_at, updated_at
+                    ) VALUES (:id, :name, '', TRUE, 1, :seen, :seen)
+                    """
+                ),
+                {"id": pack_id, "name": f"platform-migration-{pack_id}", "seen": _NOW},
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO keywords(id, text, normalized_text, enabled, created_at, updated_at)
+                    VALUES (:id, '爱玛', :normalized, TRUE, :seen, :seen)
+                    """
+                ),
+                {"id": keyword_id, "normalized": f"platform-migration-{keyword_id}", "seen": _NOW},
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO keyword_pack_items(
+                      pack_id, keyword_id, platform, priority, enabled, note
+                    ) VALUES (:pack_id, :keyword_id, 'all', 10, TRUE, '')
+                    """
+                ),
+                {"pack_id": pack_id, "keyword_id": keyword_id},
+            )
+    finally:
+        engine.dispose()
+
+    _upgrade(migration_database, "20260822_0024")
+
+    engine = _engine(migration_database)
+    try:
+        inspector = inspect(engine)
+        assert "platform_scope" in {
+            item["name"] for item in inspector.get_columns("keyword_pack_items")
+        }
+        assert "platform" not in {
+            item["name"] for item in inspector.get_columns("keyword_pack_items")
+        }
+        with engine.connect() as connection:
+            assert (
+                connection.scalar(
+                    text("SELECT platform FROM accounts WHERE id = :id"), {"id": account_id}
+                )
+                == "xiaohongshu"
+            )
+            assert (
+                connection.scalar(
+                    text("SELECT platform FROM contents WHERE id = :id"), {"id": content_id}
+                )
+                == "xiaohongshu"
+            )
+            assert (
+                connection.scalar(
+                    text(
+                        "SELECT platform_scope FROM keyword_pack_items "
+                        "WHERE pack_id = :pack_id AND keyword_id = :keyword_id"
+                    ),
+                    {"pack_id": pack_id, "keyword_id": keyword_id},
+                )
+                == "all"
+            )
+            with pytest.raises(IntegrityError):
+                connection.execute(
+                    text("UPDATE contents SET platform = 'invalid-platform' WHERE id = :id"),
+                    {"id": content_id},
+                )
+    finally:
+        engine.dispose()
+
+
+def test_0023_to_0024_blocks_duplicate_content_identity(migration_database: str) -> None:
+    _upgrade(migration_database, "20260821_0023")
+    engine = _engine(migration_database)
+    try:
+        with engine.begin() as connection:
+            for platform in ("xhs", "xiaohongshu"):
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO contents(
+                          id, platform, external_content_id, content_type,
+                          first_seen_at, last_seen_at, current_version,
+                          field_observed_at, updated_at
+                        ) VALUES (
+                          :id, :platform, 'platform-conflict', 'image',
+                          :seen, :seen, 1, '{}'::jsonb, :seen
+                        )
+                        """
+                    ),
+                    {"id": uuid4(), "platform": platform, "seen": _NOW},
+                )
+    finally:
+        engine.dispose()
+
+    with pytest.raises(RuntimeError, match="平台标识迁移冲突.*contents"):
+        _upgrade(migration_database, "20260822_0024")
+
+    engine = _engine(migration_database)
+    try:
+        with engine.connect() as connection:
+            assert (
+                connection.scalar(text("SELECT version_num FROM alembic_version"))
+                == "20260821_0023"
+            )
+            platforms = (
+                connection.execute(
+                    text(
+                        "SELECT platform FROM contents "
+                        "WHERE external_content_id = 'platform-conflict' ORDER BY platform"
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert platforms == ["xhs", "xiaohongshu"]
     finally:
         engine.dispose()

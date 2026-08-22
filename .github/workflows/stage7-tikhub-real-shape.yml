@@ -28,8 +28,8 @@ jobs:
         run: |
           set -euo pipefail
           uv run pytest \
-            tests/unit/collection/test_xhs_tikhub_operation.py \
-            tests/unit/collection/test_xhs_tikhub_mapper.py \
+            tests/unit/collection/test_xiaohongshu_tikhub_operation.py \
+            tests/unit/collection/test_xiaohongshu_tikhub_mapper.py \
             tests/unit/collection/test_douyin_tikhub_operation.py \
             tests/unit/collection/test_douyin_tikhub_real_shape.py \
             tests/unit/collection/test_weibo_tikhub_operation.py \

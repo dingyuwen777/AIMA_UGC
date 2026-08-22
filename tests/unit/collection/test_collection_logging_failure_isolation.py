@@ -110,7 +110,7 @@ def _execution() -> CollectionExecution:
             CollectionScopeRecord(
                 id=uuid4(),
                 run_id=run_id,
-                platform="xhs",
+                platform="xiaohongshu",
                 source_type="keyword_search",
                 source_value="爱玛",
                 operation_group="content_discovery",
@@ -157,7 +157,7 @@ def test_logging_does_not_break_scope_exception_isolation(
     assert scope_record.run_id == str(execution.run.id)
     assert scope_record.job_id == str(execution.run.job_id)
     assert scope_record.scope_id == str(execution.scopes[0].id)
-    assert scope_record.platform == "xhs"
+    assert scope_record.platform == "xiaohongshu"
     assert scope_record.operation_group == "content_discovery"
     run_record = next(
         record

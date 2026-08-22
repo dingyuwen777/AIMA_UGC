@@ -5,9 +5,9 @@ from aima_ugc.contracts.collection import (
     ProviderPlatformCapabilityV1,
 )
 
-XHS_TIKHUB_CAPABILITY = ProviderPlatformCapabilityV1(
+XIAOHONGSHU_TIKHUB_CAPABILITY = ProviderPlatformCapabilityV1(
     provider="tikhub",
-    platform="xhs",
+    platform="xiaohongshu",
     operations=(
         ProviderOperationCapabilityV1(
             business_operation="keyword_search",
@@ -197,7 +197,7 @@ KUAISHOU_TIKHUB_CAPABILITY = ProviderPlatformCapabilityV1(
 )
 
 TIKHUB_PLATFORM_CAPABILITIES = (
-    XHS_TIKHUB_CAPABILITY,
+    XIAOHONGSHU_TIKHUB_CAPABILITY,
     DOUYIN_TIKHUB_CAPABILITY,
     WEIBO_TIKHUB_CAPABILITY,
     BILIBILI_TIKHUB_CAPABILITY,
@@ -210,5 +210,5 @@ __all__ = [
     "KUAISHOU_TIKHUB_CAPABILITY",
     "TIKHUB_PLATFORM_CAPABILITIES",
     "WEIBO_TIKHUB_CAPABILITY",
-    "XHS_TIKHUB_CAPABILITY",
+    "XIAOHONGSHU_TIKHUB_CAPABILITY",
 ]

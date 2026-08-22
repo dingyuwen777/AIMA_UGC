@@ -9,6 +9,7 @@ from sqlalchemy import func, insert, select, update
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
+from aima_ugc.contracts.platform import require_platform_name
 from aima_ugc.modules.collection.execution import (
     CollectionExecution,
     CollectionRunRecord,
@@ -337,7 +338,7 @@ def _row_to_scope(row: RowMapping) -> CollectionScopeRecord:
     return CollectionScopeRecord(
         id=cast(UUID, row["id"]),
         run_id=cast(UUID, row["run_id"]),
-        platform=cast(str, row["platform"]),
+        platform=require_platform_name(cast(str, row["platform"])),
         source_type=cast(str, row["source_type"]),
         source_value=cast(str, row["source_value"]),
         operation_group=cast(str, row["operation_group"]),

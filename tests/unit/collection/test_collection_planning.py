@@ -49,7 +49,7 @@ def _definition(
         platforms=platforms
         or (
             PlanPlatformDefinition(
-                platform="xhs",
+                platform="xiaohongshu",
                 provider_config_id=provider_config_id,
                 config={"sort_mode": "latest", "time_filter": "one_day"},
             ),
@@ -82,8 +82,10 @@ def test_service_accepts_only_approved_first_release_scheduler_policy() -> None:
 def test_service_rejects_duplicate_platform_identity() -> None:
     provider_config_id = uuid4()
     duplicate_platforms = (
-        PlanPlatformDefinition(platform="xhs", provider_config_id=provider_config_id, config={}),
-        PlanPlatformDefinition(platform="xhs", provider_config_id=uuid4(), config={}),
+        PlanPlatformDefinition(
+            platform="xiaohongshu", provider_config_id=provider_config_id, config={}
+        ),
+        PlanPlatformDefinition(platform="xiaohongshu", provider_config_id=uuid4(), config={}),
     )
 
     with pytest.raises(DuplicatePlanPlatformError, match="platform"):
@@ -104,7 +106,7 @@ def test_service_rejects_duplicate_keyword_pack_identity() -> None:
 def test_plan_platform_config_rejects_secret_shaped_keys_recursively() -> None:
     with pytest.raises(UnsafePlanConfigError, match="Secret"):
         PlanPlatformDefinition(
-            platform="xhs",
+            platform="xiaohongshu",
             provider_config_id=uuid4(),
             config={"search": {"access-token": "must-not-be-here"}},
         )

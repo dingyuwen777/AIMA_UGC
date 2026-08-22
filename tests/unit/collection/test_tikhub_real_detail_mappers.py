@@ -32,10 +32,10 @@ from aima_ugc.adapters.providers.tikhub.mappers.weibo import (
     map_content as map_weibo_content,
 )
 from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
-    XhsMappingContext,
+    XiaohongshuMappingContext,
 )
 from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
-    map_content as map_xhs_content,
+    map_content as map_xiaohongshu_content,
 )
 from aima_ugc.adapters.providers.tikhub.operations import (
     bilibili,
@@ -66,47 +66,57 @@ def _common_context(context_type: type, operation: str):
     )
 
 
-def test_xhs_image_and_video_detail_normalize_media_topics_location_and_metrics() -> None:
-    image_items = xiaohongshu.extract_detail_items(_fixture("xhs", "image_detail.sanitized.json"))
+def test_xiaohongshu_image_and_video_detail_normalize_media_topics_location_and_metrics() -> None:
+    image_items = xiaohongshu.extract_detail_items(
+        _fixture("xiaohongshu", "image_detail.sanitized.json")
+    )
     assert len(image_items) == 1
-    image = map_xhs_content(
-        image_items[0],
-        XhsMappingContext(
+    image_raw = image_items[0]
+    image_external_id = str(image_raw["id"])
+    image_topic_id = str(image_raw["topics"][0]["id"])
+    image = map_xiaohongshu_content(
+        image_raw,
+        XiaohongshuMappingContext(
             provider_request_id="request-detail-fixture-1",
             provider_attempt_id="attempt-detail-fixture-1",
             raw_artifact_id=_RAW_ID,
             operation="get_image_note_detail",
             source_type="content",
-            source_value="xhs-note-detail-1",
+            source_value=image_external_id,
             observed_at=_OBSERVED_AT,
         ),
         item_locator="data.data[0].note_list[0]",
     )
-    assert image.external_content_id == "xhs-note-detail-1"
+    assert image.external_content_id == image_external_id
     assert image.metrics.view_count == 1000
     assert image.source_updated_at == datetime.fromtimestamp(1720000100, tz=UTC)
     assert len(image.media) == 1
     assert image.media[0].media_type == "image"
     assert image.media[0].width == 2250
     assert image.media[0].height == 3000
-    assert image.topics[0].external_topic_id == "xhs-topic-1"
+    assert image.topics[0].external_topic_id == image_topic_id
     assert image.locations[0].location_type == "ip_region"
     assert image.locations[0].label == "上海"
 
-    video_items = xiaohongshu.extract_detail_items(_fixture("xhs", "video_detail.sanitized.json"))
-    video = map_xhs_content(
-        video_items[0],
-        XhsMappingContext(
+    video_items = xiaohongshu.extract_detail_items(
+        _fixture("xiaohongshu", "video_detail.sanitized.json")
+    )
+    video_raw = video_items[0]
+    video_external_id = str(video_raw["id"])
+    video = map_xiaohongshu_content(
+        video_raw,
+        XiaohongshuMappingContext(
             provider_request_id="request-detail-fixture-1",
             provider_attempt_id="attempt-detail-fixture-1",
             raw_artifact_id=_RAW_ID,
             operation="get_video_note_detail",
             source_type="content",
-            source_value="xhs-note-video-1",
+            source_value=video_external_id,
             observed_at=_OBSERVED_AT,
         ),
         item_locator="data.data[0]",
     )
+    assert video.external_content_id == video_external_id
     assert video.content_type == "video"
     assert video.media[0].media_type == "video"
     assert video.media[0].duration_ms == 85000

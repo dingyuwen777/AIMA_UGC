@@ -148,12 +148,12 @@ def test_http_upload_worker_and_status_query_use_formal_stage8a_ingestion(tmp_pa
             with session.begin():
                 supplement_targets = PostgresCollectionTargetReader(session).list_batch_targets(
                     batch_id=UUID(created.json()["batch_id"]),
-                    platforms=("xhs",),
+                    platforms=("xiaohongshu",),
                 )
         finally:
             session.close()
         assert len(supplement_targets) == 1
-        assert supplement_targets[0].platform == "xhs"
+        assert supplement_targets[0].platform == "xiaohongshu"
         assert supplement_targets[0].external_content_id == "stage8b-content-1"
 
         with runtime.database.engine.begin() as connection:

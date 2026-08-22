@@ -80,7 +80,7 @@ def test_stage8a_keeps_provider_config_immutable_after_attempt(
                 config_snapshot={},
                 scopes=(
                     CollectionScopeDefinition(
-                        platform="xhs",
+                        platform="xiaohongshu",
                         source_type="keyword_search",
                         source_value="爱玛",
                         operation_group="content_discovery",
@@ -93,7 +93,7 @@ def test_stage8a_keeps_provider_config_immutable_after_attempt(
                 run_id=execution.run.id,
                 scope_id=scope.id,
                 provider="tikhub",
-                platform="xhs",
+                platform="xiaohongshu",
                 operation="search_notes",
                 request_params={"keyword": "爱玛"},
                 pagination_input={"page": 1},

@@ -45,13 +45,13 @@ from aima_ugc.adapters.providers.tikhub.mappers.weibo import (
     map_content as map_weibo_content,
 )
 from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
-    XhsMappingContext,
+    XiaohongshuMappingContext,
 )
 from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
-    map_comment as map_xhs_comment,
+    map_comment as map_xiaohongshu_comment,
 )
 from aima_ugc.adapters.providers.tikhub.mappers.xiaohongshu import (
-    map_content as map_xhs_content,
+    map_content as map_xiaohongshu_content,
 )
 from aima_ugc.adapters.providers.tikhub.operations import (
     bilibili,
@@ -238,8 +238,10 @@ def _common_context(
     )
 
 
-def _xhs_context(chain: SourceChain, *, operation: str, source_value: str) -> XhsMappingContext:
-    return XhsMappingContext(
+def _xiaohongshu_context(
+    chain: SourceChain, *, operation: str, source_value: str
+) -> XiaohongshuMappingContext:
+    return XiaohongshuMappingContext(
         provider_request_id=str(chain.request_id),
         provider_attempt_id=str(chain.attempt_id),
         raw_artifact_id=chain.artifact_id,
@@ -288,22 +290,24 @@ def test_real_search_fixtures_normalize_and_persist_for_all_five_platforms(
         with session.begin_nested():
             service = ContentIngestionService(PostgresContentRepository(session))
 
-            xhs_chain = _insert_source_chain(
+            xiaohongshu_chain = _insert_source_chain(
                 session,
-                platform="xhs",
+                platform="xiaohongshu",
                 operation="search_notes",
                 source_value="爱玛",
                 operation_group="content_discovery",
             )
-            xhs_item = xiaohongshu.extract_search_items(
-                _fixture("xhs", "search_notes_page1.sanitized.json")
+            xiaohongshu_item = xiaohongshu.extract_search_items(
+                _fixture("xiaohongshu", "search_notes_page1.sanitized.json")
             )[1]
-            xhs_canonical = map_xhs_content(
-                xhs_item,
-                _xhs_context(xhs_chain, operation="search_notes", source_value="爱玛"),
+            xiaohongshu_canonical = map_xiaohongshu_content(
+                xiaohongshu_item,
+                _xiaohongshu_context(
+                    xiaohongshu_chain, operation="search_notes", source_value="爱玛"
+                ),
                 item_locator="data.data.items[1]",
             )
-            xhs_result = service.ingest_content(xhs_canonical)
+            xiaohongshu_result = service.ingest_content(xiaohongshu_canonical)
 
             cases = (
                 (
@@ -346,7 +350,7 @@ def test_real_search_fixtures_normalize_and_persist_for_all_five_platforms(
                 ),
             )
             mapped_results: list[tuple[CanonicalContentV1, UUID]] = [
-                (xhs_canonical, xhs_result.target_id)
+                (xiaohongshu_canonical, xiaohongshu_result.target_id)
             ]
             for platform, operation, raw_item, context_type, mapper, locator in cases:
                 chain = _insert_source_chain(
@@ -370,7 +374,7 @@ def test_real_search_fixtures_normalize_and_persist_for_all_five_platforms(
                 mapped_results.append((canonical, result.target_id))
 
         assert {canonical.platform for canonical, _ in mapped_results} == {
-            "xhs",
+            "xiaohongshu",
             "douyin",
             "weibo",
             "bilibili",
@@ -413,16 +417,19 @@ def test_real_root_comment_fixtures_persist_canonical_comment_semantics(
     try:
         with session.begin_nested():
             service = ContentIngestionService(PostgresContentRepository(session))
+            xiaohongshu_comment = xiaohongshu.extract_comment_items(
+                _fixture("xiaohongshu", "comments_page1.sanitized.json")
+            )[0]
+            xiaohongshu_content_id = xiaohongshu_comment.get("note_id")
+            assert isinstance(xiaohongshu_content_id, str)
             cases = (
                 (
-                    "xhs",
-                    "xhs-note-1",
+                    "xiaohongshu",
+                    xiaohongshu_content_id,
                     "get_note_comments",
-                    xiaohongshu.extract_comment_items(
-                        _fixture("xhs", "comments_page1.sanitized.json")
-                    )[0],
-                    XhsMappingContext,
-                    map_xhs_comment,
+                    xiaohongshu_comment,
+                    XiaohongshuMappingContext,
+                    map_xiaohongshu_comment,
                     "data.data.comments[0]",
                 ),
                 (
@@ -490,8 +497,8 @@ def test_real_root_comment_fixtures_persist_canonical_comment_semantics(
                     source_value=content_id,
                     operation_group="comments",
                 )
-                if platform == "xhs":
-                    context = XhsMappingContext(
+                if platform == "xiaohongshu":
+                    context = XiaohongshuMappingContext(
                         provider_request_id=str(comment_chain.request_id),
                         provider_attempt_id=str(comment_chain.attempt_id),
                         raw_artifact_id=comment_chain.artifact_id,
@@ -518,7 +525,7 @@ def test_real_root_comment_fixtures_persist_canonical_comment_semantics(
                 results.append((canonical, result.target_id))
 
         assert {canonical.platform for canonical, _ in results} == {
-            "xhs",
+            "xiaohongshu",
             "douyin",
             "weibo",
             "kuaishou",

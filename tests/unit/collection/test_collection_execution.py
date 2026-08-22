@@ -50,7 +50,7 @@ def test_service_creates_supported_run_with_immutable_scope_sequence() -> None:
     job_id = uuid4()
     scopes = [
         CollectionScopeDefinition(
-            platform="xhs",
+            platform="xiaohongshu",
             source_type="keyword_search",
             source_value="爱玛",
             operation_group="content_discovery",
@@ -177,7 +177,7 @@ def test_service_rejects_duplicate_scope_identity_before_repository_call() -> No
     repository = RecordingCollectionRepository()
     service = CollectionExecutionService(repository)
     scope = CollectionScopeDefinition(
-        platform="dy",
+        platform="douyin",
         source_type="keyword_search",
         source_value="爱玛电动车",
         operation_group="content_discovery",
