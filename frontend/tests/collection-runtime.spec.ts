@@ -20,6 +20,34 @@ import {
 } from '../src/features/import-batches/api'
 import { useImportBatchesStore } from '../src/features/import-batches/store'
 
+function batch(id: string, status: 'succeeded' | 'failed', rowsIngested: number) {
+  return {
+    id,
+    input_artifact_id: `artifact-${id}`,
+    source_filename: `${id}.xlsx`,
+    status,
+    stage: status,
+    stats: {
+      rows_seen: 1,
+      rows_matched: 1,
+      rows_filtered_out: 0,
+      duplicates_removed: 0,
+      rows_ingested: rowsIngested,
+      rows_rejected: status === 'failed' ? 1 : 0,
+    },
+    created_at: '2026-08-21T00:00:00Z',
+    job: {
+      id: `job-${id}`,
+      job_type: 'ingestion.import-excel.v1',
+      status,
+      attempt: 1,
+      max_attempts: 10,
+      progress: status === 'succeeded' ? 100 : 40,
+      created_at: '2026-08-21T00:00:00Z',
+    },
+  }
+}
+
 describe('collection runtime feature', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -139,5 +167,26 @@ describe('collection runtime feature', () => {
 
     expect(generated.getImportBatch).toHaveBeenCalledWith('older-batch')
     expect(store.batchOptions.map((item) => item.id)).toEqual(['older-batch'])
+  })
+
+  it('offers only succeeded Import Batches that actually ingested content for supplement', async () => {
+    generated.getCollectionCapabilities.mockResolvedValue({
+      provider_configs: [],
+      capabilities: [],
+    })
+    generated.listImportBatches.mockResolvedValue({
+      items: [
+        batch('usable-batch', 'succeeded', 2),
+        batch('empty-batch', 'succeeded', 0),
+        batch('failed-batch', 'failed', 0),
+      ],
+      next_cursor: null,
+      has_more: false,
+    })
+    const store = useImportBatchesStore()
+
+    await store.loadCreationOptions()
+
+    expect(store.batchOptions.map((item) => item.id)).toEqual(['usable-batch'])
   })
 })
