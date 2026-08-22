@@ -15,6 +15,7 @@ from openpyxl import load_workbook
 
 _EXPECTED_IMPORTS_COLUMNS = (
     "平台",
+    "内容ID",
     "标题",
     "正文",
     "作者",
@@ -27,6 +28,7 @@ _EXPECTED_IMPORTS_COLUMNS = (
     "二级标签",
 )
 _EXPECTED_IMPORTS_LABEL_DETAIL_COLUMNS = (
+    "内容ID",
     "平台",
     "标题",
     "正文",
@@ -41,6 +43,7 @@ _EXPECTED_IMPORTS_LABEL_DETAIL_COLUMNS = (
 )
 _EXPECTED_IMPORTS_COMMENT_COLUMNS = (
     "平台",
+    "内容ID",
     "标题",
     "正文",
     "评论内容",
@@ -124,6 +127,7 @@ def test_imports_test_export_raw_excel_uses_configured_review_columns(
         assert tuple(cell.value for cell in comment_sheet[1]) == _EXPECTED_IMPORTS_COMMENT_COLUMNS
         assert tuple(cell.value for cell in content_sheet[2]) == (
             "小红书",
+            "source-001",
             "离线内容",
             "正文",
             "作者甲",
@@ -135,8 +139,8 @@ def test_imports_test_export_raw_excel_uses_configured_review_columns(
             None,
             None,
         )
-        assert content_sheet["F2"].hyperlink is not None
-        assert content_sheet["F2"].hyperlink.target == "https://example.invalid/article-001"
+        assert content_sheet["G2"].hyperlink is not None
+        assert content_sheet["G2"].hyperlink.target == "https://example.invalid/article-001"
     finally:
         workbook.close()
 
