@@ -4,6 +4,8 @@
 
 它不是 Production 部署文档。公司 Linux 服务器与完整 Production 仍以 `docs/02_环境运行与部署.md`、`docs/roadmap/02_生产上线实施路线.md`、`docs/appendix/11_生产部署与离线Release方案.md` 为准。
 
+首次 Docker build 的国内镜像/apt/PyPI/npm 加速、为什么本地 build 不等于公网发布，以及怎样只清理 AIMA 后重新开始，见 [`04_Docker国内构建源与本地重置.md`](04_Docker国内构建源与本地重置.md)。
+
 ---
 
 ## 1. 为什么 Windows 不直接复用 `.runtime/compose` bind mount
@@ -116,6 +118,8 @@ Windows 原生模式只改变四类持久 storage 的宿主实现，因此 `AIMA
 
 TikHub / LLM API Key 仍由 `env.production` 输入 Compose Secret，不会因为 Windows override 变成普通业务容器环境变量。
 
+`env.production.example` 现在还包含构建下载源：默认使用国内 Docker 镜像代理、TUNA Debian/PyPI 和 npmmirror npm；这些字段只影响 build/pull。需要切官方源时按 [`04_Docker国内构建源与本地重置.md`](04_Docker国内构建源与本地重置.md) 修改相应 `AIMA_BUILD_*` / `AIMA_POSTGRES_IMAGE` 即可。
+
 ---
 
 ## 6. Windows 数据存在哪里
@@ -178,6 +182,20 @@ scripts\dev\compose_windows.cmd down -v
 
 `-v` 会删除本项目 Windows named volumes，从而删除本地数据库、Artifact、日志和内部 Secret。只有确认这些本地开发数据可以丢弃时才使用。
 
+如果还希望把 AIMA Compose service images 一并删除并重新 build，可用：
+
+```powershell
+.\scripts\dev\compose_windows.ps1 down -v --remove-orphans --rmi all
+```
+
+或：
+
+```cmd
+scripts\dev\compose_windows.cmd down -v --remove-orphans --rmi all
+```
+
+这仍然是 AIMA Compose project 范围。不要用 `docker system prune -a --volumes` 代替项目级清理，因为它可能删除其他项目的数据。BuildKit cache 是否继续保留以及更强清理方式见 `04_Docker国内构建源与本地重置.md`。
+
 不要把这组 Windows 本地重置操作用于公司服务器或 Production。
 
 ---
@@ -222,6 +240,8 @@ AIMA_HOST_ROOT=/data/AIMA_UGC
 未来应用版本位于 `/data/AIMA_UGC/releases/<version>`，不能承载上述持久事实。
 
 Windows named-volume override只是**开发机存储适配层**，不会改变 Production Release、Backup/Restore 或 Rollback 设计。
+
+国内 build mirror 同样只是构建输入下载路径；未来正式 Production Server 仍使用已验证不可变镜像，不依赖服务器现场访问国内镜像重新 build。
 
 ---
 
