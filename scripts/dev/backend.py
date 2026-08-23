@@ -85,7 +85,7 @@ def _run(
     prepare_runtime_directories(paths)
     prepare_cursor_secrets(paths)
     print(f"[OK] Runtime directories: {paths.runtime}")
-    print("[OK] Cursor secrets")
+    print("[OK] Internal secrets")
 
     ensure_postgres_container(paths)
     print("[OK] PostgreSQL 18.4: aima-ugc-postgres-dev @ 127.0.0.1:5432")

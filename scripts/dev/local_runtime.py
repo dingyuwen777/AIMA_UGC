@@ -83,32 +83,33 @@ class RuntimePaths:
     runtime: Path
     data: Path
     logs: Path
-    secrets: Path
+    internal_secrets: Path
+    external_secrets: Path
     dev_state: Path
 
     @property
     def postgres_password_file(self) -> Path:
-        return self.secrets / "postgres_password"
+        return self.internal_secrets / "postgres_password"
 
     @property
     def import_cursor_key_file(self) -> Path:
-        return self.secrets / "import_batch_cursor_signing_key"
+        return self.internal_secrets / "import_batch_cursor_signing_key"
 
     @property
     def content_cursor_key_file(self) -> Path:
-        return self.secrets / "content_cursor_signing_key"
+        return self.internal_secrets / "content_cursor_signing_key"
 
     @property
     def runtime_cursor_key_file(self) -> Path:
-        return self.secrets / "collection_runtime_cursor_signing_key"
+        return self.internal_secrets / "collection_runtime_cursor_signing_key"
 
     @property
     def tikhub_secret_file(self) -> Path:
-        return self.secrets / LOCAL_TIKHUB_SECRET_REF
+        return self.external_secrets / LOCAL_TIKHUB_SECRET_REF
 
     @property
     def llm_secret_file(self) -> Path:
-        return self.secrets / LOCAL_LLM_SECRET_REF
+        return self.external_secrets / LOCAL_LLM_SECRET_REF
 
     @property
     def frontend_lock_fingerprint_file(self) -> Path:
@@ -128,7 +129,8 @@ def runtime_paths(root: Path) -> RuntimePaths:
         runtime=runtime,
         data=runtime / "data",
         logs=runtime / "logs",
-        secrets=runtime / "secrets",
+        internal_secrets=runtime / "internal-secrets",
+        external_secrets=runtime / "secrets",
         dev_state=runtime / "dev",
     )
 
@@ -193,7 +195,13 @@ def load_local_dev_config(path: Path) -> LocalDevConfig:
 
 
 def prepare_runtime_directories(paths: RuntimePaths) -> None:
-    for path in (paths.data, paths.logs, paths.secrets, paths.dev_state):
+    for path in (
+        paths.data,
+        paths.logs,
+        paths.internal_secrets,
+        paths.external_secrets,
+        paths.dev_state,
+    ):
         path.mkdir(parents=True, exist_ok=True)
 
 
@@ -209,6 +217,8 @@ def prepare_cursor_secrets(paths: RuntimePaths) -> None:
 def ensure_random_secret(path: Path, *, min_characters: int) -> str:
     """只在缺失时生成随机 Secret；已有值不静默轮换。"""
 
+    if path.is_symlink():
+        raise LocalDevError(f"本地内部 Secret 不允许符号链接：{path}")
     if path.exists():
         value = _read_local_secret(path)
         if len(value) < min_characters:
@@ -235,7 +245,8 @@ def build_runtime_environment(
         {
             "AIMA_DATA_DIR": str(paths.data),
             "AIMA_LOG_DIR": str(paths.logs),
-            "AIMA_SECRET_DIR": str(paths.secrets),
+            "AIMA_SECRET_DIR": str(paths.internal_secrets),
+            "AIMA_EXTERNAL_SECRET_DIR": str(paths.external_secrets),
             "AIMA_DB_HOST": POSTGRES_HOST,
             "AIMA_DB_PORT": str(POSTGRES_PORT),
             "AIMA_DB_NAME": POSTGRES_DB,
@@ -281,8 +292,11 @@ def ensure_postgres_container(paths: RuntimePaths, *, timeout_seconds: float = 6
     if container is None:
         if volume is not None and not paths.postgres_password_file.is_file():
             raise LocalDevError(
-                "发现既有本地 PostgreSQL volume，但 `.runtime/secrets/postgres_password` 已丢失；"
-                "无法安全猜测旧数据库密码。请恢复该 Secret，或显式删除本地开发 volume 后重建。"
+                "发现既有本地 PostgreSQL volume，但新的内部密码文件不存在："
+                f"{paths.postgres_password_file}。"
+                "旧 `.runtime/secrets/postgres_password` 已不再受支持。"
+                "请显式删除本地开发 volume 后重建，或把与该数据库 Role 实际匹配的密码"
+                "放到新的内部路径。"
             )
         password = ensure_random_secret(paths.postgres_password_file, min_characters=32)
         docker_environment = dict(os.environ)
@@ -318,8 +332,11 @@ def ensure_postgres_container(paths: RuntimePaths, *, timeout_seconds: float = 6
             )
         if not paths.postgres_password_file.is_file():
             raise LocalDevError(
-                f"本地容器 {POSTGRES_CONTAINER} 已存在，但缺少 {paths.postgres_password_file}；"
-                "无法安全猜测数据库密码。"
+                f"本地容器 {POSTGRES_CONTAINER} 已存在，但新的内部密码文件不存在："
+                f"{paths.postgres_password_file}。"
+                "旧 `.runtime/secrets/postgres_password` 已不再受支持。"
+                "请显式删除本地开发 container/volume 后重建，或把与该数据库 Role "
+                "实际匹配的密码放到新的内部路径。"
             )
         _read_local_secret(paths.postgres_password_file)
         running = _docker_field(docker, POSTGRES_CONTAINER, "{{.State.Running}}")

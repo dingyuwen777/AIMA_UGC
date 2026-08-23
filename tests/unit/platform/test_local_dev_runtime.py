@@ -5,6 +5,8 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
 
 def _load_local_runtime() -> ModuleType:
     path = Path(__file__).resolve().parents[3] / "scripts" / "dev" / "local_runtime.py"
@@ -21,6 +23,7 @@ _LOCAL_RUNTIME = _load_local_runtime()
 LocalDevError = _LOCAL_RUNTIME.LocalDevError
 build_runtime_environment = _LOCAL_RUNTIME.build_runtime_environment
 ensure_env_local = _LOCAL_RUNTIME.ensure_env_local
+ensure_random_secret = _LOCAL_RUNTIME.ensure_random_secret
 frontend_dependencies_stale = _LOCAL_RUNTIME.frontend_dependencies_stale
 load_local_dev_config = _LOCAL_RUNTIME.load_local_dev_config
 parse_env_file = _LOCAL_RUNTIME.parse_env_file
@@ -82,7 +85,7 @@ def test_local_config_marks_partial_llm_without_failing_base_runtime(tmp_path: P
     assert config.llm_partially_configured is True
 
 
-def test_runtime_environment_materializes_optional_secrets_not_secret_env_vars(
+def test_runtime_environment_uses_separate_internal_and_external_secret_roots(
     tmp_path: Path,
 ) -> None:
     env_path = tmp_path / "env.local"
@@ -100,13 +103,54 @@ def test_runtime_environment_materializes_optional_secrets_not_secret_env_vars(
 
     environment = build_runtime_environment(paths=paths, config=config)
 
+    assert paths.internal_secrets == tmp_path / ".runtime" / "internal-secrets"
+    assert paths.external_secrets == tmp_path / ".runtime" / "secrets"
+    assert paths.tikhub_secret_file.parent == paths.external_secrets
+    assert paths.llm_secret_file.parent == paths.external_secrets
+    assert paths.postgres_password_file.parent == paths.internal_secrets
     assert paths.tikhub_secret_file.read_text(encoding="utf-8").strip() == "tikhub-local-key"
     assert paths.llm_secret_file.read_text(encoding="utf-8").strip() == "llm-local-key"
+    assert environment["AIMA_SECRET_DIR"] == str(paths.internal_secrets)
+    assert environment["AIMA_EXTERNAL_SECRET_DIR"] == str(paths.external_secrets)
     assert environment["AIMA_LLM_BASE_URL"] == "https://llm.example/v1"
     assert environment["AIMA_LLM_PROVIDER_NAME"] == "fixture"
     assert environment["AIMA_LLM_MODEL"] == "fixture-model"
     assert "AIMA_LLM_API_KEY" not in environment
     assert "AIMA_TIKHUB_API_KEY" not in environment
+
+
+def test_legacy_postgres_password_is_not_reused_for_new_internal_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paths = runtime_paths(tmp_path)
+    prepare_runtime_directories(paths)
+    legacy = paths.external_secrets / "postgres_password"
+    legacy.write_text(f"{'l' * 48}\n", encoding="utf-8")
+    generated = "generated-internal-postgres-password-000000000000"
+    monkeypatch.setattr(_LOCAL_RUNTIME.secrets, "token_urlsafe", lambda _size: generated)
+
+    value = ensure_random_secret(paths.postgres_password_file, min_characters=32)
+
+    assert value == generated
+    assert paths.postgres_password_file.read_text(encoding="utf-8").strip() == generated
+    assert legacy.read_text(encoding="utf-8").strip() == "l" * 48
+
+
+def test_internal_secret_symlink_fails_closed(tmp_path: Path) -> None:
+    paths = runtime_paths(tmp_path)
+    prepare_runtime_directories(paths)
+    outside = tmp_path / "outside-secret"
+    outside.write_text(f"{'x' * 48}\n", encoding="utf-8")
+    try:
+        paths.postgres_password_file.symlink_to(outside)
+    except OSError as exc:
+        pytest.skip(f"当前平台无法创建测试符号链接：{exc}")
+
+    with pytest.raises(LocalDevError, match="符号链接"):
+        ensure_random_secret(paths.postgres_password_file, min_characters=32)
+
+    assert outside.read_text(encoding="utf-8").strip() == "x" * 48
 
 
 def test_frontend_dependency_fingerprint_detects_lock_change(tmp_path: Path) -> None:

@@ -54,7 +54,8 @@ jobs:
     env:
       AIMA_DATA_DIR: .runtime/data
       AIMA_LOG_DIR: .runtime/logs
-      AIMA_SECRET_DIR: .runtime/secrets
+      AIMA_SECRET_DIR: .runtime/internal-secrets
+      AIMA_EXTERNAL_SECRET_DIR: .runtime/secrets
       AIMA_DB_HOST: 127.0.0.1
       AIMA_DB_PORT: 5432
       AIMA_DB_NAME: aima_ugc
@@ -78,9 +79,10 @@ jobs:
           uv lock --check
           uv sync --locked
 
-      - name: Prepare local config with non-production fixture key
+      - name: Prepare local config
         shell: bash
         run: |
+          set -euo pipefail
           cat > env.local <<'EOF'
           AIMA_TIKHUB_BASE_URL=https://api.tikhub.io
           AIMA_TIKHUB_API_KEY=local-bootstrap-fixture-key
@@ -96,10 +98,10 @@ jobs:
         run: |
           set -euo pipefail
           uv run python scripts/dev/backend.py --prepare-only
-          test -s .runtime/secrets/postgres_password
-          test -s .runtime/secrets/import_batch_cursor_signing_key
-          test -s .runtime/secrets/content_cursor_signing_key
-          test -s .runtime/secrets/collection_runtime_cursor_signing_key
+          test -s .runtime/internal-secrets/postgres_password
+          test -s .runtime/internal-secrets/import_batch_cursor_signing_key
+          test -s .runtime/internal-secrets/content_cursor_signing_key
+          test -s .runtime/internal-secrets/collection_runtime_cursor_signing_key
           test "$(cat .runtime/secrets/tikhub_api_key)" = "local-bootstrap-fixture-key"
           uv run alembic current
           uv run alembic check
@@ -133,10 +135,39 @@ jobs:
           assert "local-bootstrap-fixture-key" not in repr(config)
           PY
 
+      - name: Verify legacy PostgreSQL password is no longer compatible
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker rm -f aima-ugc-postgres-dev >/dev/null
+          mv .runtime/internal-secrets/postgres_password .runtime/secrets/postgres_password
+          if uv run python scripts/dev/backend.py --prepare-only > /tmp/legacy-password.log 2>&1; then
+            cat /tmp/legacy-password.log
+            echo "legacy postgres password unexpectedly remained compatible"
+            exit 1
+          fi
+          grep -F '已不再受支持' /tmp/legacy-password.log
+          test ! -e .runtime/internal-secrets/postgres_password
+          test -s .runtime/secrets/postgres_password
+
+      - name: Verify explicit local database reset creates a new internal password
+        shell: bash
+        run: |
+          set -euo pipefail
+          LEGACY_PASSWORD="$(cat .runtime/secrets/postgres_password)"
+          rm .runtime/secrets/postgres_password
+          docker volume rm aima-ugc-postgres-dev-data >/dev/null
+          uv run python scripts/dev/backend.py --prepare-only
+          test -s .runtime/internal-secrets/postgres_password
+          test "$(cat .runtime/internal-secrets/postgres_password)" != "${LEGACY_PASSWORD}"
+          test ! -e .runtime/secrets/postgres_password
+          uv run alembic current
+          uv run alembic check
+
       - name: Clean local bootstrap resources
         if: always()
         shell: bash
         run: |
           docker rm -f aima-ugc-postgres-dev >/dev/null 2>&1 || true
           docker volume rm aima-ugc-postgres-dev-data >/dev/null 2>&1 || true
-          rm -rf .runtime env.local
+          rm -rf .runtime env.local /tmp/legacy-password.log
