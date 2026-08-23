@@ -17,6 +17,7 @@ const selectedFile = ref<File | null>(null)
 const selectedPackIds = ref<string[]>([])
 const validationError = ref<string | null>(null)
 const maxBytes = 500 * 1024 * 1024
+const maxKeywordPacks = 20
 
 watch(
   () => props.modelValue,
@@ -47,9 +48,17 @@ function selectFile(event: Event): void {
 }
 
 function togglePack(packId: string): void {
-  selectedPackIds.value = selectedPackIds.value.includes(packId)
-    ? selectedPackIds.value.filter((value) => value !== packId)
-    : [...selectedPackIds.value, packId]
+  if (selectedPackIds.value.includes(packId)) {
+    selectedPackIds.value = selectedPackIds.value.filter((value) => value !== packId)
+    validationError.value = null
+    return
+  }
+  if (selectedPackIds.value.length >= maxKeywordPacks) {
+    validationError.value = `一次最多选择 ${maxKeywordPacks} 个关键词包。`
+    return
+  }
+  selectedPackIds.value = [...selectedPackIds.value, packId]
+  validationError.value = null
 }
 
 function submit(): void {
@@ -93,7 +102,7 @@ function submit(): void {
         </header>
         <div class="dialog-body">
           <p class="description">
-            选择一个或多个关键词包。系统会冻结词包版本，将有效关键词合并去重；标题或正文命中任意关键词即可进入后续去重与入库。
+            选择一个或多个关键词包（最多 20 个）。系统会冻结词包版本，将有效关键词合并去重；标题或正文命中任意关键词即可进入后续去重与入库。
           </p>
           <label class="drop-zone">
             <input
@@ -106,7 +115,7 @@ function submit(): void {
             <small>单个 .xlsx 最大 500 MiB；实际导入在 Worker 中继续执行。</small>
           </label>
           <section class="pack-section">
-            <strong>关键词包（可多选）</strong>
+            <strong>关键词包（可多选，已选 {{ selectedPackIds.length }}/{{ maxKeywordPacks }}）</strong>
             <p
               v-if="loadingKeywordPacks"
               class="pack-state"
