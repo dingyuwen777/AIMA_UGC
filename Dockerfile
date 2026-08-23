@@ -1,21 +1,21 @@
-# 容器基础镜像固定使用官方 canonical reference；版本号保持仓库锁定值，不使用 latest。
-# 机器侧需要 registry mirror 或企业代理缓存时，应由 Docker 基础设施透明处理，
-# 不在项目配置中改写镜像身份。本文件只使用 Dockerfile 稳定基础语法，
-# 不声明外部 syntax frontend，避免首次 build 额外下载 docker/dockerfile 镜像。
-
-FROM ghcr.io/astral-sh/uv:0.12.3 AS uv-bin
+# 容器基础镜像固定使用官方 Docker Hub canonical reference；版本号保持仓库锁定值，不使用 latest。
+# Docker Hub 下载加速由宿主 Docker registry-mirrors 处理；Debian / PyPI / npm 为独立构建下载源。
+# 本文件只使用 Dockerfile 稳定基础语法，不声明外部 syntax frontend。
 
 FROM python:3.14.7-slim-trixie AS backend-builder
-ARG AIMA_BUILD_PYPI_INDEX=https://pypi.org/simple
-COPY --from=uv-bin /uv /uvx /bin/
+ARG AIMA_BUILD_PYPI_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple
 ENV UV_PYTHON_DOWNLOADS=0 \
     UV_LINK_MODE=copy
 WORKDIR /app
+RUN python -m pip install \
+      --disable-pip-version-check \
+      --no-cache-dir \
+      --only-binary=:all: \
+      --index-url "${AIMA_BUILD_PYPI_INDEX}" \
+      "uv==0.12.3"
 COPY pyproject.toml uv.lock README.md ./
 COPY backend ./backend
-# 保留 uv.lock 的官方 PyPI source/hash 事实不变：先冻结导出第三方依赖，
-# 再从可配置下载源按 exact version + hash 同步，最后单独构建/安装本项目 wheel。
-# uv 0.12.3 的 requirements export 默认包含锁文件 hashes，因此无需新版 CLI 的 --generate-hashes。
+# uv.lock 继续作为依赖版本与 hash 的机器事实；下载源只改变传输路径。
 RUN uv export \
       --frozen \
       --no-dev \
@@ -38,8 +38,8 @@ RUN uv export \
       /tmp/dist/*.whl
 
 FROM python:3.14.7-slim-trixie AS backend
-ARG AIMA_BUILD_DEBIAN_MIRROR=http://deb.debian.org/debian
-ARG AIMA_BUILD_DEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security
+ARG AIMA_BUILD_DEBIAN_MIRROR=https://mirrors.aliyun.com/debian
+ARG AIMA_BUILD_DEBIAN_SECURITY_MIRROR=https://mirrors.aliyun.com/debian-security
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -69,7 +69,7 @@ EXPOSE 8090
 CMD ["uvicorn", "aima_ugc.entrypoints.api_main:app", "--host", "0.0.0.0", "--port", "8090"]
 
 FROM node:24.19.0-bookworm-slim AS frontend-builder
-ARG AIMA_BUILD_NPM_REGISTRY=https://registry.npmjs.org
+ARG AIMA_BUILD_NPM_REGISTRY=https://registry.npmmirror.com
 WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --registry="${AIMA_BUILD_NPM_REGISTRY}"
