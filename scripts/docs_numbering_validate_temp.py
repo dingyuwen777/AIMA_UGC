@@ -22,10 +22,10 @@ DOC_RENAMES = {
     "docs/blueprint/07-技术决策与实施门禁.md": "docs/blueprint/07_技术决策与实施门禁.md",
     "docs/blueprint/08-采集策略与平台能力.md": "docs/blueprint/08_采集策略与平台能力.md",
     "docs/appendix/PostgreSQL查询与调试实战.md": "docs/appendix/01_PostgreSQL查询与调试实战.md",
-    "docs/appendix/Scheduler调度执行与停机恢复.md": "docs/appendix/02_Scheduler调度执行与停机恢复.md",
-    "docs/appendix/TikHub五平台真实响应与字段映射.md": "docs/appendix/03_TikHub五平台真实响应与字段映射.md",
-    "docs/appendix/TikHub多接口验证与备用策略.md": "docs/appendix/04_TikHub多接口验证与备用策略.md",
-    "docs/appendix/TikHub接口选型与真实验证台账.md": "docs/appendix/05_TikHub接口选型与真实验证台账.md",
+    "docs/appendix/TikHub五平台真实响应与字段映射.md": "docs/appendix/02_TikHub五平台真实响应与字段映射.md",
+    "docs/appendix/TikHub多接口验证与备用策略.md": "docs/appendix/03_TikHub多接口验证与备用策略.md",
+    "docs/appendix/TikHub接口选型与真实验证台账.md": "docs/appendix/04_TikHub接口选型与真实验证台账.md",
+    "docs/appendix/Scheduler调度执行与停机恢复.md": "docs/appendix/05_Scheduler调度执行与停机恢复.md",
     "docs/appendix/Excel统一数据导出与离线调试.md": "docs/appendix/06_Excel统一数据导出与离线调试.md",
     "docs/appendix/AI舆情打标与分析实现.md": "docs/appendix/07_AI舆情打标与分析实现.md",
     "docs/appendix/数据入口与统一入库实现.md": "docs/appendix/08_数据入口与统一入库实现.md",
@@ -139,6 +139,25 @@ def check_names() -> None:
     if actual != expected_blueprint:
         raise SystemExit(f"Blueprint 文件集合不符合仅 '-'→'_' 的要求: {sorted(actual)}")
 
+    expected_appendix = [
+        "01_PostgreSQL查询与调试实战.md",
+        "02_TikHub五平台真实响应与字段映射.md",
+        "03_TikHub多接口验证与备用策略.md",
+        "04_TikHub接口选型与真实验证台账.md",
+        "05_Scheduler调度执行与停机恢复.md",
+        "06_Excel统一数据导出与离线调试.md",
+        "07_AI舆情打标与分析实现.md",
+        "08_数据入口与统一入库实现.md",
+        "09_Stage8F前后端能力矩阵与真实验收.md",
+        "10_Word舆情报告生成与排版实现.md",
+        "11_生产部署与离线Release方案.md",
+    ]
+    actual_appendix = sorted(
+        path.name for path in Path("docs/appendix").glob("*.md") if path.name != "README.md"
+    )
+    if actual_appendix != expected_appendix:
+        raise SystemExit(f"Appendix 功能开发顺序不符合预期: {actual_appendix}")
+
 
 def check_content_preservation() -> None:
     for old, new in DOC_RENAMES.items():
@@ -155,10 +174,10 @@ def check_content_preservation() -> None:
     expected_fixture = transform(base_text(FIXTURE_README))
     expected_fixture = expected_fixture.replace(
         "docs/blueprint/10-TikHub真实响应结构附录.md",
-        "docs/appendix/03_TikHub五平台真实响应与字段映射.md",
+        "docs/appendix/02_TikHub五平台真实响应与字段映射.md",
     ).replace(
-        "docs/blueprint/11-04_TikHub多接口验证与备用策略.md",
-        "docs/appendix/04_TikHub多接口验证与备用策略.md",
+        "docs/blueprint/11-03_TikHub多接口验证与备用策略.md",
+        "docs/appendix/03_TikHub多接口验证与备用策略.md",
     )
     assert_equal(
         expected_fixture,
