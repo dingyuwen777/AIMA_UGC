@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260822-provider-lookup-supplement-eligibility
 title: 内容补采身份与相关性资格收口
 level: L3
-status: ready_for_review
+status: done
 owner: chatgpt
 branch: feature/provider-lookup-supplement-eligibility
 created: 2026-08-22
@@ -63,25 +63,23 @@ data_changes: []
 - [x] Voice Plaza 默认隐藏 irrelevant 的既有行为保持，按 Content UUID 读取详情的审计能力保持；
 - [x] 前端通过专用 Batch Supplement eligibility API 读取真实平台目标数，不再查询 `relevance=irrelevant` 猜资格；
 - [x] 首次 Batch Supplement 固定先 Detail；一级评论可选；二级回复依赖一级评论；本 Change 不实现 comment-only supplement；
-- [x] Content Detail 可投影最近一次 Batch Supplement 状态；失败文案为“内容补充失败，暂时无法获取完整详情与评论。已保留原始导入内容，可在采集中心查看失败原因并重新发起补充。”；
+- [x] Content Detail 可投影最近一次 Batch Supplement 状态；失败文案明确暂时无法获取完整详情与评论，同时说明原始导入内容仍保留；
 - [x] Excel `内容` Sheet 人工默认视图恢复 `内容ID`，评论视图保留 `内容ID/评论ID/根评论ID/父评论ID`；
 - [x] 不新增第三方依赖、不新增表、不新增 Migration；
 - [x] Blueprint 02/08、统一入库 Appendix、TikHub 字段映射 Appendix、Stage8F 能力矩阵、Collection README 与实现同步；
 - [x] 使用用户上传 `惠科data(0817-0819).xlsx` 的真实链接完成五平台 TikHub Detail + 一级评论真实 Probe；
 - [x] 将真实 Probe 成功链接收敛为五个平台各 1 条固定样本，后续完整真实验证最多 10 次请求，不再搜索或候选遍历；
-- [x] 最终业务 HEAD `74bc0f80c417fb6db879e1003a7c8bf5b9226c9f` 的相关 Unit/Contract/PostgreSQL Integration/Frontend Unit-E2E/12 个永久 CI 全部通过；
+- [x] 最终实现与证据 HEAD 的 Unit/Contract/PostgreSQL Integration/Frontend Unit-E2E/永久 CI 全部通过；
 - [x] L3 Review A / Review B 无未解决严重/重要问题；
-- [ ] 实现 PR #151 正常合并到 `main`，随后独立归档 Change。
+- [x] 实现 PR #151 正常合并到 `main`。
 
 # 已确认关键决策
 
-用户确认：
-
-- 从平台 URL 提取 native Content ID 是正确方向，例如小红书 `/explore/6a81...` → `note_id=6a81...`；
-- Content lookup identity 同时可作为 Detail 和一级评论入口；Comment ID / Root Comment ID 来自 TikHub 评论响应，Excel 不生成评论身份；
-- AI `irrelevant` 数据保留数据库审计，但不应因为“被保留”就参与默认展示或继续产生普通补采费用；
+- 从平台 URL 提取 native Content ID 是正确方向；Content lookup identity 同时可作为 Detail 和一级评论入口；
+- Comment ID / Root Comment ID 来自 TikHub 评论响应，Excel 不生成评论身份；
+- AI `irrelevant` 数据保留数据库审计，但不参与默认展示或普通付费补采；
 - 第一次 Batch Supplement 固定先补 Detail，评论/二级回复按现有选项控制；Comment-only 刷新如以后需要，建立独立 Change；
-- 真实验证不要每次从头搜索/遍历多个链接。首次找到五个平台有效链接后，仓库只保留各平台一条固定有效样本，后续低成本复核直接使用固定样本。
+- 真实验证首次找出五个平台有效链接后，仓库只保留各平台一条固定有效样本，后续低成本复核直接使用固定样本。
 
 # L3 方案
 
@@ -125,15 +123,7 @@ SHA-256：
 8199f1b025a556998c8daa3c8b087f43494a1b84b13d932c1b3fb392f61ef37b
 ```
 
-该文件真实链接形态包含：
-
-- 小红书：`/explore/{note_id}`、`/discovery/item/{note_id}`；
-- 抖音：主要为 `douyin.com/share/video/{aweme_id}`，并存在 `iesdouyin.com/share/video/{aweme_id}`；
-- 微博：主要为 `weibo.com/{uid}/{base62_bid}`；
-- B站：视频 `/video/av...`，同时还有动态/专栏等非当前视频补采主链内容；
-- 快手：`/short-video/{photo_id}` 与 `live.kuaishou.com/u/{user}/{photo_id}`。
-
-真实 GitHub Runner Probe：Actions Run `32592521307`，使用 TikHub 正式 HTTPS Origin；API Key 通过一次性受控方式注入，明文未写入仓库、PR、Change 或日志。
+真实 GitHub Runner Probe：Actions Run `32592521307`。API Key 只在受控 Runner 中使用，明文未写入仓库、PR、Change 或日志。
 
 验证链：
 
@@ -156,30 +146,30 @@ SHA-256：
 | bilibili | 1770 | ok | ok | 0 |
 | kuaishou | 101 | ok | ok | 2 |
 
-首次发现共 12 次真实请求，计划费用 `0.030000 USD`。成功后 `tests/fixtures/imports/excel_provider_lookup_samples.json` 已收敛为上述五个平台各 1 条链接；长期 `scripts/dev/probe_excel_tikhub_supplement.py` 强制每个平台恰好一条样本，并设置 `max_requests=10`、计划费用上限 `0.10 USD`，因此后续完整五平台复核不再执行搜索/候选遍历。
+首次发现共 12 次真实请求，计划费用 `0.030000 USD`。成功后 `tests/fixtures/imports/excel_provider_lookup_samples.json` 收敛为五个平台各 1 条链接；`scripts/dev/probe_excel_tikhub_supplement.py` 强制每个平台恰好一条样本，设置 `max_requests=10`、计划费用上限 `0.10 USD`，后续完整五平台复核不再执行搜索/候选遍历。
 
 # 最终永久 CI
 
-业务实现最终 HEAD：
+最终实现证据 HEAD：
 
 ```text
-74bc0f80c417fb6db879e1003a7c8bf5b9226c9f
+9fd78b513bd61cbd291d03009f944bb055f01f30
 ```
 
 该 HEAD 的 12 个永久 PR Workflow 全部成功：
 
-- CI #2150 / Run `32607733180`；
-- Stage 5A Provider Raw #1527 / Run `32607733159`；
-- Stage 5B Collection Execution #1485 / Run `32607733163`；
-- Stage 5C Provider Persistence #1482 / Run `32607733167`；
-- Stage 5D Provider Dispatch #1542 / Run `32607733170`；
-- Stage 6 Xiaohongshu Vertical Slice #148 / Run `32607733162`；
-- Stage 1-7 Audit Correctness #1039 / Run `32607733161`；
-- Stage 7 Keyword Packs #1760 / Run `32607733187`；
-- Stage 7 Scheduler Runtime #2100 / Run `32607733154`；
-- Stage 7 Provider Config Routing #1873 / Run `32607733173`；
-- Stage 7 Plan Occurrence Run Snapshot #1758 / Run `32607733157`；
-- Stage 8F Full-stack Acceptance #277 / Run `32607733165`。
+- CI #2151 / Run `32607928105`；
+- Stage 5A Provider Raw #1528 / Run `32607928099`；
+- Stage 5B Collection Execution #1486 / Run `32607928123`；
+- Stage 5C Provider Persistence #1483 / Run `32607928190`；
+- Stage 5D Provider Dispatch #1543 / Run `32607928092`；
+- Stage 6 Xiaohongshu Vertical Slice #149 / Run `32607928095`；
+- Stage 1-7 Audit Correctness #1040 / Run `32607928111`；
+- Stage 7 Keyword Packs #1761 / Run `32607928203`；
+- Stage 7 Scheduler Runtime #2101 / Run `32607928138`；
+- Stage 7 Provider Config Routing #1874 / Run `32607928094`；
+- Stage 7 Plan Occurrence Run Snapshot #1759 / Run `32607928127`；
+- Stage 8F Full-stack Acceptance #278 / Run `32607928116`。
 
 总 CI 的 Stage 1 / Stage 2 / Stage 3A / Windows bootstrap 均成功；Stage 1 覆盖 generated Contract/client、Ruff、mypy、Unit/Contract/API、架构/Table Owner/Secret/Docs、Wheel、前端 lint/typecheck/unit/build/Playwright E2E。
 
@@ -187,32 +177,47 @@ SHA-256：
 
 ## Review A：需求 / Contract / 数据语义
 
-逐项核对本 Change、Blueprint 02/08、HTTP Contract、Excel identity、Collection target、TikHub Operation/Mapper、前端资格与展示：
-
-- 修复 typed Provider lookup 与稳定 Content ID 不一致时可能“资格接口允许、Worker 实际用另一 ID”的超报；当前普通 Runtime 对不一致身份 fail closed；
+- 修复 typed Provider lookup 与稳定 Content ID 不一致时可能“资格接口允许、Worker 实际用另一 ID”的超报，当前普通 Runtime 对不一致身份 fail closed；
 - 将 Stage 8E 旧测试 seed 迁移为真实现代 Excel 入库事实，补 `content_external_ids.note_id`，不通过放宽生产资格迁就旧测试；
-- 区分内部平台机器别名与真实外部短链域名，平台标识门禁继续禁止内部 `xhs`，仅允许真实外部域名 literal；
+- 区分内部平台机器别名与真实外部短链域名，平台标识门禁继续禁止内部 `xhs`，只允许真实外部域名 literal；
 - 前端 E2E 从旧 `/contents` 存在性 Mock 迁移到正式 Batch Supplement eligibility Contract；
-- 确认 Comment ID / Root ID 仍只来自 Provider 评论响应，Excel 不生成评论身份；
-- 确认当前 irrelevant 保留审计但默认不展示、不进入普通付费补采；stale Analysis 不永久阻断。
+- Comment ID / Root ID 仍只来自 Provider 评论响应；当前 irrelevant 保留审计但默认不展示、不进入普通付费补采；stale Analysis 不永久阻断。
 
 Review A：无未解决 Serious / Important 问题。
 
 ## Review B：代码质量 / 安全 / 可维护性
 
-- PR 最终 diff 不包含一次性密钥密文、临时 Runner workflow、诊断脚本或施工脚本；
+- 实现 PR 最终 diff 不包含一次性密钥密文、临时 Runner workflow、诊断脚本或施工脚本；
 - 未新增第三方依赖、数据库表或 Migration；
 - OpenAPI 与 Orval generated client 无漂移；
 - Secret 扫描、Docs、架构、Table Owner、mypy、Ruff、Wheel、前后端测试均通过；
 - 固定真实 Probe 样本为五平台各 1 条，源 Excel SHA-256 可追溯；Probe 不做 Search/候选遍历，最大 10 请求、最大计划费用 0.10 USD；
-- PR 无 inline review thread、无已提交 review 阻塞；
+- PR 无 inline review thread、无 review 阻塞；
 - 补采失败只向业务用户公开稳定业务状态，不泄露 Provider Secret 或 Raw 错误详情。
 
 Review B：无未解决 Serious / Important 问题。
 
+# 实现交付
+
+实现 PR：#151 `收口内容补采身份与相关性资格`
+
+最终 PR HEAD：
+
+```text
+9fd78b513bd61cbd291d03009f944bb055f01f30
+```
+
+实现 merge commit：
+
+```text
+61c1baa15913889185a227f7ed3236a7b8a86455
+```
+
+PR #151 已于 2026-08-23 正常 Merge Commit 合并到 `main`。
+
 # 回滚
 
-本 Change 无 Schema/Migration/依赖升级。若需要回滚，在正常 Git/PR 流程回退实现 PR 即可恢复原有资格与展示逻辑；数据库中既有 Content/Version/Analysis/来源审计数据无需迁移或删除。固定真实 Probe fixture 与调试脚本不参与生产运行。
+本 Change 无 Schema/Migration/依赖升级。若需要回滚，在正常 Git/PR 流程回退实现 merge commit 即可恢复原有资格与展示逻辑；数据库中既有 Content/Version/Analysis/来源审计数据无需迁移或删除。固定真实 Probe fixture 与调试脚本不参与生产运行。
 
 # 文档同步
 
@@ -234,10 +239,16 @@ Review B：无未解决 Serious / Important 问题。
 1bc2f3b2ad34b7e5211d0816061d57e42925e91f
 ```
 
-实施分支：
+实现分支：
 
 ```text
 feature/provider-lookup-supplement-eligibility
 ```
 
-实现 PR：#151 `收口内容补采身份与相关性资格`。业务实现 HEAD 已完成两阶段 Review 与永久 CI；本证据提交后需以新的最终 HEAD 再跑永久 CI，全部成功后转 Ready 并正常合并。
+归档分支：
+
+```text
+chore/archive-provider-lookup-supplement-eligibility
+```
+
+本文件由独立归档 PR 从 `changes/active/` 移入 `changes/archive/2026-08/`；归档 PR 通过自身永久 CI 后合并。
