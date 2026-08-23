@@ -153,6 +153,22 @@ def test_conflicting_legacy_and_internal_secret_fails_closed(tmp_path: Path) -> 
     assert legacy.read_text(encoding="utf-8").strip() == "o" * 48
 
 
+def test_internal_secret_symlink_fails_closed_even_without_legacy_copy(tmp_path: Path) -> None:
+    paths = runtime_paths(tmp_path)
+    prepare_runtime_directories(paths)
+    outside = tmp_path / "outside-secret"
+    outside.write_text(f"{'x' * 48}\n", encoding="utf-8")
+    try:
+        paths.postgres_password_file.symlink_to(outside)
+    except OSError as exc:
+        pytest.skip(f"当前平台无法创建测试符号链接：{exc}")
+
+    with pytest.raises(LocalDevError, match="符号链接"):
+        _LOCAL_RUNTIME.migrate_legacy_internal_secrets(paths)
+
+    assert outside.read_text(encoding="utf-8").strip() == "x" * 48
+
+
 def test_frontend_dependency_fingerprint_detects_lock_change(tmp_path: Path) -> None:
     paths = runtime_paths(tmp_path)
     prepare_runtime_directories(paths)
