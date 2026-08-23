@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260823-skill-comments-observability
 title: 固化内部函数注释与关键日志开发规则
 level: L2
-status: in_progress
+status: ready_for_review
 owner: chatgpt
 branch: chore/skill-comments-observability
 created: 2026-08-23
@@ -38,7 +38,7 @@ data_changes: []
 - [x] 日志不得泄露 Secret、Token、密码、原始敏感 Payload/PII，不得用日志替代 PostgreSQL/业务事实，也不创建第二套 FileHandler/日志框架。
 - [x] `development-workflows.md` 给出可执行的注释与日志设计细则；`verification-review.md` 在完成前 Review 检查两类要求。
 - [x] AIMA Blueprint 05/06 与 Skill 新规则保持一致，不形成两套相互冲突的开发/日志规范。
-- [ ] 新增 Skill 自测试，防止核心规则、实施细则或 Review 门禁以后被误删；现有 Completion Gate 与全量 CI 不回归。
+- [x] 新增 Skill 自测试保护主规则、实施细则、Review 与 Blueprint 消费链；现有 Completion Gate、主 CI 与永久回归不回归。
 
 # 范围
 
@@ -71,10 +71,10 @@ data_changes: []
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 后续 Skill 写代码时，内部函数也应有适量、有维护价值的注释 | user:internal-function-comments | not_satisfied | Skill/开发细则/Review 已实现，等待新增 Skill 自测试与最终 CI 证据 |
-| R2 | 重要且有调试/排障价值的功能，在仓库已有日志能力时应主动增加必要日志 | user:important-feature-logging | not_satisfied | Skill/开发细则/Review 已实现，等待新增 Skill 自测试与最终 CI 证据 |
-| R3 | 新日志必须遵守现有日志级别、脱敏、安全和“不用日志替代业务事实”的边界 | docs/blueprint/05-日志安全部署与运维.md | not_satisfied | Blueprint 05 与 Skill 已同步，等待文档/Skill 自测试和 CI 证据 |
-| R4 | 开发治理规则应保持最小、精准，不机械制造注释、日志或新基础设施 | .agents/skills/reliable-vibe-coding/SKILL.md | not_satisfied | 新规则已明确简单 helper/无日志基础设施/无排障价值时不机械添加，等待最终验证 |
+| R1 | 后续 Skill 写代码时，内部函数也应有适量、有维护价值的注释 | user:internal-function-comments | satisfied | `SKILL.md` invariant 12 + plan/implementation bullets；`development-workflows.md#代码注释`；`verification-review.md` 代码质量复核；Skill guidance unittest 通过 |
+| R2 | 重要且有调试/排障价值的功能，在仓库已有日志能力时应主动增加必要日志 | user:important-feature-logging | satisfied | `SKILL.md` invariant 13 + implementation bullet；`development-workflows.md#可观测性与日志`；Review 可观测性检查；Blueprint 05/06 同步；Skill guidance unittest 通过 |
+| R3 | 新日志必须遵守现有日志级别、脱敏、安全和“不用日志替代业务事实”的边界 | docs/blueprint/05-日志安全部署与运维.md | satisfied | Skill/reference 明确 DEBUG/INFO/WARNING/ERROR、稳定 event/关联 ID、脱敏/Secret 禁止、日志不替代 DB/Health；Blueprint 05 与主 CI #2231 docs/secret gates 通过 |
+| R4 | 开发治理规则应保持最小、精准，不机械制造注释、日志或新基础设施 | .agents/skills/reliable-vibe-coding/SKILL.md | satisfied | 简单自解释 helper 可不注释；无既有日志体系或无独立排障价值时不新造日志框架；禁止 INFO 逐条刷屏/重复异常；PR diff 仅治理文件，无产品批量改写 |
 
 # Validation Matrix
 
@@ -83,16 +83,36 @@ data_changes: []
 | Browser Mock Acceptance | not_applicable | 本任务不改变用户界面或浏览器行为。 |
 | Backend/API/PostgreSQL Integration | not_applicable | 本任务不改变产品后端、数据库或运行时行为。 |
 | Contract / Generated Client | not_applicable | 不修改公共 Contract 或 generated client。 |
-| Real Full-stack Golden Path | not_applicable | 不改变产品跨组件接线；现有永久 CI 仅作为仓库回归。 |
+| Real Full-stack Golden Path | not_applicable | 不改变产品跨组件接线；Stage 8F #358 仅作为仓库级回归证据。 |
 | Real Provider Probe | not_applicable | 不涉及外部 Provider 当前事实或付费调用。 |
-| Docs / Governance / Other | required | Skill 主规则、两个 reference、Blueprint 05/06 与新增 unittest；Change Completion Gate + 主 CI/永久回归。 |
+| Docs / Governance / Other | required | Completion Gate #77 中新增 3 个 guidance tests + 11 个 Ready tests 共 14/14 通过；CI #2231、Stage 8F #358、Stage 6 #228、Local Dev #54、Stage 7 Keyword #1840 / Plan #1838 / Provider #1953 / Scheduler #2180 success。 |
 
 # Completion Audit
 
-- [ ] upstream_re_read：进入 Ready 前重新读取用户两条要求、AGENTS、Skill、开发/Review reference 与 Blueprint 05/06。
-- [ ] change_coverage：确认“主规则 → 实施细则 → Review → 自测试 → AIMA 文档”完整消费链覆盖两条上游要求。
-- [ ] reverse_audit：从后续开发执行反查能否读到规则，从完成 Review 反查能否发现缺失注释/日志或日志过度；无前后端反向审计边界。
-- [ ] unresolved_cleared：R1—R4 全部满足，无未解释延期或占位。
+- [x] upstream_re_read：Ready 前重新读取用户两条要求、AGENTS、当前 Skill、development/verification references 与 Blueprint 05/06，并独立重建完成定义。
+- [x] change_coverage：确认“Skill 主规则 → 计划/实施细则 → Review → 自测试 → AIMA Blueprint”完整消费链覆盖两条上游要求，不依赖当前 Change 自证。
+- [x] reverse_audit：从未来开发计划/实施入口反查可以读到内部注释与日志规则；从完成 Review 反查可以发现缺注释、缺关键观测、INFO 刷屏、重复异常和敏感日志；本任务无前后端反向审计边界。
+- [x] unresolved_cleared：R1—R4 全部 satisfied；各测试层不适用依据明确；无 `not_satisfied` 或未解释延期。
+
+# 两阶段 Review
+
+## Review A1：上游要求 → 当前 Change
+
+- 用户要求内部函数“也可以有些注释”，不是强制每个 helper 都写注释；当前规则按非显然语义/不变量/状态/副作用判断，保留简单 helper 例外。
+- 用户要求重要功能在已有日志能力时增加有助调试与排障的消息；当前规则覆盖生命周期、异步、外部 I/O、Retry/部分失败/终态，并要求按排障价值选择。
+- Blueprint 05 的既有安全/级别/持久事实边界必须继续成立，因此新规则没有降低脱敏，也没有把日志当业务事实。
+
+结论：未发现上游要求遗漏或被机械扩大。
+
+## Review A2：当前 Change → 实现 / 测试 / 文档
+
+- Skill 主文直接暴露两条不变量，并在计划和实施阶段再次消费。
+- Development reference 提供可执行判断与反模式；Verification reference 在交付前复核。
+- Blueprint 05/06 将 AIMA 当前日志事实和开发约束与 Skill 对齐。
+- 新 guidance unittest 防止核心规则/消费链被静默删除；现有 11 个 Ready tests 同时保持通过。
+- 最终 diff 不含临时迁移脚本或临时 Workflow，也没有产品代码、Contract、Schema、Migration、依赖变化。
+
+结论：未发现 Change 要求缺实现、缺测试或缺文档；未发现无关产品改动。
 
 # 任务
 
@@ -102,29 +122,28 @@ data_changes: []
 - [x] 扩展 `verification-review.md`，在代码质量 Review 检查注释与可观测性。
 - [x] 同步 Blueprint 05/06。
 - [x] 增加 Skill guidance unittest，保护规则消费链。
-- [ ] 完成 Completion Audit、Review、Ready Check 和全部永久 CI。
+- [x] 完成 Completion Audit 与两阶段语义 Review。
+- [ ] Final Ready HEAD Completion Gate 与永久 CI 全绿后转 Ready 并合并。
 
 # 验证
 
-## 计划
+## 实现验证 HEAD `209552ac4273485e7837476e6d0fbf938c6744d9`
 
-- 目标测试：`python -m unittest discover .agents/skills/reliable-vibe-coding/tests -v`
-- 文档/架构：主 CI `check_docs.py` 与现有仓库质量门禁。
-- Ready Check：`python .agents/skills/reliable-vibe-coding/scripts/ready_check.py --root . --require-active-ready`
-- 相关回归：Change Completion Gate、主 CI 以及本 PR 自动触发的永久 Stage Workflow。
-
-## 新鲜证据
-
-- 正式 diff 已收敛为 Skill 主文、两个 reference、新增 Skill unittest、Blueprint 05/06 与本 Change；一次性迁移脚本和临时 Workflow 修改均不在 PR 最终 diff。
-- 第一次迁移 run 的旧 Ready Check 因 `status: in_progress` 按设计失败；bot 推送后的自动 Workflow 为 `action_required`，因此本提交用于从普通 feature HEAD 重新取得新鲜 CI。
+- Change Completion Gate #77：RVC unittest 阶段 success，新增 3 个 guidance tests + 11 个 Ready tests，`Ran 14 tests` / `OK`；随后因 Change 当时仍为 `in_progress` 按设计在 Ready Check 阶段失败。
+- CI #2231：success；Stage 1/2/3A/Windows 全部通过，包含 Ruff、mypy、unit/contract/API、architecture/table ownership/secret scan/docs、Wheel、Frontend lint/typecheck/unit/build/Playwright。
+- Stage 8F #358：success。
+- Stage 6 #228：success。
+- Local Dev Bootstrap #54：success。
+- Stage 7 Keyword #1840、Plan #1838、Provider Config #1953、Scheduler #2180：全部 success。
+- `main...chore/skill-comments-observability`：behind_by=0；正式 diff 仅 Skill/reference/test/Blueprint/Change 7 个文件。
 
 # 文档影响
 
-- `docs/blueprint/05-日志安全部署与运维.md`
-- `docs/blueprint/06-开发约束与分阶段实施.md`
+- `docs/blueprint/05-日志安全部署与运维.md`：增加功能开发时选择日志观测点、噪声控制和安全边界。
+- `docs/blueprint/06-开发约束与分阶段实施.md`：把内部注释与关键日志纳入实现质量和完成前 Review。
 
 # 交付
 
 - Branch：`chore/skill-comments-observability`
-- PR：#162 `固化内部函数注释与关键日志开发规则`（Draft）
-- 发布：治理/文档变更；不涉及产品部署。
+- PR：#162 `固化内部函数注释与关键日志开发规则`（Draft；Change 已 ready_for_review）
+- 发布：治理/文档变更；不涉及产品部署、Contract、Schema、Migration 或依赖。
