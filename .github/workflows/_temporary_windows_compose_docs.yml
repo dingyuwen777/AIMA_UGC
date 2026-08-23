@@ -1,0 +1,199 @@
+name: Temporary Windows Compose docs patch
+
+on:
+  push:
+    branches:
+      - feature/unify-windows-compose-cli
+
+permissions:
+  contents: write
+
+jobs:
+  patch-docs:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/unify-windows-compose-cli
+
+      - name: Patch current-fact documents
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          def sub_once(text: str, pattern: str, replacement: str, label: str) -> str:
+              updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one replacement, got {count}")
+              return updated
+
+          # docs/02：只替换 Windows 完整 Compose 当前入口、FAQ 和一句话摘要。
+          path = Path("docs/02_环境运行与部署.md")
+          text = path.read_text(encoding="utf-8")
+          windows_section = '''## 15.2 Windows Docker Desktop：CMD / PowerShell 标准 Compose CLI
+
+Windows 原生模式不要求进入 WSL 终端，也不要求把 PostgreSQL/Secret bind mount 到 NTFS。它保留相同业务 Runtime，但把四类持久状态放到 Docker Desktop 管理的 Linux named volumes。
+
+第一次从仓库根创建本机配置：
+
+```cmd
+copy env.production.example env.production
+```
+
+或 PowerShell：
+
+```powershell
+Copy-Item env.production.example env.production
+```
+
+编辑 `env.production` 后，CMD 与 PowerShell 使用完全相同的正式启动命令：
+
+```powershell
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production up -d --build --wait
+```
+
+查看服务与日志：
+
+```powershell
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production ps
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production logs -f api
+```
+
+日常停止并删除容器/网络，但保留 named volumes：
+
+```powershell
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production down
+```
+
+只有显式执行下面命令才会破坏性删除 Windows 本地 PostgreSQL、Artifact、日志、内部 Secret 和 AIMA service images：
+
+```powershell
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production down -v --remove-orphans --rmi all
+```
+
+Windows 原生持久状态由 Docker Desktop named volumes 管理：
+
+```text
+windows_runtime_data
+windows_runtime_logs
+windows_postgres
+windows_internal_secrets
+```
+
+实际 volume 名会带 Compose project 前缀。可用 `docker volume ls` 查看。
+
+在这个 Windows override 中，`AIMA_HOST_ROOT` 仍保留在同一个 `env.production` Schema 中，但**不决定 Windows 的持久数据物理位置**；所有对应 bind target 已由 `compose.windows.yaml` 按 target 替换成 named volume。
+
+详细说明见 [`guides/03_Windows Docker Desktop Compose运行.md`](guides/03_Windows%20Docker%20Desktop%20Compose运行.md)。
+
+永久 CI 的证据边界是：Windows Runner 直接验证标准 Compose CLI 在 CMD/PowerShell 下可解析同一 `compose.yaml + compose.windows.yaml + env.production`；Ubuntu Docker Engine 真实运行 merged named-volume Runtime 并验证严格 Secret mode、PostgreSQL/Migration/Readiness 和重启持久化。GitHub Hosted Windows Runner 本身不提供可依赖的 Docker Desktop Linux-container Runtime，因此首次在具体开发机使用时仍应执行一次本机 smoke。
+'''
+          text = sub_once(
+              text,
+              r"## 15\.2 Windows Docker Desktop：CMD / PowerShell 直接启动\n.*?\n## 15\.3",
+              windows_section + "\n## 15.3",
+              "docs02 windows section",
+          )
+          faq = '''## Windows 可以直接从 CMD / PowerShell 启动吗
+
+可以。Docker Desktop 已启动后，从仓库根执行：
+
+```powershell
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production up -d --build --wait
+```
+
+首次没有 `env.production` 时先从 `env.production.example` 复制一次并编辑。`compose.windows.yaml` 只负责 Windows named-volume 存储适配，不需要额外 wrapper。
+'''
+          text = sub_once(
+              text,
+              r"## Windows 可以直接从 CMD / PowerShell 启动吗\n.*?\n## Windows 的 PostgreSQL 文件为什么不在 `\.runtime/compose`",
+              faq + "\n## Windows 的 PostgreSQL 文件为什么不在 `.runtime/compose`",
+              "docs02 faq",
+          )
+          text = text.replace(
+              "Windows Docker Desktop 可用 wrapper 执行 `logs` 或通过 Docker Desktop 查看 named-volume Runtime 的容器日志。",
+              "Windows Docker Desktop 可直接执行 `docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production logs -f`，或通过 Docker Desktop 查看 named-volume Runtime 的容器日志。",
+          )
+          old_summary = '''Windows Docker Desktop 原生：
+同一个 env.production
+scripts\\dev\\compose_windows.cmd
+或 .\\scripts\\dev\\compose_windows.ps1
+持久数据 → Docker named volumes
+普通 down 保留数据；down -v 破坏性删除'''
+          new_summary = '''Windows Docker Desktop 原生：
+同一个 env.production
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production up -d --build --wait
+持久数据 → Docker named volumes
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production down → 保留数据
+down -v → 破坏性删除'''
+          if old_summary not in text:
+              raise SystemExit("docs02 summary block not found")
+          text = text.replace(old_summary, new_summary, 1)
+          path.write_text(text, encoding="utf-8")
+
+          # Blueprint 05：wrapper 不是长期运行层，直接描述标准 CLI。
+          path = Path("docs/blueprint/05_日志安全部署与运维.md")
+          text = path.read_text(encoding="utf-8")
+          old = "Windows CMD/PowerShell wrapper 只是把 `compose.yaml + compose.windows.yaml + env.production` 组合起来，不是第二套 Runtime 实现。"
+          new = "Windows CMD / PowerShell 直接执行标准 Docker Compose CLI，显式组合 `compose.yaml + compose.windows.yaml + env.production`；不再维护额外 wrapper，也不形成第二套 Runtime 实现。"
+          if old not in text:
+              raise SystemExit("blueprint05 wrapper sentence not found")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          # Roadmap：删除已不存在脚本的机器事实，并把 Windows 当前入口/验证改成标准 CLI。
+          path = Path("docs/roadmap/02_生产上线实施路线.md")
+          text = path.read_text(encoding="utf-8")
+          text = text.replace("scripts/dev/compose_windows.cmd\nscripts/dev/compose_windows.ps1\n", "")
+          old_windows = '''CMD：
+
+```cmd
+scripts\\dev\\compose_windows.cmd
+```
+
+PowerShell：
+
+```powershell
+.\\scripts\\dev\\compose_windows.ps1
+```'''
+          new_windows = '''CMD / PowerShell 统一入口：
+
+```powershell
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production up -d --build --wait
+```
+
+日常停止并保留 named volumes：
+
+```powershell
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production down
+```'''
+          if old_windows not in text:
+              raise SystemExit("roadmap windows command block not found")
+          text = text.replace(old_windows, new_windows, 1)
+          text = text.replace(
+              "Windows Runner\n→ 真实 CMD / PowerShell wrapper 调用与参数",
+              "Windows Runner\n→ 真实 CMD / PowerShell 标准 Compose CLI config",
+              1,
+          )
+          text = text.replace(
+              "Windows compatibility 分层验证 wrapper 与 named-volume Runtime，不降低 Production 权限门禁。",
+              "Windows compatibility 分层验证标准 Compose CLI 与 named-volume Runtime，不降低 Production 权限门禁。",
+              1,
+          )
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Commit patched documents and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/_temporary_windows_compose_docs.yml
+          git add docs/02_环境运行与部署.md docs/blueprint/05_日志安全部署与运维.md docs/roadmap/02_生产上线实施路线.md
+          git commit -m "同步 Windows Compose 标准命令文档"
+          git push origin HEAD:feature/unify-windows-compose-cli
