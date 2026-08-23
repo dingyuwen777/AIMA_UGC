@@ -14,15 +14,16 @@
 
 当前结论先写在前面：
 
-> **当前仓库已经通过 Internal V1-A 实现根 `Dockerfile`、根 `compose.yaml`、`env.production.example`、宿主 bootstrap 与 Nginx Runtime，并把完整容器 Runtime 收敛为“一个敏感 `env.production` + 一个 `AIMA_HOST_ROOT` + 一条 Docker Compose 启动命令”。本地完整 Docker 与公司服务器复用同一配置 Schema；本地可把 Host Root 设为 `./.runtime/compose`，服务器固定为 `/data/AIMA_UGC`。内部 PostgreSQL/Cursor Secret 仍由系统自动生成并持久保存，TikHub/LLM Key 由 `env.production` 进入 Compose Secret File，不作为业务容器环境变量。永久 Compose Golden Path 验证空库 Migration、正式进程、Secret 生命周期、Readiness、绝对/相对 Host Root、持久挂载与端口边界。它仍不是完整 Stage 11 Production Release：离线 `images.tar`、Manifest、固定 digest、SBOM/签名、协调 Backup/Restore、企业认证/授权与真实生产服务器验收仍待后续正式 Change 完成。**
+> **当前仓库已经通过 Internal V1-A 实现根 `Dockerfile`、canonical `compose.yaml`、`env.production.example`、宿主 bootstrap 与 Nginx Runtime。Linux/WSL 与公司服务器使用单一 `AIMA_HOST_ROOT` bind-mount 模型；Windows Docker Desktop 原生 CMD/PowerShell 仅叠加 `compose.windows.yaml` 把持久 storage source 替换为 Docker-managed named volumes，不形成第二套业务 Runtime，也不降低 Linux/Production 权限门禁。内部 PostgreSQL/Cursor Secret 仍由系统自动生成并持久保存，TikHub/LLM Key 由 `env.production` 进入 Compose Secret File，不作为业务容器环境变量。它仍不是完整 Stage 11 Production Release：离线 `images.tar`、Manifest、固定 digest、SBOM/签名、协调 Backup/Restore、企业认证/授权与真实生产服务器验收仍待后续正式 Change 完成。**
 
 生产上线总路线见：
 
 [`../roadmap/生产上线实施路线.md`](../roadmap/生产上线实施路线.md)
 
-当前开发与 Internal V1-A 操作见：
+当前运行操作见：
 
-[`../环境运行与部署.md`](../环境运行与部署.md)
+- [`../环境运行与部署.md`](../环境运行与部署.md)
+- [`../guides/Windows Docker Desktop Compose运行.md`](../guides/Windows%20Docker%20Desktop%20Compose运行.md)
 
 ---
 
@@ -47,7 +48,7 @@ backend/src/aima_ugc/bootstrap/
 
 Internal V1-A 已把这些能力装进同一个非 root Backend image；不同服务只使用不同正式 command。前端 Vue SPA 通过 Frontend build stage 构建静态资源，并由非 root Nginx Runtime 提供，同时同源代理 `/api` 与 `/health`。
 
-当前部署还增加一个一次性 `bootstrap` 服务。它不是业务进程，也不常驻：只在 Compose 启动阶段以 root 准备宿主持久目录、生成/校验内部 Secret，成功后退出 0；PostgreSQL 只在 bootstrap 成功后启动。
+当前部署还增加一个一次性 `bootstrap` 服务。它不是业务进程，也不常驻：只在 Compose 启动阶段以 root 准备持久目录/volume、生成或校验内部 Secret，成功后退出 0；PostgreSQL 只在 bootstrap 成功后启动。
 
 当前业务持久依赖：
 
@@ -64,7 +65,7 @@ Local ArtifactStore（当前默认）
 
 # 2. 生产服务拓扑
 
-Internal V1-A 当前实际 Compose 拓扑：
+canonical Compose 拓扑：
 
 ```text
 bootstrap（一次性初始化）
@@ -144,7 +145,7 @@ alembic upgrade head
 AIMA_HOST_ROOT=/data/AIMA_UGC
 ```
 
-Compose 从该根固定推导当前运行所需目录：
+canonical Compose 从该根固定推导：
 
 ```text
 /data/AIMA_UGC/runtime/data
@@ -162,8 +163,6 @@ Compose 从该根固定推导当前运行所需目录：
 /data/AIMA_UGC/shared/env
 ```
 
-其中 `/data/AIMA_UGC/backups`、`releases`、`shared/env` 不由当前 Compose 自动创建/管理完整生命周期；完整协调 Backup Set、不可变 Release 内容及共享配置策略由后续 Stage 实现。
-
 | 目录 | 用途 | 为什么单独放 |
 | --- | --- | --- |
 | `/data/docker` | Docker 自身镜像/层/容器元数据 | Docker 清理与业务数据隔离 |
@@ -177,19 +176,32 @@ Compose 从该根固定推导当前运行所需目录：
 
 不要把 PostgreSQL、Artifact、日志全部塞进 `/data/docker`，也不要把 `AIMA_HOST_ROOT` 指向 `/data/AIMA_UGC/releases/<version>`。
 
-本地完整 Docker Compose 可以复用完全相同的子目录结构，只把一次性机器配置改为：
+Linux / WSL 开发机可以把 Host Root 设为：
 
 ```dotenv
 AIMA_HOST_ROOT=./.runtime/compose
 ```
 
-这只是开发机的容器 Runtime 根，不改变生产服务器目录设计。
+这只是开发机的 canonical bind-mount Runtime 根，不改变生产服务器目录设计。
+
+## 3.1 Windows Docker Desktop 不是 Production Host Root 模型
+
+Windows 原生 CMD / PowerShell 为了避免 NTFS/Windows 文件共享层承担 PostgreSQL 与内部 Secret 的 Linux UID/GID/mode 语义，叠加 `compose.windows.yaml`，将四类持久 source 替换成 Docker-managed named volumes：
+
+```text
+windows_runtime_data
+windows_runtime_logs
+windows_postgres
+windows_internal_secrets
+```
+
+这里没有把 `AIMA_HOST_ROOT` 改成另一个 Windows 路径，也没有新增 Production 目录规范。Windows named volumes 是**本地开发存储适配**，不能当作公司服务器 Backup/Restore、Release 或生产宿主目录方案。
 
 ---
 
 # 4. 容器内目标路径
 
-Internal V1-A 当前实际路径：
+无论 Linux bind 还是 Windows named-volume override，容器内目标路径保持一致：
 
 ```text
 /app/data
@@ -199,13 +211,13 @@ Internal V1-A 当前实际路径：
 /var/lib/postgresql
 ```
 
-当前锁定 PostgreSQL 为 `18.4`。PostgreSQL 18 官方镜像使用 `/var/lib/postgresql` 作为持久卷挂载点，默认数据库目录位于其下 `18/docker`；因此当前 Compose 把 `${AIMA_HOST_ROOT}/postgres` bind mount 到 `/var/lib/postgresql`。
+当前锁定 PostgreSQL 为 `18.4`。PostgreSQL 18 官方镜像使用 `/var/lib/postgresql` 作为持久卷挂载点，默认数据库目录位于其下 `18/docker`；canonical Linux Compose 把 `${AIMA_HOST_ROOT}/postgres` bind mount 到 `/var/lib/postgresql`，Windows override 则把 `windows_postgres` named volume 挂到同一 target。
 
 后续真正完成 Stage 11 时仍必须重新验证当时锁定镜像的实际约定，不能把今天的路径无条件套到未来升级版本。
 
-宿主 `bootstrap`/`scripts/deploy/prepare_host.py` 会：
+`bootstrap`/`scripts/deploy/prepare_host.py` 会：
 
-- 建立/校验运行所需宿主目录；
+- 建立/校验运行所需目录；
 - 固定 App/PostgreSQL/Secret group UID/GID；
 - 不用 `chmod 777`；
 - 首次生成内部随机 Secret；
@@ -213,13 +225,11 @@ Internal V1-A 当前实际路径：
 - 已有 PostgreSQL 18 数据但密码 Secret 丢失时 fail closed；
 - App 与 Frontend 继续使用非 root 用户运行。
 
-Linux/WSL 风格文件系统是当前严格 UID/GID/mode 语义的证明边界。Windows Docker Desktop 原生 Windows 文件系统 bind mount 不应成为放宽生产权限检查的理由。
+Windows 支持**没有新增弱权限模式**。named volume 由 Linux Docker Runtime 管理，因此 bootstrap 仍执行同一严格 owner/mode 逻辑。
 
 ---
 
 # 5. Secret 装配
-
-当前应用的 Secret File 边界保留，但为了把管理员操作收敛成一个 `env.production`，内部与外部 Secret 明确分层。
 
 ## 5.1 内部随机 Secret
 
@@ -230,7 +240,7 @@ content_cursor_signing_key
 collection_runtime_cursor_signing_key
 ```
 
-流程：
+Linux / 公司服务器：
 
 ```text
 首次空环境
@@ -240,9 +250,19 @@ collection_runtime_cursor_signing_key
 → Backend 只读挂载 /run/internal-secrets
 ```
 
-PostgreSQL 容器也只读挂载同一宿主内部 Secret 目录，并使用 `POSTGRES_PASSWORD_FILE` 读取 `postgres_password`。
+Windows Docker Desktop：
 
-关键恢复不变量：
+```text
+首次空环境
+→ bootstrap 随机生成
+→ windows_internal_secrets named volume
+→ root:11001 / 0440
+→ Backend 只读挂载 /run/internal-secrets
+```
+
+PostgreSQL 容器读取同一份 `postgres_password`。
+
+关键恢复不变量在两种 storage source 中完全一致：
 
 ```text
 空数据库 + password 不存在
@@ -257,11 +277,11 @@ PostgreSQL 容器也只读挂载同一宿主内部 Secret 目录，并使用 `PO
 → 禁止生成新值
 ```
 
-原因是 PostgreSQL 初始化密码不会因为容器重启时出现一个新 password file 就自动改写既有数据库账户密码；随意新建只会造成数据库和应用凭据漂移。
+Windows `down -v` 会同时删除本地 PostgreSQL volume 和内部 Secret volume，因此属于显式破坏性本地重置；这不等同于 Production 恢复流程。
 
 ## 5.2 外部 TikHub / LLM Secret
 
-管理员维护的真实 `env.production` 可以包含：
+管理员/开发者维护的真实 `env.production` 可以包含：
 
 ```text
 AIMA_TIKHUB_API_KEY
@@ -281,24 +301,9 @@ env.production
 → 现有 Secret resolver
 ```
 
-业务容器的普通 `Config.Env` 不包含 API Key 原值。Provider Config 继续只保存：
+业务容器普通 `Config.Env` 不包含 API Key 原值。Provider Config 继续只保存 `secret_ref`。
 
-```text
-secret_ref
-```
-
-不得保存真实 Secret 值。
-
-源码开发 launcher 使用已经分离的双根：
-
-```text
-AIMA_SECRET_DIR=.runtime/internal-secrets
-AIMA_EXTERNAL_SECRET_DIR=.runtime/secrets
-```
-
-`PlatformSettings.external_secret_root` 在调用方未显式配置外部根时仍可回退到 `AIMA_SECRET_DIR`，但正常源码 launcher 与 Compose 都显式分离内部/外部根，不依赖 fallback 作为正式运行方式。
-
-Secret resolver 必须继续防止 root escape、symlink、非普通文件、超限和错误信息回显 Secret。
+Windows storage override 不修改外部 Secret 的 Compose 语义。
 
 ---
 
@@ -325,7 +330,7 @@ Internal V1-A 已建立根 `Dockerfile`，并固定：
 - 只有一次性 bootstrap 显式覆盖为 root，完成后退出；
 - 镜像构建时不写入 Secret。
 
-`.dockerignore` 只放行 `scripts/deploy/prepare_host.py` 进入 Backend build context，不把整个开发脚本目录塞入运行镜像；`.runtime` 与真实 env 文件同样不进入 build context。
+`.dockerignore` 不把源码开发脚本、`.runtime` 或真实 env 文件塞入运行镜像；Windows launcher/override 是宿主启动辅助，不改变镜像内容。
 
 ## Frontend Runtime
 
@@ -338,38 +343,23 @@ Node build stage
 
 生产 Nginx 不包含 `node_modules`，并以非 root 用户运行。
 
-V1-A 保持仓库现有锁定版本，不因为部署体验收敛而升级 Python/Node/PostgreSQL/uv。完整 Stage 11 仍必须把最终实际 image digest 写入 Release Manifest，并建立来源/完整性验证；禁止把 `latest` 当不可追溯生产事实。
+V1-A 保持仓库现有锁定版本。完整 Stage 11 仍必须把最终实际 image digest 写入 Release Manifest，并建立来源/完整性验证；禁止把 `latest` 当不可追溯生产事实。
 
 ---
 
 # 7. Compose 当前实现与 Stage 11 目标
 
-Internal V1-A 当前只维护一个根 `compose.yaml`，避免在尚无完整 Release Manifest/离线镜像语义时制造两套易漂移配置。
+## 7.1 canonical Compose
 
-运行入口按使用方式分工：
+业务 Runtime 唯一基线是根：
 
 ```text
-源码热更新
-→ env.local + scripts/dev/backend.py / frontend.py
-
-完整容器 Runtime
-→ env.production + compose.yaml
-→ 本地 Docker、公司服务器、后续 Production Runtime 共用同一字段结构
+compose.yaml
 ```
 
-Compose 唯一宿主持久配置：
+它定义服务 command、environment、depends_on、Health、network、端口、外部 Secret 和 Linux/Production 持久 target。
 
-```dotenv
-AIMA_HOST_ROOT=/data/AIMA_UGC
-```
-
-本地完整容器只需在本机 `env.production` 中一次性改为：
-
-```dotenv
-AIMA_HOST_ROOT=./.runtime/compose
-```
-
-管理员/Internal V1 标准入口：
+Linux/WSL/Internal V1 管理员入口：
 
 ```bash
 cp env.production.example env.production
@@ -378,39 +368,60 @@ chmod 0600 env.production
 docker compose --env-file env.production up -d --build --wait
 ```
 
-同一命令同时适用于首次空环境和后续幂等启动。Compose 内部依赖链：
+## 7.2 Windows storage-only override
+
+Windows Docker Desktop 原生 CMD / PowerShell 使用：
 
 ```text
-bootstrap completed successfully
-→ postgres healthy
-→ migrate completed successfully
-→ configure completed successfully
-→ api / worker / scheduler
-→ frontend healthy
+compose.yaml
++ compose.windows.yaml
++ 同一个 env.production
 ```
 
-当前 Compose 还保证：
+`compose.windows.yaml` 只替换以下 target 的 source：
 
-- `frontend` 是唯一发布宿主端口的业务入口；
-- 默认只绑定 `127.0.0.1:8080`；
-- PostgreSQL/API 没有宿主 published port；
-- `api/worker/scheduler/migrate/configure/bootstrap` 复用同一个 Backend image；
-- PostgreSQL、Artifact、日志、内部 Secret 从单一 `AIMA_HOST_ROOT` 推导固定宿主目录；
-- PostgreSQL 与 API 有真实 health/readiness；
-- 外部 TikHub/LLM Secret 通过 Compose Secret File 装配；
-- 内部随机 Secret 与业务数据在二次启动/容器重建时保持；
-- `bootstrap`、`migrate`、`configure` 都是 one-shot，不保留高权限初始化容器常驻；
-- Linux 永久 Golden Path 同时验证生产式绝对 Host Root 和仓库相对 Host Root。
+```text
+/app/data
+/app/logs
+/run/internal-secrets
+/var/lib/postgresql
+/run/secrets（PostgreSQL 内部密码目录）
+/host/runtime/data
+/host/runtime/logs
+/host/postgres
+/host/shared/secrets
+```
 
-完整 Stage 11 若需要独立生产覆盖，可在正式 Release Change 中增加有独立语义的 `compose.production.yaml`，但不能只是复制根 Compose。
+对应 source 全部是 Docker named volume。禁止在 Windows override 中复制或单独演进业务 command/环境/Health/网络；否则会形成第二套 Runtime 漂移。
 
-完整 Stage 11 仍必须实现：服务器不现场 build、固定镜像/digest/Manifest、离线 load、正式 HTTPS/认证授权、完整 offline/no-pull smoke 等。Host Root 的统一只消除配置重复，不改变不可变 Production Release 原则。
+Windows wrapper：
+
+```cmd
+scripts\dev\compose_windows.cmd
+```
+
+```powershell
+.\scripts\dev\compose_windows.ps1
+```
+
+它们只是隐藏 Compose 文件组合参数。
+
+## 7.3 永久验证边界
+
+- Internal V1-A workflow：真实 Linux bind-mount absolute/repo-relative Golden Path；
+- Windows Runner：真实 CMD/PowerShell wrapper 参数和透传；
+- Docker Engine：真实 `compose.yaml + compose.windows.yaml` named-volume startup、严格 Secret mode、PostgreSQL/Migration/Readiness 和 `down` 后重启持久化；
+- Hosted Windows Runner 本身不作为真实 Docker Desktop Linux-container Runtime，因此首次个人 Windows 开发机仍要本机 smoke。
+
+完整 Stage 11 若需要独立生产覆盖，可在正式 Release Change 中增加有独立语义的 `compose.production.yaml`，但不能只是复制根 Compose，也不能从 `compose.windows.yaml` 演化 Production 逻辑。
+
+完整 Stage 11 仍必须实现：服务器不现场 build、固定镜像/digest/Manifest、离线 load、正式 HTTPS/认证授权、完整 offline/no-pull smoke 等。
 
 ---
 
 # 8. 网络和浏览器安全边界
 
-生产长期目标继续保留 HTTPS、明确 Host、同源、严格 CORS、HSTS、CSP、出站 Origin Allowlist 等要求。Internal V1-A 只完成最小公司内网部署所需的端口边界与同源 Nginx 代理，不把完整 Production Browser Security 目标伪装为已实现。
+生产长期目标继续保留 HTTPS、明确 Host、同源、严格 CORS、HSTS、CSP、出站 Origin Allowlist 等要求。Internal V1-A 只完成最小公司内网部署所需的端口边界与同源 Nginx 代理；Windows 本地运行不改变 Production Browser Security 目标。
 
 ---
 
@@ -434,7 +445,7 @@ Provider-specific 用户 ID/Token 不应成为普通业务模块公共身份 Con
 
 # 10. Release Bundle 结构
 
-原方案继续保留：
+长期目标结构示例：
 
 ```text
 AIMA_UGC-v1.0.0-deploy.tar.gz
@@ -450,11 +461,13 @@ AIMA_UGC-v1.0.0-deploy.tar.gz
 └─ DEPLOY.md
 ```
 
-正式版本号规则在 Release Change 中确定；上面的 `v1.0.0` 只是结构示例。
+`v1.0.0` 只是结构示例；正式版本号在 Release Change 中确定。
 
 `release-manifest.json` 至少记录 Release 版本、Git SHA、构建时间、target platform、image digest、Alembic head、Contract/OpenAPI hash、最低 Docker/Compose 版本、Migration 兼容/rollback 边界、SBOM/签名信息。
 
-Release Bundle 可以携带 Runtime Compose/模板，但**不得携带当前生产 PostgreSQL、Artifact、日志或内部 Secret 内容**。它们继续位于服务器固定 `AIMA_HOST_ROOT=/data/AIMA_UGC` 下。
+Production Bundle **不得携带当前生产 PostgreSQL、Artifact、日志或内部 Secret 内容**；它们继续位于固定 `AIMA_HOST_ROOT=/data/AIMA_UGC`。
+
+`compose.windows.yaml` 属于本地开发辅助；是否随 Release Bundle 附带由 Stage 11B 的实际交付需求决定，但即使附带也不能成为服务器部署文件或生产持久化事实源。
 
 ---
 
@@ -473,18 +486,20 @@ Release Bundle 可以携带 Runtime Compose/模板，但**不得携带当前生�
 → verify
 → docker load
 → migrate
-→ compose up --no-build --pull never
+→ canonical/production Compose up --no-build --pull never
 ```
 
 禁止 `git pull`、现场 `npm install` / `pip install`、浏览器在线下载、现场 build 与 CI 不同镜像、临时编辑容器内部文件。
 
-目标 Runtime 仍使用服务器自身受保护的 `env.production` 和：
+目标 Runtime 使用服务器自身受保护的：
 
 ```dotenv
 AIMA_HOST_ROOT=/data/AIMA_UGC
 ```
 
-因此应用 Release 与持久数据解耦。Internal V1-A/B 当前的仓库级内网验收入口仍允许 `--build`，用于建立/验证最小部署基础；它不改变正式不可变 Release 原则。
+**生产服务器不使用 `compose.windows.yaml`。** Windows storage adapter 与服务器 Release/Backup/Restore 生命周期没有关系。
+
+Internal V1-A/B 当前仓库级内网验收仍允许 `--build`，用于建立/验证最小部署基础；它不改变正式不可变 Release 原则。
 
 ---
 
@@ -522,6 +537,8 @@ Backup Set = PostgreSQL + ArtifactStore
 
 并且需要证明两者对应同一个业务截止点。
 
+Windows named volumes 只是开发机持久状态，不是 Production Backup Set。
+
 ---
 
 # 15. 协调 Backup/Restore 目标机制
@@ -534,7 +551,7 @@ Backup Set = PostgreSQL + ArtifactStore
 
 # 16. 发布顺序
 
-完整 Production 目标顺序仍是：确认目标 SHA/CI → 获取并验证 Release → 检查 Manifest/Migration/磁盘/Secret → 维护态/停止新写 → 协调 Backup Set → docker load → migrate → compose start → health/smoke → 恢复 Scheduler/Worker → 观察日志/磁盘/失败 Job。
+完整 Production 目标顺序仍是：确认目标 SHA/CI → 获取并验证 Release → 检查 Manifest/Migration/磁盘/Secret → 维护态/停止新写 → 协调 Backup Set → docker load → migrate → canonical/production compose start → health/smoke → 恢复 Scheduler/Worker → 观察日志/磁盘/失败 Job。
 
 任何 Backup/Migration 校验失败必须停止继续发布，不能“先把新服务起来再说”。
 
@@ -545,6 +562,8 @@ Backup Set = PostgreSQL + ArtifactStore
 正式 Release 至少验证 `/health/live`、`/health/ready`、Frontend、数据库、Artifact、日志，以及 Excel Import → Content → Analysis → Excel Export，并在受控范围执行一次 Collection Run。真实付费 Provider/LLM smoke 必须限制请求和费用。
 
 最终 Stage 11 验收还要做进程/容器重启与宿主机 reboot，并确认升级/回滚前后 `${AIMA_HOST_ROOT}` 中的持久状态保持。
+
+Windows 本地 smoke 只能证明开发机兼容，不能代替这里的 Linux 生产验收。
 
 ---
 
@@ -564,11 +583,13 @@ Schema 与旧应用不兼容时不能机械 `alembic downgrade`，应恢复发�
 
 # 20. Stage 11 应拆成哪些最小开发单元
 
-Internal V1-A 已把 Docker/Compose 的最小运行基础提前实现并验证。Stage 11 不应重复造 Dockerfile/Compose，而应直接复用并加强这套基础。
+Internal V1-A 已把 Docker/Compose 的最小运行基础提前实现并验证。Stage 11 不应重复造 Dockerfile/业务 Compose，而应直接复用并加强 canonical Linux 基础。
 
 ## Stage 11A：Production Docker/Compose Hardening
 
-基于 V1-A 增量完成不可变 image/digest、必要且有独立语义的 `compose.production.yaml`、生产 HTTPS/认证入口、资源/安全覆盖、CI linux/amd64 Release build 和 no-build/no-pull smoke。现有单一 `AIMA_HOST_ROOT` 模型继续复用，不重新拆回四个 Host Path。
+基于 V1-A 增量完成不可变 image/digest、必要且有独立语义的 `compose.production.yaml`、生产 HTTPS/认证入口、资源/安全覆盖、CI linux/amd64 Release build 和 no-build/no-pull smoke。现有单一 `AIMA_HOST_ROOT` Linux 模型继续复用。
+
+Windows `compose.windows.yaml` 不进入 Stage 11A Production 逻辑。
 
 ## Stage 11B：离线 Release 构建
 
@@ -609,9 +630,9 @@ logs
 ## Stage 11E：真实生产服务器验收
 
 ```text
-全新服务器初始化
+全新 Linux 服务器初始化
 离线部署
-重启/重启机
+容器重启 / 宿主机 reboot
 受控业务 smoke
 Backup restore
 Rollback
@@ -642,20 +663,31 @@ migrations/
 当前 CI workflows
 ```
 
+Windows 本地兼容相关时额外读：
+
+```text
+compose.windows.yaml
+scripts/dev/compose_windows.cmd
+scripts/dev/compose_windows.ps1
+docs/guides/Windows Docker Desktop Compose运行.md
+.github/workflows/compose-windows-desktop.yml
+```
+
 然后只实施当前最小 Release 单元。
 
 ---
 
 # 22. 当前禁止误写成已完成
 
-Internal V1-A 可以准确描述为：
+当前可以准确描述为：
 
 ```text
-“仓库已提供一条 Compose 命令启动的 Internal V1 最小部署栈”
-“本地完整 Compose 与服务器 Compose 使用同一 Runtime Schema 和单一 AIMA_HOST_ROOT”
+“仓库已提供一条 canonical Compose 命令启动的 Internal V1 最小部署栈”
+“Linux/WSL 本地与服务器复用同一 Runtime Schema 和单一 AIMA_HOST_ROOT”
+“Windows Docker Desktop 原生 CMD/PowerShell 可复用同一业务 Runtime，并通过 storage-only named-volume override 兼容本地文件系统”
+“Windows 支持未放宽 Linux/Production Secret/PostgreSQL 权限门禁”
 “PostgreSQL/Cursor 内部 Secret 自动生成并持久保存”
 “外部 TikHub/LLM Key 经 Compose Secret File 装配，不进入业务容器普通环境变量”
-“已在隔离 Linux Runner 验证空库 Migration、正式进程、Readiness、Secret 生命周期、绝对/相对 Host Root、持久挂载和端口边界”
 ```
 
 但在后续 Production Change 和真实环境验收完成前，不得说：
@@ -664,6 +696,7 @@ Internal V1-A 可以准确描述为：
 “已经完成正式生产部署闭环”
 “生产服务器直接拿源码 build 即是正式 Release”
 “已经支持完整离线 Release”
+“Windows Docker Desktop 本地通过等于公司服务器已验收”
 “数据库和 Artifact 可一致恢复”
 “已经有生产回滚闭环”
 “生产认证已经完成”
@@ -671,4 +704,4 @@ Internal V1-A 可以准确描述为：
 
 当前正确说法是：
 
-> Internal V1-A 的最小容器部署基础、统一 Host Root 和启动体验已经闭环；完整 Production Release、认证和协调恢复仍属于后续待实现/待验收阶段。
+> Internal V1-A 的 canonical 容器部署基础、本地跨宿主适配和启动体验已逐步闭环；完整 Production Release、认证和协调恢复仍属于后续待实现/待验收阶段。
