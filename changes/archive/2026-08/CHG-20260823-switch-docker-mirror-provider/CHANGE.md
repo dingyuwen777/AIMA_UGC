@@ -155,7 +155,7 @@ npm → npmmirror
 | R4 | 新电脑无任何所需镜像也能自动拉取和构建，有则复用 | user:cold-start | satisfied | Compose 使用 `up --build`，不要求 pre-pull；Guide 固化 pull/build/cache；CI 使用每次唯一 AIMA image tag |
 | R5 | 不公开发布本地 AIMA 镜像 | user:no-public-push | satisfied | Dockerfile/Compose/workflow 无 `push`/`buildx --push`；Guide 解释本地 tag |
 | R6 | 不破坏 Production Release / Windows / Linux Runtime | `docs/roadmap/02_生产上线实施路线.md` | satisfied | 仅 build/pull source 与 CI override 变化；最终 Internal V1-A/Windows Runtime 全绿 |
-| R7 | L3 Review、Ready Gate、CI、合并与归档 | `AGENTS.md` | satisfied | Final Ready HEAD `25ef1c91c172677b5150707212299b9b5f01a794` 11 个永久工作流全部 success；PR #177 merge `5219a2ca9878574905ffa7eb4d77e284d1b72fa8`；本归档 PR 继续作为最后门禁 |
+| R7 | L3 Review、Ready Gate、CI、合并与归档 | `AGENTS.md` | satisfied | Final Ready HEAD `25ef1c91c172677b5150707212299b9b5f01a794` 11 个永久工作流全部 success；PR #177 merge `5219a2ca9878574905ffa7eb4d77e284d1b72fa8`；Archive PR #178 继续作为最后门禁 |
 
 # Validation Matrix
 
@@ -206,4 +206,4 @@ Final Ready HEAD: `25ef1c91c172677b5150707212299b9b5f01a794`
 - Implementation Ready HEAD: `25ef1c91c172677b5150707212299b9b5f01a794`
 - Implementation merge SHA: `5219a2ca9878574905ffa7eb4d77e284d1b72fa8`
 - Archive branch: `archive/switch-docker-mirror-provider`
-- Archive PR: 创建后记录
+- Archive PR: #178
