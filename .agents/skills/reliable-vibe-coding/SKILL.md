@@ -20,6 +20,8 @@ description: 为软件仓库首次接入、持续开发和多人并行提供可�
 9. 对具有明确输入输出、独立业务价值、独立失败边界，或无需启动完整系统即可验证的能力，优先建立独立验证闭环；测试、调试、Probe 和示例入口复用生产实现，并提供与风险匹配的自动化测试、必要的 Fixture/Fake/隔离依赖、明确运行入口和可理解的验证说明。不要机械要求“一模块一个测试文件”或“一功能一个测试文档”。
 10. 对 L2/L3 正式 Change，尤其是 Stage / 子 Stage / Roadmap 单元，当前 Change 不是自身需求全集。必须从用户已确认决定和上游正式事实源建立 Requirement Traceability；进入 `ready_for_review` 前重新读取上游完成定义并执行 Completion Audit。CI 全绿不能替代需求完整性审计，也不能依赖用户后续发现漏项。
 11. 对存在用户界面、跨前后端、数据库、异步任务或外部 Provider 的 L2/L3 工作，按 [testing-strategy.md](references/testing-strategy.md) 建立 Validation Matrix。Browser Mock 用于广覆盖用户可见状态，Backend/DB Integration 验证服务器规则，Contract 保证机器接口一致，Real Full-stack 只用少量关键 Golden Path 证明真实接线，Real Provider Probe 仅在必要时有界执行；任一层都不能声称证明自己没有实际运行的下游边界。
+12. 代码注释不只面向 public/exported 接口。对内部/private/helper 函数，只要包含非显然业务规则、关键不变量、状态转换、算法取舍、兼容原因或重要副作用边界，也应提供简短 docstring 或定点注释，优先解释“为什么/约束是什么”，而不是逐行复述代码；简单自解释 helper 不机械补注释。
+13. 实现重要功能时，如果仓库已经有日志/事件基础设施，并且该功能涉及关键生命周期、异步任务、外部 I/O、重试/部分失败、状态转换或后期排障价值，应主动设计并补最小充分的结构化日志。复用现有 logger/event/脱敏机制，使用稳定事件名、正确级别和已有 request/job/run/batch 等关联 ID；禁止打印 Secret/Token/密码/敏感 Raw/PII，禁止 INFO 级逐条高频刷屏，也不能用日志替代数据库业务事实或 Health。
 
 ## 按需读取资源
 
@@ -119,6 +121,8 @@ python <skill>/scripts/rvc.py new-change --root <repo> \
 - 复用的现有实现和模式；
 - 预计修改文件；
 - 需要保持兼容的接口、配置和数据；
+- 新增或修改的 public 与内部/private/helper 函数中，哪些非显然规则、关键约束或副作用需要 docstring/定点注释；
+- 如果仓库已有日志能力，本次重要业务阶段、外部 I/O、异步状态和失败边界中哪些需要新增/调整日志，以及哪些高频细节应保持 DEBUG 或不记录；
 - 最小失败测试或测试例外；
 - 目标测试、相关测试、静态检查、构建和必要运行验证；
 - 哪些能力具有独立验证价值，以及它们的生产入口、测试入口、Fixture/Fake/隔离依赖、运行方式和成功判据；
@@ -138,6 +142,8 @@ python <skill>/scripts/rvc.py new-change --root <repo> \
 - 跨组件关键链：用少量 Real Full-stack Golden Path 证明真实组件组装后能工作；不要为了覆盖全部状态复制大量昂贵 Full-stack。
 - 外部 Provider：稳定 Fixture/Fake/Mapper 测试承担普通回归；只有当前真实接口事实需要确认时才执行有界 Provider Probe。
 - 独立可验证能力：优先提供不依赖完整系统启动的最小验证入口，使用真实生产入口与可控边界；测试粒度由行为边界、风险、依赖和失败模式决定，而不是目录或文件数量。
+- 代码可读性：public/exported 接口与非显然内部/private/helper 逻辑都按 `development-workflows.md` 补必要 docstring/注释；注释解释意图、约束和原因，不翻译语法。
+- 重要功能可观测性：仓库已有日志体系且观测点对调试/运维有价值时，按 `development-workflows.md` 增加最小充分日志；没有现有日志基础设施或没有独立排障价值时，不为满足清单新造日志框架。
 - 文档、纯配置、生成文件或无法自动测试的环境：说明 TDD 例外，采用解析、内容检查、构建或人工运行等替代验证。
 - 多 Agent 实施：仅派发独立工作，给最少充分上下文；主 Agent 复核差异和验证证据。
 - 跨边界实现：只在仓库已有相应边界时严格遵守；不得让前后端、生产者/消费者或数据读写方各自猜测共享语义，也不得为不适用的项目强加分层。
