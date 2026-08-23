@@ -11,7 +11,7 @@ $envExample = Join-Path $repoRoot "env.production.example"
 
 if (-not (Test-Path -LiteralPath $envFile -PathType Leaf)) {
     Copy-Item -LiteralPath $envExample -Destination $envFile
-    Write-Error "已创建 env.production。请先填写本机需要的 TikHub/LLM/端口配置，然后重新运行本脚本。"
+    Write-Error "Created env.production. Configure local ports and optional TikHub/LLM settings, then run this script again."
     exit 2
 }
 
