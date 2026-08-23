@@ -14,13 +14,13 @@ from aima_ugc.bootstrap.api import HealthResponse, ReadinessChecks, ReadinessRes
 from aima_ugc.bootstrap.api import create_app as _create_app
 
 
-def _with_content_analysis_capability[**_P](
-    factory: Callable[_P, FastAPI],
-) -> Callable[_P, FastAPI]:
+def _with_content_analysis_capability[**P](
+    factory: Callable[P, FastAPI],
+) -> Callable[P, FastAPI]:
     """在最终 API assembly 中增加不泄露 Secret 的 Analysis Capability。"""
 
     @wraps(factory)
-    def wrapped(*args: _P.args, **kwargs: _P.kwargs) -> FastAPI:
+    def wrapped(*args: P.args, **kwargs: P.kwargs) -> FastAPI:
         application = factory(*args, **kwargs)
         install_content_analysis_capability_route(application)
         return application
