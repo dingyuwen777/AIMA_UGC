@@ -96,11 +96,11 @@ python .agents/skills/reliable-vibe-coding/scripts/ready_check.py --root . --req
 - PostgreSQL 持久化 Job；
 - Local ArtifactStore 默认实现，可在真实需要时替换 S3；
 - 应用 `.log` 为主要人工排障日志，Docker stdout/stderr 为辅助；
-- Docker Compose 离线 Release 是长期部署方向，但 Dockerfile/Compose/完整 Release/协调 Backup-Restore 当前尚未闭环。
+- Docker Compose 离线 Release 是长期部署方向。Internal V1-A 已提供根 `Dockerfile`、`compose.yaml` 与最小可部署容器基础；完整离线 Release、固定 image digest、SBOM/签名和协调 Backup-Restore 仍未闭环。
 
 采用方案 A：仓库根目录是唯一 Python/uv 工程根，保存 `pyproject.toml`、`uv.lock`、`.python-version`、`tests/`、`scripts/` 和 `migrations/`；源码在 `backend/src/aima_ugc/`。禁止创建 `backend/pyproject.toml`、`backend/uv.lock`、`backend/tests/` 或用 `uv --project backend` 形成第二套命令。
 
-Stage 11 实现 Docker/Compose 时，唯一 `Dockerfile` 与 Docker build context 目标固定在仓库根；后端/前端通过不同 target 构建，不把 `backend/` 或 `frontend/` 当独立 context。**当前仓库根还没有 Dockerfile/Compose，不得把目标设计写成当前机器事实。**
+Internal V1-A 已在仓库根建立唯一 `Dockerfile` 与 `compose.yaml`，Docker build context 继续固定在仓库根；后端/前端通过不同 target 构建，不把 `backend/` 或 `frontend/` 当独立 context。完整离线 Release、固定 image digest、SBOM/签名和协调 Backup-Restore 仍由后续 Production Change 完成，不得把 V1-A 误写成完整 Production Go-Live。
 
 打包问题必须修根因：禁止用临时 `PYTHONPATH`、改变工作目录、修改 `sys.path` 或先删除产物来掩盖 package discovery/构建配置问题。
 
