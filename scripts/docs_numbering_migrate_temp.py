@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 REPLACEMENTS = {
@@ -61,7 +62,14 @@ def is_skipped(path: Path) -> bool:
     return Path("changes/archive") == path or Path("changes/archive") in path.parents or Path(".git") in path.parents
 
 
+def pattern_for(old: str) -> re.Pattern[str]:
+    if re.match(r"^\d{2}-", old):
+        return re.compile(re.escape(old))
+    return re.compile(r"(?<!\d{2}_)" + re.escape(old))
+
+
 def rewrite_references() -> None:
+    patterns = [(pattern_for(old), new) for old, new in REPLACEMENTS.items()]
     for path in Path(".").rglob("*"):
         if not path.is_file():
             continue
@@ -76,8 +84,8 @@ def rewrite_references() -> None:
         except UnicodeDecodeError:
             continue
         new_text = text
-        for old, new in REPLACEMENTS.items():
-            new_text = new_text.replace(old, new)
+        for pattern, new in patterns:
+            new_text = pattern.sub(new, new_text)
         if new_text != text:
             path.write_text(new_text, encoding="utf-8", newline="")
 
@@ -94,13 +102,16 @@ def update_skill() -> None:
 
 
 def verify() -> None:
-    import re
-
-    bad = [str(path) for path in Path("docs").rglob("*.md") if path.name != "README.md" and not re.match(r"^\d{2}_", path.name)]
+    bad = [
+        str(path)
+        for path in Path("docs").rglob("*.md")
+        if path.name != "README.md" and not re.match(r"^\d{2}_", path.name)
+    ]
     if bad:
         raise SystemExit("未编号文档:\n" + "\n".join(bad))
 
     stale: list[str] = []
+    patterns = [(old, pattern_for(old)) for old in REPLACEMENTS]
     for path in Path(".").rglob("*"):
         if not path.is_file():
             continue
@@ -114,8 +125,8 @@ def verify() -> None:
             text = data.decode("utf-8")
         except UnicodeDecodeError:
             continue
-        for old in REPLACEMENTS:
-            if old in text:
+        for old, pattern in patterns:
+            if pattern.search(text):
                 stale.append(f"{rel}: {old}")
     if stale:
         raise SystemExit("仍存在旧文件名引用:\n" + "\n".join(stale))
