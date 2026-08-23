@@ -1,6 +1,6 @@
 # 生产部署与离线 Release 方案
 
-这篇文档用于后续真正完成 **Stage 11：Production Release**。
+这篇文档用于后续真正完成 **Stage 11：Production Release**，并记录 Internal V1 已经落地、后续 Stage 11 必须直接复用的部署基础。
 
 它同时记录两类事实：
 
@@ -14,13 +14,13 @@
 
 当前结论先写在前面：
 
-> **当前仓库还没有 `Dockerfile`、`compose.yaml`、`compose.production.yaml`、`env.production.example`，所以这篇中的 Docker/Release 部分是已批准的生产目标设计，不是当前可以复制执行的现成脚本。**
+> **当前仓库已经通过 Internal V1-A 实现根 `Dockerfile`、根 `compose.yaml`、`env.production.example`、宿主目录/Secret 准备工具和 Nginx Runtime，并由独立 Compose Golden Path CI 验证空库 Migration、正式进程、持久挂载、只读 Secret、Readiness 与端口边界。它是“仓库级最小可部署环境”，不是完整 Stage 11 Production Release：`compose.production.yaml`、离线 `images.tar`、Manifest、SBOM/签名、协调 Backup/Restore、企业认证/授权与真实生产服务器验收仍待后续正式 Change 完成。**
 
 生产上线总路线见：
 
 [`../roadmap/生产上线实施路线.md`](../roadmap/生产上线实施路线.md)
 
-当前开发环境操作见：
+当前开发与 Internal V1-A 操作见：
 
 [`../环境运行与部署.md`](../环境运行与部署.md)
 
@@ -35,6 +35,7 @@ API
 Worker
 Scheduler
 Migration
+Internal V1 configure（一次性运行配置装配）
 ```
 
 代码入口：
@@ -44,7 +45,7 @@ backend/src/aima_ugc/entrypoints/
 backend/src/aima_ugc/bootstrap/
 ```
 
-前端是 Vue SPA，生产目标仍是构建静态资源后由 Nginx 类前端 Runtime 提供，并与 API 同源代理。
+Internal V1-A 已把这些能力装进同一个非 root Backend image；不同服务只使用不同正式 command。前端 Vue SPA 已通过 Frontend build stage 构建静态资源，并由非 root Nginx Runtime 提供，同时同源代理 `/api` 与 `/health`。
 
 当前业务持久依赖：
 
@@ -55,13 +56,25 @@ Secret files
 应用日志目录
 ```
 
-因此 Stage 11 不是重新设计业务代码，而是把这些当前可运行能力**可靠地装进不可变 Release**。
+因此 Stage 11 不应重新设计业务代码或另造一套运行时，而是在 V1-A 已验证的容器/配置边界上继续完成**不可变、可验证、可恢复的正式 Release**。
 
 ---
 
 # 2. 生产服务拓扑
 
-已批准目标：
+Internal V1-A 已实现并验证：
+
+```text
+frontend
+api
+worker
+scheduler
+migrate
+configure
+postgres
+```
+
+其中 `configure` 是新环境的一次性非敏感运行配置动作，不是常驻业务服务。长期生产核心服务拓扑仍是：
 
 ```text
 frontend
@@ -118,7 +131,7 @@ Plan
 alembic upgrade head
 ```
 
-它不是常驻服务，也不应由每个 API/Worker 实例启动时自动执行。
+它不是常驻服务，也不应由每个 API/Worker 实例启动时自动执行。Internal V1-A 已按这个边界运行空库 Migration。
 
 ### `postgres`
 
@@ -128,7 +141,7 @@ alembic upgrade head
 
 # 3. 生产宿主机目录
 
-原批准目录设计继续保留：
+原批准目录设计继续保留，并已成为 Internal V1-A 的实际宿主目录 Contract：
 
 ```text
 /data/docker
@@ -154,13 +167,15 @@ alembic upgrade head
 | `/data/AIMA_UGC/shared/env` | 非 Secret 环境配置 | 多 Release 共享 |
 | `/data/AIMA_UGC/shared/secrets` | 只读 Secret 文件 | 不进入 Git/Release 包明文 |
 
+`/data/AIMA_UGC/backups` 与 `/data/AIMA_UGC/releases` 在 V1-A 由宿主准备工具建立边界，但协调 Backup Set 和不可变 Release 内容仍由后续 Stage 实现。
+
 不要把 PostgreSQL、Artifact、日志全部塞进 `/data/docker`。
 
 ---
 
 # 4. 容器内目标路径
 
-原设计目标：
+Internal V1-A 当前实际路径：
 
 ```text
 /app/data
@@ -169,28 +184,32 @@ alembic upgrade head
 /var/lib/postgresql
 ```
 
-真正实现 Stage 11 时必须以**选定镜像当时的实际约定**再验证，尤其 PostgreSQL 18 镜像卷目录和默认 `PGDATA`，不能只从历史文档复制旧主版本路径。
+当前锁定 PostgreSQL 为 `18.4`。PostgreSQL 18 官方镜像使用 `/var/lib/postgresql` 作为持久卷挂载点，默认数据库目录位于其下 `18/docker`；因此当前 Compose 把宿主 `/data/AIMA_UGC/postgres` bind mount 到 `/var/lib/postgresql`，而不是复制 17 及以前常见的 `/var/lib/postgresql/data` 约定。
 
-生产 bind mount 必须：
+后续真正完成 Stage 11 时仍必须重新验证当时锁定镜像的实际约定，不能把今天的路径无条件套到未来升级版本。
+
+Internal V1-A 已通过 `scripts/deploy/prepare_host.py` 执行/校验：
 
 - 预先创建宿主目录；
-- 校验 UID/GID；
+- 固定 App/PostgreSQL/Secret group UID/GID；
 - 不用 `chmod 777`；
-- 不依赖 Docker 自动创建归属不明的目录；
-- App 使用非 root 用户运行。
+- 不依赖 Docker 自动创建归属不明的业务目录；
+- App 与 Frontend 使用非 root 用户运行。
 
 ---
 
-# 5. Secret 目标装配
+# 5. Secret 装配
 
-当前应用已经采用 Secret 文件边界；Stage 11 需要把它接到容器：
+当前应用已经采用 Secret 文件边界，Internal V1-A 已把它实际接到容器：
 
 ```text
 宿主机 /data/AIMA_UGC/shared/secrets/<name>
-→ read-only mount / Docker Secret
+→ read-only bind mount
 → /run/secrets/<name>
 → PlatformSettings / Secret resolver
 ```
+
+Backend Runtime 通过固定 supplementary group 只读访问 Secret；Secret 目录本身在容器内不可写。PostgreSQL 密码同样通过只读 password file 装配，不复制到应用环境变量。
 
 业务配置表只保存：
 
@@ -198,7 +217,7 @@ alembic upgrade head
 secret_ref
 ```
 
-不得保存真实 Secret 值。
+不得保存真实 Secret 值。Internal V1-A 的隔离 Compose Smoke 已验证 TikHub Provider Config 只保存 `secret_ref=tikhub_api_key`，测试 Secret 原值没有进入 Provider Config 行。
 
 生产 Secret 至少包括按当前 Settings 实际需要的：
 
@@ -207,6 +226,8 @@ secret_ref
 - LLM API Key；
 - Cursor signing keys；
 - 未来认证相关 Secret。
+
+当前宿主准备工具只会在缺失时生成 PostgreSQL password 与三个 Cursor signing key；TikHub/LLM 外部凭据必须由管理员显式写入 Secret 目录，不生成、不猜测、不提交。
 
 Secret resolver 必须继续防止：
 
@@ -218,31 +239,31 @@ Secret resolver 必须继续防止：
 
 ---
 
-# 6. Dockerfile 需要怎样实现
+# 6. Dockerfile 当前实现与长期要求
 
-当前不存在 Dockerfile，Stage 11A 实现时遵守：
+Internal V1-A 已建立根 `Dockerfile`，并固定：
 
 ```text
 仓库根 = 唯一 build context
 ```
 
-目标使用多阶段构建。
+当前使用多阶段构建。
 
 ## Backend Runtime
 
-应该：
+已经：
 
 - 按 `uv.lock` 安装锁定依赖；
 - 安装项目 package；
 - 不包含无关开发缓存；
-- 生产运行不再联网 `pip install`；
-- 非 root；
-- 同一 image 支持 API/Worker/Scheduler/Migration 不同 command；
+- Runtime 启动不再联网 `pip install`；
+- 使用非 root UID `10001`；
+- 同一 image 支持 API/Worker/Scheduler/Migration/Configure 不同 command；
 - 镜像构建时不写入 Secret。
 
 ## Frontend Runtime
 
-应该：
+已经按以下路径实现：
 
 ```text
 Node build stage
@@ -251,11 +272,13 @@ Node build stage
 → 只把 dist 复制到 Nginx runtime
 ```
 
-生产 Nginx 不需要 node_modules。
+生产 Nginx 不包含 `node_modules`，并以非 root 用户运行。
 
 ## 镜像事实
 
-普通代码只引用版本声明；正式 Release Manifest 记录实际 image digest。
+V1-A 保持仓库现有锁定版本，不因为实现部署而升级 Python/Node/PostgreSQL/uv。当前 Compose CI 真实构建这些镜像，但 V1-A 仍是 build-from-repository 的最小部署环境。
+
+完整 Stage 11 Release 还必须把最终实际 image digest 写入 Release Manifest，并建立来源/完整性验证；普通代码只保留版本声明。
 
 禁止：
 
@@ -267,33 +290,45 @@ latest
 
 ---
 
-# 7. Compose 需要表达什么
+# 7. Compose 当前实现与 Stage 11 目标
 
-建议职责拆分：
+Internal V1-A 当前只维护一个根 `compose.yaml`，避免在尚无完整 Release Manifest/离线镜像语义时提前制造两套易漂移配置。它已经表达：
+
+- `frontend` 是唯一发布宿主端口的业务入口；
+- 默认只绑定 `127.0.0.1:8080`；
+- PostgreSQL 没有宿主 published port；
+- API 没有宿主 published port；
+- `api/worker/scheduler/migrate/configure` 复用同一个 Backend image 和同一组 Runtime facts；
+- `migrate`、`configure` 是 tools profile 的一次性动作；
+- PostgreSQL、Artifact、日志、Secret 按正式宿主目录映射；
+- PostgreSQL 与 API 有真实 health/readiness；
+- 常驻服务使用 restart policy；
+- Secret 只读挂载。
+
+当前非敏感服务器模板为：
 
 ```text
-compose.yaml
-→ 服务拓扑、内部网络、通用 health/dependency
-
-compose.production.yaml
-→ 生产 bind mount、restart、资源/日志、安全覆盖
-
 env.production.example
-→ 非 Secret 配置模板
 ```
 
-生产 Compose 要明确：
+真实有效配置建议保存到 `/data/AIMA_UGC/shared/env/aima.env`，不读取 `env.local`，也不写入 Git。
 
-- `frontend` 暴露唯一业务 HTTP(S) 入口；
-- PostgreSQL 不对公网发布端口；
-- `api/worker/scheduler` 访问同一 PostgreSQL/Artifact/Secret；
-- `migrate` 不常驻；
-- 持久目录映射；
-- health/readiness；
-- restart policy；
-- production secret mount；
-- 不在服务器 build；
-- `docker compose up` 使用已经 load 的固定镜像。
+Stage 11 若需要独立生产覆盖，可在正式 Release Change 中增加：
+
+```text
+compose.production.yaml
+→ 不可变镜像、资源/安全、正式网络/发布覆盖
+```
+
+但必须有独立语义和验证，不能只是复制一份根 Compose。
+
+完整 Stage 11 还必须实现：
+
+- 服务器不 build；
+- `docker compose up` 只使用已验证、已 load 的固定镜像；
+- image digest / Release Manifest；
+- 生产 HTTPS/认证/授权；
+- 完整 offline/no-pull smoke。
 
 ---
 
@@ -316,13 +351,15 @@ env.production.example
 - PostgreSQL 默认不暴露公网；
 - 备份/管理入口只允许受控主机/网络。
 
-Nginx 自己产生的 413/502/504 等 `/api/` 错误应尽量保持与 API 错误外形兼容，并保留 `X-Request-ID`，避免前端遇到代理层错误时完全无法关联日志。
+Internal V1-A 只完成最小公司内网部署所需的端口边界与同源 Nginx 代理，不把上述完整 Production Browser Security 目标伪装为已实现。
+
+Nginx 自己产生的 413/502/504 等 `/api/` 错误应尽量保持与 API 错误外形兼容，并保留 `X-Request-ID`，避免前端遇到代理层错误时完全无法关联日志。这仍属于后续 Production hardening，不是 V1-A 已完成项。
 
 ---
 
-# 9. 认证是 Stage 11 前置，而不是部署后再补
+# 9. 认证是完整 Stage 11 前置，而不是生产部署后再补
 
-当前没有正式企业认证闭环。
+当前没有正式企业认证闭环。经批准的 Internal V1 路线把认证明确延期到完整 Production 阶段，因此 Internal V1-A/V1-B 的受控公司内网验收不能被描述成最终生产安全闭环。
 
 目标边界：
 
@@ -354,7 +391,7 @@ admin / operator / analyst / viewer
 - Raw/Export/Provider Config 等敏感权限；
 - Session/Cookie/CSRF/nonce/state/PKCE 等与实际协议匹配的安全测试。
 
-没有后端授权时不能因“内网”或“前端隐藏按钮”宣称可生产上线。
+没有后端授权时不能因“内网”或“前端隐藏按钮”宣称完整生产上线。
 
 ---
 
@@ -438,7 +475,7 @@ SHA 本身不能证明来源。
 
 # 12. 生产服务器部署原则
 
-目标服务器只做：
+完整 Stage 11 的目标服务器只做：
 
 ```text
 获取已验证 Release
@@ -456,6 +493,8 @@ SHA 本身不能证明来源。
 - Playwright/browser 在线下载；
 - 现场 build 一个与 CI 不同的镜像；
 - 临时编辑容器内部文件当生产修复。
+
+Internal V1-A 的仓库级部署说明允许在受控验收环境从当前仓库 build 镜像，只用于建立/验证最小部署基础；它不改变上述完整 Production Release 原则。
 
 ---
 
@@ -716,19 +755,19 @@ Backup “任务成功”不能只看 `pg_dump` 退出码，还要验证：
 
 # 20. Stage 11 应拆成哪些最小开发单元
 
-为了避免一个 PR 同时写 30 个部署脚本，建议：
+Internal V1-A 已把 Docker/Compose 的最小运行基础提前实现并验证。Stage 11 不应重复造 Dockerfile/Compose，而应直接复用并加强这套基础。
 
-## Stage 11A：Docker/Compose 基础
+## Stage 11A：Production Docker/Compose Hardening
+
+基于 V1-A 增量完成：
 
 ```text
-Dockerfile
-compose.yaml
-compose.production.yaml
-env.production.example
-宿主目录初始化/检查
-health
-CI linux/amd64 build
-本地隔离 Compose smoke
+必要时增加 compose.production.yaml
+不可变 image/digest 绑定
+生产网络/HTTPS/认证入口
+资源/安全覆盖
+CI linux/amd64 Release build
+no-build/no-pull Compose smoke
 ```
 
 ## Stage 11B：离线 Release 构建
@@ -780,7 +819,7 @@ Rollback
 持续观察
 ```
 
-如果认证尚未完成，应在 11E 之前完成认证 Change。
+认证必须在完整 Production Release 对外/对组织开放前完成；Internal V1 的受控内网试运行不替代这个门禁。
 
 ---
 
@@ -796,6 +835,8 @@ docs/blueprint/06-开发约束与分阶段实施.md
 docs/blueprint/07-技术决策与实施门禁.md
 本附录
 docs/环境运行与部署.md
+Dockerfile / compose.yaml / env.production.example
+scripts/deploy/prepare_host.py
 Platform Settings / entrypoints / storage / logging / health
 migrations/
 当前 CI workflows
@@ -807,12 +848,19 @@ migrations/
 
 # 22. 当前禁止误写成已完成
 
-在真正提交 Stage 11 代码和验证前，文档/PR 不得说：
+Internal V1-A 已经可以准确描述为：
 
 ```text
-“已经支持 Docker Compose 生产部署”
-“服务器直接执行 compose 即可”
-“已经支持离线 Release”
+“仓库已提供 Internal V1-A 最小 Docker Compose 部署栈”
+“已在隔离 Linux Runner 验证空库 Migration、正式进程、Readiness、持久挂载和端口边界”
+```
+
+但在真正完成后续 Production Change 和验证前，文档/PR 不得说：
+
+```text
+“已经完成正式生产部署闭环”
+“生产服务器直接拿源码 build 即是正式 Release”
+“已经支持完整离线 Release”
 “数据库和 Artifact 可一致恢复”
 “已经有生产回滚闭环”
 “生产认证已经完成”
@@ -820,4 +868,4 @@ migrations/
 
 当前正确说法是：
 
-> 生产 Release、认证和协调恢复有明确设计，仍属于待实现/待验收阶段。
+> Internal V1-A 的最小容器部署基础已经实现并验证；完整 Production Release、认证和协调恢复仍属于后续待实现/待验收阶段。
