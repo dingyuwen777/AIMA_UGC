@@ -16,6 +16,10 @@ from aima_ugc.platform.config import PlatformSettings
 from aima_ugc.platform.security import SecretFileError
 
 
+def _repository_root() -> Path:
+    return Path(__file__).resolve().parents[3]
+
+
 def _platform_settings(secret_dir: Path, **overrides: object) -> PlatformSettings:
     return PlatformSettings(
         data_dir=secret_dir.parent / "data",
@@ -26,10 +30,9 @@ def _platform_settings(secret_dir: Path, **overrides: object) -> PlatformSetting
 
 
 def _run_prepare_host(*args: str) -> subprocess.CompletedProcess[str]:
-    repository_root = Path(__file__).resolve().parents[3]
     return subprocess.run(
         [sys.executable, "scripts/deploy/prepare_host.py", *args],
-        cwd=repository_root,
+        cwd=_repository_root(),
         capture_output=True,
         text=True,
         check=False,
@@ -130,6 +133,25 @@ def test_internal_v1_llm_configured_uses_existing_secret_boundary(tmp_path: Path
     )
 
 
+def test_production_env_template_is_single_admin_input_without_database_password() -> None:
+    content = (_repository_root() / "env.production.example").read_text(encoding="utf-8")
+
+    assert "AIMA_TIKHUB_API_KEY=" in content
+    assert "AIMA_LLM_API_KEY=" in content
+    assert "AIMA_DB_PASSWORD=" not in content
+    assert "POSTGRES_PASSWORD=" not in content
+
+
+def test_compose_default_startup_declares_bootstrap_and_automatic_one_shots() -> None:
+    content = (_repository_root() / "compose.yaml").read_text(encoding="utf-8")
+
+    assert "  bootstrap:" in content
+    assert "service_completed_successfully" in content
+    assert 'profiles: ["tools"]' not in content
+    assert "environment: AIMA_TIKHUB_API_KEY" in content
+    assert "environment: AIMA_LLM_API_KEY" in content
+
+
 @pytest.mark.skipif(os.name != "posix", reason="Internal V1 宿主准备只支持 POSIX")
 def test_prepare_host_rejects_relative_root_before_privileged_changes() -> None:
     result = _run_prepare_host("--root", "relative-host-root")
@@ -149,3 +171,18 @@ def test_prepare_host_rejects_symlink_root_before_privileged_changes(tmp_path: P
 
     assert result.returncode == 1
     assert "不允许符号链接" in result.stderr
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Internal V1 宿主准备只支持 POSIX")
+def test_prepare_host_rejects_missing_password_for_initialized_postgres(
+    tmp_path: Path,
+) -> None:
+    cluster = tmp_path / "postgres" / "18" / "docker"
+    cluster.mkdir(parents=True)
+    (cluster / "PG_VERSION").write_text("18\n", encoding="utf-8")
+
+    result = _run_prepare_host("--root", str(tmp_path))
+
+    assert result.returncode == 1
+    assert "已有 PostgreSQL 18 数据" in result.stderr
+    assert "postgres_password" in result.stderr
