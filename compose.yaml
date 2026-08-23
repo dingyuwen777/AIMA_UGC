@@ -97,11 +97,9 @@ services:
         source: ${AIMA_HOST_POSTGRES_DIR:-/data/AIMA_UGC/postgres}
         target: /var/lib/postgresql
       - type: bind
-        source: ${AIMA_HOST_SECRET_DIR:-/data/AIMA_UGC/shared/secrets}/postgres_password
-        target: /run/secrets/postgres_password
+        source: ${AIMA_HOST_SECRET_DIR:-/data/AIMA_UGC/shared/secrets}
+        target: /run/secrets
         read_only: true
-        bind:
-          create_host_path: false
     healthcheck:
       test:
         [
