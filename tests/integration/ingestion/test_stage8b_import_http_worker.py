@@ -182,7 +182,7 @@ def test_http_upload_worker_and_status_query_use_formal_stage8a_ingestion(tmp_pa
         assert len(selection["keyword_packs"]) == 1
         assert selection["keyword_packs"][0]["version"] == 2
         assert persisted_job["payload"]["keyword_selection"] == selection
-        assert persisted_job["payload"]["relevance"] is None
+        assert "relevance" not in persisted_job["payload"]
     finally:
         with runtime.database.engine.begin() as connection:
             connection.exec_driver_sql(
