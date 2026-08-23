@@ -1,6 +1,6 @@
-# Docker 官方镜像、国内加速与本地重置
+# Docker 国内下载源与本地重置
 
-本文说明 AIMA_UGC 完整 Docker Runtime 的镜像身份、构建期包下载源、冷启动、缓存和项目级重置方式，并说明中国网络需要加速时应该改哪里。
+本文说明 AIMA_UGC 完整 Docker Runtime 的当前镜像身份、国内下载源、缓存和项目级重置方式。
 
 公司 Linux 服务器和完整 Production Release 的长期边界仍以：
 
@@ -12,233 +12,180 @@
 
 ---
 
-## 1. 新电脑第一次启动在做什么
+## 1. 当前下载模型
 
-Windows Docker Desktop 正式启动命令：
+AIMA 把“镜像身份”和“下载通道”分开：
+
+```text
+Dockerfile / Compose
+→ 始终使用官方 Docker Hub image reference
+
+Docker Hub 实际下载
+→ 宿主 Docker Engine 的 registry-mirrors
+
+Debian / PyPI / npm
+→ Docker build 的独立国内包下载源
+```
+
+项目不会把第三方 Docker registry 域名写进 Dockerfile、Compose 或 `env.production` 的 image reference。
+
+---
+
+## 2. 官方 Docker 镜像身份
+
+当前基础镜像固定为：
+
+| 用途 | image reference |
+| --- | --- |
+| Python | `python:3.14.7-slim-trixie` |
+| Node | `node:24.19.0-bookworm-slim` |
+| Nginx | `nginx:1.30.4-alpine3.24` |
+| PostgreSQL | `postgres:18.4` |
+
+`uv` 固定为 `0.12.3`，在 Python builder 中通过 PyPI 安装，不再额外拉取 GHCR uv 镜像。
+
+因此无论宿主 Docker 实际经过哪个镜像加速站，本地和项目都继续使用上表中的官方名称。
+
+---
+
+## 3. Docker Hub 国内 registry mirrors
+
+AIMA 首次环境初始化使用以下 Docker Hub mirror 候选：
+
+```text
+https://docker.1panel.live
+https://hub.1panel.dev
+https://docker.m.daocloud.io
+```
+
+Docker Engine 同时设置：
+
+```json
+"max-download-attempts": 5
+```
+
+镜像源属于外部网络服务，可能受到地域、限流、维护或上游状态影响。AIMA 使用多个候选入口降低单点依赖，但不把某一家公共 mirror 当成永久可用的系统事实。
+
+### Windows
+
+第一次准备环境时运行：
+
+```cmd
+scripts\setup_dev_environment.cmd
+```
+
+如果 Docker Desktop 已安装，脚本会配置 Docker Desktop 的 Docker Engine mirrors，并在重启后通过 `docker info` 验证实际生效。Docker Desktop 未安装时会明确提示；安装后重新运行该命令即可。
+
+### CentOS Stream 9
+
+首次初始化宿主：
+
+```bash
+sudo bash scripts/setup_dev_environment.sh
+```
+
+脚本将 mirrors 与 `/data/docker` 等现有 Docker Engine 设置写入 `/etc/docker/daemon.json`，校验配置后启动或重启 Docker。
+
+### 验证
+
+```bash
+docker info
+```
+
+`Registry Mirrors` 应包含上面的候选地址。
+
+---
+
+## 4. Docker build 国内包源
+
+当前 Compose / Dockerfile 默认使用：
+
+```dotenv
+AIMA_BUILD_DEBIAN_MIRROR=https://mirrors.aliyun.com/debian
+AIMA_BUILD_DEBIAN_SECURITY_MIRROR=https://mirrors.aliyun.com/debian-security
+AIMA_BUILD_PYPI_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple
+AIMA_BUILD_NPM_REGISTRY=https://registry.npmmirror.com
+```
+
+这些地址只改变包下载位置：
+
+```text
+Debian package 名称和版本不变
+Python package 名称、版本和 uv.lock 不变
+npm package 名称、版本和 package-lock.json 不变
+Docker image reference 不变
+```
+
+需要替换包源时，只修改本机 `env.production` 中对应字段即可。
+
+---
+
+## 5. uv 与 Python 依赖
+
+Docker backend builder 基于：
+
+```text
+python:3.14.7-slim-trixie
+```
+
+先从 `AIMA_BUILD_PYPI_INDEX` 安装：
+
+```text
+uv==0.12.3
+```
+
+安装要求使用二进制 wheel，不允许因为镜像站缺 wheel 静默退回 Rust 源码构建。
+
+项目依赖继续由：
+
+```text
+uv.lock
+→ uv export --frozen
+→ exact version + hash requirements
+→ uv pip sync --require-hashes
+```
+
+约束。
+
+---
+
+## 6. Windows 日常启动与停止
+
+启动：
 
 ```powershell
 docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production up -d --build --wait
 ```
 
-Linux / WSL / 公司服务器使用 canonical Compose：
+停止：
+
+```powershell
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production down
+```
+
+用户不需要在日常启动命令里指定任何第三方 Docker registry。
+
+---
+
+## 7. Linux / WSL / 公司服务器启动与停止
+
+启动：
 
 ```bash
 docker compose --env-file env.production up -d --build --wait
 ```
 
-Docker 必须允许从完全没有 AIMA 镜像、基础镜像和业务容器的状态开始：
-
-```text
-本机已有相同官方 image reference / 可复用 layer
-→ Docker / BuildKit 按自身缓存语义复用
-
-本机没有所需镜像/layer
-→ 自动从对应官方 registry 拉取
-
-AIMA backend/frontend 不存在
-→ 自动 build
-
-AIMA backend/frontend 构建输入未变化且已有 cache
-→ BuildKit 自动复用 cache
-```
-
-不要求用户预先执行 `docker pull`，也不能把“开发机已经缓存过镜像”当成功前提。
-
-首次冷启动通常需要：
-
-```text
-Python base image
-uv image
-Node base image
-Nginx base image
-PostgreSQL runtime image
-Debian packages
-Python packages
-npm packages
-AIMA backend build
-AIMA frontend build
-bootstrap / migrate / configure
-完整 Runtime 启动
-```
-
-第一次明显慢于第二次通常是正常的；如果镜像或包下载长期没有有效进度，应先判断网络、Docker registry/proxy 和包源可达性，而不是把第三方 registry 地址写进项目的镜像名称。
-
----
-
-## 2. 容器镜像身份固定使用官方 reference
-
-当前项目固定使用：
-
-| 用途 | 官方 reference |
-| --- | --- |
-| Python | `python:3.14.7-slim-trixie` |
-| uv | `ghcr.io/astral-sh/uv:0.12.3` |
-| Node | `node:24.19.0-bookworm-slim` |
-| Nginx | `nginx:1.30.4-alpine3.24` |
-| PostgreSQL | `postgres:18.4` |
-
-项目不再维护 `AIMA_BUILD_PYTHON_IMAGE`、`AIMA_BUILD_UV_IMAGE`、`AIMA_BUILD_NODE_IMAGE`、`AIMA_BUILD_NGINX_IMAGE` 或 `AIMA_POSTGRES_IMAGE` 这类镜像地址变量，也不把 `docker.1ms.run`、DaoCloud 或其他第三方 registry 写进当前 Runtime 配置。
-
-原因是**镜像身份和下载加速是两件事**。例如：
-
-```text
-postgres:18.4
-```
-
-与：
-
-```text
-docker.1ms.run/library/postgres:18.4
-```
-
-是不同的 image reference。即使某次下载内容恰好对应相同 digest，项目也不应该因为网络加速策略形成另一套镜像名称。
-
-本机以前存在的第三方 registry tag 不属于当前项目兼容边界：不自动迁移、不自动 retag，也不为它们增加 fallback。当前 Compose / Dockerfile 始终只引用上表中的官方名称。
-
----
-
-## 3. 中国网络需要加速容器镜像时怎么做
-
-**保持项目 image reference 不变。**
-
-Docker Hub 镜像需要加速时，可以由目标机器按组织策略配置 Docker Desktop / Docker Engine 的 registry mirror，或使用企业 pull-through cache / registry proxy。GHCR 等非 Docker Hub registry 如果需要加速，应由企业代理缓存或目标环境提供的 registry 基础设施处理。
-
-核心原则：
-
-```text
-项目代码看到的名字
-→ 始终是官方 reference
-
-下载到底经过官方直连、registry mirror、企业代理或缓存
-→ 属于机器 / 基础设施网络层
-```
-
-仓库不要求每台机器使用同一个第三方镜像服务，也不把地域 CDN 的域名固化成应用 Runtime Contract。
-
----
-
-## 4. Debian / PyPI / npm 默认官方源，可按机器覆盖
-
-APT、PyPI 和 npm 是**包下载源**，不是 OCI 镜像 identity，因此继续保留构建参数覆盖能力。
-
-canonical 默认：
-
-```dotenv
-AIMA_BUILD_DEBIAN_MIRROR=http://deb.debian.org/debian
-AIMA_BUILD_DEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security
-AIMA_BUILD_PYPI_INDEX=https://pypi.org/simple
-AIMA_BUILD_NPM_REGISTRY=https://registry.npmjs.org
-```
-
-如果中国网络访问官方包源过慢，只在本机 `env.production` 按需改成可用镜像，例如：
-
-```dotenv
-AIMA_BUILD_DEBIAN_MIRROR=https://mirrors.aliyun.com/debian
-AIMA_BUILD_DEBIAN_SECURITY_MIRROR=https://mirrors.aliyun.com/debian-security
-AIMA_BUILD_PYPI_INDEX=https://mirrors.aliyun.com/pypi/simple
-AIMA_BUILD_NPM_REGISTRY=https://registry.npmmirror.com
-```
-
-这些变量只影响 Docker build 的包下载位置：
-
-```text
-不会改变 Python / Node / Nginx / PostgreSQL / uv 的镜像名称
-不会升级依赖版本
-不会改写 uv.lock / package-lock.json
-不会改变数据库、Secret、API、Worker 或 Scheduler Runtime Contract
-```
-
----
-
-## 5. Python lock 不因包源改变
-
-AIMA 不把 `uv.lock` 改写成某个镜像站专属 lock。
-
-构建流程保持：
-
-```text
-uv.lock
-→ uv export --frozen --no-dev --no-emit-local
-→ exact version + hash requirements
-→ uv pip sync --require-hashes --default-index=<当前配置的 PyPI source>
-→ 单独 build/install 当前 AIMA wheel
-```
-
-因此即使机器显式切换 PyPI 下载源，版本与 distribution hash 仍由锁文件和 hash 校验约束。
-
-npm 继续通过 `package-lock.json` 的锁定与 integrity 校验约束依赖。
-
----
-
-## 6. `env.production` 第一次创建与旧配置
-
-`env.production` 被 Git ignore，是机器私有配置。
-
-### Windows
-
-CMD：
-
-```cmd
-copy env.production.example env.production
-```
-
-PowerShell：
-
-```powershell
-Copy-Item env.production.example env.production
-```
-
-### Linux / WSL / 服务器
+停止：
 
 ```bash
-cp env.production.example env.production
-chmod 0600 env.production
+docker compose --env-file env.production down
 ```
-
-已有机器的 `env.production` 不会被 `git pull` 覆盖。
-
-如果旧文件仍包含：
-
-```text
-AIMA_BUILD_PYTHON_IMAGE
-AIMA_BUILD_UV_IMAGE
-AIMA_BUILD_NODE_IMAGE
-AIMA_BUILD_NGINX_IMAGE
-AIMA_POSTGRES_IMAGE
-```
-
-这些字段已经不是当前 Compose Contract，项目不会读取它们；可以从本机配置中删除。项目不会尝试兼容旧第三方 image tag，也不会因为删除这些字段改变 PostgreSQL/Artifact/Secret 持久数据。
-
-原有四个包源字段如果存在仍继续生效；不填写时使用官方默认。
 
 ---
 
-## 7. 本地 build 不会把 AIMA 发布到公网
+## 8. 缓存行为
 
-当前正式命令只会：
-
-```text
-pull 官方基础镜像
-→ 本地 build
-→ 本地 tag AIMA service image
-→ 本地 create/start container
-```
-
-仓库没有要求日常启动执行 `docker push`、`buildx --push` 或 Registry publish。
-
-日志中类似：
-
-```text
-naming to docker.io/library/aima-ugc-backend:internal-v1a
-```
-
-只是 Docker Engine 本地 image store 的名称，不表示已经上传 Docker Hub。
-
----
-
-## 8. 第二次为什么更快
-
-Docker / BuildKit 可以复用：
+Docker / BuildKit 自动复用：
 
 ```text
 基础镜像 layer
@@ -248,7 +195,9 @@ npm ci layer
 AIMA build layer
 ```
 
-所以日常不要主动使用：
+同一官方 image reference 已存在时，后续启动不会重新下载全部镜像 layer。`--build` 会检查构建输入，并按 BuildKit 缓存语义复用未变化的层。
+
+日常不要主动使用：
 
 ```text
 --no-cache
@@ -256,78 +205,33 @@ docker builder prune -a
 docker system prune -a
 ```
 
-除非明确要验证真正的无缓存冷构建。
-
-不同第三方 repository tag 不是当前项目需要兼容的镜像 identity；当前判断是否可直接使用的标准仍是项目实际引用的官方镜像名称和 Docker 自身可复用的内容缓存。
+除非明确需要无缓存验证。
 
 ---
 
-## 9. Windows 日常停止
+## 9. Windows 数据与项目级重置
 
-推荐：
+Windows 原生 Compose 使用 Docker-managed named volumes 保存 PostgreSQL、Artifact、日志和内部 Secret。
 
-```powershell
-docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production down
-```
+日常 `down` 不删除这些 volumes。
 
-普通 `down` 会停止并删除容器/网络，但**保留 Windows named volumes**，所以 PostgreSQL、Artifact、日志和内部 Secret 下次继续使用。
-
-仅临时暂停容器也可以：
-
-```powershell
-docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production stop
-```
-
----
-
-## 10. Windows 项目级彻底重置
-
-只有确认本地 AIMA 数据全部可丢弃时执行：
+只有确认本地 AIMA 数据全部可以丢弃时执行：
 
 ```powershell
 docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production down -v --remove-orphans --rmi all
 ```
 
-它会清理当前 AIMA Compose project 的：
-
-```text
-容器
-网络
-Windows named volumes
-AIMA service images
-```
-
-`-v` 会删除本地 PostgreSQL、Artifact、应用日志和内部 Secret。
-
-不要把下面这条作为 AIMA 默认重置：
+不要用：
 
 ```text
 docker system prune -a --volumes
 ```
 
-它可能删除 Docker Desktop 中其他项目的数据。
+代替项目级重置，因为它可能删除其他 Docker 项目的数据。
 
 ---
 
-## 11. 重新启动与检查
-
-Windows CMD / PowerShell：
-
-```powershell
-docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production up -d --build --wait
-```
-
-Linux / WSL / 公司服务器：
-
-```bash
-docker compose --env-file env.production up -d --build --wait
-```
-
-成功后：
-
-```powershell
-curl.exe -f http://127.0.0.1:8080/health/ready
-```
+## 10. 状态与日志
 
 Windows 查看状态：
 
@@ -335,65 +239,25 @@ Windows 查看状态：
 docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production ps
 ```
 
-Windows 查看日志：
+查看 API 日志：
 
 ```powershell
 docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production logs -f api
 ```
 
----
+Readiness：
 
-## 12. 冷启动验收边界
-
-AIMA 的启动入口必须兼容全新 Docker 环境：
-
-```text
-没有 AIMA backend/frontend image
-没有 PostgreSQL image
-没有 Python/Node/Nginx/uv 基础 image
-没有 AIMA volumes
+```powershell
+curl.exe -f http://127.0.0.1:8080/health/ready
 ```
-
-在官方 registry 和当前包源可达时，一条正式 Compose 启动命令必须能够自动完成：
-
-```text
-pull → build → bootstrap → migrate → configure → runtime
-```
-
-永久 CI 使用每次唯一的 `AIMA_IMAGE_TAG`，可以证明 AIMA service image 不依赖某个固定预存 tag 才能启动。GitHub Hosted Runner 可能已有公共基础 layer cache，因此不能把 CI 描述成“证明每个公共基础 layer 都从零下载”。
-
-具体中国网络下载速度属于目标机器网络事实；需要时应分别验证 registry 基础设施和包源，而不是改变项目 image identity。
 
 ---
 
-## 13. CI 与当前默认源
+## 11. Production 边界
 
-GitHub Hosted Runner 直接使用当前 canonical 配置：
+当前源码 Compose 允许目标机器现场 pull/build，用于本地与 Internal V1。
 
-```text
-官方容器 image reference
-官方 Debian / PyPI / npm 默认源
-```
-
-CI 主要证明：
-
-```text
-Dockerfile / Compose 可构建
-PostgreSQL / Migration 可运行
-API / Worker / Scheduler / Frontend 可启动
-Readiness / Secret / Persistence 正确
-Windows storage-only override 正确
-```
-
-包源 override 的存在由配置回归测试验证，不需要在每个永久 Workflow 里重复改写一整套镜像身份。
-
----
-
-## 14. Production 边界不变
-
-本次统一官方 image reference 只改变当前源码构建时如何表达镜像身份，不把 Internal V1-A 的现场 build 提升为最终 Production Release。
-
-完整 Production Release 仍要求：
+完整 Production Release 仍按不可变离线交付方向：
 
 ```text
 可信构建环境
@@ -404,4 +268,4 @@ Windows storage-only override 正确
 → --no-build --pull never
 ```
 
-因此正式 Production Server 最终不依赖现场访问 Docker Hub、GHCR、PyPI、npm 或任何第三方镜像站重新构建应用。
+正式不可变 Production Release 不依赖生产服务器现场访问 Docker Hub、PyPI、npm 或公共镜像站重新构建。
