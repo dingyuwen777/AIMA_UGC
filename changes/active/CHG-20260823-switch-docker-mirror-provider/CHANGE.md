@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260823-switch-docker-mirror-provider
 title: Docker 国内镜像源与软件包源优化
 level: L3
-status: in_progress
+status: ready_for_review
 owner: chatgpt
 branch: feature/switch-docker-mirror-provider
 created: 2026-08-23
@@ -62,8 +62,8 @@ GitHub Hosted Runner 位于海外，真实访问 1ms 时 PostgreSQL blob 被 Clo
 - [x] 默认构建不依赖宿主 Docker daemon `registry-mirrors`。
 - [x] 新电脑没有 AIMA/基础镜像时，正式 Compose 入口会自动 pull/build；已有镜像/layer 时 Docker 自动复用。
 - [x] 不新增 `docker push` / Registry publish；本地 build 不会公开发布 AIMA 镜像。
-- [ ] 海外永久 CI 在官方源 override 下重新完成 Linux canonical Compose、Windows storage-only Compose、总 CI 和 Stage 8F 回归。
-- [ ] 完成最新 Requirement Review、Code Quality Review、Ready Gate 后合并并独立归档。
+- [x] 海外永久 CI 在官方源 override 下完成 Linux canonical Compose、Windows storage-only Compose、总 CI 和 Stage 8F 回归。
+- [x] Completion Audit、Requirement Review A1/A2 与 Code Quality Review 完成；最终 Ready HEAD 的 Completion Gate/永久 CI 作为合并硬门禁。
 
 # 范围
 
@@ -142,7 +142,7 @@ npm → npmmirror
 - npm 继续使用 lockfile integrity。
 - Debian 包仍由发行版仓库签名机制校验。
 - 海外 GitHub Runner 直连 1ms 的失败是 CDN/地域策略，CI 使用官方源不是绕过业务测试。
-- CI 不能证明用户新电脑的固定下载速度；用户本机冷启动是最终中国网络吞吐事实。
+- CI 不证明用户新电脑的固定下载速度；用户本机冷启动是最终中国网络吞吐事实。
 
 # Requirement Traceability
 
@@ -150,42 +150,73 @@ npm → npmmirror
 | --- | --- | --- | --- | --- |
 | R1 | 仓库直接配置国内镜像，不依赖本机 daemon | user:repo-direct-mirror | satisfied | `Dockerfile` / `compose.yaml` / `env.production.example` 直接配置 1ms/阿里云/npmmirror |
 | R2 | 不再默认使用用户环境中极慢的 DaoCloud | user:daocloud-slow | satisfied | DaoCloud 已从当前默认 Docker image 地址移除 |
-| R3 | Debian/PyPI 优先改用阿里云，npm 使用稳定阿里系入口 | user:aliyun-package-mirrors | satisfied | Debian/PyPI 默认已改 `mirrors.aliyun.com`；npm 保持 `registry.npmmirror.com` |
-| R4 | 新电脑无任何所需镜像也能自动拉取和构建，有则复用 | user:cold-start | satisfied | Compose 仍使用 `up --build`; 不要求手工 pre-pull；Guide 明确 pull/build/cache 行为；CI 使用唯一 AIMA image tag |
+| R3 | Debian/PyPI 优先改用阿里云，npm 使用稳定阿里系入口 | user:aliyun-package-mirrors | satisfied | Debian/PyPI 默认为 `mirrors.aliyun.com`；npm 保持 `registry.npmmirror.com` |
+| R4 | 新电脑无任何所需镜像也能自动拉取和构建，有则复用 | user:cold-start | satisfied | Compose 仍使用 `up --build`，不要求 pre-pull；Guide 固化 pull/build/cache；CI 使用每次唯一 AIMA image tag，不依赖固定预存 AIMA tag |
 | R5 | 不公开发布本地 AIMA 镜像 | user:no-public-push | satisfied | Dockerfile/Compose/workflow 无 `push`/`buildx --push`；Guide 解释本地 tag |
-| R6 | 不破坏 Production Release / Windows / Linux Runtime | `docs/roadmap/02_生产上线实施路线.md` | satisfied | 仅 build/pull source 与 CI override 变化；Storage/Secret/Migration/Release 边界不变 |
-| R7 | L3 Review、Ready Gate、CI、合并与归档 | `AGENTS.md` | not_satisfied | 等最新 HEAD 永久 CI 与完成审计后更新 |
+| R6 | 不破坏 Production Release / Windows / Linux Runtime | `docs/roadmap/02_生产上线实施路线.md` | satisfied | 仅 build/pull source 与 CI override 变化；Internal V1-A run `32642260730`、Windows run `32642260621` success |
+| R7 | L3 Review、Ready Gate、CI、合并与归档 | `AGENTS.md` | satisfied | Completion Audit/A1/A2/Code Quality Review 已完成；pre-ready head `ae7582274afc01afa6b9eb30c87408c1a85418fa` 除预期 in_progress Gate 外全部永久 CI success；最终 Ready HEAD 继续复跑 |
 
 # Validation Matrix
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
 | Browser Mock Acceptance | not_applicable | 不修改用户业务界面/行为 |
-| Backend/API/PostgreSQL Integration | required | Internal V1-A Compose Golden Path 重新验证 PostgreSQL/Migration/API/Secret/persistence/fail-closed |
-| Contract / Generated Client | not_applicable | 不修改 HTTP Contract/generated client；总 CI做回归 |
-| Real Full-stack Golden Path | required | Stage 8F + 完整 Compose Runtime 回归 |
+| Backend/API/PostgreSQL Integration | required | Internal V1-A run `32642260730` success，覆盖 PostgreSQL/Migration/API/Secret/persistence/fail-closed |
+| Contract / Generated Client | not_applicable | 不修改 HTTP Contract/generated client；总 CI run `32642260693` success |
+| Real Full-stack Golden Path | required | Stage 8F run `32642260688` success；完整 Compose Runtime success |
 | Real Provider Probe | not_applicable | 不修改 TikHub/LLM Provider |
-| Docs / Governance / Other | required | Windows launcher/Runtime、source override、Guide、Completion Gate |
+| Docs / Governance / Other | required | Windows run `32642260621` success；Guide/env template 同步；最终 Completion Gate 待 Ready HEAD 复核 |
 
 # Completion Audit
 
-- [ ] upstream_re_read: 等最新实现 HEAD 完成后重新读取上游事实。
-- [ ] change_coverage: 等最新实现 HEAD 核对 R1-R7。
-- [ ] reverse_audit: 等最新 CI 核对无业务/数据/运行语义漂移。
-- [ ] unresolved_cleared: R7 尚未满足，不能进入 Ready。
+- [x] upstream_re_read: 已重新读取本轮用户决定、当前 `main` 的 `AGENTS.md`、RVC Skill、Blueprint README/07、Roadmap 与部署事实，独立重建完成定义。
+- [x] change_coverage: R1-R7 覆盖仓库直配 1ms、阿里软件包源、冷启动、无公网 push、Production/跨平台边界和 L3 交付，无 requirement omission。
+- [x] reverse_audit: 已反向核对 `compose.yaml` 最终只有 8 处 source 行变化；无 Schema/Contract/Migration/Storage/Secret/业务 command/port 变化；lockfile 未改；海外 CI source override 不进入 Runtime。
+- [x] unresolved_cleared: R1-R7 无 `not_satisfied`；唯一未由 CI 证明的是目标中国网络的具体吞吐速度，已明确为环境 smoke 而非代码完成条件。
 
-# 任务
+# 两阶段 Review
 
-1. [x] Docker Hub/GHCR 默认镜像切换到 1ms。
-2. [x] Debian/Debian Security/PyPI 默认切换到阿里云。
-3. [x] npm 保持阿里系 npmmirror。
-4. [x] 海外永久 CI 显式使用官方源 override。
-5. [x] Guide 固化新电脑冷启动、缓存、既有 env.production 和 Production 边界。
-6. [ ] 跑最新永久 CI，完成 Completion Audit 与两阶段 Review。
-7. [ ] Ready、合并 PR #177、独立归档并清理临时分支。
+## Requirement Review A1：上游要求 → Change
+
+通过。用户后续补充的阿里云软件包源和全新电脑冷启动要求已重新纳入 R3/R4，不沿用此前只切 Docker 镜像的旧完成定义。
+
+## Requirement Review A2：Change → 实现 / 测试 / 文档
+
+通过：
+
+- Docker Hub 四类基础镜像和 PostgreSQL 默认使用 1ms；GHCR uv 使用 `ghcr.1ms.run`；
+- Debian / Debian Security / PyPI 默认使用阿里云；npm 继续 npmmirror；
+- Dockerfile/Compose/env template 三处默认值一致；
+- `compose.yaml` 最终 diff 仅 source 行变化，没有因编辑产生无关格式化；
+- `uv.lock` / `package-lock.json` 和所有版本均未改变；
+- Windows Runtime、Internal V1-A、总 CI、Stage 8F 均在 source override 下通过；
+- Guide 明确冷启动、缓存、既有 `env.production`、公网发布和 Production Release 边界。
+
+## Code Quality Review
+
+通过，无 Serious/Important finding：
+
+- 源选择按协议职责分离，不把 OCI mirror 当 apt/PyPI/npm；
+- 不引入新依赖、并行 Compose 或 daemon 隐式副作用；
+- Python 依赖继续 hash 校验，npm 继续 lock integrity；
+- 官方源回退集中在既有 `AIMA_BUILD_*` / `AIMA_POSTGRES_IMAGE`；
+- 没有 Secret、Registry credential、push、数据迁移或 Runtime 安全降级；
+- Production 不可变 Release 方向保持。
+
+# 验证证据
+
+pre-ready head: `ae7582274afc01afa6b9eb30c87408c1a85418fa`
+
+- `32642260730` Internal V1-A Deployable Stack: success
+- `32642260621` Windows Docker Desktop Compose Compatibility: success
+- `32642260693` CI: success
+- `32642260688` Stage 8F Full-stack Acceptance: success
+- `32642260747` Stage 6 Xiaohongshu Vertical Slice: success
+- Stage 7 / Local Dev 同一 HEAD 全部 success
+- `32642260712` Change Completion Gate: expected failure because Change was `in_progress`; Ready HEAD 必须重新通过
 
 # Git / 交付
 
 - branch: `feature/switch-docker-mirror-provider`
 - Draft PR: #177
-- archive: 实现 PR 合并后独立归档
+- archive: 实现 PR 正常合并后独立归档
