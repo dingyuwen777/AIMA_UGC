@@ -326,6 +326,13 @@ export interface CommentCoverageResponse {
   reported_total?: number | null;
 }
 
+/**
+ * 只公开 AI Analysis 当前是否具备可执行配置，不暴露配置细节。
+ */
+export interface ContentAnalysisCapabilitiesResponse {
+  configured: boolean;
+}
+
 export interface ContentAnalysisCreatedResponse {
   job_id: string;
   request_id: string;
@@ -1238,6 +1245,37 @@ export const getCollectionRuntimeSummary = async ( options?: RequestInit): Promi
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: CollectionRuntimeSummaryResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetContentAnalysisCapabilitiesUrl = () => {
+
+
+
+
+  return `/api/v1/content-analysis-capabilities`
+}
+
+/**
+ * @summary Get Content Analysis Capabilities
+ */
+export const getContentAnalysisCapabilities = async ( options?: RequestInit): Promise<ContentAnalysisCapabilitiesResponse> => {
+
+  const res = await fetch(getGetContentAnalysisCapabilitiesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ContentAnalysisCapabilitiesResponse = body ? JSON.parse(body) : {}
   return data
 }
 
