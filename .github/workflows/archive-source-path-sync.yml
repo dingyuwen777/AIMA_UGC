@@ -58,9 +58,9 @@ jobs:
                   changed_files.append((str(path), file_count))
                   changed_occurrences += file_count
 
-          if changed_occurrences != 21:
+          if changed_occurrences != 22:
               raise SystemExit(
-                  f"Requirement Source 路径替换数量应为 21，实际为 {changed_occurrences}: {changed_files}"
+                  f"Requirement Source 路径替换数量应为 22，实际为 {changed_occurrences}: {changed_files}"
               )
 
           print(f"已同步 {changed_occurrences} 个 Requirement Source 路径：")
