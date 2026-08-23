@@ -9,8 +9,9 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "dev"))
 
-import backend  # noqa: E402
 import local_runtime  # noqa: E402
+
+import backend  # noqa: E402
 
 
 def test_stop_postgres_container_stops_running_container_without_removing_data(
