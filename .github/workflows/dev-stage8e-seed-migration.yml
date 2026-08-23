@@ -29,43 +29,24 @@ jobs:
           path = Path("tests/integration/collection/test_stage8e_collection_http_runtime.py")
           text = path.read_text(encoding="utf-8")
 
-          old_import = '''from aima_ugc.modules.content.extended_tables import (
+          old_import = """from aima_ugc.modules.content.extended_tables import (
               comment_thread_coverage_observations_table,
-          )'''
-          new_import = '''from aima_ugc.modules.content.extended_tables import (
+          )"""
+          new_import = """from aima_ugc.modules.content.extended_tables import (
               comment_thread_coverage_observations_table,
               content_external_ids_table,
-          )'''
+          )"""
           if text.count(old_import) != 1:
               raise SystemExit("Stage8E extended_tables import anchor drifted")
           text = text.replace(old_import, new_import, 1)
 
-          old_seed = '''        connection.execute(
-              insert(content_versions_table).values(
-                  id=uuid4(),
-                  content_id=content_id,
-                  version_no=1,
-                  content_type="image",
-                  title=title,
-                  provider_attempt_id=attempt_id,
-                  raw_artifact_id=artifact_id,
-                  observed_at=now,
-              )
-          )
-              return batch_id, content_id'''
-          new_seed = '''        connection.execute(
-              insert(content_versions_table).values(
-                  id=uuid4(),
-                  content_id=content_id,
-                  version_no=1,
-                  content_type="image",
-                  title=title,
-                  provider_attempt_id=attempt_id,
-                  raw_artifact_id=artifact_id,
-                  observed_at=now,
-              )
-          )
-              connection.execute(
+          start = text.index("def _insert_import_content(")
+          end = text.index("\n\ndef test_batch_supplement_targets_only_batch_lineage_and_links_run", start)
+          block = text[start:end]
+          return_anchor = "    return batch_id, content_id"
+          if block.count(return_anchor) != 1:
+              raise SystemExit("Stage8E import content return anchor drifted")
+          typed_lookup = """        connection.execute(
               insert(content_external_ids_table).values(
                   content_id=content_id,
                   id_type="note_id",
@@ -75,10 +56,10 @@ jobs:
                   observed_at=now,
               )
           )
-              return batch_id, content_id'''
-          if text.count(old_seed) != 1:
-              raise SystemExit("Stage8E import content seed anchor drifted")
-          path.write_text(text.replace(old_seed, new_seed, 1), encoding="utf-8")
+          """
+          block = block.replace(return_anchor, typed_lookup + return_anchor, 1)
+          text = text[:start] + block + text[end:]
+          path.write_text(text, encoding="utf-8")
           PY
 
           git diff --check
