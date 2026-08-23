@@ -309,7 +309,7 @@ def _wait_for_ready(children: list[ChildProcess], *, timeout_seconds: float = 45
                 last_error = f"status={response.status} payload={payload!r}"
         except HTTPError as exc:
             last_error = f"HTTP {exc.code}"
-        except URLError, TimeoutError, json.JSONDecodeError as exc:
+        except (URLError, TimeoutError, json.JSONDecodeError) as exc:
             last_error = type(exc).__name__
         time.sleep(0.4)
     raise LocalDevError(f"API 未在 {timeout_seconds:.0f}s 内 ready：{last_error}")
