@@ -14,6 +14,7 @@ from pathlib import Path
 POSTGRES_IMAGE = "postgres:18.4"
 POSTGRES_CONTAINER = "aima-ugc-postgres-dev"
 POSTGRES_VOLUME = "aima-ugc-postgres-dev-data"
+POSTGRES_VOLUME_TARGET = "/var/lib/postgresql"
 POSTGRES_HOST = "127.0.0.1"
 POSTGRES_PORT = 5432
 POSTGRES_DB = "aima_ugc"
@@ -300,7 +301,7 @@ def ensure_postgres_container(paths: RuntimePaths, *, timeout_seconds: float = 6
                 "--publish",
                 f"{POSTGRES_HOST}:{POSTGRES_PORT}:5432",
                 "--volume",
-                f"{POSTGRES_VOLUME}:/var/lib/postgresql/data",
+                f"{POSTGRES_VOLUME}:{POSTGRES_VOLUME_TARGET}",
                 POSTGRES_IMAGE,
             ),
             environment=docker_environment,
