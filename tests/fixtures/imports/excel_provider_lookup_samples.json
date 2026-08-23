@@ -1,0 +1,26 @@
+{
+  "source": "惠科data(0817-0819).xlsx",
+  "source_sha256": "8199f1b025a556998c8daa3c8b087f43494a1b84b13d932c1b3fb392f61ef37b",
+  "sheet": "文章",
+  "last_verified_run_id": 32592521307,
+  "last_verified_request_count": 12,
+  "steady_state_request_count": 10,
+  "note": "每个平台仅保留一条已通过真实 TikHub Detail + 一级评论验证的公开帖子链接。后续若样本失效，只替换该平台这一条；不自动搜索或遍历候选。",
+  "platforms": {
+    "xiaohongshu": [
+      {"row": 3, "article_id": "5e1968f135ce44ad838f650d3205d94d", "url": "https://www.xiaohongshu.com/explore/6a85c701000000001d0040e2"}
+    ],
+    "douyin": [
+      {"row": 10, "article_id": "4bbf18abf1abf7cd39f58ff5d1ce5d27", "url": "https://www.douyin.com/share/video/7675702103746898533"}
+    ],
+    "weibo": [
+      {"row": 14, "article_id": "579408948a641a0bbc2b7f72bb60d6f5", "url": "http://weibo.com/1914372032/Re8y6x01w"}
+    ],
+    "bilibili": [
+      {"row": 1770, "article_id": "e51256eaeb292f6216d21de4cd7dc058", "url": "https://www.bilibili.com/video/av117122567048434/"}
+    ],
+    "kuaishou": [
+      {"row": 101, "article_id": "29fe1ebea5584f1cde318440837d207f", "url": "https://www.kuaishou.com/short-video/3xsx8zpayhdcyd9"}
+    ]
+  }
+}

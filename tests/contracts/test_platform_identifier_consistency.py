@@ -41,6 +41,7 @@ _PLATFORM_CONTEXT_PATTERN = re.compile(
     r"(?:platform(?:s|_scope)?|Platform(?:Name|Scope)?)", re.IGNORECASE
 )
 _XIAOHONGSHU_ALIAS_PATTERN = re.compile(r"xhs", re.IGNORECASE)
+_XIAOHONGSHU_EXTERNAL_LITERALS = ("xhslink.com", "xhslink.cn")
 _RED_PLATFORM_ALIAS_PATTERN = re.compile(
     r"(?:platform|platform_scope)\s*(?:=|:)\s*[\"']red[\"']",
     re.IGNORECASE,
@@ -84,6 +85,15 @@ def _check_sql(table: object, name: str) -> str:
 
 def _is_excluded(relative: str) -> bool:
     return relative in _EXCLUDED_FILES or relative.startswith(_EXCLUDED_PREFIXES)
+
+
+def _contains_xiaohongshu_machine_alias(line: str) -> bool:
+    """外部官方域名可保真；移除域名后仍出现 ``xhs`` 才视为内部别名。"""
+
+    machine_text = line
+    for literal in _XIAOHONGSHU_EXTERNAL_LITERALS:
+        machine_text = re.sub(re.escape(literal), "", machine_text, flags=re.IGNORECASE)
+    return _XIAOHONGSHU_ALIAS_PATTERN.search(machine_text) is not None
 
 
 def test_platform_name_contract_is_exactly_five_values() -> None:
@@ -248,7 +258,7 @@ def test_current_machine_facts_do_not_reintroduce_platform_aliases() -> None:
             for line_number, line in enumerate(
                 path.read_text(encoding="utf-8").splitlines(), start=1
             ):
-                if _XIAOHONGSHU_ALIAS_PATTERN.search(line):
+                if _contains_xiaohongshu_machine_alias(line):
                     detail = (
                         f"{relative}:{line_number}: "
                         f"forbidden=xiaohongshu abbreviation: {line.strip()}"

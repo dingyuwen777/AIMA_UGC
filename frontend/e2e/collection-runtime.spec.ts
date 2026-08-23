@@ -54,16 +54,10 @@ test.beforeEach(async ({ page }) => {
     if (url.pathname === `/api/v1/collection-runs/${runId}`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify(runDetail) })
     if (url.pathname === '/api/v1/import-batches' && request.method() === 'POST') return route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ batch_id: batchId, job_id: importJobId, status: 'queued' }) })
     if (url.pathname === '/api/v1/import-batches') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [usableImport, secondUsableImport], next_cursor: null, has_more: false }) })
+    if (url.pathname === `/api/v1/import-batches/${batchId}/supplement-eligibility`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ batch_id: batchId, targets: [{ platform: 'xiaohongshu', target_count: 1 }] }) })
+    if (url.pathname === `/api/v1/import-batches/${secondBatchId}/supplement-eligibility`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ batch_id: secondBatchId, targets: [{ platform: 'douyin', target_count: 1 }] }) })
     if (url.pathname === `/api/v1/import-batches/${batchId}`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify(importDetail) })
     if (url.pathname === `/api/v1/import-batches/${secondBatchId}`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify(secondUsableImport) })
-    if (url.pathname === '/api/v1/contents') {
-      const sourceIdentifier = url.searchParams.get('source_identifier')
-      const platform = url.searchParams.getAll('platforms')
-      const hasContent =
-        (sourceIdentifier === batchId && platform.includes('xiaohongshu')) ||
-        (sourceIdentifier === secondBatchId && platform.includes('douyin'))
-      return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: hasContent ? [{ id: 'content-1' }] : [], next_cursor: null, has_more: false }) })
-    }
     await route.fulfill({ status: 404, body: 'not mocked' })
   })
 })

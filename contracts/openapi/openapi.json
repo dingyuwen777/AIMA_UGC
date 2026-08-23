@@ -15,6 +15,50 @@
         "title": "Body_createImportBatch",
         "type": "object"
       },
+      "CollectionBatchSupplementEligibilityResponse": {
+        "additionalProperties": false,
+        "description": "前端 Batch Supplement 平台资格；不公开 Provider 私有身份或 AI 结果正文。",
+        "properties": {
+          "batch_id": {
+            "format": "uuid",
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionBatchSupplementTargetResponse"
+            },
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "batch_id",
+          "targets"
+        ],
+        "title": "CollectionBatchSupplementEligibilityResponse",
+        "type": "object"
+      },
+      "CollectionBatchSupplementTargetResponse": {
+        "additionalProperties": false,
+        "description": "一个平台当前真实可创建 Batch Supplement Scope 的目标数。",
+        "properties": {
+          "platform": {
+            "$ref": "#/components/schemas/CollectionPlatform"
+          },
+          "target_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Target Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "platform",
+          "target_count"
+        ],
+        "title": "CollectionBatchSupplementTargetResponse",
+        "type": "object"
+      },
       "CollectionCapabilitiesResponse": {
         "additionalProperties": false,
         "properties": {
@@ -1385,6 +1429,16 @@
             "title": "Source Records",
             "type": "array"
           },
+          "supplement_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContentSupplementStatusResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "text": {
             "anyOf": [
               {
@@ -1932,6 +1986,43 @@
           "provider_name"
         ],
         "title": "ContentSourceResponse",
+        "type": "object"
+      },
+      "ContentSupplementStatusResponse": {
+        "additionalProperties": false,
+        "description": "声音广场只读补采状态；不公开 Provider 私有请求与原始错误详情。",
+        "properties": {
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CollectionRuntimeStatus"
+          },
+          "stop_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Reason"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "status",
+          "updated_at"
+        ],
+        "title": "ContentSupplementStatusResponse",
         "type": "object"
       },
       "ContentTargetSelection": {
@@ -4805,6 +4896,69 @@
         "summary": "Get Import Batch",
         "tags": [
           "imports"
+        ]
+      }
+    },
+    "/api/v1/import-batches/{batch_id}/supplement-eligibility": {
+      "get": {
+        "operationId": "getCollectionBatchSupplementEligibility",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionBatchSupplementEligibilityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Collection Batch Supplement Eligibility",
+        "tags": [
+          "collection"
         ]
       }
     },

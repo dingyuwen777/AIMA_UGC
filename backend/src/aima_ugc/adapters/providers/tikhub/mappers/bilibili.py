@@ -34,18 +34,20 @@ def map_content(
     is_search = bool(search_av)
     item = search_av if is_search else raw
     if is_search:
-        external_id = required_string(raw, "param")
-        alternate_ids: dict[str, str] = {}
+        provider_av_id = required_string(raw, "param")
+        external_id = provider_av_id
     else:
-        external_id = required_string(item, "aid")
-        alternate_ids = {}
-        bvid = optional_string(item, "bvid")
-        if bvid is not None:
-            alternate_ids["bvid"] = bvid
+        provider_av_id = required_string(item, "aid")
+        external_id = context.external_content_id or provider_av_id
 
-    observed_fields: list[str] = ["content_type"]
-    if alternate_ids:
-        observed_fields.append("alternate_ids")
+    alternate_ids: dict[str, str] = {"av_id": provider_av_id}
+    bvid = optional_string(item, "bvid")
+    if bvid is not None:
+        # ``bvid`` 是历史兼容字段；``bv_id`` 是 Provider lookup 的明确类型。
+        alternate_ids["bvid"] = bvid
+        alternate_ids["bv_id"] = bvid
+
+    observed_fields: list[str] = ["content_type", "alternate_ids"]
 
     title = optional_string(item, "title")
     text = optional_string(item, "desc", "view_content", "show_card_desc_2")

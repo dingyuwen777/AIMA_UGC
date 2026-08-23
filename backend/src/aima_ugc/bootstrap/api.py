@@ -19,6 +19,7 @@ from starlette.responses import JSONResponse, StreamingResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from aima_ugc.contracts.http import (
+    CollectionBatchSupplementEligibilityResponse,
     CollectionCapabilitiesResponse,
     CollectionPlanCreateRequest,
     CollectionPlanListQuery,
@@ -638,6 +639,22 @@ def create_app(
     )
     def get_collection_capabilities() -> CollectionCapabilitiesResponse:
         return current_collection_service().get_capabilities()
+
+    @application.get(
+        "/api/v1/import-batches/{batch_id}/supplement-eligibility",
+        operation_id="getCollectionBatchSupplementEligibility",
+        response_model=CollectionBatchSupplementEligibilityResponse,
+        responses={
+            404: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["collection"],
+    )
+    def get_collection_batch_supplement_eligibility(
+        batch_id: UUID,
+    ) -> CollectionBatchSupplementEligibilityResponse:
+        return current_collection_service().get_batch_supplement_eligibility(batch_id)
 
     @application.post(
         "/api/v1/collection-runs",

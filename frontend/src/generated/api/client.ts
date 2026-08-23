@@ -8,16 +8,6 @@ export interface BodyCreateImportBatch {
   file: Blob;
 }
 
-export type CollectionCapabilityResponseOperationsItem = typeof CollectionCapabilityResponseOperationsItem[keyof typeof CollectionCapabilityResponseOperationsItem];
-
-
-export const CollectionCapabilityResponseOperationsItem = {
-  keyword_search: 'keyword_search',
-  content_detail: 'content_detail',
-  comments: 'comments',
-  sub_comments: 'sub_comments',
-} as const;
-
 export type CollectionPlatform = typeof CollectionPlatform[keyof typeof CollectionPlatform];
 
 
@@ -27,6 +17,33 @@ export const CollectionPlatform = {
   weibo: 'weibo',
   bilibili: 'bilibili',
   kuaishou: 'kuaishou',
+} as const;
+
+/**
+ * 一个平台当前真实可创建 Batch Supplement Scope 的目标数。
+ */
+export interface CollectionBatchSupplementTargetResponse {
+  platform: CollectionPlatform;
+  /** @exclusiveMinimum 0 */
+  target_count: number;
+}
+
+/**
+ * 前端 Batch Supplement 平台资格；不公开 Provider 私有身份或 AI 结果正文。
+ */
+export interface CollectionBatchSupplementEligibilityResponse {
+  batch_id: string;
+  targets: CollectionBatchSupplementTargetResponse[];
+}
+
+export type CollectionCapabilityResponseOperationsItem = typeof CollectionCapabilityResponseOperationsItem[keyof typeof CollectionCapabilityResponseOperationsItem];
+
+
+export const CollectionCapabilityResponseOperationsItem = {
+  keyword_search: 'keyword_search',
+  content_detail: 'content_detail',
+  comments: 'comments',
+  sub_comments: 'sub_comments',
 } as const;
 
 export interface CollectionCapabilityResponse {
@@ -466,6 +483,16 @@ export interface ContentSourceResponse {
   raw_artifact_id?: string | null;
 }
 
+/**
+ * 声音广场只读补采状态；不公开 Provider 私有请求与原始错误详情。
+ */
+export interface ContentSupplementStatusResponse {
+  run_id: string;
+  status: CollectionRuntimeStatus;
+  stop_reason?: string | null;
+  updated_at: string;
+}
+
 export interface ContentDetailResponse {
   analysis: ContentAnalysisResponse;
   author_display_name?: string | null;
@@ -482,6 +509,7 @@ export interface ContentDetailResponse {
   published_at?: string | null;
   source: ContentSourceResponse;
   source_records?: ContentSourceResponse[];
+  supplement_status?: ContentSupplementStatusResponse | null;
   text?: string | null;
   title?: string | null;
 }
@@ -1605,6 +1633,37 @@ export const getImportBatch = async (batchId: string, options?: RequestInit): Pr
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: ImportBatchResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetCollectionBatchSupplementEligibilityUrl = (batchId: string,) => {
+
+
+
+
+  return `/api/v1/import-batches/${batchId}/supplement-eligibility`
+}
+
+/**
+ * @summary Get Collection Batch Supplement Eligibility
+ */
+export const getCollectionBatchSupplementEligibility = async (batchId: string, options?: RequestInit): Promise<CollectionBatchSupplementEligibilityResponse> => {
+
+  const res = await fetch(getGetCollectionBatchSupplementEligibilityUrl(batchId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CollectionBatchSupplementEligibilityResponse = body ? JSON.parse(body) : {}
   return data
 }
 
