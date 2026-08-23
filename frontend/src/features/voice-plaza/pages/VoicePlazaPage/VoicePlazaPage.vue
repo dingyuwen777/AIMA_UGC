@@ -31,10 +31,18 @@ const detailOpen = computed({
 onMounted(async () => {
   const sourceIdentifier = route.query.source_identifier
   if (typeof sourceIdentifier === 'string') store.filters.sourceIdentifier = sourceIdentifier
-  await Promise.all([store.refresh(), store.refreshExports()])
+  await refreshPage()
   store.startPolling(5000)
 })
 onBeforeUnmount(() => store.stopPolling())
+
+async function refreshPage(): Promise<void> {
+  await Promise.all([
+    store.refresh(),
+    store.refreshExports(),
+    store.refreshAnalysisCapabilities(),
+  ])
+}
 
 async function search(): Promise<void> {
   store.clearSelection()
@@ -85,12 +93,13 @@ function showNotice(message: string): void {
       <div><h1>声音广场</h1><p>浏览全部渠道入库的用户声音，查看 AI 情感与完整标签结果</p></div><div class="page-actions">
         <button
           type="button"
-          @click="store.refresh()"
+          @click="refreshPage"
         >
           ↻&nbsp; 刷新数据
         </button><button
           type="button"
-          :disabled="store.items.length === 0"
+          :disabled="store.items.length === 0 || store.analysisConfigured !== true"
+          :title="store.analysisConfigured === false ? '当前环境尚未配置 AI 模型' : store.analysisConfigured === null ? '正在确认 AI 运行配置' : undefined"
           @click="analysisOpen = true"
         >
           ◇&nbsp; AI 打标
@@ -102,6 +111,14 @@ function showNotice(message: string): void {
           ⇩&nbsp; 导出记录
         </button>
       </div>
+    </div>
+
+    <div
+      v-if="store.analysisConfigured === false"
+      class="capability-warning"
+      role="status"
+    >
+      AI 打标暂不可用：当前环境尚未配置可用的 LLM Runtime。请完成 LLM 配置并重启后端；本地源码调试可编辑根目录 <code>env.local</code>。
     </div>
 
     <VoicePlazaFilters
@@ -201,6 +218,8 @@ function showNotice(message: string): void {
 .page-actions button { height: 42px; padding: 0 17px; border: 1px solid #d7dce5; border-radius: 7px; color: #384153; background: #fff; cursor: pointer; }
 .page-actions .primary { border-color: var(--aima-primary); color: #fff; background: var(--aima-primary); box-shadow: 0 5px 14px rgb(245 0 87 / 18%); }
 .page-actions button:disabled { opacity: .55; cursor: default; }
+.capability-warning { margin-top: 14px; padding: 11px 14px; border: 1px solid #f2d48a; border-radius: 7px; color: #7f5d18; background: #fff9e9; font-size: 12px; line-height: 1.55; }
+.capability-warning code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 .page-error { margin-top: 14px; padding: 11px 14px; border: 1px solid #ffc7cc; border-radius: 7px; color: #b4232d; background: #fff5f6; font-size: 13px; }
 .job-banner { display: flex; justify-content: space-between; margin-top: 12px; padding: 10px 14px; border: 1px solid #bfd5f5; border-radius: 7px; color: #32618f; background: #f2f7fd; font-size: 12px; }
 .job-banner--failed { border-color: #ffc7cc; color: #b4232d; background: #fff5f6; }
