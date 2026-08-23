@@ -96,7 +96,9 @@ def test_environment_setup_configures_multiple_docker_hub_mirrors() -> None:
     assert "DOCKER_REGISTRY_MIRRORS=(" in linux_setup
     assert '"max-download-attempts":5' in linux_setup
     assert "configure_docker_desktop_mirrors.ps1" in windows_cmd
+    assert "'.docker\\daemon.json'" in windows_mirror_setup
     assert "max-download-attempts" in windows_mirror_setup
     assert "docker info" in windows_mirror_setup
+    assert "docker desktop restart" in windows_mirror_setup
     assert "docker.1ms.run" not in linux_setup
     assert "docker.1ms.run" not in windows_mirror_setup
