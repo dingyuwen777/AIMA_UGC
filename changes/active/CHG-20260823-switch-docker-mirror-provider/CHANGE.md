@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260823-switch-docker-mirror-provider
 title: Docker 国内镜像源从 DaoCloud 切换到 1ms
 level: L3
-status: in_progress
+status: ready_for_review
 owner: chatgpt
 branch: feature/switch-docker-mirror-provider
 created: 2026-08-23
@@ -20,37 +20,56 @@ affected_paths:
   - Dockerfile
   - compose.yaml
   - env.production.example
+  - .github/workflows/internal-v1a.yml
+  - .github/workflows/compose-windows-desktop.yml
   - docs/guides/04_Docker国内构建源与本地重置.md
 contracts: []
 data_changes: []
 ---
 
-# 目标
+# 最终设计结论
 
-解决当前 `m.daocloud.io` 在用户真实 Windows Docker Desktop 环境中拉取 PostgreSQL 18.4 长时间停滞的问题，把仓库可审计的 Docker Hub/GHCR 默认镜像前缀切换到 1ms，同时保持版本、业务 Runtime、持久化、Secret、Migration 和未来 Production Release 边界不变。
+AIMA 在中国网络环境下的默认 Docker Hub / GHCR 镜像下载从 DaoCloud 切换到 1ms 的公开直接镜像前缀，不依赖开发机或服务器 Docker daemon 的 `registry-mirrors`：
+
+```text
+Docker Hub
+→ docker.1ms.run/...
+
+GHCR
+→ ghcr.1ms.run/...
+
+Debian / PyPI / npm
+→ 继续 TUNA / TUNA / npmmirror
+```
+
+所有镜像与依赖版本保持不变，并继续允许 `env.production` 按项覆盖回 Docker Hub / GHCR / Debian / PyPI / npm 官方源。
+
+GitHub Hosted Runner 位于海外。真实验证发现其访问 1ms PostgreSQL blob 时被 1ms/CDN 的 Cloudflare JavaScript challenge 拦截，因此永久 CI 显式使用官方源验证完整 Runtime 和回退机制；这不被描述成对中国网络 1ms 速度的证明。中国网络下 1ms 的实际吞吐仍以目标本地/公司网络实测为准。
 
 # 可观察成功标准
 
-- [ ] Python / Node / Nginx / PostgreSQL 的 Docker Hub 默认镜像由 DaoCloud 前缀切换到 `docker.1ms.run`，版本号不变。
-- [ ] uv 的 GHCR 默认镜像切换到 `ghcr.1ms.run`，版本号不变。
-- [ ] Debian / PyPI / npm 现有 TUNA / npmmirror 下载链保持不变。
-- [ ] 不依赖用户本机 `registry-mirrors`、Docker Desktop daemon 配置或 1Panel 本地配置。
-- [ ] 不新增 `docker push` / Registry 发布，不改变 AIMA 自有镜像只在当前 Docker Engine 本地 build/tag 的语义。
-- [ ] Linux canonical Compose 与 Windows storage-only Compose 的完整 Runtime CI 重新通过。
-- [ ] L3 Completion Audit、两阶段 Review、Ready Gate 与最终永久 CI 全部通过后正常合并、独立归档。
+- [x] Python / Node / Nginx / PostgreSQL 的 Docker Hub 默认镜像由 DaoCloud 前缀切换到 `docker.1ms.run`，版本号不变。
+- [x] uv 的 GHCR 默认镜像切换到 `ghcr.1ms.run`，版本号不变。
+- [x] Debian / PyPI / npm 继续使用既有 TUNA / TUNA / npmmirror，锁文件与版本未改变。
+- [x] 仓库默认 1ms 不依赖用户本机 `registry-mirrors`、Docker Desktop daemon 配置或 1Panel 本地配置。
+- [x] 不新增 `docker push` / Registry publish；AIMA backend/frontend 仍只由当前 Docker Engine 本地 build/tag。
+- [x] 海外永久 CI 通过显式官方源 override 完成 Linux canonical Compose 与 Windows storage-only Compose 全生命周期回归。
+- [x] L3 Completion Audit、Requirement Review A1/A2 与 Code Quality Review 已完成；最终 Ready HEAD 的 Completion Gate/永久 CI 作为合并硬门禁。
 
 # 范围
 
-- Dockerfile / Compose / env template 中的 Docker Hub 与 GHCR 默认镜像地址。
-- 构建源 Guide 中的默认源与回退说明。
+- Dockerfile / Compose / env template 的 Docker Hub 与 GHCR 默认镜像地址。
+- GitHub Hosted Runner 的官方源 override，避免海外 Runner 依赖中国镜像 CDN 地域策略。
+- Docker 国内构建源 Guide 的默认源、回退和验证边界。
 
 # 非目标
 
 - 不修改用户 Docker Desktop 或服务器 Docker daemon 的 `registry-mirrors`。
-- 不把 `docker.1panel.live` 当成 Dockerfile/Compose 直接镜像前缀；1Panel 当前官方文档只明确其作为 daemon `registry-mirrors` 使用。
-- 不使用阿里云 ACR 官方镜像加速器作为通用仓库默认；其地址按账号生成，且官方说明 Docker Hub 加速已停止同步最新镜像并定位个人开发场景。
-- 不升级任何镜像、Python、Node、PostgreSQL、uv 或依赖版本。
-- 不改变 Stage 11 不可变镜像 Release、digest/Manifest/SBOM/签名、Backup/Restore 设计。
+- 不把 `docker.1panel.live` 当成 Dockerfile/Compose 直接镜像前缀；当前官方文档主要明确其作为 daemon `registry-mirrors` 使用。
+- 不使用阿里云 ACR Docker Hub 镜像加速器作为通用仓库默认；其地址按账号生成，且官方当前已提示 Docker Hub 加速停止同步最新镜像。
+- 不升级任何镜像、Python、Node、PostgreSQL、uv 或应用依赖版本。
+- 不改变 Stage 11 不可变 Release、digest/Manifest/SBOM/签名、Backup/Restore 设计。
+- 不把 GitHub 美国 Runner 的 1ms Cloudflare challenge 推导为“中国网络不可用”；也不把海外 CI 结果冒充中国网络速度测试。
 
 # 必须保持不变
 
@@ -63,85 +82,124 @@ data_changes: []
 
 # 已确认关键决策
 
-1. 用户要求不要依赖本机 daemon 环境，直接在仓库中替换镜像源。
-2. 用户提出 1ms / 1Panel，也提出阿里云作为备选；基于当前官方事实，采用 1ms 直接镜像前缀：`docker.io → docker.1ms.run`、`ghcr.io → ghcr.1ms.run`。
-3. 1Panel 只保留为外部可选 daemon mirror，不成为仓库默认依赖。
-4. 阿里云 ACR 官方 Docker Hub 加速器不作为默认：账号专属、官方已提示停止同步最新镜像，且不适合作为产品通用构建默认。
+1. 用户明确要求不要依赖本机 daemon 环境，直接在仓库中替换默认镜像源。
+2. 用户提出 1ms / 1Panel，并询问阿里云；基于当前官方能力和仓库约束，采用 1ms 直接前缀：`docker.io → docker.1ms.run`、`ghcr.io → ghcr.1ms.run`。
+3. 1ms 基础通道按其当前公开说明可直接使用，不要求 AIMA 配置账号、登录 Secret 或付费能力；VIP/付费能力不作为依赖。
+4. 1Panel 只作为管理员可自行配置的 daemon mirror 候选，不成为仓库直接镜像前缀。
+5. 阿里云 ACR Docker Hub 镜像加速器不作为默认：账号专属且不适合作为通用、长期仓库事实。
+6. 海外 GitHub Hosted Runner 对 1ms blob 的 Cloudflare challenge 是地域/CDN事实，因此 CI 用官方源 override；1ms 中国网络实际速度留给目标环境 smoke。
 
 # L3 方案比较
 
 ## 方案 A：继续 DaoCloud
 
-优点：已由 CI 验证可用。缺点：用户真实网络中 PostgreSQL 18.4 拉取 393 秒仅完成 44.04MB，当前实际可用性不足。
+优点：上一 Change 的 CI 可用。缺点：用户真实 Windows 网络中 PostgreSQL 18.4 拉取 393 秒仅约 44 MB，实际体验不可接受。
 
-结论：不继续作为默认。
+结论：不继续作为中国环境默认。
 
 ## 方案 B：依赖 Docker daemon `registry-mirrors`（1ms + 1Panel）
 
-优点：Docker Hub 可配置多 mirror。缺点：依赖每台开发机/服务器的宿主配置，无法由仓库本身保证，也不能直接覆盖 GHCR。
+优点：Docker Hub 可配置多个 mirror。缺点：依赖每台机器宿主配置，仓库无法自包含；同时不能直接解决 GHCR。
 
 结论：不作为仓库默认机制。
 
 ## 方案 C：仓库直接使用 1ms Docker Hub/GHCR 前缀（采用）
 
-优点：不依赖宿主 daemon；1ms 当前官方明确支持 Docker Hub 与 GHCR 前缀替换；Compose/Dockerfile 可直接审计；仍可通过 `env.production` 切回官方源。
+优点：不依赖宿主 daemon；Docker Hub/GHCR 均可通过显式镜像引用；Compose/Dockerfile 可审计；仍可通过 env 按项回官方源。
 
-代价：仓库构建阶段依赖 1ms 可用性，因此必须保留官方源 override，并由永久 CI 真实 build 验证。
+代价：构建阶段增加第三方镜像传输依赖；海外 CI 可能受 1ms 地域/CDN策略影响，因此 CI 明确走官方源，并保留目标中国网络 smoke 边界。
 
 # 兼容、Migration、部署与回滚
 
 - API / Schema / Migration / Data：无变化。
-- 依赖版本：无变化。
+- 依赖版本：无变化；`uv.lock` / `package-lock.json` 未修改。
 - 部署命令：无变化。
-- 回滚：将 `AIMA_BUILD_*_IMAGE` 与 `AIMA_POSTGRES_IMAGE` 默认值恢复到前一镜像提供方或直接官方源；持久数据无需迁移。
-- 用户现有 `env.production` 若已复制出 DaoCloud 地址，不会被 Git 更新自动覆盖；需要同步修改这几个镜像变量或重新基于 example 更新。
+- Linux/WSL/服务器 storage：无变化。
+- Windows named-volume storage：无变化。
+- 回滚：把 `AIMA_BUILD_*_IMAGE` / `AIMA_POSTGRES_IMAGE` 改回官方源或其他已验证镜像前缀；持久 PostgreSQL/Artifact/Secret 不需要迁移。
+- 既有本地 `env.production` 是 Git ignored 的机器私有配置，Git pull 不会自动改其中旧 DaoCloud 值；需要把五个镜像变量同步为 1ms，或重新从 `env.production.example` 取值。
 
 # 安全、性能与运维风险
 
-- 1ms 是第三方镜像传输服务；完整 Production Release 仍需固定最终 image digest / Manifest / SBOM / 来源校验，不把镜像站域名等同于供应链完整性证明。
-- 本轮 CI 证明镜像可拉取和 Runtime 可启动，但不能承诺所有地区固定下载带宽。
-- 若 1ms 不可用，可通过 `env.production` 把镜像字段切回 Docker Hub/GHCR 官方值，不需要改业务配置或数据。
+- 1ms 是第三方镜像传输服务；完整 Production Release 仍需最终 image digest / Manifest / SBOM / 来源校验，不能把镜像站域名本身当供应链完整性证明。
+- GitHub Hosted Runner 直连 1ms 真实失败证据：Windows Runtime run `32641296439` 的 PostgreSQL blob 下载收到 Cloudflare `Just a moment...` challenge；因此海外 CI 改为官方源不是降低测试，而是隔离地域网络依赖。
+- 永久 CI 证明官方回退和 Runtime 完整性，不证明中国到 1ms 的固定下载速度。
+- 若 1ms 在目标中国网络不可用，只需在 `env.production` 按项切回官方源或后续经过真实目标网络验证的替代源，无数据迁移。
 
 # Requirement Traceability
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 不依赖本机 daemon，直接替换仓库镜像源 | user:repo-direct-mirror | not_satisfied | 待 Dockerfile/Compose/env 实现与验证 |
-| R2 | 解决 DaoCloud 在真实本地 PostgreSQL 拉取停滞 | user:daocloud-slow | not_satisfied | 待 1ms 默认源真实 CI build/pull 证明可用 |
-| R3 | 不破坏正式上线/Production Release 规范 | `docs/roadmap/02_生产上线实施路线.md` | not_satisfied | 待确认只改 build/pull source，Runtime/Release 不变 |
-| R4 | Windows CMD/PowerShell 和 Linux/服务器 Compose 继续可用 | `docs/02_环境运行与部署.md` | not_satisfied | 待 Windows/Internal V1-A 永久 CI |
-| R5 | L3 Completion Audit、Review、Ready/CI/归档门禁 | `AGENTS.md` | not_satisfied | 完成前补齐 |
+| R1 | 不依赖本机 daemon，直接替换仓库镜像源 | user:repo-direct-mirror | satisfied | `Dockerfile`、`compose.yaml`、`env.production.example` 默认直接使用 `docker.1ms.run` / `ghcr.1ms.run`；未要求 daemon 配置 |
+| R2 | 不再默认使用真实环境中极慢的 DaoCloud，改为 1ms | user:daocloud-slow | satisfied | PR #177 diff 已移除运行配置中的 DaoCloud 默认并改为 1ms；中国网络实际吞吐明确留给目标环境 smoke，不虚构 CI 速度证据 |
+| R3 | 不破坏正式上线/Production Release 规范 | `docs/roadmap/02_生产上线实施路线.md` | satisfied | 仅 build/pull source 与 CI source override 变化；Stage 11 不可变 image/digest/Release 边界未修改，Guide 04 明确保留 |
+| R4 | Windows CMD/PowerShell 和 Linux/服务器 Compose 继续可用 | `docs/02_环境运行与部署.md` | satisfied | Windows run `32641522034` success；Internal V1-A run `32641522115` Compose Golden Path success |
+| R5 | L3 Completion Audit、Review、Ready/CI/归档门禁 | `AGENTS.md` | satisfied | A1/A2/Code Quality Review 与 Completion Audit 已完成；pre-ready 除预期 in_progress Completion Gate 外永久 CI 全绿，最终 Ready HEAD 继续复跑 |
 
 # Validation Matrix
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
 | Browser Mock Acceptance | not_applicable | 不修改页面或用户业务行为 |
-| Backend/API/PostgreSQL Integration | required | Internal V1-A 完整 Compose 验证 PostgreSQL/Migration/API/Secret/持久化 |
-| Contract / Generated Client | not_applicable | 不修改 HTTP Contract/generated client；总 CI 作为回归 |
-| Real Full-stack Golden Path | required | Stage 8F + 完整 Compose Runtime 保持成功 |
-| Real Provider Probe | not_applicable | 不修改 TikHub/LLM Provider 行为 |
-| Docs / Governance / Other | required | Docker/Compose 镜像解析、Windows launcher/runtime、Guide 与 Completion Gate |
+| Backend/API/PostgreSQL Integration | required | Internal V1-A run `32641522115`：PostgreSQL/Migration/API/Secret/persistence/fail-closed 完整 Compose Golden Path success |
+| Contract / Generated Client | not_applicable | 不修改 HTTP Contract/generated client；总 CI run `32641522047` success 作为回归证据 |
+| Real Full-stack Golden Path | required | Stage 8F run `32641522138` success；Internal V1-A 与 Windows merged Runtime 均成功 |
+| Real Provider Probe | not_applicable | 不修改 TikHub/LLM Provider 请求或字段 |
+| Docs / Governance / Other | required | Windows run `32641522034` success；Guide 04 与 env template 同步；Ready Completion Gate 继续作为最终门禁 |
 
 # Completion Audit
 
-- [ ] upstream_re_read: Ready 前重新读取用户决定、AGENTS、Roadmap 和部署事实。
-- [ ] change_coverage: Ready 前核对 R1-R5 与实现/文档/验证。
-- [ ] reverse_audit: Ready 前反向检查无 daemon 依赖、无版本升级、无 Runtime/Storage/Secret/push 变化。
-- [ ] unresolved_cleared: Ready 前清零 `not_satisfied`。
+- [x] upstream_re_read: 已重新读取本轮用户决定、当前 `main` 的 `AGENTS.md`、RVC Skill、Blueprint README/07、Roadmap 与部署事实。
+- [x] change_coverage: 用户要求的仓库直接 1ms、非 daemon 依赖、正式上线边界、跨平台 Compose 和 L3 交付均已映射到 R1-R5。
+- [x] reverse_audit: 已核对无镜像/依赖版本升级、无 Schema/Contract/Migration/Storage/Secret/push 变化，并处理海外 CI 的 1ms 地域失败而未降低 Runtime 测试。
+- [x] unresolved_cleared: R1-R5 无 `not_satisfied`；中国网络实际下载速度明确为目标环境 smoke 边界，不被虚构为已验证。
 
-# 任务
+# 两阶段 Review
 
-1. [ ] 将 Dockerfile / Compose / env template 的 DaoCloud Docker Hub/GHCR 默认地址切换到 1ms。
-2. [ ] 保持 TUNA / npmmirror 和全部版本锁定事实不变。
-3. [ ] 更新 Docker 国内构建源 Guide，说明 1ms 默认、1Panel/阿里云为何不作为仓库直接默认。
-4. [ ] 创建 Draft PR，跑永久 CI 的真实 Compose build/runtime。
-5. [ ] Completion Audit + Requirement Review A1/A2 + Code Quality Review。
-6. [ ] Ready Gate/最终永久 CI 全绿后正常合并。
-7. [ ] 独立归档 Change 并清理临时分支。
+## Requirement Review A1：上游要求 → Change
+
+通过。用户的直接仓库切源、不依赖本机 daemon、兼顾上线规范、继续合并 main，以及 Roadmap 的 Production Release/Windows/Linux 运行边界均已进入 Change；未发现 requirement omission。
+
+## Requirement Review A2：Change → 实现 / 测试 / 文档
+
+通过：
+
+- Docker Hub 四类镜像与 PostgreSQL 默认改为 1ms；GHCR uv 默认改为 `ghcr.1ms.run`；
+- TUNA / npmmirror 和所有锁定版本保持；
+- 海外 CI 显式官方 override 后，Windows Runtime、Internal V1-A、总 CI、Stage 8F 均通过；
+- Guide 记录 1ms 免费基础通道、1Panel/阿里云边界、Cloudflare 海外失败事实和 Production Release 不变项；
+- 未把海外 Runner 失败误写成中国用户失败，也未把官方源 CI 冒充 1ms 性能验证。
+
+## Code Quality Review
+
+通过，无 Serious/Important finding：
+
+- 修改局限于构建/拉取 source 与对应验证/文档；
+- 无业务逻辑、数据库、Contract、Migration 或依赖升级；
+- 通过现有环境变量而非新增平行 Compose 实现回退；
+- CI 的官方 override 与目标中国环境默认 source 分工明确；
+- 无 Secret、新 Registry credential 或公网 push；
+- Production 不可变 Release 方向未降低。
+
+# 验证证据
+
+pre-ready head: `0b796519255f7f709c324e2b68ca6744f1d3f45a`
+
+- `32641522034` Windows Docker Desktop Compose Compatibility: success
+- `32641522115` Internal V1-A Deployable Stack: success
+- `32641522047` CI: success
+- `32641522138` Stage 8F Full-stack Acceptance: success
+- `32641522060` Stage 6 Xiaohongshu Vertical Slice: success
+- `32641522152` Stage 7 Keyword Packs: success
+- `32641522122` Stage 7 Scheduler Runtime: success
+- `32641522045` Stage 7 Provider Config Routing: success
+- `32641522009` Stage 7 Plan Occurrence Run Snapshot: success
+- `32641522083` Local Dev Bootstrap: success
+- pre-ready `32641522097` Completion Gate: expected failure because Change was still `in_progress`
 
 # Git / 交付
 
 - branch: `feature/switch-docker-mirror-provider`
-- PR: 待创建
+- Draft PR: #177
+- pre-ready validated head: `0b796519255f7f709c324e2b68ca6744f1d3f45a`
 - archive: 实现 PR 正常合并后独立归档
