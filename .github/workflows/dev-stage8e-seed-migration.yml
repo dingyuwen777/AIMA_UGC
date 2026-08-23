@@ -19,7 +19,7 @@ jobs:
           ref: feature/provider-lookup-supplement-eligibility
           fetch-depth: 0
 
-      - name: Migrate Stage 8E import seed to typed lookup identity
+      - name: Fix Stage 8E typed lookup seed indentation
         shell: bash
         run: |
           set -euo pipefail
@@ -28,25 +28,7 @@ jobs:
 
           path = Path("tests/integration/collection/test_stage8e_collection_http_runtime.py")
           text = path.read_text(encoding="utf-8")
-
-          old_import = """from aima_ugc.modules.content.extended_tables import (
-              comment_thread_coverage_observations_table,
-          )"""
-          new_import = """from aima_ugc.modules.content.extended_tables import (
-              comment_thread_coverage_observations_table,
-              content_external_ids_table,
-          )"""
-          if text.count(old_import) != 1:
-              raise SystemExit("Stage8E extended_tables import anchor drifted")
-          text = text.replace(old_import, new_import, 1)
-
-          start = text.index("def _insert_import_content(")
-          end = text.index("\n\ndef test_batch_supplement_targets_only_batch_lineage_and_links_run", start)
-          block = text[start:end]
-          return_anchor = "    return batch_id, content_id"
-          if block.count(return_anchor) != 1:
-              raise SystemExit("Stage8E import content return anchor drifted")
-          typed_lookup = """        connection.execute(
+          broken = '''        connection.execute(
               insert(content_external_ids_table).values(
                   content_id=content_id,
                   id_type="note_id",
@@ -55,13 +37,36 @@ jobs:
                   raw_artifact_id=artifact_id,
                   observed_at=now,
               )
-          )
-          """
-          block = block.replace(return_anchor, typed_lookup + return_anchor, 1)
-          text = text[:start] + block + text[end:]
-          path.write_text(text, encoding="utf-8")
+          )'''
+          # The previous one-off patch was dedented by YAML's block scalar processing.
+          actual_broken = '''        connection.execute(
+    insert(content_external_ids_table).values(
+        content_id=content_id,
+        id_type="note_id",
+        external_id=external_content_id,
+        provider_attempt_id=attempt_id,
+        raw_artifact_id=artifact_id,
+        observed_at=now,
+    )
+)'''
+          fixed = '''        connection.execute(
+            insert(content_external_ids_table).values(
+                content_id=content_id,
+                id_type="note_id",
+                external_id=external_content_id,
+                provider_attempt_id=attempt_id,
+                raw_artifact_id=artifact_id,
+                observed_at=now,
+            )
+        )'''
+          if text.count(actual_broken) != 1:
+              if text.count(fixed) == 1:
+                  raise SystemExit("Stage8E seed is already correctly indented")
+              raise SystemExit("Stage8E broken seed anchor drifted")
+          path.write_text(text.replace(actual_broken, fixed, 1), encoding="utf-8")
           PY
 
+          python -m py_compile tests/integration/collection/test_stage8e_collection_http_runtime.py
           git diff --check
 
       - name: Commit migrated test seed
@@ -71,5 +76,5 @@ jobs:
           git add tests/integration/collection/test_stage8e_collection_http_runtime.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "迁移Stage8E补采测试种子身份"
+          git commit -m "修正Stage8E补采测试种子格式"
           git push origin HEAD:feature/provider-lookup-supplement-eligibility
