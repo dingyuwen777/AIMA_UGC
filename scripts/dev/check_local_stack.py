@@ -1,4 +1,4 @@
-"""验证本地 FastAPI 与 Vite 开发服务器能够形成联调闭环。"""
+"""验证本地 Backend launcher 与 Vite 开发服务器形成可用联调闭环。"""
 
 from __future__ import annotations
 
@@ -7,10 +7,10 @@ from collections.abc import Callable
 
 import httpx
 
-BACKEND_HEALTH_URL = "http://127.0.0.1:8090/health/live"
+BACKEND_READY_URL = "http://127.0.0.1:8090/health/ready"
 FRONTEND_URL = "http://127.0.0.1:5173/"
-FRONTEND_PROXY_HEALTH_URL = "http://127.0.0.1:5173/health/live"
-TIMEOUT_SECONDS = 30.0
+FRONTEND_PROXY_READY_URL = "http://127.0.0.1:5173/health/ready"
+TIMEOUT_SECONDS = 45.0
 
 
 def wait_for(
@@ -37,12 +37,19 @@ def wait_for(
     raise RuntimeError(f"{name} 未在 {TIMEOUT_SECONDS:.0f}s 内就绪：{last_error}")
 
 
-def is_health_ok(response: httpx.Response) -> bool:
-    """健康检查必须返回固定成功结构。"""
+def is_readiness_ok(response: httpx.Response) -> bool:
+    """完整本地后端必须连通 PostgreSQL、ArtifactStore 和日志目录。"""
     if response.status_code != 200:
         return False
     try:
-        return response.json() == {"status": "ok"}
+        return response.json() == {
+            "status": "ok",
+            "checks": {
+                "database": "ok",
+                "artifact_store": "ok",
+                "log_directory": "ok",
+            },
+        }
     except ValueError:
         return False
 
@@ -53,10 +60,10 @@ def is_frontend_ok(response: httpx.Response) -> bool:
 
 
 def main() -> int:
-    wait_for("后端健康检查", BACKEND_HEALTH_URL, is_health_ok)
+    wait_for("后端 readiness", BACKEND_READY_URL, is_readiness_ok)
     wait_for("前端开发服务器", FRONTEND_URL, is_frontend_ok)
-    wait_for("Vite 后端代理", FRONTEND_PROXY_HEALTH_URL, is_health_ok)
-    print("本地前后端启动与代理联调检查通过。")
+    wait_for("Vite 后端 readiness 代理", FRONTEND_PROXY_READY_URL, is_readiness_ok)
+    print("本地 Backend + Frontend + PostgreSQL 联调检查通过。")
     return 0
 
 
