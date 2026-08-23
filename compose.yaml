@@ -22,6 +22,10 @@ x-backend-environment: &backend-environment
 
 x-backend-service: &backend-service
   image: aima-ugc-backend:${AIMA_IMAGE_TAG:-internal-v1a}
+  build:
+    context: .
+    dockerfile: Dockerfile
+    target: backend
   environment: *backend-environment
   group_add:
     - "11001"
@@ -40,6 +44,46 @@ x-backend-service: &backend-service
     - app
 
 services:
+  bootstrap:
+    image: aima-ugc-backend:${AIMA_IMAGE_TAG:-internal-v1a}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend
+    user: "0:0"
+    command:
+      - sh
+      - -ec
+      - python scripts/deploy/prepare_host.py --root /host --runtime-only && exec sleep infinity
+    volumes:
+      - type: bind
+        source: ${AIMA_HOST_DATA_DIR:-/data/AIMA_UGC/runtime/data}
+        target: /host/runtime/data
+      - type: bind
+        source: ${AIMA_HOST_LOG_DIR:-/data/AIMA_UGC/runtime/logs}
+        target: /host/runtime/logs
+      - type: bind
+        source: ${AIMA_HOST_POSTGRES_DIR:-/data/AIMA_UGC/postgres}
+        target: /host/postgres
+      - type: bind
+        source: ${AIMA_HOST_SECRET_DIR:-/data/AIMA_UGC/shared/secrets}
+        target: /host/shared/secrets
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - scripts/deploy/prepare_host.py
+        - --root
+        - /host
+        - --runtime-only
+        - --check-only
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 2s
+    restart: unless-stopped
+    network_mode: none
+
   postgres:
     image: postgres:18.4
     environment:
@@ -56,6 +100,8 @@ services:
         source: ${AIMA_HOST_SECRET_DIR:-/data/AIMA_UGC/shared/secrets}/postgres_password
         target: /run/secrets/postgres_password
         read_only: true
+        bind:
+          create_host_path: false
     healthcheck:
       test:
         [
@@ -66,48 +112,42 @@ services:
       timeout: 5s
       retries: 20
       start_period: 5s
+    depends_on:
+      bootstrap:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - app
 
   migrate:
     <<: *backend-service
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: backend
     command: ["alembic", "upgrade", "head"]
     depends_on:
       postgres:
         condition: service_healthy
     restart: "no"
-    profiles: ["tools"]
 
   configure:
     <<: *backend-service
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: backend
     command: ["python", "-m", "aima_ugc.entrypoints.internal_v1_configure_main"]
+    secrets:
+      - tikhub_api_key
+      - llm_api_key
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     restart: "no"
-    profiles: ["tools"]
 
   api:
     <<: *backend-service
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: backend
     command: ["uvicorn", "aima_ugc.entrypoints.api_main:app", "--host", "0.0.0.0", "--port", "8090"]
+    secrets:
+      - llm_api_key
     expose:
       - "8090"
     depends_on:
-      postgres:
-        condition: service_healthy
+      configure:
+        condition: service_completed_successfully
     healthcheck:
       test:
         - CMD
@@ -123,27 +163,22 @@ services:
 
   worker:
     <<: *backend-service
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: backend
     command: ["python", "-m", "aima_ugc.entrypoints.worker_main"]
+    secrets:
+      - tikhub_api_key
+      - llm_api_key
     depends_on:
-      postgres:
-        condition: service_healthy
+      configure:
+        condition: service_completed_successfully
     init: true
     restart: unless-stopped
 
   scheduler:
     <<: *backend-service
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: backend
     command: ["python", "-m", "aima_ugc.entrypoints.scheduler_main"]
     depends_on:
-      postgres:
-        condition: service_healthy
+      configure:
+        condition: service_completed_successfully
     init: true
     restart: unless-stopped
 
@@ -168,6 +203,12 @@ services:
     restart: unless-stopped
     networks:
       - app
+
+secrets:
+  tikhub_api_key:
+    environment: AIMA_TIKHUB_API_KEY
+  llm_api_key:
+    environment: AIMA_LLM_API_KEY
 
 networks:
   app:
