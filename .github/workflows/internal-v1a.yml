@@ -102,7 +102,17 @@ jobs:
 
           docker compose --env-file "${AIMA_V1A_ENV_FILE}" --profile tools run --rm migrate
           docker compose --env-file "${AIMA_V1A_ENV_FILE}" --profile tools run --rm configure
+          docker compose --env-file "${AIMA_V1A_ENV_FILE}" --profile tools run --rm configure
 
+          docker compose --env-file "${AIMA_V1A_ENV_FILE}" --profile tools run --rm \
+            -e AIMA_TIKHUB_ENABLED=false configure
+          DISABLED_ROW="$(docker compose --env-file "${AIMA_V1A_ENV_FILE}" exec -T postgres \
+            psql -U aima_ugc -d aima_ugc -Atc \
+            "SELECT provider || '|' || secret_ref || '|' || enabled::text FROM provider_configs WHERE display_name = 'TikHub Internal V1';")"
+          test "${DISABLED_ROW}" = "tikhub|tikhub_api_key|false"
+
+          docker compose --env-file "${AIMA_V1A_ENV_FILE}" --profile tools run --rm \
+            -e AIMA_TIKHUB_ENABLED=true configure
           PROVIDER_ROW="$(docker compose --env-file "${AIMA_V1A_ENV_FILE}" exec -T postgres \
             psql -U aima_ugc -d aima_ugc -Atc \
             "SELECT provider || '|' || secret_ref || '|' || enabled::text FROM provider_configs WHERE display_name = 'TikHub Internal V1';")"
