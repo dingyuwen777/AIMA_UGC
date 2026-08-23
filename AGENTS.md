@@ -34,6 +34,7 @@
 | 当前开发环境怎么运行 | `docs/环境运行与部署.md` |
 | 下一阶段、生产上线、Release/Backup/回滚 | `docs/roadmap/生产上线实施路线.md` + `docs/appendix/生产部署与离线Release方案.md` |
 | 开发/测试/CI/Git | `docs/blueprint/06-开发约束与分阶段实施.md` |
+| 用户可见行为/前后端/Full-stack/Provider 测试分层 | `docs/blueprint/06-开发约束与分阶段实施.md` + `.agents/skills/reliable-vibe-coding/references/testing-strategy.md` |
 | 重大跨模块决定 | `docs/blueprint/07-技术决策与实施门禁.md` |
 | Collection Plan、Capability、Decision、评论 | `docs/blueprint/08-采集策略与平台能力.md` + `docs/collection/README.md` |
 | Scheduler 运行/停机恢复 | `docs/appendix/Scheduler调度执行与停机恢复.md` |
@@ -380,6 +381,34 @@ Red
 → 完整 CI
 ```
 
+对 L2/L3 且存在用户可见、前后端/数据库/异步、公共 Contract 或 Provider 边界的任务，必须按 `.agents/skills/reliable-vibe-coding/references/testing-strategy.md` 建立并维护 Validation Matrix。固定职责是：
+
+```text
+Browser Mock Acceptance
+→ 广覆盖用户可见行为、状态、请求和错误表达
+
+Backend/API/PostgreSQL Integration
+→ 服务器业务规则、事务、持久化、Job/Worker
+
+Contract / Generated Client
+→ Pydantic/OpenAPI/generated client 或其他正式机器 Contract 一致性
+
+Real Full-stack Golden Path
+→ 少量关键路径证明真实 Browser/Frontend/API/DB/Worker 等组件接通
+
+Real Provider Probe
+→ 仅在外部 Provider 当前真实事实需要确认时有界执行，默认不进普通 CI
+```
+
+硬规则：
+
+- Browser Mock 可以是用户可见行为覆盖最宽的一层，但不能被描述为真实后端、数据库、Worker 或 Provider 端到端证明；
+- Backend/DB 行为必须由真实后端/数据库测试承担，不能只靠 Browser Mock；
+- 公共接口变化必须保留 Contract/generated 漂移检查，不能让 Mock 手写第二套接口事实；
+- Real Full-stack 默认只保留足够证明接线的高价值 Golden Path，不用它穷举所有 queued/running/error/empty 等 UI 状态；
+- 不要求每个任务机械执行全部层；`not_applicable` 必须有真实依据，`required` 必须在 Ready 前有新鲜证据；
+- 测试数量按实际行为边界与风险决定，不设置固定 Mock/Integration/Full-stack 数量配额。
+
 涉及公共边界时还必须运行当前存在的架构、表 Owner、Secret 和文档检查：
 
 ```bash
@@ -408,7 +437,10 @@ uv run python scripts/quality/check_docs.py
 - 针对测试硬编码；
 - 盲目更新 Snapshot；
 - 用旧结果冒充本轮验证；
-- 局部测试冒充完整回归。
+- 局部测试冒充完整回归；
+- Browser Mock 冒充 Real Full-stack；
+- 为了覆盖状态空间把所有场景都复制成昂贵 Full-stack；
+- 把真实付费 Provider Probe 偷塞进普通 CI。
 
 ## 13. 依赖
 
@@ -553,13 +585,14 @@ revert/
 
 复杂任务先执行上游 Requirement Completeness Review，再检查当前 Change 的需求符合性，最后检查代码质量。严重和重要问题未解决不得合并。
 
-对 `completion_gate: required` 的 Change，`ready_for_review` 前必须完成 Requirement Traceability、Completion Audit，并取得 `ready_check.py` 与 CI 的机器门禁证据。测试或 CI 绿色不能单独证明正式 Stage / Roadmap 单元完成。
+对 `completion_gate: required` 的 Change，`ready_for_review` 前必须完成 Requirement Traceability、Validation Matrix、Completion Audit，并取得 `ready_check.py` 与 CI 的机器门禁证据。测试或 CI 绿色不能单独证明正式 Stage / Roadmap 单元完成；某一测试层绿色也不能替代另一层独立风险的验证。
 
 完成结论必须有本轮实际证据。交付至少报告：
 
 - 变更摘要；
 - 逐文件/按类别目的；
 - 上游 Requirement Traceability 与成功标准；
+- Validation Matrix 与各层实际证据；
 - Completion Audit / 两阶段 Review；
 - Contract/数据库变化；
 - 文档同步及依据；
