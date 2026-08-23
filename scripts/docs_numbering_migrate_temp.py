@@ -59,7 +59,13 @@ SKILL_SECTION = """
 
 
 def is_skipped(path: Path) -> bool:
-    return Path("changes/archive") == path or Path("changes/archive") in path.parents or Path(".git") in path.parents
+    return (
+        Path("changes/archive") == path
+        or Path("changes/archive") in path.parents
+        or Path(".github/workflows") == path
+        or Path(".github/workflows") in path.parents
+        or Path(".git") in path.parents
+    )
 
 
 def pattern_for(old: str) -> re.Pattern[str]:
@@ -134,8 +140,6 @@ def verify() -> None:
 
 def cleanup() -> None:
     for name in (
-        ".github/workflows/docs-numbering-migration.yml",
-        ".github/workflows/docs-numbering-migration-pr.yml",
         ".docs-numbering-trigger",
         "scripts/docs_numbering_migrate_temp.py",
     ):
