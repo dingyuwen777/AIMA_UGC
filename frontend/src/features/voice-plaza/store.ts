@@ -14,6 +14,7 @@ import type {
 } from '../../generated/api/client'
 import {
   VoicePlazaApiError,
+  fetchContentAnalysisCapabilities,
   fetchContentAnalysisJob,
   fetchContentDetail,
   fetchContents,
@@ -72,6 +73,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   const hasMore = ref(false)
   const exports = ref<DataExportResponse[]>([])
   const analysisJob = ref<JobStatusResponse | null>(null)
+  const analysisConfigured = ref<boolean | null>(null)
   const loading = ref(false)
   const loadingNext = ref(false)
   const loadingDetail = ref(false)
@@ -133,6 +135,16 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     }
   }
 
+  async function refreshAnalysisCapabilities(): Promise<void> {
+    try {
+      const capability = await fetchContentAnalysisCapabilities()
+      analysisConfigured.value = capability.configured
+    } catch (reason) {
+      analysisConfigured.value = null
+      error.value = errorMessage(reason)
+    }
+  }
+
   async function loadNext(): Promise<void> {
     if (!nextCursor.value || loadingNext.value) return
     loadingNext.value = true
@@ -180,6 +192,10 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   }
 
   async function createAnalysis(scope: 'query' | 'selected'): Promise<number | null> {
+    if (analysisConfigured.value !== true) {
+      error.value = '当前环境尚未配置可用的 AI 模型，请配置 LLM 后重启后端。'
+      return null
+    }
     if (scope === 'selected' && selectedIds.value.length === 0) return null
     submittingAnalysis.value = true
     error.value = null
@@ -268,6 +284,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     selectedIds,
     exports,
     analysisJob,
+    analysisConfigured,
     hasMore,
     allVisibleSelected,
     hasActiveJobs,
@@ -278,6 +295,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     submittingExport,
     error,
     refresh,
+    refreshAnalysisCapabilities,
     loadNext,
     openDetail,
     closeDetail,
