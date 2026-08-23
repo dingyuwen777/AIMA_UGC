@@ -292,9 +292,11 @@ def ensure_postgres_container(paths: RuntimePaths, *, timeout_seconds: float = 6
     if container is None:
         if volume is not None and not paths.postgres_password_file.is_file():
             raise LocalDevError(
-                f"发现既有本地 PostgreSQL volume，但新的内部密码文件 {paths.postgres_password_file} 不存在；"
+                "发现既有本地 PostgreSQL volume，但新的内部密码文件不存在："
+                f"{paths.postgres_password_file}。"
                 "旧 `.runtime/secrets/postgres_password` 已不再受支持。"
-                "请显式删除本地开发 volume 后重建，或把与该数据库 Role 实际匹配的密码放到新的内部路径。"
+                "请显式删除本地开发 volume 后重建，或把与该数据库 Role 实际匹配的密码"
+                "放到新的内部路径。"
             )
         password = ensure_random_secret(paths.postgres_password_file, min_characters=32)
         docker_environment = dict(os.environ)
@@ -330,9 +332,11 @@ def ensure_postgres_container(paths: RuntimePaths, *, timeout_seconds: float = 6
             )
         if not paths.postgres_password_file.is_file():
             raise LocalDevError(
-                f"本地容器 {POSTGRES_CONTAINER} 已存在，但新的内部密码文件 "
-                f"{paths.postgres_password_file} 不存在；旧 `.runtime/secrets/postgres_password` 已不再受支持。"
-                "请显式删除本地开发 container/volume 后重建，或把与该数据库 Role 实际匹配的密码放到新的内部路径。"
+                f"本地容器 {POSTGRES_CONTAINER} 已存在，但新的内部密码文件不存在："
+                f"{paths.postgres_password_file}。"
+                "旧 `.runtime/secrets/postgres_password` 已不再受支持。"
+                "请显式删除本地开发 container/volume 后重建，或把与该数据库 Role "
+                "实际匹配的密码放到新的内部路径。"
             )
         _read_local_secret(paths.postgres_password_file)
         running = _docker_field(docker, POSTGRES_CONTAINER, "{{.State.Running}}")
