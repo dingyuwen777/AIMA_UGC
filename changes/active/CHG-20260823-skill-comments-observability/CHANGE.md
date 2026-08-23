@@ -31,13 +31,13 @@ data_changes: []
 
 # 成功标准
 
-- [ ] `SKILL.md` 直接写明内部函数注释规则，不只覆盖 public/exported API。
-- [ ] 注释规则要求解释意图、约束、为什么、状态转换或副作用边界；简单自解释 helper 不强制写无意义注释，也不允许逐行翻译代码。
-- [ ] `SKILL.md` 直接写明重要功能的日志/可观测性规则：仓库已有日志能力且该功能对调试、异步运行、外部调用或后期排障有价值时，默认评估并补必要日志。
-- [ ] 日志规则要求复用仓库现有 logging/event 体系，选择正确级别和稳定事件名，记录已有业务/关联 ID 与阶段结果，避免 INFO 级逐条高频噪声。
-- [ ] 日志不得泄露 Secret、Token、密码、原始敏感 Payload/PII，不得用日志替代 PostgreSQL/业务事实，也不创建第二套 FileHandler/日志框架。
-- [ ] `development-workflows.md` 给出可执行的注释与日志设计细则；`verification-review.md` 在完成前 Review 检查两类要求。
-- [ ] AIMA Blueprint 05/06 与 Skill 新规则保持一致，不形成两套相互冲突的开发/日志规范。
+- [x] `SKILL.md` 直接写明内部函数注释规则，不只覆盖 public/exported API。
+- [x] 注释规则要求解释意图、约束、为什么、状态转换或副作用边界；简单自解释 helper 不强制写无意义注释，也不允许逐行翻译代码。
+- [x] `SKILL.md` 直接写明重要功能的日志/可观测性规则：仓库已有日志能力且该功能对调试、异步运行、外部调用或后期排障有价值时，默认评估并补必要日志。
+- [x] 日志规则要求复用仓库现有 logging/event 体系，选择正确级别和稳定事件名，记录已有业务/关联 ID 与阶段结果，避免 INFO 级逐条高频噪声。
+- [x] 日志不得泄露 Secret、Token、密码、原始敏感 Payload/PII，不得用日志替代 PostgreSQL/业务事实，也不创建第二套 FileHandler/日志框架。
+- [x] `development-workflows.md` 给出可执行的注释与日志设计细则；`verification-review.md` 在完成前 Review 检查两类要求。
+- [x] AIMA Blueprint 05/06 与 Skill 新规则保持一致，不形成两套相互冲突的开发/日志规范。
 - [ ] 新增 Skill 自测试，防止核心规则、实施细则或 Review 门禁以后被误删；现有 Completion Gate 与全量 CI 不回归。
 
 # 范围
@@ -71,10 +71,10 @@ data_changes: []
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 后续 Skill 写代码时，内部函数也应有适量、有维护价值的注释 | user:internal-function-comments | not_satisfied | 待固化到 Skill 主规则、开发细则和 Review |
-| R2 | 重要且有调试/排障价值的功能，在仓库已有日志能力时应主动增加必要日志 | user:important-feature-logging | not_satisfied | 待固化到 Skill 主规则、开发细则和 Review |
-| R3 | 新日志必须遵守现有日志级别、脱敏、安全和“不用日志替代业务事实”的边界 | docs/blueprint/05-日志安全部署与运维.md | not_satisfied | 待同步细则并由 Skill 自测试/文档检查保护 |
-| R4 | 开发治理规则应保持最小、精准，不机械制造注释、日志或新基础设施 | .agents/skills/reliable-vibe-coding/SKILL.md | not_satisfied | 待在新规则中显式保留例外和反模式 |
+| R1 | 后续 Skill 写代码时，内部函数也应有适量、有维护价值的注释 | user:internal-function-comments | not_satisfied | Skill/开发细则/Review 已实现，等待新增 Skill 自测试与最终 CI 证据 |
+| R2 | 重要且有调试/排障价值的功能，在仓库已有日志能力时应主动增加必要日志 | user:important-feature-logging | not_satisfied | Skill/开发细则/Review 已实现，等待新增 Skill 自测试与最终 CI 证据 |
+| R3 | 新日志必须遵守现有日志级别、脱敏、安全和“不用日志替代业务事实”的边界 | docs/blueprint/05-日志安全部署与运维.md | not_satisfied | Blueprint 05 与 Skill 已同步，等待文档/Skill 自测试和 CI 证据 |
+| R4 | 开发治理规则应保持最小、精准，不机械制造注释、日志或新基础设施 | .agents/skills/reliable-vibe-coding/SKILL.md | not_satisfied | 新规则已明确简单 helper/无日志基础设施/无排障价值时不机械添加，等待最终验证 |
 
 # Validation Matrix
 
@@ -97,11 +97,11 @@ data_changes: []
 # 任务
 
 - [x] 读取当前 AGENTS、Skill、development workflow、verification review、Blueprint 05/06 和现有 Skill test 入口。
-- [ ] 修改 Skill 主规则，直接加入内部注释和日志可观测性默认要求。
-- [ ] 扩展 `development-workflows.md`，给出注释/日志适用条件、级别、内容与反模式。
-- [ ] 扩展 `verification-review.md`，在代码质量 Review 检查注释与可观测性。
-- [ ] 同步 Blueprint 05/06。
-- [ ] 增加 Skill guidance unittest，保护规则消费链。
+- [x] 修改 Skill 主规则，直接加入内部注释和日志可观测性默认要求。
+- [x] 扩展 `development-workflows.md`，给出注释/日志适用条件、级别、内容与反模式。
+- [x] 扩展 `verification-review.md`，在代码质量 Review 检查注释与可观测性。
+- [x] 同步 Blueprint 05/06。
+- [x] 增加 Skill guidance unittest，保护规则消费链。
 - [ ] 完成 Completion Audit、Review、Ready Check 和全部永久 CI。
 
 # 验证
@@ -115,7 +115,8 @@ data_changes: []
 
 ## 新鲜证据
 
-- 尚未执行。
+- 正式 diff 已收敛为 Skill 主文、两个 reference、新增 Skill unittest、Blueprint 05/06 与本 Change；一次性迁移脚本和临时 Workflow 修改均不在 PR 最终 diff。
+- 第一次迁移 run 的旧 Ready Check 因 `status: in_progress` 按设计失败；bot 推送后的自动 Workflow 为 `action_required`，因此本提交用于从普通 feature HEAD 重新取得新鲜 CI。
 
 # 文档影响
 
@@ -125,5 +126,5 @@ data_changes: []
 # 交付
 
 - Branch：`chore/skill-comments-observability`
-- PR：待创建
+- PR：#162 `固化内部函数注释与关键日志开发规则`（Draft）
 - 发布：治理/文档变更；不涉及产品部署。
