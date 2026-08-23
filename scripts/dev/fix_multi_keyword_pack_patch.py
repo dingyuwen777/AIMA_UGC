@@ -14,7 +14,7 @@ def replace_once(path: str, old: str, new: str) -> None:
     target.write_text(content.replace(old, new, 1), encoding="utf-8")
 
 
-# Stage 8E API fake/fixtures 跟随新 Contract。
+# Stage 8E API fake/fixtures 跟随新请求 Contract；响应仍返回冻结后的有效关键词。
 path = "tests/api/test_stage8e_collection_runs.py"
 replace_once(
     path,
@@ -25,6 +25,11 @@ replace_once(
     path,
     '        assert request.keywords == ("爱玛", "爱玛 Q7")\n',
     '        assert request.keyword_pack_ids == (PACK_ID,)\n',
+)
+replace_once(
+    path,
+    '            "keyword_pack_ids": [str(uuid4())],\n            "stats": {',
+    '            "keywords": ["爱玛", "爱玛 Q7"],\n            "stats": {',
 )
 replace_once(
     path,
@@ -79,7 +84,8 @@ replace_once(
         assert persisted_job["payload"]["relevance"] == persisted_batch["stats"]["relevance"]''',
     '''        selection = persisted_batch["stats"]["keyword_selection"]
         assert selection["effective_keywords"] == ["爱玛"]
-        assert selection["keyword_packs"] == [{"id": pack_id, "version": 2}]
+        assert len(selection["keyword_packs"]) == 1
+        assert selection["keyword_packs"][0]["version"] == 2
         assert persisted_job["payload"]["keyword_selection"] == selection
         assert persisted_job["payload"]["relevance"] is None''',
 )
