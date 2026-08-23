@@ -51,9 +51,6 @@ def test_package_source_defaults_are_official_but_remain_overridable() -> None:
         assert expected in env_example
 
     assert "${AIMA_BUILD_DEBIAN_MIRROR:-http://deb.debian.org/debian}" in compose
-    assert (
-        "${AIMA_BUILD_DEBIAN_SECURITY_MIRROR:-http://deb.debian.org/debian-security}"
-        in compose
-    )
+    assert "${AIMA_BUILD_DEBIAN_SECURITY_MIRROR:-http://deb.debian.org/debian-security}" in compose
     assert "${AIMA_BUILD_PYPI_INDEX:-https://pypi.org/simple}" in compose
     assert "${AIMA_BUILD_NPM_REGISTRY:-https://registry.npmjs.org}" in compose
