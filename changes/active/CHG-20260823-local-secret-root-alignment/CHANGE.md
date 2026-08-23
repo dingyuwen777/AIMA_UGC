@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260823-local-secret-root-alignment
 title: 统一本地与生产 Secret 运行根目录
 level: L3
-status: ready_for_review
+status: in_progress
 owner: chatgpt
 branch: feature/local-secret-root-alignment
 created: 2026-08-23
@@ -28,121 +28,110 @@ data_changes: []
 
 # 目标
 
-把本地源码开发的 Secret 运行模型与已完成的 Internal V1-A 生产 Compose 对齐：AIMA 内部随机 Secret 与 TikHub/LLM 外部 Secret 使用两个明确的运行时根目录，同时保持现有本地 PostgreSQL volume、已有 Secret 值、`env.local` 操作入口和业务行为兼容。
+把本地源码开发的 Secret 运行模型与已完成的 Internal V1-A 生产 Compose 对齐：AIMA 内部随机 Secret 与 TikHub/LLM 外部 Secret 使用两个明确的运行时根目录。旧本地 `.runtime/secrets/postgres_password` 不再读取、不迁移、不作为兼容来源；既有本地 PostgreSQL volume 若缺少新内部根对应密码，则明确拒绝猜测，开发者按本地重置流程重建数据库。
+
+# 已确认关键决策
+
+1. 本地运行时继续固定双根：
+   - `AIMA_SECRET_DIR=.runtime/internal-secrets`；
+   - `AIMA_EXTERNAL_SECRET_DIR=.runtime/secrets`。
+2. 旧 `.runtime/secrets/postgres_password` 直接废弃，不做自动迁移兼容。
+3. PostgreSQL 密码只是数据库 Role 的认证凭据，不代表一份独立数据；改应用侧密码而不改数据库 Role 密码只会导致认证失败，不会生成另一份数据。
+4. 不因为旧密码废弃而自动删除已有 PostgreSQL volume；若已有 volume/container 但新内部密码缺失，launcher fail closed，并要求开发者显式重置本地数据库。
+5. 生产 Compose、公共 Contract、Schema/Migration、依赖版本保持不变。
 
 # 成功标准
 
-- [x] 本地 `AIMA_SECRET_DIR` 指向 `.runtime/internal-secrets`，只存放 `postgres_password` 和三个 Cursor signing key。
-- [x] 本地 `AIMA_EXTERNAL_SECRET_DIR` 指向 `.runtime/secrets`，只承载 TikHub/LLM Provider Secret。
-- [x] `env.local` 中的 TikHub/LLM Key 仍只作为 launcher 输入，materialize 为外部 Secret File 后不进入正式 API/Worker/Scheduler 子进程普通环境变量。
-- [x] 旧本地 `.runtime/secrets/` 中的四个内部 Secret 自动迁移到 `.runtime/internal-secrets/`，保留原字节值，避免既有 PostgreSQL volume 因密码变化失联。
-- [x] 新旧目录同时存在同名内部 Secret 时：值相同可安全收敛为新内部根；值不同必须 fail closed，不猜测、不覆盖、不轮换。
-- [x] 新环境仍能自动生成缺失的四个内部 Secret；外部 TikHub/LLM Secret 只写外部根。
-- [x] 本地内部 Secret 文件拒绝符号链接，避免目录迁移后随机 Secret 写入跟随链接。
-- [x] Local Dev Bootstrap 的 Windows/Linux launcher 验证和真实 PostgreSQL bootstrap smoke 覆盖双根目录及旧状态迁移。
-- [x] 不修改生产 Compose、公共 HTTP Contract、OpenAPI/generated client、Schema/Alembic Migration、Provider endpoint/Mapper 或依赖版本。
-- [x] 环境/安全文档同步为本地与生产一致的双 Secret 根模型。
+- [ ] 本地 `AIMA_SECRET_DIR` 指向 `.runtime/internal-secrets`，内部运行 Secret 只从该根读取/生成。
+- [ ] 本地 `AIMA_EXTERNAL_SECRET_DIR` 指向 `.runtime/secrets`，TikHub/LLM Secret 只从该根读取。
+- [ ] `env.local` 中的 TikHub/LLM Key 仍只作为 launcher 输入，materialize 为外部 Secret File 后不进入正式 API/Worker/Scheduler 子进程普通环境变量。
+- [ ] 旧 `.runtime/secrets/postgres_password` 不再迁移或读取；即使文件存在，也不能覆盖或决定新的 `.runtime/internal-secrets/postgres_password`。
+- [ ] 空本地 PostgreSQL 状态仍自动生成新的内部 `postgres_password` 和三个 Cursor signing key。
+- [ ] 已有 PostgreSQL container/volume 但缺少 `.runtime/internal-secrets/postgres_password` 时 fail closed，不用旧路径密码、不静默生成新密码、不自动删除数据。
+- [ ] 本地内部 Secret 文件继续拒绝符号链接。
+- [ ] Local Dev Bootstrap 在 Windows/Linux 验证 launcher，并在真实 PostgreSQL smoke 中覆盖双根目录、新密码生成和“旧路径密码存在但已有 volume 时仍拒绝兼容”的行为。
+- [ ] 不修改生产 Compose、公共 HTTP Contract、OpenAPI/generated client、Schema/Alembic Migration、Provider endpoint/Mapper 或依赖版本。
+- [ ] 环境/安全文档同步为本地与生产一致的双 Secret 根模型，并明确旧本地数据库密码路径已废弃及重置方式。
 
 # 范围与非目标
 
-只修改本地开发 launcher 的 Secret 目录、旧状态兼容迁移、相关测试/CI 与文档。不改变生产 Compose，不进入 Internal V1-B，不执行真实 TikHub/LLM 请求，不修改业务 API、数据库 Schema 或依赖。
+只修改本地开发 launcher 的 Secret 目录行为、旧密码兼容策略、相关测试/CI 与文档。不改变生产 Compose，不进入 Internal V1-B，不执行真实 TikHub/LLM 请求，不修改业务 API、数据库 Schema 或依赖。
 
 # 必须保持不变
 
 - 本地日常入口仍是 `uv run python scripts/dev/backend.py` + `frontend.py`。
-- 本地 PostgreSQL 容器/volume 名称、数据库名、用户、端口和已有数据继续复用。
-- 已有 `postgres_password` 必须保持原值；不得因目录重构生成新密码。
+- 本地 PostgreSQL 容器/volume 名称、数据库名、用户和端口保持不变。
 - Provider Config 继续只保存 `secret_ref`，数据库不保存真实 API Key。
 - 正式子进程继续使用 `PlatformSettings` / Secret File 运行边界。
+- launcher 不自动执行破坏性数据库删除；本地旧数据是否重置由开发者显式操作。
 
 # Requirement Traceability
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 本地开发也把 AIMA 内部 Secret 与外部 Provider/LLM Secret 分成两个运行时根目录，与生产环境统一 | user:local-secret-root-alignment | satisfied | `RuntimePaths` + `build_runtime_environment()` 显式设置 `.runtime/internal-secrets` / `.runtime/secrets` 与 `AIMA_SECRET_DIR` / `AIMA_EXTERNAL_SECRET_DIR`；Local Dev Run 32628718247 通过 |
-| R2 | Secret 值继续通过文件边界进入正式运行时，外部 Key 不作为业务子进程普通环境变量 | docs/blueprint/05-日志安全部署与运维.md | satisfied | `build_runtime_environment()` 先移除本地明文 Key，再 materialize TikHub/LLM 外部 Secret File；unit regression + Local Dev PostgreSQL smoke 验证 Provider Config 只保存 `secret_ref` |
-| R3 | 本地开发保持简洁 launcher 入口，TikHub/LLM 由 env.local 输入并 materialize 为 Secret File | docs/环境运行与部署.md | satisfied | `backend.py` 原入口不变，只在准备阶段增加内部 Secret 迁移；Windows/Ubuntu launcher Jobs 均成功 |
-| R4 | 默认保持合法既有行为和兼容性，不能破坏已有本地 PostgreSQL 数据/密码事实 | AGENTS.md | satisfied | `migrate_legacy_internal_secrets()` 保留原值、冲突/符号链接 fail closed；Run 32628718247 的 existing-volume smoke 删除容器但保留 volume，把密码放回旧目录后仍成功 migrate/check |
-| R5 | L3 Change 完成 Traceability、Completion Audit、两阶段 Review、Ready Check/CI 和正常 PR 交付 | AGENTS.md | satisfied | Traceability/Matrix/Audit/两阶段 Review 已完成；PR #168 保持 Draft；状态提交将触发最终 Completion Gate 与永久 CI，全部绿色后才转 Ready/合并 |
+| R1 | 本地开发把 AIMA 内部 Secret 与外部 Provider/LLM Secret 分成两个运行时根目录，与生产环境统一 | user:local-secret-root-alignment | not_satisfied | 待最终实现与 Local Dev CI 重新验证 |
+| R2 | 旧 `.runtime/secrets/postgres_password` 直接废弃，不保持自动迁移兼容 | user:legacy-local-postgres-password-deprecated | not_satisfied | 待删除迁移函数、相关测试/CI 与文档 |
+| R3 | 外部 Key 继续只通过 Secret File 进入正式运行时，不作为业务子进程普通环境变量 | docs/blueprint/05-日志安全部署与运维.md | not_satisfied | 待最终 unit/Local Dev smoke 重新验证 |
+| R4 | 本地 launcher 保持简洁入口；面对既有 volume + 新内部密码缺失时不得猜测或自动毁数据 | AGENTS.md | not_satisfied | 待 fail-closed 回归与真实 Docker smoke |
+| R5 | L3 Change 完成更新后的 Traceability、Completion Audit、两阶段 Review、Ready Check/CI、PR 合并与独立归档 | AGENTS.md | not_satisfied | 待最终门禁 |
 
 # Validation Matrix
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
 | Browser Mock Acceptance | not_applicable | 不修改页面或用户业务交互 |
-| Backend/API/PostgreSQL Integration | required | CI Run 32628718254 / Stage 2 Platform Job 97168041318 成功；unit tests 覆盖双根、迁移、冲突、symlink；真实 PostgreSQL 由 Local Dev smoke 覆盖 |
-| Contract / Generated Client | not_applicable | 不修改公共 Contract/OpenAPI/generated client；总 CI generated contract 漂移检查保持通过 |
-| Real Full-stack Golden Path | required | Local Dev Run 32628718247：Ubuntu launcher、Windows launcher、PostgreSQL bootstrap smoke 全部成功；existing-volume 迁移路径真实验证 |
-| Real Provider Probe | not_applicable | 不修改外部 Provider API；CI 只用假 TikHub Key，不发真实付费请求 |
-| Docs / Governance / Other | required | `docs/环境运行与部署.md` 与 Blueprint 05 已同步；final Ready Commit 重新跑 Completion Gate/永久 CI |
+| Backend/API/PostgreSQL Integration | required | launcher unit tests + 真实本地 PostgreSQL bootstrap/migration，覆盖新双根和旧密码废弃后的 fail-closed |
+| Contract / Generated Client | not_applicable | 不修改公共 Contract/OpenAPI/generated client |
+| Real Full-stack Golden Path | required | Local Dev Bootstrap Ubuntu/Windows launcher + Ubuntu PostgreSQL prepare-only smoke |
+| Real Provider Probe | not_applicable | 不修改外部 Provider API，CI 只用 fixture Key |
+| Docs / Governance / Other | required | 环境/安全文档、Completion Gate、两阶段 Review、最终永久 CI |
 
 # Completion Audit
 
-- [x] upstream_re_read：2026-08-23 在实现稳定后重新读取本轮用户决定、当前分支 `AGENTS.md`、Blueprint 05 与环境运行文档；本任务只是本地运行边界统一，不改变 Internal V1-B 的 Roadmap 状态。
-- [x] change_coverage：逐项核对双根目录、旧 Secret 原值迁移、同名冲突 fail closed、symlink 拒绝、子进程环境、已有 PostgreSQL volume 兼容和文档，没有发现遗漏。
-- [x] reverse_audit：从 `backend.py → local_runtime.py → PlatformSettings/Worker/LLM` 以及 Local Dev CI 反向检查内部/外部 Secret 流向；搜索确认仓库无剩余 `paths.secrets` 调用；生产 `compose.yaml` 未修改。
-- [x] unresolved_cleared：所有 Requirement 已满足；Browser/Contract/Real Provider 三层不适用均有当前任务范围依据，没有提前进入 Internal V1-B 或真实付费调用。
+- [ ] upstream_re_read：Ready 前重新读取本轮用户新决定、AGENTS、Blueprint 05、环境运行文档。
+- [ ] change_coverage：核对双根目录、旧密码废弃、existing volume fail-closed、子进程环境、文档无遗漏。
+- [ ] reverse_audit：从 launcher/CI 反向确认旧 `.runtime/secrets/postgres_password` 不再影响数据库密码选择；外部 TikHub/LLM Secret 仍走外部根。
+- [ ] unresolved_cleared：所有 `not_satisfied` 清零，不适用层有事实依据。
 
 # 实施任务
 
-1. [x] Red：扩展 `test_local_dev_runtime.py`，锁定双根目录、内部 Secret 迁移和冲突 fail closed 行为。
-2. [x] Green：最小修改 `local_runtime.py` / `backend.py`，统一双根目录并安全迁移旧状态。
-3. [x] 更新 `local-dev-bootstrap.yml`，真实验证新目录和已有 PostgreSQL 密码兼容。
-4. [x] 同步 `docs/环境运行与部署.md` 与 Blueprint 05。
-5. [x] 完成 Completion Audit、Requirement Review 与 Code Quality Review；最终 Ready Gate/永久 CI 由本次状态提交触发。
-6. [ ] 合并后独立归档 Change，跑永久 CI 后正常合并。
+1. [ ] 更新 Red/回归测试：删除“旧密码迁移成功”预期，改为旧路径不参与密码选择、已有 volume + 新内部密码缺失时 fail closed。
+2. [ ] 最小修改 `local_runtime.py` / `backend.py`：删除旧内部 Secret 自动迁移机制，保留双根和内部 Secret symlink 防护。
+3. [ ] 更新 `local-dev-bootstrap.yml`：真实验证全新双根启动，以及旧路径密码存在时不会兼容既有 volume。
+4. [ ] 同步 `docs/环境运行与部署.md` 与 Blueprint 05。
+5. [ ] 完成 Completion Audit、Requirement Review、Code Quality Review、Ready Gate 与永久 CI；PR #168 转 Ready 后正常合并。
+6. [ ] 合并后创建独立归档 PR，将 Change 标记 `done` 并移动到 archive；归档 PR CI 全绿后正常合并。
 
 # 兼容、Migration、部署与回滚
 
 - HTTP Contract/Schema/Alembic：无变更。
 - 依赖/锁文件：无变更。
-- 本地状态迁移：仅文件系统 Secret 目录迁移；四个内部 Secret 原值保留。若旧/新同名 Secret 值冲突则拒绝启动并要求人工确认，不静默覆盖；同名内部 Secret 符号链接同样拒绝。
+- 本地状态：旧 `.runtime/secrets/postgres_password` 不再受支持。已有 PostgreSQL volume 若只有旧路径密码，launcher 不迁移也不自动重置数据库；开发者需要显式删除本地开发 container/volume 后重新启动，或自行把与数据库实际 Role 匹配的密码放到新的 `.runtime/internal-secrets/postgres_password`。
 - 生产部署：`compose.yaml` / `env.production.example` 无变更。
-- 回滚：未改数据库 Schema；若回滚旧 launcher，需要把内部 Secret 放回旧 `.runtime/secrets/`，尤其必须保持与既有 PostgreSQL volume 匹配的 `postgres_password` 原值。
+- 回滚：未改数据库 Schema。若回滚到旧 launcher，旧版本可能再次读取单根目录；本 Change 不承诺对旧本地 Secret 布局做双向兼容。
 
-# 文档影响
+# PostgreSQL 密码语义
 
-- `docs/环境运行与部署.md`：本地首次启动、升级迁移、目录布局、重置数据库与常见问题切换为双根语义。
-- `docs/blueprint/05-日志安全部署与运维.md`：本地与生产统一使用 `AIMA_SECRET_DIR` / `AIMA_EXTERNAL_SECRET_DIR` 分类；保留 `PlatformSettings` fallback 作为底层兼容而非正常 launcher 路径。
-- Roadmap：无阶段状态变化，不修改；Internal V1-B 仍是下一正式开发单元。
+PostgreSQL 数据属于 cluster/database/table，密码属于 Role 认证。一个 cluster 可有多个 Role、每个 Role 使用不同密码，并按授权访问同一或不同数据库对象；“不同密码”不会在同一容器里自动映射成不同数据副本。只改变应用 Secret 而不改变数据库内 Role 密码会导致认证失败；在数据库内修改 Role 密码并同步应用 Secret后，访问的仍是同一份数据。Docker 官方镜像的初始化密码参数只对空数据目录的首次初始化生效，已有 volume 不会因为重新传一个新初始化密码就自动改库内 Role 密码。
 
 # 验证证据
 
-## Red
+## 历史 Red / Green
 
-CI Run `32628265270` / Stage 2 Platform Job `97166921705`：目标测试 **3 failed / 102 passed**。三个失败分别证明旧实现缺少 `internal_secrets`、`external_secrets` 与 `migrate_legacy_internal_secrets()`；PostgreSQL 18.4 服务正常，因此 Red 是目标能力缺失而非环境失败。
-
-## Green
-
-- Local Dev Bootstrap Run `32628718247`：Ubuntu launcher、Windows launcher、PostgreSQL bootstrap smoke 全部 success。
-- PostgreSQL smoke 首轮把旧 `.runtime/secrets` 四个内部 Secret 原值迁到 `.runtime/internal-secrets`，TikHub fixture Key 留在 `.runtime/secrets`，Migration current/check 成功。
-- existing-volume smoke 删除本地 PostgreSQL container 但保留 named volume，把原 `postgres_password` 临时放回旧目录，再运行同一 launcher；密码原值迁回新目录且 Alembic current/check 成功，证明不会造成已有数据库密码漂移。
-- CI Run `32628718254` / Stage 2 Platform Job `97168041318`：success，包含 unit/PostgreSQL integration/readiness；总 CI final 状态在 Ready commit 后重新取证。
-- 未执行真实 TikHub/LLM 请求；只使用非生产 fixture Key。
+前一版兼容方案曾通过 CI 验证旧密码原值迁移；2026-08-23 用户随后明确取消该兼容要求，因此这些证据仅作为历史过程，不再作为最终验收依据。
 
 # 两阶段 Review
 
 ## Requirement Review
 
-2026-08-23 完成：
-
-- A1 上游要求 → Change：用户要求的“本地也拆内部/外部两个运行根并与生产统一”已直接进入 R1；仓库安全边界、launcher 简洁性和既有 PostgreSQL 密码兼容分别进入 R2—R4，无遗漏需要新 Contract/Schema/Roadmap 决策的事项。
-- A2 Change → 实现/测试/文档：双根目录、子进程环境、旧状态原值迁移、同值收敛/异值拒绝、existing-volume 真实 smoke、文档均有对应证据。生产 Compose 与业务接口没有被扩展。
-- 结论：无未满足 requirement。
+待按新决定重新执行。
 
 ## Code Quality Review
 
-2026-08-23 完成：
-
-- `RuntimePaths` 只拆目录，不引入第二套配置模型；正式子进程继续由 `PlatformSettings` 解析两个既有环境变量。
-- 旧内部 Secret 使用同文件系统 `Path.replace()` 迁移，避免读出后重新生成；新旧双份用 constant-time `compare_digest()` 比较，同值才删除旧副本，异值 fail closed。
-- Review 发现“新内部路径自身为 symlink 且旧副本不存在”可能绕过迁移检查；已补回归测试并在迁移/随机生成入口统一拒绝内部 Secret symlink。
-- TikHub/LLM 文件名不在内部迁移白名单，不会被错误搬入内部根；原 `env.local` 明文 Key 继续从正式子进程环境中移除。
-- 搜索确认没有遗留 `paths.secrets` 调用；变更仅 7 个任务相关文件，无生产 Compose、依赖、Contract、Migration 变化。
-- 结论：没有未解决 serious/important 问题。
+待按新决定重新执行。
 
 # Git / PR
 
 - branch: `feature/local-secret-root-alignment`
-- implementation PR: `#168 统一本地与生产 Secret 运行根目录`（Draft，最终 CI 全绿后转 Ready）
+- implementation PR: `#168 统一本地与生产 Secret 运行根目录`（Draft；新决定完成并最终 CI 全绿后转 Ready）
 - archive PR: 待实施 PR 合并后创建
