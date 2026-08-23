@@ -135,4 +135,5 @@ Ready commit：`637c2d21e38e8159f0566962cc7cee1ad15fb4db`
 - implementation branch: `feature/local-secret-root-alignment`
 - implementation PR: `#168 统一本地与生产 Secret 运行根目录`
 - implementation merge: `874fd88d3b324bce706128c1f26aaee8a9f66195`
-- archive delivery: 本文件通过独立归档 PR 进入 `main`
+- archive PR: `#169 归档本地 Secret 双根 Change`
+- archive branch: `archive/local-secret-root-alignment`
