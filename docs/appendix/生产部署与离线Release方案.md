@@ -14,7 +14,7 @@
 
 当前结论先写在前面：
 
-> **当前仓库已经通过 Internal V1-A 实现根 `Dockerfile`、根 `compose.yaml`、`env.production.example`、宿主目录/Secret 准备工具和 Nginx Runtime，并由独立 Compose Golden Path CI 验证空库 Migration、正式进程、持久挂载、只读 Secret、Readiness 与端口边界。它是“仓库级最小可部署环境”，不是完整 Stage 11 Production Release：`compose.production.yaml`、离线 `images.tar`、Manifest、SBOM/签名、协调 Backup/Restore、企业认证/授权与真实生产服务器验收仍待后续正式 Change 完成。**
+> **当前仓库已经通过 Internal V1-A 实现根 `Dockerfile`、根 `compose.yaml`、`env.production.example`、宿主 bootstrap 与 Nginx Runtime，并把管理员操作收敛为“编辑一个敏感 `env.production` + 一条 Docker Compose 启动命令”。内部 PostgreSQL/Cursor Secret 仍由系统自动生成并持久保存，TikHub/LLM Key 由 `env.production` 进入 Compose Secret File，不作为业务容器环境变量。永久 Compose Golden Path 验证空库 Migration、正式进程、Secret 生命周期、Readiness、持久挂载与端口边界。它仍不是完整 Stage 11 Production Release：离线 `images.tar`、Manifest、固定 digest、SBOM/签名、协调 Backup/Restore、企业认证/授权与真实生产服务器验收仍待后续正式 Change 完成。**
 
 生产上线总路线见：
 
@@ -45,14 +45,16 @@ backend/src/aima_ugc/entrypoints/
 backend/src/aima_ugc/bootstrap/
 ```
 
-Internal V1-A 已把这些能力装进同一个非 root Backend image；不同服务只使用不同正式 command。前端 Vue SPA 已通过 Frontend build stage 构建静态资源，并由非 root Nginx Runtime 提供，同时同源代理 `/api` 与 `/health`。
+Internal V1-A 已把这些能力装进同一个非 root Backend image；不同服务只使用不同正式 command。前端 Vue SPA 通过 Frontend build stage 构建静态资源，并由非 root Nginx Runtime 提供，同时同源代理 `/api` 与 `/health`。
+
+当前部署还增加一个一次性 `bootstrap` 服务。它不是业务进程，也不常驻：只在 Compose 启动阶段以 root 准备宿主持久目录、生成/校验内部 Secret，成功后退出 0；PostgreSQL 只在 bootstrap 成功后启动。
 
 当前业务持久依赖：
 
 ```text
 PostgreSQL 18
 Local ArtifactStore（当前默认）
-Secret files
+内部 Secret files
 应用日志目录
 ```
 
@@ -62,7 +64,23 @@ Secret files
 
 # 2. 生产服务拓扑
 
-Internal V1-A 已实现并验证：
+Internal V1-A 当前实际 Compose 拓扑：
+
+```text
+bootstrap（一性初始化）
+↓
+postgres
+↓
+migrate（一性）
+↓
+configure（一性）
+↓
+api / worker / scheduler
+↓
+frontend
+```
+
+长期生产核心业务服务仍是：
 
 ```text
 frontend
@@ -70,22 +88,10 @@ api
 worker
 scheduler
 migrate
-configure
 postgres
 ```
 
-其中 `configure` 是新环境的一次性非敏感运行配置动作，不是常驻业务服务。长期生产核心服务拓扑仍是：
-
-```text
-frontend
-api
-worker
-scheduler
-migrate
-postgres
-```
-
-职责：
+`bootstrap` 与 `configure` 都属于部署/启动装配，不是常驻业务服务。
 
 ### `frontend`
 
@@ -112,16 +118,7 @@ reporting.content-export-excel.v1
 
 ### `scheduler`
 
-只负责：
-
-```text
-Plan
-→ due slot
-→ Occurrence
-→ Run + Job
-```
-
-不直接请求 TikHub。
+只负责 `Plan → due slot → Occurrence → Run + Job`，不直接请求 TikHub。
 
 ### `migrate`
 
@@ -131,7 +128,7 @@ Plan
 alembic upgrade head
 ```
 
-它不是常驻服务，也不应由每个 API/Worker 实例启动时自动执行。Internal V1-A 已按这个边界运行空库 Migration。
+它不是常驻服务，也不由 API/Worker 启动时隐式执行。Compose 自动编排它，只是减少人工步骤，不改变“Migration 独立进程”这个架构边界。
 
 ### `postgres`
 
@@ -141,7 +138,7 @@ alembic upgrade head
 
 # 3. 生产宿主机目录
 
-原批准目录设计继续保留，并已成为 Internal V1-A 的实际宿主目录 Contract：
+当前长期目录设计：
 
 ```text
 /data/docker
@@ -154,7 +151,16 @@ alembic upgrade head
 /data/AIMA_UGC/shared/secrets
 ```
 
-为什么这样拆：
+其中 Internal V1 默认 Compose 直接使用：
+
+```text
+/data/AIMA_UGC/runtime/data
+/data/AIMA_UGC/runtime/logs
+/data/AIMA_UGC/postgres
+/data/AIMA_UGC/shared/secrets
+```
+
+`/data/AIMA_UGC/backups`、`releases`、`shared/env` 仍属于长期运维目录规划，完整协调 Backup Set、不可变 Release 内容及其生命周期由后续 Stage 实现。
 
 | 目录 | 用途 | 为什么单独放 |
 | --- | --- | --- |
@@ -162,12 +168,10 @@ alembic upgrade head
 | `/data/AIMA_UGC/postgres` | PostgreSQL 数据 | 不能依赖容器可写层 |
 | `/data/AIMA_UGC/runtime/data` | Local ArtifactStore 等业务文件 | 与 Release 解耦，升级不覆盖 |
 | `/data/AIMA_UGC/runtime/logs` | API/Worker/Scheduler `.log` | 便于宿主机直接排障和轮转 |
-| `/data/AIMA_UGC/backups` | 协调 Backup Set | 不能和在线数据库目录混用 |
-| `/data/AIMA_UGC/releases` | 不可变 Release 版本 | 支持切回旧应用版本 |
-| `/data/AIMA_UGC/shared/env` | 非 Secret 环境配置 | 多 Release 共享 |
-| `/data/AIMA_UGC/shared/secrets` | 只读 Secret 文件 | 不进入 Git/Release 包明文 |
-
-`/data/AIMA_UGC/backups` 与 `/data/AIMA_UGC/releases` 在 V1-A 由宿主准备工具建立边界，但协调 Backup Set 和不可变 Release 内容仍由后续 Stage 实现。
+| `/data/AIMA_UGC/backups` | 未来协调 Backup Set | 不能和在线数据库目录混用 |
+| `/data/AIMA_UGC/releases` | 未来不可变 Release 版本 | 支持切回旧应用版本 |
+| `/data/AIMA_UGC/shared/env` | 可选共享配置目录 | 不能当作 Secret Manager；真实 env 文件本身需按敏感文件保护 |
+| `/data/AIMA_UGC/shared/secrets` | AIMA 内部随机 Secret | 与 PostgreSQL 数据一起持久保护 |
 
 不要把 PostgreSQL、Artifact、日志全部塞进 `/data/docker`。
 
@@ -180,62 +184,102 @@ Internal V1-A 当前实际路径：
 ```text
 /app/data
 /app/logs
-/run/secrets
+/run/internal-secrets   # Backend 内部随机 Secret
+/run/secrets            # Compose 外部 Provider/LLM Secret；PostgreSQL 容器中用于 password file
 /var/lib/postgresql
 ```
 
-当前锁定 PostgreSQL 为 `18.4`。PostgreSQL 18 官方镜像使用 `/var/lib/postgresql` 作为持久卷挂载点，默认数据库目录位于其下 `18/docker`；因此当前 Compose 把宿主 `/data/AIMA_UGC/postgres` bind mount 到 `/var/lib/postgresql`，而不是复制 17 及以前常见的 `/var/lib/postgresql/data` 约定。
+当前锁定 PostgreSQL 为 `18.4`。PostgreSQL 18 官方镜像使用 `/var/lib/postgresql` 作为持久卷挂载点，默认数据库目录位于其下 `18/docker`；因此当前 Compose 把宿主 PostgreSQL 目录 bind mount 到 `/var/lib/postgresql`。
 
 后续真正完成 Stage 11 时仍必须重新验证当时锁定镜像的实际约定，不能把今天的路径无条件套到未来升级版本。
 
-Internal V1-A 已通过 `scripts/deploy/prepare_host.py` 执行/校验：
+宿主 `bootstrap`/`scripts/deploy/prepare_host.py` 会：
 
-- 预先创建宿主目录；
+- 建立/校验运行所需宿主目录；
 - 固定 App/PostgreSQL/Secret group UID/GID；
 - 不用 `chmod 777`；
-- 不依赖 Docker 自动创建归属不明的业务目录；
-- App 与 Frontend 使用非 root 用户运行。
+- 首次生成内部随机 Secret；
+- 已有内部 Secret 只校验/收紧权限，不静默轮换；
+- 已有 PostgreSQL 18 数据但密码 Secret 丢失时 fail closed；
+- App 与 Frontend 继续使用非 root 用户运行。
 
 ---
 
 # 5. Secret 装配
 
-当前应用已经采用 Secret 文件边界，Internal V1-A 已把它实际接到容器：
+当前应用的 Secret File 边界保留，但为了把管理员操作收敛成一个 `env.production`，内部与外部 Secret 明确分层。
+
+## 5.1 内部随机 Secret
 
 ```text
-宿主机 /data/AIMA_UGC/shared/secrets/<name>
-→ read-only bind mount
-→ /run/secrets/<name>
-→ PlatformSettings / Secret resolver
+postgres_password
+import_batch_cursor_signing_key
+content_cursor_signing_key
+collection_runtime_cursor_signing_key
 ```
 
-Backend Runtime 通过固定 supplementary group 只读访问 Secret；Secret 目录本身在容器内不可写。PostgreSQL 密码同样通过只读 password file 装配，不复制到应用环境变量。
+流程：
 
-业务配置表只保存：
+```text
+首次空环境
+→ bootstrap 随机生成
+→ AIMA_HOST_SECRET_DIR 持久保存
+→ root:11001 / 0440
+→ Backend 只读挂载 /run/internal-secrets
+```
+
+PostgreSQL 容器也只读挂载同一宿主内部 Secret 目录，并使用 `POSTGRES_PASSWORD_FILE` 读取 `postgres_password`。
+
+关键恢复不变量：
+
+```text
+空数据库 + password 不存在
+→ 自动生成
+
+已有 PostgreSQL 18 数据 + password 存在
+→ 复用
+
+已有 PostgreSQL 18 数据 + password 不存在
+→ 启动失败
+→ 要求恢复原 Secret
+→ 禁止生成新值
+```
+
+原因是 PostgreSQL 初始化密码不会因为容器重启时出现一个新 password file 就自动改写既有数据库账户密码；随意新建只会造成数据库和应用凭据漂移。
+
+## 5.2 外部 TikHub / LLM Secret
+
+管理员维护的真实 `env.production` 可以包含：
+
+```text
+AIMA_TIKHUB_API_KEY
+AIMA_LLM_API_KEY
+```
+
+因此 `env.production` 本身属于**敏感文件**，必须被 Git ignore、限制文件权限，不得提交、打印或打入镜像/Release 明文。
+
+运行链：
+
+```text
+env.production
+→ Compose top-level secret `environment:` source
+→ 只授予需要该 Secret 的 service
+→ /run/secrets/tikhub_api_key 或 /run/secrets/llm_api_key
+→ AIMA_EXTERNAL_SECRET_DIR
+→ 现有 Secret resolver
+```
+
+业务容器的普通 `Config.Env` 不包含 API Key 原值。Provider Config 继续只保存：
 
 ```text
 secret_ref
 ```
 
-不得保存真实 Secret 值。Internal V1-A 的隔离 Compose Smoke 已验证 TikHub Provider Config 只保存 `secret_ref=tikhub_api_key`，测试 Secret 原值没有进入 Provider Config 行。
+不得保存真实 Secret 值。
 
-生产 Secret 至少包括按当前 Settings 实际需要的：
+`PlatformSettings.external_secret_root` 在未配置独立外部根时回退到 `AIMA_SECRET_DIR`，所以本地开发现有 `.runtime/secrets` 单根模式保持兼容。
 
-- PostgreSQL password；
-- TikHub/API Provider Secret；
-- LLM API Key；
-- Cursor signing keys；
-- 未来认证相关 Secret。
-
-当前宿主准备工具只会在缺失时生成 PostgreSQL password 与三个 Cursor signing key；TikHub/LLM 外部凭据必须由管理员显式写入 Secret 目录，不生成、不猜测、不提交。
-
-Secret resolver 必须继续防止：
-
-- root escape；
-- symlink；
-- 非普通文件；
-- 超限；
-- 错误信息回显 Secret。
+Secret resolver 必须继续防止 root escape、symlink、非普通文件、超限和错误信息回显 Secret。
 
 ---
 
@@ -257,13 +301,14 @@ Internal V1-A 已建立根 `Dockerfile`，并固定：
 - 安装项目 package；
 - 不包含无关开发缓存；
 - Runtime 启动不再联网 `pip install`；
-- 使用非 root UID `10001`；
-- 同一 image 支持 API/Worker/Scheduler/Migration/Configure 不同 command；
+- 正式 API/Worker/Scheduler 使用非 root UID `10001`；
+- 同一 image 支持 API/Worker/Scheduler/Migration/Configure/Bootstrap 不同 command；
+- 只有一次性 bootstrap 显式覆盖为 root，完成后退出；
 - 镜像构建时不写入 Secret。
 
-## Frontend Runtime
+`.dockerignore` 只放行 `scripts/deploy/prepare_host.py` 进入 Backend build context，不把整个开发脚本目录塞入运行镜像。
 
-已经按以下路径实现：
+## Frontend Runtime
 
 ```text
 Node build stage
@@ -274,86 +319,55 @@ Node build stage
 
 生产 Nginx 不包含 `node_modules`，并以非 root 用户运行。
 
-## 镜像事实
-
-V1-A 保持仓库现有锁定版本，不因为实现部署而升级 Python/Node/PostgreSQL/uv。当前 Compose CI 真实构建这些镜像，但 V1-A 仍是 build-from-repository 的最小部署环境。
-
-完整 Stage 11 Release 还必须把最终实际 image digest 写入 Release Manifest，并建立来源/完整性验证；普通代码只保留版本声明。
-
-禁止：
-
-```text
-latest
-```
-
-作为不可追溯生产事实。
+V1-A 保持仓库现有锁定版本，不因为部署体验收敛而升级 Python/Node/PostgreSQL/uv。完整 Stage 11 仍必须把最终实际 image digest 写入 Release Manifest，并建立来源/完整性验证；禁止把 `latest` 当不可追溯生产事实。
 
 ---
 
 # 7. Compose 当前实现与 Stage 11 目标
 
-Internal V1-A 当前只维护一个根 `compose.yaml`，避免在尚无完整 Release Manifest/离线镜像语义时提前制造两套易漂移配置。它已经表达：
+Internal V1-A 当前只维护一个根 `compose.yaml`，避免在尚无完整 Release Manifest/离线镜像语义时制造两套易漂移配置。
+
+管理员标准入口：
+
+```bash
+cp env.production.example env.production
+chmod 0600 env.production
+# 编辑 env.production
+docker compose --env-file env.production up -d --build --wait
+```
+
+同一命令同时适用于首次空环境和后续幂等启动。Compose 内部依赖链：
+
+```text
+bootstrap completed successfully
+→ postgres healthy
+→ migrate completed successfully
+→ configure completed successfully
+→ api / worker / scheduler
+→ frontend healthy
+```
+
+当前 Compose 还保证：
 
 - `frontend` 是唯一发布宿主端口的业务入口；
 - 默认只绑定 `127.0.0.1:8080`；
-- PostgreSQL 没有宿主 published port；
-- API 没有宿主 published port；
-- `api/worker/scheduler/migrate/configure` 复用同一个 Backend image 和同一组 Runtime facts；
-- `migrate`、`configure` 是 tools profile 的一次性动作；
-- PostgreSQL、Artifact、日志、Secret 按正式宿主目录映射；
+- PostgreSQL/API 没有宿主 published port；
+- `api/worker/scheduler/migrate/configure/bootstrap` 复用同一个 Backend image；
+- PostgreSQL、Artifact、日志、内部 Secret 按正式宿主目录映射；
 - PostgreSQL 与 API 有真实 health/readiness；
-- 常驻服务使用 restart policy；
-- Secret 只读挂载。
+- 外部 TikHub/LLM Secret 通过 Compose Secret File 装配；
+- 内部随机 Secret 与业务数据在二次启动/容器重建时保持；
+- `bootstrap`、`migrate`、`configure` 都是 one-shot，不保留高权限初始化容器常驻。
 
-当前非敏感服务器模板为：
+完整 Stage 11 若需要独立生产覆盖，可在正式 Release Change 中增加有独立语义的 `compose.production.yaml`，但不能只是复制根 Compose。
 
-```text
-env.production.example
-```
-
-真实有效配置建议保存到 `/data/AIMA_UGC/shared/env/aima.env`，不读取 `env.local`，也不写入 Git。
-
-Stage 11 若需要独立生产覆盖，可在正式 Release Change 中增加：
-
-```text
-compose.production.yaml
-→ 不可变镜像、资源/安全、正式网络/发布覆盖
-```
-
-但必须有独立语义和验证，不能只是复制一份根 Compose。
-
-完整 Stage 11 还必须实现：
-
-- 服务器不 build；
-- `docker compose up` 只使用已验证、已 load 的固定镜像；
-- image digest / Release Manifest；
-- 生产 HTTPS/认证/授权；
-- 完整 offline/no-pull smoke。
+完整 Stage 11 仍必须实现：服务器不现场 build、固定镜像/digest/Manifest、离线 load、正式 HTTPS/认证授权、完整 offline/no-pull smoke 等。
 
 ---
 
 # 8. 网络和浏览器安全边界
 
-生产目标继续保留：
-
-- HTTPS；
-- 明确允许 Host；
-- 前后端默认同源；
-- CORS 只允许真实来源；
-- 带凭据时不能 `*`；
-- HSTS；
-- `X-Content-Type-Options`；
-- Referrer Policy；
-- Content Security Policy；
-- Provider 出站 Origin Allowlist；
-- 用户输入 URL 不能直接触发服务器任意请求；
-- 出站校验覆盖 DNS 解析和 redirect；
-- PostgreSQL 默认不暴露公网；
-- 备份/管理入口只允许受控主机/网络。
-
-Internal V1-A 只完成最小公司内网部署所需的端口边界与同源 Nginx 代理，不把上述完整 Production Browser Security 目标伪装为已实现。
-
-Nginx 自己产生的 413/502/504 等 `/api/` 错误应尽量保持与 API 错误外形兼容，并保留 `X-Request-ID`，避免前端遇到代理层错误时完全无法关联日志。这仍属于后续 Production hardening，不是 V1-A 已完成项。
+生产长期目标继续保留 HTTPS、明确 Host、同源、严格 CORS、HSTS、CSP、出站 Origin Allowlist 等要求。Internal V1-A 只完成最小公司内网部署所需的端口边界与同源 Nginx 代理，不把完整 Production Browser Security 目标伪装为已实现。
 
 ---
 
@@ -372,26 +386,6 @@ External Identity Provider
 ```
 
 Provider-specific 用户 ID/Token 不应成为普通业务模块公共身份 Contract。
-
-角色名称还需要业务决策；早期：
-
-```text
-admin / operator / analyst / viewer
-```
-
-只属于候选，不是当前正式 Contract。
-
-真正实现时需要：
-
-- 身份 Provider 选择；
-- 登录协议；
-- Session/OIDC/飞书等真实交互；
-- 后端 Permission；
-- 对象级授权；
-- Raw/Export/Provider Config 等敏感权限；
-- Session/Cookie/CSRF/nonce/state/PKCE 等与实际协议匹配的安全测试。
-
-没有后端授权时不能因“内网”或“前端隐藏按钮”宣称完整生产上线。
 
 ---
 
@@ -415,61 +409,13 @@ AIMA_UGC-v1.0.0-deploy.tar.gz
 
 正式版本号规则在 Release Change 中确定；上面的 `v1.0.0` 只是结构示例。
 
-## `release-manifest.json`
-
-至少记录：
-
-- Release 版本；
-- Git SHA；
-- 构建时间；
-- target platform；
-- image digest；
-- Alembic head；
-- Canonical/OpenAPI 版本或 hash；
-- 最低 Docker/Compose 版本；
-- 是否有不兼容 Migration；
-- rollback 说明；
-- SBOM/扫描/签名信息。
-
-## `migration-manifest.json`
-
-至少让运维知道：
-
-```text
-from revision
-→ to revision
-→ 是否 forward-compatible
-→ 是否允许仅切回旧应用
-→ 是否需要 Backup Restore
-```
+`release-manifest.json` 至少记录 Release 版本、Git SHA、构建时间、target platform、image digest、Alembic head、Contract/OpenAPI hash、最低 Docker/Compose 版本、Migration 兼容/rollback 边界、SBOM/签名信息。
 
 ---
 
 # 11. 为什么不能只校验 SHA256
 
-`SHA256SUMS` 证明：
-
-```text
-文件和清单是否一致
-```
-
-但如果攻击者同时替换：
-
-```text
-release + SHA256SUMS
-```
-
-SHA 本身不能证明来源。
-
-所以生产目标需要：
-
-```text
-独立受信签名
-或
-有身份/完整性证明的 Artifact Registry
-```
-
-服务器部署前同时验证来源和内容完整性。
+`SHA256SUMS` 只能证明文件和清单一致；如果攻击者同时替换 release 与 SHA 文件，不能证明来源。所以生产目标需要独立受信签名或有身份/完整性证明的 Artifact Registry。
 
 ---
 
@@ -485,16 +431,9 @@ SHA 本身不能证明来源。
 → compose up --no-build --pull never
 ```
 
-禁止：
+禁止 `git pull`、现场 `npm install` / `pip install`、浏览器在线下载、现场 build 与 CI 不同镜像、临时编辑容器内部文件。
 
-- `git pull`；
-- `npm install`；
-- `pip install`；
-- Playwright/browser 在线下载；
-- 现场 build 一个与 CI 不同的镜像；
-- 临时编辑容器内部文件当生产修复。
-
-Internal V1-A 的仓库级部署说明允许在受控验收环境从当前仓库 build 镜像，只用于建立/验证最小部署基础；它不改变上述完整 Production Release 原则。
+Internal V1-A 当前的仓库级内网验收入口仍允许 `--build`，用于建立/验证最小部署基础；它不改变正式不可变 Release 原则。
 
 ---
 
@@ -509,52 +448,16 @@ Internal V1-A 的仓库级部署说明允许在受控验收环境从当前仓库
 └─ current -> v1.0.1
 ```
 
-版本目录只放不可变 Release。
-
-下面内容不能放版本目录：
-
-```text
-shared/env
-shared/secrets
-runtime/data
-runtime/logs
-postgres
-backups
-```
-
-否则切换版本会覆盖持久事实。
+版本目录只放不可变 Release。共享配置/Secret、runtime data/log、postgres、backups 不能放版本目录，否则切换版本会覆盖持久事实。
 
 ---
 
 # 14. 发布前为什么必须协调 PostgreSQL 和 Artifact
 
-业务来源链中存在：
+业务来源链中存在 `content_versions.raw_artifact_id → artifacts metadata → ArtifactStore bytes`。只备份数据库可能丢 bytes，只备份文件会丢业务关系/Job/Content，所以目标恢复单位是：
 
 ```text
-content_versions.raw_artifact_id
-→ artifacts metadata
-→ ArtifactStore bytes
-```
-
-如果只备份 PostgreSQL：
-
-```text
-metadata 在
-bytes 不在
-```
-
-如果只备份文件：
-
-```text
-bytes 在
-业务关系/Job/Content 不在
-```
-
-因此目标恢复单位是：
-
-```text
-Backup Set
-= PostgreSQL + ArtifactStore
+Backup Set = PostgreSQL + ArtifactStore
 ```
 
 并且需要证明两者对应同一个业务截止点。
@@ -563,193 +466,37 @@ Backup Set
 
 # 15. 协调 Backup/Restore 目标机制
 
-原设计的核心机制仍保留为待实现目标：
+原设计核心机制仍是待实现目标：正常业务写使用共享 write lock；备份进入 maintenance、停止新 Job/Scheduler 写、取得独占 lock、等待 writer 退出、冻结新写、捕获 PostgreSQL + Artifact、验证 Backup Set 后释放。
 
-```text
-正常业务写
-→ 取得共享 write lock
-→ 复核 maintenance epoch
-→ 写 PostgreSQL / Artifact 关联
-→ commit / rename 完成后释放
-
-备份
-→ 进入 maintenance
-→ 停止新 Job/Scheduler 写入
-→ 取得同一键独占 lock
-→ 等所有既有共享 writer 退出
-→ 冻结新写
-→ pg_dump + Artifact snapshot/manifest
-→ 验证
-→ 标记 Backup Set 可恢复
-→ 释放 lock
-```
-
-具体 PostgreSQL advisory lock key、表、状态机和脚本当前尚未实现，进入 Stage 11C 必须用正式 Change 设计并测试。
-
-不能只给两个独立备份文件同一个名字就称作“协调一致”。
+具体 advisory lock key、表、状态机和脚本当前尚未实现，进入 Stage 11C 必须用正式 Change 设计并测试。不能只给两个独立备份文件同一个名字就称作“协调一致”。
 
 ---
 
 # 16. 发布顺序
 
-目标完整顺序：
+完整 Production 目标顺序仍是：确认目标 SHA/CI → 获取并验证 Release → 检查 Manifest/Migration/磁盘/Secret → 维护态/停止新写 → 协调 Backup Set → docker load → migrate → compose start → health/smoke → 恢复 Scheduler/Worker → 观察日志/磁盘/失败 Job。
 
-```text
-确认目标 SHA / 最新 CI 全绿
-→ 获取 Release Bundle
-→ 验证签名/来源
-→ sha256 校验
-→ 检查 Manifest / Migration
-→ 检查磁盘、目录、UID/GID、Secret
-→ 暂停 Scheduler
-→ 进入维护模式，拒绝业务写
-→ 停止新 Job claim
-→ 等待或受控取消运行中 Job
-→ 获取统一独占写屏障
-→ 创建协调 PostgreSQL + Artifact Backup Set
-→ 验证 Backup Set
-→ docker load
-→ migrate
-→ compose config
-→ 启动 PostgreSQL（如果本次需要）
-→ 启动 API
-→ 启动 Worker/Scheduler
-→ 启动 Frontend
-→ health/live + ready
-→ 关键业务 smoke
-→ 恢复 Job claim / Scheduler
-→ 持续观察日志、磁盘、失败 Job
-```
-
-任何 Backup/Migration 校验失败：
-
-```text
-停止继续发布
-→ 保持维护态
-→ 先确认数据/旧 Release/恢复方案
-```
-
-不能“先把新服务起来再说”。
+任何 Backup/Migration 校验失败必须停止继续发布，不能“先把新服务起来再说”。
 
 ---
 
 # 17. 关键业务 Smoke
 
-生产 Release 至少验证：
+正式 Release 至少验证 `/health/live`、`/health/ready`、Frontend、数据库、Artifact、日志，以及 Excel Import → Content → Analysis → Excel Export，并在受控范围执行一次 Collection Run。真实付费 Provider/LLM smoke 必须限制请求和费用。
 
-### 基础
-
-```text
-/health/live
-/health/ready
-Frontend 首页
-数据库连接
-Artifact 写/读
-日志写入
-```
-
-### 业务
-
-在受控测试数据/Provider 范围执行：
-
-```text
-Excel Import
-→ Content 查询
-→ Analysis
-→ Excel Export
-```
-
-以及受控：
-
-```text
-一次 Collection Run
-→ Raw
-→ Mapper
-→ Content
-```
-
-真实付费 Provider/LLM smoke 需要显式成本范围，不能普通部署脚本无限调用。
-
-### 恢复
-
-```text
-restart api
-restart worker
-restart scheduler
-```
-
-不能造成 Job 重复副作用或 Scheduler 重复 Occurrence。
-
-最终 Stage 11 验收还要做宿主机 reboot。
+最终 Stage 11 验收还要做进程/容器重启与宿主机 reboot。
 
 ---
 
 # 18. 回滚
 
-## 18.1 Schema 向后兼容
-
-如果 Migration 不破坏旧应用：
-
-```text
-切 current Release
-→ 启动旧 image
-→ smoke
-```
-
-## 18.2 Schema 与旧应用不兼容
-
-不能机械：
-
-```text
-alembic downgrade
-```
-
-正确方案是：
-
-```text
-恢复发布前已验证 Backup Set
-或
-使用在 Migration 设计时明确的双版本兼容窗口
-```
-
-必须说明从 Backup 截止点到回滚时刻可能损失的数据。
-
-## 18.3 回滚验证
-
-- API；
-- Worker；
-- Scheduler；
-- Frontend；
-- Content/Comment；
-- 一个受控 Collection；
-- 日志；
-- Artifact 下载；
-- 认证/授权。
+Schema 向后兼容时可切回旧应用 image 并 smoke；Schema 与旧应用不兼容时不能机械 `alembic downgrade`，应恢复发布前已验证 Backup Set 或使用 Migration 设计时明确的双版本兼容窗口，并说明数据损失窗口。
 
 ---
 
 # 19. Backup 策略
 
-具体频率必须等 Stage 0 的 RPO/RTO 批准后冻结。
-
-长期要求：
-
-```text
-周期性协调 Backup Set
-+ 发布前 Backup Set
-+ 定期完整恢复演练
-+ 每日检查 Backup 结果
-+ 磁盘容量告警
-```
-
-原方案提出过 70% WARNING / 85% ERROR 等候选阈值；这些数字可以作为实现参考，但**没有 Stage 0 批准就不是最终生产 Contract**。
-
-Backup “任务成功”不能只看 `pg_dump` 退出码，还要验证：
-
-- PostgreSQL backup 可读/可 restore；
-- Artifact manifest/文件完整；
-- Backup Set 截止点一致；
-- 实际恢复出来的 API/Job/Artifact 可以工作。
+具体频率必须等 RPO/RTO 批准后冻结。长期要求仍是周期性协调 Backup Set + 发布前 Backup Set + 定期完整恢复演练 + 每日检查 Backup 结果 + 磁盘容量告警。
 
 ---
 
@@ -759,16 +506,7 @@ Internal V1-A 已把 Docker/Compose 的最小运行基础提前实现并验证�
 
 ## Stage 11A：Production Docker/Compose Hardening
 
-基于 V1-A 增量完成：
-
-```text
-必要时增加 compose.production.yaml
-不可变 image/digest 绑定
-生产网络/HTTPS/认证入口
-资源/安全覆盖
-CI linux/amd64 Release build
-no-build/no-pull Compose smoke
-```
+基于 V1-A 增量完成不可变 image/digest、必要的 `compose.production.yaml`、生产 HTTPS/认证入口、资源/安全覆盖、CI linux/amd64 Release build 和 no-build/no-pull smoke。
 
 ## Stage 11B：离线 Release 构建
 
@@ -848,14 +586,16 @@ migrations/
 
 # 22. 当前禁止误写成已完成
 
-Internal V1-A 已经可以准确描述为：
+Internal V1-A 可以准确描述为：
 
 ```text
-“仓库已提供 Internal V1-A 最小 Docker Compose 部署栈”
-“已在隔离 Linux Runner 验证空库 Migration、正式进程、Readiness、持久挂载和端口边界”
+“仓库已提供一条 Compose 命令启动的 Internal V1 最小部署栈”
+“PostgreSQL/Cursor 内部 Secret 自动生成并持久保存”
+“外部 TikHub/LLM Key 经 Compose Secret File 装配，不进入业务容器普通环境变量”
+“已在隔离 Linux Runner 验证空库 Migration、正式进程、Readiness、Secret 生命周期、持久挂载和端口边界”
 ```
 
-但在真正完成后续 Production Change 和验证前，文档/PR 不得说：
+但在后续 Production Change 和真实环境验收完成前，不得说：
 
 ```text
 “已经完成正式生产部署闭环”
@@ -868,4 +608,4 @@ Internal V1-A 已经可以准确描述为：
 
 当前正确说法是：
 
-> Internal V1-A 的最小容器部署基础已经实现并验证；完整 Production Release、认证和协调恢复仍属于后续待实现/待验收阶段。
+> Internal V1-A 的最小容器部署基础和启动体验已经闭环；完整 Production Release、认证和协调恢复仍属于后续待实现/待验收阶段。
