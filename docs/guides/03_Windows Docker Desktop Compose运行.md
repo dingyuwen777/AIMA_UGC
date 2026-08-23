@@ -40,7 +40,13 @@ compose.yaml
 scripts\setup_dev_environment.cmd
 ```
 
-该入口负责 Windows 开发工具链；Docker Desktop 已安装时还会配置 AIMA 默认 Docker Hub mirrors，并通过 `docker info` 验证实际生效。
+该入口负责 Windows 开发工具链；Docker Desktop 已安装时还会把 AIMA 默认 Docker Hub mirrors 合并到：
+
+```text
+%USERPROFILE%\.docker\daemon.json
+```
+
+然后重启 Docker Desktop，并通过 `docker info` 验证实际生效。
 
 当前 mirrors：
 
@@ -50,7 +56,7 @@ https://hub.1panel.dev
 https://docker.m.daocloud.io
 ```
 
-Docker Desktop 未安装时脚本会明确提示跳过；安装并启动 Docker Desktop 后重新运行一次即可。
+Docker Desktop 未安装时脚本会明确提示跳过；安装后重新运行一次即可。
 
 检查：
 
@@ -287,9 +293,10 @@ Windows named-volume override只属于开发机存储适配，不改变 Producti
 
 1. Windows GitHub Runner 可从 CMD / PowerShell 解析 `compose.yaml + compose.windows.yaml + env.production`；
 2. Linux Docker Engine 实际运行 Windows named-volume Runtime model，验证 bootstrap、PostgreSQL、Migration、Readiness、Secret mode 和重启持久化；
-3. Dockerfile / Compose 的镜像 identity 与包源配置由仓库单元测试约束。
+3. Dockerfile / Compose 的镜像 identity 与包源配置由仓库单元测试约束；
+4. Windows GitHub Runner 对 `configure_docker_desktop_mirrors.ps1` 做 PowerShell 语法解析；真实 Docker Desktop mirror 应用由首次目标机初始化后的 `docker info` 验证。
 
-真实 Windows Docker Desktop 首次初始化还应在目标开发机执行：
+真实 Windows Docker Desktop 首次初始化运行：
 
 ```cmd
 scripts\setup_dev_environment.cmd
