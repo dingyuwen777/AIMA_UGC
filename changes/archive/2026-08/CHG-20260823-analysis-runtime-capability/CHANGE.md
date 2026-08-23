@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260823-analysis-runtime-capability
 title: 补齐 AI 运行配置能力前端提示
 level: L3
-status: ready_for_review
+status: done
 owner: chatgpt
 branch: feature/analysis-runtime-capability
 created: 2026-08-23
@@ -76,20 +76,20 @@ data_changes: []
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
 | R1 | LLM 未配置时前端也应明确提示，并避免让 AI 打标看起来可正常执行 | user:local-dev-bootstrap-approved-scheme | satisfied | `GET /api/v1/content-analysis-capabilities` → Voice Plaza `analysisConfigured`；Browser Mock 断言 warning + disabled；Store 在 false 时不调用 `createContentAnalysis` |
-| R2 | 本地启动未配置 TikHub/LLM 不应阻止基础功能；只影响对应可选能力 | user:local-dev-bootstrap-approved-scheme | satisfied | capability 是独立只读 GET；false 仅禁用 AI 分析，Excel Import/Voice Plaza 浏览/Excel Export 链未改；Local Dev Bootstrap #45 与 Stage 8F #349 success |
+| R2 | 本地启动未配置 TikHub/LLM 不应阻止基础功能；只影响对应可选能力 | user:local-dev-bootstrap-approved-scheme | satisfied | capability 是独立只读 GET；false 仅禁用 AI 分析，Excel Import/Voice Plaza 浏览/Excel Export 链未改；Final Ready HEAD Local Dev Bootstrap #46 与 Stage 8F #350 success |
 | R3 | 前端不能读取 env.local/Secret 或复制配置规则，能力事实必须来自正式后端 Contract | docs/blueprint/04-后端任务API与前端.md | satisfied | `contracts/runtime.py` + `analysis_capability_http.py` → OpenAPI → Orval `getContentAnalysisCapabilities()` → Voice Plaza API/Store/Page；Blueprint 明确禁止前端读取本地配置/Secret |
-| R4 | Secret 不能进入 API Response/前端，运行能力只公开安全必要事实 | docs/blueprint/05-日志安全部署与运维.md | satisfied | Response 只有 `configured: bool`；API tests 断言 API Key/Base URL/Model 不出响应；CI #2222 API/secret/docs gates success |
+| R4 | Secret 不能进入 API Response/前端，运行能力只公开安全必要事实 | docs/blueprint/05-日志安全部署与运维.md | satisfied | Response 只有 `configured: bool`；API tests 断言 API Key/Base URL/Model 不出响应；Final Ready HEAD CI #2223 API/secret/docs gates success |
 
 # Validation Matrix
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
-| Browser Mock Acceptance | required | `frontend/e2e/voice-plaza.spec.ts` 覆盖 configured=false warning/disabled 与 configured=true 现有 Analysis Job；CI #2222 Frontend checks success |
-| Backend/API/PostgreSQL Integration | required | `tests/api/test_analysis_runtime_capability.py` 覆盖缺配置、缺 Secret、完整配置与响应脱敏；不新增数据库行为；CI #2222 Backend/API checks success |
-| Contract / Generated Client | required | `contracts/runtime.py` → OpenAPI → Orval；CI #2222 generated drift + compatibility success |
-| Real Full-stack Golden Path | required | Stage 8F #349 success，证明新增最终 API Assembly 后 Browser→Vue→FastAPI→PostgreSQL→Worker→Voice Plaza 既有 Golden Path 不回归；不增加付费 LLM Full-stack |
+| Browser Mock Acceptance | required | `frontend/e2e/voice-plaza.spec.ts` 覆盖 configured=false warning/disabled 与 configured=true 现有 Analysis Job；Final Ready HEAD CI #2223 Frontend checks success |
+| Backend/API/PostgreSQL Integration | required | `tests/api/test_analysis_runtime_capability.py` 覆盖缺配置、缺 Secret、完整配置与响应脱敏；不新增数据库行为；Final Ready HEAD CI #2223 Backend/API checks success |
+| Contract / Generated Client | required | `contracts/runtime.py` → OpenAPI → Orval；Final Ready HEAD CI #2223 generated drift + compatibility success |
+| Real Full-stack Golden Path | required | Stage 8F #350 success，证明新增最终 API Assembly 后 Browser→Vue→FastAPI→PostgreSQL→Worker→Voice Plaza 既有 Golden Path 不回归；不增加付费 LLM Full-stack |
 | Real Provider Probe | not_applicable | 不修改 LLM Provider endpoint/请求/响应/计费事实；本任务只判断本应用本地配置是否具备发起请求的前提，普通 CI 不发付费请求 |
-| Docs / Governance / Other | required | `docs/API接口说明.md`、Blueprint 04、`docs/环境运行与部署.md` 已同步；Local Dev #45、Stage 6 #219、Stage 7 Keyword #1831 / Plan #1829 / Provider #1944 / Scheduler #2171 均 success |
+| Docs / Governance / Other | required | `docs/API接口说明.md`、Blueprint 04、`docs/环境运行与部署.md` 已同步；Final Ready HEAD Change Completion Gate #69、Local Dev #46、Stage 6 #220、Stage 7 Keyword #1832 / Plan #1830 / Provider #1945 / Scheduler #2172 均 success |
 
 # Completion Audit
 
@@ -128,21 +128,28 @@ data_changes: []
 - [x] 同步 API/Blueprint/运行文档。
 - [x] 完成 Completion Audit 与两阶段语义 Review。
 - [x] 取得主 CI、Stage 8F、Local Dev 和相关永久 Stage 门禁的新鲜实现证据。
-- [ ] 最终 Ready HEAD 的 Change Completion Gate 与全部永久 CI success 后转 Ready 并合并。
+- [x] Final Ready HEAD 的 Completion Gate 与全部永久 CI success；PR #160 转 Ready 并正常合并。
 
 # 验证
 
-## 实现验证 HEAD `9df9ebcd8a95b72a9485aae028d00940b4095bb2`
+## Final Ready HEAD `8550ca933de2f01efbee7264143746b3d858889f`
 
-- CI #2222 / run `32618494267`：success。
+- Change Completion Gate #69 / run `32618674181`：success。
+- CI #2223 / run `32618674195`：success。
   - Contract/generated drift + compatibility：success。
   - Ruff / mypy / unit / contract / API / architecture / table ownership / secret scan / docs：success。
   - Wheel：success。
   - Frontend lint / typecheck / unit / build / Playwright：success。
-- Stage 8F Full-stack #349 / run `32618494249`：success。
-- Local Dev Bootstrap #45 / run `32618494251`：success。
-- Stage 6 #219、Stage 7 Keyword #1831、Plan #1829、Provider Config #1944、Scheduler #2171：全部 success。
-- Change Completion Gate #68 在 `status: in_progress` 时按设计 failure；本次提交切为 `ready_for_review` 后由最终 HEAD 重新证明。
+- Stage 8F Full-stack #350 / run `32618674207`：success。
+- Local Dev Bootstrap #46 / run `32618674175`：success。
+- Stage 6 #220、Stage 7 Keyword #1832、Plan #1830、Provider Config #1945、Scheduler #2172：全部 success。
+
+## 合并
+
+- PR：#160 `补齐 AI 运行配置能力前端提示`
+- Final Ready HEAD：`8550ca933de2f01efbee7264143746b3d858889f`
+- Merge commit：`fdae845e65e3054a899384f24698d4461426df43`
+- 合并方式：正常 PR merge；未绕过任何 CI/Review/Completion Gate。
 
 # 文档影响
 
@@ -153,6 +160,7 @@ data_changes: []
 # 交付
 
 - Branch：`feature/analysis-runtime-capability`
-- PR：#160 `补齐 AI 运行配置能力前端提示`
-- 当前状态：Draft PR / Change ready_for_review；等待最终 Ready HEAD Completion Gate + 全部永久 CI。
-- 发布：不涉及生产部署、Schema/Migration 或真实 LLM Probe；合并后当前 Roadmap 下一正式单元仍为 Internal V1-A。
+- PR：#160，已合并。
+- Merge commit：`fdae845e65e3054a899384f24698d4461426df43`。
+- Change：归档于 `changes/archive/2026-08/CHG-20260823-analysis-runtime-capability/CHANGE.md`。
+- 发布：不涉及生产部署、Schema/Migration 或真实 LLM Probe；当前 Roadmap 下一正式单元仍为 Internal V1-A。
