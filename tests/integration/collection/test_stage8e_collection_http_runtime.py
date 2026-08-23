@@ -470,15 +470,15 @@ def _insert_import_content(
             )
         )
         connection.execute(
-    insert(content_external_ids_table).values(
-        content_id=content_id,
-        id_type="note_id",
-        external_id=external_content_id,
-        provider_attempt_id=attempt_id,
-        raw_artifact_id=artifact_id,
-        observed_at=now,
-    )
-)
+            insert(content_external_ids_table).values(
+                content_id=content_id,
+                id_type="note_id",
+                external_id=external_content_id,
+                provider_attempt_id=attempt_id,
+                raw_artifact_id=artifact_id,
+                observed_at=now,
+            )
+        )
     return batch_id, content_id
 
 
