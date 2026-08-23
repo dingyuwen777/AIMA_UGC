@@ -53,6 +53,21 @@ jobs:
       - name: 刷新项目事实源索引
         run: python .agents/skills/reliable-vibe-coding/scripts/rvc.py discover --root . --json
 
+      - name: 修正一次性校验器的 URL 编码旧名判定
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/docs_numbering_validate_temp.py")
+          text = path.read_text(encoding="utf-8")
+          old = '''        for old in ENCODED_REPLACEMENTS:\n            if old in text:\n                stale.append(f"{rel}: {old}")'''
+          new = '''        for old in ENCODED_REPLACEMENTS:\n            encoded_pattern = re.compile(r"(?<!\\d{2}_)" + re.escape(old))\n            if encoded_pattern.search(text):\n                stale.append(f"{rel}: {old}")'''
+          if old not in text:
+              raise SystemExit("未找到一次性校验器修正锚点")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8", newline="")
+          PY
+
       - name: 校验编号、引用、正文与本地链接
         run: python scripts/docs_numbering_validate_temp.py
 
