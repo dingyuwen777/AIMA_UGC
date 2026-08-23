@@ -4,7 +4,7 @@
 
 它不是 Production 部署文档。公司 Linux 服务器与完整 Production 仍以 `docs/02_环境运行与部署.md`、`docs/roadmap/02_生产上线实施路线.md`、`docs/appendix/11_生产部署与离线Release方案.md` 为准。
 
-首次 Docker build 的国内镜像/apt/PyPI/npm 加速、为什么本地 build 不等于公网发布，以及怎样只清理 AIMA 后重新开始，见 [`04_Docker国内构建源与本地重置.md`](04_Docker国内构建源与本地重置.md)。
+当前固定官方容器镜像、国内网络下 registry/包源加速、为什么本地 build 不等于公网发布，以及怎样只清理 AIMA 后重新开始，见 [`04_Docker国内构建源与本地重置.md`](04_Docker国内构建源与本地重置.md)。
 
 ---
 
@@ -89,7 +89,7 @@ docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production
 
 ```text
 缺少基础镜像
-→ 自动 pull
+→ 按项目固定的官方 image reference 自动 pull
 
 AIMA backend/frontend 需要构建
 → 自动 build
@@ -106,6 +106,8 @@ bootstrap
 ```
 
 不要求提前手工 `docker pull`。
+
+项目固定使用 `python:3.14.7-slim-trixie`、`ghcr.io/astral-sh/uv:0.12.3`、`node:24.19.0-bookworm-slim`、`nginx:1.30.4-alpine3.24` 和 `postgres:18.4`。如果 Windows 机器需要 registry 加速，应在 Docker Desktop/企业网络层配置，不改变这些项目镜像名称。
 
 成功后：
 
@@ -176,7 +178,7 @@ Windows 原生模式只改变四类持久 storage 的宿主实现，因此 `AIMA
 
 TikHub / LLM API Key 仍由 `env.production` 输入 Compose Secret，不会因为 Windows override 变成普通业务容器环境变量。
 
-当前中国网络默认构建源见 [`04_Docker国内构建源与本地重置.md`](04_Docker国内构建源与本地重置.md)。
+`env.production` 不再选择 Python/uv/Node/Nginx/PostgreSQL 的 registry 或镜像名称；容器镜像由 Dockerfile/Compose 固定为官方 reference。Debian/PyPI/npm 等构建期包源仍可按机器覆盖，具体见 [`04_Docker国内构建源与本地重置.md`](04_Docker国内构建源与本地重置.md)。
 
 ---
 
