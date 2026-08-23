@@ -93,7 +93,7 @@ jobs:
           WORKER_STDOUT="${RUNNER_TEMP}/stage8f-worker.stdout.log"
           uv run uvicorn aima_ugc.entrypoints.api_main:app --host 127.0.0.1 --port 8090 >"${API_STDOUT}" 2>&1 &
           echo "$!" > "${RUNNER_TEMP}/stage8f-api.pid"
-          uv run python tests/fullstack/run_stage8f_worker.py >"${WORKER_STDOUT}" 2>&1 &
+          uv run python -m aima_ugc.entrypoints.worker_main >"${WORKER_STDOUT}" 2>&1 &
           echo "$!" > "${RUNNER_TEMP}/stage8f-worker.pid"
 
           for _ in $(seq 1 30); do
