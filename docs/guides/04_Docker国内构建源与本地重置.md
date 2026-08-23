@@ -74,7 +74,13 @@ Docker Engine 同时设置：
 scripts\setup_dev_environment.cmd
 ```
 
-如果 Docker Desktop 已安装，脚本会配置 Docker Desktop 的 Docker Engine mirrors，并在重启后通过 `docker info` 验证实际生效。Docker Desktop 未安装时会明确提示；安装后重新运行该命令即可。
+Docker Desktop 已安装时，脚本会把 mirrors 合并到当前用户的 Docker Engine 配置：
+
+```text
+%USERPROFILE%\.docker\daemon.json
+```
+
+现有 Docker Engine 其他配置会保留；文件已存在时先生成备份。随后脚本执行 Docker Desktop restart，并通过 `docker info` 验证 mirrors 已实际生效。Docker Desktop 未安装时会明确提示；安装后重新运行该命令即可。
 
 ### CentOS Stream 9
 
@@ -84,7 +90,13 @@ scripts\setup_dev_environment.cmd
 sudo bash scripts/setup_dev_environment.sh
 ```
 
-脚本将 mirrors 与 `/data/docker` 等现有 Docker Engine 设置写入 `/etc/docker/daemon.json`，校验配置后启动或重启 Docker。
+脚本将 mirrors 与 `/data/docker` 等现有 Docker Engine 设置合并到：
+
+```text
+/etc/docker/daemon.json
+```
+
+配置变更前保留原文件备份，校验 daemon 配置后安全启动或重启 Docker。
 
 ### 验证
 
