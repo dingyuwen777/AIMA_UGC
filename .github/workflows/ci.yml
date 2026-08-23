@@ -105,27 +105,12 @@ jobs:
             exit 1
           fi
 
-      - name: Generate contracts and client
+      - name: Verify generated contracts and client
         shell: bash
         run: |
           set -euo pipefail
           uv run python scripts/contracts/generate.py
           npm --prefix frontend run generate:api
-
-      - name: Upload generated Analysis capability artifacts
-        if: ${{ github.head_ref == 'feature/analysis-runtime-capability' }}
-        uses: actions/upload-artifact@v4.6.2
-        with:
-          name: analysis-capability-generated
-          path: |
-            contracts/openapi/openapi.json
-            frontend/src/generated/api/client.ts
-          if-no-files-found: error
-
-      - name: Verify generated contracts and client
-        shell: bash
-        run: |
-          set -euo pipefail
           git diff --exit-code -- contracts/openapi/openapi.json frontend/src/generated/api
           uv run python scripts/contracts/generate.py --check
           uv run python scripts/contracts/check_compatibility.py
