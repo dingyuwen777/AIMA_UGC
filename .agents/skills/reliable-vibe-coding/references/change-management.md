@@ -72,11 +72,12 @@ completion_gate: required
 4. 必须保持不变；
 5. 已确认关键决策；
 6. Requirement Traceability；
-7. Completion Audit；
-8. 小而完整的任务；
-9. 验证计划和本轮新鲜证据；
-10. 文档影响；
-11. Commit、PR 和发布状态。
+7. Validation Matrix；
+8. Completion Audit；
+9. 小而完整的任务；
+10. 验证计划和本轮新鲜证据；
+11. 文档影响；
+12. Commit、PR 和发布状态。
 
 L3 追加：
 
@@ -117,13 +118,47 @@ not_satisfied
 
 详细规则见 [completion-gate.md](completion-gate.md)。
 
+## Validation Matrix
+
+对 L2/L3 Change，在实现前根据当前任务真实边界选择验证层，并在完成前补新鲜证据。详细分层规则见 [testing-strategy.md](testing-strategy.md)。
+
+默认考虑：
+
+```text
+Browser Mock Acceptance
+Backend/API/PostgreSQL Integration
+Contract / Generated Client
+Real Full-stack Golden Path
+Real Provider Probe
+Docs / Governance / Other
+```
+
+每一层只写：
+
+```text
+required
+not_applicable
+```
+
+规则：
+
+- `required`：写清这层要证明的独立风险和 Scope，完成前补当前测试/运行证据；
+- `not_applicable`：写明为什么该层对当前任务没有独立证明价值；
+- 不要求每个任务机械执行全部层；
+- Browser Mock 适合广覆盖用户可见状态，但不能冒充真实 API/DB/Worker/Provider 链；
+- Real Full-stack 默认只保留少量关键 Golden Path，不用它穷举所有 UI 状态；
+- 外部 Provider Probe 只有真实外部事实需要确认时才执行，并保持有界、可审计、默认不进普通 CI；
+- 测试数量由行为边界与风险决定，不设固定配额。
+
+Validation Matrix 是语义验证计划，不由 `ready_check.py` 自动判断测试是否充分；Agent/Reviewer 必须检查每个 `required` 层的 Evidence 是否真的证明对应风险。
+
 ## Completion Audit
 
 进入 `ready_for_review` 前，不先按当前 Change 的 checklist 验收，而是重新读取上游事实源并执行：
 
 1. `upstream_re_read`：独立重建上游完成定义；
 2. `change_coverage`：比较上游要求和当前 Change，寻找 requirement omission；
-3. `reverse_audit`：对适用边界做反向能力审计；
+3. `reverse_audit`：对适用边界做反向能力审计，并复核 Validation Matrix 的 required/not_applicable 与证据等级；
 4. `unresolved_cleared`：确认 `not_satisfied` 清零，延期/不适用都有依据。
 
 对于前后端/异步任务，反向审计通常包括“后端能力 → 前端入口”和“前端动作 → 后端真实支持”，以及状态、错误、最终结果和跨页面闭环。没有这类边界时记录不适用依据，不制造新机制。
@@ -140,8 +175,8 @@ proposed → approved → in_progress → ready_for_review → done
 - 没有用户或项目要求的批准时，不伪造 `approved`。
 - 仅在真实阻塞时用 `blocked`，并记录阻塞条件。
 - 代码写完但尚未集成通常是 `ready_for_review`，不是 `done`。
-- 对 gated Change，进入 `ready_for_review` 前必须完成 Traceability、Completion Audit 和机器 Ready Check；CI 全绿不能替代上游需求完整性复核。
-- 完成声明必须有成功标准、测试、文档、Requirement Traceability、Completion Audit 和 Git 状态证据。
+- 对 gated Change，进入 `ready_for_review` 前必须完成 Traceability、Validation Matrix、Completion Audit 和机器 Ready Check；CI 全绿不能替代上游需求完整性复核。
+- 完成声明必须有成功标准、测试、文档、Requirement Traceability、Validation Matrix、Completion Audit 和 Git 状态证据。
 
 本地最终检查：
 
@@ -166,7 +201,7 @@ README、正式需求、Contract、Schema 和架构文档描述系统现在是�
 
 归档前逐项确认：
 
-- gated Change 状态已改为 `done`，Requirement Traceability 和 Completion Audit 仍完整；
+- gated Change 状态已改为 `done`，Requirement Traceability、Validation Matrix 和 Completion Audit 仍完整；
 - 成功标准有证据；
 - 目标和相关测试已运行；
 - 静态检查、类型检查和构建按影响范围完成；
