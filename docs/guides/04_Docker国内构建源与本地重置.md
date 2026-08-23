@@ -1,6 +1,6 @@
 # Docker 国内构建源与本地重置
 
-本文说明 AIMA_UGC 在中国网络环境下执行完整 Docker build 时使用哪些下载源、为什么第一次 build 可能很慢、为什么本地 build 不等于公网发布，以及怎样只清理 AIMA 本地 Docker 状态后重新开始。
+本文说明 AIMA_UGC 在中国网络环境下完整 Docker 构建时使用的下载源、冷启动行为、缓存、本地镜像语义和项目级重置方式。
 
 公司 Linux 服务器和完整 Production Release 的长期边界仍以：
 
@@ -12,69 +12,118 @@
 
 ---
 
-## 1. 第一次 `docker compose ... up --build` 在做什么
+## 1. 新电脑第一次启动在做什么
 
-首次完整 build 至少需要：
+第一次执行：
+
+```text
+docker compose ... up -d --build --wait
+```
+
+Docker 必须允许从完全没有 AIMA 镜像、基础镜像和业务容器的状态开始：
+
+```text
+本机已有对应 image/layer
+→ 直接复用
+
+本机没有对应 image/layer
+→ 按 env.production / Dockerfile 配置自动拉取
+
+AIMA backend/frontend 不存在
+→ 自动 build
+
+AIMA backend/frontend 构建输入未变化且已有 cache
+→ BuildKit 自动复用 cache
+```
+
+不要求用户先手工执行 `docker pull`，也不能把“开发机已经缓存过镜像”当成功前提。
+
+首次冷启动通常需要：
 
 ```text
 Python base image
-→ uv image
-→ Node base image
-→ Nginx base image
-→ PostgreSQL runtime image
-→ Debian apt packages
-→ Python packages（从 uv.lock 冻结导出后安装）
-→ Frontend packages（npm）
-→ build AIMA backend image
-→ build AIMA frontend image
-→ bootstrap / migrate / configure
-→ PostgreSQL / API / Worker / Scheduler / Frontend
+uv image
+Node base image
+Nginx base image
+PostgreSQL runtime image
+Debian packages
+Python packages
+npm packages
+AIMA backend build
+AIMA frontend build
+bootstrap / migrate / configure
+完整 Runtime 启动
 ```
 
-因此第一次运行不是“只启动几个容器”。如果本机没有基础 layer/cache，Docker 会先下载和构建。
+因此第一次启动明显慢于第二次是正常的；异常的是镜像几十 MB 下载数分钟仍几乎没有进度。
 
-旧 Dockerfile 曾声明外部 `docker/dockerfile:1` syntax frontend；用户实际日志中仅 14.14 MB 的这一层就下载约 307 秒。当前 Dockerfile 只使用稳定基础语法，因此已经移除这个外部 syntax frontend，首次 build 不再为它单独拉镜像。
-
-用户日志还出现几十 MB 基础 layer 下载十几到几十分钟、Debian apt 只有 KB/s 的情况。这属于网络源吞吐异常，不是 AIMA Python 业务代码本身执行数十分钟。
+旧 Dockerfile 曾额外声明 `docker/dockerfile:1` syntax frontend；当前 Dockerfile 不需要高级语法，已经移除此额外下载入口。
 
 ---
 
-## 2. 当前默认国内源
+## 2. 当前中国网络默认源
 
-当前 `Dockerfile + compose.yaml + env.production.example` 默认使用：
+当前 `Dockerfile + compose.yaml + env.production.example` 默认组合：
 
 | 类型 | 默认源 |
 | --- | --- |
-| Docker Hub official images | `m.daocloud.io/docker.io/...` |
-| GHCR uv image | `m.daocloud.io/ghcr.io/...` |
-| Debian | `https://mirrors.tuna.tsinghua.edu.cn/debian` |
-| Debian Security | `https://mirrors.tuna.tsinghua.edu.cn/debian-security` |
-| PyPI / uv pip | `https://pypi.tuna.tsinghua.edu.cn/simple` |
+| Docker Hub official images | `docker.1ms.run/...` |
+| GHCR uv image | `ghcr.1ms.run/...` |
+| Debian | `https://mirrors.aliyun.com/debian` |
+| Debian Security | `https://mirrors.aliyun.com/debian-security` |
+| PyPI | `https://mirrors.aliyun.com/pypi/simple` |
 | npm | `https://registry.npmmirror.com` |
 
-镜像与依赖的**版本号没有改变**，仍由 Dockerfile、`.python-version`、`.uv-version`、`uv.lock`、`package-lock.json` 等仓库事实锁定，不使用 `latest`。
+镜像与依赖版本没有因为换源变化，仍由 Dockerfile、`.python-version`、`.uv-version`、`uv.lock`、`package-lock.json` 等仓库事实锁定，不使用 `latest`。
 
-Docker 镜像代理采用 DaoCloud public image mirror 的前缀映射方式，不要求修改 Docker Desktop 全局 daemon 配置，因此不会改变其他项目的 Docker 行为。
+### 为什么容器镜像用 1ms
 
-Python 依赖没有把 `uv.lock` 改成 TUNA 专属 lock。构建时使用：
+AIMA 直接使用 1ms 的 Docker Hub / GHCR 前缀：
+
+```text
+docker.io → docker.1ms.run
+ghcr.io   → ghcr.1ms.run
+```
+
+这样不依赖开发机或服务器的 Docker daemon `registry-mirrors` 配置。
+
+### 为什么 Debian / PyPI 改成阿里云
+
+阿里云当前公开提供 Debian、Debian Security 和 PyPI 镜像，适合中国公网构建机直接使用：
+
+```text
+https://mirrors.aliyun.com/debian
+https://mirrors.aliyun.com/debian-security
+https://mirrors.aliyun.com/pypi/simple
+```
+
+### npm 为什么仍是 npmmirror
+
+`registry.npmmirror.com` 是阿里系当前 NPM 镜像入口，不需要再改成另一套地址。它继续作为 npm 默认 registry。
+
+---
+
+## 3. Python lock 不因镜像改变
+
+AIMA 不把 `uv.lock` 改写成某个国内镜像专属 lock。
+
+构建流程：
 
 ```text
 uv.lock
 → uv export --frozen --no-dev --no-emit-local
-→ 带 exact version / hash 的 requirements
-→ uv pip sync --require-hashes --default-index=<TUNA>
+→ exact version + hash requirements
+→ uv pip sync --require-hashes --default-index=<Aliyun PyPI>
 → 单独 build/install 当前 AIMA wheel
 ```
 
-这样镜像下载走国内 PyPI，但版本和 distribution hash 仍受仓库 lock 约束。
-
-> TUNA 对 Debian Security 明确提示镜像可能存在同步延迟。当前 Internal V1 默认使用国内 security mirror 是为了中国网络下可完成构建；完整 Production Release 仍必须在可信构建环境中完成漏洞/镜像完整性验证，并可按正式发布策略把 `AIMA_BUILD_DEBIAN_SECURITY_MIRROR` 切回 Debian 官方安全源。
+因此下载地址改变，但版本和 distribution hash 仍受 lock 约束。
 
 ---
 
-## 3. 怎样切回官方源
+## 4. 官方源回退
 
-如果构建机不在中国，或某个国内镜像临时不可用，只修改 `env.production` 中构建源变量即可，不需要改 Dockerfile、业务配置或持久数据：
+如果某个国内源临时不可用，只改 `env.production` 对应项，不需要修改 Dockerfile、数据库或业务配置：
 
 ```dotenv
 AIMA_BUILD_PYTHON_IMAGE=python:3.14.7-slim-trixie
@@ -88,21 +137,45 @@ AIMA_BUILD_PYPI_INDEX=https://pypi.org/simple
 AIMA_BUILD_NPM_REGISTRY=https://registry.npmjs.org
 ```
 
-这些值只控制 build/pull 下载来源，不会传入 AIMA API/Worker/Scheduler 的业务 Runtime 配置。
+这些字段只控制 build / pull 来源，不进入 AIMA API / Worker / Scheduler 的业务 Runtime Contract。
 
 ---
 
-## 4. 本地 build 会不会把 AIMA 镜像发布到公网
+## 5. `env.production` 已存在时要注意
 
-不会。
+`env.production` 被 Git ignore，是机器私有配置。
 
-当前命令：
+因此：
 
 ```text
-docker compose ... up -d --build --wait
+新电脑第一次运行
+→ wrapper 从最新 env.production.example 生成 env.production
+→ 自动得到当前 1ms + 阿里云 + npmmirror 默认值
+
+已有电脑已经存在 env.production
+→ git pull 不会覆盖它
+→ 旧 DaoCloud/TUNA 值仍会继续生效
 ```
 
-执行的是：
+如果已有 `env.production` 仍是旧源，应同步以下字段，或在确认本机私有配置可以重建后重新从 example 复制：
+
+```dotenv
+AIMA_BUILD_PYTHON_IMAGE=docker.1ms.run/library/python:3.14.7-slim-trixie
+AIMA_BUILD_UV_IMAGE=ghcr.1ms.run/astral-sh/uv:0.12.3
+AIMA_BUILD_NODE_IMAGE=docker.1ms.run/library/node:24.19.0-bookworm-slim
+AIMA_BUILD_NGINX_IMAGE=docker.1ms.run/library/nginx:1.30.4-alpine3.24
+AIMA_POSTGRES_IMAGE=docker.1ms.run/library/postgres:18.4
+AIMA_BUILD_DEBIAN_MIRROR=https://mirrors.aliyun.com/debian
+AIMA_BUILD_DEBIAN_SECURITY_MIRROR=https://mirrors.aliyun.com/debian-security
+AIMA_BUILD_PYPI_INDEX=https://mirrors.aliyun.com/pypi/simple
+AIMA_BUILD_NPM_REGISTRY=https://registry.npmmirror.com
+```
+
+---
+
+## 6. 本地 build 不会把 AIMA 发布到公网
+
+当前命令只会：
 
 ```text
 pull 基础镜像
@@ -111,45 +184,21 @@ pull 基础镜像
 → 本地 create/start container
 ```
 
-仓库当前没有 `docker push`、`buildx --push` 或 AIMA Registry 发布步骤。
+仓库没有 `docker push`、`buildx --push` 或 Registry publish。
 
-BuildKit 日志中的：
+日志中类似：
 
 ```text
 naming to docker.io/library/aima-ugc-backend:internal-v1a
 ```
 
-表示给**当前 Docker Engine 本地 image store**中的 AIMA image 使用 Docker 风格名称；它不等于上传 Docker Hub。
-
-只有未来正式 Release Change 明确增加 Registry push/publish 时，才会发生对外发布动作。
+只是当前 Docker Engine 本地 image store 的名称，不表示上传 Docker Hub。
 
 ---
 
-## 5. 为什么 Docker Desktop 里暂时看不到完整镜像/容器
+## 7. 第二次为什么更快
 
-Compose 会先完成需要的 build，再创建依赖链中的容器。
-
-例如 frontend 的 Node base layer 还在下载时：
-
-- `aima-ugc-backend` 可能已经 build/export；
-- `aima-ugc-frontend` 尚未完成；
-- Compose 还没有进入完整 create/start 阶段，所以 Containers 页面可能没有新的完整 stack。
-
-命令行比 UI 更直接：
-
-```powershell
-docker image ls aima-ugc-backend
-docker image ls aima-ugc-frontend
-docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production ps -a
-```
-
-Docker Desktop UI 还可能需要刷新。
-
----
-
-## 6. 第二次 build 为什么通常会快很多
-
-Docker/BuildKit 会缓存：
+Docker / BuildKit 会复用：
 
 ```text
 基础镜像 layer
@@ -159,9 +208,7 @@ npm ci layer
 AIMA build layer
 ```
 
-只要 Dockerfile、lockfile 和相关输入没有变化，后续 build 会复用大量 cache。
-
-不要把以下命令作为日常启动方式：
+所以日常不要主动使用：
 
 ```text
 --no-cache
@@ -169,86 +216,48 @@ docker builder prune -a
 docker system prune -a
 ```
 
-它们会主动丢掉缓存，导致重新下载。
+除非明确需要验证真正的无缓存冷构建。
 
 ---
 
-## 7. Windows：只清理 AIMA 项目后重新开始
+## 8. Windows 项目级彻底重置
 
-如果当前 build 仍在终端运行，先按：
+只有确认本地 AIMA 数据全部可丢弃时执行。
 
-```text
-Ctrl+C
-```
-
-然后从仓库根执行：
+CMD：
 
 ```cmd
 scripts\dev\compose_windows.cmd down -v --remove-orphans --rmi all
 ```
 
-或者 PowerShell：
+PowerShell：
 
 ```powershell
 .\scripts\dev\compose_windows.ps1 down -v --remove-orphans --rmi all
 ```
 
-这会针对当前 AIMA Compose project 清理：
+它会清理当前 AIMA Compose project 的：
 
 ```text
-AIMA 容器
-AIMA Compose 网络
-Windows AIMA named volumes
-Compose 使用/构建的 service images
+容器
+网络
+Windows named volumes
+AIMA service images
 ```
 
-其中 `-v` 是破坏性的，会删除 Windows 本地：
+`-v` 会删除本地 PostgreSQL、Artifact、应用日志和内部 Secret。
+
+不要把下面这条作为 AIMA 默认重置：
 
 ```text
-PostgreSQL
-Artifact
-应用日志
-内部 Secret
-```
-
-只有确认本地这些数据全部可以丢弃时使用。
-
-清理后可以检查：
-
-```powershell
-docker ps -a --filter label=com.docker.compose.project=aima-ugc
-docker volume ls --filter label=com.docker.compose.project=aima-ugc
-docker image ls aima-ugc-backend
-docker image ls aima-ugc-frontend
-```
-
----
-
-## 8. 要不要再清 BuildKit cache
-
-通常**不要**。
-
-即使你要把 AIMA 数据、容器和 service image 一切重来，保留基础 image layer 和 BuildKit cache 反而能避免再次下载几十到几百 MB。
-
-如果 Docker Desktop 只用于 AIMA，而且你明确希望连所有 build cache 都重新下载，可以人工执行：
-
-```powershell
-docker builder prune -a
-```
-
-这不是项目级操作，可能删除其他项目的 Docker build cache。
-
-更强的：
-
-```powershell
 docker system prune -a --volumes
 ```
 
-会影响 Docker Engine 中**其他项目**的容器、image、network、volume，因此 AIMA 文档不把它作为默认重置命令。
+它可能删除 Docker Desktop 中其他项目的数据。
 
 ---
 
-## 9. 清理后重新启动
+## 9. 重新启动
 
 Windows CMD：
 
@@ -256,25 +265,19 @@ Windows CMD：
 scripts\dev\compose_windows.cmd
 ```
 
-PowerShell：
+Windows PowerShell：
 
 ```powershell
 .\scripts\dev\compose_windows.ps1
 ```
 
-Linux / WSL / 公司服务器仍按现有 canonical Compose：
+Linux / WSL / 公司服务器：
 
 ```bash
 docker compose --env-file env.production up -d --build --wait
 ```
 
-成功后检查：
-
-```text
-http://127.0.0.1:8080/health/ready
-```
-
-Windows PowerShell：
+成功后：
 
 ```powershell
 curl.exe -f http://127.0.0.1:8080/health/ready
@@ -282,35 +285,60 @@ curl.exe -f http://127.0.0.1:8080/health/ready
 
 ---
 
-## 10. 当前验证证据
+## 10. 冷启动验收边界
 
-永久 CI 已在同一实现头真实执行国内默认源的完整构建与 Runtime：
+AIMA 的启动入口必须兼容全新 Docker 环境：
 
-- DaoCloud Python / uv / Node / Nginx / PostgreSQL 镜像可拉取；
-- `uv.lock` 冻结导出后可从 TUNA PyPI 通过 hash 校验安装；
-- TUNA Debian / Debian Security 可完成 `apt-get update/install`；
-- npmmirror 可完成 `npm ci`；
-- Linux Internal V1-A 完整 bind-mount Golden Path 通过；
-- Windows merged named-volume Runtime 和 CMD/PowerShell launcher 通过；
-- 总 CI 与 Stage 8F 回归通过。
+```text
+没有 AIMA backend/frontend image
+没有 PostgreSQL image
+没有 Python/Node/Nginx/uv 基础 image
+没有 AIMA volumes
+```
 
-CI 证明的是配置、构建和运行链有效，不承诺你所在网络到每个国内镜像的固定带宽；具体下载速度仍受本机网络、DNS、Docker Desktop 和镜像节点影响。
+在网络源可达时，一条正式 Compose 启动命令必须能够自动完成 pull → build → bootstrap → migrate → configure → runtime。
+
+永久 CI 使用每次唯一的 `AIMA_IMAGE_TAG`，可以证明 AIMA service image 不是依赖某个固定预存 tag 才能启动；GitHub Hosted Runner 本身可能已有公共基础 layer cache，因此它不能被描述成“证明所有公共基础镜像都从零下载”。中国网络下的真正冷拉取速度以新电脑 / 公司服务器实测为准。
 
 ---
 
-## 11. Production 为什么仍然安全
+## 11. 海外 CI 与国内默认源分工
 
-国内镜像/软件包源只是**构建输入下载路径**，不改变长期生产设计。
+GitHub Hosted Runner 位于海外。本轮真实 CI 直接访问 1ms 时，PostgreSQL blob 下载触发 Cloudflare JavaScript challenge，Docker 客户端无法处理该网页响应。
 
-当前 Internal V1 仍允许现场 `--build` 做真实服务器验收；完整 Production Release 仍要求：
+因此永久 CI 显式覆盖为官方 Docker Hub / GHCR / Debian / PyPI / npm，验证：
+
+```text
+完整 build
+PostgreSQL
+Migration
+API / Worker / Scheduler / Frontend
+Readiness
+Secret
+Persistence
+Windows storage model
+官方源回退
+```
+
+它不承担“中国网络到 1ms/阿里云/npmmirror 的带宽测试”。
+
+目标中国环境验收则使用 `env.production` 默认国内源进行真实 pull/build。
+
+---
+
+## 12. Production 边界不变
+
+国内镜像和软件包镜像只是构建期下载路径。
+
+完整 Production Release 仍要求：
 
 ```text
 可信构建环境
 → 固定版本 / image digest
 → Manifest / SBOM / 来源验证
-→ 生成不可变 Release
+→ 不可变 Release
 → 服务器 docker load
 → --no-build --pull never
 ```
 
-因此未来 Production Server 不依赖运行时访问 DaoCloud/TUNA/npmmirror 来“现场重新构建”应用。镜像代理优化解决的是当前本地开发/Internal V1 build 速度，不替代 Stage 11 的不可变 Release 完整性门禁。
+因此未来 Production Server 不依赖在线访问 1ms / 阿里云 / npmmirror 来现场重新构建应用。
