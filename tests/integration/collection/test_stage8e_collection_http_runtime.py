@@ -30,6 +30,7 @@ from aima_ugc.modules.collection.tables import (
 )
 from aima_ugc.modules.content.extended_tables import (
     comment_thread_coverage_observations_table,
+    content_external_ids_table,
 )
 from aima_ugc.modules.content.tables import comments_table, content_versions_table, contents_table
 from aima_ugc.modules.ingestion.import_job import IMPORT_JOB_PAYLOAD_VERSION, IMPORT_JOB_TYPE
@@ -468,6 +469,16 @@ def _insert_import_content(
                 observed_at=now,
             )
         )
+        connection.execute(
+    insert(content_external_ids_table).values(
+        content_id=content_id,
+        id_type="note_id",
+        external_id=external_content_id,
+        provider_attempt_id=attempt_id,
+        raw_artifact_id=artifact_id,
+        observed_at=now,
+    )
+)
     return batch_id, content_id
 
 
