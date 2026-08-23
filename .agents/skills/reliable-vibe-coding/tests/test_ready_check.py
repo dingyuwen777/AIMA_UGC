@@ -104,6 +104,18 @@ class ReadyCheckTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn("legacy", result.stdout.casefold())
 
+    def test_malformed_legacy_change_is_ignored(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_change(
+                root,
+                "---\nid: CHG-20260823-ready-check-fixture\nstatus: done\n---\nlegacy\n",
+                archive=True,
+            )
+            result = self._run(root)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("legacy=1", result.stdout)
+
     def test_not_satisfied_blocks_ready(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -129,6 +141,15 @@ class ReadyCheckTest(unittest.TestCase):
             result = self._run(root, "--require-active-ready")
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("docs/missing.md", result.stdout + result.stderr)
+
+    def test_current_change_cannot_be_its_own_requirement_source(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = "changes/active/CHG-20260823-ready-check-fixture/CHANGE.md"
+            self._write_change(root, _change_document(source=source))
+            result = self._run(root, "--require-active-ready")
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("不能把自身作为 Requirement Source", result.stdout + result.stderr)
 
     def test_placeholder_evidence_blocks_ready(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
