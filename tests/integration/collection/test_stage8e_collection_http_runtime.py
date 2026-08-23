@@ -406,7 +406,7 @@ def test_unified_runtime_list_cursor_filters_and_summary_aggregate_both_owners(
     }
     assert filtered.items[0].record_id == collection.run_id
     assert filtered.items[0].record_type == "tikhub_discovery"
-    assert filtered.items[0].keywords == ("爱玛",)
+    assert filtered.items[0].keywords == ("爱玛", "Q7")
     assert [item.record_id for item in keyword_search.items] == [collection.run_id]
     assert secret_ref_search.items == ()
     assert summary.processing_count == 0
@@ -504,7 +504,7 @@ def _insert_import_content(
 
 
 def test_batch_supplement_targets_only_batch_lineage_and_links_run(runtime) -> None:  # type: ignore[no-untyped-def]
-    provider_config_id, pack_id = _seed_config_and_relevance(runtime)
+    provider_config_id, _ = _seed_config_and_relevance(runtime)
     batch_id, content_id = _insert_import_content(runtime)
     service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
 
@@ -623,7 +623,7 @@ def _batch_comments_response() -> dict[str, object]:
 
 
 def test_batch_supplement_worker_reuses_detail_mapper_relevance_and_ingestion(runtime) -> None:  # type: ignore[no-untyped-def]
-    provider_config_id, pack_id = _seed_config_and_relevance(runtime)
+    provider_config_id, _ = _seed_config_and_relevance(runtime)
     batch_id, content_id = _insert_import_content(runtime)
     service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
     created = service.create_run(
@@ -709,7 +709,7 @@ def test_batch_supplement_worker_reuses_detail_mapper_relevance_and_ingestion(ru
 def test_batch_supplement_rejects_mismatched_existing_content_before_ingestion(
     runtime,
 ) -> None:  # type: ignore[no-untyped-def]
-    provider_config_id, pack_id = _seed_config_and_relevance(runtime)
+    provider_config_id, _ = _seed_config_and_relevance(runtime)
     batch_id, target_content_id = _insert_import_content(runtime)
     _, other_content_id = _insert_import_content(
         runtime,
@@ -784,7 +784,7 @@ def test_batch_supplement_rejects_mismatched_existing_content_before_ingestion(
 
 
 def test_batch_supplement_can_fetch_comments_without_sub_comments(runtime) -> None:  # type: ignore[no-untyped-def]
-    provider_config_id, pack_id = _seed_config_and_relevance(runtime)
+    provider_config_id, _ = _seed_config_and_relevance(runtime)
     batch_id, content_id = _insert_import_content(runtime)
     created = PostgresCollectionHttpService(
         runtime,
@@ -846,7 +846,7 @@ def test_batch_supplement_can_fetch_comments_without_sub_comments(runtime) -> No
 
 
 def test_batch_supplement_retries_provider_5xx_with_new_attempt(runtime) -> None:  # type: ignore[no-untyped-def]
-    provider_config_id, pack_id = _seed_config_and_relevance(runtime)
+    provider_config_id, _ = _seed_config_and_relevance(runtime)
     batch_id, content_id = _insert_import_content(runtime)
     created = PostgresCollectionHttpService(
         runtime,
