@@ -81,6 +81,23 @@ def _is_placeholder(value: str) -> bool:
     return not normalised or normalised in PLACEHOLDERS
 
 
+def _raw_gate_required(path: Path) -> bool:
+    """只识别新门禁 marker；legacy Change 不要求先通过新版 parser。"""
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    if not lines or lines[0].strip() != "---":
+        return False
+    for line in lines[1:]:
+        if line.strip() == "---":
+            return False
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        if key.strip() != COMPLETION_GATE_FIELD:
+            continue
+        return value.strip().strip("\"'").casefold() == COMPLETION_GATE_REQUIRED
+    return False
+
+
 def _body_after_frontmatter(path: Path) -> str:
     lines = path.read_text(encoding="utf-8").splitlines()
     if not lines or lines[0].strip() != "---":
@@ -238,10 +255,6 @@ def _metadata(path: Path) -> dict[str, Any]:
     return RVC.read_change_metadata(path)
 
 
-def _gate_required(metadata: dict[str, Any]) -> bool:
-    return str(metadata.get(COMPLETION_GATE_FIELD, "")).casefold() == COMPLETION_GATE_REQUIRED
-
-
 def _validate_ready_document(root: Path, path: Path) -> list[str]:
     body = _body_after_frontmatter(path)
     return [
@@ -258,7 +271,7 @@ def _archive_paths(root: Path) -> list[Path]:
     return sorted((root / "changes" / "archive").glob("*/*/CHANGE.md"))
 
 
-def _changed_paths(root: Path, base: str) -> set[str]:
+def _git_diff_paths(root: Path, base: str, *, diff_filter: str) -> set[str]:
     result = subprocess.run(
         [
             "git",
@@ -266,7 +279,7 @@ def _changed_paths(root: Path, base: str) -> set[str]:
             str(root),
             "diff",
             "--name-only",
-            "--diff-filter=ACMRTUXB",
+            f"--diff-filter={diff_filter}",
             f"{base}...HEAD",
             "--",
             "changes/active",
@@ -295,19 +308,39 @@ def check_repository(
     legacy = 0
     gated = 0
     strict = 0
-    changed = _changed_paths(root, changed_since) if changed_since else set()
+    changed = (
+        _git_diff_paths(root, changed_since, diff_filter="ACMRTUXB")
+        if changed_since
+        else set()
+    )
+    added = _git_diff_paths(root, changed_since, diff_filter="A") if changed_since else set()
 
     for path in [*_active_paths(root), *_archive_paths(root)]:
         relative = _normalise_relative_path(path.relative_to(root))
+        try:
+            gate_required = _raw_gate_required(path)
+        except OSError as exc:
+            errors.append({"path": relative, "message": str(exc)})
+            continue
+        if not gate_required:
+            if relative in added and relative.startswith("changes/active/"):
+                errors.append(
+                    {
+                        "path": relative,
+                        "message": "本 PR 新增的 Active Change 必须包含 completion_gate: required",
+                    }
+                )
+            else:
+                legacy += 1
+            continue
+
+        gated += 1
         try:
             metadata = _metadata(path)
         except (OSError, ValueError) as exc:
             errors.append({"path": relative, "message": str(exc)})
             continue
-        if not _gate_required(metadata):
-            legacy += 1
-            continue
-        gated += 1
+
         archived = relative.startswith("changes/archive/")
         status = str(metadata.get("status", "")).casefold()
         is_changed_active = relative in changed and relative.startswith("changes/active/")
