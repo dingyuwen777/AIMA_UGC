@@ -170,7 +170,7 @@ python <skill>/scripts/rvc.py new-change --root <repo> \
 - 编号按代码/功能开发先后和上游依赖关系排序：基础架构、底层能力和前置事实使用更小编号，依赖它们的后续能力使用更大编号；不要按文件创建时间、字母顺序或个人偏好随意编号；
 - `docs/blueprint/` 的核心 Blueprint 固定保持当前 01—08 领域顺序，文件名使用 `01_...md` 至 `08_...md`；普通功能任务不得为了插入新主题静默重排核心 Blueprint；
 - 新增技术文档时先确定其职责、所属目录和顺序，再选择编号；确需重命名/重新编号时，同一任务同步当前正式文档、README、AGENTS、代码/配置中的有效路径引用；
-- `changes/archive/` 保存历史证据，不因当前文档改名批量改写；`docs/assets/` 等非 Markdown 资源不适用本规则；模块级 `README.md` 继续保持 README 命名。
+- `changes/archive/` 的历史状态、证据和结论不得因当前文档改名而改写；但 `Requirement Source` 等被 Ready Check 作为实时仓库路径校验的字段必须随目标文件移动同步到新路径，且只改路径值；`docs/assets/` 等非 Markdown 资源不适用本规则；模块级 `README.md` 继续保持 README 命名。
 
 文件名规范只负责导航和排序，不替代 Blueprint/Appendix/Guide/Roadmap 的职责划分，也不能作为修改文档技术内容的理由。
 

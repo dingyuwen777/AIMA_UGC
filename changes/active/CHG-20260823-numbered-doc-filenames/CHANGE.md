@@ -18,6 +18,7 @@ affected_paths:
   - AGENTS.md
   - README.md
   - .agents/skills/reliable-vibe-coding/SKILL.md
+  - changes/archive/2026-08/*/CHANGE.md
 contracts: []
 data_changes: []
 ---
@@ -46,7 +47,7 @@ data_changes: []
 # 非目标
 
 - 不修改文档技术正文、标题或业务结论。
-- 不重写 `changes/archive/` 历史 Change 中的当时路径证据。
+- 不改写 `changes/archive/` 历史 Change 的状态、证据与结论；仅允许同步 Ready Check 要求持续可解析的 `Requirement Source` 仓库路径。
 - 不给模块 README 或 `docs/assets/` 资源文件编号。
 - 不新增业务能力、依赖或永久 CI 机制。
 
@@ -64,6 +65,7 @@ data_changes: []
 3. Appendix 依据当前 Roadmap 的正式阶段事实排序：PostgreSQL → TikHub → Scheduler → Excel → AI → 数据入口 → Stage 8F 验收 → Word 报告 → Production。
 4. 文件重命名后只同步必要的路径/Markdown 链接，不改正文语义。
 5. 规则写入 `.agents/skills/reliable-vibe-coding/SKILL.md`，后续 Agent 在创建或整理 `docs/` 技术文档时必须遵守。
+6. 归档 Change 的历史状态、证据和结论保持不变；仅同步 Ready Check 持续校验的 `Requirement Source` 路径，使重命名后仍指向同一事实源。
 
 # Requirement Traceability
 
@@ -127,6 +129,7 @@ data_changes: []
   - 一次性完整性校验：成功，覆盖编号集合、Blueprint 精确集合、Appendix 顺序、33 篇正文允许差异、Skill 规则、旧引用、事实源索引、本地 Markdown 链接；
   - `python scripts/quality/check_docs.py`：成功；
   - job conclusion：`success`。
+- GitHub Actions run `32636689174` / job `97187424911`：仅在归档 Change 的 Requirement Traceability `| R... |` 行中同步 22 个 `Requirement Source` 路径，8 个归档 Change 受影响；job conclusion：`success`。
 - 一次性迁移/校验 workflow 与脚本在进入最终永久 CI 前删除，不作为仓库长期机制保留。
 
 # 文档影响
