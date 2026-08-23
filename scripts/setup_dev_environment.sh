@@ -44,7 +44,11 @@ NODE_SOURCE_URL="${NODE_BASE_URL}/${NODE_ARCHIVE}"
 NPM_REGISTRY="https://registry.npmmirror.com"
 PYPI_INDEX="https://pypi.tuna.tsinghua.edu.cn/simple"
 DOCKER_RPM_BASE="https://mirrors.aliyun.com/docker-ce/linux/centos"
-DOCKER_REGISTRY_MIRROR="https://docker.m.daocloud.io"
+DOCKER_REGISTRY_MIRRORS=(
+  "https://docker.1panel.live"
+  "https://hub.1panel.dev"
+  "https://docker.m.daocloud.io"
+)
 CENTOS_STREAM_BASE="https://mirrors.aliyun.com/centos-stream/9-stream"
 
 log() {
@@ -415,14 +419,15 @@ install_docker() {
   fi
 
   install -d -m 0755 /etc/docker "${DOCKER_DATA_ROOT}"
-  local desired existing backup merged config_changed was_active
+  local desired existing backup merged config_changed was_active mirrors_json
   config_changed=0
   was_active=0
   systemctl is-active --quiet docker && was_active=1
+  mirrors_json="$(printf '%s\n' "${DOCKER_REGISTRY_MIRRORS[@]}" | jq -R . | jq -s .)"
   desired="$(jq -n \
     --arg data_root "${DOCKER_DATA_ROOT}" \
-    --arg mirror "${DOCKER_REGISTRY_MIRROR}" \
-    '{"data-root":$data_root,"registry-mirrors":[$mirror],"log-driver":"local","log-opts":{"max-size":"20m","max-file":"5"}}')"
+    --argjson mirrors "${mirrors_json}" \
+    '{"data-root":$data_root,"registry-mirrors":$mirrors,"max-download-attempts":5,"log-driver":"local","log-opts":{"max-size":"20m","max-file":"5"}}')"
   if [[ -s "${DOCKER_DAEMON_PATH}" ]]; then
     jq empty "${DOCKER_DAEMON_PATH}" || die "现有 ${DOCKER_DAEMON_PATH} 不是合法 JSON。"
     existing="$(cat "${DOCKER_DAEMON_PATH}")"
@@ -471,13 +476,13 @@ docker_postgres_smoke() {
   name="aima-bootstrap-postgres-smoke-$$"
   SMOKE_CONTAINER_NAME="${name}"
   password="aima-bootstrap-smoke-only"
-  log "通过中国镜像拉取 postgres:18.4，并运行不映射宿主端口的临时 smoke。"
+  log "通过 Docker Hub registry mirrors 拉取官方 postgres:18.4，并运行不映射宿主端口的临时 smoke。"
   if docker image inspect postgres:18.4 >/dev/null 2>&1; then
     log "postgres:18.4 已缓存，跳过重复拉取。"
   else
     for attempt in 1 2 3; do
       docker pull postgres:18.4 && break
-      [[ "${attempt}" == "3" ]] && die "中国 Docker 镜像连续 3 次拉取 postgres:18.4 失败。"
+      [[ "${attempt}" == "3" ]] && die "Docker Hub 镜像连续 3 次拉取 postgres:18.4 失败。"
       log "镜像拉取第 ${attempt} 次失败，10 秒后串行重试。"
       sleep 10
     done
@@ -518,6 +523,7 @@ verify_runner_prerequisites() {
   command -v git >/dev/null
   command -v curl >/dev/null
   ldconfig -p | grep -q 'libpq.so.5' || die "缺少 libpq.so.5；Linux 下 psycopg 3 需要该运行库。"
+
   local url code attempt
   for url in https://github.com https://api.github.com https://github-releases.githubusercontent.com; do
     code="000"

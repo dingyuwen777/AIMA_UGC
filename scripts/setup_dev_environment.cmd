@@ -4,9 +4,16 @@ cd /d "%~dp0.."
 
 echo AIMA_UGC development environment bootstrap
 echo.
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0dev\configure_docker_desktop_mirrors.ps1"
+if errorlevel 1 (
+  set "EXIT_CODE=%ERRORLEVEL%"
+  goto :finish
+)
+
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup_dev_environment.ps1"
 set "EXIT_CODE=%ERRORLEVEL%"
 
+:finish
 echo.
 if not "%EXIT_CODE%"=="0" (
   echo AIMA_UGC environment setup failed with exit code %EXIT_CODE%.
