@@ -32,13 +32,13 @@ x-backend-service: &backend-service
     - "11001"
   volumes:
     - type: bind
-      source: ${AIMA_HOST_DATA_DIR:-/data/AIMA_UGC/runtime/data}
+      source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/data
       target: /app/data
     - type: bind
-      source: ${AIMA_HOST_LOG_DIR:-/data/AIMA_UGC/runtime/logs}
+      source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/logs
       target: /app/logs
     - type: bind
-      source: ${AIMA_HOST_SECRET_DIR:-/data/AIMA_UGC/shared/secrets}
+      source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/shared/secrets
       target: /run/internal-secrets
       read_only: true
   networks:
@@ -60,16 +60,16 @@ services:
       - --runtime-only
     volumes:
       - type: bind
-        source: ${AIMA_HOST_DATA_DIR:-/data/AIMA_UGC/runtime/data}
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/data
         target: /host/runtime/data
       - type: bind
-        source: ${AIMA_HOST_LOG_DIR:-/data/AIMA_UGC/runtime/logs}
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/logs
         target: /host/runtime/logs
       - type: bind
-        source: ${AIMA_HOST_POSTGRES_DIR:-/data/AIMA_UGC/postgres}
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/postgres
         target: /host/postgres
       - type: bind
-        source: ${AIMA_HOST_SECRET_DIR:-/data/AIMA_UGC/shared/secrets}
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/shared/secrets
         target: /host/shared/secrets
     restart: "no"
     network_mode: none
@@ -84,10 +84,10 @@ services:
       - "11001"
     volumes:
       - type: bind
-        source: ${AIMA_HOST_POSTGRES_DIR:-/data/AIMA_UGC/postgres}
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/postgres
         target: /var/lib/postgresql
       - type: bind
-        source: ${AIMA_HOST_SECRET_DIR:-/data/AIMA_UGC/shared/secrets}
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/shared/secrets
         target: /run/secrets
         read_only: true
     healthcheck:
