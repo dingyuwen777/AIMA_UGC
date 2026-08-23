@@ -129,10 +129,10 @@ data_changes: []
 
 # Completion Audit
 
-- [x] upstream_re_read
-- [x] change_coverage
-- [x] reverse_audit
-- [x] unresolved_cleared
+- [x] upstream_re_read: Ready 前重新读取目标分支 AGENTS、Roadmap、Blueprint 05 与 Production Release Appendix，并独立重建本轮完成定义。
+- [x] change_coverage: 上游要求已逐项覆盖到 Change、Compose/env、专项 CI 和正式文档，没有发现 Requirement omission。
+- [x] reverse_audit: 已反向核对 Host Root 到四类持久挂载、Secret/端口/密码恢复、Local/Server Runtime 与 Production Release 生命周期，Validation Matrix 证据层级匹配风险。
+- [x] unresolved_cleared: R1-R6 无 not_satisfied；Windows 原生 NTFS bind 明确记录为未宣称支持的验证边界，不降低 Linux/服务器权限门禁。
 
 ## Completion Audit 证据
 
@@ -186,7 +186,8 @@ pre-ready implementation HEAD `c3dccdcfd76b55125c5b1dff07496e78dabf3816`：
 - Stage 7 Provider Config Routing #2030 / run `32631979658`：success。
 - Stage 7 Scheduler Runtime #2257 / run `32631979654`：success。
 - Stage 7 Plan Occurrence Run Snapshot #1915 / run `32631979604`：success。
-- Change Completion Gate #154 / run `32631979610`：failure，原因是该 HEAD 的 Change 仍为 `in_progress`，属于进入 Ready 前的预期门禁结果，不作为实现失败；本 ready commit 必须重新触发并通过。
+- Change Completion Gate #154 / run `32631979610`：failure，原因是该 HEAD 的 Change 仍为 `in_progress`，属于进入 Ready 前的预期门禁结果，不作为实现失败。
+- Ready commit `88a7d206a8172c5c676d4fb8bff1ff529318885a` 的 Change Completion Gate #155 / run `32632222589` 首次失败：Completion Audit 四项虽然勾选，但缺少机器 parser 要求的 `: 有效说明` 格式；语义 Audit 本身已完成。本提交只修正文档机器格式，必须重新触发并通过，不绕过 Gate。
 
 # 两阶段 Review
 
