@@ -189,6 +189,7 @@ docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production
 - 旧设计第三次 Red：单元测试曾在生产配置仍为第三方 image / 官方包源默认时执行并暴露目标差异；其后方案被用户进一步收敛为本 Change 当前设计。
 - 当前设计 Red：提交 `d7778ff82d3afe8d42879661fbfaee4fb24f9d8c` 先更新测试；待读取对应 CI 执行结果后记录有效 Red 证据。
 - 当前 Green 实现已写入分支，最终验证尚未完成。
+- `docs/02_环境运行与部署.md` 当前未包含 GHCR/image override/包源默认等冲突事实，因此本 Change 不强制改写该总入口；直接运行事实由 env template 与两份 Guide 维护。
 
 # Git / 交付
 
