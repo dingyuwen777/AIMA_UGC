@@ -89,14 +89,14 @@ Secret 目录整体 RO；应用以 supplementary group 读取，PostgreSQL passw
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 建立 V1-A Dockerfile/Compose/服务器配置/宿主检查/Health/隔离 Smoke | docs/roadmap/生产上线实施路线.md | satisfied | `Dockerfile`、`compose.yaml`、`env.production.example`、`prepare_host.py`、`internal-v1a.yml`；最终 V1-A PR Run `32623566835` success |
-| R2 | Compose 至少包含 frontend/api/worker/scheduler/migrate/postgres，Migration 为一次性动作 | docs/roadmap/内网V1上线实施计划.md | satisfied | `compose.yaml` 包含全部要求服务；`migrate/configure` 位于 tools profile；最终 V1-A Run `32623566835` 真实 Golden Path success |
-| R3 | 根 build context、多阶段 Backend/Frontend、同一 Backend image 支撑正式进程 | docs/roadmap/生产上线实施路线.md | satisfied | 根 `Dockerfile` + Compose `context: .`；最终 V1-A Run `32623566835` build/start success |
-| R4 | PostgreSQL/Artifact/log 持久化、Secret RO、PostgreSQL 不发布到普通客户端网络 | docs/roadmap/内网V1上线实施计划.md | satisfied | Golden Path 验证 PG recreate、Artifact marker、宿主 `api.log`、Secret mount `RW=false`、PG/API `PortBindings={}` |
-| R5 | 空库 Migration、真实 readiness、API/Worker/Scheduler 共用配置事实 | docs/roadmap/内网V1上线实施计划.md | satisfied | 空 PG18.4 `alembic upgrade head`；Nginx `/health/ready` 三项 `ok`；Compose 共用 `x-backend-environment` |
-| R6 | 生产不读 `env.local`；TikHub/LLM 不依赖手工 SQL；Provider Config 只保存非敏感配置和 `secret_ref` | docs/roadmap/内网V1上线实施计划.md | satisfied | configure 连续执行/disable/re-enable 通过；DB 只保存 `tikhub_api_key` ref；Unit 覆盖 LLM absent/partial/missing-secret/configured |
-| R7 | 保留 `/data/AIMA_UGC` 宿主模型并与 Release 解耦 | docs/appendix/生产部署与离线Release方案.md | satisfied | `prepare_host.py`/env 模板固定批准目录；Golden Path 验证实际 bind source/target 与持久事实 |
-| R8 | 不提前进入 V1-B、完整离线 Release、认证或协调 Backup/Restore | docs/roadmap/内网V1上线实施计划.md | satisfied | Roadmap 明确 V1-B 为下一单元且后续能力继续延期；实现 PR 无相关 Contract/Schema/业务扩展 |
+| R1 | 建立 V1-A Dockerfile/Compose/服务器配置/宿主检查/Health/隔离 Smoke | docs/roadmap/02_生产上线实施路线.md | satisfied | `Dockerfile`、`compose.yaml`、`env.production.example`、`prepare_host.py`、`internal-v1a.yml`；最终 V1-A PR Run `32623566835` success |
+| R2 | Compose 至少包含 frontend/api/worker/scheduler/migrate/postgres，Migration 为一次性动作 | docs/roadmap/01_内网V1上线实施计划.md | satisfied | `compose.yaml` 包含全部要求服务；`migrate/configure` 位于 tools profile；最终 V1-A Run `32623566835` 真实 Golden Path success |
+| R3 | 根 build context、多阶段 Backend/Frontend、同一 Backend image 支撑正式进程 | docs/roadmap/02_生产上线实施路线.md | satisfied | 根 `Dockerfile` + Compose `context: .`；最终 V1-A Run `32623566835` build/start success |
+| R4 | PostgreSQL/Artifact/log 持久化、Secret RO、PostgreSQL 不发布到普通客户端网络 | docs/roadmap/01_内网V1上线实施计划.md | satisfied | Golden Path 验证 PG recreate、Artifact marker、宿主 `api.log`、Secret mount `RW=false`、PG/API `PortBindings={}` |
+| R5 | 空库 Migration、真实 readiness、API/Worker/Scheduler 共用配置事实 | docs/roadmap/01_内网V1上线实施计划.md | satisfied | 空 PG18.4 `alembic upgrade head`；Nginx `/health/ready` 三项 `ok`；Compose 共用 `x-backend-environment` |
+| R6 | 生产不读 `env.local`；TikHub/LLM 不依赖手工 SQL；Provider Config 只保存非敏感配置和 `secret_ref` | docs/roadmap/01_内网V1上线实施计划.md | satisfied | configure 连续执行/disable/re-enable 通过；DB 只保存 `tikhub_api_key` ref；Unit 覆盖 LLM absent/partial/missing-secret/configured |
+| R7 | 保留 `/data/AIMA_UGC` 宿主模型并与 Release 解耦 | docs/appendix/11_生产部署与离线Release方案.md | satisfied | `prepare_host.py`/env 模板固定批准目录；Golden Path 验证实际 bind source/target 与持久事实 |
+| R8 | 不提前进入 V1-B、完整离线 Release、认证或协调 Backup/Restore | docs/roadmap/01_内网V1上线实施计划.md | satisfied | Roadmap 明确 V1-B 为下一单元且后续能力继续延期；实现 PR 无相关 Contract/Schema/业务扩展 |
 | R9 | 合并前执行 L3 Requirement/Completion/Review/CI 门禁，不绕过 PR/CI/Branch Protection | AGENTS.md | satisfied | Requirement Review + Code Quality Review 完成；最终实现 HEAD `3eb388c2a9e9cfa4b8dd36cafc722cfbf5f452b4` 的全部永久 PR workflow success；PR #164 正常合并为 main `2429419f58aa31939d9bbdaf50d5e0b97198c547` |
 
 # Validation Matrix

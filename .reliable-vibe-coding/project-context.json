@@ -1,8 +1,8 @@
 {
-  "candidate_path_digest": "7064e842ef5f956771ed2e38a4d2748bc953bcba3aabc119f14c5bce752fbc4f",
+  "candidate_path_digest": "8e1d7e3413c3c477e30af630eb2c0999085acf161290225077f1fd26b55ed148",
   "directories": [
     {
-      "count": 4,
+      "count": 5,
       "kinds": [
         "documentation",
         "instructions",
@@ -57,6 +57,13 @@
       "kinds": [
         "documentation"
       ],
+      "path": "backend/src/aima_ugc/modules/ingestion"
+    },
+    {
+      "count": 1,
+      "kinds": [
+        "documentation"
+      ],
       "path": "backend/src/aima_ugc/modules/reporting"
     },
     {
@@ -74,7 +81,7 @@
       "path": "backend/src/aima_ugc/platform/reporting"
     },
     {
-      "count": 4,
+      "count": 5,
       "kinds": [
         "contract"
       ],
@@ -123,14 +130,22 @@
       "path": "contracts/provider"
     },
     {
-      "count": 3,
+      "count": 4,
       "kinds": [
         "documentation"
       ],
       "path": "docs"
     },
     {
-      "count": 17,
+      "count": 12,
+      "kinds": [
+        "documentation",
+        "requirements"
+      ],
+      "path": "docs/appendix"
+    },
+    {
+      "count": 9,
       "kinds": [
         "documentation"
       ],
@@ -142,6 +157,20 @@
         "documentation"
       ],
       "path": "docs/collection"
+    },
+    {
+      "count": 4,
+      "kinds": [
+        "documentation"
+      ],
+      "path": "docs/guides"
+    },
+    {
+      "count": 3,
+      "kinds": [
+        "requirements"
+      ],
+      "path": "docs/roadmap"
     },
     {
       "count": 3,
@@ -177,427 +206,530 @@
     {
       "kind": "instructions",
       "path": "AGENTS.md",
-      "sha256": "8559b4dcd87ac32fafad117a9ee13b7d9c491368577f3de1b6c11ded2bc7f3d7",
-      "size": 18672,
+      "sha256": "740e3f8609bf9f1e7d5b3d44d46005ed87ac91a187d8e057133ba18ccf3d75a2",
+      "size": 29433,
       "title": "AIMA_UGC AI / Coding Agent 开发规范"
+    },
+    {
+      "kind": "manifest",
+      "path": "Dockerfile",
+      "sha256": "6813c42f426a67804ccdc4dca7516ee7ce53db0ed4faa46eb1ebbc781ec083a6",
+      "size": 1515
     },
     {
       "kind": "documentation",
       "path": "README.md",
-      "sha256": "7f8352898067d230889f5503b58b6d8315eb7d101345041fcb540f2c21daadc5",
-      "size": 26998,
+      "sha256": "d1aec5236642ea7246542c62e38661c2542bdf03cbfafcc98c951c5bf05a3384",
+      "size": 14491,
       "title": "AIMA_UGC"
     },
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/adapters/llm/README.md",
-      "sha256": "dcc7359f236d74cda5776f4de35c8249fc58b2bc9ece54d34c93e78e44152550",
-      "size": 5161,
+      "sha256": "3c3e9657e3fed683c7a3c054dceafcbd95caf910e5fd783c3ee654ee723eeabe",
+      "size": 11670,
       "title": "全平台共享 LLM Adapter、计费与请求审计"
     },
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/adapters/providers/imports_test/README.md",
-      "sha256": "839949b3315aa1c3360eaecd5575d9bfabf9a2c641609440e466d95e2df33e4a",
-      "size": 37824,
+      "sha256": "0c4dc15f7e1b4da8f3142c567958f64767b632c944a7f59542b2daacb55d29a8",
+      "size": 37612,
       "title": "Excel 离线导入、清洗、AI 多标签打标与报告"
     },
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/adapters/providers/tikhub_test/README.md",
-      "sha256": "753e9dc9041dfa17235d5085adcba439dbf030b0f104dac7b9d04da216d9bb12",
-      "size": 14273,
+      "sha256": "0d70157a6767010563417f9c1f245c141803682bdb36c6a43d5b7b334d066fc5",
+      "size": 14975,
       "title": "TikHub 五平台独立测试 / 调试"
     },
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/modules/analysis/README.md",
-      "sha256": "263512e6a4db55816df4ca274f592d53b8a0ae78d7f1031beea824ed09f3207a",
-      "size": 13479,
+      "sha256": "063ae8b8a30ab869988c3caf5d2c07027a4d364d877f2ea08a26cd33c0bd6865",
+      "size": 8993,
       "title": "Analysis 模块"
     },
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/modules/collection/README.md",
-      "sha256": "3cd7cec450f4a9276054af8dfca9fd46943a748cdd35d02b851db14f68de34dc",
-      "size": 14971,
+      "sha256": "b129d7824b2683f40e9bfece796f7ad2d63fb0093743fc1eb4284ebc309278f5",
+      "size": 12829,
       "title": "Collection 模块"
     },
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/modules/content/README.md",
-      "sha256": "19d43c7ced362917cac8a1d8c4e6f6b49927d131c2e7fd1dfb33dfe79fe6c825",
-      "size": 5928,
+      "sha256": "4a10428e1b4c2bf7ba5fc733e81d87fbb31d90447972eda455ff21c4743a1d35",
+      "size": 11170,
       "title": "Content 模块"
     },
     {
       "kind": "documentation",
+      "path": "backend/src/aima_ugc/modules/ingestion/README.md",
+      "sha256": "3892bc17ac8d75135f35fb4697cd767c0837645e4fc1d0cc337095b3f5be4c85",
+      "size": 10114,
+      "title": "Ingestion 模块"
+    },
+    {
+      "kind": "documentation",
       "path": "backend/src/aima_ugc/modules/reporting/README.md",
-      "sha256": "0351ef9ad4ff9ff12795db1c7fb7255ffafd6884219973e4533de06680ebf778",
-      "size": 919,
+      "sha256": "ed2e6c9f81408201dd32653a393a606365e8d812432f9123d19161790cf5e6ba",
+      "size": 10072,
       "title": "Reporting 模块"
     },
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/modules/system/README.md",
-      "sha256": "806d8c398835fc7696d324c36f0cddfc17c3258ee78a492fdd6d324307314b46",
-      "size": 4739,
+      "sha256": "a4655dff20152b1ff33070820f0e884897e70f4b8a0d0747d2470141af7c67a7",
+      "size": 4665,
       "title": "System 模块"
     },
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/platform/reporting/README.md",
-      "sha256": "178ae07872ca7dbe1c7e2f139b40fa57f4cc5dd3f551e6295d944a7b79139075",
-      "size": 10392,
-      "title": "Provider-neutral 离线报告"
+      "sha256": "264aa6ece22060882038b6bea53fe86ed4c93aa0e63766d702c8615a0833a0a4",
+      "size": 13320,
+      "title": "Provider-neutral 离线舆情报告"
     },
     {
       "kind": "contract",
       "path": "contracts/analysis/content-label-analysis.v1.schema.json",
-      "sha256": "c2f9e92d2e373e7fba352d1dabae5bcb9a5364806224ec48b6807fe5bfea6386",
-      "size": 1431
+      "sha256": "58bcb3e5388b62642ec1b23871e2c96a46cfcbf70a0552b1d514d4785baaa812",
+      "size": 1430
     },
     {
       "kind": "contract",
       "path": "contracts/analysis/content-label-analysis.v2.schema.json",
-      "sha256": "8689a16d4a6586b80d22fdb1a0481c0003d9e92ee1e64d227647ad40950b4dbe",
-      "size": 1769
+      "sha256": "29a46716046c412ea9ff9b86bc54b53917967c7a61c769616f6249a81bdd3b35",
+      "size": 1762
+    },
+    {
+      "kind": "contract",
+      "path": "contracts/analysis/content-label-analysis.v3.schema.json",
+      "sha256": "1584c54a7516ac34e1139bedbd90dc615d7ef9119e11d03da1fabbf75959ffa3",
+      "size": 2145
     },
     {
       "kind": "contract",
       "path": "contracts/analysis/content-record.v1.schema.json",
-      "sha256": "44ce51db3d1d6cb66203dd4fe3d2a030bc80e66e20035c030a048329a96aa26b",
-      "size": 13653
+      "sha256": "7b0bb6d2c5f8e531fdec82fd3dfe665bbf011696cf489012db5c688c67a95562",
+      "size": 15518
     },
     {
       "kind": "contract",
       "path": "contracts/analysis/relevance-snapshot.v1.schema.json",
-      "sha256": "42b84cba14e02087065884cf09375259ac690b2523cfa77fb89b71f3175948d8",
-      "size": 764
+      "sha256": "1bee8d1a74128ba613abce54869a004fa35c023fbd054162a484c33d9f88742d",
+      "size": 763
     },
     {
       "kind": "contract",
       "path": "contracts/canonical/comment.v1.schema.json",
-      "sha256": "6285e04c12f66e727d022123007205cb644491c45c589108af0de3a7b60e815a",
-      "size": 9131
+      "sha256": "048d49c994357ec2122c46e8367c4ff6dcf2444833e1dfcff365c490cd2ec0ba",
+      "size": 9157
     },
     {
       "kind": "contract",
       "path": "contracts/canonical/content.aggregate.v1.schema.json",
-      "sha256": "818ff6cfbc32465e0c2ff8ba72538ccf9920ffdecbd7373142cf851d906db73f",
-      "size": 14000
+      "sha256": "c45ebfb37c1ba84ec7462aebb7170bac515428bfef3d1ef62d8c50e9922a8683",
+      "size": 13958
     },
     {
       "kind": "contract",
       "path": "contracts/canonical/content.v1.schema.json",
-      "sha256": "a53a5fb2e4625e65ccd55283e2e0aef82d5616272703ed27284a7e3d510f5d5b",
-      "size": 9549
+      "sha256": "127f2d2d31590a845f93ec727724854374dcce3bbb45db74761a3a2f383fa4fa",
+      "size": 9575
     },
     {
       "kind": "contract",
       "path": "contracts/canonical/examples/content.aggregate.v1.json",
-      "sha256": "8c8e6befc02b3dfe5ad60059f91e87b098c1c16a6687d3d614b8e5b4b42dee8e",
-      "size": 9053
+      "sha256": "c77213f912fec9178195305025a0732e092fdb93c2f8d5bcc05ccdddc29e8fcd",
+      "size": 8775
     },
     {
       "kind": "contract",
       "path": "contracts/collection/decision-request.v1.schema.json",
-      "sha256": "3a11984842a76e46071515c66ae8a94b9aef72850526f549eb03b86a33d4dc60",
-      "size": 6286
+      "sha256": "c94ee99d141a731c46ab9a9862d4da55b8c6135d207a0cbd35908c13493395b6",
+      "size": 6312
     },
     {
       "kind": "contract",
       "path": "contracts/collection/decision.v1.schema.json",
-      "sha256": "649b2b3e8b91b6700891d0a60c6a378998abb9bd5eb0b07350dbfe2844b0e039",
-      "size": 1564
+      "sha256": "9c3640222b4620acf1a91d52b4443ed9b3a07d8950787a3d6d7bc4f4fcba6337",
+      "size": 1563
     },
     {
       "kind": "contract",
       "path": "contracts/collection/provider-config.v1.schema.json",
-      "sha256": "269e1eabc9700dd19bfd9e6e5fd0c9e211b8d6b946cf50381c7b401766767044",
-      "size": 899
+      "sha256": "0caa1d86a4005d96397dcfa99bafe1d169bd9f90a8172af45565558e91fba877",
+      "size": 898
     },
     {
       "kind": "contract",
       "path": "contracts/collection/provider-platform-capability.v1.schema.json",
-      "sha256": "890cef7b0e8b57007e26932750ace380b13c728dd07d3c8cd9f4ab7a3781c7a2",
-      "size": 3134
+      "sha256": "c8c0f51b81561159c68c14f50a3f42112be138da6668eb5b9724378ddab1078a",
+      "size": 3160
     },
     {
       "kind": "contract",
       "path": "contracts/collection/provider-platform-route.v1.schema.json",
-      "sha256": "36ae832a577074c6a402bed08c34c94cee937439b9e556c5e34f3797d5d4393c",
-      "size": 3935
+      "sha256": "9e48dbacc61bbe29134fa5b5e71f9f516a6ebb8e13f8787830caeb0a8d7ed94d",
+      "size": 3893
     },
     {
       "kind": "contract",
       "path": "contracts/export/unified-data-excel.v1.schema.json",
-      "sha256": "c824d01ffeb3ad56c4759156956571df010e7b344f8ccd309c3c9ddb7f093840",
-      "size": 6973
+      "sha256": "791dd536956fde21c5c814becd36e85f4640db47b4aa11ae9a974d2dd5f17d50",
+      "size": 7355
     },
     {
       "kind": "contract",
       "path": "contracts/openapi/openapi.json",
-      "sha256": "d8f5f3f6be126c649ed5ab59b9aea801b85385491e255db503cf39297d24cdaf",
-      "size": 141191
+      "sha256": "fc506bad88b1bee5b9c44b2bdc3027e143c75f3e867d63a415771256387eebd1",
+      "size": 144015
     },
     {
       "kind": "contract",
       "path": "contracts/provider/attempt.v1.schema.json",
-      "sha256": "b159603f4bcf1f02cef06b503fad4950321c3fd367191c527916b18297995d8e",
-      "size": 3447
+      "sha256": "7041d1e9c59812b283464421e1401323a6d5252ede8eda1bfb26b7dc24f37fa0",
+      "size": 3446
     },
     {
       "kind": "contract",
       "path": "contracts/provider/raw-envelope.v1.schema.json",
-      "sha256": "a6057256904c09f4a65b8f98758dbec095743614f6e79a5976f16cc980355363",
-      "size": 4553
+      "sha256": "246939d7d1a830627bddcedf8501667a66a498efa484c3772ab6f5025b0b671c",
+      "size": 4579
     },
     {
       "kind": "contract",
       "path": "contracts/provider/request.v1.schema.json",
-      "sha256": "0d2f021722a21669538b6254a86c8a73a66b944d002eef6842ba647bbf052de4",
-      "size": 1468
+      "sha256": "74ad2abd59ab4d875f2a10d27cac4559fc912a6fe77789930611455d00c3e184",
+      "size": 1494
     },
     {
       "kind": "documentation",
-      "path": "docs/API接口说明.md",
-      "sha256": "8fbf8ccb58fe9e5e288842990131e7f715f851ee9d65386b8876e680cecd011c",
-      "size": 16860,
-      "title": "AIMA_UGC API 接口说明"
+      "path": "docs/01_代码结构与修改导航.md",
+      "sha256": "1f76b910caa00f17f143b528c4be1a18151625b6729aa5aed85bc19a5ea8f7e5",
+      "size": 16120,
+      "title": "AIMA_UGC 代码结构与修改导航"
     },
     {
       "kind": "documentation",
-      "path": "docs/blueprint/01-总体架构与技术选型.md",
-      "sha256": "3e0f45f002ac87aeb481651dc706033e97449b903e4acd521063a2ce3d4cfbfb",
-      "size": 15858,
-      "title": "总体架构与技术选型"
-    },
-    {
-      "kind": "documentation",
-      "path": "docs/blueprint/02-采集系统与数据标准化.md",
-      "sha256": "4acb80b6bfbc4251ca110e989b0ed9e5c78d997bdf491ef718a191340bcdf2fa",
-      "size": 39915,
-      "title": "采集系统与数据标准化"
-    },
-    {
-      "kind": "documentation",
-      "path": "docs/blueprint/03-数据库与文件存储.md",
-      "sha256": "8a4a86c1bb9dbdd0351b1e4090c553aeaa5e0502f785d9f96746f7453243c391",
-      "size": 66297,
-      "title": "数据库与文件存储"
-    },
-    {
-      "kind": "documentation",
-      "path": "docs/blueprint/04-后端任务API与前端.md",
-      "sha256": "fb1c0eb2df16833e747a042c27211258a28f32e0a30d9af34264022fc91397ae",
-      "size": 28664,
-      "title": "后端任务、API 与前端"
-    },
-    {
-      "kind": "documentation",
-      "path": "docs/blueprint/05-日志安全部署与运维.md",
-      "sha256": "3f13b68ff72235f4d0df8410ed9f474d76403031539318054681f0eb6999b0f6",
-      "size": 21598,
-      "title": "日志、安全、部署与运维"
-    },
-    {
-      "kind": "documentation",
-      "path": "docs/blueprint/06-开发约束与分阶段实施.md",
-      "sha256": "c5742353b8b80373c4a2dda771bba54de89a0b7de5e1eecbd787a654b35f8328",
-      "size": 34589,
-      "title": "开发约束与分阶段实施"
-    },
-    {
-      "kind": "documentation",
-      "path": "docs/blueprint/07-技术决策与实施门禁.md",
-      "sha256": "ba9544653e943451bbe4b7d95415c0fae2c2c505a7417623b1ca89c55d41b227",
-      "size": 56612,
-      "title": "技术决策与实施门禁"
-    },
-    {
-      "kind": "documentation",
-      "path": "docs/blueprint/08-采集策略与平台能力.md",
-      "sha256": "8808519d489d7230f254b8b2a2c5cf37eec5f2c63d6c0b91981725b3934e35f1",
-      "size": 31180,
-      "title": "采集策略与平台能力"
-    },
-    {
-      "kind": "documentation",
-      "path": "docs/blueprint/09-Scheduler运行与恢复策略.md",
-      "sha256": "aabed08be502533bdad4bdb0b389cf0f87e41acc52b573cdc9e62740fa80b075",
-      "size": 10872,
-      "title": "Scheduler 运行与恢复策略"
-    },
-    {
-      "kind": "documentation",
-      "path": "docs/blueprint/10-TikHub真实响应结构附录.md",
-      "sha256": "f55432272607f5a1cfef5b6208d72f3dda02710dccf166c5f15ca928d4ae9222",
-      "size": 16640,
-      "title": "TikHub 五平台真实响应结构附录"
-    },
-    {
-      "kind": "documentation",
-      "path": "docs/blueprint/11-TikHub多接口验证与备用策略.md",
-      "sha256": "0e0bd75c6e28ae416f3357a41cd07dadf2603834cdd1110113fa49f28e10d3f0",
-      "size": 10632,
-      "title": "TikHub 多接口验证与备用策略"
-    },
-    {
-      "kind": "documentation",
-      "path": "docs/blueprint/12-TikHub真实请求响应与接口选型台账.md",
-      "sha256": "e2e0f2b20149322f2d9d2bb28bcbe235ca325e5a8684d9124a0697c833a7687f",
-      "size": 21883,
-      "title": "TikHub 五平台真实请求、响应与接口选型台账"
-    },
-    {
-      "kind": "documentation",
-      "path": "docs/blueprint/13-统一数据Excel导出与调试复用.md",
-      "sha256": "0f50d0e12dad86689f1cb0869c3b018003700e6c0a2ad9a8e9b80b23c9ca2f58",
-      "size": 27263,
-      "title": "统一数据 Excel 导出与调试复用"
-    },
-    {
-      "kind": "documentation",
-      "path": "docs/blueprint/15-舆情AI打标与统一分析契约.md",
-      "sha256": "020198edb36c3af93d0848bb78b5b36ac977fc1618d972722ab9476452a25ab0",
-      "size": 41815,
-      "title": "舆情 AI 打标与统一分析契约"
-    },
-    {
-      "kind": "documentation",
-      "path": "docs/blueprint/16-前端页面架构与Figma设计工作流.md",
-      "sha256": "fa08e65fe35aeeab833702360541adbcb62eb5154000a3c9a31d9ab65a844b11",
-      "size": 17777,
-      "title": "前端页面架构与 Figma 设计工作流"
-    },
-    {
-      "kind": "documentation",
-      "path": "docs/blueprint/17-Stage8数据入口统一入库与业务前端实施.md",
-      "sha256": "2149da40049637599f647814e39baa7f2ad5e5973693ff458f7352450d9b28e6",
-      "size": 42014,
-      "title": "Stage 8 数据入口、统一入库与业务前端实施"
-    },
-    {
-      "kind": "documentation",
-      "path": "docs/blueprint/README.md",
-      "sha256": "0fa4d7e8bbaf07c9aa1dc11c1365696fc41213aa091709bc501bbac7545b0b6d",
-      "size": 21897,
-      "title": "AIMA_UGC Blueprint 导航"
-    },
-    {
-      "kind": "documentation",
-      "path": "docs/collection/README.md",
-      "sha256": "c45b718b3d7b300472c8a09aa53a0cc50d3749cb24013b25896cf0290d3e8b68",
-      "size": 14070,
-      "title": "采集能力说明"
-    },
-    {
-      "kind": "documentation",
-      "path": "docs/collection/bilibili.md",
-      "sha256": "bee146fd6549ceadacecad777fa901b2325f6b98d6f3e86047e4e0cb4c997102",
-      "size": 2148,
-      "title": "B站采集逻辑"
-    },
-    {
-      "kind": "documentation",
-      "path": "docs/collection/douyin.md",
-      "sha256": "10569d04c5ac23d10d148c14022006c8cd1028248c46a6a02bd135f0bc095092",
-      "size": 2661,
-      "title": "抖音采集逻辑"
-    },
-    {
-      "kind": "documentation",
-      "path": "docs/collection/kuaishou.md",
-      "sha256": "85053d923c1116b5f443e82d0f94452128ec97a0446b707ebdee1b6f5f162acb",
-      "size": 2126,
-      "title": "快手采集逻辑"
-    },
-    {
-      "kind": "documentation",
-      "path": "docs/collection/weibo.md",
-      "sha256": "9c15b52e41588a071a09751165c0db5e9903c78af7d16399874be19e3edc0bed",
-      "size": 1856,
-      "title": "微博采集逻辑"
-    },
-    {
-      "kind": "documentation",
-      "path": "docs/collection/xiaohongshu.md",
-      "sha256": "5c64d2fc331e9345a3b5f02a3f35a6d19e7bc4b247a202153d50ff83ced5e299",
-      "size": 2104,
-      "title": "小红书采集逻辑"
-    },
-    {
-      "kind": "documentation",
-      "path": "docs/测试与调试说明.md",
-      "sha256": "7e61dba958c1c7911a1296c8978933448d110ec933eb4f63029aed978a4bf559",
-      "size": 37378,
-      "title": "AIMA_UGC 测试与调试说明"
-    },
-    {
-      "kind": "documentation",
-      "path": "docs/环境运行与部署.md",
-      "sha256": "468ece64eeb79344001d7357d4448b1d00887d68d7928bd2c72089839c368479",
-      "size": 22389,
+      "path": "docs/02_环境运行与部署.md",
+      "sha256": "8bf08a47b3fbd9dec0f91bde02fc4ee1d36a59624f4fa0fdd884741c23d424e2",
+      "size": 27728,
       "title": "环境、运行与部署"
     },
     {
       "kind": "documentation",
+      "path": "docs/03_API接口说明.md",
+      "sha256": "7c91be427514b0fcfe601164ca2d065749fb6db97445ad9bb51c7321b5eaa554",
+      "size": 17599,
+      "title": "AIMA_UGC HTTP API 实现说明"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/04_测试与调试说明.md",
+      "sha256": "40dd899484e26d0437b307267e6d37e0062cf6bd07666d1d1ec235056d19a8b8",
+      "size": 20012,
+      "title": "测试与调试说明"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/appendix/01_PostgreSQL查询与调试实战.md",
+      "sha256": "50b1faf73624dc189a77289d9cf35bdf896fa49a1349f3bb27e604e7b526073a",
+      "size": 19104,
+      "title": "PostgreSQL 查询与调试实战"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/appendix/02_TikHub五平台真实响应与字段映射.md",
+      "sha256": "84f2562df4e0144300350b74f87f86bf298270488d36f0c963a7a7dcf81b1170",
+      "size": 23096,
+      "title": "TikHub 五平台真实响应与字段映射"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/appendix/03_TikHub多接口验证与备用策略.md",
+      "sha256": "1988b94fe9d52ddd953680c198c7d1f0e9e556e7d789db3bbdd0bce31cfa6eaa",
+      "size": 14189,
+      "title": "TikHub 多接口验证与备用策略"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/appendix/04_TikHub接口选型与真实验证台账.md",
+      "sha256": "3ecd839081278bcd0d6d2cc6058c145d4cb7890f98669a0cc7e3fffffb77eb3c",
+      "size": 14081,
+      "title": "TikHub 接口选型与真实验证台账"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/appendix/05_Scheduler调度执行与停机恢复.md",
+      "sha256": "204838c89d11d42637ca4e36ba5e610cccd33a6d6648cadcb3b69dc1023bef58",
+      "size": 14063,
+      "title": "Scheduler 调度执行与停机恢复"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/appendix/06_Excel统一数据导出与离线调试.md",
+      "sha256": "abd5ac5893aaee9065bb37b06be21b02985943bd988d481ce967298d4f2c7447",
+      "size": 13885,
+      "title": "Excel 统一数据导出与离线调试"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/appendix/07_AI舆情打标与分析实现.md",
+      "sha256": "0d3da4093d4bded97822f759bbf6cb421c707772f1ed101340001b68e25173c2",
+      "size": 24952,
+      "title": "AI 舆情打标与分析实现"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/appendix/08_数据入口与统一入库实现.md",
+      "sha256": "202d981cadaf2599af3e9b85ee397dbe759a1a185c049a6b437f630ee3c3b31a",
+      "size": 20233,
+      "title": "数据入口与统一入库实现"
+    },
+    {
+      "kind": "requirements",
+      "path": "docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md",
+      "sha256": "863e27a634b55cde837ef88b42de68c7a735d12fce820fb9ee2412086ccda3c8",
+      "size": 14862,
+      "title": "Stage 8F 前后端能力矩阵与真实验收"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/appendix/10_Word舆情报告生成与排版实现.md",
+      "sha256": "613e5f681d3e90bca8691f53e41a1114aba7c388596b5bc1c986c83acc034ae2",
+      "size": 18304,
+      "title": "Word 舆情报告生成与排版实现"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/appendix/11_生产部署与离线Release方案.md",
+      "sha256": "71d03981dd1833ec510dfc3e815fd299032dd9ee4a3eef1105fc25fda8dd3cf7",
+      "size": 22504,
+      "title": "生产部署与离线 Release 方案"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/appendix/README.md",
+      "sha256": "8d2a5f068d1e6909074ed527e9b5b53a4a27da3ca88831b71ed297942bc203e8",
+      "size": 9322,
+      "title": "AIMA_UGC 专题附录"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/blueprint/01_总体架构与技术选型.md",
+      "sha256": "543fe5603f63f2f1436265569c9aec1bce31192f4d5a9632856eac45560742bf",
+      "size": 16196,
+      "title": "总体架构与技术选型"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/blueprint/02_采集系统与数据标准化.md",
+      "sha256": "a02319dda2acdd7a8fbb73d451edf481d82e8fb6232c600f01ae315c71101cc2",
+      "size": 21485,
+      "title": "采集系统与数据标准化"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/blueprint/03_数据库与文件存储.md",
+      "sha256": "31f00bdeae50f278fde214b205464361ee71102205e93cdf52dd3dd6a16a6eb5",
+      "size": 17317,
+      "title": "数据库与文件存储"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/blueprint/04_后端任务API与前端.md",
+      "sha256": "5ecfab32c2f5b280902f6827e1cecb172fc028a76809b7b7d98820c98acdb628",
+      "size": 15762,
+      "title": "后端任务、API 与前端"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/blueprint/05_日志安全部署与运维.md",
+      "sha256": "d901223b1fadbf8b45ee4de46938fec4e18d57aeb41c99179f2db20f6a1b0631",
+      "size": 19631,
+      "title": "日志、安全、部署与运维"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/blueprint/06_开发约束与分阶段实施.md",
+      "sha256": "0c1c57dd23773d502df40f110de0d9b95ce75cdd2e2f6f732b17ca8eb11a3df1",
+      "size": 21737,
+      "title": "开发约束与实施流程"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/blueprint/07_技术决策与实施门禁.md",
+      "sha256": "a0815eeeb91371bc50688a36b0da0770eaf6c7c16da3148eb75de09b7b511126",
+      "size": 18958,
+      "title": "技术决策与实施门禁"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/blueprint/08_采集策略与平台能力.md",
+      "sha256": "32b729ce28bc5327d5bd46d27bda553a6a26ded556c94785aa8a9fb4d399a5a0",
+      "size": 20068,
+      "title": "采集策略与平台能力"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/blueprint/README.md",
+      "sha256": "a6e757f432f1450964c23516208fd7d2de6d801fae3fd157bbe820fde2f19685",
+      "size": 11706,
+      "title": "AIMA_UGC Blueprint 导航"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/collection/01_xiaohongshu.md",
+      "sha256": "1883d30306d6eedc972edd64423b1269b56f849e43166be1b3b02457fe3378bb",
+      "size": 5696,
+      "title": "小红书采集实现"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/collection/02_douyin.md",
+      "sha256": "50cc4b5b14e0088252d15958660578b759d6c1788cd80c8d3d048004d60bde6a",
+      "size": 6106,
+      "title": "抖音采集实现"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/collection/03_weibo.md",
+      "sha256": "185c76a0f45a6322bd4262a8f91426fc7886f141761b42116698917b8d741bee",
+      "size": 5669,
+      "title": "微博采集实现"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/collection/04_bilibili.md",
+      "sha256": "20753312d8de1c4687bcc4d51007a3f08fab415c184ed93c6d726bd8c94a2296",
+      "size": 6170,
+      "title": "B站采集实现"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/collection/05_kuaishou.md",
+      "sha256": "bc8bf0482d0aac46df2da1c239ad7a55cfd0a159fad775f2ffa3b72c0b48f526",
+      "size": 8043,
+      "title": "快手采集实现"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/collection/README.md",
+      "sha256": "265c37ab8de2e424d83221abe2e07af8552e88ddcdcc1672eef2aa40a00e3c7b",
+      "size": 8398,
+      "title": "五平台采集实现导航"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/guides/01_Figma与前端设计开发工作流.md",
+      "sha256": "b79c4942ddc52e0d22e20eba09d524d9dc5e4826a5ebcff290a34960aac977a0",
+      "size": 12533,
+      "title": "Figma 与前端设计开发工作流"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/guides/02_AIMA持续开发与内网上线通用提示词.md",
+      "sha256": "c83f9f0d60d9edd4b1e85825d0e5548a81e76ba5c2ab06546b00c190992e62ae",
+      "size": 19104,
+      "title": "AIMA_UGC 持续开发与内网上线通用提示词"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/guides/03_Windows Docker Desktop Compose运行.md",
+      "sha256": "c5069abc84e8f0ec6ba3e056b9e97befab47314506a3315fe6c2da1d653f4370",
+      "size": 6534,
+      "title": "Windows Docker Desktop 完整 Compose 运行"
+    },
+    {
+      "kind": "documentation",
+      "path": "docs/guides/README.md",
+      "sha256": "53268fd9ccf1c88dd3eeb16787cb1451c9c61529fb336402da52ef22a8fd190c",
+      "size": 2237,
+      "title": "AIMA_UGC 开发指南"
+    },
+    {
+      "kind": "requirements",
+      "path": "docs/roadmap/01_内网V1上线实施计划.md",
+      "sha256": "fd58f1985f06d52097fcafe4c29daedb8d2dd002e1526fda4152de9fff356104",
+      "size": 13791,
+      "title": "AIMA_UGC 内网 V1 上线实施计划"
+    },
+    {
+      "kind": "requirements",
+      "path": "docs/roadmap/02_生产上线实施路线.md",
+      "sha256": "9eeb2e0b00d575b60aa60520740e62836f1970aaea634e8ddcf87ccea76317f2",
+      "size": 25395,
+      "title": "AIMA_UGC 从当前代码到内网 V1 与完整生产上线的实施路线"
+    },
+    {
+      "kind": "requirements",
+      "path": "docs/roadmap/README.md",
+      "sha256": "4369249bc65d90b181f3ab0d9293cdb6d6c060c50fd478a8426ffb7e201fcd0e",
+      "size": 7256,
+      "title": "AIMA_UGC 开发与上线 Roadmap"
+    },
+    {
+      "kind": "documentation",
       "path": "frontend/README.md",
-      "sha256": "2deafde82626dee84770064b9333a6ee73e853bd814ec9c03d18124e8a2a2532",
-      "size": 3785,
+      "sha256": "cbfe702d8a6fbaec03fc1c441ba7b01606a61eca09598b58d1790e06feaa074c",
+      "size": 13120,
       "title": "AIMA_UGC 前端开发入口"
     },
     {
       "kind": "manifest",
       "path": "frontend/package-lock.json",
-      "sha256": "7d85e197ee1c52e01939bbab03b53ad6322fa6635e5e6079ac43f2acd1cd7d21",
-      "size": 230570
+      "sha256": "fede28320ee32b79f0a48c7167660f3f8e48caeb77c5ed1c2265dc806a5c66af",
+      "size": 224163
     },
     {
       "kind": "manifest",
       "path": "frontend/package.json",
-      "sha256": "98a274864971e6a9c751159e2a87355858afdd75af4b1da51908a90d37ec4274",
-      "size": 1414
+      "sha256": "5f21bf546e862308ccb8e84085b897befa86d75a4af0812137ab438ad2bef11f",
+      "size": 1452
     },
     {
       "kind": "manifest",
       "path": "pyproject.toml",
-      "sha256": "13cd0dad4c169dbf728d8c834297a9b02a3dd987c279687233bb246145de2715",
-      "size": 1169
+      "sha256": "241bc33ec10b86f3863ee747ae79afd6eeebe5f146e1bb20b1f1f49f9f43c026",
+      "size": 1116
     },
     {
       "kind": "documentation",
       "path": "tests/fixtures/providers/tikhub/README.md",
-      "sha256": "bff186280f71e22040fb7c42dcfdf866fe1dfe527bcf7bc36c5e8540742dfb12",
-      "size": 5483,
+      "sha256": "eda7181f9483883cf07dd085a7a9e3e9d778b0c5811579e716d22402ca205244",
+      "size": 5415,
       "title": "TikHub 真实结构 Fixture"
     },
     {
       "kind": "documentation",
       "path": "tests/fixtures/providers/tikhub/endpoint_ledger/2026-08-16/README.md",
-      "sha256": "df4f987d9cbf4fd1262dbd1eb8eeae79d125dbbfe138a45146905e4b264955c0",
-      "size": 730,
+      "sha256": "9dd78cd16c1b775ce90faf39f0db10884c0921409447cb2aa18b361258cbacf8",
+      "size": 716,
       "title": "TikHub 五平台主链真实 Endpoint Ledger"
     },
     {
       "kind": "documentation",
       "path": "tests/fixtures/providers/tikhub/xiaohongshu/README.md",
-      "sha256": "33c992113c253c28f3f033019726ee89f661fa9ffca15294ca6337ff8bfaf44e",
-      "size": 1290,
+      "sha256": "1047865082515f9c99423e92ef824154a4053cbcb114d59e01ff6893326841ce",
+      "size": 1279,
       "title": "TikHub 小红书测试 Fixture"
     },
     {
       "kind": "manifest",
       "path": "uv.lock",
-      "sha256": "4bceef76ba39739c34e271be7fadd81c81d78715087a7fd9a6e90a9a472fc29a",
-      "size": 99997
+      "sha256": "e5bfdc7be95acb46e254d7f54c9adbce0f8e189df1c26a40919f8fabf49fd5e9",
+      "size": 99287
     }
   ],
-  "generated_at": "2026-08-21T06:39:54+00:00",
+  "generated_at": "2026-08-23T11:25:18+00:00",
   "generator_version": "0.1.0",
   "git": {
-    "indexed_at_commit": "d5573f7e3114ffbdc2a5ebe0fcea701a7b7c44c7",
+    "indexed_at_commit": "af650b0714c35051d5b24870f4857c7cbef6c82d",
     "repository": true,
     "worktree_candidate_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
   },
@@ -609,6 +741,7 @@
       "lint": "eslint . --max-warnings=0",
       "test": "vitest",
       "test:e2e": "playwright test",
+      "test:e2e:fullstack": "playwright test --config playwright.fullstack.config.ts",
       "typecheck": "npm run typecheck:ts7 && npm run typecheck:vue",
       "typecheck:ts7": "node ./node_modules/@typescript/native/lib/tsc.js --project tsconfig.native.json --noEmit",
       "typecheck:vue": "vue-tsc --noEmit"

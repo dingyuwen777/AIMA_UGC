@@ -28,7 +28,7 @@ Change / changes/archive
 
 ### 近期第一优先级
 
-- [`内网V1上线实施计划.md`](内网V1上线实施计划.md)：**当前近期开发的正式执行计划**。Stage 8F 已建立首版前后端能力矩阵，并把页面可操作资格、Excel 成功/失败 Job 终态、Batch Supplement 和 Voice Plaza 来源链纳入真实业务验收；当前下一最小正式开发单元是 Internal V1-A，开始最小 Docker / Compose / Config 与持久化部署闭环。
+- [`01_内网V1上线实施计划.md`](01_内网V1上线实施计划.md)：**当前近期开发的正式执行计划**。Stage 8F 已建立首版前后端能力矩阵，并把页面可操作资格、Excel 成功/失败 Job 终态、Batch Supplement 和 Voice Plaza 来源链纳入真实业务验收；当前下一最小正式开发单元是 Internal V1-A，开始最小 Docker / Compose / Config 与持久化部署闭环。
 
 当前已经确认的首版范围：
 
@@ -53,17 +53,17 @@ Change / changes/archive
 
 ### 固定续接提示词
 
-- [`../guides/AIMA持续开发与内网上线通用提示词.md`](../guides/AIMA持续开发与内网上线通用提示词.md)：在新的 ChatGPT / GitHub Coding Agent 会话中直接复制使用。提示词不会保存当前 SHA、PR 或 Stage 完成状态，而是要求每次读取当前 `main`、Active Change、Roadmap、Contract、代码和测试重新判断下一最小正式单元。
+- [`../guides/02_AIMA持续开发与内网上线通用提示词.md`](../guides/02_AIMA持续开发与内网上线通用提示词.md)：在新的 ChatGPT / GitHub Coding Agent 会话中直接复制使用。提示词不会保存当前 SHA、PR 或 Stage 完成状态，而是要求每次读取当前 `main`、Active Change、Roadmap、Contract、代码和测试重新判断下一最小正式单元。
 
 这份提示词用于**启动持续开发工作流**，不是新的事实源。阶段状态仍以本 Roadmap 和当前机器事实为准。
 
 ### 长期完整生产路线
 
-- [`生产上线实施路线.md`](生产上线实施路线.md)：Stage 0—12 的长期实施路线、完整 Production Go/No-Go、认证、Release、Backup/Restore、回滚和生产强化。
-- [`../环境运行与部署.md`](../环境运行与部署.md)：当前开发环境能实际执行的命令，以及部署设计与当前实现差距。
-- [`../blueprint/05-日志安全部署与运维.md`](../blueprint/05-日志安全部署与运维.md)：日志、安全、Secret、Artifact、备份/恢复和生产运行的长期边界。
-- [`../blueprint/06-开发约束与分阶段实施.md`](../blueprint/06-开发约束与分阶段实施.md)：每个阶段实际开发时必须遵守的工程流程和质量门禁。
-- [`../blueprint/07-技术决策与实施门禁.md`](../blueprint/07-技术决策与实施门禁.md)：已经拍板、普通任务不能静默改变的技术决定。
+- [`02_生产上线实施路线.md`](02_生产上线实施路线.md)：Stage 0—12 的长期实施路线、完整 Production Go/No-Go、认证、Release、Backup/Restore、回滚和生产强化。
+- [`../02_环境运行与部署.md`](../02_环境运行与部署.md)：当前开发环境能实际执行的命令，以及部署设计与当前实现差距。
+- [`../blueprint/05_日志安全部署与运维.md`](../blueprint/05_日志安全部署与运维.md)：日志、安全、Secret、Artifact、备份/恢复和生产运行的长期边界。
+- [`../blueprint/06_开发约束与分阶段实施.md`](../blueprint/06_开发约束与分阶段实施.md)：每个阶段实际开发时必须遵守的工程流程和质量门禁。
+- [`../blueprint/07_技术决策与实施门禁.md`](../blueprint/07_技术决策与实施门禁.md)：已经拍板、普通任务不能静默改变的技术决定。
 
 ## 当前执行顺序
 
@@ -88,7 +88,7 @@ Internal V1-B：公司服务器部署与真实业务 Smoke
 Stage 8F 的永久业务闭环证据入口：
 
 ```text
-docs/appendix/Stage8F前后端能力矩阵与真实验收.md
+docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md
 .github/workflows/stage8f-fullstack.yml
 frontend/e2e-fullstack/excel-import.spec.ts
 ```

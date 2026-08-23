@@ -327,7 +327,7 @@ Figma 不负责：
 
 完整当前工作流：
 
-[`../docs/guides/Figma与前端设计开发工作流.md`](../docs/guides/Figma与前端设计开发工作流.md)
+[`../docs/guides/01_Figma与前端设计开发工作流.md`](../docs/guides/01_Figma与前端设计开发工作流.md)
 
 ---
 
@@ -579,7 +579,7 @@ npm --prefix frontend run test:e2e:fullstack
 
 永久 CI 会通过 `.github/workflows/stage8f-fullstack.yml` 自动建立上述隔离环境并执行这条真实链。完整能力矩阵和边界见：
 
-[`../docs/appendix/Stage8F前后端能力矩阵与真实验收.md`](../docs/appendix/Stage8F前后端能力矩阵与真实验收.md)
+[`../docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md`](../docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md)
 
 这些前端测试仍不能替代 Job Fencing、Provider、Migration 或其他后端专项集成测试；各层验证应继续各自负责真实边界。
 
@@ -598,17 +598,17 @@ npm --prefix frontend run test:e2e:fullstack
 
 后续是否实现、何时实现看：
 
-[`../docs/roadmap/生产上线实施路线.md`](../docs/roadmap/生产上线实施路线.md)
+[`../docs/roadmap/02_生产上线实施路线.md`](../docs/roadmap/02_生产上线实施路线.md)
 
 ---
 
 ## 16. 继续阅读
 
-- API/Job/Frontend 长期边界：`docs/blueprint/04-后端任务API与前端.md`
-- 人类可读 API：`docs/API接口说明.md`
-- Figma/Design-to-Code：`docs/guides/Figma与前端设计开发工作流.md`
-- Collection 策略：`docs/blueprint/08-采集策略与平台能力.md`
-- AI：`docs/appendix/AI舆情打标与分析实现.md`
-- Excel Export：`docs/appendix/Excel统一数据导出与离线调试.md`
-- Stage 8F 能力矩阵与真实验收：`docs/appendix/Stage8F前后端能力矩阵与真实验收.md`
-- 后续阶段/Production Go-Live：`docs/roadmap/生产上线实施路线.md`
+- API/Job/Frontend 长期边界：`docs/blueprint/04_后端任务API与前端.md`
+- 人类可读 API：`docs/03_API接口说明.md`
+- Figma/Design-to-Code：`docs/guides/01_Figma与前端设计开发工作流.md`
+- Collection 策略：`docs/blueprint/08_采集策略与平台能力.md`
+- AI：`docs/appendix/07_AI舆情打标与分析实现.md`
+- Excel Export：`docs/appendix/06_Excel统一数据导出与离线调试.md`
+- Stage 8F 能力矩阵与真实验收：`docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md`
+- 后续阶段/Production Go-Live：`docs/roadmap/02_生产上线实施路线.md`

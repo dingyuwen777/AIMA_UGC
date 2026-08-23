@@ -16,7 +16,7 @@ platform/reporting/
 
 如果要改声音广场“导出 Excel”，先看本 README；如果要改横向 A4 Word 报告，去：
 
-[`../../../../../docs/appendix/Word舆情报告生成与排版实现.md`](../../../../../docs/appendix/Word舆情报告生成与排版实现.md)
+[`../../../../../docs/appendix/10_Word舆情报告生成与排版实现.md`](../../../../../docs/appendix/10_Word舆情报告生成与排版实现.md)
 
 ---
 
@@ -368,7 +368,7 @@ backend/src/aima_ugc/platform/export/excel.py
 
 详细 Excel 数据契约：
 
-[`../../../../../docs/appendix/Excel统一数据导出与离线调试.md`](../../../../../docs/appendix/Excel统一数据导出与离线调试.md)
+[`../../../../../docs/appendix/06_Excel统一数据导出与离线调试.md`](../../../../../docs/appendix/06_Excel统一数据导出与离线调试.md)
 
 ---
 
@@ -475,7 +475,7 @@ SQL 顺序：
 
 SQL 示例：
 
-[`../../../../../docs/appendix/PostgreSQL查询与调试实战.md`](../../../../../docs/appendix/PostgreSQL查询与调试实战.md)
+[`../../../../../docs/appendix/01_PostgreSQL查询与调试实战.md`](../../../../../docs/appendix/01_PostgreSQL查询与调试实战.md)
 
 ---
 

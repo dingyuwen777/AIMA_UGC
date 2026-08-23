@@ -53,7 +53,7 @@ backend/src/aima_ugc/bootstrap/manual_ingestion.py
 
 详细跨模块链路：
 
-[`../../../../../docs/appendix/数据入口与统一入库实现.md`](../../../../../docs/appendix/数据入口与统一入库实现.md)
+[`../../../../../docs/appendix/08_数据入口与统一入库实现.md`](../../../../../docs/appendix/08_数据入口与统一入库实现.md)
 
 ---
 
@@ -437,7 +437,7 @@ Content PostgreSQL Repository
 
 SQL：
 
-[`../../../../../docs/appendix/PostgreSQL查询与调试实战.md`](../../../../../docs/appendix/PostgreSQL查询与调试实战.md)
+[`../../../../../docs/appendix/01_PostgreSQL查询与调试实战.md`](../../../../../docs/appendix/01_PostgreSQL查询与调试实战.md)
 
 如果文件阶段成功但数据库没内容，重点看：
 
@@ -474,8 +474,8 @@ tests/integration/
 
 ## 15. 深入阅读
 
-- [`../../../../../docs/appendix/数据入口与统一入库实现.md`](../../../../../docs/appendix/数据入口与统一入库实现.md)
-- [`../../../../../docs/appendix/Excel统一数据导出与离线调试.md`](../../../../../docs/appendix/Excel统一数据导出与离线调试.md)
-- [`../../../../../docs/blueprint/02-采集系统与数据标准化.md`](../../../../../docs/blueprint/02-采集系统与数据标准化.md)
-- [`../../../../../docs/blueprint/03-数据库与文件存储.md`](../../../../../docs/blueprint/03-数据库与文件存储.md)
-- [`../../../../../docs/blueprint/04-后端任务API与前端.md`](../../../../../docs/blueprint/04-后端任务API与前端.md)
+- [`../../../../../docs/appendix/08_数据入口与统一入库实现.md`](../../../../../docs/appendix/08_数据入口与统一入库实现.md)
+- [`../../../../../docs/appendix/06_Excel统一数据导出与离线调试.md`](../../../../../docs/appendix/06_Excel统一数据导出与离线调试.md)
+- [`../../../../../docs/blueprint/02_采集系统与数据标准化.md`](../../../../../docs/blueprint/02_采集系统与数据标准化.md)
+- [`../../../../../docs/blueprint/03_数据库与文件存储.md`](../../../../../docs/blueprint/03_数据库与文件存储.md)
+- [`../../../../../docs/blueprint/04_后端任务API与前端.md`](../../../../../docs/blueprint/04_后端任务API与前端.md)

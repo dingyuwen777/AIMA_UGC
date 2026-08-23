@@ -15,7 +15,7 @@ on:
       - "migrations/**"
       - "tests/unit/system/**"
       - "tests/integration/database/test_keyword_repository.py"
-      - "docs/blueprint/03-数据库与文件存储.md"
+      - "docs/blueprint/03_数据库与文件存储.md"
       - "docs/blueprint/README.md"
       - "changes/**"
       - ".github/workflows/stage7-keyword-packs.yml"

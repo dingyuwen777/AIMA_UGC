@@ -12,9 +12,9 @@
 
 1. 先读本文件；
 2. 读取 `.agents/skills/reliable-vibe-coding/SKILL.md` 并按其任务路由执行；该 Skill 不存在或无法读取时明确报告，不能假装已应用；
-3. 再读 `docs/blueprint/README.md` 和 `docs/blueprint/07-技术决策与实施门禁.md`；
-4. 如果任务涉及“下一阶段做什么”、生产部署、认证、Release、Backup/Restore、回滚或旧数据迁移，必须再读 `docs/roadmap/生产上线实施路线.md`；
-5. 如果需要快速找到真实代码入口，读 `docs/代码结构与修改导航.md`；
+3. 再读 `docs/blueprint/README.md` 和 `docs/blueprint/07_技术决策与实施门禁.md`；
+4. 如果任务涉及“下一阶段做什么”、生产部署、认证、Release、Backup/Restore、回滚或旧数据迁移，必须再读 `docs/roadmap/02_生产上线实施路线.md`；
+5. 如果需要快速找到真实代码入口，读 `docs/01_代码结构与修改导航.md`；
 6. 按任务读取对应 Blueprint、Roadmap、Appendix/Guide、模块 README、Contract、Migration、依赖、实现和测试；
 7. 只读取与任务直接相关的内容，不用“全仓全部读一遍”代替真正理解调用链；
 8. 能从仓库确认的事实先自行确认；
@@ -25,26 +25,26 @@
 
 | 任务 | 先读 |
 | --- | --- |
-| 不知道代码在哪、准备实际修改 | `docs/代码结构与修改导航.md` |
-| 总体架构/模块边界 | `docs/blueprint/01-总体架构与技术选型.md` |
-| Provider、Raw、Mapper、Canonical、Ingestion | `docs/blueprint/02-采集系统与数据标准化.md` |
-| PostgreSQL、Schema、Migration、Artifact | `docs/blueprint/03-数据库与文件存储.md`；需要直接 SQL 时再读 `docs/appendix/PostgreSQL查询与调试实战.md` |
-| API、Job、Worker、前端 | `docs/blueprint/04-后端任务API与前端.md` |
-| 日志、安全、运行边界 | `docs/blueprint/05-日志安全部署与运维.md` |
-| 当前开发环境怎么运行 | `docs/环境运行与部署.md` |
-| 下一阶段、生产上线、Release/Backup/回滚 | `docs/roadmap/生产上线实施路线.md` + `docs/appendix/生产部署与离线Release方案.md` |
-| 开发/测试/CI/Git | `docs/blueprint/06-开发约束与分阶段实施.md` |
-| 用户可见行为/前后端/Full-stack/Provider 测试分层 | `docs/blueprint/06-开发约束与分阶段实施.md` + `.agents/skills/reliable-vibe-coding/references/testing-strategy.md` |
-| 重大跨模块决定 | `docs/blueprint/07-技术决策与实施门禁.md` |
-| Collection Plan、Capability、Decision、评论 | `docs/blueprint/08-采集策略与平台能力.md` + `docs/collection/README.md` |
-| Scheduler 运行/停机恢复 | `docs/appendix/Scheduler调度执行与停机恢复.md` |
-| TikHub 真实字段/Mapper | `docs/appendix/TikHub五平台真实响应与字段映射.md` + 目标平台文档 |
-| TikHub API family / 备用接口 | `docs/appendix/TikHub多接口验证与备用策略.md`、`docs/appendix/TikHub接口选型与真实验证台账.md` |
-| Excel 导入/统一入库 | `docs/appendix/数据入口与统一入库实现.md` |
-| Excel 数据明细导出/离线调试 | `docs/appendix/Excel统一数据导出与离线调试.md` |
-| AI 相关性/发声类型/情感/标签 | `docs/appendix/AI舆情打标与分析实现.md` + `backend/src/aima_ugc/modules/analysis/README.md` + 当前 Prompt |
-| Word 舆情报告 | `docs/appendix/Word舆情报告生成与排版实现.md` + `backend/src/aima_ugc/platform/reporting/README.md` |
-| Figma / Design-to-Code | `docs/guides/Figma与前端设计开发工作流.md` + `docs/blueprint/04-后端任务API与前端.md` |
+| 不知道代码在哪、准备实际修改 | `docs/01_代码结构与修改导航.md` |
+| 总体架构/模块边界 | `docs/blueprint/01_总体架构与技术选型.md` |
+| Provider、Raw、Mapper、Canonical、Ingestion | `docs/blueprint/02_采集系统与数据标准化.md` |
+| PostgreSQL、Schema、Migration、Artifact | `docs/blueprint/03_数据库与文件存储.md`；需要直接 SQL 时再读 `docs/appendix/01_PostgreSQL查询与调试实战.md` |
+| API、Job、Worker、前端 | `docs/blueprint/04_后端任务API与前端.md` |
+| 日志、安全、运行边界 | `docs/blueprint/05_日志安全部署与运维.md` |
+| 当前开发环境怎么运行 | `docs/02_环境运行与部署.md` |
+| 下一阶段、生产上线、Release/Backup/回滚 | `docs/roadmap/02_生产上线实施路线.md` + `docs/appendix/11_生产部署与离线Release方案.md` |
+| 开发/测试/CI/Git | `docs/blueprint/06_开发约束与分阶段实施.md` |
+| 用户可见行为/前后端/Full-stack/Provider 测试分层 | `docs/blueprint/06_开发约束与分阶段实施.md` + `.agents/skills/reliable-vibe-coding/references/testing-strategy.md` |
+| 重大跨模块决定 | `docs/blueprint/07_技术决策与实施门禁.md` |
+| Collection Plan、Capability、Decision、评论 | `docs/blueprint/08_采集策略与平台能力.md` + `docs/collection/README.md` |
+| Scheduler 运行/停机恢复 | `docs/appendix/05_Scheduler调度执行与停机恢复.md` |
+| TikHub 真实字段/Mapper | `docs/appendix/02_TikHub五平台真实响应与字段映射.md` + 目标平台文档 |
+| TikHub API family / 备用接口 | `docs/appendix/03_TikHub多接口验证与备用策略.md`、`docs/appendix/04_TikHub接口选型与真实验证台账.md` |
+| Excel 导入/统一入库 | `docs/appendix/08_数据入口与统一入库实现.md` |
+| Excel 数据明细导出/离线调试 | `docs/appendix/06_Excel统一数据导出与离线调试.md` |
+| AI 相关性/发声类型/情感/标签 | `docs/appendix/07_AI舆情打标与分析实现.md` + `backend/src/aima_ugc/modules/analysis/README.md` + 当前 Prompt |
+| Word 舆情报告 | `docs/appendix/10_Word舆情报告生成与排版实现.md` + `backend/src/aima_ugc/platform/reporting/README.md` |
+| Figma / Design-to-Code | `docs/guides/01_Figma与前端设计开发工作流.md` + `docs/blueprint/04_后端任务API与前端.md` |
 
 任务开始时按 Skill 判定 L1–L3。L2/L3 先写计划并创建/认领要求的 Change。仓库存在 `openspec/` 后，涉及新能力、行为、数据、接口、架构或安全变化的任务必须按当前 OpenSpec 规则更新对应 change 并通过校验；纯机械文档/格式任务按 Skill 例外处理。不得自行创建与 OpenSpec 工具产物冲突的平行目录。
 
@@ -477,7 +477,7 @@ docs/guides/
 docs/collection/
 → 五个平台当前采集实现
 
-docs/代码结构与修改导航.md
+docs/01_代码结构与修改导航.md
 → 常见开发任务如何定位到真实代码、Contract、表和测试
 
 Contract / Migration / tables.py / generated / tests / locks

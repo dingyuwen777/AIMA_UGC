@@ -73,7 +73,7 @@ AIMA 内部随机 Secret
 | --- | --- | --- | --- | --- |
 | R1 | 本地开发使用内部 Secret 根与外部 Provider/LLM Secret 根，并与生产语义统一 | user:local-secret-root-alignment | satisfied | `local_runtime.py`、unit、Local Dev Bootstrap #120 |
 | R2 | 旧 `.runtime/secrets/postgres_password` 直接废弃，不自动迁移兼容 | user:legacy-local-postgres-password-deprecated | satisfied | 旧迁移逻辑不存在；真实 Docker smoke 验证旧路径存在仍拒绝兼容 |
-| R3 | 外部 Key 仅通过 Secret File 进入正式运行时 | `docs/blueprint/05-日志安全部署与运维.md` | satisfied | 双根环境、unit、Provider Config 只保存 `secret_ref` |
+| R3 | 外部 Key 仅通过 Secret File 进入正式运行时 | `docs/blueprint/05_日志安全部署与运维.md` | satisfied | 双根环境、unit、Provider Config 只保存 `secret_ref` |
 | R4 | 已有本地数据状态不得被 launcher 静默破坏 | `AGENTS.md` | satisfied | existing volume + missing internal password fail closed；显式 reset 独立验证 |
 | R5 | L3 Change 完成 Completion Audit、两阶段 Review、Ready Gate、永久 CI 与正常 PR 合并 | `AGENTS.md` | satisfied | Completion Gate #143、CI #2297、PR #168 merge |
 

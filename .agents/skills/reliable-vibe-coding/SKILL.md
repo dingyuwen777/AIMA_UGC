@@ -160,6 +160,20 @@ python <skill>/scripts/rvc.py new-change --root <repo> \
 - 行为不变且文档确实不受影响时，记录判断依据，不制造无关文档修改。
 - 文档与实现尚未同步、受影响文档尚未检查，或只能证明其中一方正确时，不得把任务标记为完成、`ready_for_review`、可合并或可发布。
 
+
+#### `docs/` 技术文档文件名规范
+
+对仓库 `docs/` 下的 Markdown 技术文档，文件名本身承担稳定的阅读与开发顺序导航，必须遵守：
+
+- 每个 `docs/` 子目录独立编号，不使用跨目录全局连续序号；
+- 除 `README.md` 外，技术文档统一使用两位数字加下划线前缀：`01_`、`02_`、`03_`……；`README.md` 永远不加编号；
+- 编号按代码/功能开发先后和上游依赖关系排序：基础架构、底层能力和前置事实使用更小编号，依赖它们的后续能力使用更大编号；不要按文件创建时间、字母顺序或个人偏好随意编号；
+- `docs/blueprint/` 的核心 Blueprint 固定保持当前 01—08 领域顺序，文件名使用 `01_...md` 至 `08_...md`；普通功能任务不得为了插入新主题静默重排核心 Blueprint；
+- 新增技术文档时先确定其职责、所属目录和顺序，再选择编号；确需重命名/重新编号时，同一任务同步当前正式文档、README、AGENTS、代码/配置中的有效路径引用；
+- `changes/archive/` 的历史状态、证据和结论不得因当前文档改名而改写；但 `Requirement Source` 等被 Ready Check 作为实时仓库路径校验的字段必须随目标文件移动同步到新路径，且只改路径值；`docs/assets/` 等非 Markdown 资源不适用本规则；模块级 `README.md` 继续保持 README 命名。
+
+文件名规范只负责导航和排序，不替代 Blueprint/Appendix/Guide/Roadmap 的职责划分，也不能作为修改文档技术内容的理由。
+
 ### 10. Completion Audit、两阶段复核和新鲜验证
 
 对 `completion_gate: required` 的 Change，在进入 `ready_for_review` 前先执行 Completion Audit：

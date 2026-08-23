@@ -18,9 +18,9 @@
 
 深入理解当前 TikHub 结构：
 
-- `docs/appendix/TikHub五平台真实响应与字段映射.md`
-- `docs/appendix/TikHub多接口验证与备用策略.md`
-- `docs/appendix/TikHub接口选型与真实验证台账.md`
+- `docs/appendix/02_TikHub五平台真实响应与字段映射.md`
+- `docs/appendix/03_TikHub多接口验证与备用策略.md`
+- `docs/appendix/04_TikHub接口选型与真实验证台账.md`
 - `docs/collection/README.md`
 
 ## 1. 先看代码结构
@@ -413,7 +413,7 @@ Canonical Content / Comment
 完整设计与当前代码：
 
 ```text
-docs/appendix/Excel统一数据导出与离线调试.md
+docs/appendix/06_Excel统一数据导出与离线调试.md
 backend/src/aima_ugc/contracts/export/models.py
 backend/src/aima_ugc/platform/export/excel.py
 ```
@@ -486,7 +486,7 @@ raw/ Search
 字段结构参考：
 
 ```text
-docs/appendix/TikHub五平台真实响应与字段映射.md
+docs/appendix/02_TikHub五平台真实响应与字段映射.md
 ```
 
 ### Comment 数明明增长了，但没有继续抓评论
@@ -516,7 +516,7 @@ Run / Scope
 可以结合：
 
 ```text
-docs/appendix/PostgreSQL查询与调试实战.md
+docs/appendix/01_PostgreSQL查询与调试实战.md
 ```
 
 ### 想完全重跑人工调试
