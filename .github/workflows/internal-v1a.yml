@@ -32,10 +32,7 @@ jobs:
           AIMA_IMAGE_TAG=ci-${GITHUB_RUN_ID}
           AIMA_HTTP_BIND_IP=127.0.0.1
           AIMA_HTTP_PORT=18080
-          AIMA_HOST_DATA_DIR=${ROOT}/runtime/data
-          AIMA_HOST_LOG_DIR=${ROOT}/runtime/logs
-          AIMA_HOST_POSTGRES_DIR=${ROOT}/postgres
-          AIMA_HOST_SECRET_DIR=${ROOT}/shared/secrets
+          AIMA_HOST_ROOT=${ROOT}
           AIMA_DB_NAME=aima_ugc
           AIMA_DB_USER=aima_ugc
           AIMA_DB_CONNECT_TIMEOUT_SECONDS=5
@@ -244,3 +241,82 @@ jobs:
 
           sudo test -s "${AIMA_V1A_ROOT}/runtime/logs/api.log"
           sudo test -d "${AIMA_V1A_ROOT}/postgres/18/docker"
+
+      - name: Repository-relative host root smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOCAL_ROOT=".runtime/compose-ci-${GITHUB_RUN_ID}"
+          LOCAL_ROOT_ABS="${GITHUB_WORKSPACE}/${LOCAL_ROOT#./}"
+          LOCAL_ENV_FILE="${RUNNER_TEMP}/aima-local-compose.env"
+
+          cat > "${LOCAL_ENV_FILE}" <<EOF
+          AIMA_IMAGE_TAG=ci-${GITHUB_RUN_ID}
+          AIMA_HTTP_BIND_IP=127.0.0.1
+          AIMA_HTTP_PORT=18081
+          AIMA_HOST_ROOT=./${LOCAL_ROOT}
+          AIMA_DB_NAME=aima_ugc
+          AIMA_DB_USER=aima_ugc
+          AIMA_DB_CONNECT_TIMEOUT_SECONDS=5
+          AIMA_LOG_LEVEL=INFO
+          AIMA_LOG_MAX_BYTES=1048576
+          AIMA_LOG_BACKUP_COUNT=2
+          AIMA_LOG_COMPRESS=true
+          AIMA_TIKHUB_ENABLED=false
+          AIMA_TIKHUB_BASE_URL=https://api.tikhub.io
+          AIMA_TIKHUB_API_KEY=
+          AIMA_LLM_API_KEY=
+          EOF
+          chmod 0600 "${LOCAL_ENV_FILE}"
+
+          cleanup_local() {
+            status=$?
+            if [[ $status -ne 0 ]]; then
+              docker compose --env-file "${LOCAL_ENV_FILE}" ps -a || true
+              docker compose --env-file "${LOCAL_ENV_FILE}" logs --no-color || true
+            fi
+            docker compose --env-file "${LOCAL_ENV_FILE}" down --remove-orphans || true
+            sudo rm -rf "${LOCAL_ROOT_ABS}" || true
+            exit $status
+          }
+          trap cleanup_local EXIT
+
+          git check-ignore -q "${LOCAL_ROOT}/probe"
+          docker compose --env-file "${LOCAL_ENV_FILE}" config --format json > "${RUNNER_TEMP}/compose.local.json"
+          python3 - "${RUNNER_TEMP}/compose.local.json" "${LOCAL_ROOT_ABS}" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          model = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          root = Path(sys.argv[2]).resolve()
+
+          expected = {
+              "api": {
+                  "/app/data": root / "runtime/data",
+                  "/app/logs": root / "runtime/logs",
+                  "/run/internal-secrets": root / "shared/secrets",
+              },
+              "postgres": {
+                  "/var/lib/postgresql": root / "postgres",
+                  "/run/secrets": root / "shared/secrets",
+              },
+          }
+          for service, destinations in expected.items():
+              mounts = {
+                  item["target"]: Path(item["source"]).resolve()
+                  for item in model["services"][service]["volumes"]
+                  if item["type"] == "bind"
+              }
+              for destination, source in destinations.items():
+                  assert mounts[destination] == source.resolve()
+          PY
+
+          # 复用上一阶段已构建镜像，证明仓库相对 Host Root 也能走同一 Compose Runtime。
+          docker compose --env-file "${LOCAL_ENV_FILE}" up -d --no-build --wait
+          curl -fsS http://127.0.0.1:18081/health/ready >/dev/null
+          docker compose --env-file "${LOCAL_ENV_FILE}" exec -T api sh -ec \
+            'printf local-root-persistence > /app/data/local-root-marker'
+          test "$(sudo cat "${LOCAL_ROOT_ABS}/runtime/data/local-root-marker")" = "local-root-persistence"
+          sudo test -s "${LOCAL_ROOT_ABS}/shared/secrets/postgres_password"
+          sudo test -d "${LOCAL_ROOT_ABS}/postgres/18/docker"

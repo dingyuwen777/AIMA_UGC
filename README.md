@@ -531,33 +531,52 @@ changes/archive/
 
 ## 12. 当前生产上线状态
 
-当前仓库开发能力已经较完整，但**完整生产 Release 仍是 No-Go**。
+当前仓库已经具备 Internal V1-A 的最小可部署容器基础，但**完整 Production Release 仍是 No-Go**。
 
-当前根目录不存在：
+根目录当前已经存在：
 
 ```text
 Dockerfile
 compose.yaml
-compose.production.yaml
 env.production.example
 ```
 
-同时尚未闭环：
+完整容器 Runtime 使用：
 
-- 企业认证/后端授权；
-- 离线 Release Bundle；
-- 固定生产镜像/digest；
+```text
+env.production + compose.yaml
+AIMA_HOST_ROOT
+→ 本地完整 Docker：./.runtime/compose
+→ 公司服务器：/data/AIMA_UGC
+```
+
+源码开发继续使用：
+
+```text
+env.local
+→ scripts/dev/backend.py / frontend.py
+```
+
+Internal V1-A 已验证 bootstrap、PostgreSQL 18.4、Migration、configure、API/Worker/Scheduler、Nginx、Readiness、持久挂载、Secret File、数据库密码丢失 fail closed 与 Linux Compose Golden Path。当前下一正式单元是 **Internal V1-B：公司服务器部署与真实业务 Smoke**。
+
+完整 Production 仍尚未闭环：
+
+- 企业认证/后端授权与正式 HTTPS/浏览器安全入口；
+- 不可变离线 Release Bundle / `images.tar`；
+- 固定生产镜像 digest、Manifest、SBOM、签名/来源验证；
 - PostgreSQL + Artifact 协调 Backup/Restore；
-- 正式恢复/回滚演练；
+- 正式发布前 Backup、恢复与应用回滚自动化/演练；
 - 生产服务器完整 Smoke/Soak/容量/安全验收。
 
-这些不是“以后再写文档”，而是正式 Roadmap 的未完成阶段：
+长期生产必须保持：持久 `AIMA_HOST_ROOT=/data/AIMA_UGC` 与 `/data/AIMA_UGC/releases/<version>` 分离；服务器最终加载已验证镜像并以 `--no-build --pull never` 启动，而不是把源码现场 build 当成正式 Release。
+
+详细路线：
 
 - [`docs/roadmap/生产上线实施路线.md`](docs/roadmap/生产上线实施路线.md)
 - [`docs/appendix/生产部署与离线Release方案.md`](docs/appendix/生产部署与离线Release方案.md)
 - [`docs/环境运行与部署.md`](docs/环境运行与部署.md)
 
-另外，Stage 9 Monitoring/告警/VOC/工单，以及 Stage 10 Word 报告产品化是否作为首次上线阻塞项，要按产品优先级决定；**认证、Release、持久化、备份恢复、回滚不能跳过。**
+Stage 9 Monitoring/告警/VOC/工单和 Stage 10 Word 报告产品化当前不阻塞受控公司内网 V1；完整 Production 的认证、Release 完整性、持久化恢复和回滚门禁不能跳过。
 
 ---
 
