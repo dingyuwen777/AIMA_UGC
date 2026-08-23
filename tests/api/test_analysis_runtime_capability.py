@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi.testclient import TestClient
-
 from aima_ugc.entrypoints.api_main import create_app
 from aima_ugc.platform.health import ReadinessReport
+from fastapi.testclient import TestClient
 
 
 def _configure_base_runtime(monkeypatch, tmp_path: Path) -> Path:  # type: ignore[no-untyped-def]
