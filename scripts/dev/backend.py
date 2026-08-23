@@ -167,9 +167,11 @@ def _run(
             for child in children:
                 return_code = child.process.poll()
                 if return_code is not None:
-                    raise LocalDevError(
-                        f"{child.name} 意外退出（exit={return_code}）；请查看上方输出和 .runtime/logs。"
+                    message = (
+                        f"{child.name} 意外退出（exit={return_code}）；"
+                        "请查看上方输出和 .runtime/logs。"
                     )
+                    raise LocalDevError(message)
     except KeyboardInterrupt:
         print("\n[INFO] Stopping local backend...")
     finally:
