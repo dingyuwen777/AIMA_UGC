@@ -6,14 +6,17 @@
 
 ```text
 backend/src/aima_ugc/contracts/http.py
+backend/src/aima_ugc/contracts/runtime.py
 backend/src/aima_ugc/bootstrap/api.py
+backend/src/aima_ugc/bootstrap/analysis_capability_http.py
+backend/src/aima_ugc/entrypoints/api_main.py
 contracts/openapi/openapi.json
 frontend/src/generated/api/
 ```
 
 为准。
 
-本文不会提前写不存在的 `/alerts`、`/reports` 等未来 URL；接口真正进入 FastAPI Route + OpenAPI + Test 后，才属于当前 API。
+本文不会提前写不存在的 `/alerts`、`/reports` 等未来 URL；接口真正进入最终 FastAPI Assembly + OpenAPI + Test 后，才属于当前 API。
 
 ---
 
@@ -49,10 +52,16 @@ Router 不直接 SQL，也不直接请求 TikHub/LLM。
 
 # 2. 统一 Contract 与错误结构
 
-HTTP Request/Response：
+HTTP Request/Response 主要维护在：
 
 ```text
 backend/src/aima_ugc/contracts/http.py
+```
+
+运行能力类的安全只读 Contract 维护在：
+
+```text
+backend/src/aima_ugc/contracts/runtime.py
 ```
 
 统一错误：
@@ -444,6 +453,8 @@ pending
 代码：
 
 ```text
+backend/src/aima_ugc/contracts/runtime.py
+backend/src/aima_ugc/bootstrap/analysis_capability_http.py
 backend/src/aima_ugc/bootstrap/content_http.py
 backend/src/aima_ugc/bootstrap/analysis_worker.py
 backend/src/aima_ugc/modules/analysis/
@@ -453,7 +464,54 @@ backend/src/aima_ugc/modules/analysis/
 
 [`appendix/AI舆情打标与分析实现.md`](appendix/AI舆情打标与分析实现.md)
 
-## 7.1 `POST /api/v1/content-analysis-requests`
+## 7.1 `GET /api/v1/content-analysis-capabilities`
+
+这是声音广场使用的**安全运行能力读模型**，只回答当前 API/Worker 运行环境是否具备创建可执行 AI Analysis Job 的最低配置。
+
+Response：
+
+```json
+{
+  "configured": true
+}
+```
+
+`configured=true` 的最低前提与正式 Worker 装配保持一致：
+
+```text
+LLM Base URL 已配置
++ LLM Model 已配置
++ <AIMA_SECRET_DIR>/llm_api_key 可安全读取
+```
+
+`AIMA_LLM_PROVIDER_NAME` 仍可按现有 OpenAI-compatible Adapter 规则从 Base URL 推导，因此不是这里的强制条件。
+
+这个接口**不会返回**：
+
+- Base URL；
+- Provider Name；
+- Model；
+- API Key；
+- Secret 路径；
+- 原始异常详情。
+
+它也不是 Provider 在线健康探测：`configured=true` 只表示本应用具备发起 Analysis 的本地运行配置，不能证明外部 LLM 此刻网络可达、余额充足或请求一定成功。
+
+前端行为：
+
+```text
+configured=false
+→ 声音广场明确提示“AI 未配置”
+→ AI 打标按钮 disabled
+→ 不创建注定失败的 Analysis Job
+
+configured=true
+→ 保持现有 selected/query Analysis Request 行为
+```
+
+Worker 的执行时配置校验仍然保留，前端 capability 只用于用户体验和避免明显无效请求，不能替代服务器最终守卫。
+
+## 7.2 `POST /api/v1/content-analysis-requests`
 
 Request：
 
@@ -493,7 +551,7 @@ job_id
 target_count
 ```
 
-## 7.2 `GET /api/v1/content-analysis-jobs/{job_id}`
+## 7.3 `GET /api/v1/content-analysis-jobs/{job_id}`
 
 查询正式 Content Analysis Job。
 
@@ -718,7 +776,7 @@ frontend/src/app/routes.ts
 
 ```text
 /voice-plaza
-→ contents / content-analysis
+→ contents / content-analysis-capabilities / content-analysis
 
 /collection-runtime
 → import-batches / collection-runs / collection-runtime
@@ -744,7 +802,7 @@ frontend/src/generated/api/
 ## 新增/修改 Query 字段
 
 ```text
-contracts/http.py
+Contract
 → Query Service/Repository
 → Cursor query hash（如果改变结果集）
 → API Test
@@ -789,8 +847,8 @@ contracts/http.py
 推荐：
 
 ```text
-1. 看 contracts/http.py
-2. 看 bootstrap/api.py Route
+1. 看 contracts/http.py / contracts/runtime.py
+2. 看 bootstrap/api.py / bootstrap/analysis_capability_http.py / entrypoints/api_main.py
 3. 看 contracts/openapi/openapi.json
 4. 用 FastAPI/OpenAPI 或 generated Client 发请求
 5. 看 API tests
@@ -802,7 +860,7 @@ contracts/http.py
 
 # 15. 当前明确不存在的 API
 
-当前 `bootstrap/api.py` 没有：
+当前最终 FastAPI Assembly 没有：
 
 ```text
 /api/v1/alerts
@@ -810,6 +868,7 @@ contracts/http.py
 /api/v1/client-events
 独立 /analysis-runs 资源
 企业登录/Session API
+LLM 配置编辑/Secret 查询 API
 ```
 
 未来实现后再加入本文。
