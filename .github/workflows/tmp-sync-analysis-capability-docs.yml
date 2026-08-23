@@ -1,5 +1,6 @@
 name: Temporary Sync Analysis Capability Docs
 
+# Temporary PR-only workflow; delete after the two formal docs are synchronized.
 on:
   pull_request:
     branches:
