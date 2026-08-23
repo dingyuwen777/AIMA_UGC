@@ -81,13 +81,14 @@ def validate_internal_v1_provider_secret(
     settings: PlatformSettings,
     provider: InternalV1ProviderSettings,
 ) -> None:
-    """启用 TikHub 时必须能通过既有只读 Secret File 边界读取凭据。"""
+    """启用 TikHub 时必须能通过既有只读外部 Secret File 边界读取凭据。"""
 
     if not provider.enabled:
         return
+    secret_root = settings.external_secret_root
     read_secret_file(
-        settings.secret_dir / provider.secret_ref,
-        root=settings.secret_dir,
+        secret_root / provider.secret_ref,
+        root=secret_root,
     )
 
 
@@ -103,7 +104,7 @@ def validate_internal_v1_llm_settings(settings: PlatformSettings) -> bool:
         return False
     if settings.llm_base_url is None or settings.llm_model is None:
         raise ValueError("LLM 启用时必须同时配置 AIMA_LLM_BASE_URL 与 AIMA_LLM_MODEL")
-    read_secret_file(settings.llm_api_key_file, root=settings.secret_dir)
+    read_secret_file(settings.llm_api_key_file, root=settings.external_secret_root)
     return True
 
 

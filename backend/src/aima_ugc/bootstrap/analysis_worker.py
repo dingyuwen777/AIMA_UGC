@@ -133,7 +133,7 @@ class PostgresContentAnalysisJobExecutor:
             raise ValueError("正式 Analysis 缺少 LLM base URL 或 model")
         api_key = read_secret_file(
             settings.llm_api_key_file,
-            root=settings.secret_dir,
+            root=settings.external_secret_root,
         )
         taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
         adapter = OpenAICompatibleContentLabelingLLM(

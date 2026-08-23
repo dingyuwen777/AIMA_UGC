@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""准备或校验 Internal V1 的宿主持久目录与基础 Secret。"""
+"""准备或校验 Internal V1 的宿主持久目录与内部 Secret。"""
 
 from __future__ import annotations
 
@@ -17,6 +17,8 @@ POSTGRES_UID = 999
 POSTGRES_GID = 999
 SECRET_GID = 11001
 DEFAULT_ROOT = Path("/data/AIMA_UGC")
+_POSTGRES_CLUSTER_MARKER = Path("postgres/18/docker/PG_VERSION")
+_POSTGRES_PASSWORD = Path("shared/secrets/postgres_password")
 
 
 class HostPreparationError(RuntimeError):
@@ -31,26 +33,27 @@ class DirectorySpec:
     mode: int
 
 
-_DIRECTORY_SPECS = (
+_RUNTIME_DIRECTORY_SPECS = (
     DirectorySpec(".", 0, 0, 0o750),
     DirectorySpec("runtime", 0, 0, 0o750),
     DirectorySpec("runtime/data", APP_UID, APP_GID, 0o750),
     DirectorySpec("runtime/logs", APP_UID, APP_GID, 0o750),
     DirectorySpec("postgres", POSTGRES_UID, POSTGRES_GID, 0o700),
-    DirectorySpec("backups", 0, 0, 0o750),
-    DirectorySpec("releases", 0, 0, 0o750),
     DirectorySpec("shared", 0, 0, 0o750),
-    DirectorySpec("shared/env", 0, 0, 0o750),
     DirectorySpec("shared/secrets", 0, SECRET_GID, 0o750),
 )
-
+_DIRECTORY_SPECS = (
+    *_RUNTIME_DIRECTORY_SPECS,
+    DirectorySpec("backups", 0, 0, 0o750),
+    DirectorySpec("releases", 0, 0, 0o750),
+    DirectorySpec("shared/env", 0, 0, 0o750),
+)
 _MANAGED_SECRETS = {
     "postgres_password": 32,
     "import_batch_cursor_signing_key": 48,
     "content_cursor_signing_key": 48,
     "collection_runtime_cursor_signing_key": 48,
 }
-_OPTIONAL_EXTERNAL_SECRETS = ("tikhub_api_key", "llm_api_key")
 
 
 def _stat_without_symlink(path: Path) -> os.stat_result:
@@ -119,15 +122,12 @@ def _secure_secret(
     *,
     min_characters: int,
     check_only: bool,
-    create: bool,
 ) -> None:
     if path.is_symlink():
         raise HostPreparationError(f"不允许符号链接：{path}")
     if not path.exists():
-        if check_only or not create:
-            if create:
-                raise HostPreparationError(f"缺少基础 Secret：{path}")
-            return
+        if check_only:
+            raise HostPreparationError(f"缺少基础 Secret：{path}")
         _write_new_secret(path, min_characters=min_characters)
     _read_secret(path, min_characters=min_characters)
     if not check_only:
@@ -152,16 +152,37 @@ def _resolve_host_root(root: Path) -> Path:
     return expanded.resolve(strict=False)
 
 
-def prepare_host(root: Path, *, check_only: bool) -> None:
-    """准备/校验宿主目录；已有 Secret 只校验和收紧权限，绝不轮换。"""
+def _guard_postgres_password_recovery(root: Path) -> None:
+    """已有数据库必须复用原密码；Secret 丢失时拒绝生成一个无法匹配数据库的新值。"""
+
+    marker = root / _POSTGRES_CLUSTER_MARKER
+    password = root / _POSTGRES_PASSWORD
+    if marker.is_symlink():
+        raise HostPreparationError(f"不允许符号链接：{marker}")
+    if marker.is_file() and not password.exists() and not password.is_symlink():
+        raise HostPreparationError(
+            "检测到已有 PostgreSQL 18 数据但缺少 postgres_password；"
+            "请恢复与该数据库匹配的原 Secret，禁止自动生成新密码"
+        )
+
+
+def prepare_host(
+    root: Path,
+    *,
+    check_only: bool,
+    runtime_only: bool = False,
+) -> None:
+    """准备/校验宿主目录；已有内部 Secret 只校验和收紧权限，绝不轮换。"""
 
     if os.name != "posix":
         raise HostPreparationError("Internal V1 宿主准备只支持 Linux/POSIX")
     resolved_root = _resolve_host_root(root)
+    _guard_postgres_password_recovery(resolved_root)
     if os.geteuid() != 0:
         raise HostPreparationError("宿主准备/校验需要 root 权限，以验证固定容器 UID/GID")
 
-    for spec in _DIRECTORY_SPECS:
+    specs = _RUNTIME_DIRECTORY_SPECS if runtime_only else _DIRECTORY_SPECS
+    for spec in specs:
         _ensure_directory(resolved_root, spec, check_only=check_only)
 
     secret_dir = resolved_root / "shared/secrets"
@@ -170,21 +191,11 @@ def prepare_host(root: Path, *, check_only: bool) -> None:
             secret_dir / name,
             min_characters=minimum,
             check_only=check_only,
-            create=True,
         )
-    for name in _OPTIONAL_EXTERNAL_SECRETS:
-        path = secret_dir / name
-        if path.exists() or path.is_symlink():
-            _secure_secret(
-                path,
-                min_characters=1,
-                check_only=check_only,
-                create=False,
-            )
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="准备 Internal V1 宿主持久目录与基础 Secret")
+    parser = argparse.ArgumentParser(description="准备 Internal V1 宿主持久目录与内部 Secret")
     parser.add_argument(
         "--root",
         type=Path,
@@ -196,9 +207,18 @@ def main() -> int:
         action="store_true",
         help="只检查，不创建目录、不生成 Secret、不修改权限",
     )
+    parser.add_argument(
+        "--runtime-only",
+        action="store_true",
+        help="只准备 Compose 运行所需 data/log/postgres/secrets；跳过 backups/releases/shared/env",
+    )
     args = parser.parse_args()
     try:
-        prepare_host(args.root, check_only=args.check_only)
+        prepare_host(
+            args.root,
+            check_only=args.check_only,
+            runtime_only=args.runtime_only,
+        )
     except HostPreparationError as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)
         return 1

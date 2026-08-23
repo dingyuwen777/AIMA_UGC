@@ -18,12 +18,13 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 aima \
     && useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin aima \
-    && mkdir -p /app/data /app/logs \
+    && mkdir -p /app/data /app/logs /app/scripts/deploy \
     && chown -R 10001:10001 /app/data /app/logs
 WORKDIR /app
 COPY --from=backend-builder /app/.venv /app/.venv
 COPY alembic.ini ./alembic.ini
 COPY migrations ./migrations
+COPY scripts/deploy/prepare_host.py ./scripts/deploy/prepare_host.py
 USER 10001:10001
 EXPOSE 8090
 CMD ["uvicorn", "aima_ugc.entrypoints.api_main:app", "--host", "0.0.0.0", "--port", "8090"]

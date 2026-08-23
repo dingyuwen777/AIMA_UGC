@@ -68,9 +68,10 @@ class _TikHubTransportPool:
 def _default_secret_resolver(runtime: PlatformRuntime) -> Callable[[str], SecretStr]:
     def resolve(secret_ref: str) -> SecretStr:
         validated_ref = validate_secret_ref(secret_ref)
+        secret_root = runtime.settings.external_secret_root
         return read_secret_file(
-            runtime.settings.secret_dir / validated_ref,
-            root=runtime.settings.secret_dir,
+            secret_root / validated_ref,
+            root=secret_root,
         )
 
     return resolve
