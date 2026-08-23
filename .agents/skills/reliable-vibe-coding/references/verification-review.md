@@ -27,7 +27,13 @@
 - 必须保持不变的接口、数据、配置和行为是否保持；
 - 用户确认的关键决策是否被执行；
 - `satisfied` 项是否都有对应的实现和当前验证证据；
+- Validation Matrix 中每个 `required` 层是否有与其证明范围匹配的新鲜证据；
+- `not_applicable` 是否真的是无独立证明价值，而不是为了少跑测试；
+- Browser Mock 是否只被用于证明用户可见行为，没有被写成真实 API/DB/Worker/Provider 端到端证据；
+- Real Full-stack 是否聚焦少量关键 Golden Path，而没有无必要地复制全部状态空间；
 - 代码、测试、正式文档和 Change 是否一致。
+
+详细测试分层见 [testing-strategy.md](testing-strategy.md)。
 
 ### Completion Audit 与反向审计
 
@@ -50,7 +56,7 @@ unresolved_cleared
 失败页面 → 是否只显示可审计机器事实？
 ```
 
-没有前后端或异步边界时，记录不适用依据，不为满足清单创造无价值机制。
+同时复核 Validation Matrix：用户可见状态空间、后端规则/持久化、公共 Contract、关键实链和外部 Provider 当前事实是否分别由适合的证据层覆盖。没有对应边界时，记录不适用依据，不为满足清单创造无价值机制或测试。
 
 详细规则见 [completion-gate.md](completion-gate.md)。
 
@@ -64,6 +70,7 @@ unresolved_cleared
 - 兼容性、Migration、部署和回滚；
 - 并发、性能和资源生命周期；
 - 测试是否验证真实行为；
+- 测试层级是否与它声称证明的事实一致；
 - 命名、注释和维护成本；
 - 无关改动、重复实现和失效内容；
 - 用户未提交修改是否被保留；
@@ -90,7 +97,7 @@ PR CI 使用 `--changed-since <base-sha>`，只要求本 PR 实际改动的 gate
 - Evidence/依据不是占位内容；
 - Completion Audit 四项已完成。
 
-它不能判断是否漏抄了一个业务要求，也不能判断 Evidence 的语义是否充分，因此脚本通过不能替代 Review A1/A2。
+它不能判断是否漏抄了一个业务要求，不能判断 Evidence 的语义是否充分，也不自动判断 Validation Matrix 的测试层选择是否正确，因此脚本通过不能替代 Review A1/A2。
 
 ## 证据门禁
 
@@ -99,16 +106,21 @@ PR CI 使用 `--changed-since <base-sha>`，只要求本 PR 实际改动的 gate
 1. 运行完整命令；
 2. 读取完整输出；
 3. 检查退出码、失败数、警告和跳过项；
-4. 对照原始症状、上游完成定义、成功标准和影响范围；
+4. 对照原始症状、上游完成定义、成功标准、Validation Matrix 和影响范围；
 5. 只陈述证据直接支持的状态。
 
 | 结论 | 必需证据 | 不足以证明 |
 |---|---|---|
 | 测试通过 | 当前完整测试输出、退出码 0、失败数 0 | 昨天日志、局部测试、“应该通过” |
+| Browser 用户行为通过 | 当前 Browser Mock/Acceptance 输出 + 实际用户可见断言/请求断言 | 后端单测、Mock 被调用一次 |
+| PostgreSQL/服务器规则通过 | 当前 Backend/API/PostgreSQL Integration 证据 | Browser Mock、SQLite、静态代码检查 |
+| Contract 一致 | 当前 Pydantic/OpenAPI/generated client 生成/漂移检查 | 手写 Mock 字段刚好一致 |
+| Real Full-stack 接通 | 当前真实关键组件链 Golden Path 运行成功 | Browser Mock、API Integration 各自单独通过 |
+| Provider 当前真实可用 | 当前有界 Real Provider Probe | 历史 Raw、Fixture、Mock |
 | 构建成功 | 当前构建命令退出码 0 | Lint 通过、代码看起来正确 |
 | Bug 修复 | 原始症状不再出现，回归测试经历正确 Red/Green | 只修改代码、测试仅通过一次 |
-| Change 需求完成 | 当前 Change 成功标准逐项证据 | 测试全部绿色 |
-| Stage/正式单元完成 | 上游 Requirement Traceability + Completion Audit + Change 实现证据 | 只检查当前 Change、CI 全绿 |
+| Change 需求完成 | 当前 Change 成功标准逐项证据 + Validation Matrix | 测试全部绿色 |
+| Stage/正式单元完成 | 上游 Requirement Traceability + Validation Matrix + Completion Audit + Change 实现证据 | 只检查当前 Change、CI 全绿 |
 | 子 Agent 完成 | 主 Agent 检查实际 diff 并重新验证 | 子 Agent 的成功报告 |
 | 可发布 | 完整交付门禁、部署与回滚状态 | 本地目标测试通过 |
 
@@ -132,7 +144,7 @@ PR CI 使用 `--changed-since <base-sha>`，只要求本 PR 实际改动的 gate
 
 ## 文档与 Change
 
-确认正式文档描述当前系统；Change 保存当次原因、取舍、任务和证据。检查元数据状态、Owner、分支、依赖和影响范围仍与实际一致。带 Completion Gate 的 Change 还要检查 Requirement Source、Traceability 和 Completion Audit。不要提前把 Active Change 归档。
+确认正式文档描述当前系统；Change 保存当次原因、取舍、任务和证据。检查元数据状态、Owner、分支、依赖和影响范围仍与实际一致。带 Completion Gate 的 Change 还要检查 Requirement Source、Traceability、Validation Matrix 和 Completion Audit。不要提前把 Active Change 归档。
 
 ## Git 检查
 
@@ -154,11 +166,12 @@ PR CI 使用 `--changed-since <base-sha>`，只要求本 PR 实际改动的 gate
 1. 结果与范围；
 2. 逐文件变更及目的；
 3. 上游 Requirement Traceability 与成功标准状态；
-4. Completion Audit / 两阶段 Review 结果；
-5. 文档同步及依据；
-6. 实际验证命令、退出码、通过/失败数量和关键输出；
-7. 未验证内容及剩余风险；
-8. 兼容性、依赖、Migration、部署和回滚影响；
-9. Git 分支、提交、PR、合并和清理状态。
+4. Validation Matrix 与各层实际证据；
+5. Completion Audit / 两阶段 Review 结果；
+6. 文档同步及依据；
+7. 实际验证命令、退出码、通过/失败数量和关键输出；
+8. 未验证内容及剩余风险；
+9. 兼容性、依赖、Migration、部署和回滚影响；
+10. Git 分支、提交、PR、合并和清理状态。
 
 如果没有任何文件变化或任务仍被阻塞，也使用相同结构如实说明。
