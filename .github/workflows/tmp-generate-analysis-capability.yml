@@ -1,5 +1,6 @@
 name: Temporary Generate Analysis Capability Contract
 
+# Temporary synchronization step for the already-open PR; remove after success.
 on:
   pull_request:
     branches: [main]
