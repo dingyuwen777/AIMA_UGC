@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260824-stop-local-backend-postgres
 title: 本地 Backend 退出时停止 PostgreSQL 容器
 level: L2
-status: ready_for_review
+status: done
 owner: chatgpt
 branch: feature/local-backend-stop-postgres
 created: 2026-08-24
@@ -77,22 +77,22 @@ data_changes: []
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | Backend 正常停止时同步停止其管理的 Docker 容器 | user:backend-stop-docker | satisfied | `backend.py` 统一 `finally` 清理；Ctrl+C 回归测试在 HEAD `e2566d822b210646381064394a196c3221248dfe` 的 CI Backend/repository checks 通过；SIGTERM 真实 lifecycle smoke `32653776800` success |
-| R2 | 日志明确说明 Docker 容器停止结果 | user:backend-stop-log | satisfied | unit 覆盖 `stopped/already_stopped/missing` 三种准确日志；Local Dev Bootstrap `32653776800` 实际 grep `[STOP] PostgreSQL Docker container stopped: aima-ugc-postgres-dev` 成功 |
-| R3 | 停止不删除 PostgreSQL 数据，后续启动可复用 | docs/02_环境运行与部署.md | satisfied | `stop_postgres_container()` 只有 `docker stop`；真实 smoke `32653776800` 验证 volume 存在、同一 container ID、同一 password hash、停机前 PostgreSQL marker 行仍为 `persisted` |
-| R4 | 保持 `--prepare-only` 与现有 Local Dev Bootstrap 行为 | .github/workflows/local-dev-bootstrap.yml | satisfied | Local Dev Bootstrap `32653776800` 的 prepare/migration/provider/legacy-password/reset 既有步骤与 stop 后再次 `--prepare-only` 全部 success |
-| R5 | 完成 L2 Completion Audit、两阶段 Review，并进入 Ready Check / CI 门禁 | AGENTS.md | satisfied | 2026-08-24 重新读取 AGENTS/Skill/Blueprint 07/launcher/runtime/CI/docs，完成 A1/A2、Code Quality Review 与 Completion Audit；功能审计 HEAD `b6868dfb973597a6e37445f30883be5c09a44bf0` 除预期的 in_progress Completion Gate 外全部永久 workflow success |
+| R1 | Backend 正常停止时同步停止其管理的 Docker 容器 | user:backend-stop-docker | satisfied | `backend.py` 统一 `finally` 清理；Ctrl+C 回归测试由总 CI `32654208231` 验证；SIGTERM 真实 lifecycle smoke `32654208213` success |
+| R2 | 日志明确说明 Docker 容器停止结果 | user:backend-stop-log | satisfied | unit 覆盖 `stopped/already_stopped/missing` 三种准确日志；Local Dev Bootstrap `32654208213` 实际检查 `[STOP] PostgreSQL Docker container stopped: aima-ugc-postgres-dev` 成功 |
+| R3 | 停止不删除 PostgreSQL 数据，后续启动可复用 | docs/02_环境运行与部署.md | satisfied | `stop_postgres_container()` 只有 `docker stop`；真实 smoke `32654208213` 验证 volume 存在、同一 container ID、同一 password hash、停机前 PostgreSQL marker 仍为 `persisted` |
+| R4 | 保持 `--prepare-only` 与现有 Local Dev Bootstrap 行为 | .github/workflows/local-dev-bootstrap.yml | satisfied | Local Dev Bootstrap `32654208213` 的 prepare/migration/provider/legacy-password/reset 既有步骤与 stop 后再次 `--prepare-only` 全部 success |
+| R5 | 完成 L2 Completion Audit、两阶段 Review、Ready Check 与永久 CI | AGENTS.md | satisfied | Final Ready HEAD `9a1de0571868fcf59c25bf77595d9d262b9b6369` 的 Change Completion Gate `32654208234`、总 CI `32654208231`、Local Dev Bootstrap `32654208213`、Internal V1-A `32654208230`、Windows Compose `32654208228` 等 11 个永久 workflow 全部 success；PR #184 已正常合并 |
 
 # Validation Matrix
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
 | Browser Mock Acceptance | not_applicable | 不修改前端或浏览器行为 |
-| Backend/API/PostgreSQL Integration | required | Local Dev Bootstrap `32653776800` 使用真实 PostgreSQL Docker 容器验证 SIGTERM 退出 stop、volume/data/container ID/password 复用和再次 prepare；同一 run 现有数据库 bootstrap/reset 测试继续通过 |
+| Backend/API/PostgreSQL Integration | required | Local Dev Bootstrap `32654208213` 使用真实 PostgreSQL Docker 容器验证 SIGTERM 退出 stop、volume/data/container ID/password 复用和再次 prepare；同一 run 现有数据库 bootstrap/reset 测试继续通过 |
 | Contract / Generated Client | not_applicable | 不修改公共 HTTP Contract / generated client；总 CI 仍执行 drift/compatibility 检查并通过 |
 | Real Full-stack Golden Path | not_applicable | 本次目标是本地 launcher 生命周期；真实 Backend + PostgreSQL Docker smoke 直接覆盖目标边界，无需用 Browser E2E 冒充该证据 |
 | Real Provider Probe | not_applicable | 不修改 TikHub/LLM Provider 行为 |
-| Docs / Governance / Other | required | Red/Green unit、Ctrl+C cleanup unit、Windows/Linux launcher compile、文档检查、Local Dev Bootstrap、总 CI 与 Completion Gate |
+| Docs / Governance / Other | required | Red/Green unit、Ctrl+C cleanup unit、Windows/Linux launcher compile、文档检查、Local Dev Bootstrap、总 CI 与 Completion Gate 均已通过 |
 
 # Completion Audit
 
@@ -123,21 +123,22 @@ Red commit：`3c65b0e8c1b88798e6dcd752e4dd00ef71b44487`
 
 CI `32653244765` Stage 1：Ruff format / Ruff check / mypy 先通过，随后 unit **2 failed / 589 passed**；两个失败均为 `local_runtime.stop_postgres_container` 尚不存在，构成有效行为 Red。
 
-## Green / 审计
+## Green / Ready
 
-功能审计 HEAD：`b6868dfb973597a6e37445f30883be5c09a44bf0`
+Final Ready HEAD：`9a1de0571868fcf59c25bf77595d9d262b9b6369`
 
-- Local Dev Bootstrap `32653776800`: success；真实 `backend.py` readiness → SIGTERM → PostgreSQL `Running=false` → volume 保留 → 同一 container ID 再启动 → password hash 不变 → PostgreSQL marker `persisted`。
-- CI `32653776834`: success；Ruff format 459 files、Ruff check、mypy 235 files、unit **594 passed**、contract **74 passed**、API **30 passed**、frontend unit **34 passed**、Playwright E2E **13 passed**、build/docs/secret/architecture checks 全部成功。
-- Internal V1-A `32653776789`: success；完整 Compose Golden Path 无回归。
-- Windows Docker Desktop Compose Compatibility、Stage 8F、Stage 6、Stage 7 相关永久 workflow：同一审计 HEAD success。
-- Change Completion Gate 在 `in_progress` 状态按治理规则预期 failure；本 `ready_for_review` 提交后重新执行。
-- Ctrl+C 补充测试提交 `e2566d822b210646381064394a196c3221248dfe` 已通过当前 CI 的 Backend/repository checks，直接验证 `KeyboardInterrupt` 时清理顺序为 API → Worker → PostgreSQL。
+- Local Dev Bootstrap `32654208213`: success；真实 `backend.py` readiness → SIGTERM → PostgreSQL `Running=false` → volume 保留 → 同一 container ID 再启动 → password hash 不变 → PostgreSQL marker `persisted`。
+- CI `32654208231`: success；包含 Ruff、mypy、unit、contract、API、frontend unit、Playwright E2E、build/docs/secret/architecture 等全量门禁，并包含 Ctrl+C cleanup 回归。
+- Change Completion Gate `32654208234`: success。
+- Internal V1-A `32654208230`: success；完整 Compose Golden Path 无回归。
+- Windows Docker Desktop Compose Compatibility `32654208228`: success。
+- Stage 8F `32654208232`、Stage 6 与 Stage 7 相关永久 workflow：同一 Ready HEAD 全部 success。
 
 现有 CI 仍可能报告与本 Change 无关的 XLSX duplicate-member、Starlette TestClient deprecation、npm dependency/install-script warning；本 Change 不升级依赖，避免扩大范围。
 
 # Git / 交付
 
-- Branch: `feature/local-backend-stop-postgres`
-- Draft PR: #184
-- Merge: 未授权；Ready HEAD 全部永久 CI success 后只转 Ready，不合并 main
+- Implementation branch: `feature/local-backend-stop-postgres`
+- Implementation PR: #184，已正常 merge 到 `main`
+- Implementation merge commit: `350f28e2cdfcdccecfb48448f14300953b92c7c8`
+- Archive: 本文件由独立归档 PR 从 `changes/active/` 移入 `changes/archive/2026-08/`；归档 PR/merge 状态由 GitHub PR 与提交历史记录
