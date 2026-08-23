@@ -82,6 +82,16 @@ class ReadyCheckTest(unittest.TestCase):
         path.write_text(document, encoding="utf-8")
         return path
 
+    @staticmethod
+    def _git(root: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["git", "-C", str(root), *arguments],
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+
     def test_template_enables_completion_gate(self) -> None:
         content = TEMPLATE.read_text(encoding="utf-8")
         self.assertIn("completion_gate: required", content)
@@ -115,6 +125,23 @@ class ReadyCheckTest(unittest.TestCase):
             result = self._run(root)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn("legacy=1", result.stdout)
+
+    def test_new_active_change_without_gate_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._git(root, "init", "-b", "main")
+            self._git(root, "config", "user.name", "ready-check")
+            self._git(root, "config", "user.email", "ready-check@example.invalid")
+            (root / "README.md").write_text("baseline\n", encoding="utf-8")
+            self._git(root, "add", "README.md")
+            self._git(root, "commit", "-m", "baseline")
+            base = self._git(root, "rev-parse", "HEAD").stdout.strip()
+            self._write_change(root, _change_document(completion_gate=False))
+            self._git(root, "add", "changes")
+            self._git(root, "commit", "-m", "add legacy-shaped new change")
+            result = self._run(root, "--changed-since", base)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("completion_gate: required", result.stdout + result.stderr)
 
     def test_not_satisfied_blocks_ready(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
