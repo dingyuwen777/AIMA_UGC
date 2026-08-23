@@ -26,7 +26,7 @@ affected_paths:
   - frontend/src/generated/api/
 contracts:
   - HTTP OpenAPI
-data_changes: none
+data_changes: []
 ---
 
 # 目标
@@ -117,7 +117,7 @@ data_changes: none
 
 - Dev Multi Keyword Pack Runner：Contract 生成、Orval 生成、Ruff、mypy（235 source files）、前端 lint/typecheck、Alembic upgrade、目标 API/PostgreSQL ingestion、前端 Vitest 均执行成功后提交正式实现。
 - 移除旧 Payload 兼容后的第一次 Stage 3A Integration 正确暴露一个过期测试断言：业务 Job 已 succeeded，但测试仍访问已删除的 `payload.relevance`，结果 `1 failed, 4 passed`；随后将断言改为确认 `relevance` 不存在。最终永久 CI 必须在当前 HEAD 重新通过后方可合并。
-- Completion Gate 的 RVC 自测 14/14 通过；首次 Gate 失败根因为 Change frontmatter 缺 `depends_on`，本次已补齐并进入 `ready_for_review`，等待当前 HEAD 复验。
+- Completion Gate 的 RVC 自测 14/14 通过；前两次 Gate 分别发现 Change frontmatter 缺 `depends_on`、`data_changes` 类型不合法，均按机器门禁修正；等待当前 HEAD 复验。
 
 ## 最终门禁
 
