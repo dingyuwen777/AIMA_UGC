@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260823-local-dev-bootstrap
 title: 收口跨平台本地开发启动与配置
 level: L3
-status: ready_for_review
+status: done
 owner: chatgpt
 branch: feature/local-dev-bootstrap
 created: 2026-08-23
@@ -121,26 +121,26 @@ data_changes: []
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 本地源码开发只需要一个后端命令和一个前端命令，Windows/Linux 使用同一套核心启动逻辑 | user:local-dev-bootstrap-confirmation | satisfied | `scripts/dev/backend.py`、`frontend.py`；Local Dev Bootstrap #17 的 Windows 2025 / Ubuntu 24.04 launcher jobs 均 success |
-| R2 | `env.local` 缺失时自动从模板创建；TikHub/LLM 未配置不阻塞基础功能，但启动时必须明确 Warning | user:local-dev-bootstrap-confirmation | satisfied | `ensure_env_local()`、能力摘要、Unit tests；模板默认空可选配置 |
-| R3 | 数据库、目录、Cursor Secret、Migration 等机器可决定的本地细节不再要求开发者手工配置 | user:local-dev-bootstrap-confirmation | satisfied | `local_runtime.py` + `backend.py`；Local Dev Bootstrap #17 PostgreSQL bootstrap smoke success |
-| R4 | TikHub/LLM 真实 Secret 可由本地 `env.local` 输入，但正式运行仍使用 Secret File；TikHub 非敏感 Provider Config 继续保存在数据库 | user:local-dev-bootstrap-confirmation | satisfied | Secret materialize 单测；Local Dev Bootstrap #17 验证 Provider Config 只保存 `secret_ref=tikhub_api_key` |
-| R5 | Worker 必须成为正式可执行常驻进程，API + Worker 默认随后端开发入口启动；Scheduler 默认关闭、显式开启 | user:local-dev-bootstrap-confirmation | satisfied | `worker_main.py` + Worker loop unit；`backend.py`；Stage 8F #321 使用正式 Worker entrypoint success |
-| R6 | 前端首次运行自动安装锁定依赖并启动 Vite；日常开发不要求 production build | user:local-dev-bootstrap-confirmation | satisfied | `frontend.py`；Local Dev Bootstrap #17 Windows/Ubuntu 都真实执行 `--prepare-only` + `npm ci`；运行文档解释 Vite HMR/build 边界 |
-| R7 | 本地便利性不能破坏 PostgreSQL、Secret、Provider Config、Migration、API/Worker/Scheduler 分进程等长期边界 | docs/blueprint/05-日志安全部署与运维.md | satisfied | 子进程继续使用正式 `AIMA_* + Secret File`；ProviderConfig Repository；主 CI #2194 / Audit / Stage 4/5D/6/7 均 success |
-| R8 | 该收口应先于 Internal V1-A，V1-A 继续负责正式 Docker/Compose/Production Config | user:local-dev-bootstrap-confirmation + docs/roadmap/内网V1上线实施计划.md | satisfied | Internal V1 Roadmap 以增量 `# 8A Local Dev Bootstrap` 固化；长期 Production Roadmap 已恢复原文 |
-| R9 | 现有真实 Excel Browser Full-stack 必须继续证明 Browser→API→PostgreSQL→正式 Worker→Voice Plaza 接通 | docs/roadmap/内网V1上线实施计划.md | satisfied | `.github/workflows/stage8f-fullstack.yml` 已改用 `python -m aima_ugc.entrypoints.worker_main`；Stage 8F #321 success |
+| R1 | 本地源码开发只需要一个后端命令和一个前端命令，Windows/Linux 使用同一套核心启动逻辑 | user:local-dev-bootstrap-confirmation | satisfied | `scripts/dev/backend.py`、`frontend.py`；Final Ready HEAD 的 Local Dev Bootstrap #19 在 Windows 2025 / Ubuntu 24.04 均 success |
+| R2 | `env.local` 缺失时自动从模板创建；TikHub/LLM 未配置不阻塞基础功能，但启动时必须明确 Warning | user:local-dev-bootstrap-confirmation | satisfied | `ensure_env_local()`、能力摘要、Unit tests；模板默认空可选配置；Final CI #2196 success |
+| R3 | 数据库、目录、Cursor Secret、Migration 等机器可决定的本地细节不再要求开发者手工配置 | user:local-dev-bootstrap-confirmation | satisfied | `local_runtime.py` + `backend.py`；Local Dev Bootstrap #19 PostgreSQL bootstrap smoke success |
+| R4 | TikHub/LLM 真实 Secret 可由本地 `env.local` 输入，但正式运行仍使用 Secret File；TikHub 非敏感 Provider Config 继续保存在数据库 | user:local-dev-bootstrap-confirmation | satisfied | Secret materialize 单测；Local Dev Bootstrap #19 验证 Provider Config 只保存 `secret_ref=tikhub_api_key` |
+| R5 | Worker 必须成为正式可执行常驻进程，API + Worker 默认随后端开发入口启动；Scheduler 默认关闭、显式开启 | user:local-dev-bootstrap-confirmation | satisfied | `worker_main.py` + Worker loop unit；`backend.py`；Stage 8F #323 使用正式 Worker entrypoint success |
+| R6 | 前端首次运行自动安装锁定依赖并启动 Vite；日常开发不要求 production build | user:local-dev-bootstrap-confirmation | satisfied | `frontend.py`；Local Dev Bootstrap #19 Windows/Ubuntu 都真实执行 `--prepare-only` + `npm ci`；运行文档解释 Vite HMR/build 边界 |
+| R7 | 本地便利性不能破坏 PostgreSQL、Secret、Provider Config、Migration、API/Worker/Scheduler 分进程等长期边界 | docs/blueprint/05-日志安全部署与运维.md | satisfied | 子进程继续使用正式 `AIMA_* + Secret File`；ProviderConfig Repository；Final CI #2196、Audit #1059、Stage 4/5D/6/7 全部 success |
+| R8 | 该收口应先于 Internal V1-A，V1-A 继续负责正式 Docker/Compose/Production Config | user:local-dev-bootstrap-confirmation + docs/roadmap/内网V1上线实施计划.md | satisfied | Internal V1 Roadmap 以增量 `# 8A Local Dev Bootstrap` 固化；长期 Production Roadmap 保持原文 |
+| R9 | 现有真实 Excel Browser Full-stack 必须继续证明 Browser→API→PostgreSQL→正式 Worker→Voice Plaza 接通 | docs/roadmap/内网V1上线实施计划.md | satisfied | `.github/workflows/stage8f-fullstack.yml` 使用 `python -m aima_ugc.entrypoints.worker_main`；Final Stage 8F #323 success |
 
 # Validation Matrix
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
 | Browser Mock Acceptance | not_applicable | 本 Change 不修改页面业务行为或 HTTP Contract；未配置外部能力的首要新增反馈是 launcher 输出，现有页面错误/Capability 行为保持 |
-| Backend/API/PostgreSQL Integration | required | Local Dev Bootstrap #17：真实 PostgreSQL 18.4 bootstrap、Migration、Secret、Provider Config；Worker entrypoint unit；主 CI #2194 success |
-| Contract / Generated Client | required | 本 Change不改公共 HTTP Contract；CI #2194 的 OpenAPI/generated drift/contract 门禁 success |
-| Real Full-stack Golden Path | required | Stage 8F #321 success：真实 Browser → Vue → FastAPI → PostgreSQL → 正式 `worker_main` → Voice Plaza |
+| Backend/API/PostgreSQL Integration | required | Final Local Dev Bootstrap #19：真实 PostgreSQL 18.4 bootstrap、Migration、Secret、Provider Config；Worker entrypoint unit；Final CI #2196 success |
+| Contract / Generated Client | required | 本 Change 不改公共 HTTP Contract；Final CI #2196 的 OpenAPI/generated drift/contract 门禁 success |
+| Real Full-stack Golden Path | required | Final Stage 8F #323 success：真实 Browser → Vue → FastAPI → PostgreSQL → 正式 `worker_main` → Voice Plaza |
 | Real Provider Probe | not_applicable | 不修改 TikHub endpoint/字段/分页/Capability；没有必要产生真实付费请求，只验证本地 Provider Config provisioning |
-| Docs / Governance / Other | required | Local Dev Bootstrap #17 Windows/Ubuntu launcher + frontend prepare success；`docs/环境运行与部署.md` 与 Internal V1 Roadmap 已同步；长期 Production Roadmap 未被改写 |
+| Docs / Governance / Other | required | Final Local Dev Bootstrap #19 Windows/Ubuntu launcher + frontend prepare success；`docs/环境运行与部署.md` 与 Internal V1 Roadmap 已同步；长期 Production Roadmap 未被改写；Change Completion Gate #42 success |
 
 # Completion Audit
 
@@ -160,36 +160,39 @@ data_changes: []
 - [x] 让 Stage8F Full-stack 使用正式 Worker entrypoint。
 - [x] 同步 `docs/环境运行与部署.md` 和 Internal V1 Roadmap；长期 Production Roadmap 保持原有 Stage 9—12/Production 定义。
 - [x] 取得目标测试、PostgreSQL bootstrap、Contract、Stage8F Full-stack 和主 CI 新鲜证据。
-- [x] 完成 Completion Audit 与两阶段语义 Review；当前等待 Ready HEAD 的机器 Completion Gate/永久 CI 最终确认。
+- [x] 完成 Completion Audit、两阶段语义 Review、Ready Check、最终永久 CI 和正常 PR 合并。
 
 # 验证
 
-## 已执行/CI 证据（实现 HEAD `2bb06e61da35f94da9e725b1b2849d9abf54a084`）
+## Final Ready HEAD `3f738c50d004841e71c80c922f06696a79a6f270`
 
-- Local Dev Bootstrap #17 / run `32614905662`：success。
+- Change Completion Gate #42 / run `32615199155`：success。
+- Local Dev Bootstrap #19 / run `32615199146`：success。
   - `Launcher (windows-2025)`：success；真实执行 launcher 校验与 `frontend.py --prepare-only`。
   - `Launcher (ubuntu-24.04)`：success；真实执行 launcher 校验与 `frontend.py --prepare-only`。
   - `PostgreSQL bootstrap smoke`：success；真实 PostgreSQL 18.4、Secret、Alembic、Provider Config `secret_ref`。
-- CI #2194 / run `32614905685`：success；包含 Ruff、mypy、unit/integration/API/contract/generated、frontend lint/typecheck/unit/build/E2E 等常规门禁。
-- Stage 8F Full-stack #321 / run `32614905651`：success；已使用正式 `worker_main`。
-- Stage 1-7 Audit #1057、Stage 4 #902、Stage 5D #1561、Stage 6 #192、Stage 7 Keyword #1804、Plan #1802、Provider Config #1917、Scheduler #2144：全部 success。
-- Change Completion Gate 在 `in_progress` HEAD 上按设计失败；本次更新切为 `ready_for_review` 后必须由最终 HEAD 重新证明通过。
+- CI #2196 / run `32615199157`：success；包含 Ruff、mypy、unit/integration/API/contract/generated、frontend lint/typecheck/unit/build/E2E 等常规门禁。
+- Stage 8F Full-stack #323 / run `32615199263`：success；使用正式 `worker_main`。
+- Stage 1-7 Audit #1059、Stage 4 #904、Stage 5D #1563、Stage 6 #194、Stage 7 Keyword #1806、Plan #1804、Provider Config #1919、Scheduler #2146：全部 success。
 
-## 最终门禁
+## 合并证据
 
-- `python .agents/skills/reliable-vibe-coding/scripts/ready_check.py --root . --require-active-ready` 由 Change Completion Gate 在最终 Ready HEAD 执行。
-- Final Ready HEAD 的全部永久 workflows 必须 success 后才允许 PR 转 Ready/合并。
+- PR #157 `收口跨平台本地开发启动与配置`：Ready 后正常 merge。
+- Implementation merge commit：`84e89e89f0c40307bc56b15bf68dedbbe1464a47`。
+- 没有使用 CI/Branch Protection/质量门禁豁免。
 
 # 文档影响
 
 - `docs/环境运行与部署.md`：以跨平台“两条命令”为本地快速开始，说明首次 PostgreSQL/Secret/Migration、`env.local`、TikHub/AI/Scheduler、Frontend dev/build、数据/日志/重置与生产边界。
 - `docs/roadmap/内网V1上线实施计划.md`：保留原 Stage 8F 和 Backlog 内容，增量插入 `Local Dev Bootstrap`，明确它先于 Internal V1-A。
-- `docs/roadmap/生产上线实施路线.md`：Review 时发现最初重写过度，已精确恢复 `main` 原文，不在本 Change 改写长期 Stage 9—12/Production 规划。
+- `docs/roadmap/生产上线实施路线.md`：Review 时发现最初重写过度，已精确恢复原文，本 Change 未改写长期 Stage 9—12/Production 规划。
 - Blueprint 04/05 的长期进程与 Secret 边界没有变化，因此不修改；本地 dev launcher 细节由运行文档维护。
 
 # 交付
 
 - Branch：`feature/local-dev-bootstrap`
 - PR：#157 `收口跨平台本地开发启动与配置`
-- 状态：Draft / ready_for_review Change；等待最终 Ready HEAD Completion Gate + 全部永久 CI。
+- Final Ready HEAD：`3f738c50d004841e71c80c922f06696a79a6f270`
+- Implementation merge commit：`84e89e89f0c40307bc56b15bf68dedbbe1464a47`
+- 状态：done；当前 Change 已转入 `changes/archive/2026-08/`。
 - 发布：不涉及生产发布；合并后形成源码开发正式入口，下一正式开发单元为 Internal V1-A。
