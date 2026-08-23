@@ -155,11 +155,12 @@ jobs:
         run: |
           set -euo pipefail
           LEGACY_PASSWORD="$(cat .runtime/secrets/postgres_password)"
+          rm .runtime/secrets/postgres_password
           docker volume rm aima-ugc-postgres-dev-data >/dev/null
           uv run python scripts/dev/backend.py --prepare-only
           test -s .runtime/internal-secrets/postgres_password
           test "$(cat .runtime/internal-secrets/postgres_password)" != "${LEGACY_PASSWORD}"
-          test "$(cat .runtime/secrets/postgres_password)" = "${LEGACY_PASSWORD}"
+          test ! -e .runtime/secrets/postgres_password
           uv run alembic current
           uv run alembic check
 
