@@ -8,26 +8,29 @@ $Mirrors = @(
 )
 $MaxDownloadAttempts = 5
 
-function Get-DockerDesktopSettingsPath {
-    if ([string]::IsNullOrWhiteSpace($env:APPDATA)) {
-        throw 'APPDATA is unavailable; cannot locate Docker Desktop settings-store.json.'
+function Get-DockerEngineConfigPath {
+    if ([string]::IsNullOrWhiteSpace($HOME)) {
+        throw 'HOME is unavailable; cannot locate Docker Desktop daemon.json.'
     }
-    return Join-Path $env:APPDATA 'Docker\settings-store.json'
+    return Join-Path $HOME '.docker\daemon.json'
 }
 
-function ConvertFrom-DaemonOptions {
-    param([AllowNull()][object]$Value)
+function Read-DockerEngineConfig {
+    param([Parameter(Mandatory = $true)][string]$Path)
 
-    if ($null -eq $Value) {
+    if (-not (Test-Path -LiteralPath $Path)) {
         return [pscustomobject]@{}
     }
-    if ($Value -is [string]) {
-        if ([string]::IsNullOrWhiteSpace($Value)) {
-            return [pscustomobject]@{}
-        }
-        return $Value | ConvertFrom-Json
+    $raw = Get-Content -LiteralPath $Path -Raw
+    if ([string]::IsNullOrWhiteSpace($raw)) {
+        return [pscustomobject]@{}
     }
-    return $Value
+    try {
+        return $raw | ConvertFrom-Json
+    }
+    catch {
+        throw "Docker Engine configuration is not valid JSON: $Path"
+    }
 }
 
 function Set-DaemonOption {
@@ -38,60 +41,6 @@ function Set-DaemonOption {
     )
 
     $Daemon | Add-Member -NotePropertyName $Name -NotePropertyValue $Value -Force
-}
-
-function Get-DockerDesktopDaemonSlot {
-    param([Parameter(Mandatory = $true)][object]$Settings)
-
-    $topLevel = $Settings.PSObject.Properties['dockerDaemonOptions']
-    if ($null -ne $topLevel) {
-        return [pscustomobject]@{
-            Kind = 'top-level'
-            Value = $topLevel.Value
-        }
-    }
-
-    $linuxVm = $Settings.PSObject.Properties['linuxVM']
-    if ($null -ne $linuxVm -and $null -ne $linuxVm.Value) {
-        $daemonOptions = $linuxVm.Value.PSObject.Properties['dockerDaemonOptions']
-        if ($null -ne $daemonOptions -and $null -ne $daemonOptions.Value) {
-            $valueProperty = $daemonOptions.Value.PSObject.Properties['value']
-            if ($null -ne $valueProperty) {
-                return [pscustomobject]@{
-                    Kind = 'linux-vm'
-                    Value = $valueProperty.Value
-                }
-            }
-        }
-    }
-
-    return [pscustomobject]@{
-        Kind = 'new-top-level'
-        Value = $null
-    }
-}
-
-function Set-DockerDesktopDaemonSlot {
-    param(
-        [Parameter(Mandatory = $true)][object]$Settings,
-        [Parameter(Mandatory = $true)][string]$Kind,
-        [Parameter(Mandatory = $true)][string]$Value
-    )
-
-    switch ($Kind) {
-        'top-level' {
-            $Settings.dockerDaemonOptions = $Value
-        }
-        'linux-vm' {
-            $Settings.linuxVM.dockerDaemonOptions.value = $Value
-        }
-        'new-top-level' {
-            $Settings | Add-Member -NotePropertyName 'dockerDaemonOptions' -NotePropertyValue $Value
-        }
-        default {
-            throw "Unsupported Docker Desktop settings layout: $Kind"
-        }
-    }
 }
 
 function Test-ExpectedMirrorsApplied {
@@ -130,13 +79,13 @@ function Wait-DockerEngineReady {
 function Configure-DockerDesktopMirrors {
     $dockerPath = Get-Command docker.exe -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($null -eq $dockerPath) {
-        Write-Warning 'Docker Desktop is not installed or docker.exe is not on PATH; registry mirror setup was skipped. Rerun setup_dev_environment.cmd after Docker Desktop is installed.'
+        Write-Warning 'Docker Desktop is not installed or docker.exe is not on PATH; Docker Hub mirror setup was skipped. Rerun setup_dev_environment.cmd after Docker Desktop is installed.'
         return
     }
 
     & docker desktop version *> $null
     if ($LASTEXITCODE -ne 0) {
-        Write-Warning 'Docker Desktop CLI is unavailable; registry mirror setup was skipped. Rerun setup_dev_environment.cmd with a current Docker Desktop installation.'
+        Write-Warning 'Docker Desktop CLI is unavailable; Docker Hub mirror setup was skipped. Rerun setup_dev_environment.cmd with a current Docker Desktop installation.'
         return
     }
 
@@ -145,48 +94,48 @@ function Configure-DockerDesktopMirrors {
         return
     }
 
-    $settingsPath = Get-DockerDesktopSettingsPath
-    if (-not (Test-Path -LiteralPath $settingsPath)) {
-        throw "Docker Desktop settings file is missing: $settingsPath. Start Docker Desktop once, then rerun setup_dev_environment.cmd."
-    }
-
-    $settings = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
-    $slot = Get-DockerDesktopDaemonSlot -Settings $settings
-    $daemon = ConvertFrom-DaemonOptions -Value $slot.Value
+    $configPath = Get-DockerEngineConfigPath
+    $configDirectory = Split-Path -Parent $configPath
+    New-Item -ItemType Directory -Path $configDirectory -Force | Out-Null
+    $daemon = Read-DockerEngineConfig -Path $configPath
     Set-DaemonOption -Daemon $daemon -Name 'registry-mirrors' -Value $Mirrors
     Set-DaemonOption -Daemon $daemon -Name 'max-download-attempts' -Value $MaxDownloadAttempts
-    $daemonJson = $daemon | ConvertTo-Json -Compress -Depth 20
-    Set-DockerDesktopDaemonSlot -Settings $settings -Kind $slot.Kind -Value $daemonJson
 
-    $backupPath = "$settingsPath.aima-backup-$(Get-Date -Format 'yyyyMMddHHmmss')"
-    Copy-Item -LiteralPath $settingsPath -Destination $backupPath -Force
-
-    Write-Host 'Stopping Docker Desktop before updating Docker Engine settings ...'
-    & docker desktop stop
-    if ($LASTEXITCODE -ne 0) {
-        throw "docker desktop stop failed with exit code $LASTEXITCODE"
+    $backupPath = $null
+    if (Test-Path -LiteralPath $configPath) {
+        $backupPath = "$configPath.aima-backup-$(Get-Date -Format 'yyyyMMddHHmmss')"
+        Copy-Item -LiteralPath $configPath -Destination $backupPath -Force
     }
 
     $utf8WithoutBom = New-Object System.Text.UTF8Encoding($false)
-    $settingsJson = $settings | ConvertTo-Json -Depth 100
-    [IO.File]::WriteAllText($settingsPath, $settingsJson + [Environment]::NewLine, $utf8WithoutBom)
+    $daemonJson = $daemon | ConvertTo-Json -Depth 20
+    [IO.File]::WriteAllText($configPath, $daemonJson + [Environment]::NewLine, $utf8WithoutBom)
 
-    Write-Host 'Starting Docker Desktop with AIMA Docker Hub mirrors ...'
-    & docker desktop start
+    Write-Host 'Restarting Docker Desktop to apply AIMA Docker Hub mirrors ...'
+    & docker desktop restart
     if ($LASTEXITCODE -ne 0) {
-        throw "docker desktop start failed with exit code $LASTEXITCODE"
+        throw "docker desktop restart failed with exit code $LASTEXITCODE"
     }
     Wait-DockerEngineReady
 
     if (-not (Test-ExpectedMirrorsApplied)) {
-        throw "Docker Desktop started, but docker info does not report the expected registry mirrors. Restore backup if needed: $backupPath"
+        $restoreHint = if ($null -ne $backupPath) {
+            " Restore backup if needed: $backupPath"
+        }
+        else {
+            " Remove the newly created file if needed: $configPath"
+        }
+        throw "Docker Desktop restarted, but docker info does not report the expected registry mirrors.$restoreHint"
     }
 
     Write-Host 'Docker Desktop registry mirrors configured:'
     foreach ($mirror in $Mirrors) {
         Write-Host "  $mirror"
     }
-    Write-Host "Docker Desktop settings backup: $backupPath"
+    Write-Host "Docker Engine config: $configPath"
+    if ($null -ne $backupPath) {
+        Write-Host "Previous Docker Engine config backup: $backupPath"
+    }
 }
 
 Configure-DockerDesktopMirrors
