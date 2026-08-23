@@ -18,12 +18,12 @@ COPY pyproject.toml uv.lock README.md ./
 COPY backend ./backend
 # 保留 uv.lock 的官方 PyPI source/hash 事实不变：先冻结导出第三方依赖，
 # 再从可配置镜像按 exact version + hash 同步，最后单独构建/安装本项目 wheel。
+# uv 0.12.3 的 requirements export 默认包含锁文件 hashes，因此无需新版 CLI 的 --generate-hashes。
 RUN uv export \
       --frozen \
       --no-dev \
       --no-emit-local \
       --format requirements.txt \
-      --generate-hashes \
       --output-file /tmp/requirements.txt \
     && uv venv .venv \
     && uv pip sync \
