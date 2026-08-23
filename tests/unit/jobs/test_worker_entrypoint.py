@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 import pytest
-
 from aima_ugc.entrypoints.worker_main import run_worker_loop
 
 
