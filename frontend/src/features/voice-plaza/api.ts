@@ -3,10 +3,12 @@ import {
   createDataExport,
   downloadDataExport,
   getContent,
+  getContentAnalysisCapabilities,
   getContentAnalysisJob,
   getDataExport,
   listContents,
   listDataExports,
+  type ContentAnalysisCapabilitiesResponse,
   type ContentAnalysisCreatedResponse,
   type ContentAnalysisSubmitRequest,
   type ContentDetailResponse,
@@ -53,6 +55,10 @@ export async function fetchContents(params: ListContentsParams): Promise<Content
 
 export async function fetchContentDetail(contentId: string): Promise<ContentDetailResponse> {
   return unwrap(await getContent(contentId))
+}
+
+export async function fetchContentAnalysisCapabilities(): Promise<ContentAnalysisCapabilitiesResponse> {
+  return unwrap(await getContentAnalysisCapabilities())
 }
 
 export async function submitContentAnalysis(

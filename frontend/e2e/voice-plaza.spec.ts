@@ -51,6 +51,13 @@ const job = (id: string, jobType: string) => ({
 })
 
 test.beforeEach(async ({ page }) => {
+  await page.route('**/api/v1/content-analysis-capabilities', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ configured: true }),
+    })
+  })
+
   await page.route('**/api/v1/contents**', async (route) => {
     const url = new URL(route.request().url())
     if (url.pathname === `/api/v1/contents/${contentId}`) {
@@ -161,6 +168,21 @@ test('renders every AI label and opens the text-first content detail', async ({ 
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {
     await page.screenshot({ path: 'test-results/stage8d-content-detail.png', fullPage: true })
   }
+})
+
+test('shows AI unavailable and disables analysis when runtime is not configured', async ({ page }) => {
+  await page.unroute('**/api/v1/content-analysis-capabilities')
+  await page.route('**/api/v1/content-analysis-capabilities', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ configured: false }),
+    })
+  })
+
+  await page.goto('/voice-plaza')
+
+  await expect(page.getByText(/AI 打标暂不可用：当前环境尚未配置可用的 LLM Runtime/)).toBeVisible()
+  await expect(page.getByRole('button', { name: /AI 打标/ })).toBeDisabled()
 })
 
 test('creates explicit analysis and durable Excel export jobs', async ({ page }) => {

@@ -1077,6 +1077,21 @@
         "title": "CommentCoverageResponse",
         "type": "object"
       },
+      "ContentAnalysisCapabilitiesResponse": {
+        "additionalProperties": false,
+        "description": "只公开 AI Analysis 当前是否具备可执行配置，不暴露配置细节。",
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "configured"
+        ],
+        "title": "ContentAnalysisCapabilitiesResponse",
+        "type": "object"
+      },
       "ContentAnalysisCreatedResponse": {
         "additionalProperties": false,
         "properties": {
@@ -3861,6 +3876,27 @@
         "summary": "Get Collection Runtime Summary",
         "tags": [
           "collection"
+        ]
+      }
+    },
+    "/api/v1/content-analysis-capabilities": {
+      "get": {
+        "operationId": "getContentAnalysisCapabilities",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentAnalysisCapabilitiesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Content Analysis Capabilities",
+        "tags": [
+          "contents"
         ]
       }
     },

@@ -17,7 +17,10 @@ Vue 页面
 
 ```text
 backend/src/aima_ugc/contracts/http.py
+backend/src/aima_ugc/contracts/runtime.py
 backend/src/aima_ugc/bootstrap/api.py
+backend/src/aima_ugc/bootstrap/analysis_capability_http.py
+backend/src/aima_ugc/entrypoints/api_main.py
 contracts/openapi/openapi.json
 ```
 
@@ -101,10 +104,12 @@ reporting.content-export-excel.v1
 
 ### 3.1 Router
 
-当前主 Router 装配：
+当前主 Router 与最终 API Assembly：
 
 ```text
 backend/src/aima_ugc/bootstrap/api.py
+backend/src/aima_ugc/bootstrap/analysis_capability_http.py
+backend/src/aima_ugc/entrypoints/api_main.py
 ```
 
 Router 负责：
@@ -194,7 +199,10 @@ Pydantic Request / Response
 
 ```text
 backend/src/aima_ugc/contracts/http.py
+backend/src/aima_ugc/contracts/runtime.py
 ```
+
+其中 `runtime.py` 只承载安全的运行能力读模型，不保存 Secret，也不成为 LLM 配置的第二事实源。
 
 生成 OpenAPI：
 
@@ -220,7 +228,7 @@ frontend/src/generated/api/
 
 ## 5. 当前真实 HTTP API 面
 
-下面来自当前 `backend/src/aima_ugc/bootstrap/api.py`，不是未来规划列表。
+下面来自当前 `bootstrap/api.py` 与最终 `entrypoints/api_main.py` Assembly，不是未来规划列表。
 
 ### 5.1 Health
 
@@ -255,6 +263,7 @@ backend/src/aima_ugc/modules/collection/http.py
 ```text
 GET  /api/v1/contents
 GET  /api/v1/contents/{content_id}
+GET  /api/v1/content-analysis-capabilities
 POST /api/v1/content-analysis-requests
 GET  /api/v1/content-analysis-jobs/{job_id}
 ```
@@ -262,10 +271,14 @@ GET  /api/v1/content-analysis-jobs/{job_id}
 代码：
 
 ```text
+backend/src/aima_ugc/contracts/runtime.py
+backend/src/aima_ugc/bootstrap/analysis_capability_http.py
 backend/src/aima_ugc/bootstrap/content_http.py
 backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
 backend/src/aima_ugc/adapters/persistence/postgres/analysis.py
 ```
+
+`GET /content-analysis-capabilities` 是安全只读运行能力投影，只返回 `configured`。它用于让声音广场在 LLM Base URL / Model / Secret 未形成可执行配置时明确提示并禁用 AI 打标；前端不得读取 `env.local`、Secret 文件或复制后端配置判断。该接口不返回 Base URL、Model、Provider、Secret 路径或 API Key，也不证明外部 LLM 此刻在线；Worker 的执行时配置守卫仍是最终防线。
 
 `POST /content-analysis-requests` 会先冻结 Content ID + `current_version`，再创建 `analysis.content-label.v1` Job。Worker 分析的不是“未来可能变化的查询结果”，而是请求创建时冻结的目标版本。
 
@@ -371,7 +384,7 @@ frontend/src/features/collection-strategy/
 
 含义：
 
-- `/voice-plaza`：内容查询、筛选、详情、Analysis 交互；
+- `/voice-plaza`：内容查询、筛选、详情、Analysis 交互；Analysis 按钮资格由后端 `content-analysis-capabilities` 驱动；
 - `/collection-runtime`：Excel Import / TikHub Run 的统一运行中心视图；
 - `/collection-strategy`：Keyword Pack、全局 Relevance 和 Collection Plan 管理；
 - `/`：当前 HomeView。
@@ -397,7 +410,8 @@ Feature Page
 - 手写一套后端 Response Type；
 - 修改 `frontend/src/generated/api/`；
 - Feature 直接导入另一个 Feature 的私有 Store；
-- 在页面代码里理解 PostgreSQL 表结构。
+- 在页面代码里理解 PostgreSQL 表结构；
+- 直接读取 `env.local`、Secret 或复制后端配置规则来判断业务能力。
 
 如果设计稿字段和后端 Contract 不一致，先判断需求是否要改后端，不要在页面层“猜字段”。
 
@@ -597,7 +611,7 @@ backend/src/aima_ugc/contracts/http.py
 ### 新增查询字段
 
 ```text
-contracts/http.py
+contracts/http.py / contracts/runtime.py（按边界选择）
 → Query Service / Repository
 → Cursor query hash（如果影响分页结果）
 → API Test
@@ -647,6 +661,7 @@ Job Payload / Handler
 独立 dashboard 模块
 企业登录/正式授权
 Word Report 的正式 PostgreSQL Job/API
+LLM 配置编辑/Secret 查询 API
 ```
 
 未来实现时再由实际 Contract、代码和测试更新本文。
