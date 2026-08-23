@@ -86,8 +86,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          uv run ruff format backend/src/aima_ugc/bootstrap/import_http.py backend/src/aima_ugc/bootstrap/import_worker.py backend/src/aima_ugc/bootstrap/api.py backend/src/aima_ugc/bootstrap/collection_http.py backend/src/aima_ugc/contracts/http.py backend/src/aima_ugc/modules/ingestion/http.py backend/src/aima_ugc/modules/ingestion/import_job.py tests/api/test_stage8b_imports.py tests/api/test_stage8e_collection_runs.py tests/integration/ingestion/test_stage8b_import_http_worker.py
-          uv run ruff check backend/src/aima_ugc/bootstrap/import_http.py backend/src/aima_ugc/bootstrap/import_worker.py backend/src/aima_ugc/bootstrap/api.py backend/src/aima_ugc/bootstrap/collection_http.py backend/src/aima_ugc/contracts/http.py backend/src/aima_ugc/modules/ingestion/http.py backend/src/aima_ugc/modules/ingestion/import_job.py tests/api/test_stage8b_imports.py tests/api/test_stage8e_collection_runs.py tests/integration/ingestion/test_stage8b_import_http_worker.py
+          TARGETS="backend/src/aima_ugc/bootstrap/import_http.py backend/src/aima_ugc/bootstrap/import_worker.py backend/src/aima_ugc/bootstrap/api.py backend/src/aima_ugc/bootstrap/collection_http.py backend/src/aima_ugc/contracts/http.py backend/src/aima_ugc/modules/ingestion/http.py backend/src/aima_ugc/modules/ingestion/import_job.py tests/api/test_stage8b_imports.py tests/api/test_stage8e_collection_runs.py tests/integration/ingestion/test_stage8b_import_http_worker.py"
+          uv run ruff format ${TARGETS}
+          uv run ruff check --fix ${TARGETS}
+          uv run ruff check ${TARGETS}
           uv run mypy backend/src
           npm --prefix frontend run lint
           npm --prefix frontend run typecheck
