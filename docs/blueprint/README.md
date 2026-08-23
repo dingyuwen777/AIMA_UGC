@@ -280,16 +280,28 @@ frontend/src/app/routes.ts
 
 ### 当前生产 Release
 
-仓库当前根目录没有：
+仓库当前根目录已经有：
 
 ```text
 Dockerfile
 compose.yaml
-compose.production.yaml
 env.production.example
 ```
 
-所以完整离线 Production Release 仍然是 Roadmap 中的待实现阶段。
+它们提供 Internal V1-A 的最小可部署容器栈，并把管理员入口收敛为 `env.production` + 一条 Docker Compose 启动命令；PostgreSQL、Artifact、日志与内部 Secret 使用宿主持久目录，Migration/configure 仍保持独立进程边界。
+
+当前仍没有完整 Stage 11 Production Release 所需的全部能力，例如：
+
+```text
+compose.production.yaml / 不可变离线 Release Bundle
+固定 image digest
+SBOM / 签名 / provenance
+协调 PostgreSQL + Artifact Backup / Restore
+企业认证 / 授权 / HTTPS 正式入口
+真实生产服务器完整验收
+```
+
+因此“Internal V1-A 已可部署”不能写成“完整 Production Go-Live 已完成”。
 
 ---
 
