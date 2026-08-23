@@ -137,7 +137,9 @@ def test_excel_import_uses_union_of_multiple_selected_keyword_packs(tmp_path) ->
         }
 
         with runtime.database.engine.begin() as connection:
-            external_ids = set(connection.scalars(select(contents_table.c.external_content_id)).all())
+            external_ids = set(
+                connection.scalars(select(contents_table.c.external_content_id)).all()
+            )
             persisted_batch = (
                 connection.execute(select(processing_import_batches_table)).mappings().one()
             )
