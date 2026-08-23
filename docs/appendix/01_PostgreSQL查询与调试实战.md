@@ -411,7 +411,7 @@ skipped / misfire_superseded
 
 只把最新到期点入队。看到 `skipped` 不等于 Scheduler 丢任务。
 
-详细解释见 [`02_Scheduler调度执行与停机恢复.md`](02_Scheduler调度执行与停机恢复.md)。
+详细解释见 [`05_Scheduler调度执行与停机恢复.md`](05_Scheduler调度执行与停机恢复.md)。
 
 ## 9. 看 Excel Import Batch
 

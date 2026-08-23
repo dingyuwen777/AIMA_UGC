@@ -195,9 +195,9 @@ backend/src/aima_ugc/adapters/providers/tikhub/runtime.py
 真实响应与验证：
 
 - [`docs/collection/README.md`](docs/collection/README.md)
-- [`docs/appendix/03_TikHub五平台真实响应与字段映射.md`](docs/appendix/03_TikHub五平台真实响应与字段映射.md)
-- [`docs/appendix/04_TikHub多接口验证与备用策略.md`](docs/appendix/04_TikHub多接口验证与备用策略.md)
-- [`docs/appendix/05_TikHub接口选型与真实验证台账.md`](docs/appendix/05_TikHub接口选型与真实验证台账.md)
+- [`docs/appendix/02_TikHub五平台真实响应与字段映射.md`](docs/appendix/02_TikHub五平台真实响应与字段映射.md)
+- [`docs/appendix/03_TikHub多接口验证与备用策略.md`](docs/appendix/03_TikHub多接口验证与备用策略.md)
+- [`docs/appendix/04_TikHub接口选型与真实验证台账.md`](docs/appendix/04_TikHub接口选型与真实验证台账.md)
 - `tests/fixtures/providers/tikhub/`
 
 这类 Provider 细节已经从核心 Blueprint 下沉到 Appendix/Collection 文档，避免 Blueprint 随平台实现无限增长。

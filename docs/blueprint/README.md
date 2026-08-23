@@ -81,10 +81,10 @@ changes/archive
 
 | 原主题 | 当前正式入口 |
 | --- | --- |
-| Scheduler 运行、Cron、`latest_only`、并发、防重、停机恢复 | [`../appendix/02_Scheduler调度执行与停机恢复.md`](../appendix/02_Scheduler调度执行与停机恢复.md) + Collection README + 04/07/08 |
-| TikHub 五平台真实响应、JSON 路径、Mapper、Fixture | [`../appendix/03_TikHub五平台真实响应与字段映射.md`](../appendix/03_TikHub五平台真实响应与字段映射.md) + [`../collection/README.md`](../collection/README.md) |
-| TikHub App/Web/V1/V2/V3 验证和备用接口 | [`../appendix/04_TikHub多接口验证与备用策略.md`](../appendix/04_TikHub多接口验证与备用策略.md) |
-| TikHub 真实 Probe/接口选型台账 | [`../appendix/05_TikHub接口选型与真实验证台账.md`](../appendix/05_TikHub接口选型与真实验证台账.md) |
+| Scheduler 运行、Cron、`latest_only`、并发、防重、停机恢复 | [`../appendix/05_Scheduler调度执行与停机恢复.md`](../appendix/05_Scheduler调度执行与停机恢复.md) + Collection README + 04/07/08 |
+| TikHub 五平台真实响应、JSON 路径、Mapper、Fixture | [`../appendix/02_TikHub五平台真实响应与字段映射.md`](../appendix/02_TikHub五平台真实响应与字段映射.md) + [`../collection/README.md`](../collection/README.md) |
+| TikHub App/Web/V1/V2/V3 验证和备用接口 | [`../appendix/03_TikHub多接口验证与备用策略.md`](../appendix/03_TikHub多接口验证与备用策略.md) |
+| TikHub 真实 Probe/接口选型台账 | [`../appendix/04_TikHub接口选型与真实验证台账.md`](../appendix/04_TikHub接口选型与真实验证台账.md) |
 | 统一 Excel 数据导出/离线调试 | [`../appendix/06_Excel统一数据导出与离线调试.md`](../appendix/06_Excel统一数据导出与离线调试.md) |
 | AI 打标、相关性、发声类型、Validator、Retry、持久化 | [`../appendix/07_AI舆情打标与分析实现.md`](../appendix/07_AI舆情打标与分析实现.md) + `backend/src/aima_ugc/modules/analysis/README.md` + 当前 Prompt |
 | 前端页面结构、Figma/Design-to-Code | [`../guides/01_Figma与前端设计开发工作流.md`](../guides/01_Figma与前端设计开发工作流.md) + `frontend/README.md` |
@@ -150,14 +150,14 @@ changes/archive/
 
 ### Scheduler
 
-[`../appendix/02_Scheduler调度执行与停机恢复.md`](../appendix/02_Scheduler调度执行与停机恢复.md)
+[`../appendix/05_Scheduler调度执行与停机恢复.md`](../appendix/05_Scheduler调度执行与停机恢复.md)
 
 ### TikHub
 
 - [`../collection/README.md`](../collection/README.md)
-- [`../appendix/03_TikHub五平台真实响应与字段映射.md`](../appendix/03_TikHub五平台真实响应与字段映射.md)
-- [`../appendix/04_TikHub多接口验证与备用策略.md`](../appendix/04_TikHub多接口验证与备用策略.md)
-- [`../appendix/05_TikHub接口选型与真实验证台账.md`](../appendix/05_TikHub接口选型与真实验证台账.md)
+- [`../appendix/02_TikHub五平台真实响应与字段映射.md`](../appendix/02_TikHub五平台真实响应与字段映射.md)
+- [`../appendix/03_TikHub多接口验证与备用策略.md`](../appendix/03_TikHub多接口验证与备用策略.md)
+- [`../appendix/04_TikHub接口选型与真实验证台账.md`](../appendix/04_TikHub接口选型与真实验证台账.md)
 
 ### Excel / 数据入口
 

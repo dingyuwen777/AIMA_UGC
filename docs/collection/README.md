@@ -18,12 +18,12 @@ Mapper 文件在哪？
 
 真实 JSON 路径：
 
-- [`../appendix/03_TikHub五平台真实响应与字段映射.md`](../appendix/03_TikHub五平台真实响应与字段映射.md)
+- [`../appendix/02_TikHub五平台真实响应与字段映射.md`](../appendix/02_TikHub五平台真实响应与字段映射.md)
 
 接口家族/备用：
 
-- [`../appendix/04_TikHub多接口验证与备用策略.md`](../appendix/04_TikHub多接口验证与备用策略.md)
-- [`../appendix/05_TikHub接口选型与真实验证台账.md`](../appendix/05_TikHub接口选型与真实验证台账.md)
+- [`../appendix/03_TikHub多接口验证与备用策略.md`](../appendix/03_TikHub多接口验证与备用策略.md)
+- [`../appendix/04_TikHub接口选型与真实验证台账.md`](../appendix/04_TikHub接口选型与真实验证台账.md)
 
 ---
 

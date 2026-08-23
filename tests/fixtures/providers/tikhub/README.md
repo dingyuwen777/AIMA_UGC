@@ -2,7 +2,7 @@
 
 本目录用于固定 TikHub 当前真实响应的**结构证据**，供 Operation、分页、Mapper、Canonical 和兼容性测试使用。它不是业务数据样本库，也不保存 API Key 或可用于重新识别真实账号/内容的原值。
 
-人类可读的五平台查询附录见 [`docs/appendix/03_TikHub五平台真实响应与字段映射.md`](../../../../docs/appendix/03_TikHub五平台真实响应与字段映射.md)。多 API family 的验证与备用判定见 [`docs/appendix/04_TikHub多接口验证与备用策略.md`](../../../../docs/appendix/04_TikHub多接口验证与备用策略.md)。
+人类可读的五平台查询附录见 [`docs/appendix/02_TikHub五平台真实响应与字段映射.md`](../../../../docs/appendix/02_TikHub五平台真实响应与字段映射.md)。多 API family 的验证与备用判定见 [`docs/appendix/03_TikHub多接口验证与备用策略.md`](../../../../docs/appendix/03_TikHub多接口验证与备用策略.md)。
 
 ## 证据来源
 

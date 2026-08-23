@@ -37,9 +37,9 @@
 | 用户可见行为/前后端/Full-stack/Provider 测试分层 | `docs/blueprint/06_开发约束与分阶段实施.md` + `.agents/skills/reliable-vibe-coding/references/testing-strategy.md` |
 | 重大跨模块决定 | `docs/blueprint/07_技术决策与实施门禁.md` |
 | Collection Plan、Capability、Decision、评论 | `docs/blueprint/08_采集策略与平台能力.md` + `docs/collection/README.md` |
-| Scheduler 运行/停机恢复 | `docs/appendix/02_Scheduler调度执行与停机恢复.md` |
-| TikHub 真实字段/Mapper | `docs/appendix/03_TikHub五平台真实响应与字段映射.md` + 目标平台文档 |
-| TikHub API family / 备用接口 | `docs/appendix/04_TikHub多接口验证与备用策略.md`、`docs/appendix/05_TikHub接口选型与真实验证台账.md` |
+| Scheduler 运行/停机恢复 | `docs/appendix/05_Scheduler调度执行与停机恢复.md` |
+| TikHub 真实字段/Mapper | `docs/appendix/02_TikHub五平台真实响应与字段映射.md` + 目标平台文档 |
+| TikHub API family / 备用接口 | `docs/appendix/03_TikHub多接口验证与备用策略.md`、`docs/appendix/04_TikHub接口选型与真实验证台账.md` |
 | Excel 导入/统一入库 | `docs/appendix/08_数据入口与统一入库实现.md` |
 | Excel 数据明细导出/离线调试 | `docs/appendix/06_Excel统一数据导出与离线调试.md` |
 | AI 相关性/发声类型/情感/标签 | `docs/appendix/07_AI舆情打标与分析实现.md` + `backend/src/aima_ugc/modules/analysis/README.md` + 当前 Prompt |

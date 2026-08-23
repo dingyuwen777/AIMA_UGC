@@ -18,9 +18,9 @@
 
 深入理解当前 TikHub 结构：
 
-- `docs/appendix/03_TikHub五平台真实响应与字段映射.md`
-- `docs/appendix/04_TikHub多接口验证与备用策略.md`
-- `docs/appendix/05_TikHub接口选型与真实验证台账.md`
+- `docs/appendix/02_TikHub五平台真实响应与字段映射.md`
+- `docs/appendix/03_TikHub多接口验证与备用策略.md`
+- `docs/appendix/04_TikHub接口选型与真实验证台账.md`
 - `docs/collection/README.md`
 
 ## 1. 先看代码结构
@@ -486,7 +486,7 @@ raw/ Search
 字段结构参考：
 
 ```text
-docs/appendix/03_TikHub五平台真实响应与字段映射.md
+docs/appendix/02_TikHub五平台真实响应与字段映射.md
 ```
 
 ### Comment 数明明增长了，但没有继续抓评论

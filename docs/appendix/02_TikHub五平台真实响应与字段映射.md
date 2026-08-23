@@ -1050,7 +1050,7 @@ operations/<platform>.py
 
 先看：
 
-[`04_TikHub多接口验证与备用策略.md`](04_TikHub多接口验证与备用策略.md)
+[`03_TikHub多接口验证与备用策略.md`](03_TikHub多接口验证与备用策略.md)
 
 当前备用接口必须显式选型，不能在 Transport 里偷偷自动 fallback。
 
@@ -1097,11 +1097,11 @@ tests/fixtures/providers/tikhub/<platform>/
 
 接口家族验证与备用边界：
 
-- [`04_TikHub多接口验证与备用策略.md`](04_TikHub多接口验证与备用策略.md)
+- [`03_TikHub多接口验证与备用策略.md`](03_TikHub多接口验证与备用策略.md)
 
 真实 Probe / 选型历史台账：
 
-- [`05_TikHub接口选型与真实验证台账.md`](05_TikHub接口选型与真实验证台账.md)
+- [`04_TikHub接口选型与真实验证台账.md`](04_TikHub接口选型与真实验证台账.md)
 
 采集总架构：
 

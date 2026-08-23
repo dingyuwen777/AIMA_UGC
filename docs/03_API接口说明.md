@@ -718,7 +718,7 @@ max_catch_up_runs = 0
 
 完整 Scheduler 语义：
 
-[`appendix/02_Scheduler调度执行与停机恢复.md`](appendix/02_Scheduler调度执行与停机恢复.md)
+[`appendix/05_Scheduler调度执行与停机恢复.md`](appendix/05_Scheduler调度执行与停机恢复.md)
 
 不要在 API 文档提前声明并不存在的“全量 Plan 编辑 URL”。具体可编辑字段以当前 Request Model/Route 为准。
 
