@@ -4,35 +4,39 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_docker_image_references_use_official_canonical_names() -> None:
+def test_docker_image_references_are_fixed_to_official_canonical_names() -> None:
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
     env_example = (ROOT / "env.production.example").read_text(encoding="utf-8")
 
-    expected_dockerfile_defaults = (
-        "ARG AIMA_BUILD_PYTHON_IMAGE=python:3.14.7-slim-trixie",
-        "ARG AIMA_BUILD_UV_IMAGE=ghcr.io/astral-sh/uv:0.12.3",
-        "ARG AIMA_BUILD_NODE_IMAGE=node:24.19.0-bookworm-slim",
-        "ARG AIMA_BUILD_NGINX_IMAGE=nginx:1.30.4-alpine3.24",
+    expected_dockerfile_images = (
+        "FROM ghcr.io/astral-sh/uv:0.12.3 AS uv-bin",
+        "FROM python:3.14.7-slim-trixie AS backend-builder",
+        "FROM python:3.14.7-slim-trixie AS backend",
+        "FROM node:24.19.0-bookworm-slim AS frontend-builder",
+        "FROM nginx:1.30.4-alpine3.24 AS frontend",
     )
-    for expected in expected_dockerfile_defaults:
+    for expected in expected_dockerfile_images:
         assert expected in dockerfile
 
     assert "image: postgres:18.4" in compose
-    assert "docker.1ms.run" not in dockerfile
-    assert "ghcr.1ms.run" not in dockerfile
-    assert "docker.1ms.run" not in compose
-    assert "ghcr.1ms.run" not in compose
 
-    # env.production 不再把容器镜像 registry 当成机器配置；镜像身份由仓库固定为官方引用。
-    for key in (
-        "AIMA_BUILD_PYTHON_IMAGE=",
-        "AIMA_BUILD_UV_IMAGE=",
-        "AIMA_BUILD_NODE_IMAGE=",
-        "AIMA_BUILD_NGINX_IMAGE=",
-        "AIMA_POSTGRES_IMAGE=",
-    ):
+    removed_image_override_keys = (
+        "AIMA_BUILD_PYTHON_IMAGE",
+        "AIMA_BUILD_UV_IMAGE",
+        "AIMA_BUILD_NODE_IMAGE",
+        "AIMA_BUILD_NGINX_IMAGE",
+        "AIMA_POSTGRES_IMAGE",
+    )
+    for key in removed_image_override_keys:
+        assert key not in dockerfile
+        assert key not in compose
         assert key not in env_example
+
+    for third_party_registry in ("docker.1ms.run", "ghcr.1ms.run"):
+        assert third_party_registry not in dockerfile
+        assert third_party_registry not in compose
+        assert third_party_registry not in env_example
 
 
 def test_package_source_defaults_are_official_but_remain_overridable() -> None:
