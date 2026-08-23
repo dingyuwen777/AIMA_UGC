@@ -64,7 +64,7 @@ Docker Engine 同时设置：
 "max-download-attempts": 5
 ```
 
-镜像源属于外部网络服务，可能受到地域、限流、维护或上游状态影响。AIMA 使用多个候选入口降低单点依赖，但不把某一家公共 mirror 当成永久可用的系统事实。
+这些公共 mirrors 是外部网络服务，可能受到地域、限流、维护或上游状态影响。AIMA 使用多个候选入口与 Docker 下载重试降低单点风险；只要可用下载通道存在，项目 image reference 都保持官方名称。
 
 ### Windows
 
