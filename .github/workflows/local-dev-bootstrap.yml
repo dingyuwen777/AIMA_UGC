@@ -164,10 +164,58 @@ jobs:
           uv run alembic current
           uv run alembic check
 
+      - name: Verify Backend shutdown stops PostgreSQL and preserves data
+        shell: bash
+        run: |
+          set -euo pipefail
+          BACKEND_LOG=/tmp/aima-local-backend-lifecycle.log
+          CONTAINER_ID_BEFORE="$(docker inspect --format '{{.Id}}' aima-ugc-postgres-dev)"
+          PASSWORD_HASH_BEFORE="$(sha256sum .runtime/internal-secrets/postgres_password | cut -d' ' -f1)"
+          docker exec aima-ugc-postgres-dev \
+            psql -U aima_ugc -d aima_ugc -v ON_ERROR_STOP=1 -c \
+            "CREATE TABLE IF NOT EXISTS ci_local_backend_lifecycle_marker(value text PRIMARY KEY); DELETE FROM ci_local_backend_lifecycle_marker; INSERT INTO ci_local_backend_lifecycle_marker VALUES ('persisted');"
+
+          .venv/bin/python scripts/dev/backend.py >"${BACKEND_LOG}" 2>&1 &
+          BACKEND_PID=$!
+          cleanup_backend() {
+            if kill -0 "${BACKEND_PID}" 2>/dev/null; then
+              kill -TERM "${BACKEND_PID}" 2>/dev/null || true
+              wait "${BACKEND_PID}" || true
+            fi
+          }
+          trap cleanup_backend EXIT
+
+          for _attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8090/health/ready >/dev/null 2>&1; then
+              break
+            fi
+            if ! kill -0 "${BACKEND_PID}" 2>/dev/null; then
+              cat "${BACKEND_LOG}"
+              exit 1
+            fi
+            sleep 0.5
+          done
+          curl -fsS http://127.0.0.1:8090/health/ready >/dev/null
+
+          kill -TERM "${BACKEND_PID}"
+          wait "${BACKEND_PID}"
+          trap - EXIT
+
+          test "$(docker inspect --format '{{.State.Running}}' aima-ugc-postgres-dev)" = "false"
+          docker volume inspect aima-ugc-postgres-dev-data >/dev/null
+          grep -F '[STOP] PostgreSQL Docker container stopped: aima-ugc-postgres-dev' "${BACKEND_LOG}"
+
+          .venv/bin/python scripts/dev/backend.py --prepare-only
+          test "$(docker inspect --format '{{.State.Running}}' aima-ugc-postgres-dev)" = "true"
+          test "$(docker inspect --format '{{.Id}}' aima-ugc-postgres-dev)" = "${CONTAINER_ID_BEFORE}"
+          PASSWORD_HASH_AFTER="$(sha256sum .runtime/internal-secrets/postgres_password | cut -d' ' -f1)"
+          test "${PASSWORD_HASH_BEFORE}" = "${PASSWORD_HASH_AFTER}"
+          test "$(docker exec aima-ugc-postgres-dev psql -U aima_ugc -d aima_ugc -Atc 'SELECT value FROM ci_local_backend_lifecycle_marker;')" = "persisted"
+
       - name: Clean local bootstrap resources
         if: always()
         shell: bash
         run: |
           docker rm -f aima-ugc-postgres-dev >/dev/null 2>&1 || true
           docker volume rm aima-ugc-postgres-dev-data >/dev/null 2>&1 || true
-          rm -rf .runtime env.local /tmp/legacy-password.log
+          rm -rf .runtime env.local /tmp/legacy-password.log /tmp/aima-local-backend-lifecycle.log

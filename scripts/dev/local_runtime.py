@@ -370,6 +370,30 @@ def ensure_postgres_container(paths: RuntimePaths, *, timeout_seconds: float = 6
     raise LocalDevError(f"PostgreSQL 未在 {timeout_seconds:.0f}s 内 ready")
 
 
+def stop_postgres_container() -> str:
+    """停止本地 PostgreSQL 开发容器，但保留容器本身与 named volume。"""
+
+    docker = shutil.which("docker")
+    if docker is None:
+        raise LocalDevError("未找到 Docker CLI。无法停止本地 PostgreSQL 容器。")
+    _run_docker(docker, ("info", "--format", "{{.ServerVersion}}"), failure="Docker Engine 不可用")
+
+    container = _docker_inspect(docker, "container", POSTGRES_CONTAINER)
+    if container is None:
+        return "missing"
+
+    running = _docker_field(docker, POSTGRES_CONTAINER, "{{.State.Running}}")
+    if running != "true":
+        return "already_stopped"
+
+    _run_docker(
+        docker,
+        ("stop", POSTGRES_CONTAINER),
+        failure="停止本地 PostgreSQL 容器失败",
+    )
+    return "stopped"
+
+
 def frontend_dependencies_stale(paths: RuntimePaths, frontend_dir: Path) -> bool:
     node_modules = frontend_dir / "node_modules"
     lock_file = frontend_dir / "package-lock.json"
