@@ -53,9 +53,11 @@ services:
       target: backend
     user: "0:0"
     command:
-      - sh
-      - -ec
-      - python scripts/deploy/prepare_host.py --root /host --runtime-only && exec sleep infinity
+      - python
+      - scripts/deploy/prepare_host.py
+      - --root
+      - /host
+      - --runtime-only
     volumes:
       - type: bind
         source: ${AIMA_HOST_DATA_DIR:-/data/AIMA_UGC/runtime/data}
@@ -69,20 +71,7 @@ services:
       - type: bind
         source: ${AIMA_HOST_SECRET_DIR:-/data/AIMA_UGC/shared/secrets}
         target: /host/shared/secrets
-    healthcheck:
-      test:
-        - CMD
-        - python
-        - scripts/deploy/prepare_host.py
-        - --root
-        - /host
-        - --runtime-only
-        - --check-only
-      interval: 5s
-      timeout: 5s
-      retries: 20
-      start_period: 2s
-    restart: unless-stopped
+    restart: "no"
     network_mode: none
 
   postgres:
@@ -113,7 +102,7 @@ services:
       start_period: 5s
     depends_on:
       bootstrap:
-        condition: service_healthy
+        condition: service_completed_successfully
     restart: unless-stopped
     networks:
       - app

@@ -83,10 +83,11 @@ jobs:
           # 正式管理员入口：空宿主状态只执行这一条 Compose 命令。
           docker compose --env-file "${AIMA_V1A_ENV_FILE}" up -d --build --wait
 
-          BOOTSTRAP_CONTAINER="$(docker compose --env-file "${AIMA_V1A_ENV_FILE}" ps -q bootstrap)"
+          BOOTSTRAP_CONTAINER="$(docker compose --env-file "${AIMA_V1A_ENV_FILE}" ps -a -q bootstrap)"
           MIGRATE_CONTAINER="$(docker compose --env-file "${AIMA_V1A_ENV_FILE}" ps -a -q migrate)"
           CONFIGURE_CONTAINER="$(docker compose --env-file "${AIMA_V1A_ENV_FILE}" ps -a -q configure)"
-          test "$(docker inspect -f '{{.State.Health.Status}}' "${BOOTSTRAP_CONTAINER}")" = "healthy"
+          test "$(docker inspect -f '{{.State.Status}}' "${BOOTSTRAP_CONTAINER}")" = "exited"
+          test "$(docker inspect -f '{{.State.ExitCode}}' "${BOOTSTRAP_CONTAINER}")" = "0"
           test "$(docker inspect -f '{{.State.ExitCode}}' "${MIGRATE_CONTAINER}")" = "0"
           test "$(docker inspect -f '{{.State.ExitCode}}' "${CONFIGURE_CONTAINER}")" = "0"
 
