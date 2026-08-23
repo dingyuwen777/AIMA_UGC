@@ -14,10 +14,16 @@
 
 ## 1. 新电脑第一次启动在做什么
 
-第一次执行：
+Windows Docker Desktop 正式启动命令：
 
-```text
-docker compose ... up -d --build --wait
+```powershell
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production up -d --build --wait
+```
+
+Linux / WSL / 公司服务器使用 canonical Compose：
+
+```bash
+docker compose --env-file env.production up -d --build --wait
 ```
 
 Docker 必须允许从完全没有 AIMA 镜像、基础镜像和业务容器的状态开始：
@@ -87,9 +93,9 @@ ghcr.io   → ghcr.1ms.run
 
 这样不依赖开发机或服务器的 Docker daemon `registry-mirrors` 配置。
 
-### 为什么 Debian / PyPI 改成阿里云
+### 为什么 Debian / PyPI 使用阿里云
 
-阿里云当前公开提供 Debian、Debian Security 和 PyPI 镜像，适合中国公网构建机直接使用：
+当前默认：
 
 ```text
 https://mirrors.aliyun.com/debian
@@ -99,7 +105,7 @@ https://mirrors.aliyun.com/pypi/simple
 
 ### npm 为什么仍是 npmmirror
 
-`registry.npmmirror.com` 是阿里系当前 NPM 镜像入口，不需要再改成另一套地址。它继续作为 npm 默认 registry。
+`registry.npmmirror.com` 是阿里系当前 NPM 镜像入口，不需要再维护另一套 npm 地址。
 
 ---
 
@@ -141,23 +147,36 @@ AIMA_BUILD_NPM_REGISTRY=https://registry.npmjs.org
 
 ---
 
-## 5. `env.production` 已存在时要注意
+## 5. `env.production` 第一次创建与已有文件
 
 `env.production` 被 Git ignore，是机器私有配置。
 
-因此：
+### Windows 新电脑
 
-```text
-新电脑第一次运行
-→ wrapper 从最新 env.production.example 生成 env.production
-→ 自动得到当前 1ms + 阿里云 + npmmirror 默认值
+CMD：
 
-已有电脑已经存在 env.production
-→ git pull 不会覆盖它
-→ 旧 DaoCloud/TUNA 值仍会继续生效
+```cmd
+copy env.production.example env.production
 ```
 
-如果已有 `env.production` 仍是旧源，应同步以下字段，或在确认本机私有配置可以重建后重新从 example 复制：
+PowerShell：
+
+```powershell
+Copy-Item env.production.example env.production
+```
+
+编辑后直接运行标准 Windows Compose 命令，不需要仓库 wrapper。
+
+### Linux / WSL / 服务器
+
+```bash
+cp env.production.example env.production
+chmod 0600 env.production
+```
+
+已有电脑已经存在 `env.production` 时，`git pull` 不会覆盖它。如果仍保留旧 DaoCloud/TUNA 等值，需要人工同步或在确认本机私有配置可以重建后重新从 example 复制。
+
+当前国内默认字段：
 
 ```dotenv
 AIMA_BUILD_PYTHON_IMAGE=docker.1ms.run/library/python:3.14.7-slim-trixie
@@ -220,20 +239,30 @@ docker system prune -a
 
 ---
 
-## 8. Windows 项目级彻底重置
+## 8. Windows 日常停止
 
-只有确认本地 AIMA 数据全部可丢弃时执行。
-
-CMD：
-
-```cmd
-scripts\dev\compose_windows.cmd down -v --remove-orphans --rmi all
-```
-
-PowerShell：
+推荐：
 
 ```powershell
-.\scripts\dev\compose_windows.ps1 down -v --remove-orphans --rmi all
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production down
+```
+
+普通 `down` 会停止并删除容器/网络，但**保留 Windows named volumes**，所以 PostgreSQL、Artifact、日志和内部 Secret 下次继续使用。
+
+仅临时暂停容器也可以：
+
+```powershell
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production stop
+```
+
+---
+
+## 9. Windows 项目级彻底重置
+
+只有确认本地 AIMA 数据全部可丢弃时执行：
+
+```powershell
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production down -v --remove-orphans --rmi all
 ```
 
 它会清理当前 AIMA Compose project 的：
@@ -257,18 +286,12 @@ docker system prune -a --volumes
 
 ---
 
-## 9. 重新启动
+## 10. 重新启动与检查
 
-Windows CMD：
-
-```cmd
-scripts\dev\compose_windows.cmd
-```
-
-Windows PowerShell：
+Windows CMD / PowerShell：
 
 ```powershell
-.\scripts\dev\compose_windows.ps1
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production up -d --build --wait
 ```
 
 Linux / WSL / 公司服务器：
@@ -283,9 +306,21 @@ docker compose --env-file env.production up -d --build --wait
 curl.exe -f http://127.0.0.1:8080/health/ready
 ```
 
+Windows 查看状态：
+
+```powershell
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production ps
+```
+
+Windows 查看日志：
+
+```powershell
+docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production logs -f api
+```
+
 ---
 
-## 10. 冷启动验收边界
+## 11. 冷启动验收边界
 
 AIMA 的启动入口必须兼容全新 Docker 环境：
 
@@ -302,9 +337,9 @@ AIMA 的启动入口必须兼容全新 Docker 环境：
 
 ---
 
-## 11. 海外 CI 与国内默认源分工
+## 12. 海外 CI 与国内默认源分工
 
-GitHub Hosted Runner 位于海外。本轮真实 CI 直接访问 1ms 时，PostgreSQL blob 下载触发 Cloudflare JavaScript challenge，Docker 客户端无法处理该网页响应。
+GitHub Hosted Runner 位于海外。本轮历史验证中直接访问 1ms 时，PostgreSQL blob 下载曾触发 Cloudflare JavaScript challenge，Docker 客户端无法处理该网页响应。
 
 因此永久 CI 显式覆盖为官方 Docker Hub / GHCR / Debian / PyPI / npm，验证：
 
@@ -322,11 +357,11 @@ Windows storage model
 
 它不承担“中国网络到 1ms/阿里云/npmmirror 的带宽测试”。
 
-目标中国环境验收则使用 `env.production` 默认国内源进行真实 pull/build。
+目标中国环境验收使用 `env.production` 默认国内源进行真实 pull/build。
 
 ---
 
-## 12. Production 边界不变
+## 13. Production 边界不变
 
 国内镜像和软件包镜像只是构建期下载路径。
 
