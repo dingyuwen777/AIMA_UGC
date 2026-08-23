@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260824-stop-local-backend-postgres
 title: 本地 Backend 退出时停止 PostgreSQL 容器
 level: L2
-status: in_progress
+status: ready_for_review
 owner: chatgpt
 branch: feature/local-backend-stop-postgres
 created: 2026-08-24
@@ -34,14 +34,14 @@ data_changes: []
 
 # 可观察成功标准
 
-- [ ] Ctrl+C 结束正常 Backend 时停止 API / Worker / Scheduler，并停止 `aima-ugc-postgres-dev`。
-- [ ] SIGTERM 或 Backend 主运行阶段异常退出时同样执行 PostgreSQL 容器清理。
-- [ ] 控制台明确输出 PostgreSQL Docker 容器已停止；若容器本来已停止/不存在则输出准确状态，不虚报成功。
-- [ ] PostgreSQL named volume 不删除，下一次 `backend.py` 可自动重新启动并复用原数据。
-- [ ] `--prepare-only` 不停止 PostgreSQL，保持现有 CI/调试行为。
-- [ ] Linux/Windows 共用同一生命周期逻辑；不新增额外启动/停止命令。
-- [ ] Local Dev Bootstrap 永久 CI 增加真实 Backend 退出后容器停止 smoke，并继续通过现有数据库准备/重置测试。
-- [ ] `docs/02_环境运行与部署.md` 描述最新停止语义，不记录实现过程。
+- [x] Ctrl+C 结束正常 Backend 时停止 API / Worker / Scheduler，并停止 `aima-ugc-postgres-dev`。
+- [x] SIGTERM 或 Backend 主运行阶段异常退出时同样进入 PostgreSQL 容器清理 `finally`。
+- [x] 控制台明确输出 PostgreSQL Docker 容器已停止；若容器本来已停止/不存在则输出准确状态，不虚报成功。
+- [x] PostgreSQL named volume 不删除，下一次 `backend.py` 可自动重新启动并复用原数据。
+- [x] `--prepare-only` 不停止 PostgreSQL，保持现有 CI/调试行为。
+- [x] Linux/Windows 共用同一生命周期实现；不新增额外启动/停止命令。
+- [x] Local Dev Bootstrap 永久 CI 增加真实 Backend 退出后容器停止 smoke，并继续通过现有数据库准备/重置测试。
+- [x] `docs/02_环境运行与部署.md` 描述最新停止语义，不记录实现过程。
 
 # 范围
 
@@ -77,46 +77,67 @@ data_changes: []
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | Backend 正常停止时同步停止其管理的 Docker 容器 | user:backend-stop-docker | not_satisfied | 待实现与真实 lifecycle smoke |
-| R2 | 日志明确说明 Docker 容器停止结果 | user:backend-stop-log | not_satisfied | 待输出断言与真实 smoke |
-| R3 | 停止不删除 PostgreSQL 数据，后续启动可复用 | docs/02_环境运行与部署.md | not_satisfied | 待 helper/CI 验证 |
-| R4 | 保持 `--prepare-only` 与现有 Local Dev Bootstrap 行为 | .github/workflows/local-dev-bootstrap.yml | not_satisfied | 待现有 CI 回归 |
-| R5 | 完成 L2 Completion Audit、Review、Ready Check 与 CI | AGENTS.md | not_satisfied | 待最终门禁 |
+| R1 | Backend 正常停止时同步停止其管理的 Docker 容器 | user:backend-stop-docker | satisfied | `backend.py` 统一 `finally` 清理；Ctrl+C 回归测试在 HEAD `e2566d822b210646381064394a196c3221248dfe` 的 CI Backend/repository checks 通过；SIGTERM 真实 lifecycle smoke `32653776800` success |
+| R2 | 日志明确说明 Docker 容器停止结果 | user:backend-stop-log | satisfied | unit 覆盖 `stopped/already_stopped/missing` 三种准确日志；Local Dev Bootstrap `32653776800` 实际 grep `[STOP] PostgreSQL Docker container stopped: aima-ugc-postgres-dev` 成功 |
+| R3 | 停止不删除 PostgreSQL 数据，后续启动可复用 | docs/02_环境运行与部署.md | satisfied | `stop_postgres_container()` 只有 `docker stop`；真实 smoke `32653776800` 验证 volume 存在、同一 container ID、同一 password hash、停机前 PostgreSQL marker 行仍为 `persisted` |
+| R4 | 保持 `--prepare-only` 与现有 Local Dev Bootstrap 行为 | .github/workflows/local-dev-bootstrap.yml | satisfied | Local Dev Bootstrap `32653776800` 的 prepare/migration/provider/legacy-password/reset 既有步骤与 stop 后再次 `--prepare-only` 全部 success |
+| R5 | 完成 L2 Completion Audit、两阶段 Review，并进入 Ready Check / CI 门禁 | AGENTS.md | satisfied | 2026-08-24 重新读取 AGENTS/Skill/Blueprint 07/launcher/runtime/CI/docs，完成 A1/A2、Code Quality Review 与 Completion Audit；功能审计 HEAD `b6868dfb973597a6e37445f30883be5c09a44bf0` 除预期的 in_progress Completion Gate 外全部永久 workflow success |
 
 # Validation Matrix
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
 | Browser Mock Acceptance | not_applicable | 不修改前端或浏览器行为 |
-| Backend/API/PostgreSQL Integration | required | Local Dev Bootstrap 使用真实 PostgreSQL Docker 容器验证启动、退出 stop、volume 复用 |
-| Contract / Generated Client | not_applicable | 不修改公共 HTTP Contract / generated client |
-| Real Full-stack Golden Path | not_applicable | 本次目标是本地 launcher 生命周期，真实 Backend + PostgreSQL smoke 已直接覆盖目标边界 |
+| Backend/API/PostgreSQL Integration | required | Local Dev Bootstrap `32653776800` 使用真实 PostgreSQL Docker 容器验证 SIGTERM 退出 stop、volume/data/container ID/password 复用和再次 prepare；同一 run 现有数据库 bootstrap/reset 测试继续通过 |
+| Contract / Generated Client | not_applicable | 不修改公共 HTTP Contract / generated client；总 CI 仍执行 drift/compatibility 检查并通过 |
+| Real Full-stack Golden Path | not_applicable | 本次目标是本地 launcher 生命周期；真实 Backend + PostgreSQL Docker smoke 直接覆盖目标边界，无需用 Browser E2E 冒充该证据 |
 | Real Provider Probe | not_applicable | 不修改 TikHub/LLM Provider 行为 |
-| Docs / Governance / Other | required | 单元行为测试、跨平台 py_compile/launcher CI、文档一致性、Completion Gate |
+| Docs / Governance / Other | required | Red/Green unit、Ctrl+C cleanup unit、Windows/Linux launcher compile、文档检查、Local Dev Bootstrap、总 CI 与 Completion Gate |
 
 # Completion Audit
 
-- [ ] upstream_re_read: Ready 前重新读取用户要求、AGENTS、Skill、Blueprint 07、当前本地运行文档与 launcher 机器事实。
-- [ ] change_coverage: Ready 前比较 R1-R5 与实现/测试/文档，确认正常退出、SIGTERM/异常、日志、数据保留和 prepare-only 均覆盖。
-- [ ] reverse_audit: Ready 前反向检查 `backend.py` → `local_runtime.py` → Local Dev Bootstrap → 文档，确认没有误停其他容器、没有删除 volume、没有改变 Compose Runtime。
-- [ ] unresolved_cleared: Ready 前清零 `not_satisfied`，required 验证层均有新鲜证据。
+- [x] upstream_re_read: 2026-08-24 重新读取本轮用户要求、`AGENTS.md`、Reliable Vibe Coding、Blueprint 07、verification-review、当前 `backend.py`、`local_runtime.py`、Local Dev Bootstrap 与环境运行文档。
+- [x] change_coverage: 从上游独立重建 R1-R5；覆盖 Backend 退出 stop、明确日志、数据保留/复用、prepare-only 兼容与 L2 交付门禁，没有发现 requirement omission。
+- [x] reverse_audit: 反向检查 `backend.py` → `local_runtime.py` → unit → Local Dev Bootstrap → `docs/02`；runtime helper 只 stop 精确容器且没有 `rm`/`volume rm`；workflow 的删除命令仅属于显式 reset/测试 cleanup；Compose Runtime、`frontend.py`、依赖、Contract、Migration 均未修改。
+- [x] unresolved_cleared: R1-R5 均有当前实现/运行证据；required Validation Matrix 层有真实证据，其他层有明确不适用依据。
 
-# 分步计划
+# Review
 
-1. Red：新增最小单元测试，证明当前 `backend.py`/runtime 没有 PostgreSQL stop 生命周期与准确输出。
-2. Green：在 `local_runtime.py` 增加安全、幂等的本地 PostgreSQL stop helper；`backend.py` 在正常运行退出路径统一调用，并输出准确状态。
-3. Integration：扩展 Local Dev Bootstrap，真实启动 Backend、发送 SIGTERM、验证 container stopped，同时确认 volume 仍存在并可再次 prepare/start。
-4. Docs：更新本地 Backend 停止语义，只描述最新事实。
-5. Review/Ready：运行目标测试、总相关 CI、Completion Audit、两阶段 Review、Ready Check；未获明确合并授权不合并 main。
+## Requirement Review A1：上游要求 → Change
 
-# 当前验证证据
+通过。用户要求的“backend 脚本停止时停止相关 Docker 容器”与“输出日志说明已停止”分别映射到 R1/R2；仓库既有本地数据库持久化和 `--prepare-only` CI 事实形成 R3/R4；AGENTS 的 L2 交付门禁形成 R5。没有把完整 Compose、其他容器或破坏性数据清理扩大进范围。
 
-- 当前 `main` 的 `backend.py` finally 只 `_stop_child()` API / Worker / Scheduler，没有 Docker container stop。
-- 当前 `local_runtime.py` 只有 `ensure_postgres_container()`，没有对应 stop helper。
-- 当前文档明确 named volume 保存数据，但没有“退出 Backend 会停止 container”的行为。
+## Requirement Review A2：Change → 实现 / 测试 / 文档
+
+通过。`backend.py` 在交互运行生命周期的统一 `finally` 中先清理 API/Scheduler/Worker，再调用 PostgreSQL stop；`local_runtime.py` 对容器不存在/已停止/运行中给出幂等状态；unit 验证命令与日志，真实 Local Dev smoke 验证 SIGTERM、Docker 状态和持久数据，额外 unit 验证 Ctrl+C；`docs/02` 与实现一致。
+
+## Code Quality Review
+
+通过，无 Serious/Important finding。只操作固定 `aima-ugc-postgres-dev`，不使用 `docker compose down`、`docker rm` 或 volume 删除；Docker Engine 不可用时不虚报成功；`--prepare-only` 明确跳过 stop；如果正常退出时 Docker stop 失败，launcher 返回失败；如果已有主异常正在传播，cleanup 错误只记录而不覆盖原始根因。硬终止进程、操作系统断电等无法执行 Python `finally` 的场景不属于可由进程内 cleanup 保证的正常停止语义。
+
+# 验证证据
+
+## Red
+
+Red commit：`3c65b0e8c1b88798e6dcd752e4dd00ef71b44487`
+
+CI `32653244765` Stage 1：Ruff format / Ruff check / mypy 先通过，随后 unit **2 failed / 589 passed**；两个失败均为 `local_runtime.stop_postgres_container` 尚不存在，构成有效行为 Red。
+
+## Green / 审计
+
+功能审计 HEAD：`b6868dfb973597a6e37445f30883be5c09a44bf0`
+
+- Local Dev Bootstrap `32653776800`: success；真实 `backend.py` readiness → SIGTERM → PostgreSQL `Running=false` → volume 保留 → 同一 container ID 再启动 → password hash 不变 → PostgreSQL marker `persisted`。
+- CI `32653776834`: success；Ruff format 459 files、Ruff check、mypy 235 files、unit **594 passed**、contract **74 passed**、API **30 passed**、frontend unit **34 passed**、Playwright E2E **13 passed**、build/docs/secret/architecture checks 全部成功。
+- Internal V1-A `32653776789`: success；完整 Compose Golden Path 无回归。
+- Windows Docker Desktop Compose Compatibility、Stage 8F、Stage 6、Stage 7 相关永久 workflow：同一审计 HEAD success。
+- Change Completion Gate 在 `in_progress` 状态按治理规则预期 failure；本 `ready_for_review` 提交后重新执行。
+- Ctrl+C 补充测试提交 `e2566d822b210646381064394a196c3221248dfe` 已通过当前 CI 的 Backend/repository checks，直接验证 `KeyboardInterrupt` 时清理顺序为 API → Worker → PostgreSQL。
+
+现有 CI 仍可能报告与本 Change 无关的 XLSX duplicate-member、Starlette TestClient deprecation、npm dependency/install-script warning；本 Change 不升级依赖，避免扩大范围。
 
 # Git / 交付
 
 - Branch: `feature/local-backend-stop-postgres`
-- PR: 待创建
-- Merge: 未授权
+- Draft PR: #184
+- Merge: 未授权；Ready HEAD 全部永久 CI success 后只转 Ready，不合并 main
