@@ -23,6 +23,7 @@ _LOCAL_RUNTIME = _load_local_runtime()
 LocalDevError = _LOCAL_RUNTIME.LocalDevError
 build_runtime_environment = _LOCAL_RUNTIME.build_runtime_environment
 ensure_env_local = _LOCAL_RUNTIME.ensure_env_local
+ensure_random_secret = _LOCAL_RUNTIME.ensure_random_secret
 frontend_dependencies_stale = _LOCAL_RUNTIME.frontend_dependencies_stale
 load_local_dev_config = _LOCAL_RUNTIME.load_local_dev_config
 parse_env_file = _LOCAL_RUNTIME.parse_env_file
@@ -118,42 +119,25 @@ def test_runtime_environment_uses_separate_internal_and_external_secret_roots(
     assert "AIMA_TIKHUB_API_KEY" not in environment
 
 
-def test_legacy_internal_secrets_are_moved_without_rotation(tmp_path: Path) -> None:
+def test_legacy_postgres_password_is_not_reused_for_new_internal_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     paths = runtime_paths(tmp_path)
     prepare_runtime_directories(paths)
-    legacy_values = {
-        "postgres_password": "p" * 48,
-        "import_batch_cursor_signing_key": "i" * 64,
-        "content_cursor_signing_key": "c" * 64,
-        "collection_runtime_cursor_signing_key": "r" * 64,
-    }
-    for name, value in legacy_values.items():
-        (tmp_path / ".runtime" / "secrets" / name).write_text(f"{value}\n", encoding="utf-8")
-
-    _LOCAL_RUNTIME.migrate_legacy_internal_secrets(paths)
-
-    for name, value in legacy_values.items():
-        migrated = paths.internal_secrets / name
-        legacy = paths.external_secrets / name
-        assert migrated.read_text(encoding="utf-8").strip() == value
-        assert not legacy.exists()
-
-
-def test_conflicting_legacy_and_internal_secret_fails_closed(tmp_path: Path) -> None:
-    paths = runtime_paths(tmp_path)
-    prepare_runtime_directories(paths)
-    paths.postgres_password_file.write_text(f"{'n' * 48}\n", encoding="utf-8")
     legacy = paths.external_secrets / "postgres_password"
-    legacy.write_text(f"{'o' * 48}\n", encoding="utf-8")
+    legacy.write_text(f"{'l' * 48}\n", encoding="utf-8")
+    generated = "generated-internal-postgres-password-000000000000"
+    monkeypatch.setattr(_LOCAL_RUNTIME.secrets, "token_urlsafe", lambda _size: generated)
 
-    with pytest.raises(LocalDevError, match="postgres_password"):
-        _LOCAL_RUNTIME.migrate_legacy_internal_secrets(paths)
+    value = ensure_random_secret(paths.postgres_password_file, min_characters=32)
 
-    assert paths.postgres_password_file.read_text(encoding="utf-8").strip() == "n" * 48
-    assert legacy.read_text(encoding="utf-8").strip() == "o" * 48
+    assert value == generated
+    assert paths.postgres_password_file.read_text(encoding="utf-8").strip() == generated
+    assert legacy.read_text(encoding="utf-8").strip() == "l" * 48
 
 
-def test_internal_secret_symlink_fails_closed_even_without_legacy_copy(tmp_path: Path) -> None:
+def test_internal_secret_symlink_fails_closed(tmp_path: Path) -> None:
     paths = runtime_paths(tmp_path)
     prepare_runtime_directories(paths)
     outside = tmp_path / "outside-secret"
@@ -164,7 +148,7 @@ def test_internal_secret_symlink_fails_closed_even_without_legacy_copy(tmp_path:
         pytest.skip(f"当前平台无法创建测试符号链接：{exc}")
 
     with pytest.raises(LocalDevError, match="符号链接"):
-        _LOCAL_RUNTIME.migrate_legacy_internal_secrets(paths)
+        ensure_random_secret(paths.postgres_password_file, min_characters=32)
 
     assert outside.read_text(encoding="utf-8").strip() == "x" * 48
 
