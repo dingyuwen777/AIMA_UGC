@@ -23,7 +23,7 @@ on:
       - "tests/fixtures/providers/tikhub/xiaohongshu/**"
       - ".github/workflows/stage6-xiaohongshu-vertical-slice.yml"
       - "docs/blueprint/**"
-      - "docs/测试与调试说明.md"
+      - "docs/04_测试与调试说明.md"
       - "changes/**"
 
 permissions:
