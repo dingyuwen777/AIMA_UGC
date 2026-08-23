@@ -1,16 +1,20 @@
 name: Docs Numbering Validation
 
 on:
-  push:
+  pull_request:
     branches:
-      - docs/numbered-document-filenames
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
 
 permissions:
   contents: write
 
 jobs:
   validate:
-    if: github.actor != 'github-actions[bot]'
+    if: github.head_ref == 'docs/numbered-document-filenames' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
