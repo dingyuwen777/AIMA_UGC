@@ -1,0 +1,79 @@
+name: Archive Source Path Sync
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.head_ref == 'docs/numbered-document-filenames' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: docs/numbered-document-filenames
+          fetch-depth: 0
+
+      - name: 仅同步归档 Change 的 Requirement Source 路径
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              "docs/blueprint/04-后端任务API与前端.md": "docs/blueprint/04_后端任务API与前端.md",
+              "docs/blueprint/05-日志安全部署与运维.md": "docs/blueprint/05_日志安全部署与运维.md",
+              "docs/blueprint/06-开发约束与分阶段实施.md": "docs/blueprint/06_开发约束与分阶段实施.md",
+              "docs/appendix/生产部署与离线Release方案.md": "docs/appendix/11_生产部署与离线Release方案.md",
+              "docs/roadmap/生产上线实施路线.md": "docs/roadmap/02_生产上线实施路线.md",
+              "docs/roadmap/内网V1上线实施计划.md": "docs/roadmap/01_内网V1上线实施计划.md",
+          }
+
+          changed_occurrences = 0
+          changed_files = []
+          for path in Path("changes/archive/2026-08").rglob("CHANGE.md"):
+              text = path.read_text(encoding="utf-8")
+              lines = text.splitlines(keepends=True)
+              updated_lines = []
+              file_count = 0
+              for line in lines:
+                  updated = line
+                  if line.lstrip().startswith("| R"):
+                      for old, new in replacements.items():
+                          count = updated.count(old)
+                          if count:
+                              updated = updated.replace(old, new)
+                              file_count += count
+                  updated_lines.append(updated)
+              if file_count:
+                  path.write_text("".join(updated_lines), encoding="utf-8", newline="")
+                  changed_files.append((str(path), file_count))
+                  changed_occurrences += file_count
+
+          if changed_occurrences != 21:
+              raise SystemExit(
+                  f"Requirement Source 路径替换数量应为 21，实际为 {changed_occurrences}: {changed_files}"
+              )
+
+          print(f"已同步 {changed_occurrences} 个 Requirement Source 路径：")
+          for path, count in changed_files:
+              print(f"{path}: {count}")
+          PY
+
+      - name: 提交路径同步
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add changes/archive/2026-08
+          git diff --cached --check
+          git commit -m "同步归档 Change 的文档 Requirement Source 路径"
+          git push origin HEAD:docs/numbered-document-filenames
