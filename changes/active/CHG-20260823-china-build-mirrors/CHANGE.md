@@ -151,10 +151,10 @@ Dockerfile 不再声明外部 `docker/dockerfile:1` syntax frontend，因为当�
 
 # Completion Audit
 
-- [x] upstream_re_read
-- [x] change_coverage
-- [x] reverse_audit
-- [x] unresolved_cleared
+- [x] upstream_re_read: 已重新读取用户要求、`AGENTS.md`、Reliable Vibe Coding Skill、Blueprint、Roadmap 与 Production Release 上游事实。
+- [x] change_coverage: R1-R6 已映射到实现、文档和验证，未发现 requirement omission。
+- [x] reverse_audit: 已反向核对 build args、锁文件、Runtime/Storage/Secret、不 push 与 project-level reset 边界。
+- [x] unresolved_cleared: R1-R6 无 `not_satisfied`；保留具体用户网络带宽不由 CI 保证的真实边界。
 
 ## Completion Audit 证据
 
