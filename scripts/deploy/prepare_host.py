@@ -121,6 +121,8 @@ def _secure_secret(
     check_only: bool,
     create: bool,
 ) -> None:
+    if path.is_symlink():
+        raise HostPreparationError(f"不允许符号链接：{path}")
     if not path.exists():
         if check_only or not create:
             if create:
@@ -141,16 +143,23 @@ def _secure_secret(
         )
 
 
+def _resolve_host_root(root: Path) -> Path:
+    expanded = root.expanduser()
+    if not expanded.is_absolute():
+        raise HostPreparationError("宿主根目录必须是绝对路径")
+    if expanded.is_symlink():
+        raise HostPreparationError(f"不允许符号链接：{expanded}")
+    return expanded.resolve(strict=False)
+
+
 def prepare_host(root: Path, *, check_only: bool) -> None:
     """准备/校验宿主目录；已有 Secret 只校验和收紧权限，绝不轮换。"""
 
     if os.name != "posix":
         raise HostPreparationError("Internal V1 宿主准备只支持 Linux/POSIX")
+    resolved_root = _resolve_host_root(root)
     if os.geteuid() != 0:
         raise HostPreparationError("宿主准备/校验需要 root 权限，以验证固定容器 UID/GID")
-    resolved_root = root.expanduser().resolve(strict=False)
-    if not resolved_root.is_absolute():
-        raise HostPreparationError("宿主根目录必须是绝对路径")
 
     for spec in _DIRECTORY_SPECS:
         _ensure_directory(resolved_root, spec, check_only=check_only)
@@ -165,7 +174,7 @@ def prepare_host(root: Path, *, check_only: bool) -> None:
         )
     for name in _OPTIONAL_EXTERNAL_SECRETS:
         path = secret_dir / name
-        if path.exists():
+        if path.exists() or path.is_symlink():
             _secure_secret(
                 path,
                 min_characters=1,
