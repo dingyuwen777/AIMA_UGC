@@ -1,10 +1,10 @@
-# 中国网络环境默认使用镜像/软件包代理；所有输入都可由 Compose build args 覆盖回官方源。
+# 中国网络环境默认使用可审计的 1ms 镜像前缀与软件包镜像；所有输入都可由 Compose build args 覆盖回官方源。
 # 版本号保持仓库锁定值，不使用 latest。本文件只使用 Dockerfile 稳定基础语法，
 # 不声明外部 syntax frontend，避免首次 build 额外下载 docker/dockerfile 镜像。
-ARG AIMA_BUILD_PYTHON_IMAGE=m.daocloud.io/docker.io/library/python:3.14.7-slim-trixie
-ARG AIMA_BUILD_UV_IMAGE=m.daocloud.io/ghcr.io/astral-sh/uv:0.12.3
-ARG AIMA_BUILD_NODE_IMAGE=m.daocloud.io/docker.io/library/node:24.19.0-bookworm-slim
-ARG AIMA_BUILD_NGINX_IMAGE=m.daocloud.io/docker.io/library/nginx:1.30.4-alpine3.24
+ARG AIMA_BUILD_PYTHON_IMAGE=docker.1ms.run/library/python:3.14.7-slim-trixie
+ARG AIMA_BUILD_UV_IMAGE=ghcr.1ms.run/astral-sh/uv:0.12.3
+ARG AIMA_BUILD_NODE_IMAGE=docker.1ms.run/library/node:24.19.0-bookworm-slim
+ARG AIMA_BUILD_NGINX_IMAGE=docker.1ms.run/library/nginx:1.30.4-alpine3.24
 
 FROM ${AIMA_BUILD_UV_IMAGE} AS uv-bin
 
