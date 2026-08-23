@@ -19,13 +19,12 @@ from aima_ugc.adapters.providers.imports import (
     ExcelImportRejectedRowsError,
     convert_excel_to_canonical_jsonl,
 )
-from aima_ugc.contracts.analysis import RelevanceSnapshotV1
 from aima_ugc.modules.analysis import (
     deduplicate_content_jsonl,
     filter_canonical_content_jsonl,
 )
 from aima_ugc.modules.ingestion import ProcessingImportBatchRecord
-from aima_ugc.modules.ingestion.import_job import ImportJobPayload
+from aima_ugc.modules.ingestion.import_job import ImportJobPayload, ImportKeywordSelectionSnapshot
 from aima_ugc.modules.ingestion.xlsx_security import (
     InvalidXlsxError,
     XlsxResourceLimitError,
@@ -75,7 +74,7 @@ class PostgresImportJobExecutor:
             artifact = execution.artifact
             if artifact is None or artifact.storage_status not in {"stored", "linked"}:
                 raise InvalidXlsxError("Import Source Artifact 不可用")
-            effective_keywords = _effective_keywords(execution.payload)
+            effective_keywords = execution.payload.keyword_selection.effective_keywords
             profile = execution.batch.stats.get("profile")
             if not isinstance(profile, str) or not profile:
                 raise ValueError("Import Batch 缺少冻结 Excel Profile")
@@ -181,18 +180,11 @@ class PostgresImportJobExecutor:
                 batch = PostgresProcessingImportBatchRepository(session).get_by_job_id(fence.job_id)
                 if batch is None:
                     return None
-                if payload.keyword_selection is not None:
-                    frozen_selection = type(payload.keyword_selection).model_validate(
-                        batch.stats.get("keyword_selection")
-                    )
-                    if frozen_selection != payload.keyword_selection:
-                        raise ValueError("Import Job Payload 与 Batch Keyword Selection 快照不一致")
-                else:
-                    frozen_relevance = RelevanceSnapshotV1.model_validate(
-                        batch.stats.get("relevance")
-                    )
-                    if frozen_relevance != payload.relevance:
-                        raise ValueError("Import Job Payload 与 Batch Relevance 快照不一致")
+                frozen_selection = ImportKeywordSelectionSnapshot.model_validate(
+                    batch.stats.get("keyword_selection")
+                )
+                if frozen_selection != payload.keyword_selection:
+                    raise ValueError("Import Job Payload 与 Batch Keyword Selection 快照不一致")
                 artifact = PostgresArtifactMetadataRepository(session).get(batch.input_artifact_id)
                 return _ImportExecution(batch, artifact, payload, job)
         finally:
@@ -321,14 +313,6 @@ def import_job_terminal_callback(session: Session, job: JobRecord) -> None:
         rows_rejected=_stat(batch.stats, "rows_rejected"),
         error_summary=job.error_code or job.status,
     )
-
-
-def _effective_keywords(payload: ImportJobPayload) -> tuple[str, ...]:
-    if payload.keyword_selection is not None:
-        return payload.keyword_selection.effective_keywords
-    if payload.relevance is not None:
-        return payload.relevance.effective_keywords
-    raise ValueError("Import Job 缺少关键词快照")
 
 
 def _stat(stats: dict[str, object], name: str) -> int:
