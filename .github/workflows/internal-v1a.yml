@@ -1,0 +1,184 @@
+name: Internal V1-A Deployable Stack
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  compose-smoke:
+    name: Compose Golden Path
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Prepare isolated host state
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/aima-internal-v1a"
+          ENV_FILE="${RUNNER_TEMP}/aima-internal-v1a.env"
+          echo "AIMA_V1A_ROOT=${ROOT}" >> "${GITHUB_ENV}"
+          echo "AIMA_V1A_ENV_FILE=${ENV_FILE}" >> "${GITHUB_ENV}"
+
+          sudo python3 scripts/deploy/prepare_host.py --root "${ROOT}"
+          sudo python3 scripts/deploy/prepare_host.py --root "${ROOT}" --check-only
+
+          printf '%s\n' 'ci-placeholder-not-a-real-provider-secret' | \
+            sudo tee "${ROOT}/shared/secrets/tikhub_api_key" >/dev/null
+          sudo chown 0:11001 "${ROOT}/shared/secrets/tikhub_api_key"
+          sudo chmod 0440 "${ROOT}/shared/secrets/tikhub_api_key"
+          sudo python3 scripts/deploy/prepare_host.py --root "${ROOT}" --check-only
+
+          cat > "${ENV_FILE}" <<EOF
+          AIMA_IMAGE_TAG=ci-${GITHUB_RUN_ID}
+          AIMA_HTTP_BIND_IP=127.0.0.1
+          AIMA_HTTP_PORT=18080
+          AIMA_HOST_DATA_DIR=${ROOT}/runtime/data
+          AIMA_HOST_LOG_DIR=${ROOT}/runtime/logs
+          AIMA_HOST_POSTGRES_DIR=${ROOT}/postgres
+          AIMA_HOST_SECRET_DIR=${ROOT}/shared/secrets
+          AIMA_DB_NAME=aima_ugc
+          AIMA_DB_USER=aima_ugc
+          AIMA_DB_CONNECT_TIMEOUT_SECONDS=5
+          AIMA_LOG_LEVEL=INFO
+          AIMA_LOG_MAX_BYTES=1048576
+          AIMA_LOG_BACKUP_COUNT=2
+          AIMA_LOG_COMPRESS=true
+          AIMA_TIKHUB_ENABLED=true
+          AIMA_TIKHUB_BASE_URL=https://api.tikhub.io
+          AIMA_TIKHUB_SECRET_REF=tikhub_api_key
+          EOF
+
+      - name: Validate Compose topology
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose version
+          docker compose --env-file "${AIMA_V1A_ENV_FILE}" --profile tools config > "${RUNNER_TEMP}/compose.rendered.yaml"
+          SERVICES="$(docker compose --env-file "${AIMA_V1A_ENV_FILE}" --profile tools config --services)"
+          for service in frontend api worker scheduler migrate postgres configure; do
+            grep -Fxq "${service}" <<<"${SERVICES}"
+          done
+
+      - name: Build pinned runtime images
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose --env-file "${AIMA_V1A_ENV_FILE}" --profile tools build api frontend
+
+      - name: Empty database migration and one-shot configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          cleanup() {
+            status=$?
+            if [[ $status -ne 0 ]]; then
+              docker compose --env-file "${AIMA_V1A_ENV_FILE}" --profile tools ps -a || true
+              docker compose --env-file "${AIMA_V1A_ENV_FILE}" --profile tools logs --no-color || true
+            fi
+            docker compose --env-file "${AIMA_V1A_ENV_FILE}" --profile tools down --remove-orphans || true
+            exit $status
+          }
+          trap cleanup EXIT
+
+          docker compose --env-file "${AIMA_V1A_ENV_FILE}" up -d postgres
+          for _ in $(seq 1 60); do
+            if docker compose --env-file "${AIMA_V1A_ENV_FILE}" exec -T postgres \
+              pg_isready -U aima_ugc -d aima_ugc >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          docker compose --env-file "${AIMA_V1A_ENV_FILE}" exec -T postgres \
+            pg_isready -U aima_ugc -d aima_ugc
+
+          docker compose --env-file "${AIMA_V1A_ENV_FILE}" --profile tools run --rm migrate
+          docker compose --env-file "${AIMA_V1A_ENV_FILE}" --profile tools run --rm configure
+
+          PROVIDER_ROW="$(docker compose --env-file "${AIMA_V1A_ENV_FILE}" exec -T postgres \
+            psql -U aima_ugc -d aima_ugc -Atc \
+            "SELECT provider || '|' || secret_ref || '|' || enabled::text FROM provider_configs WHERE display_name = 'TikHub Internal V1';")"
+          test "${PROVIDER_ROW}" = "tikhub|tikhub_api_key|true"
+          PROVIDER_JSON="$(docker compose --env-file "${AIMA_V1A_ENV_FILE}" exec -T postgres \
+            psql -U aima_ugc -d aima_ugc -Atc \
+            "SELECT row_to_json(p)::text FROM provider_configs p;")"
+          if grep -Fq 'ci-placeholder-not-a-real-provider-secret' <<<"${PROVIDER_JSON}"; then
+            echo "Provider Secret leaked into provider_configs"
+            exit 1
+          fi
+
+          docker compose --env-file "${AIMA_V1A_ENV_FILE}" stop postgres
+          docker compose --env-file "${AIMA_V1A_ENV_FILE}" rm -f postgres
+          docker compose --env-file "${AIMA_V1A_ENV_FILE}" up -d postgres
+          for _ in $(seq 1 60); do
+            if docker compose --env-file "${AIMA_V1A_ENV_FILE}" exec -T postgres \
+              pg_isready -U aima_ugc -d aima_ugc >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          PROVIDER_COUNT="$(docker compose --env-file "${AIMA_V1A_ENV_FILE}" exec -T postgres \
+            psql -U aima_ugc -d aima_ugc -Atc \
+            "SELECT count(*) FROM provider_configs WHERE display_name = 'TikHub Internal V1';")"
+          test "${PROVIDER_COUNT}" = "1"
+
+          docker compose --env-file "${AIMA_V1A_ENV_FILE}" up -d api worker scheduler frontend
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:18080/health/ready > "${RUNNER_TEMP}/ready.json"; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:18080/health/ready > "${RUNNER_TEMP}/ready.json"
+          python3 - "${RUNNER_TEMP}/ready.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          assert payload == {
+              "status": "ok",
+              "checks": {
+                  "database": "ok",
+                  "artifact_store": "ok",
+                  "log_directory": "ok",
+              },
+          }
+          PY
+          curl -fsS http://127.0.0.1:18080/ >/dev/null
+
+          test "$(docker compose --env-file "${AIMA_V1A_ENV_FILE}" exec -T api id -u | tr -d '\r')" = "10001"
+          test "$(docker compose --env-file "${AIMA_V1A_ENV_FILE}" exec -T frontend id -u | tr -d '\r')" != "0"
+          docker compose --env-file "${AIMA_V1A_ENV_FILE}" exec -T api sh -ec \
+            'test -w /app/data; test -w /app/logs; test -r /run/secrets/postgres_password; test ! -w /run/secrets'
+
+          if docker compose --env-file "${AIMA_V1A_ENV_FILE}" port postgres 5432 > "${RUNNER_TEMP}/postgres.port" 2>/dev/null; then
+            test ! -s "${RUNNER_TEMP}/postgres.port"
+          fi
+          if docker compose --env-file "${AIMA_V1A_ENV_FILE}" port api 8090 > "${RUNNER_TEMP}/api.port" 2>/dev/null; then
+            test ! -s "${RUNNER_TEMP}/api.port"
+          fi
+          test -n "$(docker compose --env-file "${AIMA_V1A_ENV_FILE}" port frontend 8080)"
+
+          docker compose --env-file "${AIMA_V1A_ENV_FILE}" exec -T api sh -c \
+            'printf persistence > /app/data/internal-v1a-marker'
+          docker compose --env-file "${AIMA_V1A_ENV_FILE}" up -d --force-recreate api
+          for _ in $(seq 1 60); do
+            if docker compose --env-file "${AIMA_V1A_ENV_FILE}" exec -T api sh -c \
+              'test -f /app/data/internal-v1a-marker' >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          docker compose --env-file "${AIMA_V1A_ENV_FILE}" exec -T api sh -ec \
+            'test "$(cat /app/data/internal-v1a-marker)" = persistence'
+          sudo test -s "${AIMA_V1A_ROOT}/runtime/logs/api.log"
+          sudo test -d "${AIMA_V1A_ROOT}/postgres/18/docker"
