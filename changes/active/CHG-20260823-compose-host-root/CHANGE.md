@@ -3,9 +3,9 @@ schema: rvc-change/v1
 id: CHG-20260823-compose-host-root
 title: 统一本地与服务器 Compose 宿主持久根目录配置
 level: L3
-status: ready_for_review
+status: in_progress
 owner: chatgpt
-branch: feature/compose-host-root
+branch: feature/compose-windows-desktop
 created: 2026-08-23
 updated: 2026-08-23
 completion_gate: required
@@ -14,11 +14,15 @@ affected_areas:
   - deployment
   - docker-compose
   - local-development
+  - windows-docker-desktop
   - production-release
   - ci
 affected_paths:
   - compose.yaml
+  - compose.windows.yaml
   - env.production.example
+  - scripts/dev/compose_windows.cmd
+  - scripts/dev/compose_windows.ps1
   - .github/workflows/internal-v1a.yml
   - README.md
   - docs/环境运行与部署.md
@@ -31,187 +35,162 @@ data_changes: []
 
 # 目标
 
-让同一套 `compose.yaml + env.production` 同时适用于本地完整容器运行和服务器运行，同时保持正式 Production Release 的不可变镜像、独立持久数据、升级/回滚和恢复边界。
+让 AIMA_UGC 的完整 Docker Runtime 在 Linux/WSL、公司 Linux 服务器和 Windows Docker Desktop 上都有明确、稳定的启动路径，同时保持一个 canonical `compose.yaml`、一个 `env.production` 配置体系，以及完整 Production 的不可变镜像、独立持久数据、升级/回滚和恢复边界。
+
+本 Change 第一阶段已经通过 PR #170 合并 `AIMA_HOST_ROOT` 单根配置；本轮用户进一步要求 Windows 可以直接从 CMD / PowerShell 启动，因此 Change 在归档前回到 `in_progress`，继续补齐 Windows Docker Desktop 原生宿主场景。
 
 # 可观察成功标准
 
-- [x] `env.local.example` 继续只服务源码开发，不与 Compose 配置混用。
-- [x] `env.production.example` 继续作为完整容器 Runtime 配置模板，本地 Docker 与服务器 Docker 共用同一字段结构。
-- [x] 四个宿主目录变量收敛为单一 `AIMA_HOST_ROOT`；Compose 从根目录推导 PostgreSQL、Artifact、日志和内部 Secret 路径。
-- [x] 服务器推荐 `AIMA_HOST_ROOT=/data/AIMA_UGC`，持久状态继续位于 Release 目录之外。
-- [x] 本地 Compose 可以将 `AIMA_HOST_ROOT=./.runtime/compose`，且 `.runtime/` 保持 Git ignore / Docker build context ignore。
-- [x] Linux CI 同时验证生产式绝对 Host Root 与本地式仓库相对 Host Root 的 Compose 解析/真实启动。
+- [x] `env.local.example` 继续只服务源码开发，不与 Compose Runtime 配置混用。
+- [x] Linux/WSL/服务器 canonical `compose.yaml` 继续从单一 `AIMA_HOST_ROOT` 推导 PostgreSQL、Artifact、日志和内部 Secret bind 路径。
+- [x] 服务器继续推荐 `AIMA_HOST_ROOT=/data/AIMA_UGC`，持久状态位于 Release 目录之外。
+- [ ] Windows Docker Desktop 原生 Windows 文件系统不直接承载 PostgreSQL/内部 Secret bind mount；使用 Docker-managed named volumes，避免 NTFS 权限语义影响数据库与 Secret。
+- [ ] Windows storage override 只覆盖 volume source，不复制业务服务 command、environment、depends_on、healthcheck、network、Secret 分类或端口规则。
+- [ ] Windows CMD 与 PowerShell 都提供一条稳定启动入口，复用同一个 `env.production`，不要求开发者手工切换多套业务配置。
+- [ ] Windows 兼容不通过放宽 Linux/Production `chown/chmod`、Secret mode、non-root 或 PostgreSQL 密码恢复门禁实现。
+- [ ] 永久 CI 验证 canonical Linux bind-mount Golden Path、仓库相对 bind root、Windows named-volume merged Compose、named-volume 重启持久化，以及 Windows launcher 参数。
 - [x] 不修改数据库 Schema、Migration、公共 Contract、依赖或业务语义。
-- [x] 正式文档同步源码开发、本地 Compose、服务器 Compose、未来不可变 Release 四种生命周期边界。
-- [x] L3 Completion Audit 与两阶段 Review 已完成；Ready Check / 最终永久 CI 必须继续作为合并前硬门禁。
+- [ ] 正式文档同步源码开发、Linux/WSL Compose、Windows Docker Desktop Compose、公司服务器、未来不可变 Release 五类运行边界。
+- [ ] 重新执行 Completion Audit、两阶段 Review、Ready Check 与最终永久 CI 后再合并/归档。
 
 # 范围
 
-- `compose.yaml` 的宿主 bind source 配置。
-- `env.production.example` 的宿主持久化配置模型。
-- Internal V1-A Compose Golden Path。
-- 根 README、部署/环境/安全/Roadmap/Release 文档中的当前状态与配置说明。
+- 新增一个**仅存储层差异**的 Windows Compose override；canonical `compose.yaml` 仍是业务 Runtime 唯一基线。
+- Windows CMD / PowerShell 启动包装器。
+- Internal V1-A CI 对 merged Compose 与 named-volume 持久化的验证。
+- `env.production.example` 和正式运行/部署/安全/Roadmap/Release 文档说明。
 
 # 非目标
 
+- 不把 Windows Docker Desktop 作为正式 Production Server 平台。
 - 不删除 `env.local.example` 或源码开发 launcher。
-- 不把生产数据放入版本化 Release 目录。
+- 不改变 Linux/服务器的 `AIMA_HOST_ROOT` bind-mount 生产布局。
+- 不放宽 `scripts/deploy/prepare_host.py` 对 Linux UID/GID/mode、Secret、symlink 或数据库密码恢复的严格校验。
 - 不在本 Change 实现完整 Stage 11 离线 Release、固定 digest、SBOM/签名、协调 Backup/Restore 或认证授权。
-- 不改变 PostgreSQL 18.4、容器服务拓扑、Secret 分类、Migration 顺序、Provider/LLM 行为。
-- 不引入第二套 Compose 文件或 local/production 分叉配置。
+- 不改变 PostgreSQL 18.4、服务拓扑、Migration 顺序、Provider/LLM 行为。
 
 # 必须保持不变
 
 1. 服务器持久状态必须与应用 Release 生命周期解耦。
-2. `PostgreSQL + Artifact + log + internal secrets` 不进入镜像，不进入 Git，不因容器/应用版本切换丢失。
+2. Linux Production 的 PostgreSQL、Artifact、log、internal secrets 继续位于 `AIMA_HOST_ROOT=/data/AIMA_UGC` 的固定子目录。
 3. 外部 TikHub/LLM Key 继续由敏感 `env.production` 输入并转成 Compose Secret File；业务容器普通环境变量不含 Key 原值。
 4. 已有 PostgreSQL 18 数据但 `postgres_password` 丢失时继续 fail closed。
-5. 正式 Production 目标仍是服务器 `docker load` 已验证镜像后 `--no-build --pull never`；Internal V1-A/B 的 `--build` 不升级为完整 Production Release。
+5. 正式 Production 目标仍是服务器 `docker load` 已验证镜像后 `--no-build --pull never`；Windows 本地便利入口不能改变发布规范。
+6. Windows 兼容不得通过 `chmod 777`、忽略 Secret mode 或把 PostgreSQL/Secret 放进容器可写层实现。
 
 # 已确认关键决策
 
-1. 保留 `env.local.example`：仅源码开发、热更新入口使用。
-2. 保留 `env.production.example`：完整 Docker Compose Runtime 使用，本地与服务器共用同一配置结构。
-3. 不改名为 `env.compose.example`，避免与当前 Production Release 文档和运维心智模型制造第二套名称。
-4. 宿主持久目录配置收敛为一个 `AIMA_HOST_ROOT`。
-5. 本地 Docker 每台机器首次配置一次 `AIMA_HOST_ROOT=./.runtime/compose`；服务器首次配置一次 `AIMA_HOST_ROOT=/data/AIMA_UGC`，日常不来回修改。
-6. Release 版本目录与持久 Host Root 分离；未来镜像发布只替换应用镜像/Release，不替换数据库、Artifact、日志和内部 Secret。
+1. 保留 `env.local.example`：源码开发/热更新入口。
+2. 保留 `env.production.example`：完整 Docker Runtime 的统一配置输入，本地与服务器继续共用业务配置字段。
+3. Linux/WSL/服务器继续使用 canonical `compose.yaml + AIMA_HOST_ROOT` bind mounts。
+4. Windows Docker Desktop 原生 Windows 文件系统场景使用 Docker-managed named volumes 保存 PostgreSQL、Artifact、log 和内部 Secret；不要求 NTFS 模拟 Linux owner/mode。
+5. Windows 只增加 storage-only override；业务 Runtime 仍来自 canonical `compose.yaml`。
+6. CMD/PowerShell 启动包装器负责自动组合 `compose.yaml + compose.windows.yaml`，开发者不需要记 `-f` 组合参数。
+7. Windows named volumes 默认随 `docker compose down` 保留，只有显式 `down -v` 才销毁；文档必须把它标为破坏性重置。
+8. Production Release 继续只使用 Linux canonical/production Compose 路线；Windows override 不成为服务器 Release 前置。
 
 # L3 方案比较
 
-## 方案 A：保留四个独立 Host Path
+## 方案 A：Windows NTFS bind mount + 放宽 bootstrap 权限校验
 
-优点：当前行为无需迁移。缺点：本地/服务器需要维护四个重复路径，容易配置漂移，不能满足本轮简化目标。
+优点：看起来仍只有一个 Compose 文件。缺点：Docker Desktop 官方明确建议数据库等非代码数据使用 Docker volume；NTFS/文件共享层不能可靠表达 Linux UID/GID/mode，放宽 bootstrap 也不能保证 PostgreSQL 自身权限语义。会把本地兼容需求反向降低 Production 安全门禁。
 
-## 方案 B：单一 `AIMA_HOST_ROOT` 推导四类持久路径（采用）
+结论：拒绝。
 
-优点：只保留一个环境差异点；同一 Compose/配置 Schema 可用于本地与服务器；服务器仍保持持久状态与 Release 解耦；回滚简单。缺点：旧 `AIMA_HOST_*_DIR` 配置需要一次性迁移到根目录变量。
+## 方案 B：强制 Windows 用户把仓库放进 WSL2 Linux 文件系统
 
-## 方案 C：本地 named volumes、服务器 bind mounts / 两套 Compose
+优点：完全复用 canonical bind-mount 模型，权限与 Linux 一致。缺点：不能满足用户“从 Windows CMD / PowerShell 原生启动”的明确诉求，只能作为可选高性能开发路径。
 
-优点：可规避部分桌面文件系统差异。缺点：引入两套持久化模型/Compose 组合，长期更容易漂移，不符合用户“同一 Compose、不改来改去”的目标，当前无必要证据支持增加复杂度。
+结论：保留为可选路径，不作为唯一 Windows 方案。
+
+## 方案 C：canonical Compose + Windows storage-only override + Docker named volumes（采用）
+
+优点：
+
+- canonical `compose.yaml` 的业务服务定义不分叉；
+- Windows 使用 Docker VM 内 Linux filesystem 的 named volumes，适合 PostgreSQL/Secret；
+- `prepare_host.py` 继续在 named volume 上执行原严格 Linux owner/mode，不需要 desktop 弱化模式；
+- Linux/Production bind-mount 与 Release/Backup 设计完全不变；
+- CMD/PowerShell 可用包装器隐藏 Compose 文件组合细节。
+
+代价：仓库增加一个很薄的 Windows storage override，但它不是第二套业务 Compose；只覆盖同 target 的 volume source。
 
 # 兼容、Migration、部署与回滚
 
-- 配置兼容：`AIMA_HOST_DATA_DIR`、`AIMA_HOST_LOG_DIR`、`AIMA_HOST_POSTGRES_DIR`、`AIMA_HOST_SECRET_DIR` 从正式模板/Compose 移除；管理员现有 `env.production` 需一次性改为 `AIMA_HOST_ROOT`。这是部署配置迁移，不是数据 Migration。
-- 数据迁移：无。只要 `AIMA_HOST_ROOT` 指向现有 `/data/AIMA_UGC`，服务器实际四类持久路径保持完全相同。
-- 本地新路径：`.runtime/compose/...` 是新的 Compose 隔离运行根，不复用源码 launcher 的 `.runtime/data` / Secret 目录，避免两种运行方式争用同一 PostgreSQL/Secret 生命周期。
-- 部署：Internal V1 使用同一 Compose 命令；未来 Production Release 继续使用已加载不可变镜像 + `--no-build --pull never`。
-- 回滚：若配置收敛出现问题，可恢复旧 Compose/env 模板并把同一四类现有目录重新映射；数据库和 Artifact 内容不需要回滚。
+- PR #170 已将四个 `AIMA_HOST_*_DIR` 收敛为 `AIMA_HOST_ROOT`，Linux/服务器配置迁移保持不变。
+- Windows 新路径不迁移现有 Linux/WSL `.runtime/compose` bind 数据；Windows named volumes 是独立本地开发 Runtime。需要迁移本地开发数据时必须显式导出/导入，不静默复制数据库目录。
+- Windows launcher 使用现有 `env.production` 的端口、TikHub、LLM、DB 名称等配置；storage override 只替换持久 mount source。
+- Linux/服务器回滚：不受本轮影响，可继续恢复 PR #170 前/后的 canonical Compose 映射。
+- Windows 回滚：停止 stack 后移除 Windows override/launcher 即可；named volumes 不会因普通 `down` 自动删除。
 
 # 安全与运维风险
 
-- 服务器若误把 `AIMA_HOST_ROOT` 指向 Release 版本目录，会重新绑定持久数据生命周期；正式文档明确禁止这种配置。
-- 相对 Host Root 只用于本地容器 Runtime；生产仍推荐绝对 `/data/AIMA_UGC`。
-- Windows Docker Desktop 的宿主 bind 权限语义不同于 Linux；本 Change 的永久真实 Compose Golden Path 以 Linux/WSL 风格文件系统为证明边界，Windows 原生宿主文件系统若出现 UID/GID 权限问题需要单独事实验证，不伪造已覆盖结论，也不放宽服务器权限门禁。
+- Windows named volumes 由 Docker Desktop 管理，宿主文件系统上不再直接显示 PostgreSQL/Secret 文件；本地排障通过 Docker Desktop / `docker volume` / 容器日志和应用页面完成。
+- `docker compose ... down -v` 会破坏性删除 Windows 本地数据库、Artifact、日志和内部 Secret；必须在文档明确警告。
+- GitHub hosted Windows runner 不提供可依赖的 Linux Docker Desktop Runtime，因此永久 CI 可以在 Windows runner 验证 CMD/PowerShell launcher，在 Ubuntu Docker Engine 真实运行 merged Windows named-volume stack；不能把该组合证据夸大成“真实 Windows Docker Desktop 已运行”。首次真实 Windows Desktop 启动仍需开发机 smoke。
+- Production Linux 权限与目录校验不因 Windows 支持降低。
 
 # Requirement Traceability
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 本地也可使用 Docker Compose，且不需要维护另一套 Compose/频繁改配置 | user:local-compose-same-entrypoint | satisfied | `compose.yaml` / `env.production.example` 单根化；Internal V1-A run `32631979589` 的 `Repository-relative host root smoke` 真实启动同一 Compose 并验证 readiness/persistence |
-| R2 | 源码开发与容器运行职责清楚，两个 env example 只按运行方式分工 | user:env-role-clarification | satisfied | `env.production.example`、`docs/环境运行与部署.md`、README 已同步；`env.local.example` 未改且仍由 dev launcher 使用 |
-| R3 | 正式服务器持久数据与 Release/镜像生命周期分离，升级回滚不丢数据 | `docs/appendix/生产部署与离线Release方案.md` | satisfied | 服务器 `AIMA_HOST_ROOT=/data/AIMA_UGC`，Release 继续位于 `/data/AIMA_UGC/releases/<version>`，两者明确不得等同；物理数据子路径不变 |
-| R4 | Internal V1-B 继续复用 V1-A 同一 Compose 入口，不重新造部署栈 | `docs/roadmap/生产上线实施路线.md` | satisfied | Roadmap 保持 Internal V1-B 为下一单元，并固定同一 `env.production + compose.yaml`、服务器 Host Root `/data/AIMA_UGC` |
-| R5 | Secret、PostgreSQL 密码恢复和端口边界不因本次配置收敛降低 | `docs/blueprint/05-日志安全部署与运维.md` | satisfied | Internal V1-A run `32631979589` 原完整 lifecycle smoke 通过：Secret 不泄露、非 root、端口边界、内部 Secret 幂等、已有 DB 丢密码 fail closed、恢复原 Secret 后可恢复 |
-| R6 | L3 变更执行 Completion Audit、两阶段 Review、Ready Check 与永久 CI | `AGENTS.md` | satisfied | Completion Audit/两阶段 Review 已完成；pre-ready CI run `32631979667` 与永久专项均绿；本提交进入 `ready_for_review`，最终 Change Completion Gate/永久 CI 继续作为合并硬门禁 |
+| R1 | 本地完整 Docker 与服务器保持同一 canonical Runtime / env 体系 | user:local-compose-same-entrypoint | satisfied | PR #170 merge `f04f6e8604bd15bc44c9e726da5325df9c54cd74` 已建立 `compose.yaml + env.production + AIMA_HOST_ROOT` |
+| R2 | 源码开发和容器 Runtime 配置职责清楚 | user:env-role-clarification | satisfied | `env.local` 仍仅用于 dev launcher；`env.production` 用于 Compose Runtime |
+| R3 | Windows 可以直接从 CMD / PowerShell 启动 Docker Compose Runtime | user:windows-cmd-powershell-compose | not_satisfied | 本轮新增 Windows storage override 与 CMD/PowerShell launcher 后补证据 |
+| R4 | Windows 兼容不得牺牲 PostgreSQL/Secret 的 Linux 权限与安全语义 | `docs/blueprint/05-日志安全部署与运维.md` | not_satisfied | 采用 named volumes，不修改 `prepare_host.py` 严格权限逻辑；待 CI 证明 merged stack |
+| R5 | 正式服务器持久数据与 Release/镜像生命周期分离 | `docs/appendix/生产部署与离线Release方案.md` | satisfied | Linux Production 继续 `AIMA_HOST_ROOT=/data/AIMA_UGC`，Release 位于 `/data/AIMA_UGC/releases/<version>` |
+| R6 | Internal V1-B / Production 不重新造业务部署栈 | `docs/roadmap/生产上线实施路线.md` | satisfied | Windows 只加 local storage override；服务器仍复用 canonical Compose |
+| R7 | L3 变更执行 Completion Audit、两阶段 Review、Ready Check 与永久 CI | `AGENTS.md` | not_satisfied | 本轮范围变化后必须重新完成审计与最终门禁 |
 
 # Validation Matrix
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
-| Browser Mock Acceptance | not_applicable | 不修改页面、用户业务交互或 HTTP Contract |
-| Backend/API/PostgreSQL Integration | required | Internal V1-A run `32631979589`：真实 PostgreSQL、Migration、API readiness、持久化、Secret fail-closed 与恢复全部成功；CI run `32631979667` Stage 2/3A 全绿 |
-| Contract / Generated Client | not_applicable | 不修改 Pydantic/OpenAPI/generated client；CI run `32631979667` `Verify generated contracts and client` 成功 |
-| Real Full-stack Golden Path | required | Internal V1-A run `32631979589`：绝对 production root 完整 lifecycle + 仓库相对 root 的同一 Compose startup/readiness/persistence 均成功；Stage 8F run `32631979638` 成功 |
-| Real Provider Probe | not_applicable | 不修改 TikHub/LLM 外部接口；没有执行或产生真实付费请求 |
-| Docs / Governance / Other | required | README、环境、Blueprint 05、Roadmap、Production Appendix 已同步；pre-ready CI run `32631979667` 成功；最终 Completion Gate 待 ready commit 复核 |
+| Browser Mock Acceptance | not_applicable | 不修改页面、HTTP Contract 或用户业务行为 |
+| Backend/API/PostgreSQL Integration | required | 真实 Docker Engine 启动 Windows merged named-volume stack，验证 PostgreSQL、Migration、API readiness、持久化、内部 Secret |
+| Contract / Generated Client | not_applicable | 不修改 Pydantic/OpenAPI/generated client；总 CI drift check 作为回归证据 |
+| Real Full-stack Golden Path | required | canonical Linux bind Golden Path 保持；Windows merged named-volume stack完成 startup/readiness/restart-persistence |
+| Real Provider Probe | not_applicable | 不修改 TikHub/LLM 外部接口，不执行真实付费 Probe |
+| Docs / Governance / Other | required | Windows CMD/PowerShell launcher 在 Windows runner 验证参数；运行/安全/Roadmap/Release 文档同步；Completion Gate |
 
 # Completion Audit
 
-- [x] upstream_re_read: Ready 前重新读取目标分支 AGENTS、Roadmap、Blueprint 05 与 Production Release Appendix，并独立重建本轮完成定义。
-- [x] change_coverage: 上游要求已逐项覆盖到 Change、Compose/env、专项 CI 和正式文档，没有发现 Requirement omission。
-- [x] reverse_audit: 已反向核对 Host Root 到四类持久挂载、Secret/端口/密码恢复、Local/Server Runtime 与 Production Release 生命周期，Validation Matrix 证据层级匹配风险。
-- [x] unresolved_cleared: R1-R6 无 not_satisfied；Windows 原生 NTFS bind 明确记录为未宣称支持的验证边界，不降低 Linux/服务器权限门禁。
-
-## Completion Audit 证据
-
-### upstream_re_read
-
-Ready 前重新读取目标分支 `AGENTS.md`、当前 Roadmap Internal V1-A/V1-B/Stage 11、Blueprint 05 Secret/Compose 边界和 Production Release Appendix。重新得到的上游完成定义与本 Change 一致：同一 Compose Runtime、本地/服务器单一 Host Root、服务器持久数据与 Release 分离、Internal V1-B 仍是下一正式单元、完整 Production 仍要求不可变镜像/no-build/no-pull/恢复门禁。
-
-### change_coverage
-
-上游要求逐项映射到 `compose.yaml`、`env.production.example`、Internal V1-A workflow、README、环境文档、Blueprint 05、Roadmap 和 Production Appendix。没有 Schema/Migration/Contract/依赖变化，因此这些边界不制造额外改动。
-
-### reverse_audit
-
-- `compose.yaml` 的 PostgreSQL、Artifact、log、internal Secret 全部从同一个 `AIMA_HOST_ROOT` 推导，未留下第二套正式 Host Path 配置入口。
-- 服务器 root `/data/AIMA_UGC` 推导出的四个物理路径与改动前完全一致，不移动现有数据。
-- 本地 `.runtime/compose` 由 Git ignore / Docker build ignore 隔离，并由真实 Linux Compose smoke 证明。
-- 原生产式 Golden Path 的 Secret、端口、non-root、密码恢复和重复启动断言保持且重新通过。
-- Release 方向仍是 `/data/AIMA_UGC/releases/<version>` + 固定持久 Host Root；没有把本地便利性反向写成生产现场 build 规范。
-- 本 Change 不涉及前后端公共行为，不存在需要补 Browser/Contract 反向接线的能力。
-
-### unresolved_cleared
-
-没有 `not_satisfied` Requirement。Windows Docker Desktop 原生 NTFS bind mount 没有被本轮 CI 证明，已明确记为平台验证边界，并给出 WSL2 Linux 文件系统路径；本轮没有宣称原生 NTFS 已正式支持，也没有为了它降低服务器权限门禁。
+- [ ] upstream_re_read: Windows scope 完成后重新读取用户要求、AGENTS、Docker/部署上游事实和正式 Roadmap。
+- [ ] change_coverage: 比较 Windows CMD/PowerShell、storage 安全、canonical Production、文档与 CI 是否全部覆盖。
+- [ ] reverse_audit: 反向检查每个 Windows mount target、launcher 参数、named-volume 生命周期与 Production 不变项。
+- [ ] unresolved_cleared: R3/R4/R7 清零，实际未验证边界必须如实保留。
 
 # 任务
 
-1. [x] 收敛 `compose.yaml` / `env.production.example` 到 `AIMA_HOST_ROOT`。
-2. [x] 调整 Internal V1-A CI，保留绝对 production root 并增加相对 local root 证据。
-3. [x] 同步 README、运行、Blueprint、Roadmap 与 Production Release 文档。
-4. [x] 完成目标测试/永久 CI并处理回归；pre-ready 实现 HEAD 除预期的 in-progress Completion Gate 外全部永久流程全绿。
-5. [x] 重新读取上游要求并完成 Completion Audit、Requirement Review、Code Quality Review。
-6. [ ] 最终 ready HEAD 的 Change Completion Gate / 永久 CI 全绿后，把 PR #170 转 Ready 并正常合并；随后独立归档 Change。
+1. [ ] 新增 `compose.windows.yaml`，只把四类持久 storage target 改为 Docker named volumes。
+2. [ ] 新增 CMD / PowerShell Windows Compose launcher，复用同一个 `env.production`。
+3. [ ] 扩展 Internal V1-A CI：验证 Compose merge、named-volume strict bootstrap、启动/readiness/重启持久化。
+4. [ ] 增加 Windows runner 对 CMD/PowerShell launcher 命令参数的非破坏验证。
+5. [ ] 同步 README、环境、Blueprint 05、Roadmap、Production Release 文档和 env example 注释。
+6. [ ] 重新执行 Completion Audit、Requirement Review、Code Quality Review、Ready Gate 和全部永久 CI。
+7. [ ] 正常 PR 合并后，将本 Change 标记 done 并通过独立归档 PR 归档。
 
-# 验证证据
+# 验证计划
 
-pre-ready implementation HEAD `c3dccdcfd76b55125c5b1dff07496e78dabf3816`：
-
-- Internal V1-A Deployable Stack #71 / run `32631979589`：success。
-  - `Validate Compose topology without exposing Secret values`：success。
-  - `One-command startup and lifecycle smoke`：success。
-  - `Repository-relative host root smoke`：success。
-- CI #2308 / run `32631979667`：success。
-  - Stage 1：success。
-  - Stage 2 Platform：success。
-  - Stage 3A Database：success。
-  - Windows bootstrap：success。
-- Local Dev Bootstrap #131 / run `32631979647`：success。
-- Stage 8F Full-stack Acceptance #435 / run `32631979638`：success。
-- Stage 6 Xiaohongshu Vertical Slice #305 / run `32631979674`：success。
-- Stage 7 Keyword Packs #1917 / run `32631979627`：success。
-- Stage 7 Provider Config Routing #2030 / run `32631979658`：success。
-- Stage 7 Scheduler Runtime #2257 / run `32631979654`：success。
-- Stage 7 Plan Occurrence Run Snapshot #1915 / run `32631979604`：success。
-- Change Completion Gate #154 / run `32631979610`：failure，原因是该 HEAD 的 Change 仍为 `in_progress`，属于进入 Ready 前的预期门禁结果，不作为实现失败。
-- Ready commit `88a7d206a8172c5c676d4fb8bff1ff529318885a` 的 Change Completion Gate #155 / run `32632222589` 首次失败：Completion Audit 四项虽然勾选，但缺少机器 parser 要求的 `: 有效说明` 格式；语义 Audit 本身已完成。本提交只修正文档机器格式，必须重新触发并通过，不绕过 Gate。
+- Linux canonical：现有 Internal V1-A bind-mount lifecycle smoke 全部继续通过。
+- Windows override model：`docker compose -f compose.yaml -f compose.windows.yaml --env-file <fixture> config --format json`，确认同 target volume 被替换为 `type: volume`。
+- Windows named-volume Runtime：真实 `up --no-build --wait`、`/health/ready`、写入 Artifact marker、记录内部 Secret hash、`down` 后重启并验证数据/Secret 未丢。
+- Windows launcher：Windows runner 使用 fake Docker CLI 捕获参数，分别执行 `.cmd` 与 `.ps1`，确认自动带 `-f compose.yaml -f compose.windows.yaml --env-file env.production`。
+- 总 CI / Change Completion Gate。
 
 # 两阶段 Review
 
 ## Requirement Review
 
-结论：通过，无 Serious/Important 遗漏。
-
-- A1 上游 → Change：用户确认的本地 Compose 简化诉求、两个 env 文件职责、服务器 Release/持久化要求、Roadmap V1-B 继承和 AGENTS L3 门禁均已进入 R1-R6。
-- A2 Change → 实现：每个成功标准都有对应代码/CI/文档；没有把“本地相对目录”误扩张成“生产数据放版本目录”，也没有删除源码开发入口。
-- 非目标保持：完整 Stage 11 Release/Backup/Auth 未提前伪实现。
+本轮 Windows scope 完成后重新执行，不能复用 PR #170 的旧 Review 结论。
 
 ## Code Quality Review
 
-结论：通过，无 Serious/Important finding。
-
-- `compose.yaml` 只做宿主 bind source 的单根收敛，服务拓扑、容器内路径、Secret grants、healthcheck、depends_on、端口和 restart 语义不变。
-- 服务器默认仍为 `/data/AIMA_UGC`，因此标准现有物理路径不发生数据迁移。
-- 新 CI 在原完整 lifecycle smoke 后复用相同镜像，以第二个隔离相对 Host Root 真启动系统，而不是只做字符串/Mock 验证。
-- `.runtime` 已同时被 Git 与 Docker build context 排除；测试后清理隔离目录。
-- 未升级依赖、未改 Migration、未改公共 Contract、未执行真实 Provider 付费调用。
-- 旧四变量属于一次性部署配置迁移，Change/文档已明确；回滚只需恢复映射，不涉及业务数据 rollback。
+Requirement Review 通过后重新执行，重点检查 Compose merge、volume 生命周期、Secret/DB 安全、Windows quoting、Production 不变项和破坏性 reset 文档。
 
 # Git / 交付
 
-- branch: `feature/compose-host-root`
-- implementation PR: `#170 统一 Docker Compose 宿主持久根目录`（当前 Draft；最终 Ready Gate 通过后转 Ready）
-- archive PR: 实现合并后独立创建
+- 第一阶段 implementation PR: #170，已合并，merge `f04f6e8604bd15bc44c9e726da5325df9c54cd74`。
+- 当前 continuation branch: `feature/compose-windows-desktop`
+- 当前 continuation PR: 待创建
+- Change archive: Windows scope 合并完成后独立归档
