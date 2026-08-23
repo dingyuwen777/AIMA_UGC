@@ -131,7 +131,7 @@ docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production
 - API / Schema / Migration / Data：无变化。
 - 依赖版本：无变化。
 - 日常 Compose 启停命令：无变化。
-- Windows 首次环境初始化：新增 Docker Desktop Docker Engine mirror 配置与实际 `docker info` 验证。
+- Windows 首次环境初始化：合并 `%USERPROFILE%\.docker\daemon.json` 的 `registry-mirrors` / `max-download-attempts`，保留原配置并备份，Docker Desktop restart 后用 `docker info` 验证。
 - CentOS Stream 9 初始化：原有单 DaoCloud mirror 改为三候选 mirror，并保留 daemon 配置备份/合并/校验/安全重启逻辑。
 - 本机已有第三方 image tag：不迁移、不 retag、不作为项目兼容边界。
 - 回滚：恢复 Dockerfile/Compose/build-source 默认和首次初始化 mirror 配置；数据库、Artifact 与 Secret 无迁移。
