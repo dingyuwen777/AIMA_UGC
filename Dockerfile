@@ -13,12 +13,33 @@ FROM ${AIMA_BUILD_PYTHON_IMAGE} AS backend-builder
 ARG AIMA_BUILD_PYPI_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple
 COPY --from=uv-bin /uv /uvx /bin/
 ENV UV_PYTHON_DOWNLOADS=0 \
-    UV_LINK_MODE=copy \
-    UV_DEFAULT_INDEX=${AIMA_BUILD_PYPI_INDEX}
+    UV_LINK_MODE=copy
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
 COPY backend ./backend
-RUN uv sync --locked --no-dev --no-editable
+# 保留 uv.lock 的官方 PyPI source/hash 事实不变：先冻结导出第三方依赖，
+# 再从可配置镜像按 exact version + hash 同步，最后单独构建/安装本项目 wheel。
+RUN uv export \
+      --frozen \
+      --no-dev \
+      --no-emit-local \
+      --format requirements.txt \
+      --generate-hashes \
+      --output-file /tmp/requirements.txt \
+    && uv venv .venv \
+    && uv pip sync \
+      --python .venv/bin/python \
+      --default-index "${AIMA_BUILD_PYPI_INDEX}" \
+      --require-hashes \
+      /tmp/requirements.txt \
+    && uv build \
+      --wheel \
+      --out-dir /tmp/dist \
+      --default-index "${AIMA_BUILD_PYPI_INDEX}" \
+    && uv pip install \
+      --python .venv/bin/python \
+      --no-deps \
+      /tmp/dist/*.whl
 
 FROM ${AIMA_BUILD_PYTHON_IMAGE} AS backend
 ARG AIMA_BUILD_DEBIAN_MIRROR=https://mirrors.tuna.tsinghua.edu.cn/debian
