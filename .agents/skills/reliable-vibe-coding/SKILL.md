@@ -19,12 +19,14 @@ description: 为软件仓库首次接入、持续开发和多人并行提供可�
 8. 只执行仓库中真实存在或本次需求明确建立的边界、Contract、Schema、Owner、Migration 和测试机制；经有界检查未发现时标记不适用并跳过，不补造制度。
 9. 对具有明确输入输出、独立业务价值、独立失败边界，或无需启动完整系统即可验证的能力，优先建立独立验证闭环；测试、调试、Probe 和示例入口复用生产实现，并提供与风险匹配的自动化测试、必要的 Fixture/Fake/隔离依赖、明确运行入口和可理解的验证说明。不要机械要求“一模块一个测试文件”或“一功能一个测试文档”。
 10. 对 L2/L3 正式 Change，尤其是 Stage / 子 Stage / Roadmap 单元，当前 Change 不是自身需求全集。必须从用户已确认决定和上游正式事实源建立 Requirement Traceability；进入 `ready_for_review` 前重新读取上游完成定义并执行 Completion Audit。CI 全绿不能替代需求完整性审计，也不能依赖用户后续发现漏项。
+11. 对存在用户界面、跨前后端、数据库、异步任务或外部 Provider 的 L2/L3 工作，按 [testing-strategy.md](references/testing-strategy.md) 建立 Validation Matrix。Browser Mock 用于广覆盖用户可见状态，Backend/DB Integration 验证服务器规则，Contract 保证机器接口一致，Real Full-stack 只用少量关键 Golden Path 证明真实接线，Real Provider Probe 仅在必要时有界执行；任一层都不能声称证明自己没有实际运行的下游边界。
 
 ## 按需读取资源
 
 - 首次进入仓库、缓存缺失或缓存可能过期时，读取 [project-discovery.md](references/project-discovery.md)。
 - 任务分类为 L2/L3、需要需求追踪或已有 Active Change 时，读取 [change-management.md](references/change-management.md)；新模板带 Completion Gate 时同时遵循 [completion-gate.md](references/completion-gate.md)。
 - 开发功能、修 Bug、重构或调查失败时，读取 [development-workflows.md](references/development-workflows.md)。
+- 任务涉及用户可见行为、前后端/数据库/异步链路、公共 Contract、Full-stack 或外部 Provider 验证时，读取 [testing-strategy.md](references/testing-strategy.md)，并把适用层写进当前 Change 的 Validation Matrix。
 - 任务跨模块、跨前后端、涉及接口/事件/数据，或仓库已有明确 Owner、Contract、Schema、Migration 和契约测试时，读取 [repository-constraints.md](references/repository-constraints.md)。
 - 多人、多 Agent、多个分支或多个 Active Change 并行时，读取 [collaboration.md](references/collaboration.md)。
 - Review、准备交付或即将表达任何完成结论时，读取 [verification-review.md](references/verification-review.md)。
@@ -104,6 +106,8 @@ python <skill>/scripts/rvc.py new-change --root <repo> \
 
 新模板默认 `completion_gate: required`。对这种 Change，编码前先从本轮用户明确决定、正式 Roadmap/Spec/Stage 完成定义和适用规则中独立提取 Requirement Traceability。每条要求只允许 `satisfied / explicitly_deferred / not_applicable / not_satisfied`；当前 Change 不能引用自身作为 Requirement Source，也不能把自己的成功标准当作上游需求全集。
 
+同一 Change 还要按 [testing-strategy.md](references/testing-strategy.md) 建立 Validation Matrix。每个验证层只标记 `required` 或 `not_applicable`：前者写清 Scope 并在完成前补新鲜证据，后者必须有真实依据。不要机械执行全部测试层，也不要为了少跑测试把独立风险标成不适用。
+
 仅询问真正影响接口、数据、兼容性或验收结果的最上游问题，一次一个。能从仓库确认的事实不要反问。
 
 ### 7. 制定可验证计划
@@ -117,7 +121,10 @@ python <skill>/scripts/rvc.py new-change --root <repo> \
 - 需要保持兼容的接口、配置和数据；
 - 最小失败测试或测试例外；
 - 目标测试、相关测试、静态检查、构建和必要运行验证；
-- 哪些能力具有独立验证价值，以及它们的生产入口、测试入口、Fixture/Fake/隔离依赖、运行方式和成功判据。
+- 哪些能力具有独立验证价值，以及它们的生产入口、测试入口、Fixture/Fake/隔离依赖、运行方式和成功判据；
+- Validation Matrix 中 Browser Mock、Backend/API/PostgreSQL Integration、Contract、Real Full-stack Golden Path、Real Provider Probe 和其他专项验证哪些 `required`、哪些 `not_applicable`，以及各自要证明什么。
+
+对有用户界面的功能，Browser Mock Acceptance 通常负责最宽的用户可见状态空间；对服务器/数据库行为使用 Backend/DB Integration；公共机器接口用 Contract；Real Full-stack 只保留足够证明真实接线的关键 Golden Path；外部 Provider 当前事实只有必要时才做有界 Probe。
 
 先按 [development-workflows.md](references/development-workflows.md) 从目标和硬约束推导候选方案，再选择当前证据下最简单、可逆且可验证的充分方案。存在适用的仓库边界或数据交换约束时，按 [repository-constraints.md](references/repository-constraints.md) 把生产者、消费者、Owner、兼容和验证映射进计划。
 
@@ -125,12 +132,17 @@ python <skill>/scripts/rvc.py new-change --root <repo> \
 
 - 新功能、缺陷修复、重构和行为变化：执行 Red → Green → Refactor，并实际观察正确原因的失败和通过。
 - Bug、构建失败、性能问题或异常行为：先稳定复现和确认根因，再建立回归测试并做单一修复。
+- 用户可见行为：优先用 Browser Mock Acceptance 穷举状态、错误、请求和跨页结果；它不能替代真实 Backend/DB/Worker 验证。
+- 后端/数据库/异步规则：优先用真实 Service/API/PostgreSQL/Job Runtime 的 Integration 证明，不把 DOM 测试当数据库证据。
+- 公共 Contract：使用仓库已有 Schema/OpenAPI/generated client/兼容检查，避免 Mock 形成第二套接口事实。
+- 跨组件关键链：用少量 Real Full-stack Golden Path 证明真实组件组装后能工作；不要为了覆盖全部状态复制大量昂贵 Full-stack。
+- 外部 Provider：稳定 Fixture/Fake/Mapper 测试承担普通回归；只有当前真实接口事实需要确认时才执行有界 Provider Probe。
 - 独立可验证能力：优先提供不依赖完整系统启动的最小验证入口，使用真实生产入口与可控边界；测试粒度由行为边界、风险、依赖和失败模式决定，而不是目录或文件数量。
 - 文档、纯配置、生成文件或无法自动测试的环境：说明 TDD 例外，采用解析、内容检查、构建或人工运行等替代验证。
 - 多 Agent 实施：仅派发独立工作，给最少充分上下文；主 Agent 复核差异和验证证据。
 - 跨边界实现：只在仓库已有相应边界时严格遵守；不得让前后端、生产者/消费者或数据读写方各自猜测共享语义，也不得为不适用的项目强加分层。
 
-详细流程遵循 [development-workflows.md](references/development-workflows.md)，并始终采用满足需求的最少代码。
+详细测试职责遵循 [testing-strategy.md](references/testing-strategy.md)；详细开发流程遵循 [development-workflows.md](references/development-workflows.md)，并始终采用满足需求的最少代码。
 
 ### 9. 同步当前事实
 
@@ -152,10 +164,13 @@ python <skill>/scripts/rvc.py new-change --root <repo> \
 → 比较“上游要求 → Change”，检查 requirement omission
 → 比较“Change → 实现/测试/文档”
 → 执行适用的反向能力审计
+→ 复核 Validation Matrix 的层级选择和证据等级
 → 清零 not_satisfied
 ```
 
 前后端/异步任务的反向审计通常需要检查“后端能力 → 前端入口”和“前端动作 → 后端能力”，以及状态、错误、最终结果和跨页面闭环。没有对应边界时记录不适用依据，不制造机制。
+
+Validation Matrix 复核至少确认：用户可见行为没有只靠后端测试；后端/数据库规则没有只靠 Browser Mock；公共 Contract 有机器一致性证据；关键跨组件链需要真实接线时有足够 Golden Path；Provider Probe 只有必要时才执行并保持有界。任何 `not_applicable` 都必须有真实依据。
 
 机器门禁：
 
@@ -163,7 +178,7 @@ python <skill>/scripts/rvc.py new-change --root <repo> \
 python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 ```
 
-脚本只验证机器可判断的结构、状态、Source 路径、占位符和 Audit checkbox；**不能**判断业务需求是否完整，也不能替代语义 Review。
+脚本只验证机器可判断的结构、状态、Source 路径、占位符和 Audit checkbox；**不能**判断业务需求是否完整，也不能自动证明 Validation Matrix 是否充分，更不能替代语义 Review。
 
 完成 Audit 后，再按 [verification-review.md](references/verification-review.md) 先检查需求符合性，再检查正确性、边界、错误处理、安全、兼容性、可维护性和无关改动。严重或重要问题未解决前不要继续交付。
 
@@ -173,7 +188,7 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 确定证明命令
 → 实际运行完整命令
 → 读取完整输出、退出码和失败数
-→ 对照上游完成定义、成功标准和 diff
+→ 对照上游完成定义、成功标准、Validation Matrix 和 diff
 → 只陈述证据支持的状态
 ```
 
@@ -181,9 +196,9 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 
 ### 11. 关闭或保留 Change
 
-- 尚未合并或发布：只有 Requirement Traceability、Completion Audit、验证和文档同步满足时才能标记 `ready_for_review`，继续保留在 `changes/active/`。
+- 尚未合并或发布：只有 Requirement Traceability、Validation Matrix、Completion Audit、验证和文档同步满足时才能标记 `ready_for_review`，继续保留在 `changes/active/`。
 - 已经完成全部成功标准、验证和文档同步，并且集成状态已确认：标记 `done`，再移动到 `changes/archive/YYYY-MM/`。
-- 需求在完成前变化：先回到上游事实源更新 Traceability，再更新同一个 Change 的当前确认内容。
+- 需求在完成前变化：先回到上游事实源更新 Traceability，再更新同一个 Change 的当前确认内容和 Validation Matrix。
 - 已归档需求后来再次变化：创建新的 Change，不改写历史。
 
 归档不是成功证据，不能先归档再补验证。不得为了绕过 Ready Check 删除 `completion_gate`。
@@ -194,12 +209,13 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 
 1. 变更摘要与逐文件目的；
 2. 上游 Requirement Traceability 与成功标准完成状态；
-3. Completion Audit / 两阶段 Review 结果；
-4. 文档同步及依据；
-5. 本轮实际执行的命令、退出码和结果；
-6. 未验证内容、阻塞和剩余风险；
-7. 兼容性、依赖、Migration、部署和回滚影响；
-8. Git 分支、提交、PR、合并和清理的实际状态。
+3. Validation Matrix 与各层实际证据；
+4. Completion Audit / 两阶段 Review 结果；
+5. 文档同步及依据；
+6. 本轮实际执行的命令、退出码和结果；
+7. 未验证内容、阻塞和剩余风险；
+8. 兼容性、依赖、Migration、部署和回滚影响；
+9. Git 分支、提交、PR、合并和清理的实际状态。
 
 不要只回复“已完成”“已修复”或“测试通过”。
 
@@ -208,6 +224,7 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 - 项目缓存是可失效导航，不是向量数据库、长期记忆或需求事实副本。
 - Change 文件是 Git 协作协议，不是原子锁、租约、看板、通知或在线状态服务。
 - Completion Gate 是流程完整性门禁，不是自然语言需求证明器；它不能替代 Agent/Reviewer 从上游事实源做语义完整性审计。
+- Validation Matrix 是风险到证据的语义映射，不是固定测试配额，也不是 `ready_check.py` 能自动证明充分性的清单。
 - 看不到未提交、未推送、未同步、无权限访问或另一客户端私有的状态。
 - 不能强制其他人或 Agent 遵守 Owner、分支或影响范围；仓库 CI 可阻止不满足门禁的 PR 合入。
 - 宿主不支持持久文件、脚本或 Git 时，只能执行其实际支持的流程，并明确降级。

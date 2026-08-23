@@ -34,6 +34,33 @@ completion_gate: required
 
 机器检查只能验证表结构、状态、占位内容和仓库路径存在性。Agent/Reviewer 仍必须判断：上游要求是否被完整提取、Evidence 是否真的证明对应语义。
 
+## Validation Matrix
+
+L2/L3 Change 还必须按 [testing-strategy.md](testing-strategy.md) 建立 `# Validation Matrix`，明确各验证层是 `required` 还是 `not_applicable`。
+
+默认考虑：
+
+```text
+Browser Mock Acceptance
+Backend/API/PostgreSQL Integration
+Contract / Generated Client
+Real Full-stack Golden Path
+Real Provider Probe
+Docs / Governance / Other
+```
+
+核心边界：
+
+- Browser Mock 用于广覆盖用户可见行为、状态、请求和错误表达；它不能证明真实 API、数据库、Worker 或 Provider 链；
+- Backend/API/PostgreSQL Integration 证明服务器业务规则、事务、持久化和异步运行边界；
+- Contract 证明生产者/消费者的机器接口一致；
+- Real Full-stack 用少量关键 Golden Path 证明真实组件接通，不负责穷举所有 UI 状态；
+- Real Provider Probe 只在外部供应商当前事实需要确认时有界执行，默认不作为普通 CI 主力。
+
+Matrix 不要求每个任务机械执行全部层，也不设固定测试数量配额。`not_applicable` 必须有事实依据；`required` 必须在 Ready 前有新鲜证据。
+
+当前 `ready_check.py` 不自动判断 Matrix 的语义充分性，因此 Agent/Reviewer 必须在 Completion Audit 和 Review 中人工核对；不能因为机器 Ready Check 通过就跳过。
+
 ## Completion Audit
 
 进入 `ready_for_review` 前必须重新读取上游事实源，不先看当前 Change 的 checklist 来反推需求。至少完成：
@@ -46,7 +73,7 @@ change_coverage
 → 比较“上游要求 vs 当前 Change”，寻找 requirement omission
 
 reverse_audit
-→ 对适用边界做反向审计，而不只沿实现正向检查
+→ 对适用边界做反向审计，并复核 Validation Matrix 的层级选择和证据等级
 
 unresolved_cleared
 → not_satisfied 清零；延期/不适用都有正式依据
@@ -62,7 +89,7 @@ unresolved_cleared
 错误/失败页面 → 是否只展示机器事实，不伪造历史阶段？
 ```
 
-不适用时记录为什么不适用，不为填清单制造新架构。
+同时检查：用户可见 Requirement 是否有适用的 Browser 证据，服务器规则是否有适用的 Backend/DB 证据，公共边界是否有 Contract 证据，关键跨组件链是否有足够的 Real Full-stack Golden Path。没有对应边界时记录为什么不适用，不为填清单制造新架构或无价值测试。
 
 ## 两层 Review
 
@@ -73,10 +100,10 @@ Review A1：上游要求 → Change
 → 检查 Change 是否漏需求
 
 Review A2：Change → 实现 / 测试 / 文档
-→ 检查已承诺要求是否真实实现
+→ 检查已承诺要求是否真实实现，并核对 Validation Matrix 的证据层级
 ```
 
-第二阶段再做代码质量 Review。CI 绿色不能代替 A1。
+第二阶段再做代码质量 Review。CI 绿色不能代替 A1；某一测试层绿色也不能替代另一层独立风险的验证。
 
 ## 机器 Ready Check
 
@@ -98,7 +125,7 @@ PR CI 使用 `--changed-since <base-sha>`，只强制当前 PR 改动的 gated A
 - Evidence、延期/不适用依据不得为占位值；
 - Completion Audit 四项全部完成。
 
-它**不验证业务语义本身**，因此不能用脚本通过替代 Completion Audit。
+它**不验证业务语义本身，也不自动证明 Validation Matrix 是否充分**，因此不能用脚本通过替代 Completion Audit。
 
 ## 兼容策略
 
