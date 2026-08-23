@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 jobs:
-  sync:
+  finalize:
     if: github.head_ref == 'docs/numbered-document-filenames' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-24.04
     steps:
@@ -22,58 +22,73 @@ jobs:
           ref: docs/numbered-document-filenames
           fetch-depth: 0
 
-      - name: 仅同步归档 Change 的 Requirement Source 路径
+      - name: 固化归档 Requirement Source 的 live path 例外
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          replacements = {
-              "docs/blueprint/04-后端任务API与前端.md": "docs/blueprint/04_后端任务API与前端.md",
-              "docs/blueprint/05-日志安全部署与运维.md": "docs/blueprint/05_日志安全部署与运维.md",
-              "docs/blueprint/06-开发约束与分阶段实施.md": "docs/blueprint/06_开发约束与分阶段实施.md",
-              "docs/appendix/生产部署与离线Release方案.md": "docs/appendix/11_生产部署与离线Release方案.md",
-              "docs/roadmap/生产上线实施路线.md": "docs/roadmap/02_生产上线实施路线.md",
-              "docs/roadmap/内网V1上线实施计划.md": "docs/roadmap/01_内网V1上线实施计划.md",
-          }
+          skill = Path(".agents/skills/reliable-vibe-coding/SKILL.md")
+          text = skill.read_text(encoding="utf-8")
+          old = "- `changes/archive/` 保存历史证据，不因当前文档改名批量改写；`docs/assets/` 等非 Markdown 资源不适用本规则；模块级 `README.md` 继续保持 README 命名。"
+          new = "- `changes/archive/` 的历史状态、证据和结论不得因当前文档改名而改写；但 `Requirement Source` 等被 Ready Check 作为实时仓库路径校验的字段必须随目标文件移动同步到新路径，且只改路径值；`docs/assets/` 等非 Markdown 资源不适用本规则；模块级 `README.md` 继续保持 README 命名。"
+          if old not in text:
+              raise SystemExit("未找到 Skill 归档路径规则锚点")
+          skill.write_text(text.replace(old, new, 1), encoding="utf-8", newline="")
 
-          changed_occurrences = 0
-          changed_files = []
-          for path in Path("changes/archive/2026-08").rglob("CHANGE.md"):
-              text = path.read_text(encoding="utf-8")
-              lines = text.splitlines(keepends=True)
-              updated_lines = []
-              file_count = 0
-              for line in lines:
-                  updated = line
-                  if line.lstrip().startswith("| R"):
-                      for old, new in replacements.items():
-                          count = updated.count(old)
-                          if count:
-                              updated = updated.replace(old, new)
-                              file_count += count
-                  updated_lines.append(updated)
-              if file_count:
-                  path.write_text("".join(updated_lines), encoding="utf-8", newline="")
-                  changed_files.append((str(path), file_count))
-                  changed_occurrences += file_count
-
-          if changed_occurrences != 22:
-              raise SystemExit(
-                  f"Requirement Source 路径替换数量应为 22，实际为 {changed_occurrences}: {changed_files}"
-              )
-
-          print(f"已同步 {changed_occurrences} 个 Requirement Source 路径：")
-          for path, count in changed_files:
-              print(f"{path}: {count}")
+          change = Path("changes/active/CHG-20260823-numbered-doc-filenames/CHANGE.md")
+          text = change.read_text(encoding="utf-8")
+          text = text.replace(
+              "  - .agents/skills/reliable-vibe-coding/SKILL.md\ncontracts:",
+              "  - .agents/skills/reliable-vibe-coding/SKILL.md\n  - changes/archive/2026-08/*/CHANGE.md\ncontracts:",
+              1,
+          )
+          text = text.replace(
+              "- 不重写 `changes/archive/` 历史 Change 中的当时路径证据。",
+              "- 不改写 `changes/archive/` 历史 Change 的状态、证据与结论；仅允许同步 Ready Check 要求持续可解析的 `Requirement Source` 仓库路径。",
+              1,
+          )
+          text = text.replace(
+              "5. 规则写入 `.agents/skills/reliable-vibe-coding/SKILL.md`，后续 Agent 在创建或整理 `docs/` 技术文档时必须遵守。",
+              "5. 规则写入 `.agents/skills/reliable-vibe-coding/SKILL.md`，后续 Agent 在创建或整理 `docs/` 技术文档时必须遵守。\n6. 归档 Change 的历史状态、证据和结论保持不变；仅同步 Ready Check 持续校验的 `Requirement Source` 路径，使重命名后仍指向同一事实源。",
+              1,
+          )
+          evidence_anchor = "- 一次性迁移/校验 workflow 与脚本在进入最终永久 CI 前删除，不作为仓库长期机制保留。"
+          archive_evidence = "- GitHub Actions run `32636689174` / job `97187424911`：仅在归档 Change 的 Requirement Traceability `| R... |` 行中同步 22 个 `Requirement Source` 路径，8 个归档 Change 受影响；job conclusion：`success`。\n"
+          if archive_evidence.strip() not in text:
+              if evidence_anchor not in text:
+                  raise SystemExit("未找到 Change 验证证据插入锚点")
+              text = text.replace(evidence_anchor, archive_evidence + evidence_anchor, 1)
+          change.write_text(text, encoding="utf-8", newline="")
           PY
 
-      - name: 提交路径同步
+      - name: 刷新项目事实源索引
+        run: python .agents/skills/reliable-vibe-coding/scripts/rvc.py discover --root . --json
+
+      - name: 运行 Ready Check
+        shell: bash
+        run: |
+          set -euo pipefail
+          python .agents/skills/reliable-vibe-coding/scripts/ready_check.py \
+            --root . \
+            --changed-since origin/main
+
+      - name: 运行文档质量与差异检查
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/quality/check_docs.py
+          git diff --check
+
+      - name: 提交最终治理同步
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add changes/archive/2026-08
+          git add \
+            .agents/skills/reliable-vibe-coding/SKILL.md \
+            changes/active/CHG-20260823-numbered-doc-filenames/CHANGE.md \
+            .reliable-vibe-coding/project-context.json
           git diff --cached --check
-          git commit -m "同步归档 Change 的文档 Requirement Source 路径"
+          git commit -m "固化文档改名后的归档路径治理规则"
           git push origin HEAD:docs/numbered-document-filenames
