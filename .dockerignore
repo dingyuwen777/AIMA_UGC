@@ -5,7 +5,10 @@ changes
 contracts
 docs
 tests
-scripts
+scripts/*
+!scripts/deploy/
+scripts/deploy/*
+!scripts/deploy/prepare_host.py
 .runtime
 .venv
 .wheel-venv
