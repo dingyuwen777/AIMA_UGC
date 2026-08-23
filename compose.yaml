@@ -26,9 +26,9 @@ x-backend-build: &backend-build
   dockerfile: Dockerfile
   target: backend
   args:
-    AIMA_BUILD_DEBIAN_MIRROR: ${AIMA_BUILD_DEBIAN_MIRROR:-http://deb.debian.org/debian}
-    AIMA_BUILD_DEBIAN_SECURITY_MIRROR: ${AIMA_BUILD_DEBIAN_SECURITY_MIRROR:-http://deb.debian.org/debian-security}
-    AIMA_BUILD_PYPI_INDEX: ${AIMA_BUILD_PYPI_INDEX:-https://pypi.org/simple}
+    AIMA_BUILD_DEBIAN_MIRROR: ${AIMA_BUILD_DEBIAN_MIRROR:-https://mirrors.aliyun.com/debian}
+    AIMA_BUILD_DEBIAN_SECURITY_MIRROR: ${AIMA_BUILD_DEBIAN_SECURITY_MIRROR:-https://mirrors.aliyun.com/debian-security}
+    AIMA_BUILD_PYPI_INDEX: ${AIMA_BUILD_PYPI_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}
 
 x-backend-service: &backend-service
   image: aima-ugc-backend:${AIMA_IMAGE_TAG:-internal-v1a}
@@ -180,7 +180,7 @@ services:
       dockerfile: Dockerfile
       target: frontend
       args:
-        AIMA_BUILD_NPM_REGISTRY: ${AIMA_BUILD_NPM_REGISTRY:-https://registry.npmjs.org}
+        AIMA_BUILD_NPM_REGISTRY: ${AIMA_BUILD_NPM_REGISTRY:-https://registry.npmmirror.com}
     ports:
       - "${AIMA_HTTP_BIND_IP:-127.0.0.1}:${AIMA_HTTP_PORT:-8080}:8080"
     depends_on:
