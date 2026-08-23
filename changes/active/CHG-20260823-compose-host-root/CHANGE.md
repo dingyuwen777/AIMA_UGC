@@ -20,6 +20,7 @@ affected_paths:
   - compose.yaml
   - env.production.example
   - .github/workflows/internal-v1a.yml
+  - README.md
   - docs/环境运行与部署.md
   - docs/blueprint/05-日志安全部署与运维.md
   - docs/roadmap/生产上线实施路线.md
@@ -34,14 +35,14 @@ data_changes: []
 
 # 可观察成功标准
 
-- [ ] `env.local.example` 继续只服务源码开发，不与 Compose 配置混用。
-- [ ] `env.production.example` 继续作为完整容器 Runtime 配置模板，本地 Docker 与服务器 Docker 共用同一字段结构。
-- [ ] 四个宿主目录变量收敛为单一 `AIMA_HOST_ROOT`；Compose 从根目录推导 PostgreSQL、Artifact、日志和内部 Secret 路径。
-- [ ] 服务器推荐 `AIMA_HOST_ROOT=/data/AIMA_UGC`，持久状态继续位于 Release 目录之外。
-- [ ] 本地 Compose 可以将 `AIMA_HOST_ROOT=./.runtime/compose`，且 `.runtime/` 保持 Git ignore / Docker build context ignore。
+- [x] `env.local.example` 继续只服务源码开发，不与 Compose 配置混用。
+- [x] `env.production.example` 继续作为完整容器 Runtime 配置模板，本地 Docker 与服务器 Docker 共用同一字段结构。
+- [x] 四个宿主目录变量收敛为单一 `AIMA_HOST_ROOT`；Compose 从根目录推导 PostgreSQL、Artifact、日志和内部 Secret 路径。
+- [x] 服务器推荐 `AIMA_HOST_ROOT=/data/AIMA_UGC`，持久状态继续位于 Release 目录之外。
+- [x] 本地 Compose 可以将 `AIMA_HOST_ROOT=./.runtime/compose`，且 `.runtime/` 保持 Git ignore / Docker build context ignore。
 - [ ] Linux CI 同时验证生产式绝对 Host Root 与本地式仓库相对 Host Root 的 Compose 解析/真实启动。
-- [ ] 不修改数据库 Schema、Migration、公共 Contract、依赖或业务语义。
-- [ ] 正式文档同步源码开发、本地 Compose、服务器 Compose、未来不可变 Release 四种生命周期边界。
+- [x] 不修改数据库 Schema、Migration、公共 Contract、依赖或业务语义。
+- [x] 正式文档同步源码开发、本地 Compose、服务器 Compose、未来不可变 Release 四种生命周期边界。
 - [ ] L3 Completion Audit、两阶段 Review、Ready Check 与永久 CI 通过后才进入 Ready/合并。
 
 # 范围
@@ -49,7 +50,7 @@ data_changes: []
 - `compose.yaml` 的宿主 bind source 配置。
 - `env.production.example` 的宿主持久化配置模型。
 - Internal V1-A Compose Golden Path。
-- 部署/环境/安全/Roadmap/Release 文档中的配置说明。
+- 根 README、部署/环境/安全/Roadmap/Release 文档中的当前状态与配置说明。
 
 # 非目标
 
@@ -100,19 +101,19 @@ data_changes: []
 
 # 安全与运维风险
 
-- 服务器若误把 `AIMA_HOST_ROOT` 指向 Release 版本目录，会重新绑定持久数据生命周期；文档和 CI 必须明确禁止。
+- 服务器若误把 `AIMA_HOST_ROOT` 指向 Release 版本目录，会重新绑定持久数据生命周期；文档明确禁止这种配置。
 - 相对 Host Root 只用于本地容器 Runtime；生产仍推荐绝对 `/data/AIMA_UGC`。
-- Windows Docker Desktop 的宿主 bind 权限语义不同于 Linux；本 Change 的永久真实 Compose Golden Path 以 Linux 为证明边界，Windows 原生宿主文件系统若出现 UID/GID 权限问题需要单独事实验证，不伪造已覆盖结论。
+- Windows Docker Desktop 的宿主 bind 权限语义不同于 Linux；本 Change 的永久真实 Compose Golden Path 以 Linux/WSL 风格文件系统为证明边界，Windows 原生宿主文件系统若出现 UID/GID 权限问题需要单独事实验证，不伪造已覆盖结论，也不放宽服务器权限门禁。
 
 # Requirement Traceability
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 本地也可使用 Docker Compose，且不需要维护另一套 Compose/频繁改配置 | user:local-compose-same-entrypoint | not_satisfied | 待实现单根配置与本地式 Golden Path |
-| R2 | 源码开发与容器运行职责清楚，两个 env example 只按运行方式分工 | user:env-role-clarification | not_satisfied | 待同步模板与运行文档 |
-| R3 | 正式服务器持久数据与 Release/镜像生命周期分离，升级回滚不丢数据 | `docs/appendix/生产部署与离线Release方案.md` | not_satisfied | 待保持 `/data/AIMA_UGC` 布局并同步文档/CI |
-| R4 | Internal V1-B 继续复用 V1-A 同一 Compose 入口，不重新造部署栈 | `docs/roadmap/生产上线实施路线.md` | not_satisfied | 待保持 Compose 拓扑并更新配置说明 |
-| R5 | Secret、PostgreSQL 密码恢复和端口边界不因本次配置收敛降低 | `docs/blueprint/05-日志安全部署与运维.md` | not_satisfied | 待由 Compose Golden Path 回归证明 |
+| R1 | 本地也可使用 Docker Compose，且不需要维护另一套 Compose/频繁改配置 | user:local-compose-same-entrypoint | not_satisfied | `compose.yaml` / `env.production.example` 已单根化；待最终 Linux repo-relative Golden Path 通过后满足 |
+| R2 | 源码开发与容器运行职责清楚，两个 env example 只按运行方式分工 | user:env-role-clarification | satisfied | `env.production.example`、`docs/环境运行与部署.md`、README 已同步；`env.local.example` 未改且仍由 dev launcher 使用 |
+| R3 | 正式服务器持久数据与 Release/镜像生命周期分离，升级回滚不丢数据 | `docs/appendix/生产部署与离线Release方案.md` | satisfied | 服务器 `AIMA_HOST_ROOT=/data/AIMA_UGC`，Release 继续位于 `/data/AIMA_UGC/releases/<version>`，文档明确两者不得等同 |
+| R4 | Internal V1-B 继续复用 V1-A 同一 Compose 入口，不重新造部署栈 | `docs/roadmap/生产上线实施路线.md` | satisfied | Roadmap 保持 Internal V1-B 为下一单元，并固定同一 `env.production + compose.yaml`、服务器 Host Root `/data/AIMA_UGC` |
+| R5 | Secret、PostgreSQL 密码恢复和端口边界不因本次配置收敛降低 | `docs/blueprint/05-日志安全部署与运维.md` | not_satisfied | Compose 拓扑与原回归断言保留；待最终 Internal V1-A Golden Path 通过后满足 |
 | R6 | L3 变更执行 Completion Audit、两阶段 Review、Ready Check 与永久 CI | `AGENTS.md` | not_satisfied | 待完成治理闭环 |
 
 # Validation Matrix
@@ -124,7 +125,7 @@ data_changes: []
 | Contract / Generated Client | not_applicable | 不修改 Pydantic/OpenAPI/generated client；由总 CI drift 检查确认无意外变化 |
 | Real Full-stack Golden Path | required | Internal V1-A 真实 Compose 启动；生产式绝对 root 保持，新增仓库相对 root 启动/解析证据 |
 | Real Provider Probe | not_applicable | 不修改 TikHub/LLM 外部接口，不需要产生付费请求 |
-| Docs / Governance / Other | required | Compose config、Change Completion Gate、部署/Blueprint/Roadmap/Release 文档一致性 |
+| Docs / Governance / Other | required | Compose config、Change Completion Gate、README/部署/Blueprint/Roadmap/Release 文档一致性 |
 
 # Completion Audit
 
@@ -135,9 +136,9 @@ data_changes: []
 
 # 任务
 
-1. [ ] 收敛 `compose.yaml` / `env.production.example` 到 `AIMA_HOST_ROOT`。
-2. [ ] 调整 Internal V1-A CI，保留绝对 production root 并增加相对 local root 证据。
-3. [ ] 同步运行、Blueprint、Roadmap 与 Production Release 文档。
+1. [x] 收敛 `compose.yaml` / `env.production.example` 到 `AIMA_HOST_ROOT`。
+2. [x] 调整 Internal V1-A CI，保留绝对 production root 并增加相对 local root 证据。
+3. [x] 同步 README、运行、Blueprint、Roadmap 与 Production Release 文档。
 4. [ ] 完成目标测试/永久 CI，处理真实回归。
 5. [ ] 重新读取上游要求并完成 Completion Audit、Requirement Review、Code Quality Review。
 6. [ ] 更新 Change 为 `ready_for_review`，运行 Ready Gate，正常 PR 合并；随后独立归档 Change。
@@ -163,5 +164,5 @@ data_changes: []
 # Git / 交付
 
 - branch: `feature/compose-host-root`
-- implementation PR: 待创建
+- implementation PR: `#170 统一 Docker Compose 宿主持久根目录`（Draft）
 - archive PR: 实现合并后独立创建
