@@ -22,6 +22,22 @@ jobs:
           ref: docs/numbered-document-filenames
           fetch-depth: 0
 
+      - name: 同步 Appendix 最终编号引用
+        shell: bash
+        run: |
+          if [ -f scripts/docs_numbering_reorder_temp.py ]; then
+            python scripts/docs_numbering_reorder_temp.py
+          else
+            echo "Appendix 编号引用已同步"
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "同步 Appendix 功能顺序编号引用"
+            git push origin HEAD:docs/numbered-document-filenames
+          fi
+
       - name: 刷新项目事实源索引
         run: python .agents/skills/reliable-vibe-coding/scripts/rvc.py discover --root . --json
 
@@ -34,8 +50,6 @@ jobs:
       - name: 提交刷新后的项目事实源索引
         shell: bash
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .reliable-vibe-coding/project-context.json
           if git diff --cached --quiet; then
             echo "project-context 无需刷新"
