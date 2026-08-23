@@ -66,11 +66,11 @@ SAME_PATH_FILES = [
     "docs/guides/README.md",
     "docs/roadmap/README.md",
     "scripts/dev/frontend.py",
-    "tests/fixtures/providers/tikhub/README.md",
     "tests/unit/analysis/test_content_labeling.py",
     "tests/unit/collection/test_stage1_stage7_comprehensive_corrective.py",
 ]
 
+FIXTURE_README = "tests/fixtures/providers/tikhub/README.md"
 REPLACEMENTS = {Path(old).name: Path(new).name for old, new in DOC_RENAMES.items()}
 SELF = Path("scripts/docs_numbering_validate_temp.py")
 TEMP_WORKFLOW = Path(".github/workflows/docs-numbering-check.yml")
@@ -143,6 +143,7 @@ def check_names() -> None:
 def check_content_preservation() -> None:
     for old, new in DOC_RENAMES.items():
         assert_equal(transform(base_text(old)), current_text(new), source=old, target=new)
+
     for path in SAME_PATH_FILES:
         assert_equal(
             transform(base_text(path)),
@@ -150,6 +151,21 @@ def check_content_preservation() -> None:
             source=f"origin/main:{path}",
             target=path,
         )
+
+    expected_fixture = transform(base_text(FIXTURE_README))
+    expected_fixture = expected_fixture.replace(
+        "docs/blueprint/10-TikHub真实响应结构附录.md",
+        "docs/appendix/03_TikHub五平台真实响应与字段映射.md",
+    ).replace(
+        "docs/blueprint/11-04_TikHub多接口验证与备用策略.md",
+        "docs/appendix/04_TikHub多接口验证与备用策略.md",
+    )
+    assert_equal(
+        expected_fixture,
+        current_text(FIXTURE_README),
+        source=f"origin/main:{FIXTURE_README}",
+        target=FIXTURE_README,
+    )
 
 
 def check_skill() -> None:
@@ -205,7 +221,11 @@ def check_stale_references() -> None:
 
 def check_context() -> None:
     context = json.loads(Path(".reliable-vibe-coding/project-context.json").read_text(encoding="utf-8"))
-    paths = {item["path"] for item in context.get("documents", []) if isinstance(item, dict) and "path" in item}
+    paths = {
+        item["path"]
+        for item in context.get("documents", [])
+        if isinstance(item, dict) and "path" in item
+    }
     for new in DOC_RENAMES.values():
         if new not in paths:
             raise SystemExit(f"项目事实源索引缺少新文档路径: {new}")
@@ -219,7 +239,8 @@ def check_context() -> None:
 def check_markdown_links() -> None:
     link_re = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
     broken: list[str] = []
-    for source in [Path("README.md"), Path("AGENTS.md"), *Path("docs").rglob("*.md")]:
+    sources = [Path("README.md"), Path("AGENTS.md"), Path(FIXTURE_README), *Path("docs").rglob("*.md")]
+    for source in sources:
         text = source.read_text(encoding="utf-8")
         for raw in link_re.findall(text):
             target = raw.strip().split()[0].strip("<>")
