@@ -17,15 +17,13 @@
 首次完整 build 至少需要：
 
 ```text
-Dockerfile frontend
-→ Dockerfile frontend syntax image
-→ Python base image
+Python base image
 → uv image
 → Node base image
 → Nginx base image
 → PostgreSQL runtime image
 → Debian apt packages
-→ Python packages（uv / PyPI）
+→ Python packages（从 uv.lock 冻结导出后安装）
 → Frontend packages（npm）
 → build AIMA backend image
 → build AIMA frontend image
@@ -35,7 +33,9 @@ Dockerfile frontend
 
 因此第一次运行不是“只启动几个容器”。如果本机没有基础 layer/cache，Docker 会先下载和构建。
 
-用户日志里曾出现几十 MB layer 下载数十分钟、Debian apt 只有 KB/s 的情况，这属于网络源异常慢，不是 AIMA Python 业务代码本身执行数十分钟。
+旧 Dockerfile 曾声明外部 `docker/dockerfile:1` syntax frontend；用户实际日志中仅 14.14 MB 的这一层就下载约 307 秒。当前 Dockerfile 只使用稳定基础语法，因此已经移除这个外部 syntax frontend，首次 build 不再为它单独拉镜像。
+
+用户日志还出现几十 MB 基础 layer 下载十几到几十分钟、Debian apt 只有 KB/s 的情况。这属于网络源吞吐异常，不是 AIMA Python 业务代码本身执行数十分钟。
 
 ---
 
@@ -49,12 +49,26 @@ Dockerfile frontend
 | GHCR uv image | `m.daocloud.io/ghcr.io/...` |
 | Debian | `https://mirrors.tuna.tsinghua.edu.cn/debian` |
 | Debian Security | `https://mirrors.tuna.tsinghua.edu.cn/debian-security` |
-| PyPI / uv | `https://pypi.tuna.tsinghua.edu.cn/simple` |
+| PyPI / uv pip | `https://pypi.tuna.tsinghua.edu.cn/simple` |
 | npm | `https://registry.npmmirror.com` |
 
 镜像与依赖的**版本号没有改变**，仍由 Dockerfile、`.python-version`、`.uv-version`、`uv.lock`、`package-lock.json` 等仓库事实锁定，不使用 `latest`。
 
 Docker 镜像代理采用 DaoCloud public image mirror 的前缀映射方式，不要求修改 Docker Desktop 全局 daemon 配置，因此不会改变其他项目的 Docker 行为。
+
+Python 依赖没有把 `uv.lock` 改成 TUNA 专属 lock。构建时使用：
+
+```text
+uv.lock
+→ uv export --frozen --no-dev --no-emit-local
+→ 带 exact version / hash 的 requirements
+→ uv pip sync --require-hashes --default-index=<TUNA>
+→ 单独 build/install 当前 AIMA wheel
+```
+
+这样镜像下载走国内 PyPI，但版本和 distribution hash 仍受仓库 lock 约束。
+
+> TUNA 对 Debian Security 明确提示镜像可能存在同步延迟。当前 Internal V1 默认使用国内 security mirror 是为了中国网络下可完成构建；完整 Production Release 仍必须在可信构建环境中完成漏洞/镜像完整性验证，并可按正式发布策略把 `AIMA_BUILD_DEBIAN_SECURITY_MIRROR` 切回 Debian 官方安全源。
 
 ---
 
@@ -140,7 +154,7 @@ Docker/BuildKit 会缓存：
 ```text
 基础镜像 layer
 apt layer
-uv dependency layer
+Python dependency layer
 npm ci layer
 AIMA build layer
 ```
@@ -214,7 +228,7 @@ docker image ls aima-ugc-frontend
 
 通常**不要**。
 
-即使你要把 AIMA 数据/容器/image 一切重来，保留基础 image layer 和 BuildKit cache 反而能避免再次下载几十到几百 MB。
+即使你要把 AIMA 数据、容器和 service image 一切重来，保留基础 image layer 和 BuildKit cache 反而能避免再次下载几十到几百 MB。
 
 如果 Docker Desktop 只用于 AIMA，而且你明确希望连所有 build cache 都重新下载，可以人工执行：
 
@@ -268,7 +282,23 @@ curl.exe -f http://127.0.0.1:8080/health/ready
 
 ---
 
-## 10. Production 为什么仍然安全
+## 10. 当前验证证据
+
+永久 CI 已在同一实现头真实执行国内默认源的完整构建与 Runtime：
+
+- DaoCloud Python / uv / Node / Nginx / PostgreSQL 镜像可拉取；
+- `uv.lock` 冻结导出后可从 TUNA PyPI 通过 hash 校验安装；
+- TUNA Debian / Debian Security 可完成 `apt-get update/install`；
+- npmmirror 可完成 `npm ci`；
+- Linux Internal V1-A 完整 bind-mount Golden Path 通过；
+- Windows merged named-volume Runtime 和 CMD/PowerShell launcher 通过；
+- 总 CI 与 Stage 8F 回归通过。
+
+CI 证明的是配置、构建和运行链有效，不承诺你所在网络到每个国内镜像的固定带宽；具体下载速度仍受本机网络、DNS、Docker Desktop 和镜像节点影响。
+
+---
+
+## 11. Production 为什么仍然安全
 
 国内镜像/软件包源只是**构建输入下载路径**，不改变长期生产设计。
 
