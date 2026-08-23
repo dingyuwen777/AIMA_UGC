@@ -91,6 +91,9 @@ jobs:
           uv run ruff check --fix ${TARGETS}
           uv run ruff check ${TARGETS}
           uv run mypy backend/src
+          cd frontend
+          npx eslint --fix src/features/import-batches/pages/CollectionRuntimePage/components/ImportUploadDialog.vue src/features/import-batches/pages/CollectionRuntimePage/components/TikHubSupplementDrawer.vue
+          cd ..
           npm --prefix frontend run lint
           npm --prefix frontend run typecheck
 
