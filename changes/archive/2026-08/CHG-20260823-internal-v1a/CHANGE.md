@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260823-internal-v1a
 title: 建立 Internal V1-A 最小可部署环境
 level: L3
-status: ready_for_review
+status: done
 owner: chatgpt
 branch: feature/internal-v1a-deployable-stack
 created: 2026-08-23
@@ -18,6 +18,7 @@ affected_areas:
   - provider-config
   - ci
 affected_paths:
+  - AGENTS.md
   - Dockerfile
   - .dockerignore
   - .gitignore
@@ -57,6 +58,7 @@ data_changes: []
 - [x] 隔离 Compose Golden Path 真实证明 build、Migration、正式进程、持久化、RO Secret、非 root Runtime 与 PortBindings。
 - [x] HTTP Contract、OpenAPI/generated client、数据库 Schema/Migration、Job/Collection/Analysis/Reporting 业务语义保持不变。
 - [x] Roadmap 推进到 Internal V1-B；完整离线 Release、认证、协调 Backup/Restore 继续延期。
+- [x] 根 `AGENTS.md` 已同步为 V1-A 已存在 Dockerfile/Compose 的当前事实，不再保留相反的旧基线说明。
 
 # 范围与非目标
 
@@ -87,26 +89,26 @@ Secret 目录整体 RO；应用以 supplementary group 读取，PostgreSQL passw
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 建立 V1-A Dockerfile/Compose/服务器配置/宿主检查/Health/隔离 Smoke | docs/roadmap/生产上线实施路线.md | satisfied | `Dockerfile`、`compose.yaml`、`env.production.example`、`prepare_host.py`、`internal-v1a.yml`；V1-A Run `32622016122` success |
-| R2 | Compose 至少包含 frontend/api/worker/scheduler/migrate/postgres，Migration 为一次性动作 | docs/roadmap/内网V1上线实施计划.md | satisfied | `compose.yaml` 包含全部要求服务；`migrate/configure` 位于 tools profile；Run `32622016122` 真实 `run --rm` success |
-| R3 | 根 build context、多阶段 Backend/Frontend、同一 Backend image 支撑正式进程 | docs/roadmap/生产上线实施路线.md | satisfied | 根 `Dockerfile` + Compose `context: .`；Run `32622016122` build/start success |
+| R1 | 建立 V1-A Dockerfile/Compose/服务器配置/宿主检查/Health/隔离 Smoke | docs/roadmap/生产上线实施路线.md | satisfied | `Dockerfile`、`compose.yaml`、`env.production.example`、`prepare_host.py`、`internal-v1a.yml`；最终 V1-A PR Run `32623566835` success |
+| R2 | Compose 至少包含 frontend/api/worker/scheduler/migrate/postgres，Migration 为一次性动作 | docs/roadmap/内网V1上线实施计划.md | satisfied | `compose.yaml` 包含全部要求服务；`migrate/configure` 位于 tools profile；最终 V1-A Run `32623566835` 真实 Golden Path success |
+| R3 | 根 build context、多阶段 Backend/Frontend、同一 Backend image 支撑正式进程 | docs/roadmap/生产上线实施路线.md | satisfied | 根 `Dockerfile` + Compose `context: .`；最终 V1-A Run `32623566835` build/start success |
 | R4 | PostgreSQL/Artifact/log 持久化、Secret RO、PostgreSQL 不发布到普通客户端网络 | docs/roadmap/内网V1上线实施计划.md | satisfied | Golden Path 验证 PG recreate、Artifact marker、宿主 `api.log`、Secret mount `RW=false`、PG/API `PortBindings={}` |
 | R5 | 空库 Migration、真实 readiness、API/Worker/Scheduler 共用配置事实 | docs/roadmap/内网V1上线实施计划.md | satisfied | 空 PG18.4 `alembic upgrade head`；Nginx `/health/ready` 三项 `ok`；Compose 共用 `x-backend-environment` |
 | R6 | 生产不读 `env.local`；TikHub/LLM 不依赖手工 SQL；Provider Config 只保存非敏感配置和 `secret_ref` | docs/roadmap/内网V1上线实施计划.md | satisfied | configure 连续执行/disable/re-enable 通过；DB 只保存 `tikhub_api_key` ref；Unit 覆盖 LLM absent/partial/missing-secret/configured |
 | R7 | 保留 `/data/AIMA_UGC` 宿主模型并与 Release 解耦 | docs/appendix/生产部署与离线Release方案.md | satisfied | `prepare_host.py`/env 模板固定批准目录；Golden Path 验证实际 bind source/target 与持久事实 |
-| R8 | 不提前进入 V1-B、完整离线 Release、认证或协调 Backup/Restore | docs/roadmap/内网V1上线实施计划.md | satisfied | Roadmap 明确 V1-B 为下一单元且后续能力继续延期；本 PR 无相关 Contract/Schema/业务扩展 |
-| R9 | 合并前执行 L3 Requirement/Completion/Review/CI 门禁，不绕过 PR/CI/Branch Protection | AGENTS.md | satisfied | Requirement Review + Code Quality Review 已完成；实现 HEAD `72e54549` 的 CI `32622016148`、V1-A `32622016122`、Stage8F `32622016181`、Stage6/7/Audit/Local Dev 均 success；本状态提交仍由 Completion Gate 验证后才转 Ready/merge |
+| R8 | 不提前进入 V1-B、完整离线 Release、认证或协调 Backup/Restore | docs/roadmap/内网V1上线实施计划.md | satisfied | Roadmap 明确 V1-B 为下一单元且后续能力继续延期；实现 PR 无相关 Contract/Schema/业务扩展 |
+| R9 | 合并前执行 L3 Requirement/Completion/Review/CI 门禁，不绕过 PR/CI/Branch Protection | AGENTS.md | satisfied | Requirement Review + Code Quality Review 完成；最终实现 HEAD `3eb388c2a9e9cfa4b8dd36cafc722cfbf5f452b4` 的全部永久 PR workflow success；PR #164 正常合并为 main `2429419f58aa31939d9bbdaf50d5e0b97198c547` |
 
 # Validation Matrix
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
-| Browser Mock Acceptance | not_applicable | 无页面业务行为变更；Stage 8F Run `32622016181` 仍 success |
-| Backend/API/PostgreSQL Integration | required | CI `32622016148` Stage2/3A success；V1-A `32622016122` 真实 PG18.4、Migration、Provider Config、Readiness、持久化 success |
-| Contract / Generated Client | not_applicable | 无公共 Contract 变更；CI `32622016148` generated contract/client drift check success |
-| Real Full-stack Golden Path | required | V1-A `32622016122`：Docker build → PG → migrate/configure → API/Worker/Scheduler → Nginx → readiness → mount/port/persistence assertions success |
+| Browser Mock Acceptance | not_applicable | 无页面业务行为变更；最终 Stage 8F Run `32623566821` success |
+| Backend/API/PostgreSQL Integration | required | 最终 CI Run `32623566843` Stage2/3A success；V1-A `32623566835` 真实 PG18.4、Migration、Provider Config、Readiness、持久化 success |
+| Contract / Generated Client | not_applicable | 无公共 Contract 变更；最终 CI `32623566843` generated contract/client drift check success |
+| Real Full-stack Golden Path | required | 最终 V1-A `32623566835`：Docker build → PG → migrate/configure → API/Worker/Scheduler → Nginx → readiness → mount/port/persistence assertions success |
 | Real Provider Probe | not_applicable | 未修改 TikHub endpoint/字段/分页/Capability；真实付费 Provider/LLM Smoke 正式归属 V1-B，本 Change 未发起真实 Provider 请求 |
-| Docs / Governance / Other | required | 总 CI `32622016148` repository/docs/secret/static gates success；Roadmap/部署文档已同步；本次提交由 Change Completion Gate 再验证 |
+| Docs / Governance / Other | required | 最终 CI `32623566843`、Completion Gate `32623566851`、Audit `32623566863` success；Roadmap/部署文档/AGENTS 已同步 |
 
 # Completion Audit
 
@@ -129,7 +131,8 @@ Secret 目录整体 RO；应用以 supplementary group 读取，PostgreSQL passw
 2. `docker compose port` 对仅 `expose` 的服务可能返回 `:0`；安全断言改读 Docker `HostConfig.PortBindings`。
 3. `prepare_host.py` 原先会静默接受相对 `--root`，且 symlink 边界不完整；增加显式绝对路径/符号链接校验和回归测试。
 4. 补充 LLM fail-closed 与 Provider Config 重复/disable/re-enable 幂等验证。
-5. PR 当前无 review thread；未发现未解决的严重/重要问题。
+5. 合并前复核发现根 `AGENTS.md` 仍有“当前没有 Dockerfile/Compose”的旧机器事实说明；在同一实现 PR 中同步为 V1-A 已建立最小容器基础，并重新跑最终 HEAD 全套 PR CI。
+6. PR 合并前无未解决 review thread；未发现未解决的严重/重要问题。
 
 # 验证证据
 
@@ -137,19 +140,21 @@ Secret 目录整体 RO；应用以 supplementary group 读取，PostgreSQL passw
 
 - CI #2236 / Run `32620834668`：新增目标测试因 `ModuleNotFoundError: aima_ugc.bootstrap.internal_v1` 失败；同轮 PostgreSQL 正常，证明失败来自目标能力不存在。
 
-## Green（实现 HEAD `72e54549907c2a174e9f7fae203881d0d97f5643`）
+## 最终 Green（PR HEAD `3eb388c2a9e9cfa4b8dd36cafc722cfbf5f452b4`）
 
-- Internal V1-A #16 / Run `32622016122`：success；覆盖宿主准备、Compose config、真实 build、空库 Migration、configure 幂等/disable/re-enable、PG 重建持久化、正式进程、Nginx readiness、UID/mount/PortBindings、Artifact/log/PG 宿主事实。
-- CI #2253 / Run `32622016148`：success；Windows bootstrap、Stage3A DB、Stage2 Platform、Stage1 repository/Wheel/Frontend 全绿。
-- Stage8F #380 / `32622016181`：success。
-- Stage6 #250 / `32622016110`：success。
-- Stage7 Provider Config `32622016100`、Keyword Packs `32622016133`、Scheduler `32622016139`、Plan Snapshot `32622016152`：success。
-- Stage1-7 Audit `32622016156`：success。
-- Local Dev `32622016094`：success。
-- Change Completion Gate #99 的唯一失败原因是当时 Active Change 仍为 `in_progress`；#100 的唯一失败原因是 R8/R9 Source 误写成两个路径拼接字符串。当前文件已改成每条 Requirement 一个真实仓库 Source，等待新 Gate 验证。
+- Change Completion Gate #102 / Run `32623566851`：success。
+- CI #2256 / Run `32623566843`：success；Windows bootstrap、Stage3A Database、Stage2 Platform、Stage1 repository checks/Wheel/Frontend checks 全部 success。
+- Internal V1-A #19 / Run `32623566835`：success；覆盖宿主准备、Compose config、真实 build、空库 Migration、configure 幂等/disable/re-enable、PG 重建持久化、正式进程、Nginx readiness、UID/mount/PortBindings、Artifact/log/PG 宿主事实。
+- Stage8F #383 / Run `32623566821`：success。
+- Stage6 #253 / Run `32623566868`：success；PostgreSQL、Quality、Unit 三个 Job 全部 success。
+- Stage7 Provider Config #1978 / `32623566859`、Keyword Packs #1865 / `32623566831`、Scheduler #2205 / `32623566826`、Plan Snapshot #1863 / `32623566827`：success。
+- Stage1-7 Audit #1080 / Run `32623566863`：success。
+- Local Dev #79 / Run `32623566830`：success。
+- GitHub PR #164 从 Draft 转 Ready 后，按 expected head `3eb388c2a9e9cfa4b8dd36cafc722cfbf5f452b4` 正常 merge；merge commit `2429419f58aa31939d9bbdaf50d5e0b97198c547`，随后确认 `main` 指向该 commit。
 
 # 文档同步
 
+- `AGENTS.md`：同步 V1-A 已存在根 Dockerfile/Compose 的当前系统基线，同时明确完整离线 Release、Digest/SBOM/签名和协调 Backup-Restore 仍未完成。
 - `docs/环境运行与部署.md`：新增实际 V1-A 部署顺序、Secret/Config 边界，并明确不是完整 Production Release。
 - `docs/appendix/生产部署与离线Release方案.md`：Docker/Compose 基础更新为已实现；Stage11 改为直接复用/加强 V1-A；完整离线 Release/Auth/Backup Restore 保持待实现。
 - `docs/roadmap/内网V1上线实施计划.md`：V1-A 已完成，Internal V1-B 为下一正式单元。
@@ -165,10 +170,11 @@ Secret 目录整体 RO；应用以 supplementary group 读取，PostgreSQL passw
 
 # 交付状态
 
-- Branch：`feature/internal-v1a-deployable-stack`
-- PR：#164（Draft；Completion Gate 绿后转 Ready）
-- 已验证实现 HEAD：`72e54549907c2a174e9f7fae203881d0d97f5643`
-- [ ] 当前 `ready_for_review` 状态提交通过 Completion Gate 后，转 PR Ready；最新 PR HEAD 所有永久 CI 全绿后正常合并 main。
-- [ ] 合并后从最新 main 创建独立归档 Change，将本 Active Change 移入 `changes/archive/2026-08/` 并标记 `done`，通过归档 PR/CI 后正常合并。
+- 实现 Branch：`feature/internal-v1a-deployable-stack`
+- 实现 PR：#164，已正常合并到 `main`。
+- 最终实现 HEAD：`3eb388c2a9e9cfa4b8dd36cafc722cfbf5f452b4`。
+- Main merge commit：`2429419f58aa31939d9bbdaf50d5e0b97198c547`。
+- 归档 Branch：`chore/archive-internal-v1a`，只负责把本 Change 从 `changes/active/` 移入 `changes/archive/2026-08/` 并保持本文件为 `done`。
+- Roadmap 下一最小正式单元：Internal V1-B。
 
-发布定义：Internal V1-A 只完成仓库级可部署环境，不等同于 V1-B 公司服务器验收，也不等同于完整 Production Go-Live。
+发布定义：Internal V1-A 只完成仓库级最小可部署环境，不等同于 V1-B 公司服务器验收，也不等同于完整 Production Go-Live。
