@@ -25,6 +25,7 @@ from local_runtime import (
     ensure_env_local,
     ensure_postgres_container,
     load_local_dev_config,
+    migrate_legacy_internal_secrets,
     prepare_cursor_secrets,
     prepare_runtime_directories,
     repository_root,
@@ -83,9 +84,10 @@ def _run(
 
     paths = runtime_paths(root)
     prepare_runtime_directories(paths)
+    migrate_legacy_internal_secrets(paths)
     prepare_cursor_secrets(paths)
     print(f"[OK] Runtime directories: {paths.runtime}")
-    print("[OK] Cursor secrets")
+    print("[OK] Internal secrets")
 
     ensure_postgres_container(paths)
     print("[OK] PostgreSQL 18.4: aima-ugc-postgres-dev @ 127.0.0.1:5432")
