@@ -98,3 +98,51 @@ def test_backend_postgres_cleanup_logs_exact_container_status(
     backend._stop_postgres_for_backend()
 
     assert expected in capsys.readouterr().out
+
+
+def test_backend_ctrl_c_stops_children_then_postgres(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    cleanup_order: list[str] = []
+    config = local_runtime.LocalDevConfig(
+        tikhub_base_url="https://api.tikhub.io",
+        tikhub_api_key=None,
+        llm_base_url=None,
+        llm_provider_name=None,
+        llm_model=None,
+        llm_api_key=None,
+        scheduler_enabled=False,
+        unknown_keys=(),
+    )
+
+    monkeypatch.setattr(backend, "prepare_runtime_directories", lambda _paths: None)
+    monkeypatch.setattr(backend, "prepare_cursor_secrets", lambda _paths: None)
+    monkeypatch.setattr(backend, "ensure_postgres_container", lambda _paths: None)
+    monkeypatch.setattr(backend, "build_runtime_environment", lambda **_kwargs: {})
+    monkeypatch.setattr(backend, "_run_migration", lambda **_kwargs: None)
+    monkeypatch.setattr(backend, "_provision_tikhub", lambda **_kwargs: False)
+    monkeypatch.setattr(backend, "_print_feature_status", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        backend,
+        "_start_child",
+        lambda name, *_args, **_kwargs: backend.ChildProcess(name, object()),
+    )
+    monkeypatch.setattr(
+        backend,
+        "_wait_for_ready",
+        lambda _children: (_ for _ in ()).throw(KeyboardInterrupt()),
+    )
+    monkeypatch.setattr(
+        backend,
+        "_stop_child",
+        lambda child: cleanup_order.append(child.name),
+    )
+    monkeypatch.setattr(
+        backend,
+        "_stop_postgres_for_backend",
+        lambda: cleanup_order.append("PostgreSQL"),
+    )
+
+    assert backend._run(root=tmp_path, config=config, env_created=False, prepare_only=False) == 0
+    assert cleanup_order == ["API", "Worker", "PostgreSQL"]
