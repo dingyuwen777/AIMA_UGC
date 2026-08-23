@@ -5,6 +5,8 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
 
 def _load_local_runtime() -> ModuleType:
     path = Path(__file__).resolve().parents[3] / "scripts" / "dev" / "local_runtime.py"
@@ -82,7 +84,7 @@ def test_local_config_marks_partial_llm_without_failing_base_runtime(tmp_path: P
     assert config.llm_partially_configured is True
 
 
-def test_runtime_environment_materializes_optional_secrets_not_secret_env_vars(
+def test_runtime_environment_uses_separate_internal_and_external_secret_roots(
     tmp_path: Path,
 ) -> None:
     env_path = tmp_path / "env.local"
@@ -100,13 +102,55 @@ def test_runtime_environment_materializes_optional_secrets_not_secret_env_vars(
 
     environment = build_runtime_environment(paths=paths, config=config)
 
+    assert paths.internal_secrets == tmp_path / ".runtime" / "internal-secrets"
+    assert paths.external_secrets == tmp_path / ".runtime" / "secrets"
+    assert paths.tikhub_secret_file.parent == paths.external_secrets
+    assert paths.llm_secret_file.parent == paths.external_secrets
+    assert paths.postgres_password_file.parent == paths.internal_secrets
     assert paths.tikhub_secret_file.read_text(encoding="utf-8").strip() == "tikhub-local-key"
     assert paths.llm_secret_file.read_text(encoding="utf-8").strip() == "llm-local-key"
+    assert environment["AIMA_SECRET_DIR"] == str(paths.internal_secrets)
+    assert environment["AIMA_EXTERNAL_SECRET_DIR"] == str(paths.external_secrets)
     assert environment["AIMA_LLM_BASE_URL"] == "https://llm.example/v1"
     assert environment["AIMA_LLM_PROVIDER_NAME"] == "fixture"
     assert environment["AIMA_LLM_MODEL"] == "fixture-model"
     assert "AIMA_LLM_API_KEY" not in environment
     assert "AIMA_TIKHUB_API_KEY" not in environment
+
+
+def test_legacy_internal_secrets_are_moved_without_rotation(tmp_path: Path) -> None:
+    paths = runtime_paths(tmp_path)
+    prepare_runtime_directories(paths)
+    legacy_values = {
+        "postgres_password": "p" * 48,
+        "import_batch_cursor_signing_key": "i" * 64,
+        "content_cursor_signing_key": "c" * 64,
+        "collection_runtime_cursor_signing_key": "r" * 64,
+    }
+    for name, value in legacy_values.items():
+        (tmp_path / ".runtime" / "secrets" / name).write_text(f"{value}\n", encoding="utf-8")
+
+    _LOCAL_RUNTIME.migrate_legacy_internal_secrets(paths)
+
+    for name, value in legacy_values.items():
+        migrated = paths.internal_secrets / name
+        legacy = paths.external_secrets / name
+        assert migrated.read_text(encoding="utf-8").strip() == value
+        assert not legacy.exists()
+
+
+def test_conflicting_legacy_and_internal_secret_fails_closed(tmp_path: Path) -> None:
+    paths = runtime_paths(tmp_path)
+    prepare_runtime_directories(paths)
+    paths.postgres_password_file.write_text(f"{'n' * 48}\n", encoding="utf-8")
+    legacy = paths.external_secrets / "postgres_password"
+    legacy.write_text(f"{'o' * 48}\n", encoding="utf-8")
+
+    with pytest.raises(LocalDevError, match="postgres_password"):
+        _LOCAL_RUNTIME.migrate_legacy_internal_secrets(paths)
+
+    assert paths.postgres_password_file.read_text(encoding="utf-8").strip() == "n" * 48
+    assert legacy.read_text(encoding="utf-8").strip() == "o" * 48
 
 
 def test_frontend_dependency_fingerprint_detects_lock_change(tmp_path: Path) -> None:
