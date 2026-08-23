@@ -47,6 +47,38 @@
 
 任务开始时按 Skill 判定 L1–L3。L2/L3 先写计划并创建/认领要求的 Change。仓库存在 `openspec/` 后，涉及新能力、行为、数据、接口、架构或安全变化的任务必须按当前 OpenSpec 规则更新对应 change 并通过校验；纯机械文档/格式任务按 Skill 例外处理。不得自行创建与 OpenSpec 工具产物冲突的平行目录。
 
+### 正式单元完成定义追溯门禁
+
+对新建的 L2/L3 Change，尤其是 Stage / 子 Stage / Roadmap 正式开发单元，必须遵守：
+
+```text
+用户已确认决定 / 正式 Roadmap / Spec / Stage 完成定义
+→ Requirement Traceability
+→ 当前 Change
+→ 实现 / 测试 / 文档
+→ Completion Audit
+→ 两阶段 Review
+→ Ready Check / CI
+```
+
+硬规则：
+
+1. 新 Change 模板默认 `completion_gate: required`；机制引入前没有该标记的历史/既有 `rvc-change/v1` 作为 legacy 保持兼容，不批量改写历史；
+2. 当前 Change 是施工契约，**不能作为自身的上游需求全集**；编码前从本轮用户明确决定和仓库正式上游事实源逐条建立 `Requirement Traceability`；
+3. 每条 Requirement 只能是 `satisfied / explicitly_deferred / not_applicable / not_satisfied`；Ready 前 `not_satisfied` 必须清零，延期/不适用必须有正式依据；
+4. 进入 `ready_for_review` 前必须重新读取上游事实源，独立重建完成定义，再比较“上游要求 → Change”和“Change → 实现/测试/文档”；不能因为当前 Change checkbox、测试或 CI 全绿就跳过这一步；
+5. 对存在前后端、生产者/消费者、异步状态或跨页面结果的任务，Completion Audit 还必须执行适用的反向能力审计，例如“后端能力 → 前端入口”和“前端动作 → 后端真实支持”；没有对应边界时记录不适用依据，不制造机制；
+6. Agent 负责主动发现遗漏，不能把用户后续提醒当成完成定义检查机制；
+7. Ready 前运行：
+
+```bash
+python .agents/skills/reliable-vibe-coding/scripts/ready_check.py --root . --require-active-ready
+```
+
+机器 Ready Check 只验证可机器判断的结构、状态、Source 路径、占位符和 Completion Audit checkbox；它不能证明业务语义完整，因此不能替代 Requirement Traceability 和语义 Review。
+
+详细规则：`.agents/skills/reliable-vibe-coding/references/completion-gate.md`。
+
 ## 2. 系统基线
 
 以下长期方案不得被普通任务静默改变：
@@ -103,7 +135,7 @@ Stage 11 实现 Docker/Compose 时，唯一 `Dockerfile` 与 Docker build contex
 [步骤]
 → 修改范围：[文件 / 模块]
 → 预期结果：[可观察行为]
-→ 验证方式：[命令 / 检查]
+→ 验证方式：[命令 / 检查项]
 ```
 
 能从仓库确认的事实不反问；发现用户前提与当前代码冲突时先指出证据。
@@ -519,12 +551,16 @@ revert/
 
 ## 16. Review 和交付
 
-复杂任务先检查需求符合性，再检查代码质量。严重和重要问题未解决不得合并。
+复杂任务先执行上游 Requirement Completeness Review，再检查当前 Change 的需求符合性，最后检查代码质量。严重和重要问题未解决不得合并。
+
+对 `completion_gate: required` 的 Change，`ready_for_review` 前必须完成 Requirement Traceability、Completion Audit，并取得 `ready_check.py` 与 CI 的机器门禁证据。测试或 CI 绿色不能单独证明正式 Stage / Roadmap 单元完成。
 
 完成结论必须有本轮实际证据。交付至少报告：
 
 - 变更摘要；
 - 逐文件/按类别目的；
+- 上游 Requirement Traceability 与成功标准；
+- Completion Audit / 两阶段 Review；
 - Contract/数据库变化；
 - 文档同步及依据；
 - 实际验证命令、退出码和结果；
