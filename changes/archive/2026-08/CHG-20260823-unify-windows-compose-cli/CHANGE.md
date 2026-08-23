@@ -132,7 +132,7 @@ Windows、文档与 CI 直接表达真实运行命令；只保留真正必要的
 | R2 | 增加明确的本地 Compose 停止命令 | user:windows-compose-stop | satisfied | `docs/02_环境运行与部署.md`、Guide 03/04、`env.production.example` 固化标准 `down`，并明确 named-volume 保留语义 |
 | R3 | 删除无用 CMD / PowerShell wrapper | user:remove-wrappers | satisfied | `scripts/dev/` 已无两个 wrapper；PR #179 diff 两文件 removed，已合并到 main |
 | R4 | 保持 Windows named-volume 与 Linux/Production 部署规范 | docs/roadmap/02_生产上线实施路线.md | satisfied | Final Ready Windows Runtime `32644737900` success；Internal V1-A `32644737868` success；`compose.yaml` / `compose.windows.yaml` 未修改 |
-| R5 | L3 Completion Audit、Review、Ready/CI 门禁 | AGENTS.md | satisfied | Final Ready HEAD `688d28b6af516bbe9466c76958d10849eb8097c1` 的 11 个永久工作流全部 success；PR #179 merge `be31e05c6e9136e98f5651dc46446f1e77806bfa`；本归档 PR 继续作为最后门禁 |
+| R5 | L3 Completion Audit、Review、Ready/CI 门禁 | AGENTS.md | satisfied | Final Ready HEAD `688d28b6af516bbe9466c76958d10849eb8097c1` 的 11 个永久工作流全部 success；PR #179 merge `be31e05c6e9136e98f5651dc46446f1e77806bfa`；归档 PR #180 继续作为最后门禁 |
 
 # Validation Matrix
 
@@ -183,4 +183,4 @@ Final Ready HEAD: `688d28b6af516bbe9466c76958d10849eb8097c1`
 - Implementation Ready HEAD: `688d28b6af516bbe9466c76958d10849eb8097c1`
 - Implementation merge SHA: `be31e05c6e9136e98f5651dc46446f1e77806bfa`
 - Archive branch: `archive/unify-windows-compose-cli`
-- Archive PR: 创建后记录
+- Archive PR: #180
