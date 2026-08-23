@@ -4,24 +4,17 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from functools import wraps
-from typing import ParamSpec
 
 from fastapi import FastAPI
 
 from aima_ugc.bootstrap.analysis_capability_http import (
     install_content_analysis_capability_route,
 )
-from aima_ugc.bootstrap.api import (
-    HealthResponse,
-    ReadinessChecks,
-    ReadinessResponse,
-    create_app as _create_app,
-)
-
-_P = ParamSpec("_P")
+from aima_ugc.bootstrap.api import HealthResponse, ReadinessChecks, ReadinessResponse
+from aima_ugc.bootstrap.api import create_app as _create_app
 
 
-def _with_content_analysis_capability(
+def _with_content_analysis_capability[**_P](
     factory: Callable[_P, FastAPI],
 ) -> Callable[_P, FastAPI]:
     """在最终 API assembly 中增加不泄露 Secret 的 Analysis Capability。"""
