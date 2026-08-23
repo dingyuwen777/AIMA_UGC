@@ -28,42 +28,11 @@ jobs:
 
           path = Path("tests/integration/collection/test_stage8e_collection_http_runtime.py")
           text = path.read_text(encoding="utf-8")
-          broken = '''        connection.execute(
-              insert(content_external_ids_table).values(
-                  content_id=content_id,
-                  id_type="note_id",
-                  external_id=external_content_id,
-                  provider_attempt_id=attempt_id,
-                  raw_artifact_id=artifact_id,
-                  observed_at=now,
-              )
-          )'''
-          # The previous one-off patch was dedented by YAML's block scalar processing.
-          actual_broken = '''        connection.execute(
-    insert(content_external_ids_table).values(
-        content_id=content_id,
-        id_type="note_id",
-        external_id=external_content_id,
-        provider_attempt_id=attempt_id,
-        raw_artifact_id=artifact_id,
-        observed_at=now,
-    )
-)'''
-          fixed = '''        connection.execute(
-            insert(content_external_ids_table).values(
-                content_id=content_id,
-                id_type="note_id",
-                external_id=external_content_id,
-                provider_attempt_id=attempt_id,
-                raw_artifact_id=artifact_id,
-                observed_at=now,
-            )
-        )'''
-          if text.count(actual_broken) != 1:
-              if text.count(fixed) == 1:
-                  raise SystemExit("Stage8E seed is already correctly indented")
-              raise SystemExit("Stage8E broken seed anchor drifted")
-          path.write_text(text.replace(actual_broken, fixed, 1), encoding="utf-8")
+          broken = "        connection.execute(\n    insert(content_external_ids_table).values(\n        content_id=content_id,\n        id_type=\"note_id\",\n        external_id=external_content_id,\n        provider_attempt_id=attempt_id,\n        raw_artifact_id=artifact_id,\n        observed_at=now,\n    )\n)"
+          fixed = "        connection.execute(\n            insert(content_external_ids_table).values(\n                content_id=content_id,\n                id_type=\"note_id\",\n                external_id=external_content_id,\n                provider_attempt_id=attempt_id,\n                raw_artifact_id=artifact_id,\n                observed_at=now,\n            )\n        )"
+          if text.count(broken) != 1:
+              raise SystemExit(f"Stage8E broken seed anchor count={text.count(broken)}")
+          path.write_text(text.replace(broken, fixed, 1), encoding="utf-8")
           PY
 
           python -m py_compile tests/integration/collection/test_stage8e_collection_http_runtime.py
