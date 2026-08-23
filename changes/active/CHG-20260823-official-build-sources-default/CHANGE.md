@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260823-official-build-sources-default
 title: 统一官方镜像身份与国内下载源
 level: L3
-status: in_progress
+status: ready_for_review
 owner: chatgpt
 branch: feature/official-build-sources-default
 created: 2026-08-23
@@ -51,16 +51,16 @@ postgres:18.4
 
 # 可观察成功标准
 
-- [ ] Dockerfile / Compose 的基础容器镜像只使用官方 Docker Hub reference，不包含第三方 registry image reference。
-- [ ] Compose PostgreSQL 固定为 `postgres:18.4`。
-- [ ] 不存在 `AIMA_BUILD_PYTHON_IMAGE`、`AIMA_BUILD_UV_IMAGE`、`AIMA_BUILD_NODE_IMAGE`、`AIMA_BUILD_NGINX_IMAGE`、`AIMA_POSTGRES_IMAGE` 当前配置入口。
-- [ ] Dockerfile 不再依赖 GHCR uv image；`uv==0.12.3` 从可配置 PyPI 下载源安装，并禁止缺少 wheel 时静默源码构建。
-- [ ] Windows `setup_dev_environment.cmd` 首次初始化可配置 Docker Desktop Docker Engine mirrors；Linux `setup_dev_environment.sh` 配置同一候选列表。
-- [ ] 默认 Docker Hub mirror 列表包含 `docker.1panel.live`、`hub.1panel.dev`、`docker.m.daocloud.io`，并设置 `max-download-attempts=5`。
-- [ ] Debian / Debian Security 默认阿里云镜像、PyPI 默认清华 TUNA、npm 默认 npmmirror，并继续允许显式覆盖。
-- [ ] Windows 日常启动/停止仍只使用现有两条标准 Docker Compose 命令；不增加 Compose wrapper、预拉取或 retag 入口。
-- [ ] 镜像和依赖版本、lockfile、业务 Runtime、Schema、Migration、Secret、端口与存储语义不变。
-- [ ] Linux canonical Compose、Windows storage-only Compose、Stage 8F 和相关永久 CI 继续通过。
+- [x] Dockerfile / Compose 的基础容器镜像只使用官方 Docker Hub reference，不包含第三方 registry image reference。
+- [x] Compose PostgreSQL 固定为 `postgres:18.4`。
+- [x] 不存在 `AIMA_BUILD_PYTHON_IMAGE`、`AIMA_BUILD_UV_IMAGE`、`AIMA_BUILD_NODE_IMAGE`、`AIMA_BUILD_NGINX_IMAGE`、`AIMA_POSTGRES_IMAGE` 当前配置入口。
+- [x] Dockerfile 不再依赖 GHCR uv image；`uv==0.12.3` 从可配置 PyPI 下载源安装，并禁止缺少 wheel 时静默源码构建。
+- [x] Windows `setup_dev_environment.cmd` 首次初始化可配置 Docker Desktop Docker Engine mirrors；Linux `setup_dev_environment.sh` 配置同一候选列表。
+- [x] 默认 Docker Hub mirror 列表包含 `docker.1panel.live`、`hub.1panel.dev`、`docker.m.daocloud.io`，并设置 `max-download-attempts=5`。
+- [x] Debian / Debian Security 默认阿里云镜像、PyPI 默认清华 TUNA、npm 默认 npmmirror，并继续允许显式覆盖。
+- [x] Windows 日常启动/停止仍只使用现有两条标准 Docker Compose 命令；未增加 Compose wrapper、预拉取或 retag 入口。
+- [x] 镜像和依赖版本、lockfile、业务 Runtime、Schema、Migration、Secret、端口与存储语义不变。
+- [x] Linux canonical Compose、Windows storage-only Compose、Stage 8F 和相关永久 CI 在审计 HEAD `c3114ee7d756ee9417aaf8c1583bea6b6fab0a77` 通过。
 
 # 范围
 
@@ -105,7 +105,7 @@ docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production
 4. Dockerfile / Compose 不使用第三方 Docker image reference，也不保留 image override 变量。
 5. Docker build 内 Debian / PyPI / npm 可以继续使用国内源，不影响依赖身份和 lockfile。
 6. 为消除 GHCR 特殊下载链路，`uv==0.12.3` 改由 PyPI 安装，基础 OCI 镜像统一到 Docker Hub。
-7. 当前 Docker Hub mirror 候选使用 1Panel 两个入口与 DaoCloud Docker Hub mirror；不采用本机已有实际不稳定证据的 `docker.1ms.run`。
+7. 当前 Docker Hub mirror 候选使用 1Panel 两个入口与 DaoCloud Docker Hub mirror；不采用用户当前机器已有不稳定证据的 `docker.1ms.run`。
 8. 当前用户文档只描述最终运行事实，不记录方案演变过程。
 
 # L3 方案比较
@@ -142,57 +142,77 @@ docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production
 - Docker image reference 继续锁定明确版本，不使用 `latest`；完整 Production provenance 仍由后续 digest/Manifest/SBOM/签名闭环。
 - `uv==0.12.3` 通过 PyPI 安装时要求 binary wheel，避免下载源缺 wheel 时突然引入 Rust 源码构建路径。
 - Python 业务依赖继续受 `uv export --frozen` + hash 校验约束，npm 继续受 lockfile integrity 约束。
-- GitHub Hosted Runner 位于海外，永久 CI 可显式覆盖构建期包下载源为官方上游；该覆盖不改变 Docker image identity。
+- GitHub Hosted Runner 位于海外，永久 CI 显式覆盖构建期包下载源为官方上游；该覆盖不改变 Docker image identity。
+- Windows Hosted Runner 能验证 helper PowerShell 语法和标准 Compose CLI；真实个人 Docker Desktop 的 daemon 配置写入/重启需要在目标开发机首次执行 `scripts\setup_dev_environment.cmd` 后由 `docker info` 验证，不能用 Hosted Runner 冒充该目标机证据。
 
 # Requirement Traceability
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | Dockerfile / Compose 只使用官方 Docker Hub image identity | user:source-change-identity-fixed | not_satisfied | 待最终 diff 与 CI 验证 |
-| R2 | 首次 Windows/Linux 初始化配置多个国内 Docker Hub mirrors，日常无需改源 | user:first-setup-configures-mirrors | not_satisfied | 待脚本与目标机/CI 验证 |
-| R3 | 日常仅保留标准 Docker Compose 启动/停止命令 | user:compose-only-daily-entry | not_satisfied | 待文档与 Compose CI 验证 |
-| R4 | 消除 GHCR uv image，uv 固定版本改由 PyPI 下载 | user:resolve-ghcr-with-pypi | not_satisfied | 待 Docker build 验证 |
-| R5 | Debian/PyPI/npm 默认国内源且不改变锁定依赖身份 | user:domestic-build-package-sources | not_satisfied | 待配置测试与 Docker build 验证 |
-| R6 | 不改变版本、业务 Runtime、持久化、Secret、Schema/Migration | AGENTS.md | not_satisfied | 待 diff 与 CI 验证 |
-| R7 | 保持 Internal V1 / Windows storage-only Compose / Production Release 边界 | docs/roadmap/02_生产上线实施路线.md | not_satisfied | 待文档与永久 CI 验证 |
-| R8 | 完成 L3 Completion Audit、两阶段 Review、Ready Check 与 CI | AGENTS.md | not_satisfied | 待最终交付门禁 |
+| R1 | Dockerfile / Compose 只使用官方 Docker Hub image identity | user:source-change-identity-fixed | satisfied | PR #182 反向审计；`tests/unit/test_docker_build_sources.py`；CI `32651527854` unit suite 589 passed |
+| R2 | 首次 Windows/Linux 初始化配置多个国内 Docker Hub mirrors，日常无需改源 | user:first-setup-configures-mirrors | satisfied | `scripts/setup_dev_environment.cmd`、`scripts/dev/configure_docker_desktop_mirrors.ps1`、`scripts/setup_dev_environment.sh`；Windows workflow `32651527873` 通过 helper 语法与 Compose CLI；目标 Docker Desktop 写入由 helper 自身 `docker info` fail-closed 验证 |
+| R3 | 日常仅保留标准 Docker Compose 启动/停止命令 | user:compose-only-daily-entry | satisfied | `docs/guides/03_Windows Docker Desktop Compose运行.md`；Windows Compose workflow `32651527873`；Internal V1-A `32651527847` |
+| R4 | 消除 GHCR uv image，uv 固定版本改由 PyPI 下载 | user:resolve-ghcr-with-pypi | satisfied | Dockerfile + unit config test；Internal V1-A `32651527847` 完整 Docker build/Runtime 通过；CI `32651527854` 实际从 PyPI wheel 安装 `uv==0.12.3` |
+| R5 | Debian/PyPI/npm 默认国内源且不改变锁定依赖身份 | user:domestic-build-package-sources | satisfied | Dockerfile/Compose/env template + unit config test；PR changed-files 审计确认 `uv.lock` 与 `frontend/package-lock.json` 未变；CI `32651527854` 通过 |
+| R6 | 不改变版本、业务 Runtime、持久化、Secret、Schema/Migration | AGENTS.md | satisfied | PR #182 仅 12 个预期 deployment/config/docs/test 文件；无 Migration/Contract/业务代码/lockfile 变更；CI `32651527854`、Internal V1-A `32651527847` 通过 |
+| R7 | 保持 Internal V1 / Windows storage-only Compose / Production Release 边界 | docs/roadmap/02_生产上线实施路线.md | satisfied | Roadmap 重新读取；`compose.windows.yaml` 未改；Windows Runtime `32651527873`、Stage 8F `32651527827`、Internal V1-A `32651527847` 均通过 |
+| R8 | 完成 L3 Completion Audit、两阶段 Review，并进入 Ready Check / CI 门禁 | AGENTS.md | satisfied | 2026-08-23 完成 upstream re-read、A1/A2、Code Quality Review 与 Completion Audit；本次 `ready_for_review` 提交将由 Change Completion Gate 和全部永久 CI 重新验证，未全绿前 PR 不转 Ready |
 
 # Validation Matrix
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
 | Browser Mock Acceptance | not_applicable | 不修改页面或用户业务交互 |
-| Backend/API/PostgreSQL Integration | required | Internal V1-A Compose Golden Path 验证 PostgreSQL/Migration/Runtime |
-| Contract / Generated Client | not_applicable | 不修改 HTTP Contract/generated client |
-| Real Full-stack Golden Path | required | Stage 8F 与完整 Compose Runtime 回归 |
+| Backend/API/PostgreSQL Integration | required | Internal V1-A `32651527847`：真实 Compose build、PostgreSQL、Migration、API/Worker/Scheduler、Secret 与持久化生命周期通过；CI Stage 2/3A 同时通过 |
+| Contract / Generated Client | not_applicable | 不修改 HTTP Contract/generated client；CI 仍执行 drift/compatibility 检查并通过 |
+| Real Full-stack Golden Path | required | Stage 8F `32651527827` 成功；Internal V1-A `32651527847` 成功 |
 | Real Provider Probe | not_applicable | 不修改 TikHub/LLM Provider 行为或真实字段 |
-| Docs / Governance / Other | required | 配置测试、PowerShell 语法、Windows Compose、Docker build、Completion Gate、文档一致性 |
+| Docs / Governance / Other | required | CI `32651527854`：Ruff、mypy、589 unit + 74 contract + 30 API、docs/secret/architecture checks、frontend tests/build/E2E 全通过；Windows `32651527873` 成功；Ready transition 后再跑 Change Completion Gate |
 
 # Completion Audit
 
-- [ ] upstream_re_read: Ready 前重新读取用户决定、AGENTS、Skill、Blueprint、Roadmap 和当前部署事实。
-- [ ] change_coverage: Ready 前比较上游要求与 R1-R8，确认 Docker Hub image、host mirrors、uv、Debian/PyPI/npm 和日常命令均已覆盖。
-- [ ] reverse_audit: Ready 前反向检查 Dockerfile → Compose → env template → setup scripts → CI → Guide 的一致性，确认没有残留 GHCR uv image、第三方 Docker image reference 或失效 image override。
-- [ ] unresolved_cleared: Ready 前清零 `not_satisfied`，所有 required Validation Matrix 有新鲜证据。
+- [x] upstream_re_read: 2026-08-23 重新读取用户最终决定、AGENTS、Reliable Vibe Coding、completion-gate/verification-review、Blueprint 07、Roadmap Internal V1-A/Stage 11 边界和当前部署文件。
+- [x] change_coverage: 重新从上游构建 R1-R8；Docker Hub image identity、首次 host mirrors、uv、Debian/PyPI/npm、两条日常 Compose 命令、Internal V1/Production 不变量均已进入 Change，没有发现遗漏 requirement。
+- [x] reverse_audit: 反向检查 Dockerfile → Compose → env template → Windows/Linux setup → CI → Guide；无 GHCR uv `FROM`、无第三方 Docker image reference、无失效 image override；`compose.windows.yaml`、locks、Migration/Contract/业务代码均未被修改。
+- [x] unresolved_cleared: R1-R8 全部有实现和当前证据；Browser/Contract/Provider 层按当前边界不适用，required 层均已有新鲜运行证据；真实 Windows Docker Desktop 首次 mirror 写入保留为明确目标机 smoke，不冒充 Hosted Runner 已执行。
 
-# 分步计划
+# Review
 
-1. Red：更新配置测试，覆盖官方 Docker Hub identity、uv PyPI 安装、国内包源默认和 Windows/Linux 多 mirror 初始化目标。
-2. Green：修改 Dockerfile / Compose / env template / setup scripts / CI，使目标测试通过。
-3. 文档：同步 Windows 与 Docker 下载源 Guide，仅保留当前运行事实。
-4. 验证：目标测试、格式/静态检查、PowerShell 语法、Shell/Compose 配置、Internal V1-A、Windows、Stage 8F、总 CI。
-5. Review：重新读取上游完成定义，执行 Completion Audit、Requirement Review A1/A2、Code Quality Review 与 Ready Check。
-6. Git：永久 CI 全绿后转 Ready；未经用户明确授权不合并 main。
+## Requirement Review A1：上游要求 → Change
 
-# 当前验证证据
+通过。用户最终明确的“首次 setup 配置 mirrors、日常只用标准 Compose、镜像身份固定官方、uv 去 GHCR、Docker build 包源继续国内、文档只写当前事实”全部映射到 R1-R8。Roadmap 的 canonical Compose、Windows storage-only 和完整 Production Release 后续边界均被保留。
 
-- 旧设计第三次 Red：单元测试曾在生产配置仍为第三方 image / 官方包源默认时执行并暴露目标差异；其后方案被用户进一步收敛为本 Change 当前设计。
-- 当前设计 Red：提交 `d7778ff82d3afe8d42879661fbfaee4fb24f9d8c` 先更新测试；待读取对应 CI 执行结果后记录有效 Red 证据。
-- 当前 Green 实现已写入分支，最终验证尚未完成。
-- `docs/02_环境运行与部署.md` 当前未包含 GHCR/image override/包源默认等冲突事实，因此本 Change 不强制改写该总入口；直接运行事实由 env template 与两份 Guide 维护。
+## Requirement Review A2：Change → 实现 / 测试 / 文档
+
+通过。12 个 PR 变更文件与 affected_paths 一致；镜像 identity、host mirror、package source、Windows/Linux 首次初始化、CI 和 Guide 的事实一致。完整 Compose build/Runtime 与 Windows storage model 均有当前运行证据。
+
+## Code Quality Review
+
+通过，无阻断问题。实现没有增加日常 wrapper、retag 或第二套 Compose Runtime；Windows helper 合并并备份现有 daemon JSON，重启后 fail-closed 验证 mirrors；Linux 复用既有 daemon 合并/备份/validate/安全重启机制。依赖版本、locks、Schema/Migration、业务 API 和 Secret 语义未变化。
+
+现有 CI 仍报告与本 Change 无关的已知 warning：XLSX 重复成员安全测试 warning、Starlette TestClient deprecation warning、npm 依赖 deprecation/install-script 提示；本 Change 不升级依赖以避免扩大范围。
+
+# 验证证据
+
+审计 HEAD：`c3114ee7d756ee9417aaf8c1583bea6b6fab0a77`
+
+- CI `32651527854`: success。
+  - Ruff format: 458 files already formatted；Ruff check passed；mypy 235 source files 无错误。
+  - Unit: 589 passed，1 warning。
+  - Contract: 74 passed。
+  - API: 30 passed，1 warning。
+  - Frontend unit: 34 passed；Playwright E2E: 13 passed；frontend build success；npm audit 0 vulnerabilities。
+- Internal V1-A `32651527847`: success；Compose topology、`up -d --build --wait` lifecycle、repo-relative host root 均通过。
+- Windows Docker Desktop Compose Compatibility `32651527873`: success；Windows CMD/PowerShell Compose CLI、helper PowerShell syntax、named-volume Runtime、restart persistence 均通过。
+- Stage 8F `32651527827`: success。
+- Local Dev Bootstrap `32651527802`: success。
+- Stage 6 / Stage 7 相关永久 workflows：当前审计 HEAD 全部 success。
+- 当前设计 Red 提交 `d7778ff82d3afe8d42879661fbfaee4fb24f9d8c` 在执行目标断言前被 Ruff format gate 阻断，因此不计有效行为 Red；不伪造 TDD 证据。最终配置/部署行为以当前 Green unit/config checks + 真实 Compose Runtime 证据验收。
+
+`docs/02_环境运行与部署.md` 当前没有与本 Change 直接冲突的 GHCR/image override/包源默认事实，因此未为本 Change强制改写；准确运行事实由 `env.production.example` 与两份直接 Guide 维护。
 
 # Git / 交付
 
 - Branch: `feature/official-build-sources-default`
 - Draft PR: #182
-- Merge: 未授权；Ready 后等待用户明确指令
+- Merge: 未授权；全部新 HEAD 门禁通过后只转 Ready，不合并 main
