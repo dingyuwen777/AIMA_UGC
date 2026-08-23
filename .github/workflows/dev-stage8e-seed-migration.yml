@@ -1,0 +1,94 @@
+name: Dev Stage8E Seed Migration
+
+on:
+  push:
+    branches:
+      - feature/provider-lookup-supplement-eligibility
+    paths:
+      - ".github/workflows/dev-stage8e-seed-migration.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/provider-lookup-supplement-eligibility
+          fetch-depth: 0
+
+      - name: Migrate Stage 8E import seed to typed lookup identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("tests/integration/collection/test_stage8e_collection_http_runtime.py")
+          text = path.read_text(encoding="utf-8")
+
+          old_import = '''from aima_ugc.modules.content.extended_tables import (
+              comment_thread_coverage_observations_table,
+          )'''
+          new_import = '''from aima_ugc.modules.content.extended_tables import (
+              comment_thread_coverage_observations_table,
+              content_external_ids_table,
+          )'''
+          if text.count(old_import) != 1:
+              raise SystemExit("Stage8E extended_tables import anchor drifted")
+          text = text.replace(old_import, new_import, 1)
+
+          old_seed = '''        connection.execute(
+              insert(content_versions_table).values(
+                  id=uuid4(),
+                  content_id=content_id,
+                  version_no=1,
+                  content_type="image",
+                  title=title,
+                  provider_attempt_id=attempt_id,
+                  raw_artifact_id=artifact_id,
+                  observed_at=now,
+              )
+          )
+              return batch_id, content_id'''
+          new_seed = '''        connection.execute(
+              insert(content_versions_table).values(
+                  id=uuid4(),
+                  content_id=content_id,
+                  version_no=1,
+                  content_type="image",
+                  title=title,
+                  provider_attempt_id=attempt_id,
+                  raw_artifact_id=artifact_id,
+                  observed_at=now,
+              )
+          )
+              connection.execute(
+              insert(content_external_ids_table).values(
+                  content_id=content_id,
+                  id_type="note_id",
+                  external_id=external_content_id,
+                  provider_attempt_id=attempt_id,
+                  raw_artifact_id=artifact_id,
+                  observed_at=now,
+              )
+          )
+              return batch_id, content_id'''
+          if text.count(old_seed) != 1:
+              raise SystemExit("Stage8E import content seed anchor drifted")
+          path.write_text(text.replace(old_seed, new_seed, 1), encoding="utf-8")
+          PY
+
+          git diff --check
+
+      - name: Commit migrated test seed
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add tests/integration/collection/test_stage8e_collection_http_runtime.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "迁移Stage8E补采测试种子身份"
+          git push origin HEAD:feature/provider-lookup-supplement-eligibility
