@@ -99,7 +99,9 @@ def _verify_versions(*, root: Path, node: str, npm: str) -> None:
     if actual_node != expected_node:
         raise LocalDevError(f"Node 版本不匹配：当前 {actual_node}，仓库要求 {expected_node}。")
     if not expected_npm or actual_npm != expected_npm:
-        raise LocalDevError(f"npm 版本不匹配：当前 {actual_npm}，仓库要求 {expected_npm or '未知'}。")
+        raise LocalDevError(
+            f"npm 版本不匹配：当前 {actual_npm}，仓库要求 {expected_npm or '未知'}。"
+        )
     print(f"[OK] Node {actual_node} / npm {actual_npm}")
 
 
