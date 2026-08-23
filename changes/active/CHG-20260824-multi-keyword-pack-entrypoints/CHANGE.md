@@ -94,12 +94,10 @@ data_changes: []
 
 # Completion Audit
 
-- [x] upstream_re_read
-- [x] change_coverage
-- [x] reverse_audit
-- [x] unresolved_cleared
-
-审计结论：已重新读取当前分支 `AGENTS.md`、Reliable Vibe Coding 规则和相关实现；用户最终决定已纳入 R5。前端上传/Manual Discovery 到后端 Contract、Job/Run 冻结链路双向一致；Batch Supplement 没有被扩展为关键词搜索；没有发现仍需用户决策的范围内事项。
+- [x] upstream_re_read：已重新读取当前分支 `AGENTS.md`、Reliable Vibe Coding 规则和本次相关正式事实源，并独立重建完成定义。
+- [x] change_coverage：已确认 Excel Import、Manual Discovery、多词包 OR、Batch Supplement 不变、Collection Plan 保持和移除旧 Payload 兼容均进入当前 Change。
+- [x] reverse_audit：已从前端入口反查后端 Contract/冻结链路，并从后端能力反查前端入口；Batch Supplement 未被扩展为关键词搜索，Validation Matrix 各层与实际边界一致。
+- [x] unresolved_cleared：R1—R5 均为 satisfied；没有范围内未决事项、延期项或无依据的不适用项。
 
 # 任务
 
@@ -117,7 +115,7 @@ data_changes: []
 
 - Dev Multi Keyword Pack Runner：Contract 生成、Orval 生成、Ruff、mypy（235 source files）、前端 lint/typecheck、Alembic upgrade、目标 API/PostgreSQL ingestion、前端 Vitest 均执行成功后提交正式实现。
 - 移除旧 Payload 兼容后的第一次 Stage 3A Integration 正确暴露一个过期测试断言：业务 Job 已 succeeded，但测试仍访问已删除的 `payload.relevance`，结果 `1 failed, 4 passed`；随后将断言改为确认 `relevance` 不存在。最终永久 CI 必须在当前 HEAD 重新通过后方可合并。
-- Completion Gate 的 RVC 自测 14/14 通过；前两次 Gate 分别发现 Change frontmatter 缺 `depends_on`、`data_changes` 类型不合法，均按机器门禁修正；等待当前 HEAD 复验。
+- Completion Gate 的 RVC 自测 14/14 通过；前序 Gate 分别发现 Change frontmatter/Completion Audit 格式问题，均按仓库模板逐项修正；当前 HEAD 等待最终复验。
 
 ## 最终门禁
 
