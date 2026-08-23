@@ -9,7 +9,7 @@ ARG AIMA_BUILD_NGINX_IMAGE=docker.1ms.run/library/nginx:1.30.4-alpine3.24
 FROM ${AIMA_BUILD_UV_IMAGE} AS uv-bin
 
 FROM ${AIMA_BUILD_PYTHON_IMAGE} AS backend-builder
-ARG AIMA_BUILD_PYPI_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple
+ARG AIMA_BUILD_PYPI_INDEX=https://mirrors.aliyun.com/pypi/simple
 COPY --from=uv-bin /uv /uvx /bin/
 ENV UV_PYTHON_DOWNLOADS=0 \
     UV_LINK_MODE=copy
@@ -41,8 +41,8 @@ RUN uv export \
       /tmp/dist/*.whl
 
 FROM ${AIMA_BUILD_PYTHON_IMAGE} AS backend
-ARG AIMA_BUILD_DEBIAN_MIRROR=https://mirrors.tuna.tsinghua.edu.cn/debian
-ARG AIMA_BUILD_DEBIAN_SECURITY_MIRROR=https://mirrors.tuna.tsinghua.edu.cn/debian-security
+ARG AIMA_BUILD_DEBIAN_MIRROR=https://mirrors.aliyun.com/debian
+ARG AIMA_BUILD_DEBIAN_SECURITY_MIRROR=https://mirrors.aliyun.com/debian-security
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
