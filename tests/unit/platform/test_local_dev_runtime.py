@@ -1,21 +1,37 @@
 from __future__ import annotations
 
+import importlib.util
+import sys
 from pathlib import Path
-
-from scripts.dev.local_runtime import (
-    LocalDevError,
-    build_runtime_environment,
-    ensure_env_local,
-    frontend_dependencies_stale,
-    load_local_dev_config,
-    parse_env_file,
-    prepare_runtime_directories,
-    record_frontend_lock_fingerprint,
-    runtime_paths,
-)
+from types import ModuleType
 
 
-def test_env_local_is_created_from_template_and_parser_preserves_secret_equals(tmp_path: Path) -> None:
+def _load_local_runtime() -> ModuleType:
+    path = Path(__file__).resolve().parents[3] / "scripts" / "dev" / "local_runtime.py"
+    spec = importlib.util.spec_from_file_location("aima_test_local_runtime", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"无法加载本地开发 helper：{path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_LOCAL_RUNTIME = _load_local_runtime()
+LocalDevError = _LOCAL_RUNTIME.LocalDevError
+build_runtime_environment = _LOCAL_RUNTIME.build_runtime_environment
+ensure_env_local = _LOCAL_RUNTIME.ensure_env_local
+frontend_dependencies_stale = _LOCAL_RUNTIME.frontend_dependencies_stale
+load_local_dev_config = _LOCAL_RUNTIME.load_local_dev_config
+parse_env_file = _LOCAL_RUNTIME.parse_env_file
+prepare_runtime_directories = _LOCAL_RUNTIME.prepare_runtime_directories
+record_frontend_lock_fingerprint = _LOCAL_RUNTIME.record_frontend_lock_fingerprint
+runtime_paths = _LOCAL_RUNTIME.runtime_paths
+
+
+def test_env_local_is_created_from_template_and_parser_preserves_secret_equals(
+    tmp_path: Path,
+) -> None:
     template = tmp_path / "env.local.example"
     template.write_text(
         "# comment\nAIMA_TIKHUB_API_KEY='abc==123'\nAIMA_DEV_ENABLE_SCHEDULER=false\n",
@@ -56,9 +72,7 @@ def test_local_config_keeps_optional_features_disabled_when_blank(tmp_path: Path
 def test_local_config_marks_partial_llm_without_failing_base_runtime(tmp_path: Path) -> None:
     env_path = tmp_path / "env.local"
     env_path.write_text(
-        "AIMA_LLM_BASE_URL=https://llm.example/v1\n"
-        "AIMA_LLM_MODEL=\n"
-        "AIMA_LLM_API_KEY=secret\n",
+        "AIMA_LLM_BASE_URL=https://llm.example/v1\nAIMA_LLM_MODEL=\nAIMA_LLM_API_KEY=secret\n",
         encoding="utf-8",
     )
 
