@@ -177,13 +177,31 @@ jobs:
           import subprocess
           import sys
 
-          for container_id in sys.argv[1:]:
+          api_id, postgres_id = sys.argv[1:]
+
+          def mounts(container_id: str) -> dict[str, dict]:
               container = json.loads(
                   subprocess.check_output(["docker", "inspect", container_id], text=True)
               )[0]
-              mounts = container["Mounts"]
-              assert mounts
-              assert all(item["Type"] == "volume" for item in mounts), mounts
+              return {item["Destination"]: item for item in container["Mounts"]}
+
+          expected = {
+              api_id: {
+                  "/app/data": True,
+                  "/app/logs": True,
+                  "/run/internal-secrets": False,
+              },
+              postgres_id: {
+                  "/var/lib/postgresql": True,
+                  "/run/secrets": False,
+              },
+          }
+          for container_id, destinations in expected.items():
+              actual = mounts(container_id)
+              for destination, writable in destinations.items():
+                  mount = actual[destination]
+                  assert mount["Type"] == "volume", (destination, mount)
+                  assert mount["RW"] is writable, (destination, mount)
           PY
 
           test "$(compose exec -T api stat -c '%u:%g:%a' /run/internal-secrets/postgres_password | tr -d '\r')" = "0:11001:440"
