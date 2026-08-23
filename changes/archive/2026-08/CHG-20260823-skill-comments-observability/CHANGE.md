@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260823-skill-comments-observability
 title: 固化内部函数注释与关键日志开发规则
 level: L2
-status: ready_for_review
+status: done
 owner: chatgpt
 branch: chore/skill-comments-observability
 created: 2026-08-23
@@ -71,10 +71,10 @@ data_changes: []
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 后续 Skill 写代码时，内部函数也应有适量、有维护价值的注释 | user:internal-function-comments | satisfied | `SKILL.md` invariant 12 + plan/implementation bullets；`development-workflows.md#代码注释`；`verification-review.md` 代码质量复核；Skill guidance unittest 通过 |
-| R2 | 重要且有调试/排障价值的功能，在仓库已有日志能力时应主动增加必要日志 | user:important-feature-logging | satisfied | `SKILL.md` invariant 13 + implementation bullet；`development-workflows.md#可观测性与日志`；Review 可观测性检查；Blueprint 05/06 同步；Skill guidance unittest 通过 |
-| R3 | 新日志必须遵守现有日志级别、脱敏、安全和“不用日志替代业务事实”的边界 | docs/blueprint/05-日志安全部署与运维.md | satisfied | Skill/reference 明确 DEBUG/INFO/WARNING/ERROR、稳定 event/关联 ID、脱敏/Secret 禁止、日志不替代 DB/Health；Blueprint 05 与主 CI #2231 docs/secret gates 通过 |
-| R4 | 开发治理规则应保持最小、精准，不机械制造注释、日志或新基础设施 | .agents/skills/reliable-vibe-coding/SKILL.md | satisfied | 简单自解释 helper 可不注释；无既有日志体系或无独立排障价值时不新造日志框架；禁止 INFO 逐条刷屏/重复异常；PR diff 仅治理文件，无产品批量改写 |
+| R1 | 后续 Skill 写代码时，内部函数也应有适量、有维护价值的注释 | user:internal-function-comments | satisfied | `SKILL.md` invariant 12 + plan/implementation bullets；`development-workflows.md#代码注释`；`verification-review.md` 代码质量复核；Final Ready HEAD guidance unittest 通过 |
+| R2 | 重要且有调试/排障价值的功能，在仓库已有日志能力时应主动增加必要日志 | user:important-feature-logging | satisfied | `SKILL.md` invariant 13 + implementation bullet；`development-workflows.md#可观测性与日志`；Review 可观测性检查；Blueprint 05/06 同步；Final Ready HEAD guidance unittest 通过 |
+| R3 | 新日志必须遵守现有日志级别、脱敏、安全和“不用日志替代业务事实”的边界 | docs/blueprint/05-日志安全部署与运维.md | satisfied | Skill/reference 明确 DEBUG/INFO/WARNING/ERROR、稳定 event/关联 ID、脱敏/Secret 禁止、日志不替代 DB/Health；Final Ready HEAD CI #2232 docs/secret gates 通过 |
+| R4 | 开发治理规则应保持最小、精准，不机械制造注释、日志或新基础设施 | .agents/skills/reliable-vibe-coding/SKILL.md | satisfied | 简单自解释 helper 可不注释；无既有日志体系或无独立排障价值时不新造日志框架；禁止 INFO 逐条刷屏/重复异常；PR #162 仅治理文件，无产品批量改写 |
 
 # Validation Matrix
 
@@ -83,9 +83,9 @@ data_changes: []
 | Browser Mock Acceptance | not_applicable | 本任务不改变用户界面或浏览器行为。 |
 | Backend/API/PostgreSQL Integration | not_applicable | 本任务不改变产品后端、数据库或运行时行为。 |
 | Contract / Generated Client | not_applicable | 不修改公共 Contract 或 generated client。 |
-| Real Full-stack Golden Path | not_applicable | 不改变产品跨组件接线；Stage 8F #358 仅作为仓库级回归证据。 |
+| Real Full-stack Golden Path | not_applicable | 不改变产品跨组件接线；Stage 8F #359 仅作为仓库级回归证据。 |
 | Real Provider Probe | not_applicable | 不涉及外部 Provider 当前事实或付费调用。 |
-| Docs / Governance / Other | required | Completion Gate #77 中新增 3 个 guidance tests + 11 个 Ready tests 共 14/14 通过；CI #2231、Stage 8F #358、Stage 6 #228、Local Dev #54、Stage 7 Keyword #1840 / Plan #1838 / Provider #1953 / Scheduler #2180 success。 |
+| Docs / Governance / Other | required | Final Ready HEAD Completion Gate #78：3 个 guidance tests + 11 个 Ready tests 共 14/14 通过且 Ready Check success；CI #2232、Stage 8F #359、Stage 6 #229、Local Dev #55、Stage 7 Keyword #1841 / Plan #1839 / Provider #1954 / Scheduler #2181 全部 success。 |
 
 # Completion Audit
 
@@ -123,19 +123,25 @@ data_changes: []
 - [x] 同步 Blueprint 05/06。
 - [x] 增加 Skill guidance unittest，保护规则消费链。
 - [x] 完成 Completion Audit 与两阶段语义 Review。
-- [ ] Final Ready HEAD Completion Gate 与永久 CI 全绿后转 Ready 并合并。
+- [x] Final Ready HEAD Completion Gate 与永久 CI 全绿；PR #162 转 Ready 并正常合并。
 
 # 验证
 
-## 实现验证 HEAD `209552ac4273485e7837476e6d0fbf938c6744d9`
+## Final Ready HEAD `1841df954dc2b37c9ad47e6cde4517e692774872`
 
-- Change Completion Gate #77：RVC unittest 阶段 success，新增 3 个 guidance tests + 11 个 Ready tests，`Ran 14 tests` / `OK`；随后因 Change 当时仍为 `in_progress` 按设计在 Ready Check 阶段失败。
-- CI #2231：success；Stage 1/2/3A/Windows 全部通过，包含 Ruff、mypy、unit/contract/API、architecture/table ownership/secret scan/docs、Wheel、Frontend lint/typecheck/unit/build/Playwright。
-- Stage 8F #358：success。
-- Stage 6 #228：success。
-- Local Dev Bootstrap #54：success。
-- Stage 7 Keyword #1840、Plan #1838、Provider Config #1953、Scheduler #2180：全部 success。
-- `main...chore/skill-comments-observability`：behind_by=0；正式 diff 仅 Skill/reference/test/Blueprint/Change 7 个文件。
+- Change Completion Gate #78：success；新增 3 个 guidance tests + 11 个 Ready tests 共 14/14 通过，Changed-PR Ready Check success。
+- CI #2232：success；Stage 1/2/3A/Windows 全部通过，包含 Ruff、mypy、unit/contract/API、architecture/table ownership/secret scan/docs、Wheel、Frontend lint/typecheck/unit/build/Playwright。
+- Stage 8F #359：success。
+- Stage 6 #229：success。
+- Local Dev Bootstrap #55：success。
+- Stage 7 Keyword #1841、Plan #1839、Provider Config #1954、Scheduler #2181：全部 success。
+
+## 合并
+
+- PR：#162 `固化内部函数注释与关键日志开发规则`
+- Final Ready HEAD：`1841df954dc2b37c9ad47e6cde4517e692774872`
+- Merge commit：`0defa2c71b55c41627f32af2415daa9b57c53fcd`
+- 合并方式：正常 PR merge；未绕过 Completion Gate、CI 或 Review 流程。
 
 # 文档影响
 
@@ -145,5 +151,7 @@ data_changes: []
 # 交付
 
 - Branch：`chore/skill-comments-observability`
-- PR：#162 `固化内部函数注释与关键日志开发规则`（Draft；Change 已 ready_for_review）
+- PR：#162，已合并。
+- Merge commit：`0defa2c71b55c41627f32af2415daa9b57c53fcd`。
+- Change：归档于 `changes/archive/2026-08/CHG-20260823-skill-comments-observability/CHANGE.md`。
 - 发布：治理/文档变更；不涉及产品部署、Contract、Schema、Migration 或依赖。
