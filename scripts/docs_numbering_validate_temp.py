@@ -7,6 +7,7 @@ import json
 import re
 import subprocess
 from pathlib import Path
+from urllib.parse import unquote
 
 DOC_RENAMES = {
     "docs/代码结构与修改导航.md": "docs/01_代码结构与修改导航.md",
@@ -42,6 +43,10 @@ DOC_RENAMES = {
     "docs/guides/Windows Docker Desktop Compose运行.md": "docs/guides/03_Windows Docker Desktop Compose运行.md",
     "docs/roadmap/内网V1上线实施计划.md": "docs/roadmap/01_内网V1上线实施计划.md",
     "docs/roadmap/生产上线实施路线.md": "docs/roadmap/02_生产上线实施路线.md",
+}
+
+ENCODED_REPLACEMENTS = {
+    "Windows%20Docker%20Desktop%20Compose运行.md": "03_Windows%20Docker%20Desktop%20Compose运行.md",
 }
 
 SAME_PATH_FILES = [
@@ -88,6 +93,8 @@ PATTERNS = [(old, pattern_for(old), new) for old, new in REPLACEMENTS.items()]
 def transform(text: str) -> str:
     for _, pattern, new in PATTERNS:
         text = pattern.sub(new, text)
+    for old, new in ENCODED_REPLACEMENTS.items():
+        text = text.replace(old, new)
     return text.replace("\r\n", "\n")
 
 
@@ -230,6 +237,9 @@ def check_stale_references() -> None:
         for old, pattern, _ in PATTERNS:
             if pattern.search(text):
                 stale.append(f"{rel}: {old}")
+        for old in ENCODED_REPLACEMENTS:
+            if old in text:
+                stale.append(f"{rel}: {old}")
         for match in malformed_pattern.findall(text):
             malformed.append(f"{rel}: {match}")
     if stale:
@@ -268,7 +278,7 @@ def check_markdown_links() -> None:
             target = target.split("#", 1)[0]
             if not target:
                 continue
-            resolved = (source.parent / target).resolve()
+            resolved = (source.parent / unquote(target)).resolve()
             try:
                 resolved.relative_to(Path.cwd().resolve())
             except ValueError:
