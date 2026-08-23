@@ -92,13 +92,13 @@ jobs:
           docker compose --env-file "${AIMA_V1A_ENV_FILE}" up -d postgres
           for _ in $(seq 1 60); do
             if docker compose --env-file "${AIMA_V1A_ENV_FILE}" exec -T postgres \
-              pg_isready -U aima_ugc -d aima_ugc >/dev/null 2>&1; then
+              pg_isready -h 127.0.0.1 -U aima_ugc -d aima_ugc >/dev/null 2>&1; then
               break
             fi
             sleep 1
           done
           docker compose --env-file "${AIMA_V1A_ENV_FILE}" exec -T postgres \
-            pg_isready -U aima_ugc -d aima_ugc
+            pg_isready -h 127.0.0.1 -U aima_ugc -d aima_ugc
 
           docker compose --env-file "${AIMA_V1A_ENV_FILE}" --profile tools run --rm migrate
           docker compose --env-file "${AIMA_V1A_ENV_FILE}" --profile tools run --rm configure
@@ -120,11 +120,13 @@ jobs:
           docker compose --env-file "${AIMA_V1A_ENV_FILE}" up -d postgres
           for _ in $(seq 1 60); do
             if docker compose --env-file "${AIMA_V1A_ENV_FILE}" exec -T postgres \
-              pg_isready -U aima_ugc -d aima_ugc >/dev/null 2>&1; then
+              pg_isready -h 127.0.0.1 -U aima_ugc -d aima_ugc >/dev/null 2>&1; then
               break
             fi
             sleep 1
           done
+          docker compose --env-file "${AIMA_V1A_ENV_FILE}" exec -T postgres \
+            pg_isready -h 127.0.0.1 -U aima_ugc -d aima_ugc >/dev/null
           PROVIDER_COUNT="$(docker compose --env-file "${AIMA_V1A_ENV_FILE}" exec -T postgres \
             psql -U aima_ugc -d aima_ugc -Atc \
             "SELECT count(*) FROM provider_configs WHERE display_name = 'TikHub Internal V1';")"
