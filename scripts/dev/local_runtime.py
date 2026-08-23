@@ -38,12 +38,6 @@ _RUNTIME_LLM_KEYS = (
     "AIMA_LLM_PROVIDER_NAME",
     "AIMA_LLM_MODEL",
 )
-_INTERNAL_SECRET_NAMES = (
-    "postgres_password",
-    "import_batch_cursor_signing_key",
-    "content_cursor_signing_key",
-    "collection_runtime_cursor_signing_key",
-)
 
 
 class LocalDevError(RuntimeError):
@@ -211,37 +205,6 @@ def prepare_runtime_directories(paths: RuntimePaths) -> None:
         path.mkdir(parents=True, exist_ok=True)
 
 
-def migrate_legacy_internal_secrets(paths: RuntimePaths) -> None:
-    """把旧单根目录中的内部 Secret 原值迁移到新内部根；冲突时拒绝猜测。"""
-
-    paths.internal_secrets.mkdir(parents=True, exist_ok=True)
-    paths.external_secrets.mkdir(parents=True, exist_ok=True)
-    for name in _INTERNAL_SECRET_NAMES:
-        current = paths.internal_secrets / name
-        legacy = paths.external_secrets / name
-        if current.is_symlink():
-            raise LocalDevError(f"本地内部 Secret 不允许符号链接：{name}")
-        if not legacy.exists() and not legacy.is_symlink():
-            continue
-        if legacy.is_symlink():
-            raise LocalDevError(f"本地内部 Secret 不允许符号链接：{name}")
-        legacy_value = _read_local_secret(legacy)
-        if current.exists():
-            current_value = _read_local_secret(current)
-            if not secrets.compare_digest(current_value, legacy_value):
-                raise LocalDevError(
-                    f"检测到新旧本地内部 Secret 冲突：{name}；"
-                    "为避免覆盖已有数据库或签名事实，已停止启动，请人工确认保留哪个值。"
-                )
-            _remove_if_exists(legacy)
-            continue
-        try:
-            legacy.replace(current)
-            current.chmod(0o600)
-        except OSError as exc:
-            raise LocalDevError(f"迁移本地内部 Secret 失败：{name}") from exc
-
-
 def prepare_cursor_secrets(paths: RuntimePaths) -> None:
     for path in (
         paths.import_cursor_key_file,
@@ -329,8 +292,9 @@ def ensure_postgres_container(paths: RuntimePaths, *, timeout_seconds: float = 6
     if container is None:
         if volume is not None and not paths.postgres_password_file.is_file():
             raise LocalDevError(
-                f"发现既有本地 PostgreSQL volume，但 {paths.postgres_password_file} 已丢失；"
-                "无法安全猜测旧数据库密码。请恢复该 Secret，或显式删除本地开发 volume 后重建。"
+                f"发现既有本地 PostgreSQL volume，但新的内部密码文件 {paths.postgres_password_file} 不存在；"
+                "旧 `.runtime/secrets/postgres_password` 已不再受支持。"
+                "请显式删除本地开发 volume 后重建，或把与该数据库 Role 实际匹配的密码放到新的内部路径。"
             )
         password = ensure_random_secret(paths.postgres_password_file, min_characters=32)
         docker_environment = dict(os.environ)
@@ -366,8 +330,9 @@ def ensure_postgres_container(paths: RuntimePaths, *, timeout_seconds: float = 6
             )
         if not paths.postgres_password_file.is_file():
             raise LocalDevError(
-                f"本地容器 {POSTGRES_CONTAINER} 已存在，但缺少 {paths.postgres_password_file}；"
-                "无法安全猜测数据库密码。"
+                f"本地容器 {POSTGRES_CONTAINER} 已存在，但新的内部密码文件 "
+                f"{paths.postgres_password_file} 不存在；旧 `.runtime/secrets/postgres_password` 已不再受支持。"
+                "请显式删除本地开发 container/volume 后重建，或把与该数据库 Role 实际匹配的密码放到新的内部路径。"
             )
         _read_local_secret(paths.postgres_password_file)
         running = _docker_field(docker, POSTGRES_CONTAINER, "{{.State.Running}}")
