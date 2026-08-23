@@ -70,22 +70,14 @@ def test_package_source_defaults_use_china_mirrors_but_remain_overridable() -> N
         "${AIMA_BUILD_DEBIAN_SECURITY_MIRROR:-https://mirrors.aliyun.com/debian-security}"
         in compose
     )
-    assert (
-        "${AIMA_BUILD_PYPI_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}" in compose
-    )
+    assert "${AIMA_BUILD_PYPI_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}" in compose
     assert "${AIMA_BUILD_NPM_REGISTRY:-https://registry.npmmirror.com}" in compose
 
 
 def test_environment_setup_configures_multiple_docker_hub_mirrors() -> None:
-    linux_setup = (ROOT / "scripts" / "setup_dev_environment.sh").read_text(
-        encoding="utf-8"
-    )
-    windows_cmd = (ROOT / "scripts" / "setup_dev_environment.cmd").read_text(
-        encoding="utf-8"
-    )
-    windows_mirror_setup_path = (
-        ROOT / "scripts" / "dev" / "configure_docker_desktop_mirrors.ps1"
-    )
+    linux_setup = (ROOT / "scripts" / "setup_dev_environment.sh").read_text(encoding="utf-8")
+    windows_cmd = (ROOT / "scripts" / "setup_dev_environment.cmd").read_text(encoding="utf-8")
+    windows_mirror_setup_path = ROOT / "scripts" / "dev" / "configure_docker_desktop_mirrors.ps1"
 
     assert windows_mirror_setup_path.is_file()
     windows_mirror_setup = windows_mirror_setup_path.read_text(encoding="utf-8")
