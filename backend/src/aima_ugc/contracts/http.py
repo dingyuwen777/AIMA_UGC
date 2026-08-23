@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import unicodedata
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
@@ -224,57 +223,34 @@ class CollectionRunPlatformRequest(BaseModel):
 
 
 class CollectionRunCreateRequest(BaseModel):
-    """Stage 8E 一次性发现或基于 Batch 补采请求。"""
+    """一次性发现从 Keyword Pack 冻结关键词；Batch Supplement 只补既有内容。"""
 
     model_config = ConfigDict(extra="forbid")
 
     mode: CollectionRunMode
-    keywords: tuple[str, ...] = Field(default=(), max_length=100)
+    keyword_pack_ids: tuple[UUID, ...] = Field(default=(), max_length=20)
     import_batch_id: UUID | None = None
     platforms: tuple[CollectionRunPlatformRequest, ...] = Field(min_length=1, max_length=5)
     include_comments: bool = True
     include_sub_comments: bool = False
-
-    @field_validator("keywords", mode="before")
-    @classmethod
-    def normalize_keywords(cls, value: object) -> object:
-        if not isinstance(value, (list, tuple)):
-            return value
-        if len(value) > 100:
-            raise ValueError("一次性 Discovery 关键词最多 100 个")
-        normalized: list[object] = []
-        identities: set[str] = set()
-        for raw in value:
-            if not isinstance(raw, str):
-                normalized.append(raw)
-                continue
-            text = unicodedata.normalize("NFKC", raw.strip())
-            if not text:
-                raise ValueError("一次性 Discovery 关键词不能为空")
-            if len(text) > 500:
-                raise ValueError("一次性 Discovery 关键词最多 500 个字符")
-            identity = text.casefold()
-            if identity in identities:
-                continue
-            identities.add(identity)
-            normalized.append(text)
-        return tuple(normalized)
 
     @model_validator(mode="after")
     def validate_mode_and_options(self) -> CollectionRunCreateRequest:
         platforms = [item.platform for item in self.platforms]
         if len(platforms) != len(set(platforms)):
             raise ValueError("同一次 Collection Run 的目标平台不得重复")
+        if len(self.keyword_pack_ids) != len(set(self.keyword_pack_ids)):
+            raise ValueError("同一次 Collection Run 的词包不得重复")
         if self.mode == "discovery":
-            if not self.keywords:
-                raise ValueError("主动发现必须提供至少一个一次性 Discovery 关键词")
+            if not self.keyword_pack_ids:
+                raise ValueError("主动发现必须选择至少一个 Keyword Pack")
             if self.import_batch_id is not None:
                 raise ValueError("主动发现不能关联 Import Batch")
         else:
             if self.import_batch_id is None:
                 raise ValueError("基于 Batch 补采必须提供 import_batch_id")
-            if self.keywords:
-                raise ValueError("基于 Batch 补采不能提交 Discovery 关键词")
+            if self.keyword_pack_ids:
+                raise ValueError("基于 Batch 补采不能提交 Keyword Pack")
         if self.include_sub_comments and not self.include_comments:
             raise ValueError("采集二级回复时必须同时启用评论采集")
         return self

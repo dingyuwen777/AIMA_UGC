@@ -75,7 +75,7 @@ class PostgresImportJobExecutor:
             artifact = execution.artifact
             if artifact is None or artifact.storage_status not in {"stored", "linked"}:
                 raise InvalidXlsxError("Import Source Artifact 不可用")
-            relevance = execution.payload.relevance
+            effective_keywords = _effective_keywords(execution.payload)
             profile = execution.batch.stats.get("profile")
             if not isinstance(profile, str) or not profile:
                 raise ValueError("Import Batch 缺少冻结 Excel Profile")
@@ -116,7 +116,7 @@ class PostgresImportJobExecutor:
                 filtering = filter_canonical_content_jsonl(
                     input_path=conversion.output_path,
                     output_path=work_dir / "filtered" / "contents.jsonl",
-                    keywords=relevance.effective_keywords,
+                    keywords=effective_keywords,
                 )
                 context.heartbeat(progress=60)
 
@@ -181,9 +181,18 @@ class PostgresImportJobExecutor:
                 batch = PostgresProcessingImportBatchRepository(session).get_by_job_id(fence.job_id)
                 if batch is None:
                     return None
-                frozen_relevance = RelevanceSnapshotV1.model_validate(batch.stats.get("relevance"))
-                if frozen_relevance != payload.relevance:
-                    raise ValueError("Import Job Payload 与 Batch Relevance 快照不一致")
+                if payload.keyword_selection is not None:
+                    frozen_selection = type(payload.keyword_selection).model_validate(
+                        batch.stats.get("keyword_selection")
+                    )
+                    if frozen_selection != payload.keyword_selection:
+                        raise ValueError("Import Job Payload 与 Batch Keyword Selection 快照不一致")
+                else:
+                    frozen_relevance = RelevanceSnapshotV1.model_validate(
+                        batch.stats.get("relevance")
+                    )
+                    if frozen_relevance != payload.relevance:
+                        raise ValueError("Import Job Payload 与 Batch Relevance 快照不一致")
                 artifact = PostgresArtifactMetadataRepository(session).get(batch.input_artifact_id)
                 return _ImportExecution(batch, artifact, payload, job)
         finally:
@@ -312,6 +321,14 @@ def import_job_terminal_callback(session: Session, job: JobRecord) -> None:
         rows_rejected=_stat(batch.stats, "rows_rejected"),
         error_summary=job.error_code or job.status,
     )
+
+
+def _effective_keywords(payload: ImportJobPayload) -> tuple[str, ...]:
+    if payload.keyword_selection is not None:
+        return payload.keyword_selection.effective_keywords
+    if payload.relevance is not None:
+        return payload.relevance.effective_keywords
+    raise ValueError("Import Job 缺少关键词快照")
 
 
 def _stat(stats: dict[str, object], name: str) -> int:

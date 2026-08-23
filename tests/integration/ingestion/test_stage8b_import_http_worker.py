@@ -97,13 +97,17 @@ def _configure_and_upload(client: TestClient) -> Response:
     assert configured.status_code == 200
     created = client.post(
         "/api/v1/import-batches",
-        files={
-            "file": (
-                "stage8b.xlsx",
-                _xlsx(),
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
-        },
+        files=[
+            (
+                "file",
+                (
+                    "stage8b.xlsx",
+                    _xlsx(),
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ),
+            ),
+            ("keyword_pack_ids", (None, pack_id)),
+        ],
     )
     assert created.status_code == 202
     return created
@@ -173,8 +177,12 @@ def test_http_upload_worker_and_status_query_use_formal_stage8a_ingestion(tmp_pa
         assert persisted_batch["job_id"] == persisted_job["id"]
         assert persisted_batch["status"] == "succeeded"
         assert persisted_artifact["storage_status"] == "linked"
-        assert persisted_batch["stats"]["relevance"]["effective_keywords"] == ["爱玛"]
-        assert persisted_job["payload"]["relevance"] == persisted_batch["stats"]["relevance"]
+        selection = persisted_batch["stats"]["keyword_selection"]
+        assert selection["effective_keywords"] == ["爱玛"]
+        assert len(selection["keyword_packs"]) == 1
+        assert selection["keyword_packs"][0]["version"] == 2
+        assert persisted_job["payload"]["keyword_selection"] == selection
+        assert persisted_job["payload"]["relevance"] is None
     finally:
         with runtime.database.engine.begin() as connection:
             connection.exec_driver_sql(

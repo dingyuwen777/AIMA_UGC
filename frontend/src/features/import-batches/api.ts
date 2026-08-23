@@ -10,6 +10,7 @@ import {
   listCollectionRuntimeRuns,
   listContents,
   listImportBatches,
+  listKeywordPacks,
   type CollectionCapabilitiesResponse,
   type CollectionPlatform,
   type CollectionRunCreateRequest,
@@ -22,6 +23,7 @@ import {
   type ImportBatchListResponse,
   type ImportBatchResponse,
   type ImportBatchSummaryResponse,
+  type KeywordPackSummaryResponse,
   type ListImportBatchesParams,
   type ListCollectionRuntimeRunsParams,
 } from '../../generated/api/client'
@@ -67,8 +69,16 @@ export async function fetchImportBatchDetail(batchId: string): Promise<ImportBat
   return unwrap(await getImportBatch(batchId))
 }
 
-export async function uploadImportBatch(file: File): Promise<ImportBatchCreatedResponse> {
-  return unwrap(await createImportBatch({ file }))
+export async function uploadImportBatch(
+  file: File,
+  keywordPackIds: string[],
+): Promise<ImportBatchCreatedResponse> {
+  return unwrap(await createImportBatch({ file, keyword_pack_ids: keywordPackIds }))
+}
+
+export async function fetchEnabledKeywordPacks(): Promise<KeywordPackSummaryResponse[]> {
+  const response = unwrap(await listKeywordPacks({ enabled: true, limit: 100 }))
+  return response.items
 }
 
 export async function fetchCollectionRuntimeList(
