@@ -30,11 +30,19 @@ jobs:
         with:
           python-version: 3.14.7
 
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24.19.0
+
       - name: Validate cross-platform launchers
         run: |
           python scripts/dev/backend.py --validate-only
           python scripts/dev/frontend.py --validate-only
           python -m py_compile scripts/dev/backend.py scripts/dev/frontend.py scripts/dev/local_runtime.py
+
+      - name: Prepare frontend dependencies through canonical launcher
+        run: python scripts/dev/frontend.py --prepare-only
 
       - name: Verify local config stays untracked
         run: >-
