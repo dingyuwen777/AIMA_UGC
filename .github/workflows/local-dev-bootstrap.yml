@@ -1,0 +1,40 @@
+name: Local Dev Bootstrap
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  launcher-cross-platform:
+    name: Launcher (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - windows-2025
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Validate cross-platform launchers
+        run: |
+          python scripts/dev/backend.py --validate-only
+          python scripts/dev/frontend.py --validate-only
+          python -m py_compile scripts/dev/backend.py scripts/dev/frontend.py scripts/dev/local_runtime.py
+
+      - name: Verify local config stays untracked
+        run: git status --porcelain
