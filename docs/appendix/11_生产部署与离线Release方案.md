@@ -23,7 +23,7 @@
 当前运行操作见：
 
 - [`../02_环境运行与部署.md`](../02_环境运行与部署.md)
-- [`../guides/03_Windows Docker Desktop Compose运行.md`](../guides/03_Windows%20Docker%20Desktop%20Compose运行.md)
+- [`../guides/03_Windows Docker Desktop Compose运行.md`](../guides/03_03_Windows%20Docker%20Desktop%20Compose运行.md)
 
 ---
 
