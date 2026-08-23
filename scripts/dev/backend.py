@@ -329,7 +329,7 @@ def _stop_child(child: ChildProcess) -> None:
         else:
             os.killpg(process.pid, signal.SIGTERM)
         process.wait(timeout=5)
-    except (OSError, subprocess.TimeoutExpired):
+    except OSError, subprocess.TimeoutExpired:
         try:
             process.kill()
         except OSError:
