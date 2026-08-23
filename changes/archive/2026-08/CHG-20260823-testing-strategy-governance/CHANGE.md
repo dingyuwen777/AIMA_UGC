@@ -88,7 +88,7 @@ Validation Matrix 是“风险 → 证据”的语义计划，不要求 `ready_c
 | R2 | Backend Integration、Contract、Real Full-stack、Real Provider Probe 必须各自有清晰证明边界和成本定位 | user:testing-strategy-confirmation | satisfied | `testing-strategy.md` §2—5；Blueprint 06 §11.2—11.8；Verification Review 证据表区分各层证据等级 |
 | R3 | 后续 Agent 应在每次相关任务中自行读取并实施该策略，不依赖用户重复提醒 | user:testing-strategy-confirmation | satisfied | `AGENTS.md` 导航与 §12；`SKILL.md` 不变量 #11、按需读取、步骤 6—10 均要求相关任务读取 `testing-strategy.md` 并维护 Validation Matrix |
 | R4 | L2/L3 Change 应通过 Validation Matrix 明确适用测试层与证据，Completion Audit/Review 必须检查 | user:testing-strategy-confirmation | satisfied | `CHANGE.template.md` 新增 Validation Matrix；`change-management.md`、`completion-gate.md`、`verification-review.md` 均把矩阵纳入 Ready/Review/归档语义 |
-| R5 | 新策略必须与当前 PostgreSQL Integration、generated client 和 Stage 8F Real Full-stack 事实兼容 | docs/blueprint/06-开发约束与分阶段实施.md | satisfied | 实现 PR #155 最终 HEAD `ea1814e8e1162f77e0a0561382e3e9c9aafa210f` 的 CI #2174、Stage 8F #301、Stage 6 #172、Stage 7 四个专项和 Completion Gate #20 全部成功 |
+| R5 | 新策略必须与当前 PostgreSQL Integration、generated client 和 Stage 8F Real Full-stack 事实兼容 | docs/blueprint/06_开发约束与分阶段实施.md | satisfied | 实现 PR #155 最终 HEAD `ea1814e8e1162f77e0a0561382e3e9c9aafa210f` 的 CI #2174、Stage 8F #301、Stage 6 #172、Stage 7 四个专项和 Completion Gate #20 全部成功 |
 
 # Validation Matrix
 

@@ -127,9 +127,9 @@ data_changes: []
 | R4 | TikHub/LLM 真实 Secret 可由本地 `env.local` 输入，但正式运行仍使用 Secret File；TikHub 非敏感 Provider Config 继续保存在数据库 | user:local-dev-bootstrap-confirmation | satisfied | Secret materialize 单测；Local Dev Bootstrap #19 验证 Provider Config 只保存 `secret_ref=tikhub_api_key` |
 | R5 | Worker 必须成为正式可执行常驻进程，API + Worker 默认随后端开发入口启动；Scheduler 默认关闭、显式开启 | user:local-dev-bootstrap-confirmation | satisfied | `worker_main.py` + Worker loop unit；`backend.py`；Stage 8F #323 使用正式 Worker entrypoint success |
 | R6 | 前端首次运行自动安装锁定依赖并启动 Vite；日常开发不要求 production build | user:local-dev-bootstrap-confirmation | satisfied | `frontend.py`；Local Dev Bootstrap #19 Windows/Ubuntu 都真实执行 `--prepare-only` + `npm ci`；运行文档解释 Vite HMR/build 边界 |
-| R7 | 本地便利性不能破坏 PostgreSQL、Secret、Provider Config、Migration、API/Worker/Scheduler 分进程等长期边界 | docs/blueprint/05-日志安全部署与运维.md | satisfied | 子进程继续使用正式 `AIMA_* + Secret File`；ProviderConfig Repository；Final CI #2196、Audit #1059、Stage 4/5D/6/7 全部 success |
-| R8 | 该收口应先于 Internal V1-A，V1-A 继续负责正式 Docker/Compose/Production Config | user:local-dev-bootstrap-confirmation + docs/roadmap/内网V1上线实施计划.md | satisfied | Internal V1 Roadmap 以增量 `# 8A Local Dev Bootstrap` 固化；长期 Production Roadmap 保持原文 |
-| R9 | 现有真实 Excel Browser Full-stack 必须继续证明 Browser→API→PostgreSQL→正式 Worker→Voice Plaza 接通 | docs/roadmap/内网V1上线实施计划.md | satisfied | `.github/workflows/stage8f-fullstack.yml` 使用 `python -m aima_ugc.entrypoints.worker_main`；Final Stage 8F #323 success |
+| R7 | 本地便利性不能破坏 PostgreSQL、Secret、Provider Config、Migration、API/Worker/Scheduler 分进程等长期边界 | docs/blueprint/05_日志安全部署与运维.md | satisfied | 子进程继续使用正式 `AIMA_* + Secret File`；ProviderConfig Repository；Final CI #2196、Audit #1059、Stage 4/5D/6/7 全部 success |
+| R8 | 该收口应先于 Internal V1-A，V1-A 继续负责正式 Docker/Compose/Production Config | user:local-dev-bootstrap-confirmation + docs/roadmap/01_内网V1上线实施计划.md | satisfied | Internal V1 Roadmap 以增量 `# 8A Local Dev Bootstrap` 固化；长期 Production Roadmap 保持原文 |
+| R9 | 现有真实 Excel Browser Full-stack 必须继续证明 Browser→API→PostgreSQL→正式 Worker→Voice Plaza 接通 | docs/roadmap/01_内网V1上线实施计划.md | satisfied | `.github/workflows/stage8f-fullstack.yml` 使用 `python -m aima_ugc.entrypoints.worker_main`；Final Stage 8F #323 success |
 
 # Validation Matrix
 

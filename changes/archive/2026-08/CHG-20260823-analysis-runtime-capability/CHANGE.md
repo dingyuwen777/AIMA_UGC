@@ -77,8 +77,8 @@ data_changes: []
 | --- | --- | --- | --- | --- |
 | R1 | LLM 未配置时前端也应明确提示，并避免让 AI 打标看起来可正常执行 | user:local-dev-bootstrap-approved-scheme | satisfied | `GET /api/v1/content-analysis-capabilities` → Voice Plaza `analysisConfigured`；Browser Mock 断言 warning + disabled；Store 在 false 时不调用 `createContentAnalysis` |
 | R2 | 本地启动未配置 TikHub/LLM 不应阻止基础功能；只影响对应可选能力 | user:local-dev-bootstrap-approved-scheme | satisfied | capability 是独立只读 GET；false 仅禁用 AI 分析，Excel Import/Voice Plaza 浏览/Excel Export 链未改；Final Ready HEAD Local Dev Bootstrap #46 与 Stage 8F #350 success |
-| R3 | 前端不能读取 env.local/Secret 或复制配置规则，能力事实必须来自正式后端 Contract | docs/blueprint/04-后端任务API与前端.md | satisfied | `contracts/runtime.py` + `analysis_capability_http.py` → OpenAPI → Orval `getContentAnalysisCapabilities()` → Voice Plaza API/Store/Page；Blueprint 明确禁止前端读取本地配置/Secret |
-| R4 | Secret 不能进入 API Response/前端，运行能力只公开安全必要事实 | docs/blueprint/05-日志安全部署与运维.md | satisfied | Response 只有 `configured: bool`；API tests 断言 API Key/Base URL/Model 不出响应；Final Ready HEAD CI #2223 API/secret/docs gates success |
+| R3 | 前端不能读取 env.local/Secret 或复制配置规则，能力事实必须来自正式后端 Contract | docs/blueprint/04_后端任务API与前端.md | satisfied | `contracts/runtime.py` + `analysis_capability_http.py` → OpenAPI → Orval `getContentAnalysisCapabilities()` → Voice Plaza API/Store/Page；Blueprint 明确禁止前端读取本地配置/Secret |
+| R4 | Secret 不能进入 API Response/前端，运行能力只公开安全必要事实 | docs/blueprint/05_日志安全部署与运维.md | satisfied | Response 只有 `configured: bool`；API tests 断言 API Key/Base URL/Model 不出响应；Final Ready HEAD CI #2223 API/secret/docs gates success |
 
 # Validation Matrix
 

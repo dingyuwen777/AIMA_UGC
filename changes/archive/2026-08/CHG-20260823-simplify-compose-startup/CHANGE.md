@@ -93,9 +93,9 @@ data_changes: []
 | R1 | 管理员只编辑 `env.production`，一条 Compose `up -d --build --wait` 完成正式栈启动 | user:single-compose-startup | satisfied | `env.production.example` + `compose.yaml`；最终 Internal V1-A Run 32627321814 成功 |
 | R2 | 外部 TikHub/LLM Key 可写在 `env.production`，但业务容器继续使用 Secret File，不把 Key 放进业务容器普通环境 | user:single-compose-startup | satisfied | `AIMA_EXTERNAL_SECRET_DIR` + Compose top-level secrets；Golden Path 验证 `Config.Env` 无 API Key，且 Secret 只授予需要的服务 |
 | R3 | PostgreSQL 密码无需管理员配置，自动生成并与应用匹配；已有 DB 丢 Secret 时禁止重新生成 | user:postgres-password-policy | satisfied | `prepare_host.py` guard + regression；Golden Path 验证二次启动 hash 不变、丢 Secret fail closed、恢复原 Secret 后可恢复 |
-| R4 | PostgreSQL/Artifact/log 持久化、Secret 边界、Migration 独立进程、PostgreSQL/API 不发布宿主端口继续保留 | docs/roadmap/内网V1上线实施计划.md | satisfied | `compose.yaml` + 最终 Internal V1-A Golden Path |
-| R5 | V1-A 部署基础继续服务 Internal V1-B，不能把本次 UX 收敛误写成完整 Production Go-Live | docs/roadmap/生产上线实施路线.md | satisfied | 两份 Roadmap + Production Appendix 保留 V1-B 与完整 Production 未完成边界 |
-| R6 | 真实 `env.production` 不进 Git，Secret 不进 Git/镜像/页面/日志/数据库明文 | docs/blueprint/05-日志安全部署与运维.md | satisfied | `.gitignore` + Compose/CI 假 Key + DB/Config.Env/内部 Secret 目录无明文泄漏断言 |
+| R4 | PostgreSQL/Artifact/log 持久化、Secret 边界、Migration 独立进程、PostgreSQL/API 不发布宿主端口继续保留 | docs/roadmap/01_内网V1上线实施计划.md | satisfied | `compose.yaml` + 最终 Internal V1-A Golden Path |
+| R5 | V1-A 部署基础继续服务 Internal V1-B，不能把本次 UX 收敛误写成完整 Production Go-Live | docs/roadmap/02_生产上线实施路线.md | satisfied | 两份 Roadmap + Production Appendix 保留 V1-B 与完整 Production 未完成边界 |
+| R6 | 真实 `env.production` 不进 Git，Secret 不进 Git/镜像/页面/日志/数据库明文 | docs/blueprint/05_日志安全部署与运维.md | satisfied | `.gitignore` + Compose/CI 假 Key + DB/Config.Env/内部 Secret 目录无明文泄漏断言 |
 | R7 | L3 Change 需要 Traceability、Completion Audit、两阶段 Review、Ready Check/CI，正常 PR 合并且不绕过门禁 | AGENTS.md | satisfied | Completion Gate Run 32627321768 成功；PR #166 final HEAD 全部永久 CI 成功并正常合并 |
 
 # Validation Matrix

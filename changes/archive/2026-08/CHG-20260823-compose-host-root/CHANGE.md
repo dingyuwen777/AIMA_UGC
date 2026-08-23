@@ -111,9 +111,9 @@ Windows Docker Desktop 原生
 | R1 | 本地完整 Docker 与服务器保持同一 canonical Runtime / env 体系 | user:local-compose-same-entrypoint | satisfied | PR #170 merge `f04f6e8604bd15bc44c9e726da5325df9c54cd74`；canonical `compose.yaml + env.production` 为唯一业务基线 |
 | R2 | 源码开发与容器 Runtime 配置职责清楚 | user:env-role-clarification | satisfied | `env.local` 仅供 dev launcher；`env.production` 供完整 Docker Runtime；正式环境文档已同步 |
 | R3 | Windows 可以直接从 CMD / PowerShell 启动 Docker Runtime | user:windows-cmd-powershell-compose | satisfied | `compose_windows.cmd/.ps1`；Ready run `32633697741` Windows launcher job success |
-| R4 | Windows 兼容不得牺牲 PostgreSQL/Secret 的 Linux 权限与安全语义 | `docs/blueprint/05-日志安全部署与运维.md` | satisfied | named-volume override；未修改 `prepare_host.py`；Ready run `32633697741` 验证 `postgres_password=0:11001:440`、PostgreSQL/Migration/Readiness/重启持久化 |
-| R5 | 正式服务器持久数据与 Release/镜像生命周期分离 | `docs/appendix/生产部署与离线Release方案.md` | satisfied | Production 继续 `AIMA_HOST_ROOT=/data/AIMA_UGC`，Release 位于 `/data/AIMA_UGC/releases/<version>`；Windows override 不用于服务器 |
-| R6 | Internal V1-B / Production 不重新造业务部署栈 | `docs/roadmap/生产上线实施路线.md` | satisfied | Internal V1-B 仍是公司 Linux 服务器 + canonical Compose；Windows 只是 local storage adapter |
+| R4 | Windows 兼容不得牺牲 PostgreSQL/Secret 的 Linux 权限与安全语义 | `docs/blueprint/05_日志安全部署与运维.md` | satisfied | named-volume override；未修改 `prepare_host.py`；Ready run `32633697741` 验证 `postgres_password=0:11001:440`、PostgreSQL/Migration/Readiness/重启持久化 |
+| R5 | 正式服务器持久数据与 Release/镜像生命周期分离 | `docs/appendix/11_生产部署与离线Release方案.md` | satisfied | Production 继续 `AIMA_HOST_ROOT=/data/AIMA_UGC`，Release 位于 `/data/AIMA_UGC/releases/<version>`；Windows override 不用于服务器 |
+| R6 | Internal V1-B / Production 不重新造业务部署栈 | `docs/roadmap/02_生产上线实施路线.md` | satisfied | Internal V1-B 仍是公司 Linux 服务器 + canonical Compose；Windows 只是 local storage adapter |
 | R7 | L3 变更执行 Completion Audit、两阶段 Review、Ready Check、永久 CI 和正常 PR 合并 | `AGENTS.md` | satisfied | Completion Gate `32633697727` 与全部 Ready HEAD 工作流 success；PR #171 正常 merge `09a3dd641a6da34b20d8b3a22fbfee561f7e3246` |
 
 # Validation Matrix

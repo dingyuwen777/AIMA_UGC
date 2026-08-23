@@ -73,7 +73,7 @@ data_changes: []
 | --- | --- | --- | --- | --- |
 | R1 | 后续 Skill 写代码时，内部函数也应有适量、有维护价值的注释 | user:internal-function-comments | satisfied | `SKILL.md` invariant 12 + plan/implementation bullets；`development-workflows.md#代码注释`；`verification-review.md` 代码质量复核；Final Ready HEAD guidance unittest 通过 |
 | R2 | 重要且有调试/排障价值的功能，在仓库已有日志能力时应主动增加必要日志 | user:important-feature-logging | satisfied | `SKILL.md` invariant 13 + implementation bullet；`development-workflows.md#可观测性与日志`；Review 可观测性检查；Blueprint 05/06 同步；Final Ready HEAD guidance unittest 通过 |
-| R3 | 新日志必须遵守现有日志级别、脱敏、安全和“不用日志替代业务事实”的边界 | docs/blueprint/05-日志安全部署与运维.md | satisfied | Skill/reference 明确 DEBUG/INFO/WARNING/ERROR、稳定 event/关联 ID、脱敏/Secret 禁止、日志不替代 DB/Health；Final Ready HEAD CI #2232 docs/secret gates 通过 |
+| R3 | 新日志必须遵守现有日志级别、脱敏、安全和“不用日志替代业务事实”的边界 | docs/blueprint/05_日志安全部署与运维.md | satisfied | Skill/reference 明确 DEBUG/INFO/WARNING/ERROR、稳定 event/关联 ID、脱敏/Secret 禁止、日志不替代 DB/Health；Final Ready HEAD CI #2232 docs/secret gates 通过 |
 | R4 | 开发治理规则应保持最小、精准，不机械制造注释、日志或新基础设施 | .agents/skills/reliable-vibe-coding/SKILL.md | satisfied | 简单自解释 helper 可不注释；无既有日志体系或无独立排障价值时不新造日志框架；禁止 INFO 逐条刷屏/重复异常；PR #162 仅治理文件，无产品批量改写 |
 
 # Validation Matrix
