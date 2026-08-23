@@ -54,7 +54,8 @@ jobs:
     env:
       AIMA_DATA_DIR: .runtime/data
       AIMA_LOG_DIR: .runtime/logs
-      AIMA_SECRET_DIR: .runtime/secrets
+      AIMA_SECRET_DIR: .runtime/internal-secrets
+      AIMA_EXTERNAL_SECRET_DIR: .runtime/secrets
       AIMA_DB_HOST: 127.0.0.1
       AIMA_DB_PORT: 5432
       AIMA_DB_NAME: aima_ugc
@@ -78,9 +79,10 @@ jobs:
           uv lock --check
           uv sync --locked
 
-      - name: Prepare local config with non-production fixture key
+      - name: Prepare local config and legacy internal secrets
         shell: bash
         run: |
+          set -euo pipefail
           cat > env.local <<'EOF'
           AIMA_TIKHUB_BASE_URL=https://api.tikhub.io
           AIMA_TIKHUB_API_KEY=local-bootstrap-fixture-key
@@ -90,17 +92,38 @@ jobs:
           AIMA_LLM_API_KEY=
           AIMA_DEV_ENABLE_SCHEDULER=false
           EOF
+          mkdir -p .runtime/secrets
+          printf '%s\n' 'pppppppppppppppppppppppppppppppppppppppppppppppp' > .runtime/secrets/postgres_password
+          printf '%s\n' 'iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii' > .runtime/secrets/import_batch_cursor_signing_key
+          printf '%s\n' 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc' > .runtime/secrets/content_cursor_signing_key
+          printf '%s\n' 'rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr' > .runtime/secrets/collection_runtime_cursor_signing_key
 
       - name: Run real PostgreSQL bootstrap and migration
         shell: bash
         run: |
           set -euo pipefail
           uv run python scripts/dev/backend.py --prepare-only
-          test -s .runtime/secrets/postgres_password
-          test -s .runtime/secrets/import_batch_cursor_signing_key
-          test -s .runtime/secrets/content_cursor_signing_key
-          test -s .runtime/secrets/collection_runtime_cursor_signing_key
+          test "$(cat .runtime/internal-secrets/postgres_password)" = 'pppppppppppppppppppppppppppppppppppppppppppppppp'
+          test "$(cat .runtime/internal-secrets/import_batch_cursor_signing_key)" = 'iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii'
+          test "$(cat .runtime/internal-secrets/content_cursor_signing_key)" = 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
+          test "$(cat .runtime/internal-secrets/collection_runtime_cursor_signing_key)" = 'rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr'
           test "$(cat .runtime/secrets/tikhub_api_key)" = "local-bootstrap-fixture-key"
+          test ! -e .runtime/secrets/postgres_password
+          test ! -e .runtime/secrets/import_batch_cursor_signing_key
+          test ! -e .runtime/secrets/content_cursor_signing_key
+          test ! -e .runtime/secrets/collection_runtime_cursor_signing_key
+          uv run alembic current
+          uv run alembic check
+
+      - name: Verify existing PostgreSQL volume survives legacy password migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker rm -f aima-ugc-postgres-dev >/dev/null
+          mv .runtime/internal-secrets/postgres_password .runtime/secrets/postgres_password
+          uv run python scripts/dev/backend.py --prepare-only
+          test "$(cat .runtime/internal-secrets/postgres_password)" = 'pppppppppppppppppppppppppppppppppppppppppppppppp'
+          test ! -e .runtime/secrets/postgres_password
           uv run alembic current
           uv run alembic check
 
