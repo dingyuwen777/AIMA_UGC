@@ -3,7 +3,8 @@ name: aima-ugc
 x-backend-environment: &backend-environment
   - AIMA_DATA_DIR=/app/data
   - AIMA_LOG_DIR=/app/logs
-  - AIMA_SECRET_DIR=/run/secrets
+  - AIMA_SECRET_DIR=/run/internal-secrets
+  - AIMA_EXTERNAL_SECRET_DIR=/run/secrets
   - AIMA_DB_HOST=postgres
   - AIMA_DB_PORT=5432
   - AIMA_DB_NAME=${AIMA_DB_NAME:-aima_ugc}
@@ -38,7 +39,7 @@ x-backend-service: &backend-service
       target: /app/logs
     - type: bind
       source: ${AIMA_HOST_SECRET_DIR:-/data/AIMA_UGC/shared/secrets}
-      target: /run/secrets
+      target: /run/internal-secrets
       read_only: true
   networks:
     - app

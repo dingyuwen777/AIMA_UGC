@@ -158,13 +158,19 @@ jobs:
           expected = {
               "/app/data": (root / "runtime/data", True),
               "/app/logs": (root / "runtime/logs", True),
-              "/run/secrets": (root / "shared/secrets", False),
+              "/run/internal-secrets": (root / "shared/secrets", False),
           }
           for destination, (source, writable) in expected.items():
               actual = mounts[destination]
               assert actual["Type"] == "bind"
               assert Path(actual["Source"]).resolve() == source.resolve()
               assert actual["RW"] is writable
+
+          postgres_mounts = {item["Destination"]: item for item in inspect(postgres_id)["Mounts"]}
+          postgres_secrets = postgres_mounts["/run/secrets"]
+          assert postgres_secrets["Type"] == "bind"
+          assert Path(postgres_secrets["Source"]).resolve() == (root / "shared/secrets").resolve()
+          assert postgres_secrets["RW"] is False
 
           api_bindings = api["HostConfig"]["PortBindings"] or {}
           postgres_bindings = inspect(postgres_id)["HostConfig"]["PortBindings"] or {}
@@ -181,7 +187,7 @@ jobs:
           test "${API_UID}" = "10001"
           test "${FRONTEND_UID}" != "0"
           docker compose --env-file "${AIMA_V1A_ENV_FILE}" exec -T api \
-            test -r /run/secrets/postgres_password
+            test -r /run/internal-secrets/postgres_password
 
           for name in postgres_password import_batch_cursor_signing_key content_cursor_signing_key collection_runtime_cursor_signing_key; do
             sudo test -s "${AIMA_V1A_ROOT}/shared/secrets/${name}"

@@ -18,6 +18,7 @@ class PlatformSettings(BaseModel):
     data_dir: Path
     log_dir: Path
     secret_dir: Path
+    external_secret_dir: Path | None = None
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     log_max_bytes: int = Field(default=20_971_520, gt=0)
     log_backup_count: int = Field(default=10, ge=0)
@@ -39,6 +40,11 @@ class PlatformSettings(BaseModel):
     def artifact_dir(self) -> Path:
         """返回 Local ArtifactStore 的字节根目录。"""
         return self.data_dir / "artifacts"
+
+    @property
+    def external_secret_root(self) -> Path:
+        """返回 Provider/LLM Secret 根；未分离部署时继续复用既有 Secret 根。"""
+        return self.external_secret_dir or self.secret_dir
 
     @property
     def postgres_password_file(self) -> Path:
@@ -63,13 +69,14 @@ class PlatformSettings(BaseModel):
     @property
     def llm_api_key_file(self) -> Path:
         """返回正式 Analysis LLM API Key 文件，不读取 Secret 内容。"""
-        return self.secret_dir / "llm_api_key"
+        return self.external_secret_root / "llm_api_key"
 
 
 _ENV_TO_FIELD = {
     "AIMA_DATA_DIR": "data_dir",
     "AIMA_LOG_DIR": "log_dir",
     "AIMA_SECRET_DIR": "secret_dir",
+    "AIMA_EXTERNAL_SECRET_DIR": "external_secret_dir",
     "AIMA_LOG_LEVEL": "log_level",
     "AIMA_LOG_MAX_BYTES": "log_max_bytes",
     "AIMA_LOG_BACKUP_COUNT": "log_backup_count",
@@ -115,7 +122,9 @@ def load_settings(
             values[field_name] = source[env_name]
 
     root = (Path.cwd() if base_dir is None else base_dir).resolve(strict=False)
-    for field_name in ("data_dir", "log_dir", "secret_dir"):
-        values[field_name] = _resolve_path(values[field_name], root)
+    for field_name in ("data_dir", "log_dir", "secret_dir", "external_secret_dir"):
+        value = values.get(field_name)
+        if value is not None:
+            values[field_name] = _resolve_path(value, root)
 
     return PlatformSettings.model_validate(values)
