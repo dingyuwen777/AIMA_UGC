@@ -1,0 +1,35 @@
+name: Docs Numbering Migration PR
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: github.head_ref == 'docs/numbered-document-filenames' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: docs/numbered-document-filenames
+          fetch-depth: 0
+
+      - name: 执行机械迁移
+        run: python scripts/docs_numbering_migrate_temp.py
+
+      - name: 提交迁移结果
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "同步文档编号引用并固化命名规则"
+          git push origin HEAD:docs/numbered-document-filenames
