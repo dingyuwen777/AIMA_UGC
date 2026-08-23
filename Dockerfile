@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+# syntax=m.daocloud.io/docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
 
 # 中国网络环境默认使用镜像/软件包代理；所有输入都可由 Compose build args 覆盖回官方源。
 # 版本号保持仓库锁定值，不使用 latest。
