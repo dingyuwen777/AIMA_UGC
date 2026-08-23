@@ -25,7 +25,6 @@ from local_runtime import (
     ensure_env_local,
     ensure_postgres_container,
     load_local_dev_config,
-    migrate_legacy_internal_secrets,
     prepare_cursor_secrets,
     prepare_runtime_directories,
     repository_root,
@@ -84,7 +83,6 @@ def _run(
 
     paths = runtime_paths(root)
     prepare_runtime_directories(paths)
-    migrate_legacy_internal_secrets(paths)
     prepare_cursor_secrets(paths)
     print(f"[OK] Runtime directories: {paths.runtime}")
     print("[OK] Internal secrets")
