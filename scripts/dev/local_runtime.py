@@ -229,6 +229,8 @@ def build_runtime_environment(
     """把简化 `env.local` 转换为正式进程已有的 AIMA_* + Secret File。"""
 
     environment = dict(os.environ)
+    for key in _ALLOWED_LOCAL_KEYS:
+        environment.pop(key, None)
     environment.update(
         {
             "AIMA_DATA_DIR": str(paths.data),
