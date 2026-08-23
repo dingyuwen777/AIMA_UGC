@@ -3,9 +3,9 @@ schema: rvc-change/v1
 id: CHG-20260823-unify-windows-compose-cli
 title: Windows Docker Compose 标准命令统一
 level: L3
-status: ready_for_review
+status: done
 owner: chatgpt
-branch: feature/unify-windows-compose-cli
+branch: archive/unify-windows-compose-cli
 created: 2026-08-23
 updated: 2026-08-23
 completion_gate: required
@@ -34,19 +34,19 @@ data_changes: []
 
 Windows Docker Desktop 本地完整容器 Runtime 不再维护 CMD / PowerShell wrapper。管理员与开发者直接使用标准 Docker Compose CLI，继续叠加 canonical `compose.yaml` 与 storage-only `compose.windows.yaml`。
 
-正式 Windows 启动命令统一为：
+正式 Windows 启动命令：
 
 ```text
 docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production up -d --build --wait
 ```
 
-日常停止并删除容器/网络但保留 named-volume 数据统一为：
+日常停止并删除容器/网络但保留 named-volume 数据：
 
 ```text
 docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production down
 ```
 
-首次机器若不存在 `env.production`，由用户显式从 `env.production.example` 复制一次并编辑；不再为了这一步维护两套 wrapper。
+首次机器若不存在 `env.production`，由用户显式从 `env.production.example` 复制一次并编辑。
 
 # 可观察成功标准
 
@@ -58,6 +58,7 @@ docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production
 - [x] Windows 永久 CI 不再测试 wrapper，而是在 Windows Runner 上直接验证 Compose CLI，并继续通过 Linux Docker Engine 验证完整 named-volume Runtime。
 - [x] Roadmap / Blueprint / Guide / 环境文档不再把已删除 wrapper 写成当前机器事实。
 - [x] Linux/WSL/公司服务器 canonical Compose、Production Release、Secret、PostgreSQL、Migration、端口、持久化语义不变。
+- [x] PR #179 经 Final Ready HEAD 全量永久 CI 后正常合并到 `main`。
 
 # 范围
 
@@ -127,75 +128,59 @@ Windows、文档与 CI 直接表达真实运行命令；只保留真正必要的
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | Windows 本地 Compose 统一为一条标准启动命令 | user:windows-compose-cli | satisfied | 两个 wrapper 已删除；`env.production.example`、环境文档、Guide 03/04、Blueprint 05、Roadmap 统一为直接 Compose CLI；Windows run `32644531399` 的 CMD/PowerShell Compose CLI job success |
+| R1 | Windows 本地 Compose 统一为一条标准启动命令 | user:windows-compose-cli | satisfied | 两个 wrapper 已删除；当前正式文档与 env template 统一为直接 Compose CLI；Final Ready Windows run `32644737900` 的 CMD/PowerShell direct Compose CLI job success |
 | R2 | 增加明确的本地 Compose 停止命令 | user:windows-compose-stop | satisfied | `docs/02_环境运行与部署.md`、Guide 03/04、`env.production.example` 固化标准 `down`，并明确 named-volume 保留语义 |
-| R3 | 删除无用 CMD / PowerShell wrapper | user:remove-wrappers | satisfied | `scripts/dev/` 当前目录已无 `compose_windows.cmd` / `.ps1`；PR #179 diff 显示两个文件 removed |
-| R4 | 保持 Windows named-volume 与 Linux/Production 部署规范 | docs/roadmap/02_生产上线实施路线.md | satisfied | Windows Runtime run `32644531399` success；Internal V1-A run `32644531332` success；`compose.yaml` / `compose.windows.yaml` 未修改 |
-| R5 | L3 Completion Audit、Review、Ready/CI 门禁 | AGENTS.md | satisfied | 本 Change 已完成 Completion Audit、A1/A2 与 Code Quality Review；pre-ready HEAD `a196a79b33928c332040c7bd45f177e634e5c094` 除状态为 `in_progress` 的预期 Completion Gate 外其余永久 CI 全部 success；最终 Ready HEAD 继续由 Gate/永久 CI 复核 |
+| R3 | 删除无用 CMD / PowerShell wrapper | user:remove-wrappers | satisfied | `scripts/dev/` 已无两个 wrapper；PR #179 diff 两文件 removed，已合并到 main |
+| R4 | 保持 Windows named-volume 与 Linux/Production 部署规范 | docs/roadmap/02_生产上线实施路线.md | satisfied | Final Ready Windows Runtime `32644737900` success；Internal V1-A `32644737868` success；`compose.yaml` / `compose.windows.yaml` 未修改 |
+| R5 | L3 Completion Audit、Review、Ready/CI 门禁 | AGENTS.md | satisfied | Final Ready HEAD `688d28b6af516bbe9466c76958d10849eb8097c1` 的 11 个永久工作流全部 success；PR #179 merge `be31e05c6e9136e98f5651dc46446f1e77806bfa`；归档 PR #180 继续作为最后门禁 |
 
 # Validation Matrix
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
 | Browser Mock Acceptance | not_applicable | 不修改业务页面或用户业务行为 |
-| Backend/API/PostgreSQL Integration | required | Windows named-volume Runtime `32644531399` 与 Internal V1-A `32644531332` 均 success，覆盖 PostgreSQL、Migration、Readiness、Secret、persistence |
-| Contract / Generated Client | not_applicable | 不修改 HTTP Contract/generated client；总 CI `32644531263` 同时通过生成物/仓库回归 |
-| Real Full-stack Golden Path | required | Stage 8F `32644531244` success；Windows merged Runtime 与 Linux canonical Runtime 均通过 |
+| Backend/API/PostgreSQL Integration | required | Final Ready Windows Runtime `32644737900` 与 Internal V1-A `32644737868` success，覆盖 PostgreSQL、Migration、Readiness、Secret、persistence |
+| Contract / Generated Client | not_applicable | 不修改 HTTP Contract/generated client；总 CI `32644737889` success |
+| Real Full-stack Golden Path | required | Stage 8F `32644737881` success；Windows merged Runtime 与 Linux canonical Runtime 均通过 |
 | Real Provider Probe | not_applicable | 不修改 TikHub/LLM Provider 行为或外部字段 |
-| Docs / Governance / Other | required | Windows Runner 直接 CLI `32644531399` success；当前机器事实文档已同步；最终 Ready Completion Gate 继续作为合并门禁 |
+| Docs / Governance / Other | required | Windows direct CLI `32644737900` success；Completion Gate `32644737858` success；当前机器事实文档已同步 |
 
 # Completion Audit
 
-- [x] upstream_re_read: Ready 前重新读取本轮用户要求、当前 `main` 的 `AGENTS.md`、RVC Skill、Blueprint README/07、Roadmap 与 verification-review 规则，独立重建完成定义。
+- [x] upstream_re_read: Ready 前重新读取本轮用户要求、`AGENTS.md`、RVC Skill、Blueprint README/07、Roadmap 与 verification-review；实现合并后再次读取最新 main 的 AGENTS 进入归档。
 - [x] change_coverage: R1-R5 覆盖直接启动、停止命令、wrapper 删除、Windows/Linux/Production 不变量和 L3 交付；未发现 requirement omission。
-- [x] reverse_audit: 已反向检查 `scripts/dev/` 无两个 wrapper、Roadmap 机器事实不再列出它们，环境文档/Blueprint/Guide 均直接使用 Compose CLI；`compose.yaml` / `compose.windows.yaml` 无 diff，named-volume、Secret、端口和 Production Release 语义保持。
-- [x] unresolved_cleared: R1-R5 无 `not_satisfied`；适用验证层均获得当前 pre-ready HEAD 新鲜证据。
+- [x] reverse_audit: `scripts/dev/` 无两个 wrapper；Roadmap 机器事实不再列出它们；环境文档/Blueprint/Guide 均直接使用 Compose CLI；`compose.yaml` / `compose.windows.yaml` 无 diff，named-volume、Secret、端口和 Production Release 语义保持。
+- [x] unresolved_cleared: R1-R5 无 `not_satisfied`；Final Ready HEAD 全部永久 CI success。
 
 # 两阶段 Review
 
 ## Requirement Review A1：上游要求 → Change
 
-通过。独立从用户本轮要求与 Roadmap/AGENTS 重建完成定义后，确认以下要求均进入 Change：删除两个 wrapper、Windows 统一标准启动命令、补普通停止命令、保留 `compose.windows.yaml` named-volume 适配、保持 Linux/Production 部署边界、完成 L3 门禁。没有把当前 Change 自身作为需求全集。
+通过。用户要求的 wrapper 删除、统一 Windows 标准启动命令、普通停止命令、`compose.windows.yaml` 保留、Linux/Production 边界和 L3 门禁全部覆盖。
 
 ## Requirement Review A2：Change → 实现 / 测试 / 文档
 
-通过：
-
-- 两个 wrapper 已物理删除；
-- Windows `env.production` 首次复制改为显式一次性动作；
-- 启动 / down / stop / ps / logs / destructive reset 全部直接使用标准 Compose CLI；
-- Windows Runner 的 CMD 与 PowerShell 都直接执行 `docker compose ... config --services` 并成功；
-- Windows named-volume Runtime 的 bootstrap/PostgreSQL/Migration/Secret/persistence 继续成功；
-- Linux Internal V1-A 与 Stage 8F/总 CI 无回归；
-- `compose.yaml`、`compose.windows.yaml`、Dockerfile、Schema、Migration、依赖、业务代码均未修改；
-- 当前环境文档、Guide、Blueprint、Roadmap 已同步，不保留 wrapper 作为当前机器事实。
+通过：两个 wrapper 物理删除；env 首次复制改为显式一步；启动/down/stop/ps/logs/reset 全部直接使用标准 Compose CLI；Windows CMD/PowerShell direct CLI、named-volume Runtime、Linux Internal V1-A、总 CI、Stage 8F 全部通过；当前正式文档均已同步。
 
 ## Code Quality Review
 
-通过，无 Serious/Important finding：
+通过，无 Serious/Important finding。删除的是纯参数转发/模板复制 wrapper；`compose.windows.yaml` 保持 storage-only；普通 `down` 与破坏性 `down -v` 分离；无依赖升级、Schema/Contract/Migration/Secret/端口/业务行为变化。
 
-- 删除的是纯参数转发/模板复制 wrapper，不丢失运行、安全或存储行为；
-- 标准 CLI 直接暴露真实 Compose 组合，减少维护层和测试替身；
-- `compose.windows.yaml` 保持 storage-only，不制造 Windows 第二套业务 Compose；
-- 普通 `down` 与破坏性 `down -v` 分离清楚；
-- 无依赖升级、Schema/Contract/Migration/Secret/端口/业务行为变化；
-- Windows Runner 验证 CLI，Linux Docker Engine 验证真实 named-volume Runtime，证据层级与声明一致；
-- 未引入临时 workflow、兼容别名或无关重构。
+# 最终验证证据
 
-# 验证证据
+Final Ready HEAD: `688d28b6af516bbe9466c76958d10849eb8097c1`
 
-Pre-ready HEAD: `a196a79b33928c332040c7bd45f177e634e5c094`
-
-- Windows Docker Desktop Compose Compatibility `32644531399`: success；Windows CMD / PowerShell direct Compose CLI + named-volume Runtime 均通过。
-- Internal V1-A Deployable Stack `32644531332`: success；absolute / repo-relative Linux Compose Golden Path 通过。
-- CI `32644531263`: success。
-- Stage 8F Full-stack Acceptance `32644531244`: success。
-- Stage 6 `32644531291`: success。
-- Stage 7 / Local Dev：同一 HEAD 全部 success。
-- Change Completion Gate `32644531189`: expected failure，因为该 HEAD 的 Change 仍为 `in_progress`；本 Ready 提交后必须重新通过。
+- Change Completion Gate `32644737858`: success
+- Windows Docker Desktop Compose Compatibility `32644737900`: success
+- Internal V1-A Deployable Stack `32644737868`: success
+- CI `32644737889`: success
+- Stage 8F Full-stack Acceptance `32644737881`: success
+- Stage 6 / Stage 7 / Local Dev: 同一 HEAD 全部 success
 
 # Git / 交付
 
-- branch: `feature/unify-windows-compose-cli`
-- Draft PR: #179
-- archive: 实现 PR 正常合并后独立归档
+- Implementation PR: #179
+- Implementation Ready HEAD: `688d28b6af516bbe9466c76958d10849eb8097c1`
+- Implementation merge SHA: `be31e05c6e9136e98f5651dc46446f1e77806bfa`
+- Archive branch: `archive/unify-windows-compose-cli`
+- Archive PR: #180
