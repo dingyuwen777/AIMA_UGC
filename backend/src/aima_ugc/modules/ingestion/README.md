@@ -20,14 +20,14 @@ Excel 最终写 `contents/comments` 仍通过 Content Owner，不在本模块另
 
 ```text
 POST /api/v1/import-batches
-→ multipart XLSX 安全校验
+→ multipart XLSX + Keyword Pack 选择安全校验
 → Input Artifact
 → processing_import_batches
 → ingestion.import-excel.v1 Job
 → Worker
 → Excel Reader / Mapper
 → Canonical
-→ Relevance
+→ 冻结关键词选择 Relevance
 → ContentIngestionService
 → Content Owner Repository
 → PostgreSQL
@@ -108,7 +108,7 @@ status
 → processing / succeeded / failed 的数据库父事实
 
 stats JSONB
-→ 行数等运行统计
+→ 行数等运行统计，以及本批冻结的关键词选择快照
 
 error_summary
 → 安全错误摘要
@@ -188,18 +188,19 @@ backend/src/aima_ugc/bootstrap/import_worker.py
 白话流程：
 
 ```text
-用户上传 Excel
+用户上传 Excel + 选择 1—20 个 Keyword Pack
+→ API 冻结 pack id/version 与 effective_keywords
 → API 保存 Input Artifact
 → 同事务创建 Batch + Job
 → 202 Accepted
 → Worker 根据 job_id 反查唯一 Batch
-→ 读取 Batch 的 input_artifact_id
+→ 读取 Batch 的 input_artifact_id 与冻结关键词选择
 → 执行正式导入
 → 更新 Batch stats / status
 → Job 进入终态
 ```
 
-Job Payload 不需要复制文件路径、Secret 或所有 Batch 字段；业务关系由数据库 FK 维护。
+新建 Job 使用 `keyword_selection` 冻结多词包执行输入；为保证升级期间已排队任务可继续执行，Worker 仍兼容旧版 `relevance` 单词包 Payload。Job Payload 不复制文件路径、Secret 或所有 Batch 字段；业务关系由数据库 FK 维护。
 
 ---
 
@@ -262,7 +263,7 @@ GET  /api/v1/import-batches/{batch_id}
 GET  /api/v1/jobs/{job_id}
 ```
 
-列表 Cursor 会绑定查询条件，前端只原样回传 `next_cursor`，不解析内部结构。
+`POST /api/v1/import-batches` 的 multipart 必须包含一个 `file`，以及重复字段形式提交的 1—20 个不重复 `keyword_pack_ids`。列表 Cursor 会绑定查询条件，前端只原样回传 `next_cursor`，不解析内部结构。
 
 精确字段：
 
@@ -282,20 +283,21 @@ contracts/openapi/openapi.json
 ```text
 Excel Mapper
 → Canonical
-→ 全局 Relevance Snapshot
-→ 匹配/过滤
+→ 用户选择 1—20 个已启用 Keyword Pack
+→ API 冻结每个 pack id/version
+→ 合并并按现有 Relevance 匹配身份去重 effective_keywords
+→ title/text 任一关键词 OR 匹配
 → Dedup
 → Content Ingestion
 ```
 
-全局配置来自 System 的：
+关键词父事实来自 System 的：
 
 ```text
-global_relevance_config
 keyword_packs / keywords / keyword_pack_items
 ```
 
-Import 创建时冻结实际 Pack/Config/有效关键词，不让 Worker 运行到一半读取到一套新配置。
+Import 创建时冻结本次实际选择的 Pack 版本和有效关键词；后续即使管理员修改词包，已排队 Worker 也继续按创建时快照执行。Excel Import 不再从 `global_relevance_config` 推导本次筛选词包；全局 Relevance 配置仍服务于其现有 Collection 等语义，不因本次导入选择而被改写。
 
 AI 的 `relevance = relevant/irrelevant` 属于 `analysis_content_results`，不要和这里混在一起。
 
@@ -442,9 +444,9 @@ SQL：
 如果文件阶段成功但数据库没内容，重点看：
 
 ```text
-Batch stats
+Batch stats.keyword_selection
 → Request/Attempt
-→ Relevance 是否过滤
+→ Rule Relevance 是否过滤
 → Dedup
 → Content Ingestion
 ```
@@ -457,7 +459,9 @@ Batch stats
 - Input Artifact + Batch + Job 同事务关系；
 - `provider_requests` 来源父级恰好一个；
 - Worker retry 不产生第二个业务 Content；
-- Rule Relevance 使用冻结 Snapshot；
+- Rule Relevance 使用冻结的多词包 Selection Snapshot；
+- 多个所选词包按有效关键词并集执行 title/text OR 匹配；
+- 旧 `relevance` Import Job Payload 在升级期间仍可执行；
 - Excel/TikHub 同身份最终收敛；
 - Cursor 与查询条件绑定；
 - Migration old→head / downgrade-upgrade（适用时）。
@@ -468,6 +472,7 @@ Batch stats
 tests/unit/
 tests/api/
 tests/integration/
+frontend/e2e-fullstack/
 ```
 
 ---
