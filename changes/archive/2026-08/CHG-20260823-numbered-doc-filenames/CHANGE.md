@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260823-numbered-doc-filenames
 title: 统一 docs 技术文档编号文件名
 level: L2
-status: ready_for_review
+status: done
 owner: chatgpt
 branch: docs/numbered-document-filenames
 created: 2026-08-23
@@ -76,7 +76,7 @@ data_changes: []
 | R3 | Blueprint 只把开头编号后的 `-` 替换为 `_` | user:blueprint-separator-only | satisfied | Runner 对 `docs/blueprint` 01—08 精确文件集合校验通过；首轮重命名提交复用原 Blob |
 | R4 | 不改变文档正文内容 | user:preserve-doc-content | satisfied | 初始 33 篇重命名提交 `ea87400fd5a7cb0c5d4dd4dc62d8a1c6790a47b3` 复用原 Blob；Runner 将每篇新文档与 `origin/main` 旧路径进行仅允许文件名/链接迁移的内容对比并通过 |
 | R5 | 把固定命名规则写入 Skill | user:skill-governance | satisfied | `.agents/skills/reliable-vibe-coding/SKILL.md` 新增唯一 `docs/` 技术文档文件名规范，Runner 对关键约束逐项检查通过 |
-| R6 | 现有仓库治理和验证规则继续生效 | AGENTS.md | satisfied | Runner 刷新 `rvc discover` 成功，项目事实源索引仅含新路径；`python scripts/quality/check_docs.py` 成功；最终永久 PR CI 作为合并门禁继续执行，不绕过 |
+| R6 | 现有仓库治理和验证规则继续生效 | AGENTS.md | satisfied | Runner 刷新 `rvc discover` 成功，项目事实源索引仅含新路径；`python scripts/quality/check_docs.py` 成功；最终永久 PR CI 全部通过，未绕过任何门禁 |
 
 # Validation Matrix
 
@@ -87,13 +87,13 @@ data_changes: []
 | Contract / Generated Client | not_applicable | 无 Pydantic/OpenAPI/generated client 变化 |
 | Real Full-stack Golden Path | not_applicable | 无跨组件运行链变化 |
 | Real Provider Probe | not_applicable | 不修改 TikHub/LLM Provider |
-| Docs / Governance / Other | required | Runner `32636480935` / job `97186918732`：编号、正文完整性、旧引用、事实源索引、本地 Markdown 链接和现有文档质量门禁全部通过；最终永久 PR CI 继续作为合并条件 |
+| Docs / Governance / Other | required | Runner `32636480935` / job `97186918732`：编号、正文完整性、旧引用、事实源索引、本地 Markdown 链接和现有文档质量门禁全部通过；最终 PR HEAD 的 16 个永久 workflow 全部 success |
 
 # Completion Audit
 
 - [x] upstream_re_read：已重新读取本轮用户明确要求、AGENTS、Skill、Roadmap 和当前 docs 树，并以仓库事实纠正 Appendix 的最终顺序。
 - [x] change_coverage：已确认所有 `docs/**/*.md` 技术文档都纳入编号或 `README.md` 例外，`docs/assets/` 非 Markdown 资源不适用。
-- [x] reverse_audit：已从新文件名反查当前导航、Markdown 本地链接、代码/测试说明字符串和永久 CI path filter；历史 `changes/archive/` 不被改写。
+- [x] reverse_audit：已从新文件名反查当前导航、Markdown 本地链接、代码/测试说明字符串和永久 CI path filter；归档 Change 仅同步 Ready Check 持续解析的 `Requirement Source` live path，没有改写历史状态、证据或结论。
 - [x] unresolved_cleared：R1—R6 均已有新鲜证据；不适用的运行时验证层已说明依据。
 
 # 任务
@@ -117,8 +117,9 @@ data_changes: []
 - 引用检查：当前有效文件不存在旧文件名、混合编号或失效本地 Markdown 链接。
 - 项目发现：重新生成 `.reliable-vibe-coding/project-context.json` 并检查只记录新路径。
 - 文档门禁：`python scripts/quality/check_docs.py`。
-- Ready Check：`python .agents/skills/reliable-vibe-coding/scripts/ready_check.py --root . --require-active-ready`，由永久 Change Completion Gate 在最终 HEAD 上执行。
+- Ready Check：`python .agents/skills/reliable-vibe-coding/scripts/ready_check.py --root . --require-active-ready` / PR changed-since 变体，由永久 Change Completion Gate 执行。
 - PR CI：按仓库永久工作流执行，全部通过后才允许合并。
+- 合并后集成校验：比较已验证 PR HEAD 与 `main` merge commit，确认文件差异为空。
 
 ## 新鲜证据
 
@@ -130,7 +131,10 @@ data_changes: []
   - `python scripts/quality/check_docs.py`：成功；
   - job conclusion：`success`。
 - GitHub Actions run `32636689174` / job `97187424911`：仅在归档 Change 的 Requirement Traceability `| R... |` 行中同步 22 个 `Requirement Source` 路径，8 个归档 Change 受影响；job conclusion：`success`。
-- 一次性迁移/校验 workflow 与脚本在进入最终永久 CI 前删除，不作为仓库长期机制保留。
+- 最终 PR HEAD `4bfbfc977df65b0ea2941d8dc3ef72f799b0d02c` 的 16 个永久 workflow 全部 `success`：`CI`、`Change Completion Gate`、`Stage 1-7 Audit Correctness`、Stage 5A/5B/5C/5D、Stage 6、Stage 7 Keyword/Plan/Provider/Scheduler、Stage 8F、`Local Dev Bootstrap`、`Internal V1-A Deployable Stack`、`Windows Docker Desktop Compose Compatibility`。
+- PR #173 已合并到 `main`，merge commit `adb21d5d5c66281178cd5bf5236065ad29a6355f`。
+- 合并后比较 `4bfbfc977df65b0ea2941d8dc3ef72f799b0d02c..adb21d5d5c66281178cd5bf5236065ad29a6355f`：`ahead_by=1`、`files=[]`，证明 `main` 合并提交的文件树与已通过 16 个永久 workflow 的 PR HEAD 一致。
+- 一次性迁移/校验 workflow 与脚本均已从最终合并文件集合删除，不作为仓库长期机制保留。
 
 # 文档影响
 
@@ -142,8 +146,9 @@ data_changes: []
 
 # 交付
 
-- Branch：`docs/numbered-document-filenames`
-- Draft PR：#173 `统一 docs 技术文档编号命名`
+- 原开发 Branch：`docs/numbered-document-filenames`
+- PR：#173 `统一 docs 技术文档编号命名`，已合并
+- Merge Commit：`adb21d5d5c66281178cd5bf5236065ad29a6355f`
 - 核心重命名 Commit：`ea87400fd5a7cb0c5d4dd4dc62d8a1c6790a47b3`
 - Appendix 顺序 Commit：`2f8d9fa50e6339fa2b5b01c306d69fa5ba888d89`
 - 项目事实源刷新 Commit：`1159fc914831bb5e1e8b738c293382eb0ab1e0a7`
