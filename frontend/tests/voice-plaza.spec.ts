@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const generated = vi.hoisted(() => ({
   listContents: vi.fn(),
   getContent: vi.fn(),
+  getContentAnalysisCapabilities: vi.fn(),
   createContentAnalysis: vi.fn(),
   getContentAnalysisJob: vi.fn(),
   createDataExport: vi.fn(),
@@ -48,6 +49,7 @@ describe('voice plaza', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    generated.getContentAnalysisCapabilities.mockResolvedValue({ configured: true })
   })
 
   afterEach(() => {
@@ -121,6 +123,19 @@ describe('voice plaza', () => {
     expect(error).toMatchObject({ status: 409, requestId: 'request-export' })
   })
 
+  it('blocks analysis creation when the backend reports no configured runtime', async () => {
+    generated.getContentAnalysisCapabilities.mockResolvedValue({ configured: false })
+    const store = useVoicePlazaStore()
+
+    await store.refreshAnalysisCapabilities()
+    const created = await store.createAnalysis('query')
+
+    expect(store.analysisConfigured).toBe(false)
+    expect(created).toBeNull()
+    expect(store.error).toContain('当前环境尚未配置可用的 AI 模型')
+    expect(generated.createContentAnalysis).not.toHaveBeenCalled()
+  })
+
   it('surfaces an analysis job polling failure instead of leaving an unhandled rejection', async () => {
     vi.useFakeTimers()
     vi.stubGlobal('document', { visibilityState: 'visible' })
@@ -132,6 +147,7 @@ describe('voice plaza', () => {
     generated.listDataExports.mockResolvedValue({ items: [], has_more: false })
     const store = useVoicePlazaStore()
 
+    await store.refreshAnalysisCapabilities()
     await store.createAnalysis('query')
     store.startPolling(1000)
     await vi.advanceTimersByTimeAsync(1000)
