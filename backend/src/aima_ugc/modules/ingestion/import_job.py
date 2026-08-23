@@ -6,10 +6,9 @@ from collections.abc import Callable
 from typing import Literal, Protocol
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from aima_ugc.contracts.analysis import RelevanceSnapshotV1
 from aima_ugc.platform.jobs import (
     JobExecutionFence,
     JobHandlerResult,
@@ -44,19 +43,12 @@ class ImportKeywordSelectionSnapshot(BaseModel):
 
 
 class ImportJobPayload(BaseModel):
-    """兼容旧单词包 Job；新任务使用 keyword_selection 冻结执行输入。"""
+    """冻结 Excel Import 创建时选择的多词包执行快照。"""
 
     model_config = ConfigDict(extra="forbid")
 
     schema_version: Literal["ingestion.import-excel.v1"] = "ingestion.import-excel.v1"
-    relevance: RelevanceSnapshotV1 | None = None
-    keyword_selection: ImportKeywordSelectionSnapshot | None = None
-
-    @model_validator(mode="after")
-    def validate_snapshot(self) -> ImportJobPayload:
-        if (self.relevance is None) == (self.keyword_selection is None):
-            raise ValueError("Import Job 必须且只能冻结一种关键词快照")
-        return self
+    keyword_selection: ImportKeywordSelectionSnapshot
 
 
 class ImportJobExecutor(Protocol):
