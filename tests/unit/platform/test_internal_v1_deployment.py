@@ -6,17 +6,19 @@ import pytest
 from aima_ugc.bootstrap.internal_v1 import (
     InternalV1ProviderSettings,
     load_internal_v1_provider_settings,
+    validate_internal_v1_llm_settings,
     validate_internal_v1_provider_secret,
 )
 from aima_ugc.platform.config import PlatformSettings
 from aima_ugc.platform.security import SecretFileError
 
 
-def _platform_settings(secret_dir: Path) -> PlatformSettings:
+def _platform_settings(secret_dir: Path, **overrides: object) -> PlatformSettings:
     return PlatformSettings(
         data_dir=secret_dir.parent / "data",
         log_dir=secret_dir.parent / "logs",
         secret_dir=secret_dir,
+        **overrides,
     )
 
 
@@ -61,3 +63,54 @@ def test_internal_v1_provider_secret_validation_uses_existing_secret_boundary(
     )
 
     validate_internal_v1_provider_secret(_platform_settings(secret_dir), provider)
+
+
+def test_internal_v1_llm_absent_is_disabled(tmp_path: Path) -> None:
+    secret_dir = tmp_path / "secrets"
+    secret_dir.mkdir()
+
+    assert validate_internal_v1_llm_settings(_platform_settings(secret_dir)) is False
+
+
+def test_internal_v1_llm_partial_configuration_fails_closed(tmp_path: Path) -> None:
+    secret_dir = tmp_path / "secrets"
+    secret_dir.mkdir()
+
+    with pytest.raises(ValueError, match="AIMA_LLM_MODEL"):
+        validate_internal_v1_llm_settings(
+            _platform_settings(
+                secret_dir,
+                llm_base_url="https://provider.example/v1",
+            )
+        )
+
+
+def test_internal_v1_llm_configured_requires_readable_secret(tmp_path: Path) -> None:
+    secret_dir = tmp_path / "secrets"
+    secret_dir.mkdir()
+
+    with pytest.raises(SecretFileError):
+        validate_internal_v1_llm_settings(
+            _platform_settings(
+                secret_dir,
+                llm_base_url="https://provider.example/v1",
+                llm_model="model-name",
+            )
+        )
+
+
+def test_internal_v1_llm_configured_uses_existing_secret_boundary(tmp_path: Path) -> None:
+    secret_dir = tmp_path / "secrets"
+    secret_dir.mkdir()
+    (secret_dir / "llm_api_key").write_text("test-key\n", encoding="utf-8")
+
+    assert (
+        validate_internal_v1_llm_settings(
+            _platform_settings(
+                secret_dir,
+                llm_base_url="https://provider.example/v1",
+                llm_model="model-name",
+            )
+        )
+        is True
+    )
