@@ -219,9 +219,11 @@ def migrate_legacy_internal_secrets(paths: RuntimePaths) -> None:
     for name in _INTERNAL_SECRET_NAMES:
         current = paths.internal_secrets / name
         legacy = paths.external_secrets / name
+        if current.is_symlink():
+            raise LocalDevError(f"本地内部 Secret 不允许符号链接：{name}")
         if not legacy.exists() and not legacy.is_symlink():
             continue
-        if legacy.is_symlink() or current.is_symlink():
+        if legacy.is_symlink():
             raise LocalDevError(f"本地内部 Secret 不允许符号链接：{name}")
         legacy_value = _read_local_secret(legacy)
         if current.exists():
@@ -252,6 +254,8 @@ def prepare_cursor_secrets(paths: RuntimePaths) -> None:
 def ensure_random_secret(path: Path, *, min_characters: int) -> str:
     """只在缺失时生成随机 Secret；已有值不静默轮换。"""
 
+    if path.is_symlink():
+        raise LocalDevError(f"本地内部 Secret 不允许符号链接：{path}")
     if path.exists():
         value = _read_local_secret(path)
         if len(value) < min_characters:
