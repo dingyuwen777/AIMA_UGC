@@ -4,6 +4,17 @@
 
 把一个重要变化作为一个可独立理解、实现和验收的工作单元。复杂度通过同一 `CHANGE.md` 的章节深度增加，不通过固定生成 proposal、spec、design 和 tasks 四套文件增加。
 
+Change 是**施工契约**，不是自身的上游需求全集。正式 Stage / 子 Stage / Roadmap 单元必须保持：
+
+```text
+用户已确认决定 / 正式 Roadmap / Spec / Stage 完成定义
+→ 当前 Change
+→ 实现
+→ 测试与运行证据
+```
+
+不能因为 Change 自己的成功标准全部勾选，就跳过对上游完成定义的重新核对。
+
 ## 何时创建
 
 - L1：行为不变的机械修改，或边界明确且影响隔离的极小修复。不要创建 Change。
@@ -37,6 +48,14 @@ ID 使用 `CHG-YYYYMMDD-kebab-case`。一个 Change 默认只有一个 Owner 和
 - `affected_areas`、`affected_paths`；
 - `contracts`、`data_changes`。
 
+新模板还固定加入：
+
+```text
+completion_gate: required
+```
+
+它表示该 Change 在进入 Ready/Archive 时必须通过 Requirement Traceability 与 Completion Audit 门禁。机制引入前已经存在、没有该标记的 `rvc-change/v1` 作为 legacy 保持兼容，不要求批量改写历史。
+
 不要用自然语言“可能改很多地方”代替影响元数据。路径尽量写仓库相对目录或文件；Contract 和数据资源使用仓库既有正式名称。
 
 元数据必须来自仓库事实或已确认设计。仓库没有适用的 Contract、数据资源、模块 Owner 或 Migration 时，对应列表使用 `[]`，不得为显得完整而造名称。只有本次需求明确建立新接口或数据资源、且其名称和边界已通过设计门禁时，才记录计划中的新对象。
@@ -45,17 +64,19 @@ ID 使用 `CHG-YYYYMMDD-kebab-case`。一个 Change 默认只有一个 Owner 和
 
 ## 必需内容
 
-每个 Change 至少写清：
+每个新 Change 至少写清：
 
 1. 目标；
 2. 可观察成功标准；
 3. 范围与非目标；
 4. 必须保持不变；
 5. 已确认关键决策；
-6. 小而完整的任务；
-7. 验证计划和本轮新鲜证据；
-8. 文档影响；
-9. Commit、PR 和发布状态。
+6. Requirement Traceability；
+7. Completion Audit；
+8. 小而完整的任务；
+9. 验证计划和本轮新鲜证据；
+10. 文档影响；
+11. Commit、PR 和发布状态。
 
 L3 追加：
 
@@ -67,6 +88,45 @@ L3 追加：
 - 用户确认的上游决策。
 
 方案比较从目标、硬约束和必要机制出发，至少包含保留现有路线的最小增量方案；推荐的是当前证据下的最优可行解，不宣称未经测量或无法证明的绝对最优。
+
+## Requirement Traceability
+
+对 `completion_gate: required` 的 Change，编码前从上游事实源提取当前单元要求并维护追溯表。来源可以是：
+
+- 本轮用户明确批准决定：`user:<简短标识>`；
+- 仓库内正式 Roadmap、Spec、Stage 完成定义、Blueprint/Guide/README 中适用的上游要求；
+- 必要时显式外部事实源，但不能用当前 Change 自身代替正式需求来源。
+
+状态只允许：
+
+```text
+satisfied
+explicitly_deferred
+not_applicable
+not_satisfied
+```
+
+规则：
+
+- `satisfied` 必须有实际实现/测试/运行证据；
+- `explicitly_deferred` 必须有正式批准的延期依据；
+- `not_applicable` 必须说明为什么当前单元不适用；
+- `not_satisfied` 可以在开发中存在，但进入 `ready_for_review` 前必须清零；
+- Source、Evidence 不得在 Ready 时保留 `TBD/TODO/待确认/待实现/尚未验证` 等占位内容；
+- 机器检查只能验证结构、状态、占位符和仓库路径存在性，不能替代语义判断。
+
+详细规则见 [completion-gate.md](completion-gate.md)。
+
+## Completion Audit
+
+进入 `ready_for_review` 前，不先按当前 Change 的 checklist 验收，而是重新读取上游事实源并执行：
+
+1. `upstream_re_read`：独立重建上游完成定义；
+2. `change_coverage`：比较上游要求和当前 Change，寻找 requirement omission；
+3. `reverse_audit`：对适用边界做反向能力审计；
+4. `unresolved_cleared`：确认 `not_satisfied` 清零，延期/不适用都有依据。
+
+对于前后端/异步任务，反向审计通常包括“后端能力 → 前端入口”和“前端动作 → 后端真实支持”，以及状态、错误、最终结果和跨页面闭环。没有这类边界时记录不适用依据，不制造新机制。
 
 ## 状态
 
@@ -80,13 +140,23 @@ proposed → approved → in_progress → ready_for_review → done
 - 没有用户或项目要求的批准时，不伪造 `approved`。
 - 仅在真实阻塞时用 `blocked`，并记录阻塞条件。
 - 代码写完但尚未集成通常是 `ready_for_review`，不是 `done`。
-- 完成声明必须有成功标准、测试、文档和 Git 状态证据。
+- 对 gated Change，进入 `ready_for_review` 前必须完成 Traceability、Completion Audit 和机器 Ready Check；CI 全绿不能替代上游需求完整性复核。
+- 完成声明必须有成功标准、测试、文档、Requirement Traceability、Completion Audit 和 Git 状态证据。
+
+本地最终检查：
+
+```bash
+python .agents/skills/reliable-vibe-coding/scripts/ready_check.py --root . --require-active-ready
+```
+
+PR CI 只要求当前 PR 改动的 gated Change Ready，避免其他并行 Change 阻塞；`main` push 要求所有 gated Active Change Ready。
 
 ## 需求变化
 
-- 完成前改变同一目标：更新当前 Change，使其反映最新确认范围；在关键决策中记录重要取舍。
+- 完成前改变同一目标：先回到上游要求，更新 Traceability，再更新当前 Change；在关键决策中记录重要取舍。
 - 目标或范围根本改变：关闭或冻结原 Change，创建新 Change。
 - 已归档后出现新需求：创建新 Change，不改写历史。
+- 不得通过删除 `completion_gate` 或把未满足项静默改成“后续优化”绕过门禁。
 
 ## 当前事实与历史
 
@@ -96,6 +166,7 @@ README、正式需求、Contract、Schema 和架构文档描述系统现在是�
 
 归档前逐项确认：
 
+- gated Change 状态已改为 `done`，Requirement Traceability 和 Completion Audit 仍完整；
 - 成功标准有证据；
 - 目标和相关测试已运行；
 - 静态检查、类型检查和构建按影响范围完成；

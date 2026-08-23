@@ -18,11 +18,12 @@ description: 为软件仓库首次接入、持续开发和多人并行提供可�
 7. 从可观察目标、硬约束和根因出发选择最小充分机制；只把“最佳实践”当候选证据，不用它覆盖仓库事实或引入无依据复杂度。
 8. 只执行仓库中真实存在或本次需求明确建立的边界、Contract、Schema、Owner、Migration 和测试机制；经有界检查未发现时标记不适用并跳过，不补造制度。
 9. 对具有明确输入输出、独立业务价值、独立失败边界，或无需启动完整系统即可验证的能力，优先建立独立验证闭环；测试、调试、Probe 和示例入口复用生产实现，并提供与风险匹配的自动化测试、必要的 Fixture/Fake/隔离依赖、明确运行入口和可理解的验证说明。不要机械要求“一模块一个测试文件”或“一功能一个测试文档”。
+10. 对 L2/L3 正式 Change，尤其是 Stage / 子 Stage / Roadmap 单元，当前 Change 不是自身需求全集。必须从用户已确认决定和上游正式事实源建立 Requirement Traceability；进入 `ready_for_review` 前重新读取上游完成定义并执行 Completion Audit。CI 全绿不能替代需求完整性审计，也不能依赖用户后续发现漏项。
 
 ## 按需读取资源
 
 - 首次进入仓库、缓存缺失或缓存可能过期时，读取 [project-discovery.md](references/project-discovery.md)。
-- 任务分类为 L2/L3、需要需求追踪或已有 Active Change 时，读取 [change-management.md](references/change-management.md)。
+- 任务分类为 L2/L3、需要需求追踪或已有 Active Change 时，读取 [change-management.md](references/change-management.md)；新模板带 Completion Gate 时同时遵循 [completion-gate.md](references/completion-gate.md)。
 - 开发功能、修 Bug、重构或调查失败时，读取 [development-workflows.md](references/development-workflows.md)。
 - 任务跨模块、跨前后端、涉及接口/事件/数据，或仓库已有明确 Owner、Contract、Schema、Migration 和契约测试时，读取 [repository-constraints.md](references/repository-constraints.md)。
 - 多人、多 Agent、多个分支或多个 Active Change 并行时，读取 [collaboration.md](references/collaboration.md)。
@@ -86,7 +87,7 @@ python <skill>/scripts/rvc.py status --root <repo> --json
 
 行数少不等于 L1。公共配置改名、数据库字段变化或权限语义变化至少是 L2，通常是 L3。
 
-### 6. 固化任务契约
+### 6. 固化任务契约与上游追溯
 
 在编码前明确：目标、可观察成功标准、范围、非目标、必须保持不变、影响区域、验证方式和 Git 授权。
 
@@ -99,7 +100,9 @@ python <skill>/scripts/rvc.py new-change --root <repo> \
   --branch <branch> --level L2 --area <area> --path <path>
 ```
 
-脚本不可用时，从 [CHANGE.template.md](assets/CHANGE.template.md) 复制一份并填写；不得留下占位内容。
+脚本不可用时，从 [CHANGE.template.md](assets/CHANGE.template.md) 复制一份并填写；不得留下占位内容进入 Ready。
+
+新模板默认 `completion_gate: required`。对这种 Change，编码前先从本轮用户明确决定、正式 Roadmap/Spec/Stage 完成定义和适用规则中独立提取 Requirement Traceability。每条要求只允许 `satisfied / explicitly_deferred / not_applicable / not_satisfied`；当前 Change 不能引用自身作为 Requirement Source，也不能把自己的成功标准当作上游需求全集。
 
 仅询问真正影响接口、数据、兼容性或验收结果的最上游问题，一次一个。能从仓库确认的事实不要反问。
 
@@ -139,9 +142,30 @@ python <skill>/scripts/rvc.py new-change --root <repo> \
 - 行为不变且文档确实不受影响时，记录判断依据，不制造无关文档修改。
 - 文档与实现尚未同步、受影响文档尚未检查，或只能证明其中一方正确时，不得把任务标记为完成、`ready_for_review`、可合并或可发布。
 
-### 10. 两阶段复核和新鲜验证
+### 10. Completion Audit、两阶段复核和新鲜验证
 
-先逐项检查需求符合性，再检查正确性、边界、错误处理、安全、兼容性、可维护性和无关改动。严重或重要问题未解决前不要继续交付。
+对 `completion_gate: required` 的 Change，在进入 `ready_for_review` 前先执行 Completion Audit：
+
+```text
+重新读取上游正式事实源
+→ 不看当前 Change checklist，独立重建完成定义
+→ 比较“上游要求 → Change”，检查 requirement omission
+→ 比较“Change → 实现/测试/文档”
+→ 执行适用的反向能力审计
+→ 清零 not_satisfied
+```
+
+前后端/异步任务的反向审计通常需要检查“后端能力 → 前端入口”和“前端动作 → 后端能力”，以及状态、错误、最终结果和跨页面闭环。没有对应边界时记录不适用依据，不制造机制。
+
+机器门禁：
+
+```text
+python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
+```
+
+脚本只验证机器可判断的结构、状态、Source 路径、占位符和 Audit checkbox；**不能**判断业务需求是否完整，也不能替代语义 Review。
+
+完成 Audit 后，再按 [verification-review.md](references/verification-review.md) 先检查需求符合性，再检查正确性、边界、错误处理、安全、兼容性、可维护性和无关改动。严重或重要问题未解决前不要继续交付。
 
 每个完成结论都执行：
 
@@ -149,32 +173,33 @@ python <skill>/scripts/rvc.py new-change --root <repo> \
 确定证明命令
 → 实际运行完整命令
 → 读取完整输出、退出码和失败数
-→ 对照成功标准和 diff
+→ 对照上游完成定义、成功标准和 diff
 → 只陈述证据支持的状态
 ```
 
-遵循 [verification-review.md](references/verification-review.md)。子 Agent 报告、历史日志、局部测试和“代码看起来正确”都不能替代本轮复核。
+子 Agent 报告、历史日志、局部测试和“代码看起来正确”都不能替代本轮复核。
 
 ### 11. 关闭或保留 Change
 
-- 尚未合并或发布：通常标记 `ready_for_review`，保留在 `changes/active/`。
+- 尚未合并或发布：只有 Requirement Traceability、Completion Audit、验证和文档同步满足时才能标记 `ready_for_review`，继续保留在 `changes/active/`。
 - 已经完成全部成功标准、验证和文档同步，并且集成状态已确认：标记 `done`，再移动到 `changes/archive/YYYY-MM/`。
-- 需求在完成前变化：更新同一个 Change 的当前确认内容。
+- 需求在完成前变化：先回到上游事实源更新 Traceability，再更新同一个 Change 的当前确认内容。
 - 已归档需求后来再次变化：创建新的 Change，不改写历史。
 
-归档不是成功证据，不能先归档再补验证。
+归档不是成功证据，不能先归档再补验证。不得为了绕过 Ready Check 删除 `completion_gate`。
 
 ## 交付报告
 
 最终报告至少包含：
 
 1. 变更摘要与逐文件目的；
-2. 成功标准完成状态；
-3. 文档同步及依据；
-4. 本轮实际执行的命令、退出码和结果；
-5. 未验证内容、阻塞和剩余风险；
-6. 兼容性、依赖、Migration、部署和回滚影响；
-7. Git 分支、提交、PR、合并和清理的实际状态。
+2. 上游 Requirement Traceability 与成功标准完成状态；
+3. Completion Audit / 两阶段 Review 结果；
+4. 文档同步及依据；
+5. 本轮实际执行的命令、退出码和结果；
+6. 未验证内容、阻塞和剩余风险；
+7. 兼容性、依赖、Migration、部署和回滚影响；
+8. Git 分支、提交、PR、合并和清理的实际状态。
 
 不要只回复“已完成”“已修复”或“测试通过”。
 
@@ -182,6 +207,7 @@ python <skill>/scripts/rvc.py new-change --root <repo> \
 
 - 项目缓存是可失效导航，不是向量数据库、长期记忆或需求事实副本。
 - Change 文件是 Git 协作协议，不是原子锁、租约、看板、通知或在线状态服务。
+- Completion Gate 是流程完整性门禁，不是自然语言需求证明器；它不能替代 Agent/Reviewer 从上游事实源做语义完整性审计。
 - 看不到未提交、未推送、未同步、无权限访问或另一客户端私有的状态。
-- 不能强制其他人或 Agent 遵守 Owner、分支或影响范围。
+- 不能强制其他人或 Agent 遵守 Owner、分支或影响范围；仓库 CI 可阻止不满足门禁的 PR 合入。
 - 宿主不支持持久文件、脚本或 Git 时，只能执行其实际支持的流程，并明确降级。
