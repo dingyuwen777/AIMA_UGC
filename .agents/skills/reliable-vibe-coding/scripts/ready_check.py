@@ -59,8 +59,8 @@ def _load_rvc_module() -> Any:
 RVC = _load_rvc_module()
 
 
-def _normalise_relative_path(value: str) -> str:
-    path = value.replace("\\", "/").strip()
+def _normalise_relative_path(value: str | Path) -> str:
+    path = str(value).replace("\\", "/").strip()
     while path.startswith("./"):
         path = path[2:]
     return path
