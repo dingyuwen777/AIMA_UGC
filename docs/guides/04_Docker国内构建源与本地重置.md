@@ -61,7 +61,7 @@ docker.io → docker.1ms.run
 ghcr.io   → ghcr.1ms.run
 ```
 
-AIMA 采用这种仓库内显式前缀方式，因此**不依赖**开发机或服务器 Docker daemon 的 `registry-mirrors` 配置。基础通道可以直接使用，不要求在仓库中配置 1ms 账号、登录凭据或 Docker 密钥；付费/VIP 通道属于可选的外部能力，不是 AIMA 构建前置条件。
+AIMA 采用这种仓库内显式前缀方式，因此**不依赖**开发机或服务器 Docker daemon 的 `registry-mirrors` 配置。1ms 官网当前说明基础服务免费，Docker Hub/GHCR 基础通道可以直接使用；仓库不配置 1ms 账号、登录凭据或 Docker 密钥。注册/付费只用于可选的 VIP/更高优先级/SLA，不是 AIMA 构建前置条件。
 
 `docker.1panel.live` 当前官方文档主要作为 Docker daemon 的 `registry-mirrors` 地址使用，因此不把它假设成 Dockerfile/Compose 的直接镜像前缀。若管理员希望给整台 Docker Engine 增加第二镜像加速器，可在宿主自行配置，但这不是仓库运行依赖。
 
@@ -293,19 +293,38 @@ curl.exe -f http://127.0.0.1:8080/health/ready
 
 ---
 
-## 10. 验证原则
+## 10. 验证边界：国内默认源与海外永久 CI 分开
 
-永久 CI 必须在同一实现头真实执行默认镜像源的完整构建与 Runtime，至少证明：
+1ms 是面向中国网络环境的镜像加速服务。GitHub Hosted Ubuntu Runner 位于海外；本次真实 CI 曾直接使用 1ms 默认镜像启动，并在下载 PostgreSQL blob 时收到 1ms/CDN 的 Cloudflare JavaScript challenge（`Just a moment...`），Docker 客户端因此无法继续下载。
 
-- 1ms Python / uv / Node / Nginx / PostgreSQL 镜像可拉取；
-- `uv.lock` 冻结导出后可从 TUNA PyPI 通过 hash 校验安装；
-- TUNA Debian / Debian Security 可完成 `apt-get update/install`；
-- npmmirror 可完成 `npm ci`；
-- Linux Internal V1-A 完整 bind-mount Golden Path 通过；
-- Windows merged named-volume Runtime 和 CMD/PowerShell launcher 通过；
-- 总 CI 与 Stage 8F 回归通过。
+这不是 AIMA Runtime、镜像标签或 Compose 语法失败，而是**海外数据中心访问国内免费镜像通道的地域/CDN策略**。因此永久 CI 不能拿海外 Runner 去强制证明 1ms 的中国网络可用性。
 
-CI 证明的是配置、构建和运行链有效，不承诺你所在网络到每个国内镜像的固定带宽；具体下载速度仍受本机网络、DNS、Docker Desktop 和镜像节点影响。
+当前永久 CI 的正确职责是：
+
+```text
+GitHub Hosted Runner（海外）
+→ env 显式覆盖 Docker Hub / GHCR / Debian / PyPI / npm 官方源
+→ 完整 build
+→ PostgreSQL / Migration / API / Worker / Scheduler / Frontend
+→ Readiness / Secret / Persistence / Windows storage model
+```
+
+这同时证明：
+
+- 所有构建源确实可以由 `env.production` 覆盖；
+- 1ms 不是 AIMA Runtime 的不可替换硬依赖；
+- Linux Internal V1-A 与 Windows merged Runtime 在官方源下完整通过；
+- 镜像源切换没有修改业务 Runtime、Schema、Migration、Secret 或持久化语义。
+
+而 1ms 的实际验收范围是：
+
+```text
+中国网络本地电脑 / 公司服务器
+→ 使用 env.production 默认 1ms/TUNA/npmmirror
+→ 真实 pull/build
+```
+
+具体下载速度必须以目标中国网络实测为准。CI 不承诺某个镜像站固定带宽，也不把美国 Runner 的 Cloudflare challenge 写成“中国用户不能使用 1ms”。
 
 ---
 
