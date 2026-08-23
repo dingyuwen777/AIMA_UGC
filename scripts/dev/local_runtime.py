@@ -38,6 +38,12 @@ _RUNTIME_LLM_KEYS = (
     "AIMA_LLM_PROVIDER_NAME",
     "AIMA_LLM_MODEL",
 )
+_INTERNAL_SECRET_NAMES = (
+    "postgres_password",
+    "import_batch_cursor_signing_key",
+    "content_cursor_signing_key",
+    "collection_runtime_cursor_signing_key",
+)
 
 
 class LocalDevError(RuntimeError):
@@ -83,32 +89,33 @@ class RuntimePaths:
     runtime: Path
     data: Path
     logs: Path
-    secrets: Path
+    internal_secrets: Path
+    external_secrets: Path
     dev_state: Path
 
     @property
     def postgres_password_file(self) -> Path:
-        return self.secrets / "postgres_password"
+        return self.internal_secrets / "postgres_password"
 
     @property
     def import_cursor_key_file(self) -> Path:
-        return self.secrets / "import_batch_cursor_signing_key"
+        return self.internal_secrets / "import_batch_cursor_signing_key"
 
     @property
     def content_cursor_key_file(self) -> Path:
-        return self.secrets / "content_cursor_signing_key"
+        return self.internal_secrets / "content_cursor_signing_key"
 
     @property
     def runtime_cursor_key_file(self) -> Path:
-        return self.secrets / "collection_runtime_cursor_signing_key"
+        return self.internal_secrets / "collection_runtime_cursor_signing_key"
 
     @property
     def tikhub_secret_file(self) -> Path:
-        return self.secrets / LOCAL_TIKHUB_SECRET_REF
+        return self.external_secrets / LOCAL_TIKHUB_SECRET_REF
 
     @property
     def llm_secret_file(self) -> Path:
-        return self.secrets / LOCAL_LLM_SECRET_REF
+        return self.external_secrets / LOCAL_LLM_SECRET_REF
 
     @property
     def frontend_lock_fingerprint_file(self) -> Path:
@@ -128,7 +135,8 @@ def runtime_paths(root: Path) -> RuntimePaths:
         runtime=runtime,
         data=runtime / "data",
         logs=runtime / "logs",
-        secrets=runtime / "secrets",
+        internal_secrets=runtime / "internal-secrets",
+        external_secrets=runtime / "secrets",
         dev_state=runtime / "dev",
     )
 
@@ -193,8 +201,43 @@ def load_local_dev_config(path: Path) -> LocalDevConfig:
 
 
 def prepare_runtime_directories(paths: RuntimePaths) -> None:
-    for path in (paths.data, paths.logs, paths.secrets, paths.dev_state):
+    for path in (
+        paths.data,
+        paths.logs,
+        paths.internal_secrets,
+        paths.external_secrets,
+        paths.dev_state,
+    ):
         path.mkdir(parents=True, exist_ok=True)
+
+
+def migrate_legacy_internal_secrets(paths: RuntimePaths) -> None:
+    """把旧单根目录中的内部 Secret 原值迁移到新内部根；冲突时拒绝猜测。"""
+
+    paths.internal_secrets.mkdir(parents=True, exist_ok=True)
+    paths.external_secrets.mkdir(parents=True, exist_ok=True)
+    for name in _INTERNAL_SECRET_NAMES:
+        current = paths.internal_secrets / name
+        legacy = paths.external_secrets / name
+        if not legacy.exists() and not legacy.is_symlink():
+            continue
+        if legacy.is_symlink() or current.is_symlink():
+            raise LocalDevError(f"本地内部 Secret 不允许符号链接：{name}")
+        legacy_value = _read_local_secret(legacy)
+        if current.exists():
+            current_value = _read_local_secret(current)
+            if not secrets.compare_digest(current_value, legacy_value):
+                raise LocalDevError(
+                    f"检测到新旧本地内部 Secret 冲突：{name}；"
+                    "为避免覆盖已有数据库或签名事实，已停止启动，请人工确认保留哪个值。"
+                )
+            _remove_if_exists(legacy)
+            continue
+        try:
+            legacy.replace(current)
+            current.chmod(0o600)
+        except OSError as exc:
+            raise LocalDevError(f"迁移本地内部 Secret 失败：{name}") from exc
 
 
 def prepare_cursor_secrets(paths: RuntimePaths) -> None:
@@ -235,7 +278,8 @@ def build_runtime_environment(
         {
             "AIMA_DATA_DIR": str(paths.data),
             "AIMA_LOG_DIR": str(paths.logs),
-            "AIMA_SECRET_DIR": str(paths.secrets),
+            "AIMA_SECRET_DIR": str(paths.internal_secrets),
+            "AIMA_EXTERNAL_SECRET_DIR": str(paths.external_secrets),
             "AIMA_DB_HOST": POSTGRES_HOST,
             "AIMA_DB_PORT": str(POSTGRES_PORT),
             "AIMA_DB_NAME": POSTGRES_DB,
@@ -281,7 +325,7 @@ def ensure_postgres_container(paths: RuntimePaths, *, timeout_seconds: float = 6
     if container is None:
         if volume is not None and not paths.postgres_password_file.is_file():
             raise LocalDevError(
-                "发现既有本地 PostgreSQL volume，但 `.runtime/secrets/postgres_password` 已丢失；"
+                f"发现既有本地 PostgreSQL volume，但 {paths.postgres_password_file} 已丢失；"
                 "无法安全猜测旧数据库密码。请恢复该 Secret，或显式删除本地开发 volume 后重建。"
             )
         password = ensure_random_secret(paths.postgres_password_file, min_characters=32)
