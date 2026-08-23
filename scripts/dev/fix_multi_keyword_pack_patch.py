@@ -90,4 +90,49 @@ replace_once(
         assert persisted_job["payload"]["relevance"] is None''',
 )
 
+# Frontend runtime tests：请求改为 keyword_pack_ids，且 Store 新增启用词包读取依赖。
+path = "frontend/tests/collection-runtime.spec.ts"
+replace_once(
+    path,
+    '''  listImportBatches: vi.fn(),
+  getImportBatch: vi.fn(),''',
+    '''  listImportBatches: vi.fn(),
+  listKeywordPacks: vi.fn(),
+  getImportBatch: vi.fn(),''',
+)
+replace_once(
+    path,
+    '''    generated.getCollectionBatchSupplementEligibility.mockImplementation(async (batchId: string) => ({
+      batch_id: batchId,
+      targets: [],
+    }))''',
+    '''    generated.getCollectionBatchSupplementEligibility.mockImplementation(async (batchId: string) => ({
+      batch_id: batchId,
+      targets: [],
+    }))
+    generated.listKeywordPacks.mockResolvedValue({
+      items: [],
+      total: 0,
+      offset: 0,
+      limit: 100,
+    })''',
+)
+replace_once(
+    path,
+    '''    await createTikHubCollectionRun({
+      mode: 'discovery', keywords: ['爱玛', 'Q7'],
+      platforms: [{ platform: 'xiaohongshu', provider_config_id: 'provider-1' }],
+      include_comments: true, include_sub_comments: false,
+    })
+    expect(generated.createCollectionRun).toHaveBeenCalledWith(expect.objectContaining({ mode: 'discovery', keywords: ['爱玛', 'Q7'] }))''',
+    '''    await createTikHubCollectionRun({
+      mode: 'discovery', keyword_pack_ids: ['pack-1', 'pack-2'],
+      platforms: [{ platform: 'xiaohongshu', provider_config_id: 'provider-1' }],
+      include_comments: true, include_sub_comments: false,
+    })
+    expect(generated.createCollectionRun).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: 'discovery', keyword_pack_ids: ['pack-1', 'pack-2'] }),
+    )''',
+)
+
 print("multi keyword pack corrective patch applied")
