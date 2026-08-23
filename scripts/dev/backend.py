@@ -18,6 +18,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 from local_runtime import (
     LOCAL_TIKHUB_SECRET_REF,
+    POSTGRES_CONTAINER,
     LocalDevConfig,
     LocalDevError,
     RuntimePaths,
@@ -29,6 +30,7 @@ from local_runtime import (
     prepare_runtime_directories,
     repository_root,
     runtime_paths,
+    stop_postgres_container,
 )
 
 _READY_URL = "http://127.0.0.1:8090/health/ready"
@@ -87,34 +89,40 @@ def _run(
     print(f"[OK] Runtime directories: {paths.runtime}")
     print("[OK] Internal secrets")
 
-    ensure_postgres_container(paths)
-    print("[OK] PostgreSQL 18.4: aima-ugc-postgres-dev @ 127.0.0.1:5432")
-
-    runtime_environment = build_runtime_environment(paths=paths, config=config)
-    _run_migration(root=root, environment=runtime_environment)
-    print("[OK] Database migration: head")
-
-    tikhub_available = _provision_tikhub(
-        root=root,
-        paths=paths,
-        environment=runtime_environment,
-        config=config,
-    )
-    _print_feature_status(config=config, tikhub_available=tikhub_available)
-
-    if prepare_only:
-        print("[OK] Local backend preparation completed.")
-        return 0
-
     children: list[ChildProcess] = []
     stop_requested = threading.Event()
     previous_sigterm = signal.getsignal(signal.SIGTERM)
+    signal_installed = False
+    postgres_ready = False
+    postgres_cleanup_error: LocalDevError | None = None
 
     def request_stop(_signum: int, _frame: object) -> None:
         stop_requested.set()
 
-    signal.signal(signal.SIGTERM, request_stop)
     try:
+        ensure_postgres_container(paths)
+        postgres_ready = True
+        print("[OK] PostgreSQL 18.4: aima-ugc-postgres-dev @ 127.0.0.1:5432")
+
+        runtime_environment = build_runtime_environment(paths=paths, config=config)
+        _run_migration(root=root, environment=runtime_environment)
+        print("[OK] Database migration: head")
+
+        tikhub_available = _provision_tikhub(
+            root=root,
+            paths=paths,
+            environment=runtime_environment,
+            config=config,
+        )
+        _print_feature_status(config=config, tikhub_available=tikhub_available)
+
+        if prepare_only:
+            print("[OK] Local backend preparation completed.")
+            return 0
+
+        signal.signal(signal.SIGTERM, request_stop)
+        signal_installed = True
+
         children.append(
             _start_child(
                 "Worker",
@@ -161,7 +169,7 @@ def _run(
         print("[OK] API process started")
         _wait_for_ready(children)
         print(f"[OK] /health/ready: {_READY_URL}")
-        print("Backend is ready. Press Ctrl+C to stop API/Worker/Scheduler.")
+        print("Backend is ready. Press Ctrl+C to stop API/Worker/Scheduler/PostgreSQL.")
 
         while not stop_requested.wait(0.5):
             for child in children:
@@ -172,12 +180,23 @@ def _run(
                         "请查看上方输出和 .runtime/logs。"
                     )
                     raise LocalDevError(message)
+        print("\n[INFO] Stopping local backend...")
     except KeyboardInterrupt:
         print("\n[INFO] Stopping local backend...")
     finally:
-        signal.signal(signal.SIGTERM, previous_sigterm)
+        if signal_installed:
+            signal.signal(signal.SIGTERM, previous_sigterm)
         for child in reversed(children):
             _stop_child(child)
+        if postgres_ready and not prepare_only:
+            try:
+                _stop_postgres_for_backend()
+            except LocalDevError as exc:
+                print(f"[ERROR] PostgreSQL Docker container cleanup failed: {exc}", file=sys.stderr)
+                postgres_cleanup_error = exc
+
+    if postgres_cleanup_error is not None:
+        raise postgres_cleanup_error
     return 0
 
 
@@ -337,6 +356,22 @@ def _stop_child(child: ChildProcess) -> None:
         except OSError:
             pass
     print(f"[STOP] {child.name}")
+
+
+def _stop_postgres_for_backend() -> None:
+    """把 PostgreSQL container 状态转换为准确的 launcher 退出日志。"""
+
+    status = stop_postgres_container()
+    if status == "stopped":
+        print(f"[STOP] PostgreSQL Docker container stopped: {POSTGRES_CONTAINER}")
+        return
+    if status == "already_stopped":
+        print(f"[SKIP] PostgreSQL Docker container already stopped: {POSTGRES_CONTAINER}")
+        return
+    if status == "missing":
+        print(f"[SKIP] PostgreSQL Docker container not found: {POSTGRES_CONTAINER}")
+        return
+    raise LocalDevError(f"未知 PostgreSQL Docker container stop 状态：{status!r}")
 
 
 if __name__ == "__main__":
