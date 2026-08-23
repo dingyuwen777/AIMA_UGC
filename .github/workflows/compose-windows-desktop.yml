@@ -12,59 +12,39 @@ permissions:
   contents: read
 
 jobs:
-  windows-launchers:
-    name: Windows CMD and PowerShell Launchers
+  windows-compose-cli:
+    name: Windows Compose CLI
     runs-on: windows-2025
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
 
-      - name: Prepare fake Docker CLI
+      - name: Prepare production env
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          $fakeBin = Join-Path $env:RUNNER_TEMP "fake-docker"
-          New-Item -ItemType Directory -Force -Path $fakeBin | Out-Null
-          $logPath = Join-Path $env:RUNNER_TEMP "docker-args.log"
-          @'
-          @echo off
-          echo %*>>"%AIMA_FAKE_DOCKER_LOG%"
-          exit /b 0
-          '@ | Set-Content -LiteralPath (Join-Path $fakeBin "docker.cmd") -Encoding ascii
-          "AIMA_FAKE_DOCKER_LOG=$logPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          $fakeBin | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
           Copy-Item env.production.example env.production
 
-      - name: Validate CMD launcher
+      - name: Validate direct Compose command from CMD
         shell: cmd
         run: |
-          call scripts\dev\compose_windows.cmd
+          docker compose version
           if errorlevel 1 exit /b %errorlevel%
-          call scripts\dev\compose_windows.cmd config --services
+          docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production config --services > "%RUNNER_TEMP%\compose-cmd-services.txt"
           if errorlevel 1 exit /b %errorlevel%
 
-      - name: Validate PowerShell launcher
+      - name: Validate direct Compose command from PowerShell
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          & .\scripts\dev\compose_windows.ps1
+          $services = & docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production config --services
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & .\scripts\dev\compose_windows.ps1 config --services
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Assert launcher arguments
-        shell: powershell
-        run: |
-          $ErrorActionPreference = "Stop"
-          $lines = Get-Content -LiteralPath $env:AIMA_FAKE_DOCKER_LOG
-          if ($lines.Count -ne 4) {
-              throw "Expected 4 docker invocations, got $($lines.Count): $($lines -join ' | ')"
+          $expected = @("bootstrap", "postgres", "migrate", "configure", "api", "worker", "scheduler", "frontend")
+          foreach ($service in $expected) {
+              if ($services -notcontains $service) {
+                  throw "Missing Compose service: $service"
+              }
           }
-          $prefix = "compose -f compose.yaml -f compose.windows.yaml --env-file env.production"
-          if ($lines[0].Trim() -ne "$prefix up -d --build --wait") { throw "CMD default args mismatch: $($lines[0])" }
-          if ($lines[1].Trim() -ne "$prefix config --services") { throw "CMD passthrough args mismatch: $($lines[1])" }
-          if ($lines[2].Trim() -ne "$prefix up -d --build --wait") { throw "PowerShell default args mismatch: $($lines[2])" }
-          if ($lines[3].Trim() -ne "$prefix config --services") { throw "PowerShell passthrough args mismatch: $($lines[3])" }
 
   named-volume-runtime:
     name: Windows Named-volume Runtime Model
