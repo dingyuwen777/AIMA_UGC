@@ -1,0 +1,45 @@
+name: Docs Numbering Check
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    if: github.head_ref == 'docs/numbered-document-filenames' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: docs/numbered-document-filenames
+          fetch-depth: 0
+
+      - name: 刷新项目事实源索引
+        run: python .agents/skills/reliable-vibe-coding/scripts/rvc.py discover --root . --json
+
+      - name: 校验编号、引用、正文与本地链接
+        run: python scripts/docs_numbering_validate_temp.py
+
+      - name: 运行现有文档质量门禁
+        run: python scripts/quality/check_docs.py
+
+      - name: 提交刷新后的项目事实源索引
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .reliable-vibe-coding/project-context.json
+          if git diff --cached --quiet; then
+            echo "project-context 无需刷新"
+            exit 0
+          fi
+          git commit -m "刷新文档重命名后的项目事实源索引"
+          git push origin HEAD:docs/numbered-document-filenames
