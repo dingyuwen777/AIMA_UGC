@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from aima_ugc.bootstrap.internal_v1 import (
     InternalV1ProviderSettings,
     load_internal_v1_provider_settings,
