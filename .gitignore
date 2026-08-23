@@ -104,14 +104,14 @@ ipython_config.py
 #   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
 #   This is especially recommended for binary packages to ensure reproducibility, and is more
 #   commonly ignored for libraries.
-#   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file
+#   https://python-poetry.org/docs/basic-usage/
 # poetry.lock
 # poetry.toml
 
 # pdm
 #   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
 #   pdm recommends including project-wide configuration in pdm.toml, but excluding .pdm-python.
-#   https://pdm-project.org/en/latest/usage/project/#working-with-python-interpreters
+#   https://pdm-project.org/en/latest/usage/project/#working-with-pdm
 # pdm.lock
 # pdm.toml
 .pdm-python
@@ -120,7 +120,8 @@ ipython_config.py
 # pixi
 #   Similar to Pipfile.lock, it is generally recommended to include pixi.lock in version control.
 # pixi.lock
-#   Pixi creates a virtual environment in the .pixi directory, just like venv module does.
+#   Pixi creates a virtual environment in the .pixi directory, just like venv module, and is most
+#   commonly ignored.
 .pixi
 
 # PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
