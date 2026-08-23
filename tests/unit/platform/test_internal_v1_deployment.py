@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -19,6 +22,17 @@ def _platform_settings(secret_dir: Path, **overrides: object) -> PlatformSetting
         log_dir=secret_dir.parent / "logs",
         secret_dir=secret_dir,
         **overrides,
+    )
+
+
+def _run_prepare_host(*args: str) -> subprocess.CompletedProcess[str]:
+    repository_root = Path(__file__).resolve().parents[3]
+    return subprocess.run(
+        [sys.executable, "scripts/deploy/prepare_host.py", *args],
+        cwd=repository_root,
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
 
@@ -114,3 +128,24 @@ def test_internal_v1_llm_configured_uses_existing_secret_boundary(tmp_path: Path
         )
         is True
     )
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Internal V1 宿主准备只支持 POSIX")
+def test_prepare_host_rejects_relative_root_before_privileged_changes() -> None:
+    result = _run_prepare_host("--root", "relative-host-root")
+
+    assert result.returncode == 1
+    assert "宿主根目录必须是绝对路径" in result.stderr
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Internal V1 宿主准备只支持 POSIX")
+def test_prepare_host_rejects_symlink_root_before_privileged_changes(tmp_path: Path) -> None:
+    target = tmp_path / "real-root"
+    target.mkdir()
+    link = tmp_path / "linked-root"
+    link.symlink_to(target, target_is_directory=True)
+
+    result = _run_prepare_host("--root", str(link))
+
+    assert result.returncode == 1
+    assert "不允许符号链接" in result.stderr
