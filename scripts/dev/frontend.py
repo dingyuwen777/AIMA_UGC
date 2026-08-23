@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -54,7 +55,7 @@ def _run(*, root: Path, env_created: bool, prepare_only: bool) -> int:
     if frontend_dependencies_stale(paths, frontend_dir):
         print("[INFO] Frontend dependencies missing or package-lock changed; running npm ci...")
         result = subprocess.run(
-            [npm, "ci", "--prefix", "frontend"],
+            _npm_command(npm, "ci", "--prefix", "frontend"),
             cwd=root,
             check=False,
         )
@@ -72,7 +73,7 @@ def _run(*, root: Path, env_created: bool, prepare_only: bool) -> int:
     print("本地开发使用 Vite 热更新，不需要先执行 production build。")
     try:
         result = subprocess.run(
-            [npm, "--prefix", "frontend", "run", "dev"],
+            _npm_command(npm, "--prefix", "frontend", "run", "dev"),
             cwd=root,
             check=False,
         )
@@ -88,6 +89,17 @@ def _required_command(name: str) -> str:
     return resolved
 
 
+def _npm_command(npm: str, *arguments: str) -> list[str]:
+    """Windows 的 npm 是 `.cmd`；显式经 cmd.exe 执行，Linux/macOS 直接执行。"""
+
+    if os.name == "nt" and npm.lower().endswith((".cmd", ".bat")):
+        command_shell = os.environ.get("COMSPEC") or shutil.which("cmd.exe")
+        if command_shell is None:
+            raise LocalDevError("Windows 找不到 cmd.exe，无法执行 npm.cmd。")
+        return [command_shell, "/d", "/s", "/c", npm, *arguments]
+    return [npm, *arguments]
+
+
 def _verify_versions(*, root: Path, node: str, npm: str) -> None:
     expected_node = (root / ".node-version").read_text(encoding="utf-8").strip()
     package = json.loads((root / "frontend" / "package.json").read_text(encoding="utf-8"))
@@ -95,7 +107,7 @@ def _verify_versions(*, root: Path, node: str, npm: str) -> None:
     expected_npm = package_manager.removeprefix("npm@")
 
     actual_node = _command_output([node, "--version"]).removeprefix("v")
-    actual_npm = _command_output([npm, "--version"])
+    actual_npm = _command_output(_npm_command(npm, "--version"))
     if actual_node != expected_node:
         raise LocalDevError(f"Node 版本不匹配：当前 {actual_node}，仓库要求 {expected_node}。")
     if not expected_npm or actual_npm != expected_npm:
