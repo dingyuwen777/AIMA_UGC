@@ -155,18 +155,48 @@ jobs:
           PY
           curl -fsS http://127.0.0.1:18080/ >/dev/null
 
-          test "$(docker compose --env-file "${AIMA_V1A_ENV_FILE}" exec -T api id -u | tr -d '\r')" = "10001"
-          test "$(docker compose --env-file "${AIMA_V1A_ENV_FILE}" exec -T frontend id -u | tr -d '\r')" != "0"
-          docker compose --env-file "${AIMA_V1A_ENV_FILE}" exec -T api sh -ec \
-            'test -w /app/data; test -w /app/logs; test -r /run/secrets/postgres_password; test ! -w /run/secrets'
+          API_UID="$(docker compose --env-file "${AIMA_V1A_ENV_FILE}" exec -T api id -u | tr -d '\r')"
+          FRONTEND_UID="$(docker compose --env-file "${AIMA_V1A_ENV_FILE}" exec -T frontend id -u | tr -d '\r')"
+          echo "api uid=${API_UID}; frontend uid=${FRONTEND_UID}"
+          test "${API_UID}" = "10001"
+          test "${FRONTEND_UID}" != "0"
+          docker compose --env-file "${AIMA_V1A_ENV_FILE}" exec -T api \
+            test -r /run/secrets/postgres_password
 
-          if docker compose --env-file "${AIMA_V1A_ENV_FILE}" port postgres 5432 > "${RUNNER_TEMP}/postgres.port" 2>/dev/null; then
-            test ! -s "${RUNNER_TEMP}/postgres.port"
-          fi
-          if docker compose --env-file "${AIMA_V1A_ENV_FILE}" port api 8090 > "${RUNNER_TEMP}/api.port" 2>/dev/null; then
-            test ! -s "${RUNNER_TEMP}/api.port"
-          fi
-          test -n "$(docker compose --env-file "${AIMA_V1A_ENV_FILE}" port frontend 8080)"
+          API_CONTAINER="$(docker compose --env-file "${AIMA_V1A_ENV_FILE}" ps -q api)"
+          python3 - "${API_CONTAINER}" "${AIMA_V1A_ROOT}" <<'PY'
+          import json
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          container_id, root = sys.argv[1], Path(sys.argv[2])
+          payload = json.loads(
+              subprocess.check_output(["docker", "inspect", container_id], text=True)
+          )[0]
+          mounts = {item["Destination"]: item for item in payload["Mounts"]}
+          expected = {
+              "/app/data": (root / "runtime/data", True),
+              "/app/logs": (root / "runtime/logs", True),
+              "/run/secrets": (root / "shared/secrets", False),
+          }
+          for destination, (source, writable) in expected.items():
+              actual = mounts[destination]
+              print(
+                  f"mount {destination}: source={actual['Source']} rw={actual['RW']}"
+              )
+              assert actual["Type"] == "bind"
+              assert Path(actual["Source"]).resolve() == source.resolve()
+              assert actual["RW"] is writable
+          PY
+
+          POSTGRES_PORT="$(docker compose --env-file "${AIMA_V1A_ENV_FILE}" port postgres 5432 2>/dev/null || true)"
+          API_PORT="$(docker compose --env-file "${AIMA_V1A_ENV_FILE}" port api 8090 2>/dev/null || true)"
+          FRONTEND_PORT="$(docker compose --env-file "${AIMA_V1A_ENV_FILE}" port frontend 8080)"
+          echo "published postgres=${POSTGRES_PORT:-<none>} api=${API_PORT:-<none>} frontend=${FRONTEND_PORT}"
+          test -z "${POSTGRES_PORT}"
+          test -z "${API_PORT}"
+          grep -Fq ':18080' <<<"${FRONTEND_PORT}"
 
           docker compose --env-file "${AIMA_V1A_ENV_FILE}" exec -T api sh -c \
             'printf persistence > /app/data/internal-v1a-marker'
