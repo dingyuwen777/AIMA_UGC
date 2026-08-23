@@ -57,19 +57,35 @@ $data_changes
 | --- | --- | --- | --- | --- |
 | R1 | 写明第一条上游要求 | user:current-request | not_satisfied | 尚未验证 |
 
+# Validation Matrix
+
+按当前任务真实边界选择验证层。每层只使用 `required` 或 `not_applicable`：`required` 写明本次要证明的 Scope，并在完成前补当前 Evidence；`not_applicable` 必须说明为什么该层没有独立证明价值。不要机械要求所有任务执行全部层，也不要用 Browser Mock 冒充 Real Full-stack。
+
+| Layer | Required | Scope / Evidence |
+| --- | --- | --- |
+| Browser Mock Acceptance | not_applicable | 无用户界面时说明依据；有用户可见行为时通常用于广覆盖状态、请求和错误表达 |
+| Backend/API/PostgreSQL Integration | not_applicable | 无服务器/数据库行为变化时说明依据；否则验证业务规则、事务、持久化、Job/Worker |
+| Contract / Generated Client | not_applicable | 无公共 Contract/生成客户端影响时说明依据；否则验证 Pydantic/OpenAPI/generated client 一致性 |
+| Real Full-stack Golden Path | not_applicable | 无跨组件关键链时说明依据；否则用少量 Golden Path 证明真实组件接通 |
+| Real Provider Probe | not_applicable | 无外部 Provider 当前事实变化时说明依据；需要时必须有界、可审计、默认不进普通 CI |
+| Docs / Governance / Other | not_applicable | 纯文档、配置、生成物或其他专项验证在这里记录替代证据 |
+
+详细分层规则见 `.agents/skills/reliable-vibe-coding/references/testing-strategy.md`。
+
 # Completion Audit
 
-进入 `ready_for_review` 前必须**重新读取上游事实源**，不要从当前 Change 的 checklist 反推需求。按当前任务实际边界执行正向和反向审计；例如前后端任务应检查“后端能力 → 前端入口”和“前端动作 → 后端能力”，异步任务应检查状态、错误和结果闭环。
+进入 `ready_for_review` 前必须**重新读取上游事实源**，不要从当前 Change 的 checklist 反推需求。按当前任务实际边界执行正向和反向审计；例如前后端任务应检查“后端能力 → 前端入口”和“前端动作 → 后端能力”，异步任务应检查状态、错误和结果闭环，同时复核 Validation Matrix：每个 `required` 层都有足够的新鲜证据，每个 `not_applicable` 都有真实依据。
 
 - [ ] upstream_re_read：已重新读取所有上游正式事实源，并从它们独立重建完成定义。
 - [ ] change_coverage：已确认当前 Change 覆盖全部上游要求，没有把 Change 自身当作需求全集。
-- [ ] reverse_audit：已执行适用的反向能力/边界审计；不适用项已有明确依据。
+- [ ] reverse_audit：已执行适用的反向能力/边界审计，并复核 Validation Matrix；不适用项已有明确依据。
 - [ ] unresolved_cleared：所有 `not_satisfied` 已清零；延期/不适用项均有正式依据。
 
 # 任务
 
 - [ ] 调查当前实现和事实源
 - [ ] 建立失败测试或说明测试例外
+- [ ] 建立并维护 Validation Matrix
 - [ ] 完成最小实现
 - [ ] 同步受影响文档
 - [ ] 取得新鲜验证证据
@@ -79,6 +95,7 @@ $data_changes
 
 ## 计划
 
+- Validation Matrix：按 `.agents/skills/reliable-vibe-coding/references/testing-strategy.md` 选择适用层
 - 目标测试：
 - 相关测试：
 - 静态检查/构建：
