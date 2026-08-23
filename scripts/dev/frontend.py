@@ -85,7 +85,7 @@ def _run(*, root: Path, env_created: bool, prepare_only: bool) -> int:
 def _required_command(name: str) -> str:
     resolved = shutil.which(name)
     if resolved is None:
-        raise LocalDevError(f"未找到 {name}。请先按 docs/环境运行与部署.md 初始化开发环境。")
+        raise LocalDevError(f"未找到 {name}。请先按 docs/02_环境运行与部署.md 初始化开发环境。")
     return resolved
 
 

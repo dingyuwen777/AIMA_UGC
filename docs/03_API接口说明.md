@@ -269,7 +269,7 @@ backend/src/aima_ugc/modules/ingestion/
 
 详细实现：
 
-[`appendix/数据入口与统一入库实现.md`](appendix/数据入口与统一入库实现.md)
+[`appendix/08_数据入口与统一入库实现.md`](appendix/08_数据入口与统一入库实现.md)
 
 ## 5.1 `POST /api/v1/import-batches`
 
@@ -462,7 +462,7 @@ backend/src/aima_ugc/modules/analysis/
 
 详细实现：
 
-[`appendix/AI舆情打标与分析实现.md`](appendix/AI舆情打标与分析实现.md)
+[`appendix/07_AI舆情打标与分析实现.md`](appendix/07_AI舆情打标与分析实现.md)
 
 ## 7.1 `GET /api/v1/content-analysis-capabilities`
 
@@ -581,7 +581,7 @@ backend/src/aima_ugc/modules/reporting/
 详细：
 
 - `backend/src/aima_ugc/modules/reporting/README.md`
-- [`appendix/Excel统一数据导出与离线调试.md`](appendix/Excel统一数据导出与离线调试.md)
+- [`appendix/06_Excel统一数据导出与离线调试.md`](appendix/06_Excel统一数据导出与离线调试.md)
 
 ## 8.1 `POST /api/v1/data-exports`
 
@@ -718,7 +718,7 @@ max_catch_up_runs = 0
 
 完整 Scheduler 语义：
 
-[`appendix/Scheduler调度执行与停机恢复.md`](appendix/Scheduler调度执行与停机恢复.md)
+[`appendix/02_Scheduler调度执行与停机恢复.md`](appendix/02_Scheduler调度执行与停机恢复.md)
 
 不要在 API 文档提前声明并不存在的“全量 Plan 编辑 URL”。具体可编辑字段以当前 Request Model/Route 为准。
 
@@ -877,9 +877,9 @@ LLM 配置编辑/Secret 查询 API
 
 # 16. 相关文档
 
-- API/Job/Frontend 架构：[`blueprint/04-后端任务API与前端.md`](blueprint/04-后端任务API与前端.md)
-- 数据入口：[`appendix/数据入口与统一入库实现.md`](appendix/数据入口与统一入库实现.md)
-- Analysis：[`appendix/AI舆情打标与分析实现.md`](appendix/AI舆情打标与分析实现.md)
-- Excel Export：[`appendix/Excel统一数据导出与离线调试.md`](appendix/Excel统一数据导出与离线调试.md)
-- PostgreSQL：[`appendix/PostgreSQL查询与调试实战.md`](appendix/PostgreSQL查询与调试实战.md)
-- 代码修改导航：[`代码结构与修改导航.md`](代码结构与修改导航.md)
+- API/Job/Frontend 架构：[`blueprint/04_后端任务API与前端.md`](blueprint/04_后端任务API与前端.md)
+- 数据入口：[`appendix/08_数据入口与统一入库实现.md`](appendix/08_数据入口与统一入库实现.md)
+- Analysis：[`appendix/07_AI舆情打标与分析实现.md`](appendix/07_AI舆情打标与分析实现.md)
+- Excel Export：[`appendix/06_Excel统一数据导出与离线调试.md`](appendix/06_Excel统一数据导出与离线调试.md)
+- PostgreSQL：[`appendix/01_PostgreSQL查询与调试实战.md`](appendix/01_PostgreSQL查询与调试实战.md)
+- 代码修改导航：[`01_代码结构与修改导航.md`](01_代码结构与修改导航.md)

@@ -30,8 +30,8 @@ class DevelopmentGuidanceTest(unittest.TestCase):
         review = self._read(
             ".agents/skills/reliable-vibe-coding/references/verification-review.md"
         )
-        blueprint05 = self._read("docs/blueprint/05-日志安全部署与运维.md")
-        blueprint06 = self._read("docs/blueprint/06-开发约束与分阶段实施.md")
+        blueprint05 = self._read("docs/blueprint/05_日志安全部署与运维.md")
+        blueprint06 = self._read("docs/blueprint/06_开发约束与分阶段实施.md")
         self.assertIn("非显然内部/private/helper", review)
         self.assertIn("最小充分可观测性", review)
         self.assertIn("功能开发时怎样选择日志观测点", blueprint05)

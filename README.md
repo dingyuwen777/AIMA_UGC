@@ -19,9 +19,9 @@ TikHub / Excel
 
 最重要的三个导航：
 
-- [`docs/代码结构与修改导航.md`](docs/代码结构与修改导航.md)：准备改代码时从这里找文件；
+- [`docs/01_代码结构与修改导航.md`](docs/01_代码结构与修改导航.md)：准备改代码时从这里找文件；
 - [`docs/blueprint/README.md`](docs/blueprint/README.md)：理解核心长期架构和技术边界；
-- [`docs/roadmap/生产上线实施路线.md`](docs/roadmap/生产上线实施路线.md)：看当前做到哪里、还要怎么开发直到生产服务器上线。
+- [`docs/roadmap/02_生产上线实施路线.md`](docs/roadmap/02_生产上线实施路线.md)：看当前做到哪里、还要怎么开发直到生产服务器上线。
 
 ---
 
@@ -195,9 +195,9 @@ backend/src/aima_ugc/adapters/providers/tikhub/runtime.py
 真实响应与验证：
 
 - [`docs/collection/README.md`](docs/collection/README.md)
-- [`docs/appendix/TikHub五平台真实响应与字段映射.md`](docs/appendix/TikHub五平台真实响应与字段映射.md)
-- [`docs/appendix/TikHub多接口验证与备用策略.md`](docs/appendix/TikHub多接口验证与备用策略.md)
-- [`docs/appendix/TikHub接口选型与真实验证台账.md`](docs/appendix/TikHub接口选型与真实验证台账.md)
+- [`docs/appendix/03_TikHub五平台真实响应与字段映射.md`](docs/appendix/03_TikHub五平台真实响应与字段映射.md)
+- [`docs/appendix/04_TikHub多接口验证与备用策略.md`](docs/appendix/04_TikHub多接口验证与备用策略.md)
+- [`docs/appendix/05_TikHub接口选型与真实验证台账.md`](docs/appendix/05_TikHub接口选型与真实验证台账.md)
 - `tests/fixtures/providers/tikhub/`
 
 这类 Provider 细节已经从核心 Blueprint 下沉到 Appendix/Collection 文档，避免 Blueprint 随平台实现无限增长。
@@ -235,7 +235,7 @@ TikHub 和 Excel 在 Canonical 后复用 Content Owner，所以最终去重、Cu
 
 详细：
 
-- [`docs/appendix/数据入口与统一入库实现.md`](docs/appendix/数据入口与统一入库实现.md)
+- [`docs/appendix/08_数据入口与统一入库实现.md`](docs/appendix/08_数据入口与统一入库实现.md)
 
 人工调试：
 
@@ -297,9 +297,9 @@ Current
 
 详细：
 
-- [`docs/blueprint/03-数据库与文件存储.md`](docs/blueprint/03-数据库与文件存储.md)
+- [`docs/blueprint/03_数据库与文件存储.md`](docs/blueprint/03_数据库与文件存储.md)
 - [`backend/src/aima_ugc/modules/content/README.md`](backend/src/aima_ugc/modules/content/README.md)
-- [`docs/appendix/PostgreSQL查询与调试实战.md`](docs/appendix/PostgreSQL查询与调试实战.md)
+- [`docs/appendix/01_PostgreSQL查询与调试实战.md`](docs/appendix/01_PostgreSQL查询与调试实战.md)
 
 ---
 
@@ -360,7 +360,7 @@ analysis_content_results.relevance
 
 详细：
 
-- [`docs/appendix/AI舆情打标与分析实现.md`](docs/appendix/AI舆情打标与分析实现.md)
+- [`docs/appendix/07_AI舆情打标与分析实现.md`](docs/appendix/07_AI舆情打标与分析实现.md)
 - [`backend/src/aima_ugc/modules/analysis/README.md`](backend/src/aima_ugc/modules/analysis/README.md)
 
 ---
@@ -412,7 +412,7 @@ frontend/src/features/collection-strategy/
 前端入口：
 
 - [`frontend/README.md`](frontend/README.md)
-- [`docs/guides/Figma与前端设计开发工作流.md`](docs/guides/Figma与前端设计开发工作流.md)
+- [`docs/guides/01_Figma与前端设计开发工作流.md`](docs/guides/01_Figma与前端设计开发工作流.md)
 
 ---
 
@@ -436,7 +436,7 @@ backend/src/aima_ugc/modules/reporting/
 
 详细：
 
-- [`docs/appendix/Excel统一数据导出与离线调试.md`](docs/appendix/Excel统一数据导出与离线调试.md)
+- [`docs/appendix/06_Excel统一数据导出与离线调试.md`](docs/appendix/06_Excel统一数据导出与离线调试.md)
 
 ### 离线 Markdown / Word Report
 
@@ -454,7 +454,7 @@ backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py
 
 详细：
 
-- [`docs/appendix/Word舆情报告生成与排版实现.md`](docs/appendix/Word舆情报告生成与排版实现.md)
+- [`docs/appendix/10_Word舆情报告生成与排版实现.md`](docs/appendix/10_Word舆情报告生成与排版实现.md)
 - [`backend/src/aima_ugc/platform/reporting/README.md`](backend/src/aima_ugc/platform/reporting/README.md)
 
 当前离线 Word Renderer 尚不是一个独立 durable Report Job/前端报告中心；是否产品化见 Roadmap Stage 10。
@@ -491,10 +491,10 @@ Frontend → frontend/package.json + frontend/package-lock.json
 
 1. [`AGENTS.md`](AGENTS.md)
 2. [`.agents/skills/reliable-vibe-coding/SKILL.md`](.agents/skills/reliable-vibe-coding/SKILL.md)
-3. [`docs/代码结构与修改导航.md`](docs/代码结构与修改导航.md)
+3. [`docs/01_代码结构与修改导航.md`](docs/01_代码结构与修改导航.md)
 4. [`docs/blueprint/README.md`](docs/blueprint/README.md)
-5. [`docs/blueprint/07-技术决策与实施门禁.md`](docs/blueprint/07-技术决策与实施门禁.md)
-6. [`docs/roadmap/生产上线实施路线.md`](docs/roadmap/生产上线实施路线.md)
+5. [`docs/blueprint/07_技术决策与实施门禁.md`](docs/blueprint/07_技术决策与实施门禁.md)
+6. [`docs/roadmap/02_生产上线实施路线.md`](docs/roadmap/02_生产上线实施路线.md)
 7. 再读当前模块 README、Appendix/Guide、Contract、Migration、代码和测试
 
 文档职责：
@@ -572,9 +572,9 @@ Internal V1-A 已验证 bootstrap、PostgreSQL 18.4、Migration、configure、AP
 
 详细路线：
 
-- [`docs/roadmap/生产上线实施路线.md`](docs/roadmap/生产上线实施路线.md)
-- [`docs/appendix/生产部署与离线Release方案.md`](docs/appendix/生产部署与离线Release方案.md)
-- [`docs/环境运行与部署.md`](docs/环境运行与部署.md)
+- [`docs/roadmap/02_生产上线实施路线.md`](docs/roadmap/02_生产上线实施路线.md)
+- [`docs/appendix/11_生产部署与离线Release方案.md`](docs/appendix/11_生产部署与离线Release方案.md)
+- [`docs/02_环境运行与部署.md`](docs/02_环境运行与部署.md)
 
 Stage 9 Monitoring/告警/VOC/工单和 Stage 10 Word 报告产品化当前不阻塞受控公司内网 V1；完整 Production 的认证、Release 完整性、持久化恢复和回滚门禁不能跳过。
 

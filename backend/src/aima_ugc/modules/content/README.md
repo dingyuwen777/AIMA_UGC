@@ -19,9 +19,9 @@ Provider / Excel
 
 相关：
 
-- [`../../../../../docs/blueprint/03-数据库与文件存储.md`](../../../../../docs/blueprint/03-数据库与文件存储.md)
-- [`../../../../../docs/appendix/数据入口与统一入库实现.md`](../../../../../docs/appendix/数据入口与统一入库实现.md)
-- [`../../../../../docs/代码结构与修改导航.md`](../../../../../docs/代码结构与修改导航.md)
+- [`../../../../../docs/blueprint/03_数据库与文件存储.md`](../../../../../docs/blueprint/03_数据库与文件存储.md)
+- [`../../../../../docs/appendix/08_数据入口与统一入库实现.md`](../../../../../docs/appendix/08_数据入口与统一入库实现.md)
+- [`../../../../../docs/01_代码结构与修改导航.md`](../../../../../docs/01_代码结构与修改导航.md)
 
 ---
 
@@ -369,7 +369,7 @@ Content Version
 
 SQL：
 
-[`../../../../../docs/appendix/PostgreSQL查询与调试实战.md`](../../../../../docs/appendix/PostgreSQL查询与调试实战.md)
+[`../../../../../docs/appendix/01_PostgreSQL查询与调试实战.md`](../../../../../docs/appendix/01_PostgreSQL查询与调试实战.md)
 
 ---
 

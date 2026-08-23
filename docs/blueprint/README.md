@@ -7,10 +7,10 @@
 如果第一次接触仓库，建议先读：
 
 1. [`../../AGENTS.md`](../../AGENTS.md)
-2. [`../代码结构与修改导航.md`](../代码结构与修改导航.md)
+2. [`../01_代码结构与修改导航.md`](../01_代码结构与修改导航.md)
 3. 本文
-4. [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md)
-5. [`../roadmap/生产上线实施路线.md`](../roadmap/生产上线实施路线.md)
+4. [`07_技术决策与实施门禁.md`](07_技术决策与实施门禁.md)
+5. [`../roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)
 6. 再按当前任务下钻对应 Appendix、Guide、模块 README、Contract、Migration、代码和测试
 
 ---
@@ -58,14 +58,14 @@ changes/archive
 
 | 文档 | 解决的问题 | 关键结论 |
 | --- | --- | --- |
-| [`01-总体架构与技术选型.md`](01-总体架构与技术选型.md) | 整个系统怎样拆？ | 模块化单体、API/Worker/Scheduler/Migration 分进程、当前技术栈和依赖方向 |
-| [`02-采集系统与数据标准化.md`](02-采集系统与数据标准化.md) | 不同数据来源怎样进入同一体系？ | Provider/File → Raw/Input → Mapper → Canonical → Relevance → Ingestion → PostgreSQL |
-| [`03-数据库与文件存储.md`](03-数据库与文件存储.md) | 什么放数据库，什么放文件？ | PostgreSQL 唯一业务事实库、Current/Version/Metric、Artifact、表 Owner、Migration |
-| [`04-后端任务API与前端.md`](04-后端任务API与前端.md) | API、Job、Worker、Scheduler、前端怎样协作？ | 长任务 durable Job、OpenAPI generated Client、前后端边界 |
-| [`05-日志安全部署与运维.md`](05-日志安全部署与运维.md) | 日志、安全、Secret、生产运行怎么定？ | 日志/Secret/Health/Artifact/部署恢复长期边界 |
-| [`06-开发约束与分阶段实施.md`](06-开发约束与分阶段实施.md) | 怎么可靠开发和交付？ | Change、TDD、CI、Git、文档同步、验收方法；阶段进度不在这里维护 |
-| [`07-技术决策与实施门禁.md`](07-技术决策与实施门禁.md) | 哪些跨模块决定已经拍板？ | 普通任务不能静默改变的技术决定和门禁 |
-| [`08-采集策略与平台能力.md`](08-采集策略与平台能力.md) | Collection Plan 怎样决定抓什么？ | Capability、Decision、Detail/Comment、Provider Billing、采集策略 |
+| [`01_总体架构与技术选型.md`](01_总体架构与技术选型.md) | 整个系统怎样拆？ | 模块化单体、API/Worker/Scheduler/Migration 分进程、当前技术栈和依赖方向 |
+| [`02_采集系统与数据标准化.md`](02_采集系统与数据标准化.md) | 不同数据来源怎样进入同一体系？ | Provider/File → Raw/Input → Mapper → Canonical → Relevance → Ingestion → PostgreSQL |
+| [`03_数据库与文件存储.md`](03_数据库与文件存储.md) | 什么放数据库，什么放文件？ | PostgreSQL 唯一业务事实库、Current/Version/Metric、Artifact、表 Owner、Migration |
+| [`04_后端任务API与前端.md`](04_后端任务API与前端.md) | API、Job、Worker、Scheduler、前端怎样协作？ | 长任务 durable Job、OpenAPI generated Client、前后端边界 |
+| [`05_日志安全部署与运维.md`](05_日志安全部署与运维.md) | 日志、安全、Secret、生产运行怎么定？ | 日志/Secret/Health/Artifact/部署恢复长期边界 |
+| [`06_开发约束与分阶段实施.md`](06_开发约束与分阶段实施.md) | 怎么可靠开发和交付？ | Change、TDD、CI、Git、文档同步、验收方法；阶段进度不在这里维护 |
+| [`07_技术决策与实施门禁.md`](07_技术决策与实施门禁.md) | 哪些跨模块决定已经拍板？ | 普通任务不能静默改变的技术决定和门禁 |
+| [`08_采集策略与平台能力.md`](08_采集策略与平台能力.md) | Collection Plan 怎样决定抓什么？ | Capability、Decision、Detail/Comment、Provider Billing、采集策略 |
 
 新增一个具体业务场景或某个 Provider 细节时，优先放 Appendix/模块 README；不要继续按 `09、10、11...` 扩张 Blueprint。
 
@@ -81,14 +81,14 @@ changes/archive
 
 | 原主题 | 当前正式入口 |
 | --- | --- |
-| Scheduler 运行、Cron、`latest_only`、并发、防重、停机恢复 | [`../appendix/Scheduler调度执行与停机恢复.md`](../appendix/Scheduler调度执行与停机恢复.md) + Collection README + 04/07/08 |
-| TikHub 五平台真实响应、JSON 路径、Mapper、Fixture | [`../appendix/TikHub五平台真实响应与字段映射.md`](../appendix/TikHub五平台真实响应与字段映射.md) + [`../collection/README.md`](../collection/README.md) |
-| TikHub App/Web/V1/V2/V3 验证和备用接口 | [`../appendix/TikHub多接口验证与备用策略.md`](../appendix/TikHub多接口验证与备用策略.md) |
-| TikHub 真实 Probe/接口选型台账 | [`../appendix/TikHub接口选型与真实验证台账.md`](../appendix/TikHub接口选型与真实验证台账.md) |
-| 统一 Excel 数据导出/离线调试 | [`../appendix/Excel统一数据导出与离线调试.md`](../appendix/Excel统一数据导出与离线调试.md) |
-| AI 打标、相关性、发声类型、Validator、Retry、持久化 | [`../appendix/AI舆情打标与分析实现.md`](../appendix/AI舆情打标与分析实现.md) + `backend/src/aima_ugc/modules/analysis/README.md` + 当前 Prompt |
-| 前端页面结构、Figma/Design-to-Code | [`../guides/Figma与前端设计开发工作流.md`](../guides/Figma与前端设计开发工作流.md) + `frontend/README.md` |
-| Stage 8 Excel/TikHub 统一入库、Import Batch、页面/API/Job | [`../appendix/数据入口与统一入库实现.md`](../appendix/数据入口与统一入库实现.md) + API/Frontend README + Roadmap |
+| Scheduler 运行、Cron、`latest_only`、并发、防重、停机恢复 | [`../appendix/02_Scheduler调度执行与停机恢复.md`](../appendix/02_Scheduler调度执行与停机恢复.md) + Collection README + 04/07/08 |
+| TikHub 五平台真实响应、JSON 路径、Mapper、Fixture | [`../appendix/03_TikHub五平台真实响应与字段映射.md`](../appendix/03_TikHub五平台真实响应与字段映射.md) + [`../collection/README.md`](../collection/README.md) |
+| TikHub App/Web/V1/V2/V3 验证和备用接口 | [`../appendix/04_TikHub多接口验证与备用策略.md`](../appendix/04_TikHub多接口验证与备用策略.md) |
+| TikHub 真实 Probe/接口选型台账 | [`../appendix/05_TikHub接口选型与真实验证台账.md`](../appendix/05_TikHub接口选型与真实验证台账.md) |
+| 统一 Excel 数据导出/离线调试 | [`../appendix/06_Excel统一数据导出与离线调试.md`](../appendix/06_Excel统一数据导出与离线调试.md) |
+| AI 打标、相关性、发声类型、Validator、Retry、持久化 | [`../appendix/07_AI舆情打标与分析实现.md`](../appendix/07_AI舆情打标与分析实现.md) + `backend/src/aima_ugc/modules/analysis/README.md` + 当前 Prompt |
+| 前端页面结构、Figma/Design-to-Code | [`../guides/01_Figma与前端设计开发工作流.md`](../guides/01_Figma与前端设计开发工作流.md) + `frontend/README.md` |
+| Stage 8 Excel/TikHub 统一入库、Import Batch、页面/API/Job | [`../appendix/08_数据入口与统一入库实现.md`](../appendix/08_数据入口与统一入库实现.md) + API/Frontend README + Roadmap |
 
 历史阶段为什么这样拆、当时哪些能力尚未实现、当时的验收证据，继续由：
 
@@ -102,7 +102,7 @@ changes/archive/
 
 ## 4. 未完成阶段去哪看
 
-[`../roadmap/生产上线实施路线.md`](../roadmap/生产上线实施路线.md)
+[`../roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)
 
 这是后续持续开发的正式导航，不因 Blueprint 清理而消失。
 
@@ -136,7 +136,7 @@ changes/archive/
 
 ### PostgreSQL / SQL
 
-[`../appendix/PostgreSQL查询与调试实战.md`](../appendix/PostgreSQL查询与调试实战.md)
+[`../appendix/01_PostgreSQL查询与调试实战.md`](../appendix/01_PostgreSQL查询与调试实战.md)
 
 用于：
 
@@ -150,23 +150,23 @@ changes/archive/
 
 ### Scheduler
 
-[`../appendix/Scheduler调度执行与停机恢复.md`](../appendix/Scheduler调度执行与停机恢复.md)
+[`../appendix/02_Scheduler调度执行与停机恢复.md`](../appendix/02_Scheduler调度执行与停机恢复.md)
 
 ### TikHub
 
 - [`../collection/README.md`](../collection/README.md)
-- [`../appendix/TikHub五平台真实响应与字段映射.md`](../appendix/TikHub五平台真实响应与字段映射.md)
-- [`../appendix/TikHub多接口验证与备用策略.md`](../appendix/TikHub多接口验证与备用策略.md)
-- [`../appendix/TikHub接口选型与真实验证台账.md`](../appendix/TikHub接口选型与真实验证台账.md)
+- [`../appendix/03_TikHub五平台真实响应与字段映射.md`](../appendix/03_TikHub五平台真实响应与字段映射.md)
+- [`../appendix/04_TikHub多接口验证与备用策略.md`](../appendix/04_TikHub多接口验证与备用策略.md)
+- [`../appendix/05_TikHub接口选型与真实验证台账.md`](../appendix/05_TikHub接口选型与真实验证台账.md)
 
 ### Excel / 数据入口
 
-- [`../appendix/数据入口与统一入库实现.md`](../appendix/数据入口与统一入库实现.md)
-- [`../appendix/Excel统一数据导出与离线调试.md`](../appendix/Excel统一数据导出与离线调试.md)
+- [`../appendix/08_数据入口与统一入库实现.md`](../appendix/08_数据入口与统一入库实现.md)
+- [`../appendix/06_Excel统一数据导出与离线调试.md`](../appendix/06_Excel统一数据导出与离线调试.md)
 
 ### AI
 
-- [`../appendix/AI舆情打标与分析实现.md`](../appendix/AI舆情打标与分析实现.md)
+- [`../appendix/07_AI舆情打标与分析实现.md`](../appendix/07_AI舆情打标与分析实现.md)
 - `backend/src/aima_ugc/modules/analysis/README.md`
 
 完整 Prompt / taxonomy 唯一业务事实源：
@@ -177,19 +177,19 @@ backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md
 
 ### Word Report
 
-[`../appendix/Word舆情报告生成与排版实现.md`](../appendix/Word舆情报告生成与排版实现.md)
+[`../appendix/10_Word舆情报告生成与排版实现.md`](../appendix/10_Word舆情报告生成与排版实现.md)
 
 ### Figma / Frontend
 
-- [`../guides/Figma与前端设计开发工作流.md`](../guides/Figma与前端设计开发工作流.md)
+- [`../guides/01_Figma与前端设计开发工作流.md`](../guides/01_Figma与前端设计开发工作流.md)
 - `frontend/README.md`
 
 ### Production Release
 
-- [`../roadmap/生产上线实施路线.md`](../roadmap/生产上线实施路线.md)
-- [`../appendix/生产部署与离线Release方案.md`](../appendix/生产部署与离线Release方案.md)
-- [`../环境运行与部署.md`](../环境运行与部署.md)
-- [`05-日志安全部署与运维.md`](05-日志安全部署与运维.md)
+- [`../roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)
+- [`../appendix/11_生产部署与离线Release方案.md`](../appendix/11_生产部署与离线Release方案.md)
+- [`../02_环境运行与部署.md`](../02_环境运行与部署.md)
+- [`05_日志安全部署与运维.md`](05_日志安全部署与运维.md)
 
 ---
 

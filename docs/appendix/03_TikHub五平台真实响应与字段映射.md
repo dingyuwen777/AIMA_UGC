@@ -1050,7 +1050,7 @@ operations/<platform>.py
 
 先看：
 
-[`TikHub多接口验证与备用策略.md`](TikHub多接口验证与备用策略.md)
+[`04_TikHub多接口验证与备用策略.md`](04_TikHub多接口验证与备用策略.md)
 
 当前备用接口必须显式选型，不能在 Transport 里偷偷自动 fallback。
 
@@ -1089,24 +1089,24 @@ tests/fixtures/providers/tikhub/<platform>/
 
 平台级当前说明：
 
-- [`../collection/xiaohongshu.md`](../collection/xiaohongshu.md)
-- [`../collection/douyin.md`](../collection/douyin.md)
-- [`../collection/weibo.md`](../collection/weibo.md)
-- [`../collection/bilibili.md`](../collection/bilibili.md)
-- [`../collection/kuaishou.md`](../collection/kuaishou.md)
+- [`../collection/01_xiaohongshu.md`](../collection/01_xiaohongshu.md)
+- [`../collection/02_douyin.md`](../collection/02_douyin.md)
+- [`../collection/03_weibo.md`](../collection/03_weibo.md)
+- [`../collection/04_bilibili.md`](../collection/04_bilibili.md)
+- [`../collection/05_kuaishou.md`](../collection/05_kuaishou.md)
 
 接口家族验证与备用边界：
 
-- [`TikHub多接口验证与备用策略.md`](TikHub多接口验证与备用策略.md)
+- [`04_TikHub多接口验证与备用策略.md`](04_TikHub多接口验证与备用策略.md)
 
 真实 Probe / 选型历史台账：
 
-- [`TikHub接口选型与真实验证台账.md`](TikHub接口选型与真实验证台账.md)
+- [`05_TikHub接口选型与真实验证台账.md`](05_TikHub接口选型与真实验证台账.md)
 
 采集总架构：
 
-- [`../blueprint/02-采集系统与数据标准化.md`](../blueprint/02-采集系统与数据标准化.md)
-- [`../blueprint/08-采集策略与平台能力.md`](../blueprint/08-采集策略与平台能力.md)
+- [`../blueprint/02_采集系统与数据标准化.md`](../blueprint/02_采集系统与数据标准化.md)
+- [`../blueprint/08_采集策略与平台能力.md`](../blueprint/08_采集策略与平台能力.md)
 
 ---
 

@@ -12,11 +12,11 @@
 
 真实响应字段见：
 
-[`TikHub五平台真实响应与字段映射.md`](TikHub五平台真实响应与字段映射.md)
+[`03_TikHub五平台真实响应与字段映射.md`](03_TikHub五平台真实响应与字段映射.md)
 
 真实验证台账见：
 
-[`TikHub接口选型与真实验证台账.md`](TikHub接口选型与真实验证台账.md)
+[`05_TikHub接口选型与真实验证台账.md`](05_TikHub接口选型与真实验证台账.md)
 
 ---
 
@@ -651,8 +651,8 @@ unit / contract / integration
 
 docs/collection/<platform>.md
 本策略文档
-TikHub五平台真实响应与字段映射.md
-TikHub接口选型与真实验证台账.md
+03_TikHub五平台真实响应与字段映射.md
+05_TikHub接口选型与真实验证台账.md
 ```
 
 如果响应业务事实无法由当前 Canonical 表达，再单独评估 Contract 变化；不要为了切接口顺手扩大公共 Schema。

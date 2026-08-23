@@ -9,8 +9,8 @@
 
 它和另外两篇 TikHub 文档的职责不同：
 
-- [`TikHub五平台真实响应与字段映射.md`](TikHub五平台真实响应与字段映射.md)：开发时查 JSON 路径、Mapper 和 Fixture；
-- [`TikHub多接口验证与备用策略.md`](TikHub多接口验证与备用策略.md)：说明 A/B 方法、状态和切换门禁；
+- [`03_TikHub五平台真实响应与字段映射.md`](03_TikHub五平台真实响应与字段映射.md)：开发时查 JSON 路径、Mapper 和 Fixture；
+- [`04_TikHub多接口验证与备用策略.md`](04_TikHub多接口验证与备用策略.md)：说明 A/B 方法、状态和切换门禁；
 - **本文**：保存已经得到的真实 Endpoint、价格快照和 A/B 结论。
 
 当前生产 Endpoint 的最终机器事实仍看：
@@ -452,7 +452,7 @@ not_equivalent / no_same_semantic_web_search
 
 状态含义和升级门禁见：
 
-[`TikHub多接口验证与备用策略.md`](TikHub多接口验证与备用策略.md)
+[`04_TikHub多接口验证与备用策略.md`](04_TikHub多接口验证与备用策略.md)
 
 ---
 

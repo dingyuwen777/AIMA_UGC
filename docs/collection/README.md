@@ -13,17 +13,17 @@ Mapper 文件在哪？
 
 系统采集架构先看：
 
-- [`../blueprint/02-采集系统与数据标准化.md`](../blueprint/02-采集系统与数据标准化.md)
-- [`../blueprint/08-采集策略与平台能力.md`](../blueprint/08-采集策略与平台能力.md)
+- [`../blueprint/02_采集系统与数据标准化.md`](../blueprint/02_采集系统与数据标准化.md)
+- [`../blueprint/08_采集策略与平台能力.md`](../blueprint/08_采集策略与平台能力.md)
 
 真实 JSON 路径：
 
-- [`../appendix/TikHub五平台真实响应与字段映射.md`](../appendix/TikHub五平台真实响应与字段映射.md)
+- [`../appendix/03_TikHub五平台真实响应与字段映射.md`](../appendix/03_TikHub五平台真实响应与字段映射.md)
 
 接口家族/备用：
 
-- [`../appendix/TikHub多接口验证与备用策略.md`](../appendix/TikHub多接口验证与备用策略.md)
-- [`../appendix/TikHub接口选型与真实验证台账.md`](../appendix/TikHub接口选型与真实验证台账.md)
+- [`../appendix/04_TikHub多接口验证与备用策略.md`](../appendix/04_TikHub多接口验证与备用策略.md)
+- [`../appendix/05_TikHub接口选型与真实验证台账.md`](../appendix/05_TikHub接口选型与真实验证台账.md)
 
 ---
 
@@ -213,11 +213,11 @@ backend/src/aima_ugc/bootstrap/collection_scope.py
 
 ## 7. 五个平台分别去哪看
 
-- [`xiaohongshu.md`](xiaohongshu.md)
-- [`douyin.md`](douyin.md)
-- [`weibo.md`](weibo.md)
-- [`bilibili.md`](bilibili.md)
-- [`kuaishou.md`](kuaishou.md)
+- [`01_xiaohongshu.md`](01_xiaohongshu.md)
+- [`02_douyin.md`](02_douyin.md)
+- [`03_weibo.md`](03_weibo.md)
+- [`04_bilibili.md`](04_bilibili.md)
+- [`05_kuaishou.md`](05_kuaishou.md)
 
 每篇应该包含：
 
@@ -323,7 +323,7 @@ Collection Run
 
 数据库 SQL：
 
-[`../appendix/PostgreSQL查询与调试实战.md`](../appendix/PostgreSQL查询与调试实战.md)
+[`../appendix/01_PostgreSQL查询与调试实战.md`](../appendix/01_PostgreSQL查询与调试实战.md)
 
 如果 Response 字段问题：
 

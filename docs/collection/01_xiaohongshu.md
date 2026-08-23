@@ -2,7 +2,7 @@
 
 本文是小红书当前 TikHub 生产实现的代码导航。精确 JSON 字段见：
 
-[`../appendix/TikHub五平台真实响应与字段映射.md`](../appendix/TikHub五平台真实响应与字段映射.md)
+[`../appendix/03_TikHub五平台真实响应与字段映射.md`](../appendix/03_TikHub五平台真实响应与字段映射.md)
 
 ## 1. 当前代码
 
@@ -242,7 +242,7 @@ Web V3 Search Candidate
 
 验证/切换规则：
 
-[`../appendix/TikHub多接口验证与备用策略.md`](../appendix/TikHub多接口验证与备用策略.md)
+[`../appendix/04_TikHub多接口验证与备用策略.md`](../appendix/04_TikHub多接口验证与备用策略.md)
 
 ## 11. 要改什么时改哪里
 
@@ -295,4 +295,4 @@ Collection Run/Scope
 
 数据库 SQL：
 
-[`../appendix/PostgreSQL查询与调试实战.md`](../appendix/PostgreSQL查询与调试实战.md)
+[`../appendix/01_PostgreSQL查询与调试实战.md`](../appendix/01_PostgreSQL查询与调试实战.md)

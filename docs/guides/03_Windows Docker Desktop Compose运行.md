@@ -2,7 +2,7 @@
 
 本文只解决一个问题：**在 Windows 开发机上，不进入 WSL 终端，也可以直接从 CMD 或 PowerShell 启动 AIMA_UGC 的完整 Docker Runtime。**
 
-它不是 Production 部署文档。公司 Linux 服务器与完整 Production 仍以 `docs/环境运行与部署.md`、`docs/roadmap/生产上线实施路线.md`、`docs/appendix/生产部署与离线Release方案.md` 为准。
+它不是 Production 部署文档。公司 Linux 服务器与完整 Production 仍以 `docs/02_环境运行与部署.md`、`docs/roadmap/02_生产上线实施路线.md`、`docs/appendix/11_生产部署与离线Release方案.md` 为准。
 
 ---
 

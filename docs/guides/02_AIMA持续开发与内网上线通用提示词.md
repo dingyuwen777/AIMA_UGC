@@ -20,8 +20,8 @@
 
 长期路线由：
 
-- [`../roadmap/内网V1上线实施计划.md`](../roadmap/内网V1上线实施计划.md)
-- [`../roadmap/生产上线实施路线.md`](../roadmap/生产上线实施路线.md)
+- [`../roadmap/01_内网V1上线实施计划.md`](../roadmap/01_内网V1上线实施计划.md)
+- [`../roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)
 
 维护。
 
@@ -60,11 +60,11 @@
 3. 按 Skill 判断本轮任务等级和 Change 要求；
 4. 读取：
    - `docs/blueprint/README.md`
-   - `docs/blueprint/07-技术决策与实施门禁.md`
+   - `docs/blueprint/07_技术决策与实施门禁.md`
    - `docs/roadmap/README.md`
-   - `docs/roadmap/内网V1上线实施计划.md`
-   - `docs/roadmap/生产上线实施路线.md`
-   - `docs/代码结构与修改导航.md`
+   - `docs/roadmap/01_内网V1上线实施计划.md`
+   - `docs/roadmap/02_生产上线实施路线.md`
+   - `docs/01_代码结构与修改导航.md`
 5. 检查当前 `main` 最新 commit；
 6. 检查 `changes/active/`；
 7. 检查与当前路线直接相关的开放 PR、分支和最新 CI；
@@ -91,7 +91,7 @@
    → 不进入后续单元；
 
 3. 如果上一个单元已经真实闭环：
-   → 从 `docs/roadmap/内网V1上线实施计划.md` 和 `docs/roadmap/生产上线实施路线.md` 判断下一最小正式单元；
+   → 从 `docs/roadmap/01_内网V1上线实施计划.md` 和 `docs/roadmap/02_生产上线实施路线.md` 判断下一最小正式单元；
 
 4. 当前近期路线的业务顺序原则是：
 
@@ -404,8 +404,8 @@ Internal V1-A 是公司内网 V1 的最小可部署闭环，复用长期 Product
 
 完成后必须重新检查：
 
-- `docs/roadmap/内网V1上线实施计划.md`
-- `docs/roadmap/生产上线实施路线.md`
+- `docs/roadmap/01_内网V1上线实施计划.md`
+- `docs/roadmap/02_生产上线实施路线.md`
 - 对应模块 README / Appendix / API / 环境部署说明
 
 如果当前单元已经改变项目“现在做到哪里”，必须在同一交付中同步 Roadmap。
@@ -450,7 +450,7 @@ Internal V1-A 是公司内网 V1 的最小可部署闭环，复用长期 Product
 
     AIMA_UGC 公司内网 V1 已上线
 
-之后继续按 `docs/roadmap/生产上线实施路线.md` 的 Production Hardening 路线推进完整 Production Go-Live。
+之后继续按 `docs/roadmap/02_生产上线实施路线.md` 的 Production Hardening 路线推进完整 Production Go-Live。
 ```
 
 ---

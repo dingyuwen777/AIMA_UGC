@@ -361,63 +361,63 @@
     },
     {
       "kind": "documentation",
-      "path": "docs/API接口说明.md",
+      "path": "docs/03_API接口说明.md",
       "sha256": "8fbf8ccb58fe9e5e288842990131e7f715f851ee9d65386b8876e680cecd011c",
       "size": 16860,
       "title": "AIMA_UGC API 接口说明"
     },
     {
       "kind": "documentation",
-      "path": "docs/blueprint/01-总体架构与技术选型.md",
+      "path": "docs/blueprint/01_总体架构与技术选型.md",
       "sha256": "3e0f45f002ac87aeb481651dc706033e97449b903e4acd521063a2ce3d4cfbfb",
       "size": 15858,
       "title": "总体架构与技术选型"
     },
     {
       "kind": "documentation",
-      "path": "docs/blueprint/02-采集系统与数据标准化.md",
+      "path": "docs/blueprint/02_采集系统与数据标准化.md",
       "sha256": "4acb80b6bfbc4251ca110e989b0ed9e5c78d997bdf491ef718a191340bcdf2fa",
       "size": 39915,
       "title": "采集系统与数据标准化"
     },
     {
       "kind": "documentation",
-      "path": "docs/blueprint/03-数据库与文件存储.md",
+      "path": "docs/blueprint/03_数据库与文件存储.md",
       "sha256": "8a4a86c1bb9dbdd0351b1e4090c553aeaa5e0502f785d9f96746f7453243c391",
       "size": 66297,
       "title": "数据库与文件存储"
     },
     {
       "kind": "documentation",
-      "path": "docs/blueprint/04-后端任务API与前端.md",
+      "path": "docs/blueprint/04_后端任务API与前端.md",
       "sha256": "fb1c0eb2df16833e747a042c27211258a28f32e0a30d9af34264022fc91397ae",
       "size": 28664,
       "title": "后端任务、API 与前端"
     },
     {
       "kind": "documentation",
-      "path": "docs/blueprint/05-日志安全部署与运维.md",
+      "path": "docs/blueprint/05_日志安全部署与运维.md",
       "sha256": "3f13b68ff72235f4d0df8410ed9f474d76403031539318054681f0eb6999b0f6",
       "size": 21598,
       "title": "日志、安全、部署与运维"
     },
     {
       "kind": "documentation",
-      "path": "docs/blueprint/06-开发约束与分阶段实施.md",
+      "path": "docs/blueprint/06_开发约束与分阶段实施.md",
       "sha256": "c5742353b8b80373c4a2dda771bba54de89a0b7de5e1eecbd787a654b35f8328",
       "size": 34589,
       "title": "开发约束与分阶段实施"
     },
     {
       "kind": "documentation",
-      "path": "docs/blueprint/07-技术决策与实施门禁.md",
+      "path": "docs/blueprint/07_技术决策与实施门禁.md",
       "sha256": "ba9544653e943451bbe4b7d95415c0fae2c2c505a7417623b1ca89c55d41b227",
       "size": 56612,
       "title": "技术决策与实施门禁"
     },
     {
       "kind": "documentation",
-      "path": "docs/blueprint/08-采集策略与平台能力.md",
+      "path": "docs/blueprint/08_采集策略与平台能力.md",
       "sha256": "8808519d489d7230f254b8b2a2c5cf37eec5f2c63d6c0b91981725b3934e35f1",
       "size": 31180,
       "title": "采集策略与平台能力"
@@ -438,7 +438,7 @@
     },
     {
       "kind": "documentation",
-      "path": "docs/blueprint/11-TikHub多接口验证与备用策略.md",
+      "path": "docs/blueprint/11-04_TikHub多接口验证与备用策略.md",
       "sha256": "0e0bd75c6e28ae416f3357a41cd07dadf2603834cdd1110113fa49f28e10d3f0",
       "size": 10632,
       "title": "TikHub 多接口验证与备用策略"
@@ -494,49 +494,49 @@
     },
     {
       "kind": "documentation",
-      "path": "docs/collection/bilibili.md",
+      "path": "docs/collection/04_bilibili.md",
       "sha256": "bee146fd6549ceadacecad777fa901b2325f6b98d6f3e86047e4e0cb4c997102",
       "size": 2148,
       "title": "B站采集逻辑"
     },
     {
       "kind": "documentation",
-      "path": "docs/collection/douyin.md",
+      "path": "docs/collection/02_douyin.md",
       "sha256": "10569d04c5ac23d10d148c14022006c8cd1028248c46a6a02bd135f0bc095092",
       "size": 2661,
       "title": "抖音采集逻辑"
     },
     {
       "kind": "documentation",
-      "path": "docs/collection/kuaishou.md",
+      "path": "docs/collection/05_kuaishou.md",
       "sha256": "85053d923c1116b5f443e82d0f94452128ec97a0446b707ebdee1b6f5f162acb",
       "size": 2126,
       "title": "快手采集逻辑"
     },
     {
       "kind": "documentation",
-      "path": "docs/collection/weibo.md",
+      "path": "docs/collection/03_weibo.md",
       "sha256": "9c15b52e41588a071a09751165c0db5e9903c78af7d16399874be19e3edc0bed",
       "size": 1856,
       "title": "微博采集逻辑"
     },
     {
       "kind": "documentation",
-      "path": "docs/collection/xiaohongshu.md",
+      "path": "docs/collection/01_xiaohongshu.md",
       "sha256": "5c64d2fc331e9345a3b5f02a3f35a6d19e7bc4b247a202153d50ff83ced5e299",
       "size": 2104,
       "title": "小红书采集逻辑"
     },
     {
       "kind": "documentation",
-      "path": "docs/测试与调试说明.md",
+      "path": "docs/04_测试与调试说明.md",
       "sha256": "7e61dba958c1c7911a1296c8978933448d110ec933eb4f63029aed978a4bf559",
       "size": 37378,
       "title": "AIMA_UGC 测试与调试说明"
     },
     {
       "kind": "documentation",
-      "path": "docs/环境运行与部署.md",
+      "path": "docs/02_环境运行与部署.md",
       "sha256": "468ece64eeb79344001d7357d4448b1d00887d68d7928bd2c72089839c368479",
       "size": 22389,
       "title": "环境、运行与部署"

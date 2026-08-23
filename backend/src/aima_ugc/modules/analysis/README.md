@@ -15,7 +15,7 @@ Canonical/Content 只保存外部观察事实；这些结论属于后置 Analysi
 
 完整实现、Retry、离线并发/Checkpoint、正式 PostgreSQL Job 和排障见：
 
-[`docs/appendix/AI舆情打标与分析实现.md`](../../../../../docs/appendix/AI舆情打标与分析实现.md)
+[`docs/appendix/07_AI舆情打标与分析实现.md`](../../../../../docs/appendix/07_AI舆情打标与分析实现.md)
 
 ---
 
@@ -372,7 +372,7 @@ Unified JSONL
 离线 250 有界并发、Canary、Checkpoint、单写者、顺序回写、物理请求审计等细节统一维护在：
 
 ```text
-docs/appendix/AI舆情打标与分析实现.md
+docs/appendix/07_AI舆情打标与分析实现.md
 ```
 
 不在模块 README 复制第二份长说明。
@@ -440,7 +440,7 @@ Content Version
 
 SQL 排障见：
 
-[`docs/appendix/PostgreSQL查询与调试实战.md`](../../../../../docs/appendix/PostgreSQL查询与调试实战.md)
+[`docs/appendix/01_PostgreSQL查询与调试实战.md`](../../../../../docs/appendix/01_PostgreSQL查询与调试实战.md)
 
 ---
 
@@ -454,4 +454,4 @@ SQL 排障见：
 
 后续阶段看：
 
-[`docs/roadmap/生产上线实施路线.md`](../../../../../docs/roadmap/生产上线实施路线.md)
+[`docs/roadmap/02_生产上线实施路线.md`](../../../../../docs/roadmap/02_生产上线实施路线.md)

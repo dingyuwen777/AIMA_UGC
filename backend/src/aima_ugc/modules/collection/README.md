@@ -23,10 +23,10 @@ Plan / API Run
 
 系统级设计：
 
-- `docs/blueprint/02-采集系统与数据标准化.md`
-- `docs/blueprint/08-采集策略与平台能力.md`
-- `docs/appendix/Scheduler调度执行与停机恢复.md`
-- `docs/appendix/TikHub五平台真实响应与字段映射.md`
+- `docs/blueprint/02_采集系统与数据标准化.md`
+- `docs/blueprint/08_采集策略与平台能力.md`
+- `docs/appendix/02_Scheduler调度执行与停机恢复.md`
+- `docs/appendix/03_TikHub五平台真实响应与字段映射.md`
 
 ---
 
@@ -328,7 +328,7 @@ unknown
 当前不自动从 TikHub App API 切到 Web API，也不自动从 V2 切到 V1。API family 备用策略见：
 
 ```text
-docs/appendix/TikHub多接口验证与备用策略.md
+docs/appendix/04_TikHub多接口验证与备用策略.md
 ```
 
 ---
@@ -471,7 +471,7 @@ Occurrence 唯一身份：
 详细代码和恢复案例：
 
 ```text
-docs/appendix/Scheduler调度执行与停机恢复.md
+docs/appendix/02_Scheduler调度执行与停机恢复.md
 ```
 
 ---
@@ -590,7 +590,7 @@ pricing.toml
 真实响应/Fixture：
 
 ```text
-docs/appendix/TikHub五平台真实响应与字段映射.md
+docs/appendix/03_TikHub五平台真实响应与字段映射.md
 tests/fixtures/providers/tikhub/
 ```
 
@@ -667,7 +667,7 @@ Migration（如果数据库约束变化）
 SQL 示例：
 
 ```text
-docs/appendix/PostgreSQL查询与调试实战.md
+docs/appendix/01_PostgreSQL查询与调试实战.md
 ```
 
 如果 Provider 返回字段不对：

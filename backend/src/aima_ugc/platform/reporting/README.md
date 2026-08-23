@@ -18,11 +18,11 @@ platform/reporting/
 
 详细专题说明见：
 
-[`../../../../../docs/appendix/Word舆情报告生成与排版实现.md`](../../../../../docs/appendix/Word舆情报告生成与排版实现.md)
+[`../../../../../docs/appendix/10_Word舆情报告生成与排版实现.md`](../../../../../docs/appendix/10_Word舆情报告生成与排版实现.md)
 
 统一数据 Excel 规则见：
 
-[`../../../../../docs/appendix/Excel统一数据导出与离线调试.md`](../../../../../docs/appendix/Excel统一数据导出与离线调试.md)
+[`../../../../../docs/appendix/06_Excel统一数据导出与离线调试.md`](../../../../../docs/appendix/06_Excel统一数据导出与离线调试.md)
 
 ---
 

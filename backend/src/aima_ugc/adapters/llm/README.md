@@ -17,7 +17,7 @@ HTTP、usage、费用、Transport Retry、请求审计
 完整 AI 业务实现说明见：
 
 ```text
-docs/appendix/AI舆情打标与分析实现.md
+docs/appendix/07_AI舆情打标与分析实现.md
 ```
 
 ## 1. 当前代码地图
@@ -402,7 +402,7 @@ tests/integration/content/  # 正式 Analysis 纵切由当前测试事实决定
 完整 AI 业务规则和 PostgreSQL Analysis 路径见：
 
 ```text
-docs/appendix/AI舆情打标与分析实现.md
+docs/appendix/07_AI舆情打标与分析实现.md
 backend/src/aima_ugc/modules/analysis/README.md
 ```
 

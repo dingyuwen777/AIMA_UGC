@@ -15,8 +15,8 @@ migrations/versions/
 
 如果不知道某张表为什么存在、由谁写，先看：
 
-- [`../blueprint/03-数据库与文件存储.md`](../blueprint/03-数据库与文件存储.md)
-- [`../代码结构与修改导航.md`](../代码结构与修改导航.md)
+- [`../blueprint/03_数据库与文件存储.md`](../blueprint/03_数据库与文件存储.md)
+- [`../01_代码结构与修改导航.md`](../01_代码结构与修改导航.md)
 
 ## 1. 先理解数据库负责什么
 
@@ -411,7 +411,7 @@ skipped / misfire_superseded
 
 只把最新到期点入队。看到 `skipped` 不等于 Scheduler 丢任务。
 
-详细解释见 [`Scheduler调度执行与停机恢复.md`](Scheduler调度执行与停机恢复.md)。
+详细解释见 [`02_Scheduler调度执行与停机恢复.md`](02_Scheduler调度执行与停机恢复.md)。
 
 ## 9. 看 Excel Import Batch
 
@@ -445,7 +445,7 @@ processing_import_batches.id
 → contents
 ```
 
-详细链路见 [`数据入口与统一入库实现.md`](数据入口与统一入库实现.md)。
+详细链路见 [`08_数据入口与统一入库实现.md`](08_数据入口与统一入库实现.md)。
 
 ## 10. 看持久化 Job
 
@@ -621,7 +621,7 @@ cost_currency
 
 运行/离线调用能统计 token/cost，不等于 Result 表已经持久化成本。
 
-完整 AI 实现见 [`AI舆情打标与分析实现.md`](AI舆情打标与分析实现.md)。
+完整 AI 实现见 [`07_AI舆情打标与分析实现.md`](07_AI舆情打标与分析实现.md)。
 
 ## 12. 看正式 Excel Export
 
@@ -919,6 +919,6 @@ backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
 - Migration：`migrations/versions/`
 - 运行配置：`backend/src/aima_ugc/platform/config/settings.py`
 - 本地配置示例：`env.local.example`
-- 数据架构原则：[`../blueprint/03-数据库与文件存储.md`](../blueprint/03-数据库与文件存储.md)
+- 数据架构原则：[`../blueprint/03_数据库与文件存储.md`](../blueprint/03_数据库与文件存储.md)
 
 数据库结构发生变化时，应先改代码/Migration/测试，再同步本文中受影响的 SQL 示例；不能反过来让附录成为 Schema 事实源。

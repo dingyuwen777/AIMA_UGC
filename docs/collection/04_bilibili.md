@@ -4,7 +4,7 @@
 
 真实 JSON 路径：
 
-[`../appendix/TikHub五平台真实响应与字段映射.md`](../appendix/TikHub五平台真实响应与字段映射.md)
+[`../appendix/03_TikHub五平台真实响应与字段映射.md`](../appendix/03_TikHub五平台真实响应与字段映射.md)
 
 ## 1. 当前代码
 
@@ -267,7 +267,7 @@ comparison_extractor_invalid
 
 详细台账：
 
-[`../appendix/TikHub接口选型与真实验证台账.md`](../appendix/TikHub接口选型与真实验证台账.md)
+[`../appendix/05_TikHub接口选型与真实验证台账.md`](../appendix/05_TikHub接口选型与真实验证台账.md)
 
 ## 10. Search 排序对齐为什么要谨慎
 
@@ -331,4 +331,4 @@ Run / Scope
 
 SQL：
 
-[`../appendix/PostgreSQL查询与调试实战.md`](../appendix/PostgreSQL查询与调试实战.md)
+[`../appendix/01_PostgreSQL查询与调试实战.md`](../appendix/01_PostgreSQL查询与调试实战.md)

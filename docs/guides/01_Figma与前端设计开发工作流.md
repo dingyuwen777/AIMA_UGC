@@ -17,8 +17,8 @@ OpenAPI / Orval generated client
 
 长期前后端边界见：
 
-- [`../blueprint/04-后端任务API与前端.md`](../blueprint/04-后端任务API与前端.md)
-- [`../blueprint/07-技术决策与实施门禁.md`](../blueprint/07-技术决策与实施门禁.md)
+- [`../blueprint/04_后端任务API与前端.md`](../blueprint/04_后端任务API与前端.md)
+- [`../blueprint/07_技术决策与实施门禁.md`](../blueprint/07_技术决策与实施门禁.md)
 - [`../../frontend/README.md`](../../frontend/README.md)
 
 ---
@@ -622,7 +622,7 @@ Figma 一次生成全部未来页面
 
 是否以及何时实现看：
 
-[`../roadmap/生产上线实施路线.md`](../roadmap/生产上线实施路线.md)
+[`../roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)
 
 不要从历史 Stage 8 的 Screens 示例自动生成一批新页面。
 
