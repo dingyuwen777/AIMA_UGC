@@ -1,0 +1,64 @@
+# Windows Docker Desktop 原生宿主存储覆盖。
+#
+# 仅与根 compose.yaml 叠加使用；不复制业务 Runtime 定义。
+# Windows 原生文件系统不承担 PostgreSQL / Secret 的 Linux owner/mode 语义，
+# 因此四类持久状态都使用 Docker-managed named volumes。
+
+x-windows-backend-volumes: &windows-backend-volumes
+  - type: volume
+    source: windows_runtime_data
+    target: /app/data
+  - type: volume
+    source: windows_runtime_logs
+    target: /app/logs
+  - type: volume
+    source: windows_internal_secrets
+    target: /run/internal-secrets
+    read_only: true
+
+services:
+  bootstrap:
+    volumes:
+      - type: volume
+        source: windows_runtime_data
+        target: /host/runtime/data
+      - type: volume
+        source: windows_runtime_logs
+        target: /host/runtime/logs
+      - type: volume
+        source: windows_postgres
+        target: /host/postgres
+      - type: volume
+        source: windows_internal_secrets
+        target: /host/shared/secrets
+
+  postgres:
+    volumes:
+      - type: volume
+        source: windows_postgres
+        target: /var/lib/postgresql
+      - type: volume
+        source: windows_internal_secrets
+        target: /run/secrets
+        read_only: true
+
+  migrate:
+    volumes: *windows-backend-volumes
+
+  configure:
+    volumes: *windows-backend-volumes
+
+  api:
+    volumes: *windows-backend-volumes
+
+  worker:
+    volumes: *windows-backend-volumes
+
+  scheduler:
+    volumes: *windows-backend-volumes
+
+volumes:
+  windows_runtime_data:
+  windows_runtime_logs:
+  windows_postgres:
+  windows_internal_secrets:
