@@ -35,7 +35,7 @@ Python base image
 
 旧 Dockerfile 曾声明外部 `docker/dockerfile:1` syntax frontend；用户实际日志中仅 14.14 MB 的这一层就下载约 307 秒。当前 Dockerfile 只使用稳定基础语法，因此已经移除这个外部 syntax frontend，首次 build 不再为它单独拉镜像。
 
-用户日志还出现几十 MB 基础 layer 下载十几到几十分钟、Debian apt 只有 KB/s 的情况。这属于网络源吞吐异常，不是 AIMA Python 业务代码本身执行数十分钟。
+用户真实环境还出现过 DaoCloud PostgreSQL 18.4 镜像拉取 393 秒仅完成约 44 MB 的情况。这属于镜像传输链路吞吐异常，不是 AIMA Python、PostgreSQL 初始化或 Compose 业务编排本身执行数分钟。
 
 ---
 
@@ -45,8 +45,8 @@ Python base image
 
 | 类型 | 默认源 |
 | --- | --- |
-| Docker Hub official images | `m.daocloud.io/docker.io/...` |
-| GHCR uv image | `m.daocloud.io/ghcr.io/...` |
+| Docker Hub official images | `docker.1ms.run/...` |
+| GHCR uv image | `ghcr.1ms.run/...` |
 | Debian | `https://mirrors.tuna.tsinghua.edu.cn/debian` |
 | Debian Security | `https://mirrors.tuna.tsinghua.edu.cn/debian-security` |
 | PyPI / uv pip | `https://pypi.tuna.tsinghua.edu.cn/simple` |
@@ -54,7 +54,18 @@ Python base image
 
 镜像与依赖的**版本号没有改变**，仍由 Dockerfile、`.python-version`、`.uv-version`、`uv.lock`、`package-lock.json` 等仓库事实锁定，不使用 `latest`。
 
-Docker 镜像代理采用 DaoCloud public image mirror 的前缀映射方式，不要求修改 Docker Desktop 全局 daemon 配置，因此不会改变其他项目的 Docker 行为。
+1ms 当前公开文档明确支持把 Docker Hub/GHCR 域名前缀直接替换为：
+
+```text
+docker.io → docker.1ms.run
+ghcr.io   → ghcr.1ms.run
+```
+
+AIMA 采用这种仓库内显式前缀方式，因此**不依赖**开发机或服务器 Docker daemon 的 `registry-mirrors` 配置。基础通道可以直接使用，不要求在仓库中配置 1ms 账号、登录凭据或 Docker 密钥；付费/VIP 通道属于可选的外部能力，不是 AIMA 构建前置条件。
+
+`docker.1panel.live` 当前官方文档主要作为 Docker daemon 的 `registry-mirrors` 地址使用，因此不把它假设成 Dockerfile/Compose 的直接镜像前缀。若管理员希望给整台 Docker Engine 增加第二镜像加速器，可在宿主自行配置，但这不是仓库运行依赖。
+
+阿里云 ACR 的 Docker Hub 镜像加速器也不作为 AIMA 通用默认：其加速地址按账号生成，并且官方当前已提示 Docker Hub 镜像加速停止同步最新镜像，不适合作为需要长期可复现构建的仓库级公共默认。
 
 Python 依赖没有把 `uv.lock` 改成 TUNA 专属 lock。构建时使用：
 
@@ -74,7 +85,7 @@ uv.lock
 
 ## 3. 怎样切回官方源
 
-如果构建机不在中国，或某个国内镜像临时不可用，只修改 `env.production` 中构建源变量即可，不需要改 Dockerfile、业务配置或持久数据：
+如果 1ms 或某个国内软件包镜像临时不可用，只修改 `env.production` 中对应构建源变量即可，不需要改 Dockerfile、业务配置或持久数据：
 
 ```dotenv
 AIMA_BUILD_PYTHON_IMAGE=python:3.14.7-slim-trixie
@@ -282,11 +293,11 @@ curl.exe -f http://127.0.0.1:8080/health/ready
 
 ---
 
-## 10. 当前验证证据
+## 10. 验证原则
 
-永久 CI 已在同一实现头真实执行国内默认源的完整构建与 Runtime：
+永久 CI 必须在同一实现头真实执行默认镜像源的完整构建与 Runtime，至少证明：
 
-- DaoCloud Python / uv / Node / Nginx / PostgreSQL 镜像可拉取；
+- 1ms Python / uv / Node / Nginx / PostgreSQL 镜像可拉取；
 - `uv.lock` 冻结导出后可从 TUNA PyPI 通过 hash 校验安装；
 - TUNA Debian / Debian Security 可完成 `apt-get update/install`；
 - npmmirror 可完成 `npm ci`；
@@ -313,4 +324,4 @@ CI 证明的是配置、构建和运行链有效，不承诺你所在网络到�
 → --no-build --pull never
 ```
 
-因此未来 Production Server 不依赖运行时访问 DaoCloud/TUNA/npmmirror 来“现场重新构建”应用。镜像代理优化解决的是当前本地开发/Internal V1 build 速度，不替代 Stage 11 的不可变 Release 完整性门禁。
+因此未来 Production Server 不依赖运行时访问 1ms/TUNA/npmmirror 来“现场重新构建”应用。镜像代理优化解决的是当前本地开发/Internal V1 build 速度，不替代 Stage 11 的不可变 Release 完整性门禁。
