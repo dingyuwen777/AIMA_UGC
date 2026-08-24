@@ -3,11 +3,11 @@ schema: rvc-change/v1
 id: CHG-20260824-manual-relevance-review
 title: AI 相关性双向人工复核与撤销
 level: L3
-status: ready_for_review
+status: done
 owner: aima
 branch: feature/manual-relevance-review
 created: 2026-08-24
-updated: 2026-08-24
+updated: 2026-08-25
 completion_gate: required
 depends_on: []
 affected_areas:
@@ -146,7 +146,7 @@ data_changes:
 | Browser Mock Acceptance | required | run 32721400535：人工复核 Playwright 5/5；覆盖单条双向、撤销、stale 撤销、批量不相关及显式 payload。 |
 | Backend/API/PostgreSQL Integration | required | run 32721400535：API 3/3、人工复核 PostgreSQL integration 2/2；0025 upgrade/check、双向、撤销、append-only、幂等、原子性与版本语义通过。 |
 | Contract / Generated Client | required | Pydantic 三值 decision、effective relevance projection 已通过正式 OpenAPI/Orval 生成链；最终生成链还通过 `generate.py --check` 与 `check_compatibility.py`。 |
-| Real Full-stack Golden Path | required | 历史 Stage 8F run 32721400484：5/5；AI irrelevant→人工 relevant、AI relevant→人工 irrelevant→撤销均成功。main 完成 CI Validation Layers 收敛后，本功能验收已迁移到 `.github/workflows/fullstack.yml`，最终 PR HEAD 由当前 `Full-stack Acceptance` 永久工作流重新复验。 |
+| Real Full-stack Golden Path | required | 历史 Stage 8F run 32721400484：5/5；AI irrelevant→人工 relevant、AI relevant→人工 irrelevant→撤销均成功。最终 PR HEAD `232e125abc964ce2035b895a6e3021d6a8628b08` 的 `Full-stack Acceptance` run 32734834389 再次成功。 |
 | Real Provider Probe | not_applicable | 本次不修改 TikHub/LLM 外部 endpoint、请求字段、Mapper 或真实付费 Provider 行为。 |
 | Docs / Governance / Other | required | Blueprint 03/04/07、AI Appendix、Analysis README 已同步；A1/A2 Review 已完成，PR #202 当前无 review comment/thread。 |
 
@@ -160,13 +160,14 @@ data_changes:
 - Targeted Green：run 32721400535 全部目标层通过；PostgreSQL 日志明确记录账本禁止 UPDATE/DELETE。
 - Real Full-stack Green：历史 Stage 8F run 32721400484，5/5 通过；当前 CI 拓扑已迁移为 `Full-stack Acceptance`。
 - Contract Drift Regression：旧最终候选 HEAD 的 Provider Persistence 业务/数据库验证 332 + 89 均通过，但 quality gate 以 `CONTRACT_STALE` 拒绝未同步 OpenAPI；之后使用正式 Pydantic→OpenAPI→Orval 生成命令修复，不手改 generated 文件。
+- 最终 PR HEAD `232e125abc964ce2035b895a6e3021d6a8628b08` 的 6 个长期 Workflow 全部成功：Change Completion Gate 32734834355、Full-stack Acceptance 32734834389、Local Dev Bootstrap 32734834379、Windows Docker Desktop Compose Compatibility 32734834439、Internal V1-A Deployable Stack 32734834463、CI 32734834423。
 
 # Completion Audit
 
 - [x] upstream_re_read：已重新读取用户双向/撤销要求、当前 `main`/feature `AGENTS.md`、RVC Skill、Blueprint README/03/04/07、Analysis README/Appendix 与当前 Change。
 - [x] change_coverage：R1—R9 已逐项映射到 Schema/Migration、Repository、Query、HTTP/generated client、Vue UI、Browser/PG/Full-stack 测试和正式文档，均为 satisfied。
 - [x] reverse_audit：每个 `relevant / irrelevant / inherit_ai` 后端 decision 均有明确前端入口；前端按钮直接依赖服务端 `effective_relevance / relevance_source`，不再从筛选条件猜测；默认/relevant/irrelevant/query Analysis/query Export 共用同一 Query Repository 语义。
-- [x] unresolved_cleared：双向、撤销、stale、append-only、批量、版本、AI 原结果保留均已有定向或真实 Full-stack 证据；main 同步后的最终 PR HEAD 仍必须通过当前永久 CI 后才允许合并。
+- [x] unresolved_cleared：双向、撤销、stale、append-only、批量、版本、AI 原结果保留均已有定向或真实 Full-stack 证据；最终 PR HEAD 的 6 个长期 Workflow 已全部成功并完成合并。
 
 # A1 / A2 Review
 
@@ -203,7 +204,7 @@ data_changes:
 
 # Migration、部署、回滚与风险
 
-- `20260824_0025_manual_relevance_review.py` 尚未进入 `main`，因此直接将本 PR 内 0025 演进为最终账本结构，不新增“修未发布 migration”的 0026。
+- `20260824_0025_manual_relevance_review.py` 在 PR #202 合并前直接演进为最终账本结构，因此没有新增“修未发布 migration”的 0026；该 Migration 现已随 merge commit `014fb666b6f7f5e979cf5ca71fd940da8f21bb5e` 进入 `main`。
 - 部署顺序：Migration → 同版本 API/Frontend；旧 API/Frontend 不应与新三值 Contract 混用。
 - downgrade 会先删除 append-only Trigger/Function，再删除整个人工复核账本；AI 原始 Analysis Result 与 Content 不受影响，但人工历史会丢失，生产 downgrade 前必须备份或明确接受数据损失。
 - 单请求限制 1—1000 个不重复 Content ID；同批任一非法状态导致全事务回滚。
@@ -213,5 +214,6 @@ data_changes:
 # 交付
 
 - 分支：`feature/manual-relevance-review`
-- PR：#202，Ready for review。
-- 合并：用户已于 2026-08-24 明确授权合并到 `main`；必须先让同步最新 main 后的最终 PR HEAD 通过当前永久 CI，再执行正常 PR merge，并按仓库流程创建独立 Change 归档 PR。
+- 最终 PR HEAD：`232e125abc964ce2035b895a6e3021d6a8628b08`
+- PR：#202，已通过 merge commit `014fb666b6f7f5e979cf5ca71fd940da8f21bb5e` 合入 `main`。
+- 归档分支：`chore/archive-manual-relevance-review`
