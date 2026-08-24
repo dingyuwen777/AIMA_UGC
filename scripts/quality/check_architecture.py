@@ -1,4 +1,4 @@
-"""检查 Stage 1–7 仓库骨架与可低误报验证的架构硬约束。"""
+"""检查长期仓库骨架与可低误报验证的架构硬约束。"""
 
 from __future__ import annotations
 
@@ -32,12 +32,13 @@ REQUIRED = [
     _path("contracts/provider/request.v1.schema.json"),
     _path("contracts/provider/attempt.v1.schema.json"),
     _path("contracts/provider/raw-envelope.v1.schema.json"),
-    _path(".github/workflows/stage5a-provider-raw.yml"),
-    _path(".github/workflows/stage5b-collection-execution.yml"),
-    _path(".github/workflows/stage5c-provider-persistence.yml"),
-    _path(".github/workflows/stage5d-provider-dispatch.yml"),
-    _path(".github/workflows/stage6-xiaohongshu-vertical-slice.yml"),
-    _path(".github/workflows/stage7-scheduler-runtime.yml"),
+    _path(".github/workflows/ci.yml"),
+    _path(".github/workflows/fullstack.yml"),
+    _path(".github/workflows/local-dev-bootstrap.yml"),
+    _path(".github/workflows/internal-v1a.yml"),
+    _path(".github/workflows/compose-windows-desktop.yml"),
+    _path(".github/workflows/change-completion-gate.yml"),
+    _path(".github/workflows/release.yml"),
     _path("backend/src/aima_ugc/__init__.py"),
     _path("backend/src/aima_ugc/database_schema.py"),
     _path("backend/src/aima_ugc/platform/config/settings.py"),
@@ -188,9 +189,9 @@ def main() -> int:
     errors: list[str] = []
     for path in REQUIRED:
         if not path.exists():
-            errors.append(f"ARCH001 {path.relative_to(ROOT)}: Stage 1–7 必需文件不存在")
+            errors.append(f"ARCH001 {path.relative_to(ROOT)}: 长期基线必需文件不存在")
     if not _migration_revision_exists("20260814_0006"):
-        errors.append("ARCH001 revision=20260814_0006: Stage 6 历史 Migration 不存在")
+        errors.append("ARCH001 revision=20260814_0006: 历史 Migration 不存在")
     for path in FORBIDDEN:
         if path.exists():
             errors.append(f"ARCH002 {path.relative_to(ROOT)}: 方案 A 禁止创建第二套 backend 工程")
@@ -200,7 +201,7 @@ def main() -> int:
         print("\n".join(errors))
         return 1
 
-    print("Stage 1–7 架构骨架与硬边界检查通过。")
+    print("长期仓库骨架与硬边界检查通过。")
     return 0
 
 
