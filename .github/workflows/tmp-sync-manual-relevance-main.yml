@@ -1,0 +1,107 @@
+name: Temporary Sync Manual Relevance With Main
+
+on:
+  push:
+    branches:
+      - feature/manual-relevance-review
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/manual-relevance-review
+          fetch-depth: 0
+
+      - name: Merge latest main and resolve expected Full-stack rename conflict
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+
+          set +e
+          git merge origin/main --no-ff --no-commit
+          merge_rc=$?
+          set -e
+
+          if [[ ${merge_rc} -ne 0 ]]; then
+            unresolved="$(git diff --name-only --diff-filter=U)"
+            printf 'Initial unresolved paths:\n%s\n' "${unresolved}"
+            unexpected="$(printf '%s\n' "${unresolved}" | grep -v '^\.github/workflows/stage8f-fullstack\.yml$' || true)"
+            if [[ -n "${unexpected}" ]]; then
+              echo "Unexpected merge conflicts detected; refusing automatic resolution:"
+              printf '%s\n' "${unexpected}"
+              exit 1
+            fi
+          fi
+
+          git rm -f .github/workflows/stage8f-fullstack.yml 2>/dev/null || true
+          git checkout origin/main -- .github/workflows/fullstack.yml
+
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/fullstack.yml')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  '      AIMA_DB_CONNECT_TIMEOUT_SECONDS: 3\n',
+                  '      AIMA_DB_CONNECT_TIMEOUT_SECONDS: 3\n'
+                  '      AIMA_LLM_BASE_URL: https://stage8f.invalid/v1\n'
+                  '      AIMA_LLM_PROVIDER_NAME: stage8f\n'
+                  '      AIMA_LLM_MODEL: stage8f-model\n',
+              ),
+              (
+                  '          printf \'%s\\n\' \'stage8f-runtime-cursor-signing-key-000000000001\' > "${AIMA_SECRET_DIR}/collection_runtime_cursor_signing_key"\n'
+                  '          chmod 600 "${AIMA_SECRET_DIR}"/*\n',
+                  '          printf \'%s\\n\' \'stage8f-runtime-cursor-signing-key-000000000001\' > "${AIMA_SECRET_DIR}/collection_runtime_cursor_signing_key"\n'
+                  '          printf \'%s\\n\' \'stage8f-dummy-llm-key\' > "${AIMA_SECRET_DIR}/llm_api_key"\n'
+                  '          chmod 600 "${AIMA_SECRET_DIR}"/*\n',
+              ),
+              (
+                  '          uv run python tests/fullstack/create_stage8f_excel_fixture.py "${RUNNER_TEMP}/stage8f-worker-failure.xlsx" worker-failure\n'
+                  '          test -s "${RUNNER_TEMP}/stage8f-fullstack.xlsx"\n'
+                  '          test -s "${RUNNER_TEMP}/stage8f-worker-failure.xlsx"\n',
+                  '          uv run python tests/fullstack/create_stage8f_excel_fixture.py "${RUNNER_TEMP}/stage8f-worker-failure.xlsx" worker-failure\n'
+                  '          uv run python tests/fullstack/create_stage8f_excel_fixture.py "${RUNNER_TEMP}/stage8f-manual-review.xlsx" manual-review\n'
+                  '          test -s "${RUNNER_TEMP}/stage8f-fullstack.xlsx"\n'
+                  '          test -s "${RUNNER_TEMP}/stage8f-worker-failure.xlsx"\n'
+                  '          test -s "${RUNNER_TEMP}/stage8f-manual-review.xlsx"\n'
+                  '\n'
+                  '      - name: Seed AI irrelevant content for manual review\n'
+                  '        shell: bash\n'
+                  '        run: |\n'
+                  '          set -euo pipefail\n'
+                  '          uv run python tests/fullstack/seed_stage8f_manual_relevance_review.py "${RUNNER_TEMP}/stage8f-manual-review.xlsx" > "${RUNNER_TEMP}/stage8f-manual-review-seed.txt"\n'
+                  '          test -s "${RUNNER_TEMP}/stage8f-manual-review-seed.txt"\n',
+              ),
+          ]
+
+          for old, new in replacements:
+              if text.count(old) != 1:
+                  raise SystemExit(f'Expected exactly one Full-stack anchor, found {text.count(old)} for: {old!r}')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          git add .github/workflows/fullstack.yml
+          unresolved="$(git diff --name-only --diff-filter=U)"
+          if [[ -n "${unresolved}" ]]; then
+            echo "Unresolved conflicts remain; refusing commit:"
+            printf '%s\n' "${unresolved}"
+            exit 1
+          fi
+
+          git diff --check
+          git status --short
+          git commit -m "合并最新 main 并保留人工相关性 Full-stack 验收"
+          git push origin HEAD:feature/manual-relevance-review
