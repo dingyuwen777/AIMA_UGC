@@ -107,7 +107,7 @@ def test_release_workflow_uses_official_upstreams_without_changing_local_default
     for forbidden in forbidden_release_sources:
         assert forbidden not in workflow
 
-    # Local defaults remain covered by the test above; the Release workflow may only override build args.
+    # Local source defaults stay in Dockerfile/Compose; Release only overrides build args.
     assert "--build-arg AIMA_BUILD_DEBIAN_MIRROR=" in workflow
     assert "--build-arg AIMA_BUILD_PYPI_INDEX=" in workflow
     assert "--build-arg AIMA_BUILD_NPM_REGISTRY=" in workflow
