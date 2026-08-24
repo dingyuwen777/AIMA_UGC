@@ -91,9 +91,9 @@ def test_environment_setup_uses_one_docker_hub_mirror_source_of_truth() -> None:
     windows_guide = (
         ROOT / "docs" / "guides" / "03_Windows Docker Desktop Compose运行.md"
     ).read_text(encoding="utf-8")
-    docker_guide = (
-        ROOT / "docs" / "guides" / "04_Docker国内构建源与本地重置.md"
-    ).read_text(encoding="utf-8")
+    docker_guide = (ROOT / "docs" / "guides" / "04_Docker国内构建源与本地重置.md").read_text(
+        encoding="utf-8"
+    )
 
     assert windows_mirror_setup_path.is_file()
     windows_mirror_setup = windows_mirror_setup_path.read_text(encoding="utf-8")
