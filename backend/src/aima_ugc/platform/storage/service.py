@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 
 from .models import ArtifactRecord
 from .ports import ArtifactMetadataPort, ArtifactStore
+from .retention import initial_artifact_expiry
 
 _KIND_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 _SUFFIX_PATTERN = re.compile(r"^\.[a-z0-9]{1,16}$")
@@ -51,6 +52,7 @@ class ArtifactService:
             raise ValueError("Artifact storage_key 不能为空")
         else:
             resolved_storage_key = storage_key
+        created_at = datetime.now(UTC)
         pending = ArtifactRecord(
             id=artifact_id,
             kind=kind,
@@ -60,7 +62,8 @@ class ArtifactService:
             encoding=encoding,
             retention_class=retention_class,
             storage_status="pending",
-            created_at=datetime.now(UTC),
+            created_at=created_at,
+            expires_at=initial_artifact_expiry(kind, created_at),
         )
         self._metadata.create_pending(pending)
 
@@ -104,6 +107,7 @@ class ArtifactService:
 
         artifact_id = uuid4()
         storage_key = f"{kind}/{artifact_id}{filename_suffix}"
+        created_at = datetime.now(UTC)
         pending = ArtifactRecord(
             id=artifact_id,
             kind=kind,
@@ -113,7 +117,8 @@ class ArtifactService:
             encoding=encoding,
             retention_class=retention_class,
             storage_status="pending",
-            created_at=datetime.now(UTC),
+            created_at=created_at,
+            expires_at=initial_artifact_expiry(kind, created_at),
         )
         self._metadata.create_pending(pending)
         try:
