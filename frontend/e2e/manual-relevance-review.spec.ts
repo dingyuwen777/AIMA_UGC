@@ -25,6 +25,8 @@ const irrelevantItem = {
     model_provider: 'fixture',
     model: 'fixture-model',
   },
+  effective_relevance: 'irrelevant',
+  relevance_source: 'ai',
   source: { provider_name: 'file-import', import_batch_id: null },
 }
 
@@ -41,6 +43,29 @@ const relevantItem = {
     voice_type: 'user_voice',
     sentiment: '中性',
     labels: [{ primary_label: '产品体验', secondary_label: '续航表现' }],
+  },
+  effective_relevance: 'relevant',
+  relevance_source: 'ai',
+}
+
+const manuallyIncludedItem = {
+  ...irrelevantItem,
+  effective_relevance: 'relevant',
+  relevance_source: 'manual_review',
+}
+
+const staleManuallyIncludedItem = {
+  ...manuallyIncludedItem,
+  title: '爱玛 Q7 人工覆盖后 AI 已过期',
+  analysis: {
+    status: 'stale',
+    relevance: null,
+    voice_type: null,
+    sentiment: null,
+    labels: [],
+    analyzed_at: null,
+    model_provider: null,
+    model: null,
   },
 }
 
@@ -123,7 +148,39 @@ test('undoes a manual relevant override without deleting the AI irrelevant fact'
     await route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({
-        items: relevance === 'relevant' ? [irrelevantItem] : [],
+        items: relevance === 'relevant' ? [manuallyIncludedItem] : [],
+        next_cursor: null,
+        has_more: false,
+      }),
+    })
+  })
+  await page.route('**/api/v1/content-relevance-reviews', async (route) => {
+    reviewRequest = route.request().postDataJSON()
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ requested_count: 1, changed_count: 1, unchanged_count: 0 }),
+    })
+  })
+
+  await page.goto('/voice-plaza')
+  await page.getByLabel('AI 相关性').selectOption('relevant')
+  await page.getByRole('button', { name: '查询' }).click()
+  await expect(page.getByText('人工复核相关', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '撤销人工判断' }).click()
+
+  expect(reviewRequest).toEqual({ content_ids: [irrelevantContentId], decision: 'inherit_ai' })
+  await expect(page.getByText(/已撤销 1 条人工相关性判断/)).toBeVisible()
+})
+
+test('keeps manual override undoable when the current AI result is stale', async ({ page }) => {
+  let reviewRequest: unknown
+  await routeShared(page)
+  await page.route('**/api/v1/contents**', async (route) => {
+    const relevance = new URL(route.request().url()).searchParams.get('relevance')
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: relevance === 'relevant' ? [staleManuallyIncludedItem] : [],
         next_cursor: null,
         has_more: false,
       }),
