@@ -1,4 +1,4 @@
-"""增加 AI 不相关内容人工相关性复核表。
+"""增加双向人工相关性复核与撤销事件账本。
 
 Revision ID: 20260824_0025
 Revises: 20260822_0024
@@ -22,6 +22,7 @@ def upgrade() -> None:
         sa.Column("content_id", sa.Uuid(), nullable=False),
         sa.Column("content_version", sa.Integer(), nullable=False),
         sa.Column("analysis_result_id", sa.Uuid(), nullable=False),
+        sa.Column("review_no", sa.Integer(), nullable=False),
         sa.Column("decision", sa.Text(), nullable=False),
         sa.Column("request_id", sa.Text(), nullable=False),
         sa.Column("reviewed_at", sa.DateTime(timezone=True), nullable=False),
@@ -30,8 +31,12 @@ def upgrade() -> None:
             name=op.f("ck_analysis_content_relevance_reviews_content_version_positive"),
         ),
         sa.CheckConstraint(
-            "decision = 'relevant'",
-            name=op.f("ck_analysis_content_relevance_reviews_decision_relevant_only"),
+            "review_no >= 1",
+            name=op.f("ck_analysis_content_relevance_reviews_review_no_positive"),
+        ),
+        sa.CheckConstraint(
+            "decision in ('relevant','irrelevant','inherit_ai')",
+            name=op.f("ck_analysis_content_relevance_reviews_decision_allowed"),
         ),
         sa.CheckConstraint(
             "char_length(request_id) > 0",
@@ -43,7 +48,8 @@ def upgrade() -> None:
         sa.UniqueConstraint(
             "content_id",
             "content_version",
-            name="uq_analysis_content_relevance_reviews_content_version",
+            "review_no",
+            name="uq_analysis_content_relevance_reviews_content_version_review_no",
         ),
     )
 
