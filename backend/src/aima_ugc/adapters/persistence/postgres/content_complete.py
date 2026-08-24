@@ -157,6 +157,37 @@ class PostgresCompleteContentRepository:
         for field_name, table in _CONTENT_COLLECTION_FIELDS.items():
             if field_name not in observation.observed_fields:
                 continue
+            if field_name == "alternate_ids":
+                # 父级 freshness 只记录最近观察时刻，不阻止较旧来源补充此前缺失的 id_type。
+                _claim_collection_freshness(
+                    self._session,
+                    parent_table=contents_table,
+                    parent_id=content_id,
+                    field_name=field_name,
+                    observed_at=observation.observed_at,
+                )
+                rows = _content_extension_rows(
+                    field_name,
+                    content_id,
+                    observation,
+                    attempt_id=attempt_id,
+                    raw_id=raw_id,
+                )
+                for row in rows:
+                    statement = pg_insert(table).values(**row)
+                    self._session.execute(
+                        statement.on_conflict_do_update(
+                            index_elements=[table.c.content_id, table.c.id_type],
+                            set_={
+                                "external_id": statement.excluded.external_id,
+                                "provider_attempt_id": statement.excluded.provider_attempt_id,
+                                "raw_artifact_id": statement.excluded.raw_artifact_id,
+                                "observed_at": statement.excluded.observed_at,
+                            },
+                            where=table.c.observed_at <= statement.excluded.observed_at,
+                        )
+                    )
+                continue
             if not _claim_collection_freshness(
                 self._session,
                 parent_table=contents_table,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import parse_qs
 
 from pydantic import AnyHttpUrl
 
@@ -37,10 +38,16 @@ def map_content(
         raise ValueError("快手内容缺少 photo_id")
 
     provider_photo_id = required_string(item, "photo_id")
-    external_id = context.external_content_id or provider_photo_id
+    share_photo_id = _share_photo_id(item)
+    external_id = context.external_content_id or share_photo_id or provider_photo_id
     observed_fields: list[str] = ["content_type", "alternate_ids"]
 
-    alternate_ids: dict[str, str] = {"photo_id": provider_photo_id}
+    # 快手 Raw 的数字 photo_id 与公开分享链接 photoId(3x...) 是两套身份。
+    # Canonical/补采 locator 优先使用公开分享 ID，保证 TikHub Search 与 Excel URL 收敛；
+    # 数字 Provider ID 仅作为可审计别名保留。
+    alternate_ids: dict[str, str] = {"photo_id": external_id}
+    if provider_photo_id != external_id:
+        alternate_ids["provider_photo_id"] = provider_photo_id
     kwai_id = optional_string(item, "kwaiId", "kwai_id")
     if kwai_id is not None:
         alternate_ids["kwai_id"] = kwai_id
@@ -77,6 +84,27 @@ def map_content(
         source=source(context, item_locator),
         observed_fields=observed_fields,
     )
+
+
+def _share_photo_id(item: dict[str, Any]) -> str | None:
+    """解析快手公开分享作品 ID；它与 Raw 数字 ``photo_id`` 不是同一字段。"""
+
+    raw = item.get("share_info") or item.get("shareInfo")
+    if isinstance(raw, dict):
+        return optional_string(raw, "photoId", "photo_id")
+    if not isinstance(raw, str):
+        return None
+    text = raw.strip()
+    if not text:
+        return None
+    query = text.split("?", 1)[1] if "?" in text else text
+    values = parse_qs(query, keep_blank_values=False).get("photoId") or parse_qs(
+        query, keep_blank_values=False
+    ).get("photo_id")
+    if not values:
+        return None
+    value = values[0].strip()
+    return value or None
 
 
 def map_comment(

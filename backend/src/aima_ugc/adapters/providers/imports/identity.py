@@ -53,6 +53,10 @@ _NATIVE_PATH_PATTERNS = {
 }
 _WEIBO_BASE62_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 _WEIBO_BASE62_VALUES = {char: index for index, char in enumerate(_WEIBO_BASE62_ALPHABET)}
+_BILIBILI_BV_ALPHABET = "FcwAPNKTMug3GV5Lj7EJnHpWsx4tb8haYeviqBz6rkCy12mUSDQX9RdoZf"
+_BILIBILI_BV_VALUES = {char: index for index, char in enumerate(_BILIBILI_BV_ALPHABET)}
+_BILIBILI_AID_MASK = (1 << 51) - 1
+_BILIBILI_AID_XOR = 23442827791579
 
 
 def resolve_content_identity(
@@ -164,7 +168,11 @@ def _provider_lookup_ids(
         if platform == "bilibili":
             lowered = native_id.casefold()
             if lowered.startswith("bv"):
-                return {"bv_id": native_id}
+                aid = _bilibili_bv_to_aid(native_id)
+                result = {"bvid": native_id, "bv_id": native_id}
+                if aid is not None:
+                    result["av_id"] = aid
+                return result
             if lowered.startswith("av") and native_id[2:].isdigit():
                 return {"av_id": native_id[2:]}
         if platform == "kuaishou":
@@ -219,9 +227,32 @@ def _weibo_url_id_to_status_id(value: str) -> str:
     return "".join(decimal_groups)
 
 
+def _bilibili_bv_to_aid(value: str) -> str | None:
+    """把标准 12 位 BVID 确定性还原为 TikHub/B站视频使用的数字 AID。"""
+
+    if len(value) != 12 or value[:3].casefold() != "bv1":
+        return None
+    chars = list(value)
+    chars[3], chars[9] = chars[9], chars[3]
+    chars[4], chars[7] = chars[7], chars[4]
+    encoded = chars[3:]
+    if any(char not in _BILIBILI_BV_VALUES for char in encoded):
+        return None
+
+    decoded = 0
+    for char in encoded:
+        decoded = decoded * len(_BILIBILI_BV_ALPHABET) + _BILIBILI_BV_VALUES[char]
+    return str((decoded & _BILIBILI_AID_MASK) ^ _BILIBILI_AID_XOR)
+
+
 def _normalize_native_external_id(platform: str, native_id: str) -> str:
-    if platform == "bilibili" and native_id.casefold().startswith("av") and native_id[2:].isdigit():
+    if platform != "bilibili":
+        return native_id
+    lowered = native_id.casefold()
+    if lowered.startswith("av") and native_id[2:].isdigit():
         return native_id[2:]
+    if lowered.startswith("bv"):
+        return _bilibili_bv_to_aid(native_id) or native_id
     return native_id
 
 
