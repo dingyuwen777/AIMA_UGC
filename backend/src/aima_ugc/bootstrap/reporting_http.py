@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from typing import BinaryIO
 from uuid import UUID, uuid4
 
@@ -39,6 +40,7 @@ from aima_ugc.modules.reporting.http import (
 )
 from aima_ugc.modules.reporting.models import DataExportRecord
 from aima_ugc.platform.jobs import JobRecord
+from aima_ugc.platform.storage.retention import EXPORT_RETENTION
 
 from .analysis_identity import current_analysis_identity
 from .runtime import PlatformRuntime
@@ -158,6 +160,7 @@ class PostgresReportingHttpService:
                     or artifact.storage_status != "linked"
                     or artifact.byte_size is None
                     or artifact.storage_backend != self._runtime.artifact_store.backend_name
+                    or _export_expired(export, artifact.expires_at, artifact.stored_at, artifact.created_at)
                 ):
                     raise DataExportNotReady
                 stream = self._runtime.artifact_store.open_read(artifact.storage_key)
@@ -169,6 +172,20 @@ class PostgresReportingHttpService:
                 )
         finally:
             session.close()
+
+
+def _export_expired(
+    export: DataExportRecord,
+    expires_at: datetime | None,
+    stored_at: datetime | None,
+    created_at: datetime,
+) -> bool:
+    """即使历史 Artifact 尚未被 Scheduler 回填 expires_at，也按 7 天规则拒绝下载。"""
+
+    if expires_at is None:
+        base_at = export.completed_at or stored_at or created_at
+        expires_at = base_at + EXPORT_RETENTION
+    return expires_at <= datetime.now(UTC)
 
 
 def _iter_file(stream: BinaryIO) -> Iterator[bytes]:
