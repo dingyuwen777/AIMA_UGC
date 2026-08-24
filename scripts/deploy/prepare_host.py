@@ -249,7 +249,10 @@ def main() -> int:
     parser.add_argument(
         "--runtime-bind-compatible",
         action="store_true",
-        help="仅对 runtime/data 与 runtime/logs 放宽精确 POSIX owner/mode 校验，用于 Windows bind mount",
+        help=(
+            "仅对 runtime/data 与 runtime/logs 放宽精确 POSIX owner/mode 校验，"
+            "用于 Windows bind mount"
+        ),
     )
     args = parser.parse_args()
     try:
