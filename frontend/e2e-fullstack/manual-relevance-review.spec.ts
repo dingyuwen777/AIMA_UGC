@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 
 const manualIncludeTitle = '爱玛 Stage8F 人工相关性复核'
 const manualExcludeTitle = '爱玛 Stage8F 人工排除与撤销'
+const preservedAiLabel = '骑行性能 / 舒适性'
 
 test('AI irrelevant 内容可在真实声音广场人工纳入并进入默认业务列表', async ({ page }) => {
   await page.goto('/voice-plaza')
@@ -60,7 +61,7 @@ test('AI relevant 内容可人工排除并撤销，恢复 AI 业务基线', asyn
   await page.getByRole('button', { name: '查询' }).click()
   await expect(page.getByText(manualExcludeTitle, { exact: true })).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('人工复核不相关', { exact: true })).toBeVisible()
-  await expect(page.getByText('骑行性能 · 舒适性', { exact: true })).toBeVisible()
+  await expect(page.getByText(preservedAiLabel, { exact: true })).toBeVisible()
 
   const undoResponsePromise = page.waitForResponse(
     (response) =>
@@ -82,5 +83,5 @@ test('AI relevant 内容可人工排除并撤销，恢复 AI 业务基线', asyn
   await page.getByRole('button', { name: '查询' }).click()
   await expect(page.getByText(manualExcludeTitle, { exact: true })).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('中性', { exact: true })).toBeVisible()
-  await expect(page.getByText('骑行性能 · 舒适性', { exact: true })).toBeVisible()
+  await expect(page.getByText(preservedAiLabel, { exact: true })).toBeVisible()
 })
