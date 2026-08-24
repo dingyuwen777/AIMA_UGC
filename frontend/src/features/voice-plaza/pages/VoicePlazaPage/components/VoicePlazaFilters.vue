@@ -58,7 +58,7 @@ function value(event: Event): string {
     <label><span>AI 相关性</span><select
       :value="relevance"
       @change="emit('update:relevance', value($event) as '' | ContentRelevance)"
-    ><option value="">默认业务数据</option><option value="relevant">相关（含人工纳入）</option><option value="irrelevant">AI 判定不相关·待复核</option></select></label>
+    ><option value="">默认业务数据</option><option value="relevant">相关（AI / 人工有效）</option><option value="irrelevant">不相关（AI / 人工有效）</option></select></label>
     <label><span>AI 情感</span><select
       :value="sentiment"
       @change="emit('update:sentiment', value($event))"
