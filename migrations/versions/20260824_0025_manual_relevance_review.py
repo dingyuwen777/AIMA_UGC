@@ -52,7 +52,26 @@ def upgrade() -> None:
             name="uq_analysis_content_relevance_reviews_content_version_review_no",
         ),
     )
+    op.execute(
+        """
+        CREATE FUNCTION reject_analysis_relevance_review_mutation() RETURNS trigger AS $$
+        BEGIN
+          RAISE EXCEPTION '% 是追加账本，禁止 %', TG_TABLE_NAME, TG_OP;
+        END; $$ LANGUAGE plpgsql;
+
+        CREATE TRIGGER trg_analysis_content_relevance_reviews_append_only
+        BEFORE UPDATE OR DELETE ON analysis_content_relevance_reviews
+        FOR EACH ROW EXECUTE FUNCTION reject_analysis_relevance_review_mutation();
+        """
+    )
 
 
 def downgrade() -> None:
+    op.execute(
+        """
+        DROP TRIGGER IF EXISTS trg_analysis_content_relevance_reviews_append_only
+        ON analysis_content_relevance_reviews;
+        DROP FUNCTION IF EXISTS reject_analysis_relevance_review_mutation();
+        """
+    )
     op.drop_table("analysis_content_relevance_reviews")
