@@ -38,7 +38,7 @@ data_changes: []
 
 当时的目标是把 AIMA `deepseek-v4-pro` 价格目录切换为被误读为官方当前规则的“空闲/高峰 + 工作日”计费，同时保留 `effective_date`。该目标已经被后续官方事实核验否定并整体回滚。
 
-# Requirement Traceability（历史状态）
+# Requirement Traceability
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
