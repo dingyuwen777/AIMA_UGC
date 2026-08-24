@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import sys
 from datetime import UTC, datetime
 from io import BytesIO
@@ -22,6 +21,7 @@ from aima_ugc.bootstrap.worker import (
 )
 from aima_ugc.contracts.analysis import ContentLabelAnalysisV3
 from aima_ugc.contracts.http import KeywordPackCreateRequest, KeywordPackKeywordCreateRequest
+from aima_ugc.modules.analysis import content_labeling_input_hash
 from aima_ugc.modules.analysis.content_analysis_job import (
     CONTENT_ANALYSIS_JOB_MAX_ATTEMPTS,
     CONTENT_ANALYSIS_JOB_PAYLOAD_VERSION,
@@ -150,7 +150,7 @@ def main() -> int:
                         taxonomy_sha256=identity.taxonomy_sha256,
                         model_provider=identity.model_provider,
                         model=identity.model,
-                        input_hash=hashlib.sha256(b"stage8f-manual-review-input").hexdigest(),
+                        input_hash=content_labeling_input_hash(pending[0].content),
                         analyzed_at=datetime.now(UTC),
                     ),
                 )
