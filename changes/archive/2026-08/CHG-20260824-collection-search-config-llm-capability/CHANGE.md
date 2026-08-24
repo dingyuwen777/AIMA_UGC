@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260824-collection-search-config-llm-capability"
 title: "采集搜索配置与 LLM 能力修复"
 level: L3
-status: ready_for_review
+status: done
 owner: "aima"
 branch: "feature/collection-search-config-llm-capability"
 created: 2026-08-24
@@ -173,6 +173,8 @@ data_changes: []
 - 实机症状：正式 `scripts/dev/backend.py` 读取本机 `env.local` 后启动成功，安全能力接口返回 `configured=True`；仅查询能力，没有发送 LLM 请求。
 - 已知基线：`uv run ruff check .` 仍报告 63 个本轮外的 Skill/Migration 既有格式问题；本轮全部 Python 文件目标 Ruff/Format 检查通过，不修改历史 Migration 掩盖基线。
 - 平台限制：Windows 本地执行 `uv run pytest tests/unit -q` 得到 616 passed、7 skipped、3 failed；失败均位于本轮未修改的 `tests/unit/test_prepare_host.py`，原因是 Windows `os` 不提供测试直接 monkeypatch 的 `geteuid/chown`。PR 的 Ubuntu CI 作为该组 POSIX 测试的合并证据，不为本任务修改发布脚本测试。
+- PR CI：PR #206 最终 head `9cf6ad3f` 触发的 17 个 GitHub 工作流全部 `success`，包括 CI、Stage 5A—5D、Stage 6、Stage 7、Stage 8F Full-stack、Windows Compose、Release dry-run 和 Completion Gate。
+- 合并后验证：远程 `main` merge commit `95159e37`；本地主分支复跑 Collection unit 324 passed、Contract + API 106 passed、Vitest 38 passed、frontend build、Secret 扫描与 Ready Check 均退出 0。
 
 # 文档影响
 
@@ -183,6 +185,6 @@ data_changes: []
 
 # 交付
 
-- Commit：`54a54c49`（本地前端 launcher 标准输入修复）；`76685a72`（逐平台采集配置与 LLM 能力检测修复）。
-- PR：[#206](https://github.com/dingyuwen777/AIMA_UGC/pull/206)，已创建并等待 GitHub CI。
-- 发布：仅通过 PR/CI 合入 `main`；不执行应用部署。
+- Commit：`54a54c49`（本地前端 launcher 标准输入修复）；`76685a72`（逐平台采集配置与 LLM 能力检测修复）；`391ad8e2`、`9cf6ad3f`（交付记录）。
+- PR：[#206](https://github.com/dingyuwen777/AIMA_UGC/pull/206)，17/17 工作流成功，已合并。
+- 发布：已通过 merge commit `95159e37` 合入远程 `main`；未执行应用部署。
