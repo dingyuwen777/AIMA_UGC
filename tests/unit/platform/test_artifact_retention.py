@@ -18,8 +18,12 @@ def test_artifact_retention_policy_matches_approved_windows() -> None:
     assert IMPORT_SOURCE_RETENTION == timedelta(days=7)
     assert EXPORT_RETENTION == timedelta(days=7)
     assert ORPHAN_RETENTION == timedelta(days=1)
-    assert initial_artifact_expiry("provider-raw", observed_at) == observed_at + timedelta(days=30)
-    assert initial_artifact_expiry("content-export.xlsx", observed_at) == observed_at + timedelta(days=7)
+    assert initial_artifact_expiry("provider-raw", observed_at) == observed_at + timedelta(
+        days=30
+    )
+    assert initial_artifact_expiry(
+        "content-export.xlsx", observed_at
+    ) == observed_at + timedelta(days=7)
     assert initial_artifact_expiry("file-import.raw", observed_at) is None
     assert import_source_expiry(observed_at) == observed_at + timedelta(days=7)
 

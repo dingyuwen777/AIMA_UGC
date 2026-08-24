@@ -6,12 +6,13 @@ from collections.abc import Callable
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import and_, exists, insert, or_, select, update
+from sqlalchemy import and_, exists, func, insert, or_, select, update
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 from aima_ugc.modules.reporting.tables import reporting_data_exports_table
+from aima_ugc.platform.jobs.tables import jobs_table
 from aima_ugc.platform.storage.models import ArtifactRecord, ArtifactStateConflict
 from aima_ugc.platform.storage.retention import (
     EXPORT_RETENTION,
@@ -87,9 +88,7 @@ class PostgresArtifactMetadataRepository:
 
     def get(self, artifact_id: UUID) -> ArtifactRecord | None:
         row = (
-            self._session.execute(
-                select(artifacts_table).where(artifacts_table.c.id == artifact_id)
-            )
+            self._session.execute(select(artifacts_table).where(artifacts_table.c.id == artifact_id))
             .mappings()
             .one_or_none()
         )
@@ -174,50 +173,65 @@ class PostgresArtifactMetadataRepository:
             )
             .values(
                 expires_at=(
-                    artifacts_table.c.stored_at
+                    func.coalesce(artifacts_table.c.stored_at, artifacts_table.c.created_at)
                     + PROVIDER_RAW_RETENTION
                 )
             )
         )
-        # 极早期历史记录理论上可能缺 stored_at；使用 created_at 作保守兜底。
-        self._session.execute(
-            update(artifacts_table)
-            .where(
-                artifacts_table.c.kind == "provider-raw",
-                artifacts_table.c.expires_at.is_(None),
-                artifacts_table.c.storage_status.in_(mutable_statuses),
-            )
-            .values(expires_at=artifacts_table.c.created_at + PROVIDER_RAW_RETENTION)
-        )
-
         export_result = self._session.execute(
             update(artifacts_table)
             .where(
                 artifacts_table.c.kind == "content-export.xlsx",
                 artifacts_table.c.expires_at.is_(None),
                 artifacts_table.c.storage_status.in_(mutable_statuses),
-                artifacts_table.c.stored_at.is_not(None),
             )
-            .values(expires_at=artifacts_table.c.stored_at + EXPORT_RETENTION)
-        )
-        self._session.execute(
-            update(artifacts_table)
-            .where(
-                artifacts_table.c.kind == "content-export.xlsx",
-                artifacts_table.c.expires_at.is_(None),
-                artifacts_table.c.storage_status.in_(mutable_statuses),
+            .values(
+                expires_at=(
+                    func.coalesce(artifacts_table.c.stored_at, artifacts_table.c.created_at)
+                    + EXPORT_RETENTION
+                )
             )
-            .values(expires_at=artifacts_table.c.created_at + EXPORT_RETENTION)
         )
 
-        finished_at = (
-            select(processing_import_batches_table.c.finished_at)
+        terminal_statuses = ("succeeded", "failed", "cancelled")
+        batch_jobs = processing_import_batches_table.outerjoin(
+            jobs_table,
+            processing_import_batches_table.c.job_id == jobs_table.c.id,
+        )
+        terminal_at = (
+            select(
+                func.max(
+                    func.coalesce(
+                        processing_import_batches_table.c.finished_at,
+                        jobs_table.c.finished_at,
+                    )
+                )
+            )
+            .select_from(batch_jobs)
             .where(
                 processing_import_batches_table.c.input_artifact_id == artifacts_table.c.id,
-                processing_import_batches_table.c.finished_at.is_not(None),
+                or_(
+                    processing_import_batches_table.c.finished_at.is_not(None),
+                    and_(
+                        jobs_table.c.status.in_(terminal_statuses),
+                        jobs_table.c.finished_at.is_not(None),
+                    ),
+                ),
             )
-            .limit(1)
             .scalar_subquery()
+        )
+        unfinished_import = exists(
+            select(processing_import_batches_table.c.id)
+            .select_from(batch_jobs)
+            .where(
+                processing_import_batches_table.c.input_artifact_id == artifacts_table.c.id,
+                processing_import_batches_table.c.finished_at.is_(None),
+                or_(
+                    processing_import_batches_table.c.job_id.is_(None),
+                    ~jobs_table.c.status.in_(terminal_statuses),
+                    jobs_table.c.finished_at.is_(None),
+                ),
+            )
         )
         import_result = self._session.execute(
             update(artifacts_table)
@@ -225,12 +239,15 @@ class PostgresArtifactMetadataRepository:
                 artifacts_table.c.kind == "file-import.raw",
                 artifacts_table.c.expires_at.is_(None),
                 artifacts_table.c.storage_status.in_(mutable_statuses),
-                finished_at.is_not(None),
+                terminal_at.is_not(None),
+                ~unfinished_import,
             )
-            .values(expires_at=finished_at + IMPORT_SOURCE_RETENTION)
+            .values(expires_at=terminal_at + IMPORT_SOURCE_RETENTION)
         )
-        return max(provider_result.rowcount, 0) + max(export_result.rowcount, 0) + max(
-            import_result.rowcount, 0
+        return (
+            max(provider_result.rowcount, 0)
+            + max(export_result.rowcount, 0)
+            + max(import_result.rowcount, 0)
         )
 
     def list_cleanup_candidates(

@@ -160,7 +160,12 @@ class PostgresReportingHttpService:
                     or artifact.storage_status != "linked"
                     or artifact.byte_size is None
                     or artifact.storage_backend != self._runtime.artifact_store.backend_name
-                    or _export_expired(export, artifact.expires_at, artifact.stored_at, artifact.created_at)
+                    or _export_expired(
+                        export,
+                        artifact.expires_at,
+                        artifact.stored_at,
+                        artifact.created_at,
+                    )
                 ):
                     raise DataExportNotReady
                 stream = self._runtime.artifact_store.open_read(artifact.storage_key)

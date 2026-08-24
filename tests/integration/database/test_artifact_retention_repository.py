@@ -4,9 +4,14 @@ from uuid import uuid4
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataRepository,
 )
+from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
+from aima_ugc.adapters.persistence.postgres.manual_ingestion import (
+    PostgresProcessingImportBatchRepository,
+)
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.storage import ArtifactRecord
+from aima_ugc.platform.storage.retention import IMPORT_SOURCE_RETENTION
 
 
 def _store_record(
@@ -38,7 +43,7 @@ def _store_record(
     )
 
 
-def test_retention_repository_keeps_provider_raw_out_of_one_day_orphan_cleanup() -> None:
+def test_provider_raw_is_not_a_one_day_orphan() -> None:
     runtime = DatabaseRuntime(load_settings())
     now = datetime(2026, 8, 24, 0, 0, tzinfo=UTC)
     session = runtime.new_session()
@@ -105,6 +110,60 @@ def test_retention_repository_converges_expired_artifact_to_deleted() -> None:
             )
             assert deleted.storage_status == "deleted"
             assert deleted.deleted_at == now
+    finally:
+        session.close()
+        runtime.dispose()
+
+
+def test_import_source_waits_for_terminal_job_and_uses_cancel_time() -> None:
+    runtime = DatabaseRuntime(load_settings())
+    created_at = datetime(2026, 8, 24, 0, 0, tzinfo=UTC)
+    batch_id = uuid4()
+    session = runtime.new_session()
+    try:
+        with session.begin():
+            artifacts = PostgresArtifactMetadataRepository(session)
+            source = _store_record(
+                artifacts,
+                kind="file-import.raw",
+                created_at=created_at,
+                expires_at=None,
+            )
+            job = PostgresJobRepository(session).enqueue(
+                job_type="ingestion.import-excel.v1",
+                payload_version="1",
+                payload={},
+                internal_idempotency_key=f"retention-test:{batch_id}",
+                request_id="retention-test",
+                priority=0,
+                max_attempts=1,
+                timeout_seconds=60,
+            )
+            PostgresProcessingImportBatchRepository(session).create(
+                batch_id=batch_id,
+                input_artifact_id=source.id,
+                job_id=job.id,
+            )
+            artifacts.mark_linked(source.id, linked_at=created_at)
+
+        with session.begin():
+            repository = PostgresArtifactMetadataRepository(session)
+            repository.backfill_retention_deadlines()
+            active = repository.get(source.id)
+            assert active is not None
+            assert active.expires_at is None
+
+        with session.begin():
+            cancelled = PostgresJobRepository(session).request_cancel(job.id)
+            assert cancelled.status == "cancelled"
+            assert cancelled.finished_at is not None
+
+        with session.begin():
+            repository = PostgresArtifactMetadataRepository(session)
+            repository.backfill_retention_deadlines()
+            terminal = repository.get(source.id)
+            assert terminal is not None
+            assert terminal.expires_at == cancelled.finished_at + IMPORT_SOURCE_RETENTION
     finally:
         session.close()
         runtime.dispose()

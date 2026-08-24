@@ -150,19 +150,19 @@ class ArtifactService:
                 byte_size=stored.byte_size,
                 stored_at=datetime.now(UTC),
             )
-        except Exception:
+        except Exception as confirmation_error:
             # mark_stored 的异常可能发生在数据库已提交但客户端未收到确认之后。
             # 只有 mark_error 的 pending CAS 成功，才能证明 stored 未提交并安全删除字节。
             try:
                 self._metadata.mark_error(artifact_id)
             except Exception:
-                raise
+                raise confirmation_error from None
             try:
                 self._store.delete(storage_key)
             except Exception:
-                # 保留最初的存储确认失败语义；error 元数据仍提供人工一致性排查入口。
+                # error 元数据仍提供人工一致性排查入口；删除失败不能覆盖原始确认异常。
                 pass
-            raise
+            raise confirmation_error from None
 
     def confirm_stored_bytes(
         self,
