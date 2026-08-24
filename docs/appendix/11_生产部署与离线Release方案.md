@@ -420,7 +420,7 @@ docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production
 - Internal V1-A workflow：真实 Linux bind-mount absolute/repo-relative Golden Path；
 - Windows Runner：真实 CMD/PowerShell 标准 Compose CLI 参数；
 - Docker Engine：真实 `compose.yaml + compose.windows.yaml` hybrid startup、Host Root Artifact/log、严格 Secret mode、PostgreSQL/Migration/Readiness 和持久化生命周期；
-- Release PR dry-run：真实 GitHub Hosted Linux Runner build → `images.tar` → 删除 build/push 候选 tag → `docker load` → canonical Compose `--no-build --pull never --wait` → Migration/Readiness/持久目录；
+- Release PR dry-run：真实 GitHub Hosted Linux Runner build → `images.tar` → 删除本地候选运行镜像 tag → `docker load` → canonical Compose `--no-build --pull never --wait` → Migration/Readiness/持久目录；
 - Hosted Windows Runner 本身不作为真实 Docker Desktop Linux-container Runtime，因此首次个人 Windows 开发机仍要本机 smoke。
 
 完整 Stage 11 若需要独立生产覆盖，可在正式 Production Change 中增加有独立语义的 `compose.production.yaml`，但不能只是复制根 Compose，也不能从 `compose.windows.yaml` 演化 Production 逻辑。
@@ -621,14 +621,14 @@ Windows named volumes 只是开发机持久状态，不是 Production Backup Set
 ```text
 确认 main 最新 SHA / SemVer / Tag-Release 不重复 / 必要 CI
 → GitHub Runner 使用官方上游构建 linux/amd64 Backend/Frontend
-→ 正式发布时推送 GHCR 并记录 digest
 → 拉取并固定 postgres:18.4 digest
 → 生成 images.tar + manifest + SHA256 + DEPLOY
-→ 删除 Runner 上候选运行镜像 tag
+→ 删除 Runner 上本地候选运行镜像 tag
 → 从 images.tar 重新 docker load
 → canonical Compose --no-build --pull never
 → Migration / Readiness / 持久目录 smoke
-→ 正式发布时创建 Git Tag + GitHub Release
+→ 正式 workflow_dispatch 的 publish job 复用已回放候选，推送 GHCR 版本/SHA tag 并记录 digest
+→ 创建 Git Tag + GitHub Release
 ```
 
 PR 模式完整执行构建、Bundle 和离线回放，但跳过 GHCR publish 与 Tag/Release。
