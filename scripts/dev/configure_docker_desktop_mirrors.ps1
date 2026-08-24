@@ -5,6 +5,7 @@ $MaxDownloadAttempts = 5
 $DockerDesktopRestartTimeoutSeconds = 60
 $MirrorVerificationTimeoutSeconds = 20
 $MirrorProbeTimeoutSeconds = 3
+$MirrorProbeCleanupTimeoutMilliseconds = 1000
 $MirrorVerificationIntervalSeconds = 1
 $MirrorConfigPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'config\docker_hub_mirrors.txt'
 
@@ -168,7 +169,7 @@ function Get-DockerRegistryMirrorProbe {
 
     $startInfo = New-Object System.Diagnostics.ProcessStartInfo
     $startInfo.FileName = $dockerCommand.Source
-    $startInfo.Arguments = 'info --format "{{json .RegistryConfig.Mirrors}}"'
+    $startInfo.Arguments = 'info --format "{{json .RegistryConfig.Mirrors}}"'.Replace('\"', '"')
     $startInfo.UseShellExecute = $false
     $startInfo.CreateNoWindow = $true
     $startInfo.RedirectStandardOutput = $true
@@ -181,7 +182,7 @@ function Get-DockerRegistryMirrorProbe {
         if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
             try {
                 $process.Kill()
-                $process.WaitForExit()
+                [void]$process.WaitForExit($MirrorProbeCleanupTimeoutMilliseconds)
             }
             catch {
                 # Best effort cleanup; the probe result remains a timeout.
