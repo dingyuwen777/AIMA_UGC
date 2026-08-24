@@ -44,6 +44,7 @@ def run_artifact_cleanup_once(
         raise ValueError("Artifact cleanup now 必须包含时区")
     if limit < 1:
         raise ValueError("Artifact cleanup limit 必须大于 0")
+    orphan_before = observed_at - ORPHAN_RETENTION
 
     scan_session = runtime.database.new_session()
     try:
@@ -52,7 +53,7 @@ def run_artifact_cleanup_once(
             backfilled = repository.backfill_retention_deadlines()
             candidates = repository.list_cleanup_candidates(
                 now=observed_at,
-                orphan_before=observed_at - ORPHAN_RETENTION,
+                orphan_before=orphan_before,
                 limit=limit,
             )
     finally:
@@ -78,10 +79,12 @@ def run_artifact_cleanup_once(
         try:
             with claim_session.begin():
                 claimed = PostgresArtifactMetadataRepository(claim_session).mark_delete_pending(
-                    candidate.id
+                    candidate.id,
+                    now=observed_at,
+                    orphan_before=orphan_before,
                 )
         except ArtifactStateConflict:
-            # 另一 Scheduler/housekeeping 已经完成或改变状态时，本轮不重复处理。
+            # 扫描后若业务建立正式引用，或另一 housekeeping 已改变状态，本轮放弃删除。
             continue
         finally:
             claim_session.close()
