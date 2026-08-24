@@ -1,12 +1,44 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$Mirrors = @(
-    'https://docker.1panel.live',
-    'https://hub.1panel.dev',
-    'https://docker.m.daocloud.io'
-)
 $MaxDownloadAttempts = 5
+$MirrorVerificationAttempts = 60
+$MirrorVerificationIntervalSeconds = 2
+$MirrorConfigPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'config\docker_hub_mirrors.txt'
+
+function Read-DockerHubMirrors {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        throw "Docker Hub mirror configuration was not found: $Path"
+    }
+
+    $mirrors = @(
+        Get-Content -LiteralPath $Path |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { $_ -and -not $_.StartsWith('#') }
+    )
+    if ($mirrors.Count -eq 0) {
+        throw "Docker Hub mirror configuration is empty: $Path"
+    }
+
+    $seen = @{}
+    foreach ($mirror in $mirrors) {
+        $uri = $null
+        if (-not [Uri]::TryCreate($mirror, [UriKind]::Absolute, [ref]$uri) -or $uri.Scheme -ne 'https') {
+            throw "Docker Hub mirror must be an absolute HTTPS URL: $mirror"
+        }
+        $identity = $mirror.TrimEnd('/').ToLowerInvariant()
+        if ($seen.ContainsKey($identity)) {
+            throw "Duplicate Docker Hub mirror in configuration: $mirror"
+        }
+        $seen[$identity] = $true
+    }
+
+    return $mirrors
+}
+
+$Mirrors = @(Read-DockerHubMirrors -Path $MirrorConfigPath)
 
 function Get-DockerEngineConfigPath {
     if ([string]::IsNullOrWhiteSpace($HOME)) {
@@ -65,15 +97,28 @@ function Test-ExpectedMirrorsApplied {
     }
 }
 
-function Wait-DockerEngineReady {
-    for ($attempt = 1; $attempt -le 60; $attempt++) {
-        & docker info *> $null
-        if ($LASTEXITCODE -eq 0) {
+function Wait-ExpectedMirrorsApplied {
+    param(
+        [AllowEmptyString()][string]$BackupPath,
+        [Parameter(Mandatory = $true)][string]$ConfigPath
+    )
+
+    for ($attempt = 1; $attempt -le $MirrorVerificationAttempts; $attempt++) {
+        if (Test-ExpectedMirrorsApplied) {
             return
         }
-        Start-Sleep -Seconds 2
+        if ($attempt -lt $MirrorVerificationAttempts) {
+            Start-Sleep -Seconds $MirrorVerificationIntervalSeconds
+        }
     }
-    throw 'Docker Desktop did not become ready after applying registry mirrors.'
+
+    $restoreHint = if (-not [string]::IsNullOrWhiteSpace($BackupPath)) {
+        " Restore backup if needed: $BackupPath"
+    }
+    else {
+        " Remove the newly created file if needed: $ConfigPath"
+    }
+    throw "Docker Desktop restarted, but docker info did not report the expected registry mirrors within the verification window.$restoreHint"
 }
 
 function Configure-DockerDesktopMirrors {
@@ -116,22 +161,15 @@ function Configure-DockerDesktopMirrors {
     if ($LASTEXITCODE -ne 0) {
         throw "docker desktop restart failed with exit code $LASTEXITCODE"
     }
-    Wait-DockerEngineReady
 
-    if (-not (Test-ExpectedMirrorsApplied)) {
-        $restoreHint = if ($null -ne $backupPath) {
-            " Restore backup if needed: $backupPath"
-        }
-        else {
-            " Remove the newly created file if needed: $configPath"
-        }
-        throw "Docker Desktop restarted, but docker info does not report the expected registry mirrors.$restoreHint"
-    }
+    Write-Host 'Waiting for Docker Desktop to report the configured registry mirrors ...'
+    Wait-ExpectedMirrorsApplied -BackupPath $backupPath -ConfigPath $configPath
 
     Write-Host 'Docker Desktop registry mirrors configured:'
     foreach ($mirror in $Mirrors) {
         Write-Host "  $mirror"
     }
+    Write-Host "Docker Hub mirror source: $MirrorConfigPath"
     Write-Host "Docker Engine config: $configPath"
     if ($null -ne $backupPath) {
         Write-Host "Previous Docker Engine config backup: $backupPath"
