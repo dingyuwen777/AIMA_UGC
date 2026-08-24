@@ -169,9 +169,11 @@ def test_manual_irrelevant_override_and_undo_are_append_only_and_preserve_ai_res
         assert analysis_worker.run_once() is True
         assert content_service.get_analysis_job(created.job_id).status == "succeeded"
 
-        assert [item.id for item in content_service.list_contents(ContentListQuery()).items] == [
-            content_id
-        ]
+        default_item = content_service.list_contents(ContentListQuery()).items[0]
+        assert default_item.id == content_id
+        assert default_item.analysis.relevance == "relevant"
+        assert default_item.effective_relevance == "relevant"
+        assert default_item.relevance_source == "ai"
         assert content_service.list_contents(ContentListQuery(relevance="irrelevant")).items == ()
 
         excluded = content_service.review_relevance(
@@ -182,12 +184,13 @@ def test_manual_irrelevant_override_and_undo_are_append_only_and_preserve_ai_res
         assert excluded.changed_count == 1
         assert excluded.unchanged_count == 0
         assert content_service.list_contents(ContentListQuery()).items == ()
-        assert [
-            item.id
-            for item in content_service.list_contents(
-                ContentListQuery(relevance="irrelevant")
-            ).items
-        ] == [content_id]
+        irrelevant_item = content_service.list_contents(
+            ContentListQuery(relevance="irrelevant")
+        ).items[0]
+        assert irrelevant_item.id == content_id
+        assert irrelevant_item.analysis.relevance == "relevant"
+        assert irrelevant_item.effective_relevance == "irrelevant"
+        assert irrelevant_item.relevance_source == "manual_review"
 
         repeated = content_service.review_relevance(
             ContentRelevanceReviewRequest(content_ids=(content_id,), decision="irrelevant"),
@@ -209,15 +212,27 @@ def test_manual_irrelevant_override_and_undo_are_append_only_and_preserve_ai_res
                 == 1
             )
 
+        # 模型身份变化后当前 AI Result 变 stale，但活动人工覆盖仍必须可识别并可撤销。
+        runtime.settings = runtime.settings.model_copy(update={"llm_model": "stale-model"})
+        stale_override = content_service.list_contents(
+            ContentListQuery(relevance="irrelevant")
+        ).items[0]
+        assert stale_override.analysis.status == "stale"
+        assert stale_override.analysis.relevance is None
+        assert stale_override.effective_relevance == "irrelevant"
+        assert stale_override.relevance_source == "manual_review"
+
         undone = content_service.review_relevance(
             ContentRelevanceReviewRequest(content_ids=(content_id,), decision="inherit_ai"),
             request_id="manual-undo",
         )
         assert undone.changed_count == 1
         assert undone.unchanged_count == 0
-        assert [item.id for item in content_service.list_contents(ContentListQuery()).items] == [
-            content_id
-        ]
+        inherited = content_service.list_contents(ContentListQuery()).items[0]
+        assert inherited.id == content_id
+        assert inherited.analysis.status == "stale"
+        assert inherited.effective_relevance is None
+        assert inherited.relevance_source is None
         assert content_service.list_contents(ContentListQuery(relevance="irrelevant")).items == ()
 
         undo_again = content_service.review_relevance(
