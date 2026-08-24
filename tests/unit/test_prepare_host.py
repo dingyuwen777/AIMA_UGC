@@ -41,9 +41,7 @@ def test_runtime_bind_compatible_relaxes_only_data_and_logs(
     )
 
     relaxed = {
-        relative
-        for relative, strict_permissions in directory_calls
-        if not strict_permissions
+        relative for relative, strict_permissions in directory_calls if not strict_permissions
     }
     assert relaxed == {"runtime/data", "runtime/logs"}
     assert all(
