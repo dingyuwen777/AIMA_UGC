@@ -24,9 +24,18 @@ def upgrade() -> None:
         sa.Column("decision", sa.Text(), nullable=False),
         sa.Column("request_id", sa.Text(), nullable=False),
         sa.Column("reviewed_at", sa.DateTime(timezone=True), nullable=False),
-        sa.CheckConstraint("content_version >= 1", name="ck_analysis_content_relevance_reviews_content_version_positive"),
-        sa.CheckConstraint("decision = 'relevant'", name="ck_analysis_content_relevance_reviews_decision_relevant_only"),
-        sa.CheckConstraint("char_length(request_id) > 0", name="ck_analysis_content_relevance_reviews_request_id_nonempty"),
+        sa.CheckConstraint(
+            "content_version >= 1",
+            name="ck_analysis_content_relevance_reviews_content_version_positive",
+        ),
+        sa.CheckConstraint(
+            "decision = 'relevant'",
+            name="ck_analysis_content_relevance_reviews_decision_relevant_only",
+        ),
+        sa.CheckConstraint(
+            "char_length(request_id) > 0",
+            name="ck_analysis_content_relevance_reviews_request_id_nonempty",
+        ),
         sa.ForeignKeyConstraint(["content_id"], ["contents.id"]),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
