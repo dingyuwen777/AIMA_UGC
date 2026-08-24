@@ -28,6 +28,10 @@ from aima_ugc.adapters.persistence.postgres.relevance import (
     GlobalRelevanceUnavailable,
     PostgresGlobalRelevanceRepository,
 )
+from aima_ugc.adapters.persistence.postgres.scheduled_keywords import (
+    MissingScheduledKeywordPackError,
+    PostgresScheduledKeywordSnapshotReader,
+)
 from aima_ugc.contracts.analysis import RelevanceSnapshotV1
 from aima_ugc.contracts.http import (
     GlobalRelevanceConfigRequest,
@@ -47,7 +51,11 @@ from aima_ugc.contracts.http import (
     KeywordPackResponse,
     KeywordResponse,
 )
-from aima_ugc.modules.analysis import normalize_keyword_storage_text
+from aima_ugc.modules.analysis import (
+    RelevanceKeyword,
+    RelevanceService,
+    normalize_keyword_storage_text,
+)
 from aima_ugc.modules.ingestion import ProcessingImportBatchRecord
 from aima_ugc.modules.ingestion.http import (
     ImportConflict,
@@ -67,6 +75,8 @@ from aima_ugc.modules.ingestion.import_job import (
     IMPORT_JOB_TIMEOUT_SECONDS,
     IMPORT_JOB_TYPE,
     ImportJobPayload,
+    ImportKeywordPackSnapshot,
+    ImportKeywordSelectionSnapshot,
 )
 from aima_ugc.modules.ingestion.query import ImportBatchReadQuery, ImportBatchReadRecord
 from aima_ugc.modules.ingestion.xlsx_security import (
@@ -105,11 +115,12 @@ class PostgresImportHttpService:
         filename: str,
         content_type: str | None,
         source: BinaryIO,
+        keyword_pack_ids: tuple[UUID, ...],
         request_id: str,
     ) -> ImportBatchCreatedResponse:
         del content_type
         safe_name = _validate_upload_filename(filename)
-        snapshot, _ = self._read_relevance_snapshot()
+        selection = self._read_import_keyword_selection(keyword_pack_ids)
         try:
             source.seek(0, 2)
             file_size = source.tell()
@@ -149,7 +160,7 @@ class PostgresImportHttpService:
                     job_type=IMPORT_JOB_TYPE,
                     payload_version=IMPORT_JOB_PAYLOAD_VERSION,
                     payload=ImportJobPayload(
-                        relevance=snapshot,
+                        keyword_selection=selection,
                     ).model_dump(mode="json"),
                     internal_idempotency_key=f"import-batch:{batch_id}",
                     request_id=request_id,
@@ -165,7 +176,7 @@ class PostgresImportHttpService:
                         "stage": "queued",
                         "profile": _IMPORT_PROFILE,
                         "source_filename": safe_name,
-                        "relevance": snapshot.model_dump(mode="json"),
+                        "keyword_selection": selection.model_dump(mode="json"),
                         "xlsx_member_count": archive.member_count,
                         "xlsx_total_uncompressed_bytes": archive.total_uncompressed_bytes,
                     },
@@ -374,6 +385,42 @@ class PostgresImportHttpService:
     def get_global_relevance(self) -> GlobalRelevanceConfigResponse:
         snapshot, updated_at = self._read_relevance_snapshot()
         return _relevance_response(snapshot, updated_at)
+
+    def _read_import_keyword_selection(
+        self,
+        keyword_pack_ids: tuple[UUID, ...],
+    ) -> ImportKeywordSelectionSnapshot:
+        if not keyword_pack_ids or len(keyword_pack_ids) > 20:
+            raise RelevanceConfigurationError
+        if len(keyword_pack_ids) != len(set(keyword_pack_ids)):
+            raise RelevanceConfigurationError
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                try:
+                    catalog = PostgresScheduledKeywordSnapshotReader(session).read(keyword_pack_ids)
+                except (MissingScheduledKeywordPackError, ValueError) as exc:
+                    raise RelevanceConfigurationError from exc
+                if any(not pack.enabled for pack in catalog.keyword_packs):
+                    raise RelevanceConfigurationError
+                configured = tuple(
+                    RelevanceKeyword(text=entry.keyword_text, priority=entry.priority)
+                    for entry in catalog.entries
+                    if entry.pack_enabled and entry.keyword_enabled and entry.item_enabled
+                )
+                try:
+                    effective = RelevanceService(configured).effective_keywords
+                except ValueError as exc:
+                    raise RelevanceConfigurationError from exc
+                return ImportKeywordSelectionSnapshot(
+                    keyword_packs=tuple(
+                        ImportKeywordPackSnapshot(id=pack.pack_id, version=pack.version)
+                        for pack in catalog.keyword_packs
+                    ),
+                    effective_keywords=effective,
+                )
+        finally:
+            session.close()
 
     def _read_relevance_snapshot(self) -> tuple[RelevanceSnapshotV1, datetime]:
         session = self._runtime.database.new_session()

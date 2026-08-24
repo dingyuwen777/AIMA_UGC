@@ -13,6 +13,7 @@ import type {
   CollectionRuntimeSummaryResponse,
   ImportBatchCreatedResponse,
   ImportBatchResponse,
+  KeywordPackSummaryResponse,
   ListCollectionRuntimeRunsParams,
 } from '../../generated/api/client'
 import {
@@ -24,6 +25,7 @@ import {
   fetchCollectionRuntimeSummary,
   fetchImportBatchDetail,
   fetchImportBatchList,
+  fetchEnabledKeywordPacks,
   ImportApiError,
   uploadImportBatch,
 } from './api'
@@ -85,6 +87,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   const selectedRun = ref<CollectionRunResponse | null>(null)
   const capabilities = ref<CollectionCapabilitiesResponse | null>(null)
   const batchOptions = ref<ImportBatchResponse[]>([])
+  const keywordPackOptions = ref<KeywordPackSummaryResponse[]>([])
   const batchContentPlatforms = ref<CollectionPlatform[]>([])
   const nextCursor = ref<string | null>(null)
   const hasMore = ref(false)
@@ -93,6 +96,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   const uploading = ref(false)
   const creating = ref(false)
   const loadingBatchPlatforms = ref(false)
+  const loadingKeywordPacks = ref(false)
   const error = ref<string | null>(null)
   let pollHandle: ReturnType<typeof setInterval> | undefined
   let pollDocument: Document | undefined
@@ -212,11 +216,14 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     selectedRun.value = null
   }
 
-  async function upload(file: File): Promise<ImportBatchCreatedResponse | null> {
+  async function upload(
+    file: File,
+    keywordPackIds: string[],
+  ): Promise<ImportBatchCreatedResponse | null> {
     uploading.value = true
     error.value = null
     try {
-      const created = await uploadImportBatch(file)
+      const created = await uploadImportBatch(file, keywordPackIds)
       await refresh(true)
       return created
     } catch (reason) {
@@ -224,6 +231,19 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
       return null
     } finally {
       uploading.value = false
+    }
+  }
+
+  async function loadKeywordPacks(): Promise<void> {
+    loadingKeywordPacks.value = true
+    error.value = null
+    try {
+      keywordPackOptions.value = await fetchEnabledKeywordPacks()
+    } catch (reason) {
+      error.value = errorMessage(reason)
+      keywordPackOptions.value = []
+    } finally {
+      loadingKeywordPacks.value = false
     }
   }
 
@@ -247,11 +267,13 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     error.value = null
     batchContentPlatforms.value = []
     try {
-      const [providerCapabilities, batches] = await Promise.all([
+      const [providerCapabilities, batches, packs] = await Promise.all([
         fetchCollectionCapabilities(),
         fetchImportBatchList({ limit: 100 }),
+        fetchEnabledKeywordPacks(),
       ])
       capabilities.value = providerCapabilities
+      keywordPackOptions.value = packs
       batchOptions.value = batches.items.filter(isSupplementBatch)
       if (
         selectedBatchId &&
@@ -325,6 +347,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     selectedRun,
     capabilities,
     batchOptions,
+    keywordPackOptions,
     batchContentPlatforms,
     hasMore,
     loading,
@@ -332,6 +355,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     uploading,
     creating,
     loadingBatchPlatforms,
+    loadingKeywordPacks,
     error,
     hasActiveJobs,
     refresh,
@@ -341,6 +365,7 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     openRunDetail,
     closeDetail,
     upload,
+    loadKeywordPacks,
     loadBatchPlatforms,
     loadCreationOptions,
     createRun,

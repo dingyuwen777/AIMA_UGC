@@ -23,6 +23,10 @@ from aima_ugc.adapters.persistence.postgres.relevance import (
     GlobalRelevanceUnavailable,
     PostgresGlobalRelevanceRepository,
 )
+from aima_ugc.adapters.persistence.postgres.scheduled_keywords import (
+    MissingScheduledKeywordPackError,
+    PostgresScheduledKeywordSnapshotReader,
+)
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
 from aima_ugc.adapters.providers.registry import build_default_provider_registry
 from aima_ugc.adapters.providers.tikhub.transport import (
@@ -89,6 +93,7 @@ from aima_ugc.modules.collection.runtime_query import (
     CollectionRuntimeReadQuery,
     CollectionRuntimeReadRecord,
 )
+from aima_ugc.modules.collection.scheduled_scopes import build_scheduled_scope_snapshot
 from aima_ugc.platform.security import SecretFileError, read_secret_file
 
 from .analysis_identity import current_analysis_identity
@@ -206,9 +211,16 @@ class PostgresCollectionHttpService:
                     relevance_snapshot, _ = PostgresGlobalRelevanceRepository(session).snapshot()
                 except GlobalRelevanceUnavailable as exc:
                     raise CollectionConflict from exc
-                scopes = self._build_scopes(session, request)
+                scopes, keyword_pack_snapshot = self._build_scopes(session, request)
                 if not scopes:
                     raise CollectionConflict
+                effective_keywords = tuple(
+                    dict.fromkeys(
+                        scope.source_value
+                        for scope in scopes
+                        if scope.source_type == "keyword_search"
+                    )
+                )
                 timeout_seconds = provider_execution_window_floor_seconds(
                     scope_count=len(scopes),
                     request_timeout_seconds=DEFAULT_TIKHUB_REQUEST_TIMEOUT_SECONDS,
@@ -235,7 +247,9 @@ class PostgresCollectionHttpService:
                     config_snapshot={
                         "schema_version": "collection-run-config.v1",
                         "mode": request.mode,
-                        "keywords": list(request.keywords),
+                        "keyword_pack_ids": [str(item) for item in request.keyword_pack_ids],
+                        "keyword_packs": list(keyword_pack_snapshot),
+                        "keywords": list(effective_keywords),
                         "import_batch_id": (
                             str(request.import_batch_id)
                             if request.import_batch_id is not None
@@ -431,17 +445,27 @@ class PostgresCollectionHttpService:
         self,
         session: Session,
         request: CollectionRunCreateRequest,
-    ) -> tuple[CollectionScopeDefinition, ...]:
+    ) -> tuple[tuple[CollectionScopeDefinition, ...], tuple[dict[str, object], ...]]:
         if request.mode == "discovery":
-            return tuple(
-                CollectionScopeDefinition(
-                    platform=selection.platform,
-                    source_type="keyword_search",
-                    source_value=keyword,
-                    operation_group="content_discovery",
+            try:
+                catalog = PostgresScheduledKeywordSnapshotReader(session).read(
+                    request.keyword_pack_ids
                 )
-                for selection in request.platforms
-                for keyword in request.keywords
+            except (MissingScheduledKeywordPackError, ValueError) as exc:
+                raise CollectionResourceNotFound from exc
+            if any(not pack.enabled for pack in catalog.keyword_packs):
+                raise CollectionConflict
+            snapshot = build_scheduled_scope_snapshot(
+                plan_platforms=tuple(item.platform for item in request.platforms),
+                entries=catalog.entries,
+                keyword_packs=catalog.keyword_packs,
+            )
+            return (
+                snapshot.scopes,
+                tuple(
+                    {"id": str(pack.pack_id), "version": pack.version}
+                    for pack in snapshot.keyword_packs
+                ),
             )
         assert request.import_batch_id is not None
         reader = PostgresCollectionTargetReader(
@@ -458,14 +482,17 @@ class PostgresCollectionHttpService:
         actual_platforms = {target.platform for target in targets}
         if set(selected_platforms) != actual_platforms:
             raise CollectionConflict
-        return tuple(
-            CollectionScopeDefinition(
-                platform=target.platform,
-                source_type="content",
-                source_value=str(target.content_id),
-                operation_group="content_enrichment",
-            )
-            for target in targets
+        return (
+            tuple(
+                CollectionScopeDefinition(
+                    platform=target.platform,
+                    source_type="content",
+                    source_value=str(target.content_id),
+                    operation_group="content_enrichment",
+                )
+                for target in targets
+            ),
+            (),
         )
 
 

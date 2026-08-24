@@ -6,6 +6,18 @@ const importJobId = '22345678-1234-5678-1234-567812345678'
 const runId = '42345678-1234-5678-1234-567812345678'
 const collectionJobId = '52345678-1234-5678-1234-567812345678'
 const providerConfigId = '62345678-1234-5678-1234-567812345678'
+const brandPackId = '82345678-1234-5678-1234-567812345678'
+const modelPackId = '92345678-1234-5678-1234-567812345678'
+
+const keywordPacks = {
+  items: [
+    { id: brandPackId, name: '爱玛品牌词包', description: '', enabled: true, version: 2, keyword_count: 8 },
+    { id: modelPackId, name: '产品车型词包', description: '', enabled: true, version: 3, keyword_count: 12 },
+  ],
+  total: 2,
+  offset: 0,
+  limit: 100,
+}
 
 const importDetail = {
   id: batchId, input_artifact_id: '32345678-1234-5678-1234-567812345678', source_filename: '爱玛8月舆情.xlsx',
@@ -50,6 +62,7 @@ test.beforeEach(async ({ page }) => {
     if (url.pathname === '/api/v1/collection-runtime/summary') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ processing_count: 12, completed_today_count: 86, contents_ingested_today: 3284, as_of: '2026-08-21T02:00:00Z' }) })
     if (url.pathname === '/api/v1/collection-runtime/runs') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [runtimeItem], next_cursor: null, has_more: false }) })
     if (url.pathname === '/api/v1/collection-capabilities') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ provider_configs: [{ id: providerConfigId, provider: 'tikhub', display_name: 'TikHub 主配置' }], capabilities: [{ provider: 'tikhub', platform: 'xiaohongshu', operations: ['keyword_search', 'content_detail', 'comments', 'sub_comments'] }, { provider: 'tikhub', platform: 'douyin', operations: ['keyword_search', 'content_detail', 'comments', 'sub_comments'] }] }) })
+    if (url.pathname === '/api/v1/keyword-packs' && request.method() === 'GET') return route.fulfill({ contentType: 'application/json', body: JSON.stringify(keywordPacks) })
     if (url.pathname === '/api/v1/collection-runs' && request.method() === 'POST') return route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ run_id: runId, job_id: collectionJobId, mode: 'discovery', status: 'queued' }) })
     if (url.pathname === `/api/v1/collection-runs/${runId}`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify(runDetail) })
     if (url.pathname === '/api/v1/import-batches' && request.method() === 'POST') return route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ batch_id: batchId, job_id: importJobId, status: 'queued' }) })
@@ -62,7 +75,7 @@ test.beforeEach(async ({ page }) => {
   })
 })
 
-test('centralizes runtime facts, opens Batch detail, and creates an Import Job', async ({ page }) => {
+test('centralizes runtime facts, opens Batch detail, and creates an Import Job with selected packs', async ({ page }) => {
   await page.goto('/collection-runtime')
   await expect(page.getByRole('heading', { name: '采集运行中心' })).toBeVisible()
   await expect(page.getByText('3,284')).toBeVisible()
@@ -71,19 +84,32 @@ test('centralizes runtime facts, opens Batch detail, and creates an Import Job',
   await expect(page.getByText('2 / 10')).toBeVisible()
   await page.getByRole('button', { name: '关闭详情' }).click()
   await page.getByRole('button', { name: /导入 Excel/ }).click()
-  await page.locator('input[type="file"]').setInputFiles({ name: 'stage8e.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('stage8e') })
-  await page.getByRole('button', { name: '开始导入' }).click()
+  const dialog = page.getByRole('dialog', { name: '导入 Excel' })
+  await dialog.locator('input[type="file"]').setInputFiles({ name: 'stage8e.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('stage8e') })
+  await dialog.getByLabel(/爱玛品牌词包/).check()
+  await dialog.getByLabel(/产品车型词包/).check()
+  const requestPromise = page.waitForRequest((request) => new URL(request.url()).pathname === '/api/v1/import-batches' && request.method() === 'POST')
+  await dialog.getByRole('button', { name: '开始导入' }).click()
+  const multipart = (await requestPromise).postData() ?? ''
+  expect(multipart).toContain(brandPackId)
+  expect(multipart).toContain(modelPackId)
   await expect(page.getByText('Import Job 已创建，文件将在后台继续处理。')).toBeVisible()
 })
 
-test('creates a one-time TikHub discovery Run from the drawer', async ({ page }) => {
+test('creates a one-time TikHub discovery Run from multiple Keyword Packs', async ({ page }) => {
   await page.goto('/collection-runtime')
   await page.getByRole('button', { name: /新建 TikHub 补采/ }).click()
   const drawer = page.getByRole('dialog', { name: '新建 TikHub 辅助补采' })
-  await drawer.getByPlaceholder('输入关键词后回车').fill('爱玛')
-  await drawer.getByPlaceholder('输入关键词后回车').press('Enter')
+  await drawer.getByLabel(/爱玛品牌词包/).check()
+  await drawer.getByLabel(/产品车型词包/).check()
   await drawer.getByRole('button', { name: /小红书/ }).click()
+  const requestPromise = page.waitForRequest((request) => new URL(request.url()).pathname === '/api/v1/collection-runs' && request.method() === 'POST')
   await drawer.getByRole('button', { name: '创建补采任务' }).click()
+  expect((await requestPromise).postDataJSON()).toMatchObject({
+    mode: 'discovery',
+    keyword_pack_ids: [brandPackId, modelPackId],
+    platforms: [{ platform: 'xiaohongshu', provider_config_id: providerConfigId }],
+  })
   await expect(page.getByText('TikHub Collection Run / Job 已创建，将由 Worker 在后台执行。')).toBeVisible()
 })
 
@@ -98,7 +124,12 @@ test('creates a TikHub supplement Run only for a platform that exists in the Bat
   await drawer.getByRole('button', { name: /小红书/ }).click()
   const requestPromise = page.waitForRequest((request) => new URL(request.url()).pathname === '/api/v1/collection-runs' && request.method() === 'POST')
   await drawer.getByRole('button', { name: '创建补采任务' }).click()
-  expect((await requestPromise).postDataJSON()).toMatchObject({ mode: 'batch_supplement', import_batch_id: batchId, platforms: [{ platform: 'xiaohongshu', provider_config_id: providerConfigId }] })
+  expect((await requestPromise).postDataJSON()).toMatchObject({
+    mode: 'batch_supplement',
+    import_batch_id: batchId,
+    keyword_pack_ids: [],
+    platforms: [{ platform: 'xiaohongshu', provider_config_id: providerConfigId }],
+  })
 })
 
 test('re-probes Batch platform eligibility when switching A to B and back to A', async ({ page }) => {

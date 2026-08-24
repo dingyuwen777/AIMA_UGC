@@ -6,6 +6,7 @@
  */
 export interface BodyCreateImportBatch {
   file: Blob;
+  keyword_pack_ids: string[];
 }
 
 export type CollectionPlatform = typeof CollectionPlatform[keyof typeof CollectionPlatform];
@@ -154,14 +155,14 @@ export interface CollectionRunPlatformRequest {
 }
 
 /**
- * Stage 8E 一次性发现或基于 Batch 补采请求。
+ * 一次性发现从 Keyword Pack 冻结关键词；Batch Supplement 只补既有内容。
  */
 export interface CollectionRunCreateRequest {
   import_batch_id?: string | null;
   include_comments?: boolean;
   include_sub_comments?: boolean;
-  /** @maxItems 100 */
-  keywords?: string[];
+  /** @maxItems 20 */
+  keyword_pack_ids?: string[];
   mode: CollectionRunMode;
   /**
      * @minItems 1
@@ -1595,6 +1596,7 @@ export const getCreateImportBatchUrl = () => {
 export const createImportBatch = async (bodyCreateImportBatch: BodyCreateImportBatch, options?: RequestInit): Promise<ImportBatchCreatedResponse> => {
     const formData = new FormData();
 formData.append(`file`, bodyCreateImportBatch.file);
+bodyCreateImportBatch.keyword_pack_ids.forEach(value => formData.append(`keyword_pack_ids`, value));
 
   const res = await fetch(getCreateImportBatchUrl(),
   {

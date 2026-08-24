@@ -9,6 +9,7 @@ const generated = vi.hoisted(() => ({
   createCollectionRun: vi.fn(),
   getCollectionRun: vi.fn(),
   listImportBatches: vi.fn(),
+  listKeywordPacks: vi.fn(),
   getImportBatch: vi.fn(),
   createImportBatch: vi.fn(),
 }))
@@ -65,6 +66,12 @@ describe('collection runtime feature', () => {
       batch_id: batchId,
       targets: [],
     }))
+    generated.listKeywordPacks.mockResolvedValue({
+      items: [],
+      total: 0,
+      offset: 0,
+      limit: 100,
+    })
   })
 
   it('delegates the unified list query to the Orval client', async () => {
@@ -75,11 +82,13 @@ describe('collection runtime feature', () => {
   it('creates a discovery Run through the generated Contract', async () => {
     generated.createCollectionRun.mockResolvedValue({ run_id: 'run-1', job_id: 'job-1', mode: 'discovery', status: 'queued' })
     await createTikHubCollectionRun({
-      mode: 'discovery', keywords: ['爱玛', 'Q7'],
+      mode: 'discovery', keyword_pack_ids: ['pack-1', 'pack-2'],
       platforms: [{ platform: 'xiaohongshu', provider_config_id: 'provider-1' }],
       include_comments: true, include_sub_comments: false,
     })
-    expect(generated.createCollectionRun).toHaveBeenCalledWith(expect.objectContaining({ mode: 'discovery', keywords: ['爱玛', 'Q7'] }))
+    expect(generated.createCollectionRun).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: 'discovery', keyword_pack_ids: ['pack-1', 'pack-2'] }),
+    )
   })
 
   it('loads the centralized Excel and TikHub runtime facts together', async () => {

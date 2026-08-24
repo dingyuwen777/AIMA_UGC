@@ -8,6 +8,7 @@ import type {
   CollectionRunCreateRequest,
   CollectionRunMode,
   ImportBatchResponse,
+  KeywordPackSummaryResponse,
 } from '../../../../../generated/api/client'
 import { platformLabels, shortId } from '../../../format'
 
@@ -15,6 +16,7 @@ const props = defineProps<{
   modelValue: boolean
   capabilities: CollectionCapabilitiesResponse | null
   batches: ImportBatchResponse[]
+  keywordPacks: KeywordPackSummaryResponse[]
   batchContentPlatforms: CollectionPlatform[]
   loadingBatchPlatforms: boolean
   creating: boolean
@@ -27,8 +29,7 @@ const emit = defineEmits<{
 }>()
 
 const mode = ref<CollectionRunMode>('discovery')
-const keywordInput = ref('')
-const keywords = ref<string[]>([])
+const selectedPackIds = ref<string[]>([])
 const platforms = ref<CollectionPlatform[]>([])
 const providerConfigId = ref('')
 const importBatchId = ref('')
@@ -76,7 +77,7 @@ const availablePlatforms = computed(() => {
 
 const canSubmit = computed(() => {
   if (props.creating || !providerConfigId.value || platforms.value.length === 0) return false
-  if (mode.value === 'discovery') return keywords.value.length > 0 || keywordInput.value.trim().length > 0
+  if (mode.value === 'discovery') return selectedPackIds.value.length > 0
   return !!importBatchId.value && !props.loadingBatchPlatforms
 })
 
@@ -93,8 +94,7 @@ watch(
     lastRequestedBatchId.value = props.initialBatchId ?? ''
     mode.value = props.initialBatchId ? 'batch_supplement' : 'discovery'
     importBatchId.value = props.initialBatchId ?? ''
-    keywordInput.value = ''
-    keywords.value = []
+    selectedPackIds.value = []
     platforms.value = []
     includeComments.value = true
     includeSubComments.value = false
@@ -133,18 +133,10 @@ watch(includeComments, (enabled) => {
   if (!enabled) includeSubComments.value = false
 })
 
-function addKeywords(): void {
-  const values = keywordInput.value
-    .split(/[,，\n]/u)
-    .map((value) => value.trim())
-    .filter(Boolean)
-  for (const value of values) {
-    if (!keywords.value.some((existing) => existing.toLocaleLowerCase() === value.toLocaleLowerCase())) {
-      keywords.value.push(value)
-    }
-  }
-  keywords.value = keywords.value.slice(0, 100)
-  keywordInput.value = ''
+function togglePack(packId: string): void {
+  selectedPackIds.value = selectedPackIds.value.includes(packId)
+    ? selectedPackIds.value.filter((value) => value !== packId)
+    : [...selectedPackIds.value, packId]
 }
 
 function togglePlatform(platform: CollectionPlatform): void {
@@ -154,7 +146,6 @@ function togglePlatform(platform: CollectionPlatform): void {
 }
 
 function submit(): void {
-  addKeywords()
   if (!providerConfigId.value) {
     validation.value = '请选择本次运行使用的 TikHub Provider 配置。'
     return
@@ -167,8 +158,8 @@ function submit(): void {
     validation.value = '当前 Batch、Provider 与采集内容组合没有可执行的平台。'
     return
   }
-  if (mode.value === 'discovery' && keywords.value.length === 0) {
-    validation.value = '请输入至少一个一次性 Discovery 关键词。'
+  if (mode.value === 'discovery' && selectedPackIds.value.length === 0) {
+    validation.value = '请至少选择一个 Discovery 关键词包。'
     return
   }
   if (mode.value === 'batch_supplement' && !importBatchId.value) {
@@ -178,7 +169,7 @@ function submit(): void {
   validation.value = null
   emit('submit', {
     mode: mode.value,
-    keywords: mode.value === 'discovery' ? keywords.value : [],
+    keyword_pack_ids: mode.value === 'discovery' ? selectedPackIds.value : [],
     import_batch_id: mode.value === 'batch_supplement' ? importBatchId.value : null,
     platforms: platforms.value.map((platform) => ({
       platform,
@@ -229,26 +220,31 @@ function submit(): void {
         </nav>
 
         <p class="mode-note">
-          {{ mode === 'discovery' ? '输入一次性 Discovery 关键词，主动从平台发现帖子；关键词仅冻结到本次 Run。' : '只允许选择已成功入库的 Excel Batch；平台必须在该 Batch 中真实存在，并满足当前 Provider 能力。' }}
+          {{ mode === 'discovery' ? '选择一个或多个 Discovery 词包；系统冻结词包版本并展开有效关键词到本次 Run。' : '只允许选择已成功入库的 Excel Batch；平台必须在该 Batch 中真实存在，并满足当前 Provider 能力。' }}
         </p>
 
         <section v-if="mode === 'discovery'">
-          <label>一次性搜索关键词</label>
-          <div class="keyword-box">
-            <span
-              v-for="keyword in keywords"
-              :key="keyword"
-            >{{ keyword }} <button
-              type="button"
-              :aria-label="`删除关键词 ${keyword}`"
-              @click="keywords = keywords.filter((value) => value !== keyword)"
-            >×</button></span><input
-              v-model="keywordInput"
-              placeholder="输入关键词后回车"
-              @keydown.enter.prevent="addKeywords"
-              @blur="addKeywords"
+          <label>Discovery 关键词包（可多选）</label>
+          <div class="keyword-box pack-choice-list">
+            <label
+              v-for="pack in keywordPacks"
+              :key="pack.id"
+              class="pack-choice"
             >
+              <input
+                type="checkbox"
+                :checked="selectedPackIds.includes(pack.id)"
+                @change="togglePack(pack.id)"
+              >
+              <span>{{ pack.name }} · {{ pack.keyword_count }} 词 · v{{ pack.version }}</span>
+            </label>
           </div>
+          <p
+            v-if="keywordPacks.length === 0"
+            class="platform-state"
+          >
+            当前没有可用的已启用词包。
+          </p>
         </section>
         <section v-else>
           <label for="batch-select">Excel Import Batch</label>
@@ -417,4 +413,6 @@ footer { position: absolute; right: 0; bottom: 0; left: 0; display: grid; grid-t
 footer button { height: 44px; border: 1px solid #d8dde6; border-radius: 7px; background: #fff; cursor: pointer; }
 footer .primary { border-color: var(--aima-primary); color: #fff; background: var(--aima-primary); }
 footer button:disabled { opacity: .65; cursor: default; }
+.pack-choice-list { display: grid; gap: 8px; padding: 10px; }
+.pack-choice { display: flex; gap: 8px; align-items: center; color: #394255; font-size: 13px; }
 </style>

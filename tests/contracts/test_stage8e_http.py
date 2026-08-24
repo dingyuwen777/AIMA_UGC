@@ -32,7 +32,10 @@ def test_stage8e_create_contract_is_strict_and_discriminates_two_modes() -> None
         "discovery",
         "batch_supplement",
     }
-    assert request_schema["properties"]["keywords"]["maxItems"] == 100
+    assert "keywords" not in request_schema["properties"]
+    keyword_pack_ids = request_schema["properties"]["keyword_pack_ids"]
+    assert keyword_pack_ids["type"] == "array"
+    assert keyword_pack_ids["items"]["format"] == "uuid"
     assert request_schema["properties"]["platforms"]["maxItems"] == 5
 
 

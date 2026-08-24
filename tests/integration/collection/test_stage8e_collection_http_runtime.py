@@ -70,10 +70,11 @@ def runtime():  # type: ignore[no-untyped-def]
         value.close()
 
 
-def _seed_config_and_relevance(runtime) -> UUID:  # type: ignore[no-untyped-def]
+def _seed_config_and_relevance(runtime) -> tuple[UUID, UUID]:  # type: ignore[no-untyped-def]
     provider_config_id = uuid4()
     pack_id = uuid4()
     keyword_id = uuid4()
+    q7_keyword_id = uuid4()
     now = datetime.now(UTC)
     with runtime.database.engine.begin() as connection:
         connection.execute(
@@ -120,6 +121,26 @@ def _seed_config_and_relevance(runtime) -> UUID:  # type: ignore[no-untyped-def]
             )
         )
         connection.execute(
+            insert(keywords_table).values(
+                id=q7_keyword_id,
+                text="Q7",
+                normalized_text=f"stage8e-q7-{uuid4()}",
+                enabled=True,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        connection.execute(
+            insert(keyword_pack_items_table).values(
+                pack_id=pack_id,
+                keyword_id=q7_keyword_id,
+                platform_scope="all",
+                priority=10,
+                enabled=True,
+                note="stage8e",
+            )
+        )
+        connection.execute(
             insert(global_relevance_config_table).values(
                 singleton_key="global",
                 keyword_pack_id=pack_id,
@@ -128,13 +149,13 @@ def _seed_config_and_relevance(runtime) -> UUID:  # type: ignore[no-untyped-def]
                 updated_at=now,
             )
         )
-    return provider_config_id
+    return provider_config_id, pack_id
 
 
 def test_discovery_run_creation_freezes_inputs_and_commits_job_run_scopes_atomically(
     runtime,
 ) -> None:  # type: ignore[no-untyped-def]
-    provider_config_id = _seed_config_and_relevance(runtime)
+    provider_config_id, pack_id = _seed_config_and_relevance(runtime)
     service = PostgresCollectionHttpService(
         runtime,
         cursor_signing_secret=b"r" * 32,
@@ -144,7 +165,7 @@ def test_discovery_run_creation_freezes_inputs_and_commits_job_run_scopes_atomic
     created = service.create_run(
         CollectionRunCreateRequest(
             mode="discovery",
-            keywords=("爱玛", "Q7"),
+            keyword_pack_ids=(pack_id,),
             platforms=(
                 CollectionRunPlatformRequest(
                     platform="xiaohongshu",
@@ -206,7 +227,7 @@ def test_discovery_run_creation_freezes_inputs_and_commits_job_run_scopes_atomic
 
 
 def test_collection_run_rejects_disabled_provider_config(runtime) -> None:  # type: ignore[no-untyped-def]
-    provider_config_id = _seed_config_and_relevance(runtime)
+    provider_config_id, pack_id = _seed_config_and_relevance(runtime)
     with runtime.database.engine.begin() as connection:
         connection.execute(
             update(provider_configs_table)
@@ -223,7 +244,7 @@ def test_collection_run_rejects_disabled_provider_config(runtime) -> None:  # ty
         service.create_run(
             CollectionRunCreateRequest(
                 mode="discovery",
-                keywords=("爱玛",),
+                keyword_pack_ids=(pack_id,),
                 platforms=(
                     CollectionRunPlatformRequest(
                         platform="xiaohongshu",
@@ -316,12 +337,12 @@ def _insert_succeeded_import(
 def test_unified_runtime_list_cursor_filters_and_summary_aggregate_both_owners(
     runtime,
 ) -> None:  # type: ignore[no-untyped-def]
-    provider_config_id = _seed_config_and_relevance(runtime)
+    provider_config_id, pack_id = _seed_config_and_relevance(runtime)
     service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
     collection = service.create_run(
         CollectionRunCreateRequest(
             mode="discovery",
-            keywords=("爱玛",),
+            keyword_pack_ids=(pack_id,),
             platforms=(
                 CollectionRunPlatformRequest(
                     platform="xiaohongshu",
@@ -385,7 +406,7 @@ def test_unified_runtime_list_cursor_filters_and_summary_aggregate_both_owners(
     }
     assert filtered.items[0].record_id == collection.run_id
     assert filtered.items[0].record_type == "tikhub_discovery"
-    assert filtered.items[0].keywords == ("爱玛",)
+    assert filtered.items[0].keywords == ("爱玛", "Q7")
     assert [item.record_id for item in keyword_search.items] == [collection.run_id]
     assert secret_ref_search.items == ()
     assert summary.processing_count == 0
@@ -483,7 +504,7 @@ def _insert_import_content(
 
 
 def test_batch_supplement_targets_only_batch_lineage_and_links_run(runtime) -> None:  # type: ignore[no-untyped-def]
-    provider_config_id = _seed_config_and_relevance(runtime)
+    provider_config_id, _ = _seed_config_and_relevance(runtime)
     batch_id, content_id = _insert_import_content(runtime)
     service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
 
@@ -602,7 +623,7 @@ def _batch_comments_response() -> dict[str, object]:
 
 
 def test_batch_supplement_worker_reuses_detail_mapper_relevance_and_ingestion(runtime) -> None:  # type: ignore[no-untyped-def]
-    provider_config_id = _seed_config_and_relevance(runtime)
+    provider_config_id, _ = _seed_config_and_relevance(runtime)
     batch_id, content_id = _insert_import_content(runtime)
     service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
     created = service.create_run(
@@ -688,7 +709,7 @@ def test_batch_supplement_worker_reuses_detail_mapper_relevance_and_ingestion(ru
 def test_batch_supplement_rejects_mismatched_existing_content_before_ingestion(
     runtime,
 ) -> None:  # type: ignore[no-untyped-def]
-    provider_config_id = _seed_config_and_relevance(runtime)
+    provider_config_id, _ = _seed_config_and_relevance(runtime)
     batch_id, target_content_id = _insert_import_content(runtime)
     _, other_content_id = _insert_import_content(
         runtime,
@@ -763,7 +784,7 @@ def test_batch_supplement_rejects_mismatched_existing_content_before_ingestion(
 
 
 def test_batch_supplement_can_fetch_comments_without_sub_comments(runtime) -> None:  # type: ignore[no-untyped-def]
-    provider_config_id = _seed_config_and_relevance(runtime)
+    provider_config_id, _ = _seed_config_and_relevance(runtime)
     batch_id, content_id = _insert_import_content(runtime)
     created = PostgresCollectionHttpService(
         runtime,
@@ -825,7 +846,7 @@ def test_batch_supplement_can_fetch_comments_without_sub_comments(runtime) -> No
 
 
 def test_batch_supplement_retries_provider_5xx_with_new_attempt(runtime) -> None:  # type: ignore[no-untyped-def]
-    provider_config_id = _seed_config_and_relevance(runtime)
+    provider_config_id, _ = _seed_config_and_relevance(runtime)
     batch_id, content_id = _insert_import_content(runtime)
     created = PostgresCollectionHttpService(
         runtime,
