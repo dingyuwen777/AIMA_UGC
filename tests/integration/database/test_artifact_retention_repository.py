@@ -2,6 +2,8 @@ import logging
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+import pytest
+
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataRepository,
 )
@@ -14,7 +16,7 @@ from aima_ugc.bootstrap.artifact_cleanup import run_artifact_cleanup_once
 from aima_ugc.bootstrap.runtime import PlatformRuntime
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
-from aima_ugc.platform.storage import ArtifactRecord
+from aima_ugc.platform.storage import ArtifactRecord, ArtifactStateConflict
 from aima_ugc.platform.storage.retention import IMPORT_SOURCE_RETENTION
 
 
@@ -104,7 +106,11 @@ def test_retention_repository_converges_expired_artifact_to_deleted() -> None:
                 limit=100,
             )
             assert expired.id in {item.id for item in candidates}
-            claimed = repository.mark_delete_pending(expired.id)
+            claimed = repository.mark_delete_pending(
+                expired.id,
+                now=now,
+                orphan_before=now - timedelta(days=1),
+            )
             assert claimed.storage_status == "delete_pending"
 
         with session.begin():
@@ -114,6 +120,65 @@ def test_retention_repository_converges_expired_artifact_to_deleted() -> None:
             )
             assert deleted.storage_status == "deleted"
             assert deleted.deleted_at == now
+    finally:
+        session.close()
+        runtime.dispose()
+
+
+def test_orphan_claim_rechecks_reference_after_candidate_scan() -> None:
+    runtime = DatabaseRuntime(load_settings())
+    now = datetime(2026, 8, 24, 0, 0, tzinfo=UTC)
+    batch_id = uuid4()
+    session = runtime.new_session()
+    try:
+        with session.begin():
+            artifacts = PostgresArtifactMetadataRepository(session)
+            source = _store_record(
+                artifacts,
+                kind="file-import.raw",
+                created_at=now - timedelta(days=2),
+                expires_at=None,
+            )
+
+        with session.begin():
+            repository = PostgresArtifactMetadataRepository(session)
+            candidates = repository.list_cleanup_candidates(
+                now=now,
+                orphan_before=now - timedelta(days=1),
+                limit=100,
+            )
+            assert source.id in {item.id for item in candidates}
+
+        # 候选扫描不是删除授权。扫描后如果业务事务正式建立引用，真正认领时必须重新证明仍可删除。
+        with session.begin():
+            job = PostgresJobRepository(session).enqueue(
+                job_type="ingestion.import-excel.v1",
+                payload_version="1",
+                payload={},
+                internal_idempotency_key=f"retention-race:{batch_id}",
+                request_id="retention-race",
+                priority=0,
+                max_attempts=1,
+                timeout_seconds=60,
+            )
+            PostgresProcessingImportBatchRepository(session).create(
+                batch_id=batch_id,
+                input_artifact_id=source.id,
+                job_id=job.id,
+            )
+            PostgresArtifactMetadataRepository(session).mark_linked(source.id, linked_at=now)
+
+        with session.begin():
+            repository = PostgresArtifactMetadataRepository(session)
+            with pytest.raises(ArtifactStateConflict):
+                repository.mark_delete_pending(
+                    source.id,
+                    now=now,
+                    orphan_before=now - timedelta(days=1),
+                )
+            current = repository.get(source.id)
+            assert current is not None
+            assert current.storage_status == "linked"
     finally:
         session.close()
         runtime.dispose()
