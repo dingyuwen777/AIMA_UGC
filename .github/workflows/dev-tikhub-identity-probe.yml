@@ -1,0 +1,157 @@
+name: Dev TikHub Identity Probe
+
+on:
+  push:
+    branches:
+      - feature/excel-tikhub-identity-alignment
+    paths:
+      - .github/workflows/dev-tikhub-identity-probe.yml
+      - .dev-tikhub-identity-probe-trigger
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    env:
+      TIKHUB_API_KEY: ${{ secrets.TIKHUB_API_KEY }}
+      TIKHUB_BASE_URL: https://api.tikhub.io
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Install locked environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv sync --locked
+
+      - name: Verify secret availability
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${TIKHUB_API_KEY:-}" ]]; then
+            echo "TIKHUB_API_KEY_SECRET_MISSING"
+            exit 2
+          fi
+          echo "TIKHUB_API_KEY_SECRET_AVAILABLE"
+
+      - name: Run bounded real identity probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import os
+          from decimal import Decimal
+
+          from pydantic import SecretStr
+
+          from aima_ugc.adapters.providers.tikhub.probe import (
+              TikHubOperationProbe,
+              TikHubProbeLimits,
+          )
+          from aima_ugc.adapters.providers.tikhub.runtime import (
+              build_comments_call,
+              build_detail_call,
+          )
+          from aima_ugc.adapters.providers.tikhub.transport import TikHubHttpTransport
+          from aima_ugc.contracts.canonical import CanonicalContentV1, CanonicalSourceV1
+
+          SAMPLES = (
+              ("xiaohongshu", "6a85c701000000001d0040e2", "image"),
+              ("douyin", "7675762214339933349", "video"),
+              ("weibo", "5333694587864918", "text"),
+              ("bilibili", "117122936081201", "video"),
+              ("kuaishou", "3x8hhinajs8pgpq", "video"),
+          )
+          ID_KEYS = {
+              "id", "note_id", "aweme_id", "item_id", "status_id", "mid",
+              "aid", "av_id", "bvid", "bv_id", "photo_id", "comment_id",
+              "cid", "rpid", "root", "oid",
+          }
+
+          def collect_ids(value: object, *, limit: int = 24) -> list[dict[str, str]]:
+              found: list[dict[str, str]] = []
+              def walk(node: object) -> None:
+                  if len(found) >= limit:
+                      return
+                  if isinstance(node, dict):
+                      for key, child in node.items():
+                          if key in ID_KEYS and isinstance(child, (str, int)) and str(child):
+                              found.append({"key": key, "value": str(child)})
+                              if len(found) >= limit:
+                                  return
+                          walk(child)
+                  elif isinstance(node, list):
+                      for child in node[:20]:
+                          walk(child)
+                          if len(found) >= limit:
+                              return
+              walk(value)
+              return found
+
+          key = os.environ.get("TIKHUB_API_KEY", "")
+          if not key:
+              raise RuntimeError("TIKHUB_API_KEY secret missing")
+
+          source = CanonicalSourceV1(
+              provider_name="imports",
+              source_type="identity-probe",
+              source_value="uploaded-excel-sample",
+              observed_at="2026-08-24T00:00:00Z",
+          )
+          summaries: list[dict[str, object]] = []
+          with TikHubHttpTransport(base_url=os.environ["TIKHUB_BASE_URL"]) as transport:
+              probe = TikHubOperationProbe(
+                  transport=transport,
+                  credential=SecretStr(key),
+                  limits=TikHubProbeLimits(
+                      max_requests=10,
+                      max_estimated_cost=Decimal("1.00"),
+                  ),
+              )
+              for platform, external_id, content_type in SAMPLES:
+                  content = CanonicalContentV1(
+                      platform=platform,
+                      external_content_id=external_id,
+                      content_type=content_type,
+                      observed_at="2026-08-24T00:00:00Z",
+                      source=source,
+                  )
+                  for kind, call in (
+                      ("detail", build_detail_call(platform, content)),
+                      (
+                          "comments",
+                          build_comments_call(
+                              platform=platform,
+                              external_content_id=external_id,
+                              state={},
+                          ),
+                      ),
+                  ):
+                      result = probe.execute(call)
+                      body = result.response.body
+                      summaries.append(
+                          {
+                              "platform": platform,
+                              "kind": kind,
+                              "input_external_content_id": external_id,
+                              "path": result.path,
+                              "status_code": result.response.status_code,
+                              "planned_cost": str(result.planned_cost),
+                              "ids": collect_ids(body),
+                          }
+                      )
+          print("IDENTITY_PROBE_SUMMARY=" + json.dumps(summaries, ensure_ascii=False, separators=(",", ":")))
+          PY
