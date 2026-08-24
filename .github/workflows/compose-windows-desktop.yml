@@ -310,7 +310,7 @@ jobs:
               compose logs --no-color || true
             fi
             compose down -v --remove-orphans || true
-            rm -rf "${AIMA_WINDOWS_HOST_ROOT}" || true
+            sudo rm -rf "${AIMA_WINDOWS_HOST_ROOT}" || true
             exit $status
           }
           trap cleanup EXIT
@@ -353,19 +353,19 @@ jobs:
           PY
 
           test "$(compose exec -T api stat -c '%u:%g:%a' /run/internal-secrets/postgres_password | tr -d '\r')" = "0:11001:440"
-          test -f "${AIMA_WINDOWS_HOST_ROOT}/runtime/logs/api.log"
-          test -f "${AIMA_WINDOWS_HOST_ROOT}/runtime/logs/worker.log"
-          test -f "${AIMA_WINDOWS_HOST_ROOT}/runtime/logs/scheduler.log"
+          sudo test -f "${AIMA_WINDOWS_HOST_ROOT}/runtime/logs/api.log"
+          sudo test -f "${AIMA_WINDOWS_HOST_ROOT}/runtime/logs/worker.log"
+          sudo test -f "${AIMA_WINDOWS_HOST_ROOT}/runtime/logs/scheduler.log"
 
           compose exec -T api sh -ec 'printf windows-host-persistence > /app/data/windows-host-marker'
-          test "$(cat "${AIMA_WINDOWS_HOST_ROOT}/runtime/data/windows-host-marker")" = "windows-host-persistence"
+          test "$(sudo cat "${AIMA_WINDOWS_HOST_ROOT}/runtime/data/windows-host-marker")" = "windows-host-persistence"
           PASSWORD_HASH_BEFORE="$(compose exec -T api sha256sum /run/internal-secrets/postgres_password | awk '{print $1}' | tr -d '\r')"
           compose exec -T postgres psql -U aima_ugc -d aima_ugc -v ON_ERROR_STOP=1 -c \
             "CREATE TABLE ci_windows_hybrid_marker(value text PRIMARY KEY); INSERT INTO ci_windows_hybrid_marker VALUES ('persisted');"
 
           compose down --remove-orphans
-          test "$(cat "${AIMA_WINDOWS_HOST_ROOT}/runtime/data/windows-host-marker")" = "windows-host-persistence"
-          test -f "${AIMA_WINDOWS_HOST_ROOT}/runtime/logs/api.log"
+          test "$(sudo cat "${AIMA_WINDOWS_HOST_ROOT}/runtime/data/windows-host-marker")" = "windows-host-persistence"
+          sudo test -f "${AIMA_WINDOWS_HOST_ROOT}/runtime/logs/api.log"
 
           compose up -d --no-build --wait
           curl -fsS http://127.0.0.1:18082/health/ready >/dev/null
@@ -376,5 +376,5 @@ jobs:
           test "${DB_MARKER}" = "persisted"
 
           compose down -v --remove-orphans
-          test "$(cat "${AIMA_WINDOWS_HOST_ROOT}/runtime/data/windows-host-marker")" = "windows-host-persistence"
-          test -f "${AIMA_WINDOWS_HOST_ROOT}/runtime/logs/api.log"
+          test "$(sudo cat "${AIMA_WINDOWS_HOST_ROOT}/runtime/data/windows-host-marker")" = "windows-host-persistence"
+          sudo test -f "${AIMA_WINDOWS_HOST_ROOT}/runtime/logs/api.log"
