@@ -299,7 +299,7 @@ class PostgresContentQueryRepository:
         attempt = provider_request_attempts_table
         request = provider_requests_table
         scope = collection_scopes_table
-        review = analysis_content_relevance_reviews_table
+        review = _latest_relevance_review_subquery()
         analysis = _latest_analysis_subquery(self._analysis_identity)
         sort_at = func.coalesce(content.c.published_at, content.c.last_seen_at).label("sort_at")
         has_any_analysis = exists(
@@ -315,10 +315,11 @@ class PostgresContentQueryRepository:
         current_review = and_(
             review.c.content_id == content.c.id,
             review.c.content_version == content.c.current_version,
-            review.c.decision == "relevant",
+            review.c.rank == 1,
         )
         effective_relevance = case(
-            (review.c.id.is_not(None), literal("relevant")),
+            (review.c.decision == "relevant", literal("relevant")),
+            (review.c.decision == "irrelevant", literal("irrelevant")),
             else_=analysis.c.relevance,
         )
         source_join = (
@@ -506,6 +507,22 @@ def _latest_analysis_subquery(
             result.c.model == identity.model,
         )
     return statement.subquery("latest_content_analysis")
+
+
+def _latest_relevance_review_subquery() -> Any:
+    review = analysis_content_relevance_reviews_table
+    return select(
+        review.c.id,
+        review.c.content_id,
+        review.c.content_version,
+        review.c.decision,
+        func.row_number()
+        .over(
+            partition_by=(review.c.content_id, review.c.content_version),
+            order_by=(review.c.review_no.desc(), review.c.reviewed_at.desc(), review.c.id.desc()),
+        )
+        .label("rank"),
+    ).subquery("latest_content_relevance_review")
 
 
 def _apply_filters(
