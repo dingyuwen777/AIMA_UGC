@@ -66,7 +66,7 @@ Docker Desktop restart、单次 `docker info` probe 和 restart 后整体验证�
 | R2 | 正常状态不应固定等待几十秒；等待只应是异常保护上限 | user:2026-08-24-current-request | satisfied | 磁盘配置和有效状态都匹配时直接 `restart skipped`；只有需要 restart 才进入验证；整体 20 秒、单 probe 3 秒、间隔 1 秒均为上限，满足条件立即返回 |
 | R3 | 完整解决等待边界，不只改日志 | user:2026-08-24-current-request | satisfied | `docker desktop restart --timeout 60`；`ProcessStartInfo` probe 3 秒；probe kill 后 `WaitForExit(1000)`；Stopwatch 20 秒 deadline；`[WAIT]` 进度、最后观测状态和恢复提示；Docker 官方 `docker desktop restart` reference 确认 `--timeout` 且默认 0/-1 为无超时 |
 | R4 | 保持 Docker Hub mirror 单一配置源和已有镜像身份/包源方案 | user:centralize-docker-hub-mirrors | satisfied | PR #192 changed files 仅 helper、测试、Windows workflow、Guide 03/04 和本 Change；`scripts/config/docker_hub_mirrors.txt`、Linux setup、Dockerfile、Compose、npm/PyPI/Debian 配置均未修改 |
-| R5 | 完成 L2 Audit/Review/Ready Check/永久 CI 并正常合并 main | AGENTS.md + user:merge-authorization | explicitly_deferred | Ready 前 A1/A2、Code Quality、Completion Audit 已完成；功能审计 HEAD `e977089901db60f4ff2924a19f215ecdc239139a` 除 `in_progress` 状态下预期失败的 Completion Gate 外，其余 10 个永久 workflow 全部 success。按仓库门禁，合并刻意延期到本 `ready_for_review` 提交的 11 个永久 workflow 全绿后执行；用户已授权正常合并 main |
+| R5 | 完成 L2 Audit/Review/Ready Check/永久 CI 并正常合并 main | AGENTS.md | explicitly_deferred | Ready 前 A1/A2、Code Quality、Completion Audit 已完成；功能审计 HEAD `e977089901db60f4ff2924a19f215ecdc239139a` 除 `in_progress` 状态下预期失败的 Completion Gate 外，其余 10 个永久 workflow 全部 success。按仓库门禁，合并刻意延期到本 `ready_for_review` 提交的 11 个永久 workflow 全绿后执行；用户已授权正常合并 main |
 
 # Validation Matrix
 
