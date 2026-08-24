@@ -4,14 +4,16 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   generate:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout
+      - name: Checkout head branch
         uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Setup Python
         uses: actions/setup-python@v6.2.0
@@ -41,12 +43,16 @@ jobs:
           uv run python scripts/contracts/generate.py
           npm --prefix frontend run generate:api
 
-      - name: Upload exact generator output
-        uses: actions/upload-artifact@v4.6.2
-        with:
-          name: generated-contracts-${{ github.event.pull_request.head.sha }}
-          path: |
-            contracts/openapi/openapi.json
-            frontend/src/generated/api/client.ts
-          if-no-files-found: error
-          retention-days: 1
+      - name: Commit exact generator output
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add contracts/openapi/openapi.json frontend/src/generated/api/client.ts
+          if git diff --cached --quiet; then
+            echo "Generated contracts already synchronized."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "同步生成 Contract 与前端客户端"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
