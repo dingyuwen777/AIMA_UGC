@@ -1,6 +1,16 @@
 """Analysis Owner 的人工相关性复核 Schema。"""
 
-from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Integer, Table, Text, UniqueConstraint, Uuid
+from sqlalchemy import (
+    CheckConstraint,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Table,
+    Text,
+    UniqueConstraint,
+    Uuid,
+)
 
 from aima_ugc.platform.database.metadata import metadata
 
