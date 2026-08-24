@@ -501,9 +501,10 @@ class TikHubCollectionScopeExecutor:
             seed = CanonicalContentV1(
                 platform=target.platform,
                 external_content_id=target.external_content_id,
+                alternate_ids=target.alternate_ids,
                 content_type=target.content_type,
                 observed_at=self._observed_at(),
-                observed_fields=["content_type"],
+                observed_fields=["content_type", "alternate_ids"],
                 source=CanonicalSourceV1(
                     provider_name="tikhub",
                     source_type=scope.source_type,
@@ -1088,6 +1089,7 @@ class TikHubCollectionScopeExecutor:
             call = build_comments_call(
                 platform=platform,
                 external_content_id=content.external_content_id,
+                alternate_ids=content.alternate_ids,
                 state=pagination_state,
             )
             executed = self._execute_call(
@@ -1184,6 +1186,7 @@ class TikHubCollectionScopeExecutor:
                     reply_outcome = self._fetch_sub_comments(
                         run=run,
                         scope=scope,
+                        content=content,
                         content_id=content_id,
                         root_comment=comment,
                         provider_config=provider_config,
@@ -1430,6 +1433,7 @@ class TikHubCollectionScopeExecutor:
         *,
         run: CollectionRunRecord,
         scope: CollectionScopeRecord,
+        content: CanonicalContentV1,
         content_id: UUID,
         root_comment: CanonicalCommentV1,
         provider_config: ProviderConfig,
@@ -1470,8 +1474,9 @@ class TikHubCollectionScopeExecutor:
 
             call = build_sub_comments_call(
                 platform=platform,
-                external_content_id=root_comment.external_content_id,
+                external_content_id=content.external_content_id,
                 root_comment_id=root_comment.external_comment_id,
+                alternate_ids=content.alternate_ids,
                 state=pagination_state,
             )
             executed = self._execute_call(

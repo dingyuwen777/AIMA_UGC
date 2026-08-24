@@ -294,17 +294,54 @@ def extract_search_items(
     return kuaishou.extract_search_items(body)
 
 
+def _provider_lookup_identity(
+    *,
+    platform: TikHubPlatform,
+    external_content_id: str,
+    alternate_ids: dict[str, str] | None = None,
+) -> tuple[str, str]:
+    """选择 TikHub Detail/Comments 实际需要的 typed locator。
+
+    ``external_content_id`` 始终是 Canonical/数据库稳定身份；这里只决定外部 Provider
+    请求参数。Excel/TikHub Mapper 已确认的 typed identity 优先，缺失时兼容旧稳定 ID。
+    """
+    ids = alternate_ids or {}
+    if platform == "xiaohongshu":
+        return "note_id", ids.get("note_id", external_content_id)
+    if platform == "douyin":
+        return "aweme_id", ids.get("aweme_id", external_content_id)
+    if platform == "weibo":
+        return "status_id", ids.get("status_id", external_content_id)
+    if platform == "bilibili":
+        av_id = ids.get("av_id")
+        if av_id:
+            return "av_id", av_id[2:] if av_id[:2].casefold() == "av" else av_id
+        bv_id = ids.get("bv_id")
+        if bv_id:
+            return "bv_id", bv_id
+        if external_content_id.casefold().startswith("bv"):
+            return "bv_id", external_content_id
+        return (
+            "av_id",
+            external_content_id[2:]
+            if external_content_id[:2].casefold() == "av"
+            else external_content_id,
+        )
+    return "photo_id", ids.get("photo_id", external_content_id)
+
+
 def build_detail_call(platform: TikHubPlatform, content: CanonicalContentV1) -> TikHubOperationCall:
+    id_type, lookup_value = _provider_lookup_identity(
+        platform=platform,
+        external_content_id=content.external_content_id,
+        alternate_ids=content.alternate_ids,
+    )
     if platform == "xiaohongshu":
         if content.content_type == "video":
-            xiaohongshu_request = xiaohongshu.build_video_detail_request(
-                note_id=content.external_content_id
-            )
+            xiaohongshu_request = xiaohongshu.build_video_detail_request(note_id=lookup_value)
             operation = "get_video_note_detail"
         else:
-            xiaohongshu_request = xiaohongshu.build_image_detail_request(
-                note_id=content.external_content_id
-            )
+            xiaohongshu_request = xiaohongshu.build_image_detail_request(note_id=lookup_value)
             operation = "get_image_note_detail"
         return TikHubOperationCall(
             "xiaohongshu",
@@ -315,7 +352,7 @@ def build_detail_call(platform: TikHubPlatform, content: CanonicalContentV1) -> 
             _json_object(xiaohongshu_request.params),
         )
     if platform == "douyin":
-        douyin_request = douyin.build_video_detail_request(aweme_id=content.external_content_id)
+        douyin_request = douyin.build_video_detail_request(aweme_id=lookup_value)
         return TikHubOperationCall(
             "douyin",
             "content_detail",
@@ -325,7 +362,7 @@ def build_detail_call(platform: TikHubPlatform, content: CanonicalContentV1) -> 
             _json_object(douyin_request.params),
         )
     if platform == "weibo":
-        weibo_request = weibo.build_status_detail_request(status_id=content.external_content_id)
+        weibo_request = weibo.build_status_detail_request(status_id=lookup_value)
         return TikHubOperationCall(
             "weibo",
             "content_detail",
@@ -335,7 +372,7 @@ def build_detail_call(platform: TikHubPlatform, content: CanonicalContentV1) -> 
             _json_object(weibo_request.params),
         )
     if platform == "bilibili":
-        bilibili_request = bilibili.build_video_detail_request(av_id=content.external_content_id)
+        bilibili_request = bilibili.build_video_detail_request(**{id_type: lookup_value})
         return TikHubOperationCall(
             "bilibili",
             "content_detail",
@@ -344,7 +381,7 @@ def build_detail_call(platform: TikHubPlatform, content: CanonicalContentV1) -> 
             bilibili_request.path,
             _json_object(bilibili_request.params),
         )
-    kuaishou_request = kuaishou.build_video_detail_request(photo_id=content.external_content_id)
+    kuaishou_request = kuaishou.build_video_detail_request(photo_id=lookup_value)
     return TikHubOperationCall(
         "kuaishou",
         "content_detail",
@@ -356,12 +393,21 @@ def build_detail_call(platform: TikHubPlatform, content: CanonicalContentV1) -> 
 
 
 def build_comments_call(
-    *, platform: TikHubPlatform, external_content_id: str, state: dict[str, object] | None = None
+    *,
+    platform: TikHubPlatform,
+    external_content_id: str,
+    alternate_ids: dict[str, str] | None = None,
+    state: dict[str, object] | None = None,
 ) -> TikHubOperationCall:
     paging = state or {}
+    id_type, lookup_value = _provider_lookup_identity(
+        platform=platform,
+        external_content_id=external_content_id,
+        alternate_ids=alternate_ids,
+    )
     if platform == "xiaohongshu":
         xiaohongshu_request = xiaohongshu.build_note_comments_request(
-            note_id=external_content_id,
+            note_id=lookup_value,
             cursor=_str_state(paging, "cursor", default=""),
             index=_int_state(paging, "index", default=0),
             page_area=_str_state(paging, "page_area", default="UNFOLDED"),
@@ -377,7 +423,7 @@ def build_comments_call(
         )
     if platform == "douyin":
         douyin_request = douyin.build_video_comments_request(
-            aweme_id=external_content_id,
+            aweme_id=lookup_value,
             cursor=_int_state(paging, "cursor", default=0),
         )
         return TikHubOperationCall(
@@ -391,7 +437,7 @@ def build_comments_call(
         )
     if platform == "weibo":
         weibo_request = weibo.build_status_comments_request(
-            status_id=external_content_id,
+            status_id=lookup_value,
             max_id=_optional_str_state(paging, "max_id"),
             sort_mode="latest",
         )
@@ -406,7 +452,7 @@ def build_comments_call(
         )
     if platform == "bilibili":
         bilibili_request = bilibili.build_video_comments_request(
-            av_id=external_content_id,
+            **{id_type: lookup_value},
             sort_mode="latest",
             next_offset=_int_state(paging, "next_offset", default=0),
         )
@@ -420,7 +466,7 @@ def build_comments_call(
             pagination_input=_json_object(paging),
         )
     kuaishou_request = kuaishou.build_video_comments_request(
-        photo_id=external_content_id,
+        photo_id=lookup_value,
         pcursor=_str_state(paging, "pcursor", default=""),
     )
     return TikHubOperationCall(
@@ -439,13 +485,19 @@ def build_sub_comments_call(
     platform: TikHubPlatform,
     external_content_id: str,
     root_comment_id: str,
+    alternate_ids: dict[str, str] | None = None,
     state: dict[str, object] | None = None,
 ) -> TikHubOperationCall:
     """构造当前正式二级回复主 Operation；不做任何 App/Web 自动 fallback。"""
     paging = state or {}
+    id_type, lookup_value = _provider_lookup_identity(
+        platform=platform,
+        external_content_id=external_content_id,
+        alternate_ids=alternate_ids,
+    )
     if platform == "xiaohongshu":
         xiaohongshu_request = xiaohongshu.build_sub_comments_request(
-            note_id=external_content_id,
+            note_id=lookup_value,
             comment_id=root_comment_id,
             cursor=_str_state(paging, "cursor", default=""),
             index=_int_state(paging, "index", default=1),
@@ -461,7 +513,7 @@ def build_sub_comments_call(
         )
     if platform == "douyin":
         douyin_request = douyin.build_video_comment_replies_request(
-            item_id=external_content_id,
+            item_id=lookup_value,
             comment_id=root_comment_id,
             cursor=_int_state(paging, "cursor", default=0),
         )
@@ -491,7 +543,7 @@ def build_sub_comments_call(
     if platform == "bilibili":
         bilibili_request = bilibili.build_reply_detail_request(
             root=root_comment_id,
-            av_id=external_content_id,
+            **{id_type: lookup_value},
             next_offset=_optional_int_state(paging, "next_offset"),
         )
         return TikHubOperationCall(
@@ -504,7 +556,7 @@ def build_sub_comments_call(
             pagination_input=_json_object(paging),
         )
     kuaishou_request = kuaishou.build_video_sub_comments_request(
-        photo_id=external_content_id,
+        photo_id=lookup_value,
         root_comment_id=root_comment_id,
         pcursor=_str_state(paging, "pcursor", default=""),
     )
