@@ -285,9 +285,7 @@ def test_manual_relevance_review_preserves_ai_result_and_drives_business_queries
                     analysis_content_relevance_reviews_table.c.content_version,
                     analysis_content_relevance_reviews_table.c.decision,
                     analysis_content_relevance_reviews_table.c.reviewed_at,
-                ).where(
-                    analysis_content_relevance_reviews_table.c.content_id == content_ids[0]
-                )
+                ).where(analysis_content_relevance_reviews_table.c.content_id == content_ids[0])
             ).one()
             assert review_row.content_version == 1
             assert review_row.decision == "relevant"

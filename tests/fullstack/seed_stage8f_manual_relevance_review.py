@@ -86,9 +86,9 @@ def main() -> int:
                 job = PostgresJobRepository(session).enqueue(
                     job_type=CONTENT_ANALYSIS_JOB_TYPE,
                     payload_version=CONTENT_ANALYSIS_JOB_PAYLOAD_VERSION,
-                    payload=ContentAnalysisJobPayload(
-                        request_id=analysis_request_id
-                    ).model_dump(mode="json"),
+                    payload=ContentAnalysisJobPayload(request_id=analysis_request_id).model_dump(
+                        mode="json"
+                    ),
                     internal_idempotency_key=f"stage8f-manual-review:{content_id}",
                     request_id="stage8f-manual-review-analysis",
                     priority=0,
@@ -150,9 +150,7 @@ def main() -> int:
                         taxonomy_sha256=identity.taxonomy_sha256,
                         model_provider=identity.model_provider,
                         model=identity.model,
-                        input_hash=hashlib.sha256(
-                            b"stage8f-manual-review-input"
-                        ).hexdigest(),
+                        input_hash=hashlib.sha256(b"stage8f-manual-review-input").hexdigest(),
                         analyzed_at=datetime.now(UTC),
                     ),
                 )

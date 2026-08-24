@@ -61,9 +61,7 @@ class PostgresContentRelevanceReviewRepository:
                 select(
                     analysis_content_relevance_reviews_table.c.content_id,
                     analysis_content_relevance_reviews_table.c.content_version,
-                ).where(
-                    analysis_content_relevance_reviews_table.c.content_id.in_(content_ids)
-                )
+                ).where(analysis_content_relevance_reviews_table.c.content_id.in_(content_ids))
             ).mappings()
         )
         already_reviewed: set[UUID] = {
