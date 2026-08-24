@@ -136,9 +136,12 @@ def test_windows_mirror_setup_validates_effective_state_with_bounded_waits() -> 
         "$startInfo.Arguments = 'info --format \"{{range .RegistryConfig.Mirrors}}{{println .}}{{end}}\"'"
         in mirror_setup
     )
-    assert "ConvertFrom-Json" not in mirror_setup.split("function Get-DockerRegistryMirrorProbe", 1)[1].split(
-        "function Write-EffectiveMirrorState", 1
-    )[0]
+    assert (
+        "ConvertFrom-Json"
+        not in mirror_setup.split("function Get-DockerRegistryMirrorProbe", 1)[1].split(
+            "function Write-EffectiveMirrorState", 1
+        )[0]
+    )
     assert "$process.WaitForExit($TimeoutSeconds * 1000)" in mirror_setup
     assert "$process.WaitForExit($MirrorProbeCleanupTimeoutMilliseconds)" in mirror_setup
     assert "$process.WaitForExit()" not in mirror_setup
