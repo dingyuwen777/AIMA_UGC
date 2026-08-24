@@ -95,19 +95,18 @@ jobs:
           uv run python - <<'PY'
           import json
           import os
+          from datetime import UTC, datetime
           from decimal import Decimal
           from pathlib import Path
-          from urllib.parse import urlsplit
+          from urllib.parse import parse_qs, urlsplit
 
           from pydantic import SecretStr
 
           from aima_ugc.adapters.providers.imports.identity import resolve_content_identity
-          from aima_ugc.adapters.providers.tikhub.operations.kuaishou import extract_detail_items
           from aima_ugc.adapters.providers.tikhub.probe import TikHubOperationProbe, TikHubProbeLimits
-          from aima_ugc.adapters.providers.tikhub.runtime import build_detail_call
+          from aima_ugc.adapters.providers.tikhub.runtime import build_detail_call, extract_detail_items
           from aima_ugc.adapters.providers.tikhub.transport import TikHubHttpTransport
           from aima_ugc.contracts.canonical import CanonicalContentV1, CanonicalSourceV1
-          from datetime import UTC, datetime
 
           fixture = json.loads(Path("tests/fixtures/imports/excel_provider_lookup_samples.json").read_text(encoding="utf-8"))
           sample = fixture["platforms"]["kuaishou"][0]
@@ -144,18 +143,27 @@ jobs:
           body = result.response.body
           if status is None or not 200 <= status < 300 or not isinstance(body, dict):
               raise SystemExit(f"KUAISHOU_DIAG_HTTP={status}")
-          items = extract_detail_items(body)
+          items = extract_detail_items("kuaishou", body)
           if not items:
               raise SystemExit("KUAISHOU_DIAG_NO_DETAIL_ITEM")
           item = items[0].get("feed") if isinstance(items[0].get("feed"), dict) else items[0]
           path_id = urlsplit(sample["url"]).path.rstrip("/").split("/")[-1]
+          share_info = item.get("share_info") or item.get("shareInfo")
+          share_photo_id = None
+          if isinstance(share_info, str):
+              values = parse_qs(share_info, keep_blank_values=False).get("photoId") or ()
+              if values:
+                  share_photo_id = values[0]
+          elif isinstance(share_info, dict):
+              raw_share_id = share_info.get("photoId") or share_info.get("photo_id")
+              share_photo_id = str(raw_share_id) if raw_share_id is not None else None
           summary = {
               "excel_path_id": path_id,
               "resolver_stable_id": identity.external_content_id,
               "resolver_photo_id": identity.alternate_ids.get("photo_id"),
               "detail_photo_id": str(item.get("photo_id")) if item.get("photo_id") is not None else None,
               "detail_kwai_id": str(item.get("kwaiId") or item.get("kwai_id")) if (item.get("kwaiId") or item.get("kwai_id")) is not None else None,
-              "detail_share_id": str(item.get("share_id") or item.get("shareId")) if (item.get("share_id") or item.get("shareId")) is not None else None,
+              "detail_share_photo_id": share_photo_id,
               "request_count": probe.request_count,
           }
           print("KUAISHOU_IDENTITY_DIAGNOSTIC=" + json.dumps(summary, ensure_ascii=False, separators=(",", ":")))
