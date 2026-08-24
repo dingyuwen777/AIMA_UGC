@@ -60,7 +60,7 @@ test('filters AI irrelevant content and supports single manual include', async (
   await page.getByLabel('AI 相关性').selectOption('irrelevant')
   await page.getByRole('button', { name: '查询' }).click()
 
-  await expect(page.getByText('AI 判定不相关')).toBeVisible()
+  await expect(page.getByText('AI 判定不相关', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '人工标记为相关' }).click()
 
   expect(reviewRequest).toEqual({ content_ids: [contentId] })
