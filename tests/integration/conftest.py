@@ -33,10 +33,7 @@ def reset_consolidated_ci_database() -> Iterator[None]:
             f"Refusing CI integration reset for non-local database host: {settings.db_host}"
         )
 
-    if (
-        settings.postgres_password_file.read_text(encoding="utf-8").strip()
-        != _CI_DATABASE_PASSWORD
-    ):
+    if settings.postgres_password_file.read_text(encoding="utf-8").strip() != _CI_DATABASE_PASSWORD:
         raise RuntimeError("Refusing CI integration reset outside the dedicated CI database")
 
     runtime = DatabaseRuntime(settings)
@@ -51,9 +48,7 @@ def reset_consolidated_ci_database() -> Iterator[None]:
             quote = runtime.engine.dialect.identifier_preparer.quote
             tables = ", ".join(quote(table_name) for table_name in table_names)
             with runtime.engine.begin() as connection:
-                connection.execute(
-                    text(f"TRUNCATE TABLE {tables} RESTART IDENTITY CASCADE")
-                )
+                connection.execute(text(f"TRUNCATE TABLE {tables} RESTART IDENTITY CASCADE"))
     finally:
         runtime.dispose()
 
