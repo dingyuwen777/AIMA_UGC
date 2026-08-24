@@ -3,9 +3,9 @@ schema: rvc-change/v1
 id: CHG-20260824-docker-mirror-probe-output
 title: 修复 Windows Docker mirror probe 输出解析
 level: L2
-status: ready_for_review
+status: done
 owner: chatgpt
-branch: fix/docker-mirror-probe-output
+branch: docs/archive-docker-mirror-probe-output
 created: 2026-08-24
 updated: 2026-08-24
 completion_gate: required
@@ -24,7 +24,7 @@ data_changes: []
 
 # 目标
 
-修复 Windows Docker Desktop mirror 初始化在实际 `docker info` 已经报告全部 AIMA mirrors 时仍持续等待并最终失败的问题。正式 probe 必须在 Windows PowerShell 5.1 中把 Docker 返回的多个 mirrors 保持为独立字符串，并把当前 6-mirror 状态立即识别为有效，而不是依赖 JSON 顶层数组的枚举/类型转换行为。
+修复 Windows Docker Desktop mirror 初始化在实际 `docker info` 已经报告全部 AIMA mirrors 时仍持续等待并最终失败的问题。正式 probe 在 Windows PowerShell 5.1 中把 Docker 返回的多个 mirrors 保持为独立字符串，并把当前 6-mirror 状态立即识别为有效，不依赖 JSON 顶层数组的枚举/类型转换行为。
 
 # 可观察成功标准
 
@@ -47,10 +47,10 @@ data_changes: []
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 当前实际 6-mirror 输出必须可正确识别，不再错误重启/等待 | user:2026-08-24-real-bootstrap-output | satisfied | 用户真实日志显示 `docker info` 每次立即返回 6 个 mirrors。Red Windows run `32689316549` 的 production probe 在 Windows PowerShell 5.1 中复现 `Expected 6 independent mirrors, got 1`；最终 Windows run `32689710325` 的同一 production probe step success，6 个 mirrors 被保持为独立元素并通过 AIMA predicate |
-| R2 | 必须真实可用，不能继续只靠不完整 predicate 测试 | user:2026-08-24-real-runtime-required | satisfied | 永久 Windows workflow 编译真实临时 `docker.exe` 并通过正式 `System.Diagnostics.Process` 子进程入口调用 production `Get-DockerRegistryMirrorProbe()`；中间 Green run `32689407855` 进一步真实发现未加引号时模板被拆成 `{{range`，修正 argv 分组后最终 run `32689710325` success |
-| R3 | 保持现有单一 mirror 配置源与其他 Docker/包源方案 | AGENTS.md | satisfied | PR #195 changed files 仅本 Change、PowerShell helper、目标 unit test、Windows workflow；`scripts/config/docker_hub_mirrors.txt`、Linux setup、Dockerfile、Compose、Debian/PyPI/npm 配置均未修改；功能审计 HEAD `9dcb24a9b89eb95a9aa64ca752bebe6c0d931ca7` 的 10 个非 Completion 永久 workflow 全部 success |
-| R4 | 完成 L2 Audit/Review/Ready Check/永久 CI 并正常合并 main | AGENTS.md | explicitly_deferred | Requirement Review A1/A2、Code Quality、Completion Audit 已完成；合并按仓库门禁刻意延期到本 `ready_for_review` 提交的 11 个永久 workflow 全绿后执行，用户已明确授权完整修复并合并 main |
+| R1 | 当前实际 6-mirror 输出必须可正确识别，不再错误重启/等待 | user:2026-08-24-real-bootstrap-output | satisfied | 用户真实日志显示 `docker info` 每次立即返回 6 个 mirrors。Red Windows run `32689316549` 的 production probe 在 Windows PowerShell 5.1 中复现 `Expected 6 independent mirrors, got 1`；Final Ready Windows run `32690008886` 的同一 production probe step success，6 个 mirrors 被保持为独立元素并通过 AIMA predicate |
+| R2 | 必须真实可用，不能继续只靠不完整 predicate 测试 | user:2026-08-24-real-runtime-required | satisfied | 永久 Windows workflow 编译真实临时 `docker.exe` 并通过正式 `System.Diagnostics.Process` 子进程入口调用 production `Get-DockerRegistryMirrorProbe()`；中间 Green run `32689407855` 真实发现未加引号时模板被拆成 `{{range`，修正 argv 分组后 Final Ready run `32690008886` success |
+| R3 | 保持现有单一 mirror 配置源与其他 Docker/包源方案 | AGENTS.md | satisfied | PR #195 changed files 仅本 Change、PowerShell helper、目标 unit test、Windows workflow；`scripts/config/docker_hub_mirrors.txt`、Linux setup、Dockerfile、Compose、Debian/PyPI/npm 配置均未修改；Final Ready HEAD 11 个永久 workflow 全部 success |
+| R4 | 完成 L2 Audit/Review/Ready Check/永久 CI 并正常合并 main | AGENTS.md | satisfied | Requirement Review A1/A2、Code Quality、Completion Audit 完成；Final Ready HEAD `a8357d1ed3e9770bb9e9b912c960e1408149f38d` 的 11 个永久 workflow 全部 success；PR #195 正常 merge commit 合并到 main，implementation merge `a3b5f8cdb5df074299b4257f17c3212316c87060` |
 
 # Validation Matrix
 
@@ -68,13 +68,13 @@ data_changes: []
 - [x] upstream_re_read: Ready 前重新读取用户两次真实失败输出、当前分支 AGENTS、Reliable Vibe Coding、Development Workflow/Verification Review、最终 helper/test/workflow，并重新核对当前 `main`。
 - [x] change_coverage: R1-R4 覆盖真实 6-mirror 失败、Windows PowerShell 5.1 production probe、现有方案兼容边界和正式交付门禁。
 - [x] reverse_audit: 从 production `ProcessStartInfo` argv → fake/real docker-compatible Go template → stdout 多行 → `string[]` → `Test-ExpectedMirrorsPresent()` 反向检查完整链路；Windows Runner 直接执行同一生产 probe；PR changed files 仅 4 个预期路径，mirror 配置、Linux setup、Dockerfile、Compose、依赖、业务代码、Contract/Migration 未修改。
-- [x] unresolved_cleared: R1-R3 satisfied；R4 仅按正式 Ready/CI 门禁 explicitly_deferred 到 Final Ready HEAD 全绿之后，没有范围内未决实现或设计。
+- [x] unresolved_cleared: R1-R4 全部 satisfied，没有范围内未决实现、设计或交付项。
 
 # Review
 
 ## Requirement Review A1：上游要求 → Change
 
-通过。用户提供的最新原始症状已经把完成定义收敛为：Docker Engine 实际 6-mirror 输出必须在 Windows PowerShell 5.1 的正式 helper 中被正确识别，且不能再用不经过 production probe 的 predicate 测试宣称修复。Change 明确包含这两项，并保留既有单一 mirror 配置源、超时和跨平台边界。
+通过。用户提供的原始症状把完成定义收敛为：Docker Engine 实际 6-mirror 输出必须在 Windows PowerShell 5.1 的正式 helper 中被正确识别，且不能再用不经过 production probe 的 predicate 测试宣称修复。Change 覆盖这两项，并保留既有单一 mirror 配置源、超时和跨平台边界。
 
 ## Requirement Review A2：Change → 实现 / 测试 / 文档
 
@@ -82,7 +82,7 @@ data_changes: []
 
 ## Code Quality Review
 
-通过，无 Serious/Important finding。实现只替换 probe 的输出协议，不改 daemon.json 写入、有效 mirror predicate、restart/overall/probe timeout、恢复提示或其他平台。使用 Docker 自带 Go template 和 .NET/PowerShell 现有能力，无新增依赖。逐行协议比 JSON 顶层数组更直接，避免 PowerShell 5.1 的枚举/强制类型歧义；模板的 Windows argv 引号已由真实子进程行为测试验证。probe/cleanup 等待仍全部有界，错误继续 fail closed。
+通过，无 Serious/Important finding。实现只替换 probe 的输出协议，不改 daemon.json 写入、有效 mirror predicate、restart/overall/probe timeout、恢复提示或其他平台。使用 Docker 自带 Go template 和 .NET/PowerShell 现有能力，无新增依赖。逐行协议避免 PowerShell 5.1 的 JSON 枚举/强制类型歧义；模板的 Windows argv 引号由真实子进程行为测试验证。probe/cleanup 等待仍全部有界，错误继续 fail closed。
 
 # 验证证据
 
@@ -108,20 +108,29 @@ Production probe failed: unexpected docker format: {{range
 
 说明未加引号的 Go template 在 Windows `ProcessStartInfo.Arguments` 中被空格拆成多个 argv。随后将整个 template 双引号包裹，继续沿用同一真实子进程测试，而不是降低断言。
 
-## Green / 功能审计
+## 功能审计
 
 功能审计 HEAD：`9dcb24a9b89eb95a9aa64ca752bebe6c0d931ca7`
 
-- Windows Docker Desktop Compose Compatibility `32689710325`: success；production probe、predicate、PowerShell AST、CMD/PowerShell Compose、named-volume Runtime 全部 success。
-- CI `32689710292`: success；Backend/repository checks、Windows bootstrap、Stage 1/2/3A 全部 success。
-- Internal V1-A `32689710347`: success。
-- Stage 8F `32689710273`: success。
-- Local Dev Bootstrap `32689710271`: success。
-- Stage 6 `32689710402`: success。
-- Stage 7 Plan `32689710284`、Keyword Packs `32689710353`、Scheduler `32689710275`、Provider Config `32689710350`: success。
-- Change Completion Gate `32689710293` 在 Change 仍为 `in_progress` 时按治理规则预期 failure；本 `ready_for_review` 提交后重新执行。
+除 Change 仍为 `in_progress` 时按治理规则预期失败的 Completion Gate 外，其余 10 个永久 workflow 全部 success，包含 Windows production probe、CI、Internal V1-A、Stage 8F、Local Dev、Stage 6/7。
 
-中间提交曾因新增 Python 静态断言的 Ruff formatter/E501 要求导致 Quality job failure；对应 Scheduler/Provider Unit 与 PostgreSQL 均 success。按 Ruff 精确要求修正测试格式后，功能审计 HEAD 的所有非 Completion 永久 workflow 全部 success，没有把格式失败伪装成功能失败。
+## Final Ready
+
+Final Ready HEAD：`a8357d1ed3e9770bb9e9b912c960e1408149f38d`
+
+11 个永久 workflow 全部 success：
+
+- Change Completion Gate `32690008871`
+- CI `32690008866`
+- Windows Docker Desktop Compose Compatibility `32690008886`
+- Internal V1-A `32690008892`
+- Stage 8F `32690008877`
+- Local Dev Bootstrap `32690008873`
+- Stage 6 `32690008895`
+- Stage 7 Plan `32690008881`
+- Stage 7 Keyword Packs `32690008868`
+- Stage 7 Scheduler `32690008878`
+- Stage 7 Provider Config `32690008890`
 
 # 文档影响
 
@@ -129,9 +138,9 @@ Production probe failed: unexpected docker format: {{range
 
 # Git / 交付
 
-- Branch: `fix/docker-mirror-probe-output`
-- PR: #195
-- Functional audit HEAD: `9dcb24a9b89eb95a9aa64ca752bebe6c0d931ca7`
-- Merge authorization: 用户明确要求确保真实可用，并沿用本轮“完整修复、合并到主分支”的正常合并授权。
-- Final gate: 本 `ready_for_review` HEAD 必须重新通过 11 个永久 workflow。
-- Archive: 实现 PR 合并后创建独立归档 PR，将本 Change 标记 `done` 并移动到 `changes/archive/2026-08/`。
+- Implementation branch: `fix/docker-mirror-probe-output`
+- Implementation PR: #195
+- Final Ready HEAD: `a8357d1ed3e9770bb9e9b912c960e1408149f38d`
+- Implementation merge commit: `a3b5f8cdb5df074299b4257f17c3212316c87060`
+- Archive branch: `docs/archive-docker-mirror-probe-output`
+- 本文件通过独立归档 PR 移入 `changes/archive/2026-08/`；归档 PR 自身仍需通过永久 CI 后再合并。
