@@ -133,7 +133,7 @@ jobs:
           from pathlib import Path
 
           required = {
-              "Stage 1",
+              "CI Gate",
               "Compose Golden Path",
               "Requirement Traceability and Completion Audit",
           }
