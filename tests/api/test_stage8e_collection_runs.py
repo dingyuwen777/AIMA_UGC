@@ -39,6 +39,8 @@ class _FakeCollectionService:
     def create_run(self, request, *, request_id):  # type: ignore[no-untyped-def]
         assert request.mode == "discovery"
         assert request.keyword_pack_ids == (PACK_ID,)
+        assert request.platforms[0].search_config is not None
+        assert request.platforms[0].search_config.published_within == "1d"
         assert request_id
         return {
             "run_id": str(RUN_ID),
@@ -115,7 +117,17 @@ def test_create_discovery_collection_run_returns_202() -> None:
         json={
             "mode": "discovery",
             "keyword_pack_ids": [str(PACK_ID)],
-            "platforms": [{"platform": "xiaohongshu", "provider_config_id": str(CONFIG_ID)}],
+            "platforms": [
+                {
+                    "platform": "xiaohongshu",
+                    "provider_config_id": str(CONFIG_ID),
+                    "search_config": {
+                        "sort_mode": "latest",
+                        "published_within": "1d",
+                        "content_type": "all",
+                    },
+                }
+            ],
             "include_comments": True,
             "include_sub_comments": False,
         },

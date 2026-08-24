@@ -31,6 +31,7 @@ from aima_ugc.contracts.http import (
     CollectionPlanListResponse,
     CollectionPlanPlatformResponse,
     CollectionPlanResponse,
+    CollectionSearchConfig,
     KeywordPackListQuery,
     KeywordPackListResponse,
     KeywordPackSummaryResponse,
@@ -44,6 +45,7 @@ from aima_ugc.modules.collection.planning import (
 )
 from aima_ugc.modules.collection.scheduled_scopes import build_scheduled_scope_snapshot
 from aima_ugc.modules.collection.scheduler import ScheduleExpressionError
+from aima_ugc.modules.collection.search_config import normalize_search_config
 from aima_ugc.modules.collection.strategy_http import (
     CollectionStrategyConflict,
     CollectionStrategyInvalid,
@@ -125,6 +127,7 @@ class PostgresCollectionStrategyHttpService:
                         session,
                         definition,
                         require_relevance=request.enabled,
+                        require_explicit_search_config=True,
                     )
                     created = CollectionPlanningService(repository).create_plan(definition)
                     return _plan_response(created)
@@ -185,7 +188,12 @@ class PostgresCollectionStrategyHttpService:
                 if current is None or current.schedule_expr is None:
                     raise CollectionStrategyResourceNotFound
                 if request.enabled and not current.enabled:
-                    _validate_execution_surface(session, current, require_relevance=True)
+                    _validate_execution_surface(
+                        session,
+                        current,
+                        require_relevance=True,
+                        require_explicit_search_config=False,
+                    )
                 updated = repository.set_plan_enabled(plan_id, enabled=request.enabled)
                 if updated is None:  # pragma: no cover - 当前事务持有 Plan 锁
                     raise CollectionStrategyResourceNotFound
@@ -210,7 +218,7 @@ def _plan_definition(request: CollectionPlanCreateRequest) -> CollectionPlanDefi
             PlanPlatformDefinition(
                 platform=item.platform,
                 provider_config_id=item.provider_config_id,
-                config={},
+                config=item.search_config.model_dump(mode="json", exclude_none=True),
             )
             for item in request.platforms
         ),
@@ -223,6 +231,7 @@ def _validate_execution_surface(
     plan: CollectionPlanDefinition | CollectionPlanRecord,
     *,
     require_relevance: bool,
+    require_explicit_search_config: bool,
 ) -> None:
     keyword_repository = PostgresKeywordCatalogRepository(session)
     for pack_id in sorted(plan.keyword_pack_ids, key=str):
@@ -255,10 +264,13 @@ def _validate_execution_surface(
             raise CollectionStrategyResourceNotFound
         try:
             route = registry.resolve(config=config, platform=item.platform)
+            normalize_search_config(
+                route.capability,
+                item.config,
+                require_complete=require_explicit_search_config,
+            )
         except ValueError as exc:
             raise CollectionStrategyConflict("Provider Config 当前不可执行") from exc
-        if route.capability.operation("keyword_search") is None:
-            raise CollectionStrategyConflict("Provider/Platform 不支持关键词发现")
 
     if require_relevance:
         try:
@@ -304,6 +316,7 @@ def _plan_response(record: CollectionPlanRecord) -> CollectionPlanResponse:
             CollectionPlanPlatformResponse(
                 platform=item.platform,
                 provider_config_id=item.provider_config_id,
+                search_config=CollectionSearchConfig.model_validate(item.config),
             )
             for item in record.platforms
         ),

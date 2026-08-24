@@ -500,6 +500,17 @@ GET  /api/v1/keyword-packs
 PUT  /api/v1/keyword-packs/{pack_id}/enabled
 ```
 
+Search 参数的机器链是：
+
+```text
+ProviderPlatformCapabilityV1
+→ CollectionCapabilityResponse.search
+→ CollectionSearchConfig
+→ Plan platform config / Run provider snapshot
+```
+
+`search_config.py` 负责从 Capability 提取合法值、生成手工 Discovery 默认值并执行统一校验。手工 Discovery 的默认意图是 `latest + 1d + all`，只应用平台真实支持的维度；新 Plan 要求所有受支持维度完整配置。历史 Plan 的空 `config={}` 仍按非完整兼容模式通过 Scheduler 校验，不能被补写成手工默认。
+
 完整 Route 以：
 
 ```text

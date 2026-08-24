@@ -9,7 +9,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from aima_ugc.contracts.analysis import ContentRelevance, ContentVoiceType
-from aima_ugc.contracts.collection.models import BusinessOperation
+from aima_ugc.contracts.collection.models import BusinessOperation, CollectionSearchConfig
 from aima_ugc.contracts.platform import PlatformName, PlatformScope, normalize_platform_name
 
 type ImportBatchStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
@@ -215,6 +215,7 @@ class CollectionRunPlatformRequest(BaseModel):
 
     platform: CollectionPlatform
     provider_config_id: UUID
+    search_config: CollectionSearchConfig | None = None
 
     @field_validator("platform", mode="before")
     @classmethod
@@ -251,6 +252,8 @@ class CollectionRunCreateRequest(BaseModel):
                 raise ValueError("基于 Batch 补采必须提供 import_batch_id")
             if self.keyword_pack_ids:
                 raise ValueError("基于 Batch 补采不能提交 Keyword Pack")
+            if any(item.search_config is not None for item in self.platforms):
+                raise ValueError("基于 Batch 补采不能提交关键词搜索配置")
         if self.include_sub_comments and not self.include_comments:
             raise ValueError("采集二级回复时必须同时启用评论采集")
         return self
@@ -325,12 +328,25 @@ class CollectionProviderConfigResponse(BaseModel):
     display_name: str
 
 
+class CollectionSearchCapabilityResponse(BaseModel):
+    """前端配置 Search 所需的合法选项与手工发现默认值。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    supported_sort_modes: tuple[str, ...]
+    supported_time_filters: tuple[str, ...]
+    supported_duration_filters: tuple[str, ...]
+    supported_content_types: tuple[str, ...]
+    manual_default: CollectionSearchConfig
+
+
 class CollectionCapabilityResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     provider: str
     platform: CollectionPlatform
     operations: tuple[BusinessOperation, ...] = Field(min_length=1)
+    search: CollectionSearchCapabilityResponse | None
 
 
 class CollectionCapabilitiesResponse(BaseModel):
@@ -550,12 +566,13 @@ class GlobalRelevanceConfigResponse(BaseModel):
 
 
 class CollectionPlanPlatformRequest(BaseModel):
-    """Plan 只选择稳定 Provider Config，不接收 Provider 私有配置。"""
+    """Plan 逐平台提交 Provider-neutral 搜索配置，不接收 Provider 私有参数。"""
 
     model_config = ConfigDict(extra="forbid")
 
     platform: CollectionPlatform
     provider_config_id: UUID
+    search_config: CollectionSearchConfig
 
     @field_validator("platform", mode="before")
     @classmethod
@@ -598,6 +615,7 @@ class CollectionPlanPlatformResponse(BaseModel):
 
     platform: CollectionPlatform
     provider_config_id: UUID
+    search_config: CollectionSearchConfig
 
 
 class CollectionPlanResponse(BaseModel):
@@ -952,6 +970,8 @@ __all__ = [
     "CollectionRuntimeRecordType",
     "CollectionRuntimeStatus",
     "CollectionRuntimeSummaryResponse",
+    "CollectionSearchCapabilityResponse",
+    "CollectionSearchConfig",
     "ContentAnalysisCreatedResponse",
     "ContentAnalysisJobResultResponse",
     "ContentAnalysisResponse",

@@ -19,7 +19,7 @@ def content_analysis_configured(settings: PlatformSettings) -> bool:
     if settings.llm_base_url is None or settings.llm_model is None:
         return False
     try:
-        read_secret_file(settings.llm_api_key_file, root=settings.secret_dir)
+        read_secret_file(settings.llm_api_key_file, root=settings.external_secret_root)
     except SecretFileError:
         return False
     return True

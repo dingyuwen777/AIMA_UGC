@@ -162,6 +162,11 @@ def _plan_request(provider_id: UUID, pack_id: UUID) -> CollectionPlanCreateReque
             CollectionPlanPlatformRequest(
                 platform="xiaohongshu",
                 provider_config_id=provider_id,
+                search_config={
+                    "sort_mode": "latest",
+                    "published_within": "1d",
+                    "content_type": "all",
+                },
             ),
         ),
         keyword_pack_ids=(pack_id,),
@@ -189,6 +194,11 @@ def test_strategy_service_creates_queryable_plan_without_creating_job(runtime) -
     assert created.timezone == "Asia/Shanghai"
     assert created.detail_policy == "on_change"
     assert created.comment_policy == "adaptive"
+    assert created.platforms[0].search_config.model_dump(exclude_none=True) == {
+        "sort_mode": "latest",
+        "published_within": "1d",
+        "content_type": "all",
+    }
     with runtime.database.engine.begin() as connection:
         assert connection.scalar(select(func.count()).select_from(collection_plans_table)) == 1
         assert connection.scalar(select(func.count()).select_from(jobs_table)) == 0
@@ -258,6 +268,27 @@ def test_enabled_plan_requires_keyword_for_every_platform(runtime) -> None:  # t
 
     with pytest.raises(CollectionStrategyConflict):
         service.create_plan(_plan_request(provider_id, discovery_pack_id))
+
+    with runtime.database.engine.begin() as connection:
+        assert connection.scalar(select(func.count()).select_from(collection_plans_table)) == 0
+
+
+def test_new_plan_requires_complete_platform_search_config(runtime) -> None:  # type: ignore[no-untyped-def]
+    provider_id, discovery_pack_id, _ = _seed_strategy_facts(runtime)
+    request = _plan_request(provider_id, discovery_pack_id).model_copy(
+        update={
+            "platforms": (
+                CollectionPlanPlatformRequest(
+                    platform="xiaohongshu",
+                    provider_config_id=provider_id,
+                    search_config={"sort_mode": "latest", "content_type": "all"},
+                ),
+            )
+        }
+    )
+
+    with pytest.raises(CollectionStrategyConflict):
+        PostgresCollectionStrategyHttpService(runtime).create_plan(request)
 
     with runtime.database.engine.begin() as connection:
         assert connection.scalar(select(func.count()).select_from(collection_plans_table)) == 0

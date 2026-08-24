@@ -52,6 +52,7 @@ from aima_ugc.modules.collection.scheduler import (
     SchedulerBacklogLimitError,
     resolve_scheduler_plan,
 )
+from aima_ugc.modules.collection.search_config import normalize_search_config
 from aima_ugc.platform.config import PlatformSettings
 from aima_ugc.platform.logging import log_event
 
@@ -239,7 +240,7 @@ def _resolve_provider_snapshots(
         if provider_config is None:
             raise ValueError(f"Plan 引用 Provider Config 不存在: {item.provider_config_id}")
         route = registry.resolve(config=provider_config, platform=item.platform)
-        _validate_search_config(route.capability, item.config)
+        normalize_search_config(route.capability, item.config)
         snapshots.append(
             provider_run_snapshot(provider_config, platform=item.platform, config=item.config)
         )
@@ -250,33 +251,8 @@ def _validate_search_config(
     capability: ProviderPlatformCapabilityV1,
     config: dict[str, object],
 ) -> None:
-    search = capability.operation("keyword_search")
-    if search is None:
-        raise ValueError(f"Provider/Platform 缺少 keyword_search: {capability.platform}")
-    allowed_keys = {"sort_mode", "published_within", "duration", "content_type"}
-    unknown = set(config) - allowed_keys
-    if unknown:
-        raise ValueError(f"Plan 平台配置包含未声明字段: {', '.join(sorted(unknown))}")
-
-    _validate_config_choice(config, "sort_mode", search.supported_sort_modes)
-    _validate_config_choice(config, "published_within", search.supported_time_filters)
-    _validate_config_choice(config, "duration", search.supported_duration_filters)
-    _validate_config_choice(config, "content_type", search.supported_content_types)
-
-
-def _validate_config_choice(
-    config: dict[str, object],
-    key: str,
-    supported: tuple[str, ...],
-) -> None:
-    if key not in config:
-        return
-    raw = config[key]
-    if not isinstance(raw, str) or not raw.strip():
-        raise ValueError(f"Plan 平台配置 {key} 必须是非空字符串")
-    value = raw.strip()
-    if not supported or value not in supported:
-        raise ValueError(f"Plan 平台配置 {key}={value} 不受当前 Capability 支持")
+    """保留既有内部测试入口；实际规则统一由共享 SearchConfig 校验器维护。"""
+    normalize_search_config(capability, config)
 
 
 def _require_scope_for_every_platform(plan: CollectionPlanRecord, scopes) -> None:  # type: ignore[no-untyped-def]

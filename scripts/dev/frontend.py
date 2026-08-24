@@ -76,6 +76,7 @@ def _run(*, root: Path, env_created: bool, prepare_only: bool) -> int:
             _npm_command(npm, "--prefix", "frontend", "run", "dev"),
             cwd=root,
             check=False,
+            stdin=subprocess.DEVNULL,
         )
     except KeyboardInterrupt:
         return 0

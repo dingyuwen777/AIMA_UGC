@@ -57,6 +57,15 @@ class CollectionBaseModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class CollectionSearchConfig(CollectionBaseModel):
+    """Provider-neutral 搜索配置；合法值仍由当前 Platform Capability 决定。"""
+
+    sort_mode: StableCode | None = None
+    published_within: StableCode | None = None
+    duration: StableCode | None = None
+    content_type: StableCode | None = None
+
+
 class ProviderOperationCapabilityV1(CollectionBaseModel):
     """一个 Provider + Platform 业务 Operation 可公开配置的能力。"""
 

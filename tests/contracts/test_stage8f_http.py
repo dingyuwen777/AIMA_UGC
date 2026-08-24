@@ -37,7 +37,10 @@ def test_stage8f_plan_contract_only_accepts_periodic_business_configuration() ->
     assert "schedule_mode" not in request["properties"]
     assert "relevance_keyword_pack_id" not in request["properties"]
     assert "provider_config" not in request["properties"]
-    assert "config" not in schemas["CollectionPlanPlatformRequest"]["properties"]
+    platform_request = schemas["CollectionPlanPlatformRequest"]
+    assert "search_config" in platform_request["properties"]
+    assert "search_config" in platform_request["required"]
+    assert "search_config" in schemas["CollectionPlanPlatformResponse"]["required"]
 
 
 def test_stage8f_routes_keep_fixed_error_contracts() -> None:

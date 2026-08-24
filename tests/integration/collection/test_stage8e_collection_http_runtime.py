@@ -208,6 +208,13 @@ def test_discovery_run_creation_freezes_inputs_and_commits_job_run_scopes_atomic
     assert "secret_ref" not in public_capabilities
     assert "provider_operations" not in public_capabilities
     assert "provider_page_size_policy" not in public_capabilities
+    xiaohongshu = next(item for item in capabilities.capabilities if item.platform == "xiaohongshu")
+    assert xiaohongshu.search is not None
+    assert xiaohongshu.search.manual_default.model_dump(exclude_none=True) == {
+        "sort_mode": "latest",
+        "published_within": "1d",
+        "content_type": "all",
+    }
     assert job["job_type"] == "collection.run.v1"
     assert job["payload"] == {"schema_version": "collection.run.v1"}
     assert job["request_id"] == "stage8e-create"
@@ -217,6 +224,11 @@ def test_discovery_run_creation_freezes_inputs_and_commits_job_run_scopes_atomic
     assert run["config_snapshot"]["mode"] == "discovery"
     assert run["config_snapshot"]["keywords"] == ["爱玛", "Q7"]
     assert run["config_snapshot"]["include_comments"] is True
+    assert run["config_snapshot"]["platforms"][0]["config"] == {
+        "sort_mode": "latest",
+        "published_within": "1d",
+        "content_type": "all",
+    }
     assert [scope["source_value"] for scope in scopes] == ["Q7", "爱玛"]
     assert all(scope["source_type"] == "keyword_search" for scope in scopes)
     assert all(scope["operation_group"] == "content_discovery" for scope in scopes)
