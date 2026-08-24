@@ -544,6 +544,26 @@ export interface ContentListResponse {
   next_cursor?: string | null;
 }
 
+/**
+ * 单条和批量复用同一请求；当前只允许把 AI 无关内容人工纳入相关内容。
+ */
+export interface ContentRelevanceReviewRequest {
+  /**
+     * @minItems 1
+     * @maxItems 1000
+     */
+  content_ids: string[];
+}
+
+export interface ContentRelevanceReviewResponse {
+  /** @minimum 0 */
+  already_reviewed_count: number;
+  /** @minimum 1 */
+  requested_count: number;
+  /** @minimum 0 */
+  reviewed_count: number;
+}
+
 export interface DataExportCreatedResponse {
   export_id: string;
   job_id: string;
@@ -1339,6 +1359,37 @@ export const createContentAnalysis = async (contentAnalysisSubmitRequest: Conten
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: ContentAnalysisCreatedResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCreateContentRelevanceReviewUrl = () => {
+
+
+
+
+  return `/api/v1/content-relevance-reviews`
+}
+
+/**
+ * @summary Create Content Relevance Review
+ */
+export const createContentRelevanceReview = async (contentRelevanceReviewRequest: ContentRelevanceReviewRequest, options?: RequestInit): Promise<ContentRelevanceReviewResponse> => {
+
+  const res = await fetch(getCreateContentRelevanceReviewUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(contentRelevanceReviewRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ContentRelevanceReviewResponse = body ? JSON.parse(body) : {}
   return data
 }
 

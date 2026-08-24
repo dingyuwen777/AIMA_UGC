@@ -1951,6 +1951,54 @@
         ],
         "type": "string"
       },
+      "ContentRelevanceReviewRequest": {
+        "additionalProperties": false,
+        "description": "单条和批量复用同一请求；当前只允许把 AI 无关内容人工纳入相关内容。",
+        "properties": {
+          "content_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Content Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "content_ids"
+        ],
+        "title": "ContentRelevanceReviewRequest",
+        "type": "object"
+      },
+      "ContentRelevanceReviewResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "already_reviewed_count": {
+            "minimum": 0.0,
+            "title": "Already Reviewed Count",
+            "type": "integer"
+          },
+          "requested_count": {
+            "minimum": 1.0,
+            "title": "Requested Count",
+            "type": "integer"
+          },
+          "reviewed_count": {
+            "minimum": 0.0,
+            "title": "Reviewed Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "requested_count",
+          "reviewed_count",
+          "already_reviewed_count"
+        ],
+        "title": "ContentRelevanceReviewResponse",
+        "type": "object"
+      },
       "ContentSourceResponse": {
         "additionalProperties": false,
         "properties": {
@@ -4019,6 +4067,67 @@
           }
         },
         "summary": "Create Content Analysis",
+        "tags": [
+          "contents"
+        ]
+      }
+    },
+    "/api/v1/content-relevance-reviews": {
+      "post": {
+        "operationId": "createContentRelevanceReview",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContentRelevanceReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentRelevanceReviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Create Content Relevance Review",
         "tags": [
           "contents"
         ]
