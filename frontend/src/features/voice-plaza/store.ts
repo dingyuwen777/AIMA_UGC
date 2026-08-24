@@ -7,6 +7,8 @@ import type {
   ContentFilterSnapshot,
   ContentListItemResponse,
   ContentRelevance,
+  ContentRelevanceReviewRequestDecision,
+  ContentRelevanceReviewResponse,
   ContentTargetSelection,
   DataExportResponse,
   JobStatusResponse,
@@ -66,6 +68,16 @@ function errorMessage(error: unknown): string {
   }
   if (error instanceof Error && error.message) return error.message
   return '请求失败，请稍后重试。'
+}
+
+function relevanceReviewNotice(
+  decision: ContentRelevanceReviewRequestDecision,
+  result: ContentRelevanceReviewResponse,
+): string {
+  const unchanged = result.unchanged_count > 0 ? `，${result.unchanged_count} 条无需变化` : ''
+  if (decision === 'relevant') return `已人工标记 ${result.changed_count} 条内容为相关${unchanged}。`
+  if (decision === 'irrelevant') return `已人工标记 ${result.changed_count} 条内容为不相关${unchanged}。`
+  return `已撤销 ${result.changed_count} 条人工相关性判断${unchanged}。`
 }
 
 export const useVoicePlazaStore = defineStore('voice-plaza', () => {
@@ -198,17 +210,23 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     selectedIds.value = []
   }
 
-  async function reviewRelevance(contentIds: string[]): Promise<number | null> {
+  async function reviewRelevance(
+    contentIds: string[],
+    decision: ContentRelevanceReviewRequestDecision,
+  ): Promise<ContentRelevanceReviewResponse | null> {
     if (contentIds.length === 0 || reviewingRelevance.value) return null
     reviewingRelevance.value = true
     error.value = null
     notice.value = null
     try {
-      const result = await submitContentRelevanceReview({ content_ids: [...contentIds] })
+      const result = await submitContentRelevanceReview({
+        content_ids: [...contentIds],
+        decision,
+      })
       selectedIds.value = selectedIds.value.filter((id) => !contentIds.includes(id))
-      notice.value = `已人工标记 ${result.requested_count} 条内容为相关。`
+      notice.value = relevanceReviewNotice(decision, result)
       await refresh(true)
-      return result.requested_count
+      return result
     } catch (reason) {
       error.value = errorMessage(reason)
       return null
