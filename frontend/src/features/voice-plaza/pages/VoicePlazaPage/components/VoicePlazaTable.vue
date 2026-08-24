@@ -2,7 +2,6 @@
 import type {
   ContentLabelPairResponse,
   ContentListItemResponse,
-  ContentRelevance,
 } from '../../../../../generated/api/client'
 import {
   contentSummary,
@@ -22,7 +21,6 @@ const props = defineProps<{
   items: ContentListItemResponse[]
   loading: boolean
   selectedIds: string[]
-  relevanceFilter: '' | ContentRelevance
   reviewing: boolean
 }>()
 const emit = defineEmits<{
@@ -43,11 +41,11 @@ function labels(item: ContentListItemResponse): ContentLabelPairResponse[] {
 }
 
 function badge(item: ContentListItemResponse): string | null {
-  return relevanceBadgeLabel(item, props.relevanceFilter)
+  return relevanceBadgeLabel(item)
 }
 
 function reviewDecision(item: ContentListItemResponse): RelevanceReviewDecision | null {
-  return relevanceReviewDecision(item, props.relevanceFilter)
+  return relevanceReviewDecision(item)
 }
 
 function reviewClass(item: ContentListItemResponse): string {
