@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260824-docker-desktop-mirror-verification-retry
 title: 统一 Docker Hub mirror 配置并修复 Docker Desktop 验证时序
 level: L2
-status: ready_for_review
+status: done
 owner: chatgpt
 branch: fix/docker-desktop-mirror-verification-retry
 created: 2026-08-24
@@ -41,7 +41,7 @@ Windows 与 Linux 初始化脚本读取同一个 mirror 配置文件；以后增
 - [x] 三个既有 mirror 的当前顺序、`max-download-attempts=5`、daemon.json 备份和其他配置合并逻辑保持不变。
 - [x] 已经正确应用 mirrors 时直接返回，不触发无意义重启。
 - [x] 文档只描述统一配置文件和运行行为，不再复制维护 mirror URL 列表。
-- [x] Windows PowerShell 语法、目标 unit 与功能审计 HEAD 的其余永久 CI 已通过；Ready HEAD 继续执行最终全量门禁。
+- [x] Final Ready HEAD 的 11 个永久 workflow 全部通过，PR #190 已正常合并到 `main`。
 
 # 范围
 
@@ -78,11 +78,11 @@ Windows 与 Linux 初始化脚本读取同一个 mirror 配置文件；以后增
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 修复 mirror 已最终生效但脚本重启后过早报错的问题 | user:docker-desktop-mirror-verification-false-negative | satisfied | 用户本机 `daemon.json` 与稍后执行的 `docker info` 均显示预期 mirrors；`Wait-ExpectedMirrorsApplied()` 在 restart 后最多 60 次、每 2 秒检查一次；有效 Red `6a6c375d1ea37a338c86d3a924f1833721b2ea7a` 的 unit 1 failed / 603 passed，Green 总 CI `32684442812` success |
-| R2 | Docker Hub mirror 列表改成单一配置源，后续增删只改一处 | user:centralize-docker-hub-mirrors | satisfied | `scripts/config/docker_hub_mirrors.txt` 保存唯一地址清单；Windows/Linux 都读取该文件；测试从该文件动态读取 mirrors 并检查脚本/Guide 不复制 URL；总 CI `32684442812` success |
-| R3 | 保持既有 mirrors、下载重试、备份、Linux daemon 行为和最终失败保护 | scripts/dev/configure_docker_desktop_mirrors.ps1 | satisfied | mirror 配置文件保持既有三项及顺序；Windows 保持 `max-download-attempts=5`、daemon 合并/时间戳备份/超时失败；Linux 保持 `/data/docker`、日志轮转、daemon merge/validate、安全重启和 PostgreSQL smoke；Windows workflow `32684442775` success |
-| R4 | 文档只描述最新单一事实源，不复制 URL 清单 | user:centralize-docker-hub-mirrors | satisfied | Guide 03/04 只引用 `scripts/config/docker_hub_mirrors.txt`；总环境入口 `docs/02_环境运行与部署.md` 无该 mirror URL 清单；静态测试约束 Guide 不复制有效 mirror URL |
-| R5 | 完成 L2 Completion Audit、两阶段 Review，并进入 Ready Check / 永久 CI 门禁 | AGENTS.md | satisfied | 2026-08-24 重新读取 AGENTS、Reliable Vibe Coding、Blueprint 07 与最终实现/测试/Guide；完成 A1/A2、Code Quality Review、Completion Audit；功能审计 HEAD `a8553ce17a5ad14f0806f1ae39144e84b71e91e3` 除 `in_progress` 状态下预期失败的 Completion Gate 外，其余 10 个永久 workflow 全部 success |
+| R1 | 修复 mirror 已最终生效但脚本重启后过早报错的问题 | user:docker-desktop-mirror-verification-false-negative | satisfied | 用户本机 `daemon.json` 与稍后执行的 `docker info` 均显示预期 mirrors；`Wait-ExpectedMirrorsApplied()` 在 restart 后最多 60 次、每 2 秒检查一次；有效 Red `6a6c375d1ea37a338c86d3a924f1833721b2ea7a` 的 unit 1 failed / 603 passed；Final Ready 总 CI `32684666191` success |
+| R2 | Docker Hub mirror 列表改成单一配置源，后续增删只改一处 | user:centralize-docker-hub-mirrors | satisfied | `scripts/config/docker_hub_mirrors.txt` 保存唯一地址清单；Windows/Linux 都读取该文件；测试从该文件动态读取 mirrors 并检查脚本/Guide 不复制 URL；Final Ready 总 CI `32684666191` success |
+| R3 | 保持既有 mirrors、下载重试、备份、Linux daemon 行为和最终失败保护 | scripts/dev/configure_docker_desktop_mirrors.ps1 | satisfied | Windows 保持 `max-download-attempts=5`、daemon 合并/时间戳备份/超时失败；Linux 保持 `/data/docker`、日志轮转、daemon merge/validate、安全重启和 PostgreSQL smoke；Windows workflow `32684666192`、Internal V1-A `32684666169` success |
+| R4 | 文档只描述最新单一事实源，不复制 URL 清单 | user:centralize-docker-hub-mirrors | satisfied | Guide 03/04 只引用 `scripts/config/docker_hub_mirrors.txt`；静态测试约束 Guide 不复制有效 mirror URL；Final Ready CI success |
+| R5 | 完成 L2 Completion Audit、两阶段 Review、Ready Check、永久 CI 并合并 main | AGENTS.md | satisfied | Final Ready HEAD `544f65f1fd5ac6670f90df7b1f6df8646191129e` 的 11 个永久 workflow 全部 success；PR #190 已正常合并，implementation merge commit `f4fef4f55737d09b8c3eb62d43d72972fb22c554` |
 
 # Validation Matrix
 
@@ -91,15 +91,15 @@ Windows 与 Linux 初始化脚本读取同一个 mirror 配置文件；以后增
 | Browser Mock Acceptance | not_applicable | 不涉及浏览器行为 |
 | Backend/API/PostgreSQL Integration | not_applicable | 不修改后端或数据库行为 |
 | Contract / Generated Client | not_applicable | 不修改公共 Contract |
-| Real Full-stack Golden Path | not_applicable | 不修改完整运行栈业务语义；Internal V1-A 与 Windows named-volume Runtime 仍作为回归门禁通过 |
+| Real Full-stack Golden Path | not_applicable | 不修改完整运行栈业务语义；Internal V1-A 与 Windows named-volume Runtime 作为回归门禁均通过 |
 | Real Provider Probe | not_applicable | 不涉及外部 Provider |
-| Docs / Governance / Other | required | 有效 Red `6a6c375d...`；Green 总 CI `32684442812` success；Windows PowerShell/Compose `32684442775` success；功能审计 HEAD 其余永久 workflow success；Ready HEAD 再执行 Completion Gate 和全量永久 CI |
+| Docs / Governance / Other | required | 有效 Red `6a6c375d...`；Final Ready 总 CI `32684666191`、Windows PowerShell/Compose `32684666192`、Completion Gate `32684666176` 及其余永久 workflow 全部 success |
 
 # Completion Audit
 
 - [x] upstream_re_read: 2026-08-24 重新读取本轮用户确认、`AGENTS.md`、Reliable Vibe Coding、Blueprint 07、统一 mirror 文件、Windows helper、Linux setup、目标测试、Windows workflow、Guide 03/04 与环境总入口。
 - [x] change_coverage: 独立重建并核对 R1-R5，覆盖假阴性修复、单一配置源、Windows/Linux 共用、既有安全/下载语义保持、文档与交付门禁；没有 requirement omission。
-- [x] reverse_audit: 从配置文件反查 Windows/Linux 消费和测试/Guide，从两个 setup 反查配置来源；三个当前 mirror URL 只由统一配置文件维护，Dockerfile/Compose/env image identity 与 npm/PyPI/Debian 构建源均未修改；并行多词包 Change 路径不重叠。
+- [x] reverse_audit: 从配置文件反查 Windows/Linux 消费和测试/Guide，从两个 setup 反查配置来源；三个当前 mirror URL 只由统一配置文件维护，Dockerfile/Compose/env image identity 与 npm/PyPI/Debian 构建源均未修改；并行 Change 路径未混入本 PR。
 - [x] unresolved_cleared: R1-R5 全部有当前实现/测试/运行证据；required Validation Matrix 层已覆盖，其余层确无独立证明价值。
 
 # Review
@@ -124,23 +124,24 @@ Windows 与 Linux 初始化脚本读取同一个 mirror 配置文件；以后增
 
 总 CI `32683227084` 在 Ruff / mypy 通过后进入 unit，结果 **1 failed / 603 passed**；唯一目标失败为旧 `configure_docker_desktop_mirrors.ps1` 不存在 `$MirrorVerificationAttempts = 60`，证明旧实现没有 restart 后 mirror 有界重试。
 
-后续为单一配置源补充测试时有两次提交先被 Ruff formatting 拦截，未将其伪装为行为 Red；单一配置源由用户新决策、最终实现和 Green 证据验收。
+后续为单一配置源补充测试时有提交先被 Ruff formatting 拦截，未将其伪装为行为 Red；单一配置源由用户新决策、最终实现和 Green 证据验收。
 
-## Green / 功能审计
+## Final Ready
 
-功能审计 HEAD：`a8553ce17a5ad14f0806f1ae39144e84b71e91e3`
+Final Ready HEAD：`544f65f1fd5ac6670f90df7b1f6df8646191129e`
 
-- CI `32684442812`: success；Stage 1、Stage 2、Stage 3A、Windows bootstrap 全部 success，目标 unit 位于 `Backend and repository checks` 并通过。
-- Windows Docker Desktop Compose Compatibility `32684442775`: success；PowerShell helper AST 语法解析、CMD/PowerShell Compose CLI、named-volume Runtime 全部通过。
-- Internal V1-A `32684442774`: success。
-- Stage 8F `32684442887`: success。
-- Local Dev Bootstrap `32684442783`: success。
-- Stage 6 / Stage 7 相关永久 workflow：同一 HEAD 全部 success。
-- Change Completion Gate 在 Change 仍为 `in_progress` 时按治理规则预期 failure；本 `ready_for_review` 提交后重新执行。
+- CI `32684666191`: success。
+- Change Completion Gate `32684666176`: success。
+- Windows Docker Desktop Compose Compatibility `32684666192`: success。
+- Internal V1-A `32684666169`: success。
+- Local Dev Bootstrap `32684666224`: success。
+- Stage 8F `32684666174`: success。
+- Stage 6、Stage 7 Keyword Packs、Provider Config、Scheduler、Plan Occurrence：同一 Ready HEAD 全部 success。
 
 # Git / 交付
 
-- Branch: `fix/docker-desktop-mirror-verification-retry`
-- PR: #190
-- Merge authorization: 用户已明确授权最终门禁全绿后正常合并到 `main`
-- Archive: 实现 PR 合并后创建独立归档 PR，将本 Change 标记 `done` 并移动到 `changes/archive/2026-08/`
+- Implementation branch: `fix/docker-desktop-mirror-verification-retry`
+- Implementation PR: #190，已正常 merge 到 `main`
+- Final Ready HEAD: `544f65f1fd5ac6670f90df7b1f6df8646191129e`
+- Implementation merge commit: `f4fef4f55737d09b8c3eb62d43d72972fb22c554`
+- Archive: 本文件由独立归档 PR 从 `changes/active/` 移入 `changes/archive/2026-08/`；归档 PR/merge 状态由 GitHub PR 与提交历史记录
