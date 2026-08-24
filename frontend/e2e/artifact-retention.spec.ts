@@ -68,10 +68,19 @@ const content = {
   content_type: 'note',
   title: '爱玛用户体验',
   text: '用于 Artifact retention UI 验收。',
+  author_display_name: '保留策略测试用户',
   published_at: '2099-01-01T00:00:00Z',
   last_seen_at: '2099-01-01T00:00:00Z',
-  metrics: { like_count: 1, comment_count: 0 },
-  analysis: null,
+  content_url: 'https://example.com/note-retention',
+  metrics: { like_count: 1, comment_count: 0, share_count: 0 },
+  analysis: {
+    status: 'completed',
+    sentiment: '中性',
+    labels: [],
+    analyzed_at: '2099-01-01T00:00:30Z',
+    model_provider: 'fixture',
+    model: 'fixture-model',
+  },
   source: { provider_name: 'file-import', import_batch_id: batchId },
 }
 
@@ -89,8 +98,8 @@ const completedExport = {
       export_id: exportId,
       artifact_id: '72345678-1234-5678-1234-567812345678',
       content_count: 1,
-      analyzed_count: 0,
-      unanalyzed_count: 1,
+      analyzed_count: 1,
+      unanalyzed_count: 0,
       comment_count: 0,
     },
     created_at: '2099-01-01T00:00:00Z',
@@ -99,7 +108,7 @@ const completedExport = {
   },
   artifact_id: '72345678-1234-5678-1234-567812345678',
   filename: `aima-ugc-voice-plaza-${exportId}.xlsx`,
-  stats: { content_count: 1, analyzed_count: 0, unanalyzed_count: 1, comment_count: 0 },
+  stats: { content_count: 1, analyzed_count: 1, unanalyzed_count: 0, comment_count: 0 },
   created_at: '2099-01-01T00:00:00Z',
   completed_at: '2099-01-01T00:01:00Z',
 }
@@ -175,6 +184,7 @@ test('shows the seven-day Excel export window in the existing export dialog', as
   await page.getByRole('button', { name: /导出记录/ }).click()
   const dialog = page.getByRole('dialog', { name: '导出声音记录' })
 
+  await expect(dialog).toBeVisible()
   await expect(dialog.getByText(/Excel 导出文件自生成完成后保留 7 天/)).toBeVisible()
   await expect(dialog.getByText(/下载有效期至/)).toBeVisible()
   await expect(dialog.getByRole('button', { name: '下载' })).toBeEnabled()
