@@ -1,0 +1,53 @@
+name: Dev Format Manual Relevance
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout head branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Install locked formatter
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+
+      - name: Apply repository Ruff formatter
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff format \
+            backend/src/aima_ugc/adapters/persistence/postgres/relevance_reviews.py \
+            backend/src/aima_ugc/bootstrap/api.py \
+            tests/fullstack/seed_stage8f_manual_relevance_review.py \
+            tests/integration/content/test_manual_relevance_review.py
+          git add \
+            backend/src/aima_ugc/adapters/persistence/postgres/relevance_reviews.py \
+            backend/src/aima_ugc/bootstrap/api.py \
+            tests/fullstack/seed_stage8f_manual_relevance_review.py \
+            tests/integration/content/test_manual_relevance_review.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --cached --quiet; then
+            echo "No formatting changes."
+            exit 0
+          fi
+          git commit -m "按 Ruff 格式化人工相关性复核代码"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
