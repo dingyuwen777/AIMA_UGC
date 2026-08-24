@@ -169,7 +169,9 @@ function Get-DockerRegistryMirrorProbe {
 
     $startInfo = New-Object System.Diagnostics.ProcessStartInfo
     $startInfo.FileName = $dockerCommand.Source
-    $startInfo.Arguments = 'info --format "{{json .RegistryConfig.Mirrors}}"'
+    # Ask Docker to emit exactly one mirror per line. This avoids Windows PowerShell
+    # 5.1 JSON-array enumeration/coercion turning multiple mirrors into one string.
+    $startInfo.Arguments = 'info --format {{range .RegistryConfig.Mirrors}}{{println .}}{{end}}'
     $startInfo.UseShellExecute = $false
     $startInfo.CreateNoWindow = $true
     $startInfo.RedirectStandardOutput = $true
@@ -214,15 +216,17 @@ function Get-DockerRegistryMirrorProbe {
             }
         }
 
-        try {
-            $actual = @($stdout | ConvertFrom-Json)
-        }
-        catch {
+        $actual = @(
+            $stdout -split "`r?`n" |
+                ForEach-Object { $_.Trim() } |
+                Where-Object { $_ }
+        )
+        if ($actual.Count -eq 0) {
             return [pscustomobject]@{
                 Succeeded = $false
                 TimedOut = $false
                 Mirrors = @()
-                Error = "docker info returned invalid registry mirror JSON: $stdout"
+                Error = 'docker info returned no registry mirror lines.'
             }
         }
 
