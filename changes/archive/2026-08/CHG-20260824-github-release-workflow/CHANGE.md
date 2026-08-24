@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260824-github-release-workflow
 title: GitHub 一键离线 Release Workflow
 level: L3
-status: ready_for_review
+status: done
 owner: aima
 branch: feature/github-release-workflow
 created: 2026-08-24
@@ -54,7 +54,7 @@ data_changes: []
 - 不在本 Change 引入 SBOM 生成器、第三方签名工具或新项目依赖；当前 `SHA256SUMS` 仅证明文件完整性，不冒充独立来源签名。
 - 不修改 Windows `compose.windows.yaml` 的业务语义；Windows storage adapter 不进入服务器 Release Bundle。
 - 不自动发起真实 TikHub/LLM 请求，不使用 Provider Secret 做 Release 验证。
-- 本 Change 不自动创建一个真实业务版本号的 GitHub Release；首次正式版本由用户在本 PR 合并并确认 `main` 门禁后手工触发。
+- 本 Change 不自动创建一个真实业务版本号的 GitHub Release；首次正式版本由用户在 Implementation PR 合并并确认 `main` 门禁后手工触发。
 
 # 必须保持不变
 
@@ -90,8 +90,8 @@ Build/verify job 只拿只读权限，构建 Backend/Frontend + 拉 `postgres:18
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
 | R1 | Actions 手工输入版本后可一键校验 main、发布已验证镜像、打 Tag 并创建可下载 GitHub Release | user:2026-08-24-github-release-workflow | satisfied | `.github/workflows/release.yml` 已实现 `workflow_dispatch`、`publish-release`、GHCR digest、`gh release create --target "$RELEASE_SHA"`；首次真实业务版本按非目标留给合并后人工触发，不用测试版本污染正式 Release 历史。 |
-| R2 | Release Runner 显式使用 Docker Hub / Debian / PyPI / npm 官方上游且不影响本地国内默认源 | user:2026-08-24-official-release-upstreams | satisfied | `tests/unit/test_docker_build_sources.py` 静态门禁；Release dry-run `32702475285` 日志实际显示 `docker.io/library/*`、`deb.debian.org`、`pypi.org`、`registry.npmjs.org`；本 Change 未修改本地三处默认源。 |
-| R3 | Release 面向 Linux/AMD64，服务器使用 `images.tar` + `--no-build --pull never`，不现场构建/拉镜像 | docs/roadmap/02_生产上线实施路线.md | satisfied | Release dry-run `32702475285` 实际 build linux/amd64、保存并删除候选镜像、重新 load，canonical Compose no-build/no-pull 全栈 readiness 成功。 |
+| R2 | Release Runner 显式使用 Docker Hub / Debian / PyPI / npm 官方上游且不影响本地国内默认源 | user:2026-08-24-official-release-upstreams | satisfied | `tests/unit/test_docker_build_sources.py` 静态门禁；最终 Release dry-run `32705187995` 成功执行官方上游构建；本 Change 未修改本地三处默认源。 |
+| R3 | Release 面向 Linux/AMD64，服务器使用 `images.tar` + `--no-build --pull never`，不现场构建/拉镜像 | docs/roadmap/02_生产上线实施路线.md | satisfied | 最终 Release dry-run `32705187995` 实际 build linux/amd64、保存并删除候选镜像、重新 load，canonical Compose no-build/no-pull 全栈 readiness 成功。 |
 | R4 | Release Bundle 与 PostgreSQL/Artifact/log/Secret 持久状态分离，`AIMA_HOST_ROOT` 不随版本切换 | docs/appendix/11_生产部署与离线Release方案.md | satisfied | Workflow Bundle 白名单仅 7 项；`images.tar` 只有 Backend/Frontend/PostgreSQL 镜像；smoke 使用独立临时 Host Root；正式文档保持 `/data/AIMA_UGC` 为 Release 外持久根。 |
 | R5 | 不把未完成 Backup/Restore、认证/HTTPS、SBOM/独立签名或完整 Production Go-Live 写成已完成 | docs/appendix/11_生产部署与离线Release方案.md | satisfied | Roadmap/Appendix/环境文档均把这些能力保留为后续 Production 强化；manifest 也显式标记 SBOM、独立签名与协调 Backup/Restore 当前未实现。 |
 
@@ -102,9 +102,9 @@ Build/verify job 只拿只读权限，构建 Backend/Frontend + 拉 `postgres:18
 | Browser Mock Acceptance | not_applicable | 不修改产品页面或用户业务交互；GitHub Actions `workflow_dispatch` 不是产品 Browser E2E。 |
 | Backend/API/PostgreSQL Integration | not_applicable | 不修改后端业务规则、HTTP API、Repository、Schema；PostgreSQL Runtime 作为 Release Full-stack Golden Path 的真实组件验证。 |
 | Contract / Generated Client | not_applicable | 不修改 Pydantic/OpenAPI/generated client。 |
-| Real Full-stack Golden Path | required | GitHub Actions run `32702475285`：官方上游 build → `images.tar` → 删除候选镜像 → load → canonical Compose `--no-build --pull never --wait` → bootstrap/migrate/configure/API/Worker/Scheduler/Frontend healthy。 |
+| Real Full-stack Golden Path | required | 最终 GitHub Actions run `32705187995`：官方上游 build → `images.tar` → 删除候选镜像 → load → canonical Compose `--no-build --pull never --wait` → bootstrap/migrate/configure/API/Worker/Scheduler/Frontend healthy。 |
 | Real Provider Probe | not_applicable | 不改变 TikHub/LLM endpoint/Mapper/Transport；Release 验证明确禁用真实付费 Provider。 |
-| Docs / Governance / Other | required | Red/Green 静态测试、Release dry-run、CI、Internal V1-A、Completion Gate 与 Production Release 文档同步共同覆盖。 |
+| Docs / Governance / Other | required | Red/Green 静态测试、最终 Release dry-run、CI、Internal V1-A、Windows Compatibility、Completion Gate 与 Production Release 文档同步共同覆盖。 |
 
 # Completion Audit
 
@@ -120,8 +120,9 @@ Build/verify job 只拿只读权限，构建 Backend/Frontend + 拉 `postgres:18
 - [x] 建立 Validation Matrix 和 L3 方案比较。
 - [x] 实现最小 Release Workflow，并把 PR dry-run 与正式 publish 权限拆开。
 - [x] 同步环境部署、Roadmap 与 Release Appendix。
-- [x] 取得 Release dry-run/no-pull、目标测试、相关 CI 的新鲜证据；本 Change 状态改为 Ready 后由永久 Completion Gate 再执行机器 Ready Check。
+- [x] 取得 Release dry-run/no-pull、目标测试、相关 CI 和 Completion Gate 的最终 PR HEAD 新鲜证据。
 - [x] 完成 Requirement Traceability、Completion Audit 和两阶段人工 Review。
+- [x] Implementation PR #201 正常合并到 `main`。
 
 # 验证
 
@@ -140,15 +141,30 @@ FAILED tests/unit/test_docker_build_sources.py::test_release_pull_request_dry_ru
 
 提交 `f42c1720a5c8d7ac9917db72fbbfca4b8ba1dd32`（`隔离 Release 发布权限并复用已验证镜像`）把只读 build/replay 与写权限 publish 拆成两个 job；正式 publish 只消费已完成离线回放的候选，不重新 build。
 
-后续 HEAD 又针对 `main` 中 `env.production.example` 已提供 LLM Base URL/Provider/Model 默认值这一事实，修正 Release smoke：在无真实 API Key 的 dry-run 中显式移除三项 LLM Runtime 配置，保证 CI 不把 Provider 默认值误判成启用 LLM。
+后续 HEAD 又针对 `main` 中 `env.production.example` 已提供 LLM Base URL/Provider/Model 默认值这一事实，修正 Release smoke：在无真实 API Key 的 dry-run 中显式移除三项 LLM Runtime 配置，保证 CI 不把 Provider 默认值误判成启用 LLM；同时把环境文档、Roadmap、Production Release Appendix 的发布顺序统一为“候选离线回放通过后再执行正式 GHCR/Tag/Release 发布”。
 
-## 当前新鲜 Runner 证据
+## 最终 Implementation PR HEAD 新鲜 Runner 证据
 
-- Release dry-run run `32702475285`：`Build and replay offline candidate` **success**。实际使用 Docker Hub/Debian/PyPI/npm 官方上游；Backend/Frontend/PostgreSQL 构建/拉取成功；Bundle SHA256 成功；删除候选运行 tag 后从 `images.tar` load；canonical Compose `--no-build --pull never --wait` 成功；bootstrap/migrate/configure exit 0，API/Worker/Scheduler/Frontend healthy；候选 tar.gz `gzip -t` 成功。
-- 同一 PR HEAD 的 CI run `32702475281`：**success**。
-- 同一 PR HEAD 的 Internal V1-A run `32702475295`：**success**。
-- 当时 Windows Compose 失败来自 `main` 已把 `scripts/config/docker_hub_mirrors.txt` 扩为 6 项，而其永久测试 Fixture 仍只构造前三项这一独立回归；已通过独立 PR #203 修复测试 Fixture。PR #203 的 Windows Compose、CI、Internal V1-A、Completion Gate、Local Dev、Stage 8F 均 success，已正常合并到 `main`（merge `0008162ba56c84798ca8122ceefaf70f7b18d0f0`）。本 Release Change 没有修改生产 Windows Runtime 语义。
-- Change Completion Gate 先前因本 Change 仍为 `in_progress` 按预期失败；本提交把状态改为 `ready_for_review`，必须等待当前 HEAD 的永久 Gate 新鲜复验后方可合并。
+最终 HEAD：`7c589475323393ad1ec1024f10b5940359a710aa`。
+
+全部完成且结论为 `success`：
+
+- Release dry-run：`32705187995`
+- CI：`32705188027`
+- Internal V1-A Deployable Stack：`32705188073`
+- Windows Docker Desktop Compose Compatibility：`32705188018`
+- Change Completion Gate：`32705188009`
+- Stage 8F Full-stack Acceptance：`32705188048`
+- Stage 6 Xiaohongshu Vertical Slice：`32705188117`
+- Stage 7 Keyword Packs：`32705188058`
+- Stage 7 Plan Occurrence Run Snapshot：`32705188038`
+- Stage 7 Scheduler Runtime：`32705188010`
+- Stage 7 Provider Config Routing：`32705188023`
+- Local Dev Bootstrap：`32705188194`
+
+Release dry-run 的 `Build and replay offline candidate` job 成功完成官方海外上游 build、`postgres:18.4`、Bundle/checksum、删除候选镜像、`docker load`、`--no-build --pull never --wait`、bootstrap/migrate/configure/API/Worker/Scheduler/Frontend readiness 和候选压缩包校验。PR 模式 publish job 按设计 skipped，没有产生 GHCR/Tag/Release 写副作用。
+
+独立 PR #203 已修复 `main` 上 Docker mirror 列表扩展后 Windows CI Fixture 的旧回归，并已合并；本 Change 最终 HEAD 的 Windows Compatibility 已重新通过。
 
 # 两阶段 Review
 
@@ -164,16 +180,16 @@ FAILED tests/unit/test_docker_build_sources.py::test_release_pull_request_dry_ru
 
 - 正确性：正式 publish 开始和 GHCR/Release 创建前均重新校验 `main` 最新 SHA、Tag/Release 不重复；避免构建期间 `main` 前进后发布旧候选。
 - 权限：PR/build job 只有 read/check 权限；`contents: write` / `packages: write` 只位于 `workflow_dispatch` publish job。
-- 供应链：版本/tag 固定，无 `latest`；PostgreSQL repo digest、应用 GHCR digest进入 manifest；SBOM/独立签名未伪装完成。
+- 供应链：版本/tag 固定，无 `latest`；PostgreSQL repo digest、应用 GHCR digest 进入 manifest；SBOM/独立签名未伪装完成。
 - 数据安全：无 `down -v`；Bundle 白名单排除生产数据/Secret；Release 与 `${AIMA_HOST_ROOT}` 解耦。
 - 兼容性：没有修改本地 Compose 命令、国内构建默认源、Windows storage adapter、业务接口、Schema 或依赖。
-- 剩余边界：PR 无法也不应执行正式 GHCR/Tag/GitHub Release 写副作用；该路径在代码/静态门禁中完成，首次真实业务版本需合并后由用户手工触发并观察结果。
+- 剩余边界：PR 无法也不应执行正式 GHCR/Tag/GitHub Release 写副作用；首次真实业务版本需在合并后的 `main` 由用户手工触发并观察结果。
 
 # 文档影响
 
-- `docs/02_环境运行与部署.md`：增加 Actions 手工 Release、官方海外上游隔离、Bundle 下载/服务器离线启动和 Host Root 数据分离说明。
-- `docs/roadmap/02_生产上线实施路线.md`：记录 GitHub Release Workflow 基础部分完成，不提前宣称 Stage 11/Production Go-Live 闭环。
-- `docs/appendix/11_生产部署与离线Release方案.md`：记录 Workflow、Bundle、GHCR/digest、no-build/no-pull、当前未包含 SBOM/签名/协调恢复等机器事实。
+- `docs/02_环境运行与部署.md`：增加 Actions 手工 Release、官方海外上游隔离、Bundle 下载/服务器离线启动和 Host Root 数据分离说明，并对齐“先回放候选、后正式发布”的实际顺序。
+- `docs/roadmap/02_生产上线实施路线.md`：记录 GitHub Release Workflow 基础部分完成，不提前宣称 Stage 11/Production Go-Live 闭环，并对齐实际发布顺序。
+- `docs/appendix/11_生产部署与离线Release方案.md`：记录 Workflow、Bundle、GHCR/digest、no-build/no-pull、当前未包含 SBOM/签名/协调恢复等机器事实，并对齐实际发布顺序。
 
 # 兼容、部署与回滚
 
@@ -185,8 +201,9 @@ FAILED tests/unit/test_docker_build_sources.py::test_release_pull_request_dry_ru
 
 # Git / 交付状态
 
-- 分支：`feature/github-release-workflow`
-- PR：#201 `新增 GitHub 一键离线 Release Workflow`
-- 当前阶段：实现已进入 `ready_for_review`；等待本提交后的永久 CI / Completion Gate 新鲜复验。
-- 正式业务版本 Release：未触发；必须在 PR 正常合并且 `main` 要求门禁成功后，由用户在 `Actions → Release → Run workflow` 输入正式 `vMAJOR.MINOR.PATCH`。
-- 归档：Implementation PR 合并并验证 `main` 后，按仓库 Change 协议单独归档；当前不提前移动到 `changes/archive/`。
+- 实现分支：`feature/github-release-workflow`
+- Implementation PR：#201 `新增 GitHub 一键离线 Release Workflow`
+- Implementation PR 最终 HEAD：`7c589475323393ad1ec1024f10b5940359a710aa`
+- Implementation merge：`db749e354b1cf216be9d670a142b825d34e72757`，已正常合并到 `main`。
+- 归档分支：`archive/github-release-workflow`，从 Implementation merge 创建，只移动/更新本 Change 记录，不修改业务实现。
+- 正式业务版本 Release：未触发；按已确认非目标，合并后由用户在 `Actions → Release → Run workflow` 输入正式 `vMAJOR.MINOR.PATCH`，避免以测试版本污染 Tag/GHCR/Release 历史。
