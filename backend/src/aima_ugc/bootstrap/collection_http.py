@@ -55,6 +55,8 @@ from aima_ugc.contracts.http import (
     CollectionRuntimeStatus,
     CollectionRuntimeSummaryResponse,
     CollectionScopeResponse,
+    CollectionSearchCapabilityResponse,
+    CollectionSearchConfig,
     ImportStatsResponse,
 )
 from aima_ugc.modules.collection.collection_run_job import (
@@ -94,6 +96,11 @@ from aima_ugc.modules.collection.runtime_query import (
     CollectionRuntimeReadRecord,
 )
 from aima_ugc.modules.collection.scheduled_scopes import build_scheduled_scope_snapshot
+from aima_ugc.modules.collection.search_config import (
+    manual_discovery_search_config,
+    normalize_search_config,
+    search_config_choices,
+)
 from aima_ugc.platform.security import SecretFileError, read_secret_file
 
 from .analysis_identity import current_analysis_identity
@@ -146,6 +153,7 @@ class PostgresCollectionHttpService:
                                     operation.business_operation
                                     for operation in route.capability.operations
                                 ),
+                                search=_search_capability_response(route.capability),
                             )
                         )
                     if config_has_route:
@@ -438,7 +446,26 @@ class PostgresCollectionHttpService:
                 _validate_requested_capabilities(route.capability, request)
             except ValueError as exc:
                 raise CollectionConflict from exc
-            snapshots.append(provider_run_snapshot(config, platform=selection.platform))
+            search_config: dict[str, str] = {}
+            if request.mode == "discovery":
+                defaults = manual_discovery_search_config(route.capability)
+                requested = (
+                    selection.search_config.model_dump(mode="json", exclude_none=True)
+                    if selection.search_config is not None
+                    else {}
+                )
+                search_config = normalize_search_config(
+                    route.capability,
+                    {**defaults, **requested},
+                    require_complete=True,
+                )
+            snapshots.append(
+                provider_run_snapshot(
+                    config,
+                    platform=selection.platform,
+                    config=search_config,
+                )
+            )
         return tuple(snapshots)
 
     def _build_scopes(
@@ -510,6 +537,23 @@ def _validate_requested_capabilities(
     missing = [name for name in required if capability.operation(name) is None]
     if missing:
         raise ValueError(f"Provider Capability 缺少: {', '.join(missing)}")
+
+
+def _search_capability_response(
+    capability: ProviderPlatformCapabilityV1,
+) -> CollectionSearchCapabilityResponse | None:
+    if capability.operation("keyword_search") is None:
+        return None
+    choices = search_config_choices(capability)
+    return CollectionSearchCapabilityResponse(
+        supported_sort_modes=choices["sort_mode"],
+        supported_time_filters=choices["published_within"],
+        supported_duration_filters=choices["duration"],
+        supported_content_types=choices["content_type"],
+        manual_default=CollectionSearchConfig.model_validate(
+            manual_discovery_search_config(capability)
+        ),
+    )
 
 
 def _public_run_status(

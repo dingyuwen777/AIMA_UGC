@@ -137,6 +137,17 @@ Capability=false 的平台走受控刷新，不套用同一逻辑。
 
 精确排序/时间/内容类型枚举看 `capabilities.py` 和 Blueprint 08。
 
+前端配置链统一为：
+
+```text
+capabilities.py
+→ GET /api/v1/collection-capabilities
+→ generated Client
+→ 逐平台 Search 选择器
+```
+
+手工 Discovery 默认选择 Capability 可支持的 `latest + 1d + all`，并允许逐平台修改；缺少原生时间筛选等能力的平台不会显示或发送对应字段。新建周期 Plan 必须显式完成每个平台的所有受支持维度。已有 Plan 的空配置继续沿用历史 Adapter 默认行为，不做静默迁移。
+
 ---
 
 ## 5. Provider Request/Attempt 和 Raw

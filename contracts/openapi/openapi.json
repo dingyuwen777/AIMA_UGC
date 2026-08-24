@@ -116,12 +116,23 @@
           "provider": {
             "title": "Provider",
             "type": "string"
+          },
+          "search": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CollectionSearchCapabilityResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
           "provider",
           "platform",
-          "operations"
+          "operations",
+          "search"
         ],
         "title": "CollectionCapabilityResponse",
         "type": "object"
@@ -220,7 +231,7 @@
       },
       "CollectionPlanPlatformRequest": {
         "additionalProperties": false,
-        "description": "Plan 只选择稳定 Provider Config，不接收 Provider 私有配置。",
+        "description": "Plan 逐平台提交 Provider-neutral 搜索配置，不接收 Provider 私有参数。",
         "properties": {
           "platform": {
             "$ref": "#/components/schemas/CollectionPlatform"
@@ -229,11 +240,15 @@
             "format": "uuid",
             "title": "Provider Config Id",
             "type": "string"
+          },
+          "search_config": {
+            "$ref": "#/components/schemas/CollectionSearchConfig"
           }
         },
         "required": [
           "platform",
-          "provider_config_id"
+          "provider_config_id",
+          "search_config"
         ],
         "title": "CollectionPlanPlatformRequest",
         "type": "object"
@@ -248,11 +263,15 @@
             "format": "uuid",
             "title": "Provider Config Id",
             "type": "string"
+          },
+          "search_config": {
+            "$ref": "#/components/schemas/CollectionSearchConfig"
           }
         },
         "required": [
           "platform",
-          "provider_config_id"
+          "provider_config_id",
+          "search_config"
         ],
         "title": "CollectionPlanPlatformResponse",
         "type": "object"
@@ -516,6 +535,16 @@
             "format": "uuid",
             "title": "Provider Config Id",
             "type": "string"
+          },
+          "search_config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CollectionSearchConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -1047,6 +1076,116 @@
           "stats"
         ],
         "title": "CollectionScopeResponse",
+        "type": "object"
+      },
+      "CollectionSearchCapabilityResponse": {
+        "additionalProperties": false,
+        "description": "前端配置 Search 所需的合法选项与手工发现默认值。",
+        "properties": {
+          "manual_default": {
+            "$ref": "#/components/schemas/CollectionSearchConfig"
+          },
+          "supported_content_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Supported Content Types",
+            "type": "array"
+          },
+          "supported_duration_filters": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Supported Duration Filters",
+            "type": "array"
+          },
+          "supported_sort_modes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Supported Sort Modes",
+            "type": "array"
+          },
+          "supported_time_filters": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Supported Time Filters",
+            "type": "array"
+          }
+        },
+        "required": [
+          "supported_sort_modes",
+          "supported_time_filters",
+          "supported_duration_filters",
+          "supported_content_types",
+          "manual_default"
+        ],
+        "title": "CollectionSearchCapabilityResponse",
+        "type": "object"
+      },
+      "CollectionSearchConfig": {
+        "additionalProperties": false,
+        "description": "Provider-neutral 搜索配置；合法值仍由当前 Platform Capability 决定。",
+        "properties": {
+          "content_type": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[a-z0-9][a-z0-9_.-]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Type"
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[a-z0-9][a-z0-9_.-]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration"
+          },
+          "published_within": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[a-z0-9][a-z0-9_.-]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published Within"
+          },
+          "sort_mode": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[a-z0-9][a-z0-9_.-]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort Mode"
+          }
+        },
+        "title": "CollectionSearchConfig",
         "type": "object"
       },
       "CommentCoverageResponse": {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 
 import type {
   CollectionCapabilitiesResponse,
@@ -7,9 +7,13 @@ import type {
   CollectionPlatform,
   CollectionRunCreateRequest,
   CollectionRunMode,
+  CollectionSearchCapabilityResponse,
+  CollectionSearchConfig,
   ImportBatchResponse,
   KeywordPackSummaryResponse,
 } from '../../../../../generated/api/client'
+import CollectionSearchConfigFields from '../../../../../shared/CollectionSearchConfigFields.vue'
+import { isCollectionSearchConfigComplete } from '../../../../../shared/collectionSearchConfig'
 import { platformLabels, shortId } from '../../../format'
 
 const props = defineProps<{
@@ -35,6 +39,7 @@ const providerConfigId = ref('')
 const importBatchId = ref('')
 const includeComments = ref(true)
 const includeSubComments = ref(false)
+const searchConfigByPlatform = reactive<Partial<Record<CollectionPlatform, CollectionSearchConfig>>>({})
 const validation = ref<string | null>(null)
 const lastRequestedBatchId = ref('')
 const supportedPlatforms: CollectionPlatform[] = [
@@ -75,9 +80,26 @@ const availablePlatforms = computed(() => {
   )
 })
 
+function searchCapability(platform: CollectionPlatform): CollectionSearchCapabilityResponse | null {
+  const provider = selectedProvider.value
+  if (!provider) return null
+  return props.capabilities?.capabilities.find(
+    (item) => item.provider === provider.provider && item.platform === platform,
+  )?.search ?? null
+}
+
+function clearSearchConfigs(): void {
+  for (const platform of supportedPlatforms) delete searchConfigByPlatform[platform]
+}
+
 const canSubmit = computed(() => {
   if (props.creating || !providerConfigId.value || platforms.value.length === 0) return false
-  if (mode.value === 'discovery') return selectedPackIds.value.length > 0
+  if (mode.value === 'discovery') {
+    return selectedPackIds.value.length > 0 && platforms.value.every((platform) => {
+      const capability = searchCapability(platform)
+      return capability && isCollectionSearchConfigComplete(capability, searchConfigByPlatform[platform])
+    })
+  }
   return !!importBatchId.value && !props.loadingBatchPlatforms
 })
 
@@ -98,6 +120,7 @@ watch(
     platforms.value = []
     includeComments.value = true
     includeSubComments.value = false
+    clearSearchConfigs()
     validation.value = null
     providerConfigId.value =
       props.capabilities?.provider_configs.length === 1
@@ -108,6 +131,7 @@ watch(
 
 watch(mode, () => {
   platforms.value = []
+  clearSearchConfigs()
   validation.value = null
   if (mode.value === 'batch_supplement') {
     requestBatchPlatforms(importBatchId.value)
@@ -118,14 +142,24 @@ watch(mode, () => {
 
 watch(importBatchId, (batchId, previous) => {
   platforms.value = []
+  clearSearchConfigs()
   validation.value = null
   if (mode.value === 'batch_supplement' && batchId !== previous) {
     requestBatchPlatforms(batchId)
   }
 })
 
-watch([providerConfigId, includeComments, includeSubComments, availablePlatforms], () => {
+watch(providerConfigId, () => {
+  platforms.value = []
+  clearSearchConfigs()
+  validation.value = null
+})
+
+watch([includeComments, includeSubComments, availablePlatforms], () => {
   platforms.value = platforms.value.filter((platform) => availablePlatforms.value.includes(platform))
+  for (const platform of supportedPlatforms) {
+    if (!platforms.value.includes(platform)) delete searchConfigByPlatform[platform]
+  }
   validation.value = null
 })
 
@@ -140,9 +174,16 @@ function togglePack(packId: string): void {
 }
 
 function togglePlatform(platform: CollectionPlatform): void {
-  platforms.value = platforms.value.includes(platform)
-    ? platforms.value.filter((value) => value !== platform)
-    : [...platforms.value, platform]
+  if (platforms.value.includes(platform)) {
+    platforms.value = platforms.value.filter((value) => value !== platform)
+    delete searchConfigByPlatform[platform]
+    return
+  }
+  platforms.value = [...platforms.value, platform]
+  const capability = searchCapability(platform)
+  if (mode.value === 'discovery' && capability) {
+    searchConfigByPlatform[platform] = { ...capability.manual_default }
+  }
 }
 
 function submit(): void {
@@ -174,6 +215,9 @@ function submit(): void {
     platforms: platforms.value.map((platform) => ({
       platform,
       provider_config_id: providerConfigId.value,
+      ...(mode.value === 'discovery'
+        ? { search_config: searchConfigByPlatform[platform] }
+        : {}),
     })),
     include_comments: includeComments.value,
     include_sub_comments: includeSubComments.value,
@@ -314,6 +358,27 @@ function submit(): void {
           </p>
         </section>
 
+        <section v-if="mode === 'discovery' && platforms.length">
+          <label>逐平台发现参数</label>
+          <p class="platform-state">
+            默认使用“最新 + 一天内 + 不限内容”；不同平台只显示后端声明支持的参数。
+          </p>
+          <div
+            v-for="platform in platforms"
+            :key="platform"
+            class="search-config-card"
+          >
+            <strong>{{ platformLabels[platform] }}</strong>
+            <CollectionSearchConfigFields
+              v-if="searchCapability(platform) && searchConfigByPlatform[platform]"
+              :model-value="searchConfigByPlatform[platform]!"
+              :capability="searchCapability(platform)!"
+              :platform-label="platformLabels[platform]"
+              @update:model-value="searchConfigByPlatform[platform] = $event"
+            />
+          </div>
+        </section>
+
         <section>
           <label>采集内容</label>
           <div class="content-options">
@@ -398,6 +463,8 @@ select { padding: 0 11px; color: #3c4557; }
 .platform-grid button { height: 42px; border: 1px solid #d9dee8; border-radius: 7px; color: #3c4557; background: #fff; cursor: pointer; font-size: 12px; }
 .platform-grid button.selected { border-color: #ff8bb4; color: var(--aima-primary); background: #fff5f8; }
 .platform-state { margin: 8px 0; color: #7b8494; font-size: 12px; }
+.search-config-card { margin-top: 10px; padding: 12px; border: 1px solid #dfe4ec; border-radius: 7px; background: #fafbfc; }
+.search-config-card > strong { display: block; margin-bottom: 9px; color: #283245; font-size: 13px; }
 .content-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .option { position: relative; display: grid; min-height: 86px; grid-template-columns: 26px 1fr; align-content: center; padding: 10px; border: 1px solid #d9dee8; border-radius: 7px; cursor: pointer; }
 .option input { position: absolute; top: 8px; right: 8px; accent-color: var(--aima-primary); }

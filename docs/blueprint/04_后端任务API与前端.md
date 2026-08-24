@@ -258,6 +258,10 @@ backend/src/aima_ugc/modules/collection/http.py
 
 `collection-runtime/runs` 是统一只读投影，不意味着 Excel Import Batch 和 Collection Run 被合并成一张万能表。
 
+`GET /collection-capabilities` 同时返回各 Provider/Platform 的可执行 Operation 和 Provider-neutral Search 选项。手工 Discovery 可以不传 `search_config`，后端会按 Capability 补齐并冻结“最新、一天内、不限内容”的可支持部分；新建周期 Plan 必须逐平台显式提交完整 `search_config`。平台不支持的维度不进入 Contract，前端不得自行维护另一套平台参数表。
+
+历史 Plan 可能持久化空的 `config={}`。读取、重新启用和 Scheduler 执行继续接受这类记录，并沿用原 Adapter 默认行为；系统不把历史 Plan 静默改成新的手工 Discovery 默认值。
+
 ### 5.3 Content / 声音广场 / Analysis
 
 ```text
@@ -278,7 +282,7 @@ backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
 backend/src/aima_ugc/adapters/persistence/postgres/analysis.py
 ```
 
-`GET /content-analysis-capabilities` 是安全只读运行能力投影，只返回 `configured`。它用于让声音广场在 LLM Base URL / Model / Secret 未形成可执行配置时明确提示并禁用 AI 打标；前端不得读取 `env.local`、Secret 文件或复制后端配置判断。该接口不返回 Base URL、Model、Provider、Secret 路径或 API Key，也不证明外部 LLM 此刻在线；Worker 的执行时配置守卫仍是最终防线。
+`GET /content-analysis-capabilities` 是安全只读运行能力投影，只返回 `configured`。它用于让声音广场在 LLM Base URL / Model / Secret 未形成可执行配置时明确提示并禁用 AI 打标；前端不得读取 `env.local`、Secret 文件或复制后端配置判断。源码开发时，能力接口与 Worker 都从 `AIMA_EXTERNAL_SECRET_DIR` 对应的外部 Secret Root 读取 `llm_api_key`，不能误用只存 PostgreSQL/Cursor Secret 的内部 Root。该接口不返回 Base URL、Model、Provider、Secret 路径或 API Key，也不证明外部 LLM 此刻在线；Worker 的执行时配置守卫仍是最终防线。
 
 `POST /content-analysis-requests` 会先冻结 Content ID + `current_version`，再创建 `analysis.content-label.v1` Job。Worker 分析的不是“未来可能变化的查询结果”，而是请求创建时冻结的目标版本。
 

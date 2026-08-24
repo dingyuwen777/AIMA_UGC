@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260824-multi-keyword-pack-entrypoints
 title: Excel 与 TikHub 手工发现统一多词包选择
 level: L3
-status: ready_for_review
+status: done
 owner: aima
 branch: feature/multi-keyword-pack-entrypoints
 created: 2026-08-24
@@ -85,12 +85,12 @@ data_changes: []
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
-| Browser Mock Acceptance | required | `frontend/e2e/collection-runtime.spec.ts` 已改为多词包选择并断言 `keyword_pack_ids`；最终 PR CI 复验 |
-| Backend/API/PostgreSQL Integration | required | Runner 已验证 Stage 8B/8E 与 ingestion；移除兼容后的最终 PR CI Stage 3A 复验 |
-| Contract / Generated Client | required | Runner 成功执行 Pydantic → OpenAPI → Orval → drift check；最终 CI 再检查 |
-| Real Full-stack Golden Path | required | `frontend/e2e-fullstack/excel-import.spec.ts` 已改为真实创建并选择词包；Stage 8F PR CI 复验 |
-| Real Provider Probe | not_applicable | 本次不改变 TikHub endpoint/响应映射，无需真实收费请求 |
-| Docs / Governance / Other | required | Appendix 08、Ingestion README 已同步；Completion Gate/永久 CI 作为最终门禁 |
+| Browser Mock Acceptance | required | `frontend/e2e/collection-runtime.spec.ts` 覆盖多词包选择并断言 `keyword_pack_ids`；PR #185 最终 CI 通过。 |
+| Backend/API/PostgreSQL Integration | required | PR #185 最终 CI 全绿，包含相关 Stage/Integration 验证。 |
+| Contract / Generated Client | required | PR #185 最终 CI 全绿，Contract/Generated drift gate 通过。 |
+| Real Full-stack Golden Path | required | Stage 8F Full-stack Acceptance run `32675727914` 成功。 |
+| Real Provider Probe | not_applicable | 该 Change 未改变 TikHub endpoint/响应映射，无需真实收费请求。 |
+| Docs / Governance / Other | required | Change Completion Gate run `32675727870` 成功；相关文档已随实现同步。 |
 
 # Completion Audit
 
@@ -111,31 +111,24 @@ data_changes: []
 
 # 验证
 
-## 已执行证据
-
-- Dev Multi Keyword Pack Runner：Contract 生成、Orval 生成、Ruff、mypy（235 source files）、前端 lint/typecheck、Alembic upgrade、目标 API/PostgreSQL ingestion、前端 Vitest 均执行成功后提交正式实现。
-- 移除旧 Payload 兼容后的第一次 Stage 3A Integration 正确暴露一个过期测试断言：业务 Job 已 succeeded，但测试仍访问已删除的 `payload.relevance`，结果 `1 failed, 4 passed`；随后将断言改为确认 `relevance` 不存在。最终永久 CI 必须在当前 HEAD 重新通过后方可合并。
-- Completion Gate 的 RVC 自测 14/14 通过；前序 Gate 分别发现 Change frontmatter/Completion Audit 格式问题，均按仓库模板逐项修正；当前 HEAD 等待最终复验。
-
-## 最终门禁
-
-- PR 永久 CI 全绿，包括 Stage 3A Database、Stage 8F Full-stack Acceptance、Stage 7 Keyword Packs/Plan/Scheduler/Provider、Stage 6、Local Dev、Windows Compose、Internal V1-A、Change Completion Gate。
-- 合并后重新检查 `main` 的永久 CI，不以 PR 结果替代 main 结果。
+PR #185 最终 HEAD `4986dbc58a5d24ffdcdd7284bc24b6a8e286344c` 的 16 个 PR 工作流全部成功，包括 CI `32675727872`、Stage 8F Full-stack Acceptance `32675727914`、Change Completion Gate `32675727870`，以及 Stage 5/6/7、Local Dev、Windows Compose、Internal V1-A 等永久门禁。
 
 # 文档影响
 
 - `docs/appendix/08_数据入口与统一入库实现.md`：同步 Excel/Manual Discovery 多词包选择与冻结语义。
-- `backend/src/aima_ugc/modules/ingestion/README.md`：删除 Excel 自动读取全局单词包的旧说明，改为上传时选择并冻结多词包。
+- `backend/src/aima_ugc/modules/ingestion/README.md`：Excel 导入改为上传时选择并冻结多词包。
 
 # 兼容、部署与回滚
 
 - 无数据库 Schema/Migration 变化，无依赖升级。
 - HTTP Excel Import 与 Manual Discovery Contract 为行为变更，前端/generated client 同 PR 同步。
-- 按用户明确决定，旧 `relevance` Import Job Payload 不兼容新 Worker；部署前若存在旧版本创建且未终结的 Excel Import Job，应先完成或清理，避免升级后由新 Worker 解析旧 Payload。
-- 回滚应整体回滚本 PR 的前后端/Contract，不应只回滚单侧。
+- 按用户明确决定，旧 `relevance` Import Job Payload 不兼容新 Worker；升级前若存在旧版本未终结 Excel Import Job，应先完成或清理。
+- 回滚应整体回滚该实现的前后端/Contract，不应只回滚单侧。
 
 # 交付
 
-- 分支：`feature/multi-keyword-pack-entrypoints`
+- 实现分支：`feature/multi-keyword-pack-entrypoints`
 - PR：#185 `统一 Excel 与 TikHub 手工发现多词包选择`
-- 合并：待最终永久 CI 全绿后执行正常 PR 合并。
+- PR 合并时间：2026-08-24T00:17:46Z
+- 合并提交：`e26c9eac8827efa42a02206d9fc829590e2db0ee`
+- 状态：done，已归档。
