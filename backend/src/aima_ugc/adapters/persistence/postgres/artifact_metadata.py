@@ -9,6 +9,7 @@ from uuid import UUID
 from sqlalchemy import and_, exists, func, insert, or_, select, update
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 from aima_ugc.modules.reporting.tables import reporting_data_exports_table
@@ -47,6 +48,39 @@ def _affected_rows(result: object) -> int:
 
     rowcount = getattr(result, "rowcount", 0)
     return rowcount if isinstance(rowcount, int) and rowcount > 0 else 0
+
+
+def _cleanup_eligibility(*, now: datetime, orphan_before: datetime) -> ColumnElement[bool]:
+    """按当前数据库事实判断 Artifact 是否仍可进入删除认领。
+
+    候选扫描与删除认领之间可能有业务事务建立正式引用，因此真正的 UPDATE CAS
+    必须复用同一判定，而不能把之前扫描到的候选列表当作删除授权。
+    """
+
+    import_referenced = exists(
+        select(processing_import_batches_table.c.id).where(
+            processing_import_batches_table.c.input_artifact_id == artifacts_table.c.id
+        )
+    )
+    export_referenced = exists(
+        select(reporting_data_exports_table.c.id).where(
+            reporting_data_exports_table.c.artifact_id == artifacts_table.c.id
+        )
+    )
+    expired = and_(
+        artifacts_table.c.storage_status.in_(("stored", "linked")),
+        artifacts_table.c.expires_at.is_not(None),
+        artifacts_table.c.expires_at <= now,
+    )
+    orphaned = and_(
+        artifacts_table.c.storage_status == "stored",
+        artifacts_table.c.created_at <= orphan_before,
+        or_(
+            and_(artifacts_table.c.kind == "file-import.raw", ~import_referenced),
+            and_(artifacts_table.c.kind == "content-export.xlsx", ~export_referenced),
+        ),
+    )
+    return or_(expired, orphaned)
 
 
 class PostgresArtifactMetadataRepository:
@@ -282,37 +316,13 @@ class PostgresArtifactMetadataRepository:
         if limit < 1:
             raise ValueError("Artifact cleanup limit 必须大于 0")
 
-        import_referenced = exists(
-            select(processing_import_batches_table.c.id).where(
-                processing_import_batches_table.c.input_artifact_id == artifacts_table.c.id
-            )
-        )
-        export_referenced = exists(
-            select(reporting_data_exports_table.c.id).where(
-                reporting_data_exports_table.c.artifact_id == artifacts_table.c.id
-            )
-        )
-        expired = and_(
-            artifacts_table.c.storage_status.in_(("stored", "linked")),
-            artifacts_table.c.expires_at.is_not(None),
-            artifacts_table.c.expires_at <= now,
-        )
-        orphaned = and_(
-            artifacts_table.c.storage_status == "stored",
-            artifacts_table.c.created_at <= orphan_before,
-            or_(
-                and_(artifacts_table.c.kind == "file-import.raw", ~import_referenced),
-                and_(artifacts_table.c.kind == "content-export.xlsx", ~export_referenced),
-            ),
-        )
         rows = (
             self._session.execute(
                 select(artifacts_table)
                 .where(
                     or_(
                         artifacts_table.c.storage_status == "delete_pending",
-                        expired,
-                        orphaned,
+                        _cleanup_eligibility(now=now, orphan_before=orphan_before),
                     )
                 )
                 .order_by(artifacts_table.c.created_at, artifacts_table.c.id)
@@ -323,15 +333,24 @@ class PostgresArtifactMetadataRepository:
         )
         return tuple(_artifact_from_row(row) for row in rows)
 
-    def mark_delete_pending(self, artifact_id: UUID) -> ArtifactRecord:
-        """CAS 认领字节删除；并发清理时已经认领/删除视为幂等状态。"""
+    def mark_delete_pending(
+        self,
+        artifact_id: UUID,
+        *,
+        now: datetime,
+        orphan_before: datetime,
+    ) -> ArtifactRecord:
+        """以当前数据库事实 CAS 认领删除；候选扫描本身不构成删除授权。"""
+
+        if now.utcoffset() is None or orphan_before.utcoffset() is None:
+            raise ValueError("Artifact cleanup 时间必须包含时区")
 
         row = (
             self._session.execute(
                 update(artifacts_table)
                 .where(
                     artifacts_table.c.id == artifact_id,
-                    artifacts_table.c.storage_status.in_(("stored", "linked")),
+                    _cleanup_eligibility(now=now, orphan_before=orphan_before),
                 )
                 .values(storage_status="delete_pending")
                 .returning(artifacts_table)
@@ -344,7 +363,7 @@ class PostgresArtifactMetadataRepository:
         current = self.get(artifact_id)
         if current is not None and current.storage_status in {"delete_pending", "deleted"}:
             return current
-        raise ArtifactStateConflict("Artifact 当前状态不能进入 delete_pending")
+        raise ArtifactStateConflict("Artifact 当前状态或引用关系不能进入 delete_pending")
 
     def mark_deleted(self, artifact_id: UUID, *, deleted_at: datetime) -> ArtifactRecord:
         """实体字节删除成功后把 delete_pending 收敛为 deleted。"""
