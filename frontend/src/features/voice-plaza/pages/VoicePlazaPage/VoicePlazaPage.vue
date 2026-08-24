@@ -3,7 +3,15 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
 import AppShell from '../../../../app/layouts/AppShell.vue'
-import type { DataExportResponse, JobStatusResponse } from '../../../../generated/api/client'
+import type {
+  ContentRelevanceReviewResponse,
+  DataExportResponse,
+  JobStatusResponse,
+} from '../../../../generated/api/client'
+import {
+  relevanceReviewDecision,
+  type RelevanceReviewDecision,
+} from '../../relevanceReview'
 import { useVoicePlazaStore } from '../../store'
 import AnalysisSubmitDialog from './components/AnalysisSubmitDialog.vue'
 import ContentDetailDrawer from './components/ContentDetailDrawer.vue'
@@ -16,7 +24,29 @@ const route = useRoute()
 const analysisOpen = ref(false)
 const exportOpen = ref(false)
 const notice = ref<string | null>(null)
-const reviewMode = computed(() => store.filters.relevance === 'irrelevant')
+const selectedReviewIds = computed<Record<RelevanceReviewDecision, string[]>>(() => {
+  const grouped: Record<RelevanceReviewDecision, string[]> = {
+    relevant: [],
+    irrelevant: [],
+    inherit_ai: [],
+  }
+  const selected = new Set(store.selectedIds)
+  for (const item of store.items) {
+    if (!selected.has(item.id)) continue
+    const decision = relevanceReviewDecision(item, store.filters.relevance)
+    if (decision) grouped[decision].push(item.id)
+  }
+  return grouped
+})
+const reviewNote = computed(() => {
+  if (store.filters.relevance === 'irrelevant') {
+    return '当前显示业务有效不相关内容：AI 原判不相关的内容可人工标记为相关；AI 原判相关但被人工排除的内容可撤销人工判断。AI 原始结果始终保留。'
+  }
+  if (store.filters.relevance === 'relevant') {
+    return '当前显示业务有效相关内容：AI 原判相关的内容可人工标记为不相关；AI 原判不相关但被人工纳入的内容可撤销人工判断。AI 原始结果始终保留。'
+  }
+  return null
+})
 const jobStatusLabels: Record<JobStatusResponse['status'], string> = {
   queued: '排队中',
   running: '处理中',
@@ -55,14 +85,28 @@ async function reset(): Promise<void> {
   await store.refresh()
 }
 
-async function reviewSingle(contentId: string): Promise<void> {
-  const count = await store.reviewRelevance([contentId])
-  if (count !== null) showNotice(`已人工标记 ${count} 条内容为相关。`)
+function relevanceNotice(
+  decision: RelevanceReviewDecision,
+  result: ContentRelevanceReviewResponse,
+): string {
+  const unchanged = result.unchanged_count > 0 ? `，${result.unchanged_count} 条无需变化` : ''
+  if (decision === 'relevant') return `已人工标记 ${result.changed_count} 条内容为相关${unchanged}。`
+  if (decision === 'irrelevant') return `已人工标记 ${result.changed_count} 条内容为不相关${unchanged}。`
+  return `已撤销 ${result.changed_count} 条人工相关性判断${unchanged}。`
 }
 
-async function reviewSelected(): Promise<void> {
-  const count = await store.reviewRelevance([...store.selectedIds])
-  if (count !== null) showNotice(`已人工标记 ${count} 条内容为相关。`)
+async function reviewSingle(
+  contentId: string,
+  decision: RelevanceReviewDecision,
+): Promise<void> {
+  const result = await store.reviewRelevance([contentId], decision)
+  if (result) showNotice(relevanceNotice(decision, result))
+}
+
+async function reviewSelected(decision: RelevanceReviewDecision): Promise<void> {
+  const contentIds = selectedReviewIds.value[decision]
+  const result = await store.reviewRelevance(contentIds, decision)
+  if (result) showNotice(relevanceNotice(decision, result))
 }
 
 async function submitAnalysis(scope: 'query' | 'selected'): Promise<void> {
@@ -148,11 +192,11 @@ function showNotice(message: string): void {
       @reset="reset"
     />
     <div
-      v-if="reviewMode"
+      v-if="reviewNote"
       class="review-note"
       role="status"
     >
-      当前只显示 AI 判定不相关、且尚未被人工纳入的内容。人工标记为相关后，AI 原始判断仍保留用于审计，该内容会按当前版本进入默认业务数据。
+      {{ reviewNote }}
     </div>
     <div
       v-if="store.error"
@@ -172,13 +216,29 @@ function showNotice(message: string): void {
     <div class="list-heading">
       <div>
         <strong>声音记录</strong><span>已加载 {{ store.items.length }} 条</span><button
-          v-if="reviewMode && store.selectedIds.length"
-          class="review-selected"
+          v-if="selectedReviewIds.relevant.length"
+          class="review-selected review-selected--relevant"
           type="button"
           :disabled="store.reviewingRelevance"
-          @click="reviewSelected"
+          @click="reviewSelected('relevant')"
         >
-          批量标记为相关
+          批量标记为相关（{{ selectedReviewIds.relevant.length }}）
+        </button><button
+          v-if="selectedReviewIds.irrelevant.length"
+          class="review-selected review-selected--irrelevant"
+          type="button"
+          :disabled="store.reviewingRelevance"
+          @click="reviewSelected('irrelevant')"
+        >
+          批量标记为不相关（{{ selectedReviewIds.irrelevant.length }}）
+        </button><button
+          v-if="selectedReviewIds.inherit_ai.length"
+          class="review-selected review-selected--undo"
+          type="button"
+          :disabled="store.reviewingRelevance"
+          @click="reviewSelected('inherit_ai')"
+        >
+          批量撤销人工判断（{{ selectedReviewIds.inherit_ai.length }}）
         </button><button
           v-if="store.selectedIds.length"
           type="button"
@@ -192,7 +252,7 @@ function showNotice(message: string): void {
       :items="store.items"
       :loading="store.loading"
       :selected-ids="store.selectedIds"
-      :review-mode="reviewMode"
+      :relevance-filter="store.filters.relevance"
       :reviewing="store.reviewingRelevance"
       @detail="store.openDetail"
       @toggle="store.toggleSelection"
@@ -256,12 +316,14 @@ function showNotice(message: string): void {
 .job-banner--failed { border-color: #ffc7cc; color: #b4232d; background: #fff5f6; }
 .job-banner--succeeded { border-color: #afe0c6; color: #12804b; background: #effbf5; }
 .list-heading { display: flex; align-items: center; justify-content: space-between; margin: 22px 0 11px; }
-.list-heading div { display: flex; align-items: center; gap: 10px; }
+.list-heading div { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .list-heading strong { font-size: 17px; }
 .list-heading span { color: #768092; font-size: 12px; }
 .list-heading > span { padding: 8px 11px; border: 1px solid #dfe3ea; border-radius: 6px; background: #fff; }
 .list-heading button { padding: 5px 9px; border: 0; border-radius: 5px; color: var(--aima-primary); background: var(--aima-primary-soft); cursor: pointer; }
-.list-heading button.review-selected { color: #12804b; background: #eaf8f1; }
+.list-heading button.review-selected--relevant { color: #12804b; background: #eaf8f1; }
+.list-heading button.review-selected--irrelevant { color: #b4232d; background: #fff0f1; }
+.list-heading button.review-selected--undo { color: #586174; background: #f1f3f6; }
 .list-heading button:disabled { cursor: not-allowed; opacity: .55; }
 .pagination { display: flex; min-height: 70px; align-items: center; justify-content: flex-end; gap: 20px; color: #858e9d; font-size: 11px; }
 .pagination button { min-width: 120px; height: 38px; border: 1px solid var(--aima-primary); border-radius: 6px; color: var(--aima-primary); background: #fff; cursor: pointer; }
