@@ -184,5 +184,5 @@ data_changes: []
 # 交付
 
 - Commit：`54a54c49`（本地前端 launcher 标准输入修复）；`76685a72`（逐平台采集配置与 LLM 能力检测修复）。
-- PR：用户已授权集成到远程 `main`，待推送功能分支并创建 PR。
+- PR：[#206](https://github.com/dingyuwen777/AIMA_UGC/pull/206)，已创建并等待 GitHub CI。
 - 发布：仅通过 PR/CI 合入 `main`；不执行应用部署。
