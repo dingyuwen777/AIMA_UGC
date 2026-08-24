@@ -1,15 +1,16 @@
 # Windows Docker Desktop 原生宿主存储覆盖。
 #
 # 仅与根 compose.yaml 叠加使用；不复制业务 Runtime 定义。
-# Windows 原生文件系统不承担 PostgreSQL / Secret 的 Linux owner/mode 语义，
-# 因此四类持久状态都使用 Docker-managed named volumes。
+# Artifact 与应用日志保留 AIMA_HOST_ROOT bind mount，便于开发机直接查看；
+# PostgreSQL / 内部 Secret 继续使用 Docker-managed named volumes，
+# 避免 Windows 文件共享层承担严格 Linux owner/mode 语义。
 
 x-windows-backend-volumes: &windows-backend-volumes
-  - type: volume
-    source: windows_runtime_data
+  - type: bind
+    source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/data
     target: /app/data
-  - type: volume
-    source: windows_runtime_logs
+  - type: bind
+    source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/logs
     target: /app/logs
   - type: volume
     source: windows_internal_secrets
@@ -18,12 +19,19 @@ x-windows-backend-volumes: &windows-backend-volumes
 
 services:
   bootstrap:
+    command:
+      - python
+      - scripts/deploy/prepare_host.py
+      - --root
+      - /host
+      - --runtime-only
+      - --runtime-bind-compatible
     volumes:
-      - type: volume
-        source: windows_runtime_data
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/data
         target: /host/runtime/data
-      - type: volume
-        source: windows_runtime_logs
+      - type: bind
+        source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/runtime/logs
         target: /host/runtime/logs
       - type: volume
         source: windows_postgres
@@ -58,7 +66,5 @@ services:
     volumes: *windows-backend-volumes
 
 volumes:
-  windows_runtime_data:
-  windows_runtime_logs:
   windows_postgres:
   windows_internal_secrets:
