@@ -36,6 +36,9 @@ jobs:
       AIMA_DB_NAME: aima_ugc
       AIMA_DB_USER: aima_ugc
       AIMA_DB_CONNECT_TIMEOUT_SECONDS: 3
+      AIMA_LLM_BASE_URL: https://stage8f.invalid/v1
+      AIMA_LLM_PROVIDER_NAME: stage8f
+      AIMA_LLM_MODEL: stage8f-model
 
     steps:
       - name: Checkout
@@ -71,6 +74,7 @@ jobs:
           printf '%s\n' 'stage8f-import-cursor-signing-key-000000000001' > "${AIMA_SECRET_DIR}/import_batch_cursor_signing_key"
           printf '%s\n' 'stage8f-content-cursor-signing-key-000000000001' > "${AIMA_SECRET_DIR}/content_cursor_signing_key"
           printf '%s\n' 'stage8f-runtime-cursor-signing-key-000000000001' > "${AIMA_SECRET_DIR}/collection_runtime_cursor_signing_key"
+          printf '%s\n' 'stage8f-dummy-llm-key' > "${AIMA_SECRET_DIR}/llm_api_key"
           chmod 600 "${AIMA_SECRET_DIR}"/*
           uv run alembic upgrade head
           uv run alembic current
@@ -82,8 +86,17 @@ jobs:
           set -euo pipefail
           uv run python tests/fullstack/create_stage8f_excel_fixture.py "${RUNNER_TEMP}/stage8f-fullstack.xlsx" success
           uv run python tests/fullstack/create_stage8f_excel_fixture.py "${RUNNER_TEMP}/stage8f-worker-failure.xlsx" worker-failure
+          uv run python tests/fullstack/create_stage8f_excel_fixture.py "${RUNNER_TEMP}/stage8f-manual-review.xlsx" manual-review
           test -s "${RUNNER_TEMP}/stage8f-fullstack.xlsx"
           test -s "${RUNNER_TEMP}/stage8f-worker-failure.xlsx"
+          test -s "${RUNNER_TEMP}/stage8f-manual-review.xlsx"
+
+      - name: Seed AI irrelevant content for manual review
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python tests/fullstack/seed_stage8f_manual_relevance_review.py "${RUNNER_TEMP}/stage8f-manual-review.xlsx" > "${RUNNER_TEMP}/stage8f-manual-review-seed.txt"
+          test -s "${RUNNER_TEMP}/stage8f-manual-review-seed.txt"
 
       - name: Start real API and Worker
         shell: bash
