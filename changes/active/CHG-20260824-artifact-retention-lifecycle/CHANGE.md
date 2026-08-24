@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260824-artifact-retention-lifecycle
 title: Artifact 保留策略与自动清理
 level: L3
-status: proposed
+status: ready_for_review
 owner: openai
 branch: feature/artifact-retention-lifecycle
 created: 2026-08-24
@@ -37,15 +37,15 @@ data_changes:
 
 # 成功标准
 
-- [ ] TikHub `provider-raw` 从完成存储时起保留 30 天，到期后自动删除字节，元数据和 Provider/Content 来源关系继续保留。
-- [ ] Excel `file-import.raw` 在 Import Batch 进入终态后保留 7 天；处理/重试期间不得提前删除。
-- [ ] `content-export.xlsx` 从生成完成时起保留 7 天；到期后不能继续作为可下载文件使用，用户可重新创建导出。
-- [ ] 写入成功但未建立业务引用的非 Provider-Raw 孤儿 Artifact 最多保留 1 天并可重试清理；Provider Raw 崩溃恢复证据不得被孤儿规则误删。
-- [ ] 清理采用 `delete_pending -> deleted` 状态收敛；实体删除失败时不得伪造 `deleted`，后续可重试。
-- [ ] Excel 导入前端明确显示“任务结束后保留 7 天”的规则，并在已知终态时显示对应到期时间/过期说明。
-- [ ] Excel 导出记录显示下载有效期；过期后下载按钮不可用并提示重新导出。
-- [ ] TikHub Provider Raw 作为后台审计/排障证据不新增普通业务前端入口。
-- [ ] 现有业务数据库事实、Content/Analysis/Export 父事实、来源关系和公共启动方式保持兼容。
+- [x] TikHub `provider-raw` 从 Artifact 创建时起保留 30 天，到期后自动删除字节，元数据和 Provider/Content 来源关系继续保留。
+- [x] Excel `file-import.raw` 在 Import Batch 进入终态后保留 7 天；处理/重试期间不得提前删除。
+- [x] `content-export.xlsx` 从生成完成时起保留 7 天；到期后不能继续作为可下载文件使用，用户可重新创建导出。
+- [x] 当前可由业务父事实明确判定未引用的 Excel Import/Export 孤儿 Artifact 最多保留 1 天并可重试清理；Provider Raw 崩溃恢复证据不得被孤儿规则误删。
+- [x] 清理采用 `delete_pending -> deleted` 状态收敛；实体删除失败时不得伪造 `deleted`，后续可重试。
+- [x] Excel 导入前端明确显示“任务结束后保留 7 天”的规则，并在已知终态时显示对应到期时间/过期说明。
+- [x] Excel 导出记录显示下载有效期；过期后下载按钮不可用并提示重新导出。
+- [x] TikHub Provider Raw 作为后台审计/排障证据不新增普通业务前端入口。
+- [x] 现有业务数据库事实、Content/Analysis/Export 父事实、来源关系和公共启动方式保持兼容。
 
 # 范围
 
@@ -64,6 +64,7 @@ data_changes:
 - 不新增独立“文件管理”页面。
 - 不把 TikHub Raw 字节暴露给普通业务前端。
 - 不改变 TikHub API、采集字段、计费或 Provider Operation。
+- 不把未来未知 Artifact kind 在没有可验证父事实引用关系时机械套用 1 天孤儿删除。
 
 # 必须保持不变
 
@@ -76,7 +77,7 @@ data_changes:
 
 # 关键决策
 
-用户已确认保留策略：TikHub Provider Raw 30 天；Excel 上传源文件在 Import 终态后 7 天；Excel 导出文件生成后 7 天；非 Provider-Raw 的未引用孤儿 Artifact 1 天。
+用户已确认保留策略：TikHub Provider Raw 30 天；Excel 上传源文件在 Import 终态后 7 天；Excel 导出文件生成后 7 天；孤儿字节按推荐采用短期清理。当前机器事实只有 Excel Import/Export 能通过既有父事实表安全证明“未建立业务引用”，因此 1 天孤儿规则只覆盖这两种 Excel kind；Provider Raw 明确排除，未来其他 Artifact kind 必须先建立可验证引用边界，不能仅凭 `stored` 状态推断为孤儿。
 
 L3 方案比较：
 
@@ -86,45 +87,47 @@ L3 方案比较：
 
 兼容与迁移：不新增数据库列；已有 `artifacts.expires_at/deleted_at` 和删除状态足够。对历史 Artifact 由 housekeeping 幂等补齐保留截止时间，再按相同规则清理。部署只需要现有 Scheduler 正常运行；回滚代码不会恢复已经按用户批准策略删除的字节，因此回滚前应按生产备份策略评估不可逆数据删除。
 
+并发删除边界：候选扫描只负责发现，不构成删除授权。真正执行 `stored/linked -> delete_pending` 时，PostgreSQL CAS 会重新检查当前 Artifact 是否仍已到期或仍属于无引用 Excel 孤儿；如果扫描后业务事务已经建立正式引用，本轮认领失败并放弃删除，避免 stale candidate 导致数据丢失。
+
 # Requirement Traceability
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | TikHub Provider Raw 仅保留 30 天 | user:2026-08-24-retention-decision | not_satisfied | 待实现与验证 |
-| R2 | Excel 上传源文件终态后保留 7 天 | user:2026-08-24-retention-decision | not_satisfied | 待实现与验证 |
-| R3 | Excel 导出文件生成后保留 7 天 | user:2026-08-24-retention-decision | not_satisfied | 待实现与验证 |
-| R4 | 非 Provider-Raw 未引用孤儿 Artifact 1 天后清理且不误伤 Provider Raw Recovery | user:2026-08-24-retention-decision | not_satisfied | 待实现与验证 |
-| R5 | 用户可见 Excel 文件保留/过期行为在现有前端入口展示 | user:2026-08-24-frontend-display | not_satisfied | 待实现与验证 |
-| R6 | PostgreSQL 保存业务事实和 Artifact 元数据，文件字节由 ArtifactStore 管理 | docs/blueprint/03_数据库与文件存储.md | not_satisfied | 待实现与验证 |
-| R7 | 不绕过现有 API/Worker/Scheduler/Owner/CI 边界 | AGENTS.md | not_satisfied | 待 Review/CI |
+| R1 | TikHub Provider Raw 保留 30 天 | user:2026-08-24-retention-decision | satisfied | `platform/storage/retention.py` + ArtifactService；Stage 5A Provider Raw #1604 success；`docs/appendix/12_Artifact生命周期与保留策略.md` |
+| R2 | Excel 上传源文件在 Import 终态后保留 7 天，运行/重试期间不提前删除 | user:2026-08-24-retention-decision | satisfied | `artifact_metadata.py` 终态回填含 cancelled Job fallback；CI #2514 PostgreSQL Integration 18 passed；Import Worker 相关回归通过 |
+| R3 | Excel 导出文件完成后保留 7 天，过期后不能下载 | user:2026-08-24-retention-decision | satisfied | `reporting_http.py` 下载过期守卫 + `completed_at + 7d` 回填；CI #2514 Backend/API tests success；前端同一时间规则通过 |
+| R4 | 可安全判定未引用的孤儿字节 1 天后清理，且不误伤 Provider Raw Recovery | user:2026-08-24-retention-decision | satisfied | 当前仅 Excel Import/Export 进入 1 天孤儿判定；Provider Raw 明确排除；CI #2514 PostgreSQL Integration 18 passed，包含扫描后建立引用时 CAS 拒绝删除的并发回归；Stage 5A #1604 success |
+| R5 | 用户可见 Excel 文件保留/过期行为在现有前端入口展示 | user:2026-08-24-frontend-display | satisfied | `ImportBatchDetailDrawer.vue`、`DataExportDialog.vue`、`artifactRetention.ts`；CI #2514 Frontend checks success；Stage 8F Full-stack #641 success |
+| R6 | PostgreSQL 保存业务事实和 Artifact 元数据，ArtifactStore 只管理文件字节 | docs/blueprint/03_数据库与文件存储.md | satisfied | 清理只更新 Artifact 生命周期字段并调用 Store.delete；Content/Import/Export/Provider 父事实不删除；CI #2514 Stage 3A/Stage 2 success |
+| R7 | 不绕过现有 API/Worker/Scheduler/Owner/CI 边界，并保护最新 main | AGENTS.md | satisfied | Scheduler housekeeping 复用现有进程；无新依赖/Migration/公共 API；最新 main `e26c9ea` 已正常合入 feature，合入后 compare `behind_by=0`；CI #2514、Audit #1188、Scheduler #2459 success |
 
 # Validation Matrix
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
-| Browser Mock Acceptance | required | Import 保留提示、Export 有效期/过期下载状态 |
-| Backend/API/PostgreSQL Integration | required | TTL 补齐、到期候选、状态 CAS、真实 Local Store 删除、Import/Export/Raw 生命周期 |
-| Contract / Generated Client | not_applicable | 本方案不新增公共 API 字段；前端从已有 `finished_at/completed_at` 按固定策略展示 |
-| Real Full-stack Golden Path | required | 现有 Import/Export 页面与后端生命周期在 CI 可用边界内完成关键链验证 |
-| Real Provider Probe | not_applicable | 不改变 TikHub endpoint、响应结构、Mapper 或 Provider 行为，不需要付费真实 Probe |
-| Docs / Governance / Other | required | Appendix/Blueprint 导航与 Change 保留策略同步；Ready Check |
+| Browser Mock Acceptance | required | CI #2514 Frontend checks success；`frontend/e2e/artifact-retention.spec.ts` 覆盖 Import 终态时间 fallback、Export 7 天提示/有效期/下载资格 |
+| Backend/API/PostgreSQL Integration | required | CI #2514 success；真实 PostgreSQL `tests/integration/database` 18 passed，含 TTL 回填、真实 Local Store 删除、Provider Raw 排除、取消任务与 stale candidate 并发回归；Ingestion Integration 5 passed |
+| Contract / Generated Client | not_applicable | 本次未新增/修改公共 HTTP 字段，前端只读取已有 `finished_at/job.finished_at/completed_at`；CI #2514 的 OpenAPI/generated client drift/compatibility 检查仍成功 |
+| Real Full-stack Golden Path | required | Stage 8F Full-stack Acceptance #641 success，真实 Frontend/API/Worker/PostgreSQL Excel Golden Path 通过 |
+| Real Provider Probe | not_applicable | 本次不改变 TikHub endpoint、参数、响应、Mapper 或计费事实；无需付费真实 Probe，Provider Raw 回归由 Stage 5A #1604 验证 |
+| Docs / Governance / Other | required | `docs/appendix/12_Artifact生命周期与保留策略.md` 已同步当前规则；CI #2514 docs/architecture/secret gates success；Audit #1188 success；Change Completion Gate 在本 Ready 提交上继续作为机器门禁 |
 
 # Completion Audit
 
-- [ ] upstream_re_read：已重新读取所有上游正式事实源，并从它们独立重建完成定义。
-- [ ] change_coverage：已确认当前 Change 覆盖全部上游要求，没有把 Change 自身当作需求全集。
-- [ ] reverse_audit：已执行适用的反向能力/边界审计，并复核 Validation Matrix；不适用项已有明确依据。
-- [ ] unresolved_cleared：所有 `not_satisfied` 已清零；延期/不适用项均有正式依据。
+- [x] upstream_re_read：已重新读取用户本轮保留决定、`AGENTS.md`、reliable-vibe-coding、Blueprint 03/04/05/06/07 与当前机器事实，独立重建完成定义。
+- [x] change_coverage：已比较上游要求与当前 Change，并修正 Provider Raw 起点措辞、把 1 天孤儿规则收敛到当前可安全证明未引用的 Excel Import/Export Artifact；没有把 Change 自身当作需求全集。
+- [x] reverse_audit：已从后端生命周期反查现有 Import/Export 前端入口，并从前端下载/状态反查后端真实守卫；Validation Matrix 各层证据与实际运行边界一致，TikHub Raw 无普通业务前端入口符合批准范围。
+- [x] unresolved_cleared：R1-R7 均已有实现与当前验证证据；没有 `not_satisfied`，不适用层已有事实依据。
 
 # 任务
 
 - [x] 调查当前实现和事实源
-- [ ] 建立失败测试或说明测试例外
+- [x] 建立失败测试或说明测试例外
 - [x] 建立并维护 Validation Matrix
-- [ ] 完成最小实现
-- [ ] 同步受影响文档
-- [ ] 取得新鲜验证证据
-- [ ] 完成 Requirement Traceability 与 Completion Audit
+- [x] 完成最小实现
+- [x] 同步受影响文档
+- [x] 取得新鲜验证证据
+- [x] 完成 Requirement Traceability 与 Completion Audit
 
 # 验证
 
@@ -133,18 +136,25 @@ L3 方案比较：
 - 目标测试：Artifact policy/Local Store/cleanup；Import/Export retention；Frontend retention states。
 - 相关测试：Provider Raw recovery、Import Worker、Data Export、Scheduler。
 - 静态检查/构建：仓库现有 Python/Frontend lint、typecheck/build、OpenAPI 一致性与质量门禁。
-- Ready Check：`python .agents/skills/reliable-vibe-coding/scripts/ready_check.py --root . --require-active-ready`
+- Ready Check：`python .agents/skills/reliable-vibe-coding/scripts/ready_check.py --root . --require-active-ready`；PR 由 Change Completion Gate 使用 changed-since 语义执行对应机器检查。
 
 ## 新鲜证据
 
-- 尚未执行。当前会话没有仓库终端，Red/Green 与完整验证将以 GitHub Actions/CI 新鲜运行结果为证据。
+- Red：提交 `e4ae8eb` 的 CI run `32678102877` 在真实 PostgreSQL Integration 中 `2 failed, 16 passed`；两处均因生产 Repository 尚不支持带 `now/orphan_before` 的原子删除认领，证明并发保护测试先于实现失败。
+- Green：提交 `2aed95d` 的 CI #2514（run `32678444350`）全部 Job success；PostgreSQL `tests/integration/database` 为 `18 passed`，Ingestion Integration 为 `5 passed`，Stage 2 Platform、Windows bootstrap、后端检查、Wheel 和 Frontend checks 均成功。
+- Provider/Raw：Stage 5A Provider Raw #1604 success，包含 P1 lint/type、Provider/Raw tests、Contract、架构、Secret/Docs 门禁。
+- Scheduler：Stage 7 Scheduler Runtime #2459 success；housekeeping 不改变 Scheduler 主业务执行边界。
+- Full-stack：Stage 8F Full-stack Acceptance #641 success。
+- 审计与兼容：Stage 1-7 Audit Correctness #1188 success；Keyword Packs #2119、Plan #2117、Provider Config #2232、Stage 5D #1638、Stage 6 #507、Local Dev #337、Windows Compose #203、Internal V1-A #277 均 success。
+- Change Gate：前一轮 #360 在 Change 仍为 `proposed` 时按设计阻止集成；本提交正式切换为 `ready_for_review`，新一轮 Gate 必须成功后才允许 PR 转 Ready/合并。
 
 # 文档影响
 
-- 新增 Artifact 生命周期/保留策略专题说明，并更新现有 Blueprint/Appendix 导航或受影响说明。
+- 新增并维护 `docs/appendix/12_Artifact生命周期与保留策略.md`，明确 30/7/7/1 天策略、只删除文件字节、Provider Raw Recovery 例外、历史回填、Scheduler housekeeping 与前端可见行为。
+- Blueprint 既有“PostgreSQL 保存事实、ArtifactStore 保存字节”边界保持不变，无需修改核心架构决策。
 
 # 交付
 
-- Commit：进行中
-- PR：待创建
-- 发布：本轮不部署、不合并 main
+- Commit：实现与 Green 验证截至 `2aed95d`；当前提交补齐 Ready/审计记录。
+- PR：#187，仍通过 PR CI / Change Completion Gate 决定是否可转 Ready 和合并。
+- 发布：未部署；本 Change 不改变依赖、Migration 或启动命令，已删除字节不可由代码回滚恢复。
