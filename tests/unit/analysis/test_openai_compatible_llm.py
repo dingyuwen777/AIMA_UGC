@@ -295,16 +295,16 @@ def test_openai_compatible_uses_physical_request_start_time_for_price_period(
     assert response.input_cache_hit_tokens == 20
     assert response.input_cache_miss_tokens == 11
     assert response.output_tokens == 17
-    assert response.cost_amount == Decimal("0.000564")
+    assert response.cost_amount == Decimal("0.0001355")
     assert response.cost_currency == "CNY"
     assert len(records) == 1
     assert records[0].status == "completed"
     assert records[0].started_at == datetime(2026, 8, 20, 1, 0, tzinfo=UTC)
-    assert records[0].cost_amount == Decimal("0.000564")
+    assert records[0].cost_amount == Decimal("0.0001355")
     assert records[0].cost_currency == "CNY"
-    assert records[0].input_cache_hit_per_million == Decimal("0.30")
-    assert records[0].input_cache_miss_per_million == Decimal("9.0")
-    assert records[0].output_per_million == Decimal("27.0")
+    assert records[0].input_cache_hit_per_million == Decimal("0.025")
+    assert records[0].input_cache_miss_per_million == Decimal("3")
+    assert records[0].output_per_million == Decimal("6")
     assert records[0].pricing_source_url.endswith("/quick_start/pricing/")
 
 
@@ -360,4 +360,4 @@ def test_empty_content_retry_audits_cost_of_every_paid_http_response(
     assert [record.status for record in records] == ["protocol_error", "completed"]
     assert records[0].logical_request_id == records[1].logical_request_id
     assert records[0].http_request_id != records[1].http_request_id
-    assert sum(record.cost_amount or Decimal("0") for record in records) == Decimal("0.0000609")
+    assert sum(record.cost_amount or Decimal("0") for record in records) == Decimal("0.0000304")
