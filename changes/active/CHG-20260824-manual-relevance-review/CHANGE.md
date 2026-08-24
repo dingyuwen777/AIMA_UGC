@@ -133,7 +133,7 @@ data_changes:
 | R2 | 支持单条/批量 AI irrelevant → 人工 relevant | user:2026-08-24-manual-relevance-review | satisfied | API/PG 定向 run 32721400535 与 Stage 8F run 32721400484 均通过。 |
 | R3 | AI 原始结果保持不可改写，人工事实归 Analysis Owner | docs/blueprint/07_技术决策与实施门禁.md | satisfied | PostgreSQL integration 验证原 AI Result 保留；0025 与 table ownership 均归 Analysis。 |
 | R4 | 默认列表、relevance 查询、query Analysis/Export 使用统一有效相关性 | backend/src/aima_ugc/modules/analysis/README.md | satisfied | `PostgresContentQueryRepository` 单一表达式与 PostgreSQL integration 已覆盖默认、显式查询、query Analysis/Export。 |
-| R5 | 公共 API 变化走 Pydantic→OpenAPI→generated client | docs/blueprint/04_后端任务API与前端.md | satisfied | 官方生成命令已生成 `contracts/openapi/openapi.json` 与 Orval client；定向 typecheck/lint 通过。 |
+| R5 | 公共 API 变化走 Pydantic→OpenAPI→generated client | docs/blueprint/04_后端任务API与前端.md | satisfied | 官方生成链已同步 `contracts/openapi/openapi.json` 与 Orval client；Stage 5C 曾精确暴露说明文字导致的 `CONTRACT_STALE`，随后重新运行正式生成链并通过 `generate.py --check` 与 compatibility check。 |
 | R6 | 支持 AI relevant → 人工 irrelevant | user:2026-08-24-bidirectional-relevance-review | satisfied | Browser Mock、PostgreSQL integration 与 Stage 8F 真实链均已覆盖。 |
 | R7 | 支持撤销人工决定并恢复 AI 基线 | user:2026-08-24-bidirectional-relevance-review | satisfied | `inherit_ai` API/Repository/UI 已实现；Stage 8F run 32721400484 真实排除→撤销成功。 |
 | R8 | 撤销和多轮人工决定不得丢失历史审计 | docs/blueprint/07_技术决策与实施门禁.md | satisfied | `review_no` 追加事件、数据库 UPDATE/DELETE Trigger 与 integration 均已验证。 |
@@ -145,7 +145,7 @@ data_changes:
 | --- | --- | --- |
 | Browser Mock Acceptance | required | run 32721400535：人工复核 Playwright 5/5；覆盖单条双向、撤销、stale 撤销、批量不相关及显式 payload。 |
 | Backend/API/PostgreSQL Integration | required | run 32721400535：API 3/3、人工复核 PostgreSQL integration 2/2；0025 upgrade/check、双向、撤销、append-only、幂等、原子性与版本语义通过。 |
-| Contract / Generated Client | required | Pydantic 三值 decision、effective relevance projection 已通过正式 OpenAPI/Orval 生成链；run 32721400535 的 TypeScript typecheck 通过。 |
+| Contract / Generated Client | required | Pydantic 三值 decision、effective relevance projection 已通过正式 OpenAPI/Orval 生成链；最终生成链还通过 `generate.py --check` 与 `check_compatibility.py`。 |
 | Real Full-stack Golden Path | required | permanent Stage 8F run 32721400484：5/5；其中真实 AI irrelevant→人工 relevant，以及 AI relevant→人工 irrelevant→撤销均成功。 |
 | Real Provider Probe | not_applicable | 本次不修改 TikHub/LLM 外部 endpoint、请求字段、Mapper 或真实付费 Provider 行为。 |
 | Docs / Governance / Other | required | Blueprint 03/04/07、AI Appendix、Analysis README 已同步；A1/A2 Review 已完成，PR #202 当前无 review comment/thread。 |
@@ -155,9 +155,11 @@ data_changes:
 - API Red：run 32708662395，三种新 `decision` 在旧 Contract 上均返回 422。
 - PostgreSQL 双向 Red：run 32709095687，原有 111 个相关 integration 通过，仅新 `decision=irrelevant` 场景因旧 Contract 失败。
 - Browser Red：run 32709123282，旧 payload 缺 `decision`，且缺“不相关 / 撤销 / 批量不相关”按钮。
+- Projection Red：真实 PostgreSQL 测试在业务状态已正确计算的前提下，因 `ContentListItemResponse` 缺 `effective_relevance` 失败；随后加入只读派生投影。
 - Append-only Red：run 32720466525，直接 UPDATE 人工账本未抛 `DatabaseError`，证明原 Migration 缺数据库级不可变约束。
-- Green：run 32721400535 全部目标层通过；PostgreSQL 日志明确记录账本禁止 UPDATE/DELETE。
+- Targeted Green：run 32721400535 全部目标层通过；PostgreSQL 日志明确记录账本禁止 UPDATE/DELETE。
 - Real Full-stack Green：permanent Stage 8F run 32721400484，5/5 通过。
+- Contract Drift Regression：最终候选 HEAD 的 Stage 5C 业务/数据库验证 332 + 89 均通过，但 quality gate 以 `CONTRACT_STALE` 拒绝未同步 OpenAPI；之后使用正式 Pydantic→OpenAPI→Orval 生成命令修复，不手改 generated 文件。
 
 # Completion Audit
 
@@ -195,6 +197,7 @@ data_changes:
 - [x] 同步 Blueprint 03/04/07、AI Appendix 与 Analysis README
 - [x] 跑目标验证矩阵与永久 Stage 8F Golden Path
 - [x] 完成 Requirement Traceability、Completion Audit、A1/A2 Review
+- [x] 修复最终 Contract drift，并用正式生成链重新同步 OpenAPI/Orval
 
 # Migration、部署、回滚与风险
 
