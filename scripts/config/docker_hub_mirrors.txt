@@ -1,0 +1,5 @@
+# Docker Hub registry mirrors used by AIMA environment bootstrap.
+# One HTTPS URL per line. Effective line order is the mirror priority order.
+https://docker.1panel.live
+https://hub.1panel.dev
+https://docker.m.daocloud.io
