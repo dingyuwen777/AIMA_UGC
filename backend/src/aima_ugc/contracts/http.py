@@ -646,10 +646,11 @@ class CollectionPlanListResponse(BaseModel):
 
 
 type ContentAnalysisStatus = Literal["pending", "completed", "stale"]
+type ContentRelevanceSource = Literal["ai", "manual_review"]
 
 
 class ContentLabelPairResponse(BaseModel):
-    """按模型重要性顺序返回的一个一级/二级标签对。"""
+    """按模型重要性顺序返回的一个一级/二级标签父子对。"""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -742,7 +743,20 @@ class ContentListItemResponse(BaseModel):
     content_url: str | None = None
     metrics: ContentMetricsResponse
     analysis: ContentAnalysisResponse
+    effective_relevance: ContentRelevance | None = None
+    relevance_source: ContentRelevanceSource | None = None
     source: ContentSourceResponse
+
+    @model_validator(mode="after")
+    def validate_relevance_projection(self) -> ContentListItemResponse:
+        if (self.effective_relevance is None) != (self.relevance_source is None):
+            raise ValueError("effective_relevance 与 relevance_source 必须同时为空或同时存在")
+        if self.relevance_source == "ai" and (
+            self.analysis.status != "completed"
+            or self.analysis.relevance != self.effective_relevance
+        ):
+            raise ValueError("AI relevance_source 必须与当前 completed Analysis 原判一致")
+        return self
 
 
 class ContentFilterSnapshot(BaseModel):
@@ -952,6 +966,7 @@ __all__ = [
     "ContentListResponse",
     "ContentMediaResponse",
     "ContentMetricsResponse",
+    "ContentRelevanceSource",
     "ContentSourceResponse",
     "ContentSupplementStatusResponse",
     "ContentTargetSelection",
