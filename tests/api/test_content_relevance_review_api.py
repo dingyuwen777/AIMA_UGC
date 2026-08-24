@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
+import pytest
 from aima_ugc.bootstrap.api import create_app
 from fastapi.testclient import TestClient
 
@@ -13,19 +14,22 @@ _CONTENT_ID = UUID("42345678-1234-5678-1234-567812345678")
 class _ReviewContentService:
     def __init__(self) -> None:
         self.received_content_ids: tuple[UUID, ...] = ()
+        self.received_decision: str | None = None
         self.received_request_id: str | None = None
 
     def review_relevance(self, request, *, request_id: str):  # type: ignore[no-untyped-def]
         self.received_content_ids = tuple(request.content_ids)
+        self.received_decision = request.decision
         self.received_request_id = request_id
         return {
             "requested_count": len(request.content_ids),
-            "reviewed_count": len(request.content_ids),
-            "already_reviewed_count": 0,
+            "changed_count": len(request.content_ids),
+            "unchanged_count": 0,
         }
 
 
-def test_content_relevance_review_routes_single_and_batch_through_one_contract() -> None:
+@pytest.mark.parametrize("decision", ["relevant", "irrelevant", "inherit_ai"])
+def test_content_relevance_review_routes_all_decisions_through_one_contract(decision: str) -> None:
     service = _ReviewContentService()
     client = TestClient(
         create_app(
@@ -36,14 +40,15 @@ def test_content_relevance_review_routes_single_and_batch_through_one_contract()
 
     response = client.post(
         "/api/v1/content-relevance-reviews",
-        json={"content_ids": [str(_CONTENT_ID)]},
+        json={"content_ids": [str(_CONTENT_ID)], "decision": decision},
     )
 
     assert response.status_code == 200
     assert response.json() == {
         "requested_count": 1,
-        "reviewed_count": 1,
-        "already_reviewed_count": 0,
+        "changed_count": 1,
+        "unchanged_count": 0,
     }
     assert service.received_content_ids == (_CONTENT_ID,)
+    assert service.received_decision == decision
     assert service.received_request_id
