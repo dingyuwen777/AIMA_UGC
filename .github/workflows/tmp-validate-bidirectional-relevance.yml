@@ -1,0 +1,89 @@
+name: Temporary Validate Bidirectional Relevance
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  targeted-green:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_DB: aima_ugc
+          POSTGRES_USER: aima_ugc
+          POSTGRES_PASSWORD: relevance-ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aima_ugc -d aima_ugc"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AIMA_DATA_DIR: .runtime/ci-relevance/data
+      AIMA_LOG_DIR: .runtime/ci-relevance/logs
+      AIMA_SECRET_DIR: .runtime/ci-relevance/secrets
+      AIMA_DB_HOST: 127.0.0.1
+      AIMA_DB_PORT: 5432
+      AIMA_DB_NAME: aima_ugc
+      AIMA_DB_USER: aima_ugc
+      AIMA_DB_CONNECT_TIMEOUT_SECONDS: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24.19.0
+
+      - name: Install locked environments
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install "uv==$(tr -d '\r\n' < .uv-version)"
+          uv sync --locked
+          npm ci --prefix frontend
+          mkdir -p "${AIMA_DATA_DIR}" "${AIMA_LOG_DIR}" "${AIMA_SECRET_DIR}"
+          printf '%s\n' 'relevance-ci' > "${AIMA_SECRET_DIR}/postgres_password"
+          chmod 600 "${AIMA_SECRET_DIR}/postgres_password"
+
+      - name: Migrate database
+        run: |
+          uv run alembic upgrade head
+          uv run alembic check
+
+      - name: Backend review contract and PostgreSQL tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest tests/api/test_content_relevance_review_api.py -q
+          uv run pytest tests/integration/content/test_manual_relevance_review.py tests/integration/content/test_bidirectional_relevance_review.py -q
+
+      - name: Backend quality
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff format --check backend tests/api/test_content_relevance_review_api.py tests/integration/content/test_manual_relevance_review.py tests/integration/content/test_bidirectional_relevance_review.py
+          uv run ruff check backend tests/api/test_content_relevance_review_api.py tests/integration/content/test_manual_relevance_review.py tests/integration/content/test_bidirectional_relevance_review.py
+          uv run mypy backend/src
+
+      - name: Frontend review tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix frontend run lint
+          npm --prefix frontend run typecheck
+          npm --prefix frontend run test -- --run
+          npm --prefix frontend run test:e2e -- e2e/manual-relevance-review.spec.ts
