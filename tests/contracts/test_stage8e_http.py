@@ -34,12 +34,10 @@ def test_stage8e_create_contract_is_strict_and_discriminates_two_modes() -> None
     }
     assert "keywords" not in request_schema["properties"]
     keyword_pack_ids = request_schema["properties"]["keyword_pack_ids"]
-    array_schema = next(
-        option for option in keyword_pack_ids["anyOf"] if option.get("type") == "array"
-    )
-    assert array_schema["minItems"] == 1
-    assert array_schema["maxItems"] == 20
-    assert array_schema["items"]["format"] == "uuid"
+    assert keyword_pack_ids["type"] == "array"
+    assert keyword_pack_ids["minItems"] == 1
+    assert keyword_pack_ids["maxItems"] == 20
+    assert keyword_pack_ids["items"]["format"] == "uuid"
     assert request_schema["properties"]["platforms"]["maxItems"] == 5
 
 
