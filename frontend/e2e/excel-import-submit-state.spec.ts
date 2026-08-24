@@ -111,7 +111,7 @@ test('shows busy only during the real request and restores a visible dialog erro
     buffer: Buffer.from('aima'),
   })
   await dialog.getByLabel(/爱玛品牌词包/).check()
-  const submitButton = dialog.getByRole('button', { name: '开始导入' })
+  const submitButton = dialog.locator('.dialog-button--primary')
 
   await submitButton.click()
   await expect(submitButton).toBeDisabled()
