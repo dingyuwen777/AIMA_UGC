@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+ContentRelevanceReviewDecision = Literal["relevant", "irrelevant", "inherit_ai"]
+
 
 class ContentRelevanceReviewRequest(BaseModel):
-    """单条和批量复用同一请求；当前只允许把 AI 无关内容人工纳入相关内容。"""
+    """单条和批量复用同一请求，显式声明人工覆盖或撤销决定。"""
 
     model_config = ConfigDict(extra="forbid")
 
     content_ids: tuple[UUID, ...] = Field(min_length=1, max_length=1000)
+    decision: ContentRelevanceReviewDecision
 
     @field_validator("content_ids")
     @classmethod
@@ -26,8 +30,12 @@ class ContentRelevanceReviewResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     requested_count: int = Field(ge=1)
-    reviewed_count: int = Field(ge=0)
-    already_reviewed_count: int = Field(ge=0)
+    changed_count: int = Field(ge=0)
+    unchanged_count: int = Field(ge=0)
 
 
-__all__ = ["ContentRelevanceReviewRequest", "ContentRelevanceReviewResponse"]
+__all__ = [
+    "ContentRelevanceReviewDecision",
+    "ContentRelevanceReviewRequest",
+    "ContentRelevanceReviewResponse",
+]
