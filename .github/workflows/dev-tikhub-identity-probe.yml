@@ -7,6 +7,12 @@ on:
     paths:
       - .github/workflows/dev-tikhub-identity-probe.yml
       - .dev-tikhub-identity-probe-trigger
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/dev-tikhub-identity-probe.yml
+      - .dev-tikhub-identity-probe-trigger
 
 permissions:
   contents: read
@@ -68,6 +74,7 @@ jobs:
           from aima_ugc.adapters.providers.tikhub.transport import TikHubHttpTransport
           from aima_ugc.contracts.canonical import CanonicalContentV1, CanonicalSourceV1
 
+          # 样本均来自用户上传的 Excel 原文链接解析结果；只验证 ID 与接口参数，不输出正文。
           SAMPLES = (
               ("xiaohongshu", "6a85c701000000001d0040e2", "image"),
               ("douyin", "7675762214339933349", "video"),
@@ -83,6 +90,7 @@ jobs:
 
           def collect_ids(value: object, *, limit: int = 24) -> list[dict[str, str]]:
               found: list[dict[str, str]] = []
+
               def walk(node: object) -> None:
                   if len(found) >= limit:
                       return
@@ -98,6 +106,7 @@ jobs:
                           walk(child)
                           if len(found) >= limit:
                               return
+
               walk(value)
               return found
 
@@ -141,7 +150,6 @@ jobs:
                       ),
                   ):
                       result = probe.execute(call)
-                      body = result.response.body
                       summaries.append(
                           {
                               "platform": platform,
@@ -150,7 +158,7 @@ jobs:
                               "path": result.path,
                               "status_code": result.response.status_code,
                               "planned_cost": str(result.planned_cost),
-                              "ids": collect_ids(body),
+                              "ids": collect_ids(result.response.body),
                           }
                       )
           print("IDENTITY_PROBE_SUMMARY=" + json.dumps(summaries, ensure_ascii=False, separators=(",", ":")))
