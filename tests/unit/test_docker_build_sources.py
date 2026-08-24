@@ -3,6 +3,7 @@ from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCKER_HUB_MIRROR_CONFIG = ROOT / "scripts" / "config" / "docker_hub_mirrors.txt"
+RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
 
 
 def _docker_hub_mirrors() -> tuple[str, ...]:
@@ -81,6 +82,85 @@ def test_package_source_defaults_use_china_mirrors_but_remain_overridable() -> N
     )
     assert "${AIMA_BUILD_PYPI_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}" in compose
     assert "${AIMA_BUILD_NPM_REGISTRY:-https://registry.npmmirror.com}" in compose
+
+
+def test_release_workflow_uses_official_upstreams_without_changing_local_defaults() -> None:
+    assert RELEASE_WORKFLOW.is_file(), "Release workflow has not been implemented yet"
+    workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+
+    official_release_sources = (
+        "AIMA_BUILD_DEBIAN_MIRROR=http://deb.debian.org/debian",
+        "AIMA_BUILD_DEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security",
+        "AIMA_BUILD_PYPI_INDEX=https://pypi.org/simple",
+        "AIMA_BUILD_NPM_REGISTRY=https://registry.npmjs.org",
+        "POSTGRES_IMAGE=postgres:18.4",
+    )
+    for expected in official_release_sources:
+        assert expected in workflow
+
+    forbidden_release_sources = (
+        "mirrors.aliyun.com",
+        "pypi.tuna.tsinghua.edu.cn",
+        "registry.npmmirror.com",
+        "docker.m.daocloud.io",
+    )
+    for forbidden in forbidden_release_sources:
+        assert forbidden not in workflow
+
+    # Local source defaults stay in Dockerfile/Compose; Release only overrides build args.
+    assert "--build-arg AIMA_BUILD_DEBIAN_MIRROR=" in workflow
+    assert "--build-arg AIMA_BUILD_PYPI_INDEX=" in workflow
+    assert "--build-arg AIMA_BUILD_NPM_REGISTRY=" in workflow
+
+
+def test_release_workflow_builds_a_replayable_offline_bundle() -> None:
+    assert RELEASE_WORKFLOW.is_file(), "Release workflow has not been implemented yet"
+    workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+
+    required_markers = (
+        "workflow_dispatch:",
+        "version:",
+        "refs/heads/main",
+        "^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$",
+        "linux/amd64",
+        "ghcr.io/dingyuwen777/aima-ugc-backend",
+        "ghcr.io/dingyuwen777/aima-ugc-frontend",
+        "docker save",
+        "release-bundle/images.tar",
+        "docker load -i release-bundle/images.tar",
+        "--no-build",
+        "--pull never",
+        "release-manifest.json",
+        "migration-manifest.json",
+        "SHA256SUMS",
+        "DEPLOY.md",
+        "gh release create",
+        '--target "${RELEASE_SHA}"',
+    )
+    for marker in required_markers:
+        assert marker in workflow
+
+    assert "compose.windows.yaml" not in workflow
+    assert "AIMA_TIKHUB_API_KEY" not in workflow
+    assert "AIMA_LLM_API_KEY" not in workflow
+    assert "docker compose down -v" not in workflow
+
+
+def test_release_pull_request_dry_run_has_no_repository_write_token() -> None:
+    assert RELEASE_WORKFLOW.is_file(), "Release workflow has not been implemented yet"
+    workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    header, jobs = workflow.split("jobs:", 1)
+
+    assert "contents: write" not in header
+    assert "packages: write" not in header
+    assert "contents: read" in header
+
+    assert "publish-release:" in jobs
+    publish_job = jobs.split("publish-release:", 1)[1]
+    assert "if: github.event_name == 'workflow_dispatch'" in publish_job
+    assert "permissions:" in publish_job
+    assert "contents: write" in publish_job
+    assert "packages: write" in publish_job
 
 
 def test_environment_setup_uses_one_docker_hub_mirror_source_of_truth() -> None:

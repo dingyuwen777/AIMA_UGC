@@ -1,0 +1,705 @@
+name: Release
+
+run-name: >-
+  ${{ github.event_name == 'workflow_dispatch'
+      && format('Release {0} from {1}', inputs.version, github.sha)
+      || format('Release dry-run for PR #{0}', github.event.pull_request.number) }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "正式版本号，例如 v0.3.0"
+        required: true
+        type: string
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/release.yml
+      - Dockerfile
+      - compose.yaml
+      - env.production.example
+      - tests/unit/test_docker_build_sources.py
+      - docs/02_环境运行与部署.md
+      - docs/roadmap/02_生产上线实施路线.md
+      - docs/appendix/11_生产部署与离线Release方案.md
+
+# PR dry-run 只拿只读 token；正式发布的写权限只在 publish-release job 中授予。
+permissions:
+  contents: read
+
+concurrency:
+  group: aima-ugc-release-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-verify:
+    name: Build and replay offline candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      checks: read
+    outputs:
+      version: ${{ steps.identity.outputs.version }}
+      release_sha: ${{ steps.identity.outputs.release_sha }}
+      candidate_artifact: ${{ steps.identity.outputs.candidate_artifact }}
+
+    steps:
+      - name: Checkout pinned source
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release identity
+        id: identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          RELEASE_SHA="$(git rev-parse HEAD)"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="dryrun-pr-${{ github.event.pull_request.number }}-${RELEASE_SHA:0:12}"
+          fi
+          CANDIDATE_ARTIFACT="release-candidate-${VERSION}-${RELEASE_SHA:0:12}"
+          {
+            echo "RELEASE_SHA=${RELEASE_SHA}"
+            echo "VERSION=${VERSION}"
+          } >> "${GITHUB_ENV}"
+          {
+            echo "release_sha=${RELEASE_SHA}"
+            echo "version=${VERSION}"
+            echo "candidate_artifact=${CANDIDATE_ARTIFACT}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Configure official Release upstreams
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >> "${GITHUB_ENV}" <<'EOF'
+          AIMA_BUILD_DEBIAN_MIRROR=http://deb.debian.org/debian
+          AIMA_BUILD_DEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security
+          AIMA_BUILD_PYPI_INDEX=https://pypi.org/simple
+          AIMA_BUILD_NPM_REGISTRY=https://registry.npmjs.org
+          POSTGRES_IMAGE=postgres:18.4
+          BACKEND_IMAGE=ghcr.io/dingyuwen777/aima-ugc-backend
+          FRONTEND_IMAGE=ghcr.io/dingyuwen777/aima-ugc-frontend
+          EOF
+
+      - name: Validate formal release request
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" != "refs/heads/main" ]]; then
+            echo "Release 只能从 main 分支手工触发；当前 ref=${GITHUB_REF}" >&2
+            exit 1
+          fi
+          if [[ ! "${VERSION}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "版本号必须使用 vMAJOR.MINOR.PATCH，例如 v0.3.0 或 v1.2.1。" >&2
+            exit 1
+          fi
+          git fetch --no-tags --depth=1 origin main
+          if [[ "$(git rev-parse FETCH_HEAD)" != "${RELEASE_SHA}" ]]; then
+            echo "当前 Workflow SHA 已不是远端 main 最新 SHA，拒绝发布。" >&2
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/${VERSION}" >/dev/null 2>&1; then
+            echo "Git Tag ${VERSION} 已存在，拒绝覆盖已有发布基线。" >&2
+            exit 1
+          fi
+          if gh release view "${VERSION}" >/dev/null 2>&1; then
+            echo "GitHub Release ${VERSION} 已存在，拒绝重复发布。" >&2
+            exit 1
+          fi
+
+      - name: Verify required main CI gates
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api -H "Accept: application/vnd.github+json" \
+            "/repos/${GITHUB_REPOSITORY}/commits/${RELEASE_SHA}/check-runs?per_page=100" \
+            > "${RUNNER_TEMP}/release-check-runs.json"
+          python3 - "${RUNNER_TEMP}/release-check-runs.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          required = {
+              "Stage 1",
+              "Compose Golden Path",
+              "Requirement Traceability and Completion Audit",
+          }
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          latest: dict[str, tuple[str, str | None, str | None]] = {}
+          for run in payload.get("check_runs", []):
+              name = run.get("name")
+              if name not in required:
+                  continue
+              timestamp = run.get("completed_at") or run.get("started_at") or ""
+              previous = latest.get(name)
+              if previous is None or timestamp > previous[0]:
+                  latest[name] = (timestamp, run.get("status"), run.get("conclusion"))
+
+          failures: list[str] = []
+          for name in sorted(required):
+              if name not in latest:
+                  failures.append(f"{name}: missing")
+                  continue
+              _, status, conclusion = latest[name]
+              if status != "completed" or conclusion != "success":
+                  failures.append(f"{name}: status={status}, conclusion={conclusion}")
+          if failures:
+              raise SystemExit(
+                  "Release gate failed; required main checks are not green:\n- "
+                  + "\n- ".join(failures)
+              )
+          print("Release gate passed: required main checks are green.")
+          PY
+
+      - name: Verify Docker toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker version
+          docker compose version
+
+      - name: Build Linux AMD64 application images from official upstreams
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --pull --platform linux/amd64 \
+            --target backend \
+            --build-arg AIMA_BUILD_DEBIAN_MIRROR="${AIMA_BUILD_DEBIAN_MIRROR}" \
+            --build-arg AIMA_BUILD_DEBIAN_SECURITY_MIRROR="${AIMA_BUILD_DEBIAN_SECURITY_MIRROR}" \
+            --build-arg AIMA_BUILD_PYPI_INDEX="${AIMA_BUILD_PYPI_INDEX}" \
+            -t "aima-ugc-backend:${VERSION}" \
+            .
+
+          docker build --pull --platform linux/amd64 \
+            --target frontend \
+            --build-arg AIMA_BUILD_NPM_REGISTRY="${AIMA_BUILD_NPM_REGISTRY}" \
+            -t "aima-ugc-frontend:${VERSION}" \
+            .
+
+          docker pull --platform linux/amd64 "${POSTGRES_IMAGE}"
+
+      - name: Resolve immutable image and schema facts
+        shell: bash
+        run: |
+          set -euo pipefail
+          BACKEND_ID="$(docker image inspect -f '{{.Id}}' "aima-ugc-backend:${VERSION}")"
+          FRONTEND_ID="$(docker image inspect -f '{{.Id}}' "aima-ugc-frontend:${VERSION}")"
+          POSTGRES_REF="$(docker image inspect "${POSTGRES_IMAGE}" --format '{{json .RepoDigests}}' \
+            | python3 -c 'import json,sys; values=json.load(sys.stdin); print(next((v for v in values if v.startswith("postgres@sha256:")), ""))')"
+          if [[ "${POSTGRES_REF}" != postgres@sha256:* ]]; then
+            echo "无法获得官方 PostgreSQL 18.4 镜像 digest。" >&2
+            exit 1
+          fi
+
+          mapfile -t ALEMBIC_HEADS < <(
+            docker run --rm "aima-ugc-backend:${VERSION}" alembic heads | awk '{print $1}'
+          )
+          if [[ "${#ALEMBIC_HEADS[@]}" -ne 1 || -z "${ALEMBIC_HEADS[0]}" ]]; then
+            echo "Release 只支持当前单 Alembic head；实际 heads=${ALEMBIC_HEADS[*]-}" >&2
+            exit 1
+          fi
+          OPENAPI_SHA256="$(sha256sum contracts/openapi/openapi.json | awk '{print $1}')"
+
+          {
+            echo "BACKEND_ID=${BACKEND_ID}"
+            echo "FRONTEND_ID=${FRONTEND_ID}"
+            echo "POSTGRES_REF=${POSTGRES_REF}"
+            echo "ALEMBIC_HEAD=${ALEMBIC_HEADS[0]}"
+            echo "OPENAPI_SHA256=${OPENAPI_SHA256}"
+          } >> "${GITHUB_ENV}"
+
+      - name: Build offline deployment bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf release-bundle
+          mkdir -p release-bundle
+
+          cp compose.yaml release-bundle/compose.yaml
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          source = Path("env.production.example").read_text(encoding="utf-8").splitlines()
+          output: list[str] = []
+          replaced = False
+          for line in source:
+              if line.startswith("AIMA_IMAGE_TAG="):
+                  output.append(f'AIMA_IMAGE_TAG={os.environ["VERSION"]}')
+                  replaced = True
+              else:
+                  output.append(line)
+          if not replaced:
+              raise SystemExit("env.production.example 缺少 AIMA_IMAGE_TAG")
+          Path("release-bundle/env.production.example").write_text(
+              "\n".join(output) + "\n", encoding="utf-8"
+          )
+          PY
+
+          docker save -o release-bundle/images.tar \
+            "aima-ugc-backend:${VERSION}" \
+            "aima-ugc-frontend:${VERSION}" \
+            "${POSTGRES_IMAGE}"
+          test -s release-bundle/images.tar
+
+          python3 - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          manifest = {
+              "schema_version": 1,
+              "version": os.environ["VERSION"],
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "git_sha": os.environ["RELEASE_SHA"],
+              "built_at": datetime.now(timezone.utc).isoformat(),
+              "platform": "linux/amd64",
+              "deployment": {
+                  "mode": "offline-docker-compose",
+                  "compose_file": "compose.yaml",
+                  "server_build_required": False,
+                  "server_pull_required": False,
+                  "persistent_root": "/data/AIMA_UGC",
+              },
+              "build_upstreams": {
+                  "docker": "Docker Hub canonical image references",
+                  "debian": os.environ["AIMA_BUILD_DEBIAN_MIRROR"],
+                  "pypi": os.environ["AIMA_BUILD_PYPI_INDEX"],
+                  "npm": os.environ["AIMA_BUILD_NPM_REGISTRY"],
+              },
+              "images": {
+                  "backend": {
+                      "offline_tag": f'aima-ugc-backend:{os.environ["VERSION"]}',
+                      "local_image_id": os.environ["BACKEND_ID"],
+                      "registry_ref": None,
+                  },
+                  "frontend": {
+                      "offline_tag": f'aima-ugc-frontend:{os.environ["VERSION"]}',
+                      "local_image_id": os.environ["FRONTEND_ID"],
+                      "registry_ref": None,
+                  },
+                  "postgres": {
+                      "offline_tag": os.environ["POSTGRES_IMAGE"],
+                      "registry_ref": os.environ["POSTGRES_REF"],
+                  },
+              },
+              "schema": {
+                  "alembic_head": os.environ["ALEMBIC_HEAD"],
+                  "openapi_sha256": os.environ["OPENAPI_SHA256"],
+              },
+              "integrity": {
+                  "sha256sums": True,
+                  "sbom": "not_included_in_this_release_workflow_mvp",
+                  "independent_signature": "not_included_in_this_release_workflow_mvp",
+              },
+              "publication": {
+                  "github_release": False,
+                  "ghcr": False,
+              },
+          }
+          migration = {
+              "schema_version": 1,
+              "version": os.environ["VERSION"],
+              "git_sha": os.environ["RELEASE_SHA"],
+              "alembic_head": os.environ["ALEMBIC_HEAD"],
+              "upgrade_command": "alembic upgrade head",
+              "migration_process": "compose service: migrate",
+              "automatic_schema_rollback": False,
+              "coordinated_backup_restore": "not_implemented_in_this_release_workflow_mvp",
+              "rollback_note": (
+                  "应用回滚前必须确认目标版本 Migration 兼容性；"
+                  "当前 Release Workflow 不提供数据库自动回滚或协调 Backup/Restore。"
+              ),
+          }
+          Path("release-bundle/release-manifest.json").write_text(
+              json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+          )
+          Path("release-bundle/migration-manifest.json").write_text(
+              json.dumps(migration, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+
+          cat > release-bundle/DEPLOY.md <<EOF
+          # AIMA_UGC ${VERSION} 离线部署
+
+          本目录包含 GitHub Release Workflow 已构建并回放验证的 Linux/AMD64 Backend、Frontend 和 PostgreSQL 18.4 镜像。
+          服务器不需要重新 build，也不需要从 Docker Hub/GHCR 拉取运行镜像。
+
+          ## 1. 校验并导入镜像
+
+          \`\`\`bash
+          sha256sum -c SHA256SUMS
+          docker load -i images.tar
+          \`\`\`
+
+          ## 2. 准备运行配置
+
+          \`\`\`bash
+          cp env.production.example env.production
+          chmod 0600 env.production
+          \`\`\`
+
+          编辑 \`env.production\`：公司服务器保持 \`AIMA_HOST_ROOT=/data/AIMA_UGC\`，并按实际内网地址、TikHub/LLM 配置填写机器配置。
+          真实 \`env.production\` 属于敏感文件，不得提交 Git 或放回 Release 包。
+
+          ## 3. 启动
+
+          \`\`\`bash
+          docker compose --env-file env.production config --quiet
+          docker compose --env-file env.production up -d --no-build --pull never --wait
+          \`\`\`
+
+          \`--no-build --pull never\` 是 Release 部署门禁：只运行本包已经导入的镜像。
+          PostgreSQL、Artifact、日志和内部 Secret 始终保存在 \`AIMA_HOST_ROOT\`，不属于 Release 生命周期。
+
+          ## 4. 验证
+
+          \`\`\`bash
+          docker compose --env-file env.production ps -a
+          docker compose --env-file env.production exec -T frontend \
+            wget -qO- http://127.0.0.1:8080/health/ready
+          \`\`\`
+
+          不要删除 \`AIMA_HOST_ROOT\`，不要用带 \`-v\` 的 Compose 清理命令处理真实业务环境。
+          当前 Release Workflow 不提供 PostgreSQL + Artifact 协调 Backup/Restore 或数据库自动回滚；有 Migration 的升级仍需按正式备份/回滚策略执行。
+          EOF
+
+          (
+            cd release-bundle
+            sha256sum \
+              images.tar \
+              compose.yaml \
+              env.production.example \
+              release-manifest.json \
+              migration-manifest.json \
+              DEPLOY.md \
+              > SHA256SUMS
+            sha256sum -c SHA256SUMS
+          )
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          expected = {
+              "DEPLOY.md",
+              "SHA256SUMS",
+              "compose.yaml",
+              "env.production.example",
+              "images.tar",
+              "migration-manifest.json",
+              "release-manifest.json",
+          }
+          actual = {path.name for path in Path("release-bundle").iterdir()}
+          if actual != expected:
+              raise SystemExit(f"Release bundle entries mismatch: actual={sorted(actual)}")
+          PY
+
+      - name: Replay bundle with no build and no pull
+        shell: bash
+        run: |
+          set -euo pipefail
+          SMOKE_ROOT="${RUNNER_TEMP}/aima-release-smoke-${GITHUB_RUN_ID}"
+          SMOKE_ENV="${RUNNER_TEMP}/aima-release-smoke-${GITHUB_RUN_ID}.env"
+          cp release-bundle/env.production.example "${SMOKE_ENV}"
+          export SMOKE_ROOT SMOKE_ENV
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["SMOKE_ENV"])
+          updates = {
+              "AIMA_HTTP_BIND_IP": "127.0.0.1",
+              "AIMA_HTTP_PORT": "18082",
+              "AIMA_HOST_ROOT": os.environ["SMOKE_ROOT"],
+              "AIMA_TIKHUB_ENABLED": "false",
+          }
+          disabled_runtime_keys = {
+              "AIMA_LLM_BASE_URL",
+              "AIMA_LLM_PROVIDER_NAME",
+              "AIMA_LLM_MODEL",
+          }
+          output: list[str] = []
+          seen: set[str] = set()
+          for line in path.read_text(encoding="utf-8").splitlines():
+              key = line.split("=", 1)[0] if "=" in line and not line.startswith("#") else None
+              if key in disabled_runtime_keys:
+                  continue
+              if key in updates:
+                  output.append(f"{key}={updates[key]}")
+                  seen.add(key)
+              else:
+                  output.append(line)
+          missing = set(updates) - seen
+          if missing:
+              raise SystemExit(f"Smoke env missing required keys: {sorted(missing)}")
+          path.write_text("\n".join(output) + "\n", encoding="utf-8")
+          PY
+          chmod 0600 "${SMOKE_ENV}"
+
+          cleanup() {
+            status=$?
+            if [[ ${status} -ne 0 ]]; then
+              docker compose -f release-bundle/compose.yaml \
+                --env-file "${SMOKE_ENV}" \
+                -p aima-release-smoke \
+                ps -a || true
+              docker compose -f release-bundle/compose.yaml \
+                --env-file "${SMOKE_ENV}" \
+                -p aima-release-smoke \
+                logs --no-color || true
+            fi
+            docker compose -f release-bundle/compose.yaml \
+              --env-file "${SMOKE_ENV}" \
+              -p aima-release-smoke \
+              down --remove-orphans || true
+            exit ${status}
+          }
+          trap cleanup EXIT
+
+          docker image rm \
+            "aima-ugc-backend:${VERSION}" \
+            "aima-ugc-frontend:${VERSION}" \
+            "${POSTGRES_IMAGE}"
+
+          for image_ref in \
+            "aima-ugc-backend:${VERSION}" \
+            "aima-ugc-frontend:${VERSION}" \
+            "${POSTGRES_IMAGE}"; do
+            if docker image inspect "${image_ref}" >/dev/null 2>&1; then
+              echo "候选镜像仍可通过 ${image_ref} 访问，不能证明离线 Bundle 独立可回放。" >&2
+              exit 1
+            fi
+          done
+
+          docker load -i release-bundle/images.tar
+          docker compose -f release-bundle/compose.yaml \
+            --env-file "${SMOKE_ENV}" \
+            -p aima-release-smoke \
+            config --quiet
+          docker compose -f release-bundle/compose.yaml \
+            --env-file "${SMOKE_ENV}" \
+            -p aima-release-smoke \
+            up -d --no-build --pull never --wait
+
+          BOOTSTRAP_CONTAINER="$(docker compose -f release-bundle/compose.yaml --env-file "${SMOKE_ENV}" -p aima-release-smoke ps -a -q bootstrap)"
+          MIGRATE_CONTAINER="$(docker compose -f release-bundle/compose.yaml --env-file "${SMOKE_ENV}" -p aima-release-smoke ps -a -q migrate)"
+          CONFIGURE_CONTAINER="$(docker compose -f release-bundle/compose.yaml --env-file "${SMOKE_ENV}" -p aima-release-smoke ps -a -q configure)"
+          test "$(docker inspect -f '{{.State.ExitCode}}' "${BOOTSTRAP_CONTAINER}")" = "0"
+          test "$(docker inspect -f '{{.State.ExitCode}}' "${MIGRATE_CONTAINER}")" = "0"
+          test "$(docker inspect -f '{{.State.ExitCode}}' "${CONFIGURE_CONTAINER}")" = "0"
+          curl -fsS http://127.0.0.1:18082/health/ready > "${RUNNER_TEMP}/release-ready.json"
+          curl -fsS http://127.0.0.1:18082/ > /dev/null
+          sudo test -d "${SMOKE_ROOT}/postgres/18/docker"
+          sudo test -s "${SMOKE_ROOT}/runtime/logs/api.log"
+
+          docker compose -f release-bundle/compose.yaml \
+            --env-file "${SMOKE_ENV}" \
+            -p aima-release-smoke \
+            down --remove-orphans
+          trap - EXIT
+
+      - name: Validate candidate archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          CANDIDATE_ARCHIVE="AIMA_UGC-${VERSION}-deploy.tar.gz"
+          tar -C release-bundle -cf - . | gzip -1 > "${CANDIDATE_ARCHIVE}"
+          gzip -t "${CANDIDATE_ARCHIVE}"
+          test -s "${CANDIDATE_ARCHIVE}"
+          sha256sum "${CANDIDATE_ARCHIVE}"
+
+      - name: Upload replay-tested release candidate
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.identity.outputs.candidate_artifact }}
+          path: release-bundle/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+      - name: Report dry-run result
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Release dry-run succeeded for ${VERSION}."
+          echo "No write-capable repository token, GHCR image, Git Tag, or GitHub Release was used."
+
+  publish-release:
+    name: Publish replay-tested candidate
+    if: github.event_name == 'workflow_dispatch'
+    needs: build-verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      packages: write
+    env:
+      VERSION: ${{ needs.build-verify.outputs.version }}
+      RELEASE_SHA: ${{ needs.build-verify.outputs.release_sha }}
+      BACKEND_IMAGE: ghcr.io/dingyuwen777/aima-ugc-backend
+      FRONTEND_IMAGE: ghcr.io/dingyuwen777/aima-ugc-frontend
+
+    steps:
+      - name: Revalidate main and immutable version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          CURRENT_MAIN_SHA="$(gh api "/repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          if [[ "${CURRENT_MAIN_SHA}" != "${RELEASE_SHA}" ]]; then
+            echo "构建完成后 main 已前进；拒绝把旧候选发布为当前版本。" >&2
+            exit 1
+          fi
+          if gh api "/repos/${GITHUB_REPOSITORY}/git/ref/tags/${VERSION}" >/dev/null 2>&1; then
+            echo "Git Tag ${VERSION} 已存在，拒绝覆盖。" >&2
+            exit 1
+          fi
+          if gh release view "${VERSION}" >/dev/null 2>&1; then
+            echo "GitHub Release ${VERSION} 已存在，拒绝重复发布。" >&2
+            exit 1
+          fi
+
+      - name: Download replay-tested release candidate
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.build-verify.outputs.candidate_artifact }}
+          path: release-bundle
+
+      - name: Verify transferred candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s release-bundle/images.tar
+          (
+            cd release-bundle
+            sha256sum -c SHA256SUMS
+          )
+
+      - name: Load and tag exact replay-tested application images
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker load -i release-bundle/images.tar
+          BACKEND_ID="$(docker image inspect -f '{{.Id}}' "aima-ugc-backend:${VERSION}")"
+          FRONTEND_ID="$(docker image inspect -f '{{.Id}}' "aima-ugc-frontend:${VERSION}")"
+          docker tag "aima-ugc-backend:${VERSION}" "${BACKEND_IMAGE}:${VERSION}"
+          docker tag "aima-ugc-backend:${VERSION}" "${BACKEND_IMAGE}:sha-${RELEASE_SHA}"
+          docker tag "aima-ugc-frontend:${VERSION}" "${FRONTEND_IMAGE}:${VERSION}"
+          docker tag "aima-ugc-frontend:${VERSION}" "${FRONTEND_IMAGE}:sha-${RELEASE_SHA}"
+          {
+            echo "BACKEND_ID=${BACKEND_ID}"
+            echo "FRONTEND_ID=${FRONTEND_ID}"
+          } >> "${GITHUB_ENV}"
+
+      - name: Publish exact candidate images to GHCR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "${GH_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+          docker push "${BACKEND_IMAGE}:${VERSION}"
+          docker push "${BACKEND_IMAGE}:sha-${RELEASE_SHA}"
+          docker push "${FRONTEND_IMAGE}:${VERSION}"
+          docker push "${FRONTEND_IMAGE}:sha-${RELEASE_SHA}"
+
+          docker pull --platform linux/amd64 "${BACKEND_IMAGE}:${VERSION}"
+          docker pull --platform linux/amd64 "${FRONTEND_IMAGE}:${VERSION}"
+          test "$(docker image inspect -f '{{.Id}}' "${BACKEND_IMAGE}:${VERSION}")" = "${BACKEND_ID}"
+          test "$(docker image inspect -f '{{.Id}}' "${FRONTEND_IMAGE}:${VERSION}")" = "${FRONTEND_ID}"
+
+          BACKEND_REF="$(docker image inspect "${BACKEND_IMAGE}:${VERSION}" --format '{{json .RepoDigests}}' \
+            | python3 -c 'import json,sys,os; values=json.load(sys.stdin); prefix=os.environ["BACKEND_IMAGE"]+"@sha256:"; print(next((v for v in values if v.startswith(prefix)), ""))')"
+          FRONTEND_REF="$(docker image inspect "${FRONTEND_IMAGE}:${VERSION}" --format '{{json .RepoDigests}}' \
+            | python3 -c 'import json,sys,os; values=json.load(sys.stdin); prefix=os.environ["FRONTEND_IMAGE"]+"@sha256:"; print(next((v for v in values if v.startswith(prefix)), ""))')"
+          if [[ "${BACKEND_REF}" != "${BACKEND_IMAGE}@sha256:"* ]]; then
+            echo "无法获得 Backend GHCR digest。" >&2
+            exit 1
+          fi
+          if [[ "${FRONTEND_REF}" != "${FRONTEND_IMAGE}@sha256:"* ]]; then
+            echo "无法获得 Frontend GHCR digest。" >&2
+            exit 1
+          fi
+          {
+            echo "BACKEND_REF=${BACKEND_REF}"
+            echo "FRONTEND_REF=${FRONTEND_REF}"
+          } >> "${GITHUB_ENV}"
+
+      - name: Finalize published manifest and assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("release-bundle/release-manifest.json")
+          manifest = json.loads(path.read_text(encoding="utf-8"))
+          if manifest["git_sha"] != os.environ["RELEASE_SHA"]:
+              raise SystemExit("Candidate manifest Git SHA mismatch")
+          if manifest["version"] != os.environ["VERSION"]:
+              raise SystemExit("Candidate manifest version mismatch")
+          manifest["images"]["backend"]["registry_ref"] = os.environ["BACKEND_REF"]
+          manifest["images"]["frontend"]["registry_ref"] = os.environ["FRONTEND_REF"]
+          manifest["publication"] = {"github_release": True, "ghcr": True}
+          path.write_text(
+              json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+
+          (
+            cd release-bundle
+            sha256sum \
+              images.tar \
+              compose.yaml \
+              env.production.example \
+              release-manifest.json \
+              migration-manifest.json \
+              DEPLOY.md \
+              > SHA256SUMS
+            sha256sum -c SHA256SUMS
+          )
+
+          cp release-bundle/release-manifest.json release-manifest.json
+          cp release-bundle/migration-manifest.json migration-manifest.json
+          DEPLOY_ARCHIVE="AIMA_UGC-${VERSION}-deploy.tar.gz"
+          tar -C release-bundle -cf - . | gzip -1 > "${DEPLOY_ARCHIVE}"
+          gzip -t "${DEPLOY_ARCHIVE}"
+          test -s "${DEPLOY_ARCHIVE}"
+          sha256sum release-manifest.json migration-manifest.json "${DEPLOY_ARCHIVE}" > SHA256SUMS
+          sha256sum -c SHA256SUMS
+          echo "DEPLOY_ARCHIVE=${DEPLOY_ARCHIVE}" >> "${GITHUB_ENV}"
+          ls -lh "${DEPLOY_ARCHIVE}" release-manifest.json migration-manifest.json SHA256SUMS
+
+      - name: Create Git tag and GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "${VERSION}" \
+            release-manifest.json \
+            migration-manifest.json \
+            SHA256SUMS \
+            "${DEPLOY_ARCHIVE}" \
+            --target "${RELEASE_SHA}" \
+            --title "AIMA_UGC ${VERSION}" \
+            --generate-notes
