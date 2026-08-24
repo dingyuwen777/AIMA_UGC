@@ -1,0 +1,196 @@
+name: Temporary DeepSeek Pricing Green
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: fix/deepseek-pricing-effective-date
+          fetch-depth: 0
+
+      - name: Apply exact pricing fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -q 'def _price_effective_at' backend/src/aima_ugc/adapters/llm/pricing.py; then
+            echo 'Pricing Green patch already applied.'
+            exit 0
+          fi
+
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file_path = Path(path)
+              text = file_path.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one anchor, found {count}: {old[:120]!r}")
+              file_path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          def replace_in_function(path: str, name: str, replacements: list[tuple[str, str]]) -> None:
+              file_path = Path(path)
+              text = file_path.read_text(encoding="utf-8")
+              start = text.index(f"def {name}(")
+              end = text.find("\ndef ", start + 1)
+              if end == -1:
+                  end = len(text)
+              segment = text[start:end]
+              for old, new in replacements:
+                  count = segment.count(old)
+                  if count != 1:
+                      raise SystemExit(
+                          f"{path}:{name}: expected one anchor, found {count}: {old[:120]!r}"
+                      )
+                  segment = segment.replace(old, new, 1)
+              file_path.write_text(text[:start] + segment + text[end:], encoding="utf-8")
+
+          pricing_path = "backend/src/aima_ugc/adapters/llm/pricing.py"
+          replace_once(
+              pricing_path,
+              'class LLMPriceNotConfiguredError(LookupError):\n    """目标 provider/model 没有明确价格，禁止使用默认单价猜测。"""',
+              'class LLMPriceNotConfiguredError(LookupError):\n    """目标 provider/model/请求时点没有明确价格，禁止使用默认单价猜测。"""',
+          )
+          replace_once(
+              pricing_path,
+              '''    def price_for(\n        self,\n        *,\n        provider: str,\n        model: str,\n        at: datetime | None = None,\n    ) -> LLMModelPrice:\n        identity = (_provider(provider), model)\n        for schedule in self._schedules:\n            if (schedule.provider, schedule.model) == identity:\n                return schedule.price_at(at or datetime.now(UTC))\n        for price in self.models:\n            if (price.provider, price.model) == identity:\n                return price\n        raise LLMPriceNotConfiguredError(\n            f"LLM Pricing 未配置 provider/model: {identity[0]}/{identity[1]}"\n        )\n''',
+              '''    def price_for(\n        self,\n        *,\n        provider: str,\n        model: str,\n        at: datetime | None = None,\n    ) -> LLMModelPrice:\n        identity = (_provider(provider), model)\n        request_at = at or datetime.now(UTC)\n        for schedule in self._schedules:\n            if (schedule.provider, schedule.model) == identity:\n                return _price_effective_at(schedule.price_at(request_at), request_at)\n        for price in self.models:\n            if (price.provider, price.model) == identity:\n                return _price_effective_at(price, request_at)\n        raise LLMPriceNotConfiguredError(\n            f"LLM Pricing 未配置 provider/model: {identity[0]}/{identity[1]}"\n        )\n''',
+          )
+          replace_once(
+              pricing_path,
+              '\n\ndef load_llm_pricing() -> LLMPricingCatalog:\n',
+              '''\n\ndef _price_effective_at(price: LLMModelPrice, at: datetime) -> LLMModelPrice:\n    """只在 AIMA 价格目录生效日及之后返回价格，避免历史请求套用未来价格。"""\n\n    if price.effective_date is None:\n        return price\n    if at.tzinfo is None or at.utcoffset() is None:\n        raise ValueError("LLM Pricing effective_date 选价要求带时区的请求时间")\n    request_date = at.astimezone(UTC).date()\n    if request_date < price.effective_date:\n        raise LLMPriceNotConfiguredError(\n            "LLM Pricing 价格尚未生效: "\n            f"{price.provider}/{price.model}; "\n            f"request_date={request_date.isoformat()}; "\n            f"effective_date={price.effective_date.isoformat()}"\n        )\n    return price\n\n\ndef load_llm_pricing() -> LLMPricingCatalog:\n''',
+          )
+
+          openai_path = "backend/src/aima_ugc/adapters/llm/openai_compatible.py"
+          replace_once(
+              openai_path,
+              '''    LLMCostCalculation,\n    LLMModelPrice,\n    LLMPricingCatalog,\n    LLMTokenUsage,\n''',
+              '''    LLMCostCalculation,\n    LLMModelPrice,\n    LLMPriceNotConfiguredError,\n    LLMPricingCatalog,\n    LLMTokenUsage,\n''',
+          )
+          replace_once(
+              openai_path,
+              '''        cost_unavailable_reason = self._pricing_unavailable_reason\n        price = (\n            self._pricing_catalog.price_for(\n                provider=self._provider_name,\n                model=self._model,\n                at=started_at,\n            )\n            if self._pricing_catalog is not None and self._pricing_unavailable_reason is None\n            else None\n        )\n''',
+              '''        cost_unavailable_reason = self._pricing_unavailable_reason\n        price: LLMModelPrice | None = None\n        if self._pricing_catalog is not None and self._pricing_unavailable_reason is None:\n            try:\n                price = self._pricing_catalog.price_for(\n                    provider=self._provider_name,\n                    model=self._model,\n                    at=started_at,\n                )\n            except LLMPriceNotConfiguredError:\n                cost_unavailable_reason = "price_not_effective_at_request_time"\n''',
+          )
+
+          replace_in_function(
+              "tests/unit/analysis/test_openai_compatible_llm.py",
+              "test_openai_compatible_uses_physical_request_start_time_for_price_period",
+              [
+                  ('provider = "api.deepseek.com"', 'provider = "llm.example"'),
+                  ('model = "deepseek-v4-pro"', 'model = "model-a"'),
+                  ('currency = "CNY"', 'currency = "USD"'),
+                  ('source_url = "https://example.invalid/scheduled-pricing"', 'source_url = "https://llm.example/pricing"'),
+                  ('base_url="https://api.deepseek.com/"', 'base_url="https://llm.example/"'),
+                  ('model="deepseek-v4-pro"', 'model="model-a"'),
+                  ('assert response.cost_currency == "CNY"', 'assert response.cost_currency == "USD"'),
+                  ('assert records[0].cost_currency == "CNY"', 'assert records[0].cost_currency == "USD"'),
+                  ('assert records[0].pricing_source_url == "https://example.invalid/scheduled-pricing"', 'assert records[0].pricing_source_url == "https://llm.example/pricing"'),
+              ],
+          )
+
+          audit_path = "tests/unit/analysis/test_llm_request_audit.py"
+          replace_in_function(
+              audit_path,
+              "test_recalculation_writes_derived_report_without_overwriting_original_audit",
+              [
+                  (
+                      '    peak_request_at = datetime(2026, 8, 20, 1, 0, tzinfo=UTC)\n',
+                      '''    peak_request_at = datetime(2026, 8, 20, 1, 0, tzinfo=UTC)\n    initial_catalog = LLMPricingCatalog.from_toml(\n        """\n        schema_version = "llm-pricing.v1"\n\n        [[models]]\n        provider = "llm.example"\n        model = "model-a"\n        currency = "USD"\n        source_url = "https://llm.example/pricing-current"\n        effective_date = "2026-08-20"\n        input_cache_hit_per_million_tokens = "0.1"\n        input_cache_miss_per_million_tokens = "2"\n        output_per_million_tokens = "5"\n        """\n    )\n''',
+                  ),
+                  (
+                      '''    monkeypatch.setattr(\n        pricing_module,\n        "datetime",\n        _fixed_datetime(datetime(2026, 8, 20, 0, 0, tzinfo=UTC)),\n    )\n''',
+                      '',
+                  ),
+                  ('base_url="https://api.deepseek.com/"', 'base_url="https://llm.example/"'),
+                  ('model="deepseek-v4-pro"', 'model="model-a"'),
+                  ('pricing_catalog=load_llm_pricing()', 'pricing_catalog=initial_catalog'),
+                  ('provider = "api.deepseek.com"', 'provider = "llm.example"'),
+                  ('model = "deepseek-v4-pro"', 'model = "model-a"'),
+                  ('currency = "CNY"', 'currency = "USD"'),
+                  ('timezone = "Asia/Shanghai"', 'timezone = "UTC"'),
+                  ('time_ranges = ["09:00-12:00", "14:00-18:00"]', 'time_ranges = ["01:00-02:00"]'),
+                  ('assert report["summary"]["cost_currency"] == "CNY"', 'assert report["summary"]["cost_currency"] == "USD"'),
+              ],
+          )
+          replace_in_function(
+              audit_path,
+              "test_request_audit_resume_distinguishes_current_session_from_run_total",
+              [
+                  ('_fixed_datetime(datetime(2026, 8, 20, 0, 0, tzinfo=UTC))', '_fixed_datetime(datetime(2026, 8, 24, 0, 0, tzinfo=UTC))'),
+              ],
+          )
+          replace_once(
+              audit_path,
+              'from aima_ugc.adapters.llm import pricing as pricing_module\n',
+              '',
+          )
+
+          replace_once(
+              "backend/src/aima_ugc/adapters/llm/pricing.toml",
+              '# effective_date：本条价格在 AIMA 价格目录中的生效日期，格式固定为 YYYY-MM-DD。',
+              '# effective_date：本条价格在 AIMA 价格目录中的生效日期；运行时按请求时间的 UTC 日期判断，格式固定为 YYYY-MM-DD。',
+          )
+          replace_once(
+              "backend/src/aima_ugc/adapters/llm/README.md",
+              '`effective_date` 表示**这份价格配置从哪一天起在 AIMA 价格目录中生效**，不是对“供应商首次从哪一天开始执行该价格”的猜测。本次同步设置为 `2026-08-24`；DeepSeek 当前价格页没有为这组价格单独声明另一个价格生效日期。',
+              '`effective_date` 表示**这份价格配置从哪一天起在 AIMA 价格目录中生效**，不是对“供应商首次从哪一天开始执行该价格”的猜测。本次同步设置为 `2026-08-24`；DeepSeek 当前价格页没有为这组价格单独声明另一个价格生效日期。\n\n运行时 `price_for()` 按请求 `started_at` 的 **UTC 日期**检查 `effective_date`。请求早于该日期时，这份价格被视为“该时点不可用”，不会把未来价格套到历史请求。正式 Adapter 仍继续发送 LLM 请求，只把本次费用记为不可计算；离线成本复算同样会把该请求标为 unavailable，除非调用方提供覆盖该历史时点的价格目录。',
+          )
+          PY
+
+      - name: Verify targeted Green
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv sync --locked
+          uv run pytest \
+            tests/unit/analysis/test_llm_pricing_effective_date.py \
+            tests/unit/analysis/test_llm_pricing.py \
+            tests/unit/analysis/test_openai_compatible_llm.py \
+            tests/unit/analysis/test_llm_request_audit.py -q
+          uv run ruff format --check \
+            backend/src/aima_ugc/adapters/llm/pricing.py \
+            backend/src/aima_ugc/adapters/llm/openai_compatible.py \
+            tests/unit/analysis/test_llm_pricing_effective_date.py \
+            tests/unit/analysis/test_openai_compatible_llm.py \
+            tests/unit/analysis/test_llm_request_audit.py
+          uv run ruff check \
+            backend/src/aima_ugc/adapters/llm/pricing.py \
+            backend/src/aima_ugc/adapters/llm/openai_compatible.py \
+            tests/unit/analysis/test_llm_pricing_effective_date.py \
+            tests/unit/analysis/test_openai_compatible_llm.py \
+            tests/unit/analysis/test_llm_request_audit.py
+          uv run mypy backend/src
+
+      - name: Commit Green implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            backend/src/aima_ugc/adapters/llm/pricing.py \
+            backend/src/aima_ugc/adapters/llm/openai_compatible.py \
+            backend/src/aima_ugc/adapters/llm/pricing.toml \
+            backend/src/aima_ugc/adapters/llm/README.md \
+            tests/unit/analysis/test_openai_compatible_llm.py \
+            tests/unit/analysis/test_llm_request_audit.py
+          if git diff --cached --quiet; then
+            echo 'No Green changes to commit.'
+            exit 0
+          fi
+          git commit -m "修复 LLM 价格生效日期与测试语义"
+          git push origin HEAD:fix/deepseek-pricing-effective-date
