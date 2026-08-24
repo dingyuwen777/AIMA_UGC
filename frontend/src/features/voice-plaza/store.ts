@@ -6,6 +6,7 @@ import type {
   ContentDetailResponse,
   ContentFilterSnapshot,
   ContentListItemResponse,
+  ContentRelevance,
   ContentTargetSelection,
   DataExportResponse,
   JobStatusResponse,
@@ -22,6 +23,7 @@ import {
   fetchDataExportFile,
   fetchDataExports,
   submitContentAnalysis,
+  submitContentRelevanceReview,
   submitDataExport,
 } from './api'
 
@@ -30,6 +32,7 @@ export interface VoicePlazaFilters {
   platform: '' | PlatformName
   contentType: string
   analysisStatus: '' | ContentAnalysisStatus
+  relevance: '' | ContentRelevance
   sentiment: string
   primaryLabel: string
   secondaryLabel: string
@@ -43,6 +46,7 @@ const EMPTY_FILTERS: VoicePlazaFilters = {
   platform: '',
   contentType: '',
   analysisStatus: '',
+  relevance: '',
   sentiment: '',
   primaryLabel: '',
   secondaryLabel: '',
@@ -79,7 +83,9 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   const loadingDetail = ref(false)
   const submittingAnalysis = ref(false)
   const submittingExport = ref(false)
+  const reviewingRelevance = ref(false)
   const error = ref<string | null>(null)
+  const notice = ref<string | null>(null)
   let analysisJobId: string | null = null
   let pollHandle: ReturnType<typeof setInterval> | undefined
 
@@ -99,6 +105,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
       platforms: filters.platform ? [filters.platform] : undefined,
       content_types: filters.contentType ? [filters.contentType] : undefined,
       analysis_status: filters.analysisStatus || undefined,
+      relevance: filters.relevance || undefined,
       sentiment: filters.sentiment.trim() || undefined,
       primary_label: filters.primaryLabel.trim() || undefined,
       secondary_label: filters.secondaryLabel.trim() || undefined,
@@ -191,6 +198,25 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     selectedIds.value = []
   }
 
+  async function reviewRelevance(contentIds: string[]): Promise<number | null> {
+    if (contentIds.length === 0 || reviewingRelevance.value) return null
+    reviewingRelevance.value = true
+    error.value = null
+    notice.value = null
+    try {
+      const result = await submitContentRelevanceReview({ content_ids: [...contentIds] })
+      selectedIds.value = selectedIds.value.filter((id) => !contentIds.includes(id))
+      notice.value = `已人工标记 ${result.requested_count} 条内容为相关。`
+      await refresh(true)
+      return result.requested_count
+    } catch (reason) {
+      error.value = errorMessage(reason)
+      return null
+    } finally {
+      reviewingRelevance.value = false
+    }
+  }
+
   async function createAnalysis(scope: 'query' | 'selected'): Promise<number | null> {
     if (analysisConfigured.value !== true) {
       error.value = '当前环境尚未配置可用的 AI 模型，请配置 LLM 后重启后端。'
@@ -255,6 +281,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   function resetFilters(): void {
     Object.assign(filters, EMPTY_FILTERS)
     clearSelection()
+    notice.value = null
   }
 
   async function poll(): Promise<void> {
@@ -293,7 +320,9 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     loadingDetail,
     submittingAnalysis,
     submittingExport,
+    reviewingRelevance,
     error,
+    notice,
     refresh,
     refreshAnalysisCapabilities,
     loadNext,
@@ -302,6 +331,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     toggleSelection,
     toggleVisibleSelection,
     clearSelection,
+    reviewRelevance,
     createAnalysis,
     refreshExports,
     createExport,
