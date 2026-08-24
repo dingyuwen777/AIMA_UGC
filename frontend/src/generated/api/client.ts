@@ -353,7 +353,7 @@ export interface ContentAnalysisJobResultResponse {
 }
 
 /**
- * 按模型重要性顺序返回的一个一级/二级标签父子对。
+ * 按模型重要性顺序返回的一个一级/二级标签对。
  */
 export interface ContentLabelPairResponse {
   primary_label: string;

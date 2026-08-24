@@ -1666,7 +1666,7 @@
       },
       "ContentLabelPairResponse": {
         "additionalProperties": false,
-        "description": "按模型重要性顺序返回的一个一级/二级标签父子对。",
+        "description": "按模型重要性顺序返回的一个一级/二级标签对。",
         "properties": {
           "primary_label": {
             "title": "Primary Label",
