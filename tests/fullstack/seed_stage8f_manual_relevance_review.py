@@ -8,8 +8,6 @@ from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
 
-from sqlalchemy import select
-
 from aima_ugc.adapters.persistence.postgres.analysis import PostgresAnalysisRepository
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.bootstrap.analysis_identity import current_analysis_identity
@@ -32,6 +30,7 @@ from aima_ugc.modules.analysis.content_analysis_job import (
 from aima_ugc.modules.content.query import ContentTarget
 from aima_ugc.modules.content.tables import contents_table
 from aima_ugc.platform.jobs import JobExecutionFence
+from sqlalchemy import select
 
 _EXTERNAL_CONTENT_ID = "stage8f-manual-review-content-1"
 
