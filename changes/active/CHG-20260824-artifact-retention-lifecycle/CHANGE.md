@@ -141,7 +141,7 @@ L3 方案比较：
 ## 新鲜证据
 
 - Red：提交 `e4ae8eb` 的真实 PostgreSQL Integration 为 `2 failed, 16 passed`；两处均因生产 Repository 尚不支持带 `now/orphan_before` 的原子删除认领，证明并发保护测试先于实现失败。
-- Green：产品代码和长期文档完成后，最终 PR HEAD 的总 CI、真实 PostgreSQL、Frontend、Provider Raw、Scheduler、Real Full-stack、Audit、Change Completion Gate、Windows Compose 与 Deployable Stack 均 completed success。
+- Green：产品代码和长期文档完成后的 PR 流水线已反复验证总 CI、真实 PostgreSQL、Frontend、Provider Raw、Scheduler、Real Full-stack、Audit、Change Completion Gate、Windows Compose 与 Deployable Stack；合并动作仍必须以 GitHub 对实际待合并 HEAD 的最终检查结果为准。
 
 # 文档影响
 
