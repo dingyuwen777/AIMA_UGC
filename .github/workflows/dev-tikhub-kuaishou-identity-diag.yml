@@ -1,4 +1,4 @@
-name: Dev TikHub Kuaishou Identity Diagnostic
+name: Dev TikHub Kuaishou Post-fix Probe
 
 on:
   pull_request:
@@ -9,11 +9,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: dev-tikhub-kuaishou-identity-diag
+  group: dev-tikhub-kuaishou-postfix-probe
   cancel-in-progress: true
 
 jobs:
-  diagnose:
+  probe:
     if: github.event.label.name == 'dev-tikhub-kuaishou-diag'
     runs-on: ubuntu-24.04
     env:
@@ -44,13 +44,13 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/kuaishou-diag-private.pem >/dev/null 2>&1
-          openssl pkey -in /tmp/kuaishou-diag-private.pem -pubout -out /tmp/kuaishou-diag-public.pem >/dev/null 2>&1
-          cp /tmp/kuaishou-diag-public.pem .dev-tikhub-kuaishou-public.pem
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/kuaishou-private.pem >/dev/null 2>&1
+          openssl pkey -in /tmp/kuaishou-private.pem -pubout -out /tmp/kuaishou-public.pem >/dev/null 2>&1
+          cp /tmp/kuaishou-public.pem .dev-tikhub-kuaishou-public.pem
           git config user.name "AIMA GitHub Runner"
           git config user.email "actions@users.noreply.github.com"
           git add .dev-tikhub-kuaishou-public.pem
-          git commit -m "发布临时快手搜索诊断公钥"
+          git commit -m "发布临时快手修复后验证公钥"
           git push origin HEAD:feature/excel-tikhub-identity-alignment
 
       - name: Receive encrypted credential
@@ -60,49 +60,97 @@ jobs:
           found=0
           for _ in $(seq 1 120); do
             git fetch --quiet origin feature/excel-tikhub-identity-alignment
-            if git show origin/feature/excel-tikhub-identity-alignment:.dev-tikhub-kuaishou-payload >/tmp/kuaishou-diag-payload.b64 2>/dev/null; then
+            if git show origin/feature/excel-tikhub-identity-alignment:.dev-tikhub-kuaishou-payload >/tmp/kuaishou-payload.b64 2>/dev/null; then
               found=1
               break
             fi
             sleep 2
           done
           if [[ "${found}" -ne 1 ]]; then
-            echo "ENCRYPTED_DIAGNOSTIC_CREDENTIAL_NOT_RECEIVED"
+            echo "ENCRYPTED_PROBE_CREDENTIAL_NOT_RECEIVED"
             exit 2
           fi
-          base64 -d /tmp/kuaishou-diag-payload.b64 >/tmp/kuaishou-diag-cipher.bin
+          base64 -d /tmp/kuaishou-payload.b64 >/tmp/kuaishou-cipher.bin
           TIKHUB_API_KEY="$(openssl pkeyutl -decrypt \
-            -inkey /tmp/kuaishou-diag-private.pem \
+            -inkey /tmp/kuaishou-private.pem \
             -pkeyopt rsa_padding_mode:oaep \
             -pkeyopt rsa_oaep_md:sha256 \
-            -in /tmp/kuaishou-diag-cipher.bin)"
+            -in /tmp/kuaishou-cipher.bin)"
           if [[ -z "${TIKHUB_API_KEY}" ]]; then
-            echo "DECRYPTED_DIAGNOSTIC_CREDENTIAL_EMPTY"
+            echo "DECRYPTED_PROBE_CREDENTIAL_EMPTY"
             exit 3
           fi
           echo "::add-mask::${TIKHUB_API_KEY}"
-          printf '%s' "${TIKHUB_API_KEY}" >/tmp/kuaishou-diag-api-key
-          chmod 600 /tmp/kuaishou-diag-api-key
-          rm -f /tmp/kuaishou-diag-private.pem /tmp/kuaishou-diag-public.pem /tmp/kuaishou-diag-payload.b64 /tmp/kuaishou-diag-cipher.bin
+          printf '%s' "${TIKHUB_API_KEY}" >/tmp/kuaishou-api-key
+          chmod 600 /tmp/kuaishou-api-key
+          rm -f /tmp/kuaishou-private.pem /tmp/kuaishou-public.pem /tmp/kuaishou-payload.b64 /tmp/kuaishou-cipher.bin
 
-      - name: Run one-request Kuaishou search identity diagnostic
+      - name: Probe original Excel Kuaishou detail and comments
         shell: bash
         run: |
           set -euo pipefail
-          TIKHUB_API_KEY="$(cat /tmp/kuaishou-diag-api-key)"
+          TIKHUB_API_KEY="$(cat /tmp/kuaishou-api-key)"
           echo "::add-mask::${TIKHUB_API_KEY}"
           export TIKHUB_API_KEY
           uv run python - <<'PY'
+          from __future__ import annotations
+
           import json
           import os
+          from datetime import UTC, datetime
           from decimal import Decimal
-          from urllib.parse import parse_qs
+          from pathlib import Path
+          from uuid import uuid4
 
           from pydantic import SecretStr
 
+          from aima_ugc.adapters.providers.imports.identity import resolve_content_identity
           from aima_ugc.adapters.providers.tikhub.probe import TikHubOperationProbe, TikHubProbeLimits
-          from aima_ugc.adapters.providers.tikhub.runtime import build_search_call, extract_search_items
+          from aima_ugc.adapters.providers.tikhub.runtime import (
+              build_comments_call,
+              build_detail_call,
+              extract_comment_items,
+              extract_detail_items,
+              map_comment,
+              map_content,
+              mapping_context,
+          )
           from aima_ugc.adapters.providers.tikhub.transport import TikHubHttpTransport
+          from aima_ugc.contracts.canonical import CanonicalContentV1, CanonicalSourceV1
+
+          fixture = json.loads(
+              Path("tests/fixtures/imports/excel_provider_lookup_samples.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          sample = fixture["platforms"]["kuaishou"][0]
+          identity = resolve_content_identity(
+              platform="kuaishou",
+              canonical_url=sample["url"],
+              source_article_id=sample["article_id"],
+          )
+          excel_id = identity.external_content_id
+          if identity.alternate_ids.get("photo_id") != excel_id:
+              raise AssertionError("Excel 快手 URL 未生成公开 photo_id locator")
+
+          observed_at = datetime.now(UTC)
+          source = CanonicalSourceV1(
+              provider_name="imports",
+              operation="excel_import",
+              source_type="postfix-probe",
+              source_value="excel_provider_lookup_samples.json",
+              item_locator=f"row:{sample['row']}",
+              observed_at=observed_at,
+          )
+          seed = CanonicalContentV1(
+              platform="kuaishou",
+              external_content_id=excel_id,
+              alternate_ids=identity.alternate_ids,
+              content_type="video",
+              observed_at=observed_at,
+              source=source,
+              observed_fields=["content_type", "alternate_ids"],
+          )
 
           with TikHubHttpTransport(
               base_url=os.environ["TIKHUB_BASE_URL"],
@@ -111,39 +159,87 @@ jobs:
               probe = TikHubOperationProbe(
                   transport=transport,
                   credential=SecretStr(os.environ["TIKHUB_API_KEY"]),
-                  limits=TikHubProbeLimits(max_requests=1, max_estimated_cost=Decimal("0.10")),
+                  limits=TikHubProbeLimits(max_requests=2, max_estimated_cost=Decimal("0.20")),
               )
-              result = probe.execute(
-                  build_search_call(platform="kuaishou", keyword="爱玛", config={}, state={})
+
+              detail_call = build_detail_call("kuaishou", seed)
+              detail = probe.execute(detail_call)
+              if detail.response.status_code is None or not 200 <= detail.response.status_code < 300:
+                  raise AssertionError(f"Kuaishou Detail HTTP={detail.response.status_code}")
+              if not isinstance(detail.response.body, dict):
+                  raise AssertionError("Kuaishou Detail body 不是 JSON object")
+              detail_items = extract_detail_items("kuaishou", detail.response.body)
+              if not detail_items:
+                  raise AssertionError("Kuaishou Detail 未返回可映射内容")
+              mapped_detail = map_content(
+                  platform="kuaishou",
+                  raw=detail_items[0],
+                  context=mapping_context(
+                      provider_request_id=str(uuid4()),
+                      provider_attempt_id=str(uuid4()),
+                      raw_artifact_id=uuid4(),
+                      operation=detail_call.operation,
+                      source_type="postfix-probe",
+                      source_value="excel_provider_lookup_samples.json",
+                      observed_at=observed_at,
+                      external_content_id=excel_id,
+                  ),
+                  item_locator="detail[0]",
               )
-          status = result.response.status_code
-          body = result.response.body
-          if status is None or not 200 <= status < 300 or not isinstance(body, dict):
-              raise SystemExit(f"KUAISHOU_SEARCH_DIAG_HTTP={status}")
-          items = extract_search_items("kuaishou", body)
-          if not items:
-              raise SystemExit("KUAISHOU_SEARCH_DIAG_NO_ITEMS")
-          summaries = []
-          for raw in items[:5]:
-              item = raw.get("feed") if isinstance(raw.get("feed"), dict) else raw
-              share_info = item.get("share_info") or item.get("shareInfo")
-              share_photo_id = None
-              if isinstance(share_info, str):
-                  values = parse_qs(share_info, keep_blank_values=False).get("photoId") or ()
-                  if values:
-                      share_photo_id = values[0]
-              elif isinstance(share_info, dict):
-                  raw_share_id = share_info.get("photoId") or share_info.get("photo_id")
-                  share_photo_id = str(raw_share_id) if raw_share_id is not None else None
-              summaries.append(
+              if mapped_detail.external_content_id != excel_id:
+                  raise AssertionError("Kuaishou Detail 未保持 Excel 稳定 Content 身份")
+              if mapped_detail.alternate_ids.get("photo_id") != excel_id:
+                  raise AssertionError("Kuaishou Detail 未保持公开 photo_id locator")
+              if not mapped_detail.alternate_ids.get("provider_photo_id"):
+                  raise AssertionError("Kuaishou Detail 未保留数字 Provider photo_id")
+
+              comments_call = build_comments_call(
+                  platform="kuaishou",
+                  external_content_id=excel_id,
+                  alternate_ids=mapped_detail.alternate_ids,
+                  state={},
+              )
+              comments = probe.execute(comments_call)
+              if comments.response.status_code is None or not 200 <= comments.response.status_code < 300:
+                  raise AssertionError(f"Kuaishou Comments HTTP={comments.response.status_code}")
+              if not isinstance(comments.response.body, dict):
+                  raise AssertionError("Kuaishou Comments body 不是 JSON object")
+              comment_items = extract_comment_items("kuaishou", comments.response.body)
+              if not comment_items:
+                  raise AssertionError("Kuaishou 样本一级评论为空")
+              mapped_comment = map_comment(
+                  platform="kuaishou",
+                  raw=comment_items[0],
+                  context=mapping_context(
+                      provider_request_id=str(uuid4()),
+                      provider_attempt_id=str(uuid4()),
+                      raw_artifact_id=uuid4(),
+                      operation=comments_call.operation,
+                      source_type="postfix-probe",
+                      source_value="excel_provider_lookup_samples.json",
+                      observed_at=observed_at,
+                      external_content_id=excel_id,
+                  ),
+                  item_locator="comment[0]",
+                  is_root=True,
+              )
+              if mapped_comment.external_content_id != excel_id:
+                  raise AssertionError("Kuaishou 评论未挂回 Excel 稳定 Content 身份")
+
+          print(
+              "KUAISHOU_POSTFIX_PROBE="
+              + json.dumps(
                   {
-                      "photo_id": str(item.get("photo_id")) if item.get("photo_id") is not None else None,
-                      "kwai_id": str(item.get("kwaiId") or item.get("kwai_id")) if (item.get("kwaiId") or item.get("kwai_id")) is not None else None,
-                      "share_photo_id": share_photo_id,
-                      "has_share_info": share_info is not None,
-                  }
+                      "detail_http": detail.response.status_code,
+                      "comments_http": comments.response.status_code,
+                      "detail_parent_match": True,
+                      "comment_parent_match": True,
+                      "provider_photo_id_preserved": True,
+                      "request_count": probe.request_count,
+                  },
+                  ensure_ascii=False,
+                  separators=(",", ":"),
               )
-          print("KUAISHOU_SEARCH_IDENTITY_DIAGNOSTIC=" + json.dumps(summaries, ensure_ascii=False, separators=(",", ":")))
-          print(f"KUAISHOU_SEARCH_REQUEST_COUNT={probe.request_count}")
+          )
           PY
-          rm -f /tmp/kuaishou-diag-api-key
+          rm -f /tmp/kuaishou-api-key
