@@ -353,7 +353,7 @@ export interface ContentAnalysisJobResultResponse {
 }
 
 /**
- * 按模型重要性顺序返回的一个一级/二级标签对。
+ * 按模型重要性顺序返回的一个一级/二级标签父子对。
  */
 export interface ContentLabelPairResponse {
   primary_label: string;
@@ -483,6 +483,14 @@ export interface ContentMetricsResponse {
   view_count?: number | null;
 }
 
+export type ContentRelevanceSource = typeof ContentRelevanceSource[keyof typeof ContentRelevanceSource];
+
+
+export const ContentRelevanceSource = {
+  ai: 'ai',
+  manual_review: 'manual_review',
+} as const;
+
 export interface ContentSourceResponse {
   collection_run_id?: string | null;
   import_batch_id?: string | null;
@@ -508,6 +516,7 @@ export interface ContentDetailResponse {
   comments?: ContentCommentResponse[];
   content_type: string;
   content_url?: string | null;
+  effective_relevance?: ContentRelevance | null;
   external_content_id: string;
   id: string;
   last_seen_at: string;
@@ -515,6 +524,7 @@ export interface ContentDetailResponse {
   metrics: ContentMetricsResponse;
   platform: PlatformName;
   published_at?: string | null;
+  relevance_source?: ContentRelevanceSource | null;
   source: ContentSourceResponse;
   source_records?: ContentSourceResponse[];
   supplement_status?: ContentSupplementStatusResponse | null;
@@ -527,12 +537,14 @@ export interface ContentListItemResponse {
   author_display_name?: string | null;
   content_type: string;
   content_url?: string | null;
+  effective_relevance?: ContentRelevance | null;
   external_content_id: string;
   id: string;
   last_seen_at: string;
   metrics: ContentMetricsResponse;
   platform: PlatformName;
   published_at?: string | null;
+  relevance_source?: ContentRelevanceSource | null;
   source: ContentSourceResponse;
   text?: string | null;
   title?: string | null;
