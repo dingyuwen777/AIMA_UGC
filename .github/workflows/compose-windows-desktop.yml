@@ -32,29 +32,34 @@ jobs:
           $ErrorActionPreference = "Stop"
           . .\scripts\dev\configure_docker_desktop_mirrors.ps1
 
-          $withExtras = @(
-              'https://legacy-before.example/',
-              "$($Mirrors[0])/",
-              'https://legacy-middle.example/',
-              "$($Mirrors[1])/",
-              "$($Mirrors[2])/",
-              'https://legacy-after.example/'
-          )
+          $withExtras = @('https://legacy-before.example/')
+          for ($index = 0; $index -lt $Mirrors.Count; $index++) {
+              $withExtras += "$($Mirrors[$index])/"
+              if ($index -eq 0) {
+                  $withExtras += 'https://legacy-middle.example/'
+              }
+          }
+          $withExtras += 'https://legacy-after.example/'
           if (-not (Test-ExpectedMirrorsPresent -ActualMirrors $withExtras)) {
               throw 'AIMA mirrors must be accepted when additional Docker Desktop mirrors are present.'
           }
 
+          $missingIdentity = ConvertTo-MirrorIdentity -Mirror $Mirrors[0]
           $missing = @($withExtras | Where-Object {
-              (ConvertTo-MirrorIdentity -Mirror ([string]$_)) -ne
-              (ConvertTo-MirrorIdentity -Mirror $Mirrors[1])
+              (ConvertTo-MirrorIdentity -Mirror ([string]$_)) -ne $missingIdentity
           })
           if (Test-ExpectedMirrorsPresent -ActualMirrors $missing) {
               throw 'Missing an AIMA mirror must fail effective-state validation.'
           }
 
-          $outOfOrder = @($Mirrors[1], $Mirrors[0], $Mirrors[2])
-          if (Test-ExpectedMirrorsPresent -ActualMirrors $outOfOrder) {
-              throw 'AIMA mirror relative order must remain significant.'
+          if ($Mirrors.Count -ge 2) {
+              $outOfOrder = @($Mirrors)
+              $first = $outOfOrder[0]
+              $outOfOrder[0] = $outOfOrder[1]
+              $outOfOrder[1] = $first
+              if (Test-ExpectedMirrorsPresent -ActualMirrors $outOfOrder) {
+                  throw 'AIMA mirror relative order must remain significant.'
+              }
           }
 
           $daemon = [pscustomobject]@{}
