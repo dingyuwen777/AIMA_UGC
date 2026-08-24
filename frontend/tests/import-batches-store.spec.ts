@@ -72,6 +72,25 @@ describe('import batches store', () => {
     )
   })
 
+  it('always clears uploading after import creation fails', async () => {
+    let rejectUpload!: (reason?: unknown) => void
+    featureApi.uploadImportBatch.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectUpload = reject
+        }),
+    )
+    const store = useImportBatchesStore()
+    const pendingUpload = store.upload({ name: 'aima.xlsx' } as File, ['keyword-pack-1'])
+
+    expect(store.uploading).toBe(true)
+    rejectUpload(new Error('Excel 导入创建失败'))
+
+    await expect(pendingUpload).resolves.toBeNull()
+    expect(store.uploading).toBe(false)
+    expect(store.error).toBe('Excel 导入创建失败')
+  })
+
   it('pauses polling while hidden and refreshes immediately when visible again', async () => {
     vi.useFakeTimers()
     const documentStub = Object.assign(new EventTarget(), {
