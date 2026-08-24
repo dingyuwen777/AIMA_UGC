@@ -38,7 +38,7 @@ data_changes: []
 | R1 | 联网查询并使用 DeepSeek 官方最新价格 | user:2026-08-24-latest-deepseek-pricing | satisfied | 2026-08-24 核验官方 `https://api-docs.deepseek.com/zh-cn/quick_start/pricing/`：V4-Pro 缓存命中 0.025 CNY/M、缓存未命中 3 CNY/M、输出 6 CNY/M；官方当前页未列分时价格。 |
 | R2 | 修复价格代码与测试，而不是只改说明 | user:2026-08-24-latest-deepseek-pricing | satisfied | `pricing.py` 执行 effective_date；Adapter 非阻断处理价格未生效；新增三条时点测试并清理旧 DeepSeek 假分时夹具。 |
 | R3 | 不把历史请求静默按尚未生效的新价格重算 | backend/src/aima_ugc/adapters/llm/README.md | satisfied | `price_for()` 对请求 UTC 日期早于 effective_date 抛 `LLMPriceNotConfiguredError`；复算测试验证请求进入 uncalculated。 |
-| R4 | 不重新引入 DeepSeek 已取消的旧分时价格 | DeepSeek official pricing | satisfied | 分时选价与费用复算测试已改为 `llm.example/model-a` synthetic catalog；仓库搜索不存在 `api.deepseek.com` 与旧 0.15/4.5 分时价绑定。 |
+| R4 | 不重新引入 DeepSeek 已取消的旧分时价格 | user:2026-08-24-latest-deepseek-pricing | satisfied | 分时选价与费用复算测试已改为 `llm.example/model-a` synthetic catalog；仓库搜索不存在 `api.deepseek.com` 与旧 0.15/4.5 分时价绑定。 |
 
 # 成功标准
 
@@ -99,5 +99,5 @@ data_changes: []
 # 交付
 
 - 分支：`fix/deepseek-pricing-effective-date`
-- PR：#210，当前进入 `ready_for_review` 前置状态；最终永久 CI 全绿后再转 Ready/合并。
+- PR：#210，当前为 Draft；最终永久 CI 全绿后再转 Ready/合并。
 - 回滚：纯 Python/TOML/测试/README 变更，无数据库 Migration；整体 revert 即可。
