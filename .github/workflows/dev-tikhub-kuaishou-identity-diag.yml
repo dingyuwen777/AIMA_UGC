@@ -1,0 +1,163 @@
+name: Dev TikHub Kuaishou Identity Diagnostic
+
+on:
+  pull_request:
+    types:
+      - labeled
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dev-tikhub-kuaishou-identity-diag
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    if: github.event.label.name == 'dev-tikhub-kuaishou-diag'
+    runs-on: ubuntu-24.04
+    env:
+      TIKHUB_BASE_URL: https://api.tikhub.io
+    steps:
+      - name: Checkout feature head
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/excel-tikhub-identity-alignment
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Install locked environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+
+      - name: Create and publish ephemeral public key
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/kuaishou-diag-private.pem >/dev/null 2>&1
+          openssl pkey -in /tmp/kuaishou-diag-private.pem -pubout -out /tmp/kuaishou-diag-public.pem >/dev/null 2>&1
+          cp /tmp/kuaishou-diag-public.pem .dev-tikhub-kuaishou-public.pem
+          git config user.name "AIMA GitHub Runner"
+          git config user.email "actions@users.noreply.github.com"
+          git add .dev-tikhub-kuaishou-public.pem
+          git commit -m "发布临时快手身份诊断公钥"
+          git push origin HEAD:feature/excel-tikhub-identity-alignment
+
+      - name: Receive encrypted credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          found=0
+          for _ in $(seq 1 120); do
+            git fetch --quiet origin feature/excel-tikhub-identity-alignment
+            if git show origin/feature/excel-tikhub-identity-alignment:.dev-tikhub-kuaishou-payload >/tmp/kuaishou-diag-payload.b64 2>/dev/null; then
+              found=1
+              break
+            fi
+            sleep 2
+          done
+          if [[ "${found}" -ne 1 ]]; then
+            echo "ENCRYPTED_DIAGNOSTIC_CREDENTIAL_NOT_RECEIVED"
+            exit 2
+          fi
+          base64 -d /tmp/kuaishou-diag-payload.b64 >/tmp/kuaishou-diag-cipher.bin
+          TIKHUB_API_KEY="$(openssl pkeyutl -decrypt \
+            -inkey /tmp/kuaishou-diag-private.pem \
+            -pkeyopt rsa_padding_mode:oaep \
+            -pkeyopt rsa_oaep_md:sha256 \
+            -in /tmp/kuaishou-diag-cipher.bin)"
+          if [[ -z "${TIKHUB_API_KEY}" ]]; then
+            echo "DECRYPTED_DIAGNOSTIC_CREDENTIAL_EMPTY"
+            exit 3
+          fi
+          echo "::add-mask::${TIKHUB_API_KEY}"
+          printf '%s' "${TIKHUB_API_KEY}" >/tmp/kuaishou-diag-api-key
+          chmod 600 /tmp/kuaishou-diag-api-key
+          rm -f /tmp/kuaishou-diag-private.pem /tmp/kuaishou-diag-public.pem /tmp/kuaishou-diag-payload.b64 /tmp/kuaishou-diag-cipher.bin
+
+      - name: Run one-request Kuaishou identity diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          TIKHUB_API_KEY="$(cat /tmp/kuaishou-diag-api-key)"
+          echo "::add-mask::${TIKHUB_API_KEY}"
+          export TIKHUB_API_KEY
+          uv run python - <<'PY'
+          import json
+          import os
+          from decimal import Decimal
+          from pathlib import Path
+          from urllib.parse import urlsplit
+
+          from pydantic import SecretStr
+
+          from aima_ugc.adapters.providers.imports.identity import resolve_content_identity
+          from aima_ugc.adapters.providers.tikhub.operations.kuaishou import extract_detail_items
+          from aima_ugc.adapters.providers.tikhub.probe import TikHubOperationProbe, TikHubProbeLimits
+          from aima_ugc.adapters.providers.tikhub.runtime import build_detail_call
+          from aima_ugc.adapters.providers.tikhub.transport import TikHubHttpTransport
+          from aima_ugc.contracts.canonical import CanonicalContentV1, CanonicalSourceV1
+          from datetime import UTC, datetime
+
+          fixture = json.loads(Path("tests/fixtures/imports/excel_provider_lookup_samples.json").read_text(encoding="utf-8"))
+          sample = fixture["platforms"]["kuaishou"][0]
+          identity = resolve_content_identity(
+              platform="kuaishou",
+              canonical_url=sample["url"],
+              source_article_id=sample["article_id"],
+          )
+          observed_at = datetime.now(UTC)
+          content = CanonicalContentV1(
+              platform="kuaishou",
+              external_content_id=identity.external_content_id,
+              alternate_ids=identity.alternate_ids,
+              content_type="video",
+              observed_at=observed_at,
+              source=CanonicalSourceV1(
+                  provider_name="imports",
+                  operation="excel_import",
+                  source_type="identity-diagnostic",
+                  source_value="excel_provider_lookup_samples.json",
+                  item_locator=f"row:{sample['row']}",
+                  observed_at=observed_at,
+              ),
+              observed_fields=["content_type", "alternate_ids"],
+          )
+          with TikHubHttpTransport(base_url=os.environ["TIKHUB_BASE_URL"]) as transport:
+              probe = TikHubOperationProbe(
+                  transport=transport,
+                  credential=SecretStr(os.environ["TIKHUB_API_KEY"]),
+                  limits=TikHubProbeLimits(max_requests=1, max_estimated_cost=Decimal("0.10")),
+              )
+              result = probe.execute(build_detail_call("kuaishou", content))
+          status = result.response.status_code
+          body = result.response.body
+          if status is None or not 200 <= status < 300 or not isinstance(body, dict):
+              raise SystemExit(f"KUAISHOU_DIAG_HTTP={status}")
+          items = extract_detail_items(body)
+          if not items:
+              raise SystemExit("KUAISHOU_DIAG_NO_DETAIL_ITEM")
+          item = items[0].get("feed") if isinstance(items[0].get("feed"), dict) else items[0]
+          path_id = urlsplit(sample["url"]).path.rstrip("/").split("/")[-1]
+          summary = {
+              "excel_path_id": path_id,
+              "resolver_stable_id": identity.external_content_id,
+              "resolver_photo_id": identity.alternate_ids.get("photo_id"),
+              "detail_photo_id": str(item.get("photo_id")) if item.get("photo_id") is not None else None,
+              "detail_kwai_id": str(item.get("kwaiId") or item.get("kwai_id")) if (item.get("kwaiId") or item.get("kwai_id")) is not None else None,
+              "detail_share_id": str(item.get("share_id") or item.get("shareId")) if (item.get("share_id") or item.get("shareId")) is not None else None,
+              "request_count": probe.request_count,
+          }
+          print("KUAISHOU_IDENTITY_DIAGNOSTIC=" + json.dumps(summary, ensure_ascii=False, separators=(",", ":")))
+          PY
+          rm -f /tmp/kuaishou-diag-api-key
