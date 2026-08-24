@@ -1,31 +1,29 @@
 name: Dev TikHub Identity Probe
 
 on:
-  push:
-    branches:
-      - feature/excel-tikhub-identity-alignment
-    paths:
-      - .github/workflows/dev-tikhub-identity-probe.yml
-      - .dev-tikhub-identity-probe-trigger
   pull_request:
-    branches:
-      - main
-    paths:
-      - .github/workflows/dev-tikhub-identity-probe.yml
-      - .dev-tikhub-identity-probe-trigger
+    types:
+      - labeled
 
 permissions:
   contents: read
 
+concurrency:
+  group: dev-tikhub-identity-probe
+  cancel-in-progress: true
+
 jobs:
   probe:
+    if: github.event.label.name == 'dev-tikhub-real-probe'
     runs-on: ubuntu-24.04
     env:
-      TIKHUB_API_KEY: ${{ secrets.TIKHUB_API_KEY }}
       TIKHUB_BASE_URL: https://api.tikhub.io
     steps:
-      - name: Checkout
+      - name: Checkout feature head
         uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/excel-tikhub-identity-alignment
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v6.2.0
@@ -38,31 +36,73 @@ jobs:
           set -euo pipefail
           UV_VERSION="$(tr -d '\r\n' < .uv-version)"
           python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
           uv sync --locked
 
-      - name: Verify secret availability
+      - name: Create ephemeral encryption key
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "${TIKHUB_API_KEY:-}" ]]; then
-            echo "TIKHUB_API_KEY_SECRET_MISSING"
+          umask 077
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/tikhub-probe-private.pem >/dev/null 2>&1
+          openssl pkey -in /tmp/tikhub-probe-private.pem -pubout -out /tmp/tikhub-probe-public.pem >/dev/null 2>&1
+          printf 'PROBE_PUBLIC_KEY_B64='
+          base64 -w0 /tmp/tikhub-probe-public.pem
+          printf '\n'
+
+      - name: Receive encrypted credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          found=0
+          for _ in $(seq 1 120); do
+            git fetch --quiet origin feature/excel-tikhub-identity-alignment
+            if git show origin/feature/excel-tikhub-identity-alignment:.dev-tikhub-probe-payload >/tmp/tikhub-probe-payload.b64 2>/dev/null; then
+              found=1
+              break
+            fi
+            sleep 2
+          done
+          if [[ "${found}" -ne 1 ]]; then
+            echo "ENCRYPTED_PROBE_CREDENTIAL_NOT_RECEIVED"
             exit 2
           fi
-          echo "TIKHUB_API_KEY_SECRET_AVAILABLE"
+          base64 -d /tmp/tikhub-probe-payload.b64 >/tmp/tikhub-probe-cipher.bin
+          TIKHUB_API_KEY="$(openssl pkeyutl -decrypt \
+            -inkey /tmp/tikhub-probe-private.pem \
+            -pkeyopt rsa_padding_mode:oaep \
+            -pkeyopt rsa_oaep_md:sha256 \
+            -in /tmp/tikhub-probe-cipher.bin)"
+          if [[ -z "${TIKHUB_API_KEY}" ]]; then
+            echo "DECRYPTED_PROBE_CREDENTIAL_EMPTY"
+            exit 3
+          fi
+          echo "::add-mask::${TIKHUB_API_KEY}"
+          printf '%s' "${TIKHUB_API_KEY}" >/tmp/tikhub-probe-api-key
+          chmod 600 /tmp/tikhub-probe-api-key
+          rm -f /tmp/tikhub-probe-private.pem /tmp/tikhub-probe-public.pem /tmp/tikhub-probe-payload.b64 /tmp/tikhub-probe-cipher.bin
+          echo "ENCRYPTED_PROBE_CREDENTIAL_READY"
 
-      - name: Run bounded real identity probe
+      - name: Run bounded real Excel identity probe
         shell: bash
         run: |
           set -euo pipefail
+          TIKHUB_API_KEY="$(cat /tmp/tikhub-probe-api-key)"
+          echo "::add-mask::${TIKHUB_API_KEY}"
+          export TIKHUB_API_KEY
           uv run python - <<'PY'
           from __future__ import annotations
 
           import json
           import os
+          from datetime import UTC, datetime
           from decimal import Decimal
+          from pathlib import Path
+          from uuid import uuid4
 
           from pydantic import SecretStr
 
+          from aima_ugc.adapters.providers.imports.identity import resolve_content_identity
           from aima_ugc.adapters.providers.tikhub.probe import (
               TikHubOperationProbe,
               TikHubProbeLimits,
@@ -70,96 +110,164 @@ jobs:
           from aima_ugc.adapters.providers.tikhub.runtime import (
               build_comments_call,
               build_detail_call,
+              extract_comment_items,
+              extract_detail_items,
+              map_comment,
+              map_content,
+              mapping_context,
           )
           from aima_ugc.adapters.providers.tikhub.transport import TikHubHttpTransport
           from aima_ugc.contracts.canonical import CanonicalContentV1, CanonicalSourceV1
 
-          # 样本均来自用户上传的 Excel 原文链接解析结果；只验证 ID 与接口参数，不输出正文。
-          SAMPLES = (
-              ("xiaohongshu", "6a85c701000000001d0040e2", "image"),
-              ("douyin", "7675762214339933349", "video"),
-              ("weibo", "5333694587864918", "text"),
-              ("bilibili", "117122936081201", "video"),
-              ("kuaishou", "3x8hhinajs8pgpq", "video"),
-          )
-          ID_KEYS = {
-              "id", "note_id", "aweme_id", "item_id", "status_id", "mid",
-              "aid", "av_id", "bvid", "bv_id", "photo_id", "comment_id",
-              "cid", "rpid", "root", "oid",
+          FIXTURE = Path("tests/fixtures/imports/excel_provider_lookup_samples.json")
+          EXPECTED_ID_TYPES = {
+              "xiaohongshu": ("note_id",),
+              "douyin": ("aweme_id",),
+              "weibo": ("status_id",),
+              "bilibili": ("av_id", "bv_id"),
+              "kuaishou": ("photo_id",),
+          }
+          CONTENT_TYPES = {
+              "xiaohongshu": "image",
+              "douyin": "video",
+              "weibo": "text",
+              "bilibili": "video",
+              "kuaishou": "video",
           }
 
-          def collect_ids(value: object, *, limit: int = 24) -> list[dict[str, str]]:
-              found: list[dict[str, str]] = []
+          payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+          observed_at = datetime.now(UTC)
+          credential = os.environ.get("TIKHUB_API_KEY", "")
+          if not credential:
+              raise RuntimeError("TikHub probe credential missing")
 
-              def walk(node: object) -> None:
-                  if len(found) >= limit:
-                      return
-                  if isinstance(node, dict):
-                      for key, child in node.items():
-                          if key in ID_KEYS and isinstance(child, (str, int)) and str(child):
-                              found.append({"key": key, "value": str(child)})
-                              if len(found) >= limit:
-                                  return
-                          walk(child)
-                  elif isinstance(node, list):
-                      for child in node[:20]:
-                          walk(child)
-                          if len(found) >= limit:
-                              return
-
-              walk(value)
-              return found
-
-          key = os.environ.get("TIKHUB_API_KEY", "")
-          if not key:
-              raise RuntimeError("TIKHUB_API_KEY secret missing")
-
-          source = CanonicalSourceV1(
-              provider_name="imports",
-              source_type="identity-probe",
-              source_value="uploaded-excel-sample",
-              observed_at="2026-08-24T00:00:00Z",
-          )
           summaries: list[dict[str, object]] = []
           with TikHubHttpTransport(base_url=os.environ["TIKHUB_BASE_URL"]) as transport:
               probe = TikHubOperationProbe(
                   transport=transport,
-                  credential=SecretStr(key),
+                  credential=SecretStr(credential),
                   limits=TikHubProbeLimits(
                       max_requests=10,
                       max_estimated_cost=Decimal("1.00"),
                   ),
               )
-              for platform, external_id, content_type in SAMPLES:
+              for platform in ("xiaohongshu", "douyin", "weibo", "bilibili", "kuaishou"):
+                  sample = payload["platforms"][platform][0]
+                  identity = resolve_content_identity(
+                      platform=platform,
+                      canonical_url=sample["url"],
+                      source_article_id=sample["article_id"],
+                  )
+                  locator_type = next(
+                      (
+                          name
+                          for name in EXPECTED_ID_TYPES[platform]
+                          if identity.alternate_ids.get(name)
+                      ),
+                      None,
+                  )
+                  if locator_type is None:
+                      raise AssertionError(f"{platform}: Excel URL 未生成可用 typed locator")
+
+                  source = CanonicalSourceV1(
+                      provider_name="imports",
+                      operation="excel_import",
+                      source_type="identity-probe",
+                      source_value=FIXTURE.name,
+                      item_locator=f"row:{sample['row']}",
+                      observed_at=observed_at,
+                  )
                   content = CanonicalContentV1(
                       platform=platform,
-                      external_content_id=external_id,
-                      content_type=content_type,
-                      observed_at="2026-08-24T00:00:00Z",
+                      external_content_id=identity.external_content_id,
+                      alternate_ids=identity.alternate_ids,
+                      content_type=CONTENT_TYPES[platform],
+                      observed_at=observed_at,
                       source=source,
+                      observed_fields=["content_type", "alternate_ids"],
                   )
-                  for kind, call in (
-                      ("detail", build_detail_call(platform, content)),
-                      (
-                          "comments",
-                          build_comments_call(
-                              platform=platform,
-                              external_content_id=external_id,
-                              state={},
-                          ),
+
+                  detail_call = build_detail_call(platform, content)
+                  detail_result = probe.execute(detail_call)
+                  detail_status = detail_result.response.status_code
+                  if detail_status is None or not 200 <= detail_status < 300:
+                      raise AssertionError(f"{platform}: Detail HTTP={detail_status}")
+                  detail_body = detail_result.response.body
+                  if not isinstance(detail_body, dict):
+                      raise AssertionError(f"{platform}: Detail body 不是 JSON object")
+                  detail_items = extract_detail_items(platform, detail_body)
+                  if not detail_items:
+                      raise AssertionError(f"{platform}: Detail 未返回可映射内容")
+                  native_detail = map_content(
+                      platform=platform,
+                      raw=detail_items[0],
+                      context=mapping_context(
+                          provider_request_id=str(uuid4()),
+                          provider_attempt_id=str(uuid4()),
+                          raw_artifact_id=uuid4(),
+                          operation=detail_call.operation,
+                          source_type="identity-probe",
+                          source_value=FIXTURE.name,
+                          observed_at=observed_at,
                       ),
-                  ):
-                      result = probe.execute(call)
-                      summaries.append(
-                          {
-                              "platform": platform,
-                              "kind": kind,
-                              "input_external_content_id": external_id,
-                              "path": result.path,
-                              "status_code": result.response.status_code,
-                              "planned_cost": str(result.planned_cost),
-                              "ids": collect_ids(result.response.body),
-                          }
-                      )
-          print("IDENTITY_PROBE_SUMMARY=" + json.dumps(summaries, ensure_ascii=False, separators=(",", ":")))
+                      item_locator="detail[0]",
+                  )
+                  if native_detail.external_content_id != identity.external_content_id:
+                      raise AssertionError(f"{platform}: Excel ID 与 TikHub Detail 原生 ID 不一致")
+
+                  comments_call = build_comments_call(
+                      platform=platform,
+                      external_content_id=identity.external_content_id,
+                      alternate_ids=identity.alternate_ids,
+                      state={},
+                  )
+                  comments_result = probe.execute(comments_call)
+                  comments_status = comments_result.response.status_code
+                  if comments_status is None or not 200 <= comments_status < 300:
+                      raise AssertionError(f"{platform}: Comments HTTP={comments_status}")
+                  comments_body = comments_result.response.body
+                  if not isinstance(comments_body, dict):
+                      raise AssertionError(f"{platform}: Comments body 不是 JSON object")
+                  comment_items = extract_comment_items(platform, comments_body)
+                  if not comment_items:
+                      raise AssertionError(f"{platform}: 样本一级评论为空，无法验证父 Content 身份")
+                  mapped_comment = map_comment(
+                      platform=platform,
+                      raw=comment_items[0],
+                      context=mapping_context(
+                          provider_request_id=str(uuid4()),
+                          provider_attempt_id=str(uuid4()),
+                          raw_artifact_id=uuid4(),
+                          operation=comments_call.operation,
+                          source_type="identity-probe",
+                          source_value=FIXTURE.name,
+                          observed_at=observed_at,
+                          external_content_id=identity.external_content_id,
+                      ),
+                      item_locator="comment[0]",
+                      is_root=True,
+                  )
+                  if mapped_comment.external_content_id != identity.external_content_id:
+                      raise AssertionError(f"{platform}: 评论未挂回 Excel 稳定 Content 身份")
+
+                  summaries.append(
+                      {
+                          "platform": platform,
+                          "locator_type": locator_type,
+                          "detail_http": detail_status,
+                          "detail_id_match": True,
+                          "comments_http": comments_status,
+                          "comment_parent_match": True,
+                          "comment_items": len(comment_items),
+                      }
+                  )
+
+              if probe.request_count != 10:
+                  raise AssertionError(f"Probe 请求数异常: {probe.request_count}")
+
+          print(
+              "REAL_IDENTITY_PROBE_SUMMARY="
+              + json.dumps(summaries, ensure_ascii=False, separators=(",", ":"))
+          )
           PY
+          rm -f /tmp/tikhub-probe-api-key
