@@ -1,4 +1,4 @@
-"""为 Stage 8F 人工相关性复核 Golden Path 建立真实数据库前置事实。"""
+"""为 Stage 8F 双向人工相关性复核 Golden Path 建立真实数据库前置事实。"""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import sys
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from aima_ugc.adapters.persistence.postgres.analysis import PostgresAnalysisRepository
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
@@ -17,7 +17,7 @@ from aima_ugc.bootstrap.worker import (
     create_job_worker,
     create_worker_runtime,
 )
-from aima_ugc.contracts.analysis import ContentLabelAnalysisV3
+from aima_ugc.contracts.analysis import ContentLabelAnalysisV3, ContentLabelPairV2
 from aima_ugc.contracts.http import KeywordPackCreateRequest, KeywordPackKeywordCreateRequest
 from aima_ugc.modules.analysis import content_labeling_input_hash
 from aima_ugc.modules.analysis.content_analysis_job import (
@@ -32,7 +32,48 @@ from aima_ugc.modules.content.tables import contents_table
 from aima_ugc.platform.jobs import JobExecutionFence
 from sqlalchemy import select
 
-_EXTERNAL_CONTENT_ID = "stage8f-manual-review-content-1"
+_IRRELEVANT_EXTERNAL_CONTENT_ID = "stage8f-manual-review-content-1"
+_RELEVANT_EXTERNAL_CONTENT_ID = "stage8f-manual-review-content-2"
+_EXPECTED_EXTERNAL_IDS = (
+    _IRRELEVANT_EXTERNAL_CONTENT_ID,
+    _RELEVANT_EXTERNAL_CONTENT_ID,
+)
+
+
+def _analysis_for(
+    *,
+    content_id: UUID,
+    irrelevant_content_id: UUID,
+    identity,
+    input_hash: str,
+) -> ContentLabelAnalysisV3:  # type: ignore[no-untyped-def]
+    if content_id == irrelevant_content_id:
+        return ContentLabelAnalysisV3(
+            relevance="irrelevant",
+            voice_type="media_information",
+            sentiment=None,
+            labels=(),
+            prompt_version=identity.prompt_version,
+            prompt_sha256=identity.prompt_sha256,
+            taxonomy_sha256=identity.taxonomy_sha256,
+            model_provider=identity.model_provider,
+            model=identity.model,
+            input_hash=input_hash,
+            analyzed_at=datetime.now(UTC),
+        )
+    return ContentLabelAnalysisV3(
+        relevance="relevant",
+        voice_type="user_voice",
+        sentiment="中性",
+        labels=(ContentLabelPairV2(primary_label="骑行性能", secondary_label="舒适性"),),
+        prompt_version=identity.prompt_version,
+        prompt_sha256=identity.prompt_sha256,
+        taxonomy_sha256=identity.taxonomy_sha256,
+        model_provider=identity.model_provider,
+        model=identity.model,
+        input_hash=input_hash,
+        analyzed_at=datetime.now(UTC),
+    )
 
 
 def main() -> int:
@@ -74,13 +115,22 @@ def main() -> int:
         session = runtime.database.new_session()
         try:
             with session.begin():
-                content_row = session.execute(
-                    select(contents_table.c.id, contents_table.c.current_version).where(
-                        contents_table.c.external_content_id == _EXTERNAL_CONTENT_ID
+                rows = tuple(
+                    session.execute(
+                        select(
+                            contents_table.c.id,
+                            contents_table.c.current_version,
+                            contents_table.c.external_content_id,
+                        )
+                        .where(contents_table.c.external_content_id.in_(_EXPECTED_EXTERNAL_IDS))
+                        .order_by(contents_table.c.external_content_id)
                     )
-                ).one()
-                content_id = content_row.id
-                content_version = content_row.current_version
+                )
+                if len(rows) != 2:
+                    raise RuntimeError("Stage8F 双向人工复核前置 Content 数量异常")
+                by_external_id = {row.external_content_id: row for row in rows}
+                irrelevant_content_id = by_external_id[_IRRELEVANT_EXTERNAL_CONTENT_ID].id
+                relevant_content_id = by_external_id[_RELEVANT_EXTERNAL_CONTENT_ID].id
                 analysis_request_id = uuid4()
                 job = PostgresJobRepository(session).enqueue(
                     job_type=CONTENT_ANALYSIS_JOB_TYPE,
@@ -88,7 +138,7 @@ def main() -> int:
                     payload=ContentAnalysisJobPayload(request_id=analysis_request_id).model_dump(
                         mode="json"
                     ),
-                    internal_idempotency_key=f"stage8f-manual-review:{content_id}",
+                    internal_idempotency_key=f"stage8f-manual-review:{analysis_request_id}",
                     request_id="stage8f-manual-review-analysis",
                     priority=0,
                     max_attempts=CONTENT_ANALYSIS_JOB_MAX_ATTEMPTS,
@@ -98,12 +148,12 @@ def main() -> int:
                     request_id=analysis_request_id,
                     job_id=job.id,
                     scope="selected",
-                    filter_snapshot={"content_ids": [str(content_id)]},
-                    targets=(
-                        ContentTarget(
-                            content_id=content_id,
-                            content_version=content_version,
-                        ),
+                    filter_snapshot={
+                        "content_ids": [str(irrelevant_content_id), str(relevant_content_id)]
+                    },
+                    targets=tuple(
+                        ContentTarget(content_id=row.id, content_version=row.current_version)
+                        for row in rows
                     ),
                 )
         finally:
@@ -134,31 +184,25 @@ def main() -> int:
             with persist_session.begin():
                 repository = PostgresAnalysisRepository(persist_session)
                 pending = repository.load_pending(analysis_request_id, limit=10)
-                if len(pending) != 1:
-                    raise RuntimeError("Stage8F 人工复核前置 Analysis Target 数量异常")
-                repository.persist_success(
-                    fence=fence,
-                    work_item=pending[0],
-                    analysis=ContentLabelAnalysisV3(
-                        relevance="irrelevant",
-                        voice_type="media_information",
-                        sentiment=None,
-                        labels=(),
-                        prompt_version=identity.prompt_version,
-                        prompt_sha256=identity.prompt_sha256,
-                        taxonomy_sha256=identity.taxonomy_sha256,
-                        model_provider=identity.model_provider,
-                        model=identity.model,
-                        input_hash=content_labeling_input_hash(pending[0].content),
-                        analyzed_at=datetime.now(UTC),
-                    ),
-                )
+                if len(pending) != 2:
+                    raise RuntimeError("Stage8F 双向人工复核前置 Analysis Target 数量异常")
+                for work_item in pending:
+                    repository.persist_success(
+                        fence=fence,
+                        work_item=work_item,
+                        analysis=_analysis_for(
+                            content_id=work_item.content_id,
+                            irrelevant_content_id=irrelevant_content_id,
+                            identity=identity,
+                            input_hash=content_labeling_input_hash(work_item.content),
+                        ),
+                    )
                 PostgresJobRepository(persist_session).succeed(
                     job_id=fence.job_id,
                     lease_token=fence.lease_token,
                     result={
                         "request_id": str(analysis_request_id),
-                        "succeeded": 1,
+                        "succeeded": 2,
                         "failed": 0,
                         "stale": 0,
                     },
@@ -166,7 +210,8 @@ def main() -> int:
         finally:
             persist_session.close()
 
-        print(str(content_id))
+        print(str(irrelevant_content_id))
+        print(str(relevant_content_id))
         print(str(created.batch_id))
         return 0
     finally:
