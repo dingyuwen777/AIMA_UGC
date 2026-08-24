@@ -18,6 +18,7 @@ Vue 页面
 ```text
 backend/src/aima_ugc/contracts/http.py
 backend/src/aima_ugc/contracts/runtime.py
+backend/src/aima_ugc/contracts/relevance_review.py
 backend/src/aima_ugc/bootstrap/api.py
 backend/src/aima_ugc/bootstrap/analysis_capability_http.py
 backend/src/aima_ugc/entrypoints/api_main.py
@@ -270,6 +271,7 @@ GET  /api/v1/contents/{content_id}
 GET  /api/v1/content-analysis-capabilities
 POST /api/v1/content-analysis-requests
 GET  /api/v1/content-analysis-jobs/{job_id}
+POST /api/v1/content-relevance-reviews
 ```
 
 代码：
@@ -280,11 +282,14 @@ backend/src/aima_ugc/bootstrap/analysis_capability_http.py
 backend/src/aima_ugc/bootstrap/content_http.py
 backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
 backend/src/aima_ugc/adapters/persistence/postgres/analysis.py
+backend/src/aima_ugc/adapters/persistence/postgres/relevance_reviews.py
 ```
 
 `GET /content-analysis-capabilities` 是安全只读运行能力投影，只返回 `configured`。它用于让声音广场在 LLM Base URL / Model / Secret 未形成可执行配置时明确提示并禁用 AI 打标；前端不得读取 `env.local`、Secret 文件或复制后端配置判断。源码开发时，能力接口与 Worker 都从 `AIMA_EXTERNAL_SECRET_DIR` 对应的外部 Secret Root 读取 `llm_api_key`，不能误用只存 PostgreSQL/Cursor Secret 的内部 Root。该接口不返回 Base URL、Model、Provider、Secret 路径或 API Key，也不证明外部 LLM 此刻在线；Worker 的执行时配置守卫仍是最终防线。
 
 `POST /content-analysis-requests` 会先冻结 Content ID + `current_version`，再创建 `analysis.content-label.v1` Job。Worker 分析的不是“未来可能变化的查询结果”，而是请求创建时冻结的目标版本。
+
+`POST /content-relevance-reviews` 是同步短事务：接收 1—1000 个不重复 Content ID，并显式提交 `decision=relevant / irrelevant / inherit_ai`。`relevant/irrelevant` 分别把当前 Content Version 人工覆盖为业务相关/不相关；`inherit_ai` 撤销活动人工覆盖并恢复当前 AI 基线。批量请求先锁定并校验全部目标，任一目标不可操作则整批返回 409；重复提交当前已经生效的决定幂等。已有人工覆盖要切换到相反人工结论时必须先撤销。模型原始 `analysis_content_results` 不会被更新或删除。`GET /contents` 与 Detail 同时返回 AI 原判和查询层派生的 `effective_relevance / relevance_source`，前端据此显示人工覆盖与撤销入口，不能从筛选条件猜测人工状态；AI 变为 `stale` 时活动人工覆盖仍可撤销。
 
 ### 5.4 正式 Excel Export
 
@@ -388,7 +393,7 @@ frontend/src/features/collection-strategy/
 
 含义：
 
-- `/voice-plaza`：内容查询、筛选、详情、Analysis 交互；Analysis 按钮资格由后端 `content-analysis-capabilities` 驱动；
+- `/voice-plaza`：内容查询、筛选、详情、Analysis 交互；Analysis 按钮资格由后端 `content-analysis-capabilities` 驱动；“AI 相关性”可显式查看待复核 `irrelevant`，并支持单条/批量人工标记为相关；
 - `/collection-runtime`：Excel Import / TikHub Run 的统一运行中心视图；
 - `/collection-strategy`：Keyword Pack、全局 Relevance 和 Collection Plan 管理；
 - `/`：当前 HomeView。
@@ -486,11 +491,14 @@ backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
 
 当前默认列表：
 
-- 如果未显式筛 `relevance`，排除当前 Analysis 明确为 `irrelevant` 的内容；
+- 如果未显式筛 `relevance`，按**有效相关性**排除仍为 `irrelevant` 的内容；
+- 有效相关性只在查询层计算：同一 `content_id + current_version` 存在人工 `relevant` 复核时优先采用人工决定，否则采用当前 AI relevance；
+- `ContentAnalysisResponse.relevance` 继续返回模型原始判断，不被人工复核改写；
+- 显式 `relevance=irrelevant` 只返回尚未人工纳入的当前不相关内容；`relevance=relevant` 同时包含 AI relevant 和当前版本人工纳入内容；
 - 没有当前 Analysis 的内容仍可显示；
 - 当前版本没有匹配 Analysis，但历史版本分析过时，会表现为 `stale`；
 - 完全没分析过为 `pending`；
-- 单条详情 `get_content()` 使用审计友好的读取，可读取 irrelevant 内容。
+- 单条详情 `get_content()` 使用审计友好的读取，可读取 raw irrelevant Analysis 事实。
 
 这也是为什么 AI relevance 当前不需要复制到 `contents.is_relevant`。
 

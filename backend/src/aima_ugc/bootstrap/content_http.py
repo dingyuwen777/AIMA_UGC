@@ -12,6 +12,9 @@ from aima_ugc.adapters.persistence.postgres.content_queries import (
     PostgresContentQueryRepository,
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
+from aima_ugc.adapters.persistence.postgres.relevance_reviews import (
+    PostgresContentRelevanceReviewRepository,
+)
 from aima_ugc.contracts.analysis import ContentRelevance, ContentVoiceType
 from aima_ugc.contracts.http import (
     ContentAnalysisCreatedResponse,
@@ -26,8 +29,13 @@ from aima_ugc.contracts.http import (
     ContentListQuery,
     ContentListResponse,
     ContentMetricsResponse,
+    ContentRelevanceSource,
     ContentSourceResponse,
     JobStatusResponse,
+)
+from aima_ugc.contracts.relevance_review import (
+    ContentRelevanceReviewRequest,
+    ContentRelevanceReviewResponse,
 )
 from aima_ugc.modules.analysis.content_analysis_job import (
     CONTENT_ANALYSIS_JOB_MAX_ATTEMPTS,
@@ -173,6 +181,31 @@ class PostgresContentHttpService:
         finally:
             session.close()
 
+    def review_relevance(
+        self,
+        request: ContentRelevanceReviewRequest,
+        *,
+        request_id: str,
+    ) -> ContentRelevanceReviewResponse:
+        """保存双向人工相关性覆盖或撤销事件，保留 AI 原始结果。"""
+
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                summary = PostgresContentRelevanceReviewRepository(session).review_relevance(
+                    content_ids=request.content_ids,
+                    decision=request.decision,
+                    analysis_identity=current_analysis_identity(self._runtime.settings),
+                    request_id=request_id,
+                )
+                return ContentRelevanceReviewResponse(
+                    requested_count=summary.requested_count,
+                    changed_count=summary.changed_count,
+                    unchanged_count=summary.unchanged_count,
+                )
+        finally:
+            session.close()
+
     def get_analysis_job(self, job_id: UUID) -> JobStatusResponse:
         session = self._runtime.database.new_session()
         try:
@@ -229,8 +262,8 @@ def _item_response(record: ContentReadRecord) -> ContentListItemResponse:
         metrics=ContentMetricsResponse.model_validate(record.metrics),
         analysis=ContentAnalysisResponse(
             status=cast(ContentAnalysisStatus, record.analysis.status),
-            relevance=cast(ContentRelevance, record.analysis.relevance),
-            voice_type=cast(ContentVoiceType, record.analysis.voice_type),
+            relevance=cast(ContentRelevance | None, record.analysis.relevance),
+            voice_type=cast(ContentVoiceType | None, record.analysis.voice_type),
             sentiment=record.analysis.sentiment,
             labels=tuple(
                 ContentLabelPairResponse(primary_label=primary, secondary_label=secondary)
@@ -240,6 +273,8 @@ def _item_response(record: ContentReadRecord) -> ContentListItemResponse:
             model_provider=record.analysis.model_provider,
             model=record.analysis.model,
         ),
+        effective_relevance=cast(ContentRelevance | None, record.effective_relevance),
+        relevance_source=cast(ContentRelevanceSource | None, record.relevance_source),
         source=ContentSourceResponse(
             provider_name=record.source.provider_name,
             provider_attempt_id=record.source.provider_attempt_id,

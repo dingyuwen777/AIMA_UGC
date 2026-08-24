@@ -8,6 +8,7 @@ const generated = vi.hoisted(() => ({
   getContent: vi.fn(),
   getContentAnalysisCapabilities: vi.fn(),
   createContentAnalysis: vi.fn(),
+  createContentRelevanceReview: vi.fn(),
   getContentAnalysisJob: vi.fn(),
   createDataExport: vi.fn(),
   listDataExports: vi.fn(),
@@ -34,6 +35,8 @@ const item = {
   metrics: { like_count: 12, comment_count: 3 },
   analysis: {
     status: 'completed' as const,
+    relevance: 'relevant' as const,
+    voice_type: 'user_voice' as const,
     sentiment: '负面',
     labels: [
       { primary_label: '产品体验', secondary_label: '续航表现' },
@@ -42,6 +45,8 @@ const item = {
     ],
     analyzed_at: '2026-08-21T03:00:00Z',
   },
+  effective_relevance: 'relevant' as const,
+  relevance_source: 'ai' as const,
   source: { provider_name: 'file-import' },
 }
 
@@ -74,6 +79,7 @@ describe('voice plaza', () => {
           platform: '',
           contentType: '',
           analysisStatus: '',
+          relevance: '',
           sentiment: '',
           primaryLabel: '',
           secondaryLabel: '',
@@ -99,7 +105,14 @@ describe('voice plaza', () => {
 
   it('renders every ordered primary and secondary AI label pair in the label column', async () => {
     const labels = await renderToString(
-      createSSRApp({ render: () => h(VoicePlazaTable, { items: [item], loading: false, selectedIds: [] }) }),
+      createSSRApp({
+        render: () => h(VoicePlazaTable, {
+          items: [item],
+          loading: false,
+          selectedIds: [],
+          reviewing: false,
+        }),
+      }),
     )
     expect(labels).toContain('产品体验')
     expect(labels).toContain('续航表现')
@@ -107,6 +120,35 @@ describe('voice plaza', () => {
     expect(labels).toContain('门店服务')
     expect(labels).toContain('购买体验')
     expect(labels).toContain('价格感知')
+  })
+
+  it('keeps a manual relevance override visible and undoable when AI is stale', async () => {
+    const staleManualItem = {
+      ...item,
+      analysis: {
+        status: 'stale' as const,
+        relevance: null,
+        voice_type: null,
+        sentiment: null,
+        labels: [],
+        analyzed_at: null,
+      },
+      effective_relevance: 'relevant' as const,
+      relevance_source: 'manual_review' as const,
+    }
+    const html = await renderToString(
+      createSSRApp({
+        render: () => h(VoicePlazaTable, {
+          items: [staleManualItem],
+          loading: false,
+          selectedIds: [],
+          reviewing: false,
+        }),
+      }),
+    )
+
+    expect(html).toContain('人工复核相关')
+    expect(html).toContain('撤销人工判断')
   })
 
   it('preserves the shared HTTP error contract for binary export responses', async () => {

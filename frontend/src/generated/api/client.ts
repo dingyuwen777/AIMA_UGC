@@ -508,6 +508,14 @@ export interface ContentMetricsResponse {
   view_count?: number | null;
 }
 
+export type ContentRelevanceSource = typeof ContentRelevanceSource[keyof typeof ContentRelevanceSource];
+
+
+export const ContentRelevanceSource = {
+  ai: 'ai',
+  manual_review: 'manual_review',
+} as const;
+
 export interface ContentSourceResponse {
   collection_run_id?: string | null;
   import_batch_id?: string | null;
@@ -533,6 +541,7 @@ export interface ContentDetailResponse {
   comments?: ContentCommentResponse[];
   content_type: string;
   content_url?: string | null;
+  effective_relevance?: ContentRelevance | null;
   external_content_id: string;
   id: string;
   last_seen_at: string;
@@ -540,6 +549,7 @@ export interface ContentDetailResponse {
   metrics: ContentMetricsResponse;
   platform: PlatformName;
   published_at?: string | null;
+  relevance_source?: ContentRelevanceSource | null;
   source: ContentSourceResponse;
   source_records?: ContentSourceResponse[];
   supplement_status?: ContentSupplementStatusResponse | null;
@@ -552,12 +562,14 @@ export interface ContentListItemResponse {
   author_display_name?: string | null;
   content_type: string;
   content_url?: string | null;
+  effective_relevance?: ContentRelevance | null;
   external_content_id: string;
   id: string;
   last_seen_at: string;
   metrics: ContentMetricsResponse;
   platform: PlatformName;
   published_at?: string | null;
+  relevance_source?: ContentRelevanceSource | null;
   source: ContentSourceResponse;
   text?: string | null;
   title?: string | null;
@@ -567,6 +579,36 @@ export interface ContentListResponse {
   has_more: boolean;
   items: ContentListItemResponse[];
   next_cursor?: string | null;
+}
+
+export type ContentRelevanceReviewRequestDecision = typeof ContentRelevanceReviewRequestDecision[keyof typeof ContentRelevanceReviewRequestDecision];
+
+
+export const ContentRelevanceReviewRequestDecision = {
+  relevant: 'relevant',
+  irrelevant: 'irrelevant',
+  inherit_ai: 'inherit_ai',
+} as const;
+
+/**
+ * 单条和批量复用同一请求，显式声明人工覆盖或撤销决定。
+ */
+export interface ContentRelevanceReviewRequest {
+  /**
+     * @minItems 1
+     * @maxItems 1000
+     */
+  content_ids: string[];
+  decision: ContentRelevanceReviewRequestDecision;
+}
+
+export interface ContentRelevanceReviewResponse {
+  /** @minimum 0 */
+  changed_count: number;
+  /** @minimum 1 */
+  requested_count: number;
+  /** @minimum 0 */
+  unchanged_count: number;
 }
 
 export interface DataExportCreatedResponse {
@@ -1364,6 +1406,37 @@ export const createContentAnalysis = async (contentAnalysisSubmitRequest: Conten
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: ContentAnalysisCreatedResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCreateContentRelevanceReviewUrl = () => {
+
+
+
+
+  return `/api/v1/content-relevance-reviews`
+}
+
+/**
+ * @summary Create Content Relevance Review
+ */
+export const createContentRelevanceReview = async (contentRelevanceReviewRequest: ContentRelevanceReviewRequest, options?: RequestInit): Promise<ContentRelevanceReviewResponse> => {
+
+  const res = await fetch(getCreateContentRelevanceReviewUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(contentRelevanceReviewRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ContentRelevanceReviewResponse = body ? JSON.parse(body) : {}
   return data
 }
 

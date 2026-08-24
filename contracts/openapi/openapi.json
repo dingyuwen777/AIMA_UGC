@@ -1542,6 +1542,16 @@
             ],
             "title": "Content Url"
           },
+          "effective_relevance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContentRelevance"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "external_content_id": {
             "title": "External Content Id",
             "type": "string"
@@ -1581,6 +1591,16 @@
               }
             ],
             "title": "Published At"
+          },
+          "relevance_source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContentRelevanceSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "source": {
             "$ref": "#/components/schemas/ContentSourceResponse"
@@ -1835,6 +1855,16 @@
             ],
             "title": "Content Url"
           },
+          "effective_relevance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContentRelevance"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "external_content_id": {
             "title": "External Content Id",
             "type": "string"
@@ -1866,6 +1896,16 @@
               }
             ],
             "title": "Published At"
+          },
+          "relevance_source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContentRelevanceSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "source": {
             "$ref": "#/components/schemas/ContentSourceResponse"
@@ -2087,6 +2127,71 @@
         "enum": [
           "relevant",
           "irrelevant"
+        ],
+        "type": "string"
+      },
+      "ContentRelevanceReviewRequest": {
+        "additionalProperties": false,
+        "description": "单条和批量复用同一请求，显式声明人工覆盖或撤销决定。",
+        "properties": {
+          "content_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Content Ids",
+            "type": "array"
+          },
+          "decision": {
+            "enum": [
+              "relevant",
+              "irrelevant",
+              "inherit_ai"
+            ],
+            "title": "Decision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content_ids",
+          "decision"
+        ],
+        "title": "ContentRelevanceReviewRequest",
+        "type": "object"
+      },
+      "ContentRelevanceReviewResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "changed_count": {
+            "minimum": 0.0,
+            "title": "Changed Count",
+            "type": "integer"
+          },
+          "requested_count": {
+            "minimum": 1.0,
+            "title": "Requested Count",
+            "type": "integer"
+          },
+          "unchanged_count": {
+            "minimum": 0.0,
+            "title": "Unchanged Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "requested_count",
+          "changed_count",
+          "unchanged_count"
+        ],
+        "title": "ContentRelevanceReviewResponse",
+        "type": "object"
+      },
+      "ContentRelevanceSource": {
+        "enum": [
+          "ai",
+          "manual_review"
         ],
         "type": "string"
       },
@@ -4158,6 +4263,67 @@
           }
         },
         "summary": "Create Content Analysis",
+        "tags": [
+          "contents"
+        ]
+      }
+    },
+    "/api/v1/content-relevance-reviews": {
+      "post": {
+        "operationId": "createContentRelevanceReview",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContentRelevanceReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentRelevanceReviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Create Content Relevance Review",
         "tags": [
           "contents"
         ]

@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import and_, exists, false, func, literal, or_, select
+from sqlalchemy import and_, case, exists, false, func, literal, or_, select
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
@@ -22,6 +22,9 @@ from aima_ugc.contracts.http import (
 )
 from aima_ugc.contracts.platform import require_platform_name
 from aima_ugc.modules.analysis.persistence import AnalysisConfigurationIdentity
+from aima_ugc.modules.analysis.relevance_review_tables import (
+    analysis_content_relevance_reviews_table,
+)
 from aima_ugc.modules.analysis.tables import (
     analysis_content_label_pairs_table,
     analysis_content_results_table,
@@ -296,6 +299,7 @@ class PostgresContentQueryRepository:
         attempt = provider_request_attempts_table
         request = provider_requests_table
         scope = collection_scopes_table
+        review = _latest_relevance_review_subquery()
         analysis = _latest_analysis_subquery(self._analysis_identity)
         sort_at = func.coalesce(content.c.published_at, content.c.last_seen_at).label("sort_at")
         has_any_analysis = exists(
@@ -307,6 +311,21 @@ class PostgresContentQueryRepository:
             analysis.c.content_id == content.c.id,
             analysis.c.content_version == content.c.current_version,
             analysis.c.rank == 1,
+        )
+        current_review = and_(
+            review.c.content_id == content.c.id,
+            review.c.content_version == content.c.current_version,
+            review.c.rank == 1,
+        )
+        effective_relevance = case(
+            (review.c.decision == "relevant", literal("relevant")),
+            (review.c.decision == "irrelevant", literal("irrelevant")),
+            else_=analysis.c.relevance,
+        )
+        relevance_source = case(
+            (review.c.decision.in_(("relevant", "irrelevant")), literal("manual_review")),
+            (analysis.c.relevance.is_not(None), literal("ai")),
+            else_=literal(None),
         )
         source_join = (
             content.join(
@@ -320,6 +339,7 @@ class PostgresContentQueryRepository:
             .join(request, request.c.id == attempt.c.provider_request_id)
             .outerjoin(scope, scope.c.id == request.c.scope_id)
             .outerjoin(analysis, current_analysis)
+            .outerjoin(review, current_review)
         )
         if targets_only:
             selected: tuple[Any, ...] = (content.c.id, content.c.current_version, sort_at)
@@ -352,6 +372,8 @@ class PostgresContentQueryRepository:
                 analysis.c.analyzed_at,
                 analysis.c.model_provider,
                 analysis.c.model,
+                effective_relevance.label("effective_relevance"),
+                relevance_source.label("relevance_source"),
                 has_any_analysis.label("has_any_analysis"),
                 request.c.provider.label("provider_name"),
                 attempt.c.id.label("provider_attempt_id"),
@@ -364,6 +386,7 @@ class PostgresContentQueryRepository:
             statement,
             filters=filters,
             analysis=analysis,
+            effective_relevance=effective_relevance,
             has_any_analysis=has_any_analysis,
             version=version,
             include_irrelevant=include_irrelevant,
@@ -447,6 +470,8 @@ class PostgresContentQueryRepository:
                         "play_count": cast(int | None, row["current_play_count"]),
                     },
                     analysis=analysis,
+                    effective_relevance=cast(str | None, row["effective_relevance"]),
+                    relevance_source=cast(str | None, row["relevance_source"]),
                     source=ContentSourceRead(
                         provider_name=cast(str, row["provider_name"]),
                         provider_attempt_id=cast(UUID, row["provider_attempt_id"]),
@@ -493,11 +518,28 @@ def _latest_analysis_subquery(
     return statement.subquery("latest_content_analysis")
 
 
+def _latest_relevance_review_subquery() -> Any:
+    review = analysis_content_relevance_reviews_table
+    return select(
+        review.c.id,
+        review.c.content_id,
+        review.c.content_version,
+        review.c.decision,
+        func.row_number()
+        .over(
+            partition_by=(review.c.content_id, review.c.content_version),
+            order_by=(review.c.review_no.desc(), review.c.reviewed_at.desc(), review.c.id.desc()),
+        )
+        .label("rank"),
+    ).subquery("latest_content_relevance_review")
+
+
 def _apply_filters(
     statement: Any,
     *,
     filters: ContentFilterSnapshot,
     analysis: Any,
+    effective_relevance: Any,
     has_any_analysis: Any,
     version: Any,
     include_irrelevant: bool,
@@ -506,10 +548,10 @@ def _apply_filters(
     if filters.relevance is None:
         if not include_irrelevant:
             statement = statement.where(
-                or_(analysis.c.id.is_(None), analysis.c.relevance != "irrelevant")
+                or_(effective_relevance.is_(None), effective_relevance != "irrelevant")
             )
     else:
-        statement = statement.where(analysis.c.relevance == filters.relevance)
+        statement = statement.where(effective_relevance == filters.relevance)
     if filters.voice_type is not None:
         statement = statement.where(analysis.c.voice_type == filters.voice_type)
     if filters.search is not None:

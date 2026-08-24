@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import type { ContentAnalysisStatus, PlatformName } from '../../../../../generated/api/client'
+import type {
+  ContentAnalysisStatus,
+  ContentRelevance,
+  PlatformName,
+} from '../../../../../generated/api/client'
 
 defineProps<{
   search: string
   platform: '' | PlatformName
   contentType: string
   analysisStatus: '' | ContentAnalysisStatus
+  relevance: '' | ContentRelevance
   sentiment: string
   primaryLabel: string
   secondaryLabel: string
@@ -19,6 +24,7 @@ const emit = defineEmits<{
   'update:platform': [value: '' | PlatformName]
   'update:contentType': [value: string]
   'update:analysisStatus': [value: '' | ContentAnalysisStatus]
+  'update:relevance': [value: '' | ContentRelevance]
   'update:sentiment': [value: string]
   'update:primaryLabel': [value: string]
   'update:secondaryLabel': [value: string]
@@ -49,6 +55,10 @@ function value(event: Event): string {
       :value="platform"
       @change="emit('update:platform', value($event) as '' | PlatformName)"
     ><option value="">全部平台</option><option value="xiaohongshu">小红书</option><option value="douyin">抖音</option><option value="weibo">微博</option><option value="bilibili">B站</option><option value="kuaishou">快手</option></select></label>
+    <label><span>AI 相关性</span><select
+      :value="relevance"
+      @change="emit('update:relevance', value($event) as '' | ContentRelevance)"
+    ><option value="">默认业务数据</option><option value="relevant">相关（AI / 人工有效）</option><option value="irrelevant">不相关（AI / 人工有效）</option></select></label>
     <label><span>AI 情感</span><select
       :value="sentiment"
       @change="emit('update:sentiment', value($event))"

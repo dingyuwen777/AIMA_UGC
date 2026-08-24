@@ -1,5 +1,8 @@
 """当前应用 Schema 的机器注册入口。"""
 
+from aima_ugc.modules.analysis.relevance_review_tables import (
+    analysis_content_relevance_reviews_table,
+)
 from aima_ugc.modules.analysis.tables import (
     analysis_content_label_pairs_table,
     analysis_content_request_items_table,
@@ -75,6 +78,7 @@ register_ingestion_schema()
 
 __all__ = [
     "analysis_content_label_pairs_table",
+    "analysis_content_relevance_reviews_table",
     "analysis_content_request_items_table",
     "analysis_content_requests_table",
     "analysis_content_results_table",
