@@ -12,7 +12,10 @@ const featureApi = vi.hoisted(() => ({
   uploadImportBatch: vi.fn(),
 }))
 
-vi.mock('../src/features/import-batches/api', () => featureApi)
+vi.mock('../src/features/import-batches/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/features/import-batches/api')>()
+  return { ...actual, ...featureApi }
+})
 
 import { useImportBatchesStore } from '../src/features/import-batches/store'
 
