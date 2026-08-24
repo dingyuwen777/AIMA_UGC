@@ -20,6 +20,7 @@ from aima_ugc.modules.analysis.content_labeling import (
 from .pricing import (
     LLMCostCalculation,
     LLMModelPrice,
+    LLMPriceNotConfiguredError,
     LLMPricingCatalog,
     LLMTokenUsage,
 )
@@ -149,15 +150,16 @@ class OpenAICompatibleContentLabelingLLM:
         usage = LLMTokenUsage(input_tokens=None, output_tokens=None)
         calculation: LLMCostCalculation | None = None
         cost_unavailable_reason = self._pricing_unavailable_reason
-        price = (
-            self._pricing_catalog.price_for(
-                provider=self._provider_name,
-                model=self._model,
-                at=started_at,
-            )
-            if self._pricing_catalog is not None and self._pricing_unavailable_reason is None
-            else None
-        )
+        price: LLMModelPrice | None = None
+        if self._pricing_catalog is not None and self._pricing_unavailable_reason is None:
+            try:
+                price = self._pricing_catalog.price_for(
+                    provider=self._provider_name,
+                    model=self._model,
+                    at=started_at,
+                )
+            except LLMPriceNotConfiguredError:
+                cost_unavailable_reason = "price_not_effective_at_request_time"
         body: dict[str, object] = {
             "model": self._model,
             "messages": [
@@ -209,7 +211,7 @@ class OpenAICompatibleContentLabelingLLM:
             calculation, cost_unavailable_reason = _calculate_cost(
                 price=price,
                 usage=usage,
-                pricing_unavailable_reason=self._pricing_unavailable_reason,
+                pricing_unavailable_reason=cost_unavailable_reason,
             )
             raw_text = _response_content(payload)
             status = "completed"
