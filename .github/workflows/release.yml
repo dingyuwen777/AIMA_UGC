@@ -427,10 +427,17 @@ jobs:
               "AIMA_HOST_ROOT": os.environ["SMOKE_ROOT"],
               "AIMA_TIKHUB_ENABLED": "false",
           }
+          disabled_runtime_keys = {
+              "AIMA_LLM_BASE_URL",
+              "AIMA_LLM_PROVIDER_NAME",
+              "AIMA_LLM_MODEL",
+          }
           output: list[str] = []
           seen: set[str] = set()
           for line in path.read_text(encoding="utf-8").splitlines():
               key = line.split("=", 1)[0] if "=" in line and not line.startswith("#") else None
+              if key in disabled_runtime_keys:
+                  continue
               if key in updates:
                   output.append(f"{key}={updates[key]}")
                   seen.add(key)
