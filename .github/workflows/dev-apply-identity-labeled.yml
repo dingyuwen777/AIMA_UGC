@@ -94,7 +94,6 @@ jobs:
           set -euo pipefail
           python scripts/dev/apply_identity_alignment.py
           uv run ruff format \
-            scripts/dev/apply_identity_alignment.py \
             backend/src/aima_ugc/adapters/providers/tikhub/runtime.py \
             backend/src/aima_ugc/adapters/persistence/postgres/collection_targets.py \
             backend/src/aima_ugc/adapters/persistence/postgres/content_complete.py \
@@ -109,6 +108,10 @@ jobs:
           uv run pytest tests/unit/collection/test_tikhub_runtime_alternate_identity.py -q
           uv run pytest tests/integration/collection/test_collection_supplement_target_eligibility.py -q
           uv run pytest tests/integration/collection/test_stage8a_cross_source_idempotency.py -q
+
+      - name: Remove temporary patch script
+        shell: bash
+        run: rm scripts/dev/apply_identity_alignment.py
 
       - name: Static checks
         shell: bash
@@ -125,14 +128,15 @@ jobs:
           set -euo pipefail
           git config user.name "AIMA GitHub Runner"
           git config user.email "actions@users.noreply.github.com"
-          git add \
+          git add -A \
             scripts/dev/apply_identity_alignment.py \
             backend/src/aima_ugc/adapters/providers/tikhub/runtime.py \
             backend/src/aima_ugc/adapters/persistence/postgres/collection_targets.py \
             backend/src/aima_ugc/adapters/persistence/postgres/content_complete.py \
             backend/src/aima_ugc/bootstrap/collection_scope.py \
             tests/unit/collection/test_tikhub_runtime_alternate_identity.py \
-            tests/integration/collection/test_collection_supplement_target_eligibility.py
+            tests/integration/collection/test_collection_supplement_target_eligibility.py \
+            docs/appendix/08_数据入口与统一入库实现.md
           git diff --cached --exit-code && { echo "No implementation changes produced"; exit 1; } || true
           git commit -m "统一 TikHub 补采 typed identity"
           git push origin HEAD:feature/excel-tikhub-identity-alignment
