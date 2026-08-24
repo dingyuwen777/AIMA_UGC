@@ -183,6 +183,7 @@ GET /api/v1/collection-plans?enabled=true
 + 每个目标平台至少存在一条 enabled 且 platform=all/目标平台的关键词
 + 目标 Provider Config 当前存在
 + Provider/Platform 支持 keyword_search
++ 每个平台按 Capability 显式完成所有受支持的 Search Config 维度
 + 如果 Plan 要 enabled，则 Global Relevance 当前可用
 ```
 
@@ -232,11 +233,13 @@ Export Dialog 仍可打开，用于查看已有导出记录和下载已经成功
 .github/workflows/stage8f-fullstack.yml
 frontend/playwright.fullstack.config.ts
 frontend/e2e-fullstack/excel-import.spec.ts
+frontend/e2e-fullstack/collection-plan-search-config.spec.ts
 tests/fullstack/create_stage8f_excel_fixture.py
+tests/fullstack/seed_collection_plan_provider.py
 tests/fullstack/run_stage8f_worker.py
 ```
 
-真实验收不 Mock `/api/v1/**`，固定覆盖两条链。
+真实验收不 Mock `/api/v1/**`，固定覆盖 Excel 成功、Excel 失败和 Collection Plan 配置持久化三条链。
 
 ### 6.1 成功链
 
@@ -278,7 +281,20 @@ tests/fullstack/run_stage8f_worker.py
 → 不伪造未知阶段历史
 ```
 
-### 6.3 隔离与费用边界
+### 6.3 Collection Plan 配置持久化链
+
+```text
+隔离 Provider Config 路由事实（不提供可调用 Secret）
+→ 浏览器创建 Discovery Pack / Global Relevance
+→ 新建 Plan 逐平台选择 Search Config
+→ Vue / generated Client / FastAPI
+→ PostgreSQL collection_plan_platforms.config
+→ GET Plan 回读同一配置
+```
+
+该链只创建 Plan，不创建 Collection Run/Job，也不发送 TikHub 请求。
+
+### 6.4 隔离与费用边界
 
 Full-stack Workflow 固定：
 
@@ -302,7 +318,7 @@ npm --prefix frontend run test:e2e
 
 npm --prefix frontend run test:e2e:fullstack
 → 真实 API + PostgreSQL + Worker
-→ 验证 Excel 成功业务链 + Worker 失败业务链
+→ 验证 Excel 成功业务链 + Worker 失败业务链 + Plan Search Config 持久化链
 ```
 
 两者不能互相替代。
@@ -329,6 +345,7 @@ Batch Supplement 的 Batch/平台/Provider Capability 资格真实可用
 AI/Export 首版能力与后端一致
 Mock Browser E2E 通过
 Real Full-stack Excel 成功/失败 Acceptance 通过
+Real Full-stack Collection Plan Search Config Acceptance 通过
 Frontend lint/typecheck/unit/build 通过
 Backend API/Contract/受影响 Integration 通过
 正式文档与机器事实同步

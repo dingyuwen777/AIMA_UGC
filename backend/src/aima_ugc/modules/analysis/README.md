@@ -418,6 +418,10 @@ Job error
 → Analysis Repository
 ```
 
+### 页面提示 LLM Runtime 未配置
+
+先检查 `GET /api/v1/content-analysis-capabilities` 的 `configured`，再检查 Base URL、Model 和外部 `llm_api_key` 是否同时存在。源码开发 launcher 把 LLM Key 写入 `.runtime/secrets/llm_api_key`，并通过 `AIMA_EXTERNAL_SECRET_DIR` 暴露给 API/Worker；`.runtime/internal-secrets/` 只保存 PostgreSQL/Cursor Secret。能力接口和 Worker 必须使用同一个 `settings.external_secret_root`，不能分别读取不同目录。
+
 ### 页面 stale
 
 ```text

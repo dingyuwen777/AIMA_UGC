@@ -15,6 +15,19 @@ PACK_ID = UUID("11111111-1111-4111-8111-111111111111")
 PLAN_ID = UUID("22222222-2222-4222-8222-222222222222")
 CONFIG_ID = UUID("33333333-3333-4333-8333-333333333333")
 NOW = datetime(2026, 8, 21, 0, 0, tzinfo=UTC).isoformat()
+SEARCH_CONFIG = {
+    "sort_mode": "latest",
+    "published_within": "1d",
+    "content_type": "all",
+}
+
+
+def _platform() -> dict[str, object]:
+    return {
+        "platform": "xiaohongshu",
+        "provider_config_id": str(CONFIG_ID),
+        "search_config": dict(SEARCH_CONFIG),
+    }
 
 
 def _pack(enabled: bool = True) -> dict[str, object]:
@@ -40,7 +53,7 @@ def _plan(enabled: bool = True) -> dict[str, object]:
         "last_scheduled_at": None,
         "detail_policy": "on_change",
         "comment_policy": "adaptive",
-        "platforms": [{"platform": "xiaohongshu", "provider_config_id": str(CONFIG_ID)}],
+        "platforms": [_platform()],
         "keyword_pack_ids": [str(PACK_ID)],
         "created_at": NOW,
         "updated_at": NOW,
@@ -59,6 +72,7 @@ class _FakeStrategyService:
     def create_plan(self, request):  # type: ignore[no-untyped-def]
         assert request.schedule_expr == "0 9 * * *"
         assert request.keyword_pack_ids == (PACK_ID,)
+        assert request.platforms[0].search_config.model_dump(exclude_none=True) == SEARCH_CONFIG
         return _plan(request.enabled)
 
     def list_plans(self, query):  # type: ignore[no-untyped-def]
@@ -100,7 +114,7 @@ def test_stage8f_creates_lists_reads_and_disables_periodic_plan() -> None:
     body = {
         "name": "爱玛新品周期采集",
         "schedule_expr": "0 9 * * *",
-        "platforms": [{"platform": "xiaohongshu", "provider_config_id": str(CONFIG_ID)}],
+        "platforms": [_platform()],
         "keyword_pack_ids": [str(PACK_ID)],
         "enabled": True,
     }
@@ -125,7 +139,7 @@ def test_stage8f_rejects_single_run_or_plan_level_relevance_fields() -> None:
     base = {
         "name": "非法计划",
         "schedule_expr": "0 9 * * *",
-        "platforms": [{"platform": "xiaohongshu", "provider_config_id": str(CONFIG_ID)}],
+        "platforms": [_platform()],
         "keyword_pack_ids": [str(PACK_ID)],
     }
 
@@ -156,7 +170,7 @@ def test_stage8f_conflict_does_not_leak_internal_details() -> None:
         json={
             "name": "冲突计划",
             "schedule_expr": "0 9 * * *",
-            "platforms": [{"platform": "xiaohongshu", "provider_config_id": str(CONFIG_ID)}],
+            "platforms": [_platform()],
             "keyword_pack_ids": [str(PACK_ID)],
         },
     )
@@ -183,7 +197,7 @@ def test_stage8f_not_found_and_domain_invalid_keep_request_id_contract() -> None
         json={
             "name": "非法 Cron",
             "schedule_expr": "not-a-cron",
-            "platforms": [{"platform": "xiaohongshu", "provider_config_id": str(CONFIG_ID)}],
+            "platforms": [_platform()],
             "keyword_pack_ids": [str(PACK_ID)],
         },
     )
