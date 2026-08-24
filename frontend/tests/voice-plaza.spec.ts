@@ -45,6 +45,8 @@ const item = {
     ],
     analyzed_at: '2026-08-21T03:00:00Z',
   },
+  effective_relevance: 'relevant' as const,
+  relevance_source: 'ai' as const,
   source: { provider_name: 'file-import' },
 }
 
@@ -108,7 +110,6 @@ describe('voice plaza', () => {
           items: [item],
           loading: false,
           selectedIds: [],
-          relevanceFilter: '',
           reviewing: false,
         }),
       }),
@@ -119,6 +120,35 @@ describe('voice plaza', () => {
     expect(labels).toContain('门店服务')
     expect(labels).toContain('购买体验')
     expect(labels).toContain('价格感知')
+  })
+
+  it('keeps a manual relevance override visible and undoable when AI is stale', async () => {
+    const staleManualItem = {
+      ...item,
+      analysis: {
+        status: 'stale' as const,
+        relevance: null,
+        voice_type: null,
+        sentiment: null,
+        labels: [],
+        analyzed_at: null,
+      },
+      effective_relevance: 'relevant' as const,
+      relevance_source: 'manual_review' as const,
+    }
+    const html = await renderToString(
+      createSSRApp({
+        render: () => h(VoicePlazaTable, {
+          items: [staleManualItem],
+          loading: false,
+          selectedIds: [],
+          reviewing: false,
+        }),
+      }),
+    )
+
+    expect(html).toContain('人工复核相关')
+    expect(html).toContain('撤销人工判断')
   })
 
   it('preserves the shared HTTP error contract for binary export responses', async () => {
