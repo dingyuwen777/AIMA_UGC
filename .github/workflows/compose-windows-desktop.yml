@@ -68,6 +68,71 @@ jobs:
               throw 'daemon.json remains AIMA-managed and must not silently gain extra mirrors.'
           }
 
+      - name: Validate production Docker mirror probe on Windows PowerShell
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          . .\scripts\dev\configure_docker_desktop_mirrors.ps1
+
+          $expected = @(
+              'https://legacy-one.example/',
+              'https://legacy-two.example/',
+              'https://legacy-three.example/'
+          ) + @($Mirrors)
+          $mirrorLiterals = ($expected | ForEach-Object { '"' + $_ + '"' }) -join ','
+          $fakeDir = Join-Path $env:RUNNER_TEMP 'aima-fake-docker'
+          New-Item -ItemType Directory -Path $fakeDir -Force | Out-Null
+          $fakeDocker = Join-Path $fakeDir 'docker.exe'
+          $source = @"
+          using System;
+          public static class Program
+          {
+              public static int Main(string[] args)
+              {
+                  var mirrors = new string[] { $mirrorLiterals };
+                  if (args.Length < 3 || args[0] != "info" || args[1] != "--format")
+                  {
+                      Console.Error.WriteLine("unexpected docker arguments: " + string.Join("|", args));
+                      return 20;
+                  }
+                  if (args[2] == "{{range .RegistryConfig.Mirrors}}{{println .}}{{end}}")
+                  {
+                      foreach (var mirror in mirrors)
+                      {
+                          Console.WriteLine(mirror);
+                      }
+                      return 0;
+                  }
+                  if (args[2] == "{{json .RegistryConfig.Mirrors}}")
+                  {
+                      Console.WriteLine("\"" + string.Join(" ", mirrors) + "\"");
+                      return 0;
+                  }
+                  Console.Error.WriteLine("unexpected docker format: " + args[2]);
+                  return 21;
+              }
+          }
+          "@
+          Add-Type -TypeDefinition $source -Language CSharp -OutputAssembly $fakeDocker -OutputType ConsoleApplication
+          $env:PATH = "$fakeDir;$env:PATH"
+
+          $probe = Get-DockerRegistryMirrorProbe -TimeoutSeconds 3
+          if (-not $probe.Succeeded) {
+              throw "Production probe failed: $($probe.Error)"
+          }
+          $actual = @($probe.Mirrors)
+          if ($actual.Count -ne $expected.Count) {
+              throw "Expected $($expected.Count) independent mirrors, got $($actual.Count): $($actual -join ' | ')"
+          }
+          for ($index = 0; $index -lt $expected.Count; $index++) {
+              if ($actual[$index] -ne $expected[$index]) {
+                  throw "Mirror[$index] mismatch: expected $($expected[$index]), got $($actual[$index])"
+              }
+          }
+          if (-not (Test-ExpectedMirrorsPresent -ActualMirrors $actual)) {
+              throw 'Production probe output must satisfy AIMA mirror effective-state validation.'
+          }
+
       - name: Prepare production env
         shell: powershell
         run: |
