@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from typing import BinaryIO
 from uuid import UUID, uuid4
 
-from .models import ArtifactRecord
+from .models import ArtifactRecord, StoredBytes
 from .ports import ArtifactMetadataPort, ArtifactStore
 from .retention import initial_artifact_expiry
 
@@ -76,11 +76,10 @@ class ArtifactService:
                 pass
             raise
 
-        return self.confirm_stored_bytes(
-            artifact_id,
-            sha256=stored.sha256,
-            byte_size=stored.byte_size,
-            stored_at=datetime.now(UTC),
+        return self._confirm_or_cleanup(
+            artifact_id=artifact_id,
+            storage_key=resolved_storage_key,
+            stored=stored,
         )
 
     def store_stream(
@@ -129,12 +128,39 @@ class ArtifactService:
             except Exception:
                 pass
             raise
-        return self.confirm_stored_bytes(
-            artifact_id,
-            sha256=stored.sha256,
-            byte_size=stored.byte_size,
-            stored_at=datetime.now(UTC),
+        return self._confirm_or_cleanup(
+            artifact_id=artifact_id,
+            storage_key=storage_key,
+            stored=stored,
         )
+
+    def _confirm_or_cleanup(
+        self,
+        *,
+        artifact_id: UUID,
+        storage_key: str,
+        stored: StoredBytes,
+    ) -> ArtifactRecord:
+        """元数据确认失败时立即回收刚写入的字节，避免形成无期限 pending 孤儿。"""
+
+        try:
+            return self.confirm_stored_bytes(
+                artifact_id,
+                sha256=stored.sha256,
+                byte_size=stored.byte_size,
+                stored_at=datetime.now(UTC),
+            )
+        except Exception:
+            try:
+                self._store.delete(storage_key)
+            except Exception:
+                # 保留原始元数据确认异常；Store 删除失败只能由人工/后续一致性检查处理。
+                pass
+            try:
+                self._metadata.mark_error(artifact_id)
+            except Exception:
+                pass
+            raise
 
     def confirm_stored_bytes(
         self,
