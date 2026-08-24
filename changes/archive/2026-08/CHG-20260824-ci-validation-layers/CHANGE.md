@@ -217,5 +217,5 @@ Release dry-run for PR #205                    32724186116  success
 - 分支：`refactor/ci-validation-layers`
 - 最终 PR HEAD：`53dbf5b6cbac0d46dc004288cdedd02c76b82c4f`
 - PR：#205 `收敛历史 Stage CI 为长期验证层`，已合并；merge commit `3c72b1e57cd54eb99ef2229557e5d7a69dd90315`
-- 归档分支：`chore/archive-ci-validation-layers`
+- 归档：PR #218，分支 `chore/archive-ci-validation-layers`
 - 发布：不直接发布；本 Change 只调整 CI/Workflow。
