@@ -6,8 +6,8 @@ from aima_ugc.platform.storage.retention import (
     IMPORT_SOURCE_RETENTION,
     ORPHAN_RETENTION,
     PROVIDER_RAW_RETENTION,
-    initial_artifact_expiry,
     import_source_expiry,
+    initial_artifact_expiry,
 )
 
 

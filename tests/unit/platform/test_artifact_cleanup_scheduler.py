@@ -3,7 +3,6 @@ from types import SimpleNamespace
 from typing import cast
 
 import pytest
-
 from aima_ugc.bootstrap.runtime import PlatformRuntime
 from aima_ugc.bootstrap.scheduler import SchedulerTickResult
 from aima_ugc.entrypoints import scheduler_main

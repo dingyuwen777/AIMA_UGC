@@ -3,7 +3,6 @@ from datetime import datetime
 from uuid import UUID
 
 import pytest
-
 from aima_ugc.adapters.storage.local import LocalArtifactStore
 from aima_ugc.platform.storage import ArtifactRecord, ArtifactService, ArtifactStateConflict
 
