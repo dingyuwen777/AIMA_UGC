@@ -135,7 +135,7 @@ def test_release_workflow_builds_a_replayable_offline_bundle() -> None:
         "SHA256SUMS",
         "DEPLOY.md",
         "gh release create",
-        "--target \"${RELEASE_SHA}\"",
+        '--target "${RELEASE_SHA}"',
     )
     for marker in required_markers:
         assert marker in workflow
