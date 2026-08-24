@@ -169,7 +169,7 @@ function Get-DockerRegistryMirrorProbe {
 
     $startInfo = New-Object System.Diagnostics.ProcessStartInfo
     $startInfo.FileName = $dockerCommand.Source
-    $startInfo.Arguments = 'info --format "{{json .RegistryConfig.Mirrors}}"'.Replace('\"', '"')
+    $startInfo.Arguments = 'info --format "{{json .RegistryConfig.Mirrors}}"'
     $startInfo.UseShellExecute = $false
     $startInfo.CreateNoWindow = $true
     $startInfo.RedirectStandardOutput = $true
