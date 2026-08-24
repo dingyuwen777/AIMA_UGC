@@ -34,15 +34,15 @@ def test_default_catalog_calculates_deepseek_v4_pro_cache_split_cost() -> None:
 
     assert price.currency == "CNY"
     assert price.input_per_million is None
-    assert price.input_cache_hit_per_million_tokens == Decimal("0.025")
-    assert price.input_cache_miss_per_million_tokens == Decimal("3")
-    assert price.output_per_million_tokens == Decimal("6")
+    assert price.input_cache_hit_per_million_tokens == Decimal("0.15")
+    assert price.input_cache_miss_per_million_tokens == Decimal("4.5")
+    assert price.output_per_million_tokens == Decimal("13.5")
     assert price.source_url == "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"
     assert price.effective_date == date(2026, 8, 24)
     assert not hasattr(price, "input_cache_hit_per_million")
     assert not hasattr(price, "input_cache_miss_per_million")
     assert not hasattr(price, "output_per_million")
-    assert calculation.amount == Decimal("0.0001355")
+    assert calculation.amount == Decimal("0.000282")
     assert calculation.currency == "CNY"
     assert calculation.pricing_snapshot_sha256 == price.snapshot_sha256
 
@@ -75,13 +75,17 @@ def test_catalog_supports_flat_input_output_text_model_without_extra_mode_config
 
 
 @pytest.mark.parametrize(
-    "at",
+    ("at", "expected_amount"),
     (
-        datetime(2026, 8, 24, 0, tzinfo=UTC),
-        datetime(2026, 8, 24, 12, tzinfo=UTC),
+        (datetime(2026, 8, 24, 0, tzinfo=UTC), Decimal("2.37")),
+        (datetime(2026, 8, 24, 1, tzinfo=UTC), Decimal("4.74")),
+        (datetime(2026, 8, 24, 12, tzinfo=UTC), Decimal("2.37")),
     ),
 )
-def test_deepseek_official_example_uses_exact_decimal_cost(at: datetime) -> None:
+def test_deepseek_official_example_uses_exact_decimal_cost(
+    at: datetime,
+    expected_amount: Decimal,
+) -> None:
     price = load_llm_pricing().price_for(
         provider="api.deepseek.com",
         model="deepseek-v4-pro",
@@ -97,7 +101,7 @@ def test_deepseek_official_example_uses_exact_decimal_cost(at: datetime) -> None
         )
     )
 
-    assert calculation.amount == Decimal("1.22")
+    assert calculation.amount == expected_amount
     assert calculation.currency == "CNY"
 
 
@@ -298,17 +302,17 @@ def test_catalog_reads_legacy_rate_fields_with_warning() -> None:
             schema_version = "llm-pricing.v1"
 
             [[models]]
-            provider = "api.deepseek.com"
-            model = "deepseek-v4-pro"
-            currency = "CNY"
+            provider = "llm.example"
+            model = "model-a"
+            currency = "USD"
             input_cache_hit_per_million = "0.025"
             input_cache_miss_per_million = "3"
             output_per_million = "6"
-            source_url = "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"
+            source_url = "https://llm.example/pricing"
             """
         )
 
-    price = catalog.price_for(provider="api.deepseek.com", model="deepseek-v4-pro")
+    price = catalog.price_for(provider="llm.example", model="model-a")
     assert price.input_cache_hit_per_million_tokens == Decimal("0.025")
     assert price.input_cache_miss_per_million_tokens == Decimal("3")
     assert price.output_per_million_tokens == Decimal("6")
@@ -322,14 +326,14 @@ def test_catalog_rejects_mixed_new_and_legacy_names() -> None:
             schema_version = "llm-pricing.v1"
 
             [[models]]
-            provider = "api.deepseek.com"
-            model = "deepseek-v4-pro"
-            currency = "CNY"
+            provider = "llm.example"
+            model = "model-a"
+            currency = "USD"
             input_cache_hit_per_million_tokens = "0.025"
             input_cache_hit_per_million = "0.025"
             input_cache_miss_per_million_tokens = "3"
             output_per_million_tokens = "6"
-            source_url = "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"
+            source_url = "https://llm.example/pricing"
             effective_date = "2026-08-20"
             """
         )
@@ -342,12 +346,12 @@ def test_catalog_requires_effective_date_for_new_names() -> None:
             schema_version = "llm-pricing.v1"
 
             [[models]]
-            provider = "api.deepseek.com"
-            model = "deepseek-v4-pro"
-            currency = "CNY"
+            provider = "llm.example"
+            model = "model-a"
+            currency = "USD"
             input_cache_hit_per_million_tokens = "0.025"
             input_cache_miss_per_million_tokens = "3"
             output_per_million_tokens = "6"
-            source_url = "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"
+            source_url = "https://llm.example/pricing"
             """
         )

@@ -144,7 +144,11 @@ class _LocalTimeRange:
 class _LLMPricePeriod:
     name: str
     time_ranges: tuple[_LocalTimeRange, ...]
+    weekdays: frozenset[int] | None
     price: LLMModelPrice
+
+    def applies_on(self, weekday: int) -> bool:
+        return self.weekdays is None or weekday in self.weekdays
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,7 +165,9 @@ class _LLMModelSchedule:
         local = at.astimezone(self.timezone)
         second_of_day = local.hour * 3600 + local.minute * 60 + local.second
         for period in self.scheduled_periods:
-            if any(item.contains(second_of_day) for item in period.time_ranges):
+            if period.applies_on(local.weekday()) and any(
+                item.contains(second_of_day) for item in period.time_ranges
+            ):
                 return period.price
         return self.default_price
 
@@ -250,7 +256,10 @@ class LLMPricingCatalog:
                 if legacy_fields:  # pragma: no cover - allow_legacy=False 已保证
                     raise RuntimeError("LLM Pricing 分时价格旧字段状态无效")
                 ranges = _time_ranges(raw_period.get("time_ranges"))
+                weekdays = _weekdays(raw_period.get("weekdays"))
                 if not ranges:
+                    if weekdays is not None:
+                        raise ValueError("LLM Pricing weekdays 仅用于带 time_ranges 的分时价格")
                     if default_price is not None:
                         raise ValueError("LLM Pricing 每个模型只能配置一个默认价格时段")
                     default_price = period_price
@@ -259,6 +268,7 @@ class LLMPricingCatalog:
                         _LLMPricePeriod(
                             name=name,
                             time_ranges=ranges,
+                            weekdays=weekdays,
                             price=period_price,
                         )
                     )
@@ -455,6 +465,34 @@ def _warn_legacy_fields(fields: tuple[str, ...]) -> None:
     )
 
 
+_WEEKDAY_INDEX = {
+    "mon": 0,
+    "tue": 1,
+    "wed": 2,
+    "thu": 3,
+    "fri": 4,
+    "sat": 5,
+    "sun": 6,
+}
+_ALL_WEEKDAYS = frozenset(range(7))
+
+
+def _weekdays(value: object) -> frozenset[int] | None:
+    if value is None:
+        return None
+    if not isinstance(value, list) or not value:
+        raise ValueError("LLM Pricing weekdays 必须为非空星期字符串数组")
+    parsed: set[int] = set()
+    for item in value:
+        if not isinstance(item, str) or item != item.strip() or item not in _WEEKDAY_INDEX:
+            raise ValueError("LLM Pricing weekdays 只接受 mon/tue/wed/thu/fri/sat/sun")
+        weekday = _WEEKDAY_INDEX[item]
+        if weekday in parsed:
+            raise ValueError(f"LLM Pricing weekdays 重复: {item}")
+        parsed.add(weekday)
+    return frozenset(parsed)
+
+
 def _time_ranges(value: object) -> tuple[_LocalTimeRange, ...]:
     if value is None:
         return ()
@@ -491,15 +529,19 @@ def _clock_second(value: str) -> int:
 
 
 def _validate_no_overlapping_ranges(periods: list[_LLMPricePeriod]) -> None:
-    segments: list[tuple[int, int, str]] = []
+    segments: list[tuple[int, int, int, str]] = []
     for period in periods:
-        for time_range in period.time_ranges:
-            segments.extend((start, end, period.name) for start, end in time_range.segments())
+        weekdays = period.weekdays or _ALL_WEEKDAYS
+        for weekday in weekdays:
+            for time_range in period.time_ranges:
+                segments.extend(
+                    (weekday, start, end, period.name) for start, end in time_range.segments()
+                )
     segments.sort()
     for previous, current in zip(segments, segments[1:], strict=False):
-        if current[0] < previous[1]:
+        if current[0] == previous[0] and current[1] < previous[2]:
             raise ValueError(
-                f"LLM Pricing price_periods 时间范围重叠: {previous[2]} / {current[2]}"
+                f"LLM Pricing price_periods 时间范围重叠: {previous[3]} / {current[3]}"
             )
 
 
