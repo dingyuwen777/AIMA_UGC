@@ -161,15 +161,9 @@ backend/src/aima_ugc/adapters/llm/pricing.toml
 provider = api.deepseek.com
 model = deepseek-v4-pro
 currency = CNY
-timezone = Asia/Shanghai
 ```
 
-当前目录按两个时段保存官方单价：
-
-```text
-off_peak
-peak: 09:00-12:00, 14:00-18:00
-```
+DeepSeek 当前官方价格页对 `deepseek-v4-pro` 使用全天统一价格，仓库因此直接在 `[[models]]` 配置单价，不再配置 `off_peak / peak` 分时价格。
 
 当前正式字段使用供应商价格语义：
 
@@ -183,32 +177,21 @@ output_per_million_tokens
 
 下面这张表是为了让开发者快速估算一次运行的大致费用；**运行时不会读取 README，真正计费只读取 `pricing.toml`。** 如果 TOML 发生价格变更，这张表也必须在同一任务同步，否则宁可删表也不能长期保留过期报价。
 
-当前 `pricing.toml` 对应：
+当前 `pricing.toml` 对应 DeepSeek V4-Pro 官方人民币价格：
 
-| 官方价格项 | 空闲时段 `off_peak` | 高峰时段 `peak` |
-| --- | ---: | ---: |
-| 输入（缓存命中），每百万 tokens | `0.15 CNY` | `0.30 CNY` |
-| 输入（缓存未命中），每百万 tokens | `4.5 CNY` | `9.0 CNY` |
-| 输出，每百万 tokens | `13.5 CNY` | `27.0 CNY` |
+| 官方价格项 | 当前单价 |
+| --- | ---: |
+| 输入（缓存命中），每百万 tokens | `0.025 CNY` |
+| 输入（缓存未命中），每百万 tokens | `3 CNY` |
+| 输出，每百万 tokens | `6 CNY` |
 
-高峰时段按北京时间：
-
-```text
-09:00–12:00
-14:00–18:00
-```
-
-区间按 `[start, end)` 解释，因此：
+价格来源：
 
 ```text
-09:00 / 14:00
-→ 进入 peak
-
-12:00 / 18:00
-→ 回到 off_peak
+https://api-docs.deepseek.com/zh-cn/quick_start/pricing/
 ```
 
-当前价格来源 URL 和 `effective_date` 直接看 `pricing.toml`。不要从二手博客或 README 复制一个数字写回配置。
+`effective_date` 表示**这份价格配置从哪一天起在 AIMA 价格目录中生效**，不是对“供应商首次从哪一天开始执行该价格”的猜测。本次同步设置为 `2026-08-24`；DeepSeek 当前价格页没有为这组价格单独声明另一个价格生效日期。
 
 ### 5.2 配置与历史兼容
 
@@ -347,13 +330,11 @@ pricing.toml
 1. 用供应商官方价格页确认精确模型 ID、币种和价格
 2. 修改 pricing.toml 对应 provider + model
 3. 保留/更新 source_url
-4. 根据真实生效语义设置 effective_date
+4. 根据真实 AIMA 目录生效语义设置 effective_date，不把它冒充供应商未公布的调价日期
 5. 如果有分时价格，确认 IANA timezone 和 [start, end) 边界
 6. 跑 pricing / request audit 相关测试
 7. 检查本 README 的人类可读快照和 AI 附录是否受影响
 ```
-
-不要把“今天核验价格的日期”自动当成供应商价格生效日期。
 
 ## 11. 排障顺序
 

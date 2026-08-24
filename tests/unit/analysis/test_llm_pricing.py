@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from zoneinfo import ZoneInfo
 
 import pytest
 from aima_ugc.adapters.llm.pricing import (
@@ -11,10 +10,6 @@ from aima_ugc.adapters.llm.pricing import (
     LLMTokenUsage,
     load_llm_pricing,
 )
-
-BEIJING = ZoneInfo("Asia/Shanghai")
-DEEPSEEK_IDLE_AT = datetime(2026, 8, 20, 8, 0, tzinfo=BEIJING)
-DEEPSEEK_PEAK_AT = datetime(2026, 8, 20, 9, 0, tzinfo=BEIJING)
 
 
 def test_default_catalog_calculates_deepseek_v4_pro_cache_split_cost() -> None:
@@ -25,7 +20,7 @@ def test_default_catalog_calculates_deepseek_v4_pro_cache_split_cost() -> None:
     price = catalog.price_for(
         provider="api.deepseek.com",
         model="deepseek-v4-pro",
-        at=DEEPSEEK_IDLE_AT,
+        at=datetime(2026, 8, 24, tzinfo=UTC),
     )
 
     calculation = price.calculate(
@@ -39,15 +34,15 @@ def test_default_catalog_calculates_deepseek_v4_pro_cache_split_cost() -> None:
 
     assert price.currency == "CNY"
     assert price.input_per_million is None
-    assert price.input_cache_hit_per_million_tokens == Decimal("0.15")
-    assert price.input_cache_miss_per_million_tokens == Decimal("4.5")
-    assert price.output_per_million_tokens == Decimal("13.5")
+    assert price.input_cache_hit_per_million_tokens == Decimal("0.025")
+    assert price.input_cache_miss_per_million_tokens == Decimal("3")
+    assert price.output_per_million_tokens == Decimal("6")
     assert price.source_url == "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"
-    assert price.effective_date == date(2026, 8, 20)
+    assert price.effective_date == date(2026, 8, 24)
     assert not hasattr(price, "input_cache_hit_per_million")
     assert not hasattr(price, "input_cache_miss_per_million")
     assert not hasattr(price, "output_per_million")
-    assert calculation.amount == Decimal("0.000282")
+    assert calculation.amount == Decimal("0.0001355")
     assert calculation.currency == "CNY"
     assert calculation.pricing_snapshot_sha256 == price.snapshot_sha256
 
@@ -80,16 +75,13 @@ def test_catalog_supports_flat_input_output_text_model_without_extra_mode_config
 
 
 @pytest.mark.parametrize(
-    ("at", "expected"),
+    "at",
     (
-        (DEEPSEEK_IDLE_AT, Decimal("2.37")),
-        (DEEPSEEK_PEAK_AT, Decimal("4.74")),
+        datetime(2026, 8, 24, 0, tzinfo=UTC),
+        datetime(2026, 8, 24, 12, tzinfo=UTC),
     ),
 )
-def test_deepseek_official_example_uses_exact_decimal_cost(
-    at: datetime,
-    expected: Decimal,
-) -> None:
+def test_deepseek_official_example_uses_exact_decimal_cost(at: datetime) -> None:
     price = load_llm_pricing().price_for(
         provider="api.deepseek.com",
         model="deepseek-v4-pro",
@@ -105,42 +97,15 @@ def test_deepseek_official_example_uses_exact_decimal_cost(
         )
     )
 
-    assert calculation.amount == expected
+    assert calculation.amount == Decimal("1.22")
     assert calculation.currency == "CNY"
-
-
-@pytest.mark.parametrize(
-    ("local_time", "expected_hit_price"),
-    (
-        ((8, 59, 59), Decimal("0.15")),
-        ((9, 0, 0), Decimal("0.30")),
-        ((11, 59, 59), Decimal("0.30")),
-        ((12, 0, 0), Decimal("0.15")),
-        ((13, 59, 59), Decimal("0.15")),
-        ((14, 0, 0), Decimal("0.30")),
-        ((17, 59, 59), Decimal("0.30")),
-        ((18, 0, 0), Decimal("0.15")),
-    ),
-)
-def test_deepseek_peak_ranges_are_beijing_half_open_intervals(
-    local_time: tuple[int, int, int],
-    expected_hit_price: Decimal,
-) -> None:
-    hour, minute, second = local_time
-    price = load_llm_pricing().price_for(
-        provider="api.deepseek.com",
-        model="deepseek-v4-pro",
-        at=datetime(2026, 8, 20, hour, minute, second, tzinfo=BEIJING),
-    )
-
-    assert price.input_cache_hit_per_million_tokens == expected_hit_price
 
 
 def test_cache_split_price_refuses_incomplete_or_inconsistent_usage() -> None:
     price = load_llm_pricing().price_for(
         provider="api.deepseek.com",
         model="deepseek-v4-pro",
-        at=DEEPSEEK_IDLE_AT,
+        at=datetime(2026, 8, 24, tzinfo=UTC),
     )
 
     with pytest.raises(ValueError, match="缓存"):
@@ -161,7 +126,7 @@ def test_unknown_model_has_no_silent_fallback_price() -> None:
         load_llm_pricing().price_for(
             provider="api.deepseek.com",
             model="unknown-model",
-            at=DEEPSEEK_IDLE_AT,
+            at=datetime(2026, 8, 24, tzinfo=UTC),
         )
 
 
@@ -267,10 +232,35 @@ def test_catalog_rejects_invalid_price_period_coverage(periods: str, message: st
 
 
 def test_scheduled_price_requires_timezone_aware_request_time() -> None:
+    catalog = LLMPricingCatalog.from_toml(
+        """
+        schema_version = "llm-pricing.v1"
+
+        [[models]]
+        provider = "llm.example"
+        model = "model-a"
+        currency = "USD"
+        source_url = "https://llm.example/pricing"
+        effective_date = "2026-08-20"
+        timezone = "UTC"
+
+        [[models.price_periods]]
+        name = "standard"
+        input_per_million = "2"
+        output_per_million_tokens = "8"
+
+        [[models.price_periods]]
+        name = "discount"
+        time_ranges = ["22:00-06:00"]
+        input_per_million = "1"
+        output_per_million_tokens = "4"
+        """
+    )
+
     with pytest.raises(ValueError, match="时区"):
-        load_llm_pricing().price_for(
-            provider="api.deepseek.com",
-            model="deepseek-v4-pro",
+        catalog.price_for(
+            provider="llm.example",
+            model="model-a",
             at=datetime(2026, 8, 20, 9),
         )
 
