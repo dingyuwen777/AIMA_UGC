@@ -53,16 +53,19 @@ def test_stage8b_openapi_exposes_stable_operations_and_error_contracts() -> None
             assert schema["$ref"].endswith("/HttpErrorResponse")
 
 
-def test_import_openapi_requires_one_binary_multipart_file() -> None:
+def test_import_openapi_requires_file_and_keyword_pack_ids() -> None:
     spec = create_app().openapi()
     request_schema = spec["paths"]["/api/v1/import-batches"]["post"]["requestBody"]["content"][
         "multipart/form-data"
     ]["schema"]
     body_schema = spec["components"]["schemas"][request_schema["$ref"].rsplit("/", 1)[-1]]
 
-    assert body_schema["required"] == ["file"]
+    assert set(body_schema["required"]) == {"file", "keyword_pack_ids"}
     assert body_schema["properties"]["file"] == {
         "contentMediaType": "application/octet-stream",
         "title": "File",
         "type": "string",
     }
+    keyword_pack_ids = body_schema["properties"]["keyword_pack_ids"]
+    assert keyword_pack_ids["type"] == "array"
+    assert keyword_pack_ids["items"]["format"] == "uuid"
