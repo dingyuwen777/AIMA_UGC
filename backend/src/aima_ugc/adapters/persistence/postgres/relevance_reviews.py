@@ -107,16 +107,16 @@ class PostgresContentRelevanceReviewRepository:
             for row in result_rows:
                 latest_by_content.setdefault(cast(UUID, row["content_id"]), row)
             for content_id in to_review:
-                row = latest_by_content.get(content_id)
-                if row is None:
+                current_result = latest_by_content.get(content_id)
+                if current_result is None:
                     raise ContentRelevanceReviewConflict
                 current_version = current_versions[content_id]
                 if (
-                    cast(int, row["content_version"]) != current_version
-                    or cast(str, row["relevance"]) != "irrelevant"
+                    cast(int, current_result["content_version"]) != current_version
+                    or cast(str, current_result["relevance"]) != "irrelevant"
                 ):
                     raise ContentRelevanceReviewConflict
-                reviewed_result_ids[content_id] = cast(UUID, row["id"])
+                reviewed_result_ids[content_id] = cast(UUID, current_result["id"])
 
             reviewed_at = datetime.now(UTC)
             self._session.execute(
