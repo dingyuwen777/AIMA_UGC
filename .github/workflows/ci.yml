@@ -11,9 +11,13 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  stage1:
-    name: Stage 1
+  repository-quality:
+    name: Repository Quality
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -42,19 +46,13 @@ jobs:
           test "$(node --version)" = "v24.19.0"
           test "$(npm --version)" = "11.17.0"
 
-      - name: Install uv
+      - name: Install frozen Python environment
         shell: bash
         run: |
           set -euo pipefail
           UV_VERSION="$(tr -d '\r\n' < .uv-version)"
           python -m pip install "uv==${UV_VERSION}"
-          UV_ACTUAL="$(uv --version | awk '{print $2}')"
-          test "${UV_ACTUAL}" = "${UV_VERSION}"
-
-      - name: Verify locked Python environment
-        shell: bash
-        run: |
-          set -euo pipefail
+          test "$(uv --version | awk '{print $2}')" = "${UV_VERSION}"
           uv lock --check
           uv sync --locked
           uv run python -c "import aima_ugc"
@@ -111,22 +109,52 @@ jobs:
           set -euo pipefail
           uv run python scripts/contracts/generate.py
           npm --prefix frontend run generate:api
-          git diff --exit-code -- contracts/openapi/openapi.json frontend/src/generated/api
+          git diff --exit-code -- contracts frontend/src/generated/api
+          UNTRACKED="$(git ls-files --others --exclude-standard -- contracts frontend/src/generated/api)"
+          if [[ -n "${UNTRACKED}" ]]; then
+            echo "CONTRACT_UNTRACKED: ${UNTRACKED}"
+            exit 1
+          fi
+          test -f contracts/export/unified-data-excel.v1.schema.json
           uv run python scripts/contracts/generate.py --check
           uv run python scripts/contracts/check_compatibility.py
 
-      - name: Backend and repository checks
+      - name: Python format, lint and type gates
         shell: bash
         run: |
           set -euo pipefail
-          uv run ruff format --check backend tests scripts
-          uv run ruff check backend tests scripts
+          uv run ruff format --check \
+            backend tests scripts \
+            migrations/versions/20260814_0005_stage5d_provider_dispatch.py \
+            migrations/versions/20260815_0013_stage7_plan_occurrence_run_snapshot.py \
+            migrations/versions/20260815_0014_stage7_latest_only_scheduler_policy.py
+          uv run ruff check \
+            backend tests scripts \
+            migrations/versions/20260814_0005_stage5d_provider_dispatch.py \
+            migrations/versions/20260815_0013_stage7_plan_occurrence_run_snapshot.py \
+            migrations/versions/20260815_0014_stage7_latest_only_scheduler_policy.py
           uv run mypy backend/src
+
+      - name: Unit, Contract and API tests
+        shell: bash
+        run: |
+          set -euo pipefail
           uv run pytest tests/unit -q
           uv run pytest tests/contracts -q
           uv run pytest tests/api -q
+
+      - name: Architecture and ownership gates
+        shell: bash
+        run: |
+          set -euo pipefail
           uv run python scripts/quality/check_architecture.py
           uv run python scripts/quality/check_table_ownership.py
+
+      - name: Secret and docs gates
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
           uv run python scripts/quality/scan_secrets.py
           uv run python scripts/quality/check_docs.py
 
@@ -139,7 +167,7 @@ jobs:
           .wheel-venv/bin/python -m pip install dist/*.whl
           .wheel-venv/bin/python -c "import aima_ugc; print(aima_ugc.__version__)"
 
-      - name: Frontend checks
+      - name: Frontend unit, build and Browser Mock Acceptance
         shell: bash
         run: |
           set -euo pipefail
@@ -150,8 +178,8 @@ jobs:
           npm --prefix frontend exec -- playwright --version
           npm --prefix frontend run test:e2e
 
-  stage2-platform:
-    name: Stage 2 Platform
+  postgres-integration:
+    name: PostgreSQL Integration
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -159,7 +187,7 @@ jobs:
         env:
           POSTGRES_DB: aima_ugc
           POSTGRES_USER: aima_ugc
-          POSTGRES_PASSWORD: stage2-ci
+          POSTGRES_PASSWORD: ci-postgres
         ports:
           - 5432:5432
         options: >-
@@ -168,9 +196,9 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      AIMA_DATA_DIR: .runtime/ci-stage2/data
-      AIMA_LOG_DIR: .runtime/ci-stage2/logs
-      AIMA_SECRET_DIR: .runtime/ci-stage2/secrets
+      AIMA_DATA_DIR: .runtime/ci-postgres/data
+      AIMA_LOG_DIR: .runtime/ci-postgres/logs
+      AIMA_SECRET_DIR: .runtime/ci-postgres/secrets
       AIMA_DB_HOST: 127.0.0.1
       AIMA_DB_PORT: 5432
       AIMA_DB_NAME: aima_ugc
@@ -199,26 +227,39 @@ jobs:
           uv lock --check
           uv sync --locked
 
-      - name: Prepare isolated runtime directories and Secret
+      - name: Prepare isolated runtime and PostgreSQL Secret
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "${AIMA_DATA_DIR}" "${AIMA_LOG_DIR}" "${AIMA_SECRET_DIR}"
-          printf '%s\n' 'stage2-ci' > "${AIMA_SECRET_DIR}/postgres_password"
+          printf '%s\n' 'ci-postgres' > "${AIMA_SECRET_DIR}/postgres_password"
           chmod 600 "${AIMA_SECRET_DIR}/postgres_password"
 
-      - name: Platform unit and PostgreSQL integration tests
+      - name: Upgrade empty database to current head
         shell: bash
         run: |
           set -euo pipefail
-          uv run pytest tests/unit/platform -q
+          uv run alembic upgrade head
+          uv run alembic current
+          uv run alembic check
+
+      - name: Historical Migration compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python tests/integration/database/verify_migration_compatibility.py
+
+      - name: Platform PostgreSQL integration
+        shell: bash
+        run: |
+          set -euo pipefail
           uv run pytest tests/integration/platform -q
 
       - name: Real readiness HTTP smoke
         shell: bash
         run: |
           set -euo pipefail
-          API_STDOUT="${RUNNER_TEMP}/aima-stage2-api.stdout"
+          API_STDOUT="${RUNNER_TEMP}/aima-postgres-integration-api.stdout"
           cleanup() {
             if [[ -n "${API_PID:-}" ]]; then kill "${API_PID}" 2>/dev/null || true; fi
           }
@@ -256,123 +297,43 @@ jobs:
           PY
 
           test -f "${AIMA_LOG_DIR}/api.log"
-          if grep -Fq 'stage2-ci' "${AIMA_LOG_DIR}/api.log"; then
+          if grep -Fq 'ci-postgres' "${AIMA_LOG_DIR}/api.log"; then
             echo "Database test password leaked into api.log"
             exit 1
           fi
 
-  stage3a-database:
-    name: Stage 3A Database
-    runs-on: ubuntu-24.04
-    services:
-      postgres:
-        image: postgres:18.4
-        env:
-          POSTGRES_DB: aima_ugc
-          POSTGRES_USER: aima_ugc
-          POSTGRES_PASSWORD: stage3a-ci
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U aima_ugc -d aima_ugc"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      AIMA_DATA_DIR: .runtime/ci-stage3a/data
-      AIMA_LOG_DIR: .runtime/ci-stage3a/logs
-      AIMA_SECRET_DIR: .runtime/ci-stage3a/secrets
-      AIMA_DB_HOST: 127.0.0.1
-      AIMA_DB_PORT: 5432
-      AIMA_DB_NAME: aima_ugc
-      AIMA_DB_USER: aima_ugc
-      AIMA_DB_CONNECT_TIMEOUT_SECONDS: 3
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7.0.1
-
-      - name: Setup Python
-        uses: actions/setup-python@v6.2.0
-        with:
-          python-version: 3.14.7
-
-      - name: Install frozen Python environment
-        shell: bash
-        run: |
-          set -euo pipefail
-          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
-          python -m pip install "uv==${UV_VERSION}"
-          uv lock --check
-          uv sync --locked
-
-      - name: Prepare Stage 3A Secret
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "${AIMA_DATA_DIR}" "${AIMA_LOG_DIR}" "${AIMA_SECRET_DIR}"
-          printf '%s\n' 'stage3a-ci' > "${AIMA_SECRET_DIR}/postgres_password"
-          chmod 600 "${AIMA_SECRET_DIR}/postgres_password"
-
-      - name: Verify schema and table owners
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run pytest tests/unit/database -q
-          uv run python scripts/quality/check_table_ownership.py
-
-      - name: Upgrade empty database and verify no drift
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run alembic upgrade head
-          uv run alembic current
-          uv run alembic check
-
-      - name: PostgreSQL repository integration tests
+      - name: Database PostgreSQL integration
         shell: bash
         run: |
           set -euo pipefail
           uv run pytest tests/integration/database -q
 
-      - name: Stage 8B import HTTP and Worker integration tests
+      - name: Job Runtime PostgreSQL integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest tests/integration/jobs -q
+
+      - name: Collection PostgreSQL integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest tests/integration/collection -q
+
+      - name: Content PostgreSQL integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest tests/integration/content -q
+
+      - name: Ingestion PostgreSQL integration
         shell: bash
         run: |
           set -euo pipefail
           uv run pytest tests/integration/ingestion -q
 
-      - name: Stage 8E previous revision downgrade and re-upgrade
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run alembic downgrade 20260821_0021
-          uv run alembic upgrade head
-          uv run alembic current
-          uv run alembic check
-
-      - name: Downgrade and re-upgrade from base
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run alembic downgrade base
-          uv run python - <<'PY'
-          from sqlalchemy import inspect
-
-          from aima_ugc.platform.config import load_settings
-          from aima_ugc.platform.database import DatabaseRuntime
-
-          runtime = DatabaseRuntime(load_settings())
-          try:
-              existing = set(inspect(runtime.engine).get_table_names())
-          finally:
-              runtime.dispose()
-          forbidden = {"artifacts", "system_settings", "audit_events"}
-          assert not (existing & forbidden), existing
-          PY
-          uv run alembic upgrade head
-          uv run alembic check
-
-  windows-bootstrap:
-    name: Windows bootstrap
+  windows-tooling:
+    name: Windows Tooling
     runs-on: windows-2025
     steps:
       - name: Checkout
@@ -569,3 +530,24 @@ jobs:
           if (-not $script:AimaDependenciesInstallCalled) { throw 'Project dependency installation stage was not reached.' }
 
           Write-Host 'Windows bootstrap China mirror, static, and pure-function checks passed.'
+
+  ci-gate:
+    name: CI Gate
+    if: always()
+    needs:
+      - repository-quality
+      - postgres-integration
+      - windows-tooling
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify required CI layers
+        shell: bash
+        env:
+          REPOSITORY_QUALITY_RESULT: ${{ needs.repository-quality.result }}
+          POSTGRES_INTEGRATION_RESULT: ${{ needs.postgres-integration.result }}
+          WINDOWS_TOOLING_RESULT: ${{ needs.windows-tooling.result }}
+        run: |
+          set -euo pipefail
+          test "${REPOSITORY_QUALITY_RESULT}" = "success"
+          test "${POSTGRES_INTEGRATION_RESULT}" = "success"
+          test "${WINDOWS_TOOLING_RESULT}" = "success"
