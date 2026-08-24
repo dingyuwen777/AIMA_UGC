@@ -379,4 +379,4 @@ def test_empty_content_retry_audits_cost_of_every_paid_http_response(
     assert [record.status for record in records] == ["protocol_error", "completed"]
     assert records[0].logical_request_id == records[1].logical_request_id
     assert records[0].http_request_id != records[1].http_request_id
-    assert sum(record.cost_amount or Decimal("0") for record in records) == Decimal("0.0000304")
+    assert sum(record.cost_amount or Decimal("0") for record in records) == Decimal("0.0000609")
