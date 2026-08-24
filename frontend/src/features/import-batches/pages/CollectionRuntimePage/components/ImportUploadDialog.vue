@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import type { KeywordPackSummaryResponse } from '../../../../../generated/api/client'
 
@@ -8,6 +8,7 @@ const props = defineProps<{
   uploading: boolean
   keywordPacks: KeywordPackSummaryResponse[]
   loadingKeywordPacks: boolean
+  requestError: string | null
 }>()
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
@@ -18,6 +19,14 @@ const selectedPackIds = ref<string[]>([])
 const validationError = ref<string | null>(null)
 const maxBytes = 500 * 1024 * 1024
 const maxKeywordPacks = 20
+const canSubmit = computed(
+  () =>
+    !props.uploading &&
+    !props.loadingKeywordPacks &&
+    props.keywordPacks.length > 0 &&
+    selectedFile.value !== null &&
+    selectedPackIds.value.length > 0,
+)
 
 watch(
   () => props.modelValue,
@@ -70,6 +79,7 @@ function submit(): void {
     validationError.value = '请至少选择一个关键词包。'
     return
   }
+  if (!canSubmit.value) return
   emit('submit', selectedFile.value, selectedPackIds.value)
 }
 </script>
@@ -153,6 +163,13 @@ function submit(): void {
           >
             {{ validationError }}
           </p>
+          <p
+            v-if="requestError"
+            class="validation-error"
+            role="alert"
+          >
+            {{ requestError }}
+          </p>
         </div>
         <footer>
           <button
@@ -166,7 +183,8 @@ function submit(): void {
           <button
             class="dialog-button dialog-button--primary"
             type="button"
-            :disabled="uploading || loadingKeywordPacks || keywordPacks.length === 0"
+            :disabled="!canSubmit"
+            :aria-busy="uploading"
             @click="submit"
           >
             {{ uploading ? '正在创建…' : '开始导入' }}
@@ -202,5 +220,6 @@ function submit(): void {
 .validation-error { color: var(--aima-danger); font-size: 13px; }
 .dialog-button { height: 38px; padding: 0 22px; border: 1px solid #d9dee8; border-radius: 6px; background: #fff; cursor: pointer; }
 .dialog-button--primary { margin-left: 10px; border-color: var(--aima-primary); color: #fff; background: var(--aima-primary); }
-.dialog-button:disabled { cursor: wait; opacity: .65; }
+.dialog-button:disabled { cursor: not-allowed; opacity: .65; }
+.dialog-button[aria-busy='true'] { cursor: progress; }
 </style>
