@@ -6,7 +6,7 @@ on:
       - labeled
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: dev-tikhub-identity-probe
@@ -39,16 +39,19 @@ jobs:
           uv lock --check
           uv sync --locked
 
-      - name: Create ephemeral encryption key
+      - name: Create and publish ephemeral public key
         shell: bash
         run: |
           set -euo pipefail
           umask 077
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/tikhub-probe-private.pem >/dev/null 2>&1
           openssl pkey -in /tmp/tikhub-probe-private.pem -pubout -out /tmp/tikhub-probe-public.pem >/dev/null 2>&1
-          printf 'PROBE_PUBLIC_KEY_B64='
-          base64 -w0 /tmp/tikhub-probe-public.pem
-          printf '\n'
+          cp /tmp/tikhub-probe-public.pem .dev-tikhub-probe-public.pem
+          git config user.name "AIMA GitHub Runner"
+          git config user.email "actions@users.noreply.github.com"
+          git add .dev-tikhub-probe-public.pem
+          git commit -m "发布临时 TikHub Probe 公钥"
+          git push origin HEAD:feature/excel-tikhub-identity-alignment
 
       - name: Receive encrypted credential
         shell: bash
@@ -103,10 +106,7 @@ jobs:
           from pydantic import SecretStr
 
           from aima_ugc.adapters.providers.imports.identity import resolve_content_identity
-          from aima_ugc.adapters.providers.tikhub.probe import (
-              TikHubOperationProbe,
-              TikHubProbeLimits,
-          )
+          from aima_ugc.adapters.providers.tikhub.probe import TikHubOperationProbe, TikHubProbeLimits
           from aima_ugc.adapters.providers.tikhub.runtime import (
               build_comments_call,
               build_detail_call,
@@ -146,10 +146,7 @@ jobs:
               probe = TikHubOperationProbe(
                   transport=transport,
                   credential=SecretStr(credential),
-                  limits=TikHubProbeLimits(
-                      max_requests=10,
-                      max_estimated_cost=Decimal("1.00"),
-                  ),
+                  limits=TikHubProbeLimits(max_requests=10, max_estimated_cost=Decimal("1.00")),
               )
               for platform in ("xiaohongshu", "douyin", "weibo", "bilibili", "kuaishou"):
                   sample = payload["platforms"][platform][0]
@@ -159,11 +156,7 @@ jobs:
                       source_article_id=sample["article_id"],
                   )
                   locator_type = next(
-                      (
-                          name
-                          for name in EXPECTED_ID_TYPES[platform]
-                          if identity.alternate_ids.get(name)
-                      ),
+                      (name for name in EXPECTED_ID_TYPES[platform] if identity.alternate_ids.get(name)),
                       None,
                   )
                   if locator_type is None:
@@ -265,9 +258,6 @@ jobs:
               if probe.request_count != 10:
                   raise AssertionError(f"Probe 请求数异常: {probe.request_count}")
 
-          print(
-              "REAL_IDENTITY_PROBE_SUMMARY="
-              + json.dumps(summaries, ensure_ascii=False, separators=(",", ":"))
-          )
+          print("REAL_IDENTITY_PROBE_SUMMARY=" + json.dumps(summaries, ensure_ascii=False, separators=(",", ":")))
           PY
           rm -f /tmp/tikhub-probe-api-key
