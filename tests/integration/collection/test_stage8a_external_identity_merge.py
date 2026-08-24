@@ -125,7 +125,9 @@ def test_external_ids_merge_by_type_and_keep_newer_value(
             .order_by(content_external_ids_table.c.id_type)
         ).all()
         content_count = connection.scalar(
-            select(func.count()).select_from(contents_table).where(
+            select(func.count())
+            .select_from(contents_table)
+            .where(
                 contents_table.c.platform == "xiaohongshu",
                 contents_table.c.external_content_id == _STABLE_ID,
             )
