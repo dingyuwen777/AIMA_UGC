@@ -306,7 +306,7 @@ AI 层：
 
 当前 `contents` 没有 `is_relevant` AI 投影列。
 
-模型原始 `analysis_content_results.relevance` 是不可被人工复核覆盖的审计事实。当前允许用户把同一 Content Version 的 AI `irrelevant` 人工纳入相关业务集合，决定保存到 `analysis_content_relevance_reviews`，并用 `analysis_result_id` 保留被复核 AI Result 的精确来源。默认业务列表、`relevance` 筛选、查询型 Analysis target 和查询型 Export 都复用 `PostgresContentQueryRepository` 的有效相关性：当前版本有人工作为 `relevant` 时优先采用人工决定，否则采用 AI relevance。Content 新版本不会继承旧人工决定。
+模型原始 `analysis_content_results.relevance` 是不可被人工复核覆盖的审计事实。人工相关性决定保存到 `analysis_content_relevance_reviews` 追加账本，同一 Content Version 以递增 `review_no` 记录 `relevant / irrelevant / inherit_ai`，并用 `analysis_result_id` 保留操作所针对 AI Result 的精确来源。最新 `relevant/irrelevant` 覆盖业务有效相关性，`inherit_ai` 撤销覆盖并回到当前 AI 基线；直接从一种人工覆盖切换到相反覆盖必须先撤销。默认业务列表、`relevance` 筛选、查询型 Analysis target 和查询型 Export 都复用 `PostgresContentQueryRepository` 的同一有效相关性表达式。API 的 `effective_relevance / relevance_source` 是只读派生投影，因此当前 AI 进入 `stale` 后活动人工覆盖仍能被识别和撤销。Content 新版本不会继承旧人工决定。
 
 ---
 

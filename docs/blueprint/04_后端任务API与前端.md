@@ -285,7 +285,7 @@ backend/src/aima_ugc/adapters/persistence/postgres/relevance_reviews.py
 
 `POST /content-analysis-requests` 会先冻结 Content ID + `current_version`，再创建 `analysis.content-label.v1` Job。Worker 分析的不是“未来可能变化的查询结果”，而是请求创建时冻结的目标版本。
 
-`POST /content-relevance-reviews` 是同步短事务：接收 1—1000 个不重复 Content ID，只允许把**当前版本、当前 AI 原判为 `irrelevant`** 的内容人工纳入相关业务数据。批量请求先锁定并校验全部目标，任一目标不可复核则整批返回 409；同一当前版本重复提交幂等。模型原始 `analysis_content_results` 不会被更新或删除。
+`POST /content-relevance-reviews` 是同步短事务：接收 1—1000 个不重复 Content ID，并显式提交 `decision=relevant / irrelevant / inherit_ai`。`relevant/irrelevant` 分别把当前 Content Version 人工覆盖为业务相关/不相关；`inherit_ai` 撤销活动人工覆盖并恢复当前 AI 基线。批量请求先锁定并校验全部目标，任一目标不可操作则整批返回 409；重复提交当前已经生效的决定幂等。已有人工覆盖要切换到相反人工结论时必须先撤销。模型原始 `analysis_content_results` 不会被更新或删除。`GET /contents` 与 Detail 同时返回 AI 原判和查询层派生的 `effective_relevance / relevance_source`，前端据此显示人工覆盖与撤销入口，不能从筛选条件猜测人工状态；AI 变为 `stale` 时活动人工覆盖仍可撤销。
 
 ### 5.4 正式 Excel Export
 

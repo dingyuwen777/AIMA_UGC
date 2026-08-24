@@ -452,7 +452,7 @@ def create_app(
             status_code=409,
             request_id=_request_id(request),
             title="内容无法人工复核",
-            detail="所选内容不是当前可复核的 AI 不相关状态，或内容版本已经变化。",
+            detail="所选内容当前相关性状态不允许该人工操作，或内容版本已经变化。",
             code="content_relevance_review_conflict",
             field="body.content_ids",
         )

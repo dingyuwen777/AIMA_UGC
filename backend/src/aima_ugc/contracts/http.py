@@ -650,7 +650,7 @@ type ContentRelevanceSource = Literal["ai", "manual_review"]
 
 
 class ContentLabelPairResponse(BaseModel):
-    """按模型重要性顺序返回的一个一级/二级标签父子对。"""
+    """按模型重要性顺序返回的一个一级/二级标签对。"""
 
     model_config = ConfigDict(extra="forbid")
 
