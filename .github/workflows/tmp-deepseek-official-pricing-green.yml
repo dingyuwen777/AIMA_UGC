@@ -1,0 +1,101 @@
+name: Temporary DeepSeek Official Pricing Green
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: fix/deepseek-official-pricing-correction
+          fetch-depth: 0
+
+      - name: Apply pricing schedule correction
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one anchor, found {count}: {old[:100]!r}")
+              p.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          pricing = "backend/src/aima_ugc/adapters/llm/pricing.py"
+          replace_once(
+              pricing,
+              '''@dataclass(frozen=True, slots=True)\nclass _LLMPricePeriod:\n    name: str\n    time_ranges: tuple[_LocalTimeRange, ...]\n    price: LLMModelPrice\n''',
+              '''@dataclass(frozen=True, slots=True)\nclass _LLMPricePeriod:\n    name: str\n    time_ranges: tuple[_LocalTimeRange, ...]\n    weekdays: frozenset[int] | None\n    price: LLMModelPrice\n\n    def applies_on(self, weekday: int) -> bool:\n        return self.weekdays is None or weekday in self.weekdays\n''',
+          )
+          replace_once(
+              pricing,
+              '''        local = at.astimezone(self.timezone)\n        second_of_day = local.hour * 3600 + local.minute * 60 + local.second\n        for period in self.scheduled_periods:\n            if any(item.contains(second_of_day) for item in period.time_ranges):\n                return period.price\n''',
+              '''        local = at.astimezone(self.timezone)\n        second_of_day = local.hour * 3600 + local.minute * 60 + local.second\n        for period in self.scheduled_periods:\n            if period.applies_on(local.weekday()) and any(\n                item.contains(second_of_day) for item in period.time_ranges\n            ):\n                return period.price\n''',
+          )
+          replace_once(
+              pricing,
+              '''                ranges = _time_ranges(raw_period.get("time_ranges"))\n                if not ranges:\n                    if default_price is not None:\n                        raise ValueError("LLM Pricing 每个模型只能配置一个默认价格时段")\n                    default_price = period_price\n                else:\n                    scheduled_periods.append(\n                        _LLMPricePeriod(\n                            name=name,\n                            time_ranges=ranges,\n                            price=period_price,\n                        )\n                    )\n''',
+              '''                ranges = _time_ranges(raw_period.get("time_ranges"))\n                weekdays = _weekdays(raw_period.get("weekdays"))\n                if not ranges:\n                    if weekdays is not None:\n                        raise ValueError("LLM Pricing weekdays 仅用于带 time_ranges 的分时价格")\n                    if default_price is not None:\n                        raise ValueError("LLM Pricing 每个模型只能配置一个默认价格时段")\n                    default_price = period_price\n                else:\n                    scheduled_periods.append(\n                        _LLMPricePeriod(\n                            name=name,\n                            time_ranges=ranges,\n                            weekdays=weekdays,\n                            price=period_price,\n                        )\n                    )\n''',
+          )
+          replace_once(
+              pricing,
+              '''\ndef _time_ranges(value: object) -> tuple[_LocalTimeRange, ...]:\n''',
+              '''\n_WEEKDAY_INDEX = {\n    "mon": 0,\n    "tue": 1,\n    "wed": 2,\n    "thu": 3,\n    "fri": 4,\n    "sat": 5,\n    "sun": 6,\n}\n_ALL_WEEKDAYS = frozenset(range(7))\n\n\ndef _weekdays(value: object) -> frozenset[int] | None:\n    if value is None:\n        return None\n    if not isinstance(value, list) or not value:\n        raise ValueError("LLM Pricing weekdays 必须为非空星期字符串数组")\n    parsed: set[int] = set()\n    for item in value:\n        if not isinstance(item, str) or item != item.strip() or item not in _WEEKDAY_INDEX:\n            raise ValueError(\n                "LLM Pricing weekdays 只接受 mon/tue/wed/thu/fri/sat/sun"\n            )\n        weekday = _WEEKDAY_INDEX[item]\n        if weekday in parsed:\n            raise ValueError(f"LLM Pricing weekdays 重复: {item}")\n        parsed.add(weekday)\n    return frozenset(parsed)\n\n\ndef _time_ranges(value: object) -> tuple[_LocalTimeRange, ...]:\n''',
+          )
+          replace_once(
+              pricing,
+              '''def _validate_no_overlapping_ranges(periods: list[_LLMPricePeriod]) -> None:\n    segments: list[tuple[int, int, str]] = []\n    for period in periods:\n        for time_range in period.time_ranges:\n            segments.extend((start, end, period.name) for start, end in time_range.segments())\n    segments.sort()\n    for previous, current in zip(segments, segments[1:], strict=False):\n        if current[0] < previous[1]:\n            raise ValueError(\n                f"LLM Pricing price_periods 时间范围重叠: {previous[2]} / {current[2]}"\n            )\n''',
+              '''def _validate_no_overlapping_ranges(periods: list[_LLMPricePeriod]) -> None:\n    segments: list[tuple[int, int, int, str]] = []\n    for period in periods:\n        weekdays = period.weekdays or _ALL_WEEKDAYS\n        for weekday in weekdays:\n            for time_range in period.time_ranges:\n                segments.extend(\n                    (weekday, start, end, period.name)\n                    for start, end in time_range.segments()\n                )\n    segments.sort()\n    for previous, current in zip(segments, segments[1:], strict=False):\n        if current[0] == previous[0] and current[1] < previous[2]:\n            raise ValueError(\n                f"LLM Pricing price_periods 时间范围重叠: {previous[3]} / {current[3]}"\n            )\n''',
+          )
+
+          toml = "backend/src/aima_ugc/adapters/llm/pricing.toml"
+          p = Path(toml)
+          text = p.read_text(encoding="utf-8")
+          old = '''[[models]]\nprovider = "api.deepseek.com"\nmodel = "deepseek-v4-pro"\ncurrency = "CNY"\nsource_url = "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"\neffective_date = "2026-08-24"\ninput_cache_hit_per_million_tokens = "0.025"\ninput_cache_miss_per_million_tokens = "3"\noutput_per_million_tokens = "6"\n'''
+          new = '''[[models]]\nprovider = "api.deepseek.com"\nmodel = "deepseek-v4-pro"\ncurrency = "CNY"\nsource_url = "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"\neffective_date = "2026-08-24"\ntimezone = "Asia/Shanghai"\n\n[[models.price_periods]]\nname = "off_peak"\ninput_cache_hit_per_million_tokens = "0.15"\ninput_cache_miss_per_million_tokens = "4.5"\noutput_per_million_tokens = "13.5"\n\n[[models.price_periods]]\nname = "peak"\nweekdays = ["mon", "tue", "wed", "thu", "fri"]\ntime_ranges = ["09:00-12:00", "14:00-18:00"]\ninput_cache_hit_per_million_tokens = "0.30"\ninput_cache_miss_per_million_tokens = "9.0"\noutput_per_million_tokens = "27.0"\n'''
+          if text.count(old) != 1:
+              raise SystemExit("pricing.toml expected current flat DeepSeek block exactly once")
+          text = text.replace(old, new, 1)
+          text = text.replace(
+              '# currency、timezone、time_ranges 和所有单价：从 source_url 指向的官方价格页查看。',
+              '# currency、timezone、weekdays、time_ranges 和所有单价：从 source_url 指向的官方价格页查看。',
+              1,
+          )
+          p.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Verify focused Green
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv sync --locked
+          uv run ruff format \
+            backend/src/aima_ugc/adapters/llm/pricing.py \
+            tests/unit/analysis/test_deepseek_official_pricing.py
+          uv run ruff check backend/src/aima_ugc/adapters/llm/pricing.py tests/unit/analysis/test_deepseek_official_pricing.py
+          uv run mypy backend/src
+          uv run pytest tests/unit/analysis/test_deepseek_official_pricing.py -q
+
+      - name: Commit Green implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/src/aima_ugc/adapters/llm/pricing.py backend/src/aima_ugc/adapters/llm/pricing.toml tests/unit/analysis/test_deepseek_official_pricing.py
+          git commit -m "修正 DeepSeek 官方分时价格调度"
+          git push origin HEAD:fix/deepseek-official-pricing-correction
