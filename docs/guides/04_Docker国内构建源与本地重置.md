@@ -60,11 +60,11 @@ scripts/config/docker_hub_mirrors.txt
 
 ```text
 每个非空、非 # 注释行 = 一个 HTTPS mirror
-文件顺序 = registry-mirrors 顺序
+文件顺序 = AIMA 管理的 mirror 顺序
 Windows 与 Linux 初始化脚本共同读取这一份配置
 ```
 
-增删 mirror 或调整顺序时，只修改该文件。脚本、测试和文档不维护第二份 URL 列表。
+增删 AIMA mirror 或调整顺序时，只修改该文件。脚本、测试和文档不维护第二份 URL 列表。
 
 Docker Engine 同时设置：
 
@@ -82,13 +82,32 @@ Docker Engine 同时设置：
 scripts\setup_dev_environment.cmd
 ```
 
-Docker Desktop 已安装时，脚本读取统一 mirror 配置，并把 mirrors 合并到当前用户的 Docker Engine 配置：
+Docker Desktop 已安装时，脚本读取统一 mirror 配置，并把 AIMA 管理的 mirrors 写入当前用户的 Docker Engine 配置：
 
 ```text
 %USERPROFILE%\.docker\daemon.json
 ```
 
-现有 Docker Engine 其他配置会保留；文件已存在时先生成时间戳备份。随后脚本执行 Docker Desktop restart，并持续通过 `docker info` 检查实际 `RegistryConfig.Mirrors`。只有统一配置文件中的 mirrors 全部按顺序生效才继续；在有界等待时间内仍未生效则失败并输出恢复提示。
+`daemon.json` 的 `registry-mirrors` 必须与 AIMA 配置文件精确一致，`max-download-attempts` 必须为 5；其他 Docker Engine 配置继续保留，文件需要修改时先生成时间戳备份。
+
+Docker Desktop 的最终有效状态以：
+
+```powershell
+docker info --format '{{json .RegistryConfig.Mirrors}}'
+```
+
+为准。这个有效列表可以包含由 Docker Desktop、管理员策略或其他来源加入的额外 mirrors。AIMA 校验只要求统一配置文件里的 mirrors 全部存在并保持 AIMA 自身相对顺序，不要求有效列表与 AIMA 列表数量相等；额外 mirrors 会明确显示为 warning。
+
+磁盘配置和有效状态都已满足时不会重启 Docker Desktop。需要重启时使用有界流程：
+
+```text
+docker desktop restart 最大 60 秒
+restart 返回后有效状态验证最大 20 秒
+每次 docker info probe 最大 3 秒
+等待状态每 1 秒输出
+```
+
+这些数字都是失败保护上限，不是固定延迟；状态满足后立即继续。真正超时才 fail closed，并输出最后观测到的有效 mirrors 和恢复提示。
 
 ### CentOS Stream 9
 
@@ -114,11 +133,21 @@ scripts/config/docker_hub_mirrors.txt
 
 ### 验证
 
+Windows：
+
+```powershell
+docker info --format '{{json .RegistryConfig.Mirrors}}'
+```
+
+AIMA 配置文件中的有效行必须全部存在并保持相对顺序；额外有效 mirrors 允许存在。
+
+Linux：
+
 ```bash
 docker info
 ```
 
-`Registry Mirrors` 应与 `scripts/config/docker_hub_mirrors.txt` 中的有效行一致。
+Linux 初始化脚本直接管理 daemon 的 `registry-mirrors` 列表，当前仍以统一配置文件为输入。
 
 ---
 

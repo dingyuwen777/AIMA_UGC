@@ -46,15 +46,29 @@ Docker Hub mirror 列表的唯一仓库配置源是：
 scripts/config/docker_hub_mirrors.txt
 ```
 
-该文件每个非空、非 `#` 注释行表示一个 HTTPS mirror，文件顺序就是配置到 Docker Engine 的 mirror 顺序。Windows 和 Linux 环境初始化都读取这一份配置；增删或调整 mirror 顺序只修改该文件。
+该文件每个非空、非 `#` 注释行表示一个 HTTPS mirror，文件顺序就是 AIMA 管理的 mirror 顺序。Windows 和 Linux 环境初始化都读取这一份配置；增删或调整 AIMA mirror 顺序只修改该文件。
 
-Docker Desktop 已安装时，初始化入口会读取该配置，并把 mirrors 合并到当前用户的 Docker Engine 配置：
+Docker Desktop 已安装时，初始化入口会读取该配置，并把 AIMA 管理的 mirrors 写入当前用户的 Docker Engine 配置：
 
 ```text
 %USERPROFILE%\.docker\daemon.json
 ```
 
-现有 Docker Engine 其他配置会保留；文件已存在时先生成时间戳备份。随后脚本重启 Docker Desktop，并持续通过 `docker info` 检查实际 `RegistryConfig.Mirrors`。只有预期 mirrors 全部按配置顺序生效才继续；在有界等待时间内仍未生效则失败，并保留备份路径供恢复。
+`daemon.json` 中 `registry-mirrors` 必须与 AIMA 配置文件精确一致，同时保留其他非 mirror Docker Engine 配置；文件已存在且需要修改时先生成时间戳备份。
+
+Docker Desktop 的实际 `docker info` 结果可以同时包含由 Docker Desktop、管理员策略或其他配置来源加入的额外 registry mirrors。有效状态校验不要求 Docker Engine 只能存在 AIMA mirrors，而是要求 AIMA 配置文件中的 mirrors 全部出现，并保持 AIMA 自身的相对顺序。检测到额外 mirrors 时脚本会明确输出 warning，但不会把已生效的 AIMA mirrors 误判为失败。
+
+如果磁盘配置和实际有效状态都已经满足，脚本直接跳过 Docker Desktop restart。确实需要重启时：
+
+```text
+docker desktop restart
+→ 最长 60 秒命令超时
+→ restart 返回后最多 20 秒验证有效 mirrors
+→ 每次 docker info probe 最长 3 秒
+→ 每 1 秒输出一次等待状态
+```
+
+以上时间都是失败保护上限，不是固定等待时间；条件满足后立即继续。真正超过边界仍未看到全部 AIMA mirrors 时脚本 fail closed，并输出最后观测到的有效 mirrors 和 daemon.json 恢复提示。
 
 Docker Desktop 未安装或 Desktop CLI 不可用时脚本会明确提示跳过；安装或修复后重新运行该命令即可。
 
@@ -294,7 +308,7 @@ Windows named-volume override只属于开发机存储适配，不改变 Producti
 1. Windows GitHub Runner 可从 CMD / PowerShell 解析 `compose.yaml + compose.windows.yaml + env.production`；
 2. Linux Docker Engine 实际运行 Windows named-volume Runtime model，验证 bootstrap、PostgreSQL、Migration、Readiness、Secret mode 和重启持久化；
 3. Dockerfile / Compose 的镜像 identity 与包源配置由仓库单元测试约束；
-4. Windows GitHub Runner 对 `configure_docker_desktop_mirrors.ps1` 做 PowerShell 语法解析；统一 mirror 配置、Windows/Linux 消费关系和重启后有界验证由仓库测试约束，真实 Docker Desktop 应用结果由初始化脚本自身的 `docker info` 检查确认。
+4. Windows GitHub Runner 直接加载 `configure_docker_desktop_mirrors.ps1`，验证“存在额外有效 mirrors 仍成功、缺少 AIMA mirror 失败、AIMA 相对顺序错误失败、daemon.json 继续精确受 AIMA 管理”；真实 Docker Desktop 应用结果由初始化脚本自身的有界 `docker info` probe 确认。
 
 真实 Windows Docker Desktop 首次初始化运行：
 
