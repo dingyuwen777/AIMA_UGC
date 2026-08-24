@@ -1,6 +1,10 @@
-import type { ContentListItemResponse, ContentRelevance } from '../../generated/api/client'
+import type {
+  ContentListItemResponse,
+  ContentRelevance,
+  ContentRelevanceReviewRequestDecision,
+} from '../../generated/api/client'
 
-export type RelevanceReviewDecision = 'relevant' | 'irrelevant' | 'inherit_ai'
+export type RelevanceReviewDecision = ContentRelevanceReviewRequestDecision
 
 export function relevanceReviewDecision(
   item: ContentListItemResponse,
