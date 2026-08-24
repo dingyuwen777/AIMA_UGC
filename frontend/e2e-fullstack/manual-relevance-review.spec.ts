@@ -81,7 +81,8 @@ test('AI relevant 内容可人工排除并撤销，恢复 AI 业务基线', asyn
 
   await page.getByLabel('AI 相关性').selectOption('relevant')
   await page.getByRole('button', { name: '查询' }).click()
-  await expect(page.getByText(manualExcludeTitle, { exact: true })).toBeVisible({ timeout: 30_000 })
-  await expect(page.getByText('中性', { exact: true })).toBeVisible()
-  await expect(page.getByText(preservedAiLabel, { exact: true })).toBeVisible()
+  const contentList = page.getByLabel('声音广场内容列表')
+  await expect(contentList.getByText(manualExcludeTitle, { exact: true })).toBeVisible({ timeout: 30_000 })
+  await expect(contentList.getByText('中性', { exact: true })).toBeVisible()
+  await expect(contentList.getByText(preservedAiLabel, { exact: true })).toBeVisible()
 })
