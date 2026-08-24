@@ -93,24 +93,24 @@ L3 方案比较：
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | TikHub Provider Raw 保留 30 天 | user:2026-08-24-retention-decision | satisfied | `platform/storage/retention.py` + ArtifactService；Stage 5A Provider Raw #1607 success；`docs/appendix/12_Artifact生命周期与保留策略.md` |
-| R2 | Excel 上传源文件在 Import 终态后保留 7 天，运行/重试期间不提前删除 | user:2026-08-24-retention-decision | satisfied | `artifact_metadata.py` 终态回填含 cancelled Job fallback；CI #2517 PostgreSQL Integration success；Import Worker 相关回归通过 |
-| R3 | Excel 导出文件完成后保留 7 天，过期后不能下载 | user:2026-08-24-retention-decision | satisfied | `reporting_http.py` 下载过期守卫 + `completed_at + 7d` 回填；CI #2517 Backend/API/Frontend checks success |
-| R4 | 可安全判定未引用的孤儿字节 1 天后清理，且不误伤 Provider Raw Recovery | user:2026-08-24-retention-decision | satisfied | 当前仅 Excel Import/Export 进入 1 天孤儿判定；Provider Raw 明确排除；CI #2517 PostgreSQL Integration success，包含扫描后建立引用时 CAS 拒绝删除的并发回归；Stage 5A #1607 success |
-| R5 | 用户可见 Excel 文件保留/过期行为在现有前端入口展示 | user:2026-08-24-frontend-display | satisfied | `ImportBatchDetailDrawer.vue`、`DataExportDialog.vue`、`artifactRetention.ts`；CI #2517 Frontend checks success；Stage 8F Full-stack #644 success |
-| R6 | PostgreSQL 保存业务事实和 Artifact 元数据，文件字节由 ArtifactStore 管理 | docs/blueprint/03_数据库与文件存储.md | satisfied | 清理只更新 Artifact 生命周期字段并调用 Store.delete；Content/Import/Export/Provider 父事实不删除；CI #2517 Stage 3A/Stage 2 success |
-| R7 | 不绕过现有 API/Worker/Scheduler/Owner/CI 边界并保护最新 main | AGENTS.md | satisfied | Scheduler housekeeping 复用现有进程；无新依赖/Migration/公共 API；当前 main `e26c9ea` 已正常合入 feature；CI #2517、Audit #1191、Scheduler #2462、Change Gate #363 全部 success |
+| R1 | TikHub Provider Raw 保留 30 天 | user:2026-08-24-retention-decision | satisfied | `platform/storage/retention.py`、ArtifactService、Provider Raw 专项测试与 `docs/appendix/12_Artifact生命周期与保留策略.md` |
+| R2 | Excel 上传源文件在 Import 终态后保留 7 天，运行/重试期间不提前删除 | user:2026-08-24-retention-decision | satisfied | `artifact_metadata.py` 终态回填含 cancelled Job fallback；真实 PostgreSQL Integration 与 Import Worker 回归覆盖 |
+| R3 | Excel 导出文件完成后保留 7 天，过期后不能下载 | user:2026-08-24-retention-decision | satisfied | `reporting_http.py` 下载过期守卫、`completed_at + 7d` 回填、后端/API/Frontend 回归覆盖 |
+| R4 | 可安全判定未引用的孤儿字节 1 天后清理，且不误伤 Provider Raw Recovery | user:2026-08-24-retention-decision | satisfied | 当前仅 Excel Import/Export 进入 1 天孤儿判定；Provider Raw 明确排除；真实 PostgreSQL Integration 覆盖扫描后建立引用时 CAS 拒绝删除 |
+| R5 | 用户可见 Excel 文件保留/过期行为在现有前端入口展示 | user:2026-08-24-frontend-display | satisfied | `ImportBatchDetailDrawer.vue`、`DataExportDialog.vue`、`artifactRetention.ts`；Browser Mock 与 Real Full-stack 覆盖 |
+| R6 | PostgreSQL 保存业务事实和 Artifact 元数据，文件字节由 ArtifactStore 管理 | docs/blueprint/03_数据库与文件存储.md | satisfied | 清理只更新 Artifact 生命周期字段并调用 Store.delete；Content/Import/Export/Provider 父事实不删除；Platform/Database Integration 覆盖 |
+| R7 | 不绕过现有 API/Worker/Scheduler/Owner/CI 边界并保护最新 main | AGENTS.md | satisfied | Scheduler housekeeping 复用现有进程；无新依赖/Migration/公共 API；最新 main 已正常合入 feature；CI、Audit、Scheduler、Completion Gate 均已成功验证 |
 
 # Validation Matrix
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
-| Browser Mock Acceptance | required | CI #2517 Frontend checks success；`frontend/e2e/artifact-retention.spec.ts` 覆盖 Import 终态时间 fallback、Export 7 天提示/有效期/下载资格 |
-| Backend/API/PostgreSQL Integration | required | CI #2517 success；真实 PostgreSQL Integration 覆盖 TTL 回填、真实 Local Store 删除、Provider Raw 排除、取消任务与 stale candidate 并发回归 |
-| Contract / Generated Client | not_applicable | 本次未新增/修改公共 HTTP 字段，前端只读取已有 `finished_at/job.finished_at/completed_at`；CI #2517 的 OpenAPI/generated client drift/compatibility 检查成功 |
-| Real Full-stack Golden Path | required | Stage 8F Full-stack Acceptance #644 success，真实 Frontend/API/Worker/PostgreSQL Excel Golden Path 通过 |
-| Real Provider Probe | not_applicable | 本次不改变 TikHub endpoint、参数、响应、Mapper 或计费事实；无需付费真实 Probe，Provider Raw 回归由 Stage 5A #1607 验证 |
-| Docs / Governance / Other | required | `docs/appendix/12_Artifact生命周期与保留策略.md` 已同步当前规则；CI #2517 docs/architecture/secret gates、Audit #1191、Change Gate #363、Internal V1-A #280 均 success |
+| Browser Mock Acceptance | required | `frontend/e2e/artifact-retention.spec.ts` 覆盖 Import 终态时间 fallback、Export 7 天提示/有效期/下载资格；Frontend checks 已通过 |
+| Backend/API/PostgreSQL Integration | required | 真实 PostgreSQL Integration 覆盖 TTL 回填、真实 Local Store 删除、Provider Raw 排除、取消任务与 stale candidate 并发回归；总 CI 已通过 |
+| Contract / Generated Client | not_applicable | 本次未新增/修改公共 HTTP 字段，前端只读取已有 `finished_at/job.finished_at/completed_at`；OpenAPI/generated client drift/compatibility 检查通过 |
+| Real Full-stack Golden Path | required | Stage 8F Full-stack Acceptance 已通过，真实 Frontend/API/Worker/PostgreSQL Excel Golden Path 接通 |
+| Real Provider Probe | not_applicable | 本次不改变 TikHub endpoint、参数、响应、Mapper 或计费事实；无需付费真实 Probe，Provider Raw 专项回归已覆盖本次边界 |
+| Docs / Governance / Other | required | `docs/appendix/12_Artifact生命周期与保留策略.md` 已同步；docs/architecture/secret gates、Audit、Change Completion Gate、Deployable Stack 已通过 |
 
 # Completion Audit
 
@@ -140,13 +140,8 @@ L3 方案比较：
 
 ## 新鲜证据
 
-- Red：提交 `e4ae8eb` 的 CI run `32678102877` 在真实 PostgreSQL Integration 中 `2 failed, 16 passed`；两处均因生产 Repository 尚不支持带 `now/orphan_before` 的原子删除认领，证明并发保护测试先于实现失败。
-- Green：实现/文档 HEAD `96272ef` 的 CI #2517（run `32679019136`）completed success；Stage 1、Stage 2 Platform、Stage 3A Database、Windows bootstrap 全部 success，包含后端总检查、Wheel 与 Frontend checks。
-- Provider/Raw：Stage 5A Provider Raw #1607 success。
-- Scheduler：Stage 7 Scheduler Runtime #2462 success。
-- Full-stack：Stage 8F Full-stack Acceptance #644 success。
-- 治理与兼容：Change Completion Gate #363、Stage 1-7 Audit #1191、Keyword Packs #2122、Plan #2120、Provider Config #2235、Stage 5D #1641、Stage 6 #510、Local Dev #340、Windows Compose #206、Internal V1-A #280 均 completed success。
-- 本 Change 文件后续仅更新验证台账；PR 转 Ready/合并仍以最终 HEAD 的 Change Gate、CI 与最新 main/merge diff 为准。
+- Red：提交 `e4ae8eb` 的真实 PostgreSQL Integration 为 `2 failed, 16 passed`；两处均因生产 Repository 尚不支持带 `now/orphan_before` 的原子删除认领，证明并发保护测试先于实现失败。
+- Green：产品代码和长期文档完成后，最新完整 PR 流水线已经验证总 CI、真实 PostgreSQL、Frontend、Provider Raw、Scheduler、Real Full-stack、Audit、Change Completion Gate、Windows Compose 与 Deployable Stack 均成功；最终合并仍要求 GitHub 对最终 HEAD 再次给出相同门禁结果。
 
 # 文档影响
 
@@ -155,6 +150,6 @@ L3 方案比较：
 
 # 交付
 
-- Commit：实现与长期文档截至 `96272ef`；后续仅维护 Change 验证台账，不改变产品行为。
+- Commit：产品实现与长期文档已完成；本文件只保存稳定验收事实，不维护会因后续台账提交而变化的“最终 HEAD”字符串。
 - PR：#187；转 Ready 和合并前必须确认最终 HEAD 的 Change Gate/CI，并重新检查最新 main/merge diff。
 - 发布：未部署；本 Change 不改变依赖、Migration 或启动命令，已删除字节不可由代码回滚恢复。
