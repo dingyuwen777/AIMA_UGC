@@ -51,7 +51,7 @@ def test_request_audit_writer_persists_exact_cost_and_summarizes_run(
     monkeypatch.setattr(
         openai_compatible_module,
         "datetime",
-        _fixed_datetime(datetime(2026, 8, 20, 0, 0, tzinfo=UTC)),
+        _fixed_datetime(datetime(2026, 8, 24, 0, 0, tzinfo=UTC)),
     )
     audit_path = tmp_path / "analysis" / "llm_requests.jsonl"
     client = httpx.Client(
@@ -80,15 +80,15 @@ def test_request_audit_writer_persists_exact_cost_and_summarizes_run(
         "input_cache_miss_tokens": 11,
         "output_tokens": 17,
     }
-    assert payload["pricing"]["input_cache_hit_per_million"] == "0.15"
-    assert payload["pricing"]["input_cache_miss_per_million"] == "4.5"
-    assert payload["pricing"]["output_per_million"] == "13.5"
-    assert payload["cost"] == {"amount": "0.000282", "currency": "CNY"}
+    assert payload["pricing"]["input_cache_hit_per_million"] == "0.025"
+    assert payload["pricing"]["input_cache_miss_per_million"] == "3"
+    assert payload["pricing"]["output_per_million"] == "6"
+    assert payload["cost"] == {"amount": "0.0001355", "currency": "CNY"}
     assert writer.summary.request_count == 1
     assert writer.session_request_count == 1
     assert writer.summary.calculated_request_count == 1
     assert writer.summary.uncalculated_request_count == 0
-    assert writer.summary.total_cost_amount == Decimal("0.000282")
+    assert writer.summary.total_cost_amount == Decimal("0.0001355")
     assert writer.summary.cost_currency == "CNY"
 
 
