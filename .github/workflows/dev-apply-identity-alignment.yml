@@ -1,4 +1,4 @@
-name: Dev Kuaishou Identity TDD
+name: Dev Kuaishou Identity Fix
 
 on:
   push:
@@ -6,18 +6,23 @@ on:
       - feature/excel-tikhub-identity-alignment
     paths:
       - .github/workflows/dev-apply-identity-alignment.yml
-      - backend/src/aima_ugc/adapters/providers/tikhub/mappers/kuaishou.py
-      - tests/unit/collection/test_kuaishou_tikhub_identity_convergence.py
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: dev-kuaishou-identity-fix
+  cancel-in-progress: true
 
 jobs:
-  targeted-test:
+  fix-and-verify:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout
+      - name: Checkout feature head
         uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/excel-tikhub-identity-alignment
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v6.2.0
@@ -33,14 +38,66 @@ jobs:
           uv lock --check
           uv sync --locked
 
-      - name: Kuaishou identity regression
+      - name: Apply minimal Kuaishou identity fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("backend/src/aima_ugc/adapters/providers/tikhub/mappers/kuaishou.py")
+          text = path.read_text(encoding="utf-8")
+
+          old_import = "from typing import Any\n"
+          new_import = "from typing import Any\nfrom urllib.parse import parse_qs\n"
+          if text.count(old_import) != 1:
+              raise SystemExit("kuaishou.py typing import anchor mismatch")
+          text = text.replace(old_import, new_import, 1)
+
+          old_identity = '''    provider_photo_id = required_string(item, "photo_id")\n    external_id = context.external_content_id or provider_photo_id\n    observed_fields: list[str] = ["content_type", "alternate_ids"]\n\n    alternate_ids: dict[str, str] = {"photo_id": provider_photo_id}\n    kwai_id = optional_string(item, "kwaiId", "kwai_id")\n'''
+          new_identity = '''    provider_photo_id = required_string(item, "photo_id")\n    share_photo_id = _share_photo_id(item)\n    external_id = context.external_content_id or share_photo_id or provider_photo_id\n    observed_fields: list[str] = ["content_type", "alternate_ids"]\n\n    # 快手 Raw 的数字 photo_id 与公开分享链接 photoId(3x...) 是两套身份。\n    # Canonical/补采 locator 优先使用公开分享 ID，保证 TikHub Search 与 Excel URL 收敛；\n    # 数字 Provider ID 仅作为可审计别名保留。\n    alternate_ids: dict[str, str] = {"photo_id": external_id}\n    if provider_photo_id != external_id:\n        alternate_ids["provider_photo_id"] = provider_photo_id\n    kwai_id = optional_string(item, "kwaiId", "kwai_id")\n'''
+          if text.count(old_identity) != 1:
+              raise SystemExit("kuaishou.py identity anchor mismatch")
+          text = text.replace(old_identity, new_identity, 1)
+
+          marker = "\n\ndef map_comment(\n"
+          helper = '''\n\ndef _share_photo_id(item: dict[str, Any]) -> str | None:\n    """解析快手公开分享作品 ID；它与 Raw 数字 ``photo_id`` 不是同一字段。"""\n\n    raw = item.get("share_info") or item.get("shareInfo")\n    if isinstance(raw, dict):\n        return optional_string(raw, "photoId", "photo_id")\n    if not isinstance(raw, str):\n        return None\n    text = raw.strip()\n    if not text:\n        return None\n    query = text.split("?", 1)[1] if "?" in text else text\n    values = parse_qs(query, keep_blank_values=False).get("photoId") or parse_qs(\n        query, keep_blank_values=False\n    ).get("photo_id")\n    if not values:\n        return None\n    value = values[0].strip()\n    return value or None\n'''
+          if text.count(marker) != 1:
+              raise SystemExit("kuaishou.py map_comment marker mismatch")
+          text = text.replace(marker, helper + marker, 1)
+          path.write_text(text, encoding="utf-8")
+          PY
+
+          uv run ruff format \
+            backend/src/aima_ugc/adapters/providers/tikhub/mappers/kuaishou.py \
+            tests/unit/collection/test_kuaishou_tikhub_identity_convergence.py
+
+      - name: Verify Green
         shell: bash
         run: |
           set -euo pipefail
           uv run pytest tests/unit/collection/test_kuaishou_tikhub_identity_convergence.py -q
+          uv run pytest tests/unit/collection/test_kuaishou_tikhub_operation.py -q
+          uv run pytest tests/unit/collection/test_tikhub_real_search_mappers.py -q
+          uv run pytest tests/unit/collection/test_tikhub_real_detail_mappers.py -q
           uv run ruff format --check \
             backend/src/aima_ugc/adapters/providers/tikhub/mappers/kuaishou.py \
             tests/unit/collection/test_kuaishou_tikhub_identity_convergence.py
           uv run ruff check \
             backend/src/aima_ugc/adapters/providers/tikhub/mappers/kuaishou.py \
             tests/unit/collection/test_kuaishou_tikhub_identity_convergence.py
+          uv run mypy backend/src/aima_ugc/adapters/providers/tikhub/mappers/kuaishou.py
+          git diff --check
+
+      - name: Commit verified fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "AIMA GitHub Runner"
+          git config user.email "actions@users.noreply.github.com"
+          git add \
+            backend/src/aima_ugc/adapters/providers/tikhub/mappers/kuaishou.py \
+            tests/unit/collection/test_kuaishou_tikhub_identity_convergence.py
+          git diff --cached --exit-code && { echo "No Kuaishou identity changes produced"; exit 1; } || true
+          git commit -m "修正快手公开分享身份收敛"
+          git push origin HEAD:feature/excel-tikhub-identity-alignment
