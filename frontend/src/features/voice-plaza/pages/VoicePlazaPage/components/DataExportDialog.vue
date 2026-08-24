@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 
 import type { DataExportResponse } from '../../../../../generated/api/client'
+import { exportArtifactRetention } from '../../../../../shared/artifactRetention'
 import { formatDateTime, formatNumber } from '../../../format'
 
 const props = defineProps<{
@@ -34,6 +35,15 @@ const statusLabels = {
   succeeded: '已完成',
   failed: '失败',
   cancelled: '已取消',
+}
+
+function retention(item: DataExportResponse) {
+  return exportArtifactRetention(item.completed_at)
+}
+
+function canDownload(item: DataExportResponse): boolean {
+  const current = retention(item)
+  return item.job.status === 'succeeded' && current.expiresAt !== null && !current.expired
 }
 </script>
 
@@ -86,6 +96,8 @@ const statusLabels = {
             ><span><strong>全部查询结果</strong><small>{{ pageCount > 0 ? '按当前筛选条件冻结' : '当前筛选没有可导出内容' }}</small></span></label>
           </div><p class="analysis-note">
             未完成 AI 打标的内容不会被丢弃：仍会导出，AI 情感和标签列留空，并在结果统计中提示。
+          </p><p class="retention-note">
+            Excel 导出文件自生成完成后保留 7 天。过期后文件会自动清理，导出记录仍保留；需要时可重新创建导出。
           </p><div class="records-title">
             <strong>最近导出记录</strong><button
               type="button"
@@ -100,15 +112,18 @@ const statusLabels = {
             >
               <div>
                 <strong>{{ item.filename || `声音广场导出 ${item.id.slice(0, 8)}` }}</strong><small>{{ formatDateTime(item.created_at) }} · {{ statusLabels[item.job.status] }} {{ item.job.progress }}%</small><span v-if="item.stats">内容 {{ formatNumber(item.stats.content_count) }} · 已打标 {{ formatNumber(item.stats.analyzed_count) }} · 未打标 {{ formatNumber(item.stats.unanalyzed_count) }}</span><span
+                  v-if="retention(item).expiresAt"
+                  :class="{ expired: retention(item).expired }"
+                >{{ retention(item).expired ? '下载已过期' : `下载有效期至 ${formatDateTime(retention(item).expiresAt)}` }}</span><span
                   v-if="item.job.error_code"
                   class="error"
                 >{{ item.job.error_code }}</span>
               </div><button
                 type="button"
-                :disabled="item.job.status !== 'succeeded'"
+                :disabled="!canDownload(item)"
                 @click="emit('download', item)"
               >
-                下载
+                {{ retention(item).expired ? '已过期' : '下载' }}
               </button>
             </article><p
               v-if="items.length === 0"
@@ -153,7 +168,8 @@ header button { border: 0; color: #7d8695; background: transparent; font-size: 2
 .choice-grid input { accent-color: var(--aima-primary); }
 .choice-grid strong, .choice-grid small { display: block; }
 .choice-grid small { margin-top: 4px; color: #7d8696; }
-.analysis-note { padding: 10px; border: 1px solid #bcd5f5; border-radius: 6px; color: #39678f; background: #f2f7fd; font-size: 11px; line-height: 1.55; }
+.analysis-note, .retention-note { padding: 10px; border: 1px solid #bcd5f5; border-radius: 6px; color: #39678f; background: #f2f7fd; font-size: 11px; line-height: 1.55; }
+.retention-note { margin-top: 8px; border-color: #e2d7a4; color: #6e5c20; background: #fffaf0; }
 .records-title { display: flex; align-items: center; justify-content: space-between; margin: 18px 0 9px; }
 .records-title button { border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; }
 .records { max-height: 250px; overflow-y: auto; border: 1px solid var(--aima-border); border-radius: 7px; }
@@ -162,7 +178,7 @@ header button { border: 0; color: #7d8695; background: transparent; font-size: 2
 .records strong, .records small, .records span { display: block; }
 .records strong { color: #394355; font-size: 12px; }
 .records small, .records span { margin-top: 4px; color: #7f8898; font-size: 10px; }
-.records .error { color: #cf3440; }
+.records .error, .records .expired { color: #cf3440; }
 .records button { height: 30px; padding: 0 12px; border: 1px solid var(--aima-primary); border-radius: 5px; color: var(--aima-primary); background: #fff; cursor: pointer; }
 .records button:disabled { border-color: #d9dee7; color: #a1a8b4; cursor: default; }
 .empty { padding: 24px; color: #969eac; text-align: center; }

@@ -7,8 +7,9 @@ from datetime import UTC, datetime
 from typing import BinaryIO
 from uuid import UUID, uuid4
 
-from .models import ArtifactRecord
+from .models import ArtifactRecord, StoredBytes
 from .ports import ArtifactMetadataPort, ArtifactStore
+from .retention import initial_artifact_expiry
 
 _KIND_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 _SUFFIX_PATTERN = re.compile(r"^\.[a-z0-9]{1,16}$")
@@ -51,6 +52,7 @@ class ArtifactService:
             raise ValueError("Artifact storage_key 不能为空")
         else:
             resolved_storage_key = storage_key
+        created_at = datetime.now(UTC)
         pending = ArtifactRecord(
             id=artifact_id,
             kind=kind,
@@ -60,7 +62,8 @@ class ArtifactService:
             encoding=encoding,
             retention_class=retention_class,
             storage_status="pending",
-            created_at=datetime.now(UTC),
+            created_at=created_at,
+            expires_at=initial_artifact_expiry(kind, created_at),
         )
         self._metadata.create_pending(pending)
 
@@ -73,11 +76,10 @@ class ArtifactService:
                 pass
             raise
 
-        return self.confirm_stored_bytes(
-            artifact_id,
-            sha256=stored.sha256,
-            byte_size=stored.byte_size,
-            stored_at=datetime.now(UTC),
+        return self._confirm_or_cleanup(
+            artifact_id=artifact_id,
+            storage_key=resolved_storage_key,
+            stored=stored,
         )
 
     def store_stream(
@@ -104,6 +106,7 @@ class ArtifactService:
 
         artifact_id = uuid4()
         storage_key = f"{kind}/{artifact_id}{filename_suffix}"
+        created_at = datetime.now(UTC)
         pending = ArtifactRecord(
             id=artifact_id,
             kind=kind,
@@ -113,7 +116,8 @@ class ArtifactService:
             encoding=encoding,
             retention_class=retention_class,
             storage_status="pending",
-            created_at=datetime.now(UTC),
+            created_at=created_at,
+            expires_at=initial_artifact_expiry(kind, created_at),
         )
         self._metadata.create_pending(pending)
         try:
@@ -124,12 +128,41 @@ class ArtifactService:
             except Exception:
                 pass
             raise
-        return self.confirm_stored_bytes(
-            artifact_id,
-            sha256=stored.sha256,
-            byte_size=stored.byte_size,
-            stored_at=datetime.now(UTC),
+        return self._confirm_or_cleanup(
+            artifact_id=artifact_id,
+            storage_key=storage_key,
+            stored=stored,
         )
+
+    def _confirm_or_cleanup(
+        self,
+        *,
+        artifact_id: UUID,
+        storage_key: str,
+        stored: StoredBytes,
+    ) -> ArtifactRecord:
+        """仅在 CAS 证明元数据仍为 pending 时回收刚写入的孤儿字节。"""
+
+        try:
+            return self.confirm_stored_bytes(
+                artifact_id,
+                sha256=stored.sha256,
+                byte_size=stored.byte_size,
+                stored_at=datetime.now(UTC),
+            )
+        except Exception as confirmation_error:
+            # mark_stored 的异常可能发生在数据库已提交但客户端未收到确认之后。
+            # 只有 mark_error 的 pending CAS 成功，才能证明 stored 未提交并安全删除字节。
+            try:
+                self._metadata.mark_error(artifact_id)
+            except Exception:
+                raise confirmation_error from None
+            try:
+                self._store.delete(storage_key)
+            except Exception:
+                # error 元数据仍提供人工一致性排查入口；删除失败不能覆盖原始确认异常。
+                pass
+            raise confirmation_error from None
 
     def confirm_stored_bytes(
         self,

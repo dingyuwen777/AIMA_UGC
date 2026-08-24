@@ -33,6 +33,10 @@ class ArtifactStore(Protocol):
 
     def exists(self, storage_key: str) -> bool: ...
 
+    def delete(self, storage_key: str) -> None:
+        """幂等删除指定字节；文件已经不存在时也视为成功。"""
+        ...
+
 
 class ArtifactMetadataPort(Protocol):
     """ArtifactService 的元数据持久化边界。"""
