@@ -199,7 +199,7 @@ def test_manual_relevance_review_preserves_ai_result_and_drives_business_queries
         # 混入一个未打标 Content 时整批失败，不能悄悄只复核部分选择。
         with pytest.raises(ContentRelevanceReviewConflict):
             content_service.review_relevance(
-                ContentRelevanceReviewRequest(content_ids=content_ids),
+                ContentRelevanceReviewRequest(content_ids=content_ids, decision="relevant"),
                 request_id="manual-review-atomic",
             )
         with runtime.database.engine.begin() as connection:
@@ -211,19 +211,25 @@ def test_manual_relevance_review_preserves_ai_result_and_drives_business_queries
             )
 
         reviewed = content_service.review_relevance(
-            ContentRelevanceReviewRequest(content_ids=(content_ids[0],)),
+            ContentRelevanceReviewRequest(
+                content_ids=(content_ids[0],),
+                decision="relevant",
+            ),
             request_id="manual-review-single",
         )
         assert reviewed.requested_count == 1
-        assert reviewed.reviewed_count == 1
-        assert reviewed.already_reviewed_count == 0
+        assert reviewed.changed_count == 1
+        assert reviewed.unchanged_count == 0
 
         repeated = content_service.review_relevance(
-            ContentRelevanceReviewRequest(content_ids=(content_ids[0],)),
+            ContentRelevanceReviewRequest(
+                content_ids=(content_ids[0],),
+                decision="relevant",
+            ),
             request_id="manual-review-repeat",
         )
-        assert repeated.reviewed_count == 0
-        assert repeated.already_reviewed_count == 1
+        assert repeated.changed_count == 0
+        assert repeated.unchanged_count == 1
 
         default_ids = {item.id for item in content_service.list_contents(ContentListQuery()).items}
         assert content_ids[0] in default_ids
@@ -305,7 +311,10 @@ def test_manual_relevance_review_preserves_ai_result_and_drives_business_queries
         assert content_service.list_contents(ContentListQuery(relevance="relevant")).items == ()
         with pytest.raises(ContentRelevanceReviewConflict):
             content_service.review_relevance(
-                ContentRelevanceReviewRequest(content_ids=(content_ids[0],)),
+                ContentRelevanceReviewRequest(
+                    content_ids=(content_ids[0],),
+                    decision="relevant",
+                ),
                 request_id="manual-review-version-2",
             )
     finally:
