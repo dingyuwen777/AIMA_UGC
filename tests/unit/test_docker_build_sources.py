@@ -88,12 +88,12 @@ def test_environment_setup_uses_one_docker_hub_mirror_source_of_truth() -> None:
     linux_setup = (ROOT / "scripts" / "setup_dev_environment.sh").read_text(encoding="utf-8")
     windows_cmd = (ROOT / "scripts" / "setup_dev_environment.cmd").read_text(encoding="utf-8")
     windows_mirror_setup_path = ROOT / "scripts" / "dev" / "configure_docker_desktop_mirrors.ps1"
-    windows_guide = (ROOT / "docs" / "guides" / "03_Windows Docker Desktop Compose运行.md").read_text(
-        encoding="utf-8"
-    )
-    docker_guide = (ROOT / "docs" / "guides" / "04_Docker国内构建源与本地重置.md").read_text(
-        encoding="utf-8"
-    )
+    windows_guide = (
+        ROOT / "docs" / "guides" / "03_Windows Docker Desktop Compose运行.md"
+    ).read_text(encoding="utf-8")
+    docker_guide = (
+        ROOT / "docs" / "guides" / "04_Docker国内构建源与本地重置.md"
+    ).read_text(encoding="utf-8")
 
     assert mirrors == (
         "https://docker.1panel.live",
