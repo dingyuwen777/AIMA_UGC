@@ -43,7 +43,8 @@ from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs import JobRegistry
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.exc import DatabaseError
 
 
 def _xlsx() -> bytes:
@@ -266,5 +267,32 @@ def test_manual_irrelevant_override_and_undo_are_append_only_and_preserve_ai_res
             (2, "inherit_ai"),
         ]
         assert all(row.analysis_result_id == raw_result.id for row in events)
+
+        first_event_id = events[0].analysis_result_id
+        with pytest.raises(DatabaseError):
+            with runtime.database.engine.begin() as connection:
+                connection.execute(
+                    update(analysis_content_relevance_reviews_table)
+                    .where(analysis_content_relevance_reviews_table.c.review_no == 1)
+                    .values(request_id="forbidden-update")
+                )
+        with pytest.raises(DatabaseError):
+            with runtime.database.engine.begin() as connection:
+                connection.execute(
+                    delete(analysis_content_relevance_reviews_table).where(
+                        analysis_content_relevance_reviews_table.c.review_no == 1
+                    )
+                )
+        with runtime.database.engine.begin() as connection:
+            remaining = connection.execute(
+                select(
+                    analysis_content_relevance_reviews_table.c.review_no,
+                    analysis_content_relevance_reviews_table.c.analysis_result_id,
+                )
+                .where(analysis_content_relevance_reviews_table.c.content_id == content_id)
+                .order_by(analysis_content_relevance_reviews_table.c.review_no)
+            ).all()
+        assert len(remaining) == 2
+        assert remaining[0].analysis_result_id == first_event_id
     finally:
         runtime.close()
