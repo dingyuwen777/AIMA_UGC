@@ -1,6 +1,5 @@
 import type {
   ContentListItemResponse,
-  ContentRelevance,
   ContentRelevanceReviewRequestDecision,
 } from '../../generated/api/client'
 
@@ -8,15 +7,14 @@ export type RelevanceReviewDecision = ContentRelevanceReviewRequestDecision
 
 export function relevanceReviewDecision(
   item: ContentListItemResponse,
-  relevanceFilter: '' | ContentRelevance,
 ): RelevanceReviewDecision | null {
-  if (item.analysis.status !== 'completed' || !item.analysis.relevance) return null
-
-  if (relevanceFilter === 'irrelevant') {
-    return item.analysis.relevance === 'relevant' ? 'inherit_ai' : 'relevant'
-  }
-
-  return item.analysis.relevance === 'irrelevant' ? 'inherit_ai' : 'irrelevant'
+  if (item.relevance_source === 'manual_review' && item.effective_relevance) return 'inherit_ai'
+  if (
+    item.relevance_source !== 'ai'
+    || item.analysis.status !== 'completed'
+    || !item.analysis.relevance
+  ) return null
+  return item.analysis.relevance === 'relevant' ? 'irrelevant' : 'relevant'
 }
 
 export function relevanceReviewActionLabel(decision: RelevanceReviewDecision): string {
@@ -25,13 +23,15 @@ export function relevanceReviewActionLabel(decision: RelevanceReviewDecision): s
   return '撤销人工判断'
 }
 
-export function relevanceBadgeLabel(
-  item: ContentListItemResponse,
-  relevanceFilter: '' | ContentRelevance,
-): string | null {
-  if (item.analysis.status !== 'completed' || !item.analysis.relevance) return null
-  if (item.analysis.relevance === 'irrelevant') {
-    return relevanceFilter === 'irrelevant' ? 'AI 判定不相关' : '人工复核相关'
+export function relevanceBadgeLabel(item: ContentListItemResponse): string | null {
+  if (item.relevance_source === 'manual_review') {
+    if (item.effective_relevance === 'relevant') return '人工复核相关'
+    if (item.effective_relevance === 'irrelevant') return '人工复核不相关'
   }
-  return relevanceFilter === 'irrelevant' ? '人工复核不相关' : null
+  if (
+    item.relevance_source === 'ai'
+    && item.analysis.status === 'completed'
+    && item.analysis.relevance === 'irrelevant'
+  ) return 'AI 判定不相关'
+  return null
 }
