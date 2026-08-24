@@ -322,6 +322,11 @@ class PostgresContentQueryRepository:
             (review.c.decision == "irrelevant", literal("irrelevant")),
             else_=analysis.c.relevance,
         )
+        relevance_source = case(
+            (review.c.decision.in_(("relevant", "irrelevant")), literal("manual_review")),
+            (analysis.c.relevance.is_not(None), literal("ai")),
+            else_=literal(None),
+        )
         source_join = (
             content.join(
                 version,
@@ -367,6 +372,8 @@ class PostgresContentQueryRepository:
                 analysis.c.analyzed_at,
                 analysis.c.model_provider,
                 analysis.c.model,
+                effective_relevance.label("effective_relevance"),
+                relevance_source.label("relevance_source"),
                 has_any_analysis.label("has_any_analysis"),
                 request.c.provider.label("provider_name"),
                 attempt.c.id.label("provider_attempt_id"),
@@ -463,6 +470,8 @@ class PostgresContentQueryRepository:
                         "play_count": cast(int | None, row["current_play_count"]),
                     },
                     analysis=analysis,
+                    effective_relevance=cast(str | None, row["effective_relevance"]),
+                    relevance_source=cast(str | None, row["relevance_source"]),
                     source=ContentSourceRead(
                         provider_name=cast(str, row["provider_name"]),
                         provider_attempt_id=cast(UUID, row["provider_attempt_id"]),
