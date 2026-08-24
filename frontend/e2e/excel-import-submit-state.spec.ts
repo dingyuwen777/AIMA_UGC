@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 const keywordPackId = '82345678-1234-5678-1234-567812345678'
 
@@ -57,7 +57,7 @@ test.beforeEach(async ({ page }) => {
   })
 })
 
-async function openImportDialog(page: Parameters<typeof test>[0]['page']) {
+async function openImportDialog(page: Page) {
   await page.goto('/collection-runtime')
   await page.getByRole('button', { name: /导入 Excel/ }).click()
   return page.getByRole('dialog', { name: '导入 Excel' })
