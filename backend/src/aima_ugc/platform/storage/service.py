@@ -141,7 +141,7 @@ class ArtifactService:
         storage_key: str,
         stored: StoredBytes,
     ) -> ArtifactRecord:
-        """元数据确认失败时立即回收刚写入的字节，避免形成无期限 pending 孤儿。"""
+        """仅在 CAS 证明元数据仍为 pending 时回收刚写入的孤儿字节。"""
 
         try:
             return self.confirm_stored_bytes(
@@ -151,14 +151,16 @@ class ArtifactService:
                 stored_at=datetime.now(UTC),
             )
         except Exception:
-            try:
-                self._store.delete(storage_key)
-            except Exception:
-                # 保留原始元数据确认异常；Store 删除失败只能由人工/后续一致性检查处理。
-                pass
+            # mark_stored 的异常可能发生在数据库已提交但客户端未收到确认之后。
+            # 只有 mark_error 的 pending CAS 成功，才能证明 stored 未提交并安全删除字节。
             try:
                 self._metadata.mark_error(artifact_id)
             except Exception:
+                raise
+            try:
+                self._store.delete(storage_key)
+            except Exception:
+                # 保留最初的存储确认失败语义；error 元数据仍提供人工一致性排查入口。
                 pass
             raise
 
