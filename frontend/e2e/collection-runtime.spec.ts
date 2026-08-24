@@ -61,7 +61,7 @@ test.beforeEach(async ({ page }) => {
     const url = new URL(request.url())
     if (url.pathname === '/api/v1/collection-runtime/summary') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ processing_count: 12, completed_today_count: 86, contents_ingested_today: 3284, as_of: '2026-08-21T02:00:00Z' }) })
     if (url.pathname === '/api/v1/collection-runtime/runs') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [runtimeItem], next_cursor: null, has_more: false }) })
-    if (url.pathname === '/api/v1/collection-capabilities') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ provider_configs: [{ id: providerConfigId, provider: 'tikhub', display_name: 'TikHub 主配置' }], capabilities: [{ provider: 'tikhub', platform: 'xiaohongshu', operations: ['keyword_search', 'content_detail', 'comments', 'sub_comments'] }, { provider: 'tikhub', platform: 'douyin', operations: ['keyword_search', 'content_detail', 'comments', 'sub_comments'] }] }) })
+    if (url.pathname === '/api/v1/collection-capabilities') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ provider_configs: [{ id: providerConfigId, provider: 'tikhub', display_name: 'TikHub 主配置' }], capabilities: [{ provider: 'tikhub', platform: 'xiaohongshu', operations: ['keyword_search', 'content_detail', 'comments', 'sub_comments'], search: { supported_sort_modes: ['general', 'latest'], supported_time_filters: ['all', '1d', '7d', '180d'], supported_duration_filters: [], supported_content_types: ['all', 'video', 'image'], manual_default: { sort_mode: 'latest', published_within: '1d', content_type: 'all' } } }, { provider: 'tikhub', platform: 'douyin', operations: ['keyword_search', 'content_detail', 'comments', 'sub_comments'], search: { supported_sort_modes: ['general', 'latest'], supported_time_filters: ['all', '1d', '7d', '180d'], supported_duration_filters: ['all', 'short', 'long'], supported_content_types: ['all', 'video'], manual_default: { sort_mode: 'latest', published_within: '1d', duration: 'all', content_type: 'all' } } }] }) })
     if (url.pathname === '/api/v1/keyword-packs' && request.method() === 'GET') return route.fulfill({ contentType: 'application/json', body: JSON.stringify(keywordPacks) })
     if (url.pathname === '/api/v1/collection-runs' && request.method() === 'POST') return route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ run_id: runId, job_id: collectionJobId, mode: 'discovery', status: 'queued' }) })
     if (url.pathname === `/api/v1/collection-runs/${runId}`) return route.fulfill({ contentType: 'application/json', body: JSON.stringify(runDetail) })
@@ -108,7 +108,11 @@ test('creates a one-time TikHub discovery Run from multiple Keyword Packs', asyn
   expect((await requestPromise).postDataJSON()).toMatchObject({
     mode: 'discovery',
     keyword_pack_ids: [brandPackId, modelPackId],
-    platforms: [{ platform: 'xiaohongshu', provider_config_id: providerConfigId }],
+    platforms: [{
+      platform: 'xiaohongshu',
+      provider_config_id: providerConfigId,
+      search_config: { sort_mode: 'latest', published_within: '1d', content_type: 'all' },
+    }],
   })
   await expect(page.getByText('TikHub Collection Run / Job 已创建，将由 Worker 在后台执行。')).toBeVisible()
 })
@@ -130,6 +134,7 @@ test('creates a TikHub supplement Run only for a platform that exists in the Bat
     keyword_pack_ids: [],
     platforms: [{ platform: 'xiaohongshu', provider_config_id: providerConfigId }],
   })
+  expect((await requestPromise).postDataJSON().platforms[0]).not.toHaveProperty('search_config')
 })
 
 test('re-probes Batch platform eligibility when switching A to B and back to A', async ({ page }) => {

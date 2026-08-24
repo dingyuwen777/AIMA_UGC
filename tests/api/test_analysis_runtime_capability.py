@@ -68,3 +68,23 @@ def test_analysis_capability_is_true_only_with_required_secret(
     assert "fixture-secret" not in configured.text
     assert "llm.example" not in configured.text
     assert "fixture-model" not in configured.text
+
+
+def test_analysis_capability_reads_llm_secret_from_external_secret_root(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:  # type: ignore[no-untyped-def]
+    internal_secret_dir = _configure_base_runtime(monkeypatch, tmp_path)
+    external_secret_dir = tmp_path / "external-secrets"
+    external_secret_dir.mkdir()
+    monkeypatch.setenv("AIMA_EXTERNAL_SECRET_DIR", str(external_secret_dir))
+    monkeypatch.setenv("AIMA_LLM_BASE_URL", "https://llm.example/v1")
+    monkeypatch.setenv("AIMA_LLM_MODEL", "fixture-model")
+    (external_secret_dir / "llm_api_key").write_text("fixture-secret\n", encoding="utf-8")
+
+    response = _app().get("/api/v1/content-analysis-capabilities")
+
+    assert response.status_code == 200
+    assert response.json() == {"configured": True}
+    assert not (internal_secret_dir / "llm_api_key").exists()
+    assert "fixture-secret" not in response.text

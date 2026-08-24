@@ -5,9 +5,16 @@ import type {
   CollectionCapabilitiesResponse,
   CollectionPlanCreateRequest,
   CollectionPlatform,
+  CollectionSearchCapabilityResponse,
+  CollectionSearchConfig,
   KeywordPackResponse,
   KeywordPackSummaryResponse,
 } from '../../../../../generated/api/client'
+import CollectionSearchConfigFields from '../../../../../shared/CollectionSearchConfigFields.vue'
+import {
+  fixedCollectionSearchConfig,
+  isCollectionSearchConfigComplete,
+} from '../../../../../shared/collectionSearchConfig'
 import { planExecutionReason } from '../../../eligibility'
 
 const props = defineProps<{
@@ -37,6 +44,7 @@ const scheduleExpr = ref('0 9 * * *')
 const enabled = ref(true)
 const selectedPacks = ref<string[]>([])
 const providerByPlatform = reactive<Partial<Record<CollectionPlatform, string>>>({})
+const searchConfigByPlatform = reactive<Partial<Record<CollectionPlatform, CollectionSearchConfig>>>({})
 
 const selectedPlatforms = computed(() =>
   platformOptions
@@ -44,19 +52,26 @@ const selectedPlatforms = computed(() =>
     .map((item) => ({
       platform: item.value,
       provider_config_id: providerByPlatform[item.value]!,
+      search_config: searchConfigByPlatform[item.value] ?? {},
     })),
 )
 
-const eligibilityReason = computed(() =>
-  planExecutionReason({
+const eligibilityReason = computed(() => {
+  const incompletePlatform = platformOptions.find((item) => {
+    if (!providerByPlatform[item.value]) return false
+    const capability = searchCapability(item.value)
+    return !capability || !isCollectionSearchConfigComplete(capability, searchConfigByPlatform[item.value])
+  })
+  if (incompletePlatform) return `请完整选择${incompletePlatform.label}的发现参数。`
+  return planExecutionReason({
     keywordPackIds: selectedPacks.value,
     platforms: selectedPlatforms.value,
     requireRelevance: enabled.value,
     relevanceAvailable: props.relevanceAvailable,
     packDetails: props.packDetails,
     capabilities: props.capabilities,
-  }),
-)
+  })
+})
 
 watch(open, (value) => {
   if (!value) return
@@ -64,7 +79,10 @@ watch(open, (value) => {
   scheduleExpr.value = '0 9 * * *'
   enabled.value = true
   selectedPacks.value = []
-  for (const option of platformOptions) delete providerByPlatform[option.value]
+  for (const option of platformOptions) {
+    delete providerByPlatform[option.value]
+    delete searchConfigByPlatform[option.value]
+  }
 })
 
 watch(selectedPacks, (packIds) => {
@@ -80,13 +98,32 @@ function configsFor(platform: CollectionPlatform) {
   return (props.capabilities?.provider_configs ?? []).filter((item) => providers.has(item.provider))
 }
 
+function searchCapability(platform: CollectionPlatform): CollectionSearchCapabilityResponse | null {
+  const providerConfig = props.capabilities?.provider_configs.find(
+    (item) => item.id === providerByPlatform[platform],
+  )
+  if (!providerConfig) return null
+  return props.capabilities?.capabilities.find(
+    (item) => item.provider === providerConfig.provider && item.platform === platform,
+  )?.search ?? null
+}
+
+function resetSearchConfig(platform: CollectionPlatform): void {
+  const capability = searchCapability(platform)
+  searchConfigByPlatform[platform] = capability ? fixedCollectionSearchConfig(capability) : {}
+}
+
 function togglePlatform(platform: CollectionPlatform): void {
   if (providerByPlatform[platform]) {
     delete providerByPlatform[platform]
+    delete searchConfigByPlatform[platform]
     return
   }
   const first = configsFor(platform)[0]
-  if (first) providerByPlatform[platform] = first.id
+  if (first) {
+    providerByPlatform[platform] = first.id
+    resetSearchConfig(platform)
+  }
 }
 
 function submit(): void {
@@ -155,6 +192,7 @@ function submit(): void {
                 v-if="providerByPlatform[option.value]"
                 v-model="providerByPlatform[option.value]"
                 @click.stop
+                @change="resetSearchConfig(option.value)"
               >
                 <option
                   v-for="config in configsFor(option.value)"
@@ -164,6 +202,19 @@ function submit(): void {
                   {{ config.display_name }}
                 </option>
               </select><small v-else>{{ configsFor(option.value).length ? '点击选择' : '暂无可用配置' }}</small>
+              <div
+                v-if="providerByPlatform[option.value] && searchCapability(option.value)"
+                class="platform-search"
+                @click.stop
+                @keydown.stop
+              >
+                <CollectionSearchConfigFields
+                  :model-value="searchConfigByPlatform[option.value] ?? {}"
+                  :capability="searchCapability(option.value)!"
+                  :platform-label="option.label"
+                  @update:model-value="searchConfigByPlatform[option.value] = $event"
+                />
+              </div>
             </div>
           </div>
         </fieldset>
@@ -221,7 +272,7 @@ function submit(): void {
 aside { position: absolute; top: 0; right: 0; display: flex; width: 510px; height: 100%; flex-direction: column; background: #fff; box-shadow: -10px 0 30px rgb(20 29 44 / 12%); }
 header { display: flex; min-height: 84px; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid var(--aima-border); }header h2 { margin: 0; font-size: 20px; }header p { margin: 6px 0 0; color: #737e91; font-size: 13px; }header button { border: 0; color: #4d586a; background: transparent; font-size: 28px; cursor: pointer; }
 .body { flex: 1; overflow: auto; padding: 22px 24px; }label,fieldset,.policy,.relevance { display: block; margin: 0 0 22px; }label strong,legend,.policy > strong { display: block; margin-bottom: 9px; color: #253044; font-size: 14px; }input:not([type='checkbox']),select { width: 100%; height: 40px; padding: 0 11px; border: 1px solid #d9dee8; border-radius: 6px; background: #fff; }fieldset { padding: 0; border: 0; }.check { display: inline-flex; align-items: center; gap: 6px; margin: 0 12px 8px 0; padding: 8px 10px; border: 1px solid #dfe4ec; border-radius: 6px; font-size: 13px; }
-.platforms { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }.platform { min-height: 78px; padding: 10px; border: 1px solid #dfe4ec; border-radius: 7px; cursor: pointer; }.platform.active { border-color: var(--aima-primary); background: #fff5f8; }.platform span,.platform small { display: block; }.platform span { color: #263146; font-weight: 600; }.platform small { margin-top: 8px; color: #818b9d; }.platform select { height: 30px; margin-top: 7px; font-size: 11px; }
+.platforms { display: grid; gap: 8px; }.platform { min-height: 78px; padding: 10px; border: 1px solid #dfe4ec; border-radius: 7px; cursor: pointer; }.platform.active { border-color: var(--aima-primary); background: #fff5f8; }.platform span,.platform small { display: block; }.platform span { color: #263146; font-weight: 600; }.platform small { margin-top: 8px; color: #818b9d; }.platform > select { height: 30px; margin-top: 7px; font-size: 11px; }.platform-search { margin-top: 10px; }
 .cron { display: flex; align-items: center; border: 1px solid #d9dee8; border-radius: 6px; }.cron input { border: 0 !important; }.cron em { padding: 0 10px; color: #576276; font-size: 12px; font-style: normal; white-space: nowrap; }label > small,.relevance small { display: block; margin-top: 7px; color: #8590a2; }
 .policy > div { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }.policy span { padding: 12px; border: 1px solid #e0e4eb; border-radius: 7px; color: #6a7588; }.policy b { display: block; margin-top: 5px; color: #263146; }
 .relevance { padding: 13px; border: 1px solid #bee6d2; border-radius: 7px; color: #167d50; background: #f0faf5; }.relevance.invalid { border-color: #ffc7cc; color: #b4232d; background: #fff5f6; }.relevance strong,.relevance span { display: block; }.relevance span { margin-top: 6px; font-weight: 600; }

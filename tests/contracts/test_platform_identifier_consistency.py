@@ -149,6 +149,7 @@ def test_http_platform_inputs_normalize_formal_name_case_only() -> None:
         CollectionPlanPlatformRequest(
             platform="Douyin",
             provider_config_id=config_id,
+            search_config={},
         ).platform
         == "douyin"
     )

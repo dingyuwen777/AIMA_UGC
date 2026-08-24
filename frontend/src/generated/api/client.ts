@@ -47,11 +47,33 @@ export const CollectionCapabilityResponseOperationsItem = {
   sub_comments: 'sub_comments',
 } as const;
 
+/**
+ * Provider-neutral 搜索配置；合法值仍由当前 Platform Capability 决定。
+ */
+export interface CollectionSearchConfig {
+  content_type?: string | null;
+  duration?: string | null;
+  published_within?: string | null;
+  sort_mode?: string | null;
+}
+
+/**
+ * 前端配置 Search 所需的合法选项与手工发现默认值。
+ */
+export interface CollectionSearchCapabilityResponse {
+  manual_default: CollectionSearchConfig;
+  supported_content_types: string[];
+  supported_duration_filters: string[];
+  supported_sort_modes: string[];
+  supported_time_filters: string[];
+}
+
 export interface CollectionCapabilityResponse {
   /** @minItems 1 */
   operations: CollectionCapabilityResponseOperationsItem[];
   platform: CollectionPlatform;
   provider: string;
+  search: CollectionSearchCapabilityResponse | null;
 }
 
 export interface CollectionProviderConfigResponse {
@@ -66,11 +88,12 @@ export interface CollectionCapabilitiesResponse {
 }
 
 /**
- * Plan 只选择稳定 Provider Config，不接收 Provider 私有配置。
+ * Plan 逐平台提交 Provider-neutral 搜索配置，不接收 Provider 私有参数。
  */
 export interface CollectionPlanPlatformRequest {
   platform: CollectionPlatform;
   provider_config_id: string;
+  search_config: CollectionSearchConfig;
 }
 
 /**
@@ -103,6 +126,7 @@ export interface CollectionPlanCreateRequest {
 export interface CollectionPlanPlatformResponse {
   platform: CollectionPlatform;
   provider_config_id: string;
+  search_config: CollectionSearchConfig;
 }
 
 export interface CollectionPlanResponse {
@@ -152,6 +176,7 @@ export const CollectionRunMode = {
 export interface CollectionRunPlatformRequest {
   platform: CollectionPlatform;
   provider_config_id: string;
+  search_config?: CollectionSearchConfig | null;
 }
 
 /**

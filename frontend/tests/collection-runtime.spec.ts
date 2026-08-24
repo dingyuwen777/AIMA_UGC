@@ -83,11 +83,17 @@ describe('collection runtime feature', () => {
     generated.createCollectionRun.mockResolvedValue({ run_id: 'run-1', job_id: 'job-1', mode: 'discovery', status: 'queued' })
     await createTikHubCollectionRun({
       mode: 'discovery', keyword_pack_ids: ['pack-1', 'pack-2'],
-      platforms: [{ platform: 'xiaohongshu', provider_config_id: 'provider-1' }],
+      platforms: [{
+        platform: 'xiaohongshu', provider_config_id: 'provider-1',
+        search_config: { sort_mode: 'latest', published_within: '1d', content_type: 'all' },
+      }],
       include_comments: true, include_sub_comments: false,
     })
     expect(generated.createCollectionRun).toHaveBeenCalledWith(
-      expect.objectContaining({ mode: 'discovery', keyword_pack_ids: ['pack-1', 'pack-2'] }),
+      expect.objectContaining({
+        mode: 'discovery', keyword_pack_ids: ['pack-1', 'pack-2'],
+        platforms: [expect.objectContaining({ search_config: { sort_mode: 'latest', published_within: '1d', content_type: 'all' } })],
+      }),
     )
   })
 

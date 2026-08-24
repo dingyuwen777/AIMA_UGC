@@ -20,7 +20,7 @@ const plan = {
   last_scheduled_at: null,
   detail_policy: 'on_change',
   comment_policy: 'adaptive',
-  platforms: [{ platform: 'xiaohongshu', provider_config_id: providerId }],
+  platforms: [{ platform: 'xiaohongshu', provider_config_id: providerId, search_config: {} }],
   keyword_pack_ids: [packId],
   created_at: '2026-08-21T00:00:00Z',
   updated_at: '2026-08-21T00:00:00Z',
@@ -47,7 +47,7 @@ test.beforeEach(async ({ page }) => {
       return
     }
     if (url.pathname === '/api/v1/collection-capabilities') {
-      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ provider_configs: [{ id: providerId, provider: 'tikhub', display_name: 'TikHub 主配置' }], capabilities: [{ provider: 'tikhub', platform: 'xiaohongshu', operations: ['keyword_search'] }] }) })
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ provider_configs: [{ id: providerId, provider: 'tikhub', display_name: 'TikHub 主配置' }], capabilities: [{ provider: 'tikhub', platform: 'xiaohongshu', operations: ['keyword_search'], search: { supported_sort_modes: ['general', 'latest'], supported_time_filters: ['all', '1d', '7d', '180d'], supported_duration_filters: [], supported_content_types: ['all', 'video', 'image'], manual_default: { sort_mode: 'latest', published_within: '1d', content_type: 'all' } } }] }) })
       return
     }
     if (url.pathname === '/api/v1/collection-plans' && request.method() === 'GET') {
@@ -70,6 +70,10 @@ test('shows the approved collection strategy workspace and global relevance', as
   await expect(page.getByLabel('采集策略摘要').getByText('Discovery 词包')).toBeVisible()
   await expect(page.getByText('爱玛口碑周期采集')).toBeVisible()
   await expect(page.getByText('单次运行')).toHaveCount(0)
+
+  await page.getByRole('button', { name: '查看详情' }).click()
+  await expect(page.getByText('历史计划：沿用兼容默认（不限时间）')).toBeVisible()
+  await page.getByRole('button', { name: '关闭详情' }).click()
 
   await page.getByRole('button', { name: '全局相关性' }).click()
   await expect(page.getByText('所有 Excel、TikHub 与未来采集来源共用一份 Relevance 准入配置。')).toBeVisible()
@@ -97,6 +101,10 @@ test('creates only a periodic Collection Plan from the approved drawer', async (
   await drawer.getByPlaceholder('例如：爱玛新品口碑追踪').fill('爱玛新品自动采集')
   await drawer.getByText('爱玛新品发现 · v4').click()
   await drawer.getByText('小红书').click()
+  await expect(drawer.getByRole('button', { name: '保存采集计划' })).toBeDisabled()
+  await drawer.getByLabel('小红书排序').selectOption('latest')
+  await drawer.getByLabel('小红书发布时间').selectOption('1d')
+  await drawer.getByLabel('小红书内容类型').selectOption('all')
 
   const requestPromise = page.waitForRequest(
     (request) => new URL(request.url()).pathname === '/api/v1/collection-plans' && request.method() === 'POST',
@@ -108,7 +116,11 @@ test('creates only a periodic Collection Plan from the approved drawer', async (
     name: '爱玛新品自动采集',
     schedule_expr: '0 9 * * *',
     keyword_pack_ids: [packId],
-    platforms: [{ platform: 'xiaohongshu', provider_config_id: providerId }],
+    platforms: [{
+      platform: 'xiaohongshu',
+      provider_config_id: providerId,
+      search_config: { sort_mode: 'latest', published_within: '1d', content_type: 'all' },
+    }],
     enabled: true,
   })
   expect(payload).not.toHaveProperty('schedule_mode')
