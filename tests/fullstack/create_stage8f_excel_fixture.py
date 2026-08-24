@@ -57,6 +57,16 @@ def main() -> int:
                     "https://www.xiaohongshu.com/explore/stage8f-manual-review-content-1",
                 ]
             )
+            sheet.append(
+                [
+                    "小红书",
+                    "爱玛 Stage8F 人工排除与撤销",
+                    "这是一条用于验证 AI relevant 人工排除后再撤销的真实 Full-stack 前置内容",
+                    "Stage8F 双向复核账号",
+                    "2026-08-23 13:00:00",
+                    "https://www.xiaohongshu.com/explore/stage8f-manual-review-content-2",
+                ]
+            )
     else:
         # OOXML 结构合法，HTTP 上传应成功创建 Job；但缺少正式 Excel Profile 必填列，
         # 由生产 Worker/Mapper 在后台进入 invalid_import 失败终态。
