@@ -1,0 +1,162 @@
+name: Temporary DeepSeek Official Pricing Tests
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  sync-and-verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: fix/deepseek-official-pricing-correction
+          fetch-depth: 0
+
+      - name: Synchronize official pricing tests and docs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one anchor, found {count}: {old[:120]!r}")
+              p.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          def replace_in_function(path: str, name: str, replacements: list[tuple[str, str]]) -> None:
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              start = text.index(f"def {name}(")
+              end = text.find("\ndef ", start + 1)
+              if end == -1:
+                  end = len(text)
+              segment = text[start:end]
+              for old, new in replacements:
+                  count = segment.count(old)
+                  if count != 1:
+                      raise SystemExit(f"{path}:{name}: expected one anchor, found {count}: {old[:100]!r}")
+                  segment = segment.replace(old, new, 1)
+              p.write_text(text[:start] + segment + text[end:], encoding="utf-8")
+
+          pricing_test = "tests/unit/analysis/test_llm_pricing.py"
+          replace_in_function(
+              pricing_test,
+              "test_default_catalog_calculates_deepseek_v4_pro_cache_split_cost",
+              [
+                  ('Decimal("0.025")', 'Decimal("0.15")'),
+                  ('Decimal("3")', 'Decimal("4.5")'),
+                  ('Decimal("6")', 'Decimal("13.5")'),
+                  ('Decimal("0.0001355")', 'Decimal("0.000282")'),
+              ],
+          )
+          replace_once(
+              pricing_test,
+              '''@pytest.mark.parametrize(\n    "at",\n    (\n        datetime(2026, 8, 24, 0, tzinfo=UTC),\n        datetime(2026, 8, 24, 12, tzinfo=UTC),\n    ),\n)\ndef test_deepseek_official_example_uses_exact_decimal_cost(at: datetime) -> None:\n''',
+              '''@pytest.mark.parametrize(\n    ("at", "expected_amount"),\n    (\n        (datetime(2026, 8, 24, 0, tzinfo=UTC), Decimal("2.37")),\n        (datetime(2026, 8, 24, 1, tzinfo=UTC), Decimal("4.74")),\n        (datetime(2026, 8, 24, 12, tzinfo=UTC), Decimal("2.37")),\n    ),\n)\ndef test_deepseek_official_example_uses_exact_decimal_cost(\n    at: datetime,\n    expected_amount: Decimal,\n) -> None:\n''',
+          )
+          replace_in_function(
+              pricing_test,
+              "test_deepseek_official_example_uses_exact_decimal_cost",
+              [('assert calculation.amount == Decimal("1.22")', 'assert calculation.amount == expected_amount')],
+          )
+          for function_name in (
+              "test_catalog_reads_legacy_rate_fields_with_warning",
+              "test_catalog_rejects_mixed_new_and_legacy_names",
+              "test_catalog_requires_effective_date_for_new_names",
+          ):
+              replacements = [
+                  ('provider = "api.deepseek.com"', 'provider = "llm.example"'),
+                  ('model = "deepseek-v4-pro"', 'model = "model-a"'),
+                  ('currency = "CNY"', 'currency = "USD"'),
+                  ('source_url = "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"', 'source_url = "https://llm.example/pricing"'),
+              ]
+              if function_name == "test_catalog_reads_legacy_rate_fields_with_warning":
+                  replacements.extend(
+                      [
+                          ('provider="api.deepseek.com"', 'provider="llm.example"'),
+                          ('model="deepseek-v4-pro"', 'model="model-a"'),
+                      ]
+                  )
+              replace_in_function(pricing_test, function_name, replacements)
+
+          audit_test = "tests/unit/analysis/test_llm_request_audit.py"
+          replace_in_function(
+              audit_test,
+              "test_request_audit_writer_persists_exact_cost_and_summarizes_run",
+              [
+                  ('== "0.025"', '== "0.15"'),
+                  ('== "3"', '== "4.5"'),
+                  ('== "6"', '== "13.5"'),
+                  ('{"amount": "0.0001355", "currency": "CNY"}', '{"amount": "0.000282", "currency": "CNY"}'),
+                  ('Decimal("0.0001355")', 'Decimal("0.000282")'),
+              ],
+          )
+
+          adapter_test = "tests/unit/analysis/test_openai_compatible_llm.py"
+          replace_in_function(
+              adapter_test,
+              "test_empty_content_retry_audits_cost_of_every_paid_http_response",
+              [('Decimal("0.0000304")', 'Decimal("0.0000609")')],
+          )
+
+          readme = "backend/src/aima_ugc/adapters/llm/README.md"
+          replace_once(
+              readme,
+              'DeepSeek 当前官方价格页对 `deepseek-v4-pro` 使用全天统一价格，仓库因此直接在 `[[models]]` 配置单价，不再配置 `off_peak / peak` 分时价格。',
+              'DeepSeek 当前官方价格页对 `deepseek-v4-pro` 使用北京时间分时价格。仓库在 `[[models.price_periods]]` 中配置 `off_peak / peak`：高峰仅适用于周一至周五 `09:00-12:00`、`14:00-18:00`（`Asia/Shanghai`），其余日期和时段使用空闲价。',
+          )
+          replace_once(
+              readme,
+              '''当前 `pricing.toml` 对应 DeepSeek V4-Pro 官方人民币价格：\n\n| 官方价格项 | 当前单价 |\n| --- | ---: |\n| 输入（缓存命中），每百万 tokens | `0.025 CNY` |\n| 输入（缓存未命中），每百万 tokens | `3 CNY` |\n| 输出，每百万 tokens | `6 CNY` |\n''',
+              '''当前 `pricing.toml` 对应 DeepSeek V4-Pro 官方人民币价格：\n\n| 官方价格项 | 空闲时段 | 高峰时段 |\n| --- | ---: | ---: |\n| 输入（缓存命中），每百万 tokens | `0.15 CNY` | `0.30 CNY` |\n| 输入（缓存未命中），每百万 tokens | `4.5 CNY` | `9.0 CNY` |\n| 输出，每百万 tokens | `13.5 CNY` | `27.0 CNY` |\n\n高峰时段按北京时间计算，仅周一至周五 `09:00-12:00`、`14:00-18:00`；其余为 `off_peak`。\n''',
+          )
+
+          toml = "backend/src/aima_ugc/adapters/llm/pricing.toml"
+          replace_once(
+              toml,
+              '# [[models.price_periods]]。无 time_ranges 的时段是全天默认价，显式范围按 [start, end) 优先匹配。',
+              '# [[models.price_periods]]。无 time_ranges 的时段是全天默认价，显式范围按 [start, end) 优先匹配。\n# weekdays 可选，只接受 mon/tue/wed/thu/fri/sat/sun；未配置表示每天都适用。',
+          )
+          PY
+
+      - name: Verify complete pricing suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv sync --locked
+          uv run ruff format \
+            backend/src/aima_ugc/adapters/llm/pricing.py \
+            tests/unit/analysis/test_deepseek_official_pricing.py \
+            tests/unit/analysis/test_llm_pricing.py \
+            tests/unit/analysis/test_llm_request_audit.py \
+            tests/unit/analysis/test_openai_compatible_llm.py
+          uv run ruff check backend/src/aima_ugc/adapters/llm/pricing.py tests/unit/analysis/test_deepseek_official_pricing.py tests/unit/analysis/test_llm_pricing.py tests/unit/analysis/test_llm_request_audit.py tests/unit/analysis/test_openai_compatible_llm.py
+          uv run mypy backend/src
+          uv run pytest \
+            tests/unit/analysis/test_deepseek_official_pricing.py \
+            tests/unit/analysis/test_llm_pricing.py \
+            tests/unit/analysis/test_llm_pricing_effective_date.py \
+            tests/unit/analysis/test_llm_request_audit.py \
+            tests/unit/analysis/test_openai_compatible_llm.py -q
+
+      - name: Commit synchronized tests and docs
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/src/aima_ugc/adapters/llm/pricing.py backend/src/aima_ugc/adapters/llm/pricing.toml backend/src/aima_ugc/adapters/llm/README.md tests/unit/analysis/test_deepseek_official_pricing.py tests/unit/analysis/test_llm_pricing.py tests/unit/analysis/test_llm_request_audit.py tests/unit/analysis/test_openai_compatible_llm.py
+          git commit -m "同步 DeepSeek 官方分时价格测试与文档"
+          git push origin HEAD:fix/deepseek-official-pricing-correction
