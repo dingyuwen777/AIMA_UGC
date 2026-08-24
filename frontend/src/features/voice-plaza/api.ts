@@ -1,5 +1,6 @@
 import {
   createContentAnalysis,
+  createContentRelevanceReview,
   createDataExport,
   downloadDataExport,
   getContent,
@@ -13,6 +14,8 @@ import {
   type ContentAnalysisSubmitRequest,
   type ContentDetailResponse,
   type ContentListResponse,
+  type ContentRelevanceReviewRequest,
+  type ContentRelevanceReviewResponse,
   type DataExportCreatedResponse,
   type DataExportListResponse,
   type DataExportResponse,
@@ -65,6 +68,12 @@ export async function submitContentAnalysis(
   request: ContentAnalysisSubmitRequest,
 ): Promise<ContentAnalysisCreatedResponse> {
   return unwrap(await createContentAnalysis(request))
+}
+
+export async function submitContentRelevanceReview(
+  request: ContentRelevanceReviewRequest,
+): Promise<ContentRelevanceReviewResponse> {
+  return unwrap(await createContentRelevanceReview(request))
 }
 
 export async function fetchContentAnalysisJob(jobId: string): Promise<JobStatusResponse> {
