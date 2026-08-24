@@ -1,5 +1,5 @@
 {
-  "candidate_path_digest": "501cca295c58b983b329ca4037a191fbac638c67de6e3af3eedc9f71f0802361",
+  "candidate_path_digest": "83fd4a998e2fc6a3e863b657e1b14224798f854b9a6e6ef31db253afe537079b",
   "directories": [
     {
       "count": 5,
@@ -137,7 +137,7 @@
       "path": "docs"
     },
     {
-      "count": 13,
+      "count": 14,
       "kinds": [
         "documentation",
         "requirements"
@@ -226,8 +226,8 @@
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/adapters/llm/README.md",
-      "sha256": "20aeaedbd84d941441dc32b7e5cc83434d1cabf47b147634f10977fdc61299d0",
-      "size": 12088,
+      "sha256": "439b7eb12e1b32bf9e525de8d7b581efb9a9730f2b22eb4b217580811a195696",
+      "size": 12794,
       "title": "全平台共享 LLM Adapter、计费与请求审计"
     },
     {
@@ -247,15 +247,15 @@
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/modules/analysis/README.md",
-      "sha256": "9d3a6dde666e3f3562d18ed6cb2e501c6a9a510d728b87f6b83391254f98cb1d",
-      "size": 9941,
+      "sha256": "9542a12a10af955b8bea4589f98d8d1fa9c0065532c27e1cec43d26257e804f0",
+      "size": 10683,
       "title": "Analysis 模块"
     },
     {
       "kind": "documentation",
       "path": "backend/src/aima_ugc/modules/collection/README.md",
-      "sha256": "4bd0c1e55bf5068a0b400a72d536b65956e780fb5e0c17c73563eb8d1bf0d353",
-      "size": 14114,
+      "sha256": "cc78579bb0460dcd669e9f6d2dc127c918e259a119c98b1f9c941612943c9351",
+      "size": 14129,
       "title": "Collection 模块"
     },
     {
@@ -386,8 +386,8 @@
     {
       "kind": "contract",
       "path": "contracts/openapi/openapi.json",
-      "sha256": "f9c89d2d77ba70bab1a1ef5b9a6439b7505cf2e37411c66f6a0d67249ce925d4",
-      "size": 154040
+      "sha256": "c67f3f9e5616ebe9df515ca82e8f59d185e36e3f10610eab20f83b31ee900173",
+      "size": 158612
     },
     {
       "kind": "contract",
@@ -417,8 +417,8 @@
     {
       "kind": "documentation",
       "path": "docs/02_环境运行与部署.md",
-      "sha256": "9eb76c0e825e9f5cf30a94c4c8ff7b80ec4c1913f4b1bde359853dc55cbd0b85",
-      "size": 33719,
+      "sha256": "9ba3be593a1dbb3017cde039811fd1b3881244cadc8223e1b0fda545c0c45344",
+      "size": 33724,
       "title": "环境、运行与部署"
     },
     {
@@ -431,8 +431,8 @@
     {
       "kind": "documentation",
       "path": "docs/04_测试与调试说明.md",
-      "sha256": "40f437a2e8dab23b37f22d34e84f123c3889e6e1c8c6aec73536ba749767da77",
-      "size": 21035,
+      "sha256": "489b11578d619aee496ffde90fc439dddd3ea3ddaa444bbfa4b8644dde0a0e7d",
+      "size": 21889,
       "title": "测试与调试说明"
     },
     {
@@ -480,8 +480,8 @@
     {
       "kind": "documentation",
       "path": "docs/appendix/07_AI舆情打标与分析实现.md",
-      "sha256": "dd9cd9c0c625efc4df7735a2e5b14b0744d689c3797a74b4233a1cc26ac41b8f",
-      "size": 26922,
+      "sha256": "fa8c8af9e3843c0917429c4ab5f5014afade94decf54e8b01b9a9d2a2bcda567",
+      "size": 28014,
       "title": "AI 舆情打标与分析实现"
     },
     {
@@ -494,8 +494,8 @@
     {
       "kind": "requirements",
       "path": "docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md",
-      "sha256": "4c37c3bbf13c315585cfaba7dbfacd37798ffc03f78e79fc24a3ee158910fb16",
-      "size": 15981,
+      "sha256": "c440fc76fe8eaaa3f73f69979c3c0b8d573fc24eeb4c7ed5ebc8d3d9305ff2f1",
+      "size": 16012,
       "title": "Stage 8F 前后端能力矩阵与真实验收"
     },
     {
@@ -521,9 +521,16 @@
     },
     {
       "kind": "documentation",
+      "path": "docs/appendix/13_AI大规模打标与成本优化方案.md",
+      "sha256": "ef53f97df593f91df3830f026985817d4b9f262a2504780c9b4814e1c57fda5b",
+      "size": 25427,
+      "title": "AI 大规模打标与成本优化方案"
+    },
+    {
+      "kind": "documentation",
       "path": "docs/appendix/README.md",
-      "sha256": "c20df6fa3d767c928ccc9697c2d2579dab8d18d0f140328ae4ce0b04c044ea85",
-      "size": 9545,
+      "sha256": "4a2b945f63b7bb07a327f4b169d1f45e7bec8293bb5d5dece8778c7cd6d9138d",
+      "size": 9944,
       "title": "AIMA_UGC 专题附录"
     },
     {
@@ -543,15 +550,15 @@
     {
       "kind": "documentation",
       "path": "docs/blueprint/03_数据库与文件存储.md",
-      "sha256": "ea1ca9405d3d91923074a045a2d3d50841847691c229f5b297ffc23d02f3421f",
-      "size": 18264,
+      "sha256": "a3a2087cab3f614ee2b4e1d571867798634a2cfc8a1ac72553a5ec3b39d5ccfe",
+      "size": 19190,
       "title": "数据库与文件存储"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/04_后端任务API与前端.md",
-      "sha256": "0ebf3f1df9abbeeb6901622aac4a758e7e95f61ec7a09bb16d5006488d778dd5",
-      "size": 17426,
+      "sha256": "a6c38bb7e67b8d0e86e48b61dcc405e7c6241925ed97d04a6375c4925bb32d81",
+      "size": 19019,
       "title": "后端任务、API 与前端"
     },
     {
@@ -564,22 +571,22 @@
     {
       "kind": "documentation",
       "path": "docs/blueprint/06_开发约束与分阶段实施.md",
-      "sha256": "c5edd6a19019b72e0141665bcda84cc440867cd13dfff2adac76ffd085a81d2d",
-      "size": 22737,
+      "sha256": "f3e8a2d44bb1f2c0585d5c885239156585b1d5787274d85523ccb3abaa915920",
+      "size": 22744,
       "title": "开发约束与实施流程"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/07_技术决策与实施门禁.md",
-      "sha256": "9661e5c20e272d58d9465f118e6769804db4ba0946af991c2264319d8d53f395",
-      "size": 20024,
+      "sha256": "79479890a90a43822f396feb8dfa82c350fae5a5a8d06cb6aa235446ce159fe9",
+      "size": 21058,
       "title": "技术决策与实施门禁"
     },
     {
       "kind": "documentation",
       "path": "docs/blueprint/08_采集策略与平台能力.md",
-      "sha256": "1994650df46e22a5e6f931c7bba21cfe497b77c87406942e00b220b8c481f405",
-      "size": 22406,
+      "sha256": "e2adaadb210b13fc51bbf890e3e0513fb4b6fdd33a9e14ca0db4ed26a03d3f76",
+      "size": 22425,
       "title": "采集策略与平台能力"
     },
     {
@@ -627,8 +634,8 @@
     {
       "kind": "documentation",
       "path": "docs/collection/README.md",
-      "sha256": "c5d0287b494dbc08093c1258e45b2615ff37e24556c55508f4df751e45175a02",
-      "size": 9255,
+      "sha256": "888fdaa49a5f6483c94d08893f9a917ca2dfc98d040b22b2e63b55f62633ba94",
+      "size": 9269,
       "title": "五平台采集实现导航"
     },
     {
@@ -676,8 +683,8 @@
     {
       "kind": "requirements",
       "path": "docs/roadmap/02_生产上线实施路线.md",
-      "sha256": "4fb93e2d421433aa84e72a978240ca8d0fa49ae51dd470d1c51d7091aa1680f7",
-      "size": 30772,
+      "sha256": "852af1b273db56e18b64b251e0d33a75aba14c80434eff9dc027ea9d687c52b5",
+      "size": 30756,
       "title": "AIMA_UGC 从当前代码到内网 V1 与完整生产上线的实施路线"
     },
     {
@@ -740,10 +747,10 @@
       "size": 99997
     }
   ],
-  "generated_at": "2026-08-24T11:01:04+00:00",
+  "generated_at": "2026-08-24T16:32:30+00:00",
   "generator_version": "0.1.0",
   "git": {
-    "indexed_at_commit": "76685a725c38523dc94202f7f14c385b94db7e23",
+    "indexed_at_commit": "75a99276761dadab7eaafff80dc3184b8e219b5c",
     "repository": true,
     "worktree_candidate_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
   },
