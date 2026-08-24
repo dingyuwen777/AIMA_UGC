@@ -184,7 +184,9 @@ def test_manual_irrelevant_override_and_undo_are_append_only_and_preserve_ai_res
         assert content_service.list_contents(ContentListQuery()).items == ()
         assert [
             item.id
-            for item in content_service.list_contents(ContentListQuery(relevance="irrelevant")).items
+            for item in content_service.list_contents(
+                ContentListQuery(relevance="irrelevant")
+            ).items
         ] == [content_id]
 
         repeated = content_service.review_relevance(
