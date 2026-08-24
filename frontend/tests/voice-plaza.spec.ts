@@ -8,6 +8,7 @@ const generated = vi.hoisted(() => ({
   getContent: vi.fn(),
   getContentAnalysisCapabilities: vi.fn(),
   createContentAnalysis: vi.fn(),
+  createContentRelevanceReview: vi.fn(),
   getContentAnalysisJob: vi.fn(),
   createDataExport: vi.fn(),
   listDataExports: vi.fn(),
@@ -74,6 +75,7 @@ describe('voice plaza', () => {
           platform: '',
           contentType: '',
           analysisStatus: '',
+          relevance: '',
           sentiment: '',
           primaryLabel: '',
           secondaryLabel: '',
@@ -99,7 +101,15 @@ describe('voice plaza', () => {
 
   it('renders every ordered primary and secondary AI label pair in the label column', async () => {
     const labels = await renderToString(
-      createSSRApp({ render: () => h(VoicePlazaTable, { items: [item], loading: false, selectedIds: [] }) }),
+      createSSRApp({
+        render: () => h(VoicePlazaTable, {
+          items: [item],
+          loading: false,
+          selectedIds: [],
+          reviewMode: false,
+          reviewing: false,
+        }),
+      }),
     )
     expect(labels).toContain('产品体验')
     expect(labels).toContain('续航表现')
