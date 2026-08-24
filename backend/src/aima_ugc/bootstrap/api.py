@@ -10,7 +10,7 @@ from functools import partial
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from fastapi import FastAPI, File, Query, Request, Response, UploadFile, status
+from fastapi import FastAPI, File, Form, Query, Request, Response, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ConfigDict
 from starlette.concurrency import run_in_threadpool
@@ -879,18 +879,33 @@ def create_app(
     async def create_import_batch(
         request: Request,
         file: Annotated[UploadFile, File()],
+        keyword_pack_ids: Annotated[list[UUID], Form()],
     ) -> ImportBatchCreatedResponse:
         form = await request.form()
         items = list(form.multi_items())
-        if len(items) != 1 or items[0][0] != "file" or items[0][1] is not file:
+        allowed = {"file", "keyword_pack_ids"}
+        file_items = [value for key, value in items if key == "file"]
+        pack_items = [value for key, value in items if key == "keyword_pack_ids"]
+        if (
+            any(key not in allowed for key, _ in items)
+            or len(file_items) != 1
+            or file_items[0] is not file
+            or len(pack_items) != len(keyword_pack_ids)
+            or not 1 <= len(keyword_pack_ids) <= 20
+            or len(keyword_pack_ids) != len(set(keyword_pack_ids))
+        ):
             raise RequestValidationError(
                 [
                     {
                         "type": "value_error",
-                        "loc": ("body",),
-                        "msg": "multipart 只允许一个 file 字段",
+                        "loc": ("body", "keyword_pack_ids"),
+                        "msg": "multipart 必须包含一个 file 和 1—20 个不重复 keyword_pack_ids",
                         "input": None,
-                        "ctx": {"error": ValueError("multipart 只允许一个 file 字段")},
+                        "ctx": {
+                            "error": ValueError(
+                                "multipart 必须包含一个 file 和 1—20 个不重复 keyword_pack_ids"
+                            )
+                        },
                     }
                 ]
             )
@@ -901,6 +916,7 @@ def create_app(
                     filename=file.filename or "",
                     content_type=file.content_type,
                     source=file.file,
+                    keyword_pack_ids=tuple(keyword_pack_ids),
                     request_id=_request_id(request),
                 )
             )

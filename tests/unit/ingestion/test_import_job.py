@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import uuid4
 
-from aima_ugc.contracts.analysis import RelevanceSnapshotV1
+import pytest
 from aima_ugc.modules.ingestion.import_job import (
     IMPORT_JOB_MAX_ATTEMPTS,
     IMPORT_JOB_PAYLOAD_VERSION,
@@ -11,9 +11,12 @@ from aima_ugc.modules.ingestion.import_job import (
     IMPORT_JOB_TYPE,
     ImportJobHandler,
     ImportJobPayload,
+    ImportKeywordPackSnapshot,
+    ImportKeywordSelectionSnapshot,
     register_import_job,
 )
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult, JobRegistry
+from pydantic import ValidationError
 
 
 @dataclass
@@ -51,16 +54,14 @@ class _Executor:
 
 def _payload() -> ImportJobPayload:
     return ImportJobPayload(
-        relevance=RelevanceSnapshotV1(
-            keyword_pack_id=uuid4(),
-            keyword_pack_version=3,
-            config_version=2,
+        keyword_selection=ImportKeywordSelectionSnapshot(
+            keyword_packs=(ImportKeywordPackSnapshot(id=uuid4(), version=3),),
             effective_keywords=("爱玛",),
         ),
     )
 
 
-def test_import_job_contract_freezes_relevance_snapshot() -> None:
+def test_import_job_contract_freezes_keyword_selection_snapshot() -> None:
     assert IMPORT_JOB_TYPE == "ingestion.import-excel.v1"
     assert IMPORT_JOB_PAYLOAD_VERSION == "ingestion.import-excel.v1"
     assert IMPORT_JOB_TIMEOUT_SECONDS == 1800
@@ -68,7 +69,25 @@ def test_import_job_contract_freezes_relevance_snapshot() -> None:
     payload = _payload()
 
     assert payload.schema_version == "ingestion.import-excel.v1"
-    assert payload.relevance.effective_keywords == ("爱玛",)
+    assert payload.keyword_selection.effective_keywords == ("爱玛",)
+    assert len(payload.keyword_selection.keyword_packs) == 1
+    assert payload.keyword_selection.keyword_packs[0].version == 3
+
+
+def test_import_job_contract_rejects_legacy_relevance_payload() -> None:
+    with pytest.raises(ValidationError):
+        ImportJobPayload.model_validate(
+            {
+                "schema_version": "ingestion.import-excel.v1",
+                "relevance": {
+                    "schema_version": "relevance-snapshot.v1",
+                    "keyword_pack_id": str(uuid4()),
+                    "keyword_pack_version": 3,
+                    "config_version": 2,
+                    "effective_keywords": ["爱玛"],
+                },
+            }
+        )
 
 
 def test_import_job_handler_uses_fence_identity_and_honours_cancellation() -> None:

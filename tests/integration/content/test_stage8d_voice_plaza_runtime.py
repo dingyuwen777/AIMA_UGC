@@ -103,13 +103,17 @@ def _seed_import(client: TestClient, *, text_suffix: str = "") -> str:
     assert configured.status_code == 200
     uploaded = client.post(
         "/api/v1/import-batches",
-        files={
-            "file": (
-                "stage8d.xlsx",
-                _xlsx(text_suffix=text_suffix),
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
-        },
+        files=[
+            (
+                "file",
+                (
+                    "stage8d.xlsx",
+                    _xlsx(text_suffix=text_suffix),
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ),
+            ),
+            ("keyword_pack_ids", (None, pack.json()["id"])),
+        ],
     )
     assert uploaded.status_code == 202
     return str(uploaded.json()["batch_id"])

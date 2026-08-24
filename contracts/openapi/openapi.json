@@ -7,10 +7,19 @@
             "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
+          },
+          "keyword_pack_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Keyword Pack Ids",
+            "type": "array"
           }
         },
         "required": [
-          "file"
+          "file",
+          "keyword_pack_ids"
         ],
         "title": "Body_createImportBatch",
         "type": "object"
@@ -392,7 +401,7 @@
       },
       "CollectionRunCreateRequest": {
         "additionalProperties": false,
-        "description": "Stage 8E 一次性发现或基于 Batch 补采请求。",
+        "description": "一次性发现从 Keyword Pack 冻结关键词；Batch Supplement 只补既有内容。",
         "properties": {
           "import_batch_id": {
             "anyOf": [
@@ -416,13 +425,14 @@
             "title": "Include Sub Comments",
             "type": "boolean"
           },
-          "keywords": {
+          "keyword_pack_ids": {
             "default": [],
             "items": {
+              "format": "uuid",
               "type": "string"
             },
-            "maxItems": 100,
-            "title": "Keywords",
+            "maxItems": 20,
+            "title": "Keyword Pack Ids",
             "type": "array"
           },
           "mode": {

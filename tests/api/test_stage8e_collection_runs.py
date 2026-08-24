@@ -10,6 +10,7 @@ RUN_ID = UUID("11111111-1111-4111-8111-111111111111")
 JOB_ID = UUID("22222222-2222-4222-8222-222222222222")
 CONFIG_ID = UUID("33333333-3333-4333-8333-333333333333")
 BATCH_ID = UUID("44444444-4444-4444-8444-444444444444")
+PACK_ID = UUID("55555555-5555-4555-8555-555555555555")
 
 
 class _FakeCollectionService:
@@ -37,7 +38,7 @@ class _FakeCollectionService:
 
     def create_run(self, request, *, request_id):  # type: ignore[no-untyped-def]
         assert request.mode == "discovery"
-        assert request.keywords == ("爱玛", "爱玛 Q7")
+        assert request.keyword_pack_ids == (PACK_ID,)
         assert request_id
         return {
             "run_id": str(RUN_ID),
@@ -113,7 +114,7 @@ def test_create_discovery_collection_run_returns_202() -> None:
         headers={"x-request-id": "req-stage8e"},
         json={
             "mode": "discovery",
-            "keywords": [" 爱玛 ", "爱玛 Q7"],
+            "keyword_pack_ids": [str(PACK_ID)],
             "platforms": [{"platform": "xiaohongshu", "provider_config_id": str(CONFIG_ID)}],
             "include_comments": True,
             "include_sub_comments": False,
@@ -138,7 +139,8 @@ def test_create_collection_run_rejects_cross_mode_fields_with_request_id() -> No
         headers={"x-request-id": "req-invalid-stage8e"},
         json={
             "mode": "batch_supplement",
-            "keywords": ["不应出现"],
+            "keyword_pack_ids": [str(PACK_ID)],
+            "import_batch_id": str(BATCH_ID),
             "platforms": [{"platform": "xiaohongshu", "provider_config_id": str(CONFIG_ID)}],
         },
     )

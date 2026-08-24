@@ -52,6 +52,7 @@ class ImportHttpService(Protocol):
         filename: str,
         content_type: str | None,
         source: BinaryIO,
+        keyword_pack_ids: tuple[UUID, ...],
         request_id: str,
     ) -> ImportBatchCreatedResponse: ...
 

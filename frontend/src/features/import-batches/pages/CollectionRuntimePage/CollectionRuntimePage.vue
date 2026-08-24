@@ -51,8 +51,13 @@ async function reset(): Promise<void> {
   await store.refresh()
 }
 
-async function upload(file: File): Promise<void> {
-  const created = await store.upload(file)
+async function openUpload(): Promise<void> {
+  await store.loadKeywordPacks()
+  uploadOpen.value = true
+}
+
+async function upload(file: File, keywordPackIds: string[]): Promise<void> {
+  const created = await store.upload(file, keywordPackIds)
   if (!created) return
   uploadOpen.value = false
   showNotice('Import Job 已创建，文件将在后台继续处理。')
@@ -115,7 +120,7 @@ async function viewContents(batchId: string): Promise<void> {
         </button><button
           class="primary"
           type="button"
-          @click="uploadOpen = true"
+          @click="openUpload"
         >
           ⇧&nbsp; 导入 Excel
         </button><button
@@ -200,12 +205,15 @@ async function viewContents(batchId: string): Promise<void> {
     <ImportUploadDialog
       v-model="uploadOpen"
       :uploading="store.uploading"
+      :keyword-packs="store.keywordPackOptions"
+      :loading-keyword-packs="store.loadingKeywordPacks"
       @submit="upload"
     />
     <TikHubSupplementDrawer
       v-model="supplementOpen"
       :capabilities="store.capabilities"
       :batches="store.batchOptions"
+      :keyword-packs="store.keywordPackOptions"
       :batch-content-platforms="store.batchContentPlatforms"
       :loading-batch-platforms="store.loadingBatchPlatforms"
       :creating="store.creating"
