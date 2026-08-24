@@ -126,11 +126,16 @@ def test_windows_mirror_setup_validates_effective_state_with_bounded_waits() -> 
     assert "$DockerDesktopRestartTimeoutSeconds = 60" in mirror_setup
     assert "$MirrorVerificationTimeoutSeconds = 20" in mirror_setup
     assert "$MirrorProbeTimeoutSeconds = 3" in mirror_setup
+    assert "$MirrorProbeCleanupTimeoutMilliseconds = 1000" in mirror_setup
     assert "$MirrorVerificationIntervalSeconds = 1" in mirror_setup
     assert "function Get-DockerRegistryMirrorProbe" in mirror_setup
     assert "function Test-ExpectedMirrorsPresent" in mirror_setup
     assert "function Test-AimaDaemonConfigMatches" in mirror_setup
     assert "System.Diagnostics.ProcessStartInfo" in mirror_setup
+    assert "$startInfo.Arguments = 'info --format \"{{json .RegistryConfig.Mirrors}}\"'" in mirror_setup
+    assert "$process.WaitForExit($TimeoutSeconds * 1000)" in mirror_setup
+    assert "$process.WaitForExit($MirrorProbeCleanupTimeoutMilliseconds)" in mirror_setup
+    assert "$process.WaitForExit()" not in mirror_setup
     assert "[Diagnostics.Stopwatch]::StartNew()" in mirror_setup
     assert "--timeout $DockerDesktopRestartTimeoutSeconds" in mirror_setup
     assert "[WAIT]" in mirror_setup
