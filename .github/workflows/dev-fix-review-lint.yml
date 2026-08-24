@@ -1,0 +1,60 @@
+name: Dev Fix Review Lint
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout head branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Install locked Ruff
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+
+      - name: Apply Ruff fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff check --fix \
+            tests/fullstack/seed_stage8f_manual_relevance_review.py \
+            tests/integration/content/test_manual_relevance_review.py
+          uv run ruff format \
+            tests/fullstack/seed_stage8f_manual_relevance_review.py \
+            tests/integration/content/test_manual_relevance_review.py
+          uv run ruff check \
+            tests/fullstack/seed_stage8f_manual_relevance_review.py \
+            tests/integration/content/test_manual_relevance_review.py
+
+      - name: Commit exact Ruff output
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add \
+            tests/fullstack/seed_stage8f_manual_relevance_review.py \
+            tests/integration/content/test_manual_relevance_review.py
+          if git diff --cached --quiet; then
+            echo "Ruff output already synchronized."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "整理人工复核测试静态检查"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
