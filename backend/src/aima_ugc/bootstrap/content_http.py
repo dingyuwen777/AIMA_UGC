@@ -186,22 +186,21 @@ class PostgresContentHttpService:
         *,
         request_id: str,
     ) -> ContentRelevanceReviewResponse:
-        """把当前版本的 AI irrelevant 内容人工纳入相关业务集合，保留原 AI 结果。"""
+        """保存双向人工相关性覆盖或撤销事件，保留 AI 原始结果。"""
 
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                summary = PostgresContentRelevanceReviewRepository(
-                    session
-                ).review_irrelevant_as_relevant(
+                summary = PostgresContentRelevanceReviewRepository(session).review_relevance(
                     content_ids=request.content_ids,
+                    decision=request.decision,
                     analysis_identity=current_analysis_identity(self._runtime.settings),
                     request_id=request_id,
                 )
                 return ContentRelevanceReviewResponse(
                     requested_count=summary.requested_count,
-                    reviewed_count=summary.reviewed_count,
-                    already_reviewed_count=summary.already_reviewed_count,
+                    changed_count=summary.changed_count,
+                    unchanged_count=summary.unchanged_count,
                 )
         finally:
             session.close()
