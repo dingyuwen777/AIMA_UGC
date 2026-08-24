@@ -29,6 +29,7 @@ from aima_ugc.contracts.http import (
     ContentListQuery,
     ContentListResponse,
     ContentMetricsResponse,
+    ContentRelevanceSource,
     ContentSourceResponse,
     JobStatusResponse,
 )
@@ -261,8 +262,8 @@ def _item_response(record: ContentReadRecord) -> ContentListItemResponse:
         metrics=ContentMetricsResponse.model_validate(record.metrics),
         analysis=ContentAnalysisResponse(
             status=cast(ContentAnalysisStatus, record.analysis.status),
-            relevance=cast(ContentRelevance, record.analysis.relevance),
-            voice_type=cast(ContentVoiceType, record.analysis.voice_type),
+            relevance=cast(ContentRelevance | None, record.analysis.relevance),
+            voice_type=cast(ContentVoiceType | None, record.analysis.voice_type),
             sentiment=record.analysis.sentiment,
             labels=tuple(
                 ContentLabelPairResponse(primary_label=primary, secondary_label=secondary)
@@ -272,6 +273,8 @@ def _item_response(record: ContentReadRecord) -> ContentListItemResponse:
             model_provider=record.analysis.model_provider,
             model=record.analysis.model,
         ),
+        effective_relevance=cast(ContentRelevance | None, record.effective_relevance),
+        relevance_source=cast(ContentRelevanceSource | None, record.relevance_source),
         source=ContentSourceResponse(
             provider_name=record.source.provider_name,
             provider_attempt_id=record.source.provider_attempt_id,
