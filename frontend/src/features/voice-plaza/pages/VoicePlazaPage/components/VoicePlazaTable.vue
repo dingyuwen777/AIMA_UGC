@@ -2,6 +2,7 @@
 import type {
   ContentLabelPairResponse,
   ContentListItemResponse,
+  ContentRelevance,
 } from '../../../../../generated/api/client'
 import {
   contentSummary,
@@ -10,19 +11,25 @@ import {
   labelPairText,
   platformLabel,
 } from '../../../format'
+import {
+  relevanceBadgeLabel,
+  relevanceReviewActionLabel,
+  relevanceReviewDecision,
+  type RelevanceReviewDecision,
+} from '../../../relevanceReview'
 
-defineProps<{
+const props = defineProps<{
   items: ContentListItemResponse[]
   loading: boolean
   selectedIds: string[]
-  reviewMode: boolean
+  relevanceFilter: '' | ContentRelevance
   reviewing: boolean
 }>()
-defineEmits<{
+const emit = defineEmits<{
   detail: [contentId: string]
   toggle: [contentId: string]
   toggleAll: []
-  review: [contentId: string]
+  review: [contentId: string, decision: RelevanceReviewDecision]
 }>()
 
 function sentimentClass(sentiment?: string | null): string {
@@ -33,6 +40,26 @@ function sentimentClass(sentiment?: string | null): string {
 
 function labels(item: ContentListItemResponse): ContentLabelPairResponse[] {
   return item.analysis.labels ?? []
+}
+
+function badge(item: ContentListItemResponse): string | null {
+  return relevanceBadgeLabel(item, props.relevanceFilter)
+}
+
+function reviewDecision(item: ContentListItemResponse): RelevanceReviewDecision | null {
+  return relevanceReviewDecision(item, props.relevanceFilter)
+}
+
+function reviewClass(item: ContentListItemResponse): string {
+  const decision = reviewDecision(item)
+  if (decision === 'irrelevant') return 'review-button review-button--irrelevant'
+  if (decision === 'inherit_ai') return 'review-button review-button--undo'
+  return 'review-button review-button--relevant'
+}
+
+function runReview(item: ContentListItemResponse): void {
+  const decision = reviewDecision(item)
+  if (decision) emit('review', item.id, decision)
 }
 </script>
 
@@ -81,10 +108,13 @@ function labels(item: ContentListItemResponse): ContentLabelPairResponse[] {
       </div>
       <div class="analysis-cell">
         <span
-          v-if="item.analysis.status === 'completed' && item.analysis.relevance === 'irrelevant'"
+          v-if="badge(item)"
           class="relevance-badge"
-          :class="{ 'relevance-badge--reviewed': !reviewMode }"
-        >{{ reviewMode ? 'AI 判定不相关' : '人工复核相关' }}</span>
+          :class="{
+            'relevance-badge--reviewed': badge(item) === '人工复核相关',
+            'relevance-badge--excluded': badge(item) === '人工复核不相关',
+          }"
+        >{{ badge(item) }}</span>
         <span
           v-else-if="item.analysis.status === 'completed'"
           :class="sentimentClass(item.analysis.sentiment)"
@@ -124,13 +154,13 @@ function labels(item: ContentListItemResponse): ContentLabelPairResponse[] {
           查看详情
         </button>
         <button
-          v-if="reviewMode"
-          class="review-button"
+          v-if="reviewDecision(item)"
+          :class="reviewClass(item)"
           type="button"
           :disabled="reviewing"
-          @click="$emit('review', item.id)"
+          @click="runReview(item)"
         >
-          人工标记为相关
+          {{ relevanceReviewActionLabel(reviewDecision(item)!) }}
         </button>
       </div>
     </article>
@@ -139,7 +169,7 @@ function labels(item: ContentListItemResponse): ContentLabelPairResponse[] {
 
 <style scoped>
 .content-list { overflow: hidden; border: 1px solid var(--aima-border); border-radius: var(--aima-radius); background: #fff; }
-.table-head, .content-row { display: grid; grid-template-columns: 34px minmax(280px, 2fr) minmax(260px, 1.55fr) minmax(115px, .7fr) minmax(125px, .75fr) minmax(130px, .8fr) minmax(118px, .85fr); align-items: center; }
+.table-head, .content-row { display: grid; grid-template-columns: 34px minmax(280px, 2fr) minmax(260px, 1.55fr) minmax(115px, .7fr) minmax(125px, .75fr) minmax(130px, .8fr) minmax(138px, .95fr); align-items: center; }
 .table-head { min-height: 46px; padding: 0 14px; border-bottom: 1px solid var(--aima-border); color: #535d6f; background: #fafbfc; font-size: 12px; font-weight: 600; }
 .content-row { min-height: 112px; padding: 14px; border-bottom: 1px solid var(--aima-border); }
 .content-row:last-child { border-bottom: 0; }
@@ -156,6 +186,7 @@ function labels(item: ContentListItemResponse): ContentLabelPairResponse[] {
 .sentiment--neutral, .analysis-pending { color: #667085; background: #f1f3f6; }
 .relevance-badge { color: #b4232d; background: #fff0f1; }
 .relevance-badge--reviewed { color: #12804b; background: #eaf8f1; }
+.relevance-badge--excluded { color: #9b2c36; background: #fff0f1; }
 .label-list { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
 .label-pair { padding: 3px 7px; border: 1px solid #d9e6f7; border-radius: 4px; color: #366799; background: #f3f8ff; font-size: 10px; }
 .empty-label { color: #9aa1ae; font-size: 11px; }
@@ -167,7 +198,9 @@ time { color: #566071; font-size: 11px; line-height: 1.6; }
 .row-actions { display: grid; gap: 6px; }
 .detail-button, .review-button { min-height: 32px; padding: 0 8px; border-radius: 6px; background: #fff; cursor: pointer; font-size: 11px; }
 .detail-button { border: 1px solid var(--aima-primary); color: var(--aima-primary); }
-.review-button { border: 1px solid #12804b; color: #12804b; }
+.review-button--relevant { border: 1px solid #12804b; color: #12804b; }
+.review-button--irrelevant { border: 1px solid #c93440; color: #b4232d; }
+.review-button--undo { border: 1px solid #667085; color: #586174; }
 .review-button:disabled { cursor: not-allowed; opacity: .55; }
 .table-state { display: flex; min-height: 260px; flex-direction: column; align-items: center; justify-content: center; color: #8b94a5; }
 .table-state strong { margin-bottom: 9px; color: #505a6c; }
