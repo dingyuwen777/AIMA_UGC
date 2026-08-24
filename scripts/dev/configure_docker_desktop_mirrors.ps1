@@ -169,9 +169,9 @@ function Get-DockerRegistryMirrorProbe {
 
     $startInfo = New-Object System.Diagnostics.ProcessStartInfo
     $startInfo.FileName = $dockerCommand.Source
-    # Ask Docker to emit exactly one mirror per line. This avoids Windows PowerShell
-    # 5.1 JSON-array enumeration/coercion turning multiple mirrors into one string.
-    $startInfo.Arguments = 'info --format {{range .RegistryConfig.Mirrors}}{{println .}}{{end}}'
+    # Ask Docker to emit exactly one mirror per line. Quoting keeps the Go template
+    # as one argv item on Windows; line output avoids PowerShell 5.1 JSON coercion.
+    $startInfo.Arguments = 'info --format "{{range .RegistryConfig.Mirrors}}{{println .}}{{end}}"'
     $startInfo.UseShellExecute = $false
     $startInfo.CreateNoWindow = $true
     $startInfo.RedirectStandardOutput = $true
