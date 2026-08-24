@@ -544,8 +544,17 @@ export interface ContentListResponse {
   next_cursor?: string | null;
 }
 
+export type ContentRelevanceReviewRequestDecision = typeof ContentRelevanceReviewRequestDecision[keyof typeof ContentRelevanceReviewRequestDecision];
+
+
+export const ContentRelevanceReviewRequestDecision = {
+  relevant: 'relevant',
+  irrelevant: 'irrelevant',
+  inherit_ai: 'inherit_ai',
+} as const;
+
 /**
- * 单条和批量复用同一请求；当前只允许把 AI 无关内容人工纳入相关内容。
+ * 单条和批量复用同一请求，显式声明人工覆盖或撤销决定。
  */
 export interface ContentRelevanceReviewRequest {
   /**
@@ -553,15 +562,16 @@ export interface ContentRelevanceReviewRequest {
      * @maxItems 1000
      */
   content_ids: string[];
+  decision: ContentRelevanceReviewRequestDecision;
 }
 
 export interface ContentRelevanceReviewResponse {
   /** @minimum 0 */
-  already_reviewed_count: number;
+  changed_count: number;
   /** @minimum 1 */
   requested_count: number;
   /** @minimum 0 */
-  reviewed_count: number;
+  unchanged_count: number;
 }
 
 export interface DataExportCreatedResponse {

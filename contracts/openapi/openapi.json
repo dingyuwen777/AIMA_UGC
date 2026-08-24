@@ -1953,7 +1953,7 @@
       },
       "ContentRelevanceReviewRequest": {
         "additionalProperties": false,
-        "description": "单条和批量复用同一请求；当前只允许把 AI 无关内容人工纳入相关内容。",
+        "description": "单条和批量复用同一请求，显式声明人工覆盖或撤销决定。",
         "properties": {
           "content_ids": {
             "items": {
@@ -1964,10 +1964,20 @@
             "minItems": 1,
             "title": "Content Ids",
             "type": "array"
+          },
+          "decision": {
+            "enum": [
+              "relevant",
+              "irrelevant",
+              "inherit_ai"
+            ],
+            "title": "Decision",
+            "type": "string"
           }
         },
         "required": [
-          "content_ids"
+          "content_ids",
+          "decision"
         ],
         "title": "ContentRelevanceReviewRequest",
         "type": "object"
@@ -1975,9 +1985,9 @@
       "ContentRelevanceReviewResponse": {
         "additionalProperties": false,
         "properties": {
-          "already_reviewed_count": {
+          "changed_count": {
             "minimum": 0.0,
-            "title": "Already Reviewed Count",
+            "title": "Changed Count",
             "type": "integer"
           },
           "requested_count": {
@@ -1985,16 +1995,16 @@
             "title": "Requested Count",
             "type": "integer"
           },
-          "reviewed_count": {
+          "unchanged_count": {
             "minimum": 0.0,
-            "title": "Reviewed Count",
+            "title": "Unchanged Count",
             "type": "integer"
           }
         },
         "required": [
           "requested_count",
-          "reviewed_count",
-          "already_reviewed_count"
+          "changed_count",
+          "unchanged_count"
         ],
         "title": "ContentRelevanceReviewResponse",
         "type": "object"
