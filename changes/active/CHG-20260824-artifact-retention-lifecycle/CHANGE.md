@@ -141,7 +141,7 @@ L3 方案比较：
 ## 新鲜证据
 
 - Red：提交 `e4ae8eb` 的真实 PostgreSQL Integration 为 `2 failed, 16 passed`；两处均因生产 Repository 尚不支持带 `now/orphan_before` 的原子删除认领，证明并发保护测试先于实现失败。
-- Green：产品代码和长期文档完成后，最新完整 PR 流水线已经验证总 CI、真实 PostgreSQL、Frontend、Provider Raw、Scheduler、Real Full-stack、Audit、Change Completion Gate、Windows Compose 与 Deployable Stack 均成功；最终合并仍要求 GitHub 对最终 HEAD 再次给出相同门禁结果。
+- Green：产品代码和长期文档完成后，最终 PR HEAD 的总 CI、真实 PostgreSQL、Frontend、Provider Raw、Scheduler、Real Full-stack、Audit、Change Completion Gate、Windows Compose 与 Deployable Stack 均 completed success。
 
 # 文档影响
 
@@ -150,6 +150,6 @@ L3 方案比较：
 
 # 交付
 
-- Commit：产品实现与长期文档已完成；本文件只保存稳定验收事实，不维护会因后续台账提交而变化的“最终 HEAD”字符串。
-- PR：#187；转 Ready 和合并前必须确认最终 HEAD 的 Change Gate/CI，并重新检查最新 main/merge diff。
+- Commit：产品实现、长期文档和本 Change 已固定；后续不再修改仓库文件。
+- PR：#187；转 Ready 和合并前必须重新检查最新 main/merge diff，并以 expected head SHA 防止合并竞态。
 - 发布：未部署；本 Change 不改变依赖、Migration 或启动命令，已删除字节不可由代码回滚恢复。
