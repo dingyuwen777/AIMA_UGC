@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 class LLMPriceNotConfiguredError(LookupError):
-    """目标 provider/model 没有明确价格，禁止使用默认单价猜测。"""
+    """目标 provider/model/请求时点没有明确价格，禁止使用默认单价猜测。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -285,12 +285,13 @@ class LLMPricingCatalog:
         at: datetime | None = None,
     ) -> LLMModelPrice:
         identity = (_provider(provider), model)
+        request_at = at or datetime.now(UTC)
         for schedule in self._schedules:
             if (schedule.provider, schedule.model) == identity:
-                return schedule.price_at(at or datetime.now(UTC))
+                return _price_effective_at(schedule.price_at(request_at), request_at)
         for price in self.models:
             if (price.provider, price.model) == identity:
-                return price
+                return _price_effective_at(price, request_at)
         raise LLMPriceNotConfiguredError(
             f"LLM Pricing 未配置 provider/model: {identity[0]}/{identity[1]}"
         )
@@ -298,6 +299,24 @@ class LLMPricingCatalog:
     def has_price(self, *, provider: str, model: str) -> bool:
         identity = (_provider(provider), model)
         return any((price.provider, price.model) == identity for price in self.models)
+
+
+def _price_effective_at(price: LLMModelPrice, at: datetime) -> LLMModelPrice:
+    """只在 AIMA 价格目录生效日及之后返回价格，避免历史请求套用未来价格。"""
+
+    if price.effective_date is None:
+        return price
+    if at.tzinfo is None or at.utcoffset() is None:
+        raise ValueError("LLM Pricing effective_date 选价要求带时区的请求时间")
+    request_date = at.astimezone(UTC).date()
+    if request_date < price.effective_date:
+        raise LLMPriceNotConfiguredError(
+            "LLM Pricing 价格尚未生效: "
+            f"{price.provider}/{price.model}; "
+            f"request_date={request_date.isoformat()}; "
+            f"effective_date={price.effective_date.isoformat()}"
+        )
+    return price
 
 
 def load_llm_pricing() -> LLMPricingCatalog:

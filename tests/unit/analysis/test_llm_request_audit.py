@@ -8,7 +8,6 @@ from pathlib import Path
 import httpx
 import pytest
 from aima_ugc.adapters.llm import openai_compatible as openai_compatible_module
-from aima_ugc.adapters.llm import pricing as pricing_module
 from aima_ugc.adapters.llm.openai_compatible import OpenAICompatibleContentLabelingLLM
 from aima_ugc.adapters.llm.pricing import LLMPricingCatalog, load_llm_pricing
 from aima_ugc.adapters.llm.request_audit import (
@@ -97,29 +96,39 @@ def test_recalculation_writes_derived_report_without_overwriting_original_audit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     peak_request_at = datetime(2026, 8, 20, 1, 0, tzinfo=UTC)
+    initial_catalog = LLMPricingCatalog.from_toml(
+        """
+        schema_version = "llm-pricing.v1"
+
+        [[models]]
+        provider = "llm.example"
+        model = "model-a"
+        currency = "USD"
+        source_url = "https://llm.example/pricing-current"
+        effective_date = "2026-08-20"
+        input_cache_hit_per_million_tokens = "0.1"
+        input_cache_miss_per_million_tokens = "2"
+        output_per_million_tokens = "5"
+        """
+    )
     monkeypatch.setattr(
         openai_compatible_module,
         "datetime",
         _fixed_datetime(peak_request_at),
     )
-    monkeypatch.setattr(
-        pricing_module,
-        "datetime",
-        _fixed_datetime(datetime(2026, 8, 20, 0, 0, tzinfo=UTC)),
-    )
     audit_path = tmp_path / "analysis" / "llm_requests.jsonl"
     original_line: str
     client = httpx.Client(
-        base_url="https://api.deepseek.com/",
+        base_url="https://llm.example/",
         transport=httpx.MockTransport(lambda _: _response()),
     )
     try:
         with LLMRequestAuditWriter(audit_path) as writer:
             OpenAICompatibleContentLabelingLLM(
                 api_key=SecretStr("secret"),
-                model="deepseek-v4-pro",
+                model="model-a",
                 client=client,
-                pricing_catalog=load_llm_pricing(),
+                pricing_catalog=initial_catalog,
                 request_audit=writer.record,
             ).complete(ContentLabelingLLMRequest(prompt="prompt", items=()))
         original_line = audit_path.read_text(encoding="utf-8")
@@ -131,12 +140,12 @@ def test_recalculation_writes_derived_report_without_overwriting_original_audit(
         schema_version = "llm-pricing.v1"
 
         [[models]]
-        provider = "api.deepseek.com"
-        model = "deepseek-v4-pro"
-        currency = "CNY"
+        provider = "llm.example"
+        model = "model-a"
+        currency = "USD"
         source_url = "https://example.invalid/hypothetical-price"
         effective_date = "2026-08-20"
-        timezone = "Asia/Shanghai"
+        timezone = "UTC"
 
         [[models.price_periods]]
         name = "off_peak"
@@ -146,7 +155,7 @@ def test_recalculation_writes_derived_report_without_overwriting_original_audit(
 
         [[models.price_periods]]
         name = "peak"
-        time_ranges = ["09:00-12:00", "14:00-18:00"]
+        time_ranges = ["01:00-02:00"]
         input_cache_hit_per_million_tokens = "0.30"
         input_cache_miss_per_million_tokens = "9"
         output_per_million_tokens = "24"
@@ -167,7 +176,7 @@ def test_recalculation_writes_derived_report_without_overwriting_original_audit(
     assert report["source_audit_sha256"]
     assert report["summary"]["total_cost_amount"] == "0.000513"
     assert report["requests"][0]["pricing"]["output_per_million"] == "24"
-    assert report["summary"]["cost_currency"] == "CNY"
+    assert report["summary"]["cost_currency"] == "USD"
 
 
 def test_request_audit_resume_distinguishes_current_session_from_run_total(
@@ -177,7 +186,7 @@ def test_request_audit_resume_distinguishes_current_session_from_run_total(
     monkeypatch.setattr(
         openai_compatible_module,
         "datetime",
-        _fixed_datetime(datetime(2026, 8, 20, 0, 0, tzinfo=UTC)),
+        _fixed_datetime(datetime(2026, 8, 24, 0, 0, tzinfo=UTC)),
     )
     audit_path = tmp_path / "analysis" / "llm_requests.jsonl"
     client = httpx.Client(

@@ -257,10 +257,10 @@ def test_openai_compatible_uses_physical_request_start_time_for_price_period(
         schema_version = "llm-pricing.v1"
 
         [[models]]
-        provider = "api.deepseek.com"
-        model = "deepseek-v4-pro"
-        currency = "CNY"
-        source_url = "https://example.invalid/scheduled-pricing"
+        provider = "llm.example"
+        model = "model-a"
+        currency = "USD"
+        source_url = "https://llm.example/pricing"
         effective_date = "2026-08-20"
         timezone = "UTC"
 
@@ -295,13 +295,13 @@ def test_openai_compatible_uses_physical_request_start_time_for_price_period(
         )
 
     client = httpx.Client(
-        base_url="https://api.deepseek.com/",
+        base_url="https://llm.example/",
         transport=httpx.MockTransport(handler),
     )
     try:
         adapter = OpenAICompatibleContentLabelingLLM(
             api_key=SecretStr("secret"),
-            model="deepseek-v4-pro",
+            model="model-a",
             client=client,
             pricing_catalog=pricing_catalog,
             request_audit=records.append,
@@ -315,16 +315,16 @@ def test_openai_compatible_uses_physical_request_start_time_for_price_period(
     assert response.input_cache_miss_tokens == 11
     assert response.output_tokens == 17
     assert response.cost_amount == Decimal("0.000564")
-    assert response.cost_currency == "CNY"
+    assert response.cost_currency == "USD"
     assert len(records) == 1
     assert records[0].status == "completed"
     assert records[0].started_at == datetime(2026, 8, 20, 1, 0, tzinfo=UTC)
     assert records[0].cost_amount == Decimal("0.000564")
-    assert records[0].cost_currency == "CNY"
+    assert records[0].cost_currency == "USD"
     assert records[0].input_cache_hit_per_million == Decimal("0.30")
     assert records[0].input_cache_miss_per_million == Decimal("9")
     assert records[0].output_per_million == Decimal("27")
-    assert records[0].pricing_source_url == "https://example.invalid/scheduled-pricing"
+    assert records[0].pricing_source_url == "https://llm.example/pricing"
 
 
 def test_empty_content_retry_audits_cost_of_every_paid_http_response(

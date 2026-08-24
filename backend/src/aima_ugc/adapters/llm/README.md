@@ -193,6 +193,8 @@ https://api-docs.deepseek.com/zh-cn/quick_start/pricing/
 
 `effective_date` 表示**这份价格配置从哪一天起在 AIMA 价格目录中生效**，不是对“供应商首次从哪一天开始执行该价格”的猜测。本次同步设置为 `2026-08-24`；DeepSeek 当前价格页没有为这组价格单独声明另一个价格生效日期。
 
+运行时 `price_for()` 按请求 `started_at` 的 **UTC 日期**检查 `effective_date`。请求早于该日期时，这份价格被视为“该时点不可用”，不会把未来价格套到历史请求。正式 Adapter 仍继续发送 LLM 请求，只把本次费用记为不可计算；离线成本复算同样会把该请求标为 unavailable，除非调用方提供覆盖该历史时点的价格目录。
+
 ### 5.2 配置与历史兼容
 
 旧配置字段：
