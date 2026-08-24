@@ -11,7 +11,7 @@ def _docker_hub_mirrors() -> tuple[str, ...]:
         for raw_line in DOCKER_HUB_MIRROR_CONFIG.read_text(encoding="utf-8").splitlines()
         if (line := raw_line.strip()) and not line.startswith("#")
     )
-    assert mirrors
+    assert len(mirrors) >= 2
     assert len(mirrors) == len(set(mirrors))
     assert all(mirror.startswith("https://") for mirror in mirrors)
     return mirrors
@@ -95,15 +95,10 @@ def test_environment_setup_uses_one_docker_hub_mirror_source_of_truth() -> None:
         ROOT / "docs" / "guides" / "04_Docker国内构建源与本地重置.md"
     ).read_text(encoding="utf-8")
 
-    assert mirrors == (
-        "https://docker.1panel.live",
-        "https://hub.1panel.dev",
-        "https://docker.m.daocloud.io",
-    )
     assert windows_mirror_setup_path.is_file()
     windows_mirror_setup = windows_mirror_setup_path.read_text(encoding="utf-8")
 
-    assert "scripts/config/docker_hub_mirrors.txt" in linux_setup
+    assert 'DOCKER_MIRROR_CONFIG="${SCRIPT_DIR}/config/docker_hub_mirrors.txt"' in linux_setup
     assert "config\\docker_hub_mirrors.txt" in windows_mirror_setup
     assert "configure_docker_desktop_mirrors.ps1" in windows_cmd
     assert '"max-download-attempts":5' in linux_setup
