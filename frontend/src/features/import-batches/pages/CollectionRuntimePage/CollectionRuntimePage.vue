@@ -207,6 +207,7 @@ async function viewContents(batchId: string): Promise<void> {
       :uploading="store.uploading"
       :keyword-packs="store.keywordPackOptions"
       :loading-keyword-packs="store.loadingKeywordPacks"
+      :request-error="store.error"
       @submit="upload"
     />
     <TikHubSupplementDrawer

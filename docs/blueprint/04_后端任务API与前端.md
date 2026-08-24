@@ -312,7 +312,7 @@ GET  /api/v1/import-batches/{batch_id}
 GET  /api/v1/jobs/{job_id}
 ```
 
-`POST /import-batches` 当前只接受一个 multipart `file`，请求体有显式大小保护，真正处理由 `ingestion.import-excel.v1` Worker 完成。
+`POST /api/v1/import-batches` 当前接受 multipart：一个 `file` 和 1—20 个不重复 `keyword_pack_ids`。HTTP 层执行请求体大小与 multipart 形状校验；Import Service 冻结所选词包/关键词快照并创建 `ingestion.import-excel.v1` Job，真正 Excel 处理由 Worker 完成。
 
 `GET /api/v1/jobs/{job_id}` 当前由 Import HTTP Service 提供，是 Import 产品面的通用 Job 查询入口；Analysis 还有独立的 `/content-analysis-jobs/{job_id}`。不要据此假设所有内部 `jobs` 表记录都自动成为公共 HTTP Contract。
 
