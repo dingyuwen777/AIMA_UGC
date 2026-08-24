@@ -12,6 +12,9 @@ from aima_ugc.adapters.persistence.postgres.content_queries import (
     PostgresContentQueryRepository,
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
+from aima_ugc.adapters.persistence.postgres.relevance_reviews import (
+    PostgresContentRelevanceReviewRepository,
+)
 from aima_ugc.contracts.analysis import ContentRelevance, ContentVoiceType
 from aima_ugc.contracts.http import (
     ContentAnalysisCreatedResponse,
@@ -28,6 +31,10 @@ from aima_ugc.contracts.http import (
     ContentMetricsResponse,
     ContentSourceResponse,
     JobStatusResponse,
+)
+from aima_ugc.contracts.relevance_review import (
+    ContentRelevanceReviewRequest,
+    ContentRelevanceReviewResponse,
 )
 from aima_ugc.modules.analysis.content_analysis_job import (
     CONTENT_ANALYSIS_JOB_MAX_ATTEMPTS,
@@ -169,6 +176,32 @@ class PostgresContentHttpService:
                     request_id=analysis_request_id,
                     job_id=job.id,
                     target_count=len(targets),
+                )
+        finally:
+            session.close()
+
+    def review_relevance(
+        self,
+        request: ContentRelevanceReviewRequest,
+        *,
+        request_id: str,
+    ) -> ContentRelevanceReviewResponse:
+        """把当前版本的 AI irrelevant 内容人工纳入相关业务集合，保留原 AI 结果。"""
+
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                summary = PostgresContentRelevanceReviewRepository(
+                    session
+                ).review_irrelevant_as_relevant(
+                    content_ids=request.content_ids,
+                    analysis_identity=current_analysis_identity(self._runtime.settings),
+                    request_id=request_id,
+                )
+                return ContentRelevanceReviewResponse(
+                    requested_count=summary.requested_count,
+                    reviewed_count=summary.reviewed_count,
+                    already_reviewed_count=summary.already_reviewed_count,
                 )
         finally:
             session.close()
