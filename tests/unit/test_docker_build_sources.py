@@ -146,6 +146,23 @@ def test_release_workflow_builds_a_replayable_offline_bundle() -> None:
     assert "docker compose down -v" not in workflow
 
 
+def test_release_pull_request_dry_run_has_no_repository_write_token() -> None:
+    assert RELEASE_WORKFLOW.is_file(), "Release workflow has not been implemented yet"
+    workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    header, jobs = workflow.split("jobs:", 1)
+
+    assert "contents: write" not in header
+    assert "packages: write" not in header
+    assert "contents: read" in header
+
+    assert "publish-release:" in jobs
+    publish_job = jobs.split("publish-release:", 1)[1]
+    assert "if: github.event_name == 'workflow_dispatch'" in publish_job
+    assert "permissions:" in publish_job
+    assert "contents: write" in publish_job
+    assert "packages: write" in publish_job
+
+
 def test_environment_setup_uses_one_docker_hub_mirror_source_of_truth() -> None:
     mirrors = _docker_hub_mirrors()
     linux_setup = (ROOT / "scripts" / "setup_dev_environment.sh").read_text(encoding="utf-8")
