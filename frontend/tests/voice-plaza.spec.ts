@@ -35,6 +35,8 @@ const item = {
   metrics: { like_count: 12, comment_count: 3 },
   analysis: {
     status: 'completed' as const,
+    relevance: 'relevant' as const,
+    voice_type: 'user_voice' as const,
     sentiment: '负面',
     labels: [
       { primary_label: '产品体验', secondary_label: '续航表现' },
@@ -106,7 +108,7 @@ describe('voice plaza', () => {
           items: [item],
           loading: false,
           selectedIds: [],
-          reviewMode: false,
+          relevanceFilter: '',
           reviewing: false,
         }),
       }),
