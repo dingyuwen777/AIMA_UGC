@@ -1,9 +1,9 @@
 name: Temporary Sync Manual Relevance With Main
 
 on:
-  push:
+  pull_request:
     branches:
-      - feature/manual-relevance-review
+      - main
 
 permissions:
   contents: write
