@@ -153,7 +153,7 @@ def test_excel_douyin_modal_id_is_typed_aweme_lookup() -> None:
     assert identity.alternate_ids["aweme_id"] == "7531234567890123456"
 
 
-def test_excel_bilibili_urls_preserve_av_bv_lookup_type() -> None:
+def test_excel_bilibili_urls_normalize_bv_to_tikhub_aid_and_keep_lookup_aliases() -> None:
     bv = resolve_content_identity(
         platform="bilibili",
         canonical_url="https://www.bilibili.com/video/BV1xx411c7mD",
@@ -165,7 +165,8 @@ def test_excel_bilibili_urls_preserve_av_bv_lookup_type() -> None:
         source_article_id=None,
     )
 
-    assert bv.external_content_id == "BV1xx411c7mD"
+    assert bv.external_content_id == "2"
+    assert bv.alternate_ids["av_id"] == "2"
     assert bv.alternate_ids["bv_id"] == "BV1xx411c7mD"
     assert av.external_content_id == "170001"
     assert av.alternate_ids["av_id"] == "170001"

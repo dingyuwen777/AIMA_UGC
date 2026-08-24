@@ -265,7 +265,7 @@ def test_batch_supplement_targets_require_lookup_identity_and_exclude_current_ir
     assert [target.content_id for target in targets] == [eligible_id]
 
 
-def test_typed_lookup_that_does_not_match_stable_content_identity_is_not_eligible(
+def test_typed_lookup_that_does_not_match_stable_content_identity_is_eligible(
     runtime,
 ) -> None:  # type: ignore[no-untyped-def]
     batch_id, job_id, attempt_id, artifact_id = _seed_batch(runtime)
@@ -301,7 +301,10 @@ def test_typed_lookup_that_does_not_match_stable_content_identity_is_not_eligibl
 
     targets = _read_targets(runtime, batch_id=batch_id, identity=_CURRENT_ANALYSIS_IDENTITY)
 
-    assert [target.content_id for target in targets] == [eligible_id]
+    assert {target.content_id for target in targets} == {eligible_id, mismatched_id}
+    mismatched = next(target for target in targets if target.content_id == mismatched_id)
+    assert mismatched.lookup_id_type == "note_id"
+    assert mismatched.lookup_value == "real-provider-note-id"
 
 
 def test_stale_irrelevant_analysis_does_not_block_supplement_target(runtime) -> None:  # type: ignore[no-untyped-def]

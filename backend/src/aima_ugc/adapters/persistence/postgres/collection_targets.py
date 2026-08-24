@@ -260,17 +260,16 @@ def _lookup_identity(
     支持二者不同，需要先实现显式 Resolver/身份合并和 Runtime lookup 参数传递。
     """
 
-    stable_lookup = _legacy_tikhub_lookup(
-        platform=platform,
-        external_content_id=external_content_id,
-    )
     for id_type in _LOOKUP_ID_PRIORITY[platform]:
         value = alternate_ids.get(id_type)
-        if value and stable_lookup == (id_type, value):
+        if value:
             return id_type, value
     if not has_tikhub_source:
         return None
-    return stable_lookup
+    return _legacy_tikhub_lookup(
+        platform=platform,
+        external_content_id=external_content_id,
+    )
 
 
 def _legacy_tikhub_lookup(
