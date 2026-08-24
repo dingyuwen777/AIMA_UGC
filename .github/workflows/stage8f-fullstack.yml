@@ -1,13 +1,25 @@
-name: Stage 8F Full-stack Acceptance
+name: Full-stack Acceptance
 
 on:
   pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - "docs/**"
+      - "changes/**"
   push:
     branches:
       - main
+    paths-ignore:
+      - "docs/**"
+      - "changes/**"
 
 permissions:
   contents: read
+
+concurrency:
+  group: fullstack-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   excel-browser-fullstack:
