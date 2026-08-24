@@ -13,6 +13,10 @@ from aima_ugc.contracts.http import (
     ContentListResponse,
     JobStatusResponse,
 )
+from aima_ugc.contracts.relevance_review import (
+    ContentRelevanceReviewRequest,
+    ContentRelevanceReviewResponse,
+)
 
 from .content_cursor import InvalidContentCursor
 
@@ -40,6 +44,13 @@ class ContentHttpService(Protocol):
         *,
         request_id: str,
     ) -> ContentAnalysisCreatedResponse: ...
+
+    def review_relevance(
+        self,
+        request: ContentRelevanceReviewRequest,
+        *,
+        request_id: str,
+    ) -> ContentRelevanceReviewResponse: ...
 
     def get_analysis_job(self, job_id: UUID) -> JobStatusResponse: ...
 
