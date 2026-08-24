@@ -64,6 +64,8 @@ class ContentReadRecord:
     share_url: str | None
     metrics: dict[str, int | None]
     analysis: ContentAnalysisRead
+    effective_relevance: str | None
+    relevance_source: str | None
     source: ContentSourceRead
 
 
