@@ -194,6 +194,7 @@ analysis_content_results
 analysis_content_requests
 analysis_content_request_items
 analysis_content_label_pairs
+analysis_content_relevance_reviews
 ```
 
 ### PostgreSQL Repository
@@ -305,7 +306,7 @@ AI 层：
 
 当前 `contents` 没有 `is_relevant` AI 投影列。
 
-数据库默认业务列表/查询型 Analysis target/查询型 Export 会按当前 Analysis relevance 语义处理已经判定 irrelevant 的内容；显式审计查询仍可读取 Analysis 事实。
+模型原始 `analysis_content_results.relevance` 是不可被人工复核覆盖的审计事实。当前允许用户把同一 Content Version 的 AI `irrelevant` 人工纳入相关业务集合，决定保存到 `analysis_content_relevance_reviews`。默认业务列表、`relevance` 筛选、查询型 Analysis target 和查询型 Export 都复用 `PostgresContentQueryRepository` 的有效相关性：当前版本有人工作为 `relevant` 时优先采用人工决定，否则采用 AI relevance。Content 新版本不会继承旧人工决定。
 
 ---
 
