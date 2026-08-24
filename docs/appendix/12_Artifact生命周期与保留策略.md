@@ -1,45 +1,42 @@
 # Artifact 生命周期与保留策略
 
-本文说明 AIMA_UGC 当前对服务器 Artifact 字节的保留、过期和自动清理规则。
+本文说明 AIMA_UGC 当前对服务器 Artifact **文件字节**的保留、过期和自动清理规则。
 
-长期边界仍由：
+长期边界仍由以下文档控制：
 
 - [`../blueprint/03_数据库与文件存储.md`](../blueprint/03_数据库与文件存储.md)
 - [`../blueprint/05_日志安全部署与运维.md`](../blueprint/05_日志安全部署与运维.md)
 
-控制。本文只解释当前已经实现的 Artifact Lifecycle 细节。
+本文只解释当前 Artifact Lifecycle 的实现细节。
 
 ---
 
-## 1. 先区分“业务事实”和“文件字节”
+## 1. 清理文件字节，不删除业务事实
 
-当前系统继续遵守：
+当前边界保持不变：
 
 ```text
 PostgreSQL
 → Content / Comment / Version / Metric
 → Job / Run / Import Batch / Export 父事实
 → Provider Request / Attempt
-→ Artifact metadata / 业务关系
+→ Artifact metadata / 来源关系
 
 ArtifactStore
 → Provider Raw
-→ Excel 上传原文件
+→ Excel 上传源文件
 → Excel 导出文件
 → 其他大文件字节
 ```
 
-Artifact 到期清理只删除 **ArtifactStore 中的字节**，不会因为文件过期而删除：
+Artifact 到期时只删除 ArtifactStore 中的字节，不因为文件过期删除 Content、Comment、Analysis、Import Batch、Export 请求、Provider Request/Attempt 或 Artifact metadata。
 
-- Content / Comment；
-- Content Version / Metric；
-- Import Batch；
-- Export 请求记录；
-- Provider Request / Attempt；
-- Analysis；
-- Artifact 元数据和已有来源关系。
+所以：
 
-因此“文件已经过期”不等于“这次导入、导出或采集的历史不存在”。
+```text
+文件已过期
+≠ 导入/导出/采集历史被删除
+```
 
 ---
 
@@ -47,12 +44,12 @@ Artifact 到期清理只删除 **ArtifactStore 中的字节**，不会因为文�
 
 | Artifact | `kind` | 保留起点 | 字节保留期限 | 过期后 |
 | --- | --- | --- | ---: | --- |
-| TikHub Provider Raw | `provider-raw` | Raw Artifact 创建/存储时 | 30 天 | 删除 Raw 字节，保留 Provider/Content 来源事实与 Artifact metadata |
-| Excel 上传源文件 | `file-import.raw` | Import Batch 进入终态时 | 7 天 | 删除原始 Excel 字节，保留 Batch、已入库数据和来源事实 |
-| Excel 正式导出文件 | `content-export.xlsx` | 导出文件生成完成时 | 7 天 | 下载失效并删除 Excel 字节，保留 Export 请求和统计；需要时重新导出 |
-| 未建立业务引用的 Excel Import/Export Artifact | 上述两种 Excel kind | 创建后 | 1 天 | 作为孤儿字节清理 |
+| TikHub Provider Raw | `provider-raw` | Artifact 创建时 | 30 天 | 删除 Raw 字节，保留来源和元数据 |
+| Excel 上传源文件 | `file-import.raw` | Import 任务进入终态时 | 7 天 | 删除原始 Excel 字节，保留 Batch、入库数据和来源事实 |
+| Excel 正式导出文件 | `content-export.xlsx` | Export `completed_at` | 7 天 | 下载失效并删除 Excel 字节，保留 Export 请求和统计 |
+| 未建立业务引用的 Excel Import/Export Artifact | 上述两种 Excel kind | Artifact 创建后 | 1 天 | 作为孤儿字节清理 |
 
-这里的“Import Batch 终态”包括：
+这里的 Import 终态包括：
 
 ```text
 succeeded
@@ -60,47 +57,34 @@ failed
 cancelled
 ```
 
-Import 仍处于 queued/running/retry 期间时，源 Excel **没有 7 天倒计时**，因为 Worker 需要依赖这个 Artifact 完成重试和恢复。
+Import 仍处于 queued/running/retry 时不启动 7 天倒计时，因为 Worker 仍可能依赖源 Artifact 重试。
 
 ---
 
-## 3. 为什么 Provider Raw 不使用“1 天孤儿”规则
+## 3. 为什么 Provider Raw 不套用 1 天孤儿规则
 
-Provider Dispatch 存在崩溃恢复窗口：
+Provider Dispatch 有真实崩溃恢复窗口：
 
 ```text
 HTTP 已返回
-→ Raw bytes 已写入 ArtifactStore
+→ Raw bytes 已写 ArtifactStore
 → Artifact metadata = stored
-→ 进程在 Provider Attempt + Artifact 联动提交前崩溃
+→ 进程在 Attempt + Artifact 联动提交前崩溃
 ```
 
-此时 Provider Recovery 会根据确定性 `storage_key` 找回尚未 linked 的 Raw，并继续收敛 Attempt。
-
-所以不能写成：
+Recovery 会按确定性 `storage_key` 找回尚未 linked 的 Raw。因此不能把：
 
 ```text
-所有 stored 且 1 天未 linked
-→ 删除
+stored 超过 1 天
 ```
 
-否则会破坏 Provider Recovery。
-
-当前规则是：
-
-```text
-provider-raw
-→ 不进入 1 天 Excel 孤儿规则
-→ 只按 30 天正式保留期清理
-```
-
-这比按 `storage_status=stored` 机械判定“孤儿”更安全。
+机械等同于“孤儿”。当前 `provider-raw` 只按 30 天正式保留期清理，不进入 Excel Import/Export 的 1 天孤儿规则。
 
 ---
 
-## 4. Artifact 状态机
+## 4. Artifact 删除状态机
 
-当前 `artifacts.storage_status` 已经支持：
+当前状态机继续复用已有字段：
 
 ```text
 pending
@@ -113,142 +97,146 @@ pending
 → error
 ```
 
-清理不是“数据库和文件一次事务删除”，因为文件系统 I/O 不能和 PostgreSQL 形成真正原子事务。
-
-实际流程：
+文件系统和 PostgreSQL 不能组成真正的原子事务，所以清理分三步：
 
 ```text
 1. PostgreSQL 短事务
-   stored / linked
-   → delete_pending
+   stored / linked → delete_pending
 
 2. 事务外
    ArtifactStore.delete(storage_key)
 
 3. 删除成功后 PostgreSQL 短事务
-   delete_pending
-   → deleted
+   delete_pending → deleted
    + deleted_at
 ```
 
-如果第 2 步失败：
+实体删除失败时保留 `delete_pending`，后续 housekeeping 重试；不能在文件删除失败时先伪造 `deleted`。
 
-```text
-delete_pending 保持不变
-→ 后续 housekeeping 重试
-```
-
-绝不能出现：
-
-```text
-实体文件删除失败
-但数据库先写 deleted
-```
-
-否则会制造“数据库说文件不存在、磁盘却还占空间”的假状态。
-
-Local ArtifactStore 的 `delete()` 是幂等的：上一次实例已经删掉实体文件、但在写 `deleted` 前崩溃时，下一次重试删除同一个不存在的文件仍视为成功，然后继续收敛元数据。
+Local ArtifactStore 的 `delete()` 是幂等的。如果实例已经删掉文件、但在写 `deleted` 前崩溃，下次重复删除不存在的文件仍视为成功，然后继续收敛元数据。
 
 ---
 
-## 5. `expires_at` 如何产生
+## 5. `expires_at` 如何确定
 
-### 5.1 新 Provider Raw
+### Provider Raw
 
-创建 Artifact 时直接写：
+新 `provider-raw` 创建时即可写：
 
 ```text
 expires_at = created_at + 30 days
 ```
 
-### 5.2 新 Excel Export
+历史 Raw 如果 `expires_at` 为空，由 housekeeping 使用 `stored_at`，必要时回退 `created_at`，补齐 30 天截止时间。
 
-导出 Artifact 生成时直接写：
+### Excel Import
 
-```text
-expires_at = created_at + 7 days
-```
-
-`created_at` 与实际导出完成阶段只相差文件持久化/关联所需的极短时间，当前不为此再增加一套第二截止时间字段。
-
-### 5.3 Excel Import
-
-上传时不立即写 7 天截止时间：
-
-```text
-上传
-→ expires_at = null
-→ Worker 允许持续重试
-
-Batch finished_at 出现
-→ expires_at = finished_at + 7 days
-```
-
-### 5.4 历史 Artifact
-
-上线该能力前已经存在的 Artifact 可能：
+上传时：
 
 ```text
 expires_at = null
 ```
 
-Scheduler housekeeping 会幂等补齐：
+任务仍运行时保持为空。任务终态后使用：
 
 ```text
-历史 provider-raw
-→ stored_at / created_at + 30 days
-
-历史 content-export.xlsx
-→ stored_at / created_at + 7 days
-
-历史 file-import.raw
-→ 对应 processing_import_batches.finished_at + 7 days
+Import terminal_at + 7 days
 ```
 
-因此部署该版本后，**已经超过新保留期限的历史文件可能在第一次或后续 housekeeping 中立即进入清理**。这是用户已确认保留策略的正常结果，不是延迟 30/7 天后才从新版本部署日开始计算。
+`terminal_at` 优先使用 `processing_import_batches.finished_at`；如果 Batch 因取消语义没有独立结束时间，则使用对应终态 Job 的 `finished_at`。只要同一个输入 Artifact 仍有未终态 Import 引用，就不会开始清理倒计时。
 
-生产升级前如果仍需要保留某些超期历史字节，应先按生产 Backup/Restore 方案另行留存；不能依赖回滚代码恢复已经删除的文件。
+### Excel Export
+
+创建文件时先保持：
+
+```text
+expires_at = null
+```
+
+Export 成功关联 Artifact 后，由 housekeeping 使用：
+
+```text
+reporting_data_exports.completed_at + 7 days
+```
+
+前端也使用同一个公开 `completed_at + 7 天` 规则，因此界面显示的“下载有效期至”与后端实际清理/下载拒绝时间一致。
+
+### 历史 Artifact
+
+上线前已经存在且 `expires_at = null` 的正式 Artifact 会按上述同一规则幂等补齐。
+
+因此部署该版本后，已经超过新保留期限的历史文件可能在首次或后续 housekeeping 中立即进入清理。回滚代码不能恢复已经删除的字节；生产部署前如需另行保留超期历史文件，应先按正式 Backup/Restore 方案处理。
 
 ---
 
-## 6. Housekeeping 如何运行
+## 6. Housekeeping 怎样运行
 
-当前不新增 Cron Sidecar、Celery、Redis 或独立 Cleanup Service。
-
-复用已有 Scheduler 进程：
+不新增 Cron Sidecar、Celery、Redis 或独立 Cleanup Service，复用已有 Scheduler 进程：
 
 ```text
 Scheduler 主循环
-→ Collection Plan tick 仍按原频率执行
-→ Artifact housekeeping 最多每小时执行一次
+→ Collection Plan tick 保持原逻辑
+→ Artifact housekeeping 最多每小时一次
 ```
 
-Housekeeping 每次：
+每轮：
 
 ```text
 补齐历史 expires_at
 → 查询有限数量候选
-→ 逐条 CAS 认领 delete_pending
+→ CAS 认领 delete_pending
 → 事务外删文件
 → mark_deleted
-→ 失败留待下次重试
+→ 失败留待后续重试
 ```
 
-一次候选数量有界，避免在一个 Scheduler tick 内无界扫描/删除大量历史文件。
+housekeeping 属于辅助运维任务。它自身发生未预期异常时会记录 `artifact.cleanup.failed`，但不能终止 Collection Scheduler 主循环。
 
-清理日志使用现有结构化日志体系，主要事件：
+主要日志事件：
 
 ```text
 artifact.cleanup.completed
+artifact.cleanup.failed
 artifact.cleanup.delete_failed
 artifact.cleanup.backend_mismatch
 ```
 
-不记录 Raw 内容、Excel 内容、Secret 或用户敏感 Payload。
+日志不得记录 Raw、Excel 内容、Secret 或未脱敏业务 Payload。
 
 ---
 
-## 7. Excel Import 前端怎样显示
+## 7. 写入确认失败时为什么不能直接删文件
+
+Artifact 写入是分阶段的：
+
+```text
+metadata pending
+→ Store 写字节
+→ metadata mark_stored
+```
+
+`mark_stored` 报错并不一定表示数据库没有提交；可能是数据库已经提交，但调用方没有收到确认。
+
+因此规则是：
+
+```text
+mark_stored 失败
+→ 尝试 pending → error 的 CAS
+
+CAS 成功
+→ 能证明 stored 没有提交
+→ 可以安全回收刚写入的字节
+
+CAS 失败/结果未知
+→ 不能证明 metadata 仍是 pending
+→ 保留字节，不冒险删除可能已经正式 stored 的 Artifact
+```
+
+这个边界优先保证不丢数据，而不是为了清理磁盘在未知事务结果下猜测状态。
+
+---
+
+## 8. Excel Import 前端显示
 
 现有入口：
 
@@ -258,25 +246,25 @@ artifact.cleanup.backend_mismatch
 → 批次详情
 ```
 
-当前展示规则：
+显示规则：
 
 ```text
 任务未终态
-→ “源 Excel 会在任务进入终态后继续保留 7 天”
+→ 源 Excel 会在任务进入终态后继续保留 7 天
 
-任务已终态、尚未到期
-→ 显示精确“保留至 YYYY-MM-DD HH:mm”
+任务终态且未过期
+→ 显示精确“源 Excel 保留至 …”
 
-已经超过保留期
-→ 提示原文件进入自动清理
-→ 同时明确 Batch、入库数据、来源元数据仍保留
+超过 7 天
+→ 显示源文件已进入自动清理
+→ 同时说明 Batch、入库数据、来源元数据继续保留
 ```
 
-前端截止时间来自现有公开 Contract 的 `finished_at + 7 天`，不新增第二套 API 字段。
+截止时间基于现有公开 Contract 的 `finished_at + 7 天`，不新增平行 Response 字段。
 
 ---
 
-## 8. Excel Export 前端怎样显示
+## 9. Excel Export 前端显示
 
 现有入口：
 
@@ -285,99 +273,65 @@ artifact.cleanup.backend_mismatch
 → 导出记录
 ```
 
-当前展示：
+显示：
 
 ```text
-导出成功且未到期
-→ “下载有效期至 …”
+成功且未到期
+→ 下载有效期至 …
 → 下载按钮可用
 
 超过 completed_at + 7 天
-→ “下载已过期”
+→ 下载已过期
 → 下载按钮禁用
-→ 用户可以重新创建导出
+→ 用户可重新创建导出
 ```
 
-后端下载接口同时执行 7 天有效期判断，所以即使绕过前端直接请求过期下载 URL，也不会继续提供过期 Artifact。
+后端下载接口同时执行 7 天有效期判断，因此直接绕过前端请求过期下载也不会继续得到文件。
 
-当前为保持公共 Error Contract 兼容，过期的直接下载仍走既有 `DataExportNotReady` 失败边界；前端会在请求前给出更明确的“已过期”状态。
+为保持既有 Error Contract，过期直接下载继续走 `DataExportNotReady`；前端负责给业务用户显示更明确的“已过期”。
+
+TikHub Provider Raw 是后台采集审计/排障证据，不新增普通业务前端入口。
 
 ---
 
-## 9. 关键代码位置
-
-保留策略：
+## 10. 关键代码
 
 ```text
+保留策略
 backend/src/aima_ugc/platform/storage/retention.py
-```
 
-Artifact 状态/Port/Service：
+Artifact Port / Service
+backend/src/aima_ugc/platform/storage/
 
-```text
-backend/src/aima_ugc/platform/storage/models.py
-backend/src/aima_ugc/platform/storage/ports.py
-backend/src/aima_ugc/platform/storage/service.py
-```
-
-Local Store：
-
-```text
+Local Store
 backend/src/aima_ugc/adapters/storage/local/store.py
-```
 
-PostgreSQL 元数据/清理候选：
-
-```text
+PostgreSQL 生命周期
 backend/src/aima_ugc/adapters/persistence/postgres/artifact_metadata.py
-```
 
-Housekeeping：
-
-```text
+Housekeeping
 backend/src/aima_ugc/bootstrap/artifact_cleanup.py
 backend/src/aima_ugc/entrypoints/scheduler_main.py
-```
 
-Excel Import 前端：
-
-```text
+Excel Import UI
 frontend/src/features/import-batches/pages/CollectionRuntimePage/components/ImportBatchDetailDrawer.vue
-```
 
-Excel Export 前端：
-
-```text
+Excel Export UI
 frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/DataExportDialog.vue
-```
 
-共享前端期限计算：
-
-```text
+前端期限计算
 frontend/src/shared/artifactRetention.ts
 ```
 
 ---
 
-## 10. 修改这些规则时的门禁
+## 11. 修改保留策略的门禁
 
-保留期限和删除语义属于不可逆数据行为。
-
-以后如果要修改：
+30 天、7 天、1 天、保留起点和删除范围都属于不可逆数据行为。以后修改必须先确认业务决定，并同步：
 
 ```text
-30 天
-7 天
-1 天
-删除对象范围
-保留起点
-```
-
-必须先确认业务决定，再同步：
-
-```text
-Artifact retention policy
-→ PostgreSQL cleanup query/state flow
+Retention Policy
+→ PostgreSQL lifecycle query/state
 → Scheduler housekeeping
 → Backend download behavior
 → Frontend copy/state
@@ -389,27 +343,20 @@ Artifact retention policy
 
 ---
 
-## 11. 与 Backup/Restore 的关系
+## 12. 与 Backup/Restore 的关系
 
-Artifact Retention 解决的是：
+Artifact Retention 解决：
 
-> 在线运行目录不要无限增长。
+> 在线运行目录不能无限增长。
 
-它不等于生产 Backup/Restore。
-
-生产协调恢复仍要求：
+它不等于生产 Backup/Restore。生产协调恢复仍要求：
 
 ```text
-PostgreSQL
-+ ArtifactStore
+PostgreSQL + ArtifactStore
 → 协调 Backup Set
 ```
 
-已经过 Retention 正常删除的在线 Artifact 不应因为数据库 metadata 仍保留，就被误认为可以从在线 Store 恢复。
-
-完整 Production Backup/Restore 仍按：
+完整生产恢复仍按以下文档推进：
 
 - [`11_生产部署与离线Release方案.md`](11_生产部署与离线Release方案.md)
 - [`../roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)
-
-推进。

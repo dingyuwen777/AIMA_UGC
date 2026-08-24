@@ -20,20 +20,26 @@ def _export(completed_at: datetime) -> DataExportRecord:
 def test_export_download_fails_closed_after_retention_window() -> None:
     completed_at = datetime(2000, 1, 1, tzinfo=UTC)
 
-    assert _export_expired(
-        _export(completed_at),
-        expires_at=None,
-        stored_at=completed_at,
-        created_at=completed_at,
-    ) is True
+    assert (
+        _export_expired(
+            _export(completed_at),
+            expires_at=None,
+            stored_at=completed_at,
+            created_at=completed_at,
+        )
+        is True
+    )
 
 
 def test_export_download_remains_available_before_retention_deadline() -> None:
     completed_at = datetime(2099, 1, 1, tzinfo=UTC)
 
-    assert _export_expired(
-        _export(completed_at),
-        expires_at=None,
-        stored_at=completed_at,
-        created_at=completed_at,
-    ) is False
+    assert (
+        _export_expired(
+            _export(completed_at),
+            expires_at=None,
+            stored_at=completed_at,
+            created_at=completed_at,
+        )
+        is False
+    )

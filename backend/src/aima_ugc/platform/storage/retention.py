@@ -14,14 +14,14 @@ ORPHAN_RETENTION = timedelta(days=1)
 
 _INITIAL_RETENTION_BY_KIND = {
     "provider-raw": PROVIDER_RAW_RETENTION,
-    "content-export.xlsx": EXPORT_RETENTION,
 }
 
 
 def initial_artifact_expiry(kind: str, created_at: datetime) -> datetime | None:
     """返回创建时即可确定的字节过期时间。
 
-    Excel Import 必须等 Batch 进入终态后再开始 7 天保留期，因此这里故意返回 None。
+    Provider Raw 创建时即可开始 30 天保留期。Excel Import 必须等任务终态，
+    Excel Export 必须等 Export 完成，因此两者在业务父事实终态后再补 expires_at。
     """
 
     if created_at.utcoffset() is None:
@@ -31,7 +31,7 @@ def initial_artifact_expiry(kind: str, created_at: datetime) -> datetime | None:
 
 
 def import_source_expiry(finished_at: datetime) -> datetime:
-    """Excel Import 源文件从 Batch 终态时间开始保留 7 天。"""
+    """Excel Import 源文件从任务终态时间开始保留 7 天。"""
 
     if finished_at.utcoffset() is None:
         raise ValueError("Import finished_at 必须包含时区")

@@ -88,7 +88,9 @@ class PostgresArtifactMetadataRepository:
 
     def get(self, artifact_id: UUID) -> ArtifactRecord | None:
         row = (
-            self._session.execute(select(artifacts_table).where(artifacts_table.c.id == artifact_id))
+            self._session.execute(
+                select(artifacts_table).where(artifacts_table.c.id == artifact_id)
+            )
             .mappings()
             .one_or_none()
         )
@@ -178,19 +180,24 @@ class PostgresArtifactMetadataRepository:
                 )
             )
         )
+
+        export_completed_at = (
+            select(reporting_data_exports_table.c.completed_at)
+            .where(
+                reporting_data_exports_table.c.artifact_id == artifacts_table.c.id,
+                reporting_data_exports_table.c.completed_at.is_not(None),
+            )
+            .scalar_subquery()
+        )
         export_result = self._session.execute(
             update(artifacts_table)
             .where(
                 artifacts_table.c.kind == "content-export.xlsx",
                 artifacts_table.c.expires_at.is_(None),
                 artifacts_table.c.storage_status.in_(mutable_statuses),
+                export_completed_at.is_not(None),
             )
-            .values(
-                expires_at=(
-                    func.coalesce(artifacts_table.c.stored_at, artifacts_table.c.created_at)
-                    + EXPORT_RETENTION
-                )
-            )
+            .values(expires_at=export_completed_at + EXPORT_RETENTION)
         )
 
         terminal_statuses = ("succeeded", "failed", "cancelled")
