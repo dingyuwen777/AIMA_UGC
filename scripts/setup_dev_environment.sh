@@ -16,6 +16,8 @@ DOCKER_COMPOSE_VERSION="5.4.0"
 CONTAINERD_RPM_VERSION="2.3.3-1.el9"
 BUILDX_RPM_VERSION="0.36.1-1.el9"
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+DOCKER_MIRROR_CONFIG="${SCRIPT_DIR}/config/docker_hub_mirrors.txt"
 TOOLCHAIN_ROOT="${TOOLCHAIN_ROOT:-/opt/aima-ugc/toolchain}"
 DOCKER_DATA_ROOT="${DOCKER_DATA_ROOT:-/data/docker}"
 CACHE_ROOT="${CACHE_ROOT:-/data/cache}"
@@ -35,6 +37,7 @@ LOCK_PATH="/run/lock/aima-ugc-bootstrap.lock"
 AIMA_RUNTIME_STOPPED=0
 declare -a STOPPED_UNITS=()
 declare -a STOPPED_CONTAINERS=()
+declare -a DOCKER_REGISTRY_MIRRORS=()
 SMOKE_CONTAINER_NAME=""
 
 PYTHON_SOURCE_URL="https://mirrors.tuna.tsinghua.edu.cn/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tar.xz"
@@ -44,11 +47,6 @@ NODE_SOURCE_URL="${NODE_BASE_URL}/${NODE_ARCHIVE}"
 NPM_REGISTRY="https://registry.npmmirror.com"
 PYPI_INDEX="https://pypi.tuna.tsinghua.edu.cn/simple"
 DOCKER_RPM_BASE="https://mirrors.aliyun.com/docker-ce/linux/centos"
-DOCKER_REGISTRY_MIRRORS=(
-  "https://docker.1panel.live"
-  "https://hub.1panel.dev"
-  "https://docker.m.daocloud.io"
-)
 CENTOS_STREAM_BASE="https://mirrors.aliyun.com/centos-stream/9-stream"
 
 log() {
@@ -58,6 +56,25 @@ log() {
 die() {
   log "错误：$*" >&2
   exit 1
+}
+
+load_docker_registry_mirrors() {
+  [[ -r "${DOCKER_MIRROR_CONFIG}" ]] || die "缺少 Docker Hub mirror 配置：${DOCKER_MIRROR_CONFIG}"
+  mapfile -t DOCKER_REGISTRY_MIRRORS < <(
+    sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' "${DOCKER_MIRROR_CONFIG}" \
+      | awk 'NF && $1 !~ /^#/'
+  )
+  (( ${#DOCKER_REGISTRY_MIRRORS[@]} > 0 )) || die "Docker Hub mirror 配置为空：${DOCKER_MIRROR_CONFIG}"
+
+  local mirror
+  local -A seen=()
+  for mirror in "${DOCKER_REGISTRY_MIRRORS[@]}"; do
+    [[ "${mirror}" == https://* && "${mirror}" != *[[:space:]]* ]] || \
+      die "Docker Hub mirror 必须是无空格的 HTTPS URL：${mirror}"
+    [[ -z "${seen[${mirror}]+x}" ]] || die "Docker Hub mirror 配置存在重复项：${mirror}"
+    seen["${mirror}"]=1
+  done
+  log "已读取 Docker Hub mirror 配置：${DOCKER_MIRROR_CONFIG}（${#DOCKER_REGISTRY_MIRRORS[@]} 个）"
 }
 
 require_root_and_platform() {
@@ -566,6 +583,7 @@ on_exit() {
 
 main() {
   require_root_and_platform
+  load_docker_registry_mirrors
   exec 9>"${LOCK_PATH}"
   flock -n 9 || die "另一个 AIMA_UGC 初始化任务正在运行。"
   require_resources

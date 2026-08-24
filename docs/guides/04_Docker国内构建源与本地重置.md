@@ -50,13 +50,21 @@ Debian / PyPI / npm
 
 ## 3. Docker Hub 国内 registry mirrors
 
-AIMA 首次环境初始化使用以下 Docker Hub mirror 候选：
+Docker Hub mirror 列表的唯一仓库配置源是：
 
 ```text
-https://docker.1panel.live
-https://hub.1panel.dev
-https://docker.m.daocloud.io
+scripts/config/docker_hub_mirrors.txt
 ```
+
+配置规则：
+
+```text
+每个非空、非 # 注释行 = 一个 HTTPS mirror
+文件顺序 = registry-mirrors 顺序
+Windows 与 Linux 初始化脚本共同读取这一份配置
+```
+
+增删 mirror 或调整顺序时，只修改该文件。脚本、测试和文档不维护第二份 URL 列表。
 
 Docker Engine 同时设置：
 
@@ -64,7 +72,7 @@ Docker Engine 同时设置：
 "max-download-attempts": 5
 ```
 
-这些公共 mirrors 是外部网络服务，可能受到地域、限流、维护或上游状态影响。AIMA 使用多个候选入口与 Docker 下载重试降低单点风险；只要可用下载通道存在，项目 image reference 都保持官方名称。
+公共 mirrors 是外部网络服务，可能受到地域、限流、维护或上游状态影响。AIMA 使用多个候选入口与 Docker 下载重试降低单点风险；项目 image reference 始终保持官方名称。
 
 ### Windows
 
@@ -74,13 +82,13 @@ Docker Engine 同时设置：
 scripts\setup_dev_environment.cmd
 ```
 
-Docker Desktop 已安装时，脚本会把 mirrors 合并到当前用户的 Docker Engine 配置：
+Docker Desktop 已安装时，脚本读取统一 mirror 配置，并把 mirrors 合并到当前用户的 Docker Engine 配置：
 
 ```text
 %USERPROFILE%\.docker\daemon.json
 ```
 
-现有 Docker Engine 其他配置会保留；文件已存在时先生成备份。随后脚本执行 Docker Desktop restart，并通过 `docker info` 验证 mirrors 已实际生效。Docker Desktop 未安装时会明确提示；安装后重新运行该命令即可。
+现有 Docker Engine 其他配置会保留；文件已存在时先生成时间戳备份。随后脚本执行 Docker Desktop restart，并持续通过 `docker info` 检查实际 `RegistryConfig.Mirrors`。只有统一配置文件中的 mirrors 全部按顺序生效才继续；在有界等待时间内仍未生效则失败并输出恢复提示。
 
 ### CentOS Stream 9
 
@@ -90,7 +98,13 @@ Docker Desktop 已安装时，脚本会把 mirrors 合并到当前用户的 Dock
 sudo bash scripts/setup_dev_environment.sh
 ```
 
-脚本将 mirrors 与 `/data/docker` 等现有 Docker Engine 设置合并到：
+Linux 初始化脚本读取同一份：
+
+```text
+scripts/config/docker_hub_mirrors.txt
+```
+
+并将 mirrors 与 `/data/docker`、日志 driver/rotation 等既有 Docker Engine 设置合并到：
 
 ```text
 /etc/docker/daemon.json
@@ -104,7 +118,7 @@ sudo bash scripts/setup_dev_environment.sh
 docker info
 ```
 
-`Registry Mirrors` 应包含上面的候选地址。
+`Registry Mirrors` 应与 `scripts/config/docker_hub_mirrors.txt` 中的有效行一致。
 
 ---
 

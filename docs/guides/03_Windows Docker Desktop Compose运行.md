@@ -40,23 +40,23 @@ compose.yaml
 scripts\setup_dev_environment.cmd
 ```
 
-该入口负责 Windows 开发工具链；Docker Desktop 已安装时还会把 AIMA 默认 Docker Hub mirrors 合并到：
+Docker Hub mirror 列表的唯一仓库配置源是：
+
+```text
+scripts/config/docker_hub_mirrors.txt
+```
+
+该文件每个非空、非 `#` 注释行表示一个 HTTPS mirror，文件顺序就是配置到 Docker Engine 的 mirror 顺序。Windows 和 Linux 环境初始化都读取这一份配置；增删或调整 mirror 顺序只修改该文件。
+
+Docker Desktop 已安装时，初始化入口会读取该配置，并把 mirrors 合并到当前用户的 Docker Engine 配置：
 
 ```text
 %USERPROFILE%\.docker\daemon.json
 ```
 
-然后重启 Docker Desktop，并通过 `docker info` 验证实际生效。
+现有 Docker Engine 其他配置会保留；文件已存在时先生成时间戳备份。随后脚本重启 Docker Desktop，并持续通过 `docker info` 检查实际 `RegistryConfig.Mirrors`。只有预期 mirrors 全部按配置顺序生效才继续；在有界等待时间内仍未生效则失败，并保留备份路径供恢复。
 
-当前 mirrors：
-
-```text
-https://docker.1panel.live
-https://hub.1panel.dev
-https://docker.m.daocloud.io
-```
-
-Docker Desktop 未安装时脚本会明确提示跳过；安装后重新运行一次即可。
+Docker Desktop 未安装或 Desktop CLI 不可用时脚本会明确提示跳过；安装或修复后重新运行该命令即可。
 
 检查：
 
@@ -294,7 +294,7 @@ Windows named-volume override只属于开发机存储适配，不改变 Producti
 1. Windows GitHub Runner 可从 CMD / PowerShell 解析 `compose.yaml + compose.windows.yaml + env.production`；
 2. Linux Docker Engine 实际运行 Windows named-volume Runtime model，验证 bootstrap、PostgreSQL、Migration、Readiness、Secret mode 和重启持久化；
 3. Dockerfile / Compose 的镜像 identity 与包源配置由仓库单元测试约束；
-4. Windows GitHub Runner 对 `configure_docker_desktop_mirrors.ps1` 做 PowerShell 语法解析；真实 Docker Desktop mirror 应用由首次目标机初始化后的 `docker info` 验证。
+4. Windows GitHub Runner 对 `configure_docker_desktop_mirrors.ps1` 做 PowerShell 语法解析；统一 mirror 配置、Windows/Linux 消费关系和重启后有界验证由仓库测试约束，真实 Docker Desktop 应用结果由初始化脚本自身的 `docker info` 检查确认。
 
 真实 Windows Docker Desktop 首次初始化运行：
 
