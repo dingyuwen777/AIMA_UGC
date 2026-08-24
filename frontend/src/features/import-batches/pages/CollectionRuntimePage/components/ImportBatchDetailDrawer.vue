@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 
 import type { ImportBatchResponse, ImportStage } from '../../../../../generated/api/client'
+import { importSourceRetention } from '../../../../../shared/artifactRetention'
 import { elapsed, formatDateTime, formatNumber, shortId, stageLabels, statusLabels } from '../../../format'
 
 const props = defineProps<{ modelValue: boolean; item: ImportBatchResponse | null }>()
@@ -44,6 +45,12 @@ const terminalStageMessage = computed(() =>
     ? '任务已取消。当前公开 Contract 不保存足以可靠重建“取消前最后完成阶段”的历史，因此这里不把未知阶段伪装成等待中。'
     : '任务已失败。当前公开 Contract 不保存足以可靠重建“失败前最后完成阶段”的历史，因此这里不把未知阶段伪装成等待中。',
 )
+const sourceRetention = computed(() => importSourceRetention(props.item?.finished_at))
+const sourceRetentionText = computed(() => {
+  if (sourceRetention.value.expiresAt === null) return '源 Excel 会在任务进入终态后继续保留 7 天，处理和重试期间不会提前清理。'
+  if (sourceRetention.value.expired) return '源 Excel 已超过 7 天保留期并进入自动清理；批次、入库数据和来源元数据继续保留。'
+  return `源 Excel 保留至 ${formatDateTime(sourceRetention.value.expiresAt)}；到期后只清理文件字节。`
+})
 </script>
 
 <template>
@@ -110,6 +117,12 @@ const terminalStageMessage = computed(() =>
               <div><span>Attempt</span><strong>{{ item.job.attempt }} / {{ item.job.max_attempts }}</strong></div>
               <div><span>总耗时</span><strong>{{ elapsed(item.started_at, item.finished_at) }}</strong></div>
             </div>
+            <p
+              class="retention-note"
+              :class="{ 'retention-note--expired': sourceRetention.expired }"
+            >
+              {{ sourceRetentionText }}
+            </p>
             <div class="progress-panel">
               <div><strong>总体进度</strong><span>{{ item.job.progress }}%</span></div><div class="detail-progress">
                 <span :style="{ width: `${item.job.progress}%` }" />
@@ -247,6 +260,8 @@ const terminalStageMessage = computed(() =>
 .fact-grid--single > div { border-right: 0; }
 .fact-grid--single > div:nth-last-child(-n + 2) { border-bottom: 1px solid var(--aima-border); }
 .fact-grid--single > div:last-child { border-bottom: 0; }
+.retention-note { margin: 12px 0 0; padding: 11px 12px; border: 1px solid #e2d7a4; border-radius: 6px; color: #6e5c20; background: #fffaf0; font-size: 12px; line-height: 1.6; }
+.retention-note--expired { border-color: #ffc7cc; color: #b4232d; background: #fff5f6; }
 .progress-panel { margin: 14px 0; padding: 14px; border: 1px solid var(--aima-border); border-radius: 8px; }
 .progress-panel > div { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 13px; }
 .detail-progress { height: 7px; overflow: hidden; border-radius: 5px; background: #edf1f7; }
