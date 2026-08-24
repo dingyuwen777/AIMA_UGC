@@ -71,12 +71,9 @@ def test_current_schema_preserves_job_collection_and_provider_invariants() -> No
             item["name"] for item in inspector.get_check_constraints("provider_requests")
         }
         attempt_checks = {
-            item["name"]
-            for item in inspector.get_check_constraints("provider_request_attempts")
+            item["name"] for item in inspector.get_check_constraints("provider_request_attempts")
         }
-        request_indexes = {
-            item["name"] for item in inspector.get_indexes("provider_requests")
-        }
+        request_indexes = {item["name"] for item in inspector.get_indexes("provider_requests")}
         attempt_indexes = {
             item["name"] for item in inspector.get_indexes("provider_request_attempts")
         }
@@ -102,10 +99,12 @@ def test_current_schema_preserves_job_collection_and_provider_invariants() -> No
         assert ("id", "provider_request_id") in attempt_uniques, attempt_uniques
         assert "ck_provider_requests_request_fingerprint_sha256" in request_checks, request_checks
         assert "ck_provider_requests_status_allowed" in request_checks, request_checks
-        assert (
-            "ck_provider_request_attempts_dispatch_times_consistent" in attempt_checks
-        ), attempt_checks
-        assert "ck_provider_request_attempts_billing_status_allowed" in attempt_checks, attempt_checks
+        assert "ck_provider_request_attempts_dispatch_times_consistent" in attempt_checks, (
+            attempt_checks
+        )
+        assert "ck_provider_request_attempts_billing_status_allowed" in attempt_checks, (
+            attempt_checks
+        )
         assert "ix_provider_requests_scope_id_created_at" in request_indexes, request_indexes
         assert "ix_provider_attempts_dispatch_status_started_at" in attempt_indexes, attempt_indexes
         assert "ix_provider_request_attempts_completed_at" in attempt_indexes, attempt_indexes

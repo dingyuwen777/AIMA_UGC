@@ -76,18 +76,12 @@ def _assert_collection_without_provider_persistence(inspector: object) -> None:
 
 
 def _assert_pre_dispatch_provider_schema(inspector: object) -> None:
-    checks = {
-        item["name"]
-        for item in inspector.get_check_constraints("provider_requests")
-    }
+    checks = {item["name"] for item in inspector.get_check_constraints("provider_requests")}
     assert "ck_provider_requests_status_allowed" not in checks, checks
 
 
 def _assert_pre_coverage_columns(inspector: object) -> None:
-    columns = {
-        item["name"]
-        for item in inspector.get_columns("comment_coverage_observations")
-    }
+    columns = {item["name"] for item in inspector.get_columns("comment_coverage_observations")}
     assert "sample_mode" not in columns, columns
     assert "sort_mode" not in columns, columns
     assert "target_count" not in columns, columns
