@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260824-excel-tikhub-comment-identity
 title: Excel 与 TikHub 内容身份和评论补采定位统一
 level: L3
-status: ready_for_review
+status: done
 owner: aima
 branch: feature/excel-tikhub-identity-alignment
 created: 2026-08-24
@@ -122,7 +122,7 @@ data_changes:
 - 快手真实 Search 诊断 Run `32685203168`：仅 1 次请求，证明同一条 Raw 同时返回数字内部 `photo_id` 与公开 `share_info.photoId(3x...)`，且二者不同。
 - 快手修复后原 Excel Probe Run `32686063018`：原 Excel row 101，Detail HTTP 200、Comments HTTP 200，稳定 Content/评论父级一致，数字 Provider photo_id 被保留，请求数 2。
 - Runner 提交 `88047397880f13599d80a06934607ac9030371bc` 前执行快手目标 Unit、相关 Operation/真实形状 Mapper、Ruff、mypy；未通过不会产生该验证提交。
-- 更早正式候选 `361e614c3ccf0d1e122a547456132fe54652a2f8` 的永久 CI 除当时尚未 Ready 的 Completion Gate 外均通过；最终 merge 仍以本 PR 最终 HEAD 的新鲜永久 CI 为准。
+- 最终实现 HEAD `d1a2eaf5b0b850203eb41f0a34b8bc34fcd19db3` 的 16 条永久 workflow 全部 success，包括 Change Completion Gate、主 CI、Stage 5A–5D、Stage 6、Stage 7、Full-stack、Windows Compose 和 Deployable Stack。
 
 # 文档影响
 
@@ -137,6 +137,6 @@ data_changes:
 
 # 交付
 
-- 分支：`feature/excel-tikhub-identity-alignment`
-- PR：#188 `统一 Excel 与 TikHub 评论补采身份`
-- 合并条件：最终 HEAD 永久 CI 全绿且 `main` 未出现未同步的新提交后，使用正常 PR merge；不绕过门禁。
+- Commit：实现 PR #188 最终 HEAD `d1a2eaf5b0b850203eb41f0a34b8bc34fcd19db3`。
+- PR：#188 已于 2026-08-24 合并到 `main`，merge commit `c9dc6c3e933210fdf1eebfeb9b3332b2747c0792`。
+- 发布：未部署；本 Change 无 Schema/Migration、依赖或 HTTP Contract 变化，生产数据历史 reconciliation 不在本 Change 范围内。
