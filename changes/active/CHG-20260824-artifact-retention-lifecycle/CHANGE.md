@@ -141,11 +141,12 @@ L3 方案比较：
 ## 新鲜证据
 
 - Red：提交 `e4ae8eb` 的 CI run `32678102877` 在真实 PostgreSQL Integration 中 `2 failed, 16 passed`；两处均因生产 Repository 尚不支持带 `now/orphan_before` 的原子删除认领，证明并发保护测试先于实现失败。
-- Green：最终实现/文档 HEAD `96272ef` 的 CI #2517（run `32679019136`）completed success；Stage 1、Stage 2 Platform、Stage 3A Database、Windows bootstrap 全部 success，包含后端总检查、Wheel 与 Frontend checks。
+- Green：实现/文档 HEAD `96272ef` 的 CI #2517（run `32679019136`）completed success；Stage 1、Stage 2 Platform、Stage 3A Database、Windows bootstrap 全部 success，包含后端总检查、Wheel 与 Frontend checks。
 - Provider/Raw：Stage 5A Provider Raw #1607 success。
 - Scheduler：Stage 7 Scheduler Runtime #2462 success。
 - Full-stack：Stage 8F Full-stack Acceptance #644 success。
 - 治理与兼容：Change Completion Gate #363、Stage 1-7 Audit #1191、Keyword Packs #2122、Plan #2120、Provider Config #2235、Stage 5D #1641、Stage 6 #510、Local Dev #340、Windows Compose #206、Internal V1-A #280 均 completed success。
+- 本 Change 文件后续仅更新验证台账；PR 转 Ready/合并仍以最终 HEAD 的 Change Gate、CI 与最新 main/merge diff 为准。
 
 # 文档影响
 
@@ -154,6 +155,6 @@ L3 方案比较：
 
 # 交付
 
-- Commit：最终已验证实现/文档 HEAD `96272ef`；本提交仅同步最终验证台账。
-- PR：#187；转 Ready 和合并前仍需对本提交执行 Change Gate/CI，并重新检查最新 main/merge diff。
+- Commit：实现与长期文档截至 `96272ef`；后续仅维护 Change 验证台账，不改变产品行为。
+- PR：#187；转 Ready 和合并前必须确认最终 HEAD 的 Change Gate/CI，并重新检查最新 main/merge diff。
 - 发布：未部署；本 Change 不改变依赖、Migration 或启动命令，已删除字节不可由代码回滚恢复。
