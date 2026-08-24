@@ -216,4 +216,4 @@ data_changes:
 - 分支：`feature/manual-relevance-review`
 - 最终 PR HEAD：`232e125abc964ce2035b895a6e3021d6a8628b08`
 - PR：#202，已通过 merge commit `014fb666b6f7f5e979cf5ca71fd940da8f21bb5e` 合入 `main`。
-- 归档分支：`chore/archive-manual-relevance-review`
+- 归档：PR #219，分支 `chore/archive-manual-relevance-review`
