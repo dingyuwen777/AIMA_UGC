@@ -269,8 +269,18 @@ def test_manual_relevance_review_preserves_ai_result_and_drives_business_queries
         assert export.target_count == 1
 
         # 相同外部 Content 出现新正文版本后，旧人工判断继续留作审计但不套到 V2。
-        _seed_import(import_client, text_suffix="（更新）")
-        assert import_worker.run_once() is True
+        updated_batch_id = _seed_import(import_client, text_suffix="（更新）")
+        for _ in range(10):
+            batch = import_client.get(f"/api/v1/import-batches/{updated_batch_id}")
+            assert batch.status_code == 200
+            batch_status = batch.json()["status"]
+            if batch_status == "succeeded":
+                break
+            assert batch_status in {"queued", "running"}
+            assert import_worker.run_once() is True
+        else:
+            pytest.fail("更新版 Import Batch 未在测试预算内进入 succeeded")
+
         with runtime.database.engine.begin() as connection:
             assert (
                 connection.scalar(
