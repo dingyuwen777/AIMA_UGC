@@ -141,3 +141,8 @@ class LocalArtifactStore:
     def exists(self, storage_key: str) -> bool:
         target = self._target(storage_key, create_parent=False)
         return target.is_file()
+
+    def delete(self, storage_key: str) -> None:
+        """幂等删除 Artifact 字节；Housekeeping 重试时缺失文件视为已达到目标状态。"""
+        target = self._target(storage_key, create_parent=False)
+        target.unlink(missing_ok=True)
