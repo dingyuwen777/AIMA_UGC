@@ -42,6 +42,13 @@ def _artifact_from_row(row: RowMapping) -> ArtifactRecord:
     )
 
 
+def _affected_rows(result: object) -> int:
+    """读取 DML rowcount，同时保持 SQLAlchemy Result 的静态类型边界。"""
+
+    rowcount = getattr(result, "rowcount", 0)
+    return rowcount if isinstance(rowcount, int) and rowcount > 0 else 0
+
+
 class PostgresArtifactMetadataRepository:
     """Session-bound Owner Repository；状态转换使用条件更新防竞争。
 
@@ -252,9 +259,9 @@ class PostgresArtifactMetadataRepository:
             .values(expires_at=terminal_at + IMPORT_SOURCE_RETENTION)
         )
         return (
-            max(provider_result.rowcount, 0)
-            + max(export_result.rowcount, 0)
-            + max(import_result.rowcount, 0)
+            _affected_rows(provider_result)
+            + _affected_rows(export_result)
+            + _affected_rows(import_result)
         )
 
     def list_cleanup_candidates(
