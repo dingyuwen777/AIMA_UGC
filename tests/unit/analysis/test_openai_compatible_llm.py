@@ -8,12 +8,13 @@ import httpx
 import pytest
 from aima_ugc.adapters.llm import RetryingContentLabelingLLM
 from aima_ugc.adapters.llm import openai_compatible as openai_compatible_module
+from aima_ugc.adapters.llm import pricing as pricing_module
 from aima_ugc.adapters.llm.openai_compatible import (
     OpenAICompatibleContentLabelingLLM,
     OpenAICompatibleLLMError,
     resolve_openai_compatible_provider_name,
 )
-from aima_ugc.adapters.llm.pricing import LLMPricingCatalog, load_llm_pricing
+from aima_ugc.adapters.llm.pricing import load_llm_pricing
 from aima_ugc.adapters.llm.request_audit import LLMHTTPRequestAudit
 from aima_ugc.modules.analysis.content_labeling import (
     ContentLabelingLLMRequest,
@@ -246,38 +247,18 @@ def test_openai_compatible_uses_physical_request_start_time_for_price_period(
 ) -> None:
     records: list[LLMHTTPRequestAudit] = []
 
+    class IdleCatalogDateTime(datetime):
+        @classmethod
+        def now(cls, tz: object = None) -> datetime:
+            return datetime(2026, 8, 20, 0, 0, tzinfo=UTC)
+
     class PeakRequestDateTime(datetime):
         @classmethod
         def now(cls, tz: object = None) -> datetime:
             return datetime(2026, 8, 20, 1, 0, tzinfo=UTC)
 
+    monkeypatch.setattr(pricing_module, "datetime", IdleCatalogDateTime)
     monkeypatch.setattr(openai_compatible_module, "datetime", PeakRequestDateTime)
-    pricing_catalog = LLMPricingCatalog.from_toml(
-        """
-        schema_version = "llm-pricing.v1"
-
-        [[models]]
-        provider = "api.deepseek.com"
-        model = "deepseek-v4-pro"
-        currency = "CNY"
-        source_url = "https://example.invalid/scheduled-pricing"
-        effective_date = "2026-08-20"
-        timezone = "UTC"
-
-        [[models.price_periods]]
-        name = "standard"
-        input_cache_hit_per_million_tokens = "0.15"
-        input_cache_miss_per_million_tokens = "4.5"
-        output_per_million_tokens = "13.5"
-
-        [[models.price_periods]]
-        name = "peak"
-        time_ranges = ["01:00-02:00"]
-        input_cache_hit_per_million_tokens = "0.30"
-        input_cache_miss_per_million_tokens = "9"
-        output_per_million_tokens = "27"
-        """
-    )
 
     def handler(_: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -303,7 +284,7 @@ def test_openai_compatible_uses_physical_request_start_time_for_price_period(
             api_key=SecretStr("secret"),
             model="deepseek-v4-pro",
             client=client,
-            pricing_catalog=pricing_catalog,
+            pricing_catalog=load_llm_pricing(),
             request_audit=records.append,
         )
         response = adapter.complete(_request())
@@ -322,9 +303,9 @@ def test_openai_compatible_uses_physical_request_start_time_for_price_period(
     assert records[0].cost_amount == Decimal("0.000564")
     assert records[0].cost_currency == "CNY"
     assert records[0].input_cache_hit_per_million == Decimal("0.30")
-    assert records[0].input_cache_miss_per_million == Decimal("9")
-    assert records[0].output_per_million == Decimal("27")
-    assert records[0].pricing_source_url == "https://example.invalid/scheduled-pricing"
+    assert records[0].input_cache_miss_per_million == Decimal("9.0")
+    assert records[0].output_per_million == Decimal("27.0")
+    assert records[0].pricing_source_url.endswith("/quick_start/pricing/")
 
 
 def test_empty_content_retry_audits_cost_of_every_paid_http_response(
@@ -336,7 +317,7 @@ def test_empty_content_retry_audits_cost_of_every_paid_http_response(
     class IdleRequestDateTime(datetime):
         @classmethod
         def now(cls, tz: object = None) -> datetime:
-            return datetime(2026, 8, 24, 0, 0, tzinfo=UTC)
+            return datetime(2026, 8, 20, 0, 0, tzinfo=UTC)
 
     monkeypatch.setattr(openai_compatible_module, "datetime", IdleRequestDateTime)
 
@@ -379,4 +360,4 @@ def test_empty_content_retry_audits_cost_of_every_paid_http_response(
     assert [record.status for record in records] == ["protocol_error", "completed"]
     assert records[0].logical_request_id == records[1].logical_request_id
     assert records[0].http_request_id != records[1].http_request_id
-    assert sum(record.cost_amount or Decimal("0") for record in records) == Decimal("0.0000304")
+    assert sum(record.cost_amount or Decimal("0") for record in records) == Decimal("0.0000609")
