@@ -22,8 +22,9 @@ from aima_ugc.modules.content.extended_tables import content_external_ids_table
 from aima_ugc.modules.content.tables import content_versions_table, contents_table
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 
-# 这里只列当前生产 Runtime 已验证能够直接消费且能稳定收敛到原 Content 的 lookup identity。
-# share/short URL 可以被 Import 识别和保存，但在正式 Resolver/身份合并闭环前不得直接计费补采。
+# 这里只列当前生产 Runtime 已验证可直接消费的 typed Provider lookup identity。
+# typed locator 可以与数据库稳定 external_content_id 不同；
+# Runtime 显式传递 alternate_ids，并保持 Content 主身份。
 _LOOKUP_ID_PRIORITY: dict[PlatformName, tuple[str, ...]] = {
     "xiaohongshu": ("note_id",),
     "douyin": ("aweme_id",),
@@ -253,11 +254,10 @@ def _lookup_identity(
     alternate_ids: dict[str, str],
     has_tikhub_source: bool,
 ) -> tuple[str, str] | None:
-    """只返回当前 Runtime 可消费且与稳定 Content 身份一致的 lookup。
+    """返回当前 Runtime 可消费的 typed Provider lookup。
 
-    Worker 目前仍使用 ``external_content_id`` 构造 Detail/Comments 请求；因此 typed lookup
-    即使存在，只要它与稳定身份不是同一 Provider identity，就必须 fail closed。未来若要
-    支持二者不同，需要先实现显式 Resolver/身份合并和 Runtime lookup 参数传递。
+    typed locator 可以与数据库稳定 ``external_content_id`` 不同；Batch enrichment 会把
+    ``alternate_ids`` 传入 Detail/Comments/SubComments，Mapper 再把结果挂回稳定 Content。
     """
 
     for id_type in _LOOKUP_ID_PRIORITY[platform]:
