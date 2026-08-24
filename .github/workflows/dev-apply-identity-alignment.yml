@@ -6,6 +6,7 @@ on:
       - feature/excel-tikhub-identity-alignment
     paths:
       - .github/workflows/dev-apply-identity-alignment.yml
+      - .dev-apply-identity-alignment-trigger
 
 permissions:
   contents: write
