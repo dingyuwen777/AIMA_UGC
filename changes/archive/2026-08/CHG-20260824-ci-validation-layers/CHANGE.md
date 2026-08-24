@@ -3,11 +3,11 @@ schema: rvc-change/v1
 id: CHG-20260824-ci-validation-layers
 title: CI 按长期验证层收敛
 level: L3
-status: ready_for_review
+status: done
 owner: aima
 branch: refactor/ci-validation-layers
 created: 2026-08-24
-updated: 2026-08-24
+updated: 2026-08-25
 completion_gate: required
 depends_on: []
 affected_areas:
@@ -186,18 +186,19 @@ data_changes: []
 
 ## 核心实现新鲜证据
 
-核心实现 HEAD：`d10946881dd55b69b9229d99c8a2349e90c9f01b`
+最终 PR HEAD：`53dbf5b6cbac0d46dc004288cdedd02c76b82c4f`
 
 ```text
-CI                                  32716699870  success
-Local Dev Bootstrap                 32716699878  success
-Internal V1-A Deployable Stack      32716699880  success
-Full-stack Acceptance               32716699986  success
-Windows Docker Desktop              32716700064  success
-Release dry-run for PR #205         32716700257  success
+CI                                             32724186088  success
+Change Completion Gate                         32724186087  success
+Local Dev Bootstrap                            32724186119  success
+Internal V1-A Deployable Stack                 32724186372  success
+Full-stack Acceptance                          32724186189  success
+Windows Docker Desktop Compose Compatibility   32724186107  success
+Release dry-run for PR #205                    32724186116  success
 ```
 
-该 HEAD 的 Change Completion Gate `32716699909` 按设计失败，因为当时 Change 仍是 `status: in_progress`；本次 Completion Audit/Traceability/Review 完成后已切换为 `ready_for_review`，由后续当前 HEAD Gate 重新验证。
+最终 PR HEAD 的 7 个长期 Workflow 全部成功；PR #205 已通过 merge commit `3c72b1e57cd54eb99ef2229557e5d7a69dd90315` 合入 `main`。归档批次只更新 Change 状态和位置，不修改 Workflow 或生产代码。
 
 ## 初次合并后的 Red 证据
 
@@ -214,6 +215,7 @@ Release dry-run for PR #205         32716700257  success
 # 交付
 
 - 分支：`refactor/ci-validation-layers`
-- 核心实现证据 HEAD：`d10946881dd55b69b9229d99c8a2349e90c9f01b`
-- PR：#205 `收敛历史 Stage CI 为长期验证层`
+- 最终 PR HEAD：`53dbf5b6cbac0d46dc004288cdedd02c76b82c4f`
+- PR：#205 `收敛历史 Stage CI 为长期验证层`，已合并；merge commit `3c72b1e57cd54eb99ef2229557e5d7a69dd90315`
+- 归档分支：`chore/archive-ci-validation-layers`
 - 发布：不直接发布；本 Change 只调整 CI/Workflow。
