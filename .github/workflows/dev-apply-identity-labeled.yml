@@ -73,7 +73,11 @@ jobs:
           targets = Path("backend/src/aima_ugc/adapters/persistence/postgres/collection_targets.py")
           text = targets.read_text(encoding="utf-8")
           old_comment = "# 这里只列当前生产 Runtime 已验证能够直接消费且能稳定收敛到原 Content 的 lookup identity。\n# share/short URL 可以被 Import 识别和保存，但在正式 Resolver/身份合并闭环前不得直接计费补采。"
-          new_comment = "# 这里只列当前生产 Runtime 已验证可直接消费的 typed Provider lookup identity。\n# typed locator 可以与数据库稳定 external_content_id 不同；Runtime 显式传递 alternate_ids，并保持 Content 主身份。"
+          new_comment = (
+              "# 这里只列当前生产 Runtime 已验证可直接消费的 typed Provider lookup identity。\n"
+              "# typed locator 可以与数据库稳定 external_content_id 不同；\n"
+              "# Runtime 显式传递 alternate_ids，并保持 Content 主身份。"
+          )
           if text.count(old_comment) != 1:
               raise SystemExit("collection_targets top comment anchor mismatch")
           text = text.replace(old_comment, new_comment, 1)
