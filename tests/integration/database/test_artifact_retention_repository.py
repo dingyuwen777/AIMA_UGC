@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -8,6 +9,9 @@ from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.persistence.postgres.manual_ingestion import (
     PostgresProcessingImportBatchRepository,
 )
+from aima_ugc.adapters.storage.local import LocalArtifactStore
+from aima_ugc.bootstrap.artifact_cleanup import run_artifact_cleanup_once
+from aima_ugc.bootstrap.runtime import PlatformRuntime
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.storage import ArtifactRecord
@@ -167,3 +171,44 @@ def test_import_source_waits_for_terminal_job_and_uses_cancel_time() -> None:
     finally:
         session.close()
         runtime.dispose()
+
+
+def test_cleanup_once_deletes_expired_local_bytes_and_marks_metadata(tmp_path) -> None:
+    settings = load_settings()
+    database = DatabaseRuntime(settings)
+    store = LocalArtifactStore(tmp_path / "artifacts")
+    runtime = PlatformRuntime(
+        service="artifact-retention-test",
+        settings=settings,
+        database=database,
+        artifact_store=store,
+        logger=logging.getLogger("artifact-retention-test"),
+    )
+    now = datetime(2026, 8, 24, 0, 0, tzinfo=UTC)
+    session = database.new_session()
+    try:
+        with session.begin():
+            repository = PostgresArtifactMetadataRepository(session)
+            expired = _store_record(
+                repository,
+                kind="content-export.xlsx",
+                created_at=now - timedelta(days=8),
+                expires_at=now - timedelta(days=1),
+            )
+            repository.mark_linked(expired.id, linked_at=now - timedelta(days=8))
+
+        store.put(expired.storage_key, b"xlsx")
+        assert store.exists(expired.storage_key)
+
+        result = run_artifact_cleanup_once(runtime, now=now, limit=100)
+        assert result.deleted >= 1
+        assert not store.exists(expired.storage_key)
+
+        with session.begin():
+            deleted = PostgresArtifactMetadataRepository(session).get(expired.id)
+            assert deleted is not None
+            assert deleted.storage_status == "deleted"
+            assert deleted.deleted_at == now
+    finally:
+        session.close()
+        database.dispose()
