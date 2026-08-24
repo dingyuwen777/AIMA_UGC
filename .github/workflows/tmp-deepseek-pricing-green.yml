@@ -31,16 +31,16 @@ jobs:
           from pathlib import Path
 
           def replace_once(path: str, old: str, new: str) -> None:
-              file_path = Path(path)
-              text = file_path.read_text(encoding="utf-8")
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
               count = text.count(old)
               if count != 1:
                   raise SystemExit(f"{path}: expected one anchor, found {count}: {old[:120]!r}")
-              file_path.write_text(text.replace(old, new, 1), encoding="utf-8")
+              p.write_text(text.replace(old, new, 1), encoding="utf-8")
 
           def replace_in_function(path: str, name: str, replacements: list[tuple[str, str]]) -> None:
-              file_path = Path(path)
-              text = file_path.read_text(encoding="utf-8")
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
               start = text.index(f"def {name}(")
               end = text.find("\ndef ", start + 1)
               if end == -1:
@@ -53,35 +53,40 @@ jobs:
                           f"{path}:{name}: expected one anchor, found {count}: {old[:120]!r}"
                       )
                   segment = segment.replace(old, new, 1)
-              file_path.write_text(text[:start] + segment + text[end:], encoding="utf-8")
+              p.write_text(text[:start] + segment + text[end:], encoding="utf-8")
 
-          pricing_path = "backend/src/aima_ugc/adapters/llm/pricing.py"
+          pricing = "backend/src/aima_ugc/adapters/llm/pricing.py"
           replace_once(
-              pricing_path,
+              pricing,
               'class LLMPriceNotConfiguredError(LookupError):\n    """目标 provider/model 没有明确价格，禁止使用默认单价猜测。"""',
               'class LLMPriceNotConfiguredError(LookupError):\n    """目标 provider/model/请求时点没有明确价格，禁止使用默认单价猜测。"""',
           )
           replace_once(
-              pricing_path,
+              pricing,
               '''    def price_for(\n        self,\n        *,\n        provider: str,\n        model: str,\n        at: datetime | None = None,\n    ) -> LLMModelPrice:\n        identity = (_provider(provider), model)\n        for schedule in self._schedules:\n            if (schedule.provider, schedule.model) == identity:\n                return schedule.price_at(at or datetime.now(UTC))\n        for price in self.models:\n            if (price.provider, price.model) == identity:\n                return price\n        raise LLMPriceNotConfiguredError(\n            f"LLM Pricing 未配置 provider/model: {identity[0]}/{identity[1]}"\n        )\n''',
               '''    def price_for(\n        self,\n        *,\n        provider: str,\n        model: str,\n        at: datetime | None = None,\n    ) -> LLMModelPrice:\n        identity = (_provider(provider), model)\n        request_at = at or datetime.now(UTC)\n        for schedule in self._schedules:\n            if (schedule.provider, schedule.model) == identity:\n                return _price_effective_at(schedule.price_at(request_at), request_at)\n        for price in self.models:\n            if (price.provider, price.model) == identity:\n                return _price_effective_at(price, request_at)\n        raise LLMPriceNotConfiguredError(\n            f"LLM Pricing 未配置 provider/model: {identity[0]}/{identity[1]}"\n        )\n''',
           )
           replace_once(
-              pricing_path,
+              pricing,
               '\n\ndef load_llm_pricing() -> LLMPricingCatalog:\n',
               '''\n\ndef _price_effective_at(price: LLMModelPrice, at: datetime) -> LLMModelPrice:\n    """只在 AIMA 价格目录生效日及之后返回价格，避免历史请求套用未来价格。"""\n\n    if price.effective_date is None:\n        return price\n    if at.tzinfo is None or at.utcoffset() is None:\n        raise ValueError("LLM Pricing effective_date 选价要求带时区的请求时间")\n    request_date = at.astimezone(UTC).date()\n    if request_date < price.effective_date:\n        raise LLMPriceNotConfiguredError(\n            "LLM Pricing 价格尚未生效: "\n            f"{price.provider}/{price.model}; "\n            f"request_date={request_date.isoformat()}; "\n            f"effective_date={price.effective_date.isoformat()}"\n        )\n    return price\n\n\ndef load_llm_pricing() -> LLMPricingCatalog:\n''',
           )
 
-          openai_path = "backend/src/aima_ugc/adapters/llm/openai_compatible.py"
+          adapter = "backend/src/aima_ugc/adapters/llm/openai_compatible.py"
           replace_once(
-              openai_path,
+              adapter,
               '''    LLMCostCalculation,\n    LLMModelPrice,\n    LLMPricingCatalog,\n    LLMTokenUsage,\n''',
               '''    LLMCostCalculation,\n    LLMModelPrice,\n    LLMPriceNotConfiguredError,\n    LLMPricingCatalog,\n    LLMTokenUsage,\n''',
           )
           replace_once(
-              openai_path,
+              adapter,
               '''        cost_unavailable_reason = self._pricing_unavailable_reason\n        price = (\n            self._pricing_catalog.price_for(\n                provider=self._provider_name,\n                model=self._model,\n                at=started_at,\n            )\n            if self._pricing_catalog is not None and self._pricing_unavailable_reason is None\n            else None\n        )\n''',
               '''        cost_unavailable_reason = self._pricing_unavailable_reason\n        price: LLMModelPrice | None = None\n        if self._pricing_catalog is not None and self._pricing_unavailable_reason is None:\n            try:\n                price = self._pricing_catalog.price_for(\n                    provider=self._provider_name,\n                    model=self._model,\n                    at=started_at,\n                )\n            except LLMPriceNotConfiguredError:\n                cost_unavailable_reason = "price_not_effective_at_request_time"\n''',
+          )
+          replace_once(
+              adapter,
+              '                pricing_unavailable_reason=self._pricing_unavailable_reason,\n',
+              '                pricing_unavailable_reason=cost_unavailable_reason,\n',
           )
 
           replace_in_function(
@@ -100,9 +105,9 @@ jobs:
               ],
           )
 
-          audit_path = "tests/unit/analysis/test_llm_request_audit.py"
+          audit = "tests/unit/analysis/test_llm_request_audit.py"
           replace_in_function(
-              audit_path,
+              audit,
               "test_recalculation_writes_derived_report_without_overwriting_original_audit",
               [
                   (
@@ -125,17 +130,13 @@ jobs:
               ],
           )
           replace_in_function(
-              audit_path,
+              audit,
               "test_request_audit_resume_distinguishes_current_session_from_run_total",
               [
                   ('_fixed_datetime(datetime(2026, 8, 20, 0, 0, tzinfo=UTC))', '_fixed_datetime(datetime(2026, 8, 24, 0, 0, tzinfo=UTC))'),
               ],
           )
-          replace_once(
-              audit_path,
-              'from aima_ugc.adapters.llm import pricing as pricing_module\n',
-              '',
-          )
+          replace_once(audit, 'from aima_ugc.adapters.llm import pricing as pricing_module\n', '')
 
           replace_once(
               "backend/src/aima_ugc/adapters/llm/pricing.toml",
