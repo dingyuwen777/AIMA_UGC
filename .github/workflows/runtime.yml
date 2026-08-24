@@ -1,0 +1,572 @@
+name: Runtime Acceptance
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  compose-golden-path:
+    name: Compose Golden Path
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Detect Runtime risk changes
+        id: scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE_SHA="${{ github.event.before }}"
+          fi
+
+          RUNTIME_REQUIRED=false
+          if [[ -z "${BASE_SHA}" || "${BASE_SHA}" =~ ^0+$ ]] || ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            RUNTIME_REQUIRED=true
+          else
+            while IFS= read -r path; do
+              case "${path}" in
+                .github/workflows/runtime.yml|Dockerfile|compose.yaml|compose.windows.yaml|env.production.example|pyproject.toml|uv.lock|frontend/package.json|frontend/package-lock.json|frontend/nginx.conf|frontend/vite.config.*)
+                  RUNTIME_REQUIRED=true
+                  break
+                  ;;
+                scripts/deploy/*|scripts/deploy/**/*|migrations/*|migrations/**/*|backend/src/aima_ugc/entrypoints/*|backend/src/aima_ugc/entrypoints/**/*|backend/src/aima_ugc/bootstrap/*|backend/src/aima_ugc/bootstrap/**/*|backend/src/aima_ugc/platform/*|backend/src/aima_ugc/platform/**/*|backend/src/aima_ugc/adapters/persistence/postgres/system.py)
+                  RUNTIME_REQUIRED=true
+                  break
+                  ;;
+              esac
+            done < <(git diff --name-only "${BASE_SHA}" "${GITHUB_SHA}")
+          fi
+
+          echo "runtime_required=${RUNTIME_REQUIRED}" >> "${GITHUB_OUTPUT}"
+          if [[ "${RUNTIME_REQUIRED}" == "true" ]]; then
+            echo "Runtime-relevant changes detected; running Compose acceptance."
+          else
+            echo "No Runtime-relevant changes detected; stable Compose Golden Path check succeeds without rebuilding the stack."
+          fi
+
+      - name: Fast-path unchanged Runtime
+        if: steps.scope.outputs.runtime_required != 'true'
+        shell: bash
+        run: echo "Runtime topology, packaging, bootstrap, migration and startup surfaces are unchanged."
+
+      - name: Prepare canonical Runtime env
+        if: steps.scope.outputs.runtime_required == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="${RUNNER_TEMP}/aima-runtime"
+          ENV_FILE="${RUNNER_TEMP}/aima-runtime.env"
+          echo "AIMA_RUNTIME_ROOT=${ROOT}" >> "${GITHUB_ENV}"
+          echo "AIMA_RUNTIME_ENV_FILE=${ENV_FILE}" >> "${GITHUB_ENV}"
+          cat > "${ENV_FILE}" <<EOF
+          AIMA_IMAGE_TAG=runtime-ci-${GITHUB_RUN_ID}
+          AIMA_HTTP_BIND_IP=127.0.0.1
+          AIMA_HTTP_PORT=18080
+          AIMA_HOST_ROOT=${ROOT}
+          AIMA_DB_NAME=aima_ugc
+          AIMA_DB_USER=aima_ugc
+          AIMA_DB_CONNECT_TIMEOUT_SECONDS=5
+          AIMA_LOG_LEVEL=INFO
+          AIMA_LOG_MAX_BYTES=1048576
+          AIMA_LOG_BACKUP_COUNT=2
+          AIMA_LOG_COMPRESS=true
+          AIMA_TIKHUB_ENABLED=true
+          AIMA_TIKHUB_BASE_URL=https://api.tikhub.io
+          AIMA_TIKHUB_API_KEY=ci-placeholder-not-a-real-provider-secret
+          AIMA_LLM_API_KEY=
+          AIMA_BUILD_DEBIAN_MIRROR=http://deb.debian.org/debian
+          AIMA_BUILD_DEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security
+          AIMA_BUILD_PYPI_INDEX=https://pypi.org/simple
+          AIMA_BUILD_NPM_REGISTRY=https://registry.npmjs.org
+          EOF
+          chmod 0600 "${ENV_FILE}"
+
+      - name: Validate canonical Compose topology
+        if: steps.scope.outputs.runtime_required == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose version
+          docker compose --env-file "${AIMA_RUNTIME_ENV_FILE}" config > "${RUNNER_TEMP}/compose.rendered.yaml"
+          SERVICES="$(docker compose --env-file "${AIMA_RUNTIME_ENV_FILE}" config --services)"
+          for service in bootstrap frontend api worker scheduler migrate postgres configure; do
+            grep -Fxq "${service}" <<<"${SERVICES}"
+          done
+          if grep -Fq 'ci-placeholder-not-a-real-provider-secret' "${RUNNER_TEMP}/compose.rendered.yaml"; then
+            echo "Compose config exposed the secret value"
+            exit 1
+          fi
+
+      - name: Canonical Compose startup, security, persistence, and recovery
+        if: steps.scope.outputs.runtime_required == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          compose() {
+            docker compose --env-file "${AIMA_RUNTIME_ENV_FILE}" "$@"
+          }
+          cleanup() {
+            status=$?
+            if [[ $status -ne 0 ]]; then
+              compose ps -a || true
+              compose logs --no-color || true
+            fi
+            compose down --remove-orphans || true
+            exit $status
+          }
+          trap cleanup EXIT
+
+          # 首次真实运行保留正式管理员入口，构建镜像一次；后续生命周期与 Windows overlay 全部复用同一镜像。
+          compose up -d --build --wait
+
+          BOOTSTRAP_CONTAINER="$(compose ps -a -q bootstrap)"
+          MIGRATE_CONTAINER="$(compose ps -a -q migrate)"
+          CONFIGURE_CONTAINER="$(compose ps -a -q configure)"
+          test "$(docker inspect -f '{{.State.Status}}' "${BOOTSTRAP_CONTAINER}")" = "exited"
+          test "$(docker inspect -f '{{.State.ExitCode}}' "${BOOTSTRAP_CONTAINER}")" = "0"
+          test "$(docker inspect -f '{{.State.ExitCode}}' "${MIGRATE_CONTAINER}")" = "0"
+          test "$(docker inspect -f '{{.State.ExitCode}}' "${CONFIGURE_CONTAINER}")" = "0"
+
+          curl -fsS http://127.0.0.1:18080/health/ready > "${RUNNER_TEMP}/ready.json"
+          python3 - "${RUNNER_TEMP}/ready.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          assert payload == {
+              "status": "ok",
+              "checks": {
+                  "database": "ok",
+                  "artifact_store": "ok",
+                  "log_directory": "ok",
+              },
+          }
+          PY
+          curl -fsS http://127.0.0.1:18080/ >/dev/null
+
+          PROVIDER_ROW="$(compose exec -T postgres psql -U aima_ugc -d aima_ugc -Atc \
+            "SELECT provider || '|' || secret_ref || '|' || enabled::text FROM provider_configs WHERE display_name = 'TikHub Internal V1';")"
+          test "${PROVIDER_ROW}" = "tikhub|tikhub_api_key|true"
+          PROVIDER_JSON="$(compose exec -T postgres psql -U aima_ugc -d aima_ugc -Atc \
+            "SELECT row_to_json(p)::text FROM provider_configs p;")"
+          if grep -Fq 'ci-placeholder-not-a-real-provider-secret' <<<"${PROVIDER_JSON}"; then
+            echo "Provider Secret leaked into provider_configs"
+            exit 1
+          fi
+
+          sudo test ! -e "${AIMA_RUNTIME_ROOT}/shared/secrets/tikhub_api_key"
+          sudo test ! -e "${AIMA_RUNTIME_ROOT}/shared/secrets/llm_api_key"
+          compose exec -T worker sh -ec \
+            'test "$(cat /run/secrets/tikhub_api_key)" = "ci-placeholder-not-a-real-provider-secret"'
+          compose exec -T api test ! -e /run/secrets/tikhub_api_key
+
+          API_CONTAINER="$(compose ps -q api)"
+          WORKER_CONTAINER="$(compose ps -q worker)"
+          POSTGRES_CONTAINER="$(compose ps -q postgres)"
+          FRONTEND_CONTAINER="$(compose ps -q frontend)"
+          python3 - "${API_CONTAINER}" "${WORKER_CONTAINER}" "${POSTGRES_CONTAINER}" "${FRONTEND_CONTAINER}" "${AIMA_RUNTIME_ROOT}" <<'PY'
+          import json
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          api_id, worker_id, postgres_id, frontend_id, root = (
+              sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], Path(sys.argv[5])
+          )
+
+          def inspect(container_id: str) -> dict:
+              return json.loads(subprocess.check_output(["docker", "inspect", container_id], text=True))[0]
+
+          api = inspect(api_id)
+          worker = inspect(worker_id)
+          for container in (api, worker):
+              environment = container["Config"]["Env"] or []
+              assert not any(item.startswith("AIMA_TIKHUB_API_KEY=") for item in environment)
+              assert not any(item.startswith("AIMA_LLM_API_KEY=") for item in environment)
+              assert not any("ci-placeholder-not-a-real-provider-secret" in item for item in environment)
+
+          mounts = {item["Destination"]: item for item in api["Mounts"]}
+          expected = {
+              "/app/data": (root / "runtime/data", True),
+              "/app/logs": (root / "runtime/logs", True),
+              "/run/internal-secrets": (root / "shared/secrets", False),
+          }
+          for destination, (source, writable) in expected.items():
+              actual = mounts[destination]
+              assert actual["Type"] == "bind"
+              assert Path(actual["Source"]).resolve() == source.resolve()
+              assert actual["RW"] is writable
+
+          postgres_mounts = {item["Destination"]: item for item in inspect(postgres_id)["Mounts"]}
+          postgres_secrets = postgres_mounts["/run/secrets"]
+          assert postgres_secrets["Type"] == "bind"
+          assert Path(postgres_secrets["Source"]).resolve() == (root / "shared/secrets").resolve()
+          assert postgres_secrets["RW"] is False
+
+          api_bindings = api["HostConfig"]["PortBindings"] or {}
+          postgres_bindings = inspect(postgres_id)["HostConfig"]["PortBindings"] or {}
+          frontend_bindings = inspect(frontend_id)["HostConfig"]["PortBindings"] or {}
+          assert postgres_bindings == {}
+          assert api_bindings == {}
+          assert frontend_bindings == {
+              "8080/tcp": [{"HostIp": "127.0.0.1", "HostPort": "18080"}]
+          }
+          PY
+
+          API_UID="$(compose exec -T api id -u | tr -d '\r')"
+          FRONTEND_UID="$(compose exec -T frontend id -u | tr -d '\r')"
+          test "${API_UID}" = "10001"
+          test "${FRONTEND_UID}" != "0"
+          compose exec -T api test -r /run/internal-secrets/postgres_password
+
+          for name in postgres_password import_batch_cursor_signing_key content_cursor_signing_key collection_runtime_cursor_signing_key; do
+            sudo test -s "${AIMA_RUNTIME_ROOT}/shared/secrets/${name}"
+            test "$(sudo stat -c '%u:%g:%a' "${AIMA_RUNTIME_ROOT}/shared/secrets/${name}")" = "0:11001:440"
+          done
+          PASSWORD_HASH_BEFORE="$(sudo sha256sum "${AIMA_RUNTIME_ROOT}/shared/secrets/postgres_password" | cut -d' ' -f1)"
+          IMPORT_KEY_HASH_BEFORE="$(sudo sha256sum "${AIMA_RUNTIME_ROOT}/shared/secrets/import_batch_cursor_signing_key" | cut -d' ' -f1)"
+
+          compose exec -T api sh -c 'printf persistence > /app/data/compose-startup-marker'
+
+          # 重复启动证明 Runtime 幂等与 Secret 稳定；镜像已在首次正式入口构建，无需再次 build。
+          compose up -d --no-build --wait
+          PASSWORD_HASH_AFTER="$(sudo sha256sum "${AIMA_RUNTIME_ROOT}/shared/secrets/postgres_password" | cut -d' ' -f1)"
+          IMPORT_KEY_HASH_AFTER="$(sudo sha256sum "${AIMA_RUNTIME_ROOT}/shared/secrets/import_batch_cursor_signing_key" | cut -d' ' -f1)"
+          test "${PASSWORD_HASH_BEFORE}" = "${PASSWORD_HASH_AFTER}"
+          test "${IMPORT_KEY_HASH_BEFORE}" = "${IMPORT_KEY_HASH_AFTER}"
+          PROVIDER_COUNT="$(compose exec -T postgres psql -U aima_ugc -d aima_ugc -Atc \
+            "SELECT count(*) FROM provider_configs WHERE display_name = 'TikHub Internal V1';")"
+          test "${PROVIDER_COUNT}" = "1"
+          compose exec -T api sh -ec 'test "$(cat /app/data/compose-startup-marker)" = persistence'
+
+          compose down --remove-orphans
+          sudo mv "${AIMA_RUNTIME_ROOT}/shared/secrets/postgres_password" "${RUNNER_TEMP}/postgres_password.backup"
+          set +e
+          compose up -d --no-build --wait --wait-timeout 15 bootstrap
+          LOST_SECRET_STATUS=$?
+          set -e
+          test "${LOST_SECRET_STATUS}" -ne 0
+          compose logs --no-color bootstrap > "${RUNNER_TEMP}/bootstrap-missing-secret.log" || true
+          grep -Fq '已有 PostgreSQL 18 数据' "${RUNNER_TEMP}/bootstrap-missing-secret.log"
+          grep -Fq 'postgres_password' "${RUNNER_TEMP}/bootstrap-missing-secret.log"
+          sudo test ! -e "${AIMA_RUNTIME_ROOT}/shared/secrets/postgres_password"
+          compose down --remove-orphans || true
+
+          sudo mv "${RUNNER_TEMP}/postgres_password.backup" "${AIMA_RUNTIME_ROOT}/shared/secrets/postgres_password"
+          sudo chown 0:11001 "${AIMA_RUNTIME_ROOT}/shared/secrets/postgres_password"
+          sudo chmod 0440 "${AIMA_RUNTIME_ROOT}/shared/secrets/postgres_password"
+
+          compose up -d --no-build --wait
+          curl -fsS http://127.0.0.1:18080/health/ready >/dev/null
+          compose exec -T api sh -ec 'test "$(cat /app/data/compose-startup-marker)" = persistence'
+          PROVIDER_COUNT="$(compose exec -T postgres psql -U aima_ugc -d aima_ugc -Atc \
+            "SELECT count(*) FROM provider_configs WHERE display_name = 'TikHub Internal V1';")"
+          test "${PROVIDER_COUNT}" = "1"
+          test "$(sudo sha256sum "${AIMA_RUNTIME_ROOT}/shared/secrets/postgres_password" | cut -d' ' -f1)" = "${PASSWORD_HASH_BEFORE}"
+          sudo test -s "${AIMA_RUNTIME_ROOT}/runtime/logs/api.log"
+          sudo test -d "${AIMA_RUNTIME_ROOT}/postgres/18/docker"
+
+          compose down --remove-orphans
+          trap - EXIT
+
+      - name: Repository-relative host root smoke
+        if: steps.scope.outputs.runtime_required == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOCAL_ROOT=".runtime/compose-ci-${GITHUB_RUN_ID}"
+          LOCAL_ROOT_ABS="${GITHUB_WORKSPACE}/${LOCAL_ROOT#./}"
+          LOCAL_ENV_FILE="${RUNNER_TEMP}/aima-local-compose.env"
+          cat > "${LOCAL_ENV_FILE}" <<EOF
+          AIMA_IMAGE_TAG=runtime-ci-${GITHUB_RUN_ID}
+          AIMA_HTTP_BIND_IP=127.0.0.1
+          AIMA_HTTP_PORT=18081
+          AIMA_HOST_ROOT=./${LOCAL_ROOT}
+          AIMA_DB_NAME=aima_ugc
+          AIMA_DB_USER=aima_ugc
+          AIMA_DB_CONNECT_TIMEOUT_SECONDS=5
+          AIMA_LOG_LEVEL=INFO
+          AIMA_LOG_MAX_BYTES=1048576
+          AIMA_LOG_BACKUP_COUNT=2
+          AIMA_LOG_COMPRESS=true
+          AIMA_TIKHUB_ENABLED=false
+          AIMA_TIKHUB_BASE_URL=https://api.tikhub.io
+          AIMA_TIKHUB_API_KEY=
+          AIMA_LLM_API_KEY=
+          AIMA_BUILD_DEBIAN_MIRROR=http://deb.debian.org/debian
+          AIMA_BUILD_DEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security
+          AIMA_BUILD_PYPI_INDEX=https://pypi.org/simple
+          AIMA_BUILD_NPM_REGISTRY=https://registry.npmjs.org
+          EOF
+          chmod 0600 "${LOCAL_ENV_FILE}"
+
+          cleanup_local() {
+            status=$?
+            if [[ $status -ne 0 ]]; then
+              docker compose --env-file "${LOCAL_ENV_FILE}" ps -a || true
+              docker compose --env-file "${LOCAL_ENV_FILE}" logs --no-color || true
+            fi
+            docker compose --env-file "${LOCAL_ENV_FILE}" down --remove-orphans || true
+            sudo rm -rf "${LOCAL_ROOT_ABS}" || true
+            exit $status
+          }
+          trap cleanup_local EXIT
+
+          git check-ignore -q "${LOCAL_ROOT}/probe"
+          docker compose --env-file "${LOCAL_ENV_FILE}" config --format json > "${RUNNER_TEMP}/compose.local.json"
+          python3 - "${RUNNER_TEMP}/compose.local.json" "${LOCAL_ROOT_ABS}" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          model = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          root = Path(sys.argv[2]).resolve()
+          expected = {
+              "api": {
+                  "/app/data": root / "runtime/data",
+                  "/app/logs": root / "runtime/logs",
+                  "/run/internal-secrets": root / "shared/secrets",
+              },
+              "postgres": {
+                  "/var/lib/postgresql": root / "postgres",
+                  "/run/secrets": root / "shared/secrets",
+              },
+          }
+          for service, destinations in expected.items():
+              mounts = {
+                  item["target"]: Path(item["source"]).resolve()
+                  for item in model["services"][service]["volumes"]
+                  if item["type"] == "bind"
+              }
+              for destination, source in destinations.items():
+                  assert mounts[destination] == source.resolve()
+          PY
+
+          docker compose --env-file "${LOCAL_ENV_FILE}" up -d --no-build --wait
+          curl -fsS http://127.0.0.1:18081/health/ready >/dev/null
+          docker compose --env-file "${LOCAL_ENV_FILE}" exec -T api sh -ec \
+            'printf local-root-persistence > /app/data/local-root-marker'
+          test "$(sudo cat "${LOCAL_ROOT_ABS}/runtime/data/local-root-marker")" = "local-root-persistence"
+          sudo test -s "${LOCAL_ROOT_ABS}/shared/secrets/postgres_password"
+          sudo test -d "${LOCAL_ROOT_ABS}/postgres/18/docker"
+
+      - name: Prepare Windows overlay Runtime env
+        if: steps.scope.outputs.runtime_required == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ENV_FILE="${RUNNER_TEMP}/aima-windows-compose.env"
+          HOST_ROOT="${RUNNER_TEMP}/windows-host-root"
+          echo "AIMA_WINDOWS_ENV_FILE=${ENV_FILE}" >> "${GITHUB_ENV}"
+          echo "AIMA_WINDOWS_HOST_ROOT=${HOST_ROOT}" >> "${GITHUB_ENV}"
+          cat > "${ENV_FILE}" <<EOF
+          AIMA_IMAGE_TAG=runtime-ci-${GITHUB_RUN_ID}
+          AIMA_HTTP_BIND_IP=127.0.0.1
+          AIMA_HTTP_PORT=18082
+          AIMA_HOST_ROOT=${HOST_ROOT}
+          AIMA_DB_NAME=aima_ugc
+          AIMA_DB_USER=aima_ugc
+          AIMA_DB_CONNECT_TIMEOUT_SECONDS=5
+          AIMA_LOG_LEVEL=INFO
+          AIMA_LOG_MAX_BYTES=1048576
+          AIMA_LOG_BACKUP_COUNT=2
+          AIMA_LOG_COMPRESS=true
+          AIMA_TIKHUB_ENABLED=false
+          AIMA_TIKHUB_BASE_URL=https://api.tikhub.io
+          AIMA_TIKHUB_API_KEY=
+          AIMA_LLM_API_KEY=
+          AIMA_BUILD_DEBIAN_MIRROR=http://deb.debian.org/debian
+          AIMA_BUILD_DEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security
+          AIMA_BUILD_PYPI_INDEX=https://pypi.org/simple
+          AIMA_BUILD_NPM_REGISTRY=https://registry.npmjs.org
+          EOF
+          chmod 0600 "${ENV_FILE}"
+
+      - name: Validate Windows overlay storage model
+        if: steps.scope.outputs.runtime_required == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose \
+            -f compose.yaml \
+            -f compose.windows.yaml \
+            --env-file "${AIMA_WINDOWS_ENV_FILE}" \
+            config --format json > "${RUNNER_TEMP}/compose.windows.json"
+
+          python3 - "${RUNNER_TEMP}/compose.windows.json" "${AIMA_WINDOWS_HOST_ROOT}" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          model = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          host_root = Path(sys.argv[2]).resolve()
+          expected = {
+              "bootstrap": {
+                  "/host/runtime/data": "bind",
+                  "/host/runtime/logs": "bind",
+                  "/host/postgres": "volume",
+                  "/host/shared/secrets": "volume",
+              },
+              "postgres": {
+                  "/var/lib/postgresql": "volume",
+                  "/run/secrets": "volume",
+              },
+              "migrate": {
+                  "/app/data": "bind",
+                  "/app/logs": "bind",
+                  "/run/internal-secrets": "volume",
+              },
+              "configure": {
+                  "/app/data": "bind",
+                  "/app/logs": "bind",
+                  "/run/internal-secrets": "volume",
+              },
+              "api": {
+                  "/app/data": "bind",
+                  "/app/logs": "bind",
+                  "/run/internal-secrets": "volume",
+              },
+              "worker": {
+                  "/app/data": "bind",
+                  "/app/logs": "bind",
+                  "/run/internal-secrets": "volume",
+              },
+              "scheduler": {
+                  "/app/data": "bind",
+                  "/app/logs": "bind",
+                  "/run/internal-secrets": "volume",
+              },
+          }
+          for service, targets in expected.items():
+              mounts = {item["target"]: item for item in model["services"][service].get("volumes", [])}
+              assert set(mounts) == set(targets), (service, mounts)
+              for target, mount_type in targets.items():
+                  assert mounts[target]["type"] == mount_type, (service, target, mounts[target])
+
+          expected_bind_sources = {
+              "/app/data": str(host_root / "runtime/data"),
+              "/app/logs": str(host_root / "runtime/logs"),
+          }
+          api_mounts = {item["target"]: item for item in model["services"]["api"].get("volumes", [])}
+          for target, source in expected_bind_sources.items():
+              assert Path(api_mounts[target]["source"]).resolve() == Path(source), (target, api_mounts[target])
+
+          bootstrap_command = model["services"]["bootstrap"]["command"]
+          assert "--runtime-only" in bootstrap_command
+          assert "--runtime-bind-compatible" in bootstrap_command
+          assert {"windows_postgres", "windows_internal_secrets"}.issubset(model["volumes"])
+          assert "windows_runtime_data" not in model["volumes"]
+          assert "windows_runtime_logs" not in model["volumes"]
+          PY
+
+      - name: Windows overlay startup, permissions, host visibility, and restart persistence
+        if: steps.scope.outputs.runtime_required == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          compose() {
+            docker compose \
+              -f compose.yaml \
+              -f compose.windows.yaml \
+              --env-file "${AIMA_WINDOWS_ENV_FILE}" "$@"
+          }
+          cleanup() {
+            status=$?
+            if [[ $status -ne 0 ]]; then
+              compose ps -a || true
+              compose logs --no-color || true
+            fi
+            compose down -v --remove-orphans || true
+            sudo rm -rf "${AIMA_WINDOWS_HOST_ROOT}" || true
+            exit $status
+          }
+          trap cleanup EXIT
+
+          # Windows overlay 复用 canonical Runtime 已构建镜像，只验证 storage/runtime 差异。
+          compose up -d --no-build --wait
+          curl -fsS http://127.0.0.1:18082/health/ready >/dev/null
+
+          API_CONTAINER="$(compose ps -q api)"
+          POSTGRES_CONTAINER="$(compose ps -q postgres)"
+          python3 - "${API_CONTAINER}" "${POSTGRES_CONTAINER}" "${AIMA_WINDOWS_HOST_ROOT}" <<'PY'
+          import json
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          api_id, postgres_id, host_root_raw = sys.argv[1:]
+          host_root = Path(host_root_raw).resolve()
+
+          def mounts(container_id: str) -> dict[str, dict]:
+              container = json.loads(subprocess.check_output(["docker", "inspect", container_id], text=True))[0]
+              return {item["Destination"]: item for item in container["Mounts"]}
+
+          api_mounts = mounts(api_id)
+          assert api_mounts["/app/data"]["Type"] == "bind"
+          assert api_mounts["/app/data"]["RW"] is True
+          assert Path(api_mounts["/app/data"]["Source"]).resolve() == host_root / "runtime/data"
+          assert api_mounts["/app/logs"]["Type"] == "bind"
+          assert api_mounts["/app/logs"]["RW"] is True
+          assert Path(api_mounts["/app/logs"]["Source"]).resolve() == host_root / "runtime/logs"
+          assert api_mounts["/run/internal-secrets"]["Type"] == "volume"
+          assert api_mounts["/run/internal-secrets"]["RW"] is False
+
+          postgres_mounts = mounts(postgres_id)
+          assert postgres_mounts["/var/lib/postgresql"]["Type"] == "volume"
+          assert postgres_mounts["/var/lib/postgresql"]["RW"] is True
+          assert postgres_mounts["/run/secrets"]["Type"] == "volume"
+          assert postgres_mounts["/run/secrets"]["RW"] is False
+          PY
+
+          test "$(compose exec -T api stat -c '%u:%g:%a' /run/internal-secrets/postgres_password | tr -d '\r')" = "0:11001:440"
+          sudo test -f "${AIMA_WINDOWS_HOST_ROOT}/runtime/logs/api.log"
+          sudo test -f "${AIMA_WINDOWS_HOST_ROOT}/runtime/logs/worker.log"
+          sudo test -f "${AIMA_WINDOWS_HOST_ROOT}/runtime/logs/scheduler.log"
+
+          compose exec -T api sh -ec 'printf windows-host-persistence > /app/data/windows-host-marker'
+          test "$(sudo cat "${AIMA_WINDOWS_HOST_ROOT}/runtime/data/windows-host-marker")" = "windows-host-persistence"
+          PASSWORD_HASH_BEFORE="$(compose exec -T api sha256sum /run/internal-secrets/postgres_password | awk '{print $1}' | tr -d '\r')"
+          compose exec -T postgres psql -U aima_ugc -d aima_ugc -v ON_ERROR_STOP=1 -c \
+            "CREATE TABLE ci_windows_hybrid_marker(value text PRIMARY KEY); INSERT INTO ci_windows_hybrid_marker VALUES ('persisted');"
+
+          compose down --remove-orphans
+          test "$(sudo cat "${AIMA_WINDOWS_HOST_ROOT}/runtime/data/windows-host-marker")" = "windows-host-persistence"
+          sudo test -f "${AIMA_WINDOWS_HOST_ROOT}/runtime/logs/api.log"
+
+          compose up -d --no-build --wait
+          curl -fsS http://127.0.0.1:18082/health/ready >/dev/null
+          compose exec -T api sh -ec 'test "$(cat /app/data/windows-host-marker)" = windows-host-persistence'
+          PASSWORD_HASH_AFTER="$(compose exec -T api sha256sum /run/internal-secrets/postgres_password | awk '{print $1}' | tr -d '\r')"
+          test "${PASSWORD_HASH_BEFORE}" = "${PASSWORD_HASH_AFTER}"
+          DB_MARKER="$(compose exec -T postgres psql -U aima_ugc -d aima_ugc -Atc "SELECT value FROM ci_windows_hybrid_marker;" | tr -d '\r')"
+          test "${DB_MARKER}" = "persisted"
+
+          compose down -v --remove-orphans
+          test "$(sudo cat "${AIMA_WINDOWS_HOST_ROOT}/runtime/data/windows-host-marker")" = "windows-host-persistence"
+          sudo test -f "${AIMA_WINDOWS_HOST_ROOT}/runtime/logs/api.log"
+          trap - EXIT
+
+      - name: Clean canonical Runtime data
+        if: always() && steps.scope.outputs.runtime_required == 'true'
+        shell: bash
+        run: |
+          docker compose --env-file "${AIMA_RUNTIME_ENV_FILE}" down --remove-orphans >/dev/null 2>&1 || true
+          sudo rm -rf "${AIMA_RUNTIME_ROOT}" || true
