@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260824-github-release-workflow
 title: GitHub 一键离线 Release Workflow
 level: L3
-status: in_progress
+status: ready_for_review
 owner: aima
 branch: feature/github-release-workflow
 created: 2026-08-24
@@ -26,132 +26,167 @@ data_changes: []
 
 # 目标
 
-在不改变本地/Windows/公司服务器现有 Docker 构建默认源和业务 Runtime 的前提下，新增一个可从 GitHub Actions 手工触发的一键 Release Workflow：输入正式 SemVer 版本号后，从当前 `main` 的固定 SHA 构建 Linux/AMD64 Backend/Frontend 镜像，发布到 GHCR，同时把 Backend/Frontend/PostgreSQL 18.4 镜像及部署文件打成可从 GitHub Release 下载的离线包，完成 Tag 与 GitHub Release 创建。
+在不改变本地 Windows/Linux/公司服务器现有 Docker 构建默认源和业务 Runtime 的前提下，新增可从 GitHub Actions 手工触发的一键 Release Workflow：输入正式 SemVer 版本后，从当前 `main` 固定 SHA 构建 Linux/AMD64 Backend/Frontend 候选镜像；候选先生成离线 Bundle 并完成 no-build/no-pull 回放验证，正式 `workflow_dispatch` 再把这组已验证应用镜像发布到 GHCR、记录 digest、创建 Git Tag 与 GitHub Release。
 
 # 成功标准
 
-- [ ] GitHub Actions 中出现 `Release` Workflow，可通过 `workflow_dispatch` 输入 `vMAJOR.MINOR.PATCH` 手工触发，并拒绝非 `main`、非法版本号、重复 Tag/Release 或不满足发布门禁的请求。
-- [ ] Release 构建只在 GitHub Hosted Linux Runner 内显式使用 Docker Hub、Debian、PyPI、npm 官方上游；仓库 `Dockerfile`、`compose.yaml`、`env.production.example` 的国内默认下载源不改变，本地 Windows/Linux 使用方式不受影响。
-- [ ] Backend/Frontend 只构建一次正式 Linux/AMD64 候选镜像，发布带版本与 SHA 标签的 GHCR 镜像，并记录不可变 digest；PostgreSQL 固定使用当前仓库锁定的官方 `postgres:18.4`。
-- [ ] Release 资产至少包含 `AIMA_UGC-vX.Y.Z-deploy.tar.gz`、`release-manifest.json`、`migration-manifest.json`、`SHA256SUMS`；离线包内含 `images.tar`、`compose.yaml`、版本化 `env.production.example`、两个 manifest、`SHA256SUMS` 和 `DEPLOY.md`。
-- [ ] CI/Release 构建后实际删除候选运行镜像、从 `images.tar` 重新 `docker load`，再以 `--no-build --pull never` 启动 canonical Compose 并通过 readiness，证明服务器无需现场 build/pull 即可运行本包。
-- [ ] Release 包不包含 PostgreSQL 数据、Artifact、日志、真实 `env.production` 或内部/外部 Secret；生产持久根继续与 Release 生命周期分离。
-- [ ] 文档明确当前能力是“一键不可变离线 Release 基础”，不把尚未实现的协调 Backup/Restore、HTTPS/认证、SBOM/独立签名或真实 Production Go-Live 伪装成已完成。
+- [x] `.github/workflows/release.yml` 提供 `workflow_dispatch` + `version` 输入，正式路径拒绝非 `main`、非法 SemVer、重复 Tag/Release、非最新 `main` SHA 或关键 `main` CI 门禁不绿的请求。
+- [x] GitHub Hosted Linux Runner 显式使用 Docker Hub canonical image、Debian 官方源、PyPI 官方源和 npm 官方源；仓库现有 `Dockerfile`、`compose.yaml`、`env.production.example` 的本地国内默认下载源保持不变。
+- [x] Backend/Frontend 只构建一次 Linux/AMD64 候选；正式发布阶段复用已经离线回放验证的同一候选镜像，推送 GHCR 版本/SHA tag 并记录 repo digest；PostgreSQL 固定 `postgres:18.4` 并记录官方 repo digest。
+- [x] Release 资产设计包含 `AIMA_UGC-vX.Y.Z-deploy.tar.gz`、`release-manifest.json`、`migration-manifest.json`、`SHA256SUMS`；Bundle 内含 `images.tar`、canonical `compose.yaml`、版本化 `env.production.example`、两个 manifest、`SHA256SUMS`、`DEPLOY.md`。
+- [x] PR Release dry-run 已在 GitHub Hosted Linux Runner 实际执行：删除候选运行镜像 → `docker load -i images.tar` → canonical Compose `--no-build --pull never --wait` → bootstrap/migrate/configure/API/Worker/Scheduler/Frontend readiness 成功。
+- [x] Bundle 构建路径不读取真实 TikHub/LLM Secret，不包含 PostgreSQL 数据、Artifact、日志、真实 `env.production` 或内部/外部 Secret；`${AIMA_HOST_ROOT}` 持久状态与 Release 生命周期分离。
+- [x] 文档明确当前能力是“一键不可变离线 Release 基础”，并继续把协调 Backup/Restore、认证/HTTPS、SBOM/独立来源签名、服务器侧完整发布/回滚与 Production Go-Live 列为后续能力。
 
 # 范围
 
-- 新增 `.github/workflows/release.yml`，同时支持 PR 路径变更时的 Release Bundle dry-run/no-pull 验证与 `main` 上的手工正式发布。
-- 复用现有根 `Dockerfile`、canonical `compose.yaml`、`AIMA_HOST_ROOT` 持久化模型和现有 bootstrap/migrate/configure/health 机制。
-- GitHub Runner 的构建参数显式覆盖为官方 Debian/PyPI/npm 上游；Docker 基础镜像和 PostgreSQL 使用仓库已锁定的 Docker Hub canonical reference。
-- 发布 GHCR Backend/Frontend 镜像，并生成离线 Bundle、manifest、校验和、部署说明。
-- 为 Release Workflow 增加仓库级静态/语义回归测试，并同步 Production Release 相关文档。
+- 新增 `.github/workflows/release.yml`：PR 路径变更执行无写权限 dry-run；默认分支 `workflow_dispatch` 执行正式发布。
+- 复用根 `Dockerfile`、canonical `compose.yaml`、`AIMA_HOST_ROOT`、bootstrap/migrate/configure/health，不复制第二套 Production Runtime。
+- Release Runner 只通过 Docker build args 覆盖 Debian/PyPI/npm 为官方上游；Docker 基础镜像和 PostgreSQL 使用仓库锁定的 Docker Hub canonical reference。
+- 正式发布 GHCR Backend/Frontend 版本/SHA tag；生成离线 Bundle、manifest、SHA256 与部署说明。
+- 增加静态/语义回归测试，并同步环境运行、Roadmap、Production Release Appendix。
 
 # 非目标
 
-- 本 Change 不新增 `compose.production.yaml`；当前离线发布继续复用 canonical `compose.yaml`，避免复制第二套 Runtime。未来只有出现独立生产语义时再按 Stage 11A 引入覆盖文件。
+- 不新增 `compose.production.yaml`；没有独立生产语义时继续复用 canonical `compose.yaml`。
 - 不实现企业认证/Authorization、HTTPS/HSTS/CSP、正式公网入口或生产资源限额。
-- 不实现 PostgreSQL + Artifact 协调 Backup/Restore、自动数据库回滚、RPO/RTO。
-- 不在本 Change 引入 SBOM 生成器、第三方签名工具或新项目依赖；`SHA256SUMS` 只作为当前文件完整性校验，不能被描述成独立来源签名。
-- 不修改 Windows `compose.windows.yaml`，不把 Windows storage adapter 打入服务器运行路径。
-- 不自动触发真实 TikHub/LLM 请求，不包含任何 Provider Secret。
+- 不实现 PostgreSQL + Artifact 协调 Backup/Restore、数据库自动回滚、RPO/RTO。
+- 不在本 Change 引入 SBOM 生成器、第三方签名工具或新项目依赖；当前 `SHA256SUMS` 仅证明文件完整性，不冒充独立来源签名。
+- 不修改 Windows `compose.windows.yaml` 的业务语义；Windows storage adapter 不进入服务器 Release Bundle。
+- 不自动发起真实 TikHub/LLM 请求，不使用 Provider Secret 做 Release 验证。
+- 本 Change 不自动创建一个真实业务版本号的 GitHub Release；首次正式版本由用户在本 PR 合并并确认 `main` 门禁后手工触发。
 
 # 必须保持不变
 
-- `Dockerfile` 的基础镜像版本、Python/Node/Nginx/PostgreSQL 锁定版本不升级、不降级。
-- `Dockerfile` / `compose.yaml` / `env.production.example` 继续保留面向国内本地环境的默认 Debian/PyPI/npm 下载源；Release 只通过 Workflow 的 build args 覆盖 GitHub Runner 下载源。
-- Linux/WSL/公司服务器 canonical Runtime 继续使用 `compose.yaml`；Windows Docker Desktop 继续使用 `compose.yaml + compose.windows.yaml`。
-- 生产持久状态继续位于 `${AIMA_HOST_ROOT}/postgres`、`${AIMA_HOST_ROOT}/runtime/data`、`${AIMA_HOST_ROOT}/runtime/logs`、`${AIMA_HOST_ROOT}/shared/secrets`，不进入 Release Bundle。
-- Migration 继续由独立 `migrate` service 执行，API/Worker/Scheduler 不自行修改 Schema。
-- 不新增 Python/npm 运行依赖，不修改业务 Contract、Schema、Migration 或数据语义。
+- Python/Node/Nginx/PostgreSQL 与依赖锁定版本不升级、不降级。
+- `Dockerfile` / `compose.yaml` / `env.production.example` 的国内默认 Debian/PyPI/npm 下载源保持；Release 官方上游只存在于 Workflow build args。
+- Linux/WSL/公司服务器继续使用 canonical `compose.yaml`；Windows Docker Desktop 继续使用 `compose.yaml + compose.windows.yaml`。
+- `${AIMA_HOST_ROOT}/postgres`、`${AIMA_HOST_ROOT}/runtime/data`、`${AIMA_HOST_ROOT}/runtime/logs`、`${AIMA_HOST_ROOT}/shared/secrets` 不进入 Release Bundle，也不被 Workflow 清理。
+- Migration 继续由独立 `migrate` service 执行；API/Worker/Scheduler 不隐式修改 Schema。
+- 不新增 Python/npm 运行依赖，不修改业务 HTTP Contract、PostgreSQL Schema/Migration 或数据语义。
 
 # 方案比较与关键决策
 
 ## 方案 A：canonical Compose + GHCR + GitHub Release 离线 Bundle（采用）
 
-- GitHub Runner 用当前 Dockerfile target 构建 Backend/Frontend；正式手工发布时推送 GHCR，并把相同候选镜像连同 `postgres:18.4` 打入 `images.tar`。
-- 离线包直接复用 canonical `compose.yaml`，通过版本化 `AIMA_IMAGE_TAG` 选择本包镜像；服务器 `docker load` 后使用 `--no-build --pull never`。
-- 优点：最小增量、与 Original 的“一键 Tag + Release + 可下载镜像”目标一致，同时不复制 Runtime；GHCR digest 与 Release Bundle 可互相审计。
-- 代价：当前仍只有 SHA256 文件完整性，没有完整 SBOM/独立来源签名；这些继续作为后续生产强化单元。
+Build/verify job 只拿只读权限，构建 Backend/Frontend + 拉 `postgres:18.4`，生成 Bundle，删除候选 tag 后从 `images.tar` 重放，并以 `--no-build --pull never` 验证。只有正式 `workflow_dispatch` 的 publish job 拿 `contents: write` / `packages: write`，下载同一已验证候选并发布 GHCR/Tag/Release。
+
+优点：服务器可真正离线运行；PR 不具备仓库/Package 写权限；正式发布不重新构建另一份镜像；canonical Runtime 不复制。
+
+代价：当前仍没有协调 Backup/Restore、SBOM、独立签名/provenance 和完整服务器发布/回滚自动化。
 
 ## 方案 B：只生成 GitHub Release Bundle，不发布 GHCR（不采用）
 
-- 更简单、权限更少，但失去独立 Registry 镜像 digest/下载路径，与用户要求的 Original 发布效果和长期不可变镜像审计方向不完全一致。
+权限和流程更少，但缺少独立 Registry digest/镜像获取路径，与用户要求的 Original 一键发布效果和长期不可变镜像审计目标不一致。
 
-## 方案 C：本次直接完成完整 Stage 11A/11B（不采用）
+## 方案 C：本次直接完成完整 Stage 11A—11E（不采用）
 
-- 同时引入 Production Compose、HTTPS/认证、SBOM/签名、Backup/Restore 等。
-- 会把多个尚未决策/验收的生产领域耦合到一次 Workflow 变更，扩大风险和验证成本，不符合当前“先做一键 Release Workflow”的最小目标。
+会把 HTTPS/认证、Backup/Restore、服务器发布/回滚、SBOM/签名和生产验收耦合到一次 Workflow Change，扩大范围并引入尚未决策的生产语义。
 
-已确认上游决策：用户 2026-08-24 明确要求开始 GitHub Release Workflow，并确认 GitHub Release 构建环境显式使用 Docker Hub / Debian / PyPI / npm 官方上游；该覆盖必须只作用于 GitHub Release/CI 构建，不能改变本地默认源。
+已确认上游决定：用户 2026-08-24 要求开始 GitHub Release Workflow，并明确 GitHub Release 构建环境显式使用 Docker Hub / Debian / PyPI / npm 官方上游；该覆盖不得改变本地默认构建源。
 
 # Requirement Traceability
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | Actions 手工输入版本后可一键打 Tag、构建/发布镜像并创建可下载 GitHub Release | user:2026-08-24-github-release-workflow | not_satisfied | 实现与真实 Runner 验证待完成 |
-| R2 | Release Runner 显式使用 Docker Hub / Debian / PyPI / npm 官方上游，且不影响本地国内默认源 | user:2026-08-24-official-release-upstreams | not_satisfied | 静态回归与 Runner 构建证据待完成 |
-| R3 | 正式 Release 面向 Linux/AMD64，服务器使用不可变镜像并支持 no-build/no-pull，不现场构建 | docs/roadmap/02_生产上线实施路线.md | not_satisfied | Release Bundle dry-run/no-pull Compose smoke 待完成 |
-| R4 | Release Bundle 与持久 PostgreSQL/Artifact/log/Secret 分离，固定 `AIMA_HOST_ROOT` 不随版本切换 | docs/appendix/11_生产部署与离线Release方案.md | not_satisfied | Bundle 内容审计与文档同步待完成 |
-| R5 | 当前实现不能把未完成的 Backup/Restore、认证/HTTPS、SBOM/独立签名和完整 Production Go-Live 写成已完成 | docs/appendix/11_生产部署与离线Release方案.md | not_satisfied | 文档完成审计待完成 |
+| R1 | Actions 手工输入版本后可一键校验 main、发布已验证镜像、打 Tag 并创建可下载 GitHub Release | user:2026-08-24-github-release-workflow | satisfied | `.github/workflows/release.yml` 已实现 `workflow_dispatch`、`publish-release`、GHCR digest、`gh release create --target "$RELEASE_SHA"`；首次真实业务版本按非目标留给合并后人工触发，不用测试版本污染正式 Release 历史。 |
+| R2 | Release Runner 显式使用 Docker Hub / Debian / PyPI / npm 官方上游且不影响本地国内默认源 | user:2026-08-24-official-release-upstreams | satisfied | `tests/unit/test_docker_build_sources.py` 静态门禁；Release dry-run `32702475285` 日志实际显示 `docker.io/library/*`、`deb.debian.org`、`pypi.org`、`registry.npmjs.org`；本 Change 未修改本地三处默认源。 |
+| R3 | Release 面向 Linux/AMD64，服务器使用 `images.tar` + `--no-build --pull never`，不现场构建/拉镜像 | docs/roadmap/02_生产上线实施路线.md | satisfied | Release dry-run `32702475285` 实际 build linux/amd64、保存并删除候选镜像、重新 load，canonical Compose no-build/no-pull 全栈 readiness 成功。 |
+| R4 | Release Bundle 与 PostgreSQL/Artifact/log/Secret 持久状态分离，`AIMA_HOST_ROOT` 不随版本切换 | docs/appendix/11_生产部署与离线Release方案.md | satisfied | Workflow Bundle 白名单仅 7 项；`images.tar` 只有 Backend/Frontend/PostgreSQL 镜像；smoke 使用独立临时 Host Root；正式文档保持 `/data/AIMA_UGC` 为 Release 外持久根。 |
+| R5 | 不把未完成 Backup/Restore、认证/HTTPS、SBOM/独立签名或完整 Production Go-Live 写成已完成 | docs/appendix/11_生产部署与离线Release方案.md | satisfied | Roadmap/Appendix/环境文档均把这些能力保留为后续 Production 强化；manifest 也显式标记 SBOM、独立签名与协调 Backup/Restore 当前未实现。 |
 
 # Validation Matrix
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
-| Browser Mock Acceptance | not_applicable | 本次没有前端页面或浏览器交互变化；GitHub Actions UI 由 `workflow_dispatch` 配置提供，不属于产品 Browser E2E。 |
-| Backend/API/PostgreSQL Integration | not_applicable | 不修改后端业务规则、API、Repository、Schema 或数据库状态机；PostgreSQL 只作为 Release Compose Golden Path 的真实运行依赖验证。 |
-| Contract / Generated Client | not_applicable | 不修改 Pydantic/OpenAPI/generated client 或其他公共业务 Contract。 |
-| Real Full-stack Golden Path | required | Release dry-run 必须真实 build → save → 删除镜像 → load `images.tar` → canonical Compose `--no-build --pull never` → Migration/configure/API/PostgreSQL/frontend readiness。 |
-| Real Provider Probe | not_applicable | 不修改 TikHub/LLM Provider 能力，普通 Release 验证明确禁用真实付费调用。 |
-| Docs / Governance / Other | required | pytest 静态回归验证 Workflow 触发/源/版本/Bundle/安全边界；Release Workflow PR run、Ruff/CI、Ready Check、文档一致性作为新鲜证据。 |
+| Browser Mock Acceptance | not_applicable | 不修改产品页面或用户业务交互；GitHub Actions `workflow_dispatch` 不是产品 Browser E2E。 |
+| Backend/API/PostgreSQL Integration | not_applicable | 不修改后端业务规则、HTTP API、Repository、Schema；PostgreSQL Runtime 作为 Release Full-stack Golden Path 的真实组件验证。 |
+| Contract / Generated Client | not_applicable | 不修改 Pydantic/OpenAPI/generated client。 |
+| Real Full-stack Golden Path | required | GitHub Actions run `32702475285`：官方上游 build → `images.tar` → 删除候选镜像 → load → canonical Compose `--no-build --pull never --wait` → bootstrap/migrate/configure/API/Worker/Scheduler/Frontend healthy。 |
+| Real Provider Probe | not_applicable | 不改变 TikHub/LLM endpoint/Mapper/Transport；Release 验证明确禁用真实付费 Provider。 |
+| Docs / Governance / Other | required | Red/Green 静态测试、Release dry-run、CI、Internal V1-A、Completion Gate 与 Production Release 文档同步共同覆盖。 |
 
 # Completion Audit
 
-- [ ] upstream_re_read：完成前重新读取用户决定、Roadmap Stage 11、Production Release Appendix 和当前机器事实，独立重建完成定义。
-- [ ] change_coverage：比较上游要求与当前 Change，确认本单元没有漏掉一键发布、官方上游隔离、不可变镜像、离线 Bundle、no-pull smoke 与持久数据分离。
-- [ ] reverse_audit：从 GitHub Release 资产反查服务器实际启动路径，从 canonical Compose 反查 Bundle 必需镜像/配置，并复核 Validation Matrix 的证据等级。
-- [ ] unresolved_cleared：所有 `not_satisfied` 清零；延期/不适用项均有正式依据。
+- [x] upstream_re_read：完成前重新读取当前分支 `AGENTS.md`、Skill、Blueprint README/07、Roadmap、Production Release Appendix、canonical Compose 和 Release Workflow，未以当前 Change 自身反推需求。
+- [x] change_coverage：上游要求已覆盖手工正式发布、官方上游隔离、本地默认源不变、不可变候选、GHCR digest、离线 Bundle/no-pull、持久状态分离和 Production 未完成边界。
+- [x] reverse_audit：从 Bundle 反查 canonical Compose 所需 Backend/Frontend/PostgreSQL tag 和 env；从正式 publish 反查其镜像来自已回放候选；PR dry-run 无写权限；Validation Matrix 证明范围与实际边界一致。
+- [x] unresolved_cleared：R1—R5 均为 `satisfied`；没有范围内 `not_satisfied`；非目标均有用户目标或 Roadmap/Appendix 边界依据。
 
 # 任务
 
-- [x] 调查当前 AGENTS/Skill、Roadmap、Production Appendix、Dockerfile、Compose、现有 CI 与 Original Release Workflow。
-- [ ] 先建立 Release Workflow 失败测试并取得因目标文件/行为缺失而失败的 Red 证据。
+- [x] 调查当前 AGENTS/Skill、Roadmap、Production Appendix、Dockerfile、Compose、CI 与 Original Release Workflow。
+- [x] 建立 Release Workflow 失败测试并取得真实 Red 证据。
 - [x] 建立 Validation Matrix 和 L3 方案比较。
-- [ ] 实现最小 Release Workflow。
-- [ ] 同步环境部署、Roadmap 与 Release Appendix。
-- [ ] 取得 Release dry-run/no-pull、目标测试、相关 CI 和机器 Ready Check 的新鲜证据。
-- [ ] 完成 Requirement Traceability、Completion Audit 和两阶段 Review。
+- [x] 实现最小 Release Workflow，并把 PR dry-run 与正式 publish 权限拆开。
+- [x] 同步环境部署、Roadmap 与 Release Appendix。
+- [x] 取得 Release dry-run/no-pull、目标测试、相关 CI 的新鲜证据；本 Change 状态改为 Ready 后由永久 Completion Gate 再执行机器 Ready Check。
+- [x] 完成 Requirement Traceability、Completion Audit 和两阶段人工 Review。
 
 # 验证
 
-## 计划
+## Red
 
-- Red：`uv run pytest tests/unit/test_docker_build_sources.py -q`，新增 Release 断言应因 `.github/workflows/release.yml` 尚不存在而失败。
-- Green：同一目标测试通过，确认本地默认源仍为国内镜像、Release Workflow 只在 Runner build args 中使用官方上游。
-- Release Bundle Golden Path：PR 触发 `Release` Workflow 的 dry-run，真实构建 Linux/AMD64 镜像、拉取 `postgres:18.4`、保存/重新加载 `images.tar`，以 `--no-build --pull never` 启动并验证 readiness。
-- 相关：现有 CI / Internal V1-A / Change Completion Gate 等按 GitHub 永久 Workflow 复验。
-- Ready Check：`python .agents/skills/reliable-vibe-coding/scripts/ready_check.py --root . --require-active-ready`（PR 阶段由 changed-since 门禁验证当前 Change；完成前再补等价本地/Runner 证据）。
+提交 `ea37b99f1136d3665c31fb6f12d84f721319e4f3`（`添加 Release 最小权限失败测试`）在 CI run `32698875945` / Stage 1 job `97346209910` 得到预期失败：
 
-## 新鲜证据
+```text
+FAILED tests/unit/test_docker_build_sources.py::test_release_pull_request_dry_run_has_no_repository_write_token
+1 failed, 617 passed, 1 warning
+```
 
-- 尚未执行。
+根因是当时 Release Workflow 顶层仍拥有 `contents: write` / `packages: write`，PR dry-run 权限过大；失败与新增安全要求直接对应。
+
+## Green / 实现修正
+
+提交 `f42c1720a5c8d7ac9917db72fbbfca4b8ba1dd32`（`隔离 Release 发布权限并复用已验证镜像`）把只读 build/replay 与写权限 publish 拆成两个 job；正式 publish 只消费已完成离线回放的候选，不重新 build。
+
+后续 HEAD 又针对 `main` 中 `env.production.example` 已提供 LLM Base URL/Provider/Model 默认值这一事实，修正 Release smoke：在无真实 API Key 的 dry-run 中显式移除三项 LLM Runtime 配置，保证 CI 不把 Provider 默认值误判成启用 LLM。
+
+## 当前新鲜 Runner 证据
+
+- Release dry-run run `32702475285`：`Build and replay offline candidate` **success**。实际使用 Docker Hub/Debian/PyPI/npm 官方上游；Backend/Frontend/PostgreSQL 构建/拉取成功；Bundle SHA256 成功；删除候选运行 tag 后从 `images.tar` load；canonical Compose `--no-build --pull never --wait` 成功；bootstrap/migrate/configure exit 0，API/Worker/Scheduler/Frontend healthy；候选 tar.gz `gzip -t` 成功。
+- 同一 PR HEAD 的 CI run `32702475281`：**success**。
+- 同一 PR HEAD 的 Internal V1-A run `32702475295`：**success**。
+- 当时 Windows Compose 失败来自 `main` 已把 `scripts/config/docker_hub_mirrors.txt` 扩为 6 项，而其永久测试 Fixture 仍只构造前三项这一独立回归；已通过独立 PR #203 修复测试 Fixture。PR #203 的 Windows Compose、CI、Internal V1-A、Completion Gate、Local Dev、Stage 8F 均 success，已正常合并到 `main`（merge `0008162ba56c84798ca8122ceefaf70f7b18d0f0`）。本 Release Change 没有修改生产 Windows Runtime 语义。
+- Change Completion Gate 先前因本 Change 仍为 `in_progress` 按预期失败；本提交把状态改为 `ready_for_review`，必须等待当前 HEAD 的永久 Gate 新鲜复验后方可合并。
+
+# 两阶段 Review
+
+## Review A1：上游要求 → Change
+
+重新从用户明确决定、Roadmap Stage 11 当前边界和 Production Release Appendix 独立重建要求，确认没有遗漏：一键手工版本发布、main/版本门禁、海外官方源隔离、本地默认源保持、Linux/AMD64、离线 Bundle、no-build/no-pull 回放、GHCR digest、数据/Secret 不入 Bundle、完整 Production 未完成项继续保留。
+
+## Review A2：Change → 实现 / 测试 / 文档
+
+逐项反查 `.github/workflows/release.yml`、静态测试和三个正式文档；PR 模式不获得写权限，正式 publish 复用回放候选；Bundle/manifest 与 canonical Compose tag、Host Root、Alembic head/OpenAPI hash 对齐；没有业务 Contract/Schema/Migration/依赖变化。
+
+## 代码质量 / 风险 Review
+
+- 正确性：正式 publish 开始和 GHCR/Release 创建前均重新校验 `main` 最新 SHA、Tag/Release 不重复；避免构建期间 `main` 前进后发布旧候选。
+- 权限：PR/build job 只有 read/check 权限；`contents: write` / `packages: write` 只位于 `workflow_dispatch` publish job。
+- 供应链：版本/tag 固定，无 `latest`；PostgreSQL repo digest、应用 GHCR digest进入 manifest；SBOM/独立签名未伪装完成。
+- 数据安全：无 `down -v`；Bundle 白名单排除生产数据/Secret；Release 与 `${AIMA_HOST_ROOT}` 解耦。
+- 兼容性：没有修改本地 Compose 命令、国内构建默认源、Windows storage adapter、业务接口、Schema 或依赖。
+- 剩余边界：PR 无法也不应执行正式 GHCR/Tag/GitHub Release 写副作用；该路径在代码/静态门禁中完成，首次真实业务版本需合并后由用户手工触发并观察结果。
 
 # 文档影响
 
-- `docs/02_环境运行与部署.md`：把“未来正式 Release”更新为当前已实现的一键 Release 下载/部署入口，并继续区分 Internal V1-B 与完整 Production。
-- `docs/roadmap/02_生产上线实施路线.md`：记录 GitHub Release Workflow 基础已实现时的部分完成状态，不提前宣称 Stage 11A/11B 全部闭环。
-- `docs/appendix/11_生产部署与离线Release方案.md`：记录 Workflow、Bundle、官方上游隔离、GHCR/digest/no-pull smoke 的当前机器事实及仍未完成项。
+- `docs/02_环境运行与部署.md`：增加 Actions 手工 Release、官方海外上游隔离、Bundle 下载/服务器离线启动和 Host Root 数据分离说明。
+- `docs/roadmap/02_生产上线实施路线.md`：记录 GitHub Release Workflow 基础部分完成，不提前宣称 Stage 11/Production Go-Live 闭环。
+- `docs/appendix/11_生产部署与离线Release方案.md`：记录 Workflow、Bundle、GHCR/digest、no-build/no-pull、当前未包含 SBOM/签名/协调恢复等机器事实。
 
 # 兼容、部署与回滚
 
-- 兼容：无业务 API/Schema/数据格式变化；本地/Windows/Linux Internal V1 命令保持不变。
-- Migration：本 Change 不新增 Migration。Release Workflow 记录当前 Alembic head；部署时仍由现有 `migrate` service 执行 `alembic upgrade head`。
-- 部署：正式 Release 资产只包含应用/数据库镜像与部署元数据，不触碰目标服务器 `${AIMA_HOST_ROOT}` 中既有数据。
-- 回滚：Workflow 代码可整体回退；已发布的 Git Tag/Release 属于不可变发布事实，本 Change 不设计自动删除/覆盖已有 Tag/Release。应用层回滚仍受对应版本 Migration 兼容性和后续 Backup/Restore 能力约束。
-- 安全：`GITHUB_TOKEN` 仅在正式手工发布时用于 GHCR/GitHub Release；不读取 TikHub/LLM Secret；日志不得输出任何真实外部 Secret。
+- 兼容：无业务 API/Schema/数据格式变化；本地 Windows/Linux/Internal V1 命令不变。
+- Migration：不新增 Migration；manifest 记录当前单 Alembic head；部署仍由现有 `migrate` service 执行 `alembic upgrade head`。
+- 部署：Release 只携带镜像与部署元数据，不触碰目标服务器 `${AIMA_HOST_ROOT}` 既有 PostgreSQL/Artifact/log/Secret。
+- 回滚：Workflow 代码可整体回退；已存在 Tag/Release 不允许覆盖。应用版本回滚仍受对应 Migration 兼容性和后续 Coordinated Backup/Restore 能力约束，本 Change 不制造自动数据库回滚。
+- 安全：正式 `env.production`、TikHub/LLM API Key 不进入 Workflow 资产；PR dry-run 没有仓库/Package 写 token。
 
-# 交付
+# Git / 交付状态
 
-- Branch：`feature/github-release-workflow`
-- PR：待创建 Draft PR 并取得 Red/Green/Review/CI 证据。
-- 发布：本 Change 只建立发布能力；实现验证阶段不会创建正式业务版本 Tag/Release，首次正式版本由用户在合并到默认分支后从 Actions 手工触发。
+- 分支：`feature/github-release-workflow`
+- PR：#201 `新增 GitHub 一键离线 Release Workflow`
+- 当前阶段：实现已进入 `ready_for_review`；等待本提交后的永久 CI / Completion Gate 新鲜复验。
+- 正式业务版本 Release：未触发；必须在 PR 正常合并且 `main` 要求门禁成功后，由用户在 `Actions → Release → Run workflow` 输入正式 `vMAJOR.MINOR.PATCH`。
+- 归档：Implementation PR 合并并验证 `main` 后，按仓库 Change 协议单独归档；当前不提前移动到 `changes/archive/`。
