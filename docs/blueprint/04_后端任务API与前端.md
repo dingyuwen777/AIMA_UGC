@@ -18,6 +18,7 @@ Vue 页面
 ```text
 backend/src/aima_ugc/contracts/http.py
 backend/src/aima_ugc/contracts/runtime.py
+backend/src/aima_ugc/contracts/relevance_review.py
 backend/src/aima_ugc/bootstrap/api.py
 backend/src/aima_ugc/bootstrap/analysis_capability_http.py
 backend/src/aima_ugc/entrypoints/api_main.py
