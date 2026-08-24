@@ -1,4 +1,5 @@
 from pathlib import Path
+from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCKER_HUB_MIRROR_CONFIG = ROOT / "scripts" / "config" / "docker_hub_mirrors.txt"
@@ -48,12 +49,11 @@ def test_docker_image_references_are_fixed_to_official_canonical_names() -> None
         assert key not in compose
         assert key not in env_example
 
-    for third_party_registry in (
+    third_party_registries = (
         "docker.1ms.run",
-        "docker.1panel.live",
-        "hub.1panel.dev",
-        "docker.m.daocloud.io",
-    ):
+        *(urlparse(mirror).netloc for mirror in _docker_hub_mirrors()),
+    )
+    for third_party_registry in third_party_registries:
         assert third_party_registry not in dockerfile
         assert third_party_registry not in compose
         assert third_party_registry not in env_example
