@@ -74,6 +74,7 @@ class PostgresContentRelevanceReviewRepository:
             content_id for content_id in content_ids if content_id not in already_reviewed
         )
 
+        reviewed_result_ids: dict[UUID, UUID] = {}
         if to_review:
             if analysis_identity is None:
                 raise ContentRelevanceReviewConflict
@@ -115,6 +116,7 @@ class PostgresContentRelevanceReviewRepository:
                     or cast(str, row["relevance"]) != "irrelevant"
                 ):
                     raise ContentRelevanceReviewConflict
+                reviewed_result_ids[content_id] = cast(UUID, row["id"])
 
             reviewed_at = datetime.now(UTC)
             self._session.execute(
@@ -124,6 +126,7 @@ class PostgresContentRelevanceReviewRepository:
                         "id": uuid4(),
                         "content_id": content_id,
                         "content_version": current_versions[content_id],
+                        "analysis_result_id": reviewed_result_ids[content_id],
                         "decision": "relevant",
                         "request_id": request_id,
                         "reviewed_at": reviewed_at,
