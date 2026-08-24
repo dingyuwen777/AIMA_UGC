@@ -12,18 +12,19 @@ Docker Hub mirrors、构建期包源、缓存和项目级重置见 [`04_Docker�
 
 根 `compose.yaml` 面向 Linux/WSL/公司服务器，bootstrap 会为 PostgreSQL、应用目录和内部 Secret 固定 Linux UID/GID 与 mode。
 
-Windows Docker Desktop 虽然运行 Linux 容器，但 Windows/NTFS 文件共享层不等于 Linux 原生文件系统。数据库和内部 Secret 不为了桌面兼容而放宽 Linux 权限门禁。
+Windows Docker Desktop 虽然运行 Linux 容器，但 Windows/NTFS 文件共享层不等于 Linux 原生文件系统。数据库和内部 Secret 不为了桌面兼容而放宽 Linux 权限门禁；另一方面，Artifact 和应用 `.log` 属于开发时需要直接查看的普通文件，不需要隐藏在 Docker volume 中。
 
-因此 Windows 原生模式采用：
+因此 Windows 原生模式采用混合存储：
 
 ```text
 compose.yaml
 + compose.windows.yaml
 → 同一业务 Runtime
-→ 持久 source 改为 Docker-managed named volumes
+→ Artifact / 应用日志：AIMA_HOST_ROOT bind mount
+→ PostgreSQL / 内部 Secret：Docker-managed named volumes
 ```
 
-`compose.windows.yaml` 只覆盖 storage source；API、Worker、Scheduler、Migration、PostgreSQL 版本、Health、端口、网络、外部 Secret 和业务配置仍来自根 `compose.yaml`。
+`compose.windows.yaml` 只覆盖 storage source 和 bootstrap 对 Windows bind 目录的权限适配；API、Worker、Scheduler、Migration、PostgreSQL 版本、Health、端口、网络、外部 Secret 和业务配置仍来自根 `compose.yaml`。
 
 ---
 
@@ -110,6 +111,23 @@ PowerShell：
 Copy-Item env.production.example env.production
 ```
 
+Windows 本地推荐把：
+
+```dotenv
+AIMA_HOST_ROOT=./.runtime
+```
+
+写入 `env.production`。相对路径以执行 Compose 命令时的项目目录为基准；从仓库根运行本文命令时，宿主可见文件位于：
+
+```text
+.runtime/
+└─ runtime/
+   ├─ data/
+   └─ logs/
+```
+
+PostgreSQL 和内部 Secret 不进入这个目录，仍由 Docker named volume 管理。
+
 ---
 
 ## 4. Windows 正式启动命令
@@ -155,7 +173,16 @@ curl.exe -f http://127.0.0.1:8080/health/ready
 docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production down
 ```
 
-`down` 会停止并删除本项目容器和 Compose 网络，但不会删除 named volumes。下次启动继续使用原 PostgreSQL、Artifact、日志和内部 Secret。
+`down` 会停止并删除本项目容器和 Compose 网络，但不会删除：
+
+```text
+AIMA_HOST_ROOT/runtime/data
+AIMA_HOST_ROOT/runtime/logs
+windows_postgres named volume
+windows_internal_secrets named volume
+```
+
+因此下次启动继续使用原 PostgreSQL、Artifact、日志和内部 Secret。
 
 如果只想临时停止容器而保留容器对象：
 
@@ -165,7 +192,7 @@ docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production
 
 ---
 
-## 6. 查看状态与日志
+## 6. 查看状态、Artifact 与日志
 
 查看服务：
 
@@ -173,13 +200,30 @@ docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production
 docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production ps
 ```
 
-查看 API 日志：
+如果使用推荐配置：
+
+```dotenv
+AIMA_HOST_ROOT=./.runtime
+```
+
+可以直接从 Windows 文件系统查看：
+
+```text
+.runtime\runtime\data\
+.runtime\runtime\logs\api.log
+.runtime\runtime\logs\worker.log
+.runtime\runtime\logs\scheduler.log
+```
+
+其中 `runtime/data` 保存 Local ArtifactStore 的文件字节，例如 Excel Input、Raw、Excel Export、Markdown/Word Report 等实际 Artifact；具体业务父事实和 metadata 仍以 PostgreSQL 为准。
+
+应用 `.log` 是人工排障主入口。Docker stdout/stderr 仍可以辅助查看：
 
 ```powershell
 docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production logs -f api
 ```
 
-查看所有服务日志：
+查看所有服务 stdout/stderr：
 
 ```powershell
 docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production logs -f
@@ -200,7 +244,15 @@ env.production
 → Linux / WSL / Windows Docker Desktop / 公司服务器共用同一业务配置字段
 ```
 
-Windows 原生模式只改变四类持久 storage 的宿主实现，因此 `AIMA_HOST_ROOT` 不作为 Windows named-volume 的实际数据位置；它继续保留在同一配置 Schema 中供 Linux/WSL/服务器使用。
+Windows 原生模式只改变持久 storage 的宿主实现：
+
+```text
+AIMA_HOST_ROOT
+→ Windows 下决定 Artifact / 应用日志的实际宿主位置
+
+PostgreSQL / 内部 Secret
+→ Windows 下由 compose.windows.yaml 改为 named volume
+```
 
 TikHub / LLM API Key 仍由 `env.production` 输入 Compose Secret。
 
@@ -210,13 +262,13 @@ TikHub / LLM API Key 仍由 `env.production` 输入 Compose Secret。
 
 ## 8. Windows 数据存储
 
-Windows 原生 Compose 使用 Docker Desktop 管理的 named volumes：
+Windows 原生 Compose 的持久状态固定为：
 
 ```text
-windows_runtime_data
+${AIMA_HOST_ROOT}/runtime/data
 → Artifact
 
-windows_runtime_logs
+${AIMA_HOST_ROOT}/runtime/logs
 → 应用 .log
 
 windows_postgres
@@ -232,21 +284,52 @@ windows_internal_secrets
 docker volume ls
 ```
 
-查看。
+查看 PostgreSQL 与内部 Secret volume。
+
+旧版本 Windows Compose 曾使用：
+
+```text
+windows_runtime_data
+windows_runtime_logs
+```
+
+保存 Artifact 和应用日志。升级到当前混合存储后，这两个旧 volume **不会自动迁移到 `AIMA_HOST_ROOT`，也不会由启动流程自动删除**。如果其中存在仍需保留的历史文件，应在人工确认后导出/迁移；不要为了清理旧 volume 影响当前 PostgreSQL 或内部 Secret。
 
 ---
 
 ## 9. 破坏性重置
 
-只有确认 Windows 本地 AIMA 数据全部可以丢弃时执行：
+只有确认 Windows 本地 AIMA 数据可以丢弃时才执行重置。
+
+先删除容器、网络、PostgreSQL/internal-secret named volume 与项目镜像：
 
 ```powershell
 docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production down -v --remove-orphans --rmi all
 ```
 
-`-v` 会删除当前 AIMA Compose project 的 PostgreSQL、Artifact、应用日志和内部 Secret。
+这里的 `-v` **不会删除 bind-mounted 的 Artifact 和应用日志**。如果也要清空这些宿主文件，需要根据 `env.production` 中实际 `AIMA_HOST_ROOT` 显式删除：
 
-不要把 `down -v` 当日常停止命令，也不要用：
+```text
+${AIMA_HOST_ROOT}/runtime/data
+${AIMA_HOST_ROOT}/runtime/logs
+```
+
+例如使用推荐的：
+
+```dotenv
+AIMA_HOST_ROOT=./.runtime
+```
+
+且当前 PowerShell 位于仓库根时，可以执行：
+
+```powershell
+Remove-Item -Recurse -Force .\.runtime\runtime\data -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force .\.runtime\runtime\logs -ErrorAction SilentlyContinue
+```
+
+这是显式破坏性操作；不要把它加入日常停止流程。
+
+不要用：
 
 ```text
 docker system prune -a --volumes
@@ -268,7 +351,7 @@ AIMA_HOST_ROOT=./.runtime/compose
 docker compose --env-file env.production up -d --build --wait
 ```
 
-这是 Linux bind-mount 模型。
+这是 Linux bind-mount 模型，包括 PostgreSQL、Artifact、日志和内部 Secret 都位于该 Linux Host Root 下。
 
 如果直接从 Windows CMD / PowerShell 启动，则使用：
 
@@ -276,7 +359,7 @@ docker compose --env-file env.production up -d --build --wait
 compose.yaml + compose.windows.yaml
 ```
 
-两种方式都是本地完整 Docker Runtime，但数据位置不同，不是同一个 PostgreSQL 实例。
+Windows 路线只有 Artifact/日志使用 Host Root；PostgreSQL/内部 Secret 是独立 named volumes。因此即使两个入口设置相似路径，它们也不是同一个 PostgreSQL 实例。
 
 ---
 
@@ -297,7 +380,7 @@ AIMA_HOST_ROOT=/data/AIMA_UGC
 /data/AIMA_UGC/shared/secrets
 ```
 
-Windows named-volume override只属于开发机存储适配，不改变 Production Release、Backup/Restore 或 Rollback 设计。
+Windows 混合存储 override 只属于开发机存储适配，不改变 Production Release、Backup/Restore 或 Rollback 设计。
 
 ---
 
@@ -306,9 +389,12 @@ Windows named-volume override只属于开发机存储适配，不改变 Producti
 永久 CI 验证：
 
 1. Windows GitHub Runner 可从 CMD / PowerShell 解析 `compose.yaml + compose.windows.yaml + env.production`；
-2. Linux Docker Engine 实际运行 Windows named-volume Runtime model，验证 bootstrap、PostgreSQL、Migration、Readiness、Secret mode 和重启持久化；
-3. Dockerfile / Compose 的镜像 identity 与包源配置由仓库单元测试约束；
-4. Windows GitHub Runner 直接加载 `configure_docker_desktop_mirrors.ps1`，验证“存在额外有效 mirrors 仍成功、缺少 AIMA mirror 失败、AIMA 相对顺序错误失败、daemon.json 继续精确受 AIMA 管理”；真实 Docker Desktop 应用结果由初始化脚本自身的有界 `docker info` probe 确认。
+2. Linux Docker Engine 实际运行 Windows merged hybrid Runtime model，验证 bootstrap、PostgreSQL、Migration、Readiness、Artifact/日志 bind mount、宿主文件可见性、Secret mode 和重启持久化；
+3. `down -v` 后宿主 Artifact/日志仍保留，而 PostgreSQL/内部 Secret 继续属于 named-volume 生命周期；
+4. Dockerfile / Compose 的镜像 identity 与包源配置由仓库单元测试约束；
+5. Windows GitHub Runner 直接加载 `configure_docker_desktop_mirrors.ps1`，验证“存在额外有效 mirrors 仍成功、缺少 AIMA mirror 失败、AIMA 相对顺序错误失败、daemon.json 继续精确受 AIMA 管理”；真实 Docker Desktop 应用结果由初始化脚本自身的有界 `docker info` probe 确认。
+
+GitHub Hosted Windows Runner 本身不提供当前仓库可依赖的 Docker Desktop Linux-container Runtime，因此永久 CI 的真实容器 Golden Path 由 Ubuntu Docker Engine 验证 merged Compose 语义；具体开发机首次使用仍需要本机 smoke。
 
 真实 Windows Docker Desktop 首次初始化运行：
 
@@ -323,4 +409,11 @@ docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production
 curl.exe -f http://127.0.0.1:8080/health/ready
 ```
 
-如果开发机出现 Docker Desktop 特有问题，应保留实际错误继续修复，不降低 Linux/Production 安全门禁。
+并检查：
+
+```text
+${AIMA_HOST_ROOT}/runtime/data
+${AIMA_HOST_ROOT}/runtime/logs/api.log
+```
+
+如果开发机出现 Docker Desktop 特有问题，应保留实际错误继续修复，不降低 PostgreSQL/Secret 与 Linux/Production 的安全门禁。

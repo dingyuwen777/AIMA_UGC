@@ -160,8 +160,8 @@ jobs:
               }
           }
 
-  named-volume-runtime:
-    name: Windows Named-volume Runtime Model
+  hybrid-runtime:
+    name: Windows Hybrid Storage Runtime Model
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -172,12 +172,14 @@ jobs:
         run: |
           set -euo pipefail
           ENV_FILE="${RUNNER_TEMP}/aima-windows-compose.env"
+          HOST_ROOT="${RUNNER_TEMP}/windows-host-root"
           echo "AIMA_WINDOWS_ENV_FILE=${ENV_FILE}" >> "${GITHUB_ENV}"
+          echo "AIMA_WINDOWS_HOST_ROOT=${HOST_ROOT}" >> "${GITHUB_ENV}"
           cat > "${ENV_FILE}" <<EOF
           AIMA_IMAGE_TAG=windows-ci-${GITHUB_RUN_ID}
           AIMA_HTTP_BIND_IP=127.0.0.1
           AIMA_HTTP_PORT=18082
-          AIMA_HOST_ROOT=${RUNNER_TEMP}/must-not-be-used-by-windows-override
+          AIMA_HOST_ROOT=${HOST_ROOT}
           AIMA_DB_NAME=aima_ugc
           AIMA_DB_USER=aima_ugc
           AIMA_DB_CONNECT_TIMEOUT_SECONDS=5
@@ -208,44 +210,90 @@ jobs:
             --env-file "${AIMA_WINDOWS_ENV_FILE}" \
             config --format json > "${RUNNER_TEMP}/compose.windows.json"
 
-          python3 - "${RUNNER_TEMP}/compose.windows.json" <<'PY'
+          python3 - "${RUNNER_TEMP}/compose.windows.json" "${AIMA_WINDOWS_HOST_ROOT}" <<'PY'
           import json
           import sys
           from pathlib import Path
 
           model = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          host_root = Path(sys.argv[2]).resolve()
           expected = {
               "bootstrap": {
-                  "/host/runtime/data",
-                  "/host/runtime/logs",
-                  "/host/postgres",
-                  "/host/shared/secrets",
+                  "/host/runtime/data": "bind",
+                  "/host/runtime/logs": "bind",
+                  "/host/postgres": "volume",
+                  "/host/shared/secrets": "volume",
               },
-              "postgres": {"/var/lib/postgresql", "/run/secrets"},
-              "migrate": {"/app/data", "/app/logs", "/run/internal-secrets"},
-              "configure": {"/app/data", "/app/logs", "/run/internal-secrets"},
-              "api": {"/app/data", "/app/logs", "/run/internal-secrets"},
-              "worker": {"/app/data", "/app/logs", "/run/internal-secrets"},
-              "scheduler": {"/app/data", "/app/logs", "/run/internal-secrets"},
+              "postgres": {
+                  "/var/lib/postgresql": "volume",
+                  "/run/secrets": "volume",
+              },
+              "migrate": {
+                  "/app/data": "bind",
+                  "/app/logs": "bind",
+                  "/run/internal-secrets": "volume",
+              },
+              "configure": {
+                  "/app/data": "bind",
+                  "/app/logs": "bind",
+                  "/run/internal-secrets": "volume",
+              },
+              "api": {
+                  "/app/data": "bind",
+                  "/app/logs": "bind",
+                  "/run/internal-secrets": "volume",
+              },
+              "worker": {
+                  "/app/data": "bind",
+                  "/app/logs": "bind",
+                  "/run/internal-secrets": "volume",
+              },
+              "scheduler": {
+                  "/app/data": "bind",
+                  "/app/logs": "bind",
+                  "/run/internal-secrets": "volume",
+              },
           }
           for service, targets in expected.items():
               mounts = {
                   item["target"]: item
                   for item in model["services"][service].get("volumes", [])
               }
-              assert set(mounts) == targets, (service, mounts)
-              for target in targets:
-                  assert mounts[target]["type"] == "volume", (service, target, mounts[target])
+              assert set(mounts) == set(targets), (service, mounts)
+              for target, mount_type in targets.items():
+                  assert mounts[target]["type"] == mount_type, (
+                      service,
+                      target,
+                      mounts[target],
+                  )
+
+          expected_bind_sources = {
+              "/app/data": str(host_root / "runtime/data"),
+              "/app/logs": str(host_root / "runtime/logs"),
+          }
+          api_mounts = {
+              item["target"]: item
+              for item in model["services"]["api"].get("volumes", [])
+          }
+          for target, source in expected_bind_sources.items():
+              assert Path(api_mounts[target]["source"]).resolve() == Path(source), (
+                  target,
+                  api_mounts[target],
+              )
+
+          bootstrap_command = model["services"]["bootstrap"]["command"]
+          assert "--runtime-only" in bootstrap_command
+          assert "--runtime-bind-compatible" in bootstrap_command
 
           assert {
-              "windows_runtime_data",
-              "windows_runtime_logs",
               "windows_postgres",
               "windows_internal_secrets",
           }.issubset(model["volumes"])
+          assert "windows_runtime_data" not in model["volumes"]
+          assert "windows_runtime_logs" not in model["volumes"]
           PY
 
-      - name: Startup, permissions, and restart persistence
+      - name: Startup, permissions, host visibility, and restart persistence
         shell: bash
         run: |
           set -euo pipefail
@@ -262,6 +310,7 @@ jobs:
               compose logs --no-color || true
             fi
             compose down -v --remove-orphans || true
+            sudo rm -rf "${AIMA_WINDOWS_HOST_ROOT}" || true
             exit $status
           }
           trap cleanup EXIT
@@ -271,12 +320,14 @@ jobs:
 
           API_CONTAINER="$(compose ps -q api)"
           POSTGRES_CONTAINER="$(compose ps -q postgres)"
-          python3 - "${API_CONTAINER}" "${POSTGRES_CONTAINER}" <<'PY'
+          python3 - "${API_CONTAINER}" "${POSTGRES_CONTAINER}" "${AIMA_WINDOWS_HOST_ROOT}" <<'PY'
           import json
           import subprocess
           import sys
+          from pathlib import Path
 
-          api_id, postgres_id = sys.argv[1:]
+          api_id, postgres_id, host_root_raw = sys.argv[1:]
+          host_root = Path(host_root_raw).resolve()
 
           def mounts(container_id: str) -> dict[str, dict]:
               container = json.loads(
@@ -284,37 +335,46 @@ jobs:
               )[0]
               return {item["Destination"]: item for item in container["Mounts"]}
 
-          expected = {
-              api_id: {
-                  "/app/data": True,
-                  "/app/logs": True,
-                  "/run/internal-secrets": False,
-              },
-              postgres_id: {
-                  "/var/lib/postgresql": True,
-                  "/run/secrets": False,
-              },
-          }
-          for container_id, destinations in expected.items():
-              actual = mounts(container_id)
-              for destination, writable in destinations.items():
-                  mount = actual[destination]
-                  assert mount["Type"] == "volume", (destination, mount)
-                  assert mount["RW"] is writable, (destination, mount)
+          api_mounts = mounts(api_id)
+          assert api_mounts["/app/data"]["Type"] == "bind"
+          assert api_mounts["/app/data"]["RW"] is True
+          assert Path(api_mounts["/app/data"]["Source"]).resolve() == host_root / "runtime/data"
+          assert api_mounts["/app/logs"]["Type"] == "bind"
+          assert api_mounts["/app/logs"]["RW"] is True
+          assert Path(api_mounts["/app/logs"]["Source"]).resolve() == host_root / "runtime/logs"
+          assert api_mounts["/run/internal-secrets"]["Type"] == "volume"
+          assert api_mounts["/run/internal-secrets"]["RW"] is False
+
+          postgres_mounts = mounts(postgres_id)
+          assert postgres_mounts["/var/lib/postgresql"]["Type"] == "volume"
+          assert postgres_mounts["/var/lib/postgresql"]["RW"] is True
+          assert postgres_mounts["/run/secrets"]["Type"] == "volume"
+          assert postgres_mounts["/run/secrets"]["RW"] is False
           PY
 
           test "$(compose exec -T api stat -c '%u:%g:%a' /run/internal-secrets/postgres_password | tr -d '\r')" = "0:11001:440"
-          compose exec -T api sh -ec 'printf windows-volume-persistence > /app/data/windows-volume-marker'
+          sudo test -f "${AIMA_WINDOWS_HOST_ROOT}/runtime/logs/api.log"
+          sudo test -f "${AIMA_WINDOWS_HOST_ROOT}/runtime/logs/worker.log"
+          sudo test -f "${AIMA_WINDOWS_HOST_ROOT}/runtime/logs/scheduler.log"
+
+          compose exec -T api sh -ec 'printf windows-host-persistence > /app/data/windows-host-marker'
+          test "$(sudo cat "${AIMA_WINDOWS_HOST_ROOT}/runtime/data/windows-host-marker")" = "windows-host-persistence"
           PASSWORD_HASH_BEFORE="$(compose exec -T api sha256sum /run/internal-secrets/postgres_password | awk '{print $1}' | tr -d '\r')"
           compose exec -T postgres psql -U aima_ugc -d aima_ugc -v ON_ERROR_STOP=1 -c \
-            "CREATE TABLE ci_windows_volume_marker(value text PRIMARY KEY); INSERT INTO ci_windows_volume_marker VALUES ('persisted');"
+            "CREATE TABLE ci_windows_hybrid_marker(value text PRIMARY KEY); INSERT INTO ci_windows_hybrid_marker VALUES ('persisted');"
 
           compose down --remove-orphans
+          test "$(sudo cat "${AIMA_WINDOWS_HOST_ROOT}/runtime/data/windows-host-marker")" = "windows-host-persistence"
+          sudo test -f "${AIMA_WINDOWS_HOST_ROOT}/runtime/logs/api.log"
+
           compose up -d --no-build --wait
           curl -fsS http://127.0.0.1:18082/health/ready >/dev/null
-          compose exec -T api sh -ec 'test "$(cat /app/data/windows-volume-marker)" = windows-volume-persistence'
+          compose exec -T api sh -ec 'test "$(cat /app/data/windows-host-marker)" = windows-host-persistence'
           PASSWORD_HASH_AFTER="$(compose exec -T api sha256sum /run/internal-secrets/postgres_password | awk '{print $1}' | tr -d '\r')"
           test "${PASSWORD_HASH_BEFORE}" = "${PASSWORD_HASH_AFTER}"
-          DB_MARKER="$(compose exec -T postgres psql -U aima_ugc -d aima_ugc -Atc "SELECT value FROM ci_windows_volume_marker;" | tr -d '\r')"
+          DB_MARKER="$(compose exec -T postgres psql -U aima_ugc -d aima_ugc -Atc "SELECT value FROM ci_windows_hybrid_marker;" | tr -d '\r')"
           test "${DB_MARKER}" = "persisted"
-          test ! -e "${RUNNER_TEMP}/must-not-be-used-by-windows-override"
+
+          compose down -v --remove-orphans
+          test "$(sudo cat "${AIMA_WINDOWS_HOST_ROOT}/runtime/data/windows-host-marker")" = "windows-host-persistence"
+          sudo test -f "${AIMA_WINDOWS_HOST_ROOT}/runtime/logs/api.log"
