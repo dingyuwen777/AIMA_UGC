@@ -163,7 +163,7 @@ model = deepseek-v4-pro
 currency = CNY
 ```
 
-DeepSeek 当前官方价格页对 `deepseek-v4-pro` 使用北京时间分时价格。仓库在 `[[models.price_periods]]` 中配置 `off_peak / peak`：高峰仅适用于周一至周五 `09:00-12:00`、`14:00-18:00`（`Asia/Shanghai`），其余日期和时段使用空闲价。
+DeepSeek 当前官方价格页对 `deepseek-v4-pro` 使用全天统一价格，仓库因此直接在 `[[models]]` 配置单价，不再配置 `off_peak / peak` 分时价格。
 
 当前正式字段使用供应商价格语义：
 
@@ -179,13 +179,11 @@ output_per_million_tokens
 
 当前 `pricing.toml` 对应 DeepSeek V4-Pro 官方人民币价格：
 
-| 官方价格项 | 空闲时段 | 高峰时段 |
-| --- | ---: | ---: |
-| 输入（缓存命中），每百万 tokens | `0.15 CNY` | `0.30 CNY` |
-| 输入（缓存未命中），每百万 tokens | `4.5 CNY` | `9.0 CNY` |
-| 输出，每百万 tokens | `13.5 CNY` | `27.0 CNY` |
-
-高峰时段按北京时间计算，仅周一至周五 `09:00-12:00`、`14:00-18:00`；其余为 `off_peak`。
+| 官方价格项 | 当前单价 |
+| --- | ---: |
+| 输入（缓存命中），每百万 tokens | `0.025 CNY` |
+| 输入（缓存未命中），每百万 tokens | `3 CNY` |
+| 输出，每百万 tokens | `6 CNY` |
 
 价格来源：
 
