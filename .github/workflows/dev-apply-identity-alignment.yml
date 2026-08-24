@@ -1,0 +1,135 @@
+name: Dev Apply Identity Alignment
+
+on:
+  push:
+    branches:
+      - feature/excel-tikhub-identity-alignment
+    paths:
+      - .github/workflows/dev-apply-identity-alignment.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_DB: aima_ugc
+          POSTGRES_USER: aima_ugc
+          POSTGRES_PASSWORD: identity-ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aima_ugc -d aima_ugc"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AIMA_DATA_DIR: .runtime/dev-identity/data
+      AIMA_LOG_DIR: .runtime/dev-identity/logs
+      AIMA_SECRET_DIR: .runtime/dev-identity/secrets
+      AIMA_DB_HOST: 127.0.0.1
+      AIMA_DB_PORT: 5432
+      AIMA_DB_NAME: aima_ugc
+      AIMA_DB_USER: aima_ugc
+      AIMA_DB_CONNECT_TIMEOUT_SECONDS: 3
+    steps:
+      - name: Checkout branch head
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/excel-tikhub-identity-alignment
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Install locked environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+
+      - name: Prepare PostgreSQL runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${AIMA_DATA_DIR}" "${AIMA_LOG_DIR}" "${AIMA_SECRET_DIR}"
+          printf '%s\n' 'identity-ci' > "${AIMA_SECRET_DIR}/postgres_password"
+          chmod 600 "${AIMA_SECRET_DIR}/postgres_password"
+          uv run alembic upgrade head
+          uv run alembic check
+
+      - name: Verify Red for typed locator behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          uv run pytest tests/unit/collection/test_tikhub_runtime_alternate_identity.py -q 2>&1 | tee /tmp/identity-red.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [[ "${status}" -eq 0 ]]; then
+            echo "Expected typed locator regression test to fail before implementation"
+            exit 1
+          fi
+          if ! grep -Eq "alternate_ids|provider-note-001|SOURCE-ARTICLE" /tmp/identity-red.log; then
+            echo "Red failure was not caused by the target identity behavior"
+            cat /tmp/identity-red.log
+            exit 1
+          fi
+
+      - name: Apply minimal identity alignment patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/dev/apply_identity_alignment.py
+          uv run ruff format \
+            scripts/dev/apply_identity_alignment.py \
+            backend/src/aima_ugc/adapters/providers/tikhub/runtime.py \
+            backend/src/aima_ugc/adapters/persistence/postgres/collection_targets.py \
+            backend/src/aima_ugc/adapters/persistence/postgres/content_complete.py \
+            backend/src/aima_ugc/bootstrap/collection_scope.py \
+            tests/unit/collection/test_tikhub_runtime_alternate_identity.py \
+            tests/integration/collection/test_collection_supplement_target_eligibility.py
+
+      - name: Verify Green and PostgreSQL behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest tests/unit/collection/test_tikhub_runtime_alternate_identity.py -q
+          uv run pytest tests/integration/collection/test_collection_supplement_target_eligibility.py -q
+          uv run pytest tests/integration/collection/test_stage8a_cross_source_idempotency.py -q
+
+      - name: Static checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff format --check backend tests scripts
+          uv run ruff check backend tests scripts
+          uv run mypy backend/src/aima_ugc
+          git diff --check
+
+      - name: Commit verified implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "AIMA GitHub Runner"
+          git config user.email "actions@users.noreply.github.com"
+          git add \
+            scripts/dev/apply_identity_alignment.py \
+            backend/src/aima_ugc/adapters/providers/tikhub/runtime.py \
+            backend/src/aima_ugc/adapters/persistence/postgres/collection_targets.py \
+            backend/src/aima_ugc/adapters/persistence/postgres/content_complete.py \
+            backend/src/aima_ugc/bootstrap/collection_scope.py \
+            tests/unit/collection/test_tikhub_runtime_alternate_identity.py \
+            tests/integration/collection/test_collection_supplement_target_eligibility.py
+          git diff --cached --exit-code && { echo "No implementation changes produced"; exit 1; } || true
+          git commit -m "统一 TikHub 补采 typed identity"
+          git push origin HEAD:feature/excel-tikhub-identity-alignment
