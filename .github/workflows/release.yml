@@ -493,19 +493,29 @@ jobs:
           }
           trap cleanup EXIT
 
-          docker image rm "aima-ugc-backend:${VERSION}" "aima-ugc-frontend:${VERSION}" "${POSTGRES_IMAGE}"
-          if docker image inspect "aima-ugc-backend:${VERSION}" >/dev/null 2>&1; then
-            echo "Backend offline tag was not removed before replay." >&2
-            exit 1
-          fi
-          if docker image inspect "aima-ugc-frontend:${VERSION}" >/dev/null 2>&1; then
-            echo "Frontend offline tag was not removed before replay." >&2
-            exit 1
-          fi
-          if docker image inspect "${POSTGRES_IMAGE}" >/dev/null 2>&1; then
-            echo "PostgreSQL tag was not removed before replay." >&2
-            exit 1
-          fi
+          # 删除 build/push 阶段留下的所有应用 tag 和 PostgreSQL tag，证明启动只依赖 images.tar 回放。
+          docker image rm \
+            "aima-ugc-backend:${VERSION}" \
+            "${BACKEND_IMAGE}:${VERSION}" \
+            "${BACKEND_IMAGE}:sha-${RELEASE_SHA}" \
+            "aima-ugc-frontend:${VERSION}" \
+            "${FRONTEND_IMAGE}:${VERSION}" \
+            "${FRONTEND_IMAGE}:sha-${RELEASE_SHA}" \
+            "${POSTGRES_IMAGE}"
+
+          for image_ref in \
+            "aima-ugc-backend:${VERSION}" \
+            "${BACKEND_IMAGE}:${VERSION}" \
+            "${BACKEND_IMAGE}:sha-${RELEASE_SHA}" \
+            "aima-ugc-frontend:${VERSION}" \
+            "${FRONTEND_IMAGE}:${VERSION}" \
+            "${FRONTEND_IMAGE}:sha-${RELEASE_SHA}" \
+            "${POSTGRES_IMAGE}"; do
+            if docker image inspect "${image_ref}" >/dev/null 2>&1; then
+              echo "候选镜像仍可通过 ${image_ref} 访问，不能证明离线 Bundle 独立可回放。" >&2
+              exit 1
+            fi
+          done
 
           docker load -i release-bundle/images.tar
           docker compose -f release-bundle/compose.yaml \
