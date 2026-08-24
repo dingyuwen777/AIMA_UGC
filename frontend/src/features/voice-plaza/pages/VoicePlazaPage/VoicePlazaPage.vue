@@ -33,17 +33,17 @@ const selectedReviewIds = computed<Record<RelevanceReviewDecision, string[]>>(()
   const selected = new Set(store.selectedIds)
   for (const item of store.items) {
     if (!selected.has(item.id)) continue
-    const decision = relevanceReviewDecision(item, store.filters.relevance)
+    const decision = relevanceReviewDecision(item)
     if (decision) grouped[decision].push(item.id)
   }
   return grouped
 })
 const reviewNote = computed(() => {
   if (store.filters.relevance === 'irrelevant') {
-    return '当前显示业务有效不相关内容：AI 原判不相关的内容可人工标记为相关；AI 原判相关但被人工排除的内容可撤销人工判断。AI 原始结果始终保留。'
+    return '当前显示业务有效不相关内容：AI 原判不相关的内容可人工标记为相关；被人工排除的内容可撤销人工判断。AI 原始结果始终保留。'
   }
   if (store.filters.relevance === 'relevant') {
-    return '当前显示业务有效相关内容：AI 原判相关的内容可人工标记为不相关；AI 原判不相关但被人工纳入的内容可撤销人工判断。AI 原始结果始终保留。'
+    return '当前显示业务有效相关内容：AI 原判相关的内容可人工标记为不相关；被人工纳入的内容可撤销人工判断。AI 原始结果始终保留。'
   }
   return null
 })
@@ -252,7 +252,6 @@ function showNotice(message: string): void {
       :items="store.items"
       :loading="store.loading"
       :selected-ids="store.selectedIds"
-      :relevance-filter="store.filters.relevance"
       :reviewing="store.reviewingRelevance"
       @detail="store.openDetail"
       @toggle="store.toggleSelection"
