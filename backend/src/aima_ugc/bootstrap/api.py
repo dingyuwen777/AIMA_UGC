@@ -58,6 +58,11 @@ from aima_ugc.contracts.http import (
     KeywordPackSummaryResponse,
     ResourceEnabledRequest,
 )
+from aima_ugc.contracts.relevance_review import (
+    ContentRelevanceReviewRequest,
+    ContentRelevanceReviewResponse,
+)
+from aima_ugc.modules.analysis.relevance_review import ContentRelevanceReviewConflict
 from aima_ugc.modules.collection.http import (
     CollectionConflict,
     CollectionHttpService,
@@ -439,6 +444,19 @@ def create_app(
             field="body.targets",
         )
 
+    @application.exception_handler(ContentRelevanceReviewConflict)
+    async def content_relevance_review_conflict(
+        request: Request, _: ContentRelevanceReviewConflict
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=409,
+            request_id=_request_id(request),
+            title="内容无法人工复核",
+            detail="所选内容不是当前可复核的 AI 不相关状态，或内容版本已经变化。",
+            code="content_relevance_review_conflict",
+            field="body.content_ids",
+        )
+
     @application.exception_handler(InvalidContentCursor)
     async def invalid_content_cursor(request: Request, _: InvalidContentCursor) -> JSONResponse:
         return _error_response(
@@ -752,6 +770,26 @@ def create_app(
     )
     def get_content(content_id: UUID) -> ContentDetailResponse:
         return current_content_service().get_content(content_id)
+
+    @application.post(
+        "/api/v1/content-relevance-reviews",
+        operation_id="createContentRelevanceReview",
+        response_model=ContentRelevanceReviewResponse,
+        responses={
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["contents"],
+    )
+    def create_content_relevance_review(
+        body: ContentRelevanceReviewRequest,
+        request: Request,
+    ) -> ContentRelevanceReviewResponse:
+        return current_content_service().review_relevance(
+            body,
+            request_id=_request_id(request),
+        )
 
     @application.post(
         "/api/v1/content-analysis-requests",
