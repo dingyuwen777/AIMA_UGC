@@ -94,3 +94,18 @@ def test_environment_setup_configures_multiple_docker_hub_mirrors() -> None:
     assert "docker desktop restart" in windows_mirror_setup
     assert "docker.1ms.run" not in linux_setup
     assert "docker.1ms.run" not in windows_mirror_setup
+
+
+def test_windows_mirror_setup_retries_until_registry_mirrors_are_applied() -> None:
+    mirror_setup = (
+        ROOT / "scripts" / "dev" / "configure_docker_desktop_mirrors.ps1"
+    ).read_text(encoding="utf-8")
+
+    assert "$MirrorVerificationAttempts = 60" in mirror_setup
+    assert "$MirrorVerificationIntervalSeconds = 2" in mirror_setup
+    assert "function Wait-ExpectedMirrorsApplied" in mirror_setup
+    assert "for ($attempt = 1; $attempt -le $MirrorVerificationAttempts; $attempt++)" in mirror_setup
+    assert "if (Test-ExpectedMirrorsApplied)" in mirror_setup
+    assert "Start-Sleep -Seconds $MirrorVerificationIntervalSeconds" in mirror_setup
+    assert "Wait-ExpectedMirrorsApplied -BackupPath $backupPath -ConfigPath $configPath" in mirror_setup
+    assert "Wait-DockerEngineReady" not in mirror_setup
