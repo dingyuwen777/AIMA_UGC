@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260824-artifact-retention-lifecycle
 title: Artifact 保留策略与自动清理
 level: L3
-status: ready_for_review
+status: done
 owner: openai
 branch: feature/artifact-retention-lifecycle
 created: 2026-08-24
@@ -81,7 +81,7 @@ data_changes:
 
 L3 方案比较：
 
-1. **推荐并采用：现有 Artifact 状态机 + PostgreSQL 元数据 + Scheduler housekeeping。** 复用 `expires_at/delete_pending/deleted`，不新增服务；删除字节与状态提交分阶段，失败可重试。
+1. **采用：现有 Artifact 状态机 + PostgreSQL 元数据 + Scheduler housekeeping。** 复用 `expires_at/delete_pending/deleted`，不新增服务；删除字节与状态提交分阶段，失败可重试。
 2. API 请求时顺带清理：拒绝。会把磁盘维护耦合到用户请求，且没有请求时无法清理。
 3. 独立 cron/sidecar：当前不采用。会新增部署分支和进程治理成本，现有 Scheduler 已提供低频后台执行边界。
 
@@ -99,7 +99,7 @@ L3 方案比较：
 | R4 | 可安全判定未引用的孤儿字节 1 天后清理，且不误伤 Provider Raw Recovery | user:2026-08-24-retention-decision | satisfied | 当前仅 Excel Import/Export 进入 1 天孤儿判定；Provider Raw 明确排除；真实 PostgreSQL Integration 覆盖扫描后建立引用时 CAS 拒绝删除 |
 | R5 | 用户可见 Excel 文件保留/过期行为在现有前端入口展示 | user:2026-08-24-frontend-display | satisfied | `ImportBatchDetailDrawer.vue`、`DataExportDialog.vue`、`artifactRetention.ts`；Browser Mock 与 Real Full-stack 覆盖 |
 | R6 | PostgreSQL 保存业务事实和 Artifact 元数据，文件字节由 ArtifactStore 管理 | docs/blueprint/03_数据库与文件存储.md | satisfied | 清理只更新 Artifact 生命周期字段并调用 Store.delete；Content/Import/Export/Provider 父事实不删除；Platform/Database Integration 覆盖 |
-| R7 | 不绕过现有 API/Worker/Scheduler/Owner/CI 边界并保护最新 main | AGENTS.md | satisfied | Scheduler housekeeping 复用现有进程；无新依赖/Migration/公共 API；最新 main 已正常合入 feature；CI、Audit、Scheduler、Completion Gate 均已成功验证 |
+| R7 | 不绕过现有 API/Worker/Scheduler/Owner/CI 边界并保护最新 main | AGENTS.md | satisfied | Scheduler housekeeping 复用现有进程；无新依赖/Migration/公共 API；合并前最新 main 已正常进入 feature；PR 全部永久工作流成功，且合并使用 `expected_head_sha` 防并发覆盖 |
 
 # Validation Matrix
 
@@ -141,7 +141,7 @@ L3 方案比较：
 ## 新鲜证据
 
 - Red：提交 `e4ae8eb` 的真实 PostgreSQL Integration 为 `2 failed, 16 passed`；两处均因生产 Repository 尚不支持带 `now/orphan_before` 的原子删除认领，证明并发保护测试先于实现失败。
-- Green：产品代码和长期文档完成后的 PR 流水线已反复验证总 CI、真实 PostgreSQL、Frontend、Provider Raw、Scheduler、Real Full-stack、Audit、Change Completion Gate、Windows Compose 与 Deployable Stack；合并动作仍必须以 GitHub 对实际待合并 HEAD 的最终检查结果为准。
+- Green：实现 PR #187 最终 HEAD `4619c2f1f425fed4eea951d1be1b3acdecba4888` 的 14 个 PR 工作流全部 completed/success，包括总 CI、真实 PostgreSQL、Frontend、Provider Raw、Scheduler、Real Full-stack、Audit、Change Completion Gate、Windows Compose 与 Deployable Stack。
 
 # 文档影响
 
@@ -150,6 +150,6 @@ L3 方案比较：
 
 # 交付
 
-- Commit：产品实现、长期文档和本 Change 已固定；后续不再修改仓库文件。
-- PR：#187；转 Ready 和合并前必须重新检查最新 main/merge diff，并以 expected head SHA 防止合并竞态。
+- Commit：实现 PR #187 最终 HEAD `4619c2f1f425fed4eea951d1be1b3acdecba4888`。
+- PR：#187 已于 2026-08-24 合并到 `main`，merge commit `9e24c941864d611d1931b3f1a1b5c05ba9661c05`。
 - 发布：未部署；本 Change 不改变依赖、Migration 或启动命令，已删除字节不可由代码回滚恢复。
