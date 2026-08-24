@@ -59,6 +59,8 @@ cancelled
 
 Import 仍处于 queued/running/retry 时不启动 7 天倒计时，因为 Worker 仍可能依赖源 Artifact 重试。
 
+当前 1 天孤儿规则只覆盖能够通过现有业务父事实明确判断“未建立引用”的 Excel Import/Export Artifact。其他未来 Artifact kind 不能只因为长期处于 `stored` 就自动当作孤儿，必须先有可验证的引用关系和恢复语义。
+
 ---
 
 ## 3. 为什么 Provider Raw 不套用 1 天孤儿规则
@@ -114,6 +116,32 @@ pending
 实体删除失败时保留 `delete_pending`，后续 housekeeping 重试；不能在文件删除失败时先伪造 `deleted`。
 
 Local ArtifactStore 的 `delete()` 是幂等的。如果实例已经删掉文件、但在写 `deleted` 前崩溃，下次重复删除不存在的文件仍视为成功，然后继续收敛元数据。
+
+### 4.1 候选扫描不能直接授权删除
+
+Housekeeping 查询清理候选和真正认领删除之间存在时间窗口。例如：
+
+```text
+T1：扫描发现一个 Excel Artifact 尚无业务引用
+T2：业务事务建立 Import Batch / Export 引用
+T3：housekeeping 开始删除
+```
+
+如果 T3 只相信 T1 的候选结果，就可能删除已经变成正式业务输入/输出的文件。
+
+因此当前实现固定为：
+
+```text
+候选扫描
+→ 只用于批量发现
+
+真正认领 delete_pending
+→ 在同一 PostgreSQL UPDATE CAS 中重新检查
+   - 当前仍已到期；或
+   - 当前仍是无业务引用的 Excel Import/Export 孤儿
+```
+
+如果扫描后已经建立正式引用且文件尚未到期，CAS 不成功，本轮放弃删除。反过来，如果 cleanup 已先成功认领 `delete_pending`，后续正常 `stored → linked` 状态转换也会失败并使业务事务回滚，不会形成“业务引用已提交但文件被删除”的状态。
 
 ---
 
@@ -184,7 +212,7 @@ Scheduler 主循环
 ```text
 补齐历史 expires_at
 → 查询有限数量候选
-→ CAS 认领 delete_pending
+→ CAS 重新核对当前删除资格并认领 delete_pending
 → 事务外删文件
 → mark_deleted
 → 失败留待后续重试
@@ -221,142 +249,115 @@ metadata pending
 
 ```text
 mark_stored 失败
-→ 尝试 pending → error 的 CAS
+→ 尝试 pending -> error CAS
 
 CAS 成功
-→ 能证明 stored 没有提交
-→ 可以安全回收刚写入的字节
+→ 能证明元数据仍是 pending
+→ 可以回收刚写入字节
 
-CAS 失败/结果未知
-→ 不能证明 metadata 仍是 pending
-→ 保留字节，不冒险删除可能已经正式 stored 的 Artifact
+CAS 失败
+→ 可能 stored 已经提交
+→ 保守保留字节
 ```
 
-这个边界优先保证不丢数据，而不是为了清理磁盘在未知事务结果下猜测状态。
+不能为了“清孤儿”在事务结果未知时主动制造数据丢失。
 
 ---
 
-## 8. Excel Import 前端显示
+## 8. 前端怎样展示
 
-现有入口：
+### Excel Import
 
-```text
-采集运行中心
-→ Excel Import Batch
-→ 批次详情
-```
+位置：采集运行中心的 Excel Import Batch 详情。
 
-显示规则：
+运行中显示：
 
 ```text
-任务未终态
-→ 源 Excel 会在任务进入终态后继续保留 7 天
-
-任务终态且未过期
-→ 显示精确“源 Excel 保留至 …”
-
-超过 7 天
-→ 显示源文件已进入自动清理
-→ 同时说明 Batch、入库数据、来源元数据继续保留
+源 Excel 会在任务进入终态后继续保留 7 天，处理和重试期间不会提前清理。
 ```
 
-截止时间基于现有公开 Contract 的 `finished_at + 7 天`，不新增平行 Response 字段。
+进入终态后显示实际截止时间；过期后明确说明文件进入自动清理，但 Batch、入库数据和来源元数据继续保留。
 
----
+取消任务如果 Batch 自身没有 `finished_at`，前端使用终态 Job 的 `finished_at`，与后端保留时间语义一致。
 
-## 9. Excel Export 前端显示
+### Excel Export
 
-现有入口：
-
-```text
-声音广场
-→ 导出记录
-```
+位置：声音广场的导出记录。
 
 显示：
 
 ```text
-成功且未到期
-→ 下载有效期至 …
-→ 下载按钮可用
-
-超过 completed_at + 7 天
-→ 下载已过期
-→ 下载按钮禁用
-→ 用户可重新创建导出
+下载有效期至 YYYY-MM-DD HH:mm
 ```
 
-后端下载接口同时执行 7 天有效期判断，因此直接绕过前端请求过期下载也不会继续得到文件。
+到期后：
 
-为保持既有 Error Contract，过期直接下载继续走 `DataExportNotReady`；前端负责给业务用户显示更明确的“已过期”。
+```text
+下载已过期
+按钮禁用
+需要重新创建导出
+```
 
-TikHub Provider Raw 是后台采集审计/排障证据，不新增普通业务前端入口。
+后端下载接口同时执行过期守卫，所以不能只通过绕过前端按钮继续下载超期文件。
+
+### Provider Raw
+
+不新增普通业务前端入口。Raw 属于采集恢复、审计和排障证据，按后台 30 天策略自动清理。
 
 ---
 
-## 10. 关键代码
+## 9. 运维与回滚边界
+
+### Scheduler 必须运行
+
+TTL 不是由文件系统自动执行。自动物理删除依赖 Scheduler 进程持续运行 housekeeping。
+
+Scheduler 短暂停机不会导致业务数据损坏，只会延后文件删除；恢复后再次扫描并收敛。
+
+### 清理是不可逆的文件操作
 
 ```text
-保留策略
+代码回滚
+≠ 已删除 Artifact 字节恢复
+```
+
+因此生产部署时需要意识到：首次启用保留策略后，历史超期 Artifact 可能被删除。
+
+完整 PostgreSQL + Artifact 协调 Backup/Restore 仍属于生产上线后续正式能力，本功能不伪造已经完成该能力。
+
+---
+
+## 10. 实现入口
+
+核心代码：
+
+```text
 backend/src/aima_ugc/platform/storage/retention.py
-
-Artifact Port / Service
-backend/src/aima_ugc/platform/storage/
-
-Local Store
+backend/src/aima_ugc/platform/storage/service.py
+backend/src/aima_ugc/platform/storage/ports.py
 backend/src/aima_ugc/adapters/storage/local/store.py
-
-PostgreSQL 生命周期
 backend/src/aima_ugc/adapters/persistence/postgres/artifact_metadata.py
-
-Housekeeping
 backend/src/aima_ugc/bootstrap/artifact_cleanup.py
 backend/src/aima_ugc/entrypoints/scheduler_main.py
+backend/src/aima_ugc/bootstrap/reporting_http.py
+```
 
-Excel Import UI
-frontend/src/features/import-batches/pages/CollectionRuntimePage/components/ImportBatchDetailDrawer.vue
+前端：
 
-Excel Export UI
-frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/DataExportDialog.vue
-
-前端期限计算
+```text
 frontend/src/shared/artifactRetention.ts
+frontend/src/features/import-batches/pages/CollectionRuntimePage/components/ImportBatchDetailDrawer.vue
+frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/DataExportDialog.vue
 ```
 
----
-
-## 11. 修改保留策略的门禁
-
-30 天、7 天、1 天、保留起点和删除范围都属于不可逆数据行为。以后修改必须先确认业务决定，并同步：
+关键验证：
 
 ```text
-Retention Policy
-→ PostgreSQL lifecycle query/state
-→ Scheduler housekeeping
-→ Backend download behavior
-→ Frontend copy/state
-→ Tests
-→ 本文档
+tests/unit/platform/test_artifact_retention.py
+tests/unit/platform/test_artifact_service_failure_recovery.py
+tests/unit/platform/test_artifact_cleanup_scheduler.py
+tests/unit/platform/test_export_download_retention.py
+tests/integration/database/test_artifact_retention_repository.py
+frontend/tests/artifact-retention.spec.ts
+frontend/e2e/artifact-retention.spec.ts
 ```
-
-不得只改前端文字，也不得只改 Scheduler 常量。
-
----
-
-## 12. 与 Backup/Restore 的关系
-
-Artifact Retention 解决：
-
-> 在线运行目录不能无限增长。
-
-它不等于生产 Backup/Restore。生产协调恢复仍要求：
-
-```text
-PostgreSQL + ArtifactStore
-→ 协调 Backup Set
-```
-
-完整生产恢复仍按以下文档推进：
-
-- [`11_生产部署与离线Release方案.md`](11_生产部署与离线Release方案.md)
-- [`../roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)
