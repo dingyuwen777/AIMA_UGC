@@ -17,8 +17,6 @@ const irrelevantItem = {
   analysis: {
     status: 'completed',
     relevance: 'irrelevant',
-    effective_relevance: 'irrelevant',
-    relevance_source: 'ai',
     voice_type: 'media_information',
     sentiment: null,
     labels: [],
