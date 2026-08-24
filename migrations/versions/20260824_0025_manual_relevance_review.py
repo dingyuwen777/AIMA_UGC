@@ -21,6 +21,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("content_id", sa.Uuid(), nullable=False),
         sa.Column("content_version", sa.Integer(), nullable=False),
+        sa.Column("analysis_result_id", sa.Uuid(), nullable=False),
         sa.Column("decision", sa.Text(), nullable=False),
         sa.Column("request_id", sa.Text(), nullable=False),
         sa.Column("reviewed_at", sa.DateTime(timezone=True), nullable=False),
@@ -36,6 +37,7 @@ def upgrade() -> None:
             "char_length(request_id) > 0",
             name=op.f("ck_analysis_content_relevance_reviews_request_id_nonempty"),
         ),
+        sa.ForeignKeyConstraint(["analysis_result_id"], ["analysis_content_results.id"]),
         sa.ForeignKeyConstraint(["content_id"], ["contents.id"]),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
