@@ -14,7 +14,6 @@ from sqlalchemy import (
 
 from aima_ugc.platform.database.metadata import metadata
 
-
 analysis_content_relevance_reviews_table = Table(
     "analysis_content_relevance_reviews",
     metadata,
