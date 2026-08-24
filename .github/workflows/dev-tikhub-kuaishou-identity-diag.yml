@@ -132,7 +132,10 @@ jobs:
               ),
               observed_fields=["content_type", "alternate_ids"],
           )
-          with TikHubHttpTransport(base_url=os.environ["TIKHUB_BASE_URL"]) as transport:
+          with TikHubHttpTransport(
+              base_url=os.environ["TIKHUB_BASE_URL"],
+              timeout_seconds=90.0,
+          ) as transport:
               probe = TikHubOperationProbe(
                   transport=transport,
                   credential=SecretStr(os.environ["TIKHUB_API_KEY"]),
