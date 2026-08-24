@@ -306,7 +306,7 @@ AI 层：
 
 当前 `contents` 没有 `is_relevant` AI 投影列。
 
-模型原始 `analysis_content_results.relevance` 是不可被人工复核覆盖的审计事实。当前允许用户把同一 Content Version 的 AI `irrelevant` 人工纳入相关业务集合，决定保存到 `analysis_content_relevance_reviews`。默认业务列表、`relevance` 筛选、查询型 Analysis target 和查询型 Export 都复用 `PostgresContentQueryRepository` 的有效相关性：当前版本有人工作为 `relevant` 时优先采用人工决定，否则采用 AI relevance。Content 新版本不会继承旧人工决定。
+模型原始 `analysis_content_results.relevance` 是不可被人工复核覆盖的审计事实。当前允许用户把同一 Content Version 的 AI `irrelevant` 人工纳入相关业务集合，决定保存到 `analysis_content_relevance_reviews`，并用 `analysis_result_id` 保留被复核 AI Result 的精确来源。默认业务列表、`relevance` 筛选、查询型 Analysis target 和查询型 Export 都复用 `PostgresContentQueryRepository` 的有效相关性：当前版本有人工作为 `relevant` 时优先采用人工决定，否则采用 AI relevance。Content 新版本不会继承旧人工决定。
 
 ---
 
