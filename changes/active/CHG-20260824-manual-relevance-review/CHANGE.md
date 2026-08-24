@@ -41,7 +41,7 @@ affected_paths:
   - tests/integration/content/test_bidirectional_relevance_review.py
   - tests/fullstack/create_stage8f_excel_fixture.py
   - tests/fullstack/seed_stage8f_manual_relevance_review.py
-  - .github/workflows/stage8f-fullstack.yml
+  - .github/workflows/fullstack.yml
   - docs/blueprint/03_数据库与文件存储.md
   - docs/blueprint/04_后端任务API与前端.md
   - docs/blueprint/07_技术决策与实施门禁.md
@@ -129,13 +129,13 @@ data_changes:
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 前端能查看业务有效不相关内容并逐条复核 | user:2026-08-24-manual-relevance-review | satisfied | `frontend/e2e/manual-relevance-review.spec.ts` 与 Stage 8F run 32721400484 已验证。 |
-| R2 | 支持单条/批量 AI irrelevant → 人工 relevant | user:2026-08-24-manual-relevance-review | satisfied | API/PG 定向 run 32721400535 与 Stage 8F run 32721400484 均通过。 |
+| R1 | 前端能查看业务有效不相关内容并逐条复核 | user:2026-08-24-manual-relevance-review | satisfied | `frontend/e2e/manual-relevance-review.spec.ts` 与历史 Stage 8F run 32721400484 已验证。 |
+| R2 | 支持单条/批量 AI irrelevant → 人工 relevant | user:2026-08-24-manual-relevance-review | satisfied | API/PG 定向 run 32721400535 与历史 Stage 8F run 32721400484 均通过。 |
 | R3 | AI 原始结果保持不可改写，人工事实归 Analysis Owner | docs/blueprint/07_技术决策与实施门禁.md | satisfied | PostgreSQL integration 验证原 AI Result 保留；0025 与 table ownership 均归 Analysis。 |
 | R4 | 默认列表、relevance 查询、query Analysis/Export 使用统一有效相关性 | backend/src/aima_ugc/modules/analysis/README.md | satisfied | `PostgresContentQueryRepository` 单一表达式与 PostgreSQL integration 已覆盖默认、显式查询、query Analysis/Export。 |
-| R5 | 公共 API 变化走 Pydantic→OpenAPI→generated client | docs/blueprint/04_后端任务API与前端.md | satisfied | 官方生成链已同步 `contracts/openapi/openapi.json` 与 Orval client；Stage 5C 曾精确暴露说明文字导致的 `CONTRACT_STALE`，随后重新运行正式生成链并通过 `generate.py --check` 与 compatibility check。 |
-| R6 | 支持 AI relevant → 人工 irrelevant | user:2026-08-24-bidirectional-relevance-review | satisfied | Browser Mock、PostgreSQL integration 与 Stage 8F 真实链均已覆盖。 |
-| R7 | 支持撤销人工决定并恢复 AI 基线 | user:2026-08-24-bidirectional-relevance-review | satisfied | `inherit_ai` API/Repository/UI 已实现；Stage 8F run 32721400484 真实排除→撤销成功。 |
+| R5 | 公共 API 变化走 Pydantic→OpenAPI→generated client | docs/blueprint/04_后端任务API与前端.md | satisfied | 官方生成链已同步 `contracts/openapi/openapi.json` 与 Orval client；旧 CI 曾精确暴露说明文字导致的 `CONTRACT_STALE`，随后重新运行正式生成链并通过 `generate.py --check` 与 compatibility check。 |
+| R6 | 支持 AI relevant → 人工 irrelevant | user:2026-08-24-bidirectional-relevance-review | satisfied | Browser Mock、PostgreSQL integration 与历史 Stage 8F 真实链均已覆盖。 |
+| R7 | 支持撤销人工决定并恢复 AI 基线 | user:2026-08-24-bidirectional-relevance-review | satisfied | `inherit_ai` API/Repository/UI 已实现；历史 Stage 8F run 32721400484 真实排除→撤销成功。 |
 | R8 | 撤销和多轮人工决定不得丢失历史审计 | docs/blueprint/07_技术决策与实施门禁.md | satisfied | `review_no` 追加事件、数据库 UPDATE/DELETE Trigger 与 integration 均已验证。 |
 | R9 | 双向/撤销保证批量原子性、幂等、版本隔离和 stale 可撤销 | .agents/skills/reliable-vibe-coding/SKILL.md | satisfied | PG integration 验证重复幂等、直接反向 409、全量事务、Version 隔离及 Prompt/Model 变化后的 stale 撤销。 |
 
@@ -146,7 +146,7 @@ data_changes:
 | Browser Mock Acceptance | required | run 32721400535：人工复核 Playwright 5/5；覆盖单条双向、撤销、stale 撤销、批量不相关及显式 payload。 |
 | Backend/API/PostgreSQL Integration | required | run 32721400535：API 3/3、人工复核 PostgreSQL integration 2/2；0025 upgrade/check、双向、撤销、append-only、幂等、原子性与版本语义通过。 |
 | Contract / Generated Client | required | Pydantic 三值 decision、effective relevance projection 已通过正式 OpenAPI/Orval 生成链；最终生成链还通过 `generate.py --check` 与 `check_compatibility.py`。 |
-| Real Full-stack Golden Path | required | permanent Stage 8F run 32721400484：5/5；其中真实 AI irrelevant→人工 relevant，以及 AI relevant→人工 irrelevant→撤销均成功。 |
+| Real Full-stack Golden Path | required | 历史 Stage 8F run 32721400484：5/5；AI irrelevant→人工 relevant、AI relevant→人工 irrelevant→撤销均成功。main 完成 CI Validation Layers 收敛后，本功能验收已迁移到 `.github/workflows/fullstack.yml`，最终 PR HEAD 由当前 `Full-stack Acceptance` 永久工作流重新复验。 |
 | Real Provider Probe | not_applicable | 本次不修改 TikHub/LLM 外部 endpoint、请求字段、Mapper 或真实付费 Provider 行为。 |
 | Docs / Governance / Other | required | Blueprint 03/04/07、AI Appendix、Analysis README 已同步；A1/A2 Review 已完成，PR #202 当前无 review comment/thread。 |
 
@@ -158,15 +158,15 @@ data_changes:
 - Projection Red：真实 PostgreSQL 测试在业务状态已正确计算的前提下，因 `ContentListItemResponse` 缺 `effective_relevance` 失败；随后加入只读派生投影。
 - Append-only Red：run 32720466525，直接 UPDATE 人工账本未抛 `DatabaseError`，证明原 Migration 缺数据库级不可变约束。
 - Targeted Green：run 32721400535 全部目标层通过；PostgreSQL 日志明确记录账本禁止 UPDATE/DELETE。
-- Real Full-stack Green：permanent Stage 8F run 32721400484，5/5 通过。
-- Contract Drift Regression：最终候选 HEAD 的 Stage 5C 业务/数据库验证 332 + 89 均通过，但 quality gate 以 `CONTRACT_STALE` 拒绝未同步 OpenAPI；之后使用正式 Pydantic→OpenAPI→Orval 生成命令修复，不手改 generated 文件。
+- Real Full-stack Green：历史 Stage 8F run 32721400484，5/5 通过；当前 CI 拓扑已迁移为 `Full-stack Acceptance`。
+- Contract Drift Regression：旧最终候选 HEAD 的 Provider Persistence 业务/数据库验证 332 + 89 均通过，但 quality gate 以 `CONTRACT_STALE` 拒绝未同步 OpenAPI；之后使用正式 Pydantic→OpenAPI→Orval 生成命令修复，不手改 generated 文件。
 
 # Completion Audit
 
-- [x] upstream_re_read：已重新读取用户双向/撤销要求、当前 feature `AGENTS.md`、RVC Skill、Blueprint README/03/04/07、Analysis README/Appendix 与当前 Change。
+- [x] upstream_re_read：已重新读取用户双向/撤销要求、当前 `main`/feature `AGENTS.md`、RVC Skill、Blueprint README/03/04/07、Analysis README/Appendix 与当前 Change。
 - [x] change_coverage：R1—R9 已逐项映射到 Schema/Migration、Repository、Query、HTTP/generated client、Vue UI、Browser/PG/Full-stack 测试和正式文档，均为 satisfied。
 - [x] reverse_audit：每个 `relevant / irrelevant / inherit_ai` 后端 decision 均有明确前端入口；前端按钮直接依赖服务端 `effective_relevance / relevance_source`，不再从筛选条件猜测；默认/relevant/irrelevant/query Analysis/query Export 共用同一 Query Repository 语义。
-- [x] unresolved_cleared：双向、撤销、stale、append-only、批量、版本、AI 原结果保留均已有新鲜定向或真实 Full-stack 证据；A1/A2 未发现未解决实现缺陷，PR #202 无 review comment/thread。
+- [x] unresolved_cleared：双向、撤销、stale、append-only、批量、版本、AI 原结果保留均已有定向或真实 Full-stack 证据；main 同步后的最终 PR HEAD 仍必须通过当前永久 CI 后才允许合并。
 
 # A1 / A2 Review
 
@@ -176,6 +176,7 @@ data_changes:
 - 人工决定没有写回 `contents` 或 `analysis_content_results`；`effective_relevance / relevance_source` 仅为查询派生投影。
 - 改动范围未扩展到 TikHub、LLM Provider、Prompt/Taxonomy 或无关模块。
 - Full-stack 中两处失败均定位为测试断言错误：标签分隔符与 strict selector 范围；修复只改测试，真实 POST/查询行为当时已成功。
+- main 的 CI Validation Layers Change 将旧 `stage8f-fullstack.yml` 收敛为 `fullstack.yml`；本 Change 只把人工复核验收迁移到新长期工作流，没有回滚 main 的 CI 收敛。
 
 ## A2 Reliability / Edge Cases
 
@@ -195,9 +196,10 @@ data_changes:
 - [x] Green：扩展 HTTP Contract、OpenAPI/Orval 和声音广场 UI
 - [x] Green：补数据库级 append-only Trigger 与 stale 人工覆盖只读投影
 - [x] 同步 Blueprint 03/04/07、AI Appendix 与 Analysis README
-- [x] 跑目标验证矩阵与永久 Stage 8F Golden Path
+- [x] 跑目标验证矩阵与历史 Stage 8F Golden Path
 - [x] 完成 Requirement Traceability、Completion Audit、A1/A2 Review
-- [x] 修复最终 Contract drift，并用正式生成链重新同步 OpenAPI/Orval
+- [x] 修复 Contract drift，并用正式生成链重新同步 OpenAPI/Orval
+- [x] 同步最新 main，并把人工复核 Full-stack 验收迁移到 `.github/workflows/fullstack.yml`
 
 # Migration、部署、回滚与风险
 
@@ -211,5 +213,5 @@ data_changes:
 # 交付
 
 - 分支：`feature/manual-relevance-review`
-- PR：#202；最终永久 PR workflow 全绿前保持 Draft。
-- 合并：未经用户明确授权，不合并 `main`。
+- PR：#202，Ready for review。
+- 合并：用户已于 2026-08-24 明确授权合并到 `main`；必须先让同步最新 main 后的最终 PR HEAD 通过当前永久 CI，再执行正常 PR merge，并按仓库流程创建独立 Change 归档 PR。
