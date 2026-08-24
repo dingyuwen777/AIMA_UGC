@@ -45,7 +45,9 @@ const terminalStageMessage = computed(() =>
     ? '任务已取消。当前公开 Contract 不保存足以可靠重建“取消前最后完成阶段”的历史，因此这里不把未知阶段伪装成等待中。'
     : '任务已失败。当前公开 Contract 不保存足以可靠重建“失败前最后完成阶段”的历史，因此这里不把未知阶段伪装成等待中。',
 )
-const sourceRetention = computed(() => importSourceRetention(props.item?.finished_at))
+const sourceRetention = computed(() =>
+  importSourceRetention(props.item?.finished_at ?? props.item?.job.finished_at),
+)
 const sourceRetentionText = computed(() => {
   if (sourceRetention.value.expiresAt === null) return '源 Excel 会在任务进入终态后继续保留 7 天，处理和重试期间不会提前清理。'
   if (sourceRetention.value.expired) return '源 Excel 已超过 7 天保留期并进入自动清理；批次、入库数据和来源元数据继续保留。'

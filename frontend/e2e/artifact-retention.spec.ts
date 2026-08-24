@@ -10,29 +10,29 @@ const importDetail = {
   id: batchId,
   input_artifact_id: '62345678-1234-5678-1234-567812345678',
   source_filename: '爱玛导入.xlsx',
-  status: 'succeeded',
-  stage: 'succeeded',
+  status: 'cancelled',
+  stage: 'reading',
   stats: {
     rows_seen: 10,
     rows_matched: 9,
     rows_filtered_out: 1,
     duplicates_removed: 0,
-    rows_ingested: 9,
+    rows_ingested: 0,
     rows_rejected: 0,
   },
   error_summary: null,
   created_at: '2099-01-01T00:00:00Z',
   started_at: '2099-01-01T00:00:01Z',
-  finished_at: '2099-01-01T00:01:00Z',
+  finished_at: null,
   job: {
     id: importJobId,
     job_type: 'ingestion.import-excel.v1',
-    status: 'succeeded',
+    status: 'cancelled',
     attempt: 1,
     max_attempts: 10,
-    progress: 100,
+    progress: 40,
     error_code: null,
-    result: { batch_id: batchId, rows_ingested: 9 },
+    result: null,
     created_at: '2099-01-01T00:00:00Z',
     started_at: '2099-01-01T00:00:01Z',
     finished_at: '2099-01-01T00:01:00Z',
@@ -47,16 +47,16 @@ const runtimeItem = {
   import_batch_id: batchId,
   collection_run_id: null,
   job_id: importJobId,
-  status: 'succeeded',
-  stage: 'succeeded',
-  progress: 100,
+  status: 'cancelled',
+  stage: 'reading',
+  progress: 40,
   import_stats: importDetail.stats,
   collection_stats: null,
   platforms: [],
   keywords: [],
   created_at: importDetail.created_at,
   started_at: importDetail.started_at,
-  finished_at: importDetail.finished_at,
+  finished_at: importDetail.job.finished_at,
   error_code: null,
   error_summary: null,
 }
@@ -104,7 +104,7 @@ const completedExport = {
   completed_at: '2099-01-01T00:01:00Z',
 }
 
-test('shows Excel import source retention in the existing Batch detail', async ({ page }) => {
+test('shows Excel import source retention from terminal Job time when Batch time is absent', async ({ page }) => {
   await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url())
     if (url.pathname === '/api/v1/collection-runtime/summary') {
@@ -113,7 +113,7 @@ test('shows Excel import source retention in the existing Batch detail', async (
         body: JSON.stringify({
           processing_count: 0,
           completed_today_count: 1,
-          contents_ingested_today: 9,
+          contents_ingested_today: 0,
           as_of: '2099-01-01T00:02:00Z',
         }),
       })
