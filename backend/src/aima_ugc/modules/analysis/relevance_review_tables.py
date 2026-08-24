@@ -21,6 +21,12 @@ analysis_content_relevance_reviews_table = Table(
     Column("id", Uuid(), primary_key=True),
     Column("content_id", Uuid(), ForeignKey("contents.id"), nullable=False),
     Column("content_version", Integer(), nullable=False),
+    Column(
+        "analysis_result_id",
+        Uuid(),
+        ForeignKey("analysis_content_results.id"),
+        nullable=False,
+    ),
     Column("decision", Text(), nullable=False),
     Column("request_id", Text(), nullable=False),
     Column("reviewed_at", DateTime(timezone=True), nullable=False),
