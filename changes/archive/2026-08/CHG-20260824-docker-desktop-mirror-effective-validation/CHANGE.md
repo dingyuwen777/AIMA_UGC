@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260824-docker-desktop-mirror-effective-validation
 title: 修复 Docker Desktop mirror 有效验证与无界等待
 level: L2
-status: ready_for_review
+status: done
 owner: chatgpt
 branch: fix/docker-desktop-mirror-effective-validation
 created: 2026-08-24
@@ -62,11 +62,11 @@ Docker Desktop restart、单次 `docker info` probe 和 restart 后整体验证�
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 修复当前“docker info 很快且 AIMA mirrors 已存在，但脚本一直等待”的问题 | user:2026-08-24-current-runtime-output | satisfied | 用户实际 `docker info` 秒级返回 6 个有效 mirrors，其中包含全部 3 个 AIMA mirrors；旧实现要求有效数量等于 3。新 `Test-ExpectedMirrorsPresent()` 允许额外项并保持 AIMA 相对顺序；Windows workflow `32686784812` 直接行为测试 success |
+| R1 | 修复当前“docker info 很快且 AIMA mirrors 已存在，但脚本一直等待”的问题 | user:2026-08-24-current-runtime-output | satisfied | 用户实际 `docker info` 秒级返回 6 个有效 mirrors，其中包含全部 3 个 AIMA mirrors；旧实现要求有效数量等于 3。新 `Test-ExpectedMirrorsPresent()` 允许额外项并保持 AIMA 相对顺序；Final Ready Windows workflow `32687374003` success |
 | R2 | 正常状态不应固定等待几十秒；等待只应是异常保护上限 | user:2026-08-24-current-request | satisfied | 磁盘配置和有效状态都匹配时直接 `restart skipped`；只有需要 restart 才进入验证；整体 20 秒、单 probe 3 秒、间隔 1 秒均为上限，满足条件立即返回 |
 | R3 | 完整解决等待边界，不只改日志 | user:2026-08-24-current-request | satisfied | `docker desktop restart --timeout 60`；`ProcessStartInfo` probe 3 秒；probe kill 后 `WaitForExit(1000)`；Stopwatch 20 秒 deadline；`[WAIT]` 进度、最后观测状态和恢复提示；Docker 官方 `docker desktop restart` reference 确认 `--timeout` 且默认 0/-1 为无超时 |
-| R4 | 保持 Docker Hub mirror 单一配置源和已有镜像身份/包源方案 | user:centralize-docker-hub-mirrors | satisfied | PR #192 changed files 仅 helper、测试、Windows workflow、Guide 03/04 和本 Change；`scripts/config/docker_hub_mirrors.txt`、Linux setup、Dockerfile、Compose、npm/PyPI/Debian 配置均未修改 |
-| R5 | 完成 L2 Audit/Review/Ready Check/永久 CI 并正常合并 main | AGENTS.md | explicitly_deferred | Ready 前 A1/A2、Code Quality、Completion Audit 已完成；功能审计 HEAD `e977089901db60f4ff2924a19f215ecdc239139a` 除 `in_progress` 状态下预期失败的 Completion Gate 外，其余 10 个永久 workflow 全部 success。按仓库门禁，合并刻意延期到本 `ready_for_review` 提交的 11 个永久 workflow 全绿后执行；用户已授权正常合并 main |
+| R4 | 保持 Docker Hub mirror 单一配置源和已有镜像身份/包源方案 | user:centralize-docker-hub-mirrors | satisfied | PR #192 仅修改 helper、测试、Windows workflow、Guide 03/04 和本 Change；`scripts/config/docker_hub_mirrors.txt`、Linux setup、Dockerfile、Compose、npm/PyPI/Debian 配置均未修改 |
+| R5 | 完成 L2 Audit/Review/Ready Check/永久 CI 并正常合并 main | AGENTS.md | satisfied | Final Ready HEAD `4cdee7a9f24f9ad2698f36f0c8765c7929bdd1bc` 的 11 个永久 workflow 全部 success；PR #192 正常 merge commit `84109813eff8eadbadecbb1f3ccb1efe7c60c36f` 已进入 main |
 
 # Validation Matrix
 
@@ -77,14 +77,14 @@ Docker Desktop restart、单次 `docker info` probe 和 restart 后整体验证�
 | Contract / Generated Client | not_applicable | 无公共 Contract 变化 |
 | Real Full-stack Golden Path | not_applicable | 不改变业务运行栈；Internal V1-A、Stage 8F、Windows named-volume Runtime 作为回归门禁均通过 |
 | Real Provider Probe | not_applicable | 不涉及 Provider |
-| Docs / Governance / Other | required | 有效 Red、Python static regression、Windows PowerShell direct behavior、Windows Runtime、Completion Gate 和永久 CI |
+| Docs / Governance / Other | required | 有效 Red、Python static regression、Windows PowerShell direct behavior、Windows Runtime、Completion Gate 和永久 CI 均通过 |
 
 # Completion Audit
 
 - [x] upstream_re_read: Ready 前重新读取用户实际 `docker info` 输出、当前分支 `AGENTS.md`、Reliable Vibe Coding、Blueprint README/07、最终 helper、目标 test、Windows workflow、Guide 03/04，并核对 Docker 官方 Desktop restart timeout reference。
 - [x] change_coverage: R1-R5 覆盖错误成功条件、正常状态立即返回、三个等待边界、可观察输出、单一配置源、测试/文档与交付门禁。
-- [x] reverse_audit: 从用户 6-mirror 状态反查 predicate，再从 helper 反查磁盘配置、有效状态、restart、probe、deadline、输出和恢复；PR changed files 仅 6 个预期路径，Linux setup、mirror 配置文件、Dockerfile、Compose、依赖、业务代码、Contract/Migration 未修改；并行多词包 Change 路径不重叠。
-- [x] unresolved_cleared: R1-R4 satisfied；R5 的 merge 仅按正式门禁 explicitly_deferred 到 Final Ready HEAD 全绿之后，没有范围内未决设计或缺失实现。
+- [x] reverse_audit: 从用户 6-mirror 状态反查 predicate，再从 helper 反查磁盘配置、有效状态、restart、probe、deadline、输出和恢复；实现 PR 仅 6 个预期路径，Linux setup、mirror 配置文件、Dockerfile、Compose、依赖、业务代码、Contract/Migration 未修改；并行多词包 Change 路径不重叠。
+- [x] unresolved_cleared: R1-R5 全部 satisfied，没有范围内未决设计、缺失实现或未完成交付门禁。
 
 # Review
 
@@ -112,21 +112,34 @@ Docker Desktop restart、单次 `docker info` probe 和 restart 后整体验证�
 
 功能审计 HEAD：`e977089901db60f4ff2924a19f215ecdc239139a`
 
-- CI `32686784849`: success；Stage 1 / Stage 2 / Stage 3A / Windows bootstrap 全部 success，目标 unit 位于 Backend and repository checks 并通过。
-- Windows Docker Desktop Compose Compatibility `32686784812`: success；PowerShell AST、额外 mirror predicate 直接行为测试、CMD/PowerShell Compose 和 named-volume Runtime 全部 success。
+- CI `32686784849`: success。
+- Windows Docker Desktop Compose Compatibility `32686784812`: success。
 - Internal V1-A `32686784799`: success。
 - Stage 8F `32686784805`: success。
 - Local Dev Bootstrap `32686784850`: success。
 - Stage 6 `32686784836`: success。
 - Stage 7 Plan `32686784820`、Keyword Packs `32686784844`、Scheduler `32686784851`、Provider Config `32686784808`: success。
-- Change Completion Gate `32686784872` 在 Change 仍为 `in_progress` 时按治理规则预期 failure；本 `ready_for_review` 提交后重新执行。
 
-中间候选 HEAD 曾因新增 Python 测试的一行 Ruff formatter 要求失败；实际 Stage 7 Plan Unit/PostgreSQL 已 success。按 Ruff 给出的精确格式修正后，最终功能审计 HEAD 的全量 Quality/CI 已 success；未把格式失败伪装为功能失败。
+## Final Ready
+
+Final Ready HEAD：`4cdee7a9f24f9ad2698f36f0c8765c7929bdd1bc`
+
+- Change Completion Gate `32687374016`: success。
+- CI `32687373853`: success。
+- Windows Docker Desktop Compose Compatibility `32687374003`: success。
+- Internal V1-A `32687373981`: success。
+- Stage 8F `32687373871`: success。
+- Local Dev Bootstrap `32687373899`: success。
+- Stage 6 `32687373864`: success。
+- Stage 7 Plan `32687373907`、Keyword Packs `32687374009`、Scheduler `32687374026`、Provider Config `32687373865`: success。
+
+中间候选 HEAD 曾因新增 Python 测试的一行 Ruff formatter 要求失败；实际 Stage 7 Plan Unit/PostgreSQL 已 success。按 Ruff 给出的精确格式修正后，最终功能审计与 Final Ready HEAD 的全量 Quality/CI 均 success；未把格式失败伪装为功能失败。
 
 # Git / 交付
 
-- Branch: `fix/docker-desktop-mirror-effective-validation`
-- PR: #192
-- Merge authorization: 用户已明确要求完整修复，并沿用本轮“修改脚本、合并到主分支”的正常合并授权。
-- Final gate: 本 `ready_for_review` HEAD 必须重新通过 11 个永久 workflow。
-- Archive: 实现 PR 合并后创建独立归档 PR，将本 Change 标记 `done` 并移动到 `changes/archive/2026-08/`；不得触碰并行 `CHG-20260824-multi-keyword-pack-entrypoints`。
+- Implementation branch: `fix/docker-desktop-mirror-effective-validation`
+- Implementation PR: #192
+- Final Ready HEAD: `4cdee7a9f24f9ad2698f36f0c8765c7929bdd1bc`
+- Implementation merge commit: `84109813eff8eadbadecbb1f3ccb1efe7c60c36f`
+- Archive branch: `docs/archive-docker-mirror-effective-validation`
+- Archive: 本文件归档到 `changes/archive/2026-08/`，并从 `changes/active/` 清除；并行 `CHG-20260824-multi-keyword-pack-entrypoints` 不属于本 Change。
