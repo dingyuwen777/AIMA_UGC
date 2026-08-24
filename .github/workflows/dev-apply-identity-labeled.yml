@@ -1,4 +1,4 @@
-name: Dev Apply Identity Alignment Labeled
+name: Dev Finalize Identity Alignment
 
 on:
   pull_request:
@@ -9,11 +9,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: dev-apply-identity-alignment
+  group: dev-finalize-identity-alignment
   cancel-in-progress: true
 
 jobs:
-  apply-and-verify:
+  finalize:
     if: github.event.label.name == 'dev-apply-identity'
     runs-on: ubuntu-24.04
     services:
@@ -22,7 +22,7 @@ jobs:
         env:
           POSTGRES_DB: aima_ugc
           POSTGRES_USER: aima_ugc
-          POSTGRES_PASSWORD: identity-ci
+          POSTGRES_PASSWORD: identity-finalize
         ports:
           - 5432:5432
         options: >-
@@ -31,16 +31,16 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      AIMA_DATA_DIR: .runtime/dev-identity/data
-      AIMA_LOG_DIR: .runtime/dev-identity/logs
-      AIMA_SECRET_DIR: .runtime/dev-identity/secrets
+      AIMA_DATA_DIR: .runtime/identity-finalize/data
+      AIMA_LOG_DIR: .runtime/identity-finalize/logs
+      AIMA_SECRET_DIR: .runtime/identity-finalize/secrets
       AIMA_DB_HOST: 127.0.0.1
       AIMA_DB_PORT: 5432
       AIMA_DB_NAME: aima_ugc
       AIMA_DB_USER: aima_ugc
       AIMA_DB_CONNECT_TIMEOUT_SECONDS: 3
     steps:
-      - name: Checkout branch head
+      - name: Checkout feature head
         uses: actions/checkout@v7.0.1
         with:
           ref: feature/excel-tikhub-identity-alignment
@@ -59,84 +59,84 @@ jobs:
           python -m pip install "uv==${UV_VERSION}"
           uv lock --check
           uv sync --locked
+          mkdir -p "${AIMA_DATA_DIR}" "${AIMA_LOG_DIR}" "${AIMA_SECRET_DIR}"
+          printf '%s\n' 'identity-finalize' > "${AIMA_SECRET_DIR}/postgres_password"
+          chmod 600 "${AIMA_SECRET_DIR}/postgres_password"
 
-      - name: Prepare PostgreSQL runtime
+      - name: Patch final docs and remove temporary tooling
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "${AIMA_DATA_DIR}" "${AIMA_LOG_DIR}" "${AIMA_SECRET_DIR}"
-          printf '%s\n' 'identity-ci' > "${AIMA_SECRET_DIR}/postgres_password"
-          chmod 600 "${AIMA_SECRET_DIR}/postgres_password"
+          python - <<'PY'
+          from pathlib import Path
+
+          targets = Path("backend/src/aima_ugc/adapters/persistence/postgres/collection_targets.py")
+          text = targets.read_text(encoding="utf-8")
+          old_comment = "# 这里只列当前生产 Runtime 已验证能够直接消费且能稳定收敛到原 Content 的 lookup identity。\n# share/short URL 可以被 Import 识别和保存，但在正式 Resolver/身份合并闭环前不得直接计费补采。"
+          new_comment = "# 这里只列当前生产 Runtime 已验证可直接消费的 typed Provider lookup identity。\n# typed locator 可以与数据库稳定 external_content_id 不同；Runtime 显式传递 alternate_ids，并保持 Content 主身份。"
+          if text.count(old_comment) != 1:
+              raise SystemExit("collection_targets top comment anchor mismatch")
+          text = text.replace(old_comment, new_comment, 1)
+          old_doc = '''    """只返回当前 Runtime 可消费且与稳定 Content 身份一致的 lookup。\n\n    Worker 目前仍使用 ``external_content_id`` 构造 Detail/Comments 请求；因此 typed lookup\n    即使存在，只要它与稳定身份不是同一 Provider identity，就必须 fail closed。未来若要\n    支持二者不同，需要先实现显式 Resolver/身份合并和 Runtime lookup 参数传递。\n    """'''
+          new_doc = '''    """返回当前 Runtime 可消费的 typed Provider lookup。\n\n    typed locator 可以与数据库稳定 ``external_content_id`` 不同；Batch enrichment 会把\n    ``alternate_ids`` 传入 Detail/Comments/SubComments，Mapper 再把结果挂回稳定 Content。\n    """'''
+          if text.count(old_doc) != 1:
+              raise SystemExit("collection_targets docstring anchor mismatch")
+          targets.write_text(text.replace(old_doc, new_doc, 1), encoding="utf-8")
+
+          appendix = Path("docs/appendix/08_数据入口与统一入库实现.md")
+          text = appendix.read_text(encoding="utf-8")
+          old = "对 Excel 中能够从平台标准原文链接确定性解析 native ID 的内容，`external_content_id` 本身就使用该 native ID，因此后续 TikHub 搜索/详情观察到同一平台 ID 时会直接收敛到同一 Content。"
+          new = '''对当前 TikHub 正式支持的内容类型，Excel 与 TikHub 使用同一套平台身份规范化规则，使“Excel 先到”和“TikHub 先到”都能收敛到同一 Content：\n\n- 小红书：`note_id`；\n- 抖音：`aweme_id`；\n- 微博状态：数字 `status_id/MID`；\n- B站视频：Canonical 稳定身份统一为数字 AID；Excel 的 BV 链接确定性转换为 AID，同时保留 `bv_id/av_id` 供 Provider 调用；\n- 快手作品：Canonical 稳定身份与补采 `photo_id` 使用公开分享作品 ID（`share_info.photoId`，通常为 `3x...`）；TikHub Raw 中另一套数字 `photo_id` 以 `provider_photo_id` 保留，不再作为跨来源主身份。\n\n真实 Provider 验证已证明快手 Search 同一作品同时存在数字内部 `photo_id` 与公开分享 `photoId` 两套 ID；Excel `/short-video/{id}` 对应公开分享 ID。Detail/Comments 使用公开分享 ID 请求，Mapper 通过上下文继续挂回同一个稳定 Content。\n\n当前 TikHub 正式 Capability 不采 B站动态/opus，也不把微博 `ttarticle` 作为独立 status 内容采集，因此这些尚不具备双边可验证身份的类型不会被伪装成“已可跨来源自动合并”；未来新增对应 Provider Capability 时必须单独完成真实 ID 对齐。'''
+          if text.count(old) != 1:
+              raise SystemExit("appendix identity paragraph anchor mismatch")
+          appendix.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+
+          rm -f \
+            .dev-apply-identity-alignment-trigger \
+            .dev-tikhub-probe-public.pem \
+            .dev-tikhub-probe-payload \
+            .dev-tikhub-kuaishou-public.pem \
+            .dev-tikhub-kuaishou-payload \
+            scripts/dev/apply_identity_alignment.py \
+            .github/workflows/dev-apply-identity-alignment.yml \
+            .github/workflows/dev-apply-identity-labeled.yml \
+            .github/workflows/dev-tikhub-identity-probe.yml \
+            .github/workflows/dev-tikhub-kuaishou-identity-diag.yml
+
+      - name: Verify clean final candidate
+        shell: bash
+        run: |
+          set -euo pipefail
           uv run alembic upgrade head
           uv run alembic check
-
-      - name: Verify Red for typed locator behavior
-        shell: bash
-        run: |
-          set -euo pipefail
-          set +e
-          uv run pytest tests/unit/collection/test_tikhub_runtime_alternate_identity.py -q 2>&1 | tee /tmp/identity-red.log
-          status=${PIPESTATUS[0]}
-          set -e
-          if [[ "${status}" -eq 0 ]]; then
-            echo "Expected typed locator regression test to fail before implementation"
-            exit 1
-          fi
-          if ! grep -Eq "alternate_ids|provider-note-001|SOURCE-ARTICLE" /tmp/identity-red.log; then
-            echo "Red failure was not caused by the target identity behavior"
-            cat /tmp/identity-red.log
-            exit 1
-          fi
-
-      - name: Apply minimal identity alignment patch
-        shell: bash
-        run: |
-          set -euo pipefail
-          python scripts/dev/apply_identity_alignment.py
-          uv run ruff format \
-            backend/src/aima_ugc/adapters/providers/tikhub/runtime.py \
-            backend/src/aima_ugc/adapters/persistence/postgres/collection_targets.py \
-            backend/src/aima_ugc/adapters/persistence/postgres/content_complete.py \
-            backend/src/aima_ugc/bootstrap/collection_scope.py \
+          uv run pytest -q \
             tests/unit/collection/test_tikhub_runtime_alternate_identity.py \
-            tests/integration/collection/test_collection_supplement_target_eligibility.py
-
-      - name: Verify Green and PostgreSQL behavior
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run pytest tests/unit/collection/test_tikhub_runtime_alternate_identity.py -q
-          uv run pytest tests/integration/collection/test_collection_supplement_target_eligibility.py -q
-          uv run pytest tests/integration/collection/test_stage8a_cross_source_idempotency.py -q
-
-      - name: Remove temporary patch script
-        shell: bash
-        run: rm scripts/dev/apply_identity_alignment.py
-
-      - name: Static checks
-        shell: bash
-        run: |
-          set -euo pipefail
+            tests/unit/collection/test_bilibili_excel_identity.py \
+            tests/unit/collection/test_provider_lookup_identity.py \
+            tests/unit/collection/test_kuaishou_tikhub_identity_convergence.py
+          uv run pytest -q \
+            tests/integration/collection/test_collection_supplement_target_eligibility.py \
+            tests/integration/collection/test_stage8a_external_identity_merge.py
           uv run ruff format --check backend tests scripts
           uv run ruff check backend tests scripts
           uv run mypy backend/src/aima_ugc
+          uv run python scripts/quality/check_docs.py
+          uv run python scripts/quality/scan_secrets.py
+          uv run python .agents/skills/reliable-vibe-coding/scripts/ready_check.py --root . --require-active-ready
           git diff --check
+          if find . -maxdepth 2 \( -name '.dev-tikhub-*' -o -name '.dev-apply-identity*' \) -print | grep -q .; then
+            echo "Temporary probe files remain"
+            exit 1
+          fi
 
-      - name: Commit verified implementation
+      - name: Commit and push clean candidate
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "AIMA GitHub Runner"
           git config user.email "actions@users.noreply.github.com"
-          git add -A \
-            scripts/dev/apply_identity_alignment.py \
-            backend/src/aima_ugc/adapters/providers/tikhub/runtime.py \
-            backend/src/aima_ugc/adapters/persistence/postgres/collection_targets.py \
-            backend/src/aima_ugc/adapters/persistence/postgres/content_complete.py \
-            backend/src/aima_ugc/bootstrap/collection_scope.py \
-            tests/unit/collection/test_tikhub_runtime_alternate_identity.py \
-            tests/integration/collection/test_collection_supplement_target_eligibility.py \
-            docs/appendix/08_数据入口与统一入库实现.md
-          git diff --cached --exit-code && { echo "No implementation changes produced"; exit 1; } || true
-          git commit -m "统一 TikHub 补采 typed identity"
+          git add -A
+          git diff --cached --exit-code && { echo "No finalization changes"; exit 1; } || true
+          git commit -m "完成 Excel 与 TikHub 身份对齐收尾"
           git push origin HEAD:feature/excel-tikhub-identity-alignment
