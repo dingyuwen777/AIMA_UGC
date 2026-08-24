@@ -19,6 +19,7 @@ SECRET_GID = 11001
 DEFAULT_ROOT = Path("/data/AIMA_UGC")
 _POSTGRES_CLUSTER_MARKER = Path("postgres/18/docker/PG_VERSION")
 _POSTGRES_PASSWORD = Path("shared/secrets/postgres_password")
+_BIND_COMPATIBLE_RUNTIME_PATHS = frozenset({"runtime/data", "runtime/logs"})
 
 
 class HostPreparationError(RuntimeError):
@@ -65,7 +66,15 @@ def _stat_without_symlink(path: Path) -> os.stat_result:
         raise HostPreparationError(f"无法访问：{path}") from exc
 
 
-def _ensure_directory(root: Path, spec: DirectorySpec, *, check_only: bool) -> None:
+def _ensure_directory(
+    root: Path,
+    spec: DirectorySpec,
+    *,
+    check_only: bool,
+    strict_permissions: bool = True,
+) -> None:
+    """准备目录；Windows bind 仅放宽无法可靠表达的精确 POSIX owner/mode。"""
+
     path = root if spec.relative == "." else root / spec.relative
     if not path.exists():
         if check_only:
@@ -75,9 +84,23 @@ def _ensure_directory(root: Path, spec: DirectorySpec, *, check_only: bool) -> N
     if not stat.S_ISDIR(info.st_mode):
         raise HostPreparationError(f"路径不是目录：{path}")
     if not check_only:
-        os.chown(path, spec.uid, spec.gid)
-        os.chmod(path, spec.mode)
-        info = path.stat()
+        if strict_permissions:
+            os.chown(path, spec.uid, spec.gid)
+            os.chmod(path, spec.mode)
+        else:
+            # Docker Desktop 的 Windows bind mount 可能无法回显容器侧 UID/GID/mode；
+            # 仍尽力收紧权限，但不让文件系统翻译能力阻塞 Artifact/日志目录。
+            try:
+                os.chown(path, spec.uid, spec.gid)
+            except OSError:
+                pass
+            try:
+                os.chmod(path, spec.mode)
+            except OSError:
+                pass
+        info = _stat_without_symlink(path)
+    if not strict_permissions:
+        return
     actual_mode = stat.S_IMODE(info.st_mode)
     if (info.st_uid, info.st_gid, actual_mode) != (spec.uid, spec.gid, spec.mode):
         raise HostPreparationError(
@@ -171,11 +194,14 @@ def prepare_host(
     *,
     check_only: bool,
     runtime_only: bool = False,
+    runtime_bind_compatible: bool = False,
 ) -> None:
     """准备/校验宿主目录；已有内部 Secret 只校验和收紧权限，绝不轮换。"""
 
     if os.name != "posix":
         raise HostPreparationError("Internal V1 宿主准备只支持 Linux/POSIX")
+    if runtime_bind_compatible and not runtime_only:
+        raise HostPreparationError("bind-compatible 模式只允许与 --runtime-only 一起使用")
     resolved_root = _resolve_host_root(root)
     _guard_postgres_password_recovery(resolved_root)
     if os.geteuid() != 0:
@@ -183,7 +209,15 @@ def prepare_host(
 
     specs = _RUNTIME_DIRECTORY_SPECS if runtime_only else _DIRECTORY_SPECS
     for spec in specs:
-        _ensure_directory(resolved_root, spec, check_only=check_only)
+        strict_permissions = not (
+            runtime_bind_compatible and spec.relative in _BIND_COMPATIBLE_RUNTIME_PATHS
+        )
+        _ensure_directory(
+            resolved_root,
+            spec,
+            check_only=check_only,
+            strict_permissions=strict_permissions,
+        )
 
     secret_dir = resolved_root / "shared/secrets"
     for name, minimum in _MANAGED_SECRETS.items():
@@ -212,12 +246,18 @@ def main() -> int:
         action="store_true",
         help="只准备 Compose 运行所需 data/log/postgres/secrets；跳过 backups/releases/shared/env",
     )
+    parser.add_argument(
+        "--runtime-bind-compatible",
+        action="store_true",
+        help="仅对 runtime/data 与 runtime/logs 放宽精确 POSIX owner/mode 校验，用于 Windows bind mount",
+    )
     args = parser.parse_args()
     try:
         prepare_host(
             args.root,
             check_only=args.check_only,
             runtime_only=args.runtime_only,
+            runtime_bind_compatible=args.runtime_bind_compatible,
         )
     except HostPreparationError as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)
