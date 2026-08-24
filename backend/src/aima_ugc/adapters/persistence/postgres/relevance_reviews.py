@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import insert, select
+from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
 from aima_ugc.modules.analysis.persistence import AnalysisConfigurationIdentity
@@ -51,9 +53,8 @@ class PostgresContentRelevanceReviewRepository:
         if len(content_rows) != len(content_ids):
             raise ContentRelevanceReviewConflict
 
-        current_versions = {
-            row["id"]: row["current_version"]
-            for row in content_rows
+        current_versions: dict[UUID, int] = {
+            cast(UUID, row["id"]): cast(int, row["current_version"]) for row in content_rows
         }
         existing_rows = tuple(
             self._session.execute(
@@ -65,12 +66,15 @@ class PostgresContentRelevanceReviewRepository:
                 )
             ).mappings()
         )
-        already_reviewed = {
-            row["content_id"]
+        already_reviewed: set[UUID] = {
+            cast(UUID, row["content_id"])
             for row in existing_rows
-            if current_versions.get(row["content_id"]) == row["content_version"]
+            if current_versions.get(cast(UUID, row["content_id"]))
+            == cast(int, row["content_version"])
         }
-        to_review = tuple(content_id for content_id in content_ids if content_id not in already_reviewed)
+        to_review = tuple(
+            content_id for content_id in content_ids if content_id not in already_reviewed
+        )
 
         if to_review:
             if analysis_identity is None:
@@ -93,18 +97,25 @@ class PostgresContentRelevanceReviewRepository:
                         result.c.model_provider == analysis_identity.model_provider,
                         result.c.model == analysis_identity.model,
                     )
-                    .order_by(result.c.content_id, result.c.analyzed_at.desc(), result.c.id.desc())
+                    .order_by(
+                        result.c.content_id,
+                        result.c.analyzed_at.desc(),
+                        result.c.id.desc(),
+                    )
                 ).mappings()
             )
-            latest_by_content: dict[UUID, object] = {}
+            latest_by_content: dict[UUID, RowMapping] = {}
             for row in result_rows:
-                latest_by_content.setdefault(row["content_id"], row)
+                latest_by_content.setdefault(cast(UUID, row["content_id"]), row)
             for content_id in to_review:
                 row = latest_by_content.get(content_id)
                 if row is None:
                     raise ContentRelevanceReviewConflict
                 current_version = current_versions[content_id]
-                if row["content_version"] != current_version or row["relevance"] != "irrelevant":  # type: ignore[index]
+                if (
+                    cast(int, row["content_version"]) != current_version
+                    or cast(str, row["relevance"]) != "irrelevant"
+                ):
                     raise ContentRelevanceReviewConflict
 
             reviewed_at = datetime.now(UTC)
