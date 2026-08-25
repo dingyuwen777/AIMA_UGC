@@ -553,263 +553,131 @@ def _write_context(root: Path, context: dict[str, Any]) -> None:
         json.dump(context, stream, ensure_ascii=False, indent=2, sort_keys=True)
         stream.write("\n")
         temporary = Path(stream.name)
-    try:
-        temporary.replace(target)
-    finally:
-        if temporary.exists():
-            temporary.unlink(missing_ok=True)
+    os.replace(temporary, target)
 
 
 def _load_context(root: Path) -> dict[str, Any] | None:
-    target = _context_path(root)
     try:
-        payload = json.loads(target.read_text(encoding="utf-8"))
+        payload = json.loads(_context_path(root).read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
     return payload if isinstance(payload, dict) else None
 
 
-def _validate_context(context: dict[str, Any]) -> bool:
-    return context.get("schema") == CONTEXT_SCHEMA and context.get("generator_version") == GENERATOR_VERSION
+def _git_candidate_changes(root: Path, context: dict[str, Any]) -> bool | None:
+    git_context = context.get("git")
+    if not isinstance(git_context, dict) or not git_context.get("repository"):
+        return None
+    if not _is_git_repository(root):
+        return None
+    indexed_head = git_context.get("indexed_at_commit")
+    current_head = _git_head(root)
+    if not isinstance(indexed_head, str) or not current_head:
+        return None
 
-
-def _context_stale(root: Path, context: dict[str, Any]) -> bool:
-    if not _validate_context(context):
+    known_paths = {
+        item.get("path")
+        for item in context.get("documents", [])
+        if isinstance(item, dict) and isinstance(item.get("path"), str)
+    }
+    if any(not _is_safe_relative_path(path) for path in known_paths):
         return True
+    current_worktree_digest = _git_worktree_candidate_digest(root, known_paths)
+    indexed_worktree_digest = git_context.get("worktree_candidate_digest")
+    if current_worktree_digest is None or not isinstance(indexed_worktree_digest, str):
+        return None
+    if current_worktree_digest != indexed_worktree_digest:
+        return True
+
+    ancestor = _run_git(root, "merge-base", "--is-ancestor", indexed_head, current_head)
+    if ancestor.returncode != 0:
+        return True
+
+    changed: set[str] = set()
+    if indexed_head != current_head:
+        result = _run_git(
+            root,
+            "-c",
+            "core.quotepath=false",
+            "diff",
+            "--name-only",
+            "-z",
+            "--no-renames",
+            "--diff-filter=ACDMRTUXB",
+            indexed_head,
+            current_head,
+        )
+        if result.returncode != 0:
+            return None
+        changed.update(
+            _normalise_relative_path(path)
+            for path in result.stdout.split("\0")
+            if path
+        )
+
+    return any(_classify_path(path) is not None or path in known_paths for path in changed)
+
+
+def _context_is_fresh(root: Path, context: dict[str, Any]) -> bool:
+    if context.get("schema") != CONTEXT_SCHEMA:
+        return False
+    git_changes = _git_candidate_changes(root, context)
+    if git_changes is not None:
+        return not git_changes
+
     documents = context.get("documents")
     if not isinstance(documents, list):
-        return True
-    known: dict[str, str] = {}
+        return False
+    current_candidates = _candidate_paths(root)
+    if _path_digest(current_candidates) != context.get("candidate_path_digest"):
+        return False
     for item in documents:
-        if not isinstance(item, dict):
-            return True
-        path = item.get("path")
-        sha256 = item.get("sha256")
-        if not isinstance(path, str) or not isinstance(sha256, str):
-            return True
-        known[path] = sha256
-
-    candidates = _candidate_paths(root)
-    if _path_digest(candidates) != context.get("candidate_path_digest"):
-        return True
-
-    git = context.get("git")
-    if not isinstance(git, dict):
-        return True
-    git_repository = _is_git_repository(root)
-    if bool(git.get("repository")) != git_repository:
-        return True
-    if git_repository:
-        indexed_commit = git.get("indexed_at_commit")
-        current_head = _git_head(root)
-        if indexed_commit != current_head:
-            if not isinstance(indexed_commit, str) or not isinstance(current_head, str):
-                return True
-            ancestor = _run_git(root, "merge-base", "--is-ancestor", indexed_commit, current_head)
-            if ancestor.returncode != 0:
-                return True
-        expected_digest = _git_worktree_candidate_digest(root, known)
-        if expected_digest != git.get("worktree_candidate_digest"):
-            return True
-
-    for relative, expected_sha in known.items():
-        path = _safe_project_file(root, relative)
-        if path is None or _sha256(path) != expected_sha:
-            return True
-    return False
+        if not isinstance(item, dict) or not isinstance(item.get("path"), str):
+            return False
+        if not _is_safe_relative_path(item["path"]):
+            return False
+        path = _safe_project_file(root, item["path"])
+        try:
+            if path is None or path.stat().st_size != item.get("size"):
+                return False
+            if _sha256(path) != item.get("sha256"):
+                return False
+        except OSError:
+            return False
+    return True
 
 
-def discover_project(root: str | Path) -> tuple[str, dict[str, Any]]:
+def ensure_project_context(
+    root: str | Path, *, force: bool = False
+) -> tuple[dict[str, Any], str]:
+    """创建或按需刷新项目索引，返回索引和本次模式。"""
     project_root = Path(root).resolve()
-    cached = _load_context(project_root)
-    if cached is not None and not _context_stale(project_root, cached):
-        return "cache_hit", cached
+    if not project_root.is_dir():
+        raise NotADirectoryError(project_root)
+    existing = _load_context(project_root)
+    if existing is not None and not force and _context_is_fresh(project_root, existing):
+        return existing, "cache_hit"
     context = scan_project(project_root)
     _write_context(project_root, context)
-    return ("refreshed" if cached is not None else "created"), context
+    return context, "refreshed" if existing is not None else "created"
 
 
-def _parse_frontmatter(path: Path) -> tuple[dict[str, Any], str]:
-    text = path.read_text(encoding="utf-8")
-    if not text.startswith("---\n"):
-        raise ValueError(f"{path}: missing YAML frontmatter")
-    _, frontmatter, body = text.split("---\n", 2)
-    data: dict[str, Any] = {}
-    current_list: str | None = None
-    for raw_line in frontmatter.splitlines():
-        line = raw_line.rstrip()
-        if not line:
-            continue
-        if line.startswith("  - "):
-            if current_list is None:
-                raise ValueError(f"{path}: list item without a key")
-            data[current_list].append(line[4:].strip())
-            continue
-        if ":" not in line:
-            raise ValueError(f"{path}: invalid frontmatter line: {line}")
-        key, raw_value = line.split(":", 1)
-        key = key.strip()
-        raw_value = raw_value.strip()
-        current_list = None
-        if raw_value == "[]":
-            data[key] = []
-        elif raw_value:
-            data[key] = raw_value.strip('"\'')
-        else:
-            data[key] = []
-            current_list = key
-    return data, body
+def _validate_change_id(change_id: str) -> None:
+    if not CHANGE_ID_PATTERN.fullmatch(change_id):
+        raise ValueError(
+            "change id 必须使用 CHG-YYYYMMDD-kebab-case 格式，例如 "
+            "CHG-20260813-report-export"
+        )
 
 
-def _validate_change(change: dict[str, Any], path: Path) -> None:
-    if change.get("schema") != CHANGE_SCHEMA:
-        raise ValueError(f"{path}: unsupported schema {change.get('schema')!r}")
-    for field in CHANGE_SCALAR_FIELDS:
-        value = change.get(field)
-        if not isinstance(value, str) or not value:
-            raise ValueError(f"{path}: missing scalar field {field}")
-    if not CHANGE_ID_PATTERN.match(change["id"]):
-        raise ValueError(f"{path}: invalid change id {change['id']!r}")
-    if change["status"] not in CHANGE_STATUSES:
-        raise ValueError(f"{path}: invalid change status {change['status']!r}")
-    if change["level"] not in {"L2", "L3"}:
-        raise ValueError(f"{path}: invalid change level {change['level']!r}")
-    for field in CHANGE_LIST_FIELDS:
-        value = change.get(field)
-        if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-            raise ValueError(f"{path}: field {field} must be a list of strings")
-    for field in {"affected_paths"}:
-        for value in change[field]:
-            if not _is_safe_relative_path(value):
-                raise ValueError(f"{path}: unsafe relative path {value!r}")
-    for dependency in change["depends_on"]:
-        if not CHANGE_ID_PATTERN.match(dependency):
-            raise ValueError(f"{path}: invalid dependency {dependency!r}")
-
-
-def _active_change_paths(root: Path) -> list[Path]:
-    active = root / "changes" / "active"
-    if not active.exists():
-        return []
-    return sorted(path for path in active.glob("*/CHANGE.md") if path.is_file())
-
-
-def _load_change(path: Path) -> dict[str, Any]:
-    change, body = _parse_frontmatter(path)
-    _validate_change(change, path)
-    change["_path"] = _normalise_relative_path(path)
-    change["_body"] = body
-    return change
-
-
-def active_changes(root: str | Path) -> list[dict[str, Any]]:
-    project_root = Path(root).resolve()
-    changes: list[dict[str, Any]] = []
-    seen_ids: set[str] = set()
-    for path in _active_change_paths(project_root):
-        change = _load_change(path)
-        if change["id"] in seen_ids:
-            raise ValueError(f"duplicate change id: {change['id']}")
-        seen_ids.add(change["id"])
-        changes.append(change)
-    return changes
-
-
-def _path_overlap(first: str, second: str) -> bool:
-    first_path = Path(first)
-    second_path = Path(second)
-    return first_path == second_path or first_path in second_path.parents or second_path in first_path.parents
-
-
-def _change_overlap(first: dict[str, Any], second: dict[str, Any]) -> dict[str, list[str]]:
-    overlap: dict[str, list[str]] = {}
-    for field in ("affected_areas", "contracts", "data_changes"):
-        shared = sorted(set(first[field]) & set(second[field]))
-        if shared:
-            overlap[field] = shared
-    shared_paths = sorted(
-        {
-            f"{left} <-> {right}"
-            for left in first["affected_paths"]
-            for right in second["affected_paths"]
-            if _path_overlap(left, right)
-        }
-    )
-    if shared_paths:
-        overlap["affected_paths"] = shared_paths
-    dependencies = []
-    if second["id"] in first["depends_on"]:
-        dependencies.append(f"{first['id']} depends on {second['id']}")
-    if first["id"] in second["depends_on"]:
-        dependencies.append(f"{second['id']} depends on {first['id']}")
-    if dependencies:
-        overlap["depends_on"] = dependencies
-    return overlap
-
-
-def find_conflicts(root: str | Path) -> list[dict[str, Any]]:
-    changes = active_changes(root)
-    conflicts: list[dict[str, Any]] = []
-    for first, second in itertools.combinations(changes, 2):
-        overlap = _change_overlap(first, second)
-        if overlap:
-            conflicts.append(
-                {
-                    "changes": [first["id"], second["id"]],
-                    "overlap": overlap,
-                }
-            )
-    return conflicts
-
-
-def _yaml_scalar(key: str, value: str) -> str:
-    if key in {"created", "updated"}:
-        return value
+def _yaml_scalar(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def _list_frontmatter(key: str, values: Sequence[str]) -> str:
+def _yaml_list(name: str, values: Sequence[str]) -> list[str]:
     if not values:
-        return f"{key}: []"
-    return f"{key}:\n" + "\n".join(f"  - {_yaml_scalar(key, value)}" for value in values)
-
-
-def _load_change_template() -> Template:
-    path = Path(__file__).resolve().parent.parent / "assets" / "CHANGE.template.md"
-    return Template(path.read_text(encoding="utf-8"))
-
-
-def _ensure_new_change_metadata(
-    *,
-    change_id: str,
-    title: str,
-    owner: str,
-    branch: str,
-    level: str,
-    affected_areas: Sequence[str],
-    affected_paths: Sequence[str],
-    contracts: Sequence[str],
-    data_changes: Sequence[str],
-    depends_on: Sequence[str],
-) -> dict[str, Any]:
-    candidate = {
-        "schema": CHANGE_SCHEMA,
-        "id": change_id,
-        "title": title,
-        "level": level,
-        "status": "proposed",
-        "owner": owner,
-        "branch": branch,
-        "created": datetime.now(timezone.utc).date().isoformat(),
-        "updated": datetime.now(timezone.utc).date().isoformat(),
-        "depends_on": list(depends_on),
-        "affected_areas": list(affected_areas),
-        "affected_paths": list(affected_paths),
-        "contracts": list(contracts),
-        "data_changes": list(data_changes),
-    }
-    _validate_change(candidate, Path("<new-change>"))
-    return candidate
+        return [f"{name}: []"]
+    return [f"{name}:", *(f"  - {_yaml_scalar(value)}" for value in values)]
 
 
 def create_change(
@@ -820,149 +688,322 @@ def create_change(
     owner: str,
     branch: str,
     level: str,
-    affected_areas: Sequence[str],
-    affected_paths: Sequence[str],
+    affected_areas: Sequence[str] = (),
+    affected_paths: Sequence[str] = (),
     contracts: Sequence[str] = (),
     data_changes: Sequence[str] = (),
     depends_on: Sequence[str] = (),
 ) -> Path:
+    """以独占目录创建一个可由 Git 追踪的 CHANGE.md。"""
+    _validate_change_id(change_id)
+    normalised_level = level.upper()
+    if normalised_level not in {"L2", "L3"}:
+        raise ValueError("只有需要追踪的 L2 或 L3 任务可以创建 CHANGE.md")
     project_root = Path(root).resolve()
-    change = _ensure_new_change_metadata(
-        change_id=change_id,
-        title=title,
-        owner=owner,
-        branch=branch,
-        level=level,
-        affected_areas=affected_areas,
-        affected_paths=affected_paths,
-        contracts=contracts,
-        data_changes=data_changes,
-        depends_on=depends_on,
+    today = datetime.now(timezone.utc).date().isoformat()
+    metadata = {
+        "schema": CHANGE_SCHEMA,
+        "id": change_id,
+        "title": title,
+        "level": normalised_level,
+        "status": "proposed",
+        "owner": owner,
+        "branch": branch,
+        "created": today,
+        "updated": today,
+        "depends_on": list(depends_on),
+        "affected_areas": list(affected_areas),
+        "affected_paths": list(affected_paths),
+        "contracts": list(contracts),
+        "data_changes": list(data_changes),
+    }
+    _validate_change_metadata(metadata)
+    template_path = Path(__file__).resolve().parents[1] / "assets" / "CHANGE.template.md"
+    template = Template(template_path.read_text(encoding="utf-8"))
+    content = template.substitute(
+        change_id=_yaml_scalar(change_id),
+        title=_yaml_scalar(title),
+        level=normalised_level,
+        owner=_yaml_scalar(owner),
+        branch=_yaml_scalar(branch),
+        created=today,
+        updated=today,
+        depends_on="\n".join(_yaml_list("depends_on", metadata["depends_on"])),
+        affected_areas="\n".join(
+            _yaml_list("affected_areas", metadata["affected_areas"])
+        ),
+        affected_paths="\n".join(
+            _yaml_list("affected_paths", metadata["affected_paths"])
+        ),
+        contracts="\n".join(_yaml_list("contracts", metadata["contracts"])),
+        data_changes="\n".join(
+            _yaml_list("data_changes", metadata["data_changes"])
+        ),
     )
-    target_directory = project_root / "changes" / "active" / change_id
-    target = target_directory / "CHANGE.md"
-    if target.exists():
-        raise FileExistsError(f"change already exists: {target}")
-    target_directory.mkdir(parents=True, exist_ok=False)
-    template = _load_change_template()
-    body = template.substitute(
-        change_id=_yaml_scalar("id", change["id"]),
-        title=_yaml_scalar("title", change["title"]),
-        level=_yaml_scalar("level", change["level"]),
-        owner=_yaml_scalar("owner", change["owner"]),
-        branch=_yaml_scalar("branch", change["branch"]),
-        created=_yaml_scalar("created", change["created"]),
-        updated=_yaml_scalar("updated", change["updated"]),
-        depends_on=_list_frontmatter("depends_on", change["depends_on"]),
-        affected_areas=_list_frontmatter("affected_areas", change["affected_areas"]),
-        affected_paths=_list_frontmatter("affected_paths", change["affected_paths"]),
-        contracts=_list_frontmatter("contracts", change["contracts"]),
-        data_changes=_list_frontmatter("data_changes", change["data_changes"]),
-    )
-    target.write_text(body, encoding="utf-8")
-    return target
+    active_directory = project_root / "changes" / "active"
+    active_directory.mkdir(parents=True, exist_ok=True)
+    change_directory = active_directory / change_id
+    change_directory.mkdir(exist_ok=False)
+    change_path = change_directory / "CHANGE.md"
+    try:
+        with change_path.open("x", encoding="utf-8", newline="\n") as stream:
+            stream.write(content)
+            if not content.endswith("\n"):
+                stream.write("\n")
+    except OSError:
+        change_directory.rmdir()
+        raise
+    return change_path
 
 
-def _json_dump(payload: Any) -> None:
+def _parse_scalar(value: str) -> Any:
+    stripped = value.strip()
+    if stripped == "[]":
+        return []
+    if stripped.startswith(('"', "'")):
+        try:
+            return json.loads(stripped)
+        except json.JSONDecodeError:
+            return stripped.strip('"\'')
+    return stripped
+
+
+def _validate_change_metadata(
+    metadata: dict[str, Any], source: Path | None = None
+) -> None:
+    missing = sorted((CHANGE_SCALAR_FIELDS | CHANGE_LIST_FIELDS) - set(metadata))
+    if missing:
+        raise ValueError(f"Change frontmatter 缺少字段：{', '.join(missing)}")
+    for field in CHANGE_SCALAR_FIELDS:
+        value = metadata.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"Change 字段 {field} 必须是非空字符串")
+    if metadata["schema"] != CHANGE_SCHEMA:
+        raise ValueError(f"不支持的 Change schema：{metadata['schema']}")
+    _validate_change_id(metadata["id"])
+    if metadata["level"].upper() not in {"L2", "L3"}:
+        raise ValueError("Change level 必须是 L2 或 L3")
+    if metadata["status"].casefold() not in CHANGE_STATUSES:
+        raise ValueError(f"不支持的 Change status：{metadata['status']}")
+    for field in CHANGE_LIST_FIELDS:
+        values = metadata.get(field)
+        if not isinstance(values, list):
+            raise ValueError(f"Change 字段 {field} 必须是字符串列表")
+        if any(not isinstance(value, str) or not value.strip() for value in values):
+            raise ValueError(f"Change 字段 {field} 不能包含空值或非字符串")
+    for path in metadata["affected_paths"]:
+        normalised = _normalise_relative_path(path)
+        if not _is_safe_relative_path(normalised):
+            raise ValueError(f"Change 字段 affected_paths 包含不安全路径：{path}")
+    for dependency in metadata["depends_on"]:
+        if not CHANGE_ID_PATTERN.fullmatch(dependency):
+            raise ValueError(f"Change 字段 depends_on 包含非法 ID：{dependency}")
+    if source is not None and source.name.casefold() == "change.md":
+        if source.parent.name != metadata["id"]:
+            raise ValueError(
+                f"Change id {metadata['id']} 与目录 {source.parent.name} 不一致"
+            )
+
+
+def read_change_metadata(path: str | Path) -> dict[str, Any]:
+    """读取 CHANGE.md 中受支持的扁平 YAML frontmatter。"""
+    source = Path(path)
+    lines = source.read_text(encoding="utf-8").splitlines()
+    if not lines or lines[0].strip() != "---":
+        raise ValueError(f"{path} 缺少 frontmatter")
+    metadata: dict[str, Any] = {}
+    current_list: str | None = None
+    for line in lines[1:]:
+        if line.strip() == "---":
+            _validate_change_metadata(metadata, source)
+            return metadata
+        if line.startswith("  - ") and current_list:
+            metadata[current_list].append(_parse_scalar(line[4:]))
+            continue
+        current_list = None
+        if ":" not in line:
+            if line.strip() and not line.lstrip().startswith("#"):
+                raise ValueError(f"{path} 含无法解析的 frontmatter 行：{line}")
+            continue
+        key, raw_value = line.split(":", 1)
+        key = key.strip()
+        if key in metadata:
+            raise ValueError(f"{path} 的 frontmatter 字段重复：{key}")
+        value = raw_value.strip()
+        if not value:
+            metadata[key] = []
+            current_list = key
+        else:
+            metadata[key] = _parse_scalar(value)
+    raise ValueError(f"{path} 的 frontmatter 未闭合")
+
+
+def _active_changes(root: Path) -> list[dict[str, Any]]:
+    changes: list[dict[str, Any]] = []
+    for path in sorted((root / "changes" / "active").glob("*/CHANGE.md")):
+        metadata = read_change_metadata(path)
+        metadata["_path"] = _normalise_relative_path(path.relative_to(root))
+        if str(metadata.get("status", "")).casefold() not in {"archived", "cancelled", "done"}:
+            changes.append(metadata)
+    return changes
+
+
+def _normalised_values(metadata: dict[str, Any], key: str) -> list[str]:
+    value = metadata.get(key, [])
+    if not isinstance(value, list):
+        return []
+    return sorted({str(item).strip().casefold() for item in value if str(item).strip()})
+
+
+def _path_overlap(left: str, right: str) -> bool:
+    left_path = left.replace("\\", "/").strip("/").casefold()
+    right_path = right.replace("\\", "/").strip("/").casefold()
+    left_path = "" if left_path == "." else left_path
+    right_path = "" if right_path == "." else right_path
+    if not left_path or not right_path:
+        return True
+    return (
+        left_path == right_path
+        or left_path.startswith(right_path + "/")
+        or right_path.startswith(left_path + "/")
+    )
+
+
+def detect_conflicts(root: str | Path) -> list[dict[str, Any]]:
+    """检测进行中变更在路径、Contract 和数据上的显式重叠。"""
+    project_root = Path(root).resolve()
+    conflicts: list[dict[str, Any]] = []
+    for left, right in itertools.combinations(_active_changes(project_root), 2):
+        overlaps: dict[str, list[Any]] = {}
+        for key in ("affected_areas", "contracts", "data_changes"):
+            shared = sorted(set(_normalised_values(left, key)) & set(_normalised_values(right, key)))
+            if shared:
+                overlaps[key] = shared
+        path_pairs = sorted(
+            {
+                (left_path, right_path)
+                for left_path in _normalised_values(left, "affected_paths")
+                for right_path in _normalised_values(right, "affected_paths")
+                if _path_overlap(left_path, right_path)
+            }
+        )
+        if path_pairs:
+            overlaps["affected_paths"] = [list(pair) for pair in path_pairs]
+        if not overlaps:
+            continue
+        severity = (
+            "high"
+            if "contracts" in overlaps
+            or "data_changes" in overlaps
+            or str(left.get("level", "")).upper() == "L3"
+            or str(right.get("level", "")).upper() == "L3"
+            else "medium"
+        )
+        conflicts.append(
+            {
+                "left": left.get("id"),
+                "right": right.get("id"),
+                "severity": severity,
+                "overlaps": overlaps,
+            }
+        )
+    return conflicts
+
+
+def _json_print(payload: Any) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
 
 
-def _command_discover(arguments: argparse.Namespace) -> int:
-    status, context = discover_project(arguments.root)
-    payload = {"status": status, "context": context}
-    if arguments.json:
-        _json_dump(payload)
-    else:
-        print(f"{status}: {_context_path(Path(arguments.root).resolve())}")
-    return 0
-
-
-def _command_status(arguments: argparse.Namespace) -> int:
-    changes = active_changes(arguments.root)
-    conflicts = find_conflicts(arguments.root)
-    payload = {"changes": changes, "conflicts": conflicts}
-    if arguments.json:
-        _json_dump(payload)
-    else:
-        for change in changes:
-            print(f"{change['id']} [{change['level']}/{change['status']}] owner={change['owner']} branch={change['branch']}")
-        if conflicts:
-            print(f"conflicts: {len(conflicts)}")
-    return 0
-
-
-def _command_conflicts(arguments: argparse.Namespace) -> int:
-    conflicts = find_conflicts(arguments.root)
-    if arguments.json:
-        _json_dump(conflicts)
-    else:
-        if conflicts:
-            for conflict in conflicts:
-                print(f"{conflict['changes'][0]} <-> {conflict['changes'][1]}: {conflict['overlap']}")
-        else:
-            print("no explicit conflicts found")
-    return 2 if conflicts else 0
-
-
-def _command_new_change(arguments: argparse.Namespace) -> int:
-    target = create_change(
-        arguments.root,
-        change_id=arguments.id,
-        title=arguments.title,
-        owner=arguments.owner,
-        branch=arguments.branch,
-        level=arguments.level,
-        affected_areas=arguments.area,
-        affected_paths=arguments.path,
-        contracts=arguments.contract,
-        data_changes=arguments.data_change,
-        depends_on=arguments.depends_on,
-    )
-    print(target)
-    return 0
-
-
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description="发现项目事实入口，并检查并行 Change 的显式冲突。"
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    discover = subparsers.add_parser("discover", help="创建或刷新项目导航缓存")
+    discover = subparsers.add_parser("discover", help="创建或刷新项目发现缓存")
     discover.add_argument("--root", default=".")
+    discover.add_argument("--force", action="store_true")
     discover.add_argument("--json", action="store_true")
-    discover.set_defaults(handler=_command_discover)
 
-    status = subparsers.add_parser("status", help="显示当前 Active Change 和显式冲突")
+    status = subparsers.add_parser("status", help="列出进行中 Change 和冲突")
     status.add_argument("--root", default=".")
     status.add_argument("--json", action="store_true")
-    status.set_defaults(handler=_command_status)
 
-    conflicts = subparsers.add_parser("conflicts", help="检查 Active Change 的显式冲突")
-    conflicts.add_argument("--root", default=".")
-    conflicts.add_argument("--json", action="store_true")
-    conflicts.set_defaults(handler=_command_conflicts)
-
-    new_change = subparsers.add_parser("new-change", help="创建单文件 Active Change")
+    new_change = subparsers.add_parser("new-change", help="原子创建一个 L2/L3 Change")
     new_change.add_argument("--root", default=".")
-    new_change.add_argument("--id", required=True)
+    new_change.add_argument("--id", required=True, dest="change_id")
     new_change.add_argument("--title", required=True)
     new_change.add_argument("--owner", required=True)
     new_change.add_argument("--branch", required=True)
-    new_change.add_argument("--level", choices=["L2", "L3"], required=True)
+    new_change.add_argument("--level", choices=("L2", "L3"), required=True)
     new_change.add_argument("--area", action="append", default=[])
     new_change.add_argument("--path", action="append", default=[])
     new_change.add_argument("--contract", action="append", default=[])
     new_change.add_argument("--data-change", action="append", default=[])
     new_change.add_argument("--depends-on", action="append", default=[])
-    new_change.set_defaults(handler=_command_new_change)
 
+    conflicts = subparsers.add_parser("conflicts", help="检查进行中 Change 的重叠")
+    conflicts.add_argument("--root", default=".")
+    conflicts.add_argument("--json", action="store_true")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """运行命令行入口。"""
     parser = _build_parser()
     arguments = parser.parse_args(argv)
-    return int(arguments.handler(arguments))
+    root = Path(arguments.root).resolve()
+    try:
+        if arguments.command == "discover":
+            context, mode = ensure_project_context(root, force=arguments.force)
+            if arguments.json:
+                _json_print({"mode": mode, "context": context})
+            else:
+                print(f"{mode}: {len(context['documents'])} 个事实入口")
+            return 0
+        if arguments.command == "new-change":
+            path = create_change(
+                root,
+                change_id=arguments.change_id,
+                title=arguments.title,
+                owner=arguments.owner,
+                branch=arguments.branch,
+                level=arguments.level,
+                affected_areas=arguments.area,
+                affected_paths=arguments.path,
+                contracts=arguments.contract,
+                data_changes=arguments.data_change,
+                depends_on=arguments.depends_on,
+            )
+            print(_normalise_relative_path(path.relative_to(root)))
+            return 0
+        changes = _active_changes(root)
+        conflicts = detect_conflicts(root)
+        if arguments.command == "conflicts":
+            if arguments.json:
+                _json_print(conflicts)
+            elif not conflicts:
+                print("未发现显式重叠。")
+            else:
+                for conflict in conflicts:
+                    print(
+                        f"[{conflict['severity']}] {conflict['left']} <-> "
+                        f"{conflict['right']}: {', '.join(conflict['overlaps'])}"
+                    )
+            return 2 if conflicts else 0
+        payload = {"changes": changes, "conflicts": conflicts}
+        if arguments.json:
+            _json_print(payload)
+        else:
+            print(f"进行中 Change: {len(changes)}；显式冲突: {len(conflicts)}")
+        return 2 if conflicts else 0
+    except (FileExistsError, NotADirectoryError, OSError, ValueError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
     raise SystemExit(main())
