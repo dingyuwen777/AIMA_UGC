@@ -24,6 +24,7 @@ on:
       - "migrations/**"
       - "backend/src/aima_ugc/platform/**"
       - "backend/src/aima_ugc/bootstrap/**"
+      - "backend/src/aima_ugc/entrypoints/**"
       - "backend/src/aima_ugc/modules/system/**"
       - "backend/src/aima_ugc/adapters/persistence/postgres/system.py"
   push:
@@ -49,6 +50,7 @@ on:
       - "migrations/**"
       - "backend/src/aima_ugc/platform/**"
       - "backend/src/aima_ugc/bootstrap/**"
+      - "backend/src/aima_ugc/entrypoints/**"
       - "backend/src/aima_ugc/modules/system/**"
       - "backend/src/aima_ugc/adapters/persistence/postgres/system.py"
 
@@ -96,9 +98,12 @@ jobs:
       - name: Prepare frontend dependencies through canonical launcher
         run: python scripts/dev/frontend.py --prepare-only
 
-      - name: Verify local config stays untracked
-        run: >-
-          python -c "import subprocess; out=subprocess.check_output(['git','status','--porcelain'], text=True).strip(); assert not out, out"
+      - name: Verify local config and runtime root stay untracked
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          git check-ignore -q ".runtime/probe"
 
       - name: Install locked Python environment
         shell: bash
