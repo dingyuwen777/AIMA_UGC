@@ -38,10 +38,11 @@ class DocsSkillTest(unittest.TestCase):
         self.assertIn("Docs Impact", collaboration)
         self.assertIn("返回 Coding", collaboration)
 
-    def test_coding_routes_to_docs_without_replacing_existing_rules(self) -> None:
+    def test_coding_routes_to_docs_without_replacing_existing_skill_rules(self) -> None:
         coding = self._read(".agents/skills/coding/SKILL.md")
+        agent = self._read(".agents/skills/coding/agents/openai.yaml")
 
-        # 这些断言保护当前 Coding 的既有高价值规则，新增 Docs 路由只能叠加，不能替代。
+        # 这些断言保护当前 Coding 的既有高价值规则；本次不重写 Coding/SKILL.md 正文。
         self.assertIn("内容守恒优先于篇幅精简", coding)
         self.assertIn("### 4.12 同步当前事实和文档", coding)
         self.assertIn("文档与代码/Contract 尚未同步时，不得标记 Ready、完成、可合并或可发布", coding)
@@ -49,19 +50,20 @@ class DocsSkillTest(unittest.TestCase):
         self.assertIn("Git 提交信息统一中文", coding)
         self.assertIn("Red\n→ Verify Red\n→ Green", coding)
 
-        # Docs 只以最小路由接入 Coding，不把完整 Docs 规则复制进 Coding。
-        self.assertIn("Docs Impact", coding)
-        self.assertIn(".agents/skills/docs/SKILL.md", coding)
-        self.assertIn("targeted", coding)
-        self.assertIn("not_applicable", coding)
+        # Docs 路由只追加到很小的 Agent 默认提示，完整文档规则仍由独立 Docs Skill 维护。
+        self.assertIn("Docs Impact", agent)
+        self.assertIn(".agents/skills/docs/SKILL.md", agent)
+        self.assertIn("targeted", agent)
+        self.assertIn("not_applicable", agent)
+        self.assertIn("without copying or summarizing Docs rules into Coding", agent)
 
-    def test_blueprint_keeps_docs_governance_lightweight(self) -> None:
+    def test_existing_blueprint_already_matches_lightweight_docs_governance(self) -> None:
         blueprint = self._read("docs/blueprint/06_开发约束与分阶段实施.md")
-        self.assertIn(".agents/skills/docs/SKILL.md", blueprint)
-        self.assertIn("Docs Impact", blueprint)
-        self.assertIn("targeted", blueprint)
-        self.assertIn("第一性原理", blueprint)
-        self.assertIn("第二套事实", blueprint)
+        self.assertIn("# 16. 文档是交付门禁", blueprint)
+        self.assertIn("但不是“每次改代码都全部重写文档”", blueprint)
+        self.assertIn("# 17. 正式文档写作标准", blueprint)
+        self.assertIn("为什么需要？", blueprint)
+        self.assertIn("精确 Schema/Contract 不复制成第二套文档", blueprint)
 
 
 if __name__ == "__main__":
