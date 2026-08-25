@@ -67,7 +67,7 @@ jobs:
           npm --prefix frontend audit --omit=dev --audit-level=high
           npm --prefix frontend audit --audit-level=high
 
-      - name: Local development startup smoke
+      - name: Source API and frontend startup smoke
         shell: bash
         run: |
           set -euo pipefail
@@ -332,212 +332,12 @@ jobs:
           set -euo pipefail
           uv run pytest tests/integration/ingestion -q
 
-  windows-tooling:
-    name: Windows Tooling
-    runs-on: windows-2025
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7.0.1
-
-      - name: Setup target Python for non-destructive validation
-        uses: actions/setup-python@v6.2.0
-        with:
-          python-version: 3.14.7
-
-      - name: Validate Windows PowerShell bootstrap
-        shell: powershell
-        run: |
-          $scriptPath = (Resolve-Path 'scripts/setup_dev_environment.ps1').Path
-          $tokens = $null
-          $parseErrors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile(
-            $scriptPath,
-            [ref]$tokens,
-            [ref]$parseErrors
-          ) | Out-Null
-          if ($parseErrors.Count -ne 0) {
-            $parseErrors | ForEach-Object { Write-Error $_.Message }
-            throw 'PowerShell parser errors found.'
-          }
-
-          . $scriptPath
-          $repoRoot = (Resolve-Path '.').Path
-          $targets = Get-AimaTargetVersions -RepoRoot $repoRoot
-          if ($targets.Python -ne '3.14.7') { throw "Unexpected Python target: $($targets.Python)" }
-          if ($targets.Node -ne '24.19.0') { throw "Unexpected Node target: $($targets.Node)" }
-          if ($targets.Npm -ne '11.17.0') { throw "Unexpected npm target: $($targets.Npm)" }
-          if ($targets.Uv -ne '0.12.3') { throw "Unexpected uv target: $($targets.Uv)" }
-
-          if ((ConvertTo-AimaVersion -Text 'Python 3.14.7') -ne '3.14.7') {
-            throw 'Python version parser failed.'
-          }
-          if ((ConvertTo-AimaVersion -Text 'v24.19.0') -ne '24.19.0') {
-            throw 'Node version parser failed.'
-          }
-          if ((Get-AimaPythonMajorMinor -Version $targets.Python) -ne '3.14') {
-            throw 'Python launcher selector parser failed.'
-          }
-          if ((Get-AimaNpmInstallPrefix -NpmPath 'D:\nodejs\npm.cmd') -ne 'D:\nodejs') {
-            throw 'npm replacement prefix did not follow the resolved npm command.'
-          }
-
-          function Get-ItemProperty {
-            param([string]$Path, [object]$ErrorAction)
-
-            @(
-              [pscustomobject]@{
-                DisplayVersion = 'nameless-fixture'
-                PSChildName = 'nameless-fixture'
-              },
-              [pscustomobject]@{
-                DisplayName = 'Node.js'
-                DisplayVersion = '24.18.1'
-                PSChildName = '{00000000-0000-0000-0000-000000000001}'
-              }
-            )
-          }
-          try {
-            $registeredPrograms = @(Get-AimaRegisteredPrograms)
-          }
-          finally {
-            Remove-Item -LiteralPath Function:\Get-ItemProperty -Force
-          }
-          if ($registeredPrograms.Count -ne 1) {
-            throw "Registry entries without DisplayName were not ignored: $($registeredPrograms.Count)"
-          }
-          if ($registeredPrograms[0].DisplayName -ne 'Node.js') {
-            throw 'Valid Node.js registry entry was not preserved.'
-          }
-          if (Confirm-AimaUninstall -Label 'Node.js' -Programs @()) {
-            throw 'Empty old-version collection must not request an uninstall.'
-          }
-
-          $targetPython = Get-AimaPythonTargetExecutable -TargetVersion $targets.Python
-          if ([string]::IsNullOrWhiteSpace($targetPython)) {
-            throw 'Target Python discovery failed.'
-          }
-          $scriptsDir = (& $targetPython -c "import sysconfig; print(sysconfig.get_path('scripts'))" 2>&1 | Out-String).Trim()
-          if ([string]::IsNullOrWhiteSpace($scriptsDir)) {
-            throw 'Target Python scripts path discovery failed.'
-          }
-
-          if ((Get-AimaPythonInstallerUri -Version $targets.Python) -ne 'https://mirrors.tuna.tsinghua.edu.cn/python/3.14.7/python-3.14.7-amd64.exe') {
-            throw 'Python China mirror URL is not exact.'
-          }
-          if ((Get-AimaNodeInstallerUri -Version $targets.Node) -ne 'https://npmmirror.com/mirrors/node/v24.19.0/node-v24.19.0-x64.msi') {
-            throw 'Node China mirror URL is not exact.'
-          }
-          if ((Get-AimaNodeChecksumUri -Version $targets.Node) -ne 'https://npmmirror.com/mirrors/node/v24.19.0/SHASUMS256.txt') {
-            throw 'Node checksum China mirror URL is not exact.'
-          }
-          if ((Get-AimaPypiIndexUri) -ne 'https://pypi.tuna.tsinghua.edu.cn/simple') {
-            throw 'PyPI China mirror is not exact.'
-          }
-          if ((Get-AimaNpmRegistryUri) -ne 'https://registry.npmmirror.com') {
-            throw 'npm China registry is not exact.'
-          }
-
-          $scriptContent = Get-Content -LiteralPath $scriptPath -Raw
-          foreach ($forbiddenHost in @(
-            'www.python.org/ftp/python',
-            'nodejs.org/dist',
-            'astral.sh/uv/'
-          )) {
-            if ($scriptContent -match [regex]::Escape($forbiddenHost)) {
-              throw "Bootstrap contains overseas runtime source: $forbiddenHost"
-            }
-          }
-          if ($scriptContent -match 'Win32_Product') {
-            throw 'Bootstrap must not query Win32_Product.'
-          }
-          if ($scriptContent -match '(?im)^\s*Set-ExecutionPolicy\b') {
-            throw 'Bootstrap must not permanently change PowerShell ExecutionPolicy.'
-          }
-          foreach ($requiredPattern in @(
-            'lock\s+--check\s+--offline',
-            'export\s+--locked\s+--offline',
-            'pip\s+sync\s+--python\s+\$projectPythonPath\s+--require-hashes',
-            'pip\s+install\s+--python\s+\$projectPythonPath\s+--no-deps\s+--editable'
-          )) {
-            if ($scriptContent -notmatch $requiredPattern) {
-              throw "Bootstrap is missing locked China-mirror dependency stage: $requiredPattern"
-            }
-          }
-
-          $cmdContent = Get-Content -LiteralPath 'scripts/setup_dev_environment.cmd' -Raw
-          if ($cmdContent -notmatch 'setup_dev_environment\.ps1') {
-            throw 'CMD entry does not invoke the PowerShell bootstrap.'
-          }
-
-          function Get-AimaNodeRegistrations {
-            param([string]$TargetVersion)
-
-            [pscustomobject]@{
-              DisplayName = 'Node.js'
-              DisplayVersion = '24.18.1'
-              PSChildName = '{00000000-0000-0000-0000-000000000001}'
-            }
-          }
-          function Confirm-AimaUninstall {
-            param([string]$Label, [object[]]$Programs)
-
-            if ($Programs.Count -ne 1) {
-              throw "Expected one old Node.js registration, got $($Programs.Count)."
-            }
-            throw 'AIMA_NODE_UNINSTALL_PROMPT_REACHED'
-          }
-          try {
-            Install-AimaNode -TargetVersion $targets.Node -TempDir ([IO.Path]::GetTempPath())
-            throw 'Node.js uninstall prompt regression did not reach the expected boundary.'
-          }
-          catch {
-            if ($_.Exception.Message -ne 'AIMA_NODE_UNINSTALL_PROMPT_REACHED') {
-              throw
-            }
-          }
-
-          $script:AimaFlowVersionStep = 0
-          $script:AimaNodeInstallCalled = $false
-          $script:AimaNpmUpdateCalled = $false
-          $script:AimaDependenciesInstallCalled = $false
-          function Refresh-AimaProcessPath {}
-          function Get-AimaPythonTargetExecutable {
-            param([string]$TargetVersion)
-            'C:\fixture\python.exe'
-          }
-          function Get-AimaCurrentVersions {
-            $script:AimaFlowVersionStep++
-            switch ($script:AimaFlowVersionStep) {
-              1 { [pscustomobject]@{ Python = '3.14.7'; Node = '24.18.1'; Npm = '11.16.0'; Uv = '0.12.3' } }
-              2 { [pscustomobject]@{ Python = '3.14.7'; Node = '24.18.1'; Npm = '11.16.0'; Uv = '0.12.3' } }
-              3 { [pscustomobject]@{ Python = '3.14.7'; Node = '24.19.0'; Npm = '11.16.0'; Uv = '0.12.3' } }
-              default { [pscustomobject]@{ Python = '3.14.7'; Node = '24.19.0'; Npm = '11.17.0'; Uv = '0.12.3' } }
-            }
-          }
-          function Install-AimaPython { throw 'Python installation should not be called in the flow fixture.' }
-          function Install-AimaNode { $script:AimaNodeInstallCalled = $true }
-          function Update-AimaNpm { $script:AimaNpmUpdateCalled = $true }
-          function Install-AimaUv { throw 'uv installation should not be called in the flow fixture.' }
-          function Get-AimaCommandPath {
-            param([string]$Name)
-            "C:\fixture\$Name"
-          }
-          function Install-AimaProjectDependencies { $script:AimaDependenciesInstallCalled = $true }
-
-          Invoke-AimaDevEnvironmentSetup
-          if (-not $script:AimaNodeInstallCalled) { throw 'Node installation stage was not reached.' }
-          if (-not $script:AimaNpmUpdateCalled) { throw 'npm update stage was not reached.' }
-          if (-not $script:AimaDependenciesInstallCalled) { throw 'Project dependency installation stage was not reached.' }
-
-          Write-Host 'Windows bootstrap China mirror, static, and pure-function checks passed.'
-
   ci-gate:
     name: CI Gate
     if: always()
     needs:
       - repository-quality
       - postgres-integration
-      - windows-tooling
     runs-on: ubuntu-24.04
     steps:
       - name: Verify required CI layers
@@ -545,9 +345,7 @@ jobs:
         env:
           REPOSITORY_QUALITY_RESULT: ${{ needs.repository-quality.result }}
           POSTGRES_INTEGRATION_RESULT: ${{ needs.postgres-integration.result }}
-          WINDOWS_TOOLING_RESULT: ${{ needs.windows-tooling.result }}
         run: |
           set -euo pipefail
           test "${REPOSITORY_QUALITY_RESULT}" = "success"
           test "${POSTGRES_INTEGRATION_RESULT}" = "success"
-          test "${WINDOWS_TOOLING_RESULT}" = "success"

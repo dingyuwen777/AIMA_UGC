@@ -80,7 +80,7 @@ data_changes: []
 | R1 | Backend 正常停止时同步停止其管理的 Docker 容器 | user:backend-stop-docker | satisfied | `backend.py` 统一 `finally` 清理；Ctrl+C 回归测试由总 CI `32654208231` 验证；SIGTERM 真实 lifecycle smoke `32654208213` success |
 | R2 | 日志明确说明 Docker 容器停止结果 | user:backend-stop-log | satisfied | unit 覆盖 `stopped/already_stopped/missing` 三种准确日志；Local Dev Bootstrap `32654208213` 实际检查 `[STOP] PostgreSQL Docker container stopped: aima-ugc-postgres-dev` 成功 |
 | R3 | 停止不删除 PostgreSQL 数据，后续启动可复用 | docs/02_环境运行与部署.md | satisfied | `stop_postgres_container()` 只有 `docker stop`；真实 smoke `32654208213` 验证 volume 存在、同一 container ID、同一 password hash、停机前 PostgreSQL marker 仍为 `persisted` |
-| R4 | 保持 `--prepare-only` 与现有 Local Dev Bootstrap 行为 | .github/workflows/local-dev-bootstrap.yml | satisfied | Local Dev Bootstrap `32654208213` 的 prepare/migration/provider/legacy-password/reset 既有步骤与 stop 后再次 `--prepare-only` 全部 success |
+| R4 | 保持 `--prepare-only` 与现有 Local Dev Bootstrap 行为 | .github/workflows/tooling.yml | satisfied | Local Dev Bootstrap `32654208213` 的 prepare/migration/provider/legacy-password/reset 既有步骤与 stop 后再次 `--prepare-only` 全部 success |
 | R5 | 完成 L2 Completion Audit、两阶段 Review、Ready Check 与永久 CI | AGENTS.md | satisfied | Final Ready HEAD `9a1de0571868fcf59c25bf77595d9d262b9b6369` 的 Change Completion Gate `32654208234`、总 CI `32654208231`、Local Dev Bootstrap `32654208213`、Internal V1-A `32654208230`、Windows Compose `32654208228` 等 11 个永久 workflow 全部 success；PR #184 已正常合并 |
 
 # Validation Matrix
