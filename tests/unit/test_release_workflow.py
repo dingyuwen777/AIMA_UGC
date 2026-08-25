@@ -42,6 +42,35 @@ def test_release_fails_closed_unless_both_ghcr_packages_are_private() -> None:
     assert "Change visibility" not in workflow
 
 
+def test_public_repository_release_keeps_downloadable_offline_images() -> None:
+    workflow = _workflow_text()
+    publish_job = _publish_job(workflow)
+
+    # 当前源码仓库是 public；用户明确要求正式 GitHub Release 仍附带完整离线部署包。
+    # GHCR application packages 保持 private，但 Release asset 中的 images.tar 会随 public
+    # GitHub Release 对外可下载，这是已确认的交付边界。
+    assert "docker save -o release-bundle/images.tar" in workflow
+    assert 'DEPLOY_ARCHIVE="AIMA_UGC-${VERSION}-deploy.tar.gz"' in publish_job
+    release_create = publish_job.split("gh release create", 1)[1]
+    assert '"${DEPLOY_ARCHIVE}"' in release_create
+    assert "Verify published GitHub Release" in publish_job
+    assert '"${DEPLOY_ARCHIVE}"' in publish_job.split("Verify published GitHub Release", 1)[1]
+
+
+def test_offline_release_preserves_server_compose_start_command() -> None:
+    workflow = _workflow_text()
+
+    # Release 只改变镜像交付方式，不建立第二套服务器 Runtime。
+    # docker load 后继续运行 canonical compose.yaml 与现有 env.production。
+    assert "cp compose.yaml release-bundle/compose.yaml" in workflow
+    assert "docker load -i images.tar" in workflow
+    assert (
+        "docker compose --env-file env.production up -d --no-build --pull never --wait"
+        in workflow
+    )
+    assert "compose.windows.yaml" not in workflow
+
+
 def test_publish_job_uses_explicit_repository_context_without_checkout() -> None:
     publish_job = _publish_job(_workflow_text())
 
