@@ -42,11 +42,11 @@ jobs:
           else
             while IFS= read -r path; do
               case "${path}" in
-                .github/workflows/runtime.yml|Dockerfile|compose.yaml|compose.windows.yaml|env.production.example|pyproject.toml|uv.lock|frontend/package.json|frontend/package-lock.json|frontend/nginx.conf|frontend/vite.config.*)
+                .github/workflows/runtime.yml|.dockerignore|Dockerfile|alembic.ini|compose.yaml|compose.windows.yaml|deploy/nginx.conf|env.production.example|pyproject.toml|uv.lock|frontend/package.json|frontend/package-lock.json|frontend/vite.config.*)
                   RUNTIME_REQUIRED=true
                   break
                   ;;
-                scripts/deploy/*|scripts/deploy/**/*|migrations/*|migrations/**/*|backend/src/aima_ugc/entrypoints/*|backend/src/aima_ugc/entrypoints/**/*|backend/src/aima_ugc/bootstrap/*|backend/src/aima_ugc/bootstrap/**/*|backend/src/aima_ugc/platform/*|backend/src/aima_ugc/platform/**/*|backend/src/aima_ugc/adapters/persistence/postgres/system.py)
+                scripts/deploy/*|scripts/deploy/**/*|migrations/*|migrations/**/*|backend/src/aima_ugc/entrypoints/*|backend/src/aima_ugc/entrypoints/**/*|backend/src/aima_ugc/bootstrap/*|backend/src/aima_ugc/bootstrap/**/*|backend/src/aima_ugc/platform/*|backend/src/aima_ugc/platform/**/*|backend/src/aima_ugc/modules/system/*|backend/src/aima_ugc/modules/system/**/*|backend/src/aima_ugc/adapters/persistence/postgres/system.py)
                   RUNTIME_REQUIRED=true
                   break
                   ;;
