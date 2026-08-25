@@ -19,7 +19,7 @@ Change 是**施工契约**，不是自身的上游需求全集。正式 Stage / 
 
 - L1：行为不变的机械修改，或边界明确且影响隔离的极小修复。不要创建 Change。
 - L2：新功能、业务行为变化、重要 Bug、多文件修改、多人并行或需要审计。创建一个 Change。
-- L3：公共 API、Schema、Migration、跨模块 Contract、架构、认证授权、安全、部署、重大依赖或破坏性兼容变化。仍创建一个 Change，但补充方案比较、Migration、部署、回滚和风险。
+- L3：公共 API/ABI/CLI/数据格式、Schema、Migration、跨模块 Contract、架构、认证授权、安全、部署、重大依赖或破坏性兼容变化。仍创建一个 Change，但补充方案比较、Migration、部署、回滚和风险。
 
 发现隐藏影响时把 L1 升为 L2、把 L2 升为 L3。不要为了少写文档而降级。
 
@@ -120,16 +120,18 @@ not_satisfied
 
 ## Validation Matrix
 
-对 L2/L3 Change，在实现前根据当前任务真实边界选择验证层，并在完成前补新鲜证据。详细分层规则见 [testing-strategy.md](testing-strategy.md)。
+对 L2/L3 Change，在实现前根据当前任务的真实失败边界选择验证层，并在完成前补新鲜证据。
 
-默认考虑：
+通用规则见 [validation-strategy.md](validation-strategy.md)。默认从以下语义维度判断：
 
 ```text
-Browser Mock Acceptance
-Backend/API/PostgreSQL Integration
-Contract / Generated Client
-Real Full-stack Golden Path
-Real Provider Probe
+行为 / Unit / Component
+接口 / Contract
+集成 / Persistence / Runtime Dependency
+用户 / Workflow Acceptance
+跨组件 Golden Path
+外部依赖 Probe
+Build / Package / Runtime
 Docs / Governance / Other
 ```
 
@@ -145,10 +147,26 @@ not_applicable
 - `required`：写清这层要证明的独立风险和 Scope，完成前补当前测试/运行证据；
 - `not_applicable`：写明为什么该层对当前任务没有独立证明价值；
 - 不要求每个任务机械执行全部层；
-- Browser Mock 适合广覆盖用户可见状态，但不能冒充真实 API/DB/Worker/Provider 链；
-- Real Full-stack 默认只保留少量关键 Golden Path，不用它穷举所有 UI 状态；
-- 外部 Provider Probe 只有真实外部事实需要确认时才执行，并保持有界、可审计、默认不进普通 CI；
+- Unit/Component 不能冒充 public consumer、真实 persistence/runtime、package 或跨组件接线；
+- Mock/Fake 不能声称证明没有实际运行的数据库、文件系统、外部服务、设备或进程；
+- Golden Path 默认只保留少量关键真实接线，不用它穷举全部状态；
+- 外部依赖 Probe 只有真实第三方/硬件/远端事实需要确认时才执行，并保持有界、可审计、默认不进普通 CI；
+- Build/Package/Runtime 在源代码测试无法证明产物或启动事实时承担独立证据；
 - 测试数量由行为边界与风险决定，不设固定配额。
+
+项目真实存在 Web/API/PostgreSQL/Provider 边界时，再叠加 [testing-strategy.md](testing-strategy.md) 的专项层：
+
+```text
+Browser Mock Acceptance
+Backend/API/PostgreSQL Integration
+Contract / Generated Client
+Real Full-stack Golden Path
+Real Provider Probe
+```
+
+这些专项细节全部保留：Browser Mock 负责广覆盖用户可见状态但不能冒充真实 API/DB/Worker；Backend/PostgreSQL 负责服务器规则、事务和持久化；Contract 防机器接口漂移；Real Full-stack 只用少量 Golden Path；Provider Probe 只有真实外部事实需要确认时有界执行。
+
+CLI、Library、Mobile、Embedded、Data、IaC 等没有这些边界的项目不为了模板制造 Browser/PostgreSQL/Provider 层，而应使用通用矩阵中真实对应的 Workflow、Runtime、Build、Device、Plan 等证据。
 
 Validation Matrix 是语义验证计划，不由 `ready_check.py` 自动判断测试是否充分；Agent/Reviewer 必须检查每个 `required` 层的 Evidence 是否真的证明对应风险。
 
@@ -161,7 +179,17 @@ Validation Matrix 是语义验证计划，不由 `ready_check.py` 自动判断�
 3. `reverse_audit`：对适用边界做反向能力审计，并复核 Validation Matrix 的 required/not_applicable 与证据等级；
 4. `unresolved_cleared`：确认 `not_satisfied` 清零，延期/不适用都有依据。
 
-对于前后端/异步任务，反向审计通常包括“后端能力 → 前端入口”和“前端动作 → 后端真实支持”，以及状态、错误、最终结果和跨页面闭环。没有这类边界时记录不适用依据，不制造新机制。
+反向审计按项目真实边界选择，例如：
+
+- 前后端：`后端能力 → 前端入口` 与 `前端动作 → 后端真实支持`；
+- CLI：`public command/flag → handler → stdout/stderr/exit/副作用`；
+- Library/SDK：`public API → consumer`；
+- 异步：`请求 → 状态/错误/恢复 → 最终结果`；
+- Schema/Migration：`writer → migration → reader/consumer`；
+- Package/Release：`source → artifact → install/startup`；
+- Infra：`config → render/plan → runtime/deploy boundary`（仅在授权范围）。
+
+没有对应边界时记录不适用依据，不制造新机制。
 
 ## 状态
 
