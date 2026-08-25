@@ -2,7 +2,7 @@
 
 这份文件用于防止 Skill 重组、通用化或后续拆分时发生“为了简洁把规则删掉”的知识损失。
 
-它**不是**主 Skill 的缩写版，也不能作为跳过其他 reference 的理由。执行任务仍按 [SKILL.md](../SKILL.md) 和 [task-routing.md](task-routing.md) 的触发条件读取对应原文。
+它**不是**主 Skill 的缩写版，也不能作为跳过其他 reference 的理由。执行任务仍按 [SKILL.md](../SKILL.md) 和 [02_task-routing.md](02_task-routing.md) 的触发条件读取对应原文。
 
 本文件的职责是审计：
 
@@ -12,6 +12,8 @@
 → 是通用核心、条件式专项还是项目本地 Overlay
 → 是否允许删除
 ```
+
+当前 `references/` 使用两位数字前缀表达研发流程阅读顺序。**编号是导航，不是固定文档配额**：以后新增、拆分或合并 reference 时，按真实依赖关系和阅读顺序调整，不能把“当前有多少份文件”写成所有项目或未来版本的硬约束。
 
 ## 1. 保留原则
 
@@ -31,51 +33,70 @@
 | 原内容 | 当前规范位置 | 类型 | 保留要求 |
 | --- | --- | --- | --- |
 | 自然语言请求 → 仓库事实 → 最小实现 → 真实测试 → 新鲜证据闭环 | `SKILL.md` | 通用核心 | 必须保留 |
-| 可失效 project context 只作导航，不复制需求正文 | `SKILL.md` + `project-discovery.md` | 通用核心 | 必须保留 |
-| Git 可见单文件 Change 协议用于重要变更/并行协作 | `SKILL.md` + `change-management.md` + `collaboration.md` | 通用核心 | 必须保留 |
-| 当前仓库文件、运行结果、用户确认是事实；区分事实/推断/建议/未验证 | `SKILL.md` + `project-discovery.md` | 通用核心 | 必须保留 |
+| 可失效 project context 只作导航，不复制需求正文 | `SKILL.md` + `01_project-discovery.md` | 通用核心 | 必须保留 |
+| Git 可见单文件 Change 协议用于重要变更/并行协作 | `SKILL.md` + `04_change-management.md` + `09_collaboration.md` | 通用核心 | 必须保留 |
+| 当前仓库文件、运行结果、用户确认是事实；区分事实/推断/建议/未验证 | `SKILL.md` + `01_project-discovery.md` | 通用核心 | 必须保留 |
 
 ## 3. 原主 SKILL 的 13 条不变量逐项保留
 
 | # | 原不变量 | 当前承载 |
 | --- | --- | --- |
-| 1 | 系统、开发者、用户、目标目录 `AGENTS.md`/同等规则优先，Skill 不降低上位约束 | `SKILL.md` + `task-routing.md`“规则优先级与项目 Overlay” |
-| 2 | 当前文件/运行/用户确认是事实；缓存不是事实副本；不默认用户或 Agent 判断正确 | `SKILL.md` + `project-discovery.md` |
-| 3 | 只在授权范围写文件/外部动作；分析/Review 不自动授权缓存、Change、分支、提交、PR、部署 | `SKILL.md` + `task-routing.md`执行模式 + `verification-review.md` |
-| 4 | 保留用户未提交修改；禁止覆盖式检出、强推、破坏性清理、未授权重写历史 | `SKILL.md` + `collaboration.md` + `verification-review.md` |
-| 5 | 不擅自升级依赖、改公共接口、改变数据语义、扩大范围、无关重构 | `SKILL.md` + `development-workflows.md` + `language-and-toolchain-profiles.md` |
-| 6 | 没有本轮完整新鲜证据不得宣称完成/修复/通过/可发布 | `SKILL.md` + `verification-review.md` + `validation-strategy.md` |
-| 7 | 从可观察目标、硬约束、根因推导最小充分机制；最佳实践只是候选证据 | `SKILL.md` + `development-workflows.md` |
-| 8 | 只执行仓库真实存在或需求明确建立的边界/Contract/Schema/Owner/Migration/测试；不存在则有界标不适用，不补造制度 | `SKILL.md` + `repository-constraints.md` + `validation-strategy.md` |
-| 9 | 有独立输入输出/价值/失败边界的能力优先建立独立验证闭环；调试/Probe/示例复用生产实现，不机械一模块一测试文件 | `SKILL.md` + `development-workflows.md` + `validation-strategy.md` |
-| 10 | L2/L3 正式 Change 的当前 Change 不是自身需求全集；必须 Requirement Traceability + Completion Audit；CI 绿色不能替代需求完整性 | `SKILL.md` + `change-management.md` + `completion-gate.md` |
-| 11 | 用户界面/跨前后端/DB/异步/Provider 等边界按验证矩阵分层；任一层不能声称证明未实际运行的下游 | `validation-strategy.md` 通用化 + `testing-strategy.md` 专项原文完整保留 |
-| 12 | public 与非显然 private/helper 都应按需要写解释原因/约束的 docstring/定点注释；简单 helper 不机械补注释 | `SKILL.md` + `development-workflows.md` |
-| 13 | 重要生命周期/异步/外部 I/O/失败边界在已有日志体系时补最小充分结构化可观测性；稳定事件、关联 ID、脱敏、避免 INFO 刷屏；日志不替代业务事实 | `SKILL.md` + `development-workflows.md` |
+| 1 | 系统、开发者、用户、目标目录 `AGENTS.md`/同等规则优先，Skill 不降低上位约束 | `SKILL.md` + `02_task-routing.md`“规则优先级与项目 Overlay” |
+| 2 | 当前文件/运行/用户确认是事实；缓存不是事实副本；不默认用户或 Agent 判断正确 | `SKILL.md` + `01_project-discovery.md` |
+| 3 | 只在授权范围写文件/外部动作；分析/Review 不自动授权缓存、Change、分支、提交、PR、部署 | `SKILL.md` + `02_task-routing.md`执行模式 + `11_verification-review.md` |
+| 4 | 保留用户未提交修改；禁止覆盖式检出、强推、破坏性清理、未授权重写历史 | `SKILL.md` + `09_collaboration.md` + `11_verification-review.md` |
+| 5 | 不擅自升级依赖、改公共接口、改变数据语义、扩大范围、无关重构 | `SKILL.md` + `05_development-workflows.md` + `03_language-and-toolchain-profiles.md` |
+| 6 | 没有本轮完整新鲜证据不得宣称完成/修复/通过/可发布 | `SKILL.md` + `11_verification-review.md` + `07_validation-strategy.md` |
+| 7 | 从可观察目标、硬约束、根因推导最小充分机制；最佳实践只是候选证据 | `SKILL.md` + `05_development-workflows.md` |
+| 8 | 只执行仓库真实存在或需求明确建立的边界/Contract/Schema/Owner/Migration/测试；不存在则有界标不适用，不补造制度 | `SKILL.md` + `06_repository-constraints.md` + `07_validation-strategy.md` |
+| 9 | 有独立输入输出/价值/失败边界的能力优先建立独立验证闭环；调试/Probe/示例复用生产实现，不机械一模块一测试文件 | `SKILL.md` + `05_development-workflows.md` + `07_validation-strategy.md` |
+| 10 | L2/L3 正式 Change 的当前 Change 不是自身需求全集；必须 Requirement Traceability + Completion Audit；CI 绿色不能替代需求完整性 | `SKILL.md` + `04_change-management.md` + `10_completion-gate.md` |
+| 11 | 用户界面/跨前后端/DB/异步/Provider 等边界按验证矩阵分层；任一层不能声称证明未实际运行的下游 | `07_validation-strategy.md` 通用化 + `08_testing-strategy.md` 专项原文完整保留 |
+| 12 | public 与非显然 private/helper 都应按需要写解释原因/约束的 docstring/定点注释；简单 helper 不机械补注释 | `SKILL.md` + `05_development-workflows.md` |
+| 13 | 重要生命周期/异步/外部 I/O/失败边界在已有日志体系时补最小充分结构化可观测性；稳定事件、关联 ID、脱敏、避免 INFO 刷屏；日志不替代业务事实 | `SKILL.md` + `05_development-workflows.md` |
 
 ## 4. 原“按需读取资源”完整映射
 
-以下原文件全部保留，不因新增通用路由层而删除：
+原有专项职责全部保留；本次仅把当前规范文件改成按研发流程编号的名称。下表中的“原 reference”是迁移前名称，用于历史追溯；“当前规范位置”才是现在必须使用的路径。
 
-| 原 reference | 原职责 | 重组后职责 |
+| 原 reference | 当前规范位置 | 原职责 / 当前职责 |
 | --- | --- | --- |
-| `project-discovery.md` | 首次进入、缓存缺失/过期、仓库事实发现 | 原职责不变；由 `task-routing.md` Onboarding/Fact Recovery 触发 |
-| `change-management.md` | L2/L3、需求追踪、Active Change | 原职责不变；Validation Matrix 默认语义改指 `validation-strategy.md` |
-| `completion-gate.md` | Requirement Traceability、Completion Audit、Ready | 原职责不变；验证矩阵改为通用维度，专项 profile 条件式加载 |
-| `development-workflows.md` | Feature/Bug/Refactor/Debug/TDD/最小实现/注释/日志/依赖/Git/文档 | 原细节保留；由阶段路由触发 |
-| `repository-constraints.md` | 只在仓库实际存在时应用 Owner/Contract/Schema/Migration/边界 | 原职责不变；继续禁止虚构架构 |
-| `testing-strategy.md` | Browser/API/PostgreSQL/Full-stack/Provider 分层专项细节 | **原文件原路径保留**；仅当这些真实边界存在时加载 |
-| `collaboration.md` | 多人/多 Agent/多 Change 冲突预检与分工 | 原职责不变 |
-| `verification-review.md` | Requirement review、代码质量、Ready、证据、交付报告 | 原职责不变；证据层可同时使用通用与专项矩阵 |
+| `project-discovery.md` | `01_project-discovery.md` | 首次进入、缓存缺失/过期、仓库事实发现；职责不变 |
+| `change-management.md` | `04_change-management.md` | L2/L3、需求追踪、Active Change；Validation Matrix 默认语义指向通用策略 |
+| `completion-gate.md` | `10_completion-gate.md` | Requirement Traceability、Completion Audit、Ready；职责不变 |
+| `development-workflows.md` | `05_development-workflows.md` | Feature/Bug/Refactor/Debug/TDD/最小实现/注释/日志/依赖/Git/文档；职责不变 |
+| `repository-constraints.md` | `06_repository-constraints.md` | 只在仓库实际存在时应用 Owner/Contract/Schema/Migration/边界；继续禁止虚构架构 |
+| `testing-strategy.md` | `08_testing-strategy.md` | Browser/API/PostgreSQL/Full-stack/Provider 分层专项细节；仅在这些真实边界存在时加载 |
+| `collaboration.md` | `09_collaboration.md` | 多人/多 Agent/多 Change 冲突预检与分工；职责不变 |
+| `verification-review.md` | `11_verification-review.md` | Requirement review、代码质量、Ready、证据、交付报告；职责不变 |
 
-新增但不替代原文件：
+本次通用化新增的 reference 也进入同一阅读序列：
 
-| 新 reference | 职责 |
+| 当前 reference | 职责 |
 | --- | --- |
-| `task-routing.md` | 项目形态 × 研发阶段 × 编程语言/工具链 × 风险等级路由 |
-| `language-and-toolchain-profiles.md` | 多语言版本/Manifest/锁文件/build/test/package 事实导航 |
-| `validation-strategy.md` | 技术栈无关风险 → 证据职责矩阵 |
-| `rule-preservation-map.md` | 本次及未来规则迁移的内容守恒审计 |
+| `02_task-routing.md` | 项目形态 × 研发阶段 × 编程语言/工具链 × 风险等级路由 |
+| `03_language-and-toolchain-profiles.md` | 多语言版本/Manifest/锁文件/build/test/package 事实导航 |
+| `07_validation-strategy.md` | 技术栈无关风险 → 证据职责矩阵 |
+| `12_rule-preservation-map.md` | 本次及未来规则迁移的内容守恒审计 |
+
+当前阅读导航为：
+
+```text
+01 项目事实发现
+→ 02 任务路由
+→ 03 语言 / 工具链
+→ 04 Change 管理
+→ 05 设计 / 实施 / 根因调试
+→ 06 仓库边界
+→ 07 通用验证
+→ 08 专项测试
+→ 09 协作
+→ 10 Completion Gate
+→ 11 Review / 交付
+→ 12 规则保留审计
+```
+
+这不是“每个任务把 12 份全读一遍”的要求；仍按 `SKILL.md` / `02_task-routing.md` 的触发条件选择最少但充分的 reference。
 
 ## 5. 原统一工作流 1—11 完整映射
 
@@ -89,7 +110,7 @@
 - 无脚本能力用人工流程，不伪造结果；
 - 未授权写项目只建会话临时导航。
 
-当前：`SKILL.md` + `task-routing.md`“执行模式”。
+当前：`SKILL.md` + `02_task-routing.md`“执行模式”。
 
 ### 原步骤 2：定位仓库并先读规则
 
@@ -100,7 +121,7 @@
 - 检查 branch/worktree/未提交修改；
 - 非 Git repo 明确记录。
 
-当前：`SKILL.md` + `project-discovery.md`。
+当前：`SKILL.md` + `01_project-discovery.md`。
 
 ### 原步骤 3：复用或建立项目导航
 
@@ -116,7 +137,7 @@
 python <skill>/scripts/rvc.py discover --root <repo>
 ```
 
-`cache_hit / created / refreshed / failure fallback`、候选事实源失效检查、缓存不复制正文、cache hit 不代表普通源码没变化等全部由 `project-discovery.md` 保留。
+`cache_hit / created / refreshed / failure fallback`、候选事实源失效检查、缓存不复制正文、cache hit 不代表普通源码没变化等全部由 `01_project-discovery.md` 保留。
 
 新增语言 profile 不改变缓存 schema；不能因缓存没识别某个新生态 manifest 就跳过真实仓库调查。
 
@@ -130,11 +151,11 @@ python <skill>/scripts/rvc.py status --root <repo> --json
 
 原冲突维度：影响路径、模块、Contract、数据、Migration、配置、共享测试资源、依赖关系；无真实交集不发明冲突，也不把预检叫锁。
 
-当前：`change-management.md` + `collaboration.md`。
+当前：`04_change-management.md` + `09_collaboration.md`。
 
 ### 原步骤 5：L1/L2/L3
 
-等级定义和“行数少不等于 L1”保持在 `SKILL.md`、`change-management.md`、`task-routing.md`。
+等级定义和“行数少不等于 L1”保持在 `SKILL.md`、`04_change-management.md`、`02_task-routing.md`。
 
 通用化后 public CLI flag、Library API/ABI、mobile data format 等也按公共语义风险升级，不只限 HTTP/数据库。
 
@@ -157,7 +178,7 @@ python <skill>/scripts/rvc.py status --root <repo> --json
 - Requirement 状态只有 `satisfied / explicitly_deferred / not_applicable / not_satisfied`；
 - 未决关键问题一次只问一个最上游问题，仓库能确认的不反问。
 
-当前：`SKILL.md` + `change-management.md` + `completion-gate.md`。
+当前：`SKILL.md` + `04_change-management.md` + `10_completion-gate.md`。
 
 ### 原步骤 7：可验证计划
 
@@ -175,7 +196,7 @@ python <skill>/scripts/rvc.py status --root <repo> --json
 - 独立验证入口；
 - Verification/Validation Matrix。
 
-当前：`SKILL.md` + `development-workflows.md` + `validation-strategy.md`。
+当前：`SKILL.md` + `05_development-workflows.md` + `07_validation-strategy.md`。
 
 ### 原步骤 8：按任务类型实施
 
@@ -195,7 +216,7 @@ python <skill>/scripts/rvc.py status --root <repo> --json
 - 多 Agent 主 Agent 复核；
 - 不给不适用项目强加架构分层。
 
-当前：`development-workflows.md` + `validation-strategy.md`；Web/API/PostgreSQL/Provider 的原始具体规则继续在 `testing-strategy.md`。
+当前：`05_development-workflows.md` + `07_validation-strategy.md`；Web/API/PostgreSQL/Provider 的原始具体规则继续在 `08_testing-strategy.md`。
 
 ### 原步骤 9：同步当前事实
 
@@ -207,30 +228,36 @@ python <skill>/scripts/rvc.py status --root <repo> --json
 - 不受影响不制造文档差异；
 - 未同步文档不得 Ready/完成。
 
-当前：`SKILL.md` + `repository-constraints.md` + `verification-review.md`。
+当前：`SKILL.md` + `06_repository-constraints.md` + `11_verification-review.md`。
 
 #### 原 Skill 中的 AIMA 文档编号细节
 
-原主 Skill 曾包含：
+原主 Skill 曾包含这些 AIMA 项目本地细节：
 
 ```text
 docs/ 子目录独立编号
 README.md 不编号
 两位数字下划线前缀
-AIMA docs/blueprint 核心 01—08 固定顺序
+AIMA Blueprint 文档按项目当前稳定顺序编号
 重命名同步实时路径引用
 changes/archive 历史不因当前文档改名重写
 ```
 
-这些规则**没有删除**，但它们属于 AIMA 项目本地 Overlay，不是所有仓库的通用要求。AIMA 当前正式承载为：
+这些规则**没有删除**，但它们属于 AIMA 项目本地 Overlay，不是所有仓库的通用要求。AIMA 当前正式承载由目标路径适用的项目规则和当前文档集合共同决定，例如：
 
 ```text
 AGENTS.md
-docs/blueprint/06_开发约束与分阶段实施.md
+docs/AGENTS.md
 docs/blueprint/README.md
+当前实际 Blueprint / Roadmap / Appendix / Guide 文件集合
 ```
 
-通用 Skill 保留“遵守项目本地文档治理、改名同步当前有效引用、历史证据不随意改写”的核心原则。其他项目不能被强迫使用 AIMA 的 `01—08` 编号。
+关键边界是：
+
+- 两位数字下划线前缀是 AIMA 当前文档导航规则；
+- **不预设固定文档数量、固定文件名或固定编号上限**；
+- 当前稳定编号不能为了插入新主题被静默重排；需要插入/重命名/重新编号时按显式文档迁移处理；
+- 通用 Skill 只规定“发现并服从项目本地文档治理、改名同步当前有效引用、历史证据不随意改写”，不把 AIMA 的当前目录数量或具体文档名强加给其他项目。
 
 ### 原步骤 10：Completion Audit、两阶段 Review、新鲜验证
 
@@ -258,7 +285,7 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 
 机器 Ready Check 不能证明自然语言需求完整，也不能自动证明 Validation Matrix 充分。
 
-当前：`completion-gate.md` + `verification-review.md`。
+当前：`10_completion-gate.md` + `11_verification-review.md`。
 
 ### 原步骤 11：关闭或保留 Change
 
@@ -271,9 +298,9 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 - 不先 archive 再补验证；
 - 不删除 `completion_gate` 绕过 Ready Check。
 
-当前：`change-management.md` + `completion-gate.md`。
+当前：`04_change-management.md` + `10_completion-gate.md`。
 
-## 6. development-workflows.md 细节保留清单
+## 6. 05_development-workflows.md 细节保留清单
 
 以下不能在未来“精简”时丢失：
 
@@ -389,16 +416,17 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 - 不受影响不改；
 - 已批准长期决定必须落正式事实源，不只留聊天/Change。
 
-## 7. testing-strategy.md 专项细节完整保留
+## 7. 08_testing-strategy.md 专项细节完整保留
 
-这个文件当前被其他 Change 直接引用，因此特别声明：
+这个文件可能被其他 Change 作为 Requirement Source，因此路径迁移必须同步所有仍被机器当作实时路径校验的 Source；不能留下旧的失效路径，也不能借改名重写历史结论。
+
+当前专项事实源路径：
 
 ```text
-.testing profile path:
-.agents/skills/reliable-vibe-coding/references/testing-strategy.md
+.agents/skills/reliable-vibe-coding/references/08_testing-strategy.md
 ```
 
-以下细节继续由原文件维护，不在本次重组中删除：
+以下细节继续由该文件维护，不在本次重组中删除：
 
 ### Browser Mock Acceptance
 
@@ -457,7 +485,7 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 - 不固定 N/M 测试配额；
 - 不用任一层绿色替代 Completion Audit。
 
-## 8. change-management.md / completion-gate.md 保留清单
+## 8. 04_change-management.md / 10_completion-gate.md 保留清单
 
 ### Change 管理
 
@@ -488,7 +516,7 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 - CI/Ready Check 不能替代语义完整性；
 - Agent 主动发现遗漏，不能依赖用户后续提醒。
 
-## 9. collaboration.md 保留清单
+## 9. 09_collaboration.md 保留清单
 
 - Change 是 Git 可见协作协议，不是原子锁/lease/online status；
 - 看不到未推送/未同步/其他客户端私有状态；
@@ -498,7 +526,7 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 - 主 Agent 不直接相信子 Agent 成功报告，必须复核 diff 与证据；
 - 分支/Owner/影响范围不能被 Skill 强制，只能由协作和 CI 门禁约束。
 
-## 10. verification-review.md 保留清单
+## 10. 11_verification-review.md 保留清单
 
 - 先 Requirement Completeness，再当前 Change 符合性，再 Code Quality；
 - Completion Audit；
@@ -536,25 +564,28 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 - PostgreSQL/MySQL/SQLite 等数据库；
 - npm/pnpm/uv/Maven/Gradle 等包管理/构建；
 - commit message 语言；
-- docs 编号方式；
+- docs 编号方式、当前文档数量和具体文件名；
 - 模块 Owner 名称；
 - CI job 名称；
 - release/deploy topology；
 - security/auth provider；
 - project-specific architecture。
 
-在 AIMA_UGC 中，这些继续由 `AGENTS.md`、Blueprint、locks、Contract、Migration、tests、CI 等当前事实决定。把 Skill 复制到其他项目时，不应把 AIMA 的具体技术决定一起当作全球默认。
+在 AIMA_UGC 中，这些继续由 `AGENTS.md`、`docs/AGENTS.md`、当前 Blueprint/Roadmap/Appendix/Guide 集合、locks、Contract、Migration、tests、CI 等当前事实决定。把 Skill 复制到其他项目时，不应把 AIMA 的具体技术决定或当前文档集合一起当作全球默认。
 
 ## 12. 自动化守护
 
 仓库级 portability 回归至少检查：
 
 - `SKILL.md` 明确四维路由；
+- `references/` 当前规范文件按研发流程使用两位数字前缀，便于人工阅读；
+- 编号只表达阅读顺序，不写死未来 reference 数量；
 - 多语言 profile 存在；
 - generic Validation Matrix 存在；
-- 原 `testing-strategy.md` 关键专项内容仍存在；
-- 原 8 个 reference 文件仍可达；
+- `08_testing-strategy.md` 关键专项内容仍存在；
+- 原 8 个专项 reference 的职责都能从当前编号路径到达；
 - `CHANGE.template.md` 使用通用 validation 维度；
-- 本文件仍能定位 Requirement Traceability、Completion Audit、Red → Green → Refactor、根因调试“连续三次”、用户未提交修改、新鲜证据、文档同步、可观测性等关键规则。
+- 本文件仍能定位 Requirement Traceability、Completion Audit、Red → Green → Refactor、根因调试“连续三次”、用户未提交修改、新鲜证据、文档同步、可观测性等关键规则；
+- 通用 Skill 不硬编码任一项目的 Blueprint 数量、固定文件名或固定编号上限。
 
 自动检查只能防明显丢文件/关键词/结构漂移，不能证明规则语义完全等价。任何大规模 Skill 重组仍需人工逐节做内容守恒 Review。
