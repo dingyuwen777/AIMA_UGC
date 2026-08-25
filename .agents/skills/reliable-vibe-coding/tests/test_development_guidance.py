@@ -19,7 +19,7 @@ class DevelopmentGuidanceTest(unittest.TestCase):
 
     def test_development_workflow_contains_actionable_guidance(self) -> None:
         workflow = self._read(
-            ".agents/skills/reliable-vibe-coding/references/development-workflows.md"
+            ".agents/skills/reliable-vibe-coding/references/05_development-workflows.md"
         )
         self.assertIn("## 代码注释", workflow)
         self.assertIn("内部/private/helper 函数包含非显然业务规则", workflow)
@@ -28,7 +28,7 @@ class DevelopmentGuidanceTest(unittest.TestCase):
 
     def test_review_and_aima_blueprints_consume_the_rules(self) -> None:
         review = self._read(
-            ".agents/skills/reliable-vibe-coding/references/verification-review.md"
+            ".agents/skills/reliable-vibe-coding/references/11_verification-review.md"
         )
         blueprint05 = self._read("docs/blueprint/05_日志安全部署与运维.md")
         blueprint06 = self._read("docs/blueprint/06_开发约束与分阶段实施.md")
