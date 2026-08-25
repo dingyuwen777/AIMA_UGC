@@ -23,53 +23,24 @@ data_changes: []
 
 # 背景与目标
 
-当前 `main` 的 `.github/workflows/` 已收敛为 6 个长期 workflow，但 GitHub Actions 左侧栏仍显示大量已经从仓库删除的历史 workflow。用户明确要求执行一次不可恢复的 Actions 历史清理：自动识别当前 6 个 workflow 为白名单，只删除其他废弃 workflow 的历史 run，绝不删除当前 CI/Release 等白名单 workflow 的 run、artifact 或日志。
+当前 `main` 的 `.github/workflows/` 已收敛为 6 个长期 workflow，但 GitHub Actions 左侧栏曾保留大量已经从仓库删除的历史 workflow。用户明确要求执行一次不可恢复的 Actions 历史清理：自动识别当前 6 个 workflow 为白名单，只删除其他废弃 workflow 的历史 run，绝不删除当前 CI/Release 等白名单 workflow 的 run、artifact 或日志。
 
 本 Change 只处理 GitHub Actions 历史记录，不修改产品代码、数据库、Contract、Migration、Release 产物或当前 6 个 workflow 的长期验证职责。
 
 # 成功标准
 
 - [x] 从当前 checkout 的 `.github/workflows/*.yml|*.yaml` 动态发现白名单，并 fail-closed 要求集合精确等于当前 6 个长期 workflow。
-- [x] PR 只执行 read-only dry-run，列出保护 workflow、legacy workflow 和可删除 completed run 数量，不做删除。
+- [x] PR 先执行 read-only dry-run，列出保护 workflow、legacy workflow 和可删除 completed run 数量，不做删除。
 - [x] apply 模式只处理 workflow path 不在白名单中的 completed runs；任一 run 的 workflow_id/path/status 与计划不一致时，在删除开始前失败。
 - [x] 当前 6 个 workflow 的所有历史 run 均不进入删除计划。
 - [x] 删除使用当前仓库 `GITHUB_TOKEN` 的 job-level `actions: write`，不引入或打印外部 Token；PR plan 实际权限仅为 `Actions: read / Contents: read`。
-- [x] 单次 apply 有删除上限和 API rate-limit 保护；遗留数量过大时通过同一白名单 workflow job 分批继续，不创建第 7 个 workflow。
-- [ ] legacy runs 清零或达到 GitHub API 可清理的事实边界后，删除临时 cleanup job/script，并再次确认当前 `.github/workflows/` 仍只有 6 个长期 workflow。
+- [x] 单次 apply 有删除上限和 API rate-limit 保护；646 个 legacy runs 分两批 500 + 146 完成删除。
+- [x] 删除完成后的独立只读 plan 确认 `legacy_workflows=0 / legacy_runs=0`。
+- [x] 一次性 `actions: write` job 已从 removal 分支删除，临时 maintenance 脚本已删除；待 removal PR 合并后 `main` 恢复为仅 6 个长期 workflow 且无临时高权限清理能力。
 
-# 当前 dry-run 事实
+# 白名单
 
-PR #223，HEAD `812672be20dcafc7d9b8ab1716f51d7f7c5be6b4` 的 `Change Completion Gate` run `32798721779` 中：
-
-```text
-Legacy Actions history cleanup plan
-→ self-test: success
-→ token permissions: Actions read / Contents read
-→ protected workflow paths: 6
-→ registered legacy workflow records: 150
-→ validated legacy completed runs: 646
-→ deleted: 0
-→ remaining: 646
-```
-
-脚本在输出删除计划前已经完整分页并验证所有 legacy run；未发现 `workflow_id`、path 或 status 冲突，也未发现任何白名单 path 进入 legacy 计划。因此预计 apply 需要两批：首批最多 500，第二批约 146；每一批都会重新从 API 发现和验证剩余计划，而不是复用旧 run id 清单。
-
-# 范围
-
-- 在现有 `change-completion-gate.yml` 中临时增加：PR 只读 plan job，以及仅特定 main merge marker 才执行的 apply job。
-- 增加临时 maintenance 脚本，负责白名单发现、Actions API 分页、计划校验、rate-limit 保护和分批删除。
-- 完成后通过独立清理 PR 移除临时 job/script，并归档本 Change。
-
-# 非目标
-
-- 不删除当前 6 个 workflow 的任何历史 run。
-- 不删除 GitHub Release、Tag、PR、Commit、Issue 或仓库文件历史。
-- 不改变 `ci.yml`、`fullstack.yml`、`runtime.yml`、`tooling.yml`、`release.yml` 的长期职责。
-- 不尝试绕过 GitHub Actions API 对 ghost workflow UI 的平台级限制；如果某个 legacy workflow 已无 run 但 UI 仍显示，则记录为 GitHub 后端残留。
-
-# 必须保持不变
-
-当前白名单必须精确为：
+当前唯一受保护 workflow 路径：
 
 ```text
 .github/workflows/change-completion-gate.yml
@@ -80,85 +51,310 @@ Legacy Actions history cleanup plan
 .github/workflows/tooling.yml
 ```
 
-任何集合漂移都必须中止 cleanup，而不是自动扩大或缩小白名单。
+cleanup 实现同时采用：
+
+```text
+checkout 动态发现
++
+精确集合断言
+```
+
+只要当前 `.github/workflows/` 与上述集合不完全一致，就 fail closed，中止计划和删除。
+
+# 实际清理结果
+
+## 1. 删除前只读计划
+
+PR #223 的只读 plan：
+
+```text
+protected workflow paths: 6
+registered legacy workflow records: 150
+validated legacy completed runs: 646
+deleted: 0
+remaining: 646
+```
+
+PR plan job 的 `GITHUB_TOKEN` 权限为：
+
+```text
+Actions: read
+Contents: read
+```
+
+因此删除前的真实 API 枚举没有任何写权限。
+
+## 2. 第一批不可逆删除
+
+实现 PR #223 merge commit：
+
+```text
+3591c1fbdbfdb50a65c6da3e773fe6e12b1246d5
+```
+
+main `Change Completion Gate` run：
+
+```text
+32799498076
+```
+
+第一批 apply job：
+
+```text
+97657439567
+```
+
+实际日志：
+
+```text
+GITHUB_TOKEN Permissions
+Actions: write
+Contents: read
+
+protected=6
+legacy_workflows=150
+legacy_runs=646
+GitHub core API remaining=4238
+rate-limit reserve=100
+delete_budget=500
+deleted=500
+remaining=146
+```
+
+准确 summary：
+
+```text
+CLEANUP_SUMMARY mode=apply protected=6 legacy_workflows=150 legacy_runs=646 deleted=500 remaining=146
+```
+
+## 3. 第二批不可逆删除
+
+只 rerun 同一个 apply job，不创建新 workflow，也不复用旧 run id 清单。第二次运行重新从 GitHub API 完整发现和验证剩余集合。
+
+第二批 apply job：
+
+```text
+97658472722
+```
+
+重新发现：
+
+```text
+protected=6
+legacy_workflows=4
+legacy_runs=146
+GitHub core API remaining=3704
+rate-limit reserve=100
+delete_budget=146
+deleted=146
+remaining=0
+```
+
+准确 summary：
+
+```text
+CLEANUP_SUMMARY mode=apply protected=6 legacy_workflows=4 legacy_runs=146 deleted=146 remaining=0
+```
+
+两批合计删除：
+
+```text
+500 + 146 = 646 legacy workflow runs
+```
+
+GitHub 在某个 legacy workflow 的最后一个历史 run 被删除后同步移除了其 Actions registry record，因此第二批开始时 legacy workflow record 已由 150 自动下降为 4。
+
+## 4. 删除后独立只读复核
+
+删除完成后重新执行只读 plan job：
+
+```text
+97658818312
+```
+
+该 job 权限重新降回：
+
+```text
+Actions: read
+Contents: read
+```
+
+最终真实 API 结果：
+
+```text
+protected workflow paths: 6
+registered legacy workflow records: 0
+validated legacy completed runs: 0
+deleted: 0
+remaining: 0
+```
+
+准确 summary：
+
+```text
+CLEANUP_SUMMARY mode=plan protected=6 legacy_workflows=0 legacy_runs=0 deleted=0 remaining=0
+```
+
+这证明此次清理不仅删除了 646 个 legacy runs，也使原 150 个废弃 Actions workflow registry records 全部消失。
+
+# 范围
+
+- 临时在现有 `change-completion-gate.yml` 中增加 read-only plan job 和 marker-gated apply job。
+- 临时增加 `scripts/maintenance/cleanup_legacy_actions_history.py`，负责白名单发现、Actions API 分页、计划校验、rate-limit 保护和分批删除。
+- cleanup 完成后立即通过独立 removal PR 删除两个临时 job 和 maintenance 脚本。
+- 最终独立归档本 Change。
+
+# 非目标
+
+- 不删除当前 6 个 workflow 的任何历史 run。
+- 不删除 GitHub Release、Tag、PR、Commit、Issue 或仓库文件历史。
+- 不改变 `ci.yml`、`fullstack.yml`、`runtime.yml`、`tooling.yml`、`release.yml` 的长期职责。
+- 不保留长期 Actions history cleanup 功能；这是一次性仓库维护操作。
+
+# 必须保持不变
+
+- 当前 6 个 workflow 的 path/history 为保护对象。
+- `release.yml` 历史不得删除。
+- `ci.yml`、`fullstack.yml`、`runtime.yml`、`tooling.yml`、`change-completion-gate.yml` 的既有历史不得删除。
+- cleanup 完成后仓库不保留 `actions: write` maintenance job。
+- cleanup 完成后不新增第 7 个 workflow。
 
 # Requirement Traceability
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 自动识别当前 6 个 workflow 为白名单 | user:2026-08-25-actions-history-cleanup | satisfied | PR #223 dry-run run `32798721779` 实际发现并输出 6 个受保护路径，且与当前 `.github/workflows/` 精确一致 |
-| R2 | 删除能力只作用于其他已废弃 workflow 的历史 runs | user:2026-08-25-actions-history-cleanup | satisfied | dry-run 完整验证 150 个 legacy workflow records / 646 个 completed runs；apply 复用同一 `collect_cleanup_plan()` 并在首个 DELETE 前完成全部校验 |
-| R3 | 绝不碰当前 CI/Release 等白名单历史 | user:2026-08-25-actions-history-cleanup | satisfied | self-test 覆盖 protected path、workflow_id/path mismatch、non-completed run 全部 fail-closed；生产 dry-run 中白名单 workflow runs 完全不枚举 |
-| R4 | 不暴露 Token，使用受限仓库凭据 | AGENTS.md | satisfied | PR plan job 日志显示 `Actions: read / Contents: read`；apply 权限仅在带唯一 marker 的 main push job 提升为 job-level `actions: write`，日志不会输出 Token |
-| R5 | 不新增长期 ghost workflow | user:2026-08-25-actions-history-cleanup | satisfied | 没有新增 `.github/workflows/*.yml`；plan/apply 都临时挂在现有白名单 `change-completion-gate.yml` 下，完成后移除临时 job/script |
+| R1 | 自动识别当前 6 个 workflow 为白名单 | user:2026-08-25-actions-history-cleanup | satisfied | PR dry-run 与两批 apply 均实际输出 6 个受保护路径；最终只读 plan `97658818312` 再次确认 protected=6 |
+| R2 | 只删除其他已废弃 workflow 的历史 runs | user:2026-08-25-actions-history-cleanup | satisfied | 第一批 `97657439567` 删除 500，第二批 `97658472722` 删除 146；最终只读 plan legacy_runs=0 |
+| R3 | 绝不碰当前 CI/Release 等白名单历史 | user:2026-08-25-actions-history-cleanup | satisfied | 白名单 workflow 从不调用 legacy `list_runs()`；self-test 覆盖 protected path/id/path/status fail-closed；最终 protected=6 且 registry 正常存在 |
+| R4 | 不暴露 Token，使用受限仓库凭据 | AGENTS.md | satisfied | plan 实际权限 Actions read；apply 两批实际权限仅 Actions write + Contents read；Token 全程 masked，未写文件或日志 |
+| R5 | 不新增长期 ghost workflow，并在完成后移除临时高权限机制 | user:2026-08-25-actions-history-cleanup | satisfied | 从未新增 workflow 文件；cleanup 复用现有 Change Completion Gate；`ops/remove-actions-history-cleanup` 已恢复原 governance-only workflow 并删除临时脚本 |
 
 # Validation Matrix
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
-| Browser Mock Acceptance | not_applicable | 不修改产品 UI/浏览器行为 |
-| Backend/API/PostgreSQL Integration | not_applicable | 不修改后端或数据库行为 |
+| Browser Mock Acceptance | not_applicable | cleanup 不修改产品 UI/浏览器行为；但 merge 后主 CI 的 Browser Mock 仍成功 |
+| Backend/API/PostgreSQL Integration | not_applicable | cleanup 不修改后端/数据库行为；merge 后 PostgreSQL Integration 仍成功 |
 | Contract / Generated Client | not_applicable | 不修改公共 Contract/generated client |
-| Real Full-stack Golden Path | not_applicable | 不修改真实产品链路 |
+| Real Full-stack Golden Path | not_applicable | cleanup 逻辑不需要 Full-stack 证明；实现 merge 后 Full-stack run `32799498083` 仍 success |
 | Real Provider Probe | not_applicable | 不修改外部 Provider |
-| Docs / Governance / Other | required | cleanup self-test + PR read-only plan `32798721779` 已成功；main apply summary、post-cleanup plan、临时机制移除将在 merge 后补齐，Change 保持 Active 直到完成 |
+| Docs / Governance / Other | required | 两批 apply `97657439567` / `97658472722` success；独立只读 zero-plan `97658818312` success；main CI `32799498119`、Runtime `32799498173`、Full-stack `32799498083`、Completion Gate `32799498076` success；removal PR 待验证 |
 
-# 安全设计
+# 安全设计与实际证明
 
-1. **双重白名单**：脚本动态扫描 checkout，同时要求扫描结果与当前 6 个预期路径完全一致；不一致立即失败。
-2. **先计划后删除**：完整分页获取 workflow 与 legacy run；所有 run 必须满足 `workflow_id` 一致、规范化 path 等于 legacy workflow path、`status=completed`，否则整个 apply 在第一次 DELETE 前失败。
-3. **当前历史完全旁路**：白名单 workflow 不枚举、不删除其 runs；即使 GitHub 返回多个相同受保护 path 的 workflow record，也全部保护。
-4. **最小权限**：PR plan job 只有 `actions: read`；main apply job 才有 `actions: write`，且只在 merge commit 含唯一 `[actions-history-cleanup]` marker 时运行。
-5. **分批删除**：单次最多 500 个 run；执行前读取 rate limit，并保留至少 100 次 API 请求余量。
-6. **无新 workflow 文件**：复用当前白名单中的 `change-completion-gate.yml`，完成后删除临时 job/script。
+1. **双重白名单**：动态扫描 checkout，并要求精确等于批准的 6 个路径。实际三阶段（plan/apply/zero-plan）均通过。
+2. **先计划后删除**：全部 legacy workflow/run 先分页和验证，再做第一条 DELETE。实际首次验证 150 workflow / 646 run 无冲突。
+3. **白名单完全旁路**：protected workflow 不枚举其 runs，因此当前 CI/Release history 不可能进入删除计划。
+4. **删除前二次断言**：每条 DELETE 前再次调用 `validate_legacy_run()`。
+5. **最小权限**：plan 为 Actions read；仅 marker-gated main apply 为 Actions write。实际 GitHub Runner 权限日志与设计一致。
+6. **分批 + rate-limit**：第一批上限 500、预留 100 API 请求；第二批重新发现后仅删除剩余 146。
+7. **删除后独立验证**：Actions read-only plan 返回 `legacy_workflows=0 / legacy_runs=0`。
+8. **立即移除能力**：removal 分支已删除一次性 `actions: write` job 和 maintenance script，不把仓库维护操作变成长期开口。
 
 # Completion Audit
 
-- [x] upstream_re_read：重新读取本轮用户要求、当前 main `AGENTS.md`、Reliable Vibe Coding Skill、Change Management 与 Verification Review；完成定义仍是“当前 6 个 path 唯一白名单 + 只删其他 legacy completed runs + 不碰当前历史”。
-- [x] change_coverage：R1-R5 全部映射到脚本安全不变量、workflow 权限和 dry-run 证据；没有把 UI 外观变化误当成唯一成功证明。
-- [x] reverse_audit：从“每个将删 run → legacy workflow_id/path/status”反向审计，并从“每个当前 workflow path → 不枚举其 runs”反向审计；还检查了 apply 权限只存在于 marker-gated main job。
-- [x] unresolved_cleared：Requirement 无 `not_satisfied`；实际不可逆删除作为 merge 后运维步骤尚未执行，因此 Change 继续 Active，不提前标记 `done` 或归档。
+- [x] upstream_re_read：重新读取用户“当前 6 个 workflow 为白名单、只删其他废弃 runs、绝不碰当前历史”的明确要求，以及当前 `AGENTS.md` / Reliable Vibe Coding 交付约束。
+- [x] change_coverage：R1-R5 全部具有真实 GitHub API / Actions 运行证据；不是根据 Actions UI 外观推断完成。
+- [x] reverse_audit：从每个实际删除 run 反向验证 legacy workflow_id/path/status；从每个 protected path 反向确认完全不进入删除枚举；从 cleanup job 权限反向确认 only-main/marker/write 边界。
+- [x] unresolved_cleared：646 个 legacy runs 已删除，独立只读复核为 0/0；当前不存在业务或 cleanup 语义未满足项。剩余仅是 removal PR、post-merge 验证和 Change archive 的交付机械步骤。
 
 # A1 / A2 与代码质量 Review
 
 ## A1：上游要求 → 当前 Change
 
-通过。用户要求只有三个核心不可替代条件：当前 6 个 workflow 自动形成白名单、删除其他废弃 workflow runs、绝不触碰当前 CI/Release 历史。Change 已全部覆盖，并额外加入 fail-closed、最小权限、分批/rate-limit 保护，不改变用户语义。
+通过。用户三个核心不可替代条件全部满足：
 
-## A2：当前 Change → 实现 / 验证
+```text
+当前 6 个 workflow 自动形成保护集合
+只删除其他 legacy workflow runs
+绝不删除当前 CI/Release 等保护历史
+```
 
-通过。PR dry-run 使用真实 GitHub Actions API 返回 150 个 legacy workflow records / 646 个 completed runs，self-test 与全量计划校验均成功，且 `deleted=0`。apply 使用同一个计划构造函数，不存在平行的宽松删除逻辑。
+没有扩大为“删除所有旧 Actions history”，也没有把当前白名单历史按时间截断。
 
-## 代码质量 Review
+## A2：当前 Change → 实际 GitHub 状态
 
-通过，未发现阻塞问题。重点确认：
+通过：
 
-1. `discover_current_workflow_paths()` 既动态发现又要求集合精确等于批准的 6 个路径，避免误把临时/新 workflow 自动加入白名单。
-2. `collect_cleanup_plan()` 在第一次 DELETE 前完成所有 legacy workflows/runs 的分页与校验；遇到 running/queued 或 path/id 异常会整批 abort。
-3. `validate_legacy_run()` 在每次不可逆 DELETE 前再次验证关键不变量。
-4. 白名单 workflow 不调用 `list_runs()`，因此当前历史不进入删除候选集合。
-5. apply 单次最多 500，并读取 rate limit、保留 100 次请求余量；646 条计划可以安全分两批执行。
-6. Token 只通过环境变量传给标准库 HTTP client，不打印、不写文件；PR plan job 的实际日志确认只有 Actions read 权限。
+```text
+删除前：150 legacy workflows / 646 legacy runs
+第一批：-500
+第二批：-146
+删除后：0 legacy workflows / 0 legacy runs
+保护集合：始终 6
+```
 
-# 验证与交付计划
+不是仅以 apply job success 作为结论，另外执行了 Actions-read-only 的独立 post-cleanup plan。
 
-1. Draft PR read-only dry-run：已完成，150 legacy workflows / 646 completed runs / 0 deletes。
-2. 当前 Change 已进入 `ready_for_review`；等待最新 HEAD 的永久 CI/Completion Gate 成功后转 PR Ready。
-3. 使用带 `[actions-history-cleanup]` 的 merge commit 合并；main apply job 删除首批最多 500。
-4. 读取 apply job `CLEANUP_SUMMARY`；若 `remaining > 0`，只 rerun 同一个 apply job，预计第二批约 146。
-5. 所有批次完成后，再运行一次只读 plan，要求 `legacy_runs=0`；legacy workflow record 若 run=0 仍存在则记录为 GitHub UI/backend ghost，不再做越权操作。
-6. 新建 cleanup-removal PR，删除临时 script/job；验证并合并。
-7. 将 Change 状态改为 `done` 并独立归档。
+## 代码质量与安全 Review
+
+通过，未发现未解决的重要问题。实际开发过程中出现的 Ruff formatter/import 规则失败均只做机械格式修复，没有改变删除语义。最终候选 HEAD `04a5bf703830abc7d4ccede8c569659584456eda` 的 CI、Full-stack、Runtime、Change Completion Gate 全部 success。
+
+高风险点均有明确控制：
+
+- 不接受白名单漂移；
+- 不删除非 completed run；
+- 不接受 workflow_id/path mismatch；
+- 不枚举 protected workflow runs；
+- 不持久化 Token；
+- 不创建第 7 个 cleanup workflow；
+- 不永久保留 `actions: write` job。
+
+# 主分支验证
+
+实现 merge：
+
+```text
+PR #223
+Final HEAD: 04a5bf703830abc7d4ccede8c569659584456eda
+Merge commit: 3591c1fbdbfdb50a65c6da3e773fe6e12b1246d5
+```
+
+merge 后主分支：
+
+```text
+CI                    32799498119 success
+Full-stack Acceptance 32799498083 success
+Runtime Acceptance    32799498173 success
+Change Completion Gate 32799498076 success
+```
+
+CI 内 Repository Quality、PostgreSQL Integration、CI Gate 均 success。
+
+# Removal / 权限收口
+
+当前 removal 分支：
+
+```text
+ops/remove-actions-history-cleanup
+```
+
+已执行：
+
+- `change-completion-gate.yml` 恢复 governance-only 内容；
+- 删除 `legacy-actions-cleanup-plan`；
+- 删除 `legacy-actions-cleanup-apply`；
+- 因此删除临时 job-level `actions: write`；
+- 删除 `scripts/maintenance/cleanup_legacy_actions_history.py`；
+- 保持当前 6 个 workflow 文件不变。
+
+待 removal PR 最新 HEAD CI 成功后合并；合并后再次核对 `main` 无临时清理权限/脚本且 workflow registry 仍只有 6 个，再独立归档本 Change。
 
 # 回滚与不可逆性
 
-- 已删除的 GitHub Actions runs/artifacts/logs不可恢复，这是用户明确授权的目标；因此 apply 前必须完成全量计划和 fail-closed 校验。
-- 仓库代码侧可通过 revert 临时 cleanup workflow/script 变更回滚；它不会恢复已经删除的 Actions 历史。
+- 已删除的 646 个 legacy Actions runs、其日志和 artifacts 不可恢复，这是用户明确授权的不可逆操作。
+- 当前 6 个 workflow 的历史未进入删除计划。
+- 临时仓库代码/Workflow 权限机制可通过 removal PR 完全移除；删除历史本身不存在代码回滚。
 
-# Git 状态
+# Git / 交付
 
-- Branch: `ops/actions-history-cleanup`
-- PR: #223 `安全清理废弃 GitHub Actions 历史`
-- Dry-run HEAD: `812672be20dcafc7d9b8ab1716f51d7f7c5be6b4`
-- Dry-run Actions run: `32798721779`
-- 当前状态：`ready_for_review`；等待最新 HEAD 新鲜门禁后转 Ready/合并。
+- Cleanup branch: `ops/actions-history-cleanup`
+- Cleanup PR: #223 `安全清理废弃 GitHub Actions 历史`，已合并
+- Cleanup final PR HEAD: `04a5bf703830abc7d4ccede8c569659584456eda`
+- Cleanup merge commit: `3591c1fbdbfdb50a65c6da3e773fe6e12b1246d5`
+- First apply job: `97657439567`，deleted 500 / remaining 146
+- Second apply job: `97658472722`，deleted 146 / remaining 0
+- Independent read-only zero verification: `97658818312`，legacy_workflows=0 / legacy_runs=0
+- Removal branch: `ops/remove-actions-history-cleanup`
+- Removal PR: 待创建
+- Archive: removal merge + post-merge validation 后执行独立归档 PR
