@@ -523,6 +523,17 @@ roadmap / release state（项目实际维护时）
 
 文档与代码/Contract 尚未同步时，不得标记 Ready、完成、可合并或可发布。
 
+#### Docs Skill 按需路由（仓库存在时）
+
+如果仓库存在 `.agents/skills/docs/SKILL.md`，本节的文档同步检查必须先给出 Docs Impact：
+
+- 当前变化不改变人类需要理解、使用、维护、部署或排障的事实：记录 `Docs Impact: not_applicable` 和具体依据，不加载 Docs，不制造无意义文档 diff；
+- 当前变化存在文档影响，或当前任务本身就是技术文档 Review / 编写 / 更新：必须读取 `.agents/skills/docs/SKILL.md`，再由 Docs 根据真实影响选择 `targeted`（默认）或 `full`；
+- Coding 可以提供候选文档作为导航，但不能代替 Docs 决定真正需要读取或修改哪些文档，也不得把 Docs 的详细写作/审查规则复制或总结进 Coding；
+- Docs 返回 `code_issue_detected` 时，回到 Coding 当前完整流程修复实现；修复完成并取得新鲜验证后，再执行 Docs `targeted re-review`。Docs 尚未闭环前，继续受上一条“不得标记 Ready、完成、可合并或可发布”的约束。
+
+如果仓库没有 Docs Skill，则继续完整执行本节原有文档同步规则；不能因为缺少 Docs Skill 跳过文档影响判断或文档同步。
+
 ### 4.13 Completion Audit、两阶段 Review 与新鲜验证
 
 对 `completion_gate: required` 的 Change，在 `ready_for_review` 前先执行：
