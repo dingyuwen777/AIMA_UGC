@@ -1,4 +1,4 @@
-"""系统默认北京时间策略回归。"""
+"""系统默认北京时间策略回归；第三方 Raw/外部协议的原始时间解析不被改写。"""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ _FORBIDDEN_CURRENT_TIME_PATTERNS = (
 
 
 def _system_python_files() -> tuple[Path, ...]:
-    """返回 AIMA 生产源码中的 Python 文件，不扫描测试和第三方原始证据文件。"""
+    """返回生产 Python 文件；扫描只限制自产当前时间，不禁止外部 timestamp/epoch 解析。"""
     return tuple(sorted(BACKEND_ROOT.rglob("*.py")))
 
 
