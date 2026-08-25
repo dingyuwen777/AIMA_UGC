@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
-
 BEIJING_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
 
