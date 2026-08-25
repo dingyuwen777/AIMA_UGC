@@ -83,7 +83,7 @@ CMakeLists.txt ≠ Linux-only
 13. **重要功能可观测性需要匹配现有体系。** 如果仓库已有日志/事件基础设施，且功能涉及关键生命周期、异步任务、外部 I/O、重试/部分失败、状态转换或后期排障价值，应补最小充分结构化观测。复用现有 logger/event/脱敏/关联 ID；禁止打印 Secret/Token/密码/敏感 Raw/PII，禁止 INFO 高频刷屏，日志也不能替代数据库/文件中的正式业务事实或 Health/Audit 机制。
 14. **Git 提交信息统一中文。** 所有 Git 提交信息使用中文，包括普通提交、修复提交和合并提交的说明文本；命令、路径、标识符、版本号等必要技术内容可以保留原文。项目可以进一步规定提交格式或前缀，但不能把提交信息语言改为非中文。
 15. **所有时间相关默认采用北京时间。** Coding Skill、Agent 以及由其新增或默认解释的时间戳、日期、日志、缓存、Change 元数据、报告时间、脚本默认时间和用户可见时间统一使用北京时间 `Asia/Shanghai`（UTC+8），不得依赖宿主本地时区。外部协议、原始数据或既有机器 Contract 明确规定其他时区时保留原始事实语义，但在 Agent 输出、人类可读日志和展示边界明确转换为北京时间，不得把 UTC 值直接当作北京时间。
-16. **日志前缀统一且可定位。** 除非更高优先级的外部日志 wire-format Contract 强制其他序列化形式，所有人类可读日志记录统一使用 `[YYYY-MM-DD HH:mm:ss.SSS source.ext L<line>] [LEVEL] message`；时间必须是北京时间，毫秒固定三位，`source.ext` 与 `L<line>` 来自真实调用点，`LEVEL` 使用大写。结构化日志若因平台 Contract 必须采用 JSON 等形式，仍必须提供等价的北京时间、source、line、level 字段。
+16. **日志前缀统一且可定位。** 除非更高优先级的外部日志 wire-format Contract 强制其他格式，所有人类可读日志记录统一使用 `[YYYY-MM-DD HH:mm:ss.SSS source.ext L<line>] [LEVEL] message`；时间必须是北京时间，毫秒固定三位，`source.ext` 与 `L<line>` 来自真实调用点，`LEVEL` 使用大写。结构化日志若因平台 Contract 必须采用 JSON 等形式，仍必须提供等价的北京时间、source、line、level 字段。
 
 规则重组时还必须遵守 [12_规则保留映射.md](references/12_规则保留映射.md)：通用化只能移动和分类规则，不能用“精简”删除仍有效内容。
 
@@ -522,6 +522,17 @@ roadmap / release state（项目实际维护时）
 项目若有文档编号、命名、历史不可改写等本地规则，严格遵守项目 Overlay；通用 Skill 不强迫所有仓库使用同一编号体系，也不预设任一项目的 Blueprint 数量、具体文件名或编号上限。
 
 文档与代码/Contract 尚未同步时，不得标记 Ready、完成、可合并或可发布。
+
+#### Docs Skill 按需路由（仓库存在时）
+
+如果仓库存在 `.agents/skills/docs/SKILL.md`，本节的文档同步检查必须先给出 Docs Impact：
+
+- 当前变化不改变人类需要理解、使用、维护、部署或排障的事实：记录 `Docs Impact: not_applicable` 和具体依据，不加载 Docs，不制造无意义文档 diff；
+- 当前变化存在文档影响，或当前任务本身就是技术文档 Review / 编写 / 更新：必须读取 `.agents/skills/docs/SKILL.md`，再由 Docs 根据真实影响选择 `targeted`（默认）或 `full`；
+- Coding 可以提供候选文档作为导航，但不能代替 Docs 决定真正需要读取或修改哪些文档，也不得把 Docs 的详细写作/审查规则复制或总结进 Coding；
+- Docs 返回 `code_issue_detected` 时，回到 Coding 当前完整流程修复实现；修复完成并取得新鲜验证后，再执行 Docs `targeted re-review`。Docs 尚未闭环前，继续受上一条“不得标记 Ready、完成、可合并或可发布”的约束。
+
+如果仓库没有 Docs Skill，则继续完整执行本节原有文档同步规则；不能因为缺少 Docs Skill 跳过文档影响判断或文档同步。
 
 ### 4.13 Completion Audit、两阶段 Review 与新鲜验证
 
