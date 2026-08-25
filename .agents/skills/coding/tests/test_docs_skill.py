@@ -48,7 +48,8 @@ class DocsSkillTest(unittest.TestCase):
         self.assertIn("文档与代码/Contract 尚未同步时，不得标记 Ready、完成、可合并或可发布", coding)
         self.assertIn("所有时间相关默认采用北京时间", coding)
         self.assertIn("Git 提交信息统一中文", coding)
-        self.assertIn("Red\n→ Verify Red\n→ Green", coding)
+        self.assertIn("Red\n→ Verify Red：实际确认因正确目标行为失败", coding)
+        self.assertIn("→ Green：最少代码通过", coding)
 
         # Docs 路由只追加到很小的 Agent 默认提示，完整文档规则仍由独立 Docs Skill 维护。
         self.assertIn("Docs Impact", agent)
