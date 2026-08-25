@@ -129,7 +129,7 @@ data_changes: []
 | R2 | 历史 Stage CI 改为按长期风险/验证层组织 | user:2026-08-24-ci-convergence | satisfied | `.github/workflows/` 已只有 7 个长期职责 Workflow；`ci.yml` 使用 Repository Quality / PostgreSQL Integration / Windows Tooling / CI Gate，真实 Full-stack 使用 `fullstack.yml` |
 | R3 | 显著减少重复 Runner/PostgreSQL/uv/Ruff/mypy/Integration | user:2026-08-24-ci-convergence | satisfied | 19 个 Workflow 收敛为 7 个；历史 Stage PostgreSQL Runner 统一为一个 `postgres:18.4` Integration Runner；Ruff/mypy/Unit/Contract/Integration 由长期层单次执行，不再按 Stage 重复 |
 | R4 | 各测试层只证明实际边界，Real Full-stack/Provider Probe 不与普通 CI 混淆 | docs/blueprint/06_开发约束与分阶段实施.md | satisfied | Browser Mock 仍在 Repository Quality；真实 Excel Browser→API→PostgreSQL→Worker 仍由独立 `fullstack.yml` 证明；本 Change 未发起真实 Provider Probe |
-| R5 | PostgreSQL 真实语义、Migration 与数据库约束继续由 PostgreSQL Integration 验证 | .agents/skills/reliable-vibe-coding/references/testing-strategy.md | satisfied | `postgres:18.4` + 全部 Integration 目录 + `test_schema_runtime_invariants.py` + `verify_migration_compatibility.py`；CI run `32716699870` 成功 |
+| R5 | PostgreSQL 真实语义、Migration 与数据库约束继续由 PostgreSQL Integration 验证 | .agents/skills/reliable-vibe-coding/references/08_testing-strategy.md | satisfied | `postgres:18.4` + 全部 Integration 目录 + `test_schema_runtime_invariants.py` + `verify_migration_compatibility.py`；CI run `32716699870` 成功 |
 | R6 | Release/Runtime/Change Gate 不因 CI 收敛失去独立安全和运行边界 | docs/roadmap/02_生产上线实施路线.md | satisfied | 同一核心实现 HEAD 上 Local Dev `32716699878`、Windows Runtime `32716700064`、Full-stack `32716699986`、Internal V1-A `32716699880`、Release dry-run `32716700257` 均成功；Completion Gate 保留独立 Workflow，其先前失败仅因 Change 尚未进入 Ready 状态 |
 
 # Validation Matrix

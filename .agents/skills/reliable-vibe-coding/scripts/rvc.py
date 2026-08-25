@@ -92,36 +92,88 @@ INSTRUCTION_DIRECTORIES = {
     ".windsurf/rules",
 }
 MANIFEST_NAMES = {
+    # JavaScript / TypeScript
     "package.json",
     "package-lock.json",
     "pnpm-lock.yaml",
     "yarn.lock",
     "bun.lock",
     "bun.lockb",
+    "deno.json",
+    "deno.jsonc",
+    "deno.lock",
+    # Python
     "pyproject.toml",
     "poetry.lock",
     "uv.lock",
     "requirements.txt",
     "pipfile",
     "pipfile.lock",
+    # Rust
     "cargo.toml",
     "cargo.lock",
+    # Go
     "go.mod",
     "go.sum",
+    "go.work",
+    "go.work.sum",
+    # Java / Kotlin
     "pom.xml",
     "build.gradle",
     "build.gradle.kts",
+    "settings.gradle",
+    "settings.gradle.kts",
     "gradle.properties",
+    "libs.versions.toml",
+    # .NET
+    "global.json",
+    "directory.build.props",
+    "directory.build.targets",
+    "directory.packages.props",
+    "nuget.config",
+    "packages.lock.json",
+    # C / C++
+    "cmakelists.txt",
+    "cmakepresets.json",
+    "meson.build",
+    "meson_options.txt",
+    "conanfile.py",
+    "conanfile.txt",
+    "vcpkg.json",
+    "vcpkg-configuration.json",
+    # Swift / Apple
+    "package.swift",
+    "package.resolved",
+    "project.pbxproj",
+    "contents.xcworkspacedata",
+    # Dart / Flutter
+    "pubspec.yaml",
+    "pubspec.lock",
+    "melos.yaml",
+    # PHP
     "composer.json",
     "composer.lock",
+    # Ruby
     "gemfile",
     "gemfile.lock",
+    # Elixir
     "mix.exs",
+    "mix.lock",
+    # Additional build / package systems
+    "build.zig",
+    "build.zig.zon",
     "makefile",
     "justfile",
     "dockerfile",
     "docker-compose.yml",
     "docker-compose.yaml",
+}
+MANIFEST_SUFFIXES = {
+    ".csproj",
+    ".fsproj",
+    ".vbproj",
+    ".sln",
+    ".slnx",
 }
 REQUIREMENT_TOKENS = {
     "acceptance",
@@ -249,7 +301,7 @@ def _classify_path(relative_path: str) -> str | None:
         for directory in INSTRUCTION_DIRECTORIES
     ):
         return "instructions"
-    if name in MANIFEST_NAMES:
+    if name in MANIFEST_NAMES or suffix in MANIFEST_SUFFIXES:
         return "manifest"
     if suffix not in DOCUMENT_EXTENSIONS:
         return None

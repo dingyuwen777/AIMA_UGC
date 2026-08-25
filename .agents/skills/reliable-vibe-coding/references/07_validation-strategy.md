@@ -1,0 +1,612 @@
+# 通用验证与证据策略
+
+这份规则回答：**无论项目是什么语言、什么形态，一个改动需要哪些独立证据才能支持“正确、完成、可交付”的结论？**
+
+它是技术栈无关的 Validation Matrix 基线。具体项目可以把通用维度映射到自己的测试工具、运行时和专项 profile，但不能通过改名字消除真实风险。
+
+现有 [08_testing-strategy.md](08_testing-strategy.md) 继续完整保留，它是 Web / API / PostgreSQL / 外部 Provider 边界实际存在时的专项策略，不是所有项目的默认模板。
+
+## 1. 核心原则：按风险选证据，不按技术名词凑测试
+
+验证链的目标不是：
+
+```text
+每个任务必须 N 个 Unit
++ M 个 Integration
++ 1 个 E2E
+```
+
+而是：
+
+```text
+本次有哪些独立失败边界？
+→ 哪一层最便宜、稳定、直接地证明它？
+→ 哪些边界只有真实组合运行才能证明？
+→ 哪些外部事实只有受控 Probe 才能确认？
+→ 哪些维度没有独立风险，可以有依据地 not_applicable？
+```
+
+任何测试只能声明它实际运行过的边界。
+
+例如：
+
+- Mock 通过不能证明真实数据库提交；
+- Unit 通过不能证明 CLI package 可以安装；
+- Simulator 通过不能自动证明真机硬件边界；
+- `terraform validate` 通过不能证明真实 `apply` 成功；
+- 一条跨组件 Golden Path 通过不能证明所有错误状态；
+- 真实第三方 Probe 通过不能替代稳定回归测试；
+- CI 绿色不能替代 Requirement Traceability 与 Completion Audit。
+
+## 2. 通用 Validation Matrix
+
+L2/L3 默认从下面八个语义维度判断，而不是从某个框架的测试名称判断：
+
+| 通用维度 | 主要证明 | 常见实现形式 |
+| --- | --- | --- |
+| 行为 / Unit / Component | 局部业务规则、算法、状态转换、组件行为 | unit/component/property test、纯函数/模块测试 |
+| 接口 / Contract | 生产者与消费者、public API/ABI/schema/format 一致 | contract/schema/compatibility/generated drift/API surface test |
+| 集成 / Persistence / Runtime Dependency | 与数据库、文件、队列、OS、SDK、runtime service 等真实依赖交互 | integration test、temp FS、真实 DB、container dependency、runtime harness |
+| 用户 / Workflow Acceptance | 用户或调用者可观察工作流是否正确 | browser/UI test、CLI invocation、mobile UI、SDK consumer test、batch workflow |
+| 跨组件 Golden Path | 多个真实组件组装后关键链确实接通 | end-to-end/smoke/system test、real process chain |
+| 外部依赖 Probe | 第三方服务/硬件/远端环境当前真实事实 | bounded API probe、device/HIL、sandbox cloud probe |
+| Build / Package / Runtime | 源码能按正式方式构建、打包、安装、启动或运行 | compiler/build/package/image/startup/smoke |
+| Docs / Governance / Other | 非运行代码但仍影响正确交付的事实 | link/schema/docs check、migration lint、policy、license、security、ready gate |
+
+Change 模板中的每一行只允许：
+
+```text
+required
+not_applicable
+```
+
+`required` 必须写清 Scope；完成时补新鲜 Evidence。`not_applicable` 必须写具体事实依据。
+
+## 3. 行为 / Unit / Component
+
+### 证明什么
+
+用于尽量便宜、稳定地覆盖：
+
+- 纯业务规则；
+- 算法和边界值；
+- parsing/validation；
+- 状态转换；
+- error mapping；
+- serialization 的局部语义；
+- UI component/store/view-model 局部行为；
+- library function/class/module；
+- CLI command handler 的非进程层逻辑；
+- data transform；
+- scheduler/decision/pagination 等确定性逻辑。
+
+### 默认职责
+
+行为变化、Bug 修复和重构通常需要这一层，除非目标本身无法合理在局部隔离验证。
+
+默认 Red → Green → Refactor：
+
+```text
+先建立能表达预期行为的最小失败证据
+→ 实际确认因目标行为缺失/错误而失败
+→ 最小实现
+→ 目标测试通过
+→ Refactor
+→ 再验证
+```
+
+### 不能证明什么
+
+局部行为绿色通常不能证明：
+
+- public consumer 仍兼容；
+- 真实 persistence/runtime dependency 正确；
+- package 能构建/安装；
+- 多进程/跨组件能接通；
+- 外部供应商/设备当前可用。
+
+## 4. 接口 / Contract
+
+### 触发条件
+
+只要改动涉及可被其他代码、模块、进程、包、服务或外部调用者依赖的稳定边界，就要判断这一层：
+
+- public function/class/module API；
+- CLI flags/config/file format；
+- HTTP/RPC/event/message；
+- OpenAPI/GraphQL/protobuf/JSON Schema；
+- database schema 被跨模块消费的正式边界；
+- binary protocol/ABI；
+- serialization format；
+- generated client/code；
+- plugin interface；
+- model/data schema；
+- package exports。
+
+### 证明什么
+
+- Producer 与 Consumer 对字段、类型、语义、错误、默认值、排序、版本的理解一致；
+- generated artifact 与手写事实源无漂移；
+- breaking change 被识别而不是静默发生；
+- 需要版本化/兼容期时有对应证据。
+
+### 典型证据
+
+- schema compatibility；
+- API surface snapshot（不能盲目更新）；
+- consumer compile/test；
+- generated-code diff check；
+- ABI checker；
+- contract test；
+- migration compatibility fixture。
+
+### 禁止
+
+- 用 Mock 手写第二套 contract；
+- 因 Snapshot 失败直接覆盖 Snapshot；
+- public 字段/flag/格式变化没有兼容分析；
+- 把“编译通过”自动等价为业务 contract 兼容。
+
+## 5. 集成 / Persistence / Runtime Dependency
+
+这一层不等于“数据库测试”。它验证任何只有真实依赖参与才成立的事实。
+
+可能包括：
+
+- PostgreSQL/MySQL/SQLite/其他项目真实数据库；
+- filesystem、权限、symlink、file locking；
+- Redis/queue/broker（项目真实使用时）；
+- OS process/signal/environment；
+- thread/runtime concurrency；
+- container；
+- platform SDK；
+- local daemon；
+- compiler/linker/native library；
+- real serializer/runtime；
+- object storage emulator/approved test service。
+
+### 选择原则
+
+如果项目依赖某个具体实现的语义，就不能用语义不同的替代品冒充。
+
+例如项目关键正确性依赖 PostgreSQL 的：
+
+- constraint；
+- transaction isolation；
+- lock；
+- `SKIP LOCKED`；
+- advisory lock；
+- migration；
+
+则 SQLite test 不能证明这些 PostgreSQL 事实。
+
+反过来，一个真正只依赖 SQLite 的桌面程序也不应该为了“更企业级”被强迫增加 PostgreSQL。
+
+### 失败边界
+
+集成测试尤其要覆盖本次真实风险：
+
+- transaction/atomicity；
+- concurrency/race；
+- retry/idempotency；
+- cancellation/timeout；
+- crash/recovery；
+- resource cleanup；
+- permission/path；
+- migration upgrade/downgrade/compatibility（项目策略要求时）。
+
+## 6. 用户 / Workflow Acceptance
+
+“用户”不只指浏览器用户。这里的用户可以是：
+
+- Web 用户；
+- CLI 操作者；
+- SDK/library consumer；
+- mobile/desktop app 用户；
+- data analyst/operator；
+- build/release engineer；
+- automation caller。
+
+### 证明什么
+
+从调用者可观察角度验证：
+
+- 入口能找到；
+- 输入/操作正确；
+- 输出/状态/错误表达正确；
+- 成功、失败、空状态、重试等必要状态闭环；
+- public workflow 没有只在内部函数层“看起来正确”。
+
+### 示例
+
+Web：Browser/component acceptance。
+
+CLI：
+
+```text
+实际可执行文件/入口
+→ 参数/stdin
+→ stdout/stderr
+→ exit code
+→ 文件/副作用
+```
+
+Library：用最小 consumer 调 public API，而不是只调用 private helper。
+
+Mobile：UI automation / simulator workflow / view-model + navigation，按真实风险选择。
+
+Data：从代表性输入到输出 artifact/quality result 的 workflow。
+
+## 7. 跨组件 Golden Path
+
+### 目的
+
+单层测试都绿色仍可能接线失败，所以当项目有真实跨组件边界时，用**少量**高价值路径证明组装。
+
+可能是：
+
+```text
+Browser → Frontend → API → DB → Worker → UI
+CLI → Config → Library → Remote/DB → Output
+Mobile App → API → persistence → refreshed UI
+Producer → Message → Consumer → Storage
+Batch Input → Pipeline → Output Artifact
+Package Build → Install → Consumer Smoke
+```
+
+### 不是状态穷举层
+
+Golden Path 越真实通常越慢、越脆、越贵。默认：
+
+- 一个最关键成功链；
+- 只有存在独立高风险时再加代表性失败/恢复链；
+- 其他广状态优先在更便宜层覆盖。
+
+没有跨组件边界的 library/private refactor 可以 `not_applicable`，不需要为了模板造 E2E。
+
+## 8. 外部依赖 Probe
+
+### 什么算外部依赖
+
+- 第三方 SaaS/API；
+- 付费 Provider/LLM；
+- 真实 cloud resource；
+- 真机/硬件/HIL；
+- 外部 database/service；
+- 不由当前仓库控制的远程系统。
+
+### 何时 required
+
+只有当前任务需要确认**外部系统此刻的真实事实**时才 required，例如：
+
+- API 字段/分页/错误码可能变化；
+- 新 SDK/operation 接入；
+- hardware-specific behavior；
+- sandbox deployment permission；
+- provider billing/limit 事实。
+
+普通业务回归应优先稳定 fixture/fake/simulator，而不是每次调用外部依赖。
+
+### 固定边界
+
+- 默认关闭；
+- 明确请求/费用/数据范围；
+- 不默认进入普通 CI；
+- 不默认写生产数据；
+- Secret 不打印、不入 fixture、不提交；
+- 外部失败要区分代码缺陷、网络、供应商和权限；
+- Probe 结果有时效性，不替代稳定 contract/fixture 回归。
+
+## 9. Build / Package / Runtime
+
+很多问题不会在 Unit 中出现：
+
+- packaging discovery；
+- compiler/linker；
+- generated file missing；
+- bundle tree；
+- native target；
+- container entrypoint；
+- install metadata；
+- runtime config；
+- release asset；
+- cross-platform path；
+- startup failure。
+
+因此只要任务可能影响构建、打包、安装、运行时或发布产物，就要判断这一层。
+
+证据可能包括：
+
+- `build`；
+- package/wheel/jar/npm package/gem/crate/container；
+- install into clean environment；
+- executable startup/smoke；
+- target compiler build；
+- artifact structure；
+- reproducibility/lock check；
+- release bundle verification。
+
+不能用“源码测试通过”宣称“发布包可用”。
+
+## 10. Docs / Governance / Other
+
+这不是“剩余垃圾桶”，而是非运行时但真正影响可靠交付的证据：
+
+- Markdown/link/reference；
+- configuration schema；
+- docs/current behavior consistency；
+- architecture/owner boundary checks；
+- secret scan；
+- license/security policy；
+- changelog/release metadata（项目需要时）；
+- migration graph；
+- code generation drift；
+- Change/Requirement/Completion Gate；
+- policy-as-code；
+- static repository invariants。
+
+纯文档、纯配置、生成物同步可以把这里作为主验证维度，并明确 TDD 例外；不要为了形式制造假的 Red 或假的 Runtime test。
+
+## 11. 项目形态到验证维度的常见映射
+
+这只是起点，最终由实际风险决定。
+
+### Library / SDK
+
+通常重点：
+
+```text
+行为 / Unit / Component
+接口 / Contract
+Build / Package / Runtime
+用户 / Workflow Acceptance（public consumer smoke，有独立价值时）
+```
+
+Persistence、Golden Path、External Probe 没有真实边界时可不适用。
+
+### CLI
+
+通常重点：
+
+```text
+行为 / Unit / Component
+用户 / Workflow Acceptance（真实 CLI invocation）
+Build / Package / Runtime
+接口 / Contract（public flag/config/file format 变化时）
+集成（filesystem/process/network 真实语义需要时）
+```
+
+### Backend / Service
+
+通常重点：
+
+```text
+行为
+接口 / Contract
+集成 / Persistence / Runtime Dependency
+Build / Runtime
+```
+
+有跨进程/消费者时补 Golden Path；外部 Provider 变化时补 Probe。
+
+### Frontend / Web
+
+通常重点：
+
+```text
+行为 / Component
+用户 / Workflow Acceptance
+接口 / Contract
+Build / Runtime
+```
+
+如果同仓还有 Backend，关键跨层链需要时补 Golden Path。
+
+### Full-stack
+
+各组件先在便宜层覆盖行为，再用少量 Golden Path 证明真实接线。
+
+### Mobile / Desktop
+
+通常重点：
+
+```text
+行为 / Component
+用户 / Workflow Acceptance
+接口 / Contract
+Build / Package / Runtime
+平台 SDK/Storage/Network Integration（存在独立风险时）
+Simulator / Device / External Probe（只有目标事实需要时）
+```
+
+### Data / ETL / ML
+
+通常重点：
+
+```text
+行为 / transform
+接口 / input-output schema
+集成 / storage/runtime engine
+用户 / batch workflow
+Build / artifact/environment
+Golden sample / Golden Path（跨步骤管线）
+External model/provider Probe（必要时）
+```
+
+还需关注数据泄漏、随机性、seed/reproducibility、容量/性能和数据质量；不要把生产数据复制到未经授权环境。
+
+### Embedded / Systems
+
+通常分：
+
+```text
+Host behavior/unit
+Protocol/ABI Contract
+Compiler/Target Build
+Simulator/Runtime Integration
+Target/HIL/Device Probe（硬件事实需要时）
+```
+
+Host test 不冒充 target 证据。
+
+### Infra / IaC
+
+通常重点：
+
+```text
+Behavior/config module test
+Contract/schema/policy
+Build/render/validate
+Plan/diff
+Sandbox Golden Path（需要时）
+External environment Probe / Apply（明确授权时）
+```
+
+`plan` 和真实 `apply` 必须分开陈述。
+
+## 12. Web / API / PostgreSQL / Provider 专项映射
+
+当仓库真实存在这些边界时，继续使用现有 [08_testing-strategy.md](08_testing-strategy.md) 的全部详细规则。它与通用层的映射是：
+
+| 通用维度 | 现有专项层 |
+| --- | --- |
+| 用户 / Workflow Acceptance | `Browser Mock Acceptance` |
+| 集成 / Persistence / Runtime Dependency | `Backend/API/PostgreSQL Integration`（文档标题为 `Backend / API / PostgreSQL Integration`） |
+| 接口 / Contract | `Contract / Generated Client` |
+| 跨组件 Golden Path | `Real Full-stack Golden Path` |
+| 外部依赖 Probe | `Real Provider Probe` |
+| Build / Package / Runtime | 项目现有前后端 build/startup/container/release checks |
+| Docs / Governance / Other | 项目已有 docs/architecture/owner/secret/Change gates |
+
+这里没有删除或弱化任何原专项边界：
+
+- `Browser Mock Acceptance` 仍负责广覆盖用户可见状态；
+- Backend/DB 行为仍由真实 Backend/API/PostgreSQL Integration 证明；
+- public machine Contract 仍需要 schema/generated drift 证据；
+- `Real Full-stack Golden Path` 仍只用少量高价值路径证明真实接线；
+- `Real Provider Probe` 仍只在必要时有界执行；
+- 任一专项层都不能声称证明自己没有运行的下游边界。
+
+现有 `08_testing-strategy.md` 是专项事实源；本文件不要复制它的全部 Browser/API/PostgreSQL 场景，以避免未来两份细节漂移。
+
+## 13. Validation Matrix 写法
+
+通用模板：
+
+```markdown
+| Layer | Required | Scope / Evidence |
+| --- | --- | --- |
+| 行为 / Unit / Component | required | 目标行为、边界和回归 |
+| 接口 / Contract | not_applicable | 本次不改变 public/跨组件接口 |
+| 集成 / Persistence / Runtime Dependency | required | 真实文件系统/数据库/runtime 边界 |
+| 用户 / Workflow Acceptance | required | 调用者可观察成功/错误路径 |
+| 跨组件 Golden Path | not_applicable | 当前能力没有跨组件接线 |
+| External Dependency / Provider Probe | not_applicable | 不改变外部依赖真实事实 |
+| Build / Package / Runtime | required | 正式 build/package/startup |
+| Docs / Governance / Other | required | 文档/规则/生成漂移/门禁 |
+```
+
+`External Dependency / Provider Probe` 是模板中的英文兼容标签；语义与“外部依赖 Probe”一致。项目可以使用更具体名字，但不能改变 required/not_applicable 的判断责任。
+
+### Scope 必须具体
+
+不合格：
+
+```text
+required | 测试功能
+```
+
+合格：
+
+```text
+required | CLI `import` 在缺文件时返回 exit 2，stderr 保留稳定错误码；成功时输出目标 artifact
+```
+
+### Evidence 必须新鲜
+
+完成时至少能回答：
+
+```text
+什么命令/检查？
+在哪个 commit/HEAD？
+退出码？
+通过/失败数量？
+实际运行了哪些边界？
+哪些仍未验证？
+```
+
+## 14. Validation Matrix 与 TDD 的关系
+
+TDD 解决“目标行为是否在实现前有失败证据”；Validation Matrix 解决“整个风险面需要哪些不同层级证据”。二者不能互相替代。
+
+例：数据库 Bug 修复可以：
+
+```text
+Red
+→ PostgreSQL integration regression 失败
+
+Green
+→ 修复后该回归通过
+
+Validation Matrix
+→ 还要求 Contract/Build/用户流程等受影响维度有各自证据（如果确实存在独立风险）
+```
+
+纯文档任务则可以明确 TDD 例外，但 Validation Matrix 仍可要求 Docs/Governance 解析与链接检查。
+
+## 15. Completion Audit 时重新检查证据选择
+
+Ready 前不只确认“所有 required 都填了 Evidence”，还要重新问：
+
+1. 用户可见行为有没有只靠内部 Unit？
+2. runtime/persistence 语义有没有被更弱的 Fake 冒充？
+3. public Contract 有没有机器一致性证据？
+4. 关键跨组件链是否需要真实接线？
+5. 是否把所有状态都塞进昂贵 Golden Path，导致不必要的脆弱？
+6. 外部依赖是否真的需要 Probe；Probe 是否有界？
+7. Build/package/runtime 是否因“测试都绿”而被遗漏？
+8. 文档/配置/生成物/治理是否与实现同步？
+9. 所有 `not_applicable` 是否仍有真实依据？
+10. 有没有某一层绿色后错误推断其他层也已证明？
+
+## 16. 验证失败时
+
+门禁失败必须修根因：
+
+- 不删除失败测试；
+- 不 skip/xFail 真实回归；
+- 不降低断言；
+- 不关闭数据库约束、安全检查、类型/静态检查；
+- 不盲目更新 Snapshot/Golden；
+- 不针对测试 fixture 硬编码生产实现；
+- 不把 flaky 外部依赖偷偷塞进稳定 CI；
+- 不用历史成功日志冒充本轮证据。
+
+如果失败暴露的是测试本身错误，先证明测试为什么错误，再最小修正测试；不要修改生产代码去迎合错误断言。
+
+## 17. 证据陈述规范
+
+最终报告不要笼统写：
+
+```text
+E2E 全通过
+所有测试通过
+系统已验证
+```
+
+除非实际命令真的支持这个范围。
+
+优先写：
+
+```text
+Unit/Behavior：628 passed
+Contract：<command> exit 0
+PostgreSQL Integration：<command> exit 0
+CLI Workflow：3 cases passed
+Real Full-stack Golden Path：1 条成功链 passed
+External Provider Probe：not_applicable，本次未改 Provider 边界
+Build：<command> exit 0
+未验证：Windows target 未有 runner，剩余风险为 ...
+```
+
+证据范围说清楚，本身就是可靠交付的一部分。

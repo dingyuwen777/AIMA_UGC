@@ -34,7 +34,7 @@
 | 当前开发环境怎么运行 | `docs/02_环境运行与部署.md` |
 | 下一阶段、生产上线、Release/Backup/回滚 | `docs/roadmap/02_生产上线实施路线.md` + `docs/appendix/11_生产部署与离线Release方案.md` |
 | 开发/测试/CI/Git | `docs/blueprint/06_开发约束与分阶段实施.md` |
-| 用户可见行为/前后端/Full-stack/Provider 测试分层 | `docs/blueprint/06_开发约束与分阶段实施.md` + `.agents/skills/reliable-vibe-coding/references/testing-strategy.md` |
+| 用户可见行为/前后端/Full-stack/Provider 测试分层 | `docs/blueprint/06_开发约束与分阶段实施.md` + `.agents/skills/reliable-vibe-coding/references/08_testing-strategy.md` |
 | 重大跨模块决定 | `docs/blueprint/07_技术决策与实施门禁.md` |
 | Collection Plan、Capability、Decision、评论 | `docs/blueprint/08_采集策略与平台能力.md` + `docs/collection/README.md` |
 | Scheduler 运行/停机恢复 | `docs/appendix/05_Scheduler调度执行与停机恢复.md` |
@@ -78,7 +78,7 @@ python .agents/skills/reliable-vibe-coding/scripts/ready_check.py --root . --req
 
 机器 Ready Check 只验证可机器判断的结构、状态、Source 路径、占位符和 Completion Audit checkbox；它不能证明业务语义完整，因此不能替代 Requirement Traceability 和语义 Review。
 
-详细规则：`.agents/skills/reliable-vibe-coding/references/completion-gate.md`。
+详细规则：`.agents/skills/reliable-vibe-coding/references/10_completion-gate.md`。
 
 ## 2. 系统基线
 
@@ -161,6 +161,12 @@ Internal V1-A 已在仓库根建立唯一 `Dockerfile` 与 `compose.yaml`，Dock
 - 不顺手重构、改名、格式化无关文件；
 - 默认保持公共 API、Contract、导入路径、配置、环境变量、数据格式、数据库、启动方式、合法行为、错误类型和关键错误信息；
 - 破坏性变化必须先设计版本、Migration、兼容期、部署和回滚。
+
+### 注释语言
+
+- 除专有名词、标识符、协议、库和标准名外，代码注释使用中文；
+- Python 文档字符串遵循 PEP 257；其他语言沿用项目既有文档注释规范；
+- 注释解释原因、约束、风险和非直观规则，不机械复述代码；公共接口以及承载非显然业务规则、关键不变量、状态转换、兼容原因或重要副作用的内部/private/helper 按实际需要补充说明。
 
 ## 5. 模块边界
 
@@ -381,7 +387,7 @@ Red
 → 完整 CI
 ```
 
-对 L2/L3 且存在用户可见、前后端/数据库/异步、公共 Contract 或 Provider 边界的任务，必须按 `.agents/skills/reliable-vibe-coding/references/testing-strategy.md` 建立并维护 Validation Matrix。固定职责是：
+对 L2/L3 且存在用户可见、前后端/数据库/异步、公共 Contract 或 Provider 边界的任务，必须按 `.agents/skills/reliable-vibe-coding/references/08_testing-strategy.md` 建立并维护 Validation Matrix。固定职责是：
 
 ```text
 Browser Mock Acceptance
@@ -460,10 +466,10 @@ uv run python scripts/quality/check_docs.py
 
 ```text
 docs/blueprint/
-→ README + 01—08 核心长期架构、为什么这样设计、稳定门禁
+→ README + 当前实际编号的核心长期架构、为什么这样设计、稳定门禁
 
 docs/roadmap/
-→ Stage 0—12 当前状态、未完成开发、生产上线顺序和 Go/No-Go
+→ 当前阶段状态、未完成开发、生产上线顺序和 Go/No-Go
 
 模块 README
 → 当前代码具体实现、Owner、入口、常见修改点
@@ -487,7 +493,7 @@ changes/archive/
 → 历史为什么改过、已完成阶段/Change 的当时验证证据
 ```
 
-核心 Blueprint 固定为 `01—08`。已完成阶段形成的 Scheduler、TikHub、Excel、AI、Figma、Stage 8 等大篇幅具体实现说明应进入 Appendix/Guide/模块 README；历史施工过程进入 `changes/archive/`，不要继续以 `09、10、11...` 方式让 Blueprint 无限增长。
+核心 Blueprint 的数量、文件名和编号范围不在本规则写死；以 `docs/blueprint/` 当前实际文件集合、`docs/blueprint/README.md` 和 `docs/AGENTS.md` 为准。当前已有稳定编号不得为了插入新主题静默重排。新增主题先判断应该进入现有核心 Blueprint、Roadmap、Appendix、Guide 还是模块 README；只有确实形成新的核心长期领域时才新增 Blueprint，避免把阶段性实现说明无限堆进核心长期架构目录。
 
 未完成但仍批准的 Stage/生产设计不能因为当前代码不存在而删掉；必须放在 `docs/roadmap/` 或当前适用的核心长期设计中，并明确“待实现”。历史方案若被后续正式决策替代，则保留演进说明并明确“禁止照旧实现”。
 
