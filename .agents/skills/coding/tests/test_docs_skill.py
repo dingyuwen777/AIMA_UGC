@@ -1,0 +1,68 @@
+from __future__ import annotations
+
+import unittest
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[4]
+
+
+class DocsSkillTest(unittest.TestCase):
+    def _read(self, path: str) -> str:
+        return (ROOT / path).read_text(encoding="utf-8")
+
+    def test_docs_skill_exposes_required_principles(self) -> None:
+        skill = self._read(".agents/skills/docs/SKILL.md")
+        self.assertIn("name: docs", skill)
+        self.assertIn("为什么存在、解决什么问题、数据怎么流、代码在哪实现", skill)
+        self.assertIn("术语必须用白话解释", skill)
+        self.assertIn("最小例子", skill)
+        self.assertIn("不会制造第二套事实", skill)
+        self.assertIn("not_applicable", skill)
+        self.assertIn("targeted", skill)
+        self.assertIn("full", skill)
+
+    def test_docs_references_cover_fact_writing_review_and_coding_collaboration(self) -> None:
+        facts = self._read(".agents/skills/docs/references/01_事实源与同步判断.md")
+        writing = self._read(".agents/skills/docs/references/02_第一性原理技术写作.md")
+        review = self._read(".agents/skills/docs/references/03_审查编写与修复流程.md")
+        collaboration = self._read(".agents/skills/docs/references/04_与Coding协作.md")
+
+        self.assertIn("机器事实", facts)
+        self.assertIn("不能机械认为代码永远正确", facts)
+        self.assertIn("先讲问题，再讲方案", writing)
+        self.assertIn("术语后置", writing)
+        self.assertIn("Review Only", review)
+        self.assertIn("Write / Update", review)
+        self.assertIn("targeted", review)
+        self.assertIn("Docs Impact", collaboration)
+        self.assertIn("返回 Coding", collaboration)
+
+    def test_coding_routes_to_docs_without_replacing_existing_rules(self) -> None:
+        coding = self._read(".agents/skills/coding/SKILL.md")
+
+        # 这些断言保护当前 Coding 的既有高价值规则，新增 Docs 路由只能叠加，不能替代。
+        self.assertIn("内容守恒优先于篇幅精简", coding)
+        self.assertIn("### 4.12 同步当前事实和文档", coding)
+        self.assertIn("文档与代码/Contract 尚未同步时，不得标记 Ready、完成、可合并或可发布", coding)
+        self.assertIn("所有时间相关默认采用北京时间", coding)
+        self.assertIn("Git 提交信息统一中文", coding)
+        self.assertIn("Red\n→ Verify Red\n→ Green", coding)
+
+        # Docs 只以最小路由接入 Coding，不把完整 Docs 规则复制进 Coding。
+        self.assertIn("Docs Impact", coding)
+        self.assertIn(".agents/skills/docs/SKILL.md", coding)
+        self.assertIn("targeted", coding)
+        self.assertIn("not_applicable", coding)
+
+    def test_blueprint_keeps_docs_governance_lightweight(self) -> None:
+        blueprint = self._read("docs/blueprint/06_开发约束与分阶段实施.md")
+        self.assertIn(".agents/skills/docs/SKILL.md", blueprint)
+        self.assertIn("Docs Impact", blueprint)
+        self.assertIn("targeted", blueprint)
+        self.assertIn("第一性原理", blueprint)
+        self.assertIn("第二套事实", blueprint)
+
+
+if __name__ == "__main__":
+    unittest.main()
