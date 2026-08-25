@@ -1,0 +1,734 @@
+# 编程语言与工具链适配规则
+
+这份规则用于让 Reliable Vibe Coding 在不同语言、不同构建系统和不同包管理器中保持同一套质量流程，同时避免把某个生态的命令、目录或框架当成全球默认。
+
+核心原则只有一个：**先读取仓库事实，再选择工具；profile 是导航，不是替仓库做决定。**
+
+## 1. 所有语言都先做的事实调查
+
+在写代码、安装依赖或决定验证命令之前，按任务范围确认以下事实：
+
+1. 目标路径适用的 `AGENTS.md`、`CONTRIBUTING`、README、CI/开发规范；
+2. Runtime / compiler / SDK 版本文件；
+3. Manifest / workspace / project file；
+4. 锁文件以及它实际对应的包管理器；
+5. build system、wrapper、task runner、Make/Just 等入口；
+6. test、lint、format、type/static analysis 的仓库实际命令；
+7. package/build artifact 与发布方式；
+8. generated code、schema、migration、native binding 等特殊边界；
+9. CI 当前怎样安装、构建和测试；
+10. 多语言仓库中当前改动影响哪些 workspace/module/consumer。
+
+不要因为机器上安装了某个工具就使用它。优先使用：
+
+```text
+仓库 wrapper / script
+→ 仓库声明的 package manager / build tool
+→ 对应锁文件的 frozen / locked 模式
+→ 语言原生命令（仓库确实以它为正式入口时）
+```
+
+必须保持：
+
+- 不得擅自升级 Runtime、Compiler、SDK、Framework、Package Manager 或依赖；
+- 不得擅自把 npm 换成 pnpm、Maven 换 Gradle、pip 换 uv、CMake 换 Meson等；
+- 不同时维护多套相互竞争的锁文件，除非仓库明确就是这样设计；
+- 不删除锁文件来“解决依赖问题”；
+- 不用全局安装版本替代仓库 wrapper/版本文件；
+- 不因为 profile 中出现示例命令就宣称该命令在目标仓库可用；
+- 验证结论必须来自仓库实际命令和本轮新鲜执行结果。
+
+## 2. 如何解释本文件中的命令
+
+下面的命令都是**候选发现线索**，不是无条件执行清单。
+
+例如看到 Python 项目时：
+
+```text
+pytest
+ruff
+mypy
+```
+
+只代表“这些是常见入口，应检查仓库是否使用”；如果仓库实际使用 `tox`、`nox`、`hatch`、`poetry run`、`uv run`、`pyright` 或完全不同的机制，就必须跟随仓库。
+
+同理，看到 JavaScript 项目不能只因为存在 `package.json` 就运行 `npm install`；先看 `packageManager`、锁文件、workspace 和 CI。
+
+## 3. Python
+
+### 优先读取
+
+常见事实源包括：
+
+```text
+.python-version
+pyproject.toml
+uv.lock
+poetry.lock
+requirements*.txt
+Pipfile / Pipfile.lock
+setup.cfg
+setup.py
+tox.ini
+noxfile.py
+pytest.ini
+ruff.toml
+mypy.ini
+pyrightconfig.json
+```
+
+只读取仓库实际存在、且与任务有关的文件。
+
+### 需要确认
+
+- Python 精确/最小/最大支持版本；
+- 单工程还是 workspace/monorepo；
+- `src/` layout、flat layout 或其他结构；
+- uv / Poetry / pip / pip-tools / Pipenv / Hatch / PDM 等实际管理方式；
+- lock 是否是正式事实源；
+- test runner；
+- type checker；
+- formatter/linter；
+- wheel/sdist/native extension 构建方式。
+
+### 常见验证候选
+
+```text
+python -m pytest ...
+uv run pytest ...
+python -m unittest ...
+ruff check / ruff format --check
+mypy / pyright
+python -m build
+```
+
+必须改成仓库实际命令。
+
+### Python 专项风险
+
+- import path/package discovery；
+- editable install 与真实 wheel 行为差异；
+- async/event loop；
+- typing/runtime 行为差异；
+- optional dependency / extras；
+- C extension/platform wheel；
+- serialization/schema；
+- migration/ORM 版本。
+
+禁止用临时 `PYTHONPATH`、`sys.path` hack 或改变工作目录掩盖真实 packaging 问题，除非该仓库正式设计本来如此。
+
+## 4. JavaScript / TypeScript
+
+### 先读取
+
+```text
+package.json
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+bun.lock / bun.lockb
+.npmrc
+.pnpmfile.cjs
+pnpm-workspace.yaml
+yarn workspace config
+tsconfig*.json
+vite/webpack/rollup/esbuild config
+eslint/prettier/biome config
+```
+
+### 包管理器判定
+
+综合：
+
+```text
+packageManager 字段
++ 唯一/正式锁文件
++ workspace 配置
++ CI 安装命令
++ AGENTS/README
+```
+
+决定 npm / pnpm / Yarn / Bun。不要从个人偏好选择。
+
+### 常见验证候选
+
+```text
+npm ci / pnpm install --frozen-lockfile / yarn immutable install
+npm test / pnpm test / yarn test
+npm run lint
+npm run typecheck
+tsc --noEmit
+npm run build
+```
+
+具体命令看 scripts 和 CI。
+
+### JS/TS 专项风险
+
+- ESM/CJS；
+- Node/browser/runtime target；
+- workspace hoisting；
+- generated client/types；
+- bundler tree-shaking/code splitting；
+- SSR/CSR；
+- browser compatibility；
+- package exports/typesVersions；
+- install scripts/supply chain。
+
+不要手写第二套由 OpenAPI/GraphQL/protobuf 等生成的类型事实。
+
+## 5. Go
+
+### 先读取
+
+```text
+go.mod
+go.sum
+go.work
+go.work.sum
+Makefile / Taskfile / Justfile
+.golangci.yml 等 lint 配置
+```
+
+### 确认
+
+- module path；
+- Go version/toolchain directive；
+- workspace；
+- CGO；
+- build tags；
+- generated code；
+- platform/architecture targets。
+
+### 常见验证候选
+
+```text
+go test ./...
+go test -race ...
+go vet ./...
+go build ./...
+golangci-lint run
+```
+
+Race、CGO、跨平台构建只有存在独立风险时才需要；不要机械执行最昂贵组合。
+
+### Go 专项风险
+
+- goroutine 生命周期和 leak；
+- context cancellation/deadline；
+- race；
+- interface contract；
+- nil/zero value 语义；
+- module replace；
+- generated protobuf/stringer 等漂移。
+
+## 6. Rust
+
+### 先读取
+
+```text
+Cargo.toml
+Cargo.lock
+rust-toolchain.toml / rust-toolchain
+.cargo/config.toml
+workspace Cargo.toml
+rustfmt.toml
+clippy config
+```
+
+### 确认
+
+- edition；
+- MSRV / pinned toolchain；
+- workspace members；
+- features/default-features；
+- target triples；
+- unsafe boundary；
+- FFI/native dependencies。
+
+### 常见验证候选
+
+```text
+cargo test
+cargo test --workspace
+cargo check
+cargo clippy
+cargo fmt --check
+cargo build --release
+```
+
+Feature matrix 和 target matrix 必须按实际支持范围决定，不能自动跑或自动扩大。
+
+### Rust 专项风险
+
+- unsafe soundness；
+- lifetime/ownership 变化造成 API 兼容；
+- feature interaction；
+- panic/error contract；
+- FFI ABI；
+- serialization format；
+- Cargo.lock 对 library/application 的仓库政策。
+
+## 7. Java / Kotlin
+
+### 先读取
+
+Maven：
+
+```text
+pom.xml
+.mvn/
+mvnw / mvnw.cmd
+```
+
+Gradle：
+
+```text
+settings.gradle / settings.gradle.kts
+build.gradle / build.gradle.kts
+gradle.properties
+gradle/wrapper/
+gradlew / gradlew.bat
+libs.versions.toml
+```
+
+以及 Java/Kotlin toolchain、CI 和测试配置。
+
+### 选择构建入口
+
+仓库存在 wrapper 时优先 wrapper。不要用本机另一版本 Maven/Gradle 替代 wrapper 后宣称验证等价。
+
+### 常见验证候选
+
+```text
+./mvnw test
+./mvnw verify
+./gradlew test
+./gradlew check
+./gradlew build
+```
+
+### Java / Kotlin 专项风险
+
+- JDK/toolchain 版本；
+- binary/source compatibility；
+- annotation processing / KSP / kapt；
+- generated sources；
+- framework lifecycle/DI；
+- coroutine/threading；
+- serialization/JPA schema；
+- multi-module dependency graph。
+
+不要在普通 Feature 中顺手从 Maven 迁移 Gradle或反之。
+
+## 8. .NET
+
+### 先读取
+
+```text
+global.json
+*.sln / *.slnx
+*.csproj / *.fsproj / *.vbproj
+Directory.Build.props
+Directory.Build.targets
+Directory.Packages.props
+NuGet.config
+packages.lock.json
+```
+
+### 确认
+
+- .NET SDK pin；
+- TargetFramework/TargetFrameworks；
+- solution/project boundary；
+- Central Package Management；
+- nullable/analyzers；
+- NativeAOT/platform target；
+- test projects；
+- package/public API。
+
+### 常见验证候选
+
+```text
+dotnet restore
+dotnet build --no-restore
+dotnet test --no-build
+dotnet pack
+```
+
+如果仓库启用了 locked restore，必须沿用其正式参数和 lock policy。
+
+### .NET 专项风险
+
+- multi-target framework；
+- public API/assembly compatibility；
+- async/cancellation；
+- nullable contract；
+- source generator；
+- trimming/AOT；
+- EF/database migration（项目实际使用时）。
+
+## 9. C / C++
+
+### 先读取
+
+可能包括：
+
+```text
+CMakeLists.txt
+CMakePresets.json
+CMakeUserPresets.json（通常本地，不应擅自提交）
+Makefile
+meson.build
+meson_options.txt
+configure.ac
+conanfile.*
+vcpkg.json
+vcpkg-configuration.json
+compile_commands.json
+toolchain files
+```
+
+### 确认
+
+- compiler 与版本；
+- C/C++ standard；
+- target OS/arch；
+- static/shared；
+- ABI/public header；
+- sanitizer policy；
+- dependency manager；
+- cross-compilation/toolchain；
+- generated sources。
+
+### 常见验证候选
+
+```text
+cmake --preset ...
+cmake --build ...
+ctest ...
+meson test
+make test
+```
+
+Sanitizer、Valgrind、cross-target、benchmark 等按风险选择。
+
+### C / C++ 专项风险
+
+- memory safety/UB；
+- lifetime/ownership；
+- thread race；
+- ABI；
+- compiler/platform divergence；
+- macro/build flag；
+- binary layout/protocol；
+- generated headers。
+
+不要为修一个逻辑 Bug 顺手更换 build system 或 dependency manager。
+
+## 10. Swift
+
+### 先读取
+
+Swift Package：
+
+```text
+Package.swift
+Package.resolved
+.swift-version（存在时）
+```
+
+Apple project：
+
+```text
+*.xcodeproj
+*.xcworkspace
+xcconfig
+project.yml（如 XcodeGen）
+Tuist 配置（如实际使用）
+```
+
+### 确认
+
+- Swift / Xcode / SDK 版本；
+- SwiftPM 或 Xcode workspace；
+- platform deployment target；
+- simulator/device target；
+- signing entitlement（只读调查时不改）；
+- generated project/source。
+
+### 常见验证候选
+
+```text
+swift test
+swift build
+xcodebuild test ...
+xcodebuild build ...
+```
+
+必须使用仓库已有 scheme/destination/config，不编造。
+
+### Swift 专项风险
+
+- actor/concurrency；
+- MainActor/UI lifecycle；
+- Codable format；
+- Objective-C interoperability/ABI；
+- app permission/entitlement；
+- simulator vs device；
+- signing/package/archive。
+
+## 11. Dart / Flutter
+
+### 先读取
+
+```text
+pubspec.yaml
+pubspec.lock
+analysis_options.yaml
+.dart_tool/package_config.json（通常生成，不作为手写事实源）
+Flutter platform directories
+melos.yaml（monorepo 实际使用时）
+```
+
+### 确认
+
+- Dart/Flutter SDK约束；
+- package/app；
+- generated code/build_runner；
+- target platform；
+- state/network/storage boundary。
+
+### 常见验证候选
+
+```text
+dart test
+dart analyze
+flutter test
+flutter analyze
+flutter build <target>
+```
+
+不要在 Dart package 上机械运行 Flutter 命令，也不要在没有目标平台环境时宣称 platform build 已验证。
+
+## 12. PHP
+
+### 先读取
+
+```text
+composer.json
+composer.lock
+phpunit.xml*
+phpstan.neon*
+psalm.xml
+phpcs.xml*
+```
+
+### 常见验证候选
+
+```text
+composer install（按仓库 locked 策略）
+vendor/bin/phpunit
+vendor/bin/phpstan
+vendor/bin/psalm
+composer validate
+```
+
+### PHP 专项风险
+
+- PHP platform requirement/extensions；
+- Composer autoload；
+- framework container/lifecycle；
+- database migration；
+- serialization/public API；
+- generated cache/config。
+
+## 13. Ruby
+
+### 先读取
+
+```text
+Gemfile
+Gemfile.lock
+.gemrc
+.ruby-version
+.gemspec
+Rakefile
+.rspec
+```
+
+### 常见验证候选
+
+```text
+bundle install（遵循仓库 deployment/frozen 策略）
+bundle exec rspec
+bundle exec rake test
+bundle exec rubocop
+```
+
+### Ruby 专项风险
+
+- Ruby/Bundler version；
+- Gem public API；
+- Rails migration/callback（实际使用时）；
+- autoloading；
+- monkey patch/global state；
+- native gem/platform。
+
+## 14. Elixir
+
+### 先读取
+
+```text
+mix.exs
+mix.lock
+.tool-versions（若 asdf 等实际使用）
+config/
+formatter config
+```
+
+### 常见验证候选
+
+```text
+mix deps.get（按锁文件）
+mix test
+mix format --check-formatted
+mix compile --warnings-as-errors（仓库实际门禁时）
+```
+
+### Elixir 专项风险
+
+- OTP/Elixir version；
+- supervision tree；
+- process/message semantics；
+- Ecto migration（实际使用时）；
+- distributed node；
+- async test shared state。
+
+## 15. Monorepo
+
+Monorepo 不是语言。它是多个技术栈共享一个仓库时的额外 profile。
+
+开始前确认：
+
+```text
+root rules
+→ workspace/project rules
+→ target directory nested rules
+```
+
+还要确认：
+
+- root lock vs per-project lock；
+- shared toolchain/version；
+- dependency graph；
+- affected/changed build mechanism；
+- shared generated Contract；
+- root CI 与 package CI；
+- cross-language consumer。
+
+验证不能只跑“最靠近改动的单元测试”就结束；如果修改共享 Contract、schema、build plugin 或公共 library，要验证实际受影响消费者。
+
+同样不要反过来跑整仓最昂贵测试来替代影响分析。先确定 changed scope，再按仓库正式门禁扩大。
+
+## 16. Container / IaC
+
+这也是叠加 profile，可与任何语言共存。
+
+### Container
+
+先读：
+
+```text
+Dockerfile / Containerfile
+compose*.yaml
+.dockerignore
+image/version pin
+entrypoint/healthcheck
+CI image build/publish
+```
+
+验证候选：
+
+```text
+docker build / buildx build
+container smoke
+health/readiness
+compose config
+SBOM/signature/provenance checks（项目已建立时）
+```
+
+禁止为了“修构建”把 base image 改成 `latest`、删除锁定或绕过证书/安全检查。
+
+### Terraform / OpenTofu
+
+先读：
+
+```text
+*.tf
+*.tfvars.example（不要读取/泄露真实 Secret）
+.terraform.lock.hcl
+required_version / required_providers
+module docs/tests
+```
+
+验证候选：
+
+```text
+fmt -check
+validate
+plan
+policy/test framework
+```
+
+`plan` 不是 `apply`。真实 apply 需要明确环境和授权。
+
+### Helm / Kubernetes / Kustomize
+
+确认 chart/version/value schema、overlay、render/validate、policy、target cluster。不要默认需要 Kubernetes，也不要为了验证连接生产 cluster。
+
+### Ansible / Cloud SDK / Deployment Scripts
+
+先区分 dry-run/check、sandbox、真实生产动作。Secret、inventory、credential 不能写入日志或提交。
+
+## 17. 未列出的语言或工具链
+
+本文件不试图穷举所有语言。Objective-C、Scala、Clojure、Haskell、OCaml、Lua、R、Julia、Zig、Nim、Erlang、Solidity 或未来语言均使用同一算法：
+
+```text
+仓库规则
+→ Runtime/Compiler/SDK 版本事实
+→ Manifest/Workspace
+→ 锁文件/依赖解析
+→ Build/Test/Lint/Format/Static Analysis
+→ Package/Artifact
+→ CI/Release
+→ 任务实际调用链
+```
+
+如果生态没有锁文件，不要伪造一个“必须有锁文件”的要求；改为确认它实际使用的可复现依赖与版本机制。如果生态没有静态类型检查，也不要为了填清单新增类型工具。
+
+## 18. 依赖变更的统一规则
+
+任何语言都遵守：
+
+1. 优先标准库和现有依赖；
+2. 为少量代码不轻易新增依赖；
+3. 新增前说明必要性、维护状态、许可证、体积/构建影响和替代方案；
+4. 修改 Manifest 后同步仓库正式锁文件；
+5. 不使用 `latest` 作为运行时可变解析策略；
+6. 普通功能任务不顺手升级；
+7. 安全升级/大版本升级单独评估 breaking change 与回归范围；
+8. 不删除失败测试、lock、integrity/signature 检查来“让安装通过”。
+
+## 19. 工具链不可用时
+
+如果当前宿主缺少项目要求的 compiler/SDK/device/database/container engine：
+
+- 先确认仓库是否提供 wrapper/container/CI 可验证路径；
+- 能在受控 CI/runner 验证时使用仓库既有机制；
+- 不能运行的验证必须明确写成“未验证”，不能用代码阅读替代执行结论；
+- 不为方便而擅自升级/降级到当前机器已有版本；
+- 不声称另一个平台的成功等价于目标平台成功。
+
+最终验证使用的必须是**仓库实际命令**、实际支持版本和本轮新鲜证据。
