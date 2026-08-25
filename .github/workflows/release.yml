@@ -5,11 +5,18 @@ run-name: >-
       && format('Release {0} from {1}', inputs.version, github.sha)
       || format('Release dry-run for PR #{0}', github.event.pull_request.number) }}
 
+# Release 只有两种模式：
+# 1. pull_request：只读 dry-run。验证构建、离线 Bundle 和真实 Compose 回放，不发布任何版本。
+# 2. workflow_dispatch：用户手工正式发布。先完整复用阶段 1 的已回放候选，再写 GHCR / Tag / GitHub Release。
+#
+# 两个 Job 故意分开：build-verify 永远只有读权限；publish-release 才拥有最小发布写权限。
+# publish-release 不 checkout 源码，只消费已经回放过的候选 Artifact，并显式指定 GitHub repository，
+# 因此正式发布不依赖本地 .git 上下文。
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "正式版本号，例如 v0.3.0"
+        description: "正式版本号，例如 v2.0.0"
         required: true
         type: string
   pull_request:
@@ -21,11 +28,12 @@ on:
       - compose.yaml
       - env.production.example
       - tests/unit/test_docker_build_sources.py
+      - tests/unit/test_release_workflow.py
       - docs/02_环境运行与部署.md
       - docs/roadmap/02_生产上线实施路线.md
       - docs/appendix/11_生产部署与离线Release方案.md
 
-# PR dry-run 只拿只读 token；正式发布的写权限只在 publish-release job 中授予。
+# Workflow 默认只读。正式写权限只在 publish-release Job 内部提升。
 permissions:
   contents: read
 
@@ -33,7 +41,26 @@ concurrency:
   group: aima-ugc-release-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  # GitHub Hosted Runner 使用官方海外上游；本地 Dockerfile/Compose 的国内默认源保持不变。
+  AIMA_BUILD_DEBIAN_MIRROR: http://deb.debian.org/debian
+  AIMA_BUILD_DEBIAN_SECURITY_MIRROR: http://deb.debian.org/debian-security
+  AIMA_BUILD_PYPI_INDEX: https://pypi.org/simple
+  AIMA_BUILD_NPM_REGISTRY: https://registry.npmjs.org
+
+  # Release 镜像身份。禁止 latest；PostgreSQL 继续使用仓库锁定版本。
+  POSTGRES_IMAGE: postgres:18.4
+  BACKEND_IMAGE: ghcr.io/dingyuwen777/aima-ugc-backend
+  FRONTEND_IMAGE: ghcr.io/dingyuwen777/aima-ugc-frontend
+  PACKAGE_OWNER: dingyuwen777
+  BACKEND_PACKAGE: aima-ugc-backend
+  FRONTEND_PACKAGE: aima-ugc-frontend
+
 jobs:
+  # ---------------------------------------------------------------------------
+  # Phase 1: build + verify
+  # ---------------------------------------------------------------------------
+  # PR 和正式发布都必须先经过这一阶段。它只读 GitHub，不写 GHCR/Tag/Release。
   build-verify:
     name: Build and replay offline candidate
     runs-on: ubuntu-24.04
@@ -41,13 +68,16 @@ jobs:
     permissions:
       contents: read
       checks: read
+      packages: read
+    env:
+      GH_REPO: ${{ github.repository }}
     outputs:
       version: ${{ steps.identity.outputs.version }}
       release_sha: ${{ steps.identity.outputs.release_sha }}
       candidate_artifact: ${{ steps.identity.outputs.candidate_artifact }}
 
     steps:
-      - name: Checkout pinned source
+      - name: Checkout candidate source
         uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
@@ -73,20 +103,25 @@ jobs:
             echo "version=${VERSION}"
             echo "candidate_artifact=${CANDIDATE_ARTIFACT}"
           } >> "${GITHUB_OUTPUT}"
+          echo "Release candidate: version=${VERSION}, sha=${RELEASE_SHA}"
 
-      - name: Configure official Release upstreams
+      - name: Verify GitHub CLI explicit repository context
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          cat >> "${GITHUB_ENV}" <<'EOF'
-          AIMA_BUILD_DEBIAN_MIRROR=http://deb.debian.org/debian
-          AIMA_BUILD_DEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security
-          AIMA_BUILD_PYPI_INDEX=https://pypi.org/simple
-          AIMA_BUILD_NPM_REGISTRY=https://registry.npmjs.org
-          POSTGRES_IMAGE=postgres:18.4
-          BACKEND_IMAGE=ghcr.io/dingyuwen777/aima-ugc-backend
-          FRONTEND_IMAGE=ghcr.io/dingyuwen777/aima-ugc-frontend
-          EOF
+          TEMP_DIR="${RUNNER_TEMP}/release-gh-context-${GITHUB_RUN_ID}"
+          mkdir -p "${TEMP_DIR}"
+          (
+            cd "${TEMP_DIR}"
+            resolved="$(gh repo view "${GH_REPO}" --json nameWithOwner --jq '.nameWithOwner')"
+            if [[ "${resolved}" != "${GH_REPO}" ]]; then
+              echo "GitHub CLI repository context mismatch: ${resolved}" >&2
+              exit 1
+            fi
+          )
+          echo "GitHub CLI repository context works without a local .git directory."
 
       - name: Validate formal release request
         if: github.event_name == 'workflow_dispatch'
@@ -100,7 +135,7 @@ jobs:
             exit 1
           fi
           if [[ ! "${VERSION}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-            echo "版本号必须使用 vMAJOR.MINOR.PATCH，例如 v0.3.0 或 v1.2.1。" >&2
+            echo "版本号必须使用 vMAJOR.MINOR.PATCH，例如 v2.0.0 或 v2.0.1。" >&2
             exit 1
           fi
           git fetch --no-tags --depth=1 origin main
@@ -108,14 +143,34 @@ jobs:
             echo "当前 Workflow SHA 已不是远端 main 最新 SHA，拒绝发布。" >&2
             exit 1
           fi
-          if git ls-remote --exit-code --tags origin "refs/tags/${VERSION}" >/dev/null 2>&1; then
+          if gh api "/repos/${GH_REPO}/git/ref/tags/${VERSION}" >/dev/null 2>&1; then
             echo "Git Tag ${VERSION} 已存在，拒绝覆盖已有发布基线。" >&2
             exit 1
           fi
-          if gh release view "${VERSION}" >/dev/null 2>&1; then
+          if gh release view "${VERSION}" --repo "${GH_REPO}" >/dev/null 2>&1; then
             echo "GitHub Release ${VERSION} 已存在，拒绝重复发布。" >&2
             exit 1
           fi
+
+      - name: Verify GHCR packages are private
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for package_name in "${BACKEND_PACKAGE}" "${FRONTEND_PACKAGE}"; do
+            visibility="$(
+              gh api \
+                -H "Accept: application/vnd.github+json" \
+                "/users/${PACKAGE_OWNER}/packages/container/${package_name}" \
+                --jq '.visibility'
+            )"
+            echo "GHCR ${PACKAGE_OWNER}/${package_name}: visibility=${visibility}"
+            if [[ "${visibility}" != "private" ]]; then
+              echo "Safety gate: refuse to publish a non-private GHCR package: ${package_name} visibility=${visibility}" >&2
+              exit 1
+            fi
+          done
 
       - name: Verify required main CI gates
         if: github.event_name == 'workflow_dispatch'
@@ -125,7 +180,7 @@ jobs:
         run: |
           set -euo pipefail
           gh api -H "Accept: application/vnd.github+json" \
-            "/repos/${GITHUB_REPOSITORY}/commits/${RELEASE_SHA}/check-runs?per_page=100" \
+            "/repos/${GH_REPO}/commits/${RELEASE_SHA}/check-runs?per_page=100" \
             > "${RUNNER_TEMP}/release-check-runs.json"
           python3 - "${RUNNER_TEMP}/release-check-runs.json" <<'PY'
           import json
@@ -171,7 +226,7 @@ jobs:
           docker version
           docker compose version
 
-      - name: Build Linux AMD64 application images from official upstreams
+      - name: Build Linux AMD64 application images
         shell: bash
         run: |
           set -euo pipefail
@@ -512,11 +567,11 @@ jobs:
             down --remove-orphans
           trap - EXIT
 
-      - name: Validate candidate archive
+      - name: Verify deploy archive can be created
         shell: bash
         run: |
           set -euo pipefail
-          CANDIDATE_ARCHIVE="AIMA_UGC-${VERSION}-deploy.tar.gz"
+          CANDIDATE_ARCHIVE="${RUNNER_TEMP}/AIMA_UGC-${VERSION}-deploy.tar.gz"
           tar -C release-bundle -cf - . | gzip -1 > "${CANDIDATE_ARCHIVE}"
           gzip -t "${CANDIDATE_ARCHIVE}"
           test -s "${CANDIDATE_ARCHIVE}"
@@ -538,8 +593,14 @@ jobs:
         run: |
           set -euo pipefail
           echo "Release dry-run succeeded for ${VERSION}."
-          echo "No write-capable repository token, GHCR image, Git Tag, or GitHub Release was used."
+          echo "Verified: private GHCR packages, official-source build, offline Bundle and canonical Compose replay."
+          echo "No GHCR push, Git Tag, GitHub Release or repository write token was used."
 
+  # ---------------------------------------------------------------------------
+  # Phase 2: publish
+  # ---------------------------------------------------------------------------
+  # 只有用户手工 workflow_dispatch 才会进入。这个 Job 不 checkout 源码；
+  # 它只发布 Phase 1 已经真实回放过的 Artifact，所以发布对象不会在两个 Job 之间重新构建。
   publish-release:
     name: Publish replay-tested candidate
     if: github.event_name == 'workflow_dispatch'
@@ -550,33 +611,58 @@ jobs:
       contents: write
       packages: write
     env:
+      GH_REPO: ${{ github.repository }}
       VERSION: ${{ needs.build-verify.outputs.version }}
       RELEASE_SHA: ${{ needs.build-verify.outputs.release_sha }}
-      BACKEND_IMAGE: ghcr.io/dingyuwen777/aima-ugc-backend
-      FRONTEND_IMAGE: ghcr.io/dingyuwen777/aima-ugc-frontend
 
     steps:
-      - name: Revalidate main and immutable version
+      - name: Revalidate publication target
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          CURRENT_MAIN_SHA="$(gh api "/repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          resolved="$(gh repo view "${GH_REPO}" --json nameWithOwner --jq '.nameWithOwner')"
+          if [[ "${resolved}" != "${GH_REPO}" ]]; then
+            echo "GitHub CLI repository context mismatch: ${resolved}" >&2
+            exit 1
+          fi
+
+          CURRENT_MAIN_SHA="$(gh api "/repos/${GH_REPO}/git/ref/heads/main" --jq '.object.sha')"
           if [[ "${CURRENT_MAIN_SHA}" != "${RELEASE_SHA}" ]]; then
             echo "构建完成后 main 已前进；拒绝把旧候选发布为当前版本。" >&2
             exit 1
           fi
-          if gh api "/repos/${GITHUB_REPOSITORY}/git/ref/tags/${VERSION}" >/dev/null 2>&1; then
+          if gh api "/repos/${GH_REPO}/git/ref/tags/${VERSION}" >/dev/null 2>&1; then
             echo "Git Tag ${VERSION} 已存在，拒绝覆盖。" >&2
             exit 1
           fi
-          if gh release view "${VERSION}" >/dev/null 2>&1; then
+          if gh release view "${VERSION}" --repo "${GH_REPO}" >/dev/null 2>&1; then
             echo "GitHub Release ${VERSION} 已存在，拒绝重复发布。" >&2
             exit 1
           fi
 
-      - name: Download replay-tested release candidate
+      - name: Revalidate private GHCR packages before push
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for package_name in "${BACKEND_PACKAGE}" "${FRONTEND_PACKAGE}"; do
+            visibility="$(
+              gh api \
+                -H "Accept: application/vnd.github+json" \
+                "/users/${PACKAGE_OWNER}/packages/container/${package_name}" \
+                --jq '.visibility'
+            )"
+            echo "GHCR ${PACKAGE_OWNER}/${package_name}: visibility=${visibility}"
+            if [[ "${visibility}" != "private" ]]; then
+              echo "Safety gate: refuse to publish a non-private GHCR package: ${package_name} visibility=${visibility}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Download replay-tested candidate
         uses: actions/download-artifact@v8
         with:
           name: ${{ needs.build-verify.outputs.candidate_artifact }}
@@ -592,7 +678,7 @@ jobs:
             sha256sum -c SHA256SUMS
           )
 
-      - name: Load and tag exact replay-tested application images
+      - name: Load and tag exact replay-tested images
         shell: bash
         run: |
           set -euo pipefail
@@ -608,7 +694,7 @@ jobs:
             echo "FRONTEND_ID=${FRONTEND_ID}"
           } >> "${GITHUB_ENV}"
 
-      - name: Publish exact candidate images to GHCR
+      - name: Publish private application images to GHCR
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -659,7 +745,11 @@ jobs:
               raise SystemExit("Candidate manifest version mismatch")
           manifest["images"]["backend"]["registry_ref"] = os.environ["BACKEND_REF"]
           manifest["images"]["frontend"]["registry_ref"] = os.environ["FRONTEND_REF"]
-          manifest["publication"] = {"github_release": True, "ghcr": True}
+          manifest["publication"] = {
+              "github_release": True,
+              "ghcr": True,
+              "ghcr_visibility": "private",
+          }
           path.write_text(
               json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
           )
@@ -700,6 +790,49 @@ jobs:
             migration-manifest.json \
             SHA256SUMS \
             "${DEPLOY_ARCHIVE}" \
+            --repo "${GH_REPO}" \
             --target "${RELEASE_SHA}" \
             --title "AIMA_UGC ${VERSION}" \
             --generate-notes
+
+      - name: Verify published GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_tag="$(gh release view "${VERSION}" --repo "${GH_REPO}" --json tagName --jq '.tagName')"
+          if [[ "${release_tag}" != "${VERSION}" ]]; then
+            echo "Published Release tag mismatch: ${release_tag}" >&2
+            exit 1
+          fi
+
+          tag_target="$(gh api "/repos/${GH_REPO}/git/ref/tags/${VERSION}" --jq '.object.sha')"
+          if [[ "${tag_target}" != "${RELEASE_SHA}" ]]; then
+            echo "Published Git tag target mismatch: ${tag_target}" >&2
+            exit 1
+          fi
+
+          mapfile -t release_assets < <(
+            gh release view "${VERSION}" --repo "${GH_REPO}" --json assets --jq '.assets[].name'
+          )
+          for expected_asset in \
+            release-manifest.json \
+            migration-manifest.json \
+            SHA256SUMS \
+            "${DEPLOY_ARCHIVE}"; do
+            if ! printf '%s\n' "${release_assets[@]}" | grep -Fxq "${expected_asset}"; then
+              echo "Published Release missing asset: ${expected_asset}" >&2
+              exit 1
+            fi
+          done
+
+          for package_name in "${BACKEND_PACKAGE}" "${FRONTEND_PACKAGE}"; do
+            visibility="$(gh api "/users/${PACKAGE_OWNER}/packages/container/${package_name}" --jq '.visibility')"
+            if [[ "${visibility}" != "private" ]]; then
+              echo "Published GHCR package is no longer private: ${package_name} visibility=${visibility}" >&2
+              exit 1
+            fi
+          done
+
+          echo "Release ${VERSION} published and verified for ${RELEASE_SHA}."
