@@ -103,15 +103,15 @@ data_changes: []
 | 用户 / Workflow Acceptance | not_applicable | 不改变 AIMA 产品工作流；Agent 路由由仓库规则、Skill 正文和 CI 回归约束 |
 | 跨组件 Golden Path | not_applicable | 不涉及产品组件接线 |
 | External Dependency / Provider Probe | not_applicable | 不涉及外部 Provider |
-| Build / Package / Runtime | not_applicable | 不修改构建、包或运行入口；最终 HEAD `90976d31` 的 Runtime Acceptance `32867814973` 与 Full-stack Acceptance `32867815281` 均 success，作为无回归补充证据 |
-| Docs / Governance / Other | required | 最终 HEAD `90976d31`：Change Completion Gate `32867814870`、CI `32867814925`、Runtime Acceptance `32867814973`、Full-stack Acceptance `32867815281` 全部 success；Coding patch 仅新增 4.12 Docs 路由 |
+| Build / Package / Runtime | not_applicable | 不修改构建、包或运行入口；证据提交 `90976d31` 的 Runtime Acceptance `32867814973` 与 Full-stack Acceptance `32867815281` 均 success，作为无回归补充证据 |
+| Docs / Governance / Other | required | 证据提交 `90976d31`：Change Completion Gate `32867814870`、CI `32867814925`、Runtime Acceptance `32867814973`、Full-stack Acceptance `32867815281` 全部 success；其后仅更新 Change 证据文本，不改变 Skill 实现 |
 
 # Completion Audit
 
 - [x] upstream_re_read：重新读取用户“每次正确使用 Docs，包括 Docs 路由回 Coding”的新增要求，并重新读取当前 AGENTS、Coding 4.12、Coding metadata、Docs 主规则、Docs metadata 和协作 reference。
 - [x] change_coverage：前向路由不再只靠 metadata；Coding 正文明确 not_applicable/必须读取 Docs；反向路由明确 code_issue_detected 后必须读取 Coding 才能改实现；保持默认 targeted，不引入全仓扫描。
 - [x] reverse_audit：链路为 `AGENTS → Coding → Docs → code_issue_detected → Coding → Docs targeted re-review`。Coding 不可用或无代码授权时 Docs 停止实现修改；第二次复核若范围扩大则回到上游决策，不无限循环。
-- [x] unresolved_cleared：R1—R9 全部 satisfied；第二轮 Red/Green、Coding patch 内容守恒检查、双向规则复核和最终 HEAD 永久 CI 均已有证据。
+- [x] unresolved_cleared：R1—R9 全部 satisfied；第二轮 Red/Green、Coding patch 内容守恒检查、双向规则复核和最终集成证据均已闭环。
 
 # 两阶段 Review
 
@@ -141,7 +141,7 @@ data_changes: []
 - [x] 在 Docs 主规则、协作 reference、metadata 中实现 code_issue_detected → Coding 反向硬路由。
 - [x] 增强 Coding 内容守恒回归，并恢复人工回写产生的唯一近似文字变化。
 - [x] 完成 Requirement Traceability、Completion Audit 和两阶段 Review。
-- [x] 以最终 HEAD `90976d31` 取得 Skill tests + Ready Check + 永久 CI 全绿。
+- [x] 取得 Skill tests + Ready Check + 永久 CI 全绿证据。
 
 # 验证
 
@@ -150,7 +150,7 @@ data_changes: []
 - `python -m unittest discover .agents/skills/coding/tests -v`
 - `python .agents/skills/coding/scripts/ready_check.py --root . --changed-since <PR-base>`
 - PR patch：Coding 除 4.12 追加外无其他修改。
-- PR CI：以 PR #237 最终 HEAD 的 Change Completion Gate、CI、Runtime Acceptance、Full-stack Acceptance 作为最终集成证据。
+- PR CI：Change Completion Gate、CI、Runtime Acceptance、Full-stack Acceptance。
 
 ## 新鲜证据
 
@@ -158,7 +158,7 @@ data_changes: []
 - 第二轮 Red：HEAD `58a8e604`，Change Completion Gate `32865678112` 的 Skill tests 失败，证明双向硬路由缺失被回归捕获。
 - 第二轮 Green：HEAD `7f4b9aeb`，Change Completion Gate `32866557360` 的 Skill tests 23/23 通过；当时 Ready Check 唯一失败为 Change 仍是 `in_progress`。
 - Ready 候选 HEAD `07bf67a2`：Change Completion Gate `32866954840`、CI `32866954584`、Runtime Acceptance `32866954535`、Full-stack Acceptance `32866954383` 全部 success。
-- 最终 HEAD `90976d31`：Change Completion Gate `32867814870` success，Skill tests 与 PR Ready Check 均通过；CI `32867814925` success，其中 PostgreSQL Integration、Repository Quality、Secret/docs gate、Build、Frontend unit/build/Browser Mock 和 CI Gate 全部 success；Runtime Acceptance `32867814973` success；Full-stack Acceptance `32867815281` success。
+- 证据提交 `90976d31`：Change Completion Gate `32867814870` success，Skill tests 与 PR Ready Check 均通过；CI `32867814925` success，其中 PostgreSQL Integration、Repository Quality、Secret/docs gate、Build、Frontend unit/build/Browser Mock 和 CI Gate 全部 success；Runtime Acceptance `32867814973` success；Full-stack Acceptance `32867815281` success。
 - Coding patch：当前 PR 对 `.agents/skills/coding/SKILL.md` 的 diff 只有 4.12 末尾新增 Docs 路由；原日志规则已恢复为“强制其他序列化形式”。
 
 # 文档影响
@@ -170,5 +170,5 @@ data_changes: []
 # 交付
 
 - Branch：`feature/docs-skill`。
-- PR：#237；双向路由实现、两阶段 Review、最终 HEAD 永久 CI 均已闭环，状态为 Ready for Review。
+- PR：#237；双向路由实现、两阶段 Review 和集成门禁证据均已闭环，状态应为 Ready for Review。
 - 发布：not_applicable。
