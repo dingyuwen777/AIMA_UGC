@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from aima_ugc.platform.config import PlatformSettings
 from aima_ugc.platform.security import read_secret_file
+from aima_ugc.platform.time import BEIJING_TIMEZONE
 
 SecretReader = Callable[[Path], SecretStr]
 
@@ -45,6 +46,7 @@ class DatabaseRuntime:
                 pool_pre_ping=True,
                 connect_args={
                     "connect_timeout": self._settings.db_connect_timeout_seconds,
+                    "options": f"-c timezone={BEIJING_TIMEZONE.key}",
                 },
             )
         return self._engine

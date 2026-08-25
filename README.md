@@ -490,7 +490,7 @@ Frontend → frontend/package.json + frontend/package-lock.json
 第一次进入仓库：
 
 1. [`AGENTS.md`](AGENTS.md)
-2. [`.agents/skills/reliable-vibe-coding/SKILL.md`](.agents/skills/reliable-vibe-coding/SKILL.md)
+2. [`.agents/skills/coding/SKILL.md`](.agents/skills/coding/SKILL.md)
 3. [`docs/01_代码结构与修改导航.md`](docs/01_代码结构与修改导航.md)
 4. [`docs/blueprint/README.md`](docs/blueprint/README.md)
 5. [`docs/blueprint/07_技术决策与实施门禁.md`](docs/blueprint/07_技术决策与实施门禁.md)

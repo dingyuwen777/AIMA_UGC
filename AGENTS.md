@@ -247,9 +247,9 @@ PostgreSQL
 
 - PostgreSQL 是唯一业务事实库；
 - 外部 ID 使用字符串；
-- 数据库时间用 `timestamptz`；
-- API 用 UTC ISO-8601；
-- 人工日志用 `YYYY-MM-DD HH:mm:ss.SSS` 北京时间；
+- 数据库时间继续使用 `timestamptz` 表达绝对时间点，应用 PostgreSQL Session 默认 timezone 固定为 `Asia/Shanghai`；
+- AIMA 自有 API 时间统一使用带 `+08:00` 偏移的 ISO-8601 北京时间；第三方 Raw、外部协议必须保持原始时间语义的事实层按原协议处理；
+- 人工日志使用北京时间 `[YYYY-MM-DD HH:mm:ss.SSS source.ext L<line>] [LEVEL] message`；前缀不额外输出 `timezone` 字段或 `Asia/Shanghai` 文本；
 - 关系使用外键/关联表，不用逗号字符串；
 - 稳定字段用列，确实灵活的扩展元数据才用 `jsonb`；
 - Content/Comment 使用 Current + Version + Metric Observation；
