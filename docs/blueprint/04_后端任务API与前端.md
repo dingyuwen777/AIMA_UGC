@@ -225,6 +225,8 @@ frontend/src/generated/api/
 - 后端 Contract 变化后必须重新生成并验证前端 Client；
 - 前端不能维护另一套平行 Request/Response Type 来“暂时对齐”。
 
+时间 Contract 统一规则：AIMA 自有 HTTP `datetime` 以带 `+08:00` 偏移的 ISO-8601 北京时间序列化；带时区的时间筛选进入 Contract 后先归一到 `Asia/Shanghai` 再解释。第三方 Raw 或外部协议必须保持原始 timestamp/epoch/timezone 语义的事实层不改写，只有进入 AIMA 自有展示/序列化边界时才按该边界规则转换。前端 generated Client 不维护第二套 UTC 假设。
+
 ---
 
 ## 5. 当前真实 HTTP API 面

@@ -23,7 +23,7 @@ def test_deepseek_current_price_is_not_available_before_effective_date() -> None
         catalog.price_for(
             provider="api.deepseek.com",
             model="deepseek-v4-pro",
-            at=datetime(2026, 8, 23, 23, 59, 59, tzinfo=UTC),
+            at=datetime(2026, 8, 23, 15, 59, 59, tzinfo=UTC),
         )
 
 
@@ -32,12 +32,11 @@ def test_llm_request_continues_when_price_is_not_effective_yet(
 ) -> None:
     records: list[LLMHTTPRequestAudit] = []
 
-    class BeforeEffectiveDateTime(datetime):
-        @classmethod
-        def now(cls, tz: object = None) -> datetime:
-            return datetime(2026, 8, 23, 23, 59, 59, tzinfo=UTC)
-
-    monkeypatch.setattr(openai_compatible_module, "datetime", BeforeEffectiveDateTime)
+    monkeypatch.setattr(
+        openai_compatible_module,
+        "beijing_now",
+        lambda: datetime(2026, 8, 23, 15, 59, 59, tzinfo=UTC),
+    )
 
     client = httpx.Client(
         base_url="https://api.deepseek.com/",
@@ -79,7 +78,7 @@ def test_llm_request_continues_when_price_is_not_effective_yet(
 
 
 def test_recalculation_does_not_apply_current_price_before_effective_date(tmp_path) -> None:
-    started_at = datetime(2026, 8, 23, 23, 59, 59, tzinfo=UTC)
+    started_at = datetime(2026, 8, 23, 15, 59, 59, tzinfo=UTC)
     audit = LLMHTTPRequestAudit(
         http_request_id="http-before-effective",
         logical_request_id="logical-before-effective",
