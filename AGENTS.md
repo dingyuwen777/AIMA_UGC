@@ -11,7 +11,7 @@
 处理分析、设计、编码、Review、PR、CI 或交付前：
 
 1. 先读本文件；
-2. 读取 `.agents/skills/reliable-vibe-coding/SKILL.md` 并按其任务路由执行；该 Skill 不存在或无法读取时明确报告，不能假装已应用；
+2. 读取 `.agents/skills/coding/SKILL.md` 并按其任务路由执行；该 Skill 不存在或无法读取时明确报告，不能假装已应用；Coding CLI 当前入口为 `.agents/skills/coding/scripts/coding.py`；
 3. 再读 `docs/blueprint/README.md` 和 `docs/blueprint/07_技术决策与实施门禁.md`；
 4. 如果任务涉及“下一阶段做什么”、生产部署、认证、Release、Backup/Restore、回滚或旧数据迁移，必须再读 `docs/roadmap/02_生产上线实施路线.md`；
 5. 如果需要快速找到真实代码入口，读 `docs/01_代码结构与修改导航.md`；
@@ -34,7 +34,7 @@
 | 当前开发环境怎么运行 | `docs/02_环境运行与部署.md` |
 | 下一阶段、生产上线、Release/Backup/回滚 | `docs/roadmap/02_生产上线实施路线.md` + `docs/appendix/11_生产部署与离线Release方案.md` |
 | 开发/测试/CI/Git | `docs/blueprint/06_开发约束与分阶段实施.md` |
-| 用户可见行为/前后端/Full-stack/Provider 测试分层 | `docs/blueprint/06_开发约束与分阶段实施.md` + `.agents/skills/reliable-vibe-coding/references/08_testing-strategy.md` |
+| 用户可见行为/前后端/Full-stack/Provider 测试分层 | `docs/blueprint/06_开发约束与分阶段实施.md` + `.agents/skills/coding/references/08_testing-strategy.md` |
 | 重大跨模块决定 | `docs/blueprint/07_技术决策与实施门禁.md` |
 | Collection Plan、Capability、Decision、评论 | `docs/blueprint/08_采集策略与平台能力.md` + `docs/collection/README.md` |
 | Scheduler 运行/停机恢复 | `docs/appendix/05_Scheduler调度执行与停机恢复.md` |
@@ -73,12 +73,12 @@
 7. Ready 前运行：
 
 ```bash
-python .agents/skills/reliable-vibe-coding/scripts/ready_check.py --root . --require-active-ready
+python .agents/skills/coding/scripts/ready_check.py --root . --require-active-ready
 ```
 
 机器 Ready Check 只验证可机器判断的结构、状态、Source 路径、占位符和 Completion Audit checkbox；它不能证明业务语义完整，因此不能替代 Requirement Traceability 和语义 Review。
 
-详细规则：`.agents/skills/reliable-vibe-coding/references/10_completion-gate.md`。
+详细规则：`.agents/skills/coding/references/10_completion-gate.md`。
 
 ## 2. 系统基线
 
@@ -387,7 +387,7 @@ Red
 → 完整 CI
 ```
 
-对 L2/L3 且存在用户可见、前后端/数据库/异步、公共 Contract 或 Provider 边界的任务，必须按 `.agents/skills/reliable-vibe-coding/references/08_testing-strategy.md` 建立并维护 Validation Matrix。固定职责是：
+对 L2/L3 且存在用户可见、前后端/数据库/异步、公共 Contract 或 Provider 边界的任务，必须按 `.agents/skills/coding/references/08_testing-strategy.md` 建立并维护 Validation Matrix。固定职责是：
 
 ```text
 Browser Mock Acceptance
