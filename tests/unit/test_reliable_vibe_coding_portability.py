@@ -153,9 +153,7 @@ def test_legacy_hard_gates_remain_in_normative_runtime_rules() -> None:
     completion = _read("references/completion-gate.md")
     review = _read("references/verification-review.md")
     collaboration = _read("references/collaboration.md")
-    corpus = "\n".join(
-        (skill, workflows, change_management, completion, review, collaboration)
-    )
+    corpus = "\n".join((skill, workflows, change_management, completion, review, collaboration))
 
     for marker in (
         ".reliable-vibe-coding/project-context.json",
