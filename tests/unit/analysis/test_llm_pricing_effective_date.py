@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 
 import httpx
 import pytest
-from pydantic import SecretStr
 
 from aima_ugc.adapters.llm import openai_compatible as openai_compatible_module
 from aima_ugc.adapters.llm.openai_compatible import OpenAICompatibleContentLabelingLLM
@@ -15,6 +14,7 @@ from aima_ugc.adapters.llm.request_audit import (
     recalculate_llm_request_costs,
 )
 from aima_ugc.modules.analysis.content_labeling import ContentLabelingLLMRequest
+from pydantic import SecretStr
 
 
 def test_deepseek_current_price_is_not_available_before_effective_date() -> None:
