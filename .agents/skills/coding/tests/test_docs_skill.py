@@ -70,6 +70,7 @@ class DocsSkillTest(unittest.TestCase):
         self.assertIn("not_applicable", coding)
         self.assertIn("`targeted`（默认）", coding)
         self.assertIn("code_issue_detected", coding)
+        self.assertIn("如果仓库没有 Docs Skill，则继续完整执行本节原有文档同步规则", coding)
         self.assertIn("Docs Impact", coding_agent)
         self.assertIn(".agents/skills/docs/SKILL.md", coding_agent)
         self.assertIn("code_issue_detected", coding_agent)
