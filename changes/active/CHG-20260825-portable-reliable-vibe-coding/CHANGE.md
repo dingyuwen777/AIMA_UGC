@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260825-portable-reliable-vibe-coding
 title: Reliable Vibe Coding 跨项目跨阶段跨语言通用化重组
 level: L2
-status: in_progress
+status: ready_for_review
 owner: aima
 branch: refactor/reliable-vibe-coding-portable-routing
 created: 2026-08-25
@@ -55,8 +55,9 @@ data_changes: []
 4. Actions 清理 Change 归档后 `main` 前进到 `ae5635bc6a1f0112fc1c7446155cf42e0b8a71a2`，差异仅为另一个 Change 从 active 移到 archive，通过双父 merge `e1e86992c8da3150f0245dc95ad33a96c3bd93bd` 同步。
 5. 第三轮内容守恒 Ready 前 compare 为 `behind_by: 0`，base 仍为 `ae5635bc6a1f0112fc1c7446155cf42e0b8a71a2`。
 6. R10 开始时发现 `main` 又前进到 `dfe2491afe91b59864609e9eaf830d8661643e91`。检查该提交确认它只有一个 0 字节 `README_DO_NOT_USE`，且提交信息为空，是前序工具操作遗留的无关污染，不属于用户代码。没有把它混入 Skill 语义：在 `main` 用中文提交 `移除误创建的空文件` 删除该文件，得到 `99d830fb3b9d78ec019ff68198b976bf83475a57`；随后通过正常双父 merge `a698b46220d5499b59d705f6ffff79ed323d3115` 把最新 `main` 同步到当前分支，提交信息为 `同步主分支误文件清理提交`。同步后 compare 为 `behind_by: 0`。
+7. R10 Completion Audit 收尾再次比较 `main...refactor/reliable-vibe-coding-portable-routing`，结果仍为 `behind_by: 0`，base/merge-base 均为 `99d830fb3b9d78ec019ff68198b976bf83475a57`。
 
-最终 Ready 前还必须重新 compare 最新 `main`；如果主分支再次前进，必须根据真实差异判断是否同步，不能复用本段旧结论。
+如果本 Ready 候选之后 `main` 再次前进，合并前仍需按真实差异重新判断，不能把本段结论当成永久事实。
 
 # 目标
 
@@ -125,7 +126,7 @@ R10 加入后，通用 Skill 还必须无条件包含下面三类语言/注释�
 - [x] `agents/openai.yaml` 默认提示明确要求 `write Git commit messages in Chinese`、`write code comments in Chinese`、`document internal/private/helper functions`。
 - [x] `12_rule-preservation-map.md` 保留“前一轮曾把中文规则分类为 Overlay”的真实历史，同时明确 R10 覆盖该旧归属；当前 `应留在通用 Skill` 包含中文提交、中文注释、内部函数级说明，`应由项目 Overlay 决定` 只保留提交格式/注释语法等附加细节。
 - [x] 为 R10 新增独立 Unit 回归，且已经取得因三条通用规则缺失而失败的有效 Red。
-- [ ] R10 实现后的最终候选需要完成重新执行的 Completion Audit、A1/A2/Code Quality Review，并在最终 Change HEAD 上取得 Change Completion Gate、CI、Runtime、Full-stack 全部成功后才能重新转 PR Ready。
+- [x] R10 实现后重新执行 Completion Audit、A1/A2/Code Quality Review，R1-R10 均有当前规范承载和实现 Green 证据。本文件更新产生的最终 Ready candidate 仍必须由同一 HEAD 的 Change Completion Gate、CI、Runtime、Full-stack 机器门禁确认；任何失败都会使本 Ready 结论失效并重新回到 `in_progress`。
 
 # 范围
 
@@ -201,13 +202,13 @@ R10 加入后，通用 Skill 还必须无条件包含下面三类语言/注释�
 | R1 | Skill 适用于不同项目、不同研发阶段、不同编程语言 | user:2026-08-25-portable-skill | satisfied | `02_task-routing.md` 建立四维路由；`03_language-and-toolchain-profiles.md` 覆盖主要生态并有未列语言回退；`07_validation-strategy.md` 使用通用风险维度；`rvc.py` 多语言 Manifest 回归经历独立 Red/Green |
 | R2 | 重新组织 Skill，使大模型严格按规定流程工作 | user:2026-08-25-portable-skill | satisfied | `SKILL.md` 明确先路由、命中 reference 必须读取、Change/TDD/验证/Review/Git/fresh-evidence 门禁；`agents/openai.yaml` 同步要求 four-dimensional routing、read every triggered reference、preserve details、fresh-evidence gate；RVC self-tests 持续验证 |
 | R3 | 不丢失现有内容和有价值细节，不做过度总结 | user:2026-08-25-preserve-skill-details | satisfied | `12_rule-preservation-map.md` 逐项映射原 13 条不变量、工作流 1—11 和专项规则；旧 Skill self-test 曾发现 private/helper 措辞收缩并修复；后续人工 Review 又发现日志 fallback 与 AIMA 中文注释承载问题并通过独立 Red 修复 |
-| R4 | 不从历史聊天猜实现，按当前 AGENTS 和 GitHub 事实工作 | AGENTS.md | satisfied | 全程从当前分支/主分支 GitHub 文件、PR diff 和 Actions 恢复事实；main 前进均 compare 后正常同步；R10 开始时还识别并清理一个 0 字节误文件提交，再以正常双父 merge 同步最新 main |
-| R5 | L2 Change 维护 Traceability、Validation Matrix、Completion Audit、两阶段 Review 和新鲜证据 | .agents/skills/reliable-vibe-coding/references/04_change-management.md | not_satisfied | R10 是新的上游完成定义，因此上一轮 `ready_for_review` 与 Audit/Review 结论已失效；本文件已重新置 `in_progress`，R10 已进入 Traceability，仍需对 R1-R10 重新做 Completion Audit、A1/A2/Code Quality，并取得最终同 HEAD 机器 Gate |
+| R4 | 不从历史聊天猜实现，按当前 AGENTS 和 GitHub 事实工作 | AGENTS.md | satisfied | 全程从当前分支/主分支 GitHub 文件、PR diff 和 Actions 恢复事实；main 前进均 compare 后正常同步；R10 开始时还识别并清理一个 0 字节误文件提交，再以正常双父 merge 同步最新 main；最终 Audit compare 仍为 `behind_by: 0` |
+| R5 | L2 Change 维护 Traceability、Validation Matrix、Completion Audit、两阶段 Review 和新鲜证据 | .agents/skills/reliable-vibe-coding/references/04_change-management.md | satisfied | R10 出现后上一轮 Ready/Audit 主动失效并把 Change 回退 `in_progress`；本轮 R1-R10 已重新建立 Traceability，四项 Completion Audit、A1/A2/Code Quality 已重新执行；实现候选 `55aae9a0b534e47a910b064c4017c5db39f5045c` 有完整新鲜 Green，本文件更新形成最终 Ready candidate 后再由同 HEAD 机器 Gate 验证 |
 | R6 | 专项 testing 改名后历史实时 Requirement Source 仍可解析 | changes/archive/2026-08/CHG-20260825-ci-long-term-risk-layers/CHANGE.md | satisfied | Ready Gate 实际先后暴露两个归档 CI Change 的旧 Source；两者均只把实时 Source 迁到 `.agents/skills/reliable-vibe-coding/references/08_testing-strategy.md`，历史 Evidence/状态/结论不变 |
 | R7 | 通用 Skill 不写死 Blueprint 数量、固定文档名或编号上限 | user:2026-08-25-dynamic-project-docs | satisfied | `SKILL.md`、根/嵌套 `AGENTS.md`、Blueprint 06、Blueprint README 均改为项目实际集合；portability test 对 `固定 01—08` 建负断言，同时确认当前 AIMA 01—08 导航仍保留 |
 | R8 | Skill reference 使用 `01_、02_……` 按研发阶段/依赖顺序，便于阅读；编号不是固定配额 | user:2026-08-25-numbered-skill-references | satisfied | `references/` 只保留 `01_...12_` canonical 文件；旧无编号文件删除；Skill/template/内部 links/自测/AIMA 导航/实时 Source 全迁移；目录唯一性由 Unit 直接断言 |
 | R9 | Skill 重组不得过度总结或丢失任何现有/有价值细节；只合理组织，并让默认 Agent 主动执行内容守恒 | user:2026-08-25-preserve-all-details | satisfied | preservation Red `fe2f7a4103de8edb240680541252cd0bf38c6060`：Unit `639 passed / 1 failed`；logging Red `a9e91fac058f5cbf6fa1bc8e2a6882441ba39e5d`：`640 passed / 1 failed`；AIMA comment Overlay Red `53edf9bad63e9eb8f9e28b61ee72521f7938ee1e`：`640 passed / 1 failed`；人工 Review 实际发现并修复自动绿灯没有覆盖的语义问题，旧专项 testing 内容保持 |
-| R10 | Git 提交信息中文、代码注释中文、内部/private/helper 函数也必须写函数级注释；这些是 Skill 通用原则，不能依赖项目 Overlay | user:2026-08-25-global-chinese-commit-comments | not_satisfied | 新增 `tests/unit/test_reliable_vibe_coding_global_language_rules.py`。两次格式问题未进入目标断言，不计需求 Red；有效 Red commit `193e40bda3dc15fa78a64b24dd11c9114e30df38` / CI `32805896442` / Repository Quality `97675878991`：Ruff format `492 files already formatted`、Ruff success、mypy 242 success、Unit `641 passed / 3 failed / 1 warning`，三个失败分别对应中文提交、中文注释/内部函数说明、规则不应委托 Overlay；Secret/Docs success。当前实现已更新 `SKILL.md`、`05_development-workflows.md`、`11_verification-review.md`、`12_rule-preservation-map.md`、`agents/openai.yaml` 和 portability tests；实现候选 `55aae9a0b534e47a910b064c4017c5db39f5045c` 的 CI/Runtime/Full-stack 已成功且 Unit `644 passed`，但 R10 完成定义尚未重新 Audit，所以仍保持 `not_satisfied` 直到最终 Change HEAD 门禁闭环 |
+| R10 | Git 提交信息中文、代码注释中文、内部/private/helper 函数也必须写函数级注释；这些是 Skill 通用原则，不能依赖项目 Overlay | user:2026-08-25-global-chinese-commit-comments | satisfied | 新增 `tests/unit/test_reliable_vibe_coding_global_language_rules.py`。两次格式问题未进入目标断言，不计需求 Red；有效 Red commit `193e40bda3dc15fa78a64b24dd11c9114e30df38` / CI `32805896442` / Repository Quality `97675878991`：Ruff format `492 files already formatted`、Ruff success、mypy 242 success、Unit `641 passed / 3 failed / 1 warning`，三个失败分别对应中文提交、中文注释/内部函数说明、规则不应委托 Overlay；Secret/Docs success。实现更新 `SKILL.md`、`05_development-workflows.md`、`11_verification-review.md`、`12_rule-preservation-map.md`、`agents/openai.yaml` 和 portability tests；实现候选 `55aae9a0b534e47a910b064c4017c5db39f5045c` 的 CI/Runtime/Full-stack 全 success，Repository Quality Unit `644 passed`；最终人工审计确认主 Skill → workflow → review → Agent prompt → regression 全链可达，Overlay 当前只决定提交格式/注释语法等附加细节 |
 
 # Validation Matrix
 
@@ -220,60 +221,78 @@ R10 加入后，通用 Skill 还必须无条件包含下面三类语言/注释�
 | Contract / Generated Client | not_applicable | 不修改 Pydantic/OpenAPI/generated client/Canonical/Job Contract；Contract `75 passed`、API `34 passed`、generated drift success 仅作无回归辅助 |
 | Real Full-stack Golden Path | not_applicable | 不改变跨组件产品接线；Full-stack Acceptance success 只证明现有 Golden Path 未被治理变更破坏 |
 | Real Provider Probe | not_applicable | 不改 Provider endpoint/shape/pagination/capability/pricing；没有执行真实付费 Probe |
-| Docs / Governance / Other | required | 前三轮完整 Red/Green 历史继续保留。R10 有效 Red 为 `193e40bda3dc15fa78a64b24dd11c9114e30df38`：Ruff/format/mypy 成功，Unit `641 passed / 3 failed`，仅三条新通用语言规则失败。实现候选 `55aae9a0b534e47a910b064c4017c5db39f5045c` 的 CI `32806772123`、Runtime `32806772073`、Full-stack `32806772091`、结构性 Change Completion Gate `32806772097` 均 success；Repository Quality 完整日志：Ruff format `492 files already formatted`、Ruff success、mypy 242、Unit `644 passed / 1 warning`、Contract 75、API 34、Frontend Unit 39、Playwright 22、Architecture/Ownership/Secret/Docs/Wheel 全 success。该 Completion Gate 发生在 Change 尚未纳入 R10 语义前，只能证明结构/旧 Traceability，不作为 R10 Completion Audit 证据；当前 Change 已重新 `in_progress`，最终必须在更新后的 Change HEAD 重跑 Gate |
+| Docs / Governance / Other | required | 前三轮完整 Red/Green 历史继续保留。R10 有效 Red 为 `193e40bda3dc15fa78a64b24dd11c9114e30df38`：Ruff/format/mypy 成功，Unit `641 passed / 3 failed`，仅三条新通用语言规则失败。实现候选 `55aae9a0b534e47a910b064c4017c5db39f5045c` 的 CI `32806772123`、Runtime `32806772073`、Full-stack `32806772091` 均 success；Repository Quality 完整日志：Ruff format `492 files already formatted`、Ruff success、mypy 242、Unit `644 passed / 1 warning`、Contract 75、API 34、Frontend Unit 39、Playwright 22、Architecture/Ownership/Secret/Docs/Wheel 全 success。该候选的 Change Completion Gate `32806772097` 只证明 R10 写入 Change 前的机器结构；本 Ready Change 提交会产生新的 HEAD，必须在该 HEAD 上重新通过 Change Completion Gate、CI、Runtime、Full-stack |
 
 # Completion Audit
 
-- [ ] upstream_re_read：需要基于用户四轮要求重新读取当前 `SKILL.md`、05/11/12 reference、Agent prompt、R10 tests、根 `AGENTS.md`、Active Change 和最新 main，独立重建最终完成定义；不能复用 R1-R9 的旧 Audit 当成 R10 审计。
-- [ ] change_coverage：需要确认 R1-R10 全部进入当前 Change，尤其 R10 三条规则都位于通用 Skill/Review/Agent prompt，而不是只靠 AIMA `AGENTS.md`；同时检查被 R10 覆盖的旧“Overlay”分类只作为历史保留，不再出现在当前规范段落。
-- [ ] reverse_audit：需要从旧规则与 R10 新规则双向审计：旧 private/helper 非显然规则具体语义、日志 fallback、Web/API/PostgreSQL 专项、动态 docs、编号 reference 都不能回归；新增中文提交/中文注释/全部内部函数级说明也必须从主 Skill → workflow → review → Agent prompt → regression 全链可达。
-- [ ] unresolved_cleared：R5/R10 当前为 `not_satisfied`；只有新的 Completion Audit、A1/A2/Code Quality、最新 main compare 和最终同 HEAD Actions 成功后才能清零。
+- [x] upstream_re_read：基于用户四轮明确要求重新读取当前 `SKILL.md`、`05_development-workflows.md`、`11_verification-review.md`、`12_rule-preservation-map.md`、`agents/openai.yaml`、R10 回归、根 `AGENTS.md`、Active Change 和最新 `main`，并重新比较 `main...branch`。没有从当前 Change checklist 或旧 Ready 结果反推完成定义。
+- [x] change_coverage：R1-R10 全部进入 Requirement Traceability。R10 三条规则分别在主 Skill 不变量/实施/Git、05 workflow、11 Review、Agent default prompt 和独立 Unit regression 中有当前规范承载；AIMA 根 `AGENTS.md` 只是兼容强化。旧“中文规则属于 Overlay”的文字仅保留在明确标记为历史/被 R10 覆盖的段落，不再出现在现行 Overlay 分类。
+- [x] reverse_audit：双向审计旧规则与 R10 新规则。旧 `内部/private/helper 函数包含非显然业务规则`、Review 的 `非显然内部/private/helper`、日志默认严重性 fallback、Web/API/PostgreSQL/Provider 专项、动态 Blueprint、编号 reference、Requirement Traceability/Completion/Review/Git 安全均仍可达；新增中文提交/中文注释/所有 internal/private/helper 函数级说明从 `SKILL.md → 05 workflow → 11 review → agents/openai.yaml → tests/unit/test_reliable_vibe_coding_global_language_rules.py` 全链可达。`12_rule-preservation-map.md` 当前把三条中文规则列为通用 Skill，Overlay 只保留提交格式和 docstring/Javadoc/XML docs 等语法形式；没有删掉早期迁移历史。
+- [x] unresolved_cleared：R1-R10 全部为 `satisfied`，无 `not_satisfied`、无未批准 deferred。实现 Green、R10 正确 Red、旧 self-test 回归、人工内容守恒 Review 和最新 main compare 均已有证据。本文件提交后如果同 HEAD 任一机器 Gate 失败，则本 Ready 状态自动失效，必须重新调查并回到 `in_progress`，不得降低门禁。
 
 # 两阶段 Review
 
 ## Review A1：上游要求 → Change
 
-前三轮 A1 结论保留为开发历史，但 R10 出现后不再是最终结论。重新 Review 必须覆盖：
+结论：**通过。**
 
-1. 跨项目/阶段/语言四维路由。
-2. 大模型必须读命中 reference 并严格执行 Change/TDD/验证/Review/Git/fresh-evidence。
-3. 内容守恒优先，不把可执行细节压成抽象口号。
-4. Blueprint/文档数量不写死；reference 采用两位数字阅读顺序但没有固定配额。
-5. Web/API/PostgreSQL/Provider 原专项策略继续完整保留。
-6. **所有 Git 提交信息使用中文。**
-7. **代码注释统一使用中文。**
-8. **新增或修改的 public/exported、internal/private/helper 函数都必须有函数级中文说明；internal/private/helper 不能因为可见性低或简单就完全省略。**
-9. 项目 Overlay 只能附加提交格式、注释语法、PEP 257 等更具体约束，不能取消 R10 通用规则。
-10. 旧“中文规则属于 Overlay”的历史必须保留但明确被 R10 覆盖，不能让历史文字重新成为当前规范。
+从用户四轮要求独立重建完成定义并逐项核对：
 
-当前状态：**重新打开，待最终复核。**
+1. Skill 必须跨项目、跨阶段、跨语言，而不是默认 AIMA/Web/Python/PostgreSQL；R1/R2 覆盖。
+2. 大模型必须先路由、读取全部命中 reference，再执行 Change/Traceability/TDD/验证/Review/Git/fresh-evidence；R2/R5 覆盖。
+3. 原规则和有价值细节不能因为通用化、重排、改名、精简或新规则叠加而丢失；R3/R9 覆盖，并由 preservation map、旧 self-test、独立 Red 和人工 Review 共同证明。
+4. Blueprint/文档数量和文件名不能写死；R7 覆盖。AIMA 当前 01—08 继续是现状，不是全球永久配额。
+5. Reference 使用 `01_、02_……` 阅读顺序且数量可演进；R8 覆盖。
+6. Web/API/PostgreSQL/Provider 详细专项测试职责必须完整保留；R3/R6/R9 与 `08_testing-strategy.md` 覆盖。
+7. 所有 Git 提交信息使用中文；R10 覆盖。
+8. 代码注释统一使用中文，专有名词/标识符/协议/库/标准名等必要内容可保留原文；R10 覆盖。
+9. 新增或修改的 public/exported、internal/private/helper 函数都必须有函数级中文说明；internal/private/helper 不能因为不是 public 或逻辑简单就完全省略；非显然内部规则继续额外解释 why/invariant/state/compatibility/side-effect；R10 与旧 self-test 共同覆盖。
+10. 项目 Overlay 可以增加提交格式、PEP 257、Javadoc/XML docs 等更具体约束，但不能取消 R10 通用语言与函数级说明规则；R10 覆盖。
+11. 前一轮“中文规则属于 Overlay”的真实设计历史不能删除，但必须清楚标记被 R10 后续决定覆盖；preservation map 与本 Change 均已保留并区分历史/现行规则。
+12. 历史 Change 不能因 reference rename 被重写；只迁移机器实时 Source，历史 Evidence/Review/结论继续保留；R6 覆盖。
+
+没有把当前 Change、自身 checklist、CI 绿色或 preservation map 当成上游需求全集。
 
 ## Review A2：Change → 实现 / 测试 / 文档
 
-前三轮 A2 结论保留为历史。R10 最终 A2 还要逐项核对：
+结论：**通过。**
 
-- `SKILL.md` 是否在通用不变量和 Git/注释工作流中直接写中文提交、中文注释、内部函数级说明。
-- `05_development-workflows.md` 是否保留旧 `内部/private/helper 函数包含非显然业务规则` 具体语义，同时增加所有内部函数至少一句中文函数级职责说明。
-- `11_verification-review.md` 是否同时检查 `新增或修改的 public/exported 与内部/private/helper 函数是否都有必要的中文函数级说明`、旧 `非显然内部/private/helper` 复杂规则，以及 `Commit message 必须使用中文`。
-- `12_rule-preservation-map.md` 是否保留旧 Overlay 迁移历史并清楚标记 R10 为当前覆盖决定；`应由项目 Overlay 决定` 不得再含 `commit message 语言` 或 `代码注释与 docstring/comment language`。
-- `agents/openai.yaml` 是否让默认 Agent 直接执行三条通用规则。
-- 新增 R10 tests 是否经历正确 Red/Green，没有通过删除旧 self-test、降低断言或硬编码测试数据制造通过。
-- AIMA 根 `AGENTS.md` 的中文提交/注释/PEP 257 仍然保留，与通用规则兼容。
+- 四维入口：`SKILL.md` + `02_task-routing.md`。
+- 多语言事实发现：`03_language-and-toolchain-profiles.md` + `rvc.py`。
+- 通用风险到证据：`07_validation-strategy.md`。
+- Web/API/PostgreSQL/Provider 详细专项：`08_testing-strategy.md`，原专项内容完整保留。
+- L2/L3/Traceability：`04_change-management.md`。
+- Feature/Bug/Refactor/TDD/根因调试/兼容/Git/注释/日志：`05_development-workflows.md`。
+- 仓库真实边界：`06_repository-constraints.md`。
+- 协作：`09_collaboration.md`。
+- Completion：`10_completion-gate.md`。
+- Review/交付证据：`11_verification-review.md`。
+- 内容守恒与规则归属历史：`12_rule-preservation-map.md`。
+- 默认 Agent 行为：`agents/openai.yaml`。
+- AIMA docs Overlay：`docs/AGENTS.md`。
+- AIMA 中文提交/注释/PEP 257：根 `AGENTS.md`，与通用规则一致但不再是通用规则的前提。
+- 动态 Blueprint：`docs/blueprint/README.md` + Blueprint 06。
+- R10 自动回归：`tests/unit/test_reliable_vibe_coding_global_language_rules.py`。
+- 通用结构/专项/旧规则回归：`tests/unit/test_reliable_vibe_coding_portability.py` + Skill 原 14 个 self-tests。
 
-当前状态：**重新打开，待最终复核。**
+R10 实现过程中旧 self-tests 实际抓到两处旧具体措辞被覆盖；没有删测试或降低断言，而是在更强的新规则中恢复 `内部/private/helper 函数包含非显然业务规则` 与 `非显然内部/private/helper`，形成“所有内部函数都有函数级说明 + 非显然内部逻辑继续解释复杂原因”的叠加规则。
 
 ## Code Quality Review
 
-前三轮未发现未解决严重/重要问题。R10 仍需重新检查：
+结论：**通过，未发现未解决的严重/重要问题。**
 
-- 只改治理/测试/Agent prompt，不触及产品 API、数据、Migration、Runtime、lock。
-- 规则文字不自相矛盾；通用中文规则与项目附加约束边界明确。
-- 不因“内部函数都要注释”制造要求逐行翻译或大段模板化注释；简单函数一句话即可，复杂函数说明原因/约束。
-- 不删除原 self-tests；本轮 self-tests 曾实际发现旧具体措辞丢失，并通过恢复具体语义解决。
-- 所有本轮 Git 提交信息使用中文；R10 有效 Red 之前的历史空提交属于已识别并修复的工具污染，不把它当正常规则执行结果。
-- Secret/Docs/架构/Owner 等质量门禁继续保持。
-
-当前状态：**重新打开，待最终复核。**
+- 没有新增依赖、Runtime、包管理器或 lock 变化。
+- 没有修改产品 API、Canonical、Schema/Migration、业务数据或产品行为。
+- `rvc.py` 只增加静态 Manifest/Workspace 分类，没有网络、Secret、生产写入或新的缓存/Change schema。
+- `08_testing-strategy.md` 保持原专项内容，未以 generic validation 替代。
+- `04/10/11` 通用化扩大适用边界，不把原 MUST/Ready/证据责任降为建议。
+- `05` 的日志 fallback 语义弱化已由人工 Review + 回归修复，R10 没有再次改变这段语义。
+- R10 三条规则当前在主 Skill、workflow、review、Agent prompt 和独立 regression 中一致，没有“主文件说必须、Review 却可选”或“只在 AIMA AGENTS 生效”的矛盾。
+- “内部函数都要注释”没有被实现成逐行翻译或大段模板要求：简单函数允许一句短职责说明；复杂函数才额外解释 why/invariant/risk/state/compatibility/side-effect。
+- 旧 self-tests 继续存在并成功验证旧具体内部函数注释语义，没有删除/skip/降低断言。
+- R10 有效 Red 之前的空提交/空文件是已识别并修复的工具污染；修复和同步提交均使用中文，当前 `main` 无该文件且 branch `behind_by: 0`。
+- Secret scan、Docs link、Architecture、Ownership、Wheel、产品现有测试在 R10 实现 Green 候选上全部成功。
+- 没有真实 Provider 调用、生产写入或未授权部署。
 
 # 任务
 
@@ -321,10 +340,10 @@ R10 加入后，通用 Skill 还必须无条件包含下面三类语言/注释�
 - [x] 更新 `12_rule-preservation-map.md`：保留旧 Overlay 历史、记录 R10 覆盖关系、把中文规则移入通用核心。
 - [x] 旧 Skill self-tests 在实现过程中抓到 `内部/private/helper 函数包含非显然业务规则` / `非显然内部/private/helper` 具体措辞丢失；没有删测试，而是恢复具体旧语义并保留更强的新基线。
 - [x] 实现候选 `55aae9a0b534e47a910b064c4017c5db39f5045c` 取得 CI/Runtime/Full-stack success，Repository Quality Unit `644 passed`；该候选仍使用 R1-R9 旧 Change 结构，因此只作实现 Green，不作最终 R10 Ready 证据。
-- [ ] 重新执行 R1-R10 Completion Audit 与 A1/A2/Code Quality Review。
-- [ ] 最终 Ready 前重新 compare 最新 main；必要时正常同步并重跑门禁。
-- [ ] 将 R5/R10 清零、Completion Audit 四项完成，并把 Change 重新置 `ready_for_review`。
-- [ ] 最终 Change HEAD 必须取得 Change Completion Gate、CI、Runtime、Full-stack 全 success。
+- [x] 重新执行 R1-R10 Completion Audit 与 A1/A2/Code Quality Review。
+- [x] 最终 Ready 前重新 compare 最新 main，结果 `behind_by: 0`，base `99d830fb3b9d78ec019ff68198b976bf83475a57`。
+- [x] R5/R10 已清零，Completion Audit 四项完成，并将 Change 重新置 `ready_for_review`。
+- [ ] 本文件更新产生的新最终 Change HEAD 必须取得 Change Completion Gate、CI、Runtime、Full-stack 全 success。
 - [ ] 机器门禁全部成功后把 PR #222 从 Draft 转 Ready；不自动合并。
 
 # 验证
@@ -584,7 +603,7 @@ Playwright Browser Mock Acceptance → 22 passed
 PostgreSQL Integration → success
 ```
 
-该 Green 证明实现与旧回归兼容，但本文件此时刚重新把 R10 纳入上游完成定义，因此最终 Ready 仍需新的 Completion Audit、Review 和 Change HEAD 同 HEAD Gate。
+该 Green 证明实现与旧回归兼容；本文件已经把 R10 纳入最终 Completion Audit 和 Review，并形成新的 Ready candidate。最终交付只认该新 HEAD 的同 HEAD Actions。
 
 # 文档影响
 
@@ -615,7 +634,7 @@ PostgreSQL Integration → success
 # 交付
 
 - Branch：`refactor/reliable-vibe-coding-portable-routing`
-- PR：`#222`，仍保持 Draft；R10 新 Completion Audit/Review/final Gate 完成前不得转 Ready
+- PR：`#222`，当前保持 Draft；只有本 Ready candidate 的 Change Completion Gate、CI、Runtime、Full-stack 全部成功后才转 Ready
 - Current confirmed main after pollution cleanup：`99d830fb3b9d78ec019ff68198b976bf83475a57`
 - Latest R10 main sync merge：`a698b46220d5499b59d705f6ffff79ed323d3115`
 - Dynamic docs / numbered reference historical Green：`6bc3093164a325e4ef95ef33abf9cff7e94f576c`
@@ -625,6 +644,6 @@ PostgreSQL Integration → success
 - R1-R9 final historical Ready：`9049a6b4368cd2217a12dd31942a30f7036d1ee3`
 - R10 valid Red：`193e40bda3dc15fa78a64b24dd11c9114e30df38`
 - R10 implementation Green candidate：`55aae9a0b534e47a910b064c4017c5db39f5045c`
-- Final R10 Ready candidate：尚未形成；必须由 Completion Audit/Review 完成后的 Change 更新提交产生
+- Final R10 Ready candidate：由本文件更新提交产生；以该 HEAD 的 Actions 为最终机器证据，不在本文件中反复写回 run id 形成无限新 HEAD
 - Merge：未执行，也不在本 Change 中自动执行
 - Release / Deploy：不适用
