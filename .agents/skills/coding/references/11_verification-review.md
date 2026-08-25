@@ -116,7 +116,9 @@ Mobile / Embedded / Infra / Package：
 - 命名、注释和维护成本；
 - **新增或修改的 public/exported 与内部/private/helper 函数是否都有必要的中文函数级说明**；简单函数可以是一句简短职责说明，复杂函数还应解释关键意图、约束、状态转换、兼容原因或副作用边界；不能因函数是 internal/private/helper 就省略，也不能用逐行翻译代码的冗余注释凑数；
 - 对**非显然内部/private/helper** 逻辑，除函数级职责说明外，还要确认关键业务规则、不变量、状态转换、算法取舍、兼容原因或副作用边界已经被中文注释解释清楚；
+- 新增或修改的 Agent 自有时间戳、日期、缓存、Change 元数据、脚本默认时间、报告或用户可见时间是否统一使用 `Asia/Shanghai` 北京时间；外部协议/原始数据/机器 Contract 使用 UTC 或其他时区时，是否保持原始语义并只在展示边界正确转换；不得把宿主本地时间或 UTC 值冒充北京时间；
 - 仓库已有 logging/event/telemetry 体系且本次功能重要/难排障时，关键生命周期、异步阶段、外部 I/O、Retry/部分失败/终态是否具备最小充分可观测性；反之是否存在 INFO 高频刷屏、重复异常日志或无排障价值消息；
+- 新增或修改的人类可读日志是否使用 `[YYYY-MM-DD HH:mm:ss.SSS source.ext L<line>] [LEVEL] message`，并满足北京时间、三位毫秒、真实源文件/调用行号和大写 LEVEL；外部 wire-format Contract 强制结构化序列化时是否提供等价字段而不是静默退回 UTC；
 - 新增观测是否复用现有 logger/event/level/关联 ID 与脱敏机制，且没有 Secret/Token/密码/敏感 Raw/PII 泄露，也没有用日志替代正式业务事实；
 - 无关改动、重复实现和失效内容；
 - 用户未提交修改是否被保留；
@@ -130,7 +132,7 @@ Mobile / Embedded / Infra / Package：
 带 `completion_gate: required` 的 Change 在 Ready 前执行：
 
 ```bash
-python .agents/skills/reliable-vibe-coding/scripts/ready_check.py --root . --require-active-ready
+python .agents/skills/coding/scripts/ready_check.py --root . --require-active-ready
 ```
 
 PR CI 使用 `--changed-since <base-sha>`，只要求本 PR 实际改动的 gated Active Change Ready，避免并行中的其他 Change 互相阻塞；`main` push 要求所有 gated Active Change Ready。
@@ -213,7 +215,7 @@ PR CI 使用 `--changed-since <base-sha>`，只要求本 PR 实际改动的 gate
 
 确认正式文档描述当前系统；Change 保存当次原因、取舍、任务和证据。检查元数据状态、Owner、分支、依赖和影响范围仍与实际一致。带 Completion Gate 的 Change 还要检查 Requirement Source、Traceability、Validation Matrix 和 Completion Audit。不要提前把 Active Change 归档。
 
-项目的文档编号、命名、Blueprint/ADR/Roadmap 分工等本地规则继续由项目 Overlay 决定；Git 提交信息和代码注释的中文要求属于本 Skill 通用规则，不再委托给项目 Overlay。通用 Review 负责检查项目本地规则与通用规则是否同时满足。
+项目的文档编号、命名、Blueprint/ADR/Roadmap 分工等本地规则继续由项目 Overlay 决定；Git 提交信息、代码注释、北京时间和日志前缀要求属于本 Skill 通用规则，不再委托给项目 Overlay。通用 Review 负责检查项目本地规则与通用规则是否同时满足。
 
 ## Git 检查
 
