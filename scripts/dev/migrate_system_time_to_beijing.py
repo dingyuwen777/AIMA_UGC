@@ -40,12 +40,12 @@ def _migrate_http_contract() -> None:
     _replace_exact(
         path,
         "        if value is not None and (value.tzinfo is None or value.utcoffset() is None):\n"
-        "            raise ValueError(\"时间筛选必须包含时区\")\n"
+        '            raise ValueError("时间筛选必须包含时区")\n'
         "        return value",
         "        if value is not None and (value.tzinfo is None or value.utcoffset() is None):\n"
-        "            raise ValueError(\"时间筛选必须包含时区\")\n"
+        '            raise ValueError("时间筛选必须包含时区")\n'
         "        return to_beijing(value) if value is not None else None",
-        expected_count=6,
+        expected_count=3,
     )
 
 
