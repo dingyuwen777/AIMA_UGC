@@ -89,6 +89,21 @@ class ReviewSkillTest(unittest.TestCase):
         self.assertIn("不复制", readme)
         self.assertIn("SKILL.md", readme)
 
+    def test_human_usage_docs_route_review_without_replacing_formal_rules(self) -> None:
+        overview = self._read(".agents/README.md")
+        coding_readme = self._read(".agents/skills/coding/README.md")
+
+        self.assertIn("[`review`](skills/review/README.md)", overview)
+        self.assertIn("完成前 Review", overview)
+        self.assertIn("Review Skill（仓库存在时）", overview)
+        self.assertIn("Review 正式规则", overview)
+
+        self.assertIn("[`review`](../review/README.md)", coding_readme)
+        self.assertIn("完成前 Review", coding_readme)
+        self.assertIn("Review Skill 不存在时", coding_readme)
+        self.assertIn("Review 文件存在但无法读取", coding_readme)
+        self.assertIn("Review 正式规则", coding_readme)
+
     def test_existing_coding_and_docs_core_rules_remain_present(self) -> None:
         coding = self._read(".agents/skills/coding/SKILL.md")
         docs = self._read(".agents/skills/docs/SKILL.md")
