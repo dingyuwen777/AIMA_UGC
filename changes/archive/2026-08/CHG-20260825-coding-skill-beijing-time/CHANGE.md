@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260825-coding-skill-beijing-time
 title: Coding Skill 重命名与全系统北京时间统一
 level: L3
-status: ready_for_review
+status: done
 owner: aima
 branch: refactor/coding-skill-beijing-time
 created: 2026-08-25
@@ -58,7 +58,7 @@ data_changes: []
 - [x] 人类可读日志统一形如 `[YYYY-MM-DD HH:mm:ss.SSS source.ext L<line>] [LEVEL] message`；北京时间、毫秒三位、真实源文件/行号、LEVEL 大写，且**不额外显示 timezone 字段**。
 - [x] `changes/archive/**` 的历史叙事、Evidence、状态和 Review 不因本次 Skill 改名或时间策略批量改写；被 Ready Check 作为实时仓库路径校验的 Requirement Source 随 canonical Skill 路径做最小迁移；`rvc-change/v1` 因 Change 文件格式未变化继续保持原值，不引入兼容迁移层。
 - [x] Contract/OpenAPI/generated client、API/Unit/数据库 Runtime、Skill self-tests 和文档治理回归覆盖新规则。
-- [ ] 最终 Ready HEAD 通过永久 CI/Runtime/Full-stack/Developer Tooling/Change Gate 后正常合并 main，再独立归档本 Change；该项由 Ready HEAD 与合并后 GitHub 门禁、归档 PR 完成，不通过再次修改功能 Change 伪造“同 HEAD”证据。
+- [x] 最终 Ready HEAD 通过永久 CI/Runtime/Full-stack/Developer Tooling/Change Gate 后正常合并 main，并在 main merge commit 上再次通过五套 push 门禁；本 Change 由独立归档分支原子移动到 `changes/archive/2026-08/`。
 
 # 范围
 
@@ -143,7 +143,7 @@ data_changes: []
 | R8 | `rvc-change/v1` 因文件格式未变保持原标识，不建立兼容层 | user:2026-08-25-change-schema-unchanged | satisfied | 当前 Change、parser、Ready Check 继续使用 `rvc-change/v1`；只迁移 Skill 名称/CLI，不改 Change schema |
 | R9 | 除第三方 Raw/外部协议原始事实层外，所有系统/Agent 时间统一 `Asia/Shanghai` | user:2026-08-25-system-wide-beijing-time | satisfied | AIMA 自有 HTTP `+08:00`、输入归一化、`beijing_now/beijing_today`、PostgreSQL Session `Asia/Shanghai`、LLM 审计北京时间、DOCX 外部 UTC 边界均已实现；CI run 32823858633 与 Full-stack run 32823858623 成功 |
 | R10 | 日志不显示 `timezone="Asia/Shanghai"` | user:2026-08-25-log-no-timezone-field | satisfied | `test_logging_timezone_policy.py` 明确断言不存在 `timezone=` 与 `Asia/Shanghai` 文本；662 Unit 全绿 |
-| R11 | 不从历史聊天猜实现，按当前仓库事实与门禁交付并合并 main | AGENTS.md | satisfied | Ready 前再次读取 AGENTS、Coding Skill、Blueprint 04/05/06；当前比较 `behind_by=0`；按 PR/永久门禁继续交付 |
+| R11 | 不从历史聊天猜实现，按当前仓库事实与门禁交付并合并 main | AGENTS.md | satisfied | Ready 前再次读取 AGENTS、Coding Skill、Blueprint 04/05/06；最终 PR HEAD 与 main merge commit 均通过永久门禁，且按独立归档流程收尾 |
 
 # Validation Matrix
 
@@ -156,14 +156,14 @@ data_changes: []
 | 跨组件 Golden Path | required | Full-stack Acceptance run 32823858623 成功，真实 Frontend/API/PostgreSQL/Worker 接线保持可用 |
 | 外部依赖 Probe | not_applicable | 未修改 TikHub/LLM Provider 接口、Mapper 或外部当前事实；第三方 Raw/供应商定价 timezone 只做稳定协议边界回归，不需要付费 Probe |
 | Build / Package / Runtime | required | CI run 32823858633 Wheel build/install/import 成功；Runtime Acceptance run 32823858583 成功；Frontend lint/typecheck/build 成功 |
-| Docs / Governance / Other | required | CI run 32823858633 Architecture/Table Ownership/Secret/Docs 全绿；Developer Tooling self-tests 全绿；Ready Gate run 32824523183 又发现 5 个 archive 实时 Source 漂移并按 `docs/AGENTS.md` 最小迁移，未恢复旧 Skill 或建立兼容层；最终 Ready HEAD 需重新通过 Change Gate |
+| Docs / Governance / Other | required | CI run 32823858633 Architecture/Table Ownership/Secret/Docs 全绿；Developer Tooling self-tests 全绿；Ready Gate run 32824523183 发现并完成 5 个 archive 实时 Source 最小迁移；最终 Ready HEAD Change Gate 32831298431 与 main push Change Gate 32831913880 均成功 |
 
 # Completion Audit
 
-- [x] upstream_re_read: Ready 前重新读取当前分支 `AGENTS.md`、`.agents/skills/coding/SKILL.md`、Blueprint 04/05/06、测试/Completion/Review 规则，并确认 main 仍为 `5f9d125ae716d34295f8397b337248020069588a`。
+- [x] upstream_re_read: Ready 前重新读取当前分支 `AGENTS.md`、`.agents/skills/coding/SKILL.md`、Blueprint 04/05/06、测试/Completion/Review 规则；合并后又重新读取 main `AGENTS.md` 并以当前 main 机器事实验证集成。
 - [x] change_coverage: 逐条重建 R1-R11；Skill/CLI/cache、HTTP、DB Session、系统时间、日志、外部协议、Provider Pricing timezone、文档和测试均有实现与回归证据，`not_satisfied` 已清零。
 - [x] reverse_audit: 从后端时间能力反查 HTTP/DB/日志/报告/LLM 消费边界，并从前端/Contract 反查后端真实支持；Full-stack、generated Client、真实 PostgreSQL 与 Runtime 均通过，无悬空消费者或第二套 UTC 假设；Skill canonical rename 还反向检查 gated 历史 Change 的实时 Source 并完成迁移。
-- [x] unresolved_cleared: 误删 Migration 回归覆盖、旧 `datetime` 测试桩、OOXML 假 `Z`、Pricing 生效日 UTC 注释/语义、Ruff 导入问题及 5 个归档 Requirement Source 漂移均已修复；剩余仅最终 Ready HEAD 必须重新执行永久门禁和正常 Git 交付，不存在未决业务/Contract 决策。
+- [x] unresolved_cleared: 误删 Migration 回归覆盖、旧 `datetime` 测试桩、OOXML 假 `Z`、Pricing 生效日 UTC 注释/语义、Ruff 导入问题及 5 个归档 Requirement Source 漂移均已修复；最终 Ready HEAD 与 merge 后 main 五套永久门禁均全绿，无未决业务/Contract/集成问题。
 
 # Review A1：需求与完成定义审查
 
@@ -187,7 +187,7 @@ data_changes: []
 - 审查曾发现一次整文件替换误删 `test_migration_data_lifecycle.py` 中 NFKC、downgrade、平台统一与冲突保护测试；已恢复原覆盖，当前相对 main 仅保留必要时间断言差异。
 - 旧 LLM 测试仍 monkeypatch `datetime` 导致 4 个分时价格测试受 CI 当前时刻影响；已改为注入真实生产时钟 `beijing_now()`，fixture 使用北京时间，供应商 `timezone` 继续独立生效。
 - Ready HEAD `54d9aa20a61a4f60e42c2c5e1fdc5072369c5b2b` 的 Change Gate 又精确暴露 5 个归档 Change 仍把已删除旧 Skill 路径作为机器实时 Source；已按 `docs/AGENTS.md` 只迁移 Source 单元格，未改写历史 Evidence/Review/状态。
-- 最终实现候选 `d8af996e61c4cd67bb195fdb4c14a587733f1923`：CI、Runtime、Full-stack、Developer Tooling 均成功；当前治理修正后的 Ready HEAD 必须重新验证全部永久门禁。
+- 最终 Ready HEAD `2fce7168119e9768600ee2e8a751514d09c3374f` 五套永久门禁全部成功；PR #230 正常合并后，merge commit `0ce475e47e88539610ef7528a17dce2e2fe20983` 的五套 main push 门禁再次全部成功。
 
 # Code Quality Review
 
@@ -216,8 +216,8 @@ data_changes: []
 - [x] 全量扫描 live `reliable-vibe-coding` / `rvc.py` 引用并修正当前事实；历史 archive 的叙事/Evidence/状态/Review 不改写，机器实时 Requirement Source 随 canonical Skill 路径最小迁移。
 - [x] 执行目标测试、Skill self-tests、Unit/Contract/API、PostgreSQL、Frontend、Runtime/Full-stack、Docs/Secret/Architecture/Owner 等实现候选永久门禁。
 - [x] 重新执行 Completion Audit、Review A1/A2、Code Quality Review，清零所有 `not_satisfied` 并转 Ready。
-- [ ] 在本 `ready_for_review` 最终 HEAD 上重新通过永久 CI/Runtime/Full-stack/Developer Tooling/Change Gate，并将 PR 从 Draft 转 Ready。
-- [ ] 正常合并 PR #230 到 main；验证 main 后创建独立归档 PR，仅把本 Change `done` 后移动到 `changes/archive/2026-08/`，不修改其他历史 Change。
+- [x] 最终 Ready HEAD `2fce7168119e9768600ee2e8a751514d09c3374f` 通过 CI `32831298114`、Runtime `32831298039`、Full-stack `32831298048`、Developer Tooling `32831298032`、Change Gate `32831298431`，PR #230 从 Draft 转 Ready。
+- [x] PR #230 正常合并到 main；merge commit `0ce475e47e88539610ef7528a17dce2e2fe20983` 的 CI `32831914054`、Runtime `32831913930`、Full-stack `32831913873`、Developer Tooling `32831913879`、Change Gate `32831913880` 全部 success；随后由独立归档分支把本 Change 标记 `done` 并原子移入 archive。
 
 # 文档影响
 
@@ -246,12 +246,45 @@ data_changes: []
 - 历史 gated Change：不建立旧 Skill 路径兼容层；Requirement Source 作为机器实时路径随 canonical 文件迁移，其他历史内容保留。
 - 回滚：整体 revert 本 Change；HTTP 序列化和 DB Session timezone 恢复原策略即可，无 Migration downgrade/数据回填。
 
+# 最终集成证据
+
+## Final Ready HEAD
+
+`2fce7168119e9768600ee2e8a751514d09c3374f`
+
+```text
+Change Completion Gate            32831298431  success
+CI                                32831298114  success
+Runtime Acceptance                32831298039  success
+Full-stack Acceptance             32831298048  success
+Developer Tooling Compatibility   32831298032  success
+```
+
+该 HEAD 与当时 `main` 比较 `behind_by=0`，PR #230 无 unresolved review thread，随后从 Draft 转 Ready 并以 expected HEAD 正常 merge。
+
+## Merge / main push
+
+- PR：#230 `统一 Coding Skill 名称、北京时间与日志格式`
+- Merge commit：`0ce475e47e88539610ef7528a17dce2e2fe20983`
+- Merge commit parents：原 main `5f9d125ae716d34295f8397b337248020069588a` + Final Ready HEAD `2fce7168119e9768600ee2e8a751514d09c3374f`
+- main push 永久门禁：
+
+```text
+Change Completion Gate            32831913880  success
+CI                                32831914054  success
+Runtime Acceptance                32831913930  success
+Full-stack Acceptance             32831913873  success
+Developer Tooling Compatibility   32831913879  success
+```
+
+因此实现、真实 PostgreSQL、HTTP/Contract、Frontend、Full-stack、Compose Runtime、Developer Tooling 与治理门禁都已在 merge 后 main 再次验证。
+
 # Git / PR
 
-- Branch：`refactor/coding-skill-beijing-time`
-- PR：`#230`（Draft，待最终 Ready HEAD 永久门禁全绿后转 Ready）
-- 当前 main 基线：`5f9d125ae716d34295f8397b337248020069588a`
-- 实现候选 Green HEAD：`d8af996e61c4cd67bb195fdb4c14a587733f1923`
-- Ready Gate 首轮治理失败：`54d9aa20a61a4f60e42c2c5e1fdc5072369c5b2b` / Change Gate run `32824523183`，仅因 5 个历史 Requirement Source 指向已删除旧 Skill 路径
-- Merge：未执行
-- Release / Deploy：不适用；本任务授权最终正常合并 main 并完成 Change 归档闭环
+- Implementation branch：`refactor/coding-skill-beijing-time`
+- Implementation PR：#230，已正常合并
+- Final Ready HEAD：`2fce7168119e9768600ee2e8a751514d09c3374f`
+- Merge commit：`0ce475e47e88539610ef7528a17dce2e2fe20983`
+- Archive branch：`chore/archive-coding-skill-beijing-time`
+- Archive：本文件由独立归档提交从 `changes/active/` 原子移动到 `changes/archive/2026-08/`；归档 PR/merge 由后续 GitHub PR 历史记录
+- Release / Deploy：不适用；本任务只修改代码/Contract/Runtime 默认时间与开发治理，不发布 Release、不执行生产部署
