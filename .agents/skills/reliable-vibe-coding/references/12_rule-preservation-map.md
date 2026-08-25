@@ -263,6 +263,23 @@ docs/blueprint/README.md
 - 当前稳定编号不能为了插入新主题被静默重排；需要插入/重命名/重新编号时按显式文档迁移处理；
 - 通用 Skill 只规定“发现并服从项目本地文档治理、改名同步当前有效引用、历史证据不随意改写”，不把 AIMA 的当前目录数量或具体文档名强加给其他项目。
 
+#### 原 Skill 中的 AIMA 中文提交与注释默认
+
+原 `development-workflows.md` 还包含两条带项目倾向的 fallback：
+
+```text
+如果执行 Git 提交，默认使用中文提交信息
+仓库没有其他注释语言约定时，默认使用中文注释
+```
+
+通用化后不能把中文作为所有仓库的全球默认，但这两条 AIMA 项目行为也不能静默消失，因此按“通用规则 + 项目 Overlay”拆分：
+
+- 通用 `05_development-workflows.md`：提交信息、注释语言首先服从目标项目适用规则；项目没有规则时跟随仓库/语言生态实际稳定风格，不强加中文；
+- AIMA 根 `AGENTS.md`：继续明确 `提交信息使用中文`；
+- AIMA 根 `AGENTS.md` 的“注释语言”小节：`除专有名词、标识符、协议、库和标准名外，代码注释使用中文`，Python 文档字符串遵循 PEP 257，其他语言沿用项目既有文档注释规范。
+
+因此这里不是删除原规则，而是把 AIMA 特定语言选择迁回正确的项目事实源。复制本 Skill 到其他仓库时不会携带 AIMA 的中文默认；在 AIMA 中仍按原有项目语义执行。
+
 ### 原步骤 10：Completion Audit、两阶段 Review、新鲜验证
 
 完整保留：
@@ -395,14 +412,16 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 - Secret 不硬编码/日志/上传；
 - 不关闭 auth/cert/input validation/security；
 - 避免不安全反序列化、任意命令/动态代码、字符串 SQL；
-- 对 path/network/db/command/user input 做匹配风险校验。
+- 对 path/network/db/command/user input 做匹配风险校验；
+- 提交信息的语言/格式按目标项目 Overlay；AIMA 的中文提交规则由根 `AGENTS.md` 继续承载。
 
 ### 注释
 
 - 项目既有规范优先；
 - public 及承载非显然规则的 private/helper 都可需要 docstring/定点注释；
 - 注释解释 why/invariant/risk/compatibility，不翻译语法；
-- 简单 helper 不机械注释。
+- 简单 helper 不机械注释；
+- 注释语言按目标项目 Overlay；AIMA 的中文注释与 Python PEP 257 规则由根 `AGENTS.md` 继续承载。
 
 ### 可观测性
 
@@ -411,7 +430,8 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 - stable event、正确 level、关联 ID；
 - Secret/Token/password/sensitive Raw/PII 禁止记录；
 - 高频成功细节 DEBUG 或不记录；
-- 日志不替代 DB business fact/Health/Audit。
+- 日志不替代 DB business fact/Health/Audit；
+- 没有项目更具体日志级别规则、且现有级别支持这些语义时，DEBUG/INFO/WARNING/ERROR 的原默认严重性仍是规范 fallback；跨生态只允许等价严重性映射，不能弱化成“可参考”。
 
 ### 文档同步
 
@@ -568,6 +588,7 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 - PostgreSQL/MySQL/SQLite 等数据库；
 - npm/pnpm/uv/Maven/Gradle 等包管理/构建；
 - commit message 语言；
+- 代码注释与 docstring/comment language；
 - docs 编号方式、当前文档数量和具体文件名；
 - 模块 Owner 名称；
 - CI job 名称；
@@ -592,6 +613,7 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 - 本文件仍能定位 Requirement Traceability、Completion Audit、Red → Green → Refactor、根因调试“连续三次”、用户未提交修改、新鲜证据、文档同步、可观测性等关键规则；
 - 通用 Skill 不硬编码任一项目的 Blueprint 数量、固定文件名或固定编号上限；
 - `SKILL.md` 和本文件都明确“内容守恒优先于篇幅精简”，并禁止用抽象原则替代带条件/例外/失败处理的可执行规则；
-- Agent 默认提示要求 preserve all existing valuable details，而不是只要求读取 reference。
+- Agent 默认提示要求 preserve all existing valuable details，而不是只要求读取 reference；
+- AIMA 根 `AGENTS.md` 同时保留中文提交与中文注释/PEP 257 项目规则，防止通用化时把项目本地行为误删。
 
 自动检查只能防明显丢文件/关键词/结构漂移，不能证明规则语义完全等价。任何大规模 Skill 重组仍需人工逐节做内容守恒 Review；如果自动检查与人工逐项映射冲突，以更保守的内容保留结果为准。
