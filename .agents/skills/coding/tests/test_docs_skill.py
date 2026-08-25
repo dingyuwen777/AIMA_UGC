@@ -58,25 +58,26 @@ class DocsSkillTest(unittest.TestCase):
         docs_agent = self._read(".agents/skills/docs/agents/openai.yaml")
         collaboration = self._read(".agents/skills/docs/references/04_与Coding协作.md")
 
-        # 项目统一入口必须知道何时按需加载 Docs，不能只依赖某个宿主是否消费 agent metadata。
-        self.assertIn("Docs Impact", agents)
-        self.assertIn(".agents/skills/docs/SKILL.md", agents)
-        self.assertIn("not_applicable", agents)
+        # AIMA 的根入口已经强制所有研发任务先读 Coding；Docs 路由由 Coding 自己维护，避免 AGENTS 复制第二套规则。
+        self.assertIn("读取 `.agents/skills/coding/SKILL.md` 并按其任务路由执行", agents)
 
-        # Coding 正文必须承担前向硬路由；agent metadata 只是额外提示，不是唯一入口。
+        # Coding 正文承担前向硬路由；agent metadata 只是额外提示，不是唯一入口。
+        self.assertIn("#### Docs Skill 按需路由（仓库存在时）", coding)
         self.assertIn("Docs Impact", coding)
         self.assertIn(".agents/skills/docs/SKILL.md", coding)
         self.assertIn("必须读取", coding)
         self.assertIn("not_applicable", coding)
-        self.assertIn("targeted", coding)
+        self.assertIn("`targeted`（默认）", coding)
+        self.assertIn("code_issue_detected", coding)
         self.assertIn("Docs Impact", coding_agent)
         self.assertIn(".agents/skills/docs/SKILL.md", coding_agent)
 
-        # Docs 发现实现缺陷时必须真正切回 Coding 规则，不能只写一个抽象的“返回 Coding”。
-        self.assertIn("code_issue_detected", docs)
+        # Docs 发现实现缺陷时必须真正切回 Coding 规则，不能只写抽象的“返回 Coding”。
+        self.assertIn("### 6.1 `code_issue_detected` 反向硬路由", docs)
         self.assertIn(".agents/skills/coding/SKILL.md", docs)
         self.assertIn("必须读取", docs)
-        self.assertIn("不得", docs)
+        self.assertIn("不得修改实现代码", docs)
+        self.assertIn("targeted re-review", docs)
         self.assertIn(".agents/skills/coding/SKILL.md", docs_agent)
         self.assertIn("code_issue_detected", collaboration)
         self.assertIn(".agents/skills/coding/SKILL.md", collaboration)
