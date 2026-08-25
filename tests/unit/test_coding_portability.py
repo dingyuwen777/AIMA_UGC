@@ -2,7 +2,7 @@ import runpy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SKILL_ROOT = ROOT / ".agents" / "skills" / "reliable-vibe-coding"
+SKILL_ROOT = ROOT / ".agents" / "skills" / "coding"
 NUMBERED_REFERENCE_FILES = (
     "01_project-discovery.md",
     "02_task-routing.md",
@@ -108,7 +108,7 @@ def test_language_profiles_cover_major_ecosystems_without_fixed_versions() -> No
 
 
 def test_project_discovery_recognizes_representative_polyglot_manifests() -> None:
-    namespace = runpy.run_path(str(SKILL_ROOT / "scripts" / "rvc.py"))
+    namespace = runpy.run_path(str(SKILL_ROOT / "scripts" / "coding.py"))
     classify_path = namespace["_classify_path"]
 
     manifest_paths = (
@@ -218,9 +218,9 @@ def test_legacy_hard_gates_remain_in_normative_runtime_rules() -> None:
     corpus = "\n".join((skill, workflows, change_management, completion, review, collaboration))
 
     for marker in (
-        ".reliable-vibe-coding/project-context.json",
+        ".agents/project-context.json",
         "cache_hit",
-        "rvc.py status --root <repo> --json",
+        "coding.py status --root <repo> --json",
         "Requirement Traceability",
         "explicitly_deferred",
         "not_satisfied",
