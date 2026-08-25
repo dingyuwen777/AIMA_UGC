@@ -75,8 +75,8 @@ CMakeLists.txt ≠ Linux-only
 9. **独立能力建立独立验证闭环。** 对具有明确输入输出、独立业务价值、独立失败边界，或无需启动完整系统即可验证的能力，优先复用生产入口建立最小验证闭环，使用与风险匹配的自动化测试、Fixture/Fake/隔离依赖、明确运行方式和成功判据。不要机械要求“一模块一个测试文件”或“一功能一个测试文档”。
 10. **L2/L3 必须向上追溯。** 当前 Change 不是自身需求全集。必须从用户已确认决定和上游正式事实源建立 Requirement Traceability；进入 `ready_for_review` 前重新读取上游完成定义并执行 Completion Audit。CI 全绿不能替代需求完整性审计，也不能依赖用户事后发现漏项。
 11. **验证按风险而不是固定技术栈分层。** L2/L3 先按 [validation-strategy.md](references/validation-strategy.md) 建立技术栈无关 Validation Matrix。任何层都不能声称证明自己没有实际运行的下游边界。若项目真实存在 Web/API/PostgreSQL/外部 Provider，再叠加 [testing-strategy.md](references/testing-strategy.md) 的 Browser Mock、Backend/API/PostgreSQL Integration、Contract、Real Full-stack、Real Provider Probe 专项规则；这些细节保留但不强加给 CLI、Library、Mobile、Embedded、IaC 等项目。
-12. **注释解释原因和约束。** 代码注释不只面向 public/exported 接口。内部/private/helper 只要承载非显然业务规则、关键不变量、状态转换、算法取舍、兼容原因或重要副作用，也应按项目语言/风格提供简短 docstring 或定点注释；简单自解释 helper 不机械补注释。
-13. **重要功能需要匹配现有体系的可观测性。** 如果仓库已有日志/事件基础设施，且功能涉及关键生命周期、异步任务、外部 I/O、重试/部分失败、状态转换或后期排障价值，应补最小充分结构化观测。复用现有 logger/event/脱敏/关联 ID；禁止记录 Secret/Token/密码/敏感 Raw/PII，禁止 INFO 高频刷屏，日志也不能替代数据库/文件中的正式业务事实或 Health/Audit 机制。
+12. **注释解释原因和约束。** 代码注释不只面向 public/exported 接口。内部/private/helper 函数只要承载非显然业务规则、关键不变量、状态转换、算法取舍、兼容原因或重要副作用，也应按项目语言/风格提供简短 docstring 或定点注释；简单自解释 helper 不机械补注释。
+13. **重要功能可观测性需要匹配现有体系。** 如果仓库已有日志/事件基础设施，且功能涉及关键生命周期、异步任务、外部 I/O、重试/部分失败、状态转换或后期排障价值，应补最小充分结构化观测。复用现有 logger/event/脱敏/关联 ID；禁止打印 Secret/Token/密码/敏感 Raw/PII，禁止 INFO 高频刷屏，日志也不能替代数据库/文件中的正式业务事实或 Health/Audit 机制。
 
 规则重组时还必须遵守 [rule-preservation-map.md](references/rule-preservation-map.md)：通用化只能移动和分类规则，不能用“精简”删除仍有效内容。
 
