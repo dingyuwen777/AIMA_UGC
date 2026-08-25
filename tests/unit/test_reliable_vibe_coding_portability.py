@@ -9,6 +9,10 @@ def _read(relative_path: str) -> str:
     return (SKILL_ROOT / relative_path).read_text(encoding="utf-8")
 
 
+def _read_repo(relative_path: str) -> str:
+    return (ROOT / relative_path).read_text(encoding="utf-8")
+
+
 def test_skill_routes_by_project_stage_stack_and_risk() -> None:
     skill = _read("SKILL.md")
 
@@ -126,8 +130,59 @@ def test_preservation_map_keeps_critical_existing_rules_reachable() -> None:
         "新鲜证据",
         "文档同步",
         "可观测性",
+        "两位数字下划线前缀",
+        "提交信息使用中文",
     ):
         assert marker in preservation
+
+
+def test_legacy_hard_gates_remain_in_normative_runtime_rules() -> None:
+    skill = _read("SKILL.md")
+    workflows = _read("references/development-workflows.md")
+    change_management = _read("references/change-management.md")
+    completion = _read("references/completion-gate.md")
+    review = _read("references/verification-review.md")
+    collaboration = _read("references/collaboration.md")
+    corpus = "\n".join(
+        (skill, workflows, change_management, completion, review, collaboration)
+    )
+
+    for marker in (
+        ".reliable-vibe-coding/project-context.json",
+        "cache_hit",
+        "rvc.py status --root <repo> --json",
+        "Requirement Traceability",
+        "explicitly_deferred",
+        "not_satisfied",
+        "Completion Audit",
+        "ready_check.py --root . --require-active-ready",
+        "Verify Red",
+        "连续三次",
+        "git reset --hard",
+        "git clean -fd",
+        "强制推送",
+        "Secret",
+        "Requirement Completeness Review",
+        "用户未提交修改",
+        "新鲜证据",
+    ):
+        assert marker in corpus
+
+
+def test_aima_specific_rules_remain_project_overlay_instead_of_becoming_global() -> None:
+    agents = _read_repo("AGENTS.md")
+    blueprint = _read_repo("docs/blueprint/06_开发约束与分阶段实施.md")
+    preservation = _read("references/rule-preservation-map.md")
+
+    assert "提交信息使用中文" in agents
+    assert "docs/blueprint/01—08" in blueprint
+    assert "AIMA 文档编号细节" in preservation
+    assert "两位数字下划线前缀" in preservation
+    assert "通用 Skill 本身不把中文强加给其他仓库" in workflows_or_skill()
+
+
+def workflows_or_skill() -> str:
+    return "\n".join((_read("SKILL.md"), _read("references/development-workflows.md")))
 
 
 def test_change_template_uses_portable_validation_dimensions() -> None:
