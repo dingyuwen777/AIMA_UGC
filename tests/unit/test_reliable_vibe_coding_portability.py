@@ -199,7 +199,10 @@ def test_aima_specific_rules_remain_project_overlay_instead_of_becoming_global()
         "不得为了插入新主题静默重排核心 Blueprint",
         "同一任务同步当前正式文档、README、根/嵌套 `AGENTS.md`、代码和配置中的有效路径引用",
         "历史状态、证据和结论不得因当前文档改名而改写",
-        "`Requirement Source` 等被 Ready Check 作为实时仓库路径校验的字段必须随目标文件移动同步到新路径",
+        (
+            "`Requirement Source` 等被 Ready Check 作为实时仓库路径校验的字段"
+            "必须随目标文件移动同步到新路径"
+        ),
         "`docs/assets/` 等非 Markdown 资源不适用本规则",
         "模块级 `README.md` 继续保持 README 命名",
         "文件名规范只负责导航和排序",
