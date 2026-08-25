@@ -1,19 +1,21 @@
 # Stage / Change 完成定义追溯门禁
 
-这份规则解决一个特定失败模式：实现、测试和当前 Change 都看起来完整，但 Change 在一开始就漏掉了上游正式要求，导致 CI 全绿仍过早宣布 Stage 完成。
+这份规则解决一个特定失败模式：实现、测试和当前 Change 都看起来完整，但 Change 在一开始就漏掉了上游正式要求，导致 CI 全绿仍过早宣布 Stage / Feature / Release 单元完成。
+
+它适用于不同项目形态和语言；“Stage”只是常见的正式工作单元之一，也可以是 Feature、Migration、Release、Architecture Change 或其他有明确上游完成定义的 L2/L3 单元。
 
 ## 核心关系
 
 需求事实的方向固定为：
 
 ```text
-用户已确认决定 / 正式 Roadmap / Spec / Stage 完成定义
+用户已确认决定 / 正式 Roadmap / Spec / Stage / Feature 完成定义
 → 当前 Change
 → 实现
 → 测试与运行证据
 ```
 
-`CHANGE.md` 是施工契约，不是自身需求全集。不能用“当前 Change 的成功标准全部完成”证明“上游 Stage 已完整完成”。
+`CHANGE.md` 是施工契约，不是自身需求全集。不能用“当前 Change 的成功标准全部完成”证明“上游正式单元已完整完成”。
 
 ## Requirement Traceability
 
@@ -36,20 +38,56 @@ completion_gate: required
 
 ## Validation Matrix
 
-L2/L3 Change 还必须按 [testing-strategy.md](testing-strategy.md) 建立 `# Validation Matrix`，明确各验证层是 `required` 还是 `not_applicable`。
+L2/L3 Change 还必须按 [validation-strategy.md](validation-strategy.md) 建立 `# Validation Matrix`，明确各验证维度是 `required` 还是 `not_applicable`。
 
-默认考虑：
+通用默认考虑：
 
 ```text
-Browser Mock Acceptance
-Backend/API/PostgreSQL Integration
-Contract / Generated Client
-Real Full-stack Golden Path
-Real Provider Probe
+行为 / Unit / Component
+接口 / Contract
+集成 / Persistence / Runtime Dependency
+用户 / Workflow Acceptance
+跨组件 Golden Path
+外部依赖 Probe
+Build / Package / Runtime
 Docs / Governance / Other
 ```
 
 核心边界：
+
+- 行为 / Unit / Component 用于便宜、稳定地覆盖局部业务规则、算法、状态和组件行为，但不能冒充 public consumer、真实依赖、package 或跨组件接线；
+- 接口 / Contract 证明 public API/ABI/CLI/Schema/格式或生产者/消费者的机器接口和兼容语义一致；
+- 集成 / Persistence / Runtime Dependency 证明只有真实数据库、文件系统、进程、队列、SDK、runtime service 等参与时才能成立的事实；
+- 用户 / Workflow Acceptance 证明用户或调用者从真实入口看到的输入、输出、状态和错误闭环；“用户”可以是 Browser 用户、CLI 操作者、SDK consumer、Mobile 用户或 Batch Operator；
+- 跨组件 Golden Path 用少量高价值真实路径证明多个组件组装后确实接通，不负责穷举所有状态；
+- 外部依赖 Probe 只在第三方服务、真实硬件或远端环境的当前事实需要确认时有界执行，默认不作为普通稳定 CI 主力；
+- Build / Package / Runtime 证明正式构建、打包、安装、镜像、target 或启动事实，不能被源码 Unit 自动替代；
+- Docs / Governance / Other 承担文档、配置、生成物、架构/Owner、Secret、Policy、Change/Ready 等非运行时但真实影响交付的证据。
+
+Matrix 不要求每个任务机械执行全部层，也不设固定测试数量配额。`not_applicable` 必须有事实依据；`required` 必须在 Ready 前有新鲜证据。
+
+### Web / API / PostgreSQL / Provider 专项 profile
+
+如果项目真实存在这些边界，再叠加 [testing-strategy.md](testing-strategy.md) 的完整专项规则：
+
+```text
+用户 / Workflow Acceptance
+→ Browser Mock Acceptance
+
+集成 / Persistence / Runtime Dependency
+→ Backend/API/PostgreSQL Integration
+
+接口 / Contract
+→ Contract / Generated Client
+
+跨组件 Golden Path
+→ Real Full-stack Golden Path
+
+外部依赖 Probe
+→ Real Provider Probe
+```
+
+原专项职责保持不变：
 
 - Browser Mock 用于广覆盖用户可见行为、状态、请求和错误表达；它不能证明真实 API、数据库、Worker 或 Provider 链；
 - Backend/API/PostgreSQL Integration 证明服务器业务规则、事务、持久化和异步运行边界；
@@ -57,7 +95,7 @@ Docs / Governance / Other
 - Real Full-stack 用少量关键 Golden Path 证明真实组件接通，不负责穷举所有 UI 状态；
 - Real Provider Probe 只在外部供应商当前事实需要确认时有界执行，默认不作为普通 CI 主力。
 
-Matrix 不要求每个任务机械执行全部层，也不设固定测试数量配额。`not_applicable` 必须有事实依据；`required` 必须在 Ready 前有新鲜证据。
+CLI、Library、Mobile、Embedded、Data、IaC 等没有这些真实边界的项目不为了填模板制造 Browser/PostgreSQL/Provider 层。
 
 当前 `ready_check.py` 不自动判断 Matrix 的语义充分性，因此 Agent/Reviewer 必须在 Completion Audit 和 Review 中人工核对；不能因为机器 Ready Check 通过就跳过。
 
@@ -79,17 +117,83 @@ unresolved_cleared
 → not_satisfied 清零；延期/不适用都有正式依据
 ```
 
-对于前后端/异步业务，反向审计通常包括：
+### 反向能力审计按真实项目边界选择
+
+前后端 / Web：
 
 ```text
-后端当前 V1 能力 → 是否应有前端入口/状态/结果？
+后端当前能力 → 是否应有前端入口 / 状态 / 结果？
 前端 Button / Action → 后端是否真实支持且状态允许？
 异步 Job → queued/running/success/failure/cancel/retry 是否正确表达？
 业务动作完成 → 用户是否能找到最终结果？
-错误/失败页面 → 是否只展示机器事实，不伪造历史阶段？
+错误/失败页面 → 是否只展示机器事实，不伪造不存在的历史或状态？
 ```
 
-同时检查：用户可见 Requirement 是否有适用的 Browser 证据，服务器规则是否有适用的 Backend/DB 证据，公共边界是否有 Contract 证据，关键跨组件链是否有足够的 Real Full-stack Golden Path。没有对应边界时记录为什么不适用，不为填清单制造新架构或无价值测试。
+CLI：
+
+```text
+public command / flag / config
+→ parser / handler
+→ stdout / stderr / exit code / file side effect
+→ 调用者是否能按文档完成工作流？
+```
+
+Library / SDK：
+
+```text
+public API / ABI / package export
+→ consumer compile / invoke
+→ 返回、异常、兼容语义
+→ package artifact 是否仍能被真实 consumer 使用？
+```
+
+Schema / Migration / 数据：
+
+```text
+writer / producer
+→ schema / migration
+→ reader / consumer
+→ 历史数据、回滚或兼容期是否满足正式策略？
+```
+
+Batch / Data / ML：
+
+```text
+input schema / artifact
+→ transform / pipeline
+→ output artifact / data quality
+→ downstream consumer / operator
+```
+
+Mobile / Desktop / Embedded：
+
+```text
+UI / public operation
+→ state / platform SDK / storage / protocol
+→ simulator/device/target（实际风险需要时）
+→ 用户/设备观察到的最终结果
+```
+
+Package / Release / Infra：
+
+```text
+source/config
+→ build/render/plan
+→ artifact/install/startup/deploy boundary
+→ health/result/rollback（授权和项目策略要求时）
+```
+
+同时检查：
+
+- 用户或调用者可见 Requirement 是否有适用的 Workflow Acceptance 证据；
+- runtime/persistence 规则是否有适用的真实 Integration 证据；
+- public 边界是否有 Contract/compatibility 证据；
+- 关键跨组件链是否有足够的 Golden Path；
+- 构建/打包/启动是否因“代码测试绿色”而被遗漏；
+- 外部依赖只有确实需要确认当前事实时才 Probe；
+- Docs/Governance 与当前实现、正式设计和 Change 是否一致。
+
+没有对应边界时记录为什么不适用，不为填清单制造新架构或无价值测试。
 
 ## 两层 Review
 
