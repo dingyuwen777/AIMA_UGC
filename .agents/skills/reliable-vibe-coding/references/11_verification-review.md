@@ -115,6 +115,7 @@ Mobile / Embedded / Infra / Package：
 - public API/ABI/CLI、serialization/file format 和 consumer compatibility；
 - 命名、注释和维护成本；
 - **新增或修改的 public/exported 与内部/private/helper 函数是否都有必要的中文函数级说明**；简单函数可以是一句简短职责说明，复杂函数还应解释关键意图、约束、状态转换、兼容原因或副作用边界；不能因函数是 internal/private/helper 就省略，也不能用逐行翻译代码的冗余注释凑数；
+- 对**非显然内部/private/helper** 逻辑，除函数级职责说明外，还要确认关键业务规则、不变量、状态转换、算法取舍、兼容原因或副作用边界已经被中文注释解释清楚；
 - 仓库已有 logging/event/telemetry 体系且本次功能重要/难排障时，关键生命周期、异步阶段、外部 I/O、Retry/部分失败/终态是否具备最小充分可观测性；反之是否存在 INFO 高频刷屏、重复异常日志或无排障价值消息；
 - 新增观测是否复用现有 logger/event/level/关联 ID 与脱敏机制，且没有 Secret/Token/密码/敏感 Raw/PII 泄露，也没有用日志替代正式业务事实；
 - 无关改动、重复实现和失效内容；
