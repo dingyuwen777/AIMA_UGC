@@ -170,6 +170,7 @@ def test_portable_skill_does_not_hardcode_project_document_count_or_names() -> N
     skill = _read("SKILL.md")
     preservation = _read("references/12_rule-preservation-map.md")
     docs_agents = _read_repo("docs/AGENTS.md")
+    blueprint_readme = _read_repo("docs/blueprint/README.md")
     portable_corpus = "\n".join((skill, preservation))
 
     assert "Blueprint 01—08" not in portable_corpus
@@ -177,6 +178,10 @@ def test_portable_skill_does_not_hardcode_project_document_count_or_names() -> N
     assert "不预设固定文档数量" in docs_agents
     assert "不预设固定文件名" in docs_agents
     assert "固定保持当前 01—08" not in docs_agents
+    assert "当前核心 Blueprint 固定为 `01—08`" not in blueprint_readme
+    assert "对应核心 Blueprint 01—08" not in blueprint_readme
+    assert "不设置固定数量" in blueprint_readme
+    assert "不设置固定编号上限" in blueprint_readme
 
 
 def test_legacy_hard_gates_remain_in_normative_runtime_rules() -> None:
