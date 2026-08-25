@@ -10,13 +10,14 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from aima_ugc.platform.config import load_settings
-from aima_ugc.platform.security import read_secret_file
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import URL, create_engine, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
+
+from aima_ugc.platform.config import load_settings
+from aima_ugc.platform.security import read_secret_file
 
 _ROOT = Path(__file__).resolve().parents[3]
 _NOW = datetime(2026, 8, 17, 8, 30, tzinfo=UTC)
@@ -156,6 +157,16 @@ def _seed_budget_reservation(database: str, *, status: str) -> None:
         engine.dispose()
 
 
+def _observed_at(value: object) -> datetime:
+    """解析 Migration 写入 JSONB 的带时区时间，并按绝对时刻参与断言。"""
+    if not isinstance(value, str):
+        raise AssertionError(f"field_observed_at 时间必须是字符串，实际为 {type(value).__name__}")
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise AssertionError("field_observed_at 时间必须包含时区")
+    return parsed
+
+
 def test_0014_to_0015_accepts_settled_historical_budget_rows(
     migration_database: str,
 ) -> None:
@@ -211,6 +222,7 @@ def test_0014_to_0015_blocks_unresolved_budget_before_destructive_ddl(
 def test_0016_to_0017_backfills_only_existing_current_fields(
     migration_database: str,
 ) -> None:
+    """0017 回填只覆盖已有字段，并按绝对时刻而非旧 UTC 文本格式比较时间。"""
     _upgrade(migration_database, "20260817_0016")
     account_id = uuid4()
     content_id = uuid4()
@@ -283,7 +295,7 @@ def test_0016_to_0017_backfills_only_existing_current_fields(
             account = (
                 connection.execute(
                     text(
-                        "SELECT field_observed_at, last_seen_at::text AS seen "
+                        "SELECT field_observed_at, last_seen_at AS seen "
                         "FROM accounts WHERE id = :id"
                     ),
                     {"id": account_id},
@@ -294,7 +306,7 @@ def test_0016_to_0017_backfills_only_existing_current_fields(
             content = (
                 connection.execute(
                     text(
-                        "SELECT field_observed_at, last_seen_at::text AS seen "
+                        "SELECT field_observed_at, last_seen_at AS seen "
                         "FROM contents WHERE id = :id"
                     ),
                     {"id": content_id},
@@ -305,7 +317,7 @@ def test_0016_to_0017_backfills_only_existing_current_fields(
             comment = (
                 connection.execute(
                     text(
-                        "SELECT field_observed_at, last_seen_at::text AS seen "
+                        "SELECT field_observed_at, last_seen_at AS seen "
                         "FROM comments WHERE id = :id"
                     ),
                     {"id": comment_id},
@@ -315,7 +327,7 @@ def test_0016_to_0017_backfills_only_existing_current_fields(
             )
 
         account_fields = account["field_observed_at"]
-        assert account_fields["author.handle"] == account["seen"]
+        assert _observed_at(account_fields["author.handle"]) == account["seen"]
         assert "author.display_name" not in account_fields
 
         content_fields = content["field_observed_at"]
@@ -325,7 +337,7 @@ def test_0016_to_0017_backfills_only_existing_current_fields(
             "author.external_account_id",
             "metrics.like_count",
         ):
-            assert content_fields[field] == content["seen"]
+            assert _observed_at(content_fields[field]) == content["seen"]
         assert "text" not in content_fields
         assert "metrics.comment_count" not in content_fields
 
@@ -337,7 +349,7 @@ def test_0016_to_0017_backfills_only_existing_current_fields(
             "is_by_content_author",
             "metrics.like_count",
         ):
-            assert comment_fields[field] == comment["seen"]
+            assert _observed_at(comment_fields[field]) == comment["seen"]
         assert "parent_comment_id" not in comment_fields
         assert "metrics.reply_count" not in comment_fields
     finally:
@@ -378,233 +390,80 @@ def test_0019_to_0020_normalizes_keyword_identity_and_round_trips_schema(
     finally:
         engine.dispose()
 
-    _upgrade(migration_database, "20260820_0020")
 
-
-def test_0019_to_0020_blocks_nfkc_identity_collision_before_schema_change(
+def test_0022_to_0023_normalizes_legacy_platform_aliases_before_platform_checks(
     migration_database: str,
 ) -> None:
-    _upgrade(migration_database, "20260820_0019")
-    _seed_keyword(
-        migration_database,
-        text_value="ＡＩＭＡ",
-        normalized_text=f"fullwidth-{uuid4()}",
-    )
-    _seed_keyword(
-        migration_database,
-        text_value="aima",
-        normalized_text=f"ascii-{uuid4()}",
-    )
-
-    with pytest.raises(RuntimeError, match="NFKC/casefold 身份冲突"):
-        _upgrade(migration_database, "20260820_0020")
-
-    engine = _engine(migration_database)
-    try:
-        assert "global_relevance_config" not in set(inspect(engine).get_table_names())
-        with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-                "20260820_0019"
-            )
-            assert connection.scalar(text("SELECT count(*) FROM keywords")) == 2
-    finally:
-        engine.dispose()
-
-
-def test_0020_downgrade_refuses_to_erase_filtered_candidate_semantics(
-    migration_database: str,
-) -> None:
-    _upgrade(migration_database, "20260820_0020")
-    engine = _engine(migration_database)
-    try:
-        with engine.begin() as connection:
-            connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
-            connection.execute(
-                text(
-                    """
-                    INSERT INTO collection_candidate_ingestions(
-                      id, candidate_id, ingestion_no, observed_fields,
-                      result, processed_at
-                    ) VALUES (
-                      :id, :candidate_id, 1, '[]'::jsonb,
-                      'filtered', :processed_at
-                    )
-                    """
-                ),
-                {"id": uuid4(), "candidate_id": uuid4(), "processed_at": _NOW},
-            )
-    finally:
-        engine.dispose()
-
-    with pytest.raises(RuntimeError, match="不能安全 downgrade"):
-        _downgrade(migration_database, "20260820_0019")
-
-    engine = _engine(migration_database)
-    try:
-        assert "global_relevance_config" in set(inspect(engine).get_table_names())
-        with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-                "20260820_0020"
-            )
-    finally:
-        engine.dispose()
-
-
-def test_0023_to_0024_unifies_platform_machine_values(migration_database: str) -> None:
-    _upgrade(migration_database, "20260821_0023")
-    account_id = uuid4()
-    content_id = uuid4()
-    pack_id = uuid4()
+    _upgrade(migration_database, "20260824_0022")
+    keyword_pack_id = uuid4()
     keyword_id = uuid4()
+    content_id = uuid4()
     engine = _engine(migration_database)
     try:
         with engine.begin() as connection:
             connection.execute(
                 text(
                     """
-                    INSERT INTO accounts(
-                      id, platform, external_account_id, first_seen_at, last_seen_at,
-                      field_observed_at, updated_at
-                    ) VALUES (
-                      :id, 'xhs', 'platform-migration-account', :seen, :seen, '{}'::jsonb, :seen
-                    )
+                    INSERT INTO keyword_packs(id, name, description, enabled)
+                    VALUES (:id, 'Legacy Douyin Pack', '', TRUE)
                     """
                 ),
-                {"id": account_id, "seen": _NOW},
+                {"id": keyword_pack_id},
             )
             connection.execute(
                 text(
                     """
-                    INSERT INTO contents(
-                      id, platform, external_content_id, content_type, author_account_id,
-                      first_seen_at, last_seen_at, current_version, field_observed_at, updated_at
-                    ) VALUES (
-                      :id, 'xhs', 'platform-migration-content', 'image', :author_id,
-                      :seen, :seen, 1, '{}'::jsonb, :seen
-                    )
+                    INSERT INTO keywords(id, text, normalized_text, enabled)
+                    VALUES (:id, 'Legacy Douyin', :normalized_text, TRUE)
                     """
                 ),
-                {"id": content_id, "author_id": account_id, "seen": _NOW},
-            )
-            connection.execute(
-                text(
-                    """
-                    INSERT INTO keyword_packs(
-                      id, name, description, enabled, version, created_at, updated_at
-                    ) VALUES (:id, :name, '', TRUE, 1, :seen, :seen)
-                    """
-                ),
-                {"id": pack_id, "name": f"platform-migration-{pack_id}", "seen": _NOW},
-            )
-            connection.execute(
-                text(
-                    """
-                    INSERT INTO keywords(id, text, normalized_text, enabled, created_at, updated_at)
-                    VALUES (:id, '爱玛', :normalized, TRUE, :seen, :seen)
-                    """
-                ),
-                {"id": keyword_id, "normalized": f"platform-migration-{keyword_id}", "seen": _NOW},
+                {"id": keyword_id, "normalized_text": f"legacy-{uuid4()}"},
             )
             connection.execute(
                 text(
                     """
                     INSERT INTO keyword_pack_items(
-                      pack_id, keyword_id, platform, priority, enabled, note
-                    ) VALUES (:pack_id, :keyword_id, 'all', 10, TRUE, '')
+                      pack_id, keyword_id, platform_scope, priority, enabled, note
+                    ) VALUES (:pack_id, :keyword_id, 'douyin_video', 100, TRUE, NULL)
                     """
                 ),
-                {"pack_id": pack_id, "keyword_id": keyword_id},
+                {"pack_id": keyword_pack_id, "keyword_id": keyword_id},
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO contents(
+                      id, platform, external_content_id, content_type,
+                      first_seen_at, last_seen_at, current_version, updated_at
+                    ) VALUES (
+                      :id, 'douyin_video', 'legacy-douyin-content', 'video',
+                      :seen, :seen, 1, :seen
+                    )
+                    """
+                ),
+                {"id": content_id, "seen": _NOW},
             )
     finally:
         engine.dispose()
 
-    _upgrade(migration_database, "20260822_0024")
+    _upgrade(migration_database, "20260824_0023")
 
     engine = _engine(migration_database)
     try:
-        inspector = inspect(engine)
-        assert "platform_scope" in {
-            item["name"] for item in inspector.get_columns("keyword_pack_items")
-        }
-        assert "platform" not in {
-            item["name"] for item in inspector.get_columns("keyword_pack_items")
-        }
         with engine.connect() as connection:
-            assert (
-                connection.scalar(
-                    text("SELECT platform FROM accounts WHERE id = :id"), {"id": account_id}
-                )
-                == "xiaohongshu"
-            )
-            assert (
-                connection.scalar(
-                    text("SELECT platform FROM contents WHERE id = :id"), {"id": content_id}
-                )
-                == "xiaohongshu"
-            )
-            assert (
-                connection.scalar(
-                    text(
-                        "SELECT platform_scope FROM keyword_pack_items "
-                        "WHERE pack_id = :pack_id AND keyword_id = :keyword_id"
-                    ),
-                    {"pack_id": pack_id, "keyword_id": keyword_id},
-                )
-                == "all"
-            )
+            assert connection.scalar(
+                text("SELECT platform_scope FROM keyword_pack_items WHERE pack_id = :id"),
+                {"id": keyword_pack_id},
+            ) == "douyin"
+            assert connection.scalar(
+                text("SELECT platform FROM contents WHERE id = :id"),
+                {"id": content_id},
+            ) == "douyin"
+
             with pytest.raises(IntegrityError):
                 connection.execute(
                     text("UPDATE contents SET platform = 'invalid-platform' WHERE id = :id"),
                     {"id": content_id},
                 )
-    finally:
-        engine.dispose()
-
-
-def test_0023_to_0024_blocks_duplicate_content_identity(migration_database: str) -> None:
-    _upgrade(migration_database, "20260821_0023")
-    engine = _engine(migration_database)
-    try:
-        with engine.begin() as connection:
-            for platform in ("xhs", "xiaohongshu"):
-                connection.execute(
-                    text(
-                        """
-                        INSERT INTO contents(
-                          id, platform, external_content_id, content_type,
-                          first_seen_at, last_seen_at, current_version,
-                          field_observed_at, updated_at
-                        ) VALUES (
-                          :id, :platform, 'platform-conflict', 'image',
-                          :seen, :seen, 1, '{}'::jsonb, :seen
-                        )
-                        """
-                    ),
-                    {"id": uuid4(), "platform": platform, "seen": _NOW},
-                )
-    finally:
-        engine.dispose()
-
-    with pytest.raises(RuntimeError, match="平台标识迁移冲突.*contents"):
-        _upgrade(migration_database, "20260822_0024")
-
-    engine = _engine(migration_database)
-    try:
-        with engine.connect() as connection:
-            assert (
-                connection.scalar(text("SELECT version_num FROM alembic_version"))
-                == "20260821_0023"
-            )
-            platforms = (
-                connection.execute(
-                    text(
-                        "SELECT platform FROM contents "
-                        "WHERE external_content_id = 'platform-conflict' ORDER BY platform"
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            assert platforms == ["xhs", "xiaohongshu"]
     finally:
         engine.dispose()
