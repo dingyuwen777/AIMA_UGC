@@ -49,3 +49,57 @@ jobs:
           python .agents/skills/reliable-vibe-coding/scripts/ready_check.py \
             --root . \
             --require-active-ready
+
+  legacy-actions-cleanup-plan:
+    name: Legacy Actions history cleanup plan
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Validate cleanup safety invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/maintenance/cleanup_legacy_actions_history.py --self-test
+
+      - name: Build read-only cleanup plan
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 scripts/maintenance/cleanup_legacy_actions_history.py --plan
+
+  legacy-actions-cleanup-apply:
+    name: Legacy Actions history cleanup apply
+    if: >-
+      github.event_name == 'push' &&
+      contains(github.event.head_commit.message, '[actions-history-cleanup]')
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Validate cleanup safety invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/maintenance/cleanup_legacy_actions_history.py --self-test
+
+      - name: Delete one bounded batch of legacy workflow runs
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 scripts/maintenance/cleanup_legacy_actions_history.py \
+            --apply \
+            --max-deletes 500
