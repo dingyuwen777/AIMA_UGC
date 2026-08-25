@@ -116,13 +116,13 @@ not_satisfied
 - Source、Evidence 不得在 Ready 时保留 `TBD/TODO/待确认/待实现/尚未验证` 等占位内容；
 - 机器检查只能验证结构、状态、占位符和仓库路径存在性，不能替代语义判断。
 
-详细规则见 [completion-gate.md](completion-gate.md)。
+详细规则见 [10_completion-gate.md](10_completion-gate.md)。
 
 ## Validation Matrix
 
 对 L2/L3 Change，在实现前根据当前任务的真实失败边界选择验证层，并在完成前补新鲜证据。
 
-通用规则见 [validation-strategy.md](validation-strategy.md)。默认从以下语义维度判断：
+通用规则见 [07_validation-strategy.md](07_validation-strategy.md)。默认从以下语义维度判断：
 
 ```text
 行为 / Unit / Component
@@ -154,7 +154,7 @@ not_applicable
 - Build/Package/Runtime 在源代码测试无法证明产物或启动事实时承担独立证据；
 - 测试数量由行为边界与风险决定，不设固定配额。
 
-项目真实存在 Web/API/PostgreSQL/Provider 边界时，再叠加 [testing-strategy.md](testing-strategy.md) 的专项层：
+项目真实存在 Web/API/PostgreSQL/Provider 边界时，再叠加 [08_testing-strategy.md](08_testing-strategy.md) 的专项层：
 
 ```text
 Browser Mock Acceptance
