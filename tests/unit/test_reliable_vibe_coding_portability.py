@@ -246,6 +246,8 @@ def test_aima_specific_rules_remain_project_overlay_instead_of_becoming_global()
     workflows = _read("references/05_development-workflows.md")
 
     assert "提交信息使用中文" in agents
+    assert "除专有名词、标识符、协议、库和标准名外，代码注释使用中文" in agents
+    assert "Python 文档字符串遵循 PEP 257" in agents
     assert "AIMA 文档编号细节" in preservation
     assert "两位数字下划线前缀" in preservation
     assert "通用 Skill 本身不把中文强加给其他仓库" in workflows
