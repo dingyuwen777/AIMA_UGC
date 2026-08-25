@@ -62,17 +62,9 @@ jobs:
               raise SystemExit("未找到预期 import 块")
           text = text.replace(old_imports, new_imports, 1)
 
-          marker = '''    finally:
-              engine.dispose()
-
-
-          def test_0014_to_0015_accepts_settled_historical_budget_rows(
+          marker = '''def test_0014_to_0015_accepts_settled_historical_budget_rows(
           '''
-          helper = '''    finally:
-              engine.dispose()
-
-
-          def _observed_at(value: object) -> datetime:
+          helper = '''def _observed_at(value: object) -> datetime:
               """解析 Migration 写入 JSONB 的带时区时间，并按绝对时刻参与断言。"""
               if not isinstance(value, str):
                   raise AssertionError(
