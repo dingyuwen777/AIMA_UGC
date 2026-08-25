@@ -48,7 +48,7 @@ data_changes: []
 开发期间 `main` 多次前进，每次都重新比较真实差异后再决定是否同步，没有从旧聊天或旧 SHA 猜当前状态：
 
 1. 第一轮同步到 `9b6457d3549dea57f85d52bf664227b47791b9b4`；
-2. PR #223 的 Actions 历史清理使 `main` 前进到 `3591c1fbdbfdb50a65c6da3e773fe6e12b1246d5`，确认未触碰 Skill 后通过双父 merge `5eafde1c09c10a0f54ae007c3d93ccc27d616223` 正常同步；
+2. PR #223 的 Actions 历史清理使 `main` 前进到 `3591c1fbdbf50a65c6da3e773fe6e12b1246d5`，确认未触碰 Skill 后通过双父 merge `5eafde1c09c10a0f54ae007c3d93ccc27d616223` 正常同步；
 3. PR #224 完成 Actions 清理收尾后 `main` 前进到 `73027fe300e86d29b5864a0b90d1b7ec82669961`，再次确认无 Skill 冲突后通过双父 merge `230be2f9202acf94c4e6d90fa26b5eaca1e1c072` 同步；
 4. Actions 清理 Change 归档后 `main` 前进到 `ae5635bc6a1f0112fc1c7446155cf42e0b8a71a2`，差异仅为另一个 Change 从 active 移到 archive，通过双父 merge `e1e86992c8da3150f0245dc95ad33a96c3bd93bd` 同步；
 5. 内容守恒人工 Review 收尾前重新比较 `main...refactor/reliable-vibe-coding-portable-routing`，结果 `behind_by: 0`，当前基线仍为 `ae5635bc6a1f0112fc1c7446155cf42e0b8a71a2`。
@@ -172,7 +172,7 @@ data_changes: []
 | R6 | 专项 testing 改名后历史实时 Requirement Source 仍可解析 | changes/archive/2026-08/CHG-20260825-ci-long-term-risk-layers/CHANGE.md | satisfied | Ready Gate 实际先后暴露两个归档 CI Change 的旧 Source；两者均只把实时 Source 迁到 `.agents/skills/reliable-vibe-coding/references/08_testing-strategy.md`，历史 Evidence/状态/结论不变；随后候选 Gate 成功 |
 | R7 | 通用 Skill 不写死 Blueprint 数量、固定文档名或编号上限 | user:2026-08-25-dynamic-project-docs | satisfied | `SKILL.md`、根/嵌套 `AGENTS.md`、Blueprint 06、Blueprint README 均改为项目实际集合；portability test 对 `固定 01—08` 建负断言，同时确认当前 AIMA 01—08 导航仍保留 |
 | R8 | Skill reference 使用 `01_、02_……` 按研发阶段/依赖顺序，便于阅读；编号不是固定配额 | user:2026-08-25-numbered-skill-references | satisfied | `references/` 只保留 `01_...12_` canonical 文件；旧无编号文件删除；Skill/template/内部 links/自测/AIMA 导航/实时 Source 全迁移；目录唯一性由 Unit 直接断言 |
-| R9 | Skill 重组不得过度总结或丢失任何现有/有价值细节；只合理组织，并让默认 Agent 主动执行内容守恒 | user:2026-08-25-preserve-all-details | satisfied | 初始 preservation Red `fe2f7a4103de8edb240680541252cd0bf38c6060`：Ruff/format/mypy 绿、Unit `639 passed / 1 failed`；实现主 Skill/map/Agent 后 Green；人工 Review 又用 logging Red `a9e91fac058f5cbf6fa1bc8e2a6882441ba39e5d`（`640 passed / 1 failed`）和 AIMA comment Overlay Red `53edf9bad63e9eb8f9e28b61ee72521f7938ee1e`（`640 passed / 1 failed`）证明并修复两个自动绿灯未发现的语义问题；最终实现 HEAD `e52c345e...` Unit `641 passed` 且完整 CI/Runtime/Full-stack Green |
+| R9 | Skill 重组不得过度总结或丢失任何现有/有价值细节；只合理组织，并让默认 Agent 主动执行内容守恒 | user:2026-08-25-preserve-all-details | satisfied | 初始 preservation Red `fe2f7a4103de8edb240680541252cd0bf38c6060`：Ruff/format/mypy 绿、Unit `639 passed / 1 failed`；人工 Review 又用 logging Red `a9e91fac058f5cbf6fa1bc8e2a6882441ba39e5d`（`640 passed / 1 failed`）和 AIMA comment Overlay Red `53edf9bad63e9eb8f9e28b61ee72521f7938ee1e`（`640 passed / 1 failed`）证明并修复两个自动绿灯未发现的语义问题；最终实现 HEAD `e52c345e691117e30ab6bb4587adbb27e0848eb6` Unit `641 passed` 且完整 CI/Runtime/Full-stack Green |
 
 # Validation Matrix
 
@@ -191,8 +191,7 @@ data_changes: []
 
 - [x] upstream_re_read：重新读取用户三轮核心要求，尤其最新“不要过度总结、不要丢任何细节”；重新读取当前根 `AGENTS.md`、`docs/AGENTS.md`、主 `SKILL.md`、编号 references、Agent prompt、Change/template、Blueprint README/06；并对照 `main` 原主 Skill、原 `development-workflows.md`、原 `testing-strategy.md` 以及 PR 中被改写的 04/05/10/11/reference/template diff。没有从当前 Change checklist 反推完成定义。
 - [x] change_coverage：R1-R9 全部进入 Requirement Traceability。动态 Blueprint、编号 reference、内容守恒都不是只写一句说明：对应主入口、preservation map、Agent prompt、项目 Overlay 和自动回归均有正式承载。
-- [x] reverse_audit：从原规则反向逐项检查当前承载。`01_project-discovery.md`、`06_repository-constraints.md`、`08_testing-strategy.md`、`09_collaboration.md` 为纯改名/内容不变；其中 `08_testing-strategy.md` 与旧文件 blob SHA 同为 `242ebc1e0f255e4427fe87ed1f6bbc6cc9a025e6`。`04_change-management.md`、`10_completion-gate.md`、`11_verification-review.md` 的改动是把原 Web/HTTP 示例扩展为 public API/ABI/CLI/Library/Data/Package 等通用边界，原 L2/L3、Traceability、Ready、Browser/API/PostgreSQL/Full-stack/Provider 证据责任仍在。`CHANGE.template.md` 使用 generic matrix，但明确映射回 `08_testing-strategy.md`，保留 Browser Mock ≠ Backend/DB、一条 Full-stack ≠ 全部状态、Provider Probe 有界且默认不进普通 CI。
-- [x] reverse_audit：对 `05_development-workflows.md` 做逐项语义 Review 时发现“无更具体日志规则时的默认严重性”曾从规范 fallback 被改为“可参考”。该问题没有被此前 CI 捕获；新增 `test_logging_fallback_severity_semantics_remain_normative` 后取得独立 Red，再恢复为规范默认并允许跨生态等价级别映射。继续审计又发现原 AIMA“默认中文注释”在通用化时没有正式项目承载；新增 Overlay 回归取得独立 Red，再把中文注释 + Python PEP 257 写回根 `AGENTS.md`，并在 preservation map 登记“旧通用默认 → AIMA Overlay”迁移。中文提交原规则一直由根 `AGENTS.md` 的“提交信息使用中文”承载。
+- [x] reverse_audit：从原规则反向逐项检查当前承载。`01_project-discovery.md`、`06_repository-constraints.md`、`08_testing-strategy.md`、`09_collaboration.md` 为纯改名/内容不变；其中 `08_testing-strategy.md` 与旧文件 blob SHA 同为 `242ebc1e0f255e4427fe87ed1f6bbc6cc9a025e6`。`04_change-management.md`、`10_completion-gate.md`、`11_verification-review.md` 的改动是把原 Web/HTTP 示例扩展为 public API/ABI/CLI/Library/Data/Package 等通用边界，原 L2/L3、Traceability、Ready、Browser/API/PostgreSQL/Full-stack/Provider 证据责任仍在。`CHANGE.template.md` 使用 generic matrix，但明确映射回 `08_testing-strategy.md`，保留 Browser Mock ≠ Backend/DB、一条 Full-stack ≠ 全部状态、Provider Probe 有界且默认不进普通 CI。人工继续审计 `05_development-workflows.md` 时发现日志 fallback 曾从规范默认改成“可参考”，另发现原 AIMA 中文注释默认在通用化后缺少项目承载；两项均先建立独立失败回归再修复。中文提交原规则一直由根 `AGENTS.md` 承载，中文注释 + PEP 257 现也由根 `AGENTS.md` 正式承载；preservation map 记录旧通用 fallback → AIMA Overlay 的迁移关系。
 - [x] unresolved_cleared：R1-R9 均为 satisfied，没有 `not_satisfied`、无未批准 deferred；所有 required 治理层都有 Red/Green 和人工审计证据。最终 Ready candidate 机器 Gate 若失败，则本结论自动失效并需重新进入 `in_progress`，不得降低门禁。
 
 # 两阶段 Review
