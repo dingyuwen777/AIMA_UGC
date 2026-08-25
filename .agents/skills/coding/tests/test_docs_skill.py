@@ -38,11 +38,10 @@ class DocsSkillTest(unittest.TestCase):
         self.assertIn("Docs Impact", collaboration)
         self.assertIn("返回 Coding", collaboration)
 
-    def test_coding_routes_to_docs_without_replacing_existing_skill_rules(self) -> None:
+    def test_coding_existing_rules_are_preserved(self) -> None:
         coding = self._read(".agents/skills/coding/SKILL.md")
-        agent = self._read(".agents/skills/coding/agents/openai.yaml")
 
-        # 这些断言保护当前 Coding 的既有高价值规则；本次不重写 Coding/SKILL.md 正文。
+        # 这些断言保护当前 Coding 的既有高价值规则；新增 Docs 路由只能追加，不能替代。
         self.assertIn("内容守恒优先于篇幅精简", coding)
         self.assertIn("### 4.12 同步当前事实和文档", coding)
         self.assertIn("文档与代码/Contract 尚未同步时，不得标记 Ready、完成、可合并或可发布", coding)
@@ -51,12 +50,37 @@ class DocsSkillTest(unittest.TestCase):
         self.assertIn("Red\n→ Verify Red：实际确认因正确目标行为失败", coding)
         self.assertIn("→ Green：最少代码通过", coding)
 
-        # Docs 路由只追加到很小的 Agent 默认提示，完整文档规则仍由独立 Docs Skill 维护。
-        self.assertIn("Docs Impact", agent)
-        self.assertIn(".agents/skills/docs/SKILL.md", agent)
-        self.assertIn("targeted", agent)
-        self.assertIn("not_applicable", agent)
-        self.assertIn("without copying or summarizing Docs rules into Coding", agent)
+    def test_repository_and_skills_form_bidirectional_hard_route(self) -> None:
+        agents = self._read("AGENTS.md")
+        coding = self._read(".agents/skills/coding/SKILL.md")
+        coding_agent = self._read(".agents/skills/coding/agents/openai.yaml")
+        docs = self._read(".agents/skills/docs/SKILL.md")
+        docs_agent = self._read(".agents/skills/docs/agents/openai.yaml")
+        collaboration = self._read(".agents/skills/docs/references/04_与Coding协作.md")
+
+        # 项目统一入口必须知道何时按需加载 Docs，不能只依赖某个宿主是否消费 agent metadata。
+        self.assertIn("Docs Impact", agents)
+        self.assertIn(".agents/skills/docs/SKILL.md", agents)
+        self.assertIn("not_applicable", agents)
+
+        # Coding 正文必须承担前向硬路由；agent metadata 只是额外提示，不是唯一入口。
+        self.assertIn("Docs Impact", coding)
+        self.assertIn(".agents/skills/docs/SKILL.md", coding)
+        self.assertIn("必须读取", coding)
+        self.assertIn("not_applicable", coding)
+        self.assertIn("targeted", coding)
+        self.assertIn("Docs Impact", coding_agent)
+        self.assertIn(".agents/skills/docs/SKILL.md", coding_agent)
+
+        # Docs 发现实现缺陷时必须真正切回 Coding 规则，不能只写一个抽象的“返回 Coding”。
+        self.assertIn("code_issue_detected", docs)
+        self.assertIn(".agents/skills/coding/SKILL.md", docs)
+        self.assertIn("必须读取", docs)
+        self.assertIn("不得", docs)
+        self.assertIn(".agents/skills/coding/SKILL.md", docs_agent)
+        self.assertIn("code_issue_detected", collaboration)
+        self.assertIn(".agents/skills/coding/SKILL.md", collaboration)
+        self.assertIn("必须读取", collaboration)
 
     def test_existing_blueprint_already_matches_lightweight_docs_governance(self) -> None:
         blueprint = self._read("docs/blueprint/06_开发约束与分阶段实施.md")
