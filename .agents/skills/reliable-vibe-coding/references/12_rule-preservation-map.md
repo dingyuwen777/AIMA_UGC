@@ -24,7 +24,7 @@
    - 对完全等价重复做一次规范化表达。
 2. 不允许因为“通用化”删除安全、兼容、测试、根因调试、文档同步、Git 或验证证据约束。
 3. 不允许因为“这个项目没有该技术”删除专项知识；应改为**条件式加载**。
-4. 不允许把某个项目自己的 PostgreSQL、文档编号、提交语言、框架版本等规则冒充通用规则；这类内容保留在项目本地 `AGENTS.md`/设计文档中。
+4. 不允许把某个项目自己的 PostgreSQL、文档编号、提交格式、框架版本等规则冒充通用规则；这类内容保留在项目本地 `AGENTS.md`/设计文档中。**Git 提交信息使用中文、代码注释使用中文，以及内部/private/helper 函数也必须纳入函数级注释要求，是当前 Skill 明确规定的通用规则，不属于项目 Overlay。**
 5. 现有文件被其他 Change、CI、文档作为 Requirement Source 时，除非完成引用迁移，不得改名或删除。
 6. 任何后续“精简 Skill”Change 都应重新检查本表和 portability tests。
 7. **内容守恒优先于篇幅精简。** 文件更短、层级更少、术语更统一都不能作为删除规则细节的依据；重组只改变组织，不降低原规则的可执行性。
@@ -58,6 +58,17 @@
 | 11 | 用户界面/跨前后端/DB/异步/Provider 等边界按验证矩阵分层；任一层不能声称证明未实际运行的下游 | `07_validation-strategy.md` 通用化 + `08_testing-strategy.md` 专项原文完整保留 |
 | 12 | public 与非显然 private/helper 都应按需要写解释原因/约束的 docstring/定点注释；简单 helper 不机械补注释 | `SKILL.md` + `05_development-workflows.md` |
 | 13 | 重要生命周期/异步/外部 I/O/失败边界在已有日志体系时补最小充分结构化可观测性；稳定事件、关联 ID、脱敏、避免 INFO 刷屏；日志不替代业务事实 | `SKILL.md` + `05_development-workflows.md` |
+
+上表记录的是**重组前原主 Skill 的 13 条不变量**，用于内容追溯，不限制当前 Skill 只能有 13 条。用户在本轮后续明确把下列规则提升为跨项目通用硬规则，当前 `SKILL.md` 已增加对应不变量：
+
+```text
+Git 提交信息使用中文
+代码注释使用中文
+新增或修改的 public/exported 函数必须有函数级中文说明
+内部/private/helper 函数也必须纳入函数级注释要求
+```
+
+这些新增通用要求不是对原规则的删除，而是用户基于通用 Skill 使用方式作出的新上游决定；项目仍可规定提交格式、注释结构或语言生态的文档注释形式，但不能取消中文语言与函数级说明要求。
 
 ## 4. 原“按需读取资源”完整映射
 
@@ -263,22 +274,26 @@ docs/blueprint/README.md
 - 当前稳定编号不能为了插入新主题被静默重排；需要插入/重命名/重新编号时按显式文档迁移处理；
 - 通用 Skill 只规定“发现并服从项目本地文档治理、改名同步当前有效引用、历史证据不随意改写”，不把 AIMA 的当前目录数量或具体文档名强加给其他项目。
 
-#### 原 Skill 中的 AIMA 中文提交与注释默认
+#### 中文提交与注释规则的归属演进
 
-原 `development-workflows.md` 还包含两条带项目倾向的 fallback：
+原 `development-workflows.md` 包含两条中文 fallback：
 
 ```text
 如果执行 Git 提交，默认使用中文提交信息
 仓库没有其他注释语言约定时，默认使用中文注释
 ```
 
-通用化后不能把中文作为所有仓库的全球默认，但这两条 AIMA 项目行为也不能静默消失，因此按“通用规则 + 项目 Overlay”拆分：
+第一轮跨项目通用化时，为避免把 AIMA 偏好误当全球规则，曾把这两条暂时分类为项目 Overlay，并把 AIMA 的中文提交、中文注释与 PEP 257 明确迁到根 `AGENTS.md`。这个过程和当时的审计结论属于真实历史，不能删除。
 
-- 通用 `05_development-workflows.md`：提交信息、注释语言首先服从目标项目适用规则；项目没有规则时跟随仓库/语言生态实际稳定风格，不强加中文；
-- AIMA 根 `AGENTS.md`：继续明确 `提交信息使用中文`；
-- AIMA 根 `AGENTS.md` 的“注释语言”小节：`除专有名词、标识符、协议、库和标准名外，代码注释使用中文`，Python 文档字符串遵循 PEP 257，其他语言沿用项目既有文档注释规范。
+**用户随后明确改变了规则归属：Git 提交信息中文、代码注释中文、内部函数也要写注释，必须是 Skill 的通用原则，不能依赖项目。** 因此当前规范以该更新后的上游决定为准，旧 Overlay 分类不再是现行规则：
 
-因此这里不是删除原规则，而是把 AIMA 特定语言选择迁回正确的项目事实源。复制本 Skill 到其他仓库时不会携带 AIMA 的中文默认；在 AIMA 中仍按原有项目语义执行。
+- 通用 `SKILL.md`：所有 Git 提交信息使用中文；代码注释统一使用中文；新增或修改的 public/exported 与内部/private/helper 函数都必须写函数级中文注释或文档注释；
+- 通用 `05_development-workflows.md`：展开提交、注释、内部函数、简单函数与复杂函数的具体执行边界；
+- 通用 `11_verification-review.md`：在 Code Quality 和 Git Review 中检查中文函数级说明与中文 Commit message；
+- `agents/openai.yaml`：默认 Agent prompt 直接要求 write Git commit messages in Chinese、write code comments in Chinese、document internal/private/helper functions；
+- AIMA 根 `AGENTS.md` 继续保留同样的中文规则，作为项目内重复强化和 PEP 257 等项目细节，不再是通用规则成立的前提。
+
+这次变更是**上游新决定覆盖旧分类**，不是删除历史。复制本 Skill 到其他仓库时，中文提交、中文注释和内部函数级说明要求会随 Skill 一起生效；项目 Overlay 只能增加格式、结构或生态细节，不能取消这些通用语言规则。
 
 ### 原步骤 10：Completion Audit、两阶段 Review、新鲜验证
 
@@ -413,15 +428,15 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 - 不关闭 auth/cert/input validation/security；
 - 避免不安全反序列化、任意命令/动态代码、字符串 SQL；
 - 对 path/network/db/command/user input 做匹配风险校验；
-- 提交信息的语言/格式按目标项目 Overlay；AIMA 的中文提交规则由根 `AGENTS.md` 继续承载。
+- **Git 提交信息使用中文**；项目 Overlay 可以增加提交格式，但不能改为非中文。
 
 ### 注释
 
-- 项目既有规范优先；
-- public 及承载非显然规则的 private/helper 都可需要 docstring/定点注释；
-- 注释解释 why/invariant/risk/compatibility，不翻译语法；
-- 简单 helper 不机械注释；
-- 注释语言按目标项目 Overlay；AIMA 的中文注释与 Python PEP 257 规则由根 `AGENTS.md` 继续承载。
+- **代码注释使用中文**；专有名词、标识符、协议、库、标准名和必须保持原样的外部文本可保留原语言；
+- 新增或修改的 public/exported 函数必须有函数级中文说明；
+- **内部/private/helper 函数也必须纳入函数级注释要求**，不能因可见性低或逻辑简单而完全省略；简单函数可以一句简短职责说明；
+- 复杂函数和非显然规则还要解释 why/invariant/risk/compatibility、状态转换和重要副作用；
+- 不逐行翻译语法，不用模板化长注释掩盖命名或结构问题。
 
 ### 可观测性
 
@@ -566,7 +581,7 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 
 ## 11. 项目本地规则与通用 Skill 的边界
 
-通用化不是把项目规则删掉，而是把归属放正确。
+通用化不是把项目规则删掉，而是把归属放正确。用户后续明确指定为通用硬规则的内容，以最新上游决定为准；不能因为早期曾归入 Overlay 就拒绝更新。
 
 ### 应留在通用 Skill
 
@@ -579,7 +594,10 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 - 依赖/Git/Secret 安全；
 - generic validation；
 - 文档同步；
-- Review/新鲜证据。
+- Review/新鲜证据；
+- **Git 提交信息使用中文**；
+- **代码注释使用中文**；
+- **内部/private/helper 函数也必须纳入函数级注释要求**，与 public/exported 函数一样提供必要的中文函数级说明。
 
 ### 应由项目 Overlay 决定
 
@@ -587,8 +605,8 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 - React/Vue/Spring/FastAPI 等具体框架；
 - PostgreSQL/MySQL/SQLite 等数据库；
 - npm/pnpm/uv/Maven/Gradle 等包管理/构建；
-- commit message 语言；
-- 代码注释与 docstring/comment language；
+- 提交信息的格式、前缀、工单号等项目附加约定；
+- 文档注释采用该语言生态中的哪种语法形式（例如 docstring/Javadoc/XML docs），但正文语言仍遵守通用中文要求；
 - docs 编号方式、当前文档数量和具体文件名；
 - 模块 Owner 名称；
 - CI job 名称；
@@ -596,7 +614,7 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 - security/auth provider；
 - project-specific architecture。
 
-在 AIMA_UGC 中，这些继续由 `AGENTS.md`、`docs/AGENTS.md`、当前 Blueprint/Roadmap/Appendix/Guide 集合、locks、Contract、Migration、tests、CI 等当前事实决定。把 Skill 复制到其他项目时，不应把 AIMA 的具体技术决定或当前文档集合一起当作全球默认。
+在 AIMA_UGC 中，PostgreSQL、框架、docs 导航、PEP 257 等项目事实继续由 `AGENTS.md`、`docs/AGENTS.md`、当前 Blueprint/Roadmap/Appendix/Guide 集合、locks、Contract、Migration、tests、CI 等决定。中文提交、中文注释和内部函数级说明则已经是通用 Skill 规则；AIMA 本地同名规则只是加强，不是它们生效的前提。
 
 ## 12. 自动化守护
 
@@ -614,6 +632,7 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 - 通用 Skill 不硬编码任一项目的 Blueprint 数量、固定文件名或固定编号上限；
 - `SKILL.md` 和本文件都明确“内容守恒优先于篇幅精简”，并禁止用抽象原则替代带条件/例外/失败处理的可执行规则；
 - Agent 默认提示要求 preserve all existing valuable details，而不是只要求读取 reference；
-- AIMA 根 `AGENTS.md` 同时保留中文提交与中文注释/PEP 257 项目规则，防止通用化时把项目本地行为误删。
+- 自动回归直接检查 Git 提交信息中文、代码注释中文、public/exported 与内部/private/helper 函数级中文说明均存在于通用 Skill/reference/Review/Agent prompt，而不是只存在于 AIMA `AGENTS.md`；
+- AIMA 根 `AGENTS.md` 继续保留中文提交、中文注释与 Python PEP 257，证明项目本地更具体规则与通用规则兼容。
 
 自动检查只能防明显丢文件/关键词/结构漂移，不能证明规则语义完全等价。任何大规模 Skill 重组仍需人工逐节做内容守恒 Review；如果自动检查与人工逐项映射冲突，以更保守的内容保留结果为准。
