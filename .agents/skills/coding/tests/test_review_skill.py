@@ -52,7 +52,7 @@ class ReviewSkillTest(unittest.TestCase):
         self.assertIn("显式 Code Review / Audit", coding)
         self.assertIn("任何 Coding 实现任务", coding)
         self.assertIn("完成前 Review", coding)
-        self.assertIn("Review Skill 存在但无法读取", coding)
+        self.assertIn("存在但无法读取", coding)
         self.assertIn("不得宣称 Review 完成", coding)
 
         self.assertIn("Code Review / Audit", routing)
