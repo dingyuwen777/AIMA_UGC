@@ -56,6 +56,17 @@ def test_agent_default_prompt_enforces_four_dimensional_routing() -> None:
     assert "fresh-evidence gate" in agent
 
 
+def test_reorganization_preserves_executable_detail_instead_of_over_summarizing() -> None:
+    skill = _read("SKILL.md")
+    preservation = _read("references/12_rule-preservation-map.md")
+    agent = _read("agents/openai.yaml")
+
+    assert "内容守恒优先于篇幅精简" in skill
+    assert "不能用一条抽象原则替代多条带条件、例外或失败处理的可执行规则" in preservation
+    assert "无法证明完全等价时，保留原细节" in preservation
+    assert "preserve all existing valuable details" in agent
+
+
 def test_language_profiles_cover_major_ecosystems_without_fixed_versions() -> None:
     profiles = _read("references/03_language-and-toolchain-profiles.md")
 
