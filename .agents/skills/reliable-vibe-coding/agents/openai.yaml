@@ -1,4 +1,4 @@
 interface:
   display_name: "Reliable Vibe Coding"
-  short_description: "Evidence-driven coding with durable project context"
-  default_prompt: "Use $reliable-vibe-coding to inspect this repository and complete the task with fresh verification evidence."
+  short_description: "跨项目、阶段与语言的可验证研发工作流"
+  default_prompt: "Use $reliable-vibe-coding. First route this task by project shape, development stage, language/toolchain, and L1-L3 risk; read every triggered reference before acting, then work from current repository facts and complete every applicable Change, validation, review, Git, and fresh-evidence gate."
