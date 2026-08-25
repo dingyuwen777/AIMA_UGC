@@ -29,6 +29,19 @@ def test_formal_release_is_manual_and_pr_mode_is_dry_run_only() -> None:
     assert "packages: write" in publish_job
 
 
+def test_release_fails_closed_unless_both_ghcr_packages_are_private() -> None:
+    workflow = _workflow_text()
+    publish_job = _publish_job(workflow)
+
+    assert "packages: read" in workflow.split("publish-release:", 1)[0]
+    assert "Verify GHCR packages are private" in workflow
+    assert "Revalidate private GHCR packages before push" in publish_job
+    assert '"/users/${PACKAGE_OWNER}/packages/container/${package_name}"' in workflow
+    assert '[[ "${visibility}" != "private" ]]' in workflow
+    assert "refuse to publish a non-private GHCR package" in workflow
+    assert "Change visibility" not in workflow
+
+
 def test_publish_job_uses_explicit_repository_context_without_checkout() -> None:
     publish_job = _publish_job(_workflow_text())
 
