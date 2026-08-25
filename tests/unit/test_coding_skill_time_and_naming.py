@@ -63,8 +63,8 @@ def test_project_context_is_fixed_under_agents_and_uses_beijing_time(tmp_path: P
 def test_skill_requires_beijing_time_for_all_agent_owned_time() -> None:
     """Skill 必须把北京时间作为所有 Agent 自有时间语义的统一默认。"""
     skill = _read_skill("SKILL.md")
-    discovery = _read_skill("references/01_project-discovery.md")
-    workflows = _read_skill("references/05_development-workflows.md")
+    discovery = _read_skill("references/01_项目发现与可失效缓存.md")
+    workflows = _read_skill("references/05_设计实施与根因调试.md")
 
     for text in (skill, discovery, workflows):
         assert "Asia/Shanghai" in text
@@ -75,7 +75,7 @@ def test_skill_requires_beijing_time_for_all_agent_owned_time() -> None:
 def test_skill_requires_canonical_beijing_log_prefix() -> None:
     """日志规则必须固定北京时间、毫秒、源码位置和大写级别前缀。"""
     skill = _read_skill("SKILL.md")
-    workflows = _read_skill("references/05_development-workflows.md")
+    workflows = _read_skill("references/05_设计实施与根因调试.md")
     canonical = "[YYYY-MM-DD HH:mm:ss.SSS source.ext L<line>] [LEVEL] message"
 
     assert canonical in skill

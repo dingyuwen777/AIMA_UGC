@@ -34,7 +34,7 @@
 | 当前开发环境怎么运行 | `docs/02_环境运行与部署.md` |
 | 下一阶段、生产上线、Release/Backup/回滚 | `docs/roadmap/02_生产上线实施路线.md` + `docs/appendix/11_生产部署与离线Release方案.md` |
 | 开发/测试/CI/Git | `docs/blueprint/06_开发约束与分阶段实施.md` |
-| 用户可见行为/前后端/Full-stack/Provider 测试分层 | `docs/blueprint/06_开发约束与分阶段实施.md` + `.agents/skills/coding/references/08_testing-strategy.md` |
+| 用户可见行为/前后端/Full-stack/Provider 测试分层 | `docs/blueprint/06_开发约束与分阶段实施.md` + `.agents/skills/coding/references/08_分层测试与验收策略.md` |
 | 重大跨模块决定 | `docs/blueprint/07_技术决策与实施门禁.md` |
 | Collection Plan、Capability、Decision、评论 | `docs/blueprint/08_采集策略与平台能力.md` + `docs/collection/README.md` |
 | Scheduler 运行/停机恢复 | `docs/appendix/05_Scheduler调度执行与停机恢复.md` |
@@ -78,7 +78,7 @@ python .agents/skills/coding/scripts/ready_check.py --root . --require-active-re
 
 机器 Ready Check 只验证可机器判断的结构、状态、Source 路径、占位符和 Completion Audit checkbox；它不能证明业务语义完整，因此不能替代 Requirement Traceability 和语义 Review。
 
-详细规则：`.agents/skills/coding/references/10_completion-gate.md`。
+详细规则：`.agents/skills/coding/references/10_完成定义追溯门禁.md`。
 
 ## 2. 系统基线
 
@@ -387,7 +387,7 @@ Red
 → 完整 CI
 ```
 
-对 L2/L3 且存在用户可见、前后端/数据库/异步、公共 Contract 或 Provider 边界的任务，必须按 `.agents/skills/coding/references/08_testing-strategy.md` 建立并维护 Validation Matrix。固定职责是：
+对 L2/L3 且存在用户可见、前后端/数据库/异步、公共 Contract 或 Provider 边界的任务，必须按 `.agents/skills/coding/references/08_分层测试与验收策略.md` 建立并维护 Validation Matrix。固定职责是：
 
 ```text
 Browser Mock Acceptance
