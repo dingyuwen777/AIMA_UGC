@@ -64,7 +64,9 @@ def test_offline_release_preserves_server_compose_start_command() -> None:
     # docker load 后继续运行 canonical compose.yaml 与现有 env.production。
     assert "cp compose.yaml release-bundle/compose.yaml" in workflow
     assert "docker load -i images.tar" in workflow
-    assert "docker compose --env-file env.production up -d --no-build --pull never --wait" in workflow
+    assert (
+        "docker compose --env-file env.production up -d --no-build --pull never --wait" in workflow
+    )
     assert "compose.windows.yaml" not in workflow
 
 
