@@ -239,7 +239,7 @@ def test_legacy_hard_gates_remain_in_normative_runtime_rules() -> None:
         assert marker in corpus
 
 
-def test_aima_specific_rules_remain_project_overlay_instead_of_becoming_global() -> None:
+def test_aima_document_governance_remains_overlay_while_language_rules_are_global() -> None:
     agents = _read_repo("AGENTS.md")
     docs_agents = _read_repo("docs/AGENTS.md")
     preservation = _read("references/12_rule-preservation-map.md")
@@ -250,7 +250,8 @@ def test_aima_specific_rules_remain_project_overlay_instead_of_becoming_global()
     assert "Python 文档字符串遵循 PEP 257" in agents
     assert "AIMA 文档编号细节" in preservation
     assert "两位数字下划线前缀" in preservation
-    assert "通用 Skill 本身不把中文强加给其他仓库" in workflows
+    assert "Git 提交信息统一使用中文" in workflows
+    assert "除专有名词、标识符、协议、库和标准名外，代码注释统一使用中文" in workflows
 
     for marker in (
         "每个 `docs/` 子目录独立编号",
