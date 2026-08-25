@@ -25,6 +25,17 @@ def test_skill_routes_by_project_stage_stack_and_risk() -> None:
     assert "validation-strategy.md" in skill
 
 
+def test_agent_default_prompt_enforces_four_dimensional_routing() -> None:
+    agent = _read("agents/openai.yaml")
+
+    assert "project shape" in agent
+    assert "development stage" in agent
+    assert "language/toolchain" in agent
+    assert "L1-L3 risk" in agent
+    assert "read every triggered reference" in agent
+    assert "fresh-evidence gate" in agent
+
+
 def test_language_profiles_cover_major_ecosystems_without_fixed_versions() -> None:
     profiles = _read("references/language-and-toolchain-profiles.md")
 
@@ -131,7 +142,6 @@ def test_preservation_map_keeps_critical_existing_rules_reachable() -> None:
         "文档同步",
         "可观测性",
         "两位数字下划线前缀",
-        "提交信息使用中文",
     ):
         assert marker in preservation
 
@@ -173,16 +183,13 @@ def test_aima_specific_rules_remain_project_overlay_instead_of_becoming_global()
     agents = _read_repo("AGENTS.md")
     blueprint = _read_repo("docs/blueprint/06_开发约束与分阶段实施.md")
     preservation = _read("references/rule-preservation-map.md")
+    workflows = _read("references/development-workflows.md")
 
     assert "提交信息使用中文" in agents
     assert "docs/blueprint/01—08" in blueprint
     assert "AIMA 文档编号细节" in preservation
     assert "两位数字下划线前缀" in preservation
-    assert "通用 Skill 本身不把中文强加给其他仓库" in workflows_or_skill()
-
-
-def workflows_or_skill() -> str:
-    return "\n".join((_read("SKILL.md"), _read("references/development-workflows.md")))
+    assert "通用 Skill 本身不把中文强加给其他仓库" in workflows
 
 
 def test_change_template_uses_portable_validation_dimensions() -> None:
