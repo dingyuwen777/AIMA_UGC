@@ -19,6 +19,7 @@ from aima_ugc.modules.analysis.content_labeling import (
     ContentLabelingLLMRequest,
     ContentLabelingModelItem,
 )
+from aima_ugc.platform.time import BEIJING_TIMEZONE
 from pydantic import SecretStr
 
 
@@ -244,14 +245,11 @@ def test_openai_compatible_empty_content_uses_explicit_bounded_retry(
 def test_openai_compatible_uses_physical_request_start_time_for_price_period(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """系统记录北京时间请求时刻，供应商分时价格仍按其声明的 UTC 时区匹配。"""
     records: list[LLMHTTPRequestAudit] = []
+    request_at = datetime(2026, 8, 20, 9, 0, tzinfo=BEIJING_TIMEZONE)
 
-    class PeakRequestDateTime(datetime):
-        @classmethod
-        def now(cls, tz: object = None) -> datetime:
-            return datetime(2026, 8, 20, 1, 0, tzinfo=UTC)
-
-    monkeypatch.setattr(openai_compatible_module, "datetime", PeakRequestDateTime)
+    monkeypatch.setattr(openai_compatible_module, "beijing_now", lambda: request_at)
     pricing_catalog = LLMPricingCatalog.from_toml(
         """
         schema_version = "llm-pricing.v1"
@@ -318,7 +316,7 @@ def test_openai_compatible_uses_physical_request_start_time_for_price_period(
     assert response.cost_currency == "USD"
     assert len(records) == 1
     assert records[0].status == "completed"
-    assert records[0].started_at == datetime(2026, 8, 20, 1, 0, tzinfo=UTC)
+    assert records[0].started_at == request_at
     assert records[0].cost_amount == Decimal("0.000564")
     assert records[0].cost_currency == "USD"
     assert records[0].input_cache_hit_per_million == Decimal("0.30")
@@ -330,15 +328,12 @@ def test_openai_compatible_uses_physical_request_start_time_for_price_period(
 def test_empty_content_retry_audits_cost_of_every_paid_http_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """空响应 Retry 的每次付费 HTTP 都按固定北京时间请求时刻记录并累计费用。"""
     records: list[LLMHTTPRequestAudit] = []
     calls = 0
+    request_at = datetime(2026, 8, 24, 8, 0, tzinfo=BEIJING_TIMEZONE)
 
-    class IdleRequestDateTime(datetime):
-        @classmethod
-        def now(cls, tz: object = None) -> datetime:
-            return datetime(2026, 8, 24, 0, 0, tzinfo=UTC)
-
-    monkeypatch.setattr(openai_compatible_module, "datetime", IdleRequestDateTime)
+    monkeypatch.setattr(openai_compatible_module, "beijing_now", lambda: request_at)
 
     def handler(_: httpx.Request) -> httpx.Response:
         nonlocal calls
