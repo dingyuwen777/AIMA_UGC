@@ -54,7 +54,7 @@ changes/archive
 
 ## 2. 当前核心 Blueprint
 
-当前核心 Blueprint 固定为 `01—08`：
+当前仓库此刻存在以下核心 Blueprint。这个列表描述**当前实际文档集合**，以本目录实际文件、`../AGENTS.md` 和本文为准；**不设置固定数量、不设置固定文件名，也不设置固定编号上限**。
 
 | 文档 | 解决的问题 | 关键结论 |
 | --- | --- | --- |
@@ -67,9 +67,9 @@ changes/archive
 | [`07_技术决策与实施门禁.md`](07_技术决策与实施门禁.md) | 哪些跨模块决定已经拍板？ | 普通任务不能静默改变的技术决定和门禁 |
 | [`08_采集策略与平台能力.md`](08_采集策略与平台能力.md) | Collection Plan 怎样决定抓什么？ | Capability、Decision、Detail/Comment、Provider Billing、采集策略 |
 
-新增一个具体业务场景或某个 Provider 细节时，优先放 Appendix/模块 README；不要继续按 `09、10、11...` 扩张 Blueprint。
+新增一个具体业务场景或某个 Provider 细节时，仍优先放 Appendix/模块 README；不要仅为了延续编号就新增 Blueprint，也不要因为当前列表恰好到 `08_` 就禁止未来出现 `09_` 或更大的编号。
 
-只有真正出现**新的长期架构领域**，且无法合理归入现有 01—08 时，才通过新的文档治理 Change 调整核心结构。
+只有真正出现**新的长期架构领域**，且无法合理归入现有核心 Blueprint 时，才通过新的文档治理 Change 新增或调整核心结构。新增、插入、重命名或重新编号时遵守 `../AGENTS.md`：按上游依赖排序，保留当前稳定编号，必要迁移时同步所有实时引用。
 
 ---
 
@@ -201,7 +201,7 @@ backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md
 本轮用户明确批准决定 / 正式 Change
 → 当前代码、Contract、Migration、generated、tests、locks
 → Blueprint 07 已确认跨模块决定
-→ 对应核心 Blueprint 01—08
+→ 对应当前核心 Blueprint
 → 模块 README / Appendix / Guide / Roadmap
 → 根 README 摘要
 → 历史 Change / 旧聊天
@@ -328,4 +328,4 @@ Blueprint 只回答长期问题：
 
 这些内容应分别进入 Appendix、模块 README、Contract/Migration、Guide 或 `changes/archive/`。
 
-文档结构服务于开发，不以“文件少”为目的；但也不允许 Blueprint 随每个业务功能无限增长。
+文档结构服务于开发，不以“文件少”为目的；也不允许 Blueprint 随每个业务功能无边界增长。是否新增 Blueprint 由“是否形成新的长期架构领域”决定，而不是由当前文档数量、编号是否已到某个值决定。
