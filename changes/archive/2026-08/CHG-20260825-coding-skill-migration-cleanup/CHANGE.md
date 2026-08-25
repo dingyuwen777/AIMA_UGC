@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260825-coding-skill-migration-cleanup
 title: Coding Skill 迁移遗留清理
 level: L2
-status: ready_for_review
+status: done
 owner: aima
 branch: fix/coding-skill-migration-cleanup
 created: 2026-08-25
@@ -76,29 +76,29 @@ data_changes: []
 | --- | --- | --- | --- | --- |
 | R1 | 当前 live Coding Skill 不保留任何旧品牌、旧目录、旧 CLI 或旧 reference 文件名 | user:current-request | satisfied | 收紧后的 Red HEAD `559a4432` 在 Change Gate `32854881826` 中仅因 `12_规则保留映射.md` 仍含旧迁移标识失败；Green HEAD `d057060b` 的 Change Gate `32855148851` 中该检查通过 |
 | R2 | 不总结或改变任一既有规则及含义，只清迁移历史与标识 | user:current-request | satisfied | `12_规则保留映射.md` 仍逐项保留 13 条基础不变量、1—11 工作流、设计/调试细节、分层测试、Change/Completion、协作、Review、Overlay 和自动化守护；只删除旧命名历史并改成当前 canonical 表述 |
-| R3 | 当前 Coding Skill 必须保持可用，并用自动化回归阻止迁移遗留再次出现 | AGENTS.md | satisfied | Green HEAD `d057060b`：Change Gate `32855148851` success，Coding self-tests `Ran 18 tests` / `OK`，Ready Check `gated=38, strict=38, legacy=72` |
+| R3 | 当前 Coding Skill 必须保持可用，并用自动化回归阻止迁移遗留再次出现 | AGENTS.md | satisfied | 最终 Ready HEAD `413a5378` 的 Change Gate `32855378445`、CI `32855378397`、Runtime `32855378337`、Full-stack `32855379909` 均 success；Coding self-tests `18/18`、Ready Check 通过 |
 | R4 | 当前正式入口继续为 `.agents/skills/coding/SKILL.md`、`.agents/project-context.json` 与 `coding.py`，不建立旧路径兼容层 | .agents/skills/coding/SKILL.md | satisfied | 迁移完整性测试全量扫描 live Skill，并真实执行 `coding.py discover/status/conflicts --help`；`12` 只保留当前 cache/CLI/reference 路径 |
-| R5 | 不扩大到产品、Blueprint、Contract、Schema/Migration、依赖和 Runtime | user:current-request | satisfied | PR diff 仅涉及 5 个 Coding live 规则/模板、1 个 Coding 回归测试和本 Change；未修改产品与正式系统事实源 |
+| R5 | 不扩大到产品、Blueprint、Contract、Schema/Migration、依赖和 Runtime | user:current-request | satisfied | PR #235 diff 仅涉及 5 个 Coding live 规则/模板、1 个 Coding 回归测试和本 Change；未修改产品与正式系统事实源 |
 
 # Validation Matrix
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
-| 行为 / Unit / Component | required | Green HEAD `d057060b`：Change Gate `32855148851` 中 Coding self-tests `18/18` 通过；回归扫描整个 live Skill 并验证当前 CLI 子命令 |
+| 行为 / Unit / Component | required | Green HEAD `d057060b` 与最终 Ready HEAD `413a5378` 的 Coding self-tests 均 `18/18` 通过；回归扫描整个 live Skill 并验证当前 CLI 子命令 |
 | 接口 / Contract | not_applicable | 不修改任何产品/public Contract；`rvc-change/v1` 继续保持，不发生 Change Schema 迁移 |
 | 集成 / Persistence / Runtime Dependency | not_applicable | 不修改数据库、文件持久化、Runtime dependency 或运行时代码 |
 | 用户 / Workflow Acceptance | not_applicable | 不修改产品用户工作流；Coding CLI 实现不变，只清理规则指引和迁移历史标识 |
 | 跨组件 Golden Path | not_applicable | 不存在产品跨组件接线变化 |
 | External Dependency / Provider Probe | not_applicable | 不涉及任何第三方 Provider 当前事实 |
 | Build / Package / Runtime | not_applicable | 不修改 build/package/runtime 实现或产物 |
-| Docs / Governance / Other | required | `12` 内容守恒人工逐节复核 + live Skill 全量旧标识自动扫描 + Ready Check；Repository CI/Runtime/Full-stack 作为仓库永久门禁继续运行 |
+| Docs / Governance / Other | required | `12` 内容守恒人工逐节复核 + live Skill 全量旧标识自动扫描 + Ready Check；PR #235 和合并后 main 的永久 CI/Runtime/Full-stack/Change Gate 均全绿 |
 
 # Completion Audit
 
 - [x] upstream_re_read：用户补充明确要求“迁移完成后不再保留旧标识”；已据此重新读取当前 `AGENTS.md`、`SKILL.md` 与 live `12`，将完成定义更新为“当前 Skill 只保留当前 canonical 表述”。
 - [x] change_coverage：旧标识检查从 01—11/template 扩展为整个 `.agents/skills/coding/` live Markdown/YAML/Python 文本；`12` 不再作为历史白名单例外。
 - [x] reverse_audit：从 Skill identity、Agent metadata、全部 reference、Change template、CLI 指引和缓存路径反向检查，当前 live Skill 均指向 `Coding` / `.agents/skills/coding/` / `.agents/project-context.json` / `coding.py`。
-- [x] unresolved_cleared：R1—R5 均有新的 Red/Green、diff 或范围证据；required 验证层已有当前证据。
+- [x] unresolved_cleared：R1—R5 均有 Red/Green、diff、PR Ready 和 main 集成后的新鲜证据；required 验证层均已闭环。
 
 # 两阶段 Review
 
@@ -121,13 +121,13 @@ R1—R5 覆盖上述全部上游要求，未发现遗漏、延期或伪造不适
 - 09：只把冲突检查指引切到真实 `coding.py` CLI。
 - `CHANGE.template.md`：只把 Skill/reference/Ready Check 的 canonical 路径统一到 `.agents/skills/coding/`；Change schema 保持不变。
 - 12：所有规则细节继续逐项存在；删除旧命名、旧路径、旧 CLI、旧 reference 文件名及对应迁移演进叙事，改为当前 canonical reference/缓存/CLI 与当前规则归属。
-- 回归测试：从“允许 12 保留历史白名单”收紧为“整个 live Coding Skill 无旧迁移标识”，并继续真实检查 `coding.py discover/status/conflicts --help`。
+- 回归测试：从允许单独历史白名单收紧为“整个 live Coding Skill 无旧迁移标识”，并继续真实检查 `coding.py discover/status/conflicts --help`。
 
 未发现 Change 承诺但未实现的项目。
 
 # Code Quality Review
 
-- 正确性：新增更严格的 Red 明确证明此前保留策略不满足用户最新要求；Green 证明整个 live Skill 已无被禁止迁移标识。
+- 正确性：更严格的 Red 明确证明此前保留策略不满足用户最终要求；Green、Ready 和 main push 三层证据证明整个 live Skill 已无被禁止迁移标识且仓库门禁未回归。
 - 规则守恒：`12` 仍完整列出基础不变量、统一工作流、设计/调试、分层测试、Change/Completion、协作、Review、Overlay 与自动化守护；没有删除规则条款。
 - 边界：只有迁移历史组织文字允许调整；产品、Contract、Schema/Migration、依赖和 Runtime 未动。
 - 兼容：`rvc-change/v1` 保持；不修改 `coding.py`/`ready_check.py` 行为或产品持久化格式。
@@ -146,7 +146,8 @@ R1—R5 覆盖上述全部上游要求，未发现遗漏、延期或伪造不适
 - [x] 确认收紧后的 Red 仅命中 `12` 的迁移历史遗留。
 - [x] 清理 `12` 的旧迁移标识，同时逐项保留所有规则语义和细节。
 - [x] 确认 Green self-tests 与 Ready Check 通过。
-- [ ] 等待最终证据 HEAD 的永久 CI、Runtime Acceptance、Full-stack Acceptance 全部完成并补交付记录。
+- [x] 最终 Ready HEAD `413a5378124d21985c63011eb076edf57a2d0f13` 的 Change Gate、CI、Runtime Acceptance、Full-stack Acceptance 全部 success。
+- [x] PR #235 正常合并到 main，merge commit `b0efe5d65457dd3334e7f008c6d83047c58c20c9`；该 main commit 的 Change Gate `32855734082`、CI `32855734061`、Runtime Acceptance `32855734127`、Full-stack Acceptance `32855734059` 全部 success。
 
 # 验证
 
@@ -156,16 +157,18 @@ R1—R5 覆盖上述全部上游要求，未发现遗漏、延期或伪造不适
 - 收紧 Red：整个 live Skill 扫描，`12` 也不得保留旧迁移标识。
 - Green：`python -m unittest discover .agents/skills/coding/tests -v`
 - CLI/治理：`python .agents/skills/coding/scripts/ready_check.py --root . --changed-since <base-sha>`。
-- Repository CI：最终 Ready HEAD 触发的永久 CI、Change Completion Gate、Runtime Acceptance、Full-stack Acceptance 必须成功。
+- Repository CI：最终 Ready HEAD 与合并后 main 均通过永久 CI、Change Completion Gate、Runtime Acceptance、Full-stack Acceptance。
 - Diff 审计：确认没有产品、Blueprint、Contract、Schema/Migration、依赖或 Runtime 差异。
 
 ## 新鲜证据
 
 - 基线 main `5f63cb77bd747b6d8fc1ec3c2b047ab323abfe35`：CI `32848053733`、Runtime Acceptance `32848053725`、Change Completion Gate `32848053747` 均为 success。
 - 初始 Red HEAD `195cdf9f46f12bd93a8ff80668bc9442002fc41b`：Change Gate `32852518744`，新增迁移检查 3 项准确命中直接 live 残留。
-- 初始 Green/Ready HEAD `7ce5b45108687a6f5b550c3fa025656bdb62df15`：Change Gate `32854010045`、CI `32854010334`、Runtime `32854009971`、Full-stack `32854009983` 均 success，但用户随后明确不允许 `12` 继续保留任何旧迁移标识，因此该状态不再作为最终完成结论。
+- 初始 Green/Ready HEAD `7ce5b45108687a6f5b550c3fa025656bdb62df15`：Change Gate `32854010045`、CI `32854010334`、Runtime `32854009971`、Full-stack `32854009983` 均 success，但用户随后明确不允许 `12` 继续保留任何旧迁移标识，因此该状态不作为最终完成结论。
 - 收紧 Red HEAD `559a44323fd8cee30ea80d4364c6aae194676c67`：Change Gate `32854881826`，18 个 Coding self-tests 中仅 `test_live_skill_contains_no_legacy_migration_identifiers` 失败，失败点为 `12_规则保留映射.md` 的旧迁移标识，其余测试通过。
-- 收紧 Green HEAD `d057060b833418d60646cdaa0dcb4c01727378e4`：Change Gate `32855148851` success；Coding self-tests `Ran 18 tests` / `OK`；`test_live_skill_contains_no_legacy_migration_identifiers` 和 `test_preservation_map_uses_only_current_canonical_locations` 均通过；Ready Check `gated=38, strict=38, legacy=72`。
+- 收紧 Green HEAD `d057060b833418d60646cdaa0dcb4c01727378e4`：Change Gate `32855148851` success；Coding self-tests `Ran 18 tests` / `OK`；严格旧标识扫描和当前 canonical 映射检查均通过；Ready Check `gated=38, strict=38, legacy=72`。
+- 最终 Ready HEAD `413a5378124d21985c63011eb076edf57a2d0f13`：Change Gate `32855378445`、CI `32855378397`、Runtime Acceptance `32855378337`、Full-stack Acceptance `32855379909` 均 success。
+- main merge commit `b0efe5d65457dd3334e7f008c6d83047c58c20c9`：push Change Gate `32855734082`、CI `32855734061`、Runtime Acceptance `32855734127`、Full-stack Acceptance `32855734059` 均 `completed/success`。
 
 # 文档影响
 
@@ -173,8 +176,9 @@ R1—R5 覆盖上述全部上游要求，未发现遗漏、延期或伪造不适
 
 # 交付
 
-- Branch：`fix/coding-skill-migration-cleanup`
-- PR：#235 `清理 Coding Skill 迁移遗留`
-- 当前状态：`ready_for_review`
+- 开发分支：`fix/coding-skill-migration-cleanup`
+- 开发 PR：#235 `清理 Coding Skill 迁移遗留`，已合并。
+- main 集成提交：`b0efe5d65457dd3334e7f008c6d83047c58c20c9`，四套 push 永久门禁全绿。
 - 最终规则口径：live Coding Skill 不保留任何旧品牌、旧目录、旧 CLI 或旧 reference 文件名。
-- 发布：不适用
+- Change 状态：`done`，归档到 `changes/archive/2026-08/CHG-20260825-coding-skill-migration-cleanup/CHANGE.md`。
+- 发布：不适用。
