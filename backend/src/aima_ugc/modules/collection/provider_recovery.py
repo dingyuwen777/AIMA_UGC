@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from decimal import Decimal
 from typing import Protocol
 from uuid import UUID
@@ -19,6 +19,7 @@ from aima_ugc.contracts.provider import (
 )
 from aima_ugc.platform.jobs import JobExecutionFence
 from aima_ugc.platform.storage import ArtifactRecord
+from aima_ugc.platform.time import beijing_now
 
 from .provider_persistence import ProviderAttemptRecord
 from .providers import RawArtifactIntegrityError
@@ -90,7 +91,7 @@ class ProviderAttemptReconciler:
     ) -> None:
         self._persistence = persistence
         self._raw_artifacts = raw_artifacts
-        self._clock = clock or (lambda: datetime.now(UTC))
+        self._clock = clock or (lambda: beijing_now())
 
     def recover_inherited(self, fence: JobExecutionFence) -> int:
         """新 Worker Token 在进入 Handler 时收敛上一 Token 留下的 Attempt。"""

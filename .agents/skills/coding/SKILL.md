@@ -1,9 +1,9 @@
 ---
-name: reliable-vibe-coding
+name: coding
 description: 面向不同项目形态、研发阶段和编程语言的可靠软件研发工作流。先恢复仓库当前事实，再按项目形态、研发阶段/任务类型、编程语言/工具链和风险等级 L1-L3 组合路由；依据真实 Contract、Schema、数据、模块边界和项目规则执行需求设计、功能开发、Bug 修复、重构、Review、CI、Git 与交付验证。保留可失效项目导航、Git 可见 Change、Requirement Traceability、Completion Audit、Red-Green-Refactor、根因调试、分层验证、多人协作和新鲜证据门禁。Use for repository onboarding, planning, implementation, debugging, refactoring, review, verified delivery, release work, and parallel human or agent coding across languages and project types.
 ---
 
-# Reliable Vibe Coding
+# Coding
 
 把自然语言研发请求转化为一个可追溯、可验证的交付闭环：
 
@@ -82,6 +82,8 @@ CMakeLists.txt ≠ Linux-only
 12. **中文注释与函数级说明是通用规则。** 代码注释统一使用中文；专有名词、标识符、协议、库、标准名以及必须保持原样的外部文本可以保留原语言。新增或修改的 public/exported 函数必须有与复杂度匹配的函数级中文注释或文档注释；**内部/private/helper 函数也必须写函数级中文注释或文档注释**，不能因为不是 public 就省略。简单函数的说明可以非常简短，但不能用“自解释”作为完全不写函数级说明的理由。复杂规则、关键不变量、状态转换、算法取舍、兼容原因和重要副作用还要重点解释 `why / invariant / risk / compatibility`，不要逐行翻译语法。
 13. **重要功能可观测性需要匹配现有体系。** 如果仓库已有日志/事件基础设施，且功能涉及关键生命周期、异步任务、外部 I/O、重试/部分失败、状态转换或后期排障价值，应补最小充分结构化观测。复用现有 logger/event/脱敏/关联 ID；禁止打印 Secret/Token/密码/敏感 Raw/PII，禁止 INFO 高频刷屏，日志也不能替代数据库/文件中的正式业务事实或 Health/Audit 机制。
 14. **Git 提交信息统一中文。** 所有 Git 提交信息使用中文，包括普通提交、修复提交和合并提交的说明文本；命令、路径、标识符、版本号等必要技术内容可以保留原文。项目可以进一步规定提交格式或前缀，但不能把提交信息语言改为非中文。
+15. **所有时间相关默认采用北京时间。** Coding Skill、Agent 以及由其新增或默认解释的时间戳、日期、日志、缓存、Change 元数据、报告时间、脚本默认时间和用户可见时间统一使用北京时间 `Asia/Shanghai`（UTC+8），不得依赖宿主本地时区。外部协议、原始数据或既有机器 Contract 明确规定其他时区时保留原始事实语义，但在 Agent 输出、人类可读日志和展示边界明确转换为北京时间，不得把 UTC 值直接当作北京时间。
+16. **日志前缀统一且可定位。** 除非更高优先级的外部日志 wire-format Contract 强制其他序列化形式，所有人类可读日志记录统一使用 `[YYYY-MM-DD HH:mm:ss.SSS source.ext L<line>] [LEVEL] message`；时间必须是北京时间，毫秒固定三位，`source.ext` 与 `L<line>` 来自真实调用点，`LEVEL` 使用大写。结构化日志若因平台 Contract 必须采用 JSON 等形式，仍必须提供等价的北京时间、source、line、level 字段。
 
 规则重组时还必须遵守 [12_rule-preservation-map.md](references/12_rule-preservation-map.md)：通用化只能移动和分类规则，不能用“精简”删除仍有效内容。
 
@@ -223,25 +225,27 @@ Contract / Schema / Migration
 
 只读取任务相关内容。能从仓库、测试、CI、锁文件或工具确认的事实先自行检查。
 
+所有由 Agent 在本任务中新建、填充或默认解释的时间字段都按 `Asia/Shanghai` 处理；如果读取到外部来源或既有 Contract 的 UTC/其他时区值，先保留原始事实，再在需要展示、记录人类日志或形成 Agent 输出时明确转换为北京时间。
+
 ### 4.4 复用或建立可失效项目导航
 
 项目缓存路径固定为：
 
 ```text
-.reliable-vibe-coding/project-context.json
+.agents/project-context.json
 ```
 
 对已授权写入的实现任务，在每个独立任务或新工作会话首次规划前运行；同一任务内发生同步、切换分支、rebase、历史改写或候选事实源变化后重新运行。终端、Python 和项目写权限均可用时：
 
 ```text
-python <skill>/scripts/rvc.py discover --root <repo>
+python <skill>/scripts/coding.py discover --root <repo>
 ```
 
 - `cache_hit`：候选事实源未出现可见失效信号；复用导航，但仍读取本次真实需求、实现、调用链和相关测试；
 - `created` / `refreshed`：检查索引发现的规则、需求、架构、Contract、Migration、配置、依赖和测试入口；
 - 脚本失败：保留原错误，按 `01_project-discovery.md` 人工流程继续，不声称缓存有效。
 
-索引只保存路径、分类、轻量指纹和可直接提取的脚本名，不复制需求正文。`cache_hit` 不代表普通源码没有变化，也不能代替 `git diff`、真实文件或调用链调查。
+索引只保存路径、分类、轻量指纹和可直接提取的脚本名，不复制需求正文。`cache_hit` 不代表普通源码没有变化，也不能代替 `git diff`、真实文件或调用链调查。缓存 `generated_at` 必须使用带 `+08:00` 偏移的北京时间；旧缓存路径不读取、不迁移，直接由下一次 discover 在 `.agents/project-context.json` 重建。
 
 如果目标语言/工具链不在脚本当前识别范围，缓存只是降级，不得阻止人工事实发现。
 
@@ -250,7 +254,7 @@ python <skill>/scripts/rvc.py discover --root <repo>
 存在 `changes/active/*/CHANGE.md` 时，在设计/编码前读取当前 Active Change。终端可用时：
 
 ```text
-python <skill>/scripts/rvc.py status --root <repo> --json
+python <skill>/scripts/coding.py status --root <repo> --json
 ```
 
 只比较真实存在或 Change 明确建立的：
@@ -294,12 +298,12 @@ L1 可以在工作说明内维护。
 L2/L3 创建或认领一个 Active Change。优先：
 
 ```text
-python <skill>/scripts/rvc.py new-change --root <repo> \
+python <skill>/scripts/coding.py new-change --root <repo> \
   --id CHG-YYYYMMDD-short-name --title <title> --owner <owner> \
   --branch <branch> --level L2 --area <area> --path <path>
 ```
 
-脚本不可用时，从 [CHANGE.template.md](assets/CHANGE.template.md) 创建；进入 Ready 前不能保留占位内容。
+脚本不可用时，从 [CHANGE.template.md](assets/CHANGE.template.md) 创建；进入 Ready 前不能保留占位内容。Coding 新建 Change 的 `created` / `updated` 日期以北京时间当天为准。
 
 新模板默认：
 
@@ -361,7 +365,7 @@ not_satisfied
 
 - 要复用的现有实现/模式；
 - 新增或修改的 public/exported 与内部/private/helper 函数应提供什么函数级中文注释或文档注释，以及哪些复杂规则还需要额外定点说明；
-- 已有日志体系中哪些生命周期、外部 I/O、重试/部分失败/状态转换需要观测；
+- 已有日志体系中哪些生命周期、外部 I/O、重试/部分失败/状态转换需要观测；所有新增人类可读日志如何满足 `[YYYY-MM-DD HH:mm:ss.SSS source.ext L<line>] [LEVEL] message` 与北京时间要求；
 - 最小失败测试或明确 TDD 例外；
 - 行为、接口、集成、用户工作流、跨组件、外部依赖、Build/Package/Runtime、Docs/Governance 哪些有独立风险；
 - 目标测试、相关测试、静态检查、构建、运行和发布验证；
@@ -469,7 +473,7 @@ Bug 修复必须有回归证据。测试验证真实行为，不只验证 Mock �
 
 代码注释统一使用中文；专有名词、标识符、协议、库、标准名和必须保持原样的外部文本可以保留原语言。新增或修改的 public/exported 与内部/private/helper 函数都必须有函数级中文注释或文档注释；内部函数不能因为可见性低而省略。简单函数可以使用一句简短说明，复杂逻辑重点解释 `why / invariant / risk / compatibility`，不要逐行翻译语法。
 
-仓库已有 logger/event 体系且观测点有独立排障价值时，覆盖低频关键生命周期、异步阶段、external I/O、retry/partial failure/terminal state。高频正常细节保持 DEBUG 或不记录；Secret/敏感 Raw/PII 不记录；日志不能代替正式业务事实。
+仓库已有 logger/event 体系且观测点有独立排障价值时，覆盖低频关键生命周期、异步阶段、external I/O、retry/partial failure/terminal state。高频正常细节保持 DEBUG 或不记录；Secret/敏感 Raw/PII 不记录；日志不能代替正式业务事实。除更高优先级外部 wire-format Contract 强制其他格式外，人类可读日志统一采用 `[YYYY-MM-DD HH:mm:ss.SSS source.ext L<line>] [LEVEL] message`，其中时间为 `Asia/Shanghai` 北京时间、毫秒固定三位、源文件名和真实调用行号可定位、LEVEL 大写；结构化日志必须提供等价字段。
 
 ### 4.11 跨模块、Contract、Schema 与数据边界
 

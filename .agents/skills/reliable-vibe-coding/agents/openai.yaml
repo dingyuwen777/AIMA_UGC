@@ -1,4 +1,0 @@
-interface:
-  display_name: "Reliable Vibe Coding"
-  short_description: "跨项目、阶段与语言的可验证研发工作流"
-  default_prompt: "Use $reliable-vibe-coding. First route this task by project shape, development stage, language/toolchain, and L1-L3 risk; read every triggered reference before acting, preserve all existing valuable details and never replace executable rules with over-summarized abstractions, write Git commit messages in Chinese, write code comments in Chinese, document internal/private/helper functions with function-level Chinese comments or documentation as well as public/exported functions, then work from current repository facts and complete every applicable Change, validation, review, Git, and fresh-evidence gate."

@@ -214,7 +214,7 @@ Review A2：Change → 实现 / 测试 / 文档
 本地最终检查：
 
 ```bash
-python .agents/skills/reliable-vibe-coding/scripts/ready_check.py --root . --require-active-ready
+python .agents/skills/coding/scripts/ready_check.py --root . --require-active-ready
 ```
 
 PR CI 使用 `--changed-since <base-sha>`，只强制当前 PR 改动的 gated Active Change，避免并行 Change 互相阻塞。`main` push 使用 `--require-active-ready`。

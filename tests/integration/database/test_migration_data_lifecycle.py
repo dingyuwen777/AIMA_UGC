@@ -156,6 +156,16 @@ def _seed_budget_reservation(database: str, *, status: str) -> None:
         engine.dispose()
 
 
+def _observed_at(value: object) -> datetime:
+    """解析 Migration 写入 JSONB 的带时区时间，并按绝对时刻参与断言。"""
+    if not isinstance(value, str):
+        raise AssertionError(f"field_observed_at 时间必须是字符串，实际为 {type(value).__name__}")
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise AssertionError("field_observed_at 时间必须包含时区")
+    return parsed
+
+
 def test_0014_to_0015_accepts_settled_historical_budget_rows(
     migration_database: str,
 ) -> None:
@@ -211,6 +221,7 @@ def test_0014_to_0015_blocks_unresolved_budget_before_destructive_ddl(
 def test_0016_to_0017_backfills_only_existing_current_fields(
     migration_database: str,
 ) -> None:
+    """0017 回填只覆盖已有字段，并按绝对时刻而非旧 UTC 文本格式比较时间。"""
     _upgrade(migration_database, "20260817_0016")
     account_id = uuid4()
     content_id = uuid4()
@@ -283,7 +294,7 @@ def test_0016_to_0017_backfills_only_existing_current_fields(
             account = (
                 connection.execute(
                     text(
-                        "SELECT field_observed_at, last_seen_at::text AS seen "
+                        "SELECT field_observed_at, last_seen_at AS seen "
                         "FROM accounts WHERE id = :id"
                     ),
                     {"id": account_id},
@@ -294,7 +305,7 @@ def test_0016_to_0017_backfills_only_existing_current_fields(
             content = (
                 connection.execute(
                     text(
-                        "SELECT field_observed_at, last_seen_at::text AS seen "
+                        "SELECT field_observed_at, last_seen_at AS seen "
                         "FROM contents WHERE id = :id"
                     ),
                     {"id": content_id},
@@ -305,7 +316,7 @@ def test_0016_to_0017_backfills_only_existing_current_fields(
             comment = (
                 connection.execute(
                     text(
-                        "SELECT field_observed_at, last_seen_at::text AS seen "
+                        "SELECT field_observed_at, last_seen_at AS seen "
                         "FROM comments WHERE id = :id"
                     ),
                     {"id": comment_id},
@@ -315,7 +326,7 @@ def test_0016_to_0017_backfills_only_existing_current_fields(
             )
 
         account_fields = account["field_observed_at"]
-        assert account_fields["author.handle"] == account["seen"]
+        assert _observed_at(account_fields["author.handle"]) == account["seen"]
         assert "author.display_name" not in account_fields
 
         content_fields = content["field_observed_at"]
@@ -325,7 +336,7 @@ def test_0016_to_0017_backfills_only_existing_current_fields(
             "author.external_account_id",
             "metrics.like_count",
         ):
-            assert content_fields[field] == content["seen"]
+            assert _observed_at(content_fields[field]) == content["seen"]
         assert "text" not in content_fields
         assert "metrics.comment_count" not in content_fields
 
@@ -337,7 +348,7 @@ def test_0016_to_0017_backfills_only_existing_current_fields(
             "is_by_content_author",
             "metrics.like_count",
         ):
-            assert comment_fields[field] == comment["seen"]
+            assert _observed_at(comment_fields[field]) == comment["seen"]
         assert "parent_comment_id" not in comment_fields
         assert "metrics.reply_count" not in comment_fields
     finally:

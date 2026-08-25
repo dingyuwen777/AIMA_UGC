@@ -7,7 +7,7 @@ import hashlib
 import json
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -21,6 +21,7 @@ from aima_ugc.contracts.provider import (
 )
 from aima_ugc.platform.logging import log_event
 from aima_ugc.platform.storage import ArtifactRecord, ArtifactService, ArtifactStore
+from aima_ugc.platform.time import beijing_now
 
 from .transport import ProviderDispatchResult
 
@@ -192,7 +193,7 @@ class RawArtifactService:
             artifact.id,
             sha256=actual_sha256,
             byte_size=actual_size,
-            stored_at=datetime.now(UTC),
+            stored_at=beijing_now(),
         )
         _log_raw_stored(
             request=request,

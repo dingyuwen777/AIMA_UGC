@@ -7,7 +7,7 @@ import json
 from collections import OrderedDict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from decimal import Decimal
 from typing import Any, Literal, Protocol, cast
 from uuid import uuid4
@@ -21,6 +21,7 @@ from aima_ugc.contracts.analysis import (
     ContentVoiceType,
 )
 from aima_ugc.contracts.canonical import CanonicalContentV1
+from aima_ugc.platform.time import beijing_now
 
 from .prompt_taxonomy import (
     CONTENT_LABELING_PROMPT_PATH,
@@ -468,9 +469,9 @@ class ContentLabelingService:
                 previous_validation_error_codes=previous_errors,
                 logical_request_id=uuid4().hex,
             )
-            started_at = datetime.now(UTC)
+            started_at = beijing_now()
             response = self._llm.complete(request)
-            completed_at = datetime.now(UTC)
+            completed_at = beijing_now()
 
             validation = validator.validate_response(
                 response.raw_text,

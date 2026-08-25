@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from uuid import UUID
@@ -26,6 +25,7 @@ from aima_ugc.platform.export.excel import export_unified_data_excel
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol
 from aima_ugc.platform.storage import ArtifactService, ArtifactSizeLimitError
+from aima_ugc.platform.time import beijing_now
 
 from .analysis_identity import current_analysis_identity
 from .runtime import PlatformRuntime
@@ -114,7 +114,7 @@ class PostgresDataExportJobExecutor:
                 )
                 PostgresArtifactMetadataRepository(session).mark_linked(
                     artifact.id,
-                    linked_at=datetime.now(UTC),
+                    linked_at=beijing_now(),
                 )
         finally:
             session.close()

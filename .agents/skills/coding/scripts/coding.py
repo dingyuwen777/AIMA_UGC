@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Reliable Vibe Coding 的项目发现缓存与并行变更检查工具。"""
+"""Coding Skill 的项目发现缓存与并行变更检查工具。"""
 
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime
 import hashlib
 import itertools
 import json
@@ -16,13 +16,15 @@ import sys
 import tempfile
 from string import Template
 from typing import Any, Iterable, Sequence
+from zoneinfo import ZoneInfo
 
 
-CONTEXT_SCHEMA = "rvc-project-context/v1"
+CONTEXT_SCHEMA = "coding-project-context/v1"
 CHANGE_SCHEMA = "rvc-change/v1"
-GENERATOR_VERSION = "0.1.0"
-STATE_DIRECTORY = ".reliable-vibe-coding"
+GENERATOR_VERSION = "0.2.0"
+CONTEXT_DIRECTORY = ".agents"
 CONTEXT_FILENAME = "project-context.json"
+BEIJING_TIMEZONE = ZoneInfo("Asia/Shanghai")
 CHANGE_ID_PATTERN = re.compile(r"^CHG-\d{8}-[a-z0-9]+(?:-[a-z0-9]+)*$")
 CHANGE_STATUSES = {
     "approved",
@@ -67,7 +69,6 @@ EXCLUDED_DIRECTORIES = {
     ".svn",
     ".idea",
     ".vscode",
-    STATE_DIRECTORY,
     "__pycache__",
     "build",
     "coverage",
@@ -216,6 +217,11 @@ DOCUMENTATION_DIRECTORIES = {
     "schemas",
     "specs",
 }
+
+
+def _beijing_now() -> datetime:
+    """返回带明确 Asia/Shanghai 时区信息的当前北京时间。"""
+    return datetime.now(BEIJING_TIMEZONE)
 
 
 def _run_git(root: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
@@ -517,7 +523,7 @@ def scan_project(root: str | Path) -> dict[str, Any]:
     return {
         "schema": CONTEXT_SCHEMA,
         "generator_version": GENERATOR_VERSION,
-        "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "generated_at": _beijing_now().replace(microsecond=0).isoformat(),
         "git": {
             "repository": git_repository,
             "indexed_at_commit": _git_head(project_root) if git_repository else None,
@@ -535,13 +541,15 @@ def scan_project(root: str | Path) -> dict[str, Any]:
 
 
 def _context_path(root: Path) -> Path:
-    return root / STATE_DIRECTORY / CONTEXT_FILENAME
+    """返回项目固定的 Coding 缓存文件路径。"""
+    return root / CONTEXT_DIRECTORY / CONTEXT_FILENAME
 
 
 def _write_context(root: Path, context: dict[str, Any]) -> None:
-    state_directory = root / STATE_DIRECTORY
+    """把项目索引原子写入项目根目录下的 .agents 缓存文件。"""
+    target = _context_path(root)
+    state_directory = target.parent
     state_directory.mkdir(parents=True, exist_ok=True)
-    target = state_directory / CONTEXT_FILENAME
     with tempfile.NamedTemporaryFile(
         "w",
         encoding="utf-8",
@@ -557,6 +565,7 @@ def _write_context(root: Path, context: dict[str, Any]) -> None:
 
 
 def _load_context(root: Path) -> dict[str, Any] | None:
+    """只读取新的 .agents/project-context.json；旧缓存路径不做迁移或兼容。"""
     try:
         payload = json.loads(_context_path(root).read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
@@ -700,7 +709,7 @@ def create_change(
     if normalised_level not in {"L2", "L3"}:
         raise ValueError("只有需要追踪的 L2 或 L3 任务可以创建 CHANGE.md")
     project_root = Path(root).resolve()
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = _beijing_now().date().isoformat()
     metadata = {
         "schema": CHANGE_SCHEMA,
         "id": change_id,

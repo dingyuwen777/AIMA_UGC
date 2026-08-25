@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel
 
 from aima_ugc.contracts.provider import assert_redacted_json, assert_secret_free, redact_json
+from aima_ugc.platform.time import beijing_now
 
 _SAFE_FILENAME = re.compile(r"[^A-Za-z0-9_.+-]+")
 _STATE_SCHEMA = "tikhub-test-state.v1"
@@ -235,7 +236,7 @@ class RunOutputStore:
             operation=operation,
             request_no=request_no,
             path=path,
-            observed_at=observed_at or datetime.now(UTC),
+            observed_at=observed_at or beijing_now(),
             status_code=status_code,
             external_request_id=external_request_id,
         )
@@ -273,7 +274,7 @@ class RunOutputStore:
 
 
 def default_run_id(now: datetime | None = None) -> str:
-    actual = (now or datetime.now(UTC)).astimezone(_BEIJING_TZ)
+    actual = (now or beijing_now()).astimezone(_BEIJING_TZ)
     return actual.strftime("%Y%m%dT%H%M%S.%f%z")
 
 

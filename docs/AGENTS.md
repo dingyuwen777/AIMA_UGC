@@ -1,8 +1,8 @@
 # AIMA_UGC `docs/` 文档本地开发规则
 
-本文件只适用于 `docs/` 目录及其子目录，是根 `AGENTS.md` 与 `.agents/skills/reliable-vibe-coding/` 通用研发流程在 AIMA_UGC 文档树中的项目本地 Overlay。
+本文件只适用于 `docs/` 目录及其子目录，是根 `AGENTS.md` 与 `.agents/skills/coding/` 通用研发流程在 AIMA_UGC 文档树中的项目本地 Overlay。
 
-先遵守根 `AGENTS.md`、当前任务适用的 Blueprint / Roadmap / Appendix / Guide 和 Reliable Vibe Coding Skill。本文件不改变这些事实源的职责，只补充 AIMA_UGC 的文档文件命名与导航规则。
+先遵守根 `AGENTS.md`、当前任务适用的 Blueprint / Roadmap / Appendix / Guide 和 Coding Skill。本文件不改变这些事实源的职责，只补充 AIMA_UGC 的文档文件命名与导航规则。
 
 ## 技术文档文件名规范
 

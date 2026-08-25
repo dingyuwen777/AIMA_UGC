@@ -89,6 +89,7 @@ from aima_ugc.modules.system.models import Keyword, KeywordPack, KeywordPackItem
 from aima_ugc.platform.jobs import JobRecord
 from aima_ugc.platform.security import SecretFileError, read_secret_file
 from aima_ugc.platform.storage import ArtifactService, ArtifactSizeLimitError
+from aima_ugc.platform.time import beijing_now
 
 from .runtime import PlatformRuntime
 
@@ -183,7 +184,7 @@ class PostgresImportHttpService:
                 )
                 PostgresArtifactMetadataRepository(session).mark_linked(
                     artifact.id,
-                    linked_at=datetime.now(UTC),
+                    linked_at=beijing_now(),
                 )
         finally:
             session.close()
@@ -241,7 +242,7 @@ class PostgresImportHttpService:
         )
 
     def get_import_batch_summary(self) -> ImportBatchSummaryResponse:
-        as_of = datetime.now(UTC)
+        as_of = beijing_now()
         local_now = as_of.astimezone(_SHANGHAI)
         today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
         tomorrow_start = today_start + timedelta(days=1)

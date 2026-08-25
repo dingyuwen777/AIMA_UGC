@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, timedelta
 from typing import cast
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
@@ -102,6 +102,7 @@ from aima_ugc.modules.collection.search_config import (
     search_config_choices,
 )
 from aima_ugc.platform.security import SecretFileError, read_secret_file
+from aima_ugc.platform.time import beijing_now
 
 from .analysis_identity import current_analysis_identity
 from .runtime import PlatformRuntime
@@ -390,7 +391,7 @@ class PostgresCollectionHttpService:
         )
 
     def get_runtime_summary(self) -> CollectionRuntimeSummaryResponse:
-        as_of = datetime.now(UTC)
+        as_of = beijing_now()
         local_now = as_of.astimezone(_SHANGHAI)
         today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
         tomorrow_start = today_start + timedelta(days=1)

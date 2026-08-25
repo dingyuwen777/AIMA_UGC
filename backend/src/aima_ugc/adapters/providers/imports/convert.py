@@ -11,6 +11,8 @@ from typing import TextIO
 
 from pydantic import ValidationError
 
+from aima_ugc.platform.time import beijing_now
+
 from .excel_profile import get_excel_import_profile
 from .excel_reader import iter_excel_rows
 from .mapper import map_excel_row
@@ -37,7 +39,7 @@ def convert_excel_to_canonical_jsonl(
     source_path = Path(input_path)
     target_path = Path(output_path)
     profile = get_excel_import_profile(profile_name)
-    run_observed_at = observed_at or datetime.now(UTC)
+    run_observed_at = observed_at or beijing_now()
     if run_observed_at.tzinfo is None:
         raise ValueError("observed_at 必须包含时区")
     run_observed_at = run_observed_at.astimezone(UTC)
@@ -138,7 +140,7 @@ def convert_excel_files_to_canonical_jsonl(
 
     target_path = Path(output_path)
     profile = get_excel_import_profile(profile_name)
-    run_observed_at = observed_at or datetime.now(UTC)
+    run_observed_at = observed_at or beijing_now()
     if run_observed_at.tzinfo is None:
         raise ValueError("observed_at 必须包含时区")
     run_observed_at = run_observed_at.astimezone(UTC)

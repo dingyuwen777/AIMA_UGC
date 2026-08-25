@@ -6,7 +6,7 @@ import json
 import os
 import re
 from dataclasses import asdict, dataclass, is_dataclass, replace
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -46,6 +46,7 @@ from aima_ugc.platform.export import (
     export_unified_content_jsonl_to_excel,
 )
 from aima_ugc.platform.reporting import ReportGenerationSummary, generate_excel_report
+from aima_ugc.platform.time import beijing_now
 
 os.environ.pop("SSLKEYLOGFILE", None)
 
@@ -543,7 +544,7 @@ def _load_conversion_source_rows(
 
 
 def _resolve_run_id(run_id: str | None) -> str:
-    value = run_id or datetime.now(UTC).astimezone(_BEIJING).strftime("%Y%m%dT%H%M%S.%f%z")
+    value = run_id or beijing_now().astimezone(_BEIJING).strftime("%Y%m%dT%H%M%S.%f%z")
     if not _RUN_ID_PATTERN.fullmatch(value):
         raise ValueError("run_id 只允许字母、数字、点、加号、下划线和连字符")
     return value

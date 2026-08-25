@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import cast
 from uuid import UUID, uuid4
 
@@ -35,6 +35,7 @@ from aima_ugc.modules.collection.tables import (
 from aima_ugc.modules.content.query import ContentTarget
 from aima_ugc.modules.content.tables import content_versions_table, contents_table
 from aima_ugc.platform.jobs import JobExecutionFence
+from aima_ugc.platform.time import beijing_now
 
 _HTTP_URL_ADAPTER = TypeAdapter(AnyHttpUrl)
 
@@ -67,7 +68,7 @@ class PostgresAnalysisRepository:
                 scope=scope,
                 filter_snapshot=filter_snapshot,
                 target_count=len(targets),
-                created_at=datetime.now(UTC),
+                created_at=beijing_now(),
             )
         )
         self._session.execute(
@@ -224,7 +225,7 @@ class PostgresAnalysisRepository:
                 model=result.model,
                 input_hash=result.input_hash,
                 analyzed_at=result.analyzed_at,
-                created_at=datetime.now(UTC),
+                created_at=beijing_now(),
             )
             .on_conflict_do_nothing(constraint="uq_analysis_content_results_identity")
             .returning(analysis_content_results_table.c.id)

@@ -155,7 +155,7 @@ tooling.yml
 | R2 | 按长期风险/验证层组织，不再按历史 Stage/里程碑堆 Workflow | user:2026-08-25-ci-risk-layer-convergence | satisfied | `.github/workflows/` 已形成 CI/Full-stack/Runtime/Tooling/Governance/Release 6 个长期职责；旧三个实现型 Workflow 已删除 |
 | R3 | 显著减少重复 Runner、PostgreSQL、uv sync、Ruff/mypy、Integration Test | user:2026-08-25-ci-risk-layer-convergence | satisfied | 普通业务 PR 静态拓扑约从 12→6 Runner、5→2 PostgreSQL、4→3 直接 uv sync；Ruff/mypy 与正式 Integration 各保持 1 套；Runtime 两次 build 收敛为 1 次 |
 | R4 | Compose 验证只保留真实部署 Contract 价值，不盲目堆砌 | docs/roadmap/02_生产上线实施路线.md | satisfied | PR Runtime `32793422393` 与 post-merge Runtime `32793732234` 均验证 topology、canonical startup/security/persistence/recovery、repo-relative root、Windows storage/restart；Unit/API/Integration 未复制进 Runtime |
-| R5 | 测试层只证明真实边界，Real Full-stack/Provider Probe 不被替代或夸大 | .agents/skills/reliable-vibe-coding/references/08_testing-strategy.md | satisfied | PR Full-stack `32793422454` 与 post-merge Full-stack `32793732230` 独立成功；Provider Probe 因未修改 Provider endpoint/shape/capability 保持 not_applicable，未进入普通 CI |
+| R5 | 测试层只证明真实边界，Real Full-stack/Provider Probe 不被替代或夸大 | .agents/skills/coding/references/08_testing-strategy.md | satisfied | PR Full-stack `32793422454` 与 post-merge Full-stack `32793732230` 独立成功；Provider Probe 因未修改 Provider endpoint/shape/capability 保持 not_applicable，未进入普通 CI |
 | R6 | Release 与稳定 check contract 不因重构失效 | docs/blueprint/07_技术决策与实施门禁.md | satisfied | `CI Gate`、`Compose Golden Path`、`Requirement Traceability and Completion Audit` 名称保持；PR Release dry-run `32793422509` 成功；merge 后 main 对应三类 push check 均成功 |
 
 # Validation Matrix

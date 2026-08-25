@@ -28,11 +28,13 @@
 
 ## 持久索引
 
-标准路径为：
+标准路径固定为：
 
 ```text
-.reliable-vibe-coding/project-context.json
+.agents/project-context.json
 ```
+
+这个路径属于项目根目录下的 `.agents/`，不再为缓存创建第二个 Skill 专属状态目录。项目缓存中的 `generated_at` 必须使用北京时间 `Asia/Shanghai`（UTC+8），ISO 8601 值保留明确的 `+08:00` 时区偏移；不得依赖宿主机器本地时区，也不得把 UTC 时间伪装成北京时间。
 
 索引只保存：
 
@@ -42,7 +44,8 @@
 - 文档首个标题；
 - 高价值目录摘要；
 - `package.json` 中实际存在的 scripts；
-- 生成器版本和 Git 基线信息。
+- 生成器版本和 Git 基线信息；
+- 使用北京时间并带明确偏移的生成时间。
 
 不要保存绝对路径、需求正文、源代码摘要、凭据或推断出的架构结论。缓存应能提交到 Git 并在不同克隆间使用，但每个克隆仍需执行失效检查。
 
@@ -51,7 +54,7 @@
 只有在项目写入已获授权且宿主有持久文件系统时才落盘：
 
 ```text
-python <skill>/scripts/rvc.py discover --root <repo> --json
+python <skill>/scripts/coding.py discover --root <repo> --json
 ```
 
 检查输出中的 `documents` 和 `directories`，然后读取本次任务所需的真实文件。脚本只发现入口，不替代人工理解。
@@ -59,7 +62,7 @@ python <skill>/scripts/rvc.py discover --root <repo> --json
 如果任务是只读分析或 Review：
 
 - 可以运行只读目录和文件检查；
-- 未经授权不要创建 `.reliable-vibe-coding/`；
+- 未经授权不要创建或刷新 `.agents/project-context.json`；
 - 在当前会话内维护临时导航；
 - 明确说明没有形成跨会话缓存。
 

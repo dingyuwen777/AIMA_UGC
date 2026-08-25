@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import Literal, cast
 from uuid import UUID, uuid4
 
@@ -20,6 +19,7 @@ from aima_ugc.modules.analysis.relevance_review_tables import (
 )
 from aima_ugc.modules.analysis.tables import analysis_content_results_table
 from aima_ugc.modules.content.tables import contents_table
+from aima_ugc.platform.time import beijing_now
 
 ReviewDecision = Literal["relevant", "irrelevant", "inherit_ai"]
 _OVERRIDE_DECISIONS = frozenset({"relevant", "irrelevant"})
@@ -135,7 +135,7 @@ class PostgresContentRelevanceReviewRepository:
 
         planned_events: list[dict[str, object]] = []
         unchanged_count = 0
-        reviewed_at = datetime.now(UTC)
+        reviewed_at = beijing_now()
         for content_id in content_ids:
             latest = latest_review_by_content.get(content_id)
             latest_decision = cast(str, latest["decision"]) if latest is not None else None

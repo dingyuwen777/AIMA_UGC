@@ -60,7 +60,7 @@ completion_gate: required
 
 元数据必须来自仓库事实或已确认设计。仓库没有适用的 Contract、数据资源、模块 Owner 或 Migration 时，对应列表使用 `[]`，不得为显得完整而造名称。只有本次需求明确建立新接口或数据资源、且其名称和边界已通过设计门禁时，才记录计划中的新对象。
 
-`rvc.py` 对 v1 schema、必需字段、状态、依赖 ID 和安全相对路径执行严格校验。任一 Active Change 损坏或使用不受支持的结构时，状态与冲突检查会失败并要求先修正记录；不要把无法解析的记录静默当成“无冲突”。
+`coding.py` 对 v1 schema、必需字段、状态、依赖 ID 和安全相对路径执行严格校验。任一 Active Change 损坏或使用不受支持的结构时，状态与冲突检查会失败并要求先修正记录；不要把无法解析的记录静默当成“无冲突”。
 
 ## 必需内容
 
@@ -209,7 +209,7 @@ proposed → approved → in_progress → ready_for_review → done
 本地最终检查：
 
 ```bash
-python .agents/skills/reliable-vibe-coding/scripts/ready_check.py --root . --require-active-ready
+python .agents/skills/coding/scripts/ready_check.py --root . --require-active-ready
 ```
 
 PR CI 只要求当前 PR 改动的 gated Change Ready，避免其他并行 Change 阻塞；`main` push 要求所有 gated Active Change Ready。

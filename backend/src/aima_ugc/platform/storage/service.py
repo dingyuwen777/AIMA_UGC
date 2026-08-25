@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import BinaryIO
 from uuid import UUID, uuid4
+
+from aima_ugc.platform.time import beijing_now
 
 from .models import ArtifactRecord, StoredBytes
 from .ports import ArtifactMetadataPort, ArtifactStore
@@ -52,7 +54,7 @@ class ArtifactService:
             raise ValueError("Artifact storage_key 不能为空")
         else:
             resolved_storage_key = storage_key
-        created_at = datetime.now(UTC)
+        created_at = beijing_now()
         pending = ArtifactRecord(
             id=artifact_id,
             kind=kind,
@@ -106,7 +108,7 @@ class ArtifactService:
 
         artifact_id = uuid4()
         storage_key = f"{kind}/{artifact_id}{filename_suffix}"
-        created_at = datetime.now(UTC)
+        created_at = beijing_now()
         pending = ArtifactRecord(
             id=artifact_id,
             kind=kind,
@@ -148,7 +150,7 @@ class ArtifactService:
                 artifact_id,
                 sha256=stored.sha256,
                 byte_size=stored.byte_size,
-                stored_at=datetime.now(UTC),
+                stored_at=beijing_now(),
             )
         except Exception as confirmation_error:
             # mark_stored 的异常可能发生在数据库已提交但客户端未收到确认之后。
@@ -190,5 +192,5 @@ class ArtifactService:
         """在业务记录已经建立引用后，把 stored 元数据标记为 linked。"""
         return self._metadata.mark_linked(
             artifact_id,
-            linked_at=datetime.now(UTC),
+            linked_at=beijing_now(),
         )

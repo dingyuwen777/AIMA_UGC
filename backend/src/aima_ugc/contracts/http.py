@@ -6,11 +6,13 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from aima_ugc.contracts.analysis import ContentRelevance, ContentVoiceType
+from aima_ugc.contracts.base import AimaHttpModel as BaseModel
 from aima_ugc.contracts.collection.models import BusinessOperation, CollectionSearchConfig
 from aima_ugc.contracts.platform import PlatformName, PlatformScope, normalize_platform_name
+from aima_ugc.platform.time import to_beijing
 
 type ImportBatchStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 
@@ -147,7 +149,7 @@ class ImportBatchListQuery(BaseModel):
     def validate_aware_datetime(cls, value: datetime | None) -> datetime | None:
         if value is not None and (value.tzinfo is None or value.utcoffset() is None):
             raise ValueError("时间筛选必须包含时区")
-        return value
+        return to_beijing(value) if value is not None else None
 
     @model_validator(mode="after")
     def validate_date_order(self) -> ImportBatchListQuery:
@@ -391,7 +393,7 @@ class CollectionRuntimeListQuery(BaseModel):
     def validate_aware_datetime(cls, value: datetime | None) -> datetime | None:
         if value is not None and (value.tzinfo is None or value.utcoffset() is None):
             raise ValueError("时间筛选必须包含时区")
-        return value
+        return to_beijing(value) if value is not None else None
 
     @model_validator(mode="after")
     def validate_filters(self) -> CollectionRuntimeListQuery:
@@ -805,7 +807,7 @@ class ContentFilterSnapshot(BaseModel):
     def validate_aware_datetime(cls, value: datetime | None) -> datetime | None:
         if value is not None and (value.tzinfo is None or value.utcoffset() is None):
             raise ValueError("时间筛选必须包含时区")
-        return value
+        return to_beijing(value) if value is not None else None
 
     @model_validator(mode="after")
     def validate_date_order(self) -> ContentFilterSnapshot:

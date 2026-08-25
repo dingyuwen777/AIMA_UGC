@@ -137,7 +137,7 @@ data_changes:
 | R6 | 支持 AI relevant → 人工 irrelevant | user:2026-08-24-bidirectional-relevance-review | satisfied | Browser Mock、PostgreSQL integration 与历史 Stage 8F 真实链均已覆盖。 |
 | R7 | 支持撤销人工决定并恢复 AI 基线 | user:2026-08-24-bidirectional-relevance-review | satisfied | `inherit_ai` API/Repository/UI 已实现；历史 Stage 8F run 32721400484 真实排除→撤销成功。 |
 | R8 | 撤销和多轮人工决定不得丢失历史审计 | docs/blueprint/07_技术决策与实施门禁.md | satisfied | `review_no` 追加事件、数据库 UPDATE/DELETE Trigger 与 integration 均已验证。 |
-| R9 | 双向/撤销保证批量原子性、幂等、版本隔离和 stale 可撤销 | .agents/skills/reliable-vibe-coding/SKILL.md | satisfied | PG integration 验证重复幂等、直接反向 409、全量事务、Version 隔离及 Prompt/Model 变化后的 stale 撤销。 |
+| R9 | 双向/撤销保证批量原子性、幂等、版本隔离和 stale 可撤销 | .agents/skills/coding/SKILL.md | satisfied | PG integration 验证重复幂等、直接反向 409、全量事务、Version 隔离及 Prompt/Model 变化后的 stale 撤销。 |
 
 # Validation Matrix
 

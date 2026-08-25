@@ -17,27 +17,28 @@ from pydantic import SecretStr
 
 
 def test_deepseek_current_price_is_not_available_before_effective_date() -> None:
+    """北京时间生效日前一秒不得提前套用当前 DeepSeek 价格。"""
     catalog = load_llm_pricing()
 
     with pytest.raises(LLMPriceNotConfiguredError, match="尚未生效"):
         catalog.price_for(
             provider="api.deepseek.com",
             model="deepseek-v4-pro",
-            at=datetime(2026, 8, 23, 23, 59, 59, tzinfo=UTC),
+            at=datetime(2026, 8, 23, 15, 59, 59, tzinfo=UTC),
         )
 
 
 def test_llm_request_continues_when_price_is_not_effective_yet(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """北京时间尚未进入价格生效日时，请求仍完成但费用保持不可计算。"""
     records: list[LLMHTTPRequestAudit] = []
 
-    class BeforeEffectiveDateTime(datetime):
-        @classmethod
-        def now(cls, tz: object = None) -> datetime:
-            return datetime(2026, 8, 23, 23, 59, 59, tzinfo=UTC)
-
-    monkeypatch.setattr(openai_compatible_module, "datetime", BeforeEffectiveDateTime)
+    monkeypatch.setattr(
+        openai_compatible_module,
+        "beijing_now",
+        lambda: datetime(2026, 8, 23, 15, 59, 59, tzinfo=UTC),
+    )
 
     client = httpx.Client(
         base_url="https://api.deepseek.com/",
@@ -79,7 +80,8 @@ def test_llm_request_continues_when_price_is_not_effective_yet(
 
 
 def test_recalculation_does_not_apply_current_price_before_effective_date(tmp_path) -> None:
-    started_at = datetime(2026, 8, 23, 23, 59, 59, tzinfo=UTC)
+    """离线重算也必须按北京时间拒绝给生效日前的历史请求套用当前价格。"""
+    started_at = datetime(2026, 8, 23, 15, 59, 59, tzinfo=UTC)
     audit = LLMHTTPRequestAudit(
         http_request_id="http-before-effective",
         logical_request_id="logical-before-effective",

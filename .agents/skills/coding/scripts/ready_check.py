@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""校验 RVC Change 的 Requirement Traceability 与 Completion Audit 门禁。"""
+"""校验 Coding Change 的 Requirement Traceability 与 Completion Audit 门禁。"""
 
 from __future__ import annotations
 
@@ -46,17 +46,18 @@ REQUIREMENT_ID_PATTERN = re.compile(r"^R[1-9][0-9]*$")
 AUDIT_LINE_PATTERN = re.compile(r"^- \[([ xX])\]\s+([a-z_]+)[：:]\s*(.+)$")
 
 
-def _load_rvc_module() -> Any:
-    path = Path(__file__).with_name("rvc.py")
-    spec = importlib.util.spec_from_file_location("reliable_vibe_coding_rvc", path)
+def _load_coding_module() -> Any:
+    """从同目录加载 Coding CLI 解析器，避免依赖额外包安装。"""
+    path = Path(__file__).with_name("coding.py")
+    spec = importlib.util.spec_from_file_location("coding_skill_tooling", path)
     if spec is None or spec.loader is None:
-        raise RuntimeError(f"无法加载 RVC parser: {path}")
+        raise RuntimeError(f"无法加载 Coding parser: {path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-RVC = _load_rvc_module()
+CODING = _load_coding_module()
 
 
 def _normalise_relative_path(value: str | Path) -> str:
@@ -252,7 +253,8 @@ def _validate_completion_audit(body: str) -> list[str]:
 
 
 def _metadata(path: Path) -> dict[str, Any]:
-    return RVC.read_change_metadata(path)
+    """复用 Coding CLI 的 Change frontmatter 解析规则。"""
+    return CODING.read_change_metadata(path)
 
 
 def _validate_ready_document(root: Path, path: Path) -> list[str]:
@@ -390,8 +392,9 @@ def check_repository(
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    """构造 Coding Completion Gate 的命令行参数解析器。"""
     parser = argparse.ArgumentParser(
-        description="检查 RVC Requirement Traceability / Completion Audit Ready 门禁。"
+        description="检查 Coding Requirement Traceability / Completion Audit Ready 门禁。"
     )
     parser.add_argument("--root", default=".")
     parser.add_argument(

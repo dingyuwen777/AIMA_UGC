@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any, cast
 from uuid import UUID
 
@@ -43,6 +43,7 @@ from aima_ugc.modules.reporting.tables import (
     reporting_data_exports_table,
 )
 from aima_ugc.platform.jobs import JobExecutionFence
+from aima_ugc.platform.time import beijing_now
 
 
 class DataExportNotFound(LookupError):
@@ -78,7 +79,7 @@ class PostgresDataExportRepository:
                 artifact_id=None,
                 format="xlsx",
                 request_snapshot=request_snapshot,
-                created_at=datetime.now(UTC),
+                created_at=beijing_now(),
             )
         )
         self._session.execute(
@@ -222,7 +223,7 @@ class PostgresDataExportRepository:
                 .values(
                     artifact_id=artifact_id,
                     stats=stats,
-                    completed_at=datetime.now(UTC),
+                    completed_at=beijing_now(),
                 )
                 .returning(reporting_data_exports_table)
             )

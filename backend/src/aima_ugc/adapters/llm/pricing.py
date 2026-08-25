@@ -7,12 +7,14 @@ import json
 import tomllib
 import warnings
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from importlib.resources import files
 from typing import Any
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from aima_ugc.platform.time import beijing_now, to_beijing
 
 
 class LLMPriceNotConfiguredError(LookupError):
@@ -295,7 +297,7 @@ class LLMPricingCatalog:
         at: datetime | None = None,
     ) -> LLMModelPrice:
         identity = (_provider(provider), model)
-        request_at = at or datetime.now(UTC)
+        request_at = at or beijing_now()
         for schedule in self._schedules:
             if (schedule.provider, schedule.model) == identity:
                 return _price_effective_at(schedule.price_at(request_at), request_at)
@@ -318,7 +320,7 @@ def _price_effective_at(price: LLMModelPrice, at: datetime) -> LLMModelPrice:
         return price
     if at.tzinfo is None or at.utcoffset() is None:
         raise ValueError("LLM Pricing effective_date 选价要求带时区的请求时间")
-    request_date = at.astimezone(UTC).date()
+    request_date = to_beijing(at).date()
     if request_date < price.effective_date:
         raise LLMPriceNotConfiguredError(
             "LLM Pricing 价格尚未生效: "

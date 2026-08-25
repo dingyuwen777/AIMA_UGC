@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any, Self
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -16,6 +16,7 @@ from aima_ugc.modules.analysis.content_labeling import (
     ContentLabelingLLMRequest,
     ContentLabelingLLMResponse,
 )
+from aima_ugc.platform.time import beijing_now
 
 from .pricing import (
     LLMCostCalculation,
@@ -141,7 +142,7 @@ class OpenAICompatibleContentLabelingLLM:
     def complete(self, request: ContentLabelingLLMRequest) -> ContentLabelingLLMResponse:
         """发送一次 Chat Completions 请求；Transport Retry 由更外层显式策略负责。"""
 
-        started_at = datetime.now(UTC)
+        started_at = beijing_now()
         http_request_id = uuid4().hex
         logical_request_id = request.logical_request_id or http_request_id
         status: LLMHTTPRequestStatus = "network_error"
@@ -250,7 +251,7 @@ class OpenAICompatibleContentLabelingLLM:
                         provider=self._provider_name,
                         model=self._model,
                         started_at=started_at,
-                        completed_at=datetime.now(UTC),
+                        completed_at=beijing_now(),
                         status=status,
                         status_code=status_code,
                         error_code=error_code,

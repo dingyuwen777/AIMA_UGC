@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
@@ -55,6 +55,7 @@ from aima_ugc.modules.collection.scheduler import (
 from aima_ugc.modules.collection.search_config import normalize_search_config
 from aima_ugc.platform.config import PlatformSettings
 from aima_ugc.platform.logging import log_event
+from aima_ugc.platform.time import beijing_now
 
 from .runtime import PlatformRuntime, create_platform_runtime
 
@@ -84,7 +85,7 @@ def run_scheduler_once(
     scan_limit: int = 100,
 ) -> SchedulerTickResult:
     """执行一次 Scheduler tick；坏 Plan 只回滚自己的短事务，不终止其他 Plan。"""
-    observed_at = datetime.now(UTC) if now is None else now
+    observed_at = beijing_now() if now is None else now
     if observed_at.utcoffset() is None:
         raise ValueError("Scheduler now 必须包含时区")
 

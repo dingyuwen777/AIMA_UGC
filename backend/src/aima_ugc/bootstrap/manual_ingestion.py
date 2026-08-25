@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4, uuid5
 
@@ -27,6 +26,7 @@ from aima_ugc.modules.collection.provider_persistence import ProviderPersistence
 from aima_ugc.modules.content.ingestion import ContentIngestionService
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.storage import ArtifactRecord, ArtifactService
+from aima_ugc.platform.time import beijing_now
 
 from .runtime import PlatformRuntime, create_platform_runtime
 
@@ -360,7 +360,7 @@ def ingest_unified_content_batch(
                     attempt_no=dispatching.attempt_no,
                     dispatch_status="completed",
                     dispatch_started_at=dispatching.dispatch_started_at,
-                    completed_at=datetime.now(UTC),
+                    completed_at=beijing_now(),
                     raw_artifact_id=input_artifact.id,
                     billing=ProviderBillingV1(status="not_billable"),
                     created_at=dispatching.created_at,
