@@ -87,7 +87,7 @@ data_changes: []
 | R4 | Review 要有效：能输出可执行 Findings、主动验证测试充分性并区分证据等级 | user:current-request | satisfied | `review/references/01_审查执行流程.md`、`02_Findings与严重度.md`、`03_测试专家审查方法.md` 分别承担执行、Finding、测试充分性；Review 主 Skill 要求证据边界和主动验证 |
 | R5 | 修改完成后按仓库流程推送并合并到 main | user:current-request | explicitly_deferred | `AGENTS.md` 的 Git/Review 门禁要求 Ready + 当前 HEAD CI 后才能合并；PR #240 已建立，main 合并属于本 Change Ready 后的同任务集成步骤，不是功能延期，完成合并后归档时改为 satisfied |
 | R6 | 在 review 目录增加 README 说明 | user:latest-clarification | satisfied | `.agents/skills/review/README.md` 已说明定位、模式、路由、测试专家方法、Findings、典型用法和边界 |
-| R7 | 不降低现有 Coding/Docs/CI/Change 门禁，不新增依赖 | AGENTS.md + `.agents/skills/coding/SKILL.md` | satisfied | PR patch 显示 Coding 主 Skill 仅在文件末尾追加集成段；路由 reference 只调整 Code Review/Audit 段；未修改 manifest/lock/workflow/产品代码；既有规则保护测试保持成功 |
+| R7 | 不降低现有 Coding/Docs/CI/Change 门禁，不新增依赖 | AGENTS.md | satisfied | PR patch 显示 Coding 主 Skill 仅在文件末尾追加集成段；路由 reference 只调整 Code Review/Audit 段；未修改 manifest/lock/workflow/产品代码；既有规则保护测试保持成功 |
 
 # Validation Matrix
 
@@ -100,7 +100,7 @@ data_changes: []
 | 跨组件 Golden Path | not_applicable | 不修改产品组件接线；Skill 路由是声明式研发治理，不存在可由产品 Full-stack 额外证明的运行边界 |
 | External Dependency / Provider Probe | not_applicable | 不涉及外部 Provider 或付费 API |
 | Build / Package / Runtime | not_applicable | 不修改 manifest、lock、镜像、构建或运行入口；PR HEAD `987736b0` 的 Runtime Acceptance `32874905982` 与 Full-stack Acceptance `32874905984` success 作为无回归补充证据 |
-| Docs / Governance / Other | required | PR #240 diff 已人工复核：Coding 主 Skill 只追加 Review 集成；Coding 路由 reference 只改变 Code Review/Audit 段；Docs targeted 复核 Blueprint 06 无需 diff；PR CI `32874906000` 在本次 Ready 前仍运行中，最终合并前必须以最新 HEAD 全绿为准 |
+| Docs / Governance / Other | required | PR #240 diff 已人工复核：Coding 主 Skill 只追加 Review 集成；Coding 路由 reference 只改变 Code Review/Audit 段；Docs targeted 复核 Blueprint 06 无需 diff；最终合并前必须以同步最新 main 后的新 HEAD CI 全绿为准 |
 
 # Completion Audit
 
@@ -149,7 +149,8 @@ R1—R7 已覆盖 1—9；第 9 项按仓库规定只能在 Ready 后完成集�
 
 - branch: `feature/review-skill`
 - PR: `#240`（Draft，待 Ready Check 与最终 HEAD CI）
+- base sync: 最新 `main` `eed6ebbb8348827998bba56f46c6e3cf83eacd13` 已通过双父 merge commit `ee673e27be40fdf5521b24bd2dfb10eca1f6c5d0` 合入 feature，compare 显示 feature `behind_by=0`
 - Red evidence: `0ec7cf4c568b5ddf451d0c91a9b2de2ef8fd8d36` / Change Completion Gate `32873657217`
 - Green skill-test evidence: `987736b0b987d8eb0f864272b8ea9f9e40abef38` / Change Completion Gate `32874908293` 的 Coding tests success
-- 当前补充无回归：Runtime Acceptance `32874905982` success；Full-stack Acceptance `32874905984` success；CI `32874906000` 尚未作为最终证据，因为 Ready Change 更新后还会产生新 HEAD
+- Ready Check previous root cause: run `32875393808` 的 Skill tests 29/29 success，Ready Check 仅因 R7 Source 拼接两个路径而失败；本提交已按机器规则修正为单一真实来源 `AGENTS.md`
 - main merge: 待本 Change Ready + 最新 HEAD 全量 CI 绿后执行
