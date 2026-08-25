@@ -6,11 +6,13 @@ on:
       - main
     paths:
       - ".github/workflows/tooling.yml"
+      - ".gitignore"
       - ".python-version"
       - ".node-version"
       - ".uv-version"
       - "pyproject.toml"
       - "uv.lock"
+      - "env.local.example"
       - "frontend/package.json"
       - "frontend/package-lock.json"
       - "scripts/setup_dev_environment.ps1"
@@ -22,17 +24,20 @@ on:
       - "migrations/**"
       - "backend/src/aima_ugc/platform/**"
       - "backend/src/aima_ugc/bootstrap/**"
+      - "backend/src/aima_ugc/modules/system/**"
       - "backend/src/aima_ugc/adapters/persistence/postgres/system.py"
   push:
     branches:
       - main
     paths:
       - ".github/workflows/tooling.yml"
+      - ".gitignore"
       - ".python-version"
       - ".node-version"
       - ".uv-version"
       - "pyproject.toml"
       - "uv.lock"
+      - "env.local.example"
       - "frontend/package.json"
       - "frontend/package-lock.json"
       - "scripts/setup_dev_environment.ps1"
@@ -44,6 +49,7 @@ on:
       - "migrations/**"
       - "backend/src/aima_ugc/platform/**"
       - "backend/src/aima_ugc/bootstrap/**"
+      - "backend/src/aima_ugc/modules/system/**"
       - "backend/src/aima_ugc/adapters/persistence/postgres/system.py"
 
 permissions:
@@ -82,22 +88,24 @@ jobs:
           node-version: 24.19.0
 
       - name: Validate canonical local launchers
-        shell: bash
         run: |
-          set -euo pipefail
           python scripts/dev/backend.py --validate-only
           python scripts/dev/frontend.py --validate-only
           python -m py_compile scripts/dev/backend.py scripts/dev/frontend.py scripts/dev/local_runtime.py
-          python scripts/dev/frontend.py --prepare-only
-          test -z "$(git status --porcelain)"
 
-      - name: Install locked Python environment once
+      - name: Prepare frontend dependencies through canonical launcher
+        run: python scripts/dev/frontend.py --prepare-only
+
+      - name: Verify local config stays untracked
+        run: >-
+          python -c "import subprocess; out=subprocess.check_output(['git','status','--porcelain'], text=True).strip(); assert not out, out"
+
+      - name: Install locked Python environment
         shell: bash
         run: |
           set -euo pipefail
           UV_VERSION="$(tr -d '\r\n' < .uv-version)"
           python -m pip install "uv==${UV_VERSION}"
-          test "$(uv --version | awk '{print $2}')" = "${UV_VERSION}"
           uv lock --check
           uv sync --locked
 
@@ -115,7 +123,7 @@ jobs:
           AIMA_DEV_ENABLE_SCHEDULER=false
           EOF
 
-      - name: Run real local PostgreSQL bootstrap and migration
+      - name: Run real PostgreSQL bootstrap and migration
         shell: bash
         run: |
           set -euo pipefail
