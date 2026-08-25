@@ -7,7 +7,7 @@ schema_version = "llm-pricing.v1"
 # [[models.price_periods]]。无 time_ranges 的时段是全天默认价，显式范围按 [start, end) 优先匹配。
 # weekdays 可选，只接受 mon/tue/wed/thu/fri/sat/sun；未配置表示每天都适用。
 # 每个价格时段内，input_per_million 与完整的 cache_hit/cache_miss 两项二选一；不要同时配置。
-# effective_date：本条价格在 AIMA 价格目录中的生效日期；运行时按请求时间的 UTC 日期判断，格式固定为 YYYY-MM-DD。
+# effective_date：本条价格在 AIMA 价格目录中的生效日期；运行时按请求时间的北京时间日期判断，格式固定为 YYYY-MM-DD。
 # 系统按币种、单价和来源等规范化价格内容生成快照 SHA-256，不配置人工版本号。
 
 [[models]]
