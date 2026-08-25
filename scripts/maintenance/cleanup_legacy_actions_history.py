@@ -96,9 +96,7 @@ class GithubActionsClient:
         return status, json.loads(body.decode("utf-8"))
 
     def repo_json(self, path: str) -> Any:
-        _, payload = self._request(
-            "GET", f"{self._api_url}/repos/{self._repository}{path}"
-        )
+        _, payload = self._request("GET", f"{self._api_url}/repos/{self._repository}{path}")
         return payload
 
     def global_json(self, path: str) -> Any:
@@ -111,21 +109,15 @@ class GithubActionsClient:
             f"{self._api_url}/repos/{self._repository}/actions/runs/{run_id}",
         )
         if status != 204:
-            raise CleanupSafetyError(
-                f"unexpected DELETE status for run {run_id}: {status}"
-            )
+            raise CleanupSafetyError(f"unexpected DELETE status for run {run_id}: {status}")
 
     def _paginate(self, path: str, key: str) -> Iterable[dict[str, Any]]:
         page = 1
         while True:
             separator = "&" if "?" in path else "?"
-            payload = self.repo_json(
-                f"{path}{separator}per_page=100&page={page}"
-            )
+            payload = self.repo_json(f"{path}{separator}per_page=100&page={page}")
             if not isinstance(payload, dict) or key not in payload:
-                raise CleanupSafetyError(
-                    f"unexpected paginated payload for {path}: missing {key}"
-                )
+                raise CleanupSafetyError(f"unexpected paginated payload for {path}: missing {key}")
             items = payload[key]
             if not isinstance(items, list):
                 raise CleanupSafetyError(
@@ -133,9 +125,7 @@ class GithubActionsClient:
                 )
             for item in items:
                 if not isinstance(item, dict):
-                    raise CleanupSafetyError(
-                        f"unexpected item type in {path}: {type(item)!r}"
-                    )
+                    raise CleanupSafetyError(f"unexpected item type in {path}: {type(item)!r}")
                 yield item
             if len(items) < 100:
                 return
@@ -148,9 +138,7 @@ class GithubActionsClient:
                 workflow_id = int(item["id"])
                 path = str(item["path"])
             except (KeyError, TypeError, ValueError) as exc:
-                raise CleanupSafetyError(
-                    f"workflow record is missing id/path: {item!r}"
-                ) from exc
+                raise CleanupSafetyError(f"workflow record is missing id/path: {item!r}") from exc
             if not path:
                 raise CleanupSafetyError(
                     f"workflow {workflow_id} has an empty path; refusing cleanup"
@@ -212,27 +200,20 @@ def discover_current_workflow_paths(repo_root: Path) -> set[str]:
     return discovered
 
 
-def validate_legacy_run(
-    *, workflow: WorkflowRecord, run: RunRecord, whitelist: set[str]
-) -> None:
+def validate_legacy_run(*, workflow: WorkflowRecord, run: RunRecord, whitelist: set[str]) -> None:
     """Fail closed unless a run is provably completed and owned by one legacy path."""
     if workflow.path in whitelist:
-        raise CleanupSafetyError(
-            f"protected workflow entered legacy validation: {workflow.path}"
-        )
+        raise CleanupSafetyError(f"protected workflow entered legacy validation: {workflow.path}")
     if run.workflow_id != workflow.workflow_id:
         raise CleanupSafetyError(
             f"run {run.run_id} workflow_id mismatch: "
             f"expected {workflow.workflow_id}, got {run.workflow_id}"
         )
     if run.workflow_path in whitelist:
-        raise CleanupSafetyError(
-            f"run {run.run_id} resolves to protected path {run.workflow_path}"
-        )
+        raise CleanupSafetyError(f"run {run.run_id} resolves to protected path {run.workflow_path}")
     if run.workflow_path != workflow.path:
         raise CleanupSafetyError(
-            f"run {run.run_id} path mismatch: workflow={workflow.path}, "
-            f"run={run.workflow_path}"
+            f"run {run.run_id} path mismatch: workflow={workflow.path}, run={run.workflow_path}"
         )
     if run.status != "completed":
         raise CleanupSafetyError(
@@ -255,9 +236,7 @@ def collect_cleanup_plan(
             f"refusing cleanup: {sorted(missing_protected)}"
         )
 
-    legacy_workflows = [
-        workflow for workflow in workflows if workflow.path not in whitelist
-    ]
+    legacy_workflows = [workflow for workflow in workflows if workflow.path not in whitelist]
     runs_by_workflow: dict[int, list[RunRecord]] = {}
 
     # Complete discovery and validation before the first DELETE call.
@@ -422,9 +401,7 @@ def main() -> int:
         repository=os.environ.get("GITHUB_REPOSITORY", ""),
         token=os.environ.get("GITHUB_TOKEN", ""),
     )
-    legacy_workflows, runs_by_workflow = collect_cleanup_plan(
-        client=client, whitelist=whitelist
-    )
+    legacy_workflows, runs_by_workflow = collect_cleanup_plan(client=client, whitelist=whitelist)
     plan = ordered_plan(legacy_workflows, runs_by_workflow)
 
     print(f"Registered legacy workflow records: {len(legacy_workflows)}")
