@@ -22,9 +22,11 @@ description: 面向不同项目形态、研发阶段和编程语言的可靠软�
 
 详细规则分布在 `references/`。**当本文件的触发条件命中时，对应 reference 是本 Skill 的规范组成部分，必须在执行相关动作前读取；不能只读主文件后凭印象补流程。**
 
+`references/` 当前使用 `01_`、`02_`……两位数字前缀表达研发流程阅读顺序，便于人类从目录直接理解上下游关系。**编号只是导航，不是固定文档数量、固定文件名或固定编号上限**；未来 reference 增删时按真实依赖关系调整。每个任务仍只读取命中的最少充分规则，不要求机械通读全部编号文件。
+
 ## 0. 强制执行模型：先路由，再工作
 
-每个独立任务在制定实现计划前先按 [task-routing.md](references/task-routing.md) 建立四维路由：
+每个独立任务在制定实现计划前先按 [02_task-routing.md](references/02_task-routing.md) 建立四维路由：
 
 ```text
 项目形态
@@ -74,11 +76,11 @@ CMakeLists.txt ≠ Linux-only
 8. **不发明项目制度。** 只执行仓库真实存在或本次需求明确建立的边界、Contract、Schema、Owner、Migration、测试和发布机制；经有界调查未发现时标记不适用并跳过，不为了填模板补造架构。
 9. **独立能力建立独立验证闭环。** 对具有明确输入输出、独立业务价值、独立失败边界，或无需启动完整系统即可验证的能力，优先复用生产入口建立最小验证闭环，使用与风险匹配的自动化测试、Fixture/Fake/隔离依赖、明确运行方式和成功判据。不要机械要求“一模块一个测试文件”或“一功能一个测试文档”。
 10. **L2/L3 必须向上追溯。** 当前 Change 不是自身需求全集。必须从用户已确认决定和上游正式事实源建立 Requirement Traceability；进入 `ready_for_review` 前重新读取上游完成定义并执行 Completion Audit。CI 全绿不能替代需求完整性审计，也不能依赖用户事后发现漏项。
-11. **验证按风险而不是固定技术栈分层。** L2/L3 先按 [validation-strategy.md](references/validation-strategy.md) 建立技术栈无关 Validation Matrix。任何层都不能声称证明自己没有实际运行的下游边界。若项目真实存在 Web/API/PostgreSQL/外部 Provider，再叠加 [testing-strategy.md](references/testing-strategy.md) 的 Browser Mock、Backend/API/PostgreSQL Integration、Contract、Real Full-stack、Real Provider Probe 专项规则；这些细节保留但不强加给 CLI、Library、Mobile、Embedded、IaC 等项目。
+11. **验证按风险而不是固定技术栈分层。** L2/L3 先按 [07_validation-strategy.md](references/07_validation-strategy.md) 建立技术栈无关 Validation Matrix。任何层都不能声称证明自己没有实际运行的下游边界。若项目真实存在 Web/API/PostgreSQL/外部 Provider，再叠加 [08_testing-strategy.md](references/08_testing-strategy.md) 的 Browser Mock、Backend/API/PostgreSQL Integration、Contract、Real Full-stack、Real Provider Probe 专项规则；这些细节保留但不强加给 CLI、Library、Mobile、Embedded、IaC 等项目。
 12. **注释解释原因和约束。** 代码注释不只面向 public/exported 接口。内部/private/helper 函数只要承载非显然业务规则、关键不变量、状态转换、算法取舍、兼容原因或重要副作用，也应按项目语言/风格提供简短 docstring 或定点注释；简单自解释 helper 不机械补注释。
 13. **重要功能可观测性需要匹配现有体系。** 如果仓库已有日志/事件基础设施，且功能涉及关键生命周期、异步任务、外部 I/O、重试/部分失败、状态转换或后期排障价值，应补最小充分结构化观测。复用现有 logger/event/脱敏/关联 ID；禁止打印 Secret/Token/密码/敏感 Raw/PII，禁止 INFO 高频刷屏，日志也不能替代数据库/文件中的正式业务事实或 Health/Audit 机制。
 
-规则重组时还必须遵守 [rule-preservation-map.md](references/rule-preservation-map.md)：通用化只能移动和分类规则，不能用“精简”删除仍有效内容。
+规则重组时还必须遵守 [12_rule-preservation-map.md](references/12_rule-preservation-map.md)：通用化只能移动和分类规则，不能用“精简”删除仍有效内容。
 
 ## 2. 四维任务路由
 
@@ -98,7 +100,7 @@ CMakeLists.txt ≠ Linux-only
 - Monorepo / Polyglot；
 - Documentation / Configuration / Migration-only 当前任务。
 
-具体识别和验证边界见 [task-routing.md](references/task-routing.md)。
+具体识别和验证边界见 [02_task-routing.md](references/02_task-routing.md)。
 
 ### 2.2 研发阶段 / 任务类型
 
@@ -118,7 +120,7 @@ CMakeLists.txt ≠ Linux-only
 
 ### 2.3 编程语言 / 工具链
 
-读取 [language-and-toolchain-profiles.md](references/language-and-toolchain-profiles.md)。它覆盖 Python、JavaScript / TypeScript、Go、Rust、Java / Kotlin、.NET、C / C++、Swift、Dart / Flutter、PHP、Ruby、Elixir、Monorepo、Container / IaC，并提供未列语言的统一发现算法。
+读取 [03_language-and-toolchain-profiles.md](references/03_language-and-toolchain-profiles.md)。它覆盖 Python、JavaScript / TypeScript、Go、Rust、Java / Kotlin、.NET、C / C++、Swift、Dart / Flutter、PHP、Ruby、Elixir、Monorepo、Container / IaC，并提供未列语言的统一发现算法。
 
 任何 profile 都只负责导航：
 
@@ -151,18 +153,18 @@ CMakeLists.txt ≠ Linux-only
 
 | 触发条件 | 必须读取 |
 | --- | --- |
-| 首次进入仓库、缓存缺失或可能过期 | [project-discovery.md](references/project-discovery.md) |
-| 需要识别项目形态、研发阶段或组合流程 | [task-routing.md](references/task-routing.md) |
-| 需要确认语言、Runtime、Manifest、锁文件、构建或包管理 | [language-and-toolchain-profiles.md](references/language-and-toolchain-profiles.md) |
-| L2/L3、需要需求追踪或已有 Active Change | [change-management.md](references/change-management.md) |
-| 新/当前 Change 使用 Completion Gate | [completion-gate.md](references/completion-gate.md) |
-| 开发 Feature、修 Bug、重构、性能或调查失败 | [development-workflows.md](references/development-workflows.md) |
-| 需要规划或审计验证证据 | [validation-strategy.md](references/validation-strategy.md) |
-| Web/API/PostgreSQL/Provider 等专项边界真实存在 | [testing-strategy.md](references/testing-strategy.md) |
-| 跨模块、跨消费者、Contract/Schema/Migration/Owner/数据边界 | [repository-constraints.md](references/repository-constraints.md) |
-| 多人、多 Agent、多个分支或 Active Change 并行 | [collaboration.md](references/collaboration.md) |
-| Review、Ready、交付或准备表达完成结论 | [verification-review.md](references/verification-review.md) |
-| Skill 自身规则重组/迁移/完整性审计 | [rule-preservation-map.md](references/rule-preservation-map.md) |
+| 首次进入仓库、缓存缺失或可能过期 | [01_project-discovery.md](references/01_project-discovery.md) |
+| 需要识别项目形态、研发阶段或组合流程 | [02_task-routing.md](references/02_task-routing.md) |
+| 需要确认语言、Runtime、Manifest、锁文件、构建或包管理 | [03_language-and-toolchain-profiles.md](references/03_language-and-toolchain-profiles.md) |
+| L2/L3、需要需求追踪或已有 Active Change | [04_change-management.md](references/04_change-management.md) |
+| 新/当前 Change 使用 Completion Gate | [10_completion-gate.md](references/10_completion-gate.md) |
+| 开发 Feature、修 Bug、重构、性能或调查失败 | [05_development-workflows.md](references/05_development-workflows.md) |
+| 需要规划或审计验证证据 | [07_validation-strategy.md](references/07_validation-strategy.md) |
+| Web/API/PostgreSQL/Provider 等专项边界真实存在 | [08_testing-strategy.md](references/08_testing-strategy.md) |
+| 跨模块、跨消费者、Contract/Schema/Migration/Owner/数据边界 | [06_repository-constraints.md](references/06_repository-constraints.md) |
+| 多人、多 Agent、多个分支或 Active Change 并行 | [09_collaboration.md](references/09_collaboration.md) |
+| Review、Ready、交付或准备表达完成结论 | [11_verification-review.md](references/11_verification-review.md) |
+| Skill 自身规则重组/迁移/完整性审计 | [12_rule-preservation-map.md](references/12_rule-preservation-map.md) |
 
 不要要求用户重复提供能够从仓库、缓存或工具确认的信息。只读取当前任务真正需要的事实和 reference，不用“全仓全部读一遍”替代理解调用链。
 
@@ -200,7 +202,7 @@ CMakeLists.txt ≠ Linux-only
 
 ### 4.3 恢复项目和工具链事实
 
-按 [project-discovery.md](references/project-discovery.md) 与 [language-and-toolchain-profiles.md](references/language-and-toolchain-profiles.md) 确认任务相关的：
+按 [01_project-discovery.md](references/01_project-discovery.md) 与 [03_language-and-toolchain-profiles.md](references/03_language-and-toolchain-profiles.md) 确认任务相关的：
 
 ```text
 README / Requirements / Architecture
@@ -234,7 +236,7 @@ python <skill>/scripts/rvc.py discover --root <repo>
 
 - `cache_hit`：候选事实源未出现可见失效信号；复用导航，但仍读取本次真实需求、实现、调用链和相关测试；
 - `created` / `refreshed`：检查索引发现的规则、需求、架构、Contract、Migration、配置、依赖和测试入口；
-- 脚本失败：保留原错误，按 `project-discovery.md` 人工流程继续，不声称缓存有效。
+- 脚本失败：保留原错误，按 `01_project-discovery.md` 人工流程继续，不声称缓存有效。
 
 索引只保存路径、分类、轻量指纹和可直接提取的脚本名，不复制需求正文。`cache_hit` 不代表普通源码没有变化，也不能代替 `git diff`、真实文件或调用链调查。
 
@@ -258,7 +260,7 @@ python <skill>/scripts/rvc.py status --root <repo> --json
 - shared tests/fixtures；
 - dependencies/build/release resources。
 
-发现交集时指出具体冲突并决定排序、拆分或共同 Owner；没有交集时不因为“都改后端/都改前端”制造冲突。Change 是 Git 协作协议，不是锁，也看不到未推送/私有客户端状态。多人/多 Agent 细节遵循 [collaboration.md](references/collaboration.md)。
+发现交集时指出具体冲突并决定排序、拆分或共同 Owner；没有交集时不因为“都改后端/都改前端”制造冲突。Change 是 Git 协作协议，不是锁，也看不到未推送/私有客户端状态。多人/多 Agent 细节遵循 [09_collaboration.md](references/09_collaboration.md)。
 
 ### 4.6 分类 L1/L2/L3 并固化任务契约
 
@@ -366,7 +368,7 @@ not_satisfied
 
 ### 4.9 先建立 Validation Matrix
 
-L2/L3 使用 [validation-strategy.md](references/validation-strategy.md) 的通用维度：
+L2/L3 使用 [07_validation-strategy.md](references/07_validation-strategy.md) 的通用维度：
 
 ```text
 行为 / Unit / Component
@@ -381,7 +383,7 @@ Docs / Governance / Other
 
 每层只写 `required` 或 `not_applicable`。
 
-如果实际项目是 Web/API/PostgreSQL/Provider，再读取 [testing-strategy.md](references/testing-strategy.md)，把通用维度映射为其完整专项层：
+如果实际项目是 Web/API/PostgreSQL/Provider，再读取 [08_testing-strategy.md](references/08_testing-strategy.md)，把通用维度映射为其完整专项层：
 
 ```text
 Browser Mock Acceptance
@@ -397,7 +399,7 @@ Real Provider Probe
 
 #### Feature / 行为变化 / Bug / Refactor
 
-读取 [development-workflows.md](references/development-workflows.md)，默认：
+读取 [05_development-workflows.md](references/05_development-workflows.md)，默认：
 
 ```text
 Red
@@ -468,7 +470,7 @@ Bug 修复必须有回归证据。测试验证真实行为，不只验证 Mock �
 
 ### 4.11 跨模块、Contract、Schema 与数据边界
 
-任务跨模块、跨消费者、接口/事件/数据，或仓库已有明确 Owner/Contract/Schema/Migration 时读取 [repository-constraints.md](references/repository-constraints.md)。
+任务跨模块、跨消费者、接口/事件/数据，或仓库已有明确 Owner/Contract/Schema/Migration 时读取 [06_repository-constraints.md](references/06_repository-constraints.md)。
 
 只在仓库真实存在的边界上执行：
 
@@ -510,7 +512,7 @@ roadmap / release state（项目实际维护时）
 
 正式文档描述系统现在是什么，不写无意义变更流水账；Change 记录为什么变和当时证据。未实现功能不提前写成“当前已支持”。文档不受影响时记录判断依据，不制造无关差异。
 
-项目若有文档编号、命名、历史不可改写等本地规则，严格遵守项目 Overlay；通用 Skill 不强迫所有仓库使用同一编号体系。
+项目若有文档编号、命名、历史不可改写等本地规则，严格遵守项目 Overlay；通用 Skill 不强迫所有仓库使用同一编号体系，也不预设任一项目的 Blueprint 数量、具体文件名或编号上限。
 
 文档与代码/Contract 尚未同步时，不得标记 Ready、完成、可合并或可发布。
 
@@ -548,7 +550,7 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 
 它只验证机器能判断的结构、状态、Source 路径、占位符和 Audit checkbox，不能判断自然语言业务完整性，也不能自动证明 Validation Matrix 充分。
 
-完成 Audit 后按 [verification-review.md](references/verification-review.md)：
+完成 Audit 后按 [11_verification-review.md](references/11_verification-review.md)：
 
 ```text
 上游 Requirement Completeness Review
@@ -576,7 +578,7 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 - 尚未合并/发布：只有 Traceability、Validation Matrix、Completion Audit、验证和文档同步满足时才能 `ready_for_review`，继续留在 `changes/active/`；
 - 全部成功标准、验证、文档同步完成且集成状态已确认：标记 `done` 后再移动到 `changes/archive/YYYY-MM/`；
 - active 期间需求变化：先回上游事实源和 Traceability，再更新同一个 Change；
-- 已归档需求后来再变：创建新 Change，不改写历史；
+- 已归档需求后来再变：创建新 Change，不改历史；
 - archive 不是成功证据，不能先归档再补验证；
 - 不得删除 `completion_gate` 来绕过 Ready Check。
 
@@ -592,7 +594,7 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 - 证据范围是否被夸大；
 - 是否混入无关改动。
 
-不要直接相信“子 Agent 已完成”。详细规则见 [collaboration.md](references/collaboration.md)。
+不要直接相信“子 Agent 已完成”。详细规则见 [09_collaboration.md](references/09_collaboration.md)。
 
 ## 6. Git、依赖与安全的通用边界
 
@@ -655,7 +657,7 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 
 后续如果要再次“精简”“拆分”“合并”本 Skill：
 
-1. 先读取 [rule-preservation-map.md](references/rule-preservation-map.md)；
+1. 先读取 [12_rule-preservation-map.md](references/12_rule-preservation-map.md)；
 2. 检查现有 Change/CI/文档对 reference 路径的实时引用；
 3. 建立会因规则丢失而失败的回归；
 4. 只移动或条件化规则，不静默删除安全/兼容/测试/调试/Git/证据细节；
