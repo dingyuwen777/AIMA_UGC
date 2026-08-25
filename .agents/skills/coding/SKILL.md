@@ -683,3 +683,18 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 6. 只有逐项证明完全等价时才允许删除重复；无法证明完全等价时，保留原细节；
 7. 项目特定规则迁回项目 Overlay 前，先证明已有新的正式承载；
 8. 完成后从旧入口反向检查每条高价值规则是否仍可达，并执行 portability / preservation 回归与人工内容守恒 Review。
+
+## 10. Review Skill 集成
+
+#### Review Skill 强制路由（仓库存在时）
+
+如果仓库存在 `.agents/skills/review/SKILL.md`，Coding 必须把 Review 视为完成前的独立审查层，而不是可选建议：
+
+- **显式 Code Review / Audit**：Coding 先完成仓库事实恢复、四维任务路由、风险/工具链/权限确认，并读取当前任务应触发的 Coding references；随后必须读取 `.agents/skills/review/SKILL.md`，立即切入 Review，由 Review 负责独立需求重建、Findings 和测试充分性审查；
+- **任何 Coding 实现任务**：完成实现、目标验证、文档同步和进入完成前 Review 时，必须读取 `.agents/skills/review/SKILL.md` 并执行适用 Review；不能只由同一个 Coding 流程用一句“自检完成”替代独立 Review 方法；
+- Review 可以复用 Coding 作为唯一研发规范源，但 Coding 不把 Review 的 Findings、测试专家方法和报告细节复制进本文件；
+- Review 处于 `review-only` 时不自动获得实现修改授权；Review 发现需要修生产代码且任务已授权修复时，返回 Coding，重新按 Coding 完整流程修复并取得新鲜验证，然后再次进入 Review 做 re-review；
+- Review Skill **存在但无法读取**时，必须报告阻塞，**不得宣称 Review 完成**、可合并或可交付；
+- 如果仓库没有 Review Skill，则继续执行 Coding 当前 [11_两阶段复核与完成前验证.md](references/11_两阶段复核与完成前验证.md) 的既有 Review 规则，不能因为可选 Skill 缺失跳过 Review 本身。
+
+这条路由只增加独立审查层，不改变 Coding 原有 L1-L3、Change、TDD、Validation Matrix、Completion Audit、Docs、Git、CI 或交付规则。
