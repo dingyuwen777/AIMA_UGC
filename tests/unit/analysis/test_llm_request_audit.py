@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -15,6 +15,7 @@ from aima_ugc.adapters.llm.request_audit import (
     recalculate_llm_request_costs,
 )
 from aima_ugc.modules.analysis.content_labeling import ContentLabelingLLMRequest
+from aima_ugc.platform.time import BEIJING_TIMEZONE
 from pydantic import SecretStr
 
 
@@ -38,11 +39,11 @@ def test_request_audit_writer_persists_exact_cost_and_summarizes_run(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """固定真实请求时刻后，审计应保存对应分时价格和精确费用。"""
+    """固定北京时间请求时刻后，审计应保存对应分时价格和精确费用。"""
     monkeypatch.setattr(
         openai_compatible_module,
         "beijing_now",
-        lambda: datetime(2026, 8, 24, 0, 0, tzinfo=UTC),
+        lambda: datetime(2026, 8, 24, 8, 0, tzinfo=BEIJING_TIMEZONE),
     )
     audit_path = tmp_path / "analysis" / "llm_requests.jsonl"
     client = httpx.Client(
@@ -87,8 +88,8 @@ def test_recalculation_writes_derived_report_without_overwriting_original_audit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """重算应使用审计中的物理请求时刻和供应商定价时区，不改写原始审计。"""
-    peak_request_at = datetime(2026, 8, 20, 1, 0, tzinfo=UTC)
+    """重算应使用审计中的北京时间绝对时刻和供应商定价时区，不改写原始审计。"""
+    peak_request_at = datetime(2026, 8, 20, 9, 0, tzinfo=BEIJING_TIMEZONE)
     initial_catalog = LLMPricingCatalog.from_toml(
         """
         schema_version = "llm-pricing.v1"
@@ -180,7 +181,7 @@ def test_request_audit_resume_distinguishes_current_session_from_run_total(
     monkeypatch.setattr(
         openai_compatible_module,
         "beijing_now",
-        lambda: datetime(2026, 8, 24, 0, 0, tzinfo=UTC),
+        lambda: datetime(2026, 8, 24, 8, 0, tzinfo=BEIJING_TIMEZONE),
     )
     audit_path = tmp_path / "analysis" / "llm_requests.jsonl"
     client = httpx.Client(
