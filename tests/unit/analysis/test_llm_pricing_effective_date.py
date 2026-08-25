@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 
 import httpx
 import pytest
-
 from aima_ugc.adapters.llm import openai_compatible as openai_compatible_module
 from aima_ugc.adapters.llm.openai_compatible import OpenAICompatibleContentLabelingLLM
 from aima_ugc.adapters.llm.pricing import LLMPriceNotConfiguredError, load_llm_pricing
