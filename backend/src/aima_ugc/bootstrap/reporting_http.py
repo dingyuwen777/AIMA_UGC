@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import BinaryIO
 from uuid import UUID, uuid4
 
@@ -41,6 +41,7 @@ from aima_ugc.modules.reporting.http import (
 from aima_ugc.modules.reporting.models import DataExportRecord
 from aima_ugc.platform.jobs import JobRecord
 from aima_ugc.platform.storage.retention import EXPORT_RETENTION
+from aima_ugc.platform.time import beijing_now
 
 from .analysis_identity import current_analysis_identity
 from .runtime import PlatformRuntime
@@ -190,7 +191,7 @@ def _export_expired(
     if expires_at is None:
         base_at = export.completed_at or stored_at or created_at
         expires_at = base_at + EXPORT_RETENTION
-    return expires_at <= datetime.now(UTC)
+    return expires_at <= beijing_now()
 
 
 def _iter_file(stream: BinaryIO) -> Iterator[bytes]:

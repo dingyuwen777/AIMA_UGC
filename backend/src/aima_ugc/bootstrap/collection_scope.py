@@ -6,7 +6,7 @@ import hashlib
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import cast
 from uuid import UUID, uuid4
 
@@ -104,6 +104,7 @@ from aima_ugc.modules.collection.providers import (
 from aima_ugc.modules.system.models import ProviderConfig
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol, LeaseLostError
 from aima_ugc.platform.storage import ArtifactRecord
+from aima_ugc.platform.time import beijing_now
 
 _COMMENT_FETCH_ACTIONS = {
     "fetch_adaptive",
@@ -255,7 +256,7 @@ class TikHubCollectionScopeExecutor:
         self._raw_artifacts = raw_artifacts
         self._transport_factory = transport_factory
         self._secret_resolver = secret_resolver
-        self._observed_at = observed_at or (lambda: datetime.now(UTC))
+        self._observed_at = observed_at or (lambda: beijing_now())
         self._pricing = load_tikhub_pricing()
         self._attempt_preparer = PostgresFencedProviderAttemptPreparer(session_factory)
         self._scope_gateway = PostgresCollectionRunExecutionGateway(session_factory)

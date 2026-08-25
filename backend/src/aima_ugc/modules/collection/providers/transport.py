@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from decimal import Decimal
 from typing import Literal, Protocol, Self
 from uuid import UUID
@@ -24,6 +24,7 @@ from aima_ugc.contracts.provider import (
     redact_json,
 )
 from aima_ugc.contracts.provider.base import ProviderBaseModel
+from aima_ugc.platform.time import beijing_now
 
 
 class ProviderTransportRequest(ProviderBaseModel):
@@ -224,7 +225,7 @@ class ProviderClient:
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._transport = transport
-        self._clock = clock or (lambda: datetime.now(UTC))
+        self._clock = clock or (lambda: beijing_now())
 
     def dispatch(
         self,

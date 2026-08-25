@@ -6,7 +6,6 @@ import os
 import re
 import zipfile
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 from typing import Final, cast
@@ -15,6 +14,8 @@ from xml.etree import ElementTree as ET
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 from PIL import Image
+
+from aima_ugc.platform.time import beijing_now
 
 from .chart_spec import ChartSpec
 from .visuals import theme
@@ -1157,7 +1158,7 @@ def _styles_xml() -> str:
 
 
 def _core_props_xml() -> str:
-    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = beijing_now().strftime("%Y-%m-%dT%H:%M:%SZ")
     return f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <cp:coreProperties xmlns:cp="{_CP}" xmlns:dc="{_DC}"
                    xmlns:dcterms="{_DCTERMS}" xmlns:xsi="{_XSI}">

@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+from aima_ugc.platform.time import beijing_now
+
 
 class InvalidImportCursor(ValueError):
     """Cursor 非法、过期、被篡改或与当前查询不匹配。"""
@@ -41,7 +43,7 @@ class ImportBatchCursorCodec:
             raise ValueError("Cursor 有效期必须为正数")
         self._secret = secret
         self._lifetime = lifetime
-        self._now = now or (lambda: datetime.now(UTC))
+        self._now = now or (lambda: beijing_now())
 
     def encode(self, position: ImportBatchCursorPosition, *, query_hash: str) -> str:
         created_at = _aware_utc(position.created_at)

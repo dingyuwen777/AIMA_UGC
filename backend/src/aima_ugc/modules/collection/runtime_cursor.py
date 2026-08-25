@@ -13,6 +13,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal, cast
 from uuid import UUID
 
+from aima_ugc.platform.time import beijing_now
+
 type RuntimeRecordType = Literal[
     "excel_import",
     "tikhub_discovery",
@@ -50,7 +52,7 @@ class CollectionRuntimeCursorCodec:
             raise ValueError("Cursor 有效期必须为正数")
         self._secret = secret
         self._lifetime = lifetime
-        self._now = now or (lambda: datetime.now(UTC))
+        self._now = now or (lambda: beijing_now())
 
     def encode(self, position: CollectionRuntimeCursorPosition, *, query_hash: str) -> str:
         created_at = _aware_utc(position.created_at)

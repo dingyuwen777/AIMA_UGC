@@ -14,6 +14,8 @@ from typing import Any
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from aima_ugc.platform.time import beijing_now
+
 
 class LLMPriceNotConfiguredError(LookupError):
     """目标 provider/model/请求时点没有明确价格，禁止使用默认单价猜测。"""
@@ -295,7 +297,7 @@ class LLMPricingCatalog:
         at: datetime | None = None,
     ) -> LLMModelPrice:
         identity = (_provider(provider), model)
-        request_at = at or datetime.now(UTC)
+        request_at = at or beijing_now()
         for schedule in self._schedules:
             if (schedule.provider, schedule.model) == identity:
                 return _price_effective_at(schedule.price_at(request_at), request_at)

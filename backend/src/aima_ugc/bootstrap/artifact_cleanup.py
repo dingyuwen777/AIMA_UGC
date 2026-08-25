@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataRepository,
@@ -12,6 +12,7 @@ from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
 from aima_ugc.platform.logging import log_event, log_exception_event
 from aima_ugc.platform.storage import ArtifactStateConflict
 from aima_ugc.platform.storage.retention import ORPHAN_RETENTION
+from aima_ugc.platform.time import beijing_now
 
 from .runtime import PlatformRuntime
 
@@ -39,7 +40,7 @@ def run_artifact_cleanup_once(
     持锁。`delete_pending` 会在后续 housekeeping 中继续重试。
     """
 
-    observed_at = datetime.now(UTC) if now is None else now
+    observed_at = beijing_now() if now is None else now
     if observed_at.utcoffset() is None:
         raise ValueError("Artifact cleanup now 必须包含时区")
     if limit < 1:
