@@ -167,9 +167,9 @@ PR #226 初始测试 HEAD `157a3a5de8a2f8d42a0534d837d98ca741b19ad9`，CI run `3
 
 ## Green
 
-当前候选 HEAD：`8bbbfb888019e1be2704aed5ec5ea7a9006582da`。
+基线 Green 候选 HEAD：`8bbbfb888019e1be2704aed5ec5ea7a9006582da`。
 
-当前新鲜证据：
+新鲜证据：
 
 ```text
 CI                                  32808909422  success
@@ -200,10 +200,10 @@ PR publish job                      skipped
 
 # Completion Audit
 
-- [x] upstream_re_read — 重新读取用户本轮决定、`AGENTS.md`、Roadmap、Release Appendix、适用 Skill/Completion Gate；独立重建完成定义，包含手工触发、可读两阶段、公开离线 asset、GHCR private、服务器命令不变。
-- [x] change_coverage — 对照上游要求逐条检查 R1–R9；未发现遗漏的 Release 触发、权限、资产、Runtime 或可见性要求。
-- [x] reverse_audit — 从正式输出反查：GitHub Release asset → 完整 tar.gz → images.tar + canonical compose；服务器启动命令 → bundle 中实际 compose/env；GHCR push → private pre/post gate；正式写操作 → workflow_dispatch-only publish Job。无产品 UI/API/Schema 边界需要新增机制。
-- [x] unresolved_cleared — R1–R9 全部 `satisfied`；无未决 Contract、Schema、Migration、Secret、依赖或发布语义。
+- [x] upstream_re_read: 重新读取用户本轮决定、`AGENTS.md`、Roadmap、Release Appendix、适用 Skill/Completion Gate；独立重建完成定义，包含手工触发、可读两阶段、公开离线 asset、GHCR private、服务器命令不变。
+- [x] change_coverage: 对照上游要求逐条检查 R1–R9；未发现遗漏的 Release 触发、权限、资产、Runtime 或可见性要求。
+- [x] reverse_audit: 从正式输出反查 GitHub Release asset → 完整 tar.gz → images.tar + canonical compose；服务器启动命令 → bundle 中实际 compose/env；GHCR push → private pre/post gate；正式写操作 → workflow_dispatch-only publish Job。无产品 UI/API/Schema 边界需要新增机制。
+- [x] unresolved_cleared: R1–R9 全部 `satisfied`；无未决 Contract、Schema、Migration、Secret、依赖或发布语义。
 
 # 两阶段 Review
 
@@ -241,7 +241,7 @@ PR publish job                      skipped
 
 - Branch: `fix/release-workflow-publication`
 - PR: `#226` Draft，候选已达到 `ready_for_review`
-- Candidate HEAD: `8bbbfb888019e1be2704aed5ec5ea7a9006582da`
+- Current HEAD before final governance rerun: `0db97f4d5e91ae2fb754acf31fc8671f2e958b00`
 - Release #39 root-cause evidence: run `32803805624`
 - Red evidence: run `32805012136`
-- Current Green evidence: CI `32808909422`, Runtime `32808909407`, Full-stack `32808909417`, Release dry-run `32808909424`
+- Green evidence: CI `32808909422`, Runtime `32808909407`, Full-stack `32808909417`, Release dry-run `32808909424`
