@@ -28,9 +28,7 @@ def _read_repo(relative_path: str) -> str:
 
 
 def test_reference_documents_follow_development_reading_order() -> None:
-    reference_names = tuple(
-        sorted(path.name for path in (SKILL_ROOT / "references").glob("*.md"))
-    )
+    reference_names = tuple(sorted(path.name for path in (SKILL_ROOT / "references").glob("*.md")))
 
     assert reference_names == NUMBERED_REFERENCE_FILES
 
