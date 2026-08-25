@@ -184,6 +184,26 @@ Coding 提供的候选文档只是导航线索，不是“必须全部修改”�
 
 Docs 不复制 Coding 的需求、TDD、调试、验证、Git、Review、安全等研发规则，也不能替代它们。详细协作边界见 [04_与Coding协作.md](references/04_与Coding协作.md)。
 
+### 6.1 `code_issue_detected` 反向硬路由
+
+Docs 一旦确认“正确的正式要求/机器事实”与当前实现冲突，并判断需要修改实现时，必须先明确输出：
+
+```text
+code_issue_detected
+→ 正确事实及其来源
+→ 当前实现冲突位置
+→ 需要返回 Coding 的原因
+```
+
+然后按以下规则处理：
+
+- 如果同一仓库存在 `.agents/skills/coding/SKILL.md`，在**任何实现代码修改之前必须读取它**，并切回 Coding 的完整需求、风险、调试/TDD、验证、Review、Git 和完成门禁；Docs 不得用自己的文档规则代替 Coding 去直接修实现；
+- 如果 Coding Skill 不存在、无法读取，或当前授权只允许文档 Review，则 Docs **不得修改实现代码**；只报告 `code_issue_detected`、证据和阻塞，让上游决定后续研发动作；
+- Coding 完成修复且取得自己的新鲜验证后，再返回 Docs 执行 `targeted re-review`，只复核原受影响文档和必要事实源；
+- 如果第二次 targeted re-review 又发现新的业务决定、Contract 冲突或明显范围扩大，不继续自动循环，而是回到上游需求/决策流程重新界定任务。
+
+这条反向路由是协作门禁，不代表 Docs 自己获得代码修改授权，也不降低 Coding 的任何原有规则。
+
 ## 7. 完成前复核
 
 完成文档任务前至少确认：
