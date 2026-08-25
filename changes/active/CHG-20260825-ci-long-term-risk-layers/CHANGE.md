@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260825-ci-long-term-risk-layers
 title: CI 长期风险分层与 Runtime Tooling 收敛
 level: L3
-status: in_progress
+status: ready_for_review
 owner: aima
 branch: refactor/ci-long-term-risk-layers
 created: 2026-08-25
@@ -18,8 +18,8 @@ affected_areas:
   - release
 affected_paths:
   - .github/workflows/
+  - scripts/quality/check_architecture.py
   - docs/04_测试与调试说明.md
-  - docs/blueprint/06_开发约束与分阶段实施.md
   - docs/roadmap/02_生产上线实施路线.md
 contracts: []
 data_changes: []
@@ -27,75 +27,71 @@ data_changes: []
 
 # 背景与当前事实
 
-2026-08-24 的 `CHG-20260824-ci-validation-layers` 已把 19 个按历史 Stage 分裂的永久 Workflow 收敛为当前 7 个长期入口，并把 Ruff/mypy/Unit/Contract 与 PostgreSQL Integration 的 Stage 重复执行归并到 `ci.yml`。当前剩余重复主要位于运行与开发工具边界：
+2026-08-24 的 `CHG-20260824-ci-validation-layers` 已把 19 个按历史 Stage 分裂的永久 Workflow 收敛为 7 个长期入口，并把 Ruff/mypy/Unit/Contract 与 PostgreSQL Integration 的 Stage 重复执行归并到 `ci.yml`。本 Change 处理第二轮剩余重复：`internal-v1a.yml`、`local-dev-bootstrap.yml`、`compose-windows-desktop.yml` 仍按历史里程碑/平台实现分裂，导致普通业务变更启动无关 Windows/Local Dev Runner，canonical Linux Compose 与 Windows overlay 还会分别 build/start 同一套镜像。
 
-- `internal-v1a.yml` 与 `compose-windows-desktop.yml` 都会构建/启动 Compose Runtime；
-- `local-dev-bootstrap.yml`、`ci.yml` 的 Windows Tooling 与 `compose-windows-desktop.yml` 的 Windows CLI/镜像脚本检查存在工具链职责交叉；
-- Local Dev、Windows Runtime、Linux Runtime 仍以历史里程碑/平台实现名组织，而不是长期风险层；
-- 仅业务逻辑变化也会触发多个与开发工具/Compose 拓扑无关的 Runner。
-
-当前正式运行事实仍是 `compose.yaml`，Windows Docker Desktop 仅叠加 `compose.windows.yaml` 的 storage override；因此需要保留 Runtime/Packaging Acceptance 来证明镜像装配、Migration/Bootstrap、Secret、Readiness、持久化和端口边界，但不需要在多个独立 Runner 重复 build 同一套镜像。
+当前正式运行入口仍是 `compose.yaml`，Windows Docker Desktop 只叠加 `compose.windows.yaml` 的 storage override。Compose 因此是正式 Runtime/Packaging Contract：CI 需要保留少量真实部署验收来证明 Docker image assembly、bootstrap/Migration/configure、Secret、Readiness、持久化、端口与 recovery，但不应再复制 Unit/API/Integration 状态空间，也不应在多个 Workflow 重复 build。
 
 # 目标
 
-在不降低任何当前有效测试能力的前提下，把当前 7 个 Workflow 进一步收敛成按长期风险/验证层组织的 6 个职责：
+把永久 CI 收敛为按长期风险/验证层组织的 6 个职责：
 
 ```text
 CI
-→ 代码质量、Contract、Browser Mock、PostgreSQL Integration
+→ Repository Quality + PostgreSQL Integration + CI Gate
 
 Full-stack Acceptance
-→ 少量 Browser → Real API → PostgreSQL → Worker Golden Path
+→ Browser → Real API → PostgreSQL → Worker Golden Path
 
 Runtime Acceptance
-→ canonical Compose / Windows overlay / Runtime & Packaging 风险
+→ canonical Compose + Windows storage overlay + Runtime/Packaging
 
 Developer Tooling Compatibility
-→ Local Dev bootstrap、跨平台 launcher、Windows PowerShell / Compose CLI
+→ Local Dev bootstrap/launcher + Windows setup/mirror/Compose CLI
 
 Change Completion Gate
-→ Requirement Traceability / Completion Audit
+→ Requirement Traceability + Completion Audit
 
 Release
-→ 已验证 main SHA 的离线候选构建、回放与发布
+→ 离线候选构建、Bundle replay 与正式发布
 ```
 
-同时显著减少无关变更触发的 Windows/Local Dev/Compose 重 Runner，并把 Linux canonical Compose 与 Windows overlay 的重运行合并到同一 Runtime Runner，避免重复 Docker build。
+同时保持现有有效测试能力，不把真实 Provider Probe 塞进普通 CI，并显著减少普通业务 PR 的重复 Runner、PostgreSQL、`uv sync`、Docker build 与历史 Stage 重复门禁。
 
 # 成功标准
 
-- [ ] Workflow 不再以 `Internal V1-A` / `Local Dev Bootstrap` / `Windows Docker Desktop` 作为永久 CI 架构名称，长期职责可直接从文件名和 job 名理解。
-- [ ] 当前 `ci.yml` 中 Unit、Contract、API、Ruff、mypy、Frontend Unit/Build/Browser Mock、PostgreSQL Integration 各只保留一套有效执行链。
-- [ ] Local Dev 与 Windows 工具链独有验证全部迁移到 Developer Tooling Compatibility；普通业务变更不再启动这些额外 Runner。
-- [ ] canonical Linux Compose 与 `compose.windows.yaml` overlay 的有效 Runtime 断言全部保留，但共用同一个 Ubuntu Runtime Runner 和同一轮镜像 build。
-- [ ] 保留稳定 check `CI Gate`、`Compose Golden Path`、`Requirement Traceability and Completion Audit`，避免 Release/潜在 Branch Protection 因 check 名漂移失效。
-- [ ] `release.yml` 的正式发布 fail-closed 语义、Tag/Release 防覆盖、offline bundle replay 不降低。
-- [ ] Real Full-stack Golden Path 与真实 Provider Probe 的测试边界不被 Runtime/Tooling 混淆；本 Change 不把真实付费 Provider Probe 塞进普通 CI。
-- [ ] 正式测试/Roadmap 文档同步为长期风险层导航，不再把当前 CI 架构建立在历史 Stage/里程碑名称上。
-- [ ] 最终 PR 最新 HEAD 的所有永久门禁成功，并完成 A1/A2 与代码质量 Review。
+- [x] 永久 Workflow 不再以 `Internal V1-A` / `Local Dev Bootstrap` / `Windows Docker Desktop` 作为 CI 架构名称，`.github/workflows/` 当前为 6 个长期职责入口。
+- [x] `ci.yml` 中 Unit、Contract、API、Ruff、mypy、Frontend Unit/Build/Browser Mock、PostgreSQL Integration 各只保留一套正式执行链。
+- [x] Local Dev 与 Windows 工具链独有断言迁入 `tooling.yml`，并使用真实依赖路径触发；普通业务逻辑变化不再常驻启动这些 Runner。
+- [x] canonical Linux Compose 与 Windows overlay 的独有 Runtime 断言迁入 `runtime.yml`，同一 Ubuntu Runner 首次 build 一次，后续 repo-relative/Windows overlay 使用 `--no-build` 复用镜像。
+- [x] `Compose Golden Path` 在每个 PR/main SHA 上保持稳定存在；无 Runtime 风险变化时走 fast-path，不因整个 Workflow 不触发造成 Release check 缺失。
+- [x] 保持 `CI Gate`、`Compose Golden Path`、`Requirement Traceability and Completion Audit` 名称；`release.yml` 依赖的 check contract 不变。
+- [x] `release.yml` 正式发布 fail-closed、Tag/Release 防覆盖、offline bundle replay 语义未降低；PR #220 Release dry-run 已成功。
+- [x] Real Full-stack 保持独立 Golden Path；Real Provider Probe 仍为按需、有界、普通 CI 外验证。
+- [x] `docs/04_测试与调试说明.md` 与 Production Roadmap 已同步当前长期验证层和 Runtime/Tooling 分工。
+- [x] PR 候选 HEAD `7822bc2deacff7662abbff546738faef5a375c21` 的 CI、Full-stack、Runtime、Tooling、Release dry-run 均成功；治理门禁将在本 Ready 提交上重新运行。
 
 # 范围
 
-- 重构 `.github/workflows/ci.yml`，移出仅属于开发工具链的 Windows job，避免其对每个业务变更常驻运行。
-- 新增 `.github/workflows/tooling.yml`，合并 `local-dev-bootstrap.yml` 的有效验证、Windows bootstrap/tooling、Docker Desktop mirror 静态/CLI 兼容检查，并使用精确 `paths` 只在相关工具/配置变化时运行。
-- 新增 `.github/workflows/runtime.yml`，迁移 `internal-v1a.yml` 与 `compose-windows-desktop.yml` 的有效 Runtime 断言；同一 Ubuntu Runner 先验证 canonical Compose，再在复用已构建镜像的前提下验证 Windows overlay。
-- 删除被完全迁移的 `local-dev-bootstrap.yml`、`internal-v1a.yml`、`compose-windows-desktop.yml`。
-- 保持 `fullstack.yml`、`change-completion-gate.yml`、`release.yml` 的独立职责；只在事实需要时做最小引用/路径同步。
-- 同步测试与 Roadmap 文档中的永久 Workflow 导航和职责说明。
+- `ci.yml`：移出仅属于开发工具链的 Windows job，保留 Repository Quality、单一 PostgreSQL Integration 与稳定 `CI Gate`。
+- `tooling.yml`：合并旧 Local Dev bootstrap、跨平台 launcher、Windows bootstrap、Docker Desktop mirror 与 CMD/PowerShell Compose CLI 验证；只在工具链、版本/锁、Local/Compose 配置、entrypoint/bootstrap/platform/system 等真实依赖变化时运行。
+- `runtime.yml`：合并旧 canonical Linux Compose 与 Windows hybrid Runtime；保留 topology、Secret、Migration/configure、Readiness、mount/port/non-root、持久化、幂等、缺 Secret fail-closed、repo-relative Host Root、Windows storage/restart 等独有断言。
+- 删除已完全迁移的 `local-dev-bootstrap.yml`、`internal-v1a.yml`、`compose-windows-desktop.yml`。
+- `scripts/quality/check_architecture.py`：长期骨架要求改为新的 6 Workflow 入口，不降低架构边界检查。
+- 同步测试说明与生产 Roadmap 的当前机器事实。
 
 # 非目标
 
 - 不修改业务代码、公共 HTTP/Canonical Contract、数据库 Schema/Migration、前端产品行为。
-- 不删除 Unit/Contract/API/PostgreSQL Integration/Browser Mock/Real Full-stack/Runtime/Local Dev/Windows compatibility 中任何当前有独立价值的断言。
-- 不把所有检查塞进一个巨型 Workflow 或单一 Runner。
-- 不引入新的第三方 Action、CI SaaS、依赖升级或真实 TikHub/LLM 付费调用。
-- 不在本 Change 修改 GitHub Branch Protection/Ruleset；当前 GitHub App 对该设置读取权限不足，因此稳定 required-check 名称保持不变。
+- 不删除 Unit/Contract/API/PostgreSQL Integration/Browser Mock/Real Full-stack/Runtime/Local Dev/Windows compatibility 的有效断言。
+- 不把所有验证塞进一个巨型 Workflow/Runner；不同风险层仍保留独立失败边界。
+- 不新增第三方 CI SaaS、依赖升级或真实 TikHub/LLM 付费调用。
+- 不修改 GitHub Branch Protection/Ruleset 设置；当前 `main` 分支 API 报告 `protected=false`，稳定 check 名仍因 Release workflow 的显式 contract 保持不变。
 
 # 必须保持不变
 
-- PostgreSQL 语义测试继续使用真实 `postgres:18.4`，不得用 SQLite/Fake 替代。
+- PostgreSQL 语义测试继续使用真实 `postgres:18.4`，不用 SQLite/Fake 替代。
 - `CI Gate` 继续 fail closed 聚合 Repository Quality 与 PostgreSQL Integration。
-- `Compose Golden Path` 继续作为 Runtime 发布前置 check；无 Runtime 风险变化时可以快速成功，但不能因整个 Workflow 不触发而让同一 main SHA 缺失该 check。
+- `Compose Golden Path` 继续作为 Release 发布前置 check；Runtime 不相关变化只允许快速成功，不允许缺失该 check。
 - `Requirement Traceability and Completion Audit` 行为不变。
 - Release 继续只允许当前远端 `main` 最新 SHA 正式发布。
 - Windows overlay 继续只改变 storage source，不形成第二套业务 Runtime。
@@ -104,73 +100,107 @@ Release
 
 ## 方案 A：保留 7 个 Workflow，只加 paths/cache
 
-优点：改动最少。缺点：`internal-v1a` 与 Windows hybrid runtime 仍各自 build/start 同一套镜像；Local Dev/Windows 工具链职责仍分散，重复计算根因没有消除。
+优点是改动小；缺点是 Linux/Windows Runtime 仍重复 build，Local Dev/Windows 工具职责仍分散，重复计算根因未消除。
 
 ## 方案 B：6 个长期风险/验证层（采用）
 
-将 Linux canonical Compose + Windows overlay 收敛为 `Runtime Acceptance`，重运行共用一个 Ubuntu Runner/一轮 build；将 Local Dev + Windows setup/CLI 收敛为 `Developer Tooling Compatibility`，只在工具/配置变化时触发；普通代码质量与 PostgreSQL Integration 继续由 `ci.yml` 唯一承担。
+Linux canonical Compose + Windows overlay 收敛为 `Runtime Acceptance`，重运行共用同一 Ubuntu Runner/同一轮 build；Local Dev + Windows setup/CLI 收敛为 `Developer Tooling Compatibility`，只在真实相关路径变化时触发；代码质量与 PostgreSQL Integration 继续由 `ci.yml` 唯一承担。
 
-优点：不丢有效断言，能直接消除重复 Compose build 和大量无关 Windows/Local Dev Runner；职责边界稳定。缺点：需要一次性迁移较长 Runtime/Tooling workflow，并同步文档。
+## 方案 C：压成 5 个，把 Tooling 塞回 `ci.yml`
 
-## 方案 C：压成 5 个，把 Tooling 塞回 ci.yml
+文件最少，但产品代码质量与开发机工具链重新耦合，必须引入更多条件/skip 聚合，职责变模糊；减少 YAML 数量并不能减少有效计算，未采用。
 
-优点：文件最少。缺点：CI Gate 又同时承担产品代码质量与开发机工具链，必须引入更多 job 条件/skip 聚合，长期职责变模糊；文件数减少不等于有效成本下降。
+# 实施结果与资源模型
 
-用户已明确要求“不降低任何有效测试能力，按长期风险/验证层组织，并显著减少重复 Runner、PostgreSQL、uv sync、Ruff/mypy、Integration Test”，且允许补充真正有作用的 Workflow，因此采用方案 B。
+当前 `.github/workflows/`：
 
-# 实施计划
+```text
+change-completion-gate.yml
+ci.yml
+fullstack.yml
+release.yml
+runtime.yml
+tooling.yml
+```
 
-1. `[事实映射] -> .github/workflows/{ci,internal-v1a,local-dev-bootstrap,compose-windows-desktop,fullstack,release}.yml -> 建立断言级迁移表 -> 逐项核对命令与职责，不按文件名猜测。`
-2. `[Tooling 收敛] -> ci.yml + tooling.yml -> Windows/Local Dev 独有能力集中且按相关路径触发 -> 对照旧三个 tooling job 的命令/断言无遗漏。`
-3. `[Runtime 收敛] -> runtime.yml -> canonical + Windows overlay 共用一次镜像 build，保持 Secret/Readiness/Persistence/Fail-closed/Windows storage 断言 -> PR Actions 真正运行验证。`
-4. `[删除旧外壳] -> local-dev-bootstrap.yml + internal-v1a.yml + compose-windows-desktop.yml -> 旧职责全部有新入口后删除 -> 搜索旧路径/Workflow 名无当前导航残留。`
-5. `[文档同步] -> docs/04 + Blueprint 06 + Roadmap 02 -> 当前 CI 拓扑与机器事实一致 -> docs gate。`
-6. `[验证与 Review] -> Change/PR -> Completion Gate、CI、Full-stack、Runtime、Tooling（按本次相关路径应触发）及 Release dry-run（如 release 相关路径受影响） -> 最新 HEAD 全绿后 A1/A2 + 代码质量 Review。`
+按 Workflow/job 拓扑计算，对**普通、不修改 Runtime/Tooling/Release 表面**的业务 PR：
+
+```text
+旧 7-Workflow 结构
+→ 约 12 个 job Runner
+→ 约 5 个 PostgreSQL 实例
+→ 约 4 次直接 uv sync
+→ canonical + Windows Runtime 各自重 build
+
+新结构
+→ 约 6 个 job Runner
+→ 约 2 个 PostgreSQL 实例
+→ 约 3 次直接 uv sync
+→ Runtime 只保留一个 fast-path Runner，不 build/start Compose
+→ Tooling 不触发
+```
+
+因此普通业务 PR 的 Runner 拓扑约减少 50%，PostgreSQL 实例约减少 60%；Ruff/mypy 与正式 Integration suite 继续各只有一套。剩余的 PostgreSQL/`uv sync` 分别属于 Core PostgreSQL Integration 与 Real Full-stack 等独立风险层，不再属于历史 Stage 重复。
+
+对 Runtime 风险 PR，canonical 与 Windows overlay 共用一个 Runtime Runner，首次 canonical `--build` 后其余启动使用 `--no-build`，消除旧两套 Runtime Workflow 的重复镜像构建。
 
 # Requirement Traceability
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 不降低任何当前有效测试能力 | user:2026-08-25-ci-risk-layer-convergence | not_satisfied | 待完成断言级迁移与最终 CI 证据 |
-| R2 | 按长期风险/验证层组织，不再按历史 Stage/里程碑堆 workflow | user:2026-08-25-ci-risk-layer-convergence | not_satisfied | 待建立 CI/Full-stack/Runtime/Tooling/Governance/Release 长期拓扑 |
-| R3 | 显著减少重复 Runner、PostgreSQL、uv sync、Ruff/mypy、Integration Test | user:2026-08-25-ci-risk-layer-convergence | not_satisfied | 第一轮已消除 Stage 级 Ruff/mypy/Integration 重复；本轮待消除 Runtime build 与无关 Tooling Runner |
-| R4 | Compose 验证只保留真实部署契约价值，不盲目堆砌 | docs/roadmap/02_生产上线实施路线.md | not_satisfied | 待把 canonical + Windows overlay 收敛为单一 Runtime Acceptance 层 |
-| R5 | 测试层只证明真实边界，Real Full-stack/Provider Probe 不被替代或夸大 | .agents/skills/reliable-vibe-coding/references/testing-strategy.md | not_satisfied | 待最终 Validation Matrix 与 Workflow 证据 |
-| R6 | Release 与稳定 required check 不因重构失效 | docs/blueprint/07_技术决策与实施门禁.md | not_satisfied | 待保持 `CI Gate` / `Compose Golden Path` / Completion Audit 并跑 Release dry-run |
+| R1 | 不降低任何当前有效测试能力 | user:2026-08-25-ci-risk-layer-convergence | satisfied | 旧 Local Dev/Windows/Runtime 独有断言逐项迁移；HEAD `7822bc2` 的 CI run 32792625296、Full-stack 32792625310、Runtime 32792625316、Tooling 32792625255、Release dry-run 32792625275 全部成功 |
+| R2 | 按长期风险/验证层组织，不再按历史 Stage/里程碑堆 Workflow | user:2026-08-25-ci-risk-layer-convergence | satisfied | `.github/workflows/` 已形成 CI/Full-stack/Runtime/Tooling/Governance/Release 6 个长期职责；旧三个实现型 Workflow 已删除 |
+| R3 | 显著减少重复 Runner、PostgreSQL、uv sync、Ruff/mypy、Integration Test | user:2026-08-25-ci-risk-layer-convergence | satisfied | 普通业务 PR 静态拓扑约从 12→6 Runner、5→2 PostgreSQL、4→3 直接 uv sync；Ruff/mypy 与正式 Integration 各保持 1 套；Runtime 两次 build 收敛为 1 次 |
+| R4 | Compose 验证只保留真实部署 Contract 价值，不盲目堆砌 | docs/roadmap/02_生产上线实施路线.md | satisfied | Runtime run 32792625316 的 topology、canonical startup/security/persistence/recovery、repo-relative root、Windows storage/restart 全部成功；Unit/API/Integration 未复制进 Runtime |
+| R5 | 测试层只证明真实边界，Real Full-stack/Provider Probe 不被替代或夸大 | .agents/skills/reliable-vibe-coding/references/testing-strategy.md | satisfied | Full-stack run 32792625310 独立成功；Provider Probe 因未修改 Provider endpoint/shape/capability 保持 not_applicable，未进入普通 CI |
+| R6 | Release 与稳定 check contract 不因重构失效 | docs/blueprint/07_技术决策与实施门禁.md | satisfied | `CI Gate` 与 `Compose Golden Path` 名称保持；HEAD `7822bc2` CI/Runtime 成功，Release dry-run 32792625275 成功；Completion Audit check 名未修改 |
 
 # Validation Matrix
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
-| Browser Mock Acceptance | required | 由 `ci.yml` Repository Quality 保持现有 Playwright Mock Acceptance；待最终 CI run |
-| Backend/API/PostgreSQL Integration | required | 由 `ci.yml` 单 PostgreSQL 18 Runner 保持全部现有 Integration；待最终 CI run |
-| Contract / Generated Client | required | 保持 Pydantic→OpenAPI→Orval drift/compatibility；待最终 CI run |
-| Real Full-stack Golden Path | required | 保持 `fullstack.yml` 真 Browser→API→PostgreSQL→Worker；待最终 run |
-| Real Provider Probe | not_applicable | 本 Change 不修改 Provider endpoint/shape/capability，也不需要真实付费外部调用 |
-| Docs / Governance / Other | required | Runtime/Tooling/Release/Change Gate 与正式文档必须同步；待最终 runs 与 Completion Audit |
+| Browser Mock Acceptance | required | CI run 32792625296 / Repository Quality：Frontend unit/build/Browser Mock Acceptance success |
+| Backend/API/PostgreSQL Integration | required | CI run 32792625296 / PostgreSQL Integration：Migration compatibility、Platform/DB/Jobs/Collection/Content/Ingestion 与 readiness 全部 success |
+| Contract / Generated Client | required | CI run 32792625296 / Repository Quality：generated contracts/client drift、compatibility、Contract/API tests success |
+| Real Full-stack Golden Path | required | Full-stack Acceptance run 32792625310 success，保持 Browser→Real API→PostgreSQL→Worker 实链 |
+| Real Provider Probe | not_applicable | 本 Change 未修改 Provider endpoint、字段 shape、pagination、capability 或 pricing，不需要真实付费外部调用 |
+| Docs / Governance / Other | required | Runtime 32792625316、Tooling 32792625255、Release dry-run 32792625275 success；CI 中 architecture/ownership/secret/docs gates success；Completion Gate 在本 Ready HEAD 重新运行 |
 
 # Completion Audit
 
-- [ ] upstream_re_read：完成前重新读取本轮用户要求、AGENTS、Skill、Blueprint 06/07、Testing Strategy、Roadmap 02。
-- [ ] change_coverage：逐项确认 R1—R6 均有实现/运行证据且无能力遗漏。
-- [ ] reverse_audit：从旧 7 Workflow 的每个独有断言反向核对新入口，确认没有只因“看起来重复”而删除独立风险证明。
-- [ ] unresolved_cleared：所有 `not_satisfied` 清零；required Validation Matrix 均有最新 PR HEAD 证据。
+- [x] upstream_re_read：重新读取本轮用户要求、根 `AGENTS.md`、Reliable Vibe Coding Skill、Testing Strategy、Verification Review、Blueprint 06/07 与 Production Roadmap；完成定义仍是“不丢有效测试 + 按风险层收敛 + 降低重复计算”。
+- [x] change_coverage：R1—R6 均有实现与同一候选 HEAD 的新鲜 Actions 证据；未把“YAML 文件变少”替代真实资源/风险收益。
+- [x] reverse_audit：从旧 7 Workflow 反向逐项核对 Local Dev launcher/bootstrap/lifecycle、Windows setup/mirror/Compose CLI、canonical Runtime、repo-relative Host Root、Secret/port/non-root/fail-closed、Windows storage/restart；发现并补齐 `.dockerignore`、`alembic.ini`、`deploy/nginx.conf`、`.gitignore`、`env.local.example`、`modules/system/**`、`entrypoints/**` 等触发依赖后再形成最终候选。
+- [x] unresolved_cleared：Requirement 无 `not_satisfied`；Validation Matrix required 层均已有新鲜证据，唯一 not_applicable 的 Real Provider Probe 有明确事实依据。
 
 # A1 / A2 与代码质量 Review
 
-- A1：待完成。
-- A2：待完成。
-- 代码质量 Review：待完成。
+## A1：上游要求 → 当前 Change
+
+通过。独立从本轮用户要求与正式 Testing/Roadmap/Blueprint 重建完成定义，确认涵盖：Compose 验证必要性边界、不降低有效测试能力、长期风险/验证层组织、重复 Runner/PostgreSQL/uv/Ruff/mypy/Integration 收敛、Workflow 必须有真实作用且不得漏测。没有 `explicitly_deferred` 项；Provider Probe 的不适用由本 Change 未修改 Provider 事实支持。
+
+## A2：当前 Change → 实现 / 测试 / 文档
+
+通过。6 个长期职责均有机器入口；旧三个 Workflow 的独有断言均有新归属；稳定 Release check 名保持；正式测试说明和 Roadmap 已同步；候选 HEAD `7822bc2` 的 CI、Full-stack、Runtime、Tooling、Release dry-run 全部实际成功。没有修改业务 Contract/Schema/Migration/产品行为。
+
+## 代码质量 Review
+
+通过，未发现未解决的严重/重要问题。Review 中实际发现并已修复：
+
+1. 首轮 CI 暴露 `check_architecture.py` 仍硬编码已删除的三个旧 Workflow；保留门禁并将长期骨架改为新的 6 个入口，没有关闭检查。
+2. 随后 Ruff format 暴露架构检查文件格式问题；修正后最终 HEAD 的 Ruff/mypy 已成功。
+3. 反向依赖审计发现 Runtime classifier 漏掉 `.dockerignore`、`alembic.ini`、真实 `deploy/nginx.conf` 与 `modules/system/**`；Tooling classifier 漏掉 `.gitignore`、`env.local.example`、`entrypoints/**`、`modules/system/**`；已按真实 Dockerfile/launcher 调用链补齐，而没有退回“所有代码都跑所有 Workflow”。
+4. 未新增依赖、Secret、业务日志或生产数据操作；Runtime/Tooling 继续使用 placeholder/隔离数据，真实 Provider Probe 未执行。
 
 # 部署、兼容、回滚
 
-- 不产生业务 Schema/Data Migration，也不改变生产 Compose 使用命令。
-- CI 配置合并后立即生效；旧 Workflow 文件删除不删除其历史 Actions 记录。
-- 回滚方式是 revert 本 Change，对生产数据没有回滚影响。
-- 由于 Branch Protection/Ruleset 无读取权限，`CI Gate`、`Compose Golden Path` 与 `Requirement Traceability and Completion Audit` 名称保持不变以控制兼容风险。
+- 无业务 Schema/Data Migration；不改变生产 `compose.yaml`/`compose.windows.yaml`、启动命令或 Secret 格式。
+- CI Workflow 合并后立即生效；删除旧 Workflow 文件不会删除历史 Actions 记录。
+- `main` 当前 API 报告 `protected=false`，但 Release workflow 仍显式查询 `CI Gate`、`Compose Golden Path`、`Requirement Traceability and Completion Audit`，因此这些 check 名保持兼容。
+- 回滚为 revert 本 Change 的 CI/文档变更；对生产数据、数据库 Migration 与部署持久目录没有回滚操作。
 
 # 交付
 
 - 分支：`refactor/ci-long-term-risk-layers`
-- PR：待创建。
-- 合并：必须等待最终 PR HEAD 永久门禁成功与 Review 完成后再决定。
+- PR：#220 `按长期风险层收敛 CI Runtime 与 Tooling`
+- 当前状态：进入 `ready_for_review`；等待本提交产生的新 HEAD 所有永久门禁成功后再转 PR Ready/合并。
