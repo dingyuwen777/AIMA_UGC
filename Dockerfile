@@ -77,7 +77,7 @@ COPY frontend/ ./
 RUN npm run build
 
 FROM nginx:1.30.4-alpine3.24 AS frontend
-COPY deploy/nginx.conf /etc/nginx/nginx.conf
+COPY frontend/nginx.conf /etc/nginx/nginx.conf
 COPY --from=frontend-builder --chown=nginx:nginx /build/frontend/dist /usr/share/nginx/html
 USER nginx
 EXPOSE 8080
