@@ -42,6 +42,7 @@ class _Gateway:
         self.started_scopes: list[UUID] = []
         self.finished_scopes: list[tuple[UUID, str, str | None]] = []
         self.finished_run: tuple[str, dict[str, int]] | None = None
+        self.finished_error_summary: str | None = None
 
     def _check_fence(self, fence: JobExecutionFence) -> None:
         assert fence.job_id == self.execution.run.job_id
@@ -109,6 +110,7 @@ class _Gateway:
                 "comment_count": comment_count,
             },
         )
+        self.finished_error_summary = error_summary
         return self.execution.run
 
 
@@ -179,10 +181,11 @@ def _result(
     requests: int = 1,
     contents: int = 2,
     comments: int = 0,
+    stop_reason: str | None = "provider_exhausted",
 ) -> CollectionScopeExecutionResult:
     return CollectionScopeExecutionResult(
         status=status,
-        stop_reason="provider_exhausted",
+        stop_reason=stop_reason,
         pagination_state={"page": 1},
         stats={"requests": requests, "contents": contents, "comments": comments},
         requested_count=requests,
@@ -260,6 +263,27 @@ def test_executor_isolates_scope_exception_and_marks_run_partial_success() -> No
     assert gateway.finished_scopes[0] == (first.id, "failed", "scope_execution_failed")
     assert gateway.finished_run is not None
     assert gateway.finished_run[0] == "partial_success"
+
+
+def test_executor_keeps_generic_summary_when_any_failed_scope_has_no_reason() -> None:
+    execution = _execution()
+    context = _Context()
+    context._fence = JobExecutionFence(job_id=execution.run.job_id, lease_token="lease")
+    gateway = _Gateway(execution)
+    first, second = execution.scopes
+    scope_executor = _ScopeExecutor(
+        {
+            first.id: _result(status="failed", stop_reason="provider_secret_unavailable"),
+            second.id: _result(status="failed", stop_reason=None),
+        }
+    )
+
+    CollectionRunExecutor(gateway=gateway, scope_executor=scope_executor).execute(
+        fence=context.fence,
+        context=context,
+    )
+
+    assert gateway.finished_error_summary == "scope_execution_failed"
 
 
 def test_executor_stops_before_next_scope_when_job_is_cancel_requested() -> None:

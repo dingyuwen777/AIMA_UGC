@@ -63,8 +63,18 @@ const runtimeStageLabels: Record<string, string> = {
   cancelled: '已取消',
 }
 
+const runtimeFailureMessages: Record<string, string> = {
+  provider_secret_unavailable: 'Provider Secret 不可用，请联系管理员检查运行配置。',
+}
+
 export function runtimeStageLabel(value: string): string {
   return runtimeStageLabels[value] ?? value
+}
+
+/** 将后端稳定错误码转换为安全、可操作的用户提示；未知值保持可审计原文。 */
+export function runtimeFailureMessage(value: string | null | undefined): string | null {
+  if (!value) return null
+  return runtimeFailureMessages[value] ?? value
 }
 
 export function formatNumber(value: number | undefined): string {

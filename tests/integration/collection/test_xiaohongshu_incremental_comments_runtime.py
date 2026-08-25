@@ -35,12 +35,13 @@ from aima_ugc.modules.content.tables import (
     contents_table,
 )
 from aima_ugc.modules.system.models import ProviderConfig
+from aima_ugc.modules.system.tables import provider_configs_table
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.jobs import JobExecutionFence
 from aima_ugc.platform.storage import ArtifactService
 from pydantic import SecretStr
-from sqlalchemy import insert, select
+from sqlalchemy import delete, insert, select
 
 _FIXTURES = Path("tests/fixtures/providers/tikhub/xiaohongshu")
 _OBSERVED_AT = datetime(2026, 8, 18, 0, 20, tzinfo=UTC)
@@ -61,7 +62,16 @@ class _Context:
 
 
 @pytest.fixture
-def database_runtime() -> Iterator[DatabaseRuntime]:
+def created_provider_config_ids() -> set[UUID]:
+    """记录当前测试创建的 Provider Config，供失败场景的 Fixture teardown 清理。"""
+
+    return set()
+
+
+@pytest.fixture
+def database_runtime(created_provider_config_ids: set[UUID]) -> Iterator[DatabaseRuntime]:
+    """提供数据库 Runtime，并只清理当前测试自己创建的 Provider Config。"""
+
     runtime = DatabaseRuntime(load_settings())
     with runtime.engine.begin() as connection:
         connection.exec_driver_sql(
@@ -74,6 +84,12 @@ def database_runtime() -> Iterator[DatabaseRuntime]:
             connection.exec_driver_sql(
                 "TRUNCATE TABLE jobs, artifacts, accounts RESTART IDENTITY CASCADE"
             )
+            if created_provider_config_ids:
+                connection.execute(
+                    delete(provider_configs_table).where(
+                        provider_configs_table.c.id.in_(created_provider_config_ids)
+                    )
+                )
         runtime.dispose()
 
 
@@ -223,6 +239,7 @@ def _seed_previous_content(runtime: DatabaseRuntime) -> UUID:
 
 def test_xiaohongshu_incremental_comments_stop_after_safe_known_comment_boundary(
     database_runtime: DatabaseRuntime,
+    created_provider_config_ids: set[UUID],
     tmp_path: Path,
 ) -> None:
     content_id = _seed_previous_content(database_runtime)
@@ -240,6 +257,7 @@ def test_xiaohongshu_incremental_comments_stop_after_safe_known_comment_boundary
                     enabled=True,
                 )
             )
+            created_provider_config_ids.add(provider_config.id)
             job = PostgresJobRepository(session).enqueue(
                 job_type="collection.run.v1",
                 payload_version="collection.run.v1",

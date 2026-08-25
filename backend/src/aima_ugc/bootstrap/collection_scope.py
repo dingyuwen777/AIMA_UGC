@@ -103,6 +103,7 @@ from aima_ugc.modules.collection.providers import (
 )
 from aima_ugc.modules.system.models import ProviderConfig
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol, LeaseLostError
+from aima_ugc.platform.security import SecretFileError
 from aima_ugc.platform.storage import ArtifactRecord
 from aima_ugc.platform.time import beijing_now
 
@@ -428,6 +429,14 @@ class TikHubCollectionScopeExecutor:
                 stats.technical_partial_results += 1
         except LeaseLostError:
             raise
+        except SecretFileError:
+            self._refresh_counts(scope=scope, context=context, stats=stats)
+            return _result(
+                status="failed",
+                stop_reason="provider_secret_unavailable",
+                pagination_state=pagination_state,
+                stats=stats,
+            )
         except _ProviderCallFailed as exc:
             self._refresh_counts(scope=scope, context=context, stats=stats)
             if exc.retryable:
@@ -645,6 +654,14 @@ class TikHubCollectionScopeExecutor:
             )
         except LeaseLostError:
             raise
+        except SecretFileError:
+            self._refresh_counts(scope=scope, context=context, stats=stats)
+            return _result(
+                status="failed",
+                stop_reason="provider_secret_unavailable",
+                pagination_state=pagination_state,
+                stats=stats,
+            )
         except _ProviderCallFailed as exc:
             self._refresh_counts(scope=scope, context=context, stats=stats)
             if exc.retryable:

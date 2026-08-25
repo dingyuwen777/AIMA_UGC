@@ -230,7 +230,7 @@ Export Dialog 仍可打开，用于查看已有导出记录和下载已经成功
 永久测试入口：
 
 ```text
-.github/workflows/stage8f-fullstack.yml
+.github/workflows/fullstack.yml
 frontend/playwright.fullstack.config.ts
 frontend/e2e-fullstack/excel-import.spec.ts
 frontend/e2e-fullstack/collection-plan-search-config.spec.ts
@@ -240,6 +240,8 @@ tests/fullstack/run_stage8f_worker.py
 ```
 
 真实验收不 Mock `/api/v1/**`，固定覆盖 Excel 成功、Excel 失败和 Collection Plan 配置持久化三条链。
+
+`seed_collection_plan_provider.py` 会写入固定的测试 Provider Config，因此只允许在隔离 Full-stack 数据库中执行，并要求显式设置 `AIMA_FULLSTACK_SEED=1`。未设置时脚本会在装配 Runtime、连接数据库之前拒绝运行，避免测试配置进入日常开发库。
 
 ### 6.1 成功链
 

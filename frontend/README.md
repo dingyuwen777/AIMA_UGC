@@ -202,6 +202,8 @@ src/features/import-batches/
 - Import Batch 补采；
 - Run/Batch 详情和状态。
 
+TikHub Run 详情会读取生成 Client 中既有的 `scopes[].stop_reason`。当 Worker 返回 `provider_secret_unavailable` 时，页面显示固定的“Provider Secret 不可用，请联系管理员检查运行配置”提示；未知错误值保留机器原文以便结合 Run ID、Job ID 排障。页面不接收或展示 `secret_ref`、Secret 路径和 Secret 内容。
+
 修改导航：
 
 | 需求 | 先看 |
