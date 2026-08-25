@@ -1,56 +1,113 @@
-"""一次性把 AIMA 生产源码的系统自产 UTC 当前时间迁移为北京时间。"""
+"""一次性完成 AIMA 北京时间 Contract、运行边界与 live 导航迁移。"""
 
 from __future__ import annotations
 
-import ast
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE_ROOT = ROOT / "backend" / "src" / "aima_ugc"
-OLD_CALL = "datetime.now(UTC)"
-NEW_CALL = "beijing_now()"
-IMPORT_LINE = "from aima_ugc.platform.time import beijing_now"
 
 
-def _insert_time_import(content: str) -> str:
-    """在顶层 import 区末尾插入北京时间 helper，由 Ruff 负责最终排序。"""
-    if IMPORT_LINE in content:
-        return content
-    module = ast.parse(content)
-    import_nodes = [
-        node
-        for node in module.body
-        if isinstance(node, (ast.Import, ast.ImportFrom)) and node.end_lineno is not None
-    ]
-    if not import_nodes:
-        raise ValueError("生产模块缺少顶层 import，无法安全插入北京时间 helper")
-    insert_after = max(node.end_lineno or node.lineno for node in import_nodes)
-    lines = content.splitlines(keepends=True)
-    lines.insert(insert_after, f"{IMPORT_LINE}\n")
-    return "".join(lines)
-
-
-def _migrate_file(path: Path) -> bool:
-    """只迁移系统当前时间调用，不改外部 timestamp 解析或显式协议时区。"""
+def _replace_exact(
+    relative_path: str,
+    old: str,
+    new: str,
+    *,
+    expected_count: int = 1,
+) -> None:
+    """按预期次数替换精确文本，避免迁移脚本静默改错当前仓库事实。"""
+    path = ROOT / relative_path
     content = path.read_text(encoding="utf-8")
-    if OLD_CALL not in content:
-        return False
-    migrated = content.replace(OLD_CALL, NEW_CALL)
-    migrated = _insert_time_import(migrated)
-    path.write_text(migrated, encoding="utf-8")
-    return True
+    actual_count = content.count(old)
+    if actual_count != expected_count:
+        raise RuntimeError(
+            f"{relative_path} 预期命中 {expected_count} 次，实际 {actual_count} 次：{old!r}"
+        )
+    path.write_text(content.replace(old, new), encoding="utf-8")
+    print(relative_path)
+
+
+def _migrate_http_contract() -> None:
+    """让 AIMA 自有 HTTP datetime 统一序列化和解释为北京时间。"""
+    path = "backend/src/aima_ugc/contracts/http.py"
+    _replace_exact(
+        path,
+        "from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator",
+        "from pydantic import ConfigDict, Field, field_validator, model_validator\n\n"
+        "from aima_ugc.contracts.base import AimaHttpModel as BaseModel\n"
+        "from aima_ugc.platform.time import to_beijing",
+    )
+    _replace_exact(
+        path,
+        "        if value is not None and (value.tzinfo is None or value.utcoffset() is None):\n"
+        "            raise ValueError(\"时间筛选必须包含时区\")\n"
+        "        return value",
+        "        if value is not None and (value.tzinfo is None or value.utcoffset() is None):\n"
+        "            raise ValueError(\"时间筛选必须包含时区\")\n"
+        "        return to_beijing(value) if value is not None else None",
+        expected_count=6,
+    )
+
+
+def _migrate_database_runtime() -> None:
+    """把 PostgreSQL 连接 Session 默认 timezone 固定为 Asia/Shanghai。"""
+    path = "backend/src/aima_ugc/platform/database/runtime.py"
+    _replace_exact(
+        path,
+        "from aima_ugc.platform.security import read_secret_file",
+        "from aima_ugc.platform.security import read_secret_file\n"
+        "from aima_ugc.platform.time import BEIJING_TIMEZONE",
+    )
+    _replace_exact(
+        path,
+        '                    "connect_timeout": self._settings.db_connect_timeout_seconds,\n',
+        '                    "connect_timeout": self._settings.db_connect_timeout_seconds,\n'
+        '                    "options": f"-c timezone={BEIJING_TIMEZONE.key}",\n',
+    )
+
+
+def _migrate_live_navigation() -> None:
+    """迁移当前 live 文档入口，不修改 changes/archive 历史内容。"""
+    _replace_exact(
+        "README.md",
+        "[`.agents/skills/reliable-vibe-coding/SKILL.md`](.agents/skills/reliable-vibe-coding/SKILL.md)",
+        "[`.agents/skills/coding/SKILL.md`](.agents/skills/coding/SKILL.md)",
+    )
+    _replace_exact(
+        "AGENTS.md",
+        "- 数据库时间用 `timestamptz`；\n"
+        "- API 用 UTC ISO-8601；\n"
+        "- 人工日志用 `YYYY-MM-DD HH:mm:ss.SSS` 北京时间；",
+        "- 数据库时间继续使用 `timestamptz` 表达绝对时间点，应用 PostgreSQL Session 默认 timezone 固定为 `Asia/Shanghai`；\n"
+        "- AIMA 自有 API 时间统一使用带 `+08:00` 偏移的 ISO-8601 北京时间；第三方 Raw、外部协议必须保持原始时间语义的事实层按原协议处理；\n"
+        "- 人工日志使用北京时间 `[YYYY-MM-DD HH:mm:ss.SSS source.ext L<line>] [LEVEL] message`；前缀不额外输出 `timezone` 字段或 `Asia/Shanghai` 文本；",
+    )
+
+
+def _migrate_coding_live_paths() -> None:
+    """把 Coding Skill 当前执行命令从旧 CLI/path 迁到新入口。"""
+    for relative_path in (
+        ".agents/skills/coding/references/04_change-management.md",
+        ".agents/skills/coding/references/10_completion-gate.md",
+    ):
+        path = ROOT / relative_path
+        content = path.read_text(encoding="utf-8")
+        migrated = content.replace(
+            ".agents/skills/reliable-vibe-coding/scripts/ready_check.py",
+            ".agents/skills/coding/scripts/ready_check.py",
+        ).replace("rvc.py", "coding.py")
+        if migrated == content:
+            raise RuntimeError(f"{relative_path} 没有可迁移的 live Coding 路径")
+        path.write_text(migrated, encoding="utf-8")
+        print(relative_path)
 
 
 def main() -> int:
-    """迁移所有命中的生产 Python 文件并输出相对路径。"""
-    changed: list[Path] = []
-    for path in sorted(SOURCE_ROOT.rglob("*.py")):
-        if _migrate_file(path):
-            changed.append(path)
-    for path in changed:
-        print(path.relative_to(ROOT).as_posix())
-    print(f"已迁移 {len(changed)} 个生产源码文件。")
+    """执行一次性确定性迁移；每项都要求当前文本与预期事实一致。"""
+    _migrate_http_contract()
+    _migrate_database_runtime()
+    _migrate_live_navigation()
+    _migrate_coding_live_paths()
     return 0
 
 
