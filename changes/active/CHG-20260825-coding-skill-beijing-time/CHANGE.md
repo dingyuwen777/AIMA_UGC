@@ -29,6 +29,7 @@ affected_paths:
   - tests/unit/
   - tests/api/
   - tests/contracts/
+  - changes/archive/2026-08/
 contracts:
   - HTTP datetime serialization
   - coding-project-context/v1
@@ -55,7 +56,7 @@ data_changes: []
 - [x] 系统自产“当前时间/今天”不依赖宿主本地时区或 UTC-now 作为业务默认；统一通过项目时间能力获得北京时间。
 - [x] 第三方 Raw 和外部协议要求的原始 timestamp/epoch/timezone 仍按原协议保存和解释，不为了北京时间改写证据层。
 - [x] 人类可读日志统一形如 `[YYYY-MM-DD HH:mm:ss.SSS source.ext L<line>] [LEVEL] message`；北京时间、毫秒三位、真实源文件/行号、LEVEL 大写，且**不额外显示 timezone 字段**。
-- [x] `changes/archive/**` 不因本次 Skill 改名或时间策略批量改写；`rvc-change/v1` 因 Change 文件格式未变化继续保持原值，不引入兼容迁移层。
+- [x] `changes/archive/**` 的历史叙事、Evidence、状态和 Review 不因本次 Skill 改名或时间策略批量改写；被 Ready Check 作为实时仓库路径校验的 Requirement Source 随 canonical Skill 路径做最小迁移；`rvc-change/v1` 因 Change 文件格式未变化继续保持原值，不引入兼容迁移层。
 - [x] Contract/OpenAPI/generated client、API/Unit/数据库 Runtime、Skill self-tests 和文档治理回归覆盖新规则。
 - [ ] 最终 Ready HEAD 通过永久 CI/Runtime/Full-stack/Developer Tooling/Change Gate 后正常合并 main，再独立归档本 Change；该项由 Ready HEAD 与合并后 GitHub 门禁、归档 PR 完成，不通过再次修改功能 Change 伪造“同 HEAD”证据。
 
@@ -66,13 +67,14 @@ data_changes: []
 - AIMA 系统时间基础能力、系统自产时间入口、PostgreSQL Session timezone。
 - AIMA 自有 HTTP Response datetime 序列化和相应 OpenAPI/generated client 一致性验证。
 - API/Unit/Contract/Runtime/Full-stack 中与时间偏移语义直接相关的回归。
+- 因 canonical Skill 路径移动而失效的 gated 历史 Change `Requirement Source` 实时路径迁移；只改 Source 单元格，不改历史事实叙事。
 
 # 非目标
 
 - 不修改 PostgreSQL 时间字段类型，不新增 Migration，不重写已有业务数据的绝对时间点。
 - 不修改第三方 Raw 原始响应或外部协议明确要求的 timestamp/epoch/UTC wire semantics。
 - 不为日志增加 `timezone="Asia/Shanghai"` 或其他重复 timezone 文本。
-- 不批量修改 `changes/archive/**` 历史 Change 的叙事、Evidence、状态或旧路径文本。
+- 不批量修改 `changes/archive/**` 历史 Change 的叙事、Evidence、状态、Review 或普通旧路径文本；只有 Ready Check 实时校验的 Requirement Source 随目标文件移动。
 - 不升级依赖、Runtime、GitHub Actions 或锁文件。
 - 不改变与时间无关的业务规则、页面功能、Provider 能力或部署拓扑。
 
@@ -125,7 +127,7 @@ data_changes: []
 7. 供应商分时定价的 `timezone` 属于供应商价格协议事实：AIMA 记录请求时刻使用北京时间，但选价时把同一绝对时刻转换到模型配置的 `timezone`；不得把供应商 UTC/其他时区价格表强制解释成北京时间。
 8. 日志前缀保持 `[YYYY-MM-DD HH:mm:ss.SSS source.ext L<line>] [LEVEL]`，不输出 timezone 名称；现有 Formatter 若已满足，不做无意义修改。
 9. OOXML/W3CDTF 等明确要求 UTC `Z` 的外部协议必须先把北京时间绝对时刻转换为 UTC，再写 `Z`，不得把北京时间墙钟直接伪装成 UTC。
-10. `changes/archive/**` 不改；`rvc-change/v1` 不改，因为 Change 文件格式没有变化。
+10. `changes/archive/**` 的历史叙事/Evidence/状态/Review 不因当前路径迁移改写；只有 Ready Check 作为实时仓库路径校验的 Requirement Source 随 canonical 文件移动。`rvc-change/v1` 不改，因为 Change 文件格式没有变化。
 
 # Requirement Traceability
 
@@ -137,7 +139,7 @@ data_changes: []
 | R4 | 日志使用 `[2026-08-25 09:44:19.257 runtime.py L114] [INFO]` 同类格式 | user:2026-08-25-coding-log-format | satisfied | 现有 `AimaLogFormatter` 保持三位毫秒/真实文件行号/大写级别；`test_logging_timezone_policy.py` 固定北京时间前缀 |
 | R5 | Skill 改名为 `coding` 并同步所有当前相关内容 | user:2026-08-25-rename-skill-coding | satisfied | `.agents/skills/coding/` 为唯一 live Skill，旧目录直接读取返回 404；AGENTS、README、CI、自测 live 引用已同步；Developer Tooling Compatibility 成功 |
 | R6 | 旧缓存不需要兼容，重新生成即可 | user:2026-08-25-no-cache-compat | satisfied | `coding.py` 只读写 `.agents/project-context.json` + `coding-project-context/v1`，未增加旧缓存迁移/兼容层；相关 Unit 全绿 |
-| R7 | `changes/archive/**` 不因本次改名批量修改 | user:2026-08-25-archive-unchanged | satisfied | `main...d8af996e61c4cd67bb195fdb4c14a587733f1923` 反向 diff 无任何 `changes/archive/**` 文件 |
+| R7 | `changes/archive/**` 历史内容不因改名批量重写；机器实时 Requirement Source 随 canonical Skill 路径迁移 | user:2026-08-25-archive-unchanged | satisfied | Ready Gate run 32824523183 精确暴露 5 个归档 Change 的旧 Skill Source；按 `docs/AGENTS.md` 只把这 5 个 Requirement Source 单元格迁到 `.agents/skills/coding/...`，未改历史 Evidence、状态、Review 或普通旧路径文本 |
 | R8 | `rvc-change/v1` 因文件格式未变保持原标识，不建立兼容层 | user:2026-08-25-change-schema-unchanged | satisfied | 当前 Change、parser、Ready Check 继续使用 `rvc-change/v1`；只迁移 Skill 名称/CLI，不改 Change schema |
 | R9 | 除第三方 Raw/外部协议原始事实层外，所有系统/Agent 时间统一 `Asia/Shanghai` | user:2026-08-25-system-wide-beijing-time | satisfied | AIMA 自有 HTTP `+08:00`、输入归一化、`beijing_now/beijing_today`、PostgreSQL Session `Asia/Shanghai`、LLM 审计北京时间、DOCX 外部 UTC 边界均已实现；CI run 32823858633 与 Full-stack run 32823858623 成功 |
 | R10 | 日志不显示 `timezone="Asia/Shanghai"` | user:2026-08-25-log-no-timezone-field | satisfied | `test_logging_timezone_policy.py` 明确断言不存在 `timezone=` 与 `Asia/Shanghai` 文本；662 Unit 全绿 |
@@ -154,23 +156,24 @@ data_changes: []
 | 跨组件 Golden Path | required | Full-stack Acceptance run 32823858623 成功，真实 Frontend/API/PostgreSQL/Worker 接线保持可用 |
 | 外部依赖 Probe | not_applicable | 未修改 TikHub/LLM Provider 接口、Mapper 或外部当前事实；第三方 Raw/供应商定价 timezone 只做稳定协议边界回归，不需要付费 Probe |
 | Build / Package / Runtime | required | CI run 32823858633 Wheel build/install/import 成功；Runtime Acceptance run 32823858583 成功；Frontend lint/typecheck/build 成功 |
-| Docs / Governance / Other | required | CI run 32823858633 Architecture/Table Ownership/Secret/Docs 全绿；Developer Tooling self-tests 全绿；反向 diff 无历史 archive 改写、临时迁移工具或依赖/锁升级 |
+| Docs / Governance / Other | required | CI run 32823858633 Architecture/Table Ownership/Secret/Docs 全绿；Developer Tooling self-tests 全绿；Ready Gate run 32824523183 又发现 5 个 archive 实时 Source 漂移并按 `docs/AGENTS.md` 最小迁移，未恢复旧 Skill 或建立兼容层；最终 Ready HEAD 需重新通过 Change Gate |
 
 # Completion Audit
 
 - [x] upstream_re_read: Ready 前重新读取当前分支 `AGENTS.md`、`.agents/skills/coding/SKILL.md`、Blueprint 04/05/06、测试/Completion/Review 规则，并确认 main 仍为 `5f9d125ae716d34295f8397b337248020069588a`。
 - [x] change_coverage: 逐条重建 R1-R11；Skill/CLI/cache、HTTP、DB Session、系统时间、日志、外部协议、Provider Pricing timezone、文档和测试均有实现与回归证据，`not_satisfied` 已清零。
-- [x] reverse_audit: 从后端时间能力反查 HTTP/DB/日志/报告/LLM 消费边界，并从前端/Contract 反查后端真实支持；Full-stack、generated Client、真实 PostgreSQL 与 Runtime 均通过，无悬空消费者或第二套 UTC 假设。
-- [x] unresolved_cleared: 误删 Migration 回归覆盖、旧 `datetime` 测试桩、OOXML 假 `Z`、Pricing 生效日 UTC 注释/语义、Ruff 导入问题均已修复；剩余仅 Ready HEAD 必须重新执行永久门禁和正常 Git 交付，不存在未决业务/Contract 决策。
+- [x] reverse_audit: 从后端时间能力反查 HTTP/DB/日志/报告/LLM 消费边界，并从前端/Contract 反查后端真实支持；Full-stack、generated Client、真实 PostgreSQL 与 Runtime 均通过，无悬空消费者或第二套 UTC 假设；Skill canonical rename 还反向检查 gated 历史 Change 的实时 Source 并完成迁移。
+- [x] unresolved_cleared: 误删 Migration 回归覆盖、旧 `datetime` 测试桩、OOXML 假 `Z`、Pricing 生效日 UTC 注释/语义、Ruff 导入问题及 5 个归档 Requirement Source 漂移均已修复；剩余仅最终 Ready HEAD 必须重新执行永久门禁和正常 Git 交付，不存在未决业务/Contract 决策。
 
 # Review A1：需求与完成定义审查
 
 结论：**通过。**
 
-- 用户已确认的 Skill 改名、缓存路径、北京时间、日志格式、旧缓存不兼容、历史 archive 不改、Change schema 不变均已进入 R1-R10，没有依赖当前 Change 自身充当上游需求全集。
+- 用户已确认的 Skill 改名、缓存路径、北京时间、日志格式、旧缓存不兼容、历史 archive 不批量重写、Change schema 不变均已进入 R1-R10，没有依赖当前 Change 自身充当上游需求全集。
 - AIMA 自有 HTTP datetime 明确改为 `+08:00`，输入归一到 `Asia/Shanghai`；Frontend generated Client 继续由 OpenAPI 单向生成，没有第二套时间 Contract。
 - PostgreSQL 没有 Schema/Migration 或历史数据重写；`timestamptz` 绝对时刻保持，Session timezone 仅改变展示/解释上下文。
 - 第三方 Raw、外部 wire protocol、供应商 Pricing timezone 被保留为协议事实；系统统一北京时间没有越界改写外部证据层。
+- Skill canonical 路径改名触发的历史 archive 边界按仓库规则处理：普通历史叙事/Evidence/状态/Review 保持原样，只迁移 Ready Check 实时解析的 Requirement Source；没有恢复旧 Skill 或引入兼容层。
 - Runtime/Full-stack/前端均有适用验收；Provider Probe 因未改变 Provider 接口/Mapper/当前外部事实而明确不适用。
 
 # Review A2：实现与回归审查
@@ -183,13 +186,15 @@ data_changes: []
 - 历史 Migration 测试最初因 Session timezone 变化暴露 `16:30+08` 与 `08:30+00` 字符串差异；修复为 aware datetime 绝对时刻比较，没有修改历史 Migration。
 - 审查曾发现一次整文件替换误删 `test_migration_data_lifecycle.py` 中 NFKC、downgrade、平台统一与冲突保护测试；已恢复原覆盖，当前相对 main 仅保留必要时间断言差异。
 - 旧 LLM 测试仍 monkeypatch `datetime` 导致 4 个分时价格测试受 CI 当前时刻影响；已改为注入真实生产时钟 `beijing_now()`，fixture 使用北京时间，供应商 `timezone` 继续独立生效。
-- 最终实现候选 `d8af996e61c4cd67bb195fdb4c14a587733f1923`：CI、Runtime、Full-stack、Developer Tooling 均成功；Change Gate 在 `in_progress` 状态下按设计失败，待本 Ready 提交重新验证。
+- Ready HEAD `54d9aa20a61a4f60e42c2c5e1fdc5072369c5b2b` 的 Change Gate 又精确暴露 5 个归档 Change 仍把已删除旧 Skill 路径作为机器实时 Source；已按 `docs/AGENTS.md` 只迁移 Source 单元格，未改写历史 Evidence/Review/状态。
+- 最终实现候选 `d8af996e61c4cd67bb195fdb4c14a587733f1923`：CI、Runtime、Full-stack、Developer Tooling 均成功；当前治理修正后的 Ready HEAD 必须重新验证全部永久门禁。
 
 # Code Quality Review
 
 结论：**通过。**
 
-- 最终功能 diff 未修改 `changes/archive/**`，未保留临时迁移 Workflow/脚本，未升级依赖/锁文件，未引入 Schema/Migration。
+- 产品/功能实现未保留临时迁移 Workflow/脚本，未升级依赖/锁文件，未引入 Schema/Migration。
+- 5 个历史 archive 文件只迁移 Ready Check 实时 Requirement Source；历史叙事、Evidence、状态、Review 和普通旧路径文本保持不变，没有批量“洗历史”。
 - Ruff format/check：501 files formatted / All checks passed；mypy：244 source files 无问题。
 - Unit：662 passed；Contract：75 passed；API：34 passed。
 - Frontend Unit：39 passed；Playwright Browser Mock Acceptance：22 passed；npm audit：0 vulnerabilities；Wheel build/install/import：0.1.0 成功。
@@ -208,10 +213,10 @@ data_changes: []
 - [x] 统一 AIMA 自有 HTTP datetime 序列化为北京时间，重新生成并验证 OpenAPI/generated client。
 - [x] 显式设置 PostgreSQL Session timezone `Asia/Shanghai` 并完成真实 PostgreSQL Integration。
 - [x] 收紧 Skill/Workflow/Review/规则保留映射和 AIMA Blueprint 04/05/06 的最终时间语义；移除“API UTC”旧规则和错误兼容表述。
-- [x] 全量扫描 live `reliable-vibe-coding` / `rvc.py` 引用并修正当前事实；历史 `changes/archive/**` 不改写。
+- [x] 全量扫描 live `reliable-vibe-coding` / `rvc.py` 引用并修正当前事实；历史 archive 的叙事/Evidence/状态/Review 不改写，机器实时 Requirement Source 随 canonical Skill 路径最小迁移。
 - [x] 执行目标测试、Skill self-tests、Unit/Contract/API、PostgreSQL、Frontend、Runtime/Full-stack、Docs/Secret/Architecture/Owner 等实现候选永久门禁。
 - [x] 重新执行 Completion Audit、Review A1/A2、Code Quality Review，清零所有 `not_satisfied` 并转 Ready。
-- [ ] 在本 `ready_for_review` 提交 HEAD 上重新通过永久 CI/Runtime/Full-stack/Developer Tooling/Change Gate，并将 PR 从 Draft 转 Ready。
+- [ ] 在本 `ready_for_review` 最终 HEAD 上重新通过永久 CI/Runtime/Full-stack/Developer Tooling/Change Gate，并将 PR 从 Draft 转 Ready。
 - [ ] 正常合并 PR #230 到 main；验证 main 后创建独立归档 PR，仅把本 Change `done` 后移动到 `changes/archive/2026-08/`，不修改其他历史 Change。
 
 # 文档影响
@@ -223,9 +228,10 @@ data_changes: []
 - `docs/blueprint/04_后端任务API与前端.md`；
 - `docs/blueprint/05_日志安全部署与运维.md`；
 - `docs/blueprint/06_开发约束与分阶段实施.md`；
-- 当前 CI/测试中的 live Skill/CLI 路径。
+- 当前 CI/测试中的 live Skill/CLI 路径；
+- 5 个 gated 历史 Change 的机器实时 Requirement Source 路径。
 
-`changes/archive/**` 历史内容不因本次迁移改写。
+`changes/archive/**` 的历史叙事、Evidence、状态、Review 与普通旧路径文本不因本次迁移改写。
 
 # 兼容性、Migration、部署与回滚
 
@@ -237,13 +243,15 @@ data_changes: []
 - 依赖/Lock：无变化，使用 Python 标准库 `zoneinfo`。
 - 旧 Skill/cache：旧 live Skill/CLI 不保留；旧缓存不读取，重新 discover 即可。
 - Change schema：`rvc-change/v1` 不变，因为结构未变。
+- 历史 gated Change：不建立旧 Skill 路径兼容层；Requirement Source 作为机器实时路径随 canonical 文件迁移，其他历史内容保留。
 - 回滚：整体 revert 本 Change；HTTP 序列化和 DB Session timezone 恢复原策略即可，无 Migration downgrade/数据回填。
 
 # Git / PR
 
 - Branch：`refactor/coding-skill-beijing-time`
-- PR：`#230`（Draft，待 Ready HEAD 永久门禁全绿后转 Ready）
+- PR：`#230`（Draft，待最终 Ready HEAD 永久门禁全绿后转 Ready）
 - 当前 main 基线：`5f9d125ae716d34295f8397b337248020069588a`
 - 实现候选 Green HEAD：`d8af996e61c4cd67bb195fdb4c14a587733f1923`
+- Ready Gate 首轮治理失败：`54d9aa20a61a4f60e42c2c5e1fdc5072369c5b2b` / Change Gate run `32824523183`，仅因 5 个历史 Requirement Source 指向已删除旧 Skill 路径
 - Merge：未执行
 - Release / Deploy：不适用；本任务授权最终正常合并 main 并完成 Change 归档闭环
