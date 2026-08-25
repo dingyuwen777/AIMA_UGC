@@ -10,8 +10,8 @@ def _read(relative_path: str) -> str:
 
 def test_global_skill_requires_chinese_git_commit_messages() -> None:
     skill = _read("SKILL.md")
-    workflows = _read("references/05_development-workflows.md")
-    review = _read("references/11_verification-review.md")
+    workflows = _read("references/05_设计实施与根因调试.md")
+    review = _read("references/11_两阶段复核与完成前验证.md")
 
     assert "所有 Git 提交信息使用中文" in skill
     assert "Git 提交信息统一使用中文" in workflows
@@ -20,8 +20,8 @@ def test_global_skill_requires_chinese_git_commit_messages() -> None:
 
 def test_global_skill_requires_chinese_comments_for_public_and_internal_functions() -> None:
     skill = _read("SKILL.md")
-    workflows = _read("references/05_development-workflows.md")
-    review = _read("references/11_verification-review.md")
+    workflows = _read("references/05_设计实施与根因调试.md")
+    review = _read("references/11_两阶段复核与完成前验证.md")
 
     assert "代码注释统一使用中文" in skill
     assert "内部/private/helper 函数也必须写函数级中文注释或文档注释" in skill
@@ -34,7 +34,7 @@ def test_global_skill_requires_chinese_comments_for_public_and_internal_function
 
 
 def test_global_language_rules_are_not_delegated_to_project_overlay() -> None:
-    preservation = _read("references/12_rule-preservation-map.md")
+    preservation = _read("references/12_规则保留映射.md")
     agent = _read("agents/openai.yaml")
 
     assert "Git 提交信息使用中文" in preservation

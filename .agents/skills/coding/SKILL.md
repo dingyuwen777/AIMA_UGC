@@ -24,11 +24,11 @@ description: 面向不同项目形态、研发阶段和编程语言的可靠软�
 
 `references/` 当前使用 `01_`、`02_`……两位数字前缀表达研发流程阅读顺序，便于人类从目录直接理解上下游关系。**编号只是导航，不是固定文档数量、固定文件名或固定编号上限**；未来 reference 增删时按真实依赖关系调整。每个任务仍只读取命中的最少充分规则，不要求机械通读全部编号文件。
 
-**内容守恒优先于篇幅精简。** 对本 Skill、reference、模板或项目 Overlay 做重组、通用化、拆分、合并、改名或“精简”时，只允许改变组织方式，不允许降低规则语义、触发条件、例外、失败处理、验证责任、安全边界或兼容要求。不能把多条带条件、例外或失败处理的可执行规则压成一句抽象原则；只有逐项证明完全等价时才允许消除重复。无法证明完全等价时，保留原细节，并按 [12_rule-preservation-map.md](references/12_rule-preservation-map.md) 记录旧规则到新规范位置的可追溯关系。
+**内容守恒优先于篇幅精简。** 对本 Skill、reference、模板或项目 Overlay 做重组、通用化、拆分、合并、改名或“精简”时，只允许改变组织方式，不允许降低规则语义、触发条件、例外、失败处理、验证责任、安全边界或兼容要求。不能把多条带条件、例外或失败处理的可执行规则压成一句抽象原则；只有逐项证明完全等价时才允许消除重复。无法证明完全等价时，保留原细节，并按 [12_规则保留映射.md](references/12_规则保留映射.md) 记录旧规则到新规范位置的可追溯关系。
 
 ## 0. 强制执行模型：先路由，再工作
 
-每个独立任务在制定实现计划前先按 [02_task-routing.md](references/02_task-routing.md) 建立四维路由：
+每个独立任务在制定实现计划前先按 [02_跨项目研发任务路由.md](references/02_跨项目研发任务路由.md) 建立四维路由：
 
 ```text
 项目形态
@@ -78,14 +78,14 @@ CMakeLists.txt ≠ Linux-only
 8. **不发明项目制度。** 只执行仓库真实存在或本次需求明确建立的边界、Contract、Schema、Owner、Migration、测试和发布机制；经有界调查未发现时标记不适用并跳过，不为了填模板补造架构。
 9. **独立能力建立独立验证闭环。** 对具有明确输入输出、独立业务价值、独立失败边界，或无需启动完整系统即可验证的能力，优先复用生产入口建立最小验证闭环，使用与风险匹配的自动化测试、Fixture/Fake/隔离依赖、明确运行方式和成功判据。不要机械要求“一模块一个测试文件”或“一功能一个测试文档”。
 10. **L2/L3 必须向上追溯。** 当前 Change 不是自身需求全集。必须从用户已确认决定和上游正式事实源建立 Requirement Traceability；进入 `ready_for_review` 前重新读取上游完成定义并执行 Completion Audit。CI 全绿不能替代需求完整性审计，也不能依赖用户事后发现漏项。
-11. **验证按风险而不是固定技术栈分层。** L2/L3 先按 [07_validation-strategy.md](references/07_validation-strategy.md) 建立技术栈无关 Validation Matrix。任何层都不能声称证明自己没有实际运行的下游边界。若项目真实存在 Web/API/PostgreSQL/外部 Provider，再叠加 [08_testing-strategy.md](references/08_testing-strategy.md) 的 Browser Mock、Backend/API/PostgreSQL Integration、Contract、Real Full-stack、Real Provider Probe 专项规则；这些细节保留但不强加给 CLI、Library、Mobile、Embedded、IaC 等项目。
+11. **验证按风险而不是固定技术栈分层。** L2/L3 先按 [07_通用验证与证据策略.md](references/07_通用验证与证据策略.md) 建立技术栈无关 Validation Matrix。任何层都不能声称证明自己没有实际运行的下游边界。若项目真实存在 Web/API/PostgreSQL/外部 Provider，再叠加 [08_分层测试与验收策略.md](references/08_分层测试与验收策略.md) 的 Browser Mock、Backend/API/PostgreSQL Integration、Contract、Real Full-stack、Real Provider Probe 专项规则；这些细节保留但不强加给 CLI、Library、Mobile、Embedded、IaC 等项目。
 12. **中文注释与函数级说明是通用规则。** 代码注释统一使用中文；专有名词、标识符、协议、库、标准名以及必须保持原样的外部文本可以保留原语言。新增或修改的 public/exported 函数必须有与复杂度匹配的函数级中文注释或文档注释；**内部/private/helper 函数也必须写函数级中文注释或文档注释**，不能因为不是 public 就省略。简单函数的说明可以非常简短，但不能用“自解释”作为完全不写函数级说明的理由。复杂规则、关键不变量、状态转换、算法取舍、兼容原因和重要副作用还要重点解释 `why / invariant / risk / compatibility`，不要逐行翻译语法。
 13. **重要功能可观测性需要匹配现有体系。** 如果仓库已有日志/事件基础设施，且功能涉及关键生命周期、异步任务、外部 I/O、重试/部分失败、状态转换或后期排障价值，应补最小充分结构化观测。复用现有 logger/event/脱敏/关联 ID；禁止打印 Secret/Token/密码/敏感 Raw/PII，禁止 INFO 高频刷屏，日志也不能替代数据库/文件中的正式业务事实或 Health/Audit 机制。
 14. **Git 提交信息统一中文。** 所有 Git 提交信息使用中文，包括普通提交、修复提交和合并提交的说明文本；命令、路径、标识符、版本号等必要技术内容可以保留原文。项目可以进一步规定提交格式或前缀，但不能把提交信息语言改为非中文。
 15. **所有时间相关默认采用北京时间。** Coding Skill、Agent 以及由其新增或默认解释的时间戳、日期、日志、缓存、Change 元数据、报告时间、脚本默认时间和用户可见时间统一使用北京时间 `Asia/Shanghai`（UTC+8），不得依赖宿主本地时区。外部协议、原始数据或既有机器 Contract 明确规定其他时区时保留原始事实语义，但在 Agent 输出、人类可读日志和展示边界明确转换为北京时间，不得把 UTC 值直接当作北京时间。
 16. **日志前缀统一且可定位。** 除非更高优先级的外部日志 wire-format Contract 强制其他序列化形式，所有人类可读日志记录统一使用 `[YYYY-MM-DD HH:mm:ss.SSS source.ext L<line>] [LEVEL] message`；时间必须是北京时间，毫秒固定三位，`source.ext` 与 `L<line>` 来自真实调用点，`LEVEL` 使用大写。结构化日志若因平台 Contract 必须采用 JSON 等形式，仍必须提供等价的北京时间、source、line、level 字段。
 
-规则重组时还必须遵守 [12_rule-preservation-map.md](references/12_rule-preservation-map.md)：通用化只能移动和分类规则，不能用“精简”删除仍有效内容。
+规则重组时还必须遵守 [12_规则保留映射.md](references/12_规则保留映射.md)：通用化只能移动和分类规则，不能用“精简”删除仍有效内容。
 
 ## 2. 四维任务路由
 
@@ -105,7 +105,7 @@ CMakeLists.txt ≠ Linux-only
 - Monorepo / Polyglot；
 - Documentation / Configuration / Migration-only 当前任务。
 
-具体识别和验证边界见 [02_task-routing.md](references/02_task-routing.md)。
+具体识别和验证边界见 [02_跨项目研发任务路由.md](references/02_跨项目研发任务路由.md)。
 
 ### 2.2 研发阶段 / 任务类型
 
@@ -125,7 +125,7 @@ CMakeLists.txt ≠ Linux-only
 
 ### 2.3 编程语言 / 工具链
 
-读取 [03_language-and-toolchain-profiles.md](references/03_language-and-toolchain-profiles.md)。它覆盖 Python、JavaScript / TypeScript、Go、Rust、Java / Kotlin、.NET、C / C++、Swift、Dart / Flutter、PHP、Ruby、Elixir、Monorepo、Container / IaC，并提供未列语言的统一发现算法。
+读取 [03_编程语言与工具链适配规则.md](references/03_编程语言与工具链适配规则.md)。它覆盖 Python、JavaScript / TypeScript、Go、Rust、Java / Kotlin、.NET、C / C++、Swift、Dart / Flutter、PHP、Ruby、Elixir、Monorepo、Container / IaC，并提供未列语言的统一发现算法。
 
 任何 profile 都只负责导航：
 
@@ -158,18 +158,18 @@ CMakeLists.txt ≠ Linux-only
 
 | 触发条件 | 必须读取 |
 | --- | --- |
-| 首次进入仓库、缓存缺失或可能过期 | [01_project-discovery.md](references/01_project-discovery.md) |
-| 需要识别项目形态、研发阶段或组合流程 | [02_task-routing.md](references/02_task-routing.md) |
-| 需要确认语言、Runtime、Manifest、锁文件、构建或包管理 | [03_language-and-toolchain-profiles.md](references/03_language-and-toolchain-profiles.md) |
-| L2/L3、需要需求追踪或已有 Active Change | [04_change-management.md](references/04_change-management.md) |
-| 新/当前 Change 使用 Completion Gate | [10_completion-gate.md](references/10_completion-gate.md) |
-| 开发 Feature、修 Bug、重构、性能或调查失败 | [05_development-workflows.md](references/05_development-workflows.md) |
-| 需要规划或审计验证证据 | [07_validation-strategy.md](references/07_validation-strategy.md) |
-| Web/API/PostgreSQL/Provider 等专项边界真实存在 | [08_testing-strategy.md](references/08_testing-strategy.md) |
-| 跨模块、跨消费者、Contract/Schema/Migration/Owner/数据边界 | [06_repository-constraints.md](references/06_repository-constraints.md) |
-| 多人、多 Agent、多个分支或 Active Change 并行 | [09_collaboration.md](references/09_collaboration.md) |
-| Review、Ready、交付或准备表达完成结论 | [11_verification-review.md](references/11_verification-review.md) |
-| Skill 自身规则重组/迁移/完整性审计 | [12_rule-preservation-map.md](references/12_rule-preservation-map.md) |
+| 首次进入仓库、缓存缺失或可能过期 | [01_项目发现与可失效缓存.md](references/01_项目发现与可失效缓存.md) |
+| 需要识别项目形态、研发阶段或组合流程 | [02_跨项目研发任务路由.md](references/02_跨项目研发任务路由.md) |
+| 需要确认语言、Runtime、Manifest、锁文件、构建或包管理 | [03_编程语言与工具链适配规则.md](references/03_编程语言与工具链适配规则.md) |
+| L2/L3、需要需求追踪或已有 Active Change | [04_轻量变更管理.md](references/04_轻量变更管理.md) |
+| 新/当前 Change 使用 Completion Gate | [10_完成定义追溯门禁.md](references/10_完成定义追溯门禁.md) |
+| 开发 Feature、修 Bug、重构、性能或调查失败 | [05_设计实施与根因调试.md](references/05_设计实施与根因调试.md) |
+| 需要规划或审计验证证据 | [07_通用验证与证据策略.md](references/07_通用验证与证据策略.md) |
+| Web/API/PostgreSQL/Provider 等专项边界真实存在 | [08_分层测试与验收策略.md](references/08_分层测试与验收策略.md) |
+| 跨模块、跨消费者、Contract/Schema/Migration/Owner/数据边界 | [06_仓库边界数据交换与条件式约束.md](references/06_仓库边界数据交换与条件式约束.md) |
+| 多人、多 Agent、多个分支或 Active Change 并行 | [09_多人和多智能体并行协作.md](references/09_多人和多智能体并行协作.md) |
+| Review、Ready、交付或准备表达完成结论 | [11_两阶段复核与完成前验证.md](references/11_两阶段复核与完成前验证.md) |
+| Skill 自身规则重组/迁移/完整性审计 | [12_规则保留映射.md](references/12_规则保留映射.md) |
 
 不要要求用户重复提供能够从仓库、缓存或工具确认的信息。只读取当前任务真正需要的事实和 reference，不用“全仓全部读一遍”替代理解调用链。
 
@@ -207,7 +207,7 @@ CMakeLists.txt ≠ Linux-only
 
 ### 4.3 恢复项目和工具链事实
 
-按 [01_project-discovery.md](references/01_project-discovery.md) 与 [03_language-and-toolchain-profiles.md](references/03_language-and-toolchain-profiles.md) 确认任务相关的：
+按 [01_项目发现与可失效缓存.md](references/01_项目发现与可失效缓存.md) 与 [03_编程语言与工具链适配规则.md](references/03_编程语言与工具链适配规则.md) 确认任务相关的：
 
 ```text
 README / Requirements / Architecture
@@ -243,7 +243,7 @@ python <skill>/scripts/coding.py discover --root <repo>
 
 - `cache_hit`：候选事实源未出现可见失效信号；复用导航，但仍读取本次真实需求、实现、调用链和相关测试；
 - `created` / `refreshed`：检查索引发现的规则、需求、架构、Contract、Migration、配置、依赖和测试入口；
-- 脚本失败：保留原错误，按 `01_project-discovery.md` 人工流程继续，不声称缓存有效。
+- 脚本失败：保留原错误，按 `01_项目发现与可失效缓存.md` 人工流程继续，不声称缓存有效。
 
 索引只保存路径、分类、轻量指纹和可直接提取的脚本名，不复制需求正文。`cache_hit` 不代表普通源码没有变化，也不能代替 `git diff`、真实文件或调用链调查。缓存 `generated_at` 必须使用带 `+08:00` 偏移的北京时间；旧缓存路径不读取、不迁移，直接由下一次 discover 在 `.agents/project-context.json` 重建。
 
@@ -267,7 +267,7 @@ python <skill>/scripts/coding.py status --root <repo> --json
 - shared tests/fixtures；
 - dependencies/build/release resources。
 
-发现交集时指出具体冲突并决定排序、拆分或共同 Owner；没有交集时不因为“都改后端/都改前端”制造冲突。Change 是 Git 协作协议，不是锁，也看不到未推送/私有客户端状态。多人/多 Agent 细节遵循 [09_collaboration.md](references/09_collaboration.md)。
+发现交集时指出具体冲突并决定排序、拆分或共同 Owner；没有交集时不因为“都改后端/都改前端”制造冲突。Change 是 Git 协作协议，不是锁，也看不到未推送/私有客户端状态。多人/多 Agent 细节遵循 [09_多人和多智能体并行协作.md](references/09_多人和多智能体并行协作.md)。
 
 ### 4.6 分类 L1/L2/L3 并固化任务契约
 
@@ -375,7 +375,7 @@ not_satisfied
 
 ### 4.9 先建立 Validation Matrix
 
-L2/L3 使用 [07_validation-strategy.md](references/07_validation-strategy.md) 的通用维度：
+L2/L3 使用 [07_通用验证与证据策略.md](references/07_通用验证与证据策略.md) 的通用维度：
 
 ```text
 行为 / Unit / Component
@@ -390,7 +390,7 @@ Docs / Governance / Other
 
 每层只写 `required` 或 `not_applicable`。
 
-如果实际项目是 Web/API/PostgreSQL/Provider，再读取 [08_testing-strategy.md](references/08_testing-strategy.md)，把通用维度映射为其完整专项层：
+如果实际项目是 Web/API/PostgreSQL/Provider，再读取 [08_分层测试与验收策略.md](references/08_分层测试与验收策略.md)，把通用维度映射为其完整专项层：
 
 ```text
 Browser Mock Acceptance
@@ -406,7 +406,7 @@ Real Provider Probe
 
 #### Feature / 行为变化 / Bug / Refactor
 
-读取 [05_development-workflows.md](references/05_development-workflows.md)，默认：
+读取 [05_设计实施与根因调试.md](references/05_设计实施与根因调试.md)，默认：
 
 ```text
 Red
@@ -477,7 +477,7 @@ Bug 修复必须有回归证据。测试验证真实行为，不只验证 Mock �
 
 ### 4.11 跨模块、Contract、Schema 与数据边界
 
-任务跨模块、跨消费者、接口/事件/数据，或仓库已有明确 Owner/Contract/Schema/Migration 时读取 [06_repository-constraints.md](references/06_repository-constraints.md)。
+任务跨模块、跨消费者、接口/事件/数据，或仓库已有明确 Owner/Contract/Schema/Migration 时读取 [06_仓库边界数据交换与条件式约束.md](references/06_仓库边界数据交换与条件式约束.md)。
 
 只在仓库真实存在的边界上执行：
 
@@ -557,7 +557,7 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 
 它只验证机器能判断的结构、状态、Source 路径、占位符和 Audit checkbox，不能判断自然语言业务完整性，也不能自动证明 Validation Matrix 充分。
 
-完成 Audit 后按 [11_verification-review.md](references/11_verification-review.md)：
+完成 Audit 后按 [11_两阶段复核与完成前验证.md](references/11_两阶段复核与完成前验证.md)：
 
 ```text
 上游 Requirement Completeness Review
@@ -601,7 +601,7 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 - 证据范围是否被夸大；
 - 是否混入无关改动。
 
-不要直接相信“子 Agent 已完成”。详细规则见 [09_collaboration.md](references/09_collaboration.md)。
+不要直接相信“子 Agent 已完成”。详细规则见 [09_多人和多智能体并行协作.md](references/09_多人和多智能体并行协作.md)。
 
 ## 6. Git、依赖与安全的通用边界
 
@@ -664,7 +664,7 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 
 后续如果要再次“精简”“拆分”“合并”本 Skill：
 
-1. 先读取 [12_rule-preservation-map.md](references/12_rule-preservation-map.md)；
+1. 先读取 [12_规则保留映射.md](references/12_规则保留映射.md)；
 2. 检查现有 Change/CI/文档对 reference 路径的实时引用；
 3. 建立会因规则丢失而失败的回归；
 4. 内容守恒优先于篇幅精简；不能用一条抽象原则替代多条带条件、例外或失败处理的可执行规则；

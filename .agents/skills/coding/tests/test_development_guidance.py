@@ -20,7 +20,7 @@ class DevelopmentGuidanceTest(unittest.TestCase):
         self.assertIn("[YYYY-MM-DD HH:mm:ss.SSS source.ext L<line>] [LEVEL] message", skill)
 
     def test_development_workflow_contains_actionable_guidance(self) -> None:
-        workflow = self._read(".agents/skills/coding/references/05_development-workflows.md")
+        workflow = self._read(".agents/skills/coding/references/05_设计实施与根因调试.md")
         self.assertIn("## 代码注释", workflow)
         self.assertIn("内部/private/helper 函数包含非显然业务规则", workflow)
         self.assertIn("## 时间基准", workflow)
@@ -29,7 +29,7 @@ class DevelopmentGuidanceTest(unittest.TestCase):
         self.assertIn("[YYYY-MM-DD HH:mm:ss.SSS source.ext L<line>] [LEVEL] message", workflow)
 
     def test_review_and_aima_blueprints_consume_the_rules(self) -> None:
-        review = self._read(".agents/skills/coding/references/11_verification-review.md")
+        review = self._read(".agents/skills/coding/references/11_两阶段复核与完成前验证.md")
         blueprint05 = self._read("docs/blueprint/05_日志安全部署与运维.md")
         blueprint06 = self._read("docs/blueprint/06_开发约束与分阶段实施.md")
         self.assertIn("非显然内部/private/helper", review)
