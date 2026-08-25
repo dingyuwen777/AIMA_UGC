@@ -26,18 +26,18 @@ jobs:
         with:
           python-version: 3.14.7
 
-      - name: Run RVC completion-gate tests
+      - name: Run Coding completion-gate tests
         shell: bash
         run: |
           set -euo pipefail
-          python -m unittest discover .agents/skills/reliable-vibe-coding/tests -v
+          python -m unittest discover .agents/skills/coding/tests -v
 
       - name: Enforce changed PR Change readiness
         if: github.event_name == 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
-          python .agents/skills/reliable-vibe-coding/scripts/ready_check.py \
+          python .agents/skills/coding/scripts/ready_check.py \
             --root . \
             --changed-since "${{ github.event.pull_request.base.sha }}"
 
@@ -46,6 +46,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python .agents/skills/reliable-vibe-coding/scripts/ready_check.py \
+          python .agents/skills/coding/scripts/ready_check.py \
             --root . \
             --require-active-ready
