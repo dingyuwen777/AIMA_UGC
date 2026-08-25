@@ -114,7 +114,7 @@ Mobile / Embedded / Infra / Package：
 - 测试层级是否与它声称证明的事实一致；
 - public API/ABI/CLI、serialization/file format 和 consumer compatibility；
 - 命名、注释和维护成本；
-- public/exported 接口以及非显然内部/private/helper 逻辑是否有足以解释意图、约束、状态转换或副作用边界的注释；是否存在逐行翻译代码的冗余注释；
+- **新增或修改的 public/exported 与内部/private/helper 函数是否都有必要的中文函数级说明**；简单函数可以是一句简短职责说明，复杂函数还应解释关键意图、约束、状态转换、兼容原因或副作用边界；不能因函数是 internal/private/helper 就省略，也不能用逐行翻译代码的冗余注释凑数；
 - 仓库已有 logging/event/telemetry 体系且本次功能重要/难排障时，关键生命周期、异步阶段、外部 I/O、Retry/部分失败/终态是否具备最小充分可观测性；反之是否存在 INFO 高频刷屏、重复异常日志或无排障价值消息；
 - 新增观测是否复用现有 logger/event/level/关联 ID 与脱敏机制，且没有 Secret/Token/密码/敏感 Raw/PII 泄露，也没有用日志替代正式业务事实；
 - 无关改动、重复实现和失效内容；
@@ -212,7 +212,7 @@ PR CI 使用 `--changed-since <base-sha>`，只要求本 PR 实际改动的 gate
 
 确认正式文档描述当前系统；Change 保存当次原因、取舍、任务和证据。检查元数据状态、Owner、分支、依赖和影响范围仍与实际一致。带 Completion Gate 的 Change 还要检查 Requirement Source、Traceability、Validation Matrix 和 Completion Audit。不要提前把 Active Change 归档。
 
-项目的文档编号、命名、Blueprint/ADR/Roadmap 分工和提交语言等本地规则继续由项目 Overlay 决定；通用 Review 负责检查“有没有遵守”，不为所有仓库规定同一格式。
+项目的文档编号、命名、Blueprint/ADR/Roadmap 分工等本地规则继续由项目 Overlay 决定；Git 提交信息和代码注释的中文要求属于本 Skill 通用规则，不再委托给项目 Overlay。通用 Review 负责检查项目本地规则与通用规则是否同时满足。
 
 ## Git 检查
 
@@ -223,7 +223,7 @@ PR CI 使用 `--changed-since <base-sha>`，只要求本 PR 实际改动的 gate
 - 是否混入用户或其他 Change 的修改；
 - 未跟踪文件和生成物；
 - 用户实际授权的 Git 操作边界；
-- Commit message 是否遵守项目规则；
+- **Commit message 必须使用中文**；项目额外提交格式也必须同时满足；
 - Commit、PR、CI、合并和部署的真实状态。
 
 没有实际执行的外部操作必须写“未执行”，不能推测成功。
