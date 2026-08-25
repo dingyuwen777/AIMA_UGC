@@ -16,7 +16,10 @@ affected_areas:
   - deployment
 affected_paths:
   - .github/workflows/release.yml
+  - tests/unit/test_docker_build_sources.py
   - tests/unit/test_release_workflow.py
+  - docs/appendix/11_生产部署与离线Release方案.md
+  - docs/roadmap/02_生产上线实施路线.md
   - changes/active/CHG-20260825-release-workflow-publication/CHANGE.md
 contracts: []
 data_changes: []
@@ -32,7 +35,17 @@ failed to run git: fatal: not a git repository (or any of the parent directories
 
 根因是 Release 将“只读构建/回放”和“带写权限发布”拆成两个独立 Job，这是正确的最小权限设计；但 `publish-release` Job 不 checkout 源码，最后的 `gh release create` 又没有显式 repository 上下文，GitHub CLI 因而尝试从本地 `.git` 推断仓库并失败。
 
-用户随后明确补充安全要求：Backend/Frontend GHCR 镜像不得公开。GitHub Container Registry 的 Package visibility 是独立事实，不能因为“首次默认 private”就长期假设现有 Package 一定私有。因此正式流程必须 fail closed 检查实际 Package `visibility=private`，而不是让 workflow 尝试修改 Package visibility。
+用户随后明确了最终发布边界：
+
+```text
+AIMA_UGC 源码仓库保持 public
+GitHub Release 必须提供可直接下载的完整离线部署包
+离线包中继续包含 images.tar（Backend / Frontend / PostgreSQL）
+Backend / Frontend GHCR Package 本身继续保持 private
+服务器现有 canonical docker compose 启动命令不改变
+```
+
+因此“公开 GitHub Release Asset 中包含离线镜像”是已确认交付方式，不再作为阻塞；真正需要 fail closed 的是 GHCR Package visibility，workflow 不负责把 Package 改 public/private，只在 push 前要求两个 Package 实际仍为 `private`。
 
 本 Change 不把两阶段设计退回一个大 Job，也不通过无意义 checkout 掩盖问题，而是把 Release Workflow 整理为可读、显式、可验证的两阶段发布流程。
 
@@ -43,18 +56,23 @@ failed to run git: fatal: not a git repository (or any of the parent directories
 3. 让 Release Workflow 从上到下可按业务阶段阅读，不靠历史知识理解。
 4. 所有 GitHub CLI 发布操作显式绑定当前仓库，不再依赖隐式 repository 推断。
 5. 保留当前手工正式发布、PR 只读 dry-run、离线 Bundle 回放、GHCR digest、Tag/Release 的既有能力。
-6. Backend/Frontend GHCR Package 必须保持 `private`；任何非 private 状态在 push 前直接中止。
-7. 增加回归测试，防止发布上下文、权限、触发方式和私有镜像门禁回归。
+6. Backend/Frontend GHCR Package 继续保持 `private`；任何非 private 状态在 push 前直接中止。
+7. 正式 GitHub Release 继续附带 `AIMA_UGC-vX.Y.Z-deploy.tar.gz`，其中包含 `images.tar`，允许从当前 public 仓库 Release 页面直接下载完整离线镜像。
+8. Release 交付方式不得改变服务器现有 canonical `compose.yaml + env.production` 启动命令。
+9. 增加回归测试，防止发布上下文、权限、触发方式、GHCR 私有性、离线 Bundle 和服务器启动命令回归。
 
 # 非目标
 
 - 不把正式 Release 改成每次 push/main 自动运行。
 - 不改变 Backend/Frontend GHCR package 名称。
+- 不把 GHCR Package 改成 public。
+- 不把源码仓库改成 private。
+- 不改为“服务器在线从 GHCR 拉取镜像”的部署模式。
 - 不升级 Python/Node/PostgreSQL/Actions 版本。
 - 不新增 PAT、额外 Secret 或第三方发布服务。
 - 不自动改变 GHCR Package visibility。
 - 不在本 Change 实现 SBOM、签名、provenance、协调 Backup/Restore。
-- 不改变 canonical `compose.yaml` Runtime 或服务器部署目录。
+- 不改变 canonical `compose.yaml` Runtime、`AIMA_HOST_ROOT` 或服务器部署目录。
 
 # 必须保持不变
 
@@ -81,9 +99,15 @@ Phase 2 publish-release
 → 不 checkout 源码，不依赖 .git
 → 仅此 Job 获得 contents:write + packages:write
 → push 前再次要求 GHCR Package visibility=private
-→ 推送 GHCR 版本/SHA tag并记录 digest
-→ 创建 Git Tag + GitHub Release + 可下载 Bundle
-→ 发布后重新验证 Tag、Release assets 和 Package 私有性
+→ 推送 GHCR 版本/SHA tag 并记录 digest
+→ 重新生成最终离线 tar.gz，其中保留 images.tar
+→ 创建 Git Tag + public GitHub Release + 可下载完整离线 Bundle
+→ 发布后重新验证 Tag、Release assets 和 GHCR Package 私有性
+
+服务器
+→ docker load -i images.tar
+→ docker compose --env-file env.production config --quiet
+→ docker compose --env-file env.production up -d --no-build --pull never --wait
 ```
 
 # 方案比较
@@ -104,7 +128,7 @@ Phase 2 publish-release
 
 结论：作为必要机制，但单独采用不够。
 
-## 方案 C：保留两阶段安全架构，系统整理上下文、私有门禁和最终验证（采用）
+## 方案 C：保留两阶段安全架构，系统整理上下文、私有门禁、离线资产和最终验证（采用）
 
 - Workflow 顶部直接解释两种触发模式和两个 Phase；
 - 静态 Release 配置集中到 workflow-level `env`；
@@ -114,10 +138,12 @@ Phase 2 publish-release
 - Phase 1 和 Phase 2 均读取 GitHub Package API，要求 Backend/Frontend `visibility=private`；
 - publish Job 不 checkout；
 - `gh release view/create` 显式 `--repo`；
-- 发布成功后验证 Tag target、Release assets 和 Package 私有性；
+- 正式 Release 继续附带包含 `images.tar` 的完整离线部署包；
+- 服务器继续使用同一 canonical Compose Runtime，不引入第二套启动脚本；
+- 发布成功后验证 Tag target、Release assets 和 GHCR Package 私有性；
 - Unit 测试直接约束这些不变量。
 
-优点：修根因、权限清楚、镜像隐私 fail closed、流程可读、以后不易回归，同时不改变业务 Runtime 和正式发布触发语义。
+优点：修根因、权限清楚、GHCR 镜像仍私有、Release 离线交付方式明确、流程可读、以后不易回归，同时不改变业务 Runtime 和正式发布触发语义。
 
 # Requirement Traceability
 
@@ -127,9 +153,11 @@ Phase 2 publish-release
 | R2 | Workflow 要系统、清楚、可由维护者从上到下理解 | user:2026-08-25-release-workflow-systematic-fix | not_satisfied | 已按触发说明、Phase 1/2、集中 env、语义化 step 整理；待 Review |
 | R3 | 正式 Release 只由用户手工触发，普通提交不正式发布 | user:2026-08-25-manual-release-only | not_satisfied | `workflow_dispatch` + Release 相关 PR dry-run；Unit 测试已建立，待 Green |
 | R4 | 保留 Build/Replay → GHCR digest → Tag/Release → Bundle 的长期 Release 能力 | docs/roadmap/02_生产上线实施路线.md | not_satisfied | 现有链路全部保留；Release PR dry-run 正在验证真实 build/replay |
-| R5 | PR dry-run 不获得正式发布写权限 | docs/appendix/11_生产部署与离线Release方案.md | not_satisfied | workflow-level read-only；publish Job marker-gated；待 CI/Release dry-run Green |
+| R5 | PR dry-run 不获得正式发布写权限 | docs/appendix/11_生产部署与离线Release方案.md | not_satisfied | workflow-level read-only；publish Job 仅 workflow_dispatch；待 CI/Release dry-run Green |
 | R6 | publish Job 不依赖 checkout/.git，GitHub CLI 使用显式仓库上下文 | user:2026-08-25-release-workflow-systematic-fix | not_satisfied | `publish-release` 无 checkout，`GH_REPO` + `--repo`；PR context probe 已 success |
-| R7 | Release 不得把 Backend/Frontend 镜像公开 | user:2026-08-25-private-ghcr-only | not_satisfied | Phase 1 `Verify GHCR packages are private` 已在 PR dry-run success；Phase 2 push 前和发布后均 fail closed 复核 |
+| R7 | Backend/Frontend GHCR Package 继续保持 private | user:2026-08-25-private-ghcr-only | not_satisfied | Phase 1 private check 已由真实 GitHub Package API success；Phase 2 push 前和发布后均 fail closed 复核 |
+| R8 | 当前 public 仓库的 GitHub Release 必须可下载完整离线镜像包，包内保留 images.tar | user:2026-08-25-public-release-offline-bundle | not_satisfied | workflow 生成并上传 `${DEPLOY_ARCHIVE}`；新增 Unit 回归测试，待最终 Green |
+| R9 | 不影响服务器现有 Docker Compose 启动命令 | user:2026-08-25-preserve-server-compose-command | not_satisfied | Release Bundle 保留 canonical `compose.yaml`，DEPLOY.md 命令保持 `docker compose --env-file env.production up -d --no-build --pull never --wait`；新增 Unit 回归测试，待最终 Green |
 
 # Validation Matrix
 
@@ -140,7 +168,7 @@ Phase 2 publish-release
 | Contract / Generated Client | not_applicable | 不修改公共 Contract/generated client |
 | Real Full-stack Golden Path | not_applicable | 不修改产品 Full-stack 链路；Release 自己执行真实 Compose replay |
 | Real Provider Probe | not_applicable | 不修改外部 Provider |
-| Docs / Governance / Other | required | Unit workflow invariants + Release PR dry-run + CI/Runtime/Completion Gate；读取 Release dry-run step 证明 private package/context/build/replay |
+| Docs / Governance / Other | required | Unit workflow invariants + Release PR dry-run + CI/Runtime/Completion Gate；读取 Release dry-run step 证明 package/context/build/replay；验证离线 Bundle 与服务器 Compose 命令不变 |
 
 # 实施与验证记录
 
@@ -170,27 +198,43 @@ PR #226 HEAD `157a3a5de8a2f8d42a0534d837d98ca741b19ad9` 先加入回归测试，
 - `gh release view/create --repo`；
 - push 前再次检查 private；
 - Release 创建后验证 tag target、4 个资产和 private visibility；
-- manifest 正式发布事实记录 `ghcr_visibility=private`。
+- manifest 正式发布事实记录 `ghcr_visibility=private`；
+- GitHub Release 的 `${DEPLOY_ARCHIVE}` 继续包含 `images.tar`；
+- Release Bundle 中继续复制 canonical `compose.yaml`，服务器启动命令不变。
 
-PR 最新 Release dry-run run `32805434039` 已确认以下前置步骤 success：
+Release PR dry-run run `32805434039` 已完整 success，并提供新鲜真实证据：
 
 ```text
 Verify GitHub CLI explicit repository context  success
 Verify GHCR packages are private                success
-Verify Docker toolchain                         success
+Build Linux AMD64 application images            success
+Replay bundle with no build and no pull         success
+Verify deploy archive can be created            success
+Report dry-run result                            success
 ```
 
-因此当前两个已存在 GHCR Package 的真实 visibility 已由 GitHub Runner + Package API 证明为 `private`，不是根据默认设置推断。
+Runner 实际返回：
+
+```text
+GHCR dingyuwen777/aima-ugc-backend: visibility=private
+GHCR dingyuwen777/aima-ugc-frontend: visibility=private
+Release dry-run succeeded
+No GHCR push, Git Tag, GitHub Release or repository write token was used
+```
+
+因此两个 GHCR Package 的真实 visibility 已由 GitHub Runner + Package API 证明为 `private`，不是根据默认设置推断；同时离线 Bundle 已真实完成 build → docker save → 删除本地镜像 → docker load → canonical Compose `--no-build --pull never` 回放。
 
 # 文档影响
 
-现有 Roadmap/Appendix 已正确描述“正式 `workflow_dispatch` 手工发布、PR dry-run、两阶段候选回放/GHCR/Tag/Release”的长期边界，本 Change 没有改变这些架构语义。新增的显式 repository context 与 private fail-closed 属于 Release workflow 安全实现细节，已通过 workflow 顶部说明、语义化 step、测试与本 Change 固化，不复制第二套实现说明到长期 Blueprint。
+现有 Roadmap/Appendix 已明确把 GitHub Release Workflow 定义为“正式手工发布 GHCR digest、Tag、GitHub Release 和可下载 Bundle”，并明确服务器使用 `docker load + canonical Compose --no-build --pull never`。本轮最终决定没有改变该长期架构，只进一步确认：当前 public 仓库 Release Asset 可以公开提供完整离线镜像包，而 Backend/Frontend GHCR Package 本身继续保持 private。该差异已由本 Change、workflow 注释和回归测试固化；不新增第二套部署文档或第二套服务器启动方式。
 
 # 部署、兼容与回滚
 
 - 无 Schema/Migration/业务数据变化。
 - 不改变服务器 Runtime、Compose、AIMA_HOST_ROOT 或现有 GHCR package 名称。
-- 不修改 Package visibility；只读取并要求 `private`。
+- 不修改 GHCR Package visibility；只读取并要求 `private`。
+- GitHub Release 继续上传包含 `images.tar` 的公开离线部署 tar.gz，这是用户明确接受的当前交付方式。
+- 服务器继续 `docker load -i images.tar` 后执行现有 canonical Compose 命令；无需改部署脚本或 env 格式。
 - 回滚只需 revert workflow/test 变更；不会删除已存在的 GHCR 镜像。
 - #39 已成功写入的 `v2.0.0` GHCR tags 属于未完成正式 GitHub Release 的部分发布状态；本 Change 不主动删除这些 package tags。
 
@@ -207,4 +251,5 @@ Verify Docker toolchain                         success
 - PR: #226 Draft
 - Release #39 evidence: run `32803805624`
 - Red CI evidence: run `32805012136`
-- Green candidate HEAD: `390c94900181585c31cf6e0a3e2468efbad75683`
+- Green Release dry-run evidence: run `32805434039`
+- Current candidate HEAD: `0e31d23455f4595eefc6a2fe7043dc5b7f855490`
