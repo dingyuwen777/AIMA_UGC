@@ -74,9 +74,9 @@ $data_changes
 | Build / Package / Runtime | not_applicable | 构建、打包、安装、镜像、target 或启动行为可能受影响时验证正式产物/运行入口 |
 | Docs / Governance / Other | not_applicable | 文档、配置、生成物、架构/Owner、Secret、Policy、Change/Ready 等专项证据 |
 
-通用规则见 `.agents/skills/reliable-vibe-coding/references/validation-strategy.md`。
+通用规则见 `.agents/skills/reliable-vibe-coding/references/07_validation-strategy.md`。
 
-项目存在专项 profile 时在保持语义责任不变的前提下使用更具体层名。例如 Web/API/PostgreSQL/Provider 项目继续按 `.agents/skills/reliable-vibe-coding/references/testing-strategy.md` 使用：
+项目存在专项 profile 时在保持语义责任不变的前提下使用更具体层名。例如 Web/API/PostgreSQL/Provider 项目继续按 `.agents/skills/reliable-vibe-coding/references/08_testing-strategy.md` 使用：
 
 ```text
 用户 / Workflow Acceptance
@@ -133,7 +133,7 @@ Browser Mock 不能冒充真实 Backend/DB；一条 Full-stack 不能冒充全�
 
 ## 计划
 
-- Validation Matrix：按 `.agents/skills/reliable-vibe-coding/references/validation-strategy.md` 选择通用维度；存在专项 profile 时再叠加专项策略
+- Validation Matrix：按 `.agents/skills/reliable-vibe-coding/references/07_validation-strategy.md` 选择通用维度；存在专项 profile 时再叠加专项策略
 - 目标测试：
 - 相关测试：
 - 静态检查/构建：
