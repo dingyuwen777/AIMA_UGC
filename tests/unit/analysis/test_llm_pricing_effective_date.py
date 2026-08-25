@@ -5,6 +5,8 @@ from datetime import UTC, datetime
 
 import httpx
 import pytest
+from pydantic import SecretStr
+
 from aima_ugc.adapters.llm import openai_compatible as openai_compatible_module
 from aima_ugc.adapters.llm.openai_compatible import OpenAICompatibleContentLabelingLLM
 from aima_ugc.adapters.llm.pricing import LLMPriceNotConfiguredError, load_llm_pricing
@@ -13,10 +15,10 @@ from aima_ugc.adapters.llm.request_audit import (
     recalculate_llm_request_costs,
 )
 from aima_ugc.modules.analysis.content_labeling import ContentLabelingLLMRequest
-from pydantic import SecretStr
 
 
 def test_deepseek_current_price_is_not_available_before_effective_date() -> None:
+    """北京时间生效日前一秒不得提前套用当前 DeepSeek 价格。"""
     catalog = load_llm_pricing()
 
     with pytest.raises(LLMPriceNotConfiguredError, match="尚未生效"):
@@ -30,6 +32,7 @@ def test_deepseek_current_price_is_not_available_before_effective_date() -> None
 def test_llm_request_continues_when_price_is_not_effective_yet(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """北京时间尚未进入价格生效日时，请求仍完成但费用保持不可计算。"""
     records: list[LLMHTTPRequestAudit] = []
 
     monkeypatch.setattr(
@@ -78,6 +81,7 @@ def test_llm_request_continues_when_price_is_not_effective_yet(
 
 
 def test_recalculation_does_not_apply_current_price_before_effective_date(tmp_path) -> None:
+    """离线重算也必须按北京时间拒绝给生效日前的历史请求套用当前价格。"""
     started_at = datetime(2026, 8, 23, 15, 59, 59, tzinfo=UTC)
     audit = LLMHTTPRequestAudit(
         http_request_id="http-before-effective",
