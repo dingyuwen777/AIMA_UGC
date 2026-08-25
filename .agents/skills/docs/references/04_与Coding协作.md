@@ -98,23 +98,27 @@ Coding 猜 README、Blueprint、API 文档都可能受影响
 
 Docs 不应为了表面一致把文档改成 B。
 
-应该输出：
+必须先输出：
 
 ```text
 code_issue_detected
-→ 证据：正式要求 A / 当前实现 B
-→ 返回 Coding
+→ 正确事实及其来源
+→ 当前实现冲突位置
+→ 返回 Coding 的原因
 ```
 
-Coding 按自己的调试、TDD、验证和 Git 规则修复实现。
+然后执行反向硬路由：
 
-修复完成后：
+- 如果同仓存在 `.agents/skills/coding/SKILL.md`，在任何实现代码修改之前**必须读取**该 Skill，并切回 Coding 的完整需求、风险、调试/TDD、验证、Review、Git 和完成门禁；
+- Docs 自己不得用文档规则直接修实现，也不得因为用户同时要求“修文档”就绕过 Coding；
+- 如果 `.agents/skills/coding/SKILL.md` 不存在、无法读取，或当前任务没有代码修改授权，则只报告 `code_issue_detected` 和证据，不修改实现；
+- Coding 完成修复并取得新鲜验证后，再执行：
 
 ```text
 Docs targeted re-review
 ```
 
-只复核受影响内容，不重新做无边界 full review。
+只复核原受影响内容，不重新做无边界 full review。
 
 ## 5. 防止无限循环
 
@@ -123,7 +127,8 @@ Docs targeted re-review
 ```text
 Coding
 → Docs
-→ 发现实现问题
+→ code_issue_detected
+→ 读取 .agents/skills/coding/SKILL.md
 → Coding 修复
 → Docs targeted re-review
 ```
@@ -162,6 +167,8 @@ Docs 只补充：**怎样判断影响、怎样正确审查/编写文档、怎样
 
 但项目如果通过 `AGENTS.md` 或其他上位规则要求所有仓库任务先经过 Coding 的事实恢复/风险/Git 路由，仍先遵守项目规则；直接使用 Docs 不等于绕过项目门禁。
 
+如果 Docs 在直接任务中发现实现问题，也仍遵守第 4 节：存在 Coding Skill 时先切回 Coding，再允许修改实现。
+
 ## 8. 推荐交接结果
 
 不要求固定 YAML Contract，但语义上至少清楚表达：
@@ -172,7 +179,8 @@ Docs Impact: not_applicable | targeted | full
 受影响文档：实际确认了什么
 修改：哪些文件为什么改
 无修改：哪些候选文档为什么不需要改
-code_issue：有/无；有则返回 Coding
+code_issue_detected：有/无；有则给事实源和冲突位置
+Coding route：不适用 / 已读取并切回 / 不可用而停止实现修改
 验证：实际执行了什么
 未验证：还剩什么
 ```
