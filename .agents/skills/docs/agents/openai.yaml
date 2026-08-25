@@ -1,0 +1,4 @@
+interface:
+  display_name: "Docs"
+  short_description: "技术文档同步、审查与第一性原理写作"
+  default_prompt: "Use $docs. Recover current repository facts first; decide not_applicable, targeted, or full documentation impact; explain why something exists, what problem it solves, how data/calls flow, and where the current implementation lives before introducing necessary terminology; explain terminology in plain language, use only minimal helpful examples, and reference code/schema/classes only when they improve understanding without creating a second source of truth. Do not make documentation follow an implementation bug; return implementation defects to Coding and re-review only the affected documentation after the fix."
