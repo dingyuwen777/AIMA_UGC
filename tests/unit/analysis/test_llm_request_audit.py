@@ -34,23 +34,15 @@ def _response() -> httpx.Response:
     )
 
 
-def _fixed_datetime(at: datetime) -> type[datetime]:
-    class FixedDateTime(datetime):
-        @classmethod
-        def now(cls, tz: object = None) -> datetime:
-            return at
-
-    return FixedDateTime
-
-
 def test_request_audit_writer_persists_exact_cost_and_summarizes_run(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """固定真实请求时刻后，审计应保存对应分时价格和精确费用。"""
     monkeypatch.setattr(
         openai_compatible_module,
-        "datetime",
-        _fixed_datetime(datetime(2026, 8, 24, 0, 0, tzinfo=UTC)),
+        "beijing_now",
+        lambda: datetime(2026, 8, 24, 0, 0, tzinfo=UTC),
     )
     audit_path = tmp_path / "analysis" / "llm_requests.jsonl"
     client = httpx.Client(
@@ -95,6 +87,7 @@ def test_recalculation_writes_derived_report_without_overwriting_original_audit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """重算应使用审计中的物理请求时刻和供应商定价时区，不改写原始审计。"""
     peak_request_at = datetime(2026, 8, 20, 1, 0, tzinfo=UTC)
     initial_catalog = LLMPricingCatalog.from_toml(
         """
@@ -113,8 +106,8 @@ def test_recalculation_writes_derived_report_without_overwriting_original_audit(
     )
     monkeypatch.setattr(
         openai_compatible_module,
-        "datetime",
-        _fixed_datetime(peak_request_at),
+        "beijing_now",
+        lambda: peak_request_at,
     )
     audit_path = tmp_path / "analysis" / "llm_requests.jsonl"
     original_line: str
@@ -183,10 +176,11 @@ def test_request_audit_resume_distinguishes_current_session_from_run_total(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """恢复审计时每个 session 只计本次请求，但 run 汇总必须累计历史请求。"""
     monkeypatch.setattr(
         openai_compatible_module,
-        "datetime",
-        _fixed_datetime(datetime(2026, 8, 24, 0, 0, tzinfo=UTC)),
+        "beijing_now",
+        lambda: datetime(2026, 8, 24, 0, 0, tzinfo=UTC),
     )
     audit_path = tmp_path / "analysis" / "llm_requests.jsonl"
     client = httpx.Client(
