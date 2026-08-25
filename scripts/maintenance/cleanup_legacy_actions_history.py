@@ -17,9 +17,10 @@ import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 EXPECTED_CURRENT_WORKFLOWS = {
     ".github/workflows/change-completion-gate.yml",
