@@ -15,10 +15,12 @@
 - 功能开发；
 - Bug / 故障定位和修复；
 - 重构、性能和可维护性修改；
-- Code Review / 代码质量审计；
+- Code Review / 代码质量审计的仓库事实、风险和权限入口；
 - API、数据库、前后端、Worker、CLI 等跨边界集成；
 - PR、CI、合并和交付；
 - Release、部署、回滚等在当前项目授权范围内的研发工作。
+
+如果仓库存在 [`review`](../review/README.md)，显式 Code Review / Audit 在 Coding 完成事实恢复和四维路由后会进入 Review；普通实现任务在完成前 Review 阶段也会进入 Review。Review 不维护第二套开发规范，而是复用 Coding 规则做独立审查和测试充分性验证。
 
 如果任务主要是**检查、编写或更新技术文档**，应使用 [`docs`](../docs/README.md) 作为文档专业工作流；在 AIMA_UGC 中仍先遵守根 [`AGENTS.md`](../../../AGENTS.md) 的统一仓库入口。
 
@@ -60,11 +62,15 @@ AGENTS.md
 → .agents/skills/coding/SKILL.md
 → 按任务读取命中的 references
 → 读取最少充分的代码 / Contract / Migration / 配置 / 测试 / 文档
-→ 开发或 Review
+→ 开发或完成 Review 前事实恢复
 → 新鲜验证
 → Docs Impact
-→ Review / PR / CI / 交付
+→ 完成前 Review
+→ .agents/skills/review/SKILL.md（仓库存在时）
+→ PR / CI / 交付
 ```
+
+显式 Code Review / Audit 不需要先走一遍“开发”：Coding 完成事实恢复、四维路由、工具链/风险/权限确认后，直接切入 Review。
 
 不要因为已经读过以前的聊天、Change 或旧文档，就跳过当前仓库事实恢复。
 
@@ -76,22 +82,24 @@ AGENTS.md
 
 ```text
 使用 coding，基于当前 main 的真实代码完成这个功能。
-先读取仓库规则和相关事实，判断 L1-L3 风险；按适用规则完成实现、测试、文档影响检查、Review 和 PR/CI。
+先读取仓库规则和相关事实，判断 L1-L3 风险；按适用规则完成实现、测试、文档影响检查，并在完成前进入 review，最后完成 PR/CI。
 ```
 
 ### 4.2 修 Bug
 
 ```text
 使用 coding 修复这个问题。
-先稳定复现并定位根因，不要先猜修复；保留失败证据，修复后重新验证原始症状和相关回归。
+先稳定复现并定位根因，不要先猜修复；保留失败证据，修复后重新验证原始症状和相关回归，并在完成前执行 review。
 ```
 
 ### 4.3 只做 Code Review
 
 ```text
 使用 coding 审查当前代码，只 Review，不修改。
-从正确性、边界条件、错误处理、安全、兼容、并发、测试、维护性和当前项目规则检查，并给出证据。
+先恢复当前仓库事实、需求、工具链、风险和权限；如果仓库存在 review Skill，按 Coding 的硬路由进入 review，从正确性、边界条件、错误处理、安全、兼容、并发、测试充分性、维护性和当前项目规则检查，并给出证据。
 ```
+
+这里仍然从 Coding 进入，是为了保留 AIMA_UGC 的统一仓库门禁；真正的独立审查方法由 Review Skill 负责。
 
 ### 4.4 做方案但暂时不改代码
 
@@ -104,7 +112,7 @@ AGENTS.md
 
 ```text
 使用 coding 完成这个任务，并按仓库现有 Git/CI 门禁创建 PR。
-只有当前 HEAD 的适用验证和 CI 真正通过后，才能声明可合并。
+完成前按当前仓库规则进入 review；只有当前 HEAD 的适用验证、Review 和 CI 真正通过后，才能声明可合并。
 ```
 
 ## 5. L1、L2、L3 可以怎么理解
@@ -146,7 +154,42 @@ L1 不一定需要 Change，但仍然需要适用验证。
 
 L3 不能因为“只改几行”就降低风险等级。
 
-## 6. Coding 和 Docs 怎么协作
+## 6. Coding 和 Review / Docs 怎么协作
+
+### 6.1 Coding → Review
+
+Coding 继续负责研发规范、需求/TDD/调试/兼容/Contract/Schema/Git/验证/交付。Review 不复制这些规则。
+
+仓库存在 `../review/SKILL.md` 时：
+
+```text
+显式 Code Review / Audit
+→ Coding 恢复仓库事实和任务边界
+→ Review 独立审查
+
+普通实现任务
+→ Coding 实现与验证
+→ Docs Impact（适用时）
+→ 完成前 Review
+→ Review 独立审查
+```
+
+Review 从测试专家视角独立重建风险和应有证据，不把“测试绿色”自动等同“测试充分”。它会按项目真实边界区分 Browser Mock、Backend/API/Persistence、Contract、Real Full-stack、外部 Probe 等不同证据。
+
+如果 Review 发现实现缺陷且当前任务已经授权修复：
+
+```text
+Review Finding
+→ 返回 Coding
+→ Coding 按完整研发流程修复并取得新鲜验证
+→ Review re-review
+```
+
+Review Skill 不存在时，Coding 仍保留原有两阶段 Review；Review 文件存在但无法读取时，不能假装 Review 已完成。
+
+详细说明见 [`../review/README.md`](../review/README.md) 和正式 [`../review/SKILL.md`](../review/SKILL.md)。
+
+### 6.2 Coding → Docs
 
 Coding 不自己复制一套 Docs 写作规则，而是在代码或行为变化后做一个轻量判断：
 
@@ -154,7 +197,7 @@ Coding 不自己复制一套 Docs 写作规则，而是在代码或行为变化�
 这次变化是否改变了人类需要理解、使用、维护、部署或排障的事实？
 ```
 
-### 没有文档影响
+#### 没有文档影响
 
 记录具体依据：
 
@@ -165,7 +208,7 @@ Reason: <为什么没有影响>
 
 然后结束文档分支，不加载无关文档，也不为了“有文档 diff”而改 Markdown。
 
-### 有文档影响
+#### 有文档影响
 
 ```text
 Coding
@@ -245,7 +288,7 @@ coding/
 ├── assets/        # Change 等模板
 ├── references/    # 按触发条件加载的详细规则
 ├── scripts/       # 项目发现、Change 和 Ready Check 辅助工具
-└── tests/         # Coding / Docs 路由与规则回归
+└── tests/         # Coding / Review / Docs 路由与规则回归
 ```
 
 不是每个任务都要把 `references/` 全部读一遍。应先按 `SKILL.md` 路由，只读取本次命中的最少充分 reference。
@@ -258,7 +301,7 @@ coding/
 
 ### “CI 绿了就代表功能一定完成”
 
-不对。CI 只能证明它实际检查的内容。L2/L3 还要核对上游需求、Change、Validation Matrix 和 Completion Audit。
+不对。CI 只能证明它实际检查的内容。L2/L3 还要核对上游需求、Change、Validation Matrix、Completion Audit 和适用 Review。
 
 ### “项目发现缓存写了什么就是什么”
 
@@ -267,6 +310,10 @@ coding/
 ### “所有项目都要 Browser、PostgreSQL、Full-stack”
 
 不对。验证层由当前项目真实边界和任务风险决定，不为了套模板制造测试层。
+
+### “Coding 已经会自检，所以不需要 Review Skill”
+
+不对。Coding 保留基础两阶段 Review，但仓库安装 Review Skill 后，Coding 会把显式 Review/Audit 和实现完成前 Review 路由到独立 Review 方法，由 Review 重新检查测试充分性和 Findings，减少作者自检确认偏差。
 
 ### “Coding 已经包含 Docs，所以不用再加载 Docs”
 
@@ -278,6 +325,8 @@ coding/
 - [跨项目研发任务路由](references/02_跨项目研发任务路由.md)
 - [通用验证与证据策略](references/07_通用验证与证据策略.md)
 - [两阶段复核与完成前验证](references/11_两阶段复核与完成前验证.md)
+- [Review Skill 使用说明](../review/README.md)
+- [Review 正式规则](../review/SKILL.md)
 - [Docs Skill 使用说明](../docs/README.md)
 - [`.agents` 总说明](../../README.md)
 - [AIMA_UGC Agent 统一入口](../../../AGENTS.md)

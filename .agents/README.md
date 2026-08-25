@@ -8,7 +8,7 @@
 
 项目里的 AI Agent 需要两类东西：
 
-1. **可执行的工作规则**：例如怎样可靠开发、怎样检查文档；
+1. **可执行的工作规则**：例如怎样可靠开发、怎样独立审查代码、怎样检查文档；
 2. **可失效的导航信息**：例如当前仓库有哪些事实入口，帮助 Agent 少走弯路。
 
 把它们放在 `.agents/` 下，可以和产品代码、正式架构文档分开，避免把 Agent 工作流混入业务实现。
@@ -28,6 +28,11 @@
     │   ├── references/
     │   ├── scripts/
     │   └── tests/
+    ├── review/
+    │   ├── README.md
+    │   ├── SKILL.md
+    │   ├── agents/
+    │   └── references/
     └── docs/
         ├── README.md
         ├── SKILL.md
@@ -49,18 +54,24 @@ python .agents/skills/coding/scripts/coding.py discover --root .
 
 不要因为缓存里写了某个结论，就跳过当前仓库事实检查。
 
-## 2. `coding` 和 `docs` 分别解决什么问题
+## 2. `coding`、`review` 和 `docs` 分别解决什么问题
 
 | Skill | 主要解决的问题 | 常见任务 |
 | --- | --- | --- |
-| [`coding`](skills/coding/README.md) | 怎样可靠完成软件研发、验证和交付 | 仓库分析、方案设计、功能开发、Bug 修复、重构、Code Review、PR、CI、Release |
+| [`coding`](skills/coding/README.md) | 怎样可靠完成软件研发、验证和交付 | 仓库分析、方案设计、功能开发、Bug 修复、重构、PR、CI、Release，以及 Review 前的仓库事实与风险路由 |
+| [`review`](skills/review/README.md) | 怎样以独立审查者和测试专家视角检查实现、测试充分性和交付证据 | Code Review、PR Review、代码质量/安全/兼容审计、测试充分性分析、Review 驱动的补测试与修复闭环 |
 | [`docs`](skills/docs/README.md) | 怎样保证技术文档与正确事实同步，并让人真正看懂 | 文档 Review、文档修复、README/架构/API/运维文档编写与更新、代码与文档一致性检查 |
 
 最简单的判断方式：
 
 ```text
-主要任务是在改或检查软件实现？
+主要任务是在开发或修改软件实现？
 → 用 Coding
+→ 完成前如果存在 Review Skill，Coding 会强制路由 Review
+
+主要任务就是 Code Review / Audit？
+→ 仍从 Coding 恢复仓库事实和任务边界
+→ 然后进入 Review
 
 主要任务是在检查、编写或更新技术文档？
 → 用 Docs
@@ -75,7 +86,9 @@ Docs 检查时发现其实是代码错了？
 → Docs 做 targeted re-review
 ```
 
-## 3. 在 AIMA_UGC 中怎样进入这两个 Skill
+`review` 不维护第二套 Coding 规范。它在同仓存在 Coding 时读取 Coding，把 Coding 作为研发规则事实源，只增加独立审查、Findings、测试专家方法和 re-review。
+
+## 3. 在 AIMA_UGC 中怎样进入这三个 Skill
 
 ### 普通研发任务
 
@@ -85,8 +98,31 @@ AGENTS.md
 → 按任务读取最少充分代码 / Contract / Migration / 测试 / 文档
 → 实现与验证
 → Docs Impact
-→ Review / PR / CI / 交付
+→ 完成前 Review
+→ Review Skill（仓库存在时）
+→ PR / CI / 交付
 ```
+
+Review 发现实现缺陷且任务已有修复授权时：
+
+```text
+Review
+→ 返回 Coding
+→ Coding 按完整研发门禁修复并取得新鲜验证
+→ Review re-review
+```
+
+### 显式 Code Review / Audit
+
+```text
+AGENTS.md
+→ Coding 完成仓库事实恢复、四维任务路由、工具链/风险/权限确认
+→ Review 成为主要审查工作流
+→ 独立重建需求、审查 diff/调用链/测试充分性
+→ 输出 Findings 和证据边界
+```
+
+Review 默认只报告，不因为“做 Review”自动获得修改、提交或合并权限。
 
 ### 单独做文档任务
 
@@ -109,14 +145,21 @@ AGENTS.md
 
 ```text
 使用 coding，基于当前仓库真实实现完成这个功能。
-先恢复事实和判断风险等级，再按适用规则开发、测试、Review，并完成 PR/CI 交付。
+先恢复事实和判断风险等级，再按适用规则开发、测试、文档影响检查，并在完成前进入 review，最后完成 PR/CI 交付。
 ```
 
-### 用 Coding 只做 Review
+### 做 Code Review
 
 ```text
 使用 coding 审查当前实现，只 Review，不修改代码。
-基于当前仓库事实给出问题、证据和风险。
+先恢复当前仓库事实和任务边界；如果仓库存在 review Skill，按 Coding 路由进入 review，从独立审查和测试充分性角度给出 Findings、证据和风险。
+```
+
+### 从测试专家角度审查
+
+```text
+使用 review-and-test 审查这个功能的测试充分性。
+从需求和失败风险反推应有证据；对 Web/Full-stack 按真实边界区分 Browser Mock、Backend/API/Persistence、Contract、Real Full-stack 和外部 Probe，不用 Mock 冒充实链。
 ```
 
 ### 用 Docs 只检查文档
@@ -154,6 +197,10 @@ Coding 正式规则
 → skills/coding/SKILL.md
 → skills/coding/references/
 
+Review 正式规则
+→ skills/review/SKILL.md
+→ skills/review/references/
+
 Docs 正式规则
 → skills/docs/SKILL.md
 → skills/docs/references/
@@ -161,6 +208,7 @@ Docs 正式规则
 人类快速使用说明
 → 本 README
 → skills/coding/README.md
+→ skills/review/README.md
 → skills/docs/README.md
 
 可失效导航缓存
@@ -173,6 +221,8 @@ README 可以解释“怎么用”，但不应复制所有详细规则。README 
 
 - [Coding Skill 使用说明](skills/coding/README.md)
 - [Coding 正式规则](skills/coding/SKILL.md)
+- [Review Skill 使用说明](skills/review/README.md)
+- [Review 正式规则](skills/review/SKILL.md)
 - [Docs Skill 使用说明](skills/docs/README.md)
 - [Docs 正式规则](skills/docs/SKILL.md)
 - [AIMA_UGC Agent 统一入口](../AGENTS.md)
