@@ -1,6 +1,6 @@
+import runpy
 from datetime import datetime, timedelta
 from pathlib import Path
-import runpy
 from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[2]
