@@ -41,12 +41,13 @@ class DocsSkillTest(unittest.TestCase):
     def test_coding_existing_rules_are_preserved(self) -> None:
         coding = self._read(".agents/skills/coding/SKILL.md")
 
-        # 这些断言保护当前 Coding 的既有高价值规则；新增 Docs 路由只能追加，不能替代。
+        # 这些断言保护当前 Coding 的既有高价值规则；新增 Docs 路由只能追加，不能替代或近似改写。
         self.assertIn("内容守恒优先于篇幅精简", coding)
         self.assertIn("### 4.12 同步当前事实和文档", coding)
         self.assertIn("文档与代码/Contract 尚未同步时，不得标记 Ready、完成、可合并或可发布", coding)
         self.assertIn("所有时间相关默认采用北京时间", coding)
         self.assertIn("Git 提交信息统一中文", coding)
+        self.assertIn("强制其他序列化形式", coding)
         self.assertIn("Red\n→ Verify Red：实际确认因正确目标行为失败", coding)
         self.assertIn("→ Green：最少代码通过", coding)
 
@@ -71,6 +72,7 @@ class DocsSkillTest(unittest.TestCase):
         self.assertIn("code_issue_detected", coding)
         self.assertIn("Docs Impact", coding_agent)
         self.assertIn(".agents/skills/docs/SKILL.md", coding_agent)
+        self.assertIn("code_issue_detected", coding_agent)
 
         # Docs 发现实现缺陷时必须真正切回 Coding 规则，不能只写抽象的“返回 Coding”。
         self.assertIn("### 6.1 `code_issue_detected` 反向硬路由", docs)
@@ -79,6 +81,7 @@ class DocsSkillTest(unittest.TestCase):
         self.assertIn("不得修改实现代码", docs)
         self.assertIn("targeted re-review", docs)
         self.assertIn(".agents/skills/coding/SKILL.md", docs_agent)
+        self.assertIn("code_issue_detected", docs_agent)
         self.assertIn("code_issue_detected", collaboration)
         self.assertIn(".agents/skills/coding/SKILL.md", collaboration)
         self.assertIn("必须读取", collaboration)
