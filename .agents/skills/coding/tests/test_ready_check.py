@@ -8,8 +8,8 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-READY_CHECK = REPO_ROOT / ".agents/skills/reliable-vibe-coding/scripts/ready_check.py"
-TEMPLATE = REPO_ROOT / ".agents/skills/reliable-vibe-coding/assets/CHANGE.template.md"
+READY_CHECK = REPO_ROOT / ".agents/skills/coding/scripts/ready_check.py"
+TEMPLATE = REPO_ROOT / ".agents/skills/coding/assets/CHANGE.template.md"
 
 
 def _change_document(
@@ -134,11 +134,11 @@ class ReadyCheckTest(unittest.TestCase):
             self._git(root, "config", "user.email", "ready-check@example.invalid")
             (root / "README.md").write_text("baseline\n", encoding="utf-8")
             self._git(root, "add", "README.md")
-            self._git(root, "commit", "-m", "baseline")
+            self._git(root, "commit", "-m", "建立测试基线")
             base = self._git(root, "rev-parse", "HEAD").stdout.strip()
             self._write_change(root, _change_document(completion_gate=False))
             self._git(root, "add", "changes")
-            self._git(root, "commit", "-m", "add legacy-shaped new change")
+            self._git(root, "commit", "-m", "新增无门禁测试变更")
             result = self._run(root, "--changed-since", base)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("completion_gate: required", result.stdout + result.stderr)
