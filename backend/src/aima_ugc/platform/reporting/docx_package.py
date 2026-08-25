@@ -1159,6 +1159,7 @@ def _styles_xml() -> str:
 
 
 def _core_props_xml() -> str:
+    """按 OOXML W3CDTF 约定把北京时间绝对时刻转换为 UTC `Z`。"""
     now = beijing_now().astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     return f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <cp:coreProperties xmlns:cp="{_CP}" xmlns:dc="{_DC}"
