@@ -1,4 +1,4 @@
-"""AIMA 系统统一北京时间能力。"""
+"""AIMA 自有系统时间统一使用北京时间；外部协议仅在明确要求时转换原始时间语义。"""
 
 from __future__ import annotations
 
