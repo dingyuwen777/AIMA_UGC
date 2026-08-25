@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260825-provider-secret-error-visibility"
 title: "修复补采 Secret 错误分类与前端展示"
 level: L2
-status: ready_for_review
+status: done
 owner: "codex"
 branch: "fix/provider-secret-error-visibility"
 created: 2026-08-25
@@ -193,6 +193,7 @@ Browser Mock 不能冒充真实 Backend/DB；一条 Full-stack 不能冒充全�
 - Backend Static：Ruff format/check、Mypy 均退出码 0；Mypy 检查 244 个源码文件。
 - Contract/Governance：Contract Compatibility、Architecture、Table Ownership、Secret Scan、Docs Check 均退出码 0；`git diff --check` 无空白错误。
 - Completion Gate：最新主线重新发现 83 个事实入口；Active Change 状态为 `ready_for_review` 且无冲突；UTF-8 模式下 Coding 工作流测试 `37 passed`；`ready_check.py --require-active-ready` 退出码 0（gated 37、strict 37、legacy 72）。
+- 远程 CI：PR #233 的 Requirement Traceability、Repository Quality、PostgreSQL Integration、Windows/Linux Development Tooling、Excel Browser Full-stack、Compose Golden Path 与 CI Gate 全部通过；Linux Tooling 首次因 PostgreSQL volume 重建后的瞬时连接中断失败，重跑同一头提交后通过。
 - 验证环境清理：已停止并自动移除无持久卷容器 `aima-ugc-codex-provider-secret-test`，并在解析、校验绝对路径位于仓库后删除四个 `codex-provider-secret-test*` 临时路径；`.runtime` 其他开发数据未触碰。
 - 扩大回归尝试：最新主线执行 `uv run pytest tests/unit tests/contracts tests/api -q` 得到 `3 failed, 763 passed, 7 skipped`；3 项均在 Windows 缺少 POSIX `os.geteuid`/`os.chown` 的 `tests/unit/test_prepare_host.py` monkeypatch 边界失败，与本次差异文件无交集。本任务未删除、跳过或篡改这些失败测试，完整 CI 仍需 Linux 环境确认。
 
@@ -202,6 +203,7 @@ Browser Mock 不能冒充真实 Backend/DB；一条 Full-stack 不能冒充全�
 
 # 交付
 
-- Commit：用户已授权提交并将修改集成到远程 `main`；等待最新主线复验通过后执行。
-- PR：按仓库规则从任务分支创建 PR，等待 Linux CI 和分支保护通过后合入远程 `main`。
+- Commit：`7490e06b86faf2bfaf481d8218c274b40b9b36bb`（`修复补采 Secret 错误展示与测试隔离`）。
+- PR：[#233](https://github.com/dingyuwen777/AIMA_UGC/pull/233) 已在全部必需 CI 通过后合入远程 `main`。
+- Merge：`caae4d686b4b4978b028b9a0199495c863b0e882`（`合并补采 Secret 错误展示与测试隔离（#233）`）；本地与远程 `main` 已同步并确认包含任务提交。
 - 发布：不适用，未执行。
