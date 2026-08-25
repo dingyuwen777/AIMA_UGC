@@ -88,12 +88,13 @@ def test_release_workflow_uses_official_upstreams_without_changing_local_default
     assert RELEASE_WORKFLOW.is_file(), "Release workflow has not been implemented yet"
     workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
 
+    # Release keeps its official GitHub-Runner sources together in workflow-level YAML env.
     official_release_sources = (
-        "AIMA_BUILD_DEBIAN_MIRROR=http://deb.debian.org/debian",
-        "AIMA_BUILD_DEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security",
-        "AIMA_BUILD_PYPI_INDEX=https://pypi.org/simple",
-        "AIMA_BUILD_NPM_REGISTRY=https://registry.npmjs.org",
-        "POSTGRES_IMAGE=postgres:18.4",
+        "AIMA_BUILD_DEBIAN_MIRROR: http://deb.debian.org/debian",
+        "AIMA_BUILD_DEBIAN_SECURITY_MIRROR: http://deb.debian.org/debian-security",
+        "AIMA_BUILD_PYPI_INDEX: https://pypi.org/simple",
+        "AIMA_BUILD_NPM_REGISTRY: https://registry.npmjs.org",
+        "POSTGRES_IMAGE: postgres:18.4",
     )
     for expected in official_release_sources:
         assert expected in workflow
