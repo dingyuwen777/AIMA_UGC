@@ -79,8 +79,9 @@ CMakeLists.txt ≠ Linux-only
 9. **独立能力建立独立验证闭环。** 对具有明确输入输出、独立业务价值、独立失败边界，或无需启动完整系统即可验证的能力，优先复用生产入口建立最小验证闭环，使用与风险匹配的自动化测试、Fixture/Fake/隔离依赖、明确运行方式和成功判据。不要机械要求“一模块一个测试文件”或“一功能一个测试文档”。
 10. **L2/L3 必须向上追溯。** 当前 Change 不是自身需求全集。必须从用户已确认决定和上游正式事实源建立 Requirement Traceability；进入 `ready_for_review` 前重新读取上游完成定义并执行 Completion Audit。CI 全绿不能替代需求完整性审计，也不能依赖用户事后发现漏项。
 11. **验证按风险而不是固定技术栈分层。** L2/L3 先按 [07_validation-strategy.md](references/07_validation-strategy.md) 建立技术栈无关 Validation Matrix。任何层都不能声称证明自己没有实际运行的下游边界。若项目真实存在 Web/API/PostgreSQL/外部 Provider，再叠加 [08_testing-strategy.md](references/08_testing-strategy.md) 的 Browser Mock、Backend/API/PostgreSQL Integration、Contract、Real Full-stack、Real Provider Probe 专项规则；这些细节保留但不强加给 CLI、Library、Mobile、Embedded、IaC 等项目。
-12. **注释解释原因和约束。** 代码注释不只面向 public/exported 接口。内部/private/helper 函数只要承载非显然业务规则、关键不变量、状态转换、算法取舍、兼容原因或重要副作用，也应按项目语言/风格提供简短 docstring 或定点注释；简单自解释 helper 不机械补注释。
+12. **中文注释与函数级说明是通用规则。** 代码注释统一使用中文；专有名词、标识符、协议、库、标准名以及必须保持原样的外部文本可以保留原语言。新增或修改的 public/exported 函数必须有与复杂度匹配的函数级中文注释或文档注释；**内部/private/helper 函数也必须写函数级中文注释或文档注释**，不能因为不是 public 就省略。简单函数的说明可以非常简短，但不能用“自解释”作为完全不写函数级说明的理由。复杂规则、关键不变量、状态转换、算法取舍、兼容原因和重要副作用还要重点解释 `why / invariant / risk / compatibility`，不要逐行翻译语法。
 13. **重要功能可观测性需要匹配现有体系。** 如果仓库已有日志/事件基础设施，且功能涉及关键生命周期、异步任务、外部 I/O、重试/部分失败、状态转换或后期排障价值，应补最小充分结构化观测。复用现有 logger/event/脱敏/关联 ID；禁止打印 Secret/Token/密码/敏感 Raw/PII，禁止 INFO 高频刷屏，日志也不能替代数据库/文件中的正式业务事实或 Health/Audit 机制。
+14. **Git 提交信息统一中文。** 所有 Git 提交信息使用中文，包括普通提交、修复提交和合并提交的说明文本；命令、路径、标识符、版本号等必要技术内容可以保留原文。项目可以进一步规定提交格式或前缀，但不能把提交信息语言改为非中文。
 
 规则重组时还必须遵守 [12_rule-preservation-map.md](references/12_rule-preservation-map.md)：通用化只能移动和分类规则，不能用“精简”删除仍有效内容。
 
@@ -359,7 +360,7 @@ not_satisfied
 实现前确定：
 
 - 要复用的现有实现/模式；
-- public/private/helper 中哪些非显然规则需要注释；
+- 新增或修改的 public/exported 与内部/private/helper 函数应提供什么函数级中文注释或文档注释，以及哪些复杂规则还需要额外定点说明；
 - 已有日志体系中哪些生命周期、外部 I/O、重试/部分失败/状态转换需要观测；
 - 最小失败测试或明确 TDD 例外；
 - 行为、接口、集成、用户工作流、跨组件、外部依赖、Build/Package/Runtime、Docs/Governance 哪些有独立风险；
@@ -466,7 +467,7 @@ Bug 修复必须有回归证据。测试验证真实行为，不只验证 Mock �
 
 #### 注释与可观测性
 
-遵循项目既有语言和风格。注释解释 `why / invariant / risk / compatibility`，不是逐行翻译语法。
+代码注释统一使用中文；专有名词、标识符、协议、库、标准名和必须保持原样的外部文本可以保留原语言。新增或修改的 public/exported 与内部/private/helper 函数都必须有函数级中文注释或文档注释；内部函数不能因为可见性低而省略。简单函数可以使用一句简短说明，复杂逻辑重点解释 `why / invariant / risk / compatibility`，不要逐行翻译语法。
 
 仓库已有 logger/event 体系且观测点有独立排障价值时，覆盖低频关键生命周期、异步阶段、external I/O、retry/partial failure/terminal state。高频正常细节保持 DEBUG 或不记录；Secret/敏感 Raw/PII 不记录；日志不能代替正式业务事实。
 
@@ -607,7 +608,7 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 - 禁止 `git reset --hard`、`git clean -fd`、强制推送、未授权共享历史重写；
 - 未经授权不创建分支、提交、推送、PR、合并、部署、删分支；
 - CI 失败、冲突、保护规则或结果未确认时不强行推进；
-- commit message 格式和语言跟随目标项目规则；通用 Skill 不替所有项目指定同一种语言。
+- 所有 Git 提交信息使用中文；项目可以额外规定提交格式、前缀或工单号，但不能覆盖中文语言要求。
 
 ### 依赖
 
