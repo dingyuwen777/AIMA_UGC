@@ -1,7 +1,7 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SKILL_ROOT = ROOT / ".agents" / "skills" / "reliable-vibe-coding"
+SKILL_ROOT = ROOT / ".agents" / "skills" / "coding"
 
 
 def _read(relative_path: str) -> str:
