@@ -28,7 +28,10 @@ def test_global_skill_requires_chinese_comments_for_public_and_internal_function
     assert "内部/private/helper 函数也必须写函数级中文注释或文档注释" in skill
     assert "除专有名词、标识符、协议、库和标准名外，代码注释统一使用中文" in workflows
     assert "内部/private/helper 函数不能因为不是 public 就省略函数级说明" in workflows
-    assert "新增或修改的 public/exported 与内部/private/helper 函数是否都有必要的中文函数级说明" in review
+    assert (
+        "新增或修改的 public/exported 与内部/private/helper 函数是否都有必要的中文函数级说明"
+        in review
+    )
 
 
 def test_global_language_rules_are_not_delegated_to_project_overlay() -> None:
