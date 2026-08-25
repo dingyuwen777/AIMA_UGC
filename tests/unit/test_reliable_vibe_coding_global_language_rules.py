@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 SKILL_ROOT = ROOT / ".agents" / "skills" / "reliable-vibe-coding"
 
