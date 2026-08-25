@@ -1,4 +1,5 @@
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[2]
 SKILL_ROOT = ROOT / ".agents" / "skills" / "reliable-vibe-coding"
@@ -45,6 +46,32 @@ def test_language_profiles_cover_major_ecosystems_without_fixed_versions() -> No
     assert "锁文件" in profiles
     assert "不得擅自升级" in profiles
     assert "仓库实际命令" in profiles
+
+
+def test_project_discovery_recognizes_representative_polyglot_manifests() -> None:
+    namespace = runpy.run_path(str(SKILL_ROOT / "scripts" / "rvc.py"))
+    classify_path = namespace["_classify_path"]
+
+    manifest_paths = (
+        "CMakeLists.txt",
+        "CMakePresets.json",
+        "meson.build",
+        "conanfile.py",
+        "vcpkg.json",
+        "global.json",
+        "Directory.Build.props",
+        "src/App.csproj",
+        "src/App.fsproj",
+        "App.sln",
+        "Package.swift",
+        "Package.resolved",
+        "pubspec.yaml",
+        "pubspec.lock",
+        "melos.yaml",
+    )
+
+    for relative_path in manifest_paths:
+        assert classify_path(relative_path) == "manifest", relative_path
 
 
 def test_generic_validation_strategy_is_not_bound_to_one_stack() -> None:
