@@ -75,7 +75,7 @@ def test_existing_web_database_provider_profile_remains_available() -> None:
     assert "Backend / API / PostgreSQL Integration" in strategy
     assert "Real Full-stack Golden Path" in strategy
     assert "Real Provider Probe" in strategy
-    assert "不能用 SQLite" in strategy
+    assert "为了测试方便关闭真实 PostgreSQL 约束" in strategy
     assert "不进普通 CI" in strategy
 
 
