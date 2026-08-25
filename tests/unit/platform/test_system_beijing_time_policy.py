@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-import re
 
 from aima_ugc.contracts.http import ImportBatchSummaryResponse
 
