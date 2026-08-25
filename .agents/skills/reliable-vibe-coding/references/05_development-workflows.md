@@ -13,7 +13,7 @@
 
 不要依据单个文件重构架构。能从仓库确认的事实先自行检查。
 
-不同语言和工具链的 Manifest、锁文件、wrapper、构建、测试、打包入口按 [language-and-toolchain-profiles.md](language-and-toolchain-profiles.md) 调查；该文件提供导航，不替代当前仓库实际规则和命令。
+不同语言和工具链的 Manifest、锁文件、wrapper、构建、测试、打包入口按 [03_language-and-toolchain-profiles.md](03_language-and-toolchain-profiles.md) 调查；该文件提供导航，不替代当前仓库实际规则和命令。
 
 ## 设计门禁
 
@@ -71,7 +71,7 @@
 
 允许的例外包括纯文档、纯配置、生成代码、一次性探索或环境确实无法自动测试。明确说明例外、替代验证和剩余风险。探索代码不能冒充已验证生产实现。
 
-完整验证层级和证据职责按 [validation-strategy.md](validation-strategy.md)；项目真实存在 Web/API/PostgreSQL/Provider 边界时再叠加 [testing-strategy.md](testing-strategy.md) 专项规则。
+完整验证层级和证据职责按 [07_validation-strategy.md](07_validation-strategy.md)；项目真实存在 Web/API/PostgreSQL/Provider 边界时再叠加 [08_testing-strategy.md](08_testing-strategy.md) 专项规则。
 
 ## 根因调试
 
