@@ -36,7 +36,7 @@
 - 外部依赖 Probe 是否只有在当前真实事实需要确认时才执行，并且保持有界；
 - 代码、测试、正式文档和 Change 是否一致。
 
-通用分层见 [validation-strategy.md](validation-strategy.md)。项目真实存在 Web/API/PostgreSQL/Provider 边界时，再按 [testing-strategy.md](testing-strategy.md) 复核 Browser Mock、Backend/API/PostgreSQL、Contract、Real Full-stack 和 Real Provider Probe 的专项职责。
+通用分层见 [07_validation-strategy.md](07_validation-strategy.md)。项目真实存在 Web/API/PostgreSQL/Provider 边界时，再按 [08_testing-strategy.md](08_testing-strategy.md) 复核 Browser Mock、Backend/API/PostgreSQL、Contract、Real Full-stack 和 Real Provider Probe 的专项职责。
 
 ### Completion Audit 与反向审计
 
@@ -99,7 +99,7 @@ Mobile / Embedded / Infra / Package：
 
 同时复核 Validation Matrix：局部行为、公共 Contract、真实依赖、用户/调用者工作流、关键实链、外部依赖、构建/打包和治理事实是否分别由适合的证据层覆盖。没有对应边界时记录不适用依据，不为满足清单创造无价值机制或测试。
 
-详细规则见 [completion-gate.md](completion-gate.md)。
+详细规则见 [10_completion-gate.md](10_completion-gate.md)。
 
 ## 第二阶段：代码质量
 
