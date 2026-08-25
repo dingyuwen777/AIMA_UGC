@@ -38,7 +38,7 @@ completion_gate: required
 
 ## Validation Matrix
 
-L2/L3 Change 还必须按 [validation-strategy.md](validation-strategy.md) 建立 `# Validation Matrix`，明确各验证维度是 `required` 还是 `not_applicable`。
+L2/L3 Change 还必须按 [07_validation-strategy.md](07_validation-strategy.md) 建立 `# Validation Matrix`，明确各验证维度是 `required` 还是 `not_applicable`。
 
 通用默认考虑：
 
@@ -68,7 +68,7 @@ Matrix 不要求每个任务机械执行全部层，也不设固定测试数量�
 
 ### Web / API / PostgreSQL / Provider 专项 profile
 
-如果项目真实存在这些边界，再叠加 [testing-strategy.md](testing-strategy.md) 的完整专项规则：
+如果项目真实存在这些边界，再叠加 [08_testing-strategy.md](08_testing-strategy.md) 的完整专项规则：
 
 ```text
 用户 / Workflow Acceptance
