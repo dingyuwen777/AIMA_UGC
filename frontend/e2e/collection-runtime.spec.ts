@@ -167,6 +167,71 @@ test('explains failed Import terminal state without inventing pending stages', a
   await expect(detail.locator('.stage-row')).toHaveCount(0)
 })
 
+test('shows a safe actionable error when the Worker cannot read the Provider Secret', async ({ page }) => {
+  const failedRun = {
+    ...runDetail,
+    mode: 'batch_supplement',
+    import_batch_id: batchId,
+    keywords: [],
+    status: 'failed',
+    stage: 'failed',
+    progress: 100,
+    attempt: 1,
+    scopes: [{
+      ...runDetail.scopes[0],
+      source_type: 'content',
+      operation_group: 'content_enrichment',
+      status: 'failed',
+      progress: 100,
+      stop_reason: 'provider_secret_unavailable',
+    }],
+    error_code: 'collection_run_failed',
+    error_summary: 'provider_secret_unavailable',
+    started_at: '2026-08-21T10:00:01+08:00',
+    finished_at: '2026-08-21T10:00:02+08:00',
+  }
+  await page.unroute('**/api/v1/**')
+  await page.route('**/api/v1/**', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname === '/api/v1/collection-runtime/summary') {
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ processing_count: 0, completed_today_count: 0, contents_ingested_today: 0, as_of: '2026-08-21T10:00:00+08:00' }) })
+    }
+    if (url.pathname === '/api/v1/collection-runtime/runs') {
+      return route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          items: [{
+            ...runtimeItem,
+            record_id: runId,
+            record_type: 'tikhub_batch_supplement',
+            display_name: '批次内容补采',
+            import_batch_id: batchId,
+            collection_run_id: runId,
+            job_id: collectionJobId,
+            status: 'failed',
+            stage: 'failed',
+            progress: 100,
+            error_code: 'collection_run_failed',
+            error_summary: 'provider_secret_unavailable',
+          }],
+          next_cursor: null,
+          has_more: false,
+        }),
+      })
+    }
+    if (url.pathname === `/api/v1/collection-runs/${runId}`) {
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify(failedRun) })
+    }
+    return route.fulfill({ status: 404, body: 'not mocked' })
+  })
+
+  await page.goto('/collection-runtime')
+  await page.getByRole('button', { name: '查看详情' }).click()
+  const detail = page.getByRole('dialog', { name: 'TikHub 运行详情' })
+  await expect(detail).toContainText('Provider Secret 不可用，请联系管理员检查运行配置。')
+  await expect(detail).not.toContainText('providers/tikhub')
+})
+
 test('shows the stable unified Error Contract request_id', async ({ page }) => {
   await page.unroute('**/api/v1/**')
   await page.route('**/api/v1/**', async (route) => {

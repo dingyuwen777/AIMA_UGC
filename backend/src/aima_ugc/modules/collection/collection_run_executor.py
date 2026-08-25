@@ -218,6 +218,7 @@ class CollectionRunExecutor:
         run = self._gateway.start_run(execution.run.id, fence=fence)
         totals = _RunTotals()
         failed_scopes = 0
+        failed_stop_reasons: set[str] = set()
         partial_scopes = 0
         total_scopes = len(execution.scopes)
         log_event(
@@ -245,6 +246,7 @@ class CollectionRunExecutor:
                 totals.add_persisted_scope(persisted_scope)
                 if persisted_scope.status == "failed":
                     failed_scopes += 1
+                    failed_stop_reasons.add(persisted_scope.stop_reason or "scope_execution_failed")
                 elif persisted_scope.status == "partial_success":
                     partial_scopes += 1
                 elif persisted_scope.status == "cancelled":
@@ -308,6 +310,7 @@ class CollectionRunExecutor:
                 return JobHandlerResult.retry(exc.error_code)
             except Exception as exc:
                 failed_scopes += 1
+                failed_stop_reasons.add("scope_execution_failed")
                 self._gateway.finish_scope(
                     scope.id,
                     fence=fence,
@@ -351,6 +354,7 @@ class CollectionRunExecutor:
                 )
                 if scope_result.status == "failed":
                     failed_scopes += 1
+                    failed_stop_reasons.add(scope_result.stop_reason or "scope_execution_failed")
                 elif scope_result.status == "partial_success":
                     partial_scopes += 1
                 elif scope_result.status == "cancelled":
@@ -372,7 +376,10 @@ class CollectionRunExecutor:
         else:
             run_status = "succeeded"
 
-        error_summary = "scope_execution_failed" if failed_scopes else None
+        error_summary = _run_error_summary(
+            failed_scopes=failed_scopes,
+            failed_stop_reasons=failed_stop_reasons,
+        )
         self._finish_run(
             run=run,
             fence=fence,
@@ -432,6 +439,20 @@ class CollectionRunExecutor:
             error_code=error_summary,
         )
         return finished
+
+
+def _run_error_summary(
+    *,
+    failed_scopes: int,
+    failed_stop_reasons: set[str],
+) -> str | None:
+    """仅在所有失败 Scope 都是 Secret 配置故障时公开稳定且安全的具体原因。"""
+
+    if failed_scopes == 0:
+        return None
+    if failed_stop_reasons == {"provider_secret_unavailable"}:
+        return "provider_secret_unavailable"
+    return "scope_execution_failed"
 
 
 def _log_scope_completed(

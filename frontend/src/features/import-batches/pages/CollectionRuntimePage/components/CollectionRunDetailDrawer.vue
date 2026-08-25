@@ -5,6 +5,7 @@ import {
   formatDateTime,
   formatNumber,
   platformLabels,
+  runtimeFailureMessage,
   runtimeStageLabel,
   runtimeStatusLabels,
   shortId,
@@ -84,14 +85,16 @@ const emit = defineEmits<{
               v-for="scope in item.scopes"
               :key="scope.id"
             >
-              <i :class="`dot dot--${scope.status}`" /><span>{{ platformLabels[scope.platform] }} · {{ runtimeStageLabel(scope.operation_group) }}</span><strong>{{ scope.progress }}%</strong>
+              <i :class="`dot dot--${scope.status}`" /><span>{{ platformLabels[scope.platform] }} · {{ runtimeStageLabel(scope.operation_group) }}<small
+                v-if="scope.status === 'failed' && scope.stop_reason"
+              >{{ runtimeFailureMessage(scope.stop_reason) }}</small></span><strong>{{ scope.progress }}%</strong>
             </div>
           </section>
           <div
             v-if="item.error_summary"
             class="error-card"
           >
-            <strong>{{ item.error_code || 'collection_run_failed' }}</strong><p>{{ item.error_summary }}</p>
+            <strong>{{ item.error_code || 'collection_run_failed' }}</strong><p>{{ runtimeFailureMessage(item.error_summary) }}</p>
           </div>
           <p class="info-note">
             详情每 5 秒自动刷新；关闭页面后 Durable Job 仍由 Worker 持续执行。
@@ -144,6 +147,7 @@ h3 { margin: 18px 0 11px; font-size: 14px; }
 .scopes { border: 1px solid var(--aima-border); border-radius: 7px; }
 .scopes div { display: grid; grid-template-columns: 20px 1fr auto; min-height: 42px; align-items: center; padding: 0 12px; border-bottom: 1px solid var(--aima-border); font-size: 12px; }
 .scopes div:last-child { border-bottom: 0; }
+.scopes small { display: block; margin-top: 4px; color: #b4232d; line-height: 1.4; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; }
 .dot--running, .dot--queued { background: #2563eb; }
 .dot--succeeded { background: #16a05d; }

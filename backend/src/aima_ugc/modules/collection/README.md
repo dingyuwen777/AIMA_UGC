@@ -257,6 +257,21 @@ bootstrap/worker.py
 tests/unit/collection/
 ```
 
+### 3.4 Provider Secret 不可用怎样失败
+
+TikHub Secret 只由 Worker 通过批准的只读文件边界解析；API 不挂载 Provider Secret，也不为创建 Run 扩大读取权限。
+
+如果 Worker 在真正发送 Provider 请求前发现 Secret 文件缺失、不可读或不满足安全校验：
+
+```text
+Scope.status = failed
+Scope.stop_reason = provider_secret_unavailable
+Run.error_summary = provider_secret_unavailable
+Job.error_code = collection_run_failed
+```
+
+`CollectionRunExecutor` 使用现有终态日志记录 Run/Job/Scope ID 和稳定错误码，不记录 `secret_ref`、文件路径或 Secret 内容。前端通过既有 `CollectionScopeResponse.stop_reason` 显示固定操作提示；HTTP Contract 字段形状和数据库 Schema 不因此变化。
+
 ---
 
 ## 4. Provider Request 和 Attempt 为什么分开

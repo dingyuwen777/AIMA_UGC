@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+from collections.abc import Mapping
 from uuid import UUID
 
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
@@ -11,7 +13,19 @@ from aima_ugc.modules.system.models import ProviderConfig
 PROVIDER_CONFIG_ID = UUID("8f000000-0000-4000-8000-000000000001")
 
 
+def _require_fullstack_seed_opt_in(environ: Mapping[str, str]) -> None:
+    """只允许显式确认的隔离 Full-stack Runtime 写入固定测试配置。"""
+
+    if environ.get("AIMA_FULLSTACK_SEED") != "1":
+        raise RuntimeError(
+            "拒绝写入 Provider Config：请仅在隔离测试数据库中设置 AIMA_FULLSTACK_SEED=1。"
+        )
+
+
 def main() -> None:
+    """在已显式确认的隔离 Full-stack Runtime 中建立测试 Provider Config。"""
+
+    _require_fullstack_seed_opt_in(os.environ)
     runtime = create_platform_runtime("fullstack-seed")
     session = runtime.database.new_session()
     try:

@@ -91,7 +91,7 @@ jobs:
           uv run alembic upgrade head
           uv run alembic current
           uv run alembic check
-          uv run python tests/fullstack/seed_collection_plan_provider.py
+          AIMA_FULLSTACK_SEED=1 uv run python tests/fullstack/seed_collection_plan_provider.py
 
       - name: Generate deterministic Excel fixtures
         shell: bash

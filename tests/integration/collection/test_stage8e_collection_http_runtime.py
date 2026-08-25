@@ -44,6 +44,7 @@ from aima_ugc.modules.system.tables import (
 )
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs.tables import jobs_table
+from aima_ugc.platform.security import SecretFileError
 from aima_ugc.platform.storage.tables import artifacts_table
 from pydantic import SecretStr
 from sqlalchemy import func, insert, select, update
@@ -716,6 +717,87 @@ def test_batch_supplement_worker_reuses_detail_mapper_relevance_and_ingestion(ru
     assert scope["status"] == "succeeded"
     assert content["title"] == "爱玛 Batch 内容已补全"
     assert version_count == 2
+
+
+def test_batch_supplement_persists_safe_error_when_provider_secret_is_unavailable(
+    runtime,  # type: ignore[no-untyped-def]
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    provider_config_id, _ = _seed_config_and_relevance(runtime)
+    batch_id, _ = _insert_import_content(runtime)
+    service = PostgresCollectionHttpService(runtime, cursor_signing_secret=b"r" * 32)
+    created = service.create_run(
+        CollectionRunCreateRequest(
+            mode="batch_supplement",
+            import_batch_id=batch_id,
+            platforms=(
+                CollectionRunPlatformRequest(
+                    platform="xiaohongshu",
+                    provider_config_id=provider_config_id,
+                ),
+            ),
+            include_comments=False,
+            include_sub_comments=False,
+        ),
+        request_id="stage8e-provider-secret-unavailable",
+    )
+    transport = FakeProviderTransport(())
+
+    def unavailable_secret(_secret_ref: str) -> SecretStr:
+        """模拟 Worker 无法读取 Provider Secret，且不向测试日志暴露路径。"""
+
+        raise SecretFileError("providers/tikhub/test-secret-should-not-leak")
+
+    registry = create_collection_job_registry(
+        runtime=runtime,
+        transport_factory=lambda _config: transport,
+        secret_resolver=unavailable_secret,
+    )
+    worker = create_job_worker(
+        runtime=runtime,
+        registry=registry,
+        worker_id="stage8e-provider-secret-unavailable-worker",
+        lease_seconds=120,
+        retry_delay_seconds=0,
+    )
+
+    assert worker.run_once() is True
+    assert worker.run_once() is False
+    assert transport.call_count == 0
+
+    with runtime.database.engine.begin() as connection:
+        job = (
+            connection.execute(select(jobs_table).where(jobs_table.c.id == created.job_id))
+            .mappings()
+            .one()
+        )
+        run = (
+            connection.execute(
+                select(collection_runs_table).where(collection_runs_table.c.id == created.run_id)
+            )
+            .mappings()
+            .one()
+        )
+        scope = (
+            connection.execute(
+                select(collection_scopes_table).where(
+                    collection_scopes_table.c.run_id == created.run_id
+                )
+            )
+            .mappings()
+            .one()
+        )
+
+    assert job["status"] == "failed"
+    assert job["error_code"] == "collection_run_failed"
+    assert run["status"] == "failed"
+    assert run["error_summary"] == "provider_secret_unavailable"
+    assert scope["status"] == "failed"
+    assert scope["stop_reason"] == "provider_secret_unavailable"
+    response = service.get_run(created.run_id)
+    assert response.error_summary == "provider_secret_unavailable"
+    assert response.scopes[0].stop_reason == "provider_secret_unavailable"
+    assert "providers/tikhub/test-secret-should-not-leak" not in caplog.text
 
 
 def test_batch_supplement_rejects_mismatched_existing_content_before_ingestion(
