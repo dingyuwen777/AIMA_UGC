@@ -391,10 +391,11 @@ def test_0019_to_0020_normalizes_keyword_identity_and_round_trips_schema(
         engine.dispose()
 
 
-def test_0022_to_0023_normalizes_legacy_platform_aliases_before_platform_checks(
+def test_0023_to_0024_normalizes_legacy_platform_aliases_before_platform_checks(
     migration_database: str,
 ) -> None:
-    _upgrade(migration_database, "20260824_0022")
+    """0024 在约束检查前把历史平台别名统一到正式标识。"""
+    _upgrade(migration_database, "20260821_0023")
     keyword_pack_id = uuid4()
     keyword_id = uuid4()
     content_id = uuid4()
@@ -446,19 +447,25 @@ def test_0022_to_0023_normalizes_legacy_platform_aliases_before_platform_checks(
     finally:
         engine.dispose()
 
-    _upgrade(migration_database, "20260824_0023")
+    _upgrade(migration_database, "20260822_0024")
 
     engine = _engine(migration_database)
     try:
         with engine.connect() as connection:
-            assert connection.scalar(
-                text("SELECT platform_scope FROM keyword_pack_items WHERE pack_id = :id"),
-                {"id": keyword_pack_id},
-            ) == "douyin"
-            assert connection.scalar(
-                text("SELECT platform FROM contents WHERE id = :id"),
-                {"id": content_id},
-            ) == "douyin"
+            assert (
+                connection.scalar(
+                    text("SELECT platform_scope FROM keyword_pack_items WHERE pack_id = :id"),
+                    {"id": keyword_pack_id},
+                )
+                == "douyin"
+            )
+            assert (
+                connection.scalar(
+                    text("SELECT platform FROM contents WHERE id = :id"),
+                    {"id": content_id},
+                )
+                == "douyin"
+            )
 
             with pytest.raises(IntegrityError):
                 connection.execute(
