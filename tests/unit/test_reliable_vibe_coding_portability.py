@@ -67,6 +67,19 @@ def test_reorganization_preserves_executable_detail_instead_of_over_summarizing(
     assert "preserve all existing valuable details" in agent
 
 
+def test_logging_fallback_severity_semantics_remain_normative() -> None:
+    workflows = _read("references/05_development-workflows.md")
+
+    assert "没有更具体规则且现有日志级别支持这些语义时，使用以下默认严重性" in workflows
+    for marker in (
+        "DEBUG   高频正常细节、轮询、逐批/逐页诊断信息",
+        "INFO    低频重要生命周期与真实业务结果",
+        "WARNING 可恢复异常、Retry、部分失败、需要关注但仍能继续",
+        "ERROR   永久失败、非法配置、需要人工介入或未预期异常",
+    ):
+        assert marker in workflows
+
+
 def test_language_profiles_cover_major_ecosystems_without_fixed_versions() -> None:
     profiles = _read("references/03_language-and-toolchain-profiles.md")
 
