@@ -194,7 +194,7 @@ Host Unit、模拟器、Target/HIL 分别证明不同事实；不能用 Host 测
 必须：
 
 1. 先读适用 `AGENTS.md` 或同等规则；
-2. 读取 [project-discovery.md](project-discovery.md)；
+2. 读取 [01_project-discovery.md](01_project-discovery.md)；
 3. 识别 Manifest、锁文件、版本文件、构建、测试、CI、架构/需求/Contract 入口；
 4. 不先重构，不先升级，不从聊天猜当前实现。
 
@@ -207,15 +207,15 @@ Host Unit、模拟器、Target/HIL 分别证明不同事实；不能用 Host 测
 必须：
 
 - 先恢复现状和上游需求；
-- L2/L3 读取 [change-management.md](change-management.md)；
-- 带 Completion Gate 的 Change 读取 [completion-gate.md](completion-gate.md)；
+- L2/L3 读取 [04_change-management.md](04_change-management.md)；
+- 带 Completion Gate 的 Change 读取 [10_completion-gate.md](10_completion-gate.md)；
 - 存在实质取舍时比较真实方案；
 - 关键业务语义无法从仓库确认时才提请用户/Owner 决策；
 - 不能在设计未闭环时静默写依赖该决定的实现。
 
 ### C. Feature / Behavior Implementation
 
-必须读取 [development-workflows.md](development-workflows.md)，默认：
+必须读取 [05_development-workflows.md](05_development-workflows.md)，默认：
 
 ```text
 Red
@@ -226,7 +226,7 @@ Red
 → Verify Again
 ```
 
-并按 [validation-strategy.md](validation-strategy.md) 建立与项目形态匹配的验证证据。
+并按 [07_validation-strategy.md](07_validation-strategy.md) 建立与项目形态匹配的验证证据。
 
 ### D. Bug / Failure / Incident Diagnosis
 
@@ -244,7 +244,7 @@ Red
 → 单一修复
 ```
 
-详细规则在 [development-workflows.md](development-workflows.md)。连续三次修复假设失败时停止叠补丁，重新检查架构、前提和观测手段。
+详细规则在 [05_development-workflows.md](05_development-workflows.md)。连续三次修复假设失败时停止叠补丁，重新检查架构、前提和观测手段。
 
 ### E. Refactor / Performance / Maintainability
 
@@ -257,7 +257,7 @@ Red
 
 ### F. Code Review / Audit
 
-读取 [verification-review.md](verification-review.md)。复杂任务按：
+读取 [11_verification-review.md](11_verification-review.md)。复杂任务按：
 
 ```text
 上游 Requirement Completeness
@@ -278,7 +278,7 @@ Review 默认只报告，不等于授权修改、提交或合并。
 - 不绕过 Branch Protection/CI；
 - 发布/部署/合并必须有对应授权。
 
-详细见 [verification-review.md](verification-review.md) 与适用项目本地 Release 规则。
+详细见 [11_verification-review.md](11_verification-review.md) 与适用项目本地 Release 规则。
 
 ### H. Maintenance / Dependency / Runtime Migration
 
@@ -298,7 +298,7 @@ Review 默认只报告，不等于授权修改、提交或合并。
 
 ## 5. 维度三：识别编程语言 / 工具链
 
-读取 [language-and-toolchain-profiles.md](language-and-toolchain-profiles.md)。先确认仓库实际事实，再选择 profile；没有列出的语言使用同一发现算法，不得因为 Skill 没有列名就跳过版本、Manifest、锁文件、构建和测试调查。
+读取 [03_language-and-toolchain-profiles.md](03_language-and-toolchain-profiles.md)。先确认仓库实际事实，再选择 profile；没有列出的语言使用同一发现算法，不得因为 Skill 没有列名就跳过版本、Manifest、锁文件、构建和测试调查。
 
 语言 profile 只提供“去哪里找事实、常见验证是什么”的导航，不授权：
 
@@ -336,23 +336,23 @@ L3
 
 | 触发条件 | 必须读取 |
 | --- | --- |
-| 新仓库 / 缓存缺失或可能过期 | `project-discovery.md` |
-| 任意任务需要确认语言/构建/包管理 | `language-and-toolchain-profiles.md` |
-| L2/L3 / Active Change | `change-management.md` |
-| `completion_gate: required` | `completion-gate.md` |
-| Feature / Bug / Refactor / Performance | `development-workflows.md` |
-| 需要决定测试层与证据 | `validation-strategy.md` |
-| Web/API/PostgreSQL/Provider 边界实际存在 | `testing-strategy.md`，作为专项 profile，不作为所有项目默认 |
-| 跨模块 / Contract / Schema / 数据 Owner / Migration | `repository-constraints.md` |
-| 多人 / 多 Agent / 多分支 / 多 Active Change | `collaboration.md` |
-| Review / Ready / 交付 / 完成结论 | `verification-review.md` |
-| 本次在做 Skill 重组或规则迁移审计 | `rule-preservation-map.md` |
+| 新仓库 / 缓存缺失或可能过期 | `01_project-discovery.md` |
+| 任意任务需要确认语言/构建/包管理 | `03_language-and-toolchain-profiles.md` |
+| L2/L3 / Active Change | `04_change-management.md` |
+| `completion_gate: required` | `10_completion-gate.md` |
+| Feature / Bug / Refactor / Performance | `05_development-workflows.md` |
+| 需要决定测试层与证据 | `07_validation-strategy.md` |
+| Web/API/PostgreSQL/Provider 边界实际存在 | `08_testing-strategy.md`，作为专项 profile，不作为所有项目默认 |
+| 跨模块 / Contract / Schema / 数据 Owner / Migration | `06_repository-constraints.md` |
+| 多人 / 多 Agent / 多分支 / 多 Active Change | `09_collaboration.md` |
+| Review / Ready / 交付 / 完成结论 | `11_verification-review.md` |
+| 本次在做 Skill 重组或规则迁移审计 | `12_rule-preservation-map.md` |
 
 如果多个条件同时满足，就叠加读取；不要只选其中一个。
 
 ## 8. Validation 路由
 
-所有项目先使用 [validation-strategy.md](validation-strategy.md) 的通用风险维度，再按项目真实形态加载专项 profile。
+所有项目先使用 [07_validation-strategy.md](07_validation-strategy.md) 的通用风险维度，再按项目真实形态加载专项 profile。
 
 例如 Web/API/PostgreSQL/Provider 项目可以映射：
 
@@ -408,7 +408,7 @@ Reliable Vibe Coding 是通用工作流，具体项目规则通过项目本地 O
 阶段：Bug Fix
 工具链：Python + 仓库实际 pyproject/lock/test
 风险：若 public API 变化则 L3；纯兼容修复可能 L2
-加载：project-discovery + language profile + development-workflows
+加载：01_project-discovery + language profile + 05_development-workflows
       + change/completion（按等级）+ validation + verification
 验证：Unit/behavior + public Contract/API + package/build + related regression
 不适用：Browser/PostgreSQL/Provider，除非仓库真实存在对应边界
@@ -431,7 +431,7 @@ Reliable Vibe Coding 是通用工作流，具体项目规则通过项目本地 O
 阶段：Migration
 工具链：Java/Kotlin + Maven/Gradle 真实 wrapper/lock policy
 风险：L3
-加载：repository-constraints + change/completion + validation + verification
+加载：06_repository-constraints + change/completion + validation + verification
 验证：Migration forward/compat + real persistence integration + API/contract（受影响时）+ rollback strategy
 ```
 
