@@ -50,7 +50,7 @@ data_changes: []
 - [x] 回归测试先在旧实现上真实失败，再在实现后通过，覆盖 docs_only/governance_only/full、Prompt `.md`、未知路径、docs 目录机器文件、点目录、CI Gate 和 Full-stack 路径边界。
 - [x] 不删除或降低原产品 CI 的 Unit/Contract/API/PostgreSQL/Wheel/Frontend/Browser Mock/Full-stack 证明责任；feature PR 和 main merge commit 的真实 full profile 都证明原产品层仍执行并成功。
 - [x] fast-path 合入 main 后，独立临时 PR #246 真实验证 `docs_only`：轻量 Docs/Secret 与 `CI Gate` 成功，产品重型 jobs skipped，Full-stack 未触发；PR 已关闭且未合并，验证文件没有进入 main。
-- [ ] 独立归档 PR 真实验证 `governance_only`：`Docs and Governance` 与 Coding governance regression 成功，产品重型 jobs skipped，`CI Gate` 成功；取得该证据后再合并归档 PR。
+- [x] 独立归档 PR #247 的首个归档 HEAD 真实验证 `governance_only`：CI `32920426878` 中 `Docs and Governance`、Secret/docs、Coding governance regression、`CI Gate` 均 success，`Repository Quality` / `PostgreSQL Integration` skipped，Full-stack 未触发；Change Gate 与 Runtime 也 success。
 
 # 非目标
 
@@ -86,7 +86,7 @@ data_changes: []
 | R1 | 纯文档变更在不影响业务和仓库级门禁时，不跑完整产品 CI | user:current-request | satisfied | `ci.yml` 的 `CI Scope` + `docs_only`；`07` Documentation / Governance Fast Path；Blueprint 06 §19.1；真实 PR #246 |
 | R2 | 只跑文档相关 CI，而不是简单跳过所有检查 | user:current-request | satisfied | PR #246 的 `Docs and Governance`、Secret/docs、`CI Gate` success；Repository Quality/PostgreSQL skipped |
 | R3 | 文档 fast path 必须保守，Prompt/机器行为 Markdown 不能误判 | user:approved-plan | satisfied | classifier 白名单、未知/空/错误回退 full；Prompt 和 `docs/generated-policy.json` 回归均为 full；rename 使用 `--no-renames` |
-| R4 | required check identity 不因优化消失 | user:approved-plan | satisfied | `CI Gate` 保持原名且 `if: always()`；Release required checks 已重新核对并继续消费 `CI Gate`；full/docs-only 均实际成功 |
+| R4 | required check identity 不因优化消失 | user:approved-plan | satisfied | `CI Gate` 保持原名且 `if: always()`；Release required checks 已重新核对并继续消费 `CI Gate`；full/docs-only/governance-only 均实际成功 |
 | R5 | Skill 与 Blueprint 同步表达风险相关 CI，而非机械全量 CI | user:approved-plan | satisfied | 主 Skill 现有 §11 硬路由保留；07 新增 fast-path 细则；Coding README §11.1；Blueprint 06 固化 AIMA profile |
 | R6 | 不降低原 Unit/Contract/API/PostgreSQL/Wheel/Frontend/Full-stack 证明责任 | .agents/skills/coding/references/07_通用验证与证据策略.md | satisfied | Evidence Preservation Mapping；feature/main full profile 实际运行 Repository Quality、PostgreSQL Integration、CI Gate；Full-stack/Runtime success |
 
@@ -97,23 +97,23 @@ data_changes: []
 | 行为 / Unit / Component | required | `test_docs_ci_fast_path.py` + 全套 Coding tests；Red run `32917899126` 中新增 5 组断言按预期失败，旧 36 组通过；最终 Ready HEAD Change Gate `32919528138` success |
 | 接口 / Contract | not_applicable | 不改变产品 public Contract；CI profile 输出仅在当前 Workflow 内部消费 |
 | 集成 / Persistence / Runtime Dependency | required | feature final full CI `32919528146` 与 main full CI `32919813749` 的 PostgreSQL Integration 均 success |
-| 用户 / Workflow Acceptance | required | feature/main `full` 实际成功；post-merge PR #246 真实 `docs_only` 成功；归档 PR 负责最终 `governance_only` 真实验收 |
-| 跨组件 Golden Path | required | feature Full-stack `32919528156` success；main Full-stack `32919813732` success；docs-only PR #246 未触发 Full-stack |
+| 用户 / Workflow Acceptance | required | feature/main `full`、PR #246 `docs_only`、归档 PR #247 `governance_only` 三类真实 Actions 路由均取得成功证据 |
+| 跨组件 Golden Path | required | feature Full-stack `32919528156` success；main Full-stack `32919813732` success；docs-only/governance-only PR 均未触发 Full-stack |
 | External Dependency / Provider Probe | not_applicable | 不改变 Provider 或外部接口事实 |
 | Build / Package / Runtime | required | feature/main full profile 的 startup smoke、Wheel、Frontend unit/build/Browser Mock success；Runtime feature/main 均 success |
-| Docs / Governance / Other | required | Coding tests、Secret/docs、Change Gate success；Docs targeted review 无 code_issue_detected；Review 找到点目录规范化缺陷后已修复并 re-review；PR #246 docs-only 轻量门禁 success |
+| Docs / Governance / Other | required | Coding tests、Secret/docs、Change Gate success；Docs targeted review 无 code_issue_detected；Review 缺陷已修复并 re-review；PR #246 docs-only 与 PR #247 governance-only 轻量门禁均实证 success |
 
 # Evidence Preservation Mapping
 
 | 原证明责任 | 原位置 | 新位置 | 证据等级 | 依据 |
 | --- | --- | --- | --- | --- |
 | Python lint/type/unit/contract/API | CI / Repository Quality | full profile / Repository Quality | 保持 | 原命令未删除；feature/main full profile 均成功执行 |
-| Secret + docs gates | CI / Repository Quality | full profile 原位置；轻量 profile / Docs and Governance | 保持 | 两类 profile 均运行同一质量脚本；Secret scan 增加 `.agents`；PR #246 实证成功 |
+| Secret + docs gates | CI / Repository Quality | full profile 原位置；轻量 profile / Docs and Governance | 保持 | 两类轻量 profile 均运行同一质量脚本；Secret scan 增加 `.agents`；PR #246/#247 实证成功 |
 | Wheel + Frontend unit/build/Browser Mock | CI / Repository Quality | full profile / Repository Quality | 保持 | feature/main full profile 均成功执行 |
 | PostgreSQL transaction/migration/integration | CI / PostgreSQL Integration | full profile / PostgreSQL Integration | 保持 | 仍使用 PostgreSQL 18.4；feature/main full profile 均成功 |
-| CI 总门禁身份 | CI / CI Gate | CI / CI Gate | 保持 | 原 check name 不变；feature/main full 与 PR #246 docs-only 都成功 |
-| Real Full-stack Golden Path | Full-stack Acceptance | 产品相关 path 保持；安全 docs/governance path 不触发 | 保持 | Golden Path Job body 未修改；feature/main success；docs-only PR 不触发 |
-| Requirement/Ready/Coding regression | Change Completion Gate | Change Completion Gate | 保持 | Workflow 未修改；feature Ready HEAD 与 main merge commit success；PR #246 success |
+| CI 总门禁身份 | CI / CI Gate | CI / CI Gate | 保持 | 原 check name 不变；full/docs-only/governance-only 三类 route 均 success |
+| Real Full-stack Golden Path | Full-stack Acceptance | 产品相关 path 保持；安全 docs/governance path 不触发 | 保持 | Golden Path Job body 未修改；feature/main success；两类轻量 PR 不触发 |
+| Requirement/Ready/Coding regression | Change Completion Gate | Change Completion Gate | 保持 | Workflow 未修改；feature Ready HEAD、main merge、docs-only probe、governance archive head 均 success |
 
 # Red → Green
 
@@ -165,6 +165,24 @@ Feature PR #245 已正常合并，merge commit `9435fe354e6a32320ac693e103229616
 
 PR #246 已关闭且 `merged=false`，验证文件未进入 `main`。
 
+## Post-merge governance_only 真实验收
+
+独立归档 PR #247 首个 HEAD `9bed7e9b4130f1b3c95dda5b5010117db2a38384` 相对 main 仅为 `changes/**` 的 Change rename/update，真实结果：
+
+- CI `32920426878`：
+  - `CI Scope`：success；
+  - `Docs and Governance`：success；
+  - `Secret and docs gates`：success；
+  - `Coding governance regression`：success，证明命中 `governance_only` 而非 `docs_only`；
+  - `Repository Quality`：skipped；
+  - `PostgreSQL Integration`：skipped；
+  - `CI Gate`：success；
+- Change Completion Gate `32920426847`：success；
+- Runtime Acceptance `32920426865`：success；
+- Full-stack Acceptance：未触发。
+
+该证据写回归档 Change 后，最新归档 HEAD 仍必须再次取得治理轻量门禁成功才允许合并，避免用旧 HEAD 绿灯替代最终提交。
+
 # Docs targeted review
 
 范围：Coding README §11.1、reference 07 的 Documentation / Governance Fast Path、Blueprint 06 的 CI profile 说明，以及它们直接依赖的 classifier/CI/Full-stack 实现。
@@ -209,7 +227,7 @@ Re-review：
 - [x] upstream_re_read：重新读取用户批准方案、当前 `AGENTS.md`、Coding §11/07、Docs、Review、CI/Full-stack/Runtime/Change Gate、Release required check consumer、Blueprint 06 和当前 diff。
 - [x] change_coverage：R1-R6 覆盖“纯文档不全跑、仍保留文档门禁、保守分类、check identity、Skill/Blueprint 同步、证据守恒”。
 - [x] reverse_audit：从用户目标反查到 classifier → CI route → CI Gate → specialized workflows；从当前 diff 反查测试、文档、Release consumer 和 full product evidence，未发现要求落空。
-- [x] unresolved_cleared：feature/full 与 docs-only 两类真实路由均闭环；归档 PR 仅承担 governance-only 最后一项集成验证，未通过前不合并归档。
+- [x] unresolved_cleared：full、docs-only、governance-only 三类真实路由均已取得证据；归档最新 HEAD 仍需重复治理轻量门禁成功后才合并。
 
 # 任务
 
@@ -225,7 +243,7 @@ Re-review：
 - [x] Ready 状态最终 HEAD 的 Change Gate / CI / Runtime / Full-stack 新鲜验证
 - [x] PR #245 正常合并与 main full-profile 集成验证
 - [x] 临时 PR #246 真实验证 docs_only，随后关闭不合并
-- [ ] 独立归档 PR 真实验证 governance_only 并归档 Change
+- [x] 独立归档 PR #247 首个 HEAD 真实验证 governance_only；最终归档 HEAD 仍需同类门禁成功后合并
 
 # 文档影响
 
@@ -241,5 +259,5 @@ Docs Impact: targeted。
 - Feature branch：`feature/docs-ci-fast-path`
 - Feature PR：#245 `优化纯文档与治理变更 CI 快速路径`，已合并；merge commit `9435fe354e6a32320ac693e103229616224d271e`
 - Docs-only probe PR：#246，已关闭、未合并；临时验证文件未进入 main
+- Archive PR：#247 `归档文档与治理 CI 快速路径 Change`；首个 governance-only HEAD 已验证，最终 HEAD 通过后正常合并
 - Product Contract / Schema / Migration / dependency / data：无变化
-- 归档：本文件位于 `changes/archive/2026-08/`；归档 PR 只包含 Change rename/update，并在合并前必须以真实 Actions 证明 `governance_only`。
