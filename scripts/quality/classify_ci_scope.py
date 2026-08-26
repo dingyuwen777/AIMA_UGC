@@ -23,12 +23,16 @@ def _classify_path(path: str) -> str:
     normalized = _normalize_path(path)
     if not normalized:
         return "full"
+    if (
+        normalized in GOVERNANCE_ONLY_EXACT
+        or normalized.endswith("/AGENTS.md")
+        or normalized.startswith(GOVERNANCE_ONLY_PREFIXES)
+    ):
+        return "governance_only"
     if normalized in DOCS_ONLY_EXACT or normalized.endswith("/README.md"):
         return "docs_only"
     if normalized.startswith(DOCS_ONLY_PREFIXES):
         return "docs_only"
-    if normalized in GOVERNANCE_ONLY_EXACT or normalized.startswith(GOVERNANCE_ONLY_PREFIXES):
-        return "governance_only"
     return "full"
 
 
