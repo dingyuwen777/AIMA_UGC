@@ -248,8 +248,12 @@ src/features/voice-plaza/
 - 平台/文本/时间/Analysis 筛选；
 - Analysis current/stale/pending；
 - 显式提交 AI Analysis；
+- 查看 AI 原判与查询层 `effective_relevance / relevance_source`；
+- 对当前 Content Version 提交人工相关性复核/撤销复核；
 - 创建正式 Excel Export；
 - 查询 Export 状态和下载 Artifact。
+
+人工相关性复核通过 generated Client 调当前正式 API；Feature `api.ts` 只提供页面语义薄封装，不在前端复制 `relevant / irrelevant / inherit_ai` 的后端状态机或数据库规则。完整业务语义看 Analysis README 与后端 Contract。
 
 注意两条不同能力：
 
@@ -508,6 +512,18 @@ Page input
 
 不要先在 Vue 做第二套业务过滤掩盖后端错误。
 
+### AI 相关性与人工状态看起来不一致
+
+```text
+Content 当前版本
+→ current Analysis Identity / AI 原判
+→ effective_relevance / relevance_source
+→ 人工相关性复核 API
+→ 后端 relevance_reviews / Content Query
+```
+
+不要从当前页面筛选条件反推人工复核状态，也不要在前端自行计算一套“最终相关性”。
+
 ### Analysis / Export 一直处理中
 
 ```text
@@ -537,13 +553,13 @@ frontend/playwright.config.ts
 
 这组测试会 Mock `/api/v1/**`，用于快速验证页面、按钮、Drawer/Dialog、前端状态和常见 HTTP 返回，不作为真实后端链证明。
 
-Stage 8F 真实 Full-stack Browser Acceptance：
+Stage 8F 形成的真实 Full-stack Browser Acceptance 当前由永久 Workflow 维护：
 
 ```text
 frontend/e2e-fullstack/
 frontend/playwright.fullstack.config.ts
 tests/fullstack/
-.github/workflows/stage8f-fullstack.yml
+.github/workflows/fullstack.yml
 ```
 
 它使用隔离 PostgreSQL、真实 FastAPI、正式 PostgreSQL Job Worker 和生产 Excel Reader/Mapper/Ingestion，不 Mock `/api/v1/**`。固定核心链是：
@@ -579,7 +595,7 @@ npm --prefix frontend run test:e2e
 npm --prefix frontend run test:e2e:fullstack
 ```
 
-永久 CI 会通过 `.github/workflows/stage8f-fullstack.yml` 自动建立上述隔离环境并执行这条真实链。完整能力矩阵和边界见：
+永久 CI 会通过 `.github/workflows/fullstack.yml` 自动建立上述隔离环境并执行这条真实链。完整能力矩阵和边界见：
 
 [`../docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md`](../docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md)
 
