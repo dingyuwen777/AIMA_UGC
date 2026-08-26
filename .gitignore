@@ -236,3 +236,5 @@ desktop.ini
 
 # Stage 2 local runtime state / secrets / logs / artifacts
 .runtime/
+
+.agents/project-context.json
