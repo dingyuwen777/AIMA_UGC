@@ -1,4 +1,4 @@
-"""对源码、Provider 证据、Change 与文档执行最小凭据泄漏扫描。"""
+"""对源码、Provider 证据、Change、Agent 规则与文档执行最小凭据泄漏扫描。"""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ SCAN_ROOTS = [
     ROOT / "frontend" / "src",
     ROOT / "scripts",
     ROOT / ".github",
+    ROOT / ".agents",
     ROOT / "tests" / "fixtures" / "providers",
     ROOT / "changes",
     ROOT / "docs",
@@ -54,6 +55,7 @@ PATTERNS = [
 
 
 def iter_files() -> list[Path]:
+    """返回需要扫描的当前仓库文本文件。"""
     files = [path for path in ROOT_FILES if path.exists()]
     for scan_root in SCAN_ROOTS:
         if not scan_root.exists():
@@ -67,6 +69,7 @@ def iter_files() -> list[Path]:
 
 
 def main() -> int:
+    """扫描常见凭据模式并用非零退出码阻止疑似 Secret 进入仓库。"""
     errors: list[str] = []
     for path in iter_files():
         text = path.read_text(encoding="utf-8")
@@ -78,7 +81,7 @@ def main() -> int:
         print("\n".join(errors))
         return 1
 
-    print("源码、Provider 证据、Change 与文档 Secret 扫描通过。")
+    print("源码、Provider 证据、Agent 规则、Change 与文档 Secret 扫描通过。")
     return 0
 
 
