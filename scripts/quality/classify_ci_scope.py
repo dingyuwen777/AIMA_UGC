@@ -14,8 +14,11 @@ GOVERNANCE_ONLY_PREFIXES = ("changes/", ".agents/")
 
 
 def _normalize_path(path: str) -> str:
-    """把 Git 路径规范成仓库相对 POSIX 形式，避免平台分隔符影响分类。"""
-    return path.strip().replace("\\", "/").lstrip("./")
+    """把 Git 路径规范成仓库相对 POSIX 形式，不破坏 `.agents` 这类点目录。"""
+    normalized = path.strip().replace("\\", "/")
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    return normalized
 
 
 def _classify_path(path: str) -> str:
