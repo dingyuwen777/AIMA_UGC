@@ -79,12 +79,13 @@ data_changes: []
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 按 Docs `full` 要求修复已审计确认的受影响文档域，不机械扫描全部 Markdown | user:current-request; `.agents/skills/docs/SKILL.md` | satisfied | PR #248 diff 只有 8 份审计目标文档 + 本 Change；`main...docs/sync-current-docs` compare 未出现无关 Markdown/代码 |
-| R2 | Blueprint 01 与当前 Docker/Compose/Internal V1-A 机器事实一致，同时不误写完整 Production 已完成 | `Dockerfile`; `compose.yaml`; `compose.windows.yaml`; `env.production.example`; `docs/roadmap/02_生产上线实施路线.md` | satisfied | `docs/blueprint/01_总体架构与技术选型.md` 已同时写明 Internal V1-A 当前事实与完整 Production No-Go 边界 |
-| R3 | Excel Import 文档反映当前显式多词包选择与冻结语义；Collection 保留全局 Relevance | `backend/src/aima_ugc/bootstrap/import_http.py`; `backend/src/aima_ugc/modules/ingestion/import_job.py`; `backend/src/aima_ugc/bootstrap/import_worker.py`; `backend/src/aima_ugc/bootstrap/collection_scope.py` | satisfied | Blueprint 02 / Appendix 08 / System README / Ingestion README 已区分 `RelevanceSnapshotV1` 与 `ImportKeywordSelectionSnapshot`；targeted re-review 再次核对 `ImportJobPayload.extra=forbid`、`keyword_selection` 与 `_read_import_keyword_selection()` |
-| R4 | 人工相关性复核在开发导航、数据库排障和前端 README 中可定位，但不复制第二套 Schema | `backend/src/aima_ugc/modules/analysis/relevance_review_tables.py`; `backend/src/aima_ugc/database_schema.py`; `frontend/src/features/voice-plaza/api.ts`; `frontend/src/features/voice-plaza/store.ts` | satisfied | `docs/01_代码结构与修改导航.md`、PostgreSQL Appendix、`frontend/README.md` 已补当前表/Repository/API/排障导航；精确 Schema 继续指向机器事实 |
-| R5 | Full-stack Workflow 路径使用当前实际 `.github/workflows/fullstack.yml` | `.github/workflows/fullstack.yml` | satisfied | `frontend/README.md` 两处旧 `stage8f-fullstack.yml` 已改为当前永久 Workflow；targeted re-review 确认文件存在且 docs/README-only 变更由其 `paths-ignore` 排除 |
-| R6 | 本轮只同步文档事实，不静默修改代码、Contract、Schema、依赖、Workflow 或 Roadmap | user:current-request; `.agents/skills/docs/SKILL.md` | satisfied | PR #248 实际 changed files 仅 8 份目标文档 + 本 Change；已知 `bootstrap/api.py` 错误提示问题明确留作非目标 |
+| R1 | 按 Docs `full` 要求修复已审计确认的受影响文档域，不机械扫描全部 Markdown | user:current-request | satisfied | PR #248 diff 只有 8 份审计目标文档 + 本 Change；`main...docs/sync-current-docs` compare 未出现无关 Markdown/代码 |
+| R2 | Blueprint 01 与当前 Docker/Compose/Internal V1-A 机器事实一致，同时不误写完整 Production 已完成 | `compose.yaml` | satisfied | `docs/blueprint/01_总体架构与技术选型.md` 已与根 Dockerfile、canonical Compose、Windows storage-only override 及 Roadmap 的 Production No-Go 边界交叉核对 |
+| R3 | Excel Import 文档反映当前显式多词包选择与冻结语义 | `backend/src/aima_ugc/modules/ingestion/import_job.py` | satisfied | Blueprint 02 / Appendix 08 / System README / Ingestion README 已反映 `ImportKeywordSelectionSnapshot`；targeted re-review 再次核对 `ImportJobPayload.extra=forbid`、`keyword_selection` 与 Import API/Worker 冻结校验 |
+| R4 | Collection 继续保留全局 Rule Relevance，并与 Import 每批词包选择区分 | `backend/src/aima_ugc/bootstrap/collection_scope.py` | satisfied | Blueprint 02 / Appendix 08 / System README 明确 Collection 使用 Run 冻结 `RelevanceSnapshotV1`；没有因修 Import 文档删除 `global_relevance_config` |
+| R5 | 人工相关性复核在开发导航、数据库排障和前端 README 中可定位，但不复制第二套 Schema | `backend/src/aima_ugc/modules/analysis/relevance_review_tables.py` | satisfied | `docs/01_代码结构与修改导航.md`、PostgreSQL Appendix、`frontend/README.md` 已补当前表/Repository/API/排障导航；Voice Plaza Store 的 `reviewRelevance()` 再次验证前端真实接线 |
+| R6 | Full-stack Workflow 路径使用当前实际 `.github/workflows/fullstack.yml` | `.github/workflows/fullstack.yml` | satisfied | `frontend/README.md` 两处旧 `stage8f-fullstack.yml` 已改为当前永久 Workflow；targeted re-review 确认文件存在且 docs/README-only 变更由其 `paths-ignore` 排除 |
+| R7 | 本轮只同步文档事实，不静默修改代码、Contract、Schema、依赖、Workflow 或 Roadmap | user:current-request | satisfied | PR #248 实际 changed files 仅 8 份目标文档 + 本 Change；已知 `bootstrap/api.py` 错误提示问题明确留作非目标 |
 
 # Validation Matrix
 
@@ -97,7 +98,7 @@ data_changes: []
 | 跨组件 Golden Path | not_applicable | 不改变组件接线；`.github/workflows/fullstack.yml` 对 docs/README-only 变更明确 `paths-ignore` |
 | External Dependency / Provider Probe | not_applicable | 不修改或验证外部 Provider 行为 |
 | Build / Package / Runtime | not_applicable | 不修改构建、镜像、配置或 Runtime 文件 |
-| Docs / Governance / Other | required | PR #248 HEAD `89849c3895763cbbd02345f58aa48b956110d077`：`Docs and Governance` success、`CI Scope` success、`CI Gate` success；本次 Change 切到 Ready 后由新 HEAD 再执行 `Requirement Traceability and Completion Audit` 与最终 docs/governance 门禁 |
+| Docs / Governance / Other | required | PR #248 首轮 HEAD `89849c3895763cbbd02345f58aa48b956110d077`：`Docs and Governance`、`CI Scope`、`CI Gate` success；Ready HEAD 的第一次 Completion Gate 暴露 Source 单元格多路径格式错误，已按 `ready_check.py` 的单 Source 规则修正，最终只接受本提交后新 HEAD 重跑结果 |
 
 # 分步任务
 
@@ -107,9 +108,9 @@ data_changes: []
 - [x] 补齐人工 Relevance Review 的导航和 PostgreSQL 排障入口。
 - [x] 修正 Frontend README 的人工复核能力摘要与 Full-stack Workflow 路径。
 - [x] 对照机器事实执行 Docs targeted re-review，确认没有把未来能力写成当前能力。
-- [x] 执行独立 Review；结论为 `NO_FINDINGS_WITHIN_SCOPE`，已知 Import HTTP 错误提示问题属于本 Change 明确非目标，未通过文档掩盖。
-- [x] 取得首轮 `Docs and Governance` / `CI Gate` 文档治理证据；Ready 状态提交后继续要求新 HEAD 最终门禁全绿。
-- [x] 更新 Requirement Traceability、Validation Matrix 和 Completion Audit，进入 `ready_for_review`。
+- [x] 执行独立 Review；文档 diff 结论为 `NO_FINDINGS_WITHIN_SCOPE`，已知 Import HTTP 错误提示问题属于本 Change 明确非目标，未通过文档掩盖。
+- [x] 运行文档/治理门禁并按失败证据修正 Change Source 格式，不修改门禁或降低要求。
+- [x] 更新 Requirement Traceability、Validation Matrix 和 Completion Audit，保持 `ready_for_review`。
 - [ ] 通过仓库正常 PR/CI 流程合入 `main`，合并后再归档 Change。
 
 # 验证计划与本轮证据
@@ -131,13 +132,13 @@ data_changes: []
 
 Review Target：`main@be35c195d5ef03282410a90a28048361f8bc4881 ... docs/sync-current-docs` / PR #248。
 
-独立重建 R1-R6 后检查实际 diff：9 个 changed files = 8 份目标文档 + 本 Change，无生产代码、Contract、Schema/Migration、依赖、Prompt、Workflow、Roadmap 差异。对 Fact Correctness、Coverage、Source-of-truth Safety、知识保留与范围控制逐项复核，结论：`NO_FINDINGS_WITHIN_SCOPE`。
+独立重建 R1-R7 后检查实际 diff：changed files = 8 份目标文档 + 本 Change，无生产代码、Contract、Schema/Migration、依赖、Prompt、Workflow、Roadmap 差异。对 Fact Correctness、Coverage、Source-of-truth Safety、知识保留与范围控制逐项复核，文档 diff 结论：`NO_FINDINGS_WITHIN_SCOPE`。
 
 已知实现问题：`bootstrap/api.py` 仍可能把 Import 显式词包错误描述成“全局 Relevance 未配置”。这是审计发现的代码问题，不由本次文档 Change 修复，也没有被修改后的文档合法化。
 
-## GitHub Actions 首轮证据
+## GitHub Actions 与治理反馈
 
-PR #248 HEAD `89849c3895763cbbd02345f58aa48b956110d077`：
+PR #248 首轮 HEAD `89849c3895763cbbd02345f58aa48b956110d077`：
 
 ```text
 CI Scope                           success
@@ -149,7 +150,11 @@ Repository Quality                skipped（docs-only scope）
 PostgreSQL Integration            skipped（docs-only scope）
 ```
 
-该 HEAD 的 `Requirement Traceability and Completion Audit` 在 Change 仍为 `in_progress` 时按设计失败；本提交已将 Change 收口为 `ready_for_review`，最终结论只接受新 HEAD 的重新执行结果。
+首轮 `Requirement Traceability and Completion Audit` 在 Change 仍为 `in_progress` 时按设计失败。
+
+Change 切到 Ready 后的 HEAD `5f4483dff2dc8c974b444d0bbbad480d913b6d50` 中，Completion Gate 的 Coding completion-gate tests 成功，但 `Enforce changed PR Change readiness` 失败。对照 `ready_check.py` 根因确认：R2/R3/R4 等 Requirement 的 Source 单元格错误放入多个路径，而门禁要求一条 Requirement 对应一个安全仓库相对路径或显式 `user:/external:` Source。本提交已把 Requirement 拆分/收敛为 R1-R7，每个 Source 只保留一个合法事实源；没有修改门禁实现。
+
+最终结论只接受本次修正后新 HEAD 的重新执行结果。
 
 # Docs Impact
 
@@ -158,17 +163,17 @@ PostgreSQL Integration            skipped（docs-only scope）
 # Completion Audit
 
 - [x] upstream_re_read：修改完成后重新读取本轮用户要求、Docs/Coding/Review 规则，并重新核对 Import Job/API、Voice Plaza relevance review、Full-stack Workflow 与容器关键机器事实。
-- [x] change_coverage：R1-R6 均有对应文档 diff 或明确非目标证据；实际 PR diff 未发现范围外变化。
+- [x] change_coverage：R1-R7 均有对应文档 diff 或明确非目标证据；实际 PR diff 未发现范围外变化。
 - [x] reverse_audit：已从文档关键断言反查 Docker/Compose、Import/Collection、Analysis Review、Workflow 真实入口，并从这些机器能力反查相关当前文档是否遗漏关键导航；未发现新的阻塞缺口。
-- [x] unresolved_cleared：Requirement 状态已无 `not_satisfied`；required 文档治理验证已有首轮成功证据，Ready 提交后的新 HEAD 仍必须全绿后才允许合并。
+- [x] unresolved_cleared：Requirement 状态已无 `not_satisfied`；Completion Gate 暴露的 Source 格式问题已按机器规则修正，最终必须由新 HEAD 门禁成功证明闭环。
 
 # Git / PR / 发布状态
 
 - branch: `docs/sync-current-docs`
 - base main: `be35c195d5ef03282410a90a28048361f8bc4881`
-- PR: `#248`（当前 Draft；本 Change Ready 提交后转 Ready for Review）
-- 首轮 reviewed head: `89849c3895763cbbd02345f58aa48b956110d077`
-- 首轮 CI: Docs/Governance 与 CI Gate 成功；Completion Gate 因 Change 当时仍 `in_progress` 按设计失败
-- final CI: 待本次 `ready_for_review` 提交的新 HEAD 重新执行并确认
+- PR: `#248`（Ready for Review）
+- reviewed docs head: `89849c3895763cbbd02345f58aa48b956110d077`
+- first ready head: `5f4483dff2dc8c974b444d0bbbad480d913b6d50`（Completion Gate 暴露 Source 格式问题，已修正）
+- final CI: 待本提交后的新 HEAD 重新执行并确认
 - main merge: 未完成
 - archive: 未完成；只在 main 集成确认后执行
