@@ -9,6 +9,7 @@ branch: feature/coding-network-workflow-governance
 created: 2026-08-26
 updated: 2026-08-26
 completion_gate: required
+depends_on: []
 affected_areas:
   - agent-governance
   - developer-tooling
