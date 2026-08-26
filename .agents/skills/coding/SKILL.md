@@ -698,3 +698,32 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 - 如果仓库没有 Review Skill，则继续执行 Coding 当前 [11_两阶段复核与完成前验证.md](references/11_两阶段复核与完成前验证.md) 的既有 Review 规则，不能因为可选 Skill 缺失跳过 Review 本身。
 
 这条路由只增加独立审查层，不改变 Coding 原有 L1-L3、Change、TDD、Validation Matrix、Completion Audit、Docs、Git、CI 或交付规则。
+
+## 11. 网络下载源与永久 Workflow 治理
+
+### 网络下载源与镜像选择必须感知执行环境
+
+当任务涉及 Runtime/Compiler/SDK、系统包或依赖安装，启动/初始化/bootstrap 脚本，Docker/OCI 镜像构建，CI bootstrap，部署/恢复环境准备等网络下载行为时，**必须读取 [03_编程语言与工具链适配规则.md](references/03_编程语言与工具链适配规则.md)** 并先确认目标执行环境：
+
+- 目标明确位于**中国大陆**网络，且本次会新增或修改下载行为：必须**联网核验**当前稳定、可信、与目标生态匹配的国内镜像/代理后再选择默认值或 fallback；阿里云、清华 TUNA、中科大 USTC、npmmirror 等只作为候选，不是永久白名单；
+- 目标是 GitHub Hosted Runner、海外服务器或其他海外网络：不因为项目主要在中国使用就机械切换国内源，应选择该执行环境当前稳定且符合项目 policy 的官方上游或近端源；
+- 镜像/代理只能改善传输路径，不能静默改变 package/base image 的 canonical identity、锁定版本、Manifest/锁文件、checksum/hash/digest/签名、安全更新或 SBOM/provenance 等供应链事实；
+- 当前候选镜像已停服、同步异常、缺少目标版本/架构或无法验证时，使用另一个已验证候选、项目既有可信源或官方 fallback，并明确未验证风险；禁止为下载成功关闭 TLS/GPG/完整性/签名检查。
+
+### 永久 CI/Workflow 优化必须证据守恒
+
+当任务新增/修改永久 CI、Workflow、测试门禁、构建/发布流水线，用户明确要求精简/加速，或当前调查已经确认存在明显无关触发、重复 setup/build/install、相同风险重复证明、昂贵层覆盖过宽等长期成本问题时，**必须先读取 [07_通用验证与证据策略.md](references/07_通用验证与证据策略.md)** 并执行 **Workflow Responsibility Audit**；Web/API/PostgreSQL/Provider 等专项边界真实存在时，还必须读取 [08_分层测试与验收策略.md](references/08_分层测试与验收策略.md)。
+
+任何永久 Job/Step 的删除、合并、迁移或大幅收缩之前，必须建立 **Evidence Preservation Mapping**，逐项说明：
+
+```text
+原证明责任
+→ 原位置
+→ 新位置
+→ 证据等级是否保持
+→ 等价/更强依据
+```
+
+只有在独立失败边界仍由等价或更强证据负责时，才允许通过 event/path filter、changed-scope/risk detection、fast path、安全缓存、artifact reuse、并行、PR/main/release 分责或 Golden Path 收敛等方式降低成本。禁止用较弱层冒充较强层，也不能因“CI 仍绿”“另一个测试很多”就删除原独立证据。
+
+Workflow 重命名、拆分或合并时还要检查 Branch Protection/Ruleset、release gate、脚本和外部平台对 check name 的实时引用，不能借“精简”让门禁消费者失效。普通功能任务没有修改这些边界、也没有发现明确长期成本问题时，不要求机械全仓审计所有 Workflow。
