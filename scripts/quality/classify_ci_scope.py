@@ -10,6 +10,7 @@ from pathlib import Path
 DOCS_ONLY_EXACT = {"README.md"}
 GOVERNANCE_ONLY_EXACT = {"AGENTS.md"}
 DOCS_ONLY_PREFIXES = ("docs/",)
+DOCS_ONLY_SUFFIXES = {".md", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
 GOVERNANCE_ONLY_PREFIXES = ("changes/", ".agents/")
 
 
@@ -35,7 +36,9 @@ def _classify_path(path: str) -> str:
     if normalized in DOCS_ONLY_EXACT or normalized.endswith("/README.md"):
         return "docs_only"
     if normalized.startswith(DOCS_ONLY_PREFIXES):
-        return "docs_only"
+        if Path(normalized).suffix.lower() in DOCS_ONLY_SUFFIXES:
+            return "docs_only"
+        return "full"
     return "full"
 
 
