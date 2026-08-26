@@ -87,7 +87,7 @@ data_changes: []
 | R3 | 文档 fast path 必须保守，Prompt/机器行为 Markdown 不能误判 | user:approved-plan | satisfied | classifier 白名单、未知/空/错误回退 full；Prompt 和 `docs/generated-policy.json` 回归均为 full；rename 使用 `--no-renames` |
 | R4 | required check identity 不因优化消失 | user:approved-plan | satisfied | `CI Gate` 保持原名且 `if: always()`；Release 当前 required checks 已重新核对并继续消费 `CI Gate` |
 | R5 | Skill 与 Blueprint 同步表达风险相关 CI，而非机械全量 CI | user:approved-plan | satisfied | 主 Skill 现有 §11 硬路由保留；07 新增 fast-path 细则；Coding README §11.1；Blueprint 06 固化 AIMA profile |
-| R6 | 不降低原 Unit/Contract/API/PostgreSQL/Wheel/Frontend/Full-stack 证明责任 | current Coding Workflow governance | satisfied | Evidence Preservation Mapping；full profile 实际运行 Repository Quality、PostgreSQL Integration、CI Gate；Full-stack/Runtime success |
+| R6 | 不降低原 Unit/Contract/API/PostgreSQL/Wheel/Frontend/Full-stack 证明责任 | .agents/skills/coding/references/07_通用验证与证据策略.md | satisfied | Evidence Preservation Mapping；full profile 实际运行 Repository Quality、PostgreSQL Integration、CI Gate；Full-stack/Runtime success |
 
 # Validation Matrix
 
@@ -97,7 +97,7 @@ data_changes: []
 | 接口 / Contract | not_applicable | 不改变产品 public Contract；CI profile 输出仅在当前 Workflow 内部消费 |
 | 集成 / Persistence / Runtime Dependency | required | full profile run `32918982073` 的 PostgreSQL Integration success，真实 Migration/readiness/各 integration 全部执行 |
 | 用户 / Workflow Acceptance | required | feature PR 中 `CI Scope` 实际选择 full，`Docs and Governance` skipped、产品 jobs success、`CI Gate` success；真实 docs_only/governance_only 作为合并后归档前 integration closure |
-| 跨组件 Golden Path | required | Full-stack Acceptance `32918982085` success；本 feature 修改 Full-stack trigger 但没有修改 Golden Path body |
+| 跨组件 Golden Path | required | Full-stack Acceptance `32918982085` success；本 Change 修改 Full-stack trigger 但没有修改 Golden Path body |
 | External Dependency / Provider Probe | not_applicable | 不改变 Provider 或外部接口事实 |
 | Build / Package / Runtime | required | run `32918982073` 中 startup smoke、Wheel、Frontend unit/build/Browser Mock success；Runtime Acceptance `32918982093` success |
 | Docs / Governance / Other | required | Coding tests success；Secret/docs gate success；Docs targeted review 无 code_issue_detected；Review 找到点目录规范化缺陷后已修复并 re-review |
