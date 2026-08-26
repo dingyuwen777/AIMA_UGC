@@ -34,7 +34,11 @@ def _classify_path(path: str) -> str:
 
 def classify_paths(paths: Iterable[str]) -> str:
     """汇总路径得到 CI profile；full 优先，其次 governance_only，最后 docs_only。"""
-    normalized = [_normalize_path(path) for path in paths if _normalize_path(path)]
+    normalized: list[str] = []
+    for path in paths:
+        candidate = _normalize_path(path)
+        if candidate:
+            normalized.append(candidate)
     if not normalized:
         return "full"
 
@@ -58,7 +62,11 @@ def _changed_paths(base: str, head: str) -> list[str] | None:
         )
     except subprocess.CalledProcessError:
         return None
-    return [item.decode("utf-8", errors="surrogateescape") for item in completed.stdout.split(b"\0") if item]
+    return [
+        item.decode("utf-8", errors="surrogateescape")
+        for item in completed.stdout.split(b"\0")
+        if item
+    ]
 
 
 def _write_github_output(path: Path, profile: str, changed_count: int) -> None:
