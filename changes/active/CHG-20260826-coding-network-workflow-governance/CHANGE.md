@@ -22,7 +22,7 @@ affected_paths:
   - .agents/skills/coding/references/12_规则保留映射.md
   - .agents/skills/coding/tests/test_network_and_workflow_governance.py
 contracts: []
-data_changes: false
+data_changes: []
 ---
 
 # 目标
