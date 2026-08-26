@@ -41,10 +41,12 @@ class DocsCiFastPathTest(unittest.TestCase):
         classifier = self._load_classifier()
 
         self.assertEqual(classifier.classify_paths(["docs/blueprint/README.md"]), "docs_only")
+        self.assertEqual(classifier.classify_paths(["docs/assets/architecture.svg"]), "docs_only")
         self.assertEqual(classifier.classify_paths(["README.md", "backend/src/aima_ugc/modules/system/README.md"]), "docs_only")
         self.assertEqual(classifier.classify_paths(["changes/archive/2026-08/example/CHANGE.md"]), "governance_only")
         self.assertEqual(classifier.classify_paths(["AGENTS.md", ".agents/skills/coding/README.md"]), "governance_only")
         self.assertEqual(classifier.classify_paths(["docs/AGENTS.md"]), "governance_only")
+        self.assertEqual(classifier.classify_paths(["docs/generated-policy.json"]), "full")
         self.assertEqual(
             classifier.classify_paths(["backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md"]),
             "full",
