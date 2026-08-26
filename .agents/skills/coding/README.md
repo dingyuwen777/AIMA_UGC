@@ -330,3 +330,17 @@ coding/
 - [Docs Skill 使用说明](../docs/README.md)
 - [`.agents` 总说明](../../README.md)
 - [AIMA_UGC Agent 统一入口](../../../AGENTS.md)
+
+## 11. 网络源与 Workflow 治理怎么用
+
+当任务会下载安装 Runtime、编译器、系统包、语言依赖，或者会修改启动/初始化脚本、Docker/OCI 镜像构建、CI bootstrap、部署环境准备等网络下载行为时，Coding 会先判断**目标执行环境**，而不是按 Agent 自己所在网络选择镜像。
+
+如果目标是**中国大陆网络**，应对当前可用的国内镜像做**实时核验**，再选择适合该生态和项目的下载源；阿里云、清华 TUNA、中科大 USTC、npmmirror 等只能作为候选，不代表永久可用。海外服务器或 GitHub Hosted Runner 也不会因为项目在中国使用就机械切到国内源。正式细则见 [`references/03_编程语言与工具链适配规则.md`](references/03_编程语言与工具链适配规则.md)。
+
+镜像加速的目标只是改善下载链路，不应该顺手改变锁定版本、包/镜像 canonical 身份、checksum/hash/digest、签名或锁文件事实。当前镜像不可验证或明显落后时，应回到项目既有源、官方上游或另一个已验证候选，而不是关闭 TLS、校验或安全门禁换取速度。
+
+当任务新增/修改永久 CI、Workflow、测试门禁、构建/发布流水线，或者当前调查已经发现 Workflow 明显存在无关触发、重复环境准备、重复证明同一风险或昂贵层被滥用时，Coding 会先做 **Workflow Responsibility Audit**：明确每个 Job/Step 证明什么，再建立原证明责任到新位置的映射。
+
+所谓 **证据守恒**，不是要求 YAML 行数不变，而是要求所有仍然存在的独立失败边界都有不弱于原来的验证层。之后才可以通过 path/event 过滤、changed-scope/risk detection、fast path、安全缓存、artifact 复用、并行化、PR/main/release 分层或收敛 Real Full-stack Golden Path 等方式降低成本。正式方法见 [`references/07_通用验证与证据策略.md`](references/07_通用验证与证据策略.md)；Web/API/PostgreSQL/Provider 项目还要同时遵守 [`references/08_分层测试与验收策略.md`](references/08_分层测试与验收策略.md)。
+
+这套规则不会要求每次普通代码修改都扫描全部 Workflow；只有 CI/Workflow 本身被修改，用户明确要求精简，或当前任务已经暴露明显长期成本问题时才触发专项审计。
