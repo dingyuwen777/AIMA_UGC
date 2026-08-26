@@ -7,12 +7,20 @@ on:
     paths-ignore:
       - "docs/**"
       - "changes/**"
+      - ".agents/**"
+      - "AGENTS.md"
+      - "README.md"
+      - "**/README.md"
   push:
     branches:
       - main
     paths-ignore:
       - "docs/**"
       - "changes/**"
+      - ".agents/**"
+      - "AGENTS.md"
+      - "README.md"
+      - "**/README.md"
 
 permissions:
   contents: read

@@ -344,3 +344,11 @@ coding/
 所谓 **证据守恒**，不是要求 YAML 行数不变，而是要求所有仍然存在的独立失败边界都有不弱于原来的验证层。之后才可以通过 path/event 过滤、changed-scope/risk detection、fast path、安全缓存、artifact 复用、并行化、PR/main/release 分层或收敛 Real Full-stack Golden Path 等方式降低成本。正式方法见 [`references/07_通用验证与证据策略.md`](references/07_通用验证与证据策略.md)；Web/API/PostgreSQL/Provider 项目还要同时遵守 [`references/08_分层测试与验收策略.md`](references/08_分层测试与验收策略.md)。
 
 这套规则不会要求每次普通代码修改都扫描全部 Workflow；只有 CI/Workflow 本身被修改，用户明确要求精简，或当前任务已经暴露明显长期成本问题时才触发专项审计。
+
+### 11.1 纯文档或治理变化会不会还跑完整 CI
+
+不应该机械全跑。Coding 会先看 Validation Matrix：只有在产品行为、Contract、持久化/真实依赖、用户工作流、跨组件接线、外部 Provider、Build/Package/Runtime 都能给出具体 `not_applicable` 依据时，才允许走 Documentation / Governance Fast Path。
+
+这不是“看到 `.md` 就跳过测试”。Prompt、模板、配置、Contract/Schema、Migration、generated、Manifest/lock、CI/Workflow/Release 等都可能是机器消费事实；即使扩展名是 Markdown 或文本，也要按真实消费者和失败边界选择更强验证。混合 diff 或无法确认的路径同样不能走轻量路径。
+
+在 AIMA_UGC 中，具体 `docs_only / governance_only / full` 路径映射以当前 Workflow 和 Blueprint 06 为准；其他仓库可以有不同 profile 名称和路径，但同样必须遵守“轻量路径只减少不相关证据，不降低真正 required 的证据”这个原则。

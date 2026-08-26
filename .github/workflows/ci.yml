@@ -16,8 +16,62 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  scope:
+    name: CI Scope
+    runs-on: ubuntu-24.04
+    outputs:
+      profile: ${{ steps.classify.outputs.profile }}
+      changed_count: ${{ steps.classify.outputs.changed_count }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Classify changed scope
+        id: classify
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE_SHA="${{ github.event.before }}"
+            HEAD_SHA="${GITHUB_SHA}"
+          fi
+          python3 scripts/quality/classify_ci_scope.py \
+            --base "${BASE_SHA}" \
+            --head "${HEAD_SHA}" \
+            --github-output "${GITHUB_OUTPUT}"
+
+  docs-governance:
+    name: Docs and Governance
+    needs: scope
+    if: needs.scope.outputs.profile != 'full'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Secret and docs gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/scan_secrets.py
+          python3 scripts/quality/check_docs.py
+
+      - name: Coding governance regression
+        if: needs.scope.outputs.profile == 'governance_only'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover .agents/skills/coding/tests -v
+
   repository-quality:
     name: Repository Quality
+    needs: scope
+    if: needs.scope.outputs.profile == 'full'
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -180,6 +234,8 @@ jobs:
 
   postgres-integration:
     name: PostgreSQL Integration
+    needs: scope
+    if: needs.scope.outputs.profile == 'full'
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -336,6 +392,8 @@ jobs:
     name: CI Gate
     if: always()
     needs:
+      - scope
+      - docs-governance
       - repository-quality
       - postgres-integration
     runs-on: ubuntu-24.04
@@ -343,9 +401,27 @@ jobs:
       - name: Verify required CI layers
         shell: bash
         env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          PROFILE: ${{ needs.scope.outputs.profile }}
+          DOCS_GOVERNANCE_RESULT: ${{ needs.docs-governance.result }}
           REPOSITORY_QUALITY_RESULT: ${{ needs.repository-quality.result }}
           POSTGRES_INTEGRATION_RESULT: ${{ needs.postgres-integration.result }}
         run: |
           set -euo pipefail
-          test "${REPOSITORY_QUALITY_RESULT}" = "success"
-          test "${POSTGRES_INTEGRATION_RESULT}" = "success"
+          test "${SCOPE_RESULT}" = "success"
+          case "${PROFILE}" in
+            full)
+              test "${DOCS_GOVERNANCE_RESULT}" = "skipped"
+              test "${REPOSITORY_QUALITY_RESULT}" = "success"
+              test "${POSTGRES_INTEGRATION_RESULT}" = "success"
+              ;;
+            docs_only|governance_only)
+              test "${DOCS_GOVERNANCE_RESULT}" = "success"
+              test "${REPOSITORY_QUALITY_RESULT}" = "skipped"
+              test "${POSTGRES_INTEGRATION_RESULT}" = "skipped"
+              ;;
+            *)
+              echo "Unknown CI profile: ${PROFILE}" >&2
+              exit 1
+              ;;
+          esac
