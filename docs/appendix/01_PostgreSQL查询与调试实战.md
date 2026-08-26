@@ -38,7 +38,7 @@ AIMA_UGC 把 PostgreSQL 当作唯一业务事实库：
 - Collection Plan、Run、Scope、Provider Request/Attempt；
 - Processing Import Batch；
 - 持久化 Job；
-- AI Analysis Result；
+- AI Analysis Result 与人工相关性复核事件；
 - Excel Export 任务；
 - Artifact 元数据、系统配置和审计事实。
 
@@ -60,7 +60,9 @@ Ingestion
 
 Analysis
 → backend/src/aima_ugc/modules/analysis/tables.py
+→ backend/src/aima_ugc/modules/analysis/relevance_review_tables.py
 → backend/src/aima_ugc/adapters/persistence/postgres/analysis.py
+→ backend/src/aima_ugc/adapters/persistence/postgres/relevance_reviews.py
 
 Reporting Export
 → backend/src/aima_ugc/modules/reporting/tables.py
@@ -433,7 +435,7 @@ ORDER BY created_at DESC
 LIMIT 30;
 ```
 
-Import Batch 是文件导入父事实，不伪造 Collection Run/Scope。
+Import Batch 是文件导入父事实，不伪造 Collection Run/Scope。当前正式 HTTP Import 会把提交时冻结的多词包选择保存到 `stats.keyword_selection`；筛选异常时优先核对这里的 Pack 版本和 `effective_keywords`，不要用当前 `global_relevance_config` 反推历史 Import 的执行输入。
 
 来源反查可以继续：
 
@@ -575,7 +577,7 @@ WHERE relevance = 'irrelevant'
 ORDER BY analyzed_at DESC;
 ```
 
-注意：这是 Analysis Result，不是 `contents.is_relevant`。
+注意：这是模型原始 Analysis Result，不是 `contents.is_relevant`，也不自动等于页面当前业务有效相关性。
 
 ### 一个结果的标签
 
@@ -587,6 +589,49 @@ SELECT
 FROM analysis_content_label_pairs
 WHERE analysis_result_id = '这里填 analysis_content_results.id'
 ORDER BY ordinal;
+```
+
+### 人工相关性复核为什么要单独查
+
+声音广场允许对当前 Content Version 的 AI 相关性做人工复核。模型原判保留在 `analysis_content_results.relevance`，人工决定追加写到：
+
+```text
+analysis_content_relevance_reviews
+```
+
+查某一 Content 当前版本的复核历史：
+
+```sql
+SELECT
+    content_id,
+    content_version,
+    analysis_result_id,
+    review_no,
+    decision,
+    request_id,
+    reviewed_at
+FROM analysis_content_relevance_reviews
+WHERE content_id = '这里填 contents.id'
+  AND content_version = 这里填 current_version
+ORDER BY review_no;
+```
+
+`decision` 当前只允许：
+
+```text
+relevant
+irrelevant
+inherit_ai
+```
+
+最新 `relevant/irrelevant` 表示活动人工覆盖；`inherit_ai` 表示撤销人工覆盖并回到当前 AI 基线。查询层再把当前 AI 原判和最新人工事件组合成 `effective_relevance / relevance_source`。因此出现“AI 原判 irrelevant，但页面显示业务相关”时，应同时检查这张复核账本以及当前 Content Version/Analysis Identity，而不是 UPDATE `analysis_content_results` 或给 `contents` 增加平行相关性字段。
+
+精确规则看：
+
+```text
+backend/src/aima_ugc/modules/analysis/README.md
+backend/src/aima_ugc/modules/analysis/relevance_review_tables.py
+backend/src/aima_ugc/adapters/persistence/postgres/relevance_reviews.py
 ```
 
 ### 一次正式 Analysis 请求
@@ -604,6 +649,7 @@ analysis_content_request_items
 ```sql
 \d+ analysis_content_requests
 \d+ analysis_content_request_items
+\d+ analysis_content_relevance_reviews
 ```
 
 再按当前真实列查询。
@@ -849,9 +895,10 @@ uv run alembic check
 1. 查 contents 是否有目标数据
 2. 查 HTTP Query 参数/筛选条件
 3. 查当前 Analysis Identity / analysis_content_results
-4. 看 content_queries.py 是否默认排除了 current irrelevant
-5. 再查 API
-6. 最后查前端 Feature / generated Client
+4. 查当前版本最新 analysis_content_relevance_reviews / effective relevance
+5. 看 content_queries.py 是否默认排除了 effective irrelevant
+6. 再查 API
+7. 最后查前端 Feature / generated Client
 ```
 
 当前声音广场查询：
@@ -891,8 +938,9 @@ backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
 3. 对应 Job 是否成功
 4. analysis_content_results 是否有当前版本结果
 5. 当前 Prompt/Taxonomy/Model identity 是否匹配
-6. relevance 是否 irrelevant
-7. analysis_content_label_pairs 是否存在
+6. AI 原始 relevance 是否 irrelevant
+7. analysis_content_relevance_reviews 是否存在人工覆盖/撤销
+8. analysis_content_label_pairs 是否存在
 ```
 
 ### Scheduler 到点没跑
@@ -913,7 +961,7 @@ backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
 - Content：`backend/src/aima_ugc/modules/content/tables.py`、`extended_tables.py`
 - Collection：`backend/src/aima_ugc/modules/collection/*tables.py`
 - Import Batch：`backend/src/aima_ugc/modules/ingestion/tables.py`
-- Analysis：`backend/src/aima_ugc/modules/analysis/tables.py`
+- Analysis：`backend/src/aima_ugc/modules/analysis/tables.py`、`relevance_review_tables.py`
 - Reporting：`backend/src/aima_ugc/modules/reporting/tables.py`
 - Job：`backend/src/aima_ugc/platform/jobs/tables.py`
 - Migration：`migrations/versions/`

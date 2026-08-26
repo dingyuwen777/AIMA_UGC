@@ -200,7 +200,7 @@ backend/src/aima_ugc/bootstrap/import_worker.py
 → Job 进入终态
 ```
 
-新建 Job 使用 `keyword_selection` 冻结多词包执行输入；为保证升级期间已排队任务可继续执行，Worker 仍兼容旧版 `relevance` 单词包 Payload。Job Payload 不复制文件路径、Secret 或所有 Batch 字段；业务关系由数据库 FK 维护。
+当前新建和执行的 Job Payload 都要求 `keyword_selection`，并使用 `ImportKeywordSelectionSnapshot` 冻结多词包执行输入；当前 Payload 不提供旧 `relevance` 单词包兼容字段。Worker 还会校验 Batch `stats.keyword_selection` 与 Job Payload 完全一致，不一致时关闭失败。Job Payload 不复制文件路径、Secret 或所有 Batch 字段；业务关系由数据库 FK 维护。
 
 ---
 
@@ -461,7 +461,7 @@ Batch stats.keyword_selection
 - Worker retry 不产生第二个业务 Content；
 - Rule Relevance 使用冻结的多词包 Selection Snapshot；
 - 多个所选词包按有效关键词并集执行 title/text OR 匹配；
-- 旧 `relevance` Import Job Payload 在升级期间仍可执行；
+- 当前 Job Payload 拒绝缺少 `keyword_selection` 或携带旧 `relevance` 字段的 Payload；
 - Excel/TikHub 同身份最终收敛；
 - Cursor 与查询条件绑定；
 - Migration old→head / downgrade-upgrade（适用时）。

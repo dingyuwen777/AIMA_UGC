@@ -35,29 +35,35 @@
 `(pack_id, keyword_id, platform)` 作为复合身份，`platform='all'` 只表示父事实中的全平台词；Collection
 创建 Run 时再按正式 Plan 关系展开并冻结为明确平台关键词列表。
 
-## Keyword Pack 与全局 Relevance
+## Keyword Pack 与 Rule Relevance
 
-`imports_test` 当前有自己的本地相关性清洗词包文件，并在离线清洗时使用 NFKC、casefold、去空白以及
-忽略 `-/_/·` 的匹配规范化。Stage 8B 继续保留这套更强的 Relevance 匹配规则；它与数据库身份规则
-有意不同。同一词包内若多个数据库关键词收敛为同一匹配文本，运行时按稳定优先级/顺序保留第一个有效
-匹配项，数据库和管理 API 仍保留各自词条。
+System 负责长期关键词父事实：
 
-当前业务边界是：Discovery 词包只决定 TikHub 等 Provider 搜索什么；Relevance 是所有
-来源在 Mapper 形成 Canonical 后、写入 Content 前执行的统一准入过滤。Relevance 词包是系统全局唯一
-配置，Import/Collection 不允许分别覆盖；每个 Job/Run 仍必须冻结 Pack ID、版本和实际关键词快照。
-全局配置使用正式外键关系，不能把 Keyword Pack UUID 作为无约束 JSON 设置。
+```text
+keyword_packs / keywords / keyword_pack_items
+```
 
-正式写入/读取入口由 Stage 8B 的 Pydantic HTTP Contract、`PostgresKeywordCatalogRepository` 与
-`PostgresGlobalRelevanceRepository` 共同维护。全局配置缺失、Pack 停用或没有启用关键词时，Import 与
-Collection Run 创建均 fail closed；Snapshot 是版本化 Pydantic Contract，不让可变数据库配置渗入已排队
-Job/Run。Keyword Pack Vue 页面仍属于 Stage 8F。
+确定性 Rule Relevance 发生在 Canonical 之后、Content Ingestion 之前，但不同入口的**选择方式不同**：
 
-后续正式开发 Alias 关系前仍必须由业务 Owner 明确以下语义，不能由实现者静默选择默认值：
+```text
+Collection
+→ global_relevance_config
+→ 当前全局 Relevance Keyword Pack
+→ 创建 Run 时冻结 Relevance Snapshot
 
-1. 真正业务别名、俗称是否需要“标准词 → 多别名”的正式关系；如果需要，必须再明确别名与 `keywords.normalized_text` 唯一身份、Keyword Pack 成员、Run Snapshot、前端编辑/去重的关系。
+Excel Import
+→ 用户创建 Import 时显式选择 1—20 个 Keyword Pack
+→ 合并启用关键词并按现有 Relevance 匹配规则归一/去重
+→ 冻结 ImportKeywordSelectionSnapshot 到 Batch + Job
+```
 
-Stage 8B 不新增 Alias 表；业务别名先作为独立关键词加入词包。后续决定应在对应 Stage 8 Change 中固化
-到 HTTP Contract、正式文档和必要的数据模型，不得提前制造第二套 Keyword/别名数据库结构。
+所以 `global_relevance_config` 仍是 System Owner 的正式父事实，但它当前服务 Collection 的全局入口选择；Excel Import 不读取它来决定本次筛选词包。Import 和 Collection 都使用同一关键词目录与确定性 Relevance 语义，并把本次实际 Pack/版本/有效关键词冻结后再异步执行，避免管理员后续修改词包改变已经排队的任务。
+
+`imports_test` 的离线相关性清洗继续复用现有 Relevance 匹配规则。数据库关键词身份与运行时匹配规范化仍是两个有意不同的概念：`keywords.normalized_text` 负责稳定数据库身份；Relevance 匹配可以进一步忽略空白和 `-/_/·`。同一选择范围内多个数据库关键词若收敛为同一匹配文本，运行时按稳定优先级/顺序保留第一个有效匹配项，数据库与管理 API 仍保留各自词条。
+
+正式关键词目录读写由 Pydantic HTTP Contract 与 `PostgresKeywordCatalogRepository` 维护；Collection 全局 Relevance 由 `PostgresGlobalRelevanceRepository` 维护；Import 的多词包冻结在 `bootstrap/import_http.py` 与 `modules/ingestion/import_job.py`。精确请求字段和 Snapshot 结构以当前 Contract/代码为准，不在 README 复制第二套 Schema。
+
+当前没有独立 Alias 表。业务别名先作为独立关键词加入词包；如果未来建立“标准词 → 多别名”正式关系，必须先明确它与 `keywords.normalized_text` 唯一身份、Keyword Pack 成员、Collection Run Snapshot、Import Keyword Selection 和前端编辑/去重的关系，再通过正式 Change 落到 Contract/Schema。
 
 ## 外部依赖和 Port
 
