@@ -5,7 +5,7 @@ AIMA_UGC 是爱玛 UGC 舆情采集、统一入库、AI 分析、查询、导出
 第一次接触项目，不要从某个页面或某个脚本开始猜系统。先理解当前已经打通的主链：
 
 ```text
-TikHub / Excel
+TikHub / 文件导入
 → 保存 Raw 或 Input Artifact
 → Reader / Operation / Mapper
 → CanonicalContentV1 / CanonicalCommentV1
@@ -95,7 +95,7 @@ API
 → 接收 HTTP、做短查询、创建持久 Job
 
 Worker
-→ 执行 Collection / Import / Analysis / Export 等长任务
+→ 执行 Collection / Data Import / Analysis / Export 等长任务
 
 Scheduler
 → 把到期 Plan 转成 Occurrence / Run / Job
@@ -121,6 +121,10 @@ backend/src/aima_ugc/bootstrap/worker.py
 ```text
 collection.run.v1
 ingestion.import-excel.v1
+ingestion.historical-discover.v1
+ingestion.historical-snapshot.v1
+ingestion.historical-import-chunk.v1
+analysis.content-run-plan.v1
 analysis.content-label.v1
 reporting.content-export-excel.v1
 ```
@@ -132,11 +136,15 @@ Collection
 → modules/collection/collection_run_job.py
 → bootstrap/collection_scope.py
 
-Excel Import
+兼容单文件 Excel Import
 → modules/ingestion/import_job.py
 → bootstrap/import_worker.py
 
-AI Analysis
+统一 Data Import Campaign
+→ modules/ingestion/historical_jobs.py
+→ bootstrap/historical_import_worker.py
+
+AI Analysis Run
 → modules/analysis/content_analysis_job.py
 → bootstrap/analysis_worker.py
 
@@ -144,6 +152,8 @@ Excel Export
 → modules/reporting/data_export_job.py
 → bootstrap/export_worker.py
 ```
+
+三个 `ingestion.historical-*` 是统一 Data Import Campaign 为兼容现有 Schema/Job 身份继续沿用的物理名称；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner。它们已经由 `bootstrap/worker.py` 正式注册，不能继续只用旧 4-Job 清单描述当前 Worker。
 
 公共 Lease、Heartbeat、Deadline、Fencing、Retry、Cancel 等语义位于：
 
@@ -204,9 +214,30 @@ backend/src/aima_ugc/adapters/providers/tikhub/runtime.py
 
 ---
 
-## 5. Excel 导入为什么和 TikHub 能共用同一套业务数据
+## 5. 文件导入为什么和 TikHub 能共用同一套业务数据
 
-正式 Excel 主链：
+当前页面只保留一个“导入数据”入口。页面主链是统一 Data Import Campaign：
+
+```text
+本地浏览器显式选择文件/文件夹
+或
+管理员批准的服务器只读目录
+→ /api/v1/data-import-*
+→ Data Import Campaign
+→ 不可变 Source Artifact + SHA-256
+→ 预检 / 有界 Chunk
+→ ingestion.historical-discover.v1 / historical-snapshot.v1 / historical-import-chunk.v1
+→ Worker
+→ Excel Reader / Mapper
+→ Canonical
+→ Relevance
+→ Content Owner
+→ PostgreSQL
+```
+
+`source_kind=local_upload / server_path` 只决定文件怎样进入 Artifact；`ingestion_policy=standard_observation / historical_fill_only` 独立决定进入 Content Owner 后使用普通字段新鲜度语义还是 Stage 12 的“只补空、不覆盖非空、冲突留痕”语义。历史导入不会自动创建 AI Job。
+
+旧单文件入口仍保留兼容：
 
 ```text
 POST /api/v1/import-batches
@@ -226,16 +257,19 @@ POST /api/v1/import-batches
 ```text
 backend/src/aima_ugc/bootstrap/import_http.py
 backend/src/aima_ugc/bootstrap/import_worker.py
+backend/src/aima_ugc/bootstrap/historical_import_http.py
+backend/src/aima_ugc/bootstrap/historical_import_worker.py
 backend/src/aima_ugc/bootstrap/manual_ingestion.py
 backend/src/aima_ugc/modules/ingestion/
 backend/src/aima_ugc/modules/content/ingestion.py
 ```
 
-TikHub 和 Excel 在 Canonical 后复用 Content Owner，所以最终去重、Current/Version/Metric 和来源追溯不由两个入口各写一套数据库逻辑。
+TikHub 和文件导入在 Canonical/Content Owner 边界收敛，所以最终去重、Current/Version/Metric 和来源追溯不由不同入口各写一套数据库逻辑。
 
 详细：
 
 - [`docs/appendix/08_数据入口与统一入库实现.md`](docs/appendix/08_数据入口与统一入库实现.md)
+- [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](docs/roadmap/03_4000万历史数据迁移实施方案.md)
 
 人工调试：
 
@@ -358,6 +392,19 @@ analysis_content_results.relevance
 
 当前 `contents` 没有平行 `is_relevant` AI 列。
 
+新版手动 Analysis 使用：
+
+```text
+Analysis Run Preview
+→ analysis.content-run-plan.v1 Planner
+→ 冻结 Run Target
+→ 有界 analysis.content-label.v1 Shard Job
+→ Worker
+→ PostgreSQL Analysis Result
+```
+
+同一 Content Version 可以被不同 Run 重复分析并保留每轮历史；当前声音广场只开放显式选择 1—1000 条，查询范围 Run 暂不开放。
+
 详细：
 
 - [`docs/appendix/07_AI舆情打标与分析实现.md`](docs/appendix/07_AI舆情打标与分析实现.md)
@@ -406,6 +453,8 @@ frontend/src/features/voice-plaza/
 frontend/src/features/import-batches/
 frontend/src/features/collection-strategy/
 ```
+
+统一“导入数据”仍位于 `/collection-runtime` 的 `features/import-batches` Feature；手动 Analysis Run 仍位于 `/voice-plaza`。它们没有新增独立 Router 路由。
 
 当前没有独立 Analysis/Report/Job/Settings/Dashboard 页面。后端有 API 不等于已经有独立 Vue 页面。
 
@@ -531,7 +580,7 @@ changes/archive/
 
 ## 12. 当前生产上线状态
 
-当前仓库已经具备 Internal V1-A 的最小可部署容器基础，但**完整 Production Release 仍是 No-Go**。
+当前仓库已经具备 Internal V1-A 的最小可部署容器基础，GitHub 一键离线 Release Workflow 基础也已经建立，但**完整 Production Release 仍是 No-Go**。
 
 根目录当前已经存在：
 
@@ -539,6 +588,7 @@ changes/archive/
 Dockerfile
 compose.yaml
 env.production.example
+.github/workflows/release.yml
 ```
 
 完整容器 Runtime 使用：
@@ -557,16 +607,26 @@ env.local
 → scripts/dev/backend.py / frontend.py
 ```
 
-Internal V1-A 已验证 bootstrap、PostgreSQL 18.4、Migration、configure、API/Worker/Scheduler、Nginx、Readiness、持久挂载、Secret File、数据库密码丢失 fail closed 与 Linux Compose Golden Path。Internal V1-B 已由业务 Owner 于 2026-08-26 确认完成，公司内网 V1 已上线；该结论来自外部业务确认，仓库不补造服务器执行日志。**Stage 12：4000 万历史数据迁移与手动 AI 打标**的软件实现已经合入 `main` 并通过风险相关 CI；当前下一门禁是公司服务器 500 万或经批准的等效比例容量演练，实际生产 4000 万迁移仍需独立写授权，正式方案见 [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](docs/roadmap/03_4000万历史数据迁移实施方案.md)。
+Internal V1-A 已验证 bootstrap、PostgreSQL 18.4、Migration、configure、API/Worker/Scheduler、Nginx、Readiness、持久挂载、Secret File、数据库密码丢失 fail closed 与 Linux Compose Golden Path。Internal V1-B 已由业务 Owner 于 2026-08-26 确认完成，公司内网 V1 已上线；该结论来自外部业务确认，仓库不补造服务器执行日志。
+
+GitHub Release Workflow 当前已经实现并验证：
+
+- Linux/AMD64 Backend/Frontend 构建与固定 `postgres:18.4`；
+- `images.tar` 离线 Bundle；
+- `release-manifest.json` / `migration-manifest.json` / `SHA256SUMS` / `DEPLOY.md`；
+- 删除候选运行镜像后重新 `docker load`；
+- canonical Compose `--no-build --pull never` 离线回放；
+- 正式 `workflow_dispatch` 的 GHCR digest、Git Tag 与 GitHub Release 发布基础。
+
+**Stage 12：4000 万历史数据迁移与手动 AI 打标**的软件实现已经合入 `main` 并通过风险相关 CI；当前剩余的是公司服务器 500 万或经批准的等效比例容量演练，以及获得独立生产写授权后的 4000 万实际 Campaign/对账，不是继续补 Stage 12 软件功能。正式方案见 [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](docs/roadmap/03_4000万历史数据迁移实施方案.md)。
 
 完整 Production 仍尚未闭环：
 
 - 企业认证/后端授权与正式 HTTPS/浏览器安全入口；
-- 不可变离线 Release Bundle / `images.tar`；
-- 固定生产镜像 digest、Manifest、SBOM、签名/来源验证；
+- SBOM、独立签名和完整 provenance 治理；
 - PostgreSQL + Artifact 协调 Backup/Restore；
-- 正式发布前 Backup、恢复与应用回滚自动化/演练；
-- 生产服务器完整 Smoke/Soak/容量/安全验收。
+- 生产服务器完整 preflight、Backup、Migration、启动、Smoke 与回滚流程；
+- 生产服务器完整 Smoke/Soak/容量/安全/恢复验收。
 
 长期生产必须保持：持久 `AIMA_HOST_ROOT=/data/AIMA_UGC` 与 `/data/AIMA_UGC/releases/<version>` 分离；服务器最终加载已验证镜像并以 `--no-build --pull never` 启动，而不是把源码现场 build 当成正式 Release。
 
@@ -576,7 +636,7 @@ Internal V1-A 已验证 bootstrap、PostgreSQL 18.4、Migration、configure、AP
 - [`docs/appendix/11_生产部署与离线Release方案.md`](docs/appendix/11_生产部署与离线Release方案.md)
 - [`docs/02_环境运行与部署.md`](docs/02_环境运行与部署.md)
 
-Stage 9 Monitoring/告警/VOC/工单和 Stage 10 Word 报告产品化当前不阻塞受控公司内网 V1；完整 Production 的认证、Release 完整性、持久化恢复和回滚门禁不能跳过。
+Stage 9 Monitoring/告警/VOC/工单和 Stage 10 Word 报告产品化当前不阻塞受控公司内网 V1；完整 Production 的认证、Release provenance、持久化恢复和回滚门禁不能跳过。
 
 ---
 
