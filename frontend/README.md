@@ -61,7 +61,7 @@ src/app/routes.ts
 features/import-batches/
 ```
 
-这是页面从 Excel Import Batch 演进到 Excel/TikHub 统一运行中心留下的目录名。不要在无关任务里为了“看起来更漂亮”重命名；真正重构时需同步路由、测试、导入路径和文档。
+这是页面从 Excel Import Batch 演进到 Excel/TikHub 统一运行中心、再加入统一 Data Import Campaign 后留下的目录名。不要在无关任务里为了“看起来更漂亮”重命名；真正重构时需同步路由、测试、导入路径和文档。
 
 当前没有独立：
 
@@ -73,7 +73,7 @@ settings/
 dashboard/
 ```
 
-页面。后端有对应 API/表，不等于已经有独立前端页面。
+页面。Analysis Run 当前在声音广场，Data Import Campaign 当前在采集运行中心；后端有对应 API/表不等于应该新建独立路由。
 
 ---
 
@@ -109,7 +109,7 @@ Store 自己拼 URL
 - 布局和交互；
 - 调用 Store action；
 - Loading / Error / Empty / Data；
-- Drawer、表单、筛选、按钮。
+- Drawer、Dialog、表单、筛选、按钮。
 
 不负责：
 
@@ -117,7 +117,7 @@ Store 自己拼 URL
 - 复制后端类型；
 - 直接理解数据库字段；
 - 实现 Cursor 签名；
-- 复制 AI/Provider 业务规则。
+- 复制 AI/Provider/历史写入业务规则。
 
 ### Store
 
@@ -147,7 +147,7 @@ Store 自己拼 URL
 - 收敛 Feature 错误；
 - 提供更符合页面语义的函数名。
 
-不允许重新定义 HTTP Contract。
+不允许重新定义 HTTP Contract 或在前端复制后端状态机。
 
 ### Generated Client
 
@@ -181,7 +181,7 @@ Pydantic Request/Response
 
 ## 5. 当前三个业务 Feature
 
-### 5.1 `features/import-batches`：采集运行中心
+### 5.1 `features/import-batches`：采集运行中心 + 统一数据导入
 
 主要文件：
 
@@ -191,16 +191,24 @@ src/features/import-batches/
 ├─ format.ts
 ├─ store.ts
 └─ pages/CollectionRuntimePage/
+   └─ components/DataImportDialog.vue
 ```
 
 当前承接：
 
-- Excel Import Batch 列表和上传；
-- Excel/TikHub 统一运行列表；
-- 运行摘要；
+- Excel Import Batch 兼容列表/历史状态；
+- Excel/TikHub 统一运行列表与运行摘要；
 - 一次性 TikHub Discovery；
 - Import Batch 补采；
-- Run/Batch 详情和状态。
+- Run/Batch 详情和状态；
+- **单一“导入数据”入口**；
+- 本地电脑显式多文件/文件夹选择；
+- 管理员批准服务器目录浏览；
+- Data Import Campaign 创建、预检、启动、进度、取消、失败重试与冲突查看；
+- `source_kind=local_upload / server_path` 与 `ingestion_policy=standard_observation / historical_fill_only` 两维独立选择；
+- Campaign 来源进入 Voice Plaza 的查询闭环。
+
+当前页面主导入工作流调用 `/api/v1/data-import-*`；旧 `/api/v1/import-batches` 和 `/api/v1/historical-import-*` 由后端保留兼容，不在页面建立第二套入口。页面不实现 Historical Fill-Only 业务规则，只展示后端 Contract/状态并把用户选择提交给 Campaign。
 
 TikHub Run 详情会读取生成 Client 中既有的 `scopes[].stop_reason`。当 Worker 返回 `provider_secret_unavailable` 时，页面显示固定的“Provider Secret 不可用，请联系管理员检查运行配置”提示；未知错误值保留机器原文以便结合 Run ID、Job ID 排障。页面不接收或展示 `secret_ref`、Secret 路径和 Secret 内容。
 
@@ -208,11 +216,13 @@ TikHub Run 详情会读取生成 Client 中既有的 `scopes[].stop_reason`。�
 
 | 需求 | 先看 |
 | --- | --- |
-| 页面布局/按钮/Drawer | `pages/CollectionRuntimePage/` |
+| 运行中心布局/按钮/Drawer | `pages/CollectionRuntimePage/` |
+| 导入来源/策略/Campaign UI | `pages/CollectionRuntimePage/components/DataImportDialog.vue` + `api.ts` |
 | 筛选、轮询、分页、详情状态 | `store.ts` |
 | 后端接口调用 | `api.ts` |
 | 时间/状态格式 | `format.ts` |
-| API 字段/业务语义 | 后端 Contract / Service |
+| API 字段/业务语义 | 后端 Pydantic Contract / Service |
+| Historical Fill-Only/Chunk/账本 | 后端 Ingestion/Content Owner，前端不得复制 |
 
 ### 5.2 `features/collection-strategy`：采集策略
 
@@ -232,7 +242,7 @@ src/features/collection-strategy/
 
 页面不直接运行 TikHub。保存 Plan/词包是修改配置事实，真正执行由 Scheduler 生成 Occurrence/Run/Job。
 
-### 5.3 `features/voice-plaza`：声音广场
+### 5.3 `features/voice-plaza`：声音广场 + 手动 Analysis Run
 
 ```text
 src/features/voice-plaza/
@@ -245,19 +255,28 @@ src/features/voice-plaza/
 当前组合：
 
 - Content 列表/详情；
-- 平台/文本/时间/Analysis 筛选；
+- 平台/文本/时间/来源/Analysis 筛选；
 - Analysis current/stale/pending；
-- 显式提交 AI Analysis；
+- 显式选择内容并做 Analysis Run Preview；
+- 创建手动 Analysis Run；
+- 查看 Run 历史、真实进度、成功/失败/取消状态并取消活动 Run；
+- 同一 Content Version 多轮 Analysis 结果的当前投影；
 - 查看 AI 原判与查询层 `effective_relevance / relevance_source`；
 - 对当前 Content Version 提交人工相关性复核/撤销复核；
 - 创建正式 Excel Export；
-- 查询 Export 状态和下载 Artifact。
+- 查询 Export 状态、真实进度和下载 Artifact。
+
+当前新版 Analysis Run 只开放显式选择 1—1000 条内容；query scope Run 没有作为当前页面能力开放。页面不负责 Planner/Shard/Current 选择规则，这些由后端 Analysis Domain、PostgreSQL 和 generated Contract 决定。
 
 人工相关性复核通过 generated Client 调当前正式 API；Feature `api.ts` 只提供页面语义薄封装，不在前端复制 `relevant / irrelevant / inherit_ai` 的后端状态机或数据库规则。完整业务语义看 Analysis README 与后端 Contract。
 
-注意两条不同能力：
+注意三条不同能力：
 
 ```text
+声音广场 Analysis Run
+→ analysis.content-run-plan.v1
+→ analysis.content-label.v1 Shard
+
 声音广场 Excel Export
 → reporting.content-export-excel.v1
 
@@ -280,7 +299,7 @@ src/views/HomeView.vue
 src/shared/
 ```
 
-当前 App Shell 只展示已经有真实路由且属于公司内网 V1 的入口：
+当前 App Shell 只展示已经有真实路由的入口：
 
 ```text
 首页
@@ -339,38 +358,32 @@ Figma 不负责：
 
 ## 8. 当前视觉基线
 
-正式 Figma 设计资产尚未完全替代当前 Vue 页面。早期已批准视觉参考的尺寸、哈希和采用原因仍保存在对应归档 Change 中；相关二进制图片已于 2026-08-27 经用户授权从当前仓库删除，不再作为现行可访问资产。归档记录只解释页面的视觉演进，不是长期 API 或业务事实。
+正式 Figma 设计资产正在逐步成为当前 AIMA 前端设计事实源；代码业务语义仍以当前 Contract/实现为准。早期已批准视觉参考的尺寸、哈希和采用原因仍保存在对应归档 Change 中；相关一次性二进制参考已于 2026-08-27 经用户授权从当前仓库删除，不再作为现行可访问资产。
 
-未来正式 Figma Frame 建立后，需要明确：
+Figma 正式接管某个页面/组件后，需要明确：
 
 ```text
-Figma 接管哪些视觉/交互
-Vue 哪些业务语义保持
-旧 PNG 是否只作历史参考
+Figma 负责哪些视觉/交互事实
+Vue 哪些业务语义必须保持
+组件/Token 哪些可以复用到后续页面
+旧参考是否只保留历史证据
 ```
 
-不要让 PNG、Figma 和代码长期成为三套平行事实。
+不要让旧 PNG、Figma 和代码长期成为三套平行视觉事实；也不要让 Figma 覆盖后端 Contract/业务规则。
 
 ---
 
-## 9. Element Plus / TypeScript 7 当前兼容边界
+## 9. Element Plus / TypeScript 当前兼容边界
 
-当前锁定依赖以 `package.json` / lock 为准，目前包括：
-
-```text
-element-plus = 2.14.4
-@typescript/native = TypeScript 7.0.2
-```
-
-当前：
+当前锁定依赖以 `package.json` / lock 为准，不在本文长期复制可能漂移的精确版本号；需要版本事实时直接读取：
 
 ```text
-skipLibCheck = false
+frontend/package.json
+frontend/package-lock.json
+.node-version
 ```
 
-Stage 8C 曾实际验证：在这组依赖下，直接使用部分 Element Plus 类型声明会暴露 TypeScript 7 兼容问题。
-
-因此禁止为了页面任务：
+当前 `tsconfig` / typecheck 策略也以仓库文件为准。历史上 Stage 8C 曾暴露 Element Plus 类型声明与当时 TypeScript 工具链的兼容问题，因此普通页面任务禁止通过以下方式规避：
 
 ```text
 静默升级依赖
@@ -378,17 +391,7 @@ skipLibCheck = true
 降低 typecheck
 ```
 
-这不等于永久禁止 Element Plus。
-
-如果后续页面确实需要系统性使用：
-
-```text
-独立技术 Change
-→ 核对当时版本兼容性
-→ 必要时更新 package + lock
-→ typecheck / unit / build / E2E
-→ 再扩展页面
-```
+这不等于永久禁止 Element Plus。后续确需调整依赖时走独立技术 Change，并重新验证 typecheck/unit/build/E2E。
 
 ---
 
@@ -454,13 +457,13 @@ Pydantic Request/Response
 
 ## 12. 本地运行
 
-后端在 `127.0.0.1:8090` 启动后：
+标准源码开发入口看仓库根 `scripts/dev/frontend.py` 与 [`../docs/02_环境运行与部署.md`](../docs/02_环境运行与部署.md)。直接执行 Vite 时仍可使用：
 
 ```bash
 npm --prefix frontend run dev
 ```
 
-Vite 当前监听 `127.0.0.1:5173`，并代理 `/api`、`/health` 到后端。精确配置看 `vite.config.ts`。
+Vite 当前监听/代理等精确配置看 `vite.config.ts`；不要在 README 复制容易漂移的端口/Host 作为唯一事实。
 
 页面能打开不等于 PostgreSQL/Worker/异步 Job 正常。
 
@@ -488,6 +491,19 @@ Feature api.ts
 
 Contract 不支持时走完整后端 Change。
 
+### Data Import 卡住或进度异常
+
+```text
+DataImportDialog
+→ Feature api.ts
+→ generated data-import client
+→ Campaign status/progress
+→ historical discover/snapshot/import-chunk Job
+→ Worker / Ingestion Repository
+```
+
+不要在前端根据文件数量/行数自行伪造百分比；发现阶段未知总量时允许不确定进度。
+
 ### 页面筛选结果不对
 
 ```text
@@ -513,12 +529,12 @@ Content 当前版本
 
 不要从当前页面筛选条件反推人工复核状态，也不要在前端自行计算一套“最终相关性”。
 
-### Analysis / Export 一直处理中
+### Analysis Run / Export 一直处理中
 
 ```text
 HTTP
-→ jobs
-→ analysis_content_requests / reporting_data_exports
+→ Run / Export 父事实
+→ Planner/Shard/Export jobs
 → Worker
 → 对应模块 README / PostgreSQL Appendix
 ```
@@ -542,7 +558,7 @@ frontend/playwright.config.ts
 
 这组测试会 Mock `/api/v1/**`，用于快速验证页面、按钮、Drawer/Dialog、前端状态和常见 HTTP 返回，不作为真实后端链证明。
 
-Stage 8F 形成的真实 Full-stack Browser Acceptance 当前由永久 Workflow 维护：
+真实 Full-stack Browser Acceptance 当前由永久 Workflow 维护：
 
 ```text
 frontend/e2e-fullstack/
@@ -551,7 +567,18 @@ tests/fullstack/
 .github/workflows/fullstack.yml
 ```
 
-它使用隔离 PostgreSQL、真实 FastAPI、正式 PostgreSQL Job Worker 和生产 Excel Reader/Mapper/Ingestion，不 Mock `/api/v1/**`。固定核心链是：
+当前目录实际包含：
+
+```text
+excel-import.spec.ts
+collection-plan-search-config.spec.ts
+manual-relevance-review.spec.ts
+stage12-historical-analysis.spec.ts
+```
+
+因此真实 Full-stack 已不只验证 Stage 8F 的旧单文件 Excel 链；Stage 12 还有统一历史导入/Analysis Run 的真实 Browser/API/PostgreSQL/Worker 覆盖。具体每条场景以当前 spec 为准，不在 README 复制第二套断言。
+
+Stage 8F 兼容 Excel 核心链仍是：
 
 ```text
 Excel fixture
@@ -566,7 +593,13 @@ Excel fixture
 → Voice Plaza 显示本批数据
 ```
 
-普通 CI 不为这条验收调用真实付费 TikHub 或 LLM。
+Stage 12 当前真实 Full-stack 入口：
+
+```text
+frontend/e2e-fullstack/stage12-historical-analysis.spec.ts
+```
+
+普通 CI 不为这些验收调用真实付费 TikHub 或 LLM。
 
 提交前常规前端检查：
 
@@ -578,17 +611,17 @@ npm --prefix frontend run build
 npm --prefix frontend run test:e2e
 ```
 
-在已经准备好隔离 PostgreSQL、API、Worker、测试 Secret 和 Excel fixture 的完整测试环境中，可单独运行：
+完整测试环境可运行：
 
 ```bash
 npm --prefix frontend run test:e2e:fullstack
 ```
 
-永久 CI 会通过 `.github/workflows/fullstack.yml` 自动建立上述隔离环境并执行这条真实链。完整能力矩阵和边界见：
+永久 CI 通过 `.github/workflows/fullstack.yml` 建立隔离环境并执行真实链。完整能力矩阵和边界见：
 
 [`../docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md`](../docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md)
 
-这些前端测试仍不能替代 Job Fencing、Provider、Migration 或其他后端专项集成测试；各层验证应继续各自负责真实边界。
+这些前端测试仍不能替代 Job Fencing、Provider、Migration、容量或其他后端专项集成测试；各层验证继续各自证明真实边界。
 
 ---
 
@@ -597,7 +630,7 @@ npm --prefix frontend run test:e2e:fullstack
 当前没有：
 
 - 登录/认证闭环；
-- 独立 Analysis 管理中心；
+- 独立 Analysis 管理中心（现有 Run 在声音广场）；
 - 独立 Job 管理中心；
 - 独立 Excel Export 管理中心；
 - 正式 Word 报告中心；
@@ -616,6 +649,8 @@ npm --prefix frontend run test:e2e:fullstack
 - Figma/Design-to-Code：`docs/guides/01_Figma与前端设计开发工作流.md`
 - Collection 策略：`docs/blueprint/08_采集策略与平台能力.md`
 - AI：`docs/appendix/07_AI舆情打标与分析实现.md`
+- Data Import：`docs/appendix/08_数据入口与统一入库实现.md`
+- Stage 12 软件与生产门禁：`docs/roadmap/03_4000万历史数据迁移实施方案.md`
 - Excel Export：`docs/appendix/06_Excel统一数据导出与离线调试.md`
 - Stage 8F 能力矩阵与真实验收：`docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md`
 - 后续阶段/Production Go-Live：`docs/roadmap/02_生产上线实施路线.md`
