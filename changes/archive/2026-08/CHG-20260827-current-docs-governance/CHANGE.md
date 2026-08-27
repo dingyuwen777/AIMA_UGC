@@ -73,7 +73,7 @@ backend/src/aima_ugc/modules/analysis/README.md
 frontend/README.md
 ```
 
-审计后确认已经与当时实现一致，因此没有制造无关差异：
+审计时确认以下候选文档已经与当时实现一致，因此本 Change 没有主动制造无关差异：
 
 ```text
 docs/blueprint/02_采集系统与数据标准化.md
@@ -83,6 +83,8 @@ docs/appendix/11_生产部署与离线Release方案.md
 docs/appendix/14_4000万历史迁移与Analysis Run运行手册.md
 docs/AGENTS.md
 ```
+
+治理期间另有并行远端提交 `43f3352f41339a17508e401f8b155ce9a584dadf` 修改 `docs/appendix/11_生产部署与离线Release方案.md`，把旧 Worker 任务清单同步为当前 8 类 Job。该提交不是本 Change 显式写入序列的一部分，因此不计入上述 `affected_paths`；本轮最终反向审计确认其内容与 `backend/src/aima_ugc/bootstrap/worker.py` 一致，未覆盖或回滚该并行修改。
 
 # 非目标
 
@@ -192,11 +194,11 @@ PostgreSQL + Artifact Coordinated Backup/Restore
 | --- | --- | --- | --- | --- |
 | R1 | 以代码等机器事实为准治理当前文档，包括实施方案 | user:current-request | satisfied | 已治理根 README、AGENTS、代码/API 导航、Blueprint、Roadmap 01/02/03、Ingestion/Analysis/Frontend README |
 | R2 | 已实现能力由机器事实证明，不用旧聊天/旧 Stage 代替 | AGENTS.md | satisfied | 反查 `bootstrap/worker.py`、`historical_jobs.py`、`content_analysis_job.py`、`bootstrap/api.py`、`historical_tables.py`、`routes.ts`、Release Workflow、版本文件和相关现行测试/运行手册 |
-| R3 | Stage 12 当前状态与真实归档 Change、Job Registry 和测试证据一致 | `backend/src/aima_ugc/bootstrap/worker.py` | satisfied | 当前 Registry 8 类 Job；Planner 名已校正；Stage 12 软件 Change 已 done/归档，生产容量/全量仍未完成 |
-| R4 | 保留已批准但未实现的 Production 目标，并明确未来状态 | `docs/roadmap/02_生产上线实施路线.md` | satisfied | 保留 Auth/HTTPS、Backup/Restore、SBOM/签名/provenance、Deploy/Rollback、Stage 11E；同时承认当前 Release 基础已经实现 |
-| R5 | 历史 Change 不作为当前文档重写对象 | Docs Skill | satisfied | 既有 `changes/archive/**` 未改写，只作为历史证据读取 |
-| R6 | 当前 API、前端入口和兼容边界必须与真实 Assembly/Router 一致 | `backend/src/aima_ugc/bootstrap/api.py` | satisfied | API 说明、Blueprint 04、Frontend README 已按 `/data-import-*`、`/analysis/content-runs*`、人工 relevance review、兼容 Route 与真实前端路由同步 |
-| R7 | 当前 Ingestion Owner/父事实覆盖 Stage 12 已落库能力 | `modules/ingestion/historical_tables.py` | satisfied | Blueprint 07 与 Ingestion README 已同步 Campaign/Item、row ledger/conflict、两类策略与 Owner 边界 |
+| R3 | Stage 12 当前状态与真实归档 Change、Job Registry 和测试证据一致 | backend/src/aima_ugc/bootstrap/worker.py | satisfied | 当前 Registry 8 类 Job；Planner 名已校正；Stage 12 软件 Change 已 done/归档，生产容量/全量仍未完成 |
+| R4 | 保留已批准但未实现的 Production 目标，并明确未来状态 | docs/roadmap/02_生产上线实施路线.md | satisfied | 保留 Auth/HTTPS、Backup/Restore、SBOM/签名/provenance、Deploy/Rollback、Stage 11E；同时承认当前 Release 基础已经实现 |
+| R5 | 历史 Change 不作为当前文档重写对象 | .agents/skills/docs/references/01_事实源与同步判断.md | satisfied | 既有 `changes/archive/**` 未改写，只作为历史证据读取 |
+| R6 | 当前 API、前端入口和兼容边界必须与真实 Assembly/Router 一致 | backend/src/aima_ugc/bootstrap/api.py | satisfied | API 说明、Blueprint 04、Frontend README 已按 `/data-import-*`、`/analysis/content-runs*`、人工 relevance review、兼容 Route 与真实前端路由同步 |
+| R7 | 当前 Ingestion Owner/父事实覆盖 Stage 12 已落库能力 | backend/src/aima_ugc/modules/ingestion/historical_tables.py | satisfied | Blueprint 07 与 Ingestion README 已同步 Campaign/Item、row ledger/conflict、两类策略与 Owner 边界 |
 
 # Validation Matrix
 
@@ -208,7 +210,7 @@ PostgreSQL + Artifact Coordinated Backup/Restore
 | User / Browser | not_applicable | 未改变产品交互；只同步 Router/Feature 已存在事实 |
 | Full-stack / Provider | not_applicable | 未改变接线或 Provider 行为，无需付费 Probe |
 | Build / Package / Runtime | not_applicable | 未修改构建、依赖、镜像或部署配置 |
-| Docs / Governance | required | `ready_for_review` 候选 `631f9d995ce9d0a937f38d634778f7436e2edf7a`：CI `33070290791` success；Runtime Acceptance `33070290713` success；Change Completion Gate `33070290709` success |
+| Docs / Governance | required | `ready_for_review` 候选 `631f9d995ce9d0a937f38d634778f7436e2edf7a`：CI `33070290791` success；Runtime Acceptance `33070290713` success；Change Completion Gate `33070290709` success。归档后最终 HEAD 需重新取得成功门禁，不能沿用该候选结论 |
 
 # 两阶段 Review
 
@@ -269,4 +271,6 @@ Runtime Acceptance     33070290713  success
 Change Completion Gate 33070290709  success
 ```
 
-本 Change 没有执行公司服务器 500 万/等效比例容量演练，也没有执行生产 4000 万写入。归档后仍需以归档提交后的最终 `main` HEAD 重新确认仓库门禁状态，不能用上述候选结果替代最终归档 HEAD 的验证。
+首次归档 HEAD `3729abbfd1f7e7c8dc0bf857ed5404af5f26dc19` 的 Runtime Acceptance 成功，但 Change Completion Gate `33070660744` 因本归档 R5/R7 的 Requirement Source 使用了非规范简称而失败；失败日志明确指出两个 Source 不是仓库路径。该问题只属于 Change 归档元数据，未涉及业务代码/Contract/Schema。本提交已把 R5/R7 Source 修正为真实仓库路径，必须以修正后的最终 HEAD 重新取得门禁成功后才可交付。
+
+本 Change 没有执行公司服务器 500 万/等效比例容量演练，也没有执行生产 4000 万写入。
