@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 
 import type {
   CollectionCapabilitiesResponse,
+  DataImportIngestionPolicy,
   CollectionPlatform,
   CollectionRunCreateRequest,
   CollectionRunCreatedResponse,
@@ -11,13 +12,23 @@ import type {
   CollectionRuntimeRecordType,
   CollectionRuntimeStatus,
   CollectionRuntimeSummaryResponse,
+  HistoricalCampaignConflictResponse,
+  HistoricalCampaignCreateRequest,
+  HistoricalCampaignCreatedResponse,
+  HistoricalCampaignItemResponse,
+  HistoricalCampaignResponse,
+  HistoricalDirectoryEntryResponse,
   ImportBatchCreatedResponse,
   ImportBatchResponse,
   KeywordPackSummaryResponse,
   ListCollectionRuntimeRunsParams,
+  LocalDataImportCampaignCreateRequest,
 } from '../../generated/api/client'
 import {
   createTikHubCollectionRun,
+  cancelHistoricalCampaign,
+  createLocalCampaign,
+  createHistoricalCampaign,
   fetchBatchContentPlatforms,
   fetchCollectionCapabilities,
   fetchCollectionRunDetail,
@@ -26,7 +37,16 @@ import {
   fetchImportBatchDetail,
   fetchImportBatchList,
   fetchEnabledKeywordPacks,
+  fetchHistoricalCampaign,
+  fetchHistoricalCampaignConflicts,
+  fetchHistoricalCampaignItems,
+  fetchHistoricalCampaigns,
+  fetchHistoricalDirectory,
+  finalizeLocalCampaign,
   ImportApiError,
+  retryHistoricalCampaign,
+  startHistoricalCampaign,
+  uploadLocalCampaignFile,
   uploadImportBatch,
 } from './api'
 
@@ -39,6 +59,11 @@ export interface CollectionRuntimeFilters {
   stage: string
   createdFrom: string
   createdTo: string
+}
+
+export interface DataImportLocalFileSelection {
+  file: File
+  relativePath: string
 }
 
 const EMPTY_FILTERS: CollectionRuntimeFilters = {
@@ -89,6 +114,16 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   const batchOptions = ref<ImportBatchResponse[]>([])
   const keywordPackOptions = ref<KeywordPackSummaryResponse[]>([])
   const batchContentPlatforms = ref<CollectionPlatform[]>([])
+  const historicalDirectoryPath = ref('')
+  const historicalDirectoryEntries = ref<HistoricalDirectoryEntryResponse[]>([])
+  const historicalDirectoryNextCursor = ref<string | null>(null)
+  const historicalDirectoryHasMore = ref(false)
+  const historicalCampaigns = ref<HistoricalCampaignResponse[]>([])
+  const selectedHistoricalCampaign = ref<HistoricalCampaignResponse | null>(null)
+  const historicalCampaignItems = ref<HistoricalCampaignItemResponse[]>([])
+  const historicalCampaignConflicts = ref<HistoricalCampaignConflictResponse[]>([])
+  const historicalCampaignItemsHasMore = ref(false)
+  const historicalCampaignConflictsHasMore = ref(false)
   const nextCursor = ref<string | null>(null)
   const hasMore = ref(false)
   const loading = ref(false)
@@ -97,6 +132,11 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
   const creating = ref(false)
   const loadingBatchPlatforms = ref(false)
   const loadingKeywordPacks = ref(false)
+  const loadingHistorical = ref(false)
+  const creatingHistorical = ref(false)
+  const actingHistorical = ref(false)
+  const localUploadCompleted = ref(0)
+  const localUploadTotal = ref(0)
   const error = ref<string | null>(null)
   let pollHandle: ReturnType<typeof setInterval> | undefined
   let pollDocument: Document | undefined
@@ -109,7 +149,12 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
       selectedBatch.value?.status === 'queued' ||
       selectedBatch.value?.status === 'running' ||
       selectedRun.value?.status === 'queued' ||
-      selectedRun.value?.status === 'running',
+      selectedRun.value?.status === 'running' ||
+      historicalCampaigns.value.some((campaign) =>
+        ['uploading', 'discovering', 'snapshotting', 'queued', 'running', 'cancelling'].includes(
+          campaign.status,
+        ),
+      ),
   )
 
   function selectedRecordTypes(): CollectionRuntimeRecordType[] | undefined {
@@ -308,6 +353,196 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     }
   }
 
+  async function openHistoricalWorkspace(): Promise<void> {
+    loadingHistorical.value = true
+    error.value = null
+    try {
+      const [campaigns, packs] = await Promise.all([
+        fetchHistoricalCampaigns(),
+        fetchEnabledKeywordPacks(),
+      ])
+      historicalCampaigns.value = campaigns.items
+      keywordPackOptions.value = packs
+      if (selectedHistoricalCampaign.value) {
+        await refreshHistoricalCampaign(selectedHistoricalCampaign.value.id)
+      }
+    } catch (reason) {
+      error.value = errorMessage(reason)
+    } finally {
+      loadingHistorical.value = false
+    }
+  }
+
+  async function openServerImportSource(): Promise<void> {
+    await browseHistoricalDirectory('')
+  }
+
+  async function browseHistoricalDirectory(relativePath: string): Promise<void> {
+    loadingHistorical.value = true
+    error.value = null
+    try {
+      const directory = await fetchHistoricalDirectory(relativePath)
+      if (!directory.available) {
+        throw new Error(directory.unavailable_reason || '服务器历史目录当前不可用。')
+      }
+      historicalDirectoryPath.value = relativePath
+      historicalDirectoryEntries.value = directory.items ?? []
+      historicalDirectoryNextCursor.value = directory.next_cursor ?? null
+      historicalDirectoryHasMore.value = Boolean(directory.has_more)
+    } catch (reason) {
+      error.value = errorMessage(reason)
+    } finally {
+      loadingHistorical.value = false
+    }
+  }
+
+  async function loadMoreHistoricalDirectory(): Promise<void> {
+    const cursor = historicalDirectoryNextCursor.value
+    if (!cursor || loadingHistorical.value) return
+    loadingHistorical.value = true
+    error.value = null
+    try {
+      const directory = await fetchHistoricalDirectory(historicalDirectoryPath.value, cursor)
+      if (!directory.available) {
+        throw new Error(directory.unavailable_reason || '服务器历史目录当前不可用。')
+      }
+      const existing = new Set(historicalDirectoryEntries.value.map((item) => item.relative_path))
+      historicalDirectoryEntries.value = [
+        ...historicalDirectoryEntries.value,
+        ...(directory.items ?? []).filter((item) => !existing.has(item.relative_path)),
+      ]
+      historicalDirectoryNextCursor.value = directory.next_cursor ?? null
+      historicalDirectoryHasMore.value = Boolean(directory.has_more)
+    } catch (reason) {
+      error.value = errorMessage(reason)
+    } finally {
+      loadingHistorical.value = false
+    }
+  }
+
+  async function refreshHistoricalCampaign(campaignId: string): Promise<void> {
+    const [campaign, campaignItems, conflicts] = await Promise.all([
+      fetchHistoricalCampaign(campaignId),
+      fetchHistoricalCampaignItems(campaignId),
+      fetchHistoricalCampaignConflicts(campaignId),
+    ])
+    selectedHistoricalCampaign.value = campaign
+    historicalCampaignItems.value = campaignItems.items
+    historicalCampaignConflicts.value = conflicts.items
+    historicalCampaignItemsHasMore.value = Boolean(campaignItems.has_more)
+    historicalCampaignConflictsHasMore.value = Boolean(conflicts.has_more)
+    historicalCampaigns.value = [
+      campaign,
+      ...historicalCampaigns.value.filter((item) => item.id !== campaign.id),
+    ]
+  }
+
+  async function refreshHistoricalCampaignSummary(campaignId: string): Promise<void> {
+    const campaign = await fetchHistoricalCampaign(campaignId)
+    selectedHistoricalCampaign.value = campaign
+    historicalCampaigns.value = [
+      campaign,
+      ...historicalCampaigns.value.filter((item) => item.id !== campaign.id),
+    ]
+  }
+
+  async function submitHistoricalCampaign(
+    request: HistoricalCampaignCreateRequest,
+  ): Promise<HistoricalCampaignCreatedResponse | null> {
+    creatingHistorical.value = true
+    error.value = null
+    try {
+      const created = await createHistoricalCampaign(request)
+      await refreshHistoricalCampaign(created.campaign_id)
+      return created
+    } catch (reason) {
+      error.value = errorMessage(reason)
+      return null
+    } finally {
+      creatingHistorical.value = false
+    }
+  }
+
+  async function submitLocalCampaign(
+    files: DataImportLocalFileSelection[],
+    keywordPackIds: string[],
+    ingestionPolicy: DataImportIngestionPolicy,
+  ): Promise<HistoricalCampaignResponse | null> {
+    creatingHistorical.value = true
+    localUploadCompleted.value = 0
+    localUploadTotal.value = files.length
+    error.value = null
+    let campaignId: string | null = null
+    try {
+      const request: LocalDataImportCampaignCreateRequest = {
+        client_idempotency_key: crypto.randomUUID(),
+        files: files.map((item) => ({
+          relative_path: item.relativePath,
+          byte_size: item.file.size,
+        })),
+        keyword_pack_ids: keywordPackIds,
+        ingestion_policy: ingestionPolicy,
+        profile: 'aima-monitoring-excel.v1',
+      }
+      const created = await createLocalCampaign(request)
+      campaignId = created.campaign_id
+      await refreshHistoricalCampaign(campaignId)
+      const selectedByPath = new Map(files.map((item) => [item.relativePath, item.file]))
+      for (const uploadItem of created.upload_items) {
+        const file = selectedByPath.get(uploadItem.relative_path)
+        if (!file) throw new Error(`服务器返回了未知上传项：${uploadItem.relative_path}`)
+        await uploadLocalCampaignFile(campaignId, uploadItem.item_id, file)
+        localUploadCompleted.value += 1
+      }
+      const campaign = await finalizeLocalCampaign(campaignId)
+      selectedHistoricalCampaign.value = campaign
+      historicalCampaigns.value = [
+        campaign,
+        ...historicalCampaigns.value.filter((item) => item.id !== campaign.id),
+      ]
+      return campaign
+    } catch (reason) {
+      error.value = errorMessage(reason)
+      if (campaignId) {
+        try {
+          await refreshHistoricalCampaign(campaignId)
+        } catch {
+          // 保留原始上传错误；Campaign ID 已在服务端审计，可从历史记录继续排查。
+        }
+      }
+      return null
+    } finally {
+      creatingHistorical.value = false
+    }
+  }
+
+  async function actOnHistoricalCampaign(
+    action: 'start' | 'cancel' | 'retry',
+  ): Promise<HistoricalCampaignResponse | null> {
+    const campaignId = selectedHistoricalCampaign.value?.id
+    if (!campaignId) return null
+    actingHistorical.value = true
+    error.value = null
+    try {
+      const campaign = action === 'start'
+        ? await startHistoricalCampaign(campaignId)
+        : action === 'cancel'
+          ? await cancelHistoricalCampaign(campaignId)
+          : await retryHistoricalCampaign(campaignId)
+      selectedHistoricalCampaign.value = campaign
+      historicalCampaigns.value = [
+        campaign,
+        ...historicalCampaigns.value.filter((item) => item.id !== campaign.id),
+      ]
+      return campaign
+    } catch (reason) {
+      error.value = errorMessage(reason)
+      return null
+    } finally {
+      actingHistorical.value = false
+    }
+  }
+
   function resetFilters(): void {
     Object.assign(filters, EMPTY_FILTERS)
   }
@@ -349,6 +584,16 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     batchOptions,
     keywordPackOptions,
     batchContentPlatforms,
+    historicalDirectoryPath,
+    historicalDirectoryEntries,
+    historicalDirectoryNextCursor,
+    historicalDirectoryHasMore,
+    historicalCampaigns,
+    selectedHistoricalCampaign,
+    historicalCampaignItems,
+    historicalCampaignConflicts,
+    historicalCampaignItemsHasMore,
+    historicalCampaignConflictsHasMore,
     hasMore,
     loading,
     loadingNext,
@@ -356,6 +601,11 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     creating,
     loadingBatchPlatforms,
     loadingKeywordPacks,
+    loadingHistorical,
+    creatingHistorical,
+    actingHistorical,
+    localUploadCompleted,
+    localUploadTotal,
     error,
     hasActiveJobs,
     refresh,
@@ -369,6 +619,15 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
     loadBatchPlatforms,
     loadCreationOptions,
     createRun,
+    openHistoricalWorkspace,
+    openServerImportSource,
+    browseHistoricalDirectory,
+    loadMoreHistoricalDirectory,
+    refreshHistoricalCampaign,
+    refreshHistoricalCampaignSummary,
+    submitHistoricalCampaign,
+    submitLocalCampaign,
+    actOnHistoricalCampaign,
     resetFilters,
     startPolling,
     stopPolling,

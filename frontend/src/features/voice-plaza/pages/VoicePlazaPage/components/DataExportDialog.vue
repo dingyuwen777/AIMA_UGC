@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 
 import type { DataExportResponse } from '../../../../../generated/api/client'
 import { exportArtifactRetention } from '../../../../../shared/artifactRetention'
+import TaskProgressBar from '../../../../../shared/TaskProgressBar.vue'
 import { formatDateTime, formatNumber } from '../../../format'
 
 const props = defineProps<{
@@ -111,7 +112,11 @@ function canDownload(item: DataExportResponse): boolean {
               :key="item.id"
             >
               <div>
-                <strong>{{ item.filename || `声音广场导出 ${item.id.slice(0, 8)}` }}</strong><small>{{ formatDateTime(item.created_at) }} · {{ statusLabels[item.job.status] }} {{ item.job.progress }}%</small><span v-if="item.stats">内容 {{ formatNumber(item.stats.content_count) }} · 已打标 {{ formatNumber(item.stats.analyzed_count) }} · 未打标 {{ formatNumber(item.stats.unanalyzed_count) }}</span><span
+                <strong>{{ item.filename || `声音广场导出 ${item.id.slice(0, 8)}` }}</strong><small>{{ formatDateTime(item.created_at) }} · {{ statusLabels[item.job.status] }}</small><TaskProgressBar
+                  compact
+                  :label="`导出 ${item.id.slice(0, 8)} 进度`"
+                  :value="item.job.progress"
+                /><span v-if="item.stats">内容 {{ formatNumber(item.stats.content_count) }} · 已打标 {{ formatNumber(item.stats.analyzed_count) }} · 未打标 {{ formatNumber(item.stats.unanalyzed_count) }}</span><span
                   v-if="retention(item).expiresAt"
                   :class="{ expired: retention(item).expired }"
                 >{{ retention(item).expired ? '下载已过期' : `下载有效期至 ${formatDateTime(retention(item).expiresAt)}` }}</span><span
@@ -176,6 +181,7 @@ header button { border: 0; color: #7d8695; background: transparent; font-size: 2
 .records article { display: flex; align-items: center; justify-content: space-between; padding: 12px; border-bottom: 1px solid #edf0f4; }
 .records article:last-child { border-bottom: 0; }
 .records strong, .records small, .records span { display: block; }
+.records :deep(.task-progress) { width: min(280px, 44vw); margin-top: 7px; }
 .records strong { color: #394355; font-size: 12px; }
 .records small, .records span { margin-top: 4px; color: #7f8898; font-size: 10px; }
 .records .error, .records .expired { color: #cf3440; }

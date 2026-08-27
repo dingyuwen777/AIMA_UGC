@@ -12,13 +12,13 @@ import CollectionRunDetailDrawer from './components/CollectionRunDetailDrawer.vu
 import CollectionRuntimeFilters from './components/CollectionRuntimeFilters.vue'
 import CollectionRuntimeKpiCards from './components/CollectionRuntimeKpiCards.vue'
 import CollectionRuntimeTable from './components/CollectionRuntimeTable.vue'
+import DataImportDialog from './components/DataImportDialog.vue'
 import ImportBatchDetailDrawer from './components/ImportBatchDetailDrawer.vue'
-import ImportUploadDialog from './components/ImportUploadDialog.vue'
 import TikHubSupplementDrawer from './components/TikHubSupplementDrawer.vue'
 
 const store = useImportBatchesStore()
 const router = useRouter()
-const uploadOpen = ref(false)
+const dataImportOpen = ref(false)
 const supplementOpen = ref(false)
 const initialBatchId = ref<string | null>(null)
 const notice = ref<string | null>(null)
@@ -51,17 +51,9 @@ async function reset(): Promise<void> {
   await store.refresh()
 }
 
-async function openUpload(): Promise<void> {
-  await store.loadKeywordPacks()
-  uploadOpen.value = true
-}
-
-async function upload(file: File, keywordPackIds: string[]): Promise<void> {
-  const created = await store.upload(file, keywordPackIds)
-  if (!created) return
-  uploadOpen.value = false
-  showNotice('Import Job 已创建，文件将在后台继续处理。')
-  await store.openBatchDetail(created.batch_id)
+async function openDataImport(): Promise<void> {
+  dataImportOpen.value = true
+  await store.openHistoricalWorkspace()
 }
 
 async function openCreate(batchId: string | null = null): Promise<void> {
@@ -110,7 +102,7 @@ async function viewContents(batchId: string): Promise<void> {
 <template>
   <AppShell>
     <div class="page-header">
-      <div><h1>采集运行中心</h1><p>统一查看 Excel 导入与 TikHub 辅助补采运行</p></div>
+      <div><h1>采集运行中心</h1><p>统一查看数据导入与 TikHub 辅助补采运行</p></div>
       <div class="page-actions">
         <button
           type="button"
@@ -120,9 +112,9 @@ async function viewContents(batchId: string): Promise<void> {
         </button><button
           class="primary"
           type="button"
-          @click="openUpload"
+          @click="openDataImport"
         >
-          ⇧&nbsp; 导入 Excel
+          ⇧&nbsp; 导入数据
         </button><button
           class="outline-primary"
           type="button"
@@ -202,13 +194,9 @@ async function viewContents(batchId: string): Promise<void> {
       @refresh="store.selectedRun && store.openRunDetail(store.selectedRun.run_id)"
       @copy="copy"
     />
-    <ImportUploadDialog
-      v-model="uploadOpen"
-      :uploading="store.uploading"
-      :keyword-packs="store.keywordPackOptions"
-      :loading-keyword-packs="store.loadingKeywordPacks"
-      :request-error="store.error"
-      @submit="upload"
+    <DataImportDialog
+      v-model="dataImportOpen"
+      @view-contents="viewContents"
     />
     <TikHubSupplementDrawer
       v-model="supplementOpen"

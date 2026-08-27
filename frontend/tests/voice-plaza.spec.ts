@@ -7,7 +7,11 @@ const generated = vi.hoisted(() => ({
   listContents: vi.fn(),
   getContent: vi.fn(),
   getContentAnalysisCapabilities: vi.fn(),
-  createContentAnalysis: vi.fn(),
+  previewContentAnalysisRun: vi.fn(),
+  createContentAnalysisRun: vi.fn(),
+  listContentAnalysisRuns: vi.fn(),
+  getContentAnalysisRun: vi.fn(),
+  cancelContentAnalysisRun: vi.fn(),
   createContentRelevanceReview: vi.fn(),
   getContentAnalysisJob: vi.fn(),
   createDataExport: vi.fn(),
@@ -53,7 +57,7 @@ const item = {
 describe('voice plaza', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    vi.clearAllMocks()
+    vi.resetAllMocks()
     generated.getContentAnalysisCapabilities.mockResolvedValue({ configured: true })
   })
 
@@ -170,32 +174,113 @@ describe('voice plaza', () => {
     const store = useVoicePlazaStore()
 
     await store.refreshAnalysisCapabilities()
-    const created = await store.createAnalysis('query')
+    const preview = await store.previewAnalysis('selected')
 
     expect(store.analysisConfigured).toBe(false)
-    expect(created).toBeNull()
+    expect(preview).toBeNull()
     expect(store.error).toContain('当前环境尚未配置可用的 AI 模型')
-    expect(generated.createContentAnalysis).not.toHaveBeenCalled()
+    expect(generated.previewContentAnalysisRun).not.toHaveBeenCalled()
   })
 
-  it('surfaces an analysis job polling failure instead of leaving an unhandled rejection', async () => {
+  it('previews and confirms an analysis run with the exact frozen target selection', async () => {
+    generated.previewContentAnalysisRun.mockResolvedValue({
+      target_count: 1,
+      shard_count: 1,
+      shard_size: 1,
+      prompt_version: 'content_labeling_v3',
+      prompt_sha256: 'a'.repeat(64),
+      taxonomy_sha256: 'b'.repeat(64),
+      model_provider: 'openai-compatible',
+      model: 'fixture-model',
+      generation_config: { temperature: 0 },
+      generation_config_hash: 'c'.repeat(64),
+      configuration_hash: 'd'.repeat(64),
+      cost_estimate_available: false,
+      cost_estimate_note: '不能伪造费用估算。',
+    })
+    generated.createContentAnalysisRun.mockResolvedValue({
+      run_id: 'run-1',
+      planner_job_id: 'job-1',
+      target_count: 1,
+      shard_count: 1,
+      status: 'queued',
+    })
+    generated.listContentAnalysisRuns.mockResolvedValue({ items: [] })
+    const store = useVoicePlazaStore()
+    store.selectedIds = [item.id]
+
+    await store.refreshAnalysisCapabilities()
+    const preview = await store.previewAnalysis('selected')
+    store.selectedIds = []
+    const created = await store.confirmAnalysis()
+
+    expect(preview?.configuration_hash).toBe('d'.repeat(64))
+    expect(created).toBe(1)
+    expect(generated.previewContentAnalysisRun).toHaveBeenCalledWith({
+      targets: { scope: 'selected', content_ids: [item.id] },
+    })
+    expect(generated.createContentAnalysisRun).toHaveBeenCalledWith(expect.objectContaining({
+      targets: { scope: 'selected', content_ids: [item.id] },
+      expected_target_count: 1,
+      expected_configuration_hash: 'd'.repeat(64),
+      run_intent: 'manual_reanalysis',
+    }))
+  })
+
+  it('surfaces an analysis run polling failure instead of leaving an unhandled rejection', async () => {
     vi.useFakeTimers()
     vi.stubGlobal('document', { visibilityState: 'visible' })
-    generated.createContentAnalysis.mockResolvedValue({ job_id: 'job-1', target_count: 1 })
-    generated.getContentAnalysisJob
-      .mockResolvedValueOnce({ id: 'job-1', status: 'queued' })
+    generated.listContentAnalysisRuns
+      .mockResolvedValueOnce({
+        items: [{ id: 'run-1', status: 'queued', stats: { pending: 1 } }],
+      })
       .mockRejectedValueOnce(new Error('analysis polling failed'))
+    generated.getContentAnalysisRun.mockResolvedValue({
+      id: 'run-1',
+      status: 'queued',
+      stats: { pending: 1 },
+      shards: [],
+    })
     generated.listContents.mockResolvedValue({ items: [], has_more: false })
     generated.listDataExports.mockResolvedValue({ items: [], has_more: false })
     const store = useVoicePlazaStore()
 
-    await store.refreshAnalysisCapabilities()
-    await store.createAnalysis('query')
+    await store.refreshAnalysisRuns()
     store.startPolling(1000)
     await vi.advanceTimersByTimeAsync(1000)
 
     expect(store.error).toBe('analysis polling failed')
     store.stopPolling()
+  })
+
+  it('loads shard progress for active runs omitted by the list response', async () => {
+    const listedRun = {
+      id: 'run-1',
+      status: 'running',
+      target_count: 20,
+      shards: [],
+    }
+    generated.listContentAnalysisRuns.mockResolvedValue({ items: [listedRun] })
+    generated.getContentAnalysisRun.mockResolvedValue({
+      ...listedRun,
+      shards: [{ request_id: 'request-1', job_id: 'job-1', shard_no: 0, target_count: 10, status: 'running', progress: 50 }],
+    })
+    const store = useVoicePlazaStore()
+
+    await store.refreshAnalysisRuns()
+
+    expect(generated.getContentAnalysisRun).toHaveBeenCalledWith('run-1')
+    expect(store.analysisRuns[0]?.shards).toHaveLength(1)
+  })
+
+  it('keeps an empty run list when the server response is malformed', async () => {
+    generated.listContentAnalysisRuns.mockResolvedValue(undefined)
+    const store = useVoicePlazaStore()
+
+    await store.refreshAnalysisRuns()
+
+    expect(store.analysisRuns).toEqual([])
+    expect(store.error).toBe('AI Analysis Run 历史响应格式无效。')
   })
 
   it('does not create a query export when the current query has no content', async () => {

@@ -41,7 +41,7 @@ function statusClass(item: CollectionRuntimeItemResponse): string {
       v-else-if="items.length === 0"
       class="table-state"
     >
-      <strong>暂无采集运行</strong><span>可导入 Excel，或创建一次 TikHub 辅助补采。</span>
+      <strong>暂无采集运行</strong><span>可从本地电脑或服务器目录导入数据，也可创建一次 TikHub 辅助补采。</span>
     </div>
     <article
       v-for="item in items"

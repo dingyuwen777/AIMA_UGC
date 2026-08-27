@@ -4,9 +4,180 @@
  * AIMA_UGC API
  * OpenAPI spec version: 0.1.0
  */
+export type AnalysisContentRunCreateRequestRunIntent = typeof AnalysisContentRunCreateRequestRunIntent[keyof typeof AnalysisContentRunCreateRequestRunIntent];
+
+
+export const AnalysisContentRunCreateRequestRunIntent = {
+  initial_analysis: 'initial_analysis',
+  manual_reanalysis: 'manual_reanalysis',
+} as const;
+
+/**
+ * 本轮只开放有容量上限的显式 Analysis Run 目标。
+ */
+export interface AnalysisRunTargetSelection {
+  /**
+     * @minItems 1
+     * @maxItems 1000
+     */
+  content_ids: string[];
+  scope?: 'selected';
+}
+
+export interface AnalysisContentRunCreateRequest {
+  /**
+     * @minLength 1
+     * @maxLength 128
+     * @pattern ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+     */
+  client_idempotency_key: string;
+  /** @pattern ^[0-9a-f]{64}$ */
+  expected_configuration_hash: string;
+  /** @exclusiveMinimum 0 */
+  expected_target_count: number;
+  run_intent?: AnalysisContentRunCreateRequestRunIntent;
+  targets: AnalysisRunTargetSelection;
+}
+
+export interface AnalysisContentRunCreatedResponse {
+  planner_job_id: string;
+  run_id: string;
+  /** @exclusiveMinimum 0 */
+  shard_count: number;
+  status?: 'queued';
+  /** @exclusiveMinimum 0 */
+  target_count: number;
+}
+
+export type AnalysisContentRunResponseRunIntent = typeof AnalysisContentRunResponseRunIntent[keyof typeof AnalysisContentRunResponseRunIntent];
+
+
+export const AnalysisContentRunResponseRunIntent = {
+  initial_analysis: 'initial_analysis',
+  manual_reanalysis: 'manual_reanalysis',
+} as const;
+
+export type AnalysisContentRunResponseScope = typeof AnalysisContentRunResponseScope[keyof typeof AnalysisContentRunResponseScope];
+
+
+export const AnalysisContentRunResponseScope = {
+  query: 'query',
+  selected: 'selected',
+} as const;
+
+export interface AnalysisContentRunShardResponse {
+  error_code?: string | null;
+  job_id: string;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  progress: number;
+  request_id: string;
+  /** @minimum 0 */
+  shard_no: number;
+  status: string;
+  /** @exclusiveMinimum 0 */
+  target_count: number;
+}
+
+export interface AnalysisContentRunStatsResponse {
+  /** @minimum 0 */
+  cancelled?: number;
+  /** @minimum 0 */
+  failed?: number;
+  /** @minimum 0 */
+  pending?: number;
+  /** @minimum 0 */
+  stale?: number;
+  /** @minimum 0 */
+  succeeded?: number;
+}
+
+export type AnalysisContentRunResponseStatus = typeof AnalysisContentRunResponseStatus[keyof typeof AnalysisContentRunResponseStatus];
+
+
+export const AnalysisContentRunResponseStatus = {
+  queued: 'queued',
+  running: 'running',
+  succeeded: 'succeeded',
+  partial_failed: 'partial_failed',
+  failed: 'failed',
+  cancelling: 'cancelling',
+  cancelled: 'cancelled',
+} as const;
+
+export type AnalysisContentRunResponseGenerationConfig = { [key: string]: unknown };
+
+export interface AnalysisContentRunResponse {
+  created_at: string;
+  error_code?: string | null;
+  finished_at?: string | null;
+  generation_config: AnalysisContentRunResponseGenerationConfig;
+  generation_config_hash: string;
+  id: string;
+  model: string;
+  model_provider: string;
+  planner_job_id: string;
+  prompt_sha256: string;
+  prompt_version: string;
+  run_intent: AnalysisContentRunResponseRunIntent;
+  scope: AnalysisContentRunResponseScope;
+  /** @exclusiveMinimum 0 */
+  sequence_no: number;
+  /** @exclusiveMinimum 0 */
+  shard_count: number;
+  /** @exclusiveMinimum 0 */
+  shard_size: number;
+  shards?: AnalysisContentRunShardResponse[];
+  started_at?: string | null;
+  stats?: AnalysisContentRunStatsResponse;
+  status: AnalysisContentRunResponseStatus;
+  /** @exclusiveMinimum 0 */
+  target_count: number;
+  taxonomy_sha256: string;
+}
+
+export interface AnalysisContentRunListResponse {
+  items: AnalysisContentRunResponse[];
+}
+
+export interface AnalysisContentRunPreviewRequest {
+  targets: AnalysisRunTargetSelection;
+}
+
+export type AnalysisContentRunPreviewResponseGenerationConfig = { [key: string]: unknown };
+
+export interface AnalysisContentRunPreviewResponse {
+  /** @pattern ^[0-9a-f]{64}$ */
+  configuration_hash: string;
+  cost_estimate_available?: boolean;
+  cost_estimate_note: string;
+  generation_config: AnalysisContentRunPreviewResponseGenerationConfig;
+  /** @pattern ^[0-9a-f]{64}$ */
+  generation_config_hash: string;
+  model: string;
+  model_provider: string;
+  /** @pattern ^[0-9a-f]{64}$ */
+  prompt_sha256: string;
+  prompt_version: string;
+  /** @exclusiveMinimum 0 */
+  shard_count: number;
+  /** @exclusiveMinimum 0 */
+  shard_size: number;
+  /** @exclusiveMinimum 0 */
+  target_count: number;
+  /** @pattern ^[0-9a-f]{64}$ */
+  taxonomy_sha256: string;
+}
+
 export interface BodyCreateImportBatch {
   file: Blob;
   keyword_pack_ids: string[];
+}
+
+export interface BodyUploadLocalDataImportFile {
+  file: Blob;
 }
 
 export type CollectionPlatform = typeof CollectionPlatform[keyof typeof CollectionPlatform];
@@ -362,6 +533,9 @@ export interface ContentAnalysisCapabilitiesResponse {
 export interface ContentAnalysisCreatedResponse {
   job_id: string;
   request_id: string;
+  run_id?: string | null;
+  /** @minimum 1 */
+  shard_count?: number;
   status?: 'queued';
   /** @exclusiveMinimum 0 */
   target_count: number;
@@ -418,6 +592,8 @@ export const ContentVoiceType = {
 export interface ContentAnalysisResponse {
   analyzed_at?: string | null;
   labels?: ContentLabelPairResponse[];
+  latest_run_id?: string | null;
+  latest_run_status?: string | null;
   model?: string | null;
   model_provider?: string | null;
   relevance?: ContentRelevance | null;
@@ -466,7 +642,7 @@ export const ContentTargetSelectionScope = {
 } as const;
 
 /**
- * HTTP 层选择语义；Service 会立刻冻结 Content ID + Version。
+ * HTTP 层选择语义；新版 Run 由 Planner 异步冻结 Content ID + Version。
  */
 export interface ContentTargetSelection {
   /** @maxItems 1000 */
@@ -699,6 +875,22 @@ export interface DataExportSubmitRequest {
   targets: ContentTargetSelection;
 }
 
+export type DataImportIngestionPolicy = typeof DataImportIngestionPolicy[keyof typeof DataImportIngestionPolicy];
+
+
+export const DataImportIngestionPolicy = {
+  standard_observation: 'standard_observation',
+  historical_fill_only: 'historical_fill_only',
+} as const;
+
+export type DataImportSourceKind = typeof DataImportSourceKind[keyof typeof DataImportSourceKind];
+
+
+export const DataImportSourceKind = {
+  local_upload: 'local_upload',
+  server_path: 'server_path',
+} as const;
+
 export interface GlobalRelevanceConfigRequest {
   keyword_pack_id: string;
 }
@@ -720,6 +912,217 @@ export const HealthResponseValue = {
   status: 'ok',
 } as const;
 export type HealthResponse = typeof HealthResponseValue;
+
+export interface HistoricalCampaignConflictResponse {
+  batch_item_id: string;
+  content_id: string;
+  /** @minimum 1 */
+  content_version: number;
+  created_at: string;
+  current_value_hash: string;
+  field_name: string;
+  historical_value_hash: string;
+  /** @minimum 1 */
+  source_row_ordinal: number;
+}
+
+export interface HistoricalCampaignConflictListResponse {
+  has_more?: boolean;
+  items: HistoricalCampaignConflictResponse[];
+  /** @minimum 0 */
+  total_count?: number;
+}
+
+export interface HistoricalCampaignCreateRequest {
+  /**
+     * @minLength 1
+     * @maxLength 128
+     * @pattern ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+     */
+  client_idempotency_key: string;
+  ingestion_policy?: DataImportIngestionPolicy;
+  /**
+     * @minItems 1
+     * @maxItems 20
+     */
+  keyword_pack_ids: string[];
+  profile?: 'aima-monitoring-excel.v1';
+  recursive?: boolean;
+  /**
+     * @minItems 1
+     * @maxItems 1000
+     */
+  relative_paths: string[];
+}
+
+export interface HistoricalCampaignCreatedResponse {
+  campaign_id: string;
+  discovery_job_id: string;
+}
+
+export type HistoricalCampaignItemResponseItemKind = typeof HistoricalCampaignItemResponseItemKind[keyof typeof HistoricalCampaignItemResponseItemKind];
+
+
+export const HistoricalCampaignItemResponseItemKind = {
+  source_file: 'source_file',
+  chunk: 'chunk',
+} as const;
+
+export type HistoricalCampaignItemStatus = typeof HistoricalCampaignItemStatus[keyof typeof HistoricalCampaignItemStatus];
+
+
+export const HistoricalCampaignItemStatus = {
+  discovered: 'discovered',
+  snapshotting: 'snapshotting',
+  ready: 'ready',
+  queued: 'queued',
+  running: 'running',
+  succeeded: 'succeeded',
+  failed: 'failed',
+  cancelled: 'cancelled',
+} as const;
+
+export type HistoricalCampaignItemResponseStats = { [key: string]: unknown };
+
+export interface HistoricalCampaignItemResponse {
+  artifact_id?: string | null;
+  /** @minimum 0 */
+  attempt_count: number;
+  created_at: string;
+  error_code?: string | null;
+  finished_at?: string | null;
+  id: string;
+  item_kind: HistoricalCampaignItemResponseItemKind;
+  ordinal?: number | null;
+  parent_item_id?: string | null;
+  relative_path: string;
+  /** @minimum 0 */
+  row_count: number;
+  row_end?: number | null;
+  row_start?: number | null;
+  sha256?: string | null;
+  started_at?: string | null;
+  stats?: HistoricalCampaignItemResponseStats;
+  status: HistoricalCampaignItemStatus;
+}
+
+export interface HistoricalCampaignItemListResponse {
+  has_more?: boolean;
+  items: HistoricalCampaignItemResponse[];
+  /** @minimum 0 */
+  total_count?: number;
+}
+
+/**
+ * 返回可由持久状态重建的 Campaign 预检与迁移进度。
+ */
+export interface HistoricalCampaignProgressResponse {
+  /** @minimum 0 */
+  migration_completed_row_count: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  migration_percent: number;
+  /** @minimum 0 */
+  preflight_completed_file_count: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  preflight_percent: number;
+}
+
+export interface HistoricalCampaignStatsResponse {
+  /** @minimum 0 */
+  conflict?: number;
+  /** @minimum 0 */
+  created?: number;
+  /** @minimum 0 */
+  duplicate?: number;
+  /** @minimum 0 */
+  failed?: number;
+  /** @minimum 0 */
+  filled?: number;
+  /** @minimum 0 */
+  filtered?: number;
+  /** @minimum 0 */
+  invalid?: number;
+  /** @minimum 0 */
+  unchanged?: number;
+  /** @minimum 0 */
+  updated?: number;
+}
+
+export type HistoricalCampaignStatus = typeof HistoricalCampaignStatus[keyof typeof HistoricalCampaignStatus];
+
+
+export const HistoricalCampaignStatus = {
+  uploading: 'uploading',
+  discovering: 'discovering',
+  snapshotting: 'snapshotting',
+  ready: 'ready',
+  queued: 'queued',
+  running: 'running',
+  cancelling: 'cancelling',
+  cancelled: 'cancelled',
+  succeeded: 'succeeded',
+  partial_failed: 'partial_failed',
+  failed: 'failed',
+} as const;
+
+export interface HistoricalCampaignResponse {
+  readonly can_start: boolean;
+  created_at: string;
+  /** @minimum 0 */
+  declared_file_count?: number;
+  /** @minimum 0 */
+  discovered_file_count: number;
+  error_summary?: string | null;
+  finished_at?: string | null;
+  id: string;
+  ingestion_policy?: DataImportIngestionPolicy;
+  progress: HistoricalCampaignProgressResponse;
+  /** @minimum 0 */
+  ready_item_count: number;
+  recursive: boolean;
+  root_relative_path: string;
+  source_kind?: DataImportSourceKind;
+  started_at?: string | null;
+  stats?: HistoricalCampaignStatsResponse;
+  status: HistoricalCampaignStatus;
+  /** @minimum 0 */
+  total_rows: number;
+}
+
+export interface HistoricalCampaignListResponse {
+  items: HistoricalCampaignResponse[];
+}
+
+export type HistoricalDirectoryEntryResponseKind = typeof HistoricalDirectoryEntryResponseKind[keyof typeof HistoricalDirectoryEntryResponseKind];
+
+
+export const HistoricalDirectoryEntryResponseKind = {
+  directory: 'directory',
+  file: 'file',
+} as const;
+
+export interface HistoricalDirectoryEntryResponse {
+  byte_size?: number | null;
+  kind: HistoricalDirectoryEntryResponseKind;
+  /** @minimum 0 */
+  modified_at_ns: number;
+  name: string;
+  relative_path: string;
+}
+
+export interface HistoricalDirectoryListResponse {
+  available: boolean;
+  has_more?: boolean;
+  items?: HistoricalDirectoryEntryResponse[];
+  next_cursor?: string | null;
+  unavailable_reason?: string | null;
+}
 
 export interface HttpErrorItem {
   code: string;
@@ -875,6 +1278,78 @@ export interface KeywordPackResponse {
   version: number;
 }
 
+/**
+ * 声明浏览器显式选择的一个本地 XLSX；绝不承载本机绝对路径。
+ */
+export interface LocalDataImportFileManifest {
+  /**
+     * @minimum 1
+     * @maximum 524288000
+     */
+  byte_size: number;
+  /**
+     * @minLength 1
+     * @maxLength 1024
+     */
+  relative_path: string;
+}
+
+/**
+ * 建立本地文件暂存 Campaign；文件字节随后按 Item 分别流式上传。
+ */
+export interface LocalDataImportCampaignCreateRequest {
+  /**
+     * @minLength 1
+     * @maxLength 128
+     * @pattern ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+     */
+  client_idempotency_key: string;
+  /**
+     * @minItems 1
+     * @maxItems 1000
+     */
+  files: LocalDataImportFileManifest[];
+  ingestion_policy?: DataImportIngestionPolicy;
+  /**
+     * @minItems 1
+     * @maxItems 20
+     */
+  keyword_pack_ids: string[];
+  profile?: 'aima-monitoring-excel.v1';
+}
+
+/**
+ * 返回客户端下一步逐项上传所需的稳定 Item 身份。
+ */
+export interface LocalDataImportUploadItemResponse {
+  item_id: string;
+  relative_path: string;
+}
+
+/**
+ * 返回本地 Campaign 及其冻结上传清单。
+ */
+export interface LocalDataImportCampaignCreatedResponse {
+  campaign_id: string;
+  upload_items: LocalDataImportUploadItemResponse[];
+}
+
+/**
+ * 确认一个本地文件已形成服务器端不可变 Source Artifact。
+ */
+export interface LocalDataImportFileUploadedResponse {
+  artifact_id: string;
+  /** @minimum 1 */
+  byte_size: number;
+  campaign_id: string;
+  item_id: string;
+  /**
+     * @minLength 64
+     * @maxLength 64
+     */
+  sha256: string;
+}
+
 export type ReadinessChecksArtifactStore = typeof ReadinessChecksArtifactStore[keyof typeof ReadinessChecksArtifactStore];
 
 
@@ -988,6 +1463,32 @@ cursor?: string | null;
 limit?: number;
 };
 
+export type ListDataImportServerDirectoriesParams = {
+/**
+ * @maxLength 1024
+ */
+relative_path?: string;
+cursor?: string | null;
+/**
+ * @minimum 1
+ * @maximum 500
+ */
+limit?: number;
+};
+
+export type ListHistoricalImportDirectoriesParams = {
+/**
+ * @maxLength 1024
+ */
+relative_path?: string;
+cursor?: string | null;
+/**
+ * @minimum 1
+ * @maximum 500
+ */
+limit?: number;
+};
+
 export type ListImportBatchesParams = {
 identifier?: string | null;
 status?: ImportBatchStatus | null;
@@ -1015,6 +1516,161 @@ offset?: number;
  */
 limit?: number;
 };
+
+export const getListContentAnalysisRunsUrl = () => {
+
+
+
+
+  return `/api/v1/analysis/content-runs`
+}
+
+/**
+ * @summary List Content Analysis Runs
+ */
+export const listContentAnalysisRuns = async ( options?: RequestInit): Promise<AnalysisContentRunListResponse> => {
+
+  const res = await fetch(getListContentAnalysisRunsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: AnalysisContentRunListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCreateContentAnalysisRunUrl = () => {
+
+
+
+
+  return `/api/v1/analysis/content-runs`
+}
+
+/**
+ * @summary Create Content Analysis Run
+ */
+export const createContentAnalysisRun = async (analysisContentRunCreateRequest: AnalysisContentRunCreateRequest, options?: RequestInit): Promise<AnalysisContentRunCreatedResponse> => {
+
+  const res = await fetch(getCreateContentAnalysisRunUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(analysisContentRunCreateRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: AnalysisContentRunCreatedResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getPreviewContentAnalysisRunUrl = () => {
+
+
+
+
+  return `/api/v1/analysis/content-runs/preview`
+}
+
+/**
+ * @summary Preview Content Analysis Run
+ */
+export const previewContentAnalysisRun = async (analysisContentRunPreviewRequest: AnalysisContentRunPreviewRequest, options?: RequestInit): Promise<AnalysisContentRunPreviewResponse> => {
+
+  const res = await fetch(getPreviewContentAnalysisRunUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(analysisContentRunPreviewRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: AnalysisContentRunPreviewResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetContentAnalysisRunUrl = (runId: string,) => {
+
+
+
+
+  return `/api/v1/analysis/content-runs/${runId}`
+}
+
+/**
+ * @summary Get Content Analysis Run
+ */
+export const getContentAnalysisRun = async (runId: string, options?: RequestInit): Promise<AnalysisContentRunResponse> => {
+
+  const res = await fetch(getGetContentAnalysisRunUrl(runId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: AnalysisContentRunResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCancelContentAnalysisRunUrl = (runId: string,) => {
+
+
+
+
+  return `/api/v1/analysis/content-runs/${runId}/cancel`
+}
+
+/**
+ * @summary Cancel Content Analysis Run
+ */
+export const cancelContentAnalysisRun = async (runId: string, options?: RequestInit): Promise<AnalysisContentRunResponse> => {
+
+  const res = await fetch(getCancelContentAnalysisRunUrl(runId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: AnalysisContentRunResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
 
 export const getGetCollectionCapabilitiesUrl = () => {
 
@@ -1637,6 +2293,676 @@ export const downloadDataExport = async (exportId: string, options?: RequestInit
 
   const body = [204, 205, 304].includes(res.status) ? null : await res.blob();
   const data: Blob = body as Blob
+  return data
+}
+
+
+
+export const getListDataImportCampaignsUrl = () => {
+
+
+
+
+  return `/api/v1/data-import-campaigns`
+}
+
+/**
+ * @summary List Historical Import Campaigns
+ */
+export const listDataImportCampaigns = async ( options?: RequestInit): Promise<HistoricalCampaignListResponse> => {
+
+  const res = await fetch(getListDataImportCampaignsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: HistoricalCampaignListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCreateLocalDataImportCampaignUrl = () => {
+
+
+
+
+  return `/api/v1/data-import-campaigns/local`
+}
+
+/**
+ * @summary Create Local Data Import Campaign
+ */
+export const createLocalDataImportCampaign = async (localDataImportCampaignCreateRequest: LocalDataImportCampaignCreateRequest, options?: RequestInit): Promise<LocalDataImportCampaignCreatedResponse> => {
+
+  const res = await fetch(getCreateLocalDataImportCampaignUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(localDataImportCampaignCreateRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: LocalDataImportCampaignCreatedResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCreateServerDataImportCampaignUrl = () => {
+
+
+
+
+  return `/api/v1/data-import-campaigns/server`
+}
+
+/**
+ * @summary Create Historical Import Campaign
+ */
+export const createServerDataImportCampaign = async (historicalCampaignCreateRequest: HistoricalCampaignCreateRequest, options?: RequestInit): Promise<HistoricalCampaignCreatedResponse> => {
+
+  const res = await fetch(getCreateServerDataImportCampaignUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(historicalCampaignCreateRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: HistoricalCampaignCreatedResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetDataImportCampaignUrl = (campaignId: string,) => {
+
+
+
+
+  return `/api/v1/data-import-campaigns/${campaignId}`
+}
+
+/**
+ * @summary Get Historical Import Campaign
+ */
+export const getDataImportCampaign = async (campaignId: string, options?: RequestInit): Promise<HistoricalCampaignResponse> => {
+
+  const res = await fetch(getGetDataImportCampaignUrl(campaignId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: HistoricalCampaignResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCancelDataImportCampaignUrl = (campaignId: string,) => {
+
+
+
+
+  return `/api/v1/data-import-campaigns/${campaignId}/cancel`
+}
+
+/**
+ * @summary Cancel Historical Import Campaign
+ */
+export const cancelDataImportCampaign = async (campaignId: string, options?: RequestInit): Promise<HistoricalCampaignResponse> => {
+
+  const res = await fetch(getCancelDataImportCampaignUrl(campaignId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: HistoricalCampaignResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getListDataImportCampaignConflictsUrl = (campaignId: string,) => {
+
+
+
+
+  return `/api/v1/data-import-campaigns/${campaignId}/conflicts`
+}
+
+/**
+ * @summary List Historical Import Campaign Conflicts
+ */
+export const listDataImportCampaignConflicts = async (campaignId: string, options?: RequestInit): Promise<HistoricalCampaignConflictListResponse> => {
+
+  const res = await fetch(getListDataImportCampaignConflictsUrl(campaignId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: HistoricalCampaignConflictListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getFinalizeLocalDataImportCampaignUrl = (campaignId: string,) => {
+
+
+
+
+  return `/api/v1/data-import-campaigns/${campaignId}/finalize`
+}
+
+/**
+ * @summary Finalize Local Data Import Campaign
+ */
+export const finalizeLocalDataImportCampaign = async (campaignId: string, options?: RequestInit): Promise<HistoricalCampaignResponse> => {
+
+  const res = await fetch(getFinalizeLocalDataImportCampaignUrl(campaignId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: HistoricalCampaignResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getListDataImportCampaignItemsUrl = (campaignId: string,) => {
+
+
+
+
+  return `/api/v1/data-import-campaigns/${campaignId}/items`
+}
+
+/**
+ * @summary List Historical Import Campaign Items
+ */
+export const listDataImportCampaignItems = async (campaignId: string, options?: RequestInit): Promise<HistoricalCampaignItemListResponse> => {
+
+  const res = await fetch(getListDataImportCampaignItemsUrl(campaignId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: HistoricalCampaignItemListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getUploadLocalDataImportFileUrl = (campaignId: string,
+    itemId: string,) => {
+
+
+
+
+  return `/api/v1/data-import-campaigns/${campaignId}/items/${itemId}/content`
+}
+
+/**
+ * @summary Upload Local Data Import File
+ */
+export const uploadLocalDataImportFile = async (campaignId: string,
+    itemId: string,
+    bodyUploadLocalDataImportFile: BodyUploadLocalDataImportFile, options?: RequestInit): Promise<LocalDataImportFileUploadedResponse> => {
+    const formData = new FormData();
+formData.append(`file`, bodyUploadLocalDataImportFile.file);
+
+  const res = await fetch(getUploadLocalDataImportFileUrl(campaignId,itemId),
+  {
+    ...options,
+    method: 'PUT'
+    ,
+    body: formData
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: LocalDataImportFileUploadedResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getRetryDataImportCampaignFailedItemsUrl = (campaignId: string,) => {
+
+
+
+
+  return `/api/v1/data-import-campaigns/${campaignId}/retry-failed`
+}
+
+/**
+ * @summary Retry Historical Import Campaign Failed Items
+ */
+export const retryDataImportCampaignFailedItems = async (campaignId: string, options?: RequestInit): Promise<HistoricalCampaignResponse> => {
+
+  const res = await fetch(getRetryDataImportCampaignFailedItemsUrl(campaignId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: HistoricalCampaignResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getStartDataImportCampaignUrl = (campaignId: string,) => {
+
+
+
+
+  return `/api/v1/data-import-campaigns/${campaignId}/start`
+}
+
+/**
+ * @summary Start Historical Import Campaign
+ */
+export const startDataImportCampaign = async (campaignId: string, options?: RequestInit): Promise<HistoricalCampaignResponse> => {
+
+  const res = await fetch(getStartDataImportCampaignUrl(campaignId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: HistoricalCampaignResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getListDataImportServerDirectoriesUrl = (params?: ListDataImportServerDirectoriesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/data-import-sources/server/directories?${stringifiedParams}` : `/api/v1/data-import-sources/server/directories`
+}
+
+/**
+ * @summary List Historical Import Directories
+ */
+export const listDataImportServerDirectories = async (params?: ListDataImportServerDirectoriesParams, options?: RequestInit): Promise<HistoricalDirectoryListResponse> => {
+
+  const res = await fetch(getListDataImportServerDirectoriesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: HistoricalDirectoryListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getListHistoricalImportCampaignsUrl = () => {
+
+
+
+
+  return `/api/v1/historical-import-campaigns`
+}
+
+/**
+ * @summary List Historical Import Campaigns
+ */
+export const listHistoricalImportCampaigns = async ( options?: RequestInit): Promise<HistoricalCampaignListResponse> => {
+
+  const res = await fetch(getListHistoricalImportCampaignsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: HistoricalCampaignListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCreateHistoricalImportCampaignUrl = () => {
+
+
+
+
+  return `/api/v1/historical-import-campaigns`
+}
+
+/**
+ * @summary Create Historical Import Campaign
+ */
+export const createHistoricalImportCampaign = async (historicalCampaignCreateRequest: HistoricalCampaignCreateRequest, options?: RequestInit): Promise<HistoricalCampaignCreatedResponse> => {
+
+  const res = await fetch(getCreateHistoricalImportCampaignUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(historicalCampaignCreateRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: HistoricalCampaignCreatedResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetHistoricalImportCampaignUrl = (campaignId: string,) => {
+
+
+
+
+  return `/api/v1/historical-import-campaigns/${campaignId}`
+}
+
+/**
+ * @summary Get Historical Import Campaign
+ */
+export const getHistoricalImportCampaign = async (campaignId: string, options?: RequestInit): Promise<HistoricalCampaignResponse> => {
+
+  const res = await fetch(getGetHistoricalImportCampaignUrl(campaignId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: HistoricalCampaignResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCancelHistoricalImportCampaignUrl = (campaignId: string,) => {
+
+
+
+
+  return `/api/v1/historical-import-campaigns/${campaignId}/cancel`
+}
+
+/**
+ * @summary Cancel Historical Import Campaign
+ */
+export const cancelHistoricalImportCampaign = async (campaignId: string, options?: RequestInit): Promise<HistoricalCampaignResponse> => {
+
+  const res = await fetch(getCancelHistoricalImportCampaignUrl(campaignId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: HistoricalCampaignResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getListHistoricalImportCampaignConflictsUrl = (campaignId: string,) => {
+
+
+
+
+  return `/api/v1/historical-import-campaigns/${campaignId}/conflicts`
+}
+
+/**
+ * @summary List Historical Import Campaign Conflicts
+ */
+export const listHistoricalImportCampaignConflicts = async (campaignId: string, options?: RequestInit): Promise<HistoricalCampaignConflictListResponse> => {
+
+  const res = await fetch(getListHistoricalImportCampaignConflictsUrl(campaignId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: HistoricalCampaignConflictListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getListHistoricalImportCampaignItemsUrl = (campaignId: string,) => {
+
+
+
+
+  return `/api/v1/historical-import-campaigns/${campaignId}/items`
+}
+
+/**
+ * @summary List Historical Import Campaign Items
+ */
+export const listHistoricalImportCampaignItems = async (campaignId: string, options?: RequestInit): Promise<HistoricalCampaignItemListResponse> => {
+
+  const res = await fetch(getListHistoricalImportCampaignItemsUrl(campaignId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: HistoricalCampaignItemListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getRetryHistoricalImportCampaignFailedItemsUrl = (campaignId: string,) => {
+
+
+
+
+  return `/api/v1/historical-import-campaigns/${campaignId}/retry-failed`
+}
+
+/**
+ * @summary Retry Historical Import Campaign Failed Items
+ */
+export const retryHistoricalImportCampaignFailedItems = async (campaignId: string, options?: RequestInit): Promise<HistoricalCampaignResponse> => {
+
+  const res = await fetch(getRetryHistoricalImportCampaignFailedItemsUrl(campaignId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: HistoricalCampaignResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getStartHistoricalImportCampaignUrl = (campaignId: string,) => {
+
+
+
+
+  return `/api/v1/historical-import-campaigns/${campaignId}/start`
+}
+
+/**
+ * @summary Start Historical Import Campaign
+ */
+export const startHistoricalImportCampaign = async (campaignId: string, options?: RequestInit): Promise<HistoricalCampaignResponse> => {
+
+  const res = await fetch(getStartHistoricalImportCampaignUrl(campaignId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: HistoricalCampaignResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getListHistoricalImportDirectoriesUrl = (params?: ListHistoricalImportDirectoriesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/historical-import/directories?${stringifiedParams}` : `/api/v1/historical-import/directories`
+}
+
+/**
+ * @summary List Historical Import Directories
+ */
+export const listHistoricalImportDirectories = async (params?: ListHistoricalImportDirectoriesParams, options?: RequestInit): Promise<HistoricalDirectoryListResponse> => {
+
+  const res = await fetch(getListHistoricalImportDirectoriesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: HistoricalDirectoryListResponse = body ? JSON.parse(body) : {}
   return data
 }
 

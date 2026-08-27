@@ -1,6 +1,491 @@
 {
   "components": {
     "schemas": {
+      "AnalysisContentRunCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "client_idempotency_key": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+            "title": "Client Idempotency Key",
+            "type": "string"
+          },
+          "expected_configuration_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Expected Configuration Hash",
+            "type": "string"
+          },
+          "expected_target_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Expected Target Count",
+            "type": "integer"
+          },
+          "run_intent": {
+            "default": "manual_reanalysis",
+            "enum": [
+              "initial_analysis",
+              "manual_reanalysis"
+            ],
+            "title": "Run Intent",
+            "type": "string"
+          },
+          "targets": {
+            "$ref": "#/components/schemas/AnalysisRunTargetSelection"
+          }
+        },
+        "required": [
+          "client_idempotency_key",
+          "targets",
+          "expected_target_count",
+          "expected_configuration_hash"
+        ],
+        "title": "AnalysisContentRunCreateRequest",
+        "type": "object"
+      },
+      "AnalysisContentRunCreatedResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "planner_job_id": {
+            "format": "uuid",
+            "title": "Planner Job Id",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "shard_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Shard Count",
+            "type": "integer"
+          },
+          "status": {
+            "const": "queued",
+            "default": "queued",
+            "title": "Status",
+            "type": "string"
+          },
+          "target_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Target Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "run_id",
+          "planner_job_id",
+          "target_count",
+          "shard_count"
+        ],
+        "title": "AnalysisContentRunCreatedResponse",
+        "type": "object"
+      },
+      "AnalysisContentRunListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisContentRunResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AnalysisContentRunListResponse",
+        "type": "object"
+      },
+      "AnalysisContentRunPreviewRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "targets": {
+            "$ref": "#/components/schemas/AnalysisRunTargetSelection"
+          }
+        },
+        "required": [
+          "targets"
+        ],
+        "title": "AnalysisContentRunPreviewRequest",
+        "type": "object"
+      },
+      "AnalysisContentRunPreviewResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "configuration_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Configuration Hash",
+            "type": "string"
+          },
+          "cost_estimate_available": {
+            "default": false,
+            "title": "Cost Estimate Available",
+            "type": "boolean"
+          },
+          "cost_estimate_note": {
+            "title": "Cost Estimate Note",
+            "type": "string"
+          },
+          "generation_config": {
+            "additionalProperties": true,
+            "title": "Generation Config",
+            "type": "object"
+          },
+          "generation_config_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Generation Config Hash",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "model_provider": {
+            "title": "Model Provider",
+            "type": "string"
+          },
+          "prompt_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Prompt Sha256",
+            "type": "string"
+          },
+          "prompt_version": {
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "shard_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Shard Count",
+            "type": "integer"
+          },
+          "shard_size": {
+            "exclusiveMinimum": 0.0,
+            "title": "Shard Size",
+            "type": "integer"
+          },
+          "target_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Target Count",
+            "type": "integer"
+          },
+          "taxonomy_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Taxonomy Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_count",
+          "shard_count",
+          "shard_size",
+          "prompt_version",
+          "prompt_sha256",
+          "taxonomy_sha256",
+          "model_provider",
+          "model",
+          "generation_config",
+          "generation_config_hash",
+          "configuration_hash",
+          "cost_estimate_note"
+        ],
+        "title": "AnalysisContentRunPreviewResponse",
+        "type": "object"
+      },
+      "AnalysisContentRunResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "generation_config": {
+            "additionalProperties": true,
+            "title": "Generation Config",
+            "type": "object"
+          },
+          "generation_config_hash": {
+            "title": "Generation Config Hash",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "model_provider": {
+            "title": "Model Provider",
+            "type": "string"
+          },
+          "planner_job_id": {
+            "format": "uuid",
+            "title": "Planner Job Id",
+            "type": "string"
+          },
+          "prompt_sha256": {
+            "title": "Prompt Sha256",
+            "type": "string"
+          },
+          "prompt_version": {
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "run_intent": {
+            "enum": [
+              "initial_analysis",
+              "manual_reanalysis"
+            ],
+            "title": "Run Intent",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "query",
+              "selected"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sequence_no": {
+            "exclusiveMinimum": 0.0,
+            "title": "Sequence No",
+            "type": "integer"
+          },
+          "shard_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Shard Count",
+            "type": "integer"
+          },
+          "shard_size": {
+            "exclusiveMinimum": 0.0,
+            "title": "Shard Size",
+            "type": "integer"
+          },
+          "shards": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AnalysisContentRunShardResponse"
+            },
+            "title": "Shards",
+            "type": "array"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/AnalysisContentRunStatsResponse",
+            "default": {
+              "cancelled": 0,
+              "failed": 0,
+              "pending": 0,
+              "stale": 0,
+              "succeeded": 0
+            }
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "partial_failed",
+              "failed",
+              "cancelling",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "target_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Target Count",
+            "type": "integer"
+          },
+          "taxonomy_sha256": {
+            "title": "Taxonomy Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "planner_job_id",
+          "sequence_no",
+          "status",
+          "run_intent",
+          "scope",
+          "target_count",
+          "shard_count",
+          "shard_size",
+          "prompt_version",
+          "prompt_sha256",
+          "taxonomy_sha256",
+          "model_provider",
+          "model",
+          "generation_config",
+          "generation_config_hash",
+          "created_at"
+        ],
+        "title": "AnalysisContentRunResponse",
+        "type": "object"
+      },
+      "AnalysisContentRunShardResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "progress": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Progress",
+            "type": "integer"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "shard_no": {
+            "minimum": 0.0,
+            "title": "Shard No",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "target_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Target Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "request_id",
+          "job_id",
+          "shard_no",
+          "target_count",
+          "status",
+          "progress"
+        ],
+        "title": "AnalysisContentRunShardResponse",
+        "type": "object"
+      },
+      "AnalysisContentRunStatsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "cancelled": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Cancelled",
+            "type": "integer"
+          },
+          "failed": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "pending": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Pending",
+            "type": "integer"
+          },
+          "stale": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Stale",
+            "type": "integer"
+          },
+          "succeeded": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Succeeded",
+            "type": "integer"
+          }
+        },
+        "title": "AnalysisContentRunStatsResponse",
+        "type": "object"
+      },
+      "AnalysisRunTargetSelection": {
+        "additionalProperties": false,
+        "description": "本轮只开放有容量上限的显式 Analysis Run 目标。",
+        "properties": {
+          "content_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Content Ids",
+            "type": "array"
+          },
+          "scope": {
+            "const": "selected",
+            "default": "selected",
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content_ids"
+        ],
+        "title": "AnalysisRunTargetSelection",
+        "type": "object"
+      },
       "Body_createImportBatch": {
         "properties": {
           "file": {
@@ -22,6 +507,20 @@
           "keyword_pack_ids"
         ],
         "title": "Body_createImportBatch",
+        "type": "object"
+      },
+      "Body_uploadLocalDataImportFile": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_uploadLocalDataImportFile",
         "type": "object"
       },
       "CollectionBatchSupplementEligibilityResponse": {
@@ -1254,6 +1753,24 @@
             "title": "Request Id",
             "type": "string"
           },
+          "run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "shard_count": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Shard Count",
+            "type": "integer"
+          },
           "status": {
             "const": "queued",
             "default": "queued",
@@ -1329,6 +1846,29 @@
             },
             "title": "Labels",
             "type": "array"
+          },
+          "latest_run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Run Id"
+          },
+          "latest_run_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Run Status"
           },
           "model": {
             "anyOf": [
@@ -2296,7 +2836,7 @@
       },
       "ContentTargetSelection": {
         "additionalProperties": false,
-        "description": "HTTP 层选择语义；Service 会立刻冻结 Content ID + Version。",
+        "description": "HTTP 层选择语义；新版 Run 由 Planner 异步冻结 Content ID + Version。",
         "properties": {
           "content_ids": {
             "default": [],
@@ -2562,6 +3102,20 @@
         "title": "DataExportSubmitRequest",
         "type": "object"
       },
+      "DataImportIngestionPolicy": {
+        "enum": [
+          "standard_observation",
+          "historical_fill_only"
+        ],
+        "type": "string"
+      },
+      "DataImportSourceKind": {
+        "enum": [
+          "local_upload",
+          "server_path"
+        ],
+        "type": "string"
+      },
       "GlobalRelevanceConfigRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2632,6 +3186,705 @@
           "status"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "HistoricalCampaignConflictListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "has_more": {
+            "default": false,
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/HistoricalCampaignConflictResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Total Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "HistoricalCampaignConflictListResponse",
+        "type": "object"
+      },
+      "HistoricalCampaignConflictResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "batch_item_id": {
+            "format": "uuid",
+            "title": "Batch Item Id",
+            "type": "string"
+          },
+          "content_id": {
+            "format": "uuid",
+            "title": "Content Id",
+            "type": "string"
+          },
+          "content_version": {
+            "minimum": 1.0,
+            "title": "Content Version",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current_value_hash": {
+            "title": "Current Value Hash",
+            "type": "string"
+          },
+          "field_name": {
+            "title": "Field Name",
+            "type": "string"
+          },
+          "historical_value_hash": {
+            "title": "Historical Value Hash",
+            "type": "string"
+          },
+          "source_row_ordinal": {
+            "minimum": 1.0,
+            "title": "Source Row Ordinal",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "batch_item_id",
+          "source_row_ordinal",
+          "content_id",
+          "field_name",
+          "content_version",
+          "current_value_hash",
+          "historical_value_hash",
+          "created_at"
+        ],
+        "title": "HistoricalCampaignConflictResponse",
+        "type": "object"
+      },
+      "HistoricalCampaignCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "client_idempotency_key": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+            "title": "Client Idempotency Key",
+            "type": "string"
+          },
+          "ingestion_policy": {
+            "$ref": "#/components/schemas/DataImportIngestionPolicy",
+            "default": "historical_fill_only"
+          },
+          "keyword_pack_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Keyword Pack Ids",
+            "type": "array"
+          },
+          "profile": {
+            "const": "aima-monitoring-excel.v1",
+            "default": "aima-monitoring-excel.v1",
+            "title": "Profile",
+            "type": "string"
+          },
+          "recursive": {
+            "default": false,
+            "title": "Recursive",
+            "type": "boolean"
+          },
+          "relative_paths": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Relative Paths",
+            "type": "array"
+          }
+        },
+        "required": [
+          "client_idempotency_key",
+          "relative_paths",
+          "keyword_pack_ids"
+        ],
+        "title": "HistoricalCampaignCreateRequest",
+        "type": "object"
+      },
+      "HistoricalCampaignCreatedResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "campaign_id": {
+            "format": "uuid",
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "discovery_job_id": {
+            "format": "uuid",
+            "title": "Discovery Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "campaign_id",
+          "discovery_job_id"
+        ],
+        "title": "HistoricalCampaignCreatedResponse",
+        "type": "object"
+      },
+      "HistoricalCampaignItemListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "has_more": {
+            "default": false,
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/HistoricalCampaignItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Total Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "HistoricalCampaignItemListResponse",
+        "type": "object"
+      },
+      "HistoricalCampaignItemResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Id"
+          },
+          "attempt_count": {
+            "minimum": 0.0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "item_kind": {
+            "enum": [
+              "source_file",
+              "chunk"
+            ],
+            "title": "Item Kind",
+            "type": "string"
+          },
+          "ordinal": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ordinal"
+          },
+          "parent_item_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Item Id"
+          },
+          "relative_path": {
+            "title": "Relative Path",
+            "type": "string"
+          },
+          "row_count": {
+            "minimum": 0.0,
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "row_end": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row End"
+          },
+          "row_start": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Start"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "stats": {
+            "additionalProperties": true,
+            "title": "Stats",
+            "type": "object"
+          },
+          "status": {
+            "$ref": "#/components/schemas/HistoricalCampaignItemStatus"
+          }
+        },
+        "required": [
+          "id",
+          "item_kind",
+          "relative_path",
+          "row_count",
+          "status",
+          "attempt_count",
+          "created_at"
+        ],
+        "title": "HistoricalCampaignItemResponse",
+        "type": "object"
+      },
+      "HistoricalCampaignItemStatus": {
+        "enum": [
+          "discovered",
+          "snapshotting",
+          "ready",
+          "queued",
+          "running",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "type": "string"
+      },
+      "HistoricalCampaignListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/HistoricalCampaignResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "HistoricalCampaignListResponse",
+        "type": "object"
+      },
+      "HistoricalCampaignProgressResponse": {
+        "additionalProperties": false,
+        "description": "返回可由持久状态重建的 Campaign 预检与迁移进度。",
+        "properties": {
+          "migration_completed_row_count": {
+            "minimum": 0.0,
+            "title": "Migration Completed Row Count",
+            "type": "integer"
+          },
+          "migration_percent": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Migration Percent",
+            "type": "integer"
+          },
+          "preflight_completed_file_count": {
+            "minimum": 0.0,
+            "title": "Preflight Completed File Count",
+            "type": "integer"
+          },
+          "preflight_percent": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Preflight Percent",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "preflight_completed_file_count",
+          "preflight_percent",
+          "migration_completed_row_count",
+          "migration_percent"
+        ],
+        "title": "HistoricalCampaignProgressResponse",
+        "type": "object"
+      },
+      "HistoricalCampaignResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "can_start": {
+            "readOnly": true,
+            "title": "Can Start",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "declared_file_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Declared File Count",
+            "type": "integer"
+          },
+          "discovered_file_count": {
+            "minimum": 0.0,
+            "title": "Discovered File Count",
+            "type": "integer"
+          },
+          "error_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Summary"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "ingestion_policy": {
+            "$ref": "#/components/schemas/DataImportIngestionPolicy",
+            "default": "historical_fill_only"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/HistoricalCampaignProgressResponse"
+          },
+          "ready_item_count": {
+            "minimum": 0.0,
+            "title": "Ready Item Count",
+            "type": "integer"
+          },
+          "recursive": {
+            "title": "Recursive",
+            "type": "boolean"
+          },
+          "root_relative_path": {
+            "title": "Root Relative Path",
+            "type": "string"
+          },
+          "source_kind": {
+            "$ref": "#/components/schemas/DataImportSourceKind",
+            "default": "server_path"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/HistoricalCampaignStatsResponse"
+          },
+          "status": {
+            "$ref": "#/components/schemas/HistoricalCampaignStatus"
+          },
+          "total_rows": {
+            "minimum": 0.0,
+            "title": "Total Rows",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "root_relative_path",
+          "recursive",
+          "discovered_file_count",
+          "ready_item_count",
+          "total_rows",
+          "progress",
+          "created_at",
+          "can_start"
+        ],
+        "title": "HistoricalCampaignResponse",
+        "type": "object"
+      },
+      "HistoricalCampaignStatsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "conflict": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Conflict",
+            "type": "integer"
+          },
+          "created": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Created",
+            "type": "integer"
+          },
+          "duplicate": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Duplicate",
+            "type": "integer"
+          },
+          "failed": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "filled": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Filled",
+            "type": "integer"
+          },
+          "filtered": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Filtered",
+            "type": "integer"
+          },
+          "invalid": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Invalid",
+            "type": "integer"
+          },
+          "unchanged": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Unchanged",
+            "type": "integer"
+          },
+          "updated": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Updated",
+            "type": "integer"
+          }
+        },
+        "title": "HistoricalCampaignStatsResponse",
+        "type": "object"
+      },
+      "HistoricalCampaignStatus": {
+        "enum": [
+          "uploading",
+          "discovering",
+          "snapshotting",
+          "ready",
+          "queued",
+          "running",
+          "cancelling",
+          "cancelled",
+          "succeeded",
+          "partial_failed",
+          "failed"
+        ],
+        "type": "string"
+      },
+      "HistoricalDirectoryEntryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "byte_size": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Byte Size"
+          },
+          "kind": {
+            "enum": [
+              "directory",
+              "file"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "modified_at_ns": {
+            "minimum": 0.0,
+            "title": "Modified At Ns",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "relative_path": {
+            "title": "Relative Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "relative_path",
+          "name",
+          "kind",
+          "modified_at_ns"
+        ],
+        "title": "HistoricalDirectoryEntryResponse",
+        "type": "object"
+      },
+      "HistoricalDirectoryListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "has_more": {
+            "default": false,
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/HistoricalDirectoryEntryResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          }
+        },
+        "required": [
+          "available"
+        ],
+        "title": "HistoricalDirectoryListResponse",
         "type": "object"
       },
       "HttpErrorItem": {
@@ -3300,6 +4553,165 @@
         "title": "KeywordResponse",
         "type": "object"
       },
+      "LocalDataImportCampaignCreateRequest": {
+        "additionalProperties": false,
+        "description": "建立本地文件暂存 Campaign；文件字节随后按 Item 分别流式上传。",
+        "properties": {
+          "client_idempotency_key": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+            "title": "Client Idempotency Key",
+            "type": "string"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/LocalDataImportFileManifest"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Files",
+            "type": "array"
+          },
+          "ingestion_policy": {
+            "$ref": "#/components/schemas/DataImportIngestionPolicy",
+            "default": "standard_observation"
+          },
+          "keyword_pack_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Keyword Pack Ids",
+            "type": "array"
+          },
+          "profile": {
+            "const": "aima-monitoring-excel.v1",
+            "default": "aima-monitoring-excel.v1",
+            "title": "Profile",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_idempotency_key",
+          "files",
+          "keyword_pack_ids"
+        ],
+        "title": "LocalDataImportCampaignCreateRequest",
+        "type": "object"
+      },
+      "LocalDataImportCampaignCreatedResponse": {
+        "additionalProperties": false,
+        "description": "返回本地 Campaign 及其冻结上传清单。",
+        "properties": {
+          "campaign_id": {
+            "format": "uuid",
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "upload_items": {
+            "items": {
+              "$ref": "#/components/schemas/LocalDataImportUploadItemResponse"
+            },
+            "title": "Upload Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "campaign_id",
+          "upload_items"
+        ],
+        "title": "LocalDataImportCampaignCreatedResponse",
+        "type": "object"
+      },
+      "LocalDataImportFileManifest": {
+        "additionalProperties": false,
+        "description": "声明浏览器显式选择的一个本地 XLSX；绝不承载本机绝对路径。",
+        "properties": {
+          "byte_size": {
+            "maximum": 524288000.0,
+            "minimum": 1.0,
+            "title": "Byte Size",
+            "type": "integer"
+          },
+          "relative_path": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Relative Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "relative_path",
+          "byte_size"
+        ],
+        "title": "LocalDataImportFileManifest",
+        "type": "object"
+      },
+      "LocalDataImportFileUploadedResponse": {
+        "additionalProperties": false,
+        "description": "确认一个本地文件已形成服务器端不可变 Source Artifact。",
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "byte_size": {
+            "minimum": 1.0,
+            "title": "Byte Size",
+            "type": "integer"
+          },
+          "campaign_id": {
+            "format": "uuid",
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "item_id": {
+            "format": "uuid",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "sha256": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "campaign_id",
+          "item_id",
+          "artifact_id",
+          "sha256",
+          "byte_size"
+        ],
+        "title": "LocalDataImportFileUploadedResponse",
+        "type": "object"
+      },
+      "LocalDataImportUploadItemResponse": {
+        "additionalProperties": false,
+        "description": "返回客户端下一步逐项上传所需的稳定 Item 身份。",
+        "properties": {
+          "item_id": {
+            "format": "uuid",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "relative_path": {
+            "title": "Relative Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "relative_path"
+        ],
+        "title": "LocalDataImportUploadItemResponse",
+        "type": "object"
+      },
       "PlatformName": {
         "enum": [
           "xiaohongshu",
@@ -3403,6 +4815,303 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/analysis/content-runs": {
+      "get": {
+        "operationId": "listContentAnalysisRuns",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisContentRunListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Content Analysis Runs",
+        "tags": [
+          "contents"
+        ]
+      },
+      "post": {
+        "operationId": "createContentAnalysisRun",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalysisContentRunCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisContentRunCreatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Create Content Analysis Run",
+        "tags": [
+          "contents"
+        ]
+      }
+    },
+    "/api/v1/analysis/content-runs/preview": {
+      "post": {
+        "operationId": "previewContentAnalysisRun",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalysisContentRunPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisContentRunPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Preview Content Analysis Run",
+        "tags": [
+          "contents"
+        ]
+      }
+    },
+    "/api/v1/analysis/content-runs/{run_id}": {
+      "get": {
+        "operationId": "getContentAnalysisRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisContentRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Content Analysis Run",
+        "tags": [
+          "contents"
+        ]
+      }
+    },
+    "/api/v1/analysis/content-runs/{run_id}/cancel": {
+      "post": {
+        "operationId": "cancelContentAnalysisRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisContentRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Cancel Content Analysis Run",
+        "tags": [
+          "contents"
+        ]
+      }
+    },
     "/api/v1/collection-capabilities": {
       "get": {
         "operationId": "getCollectionCapabilities",
@@ -4898,6 +6607,1447 @@
         "summary": "Download Data Export",
         "tags": [
           "exports"
+        ]
+      }
+    },
+    "/api/v1/data-import-campaigns": {
+      "get": {
+        "operationId": "listDataImportCampaigns",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoricalCampaignListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Historical Import Campaigns",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/data-import-campaigns/local": {
+      "post": {
+        "operationId": "createLocalDataImportCampaign",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalDataImportCampaignCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalDataImportCampaignCreatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Create Local Data Import Campaign",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/data-import-campaigns/server": {
+      "post": {
+        "operationId": "createServerDataImportCampaign",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HistoricalCampaignCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoricalCampaignCreatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Create Historical Import Campaign",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/data-import-campaigns/{campaign_id}": {
+      "get": {
+        "operationId": "getDataImportCampaign",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoricalCampaignResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Historical Import Campaign",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/data-import-campaigns/{campaign_id}/cancel": {
+      "post": {
+        "operationId": "cancelDataImportCampaign",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoricalCampaignResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Cancel Historical Import Campaign",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/data-import-campaigns/{campaign_id}/conflicts": {
+      "get": {
+        "operationId": "listDataImportCampaignConflicts",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoricalCampaignConflictListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Historical Import Campaign Conflicts",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/data-import-campaigns/{campaign_id}/finalize": {
+      "post": {
+        "operationId": "finalizeLocalDataImportCampaign",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoricalCampaignResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Finalize Local Data Import Campaign",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/data-import-campaigns/{campaign_id}/items": {
+      "get": {
+        "operationId": "listDataImportCampaignItems",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoricalCampaignItemListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Historical Import Campaign Items",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/data-import-campaigns/{campaign_id}/items/{item_id}/content": {
+      "put": {
+        "operationId": "uploadLocalDataImportFile",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_uploadLocalDataImportFile"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalDataImportFileUploadedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Content Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Upload Local Data Import File",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/data-import-campaigns/{campaign_id}/retry-failed": {
+      "post": {
+        "operationId": "retryDataImportCampaignFailedItems",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoricalCampaignResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Retry Historical Import Campaign Failed Items",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/data-import-campaigns/{campaign_id}/start": {
+      "post": {
+        "operationId": "startDataImportCampaign",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoricalCampaignResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Start Historical Import Campaign",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/data-import-sources/server/directories": {
+      "get": {
+        "operationId": "listDataImportServerDirectories",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "relative_path",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 1024,
+              "title": "Relative Path",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoricalDirectoryListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Historical Import Directories",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/historical-import-campaigns": {
+      "get": {
+        "operationId": "listHistoricalImportCampaigns",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoricalCampaignListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Historical Import Campaigns",
+        "tags": [
+          "imports"
+        ]
+      },
+      "post": {
+        "operationId": "createHistoricalImportCampaign",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HistoricalCampaignCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoricalCampaignCreatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Create Historical Import Campaign",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/historical-import-campaigns/{campaign_id}": {
+      "get": {
+        "operationId": "getHistoricalImportCampaign",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoricalCampaignResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Historical Import Campaign",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/historical-import-campaigns/{campaign_id}/cancel": {
+      "post": {
+        "operationId": "cancelHistoricalImportCampaign",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoricalCampaignResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Cancel Historical Import Campaign",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/historical-import-campaigns/{campaign_id}/conflicts": {
+      "get": {
+        "operationId": "listHistoricalImportCampaignConflicts",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoricalCampaignConflictListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Historical Import Campaign Conflicts",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/historical-import-campaigns/{campaign_id}/items": {
+      "get": {
+        "operationId": "listHistoricalImportCampaignItems",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoricalCampaignItemListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Historical Import Campaign Items",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/historical-import-campaigns/{campaign_id}/retry-failed": {
+      "post": {
+        "operationId": "retryHistoricalImportCampaignFailedItems",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoricalCampaignResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Retry Historical Import Campaign Failed Items",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/historical-import-campaigns/{campaign_id}/start": {
+      "post": {
+        "operationId": "startHistoricalImportCampaign",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoricalCampaignResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Start Historical Import Campaign",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/historical-import/directories": {
+      "get": {
+        "operationId": "listHistoricalImportDirectories",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "relative_path",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 1024,
+              "title": "Relative Path",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoricalDirectoryListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Historical Import Directories",
+        "tags": [
+          "imports"
         ]
       }
     },

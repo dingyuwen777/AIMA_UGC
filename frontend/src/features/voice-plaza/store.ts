@@ -2,6 +2,9 @@ import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
 
 import type {
+  AnalysisContentRunPreviewResponse,
+  AnalysisContentRunResponse,
+  AnalysisRunTargetSelection,
   ContentAnalysisStatus,
   ContentDetailResponse,
   ContentFilterSnapshot,
@@ -11,20 +14,22 @@ import type {
   ContentRelevanceReviewResponse,
   ContentTargetSelection,
   DataExportResponse,
-  JobStatusResponse,
   ListContentsParams,
   PlatformName,
 } from '../../generated/api/client'
 import {
   VoicePlazaApiError,
+  cancelAnalysisRun,
+  fetchAnalysisRun,
+  fetchAnalysisRuns,
   fetchContentAnalysisCapabilities,
-  fetchContentAnalysisJob,
   fetchContentDetail,
   fetchContents,
   fetchDataExport,
   fetchDataExportFile,
   fetchDataExports,
-  submitContentAnalysis,
+  previewAnalysisRun,
+  submitAnalysisRun,
   submitContentRelevanceReview,
   submitDataExport,
 } from './api'
@@ -88,17 +93,23 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   const nextCursor = ref<string | null>(null)
   const hasMore = ref(false)
   const exports = ref<DataExportResponse[]>([])
-  const analysisJob = ref<JobStatusResponse | null>(null)
+  const analysisRuns = ref<AnalysisContentRunResponse[]>([])
+  const analysisPreview = ref<AnalysisContentRunPreviewResponse | null>(null)
   const analysisConfigured = ref<boolean | null>(null)
   const loading = ref(false)
   const loadingNext = ref(false)
   const loadingDetail = ref(false)
   const submittingAnalysis = ref(false)
+  const previewingAnalysis = ref(false)
+  const cancellingAnalysisRunId = ref<string | null>(null)
   const submittingExport = ref(false)
   const reviewingRelevance = ref(false)
   const error = ref<string | null>(null)
   const notice = ref<string | null>(null)
-  let analysisJobId: string | null = null
+  let analysisDraft: {
+    targets: AnalysisRunTargetSelection
+    clientIdempotencyKey: string
+  } | null = null
   let pollHandle: ReturnType<typeof setInterval> | undefined
 
   const allVisibleSelected = computed(
@@ -106,8 +117,8 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   )
   const hasActiveJobs = computed(
     () =>
-      analysisJob.value?.status === 'queued' ||
-      analysisJob.value?.status === 'running' ||
+      analysisRuns.value.some((item) =>
+        item.status === 'queued' || item.status === 'running' || item.status === 'cancelling') ||
       exports.value.some((item) => item.job.status === 'queued' || item.job.status === 'running'),
   )
 
@@ -135,6 +146,10 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     return scope === 'query'
       ? { scope, filters: filterSnapshot() }
       : { scope, content_ids: [...selectedIds.value] }
+  }
+
+  function analysisTargetSelection(): AnalysisRunTargetSelection {
+    return { scope: 'selected', content_ids: [...selectedIds.value] }
   }
 
   async function refresh(silent = false): Promise<void> {
@@ -235,24 +250,93 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     }
   }
 
-  async function createAnalysis(scope: 'query' | 'selected'): Promise<number | null> {
+  async function previewAnalysis(
+    _scope: 'selected',
+  ): Promise<AnalysisContentRunPreviewResponse | null> {
     if (analysisConfigured.value !== true) {
       error.value = '当前环境尚未配置可用的 AI 模型，请配置 LLM 后重启后端。'
       return null
     }
-    if (scope === 'selected' && selectedIds.value.length === 0) return null
+    if (selectedIds.value.length === 0) return null
+    if (selectedIds.value.length > 1000) {
+      error.value = '单次 AI Analysis Run 最多选择 1000 条内容。'
+      return null
+    }
+    previewingAnalysis.value = true
+    error.value = null
+    analysisPreview.value = null
+    const targets = analysisTargetSelection()
+    try {
+      const preview = await previewAnalysisRun({ targets })
+      analysisDraft = {
+        targets,
+        clientIdempotencyKey: crypto.randomUUID(),
+      }
+      analysisPreview.value = preview
+      return preview
+    } catch (reason) {
+      analysisDraft = null
+      error.value = errorMessage(reason)
+      return null
+    } finally {
+      previewingAnalysis.value = false
+    }
+  }
+
+  async function confirmAnalysis(): Promise<number | null> {
+    if (!analysisDraft || !analysisPreview.value || submittingAnalysis.value) return null
     submittingAnalysis.value = true
     error.value = null
     try {
-      const created = await submitContentAnalysis({ targets: targetSelection(scope) })
-      analysisJobId = created.job_id
-      analysisJob.value = await fetchContentAnalysisJob(created.job_id)
+      const created = await submitAnalysisRun({
+        client_idempotency_key: analysisDraft.clientIdempotencyKey,
+        expected_configuration_hash: analysisPreview.value.configuration_hash,
+        expected_target_count: analysisPreview.value.target_count,
+        run_intent: 'manual_reanalysis',
+        targets: analysisDraft.targets,
+      })
+      await refreshAnalysisRuns()
+      analysisDraft = null
+      analysisPreview.value = null
       return created.target_count
     } catch (reason) {
       error.value = errorMessage(reason)
       return null
     } finally {
       submittingAnalysis.value = false
+    }
+  }
+
+  async function refreshAnalysisRuns(): Promise<void> {
+    try {
+      const listedRuns = (await fetchAnalysisRuns()).items
+      analysisRuns.value = await Promise.all(
+        listedRuns.map((run) =>
+          ['queued', 'running', 'cancelling'].includes(run.status)
+            ? fetchAnalysisRun(run.id)
+            : run,
+        ),
+      )
+    } catch (reason) {
+      error.value = errorMessage(reason)
+    }
+  }
+
+  async function cancelRun(runId: string): Promise<boolean> {
+    if (cancellingAnalysisRunId.value) return false
+    cancellingAnalysisRunId.value = runId
+    error.value = null
+    try {
+      const cancelled = await cancelAnalysisRun(runId)
+      analysisRuns.value = analysisRuns.value.map((item) =>
+        item.id === cancelled.id ? cancelled : item,
+      )
+      return true
+    } catch (reason) {
+      error.value = errorMessage(reason)
+      return false
+    } finally {
+      cancellingAnalysisRunId.value = null
     }
   }
 
@@ -305,8 +389,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   async function poll(): Promise<void> {
     if (document.visibilityState === 'hidden' || !hasActiveJobs.value) return
     try {
-      if (analysisJobId) analysisJob.value = await fetchContentAnalysisJob(analysisJobId)
-      await Promise.all([refresh(true), refreshExports()])
+      await Promise.all([refresh(true), refreshExports(), refreshAnalysisRuns()])
     } catch (reason) {
       error.value = errorMessage(reason)
     }
@@ -328,7 +411,8 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     detail,
     selectedIds,
     exports,
-    analysisJob,
+    analysisRuns,
+    analysisPreview,
     analysisConfigured,
     hasMore,
     allVisibleSelected,
@@ -337,6 +421,8 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     loadingNext,
     loadingDetail,
     submittingAnalysis,
+    previewingAnalysis,
+    cancellingAnalysisRunId,
     submittingExport,
     reviewingRelevance,
     error,
@@ -350,7 +436,10 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     toggleVisibleSelection,
     clearSelection,
     reviewRelevance,
-    createAnalysis,
+    previewAnalysis,
+    confirmAnalysis,
+    refreshAnalysisRuns,
+    cancelRun,
     refreshExports,
     createExport,
     downloadExport,

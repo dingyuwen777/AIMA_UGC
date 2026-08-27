@@ -1,16 +1,28 @@
 import {
+  cancelDataImportCampaign,
   createCollectionRun,
+  createLocalDataImportCampaign,
+  createServerDataImportCampaign,
   createImportBatch,
+  finalizeLocalDataImportCampaign,
   getCollectionBatchSupplementEligibility,
   getCollectionCapabilities,
   getCollectionRun,
   getCollectionRuntimeSummary,
+  getDataImportCampaign,
   getImportBatch,
   getImportBatchSummary,
   listCollectionRuntimeRuns,
   listContents,
+  listDataImportCampaignConflicts,
+  listDataImportCampaignItems,
+  listDataImportCampaigns,
+  listDataImportServerDirectories,
   listImportBatches,
   listKeywordPacks,
+  retryDataImportCampaignFailedItems,
+  startDataImportCampaign,
+  uploadLocalDataImportFile,
   type CollectionCapabilitiesResponse,
   type CollectionPlatform,
   type CollectionRunCreateRequest,
@@ -19,11 +31,21 @@ import {
   type CollectionRuntimeListResponse,
   type CollectionRuntimeSummaryResponse,
   type HttpErrorResponse,
+  type HistoricalCampaignConflictListResponse,
+  type HistoricalCampaignCreateRequest,
+  type HistoricalCampaignCreatedResponse,
+  type HistoricalCampaignItemListResponse,
+  type HistoricalCampaignListResponse,
+  type HistoricalCampaignResponse,
+  type HistoricalDirectoryListResponse,
   type ImportBatchCreatedResponse,
   type ImportBatchListResponse,
   type ImportBatchResponse,
   type ImportBatchSummaryResponse,
   type KeywordPackSummaryResponse,
+  type LocalDataImportCampaignCreatedResponse,
+  type LocalDataImportCampaignCreateRequest,
+  type LocalDataImportFileUploadedResponse,
   type ListImportBatchesParams,
   type ListCollectionRuntimeRunsParams,
 } from '../../generated/api/client'
@@ -112,4 +134,81 @@ export async function fetchBatchContentPlatforms(
   const eligibility = unwrap(await getCollectionBatchSupplementEligibility(batchId))
   const eligible = new Set(eligibility.targets.map((item) => item.platform))
   return platforms.filter((platform) => eligible.has(platform))
+}
+
+export async function fetchHistoricalDirectory(
+  relativePath = '',
+  cursor?: string,
+): Promise<HistoricalDirectoryListResponse> {
+  return unwrap(await listDataImportServerDirectories({
+    relative_path: relativePath,
+    cursor,
+    limit: 500,
+  }))
+}
+
+export async function fetchHistoricalCampaigns(): Promise<HistoricalCampaignListResponse> {
+  return unwrap(await listDataImportCampaigns())
+}
+
+export async function fetchHistoricalCampaign(
+  campaignId: string,
+): Promise<HistoricalCampaignResponse> {
+  return unwrap(await getDataImportCampaign(campaignId))
+}
+
+export async function fetchHistoricalCampaignItems(
+  campaignId: string,
+): Promise<HistoricalCampaignItemListResponse> {
+  return unwrap(await listDataImportCampaignItems(campaignId))
+}
+
+export async function fetchHistoricalCampaignConflicts(
+  campaignId: string,
+): Promise<HistoricalCampaignConflictListResponse> {
+  return unwrap(await listDataImportCampaignConflicts(campaignId))
+}
+
+export async function createHistoricalCampaign(
+  request: HistoricalCampaignCreateRequest,
+): Promise<HistoricalCampaignCreatedResponse> {
+  return unwrap(await createServerDataImportCampaign(request))
+}
+
+export async function createLocalCampaign(
+  request: LocalDataImportCampaignCreateRequest,
+): Promise<LocalDataImportCampaignCreatedResponse> {
+  return unwrap(await createLocalDataImportCampaign(request))
+}
+
+export async function uploadLocalCampaignFile(
+  campaignId: string,
+  itemId: string,
+  file: File,
+): Promise<LocalDataImportFileUploadedResponse> {
+  return unwrap(await uploadLocalDataImportFile(campaignId, itemId, { file }))
+}
+
+export async function finalizeLocalCampaign(
+  campaignId: string,
+): Promise<HistoricalCampaignResponse> {
+  return unwrap(await finalizeLocalDataImportCampaign(campaignId))
+}
+
+export async function startHistoricalCampaign(
+  campaignId: string,
+): Promise<HistoricalCampaignResponse> {
+  return unwrap(await startDataImportCampaign(campaignId))
+}
+
+export async function cancelHistoricalCampaign(
+  campaignId: string,
+): Promise<HistoricalCampaignResponse> {
+  return unwrap(await cancelDataImportCampaign(campaignId))
+}
+
+export async function retryHistoricalCampaign(
+  campaignId: string,
+): Promise<HistoricalCampaignResponse> {
+  return unwrap(await retryDataImportCampaignFailedItems(campaignId))
 }

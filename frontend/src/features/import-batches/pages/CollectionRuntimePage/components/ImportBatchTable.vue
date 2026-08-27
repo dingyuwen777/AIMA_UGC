@@ -29,7 +29,7 @@ function statusClass(status: ImportBatchResponse['status']): string {
       v-else-if="items.length === 0"
       class="table-state"
     >
-      <strong>暂无导入批次</strong><span>点击“导入 Excel”创建第一个持久化 Import Job。</span>
+      <strong>暂无导入批次</strong><span>点击“导入数据”创建第一个持久化导入 Campaign。</span>
     </div>
     <article
       v-for="item in items"

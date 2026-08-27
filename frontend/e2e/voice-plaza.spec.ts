@@ -2,9 +2,36 @@ import { expect, test } from '@playwright/test'
 
 const contentId = '42345678-1234-5678-1234-567812345678'
 const analysisJobId = '52345678-1234-5678-1234-567812345678'
-const analysisRequestId = '62345678-1234-5678-1234-567812345678'
+const analysisRunId = '62345678-1234-5678-1234-567812345678'
 const exportId = '72345678-1234-5678-1234-567812345678'
 const exportJobId = '82345678-1234-5678-1234-567812345678'
+
+const analysisRun = {
+  id: analysisRunId,
+  planner_job_id: analysisJobId,
+  sequence_no: 1,
+  status: 'running',
+  run_intent: 'manual_reanalysis',
+  scope: 'query',
+  target_count: 20,
+  shard_count: 2,
+  shard_size: 6,
+  prompt_version: 'content_labeling_v3',
+  prompt_sha256: 'a'.repeat(64),
+  taxonomy_sha256: 'b'.repeat(64),
+  model_provider: 'openai-compatible',
+  model: 'fixture-model',
+  generation_config: { temperature: 0 },
+  generation_config_hash: 'c'.repeat(64),
+  stats: { pending: 20, succeeded: 0, failed: 0, cancelled: 0, stale: 0 },
+  shards: [
+    { request_id: '63345678-1234-5678-1234-567812345678', job_id: '64345678-1234-5678-1234-567812345678', shard_no: 0, target_count: 4, status: 'running', progress: 50, error_code: null },
+    { request_id: '65345678-1234-5678-1234-567812345678', job_id: '66345678-1234-5678-1234-567812345678', shard_no: 1, target_count: 6, status: 'running', progress: 25, error_code: null },
+  ],
+  created_at: '2026-08-21T03:00:00Z',
+  started_at: null,
+  finished_at: null,
+}
 
 const item = {
   id: contentId,
@@ -50,6 +77,20 @@ const job = (id: string, jobType: string) => ({
   finished_at: null,
 })
 
+const runningExport = {
+  id: exportId,
+  job: {
+    ...job(exportJobId, 'reporting.content-export-excel.v1'),
+    status: 'running',
+    progress: 64,
+  },
+  artifact_id: null,
+  filename: null,
+  stats: null,
+  created_at: '2026-08-21T03:00:00Z',
+  completed_at: null,
+}
+
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/v1/content-analysis-capabilities', async (route) => {
     await route.fulfill({
@@ -94,22 +135,78 @@ test.beforeEach(async ({ page }) => {
     })
   })
 
-  await page.route('**/api/v1/content-analysis-requests', async (route) => {
+  await page.route('**/api/v1/analysis/content-runs/preview', async (route) => {
     await route.fulfill({
-      status: 202,
       contentType: 'application/json',
       body: JSON.stringify({
-        request_id: analysisRequestId,
-        job_id: analysisJobId,
         target_count: 1,
-        status: 'queued',
+        shard_count: 1,
+        shard_size: 1,
+        prompt_version: 'content_labeling_v3',
+        prompt_sha256: 'a'.repeat(64),
+        taxonomy_sha256: 'b'.repeat(64),
+        model_provider: 'openai-compatible',
+        model: 'fixture-model',
+        generation_config: { temperature: 0 },
+        generation_config_hash: 'c'.repeat(64),
+        configuration_hash: 'd'.repeat(64),
+        cost_estimate_available: false,
+        cost_estimate_note: '当前无法可靠估算费用；运行后以实际审计为准。',
       }),
     })
   })
-  await page.route(`**/api/v1/content-analysis-jobs/${analysisJobId}`, async (route) => {
+  await page.route('**/api/v1/analysis/content-runs', async (route) => {
+    if (route.request().method() === 'POST') {
+      await route.fulfill({
+        status: 202,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          run_id: analysisRunId,
+          planner_job_id: analysisJobId,
+          target_count: 1,
+          shard_count: 1,
+          status: 'queued',
+        }),
+      })
+      return
+    }
     await route.fulfill({
       contentType: 'application/json',
-      body: JSON.stringify(job(analysisJobId, 'analysis.content-label.v1')),
+      body: JSON.stringify({ items: [] }),
+    })
+  })
+  await page.route(`**/api/v1/analysis/content-runs/${analysisRunId}`, async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify(analysisRun),
+    })
+  })
+  await page.route(`**/api/v1/analysis/content-runs/${analysisRunId}/cancel`, async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: analysisRunId,
+        planner_job_id: analysisJobId,
+        sequence_no: 1,
+        status: 'cancelled',
+        run_intent: 'manual_reanalysis',
+        scope: 'query',
+        target_count: 1,
+        shard_count: 1,
+        shard_size: 1,
+        prompt_version: 'content_labeling_v3',
+        prompt_sha256: 'a'.repeat(64),
+        taxonomy_sha256: 'b'.repeat(64),
+        model_provider: 'openai-compatible',
+        model: 'fixture-model',
+        generation_config: { temperature: 0 },
+        generation_config_hash: 'c'.repeat(64),
+        stats: { pending: 0, succeeded: 0, failed: 0, cancelled: 1, stale: 0 },
+        shards: [],
+        created_at: '2026-08-21T03:00:00Z',
+        started_at: null,
+        finished_at: '2026-08-21T03:01:00Z',
+      }),
     })
   })
 
@@ -144,7 +241,10 @@ test.beforeEach(async ({ page }) => {
       })
       return
     }
-    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [] }) })
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ items: [runningExport] }),
+    })
   })
 })
 
@@ -188,15 +288,31 @@ test('shows AI unavailable and disables analysis when runtime is not configured'
 test('creates explicit analysis and durable Excel export jobs', async ({ page }) => {
   let analysisRequest: unknown
   let exportRequest: unknown
-  await page.route('**/api/v1/content-analysis-requests', async (route) => {
+  let previewRequest: unknown
+  let analysisCreated = false
+  let cancelRequested = false
+  await page.route('**/api/v1/analysis/content-runs/preview', async (route) => {
+    previewRequest = route.request().postDataJSON()
+    await route.fallback()
+  })
+  await page.route('**/api/v1/analysis/content-runs', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({ items: analysisCreated ? [analysisRun] : [] }),
+      })
+      return
+    }
     analysisRequest = route.request().postDataJSON()
+    analysisCreated = true
     await route.fulfill({
       status: 202,
       contentType: 'application/json',
       body: JSON.stringify({
-        request_id: analysisRequestId,
-        job_id: analysisJobId,
+        run_id: analysisRunId,
+        planner_job_id: analysisJobId,
         target_count: 1,
+        shard_count: 1,
         status: 'queued',
       }),
     })
@@ -215,14 +331,46 @@ test('creates explicit analysis and durable Excel export jobs', async ({ page })
       }),
     })
   })
+  await page.route(`**/api/v1/analysis/content-runs/${analysisRunId}/cancel`, async (route) => {
+    cancelRequested = true
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        ...analysisRun,
+        status: 'cancelled',
+        stats: { pending: 0, succeeded: 0, failed: 0, cancelled: 20, stale: 0 },
+        finished_at: '2026-08-21T03:01:00Z',
+        shards: [],
+      }),
+    })
+  })
 
   await page.goto('/voice-plaza')
-  await page.getByRole('button', { name: /AI 打标/ }).click()
-  await expect(page.getByText('此操作可能产生模型调用费用')).toBeVisible()
-  await page.getByRole('button', { name: '确认并创建 Job' }).click()
-  await expect(page.getByText(/已创建 AI 分析 Job/)).toBeVisible()
-  await expect(page.getByText('AI 分析 Job：排队中 · 0%')).toBeVisible()
-  expect(analysisRequest).toMatchObject({ targets: { scope: 'query' } })
+  const analysisButton = page.getByRole('button', { name: /AI 打标/ })
+  await expect(analysisButton).toBeDisabled()
+  await page.getByLabel('选择当前已加载内容').check()
+  await expect(analysisButton).toBeEnabled()
+  await analysisButton.click()
+  await expect(page.getByText('预检目标 1 条，拆分 1 个 Shard')).toBeVisible()
+  await expect(page.getByText('每个 Shard 1 条 · openai-compatible / fixture-model')).toBeVisible()
+  await expect(page.getByText(/当前无法可靠估算费用/)).toBeVisible()
+  await page.getByRole('button', { name: '确认并创建 Analysis Run' }).click()
+  await expect(page.getByText(/已创建 AI Analysis Run/)).toBeVisible()
+  await expect(page.getByText('AI Analysis Run 历史')).toBeVisible()
+  await expect(page.getByText('Run #1 · 处理中')).toBeVisible()
+  await expect(page.getByRole('progressbar', { name: 'AI Run #1 进度' })).toHaveAttribute('aria-valuenow', '18')
+  expect(previewRequest).toMatchObject({
+    targets: { scope: 'selected', content_ids: [contentId] },
+  })
+  expect(analysisRequest).toMatchObject({
+    targets: { scope: 'selected', content_ids: [contentId] },
+    expected_target_count: 1,
+    expected_configuration_hash: 'd'.repeat(64),
+    run_intent: 'manual_reanalysis',
+  })
+  await page.getByRole('button', { name: '取消 Run' }).click()
+  await expect(page.getByText('Run #1 · 已取消')).toBeVisible()
+  expect(cancelRequested).toBe(true)
 
   await page.getByRole('button', { name: /导出记录/ }).click()
   await expect(page.getByText('未完成 AI 打标的内容不会被丢弃')).toBeVisible()
@@ -252,4 +400,5 @@ test('keeps export history visible but disables empty query export creation', as
   await expect(dialog.getByRole('radio', { name: /全部查询结果/ })).toBeDisabled()
   await expect(dialog.getByRole('button', { name: '创建 Excel 导出' })).toBeDisabled()
   await expect(dialog.getByText('最近导出记录')).toBeVisible()
+  await expect(dialog.getByRole('progressbar', { name: '导出 72345678 进度' })).toHaveAttribute('aria-valuenow', '64')
 })

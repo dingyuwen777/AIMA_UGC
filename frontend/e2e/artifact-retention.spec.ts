@@ -169,6 +169,9 @@ test('shows the seven-day Excel export window in the existing export dialog', as
       body: JSON.stringify({ items: [content], next_cursor: null, has_more: false }),
     })
   })
+  await page.route('**/api/v1/analysis/content-runs**', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [] }) })
+  })
   await page.route('**/api/v1/data-exports**', async (route) => {
     const url = new URL(route.request().url())
     if (url.pathname === `/api/v1/data-exports/${exportId}`) {

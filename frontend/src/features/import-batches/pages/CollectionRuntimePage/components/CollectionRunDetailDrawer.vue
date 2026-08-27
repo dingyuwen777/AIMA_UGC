@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { CollectionRunResponse } from '../../../../../generated/api/client'
+import TaskProgressBar from '../../../../../shared/TaskProgressBar.vue'
 import {
   elapsed,
   formatDateTime,
@@ -87,7 +88,11 @@ const emit = defineEmits<{
             >
               <i :class="`dot dot--${scope.status}`" /><span>{{ platformLabels[scope.platform] }} · {{ runtimeStageLabel(scope.operation_group) }}<small
                 v-if="scope.status === 'failed' && scope.stop_reason"
-              >{{ runtimeFailureMessage(scope.stop_reason) }}</small></span><strong>{{ scope.progress }}%</strong>
+              >{{ runtimeFailureMessage(scope.stop_reason) }}</small></span><TaskProgressBar
+                compact
+                :label="`${platformLabels[scope.platform]} Scope 进度`"
+                :value="scope.progress"
+              />
             </div>
           </section>
           <div
@@ -145,7 +150,7 @@ h3 { margin: 18px 0 11px; font-size: 14px; }
 .stats span { color: #737c8d; font-size: 10px; }
 .stats strong { margin-top: 5px; color: #2563eb; }
 .scopes { border: 1px solid var(--aima-border); border-radius: 7px; }
-.scopes div { display: grid; grid-template-columns: 20px 1fr auto; min-height: 42px; align-items: center; padding: 0 12px; border-bottom: 1px solid var(--aima-border); font-size: 12px; }
+.scopes div { display: grid; grid-template-columns: 20px minmax(0, 1fr) minmax(150px, 42%); gap: 8px; min-height: 54px; align-items: center; padding: 6px 12px; border-bottom: 1px solid var(--aima-border); font-size: 12px; }
 .scopes div:last-child { border-bottom: 0; }
 .scopes small { display: block; margin-top: 4px; color: #b4232d; line-height: 1.4; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; }

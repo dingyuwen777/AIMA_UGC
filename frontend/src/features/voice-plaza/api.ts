@@ -1,14 +1,25 @@
 import {
+  cancelContentAnalysisRun,
+  createContentAnalysisRun,
   createContentAnalysis,
   createContentRelevanceReview,
   createDataExport,
   downloadDataExport,
   getContent,
+  getContentAnalysisRun,
   getContentAnalysisCapabilities,
   getContentAnalysisJob,
   getDataExport,
   listContents,
+  listContentAnalysisRuns,
   listDataExports,
+  previewContentAnalysisRun,
+  type AnalysisContentRunCreateRequest,
+  type AnalysisContentRunCreatedResponse,
+  type AnalysisContentRunListResponse,
+  type AnalysisContentRunPreviewRequest,
+  type AnalysisContentRunPreviewResponse,
+  type AnalysisContentRunResponse,
   type ContentAnalysisCapabilitiesResponse,
   type ContentAnalysisCreatedResponse,
   type ContentAnalysisSubmitRequest,
@@ -68,6 +79,34 @@ export async function submitContentAnalysis(
   request: ContentAnalysisSubmitRequest,
 ): Promise<ContentAnalysisCreatedResponse> {
   return unwrap(await createContentAnalysis(request))
+}
+
+export async function previewAnalysisRun(
+  request: AnalysisContentRunPreviewRequest,
+): Promise<AnalysisContentRunPreviewResponse> {
+  return unwrap(await previewContentAnalysisRun(request))
+}
+
+export async function submitAnalysisRun(
+  request: AnalysisContentRunCreateRequest,
+): Promise<AnalysisContentRunCreatedResponse> {
+  return unwrap(await createContentAnalysisRun(request))
+}
+
+export async function fetchAnalysisRuns(): Promise<AnalysisContentRunListResponse> {
+  const response = unwrap(await listContentAnalysisRuns())
+  if (!response || !Array.isArray(response.items)) {
+    throw new Error('AI Analysis Run 历史响应格式无效。')
+  }
+  return response
+}
+
+export async function fetchAnalysisRun(runId: string): Promise<AnalysisContentRunResponse> {
+  return unwrap(await getContentAnalysisRun(runId))
+}
+
+export async function cancelAnalysisRun(runId: string): Promise<AnalysisContentRunResponse> {
+  return unwrap(await cancelContentAnalysisRun(runId))
 }
 
 export async function submitContentRelevanceReview(

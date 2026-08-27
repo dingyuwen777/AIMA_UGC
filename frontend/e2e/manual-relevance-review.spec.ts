@@ -76,6 +76,9 @@ async function routeShared(page: import('@playwright/test').Page): Promise<void>
   await page.route('**/api/v1/data-exports**', async (route) => {
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [] }) })
   })
+  await page.route('**/api/v1/analysis/content-runs**', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [] }) })
+  })
 }
 
 test('marks AI irrelevant content as relevant through the explicit decision contract', async ({ page }) => {

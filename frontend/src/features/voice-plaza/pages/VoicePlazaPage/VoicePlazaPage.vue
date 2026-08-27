@@ -4,10 +4,11 @@ import { useRoute } from 'vue-router'
 
 import AppShell from '../../../../app/layouts/AppShell.vue'
 import type {
+  AnalysisContentRunResponse,
   ContentRelevanceReviewResponse,
   DataExportResponse,
-  JobStatusResponse,
 } from '../../../../generated/api/client'
+import TaskProgressBar from '../../../../shared/TaskProgressBar.vue'
 import {
   relevanceReviewDecision,
   type RelevanceReviewDecision,
@@ -47,11 +48,13 @@ const reviewNote = computed(() => {
   }
   return null
 })
-const jobStatusLabels: Record<JobStatusResponse['status'], string> = {
+const runStatusLabels: Record<AnalysisContentRunResponse['status'], string> = {
   queued: '排队中',
   running: '处理中',
   succeeded: '已完成',
+  partial_failed: '部分失败',
   failed: '失败',
+  cancelling: '取消中',
   cancelled: '已取消',
 }
 const detailOpen = computed({
@@ -72,6 +75,7 @@ async function refreshPage(): Promise<void> {
     store.refresh(),
     store.refreshExports(),
     store.refreshAnalysisCapabilities(),
+    store.refreshAnalysisRuns(),
   ])
 }
 
@@ -109,11 +113,15 @@ async function reviewSelected(decision: RelevanceReviewDecision): Promise<void> 
   if (result) showNotice(relevanceNotice(decision, result))
 }
 
-async function submitAnalysis(scope: 'query' | 'selected'): Promise<void> {
-  const count = await store.createAnalysis(scope)
+async function submitAnalysis(): Promise<void> {
+  const count = await store.confirmAnalysis()
   if (count === null) return
   analysisOpen.value = false
-  showNotice(`已创建 AI 分析 Job，冻结 ${count} 条内容。`)
+  showNotice(`已创建 AI Analysis Run，冻结 ${count} 条内容。`)
+}
+
+async function cancelAnalysis(runId: string): Promise<void> {
+  if (await store.cancelRun(runId)) showNotice('已请求取消 Analysis Run。')
 }
 
 async function submitExport(scope: 'query' | 'selected' | 'page'): Promise<void> {
@@ -140,6 +148,31 @@ function showNotice(message: string): void {
   notice.value = message
   window.setTimeout(() => { if (notice.value === message) notice.value = null }, 2800)
 }
+
+/** 按每个 Shard 冻结目标数加权，避免大小不同的 Shard 被等权计算。 */
+function analysisRunProgress(run: AnalysisContentRunResponse): number {
+  const shards = run.shards ?? []
+  if (run.target_count > 0 && shards.length > 0) {
+    const weightedProgress = shards.reduce(
+      (total, shard) => total + shard.target_count * shard.progress,
+      0,
+    )
+    // 尚未进入有界调度窗口的目标视为 0%，避免新 Shard 创建后总进度倒退。
+    return Math.max(0, Math.min(100, Math.round(weightedProgress / run.target_count)))
+  }
+  const stats = run.stats
+  const terminal = (stats?.succeeded ?? 0) + (stats?.failed ?? 0) +
+    (stats?.cancelled ?? 0) + (stats?.stale ?? 0)
+  return Math.max(0, Math.min(100, Math.round(terminal * 100 / run.target_count)))
+}
+
+/** 用 Run 终态统计解释百分比，不把失败或取消伪装成成功。 */
+function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
+  const stats = run.stats
+  const terminal = (stats?.succeeded ?? 0) + (stats?.failed ?? 0) +
+    (stats?.cancelled ?? 0) + (stats?.stale ?? 0)
+  return `${terminal} / ${run.target_count} 条已取得终态`
+}
 </script>
 
 <template>
@@ -153,8 +186,8 @@ function showNotice(message: string): void {
           ↻&nbsp; 刷新数据
         </button><button
           type="button"
-          :disabled="store.items.length === 0 || store.analysisConfigured !== true"
-          :title="store.analysisConfigured === false ? '当前环境尚未配置 AI 模型' : store.analysisConfigured === null ? '正在确认 AI 运行配置' : undefined"
+          :disabled="store.selectedIds.length === 0 || store.selectedIds.length > 1000 || store.analysisConfigured !== true"
+          :title="store.analysisConfigured === false ? '当前环境尚未配置 AI 模型' : store.analysisConfigured === null ? '正在确认 AI 运行配置' : store.selectedIds.length === 0 ? '请先选择需要打标的内容' : store.selectedIds.length > 1000 ? '单次最多选择 1000 条内容' : undefined"
           @click="analysisOpen = true"
         >
           ◇&nbsp; AI 打标
@@ -205,13 +238,31 @@ function showNotice(message: string): void {
     >
       !&nbsp; {{ store.error }}
     </div>
-    <div
-      v-if="store.analysisJob"
-      class="job-banner"
-      :class="`job-banner--${store.analysisJob.status}`"
+    <section
+      v-if="store.analysisRuns.length"
+      class="run-history"
+      aria-label="AI Analysis Run 历史"
     >
-      <span>AI 分析 Job：{{ jobStatusLabels[store.analysisJob.status] }} · {{ store.analysisJob.progress }}%</span><span v-if="store.analysisJob.error_code">{{ store.analysisJob.error_code }}</span>
-    </div>
+      <header><strong>AI Analysis Run 历史</strong><span>不同 Run 结果均保留；Current 按创建顺序选择</span></header>
+      <article
+        v-for="run in store.analysisRuns"
+        :key="run.id"
+      >
+        <div><strong>Run #{{ run.sequence_no }} · {{ runStatusLabels[run.status] }}</strong><span>{{ run.target_count }} 条 · {{ run.shard_count }} Shard · {{ run.model }}</span><small v-if="run.error_code">{{ run.error_code }}</small></div><TaskProgressBar
+          compact
+          :label="`AI Run #${run.sequence_no} 进度`"
+          :value="analysisRunProgress(run)"
+          :detail="analysisRunProgressDetail(run)"
+        /><span>完成 {{ run.stats?.succeeded ?? 0 }} / 失败 {{ run.stats?.failed ?? 0 }} / 取消 {{ run.stats?.cancelled ?? 0 }}</span><button
+          v-if="run.status === 'queued' || run.status === 'running'"
+          type="button"
+          :disabled="store.cancellingAnalysisRunId === run.id"
+          @click="cancelAnalysis(run.id)"
+        >
+          {{ store.cancellingAnalysisRunId === run.id ? '取消中…' : '取消 Run' }}
+        </button>
+      </article>
+    </section>
 
     <div class="list-heading">
       <div>
@@ -276,7 +327,10 @@ function showNotice(message: string): void {
     <AnalysisSubmitDialog
       v-model="analysisOpen"
       :selected-count="store.selectedIds.length"
+      :preview="store.analysisPreview"
+      :previewing="store.previewingAnalysis"
       :submitting="store.submittingAnalysis"
+      @preview="store.previewAnalysis"
       @submit="submitAnalysis"
     />
     <DataExportDialog
@@ -311,9 +365,15 @@ function showNotice(message: string): void {
 .capability-warning code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 .review-note { margin-top: 12px; padding: 11px 14px; border: 1px solid #bfd5f5; border-radius: 7px; color: #32618f; background: #f2f7fd; font-size: 12px; line-height: 1.6; }
 .page-error { margin-top: 14px; padding: 11px 14px; border: 1px solid #ffc7cc; border-radius: 7px; color: #b4232d; background: #fff5f6; font-size: 13px; }
-.job-banner { display: flex; justify-content: space-between; margin-top: 12px; padding: 10px 14px; border: 1px solid #bfd5f5; border-radius: 7px; color: #32618f; background: #f2f7fd; font-size: 12px; }
-.job-banner--failed { border-color: #ffc7cc; color: #b4232d; background: #fff5f6; }
-.job-banner--succeeded { border-color: #afe0c6; color: #12804b; background: #effbf5; }
+.run-history { margin-top: 14px; overflow: hidden; border: 1px solid #dfe3ea; border-radius: 8px; background: #fff; }
+.run-history header, .run-history article { display: flex; align-items: center; gap: 16px; justify-content: space-between; padding: 11px 14px; }
+.run-history header { background: #f7f8fa; }
+.run-history header span, .run-history article span { color: #768092; font-size: 12px; }
+.run-history article { border-top: 1px solid #edf0f4; }
+.run-history article div { display: grid; gap: 4px; }
+.run-history article :deep(.task-progress) { width: min(300px, 30vw); }
+.run-history article button { padding: 6px 10px; border: 1px solid #d7dce5; border-radius: 5px; color: #b4232d; background: #fff; cursor: pointer; }
+.run-history article button:disabled { opacity: .55; cursor: default; }
 .list-heading { display: flex; align-items: center; justify-content: space-between; margin: 22px 0 11px; }
 .list-heading div { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .list-heading strong { font-size: 17px; }
