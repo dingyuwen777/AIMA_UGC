@@ -44,6 +44,26 @@ MCP 生成了代码
 ≠ 代码可以直接提交
 ```
 
+还要区分一个容易混淆的边界：
+
+```text
+Figma 目标信息架构（Target IA）
+≠
+当前已经实现的 Vue Route
+```
+
+Figma 可以先表达已经确认的长期产品方向，例如公共 Sidebar 中可以先出现未来页面入口；但 Design-to-Code 时只能为 `frontend/src/app/routes.ts` 当前真实存在的页面接通可点击导航。未来入口在代码中不得被实现成死链、伪路由、空白假页面或仅为了“和设计一致”而增加的无效菜单动作。真正新增页面时再按：
+
+```text
+Feature
+→ Page
+→ Route
+→ App Shell
+→ Test
+```
+
+同步接通。
+
 ---
 
 ## 2. 当前真实前端结构
@@ -170,6 +190,30 @@ Feature 级公共组件（真实复用后）
 
 不要先做一套“看起来完整”的组件库再找使用场景。
 
+Figma 组件也使用同样边界：
+
+```text
+AIMA/顶部栏
+AIMA/侧边栏
+AIMA/页面标题区
+AIMA/按钮
+AIMA/输入框
+AIMA/下拉选择
+AIMA/页签项
+AIMA/反馈横幅
+AIMA/空状态
+AIMA/模态框外壳
+→ 适合作为跨页面公共组件
+
+采集策略 KPI
+Keyword Pack Workspace
+Global Relevance Config
+Collection Plan Table / Form
+→ 保持 Feature 级组件或 Pattern
+```
+
+设计系统和代码组件不要求机械 1:1；目标是同一种稳定模式只有一种实现方式，而不是把所有业务块都提升成全局万能组件。
+
 ---
 
 ## 5. Store 和 local state 怎样选
@@ -235,6 +279,53 @@ frontend/src/generated/api/
 → Page
 ```
 
+### 6.1 Figma 示例数据不是服务器事实
+
+Figma 为了让 Normal/Data 状态可设计、可演示、可被 Codex读取，可以放代表性示例值，例如：
+
+```text
+词包数量
+Plan 数量
+Plan ID
+Provider 显示名
+Cron
+下次运行时间
+词包版本
+相关性配置版本
+有效关键词
+分页页码
+状态
+```
+
+这些示例只说明：
+
+```text
+这个字段在什么位置
+怎样排版
+长短文本怎样处理
+Data / Empty / Loading / Error 怎样表现
+```
+
+它们不说明服务器当前一定存在这些记录，也不能成为前端常量。正式代码必须按当前调用链读取：
+
+```text
+Page
+→ Store
+→ Feature api.ts
+→ generated client
+→ FastAPI
+```
+
+Provider Config、平台可执行能力和 Search 参数尤其不能从 Figma 示例反推。当前 Collection 页面仍必须使用：
+
+```text
+GET /api/v1/collection-capabilities
+→ generated client
+→ CollectionSearchConfigFields
+```
+
+动态决定 Provider 和合法参数，不在 Vue 中维护第二套五平台 `if/else` 参数表。
+
 ---
 
 ## 7. 当前 Figma / 图片基线
@@ -259,42 +350,96 @@ Figma
 
 长期成为三套没有优先级的设计事实。
 
+### 7.1 采集策略正式 Figma 基线
+
+“采集策略”当前已经形成正式可用于后续 Design-to-Code 的 Figma 基线，覆盖：
+
+```text
+采集策略 / 关键词包
+采集策略 / 全局相关性
+采集策略 / 采集计划
+关键词包 / 新建弹窗
+采集计划 / 新建抽屉
+采集计划 / 详情抽屉
+采集策略开发状态规格
+```
+
+这套 Figma 接管：
+
+- App Shell 在该页面中的视觉表现；
+- 页面标题、KPI、Tab、筛选、表格、Modal、Drawer 的布局与视觉；
+- Normal / Data / Loading / Empty / Error / Disabled 等状态表达；
+- 公共组件的视觉 API 和设计 Token；
+- 关键 Prototype 交互意图。
+
+它不接管：
+
+- Keyword Pack / Plan / Relevance 的 HTTP Schema；
+- Provider Capability；
+- Scheduler、Plan 启停、冻结 Relevance 等后端状态机；
+- 当前服务器里到底有多少条 Plan、哪个 Provider Config 可用；
+- 当前真实 Route 列表。
+
+因此后续 Codex 替换现有 `collection-strategy` 页面时必须执行：
+
+```text
+当前 AGENTS.md / Coding 规则
+→ 当前 Contract / Service / Store / API / Route
+→ 目标 Figma Design Context
+→ 公共组件与 Feature 组件映射
+→ Vue 实现
+→ 测试 / Build / Browser / 视觉验收
+```
+
+不能只看截图或只复制 Figma MCP 返回的 React/Tailwind 参考代码。
+
 ---
 
 ## 8. Figma 文件建议怎样组织
 
-长期 Figma 资产建议按职责组织：
+AIMA 当前设计系统页面使用中文职责名：
 
 ```text
-Foundations
-├─ Color
-├─ Typography
-├─ Spacing
-└─ Radius
+00 AIMA 设计系统使用说明
+01 设计规范
+02 公共组件
+03 页面模板
+```
 
-Components
-→ 稳定公共组件
+设计资产内部长期按职责组织：
 
-Patterns
-→ List / Detail / Filter / Job Progress / Empty / Error
+```text
+设计规范
+├─ 颜色
+├─ 字体
+├─ 间距
+└─ 圆角
 
-Screens
-→ 正式页面
+公共组件
+→ 稳定跨页面组件
 
-Flows
-→ 关键交互流程
+页面模板 / Pattern
+→ 列表 / 详情 / 筛选 / 任务进度 / 空状态 / 错误状态
+
+业务页面
+→ 正式 Screen
+
+关键流程
+→ Prototype / Flow
 ```
 
 规则：
 
 - 重复组件使用 Component/Variant；
+- 组件可变文字优先使用 Component Property，不在实例上叠加额外 Text 模拟值；
 - 重复视觉值使用 Variable/Style；
 - 布局优先 Auto Layout；
 - Layer/Frame 名称表达业务含义；
 - 交付开发时必须给明确目标 Frame/Node；
 - 页面至少考虑 Normal / Loading / Empty / Error；
 - Disabled / Partial / Permission 按实际业务需要设计；
-- Figma 不复制完整 API Schema。
+- Figma 不复制完整 API Schema；
+- Prototype Variable 只服务演示，不成为 Vue 状态模型或后端 Contract。
 
 ---
 
@@ -329,6 +474,8 @@ frontend/src/shared/styles/
 - 第二套主题 Runtime。
 
 一次性页面尺寸不需要机械 Token 化。
+
+Figma 已经存在对应 AIMA Design Token 时，页面和公共组件应优先绑定现有变量，不继续散落语义相同的 Raw Hex。不能确定语义是否相同的颜色不要为了“Token 覆盖率”强行合并。
 
 ---
 
@@ -377,15 +524,18 @@ Stage 8C 实现时已发现：当前锁定组合下直接使用部分 Element Pl
 ## 11. Figma MCP → Vue 的固定流程
 
 ```text
-目标 Figma Frame/Node
-→ 读取 Frame / Component / Variable / Screenshot / Asset 上下文
-→ 读取当前 Vue Feature / Shared / Design Token / generated Client
-→ 确认真实 Owner
+AGENTS.md / Coding Skill
+→ 当前 Route / Feature / Store / API / Contract / Capability
+→ 目标 Figma Frame 的 Design Context
+→ 当前 Shared / App Shell / Design Token
+→ 区分全局公共组件、Feature 组件、页面私有组合
 → 把设计意图适配成 Vue 3 + TypeScript
-→ 接入 Feature api.ts / Store
+→ 接入既有 Feature api.ts / Store / generated client
 → Lint / Typecheck / Unit / Build / E2E
 → 浏览器与 Figma 做视觉核对
 ```
+
+顺序不能反过来。尤其不能先让 MCP 生成一套组件/数据模型，再要求仓库迁就生成结果。
 
 MCP 输出如果出现：
 
@@ -398,18 +548,37 @@ Tailwind
 
 只能作为设计结构参考，未经独立技术决策不得直接引入 AIMA。
 
+对于 Figma 公共 Sidebar：
+
+```text
+设计中存在未来入口
+→ 保留目标 IA 视觉
+
+当前 routes.ts 没有该 Route
+→ 不接 clickable route
+→ 不创建 placeholder Page
+→ 不制造 disabled 假功能
+
+未来页面真实完成
+→ 再同步 Route + App Shell
+```
+
 ---
 
 ## 12. Figma MCP 使用硬规则
 
 1. 先读仓库当前事实，再读设计上下文；
-2. 优先复用当前 Feature/Shared 真实实现；
-3. generated API 目录禁止手改；
-4. Figma 文字/演示数据不自动成为 HTTP Contract；
-5. 资产使用真实导出或当前仓库已有资产；
-6. MCP 生成结果必须 Review；
-7. 视觉接近不能替代 Type/Test/Build/E2E；
-8. 不因为 MCP 示例技术栈改变仓库长期技术选型。
+2. Design-to-Code 优先调用目标 Frame 的 Design Context，不用截图替代结构上下文；
+3. 优先复用当前 Feature/Shared 真实实现；
+4. generated API 目录禁止手改；
+5. Figma 文字、Prototype Variable 和演示数据不自动成为 HTTP Contract；
+6. Figma 中的 Provider、Capability、时间、状态、数量等示例值不得硬编码为生产事实；
+7. Figma 完整 Sidebar 可以表达目标 IA，但当前代码只接通真实 Route；
+8. Component Property 应表达可变文本/状态，业务页不要用额外覆盖文字伪装公共组件内容；
+9. 资产使用真实导出或当前仓库已有资产；Unicode 图标不能因为出现在设计示例中就成为生产 Icon 实现；
+10. MCP 生成结果必须 Review；
+11. 视觉接近不能替代 Type/Test/Build/E2E；
+12. 不因为 MCP 示例技术栈改变仓库长期技术选型。
 
 ---
 
@@ -426,7 +595,7 @@ Figma Component
 
 它是增强项，不是开发页面的前置条件。
 
-没有稳定公共组件前，不批量创建占位映射。
+没有稳定公共组件前，不批量创建占位映射；当前 Figma 席位/计划如果不支持 Code Connect，也不能为了获得映射能力阻塞正常的 Design Context → Vue 工作流。
 
 ---
 
@@ -559,7 +728,7 @@ npm --prefix frontend run test:e2e
 
 自动像素 Snapshot 不作为所有高频页面强制门禁；稳定 App Shell/Shared Component 或明确需要严格回归时再建立 Visual Regression。
 
-响应式断点只按批准需求实现，不由 Agent 自己猜移动端产品要求。
+响应式断点只按批准需求实现，不由 Agent 自己猜移动端产品要求。Figma 1440×900 等桌面 Frame 是设计参考 Viewport，不等于生产代码必须写死 `width: 1440px; height: 900px`；生产布局仍按当前 App Shell 与真实响应式需求实现。
 
 ---
 
@@ -615,13 +784,15 @@ Figma 一次生成全部未来页面
 
 不要从历史 Stage 8 的 Screens 示例自动生成一批新页面。
 
+同样，不要因为 Figma 公共 Sidebar 已经展示某个未来入口，就把它写成“当前已实现”。Figma 可以先保存长期产品 IA；代码事实仍以当前 Route / Feature / Test 为准。
+
 ---
 
 ## 20. 最终原则
 
 ```text
 Figma
-→ 已确认视觉和交互目标
+→ 已确认视觉、交互目标和目标信息架构
 
 Pydantic/OpenAPI
 → HTTP 数据语义
@@ -635,6 +806,8 @@ MCP
 公共的只共享一次
 业务的归 Feature
 页面私有的留 Page
+动态服务器事实不写死在设计实现里
+未来 IA 不冒充当前 Route
 局部状态不要全局化
 先做一个可验证纵切
 再复用成熟模式
