@@ -30,6 +30,7 @@ _ALLOWED_LOCAL_KEYS = frozenset(
         "AIMA_LLM_PROVIDER_NAME",
         "AIMA_LLM_MODEL",
         "AIMA_LLM_API_KEY",
+        "AIMA_HISTORICAL_IMPORT_ROOT",
         "AIMA_DEV_ENABLE_SCHEDULER",
     }
 )
@@ -54,6 +55,7 @@ class LocalDevConfig:
     llm_provider_name: str | None
     llm_model: str | None
     llm_api_key: str | None
+    historical_import_root: str | None
     scheduler_enabled: bool
     unknown_keys: tuple[str, ...]
 
@@ -86,6 +88,7 @@ class RuntimePaths:
     internal_secrets: Path
     external_secrets: Path
     dev_state: Path
+    historical_input: Path
 
     @property
     def postgres_password_file(self) -> Path:
@@ -123,6 +126,8 @@ def repository_root() -> Path:
 
 
 def runtime_paths(root: Path) -> RuntimePaths:
+    """返回源码开发运行路径，包含默认历史迁移专用根目录。"""
+
     runtime = root / ".runtime"
     return RuntimePaths(
         root=root,
@@ -132,6 +137,7 @@ def runtime_paths(root: Path) -> RuntimePaths:
         internal_secrets=runtime / "internal-secrets",
         external_secrets=runtime / "secrets",
         dev_state=runtime / "dev",
+        historical_input=runtime / "historical-input",
     )
 
 
@@ -177,6 +183,8 @@ def parse_env_file(path: Path) -> dict[str, str]:
 
 
 def load_local_dev_config(path: Path) -> LocalDevConfig:
+    """从简化的 `env.local` 加载允许传入源码开发进程的配置。"""
+
     values = parse_env_file(path)
     unknown = tuple(sorted(key for key in values if key not in _ALLOWED_LOCAL_KEYS))
     return LocalDevConfig(
@@ -186,6 +194,7 @@ def load_local_dev_config(path: Path) -> LocalDevConfig:
         llm_provider_name=_clean(values.get("AIMA_LLM_PROVIDER_NAME")),
         llm_model=_clean(values.get("AIMA_LLM_MODEL")),
         llm_api_key=_clean(values.get("AIMA_LLM_API_KEY")),
+        historical_import_root=_clean(values.get("AIMA_HISTORICAL_IMPORT_ROOT")),
         scheduler_enabled=_parse_bool(
             values.get("AIMA_DEV_ENABLE_SCHEDULER", "false"),
             key="AIMA_DEV_ENABLE_SCHEDULER",
@@ -195,12 +204,15 @@ def load_local_dev_config(path: Path) -> LocalDevConfig:
 
 
 def prepare_runtime_directories(paths: RuntimePaths) -> None:
+    """创建源码开发所需的 Git 忽略目录。"""
+
     for path in (
         paths.data,
         paths.logs,
         paths.internal_secrets,
         paths.external_secrets,
         paths.dev_state,
+        paths.historical_input,
     ):
         path.mkdir(parents=True, exist_ok=True)
 
@@ -239,6 +251,9 @@ def build_runtime_environment(
     """把简化 `env.local` 转换为正式进程已有的 AIMA_* + Secret File。"""
 
     environment = dict(os.environ)
+    # Windows 安全软件可能注入不可写的全局 keylog 路径；只从本地子进程环境移除，
+    # 避免 Python 初始化 TLS 时因写权限失败而让 API/Worker 意外退出。
+    environment.pop("SSLKEYLOGFILE", None)
     for key in _ALLOWED_LOCAL_KEYS:
         environment.pop(key, None)
     environment.update(
@@ -256,6 +271,9 @@ def build_runtime_environment(
     )
     for key in _RUNTIME_LLM_KEYS:
         environment.pop(key, None)
+
+    if config.historical_import_root is not None:
+        environment["AIMA_HISTORICAL_IMPORT_ROOT"] = config.historical_import_root
 
     if config.llm_configured:
         assert config.llm_base_url is not None

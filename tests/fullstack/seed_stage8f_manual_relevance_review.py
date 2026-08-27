@@ -10,7 +10,10 @@ from uuid import UUID, uuid4
 
 from aima_ugc.adapters.persistence.postgres.analysis import PostgresAnalysisRepository
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
-from aima_ugc.bootstrap.analysis_identity import current_analysis_identity
+from aima_ugc.bootstrap.analysis_identity import (
+    current_analysis_generation_config,
+    current_analysis_identity,
+)
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
 from aima_ugc.bootstrap.worker import (
     create_collection_job_registry,
@@ -27,10 +30,11 @@ from aima_ugc.modules.analysis.content_analysis_job import (
     CONTENT_ANALYSIS_JOB_TYPE,
     ContentAnalysisJobPayload,
 )
+from aima_ugc.modules.analysis.tables import analysis_content_run_targets_table
 from aima_ugc.modules.content.query import ContentTarget
 from aima_ugc.modules.content.tables import contents_table
 from aima_ugc.platform.jobs import JobExecutionFence
-from sqlalchemy import select
+from sqlalchemy import insert, select
 
 _IRRELEVANT_EXTERNAL_CONTENT_ID = "stage8f-manual-review-content-1"
 _RELEVANT_EXTERNAL_CONTENT_ID = "stage8f-manual-review-content-2"
@@ -112,6 +116,11 @@ def main() -> int:
         if not import_worker.run_once():
             raise RuntimeError("Stage8F 人工复核前置 Excel Import Job 未被执行")
 
+        identity = current_analysis_identity(runtime.settings)
+        if identity is None:
+            raise RuntimeError("Stage8F 人工复核必须配置测试 Analysis identity")
+        generation_config, generation_config_hash = current_analysis_generation_config()
+
         session = runtime.database.new_session()
         try:
             with session.begin():
@@ -132,20 +141,54 @@ def main() -> int:
                 irrelevant_content_id = by_external_id[_IRRELEVANT_EXTERNAL_CONTENT_ID].id
                 relevant_content_id = by_external_id[_RELEVANT_EXTERNAL_CONTENT_ID].id
                 analysis_request_id = uuid4()
+                analysis_run_id = uuid4()
                 job = PostgresJobRepository(session).enqueue(
                     job_type=CONTENT_ANALYSIS_JOB_TYPE,
                     payload_version=CONTENT_ANALYSIS_JOB_PAYLOAD_VERSION,
-                    payload=ContentAnalysisJobPayload(request_id=analysis_request_id).model_dump(
-                        mode="json"
-                    ),
+                    payload=ContentAnalysisJobPayload(
+                        request_id=analysis_request_id,
+                        run_id=analysis_run_id,
+                        shard_no=0,
+                    ).model_dump(mode="json"),
                     internal_idempotency_key=f"stage8f-manual-review:{analysis_request_id}",
                     request_id="stage8f-manual-review-analysis",
                     priority=0,
                     max_attempts=CONTENT_ANALYSIS_JOB_MAX_ATTEMPTS,
                     timeout_seconds=CONTENT_ANALYSIS_JOB_TIMEOUT_SECONDS,
                 )
-                PostgresAnalysisRepository(session).create_request(
+                repository = PostgresAnalysisRepository(session)
+                repository.create_run_header(
+                    run_id=analysis_run_id,
+                    client_idempotency_key=f"stage8f-manual-review:{analysis_run_id}",
+                    planner_job_id=job.id,
+                    run_intent="initial_analysis",
+                    scope="selected",
+                    filter_snapshot={
+                        "content_ids": [str(irrelevant_content_id), str(relevant_content_id)]
+                    },
+                    target_count=2,
+                    shard_count=1,
+                    shard_size=2,
+                    identity=identity,
+                    generation_config=generation_config,
+                    generation_config_hash=generation_config_hash,
+                )
+                session.execute(
+                    insert(analysis_content_run_targets_table),
+                    [
+                        {
+                            "run_id": analysis_run_id,
+                            "target_ordinal": ordinal,
+                            "content_id": row.id,
+                            "content_version": row.current_version,
+                        }
+                        for ordinal, row in enumerate(rows)
+                    ],
+                )
+                repository.create_request(
                     request_id=analysis_request_id,
+                    run_id=analysis_run_id,
+                    shard_no=0,
                     job_id=job.id,
                     scope="selected",
                     filter_snapshot={
@@ -176,9 +219,6 @@ def main() -> int:
         finally:
             claim_session.close()
 
-        identity = current_analysis_identity(runtime.settings)
-        if identity is None:
-            raise RuntimeError("Stage8F 人工复核必须配置测试 Analysis identity")
         persist_session = runtime.database.new_session()
         try:
             with persist_session.begin():
@@ -207,6 +247,7 @@ def main() -> int:
                         "stale": 0,
                     },
                 )
+                repository.refresh_run(analysis_run_id)
         finally:
             persist_session.close()
 

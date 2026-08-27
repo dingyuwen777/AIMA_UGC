@@ -16,6 +16,10 @@ x-windows-backend-volumes: &windows-backend-volumes
     source: windows_internal_secrets
     target: /run/internal-secrets
     read_only: true
+  - type: bind
+    source: ${AIMA_HISTORICAL_IMPORT_HOST_ROOT:-./.runtime/historical-input}
+    target: /data/aima-historical-input
+    read_only: true
 
 services:
   bootstrap:

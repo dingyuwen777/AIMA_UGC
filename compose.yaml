@@ -5,6 +5,11 @@ x-backend-environment: &backend-environment
   - AIMA_LOG_DIR=/app/logs
   - AIMA_SECRET_DIR=/run/internal-secrets
   - AIMA_EXTERNAL_SECRET_DIR=/run/secrets
+  - AIMA_HISTORICAL_IMPORT_ROOT=/data/aima-historical-input
+  - AIMA_HISTORICAL_CHUNK_ROWS=${AIMA_HISTORICAL_CHUNK_ROWS:-1000}
+  - AIMA_HISTORICAL_MAX_SCAN_FILES=${AIMA_HISTORICAL_MAX_SCAN_FILES:-10000}
+  - AIMA_HISTORICAL_MAX_DIRECTORY_DEPTH=${AIMA_HISTORICAL_MAX_DIRECTORY_DEPTH:-8}
+  - AIMA_HISTORICAL_MAX_IN_FLIGHT_JOBS=${AIMA_HISTORICAL_MAX_IN_FLIGHT_JOBS:-2}
   - AIMA_DB_HOST=postgres
   - AIMA_DB_PORT=5432
   - AIMA_DB_NAME=${AIMA_DB_NAME:-aima_ugc}
@@ -17,6 +22,8 @@ x-backend-environment: &backend-environment
   - AIMA_LLM_BASE_URL
   - AIMA_LLM_PROVIDER_NAME
   - AIMA_LLM_MODEL
+  - AIMA_ANALYSIS_RUN_SHARD_SIZE=${AIMA_ANALYSIS_RUN_SHARD_SIZE:-1}
+  - AIMA_ANALYSIS_RUN_MAX_IN_FLIGHT_JOBS=${AIMA_ANALYSIS_RUN_MAX_IN_FLIGHT_JOBS:-2}
   - AIMA_TIKHUB_ENABLED
   - AIMA_TIKHUB_BASE_URL
   - AIMA_TIKHUB_SECRET_REF
@@ -46,6 +53,10 @@ x-backend-service: &backend-service
     - type: bind
       source: ${AIMA_HOST_ROOT:-/data/AIMA_UGC}/shared/secrets
       target: /run/internal-secrets
+      read_only: true
+    - type: bind
+      source: ${AIMA_HISTORICAL_IMPORT_HOST_ROOT:-/data/aima-historical-input}
+      target: /data/aima-historical-input
       read_only: true
   networks:
     - app

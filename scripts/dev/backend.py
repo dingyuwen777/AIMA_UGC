@@ -10,10 +10,10 @@ import subprocess
 import sys
 import threading
 import time
+from http.client import HTTPConnection, HTTPException
 from pathlib import Path
 from typing import NamedTuple
-from urllib.error import HTTPError, URLError
-from urllib.request import urlopen
+from urllib.parse import urlsplit
 from uuid import NAMESPACE_URL, uuid5
 
 from local_runtime import (
@@ -317,21 +317,26 @@ def _start_child(
 def _wait_for_ready(children: list[ChildProcess], *, timeout_seconds: float = 45.0) -> None:
     deadline = time.monotonic() + timeout_seconds
     last_error = "API 尚未响应"
+    target = urlsplit(_READY_URL)
+    if target.scheme != "http" or target.hostname is None:
+        raise LocalDevError(f"本地 readiness URL 非法：{_READY_URL}")
     while time.monotonic() < deadline:
         for child in children:
             return_code = child.process.poll()
             if return_code is not None:
                 raise LocalDevError(f"{child.name} 在 readiness 前退出（exit={return_code}）")
+        connection = HTTPConnection(target.hostname, target.port or 80, timeout=1.5)
         try:
-            with urlopen(_READY_URL, timeout=1.5) as response:  # noqa: S310 - fixed localhost URL
-                payload = json.loads(response.read().decode("utf-8"))
-                if response.status == 200 and payload.get("status") == "ok":
-                    return
-                last_error = f"status={response.status} payload={payload!r}"
-        except HTTPError as exc:
-            last_error = f"HTTP {exc.code}"
-        except (URLError, TimeoutError, json.JSONDecodeError) as exc:
+            connection.request("GET", target.path or "/")
+            response = connection.getresponse()
+            payload = json.loads(response.read().decode("utf-8"))
+            if response.status == 200 and payload.get("status") == "ok":
+                return
+            last_error = f"status={response.status} payload={payload!r}"
+        except (OSError, HTTPException, TimeoutError, json.JSONDecodeError) as exc:
             last_error = type(exc).__name__
+        finally:
+            connection.close()
         time.sleep(0.4)
     raise LocalDevError(f"API 未在 {timeout_seconds:.0f}s 内 ready：{last_error}")
 

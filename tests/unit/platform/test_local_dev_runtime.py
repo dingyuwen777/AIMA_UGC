@@ -119,6 +119,43 @@ def test_runtime_environment_uses_separate_internal_and_external_secret_roots(
     assert "AIMA_TIKHUB_API_KEY" not in environment
 
 
+def test_runtime_environment_forwards_historical_import_root(tmp_path: Path) -> None:
+    """源码开发配置必须把批准的历史根目录传给 API 和 Worker。"""
+
+    env_path = tmp_path / "env.local"
+    env_path.write_text(
+        "AIMA_HISTORICAL_IMPORT_ROOT=.runtime/historical-input\n",
+        encoding="utf-8",
+    )
+    config = load_local_dev_config(env_path)
+
+    assert config.historical_import_root == ".runtime/historical-input"
+    assert config.unknown_keys == ()
+
+    paths = runtime_paths(tmp_path)
+    prepare_runtime_directories(paths)
+    environment = build_runtime_environment(paths=paths, config=config)
+
+    assert paths.historical_input.is_dir()
+    assert environment["AIMA_HISTORICAL_IMPORT_ROOT"] == ".runtime/historical-input"
+
+
+def test_runtime_environment_does_not_forward_ssl_key_log_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SSLKEYLOGFILE", r"C:\nss_ssl_sfagent.log")
+    paths = runtime_paths(tmp_path)
+    prepare_runtime_directories(paths)
+    env_path = tmp_path / "env.local"
+    env_path.write_text("", encoding="utf-8")
+    config = load_local_dev_config(env_path)
+
+    environment = build_runtime_environment(paths=paths, config=config)
+
+    assert environment.get("SSLKEYLOGFILE") is None
+
+
 def test_legacy_postgres_password_is_not_reused_for_new_internal_root(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

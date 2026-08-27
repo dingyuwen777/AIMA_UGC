@@ -39,25 +39,30 @@ async function uploadExcel(
   page: Page,
   fixturePath: string,
   packs: KeywordPackFixture[],
-): Promise<{ batch_id: string; job_id: string }> {
+  options: { startImport?: boolean } = {},
+): Promise<string> {
   await page.goto('/collection-runtime')
   await expect(page.getByRole('heading', { name: '采集运行中心' })).toBeVisible()
-  await page.getByRole('button', { name: /导入 Excel/ }).click()
-  const dialog = page.getByRole('dialog', { name: '导入 Excel' })
+  await page.getByRole('button', { name: '导入数据' }).click()
+  const dialog = page.getByRole('dialog', { name: '导入数据' })
   await expect(dialog).toBeVisible()
-  await dialog.locator('input[type="file"]').setInputFiles(fixturePath)
+  await dialog.locator('input[type="file"]').first().setInputFiles(fixturePath)
   for (const pack of packs) {
     await dialog.getByLabel(new RegExp(pack.name)).check()
   }
   const createdResponsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' &&
-      new URL(response.url()).pathname === '/api/v1/import-batches',
+      new URL(response.url()).pathname === '/api/v1/data-import-campaigns/local',
   )
-  await dialog.getByRole('button', { name: '开始导入' }).click()
+  await dialog.getByRole('button', { name: '创建并预检' }).click()
   const createdResponse = await createdResponsePromise
-  expect(createdResponse.status()).toBe(202)
-  return createdResponse.json() as Promise<{ batch_id: string; job_id: string }>
+  expect(createdResponse.status()).toBe(201)
+  const created = await createdResponse.json() as { campaign_id: string }
+  if (options.startImport === false) return created.campaign_id
+  await expect(dialog.getByText('预检完成，可开始导入')).toBeVisible({ timeout: 60_000 })
+  await dialog.getByRole('button', { name: '开始导入' }).click()
+  return created.campaign_id
 }
 
 test('Excel 浏览器多选词包后经过真实 API、Worker 和 PostgreSQL 可在声音广场查看', async ({ page, request }) => {
@@ -66,39 +71,30 @@ test('Excel 浏览器多选词包后经过真实 API、Worker 和 PostgreSQL 可
   const brandPack = await createKeywordPack(request, 'brand', '爱玛')
   const modelPack = await createKeywordPack(request, 'model', '黑翼')
   await configureGlobalRelevance(request, brandPack.id)
-  const created = await uploadExcel(page, fixturePath!, [brandPack, modelPack])
+  const campaignId = await uploadExcel(page, fixturePath!, [brandPack, modelPack])
 
-  const detail = page.getByRole('dialog', { name: '批次详情' })
-  await expect(detail).toBeVisible()
-  await expect(detail.getByText('已完成', { exact: true }).first()).toBeVisible({ timeout: 60_000 })
-  await expect(detail.getByText('已入库').locator('..').getByText('1', { exact: true })).toBeVisible()
-  const viewContents = detail.getByRole('button', { name: '查看入库内容' })
+  const detail = page.getByRole('dialog', { name: '导入数据' })
+  await expect(detail.getByText('状态：succeeded')).toBeVisible({ timeout: 60_000 })
+  await expect(detail.getByText('新建 1', { exact: true })).toBeVisible()
+  const viewContents = detail.getByRole('button', { name: '查看导入内容' })
   await expect(viewContents).toBeEnabled()
   await viewContents.click()
   await expect(page).toHaveURL((url) =>
-    url.pathname === '/voice-plaza' && url.searchParams.get('source_identifier') === created.batch_id,
+    url.pathname === '/voice-plaza' && url.searchParams.get('source_identifier') === campaignId,
   )
   await expect(page.getByText(importedTitle, { exact: true })).toBeVisible({ timeout: 30_000 })
 })
 
-test('结构合法但业务字段非法的 Excel 由真实 Worker 进入 failed 且页面准确解释终态', async ({ page, request }) => {
+test('错误表头 Excel 由统一链路在预检阶段拒绝', async ({ page, request }) => {
   const fixturePath = process.env.AIMA_STAGE8F_FAILURE_EXCEL_FIXTURE
   expect(fixturePath, 'AIMA_STAGE8F_FAILURE_EXCEL_FIXTURE 必须指向失败测试 Excel fixture').toBeTruthy()
   const pack = await createKeywordPack(request, 'failure', '爱玛')
   await configureGlobalRelevance(request, pack.id)
-  await uploadExcel(page, fixturePath!, [pack])
+  await uploadExcel(page, fixturePath!, [pack], { startImport: false })
 
-  const detail = page.getByRole('dialog', { name: '批次详情' })
-  await expect(detail.getByText('失败', { exact: true }).first()).toBeVisible({ timeout: 60_000 })
-  await expect(detail.getByRole('button', { name: '查看入库内容' })).toBeDisabled()
-
-  await detail.getByRole('button', { name: '处理阶段' }).click()
-  await expect(detail.getByText('任务已失败。', { exact: false })).toBeVisible()
-  await expect(detail.getByText('失败前最后完成阶段', { exact: false })).toBeVisible()
-  await expect(detail.locator('.stage-row')).toHaveCount(0)
-
-  await detail.getByRole('button', { name: 'Job 状态' }).click()
-  await expect(detail.getByText('失败', { exact: true })).toBeVisible()
-  await detail.getByRole('button', { name: '错误记录' }).click()
-  await expect(detail.getByText('invalid_import', { exact: true }).first()).toBeVisible()
+  const detail = page.getByRole('dialog', { name: '导入数据' })
+  await expect(detail.getByText('状态：failed')).toBeVisible({ timeout: 60_000 })
+  await expect(detail.getByText('historical_snapshot_invalid')).toBeVisible()
+  await expect(detail.getByRole('button', { name: '开始导入' })).toBeDisabled()
+  await expect(detail.getByRole('button', { name: '查看导入内容' })).toHaveCount(0)
 })

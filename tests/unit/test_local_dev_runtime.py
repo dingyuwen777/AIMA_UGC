@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -12,6 +15,19 @@ sys.path.insert(0, str(ROOT / "scripts" / "dev"))
 import local_runtime  # noqa: E402
 
 import backend  # noqa: E402
+
+
+class _ReadyHandler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:  # noqa: N802 - stdlib handler API
+        payload = json.dumps({"status": "ok"}).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def log_message(self, _format: str, *_args: object) -> None:
+        return
 
 
 def test_stop_postgres_container_stops_running_container_without_removing_data(
@@ -104,6 +120,8 @@ def test_backend_ctrl_c_stops_children_then_postgres(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    """后端中断时必须先停子进程，再停开发用 PostgreSQL。"""
+
     cleanup_order: list[str] = []
     config = local_runtime.LocalDevConfig(
         tikhub_base_url="https://api.tikhub.io",
@@ -112,6 +130,7 @@ def test_backend_ctrl_c_stops_children_then_postgres(
         llm_provider_name=None,
         llm_model=None,
         llm_api_key=None,
+        historical_import_root=None,
         scheduler_enabled=False,
         unknown_keys=(),
     )
@@ -146,3 +165,24 @@ def test_backend_ctrl_c_stops_children_then_postgres(
 
     assert backend._run(root=tmp_path, config=config, env_created=False, prepare_only=False) == 0
     assert cleanup_order == ["API", "Worker", "PostgreSQL"]
+
+
+def test_backend_readiness_does_not_initialize_https_key_logging(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _ReadyHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.setattr(
+        backend,
+        "_READY_URL",
+        f"http://127.0.0.1:{server.server_port}/health/ready",
+    )
+    monkeypatch.setenv("SSLKEYLOGFILE", str(tmp_path))
+    try:
+        backend._wait_for_ready([], timeout_seconds=2)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)

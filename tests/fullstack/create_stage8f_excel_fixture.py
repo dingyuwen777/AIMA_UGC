@@ -68,8 +68,8 @@ def main() -> int:
                 ]
             )
     else:
-        # OOXML 结构合法，HTTP 上传应成功创建 Job；但缺少正式 Excel Profile 必填列，
-        # 由生产 Worker/Mapper 在后台进入 invalid_import 失败终态。
+        # OOXML 结构合法，因缺少正式 Excel Profile 必填列，统一导入链路
+        # 必须在不可变快照/预检阶段进入失败终态，不允许启动业务写入。
         sheet.append(["错误表头", "标题"])
         sheet.append(["小红书", "爱玛 Stage8F Worker 失败验收"])
 
