@@ -122,13 +122,10 @@ changes/archive/
 - 企业认证 / 后端 Authorization；
 - Stage 9 Monitoring / Alert / VOC / Ticket（按产品目标确认）；
 - Stage 10 Word 报告是否正式产品化；
-- Stage 11 Docker/Compose/Production Config；
-- 离线 Release Bundle、固定 image digest、SBOM、来源验证；
-- PostgreSQL + Artifact 协调 Backup/Restore；
-- 发布、回滚、重启/reboot、容量、安全真实验收；
-- Stage 12 旧数据迁移（如果生产上线需要）。
+- Stage 11 Production Hardening：完整 provenance/SBOM/独立签名、协调 Backup/Restore、正式 Deploy/Rollback 与真实生产验收；
+- Stage 12 已完成的软件基线，以及公司服务器 500 万/批准等效比例容量门禁和生产 4000 万执行/对账的独立授权边界。
 
-删除已完成阶段的详细 Blueprint **不能**删除这些未来目标。
+删除已完成阶段的详细 Blueprint **不能**删除这些未来目标或仍未完成的生产门禁。
 
 ---
 
@@ -257,9 +254,15 @@ backend/src/aima_ugc/bootstrap/worker.py
 ```text
 collection.run.v1
 ingestion.import-excel.v1
+ingestion.historical-discover.v1
+ingestion.historical-snapshot.v1
+ingestion.historical-import-chunk.v1
+analysis.content-run-plan.v1
 analysis.content-label.v1
 reporting.content-export-excel.v1
 ```
+
+其中三个 `ingestion.historical-*` 是统一 Data Import Campaign 仍沿用的 Stage 12 物理 Job type；`analysis.content-run-plan.v1` 是新版手动 Analysis Run 的 Planner。物理名称保留兼容，不代表页面存在第二套导入或 Analysis 入口。
 
 ### 当前前端路由
 
@@ -286,22 +289,22 @@ frontend/src/app/routes.ts
 Dockerfile
 compose.yaml
 env.production.example
+.github/workflows/release.yml
 ```
 
-它们提供 Internal V1-A 的最小可部署容器栈，并把管理员入口收敛为 `env.production` + 一条 Docker Compose 启动命令；PostgreSQL、Artifact、日志与内部 Secret 使用宿主持久目录，Migration/configure 仍保持独立进程边界。
+Internal V1-A 已提供最小可部署容器栈并把管理员入口收敛为 `env.production` + 一条 Docker Compose 启动命令；GitHub Release Workflow 已能构建 Linux/AMD64 Backend/Frontend、固定 `postgres:18.4`，生成 `images.tar`、Release/Migration Manifest、`SHA256SUMS`、`DEPLOY.md`，并从删除候选镜像后的 Bundle 以 `--no-build --pull never` 完成离线回放。正式手工发布路径还能推送 GHCR、记录应用 digest、创建 Git Tag/GitHub Release。
 
-当前仍没有完整 Stage 11 Production Release 所需的全部能力，例如：
+当前仍没有完整 Stage 11 Production Go-Live 所需的全部能力，例如：
 
 ```text
-compose.production.yaml / 不可变离线 Release Bundle
-固定 image digest
-SBOM / 签名 / provenance
+SBOM / 独立签名 / 完整 provenance 治理
 协调 PostgreSQL + Artifact Backup / Restore
 企业认证 / 授权 / HTTPS 正式入口
-真实生产服务器完整验收
+生产服务器 preflight / backup / migrate / start / smoke / rollback 完整自动化
+真实生产服务器完整容量 / 安全 / 恢复验收
 ```
 
-因此“Internal V1-A 已可部署”不能写成“完整 Production Go-Live 已完成”。
+因此“Internal V1-A / Release Workflow 基础已可用”不能写成“完整 Production Go-Live 已完成”。
 
 ---
 
