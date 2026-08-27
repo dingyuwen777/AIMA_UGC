@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
 from aima_ugc.adapters.persistence.postgres.reporting import PostgresDataExportRepository
-from aima_ugc.bootstrap.analysis_worker import PostgresContentAnalysisJobExecutor
+from aima_ugc.bootstrap.analysis_worker import (
+    PostgresContentAnalysisJobExecutor,
+    PostgresContentAnalysisPlanJobExecutor,
+    create_analysis_job_terminal_callback,
+)
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.content_http import PostgresContentHttpService
 from aima_ugc.bootstrap.export_worker import PostgresDataExportJobExecutor
@@ -35,6 +38,7 @@ from aima_ugc.modules.analysis import (
 )
 from aima_ugc.modules.analysis.content_analysis_job import (
     ContentAnalysisJobHandler,
+    ContentAnalysisPlanJobHandler,
     register_content_analysis_job,
 )
 from aima_ugc.modules.analysis.tables import (
@@ -51,7 +55,7 @@ from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.jobs import JobExecutionFence, JobRegistry, LeaseLostError
 from fastapi.testclient import TestClient
 from openpyxl import Workbook, load_workbook
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import func, select, update
 
 
 def _xlsx(*, text_suffix: str = "") -> bytes:
@@ -130,7 +134,16 @@ def _analysis_registry(runtime, response: str) -> JobRegistry:  # type: ignore[n
         service_factory=lambda: (service, lambda: None),
     )
     registry = JobRegistry()
-    register_content_analysis_job(registry, ContentAnalysisJobHandler(executor))
+    callback = create_analysis_job_terminal_callback(runtime)
+    register_content_analysis_job(
+        registry,
+        ContentAnalysisJobHandler(executor),
+        terminal_callback=callback,
+        planner_handler=ContentAnalysisPlanJobHandler(
+            PostgresContentAnalysisPlanJobExecutor(runtime)
+        ),
+        planner_terminal_callback=callback,
+    )
     return registry
 
 
@@ -159,6 +172,10 @@ class _VersionChangingLabelingService:
         self._runtime = runtime
         self._delegate = delegate
         self._content_id = content_id
+
+    @property
+    def configuration_identity(self):  # type: ignore[no-untyped-def]
+        return self._delegate.configuration_identity
 
     def label_contents(self, contents, *, max_validation_retries):  # type: ignore[no-untyped-def]
         result = self._delegate.label_contents(
@@ -231,6 +248,7 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
             retry_delay_seconds=0,
         )
         assert analysis_worker.run_once() is True
+        assert analysis_worker.run_once() is True
         assert content_service.get_analysis_job(created.job_id).status == "succeeded"
 
         page = content_service.list_contents(ContentListQuery())
@@ -254,43 +272,12 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
             retry_delay_seconds=0,
         )
         assert repeat_worker.run_once() is True
+        assert repeat_worker.run_once() is True
         assert content_service.get_analysis_job(repeated.job_id).status == "succeeded"
         with runtime.database.engine.begin() as connection:
             assert (
                 connection.scalar(select(func.count()).select_from(analysis_content_results_table))
-                == 1
-            )
-
-        taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
-        obsolete_result_id = uuid4()
-        with runtime.database.engine.begin() as connection:
-            connection.execute(
-                insert(analysis_content_results_table).values(
-                    id=obsolete_result_id,
-                    content_id=content_ids[0],
-                    content_version=1,
-                    job_id=repeated.job_id,
-                    schema_version="content-label-analysis.v2",
-                    relevance="relevant",
-                    voice_type="unknown",
-                    sentiment="正面",
-                    prompt_version=taxonomy.prompt_version,
-                    prompt_sha256=taxonomy.prompt_sha256,
-                    taxonomy_sha256=taxonomy.taxonomy_sha256,
-                    model_provider="obsolete-provider",
-                    model="obsolete-model",
-                    input_hash="f" * 64,
-                    analyzed_at=datetime.now(UTC) + timedelta(minutes=1),
-                    created_at=datetime.now(UTC),
-                )
-            )
-            connection.execute(
-                insert(analysis_content_label_pairs_table).values(
-                    analysis_result_id=obsolete_result_id,
-                    ordinal=0,
-                    primary_label="购买过程",
-                    secondary_label="价格与优惠",
-                )
+                == 2
             )
         current = content_service.get_content(content_ids[0])
         assert current.analysis.model_provider == "fake"
@@ -455,6 +442,7 @@ def test_irrelevant_analysis_is_auditable_but_hidden_from_default_voice_plaza(
             retry_delay_seconds=0,
         )
         assert worker.run_once() is True
+        assert worker.run_once() is True
         assert content_service.get_analysis_job(created.job_id).status == "succeeded"
 
         with runtime.database.engine.begin() as connection:
@@ -576,7 +564,16 @@ def test_analysis_content_version_change_during_llm_marks_request_item_stale(
             ),
         )
         registry = JobRegistry()
-        register_content_analysis_job(registry, ContentAnalysisJobHandler(executor))
+        callback = create_analysis_job_terminal_callback(runtime)
+        register_content_analysis_job(
+            registry,
+            ContentAnalysisJobHandler(executor),
+            terminal_callback=callback,
+            planner_handler=ContentAnalysisPlanJobHandler(
+                PostgresContentAnalysisPlanJobExecutor(runtime)
+            ),
+            planner_terminal_callback=callback,
+        )
         worker = create_job_worker(
             runtime=runtime,
             registry=registry,
@@ -585,6 +582,7 @@ def test_analysis_content_version_change_during_llm_marks_request_item_stale(
             retry_delay_seconds=0,
         )
 
+        assert worker.run_once() is True
         assert worker.run_once() is True
         assert content_service.get_analysis_job(created.job_id).status == "succeeded"
         with runtime.database.engine.begin() as connection:

@@ -619,3 +619,365 @@ def test_0023_to_0024_blocks_duplicate_content_identity(migration_database: str)
             assert platforms == ["xhs", "xiaohongshu"]
     finally:
         engine.dispose()
+
+
+def test_0026_to_0027_backfills_legacy_analysis_request_and_result(
+    migration_database: str,
+) -> None:
+    _upgrade(migration_database, "20260826_0026")
+    request_id = uuid4()
+    job_id = uuid4()
+    content_id = uuid4()
+    result_id = uuid4()
+    engine = _engine(migration_database)
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql("SET LOCAL session_replication_role = replica")
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO contents(
+                      id, platform, external_content_id, content_type,
+                      first_seen_at, last_seen_at, current_version,
+                      field_observed_at, updated_at
+                    ) VALUES (
+                      :id, 'xiaohongshu', 'legacy-analysis-content', 'note',
+                      :seen, :seen, 1, '{}'::jsonb, :seen
+                    )
+                    """
+                ),
+                {"id": content_id, "seen": _NOW},
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO jobs(
+                      id, job_type, payload_version, payload, status,
+                      internal_idempotency_key, priority, attempt,
+                      lease_takeover_count, max_attempts, timeout_seconds, progress,
+                      available_at, started_at, finished_at, created_at, updated_at
+                    ) VALUES (
+                      :job_id, 'analysis.content-label.v1', 'analysis.content-label.v1',
+                      '{}'::jsonb, 'succeeded', :key, 0, 1, 0, 3, 1800, 100,
+                      :seen, :seen, :seen, :seen, :seen
+                    )
+                    """
+                ),
+                {"job_id": job_id, "key": f"legacy:{job_id}", "seen": _NOW},
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO analysis_content_requests(
+                      id, job_id, scope, filter_snapshot, target_count, created_at
+                    ) VALUES (:id, :job_id, 'selected', '{}'::jsonb, 1, :seen)
+                    """
+                ),
+                {"id": request_id, "job_id": job_id, "seen": _NOW},
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO analysis_content_results(
+                      id, content_id, content_version, job_id, schema_version,
+                      relevance, voice_type, sentiment, prompt_version,
+                      prompt_sha256, taxonomy_sha256, model_provider, model,
+                      input_hash, analyzed_at, created_at
+                    ) VALUES (
+                      :id, :content_id, 1, :job_id, 'analysis.content-label.v3',
+                      'irrelevant', 'unknown', NULL, 'v3', :prompt_sha,
+                      :taxonomy_sha, 'fake', 'fake-v1', :input_hash, :seen, :seen
+                    )
+                    """
+                ),
+                {
+                    "id": result_id,
+                    "content_id": content_id,
+                    "job_id": job_id,
+                    "prompt_sha": "a" * 64,
+                    "taxonomy_sha": "b" * 64,
+                    "input_hash": "c" * 64,
+                    "seen": _NOW,
+                },
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO analysis_content_request_items(
+                      request_id, content_id, content_version, ordinal,
+                      analysis_result_id, status
+                    ) VALUES (:request_id, :content_id, 1, 0, :result_id, 'succeeded')
+                    """
+                ),
+                {
+                    "request_id": request_id,
+                    "content_id": content_id,
+                    "result_id": result_id,
+                },
+            )
+    finally:
+        engine.dispose()
+
+    _upgrade(migration_database, "20260826_0027")
+    engine = _engine(migration_database)
+    try:
+        with engine.connect() as connection:
+            run = (
+                connection.execute(
+                    text(
+                        "SELECT id, planner_job_id, shard_size, status "
+                        "FROM analysis_content_runs WHERE id = :id"
+                    ),
+                    {"id": request_id},
+                )
+                .mappings()
+                .one()
+            )
+            assert run == {
+                "id": request_id,
+                "planner_job_id": job_id,
+                "shard_size": 1,
+                "status": "succeeded",
+            }
+            assert connection.execute(
+                text(
+                    "SELECT content_id, content_version, target_ordinal "
+                    "FROM analysis_content_run_targets WHERE run_id = :id"
+                ),
+                {"id": request_id},
+            ).one() == (content_id, 1, 0)
+            assert connection.execute(
+                text("SELECT run_id, shard_no FROM analysis_content_requests WHERE id = :id"),
+                {"id": request_id},
+            ).one() == (request_id, 0)
+            assert (
+                connection.scalar(
+                    text("SELECT analysis_run_id FROM analysis_content_results WHERE id = :id"),
+                    {"id": result_id},
+                )
+                == request_id
+            )
+    finally:
+        engine.dispose()
+
+    _downgrade(migration_database, "20260826_0026")
+    engine = _engine(migration_database)
+    try:
+        inspector = inspect(engine)
+        assert "analysis_content_runs" not in set(inspector.get_table_names())
+        assert "analysis_run_id" not in {
+            column["name"] for column in inspector.get_columns("analysis_content_results")
+        }
+    finally:
+        engine.dispose()
+
+
+def test_0027_to_0028_backfills_server_campaign_and_round_trips_schema(
+    migration_database: str,
+) -> None:
+    _upgrade(migration_database, "20260826_0027")
+    campaign_id = uuid4()
+    engine = _engine(migration_database)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO historical_import_campaigns(
+                      id, client_idempotency_key, root_relative_path, recursive,
+                      profile_snapshot, keyword_pack_snapshot, status,
+                      discovered_file_count, ready_item_count, total_rows, stats, created_at
+                    ) VALUES (
+                      :id, :key, 'archive/2025', TRUE,
+                      '{}'::jsonb, '{}'::jsonb, 'ready', 3, 3, 120, '{}'::jsonb, :seen
+                    )
+                    """
+                ),
+                {
+                    "id": campaign_id,
+                    "key": f"legacy-server:{campaign_id}",
+                    "seen": _NOW,
+                },
+            )
+    finally:
+        engine.dispose()
+
+    _upgrade(migration_database, "20260827_0028")
+    engine = _engine(migration_database)
+    try:
+        with engine.connect() as connection:
+            assert connection.execute(
+                text(
+                    "SELECT source_kind, ingestion_policy, declared_file_count "
+                    "FROM historical_import_campaigns WHERE id = :id"
+                ),
+                {"id": campaign_id},
+            ).one() == ("server_path", "historical_fill_only", 3)
+    finally:
+        engine.dispose()
+
+    _downgrade(migration_database, "20260826_0027")
+    engine = _engine(migration_database)
+    try:
+        columns = {
+            column["name"] for column in inspect(engine).get_columns("historical_import_campaigns")
+        }
+        assert "source_kind" not in columns
+        assert "ingestion_policy" not in columns
+        assert "declared_file_count" not in columns
+    finally:
+        engine.dispose()
+
+
+def test_0028_accepts_legacy_double_prefixed_historical_constraint(
+    migration_database: str,
+) -> None:
+    _upgrade(migration_database, "20260826_0027")
+    engine = _engine(migration_database)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE processing_import_batches RENAME CONSTRAINT "
+                    "ck_processing_import_batches_historical_fields_consistent TO "
+                    "ck_processing_import_batches_ck_processing_import_batch_fa0e"
+                )
+            )
+    finally:
+        engine.dispose()
+
+    _upgrade(migration_database, "20260827_0028")
+    engine = _engine(migration_database)
+    try:
+        with engine.connect() as connection:
+            assert (
+                connection.scalar(text("SELECT version_num FROM alembic_version"))
+                == "20260827_0028"
+            )
+    finally:
+        engine.dispose()
+
+
+def test_0028_downgrade_refuses_local_campaign_semantics(migration_database: str) -> None:
+    _upgrade(migration_database, "20260827_0028")
+    campaign_id = uuid4()
+    engine = _engine(migration_database)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO historical_import_campaigns(
+                      id, client_idempotency_key, source_kind, ingestion_policy,
+                      declared_file_count, root_relative_path, recursive,
+                      profile_snapshot, keyword_pack_snapshot, status, created_at
+                    ) VALUES (
+                      :id, :key, 'local_upload', 'standard_observation',
+                      1, '', FALSE, '{}'::jsonb, '{}'::jsonb, 'uploading', :seen
+                    )
+                    """
+                ),
+                {
+                    "id": campaign_id,
+                    "key": f"local-upload:{campaign_id}",
+                    "seen": _NOW,
+                },
+            )
+    finally:
+        engine.dispose()
+
+    with pytest.raises(RuntimeError, match="统一导入已产生本地、标准观测或 updated 账本"):
+        _downgrade(migration_database, "20260826_0027")
+
+    engine = _engine(migration_database)
+    try:
+        with engine.connect() as connection:
+            assert (
+                connection.scalar(text("SELECT version_num FROM alembic_version"))
+                == "20260827_0028"
+            )
+    finally:
+        engine.dispose()
+
+
+def test_0029_repairs_stage12_development_schema_names_and_index(
+    migration_database: str,
+) -> None:
+    _upgrade(migration_database, "20260827_0028")
+    renames = (
+        (
+            "historical_import_campaigns",
+            "ck_historical_import_campaigns_discovered_files_nonnegative",
+            "ck_historical_import_campaigns_discovered_file_count_no_c356",
+        ),
+        (
+            "processing_import_batch_identities",
+            "ck_processing_import_batch_identities_first_row_positive",
+            "ck_processing_import_batch_identities_first_row_ordinal_abf7",
+        ),
+        (
+            "processing_import_batch_item_conflicts",
+            "ck_processing_import_batch_item_conflicts_version_positive",
+            "ck_processing_import_batch_item_conflicts_content_versi_bd36",
+        ),
+        (
+            "processing_import_batch_item_conflicts",
+            "ck_processing_import_batch_item_conflicts_history_hash_sha256",
+            "ck_processing_import_batch_item_conflicts_historical_ha_1c30",
+        ),
+        (
+            "processing_import_batch_items",
+            "ck_processing_import_batch_items_external_id_hash_sha256",
+            "ck_processing_import_batch_items_external_content_id_ha_5e82",
+        ),
+    )
+    engine = _engine(migration_database)
+    try:
+        with engine.begin() as connection:
+            for table_name, canonical_name, legacy_name in renames:
+                connection.exec_driver_sql(
+                    f"ALTER TABLE {table_name} RENAME CONSTRAINT {canonical_name} TO {legacy_name}"
+                )
+            connection.exec_driver_sql(
+                "DROP INDEX uq_historical_import_campaign_items_source_manifest"
+            )
+    finally:
+        engine.dispose()
+
+    _upgrade(migration_database, "20260827_0029")
+    engine = _engine(migration_database)
+    try:
+        inspector = inspect(engine)
+        for table_name, canonical_name, legacy_name in renames:
+            names = {
+                constraint["name"] for constraint in inspector.get_check_constraints(table_name)
+            }
+            assert canonical_name in names
+            assert legacy_name not in names
+        assert "uq_historical_import_campaign_items_source_manifest" in {
+            index["name"] for index in inspector.get_indexes("historical_import_campaign_items")
+        }
+    finally:
+        engine.dispose()
+
+    _downgrade(migration_database, "20260827_0028")
+    engine = _engine(migration_database)
+    try:
+        with engine.connect() as connection:
+            assert (
+                connection.scalar(text("SELECT version_num FROM alembic_version"))
+                == "20260827_0028"
+            )
+        names = {
+            constraint["name"]
+            for constraint in inspect(engine).get_check_constraints("processing_import_batch_items")
+        }
+        assert "ck_processing_import_batch_items_external_id_hash_sha256" in names
+        assert "uq_historical_import_campaign_items_source_manifest" in {
+            index["name"]
+            for index in inspect(engine).get_indexes("historical_import_campaign_items")
+        }
+    finally:
+        engine.dispose()
+
+    _upgrade(migration_database, "20260827_0029")

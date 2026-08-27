@@ -11,6 +11,9 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
+from aima_ugc.modules.ingestion.historical_tables import (
+    historical_import_campaign_items_table,
+)
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 from aima_ugc.modules.reporting.tables import reporting_data_exports_table
 from aima_ugc.platform.jobs.tables import jobs_table
@@ -67,6 +70,11 @@ def _cleanup_eligibility(*, now: datetime, orphan_before: datetime) -> ColumnEle
             reporting_data_exports_table.c.artifact_id == artifacts_table.c.id
         )
     )
+    historical_referenced = exists(
+        select(historical_import_campaign_items_table.c.id).where(
+            historical_import_campaign_items_table.c.artifact_id == artifacts_table.c.id
+        )
+    )
     expired = and_(
         artifacts_table.c.storage_status.in_(("stored", "linked")),
         artifacts_table.c.expires_at.is_not(None),
@@ -78,6 +86,10 @@ def _cleanup_eligibility(*, now: datetime, orphan_before: datetime) -> ColumnEle
         or_(
             and_(artifacts_table.c.kind == "file-import.raw", ~import_referenced),
             and_(artifacts_table.c.kind == "content-export.xlsx", ~export_referenced),
+            and_(
+                artifacts_table.c.kind.in_(("historical-import.source", "historical-import.chunk")),
+                ~historical_referenced,
+            ),
         ),
     )
     return or_(expired, orphaned)

@@ -7,7 +7,11 @@ import pytest
 from aima_ugc.adapters.persistence.postgres.collection_targets import PostgresCollectionTargetReader
 from aima_ugc.bootstrap.worker import create_worker_runtime
 from aima_ugc.modules.analysis.persistence import AnalysisConfigurationIdentity
-from aima_ugc.modules.analysis.tables import analysis_content_results_table
+from aima_ugc.modules.analysis.tables import (
+    analysis_content_results_table,
+    analysis_content_run_targets_table,
+    analysis_content_runs_table,
+)
 from aima_ugc.modules.collection.tables import (
     provider_request_attempts_table,
     provider_requests_table,
@@ -193,11 +197,47 @@ def _insert_content(
                 )
             )
         if irrelevant:
+            run_id = uuid4()
+            connection.execute(
+                insert(analysis_content_runs_table).values(
+                    id=run_id,
+                    client_idempotency_key=f"collection-target-test:{run_id}",
+                    planner_job_id=job_id,
+                    run_intent="initial_analysis",
+                    scope="selected",
+                    filter_snapshot={"content_ids": [str(content_id)]},
+                    status="succeeded",
+                    target_count=1,
+                    shard_count=1,
+                    shard_size=1,
+                    prompt_version=_CURRENT_ANALYSIS_IDENTITY.prompt_version,
+                    prompt_sha256=_CURRENT_ANALYSIS_IDENTITY.prompt_sha256,
+                    taxonomy_sha256=_CURRENT_ANALYSIS_IDENTITY.taxonomy_sha256,
+                    model_provider=_CURRENT_ANALYSIS_IDENTITY.model_provider,
+                    model=_CURRENT_ANALYSIS_IDENTITY.model,
+                    generation_config={},
+                    generation_config_hash=(
+                        "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+                    ),
+                    created_at=now,
+                    started_at=now,
+                    finished_at=now,
+                )
+            )
+            connection.execute(
+                insert(analysis_content_run_targets_table).values(
+                    run_id=run_id,
+                    target_ordinal=0,
+                    content_id=content_id,
+                    content_version=1,
+                )
+            )
             connection.execute(
                 insert(analysis_content_results_table).values(
                     id=uuid4(),
                     content_id=content_id,
                     content_version=1,
+                    analysis_run_id=run_id,
                     job_id=job_id,
                     schema_version="content-label-analysis.v3",
                     relevance="irrelevant",
@@ -209,6 +249,9 @@ def _insert_content(
                     model_provider=_CURRENT_ANALYSIS_IDENTITY.model_provider,
                     model=_CURRENT_ANALYSIS_IDENTITY.model,
                     input_hash="5" * 64,
+                    generation_config_hash=(
+                        "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+                    ),
                     analyzed_at=now,
                     created_at=now,
                 )
@@ -307,7 +350,7 @@ def test_typed_lookup_that_does_not_match_stable_content_identity_is_eligible(
     assert mismatched.lookup_value == "real-provider-note-id"
 
 
-def test_stale_irrelevant_analysis_does_not_block_supplement_target(runtime) -> None:  # type: ignore[no-untyped-def]
+def test_runtime_model_change_does_not_bypass_latest_run_irrelevance(runtime) -> None:  # type: ignore[no-untyped-def]
     batch_id, job_id, attempt_id, artifact_id = _seed_batch(runtime)
     content_id = _insert_content(
         runtime,
@@ -328,4 +371,5 @@ def test_stale_irrelevant_analysis_does_not_block_supplement_target(runtime) -> 
 
     targets = _read_targets(runtime, batch_id=batch_id, identity=changed_identity)
 
-    assert [target.content_id for target in targets] == [content_id]
+    assert content_id is not None
+    assert targets == ()

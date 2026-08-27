@@ -24,6 +24,7 @@ from aima_ugc.modules.analysis.persistence import AnalysisConfigurationIdentity
 from aima_ugc.modules.analysis.tables import (
     analysis_content_label_pairs_table,
     analysis_content_results_table,
+    analysis_content_runs_table,
 )
 from aima_ugc.modules.collection.tables import (
     provider_request_attempts_table,
@@ -244,6 +245,7 @@ class PostgresDataExportRepository:
         versions: dict[UUID, int],
     ) -> dict[UUID, UnifiedDataExcelAnalysisV1]:
         result = analysis_content_results_table
+        run = analysis_content_runs_table
         conditions = [
             and_(result.c.content_id == content_id, result.c.content_version == version)
             for content_id, version in versions.items()
@@ -254,13 +256,13 @@ class PostgresDataExportRepository:
                 func.row_number()
                 .over(
                     partition_by=(result.c.content_id, result.c.content_version),
-                    order_by=(result.c.analyzed_at.desc(), result.c.id.desc()),
+                    order_by=(run.c.sequence_no.desc(), result.c.id.desc()),
                 )
                 .label("rank"),
             )
+            .select_from(result.join(run, run.c.id == result.c.analysis_run_id))
             .where(
                 or_(*conditions),
-                *_analysis_identity_conditions(result, self._analysis_identity),
             )
             .subquery()
         )
@@ -439,21 +441,6 @@ def _author_count(author: object, key: str) -> int | None:
         return None
     value = author.get(key)
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
-
-
-def _analysis_identity_conditions(
-    result: Any,
-    identity: AnalysisConfigurationIdentity | None,
-) -> tuple[Any, ...]:
-    if identity is None:
-        return (result.c.id.is_(None),)
-    return (
-        result.c.prompt_version == identity.prompt_version,
-        result.c.prompt_sha256 == identity.prompt_sha256,
-        result.c.taxonomy_sha256 == identity.taxonomy_sha256,
-        result.c.model_provider == identity.model_provider,
-        result.c.model == identity.model,
-    )
 
 
 def _row_to_export(row: Any) -> DataExportRecord:

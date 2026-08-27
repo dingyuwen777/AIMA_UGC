@@ -11,6 +11,10 @@ def test_processing_import_batch_is_minimal_owner_table() -> None:
         "id",
         "input_artifact_id",
         "job_id",
+        "historical_mode",
+        "historical_campaign_item_id",
+        "historical_policy_version",
+        "retry_of_batch_id",
         "status",
         "stats",
         "error_summary",
@@ -20,6 +24,31 @@ def test_processing_import_batch_is_minimal_owner_table() -> None:
     }
     assert processing_import_batches_table.c.input_artifact_id.nullable is False
     assert processing_import_batches_table.c.job_id.nullable is True
+    assert processing_import_batches_table.c.historical_mode.nullable is False
+    assert processing_import_batches_table.c.historical_campaign_item_id.nullable is True
+    assert processing_import_batches_table.c.historical_policy_version.nullable is True
+    assert processing_import_batches_table.c.retry_of_batch_id.nullable is True
+
+
+def test_processing_import_batch_accepts_both_unified_import_policies() -> None:
+    checks = {
+        constraint.name: str(constraint.sqltext)
+        for constraint in processing_import_batches_table.constraints
+        if isinstance(constraint, CheckConstraint)
+    }
+    historical_fields = next(
+        (
+            sql
+            for name, sql in checks.items()
+            if name is not None and name.endswith("historical_fields_consistent")
+        ),
+        None,
+    )
+
+    assert historical_fields is not None
+    assert "historical-fill-only.v1" in historical_fields
+    assert "standard-observation.v1" in historical_fields
+    assert "historical_mode =" in historical_fields
 
 
 def test_provider_request_has_exactly_one_source_parent() -> None:

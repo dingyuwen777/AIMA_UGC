@@ -4,10 +4,18 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import cast
-from uuid import UUID, uuid4
+from math import ceil
+from typing import Any, Literal, cast
+from uuid import UUID, uuid4, uuid5
 
-from aima_ugc.adapters.persistence.postgres.analysis import PostgresAnalysisRepository
+from sqlalchemy.engine import RowMapping
+from sqlalchemy.orm import Session
+
+from aima_ugc.adapters.persistence.postgres.analysis import (
+    AnalysisRequestNotFound,
+    AnalysisRunStateConflict,
+    PostgresAnalysisRepository,
+)
 from aima_ugc.adapters.persistence.postgres.content_queries import (
     PostgresContentQueryRepository,
 )
@@ -15,8 +23,20 @@ from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.persistence.postgres.relevance_reviews import (
     PostgresContentRelevanceReviewRepository,
 )
+from aima_ugc.adapters.persistence.postgres.system import PostgresAuditRepository
 from aima_ugc.contracts.analysis import ContentRelevance, ContentVoiceType
 from aima_ugc.contracts.http import (
+    AnalysisContentRunCreatedResponse,
+    AnalysisContentRunCreateRequest,
+    AnalysisContentRunListResponse,
+    AnalysisContentRunPreviewRequest,
+    AnalysisContentRunPreviewResponse,
+    AnalysisContentRunResponse,
+    AnalysisContentRunShardResponse,
+    AnalysisContentRunStatsResponse,
+    AnalysisRunIntent,
+    AnalysisRunStatus,
+    AnalysisRunTargetSelection,
     ContentAnalysisCreatedResponse,
     ContentAnalysisJobResultResponse,
     ContentAnalysisResponse,
@@ -31,6 +51,7 @@ from aima_ugc.contracts.http import (
     ContentMetricsResponse,
     ContentRelevanceSource,
     ContentSourceResponse,
+    ContentTargetSelection,
     JobStatusResponse,
 )
 from aima_ugc.contracts.relevance_review import (
@@ -42,20 +63,33 @@ from aima_ugc.modules.analysis.content_analysis_job import (
     CONTENT_ANALYSIS_JOB_PAYLOAD_VERSION,
     CONTENT_ANALYSIS_JOB_TIMEOUT_SECONDS,
     CONTENT_ANALYSIS_JOB_TYPE,
+    CONTENT_ANALYSIS_PLAN_JOB_MAX_ATTEMPTS,
+    CONTENT_ANALYSIS_PLAN_JOB_PAYLOAD_VERSION,
+    CONTENT_ANALYSIS_PLAN_JOB_TIMEOUT_SECONDS,
+    CONTENT_ANALYSIS_PLAN_JOB_TYPE,
     ContentAnalysisJobPayload,
+    ContentAnalysisPlanJobPayload,
 )
 from aima_ugc.modules.content.content_cursor import ContentCursorCodec, ContentCursorPosition
 from aima_ugc.modules.content.http import (
+    ContentAnalysisRunConflict,
+    ContentAnalysisTargetChanged,
+    ContentAnalysisUnavailable,
     ContentCursorUnavailable,
     ContentResourceNotFound,
     ContentSelectionEmpty,
 )
 from aima_ugc.modules.content.query import ContentReadQuery, ContentReadRecord
+from aima_ugc.modules.system.models import AuditEvent
 from aima_ugc.platform.jobs import JobRecord
 from aima_ugc.platform.security import SecretFileError, read_secret_file
+from aima_ugc.platform.time import beijing_now
 
-from .analysis_identity import current_analysis_identity
+from .analysis_identity import current_analysis_generation_config, current_analysis_identity
 from .runtime import PlatformRuntime
+
+_ANALYSIS_RUN_ID_NAMESPACE = UUID("d9c7fe38-1a46-4ef9-b9d3-bb87dd7d8301")
+_AnalysisTargetSelection = ContentTargetSelection | AnalysisRunTargetSelection
 
 
 class PostgresContentHttpService:
@@ -132,54 +166,369 @@ class PostgresContentHttpService:
         *,
         request_id: str,
     ) -> ContentAnalysisCreatedResponse:
+        preview = self._preview_analysis_targets(request.targets)
+        created, first_request_id, first_job_id = self._create_analysis_run(
+            client_idempotency_key=f"legacy-analysis:{uuid4()}",
+            targets=request.targets,
+            expected_target_count=preview.target_count,
+            expected_configuration_hash=preview.configuration_hash,
+            run_intent="manual_reanalysis",
+            request_id=request_id,
+            freeze_in_http=True,
+        )
+        if first_request_id is None or first_job_id is None:
+            raise ContentAnalysisRunConflict
+        return ContentAnalysisCreatedResponse(
+            request_id=first_request_id,
+            job_id=first_job_id,
+            target_count=created.target_count,
+            run_id=created.run_id,
+            shard_count=created.shard_count,
+        )
+
+    def preview_analysis_run(
+        self,
+        request: AnalysisContentRunPreviewRequest,
+    ) -> AnalysisContentRunPreviewResponse:
+        return self._preview_analysis_targets(request.targets)
+
+    def _preview_analysis_targets(
+        self,
+        targets: _AnalysisTargetSelection,
+    ) -> AnalysisContentRunPreviewResponse:
+        identity = current_analysis_identity(self._runtime.settings)
+        if identity is None:
+            raise ContentAnalysisUnavailable
+        generation_config, generation_hash = current_analysis_generation_config()
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                query_repository = PostgresContentQueryRepository(
-                    session,
-                    analysis_identity=current_analysis_identity(self._runtime.settings),
-                )
-                target_request = request.targets
-                targets = (
-                    query_repository.freeze_targets(
-                        filters=target_request.filters or ContentFilterSnapshot()
-                    )
-                    if target_request.scope == "query"
-                    else query_repository.freeze_targets(content_ids=target_request.content_ids)
-                )
-                if not targets:
+                target_statement = self._analysis_target_statement(session, targets)
+                target_count = PostgresAnalysisRepository(session).count_targets(target_statement)
+                if target_count == 0:
                     raise ContentSelectionEmpty
-                analysis_request_id = uuid4()
-                job = PostgresJobRepository(session).enqueue(
+        finally:
+            session.close()
+        shard_size = self._runtime.settings.analysis_run_shard_size
+        return AnalysisContentRunPreviewResponse(
+            target_count=target_count,
+            shard_count=ceil(target_count / shard_size),
+            shard_size=shard_size,
+            prompt_version=identity.prompt_version,
+            prompt_sha256=identity.prompt_sha256,
+            taxonomy_sha256=identity.taxonomy_sha256,
+            model_provider=identity.model_provider,
+            model=identity.model,
+            generation_config=generation_config,
+            generation_config_hash=generation_hash,
+            configuration_hash=_analysis_configuration_hash(
+                prompt_version=identity.prompt_version,
+                prompt_sha256=identity.prompt_sha256,
+                taxonomy_sha256=identity.taxonomy_sha256,
+                model_provider=identity.model_provider,
+                model=identity.model,
+                generation_config_hash=generation_hash,
+            ),
+            cost_estimate_available=False,
+            cost_estimate_note=(
+                "当前适配器没有与模型匹配的逐内容 tokenizer，不能伪造总费用；"
+                "页面展示冻结目标数、模型和实际生成参数，运行后以真实 token/cost 审计为准。"
+            ),
+        )
+
+    def create_analysis_run(
+        self,
+        request: AnalysisContentRunCreateRequest,
+        *,
+        request_id: str,
+    ) -> AnalysisContentRunCreatedResponse:
+        created, _, _ = self._create_analysis_run(
+            client_idempotency_key=request.client_idempotency_key,
+            targets=request.targets,
+            expected_target_count=request.expected_target_count,
+            expected_configuration_hash=request.expected_configuration_hash,
+            run_intent=request.run_intent,
+            request_id=request_id,
+            freeze_in_http=False,
+        )
+        return created
+
+    def list_analysis_runs(self) -> AnalysisContentRunListResponse:
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                repository = PostgresAnalysisRepository(session)
+                return AnalysisContentRunListResponse(
+                    items=tuple(
+                        _analysis_run_response(repository, row, include_shards=False)
+                        for row in repository.list_runs()
+                    )
+                )
+        finally:
+            session.close()
+
+    def get_analysis_run(self, run_id: UUID) -> AnalysisContentRunResponse:
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                repository = PostgresAnalysisRepository(session)
+                run = repository.get_run(run_id)
+                if run is None:
+                    raise ContentResourceNotFound
+                return _analysis_run_response(repository, run, include_shards=True)
+        finally:
+            session.close()
+
+    def cancel_analysis_run(
+        self,
+        run_id: UUID,
+        *,
+        request_id: str,
+    ) -> AnalysisContentRunResponse:
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                repository = PostgresAnalysisRepository(session)
+                try:
+                    repository.request_run_cancel(run_id)
+                except AnalysisRequestNotFound as exc:
+                    raise ContentResourceNotFound from exc
+                except AnalysisRunStateConflict as exc:
+                    raise ContentAnalysisRunConflict from exc
+                self._audit_analysis_run(
+                    session,
+                    event_type="analysis_run_cancel_requested",
+                    run_id=run_id,
+                    request_id=request_id,
+                    detail={},
+                )
+                run = repository.get_run(run_id)
+                if run is None:
+                    raise ContentResourceNotFound
+                return _analysis_run_response(repository, run, include_shards=True)
+        finally:
+            session.close()
+
+    def _create_analysis_run(
+        self,
+        *,
+        client_idempotency_key: str,
+        targets: _AnalysisTargetSelection,
+        expected_target_count: int,
+        expected_configuration_hash: str,
+        run_intent: str,
+        request_id: str,
+        freeze_in_http: bool,
+    ) -> tuple[AnalysisContentRunCreatedResponse, UUID | None, UUID | None]:
+        identity = current_analysis_identity(self._runtime.settings)
+        if identity is None:
+            raise ContentAnalysisUnavailable
+        generation_config, generation_hash = current_analysis_generation_config()
+        configuration_hash = _analysis_configuration_hash(
+            prompt_version=identity.prompt_version,
+            prompt_sha256=identity.prompt_sha256,
+            taxonomy_sha256=identity.taxonomy_sha256,
+            model_provider=identity.model_provider,
+            model=identity.model,
+            generation_config_hash=generation_hash,
+        )
+        if configuration_hash != expected_configuration_hash:
+            raise ContentAnalysisRunConflict
+        shard_size = self._runtime.settings.analysis_run_shard_size
+        filter_snapshot = _analysis_filter_snapshot(targets)
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                repository = PostgresAnalysisRepository(session)
+                existing = repository.get_run_by_client_key(client_idempotency_key)
+                if existing is not None:
+                    _assert_same_analysis_run_request(
+                        existing,
+                        expected_target_count=expected_target_count,
+                        expected_configuration_hash=expected_configuration_hash,
+                        run_intent=run_intent,
+                        scope=targets.scope,
+                        filter_snapshot=filter_snapshot,
+                    )
+                    existing_shards = repository.list_run_shards(cast(UUID, existing["id"]))
+                    if freeze_in_http and not existing_shards:
+                        raise ContentAnalysisRunConflict
+                    first_shard = existing_shards[0] if existing_shards else None
+                    return (
+                        AnalysisContentRunCreatedResponse(
+                            run_id=cast(UUID, existing["id"]),
+                            planner_job_id=cast(UUID, existing["planner_job_id"]),
+                            target_count=cast(int, existing["target_count"]),
+                            shard_count=cast(int, existing["shard_count"]),
+                        ),
+                        cast(UUID, first_shard["request_id"]) if first_shard else None,
+                        cast(UUID, first_shard["job_id"]) if first_shard else None,
+                    )
+                shard_count = ceil(expected_target_count / shard_size)
+                run_id = uuid5(_ANALYSIS_RUN_ID_NAMESPACE, client_idempotency_key)
+                planner_job = PostgresJobRepository(session).enqueue(
+                    job_type=CONTENT_ANALYSIS_PLAN_JOB_TYPE,
+                    payload_version=CONTENT_ANALYSIS_PLAN_JOB_PAYLOAD_VERSION,
+                    payload=ContentAnalysisPlanJobPayload(run_id=run_id).model_dump(mode="json"),
+                    internal_idempotency_key=f"content-analysis-run:{run_id}:planner",
+                    request_id=request_id,
+                    priority=0,
+                    max_attempts=CONTENT_ANALYSIS_PLAN_JOB_MAX_ATTEMPTS,
+                    timeout_seconds=CONTENT_ANALYSIS_PLAN_JOB_TIMEOUT_SECONDS,
+                )
+                run = repository.create_run_header(
+                    run_id=run_id,
+                    client_idempotency_key=client_idempotency_key,
+                    planner_job_id=planner_job.id,
+                    run_intent=run_intent,
+                    scope=targets.scope,
+                    filter_snapshot=filter_snapshot,
+                    target_count=expected_target_count,
+                    shard_count=shard_count,
+                    shard_size=shard_size,
+                    identity=identity,
+                    generation_config=generation_config,
+                    generation_config_hash=generation_hash,
+                )
+                if run is None:
+                    existing = repository.get_run_by_client_key(client_idempotency_key)
+                    if existing is None:
+                        raise ContentAnalysisRunConflict
+                    _assert_same_analysis_run_request(
+                        existing,
+                        expected_target_count=expected_target_count,
+                        expected_configuration_hash=expected_configuration_hash,
+                        run_intent=run_intent,
+                        scope=targets.scope,
+                        filter_snapshot=filter_snapshot,
+                    )
+                    existing_shards = repository.list_run_shards(cast(UUID, existing["id"]))
+                    if freeze_in_http and not existing_shards:
+                        raise ContentAnalysisRunConflict
+                    first_shard = existing_shards[0] if existing_shards else None
+                    return (
+                        AnalysisContentRunCreatedResponse(
+                            run_id=cast(UUID, existing["id"]),
+                            planner_job_id=cast(UUID, existing["planner_job_id"]),
+                            target_count=cast(int, existing["target_count"]),
+                            shard_count=cast(int, existing["shard_count"]),
+                        ),
+                        cast(UUID, first_shard["request_id"]) if first_shard else None,
+                        cast(UUID, first_shard["job_id"]) if first_shard else None,
+                    )
+                if not freeze_in_http:
+                    self._audit_analysis_run(
+                        session,
+                        event_type="analysis_run_created",
+                        run_id=run_id,
+                        request_id=request_id,
+                        detail={
+                            "target_count": expected_target_count,
+                            "shard_count": shard_count,
+                        },
+                    )
+                    return (
+                        AnalysisContentRunCreatedResponse(
+                            run_id=run_id,
+                            planner_job_id=planner_job.id,
+                            target_count=expected_target_count,
+                            shard_count=shard_count,
+                        ),
+                        None,
+                        None,
+                    )
+                target_statement = self._analysis_target_statement(session, targets)
+                frozen_count = repository.freeze_run_targets(
+                    run_id=run_id,
+                    target_statement=target_statement,
+                )
+                if frozen_count == 0:
+                    raise ContentSelectionEmpty
+                if frozen_count != expected_target_count:
+                    raise ContentAnalysisTargetChanged
+                first_request_id = uuid4()
+                first_job = PostgresJobRepository(session).enqueue(
                     job_type=CONTENT_ANALYSIS_JOB_TYPE,
                     payload_version=CONTENT_ANALYSIS_JOB_PAYLOAD_VERSION,
-                    payload=ContentAnalysisJobPayload(request_id=analysis_request_id).model_dump(
-                        mode="json"
-                    ),
-                    internal_idempotency_key=f"content-analysis:{analysis_request_id}",
+                    payload=ContentAnalysisJobPayload(
+                        request_id=first_request_id,
+                        run_id=run_id,
+                        shard_no=0,
+                    ).model_dump(mode="json"),
+                    internal_idempotency_key=f"content-analysis-run:{run_id}:shard:0",
                     request_id=request_id,
                     priority=0,
                     max_attempts=CONTENT_ANALYSIS_JOB_MAX_ATTEMPTS,
                     timeout_seconds=CONTENT_ANALYSIS_JOB_TIMEOUT_SECONDS,
                 )
-                PostgresAnalysisRepository(session).create_request(
-                    request_id=analysis_request_id,
-                    job_id=job.id,
-                    scope=target_request.scope,
-                    filter_snapshot=(
-                        (target_request.filters or ContentFilterSnapshot()).model_dump(mode="json")
-                        if target_request.scope == "query"
-                        else {"content_ids": [str(item) for item in target_request.content_ids]}
-                    ),
-                    targets=targets,
+                repository.create_run_shard(
+                    run_id=run_id,
+                    request_id=first_request_id,
+                    job_id=first_job.id,
+                    shard_no=0,
                 )
-                return ContentAnalysisCreatedResponse(
-                    request_id=analysis_request_id,
-                    job_id=job.id,
-                    target_count=len(targets),
+                self._audit_analysis_run(
+                    session,
+                    event_type="analysis_run_created",
+                    run_id=run_id,
+                    request_id=request_id,
+                    detail={
+                        "target_count": frozen_count,
+                        "shard_count": shard_count,
+                    },
+                )
+                return (
+                    AnalysisContentRunCreatedResponse(
+                        run_id=run_id,
+                        planner_job_id=planner_job.id,
+                        target_count=frozen_count,
+                        shard_count=shard_count,
+                    ),
+                    first_request_id,
+                    first_job.id,
                 )
         finally:
             session.close()
+
+    @staticmethod
+    def _audit_analysis_run(
+        session: Session,
+        *,
+        event_type: str,
+        run_id: UUID,
+        request_id: str,
+        detail: dict[str, object],
+    ) -> None:
+        """记录 Analysis Run 高价值管理动作，不保存目标正文或模型输出。"""
+
+        PostgresAuditRepository(session).append(
+            AuditEvent(
+                id=uuid4(),
+                actor_kind="system",
+                actor_ref=None,
+                event_type=event_type,
+                object_type="analysis_content_run",
+                object_id=str(run_id),
+                request_id=request_id,
+                safe_detail=cast(Any, detail),
+                created_at=beijing_now(),
+            )
+        )
+
+    def _analysis_target_statement(
+        self,
+        session: Session,
+        targets: _AnalysisTargetSelection,
+    ) -> Any:
+        repository = PostgresContentQueryRepository(
+            session,
+            analysis_identity=current_analysis_identity(self._runtime.settings),
+        )
+        if isinstance(targets, ContentTargetSelection) and targets.scope == "query":
+            return repository.freeze_target_statement(
+                filters=targets.filters or ContentFilterSnapshot()
+            )
+        return repository.freeze_target_statement(content_ids=targets.content_ids)
 
     def review_relevance(
         self,
@@ -211,9 +560,15 @@ class PostgresContentHttpService:
         try:
             with session.begin():
                 job = PostgresJobRepository(session).get(job_id)
-                if job is None or job.job_type != CONTENT_ANALYSIS_JOB_TYPE:
+                if job is None or job.job_type not in {
+                    CONTENT_ANALYSIS_JOB_TYPE,
+                    CONTENT_ANALYSIS_PLAN_JOB_TYPE,
+                }:
                     raise ContentResourceNotFound
-                return _analysis_job_response(job)
+                return _analysis_job_response(
+                    job,
+                    parse_analysis_result=job.job_type == CONTENT_ANALYSIS_JOB_TYPE,
+                )
         finally:
             session.close()
 
@@ -239,6 +594,106 @@ class PostgresContentHttpService:
 
 def _filters(query: ContentListQuery) -> ContentFilterSnapshot:
     return ContentFilterSnapshot.model_validate(query.model_dump(exclude={"cursor", "limit"}))
+
+
+def _analysis_filter_snapshot(targets: _AnalysisTargetSelection) -> dict[str, object]:
+    if isinstance(targets, ContentTargetSelection) and targets.scope == "query":
+        return (targets.filters or ContentFilterSnapshot()).model_dump(mode="json")
+    return {"content_ids": [str(item) for item in targets.content_ids]}
+
+
+def _analysis_configuration_hash(
+    *,
+    prompt_version: str,
+    prompt_sha256: str,
+    taxonomy_sha256: str,
+    model_provider: str,
+    model: str,
+    generation_config_hash: str,
+) -> str:
+    payload = {
+        "generation_config_hash": generation_config_hash,
+        "model": model,
+        "model_provider": model_provider,
+        "prompt_sha256": prompt_sha256,
+        "prompt_version": prompt_version,
+        "taxonomy_sha256": taxonomy_sha256,
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _assert_same_analysis_run_request(
+    row: RowMapping,
+    *,
+    expected_target_count: int,
+    expected_configuration_hash: str,
+    run_intent: str,
+    scope: str,
+    filter_snapshot: dict[str, object],
+) -> None:
+    actual_configuration_hash = _analysis_configuration_hash(
+        prompt_version=cast(str, row["prompt_version"]),
+        prompt_sha256=cast(str, row["prompt_sha256"]),
+        taxonomy_sha256=cast(str, row["taxonomy_sha256"]),
+        model_provider=cast(str, row["model_provider"]),
+        model=cast(str, row["model"]),
+        generation_config_hash=cast(str, row["generation_config_hash"]),
+    )
+    if (
+        row["target_count"] != expected_target_count
+        or row["run_intent"] != run_intent
+        or row["scope"] != scope
+        or row["filter_snapshot"] != filter_snapshot
+        or actual_configuration_hash != expected_configuration_hash
+    ):
+        raise ContentAnalysisRunConflict
+
+
+def _analysis_run_response(
+    repository: PostgresAnalysisRepository,
+    row: RowMapping,
+    *,
+    include_shards: bool,
+) -> AnalysisContentRunResponse:
+    shards = repository.list_run_shards(cast(UUID, row["id"])) if include_shards else ()
+    return AnalysisContentRunResponse(
+        id=cast(UUID, row["id"]),
+        planner_job_id=cast(UUID, row["planner_job_id"]),
+        sequence_no=cast(int, row["sequence_no"]),
+        status=cast(AnalysisRunStatus, row["status"]),
+        run_intent=cast(AnalysisRunIntent, row["run_intent"]),
+        scope=cast(Literal["query", "selected"], row["scope"]),
+        target_count=cast(int, row["target_count"]),
+        shard_count=cast(int, row["shard_count"]),
+        shard_size=cast(int, row["shard_size"]),
+        prompt_version=cast(str, row["prompt_version"]),
+        prompt_sha256=cast(str, row["prompt_sha256"]),
+        taxonomy_sha256=cast(str, row["taxonomy_sha256"]),
+        model_provider=cast(str, row["model_provider"]),
+        model=cast(str, row["model"]),
+        generation_config=cast(dict[str, object], row["generation_config"]),
+        generation_config_hash=cast(str, row["generation_config_hash"]),
+        error_code=cast(str | None, row["error_code"]),
+        stats=AnalysisContentRunStatsResponse.model_validate(
+            repository.run_stats(cast(UUID, row["id"]))
+        ),
+        shards=tuple(
+            AnalysisContentRunShardResponse(
+                request_id=cast(UUID, shard["request_id"]),
+                job_id=cast(UUID, shard["job_id"]),
+                shard_no=cast(int, shard["shard_no"]),
+                target_count=cast(int, shard["target_count"]),
+                status=cast(str, shard["status"]),
+                progress=cast(int, shard["progress"]),
+                error_code=cast(str | None, shard["error_code"]),
+            )
+            for shard in shards
+        ),
+        created_at=row["created_at"],
+        started_at=row["started_at"],
+        finished_at=row["finished_at"],
+    )
 
 
 def _query_hash(filters: ContentFilterSnapshot) -> str:
@@ -272,6 +727,8 @@ def _item_response(record: ContentReadRecord) -> ContentListItemResponse:
             analyzed_at=record.analysis.analyzed_at,
             model_provider=record.analysis.model_provider,
             model=record.analysis.model,
+            latest_run_id=record.analysis.latest_run_id,
+            latest_run_status=record.analysis.latest_run_status,
         ),
         effective_relevance=cast(ContentRelevance | None, record.effective_relevance),
         relevance_source=cast(ContentRelevanceSource | None, record.relevance_source),
@@ -285,10 +742,14 @@ def _item_response(record: ContentReadRecord) -> ContentListItemResponse:
     )
 
 
-def _analysis_job_response(job: JobRecord) -> JobStatusResponse:
+def _analysis_job_response(
+    job: JobRecord,
+    *,
+    parse_analysis_result: bool = True,
+) -> JobStatusResponse:
     result = (
         ContentAnalysisJobResultResponse.model_validate(job.result)
-        if isinstance(job.result, dict)
+        if parse_analysis_result and isinstance(job.result, dict)
         else None
     )
     return JobStatusResponse(

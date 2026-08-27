@@ -8,6 +8,8 @@ from aima_ugc.modules.analysis.tables import (
     analysis_content_request_items_table,
     analysis_content_requests_table,
     analysis_content_results_table,
+    analysis_content_run_targets_table,
+    analysis_content_runs_table,
 )
 from aima_ugc.modules.collection.candidate_tables import (
     collection_candidate_ingestions_table,
@@ -51,6 +53,13 @@ from aima_ugc.modules.content.tables import (
     content_versions_table,
     contents_table,
 )
+from aima_ugc.modules.ingestion.historical_tables import (
+    historical_import_campaign_items_table,
+    historical_import_campaigns_table,
+    processing_import_batch_identities_table,
+    processing_import_batch_item_conflicts_table,
+    processing_import_batch_items_table,
+)
 from aima_ugc.modules.ingestion.tables import (
     processing_import_batches_table,
     register_ingestion_schema,
@@ -82,11 +91,15 @@ __all__ = [
     "analysis_content_request_items_table",
     "analysis_content_requests_table",
     "analysis_content_results_table",
+    "analysis_content_run_targets_table",
+    "analysis_content_runs_table",
     "account_external_ids_table",
     "accounts_table",
     "artifacts_table",
     "audit_events_table",
     "global_relevance_config_table",
+    "historical_import_campaign_items_table",
+    "historical_import_campaigns_table",
     "collection_candidate_ingestions_table",
     "collection_candidates_table",
     "collection_content_actions_table",
@@ -120,6 +133,9 @@ __all__ = [
     "keywords_table",
     "metadata",
     "processing_import_batches_table",
+    "processing_import_batch_identities_table",
+    "processing_import_batch_item_conflicts_table",
+    "processing_import_batch_items_table",
     "provider_configs_table",
     "provider_request_attempts_table",
     "provider_requests_table",

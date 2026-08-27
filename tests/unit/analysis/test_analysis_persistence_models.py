@@ -31,7 +31,9 @@ def test_analysis_persistence_model_preserves_relevance_voice_and_ordered_labels
         result_id=uuid4(),
         content_id=content_id,
         content_version=3,
+        analysis_run_id=uuid4(),
         job_id=job_id,
+        generation_config_hash="d" * 64,
         analysis=analysis,
     )
 

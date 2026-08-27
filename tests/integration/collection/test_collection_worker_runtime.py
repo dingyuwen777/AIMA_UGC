@@ -191,7 +191,11 @@ def test_production_worker_consumes_scheduler_created_collection_run() -> None:
         assert registry.supported_types == (
             "collection.run.v1",
             "ingestion.import-excel.v1",
+            "ingestion.historical-discover.v1",
+            "ingestion.historical-snapshot.v1",
+            "ingestion.historical-import-chunk.v1",
             "analysis.content-label.v1",
+            "analysis.content-run-plan.v1",
             "reporting.content-export-excel.v1",
         )
         assert worker.run_once() is True

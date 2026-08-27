@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import PurePosixPath
 from typing import Literal
 from uuid import UUID
 
-from pydantic import ConfigDict, Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, computed_field, field_validator, model_validator
 
 from aima_ugc.contracts.analysis import ContentRelevance, ContentVoiceType
 from aima_ugc.contracts.base import AimaHttpModel as BaseModel
@@ -689,6 +690,8 @@ class ContentAnalysisResponse(BaseModel):
     analyzed_at: datetime | None = None
     model_provider: str | None = None
     model: str | None = None
+    latest_run_id: UUID | None = None
+    latest_run_status: str | None = None
 
     @model_validator(mode="after")
     def validate_completed_shape(self) -> ContentAnalysisResponse:
@@ -867,7 +870,7 @@ class ContentDetailResponse(ContentListItemResponse):
 
 
 class ContentTargetSelection(BaseModel):
-    """HTTP 层选择语义；Service 会立刻冻结 Content ID + Version。"""
+    """HTTP 层选择语义；新版 Run 由 Planner 异步冻结 Content ID + Version。"""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -900,6 +903,138 @@ class ContentAnalysisCreatedResponse(BaseModel):
     job_id: UUID
     target_count: int = Field(gt=0)
     status: Literal["queued"] = "queued"
+    run_id: UUID | None = None
+    shard_count: int = Field(default=1, ge=1)
+
+
+AnalysisRunIntent = Literal["initial_analysis", "manual_reanalysis"]
+AnalysisRunStatus = Literal[
+    "queued",
+    "running",
+    "succeeded",
+    "partial_failed",
+    "failed",
+    "cancelling",
+    "cancelled",
+]
+
+
+class AnalysisRunTargetSelection(BaseModel):
+    """本轮只开放有容量上限的显式 Analysis Run 目标。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    scope: Literal["selected"] = "selected"
+    content_ids: tuple[UUID, ...] = Field(min_length=1, max_length=1000)
+
+    @model_validator(mode="after")
+    def validate_unique_content_ids(self) -> AnalysisRunTargetSelection:
+        if len(self.content_ids) != len(set(self.content_ids)):
+            raise ValueError("content_ids 不能重复")
+        return self
+
+
+class AnalysisContentRunPreviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    targets: AnalysisRunTargetSelection
+
+
+class AnalysisContentRunPreviewResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    target_count: int = Field(gt=0)
+    shard_count: int = Field(gt=0)
+    shard_size: int = Field(gt=0)
+    prompt_version: str
+    prompt_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    taxonomy_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    model_provider: str
+    model: str
+    generation_config: dict[str, object]
+    generation_config_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    configuration_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    cost_estimate_available: bool = False
+    cost_estimate_note: str
+
+
+class AnalysisContentRunCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    client_idempotency_key: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+    )
+    targets: AnalysisRunTargetSelection
+    expected_target_count: int = Field(gt=0)
+    expected_configuration_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    run_intent: AnalysisRunIntent = "manual_reanalysis"
+
+
+class AnalysisContentRunStatsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    pending: int = Field(default=0, ge=0)
+    succeeded: int = Field(default=0, ge=0)
+    failed: int = Field(default=0, ge=0)
+    stale: int = Field(default=0, ge=0)
+    cancelled: int = Field(default=0, ge=0)
+
+
+class AnalysisContentRunShardResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    request_id: UUID
+    job_id: UUID
+    shard_no: int = Field(ge=0)
+    target_count: int = Field(gt=0)
+    status: str
+    progress: int = Field(ge=0, le=100)
+    error_code: str | None = None
+
+
+class AnalysisContentRunResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    planner_job_id: UUID
+    sequence_no: int = Field(gt=0)
+    status: AnalysisRunStatus
+    run_intent: AnalysisRunIntent
+    scope: Literal["query", "selected"]
+    target_count: int = Field(gt=0)
+    shard_count: int = Field(gt=0)
+    shard_size: int = Field(gt=0)
+    prompt_version: str
+    prompt_sha256: str
+    taxonomy_sha256: str
+    model_provider: str
+    model: str
+    generation_config: dict[str, object]
+    generation_config_hash: str
+    error_code: str | None = None
+    stats: AnalysisContentRunStatsResponse = AnalysisContentRunStatsResponse()
+    shards: tuple[AnalysisContentRunShardResponse, ...] = ()
+    created_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
+class AnalysisContentRunCreatedResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: UUID
+    planner_job_id: UUID
+    target_count: int = Field(gt=0)
+    shard_count: int = Field(gt=0)
+    status: Literal["queued"] = "queued"
+
+
+class AnalysisContentRunListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: tuple[AnalysisContentRunResponse, ...]
 
 
 class DataExportSubmitRequest(BaseModel):
@@ -945,7 +1080,314 @@ class DataExportListResponse(BaseModel):
     items: tuple[DataExportResponse, ...]
 
 
+type HistoricalCampaignStatus = Literal[
+    "uploading",
+    "discovering",
+    "snapshotting",
+    "ready",
+    "queued",
+    "running",
+    "cancelling",
+    "cancelled",
+    "succeeded",
+    "partial_failed",
+    "failed",
+]
+type DataImportSourceKind = Literal["local_upload", "server_path"]
+type DataImportIngestionPolicy = Literal["standard_observation", "historical_fill_only"]
+type HistoricalCampaignItemStatus = Literal[
+    "discovered",
+    "snapshotting",
+    "ready",
+    "queued",
+    "running",
+    "succeeded",
+    "failed",
+    "cancelled",
+]
+
+
+class HistoricalDirectoryListQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    relative_path: str = Field(default="", max_length=1024)
+    cursor: str | None = Field(default=None, max_length=2048)
+    limit: int = Field(default=100, ge=1, le=500)
+
+    @field_validator("relative_path")
+    @classmethod
+    def validate_relative_path(cls, value: str) -> str:
+        return _historical_relative_path(value)
+
+
+class HistoricalDirectoryEntryResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    relative_path: str
+    name: str
+    kind: Literal["directory", "file"]
+    byte_size: int | None = Field(default=None, ge=0)
+    modified_at_ns: int = Field(ge=0)
+
+
+class HistoricalDirectoryListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    available: bool
+    unavailable_reason: str | None = None
+    items: tuple[HistoricalDirectoryEntryResponse, ...] = ()
+    next_cursor: str | None = None
+    has_more: bool = False
+
+    @model_validator(mode="after")
+    def validate_availability(self) -> HistoricalDirectoryListResponse:
+        if self.available and self.unavailable_reason is not None:
+            raise ValueError("可用目录响应不能包含 unavailable_reason")
+        if not self.available and (self.items or self.next_cursor or self.has_more):
+            raise ValueError("不可用目录响应不能伪造枚举结果")
+        return self
+
+
+class HistoricalCampaignCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    client_idempotency_key: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+    )
+    relative_paths: tuple[str, ...] = Field(min_length=1, max_length=1000)
+    recursive: bool = False
+    keyword_pack_ids: tuple[UUID, ...] = Field(min_length=1, max_length=20)
+    profile: Literal["aima-monitoring-excel.v1"] = "aima-monitoring-excel.v1"
+    ingestion_policy: DataImportIngestionPolicy = "historical_fill_only"
+
+    @field_validator("relative_paths")
+    @classmethod
+    def validate_relative_paths(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(_historical_relative_path(item) for item in value)
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("relative_paths 不能重复")
+        return normalized
+
+    @field_validator("keyword_pack_ids")
+    @classmethod
+    def validate_keyword_pack_ids(cls, value: tuple[UUID, ...]) -> tuple[UUID, ...]:
+        if len(set(value)) != len(value):
+            raise ValueError("keyword_pack_ids 不能重复")
+        return value
+
+
+class LocalDataImportFileManifest(BaseModel):
+    """声明浏览器显式选择的一个本地 XLSX；绝不承载本机绝对路径。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    relative_path: str = Field(min_length=1, max_length=1024)
+    byte_size: int = Field(ge=1, le=500 * 1024 * 1024)
+
+    @field_validator("relative_path")
+    @classmethod
+    def validate_relative_path(cls, value: str) -> str:
+        normalized = _historical_relative_path(value)
+        if not normalized.casefold().endswith(".xlsx"):
+            raise ValueError("本地导入清单只允许 .xlsx 文件")
+        return normalized
+
+
+class LocalDataImportCampaignCreateRequest(BaseModel):
+    """建立本地文件暂存 Campaign；文件字节随后按 Item 分别流式上传。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    client_idempotency_key: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+    )
+    files: tuple[LocalDataImportFileManifest, ...] = Field(min_length=1, max_length=1000)
+    keyword_pack_ids: tuple[UUID, ...] = Field(min_length=1, max_length=20)
+    profile: Literal["aima-monitoring-excel.v1"] = "aima-monitoring-excel.v1"
+    ingestion_policy: DataImportIngestionPolicy = "standard_observation"
+
+    @field_validator("files")
+    @classmethod
+    def validate_files(
+        cls,
+        value: tuple[LocalDataImportFileManifest, ...],
+    ) -> tuple[LocalDataImportFileManifest, ...]:
+        paths = tuple(item.relative_path for item in value)
+        if len(set(paths)) != len(paths):
+            raise ValueError("本地导入清单 relative_path 不能重复")
+        return value
+
+    @field_validator("keyword_pack_ids")
+    @classmethod
+    def validate_keyword_pack_ids(cls, value: tuple[UUID, ...]) -> tuple[UUID, ...]:
+        if len(set(value)) != len(value):
+            raise ValueError("keyword_pack_ids 不能重复")
+        return value
+
+
+class LocalDataImportUploadItemResponse(BaseModel):
+    """返回客户端下一步逐项上传所需的稳定 Item 身份。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    item_id: UUID
+    relative_path: str
+
+
+class LocalDataImportCampaignCreatedResponse(BaseModel):
+    """返回本地 Campaign 及其冻结上传清单。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    campaign_id: UUID
+    upload_items: tuple[LocalDataImportUploadItemResponse, ...]
+
+
+class LocalDataImportFileUploadedResponse(BaseModel):
+    """确认一个本地文件已形成服务器端不可变 Source Artifact。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    campaign_id: UUID
+    item_id: UUID
+    artifact_id: UUID
+    sha256: str = Field(min_length=64, max_length=64)
+    byte_size: int = Field(ge=1)
+
+
+class HistoricalCampaignStatsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    created: int = Field(default=0, ge=0)
+    filled: int = Field(default=0, ge=0)
+    updated: int = Field(default=0, ge=0)
+    unchanged: int = Field(default=0, ge=0)
+    conflict: int = Field(default=0, ge=0)
+    filtered: int = Field(default=0, ge=0)
+    duplicate: int = Field(default=0, ge=0)
+    invalid: int = Field(default=0, ge=0)
+    failed: int = Field(default=0, ge=0)
+
+
+class HistoricalCampaignProgressResponse(BaseModel):
+    """返回可由持久状态重建的 Campaign 预检与迁移进度。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    preflight_completed_file_count: int = Field(ge=0)
+    preflight_percent: int = Field(ge=0, le=100)
+    migration_completed_row_count: int = Field(ge=0)
+    migration_percent: int = Field(ge=0, le=100)
+
+
+class HistoricalCampaignResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    status: HistoricalCampaignStatus
+    source_kind: DataImportSourceKind = "server_path"
+    ingestion_policy: DataImportIngestionPolicy = "historical_fill_only"
+    declared_file_count: int = Field(default=0, ge=0)
+    root_relative_path: str
+    recursive: bool
+    discovered_file_count: int = Field(ge=0)
+    ready_item_count: int = Field(ge=0)
+    total_rows: int = Field(ge=0)
+    progress: HistoricalCampaignProgressResponse
+    stats: HistoricalCampaignStatsResponse = Field(default_factory=HistoricalCampaignStatsResponse)
+    error_summary: str | None = None
+    created_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+    @computed_field
+    def can_start(self) -> bool:
+        return (
+            self.status == "ready"
+            and self.discovered_file_count > 0
+            and (self.ready_item_count == self.discovered_file_count)
+        )
+
+
+class HistoricalCampaignCreatedResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    campaign_id: UUID
+    discovery_job_id: UUID
+
+
+class HistoricalCampaignListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: tuple[HistoricalCampaignResponse, ...]
+
+
+class HistoricalCampaignItemResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    parent_item_id: UUID | None = None
+    item_kind: Literal["source_file", "chunk"]
+    relative_path: str
+    ordinal: int | None = Field(default=None, ge=0)
+    artifact_id: UUID | None = None
+    sha256: str | None = None
+    row_start: int | None = Field(default=None, ge=1)
+    row_end: int | None = Field(default=None, ge=1)
+    row_count: int = Field(ge=0)
+    status: HistoricalCampaignItemStatus
+    attempt_count: int = Field(ge=0)
+    stats: dict[str, object] = Field(default_factory=dict)
+    error_code: str | None = None
+    created_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
+class HistoricalCampaignItemListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: tuple[HistoricalCampaignItemResponse, ...]
+    total_count: int = Field(default=0, ge=0)
+    has_more: bool = False
+
+
+class HistoricalCampaignConflictResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    batch_item_id: UUID
+    source_row_ordinal: int = Field(ge=1)
+    content_id: UUID
+    field_name: str
+    content_version: int = Field(ge=1)
+    current_value_hash: str
+    historical_value_hash: str
+    created_at: datetime
+
+
+class HistoricalCampaignConflictListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: tuple[HistoricalCampaignConflictResponse, ...]
+    total_count: int = Field(default=0, ge=0)
+    has_more: bool = False
+
+
+def _historical_relative_path(value: str) -> str:
+    if "\x00" in value or "\\" in value or ":" in value or value.startswith("//"):
+        raise ValueError("历史路径必须是无歧义的 POSIX 相对路径")
+    path = PurePosixPath(value)
+    if path.is_absolute() or any(part == ".." for part in path.parts):
+        raise ValueError("历史路径必须位于批准根目录内")
+    return "/".join(part for part in path.parts if part not in {"", "."})
+
+
 __all__ = [
+    "AnalysisRunTargetSelection",
     "CommentCoverageResponse",
     "CollectionBatchSupplementEligibilityResponse",
     "CollectionBatchSupplementTargetResponse",
@@ -998,8 +1440,23 @@ __all__ = [
     "DataExportResponse",
     "DataExportStatsResponse",
     "DataExportSubmitRequest",
+    "DataImportIngestionPolicy",
+    "DataImportSourceKind",
     "GlobalRelevanceConfigRequest",
     "GlobalRelevanceConfigResponse",
+    "HistoricalCampaignConflictListResponse",
+    "HistoricalCampaignConflictResponse",
+    "HistoricalCampaignCreateRequest",
+    "HistoricalCampaignCreatedResponse",
+    "HistoricalCampaignItemListResponse",
+    "HistoricalCampaignItemResponse",
+    "HistoricalCampaignListResponse",
+    "HistoricalCampaignResponse",
+    "HistoricalCampaignStatsResponse",
+    "HistoricalCampaignStatus",
+    "HistoricalDirectoryEntryResponse",
+    "HistoricalDirectoryListQuery",
+    "HistoricalDirectoryListResponse",
     "HttpErrorItem",
     "HttpErrorResponse",
     "ImportBatchListQuery",
@@ -1019,5 +1476,10 @@ __all__ = [
     "KeywordPackResponse",
     "KeywordPackSummaryResponse",
     "KeywordResponse",
+    "LocalDataImportCampaignCreateRequest",
+    "LocalDataImportCampaignCreatedResponse",
+    "LocalDataImportFileManifest",
+    "LocalDataImportFileUploadedResponse",
+    "LocalDataImportUploadItemResponse",
     "ResourceEnabledRequest",
 ]

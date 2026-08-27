@@ -23,6 +23,7 @@ from aima_ugc.contracts.analysis import (
 from aima_ugc.contracts.canonical import CanonicalContentV1
 from aima_ugc.platform.time import beijing_now
 
+from .persistence import AnalysisConfigurationIdentity
 from .prompt_taxonomy import (
     CONTENT_LABELING_PROMPT_PATH,
     PROMPT_VERSION,
@@ -424,6 +425,19 @@ class ContentLabelingService:
         """返回当前 Service 实际使用的模型身份。"""
 
         return self._llm.model_name
+
+    @property
+    def configuration_identity(self) -> AnalysisConfigurationIdentity:
+        """返回本次执行实际使用的 Prompt、Taxonomy 与模型身份。"""
+
+        taxonomy = self._prompt_loader.load()
+        return AnalysisConfigurationIdentity(
+            prompt_version=taxonomy.prompt_version,
+            prompt_sha256=taxonomy.prompt_sha256,
+            taxonomy_sha256=taxonomy.taxonomy_sha256,
+            model_provider=self._llm.provider_name,
+            model=self._llm.model_name,
+        )
 
     def label_contents(
         self,

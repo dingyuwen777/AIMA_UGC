@@ -16,6 +16,7 @@ from aima_ugc.adapters.persistence.postgres.collection_run_execution import (
 from aima_ugc.adapters.providers.tikhub.transport import TikHubHttpTransport
 from aima_ugc.modules.analysis.content_analysis_job import (
     ContentAnalysisJobHandler,
+    ContentAnalysisPlanJobHandler,
     register_content_analysis_job,
 )
 from aima_ugc.modules.collection.collection_run_executor import CollectionRunExecutor
@@ -25,6 +26,7 @@ from aima_ugc.modules.collection.collection_run_job import (
 )
 from aima_ugc.modules.collection.providers import ProviderTransport, RawArtifactService
 from aima_ugc.modules.ingestion import ImportJobHandler, register_import_job
+from aima_ugc.modules.ingestion.historical_jobs import register_historical_jobs
 from aima_ugc.modules.reporting.data_export_job import (
     DataExportJobHandler,
     register_data_export_job,
@@ -35,9 +37,17 @@ from aima_ugc.platform.jobs import JobReaper, JobRegistry, JobWorker
 from aima_ugc.platform.security import read_secret_file, validate_secret_ref
 from aima_ugc.platform.storage import ArtifactService
 
-from .analysis_worker import PostgresContentAnalysisJobExecutor
+from .analysis_worker import (
+    PostgresContentAnalysisJobExecutor,
+    PostgresContentAnalysisPlanJobExecutor,
+    create_analysis_job_terminal_callback,
+)
 from .collection_scope import TikHubCollectionScopeExecutor
 from .export_worker import PostgresDataExportJobExecutor
+from .historical_import_worker import (
+    PostgresHistoricalImportJobExecutor,
+    historical_job_terminal_callback,
+)
 from .import_worker import PostgresImportJobExecutor, import_job_terminal_callback
 from .runtime import PlatformRuntime, create_platform_runtime
 
@@ -119,9 +129,19 @@ def create_collection_job_registry(
         ImportJobHandler(PostgresImportJobExecutor(runtime)),
         terminal_callback=import_job_terminal_callback,
     )
+    register_historical_jobs(
+        registry,
+        PostgresHistoricalImportJobExecutor(runtime),
+        terminal_callback=historical_job_terminal_callback,
+    )
     register_content_analysis_job(
         registry,
         ContentAnalysisJobHandler(PostgresContentAnalysisJobExecutor(runtime)),
+        terminal_callback=create_analysis_job_terminal_callback(runtime),
+        planner_handler=ContentAnalysisPlanJobHandler(
+            PostgresContentAnalysisPlanJobExecutor(runtime)
+        ),
+        planner_terminal_callback=create_analysis_job_terminal_callback(runtime),
     )
     register_data_export_job(
         registry,

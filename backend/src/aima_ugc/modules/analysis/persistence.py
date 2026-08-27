@@ -33,6 +33,7 @@ class AnalysisContentResult:
     id: UUID
     content_id: UUID
     content_version: int
+    analysis_run_id: UUID
     job_id: UUID
     schema_version: str
     relevance: str
@@ -44,6 +45,7 @@ class AnalysisContentResult:
     model_provider: str
     model: str
     input_hash: str
+    generation_config_hash: str
     analyzed_at: datetime
     labels: tuple[AnalysisLabelPair, ...]
 
@@ -54,7 +56,9 @@ class AnalysisContentResult:
         result_id: UUID,
         content_id: UUID,
         content_version: int,
+        analysis_run_id: UUID,
         job_id: UUID,
+        generation_config_hash: str,
         analysis: ContentLabelAnalysisV3,
     ) -> AnalysisContentResult:
         if content_version < 1:
@@ -63,6 +67,7 @@ class AnalysisContentResult:
             id=result_id,
             content_id=content_id,
             content_version=content_version,
+            analysis_run_id=analysis_run_id,
             job_id=job_id,
             schema_version=analysis.schema_version,
             relevance=analysis.relevance,
@@ -74,6 +79,7 @@ class AnalysisContentResult:
             model_provider=analysis.model_provider,
             model=analysis.model,
             input_hash=analysis.input_hash,
+            generation_config_hash=generation_config_hash,
             analyzed_at=analysis.analyzed_at,
             labels=tuple(
                 AnalysisLabelPair(
@@ -89,6 +95,10 @@ class AnalysisContentResult:
 @dataclass(frozen=True, slots=True)
 class AnalysisWorkItem:
     request_id: UUID
+    analysis_run_id: UUID
+    configuration_identity: AnalysisConfigurationIdentity
+    configuration_enforced: bool
+    generation_config_hash: str
     ordinal: int
     content_id: UUID
     content_version: int

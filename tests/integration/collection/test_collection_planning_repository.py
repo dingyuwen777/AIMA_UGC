@@ -27,7 +27,11 @@ from aima_ugc.modules.collection.tables import (
     collection_schedule_occurrences_table,
     collection_scopes_table,
 )
-from aima_ugc.modules.system.tables import keyword_packs_table, provider_configs_table
+from aima_ugc.modules.system.tables import (
+    keyword_pack_items_table,
+    keyword_packs_table,
+    provider_configs_table,
+)
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.jobs.tables import job_attempt_events_table, jobs_table
@@ -50,6 +54,7 @@ def database_runtime() -> Iterator[DatabaseRuntime]:
             connection.execute(delete(collection_plans_table))
             connection.execute(delete(job_attempt_events_table))
             connection.execute(delete(jobs_table))
+            connection.execute(delete(keyword_pack_items_table))
             connection.execute(delete(keyword_packs_table))
             connection.execute(delete(provider_configs_table))
 

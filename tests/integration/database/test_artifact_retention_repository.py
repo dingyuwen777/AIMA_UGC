@@ -13,10 +13,15 @@ from aima_ugc.adapters.persistence.postgres.manual_ingestion import (
 from aima_ugc.adapters.storage.local import LocalArtifactStore
 from aima_ugc.bootstrap.artifact_cleanup import run_artifact_cleanup_once
 from aima_ugc.bootstrap.runtime import PlatformRuntime
+from aima_ugc.modules.ingestion.historical_tables import (
+    historical_import_campaign_items_table,
+    historical_import_campaigns_table,
+)
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.storage import ArtifactRecord, ArtifactStateConflict
 from aima_ugc.platform.storage.retention import IMPORT_SOURCE_RETENTION
+from sqlalchemy import insert
 
 
 def _store_record(
@@ -67,6 +72,60 @@ def test_provider_raw_is_not_a_one_day_orphan() -> None:
                 created_at=now - timedelta(days=2),
                 expires_at=None,
             )
+            historical_source_orphan = _store_record(
+                repository,
+                kind="historical-import.source",
+                created_at=now - timedelta(days=2),
+                expires_at=None,
+            )
+            historical_chunk_orphan = _store_record(
+                repository,
+                kind="historical-import.chunk",
+                created_at=now - timedelta(days=2),
+                expires_at=None,
+            )
+            historical_referenced = _store_record(
+                repository,
+                kind="historical-import.source",
+                created_at=now - timedelta(days=2),
+                expires_at=None,
+            )
+            campaign_id = uuid4()
+            session.execute(
+                insert(historical_import_campaigns_table).values(
+                    id=campaign_id,
+                    client_idempotency_key=f"artifact-retention-{campaign_id}",
+                    root_relative_path="",
+                    recursive=False,
+                    profile_snapshot={},
+                    keyword_pack_snapshot={},
+                    status="failed",
+                    discovered_file_count=1,
+                    ready_item_count=0,
+                    total_rows=0,
+                    stats={},
+                    created_at=now - timedelta(days=2),
+                    finished_at=now - timedelta(days=2),
+                )
+            )
+            session.execute(
+                insert(historical_import_campaign_items_table).values(
+                    id=uuid4(),
+                    campaign_id=campaign_id,
+                    item_kind="source_file",
+                    relative_path="retained.xlsx",
+                    manifest_identity="b" * 64,
+                    artifact_id=historical_referenced.id,
+                    sha256="a" * 64,
+                    row_count=0,
+                    status="failed",
+                    attempt_count=1,
+                    stats={},
+                    created_at=now - timedelta(days=2),
+                    finished_at=now - timedelta(days=2),
+                )
+            )
+            repository.mark_linked(historical_referenced.id, linked_at=now)
 
         with session.begin():
             candidates = PostgresArtifactMetadataRepository(session).list_cleanup_candidates(
@@ -77,6 +136,9 @@ def test_provider_raw_is_not_a_one_day_orphan() -> None:
 
         candidate_ids = {item.id for item in candidates}
         assert import_orphan.id in candidate_ids
+        assert historical_source_orphan.id in candidate_ids
+        assert historical_chunk_orphan.id in candidate_ids
+        assert historical_referenced.id not in candidate_ids
         assert provider_raw.id not in candidate_ids
     finally:
         session.close()

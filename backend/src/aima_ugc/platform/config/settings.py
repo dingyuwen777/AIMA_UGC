@@ -19,6 +19,11 @@ class PlatformSettings(BaseModel):
     log_dir: Path
     secret_dir: Path
     external_secret_dir: Path | None = None
+    historical_import_root: Path | None = None
+    historical_chunk_rows: int = Field(default=1000, ge=100, le=2000)
+    historical_max_scan_files: int = Field(default=10_000, ge=1, le=100_000)
+    historical_max_directory_depth: int = Field(default=8, ge=1, le=32)
+    historical_max_in_flight_jobs: int = Field(default=2, ge=1, le=16)
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     log_max_bytes: int = Field(default=20_971_520, gt=0)
     log_backup_count: int = Field(default=10, ge=0)
@@ -35,6 +40,8 @@ class PlatformSettings(BaseModel):
     llm_max_connections: int = Field(default=10, ge=1, le=100)
     llm_validation_retries: int = Field(default=1, ge=0, le=3)
     analysis_batch_size: int = Field(default=20, ge=1, le=100)
+    analysis_run_shard_size: int = Field(default=1, ge=1, le=20)
+    analysis_run_max_in_flight_jobs: int = Field(default=2, ge=1, le=16)
 
     @property
     def artifact_dir(self) -> Path:
@@ -77,6 +84,11 @@ _ENV_TO_FIELD = {
     "AIMA_LOG_DIR": "log_dir",
     "AIMA_SECRET_DIR": "secret_dir",
     "AIMA_EXTERNAL_SECRET_DIR": "external_secret_dir",
+    "AIMA_HISTORICAL_IMPORT_ROOT": "historical_import_root",
+    "AIMA_HISTORICAL_CHUNK_ROWS": "historical_chunk_rows",
+    "AIMA_HISTORICAL_MAX_SCAN_FILES": "historical_max_scan_files",
+    "AIMA_HISTORICAL_MAX_DIRECTORY_DEPTH": "historical_max_directory_depth",
+    "AIMA_HISTORICAL_MAX_IN_FLIGHT_JOBS": "historical_max_in_flight_jobs",
     "AIMA_LOG_LEVEL": "log_level",
     "AIMA_LOG_MAX_BYTES": "log_max_bytes",
     "AIMA_LOG_BACKUP_COUNT": "log_backup_count",
@@ -93,6 +105,8 @@ _ENV_TO_FIELD = {
     "AIMA_LLM_MAX_CONNECTIONS": "llm_max_connections",
     "AIMA_LLM_VALIDATION_RETRIES": "llm_validation_retries",
     "AIMA_ANALYSIS_BATCH_SIZE": "analysis_batch_size",
+    "AIMA_ANALYSIS_RUN_SHARD_SIZE": "analysis_run_shard_size",
+    "AIMA_ANALYSIS_RUN_MAX_IN_FLIGHT_JOBS": "analysis_run_max_in_flight_jobs",
 }
 
 _DEFAULTS = {
@@ -122,7 +136,13 @@ def load_settings(
             values[field_name] = source[env_name]
 
     root = (Path.cwd() if base_dir is None else base_dir).resolve(strict=False)
-    for field_name in ("data_dir", "log_dir", "secret_dir", "external_secret_dir"):
+    for field_name in (
+        "data_dir",
+        "log_dir",
+        "secret_dir",
+        "external_secret_dir",
+        "historical_import_root",
+    ):
         value = values.get(field_name)
         if value is not None:
             values[field_name] = _resolve_path(value, root)

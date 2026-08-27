@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import and_, case, exists, false, func, literal, or_, select
+from sqlalchemy import and_, case, exists, func, literal, or_, select
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
@@ -28,6 +28,8 @@ from aima_ugc.modules.analysis.relevance_review_tables import (
 from aima_ugc.modules.analysis.tables import (
     analysis_content_label_pairs_table,
     analysis_content_results_table,
+    analysis_content_run_targets_table,
+    analysis_content_runs_table,
 )
 from aima_ugc.modules.collection.tables import (
     collection_runs_table,
@@ -50,7 +52,13 @@ from aima_ugc.modules.content.tables import (
     content_versions_table,
     contents_table,
 )
-from aima_ugc.modules.ingestion.tables import register_ingestion_schema
+from aima_ugc.modules.ingestion.historical_tables import (
+    historical_import_campaign_items_table,
+    processing_import_batch_items_table,
+)
+from aima_ugc.modules.ingestion.tables import (
+    register_ingestion_schema,
+)
 
 register_ingestion_schema()
 
@@ -112,28 +120,55 @@ class PostgresContentQueryRepository:
             raise ValueError("filters 与 content_ids 不能同时提供")
         if filters is None and not content_ids:
             raise ValueError("必须提供 filters 或 content_ids")
+        rows = self._session.execute(
+            self.freeze_target_statement(filters=filters, content_ids=content_ids)
+        ).mappings()
+        return tuple(
+            ContentTarget(
+                content_id=cast(UUID, row["content_id"]),
+                content_version=cast(int, row["content_version"]),
+            )
+            for row in rows
+        )
+
+    def freeze_target_statement(
+        self,
+        *,
+        filters: ContentFilterSnapshot | None = None,
+        content_ids: tuple[UUID, ...] = (),
+    ) -> Any:
+        """返回可供 `INSERT ... SELECT` 使用的稳定 Content ID + Version 选择语句。"""
+
+        if filters is not None and content_ids:
+            raise ValueError("filters 与 content_ids 不能同时提供")
+        if filters is None and not content_ids:
+            raise ValueError("必须提供 filters 或 content_ids")
         content = contents_table
         if filters is not None:
-            statement, columns = self._base_statement(filters, targets_only=True)
-            rows = self._session.execute(
-                statement.order_by(columns["sort_at"].desc(), content.c.id.desc())
-            ).mappings()
-            return tuple(
-                ContentTarget(
-                    content_id=cast(UUID, row["id"]),
-                    content_version=cast(int, row["current_version"]),
-                )
-                for row in rows
-            )
+            statement, _ = self._base_statement(filters, targets_only=True)
+            selected = statement.subquery("analysis_target_selection")
+            ordinal = (
+                func.row_number().over(order_by=(selected.c.sort_at.desc(), selected.c.id.desc()))
+                - 1
+            ).label("target_ordinal")
+            return select(
+                selected.c.id.label("content_id"),
+                selected.c.current_version.label("content_version"),
+                ordinal,
+            ).order_by(selected.c.sort_at.desc(), selected.c.id.desc())
 
-        rows = self._session.execute(
-            select(content.c.id, content.c.current_version).where(content.c.id.in_(content_ids))
-        ).mappings()
-        by_id = {cast(UUID, row["id"]): cast(int, row["current_version"]) for row in rows}
-        return tuple(
-            ContentTarget(content_id=content_id, content_version=by_id[content_id])
-            for content_id in content_ids
-            if content_id in by_id
+        order = case(
+            {content_id: ordinal for ordinal, content_id in enumerate(content_ids)},
+            value=content.c.id,
+        )
+        return (
+            select(
+                content.c.id.label("content_id"),
+                content.c.current_version.label("content_version"),
+                order.label("target_ordinal"),
+            )
+            .where(content.c.id.in_(content_ids))
+            .order_by(order)
         )
 
     def list_media(self, content_id: UUID) -> tuple[ContentMediaResponse, ...]:
@@ -301,6 +336,7 @@ class PostgresContentQueryRepository:
         scope = collection_scopes_table
         review = _latest_relevance_review_subquery()
         analysis = _latest_analysis_subquery(self._analysis_identity)
+        latest_run = _latest_analysis_run_subquery()
         sort_at = func.coalesce(content.c.published_at, content.c.last_seen_at).label("sort_at")
         has_any_analysis = exists(
             select(analysis_content_results_table.c.id).where(
@@ -316,6 +352,11 @@ class PostgresContentQueryRepository:
             review.c.content_id == content.c.id,
             review.c.content_version == content.c.current_version,
             review.c.rank == 1,
+        )
+        current_latest_run = and_(
+            latest_run.c.content_id == content.c.id,
+            latest_run.c.content_version == content.c.current_version,
+            latest_run.c.rank == 1,
         )
         effective_relevance = case(
             (review.c.decision == "relevant", literal("relevant")),
@@ -339,6 +380,7 @@ class PostgresContentQueryRepository:
             .join(request, request.c.id == attempt.c.provider_request_id)
             .outerjoin(scope, scope.c.id == request.c.scope_id)
             .outerjoin(analysis, current_analysis)
+            .outerjoin(latest_run, current_latest_run)
             .outerjoin(review, current_review)
         )
         if targets_only:
@@ -372,6 +414,8 @@ class PostgresContentQueryRepository:
                 analysis.c.analyzed_at,
                 analysis.c.model_provider,
                 analysis.c.model,
+                latest_run.c.run_id.label("latest_run_id"),
+                latest_run.c.run_status.label("latest_run_status"),
                 effective_relevance.label("effective_relevance"),
                 relevance_source.label("relevance_source"),
                 has_any_analysis.label("has_any_analysis"),
@@ -432,6 +476,8 @@ class PostgresContentQueryRepository:
                     analyzed_at=cast(datetime, row["analyzed_at"]),
                     model_provider=cast(str, row["model_provider"]),
                     model=cast(str, row["model"]),
+                    latest_run_id=cast(UUID | None, row["latest_run_id"]),
+                    latest_run_status=cast(str | None, row["latest_run_status"]),
                 )
             else:
                 analysis = ContentAnalysisRead(
@@ -444,6 +490,8 @@ class PostgresContentQueryRepository:
                     analyzed_at=None,
                     model_provider=None,
                     model=None,
+                    latest_run_id=cast(UUID | None, row["latest_run_id"]),
+                    latest_run_status=cast(str | None, row["latest_run_status"]),
                 )
             records.append(
                 ContentReadRecord(
@@ -487,7 +535,9 @@ class PostgresContentQueryRepository:
 def _latest_analysis_subquery(
     identity: AnalysisConfigurationIdentity | None,
 ) -> Any:
+    del identity
     result = analysis_content_results_table
+    run = analysis_content_runs_table
     statement = select(
         result.c.id,
         result.c.content_id,
@@ -501,21 +551,32 @@ def _latest_analysis_subquery(
         func.row_number()
         .over(
             partition_by=(result.c.content_id, result.c.content_version),
-            order_by=(result.c.analyzed_at.desc(), result.c.id.desc()),
+            order_by=(run.c.sequence_no.desc(), result.c.id.desc()),
         )
         .label("rank"),
-    )
-    if identity is None:
-        statement = statement.where(false())
-    else:
-        statement = statement.where(
-            result.c.prompt_version == identity.prompt_version,
-            result.c.prompt_sha256 == identity.prompt_sha256,
-            result.c.taxonomy_sha256 == identity.taxonomy_sha256,
-            result.c.model_provider == identity.model_provider,
-            result.c.model == identity.model,
-        )
+    ).select_from(result.join(run, run.c.id == result.c.analysis_run_id))
     return statement.subquery("latest_content_analysis")
+
+
+def _latest_analysis_run_subquery() -> Any:
+    target = analysis_content_run_targets_table
+    run = analysis_content_runs_table
+    return (
+        select(
+            target.c.content_id,
+            target.c.content_version,
+            run.c.id.label("run_id"),
+            run.c.status.label("run_status"),
+            func.row_number()
+            .over(
+                partition_by=(target.c.content_id, target.c.content_version),
+                order_by=run.c.sequence_no.desc(),
+            )
+            .label("rank"),
+        )
+        .select_from(target.join(run, run.c.id == target.c.run_id))
+        .subquery("latest_content_analysis_run")
+    )
 
 
 def _latest_relevance_review_subquery() -> Any:
@@ -588,17 +649,38 @@ def _apply_filters(
             )
             .outerjoin(source_scope, source_scope.c.id == source_request.c.scope_id)
         )
+        historical_outcome = processing_import_batch_items_table.alias(
+            "source_filter_historical_outcome"
+        )
+        historical_item = historical_import_campaign_items_table.alias(
+            "source_filter_historical_item"
+        )
         statement = statement.where(
-            exists(
-                select(literal(1))
-                .select_from(source_lineage)
-                .where(
-                    source_version.c.content_id == content.c.id,
-                    or_(
-                        source_request.c.import_batch_id == filters.source_identifier,
-                        source_scope.c.run_id == filters.source_identifier,
-                    ),
-                )
+            or_(
+                exists(
+                    select(literal(1))
+                    .select_from(source_lineage)
+                    .where(
+                        source_version.c.content_id == content.c.id,
+                        or_(
+                            source_request.c.import_batch_id == filters.source_identifier,
+                            source_scope.c.run_id == filters.source_identifier,
+                        ),
+                    )
+                ),
+                exists(
+                    select(literal(1))
+                    .select_from(
+                        historical_outcome.join(
+                            historical_item,
+                            historical_item.c.id == historical_outcome.c.campaign_item_id,
+                        )
+                    )
+                    .where(
+                        historical_outcome.c.content_id == content.c.id,
+                        historical_item.c.campaign_id == filters.source_identifier,
+                    )
+                ),
             )
         )
     if filters.analysis_status == "completed":

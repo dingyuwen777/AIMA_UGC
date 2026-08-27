@@ -7,7 +7,11 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from aima_ugc.bootstrap.analysis_worker import PostgresContentAnalysisJobExecutor
+from aima_ugc.bootstrap.analysis_worker import (
+    PostgresContentAnalysisJobExecutor,
+    PostgresContentAnalysisPlanJobExecutor,
+    create_analysis_job_terminal_callback,
+)
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.content_http import PostgresContentHttpService
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
@@ -31,6 +35,7 @@ from aima_ugc.modules.analysis import (
 )
 from aima_ugc.modules.analysis.content_analysis_job import (
     ContentAnalysisJobHandler,
+    ContentAnalysisPlanJobHandler,
     register_content_analysis_job,
 )
 from aima_ugc.modules.analysis.relevance_review import ContentRelevanceReviewConflict
@@ -113,7 +118,16 @@ def _analysis_registry(runtime) -> JobRegistry:  # type: ignore[no-untyped-def]
         service_factory=lambda: (service, lambda: None),
     )
     registry = JobRegistry()
-    register_content_analysis_job(registry, ContentAnalysisJobHandler(executor))
+    callback = create_analysis_job_terminal_callback(runtime)
+    register_content_analysis_job(
+        registry,
+        ContentAnalysisJobHandler(executor),
+        terminal_callback=callback,
+        planner_handler=ContentAnalysisPlanJobHandler(
+            PostgresContentAnalysisPlanJobExecutor(runtime)
+        ),
+        planner_terminal_callback=callback,
+    )
     return registry
 
 
@@ -168,6 +182,7 @@ def test_manual_irrelevant_override_and_undo_are_append_only_and_preserve_ai_res
             retry_delay_seconds=0,
         )
         assert analysis_worker.run_once() is True
+        assert analysis_worker.run_once() is True
         assert content_service.get_analysis_job(created.job_id).status == "succeeded"
 
         default_item = content_service.list_contents(ContentListQuery()).items[0]
@@ -213,13 +228,13 @@ def test_manual_irrelevant_override_and_undo_are_append_only_and_preserve_ai_res
                 == 1
             )
 
-        # 模型身份变化后当前 AI Result 变 stale，但活动人工覆盖仍必须可识别并可撤销。
+        # 模型配置变化不改变已经成功的 Run Current；人工覆盖仍可识别并撤销。
         runtime.settings = runtime.settings.model_copy(update={"llm_model": "stale-model"})
         stale_override = content_service.list_contents(
             ContentListQuery(relevance="irrelevant")
         ).items[0]
-        assert stale_override.analysis.status == "stale"
-        assert stale_override.analysis.relevance is None
+        assert stale_override.analysis.status == "completed"
+        assert stale_override.analysis.relevance == "relevant"
         assert stale_override.effective_relevance == "irrelevant"
         assert stale_override.relevance_source == "manual_review"
 
@@ -231,9 +246,9 @@ def test_manual_irrelevant_override_and_undo_are_append_only_and_preserve_ai_res
         assert undone.unchanged_count == 0
         inherited = content_service.list_contents(ContentListQuery()).items[0]
         assert inherited.id == content_id
-        assert inherited.analysis.status == "stale"
-        assert inherited.effective_relevance is None
-        assert inherited.relevance_source is None
+        assert inherited.analysis.status == "completed"
+        assert inherited.effective_relevance == "relevant"
+        assert inherited.relevance_source == "ai"
         assert content_service.list_contents(ContentListQuery(relevance="irrelevant")).items == ()
 
         undo_again = content_service.review_relevance(

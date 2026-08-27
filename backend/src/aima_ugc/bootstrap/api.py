@@ -19,6 +19,12 @@ from starlette.responses import JSONResponse, StreamingResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from aima_ugc.contracts.http import (
+    AnalysisContentRunCreatedResponse,
+    AnalysisContentRunCreateRequest,
+    AnalysisContentRunListResponse,
+    AnalysisContentRunPreviewRequest,
+    AnalysisContentRunPreviewResponse,
+    AnalysisContentRunResponse,
     CollectionBatchSupplementEligibilityResponse,
     CollectionCapabilitiesResponse,
     CollectionPlanCreateRequest,
@@ -42,6 +48,14 @@ from aima_ugc.contracts.http import (
     DataExportSubmitRequest,
     GlobalRelevanceConfigRequest,
     GlobalRelevanceConfigResponse,
+    HistoricalCampaignConflictListResponse,
+    HistoricalCampaignCreatedResponse,
+    HistoricalCampaignCreateRequest,
+    HistoricalCampaignItemListResponse,
+    HistoricalCampaignListResponse,
+    HistoricalCampaignResponse,
+    HistoricalDirectoryListQuery,
+    HistoricalDirectoryListResponse,
     HttpErrorItem,
     HttpErrorResponse,
     ImportBatchCreatedResponse,
@@ -56,6 +70,9 @@ from aima_ugc.contracts.http import (
     KeywordPackListResponse,
     KeywordPackResponse,
     KeywordPackSummaryResponse,
+    LocalDataImportCampaignCreatedResponse,
+    LocalDataImportCampaignCreateRequest,
+    LocalDataImportFileUploadedResponse,
     ResourceEnabledRequest,
 )
 from aima_ugc.contracts.relevance_review import (
@@ -77,11 +94,20 @@ from aima_ugc.modules.collection.strategy_http import (
     CollectionStrategyResourceNotFound,
 )
 from aima_ugc.modules.content.http import (
+    ContentAnalysisRunConflict,
+    ContentAnalysisTargetChanged,
+    ContentAnalysisUnavailable,
     ContentCursorUnavailable,
     ContentHttpService,
     ContentResourceNotFound,
     ContentSelectionEmpty,
     InvalidContentCursor,
+)
+from aima_ugc.modules.ingestion.historical_http import (
+    HistoricalCampaignNotFound,
+    HistoricalCampaignStateConflict,
+    HistoricalDirectoryRequestInvalid,
+    HistoricalImportHttpService,
 )
 from aima_ugc.modules.ingestion.http import (
     ImportConflict,
@@ -234,6 +260,7 @@ def create_app(
     reporting_service: ReportingHttpService | None = None,
     collection_service: CollectionHttpService | None = None,
     strategy_service: CollectionStrategyHttpService | None = None,
+    historical_import_service: HistoricalImportHttpService | None = None,
 ) -> FastAPI:
     """创建 API 应用；默认 runtime 延迟到启动或第一次 readiness 检查。"""
     runtime: PlatformRuntime | None = None
@@ -269,6 +296,18 @@ def create_app(
         from aima_ugc.bootstrap.import_http import PostgresImportHttpService
 
         return PostgresImportHttpService(resolved_runtime)
+
+    def current_historical_import_service() -> HistoricalImportHttpService:
+        if historical_import_service is not None:
+            return historical_import_service
+        resolved_runtime = get_runtime()
+        if resolved_runtime is None:
+            raise RuntimeError("Historical Import Service 依赖不可用")
+        from aima_ugc.bootstrap.historical_import_http import (
+            PostgresHistoricalImportHttpService,
+        )
+
+        return PostgresHistoricalImportHttpService(resolved_runtime)
 
     def current_content_service() -> ContentHttpService:
         if content_service is not None:
@@ -352,6 +391,45 @@ def create_app(
             title="资源不存在",
             detail="请求的资源不存在。",
             code="resource_not_found",
+        )
+
+    @application.exception_handler(HistoricalCampaignNotFound)
+    async def historical_campaign_not_found(
+        request: Request,
+        _: HistoricalCampaignNotFound,
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=404,
+            request_id=_request_id(request),
+            title="历史迁移不存在",
+            detail="请求的 Historical Campaign 不存在。",
+            code="historical_campaign_not_found",
+        )
+
+    @application.exception_handler(HistoricalCampaignStateConflict)
+    async def historical_campaign_conflict(
+        request: Request,
+        _: HistoricalCampaignStateConflict,
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=409,
+            request_id=_request_id(request),
+            title="历史迁移状态冲突",
+            detail="当前 Campaign 状态不允许执行该操作。",
+            code="historical_campaign_state_conflict",
+        )
+
+    @application.exception_handler(HistoricalDirectoryRequestInvalid)
+    async def historical_directory_invalid(
+        request: Request,
+        _: HistoricalDirectoryRequestInvalid,
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=400,
+            request_id=_request_id(request),
+            title="历史目录请求不合法",
+            detail="路径、游标或扫描选择不在管理员批准的安全边界内。",
+            code="historical_directory_invalid",
         )
 
     @application.exception_handler(ImportConflict)
@@ -442,6 +520,43 @@ def create_app(
             detail="当前选择条件没有可处理的内容。",
             code="content_selection_empty",
             field="body.targets",
+        )
+
+    @application.exception_handler(ContentAnalysisUnavailable)
+    async def content_analysis_unavailable(
+        request: Request, _: ContentAnalysisUnavailable
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=503,
+            request_id=_request_id(request),
+            title="AI 分析配置暂不可用",
+            detail="AI 模型或密钥配置不可用，请使用 request_id 联系管理员。",
+            code="content_analysis_unavailable",
+        )
+
+    @application.exception_handler(ContentAnalysisTargetChanged)
+    async def content_analysis_target_changed(
+        request: Request, _: ContentAnalysisTargetChanged
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=409,
+            request_id=_request_id(request),
+            title="AI 分析目标已经变化",
+            detail="预览后的内容集合已经变化，请重新预览并确认。",
+            code="content_analysis_target_changed",
+            field="body.expected_target_count",
+        )
+
+    @application.exception_handler(ContentAnalysisRunConflict)
+    async def content_analysis_run_conflict(
+        request: Request, _: ContentAnalysisRunConflict
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=409,
+            request_id=_request_id(request),
+            title="AI 分析运行冲突",
+            detail="幂等键已经用于不同请求，或运行状态不允许当前操作。",
+            code="content_analysis_run_conflict",
         )
 
     @application.exception_handler(ContentRelevanceReviewConflict)
@@ -811,6 +926,89 @@ def create_app(
             request_id=_request_id(request),
         )
 
+    @application.post(
+        "/api/v1/analysis/content-runs/preview",
+        operation_id="previewContentAnalysisRun",
+        response_model=AnalysisContentRunPreviewResponse,
+        responses={
+            422: {"model": HttpErrorResponse},
+            503: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["contents"],
+    )
+    def preview_content_analysis_run(
+        body: AnalysisContentRunPreviewRequest,
+    ) -> AnalysisContentRunPreviewResponse:
+        return current_content_service().preview_analysis_run(body)
+
+    @application.post(
+        "/api/v1/analysis/content-runs",
+        operation_id="createContentAnalysisRun",
+        response_model=AnalysisContentRunCreatedResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+        responses={
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            503: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["contents"],
+    )
+    def create_content_analysis_run(
+        body: AnalysisContentRunCreateRequest,
+        request: Request,
+    ) -> AnalysisContentRunCreatedResponse:
+        return current_content_service().create_analysis_run(
+            body,
+            request_id=_request_id(request),
+        )
+
+    @application.get(
+        "/api/v1/analysis/content-runs",
+        operation_id="listContentAnalysisRuns",
+        response_model=AnalysisContentRunListResponse,
+        responses={500: {"model": HttpErrorResponse}},
+        tags=["contents"],
+    )
+    def list_content_analysis_runs() -> AnalysisContentRunListResponse:
+        return current_content_service().list_analysis_runs()
+
+    @application.get(
+        "/api/v1/analysis/content-runs/{run_id}",
+        operation_id="getContentAnalysisRun",
+        response_model=AnalysisContentRunResponse,
+        responses={
+            404: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["contents"],
+    )
+    def get_content_analysis_run(run_id: UUID) -> AnalysisContentRunResponse:
+        return current_content_service().get_analysis_run(run_id)
+
+    @application.post(
+        "/api/v1/analysis/content-runs/{run_id}/cancel",
+        operation_id="cancelContentAnalysisRun",
+        response_model=AnalysisContentRunResponse,
+        responses={
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["contents"],
+    )
+    def cancel_content_analysis_run(
+        run_id: UUID,
+        request: Request,
+    ) -> AnalysisContentRunResponse:
+        return current_content_service().cancel_analysis_run(
+            run_id,
+            request_id=_request_id(request),
+        )
+
     @application.get(
         "/api/v1/content-analysis-jobs/{job_id}",
         operation_id="getContentAnalysisJob",
@@ -900,6 +1098,343 @@ def create_app(
                 "X-Content-Type-Options": "nosniff",
             },
         )
+
+    @application.get(
+        "/api/v1/data-import-sources/server/directories",
+        operation_id="listDataImportServerDirectories",
+        response_model=HistoricalDirectoryListResponse,
+        responses={
+            400: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    @application.get(
+        "/api/v1/historical-import/directories",
+        operation_id="listHistoricalImportDirectories",
+        response_model=HistoricalDirectoryListResponse,
+        responses={
+            400: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    def list_historical_import_directories(
+        query: Annotated[HistoricalDirectoryListQuery, Query()],
+    ) -> HistoricalDirectoryListResponse:
+        return current_historical_import_service().list_directories(query)
+
+    @application.post(
+        "/api/v1/data-import-campaigns/server",
+        operation_id="createServerDataImportCampaign",
+        response_model=HistoricalCampaignCreatedResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+        responses={
+            400: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    @application.post(
+        "/api/v1/historical-import-campaigns",
+        operation_id="createHistoricalImportCampaign",
+        response_model=HistoricalCampaignCreatedResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+        responses={
+            400: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    def create_historical_import_campaign(
+        body: HistoricalCampaignCreateRequest,
+        request: Request,
+    ) -> HistoricalCampaignCreatedResponse:
+        return current_historical_import_service().create_campaign(
+            body,
+            request_id=_request_id(request),
+        )
+
+    @application.post(
+        "/api/v1/data-import-campaigns/local",
+        operation_id="createLocalDataImportCampaign",
+        response_model=LocalDataImportCampaignCreatedResponse,
+        status_code=status.HTTP_201_CREATED,
+        responses={
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    def create_local_data_import_campaign(
+        body: LocalDataImportCampaignCreateRequest,
+        request: Request,
+    ) -> LocalDataImportCampaignCreatedResponse:
+        return current_historical_import_service().create_local_campaign(
+            body,
+            request_id=_request_id(request),
+        )
+
+    @application.put(
+        "/api/v1/data-import-campaigns/{campaign_id}/items/{item_id}/content",
+        operation_id="uploadLocalDataImportFile",
+        response_model=LocalDataImportFileUploadedResponse,
+        responses={
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            413: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    async def upload_local_data_import_file(
+        campaign_id: UUID,
+        item_id: UUID,
+        request: Request,
+        file: Annotated[UploadFile, File()],
+    ) -> LocalDataImportFileUploadedResponse:
+        try:
+            return await run_in_threadpool(
+                current_historical_import_service().upload_local_file,
+                campaign_id,
+                item_id,
+                filename=file.filename or "",
+                content_type=file.content_type,
+                source=file.file,
+                request_id=_request_id(request),
+            )
+        finally:
+            await file.close()
+
+    @application.post(
+        "/api/v1/data-import-campaigns/{campaign_id}/finalize",
+        operation_id="finalizeLocalDataImportCampaign",
+        response_model=HistoricalCampaignResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+        responses={
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    def finalize_local_data_import_campaign(
+        campaign_id: UUID,
+        request: Request,
+    ) -> HistoricalCampaignResponse:
+        return current_historical_import_service().finalize_local_campaign(
+            campaign_id,
+            request_id=_request_id(request),
+        )
+
+    @application.get(
+        "/api/v1/data-import-campaigns",
+        operation_id="listDataImportCampaigns",
+        response_model=HistoricalCampaignListResponse,
+        responses={500: {"model": HttpErrorResponse}},
+        tags=["imports"],
+    )
+    @application.get(
+        "/api/v1/historical-import-campaigns",
+        operation_id="listHistoricalImportCampaigns",
+        response_model=HistoricalCampaignListResponse,
+        responses={500: {"model": HttpErrorResponse}},
+        tags=["imports"],
+    )
+    def list_historical_import_campaigns() -> HistoricalCampaignListResponse:
+        return current_historical_import_service().list_campaigns()
+
+    @application.get(
+        "/api/v1/data-import-campaigns/{campaign_id}",
+        operation_id="getDataImportCampaign",
+        response_model=HistoricalCampaignResponse,
+        responses={
+            404: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    @application.get(
+        "/api/v1/historical-import-campaigns/{campaign_id}",
+        operation_id="getHistoricalImportCampaign",
+        response_model=HistoricalCampaignResponse,
+        responses={
+            404: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    def get_historical_import_campaign(campaign_id: UUID) -> HistoricalCampaignResponse:
+        return current_historical_import_service().get_campaign(campaign_id)
+
+    @application.get(
+        "/api/v1/data-import-campaigns/{campaign_id}/items",
+        operation_id="listDataImportCampaignItems",
+        response_model=HistoricalCampaignItemListResponse,
+        responses={
+            404: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    @application.get(
+        "/api/v1/historical-import-campaigns/{campaign_id}/items",
+        operation_id="listHistoricalImportCampaignItems",
+        response_model=HistoricalCampaignItemListResponse,
+        responses={
+            404: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    def list_historical_import_campaign_items(
+        campaign_id: UUID,
+    ) -> HistoricalCampaignItemListResponse:
+        return current_historical_import_service().list_items(campaign_id)
+
+    @application.get(
+        "/api/v1/data-import-campaigns/{campaign_id}/conflicts",
+        operation_id="listDataImportCampaignConflicts",
+        response_model=HistoricalCampaignConflictListResponse,
+        responses={
+            404: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    @application.get(
+        "/api/v1/historical-import-campaigns/{campaign_id}/conflicts",
+        operation_id="listHistoricalImportCampaignConflicts",
+        response_model=HistoricalCampaignConflictListResponse,
+        responses={
+            404: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    def list_historical_import_campaign_conflicts(
+        campaign_id: UUID,
+    ) -> HistoricalCampaignConflictListResponse:
+        return current_historical_import_service().list_conflicts(campaign_id)
+
+    def campaign_action(
+        campaign_id: UUID,
+        *,
+        action: Literal["start", "cancel", "retry"],
+        request: Request,
+    ) -> HistoricalCampaignResponse:
+        service = current_historical_import_service()
+        request_id = _request_id(request)
+        if action == "start":
+            return service.start_campaign(campaign_id, request_id=request_id)
+        if action == "cancel":
+            return service.cancel_campaign(campaign_id, request_id=request_id)
+        return service.retry_failed(campaign_id, request_id=request_id)
+
+    @application.post(
+        "/api/v1/data-import-campaigns/{campaign_id}/start",
+        operation_id="startDataImportCampaign",
+        response_model=HistoricalCampaignResponse,
+        responses={
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    @application.post(
+        "/api/v1/historical-import-campaigns/{campaign_id}/start",
+        operation_id="startHistoricalImportCampaign",
+        response_model=HistoricalCampaignResponse,
+        responses={
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    def start_historical_import_campaign(
+        campaign_id: UUID,
+        request: Request,
+    ) -> HistoricalCampaignResponse:
+        return campaign_action(campaign_id, action="start", request=request)
+
+    @application.post(
+        "/api/v1/data-import-campaigns/{campaign_id}/cancel",
+        operation_id="cancelDataImportCampaign",
+        response_model=HistoricalCampaignResponse,
+        responses={
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    @application.post(
+        "/api/v1/historical-import-campaigns/{campaign_id}/cancel",
+        operation_id="cancelHistoricalImportCampaign",
+        response_model=HistoricalCampaignResponse,
+        responses={
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    def cancel_historical_import_campaign(
+        campaign_id: UUID,
+        request: Request,
+    ) -> HistoricalCampaignResponse:
+        return campaign_action(campaign_id, action="cancel", request=request)
+
+    @application.post(
+        "/api/v1/data-import-campaigns/{campaign_id}/retry-failed",
+        operation_id="retryDataImportCampaignFailedItems",
+        response_model=HistoricalCampaignResponse,
+        responses={
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    @application.post(
+        "/api/v1/historical-import-campaigns/{campaign_id}/retry-failed",
+        operation_id="retryHistoricalImportCampaignFailedItems",
+        response_model=HistoricalCampaignResponse,
+        responses={
+            404: {"model": HttpErrorResponse},
+            409: {"model": HttpErrorResponse},
+            422: {"model": HttpErrorResponse},
+            500: {"model": HttpErrorResponse},
+        },
+        tags=["imports"],
+    )
+    def retry_historical_import_campaign_failed_items(
+        campaign_id: UUID,
+        request: Request,
+    ) -> HistoricalCampaignResponse:
+        return campaign_action(campaign_id, action="retry", request=request)
 
     @application.post(
         "/api/v1/import-batches",

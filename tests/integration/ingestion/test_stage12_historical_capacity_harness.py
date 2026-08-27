@@ -1,0 +1,59 @@
+"""Stage 12D 容量脚本必须编排生产 Campaign/Worker，而不是复制导入规则。"""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]
+BENCHMARK = ROOT / "scripts" / "performance" / "benchmark_stage12_historical.py"
+
+
+def test_capacity_harness_records_bounded_end_to_end_evidence(tmp_path: Path) -> None:
+    environment = os.environ.copy()
+    environment["AIMA_DB_NAME"] = "aima_ugc_stage12_capacity"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(BENCHMARK),
+            "--work-dir",
+            str(tmp_path),
+            "--rows",
+            "220",
+            "--rows-per-file",
+            "220",
+            "--chunk-rows",
+            "100",
+            "--max-in-flight",
+            "2",
+        ],
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+
+    report = json.loads((tmp_path / "capacity_report.json").read_text(encoding="utf-8"))
+    assert report["schema_version"] == "stage12-historical-capacity.v1"
+    assert report["input"]["rows"] == 220
+    assert report["input"]["files"] == 1
+    assert report["configuration"]["chunk_rows"] == 100
+    assert report["configuration"]["max_in_flight_jobs"] == 2
+    assert report["campaign"]["status"] == "succeeded"
+    assert report["campaign"]["terminal_rows"] == 220
+    assert report["campaign"]["reconciled"] is True
+    assert report["campaign"]["stats"]["created"] == 220
+    assert report["measurements"]["elapsed_seconds"] > 0
+    assert report["measurements"]["rows_per_second"] > 0
+    assert report["measurements"]["peak_rss_bytes"] > 0
+    assert report["measurements"]["wal_bytes"] >= 0
+    assert report["storage"]["database_bytes"] > 0
+    assert report["storage"]["source_bytes"] > 0
+    assert report["storage"]["artifact_bytes"] > 0
+    assert report["jobs"]["maximum_observed_active"] <= 2
+    assert report["jobs"]["ordinary_job_starvation_probe"] == "passed"

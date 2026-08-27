@@ -36,6 +36,8 @@ class ContentAnalysisRead:
     analyzed_at: datetime | None
     model_provider: str | None
     model: str | None
+    latest_run_id: UUID | None
+    latest_run_status: str | None
 
 
 @dataclass(frozen=True, slots=True)

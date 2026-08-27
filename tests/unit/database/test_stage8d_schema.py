@@ -17,6 +17,7 @@ def test_analysis_result_and_ordered_label_pair_schema() -> None:
     assert analysis_content_results_table.info["owner"] == "analysis"
     assert analysis_content_label_pairs_table.info["owner"] == "analysis"
     assert analysis_content_results_table.c.content_version.nullable is False
+    assert analysis_content_results_table.c.analysis_run_id.nullable is False
     assert analysis_content_results_table.c.job_id.nullable is False
 
     identities = {
@@ -24,15 +25,7 @@ def test_analysis_result_and_ordered_label_pair_schema() -> None:
         for constraint in analysis_content_results_table.constraints
         if isinstance(constraint, UniqueConstraint)
     }
-    assert (
-        "content_id",
-        "content_version",
-        "input_hash",
-        "prompt_sha256",
-        "taxonomy_sha256",
-        "model_provider",
-        "model",
-    ) in identities
+    assert ("analysis_run_id", "content_id", "content_version") in identities
 
     assert analysis_content_label_pairs_table.primary_key.columns.keys() == [
         "analysis_result_id",

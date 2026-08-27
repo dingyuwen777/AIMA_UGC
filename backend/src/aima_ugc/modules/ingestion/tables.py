@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Column,
     DateTime,
@@ -28,10 +29,37 @@ processing_import_batches_table = Table(
     Column("status", Text, nullable=False),
     Column("stats", JSONB, nullable=False, server_default="{}"),
     Column("error_summary", Text, nullable=True),
+    Column("historical_mode", Boolean, nullable=False, server_default="false"),
+    Column(
+        "historical_campaign_item_id",
+        Uuid,
+        ForeignKey(
+            "historical_import_campaign_items.id",
+            name="fk_pib_history_item",
+        ),
+        nullable=True,
+    ),
+    Column("historical_policy_version", Text, nullable=True),
+    Column(
+        "retry_of_batch_id",
+        Uuid,
+        ForeignKey("processing_import_batches.id", name="fk_pib_retry"),
+        nullable=True,
+    ),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("started_at", DateTime(timezone=True), nullable=True),
     Column("finished_at", DateTime(timezone=True), nullable=True),
     CheckConstraint("status in ('processing','succeeded','failed')", name="status_allowed"),
+    CheckConstraint(
+        "(historical_campaign_item_id is null and historical_policy_version is null "
+        "and retry_of_batch_id is null and not historical_mode) or "
+        "(historical_campaign_item_id is not null "
+        "and historical_policy_version in "
+        "('historical-fill-only.v1','standard-observation.v1') "
+        "and historical_mode = "
+        "(historical_policy_version = 'historical-fill-only.v1'))",
+        name="historical_fields_consistent",
+    ),
     info={"owner": "ingestion"},
 )
 

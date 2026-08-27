@@ -17,7 +17,10 @@ from aima_ugc.modules.analysis.relevance_review import (
 from aima_ugc.modules.analysis.relevance_review_tables import (
     analysis_content_relevance_reviews_table,
 )
-from aima_ugc.modules.analysis.tables import analysis_content_results_table
+from aima_ugc.modules.analysis.tables import (
+    analysis_content_results_table,
+    analysis_content_runs_table,
+)
 from aima_ugc.modules.content.tables import contents_table
 from aima_ugc.platform.time import beijing_now
 
@@ -102,9 +105,9 @@ class PostgresContentRelevanceReviewRepository:
 
         current_ai_by_content: dict[UUID, RowMapping] = {}
         if needs_ai_result:
-            if analysis_identity is None:
-                raise ContentRelevanceReviewConflict
+            del analysis_identity
             result = analysis_content_results_table
+            run = analysis_content_runs_table
             result_rows = tuple(
                 self._session.execute(
                     select(
@@ -114,17 +117,13 @@ class PostgresContentRelevanceReviewRepository:
                         result.c.relevance,
                         result.c.analyzed_at,
                     )
+                    .select_from(result.join(run, run.c.id == result.c.analysis_run_id))
                     .where(
                         result.c.content_id.in_(needs_ai_result),
-                        result.c.prompt_version == analysis_identity.prompt_version,
-                        result.c.prompt_sha256 == analysis_identity.prompt_sha256,
-                        result.c.taxonomy_sha256 == analysis_identity.taxonomy_sha256,
-                        result.c.model_provider == analysis_identity.model_provider,
-                        result.c.model == analysis_identity.model,
                     )
                     .order_by(
                         result.c.content_id,
-                        result.c.analyzed_at.desc(),
+                        run.c.sequence_no.desc(),
                         result.c.id.desc(),
                     )
                 ).mappings()

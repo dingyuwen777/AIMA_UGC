@@ -6,6 +6,12 @@ from typing import Protocol
 from uuid import UUID
 
 from aima_ugc.contracts.http import (
+    AnalysisContentRunCreatedResponse,
+    AnalysisContentRunCreateRequest,
+    AnalysisContentRunListResponse,
+    AnalysisContentRunPreviewRequest,
+    AnalysisContentRunPreviewResponse,
+    AnalysisContentRunResponse,
     ContentAnalysisCreatedResponse,
     ContentAnalysisSubmitRequest,
     ContentDetailResponse,
@@ -33,6 +39,18 @@ class ContentCursorUnavailable(RuntimeError):
     pass
 
 
+class ContentAnalysisUnavailable(RuntimeError):
+    pass
+
+
+class ContentAnalysisTargetChanged(RuntimeError):
+    pass
+
+
+class ContentAnalysisRunConflict(RuntimeError):
+    pass
+
+
 class ContentHttpService(Protocol):
     def list_contents(self, query: ContentListQuery) -> ContentListResponse: ...
 
@@ -54,9 +72,35 @@ class ContentHttpService(Protocol):
 
     def get_analysis_job(self, job_id: UUID) -> JobStatusResponse: ...
 
+    def preview_analysis_run(
+        self,
+        request: AnalysisContentRunPreviewRequest,
+    ) -> AnalysisContentRunPreviewResponse: ...
+
+    def create_analysis_run(
+        self,
+        request: AnalysisContentRunCreateRequest,
+        *,
+        request_id: str,
+    ) -> AnalysisContentRunCreatedResponse: ...
+
+    def list_analysis_runs(self) -> AnalysisContentRunListResponse: ...
+
+    def get_analysis_run(self, run_id: UUID) -> AnalysisContentRunResponse: ...
+
+    def cancel_analysis_run(
+        self,
+        run_id: UUID,
+        *,
+        request_id: str,
+    ) -> AnalysisContentRunResponse: ...
+
 
 __all__ = [
     "ContentCursorUnavailable",
+    "ContentAnalysisRunConflict",
+    "ContentAnalysisTargetChanged",
+    "ContentAnalysisUnavailable",
     "ContentHttpService",
     "ContentResourceNotFound",
     "ContentSelectionEmpty",

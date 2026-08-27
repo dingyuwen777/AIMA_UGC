@@ -13,7 +13,10 @@ from sqlalchemy.orm import Session
 
 from aima_ugc.contracts.platform import PlatformName, require_platform_name
 from aima_ugc.modules.analysis.persistence import AnalysisConfigurationIdentity
-from aima_ugc.modules.analysis.tables import analysis_content_results_table
+from aima_ugc.modules.analysis.tables import (
+    analysis_content_results_table,
+    analysis_content_runs_table,
+)
 from aima_ugc.modules.collection.tables import (
     provider_request_attempts_table,
     provider_requests_table,
@@ -213,30 +216,27 @@ class PostgresCollectionTargetReader:
         self,
         content_ids: tuple[UUID, ...],
     ) -> set[UUID]:
-        identity = self._analysis_identity
-        if identity is None:
-            return set()
         analysis = analysis_content_results_table
+        run = analysis_content_runs_table
         content = contents_table
         latest = (
             select(
                 analysis.c.content_id,
                 analysis.c.relevance,
             )
-            .select_from(analysis.join(content, content.c.id == analysis.c.content_id))
+            .select_from(
+                analysis.join(content, content.c.id == analysis.c.content_id).join(
+                    run, run.c.id == analysis.c.analysis_run_id
+                )
+            )
             .where(
                 analysis.c.content_id.in_(content_ids),
                 analysis.c.content_version == content.c.current_version,
-                analysis.c.prompt_version == identity.prompt_version,
-                analysis.c.prompt_sha256 == identity.prompt_sha256,
-                analysis.c.taxonomy_sha256 == identity.taxonomy_sha256,
-                analysis.c.model_provider == identity.model_provider,
-                analysis.c.model == identity.model,
             )
             .distinct(analysis.c.content_id)
             .order_by(
                 analysis.c.content_id,
-                analysis.c.analyzed_at.desc(),
+                run.c.sequence_no.desc(),
                 analysis.c.id.desc(),
             )
             .subquery()

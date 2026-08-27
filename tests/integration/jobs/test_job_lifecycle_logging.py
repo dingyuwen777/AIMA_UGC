@@ -12,9 +12,7 @@ from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.jobs import JobHandlerResult, JobRegistry, JobWorker
-from aima_ugc.platform.jobs.tables import job_attempt_events_table, jobs_table
 from pydantic import BaseModel
-from sqlalchemy import delete
 
 
 class _PayloadV1(BaseModel):
@@ -25,14 +23,12 @@ class _PayloadV1(BaseModel):
 def database_runtime() -> Iterator[DatabaseRuntime]:
     runtime = DatabaseRuntime(load_settings())
     with runtime.engine.begin() as connection:
-        connection.execute(delete(job_attempt_events_table))
-        connection.execute(delete(jobs_table))
+        connection.exec_driver_sql("TRUNCATE TABLE jobs RESTART IDENTITY CASCADE")
     try:
         yield runtime
     finally:
         with runtime.engine.begin() as connection:
-            connection.execute(delete(job_attempt_events_table))
-            connection.execute(delete(jobs_table))
+            connection.exec_driver_sql("TRUNCATE TABLE jobs RESTART IDENTITY CASCADE")
         runtime.dispose()
 
 

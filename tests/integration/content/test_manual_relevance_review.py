@@ -8,7 +8,11 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from aima_ugc.bootstrap.analysis_worker import PostgresContentAnalysisJobExecutor
+from aima_ugc.bootstrap.analysis_worker import (
+    PostgresContentAnalysisJobExecutor,
+    PostgresContentAnalysisPlanJobExecutor,
+    create_analysis_job_terminal_callback,
+)
 from aima_ugc.bootstrap.api import create_app
 from aima_ugc.bootstrap.content_http import PostgresContentHttpService
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
@@ -35,6 +39,7 @@ from aima_ugc.modules.analysis import (
 )
 from aima_ugc.modules.analysis.content_analysis_job import (
     ContentAnalysisJobHandler,
+    ContentAnalysisPlanJobHandler,
     register_content_analysis_job,
 )
 from aima_ugc.modules.analysis.relevance_review import ContentRelevanceReviewConflict
@@ -121,7 +126,16 @@ def _analysis_registry(runtime, response: str) -> JobRegistry:  # type: ignore[n
         service_factory=lambda: (service, lambda: None),
     )
     registry = JobRegistry()
-    register_content_analysis_job(registry, ContentAnalysisJobHandler(executor))
+    callback = create_analysis_job_terminal_callback(runtime)
+    register_content_analysis_job(
+        registry,
+        ContentAnalysisJobHandler(executor),
+        terminal_callback=callback,
+        planner_handler=ContentAnalysisPlanJobHandler(
+            PostgresContentAnalysisPlanJobExecutor(runtime)
+        ),
+        planner_terminal_callback=callback,
+    )
     return registry
 
 
@@ -186,6 +200,7 @@ def test_manual_relevance_review_preserves_ai_result_and_drives_business_queries
             lease_seconds=120,
             retry_delay_seconds=0,
         )
+        assert analysis_worker.run_once() is True
         assert analysis_worker.run_once() is True
         assert content_service.get_analysis_job(created.job_id).status == "succeeded"
 

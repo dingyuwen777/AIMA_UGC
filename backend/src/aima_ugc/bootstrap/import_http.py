@@ -98,6 +98,45 @@ _IMPORT_PROFILE = "aima-monitoring-excel.v1"
 _SHANGHAI = ZoneInfo("Asia/Shanghai")
 
 
+def read_import_keyword_selection(
+    runtime: PlatformRuntime,
+    keyword_pack_ids: tuple[UUID, ...],
+) -> ImportKeywordSelectionSnapshot:
+    """复用正式词包读取链，冻结 Import/Historical Campaign 的有效关键词。"""
+
+    if not keyword_pack_ids or len(keyword_pack_ids) > 20:
+        raise RelevanceConfigurationError
+    if len(keyword_pack_ids) != len(set(keyword_pack_ids)):
+        raise RelevanceConfigurationError
+    session = runtime.database.new_session()
+    try:
+        with session.begin():
+            try:
+                catalog = PostgresScheduledKeywordSnapshotReader(session).read(keyword_pack_ids)
+            except (MissingScheduledKeywordPackError, ValueError) as exc:
+                raise RelevanceConfigurationError from exc
+            if any(not pack.enabled for pack in catalog.keyword_packs):
+                raise RelevanceConfigurationError
+            configured = tuple(
+                RelevanceKeyword(text=entry.keyword_text, priority=entry.priority)
+                for entry in catalog.entries
+                if entry.pack_enabled and entry.keyword_enabled and entry.item_enabled
+            )
+            try:
+                effective = RelevanceService(configured).effective_keywords
+            except ValueError as exc:
+                raise RelevanceConfigurationError from exc
+            return ImportKeywordSelectionSnapshot(
+                keyword_packs=tuple(
+                    ImportKeywordPackSnapshot(id=pack.pack_id, version=pack.version)
+                    for pack in catalog.keyword_packs
+                ),
+                effective_keywords=effective,
+            )
+    finally:
+        session.close()
+
+
 class PostgresImportHttpService:
     """Router 之后的事务、Artifact 与 Job 编排；不执行 Excel 长任务。"""
 
@@ -391,37 +430,7 @@ class PostgresImportHttpService:
         self,
         keyword_pack_ids: tuple[UUID, ...],
     ) -> ImportKeywordSelectionSnapshot:
-        if not keyword_pack_ids or len(keyword_pack_ids) > 20:
-            raise RelevanceConfigurationError
-        if len(keyword_pack_ids) != len(set(keyword_pack_ids)):
-            raise RelevanceConfigurationError
-        session = self._runtime.database.new_session()
-        try:
-            with session.begin():
-                try:
-                    catalog = PostgresScheduledKeywordSnapshotReader(session).read(keyword_pack_ids)
-                except (MissingScheduledKeywordPackError, ValueError) as exc:
-                    raise RelevanceConfigurationError from exc
-                if any(not pack.enabled for pack in catalog.keyword_packs):
-                    raise RelevanceConfigurationError
-                configured = tuple(
-                    RelevanceKeyword(text=entry.keyword_text, priority=entry.priority)
-                    for entry in catalog.entries
-                    if entry.pack_enabled and entry.keyword_enabled and entry.item_enabled
-                )
-                try:
-                    effective = RelevanceService(configured).effective_keywords
-                except ValueError as exc:
-                    raise RelevanceConfigurationError from exc
-                return ImportKeywordSelectionSnapshot(
-                    keyword_packs=tuple(
-                        ImportKeywordPackSnapshot(id=pack.pack_id, version=pack.version)
-                        for pack in catalog.keyword_packs
-                    ),
-                    effective_keywords=effective,
-                )
-        finally:
-            session.close()
+        return read_import_keyword_selection(self._runtime, keyword_pack_ids)
 
     def _read_relevance_snapshot(self) -> tuple[RelevanceSnapshotV1, datetime]:
         session = self._runtime.database.new_session()
@@ -607,4 +616,4 @@ def _stat(stats: dict[str, object], name: str) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
 
 
-__all__ = ["PostgresImportHttpService"]
+__all__ = ["PostgresImportHttpService", "read_import_keyword_selection"]
