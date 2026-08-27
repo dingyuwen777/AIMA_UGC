@@ -29,6 +29,7 @@ affected_paths:
   - docs/roadmap/01_内网V1上线实施计划.md
   - docs/roadmap/02_生产上线实施路线.md
   - docs/roadmap/03_4000万历史数据迁移实施方案.md
+  - docs/appendix/11_生产部署与离线Release方案.md
   - backend/src/aima_ugc/modules/ingestion/README.md
   - backend/src/aima_ugc/modules/analysis/README.md
   - frontend/README.md
@@ -40,7 +41,7 @@ data_changes: []
 
 以当时 `main` 的代码、Pydantic Contract、Alembic Migration、generated client、测试、锁文件和已完成 Change 为机器事实，对现行文档做受影响域内的 `full` 治理，修复已经过期、互相矛盾或把历史施工状态写成当前状态的内容。
 
-本 Change 只治理当时仍承担事实说明、开发导航、Roadmap 或实施方案职责的现行文档。`changes/archive/**` 作为历史证据不因当前实现变化而改写。
+本 Change 只治理当时仍承担事实说明、开发导航、Roadmap 或实施方案职责的现行文档。既有 `changes/archive/**` 只作为历史证据读取；本文件是本 Change 自身的归档记录，归档后仅在发现归档证据或机器门禁事实错误时做最小纠正。
 
 # 成功标准
 
@@ -68,23 +69,23 @@ docs/blueprint/07_技术决策与实施门禁.md
 docs/roadmap/01_内网V1上线实施计划.md
 docs/roadmap/02_生产上线实施路线.md
 docs/roadmap/03_4000万历史数据迁移实施方案.md
+docs/appendix/11_生产部署与离线Release方案.md
 backend/src/aima_ugc/modules/ingestion/README.md
 backend/src/aima_ugc/modules/analysis/README.md
 frontend/README.md
 ```
 
-审计时确认以下候选文档已经与当时实现一致，因此本 Change 没有主动制造无关差异：
+`docs/appendix/11_生产部署与离线Release方案.md` 在最终语义 Review 中发现仍复制旧 4-Job Worker 清单，提交 `43f3352f41339a17508e401f8b155ce9a584dadf` 已把它同步为当前 8 类 Job，并说明兼容单文件 Import、Data Import Campaign 与 Analysis Planner/Shard 的关系。该提交位于本次治理基线与完成候选之间，因此属于本任务的实际治理 diff，不按执行者或提交来源从 Change 范围中剔除。
+
+审计后确认已经与当时实现一致，因此没有制造无关差异：
 
 ```text
 docs/blueprint/02_采集系统与数据标准化.md
 docs/blueprint/03_数据库与文件存储.md
 docs/appendix/08_数据入口与统一入库实现.md
-docs/appendix/11_生产部署与离线Release方案.md
 docs/appendix/14_4000万历史迁移与Analysis Run运行手册.md
 docs/AGENTS.md
 ```
-
-治理期间另有并行远端提交 `43f3352f41339a17508e401f8b155ce9a584dadf` 修改 `docs/appendix/11_生产部署与离线Release方案.md`，把旧 Worker 任务清单同步为当前 8 类 Job。该提交不是本 Change 显式写入序列的一部分，因此不计入上述 `affected_paths`；本轮最终反向审计确认其内容与 `backend/src/aima_ugc/bootstrap/worker.py` 一致，未覆盖或回滚该并行修改。
 
 # 非目标
 
@@ -192,11 +193,11 @@ PostgreSQL + Artifact Coordinated Backup/Restore
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 以代码等机器事实为准治理当前文档，包括实施方案 | user:current-request | satisfied | 已治理根 README、AGENTS、代码/API 导航、Blueprint、Roadmap 01/02/03、Ingestion/Analysis/Frontend README |
+| R1 | 以代码等机器事实为准治理当前文档，包括实施方案 | user:current-request | satisfied | 已治理根 README、AGENTS、代码/API 导航、Blueprint、Roadmap 01/02/03、Production Appendix 11、Ingestion/Analysis/Frontend README |
 | R2 | 已实现能力由机器事实证明，不用旧聊天/旧 Stage 代替 | AGENTS.md | satisfied | 反查 `bootstrap/worker.py`、`historical_jobs.py`、`content_analysis_job.py`、`bootstrap/api.py`、`historical_tables.py`、`routes.ts`、Release Workflow、版本文件和相关现行测试/运行手册 |
 | R3 | Stage 12 当前状态与真实归档 Change、Job Registry 和测试证据一致 | backend/src/aima_ugc/bootstrap/worker.py | satisfied | 当前 Registry 8 类 Job；Planner 名已校正；Stage 12 软件 Change 已 done/归档，生产容量/全量仍未完成 |
 | R4 | 保留已批准但未实现的 Production 目标，并明确未来状态 | docs/roadmap/02_生产上线实施路线.md | satisfied | 保留 Auth/HTTPS、Backup/Restore、SBOM/签名/provenance、Deploy/Rollback、Stage 11E；同时承认当前 Release 基础已经实现 |
-| R5 | 历史 Change 不作为当前文档重写对象 | .agents/skills/docs/references/01_事实源与同步判断.md | satisfied | 既有 `changes/archive/**` 未改写，只作为历史证据读取 |
+| R5 | 历史 Change 不作为当前文档重写对象 | .agents/skills/docs/references/01_事实源与同步判断.md | satisfied | 既有历史 Change 未改写，只作为事实演进/验收证据读取；本 Change 自身归档仅修正门禁与范围记录错误 |
 | R6 | 当前 API、前端入口和兼容边界必须与真实 Assembly/Router 一致 | backend/src/aima_ugc/bootstrap/api.py | satisfied | API 说明、Blueprint 04、Frontend README 已按 `/data-import-*`、`/analysis/content-runs*`、人工 relevance review、兼容 Route 与真实前端路由同步 |
 | R7 | 当前 Ingestion Owner/父事实覆盖 Stage 12 已落库能力 | backend/src/aima_ugc/modules/ingestion/historical_tables.py | satisfied | Blueprint 07 与 Ingestion README 已同步 Campaign/Item、row ledger/conflict、两类策略与 Owner 边界 |
 
@@ -210,7 +211,7 @@ PostgreSQL + Artifact Coordinated Backup/Restore
 | User / Browser | not_applicable | 未改变产品交互；只同步 Router/Feature 已存在事实 |
 | Full-stack / Provider | not_applicable | 未改变接线或 Provider 行为，无需付费 Probe |
 | Build / Package / Runtime | not_applicable | 未修改构建、依赖、镜像或部署配置 |
-| Docs / Governance | required | `ready_for_review` 候选 `631f9d995ce9d0a937f38d634778f7436e2edf7a`：CI `33070290791` success；Runtime Acceptance `33070290713` success；Change Completion Gate `33070290709` success。归档后最终 HEAD 需重新取得成功门禁，不能沿用该候选结论 |
+| Docs / Governance | required | `ready_for_review` 候选 `631f9d995ce9d0a937f38d634778f7436e2edf7a`：CI `33070290791` success；Runtime Acceptance `33070290713` success；Change Completion Gate `33070290709` success。首次归档后的 Completion Gate 因归档 Requirement Source 非规范失败，随后已修正真实仓库路径；最终交付以后续归档纠正 HEAD 的新鲜 CI / Runtime Acceptance / Change Completion Gate 为准。 |
 
 # 两阶段 Review
 
@@ -218,14 +219,19 @@ PostgreSQL + Artifact Coordinated Backup/Restore
 
 结论：PASS。
 
-- 用户要求的“按代码实际治理当前文档，包括实施方案”已覆盖根入口、Agent 入口、代码/API 导航、核心 Blueprint、Roadmap/Stage 12 方案和主要模块/前端 README；
+- 用户要求的“按代码实际治理当前文档，包括实施方案”已覆盖根入口、Agent 入口、代码/API 导航、核心 Blueprint、Roadmap/Stage 12 方案、Production Appendix 11 和主要模块/前端 README；
 - 已实现软件事实与批准但未实现的 Production 目标明确分层；
 - Stage 12 历史施工 Change 没有被改写；
-- 审计确认已经正确的 Blueprint 02/03、Appendix 08/11/14 等没有为凑范围制造差异。
+- 审计确认已经正确的 Blueprint 02/03、Appendix 08/14 等没有为凑范围制造差异。
 
 ## A2 文档质量 / 事实一致性 Review
 
-结论：PASS；未发现未解决的 BLOCKER / HIGH / MEDIUM Finding。
+结论：PASS；最终 re-review 未发现未解决的 BLOCKER / HIGH / MEDIUM Finding。
+
+Review-and-fix 过程中发现并修正：
+
+- MEDIUM：`docs/appendix/11_生产部署与离线Release方案.md` 的 Worker 小节仍复制旧 4-Job 清单，与实际 8 类 Registry 不一致；已在 `43f3352f41339a17508e401f8b155ce9a584dadf` 修正并重新反查 `bootstrap/worker.py`。
+- Governance metadata：首次归档把 R5 Source 写成不存在的 `Docs Skill`、R7 缺少完整仓库路径；Change Completion Gate 正确失败，后续按失败日志修正 Source，没有修改或降低门禁。
 
 重点反查：
 
@@ -245,9 +251,9 @@ Python 版本事实
 # Completion Audit
 
 - [x] upstream_re_read：重新读取用户要求、AGENTS、Coding/Docs/Review Skill、Blueprint、Roadmap、Stage 12 归档 Change 和当前机器事实，独立重建“当前实现 / 未来批准目标 / 历史证据”三类完成定义。
-- [x] change_coverage：R1—R7 全部 `satisfied`，没有 `not_satisfied`。
-- [x] reverse_audit：从治理后的 README/Blueprint/Roadmap/API/模块文档反向定位实际 Worker/API/Historical/Analysis/Router/Release/Table 事实；未发现会改变当前开发判断的 BLOCKER/HIGH/MEDIUM 漂移。
-- [x] unresolved_cleared：旧 4-Job 清单、错误 Planner 名、Stage 12“当前下一开发单元”、旧单文件 Import 作为页面主链、离线 Release 基础整体写成未实现等已修正。
+- [x] change_coverage：R1—R7 全部 `satisfied`；实际修改过的 Production Appendix 11 已纳入 `affected_paths` 与实际治理范围，没有 `not_satisfied`。
+- [x] reverse_audit：从治理后的 README/Blueprint/Roadmap/API/模块/Production Appendix 反向定位实际 Worker/API/Historical/Analysis/Router/Release/Table 事实；最终 re-review 未发现会改变当前开发判断的 BLOCKER/HIGH/MEDIUM 漂移。
+- [x] unresolved_cleared：旧 4-Job 清单、错误 Planner 名、Stage 12“当前下一开发单元”、旧单文件 Import 作为页面主链、离线 Release 基础整体写成未实现、归档 R5/R7 非规范 Source 均已修正。
 
 # 交付证据
 
@@ -271,6 +277,20 @@ Runtime Acceptance     33070290713  success
 Change Completion Gate 33070290709  success
 ```
 
-首次归档 HEAD `3729abbfd1f7e7c8dc0bf857ed5404af5f26dc19` 的 Runtime Acceptance 成功，但 Change Completion Gate `33070660744` 因本归档 R5/R7 的 Requirement Source 使用了非规范简称而失败；失败日志明确指出两个 Source 不是仓库路径。该问题只属于 Change 归档元数据，未涉及业务代码/Contract/Schema。本提交已把 R5/R7 Source 修正为真实仓库路径，必须以修正后的最终 HEAD 重新取得门禁成功后才可交付。
+首次归档链：
+
+```text
+6ecf8aa809b0c9cf4516b4de46d32160c5848470  创建归档记录
+3729abbfd1f7e7c8dc0bf857ed5404af5f26dc19  移除 Active Change
+```
+
+其 Change Completion Gate 因 R5/R7 Requirement Source 非规范失败；失败日志明确指出：
+
+```text
+R5 Requirement Source 仓库文件不存在：Docs Skill
+R7 Requirement Source 仓库文件不存在：modules/ingestion/historical_tables.py
+```
+
+后续提交 `0daec4424e1f38170ed43d020e42ca3e3a6012bc` 已把 R5/R7 Source 修正为真实仓库路径。本次归档范围纠正进一步把实际修改过的 Production Appendix 11 纳入本 Change，并修正对应 Review/Completion Audit 记录。以上纠正都不改变业务代码、Contract、Schema 或生产状态；必须以本次纠正后的最终 `main` HEAD 新鲜门禁为完成证据。
 
 本 Change 没有执行公司服务器 500 万/等效比例容量演练，也没有执行生产 4000 万写入。
