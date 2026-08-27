@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: CHG-20260826-stage12-historical-migration
 title: 实现4000万历史数据迁移与手动AI打标
 level: L3
-status: ready_for_review
+status: done
 owner: aima
 branch: main
 created: 2026-08-26
@@ -71,7 +71,7 @@ data_changes:
 - [x] 历史预检与迁移展示真实进度条；AI Analysis Run、Excel 导出与采集 Scope 等已有真实进度的长任务统一使用可访问进度条，未知总量阶段不伪造百分比。
 - [x] 页面只保留一个“导入数据”入口；本地文件/文件夹和服务器目录先分别取得 Source Artifact，再共用 Campaign 预检、Chunk、Job、进度、取消/重试和逐行账本；来源与 `standard_observation / historical_fill_only` 写入策略独立选择。
 - [x] 旧 `/api/v1/import-batches` 合法请求与响应保持兼容，不作为新页面主路径，也不删除现有消费者能力。
-- [ ] 已按用户授权在 `main` 创建功能批次提交；待推送远端后取得最终 `main` HEAD CI 证据并归档 Change。用户明确要求直接提交远端主分支，因此 PR 不适用。
+- [x] 已按用户授权在 `main` 创建并推送功能批次提交；产品 HEAD `cbb53b02` 的 Change Completion、Full-stack、Runtime、PostgreSQL Integration、Repository Quality 和 CI Gate 均成功。用户明确要求直接提交远端主分支，因此 PR 不适用。
 
 # 范围
 
@@ -136,7 +136,7 @@ data_changes:
 | R10 | 复用现有架构/Owner/Contract/Job/Prompt，不引入平行系统或无关依赖升级 | `AGENTS.md` | satisfied | 架构/表 Owner/Secret 门禁通过；HTTP 由 Pydantic 生成 OpenAPI/Client 且生成前后哈希一致；Job Registry、ArtifactService、Content Owner 和 Prompt 事实源均复用；依赖/锁文件未修改 |
 | R11 | 软件功能验收和生产 4000 万实际迁移分开，未经生产写授权不执行 | user:current-request | satisfied | 只在专用测试库运行合成容量阶梯和验证；运行手册、Roadmap 与本 Change 均保持生产 500 万演练和 4000 万独立授权边界，未启动生产 Campaign |
 | R12 | 分层测试、容量/恢复门禁、Completion Audit、两阶段 Review 和文档同步完整 | `AGENTS.md` | satisfied | 最终 Stage 12 Contract/API/PostgreSQL/Worker/Migration 目标组 67 passed/1 skipped，容量 Harness 1 passed，Frontend 44 passed、Browser Mock 31 passed，统一导入真实 Browser/API/PostgreSQL/Worker/Fake LLM Golden Path 3 passed；Completion Audit、Review re-review 和所有本地适用门禁完成 |
-| R13 | Git 操作必须保持在用户明确授权边界内，远端 CI 只能记录实际结果 | user:batched-direct-main-authorization-2026-08-27 | satisfied | 用户明确要求按功能分批提交到远端 `main`；已确认本地与 `origin/main` 无分叉并创建后端、前端、运行环境三个中文提交，未创建 PR、未强推、未改写历史；推送和远端 CI 仍按本 Change 交付任务取得实际证据后再归档 |
+| R13 | Git 操作必须保持在用户明确授权边界内，远端 CI 只能记录实际结果 | user:batched-direct-main-authorization-2026-08-27 | satisfied | 用户明确要求按功能分批提交到远端 `main`；5 个功能/修复批次均已推送，产品 HEAD 为 `cbb53b02`，全部风险相关 Workflow 成功；未创建 PR、未强推、未改写历史，Change 随最终文档批次归档 |
 | R14 | 历史预检、迁移及其他具有真实进度事实的长任务必须显示进度条；未知总量阶段不得伪造百分比 | user:progress-bars-plan-a-2026-08-27 | satisfied | Historical Campaign 使用集合式 PostgreSQL 聚合持久化预检/迁移进度并通过 Pydantic/OpenAPI/generated client 返回；发现阶段显示不确定进度；Analysis Run 使用活跃详情中的 Shard 进度并以冻结目标总数为分母；Excel 导出和 Collection Scope 复用现有真实进度。Contract/API/PostgreSQL、Frontend、Browser Mock 与真实 Full-stack 均通过 |
 | R15 | 页面统一为“导入数据”；本地文件/文件夹与批准服务器目录采用不同来源获取方式，Artifact 后共用 Campaign 管线；来源与标准观察/历史只补空策略解耦；旧单文件接口兼容保留 | user:unified-data-import-approved-2026-08-27 | satisfied | Pydantic/OpenAPI/generated client 提供 `data-import-*` 统一 Contract；本地清单/逐 Item 流式上传/finalize 与服务器批准目录均进入同一 Campaign/Artifact/预检/Chunk/Job/账本；Worker 按冻结策略分派标准观测或历史补空；页面只有一个“导入数据”入口；旧 `/api/v1/import-batches` 与 `/historical-import-*` 回归保持兼容。真实 Full-stack 3 passed，Browser Mock 31 passed |
 
@@ -152,7 +152,7 @@ data_changes:
 | Real Provider Probe | not_applicable | 历史导入不调用 Provider；真实 AI Probe 只有需要确认当前模型事实时才有界执行，普通 CI 不需要 |
 | Build / Package / Runtime | required | 最终前端 lint/typecheck/build 均退出码 0，Vite 构建 115 modules；Compose Windows 合并配置、API/Worker/Frontend 镜像、`backend.py --validate-only` 和源码开发 Frontend/API/Worker 已验证；Migration 与正式进程由真实 Full-stack 接线验证 |
 | Capacity / Recovery | required | 10 万/100 万报告完整并逐行对平；500 万依正式决定延期。恢复专项覆盖 Source Artifact 复用、失败重试、排队取消、Lease 接管/Fencing、重复执行和终态对账 |
-| Docs / Governance / Other | required | Docs Skill 同步长期文档/模块 README/运行手册及 `uploading` 取消语义；架构、Owner、Secret、Docs、Ruff format/check、Mypy、Contract 生成检查与 `git diff --check` 通过；Ready Check 通过；最终远端 `main` CI 正在按 R13 授权进入集成步骤 |
+| Docs / Governance / Other | required | Docs Skill 同步长期文档/模块 README/运行手册及 `uploading` 取消语义；架构、Owner、Secret、Docs、Ruff format/check、Mypy、Contract 生成检查与 `git diff --check` 通过；Ready Check 通过；产品 HEAD `cbb53b02` 的全部风险相关远端 Workflow 成功 |
 
 # 完成阶段两阶段 Review
 
@@ -164,7 +164,7 @@ data_changes:
 
 ## Review B：方案 → 当前代码/风险
 
-Review A1 重新读取用户已确认决定、Roadmap 02/03、Blueprint 07 和当前机器事实，独立重建了目录安全、不可变快照、方案 A、逐行对账、恢复、公平调度、AI 解耦/Run Current、兼容、容量与授权边界；R1—R13 没有遗漏。500 万演练仍有明确延期依据，Git 边界已更新为用户批准的分批直推 `main`，PR 不适用，远端 CI 只能在实际推送后记录。
+Review A1 重新读取用户已确认决定、Roadmap 02/03、Blueprint 07 和当前机器事实，独立重建了目录安全、不可变快照、方案 A、逐行对账、恢复、公平调度、AI 解耦/Run Current、兼容、容量与授权边界；R1—R15 没有遗漏。500 万演练仍有明确延期依据，Git 边界已更新为用户批准的分批直推 `main`，PR 不适用，远端 CI 只记录实际完成结果。
 
 Review A2 正反向审计了 `Directory Browser → Campaign → Source Artifact → Chunk Artifact → Job → Content Owner → outcome/conflict → Campaign 页面/Voice Plaza`，以及 `声音广场动作 → Preview/Create → Planner → Target/Shard → Result → Current/历史状态`。后端动作均有页面入口或明确兼容入口，页面按钮/轮询状态与后端状态机一致；导入链没有 Analysis Job 副作用。
 
@@ -202,7 +202,7 @@ Review A1/A2 结论：两项修复不改变公共 Contract、Schema、权限、�
 # Completion Audit
 
 - [x] upstream_re_read：重新读取用户决定、Roadmap 02/03、Blueprint README/04/07 和当前机器事实，独立重建软件完成、服务器容量演练、Git 集成与生产执行四个不同边界。
-- [x] change_coverage：逐项复核 R1—R15；R1—R6、R8—R15 已满足，R7 的服务器 500 万/等效比例演练有明确上游延期依据，没有 `not_satisfied`；最终远端 CI 与归档是当前交付步骤，不改变产品 Requirement 状态。
+- [x] change_coverage：逐项复核 R1—R15；R1—R6、R8—R15 已满足，R7 的服务器 500 万/等效比例演练有明确上游延期依据，没有 `not_satisfied`；产品 HEAD 远端 CI 已成功，当前 Change 已完成并归档。
 - [x] reverse_audit：正反向核对本机/服务器来源获取、Artifact/Campaign 公共管线、策略分派、兼容入口、单一页面入口、Voice Plaza 与 Analysis Run；前端动作均有后端真实能力，后端公共能力均有页面或明确兼容消费者。
 - [x] unresolved_cleared：本轮后端真实启动暴露的 0028/旧开发库 Schema 兼容、Windows readiness 和 Owner 元数据漂移均已按 Red→Green 修复并 re-review；无未解决的 BLOCKER/HIGH/MEDIUM Finding。
 
@@ -226,7 +226,7 @@ Review A1/A2 结论：两项修复不改变公共 Contract、Schema、权限、�
 - [x] 同步 Blueprint、Roadmap、Appendix、模块 README、OpenAPI/generated client，并完成新的 Completion Audit 与两阶段 Review。
 - [x] 修复真实后端启动的 0028 旧约束名、0029 Schema 收敛、Windows `SSLKEYLOGFILE` readiness 崩溃和 Owner 元数据漂移，并完成真实启动复验。
 - [x] 修复首次远端 `main` 集成暴露的 Runtime Windows overlay 挂载断言漂移，以及容量 Harness 依赖本机预置数据库的问题；本地按远端同范围复验通过。
-- [ ] 按用户授权把功能批次推送到远端 `main`，取得最终 HEAD 的新鲜 CI 证据，再按规则归档 Change；PR 不适用。
+- [x] 按用户授权把功能批次推送到远端 `main`；产品 HEAD `cbb53b02` 已取得新鲜 CI 成功证据，Change 按规则归档；PR 不适用。
 - [ ] 只有获得独立生产写授权后，才执行实际 4000 万 Campaign 和全量对账。
 
 # 验证
@@ -280,12 +280,13 @@ Review A1/A2 结论：两项修复不改变公共 Contract、Schema、权限、�
 - 本轮 Ruff format 为 523 files already formatted，Ruff check 全通过，Mypy `backend/src + scripts/dev/local_runtime.py` 检查 255 个 source file 无问题，`git diff --check` 退出码 0。
 - 后端启动修复写回 Completion Audit 后，架构、表 Owner、Secret、Docs 四项质量门禁均退出码 0；最终 Ready Check 退出码 0：`gated=44 / strict=44 / legacy=72`。
 - 首次推送远端 `main` HEAD `2e09142409245e379b018095fe5a38062a7cdc32` 后，Change Completion Gate、Full-stack Acceptance、Developer Tooling Compatibility 和 CI 的 Repository Quality 成功；Runtime Acceptance 因永久 Workflow 未把新增只读 `/data/aima-historical-input` 纳入 Windows overlay 精确挂载集合而失败，CI PostgreSQL Ingestion 因容量测试硬编码了 CI 不存在的本机预置数据库而失败。这两项是远端真实 Red 证据，未被重跑或跳过掩盖。
-- 修复后，Windows overlay Compose JSON 的 bootstrap/postgres/backend 精确挂载集合通过，历史目录为只读 bind；容量 Harness 改为每次创建唯一专用临时库、迁移到 head 并在完成后删除，与远端相同的完整 Ingestion PostgreSQL Integration 为 `17 passed`。Workflow/测试修复不改变业务 Contract、Schema 或生产迁移语义，最终远端新 HEAD CI 仍待推送后取得。
+- 修复后，Windows overlay Compose JSON 的 bootstrap/postgres/backend 精确挂载集合通过，历史目录为只读 bind；容量 Harness 改为每次创建唯一专用临时库、迁移到 head 并在完成后删除，与远端相同的完整 Ingestion PostgreSQL Integration 为 `17 passed`。Workflow/测试修复不改变业务 Contract、Schema 或生产迁移语义。
+- 最终产品 HEAD `cbb53b028222c5a40cf4b07042c7eca9f12717fa` 的远端新鲜证据全部成功：Change Completion Gate `33062749653`、Full-stack Acceptance `33062749614`、Runtime Acceptance `33062749642`、CI `33062749615`；其中 CI 内 PostgreSQL Integration、Repository Quality 和 CI Gate 均成功。Developer Tooling Compatibility 因最终修复路径不命中触发条件而未在该 HEAD 运行；上一产品文档 HEAD `2e091424` 的对应运行 `33061998551` 已成功。
 
 # 文档影响
 
 - Docs Impact：`full`，覆盖本 Change 引起的 Roadmap、Blueprint、Appendix、模块 README、运行部署、代码导航和用户行为；只修改真实受影响文件。
-- Roadmap 03 保留批准语义并同步为“软件工作区已完成本地验收，待 Git 集成、公司服务器容量演练和生产授权”；不写成已合并或 4000 万实际迁移完成。
+- Roadmap 03 保留批准语义并同步为“软件实现已合入 `main` 并通过风险相关 CI，公司服务器容量演练和生产授权仍待独立完成”；不写成 4000 万实际迁移完成。
 - Internal V1-B 状态依据用户明确确认更新；仓库没有服务器执行明细时必须保留这一证据边界。
 - 本轮 Docs Impact：`targeted`；同步源码开发 `env.local` 配置、默认历史输入目录、API/Worker 传递、重启边界和 `.runtime` 目录清单，没有复制 HTTP Contract 或新建第二套运行方案。
 - 本轮稀疏批量修复 Docs Impact：`not_applicable`；公共 Contract、Schema、配置、用户流程和已批准历史只补空语义均未改变，现有 Roadmap/Blueprint/Appendix 已描述目标行为，只需在本 Change 记录现场缺陷与验证证据。
@@ -297,8 +298,8 @@ Review A1/A2 结论：两项修复不改变公共 Contract、Schema、权限、�
 
 # 交付
 
-- Commit：已在 `main` 创建 `7ed798de`（后端与 Migration）、`48e026a0`（统一导入前端与进度）、`e8d7ace4`（本地运行与全栈环境）、`2e091424`（文档与交付记录）；首次 main CI 修复随当前提交。
+- Commit：已在 `main` 创建并推送 `7ed798de`（后端与 Migration）、`48e026a0`（统一导入前端与进度）、`e8d7ace4`（本地运行与全栈环境）、`2e091424`（文档与交付记录）、`cbb53b02`（CI 环境隔离与运行验收修复）；最终归档随本文件所在提交完成。
 - PR：不适用；用户明确要求按功能分批直接提交到远端主分支。
-- CI：首批 4 个提交已推送到 `2e091424`；该 HEAD 的 Change Completion、Full-stack、Developer Tooling 和 Repository Quality 成功，Runtime 与 PostgreSQL Ingestion 的两项真实失败已按 Red→Green 修复并随当前 CI 修复批次提交；最终新 HEAD 结果待推送后读取，不伪造成功。
+- CI：首次产品 HEAD `2e091424` 的两项真实失败已按 Red→Green 修复；最终产品 HEAD `cbb53b02` 的 Change Completion Gate、Full-stack Acceptance、Runtime Acceptance 与 CI 全部成功，CI 内 PostgreSQL Integration、Repository Quality 和 CI Gate 均成功。最终归档提交只改变 Roadmap/Change 文档，其治理 CI 在推送后另行读取并作为外部交付证据报告，避免在归档文件内形成自引用提交循环。
 - 发布：未授权、未执行。
 - 生产 4000 万迁移：未授权、未执行。

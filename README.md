@@ -557,7 +557,7 @@ env.local
 → scripts/dev/backend.py / frontend.py
 ```
 
-Internal V1-A 已验证 bootstrap、PostgreSQL 18.4、Migration、configure、API/Worker/Scheduler、Nginx、Readiness、持久挂载、Secret File、数据库密码丢失 fail closed 与 Linux Compose Golden Path。Internal V1-B 已由业务 Owner 于 2026-08-26 确认完成，公司内网 V1 已上线；该结论来自外部业务确认，仓库不补造服务器执行日志。当前下一正式单元是 **Stage 12：4000 万历史数据迁移与手动 AI 打标**；软件工作区已完成本地验收，尚待 Git 集成、公司服务器容量演练和生产执行授权，正式方案见 [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](docs/roadmap/03_4000万历史数据迁移实施方案.md)。
+Internal V1-A 已验证 bootstrap、PostgreSQL 18.4、Migration、configure、API/Worker/Scheduler、Nginx、Readiness、持久挂载、Secret File、数据库密码丢失 fail closed 与 Linux Compose Golden Path。Internal V1-B 已由业务 Owner 于 2026-08-26 确认完成，公司内网 V1 已上线；该结论来自外部业务确认，仓库不补造服务器执行日志。**Stage 12：4000 万历史数据迁移与手动 AI 打标**的软件实现已经合入 `main` 并通过风险相关 CI；当前下一门禁是公司服务器 500 万或经批准的等效比例容量演练，实际生产 4000 万迁移仍需独立写授权，正式方案见 [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](docs/roadmap/03_4000万历史数据迁移实施方案.md)。
 
 完整 Production 仍尚未闭环：
 
