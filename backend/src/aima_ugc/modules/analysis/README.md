@@ -169,11 +169,17 @@ ContentLabelingLLMResponse
 content_analysis_job.py
 ```
 
-Job 类型：
+当前 Job 类型：
 
 ```text
+analysis.content-run-plan.v1
+→ Analysis Run Planner：在 PostgreSQL 中冻结 Run Target，并有界创建 Shard Job
+
 analysis.content-label.v1
+→ 对冻结的 Request/Shard 执行实际 LLM 分析并持久化结果
 ```
+
+两类 Job 都由 `register_content_analysis_job()` 注册；`bootstrap/worker.py` 传入 Planner Handler，因此不能只把 `analysis.content-label.v1` 写成当前完整 Analysis Registry。
 
 ### 正式 Worker 装配
 
@@ -353,7 +359,7 @@ backend/src/aima_ugc/adapters/llm/README.md
 
 ```text
 PostgreSQL Content
-→ Analysis Request/Job
+→ Analysis Run / Planner / Shard Job
 → PostgreSQL Analysis Result
 ```
 
@@ -410,10 +416,10 @@ docs/appendix/07_AI舆情打标与分析实现.md
 ### Analysis 一直 pending
 
 ```text
-analysis_content_requests
-→ jobs
+analysis_content_runs / analysis_content_requests
+→ Planner / Shard jobs
 → worker.log
-→ analysis_content_request_items
+→ analysis_content_run_targets / analysis_content_request_items
 → 当前 Content Version / Analysis Identity
 ```
 
