@@ -108,14 +108,20 @@ Vue build 输出
 
 ### `worker`
 
-消费 PostgreSQL durable Job：
+消费 PostgreSQL durable Job；精确 Registry 以 `backend/src/aima_ugc/bootstrap/worker.py` 为准，当前包括：
 
 ```text
 collection.run.v1
 ingestion.import-excel.v1
+ingestion.historical-discover.v1
+ingestion.historical-snapshot.v1
+ingestion.historical-import-chunk.v1
+analysis.content-run-plan.v1
 analysis.content-label.v1
 reporting.content-export-excel.v1
 ```
+
+其中 `ingestion.import-excel.v1` 是兼容单文件 Import；三个 `ingestion.historical-*` 由当前统一 Data Import Campaign 使用；新版 Analysis Run 使用 `analysis.content-run-plan.v1` Planner 再有界创建 `analysis.content-label.v1` Shard Job。它们都复用同一 PostgreSQL Durable Job Runtime，不是并行任务系统。
 
 ### `scheduler`
 
