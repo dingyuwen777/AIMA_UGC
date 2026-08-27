@@ -30,6 +30,7 @@
 | 理解 Excel 与 TikHub 为什么最后进入同一个 Content、来源链怎么保留 | [`08_数据入口与统一入库实现.md`](08_数据入口与统一入库实现.md) | `bootstrap/import_worker.py`、`manual_ingestion.py`、`modules/ingestion/`、`modules/content/ingestion.py` |
 | 理解统一 Excel 数据契约、三张 Sheet、离线处理与共享 Exporter | [`06_Excel统一数据导出与离线调试.md`](06_Excel统一数据导出与离线调试.md) | `platform/export/excel.py`、`contracts/export/`、`adapters/providers/imports_test/` |
 | 理解 AI relevance / voice_type / sentiment / labels、Validator、Retry、持久化 | [`07_AI舆情打标与分析实现.md`](07_AI舆情打标与分析实现.md) | `modules/analysis/`、当前 Prompt、Analysis PostgreSQL Repository |
+| 运行服务器历史 Campaign、理解 Fill-Only/逐行对账/容量门禁与手动 Analysis Run | [`14_4000万历史迁移与Analysis Run运行手册.md`](14_4000万历史迁移与Analysis Run运行手册.md) | `bootstrap/historical_import_*`、`historical_content.py`、Analysis Run/Shard、Stage 12 Migration/测试 |
 | 评估数千万级 AI 打标的成本、吞吐、本地分类器与 LLM fallback 路线 | [`13_AI大规模打标与成本优化方案.md`](13_AI大规模打标与成本优化方案.md) | `modules/analysis/`、`adapters/llm/`、当前 Analysis Identity 与 Prompt/Taxonomy |
 | 理解 Markdown/Word 报告的数据流、图表、词云和 DOCX 结构 | [`10_Word舆情报告生成与排版实现.md`](10_Word舆情报告生成与排版实现.md) | `platform/reporting/`、`imports_test/generate_report.py` |
 | 从当前代码继续做到生产 Docker/Compose、离线 Release、备份恢复和回滚 | [`11_生产部署与离线Release方案.md`](11_生产部署与离线Release方案.md) | 当前 `entrypoints/`、`PlatformSettings`、Storage/Logging/Health；Docker/Compose 仍待 Stage 11 实现 |

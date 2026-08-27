@@ -640,3 +640,18 @@ contents
 - PostgreSQL UNIQUE/并发。
 
 最终 PostgreSQL 行为必须由 Integration Test 验证，不能只依赖 InMemory Fake。
+
+---
+
+## 17. Historical Fill-Only 不是普通新鲜度写入
+
+统一数据导入仍由 Content Owner 写 `contents/accounts/content_versions`。每个 Campaign 独立冻结写入策略：`standard_observation` 复用既有观测语义；`historical_fill_only` 只补 Current 空字段，非空同值不写，非空异值不覆盖并输出冲突，空历史值不清空 Current。后者的 `unchanged/conflict` 不推进字段新鲜度或 `last_seen_at`；没有可信历史观测时间的 Metric 不更新 Current，也不创建伪造 Observation。来源是本地还是服务器不会静默改变该策略。
+
+生产入口：
+
+```text
+adapters/persistence/postgres/historical_content.py
+→ PostgresHistoricalContentRepository.ingest_rows()
+```
+
+该入口每次最多处理一个有界 Chunk，并在同一事务提交业务变化、逐行 outcome 和冲突。普通 Excel/TikHub 继续使用既有字段新鲜度规则，不受历史策略影响。

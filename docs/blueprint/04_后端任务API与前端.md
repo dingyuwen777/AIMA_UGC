@@ -273,6 +273,11 @@ GET  /api/v1/contents/{content_id}
 GET  /api/v1/content-analysis-capabilities
 POST /api/v1/content-analysis-requests
 GET  /api/v1/content-analysis-jobs/{job_id}
+POST /api/v1/analysis/content-runs/preview
+POST /api/v1/analysis/content-runs
+GET  /api/v1/analysis/content-runs
+GET  /api/v1/analysis/content-runs/{run_id}
+POST /api/v1/analysis/content-runs/{run_id}/cancel
 POST /api/v1/content-relevance-reviews
 ```
 
@@ -289,7 +294,7 @@ backend/src/aima_ugc/adapters/persistence/postgres/relevance_reviews.py
 
 `GET /content-analysis-capabilities` 是安全只读运行能力投影，只返回 `configured`。它用于让声音广场在 LLM Base URL / Model / Secret 未形成可执行配置时明确提示并禁用 AI 打标；前端不得读取 `env.local`、Secret 文件或复制后端配置判断。源码开发时，能力接口与 Worker 都从 `AIMA_EXTERNAL_SECRET_DIR` 对应的外部 Secret Root 读取 `llm_api_key`，不能误用只存 PostgreSQL/Cursor Secret 的内部 Root。该接口不返回 Base URL、Model、Provider、Secret 路径或 API Key，也不证明外部 LLM 此刻在线；Worker 的执行时配置守卫仍是最终防线。
 
-`POST /content-analysis-requests` 会先冻结 Content ID + `current_version`，再创建 `analysis.content-label.v1` Job。Worker 分析的不是“未来可能变化的查询结果”，而是请求创建时冻结的目标版本。
+`POST /content-analysis-requests` 是兼容入口，为保持既有 `request_id/job_id` Response，仍在 HTTP 短事务内冻结目标、创建首个 Shard 并建立 Analysis Run，并兼容历史 selected/query 语义。新页面只允许显式选择 1—1000 条内容：先调用 `/analysis/content-runs/preview` 取得目标数、Shard 数和模型/Prompt/配置身份，再由用户确认创建 Run；新版 Preview/Create Contract 不接受 query scope。创建 HTTP 只保存 Run 头与 Planner Job。Planner 在 PostgreSQL 事务内用 `INSERT ... SELECT` 冻结 Content ID + `current_version`，复核 Preview 数量并维持有界 Shard Job 窗口；数量变化时整次冻结回滚，Run 返回 Planner `error_code` 供页面展示。查询范围 Run 要等真实付费模型 Gold Set、费用和容量报告后重新决策。不同 Run 结果全部保留，Current 按 Run 创建顺序选择，最新失败/取消不会抹掉旧成功结果。
 
 `POST /content-relevance-reviews` 是同步短事务：接收 1—1000 个不重复 Content ID，并显式提交 `decision=relevant / irrelevant / inherit_ai`。`relevant/irrelevant` 分别把当前 Content Version 人工覆盖为业务相关/不相关；`inherit_ai` 撤销活动人工覆盖并恢复当前 AI 基线。批量请求先锁定并校验全部目标，任一目标不可操作则整批返回 409；重复提交当前已经生效的决定幂等。已有人工覆盖要切换到相反人工结论时必须先撤销。模型原始 `analysis_content_results` 不会被更新或删除。`GET /contents` 与 Detail 同时返回 AI 原判和查询层派生的 `effective_relevance / relevance_source`，前端据此显示人工覆盖与撤销入口，不能从筛选条件猜测人工状态；AI 变为 `stale` 时活动人工覆盖仍可撤销。
 
@@ -364,7 +369,30 @@ backend/src/aima_ugc/bootstrap/collection_strategy_http.py
 backend/src/aima_ugc/modules/collection/planning.py
 ```
 
-当前正式 API 没有 `/alerts`、`/reports`、`/analysis-runs` 之类未来占位路径。未来新增资源时以当时 Pydantic Contract 和 Route 为准，不提前在 Blueprint 冻结不存在的 URL。
+### 5.8 统一数据导入 Campaign
+
+```text
+GET  /api/v1/data-import-sources/server/directories
+POST /api/v1/data-import-campaigns/server
+POST /api/v1/data-import-campaigns/local
+PUT  /api/v1/data-import-campaigns/{campaign_id}/items/{item_id}/content
+POST /api/v1/data-import-campaigns/{campaign_id}/finalize
+GET  /api/v1/data-import-campaigns
+GET  /api/v1/data-import-campaigns/{campaign_id}
+GET  /api/v1/data-import-campaigns/{campaign_id}/items
+GET  /api/v1/data-import-campaigns/{campaign_id}/conflicts
+POST /api/v1/data-import-campaigns/{campaign_id}/start
+POST /api/v1/data-import-campaigns/{campaign_id}/cancel
+POST /api/v1/data-import-campaigns/{campaign_id}/retry-failed
+```
+
+页面以 `source_kind=local_upload / server_path` 区分文件怎样进入服务器，以 `ingestion_policy=standard_observation / historical_fill_only` 区分进入 Content Owner 后怎样写；两者相互独立并冻结在 Campaign。本地来源先提交安全相对路径和大小清单，再逐 Item 流式上传；服务器来源只收发管理员批准根目录内的相对路径。两者都必须先完成源文件 Artifact、SHA-256、流式预检和全部 Chunk 冻结，进入 `ready` 后页面才允许 start。Chunk 使用低优先级、有界窗口和逐行终态账本；导入不会自动创建 AI Job。
+
+既有 `/api/v1/import-batches` 和 `/api/v1/historical-import-*` 暂时保留兼容，页面不再调用它们建立平行入口。物理表和 Job type 沿用 `historical_*` 名称是兼容选择，不改变统一业务资源。4000 万容量门禁仅覆盖 `server_path + historical_fill_only`；普通 `standard_observation` 复用既有逐记录 Content Owner 行为，未取得同规模吞吐证据。
+
+Campaign Response 的 `progress` 由后端从 Source Item、Snapshot Job 和 Chunk Item 的持久状态集合式聚合，不由页面扫描有界明细或猜测。目录发现阶段尚不知道文件总数，页面显示不确定进度且不输出百分比；进入快照后按文件和 Snapshot Job 进度显示预检百分比；迁移阶段按已进入 `succeeded / failed / cancelled` 终态的 Chunk 行数除以冻结总行数显示，因此会按有界 Chunk 前进。终态进度表示“已完成对账”，成功、失败和取消仍由状态与统计分别表达。Analysis Run 列表不复制全部 Shard；页面只对活动 Run 补读既有详情接口，并以冻结的 Run `target_count` 为分母汇总 `Shard target_count × progress`，尚未进入有界调度窗口的目标因此保持 0%。Excel Export 和 Collection Scope 直接显示已有 Job/Scope 进度；普通 Excel Import 和 Collection Run 总进度继续复用原有实现。
+
+当前正式 API 仍没有 `/alerts`、通用 Web Report Center 等未来占位路径。未来新增资源时以当时 Pydantic Contract 和 Route 为准，不提前在 Blueprint 冻结不存在的 URL。
 
 ---
 
@@ -396,7 +424,8 @@ frontend/src/features/collection-strategy/
 含义：
 
 - `/voice-plaza`：内容查询、筛选、详情、Analysis 交互；Analysis 按钮资格由后端 `content-analysis-capabilities` 驱动；“AI 相关性”可显式查看待复核 `irrelevant`，并支持单条/批量人工标记为相关；
-- `/collection-runtime`：Excel Import / TikHub Run 的统一运行中心视图；
+- `/collection-runtime`：Excel Import / TikHub Run 的统一运行中心视图；其中只有一个“导入数据”入口，可选本地电脑或批准的服务器目录，并在同一 Campaign UI 中完成预检/启动/取消/重试、真实进度与冲突查看；
+- `/voice-plaza`：Analysis Run 预检、显式创建、历史、加权进度与取消；导出弹窗同时展示持久 Export Job 进度；
 - `/collection-strategy`：Keyword Pack、全局 Relevance 和 Collection Plan 管理；
 - `/`：当前 HomeView。
 

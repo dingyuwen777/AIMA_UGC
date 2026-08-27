@@ -239,18 +239,7 @@ frontend/src/generated/api/
 
 ## 7. 当前 Figma / 图片基线
 
-当前部分正式页面是在完整 Figma 设计系统建立前落地，因此仓库仍保留经批准的一次性视觉参考：
-
-```text
-docs/assets/stage8c/collection-runtime-center-prototype.png
-
-docs/assets/stage8d/voice-plaza-list-reference.jpg
-docs/assets/stage8d/voice-plaza-detail-reference.jpg
-
-docs/assets/stage8e/tikhub-supplement-centralized-runs-prototype.png
-```
-
-这些文件说明当前页面视觉演进来源，但不是长期设计系统。
+当前部分正式页面是在完整 Figma 设计系统建立前落地。早期经批准的一次性视觉参考及其尺寸、哈希和采用原因仍由对应的归档 Change 保存；这些二进制图片已于 2026-08-27 经用户授权从当前仓库删除，不再作为可访问的现行资产。当前可运行的 Vue 页面是实际视觉实现，但仍不能冒充正式 Figma 设计系统。
 
 以后建立正式 Figma Frame 后应明确：
 

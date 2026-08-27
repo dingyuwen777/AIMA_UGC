@@ -190,6 +190,8 @@ backend/src/aima_ugc/modules/analysis/tables.py
 当前正式表：
 
 ```text
+analysis_content_runs
+analysis_content_run_targets
 analysis_content_results
 analysis_content_requests
 analysis_content_request_items
@@ -222,11 +224,16 @@ backend/src/aima_ugc/adapters/providers/imports_test/
 ## 5. 正式 PostgreSQL Analysis 调用链
 
 ```text
-POST /api/v1/content-analysis-requests
-→ 冻结目标 Content Version
-→ analysis_content_requests / items
-→ analysis.content-label.v1 Job
+POST /api/v1/analysis/content-runs/preview
+→ 预检目标数和冻结的 Prompt/Taxonomy/Model/生成配置身份
+→ 用户显式确认
+POST /api/v1/analysis/content-runs
+→ 短事务创建 analysis_content_runs + analysis.content-run-plan.v1 Planner
+→ Planner 用 INSERT ... SELECT 冻结 run_targets 的 Content ID + Version
+→ 校验 Preview 数量，变化时回滚并以可查询 error_code 失败关闭
+→ 有界创建 analysis.content-label.v1 Shard Job
 → Worker
+→ 校验实际 Prompt/Taxonomy/Provider/Model/生成配置与 Run 冻结身份一致
 → ContentLabelingService
 → LLM Adapter
 → RuntimeTaxonomyValidator
@@ -251,17 +258,18 @@ Version A 的 Analysis
 ≠ Version B 的当前 Analysis
 ```
 
-Current Analysis 身份会结合：
+Current Analysis 先要求 Content Version 相同，再按 Analysis Run 的数据库创建顺序选择最新成功结果：
 
 ```text
 content/version
-analysis schema/version
-prompt identity
-taxonomy identity
-model provider/model
+analysis_content_runs.sequence_no
 ```
 
-因此查询/声音广场可以区分：
+兼容入口 `POST /api/v1/content-analysis-requests` 为保持既有 `request_id/job_id` Response，仍同步冻结目标并创建首个 Shard；新版 Run API 不在 HTTP 请求内扫描或冻结海量目标。Planner 的 Target 冻结与首批 Shard 创建在同一事务，Lease 重试复用已提交的 Target/Shard。
+
+不同 Run 的 Prompt/Taxonomy/Model/生成配置身份仍完整保存在 Run/Result 中。当前进程配置变化不会把已成功 Run 静默作废；尚未执行的 Shard 如果发现实际配置与冻结身份不同，会在调用 LLM 前以 `analysis_run_configuration_changed` 失败，不把新配置的结果写进旧 Run。最新 Run 失败或取消时，旧成功结果继续展示，API 另行返回最新 Run 状态。因此查询/声音广场可以区分：
+
+Migration 0027 无法从旧 Request 还原当时实际 generation config，即使已有 Result 能推断 Prompt/Provider/Model，也不能把 `{}` 的回填哈希当作真实冻结配置。因此 `legacy-request:*` Run 保留兼容执行；Stage 12 新建 Run 全部严格执行上述调用前与持久化前双重校验。
 
 ```text
 completed
@@ -423,12 +431,12 @@ Job error
 
 先检查 `GET /api/v1/content-analysis-capabilities` 的 `configured`，再检查 Base URL、Model 和外部 `llm_api_key` 是否同时存在。源码开发 launcher 把 LLM Key 写入 `.runtime/secrets/llm_api_key`，并通过 `AIMA_EXTERNAL_SECRET_DIR` 暴露给 API/Worker；`.runtime/internal-secrets/` 只保存 PostgreSQL/Cursor Secret。能力接口和 Worker 必须使用同一个 `settings.external_secret_root`，不能分别读取不同目录。
 
-### 页面 stale
+### 页面 stale / 最新 Run 失败
 
 ```text
 Content Version
-→ Prompt/Taxonomy/Model Identity
-→ matching Analysis Result
+→ 最新 Run Target/状态
+→ 该版本最新成功 Result
 → Content Query current-analysis join
 ```
 
@@ -460,3 +468,5 @@ SQL 排障见：
 后续阶段看：
 
 [`docs/roadmap/02_生产上线实施路线.md`](../../../../../docs/roadmap/02_生产上线实施路线.md)
+
+当前声音广场已经提供 Analysis Run 预检、显式创建、历史列表和取消；这仍属于现有 voice-plaza Feature，不是独立管理中心。新版 Run 只接受显式选择的 1—1000 个 Content ID，查询范围 Run 暂不开放；兼容入口和历史数据仍可表达 query scope。默认 `AIMA_ANALYSIS_RUN_SHARD_SIZE=1` 与最大 1000 条边界都要等真实付费 Gold Set、费用和容量报告后才能重新决策。

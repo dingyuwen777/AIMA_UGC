@@ -339,18 +339,7 @@ Figma 不负责：
 
 ## 8. 当前视觉基线
 
-正式 Figma 设计资产尚未完全替代早期已批准视觉参考，仓库当前仍保留：
-
-```text
-docs/assets/stage8c/collection-runtime-center-prototype.png
-
-docs/assets/stage8d/voice-plaza-list-reference.jpg
-docs/assets/stage8d/voice-plaza-detail-reference.jpg
-
-docs/assets/stage8e/tikhub-supplement-centralized-runs-prototype.png
-```
-
-这些图片是页面视觉演进证据，不是长期 API/业务事实。
+正式 Figma 设计资产尚未完全替代当前 Vue 页面。早期已批准视觉参考的尺寸、哈希和采用原因仍保存在对应归档 Change 中；相关二进制图片已于 2026-08-27 经用户授权从当前仓库删除，不再作为现行可访问资产。归档记录只解释页面的视觉演进，不是长期 API 或业务事实。
 
 未来正式 Figma Frame 建立后，需要明确：
 

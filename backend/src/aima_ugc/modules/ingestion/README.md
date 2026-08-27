@@ -484,3 +484,51 @@ frontend/e2e-fullstack/
 - [`../../../../../docs/blueprint/02_采集系统与数据标准化.md`](../../../../../docs/blueprint/02_采集系统与数据标准化.md)
 - [`../../../../../docs/blueprint/03_数据库与文件存储.md`](../../../../../docs/blueprint/03_数据库与文件存储.md)
 - [`../../../../../docs/blueprint/04_后端任务API与前端.md`](../../../../../docs/blueprint/04_后端任务API与前端.md)
+
+---
+
+## 16. 统一数据导入 Campaign
+
+采集运行中心只有一个“导入数据”入口，但保留两种受控来源和两种独立写入策略：
+
+```text
+本地浏览器显式选择多文件/文件夹
+→ 冻结相对路径 + byte_size 清单
+→ 逐 Item 流式上传
+
+管理员批准的只读服务器相对路径
+→ Worker 枚举与快照
+
+两种来源
+→ Data Import Campaign（物理表沿用 historical_import_* 名称）
+→ 原文件 Artifact + SHA-256
+→ 流式 XLSX 转有界 Chunk Artifact
+→ 全部预检后 ready
+→ 用户显式 start
+→ 低优先级有界 Chunk Job
+→ Content Owner 按 Campaign 冻结的 standard_observation / historical_fill_only 执行
+→ 逐行终态与稀疏冲突账本
+```
+
+相关模块：
+
+```text
+historical_http.py / historical_jobs.py / historical_tables.py
+historical_directory.py / historical_chunk.py
+bootstrap/historical_import_http.py
+bootstrap/historical_import_worker.py
+adapters/persistence/postgres/historical_import.py
+adapters/persistence/postgres/historical_content.py
+```
+
+服务器目录 HTTP 只收发相对路径；目录实现拒绝路径逃逸和所有链接组件。本地清单同样只接受安全 POSIX 相对路径，不接收本机绝对路径；重复文件 PUT 必须与已冻结 Artifact 的文件名、大小和 SHA-256 一致。Source Item 绑定和 Artifact `linked` 状态同事务提交。页面可在刷新后从 Campaign 历史重新进入详情；若本地上传中断，可直接取消 `uploading` Campaign，尚未预检的 Source Item 与 Campaign 会在同一事务进入 `cancelled`，不等待 Worker。源文件通过 Manifest/SHA-256 校验后，Source Artifact 会在流式解析前绑定 source_file Item；同一技术 Job 重试复用它。未建立 Campaign Item 引用的 Source/Chunk Artifact 按 1 天孤儿规则回收，已引用快照不会被该规则删除。历史 Job 的 priority 为低优先级，in-flight 窗口由 Campaign 创建时冻结；不同文件可以占用窗口并行，同一文件只调度最早的一个 ready Chunk，保证跨 Chunk 重复身份仍由稳定首行胜出。已进入业务事务的每行 outcome 唯一约束负责重试幂等；结构失败或取消、尚未进入事务的整段行由不可变 Chunk 的冻结行范围作为终态并计入 `failed`，不生成无意义的大量伪账本。人工重试的新 Batch 用集合式 `INSERT ... SELECT` 继承前一 Batch 已提交的身份集合，保证失败 Chunk 中的跨 Chunk 重复行仍为 `duplicate`。不同 Chunk 的来源 Request/Attempt 按不可变 Chunk Artifact 区分。排队 Chunk 取消时会同步收敛 Item/Batch/Campaign 终态和行数汇总，不依赖不会发生的 Worker 回调。
+
+目录 Cursor 只对响应分页；当前单次目录读取仍先收集并排序该层的全部直接子项。部署时应给历史迁移配置专用、层级清晰且单目录子项有界的批准根目录，不应直接挂载拥有海量直接子项的通用共享盘根。source_file 另有 `campaign_id + relative_path + manifest_identity` 条件唯一索引，避免 `ordinal IS NULL` 使普通唯一约束失效后在并发重试中产生重复源文件事实。
+
+没有可信历史观测时间时，Content 和 Author Metric 都不会更新 Current 或生成 Observation。Author 的粉丝数、关注数、作品数和获赞数会在历史 Canonical 输入进入 Fill-Only 前剥离，不能绕过 Metric 规则变成普通字段。
+
+`standard_observation` 继续复用 `ContentIngestionService + PostgresCompleteContentRepository` 的普通业务语义；`historical_fill_only` 使用集合式批量路径。当前 4000 万容量门禁只覆盖服务器来源的历史补空组合，不能把标准观测组合写成已经通过相同规模验证。旧 `/api/v1/import-batches` 和 `/api/v1/historical-import-*` 只作为兼容 Contract 保留，前端主入口使用 `/api/v1/data-import-*`。
+
+完整运行、容量和 Go/No-Go 见：
+
+[`../../../../../docs/appendix/14_4000万历史迁移与Analysis Run运行手册.md`](../../../../../docs/appendix/14_4000万历史迁移与Analysis Run运行手册.md)
