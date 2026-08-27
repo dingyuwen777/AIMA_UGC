@@ -188,6 +188,17 @@ Review A2 正反向审计了 `Directory Browser → Campaign → Source Artifact
 
 运行验证过程另发生一次本地操作事故：首次直接执行 PostgreSQL Integration 时误连当前开发库，现有 Fixture 的 `TRUNCATE ... CASCADE` 清除了该本地开发库中的 Job/Artifact/Account 及级联业务数据。发现后立即停止对开发库跑测试，创建专用 `aima_ugc_stage12_fix_test` 库完成后续验证；原始 Excel、文件快照和 Chunk Artifact 物理文件仍在，本轮按原输入重建并完成了 75,279 行 Campaign。未被修改的旧 Windows Compose volume 仍保留，并另建了已停止的恢复检查克隆 `aima-ugc-recovery-inspect-20260827`；其中可见 4 条 Content、1 个 Job、1 个 Artifact，但未经用户决定不擅自合并回当前开发库。
 
+## 首次 main CI 修复专项 Review
+
+永久 Workflow 的触发事件、Job/check 名称、权限、并发和依赖图均未改变；只同步 Stage 12 已新增但测试期望遗漏的运行边界，并让容量测试自行建立隔离依赖。
+
+| 原证明责任 | 原位置 | 修复后位置 | 证据等级 | 依据 |
+| --- | --- | --- | --- | --- |
+| Windows overlay 的数据、日志、Secret 和 PostgreSQL 存储模型 | Runtime Acceptance / `Validate Windows overlay storage model` | 同一步骤，新增历史输入 bind 的来源、类型和只读断言 | 保持并增强 | 原有目标集合和类型断言全部保留，新增 `/data/aima-historical-input`；本地按同一 Compose JSON 模型验证通过 |
+| Historical 容量 Harness 必须运行生产 Campaign/Worker 且只能清理专用库 | CI / `tests/integration/ingestion/test_stage12_historical_capacity_harness.py` | 同一测试、同一 benchmark，增加唯一临时容量库创建、Migration 和清理 | 保持并增强 | 不改 benchmark、行数、Chunk 或业务断言；完整 Ingestion 组 `17 passed` |
+
+Review A1/A2 结论：两项修复不改变公共 Contract、Schema、权限、安全或生产数据语义，没有新增上游决策；代码质量 re-review 未发现 BLOCKER/HIGH/MEDIUM Finding。测试库名仍强制以 `_stage12_capacity` 结尾，清理仍由生产基准的 fail-closed 检查保护；临时库在测试结束时终止连接并删除。
+
 # Completion Audit
 
 - [x] upstream_re_read：重新读取用户决定、Roadmap 02/03、Blueprint README/04/07 和当前机器事实，独立重建软件完成、服务器容量演练、Git 集成与生产执行四个不同边界。
@@ -214,6 +225,7 @@ Review A2 正反向审计了 `Directory Browser → Campaign → Source Artifact
 - [x] Green/Refactor：实现来源与写入策略解耦、Artifact 后共用 Campaign 流水线和单一“导入数据”页面入口。
 - [x] 同步 Blueprint、Roadmap、Appendix、模块 README、OpenAPI/generated client，并完成新的 Completion Audit 与两阶段 Review。
 - [x] 修复真实后端启动的 0028 旧约束名、0029 Schema 收敛、Windows `SSLKEYLOGFILE` readiness 崩溃和 Owner 元数据漂移，并完成真实启动复验。
+- [x] 修复首次远端 `main` 集成暴露的 Runtime Windows overlay 挂载断言漂移，以及容量 Harness 依赖本机预置数据库的问题；本地按远端同范围复验通过。
 - [ ] 按用户授权把功能批次推送到远端 `main`，取得最终 HEAD 的新鲜 CI 证据，再按规则归档 Change；PR 不适用。
 - [ ] 只有获得独立生产写授权后，才执行实际 4000 万 Campaign 和全量对账。
 
@@ -267,6 +279,8 @@ Review A2 正反向审计了 `Directory Browser → Campaign → Source Artifact
 - 最终 `uv run python scripts/dev/backend.py` 已实际启动 API 与 Worker，Uvicorn 监听 `127.0.0.1:8090`，launcher 和独立请求两次取得 `/health/ready` HTTP 200；响应确认 database、artifact_store、log_directory 均为 `ok`。验证用 API/Worker 已停止，未启动任何历史 Campaign 或 AI Job。
 - 本轮 Ruff format 为 523 files already formatted，Ruff check 全通过，Mypy `backend/src + scripts/dev/local_runtime.py` 检查 255 个 source file 无问题，`git diff --check` 退出码 0。
 - 后端启动修复写回 Completion Audit 后，架构、表 Owner、Secret、Docs 四项质量门禁均退出码 0；最终 Ready Check 退出码 0：`gated=44 / strict=44 / legacy=72`。
+- 首次推送远端 `main` HEAD `2e09142409245e379b018095fe5a38062a7cdc32` 后，Change Completion Gate、Full-stack Acceptance、Developer Tooling Compatibility 和 CI 的 Repository Quality 成功；Runtime Acceptance 因永久 Workflow 未把新增只读 `/data/aima-historical-input` 纳入 Windows overlay 精确挂载集合而失败，CI PostgreSQL Ingestion 因容量测试硬编码了 CI 不存在的本机预置数据库而失败。这两项是远端真实 Red 证据，未被重跑或跳过掩盖。
+- 修复后，Windows overlay Compose JSON 的 bootstrap/postgres/backend 精确挂载集合通过，历史目录为只读 bind；容量 Harness 改为每次创建唯一专用临时库、迁移到 head 并在完成后删除，与远端相同的完整 Ingestion PostgreSQL Integration 为 `17 passed`。Workflow/测试修复不改变业务 Contract、Schema 或生产迁移语义，最终远端新 HEAD CI 仍待推送后取得。
 
 # 文档影响
 
@@ -279,11 +293,12 @@ Review A2 正反向审计了 `Directory Browser → Campaign → Source Artifact
 - 本轮统一导入 Docs Impact：`full`；同步单一页面入口、本机/服务器来源边界、独立写入策略、`data-import-*` 主 Contract、旧接口兼容、0028 Migration、4000 万容量适用组合和当前交付状态。上传取消修复后再按 Docs Skill `targeted` 更新 `uploading → cancelled` 与晚到上传边界。
 - 本轮后端启动修复 Docs Impact：`targeted`；业务 Contract、用户操作和已批准数据语义未改变，长期运行文档的 `backend.py → alembic upgrade head → readiness` 流程仍然正确；只在当前 Change 同步 0029 当前 head、旧开发 Schema 收敛原因和真实启动证据，不复制约束清单形成第二套 Schema。
 - 本轮旧视觉资产清理 Docs Impact：`targeted`；删除已获授权的一次性 PNG/JPG 二进制文件，并同步 `docs/guides/01_Figma与前端设计开发工作流.md` 与 `frontend/README.md`，使现行文档不再指向不存在的资产；归档 Change 仅保留历史采用事实。
+- 本轮首次 main CI 修复 Docs Impact：`not_applicable`；只同步永久 Runtime Workflow 的既有挂载责任与容量测试数据库隔离，产品行为、HTTP Contract、Schema、部署操作和用户文档均未改变，验证与失败证据记录在当前 Change。
 
 # 交付
 
-- Commit：已在 `main` 创建 `7ed798de`（后端与 Migration）、`48e026a0`（统一导入前端与进度）、`e8d7ace4`（本地运行与全栈环境）；文档批次随本文件提交。
+- Commit：已在 `main` 创建 `7ed798de`（后端与 Migration）、`48e026a0`（统一导入前端与进度）、`e8d7ace4`（本地运行与全栈环境）、`2e091424`（文档与交付记录）；首次 main CI 修复随当前提交。
 - PR：不适用；用户明确要求按功能分批直接提交到远端主分支。
-- CI：尚未推送远端，未伪造结果；本地门禁完成后推送，随后读取最终 `main` HEAD 的实际 CI。
+- CI：首批 4 个提交已推送到 `2e091424`；该 HEAD 的 Change Completion、Full-stack、Developer Tooling 和 Repository Quality 成功，Runtime 与 PostgreSQL Ingestion 的两项真实失败已按 Red→Green 修复并随当前 CI 修复批次提交；最终新 HEAD 结果待推送后读取，不伪造成功。
 - 发布：未授权、未执行。
 - 生产 4000 万迁移：未授权、未执行。

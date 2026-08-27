@@ -73,6 +73,7 @@ jobs:
           set -euo pipefail
           ROOT="${RUNNER_TEMP}/aima-runtime"
           ENV_FILE="${RUNNER_TEMP}/aima-runtime.env"
+          mkdir -p "${ROOT}/historical-input"
           echo "AIMA_RUNTIME_ROOT=${ROOT}" >> "${GITHUB_ENV}"
           echo "AIMA_RUNTIME_ENV_FILE=${ENV_FILE}" >> "${GITHUB_ENV}"
           cat > "${ENV_FILE}" <<EOF
@@ -80,6 +81,7 @@ jobs:
           AIMA_HTTP_BIND_IP=127.0.0.1
           AIMA_HTTP_PORT=18080
           AIMA_HOST_ROOT=${ROOT}
+          AIMA_HISTORICAL_IMPORT_HOST_ROOT=${ROOT}/historical-input
           AIMA_DB_NAME=aima_ugc
           AIMA_DB_USER=aima_ugc
           AIMA_DB_CONNECT_TIMEOUT_SECONDS=5
@@ -208,6 +210,7 @@ jobs:
               "/app/data": (root / "runtime/data", True),
               "/app/logs": (root / "runtime/logs", True),
               "/run/internal-secrets": (root / "shared/secrets", False),
+              "/data/aima-historical-input": (root / "historical-input", False),
           }
           for destination, (source, writable) in expected.items():
               actual = mounts[destination]
@@ -295,11 +298,13 @@ jobs:
           LOCAL_ROOT=".runtime/compose-ci-${GITHUB_RUN_ID}"
           LOCAL_ROOT_ABS="${GITHUB_WORKSPACE}/${LOCAL_ROOT#./}"
           LOCAL_ENV_FILE="${RUNNER_TEMP}/aima-local-compose.env"
+          mkdir -p "${LOCAL_ROOT_ABS}/historical-input"
           cat > "${LOCAL_ENV_FILE}" <<EOF
           AIMA_IMAGE_TAG=runtime-ci-${GITHUB_RUN_ID}
           AIMA_HTTP_BIND_IP=127.0.0.1
           AIMA_HTTP_PORT=18081
           AIMA_HOST_ROOT=./${LOCAL_ROOT}
+          AIMA_HISTORICAL_IMPORT_HOST_ROOT=./${LOCAL_ROOT}/historical-input
           AIMA_DB_NAME=aima_ugc
           AIMA_DB_USER=aima_ugc
           AIMA_DB_CONNECT_TIMEOUT_SECONDS=5
@@ -344,6 +349,7 @@ jobs:
                   "/app/data": root / "runtime/data",
                   "/app/logs": root / "runtime/logs",
                   "/run/internal-secrets": root / "shared/secrets",
+                  "/data/aima-historical-input": root / "historical-input",
               },
               "postgres": {
                   "/var/lib/postgresql": root / "postgres",
@@ -375,6 +381,7 @@ jobs:
           set -euo pipefail
           ENV_FILE="${RUNNER_TEMP}/aima-windows-compose.env"
           HOST_ROOT="${RUNNER_TEMP}/windows-host-root"
+          mkdir -p "${HOST_ROOT}/historical-input"
           echo "AIMA_WINDOWS_ENV_FILE=${ENV_FILE}" >> "${GITHUB_ENV}"
           echo "AIMA_WINDOWS_HOST_ROOT=${HOST_ROOT}" >> "${GITHUB_ENV}"
           cat > "${ENV_FILE}" <<EOF
@@ -382,6 +389,7 @@ jobs:
           AIMA_HTTP_BIND_IP=127.0.0.1
           AIMA_HTTP_PORT=18082
           AIMA_HOST_ROOT=${HOST_ROOT}
+          AIMA_HISTORICAL_IMPORT_HOST_ROOT=${HOST_ROOT}/historical-input
           AIMA_DB_NAME=aima_ugc
           AIMA_DB_USER=aima_ugc
           AIMA_DB_CONNECT_TIMEOUT_SECONDS=5
@@ -433,26 +441,31 @@ jobs:
                   "/app/data": "bind",
                   "/app/logs": "bind",
                   "/run/internal-secrets": "volume",
+                  "/data/aima-historical-input": "bind",
               },
               "configure": {
                   "/app/data": "bind",
                   "/app/logs": "bind",
                   "/run/internal-secrets": "volume",
+                  "/data/aima-historical-input": "bind",
               },
               "api": {
                   "/app/data": "bind",
                   "/app/logs": "bind",
                   "/run/internal-secrets": "volume",
+                  "/data/aima-historical-input": "bind",
               },
               "worker": {
                   "/app/data": "bind",
                   "/app/logs": "bind",
                   "/run/internal-secrets": "volume",
+                  "/data/aima-historical-input": "bind",
               },
               "scheduler": {
                   "/app/data": "bind",
                   "/app/logs": "bind",
                   "/run/internal-secrets": "volume",
+                  "/data/aima-historical-input": "bind",
               },
           }
           for service, targets in expected.items():
@@ -464,10 +477,12 @@ jobs:
           expected_bind_sources = {
               "/app/data": str(host_root / "runtime/data"),
               "/app/logs": str(host_root / "runtime/logs"),
+              "/data/aima-historical-input": str(host_root / "historical-input"),
           }
           api_mounts = {item["target"]: item for item in model["services"]["api"].get("volumes", [])}
           for target, source in expected_bind_sources.items():
               assert Path(api_mounts[target]["source"]).resolve() == Path(source), (target, api_mounts[target])
+          assert api_mounts["/data/aima-historical-input"]["read_only"] is True
 
           bootstrap_command = model["services"]["bootstrap"]["command"]
           assert "--runtime-only" in bootstrap_command
