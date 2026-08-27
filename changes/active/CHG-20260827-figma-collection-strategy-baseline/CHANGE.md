@@ -3,11 +3,11 @@ schema: rvc-change/v1
 id: "CHG-20260827-figma-collection-strategy-baseline"
 title: "采集策略 Figma 开发基线与 Design-to-Code 边界"
 level: L2
-status: in_progress
+status: ready_for_review
 owner: "chatgpt"
 branch: "docs/figma-collection-strategy-baseline"
 created: 2026-08-27
-updated: 2026-08-27
+updated: 2026-08-28
 completion_gate: required
 depends_on: []
 affected_areas:
@@ -110,7 +110,7 @@ data_changes: []
 - Figma：对当前采集策略页执行旧测试字符串/旧字段零残留扫描。
 - Design-to-Code：重新读取 `284:561` Design Context，确认六列表格、公共 Input/Select、动态数据 Annotation 和 Sidebar 目标 IA 说明均可被 Codex读取。
 - Docs：更新后重新读取 Guide 与 Change。
-- Ready Check：本轮通过 GitHub 连接器进行 Figma + 文档同步，没有本地仓库执行环境；不在未实际运行 `ready_check.py` 的情况下声称 Ready。
+- Ready Check：创建 PR 后由仓库 `Change Completion Gate` 在当前 HEAD 执行 `ready_check.py --changed-since <base sha>`；CI 未成功前禁止合并。
 
 ## 新鲜证据
 
@@ -119,6 +119,7 @@ data_changes: []
 - `284:561` 最新 Design Context 已确认公共 Input/Select Component Property、六列 Plan Table、动态 API 注解和完整 Sidebar 边界说明。
 - Guide 已在 `docs/figma-collection-strategy-baseline` 分支重新读取：目标 IA 与真实 Route 分层、动态数据事实源、采集策略正式 Figma 基线、公共/Feature 组件边界和 Codex 固定流程均已落文档。
 - 本轮未修改任何 Vue、Store、Feature API、generated client、Pydantic Contract、数据库或后端 Service。
+- 合并前仍需以本次 PR 当前 HEAD 的 `Change Completion Gate` 和适用 CI 结果作为机器验证证据。
 
 # 文档影响
 
@@ -127,6 +128,6 @@ data_changes: []
 # 交付
 
 - Commit：独立文档分支已产生中文提交；不包含生产业务代码。
-- PR：本轮未授权创建。
+- PR：用户已授权创建并合并到 `main`，待创建并通过 CI。
 - 发布：不适用。
-- 状态说明：所有设计/文档要求已经完成，但未实际运行仓库 `ready_check.py`，因此 Change 保持 `in_progress`，不伪称 `ready_for_review`。
+- 状态说明：语义审计、Figma 验收和文档同步已完成，当前进入 `ready_for_review`；机器 Ready Check 由本次 PR CI 提供，未绿前不得合并。
