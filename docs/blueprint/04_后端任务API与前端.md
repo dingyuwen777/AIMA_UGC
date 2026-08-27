@@ -93,9 +93,15 @@ backend/src/aima_ugc/bootstrap/worker.py
 ```text
 collection.run.v1
 ingestion.import-excel.v1
+ingestion.historical-discover.v1
+ingestion.historical-snapshot.v1
+ingestion.historical-import-chunk.v1
+analysis.content-run-plan.v1
 analysis.content-label.v1
 reporting.content-export-excel.v1
 ```
+
+三个 `ingestion.historical-*` 是统一 Data Import Campaign 继续沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner。它们已经由当前 `bootstrap/worker.py` 注册，不是未来规划。
 
 注意：离线 Markdown/Word 报告当前不是上述 PostgreSQL Worker Registry 中的独立正式 Job；它目前由 `platform/reporting/` 和 `imports_test/generate_report.py` 提供离线生成能力。不能因为“报告通常耗时”就把它写成当前已经产品化的 Job。
 
@@ -138,8 +144,9 @@ Service 表达一个业务动作，例如：
 ```text
 创建一次 Collection Run
 列出采集运行中心记录
-上传并创建 Excel Import Batch
-冻结一批 Content Analysis 目标
+创建/预检/启动 Data Import Campaign
+兼容上传单个 Excel Import Batch
+预检并创建 Content Analysis Run
 创建 Excel Export
 创建/启停 Collection Plan
 ```
@@ -150,6 +157,7 @@ Service 表达一个业务动作，例如：
 backend/src/aima_ugc/bootstrap/collection_http.py
 backend/src/aima_ugc/bootstrap/collection_strategy_http.py
 backend/src/aima_ugc/bootstrap/import_http.py
+backend/src/aima_ugc/bootstrap/historical_import_http.py
 backend/src/aima_ugc/bootstrap/content_http.py
 backend/src/aima_ugc/bootstrap/reporting_http.py
 ```
@@ -173,7 +181,10 @@ content_queries.py
 → 声音广场/Analysis 目标冻结的只读查询
 
 analysis.py
-→ Analysis Request / Result / Label Pair
+→ Analysis Run / Request / Result / Label Pair
+
+historical_import.py / historical_content.py
+→ Data Import Campaign/Item/Chunk 事实与历史补空写入协调
 
 collection_planning.py
 → Plan / Occurrence
@@ -318,7 +329,7 @@ backend/src/aima_ugc/platform/export/excel.py
 
 下载只有在 Export 已完成且 Artifact 就绪时可用；未就绪返回 409，而不是空文件或 200。
 
-### 5.5 Excel Import
+### 5.5 Excel Import 兼容入口
 
 ```text
 POST /api/v1/import-batches
@@ -329,6 +340,8 @@ GET  /api/v1/jobs/{job_id}
 ```
 
 `POST /api/v1/import-batches` 当前接受 multipart：一个 `file` 和 1—20 个不重复 `keyword_pack_ids`。HTTP 层执行请求体大小与 multipart 形状校验；Import Service 冻结所选词包/关键词快照并创建 `ingestion.import-excel.v1` Job，真正 Excel 处理由 Worker 完成。
+
+该入口仍是合法兼容 Contract，但当前采集运行中心的“导入数据”页面主入口使用 5.8 的 `/api/v1/data-import-*` Campaign，不再把 `/import-batches` 作为第二套页面工作流。
 
 `GET /api/v1/jobs/{job_id}` 当前由 Import HTTP Service 提供，是 Import 产品面的通用 Job 查询入口；Analysis 还有独立的 `/content-analysis-jobs/{job_id}`。不要据此假设所有内部 `jobs` 表记录都自动成为公共 HTTP Contract。
 
@@ -424,7 +437,7 @@ frontend/src/features/collection-strategy/
 含义：
 
 - `/voice-plaza`：内容查询、筛选、详情、Analysis 交互；Analysis 按钮资格由后端 `content-analysis-capabilities` 驱动；“AI 相关性”可显式查看待复核 `irrelevant`，并支持单条/批量人工标记为相关；
-- `/collection-runtime`：Excel Import / TikHub Run 的统一运行中心视图；其中只有一个“导入数据”入口，可选本地电脑或批准的服务器目录，并在同一 Campaign UI 中完成预检/启动/取消/重试、真实进度与冲突查看；
+- `/collection-runtime`：Excel/TikHub 统一运行中心视图；其中只有一个“导入数据”入口，可选本地电脑或批准的服务器目录，并在同一 Campaign UI 中完成预检/启动/取消/重试、真实进度与冲突查看；
 - `/voice-plaza`：Analysis Run 预检、显式创建、历史、加权进度与取消；导出弹窗同时展示持久 Export Job 进度；
 - `/collection-strategy`：Keyword Pack、全局 Relevance 和 Collection Plan 管理；
 - `/`：当前 HomeView。
