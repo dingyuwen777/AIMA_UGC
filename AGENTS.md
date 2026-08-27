@@ -96,11 +96,11 @@ python .agents/skills/coding/scripts/ready_check.py --root . --require-active-re
 - PostgreSQL 持久化 Job；
 - Local ArtifactStore 默认实现，可在真实需要时替换 S3；
 - 应用 `.log` 为主要人工排障日志，Docker stdout/stderr 为辅助；
-- Docker Compose 离线 Release 是长期部署方向。Internal V1-A 已提供根 `Dockerfile`、`compose.yaml` 与最小可部署容器基础；完整离线 Release、固定 image digest、SBOM/签名和协调 Backup-Restore 仍未闭环。
+- Docker Compose 离线 Release 是长期部署方向。Internal V1-A 已提供根 `Dockerfile`、`compose.yaml` 与最小可部署容器基础；当前 `.github/workflows/release.yml` 已建立 Linux/AMD64 Backend/Frontend + 固定 PostgreSQL 的离线 `images.tar`、Release/Migration Manifest、`SHA256SUMS`、`DEPLOY.md`、no-build/no-pull 回放以及正式 GHCR digest/Tag/GitHub Release 基础；完整 Production 仍缺 SBOM/独立签名/完整 provenance、协调 Backup-Restore、正式服务器 Deploy/Rollback、认证授权/HTTPS 和完整生产验收。
 
 采用方案 A：仓库根目录是唯一 Python/uv 工程根，保存 `pyproject.toml`、`uv.lock`、`.python-version`、`tests/`、`scripts/` 和 `migrations/`；源码在 `backend/src/aima_ugc/`。禁止创建 `backend/pyproject.toml`、`backend/uv.lock`、`backend/tests/` 或用 `uv --project backend` 形成第二套命令。
 
-Internal V1-A 已在仓库根建立唯一 `Dockerfile` 与 `compose.yaml`，Docker build context 继续固定在仓库根；后端/前端通过不同 target 构建，不把 `backend/` 或 `frontend/` 当独立 context。完整离线 Release、固定 image digest、SBOM/签名和协调 Backup-Restore 仍由后续 Production Change 完成，不得把 V1-A 误写成完整 Production Go-Live。
+Internal V1-A 已在仓库根建立唯一 `Dockerfile` 与 `compose.yaml`，Docker build context 继续固定在仓库根；后端/前端通过不同 target 构建，不把 `backend/` 或 `frontend/` 当独立 context。当前 Release Workflow 已经实现离线 Bundle、镜像身份/Manifest 和离线回放基础，但**不能把这些基础写成完整 Production Go-Live**；剩余 Production 强化仍由后续独立 Change 完成。
 
 打包问题必须修根因：禁止用临时 `PYTHONPATH`、改变工作目录、修改 `sys.path` 或先删除产物来掩盖 package discovery/构建配置问题。
 
@@ -201,7 +201,7 @@ Provider Adapter / File Reader
 → PostgreSQL
 ```
 
-Collection 外部来源在 Raw 后还保留 Candidate；File Import 使用 Processing Import Batch，不为了目录对称伪造 Run/Scope/Candidate。
+Collection 外部来源在 Raw 后还保留 Candidate；文件导入使用 Processing Import Batch 或 Data Import Campaign/Item/Chunk 等真实父事实，不为了目录对称伪造 Collection Run/Scope/Candidate。
 
 数据库读取：
 
@@ -256,7 +256,7 @@ PostgreSQL
 - 一张表只有一个写 Owner；
 - 外部 HTTP 不放在数据库事务中；
 - 内容版本只与当前 Business Hash 比较，允许 `A → B → A` 形成新版本；
-- Collection Candidate/Ingestion 来源账本必须能追溯 Run、Scope、Attempt、Raw 和来源项；File Import 则追溯 Import Batch/Input Artifact；
+- Collection Candidate/Ingestion 来源账本必须能追溯 Run、Scope、Attempt、Raw 和来源项；兼容单文件 Import 追溯 Import Batch/Input Artifact；统一 Data Import 追溯 Campaign/Source Item/Chunk/Artifact/Batch/逐行账本；
 - Artifact ID/元数据/业务关系由 `ArtifactService` 管理，`ArtifactStore` 只按 `storage_key` 存取；
 - 业务事实与必须触发的下游 Job 在同一 PostgreSQL Unit of Work 提交；
 - 可重试操作必须有明确、受数据库约束的幂等身份；
@@ -283,7 +283,20 @@ AI taxonomy 不允许在 Python、Blueprint、Excel 文档和前端各维护一�
 
 ## 9. Job、Scheduler 与 Provider 恢复
 
-当前 Worker 实际注册的持久长任务以 `backend/src/aima_ugc/bootstrap/worker.py` 为准，目前包括 Collection Run、Excel Import、Content Analysis 和 Excel Export。未来把其他长任务产品化时也必须走同一持久 Job Runtime，而不是在 HTTP 请求中长时间执行。
+当前 Worker 实际注册的持久长任务以 `backend/src/aima_ugc/bootstrap/worker.py` 为准。当前机器事实包括：
+
+```text
+collection.run.v1
+ingestion.import-excel.v1
+ingestion.historical-discover.v1
+ingestion.historical-snapshot.v1
+ingestion.historical-import-chunk.v1
+analysis.content-run-plan.v1
+analysis.content-label.v1
+reporting.content-export-excel.v1
+```
+
+三个 `ingestion.historical-*` 是统一 Data Import Campaign 沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner。物理名称保留兼容，不构成平行任务系统。未来把其他长任务产品化时也必须走同一持久 Job Runtime，而不是在 HTTP 请求中长时间执行。
 
 Job 必须支持：
 
