@@ -134,7 +134,7 @@ def test_service_returns_v2_with_multiple_valid_label_pairs() -> None:
                 {
                     "item_no": 1,
                     "relevance": "relevant",
-                    "voice_type": "unknown",
+                    "voice_type": "无法判断",
                     "sentiment": taxonomy.sentiments[0],
                     "labels": [
                         {
@@ -182,7 +182,7 @@ def test_duplicate_label_pair_is_retryable_and_not_silently_deduplicated() -> No
                 {
                     "item_no": 1,
                     "relevance": "relevant",
-                    "voice_type": "unknown",
+                    "voice_type": "无法判断",
                     "sentiment": taxonomy.sentiments[0],
                     "labels": [pair, pair],
                 }
@@ -196,7 +196,7 @@ def test_duplicate_label_pair_is_retryable_and_not_silently_deduplicated() -> No
                 {
                     "item_no": 1,
                     "relevance": "relevant",
-                    "voice_type": "unknown",
+                    "voice_type": "无法判断",
                     "sentiment": taxonomy.sentiments[0],
                     "labels": [pair],
                 }

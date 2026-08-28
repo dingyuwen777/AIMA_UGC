@@ -241,7 +241,7 @@ def _insert_content(
                     job_id=job_id,
                     schema_version="content-label-analysis.v3",
                     relevance="irrelevant",
-                    voice_type="unknown",
+                    voice_type="无法判断",
                     sentiment=None,
                     prompt_version=_CURRENT_ANALYSIS_IDENTITY.prompt_version,
                     prompt_sha256=_CURRENT_ANALYSIS_IDENTITY.prompt_sha256,
