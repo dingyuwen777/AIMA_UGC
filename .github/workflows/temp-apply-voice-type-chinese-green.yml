@@ -1,0 +1,222 @@
+name: Temporary Apply Voice Type Chinese Green
+
+on:
+  push:
+    branches:
+      - feature/voice-type-chinese-values
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 1
+      - name: Apply production, fixture, and live-doc changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          mapping = {
+              "user_voice": "真实用户发声",
+              "brand_official": "品牌官方发声",
+              "dealer_promotion": "门店经销商发声",
+              "creator_marketing": "营销推广发声",
+              "industry_professional": "行业从业发声",
+              "media_information": "媒体机构发声",
+              "unknown": "无法判断",
+          }
+
+          # Prompt：中文业务名称直接作为机器值，删除重复机器值列。
+          prompt_path = Path('backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md')
+          prompt = prompt_path.read_text(encoding='utf-8')
+          for old, new in mapping.items():
+              prompt = prompt.replace(old, new)
+          prompt = prompt.replace(
+              '| 推荐名称 | 机器值 | 核心定义 | 说明 |\n| --- | --- | --- | --- |',
+              '| 发声类型 | 核心定义 | 说明 |\n| --- | --- | --- |',
+          )
+          for name in mapping.values():
+              prompt = prompt.replace(f'| **{name}** | `{name}` |', f'| **{name}** |')
+          for legacy in (*mapping.keys(), 'other_organization'):
+              if legacy in prompt:
+                  raise SystemExit(f'Prompt 仍包含旧英文 voice_type: {legacy}')
+          prompt_path.write_text(prompt, encoding='utf-8')
+
+          # Excel：删除英文->中文别名层，直接输出 voice_type；V1/V2 缺省使用当前中文值。
+          excel_path = Path('backend/src/aima_ugc/platform/export/excel.py')
+          excel = excel_path.read_text(encoding='utf-8')
+          excel = re.sub(
+              r'_VOICE_TYPE_DISPLAY_NAMES = \{.*?\}\n',
+              '',
+              excel,
+              count=1,
+              flags=re.DOTALL,
+          )
+          excel = excel.replace('else "unknown"', 'else "无法判断"')
+          excel = re.sub(
+              r'\n\ndef _voice_type_display_name\(value: str \| None\) -> str \| None:\n.*?return _VOICE_TYPE_DISPLAY_NAMES\.get\(value, value\)\n',
+              '',
+              excel,
+              count=1,
+              flags=re.DOTALL,
+          )
+          excel = excel.replace(
+              '_voice_type_display_name(analysis.voice_type) if analysis is not None else None',
+              'analysis.voice_type if analysis is not None else None',
+          )
+          if '_VOICE_TYPE_DISPLAY_NAMES' in excel or '_voice_type_display_name' in excel:
+              raise SystemExit('Excel 旧 voice_type 展示映射未清理干净')
+          excel_path.write_text(excel, encoding='utf-8')
+
+          # 当前测试/Fixture/性能脚本使用当前中文业务值；两个专门兼容否定测试文件保留英文输入。
+          current_value_files = [
+              'frontend/e2e/manual-relevance-review.spec.ts',
+              'frontend/tests/voice-plaza.spec.ts',
+              'scripts/performance/benchmark_p1_offline.py',
+              'tests/api/test_stage8d_contents.py',
+              'tests/contracts/test_analysis_relevance_voice_http.py',
+              'tests/contracts/test_stage8d_http.py',
+              'tests/contracts/test_user_voice_single_source_contract.py',
+              'tests/fullstack/fake_openai_llm.py',
+              'tests/fullstack/seed_stage8f_manual_relevance_review.py',
+              'tests/integration/content/test_bidirectional_relevance_review.py',
+              'tests/integration/content/test_manual_relevance_review.py',
+              'tests/integration/content/test_stage12_analysis_runs.py',
+              'tests/integration/content/test_stage8d_voice_plaza_runtime.py',
+              'tests/unit/analysis/test_analysis_persistence_models.py',
+              'tests/unit/analysis/test_analysis_relevance_voice_v3.py',
+              'tests/unit/analysis/test_offline_content_labeling.py',
+              'tests/unit/analysis/test_offline_labeling_concurrency.py',
+              'tests/unit/analysis/test_openai_compatible_llm.py',
+              'tests/unit/analysis/test_p1g_checkpoint_recovery.py',
+              'tests/unit/platform/test_excel_export.py',
+          ]
+          for filename in current_value_files:
+              path = Path(filename)
+              text = path.read_text(encoding='utf-8')
+              for old, new in mapping.items():
+                  text = text.replace(f'"{old}"', f'"{new}"')
+                  text = text.replace(f"'{old}'", f"'{new}'")
+                  text = text.replace(f'\\"{old}\\"', f'\\"{new}\\"')
+              path.write_text(text, encoding='utf-8')
+
+          # Root README：不再复制完整 Taxonomy，只给唯一事实源和当前中文判断示例。
+          path = Path('README.md')
+          text = path.read_text(encoding='utf-8')
+          old = '''当前 `voice_type` 机器值：\n\n```text\nuser_voice\ncreator_marketing\nbrand_official\ndealer_promotion\nmedia_information\nother_organization\nunknown\n```\n\n真实用户发声唯一业务判断：\n\n```text\nvoice_type == user_voice\n```'''
+          new = '''当前 `voice_type` 与 sentiment、一级/二级标签一样，直接使用 Prompt 中的中文业务名称作为合法机器值；完整集合只维护在当前 Prompt Taxonomy，不在 README 复制第二份列表。\n\n真实用户发声当前唯一业务判断：\n\n```text\nvoice_type == "真实用户发声"\n```'''
+          if old not in text:
+              raise SystemExit('README voice_type 旧段落未找到')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+
+          # 代码修改导航。
+          path = Path('docs/01_代码结构与修改导航.md')
+          text = path.read_text(encoding='utf-8')
+          old = '''当前 `voice_type`：\n\n```text\nuser_voice\ncreator_marketing\nbrand_official\ndealer_promotion\nmedia_information\nother_organization\nunknown\n```\n\n真实用户发声：\n\n```text\nvoice_type == user_voice\n```'''
+          new = '''当前 `voice_type` 直接使用当前 Prompt Taxonomy 中的中文业务名称作为机器值，具体集合不在本导航复制。\n\n真实用户发声当前判断：\n\n```text\nvoice_type == "真实用户发声"\n```'''
+          if old not in text:
+              raise SystemExit('代码导航 voice_type 旧段落未找到')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+
+          # PostgreSQL 调试文档。
+          path = Path('docs/appendix/01_PostgreSQL查询与调试实战.md')
+          text = path.read_text(encoding='utf-8')
+          old = '''当前 `voice_type` 合法机器值：\n\n```text\nuser_voice\ncreator_marketing\nbrand_official\ndealer_promotion\nmedia_information\nother_organization\nunknown\n```\n\n真实用户发声：\n\n```text\nvoice_type = 'user_voice'\n```'''
+          new = '''当前 `voice_type` 合法机器值直接使用中文业务名称，完整集合以当前 Prompt Taxonomy 为唯一事实源，不在 PostgreSQL 调试文档复制。\n\n查询当前真实用户发声：\n\n```text\nvoice_type = '真实用户发声'\n```'''
+          if old not in text:
+              raise SystemExit('PostgreSQL appendix voice_type 旧段落未找到')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+
+          # Analysis README。
+          path = Path('backend/src/aima_ugc/modules/analysis/README.md')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace('voice_type == user_voice', 'voice_type == "真实用户发声"')
+          text = text.replace(
+              '当前 `voice_type` 合法值集合不在本文复制。唯一机器事实来自当前 Prompt 的机器 Taxonomy `voice_types`；',
+              '当前 `voice_type` 合法值集合不在本文复制。机器值直接使用中文业务名称，唯一机器事实来自当前 Prompt 的机器 Taxonomy `voice_types`；',
+          )
+          path.write_text(text, encoding='utf-8')
+
+          # AI Appendix：仅改业务值示例，不改 is_user_voice 这类明确禁止的平行字段名。
+          path = Path('docs/appendix/07_AI舆情打标与分析实现.md')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace('"voice_type": "user_voice"', '"voice_type": "真实用户发声"')
+          text = text.replace('voice_type == user_voice', 'voice_type == "真实用户发声"')
+          text = text.replace('voice_type = creator_marketing', 'voice_type = "营销推广发声"')
+          path.write_text(text, encoding='utf-8')
+
+          # Excel Appendix：删除展示别名机制描述。
+          path = Path('docs/appendix/06_Excel统一数据导出与离线调试.md')
+          text = path.read_text(encoding='utf-8')
+          old = '''`voice_type` Excel 中文投影可通过 `_VOICE_TYPE_DISPLAY_NAMES` 为既有机器值提供展示别名，但这张映射不是合法 Taxonomy 白名单。合法值只由当前 Prompt 的机器 Taxonomy 决定；已有值继续保持既有中文展示，Prompt 新增而尚未配置展示别名的机器值会在 Excel 中原样输出，不会因为导出层未认识该值而失败。数据库/Contract 继续保存稳定机器值。'''
+          new = '''`voice_type` 不再经过 Excel 展示别名映射。当前 Prompt Taxonomy 直接使用中文业务名称作为机器值，数据库、Contract 与 Excel 都保存/输出同一个字符串；Excel 对传入值原样输出，不翻译旧英文值，也不维护历史兼容映射。合法值仍只由当前 Prompt 的机器 Taxonomy 决定。'''
+          if old not in text:
+              raise SystemExit('Excel appendix 旧展示映射段落未找到')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+
+          # 大规模打标方案中的混淆对使用当前中文类别名称。
+          path = Path('docs/appendix/13_AI大规模打标与成本优化方案.md')
+          text = path.read_text(encoding='utf-8')
+          for old, new in mapping.items():
+              if old != 'unknown':
+                  text = text.replace(old, new)
+          path.write_text(text, encoding='utf-8')
+
+          # Blueprint 只更新当前业务条件，不复制完整集合。
+          path = Path('docs/blueprint/03_数据库与文件存储.md')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace("voice_type = 'user_voice'", "voice_type = '真实用户发声'")
+          text = text.replace(
+              '数据库不复制业务合法值列表。',
+              '数据库不复制业务合法值列表；当前机器值直接使用 Prompt 中的中文业务名称。',
+          )
+          path.write_text(text, encoding='utf-8')
+
+          path = Path('docs/blueprint/07_技术决策与实施门禁.md')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace('voice_type == user_voice', 'voice_type == "真实用户发声"')
+          text = text.replace(
+              '`voice_type` 的合法机器值同样不得在 Blueprint 复制；',
+              '`voice_type` 的合法机器值直接使用中文业务名称，同样不得在 Blueprint 复制；',
+          )
+          path.write_text(text, encoding='utf-8')
+
+          # 实时文档和生产 Excel 中不应再存在旧映射事实；历史 Migration/Archive 保持原样。
+          forbidden_live = [
+              Path('README.md'),
+              Path('docs/01_代码结构与修改导航.md'),
+              Path('backend/src/aima_ugc/modules/analysis/README.md'),
+              Path('docs/appendix/01_PostgreSQL查询与调试实战.md'),
+              Path('docs/appendix/06_Excel统一数据导出与离线调试.md'),
+              Path('docs/appendix/07_AI舆情打标与分析实现.md'),
+              Path('docs/appendix/13_AI大规模打标与成本优化方案.md'),
+              Path('docs/blueprint/03_数据库与文件存储.md'),
+              Path('docs/blueprint/07_技术决策与实施门禁.md'),
+          ]
+          for path in forbidden_live:
+              live = path.read_text(encoding='utf-8')
+              for old in ('brand_official','dealer_promotion','creator_marketing','industry_professional','media_information','other_organization'):
+                  if old in live:
+                      raise SystemExit(f'{path} 仍包含旧英文 voice_type: {old}')
+              # user_voice 只允许出现在 is_user_voice/is_real_user_voice 这类禁止新增字段名说明中。
+              scrubbed = live.replace('is_real_user_voice', '').replace('is_user_voice', '')
+              if 'user_voice' in scrubbed:
+                  raise SystemExit(f'{path} 仍包含旧英文 user_voice 业务值')
+          PY
+      - name: Commit Green implementation and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/temp-apply-voice-type-chinese-green.yml
+          git add backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md backend/src/aima_ugc/platform/export/excel.py backend/src/aima_ugc/modules/analysis/README.md README.md docs frontend tests scripts/performance/benchmark_p1_offline.py
+          git commit -m "实现：发声类型直接使用中文业务值"
+          git push origin HEAD:feature/voice-type-chinese-values
