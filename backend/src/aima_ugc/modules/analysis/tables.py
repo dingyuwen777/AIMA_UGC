@@ -137,11 +137,7 @@ analysis_content_results_table = Table(
     ),
     CheckConstraint("content_version >= 1", name="content_version_positive"),
     CheckConstraint("relevance in ('relevant','irrelevant')", name="relevance_allowed"),
-    CheckConstraint(
-        "voice_type in ('user_voice','creator_marketing','brand_official','dealer_promotion',"
-        "'media_information','other_organization','unknown')",
-        name="voice_type_allowed",
-    ),
+    CheckConstraint("char_length(voice_type) > 0", name="voice_type_nonempty"),
     CheckConstraint(
         "(relevance = 'relevant' and sentiment is not null) or "
         "(relevance = 'irrelevant' and sentiment is null)",
