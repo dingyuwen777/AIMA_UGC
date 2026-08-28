@@ -22,6 +22,8 @@ def test_prompt_uses_chinese_voice_type_values_as_final_business_values() -> Non
     taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
 
     assert taxonomy.voice_types == _EXPECTED_VOICE_TYPES
+    assert len(taxonomy.primary_labels) == 9
+    assert len(taxonomy.all_secondary_labels) == 39
 
     prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
     for legacy_value in (
@@ -57,3 +59,5 @@ def test_prompt_judgment_standards_use_tables_with_examples_and_boundaries() -> 
     assert "二手车" in prompt
     assert "行业从业发声" in prompt
     assert "媒体机构发声" in prompt
+    assert "爱玛官方旗舰店" in prompt
+    assert "AAA电动车批发王总" in prompt
