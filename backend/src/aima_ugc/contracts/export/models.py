@@ -27,7 +27,7 @@ class UnifiedDataExcelAnalysisV1(_ExportBaseModel):
     """Excel 展示所需的分析投影；兼容单标签字符串并可携带完整标签对。"""
 
     relevance: ContentRelevance = "relevant"
-    voice_type: ContentVoiceType = "unknown"
+    voice_type: ContentVoiceType
     sentiment: str | None = Field(default=None, min_length=1, max_length=128)
     primary_label: str = Field(default="", max_length=4096)
     secondary_label: str = Field(default="", max_length=4096)
