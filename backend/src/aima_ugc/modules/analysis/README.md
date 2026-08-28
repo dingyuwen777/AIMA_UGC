@@ -52,11 +52,7 @@ relevance = irrelevant
 
 当前 `voice_type` 合法值集合不在本文复制。唯一机器事实来自当前 Prompt 的机器 Taxonomy `voice_types`；各类型定义、边界、高混淆场景和学习示例也只在同一 Prompt 维护。当前结果继续以字符串 `voice_type` 保存，运行时由 `RuntimeTaxonomyValidator` 严格校验 membership。
 
-真实用户发声唯一业务判断：
-
-```text
-voice_type == user_voice
-```
+需要判断“真实用户发声”时，直接使用当前 Analysis Result 的 `voice_type` 实际值；当前合法值与业务定义以 Prompt Taxonomy 为准，不再维护英文机器名或平行展示名。
 
 不要再增加 `is_user_voice`/`is_real_user_voice` 平行字段。
 

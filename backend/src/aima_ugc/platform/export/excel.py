@@ -116,15 +116,6 @@ _HEADER_ROW_HEIGHT = 16.5
 _DEFAULT_ROW_HEIGHT = 14.5
 _MAX_ROW_HEIGHT = 409.0
 _SECONDARY_LABEL_HEADER = "二级标签"
-_VOICE_TYPE_DISPLAY_NAMES = {
-    "user_voice": "真实用户发声",
-    "creator_marketing": "达人/创作者营销",
-    "brand_official": "品牌官方传播",
-    "dealer_promotion": "经销商/门店推广",
-    "media_information": "媒体/资讯转载",
-    "other_organization": "其他机构传播",
-    "unknown": "无法判断",
-}
 _CONTENT_COLUMN_WIDTHS = {
     "平台": 15,
     "内容ID": 34,
@@ -563,7 +554,7 @@ def _iter_unified_content_jsonl(path: Path) -> Iterator[UnifiedDataExcelV1]:
                 voice_type = (
                     record.analysis.voice_type
                     if isinstance(record.analysis, ContentLabelAnalysisV3)
-                    else "unknown"
+                    else None
                 )
                 analysis = UnifiedDataExcelAnalysisV1(
                     relevance=relevance,
@@ -598,13 +589,6 @@ def _analysis_label_pairs(
             secondary_label=analysis.secondary_label,
         ),
     )
-
-
-def _voice_type_display_name(value: str | None) -> str | None:
-    if value is None:
-        return None
-    # 这里只提供既有中文展示别名，不定义合法 Taxonomy；新值必须可直接透传。
-    return _VOICE_TYPE_DISPLAY_NAMES.get(value, value)
 
 
 def _content_cells(
@@ -660,7 +644,7 @@ def _content_values(
         (content.download_count, False, False),
         ("；".join(content.matched_keywords) or None, False, False),
         (
-            _voice_type_display_name(analysis.voice_type) if analysis is not None else None,
+            analysis.voice_type if analysis is not None else None,
             False,
             False,
         ),

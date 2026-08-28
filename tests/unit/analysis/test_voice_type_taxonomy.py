@@ -92,7 +92,7 @@ def test_prompt_retains_voice_type_judgment_boundaries_and_learning_examples() -
 
     prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
 
-    assert "## 内容发声类型判断标准" in prompt
+    assert "## 发声类型判断标准" in prompt
     assert "### 先组合两层证据，再分类" in prompt
     assert "### 七类边界与高混淆场景" in prompt
     assert "作者“通勤小林”" in prompt

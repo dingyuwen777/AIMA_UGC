@@ -23,6 +23,18 @@ def test_prompt_uses_chinese_voice_type_values_as_final_business_values() -> Non
 
     assert taxonomy.voice_types == _EXPECTED_VOICE_TYPES
 
+    prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
+    for legacy_value in (
+        "user_voice",
+        "creator_marketing",
+        "brand_official",
+        "dealer_promotion",
+        "media_information",
+        "other_organization",
+        "unknown",
+    ):
+        assert legacy_value not in prompt
+
 
 def test_prompt_judgment_standards_use_tables_with_examples_and_boundaries() -> None:
     """主要判断标准应使用表格，并保留模型学习所需边界和示例。"""
