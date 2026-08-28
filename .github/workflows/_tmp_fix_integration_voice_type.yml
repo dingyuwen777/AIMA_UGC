@@ -1,0 +1,204 @@
+name: Temporary Fix Integration Voice Type
+
+on:
+  push:
+    branches:
+      - feature/voice-type-classification-tables
+    paths:
+      - .github/workflows/_tmp_fix_integration_voice_type.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/voice-type-classification-tables
+          fetch-depth: 0
+      - name: Migrate integration fixtures to Prompt Taxonomy
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def read(path: str) -> str:
+              return Path(path).read_text(encoding="utf-8")
+
+          def write(path: str, text: str) -> None:
+              Path(path).write_text(text, encoding="utf-8")
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f"{label}: expected 1 match, got {count}")
+              return text.replace(old, new, 1)
+
+          # 双向人工相关性复核：当前合法 voice_type 直接取 Prompt Taxonomy 第一个值。
+          path = "tests/integration/content/test_bidirectional_relevance_review.py"
+          text = read(path)
+          old = '''    service = ContentLabelingService(
+        prompt_loader=FrozenPromptTaxonomyLoader(taxonomy),
+        llm=FakeContentLabelingLLM(
+            responses=[
+                '{"items":[{"item_no":1,"relevance":"relevant",'
+                '"voice_type":"user_voice","sentiment":"中性",'
+                '"labels":[{"primary_label":"骑行性能","secondary_label":"舒适性"}]}]}'
+            ]
+        ),
+    )'''
+          new = '''    response = (
+        '{"items":[{"item_no":1,"relevance":"relevant","voice_type":"'
+        + taxonomy.voice_types[0]
+        + '","sentiment":"中性","labels":['
+        '{"primary_label":"骑行性能","secondary_label":"舒适性"}]}]}'
+    )
+    service = ContentLabelingService(
+        prompt_loader=FrozenPromptTaxonomyLoader(taxonomy),
+        llm=FakeContentLabelingLLM(responses=[response]),
+    )'''
+          write(path, replace_once(text, old, new, "bidirectional registry"))
+
+          # AI irrelevant 人工复核：语义测试不依赖某个具体发声类别，只要求当前合法值。
+          path = "tests/integration/content/test_manual_relevance_review.py"
+          text = read(path)
+          old = '''def _irrelevant_response() -> str:
+    return (
+        '{"items":[{"item_no":1,"relevance":"irrelevant",'
+        '"voice_type":"media_information","sentiment":null,"labels":[]}]}'
+    )'''
+          new = '''def _irrelevant_response() -> str:
+    """返回使用当前 Prompt Taxonomy 合法发声类型的 irrelevant Fixture。"""
+
+    taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
+    return (
+        '{"items":[{"item_no":1,"relevance":"irrelevant","voice_type":"'
+        + taxonomy.voice_types[0]
+        + '","sentiment":null,"labels":[]}]}'
+    )'''
+          write(path, replace_once(text, old, new, "manual relevance response"))
+
+          # Stage12 Analysis Run：所有 Fake 响应从当前 Taxonomy 取合法值。
+          path = "tests/integration/content/test_stage12_analysis_runs.py"
+          text = read(path)
+          old = '''def _response(sentiment: str) -> str:
+    return (
+        '{"items":[{"item_no":1,"relevance":"relevant",'
+        '"voice_type":"user_voice","sentiment":"'
+        + sentiment
+        + '","labels":[{"primary_label":"骑行性能",'
+        '"secondary_label":"舒适性"}]}]}'
+    )'''
+          new = '''def _response(sentiment: str) -> str:
+    """返回使用当前 Prompt Taxonomy 合法发声类型的 Analysis Fixture。"""
+
+    taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
+    return (
+        '{"items":[{"item_no":1,"relevance":"relevant","voice_type":"'
+        + taxonomy.voice_types[0]
+        + '","sentiment":"'
+        + sentiment
+        + '","labels":[{"primary_label":"骑行性能",'
+        '"secondary_label":"舒适性"}]}]}'
+    )'''
+          text = replace_once(text, old, new, "stage12 response")
+          write(path, text)
+
+          # Stage8D：Fixture、断言和筛选都引用当前 Taxonomy 值，不维护第二套业务枚举。
+          path = "tests/integration/content/test_stage8d_voice_plaza_runtime.py"
+          text = read(path)
+          marker = '''from sqlalchemy import func, select, update
+
+
+def _xlsx'''
+          replacement = '''from sqlalchemy import func, select, update
+
+_CURRENT_TAXONOMY = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
+_CURRENT_VOICE_TYPE = _CURRENT_TAXONOMY.voice_types[0]
+
+
+def _xlsx'''
+          text = replace_once(text, marker, replacement, "stage8d taxonomy constants")
+          text = replace_once(
+              text,
+              'def _relevant_response(*, sentiment: str = "负面", voice_type: str = "user_voice") -> str:',
+              'def _relevant_response(*, sentiment: str = "负面", voice_type: str = _CURRENT_VOICE_TYPE) -> str:',
+              "stage8d relevant default",
+          )
+          text = replace_once(
+              text,
+              'def _irrelevant_response(*, voice_type: str = "media_information") -> str:',
+              'def _irrelevant_response(*, voice_type: str = _CURRENT_VOICE_TYPE) -> str:',
+              "stage8d irrelevant default",
+          )
+          if text.count('== "user_voice"') != 2:
+              raise RuntimeError("stage8d expected exactly two current user_voice assertions")
+          text = text.replace('== "user_voice"', '== _CURRENT_VOICE_TYPE')
+          text = replace_once(
+              text,
+              '                voice_type="user_voice",',
+              '                voice_type=_CURRENT_VOICE_TYPE,',
+              "stage8d voice filter",
+          )
+          old = '''                        '{"items":[{"item_no":1,"relevance":"relevant",'
+                        '"voice_type":"user_voice","sentiment":"中性","labels":['
+                        '{"primary_label":"电池、续航与充电","secondary_label":"实际续航表现"}]}]}' '''
+          if old in text:
+              text = text.replace(
+                  old,
+                  '''                        '{"items":[{"item_no":1,"relevance":"relevant","voice_type":"'
+                        + _CURRENT_VOICE_TYPE
+                        + '","sentiment":"中性","labels":['
+                        '{"primary_label":"电池、续航与充电","secondary_label":"实际续航表现"}]}]}' ''',
+                  1,
+              )
+          else:
+              # 当前文件中的 stale-version Fixture 可能无尾部空格；用更窄片段 fail-closed 替换。
+              stale_old = '''                        '{"items":[{"item_no":1,"relevance":"relevant",'
+                        '"voice_type":"user_voice","sentiment":"中性","labels":['''
+              stale_new = '''                        '{"items":[{"item_no":1,"relevance":"relevant","voice_type":"'
+                        + _CURRENT_VOICE_TYPE
+                        + '","sentiment":"中性","labels":['''
+              text = replace_once(text, stale_old, stale_new, "stage8d stale response")
+          write(path, text)
+
+          # 当前运行时/测试链不应继续把旧英文值当现行合法 Taxonomy。
+          roots = [
+              Path("backend/src"),
+              Path("tests/integration/content"),
+              Path("tests/fullstack"),
+              Path("scripts/performance/benchmark_p1_offline.py"),
+          ]
+          legacy_values = (
+              "user_voice",
+              "creator_marketing",
+              "brand_official",
+              "dealer_promotion",
+              "media_information",
+              "other_organization",
+          )
+          violations = []
+          for root in roots:
+              paths = [root] if root.is_file() else [p for p in root.rglob("*") if p.is_file()]
+              for candidate in paths:
+                  if candidate.suffix not in {".py", ".md", ".ts", ".vue"}:
+                      continue
+                  body = candidate.read_text(encoding="utf-8")
+                  for value in legacy_values:
+                      if f'"{value}"' in body or f"'{value}'" in body:
+                          violations.append(f"{candidate}: {value}")
+          if violations:
+              raise RuntimeError("current legacy voice_type literals remain:\n" + "\n".join(violations))
+          PY
+      - name: Commit fixes and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/_tmp_fix_integration_voice_type.yml
+          git add tests/integration/content
+          git commit -m "测试：迁移集成测试发声类型动态夹具"
+          git push origin HEAD:feature/voice-type-classification-tables
