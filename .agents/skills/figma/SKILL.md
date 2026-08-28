@@ -1,6 +1,6 @@
 ---
 name: figma
-description: 面向任意项目的 Figma 产品原型、设计系统、页面可用性和 Design-to-Code 正式开发基线的事实驱动审查、修复与实施交接工作流。支持从“全面检查这个 Figma”“检查并修复”“按这个 Figma 替换现有页面”等自然语言自动路由到 review-only、review-and-fix、baseline-ready 或 baseline-ready → Coding handoff。先识别项目形态和目标用户，再按实际边界读取需求、设计系统、代码、Contract/API/SDK/数据源/运行状态等事实；审查页面尺寸、布局、间距、图片与标注、公共组件与可复用业务逻辑、Prototype、状态覆盖、动态数据来源、用户习惯和实现可行性。禁止把 Figma 示例当生产事实、把截图当结构证据、机械暴露内部实现、复制可复用业务规则，或由设计稿创造系统不存在的能力。Use for Figma prototype review, design audit, design-system review, layout/usability QA, prototype QA, real-system capability alignment, Design-to-Code readiness, and handing a READY design to the target project's coding workflow for implementation across web, mobile, desktop, dashboards, admin tools, static sites, and other UI projects.
+description: 面向任意项目的 Figma 产品原型、设计系统、页面可用性和 Design-to-Code 正式开发基线的事实驱动审查、修复与实施交接工作流。支持从“全面检查这个 Figma”“检查并修复”“按这个 Figma 替换现有页面”等自然语言自动路由到 review-only、review-and-fix、baseline-ready 或 baseline-ready → Coding handoff。先识别项目形态和目标用户，再按实际边界读取需求、设计系统、代码、Contract/API/SDK/数据源/运行状态等事实；审查页面尺寸、布局、间距、Canvas 组织、图片与标注、公共组件与可复用业务逻辑、Prototype、状态覆盖、动态数据来源、用户习惯和实现可行性。禁止把 Figma 示例当生产事实、把截图当结构证据、机械暴露内部实现、复制可复用业务规则，或由设计稿创造系统不存在的能力。Use for Figma prototype review, design audit, design-system review, layout/usability QA, prototype QA, canvas readability, annotation hygiene, real-system capability alignment, Design-to-Code readiness, and handing a READY design to the target project's coding workflow for implementation across web, mobile, desktop, dashboards, admin tools, static sites, and other UI projects.
 ---
 
 # Figma
@@ -12,6 +12,7 @@ description: 面向任意项目的 Figma 产品原型、设计系统、页面可
 ```text
 这个页面适合目标用户吗？
 页面尺寸、布局、间距、图片和标注是否合理？
+整个 Canvas 的画板、Section、Annotation、状态稿和历史稿是否清晰可读？
 用户能否按自然顺序完成任务？
 设计中的字段、按钮、状态和选项是否有真实系统能力支持？
 动态数据来自哪里，是否明确标注？
@@ -29,9 +30,11 @@ Prototype 点击之后是否仍然正确？
 → 恢复当前需求 / 设计 / 系统事实
 → 审查页面尺寸、布局与真实使用习惯
 → 审查视觉层级、图片、标注、表格、表单
+→ 审查 Canvas / Section / Annotation 的组织与间距
 → 审查公共组件和业务逻辑复用
 → 审查系统能力、动态数据和状态来源
 → 审查 Prototype Variable / Reaction / Flow
+→ Figma 写操作后执行 Canvas-level Review
 → Fresh Screenshot / Machine Audit
 → Design Context / 实现视角复核（适用时）
 → Findings
@@ -143,19 +146,22 @@ code_issue_detected
 
 ## `review-and-fix`
 
-仅在明确授权修改 Figma 时使用：
+仅在明确授权修改 Figma 时使用。
+
+只要本轮涉及页面、Canvas、Frame、Section、Annotation 或状态稿的视觉修改，修改前必须读取 [07_页面布局与真实可用性审计.md](references/07_页面布局与真实可用性审计.md)，并在每轮 Figma 写操作后执行其中的 Canvas-level Review。
 
 ```text
 先确认 Finding 和根因
 → 找最小真实 Owner
 → 修改 Owner
 → 验证所有受影响消费者
+→ Canvas-level Review（当前 Frame + Section + 相邻画板 + Annotation + zoom-out）
 → Fresh Screenshot
 → Prototype / Machine Audit
 → Design Context re-review（适用时）
 ```
 
-禁止逐页打补丁掩盖公共根因。
+禁止逐页打补丁掩盖公共根因，也禁止只把当前 Frame 改正确却留下由本次修改造成的相邻画板、注释或说明拥挤问题。
 
 ## `baseline-ready`
 
@@ -224,6 +230,7 @@ NOT_READY
 → 先确认 Finding / 根因
 → 修改最小真实 Owner
 → 验证公共消费者
+→ Canvas-level Review
 → Fresh Screenshot + Prototype / Machine Audit + Design Context（适用时）
 → 再执行 baseline-ready 判定
 ```
@@ -374,9 +381,9 @@ Database
 
 # 6. 页面尺寸、布局、美观和真实可用性
 
-这是 `baseline-ready` 的硬审查域。
+凡是任务涉及 Figma 页面/Canvas 的视觉审查、创建、修改、整理、状态稿维护或 `baseline-ready`，都必须读取 [07_页面布局与真实可用性审计.md](references/07_页面布局与真实可用性审计.md)。这既是页面布局规则，也是 Canvas/Section/Annotation 可读性的唯一详细设计事实源。
 
-必须读取 [07_页面布局与真实可用性审计.md](references/07_页面布局与真实可用性审计.md)。
+`baseline-ready` 时这是硬审查域；`review-and-fix` 时也是所有视觉写操作的写后复核规则。
 
 至少检查：
 
@@ -385,6 +392,9 @@ Database
 响应式 / 安全区 / App Shell
 Page Header / Content 左右边界
 Section 对齐和间距节奏
+Canvas / Section / 相邻画板的整体组织
+Annotation / 开发说明与正式 Frame 的安全距离和归属
+正式稿 / 状态稿 / 历史稿 / 废弃稿分区
 图片比例 / 裁切 / 清晰度
 图片、文字、按钮、Badge、Annotation 是否重叠
 图表 Label / Legend / Tooltip 是否遮挡
@@ -393,6 +403,7 @@ Section 对齐和间距节奏
 Toast / Dropdown / Tooltip / Popover 安全区
 Modal / Drawer 滚动
 关键动作在目标 Viewport 是否可访问
+zoom-out 整体视图是否仍然清晰可读
 ```
 
 设计基准尺寸不是生产固定宽高。
@@ -594,7 +605,7 @@ Secret / Raw / Stack Trace
 错误态
 ```
 
-开发 Annotation 不应压在正式 UI 上，也不能被实现方误读成产品文案。
+开发 Annotation 不应压在正式 UI 上，也不能被实现方误读成产品文案。Annotation 与正式 Frame、相邻画板、说明容器之间的间距、归属、分区和 Canvas-level Review 统一由 [07_页面布局与真实可用性审计.md](references/07_页面布局与真实可用性审计.md) 维护；本 Skill 不再维护第二套具体数值。
 
 ---
 
@@ -640,6 +651,10 @@ Figma MCP/工具返回的参考代码只表达结构意图，不得反向改变�
 [ ] 页面尺寸与目标设备/Viewport 有依据
 [ ] 设计基准没有诱导固定像素生产实现
 [ ] 页面区块对齐、间距、信息密度合理
+[ ] Canvas / Section / 相邻画板形成清晰稳定的组织和阅读顺序
+[ ] Annotation / 开发说明与正式 Frame 有明确边界、归属和安全距离
+[ ] 正式稿 / 状态稿 / 说明 / 历史或废弃稿分区清楚
+[ ] zoom-out 整体视图没有明显拥挤、遮挡或归属混乱
 [ ] 图片/文字/按钮/标注无无意重叠
 [ ] 图片比例、裁切、长文本和图表极端状态有策略
 [ ] 表格/表单适配真实数据长度和用户操作顺序
@@ -706,6 +721,7 @@ Frame / Node / Pattern
 → 找真正 Owner
 → 改 Owner
 → 验证所有消费者
+→ Canvas-level Review
 ```
 
 例如：
@@ -725,6 +741,16 @@ Toast 在不同页面漂移
 ```
 
 不逐页打补丁掩盖公共问题。
+
+Canvas-level Review 不是无边界重排整个文件。最小修复范围是：
+
+```text
+当前目标节点
++
+本次修改直接造成的相邻布局/可读性问题
+```
+
+如果页面内部已经正确，但整个 Canvas 仍然拥挤、贴边、遮挡、难以判断 Annotation 归属或正式稿与历史稿混杂，**不得声明 Figma 修改完成**。
 
 ---
 
@@ -754,7 +780,7 @@ Shared / Feature Public / Page-private 的视觉与业务 Owner。
 
 ## Layout & Usability
 
-页面尺寸、位置、间距、图片/标注、表格/表单、滚动和用户任务路径。
+页面尺寸、位置、间距、Canvas/Section、图片/标注、表格/表单、滚动和用户任务路径。
 
 ## Prototype Audit
 
@@ -782,10 +808,13 @@ Variables / Reactions / Flow / Overlay / Scroll / Hidden State。
 10. 用页面级补丁代替公共 Owner 修复；
 11. 忽略页面尺寸、真实 Viewport、滚动和响应式；
 12. 允许图片、标注、文字和操作控件无意重叠；
-13. 只设计理想短文本和理想数据；
-14. 只检查静态 Frame，不检查 Prototype；
-15. 用 Figma 替代 Contract / API / SDK / Runtime；
-16. 让客户端绕过正式架构直接访问数据库；
-17. 把 MCP 参考代码直接当目标项目实现；
-18. 因为演示好看伪造系统执行成功；
-19. 未执行必要验证就宣称“可以交给实现方”。
+13. 只检查单个 Frame/Node，不检查本次修改直接影响的 Section、相邻画板和 Annotation；
+14. 只看局部 100% 视图，不检查 zoom-out 整体 Canvas 节奏；
+15. 为了画布整洁擅自删除历史参考、备份或废弃稿；
+16. 只设计理想短文本和理想数据；
+17. 只检查静态 Frame，不检查 Prototype；
+18. 用 Figma 替代 Contract / API / SDK / Runtime；
+19. 让客户端绕过正式架构直接访问数据库；
+20. 把 MCP 参考代码直接当目标项目实现；
+21. 因为演示好看伪造系统执行成功；
+22. 未执行必要验证就宣称“可以交给实现方”。
