@@ -2,7 +2,7 @@
 
 静态截图正确，不代表 Prototype 正确。
 
-这份 reference 专门检查那些只有“点击以后”才会暴露的问题：旧变量回弹、重复文本、Toast 漂移、错误 Flow、隐藏旧状态和演示伪成功。
+这份 reference 专门检查只有在交互后才暴露的问题：旧变量回弹、重复文本、双图标、浮层漂移、错误 Flow、隐藏旧状态、滚动问题和演示伪成功。
 
 ---
 
@@ -20,7 +20,7 @@ NODE / OVERLAY / CHANGE_TO
 Open / Close
 Hidden Layer
 Absolute Position
-Auto Layout
+Auto Layout / Constraints
 Overflow / Scroll
 Destination Node
 ```
@@ -31,94 +31,80 @@ Destination Node
 
 # 2. Flow Starting Point
 
-正式开发基线通常应有一个明确起点。
+正式基线应有明确入口。
 
-发现多个 Flow 时先判断：
+多个 Flow 先判断：
 
-- 是否一个是历史参考；
-- 是否多个 Flow 分别代表独立用户任务；
-- 是否只是历史残留。
+- 是否代表不同独立任务；
+- 是否存在历史/备份残留；
+- 实现方会不会误选错误入口。
 
-如果同一正式页面有多个互相竞争的 starting point，应形成 Finding。
-
-不要为了“整洁”机械删除真正独立流程。
+不要为了“只保留一个”机械删除真正独立流程。
 
 ---
 
 # 3. Prototype Variable 默认值
 
-变量默认值必须与当前正式 Data State 一致。
+默认值必须与当前正式 Data State 一致。
 
 常见错误：
 
 ```text
-画布显示：词包 28词
-变量默认：3词
+画布已经是新数据
+Prototype Variable 仍是旧数据
 ```
 
-打开/切换状态后就会回到旧数据。
+打开、切换或保存后就回弹。
 
-审查时搜索：
+重点搜索：
 
-- 旧名称；
+- 旧产品名；
 - 旧数量；
-- Stage/test 文案；
-- 历史 Provider 名；
-- 旧状态枚举；
-- 已废弃字段。
+- Stage/test/demo 脏文案；
+- 已废弃字段；
+- 旧选项；
+- 旧状态枚举。
 
 ---
 
 # 4. Reaction 中的隐藏赋值
 
-必须检查 `SET_VARIABLE`，因为画布文字已经改掉时，Reaction 仍可能保留旧值。
+必须检查 `SET_VARIABLE` 和 `CHANGE_TO`。
 
-例如：
-
-```text
-保存成功后
-→ 设置 notice.text = "✓ 保存成功"
-```
-
-如果 Success 组件本身已有图标，就会出现双对号。
-
-又例如：
+典型问题：
 
 ```text
-点击查询
-→ result_count = 25
+Success 组件自带图标
++
+Reaction 把图标字符写入 Message
+→ 双图标
 ```
 
-而正式示例数据已经是 24 条，会造成演示自相矛盾。
+或者：
+
+```text
+点击重置
+→ Prototype 把结果数改成与正式样例不一致的旧值
+```
 
 规则：
 
-> 任何会更新 UI 的 Prototype Action，都要和当前正式视觉状态一起审计。
+> 任何会改变 UI 的 Action 都必须和当前正式状态一起审计。
 
 ---
 
 # 5. 重复文字与重复组件
 
-典型结构错误：
+典型结构：
 
 ```text
 Feedback Instance
 └─ Message
-
 +
 外部动态 Text
 ```
 
-两层位置相同，触发时出现重影。
-
-或者：
-
-```text
-Success Icon = ✓
-Message = "✓ 已更新"
-```
-
-出现双图标。
+触发时会文字重影。
 
 修复原则：
 
@@ -126,119 +112,104 @@ Message = "✓ 已更新"
 只保留一个状态源
 ```
 
-优先把动态值绑定进公共组件 Property，而不是在组件外再覆盖。
+动态值优先绑定公共组件 Property，而不是在组件外覆盖。
 
 ---
 
-# 6. Toast / Popover / Dropdown 位置
+# 6. Toast / Popover / Dropdown / Tooltip
 
-相同模式在不同页面应遵循同一定位规则。
+相同模式应有统一定位和安全区。
 
-例如顶部居中 Toast：
+检查：
 
-```text
-固定宽度
-x = (viewport - toastWidth) / 2
-y = topOffset
-```
+- 是否挡住导航、头像、主按钮；
+- 是否被父级裁切；
+- 是否超出 Viewport / Safe Area；
+- 不同页面位置是否漂移；
+- z-order 是否正确；
+- Auto Layout 父级中的浮层是否需要 `ABSOLUTE`。
 
-如果父级是 Auto Layout，必须检查浮层是否脱离布局流。
-
-常见错误：
-
-```text
-设置 x/y 成功
-→ Auto Layout 下一次重新布局
-→ 节点又被排到别处
-```
-
-根因不是坐标值，而是 `layoutPositioning`。
+不能只写 x/y 后假设不会被重新布局。
 
 ---
 
 # 7. Dropdown / Menu
 
-下拉菜单至少检查：
+至少检查：
 
 - trigger 状态；
-- menu visible 变量；
+- menu visible；
 - 当前选中值；
-- 每个 option 的 Reaction；
+- option Reaction；
 - 选中后是否关闭；
-- option 是否真实对应后端能力；
-- menu 是否被父级 `clipsContent` 裁切。
+- option 是否真实有效；
+- 长文本是否截断；
+- menu 是否被 Scroll Container 裁切。
 
-如果用户看到自然语言选项，但后端需要机器值，应在 Annotation 记录映射。
-
-例如：
-
-```text
-每6小时
-→ schedule_expr = 0 */6 * * *
-```
+用户文案与机器值不同的，在 Annotation/规格里记录映射。
 
 ---
 
-# 8. Modal / Drawer
+# 8. Modal / Drawer / Sheet
 
 检查：
 
 ```text
-Header 固定？
-Body 是否唯一滚动容器？
-Footer 是否固定？
-Top-level 是否又开启第二层滚动？
-关闭按钮 / Backdrop 是否回到正确页面？
+Header
+Body
+Footer
+滚动容器
+关闭路径
+返回路径
+Overlay 层级
 ```
 
-避免：
+避免多层滚动。
 
-```text
-整个 Drawer 滚动
-+
-Body 也滚动
-```
-
-造成双层滚动。
+移动端还应检查 Safe Area、键盘顶起和底部操作区；桌面端检查窗口高度变化。
 
 ---
 
-# 9. Prototype 不伪造服务器成功
+# 9. Prototype 不伪造真实系统成功
 
-依赖真实服务器的行为，例如：
-
-- 创建任务；
-- 保存数据库；
-- Provider 请求；
-- Worker 执行；
-- 调度任务真正开始；
-
-Prototype 可以展示“成功后页面应该长什么样”，但不应让演示跳转本身成为“真实系统一定成功”的证据。
-
-正确标注：
+以下行为可能依赖真实系统：
 
 ```text
-代表性成功状态
-实际结果由 API / Worker / Runtime 决定
+保存持久化数据
+远程请求
+支付/提交
+后台任务完成
+文件上传成功
+设备操作成功
+```
+
+Prototype 可以展示代表性成功状态，但不能把演示跳转当作系统一定成功的证据。
+
+标注：
+
+```text
+Representative State
+≠
+真实执行结果
 ```
 
 ---
 
 # 10. Prototype Machine Audit
 
-完成前建议做关键词和结构扫描：
+完成前建议扫描：
 
 ```text
 旧产品名
 旧测试字符串
-旧 Provider 名
-手写 ✓ / × / ! / ⓘ
-失效 destinationId
+手写 ✓ / × / ! 等重复图标字符
+失效 destination
 重复同坐标提示
-旧 Component / Visual Block
+旧组件/旧视觉块
+隐藏旧状态
 ```
 
-零命中只能证明扫描集合没有这些已知问题，不能自动证明整个 Prototype 完美。
+零命中只证明这些已知问题没有命中，不自动证明整个 Prototype 完美。
 
 ---
 
@@ -246,11 +217,12 @@ Prototype 可以展示“成功后页面应该长什么样”，但不应让演�
 
 至少：
 
-1. 重新读取受影响 Reaction / Variable；
+1. 重新读取受影响 Variable / Reaction；
 2. 临时切到目标状态；
 3. Fresh Screenshot；
-4. 恢复默认变量状态；
-5. 再扫描一次旧值；
-6. 如目标是 Design-to-Code，再重新读取 Design Context。
+4. 恢复默认状态；
+5. 再扫描旧值；
+6. 修改公共组件时抽查其它消费者；
+7. Design-to-Code 项目重新读取 Design Context（适用时）。
 
-不能因为脚本写入成功就宣称 Prototype 已修好。
+不能因为工具写入返回成功就宣称 Prototype 已修好。
