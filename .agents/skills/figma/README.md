@@ -49,9 +49,9 @@ Skill 会先识别项目形态，再决定哪些审查项适用，不会机械�
 
 ### `review-only`
 
-只审查，不修改设计。
+用于普通设计审查，不修改设计；Design-only 且没有目标实现事实时通常默认此模式。
 
-适合 Design-only 原型，或用户明确说“只检查、不修改”的任务。
+“只检查、不修改”首先限制的是写权限。如果用户明确要求判断“是否可作为正式开发基线”，仍然执行只读的 `baseline-ready`，不会因为只读要求而降级成普通 `review-only`。
 
 ### `review-and-fix`
 
@@ -91,10 +91,11 @@ NOT_READY
 | `对照当前仓库全面验收这个 Figma：<link>` | `baseline-ready` |
 | `按这个 Figma 替换当前对应页面：<link>` | `baseline-ready` → 项目 Coding handoff → 实现后 targeted re-review |
 
-显式权限优先于自动推断：
+模式和权限分开判断：
 
-- 说“只检查、不修改”就不写 Figma；
+- 说“只检查、不修改”就不写 Figma，但不改变已经明确的正式验收目标；
 - 说“有问题直接改”才获得本轮 Figma 写授权；
+- 说“按这个 Figma 替换/实现现有页面”表示需要修改目标实现，但 commit、PR、merge、release 仍按项目 Coding 工作流和用户授权判断；
 - Design-to-Code 进入生产代码后，Change/TDD/Review/CI/Git 继续服从目标项目自己的 Coding 工作流。
 
 因此后续通常只需要提供：
@@ -233,7 +234,8 @@ Figma Skill 不应该：
 - 只看截图就宣称设计正确；
 - 从历史聊天猜当前系统能力；
 - 用 Figma 替代 Contract/API/SDK/Runtime；
-- 自动获得未明确授予的 Figma、生产代码、commit、PR 或 merge 权限；
+- 自动获得未明确授予的 Figma、commit、PR、merge 或 release 权限；
+- 在用户未要求修改目标实现时自动改生产代码；
 - 为了“公共化”把所有业务组件升成全局组件；
 - 把同一业务逻辑复制到多个页面；
 - 把业务规则塞进 Button/Input 等基础视觉组件；
