@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 from aima_ugc.contracts.analysis import ContentLabelAnalysisV3, ContentLabelPairV2
 from aima_ugc.contracts.canonical import CanonicalContentV1, CanonicalSourceV1
+from aima_ugc.contracts.export import UnifiedDataExcelAnalysisV1
 from aima_ugc.modules.analysis.content_labeling import (
     CONTENT_LABELING_PROMPT_PATH,
     ContentLabelingService,
@@ -187,6 +188,15 @@ def test_analysis_contract_keeps_structure_but_does_not_copy_voice_type_taxonomy
     )
 
     assert analysis.voice_type == "future_prompt_voice_type"
+
+
+def test_excel_analysis_requires_voice_type_instead_of_inventing_default() -> None:
+    """未打标内容由 analysis=None 表达；分析投影不得偷偷补具体业务类别。"""
+
+    field = UnifiedDataExcelAnalysisV1.model_fields["voice_type"]
+
+    assert field.is_required()
+    assert field.default is None or field.default is not "unknown"
 
 
 def test_duplicate_voice_type_in_prompt_taxonomy_fails_closed_before_llm(
