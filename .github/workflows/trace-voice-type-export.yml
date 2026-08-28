@@ -1,5 +1,6 @@
 name: Trace Voice Type Export Usage
 
+# 临时只读追踪：完成调用链核对后删除。
 on:
   push:
     branches:
