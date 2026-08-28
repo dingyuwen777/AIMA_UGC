@@ -25,7 +25,7 @@ def test_excel_voice_type_display_does_not_enforce_a_parallel_taxonomy(
     voice_type: str | None,
     expected_display: str | None,
 ) -> None:
-    """Excel 可保留旧展示别名，但不能因 Prompt 新值或缺失旧值而拒绝导出。"""
+    """旧中文别名只负责展示，不能成为 Prompt voice_type 的第二套合法值白名单。"""
 
     output = tmp_path / "voice-type.xlsx"
     record = UnifiedDataExcelV1(
