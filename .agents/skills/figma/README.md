@@ -49,18 +49,13 @@ Skill 会先识别项目形态，再决定哪些审查项适用，不会机械�
 
 ### `review-only`
 
-默认。只审查，不修改设计。
+用于普通设计审查，不修改设计；Design-only 且没有目标实现事实时通常默认此模式。
 
-适合：
-
-- “全面检查这个 Figma 页面”；
-- “这个页面符合用户习惯吗”；
-- “这些字段真的能接到当前系统吗”；
-- “这个页面能交给实现方了吗”。
+“只检查、不修改”首先限制的是写权限。如果用户明确要求判断“是否可作为正式开发基线”，仍然执行只读的 `baseline-ready`，不会因为只读要求而降级成普通 `review-only`。
 
 ### `review-and-fix`
 
-已明确授权修改 Figma 时使用。
+用户明确要求“检查并修好 / 有问题直接修改 Figma”时使用。
 
 ```text
 确认根因
@@ -84,6 +79,36 @@ NOT_READY
 ```
 
 没有实际完成必要验证时不得给 `READY`。
+
+## 3.1 不需要记模式名
+
+高频自然语言会自动路由：
+
+| 你说的话 | 默认流程 |
+| --- | --- |
+| `全面检查这个 Figma：<link>` | 有实现仓库时 `baseline-ready`；Design-only 时 `review-only` |
+| `全面检查并修好这个 Figma：<link>` | `review-and-fix` → re-review → Readiness |
+| `对照当前仓库全面验收这个 Figma：<link>` | `baseline-ready` |
+| `按这个 Figma 替换当前对应页面：<link>` | `baseline-ready` → 项目 Coding handoff → 实现后 targeted re-review |
+
+模式和权限分开判断：
+
+- 说“只检查、不修改”就不写 Figma，但不改变已经明确的正式验收目标；
+- 说“有问题直接改”才获得本轮 Figma 写授权；
+- 说“按这个 Figma 替换/实现现有页面”表示需要修改目标实现，但 commit、PR、merge、release 仍按项目 Coding 工作流和用户授权判断；
+- Design-to-Code 进入生产代码后，Change/TDD/Review/CI/Git 继续服从目标项目自己的 Coding 工作流。
+
+因此后续通常只需要提供：
+
+```text
+Figma 链接
++
+目标仓库/实现上下文（需要对照代码或实施时）
++
+一句自然语言目标
+```
+
+不需要重复粘贴页面尺寸、组件复用、Prototype、动态数据和后端接线等长约束。
 
 ## 4. 它会自动检查什么
 
@@ -145,41 +170,40 @@ NOT_READY
 - 正式 Frame 与历史/备份是否分清；
 - 动态数据是否有 Annotation；
 - Shared / Feature / Page Owner 是否明确；
-- 目标技术栈是否来自当前项目，而不是 Figma 工具示例代码。
+- 目标技术栈是否来自当前项目，而不是 Figma 工具示例代码；
+- 用户要求实现/替换现有页面时，是否先通过 Ready 门禁，再交给目标项目 Coding 工作流。
 
-## 5. 常见使用方式
+## 5. 最短使用方式
 
-### 全面检查并修复
-
-```text
-@Figma
-使用 figma skill，以 review-and-fix 全面检查这个页面。
-重点检查页面尺寸、视觉、用户习惯、公共组件、业务逻辑复用、Prototype、动态数据来源和真实系统可接入性；有问题直接修 Figma，最后判断是否达到正式开发基线。
-```
-
-如果有代码仓库：
+### 全面检查
 
 ```text
 @Figma @GitHub
-使用 figma skill，以 review-and-fix 对照当前仓库真实实现审查该页面。
-不要从聊天猜系统能力；动态数据、用户输入和按钮必须映射当前代码/Contract/SDK/状态机。
+全面检查这个 Figma：<链接>
 ```
 
-### 只审查
+### 检查并直接修好
 
 ```text
-@Figma
-使用 figma skill，以 review-only 审查这个页面。
-不要修改，只输出 P0/P1/P2 Findings 和 Readiness。
+@Figma @GitHub
+全面检查并修好这个 Figma：<链接>
 ```
 
-### 正式交付实现前验收
+### 对照仓库做正式开发基线验收
 
 ```text
-@Figma
-使用 figma skill，以 baseline-ready 验收这个页面。
-必须检查页面布局、用户工作流、组件/业务逻辑复用、Prototype、动态数据、Fresh Screenshot，以及适用的 Design Context/系统能力映射。
+@Figma @GitHub
+对照当前仓库全面验收这个 Figma：<链接>
 ```
+
+### 用 Figma 替换现有页面
+
+```text
+@Figma @GitHub
+按这个 Figma 替换当前对应页面：<链接>
+```
+
+如果目标仓库、分支或最终是否需要 PR/merge 无法从当前上下文确定，再补这些真正影响执行边界的信息；不要重复 Skill 已经固化的审查清单。
 
 ## 6. 文件结构
 
@@ -210,7 +234,8 @@ Figma Skill 不应该：
 - 只看截图就宣称设计正确；
 - 从历史聊天猜当前系统能力；
 - 用 Figma 替代 Contract/API/SDK/Runtime；
-- 自动获得生产代码修改、commit、PR 或 merge 权限；
+- 自动获得未明确授予的 Figma、commit、PR、merge 或 release 权限；
+- 在用户未要求修改目标实现时自动改生产代码；
 - 为了“公共化”把所有业务组件升成全局组件；
 - 把同一业务逻辑复制到多个页面；
 - 把业务规则塞进 Button/Input 等基础视觉组件；
