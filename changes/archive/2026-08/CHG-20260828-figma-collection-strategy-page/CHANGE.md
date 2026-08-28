@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260828-figma-collection-strategy-page"
 title: "采集策略正式 Figma 页面实现"
 level: L2
-status: ready_for_review
+status: done
 owner: "chatgpt"
 branch: "feature/figma-collection-strategy-page"
 created: 2026-08-28
@@ -40,7 +40,7 @@ data_changes:
 - [x] 既有停用/启用资格、历史空搜索配置兼容、全局相关性唯一配置和固定 Plan 策略语义不变，并以用户可理解的中文展示。
 - [x] 目标测试先因现状与基线不一致而失败，最小实现后通过；浏览器 Mock、后端/API/PostgreSQL、Contract/generated、真实 Full-stack Golden Path、构建和仓库治理门禁取得新鲜证据。
 - [x] targeted Figma re-review 与浏览器实际页面截图对照无阻塞视觉或交互偏差。
-- [ ] PR Review/CI 全绿后正常合并至 `main` 并归档 Change；这是 Ready 后的交付生命周期步骤，最终证据在归档时回填。
+- [x] PR Review/CI 全绿后正常合并至 `main` 并归档 Change；实现 PR #257 已合并，`main` 提交 `b83eee34af76d0cb2642ce46bcdf3097dc593fac` 的 4 个 push 工作流全部成功，本文件已移入正式归档目录。
 
 # 范围
 
@@ -98,9 +98,9 @@ data_changes:
 | R5 | 复用 Shared UI 和唯一业务逻辑 Owner，保持独立页面/Feature 边界 | user:当前实现任务；`AGENTS.md` 模块边界 | satisfied | 新增 Shared Page Header/Button/Icon/Feedback；Feature KPI/Table/Modal/Drawer 保持独立；资格仍由 `eligibility.ts`、Search Config 仍由 Shared 现有 Owner、展示映射由 `presentation.ts` 唯一维护 |
 | R6 | 严格使用仓库 Vue 3 + TypeScript + Vite + Pinia 和现有样式/依赖 | user:当前实现任务；锁文件 | satisfied | `package.json`/`package-lock.json`/`.node-version` 无差异；lint、TS7+vue typecheck、Vitest 50/50、Vite production build 均退出码 0；未引入 React/Tailwind/新依赖 |
 | R7 | 只接通真实 Route，不按未来 IA 创建假页面或死链 | user:当前实现任务；`changes/archive/2026-08/CHG-20260827-figma-collection-strategy-baseline/CHANGE.md` | satisfied | AppShell 只映射 `routes.ts` 的 `/`、`/voice-plaza`、`/collection-runtime`、`/collection-strategy`；AppShell Unit 与 Browser Acceptance 均验证，无未来 Route/假页面差异 |
-| R8 | 按 Red-Green-Refactor 完成 Change、分层测试、Review、CI 与交付门禁 | user:当前实现任务；`docs/blueprint/06_开发约束与分阶段实施.md` | satisfied | 初始目标 Red 为 13 项中 5 项因正式基线缺失失败；实现后目标与完整 50 项均 Green。独立 Review 发现北京时间和 Sidebar 两项问题，分别修复并 re-review；本地 Ready/质量证据已齐，远端 CI 在后续 PR 步骤取得 |
+| R8 | 按 Red-Green-Refactor 完成 Change、分层测试、Review、CI 与交付门禁 | user:当前实现任务；`docs/blueprint/06_开发约束与分阶段实施.md` | satisfied | 初始目标 Red 为 13 项中 5 项因正式基线缺失失败；实现后目标与完整 50 项均 Green。独立 Review 发现北京时间和 Sidebar 两项问题，分别修复并 re-review；PR #257 和合并后 `main` 的完整门禁均成功 |
 | R9 | 完成后使用 Figma targeted re-review，并以浏览器实际页面和 Fresh Screenshot 对照 | user:当前实现任务 | satisfied | 完成后重新读取 `284:561` Design Context，并重新生成 `284:112`、`284:313`、`284:561`、`476:92`、`928:1320` 的 1440×900 Fresh Screenshot；实际浏览器主页面/详情截图人工对照无阻塞偏差 |
-| R10 | PR 全部门禁通过后正常合并 `main` 并归档 Change | user:当前实现任务；`AGENTS.md` Git/交付规则 | explicitly_deferred | 按仓库生命周期，Ready Check 先于 PR/CI/merge，归档又必须晚于合并后 main 验证；本任务已获完整授权，将在 Ready 后连续执行并在 Archive 把本项改为 `satisfied`、回填实际 PR/CI/merge SHA |
+| R10 | PR 全部门禁通过后正常合并 `main` 并归档 Change | user:当前实现任务；`AGENTS.md` Git/交付规则 | satisfied | 实现 commit `e47a7b94c79ceb2853e2845b4e835e404f3dd999` 经 PR #257 的 Runtime/Change Gate/Full-stack/CI 4 个工作流全部成功后 squash merge；`main` 提交 `b83eee34af76d0cb2642ce46bcdf3097dc593fac` 的 push runs `33153893824/33153893859/33153893981/33153893860` 全部 completed/success，本 Change 已移入 `changes/archive/2026-08/` |
 
 # Validation Matrix
 
@@ -159,9 +159,9 @@ Browser Mock 不能冒充真实 Backend/DB；一条 Full-stack 不能冒充全�
 同时复核 Validation Matrix：每个 `required` 都有足够的新鲜证据，每个 `not_applicable` 都有真实依据。
 
 - [x] upstream_re_read：已重新读取用户要求、`AGENTS.md`、正式 Figma Context/Fresh Screenshot、Figma Guide、Blueprint 04/06/07、历史基线 Change、routes/Contract/锁文件与 CI，并从它们独立重建完成定义。
-- [x] change_coverage：已确认 R1—R10 覆盖全部上游要求，没有把 Change 自身或测试结果当作需求全集；R10 仅按正式交付生命周期在 Archive 回填最终外部证据。
+- [x] change_coverage：已确认 R1—R10 覆盖全部上游要求，没有把 Change 自身或测试结果当作需求全集；R10 已在 Archive 回填实际 PR、CI、merge 与合并后 `main` 证据。
 - [x] reverse_audit：已执行“后端 Capability/Contract → 前端入口/状态/错误/结果”和“前端按钮/表单 → 后端真实支持”的双向审计；Browser Mock、Backend/PostgreSQL、Contract、Golden Path 与 Provider Probe 不适用依据均复核。
-- [x] unresolved_cleared：所有 `not_satisfied` 已清零；唯一 `explicitly_deferred` 是 Ready 后才能执行的 PR/CI/merge/archive 生命周期，依据为仓库 Git/Change 规则，仍在本任务内闭环。
+- [x] unresolved_cleared：所有 Requirement 均为 `satisfied`，无 `not_satisfied`、延期项、失败门禁或未解决 Review Finding。
 
 # 任务
 
@@ -173,6 +173,8 @@ Browser Mock 不能冒充真实 Backend/DB；一条 Full-stack 不能冒充全�
 - [x] 同步受影响文档
 - [x] 取得新鲜验证证据
 - [x] 完成 Requirement Traceability 与 Completion Audit
+- [x] PR #257 正常合并至 `main`，合并后 4 个 push 工作流全部成功
+- [x] 使用独立 `chore/archive-figma-collection-strategy-page` 分支归档 Change
 
 # 验证
 
@@ -208,6 +210,10 @@ Browser Mock 不能冒充真实 Backend/DB；一条 Full-stack 不能冒充全�
 
 # 交付
 
-- Commit：
-- PR：
-- 发布：
+- 实现分支：`feature/figma-collection-strategy-page`；PR merge 后已由仓库自动删除。
+- 实现 Commit：`e47a7b94c79ceb2853e2845b4e835e404f3dd999`。
+- 实现 PR：#257 `功能：实现采集策略正式 Figma 页面`；4 个 PR 工作流全部成功，无 Review 或未解决 Review Thread。
+- squash merge commit / `main` 实现基线：`b83eee34af76d0cb2642ce46bcdf3097dc593fac`。
+- 合并后 `main`：Runtime Acceptance `33153893824`、Change Completion Gate `33153893859`、Full-stack Acceptance `33153893981`、CI `33153893860` 均 completed/success。CI attempt 1 因 GitHub Runner 的 CJK 字体安装停滞约 17 分钟而取消，同一提交原样重跑的 attempt 2 全部成功，未修改代码或降低门禁。
+- 归档分支：`chore/archive-figma-collection-strategy-page`。
+- 发布/部署：未执行生产部署；本 Change 无 Contract、Schema、Migration、依赖或持久化数据变化，回滚只需回退前端 merge commit。
