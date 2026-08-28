@@ -1,0 +1,31 @@
+name: Temporary Fix Voice Type Fixtures
+
+on:
+  push:
+    branches:
+      - feature/voice-type-classification-tables
+    paths:
+      - .github/workflows/_tmp_fix_voice_type_fixtures.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/voice-type-classification-tables
+          fetch-depth: 0
+      - name: Apply fixture migration
+        run: python .tmp_fix_voice_type_fixtures.py
+      - name: Commit fixture migration and remove temporary files
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/_tmp_fix_voice_type_fixtures.yml .tmp_fix_voice_type_fixtures.py
+          git add tests scripts
+          git commit -m "测试：迁移发声类型动态 Taxonomy 夹具"
+          git push origin HEAD:feature/voice-type-classification-tables
