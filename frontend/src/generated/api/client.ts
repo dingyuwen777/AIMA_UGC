@@ -576,18 +576,11 @@ export const ContentAnalysisStatus = {
   stale: 'stale',
 } as const;
 
-export type ContentVoiceType = typeof ContentVoiceType[keyof typeof ContentVoiceType];
-
-
-export const ContentVoiceType = {
-  user_voice: 'user_voice',
-  creator_marketing: 'creator_marketing',
-  brand_official: 'brand_official',
-  dealer_promotion: 'dealer_promotion',
-  media_information: 'media_information',
-  other_organization: 'other_organization',
-  unknown: 'unknown',
-} as const;
+/**
+ * @minLength 1
+ * @maxLength 128
+ */
+export type ContentVoiceType = string;
 
 export interface ContentAnalysisResponse {
   analyzed_at?: string | null;

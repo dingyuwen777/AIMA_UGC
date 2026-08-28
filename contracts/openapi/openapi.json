@@ -2874,15 +2874,8 @@
         "type": "object"
       },
       "ContentVoiceType": {
-        "enum": [
-          "user_voice",
-          "creator_marketing",
-          "brand_official",
-          "dealer_promotion",
-          "media_information",
-          "other_organization",
-          "unknown"
-        ],
+        "maxLength": 128,
+        "minLength": 1,
         "type": "string"
       },
       "DataExportCreatedResponse": {
