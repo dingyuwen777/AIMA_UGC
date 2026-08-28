@@ -6,6 +6,13 @@ import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+from aima_ugc.modules.analysis.content_labeling import (
+    CONTENT_LABELING_PROMPT_PATH,
+    PromptTaxonomyLoader,
+)
+
+_VOICE_TYPE = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load().voice_types[0]
+
 
 class _Handler(BaseHTTPRequestHandler):
     request_no = 0
@@ -29,7 +36,7 @@ class _Handler(BaseHTTPRequestHandler):
             {
                 "item_no": item["item_no"],
                 "relevance": "relevant",
-                "voice_type": "user_voice",
+                "voice_type": _VOICE_TYPE,
                 "sentiment": sentiment,
                 "labels": [
                     {
