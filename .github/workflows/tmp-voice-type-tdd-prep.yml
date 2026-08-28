@@ -1,0 +1,55 @@
+name: Temporary Voice Type TDD Prep
+
+on:
+  push:
+    branches:
+      - feature/voice-type-taxonomy
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/voice-type-taxonomy
+          fetch-depth: 0
+
+      - name: Apply type-only TDD preparation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          content_http = Path("backend/src/aima_ugc/bootstrap/content_http.py")
+          text = content_http.read_text(encoding="utf-8")
+          old = "from aima_ugc.contracts.analysis import ContentRelevance, ContentVoiceType"
+          new = "from aima_ugc.contracts.analysis import ContentRelevance"
+          if text.count(old) != 1:
+              raise SystemExit("content_http import replacement target mismatch")
+          text = text.replace(old, new)
+          old = "            voice_type=cast(ContentVoiceType | None, record.analysis.voice_type),"
+          new = "            voice_type=record.analysis.voice_type,"
+          if text.count(old) != 1:
+              raise SystemExit("content_http voice_type replacement target mismatch")
+          content_http.write_text(text.replace(old, new), encoding="utf-8")
+
+          excel = Path("backend/src/aima_ugc/platform/export/excel.py")
+          text = excel.read_text(encoding="utf-8")
+          old = '''def _voice_type_display_name(value: str) -> str:\n    try:\n        return _VOICE_TYPE_DISPLAY_NAMES[value]\n    except KeyError as exc:\n        raise ValueError(f"不支持的发声类型: {value}") from exc\n'''
+          new = '''def _voice_type_display_name(value: str | None) -> str | None:\n    if value is None:\n        return None\n    try:\n        return _VOICE_TYPE_DISPLAY_NAMES[value]\n    except KeyError as exc:\n        raise ValueError(f"不支持的发声类型: {value}") from exc\n'''
+          if text.count(old) != 1:
+              raise SystemExit("excel helper replacement target mismatch")
+          excel.write_text(text.replace(old, new), encoding="utf-8")
+          PY
+          git rm .github/workflows/tmp-voice-type-tdd-prep.yml
+          git add backend/src/aima_ugc/bootstrap/content_http.py backend/src/aima_ugc/platform/export/excel.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "修复：对齐 voice_type 可空类型边界"
+          git push origin HEAD:feature/voice-type-taxonomy
