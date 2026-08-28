@@ -1,6 +1,6 @@
 # Figma Design-to-Code 交付门禁
 
-这份 reference 负责判断一个 Figma 页面是否已经可以作为 Codex、Coding Agent 或人工开发者的正式开发基线。
+这份 reference 负责判断一个 Figma 页面是否已经可以作为 Codex、Coding Agent 或人工开发者的正式开发基线，并定义用户要求“按这个 Figma 替换/实现现有页面”时如何安全交接到目标项目的研发工作流。
 
 核心原则：
 
@@ -278,3 +278,119 @@ Prototype / 状态规格入口
 ```
 
 Figma Skill 的 `READY` 只证明设计可以实施，不证明代码已经实现、测试已通过或 PR 可合并。
+
+## 13.1 用户要求“按这个 Figma 替换/实现现有页面”时
+
+这类请求必须视为 **Figma 基线验收 + 项目 Coding 实施** 的组合任务，而不是让 Figma Skill 直接承担生产研发。
+
+标准流程：
+
+```text
+用户提供 Figma 链接 + 目标仓库/实现上下文
+→ 恢复当前项目规则和实现事实
+→ 确定正式 Figma Node / Starting Point
+→ baseline-ready
+→ NOT_READY：
+   - 用户已授权修改 Figma → review-and-fix → re-review
+   - 用户未授权修改 Figma → 停止生产实现并报告阻塞
+→ READY / 可实施的 READY_WITH_NOTES
+→ 形成 Coding Handoff
+→ 立即切入目标项目 Coding 工作流
+→ Coding 按项目规则实施、验证、Review、CI、Git/交付
+→ 实现完成后用 Figma 做 targeted re-review
+```
+
+### Handoff 前必须重新定位现有实现
+
+有代码仓库时，不允许只凭页面名称或历史聊天猜目标文件。至少按项目形态确认适用的：
+
+```text
+Route / Screen / Navigation Destination
+Page / View / Feature
+Store / State / ViewModel
+API / SDK / Generated Client / CMS / Local Store
+Contract / Schema / Runtime Capability
+Shared UI / Feature Public / Shared Domain Owner
+相关测试 / Acceptance 入口
+```
+
+找不到某一层时记录 `not_applicable` 或 `implementation_required`；不要为了填表制造不存在的架构层。
+
+### Figma 和当前实现发生冲突时
+
+先分类，不机械“Figma优先”或“代码优先”：
+
+```text
+旧前端视觉落后，但真实系统已经支持正式 Figma
+→ Coding 更新前端实现，保留正确机器行为
+
+Figma 示例值与真实动态数据不同
+→ 实现使用真实数据源，示例只服务排版
+
+Figma 行为当前系统不支持，也没有批准未来能力
+→ NOT_READY / implementation_required，不伪造实现
+
+当前代码违反正式 Contract / 已批准设计
+→ 作为 Coding Finding 修实现，不让 Figma 迎合已知 Bug
+
+长期设计决定与当前机器事实冲突且无法判断谁过期
+→ 先按项目决策门禁调查/提请 Owner，不静默选择
+```
+
+### 实施层必须保持真实 Owner
+
+Design-to-Code 的目标是替换/实现**页面表现和交互组合**，不是重建第二套系统事实。
+
+```text
+Figma Shared Component
+→ 映射项目真实 Shared UI / Design System Owner
+
+Figma Feature Pattern
+→ 映射 Feature Public / Page Composition
+
+动态数据
+→ 继续沿当前正式 API / SDK / Store / Runtime 链路
+
+业务资格 / 状态映射 / 默认值 / 校验
+→ 继续复用当前唯一 Domain / Feature / Service Owner
+```
+
+禁止为了“还原设计”：
+
+- 在页面硬编码 Figma 代表性数据；
+- 复制已有业务规则到新页面；
+- 绕过 generated client / SDK / Repository / Service 等当前正式边界；
+- 因工具参考代码引入第二套框架、UI Library 或状态管理；
+- 把未来 IA 直接实现成当前死链/空页面；
+- 删除正确的 Loading/Error/Permission/兼容状态只为了截图更像。
+
+### Coding 细则只引用，不复制
+
+一旦进入生产实现：
+
+```text
+Change / Requirement Traceability
+TDD / 根因调试
+Validation Matrix
+Code Review
+CI
+Git / PR / Merge / Release
+```
+
+全部服从目标项目自己的 Coding / CONTRIBUTING / AGENTS 等研发规则。
+
+本 reference 只负责把**已经 Ready 的设计事实**完整交过去，不再维护第二套研发流程。
+
+### 实现完成后的 Figma 回验
+
+目标项目的代码验证完成后，至少按适用边界做 targeted re-review：
+
+```text
+实际运行页面 / Screen
+↔ Fresh Figma Screenshot
+↔ 关键 Prototype / 状态规格
+↔ Shared Component / 业务 Owner
+↔ 动态数据和真实系统动作
+```
+
+如果实现过程中因为真实系统约束需要改变已批准设计，应同步回设计/长期事实源，不能让 Figma 和生产实现长期分叉。
