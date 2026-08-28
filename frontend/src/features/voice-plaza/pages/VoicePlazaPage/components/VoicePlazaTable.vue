@@ -282,6 +282,7 @@ time span { color: var(--aima-text-muted); }
 .review-button--undo { color: var(--aima-text-muted); }
 .review-button:disabled { cursor: not-allowed; opacity: .55; }
 .table-state { display: flex; min-height: 376px; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--aima-text-muted); text-align: center; }
+.table-state--error { min-height: 306px; }
 .table-state strong { color: var(--aima-text); font-size: 16px; }
 .table-state span { font-size: 12px; }
 .table-state small { color: var(--aima-text-disabled); font-size: 10px; }
