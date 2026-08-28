@@ -123,9 +123,15 @@ test('renders the formal loading state while the content request is in flight', 
 test('renders the formal error banner and recoverable list error state', async ({ page }) => {
   await page.route('**/api/v1/contents**', async (route) => {
     await route.fulfill({
-      status: 500,
+      status: 503,
       contentType: 'application/json',
-      body: JSON.stringify({ detail: 'fixture content failure' }),
+      body: JSON.stringify({
+        title: '声音广场暂不可用',
+        status: 503,
+        detail: '内容列表服务暂不可用，请使用 request_id 联系管理员。',
+        request_id: 'req_voice_plaza_figma_error',
+        errors: [],
+      }),
     })
   })
 
@@ -133,6 +139,7 @@ test('renders the formal error banner and recoverable list error state', async (
   await expect(page.getByText('加载声音广场失败')).toBeVisible()
   await expect(page.getByText('暂时无法加载声音记录')).toBeVisible()
   await expect(page.getByText('检查网络或服务状态后点击“刷新数据”重试。')).toBeVisible()
+  await expect(page.getByRole('alert')).toContainText('req_voice_plaza_figma_error')
 
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {
     await page.screenshot({ path: 'test-results/voice-plaza-figma-error.png', fullPage: true })
