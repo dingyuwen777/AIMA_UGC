@@ -118,12 +118,13 @@ _MAX_ROW_HEIGHT = 409.0
 _SECONDARY_LABEL_HEADER = "二级标签"
 _VOICE_TYPE_DISPLAY_NAMES = {
     "user_voice": "真实用户发声",
-    "creator_marketing": "达人/创作者营销",
-    "brand_official": "品牌官方传播",
-    "dealer_promotion": "经销商/门店推广",
-    "media_information": "媒体/资讯转载",
-    "other_organization": "其他机构传播",
+    "brand_official": "品牌官方发声",
+    "dealer_promotion": "门店经销商发声",
+    "creator_marketing": "营销推广发声",
+    "industry_professional": "行业从业发声",
+    "media_information": "媒体机构发声",
     "unknown": "无法判断",
+    "other_organization": "其他机构传播",
 }
 _CONTENT_COLUMN_WIDTHS = {
     "平台": 15,
