@@ -16,24 +16,25 @@ from openpyxl import load_workbook
 @pytest.mark.parametrize(
     ("voice_type", "expected_display"),
     [
-        ("user_voice", "真实用户发声"),
-        ("brand_official", "品牌官方发声"),
-        ("dealer_promotion", "门店经销商发声"),
-        ("creator_marketing", "营销推广发声"),
-        ("industry_professional", "行业从业发声"),
-        ("media_information", "媒体机构发声"),
-        ("unknown", "无法判断"),
-        ("other_organization", "其他机构传播"),
-        ("future_prompt_voice_type", "future_prompt_voice_type"),
+        ("真实用户发声", "真实用户发声"),
+        ("品牌官方发声", "品牌官方发声"),
+        ("门店经销商发声", "门店经销商发声"),
+        ("营销推广发声", "营销推广发声"),
+        ("行业从业发声", "行业从业发声"),
+        ("媒体机构发声", "媒体机构发声"),
+        ("无法判断", "无法判断"),
+        ("未来社区发声", "未来社区发声"),
+        ("user_voice", "user_voice"),
+        ("other_organization", "other_organization"),
         (None, None),
     ],
 )
-def test_excel_voice_type_display_does_not_enforce_a_parallel_taxonomy(
+def test_excel_voice_type_is_exported_verbatim_without_legacy_translation(
     tmp_path: Path,
     voice_type: str | None,
     expected_display: str | None,
 ) -> None:
-    """Excel 只提供中文展示别名，合法 voice_type 集合仍由 Prompt Taxonomy 决定。"""
+    """Excel 必须原样导出 voice_type，不维护当前或历史英文值翻译层。"""
 
     output = tmp_path / "voice-type.xlsx"
     label_pair = UnifiedDataExcelLabelPairV1(

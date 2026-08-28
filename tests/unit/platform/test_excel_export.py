@@ -7,6 +7,11 @@ from zipfile import ZipFile
 
 import aima_ugc.platform.export.excel as excel_module
 import pytest
+from aima_ugc.contracts.analysis import (
+    ContentLabelAnalysisV2,
+    ContentLabelPairV2,
+    UnifiedContentRecordV1,
+)
 from aima_ugc.contracts.canonical import (
     CanonicalAuthorV1,
     CanonicalCommentV1,
@@ -20,6 +25,7 @@ from aima_ugc.contracts.export import (
     UnifiedDataExcelV1,
 )
 from aima_ugc.platform.export import (
+    export_unified_content_jsonl_to_excel,
     export_unified_data_excel,
     project_canonical_comment,
     project_canonical_content,
@@ -140,6 +146,50 @@ def _multilabel_export_record() -> UnifiedDataExcelV1:
         content=record.content.model_copy(update={"analysis": analysis}),
         comments=record.comments,
     )
+
+
+def test_v2_jsonl_export_uses_current_chinese_voice_type_default(tmp_path: Path) -> None:
+    """历史 V2 无 voice_type 时只使用当前中文“无法判断”，不得发明旧英文机器值。"""
+
+    analysis = ContentLabelAnalysisV2(
+        sentiment="中性",
+        labels=(
+            ContentLabelPairV2(
+                primary_label="品牌评价",
+                secondary_label="口碑与信任",
+            ),
+        ),
+        prompt_version="content-labeling.v2",
+        prompt_sha256="a" * 64,
+        taxonomy_sha256="b" * 64,
+        model_provider="fake",
+        model="fake",
+        input_hash="c" * 64,
+        analyzed_at=_OBSERVED_AT,
+    )
+    record = UnifiedContentRecordV1(
+        content=_content(),
+        matched_keywords=["爱玛"],
+        analysis=analysis,
+    )
+    input_path = tmp_path / "content.jsonl"
+    output_path = tmp_path / "content.xlsx"
+    input_path.write_text(record.model_dump_json() + "\n", encoding="utf-8")
+
+    export_unified_content_jsonl_to_excel(
+        input_path=input_path,
+        output_path=output_path,
+        include_analysis=True,
+    )
+
+    workbook = load_workbook(output_path, data_only=False, read_only=True)
+    try:
+        sheet = workbook["内容"]
+        headers = [cell.value for cell in next(sheet.iter_rows(max_row=1))]
+        values = [cell.value for cell in next(sheet.iter_rows(min_row=2, max_row=2))]
+        assert values[headers.index("发声类型")] == "无法判断"
+    finally:
+        workbook.close()
 
 
 def test_shared_exporter_writes_provider_neutral_workbook_and_reopens(tmp_path: Path) -> None:
