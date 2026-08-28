@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260828-voice-type-taxonomy"
 title: "统一 voice_type 为 Prompt Taxonomy 驱动"
 level: L3
-status: ready_for_review
+status: done
 owner: "chatgpt"
 branch: "feature/voice-type-taxonomy"
 created: 2026-08-28
@@ -62,7 +62,7 @@ data_changes:
 - [x] 当前 7 类的机器值与业务判断语义不改变；历史 Analysis Result 不回写、不重分类，继续由既有 `prompt_sha256/taxonomy_sha256` 追溯当时规则。
 - [x] OpenAPI / generated TypeScript Client 由正式生成流程同步；现有字段名、JSON 结构和接口路径不变。
 - [x] Excel 既有 7 类继续使用原中文展示别名，但展示映射不再充当合法值白名单；未来 Prompt 新值可原样导出，不要求同步修改导出代码。
-- [x] 目标 Unit、PostgreSQL Integration、Contract/generated drift、质量门禁和完整 PR CI 已在实现 HEAD `b1afd47c5529e358818b4c5a2376c65325babadb` 取得本轮新鲜绿色证据。
+- [x] 目标 Unit、PostgreSQL Integration、Contract/generated drift、质量门禁和完整 PR CI 已取得新鲜绿色证据；PR #254 squash merge 后 `main` 提交 `911e52301ae179615a415e14c632caa17faf0d2a` 的 5 个 push 工作流也全部成功。
 
 # 范围
 
@@ -133,7 +133,7 @@ data_changes:
 | R5 | AI taxonomy 不得在 Python、数据库和前端维护平行业务合法值列表 | AGENTS.md | satisfied | `ContentVoiceType` 已放宽为结构字符串，DB 只保留非空 CHECK，generated client 不再是固定 enum；Excel 旧中文别名使用 `.get(value, value)`，仅展示兼容而非合法值白名单 |
 | R6 | Schema 变化必须通过 SQLAlchemy + Alembic，并用真实 PostgreSQL 验证 | AGENTS.md | satisfied | `20260828_0030` 已通过 PostgreSQL 18.4 空库 upgrade、`alembic check`、历史 Migration compatibility；Database/Job/Collection/Content/Ingestion 集成分别 25/13/90/33/17 passed |
 | R7 | generated client 必须由正式 Pydantic/OpenAPI/Orval 流程同步，不手写第二套 Contract | docs/blueprint/07_技术决策与实施门禁.md | satisfied | CI run `33149645595` 执行 `scripts/contracts/generate.py`、Orval、`git diff --exit-code`、`generate.py --check`、compatibility check 全部成功 |
-| R8 | 正常 PR/CI 后合并并推送到 `main` | user:改完推送主分支 | explicitly_deferred | PR #254 已建立且实现 HEAD `b1afd47c...` 的 CI/Full-stack/Runtime/Tooling 已全绿；实际 merge 与 main post-merge CI 必须在本 Change Ready 门禁通过后执行，并在归档 Change 中补充最终证据 |
+| R8 | 正常 PR/CI 后合并并推送到 `main` | user:改完推送主分支 | satisfied | PR #254 在最终 HEAD `c151deb56d2b4bd8268397dd5cd624d6639bfca9` 的 5 个永久工作流全绿后 squash merge；`main` 指向 `911e52301ae179615a415e14c632caa17faf0d2a`，其 Change Gate/CI/Runtime/Full-stack/Tooling push runs `33150977993/33150978020/33150977994/33150977999/33150978008` 均 completed/success |
 
 # Validation Matrix
 
@@ -142,18 +142,18 @@ data_changes:
 | 行为 / Unit / Component | required | Prompt Loader 解析/去重/hash、动态新增 voice type、`unknown_voice_type` Validation Retry、自然语言边界/示例保留、Excel 新值 fallback；CI Unit 694 passed |
 | 接口 / Contract | required | `ContentVoiceType` 从固定 enum 放宽为结构字符串；CI Contract 92 passed、API 38 passed，generated compatibility/drift 通过 |
 | 集成 / Persistence / Runtime Dependency | required | PostgreSQL 18.4 执行 Alembic head `20260828_0030`；固定七值 CHECK 已移除、结构 CHECK 存在；Database/Job/Collection/Content/Ingestion 全绿 |
-| 用户 / Workflow Acceptance | not_applicable | 本次不新增页面入口、按钮或业务状态；另有 Full-stack Acceptance run `33149645589` 成功作为额外回归证据 |
-| 跨组件 Golden Path | not_applicable | 不改变 API 路径、Job 链或 Worker 装配；另有 Runtime Acceptance run `33149645638` 成功作为额外回归证据 |
+| 用户 / Workflow Acceptance | not_applicable | 本次不新增页面入口、按钮或业务状态；额外真实 Full-stack 回归在最终 PR run `33150114971` 与合并后 `main` run `33150977999` 均成功 |
+| 跨组件 Golden Path | not_applicable | 不改变 API 路径、Job 链或 Worker 装配；额外 Runtime 回归在最终 PR run `33150114876` 与合并后 `main` run `33150977994` 均成功 |
 | External Dependency / Provider Probe | not_applicable | 不修改 TikHub/LLM 网络协议或真实 Provider 字段，不需要付费外部 Probe |
-| Build / Package / Runtime | required | CI run `33149645595`：Ruff 529 files、mypy 254 source files、Wheel build/install、frontend lint/type/build、44 Vitest、31 Playwright 均成功 |
-| Docs / Governance / Other | required | architecture/ownership、Secret/docs、generated drift 均成功；Change Completion Gate 的 Coding 测试 41 tests OK，当前更新将状态切换为 `ready_for_review` 后重新执行正式 Ready 门禁 |
+| Build / Package / Runtime | required | 最终 PR CI run `33150114931` 与合并后 `main` CI run `33150978020` 均 success；Ruff/mypy、Wheel build/install、frontend lint/type/build、Vitest/Playwright 全部通过 |
+| Docs / Governance / Other | required | 最终 PR Change Completion Gate run `33150114872` success；合并后 `main` Change Completion Gate run `33150977993` success；architecture/ownership、Secret/docs、generated drift 均通过 |
 
 # Completion Audit
 
-- [x] upstream_re_read：完成前已重新读取本轮用户决定、目标分支 `AGENTS.md`、Coding Skill/相关 references、当前 Prompt、Analysis README、Excel/AI Appendix、Blueprint 与当前 PR/CI 事实。
+- [x] upstream_re_read：完成前已重新读取本轮用户决定、目标分支与合并后 `main` 的 `AGENTS.md`、Coding Skill/相关 references、当前 Prompt、Analysis README、Excel/AI Appendix、Blueprint 与 PR/main CI 事实。
 - [x] change_coverage：已逐项核对“只改 Prompt 即可演进 + 自然语言判断/边界/示例保留 + 当前 7 类不变 + DB/Contract/API/Excel 不维护平行合法值列表”，并为 Excel 第二白名单补充回归测试与修复。
 - [x] reverse_audit：已按 Prompt → Loader → Validator → Contract → Repository/DB → API/generated consumer → Excel export 正反向审计，并复核 Migration upgrade/downgrade；未发现其他要求新增类别时同步改业务白名单的运行时路径。
-- [x] unresolved_cleared：实现/验证范围内 `not_satisfied` 已清零；仅实际 PR merge/main post-merge CI 按门禁顺序 `explicitly_deferred`，不会绕过 Ready/CI/Branch Protection。
+- [x] unresolved_cleared：全部 Requirement 已满足；PR #254 已正常合并且合并后 `main` 5 个 push 工作流全部成功，无未解决严重/重要 Finding、失败门禁或延期事项。
 
 # 任务
 
@@ -168,8 +168,8 @@ data_changes:
 - [x] 运行目标测试、PostgreSQL Integration、Contract、质量门禁和完整 CI。
 - [x] 执行 Completion Audit、A1 需求符合性 Review 与 A2 代码质量 Review；无未解决严重/重要 Finding。
 - [x] Change 进入 `ready_for_review` 并提交最终门禁复验。
-- [ ] PR #254 正常合并 `main`；合并后验证 main push CI。
-- [ ] 单独归档 Change，并记录实际 merge/main CI 证据。
+- [x] PR #254 正常 squash merge 到 `main`；合并后 `main` push CI 已验证全绿。
+- [x] 使用独立 `docs/archive-voice-type-taxonomy-change` 分支归档 Change，并记录实际 merge/main CI 证据。
 
 # 验证
 
@@ -196,7 +196,21 @@ data_changes:
 - Full-stack Acceptance run `33149645589`：success。
 - Runtime Acceptance run `33149645638`：success。
 - Developer Tooling Compatibility run `33149645695`：Windows Development/Compose 与 Linux Local Development 均 success。
-- Change Completion Gate run `33149645586` 在实现 HEAD 上仅因 Change `status: in_progress` 失败；其 Coding completion-gate 测试自身 41 tests OK。本提交已完成 Traceability/Audit 并切换为 `ready_for_review`，必须以新 HEAD 的正式 Gate 结果作为合并前证据。
+
+最终 Ready HEAD `c151deb56d2b4bd8268397dd5cd624d6639bfca9`：
+
+- Change Completion Gate run `33150114872`：completed / success，Coding completion-gate tests 与 changed-PR Ready Check 均通过。
+- CI run `33150114931`、Runtime Acceptance `33150114876`、Full-stack Acceptance `33150114971`、Developer Tooling Compatibility `33150114894`：全部 completed / success。
+- PR #254 无未解决 Review comment；由 Draft 转 Ready 后保持同一 HEAD，随后使用 `expected_head_sha` 正常 squash merge。
+
+合并后 `main`：
+
+- PR #254 squash merge commit：`911e52301ae179615a415e14c632caa17faf0d2a`；远程 `main` 已确认指向该提交。
+- Change Completion Gate run `33150977993`：completed / success。
+- CI run `33150978020`：completed / success；PostgreSQL Integration、Repository Quality 与 CI Gate 全部 success。
+- Runtime Acceptance run `33150977994`：completed / success，canonical Compose、repository-relative host root、Windows overlay 全部通过。
+- Full-stack Acceptance run `33150977999`：completed / success，真实 Excel Browser Full-stack 通过。
+- Developer Tooling Compatibility run `33150978008`：completed / success，Windows 与 Linux 开发工具链均通过。
 
 # 两阶段 Review
 
@@ -229,9 +243,9 @@ data_changes:
 
 # 交付
 
-- 分支：`feature/voice-type-taxonomy`
-- PR：#254 `重构：统一 voice_type 为 Prompt Taxonomy 驱动`
-- 实现预审 HEAD：`b1afd47c5529e358818b4c5a2376c65325babadb`
-- 合并：Change Ready 门禁与最终 PR checks 全绿后正常合并，不绕过 Branch Protection/Ruleset。
-- 归档：合并并验证 main 后使用独立 Change 收尾提交/PR，补记实际 merge SHA 与 main CI。
-- 发布/部署：本任务不执行生产部署。
+- 实现分支：`feature/voice-type-taxonomy`；PR merge 后已由仓库自动删除。
+- 实现 PR：#254 `重构：统一 voice_type 为 Prompt Taxonomy 驱动`。
+- 最终 PR HEAD：`c151deb56d2b4bd8268397dd5cd624d6639bfca9`。
+- squash merge commit / `main` 实现基线：`911e52301ae179615a415e14c632caa17faf0d2a`。
+- 归档分支：`docs/archive-voice-type-taxonomy-change`。
+- 发布/部署：未执行生产部署；本 Change 只完成代码、Migration、Contract、文档、CI 与 Git 集成闭环。
