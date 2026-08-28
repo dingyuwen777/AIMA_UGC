@@ -545,22 +545,12 @@ ORDER BY created_at DESC
 LIMIT 30;
 ```
 
-当前 `voice_type` 合法机器值：
+当前 `voice_type` 合法机器值直接使用中文业务名称，完整集合以当前 Prompt Taxonomy 为唯一事实源，不在 PostgreSQL 调试文档复制。
+
+查询当前真实用户发声：
 
 ```text
-user_voice
-creator_marketing
-brand_official
-dealer_promotion
-media_information
-other_organization
-unknown
-```
-
-真实用户发声：
-
-```text
-voice_type = 'user_voice'
+voice_type = '真实用户发声'
 ```
 
 查 AI 判定为无关：

@@ -18,7 +18,7 @@ const irrelevantItem = {
   analysis: {
     status: 'completed',
     relevance: 'irrelevant',
-    voice_type: 'media_information',
+    voice_type: '媒体机构发声',
     sentiment: null,
     labels: [],
     analyzed_at: '2026-08-24T01:20:00Z',
@@ -40,7 +40,7 @@ const relevantItem = {
   analysis: {
     ...irrelevantItem.analysis,
     relevance: 'relevant',
-    voice_type: 'user_voice',
+    voice_type: '真实用户发声',
     sentiment: '中性',
     labels: [{ primary_label: '产品体验', secondary_label: '续航表现' }],
   },

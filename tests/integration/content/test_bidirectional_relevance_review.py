@@ -108,7 +108,7 @@ def _analysis_registry(runtime) -> JobRegistry:  # type: ignore[no-untyped-def]
         llm=FakeContentLabelingLLM(
             responses=[
                 '{"items":[{"item_no":1,"relevance":"relevant",'
-                '"voice_type":"user_voice","sentiment":"中性",'
+                '"voice_type":"真实用户发声","sentiment":"中性",'
                 '"labels":[{"primary_label":"骑行性能","secondary_label":"舒适性"}]}]}'
             ]
         ),

@@ -360,22 +360,12 @@ sentiment
 labels[]
 ```
 
-当前 `voice_type` 机器值：
+当前 `voice_type` 与 sentiment、一级/二级标签一样，直接使用 Prompt 中的中文业务名称作为合法机器值；完整集合只维护在当前 Prompt Taxonomy，不在 README 复制第二份列表。
+
+真实用户发声当前唯一业务判断：
 
 ```text
-user_voice
-creator_marketing
-brand_official
-dealer_promotion
-media_information
-other_organization
-unknown
-```
-
-真实用户发声唯一业务判断：
-
-```text
-voice_type == user_voice
+voice_type == "真实用户发声"
 ```
 
 Analysis 正式表定义：

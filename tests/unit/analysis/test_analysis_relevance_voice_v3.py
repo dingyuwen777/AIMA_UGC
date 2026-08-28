@@ -120,7 +120,7 @@ def _write_records(path: Path, records: tuple[UnifiedContentRecordV1, ...]) -> N
 def test_v3_contract_enforces_relevance_dependent_shape_and_voice_type() -> None:
     relevant = ContentLabelAnalysisV3(
         relevance="relevant",
-        voice_type="user_voice",
+        voice_type="真实用户发声",
         sentiment="正面",
         labels=(
             ContentLabelPairV2(
@@ -132,7 +132,7 @@ def test_v3_contract_enforces_relevance_dependent_shape_and_voice_type() -> None
     )
     irrelevant = ContentLabelAnalysisV3(
         relevance="irrelevant",
-        voice_type="media_information",
+        voice_type="媒体机构发声",
         sentiment=None,
         labels=(),
         **_base_fields(),
@@ -152,7 +152,7 @@ def test_v3_contract_enforces_relevance_dependent_shape_and_voice_type() -> None
     with pytest.raises(ValidationError):
         ContentLabelAnalysisV3(
             relevance="irrelevant",
-            voice_type="unknown",
+            voice_type="无法判断",
             sentiment="中性",
             labels=(),
             **_base_fields(),
@@ -185,7 +185,7 @@ def test_service_returns_v3_and_sends_only_approved_public_author_context() -> N
         responses=[
             _model_response(
                 relevance="relevant",
-                voice_type="user_voice",
+                voice_type="真实用户发声",
                 sentiment=taxonomy.sentiments[0],
                 primary_label=primary,
                 secondary_label=secondary,
@@ -202,7 +202,7 @@ def test_service_returns_v3_and_sends_only_approved_public_author_context() -> N
     assert result.items[0].analysis_status == "succeeded"
     assert isinstance(analysis, ContentLabelAnalysisV3)
     assert analysis.relevance == "relevant"
-    assert analysis.voice_type == "user_voice"
+    assert analysis.voice_type == "真实用户发声"
     assert PROMPT_VERSION == "content-labeling.v3"
     assert CONTENT_LABELING_PROMPT_PATH.name == "content_labeling_v3.md"
 
@@ -225,7 +225,7 @@ def test_service_accepts_irrelevant_without_forcing_sentiment_or_labels() -> Non
         responses=[
             _model_response(
                 relevance="irrelevant",
-                voice_type="media_information",
+                voice_type="媒体机构发声",
                 sentiment=None,
             )
         ]
@@ -268,14 +268,14 @@ def test_offline_labeling_removes_irrelevant_rows_after_durable_checkpoint(tmp_p
         responses=[
             _model_response(
                 relevance="relevant",
-                voice_type="user_voice",
+                voice_type="真实用户发声",
                 sentiment=taxonomy.sentiments[0],
                 primary_label=primary,
                 secondary_label=secondary,
             ),
             _model_response(
                 relevance="irrelevant",
-                voice_type="media_information",
+                voice_type="媒体机构发声",
                 sentiment=None,
             ),
         ]
@@ -335,14 +335,14 @@ def test_irrelevant_checkpoint_recovers_without_second_llm_call_after_atomic_rew
         responses=[
             _model_response(
                 relevance="relevant",
-                voice_type="user_voice",
+                voice_type="真实用户发声",
                 sentiment=taxonomy.sentiments[0],
                 primary_label=primary,
                 secondary_label=secondary,
             ),
             _model_response(
                 relevance="irrelevant",
-                voice_type="unknown",
+                voice_type="无法判断",
                 sentiment=None,
             ),
         ]

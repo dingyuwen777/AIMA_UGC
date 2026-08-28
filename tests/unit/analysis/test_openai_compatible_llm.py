@@ -52,7 +52,7 @@ def test_openai_compatible_adapter_sends_one_minimal_chat_completion_request() -
                     {
                         "message": {
                             "content": '{"items":[{"item_no":1,"relevance":"relevant",'
-                            '"voice_type":"user_voice","sentiment":"中性","labels":'
+                            '"voice_type":"真实用户发声","sentiment":"中性","labels":'
                             '[{"primary_label":"一级","secondary_label":"二级"}]}]}'
                         }
                     }

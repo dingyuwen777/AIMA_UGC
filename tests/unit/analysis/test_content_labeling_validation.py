@@ -39,7 +39,7 @@ def _label_item(taxonomy: PromptTaxonomy, *, item_no: int) -> dict[str, object]:
     return {
         "item_no": item_no,
         "relevance": "relevant",
-        "voice_type": "unknown",
+        "voice_type": "无法判断",
         "sentiment": taxonomy.sentiments[0],
         "labels": [
             {

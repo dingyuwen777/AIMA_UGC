@@ -23,13 +23,13 @@ from aima_ugc.modules.analysis.content_labeling import (
 
 OBSERVED_AT = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
 CURRENT_VOICE_TYPES = (
-    "user_voice",
-    "brand_official",
-    "dealer_promotion",
-    "creator_marketing",
-    "industry_professional",
-    "media_information",
-    "unknown",
+    "真实用户发声",
+    "品牌官方发声",
+    "门店经销商发声",
+    "营销推广发声",
+    "行业从业发声",
+    "媒体机构发声",
+    "无法判断",
 )
 
 
@@ -103,6 +103,17 @@ def test_prompt_uses_business_defined_voice_type_taxonomy() -> None:
 
     assert taxonomy.voice_types == CURRENT_VOICE_TYPES
     assert "other_organization" not in taxonomy.voice_types
+    prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
+    for legacy_value in (
+        "user_voice",
+        "brand_official",
+        "dealer_promotion",
+        "creator_marketing",
+        "industry_professional",
+        "media_information",
+        "other_organization",
+    ):
+        assert legacy_value not in prompt
 
 
 def test_prompt_judgment_sections_use_tables_with_examples_and_confusion_cases() -> None:
@@ -116,7 +127,7 @@ def test_prompt_judgment_sections_use_tables_with_examples_and_confusion_cases()
     assert "### 语义相关性示例" in prompt
 
     assert "## 内容发声类型判断标准" in prompt
-    assert "| 推荐名称 | 机器值 | 核心定义 | 说明 |" in prompt
+    assert "| 发声类型 | 核心定义 | 说明 |" in prompt
     assert "### 先组合两层证据，再分类" in prompt
     assert "### 发声类型高混淆场景" in prompt
     assert "### 发声类型示例" in prompt
@@ -159,11 +170,11 @@ def test_prompt_voice_type_changes_are_runtime_driven_without_python_changes(
 ) -> None:
     """Prompt 新增 voice type 后，正式 Service 应无需新增 Python Literal 即可接受。"""
 
-    future_voice_type = "community_voice"
+    future_voice_type = "社区活动发声"
 
     def add_future_voice_type(payload: dict[str, Any]) -> None:
         payload["schema_version"] = "aima-content-taxonomy.v2"
-        payload["voice_types"] = ["unknown", future_voice_type]
+        payload["voice_types"] = ["无法判断", future_voice_type]
 
     loader = PromptTaxonomyLoader(_mutated_prompt(tmp_path, add_future_voice_type))
     taxonomy = loader.load()
@@ -184,7 +195,7 @@ def test_prompt_voice_type_changes_are_runtime_driven_without_python_changes(
         max_validation_retries=0,
     )
 
-    assert taxonomy.voice_types == ("unknown", future_voice_type)
+    assert taxonomy.voice_types == ("无法判断", future_voice_type)
     assert result.items[0].analysis_status == "succeeded"
     assert result.items[0].analysis is not None
     assert result.items[0].analysis.voice_type == future_voice_type
@@ -261,7 +272,7 @@ def test_duplicate_voice_type_in_prompt_taxonomy_fails_closed_before_llm(
 
     def duplicate_voice_type(payload: dict[str, Any]) -> None:
         payload["schema_version"] = "aima-content-taxonomy.v2"
-        payload["voice_types"] = ["unknown", "unknown"]
+        payload["voice_types"] = ["无法判断", "无法判断"]
 
     loader = PromptTaxonomyLoader(_mutated_prompt(tmp_path, duplicate_voice_type))
     fake = FakeContentLabelingLLM(responses=["{}"])

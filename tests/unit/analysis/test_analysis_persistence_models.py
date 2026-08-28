@@ -12,7 +12,7 @@ def test_analysis_persistence_model_preserves_relevance_voice_and_ordered_labels
     job_id = uuid4()
     analysis = ContentLabelAnalysisV3(
         relevance="relevant",
-        voice_type="user_voice",
+        voice_type="真实用户发声",
         sentiment="负面",
         labels=(
             ContentLabelPairV2(primary_label="产品体验", secondary_label="续航表现"),
@@ -41,7 +41,7 @@ def test_analysis_persistence_model_preserves_relevance_voice_and_ordered_labels
     assert result.content_version == 3
     assert result.job_id == job_id
     assert result.relevance == "relevant"
-    assert result.voice_type == "user_voice"
+    assert result.voice_type == "真实用户发声"
     assert result.sentiment == "负面"
     assert [(item.primary_label, item.secondary_label) for item in result.labels] == [
         ("产品体验", "续航表现"),

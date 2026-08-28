@@ -46,7 +46,7 @@ class _ContentService:
             analysis=ContentAnalysisResponse(
                 status="completed",
                 relevance="relevant",
-                voice_type="user_voice",
+                voice_type="真实用户发声",
                 sentiment="负面",
                 labels=(
                     ContentLabelPairResponse(primary_label="产品体验", secondary_label="续航表现"),

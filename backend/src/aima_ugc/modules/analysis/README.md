@@ -50,12 +50,12 @@ relevance = irrelevant
 
 历史 `ContentLabelAnalysisV1/V2` 只保留读取兼容，不再作为新写入格式。
 
-当前 `voice_type` 合法值集合不在本文复制。唯一机器事实来自当前 Prompt 的机器 Taxonomy `voice_types`；各类型定义、边界、高混淆场景和学习示例也只在同一 Prompt 维护。当前结果继续以字符串 `voice_type` 保存，运行时由 `RuntimeTaxonomyValidator` 严格校验 membership。
+当前 `voice_type` 合法值集合不在本文复制。机器值直接使用中文业务名称，唯一机器事实来自当前 Prompt 的机器 Taxonomy `voice_types`；各类型定义、边界、高混淆场景和学习示例也只在同一 Prompt 维护。当前结果继续以字符串 `voice_type` 保存，运行时由 `RuntimeTaxonomyValidator` 严格校验 membership。
 
 真实用户发声唯一业务判断：
 
 ```text
-voice_type == user_voice
+voice_type == "真实用户发声"
 ```
 
 不要再增加 `is_user_voice`/`is_real_user_voice` 平行字段。
