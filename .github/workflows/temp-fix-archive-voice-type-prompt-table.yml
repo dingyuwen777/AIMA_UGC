@@ -1,0 +1,58 @@
+name: Temporary Fix Archived Voice Type Prompt Table Change
+
+on:
+  push:
+    branches:
+      - docs/archive-voice-type-prompt-table-change
+    paths:
+      - .github/workflows/temp-fix-archive-voice-type-prompt-table.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: docs/archive-voice-type-prompt-table-change
+          fetch-depth: 0
+      - name: Fix archived completion wording
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("changes/archive/2026-08/CHG-20260828-voice-type-prompt-table/CHANGE.md")
+          text = path.read_text(encoding="utf-8")
+
+          old_success = "- [x] 最终实现 HEAD `7ffe6931c906105a142a71fb0e2e03d1c2490dd1` 已通过 CI、Runtime Acceptance、Full-stack Acceptance、Developer Tooling Compatibility；Change 进入 Ready 后需在新 HEAD 重新通过全部永久门禁。"
+          new_success = "- [x] 最终 Ready HEAD `e2d7b90924361002622edd436905c47f08b5dd3e` 五个永久 PR 门禁全部通过；PR #258 已 squash merge 到 `main=66ccfb7f26d9a904ee1db626eb3e9acc10cac56d`，且合并后 main 五个 push workflow 全部成功。"
+          if old_success not in text:
+              raise SystemExit("success criterion wording not found")
+          text = text.replace(old_success, new_success, 1)
+
+          old_audit = "- [x] unresolved_cleared：R1-R4 已有最终 Green 证据并转 `satisfied`；实现范围内 `not_satisfied` 清零。R5 仅因仓库要求必须先通过 Ready/CI 再执行 merge/main 验证而 `explicitly_deferred`，不是功能遗漏。"
+          new_audit = "- [x] unresolved_cleared：R1-R5 均已取得实际实现、Ready/PR、merge 与 main push CI 证据并处于 `satisfied`；`not_satisfied` 与 `explicitly_deferred` 均已清零。"
+          if old_audit not in text:
+              raise SystemExit("completion audit wording not found")
+          text = text.replace(old_audit, new_audit, 1)
+
+          old_docs = "| Docs / Governance / Other | required | Secret/docs、architecture/table ownership、generated drift 均通过；A1/A2 Review 已完成；本提交把 Change 切到 `ready_for_review`，需以新 HEAD 的 Change Completion Gate 为最终 Ready 证据 |"
+          new_docs = "| Docs / Governance / Other | required | Secret/docs、architecture/table ownership、generated drift 均通过；A1/A2 Review 已完成；Ready HEAD Change Completion Gate `33156478703` success，merge 后 main Change Completion Gate `33156780904` success；归档 PR 继续执行 docs/governance 与 archive gate |"
+          if old_docs not in text:
+              raise SystemExit("docs/governance matrix wording not found")
+          text = text.replace(old_docs, new_docs, 1)
+
+          path.write_text(text, encoding="utf-8")
+          PY
+
+          rm .github/workflows/temp-fix-archive-voice-type-prompt-table.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add changes/archive/2026-08/CHG-20260828-voice-type-prompt-table/CHANGE.md \
+                  .github/workflows/temp-fix-archive-voice-type-prompt-table.yml
+          git commit -m "文档：修正发声类型 Change 归档最终状态"
+          git push origin HEAD:docs/archive-voice-type-prompt-table-change
