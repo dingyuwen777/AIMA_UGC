@@ -88,6 +88,7 @@ test('matches the formal 1440 desktop shell and empty-state composition', async 
   await expect(page.getByText('暂无符合条件的内容')).toBeVisible()
   await expect(page.getByText('当前没有可加载的下一页，不显示虚构页码。')).toBeVisible()
   await expect(page.getByText('游标分页不会虚构总页数')).toHaveCount(0)
+  await expect(page.getByText('标题内容', { exact: true })).toHaveCount(0)
 
   const sidebar = await page.locator('.sidebar').boundingBox()
   const topbar = await page.locator('.topbar').boundingBox()
@@ -114,6 +115,7 @@ test('renders the formal loading state while the content request is in flight', 
   await expect(page.getByText('正在加载声音记录…')).toBeVisible()
   await expect(page.getByText('正在获取内容列表、AI 状态与运行记录')).toBeVisible()
   await expect(page.locator('.skeleton')).toHaveCount(3)
+  await expect(page.getByText('标题内容', { exact: true })).toHaveCount(0)
 
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {
     await page.screenshot({ path: 'test-results/voice-plaza-figma-loading.png', fullPage: true })
@@ -140,6 +142,7 @@ test('renders the formal error banner and recoverable list error state', async (
   await expect(page.getByText('暂时无法加载声音记录')).toBeVisible()
   await expect(page.getByText('检查网络或服务状态后点击“刷新数据”重试。')).toBeVisible()
   await expect(page.getByRole('alert')).toContainText('req_voice_plaza_figma_error')
+  await expect(page.getByText('标题内容', { exact: true })).toHaveCount(0)
 
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {
     await page.screenshot({ path: 'test-results/voice-plaza-figma-error.png', fullPage: true })
