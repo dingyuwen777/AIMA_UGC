@@ -35,6 +35,7 @@ data_changes: []
 - [x] 发声类型中文业务定义与用户本轮提供的七类定义一致。
 - [x] `语义相关性判断标准`、`内容发声类型判断标准`、`情感判断标准`、`一级/二级标签判断标准` 均以表格作为主要定义形式。
 - [x] 每个判断标准表格下均保留或补充适用的高混淆场景和示例，帮助模型理解边界，而不是只提供枚举。
+- [x] 表格化不丢失原 Prompt 仍适用的判断能力：发声类型判断顺序、真实用户/门店、官方/媒体、媒体/用户等边界继续保留并适配新七类。
 - [x] 现有输出结构 `item_no/relevance/voice_type/sentiment/labels` 不变；RuntimeTaxonomyValidator 继续按 Prompt Taxonomy 校验。
 - [x] Excel 当前合法七类显示新的中文业务名称；历史 `other_organization` 仍可兼容展示，不被重新解释为“行业从业发声”。
 - [x] 其他生产代码、Contract、数据库、API、generated client 经审计无同步修改必要；README/Appendix/Blueprint 不复制具体七类业务定义，无需机械同步。
@@ -86,9 +87,9 @@ data_changes: []
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 使用用户提供的七类发声类型定义，包含真实用户、品牌官方、门店经销商、营销推广、行业从业、媒体机构、无法判断 | user:2026-08-28-发声类型分类 | not_satisfied | Prompt 已完成七类表格和机器 Taxonomy 实现；等待新 HEAD Unit/CI Green 后转 satisfied |
-| R2 | 情感判断、发声类型等判断标准像一级/二级标签一样使用表格，方便展示和修改 | user:2026-08-28-Prompt表格化 | not_satisfied | 相关性、发声类型、情感、一级/二级标签均已形成表格；等待新 HEAD Unit/CI Green |
-| R3 | 每个判断标准表格下提供示例或高混淆场景帮助 AI 判断 | user:2026-08-28-示例与高混淆 | not_satisfied | 四个判断维度均已保留/补充高混淆场景和示例；等待新 HEAD Unit/CI Green |
+| R1 | 使用用户提供的七类发声类型定义，包含真实用户、品牌官方、门店经销商、营销推广、行业从业、媒体机构、无法判断 | user:2026-08-28-发声类型分类 | not_satisfied | Prompt 已完成七类表格和机器 Taxonomy；等待最终 HEAD Unit/CI Green 后转 satisfied |
+| R2 | 情感判断、发声类型等判断标准像一级/二级标签一样使用表格，方便展示和修改 | user:2026-08-28-Prompt表格化 | not_satisfied | 相关性、发声类型、情感、一级/二级标签均已形成表格；等待最终 HEAD Unit/CI Green |
+| R3 | 每个判断标准表格下提供示例或高混淆场景帮助 AI 判断 | user:2026-08-28-示例与高混淆 | not_satisfied | 四个判断维度均已保留/补充高混淆场景和示例；Review 额外恢复发声类型判断顺序与适用旧边界；等待最终 HEAD Unit/CI Green |
 | R4 | 检查其他代码和文档是否需要同步，不应假设只有 Prompt 受影响 | user:2026-08-28-影响审计 | not_satisfied | 核心 Analysis/Contract/DB/API/generated 无固定枚举依赖；Excel 是唯一生产代码同步项；README/AI Appendix/Blueprint/Excel Appendix 不复制七类具体业务定义；等待最终 CI/diff Review 后转 satisfied |
 | R5 | 修改完成后正常合并到 `main` | user:2026-08-28-合并主分支 | not_satisfied | Draft PR #258 已创建；等待 Green、Review、Ready、merge 和 main push CI |
 
@@ -119,9 +120,10 @@ data_changes: []
 - [x] Red：增加新七类机器 Taxonomy、表格结构和 Excel 展示回归测试并取得有效失败证据。
 - [x] Green 实现：更新 Prompt Taxonomy 与相关性/发声类型/情感/标签表格、边界和示例。
 - [x] Green 实现：更新 Excel 当前七类中文展示，并保留历史 `other_organization` 展示兼容。
-- [x] 清理一次性补丁 Workflow；PR changed files 已确认只剩 5 个正式文件。
+- [x] A1 预审发现表格化删除旧 `判断顺序` 与三组仍适用边界；已恢复并适配新七类，避免排版重构降低模型判断信息量。
+- [x] 两个一次性补丁 Workflow 均已由工具提交自行删除；PR changed files 仍只剩 5 个正式文件。
 - [ ] 运行最终 HEAD 目标测试与完整永久 CI。
-- [ ] 执行 A1/A2 Review、Completion Audit，Change 进入 `ready_for_review`。
+- [ ] 执行最终 A1/A2 Review、Completion Audit，Change 进入 `ready_for_review`。
 - [ ] PR 全绿后 squash merge `main` 并验证 main push CI。
 - [ ] 独立归档 Change。
 
@@ -136,11 +138,11 @@ data_changes: []
 
 - 当前 Prompt Taxonomy：`user_voice / brand_official / dealer_promotion / creator_marketing / industry_professional / media_information / unknown`。
 - `语义相关性判断标准`：表格 + 高混淆场景 + 示例。
-- `内容发声类型判断标准`：七类业务定义表格 + 两层证据 + 高混淆场景 + 示例。
+- `内容发声类型判断标准`：七类业务定义表格 + 两层证据 + 10 组高混淆场景 + 明确判断顺序 + 示例。
 - `情感判断标准`：表格 + 高混淆场景 + 示例。
 - `一级/二级标签判断标准`：原 9 个一级/39 个二级标签表格不改变；表格后的边界与示例统一命名为 `一级/二级标签高混淆场景` / `一级/二级标签示例`。
 - Excel 当前七类使用新中文业务名称；历史 `other_organization` 仍显示 `其他机构传播`，未来未知机器值仍通过既有 fallback 原样展示。
-- 一次性 `.github/workflows/temp-voice-type-prompt-patch.yml` 已由同一工具提交删除，最终 PR diff 无该文件。
+- 一次性 `.github/workflows/temp-voice-type-prompt-patch.yml`、`.github/workflows/temp-voice-type-review-fix.yml` 均已删除，最终 PR diff 无临时文件。
 
 # 代码与文档影响审计
 
