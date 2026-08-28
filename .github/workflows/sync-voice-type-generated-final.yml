@@ -1,0 +1,46 @@
+name: Sync Final Voice Type Generated Contracts
+
+on:
+  push:
+    branches:
+      - feature/voice-type-taxonomy
+
+permissions:
+  contents: write
+
+jobs:
+  sync-generated:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/voice-type-taxonomy
+          fetch-depth: 0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24.19.0
+      - name: Install frozen environments
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+          npm ci --prefix frontend
+      - name: Generate and self-delete
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/contracts/generate.py
+          npm --prefix frontend run generate:api
+          git rm .github/workflows/sync-voice-type-generated-final.yml
+          git add contracts frontend/src/generated/api
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "生成：同步兼容 voice_type 契约"
+          git push origin HEAD:feature/voice-type-taxonomy
