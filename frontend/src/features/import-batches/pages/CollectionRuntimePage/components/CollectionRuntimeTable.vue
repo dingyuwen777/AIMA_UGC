@@ -125,9 +125,9 @@ function statusClass(item: CollectionRuntimeItemResponse): string {
 <style scoped>
 .runtime-list { overflow: hidden; border: 1px solid var(--aima-border); border-radius: var(--aima-radius); background: var(--aima-surface); }
 .table-head, .table-row { display: grid; grid-template-columns: minmax(190px, 1.45fr) minmax(82px, .7fr) minmax(120px, .9fr) minmax(90px, .7fr) minmax(190px, 1.55fr) minmax(120px, 1fr) minmax(112px, .9fr) minmax(108px, .9fr); align-items: center; }
-.table-head { min-height: 44px; padding: 0 12px; border-bottom: 1px solid var(--aima-border); color: var(--aima-text-muted); background: var(--aima-surface-subtle); font-size: 12px; font-weight: 500; }
+.table-head { min-height: 44px; padding: 0 12px; border-bottom: 1px solid var(--aima-border); color: var(--aima-text-muted); background: #fafbfc; font-size: 12px; font-weight: 500; }
 .table-row { position: relative; min-height: 78px; padding: 14px 12px; border-bottom: 1px solid var(--aima-border); color: var(--aima-text-secondary); font-size: 12px; }
-.table-row:nth-of-type(odd) { background: var(--aima-surface-subtle); }
+.table-row:nth-of-type(odd) { background: #f8fafc; }
 .table-row:last-child { border-bottom: 0; }
 .identity strong, .identity span { display: block; }
 .identity strong { overflow: hidden; color: var(--aima-text); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
