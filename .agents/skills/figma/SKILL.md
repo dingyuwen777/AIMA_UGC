@@ -128,7 +128,7 @@ code_issue_detected
 
 ## `review-only`
 
-在没有更具体的实现验收意图、没有目标实现仓库，或用户明确要求只读时使用。
+在没有更具体的正式开发基线验收意图时，用于普通设计审查；Design-only 且没有目标实现事实时通常默认此模式。
 
 允许读取 Figma、仓库/需求事实、截图、Metadata、Prototype、Design Context，并输出 Findings。
 
@@ -138,6 +138,8 @@ code_issue_detected
 - 修改代码；
 - 修改文档；
 - commit / PR / merge / release 权限。
+
+“只检查、不修改”首先是写权限限制，不自动把用户已经明确要求的 `baseline-ready` 验收降级成 `review-only`。
 
 ## `review-and-fix`
 
@@ -171,15 +173,15 @@ NOT_READY
 
 ## 3.1 高频用户意图自动路由
 
-用户不需要记住 `review-only`、`review-and-fix`、`baseline-ready` 这些模式名。先尊重用户显式模式和权限；没有显式模式时，再按自然语言目标自动路由。
+用户不需要记住 `review-only`、`review-and-fix`、`baseline-ready` 这些模式名。先尊重用户显式模式和任务目标，再独立判断写入权限；没有显式模式时，再按自然语言目标自动路由。
 
 优先级：
 
 ```text
-用户显式指定模式 / 明确“只检查、不修改”
-→ 用户明确授予的 Figma / 代码 / Git 权限
+用户显式指定模式 / 正式验收目标
 → 自然语言任务意图
-→ 无法确认写权限时退回只读，不擅自写入
+→ 独立判断用户授予的 Figma / 代码 / Git 权限
+→ 无法确认写权限时保持只读，不擅自写入
 ```
 
 ### A. “全面检查 / 审查 / 看看这个 Figma 有没有问题”
@@ -211,7 +213,7 @@ NOT_READY
 → 不伪造 API / Route / 数据库等系统事实
 ```
 
-用户明确说“只检查、不修改”时，无论是否有仓库，都不得因为存在仓库就获得 Figma 写权限。
+用户说“只检查、不修改”时，只表示本轮不获得 Figma 写权限；如果任务本身是在问“是否可作为正式开发基线”，仍执行只读的 `baseline-ready`。
 
 ### B. “全面检查并修复 / 帮我改好 / 有问题直接改”
 
@@ -252,6 +254,8 @@ NOT_READY
 → Coding 负责实现 / 测试 / Review / CI / Git / 交付
 → 实现完成后再用 Figma 做 targeted re-review / 视觉与交互对照
 ```
+
+“替换 / 实现 / 重做现有页面”本身表示用户要求修改该目标实现；但 commit、PR、merge、release 等 Git/交付权限仍按目标项目 Coding 工作流和用户明确授权判断，不能从“实现页面”自动扩大。
 
 进入 Coding handoff 后，本 Skill 只提供已经确认的设计事实、动态数据来源、Shared/Feature/Page Owner、Prototype 和状态规格；**不得复制或替代 Coding Skill 的 Change、TDD、验证、CI、Git、PR、Release 规则。**
 
