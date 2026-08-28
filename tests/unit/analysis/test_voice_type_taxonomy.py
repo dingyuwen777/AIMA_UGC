@@ -55,7 +55,9 @@ def _mutated_prompt(tmp_path: Path, mutate: Any) -> Path:
     mutate(payload)
     replacement = json.dumps(payload, ensure_ascii=False, indent=2)
     path = tmp_path / "content_labeling_voice_type_test.md"
-    path.write_text(prompt[: match.start(2)] + replacement + prompt[match.end(2) :], encoding="utf-8")
+    path.write_text(
+        prompt[: match.start(2)] + replacement + prompt[match.end(2) :], encoding="utf-8"
+    )
     return path
 
 
@@ -96,7 +98,9 @@ def test_prompt_retains_voice_type_judgment_boundaries_and_learning_examples() -
     assert "作者和正文都极少" in prompt
 
 
-def test_prompt_voice_type_changes_are_runtime_driven_without_python_changes(tmp_path: Path) -> None:
+def test_prompt_voice_type_changes_are_runtime_driven_without_python_changes(
+    tmp_path: Path,
+) -> None:
     """Prompt 新增 voice type 后，正式 Service 应无需新增 Python Literal 即可接受。"""
 
     future_voice_type = "community_voice"
@@ -185,7 +189,9 @@ def test_analysis_contract_keeps_structure_but_does_not_copy_voice_type_taxonomy
     assert analysis.voice_type == "future_prompt_voice_type"
 
 
-def test_duplicate_voice_type_in_prompt_taxonomy_fails_closed_before_llm(tmp_path: Path) -> None:
+def test_duplicate_voice_type_in_prompt_taxonomy_fails_closed_before_llm(
+    tmp_path: Path,
+) -> None:
     """机器 Taxonomy 的 voice_types 必须与 sentiments 一样拒绝重复值。"""
 
     def duplicate_voice_type(payload: dict[str, Any]) -> None:
