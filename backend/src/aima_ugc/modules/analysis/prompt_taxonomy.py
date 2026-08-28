@@ -81,8 +81,7 @@ class PromptTaxonomyLoader:
         expected_keys = {"schema_version", "sentiments", "voice_types", "labels"}
         if set(payload) != expected_keys:
             raise PromptTaxonomyError(
-                "Prompt Taxonomy 根节点字段必须严格为 "
-                "schema_version/sentiments/voice_types/labels"
+                "Prompt Taxonomy 根节点字段必须严格为 schema_version/sentiments/voice_types/labels"
             )
 
         schema_version = payload["schema_version"]
