@@ -1,0 +1,181 @@
+name: Sync Voice Type Documentation
+
+on:
+  push:
+    branches:
+      - feature/voice-type-taxonomy
+
+permissions:
+  contents: write
+
+jobs:
+  sync-docs:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/voice-type-taxonomy
+          fetch-depth: 0
+
+      - name: Update documentation from current facts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one replacement, found {count}")
+              target.write_text(text.replace(old, new), encoding="utf-8")
+
+          readme = "backend/src/aima_ugc/modules/analysis/README.md"
+          replace_once(
+              readme,
+              '''当前 `voice_type`：
+
+          ```text
+          user_voice
+          creator_marketing
+          brand_official
+          dealer_promotion
+          media_information
+          other_organization
+          unknown
+          ```
+
+          真实用户发声唯一业务判断：''',
+              '''当前 `voice_type` 合法值集合不在本文复制。唯一机器事实来自当前 Prompt 的机器 Taxonomy `voice_types`；各类型定义、边界、高混淆场景和学习示例也只在同一 Prompt 维护。当前结果继续以字符串 `voice_type` 保存，运行时由 `RuntimeTaxonomyValidator` 严格校验 membership。
+
+          真实用户发声唯一业务判断：''',
+          )
+          replace_once(
+              readme,
+              '''完整情感、9 个一级/39 个二级标签、父子关系、判断规则和示例只维护在这份 Prompt Markdown。''',
+              '''完整情感、发声类型、9 个一级/39 个二级标签及其父子关系，以及自然语言判断标准、边界和学习示例，只维护在这份 Prompt Markdown。''',
+          )
+          replace_once(
+              readme,
+              '''prompt_taxonomy.py
+          → 解析机器 Taxonomy JSON
+          → 校验合法性
+          → taxonomy_sha256''',
+              '''prompt_taxonomy.py
+          → 解析 sentiments / voice_types / labels 机器 Taxonomy JSON
+          → 校验合法性、唯一性与标签父子关系
+          → taxonomy_sha256''',
+          )
+          replace_once(
+              readme,
+              '''Python 不维护第二套具体标签 Enum/映射；Blueprint/Appendix 也不复制完整 taxonomy。
+
+          修改标签体系时：
+
+          ```text
+          Prompt
+          → Prompt/Validator tests
+          → 如果输出 Contract/DB 结构没有变化，不修改 Python 标签常量（因为不存在这套常量）
+          ```''',
+              '''Python、数据库、前端和 Blueprint/Appendix 不维护第二套具体 AI 业务 Taxonomy 列表。
+
+          修改情感、发声类型、一级/二级标签、判断边界或学习示例时：
+
+          ```text
+          Prompt 的自然语言规则 + 同文件机器 Taxonomy（需要改变合法值时）
+          → Prompt/Validator tests
+          → 固定输出 JSON 结构没有变化时，不修改 Python Contract 或数据库 Schema
+          ```
+
+          `prompt_sha256` 标识完整 Prompt 变化；`taxonomy_sha256` 只随机器 Taxonomy 变化。因此只优化判断规则/示例时，可以出现 Prompt Hash 变化而 Taxonomy Hash 不变。''',
+          )
+          replace_once(
+              readme,
+              '''| 改业务标签/判断标准 | 当前 Prompt + Prompt/Validator tests |
+          | 改 V3 输出结构 | Analysis Contract + Service/Validator + DB/API/Export/Frontend + Migration（需要时） |
+          | 改 `voice_type` 值集合 | Prompt + Contract + Validator + DB Check/Migration + Excel/Frontend/tests |''',
+              '''| 改情感 / `voice_type` / 一级二级标签合法值、判断标准、边界或学习示例 | 当前 Prompt + Prompt/Validator tests；固定输出结构未变时不改 Contract/DB Schema |
+          | 改 V3 输出结构 | Analysis Contract + Service/Validator + DB/API/Export/Frontend + Migration（需要时） |''',
+          )
+
+          appendix = "docs/appendix/07_AI舆情打标与分析实现.md"
+          replace_once(
+              appendix,
+              '''# 5. 当前 `voice_type` 只有这 7 类
+
+          机器值：
+
+          ```text
+          user_voice
+          creator_marketing
+          brand_official
+          dealer_promotion
+          media_information
+          other_organization
+          unknown
+          ```
+
+          精确业务判断规则看当前 Prompt。''',
+              '''# 5. `voice_type` 与情感/标签共享同一 Prompt Taxonomy
+
+          `voice_type` 的当前合法机器值不在本文复制。唯一事实源是当前 Prompt 的机器 Taxonomy `voice_types`；每种类型的定义、主体/表达目的证据、边界、高混淆场景和学习示例也继续保留在同一 Prompt 的自然语言部分。
+
+          程序只固定 `voice_type` 这个输出字段和字符串结构；具体值由 `PromptTaxonomyLoader` 读取，由 `RuntimeTaxonomyValidator` 做 membership 校验。以后增删发声类型时，只需在同一 Prompt 同步调整机器 `voice_types` 和对应自然语言规则/示例，不再修改 Python Literal 或数据库业务枚举。''',
+          )
+          replace_once(
+              appendix,
+              '''→ 校验 sentiments / labels / 唯一性 / 父子关系''',
+              '''→ 校验 sentiments / voice_types / labels / 唯一性 / 父子关系''',
+          )
+          replace_once(
+              appendix,
+              '''# 8. 为什么本文不复制完整 9/39 Taxonomy 表
+
+          当前 Prompt 的标签体系是业务可变事实。''',
+              '''# 8. 为什么本文不复制完整 AI Taxonomy
+
+          当前 Prompt 的情感、发声类型和标签体系都是业务可变事实。''',
+          )
+          replace_once(
+              appendix,
+              '''所以当前唯一完整标签事实：''',
+              '''所以当前唯一完整 AI 分类事实：''',
+          )
+          replace_once(
+              appendix,
+              '''- 改标签应该改哪里；''',
+              '''- 改分类值、判断边界和学习示例应该改哪里；''',
+          )
+          replace_once(
+              appendix,
+              '''relevance / voice_type 结构合法
+          sentiment 属于当前 Taxonomy''',
+              '''relevance / voice_type 结构合法
+          voice_type 属于当前 Taxonomy
+          sentiment 属于当前 Taxonomy''',
+          )
+          replace_once(
+              appendix,
+              '''unknown_sentiment
+          unknown_primary_label''',
+              '''unknown_voice_type
+          unknown_sentiment
+          unknown_primary_label''',
+          )
+          replace_once(
+              appendix,
+              '''精确唯一约束直接看 `tables.py`。''',
+              '''精确唯一约束直接看 `tables.py`。`voice_type` 在数据库只保留非空字符串结构约束；当前业务合法值不复制成数据库 `CHECK IN (...)`，而是在写入前由当前 Prompt Taxonomy Validator 校验。历史 Result 保留当时的 `prompt_sha256/taxonomy_sha256`，不因新 Taxonomy 静默重分类。''',
+          )
+          PY
+
+          git rm .github/workflows/sync-voice-type-docs.yml
+          git add backend/src/aima_ugc/modules/analysis/README.md docs/appendix/07_AI舆情打标与分析实现.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "文档：同步 voice_type Taxonomy 实现说明"
+          git push origin HEAD:feature/voice-type-taxonomy
