@@ -1,0 +1,74 @@
+name: Temporary Add Voice Type Chinese Red Tests
+
+on:
+  push:
+    branches:
+      - feature/voice-type-chinese-values
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 1
+      - name: Add Red tests only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          voice_test = Path('tests/unit/analysis/test_voice_type_taxonomy.py')
+          text = voice_test.read_text(encoding='utf-8')
+          text = text.replace(
+              '''CURRENT_VOICE_TYPES = (\n    "user_voice",\n    "brand_official",\n    "dealer_promotion",\n    "creator_marketing",\n    "industry_professional",\n    "media_information",\n    "unknown",\n)''',
+              '''CURRENT_VOICE_TYPES = (\n    "真实用户发声",\n    "品牌官方发声",\n    "门店经销商发声",\n    "营销推广发声",\n    "行业从业发声",\n    "媒体机构发声",\n    "无法判断",\n)''',
+          )
+          text = text.replace(
+              '    assert "other_organization" not in taxonomy.voice_types\n',
+              '''    assert "other_organization" not in taxonomy.voice_types\n    prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")\n    for legacy_value in (\n        "user_voice",\n        "brand_official",\n        "dealer_promotion",\n        "creator_marketing",\n        "industry_professional",\n        "media_information",\n        "other_organization",\n    ):\n        assert legacy_value not in prompt\n''',
+          )
+          text = text.replace(
+              '| 推荐名称 | 机器值 | 核心定义 | 说明 |',
+              '| 发声类型 | 核心定义 | 说明 |',
+          )
+          text = text.replace('future_voice_type = "community_voice"', 'future_voice_type = "社区活动发声"')
+          text = text.replace('payload["voice_types"] = ["unknown", future_voice_type]', 'payload["voice_types"] = ["无法判断", future_voice_type]')
+          text = text.replace('assert taxonomy.voice_types == ("unknown", future_voice_type)', 'assert taxonomy.voice_types == ("无法判断", future_voice_type)')
+          text = text.replace('payload["voice_types"] = ["unknown", "unknown"]', 'payload["voice_types"] = ["无法判断", "无法判断"]')
+          voice_test.write_text(text, encoding='utf-8')
+
+          excel_voice = Path('tests/unit/platform/test_excel_voice_type_taxonomy.py')
+          excel_voice.write_text('''from __future__ import annotations\n\nfrom pathlib import Path\n\nimport pytest\nfrom aima_ugc.contracts.export import (\n    UnifiedDataExcelAnalysisV1,\n    UnifiedDataExcelContentV1,\n    UnifiedDataExcelLabelPairV1,\n    UnifiedDataExcelV1,\n)\nfrom aima_ugc.platform.export import export_unified_data_excel\nfrom openpyxl import load_workbook\n\n\n@pytest.mark.parametrize(\n    ("voice_type", "expected_display"),\n    [\n        ("真实用户发声", "真实用户发声"),\n        ("品牌官方发声", "品牌官方发声"),\n        ("门店经销商发声", "门店经销商发声"),\n        ("营销推广发声", "营销推广发声"),\n        ("行业从业发声", "行业从业发声"),\n        ("媒体机构发声", "媒体机构发声"),\n        ("无法判断", "无法判断"),\n        ("未来社区发声", "未来社区发声"),\n        ("user_voice", "user_voice"),\n        ("other_organization", "other_organization"),\n        (None, None),\n    ],\n)\ndef test_excel_voice_type_is_exported_verbatim_without_legacy_translation(\n    tmp_path: Path,\n    voice_type: str | None,\n    expected_display: str | None,\n) -> None:\n    """Excel 必须原样导出 voice_type，不维护当前或历史英文值翻译层。"""\n\n    output = tmp_path / "voice-type.xlsx"\n    label_pair = UnifiedDataExcelLabelPairV1(\n        primary_label="测试一级标签",\n        secondary_label="测试二级标签",\n    )\n    record = UnifiedDataExcelV1(\n        content=UnifiedDataExcelContentV1(\n            platform="xiaohongshu",\n            external_content_id="voice-type-taxonomy-export-test",\n            analysis=UnifiedDataExcelAnalysisV1(\n                voice_type=voice_type,\n                primary_label=label_pair.primary_label,\n                secondary_label=label_pair.secondary_label,\n                label_pairs=(label_pair,),\n            ),\n        )\n    )\n\n    export_unified_data_excel((record,), output, include_analysis=True)\n\n    workbook = load_workbook(output, data_only=False, read_only=True)\n    try:\n        sheet = workbook["内容"]\n        headers = [cell.value for cell in next(sheet.iter_rows(max_row=1))]\n        values = [cell.value for cell in next(sheet.iter_rows(min_row=2, max_row=2))]\n        assert values[headers.index("发声类型")] == expected_display\n    finally:\n        workbook.close()\n''', encoding='utf-8')
+
+          export_test = Path('tests/unit/platform/test_excel_export.py')
+          text = export_test.read_text(encoding='utf-8')
+          text = text.replace(
+              'import aima_ugc.platform.export.excel as excel_module\nimport pytest\n',
+              'import aima_ugc.platform.export.excel as excel_module\nimport pytest\nfrom aima_ugc.contracts.analysis import (\n    ContentLabelAnalysisV2,\n    ContentLabelPairV2,\n    UnifiedContentRecordV1,\n)\n',
+          )
+          text = text.replace(
+              '    export_unified_data_excel,\n',
+              '    export_unified_content_jsonl_to_excel,\n    export_unified_data_excel,\n',
+          )
+          marker = '\n\ndef test_shared_exporter_writes_provider_neutral_workbook_and_reopens'
+          new_test = '''\n\ndef test_v2_jsonl_export_uses_current_chinese_voice_type_default(tmp_path: Path) -> None:\n    """历史 V2 无 voice_type 时只使用当前中文“无法判断”，不得发明旧英文机器值。"""\n\n    analysis = ContentLabelAnalysisV2(\n        sentiment="中性",\n        labels=(\n            ContentLabelPairV2(\n                primary_label="品牌评价",\n                secondary_label="口碑与信任",\n            ),\n        ),\n        prompt_version="content-labeling.v2",\n        prompt_sha256="a" * 64,\n        taxonomy_sha256="b" * 64,\n        model_provider="fake",\n        model="fake",\n        input_hash="c" * 64,\n        analyzed_at=_OBSERVED_AT,\n    )\n    record = UnifiedContentRecordV1(\n        content=_content(),\n        matched_keywords=["爱玛"],\n        analysis=analysis,\n    )\n    input_path = tmp_path / "content.jsonl"\n    output_path = tmp_path / "content.xlsx"\n    input_path.write_text(record.model_dump_json() + "\\n", encoding="utf-8")\n\n    export_unified_content_jsonl_to_excel(\n        input_path=input_path,\n        output_path=output_path,\n        include_analysis=True,\n    )\n\n    workbook = load_workbook(output_path, data_only=False, read_only=True)\n    try:\n        sheet = workbook["内容"]\n        headers = [cell.value for cell in next(sheet.iter_rows(max_row=1))]\n        values = [cell.value for cell in next(sheet.iter_rows(min_row=2, max_row=2))]\n        assert values[headers.index("发声类型")] == "无法判断"\n    finally:\n        workbook.close()\n'''
+          if marker not in text:
+              raise SystemExit('test insertion marker missing')
+          text = text.replace(marker, new_test + marker, 1)
+          export_test.write_text(text, encoding='utf-8')
+          PY
+      - name: Commit Red tests and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/temp-add-voice-type-chinese-red-tests.yml
+          git add tests/unit/analysis/test_voice_type_taxonomy.py tests/unit/platform/test_excel_voice_type_taxonomy.py tests/unit/platform/test_excel_export.py
+          git commit -m "测试：锁定发声类型中文机器值行为"
+          git push origin HEAD:feature/voice-type-chinese-values
