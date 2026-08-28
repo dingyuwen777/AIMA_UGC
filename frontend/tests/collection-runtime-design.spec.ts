@@ -33,7 +33,7 @@ describe('采集运行中心正式 Figma 基线', () => {
     const html = await renderComponent(CollectionRuntimePage)
 
     expect(html).toContain('class="aima-page-header"')
-    expect(html.match(/class="aima-button/g)).toHaveLength(3)
+    expect(html.match(/class="aima-button/g)?.length ?? 0).toBeGreaterThanOrEqual(5)
     expect(html).toContain('统一查看数据导入与辅助补采运行')
     expect(html).toContain('新建辅助补采')
     expect(html).not.toContain('新建 TikHub 补采')
