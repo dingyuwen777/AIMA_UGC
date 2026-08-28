@@ -1,0 +1,65 @@
+name: Temporary Voice Type Python Scan
+
+on:
+  push:
+    branches:
+      - feature/voice-type-taxonomy
+
+permissions:
+  contents: write
+
+jobs:
+  scan:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/voice-type-taxonomy
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Scan concrete voice type values
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          roots = [Path(name) for name in ("backend", "frontend", "tests", "docs", "contracts", "changes", "scripts")]
+          needles = (
+              "user_voice",
+              "media_editorial",
+              "kol_creator",
+              "brand_campaign",
+              "government_authority",
+              "event_exhibition",
+          )
+          suffixes = {".py", ".md", ".json", ".ts", ".tsx", ".js", ".vue", ".sql", ".toml", ".yaml", ".yml"}
+          matches: list[str] = []
+          for root in roots:
+              if not root.exists():
+                  continue
+              for path in sorted(root.rglob("*")):
+                  if not path.is_file() or path.suffix.lower() not in suffixes:
+                      continue
+                  text = path.read_text(encoding="utf-8")
+                  for line_no, line in enumerate(text.splitlines(), start=1):
+                      if any(needle in line for needle in needles):
+                          matches.append(f"{path}:{line_no}:{line}")
+          report = Path(".tmp/voice-type-values-scan.txt")
+          report.parent.mkdir(parents=True, exist_ok=True)
+          report.write_text("# concrete voice_type values scan\n\n" + "\n".join(matches) + "\n", encoding="utf-8")
+          print(f"matches={len(matches)}")
+          PY
+          git rm .github/workflows/tmp-scan-voice-type-values-python.yml
+          git add .tmp/voice-type-values-scan.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "调试：记录 Python 发声类型扫描结果"
+          git push origin HEAD:feature/voice-type-taxonomy
