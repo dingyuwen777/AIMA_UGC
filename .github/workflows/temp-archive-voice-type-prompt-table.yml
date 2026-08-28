@@ -1,0 +1,80 @@
+name: Temporary Archive Voice Type Prompt Table Change
+
+on:
+  push:
+    branches:
+      - docs/archive-voice-type-prompt-table-change
+    paths:
+      - .github/workflows/temp-archive-voice-type-prompt-table.yml
+
+permissions:
+  contents: write
+
+jobs:
+  archive:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: docs/archive-voice-type-prompt-table-change
+          fetch-depth: 0
+      - name: Archive completed Change with merge and main CI evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          active = Path("changes/active/CHG-20260828-voice-type-prompt-table/CHANGE.md")
+          text = active.read_text(encoding="utf-8")
+          text = text.replace("status: ready_for_review", "status: done", 1)
+
+          r5_pattern = re.compile(r"^\| R5 \| 修改完成后正常合并到 `main` \| user:2026-08-28-合并主分支 \| explicitly_deferred \|.*$", re.M)
+          r5_new = "| R5 | 修改完成后正常合并到 `main` | user:2026-08-28-合并主分支 | satisfied | PR #258 已在 Ready HEAD `e2d7b90924361002622edd436905c47f08b5dd3e` 五个永久门禁全绿后 squash merge；merge/main SHA `66ccfb7f26d9a904ee1db626eb3e9acc10cac56d`；合并后 main 的 Change Gate/CI/Runtime/Full-stack/Tooling 五个 push workflow 全部 success |"
+          text, count = r5_pattern.subn(r5_new, text, count=1)
+          if count != 1:
+              raise SystemExit("R5 row replacement failed")
+
+          text = text.replace(
+              "- [ ] PR 全绿后转 Ready、squash merge `main` 并验证 main push CI。",
+              "- [x] PR 全绿后转 Ready、squash merge `main` 并验证 main push CI。",
+              1,
+          )
+          text = text.replace(
+              "- [ ] 独立归档 Change。",
+              "- [x] 独立归档 Change，并记录实际 merge/main CI 证据。",
+              1,
+          )
+
+          marker = "# 实现事实\n"
+          if marker not in text:
+              raise SystemExit("implementation facts heading not found")
+          final_evidence = '''## Ready / 合并 / main 复验证据\n\n- 最终 Ready HEAD：`e2d7b90924361002622edd436905c47f08b5dd3e`。\n- PR #258 Ready HEAD 永久门禁全部 success：Change Completion Gate `33156478703`、CI `33156478701`、Runtime Acceptance `33156478713`、Full-stack Acceptance `33156478768`、Developer Tooling Compatibility `33156478707`。\n- PR #258 已正常 squash merge；merge/main SHA：`66ccfb7f26d9a904ee1db626eb3e9acc10cac56d`。\n- 合并后 `main=66ccfb7f26d9a904ee1db626eb3e9acc10cac56d` 的 push workflow 全部 success：Change Completion Gate `33156780904`、CI `33156780901`、Runtime Acceptance `33156780883`、Full-stack Acceptance `33156780886`、Developer Tooling Compatibility `33156780869`。\n- 实现分支 `feature/voice-type-prompt-table` 已按仓库设置自动删除。\n- 本任务未执行生产部署，也未批量重跑或改写历史 Analysis Result。\n\n'''
+          text = text.replace(marker, final_evidence + marker, 1)
+
+          text = text.replace(
+              "- 合并：本提交 Ready 门禁与同一 HEAD 的永久 PR checks 全绿后转 PR Ready，再使用 expected HEAD 正常 squash merge，不绕过仓库门禁。",
+              "- 合并：PR #258 已使用 expected HEAD 正常 squash merge，merge/main SHA 为 `66ccfb7f26d9a904ee1db626eb3e9acc10cac56d`；合并后 main 五个永久 workflow 全绿。",
+              1,
+          )
+          text = text.replace(
+              "- 归档：实现 merge 并验证 main push CI 后使用独立 docs-only PR 归档 Change，并补记实际 merge SHA 与 main CI。",
+              "- 归档：本 Change 通过独立 docs-only PR 移入 `changes/archive/2026-08/`；归档只移动/补记 Change，不修改生产代码。",
+              1,
+          )
+
+          archive = Path("changes/archive/2026-08/CHG-20260828-voice-type-prompt-table/CHANGE.md")
+          archive.parent.mkdir(parents=True, exist_ok=True)
+          archive.write_text(text, encoding="utf-8")
+          active.unlink()
+          PY
+
+          rm .github/workflows/temp-archive-voice-type-prompt-table.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add changes/active/CHG-20260828-voice-type-prompt-table/CHANGE.md \
+                  changes/archive/2026-08/CHG-20260828-voice-type-prompt-table/CHANGE.md \
+                  .github/workflows/temp-archive-voice-type-prompt-table.yml
+          git commit -m "文档：归档发声类型 Prompt 表格化 Change"
+          git push origin HEAD:docs/archive-voice-type-prompt-table-change
