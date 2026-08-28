@@ -44,14 +44,15 @@ function labels(item: ContentListItemResponse): ContentLabelPairResponse[] {
   return item.analysis.labels ?? []
 }
 
-/** 保留人工复核来源文案，确保 stale AI 结果仍可追溯人工判断。 */
+/** 保留 AI 原判或人工复核来源文案，确保相关性来源可审计。 */
 function badge(item: ContentListItemResponse): string | null {
   return relevanceBadgeLabel(item)
 }
 
-/** 优先展示人工复核来源，否则展示当前业务有效相关性。 */
+/** 优先展示已有相关性来源文案，否则展示当前业务有效相关性。 */
 function relevanceText(item: ContentListItemResponse): string | null {
-  if (item.relevance_source === 'manual_review') return badge(item)
+  const sourceBadge = badge(item)
+  if (sourceBadge) return sourceBadge
   const effective = item.effective_relevance ?? item.analysis.relevance
   if (effective === 'relevant') return '相关'
   if (effective === 'irrelevant') return '不相关'
