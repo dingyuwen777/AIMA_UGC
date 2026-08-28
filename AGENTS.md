@@ -44,7 +44,7 @@
 | Excel 数据明细导出/离线调试 | `docs/appendix/06_Excel统一数据导出与离线调试.md` |
 | AI 相关性/发声类型/情感/标签 | `docs/appendix/07_AI舆情打标与分析实现.md` + `backend/src/aima_ugc/modules/analysis/README.md` + 当前 Prompt |
 | Word 舆情报告 | `docs/appendix/10_Word舆情报告生成与排版实现.md` + `backend/src/aima_ugc/platform/reporting/README.md` |
-| Figma 原型审查 / Design-to-Code | `.agents/skills/figma/SKILL.md` + `docs/guides/01_Figma与前端设计开发工作流.md` + `docs/blueprint/04_后端任务API与前端.md` |
+| Figma / Design-to-Code | `docs/guides/01_Figma与前端设计开发工作流.md` + `docs/blueprint/04_后端任务API与前端.md` |
 
 任务开始时按 Skill 判定 L1–L3。L2/L3 先写计划并创建/认领要求的 Change。仓库存在 `openspec/` 后，涉及新能力、行为、数据、接口、架构或安全变化的任务必须按当前 OpenSpec 规则更新对应 change 并通过校验；纯机械文档/格式任务按 Skill 例外处理。不得自行创建与 OpenSpec 工具产物冲突的平行目录。
 
@@ -101,12 +101,6 @@ python .agents/skills/coding/scripts/ready_check.py --root . --require-active-re
 采用方案 A：仓库根目录是唯一 Python/uv 工程根，保存 `pyproject.toml`、`uv.lock`、`.python-version`、`tests/`、`scripts/` 和 `migrations/`；源码在 `backend/src/aima_ugc/`。禁止创建 `backend/pyproject.toml`、`backend/uv.lock`、`backend/tests/` 或用 `uv --project backend` 形成第二套命令。
 
 Internal V1-A 已在仓库根建立唯一 `Dockerfile` 与 `compose.yaml`，Docker build context 继续固定在仓库根；后端/前端通过不同 target 构建，不把 `backend/` 或 `frontend/` 当独立 context。当前 Release Workflow 已经实现离线 Bundle、镜像身份/Manifest 和离线回放基础，但**不能把这些基础写成完整 Production Go-Live**；剩余 Production 强化仍由后续独立 Change 完成。
-
-打包问题必须修根因：禁止用临时 `PYTHONPATH`、改变工作目录、修改 `sys.path` 或先删除产物来掩盖 package discovery/构建配置问题。
-
-版本政策：精确版本以 `.python-version`、`.node-version`、`.uv-version`、`uv.lock`、`package-lock.json` 和镜像/Release 锁定事实为准。禁止运行时或构建时解析 `latest`，禁止因为发现新版本就在普通功能任务里升级；升级是独立任务，必须核验官方发布、兼容/安全影响并执行完整门禁。
-
-没有实际问题证据不得主动引入微服务、Redis、Kafka、RabbitMQ、MongoDB、OpenSearch、Kubernetes 或多数据库兼容层。
 
 打包问题必须修根因：禁止用临时 `PYTHONPATH`、改变工作目录、修改 `sys.path` 或先删除产物来掩盖 package discovery/构建配置问题。
 
