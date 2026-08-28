@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260828-voice-type-chinese-values"
 title: "发声类型直接使用中文业务名称作为机器值"
 level: L3
-status: ready_for_review
+status: done
 owner: "chatgpt"
 branch: "feature/voice-type-chinese-values"
 created: 2026-08-28
@@ -96,7 +96,7 @@ data_changes:
 | R2 | 不需要旧英文 `voice_type` 的历史兼容读取/映射 | user:2026-08-28-删除英文历史兼容 | satisfied | Excel `_VOICE_TYPE_DISPLAY_NAMES` / `_voice_type_display_name()` 已删除；测试证明 `user_voice` / `other_organization` 只原样输出，不翻译 |
 | R3 | 与 sentiment、一级/二级标签保持同一种 Taxonomy 维护模式 | user:2026-08-28-统一Taxonomy模式 | satisfied | Prompt 机器 Taxonomy 直接保存中文字符串，发声类型表只保留“发声类型/核心定义/说明”；Contract/DB 不复制业务集合 |
 | R4 | 修改所有真实受影响代码/测试/文档，不假设只改 Prompt | AGENTS.md | satisfied | 两轮 Runner 扫描确认生产额外影响为 Excel；收口扫描发现 10 处当前 `voice_type="unknown"` Fixture 并已改为“无法判断”；实时 README/Blueprint/Appendix、Frontend/Full-stack/Tests/性能 Fixture 已同步；历史 Migration 未改 |
-| R5 | 正常推送并合并 `main`，不绕过仓库门禁 | user:2026-08-28-推送主分支 | explicitly_deferred | Draft PR #263 已建立；实际 Ready、squash merge、main push CI 必须在本 Change Ready Gate 与同一 Ready HEAD 全部永久 CI 成功后执行，并在独立归档 PR 中补最终证据 |
+| R5 | 正常推送并合并 `main`，不绕过仓库门禁 | user:2026-08-28-推送主分支 | satisfied | PR #263 在 Ready HEAD `666d5b04a52a75e32096b43d816fa2ee05947899` 五个永久门禁全绿后转 Ready 并 squash merge；merge/main SHA `605c5fc88eec1e9706fcf73061dac82611d31cde`；合并后 main 的 Change Gate/CI/Runtime/Full-stack/Tooling 全部 success |
 
 # Validation Matrix
 
@@ -116,7 +116,7 @@ data_changes:
 - [x] upstream_re_read：Ready 前重新读取目标分支 `AGENTS.md`、Coding/Review 规则、最新 `main=d86015f21b1e2db994519705a1350c6df623dd23`、本轮用户“全部中文机器值 + 不要旧英文兼容”决定、当前 Prompt/Analysis README/AI/Excel Appendix。
 - [x] change_coverage：独立从用户上游决定重建完成定义，逐项核对中文七值、删除机器值列、删除 Excel 翻译层、V1/V2 缺省、实时文档/Fixture 同步、无 Migration/backfill、正常合并 main；R1-R4 已有 Green 证据。
 - [x] reverse_audit：沿 `Prompt -> Loader/Validator -> ContentLabelAnalysisV3 -> PostgreSQL/API -> Frontend Fixture/Full-stack -> Excel` 双向审计；具体合法集合只存在 Prompt，其他运行边界使用通用字符串；Excel 不再解释值。旧英文仅允许出现在历史 Migration/Archive、当前 Change 的迁移说明，以及证明“不兼容翻译”的测试输入中。
-- [x] unresolved_cleared：PR #263 无 Conversation comment、无 inline review thread、无 submitted review；A1/A2 无严重/重要 Finding。R1-R4 `satisfied`，实现范围 `not_satisfied` 清零；R5 的延期仅用于遵守 Ready→merge→main 验证顺序。
+- [x] unresolved_cleared：PR #263 无 Conversation comment、无 inline review thread、无 submitted review；A1/A2 无严重/重要 Finding。R1-R5 均已取得实现、Ready、merge 与 main push CI 证据并处于 `satisfied`；`not_satisfied` 与 `explicitly_deferred` 均已清零。
 
 # Red / Green 证据
 
@@ -164,9 +164,9 @@ data_changes:
 - [x] 第一轮 Green 完整永久 CI / PostgreSQL / Full-stack / Runtime / Tooling 通过。
 - [x] 执行 A1/A2 Review、PR unresolved 审计和 Completion Audit。
 - [x] 修正 Ready Check 唯一的 R4 Source 结构错误。
-- [ ] 当前 Ready HEAD 的 Change Gate / CI / Runtime / Full-stack / Tooling 全绿。
-- [ ] PR #263 转 Ready 后使用 expected HEAD 正常 squash merge `main`，验证 main push CI。
-- [ ] 独立 docs-only PR 归档 Change。
+- [x] 最终 Ready HEAD `666d5b04a52a75e32096b43d816fa2ee05947899` 的 Change Gate / CI / Runtime / Full-stack / Tooling 全绿。
+- [x] PR #263 使用 expected HEAD 正常 squash merge `main`，并完成 main push CI 验证。
+- [x] 使用独立 docs-only PR 归档 Change。
 
 # Git / 交付
 
@@ -174,3 +174,13 @@ data_changes:
 - Draft PR：#263 `调整：发声类型直接使用中文业务机器值`
 - 合并：仅在最终 Ready HEAD 五个永久门禁全部成功后执行 squash merge
 - 生产部署：本任务不执行
+
+
+# 最终合并与主分支证据
+
+- 实现 PR：#263 `调整：发声类型直接使用中文业务机器值`。
+- 最终 Ready HEAD：`666d5b04a52a75e32096b43d816fa2ee05947899`。
+- Ready HEAD 永久门禁：Change Completion Gate `33161031608`、CI `33161031614`、Runtime Acceptance `33161031652`、Full-stack Acceptance `33161031617`、Developer Tooling Compatibility `33161031647`，全部 completed/success。
+- squash merge / main SHA：`605c5fc88eec1e9706fcf73061dac82611d31cde`。
+- merge 后 main push：Change Completion Gate `33161408025`、CI `33161408063`、Runtime Acceptance `33161408039`、Full-stack Acceptance `33161408076`、Developer Tooling Compatibility `33161408070`，全部 success。
+- 本任务未执行生产部署、历史数据库值迁移/backfill 或历史 AI 批量重打标。
