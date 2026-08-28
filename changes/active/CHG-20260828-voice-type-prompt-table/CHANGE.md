@@ -17,7 +17,9 @@ affected_areas:
 affected_paths:
   - "backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md"
   - "backend/src/aima_ugc/platform/export/excel.py"
+  - "tests/unit/analysis/test_content_labeling.py"
   - "tests/unit/analysis/test_voice_type_taxonomy.py"
+  - "tests/unit/platform/test_excel_export.py"
   - "tests/unit/platform/test_excel_voice_type_taxonomy.py"
 contracts: []
 data_changes: []
@@ -47,7 +49,7 @@ data_changes: []
 - 把语义相关性和情感判断从列表整理为表格，并在表格后保留/补充示例或混淆边界。
 - 保持一级/二级标签表格，整理其后示例/边界结构，使各判断维度风格一致。
 - 更新 Excel 发声类型中文展示别名。
-- 更新直接锁定 Prompt/Excel 行为的 Unit 测试。
+- 更新直接锁定 Prompt/Excel 行为及旧排版/展示约束的 Unit 测试。
 - 审计其他代码和文档影响。
 
 # 非目标
@@ -90,7 +92,7 @@ data_changes: []
 | R1 | 使用用户提供的七类发声类型定义，包含真实用户、品牌官方、门店经销商、营销推广、行业从业、媒体机构、无法判断 | user:2026-08-28-发声类型分类 | not_satisfied | Prompt 已完成七类表格和机器 Taxonomy；等待最终 HEAD Unit/CI Green 后转 satisfied |
 | R2 | 情感判断、发声类型等判断标准像一级/二级标签一样使用表格，方便展示和修改 | user:2026-08-28-Prompt表格化 | not_satisfied | 相关性、发声类型、情感、一级/二级标签均已形成表格；等待最终 HEAD Unit/CI Green |
 | R3 | 每个判断标准表格下提供示例或高混淆场景帮助 AI 判断 | user:2026-08-28-示例与高混淆 | not_satisfied | 四个判断维度均已保留/补充高混淆场景和示例；Review 额外恢复发声类型判断顺序与适用旧边界；等待最终 HEAD Unit/CI Green |
-| R4 | 检查其他代码和文档是否需要同步，不应假设只有 Prompt 受影响 | user:2026-08-28-影响审计 | not_satisfied | 核心 Analysis/Contract/DB/API/generated 无固定枚举依赖；Excel 是唯一生产代码同步项；README/AI Appendix/Blueprint/Excel Appendix 不复制七类具体业务定义；等待最终 CI/diff Review 后转 satisfied |
+| R4 | 检查其他代码和文档是否需要同步，不应假设只有 Prompt 受影响 | user:2026-08-28-影响审计 | not_satisfied | 核心 Analysis/Contract/DB/API/generated 无固定枚举依赖；Excel 是唯一生产代码同步项；另发现 2 个旧 Unit 断言依赖旧排版/旧中文名并已同步；README/AI Appendix/Blueprint/Excel Appendix 不复制七类具体业务定义；等待最终 CI/diff Review 后转 satisfied |
 | R5 | 修改完成后正常合并到 `main` | user:2026-08-28-合并主分支 | not_satisfied | Draft PR #258 已创建；等待 Green、Review、Ready、merge 和 main push CI |
 
 # Validation Matrix
@@ -98,10 +100,10 @@ data_changes: []
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
 | 行为 / Unit / Component | required | Prompt Taxonomy 七类、新表格/示例保留、旧值不再是当前合法值、Excel 新/历史显示兼容；Red 已准确覆盖这些失败边界 |
-| 接口 / Contract | not_applicable | 输出 JSON 字段、Pydantic/HTTP Contract/OpenAPI 不变；正式 generated drift 在 Red run 已通过，最终 HEAD 继续复验 |
-| 集成 / Persistence / Runtime Dependency | not_applicable | 不修改数据库、Migration、文件持久化或 runtime dependency；永久 CI 仍会提供回归证据，但不把它写成独立需求 |
-| 用户 / Workflow Acceptance | not_applicable | 不新增或改变前端/用户操作入口；Prompt/Excel 行为由 Unit 和既有完整 CI 回归 |
-| 跨组件 Golden Path | not_applicable | 不修改 API/Job/Worker 装配或跨进程链 |
+| 接口 / Contract | not_applicable | 输出 JSON 字段、Pydantic/HTTP Contract/OpenAPI 不变；正式 generated drift 已多轮通过，最终 HEAD 继续复验 |
+| 集成 / Persistence / Runtime Dependency | not_applicable | 不修改数据库、Migration、文件持久化或 runtime dependency；PostgreSQL 回归已证明无 Schema 漂移，但不把其写成独立需求 |
+| 用户 / Workflow Acceptance | not_applicable | 不新增或改变前端/用户操作入口；真实 Full-stack 回归作为额外接线证据 |
+| 跨组件 Golden Path | not_applicable | 不修改 API/Job/Worker 装配；Runtime 回归作为额外证据 |
 | 外部依赖 Probe | not_applicable | 不修改 LLM HTTP 协议或外部 Provider 字段；无需付费 Probe |
 | Build / Package / Runtime | required | 使用仓库永久 CI 的 Repository Quality / build regression |
 | Docs / Governance / Other | required | Change Ready/Completion Gate、Prompt Markdown 一致性、代码/文档影响审计 |
@@ -121,18 +123,29 @@ data_changes: []
 - [x] Green 实现：更新 Prompt Taxonomy 与相关性/发声类型/情感/标签表格、边界和示例。
 - [x] Green 实现：更新 Excel 当前七类中文展示，并保留历史 `other_organization` 展示兼容。
 - [x] A1 预审发现表格化删除旧 `判断顺序` 与三组仍适用边界；已恢复并适配新七类，避免排版重构降低模型判断信息量。
-- [x] 两个一次性补丁 Workflow 均已由工具提交自行删除；PR changed files 仍只剩 5 个正式文件。
+- [x] 第一轮 Green CI 发现 2 个旧测试仍依赖旧标题/旧中文展示；已按新批准行为更新断言，不修改生产实现。
+- [x] 三个一次性补丁 Workflow 均已由工具提交自行删除；最终 PR changed files 只包含 Prompt、Excel、Change 和 4 个相关 Unit 测试。
 - [ ] 运行最终 HEAD 目标测试与完整永久 CI。
 - [ ] 执行最终 A1/A2 Review、Completion Audit，Change 进入 `ready_for_review`。
 - [ ] PR 全绿后 squash merge `main` 并验证 main push CI。
 - [ ] 独立归档 Change。
 
-# Red 证据
+# Red / 调试证据
+
+## 初始业务 Red
 
 - Red HEAD：`c6f87f3b7e4e14a65f88e806013ba99e7772dcbc`；PR #258 CI run `33155008319`，Repository Quality job `98795613709`。
 - generated Contract/Orval drift 在 Unit 前已通过；Ruff `529 files already formatted`、`All checks passed!`，mypy `Success: no issues found in 254 source files`，说明 Red 不是格式/类型/生成物噪声。
 - Unit：`8 failed, 695 passed`。8 个失败恰好来自：旧七类 Taxonomy、缺少统一表格/新业务名称、Excel 仍使用旧中文别名或缺少 `industry_professional` 别名。
-- Secret/docs gate 同轮成功；没有删除或跳过失败测试制造 Green。
+
+## 第一轮 Green 暴露的遗留断言
+
+- HEAD `828742f51e5b9aaa9c23440e95eb2ae64be3d540`，CI run `33155596460`，Repository Quality job `98797569253`。
+- generated drift、Ruff、mypy 全部成功；Unit 为 `2 failed, 701 passed`。
+- `tests/unit/analysis/test_content_labeling.py` 仍要求旧标题 `## 多主题与边界冲突优先级`，与用户批准的“表格下高混淆场景”新结构冲突。
+- `tests/unit/platform/test_excel_export.py` 仍要求旧展示 `达人/创作者营销`，与本轮批准的 `营销推广发声` 冲突。
+- 两处均只更新旧断言；没有回退新业务定义或删除测试。
+- 同一 HEAD 的 PostgreSQL Integration completed/success，Full-stack Acceptance completed/success，进一步确认生产实现和持久化/真实导出链本身无故障。
 
 # 实现事实
 
@@ -142,7 +155,6 @@ data_changes: []
 - `情感判断标准`：表格 + 高混淆场景 + 示例。
 - `一级/二级标签判断标准`：原 9 个一级/39 个二级标签表格不改变；表格后的边界与示例统一命名为 `一级/二级标签高混淆场景` / `一级/二级标签示例`。
 - Excel 当前七类使用新中文业务名称；历史 `other_organization` 仍显示 `其他机构传播`，未来未知机器值仍通过既有 fallback 原样展示。
-- 一次性 `.github/workflows/temp-voice-type-prompt-patch.yml`、`.github/workflows/temp-voice-type-review-fix.yml` 均已删除，最终 PR diff 无临时文件。
 
 # 代码与文档影响审计
 
@@ -151,6 +163,7 @@ data_changes: []
 - HTTP/OpenAPI/generated client 不维护具体 voice type enum，本次无需生成物变更。
 - Analysis README、AI Appendix 与 Blueprint 只声明“Prompt 是唯一 Taxonomy 事实源”，没有复制当前七类定义；同步修改会重新制造第二份业务事实，因此不改。
 - Excel Appendix 只描述“中文别名不是合法值白名单、未知新值原样输出”的机制；本次实现仍符合该机制，因此无需修改。
+- 额外同步范围只包括两个旧 Unit 断言；没有发现其他生产代码或正式文档依赖旧七类列表/旧中文显示。
 
 # 文档影响
 
