@@ -196,7 +196,6 @@ def test_excel_analysis_requires_voice_type_instead_of_inventing_default() -> No
     field = UnifiedDataExcelAnalysisV1.model_fields["voice_type"]
 
     assert field.is_required()
-    assert field.default is None or field.default is not "unknown"
 
 
 def test_duplicate_voice_type_in_prompt_taxonomy_fails_closed_before_llm(
