@@ -1,201 +1,165 @@
 ---
 name: figma
-description: 面向 Figma 产品原型、设计系统和 Design-to-Code 正式开发基线的事实驱动审查与修复工作流。先恢复当前仓库、前端、后端 Contract/Capability/状态机等真实事实，再检查 Figma 的视觉美观、页面尺寸、空间布局、组件与业务逻辑复用、Prototype、状态覆盖、用户习惯、用户术语、动态数据来源和 Codex 可实现性；禁止把 Figma 示例数据当服务器事实、把截图当结构证据、把后端实现名机械暴露给用户，或在后端不支持时由设计稿创造伪能力。支持 review-only、review-and-fix 和 baseline-ready。Use for Figma prototype review, Figma design audit, design-system consistency review, prototype QA, layout/usability review, backend-contract alignment, Design-to-Code readiness, and Figma review-and-fix.
+description: 面向任意项目的 Figma 产品原型、设计系统、页面可用性和 Design-to-Code 正式开发基线的事实驱动审查与修复工作流。先识别项目形态和目标用户，再按实际边界读取需求、设计系统、代码、Contract/API/SDK/数据源/运行状态等事实；审查页面尺寸、布局、间距、图片与标注、公共组件与可复用业务逻辑、Prototype、状态覆盖、动态数据来源、用户习惯和实现可行性。禁止把 Figma 示例当生产事实、把截图当结构证据、机械暴露内部实现、复制可复用业务规则，或由设计稿创造系统不存在的能力。支持 review-only、review-and-fix 和 baseline-ready。Use for Figma prototype review, design audit, design-system review, layout/usability QA, prototype QA, real-system capability alignment, and Design-to-Code readiness across web, mobile, desktop, dashboards, admin tools, static sites, and other UI projects.
 ---
 
 # Figma
 
-Figma Skill 的职责不是单纯回答：
+这个 Skill 不是“看起来好不好看”的主观点评器。
 
-> “这个页面好不好看？”
-
-而是判断：
+它要判断：
 
 ```text
-这个设计表达的业务能力是真的吗？
-与当前后端 / Contract / Store / Route 一致吗？
-动态数据到底从哪里来？
-页面尺寸、区块位置、图片和标注是否适合真实使用？
-用户能否按自然习惯完成任务？
-公共组件和可复用业务逻辑是否有唯一 Owner？
-Prototype 点击后是否仍然正确？
-Codex 能否无歧义地把它实现成当前仓库代码？
-这个 Frame 是否已经达到正式开发基线？
+这个页面适合目标用户吗？
+页面尺寸、布局、间距、图片和标注是否合理？
+用户能否按自然顺序完成任务？
+设计中的字段、按钮、状态和选项是否有真实系统能力支持？
+动态数据来自哪里，是否明确标注？
+公共视觉组件是否真正复用？
+可复用业务逻辑是否有唯一 Owner？
+Prototype 点击之后是否仍然正确？
+实现方能否无歧义地把设计接到当前项目？
 ```
 
-核心执行链：
+核心流程：
 
 ```text
-恢复当前事实
-→ 明确 Figma Review Target
-→ 建立设计事实 / 业务机器事实 / 运行事实边界
-→ 审查页面尺寸 / 空间布局 / 用户任务路径
-→ 审查静态结构和视觉层级
-→ 审查 Prototype
-→ 审查后端能力映射和动态数据来源
-→ 审查设计系统、公共组件与业务逻辑复用
-→ 审查状态完整性与产品语言
-→ 从 Design Context 复核 Codex 视角
-→ 输出 Findings
-→ 有修复授权时修 Figma
-→ Fresh Screenshot + Machine Audit + Design Context
-→ 给出交付结论
+识别项目形态和目标用户
+→ 明确 Review Target 与授权模式
+→ 恢复当前需求 / 设计 / 系统事实
+→ 审查页面尺寸、布局与真实使用习惯
+→ 审查视觉层级、图片、标注、表格、表单
+→ 审查公共组件和业务逻辑复用
+→ 审查系统能力、动态数据和状态来源
+→ 审查 Prototype Variable / Reaction / Flow
+→ Fresh Screenshot / Machine Audit
+→ Design Context / 实现视角复核（适用时）
+→ Findings
+→ review-and-fix 时修最小 Owner
+→ re-review
+→ READY / READY_WITH_NOTES / NOT_READY
 ```
 
-详细方法位于 `references/`。命中对应情形时必须读取相关 reference；不能只读本文件后凭印象完成审查。
+详细方法位于 `references/`。命中对应场景时必须读取相关 reference；不能只读本文件后凭经验完成审查。
 
 ---
 
-# 1. 上位规则与事实源
+# 1. 通用适用性
 
-## 1.1 项目规则优先
+本 Skill 不绑定某个项目、某个页面或某一种技术栈。
 
-进入任何仓库相关 Figma 任务前：
-
-```text
-适用 AGENTS.md / 项目本地规则
-→ .agents/skills/coding/SKILL.md（同仓存在时）
-→ 项目 Figma / Frontend Guide
-→ 当前任务相关 Blueprint / Contract / Code / Test
-→ 本 Skill
-```
-
-本 Skill 不复制 Coding 的研发、Change、Git、CI、测试、安全和交付规则。
-
-如果当前任务发现需要修改生产代码：
+适用于：
 
 ```text
-figma finding
-→ code_issue_detected
-→ 返回 Coding
-→ Coding 修复并验证
-→ Figma targeted re-review
+Web 应用
+移动端 App
+桌面端 App
+内部管理系统
+数据看板
+内容/媒体产品
+交易/电商产品
+表单/工作流系统
+营销/品牌站
+静态站
+设计系统 / 组件库
+Design-only 原型
 ```
 
-Figma Skill 不因为发现代码问题自动获得生产代码修改权限。
-
-如果需要同步正式技术文档，并且仓库存在 Docs Skill：
-
-```text
-Figma
-→ docs_impact
-→ .agents/skills/docs/SKILL.md
-```
-
-Figma Skill 不复制 Docs 的技术写作规范。
-
-如果需要正式代码 Review，并且仓库存在 Review Skill：
-
-```text
-Figma → Design-to-Code 实施完成
-→ Coding 完成实现与验证
-→ Review Skill 独立复核
-```
-
-Figma Skill 不替代代码 Review。
-
-详细事实源和路由见 [01_事实源与审查流程.md](references/01_事实源与审查流程.md)。
-
-## 1.2 必须区分三类事实
-
-任何审查先建立：
-
-| 类型 | 事实源 | 例子 |
-| --- | --- | --- |
-| 设计事实 | Figma Component / Variable / Frame / Prototype | 布局、颜色、间距、交互意图 |
-| 业务机器事实 | Contract / Schema / Backend / Generated Client | 字段、状态、能力、约束 |
-| 当前运行事实 | API / 数据库 / 服务器状态 | 当前数量、当前渠道配置、真实时间 |
+开始前先读取 [00_通用适用性与项目形态.md](references/00_通用适用性与项目形态.md)，只加载当前项目真实存在的边界。
 
 硬规则：
 
 ```text
-Figma 有字段
-≠ 后端支持该字段
+Skill 提到了 API
+≠ 每个项目都必须有 API
 
-Figma 有一个下拉选项
-≠ 后端支持该行为
+Skill 提到了 Route
+≠ Mobile/Desktop 必须套 Web Route
 
-Figma 示例“18”
-≠ 服务器当前就是 18
-
-后端对象叫 Provider
-≠ 用户 UI 必须显示 Provider
+Skill 提到了数据库
+≠ 客户端应直接访问数据库
 ```
 
 ---
 
-# 2. 工作模式
+# 2. 上位规则与宿主工具
 
-## 2.1 `review-only`
+## 2.1 有仓库时
+
+顺序：
+
+```text
+适用 AGENTS / CONTRIBUTING / 项目规则
+→ 同仓 Coding Skill（存在时）
+→ 产品 / 设计 / 前端 / 平台 Guide
+→ 当前任务直接相关的 Spec / Contract / Code / Test
+→ 本 Skill
+```
+
+本 Skill 不复制研发、Git、CI、文档或代码 Review 规则。
+
+发现生产实现问题：
+
+```text
+code_issue_detected
+→ 返回项目 Coding 工作流
+→ 实现修复并验证
+→ Figma targeted re-review
+```
+
+需要同步长期文档时，路由到项目现有 Docs 工作流。
+
+## 2.2 宿主 Figma 工具优先
+
+本 Skill 定义审查方法，不替代当前宿主的 Figma MCP、插件、写入 API、权限和前置技能。
+
+```text
+先遵守宿主工具规则
+→ 再按本 Skill 决定读什么、查什么、怎样判定 Ready
+```
+
+如果环境只有读权限，`review-and-fix` 必须明确阻塞，不能假装已经改过设计。
+
+详见 [01_事实源与审查流程.md](references/01_事实源与审查流程.md)。
+
+---
+
+# 3. 三种工作模式
+
+## `review-only`
 
 默认模式。
 
-允许：
+允许读取 Figma、仓库/需求事实、截图、Metadata、Prototype、Design Context，并输出 Findings。
 
-- 读取 Figma；
-- 读取仓库当前事实；
-- 获取截图、Metadata、Design Context；
-- 检查 Prototype Variable / Reaction / Flow；
-- 输出 Finding 和 Ready 判断。
-
-不因为审查请求自动获得：
+不自动获得：
 
 - 修改 Figma；
 - 修改代码；
 - 修改文档；
 - commit / PR / merge / release 权限。
 
-## 2.2 `review-and-fix`
+## `review-and-fix`
 
-仅在用户明确要求修改 Figma 时使用。
-
-流程必须是：
+仅在明确授权修改 Figma 时使用：
 
 ```text
-先审查
-→ 确认 Finding / 根因
-→ 修改最小 Owner
+先确认 Finding 和根因
+→ 找最小真实 Owner
+→ 修改 Owner
+→ 验证所有受影响消费者
 → Fresh Screenshot
-→ 机器结构复查
-→ Prototype 复查
-→ Design Context 复查
+→ Prototype / Machine Audit
+→ Design Context re-review（适用时）
 ```
 
-禁止：
+禁止逐页打补丁掩盖公共根因。
 
-```text
-看到错位
-→ 随便移动一下
-→ 结束
-```
+## `baseline-ready`
 
-必须修根因。例如：
+用于判断 Figma 是否可作为实现方的正式开发基线。
 
-```text
-Toast 漂移
-→ 检查 Auto Layout / Absolute Position
-
-双文本
-→ 检查 Component Property + 外覆 Text
-
-双图标
-→ 检查 Variant 自带 Icon + Message 手写 Icon
-
-保存后出现旧值
-→ 检查 Prototype Reaction / Variable
-```
-
-## 2.3 `baseline-ready`
-
-当用户希望把 Figma 交给 Codex 或作为正式开发基线时使用。
-
-必须执行完整交付门禁，不允许只凭：
-
-- 一张截图；
-- 一个主 Frame；
-- “看起来没问题”。
-
-最终只能给出：
+最终只能是：
 
 ```text
 READY
@@ -203,281 +167,146 @@ READY_WITH_NOTES
 NOT_READY
 ```
 
-并说明证据边界。
+必要验证没有实际执行时不得给 `READY`。
 
 ---
 
-# 3. Figma Review Target 必须明确
+# 4. Review Target
 
-开始前至少记录：
+每次正式审查至少确定：
 
 ```text
-Figma file
-Page
-正式 Section
+Figma File
+Page / Section
 目标 Frame / Node
-Prototype starting point
-目标代码 Page / Route（适用时）
-授权模式
+Prototype Starting Point
+项目形态
+目标用户 / 核心任务
+对应实现入口（有代码时）
+模式与授权范围
 ```
 
-如果同一 Page 同时有：
+如果同一文件中同时有：
 
 ```text
-正式开发基线
+正式基线
 历史参考
 备份
 废弃归档
 ```
 
-必须明确哪一个才是当前事实源。
-
-Codex 不得从历史 Frame 猜实现。
+必须先确定当前唯一事实源。
 
 ---
 
-# 4. 后端能力映射是核心门禁
+# 5. 事实分类与真实系统映射
 
-每一个会改变业务行为的 UI 字段，都必须回答：
-
-```text
-UI 字段是什么？
-用户认为它做什么？
-生产值来自哪里？
-对应 Request / Response / Store / Service 是什么？
-后端当前真正支持吗？
-值由用户配置、服务器返回还是系统固定？
-```
-
-至少归类为：
+任何业务相关 UI 内容至少判断属于：
 
 ```text
 STATIC_UI
-→ 纯视觉 / 固定产品文字
-
 USER_INPUT
-→ 用户输入并进入真实 Request
-
-API_DYNAMIC
-→ API / Store 返回
-
-SERVER_RUNTIME
-→ 当前服务器 / 数据库实时事实
-
+SYSTEM_DYNAMIC
+RUNTIME_STATE
 DESIGN_EXAMPLE
-→ 只为设计展示的代表值
-
 SYSTEM_FIXED
-→ 后端固定策略，只读
 ```
 
-如果关键字段无法归类，不得宣称页面 Ready。
-
-详细规则见 [02_业务能力与前后端映射.md](references/02_业务能力与前后端映射.md)。
-
-## 4.1 不允许由 Figma 创造后端能力
-
-例如设计出现：
+动态事实可能来自：
 
 ```text
-每9小时
+API / RPC / SDK
+CMS
+本地数据库 / Local Store
+设备能力
+文件系统
+后台任务
+第三方服务
+服务端数据库（经正式 Service/API 消费）
 ```
 
-必须先检查当前 Scheduler 是否真的能严格表达“每隔9小时”。
+关键字段如果不知道来源、默认值、错误行为或真实系统支持方式，不能宣布基线闭环。
 
-规则固定为：
+详细规则见 [02_业务能力与真实系统映射.md](references/02_业务能力与真实系统映射.md)。
+
+## 5.1 设计不能创造不存在的能力
+
+一个 Select 里出现选项，不代表系统支持。
+
+一个按钮被画出来，不代表真实 Action 存在。
+
+一个“每 N 小时”的文案，不代表当前调度器能严格实现该语义。
+
+规则：
 
 ```text
-后端能支持
-→ Figma 可以设计
+真实系统支持
+→ 可以进入正式设计
 
-后端不能支持
-→ 不在正式基线承诺
-→ 如业务需要，形成正式后端 Change
+系统不支持但已批准未来实现
+→ 明确 Future / Implementation Required
+
+既没有实现也没有批准决定
+→ 不作为正式可用能力
 ```
 
-## 4.2 不机械推断“渠道”
+## 5.2 数据库数据也要通过正式系统边界
 
-必须区分：
+如果设计展示的数据最终来自数据库：
 
 ```text
-数据来源
-采集渠道
-目标平台
+Database
+→ Repository / Service / API / SDK
+→ Client State
+→ Page
 ```
 
-它们不自动是同一层。
+实际链路按项目架构确定。
 
-例如：
-
-```text
-本地文件导入
-≠
-网络采集 Provider
-```
-
-除非当前 Contract / Registry 明确把两者抽象成同一渠道模型，否则 Figma 不得为了产品表面统一把它们塞进同一个 Select。
-
-## 4.3 Capability 动态能力
-
-存在后端 Capability 时：
-
-```text
-Capability
-→ UI 可用平台
-→ UI 可用选项
-→ UI 默认值
-→ 保存资格
-```
-
-必须动态驱动。
-
-禁止从 Figma 示例反向维护第二套平台参数表。
-
-Figma 可以展示代表性 Dynamic Form Pattern，但 Annotation 必须标明真实字段来源。
+禁止把“数据来自数据库”理解成客户端直接查询数据库。
 
 ---
 
-# 5. 示例数据与服务器事实
+# 6. 页面尺寸、布局、美观和真实可用性
 
-Figma 可以使用代表性示例数据，但必须符合以下规则。
+这是 `baseline-ready` 的硬审查域。
 
-## 5.1 示例数据真实感不等于生产事实
+必须读取 [07_页面布局与真实可用性审计.md](references/07_页面布局与真实可用性审计.md)。
 
-允许：
-
-```text
-爱玛品牌词包
-v4
-28 词
-
-计划编号：20260828001
-```
-
-但不得因为 Figma 写了：
+至少检查：
 
 ```text
-启用计划：18
+目标设备 / 浏览器与 Frame 基准
+响应式 / 安全区 / App Shell
+Page Header / Content 左右边界
+Section 对齐和间距节奏
+图片比例 / 裁切 / 清晰度
+图片、文字、按钮、Badge、Annotation 是否重叠
+图表 Label / Legend / Tooltip 是否遮挡
+真实长文本下表格列宽
+表单字段依赖和用户操作顺序
+Toast / Dropdown / Tooltip / Popover 安全区
+Modal / Drawer 滚动
+关键动作在目标 Viewport 是否可访问
 ```
 
-就把 `18` 当服务器当前事实或前端常量。
+设计基准尺寸不是生产固定宽高。
 
-## 5.2 示例数据必须跨页面一致
-
-同一对象在：
-
-```text
-列表
-详情
-创建表单
-关联页面
-```
-
-出现时，应使用同一代表性身份和版本，除非明确设计的是不同状态。
-
-## 5.3 不机械中文化
-
-产品语言以用户理解为目标，不是“所有拉丁字母都消失”。
-
-通常可以保留：
-
-```text
-v1 / v2 / v3 / v4
-Q7
-合法产品型号
-确有用户认知价值的品牌 / 标准名 / 专名
-```
-
-通常不应直接暴露：
-
-```text
-provider_config_id
-Run ID
-Job ID
-Campaign
-Scope
-Capability
-Scheduler
-Raw
-Secret
-内部 error_code
-```
-
-除非目标用户就是管理员/开发者，且该信息确有产品价值。
-
-审查时问：
-
-> 这个词用户真的需要知道吗？
-
-而不是：
-
-> 它是不是英文？
+如果 Prototype 需要用户每次手动缩放才能正常看全，应检查 Frame、Scaling、Viewport 和滚动设计，而不是把手动缩放当产品方案。
 
 ---
 
-# 6. 产品语言审计
+# 7. 公共组件与可复用业务逻辑
 
-用户界面优先表达业务语言。
+必须读取 [03_设计系统与组件复用审计.md](references/03_设计系统与组件复用审计.md)。
 
-检查：
+## 7.1 视觉公共组件
 
-```text
-后端内部对象名是否直接暴露？
-中英文是否无意义混杂？
-技术实现是否被误当产品概念？
-同一概念是否有多个叫法？
-```
-
-可以做产品映射，例如：
+真正跨页面稳定复用的基础 UI 应有唯一 Owner，例如：
 
 ```text
-Provider Config
-→ 采集渠道
-
-schedule_expr
-→ 执行频率 / 执行周期
-
-Job
-→ 后台任务
-
-keyword_pack.version
-→ v4
-```
-
-但 Annotation / Contract Mapping 中仍应保留机器名，方便 Codex 正确接线。
-
-原则：
-
-```text
-UI 产品语言
-≠
-Contract 字段命名
-
-但二者必须建立明确映射。
-```
-
----
-
-# 7. 设计系统、公共组件与业务逻辑复用审计
-
-必须区分：
-
-```text
-Global Shared Component
-Feature Public Component / Logic
-Page Pattern
-Page-private Composition
-```
-
-详细规则见 [03_设计系统与组件复用审计.md](references/03_设计系统与组件复用审计.md)。
-
-## 7.1 跨页面公共视觉组件
-
-稳定跨页面模式优先复用，例如：
-
-```text
-Sidebar
-TopBar
+App Shell
+Navigation
 Page Header
 Button
 Input
@@ -487,190 +316,109 @@ Switch
 Tabs
 Feedback
 Empty State
-Modal Shell
-Drawer Shell
+Modal / Drawer Shell
 ```
 
-同一种稳定视觉模式只允许一种公开实现路径。
+具体名称以当前 Design System 为准。
 
-## 7.2 可复用业务逻辑也必须有唯一 Owner
+## 7.2 业务逻辑也要复用
 
-如果多个页面真正使用同一业务语义，例如：
+如果多个页面真正使用同一业务语义：
 
 ```text
-渠道能力 → 可用平台 → 动态参数
-同一状态 → 产品文案
 同一资格判断
-同一表单校验/默认值规则
+同一状态映射
+同一动态字段生成规则
+同一表单校验
+同一默认值算法
+同一数据转换
 ```
 
-不能让 Codex 在多个页面分别复制一套逻辑。
+不能让实现方在多个页面复制多套逻辑。
 
-应根据真实复用范围进入：
+应根据复用范围落到唯一 Owner：
 
 ```text
-Feature 公共层
-或
-跨 Feature Shared / Domain Owner
+Feature Public Layer
+Shared Domain / Shared UI
+Service / Capability / SDK
 ```
 
-Figma 应通过统一 Pattern/Component + Annotation 告诉实现方“这里复用哪个业务 Owner”。
+但不要把业务规则塞进 Button/Input 等无业务基础组件。
 
-但不要把业务规则塞进 `AIMA/按钮` 这样的无业务基础组件；Button 负责视觉和通用交互壳，业务 Handler/资格由上层唯一 Owner 决定。
-
-## 7.3 不做万能组件
-
-以下不能因为“看起来会复用”就自动进入 Global Shared：
-
-```text
-Feature KPI
-特定业务表格
-特定业务表单
-某业务筛选组合
-```
+## 7.3 不追求“所有东西都全局组件化”
 
 判断顺序：
 
 ```text
-页面内复用
-→ Page Pattern
+只在一个页面稳定出现
+→ Page-private / Page Pattern
 
-同 Feature 真实复用
+同 Feature 多页面真实复用
 → Feature Public Component / Logic
 
-跨 Feature 稳定复用
+跨 Feature 真正同语义复用
 → Shared / Domain Owner
 ```
 
-## 7.4 Component Property 审计
-
-可变值必须由真正的 Component Property 表达。
-
-错误：
-
-```text
-AIMA/Select
-内部：小红书
-+
-页面覆盖 Text：全部平台
-```
-
-正确：
-
-```text
-AIMA/Select
-文本 = 全部平台
-```
-
-重点扫描：
-
-- Instance 外覆 Text；
-- Component Property 引用断开；
-- Detach 后重新手画；
-- Variant 与业务状态不一致。
+共享的目标是**唯一事实和避免漂移**，不是追求组件数量。
 
 ---
 
-# 8. Prototype 审计
+# 8. Component Property、Token 和结构
 
-静态画布正确不代表 Prototype 正确。
+审查：
 
-必须同时检查：
+- Instance 是否真来自公共 Component；
+- 是否被 Detach 后手画；
+- 可变文本是否使用 Component Property；
+- 是否存在公共组件 + 外覆 Text；
+- Property 引用是否断开；
+- Variant 是否用于稳定视觉轴；
+- Token 是否按语义复用；
+- 同语义是否存在多套 Raw Color/Spacing；
+- Auto Layout / Constraints 是否能承受真实文案长度。
+
+公共组件源修改后必须复核消费者。
+
+---
+
+# 9. Prototype 审计
+
+必须读取 [04_Prototype状态与交互审计.md](references/04_Prototype状态与交互审计.md)。
+
+静态画布正确不代表点击后正确。
+
+检查：
 
 ```text
 Flow Starting Point
-Reaction
-Variable
-Variable 默认值
-SET_VARIABLE Action
-Overlay
-Open / Close
-Change To
+Prototype Variable 默认值
+Reaction / SET_VARIABLE
+Open / Close / Change To
+Overlay / Dropdown / Toast
 Absolute Position
 Auto Layout
-Overflow / Scroll
+Scroll / clipsContent
 Hidden Layer
 Destination Node
 ```
 
-详细规则见 [04_Prototype状态与交互审计.md](references/04_Prototype状态与交互审计.md)。
+重点发现：
 
-重点寻找：
-
-## 8.1 旧数据回弹
-
-例如：
-
-```text
-画布 = 28词
-点击添加
-→ Prototype Variable = 4词
-```
-
-这是 Finding。
-
-## 8.2 重复 UI
-
-例如：
-
-```text
-Success Variant 自带 ✓
-+
-Message = "✓ 保存成功"
-```
-
-结果双对号。
-
-或者：
-
-```text
-Feedback Component
-+
-额外 Text
-```
-
-结果文字重叠。
-
-## 8.3 同一状态不同页面位置漂移
-
-例如 Toast：
-
-```text
-Page A → x=540
-Page B → x=1080
-Page C → y=910
-```
-
-需要统一定位规则，而不是逐页目测调整。
-
-Auto Layout 页面中的浮层要检查 Absolute Position，否则坐标可能被布局系统重新计算。
-
-## 8.4 Prototype 不伪造服务器结果
-
-以下行为依赖真实 API：
-
-```text
-创建任务成功
-保存数据库成功
-后台 Worker 完成
-Provider 请求成功
-```
-
-Prototype 不应为了演示把它们伪造成真实服务器执行证据。
-
-可以设计“成功后的视觉状态”，但必须明确：
-
-```text
-Representative State
-≠
-真实执行结果
-```
+- 旧数据回弹；
+- 双文字；
+- 双图标；
+- 相同 Toast 在不同页面漂移；
+- Dropdown 被裁切；
+- 失效 Flow；
+- 演示伪造服务器/系统成功。
 
 ---
 
-# 9. 状态完整性审计
+# 10. 状态完整性
 
-至少检查：
+所有页面按真实业务检查：
 
 ```text
 Normal / Data
@@ -680,357 +428,236 @@ Error
 Disabled
 ```
 
-按真实业务补充：
+异步或复杂工作流按真实状态机补：
 
 ```text
-Partial Success
-Permission
-Unavailable
 Creating
 Uploading
 Running
-Cancelled
+Partial
 Retry
+Cancelled
+Permission
+Unavailable
 Historical Compatibility
 ```
 
-状态不是越多越好。
-
-原则：
-
-> 后端状态机真实存在并且用户需要理解或操作，才设计。
-
-异步任务必须核对真实状态枚举，不能只设计“成功 / 失败”。
+不机械要求每个项目拥有所有状态。
 
 ---
 
-# 10. Design Token 与视觉一致性
+# 11. 产品语言与用户习惯
 
-审查：
+审查的不是“英文是否存在”，而是用户是否需要理解它。
 
-```text
-Color
-Typography
-Spacing
-Radius
-Border
-Control Height
-Layout
-Icon
-```
-
-已有语义 Token 时必须复用。
-
-禁止为了 Token 覆盖率：
+可以保留：
 
 ```text
-看到相近 Hex
-→ 强行合并
+版本号
+产品型号
+标准名称
+用户熟悉的品牌 / 协议 / 专名
 ```
 
-只有确认语义相同时才能绑定。
+通常不直接暴露：
 
-还要检查：
+```text
+机器字段名
+内部 ID 类型
+调试对象名
+内部状态码
+Secret / Raw / Stack Trace
+```
 
-- 同一页面不同 Raw Color；
-- 两套 Primary；
-- 字体与代码实施策略冲突；
-- Unicode Icon 被误当正式产品 Icon。
+除非目标用户角色确实需要。
+
+用户界面优先表达业务概念；机器字段通过 Annotation/开发规格与实现建立映射。
 
 ---
 
-# 11. 信息密度、页面尺寸与真实可用性
+# 12. 动态数据和 Annotation
 
-视觉 Review 不能只看“是否对齐”。
-
-至少检查：
+凡是会随系统变化的数据，正式基线应能说明：
 
 ```text
-目标浏览器 / 设备与 Frame 尺寸
-App Shell / 内容区边界
-信息密度
-主次层级
-留白和间距节奏
-控件权重
-表格真实长文本
-图片比例和裁切
-图片 / 图表 / 标注是否重叠
-Overlay / Toast / Dropdown 安全区
-滚动和首屏可访问性
-用户任务顺序
-动态数据来源和刷新
-真实前后端调用链
+字段是什么
+类型：SYSTEM_DYNAMIC / RUNTIME_STATE / SYSTEM_FIXED / DESIGN_EXAMPLE
+来源：API / SDK / CMS / Store / Runtime / ...
+示例值仅用于排版
+刷新时机（有业务意义时）
+空态
+错误态
 ```
 
-详细规则见 [07_页面布局与真实可用性审计.md](references/07_页面布局与真实可用性审计.md)。
-
-例如：
-
-```text
-三张巨大 KPI 卡
-但每张只有一行数字
-```
-
-可以判断是否应该收敛成摘要条。
-
-又例如：
-
-```text
-设计 Frame = 1440×900
-```
-
-只能作为设计基准，不能让 Codex 写死整个页面宽高。
-
-图片、标注、按钮和文字没有明确设计目的时不得重叠；开发 Annotation 不应压在正式 UI 上。
-
-动态数据如果来自 API/数据库/运行时，应在 Annotation/规格中明确来源链，前端仍通过正式 API/Store 获取，不直接访问数据库。
-
-视觉优化不能改变真实业务字段或后端行为。
+开发 Annotation 不应压在正式 UI 上，也不能被实现方误读成产品文案。
 
 ---
 
-# 12. Target IA 与真实 Route
+# 13. Design-to-Code / 实现交付
 
-固定检查：
+进入 `baseline-ready` 时读取 [05_Design-to-Code交付门禁.md](references/05_Design-to-Code交付门禁.md)。
 
-```text
-Figma Target IA
-≠
-当前 Production Route
-```
-
-设计可以提前表达已经确认的未来信息架构。
-
-Design-to-Code 时：
+有代码仓库时必须重新确认当前技术栈，不假设：
 
 ```text
-当前真实 Route
-→ 接通
-
-未来 Target IA
-→ 不生成死链
-→ 不创建假页面
-→ 不制造伪功能
+React / Vue / Angular
+Flutter / SwiftUI / Compose
+Tailwind / CSS Modules
+任何状态管理 / UI Library
 ```
 
----
+Figma MCP/工具返回的参考代码只表达结构意图，不得反向改变项目技术栈。
 
-# 13. Codex Design-to-Code Readiness
-
-进入 `baseline-ready` 时必须从 Codex 视角重新读取目标 Frame 的 Design Context。
-
-必须确认：
+实现前确认：
 
 ```text
-Codex 看到的是正式 Frame，不是历史 Frame
-Codex 看到公共 Component Instance，不是手画拷贝
-动态文本是 Component Property，不是叠加 Text
-Annotation 说明真实 API / Contract / Runtime 来源
-动态数据没有被写成常量事实
-可复用业务逻辑指向唯一 Owner
-Feature Pattern 与 Shared Component 边界清晰
-页面尺寸和布局不会诱导固定像素实现
+正式 Frame
+→ Shared / Feature / Page Owner
+→ 动态数据来源
+→ 系统动作来源
+→ Prototype / 状态规格
+→ 当前项目实现入口
 ```
-
-Figma MCP 输出的 React / Tailwind 等代码只能视为结构参考；目标仓库使用什么技术栈，必须重新读取当前仓库事实。
-
-详细门禁见 [05_Design-to-Code交付门禁.md](references/05_Design-to-Code交付门禁.md)。
 
 ---
 
 # 14. Baseline Ready 硬门禁
 
-一个页面只有同时通过以下检查才能判定 `READY`：
+一个页面只有通过适用项才能判定 `READY`：
 
 ```text
-[ ] 已恢复当前仓库事实
-[ ] 已读取相关 Contract / Store / API / Capability
-[ ] 所有用户输入都对应真实后端能力
-[ ] 所有动态字段都有 API / Runtime / 系统固定等明确来源
-[ ] 数据库最终事实通过正式 Repository/Service/API 链路进入前端，不要求前端直连数据库
-[ ] 示例数据明确不是服务器事实
-[ ] 没有 Figma 创造的伪能力
+[ ] Review Target 和项目形态明确
+[ ] 目标用户和核心任务明确
+[ ] 当前需求 / 系统事实已恢复
+[ ] 用户输入和动作都有真实系统支持或明确 Future 标识
+[ ] 动态数据都有真实来源
+[ ] DESIGN_EXAMPLE 不冒充线上当前事实
+[ ] 页面尺寸与目标设备/Viewport 有依据
+[ ] 设计基准没有诱导固定像素生产实现
+[ ] 页面区块对齐、间距、信息密度合理
+[ ] 图片/文字/按钮/标注无无意重叠
+[ ] 图片比例、裁切、长文本和图表极端状态有策略
+[ ] 表格/表单适配真实数据长度和用户操作顺序
 [ ] 公共视觉组件真实复用
-[ ] 可复用业务逻辑存在唯一 Owner，没有多页面复制同一规则
-[ ] Component Property 无覆盖文本
+[ ] 可复用业务逻辑有唯一 Owner
+[ ] 不同语义没有为了“复用率”被错误合并
+[ ] Component Property 无覆盖 Text
+[ ] Token 无明确语义漂移
 [ ] Prototype Variable / Reaction 无旧数据
-[ ] Prototype 无失效目标
-[ ] Flow 起点唯一且明确
-[ ] Normal / Loading / Empty / Error 已覆盖
-[ ] 其它状态按业务真实需要覆盖
-[ ] Frame 尺寸与目标设备/浏览器有依据
-[ ] App Shell / Page Header / Content 对齐和间距一致
-[ ] 图片、图表、文字、标注和交互控件无无意重叠
-[ ] 图片比例、裁切、长文本和表格列宽有真实数据策略
-[ ] Toast / Overlay / Drawer / Modal / Dropdown 无重叠、裁切和位置漂移
-[ ] 页面无不必要的多层滚动，关键操作在目标 Viewport 可访问
-[ ] 用户操作顺序和默认值符合真实使用习惯并有事实依据
-[ ] 没有双图标 / 双文本 / 重复 Feedback
-[ ] 用户术语符合产品认知
-[ ] 没有不必要暴露内部实现
-[ ] Design Token 无明确语义漂移
-[ ] Fresh Screenshot 通过主要页面、关键状态和关键浮层
-[ ] Design Context 从 Codex 视角通过
+[ ] Flow 无失效目标
+[ ] Overlay / Toast / Dropdown / Modal / Drawer 无漂移、裁切、双层滚动
+[ ] Normal / Loading / Empty / Error 覆盖
+[ ] 其它状态按真实业务覆盖
+[ ] 用户术语符合目标用户认知
+[ ] 敏感内部实现没有无价值暴露
+[ ] Fresh Screenshot 覆盖主要状态和关键浮层
+[ ] Machine Audit / Prototype Audit 已执行
+[ ] Design Context / 实现视角复核已执行（适用时）
 ```
 
-存在 P0 Finding：
+存在阻塞正确实施的问题：`NOT_READY`。
 
-```text
-NOT_READY
-```
+只有非阻塞 Notes：`READY_WITH_NOTES`。
 
-只有非阻塞问题：
-
-```text
-READY_WITH_NOTES
-```
-
-全部通过：
-
-```text
-READY
-```
-
-未实际执行必要验证时，不得给 `READY`。
+全部适用门禁通过：`READY`。
 
 ---
 
-# 15. Findings 与严重度
+# 15. Findings
 
-详细格式见 [06_Findings与修复优先级.md](references/06_Findings与修复优先级.md)。
+读取 [06_Findings与修复优先级.md](references/06_Findings与修复优先级.md)。
 
-## P0 — 阻塞正式开发基线
+## P0
 
-例如：
+会导致系统能力错误、关键用户任务不可完成、严重误实现、敏感信息泄露或正式基线不可实施。
 
-- Figma 字段后端不存在；
-- UI 行为后端不能实现；
-- 动态数据被写成生产常量；
-- Prototype 与真实状态机冲突；
-- 公共组件结构会让 Codex 生成错误 DOM；
-- 同一业务规则在多个页面被设计成独立实现且会造成行为漂移；
-- 页面尺寸/滚动/重叠导致关键用户任务无法完成；
-- 关键状态缺失；
-- 设计会泄露 Secret / 内部敏感信息；
-- Design Context 与画面表达冲突。
+## P1
 
-## P1 — 应在交付前修复
+不会立即破坏核心能力，但会造成明显可用性、复用、视觉一致性、状态完整性或维护风险。
 
-例如：
+## P2
 
-- 术语混乱；
-- 示例数据跨页面不一致；
-- 组件或业务复用不彻底；
-- Raw Token 漂移；
-- 图片/标注间距、表格列宽、次要状态等影响真实可用性的缺口；
-- Prototype 小范围不一致。
+非阻塞的信息密度、空间、文案和次级视觉优化。
 
-## P2 — 非阻塞优化
-
-例如：
-
-- 信息密度；
-- 空间利用；
-- 文案精简；
-- 次级视觉层级。
-
-每个确定性 Finding 至少包含：
+每个确定 Finding 至少包含：
 
 ```text
 级别
-Node / Frame
+Frame / Node / Pattern
 问题
-真实事实
-用户影响 / Codex影响
-建议修复
+真实事实或设计原则
+触发条件
+用户影响 / 实现影响
+最小修复 Owner
 验证方式
 ```
 
 ---
 
-# 16. Review + Fix 修复原则
-
-有修复授权时：
+# 16. review-and-fix 原则
 
 ```text
 发现问题
-→ 找到真正 Owner
+→ 找真正 Owner
 → 改 Owner
-→ 不逐页面打补丁
+→ 验证所有消费者
 ```
 
 例如：
 
 ```text
-三个页面 KPI 一样难看
-→ 改 Feature KPI Component 源
+所有页面 Button 都不一致
+→ 修公共 Button
 
-三个页面 Toast 错位
-→ 统一 Toast Pattern / Position
+多个页面都复制同一动态业务规则
+→ 收敛到唯一业务 Owner
 
-所有 Select 文本叠加
-→ 改公共 Select Component Property
+图片和标注在多个状态重叠
+→ 修容器 / Auto Layout / 标注规则
 
-两个页面都复制“渠道能力 → 动态字段”业务规则
-→ 收敛到唯一业务 Owner，并让 Figma 指向同一 Pattern/逻辑来源
-
-多个页面图标不一致
-→ 修公共 Icon 规则
+Toast 在不同页面漂移
+→ 修公共定位模式 / Parent Layout
 ```
 
-修改基础组件或公共业务 Owner 后必须重新验证所有受影响消费者。
+不逐页打补丁掩盖公共问题。
 
 ---
 
-# 17. 正式输出格式
+# 17. 正式输出
 
-每次正式审查至少输出：
+至少包含：
 
 ## Review Target
 
-```text
-Figma File:
-Page:
-Frame / Node:
-Mode:
-Related Route:
-```
+项目形态、目标用户、Figma 目标和模式。
 
 ## Confirmed Facts
 
-只写已经由 Figma / Repo / Contract / Runtime 明确确认的事实。
+只写已由需求、Figma、代码/Contract/SDK/Runtime 等确认的事实。
 
 ## Findings
 
-按 P0 → P1 → P2。
+P0 → P1 → P2。
 
-## Backend / Contract Mapping
+## System/Data Mapping
 
-列出重要 UI 能力对应的真实事实源。
+重要 UI 字段、动作和动态数据的真实来源。
 
 ## Component & Logic Reuse
 
-说明 Shared / Feature Public / Page-private 的视觉组件和业务逻辑 Owner 是否正确。
+Shared / Feature Public / Page-private 的视觉与业务 Owner。
 
 ## Layout & Usability
 
-说明 Frame 尺寸、空间位置、间距、图片/标注、表格/表单、滚动和用户任务路径是否满足真实使用。
+页面尺寸、位置、间距、图片/标注、表格/表单、滚动和用户任务路径。
 
 ## Prototype Audit
 
-说明 Variables / Reactions / Flow / Overlay / Scroll / Hidden State 结果。
+Variables / Reactions / Flow / Overlay / Scroll / Hidden State。
 
 ## Readiness
 
-只能是：
-
-```text
-READY
-READY_WITH_NOTES
-NOT_READY
-```
-
-如果未执行 Fresh Screenshot / Prototype / Design Context 等必要验证，不得给 READY。
+`READY / READY_WITH_NOTES / NOT_READY`。
 
 ---
 
@@ -1038,21 +665,22 @@ NOT_READY
 
 禁止：
 
-1. 只看截图就宣称 Figma 正确；
-2. 从历史聊天猜后端能力；
-3. Figma 有字段就假设后端有字段；
-4. 为了设计方便创造后端不存在的选项；
-5. 把示例值写成服务器事实；
-6. 机械把所有英文翻成中文；
-7. 把所有重复视觉都升级成全局 Shared Component；
-8. 把同一业务逻辑复制到多个页面而不建立唯一 Owner；
-9. 把业务规则塞进 Button/Input 等无业务基础组件；
-10. 用业务页面复制修复代替公共 Owner 修复；
-11. 只检查静态 Frame，不检查 Prototype；
-12. 忽略 Frame 尺寸、滚动、图片/标注重叠和真实长文本；
-13. 把 MCP 返回的 React/Tailwind 示例直接交付到不同技术栈项目；
-14. 用 Figma 替代 Contract / Schema；
-15. 让前端为了读取“数据库数据”绕过正式 API/Service 直接连接数据库；
-16. 用代码现状强迫设计迎合已经确认的实现 Bug；
-17. 因为“演示好看”伪造成功的 API / Worker / Provider 结果；
-18. 未实际验证就宣称“可以交 Codex”。
+1. 只看截图就宣称设计正确；
+2. 把某个项目的页面、平台、字段、尺寸或技术栈写成通用规则；
+3. Figma 有字段就假设系统支持；
+4. 为了设计方便创造不存在的能力；
+5. 把示例值写成生产事实；
+6. 机械翻译所有英文或机械保留所有技术词；
+7. 把所有重复视觉都升级成全局组件；
+8. 复制同一业务逻辑到多个页面；
+9. 把业务规则塞进 Button/Input 等基础组件；
+10. 用页面级补丁代替公共 Owner 修复；
+11. 忽略页面尺寸、真实 Viewport、滚动和响应式；
+12. 允许图片、标注、文字和操作控件无意重叠；
+13. 只设计理想短文本和理想数据；
+14. 只检查静态 Frame，不检查 Prototype；
+15. 用 Figma 替代 Contract / API / SDK / Runtime；
+16. 让客户端绕过正式架构直接访问数据库；
+17. 把 MCP 参考代码直接当目标项目实现；
+18. 因为演示好看伪造系统执行成功；
+19. 未执行必要验证就宣称“可以交给实现方”。
