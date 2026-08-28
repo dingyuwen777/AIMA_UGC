@@ -125,4 +125,7 @@ header p { margin: 5px 0 0; color: var(--aima-text-muted); font-size: 11px; line
 .preview small { color: var(--aima-text-disabled); font-size: 9px; }
 footer { display: flex; min-height: 68px; align-items: center; justify-content: flex-end; gap: 10px; padding: 0 22px; border-top: 1px solid var(--aima-border); }
 footer :deep(.aima-button) { height: 38px; }
+@media (min-height: 500px) {
+  .modal { transform: translateY(-17px); }
+}
 </style>
