@@ -109,12 +109,12 @@ watch(() => props.modelValue, (open) => {
 <style scoped>
 .modal-layer { position: fixed; z-index: 130; inset: 0; display: grid; place-items: center; }
 .backdrop { position: absolute; inset: 0; border: 0; background: rgb(25 32 45 / 46%); }
-.modal { position: relative; display: grid; width: min(540px, calc(100vw - 32px)); overflow: hidden; border-radius: 11px; background: var(--aima-surface); box-shadow: 0 22px 58px rgb(20 28 42 / 22%); }
+.modal { position: relative; display: grid; width: min(540px, calc(100vw - 32px)); height: min(446px, calc(100vh - 32px)); overflow: hidden; border-radius: 11px; background: var(--aima-surface); box-shadow: 0 22px 58px rgb(20 28 42 / 22%); }
 header { display: flex; min-height: 82px; align-items: center; justify-content: space-between; padding: 0 22px; border-bottom: 1px solid var(--aima-border); }
 h2 { margin: 0; color: var(--aima-text); font-size: 18px; line-height: 26px; }
 header p { margin: 5px 0 0; color: var(--aima-text-muted); font-size: 11px; line-height: 16px; }
 .close-button { display: grid; width: 32px; height: 32px; place-items: center; border: 0; color: var(--aima-text-muted); background: transparent; cursor: pointer; }
-.body { display: grid; min-height: 296px; align-content: start; gap: 10px; padding: 18px 22px 16px; }
+.body { display: grid; min-height: 0; align-content: start; gap: 10px; padding: 18px 22px 16px; overflow-y: auto; }
 .selection-summary { display: grid; min-height: 60px; align-content: center; gap: 4px; padding: 10px 14px; border: 1px solid var(--aima-primary); border-radius: 8px; background: var(--aima-primary-soft); }
 .selection-summary strong { color: var(--aima-text); font-size: 12px; }
 .selection-summary small { color: var(--aima-text-muted); font-size: 10px; }
