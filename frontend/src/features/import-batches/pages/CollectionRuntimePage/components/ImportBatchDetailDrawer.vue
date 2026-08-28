@@ -51,9 +51,9 @@ const sourceRetention = computed(() =>
   importSourceRetention(props.item?.finished_at ?? props.item?.job.finished_at),
 )
 const sourceRetentionText = computed(() => {
-  if (sourceRetention.value.expiresAt === null) return '源数据文件会在任务进入终态后继续保留 7 天，处理和重试期间不会提前清理。'
-  if (sourceRetention.value.expired) return '源数据文件已超过 7 天保留期并进入自动清理；批次、入库数据和来源元数据继续保留。'
-  return `源数据文件保留至 ${formatDateTime(sourceRetention.value.expiresAt)}；到期后只清理文件内容。`
+  if (sourceRetention.value.expiresAt === null) return '源 Excel 会在任务进入终态后继续保留 7 天，处理和重试期间不会提前清理。'
+  if (sourceRetention.value.expired) return '源 Excel 已超过 7 天保留期并进入自动清理；批次、入库数据和来源元数据继续保留。'
+  return `源 Excel 保留至 ${formatDateTime(sourceRetention.value.expiresAt)}；到期后只清理文件字节。`
 })
 </script>
 
