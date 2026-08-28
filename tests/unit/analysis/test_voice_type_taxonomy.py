@@ -190,12 +190,13 @@ def test_analysis_contract_keeps_structure_but_does_not_copy_voice_type_taxonomy
     assert analysis.voice_type == "future_prompt_voice_type"
 
 
-def test_excel_analysis_requires_voice_type_instead_of_inventing_default() -> None:
-    """未打标内容由 analysis=None 表达；分析投影不得偷偷补具体业务类别。"""
+def test_excel_analysis_does_not_invent_voice_type_default() -> None:
+    """导出兼容省略 voice_type，但不得用具体业务类别充当默认值。"""
 
     field = UnifiedDataExcelAnalysisV1.model_fields["voice_type"]
 
-    assert field.is_required()
+    assert not field.is_required()
+    assert field.default is None
 
 
 def test_duplicate_voice_type_in_prompt_taxonomy_fails_closed_before_llm(
