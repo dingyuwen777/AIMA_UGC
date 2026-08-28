@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260828-migrate-figma-canvas-rules"
 title: "将 Figma 画布可读性规则迁移到 Figma Skill"
 level: L2
-status: ready_for_review
+status: done
 owner: "chatgpt"
 branch: "docs/migrate-figma-canvas-rules-to-figma-skill"
 created: 2026-08-28
@@ -27,7 +27,7 @@ data_changes: []
 
 # 目标
 
-把当前错误归属于 Coding Skill 的 Figma Canvas / Annotation / Spacing 详细设计规则迁移到 Figma Skill，使职责边界变为：
+把原先归属于 Coding Skill 的 Figma Canvas / Annotation / Spacing 详细设计规则迁移到 Figma Skill，使职责边界变为：
 
 ```text
 Coding
@@ -49,7 +49,7 @@ Figma
 - [x] `12_规则保留映射.md` 记录 Figma Skill/`07_` 为 canonical 位置，并明确 Coding 不得恢复第二套 Figma 设计规则。
 - [x] Governance regression 验证 `Coding → Figma Skill → Figma 07` 可达、旧 `13_` 已删除、关键 fallback 与 Canvas Review 仍存在。
 - [x] 不修改产品运行代码、HTTP Contract、数据库、Migration、generated client、依赖或 Figma 文件本身。
-- [ ] 当前 Ready HEAD 的适用永久门禁成功后，PR #269 正常 squash merge `main`；merge 后重新验证 `main`，再独立归档本 Change。
+- [x] PR #269 在 Ready HEAD 永久门禁全绿后正常 squash merge `main`；实现 merge 后 `main@480e331fbdcf7b0b9f12407f52b8b406c5b1d403` 再次通过 Change Gate、CI 与 Runtime push 验证。
 
 # 范围与非目标
 
@@ -71,23 +71,23 @@ Figma
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
 | R1 | 将 Figma Canvas/注释/间距详细要求迁移到 Figma Skill，Coding 不再作为详细规则 Owner | user:2026-08-28-migrate-figma-skill | satisfied | Coding `02_` 已改为 Figma Skill hard route；旧 Coding `13_` 已删除；Figma `SKILL.md` + `07_` 成为 canonical 事实源；PR #269 governance test 已验证 |
-| R2 | Figma Skill 负责 Figma 页面尺寸、布局、间距、图片与标注、Prototype、Design-to-Code 设计工作流 | .agents/skills/figma/SKILL.md | satisfied | 当前 Figma Skill 已明确 Canvas/Spacing/Annotation 责任，并把视觉写操作与 baseline-ready 路由到 `07_页面布局与真实可用性审计.md` |
+| R2 | Figma Skill 负责 Figma 页面尺寸、布局、间距、图片与标注、Prototype、Design-to-Code 设计工作流 | .agents/skills/figma/SKILL.md | satisfied | Figma Skill 已明确 Canvas/Spacing/Annotation 责任，并把视觉写操作与 baseline-ready 路由到 `07_页面布局与真实可用性审计.md` |
 | R3 | Skill 重组必须内容守恒，移动规则不得丢失触发、例外、失败、验证和兼容语义 | .agents/skills/coding/SKILL.md | satisfied | Ready 前逐节对照 base `main@f3524b...` 的旧 Coding `13_` 与当前 Figma `07_`；Design System 优先、4px fallback、页面间距、24–32px Annotation、40–64/64–80/96–160px 画板、分区、Canvas-level Review、真实几何、邻接范围、禁止项和完成判定均保留；`12_` 固化映射 |
 | R4 | Coding 只负责 Figma 任务的研发路由，不维护第二套 Figma 设计细则 | .agents/skills/coding/references/02_跨项目研发任务路由.md | satisfied | `02_` 明确同仓存在 Figma Skill 时必须进入 Figma Skill，并明确“Coding 不维护第二套 Figma”设计细则；治理回归测试通过 |
-| R5 | 完成后不得绕过 Change/Review/CI/PR，正常合并 `main` | AGENTS.md | explicitly_deferred | 按仓库门禁，Ready 后等待当前 HEAD 的 Change Gate/CI/Runtime 全绿，再转 PR Ready、squash merge、验证 main 并独立归档；延期只对应尚未发生的集成交付动作 |
+| R5 | 完成后不得绕过 Change/Review/CI/PR，正常合并 `main` | AGENTS.md | satisfied | PR #269 Ready HEAD `301037a48ac51fdca962f03146617d44627a1c65` 的 Change Gate #1222、CI #3376、Runtime #497 全部 success；完成 A1/A2 Review 后正常 squash merge；实现 main SHA `480e331fbdcf7b0b9f12407f52b8b406c5b1d403` 的 Change Gate #1223、CI #3377、Runtime #498 再次 success |
 
 # Validation Matrix
 
 | Layer | Required | Actual Evidence |
 | --- | --- | --- |
-| 行为 / Unit / Component | required | PR #269 HEAD `35c1dda1e1b3a0b387917a655dfe553e08799599`，CI #3375：`python3 -m unittest discover .agents/skills/coding/tests -v` 共 42/42 passed；`test_figma_canvas_readability_guidance_is_owned_by_figma_skill` passed |
+| 行为 / Unit / Component | required | PR #269 首轮 HEAD `35c1dda1e1b3a0b387917a655dfe553e08799599`，CI #3375：`python3 -m unittest discover .agents/skills/coding/tests -v` 共 42/42 passed；`test_figma_canvas_readability_guidance_is_owned_by_figma_skill` passed；Ready HEAD `301037a4...` 的 CI #3376 再次 success |
 | 接口 / Contract | not_applicable | diff 仅 Skill/reference/test/Change，不修改 public API/ABI/HTTP/Schema/generated boundary |
 | 集成 / Persistence / Runtime Dependency | not_applicable | 不修改数据库、文件运行时、进程或外部依赖；CI scope 正常跳过 PostgreSQL/Repository Quality |
 | 用户 / Workflow Acceptance | not_applicable | 不改变 AIMA 产品用户工作流；本次改变 Agent 设计工作流的规则归属 |
 | 跨组件 Golden Path | not_applicable | 无产品跨组件接线变化 |
 | 外部依赖 Probe | not_applicable | 不需要访问 Figma API/Provider 来证明仓库规则迁移；未修改 Figma 文件 |
-| Build / Package / Runtime | not_applicable | 不修改 Runtime、Manifest、lock 或 artifact；Runtime Acceptance #496 使用 unchanged-runtime fast-path success |
-| Docs / Governance / Other | required | CI #3375：Secret scan、`check_docs.py`、Coding governance 42/42、CI Gate success；Change Gate #1221 的 completion-gate tests success，changed-PR readiness 仅因当时 Change=`in_progress` 按设计阻塞；A1/A2 Review 已完成 |
+| Build / Package / Runtime | not_applicable | 不修改 Runtime、Manifest、lock 或 artifact；PR Runtime #497 与实现 main Runtime #498 均以 unchanged-runtime fast-path success |
+| Docs / Governance / Other | required | Ready HEAD：Change Gate #1222、CI #3376（Secret/docs、Coding governance、CI Gate）success；Review `NO_FINDINGS_WITHIN_SCOPE`；实现 merge 后 main：Change Gate #1223、CI #3377、Runtime #498 success |
 
 # 实施与验证记录
 
@@ -97,7 +97,11 @@ Figma
 4. 删除 Coding `13_`；`12_规则保留映射.md` 记录当前 canonical 位置及内容守恒清单。
 5. 更新治理测试，明确断言旧 `13_` 不存在、Coding 路由可达 Figma Skill、Figma `07_` 保留关键 fallback/Canvas Review/完成判定。
 6. Draft PR #269 首轮：CI #3375 success；Coding governance 42/42 passed；Runtime #496 fast-path success；Change Gate #1221 的门禁测试成功，readiness 因 `in_progress` 按设计阻塞。
-7. Ready 前重新读取当前分支 `AGENTS.md`、Coding `SKILL.md`、Figma `SKILL.md`/`07_`、迁移前 base 的旧 Coding `13_`、Review Skill/执行/Findings/测试专家规则，并读取 PR #269 实际 diff；main 仍是 `f3524b679dfa3c9bfc65ebf1e3b7376935e07fa9`，不存在基线漂移。
+7. Ready 前重新读取当前分支 `AGENTS.md`、Coding `SKILL.md`、Figma `SKILL.md`/`07_`、迁移前 base 的旧 Coding `13_`、Review Skill/执行/Findings/测试专家规则，并读取 PR #269 实际 diff；当时 main 仍是 `f3524b...`，不存在基线漂移。
+8. Change 更新为 `ready_for_review` 后，Ready HEAD `301037a48ac51fdca962f03146617d44627a1c65` 的 Change Gate #1222、CI #3376、Runtime #497 全部 success。
+9. PR #269 记录 A1/A2 `NO_FINDINGS_WITHIN_SCOPE`，无未解决 review thread，转 Ready 后按 expected HEAD 正常 squash merge。
+10. 实现 merge 提交为 `480e331fbdcf7b0b9f12407f52b8b406c5b1d403`；merge 后 main push 的 Change Gate #1223、CI #3377、Runtime #498 全部 success。
+11. 归档前重新读取 `main@480e331f...` 的根 `AGENTS.md`；归档只移动本 Change 并补最终证据，不修改 Skill 或产品事实。
 
 # 文档影响
 
@@ -107,18 +111,21 @@ Docs Impact: targeted review completed，current product-guide update not_requir
 
 # Git / PR 状态
 
-- base: `main@f3524b679dfa3c9bfc65ebf1e3b7376935e07fa9`
-- branch: `docs/migrate-figma-canvas-rules-to-figma-skill`
-- Ready 前实现 HEAD: `35c1dda1e1b3a0b387917a655dfe553e08799599`
-- PR: #269 `文档：将 Figma 画布规则迁移到 Figma Skill`（Draft）
-- merge: 当前未合并；仅在 Ready HEAD 永久门禁成功后按用户授权执行
+- implementation base: `main@f3524b679dfa3c9bfc65ebf1e3b7376935e07fa9`
+- implementation branch: `docs/migrate-figma-canvas-rules-to-figma-skill`
+- implementation Ready HEAD: `301037a48ac51fdca962f03146617d44627a1c65`
+- implementation PR: #269 `文档：将 Figma 画布规则迁移到 Figma Skill`，已正常 squash merge
+- implementation main SHA: `480e331fbdcf7b0b9f12407f52b8b406c5b1d403`
+- merge 后 main push 验证：Change Gate #1223、CI #3377、Runtime #498 全部 success
+- archive branch: `docs/archive-migrate-figma-canvas-rules-change`
+- archive integration: 通过独立 docs-only PR 完成本文件 active → archive 收尾；归档本身不改变实现语义
 
 # Completion Audit
 
-- [x] upstream_re_read：Ready 前重新读取当前分支 `AGENTS.md`、Coding Skill、Figma Skill/`07_`、Review Skill；并读取 base `main@f3524b...` 的旧 Coding `13_` 作为迁移前语义基线。独立重建完成定义为“详细规则归 Figma、Coding 只路由、内容不丢、正常 PR/CI/merge main”。
-- [x] change_coverage：R1–R5 全部进入 Change。迁移/Owner/内容守恒/唯一事实源已满足；R5 仅对 Ready 后尚未执行的 merge/main/归档动作显式延期，没有隐藏未满足实现项。
+- [x] upstream_re_read：Ready 前重新读取当前分支 `AGENTS.md`、Coding Skill、Figma Skill/`07_`、Review Skill；并读取 base `main@f3524b...` 的旧 Coding `13_` 作为迁移前语义基线；归档前又重新读取实现合并后的 `main@480e331f...` 根 `AGENTS.md`。
+- [x] change_coverage：R1–R5 全部完成。迁移/Owner/内容守恒/唯一事实源由当前实现和治理测试覆盖；R5 的 PR/CI/Review/merge/main 验证也已完成。
 - [x] reverse_audit：正向验证 `Coding SKILL → Coding 02 → .agents/skills/figma/SKILL.md → Figma 07`；反向验证 Figma `07_` 的 Canvas/Spacing/Annotation 细则不再依赖 Coding `13_`，治理测试同时断言旧文件不存在。产品 API/DB/Runtime 反向审计不适用，因为本次无对应变化。
-- [x] unresolved_cleared：PR #269 当前无 inline review thread/submitted review；42/42 governance 测试和 Docs/CI Gate 成功；唯一首轮 Change Gate failure 是 `in_progress` 的预期 readiness；R1–R4 均 satisfied，`not_satisfied` 已清零。
+- [x] unresolved_cleared：PR #269 无未解决 inline review thread；Ready HEAD 永久门禁及 merge 后 main push 均成功；R1–R5 全部 satisfied，`not_satisfied` 和延期项均已清零。
 
 # Review
 
@@ -126,10 +133,10 @@ Docs Impact: targeted review completed，current product-guide update not_requir
 
 结论：`NO_FINDINGS_WITHIN_SCOPE`。
 
-- 用户明确要求把上一轮规则迁移到 Figma Skill并最终合并 main；当前详细设计规则已经从 Coding `13_` 移出，Coding 只保留 Figma Skill hard route。
-- 迁移后的 Figma Skill 本身能独立承担页面、Canvas、Spacing、Annotation、Prototype 与 Design-to-Code 设计责任，不再依赖 Coding 中的隐藏视觉 reference。
-- `12_规则保留映射.md` 明确 canonical 位置和不可恢复第二套 Coding 规则的约束，解决后续维护漂移风险。
-- main 尚未合并属于 Ready 后交付动作，按 R5 显式延期，不提前伪报完成。
+- 用户明确要求把上一轮规则迁移到 Figma Skill 并最终合并 main；详细设计规则已经从 Coding `13_` 移出，Coding 只保留 Figma Skill hard route。
+- 迁移后的 Figma Skill 能独立承担页面、Canvas、Spacing、Annotation、Prototype 与 Design-to-Code 设计责任，不再依赖 Coding 中隐藏的视觉 reference。
+- `12_规则保留映射.md` 明确 canonical 位置和不可恢复第二套 Coding 规则的约束，降低后续维护漂移风险。
+- PR #269 已按 Ready/Review/CI 顺序正常合并，merge 后 main 也取得新鲜成功证据。
 
 ## A2 质量与测试充分性
 
@@ -147,4 +154,4 @@ Docs Impact: targeted review completed，current product-guide update not_requir
 - 禁止随机间距、只看单 Node、只看局部、另造 spacing、静默删历史、把 Figma 示例当机器事实等失败边界保留；
 - 页面内部正确但 Canvas 仍拥挤、贴边、遮挡或归属不清时不得声明完成的终止条件保留。
 
-治理测试直接断言跨 Skill 路由、旧文件删除和关键语义，CI #3375 真实运行 42/42 passed。没有产品代码、Contract、DB、依赖或 Figma 文件变化，因此 Browser/PostgreSQL/Full-stack/Provider Probe 对本任务没有独立证明价值。
+治理测试直接断言跨 Skill 路由、旧文件删除和关键语义；PR Ready HEAD 与实现 main 的治理 CI 均成功。没有产品代码、Contract、DB、依赖或 Figma 文件变化，因此 Browser/PostgreSQL/Full-stack/Provider Probe 对本任务没有独立证明价值。
