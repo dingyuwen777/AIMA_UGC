@@ -3,6 +3,7 @@ import type {
   ContentLabelPairResponse,
   ContentListItemResponse,
 } from '../../../../../generated/api/client'
+import AimaIcon from '../../../../../shared/ui/AimaIcon.vue'
 import {
   contentSummary,
   formatDateTime,
@@ -141,6 +142,10 @@ function dateTimeParts(value: string | null | undefined): [string, string] {
       v-else-if="items.length === 0"
       class="table-state table-state--empty"
     >
+      <span class="empty-icon"><AimaIcon
+        name="voice"
+        :size="22"
+      /></span>
       <strong>暂无符合条件的内容</strong>
       <span>请调整筛选条件，或先在采集运行中心导入数据。</span>
       <small>当前没有可加载的下一页，不显示虚构页码。</small>
@@ -278,6 +283,7 @@ time span { color: var(--aima-text-muted); }
 .table-state small { color: var(--aima-text-disabled); font-size: 10px; }
 .table-state--loading { gap: 14px; }
 .table-state--loading span { font-size: 11px; }
+.empty-icon { display: grid; width: 48px; height: 48px; place-items: center; border-radius: 50%; color: var(--aima-text-disabled); background: #f2f4f7; }
 .skeleton { height: 14px; border-radius: 999px; background: #f2f4f7; }
 .skeleton--long { width: 360px; }
 .skeleton--medium { width: 320px; }
