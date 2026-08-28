@@ -16,7 +16,14 @@ from openpyxl import load_workbook
 @pytest.mark.parametrize(
     ("voice_type", "expected_display"),
     [
-        ("creator_marketing", "达人/创作者营销"),
+        ("user_voice", "真实用户发声"),
+        ("brand_official", "品牌官方发声"),
+        ("dealer_promotion", "门店经销商发声"),
+        ("creator_marketing", "营销推广发声"),
+        ("industry_professional", "行业从业发声"),
+        ("media_information", "媒体机构发声"),
+        ("unknown", "无法判断"),
+        ("other_organization", "其他机构传播"),
         ("future_prompt_voice_type", "future_prompt_voice_type"),
         (None, None),
     ],
@@ -26,7 +33,7 @@ def test_excel_voice_type_display_does_not_enforce_a_parallel_taxonomy(
     voice_type: str | None,
     expected_display: str | None,
 ) -> None:
-    """Excel 只保留既有中文展示别名，合法 voice_type 集合仍由 Prompt Taxonomy 决定。"""
+    """Excel 只提供中文展示别名，合法 voice_type 集合仍由 Prompt Taxonomy 决定。"""
 
     output = tmp_path / "voice-type.xlsx"
     label_pair = UnifiedDataExcelLabelPairV1(

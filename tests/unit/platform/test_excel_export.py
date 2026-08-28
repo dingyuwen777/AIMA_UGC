@@ -519,7 +519,7 @@ def test_raw_and_labeled_exports_keep_same_schema(tmp_path: Path) -> None:
         assert raw_values[:24] == labeled_values[:24]
         assert raw_values[24:31] == [None] * 7
         assert labeled_values[24:31] == [
-            "达人/创作者营销",
+            "营销推广发声",
             "sentiment-test",
             "primary-test",
             "secondary-test",

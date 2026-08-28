@@ -22,6 +22,15 @@ from aima_ugc.modules.analysis.content_labeling import (
 )
 
 OBSERVED_AT = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
+CURRENT_VOICE_TYPES = (
+    "user_voice",
+    "brand_official",
+    "dealer_promotion",
+    "creator_marketing",
+    "industry_professional",
+    "media_information",
+    "unknown",
+)
 
 
 def _content() -> CanonicalContentV1:
@@ -87,16 +96,61 @@ def _response(*, voice_type: str, sentiment: str, primary: str, secondary: str) 
     )
 
 
-def test_prompt_retains_voice_type_judgment_boundaries_and_learning_examples() -> None:
-    """机器 Taxonomy 调整不能删除用于教模型判断的高混淆规则和示例。"""
+def test_prompt_uses_business_defined_voice_type_taxonomy() -> None:
+    """当前 Prompt 必须使用本轮确认的七类发声类型机器集合。"""
+
+    taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
+
+    assert taxonomy.voice_types == CURRENT_VOICE_TYPES
+    assert "other_organization" not in taxonomy.voice_types
+
+
+def test_prompt_judgment_sections_use_tables_with_examples_and_confusion_cases() -> None:
+    """各判断维度应统一为表格定义，并在表格后保留示例或高混淆场景。"""
 
     prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
 
+    assert "## 语义相关性判断标准" in prompt
+    assert "| 判断结果 | 核心定义 | 判断说明 |" in prompt
+    assert "### 语义相关性高混淆场景" in prompt
+    assert "### 语义相关性示例" in prompt
+
     assert "## 内容发声类型判断标准" in prompt
+    assert "| 推荐名称 | 机器值 | 核心定义 | 说明 |" in prompt
     assert "### 先组合两层证据，再分类" in prompt
-    assert "### 七类边界与高混淆场景" in prompt
+    assert "### 发声类型高混淆场景" in prompt
+    assert "### 发声类型示例" in prompt
+
+    assert "## 情感判断标准" in prompt
+    assert "| 情感 | 核心定义 | 判断说明 |" in prompt
+    assert "### 情感高混淆场景" in prompt
+    assert "### 情感判断示例" in prompt
+
+    assert "## 一级/二级标签判断标准" in prompt
+    assert "| 一级标签 | 二级标签 | 覆盖内容与判断标准 | 典型表达仅作辅助 |" in prompt
+    assert "### 一级/二级标签高混淆场景" in prompt
+    assert "### 一级/二级标签示例" in prompt
+
+
+def test_prompt_retains_voice_type_business_boundaries_and_learning_examples() -> None:
+    """表格化不能删掉业务给定的发声类型边界、已知主体和高混淆学习信号。"""
+
+    prompt = CONTENT_LABELING_PROMPT_PATH.read_text(encoding="utf-8")
+
+    assert "真实用户发声" in prompt
+    assert "品牌官方发声" in prompt
+    assert "门店经销商发声" in prompt
+    assert "营销推广发声" in prompt
+    assert "行业从业发声" in prompt
+    assert "媒体机构发声" in prompt
+    assert "无法判断" in prompt
+    assert "爱玛骑遇团" in prompt
+    assert "二手车" in prompt
+    assert "爱玛官方旗舰店" in prompt
+    assert "爱玛科学实验室" in prompt
+    assert "修车" in prompt
+    assert "雅迪" in prompt
     assert "作者“通勤小林”" in prompt
-    assert "同一创作者正文明确写品牌合作" in prompt
     assert "作者和正文都极少" in prompt
 
 

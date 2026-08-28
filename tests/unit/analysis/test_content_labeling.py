@@ -157,8 +157,8 @@ def test_prompt_contains_required_human_judgment_sections() -> None:
 
     assert "## 情感判断标准" in prompt
     assert "## 一级/二级标签判断标准" in prompt
-    assert "## 多主题与边界冲突优先级" in prompt
-    assert "## 示例" in prompt
+    assert "### 一级/二级标签高混淆场景" in prompt
+    assert "### 一级/二级标签示例" in prompt
     assert "典型表达只作理解辅助" in prompt
 
 
