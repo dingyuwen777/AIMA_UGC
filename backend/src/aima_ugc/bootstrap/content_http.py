@@ -24,7 +24,7 @@ from aima_ugc.adapters.persistence.postgres.relevance_reviews import (
     PostgresContentRelevanceReviewRepository,
 )
 from aima_ugc.adapters.persistence.postgres.system import PostgresAuditRepository
-from aima_ugc.contracts.analysis import ContentRelevance, ContentVoiceType
+from aima_ugc.contracts.analysis import ContentRelevance
 from aima_ugc.contracts.http import (
     AnalysisContentRunCreatedResponse,
     AnalysisContentRunCreateRequest,
@@ -718,7 +718,7 @@ def _item_response(record: ContentReadRecord) -> ContentListItemResponse:
         analysis=ContentAnalysisResponse(
             status=cast(ContentAnalysisStatus, record.analysis.status),
             relevance=cast(ContentRelevance | None, record.analysis.relevance),
-            voice_type=cast(ContentVoiceType | None, record.analysis.voice_type),
+            voice_type=record.analysis.voice_type,
             sentiment=record.analysis.sentiment,
             labels=tuple(
                 ContentLabelPairResponse(primary_label=primary, secondary_label=secondary)

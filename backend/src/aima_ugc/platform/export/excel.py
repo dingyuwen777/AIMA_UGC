@@ -600,7 +600,9 @@ def _analysis_label_pairs(
     )
 
 
-def _voice_type_display_name(value: str) -> str:
+def _voice_type_display_name(value: str | None) -> str | None:
+    if value is None:
+        return None
     try:
         return _VOICE_TYPE_DISPLAY_NAMES[value]
     except KeyError as exc:
