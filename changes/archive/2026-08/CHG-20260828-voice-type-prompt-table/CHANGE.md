@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260828-voice-type-prompt-table"
 title: "更新发声类型定义并统一 Prompt 判断标准表格"
 level: L2
-status: ready_for_review
+status: done
 owner: "chatgpt"
 branch: "feature/voice-type-prompt-table"
 created: 2026-08-28
@@ -41,7 +41,7 @@ data_changes: []
 - [x] 现有输出结构 `item_no/relevance/voice_type/sentiment/labels` 不变；RuntimeTaxonomyValidator 继续按 Prompt Taxonomy 校验。
 - [x] Excel 当前合法七类显示新的中文业务名称；历史 `other_organization` 仍可兼容展示，不被重新解释为“行业从业发声”。
 - [x] 其他生产代码、Contract、数据库、API、generated client 经审计无同步修改必要；README/Appendix/Blueprint 不复制具体七类业务定义，无需机械同步。
-- [x] 最终实现 HEAD `7ffe6931c906105a142a71fb0e2e03d1c2490dd1` 已通过 CI、Runtime Acceptance、Full-stack Acceptance、Developer Tooling Compatibility；Change 进入 Ready 后需在新 HEAD 重新通过全部永久门禁。
+- [x] 最终 Ready HEAD `e2d7b90924361002622edd436905c47f08b5dd3e` 五个永久 PR 门禁全部通过；PR #258 已 squash merge 到 `main=66ccfb7f26d9a904ee1db626eb3e9acc10cac56d`，且合并后 main 五个 push workflow 全部成功。
 
 # 范围
 
@@ -93,7 +93,7 @@ data_changes: []
 | R2 | 情感判断、发声类型等判断标准像一级/二级标签一样使用表格，方便展示和修改 | user:2026-08-28-Prompt表格化 | satisfied | 语义相关性、发声类型、情感、一级/二级标签四个章节均使用 Markdown 表格作为主要定义；`test_prompt_judgment_sections_use_tables_with_examples_and_confusion_cases` 通过 |
 | R3 | 每个判断标准表格下提供示例或高混淆场景帮助 AI 判断 | user:2026-08-28-示例与高混淆 | satisfied | 四个判断维度均有高混淆场景和示例；发声类型额外保留两层证据、10 组高混淆边界与明确判断顺序；A1 预审发现的内容守恒问题已修复，最终 Unit/CI 全绿 |
 | R4 | 检查其他代码和文档是否需要同步，不应假设只有 Prompt 受影响 | user:2026-08-28-影响审计 | satisfied | 生产代码审计确认 Excel 展示别名是唯一额外实现同步项；2 个旧 Unit 断言按批准的新标题/中文显示同步；Contract/DB/API/generated 无固定业务枚举依赖，generated drift 通过；Analysis README、AI/Excel Appendix、Blueprint 不复制当前七类业务定义且仍与实现一致，因此不修改 |
-| R5 | 修改完成后正常合并到 `main` | user:2026-08-28-合并主分支 | explicitly_deferred | Draft PR #258 已建立；实现 HEAD 的 CI/Runtime/Full-stack/Tooling 全绿。实际 Ready、squash merge 与 main push CI 必须在本 Change Ready 门禁通过后按仓库顺序执行，并在独立归档 Change 中补最终证据 |
+| R5 | 修改完成后正常合并到 `main` | user:2026-08-28-合并主分支 | satisfied | PR #258 已在 Ready HEAD `e2d7b90924361002622edd436905c47f08b5dd3e` 五个永久门禁全绿后 squash merge；merge/main SHA `66ccfb7f26d9a904ee1db626eb3e9acc10cac56d`；合并后 main 的 Change Gate/CI/Runtime/Full-stack/Tooling 五个 push workflow 全部 success |
 
 # Validation Matrix
 
@@ -106,14 +106,14 @@ data_changes: []
 | 跨组件 Golden Path | not_applicable | 不修改 API/Job/Worker 装配；Runtime Acceptance `33155926565` success，作为额外运行时回归证据 |
 | 外部依赖 Probe | not_applicable | 不修改 LLM HTTP 协议或外部 Provider 字段；无需付费 Probe |
 | Build / Package / Runtime | required | CI `33155926602` Repository Quality `98798671471`：Ruff 529 files、mypy 254 source files、Wheel build/install/import、frontend lint/type/build、50 Vitest、31 Playwright 全部成功；Developer Tooling `33155926598` success |
-| Docs / Governance / Other | required | Secret/docs、architecture/table ownership、generated drift 均通过；A1/A2 Review 已完成；本提交把 Change 切到 `ready_for_review`，需以新 HEAD 的 Change Completion Gate 为最终 Ready 证据 |
+| Docs / Governance / Other | required | Secret/docs、architecture/table ownership、generated drift 均通过；A1/A2 Review 已完成；Ready HEAD Change Completion Gate `33156478703` success，merge 后 main Change Completion Gate `33156780904` success；归档 PR 继续执行 docs/governance 与 archive gate |
 
 # Completion Audit
 
 - [x] upstream_re_read：进入 Ready 前重新读取目标分支根 `AGENTS.md`、本轮用户的七类发声类型定义与表格/示例要求、当前 Prompt、Analysis README/AI/Excel Appendix 既有唯一事实源边界，并核对当前 `main`。
 - [x] change_coverage：重新从用户要求独立重建完成定义，逐项对照七类业务定义、四类判断表格、每表格下边界/示例、代码/文档影响审计与 main 合并要求；未发现 Requirement omission。
 - [x] reverse_audit：沿 `Prompt Taxonomy -> Prompt Loader/Runtime Validator -> Analysis Contract/DB/API -> Excel Export` 双向复核；核心运行链不维护具体枚举，Excel 仅保留展示别名；历史 `other_organization` 不会被新 `industry_professional` 重新解释。前端/Job/DB 无本次新增能力入口，因此相应能力反向审计不适用。
-- [x] unresolved_cleared：R1-R4 已有最终 Green 证据并转 `satisfied`；实现范围内 `not_satisfied` 清零。R5 仅因仓库要求必须先通过 Ready/CI 再执行 merge/main 验证而 `explicitly_deferred`，不是功能遗漏。
+- [x] unresolved_cleared：R1-R5 均已取得实际实现、Ready/PR、merge 与 main push CI 证据并处于 `satisfied`；`not_satisfied` 与 `explicitly_deferred` 均已清零。
 
 # 任务
 
@@ -128,8 +128,8 @@ data_changes: []
 - [x] 最终实现 HEAD `7ffe6931c906105a142a71fb0e2e03d1c2490dd1` 完成目标测试和完整永久 CI；CI/Runtime/Full-stack/Tooling 全绿。
 - [x] 执行最终 A1/A2 Review 与 Completion Audit；无未解决严重/重要 Finding。
 - [x] Change 切换为 `ready_for_review`，等待新 HEAD 正式 Ready 门禁复验。
-- [ ] PR 全绿后转 Ready、squash merge `main` 并验证 main push CI。
-- [ ] 独立归档 Change。
+- [x] PR 全绿后转 Ready、squash merge `main` 并验证 main push CI。
+- [x] 独立归档 Change，并记录实际 merge/main CI 证据。
 
 # Red / 调试证据
 
@@ -166,6 +166,15 @@ data_changes: []
 - Runtime Acceptance run `33155926565`：canonical Compose、repository-relative host root、Windows overlay 全部 success。
 - Developer Tooling Compatibility run `33155926598`：success。
 - Change Completion Gate run `33155926634` 的 Coding completion-gate tests 成功，但因当时 Change `status: in_progress` 按设计失败；本提交已完成 Traceability/Audit 并切换为 `ready_for_review`，必须使用新 HEAD 的正式 Gate 结果作为合并前证据。
+
+## Ready / 合并 / main 复验证据
+
+- 最终 Ready HEAD：`e2d7b90924361002622edd436905c47f08b5dd3e`。
+- PR #258 Ready HEAD 永久门禁全部 success：Change Completion Gate `33156478703`、CI `33156478701`、Runtime Acceptance `33156478713`、Full-stack Acceptance `33156478768`、Developer Tooling Compatibility `33156478707`。
+- PR #258 已正常 squash merge；merge/main SHA：`66ccfb7f26d9a904ee1db626eb3e9acc10cac56d`。
+- 合并后 `main=66ccfb7f26d9a904ee1db626eb3e9acc10cac56d` 的 push workflow 全部 success：Change Completion Gate `33156780904`、CI `33156780901`、Runtime Acceptance `33156780883`、Full-stack Acceptance `33156780886`、Developer Tooling Compatibility `33156780869`。
+- 实现分支 `feature/voice-type-prompt-table` 已按仓库设置自动删除。
+- 本任务未执行生产部署，也未批量重跑或改写历史 Analysis Result。
 
 # 实现事实
 
@@ -215,6 +224,6 @@ data_changes: []
 - 分支：`feature/voice-type-prompt-table`
 - PR：#258 `调整：更新发声类型定义并统一 Prompt 判断表格`
 - 最终实现预审 HEAD：`7ffe6931c906105a142a71fb0e2e03d1c2490dd1`
-- 合并：本提交 Ready 门禁与同一 HEAD 的永久 PR checks 全绿后转 PR Ready，再使用 expected HEAD 正常 squash merge，不绕过仓库门禁。
-- 归档：实现 merge 并验证 main push CI 后使用独立 docs-only PR 归档 Change，并补记实际 merge SHA 与 main CI。
+- 合并：PR #258 已使用 expected HEAD 正常 squash merge，merge/main SHA 为 `66ccfb7f26d9a904ee1db626eb3e9acc10cac56d`；合并后 main 五个永久 workflow 全绿。
+- 归档：本 Change 通过独立 docs-only PR 移入 `changes/archive/2026-08/`；归档只移动/补记 Change，不修改生产代码。
 - 发布/部署：本任务不执行生产部署或历史数据重新打标。
