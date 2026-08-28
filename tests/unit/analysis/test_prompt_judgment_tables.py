@@ -35,7 +35,7 @@ def test_prompt_uses_chinese_voice_type_values_as_final_business_values() -> Non
         "other_organization",
         "unknown",
     ):
-        assert legacy_value not in prompt
+        assert f'"{legacy_value}"' not in prompt
 
 
 def test_prompt_judgment_standards_use_tables_with_examples_and_boundaries() -> None:

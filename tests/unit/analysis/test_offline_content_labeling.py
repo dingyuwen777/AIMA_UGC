@@ -65,7 +65,7 @@ def _valid_response() -> str:
                 {
                     "item_no": 1,
                     "relevance": "relevant",
-                    "voice_type": "user_voice",
+                    "voice_type": taxonomy.voice_types[0],
                     "sentiment": taxonomy.sentiments[0],
                     "labels": [
                         {
@@ -89,7 +89,7 @@ def _invalid_response() -> str:
                 {
                     "item_no": 1,
                     "relevance": "relevant",
-                    "voice_type": "user_voice",
+                    "voice_type": taxonomy.voice_types[0],
                     "sentiment": "不存在的情感",
                     "labels": [
                         {

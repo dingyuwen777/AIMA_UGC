@@ -64,7 +64,7 @@ def _valid_response(taxonomy: PromptTaxonomy, item_nos: tuple[int, ...]) -> str:
                 {
                     "item_no": item_no,
                     "relevance": "relevant",
-                    "voice_type": "unknown",
+                    "voice_type": taxonomy.voice_types[-1],
                     "sentiment": sentiment,
                     "labels": [{"primary_label": primary, "secondary_label": secondary}],
                 }
@@ -333,7 +333,7 @@ def test_prompt_and_taxonomy_hashes_change_at_the_correct_boundary(tmp_path: Pat
                         {
                             "item_no": 1,
                             "relevance": "relevant",
-                            "voice_type": "unknown",
+                            "voice_type": taxonomy.voice_types[-1],
                             "sentiment": "不存在的情感",
                             "labels": [
                                 {
@@ -357,7 +357,7 @@ def test_prompt_and_taxonomy_hashes_change_at_the_correct_boundary(tmp_path: Pat
                         {
                             "item_no": 1,
                             "relevance": "relevant",
-                            "voice_type": "unknown",
+                            "voice_type": taxonomy.voice_types[-1],
                             "sentiment": taxonomy.sentiments[0],
                             "labels": [
                                 {
@@ -436,14 +436,14 @@ def test_successful_item_is_not_retried_when_another_item_needs_validation_retry
                 {
                     "item_no": 1,
                     "relevance": "relevant",
-                    "voice_type": "unknown",
+                    "voice_type": taxonomy.voice_types[-1],
                     "sentiment": sentiment,
                     "labels": [{"primary_label": primary, "secondary_label": secondary}],
                 },
                 {
                     "item_no": 2,
                     "relevance": "relevant",
-                    "voice_type": "unknown",
+                    "voice_type": taxonomy.voice_types[-1],
                     "sentiment": "不存在的情感",
                     "labels": [{"primary_label": primary, "secondary_label": secondary}],
                 },

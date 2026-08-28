@@ -58,6 +58,7 @@ class _TaxonomyBenchmarkLLM:
     model_name = "taxonomy-derived-fake"
 
     def __init__(self, taxonomy: PromptTaxonomy) -> None:
+        self._voice_type = taxonomy.voice_types[0]
         self._sentiment = taxonomy.sentiments[0]
         self._primary = taxonomy.primary_labels[0]
         self._secondary = taxonomy.labels[self._primary][0]
@@ -68,7 +69,7 @@ class _TaxonomyBenchmarkLLM:
                 {
                     "item_no": item.item_no,
                     "relevance": "relevant",
-                    "voice_type": "user_voice",
+                    "voice_type": self._voice_type,
                     "sentiment": self._sentiment,
                     "labels": [
                         {
