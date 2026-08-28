@@ -128,7 +128,7 @@ code_issue_detected
 
 ## `review-only`
 
-默认模式。
+在没有更具体的实现验收意图、没有目标实现仓库，或用户明确要求只读时使用。
 
 允许读取 Figma、仓库/需求事实、截图、Metadata、Prototype、Design Context，并输出 Findings。
 
