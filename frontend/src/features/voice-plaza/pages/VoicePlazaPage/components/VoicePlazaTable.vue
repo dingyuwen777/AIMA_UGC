@@ -112,10 +112,13 @@ function dateTimeParts(value: string | null | undefined): [string, string] {
     class="content-list"
     aria-label="声音广场内容列表"
   >
-    <div class="table-head">
+    <div
+      v-if="items.length > 0"
+      class="table-head"
+    >
       <label class="check"><input
         type="checkbox"
-        :checked="items.length > 0 && items.every((item) => selectedIds.includes(item.id))"
+        :checked="items.every((item) => selectedIds.includes(item.id))"
         aria-label="选择当前已加载内容"
         @change="$emit('toggleAll')"
       ></label>
