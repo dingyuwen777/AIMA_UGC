@@ -298,6 +298,25 @@ function viewCampaignContents(): void {
         </header>
 
         <div class="dialog-body">
+          <section
+            v-if="store.historicalCampaigns.length && !store.selectedHistoricalCampaign"
+            class="campaign-history"
+          >
+            <strong>导入任务</strong>
+            <div>
+              <button
+                v-for="campaign in store.historicalCampaigns"
+                :key="campaign.id"
+                type="button"
+                :aria-label="`打开 Campaign ${campaign.id}`"
+                @click="store.refreshHistoricalCampaign(campaign.id)"
+              >
+                <code>{{ campaign.id }}</code>
+                <span>{{ campaign.source_kind === 'local_upload' ? '本机' : '服务器' }} · {{ campaign.status }}</span>
+              </button>
+            </div>
+          </section>
+
           <template v-if="!store.selectedHistoricalCampaign">
             <nav
               class="source-tabs"
