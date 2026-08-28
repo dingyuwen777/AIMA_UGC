@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260828-figma-skill"
 title: "新增通用 Figma 原型审查与 Design-to-Code 基线 Skill"
 level: L2
-status: in_progress
+status: ready_for_review
 owner: "chatgpt"
 branch: "docs/add-figma-skill"
 created: 2026-08-28
@@ -22,7 +22,7 @@ data_changes: []
 
 # 目标
 
-新增一个跨项目通用的 `figma` Skill，把 Figma 原型审查、真实系统能力映射、页面美观与可用性、公共组件与业务逻辑复用、Prototype 隐藏状态、动态数据来源和 Design-to-Code Ready 门禁固化为可重复执行工作流。Skill 不能绑定 AIMA、采集策略、采集运行中心、某个后端模型或某一种技术栈；后续安装到其它项目也应能先识别项目形态，再按真实边界执行审查。
+新增一个跨项目通用的 `figma` Skill，把 Figma 原型审查、真实系统能力映射、页面美观与可用性、公共组件与业务逻辑复用、Prototype 隐藏状态、动态数据来源和 Design-to-Code Ready 门禁固化为可重复执行工作流。Skill 不绑定 AIMA、具体业务页面、某个后端模型或某一种技术栈；安装到其它项目后应先识别项目形态，再按真实边界执行审查。
 
 # 成功标准
 
@@ -80,22 +80,22 @@ data_changes: []
 | --- | --- | --- | --- | --- |
 | R1 | 创建可直接复用的 Figma Skill，避免后续重复输入审查要求 | user:创建并推送FigmaSkill | satisfied | 已新增 `.agents/skills/figma/` 主文件、README、metadata 和 references |
 | R2 | Skill 要固化 Figma 与真实系统能力、动态数据和 Design-to-Code 的审查 | user:结合近期Figma讨论 | satisfied | `SKILL.md` + refs 01/02/04/05 已覆盖事实源、真实系统映射、Prototype 与交付门禁 |
-| R3 | Skill 必须跨项目通用，不能局限 AIMA、采集策略/运行中心或某种技术栈 | user:通用Skill | satisfied | 新增 ref 00 项目形态路由；主 Skill/README/metadata 已改为 Web/Mobile/Desktop/Static/Design-only 等通用模型；项目特定机器值未写死 |
-| R4 | 页面审查要保证美观、符合使用习惯、尺寸合理、各区块位置合理，图片/标注不重叠且间距统一 | user:布局与美观规范 | satisfied | 新增 ref 07；主 Ready 门禁加入 Viewport、对齐、间距、图片/图表/标注、长文本、滚动和用户任务顺序 |
+| R3 | Skill 必须跨项目通用，不能局限 AIMA、具体页面或某种技术栈 | user:通用Skill | satisfied | ref 00 提供项目形态路由；主 Skill/README/metadata 已改为 Web/Mobile/Desktop/Static/Design-only 通用模型；项目特定机器值未写死 |
+| R4 | 页面审查要保证美观、符合使用习惯、尺寸合理、各区块位置合理，图片/标注不重叠且间距统一 | user:布局与美观规范 | satisfied | ref 07 + 主 Ready 门禁覆盖 Viewport、对齐、间距、图片/图表/标注、长文本、滚动和用户任务顺序 |
 | R5 | 需要读取后端/数据库/其它系统数据时必须明确来源并保证设计能真正接入实现 | user:真实可用与数据来源 | satisfied | ref 02 泛化到 API/SDK/CMS/Local Store/Runtime/数据库正式链路；主 Skill 要求动态数据 Annotation 和真实系统动作映射 |
 | R6 | 可复用视觉组件和可复用业务逻辑都要公共化并避免多页面复制 | user:公共组件与业务逻辑复用 | satisfied | ref 03 明确 Shared UI / Feature Public / Shared Domain 唯一 Owner；基础 Button/Input 不承载业务规则 |
 | R7 | Skill 必须与仓库 Coding/Docs/Review 体系兼容，不制造第二套规范 | .agents/skills/review/SKILL.md | satisfied | Skill 显式服从项目研发规则并只定义 Figma 审查；现有 AGENTS/Guide 未修改 |
-| R8 | 下次可以直接显式调用 Skill | user:下次可以直接用 | satisfied | `agents/openai.yaml` 定义 `$figma` 默认 prompt；README 提供三种模式通用示例 |
-| R9 | 交付必须通过正常 PR/CI 合并 main | user:推送到仓库主分支 | satisfied | Draft PR #252 指向 `main`；只有 Ready Check/CI 通过才执行合并 |
+| R8 | 下次可以直接显式调用 Skill | user:下次可以直接用 | satisfied | `agents/openai.yaml` 定义 `$figma` 默认 prompt；README 提供通用调用示例 |
+| R9 | 交付必须通过正常 PR/CI 合并 main | user:推送到仓库主分支 | satisfied | Draft PR #252 指向 `main`；Ready 后由 Change Completion Gate/CI 验证，全部通过才合并 |
 
 # Validation Matrix
 
 | Layer | Required | Scope / Evidence |
 | --- | --- | --- |
-| 行为 / Unit / Component | required | 复核 Skill frontmatter、项目形态路由、三种模式、8 refs、Ready 门禁和 metadata 是否形成完整可执行流程 |
+| 行为 / Unit / Component | required | 已复核 Skill frontmatter、项目形态路由、三种模式、8 refs、Ready 门禁和 metadata 的职责闭环 |
 | 接口 / Contract | not_applicable | 本任务不修改产品 API/Schema/SDK/CLI public contract |
 | 集成 / Persistence / Runtime Dependency | not_applicable | 不修改数据库、进程、设备、文件存储或第三方运行依赖 |
-| 用户 / Workflow Acceptance | required | 用 Design-only、Web Full-stack、Mobile/Desktop、Dashboard 等典型请求反向检查 Skill 是否按项目形态选择规则，并覆盖布局、动态数据、复用和 Prototype |
+| 用户 / Workflow Acceptance | required | 已用 Design-only、Web Full-stack、Mobile/Desktop、Dashboard 四类典型任务反向审计 Skill；各自只加载真实边界并覆盖布局、数据来源、复用和 Prototype |
 | 跨组件 Golden Path | not_applicable | 不修改生产组件链；Skill 通过标准 Skill 目录与 metadata 调用 |
 | External Dependency / Provider Probe | not_applicable | 不需要真实外部服务验证 Skill 文本 |
 | Build / Package / Runtime | not_applicable | 不修改生产构建/包；机器治理证据由 PR CI 提供 |
@@ -103,22 +103,22 @@ data_changes: []
 
 # Completion Audit
 
-- [ ] upstream_re_read：最终 Ready 前重新读取最新用户补充、项目规则、Coding/Docs/Review 和当前 Skill diff。
-- [ ] change_coverage：独立检查通用性、页面美观/可用性、数据来源、系统可接入、公共组件和业务逻辑复用是否全部进入 Skill。
-- [ ] reverse_audit：执行“多类项目请求 → Skill 路由”和“典型 Figma 缺陷 → Skill 检查项”双向审计。
-- [ ] unresolved_cleared：Requirements 无未满足项，所有不适用层有事实依据。
+- [x] upstream_re_read：已重新读取本轮用户最初目标及后续“真实可用、布局尺寸、图片/标注、业务逻辑复用、跨项目通用”补充，并重新核对项目规则、Coding/Docs/Review 与当前 diff。
+- [x] change_coverage：已独立比较全部用户要求与 Skill：通用项目形态、页面美观/可用性、系统数据来源、真实接线、公共视觉组件、业务逻辑唯一 Owner、Prototype 和 Design-to-Code 都有明确章节/reference/Ready 门禁。
+- [x] reverse_audit：已执行“Design-only / Web Full-stack / Mobile-Desktop / Dashboard → Skill 路由”以及“尺寸错位、图片/标注重叠、长文本、动态数据来源、伪能力、重复组件、重复业务逻辑、旧 Prototype 状态 → Skill 检查项”的双向审计，未发现新的阻塞缺口。
+- [x] unresolved_cleared：Requirement Traceability 无 `not_satisfied`；产品 Contract/Runtime 未变更等不适用层均有事实依据；独立 Review 当前结论 `NO_FINDINGS_WITHIN_SCOPE`。
 
 # 任务
 
 - [x] 恢复当前仓库规则和现有 Skill 结构。
 - [x] 创建独立分支、gated Change 和 Draft PR #252。
-- [x] 新增 Figma Skill 主文件、README、agent metadata。
+- [x] 新增通用 Figma Skill 主文件、README、agent metadata。
 - [x] 新增/泛化 8 个 references。
 - [x] 从 Web/后端偏置改成跨项目形态路由。
 - [x] 补页面尺寸、布局、美观、图片/标注、间距和真实可用性门禁。
 - [x] 补公共视觉组件和可复用业务逻辑唯一 Owner 审计。
-- [ ] 重新执行 targeted Docs re-review 和独立 Review。
-- [ ] 完成 Completion Audit 并切回 `ready_for_review`。
+- [x] 重新执行 targeted Docs re-review 和独立 A1/A2 Review。
+- [x] 完成 Completion Audit 并切回 `ready_for_review`。
 - [ ] 由 PR Change Completion Gate 执行机器 Ready Check。
 - [ ] 等待全部 CI 通过并合并 main。
 - [ ] 独立归档 Change。
@@ -127,32 +127,31 @@ data_changes: []
 
 ## 计划
 
-- 重新列举 `.agents/skills/figma/` 与 references，确认恰有 8 个通用 refs。
-- 检查主 Skill/README/metadata 不依赖 AIMA、采集策略、采集运行中心、具体 Provider/平台/Route 或具体技术栈。
-- 用至少四类典型任务做语义反向审计：Design-only 页面、Web Full-stack、Mobile/Desktop、Data Dashboard。
-- 检查“页面尺寸/重叠/间距/图片/标注/长文本/滚动”是否都有 Ready 门禁。
-- 检查“公共 Button 等视觉组件”和“可复用业务逻辑唯一 Owner”是否被明确区分。
-- 使用 Review Skill 独立执行 A1/A2；使用 Docs Skill targeted re-review 判断是否形成第二套项目事实。
 - PR Ready 后由 Change Completion Gate 执行 `ready_check.py --changed-since`。
+- 等待 Runtime Acceptance 和总 CI，全部成功后才合并。
+- 合并后确认 main 的相同门禁通过，再独立归档 Change。
 
 ## 新鲜证据
 
-- Draft PR #252 已转回 Draft，以承载用户新增通用性/布局/复用要求，未在旧 Ready 结论上继续推进。
-- 新增 `00_通用适用性与项目形态.md` 和 `07_页面布局与真实可用性审计.md`。
-- 原 `02_业务能力与前后端映射.md` 已删除并替换为 `02_业务能力与真实系统映射.md`，避免默认 Web/后端模型。
-- `SKILL.md`、README、metadata、refs 01/03/04/05/06 已泛化，不再把 AIMA/采集页面作为规则前提。
-- `03_设计系统与组件复用审计.md` 已明确视觉组件和业务逻辑两类复用 Owner。
-- 待重新 Review/CI 后继续补充。
+- `GitHub.compare_commits(main, docs/add-figma-skill)` 只包含 `.agents/skills/figma/` 与本 Change，没有生产代码或现有 AGENTS/Guide 修改。
+- `.agents/skills/figma/references/` 已重新列举，当前使用 00–07 共 8 个通用 reference；旧“前后端映射”文件已删除，替换为“真实系统映射”。
+- `SKILL.md` frontmatter 明确“面向任意项目”，并按项目形态选择 API/SDK/CMS/Local Store/Device/Runtime 等边界。
+- README 明确可安装到任意项目，并列出 Web/Mobile/Desktop/Dashboard/Admin/Static/Design System/Design-only 场景。
+- `agents/openai.yaml` 默认 prompt 明确 `Do not assume every project is a web/full-stack application`，并包含 Viewport、图片/标注重叠、真实长数据、业务逻辑 Owner 和系统能力映射检查。
+- ref 07 已把页面尺寸、浏览器/设备、间距、图片/图表/标注、表格/表单、Overlay/Scroll、动态数据 Annotation 和真实系统调用链纳入硬门禁。
+- ref 03 已把公共视觉组件与可复用业务逻辑分离，并要求跨页面相同业务规则只有一个 Owner。
+- 独立 A1/A2 Review 重新以最新用户要求为上游完成定义，当前 `NO_FINDINGS_WITHIN_SCOPE`；targeted Docs re-review 判断现有项目长期文档无需复制通用 Skill 规则。
+- PR #252 当前保持 Draft，未绕过 Branch Protection；下一步仅在本 Change Ready 后转 Ready。
 
 # 文档影响
 
 - 新增 `.agents/skills/figma/README.md` 作为通用 Skill 自身说明。
-- 现有项目 AGENTS/Guide/Blueprint 没有需要同步的新系统事实，继续不修改，避免把通用 Skill 规则复制成项目本地第二套事实。
+- 现有项目 AGENTS/Guide/Blueprint 没有发生新的产品/系统事实变化，继续不修改，避免把通用 Skill 复制成项目本地第二套事实。
 
 # 交付
 
 - Branch：`docs/add-figma-skill`
-- PR：#252 `文档：新增 Figma 原型审查 Skill`，当前 Draft。
-- CI：待重新 Ready 后运行/确认。
+- PR：#252 `文档：新增通用 Figma 原型审查 Skill`，当前 Draft，待转 Ready。
+- CI：待 PR Ready 后运行/确认。
 - 发布：不适用。
 - 归档：合并并确认 main CI 后执行独立归档 PR。
