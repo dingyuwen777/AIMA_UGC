@@ -48,8 +48,9 @@ function badge(item: ContentListItemResponse): string | null {
   return relevanceBadgeLabel(item)
 }
 
-/** 根据 effective relevance 优先展示当前业务有效相关性。 */
+/** 优先展示人工复核来源，否则展示当前业务有效相关性。 */
 function relevanceText(item: ContentListItemResponse): string | null {
+  if (item.relevance_source === 'manual_review') return badge(item)
   const effective = item.effective_relevance ?? item.analysis.relevance
   if (effective === 'relevant') return '相关'
   if (effective === 'irrelevant') return '不相关'
@@ -58,11 +59,10 @@ function relevanceText(item: ContentListItemResponse): string | null {
 
 /** 为当前业务有效相关性选择视觉强调，不改变 review 决策语义。 */
 function relevanceClass(item: ContentListItemResponse): string {
-  return relevanceText(item) === 'related'
+  const effective = item.effective_relevance ?? item.analysis.relevance
+  return effective === 'relevant'
     ? 'status-badge status-badge--positive'
-    : relevanceText(item) === '相关'
-      ? 'status-badge status-badge--positive'
-      : 'status-badge status-badge--neutral'
+    : 'status-badge status-badge--neutral'
 }
 
 /** 组合 AI 当前性与人工覆盖来源，避免只展示情感而丢失状态。 */
