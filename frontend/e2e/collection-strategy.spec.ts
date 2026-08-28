@@ -67,8 +67,10 @@ test('shows the approved collection strategy workspace and global relevance', as
 
   await expect(page.getByRole('heading', { name: '采集策略' })).toBeVisible()
   await expect(page.getByRole('link', { name: /采集策略/ })).toHaveClass(/router-link-active/)
-  await expect(page.getByLabel('采集策略摘要').getByText('Discovery 词包')).toBeVisible()
+  await expect(page.getByLabel('采集策略摘要').getByText('关键词包')).toBeVisible()
   await expect(page.getByText('爱玛口碑周期采集')).toBeVisible()
+  await expect(page.locator('thead th')).toHaveCount(6)
+  await expect(page.getByText('智能洞察')).toHaveCount(0)
   await expect(page.getByText('单次运行')).toHaveCount(0)
 
   await page.getByRole('button', { name: '查看详情' }).click()
@@ -76,7 +78,7 @@ test('shows the approved collection strategy workspace and global relevance', as
   await page.getByRole('button', { name: '关闭详情' }).click()
 
   await page.getByRole('button', { name: '全局相关性' }).click()
-  await expect(page.getByText('所有 Excel、TikHub 与未来采集来源共用一份 Relevance 准入配置。')).toBeVisible()
+  await expect(page.getByText('所有数据导入和周期采集共用一份关键词准入规则。')).toBeVisible()
   await expect(page.getByText('爱玛电动车')).toBeVisible()
 })
 
@@ -86,11 +88,11 @@ test('disables Keyword Pack stop actions when current backend facts forbid them'
 
   const planPackRow = page.locator('.pack-row').filter({ hasText: '爱玛新品发现' })
   await expect(planPackRow.getByRole('button', { name: '停用' })).toBeDisabled()
-  await expect(planPackRow.getByRole('button', { name: '停用' })).toHaveAttribute('title', /Collection Plan/)
+  await expect(planPackRow.getByRole('button', { name: '停用' })).toHaveAttribute('title', /采集计划/)
 
   const relevancePackRow = page.locator('.pack-row').filter({ hasText: '爱玛核心相关词' })
   await expect(relevancePackRow.getByRole('button', { name: '停用' })).toBeDisabled()
-  await expect(relevancePackRow.getByRole('button', { name: '停用' })).toHaveAttribute('title', /Relevance/)
+  await expect(relevancePackRow.getByRole('button', { name: '停用' })).toHaveAttribute('title', /全局相关性/)
 })
 
 test('creates only a periodic Collection Plan from the approved drawer', async ({ page }) => {
@@ -114,7 +116,7 @@ test('creates only a periodic Collection Plan from the approved drawer', async (
 
   expect(payload).toEqual({
     name: '爱玛新品自动采集',
-    schedule_expr: '0 9 * * *',
+    schedule_expr: '0 */6 * * *',
     keyword_pack_ids: [packId],
     platforms: [{
       platform: 'xiaohongshu',
@@ -125,5 +127,5 @@ test('creates only a periodic Collection Plan from the approved drawer', async (
   })
   expect(payload).not.toHaveProperty('schedule_mode')
   expect(payload).not.toHaveProperty('relevance_keyword_pack_id')
-  await expect(page.getByText('周期采集计划已保存，将由 Scheduler 执行。')).toBeVisible()
+  await expect(page.getByText('采集计划已保存，将由调度服务执行。')).toBeVisible()
 })

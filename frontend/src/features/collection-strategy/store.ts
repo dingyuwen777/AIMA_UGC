@@ -45,7 +45,10 @@ function errorMessage(error: unknown): string {
 export const useCollectionStrategyStore = defineStore('collection-strategy', () => {
   const activeTab = ref<StrategyTab>('plans')
   const packs = ref<KeywordPackSummaryResponse[]>([])
+  const packCatalog = ref<KeywordPackSummaryResponse[]>([])
   const packTotal = ref(0)
+  const packOffset = ref(0)
+  const packLimit = 20
   const relevance = ref<GlobalRelevanceConfigResponse | null>(null)
   const capabilities = ref<CollectionCapabilitiesResponse | null>(null)
   const plans = ref<CollectionPlanResponse[]>([])
@@ -64,8 +67,20 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
   const error = ref<string | null>(null)
 
   const enabledPacks = computed(() =>
-    packs.value.filter((pack) => pack.enabled && pack.keyword_count > 0),
+    packCatalog.value.filter((pack) => pack.enabled && pack.keyword_count > 0),
   )
+
+  /** 分页读取完整词包摘要目录，供跨页配置引用，不能用当前列表页冒充全集。 */
+  async function fetchAllKeywordPacks(): Promise<KeywordPackSummaryResponse[]> {
+    const result: KeywordPackSummaryResponse[] = []
+    let offset = 0
+    while (true) {
+      const page = await fetchKeywordPacks({ offset, limit: 100 })
+      result.push(...page.items)
+      offset += page.items.length
+      if (offset >= page.total || page.items.length === 0) return result
+    }
+  }
 
   async function fetchAllEnabledPlans(): Promise<CollectionPlanResponse[]> {
     const result: CollectionPlanResponse[] = []
@@ -93,6 +108,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     }
   }
 
+  /** 并行恢复策略工作区事实，并保持列表分页与跨页引用目录各自独立。 */
   async function refresh(): Promise<void> {
     loading.value = true
     error.value = null
@@ -101,8 +117,9 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
         if (reason instanceof CollectionStrategyApiError && reason.status === 409) return null
         throw reason
       })
-      const [packPage, currentRelevance, providerCapabilities, planPage, enabledPlans] = await Promise.all([
-        fetchKeywordPacks({ offset: 0, limit: 100 }),
+      const [packPage, allPacks, currentRelevance, providerCapabilities, planPage, enabledPlans] = await Promise.all([
+        fetchKeywordPacks({ offset: packOffset.value, limit: packLimit }),
+        fetchAllKeywordPacks(),
         relevancePromise,
         fetchCapabilities(),
         fetchPlans({
@@ -115,6 +132,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
         fetchAllEnabledPlans(),
       ])
       packs.value = packPage.items
+      packCatalog.value = allPacks
       packTotal.value = packPage.total
       relevance.value = currentRelevance
       capabilities.value = providerCapabilities
@@ -124,6 +142,16 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
       enabledPlanPackIds.value = [...new Set(enabledPlans.flatMap((plan) => plan.keyword_pack_ids))]
       packDetails.value = {}
       await loadPackDetails(planPage.items.flatMap((plan) => plan.keyword_pack_ids))
+      const selectedId = allPacks.some((pack) => pack.id === selectedPack.value?.id)
+        ? selectedPack.value?.id
+        : packPage.items[0]?.id
+      if (selectedId) {
+        const detail = packDetails.value[selectedId] ?? await fetchPack(selectedId)
+        selectedPack.value = detail
+        packDetails.value = { ...packDetails.value, [detail.id]: detail }
+      } else {
+        selectedPack.value = null
+      }
     } catch (reason) {
       error.value = errorMessage(reason)
     } finally {
@@ -179,10 +207,11 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     }
   }
 
+  /** 根据全局相关性与启用计划引用判断词包是否允许停用。 */
   function packToggleReason(pack: KeywordPackSummaryResponse): string | null {
     if (!pack.enabled) return null
-    if (relevance.value?.keyword_pack_id === pack.id) return '全局 Relevance 正在引用该词包。'
-    if (enabledPlanPackIds.value.includes(pack.id)) return '启用中的 Collection Plan 正在引用该词包。'
+    if (relevance.value?.keyword_pack_id === pack.id) return '全局相关性正在引用该词包。'
+    if (enabledPlanPackIds.value.includes(pack.id)) return '启用中的采集计划正在引用该词包。'
     return null
   }
 
@@ -317,10 +346,44 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     await refresh()
   }
 
+  /** 仅刷新关键词包当前页，避免翻页时重复拉取无关的计划和 Capability。 */
+  async function loadPackPage(): Promise<void> {
+    loading.value = true
+    error.value = null
+    try {
+      const page = await fetchKeywordPacks({ offset: packOffset.value, limit: packLimit })
+      packs.value = page.items
+      packTotal.value = page.total
+      const first = page.items[0]
+      if (first) await openPack(first.id)
+      else selectedPack.value = null
+    } catch (reason) {
+      error.value = errorMessage(reason)
+    } finally {
+      loading.value = false
+    }
+  }
+
+  /** 返回关键词包上一页，并保持页码不小于零。 */
+  async function previousPackPage(): Promise<void> {
+    packOffset.value = Math.max(0, packOffset.value - packLimit)
+    await loadPackPage()
+  }
+
+  /** 在后端 total 仍有下一页时推进关键词包分页。 */
+  async function nextPackPage(): Promise<void> {
+    if (packOffset.value + packLimit >= packTotal.value) return
+    packOffset.value += packLimit
+    await loadPackPage()
+  }
+
   return {
     activeTab,
     packs,
+    packCatalog,
     packTotal,
+    packOffset,
+    packLimit,
     enabledPacks,
     relevance,
     capabilities,
@@ -354,5 +417,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     firstPlanPage,
     previousPlanPage,
     nextPlanPage,
+    previousPackPage,
+    nextPackPage,
   }
 })

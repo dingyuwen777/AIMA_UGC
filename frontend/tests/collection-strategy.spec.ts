@@ -66,7 +66,8 @@ describe('collection strategy feature', () => {
   it('loads packs, global relevance, capabilities, and plans as one workspace', async () => {
     const store = useCollectionStrategyStore()
     await store.refresh()
-    expect(generated.listKeywordPacks).toHaveBeenCalledOnce()
+    expect(generated.listKeywordPacks).toHaveBeenCalledWith({ offset: 0, limit: 20 })
+    expect(generated.listKeywordPacks).toHaveBeenCalledWith({ offset: 0, limit: 100 })
     expect(generated.getGlobalRelevanceConfig).toHaveBeenCalledOnce()
     expect(generated.getCollectionCapabilities).toHaveBeenCalledOnce()
     expect(generated.listCollectionPlans).toHaveBeenCalledWith({
@@ -113,6 +114,26 @@ describe('collection strategy feature', () => {
     })
   })
 
+  it('paginates keyword packs while keeping a complete API-backed catalog for cross-page references', async () => {
+    generated.listKeywordPacks.mockImplementation(async (params: { offset?: number; limit?: number }) => {
+      if (params.limit === 100) {
+        return { items: [globalPack], total: 1, offset: params.offset ?? 0, limit: 100 }
+      }
+      return { items: [globalPack], total: 25, offset: params.offset ?? 0, limit: 20 }
+    })
+    const store = useCollectionStrategyStore()
+
+    await store.refresh()
+
+    expect(generated.listKeywordPacks).toHaveBeenCalledWith({ offset: 0, limit: 20 })
+    expect(generated.listKeywordPacks).toHaveBeenCalledWith({ offset: 0, limit: 100 })
+    expect(store.packCatalog).toEqual([globalPack])
+    expect(store.packLimit).toBe(20)
+
+    await store.nextPackPage()
+    expect(generated.listKeywordPacks).toHaveBeenCalledWith({ offset: 20, limit: 20 })
+  })
+
   it('does not send a disable request for the keyword pack used by global relevance', async () => {
     generated.listKeywordPacks.mockResolvedValue({ items: [globalPack], total: 1, offset: 0, limit: 100 })
     generated.getGlobalRelevanceConfig.mockResolvedValue({
@@ -123,7 +144,7 @@ describe('collection strategy feature', () => {
     await store.refresh()
     await store.togglePack(globalPack)
     expect(generated.updateKeywordPackEnabled).not.toHaveBeenCalled()
-    expect(store.error).toContain('全局 Relevance')
+    expect(store.error).toContain('全局相关性')
   })
 
   it('does not enable a Plan when global relevance is unavailable', async () => {
@@ -139,6 +160,6 @@ describe('collection strategy feature', () => {
     }
     await store.togglePlan(plan)
     expect(generated.updateCollectionPlanEnabled).not.toHaveBeenCalled()
-    expect(store.error).toContain('全局 Relevance')
+    expect(store.error).toContain('全局相关性')
   })
 })

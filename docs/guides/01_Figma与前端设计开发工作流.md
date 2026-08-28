@@ -352,7 +352,7 @@ Figma
 
 ### 7.1 采集策略正式 Figma 基线
 
-“采集策略”当前已经形成正式可用于后续 Design-to-Code 的 Figma 基线，覆盖：
+“采集策略”已经形成正式 Figma 基线，并已由当前 Vue 页面落地；这套基线继续用于后续维护和 targeted re-review，覆盖：
 
 ```text
 采集策略 / 关键词包
@@ -380,18 +380,20 @@ Figma
 - 当前服务器里到底有多少条 Plan、哪个 Provider Config 可用；
 - 当前真实 Route 列表。
 
-因此后续 Codex 替换现有 `collection-strategy` 页面时必须执行：
+当前实现位于 `frontend/src/features/collection-strategy/`，真实 Route 仍是 `/collection-strategy`。页面通过 Pinia Store、Feature API 和 generated client 读取动态数据；关键词包分页、完整引用目录、Capability 表单、计划资格和历史配置摘要都由现有 Owner 维护，没有把 Figma 示例值写成生产事实。公共页面头、按钮、图标和反馈样式位于 `frontend/src/shared/ui/`，Feature KPI、表格、Modal、Drawer 和业务表单保持独立边界。
+
+实现或维护该页面时必须继续执行：
 
 ```text
 当前 AGENTS.md / Coding 规则
 → 当前 Contract / Service / Store / API / Route
 → 目标 Figma Design Context
 → 公共组件与 Feature 组件映射
-→ Vue 实现
+→ Vue 实现 / 当前实现差异
 → 测试 / Build / Browser / 视觉验收
 ```
 
-不能只看截图或只复制 Figma MCP 返回的 React/Tailwind 参考代码。
+不能只看截图或只复制 Figma MCP 返回的 React/Tailwind 参考代码。每次涉及视觉或交互的变更，都要重新取得目标画板的 Fresh Screenshot，并用真实浏览器页面做 targeted 对照；浏览器 Mock 用于覆盖状态空间，真实 Full-stack Golden Path 只证明关键 Frontend/API/PostgreSQL 接线，两者不能互相冒充。
 
 ---
 

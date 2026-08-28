@@ -229,18 +229,35 @@ TikHub Run 详情会读取生成 Client 中既有的 `scopes[].stop_reason`。�
 ```text
 src/features/collection-strategy/
 ├─ api.ts
+├─ eligibility.ts
+├─ presentation.ts
 ├─ store.ts
 └─ pages/CollectionStrategyPage/
+   ├─ CollectionStrategyPage.vue
+   └─ components/
 ```
 
 当前负责：
 
-- Keyword Pack；
-- 全局 Relevance Config；
-- 周期 Collection Plan；
-- Plan 启停和配置展示。
+- 后端分页的 Keyword Pack 列表，以及供跨页配置引用的完整只读目录；
+- 系统唯一的全局 Relevance Config；
+- 周期 Collection Plan 的筛选、分页、创建、详情和启停；
+- Capability 驱动的逐平台 Provider/Search Config，不在页面写死平台参数；
+- 历史 Plan 空 Search Config 的兼容说明。
 
 页面不直接运行 TikHub。保存 Plan/词包是修改配置事实，真正执行由 Scheduler 生成 Occurrence/Run/Job。
+
+页面调用链保持为：
+
+```text
+CollectionStrategyPage / Feature Components
+→ collection-strategy/store.ts
+→ collection-strategy/api.ts
+→ generated/api/client.ts
+→ 当前后端 API
+```
+
+`eligibility.ts` 是计划创建/重新启用资格的唯一前端 Owner；`shared/collectionSearchConfig.ts` 与 `CollectionSearchConfigFields.vue` 是动态搜索字段和历史摘要的唯一 Owner。周期选择在 UI 中使用批准的受控预设，提交时仍转换为当前 Contract 的 `schedule_expr`；周期、平台和北京时间展示映射由 `presentation.ts` 维护，文档不复制第二套列表。
 
 ### 5.3 `features/voice-plaza`：声音广场 + 手动 Analysis Run
 
@@ -310,7 +327,7 @@ src/shared/
 
 未来能力如果还没有正式页面，不以 disabled 或无效按钮占位；等真实能力形成后，再按“Feature → Page → Route → App Shell → Test”同步加入。
 
-全局样式只放真正跨页面 Token/reset。
+全局样式只放真正跨页面 Token/reset。当前 `src/shared/ui/` 提供页面头、按钮、代码内 SVG 图标和反馈 Banner；采集策略 KPI、表格、弹窗、抽屉和业务表单仍留在 Feature 内，不把业务规则塞进万能公共组件。
 
 页面私有视觉优先留在 Page/Component，避免改一处全局 CSS 把多个页面一起破坏。
 
