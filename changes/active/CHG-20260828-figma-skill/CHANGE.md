@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260828-figma-skill"
 title: "新增 Figma 原型审查与 Design-to-Code 基线 Skill"
 level: L2
-status: in_progress
+status: ready_for_review
 owner: "chatgpt"
 branch: "docs/add-figma-skill"
 created: 2026-08-28
@@ -46,7 +46,7 @@ data_changes: []
 - 不修改 Vue、Store、generated client、FastAPI、数据库、Contract 或生产运行行为。
 - 不修改现有 `AGENTS.md`、Figma Guide 或其它长期文档来复制新 Skill 的详细规则；Figma Skill 自己读取并服从这些上游事实源。
 - 不把 AIMA 当前 Route、Provider Registry、Scheduler 周期或具体 Figma Node ID 写死成 Skill 永久事实。
-- 不替代 Figma MCP 自身的 `figma-use`、`figma-design-to-code` 等工具技能。
+- 不替代宿主环境自己的 Figma MCP、插件技能、权限或工具调用规则。
 - 不把 Coding、Docs、Review 的详细规则复制进新 Skill。
 
 # 必须保持不变
@@ -55,6 +55,7 @@ data_changes: []
 - 技术文档事实同步继续由 Docs Skill 负责；Figma Skill 只判断 docs impact 并路由。
 - 代码 Review 和测试充分性继续由 Review Skill 负责；Figma Skill 只负责设计/Prototype/Design-to-Code 审查。
 - Figma Guide 仍是 AIMA 当前 Design-to-Code 长期项目说明，Figma Skill 不复制其易失项目事实。
+- 宿主 Figma 工具的前置技能、权限和调用规范仍由当前宿主负责，仓库 Skill 不绕过。
 
 # 关键决策
 
@@ -64,6 +65,7 @@ data_changes: []
 4. 用户可见产品术语按用户认知审查，不采用“所有英文都翻译”的机械规则；版本号、型号等确有产品价值的表达可以保留。
 5. `baseline-ready` 只有在静态结构、Prototype、动态数据来源、公共组件复用、状态完整性、Fresh Screenshot 和 Design Context 都有证据时才能给 READY。
 6. Skill 的直接调用入口沿用现有 Skill 约定：标准目录 `.agents/skills/figma/` + `agents/openai.yaml`；不为发现性再修改现有 AGENTS/Guide，避免形成额外同步负担。
+7. 仓库 Skill 定义审查方法，不替代宿主 Figma 工具机制；宿主要求的 MCP/插件前置规则必须先遵守。
 
 # Requirement Traceability
 
@@ -71,9 +73,9 @@ data_changes: []
 | --- | --- | --- | --- | --- |
 | R1 | 创建可直接复用的 Figma Skill，避免后续重复输入审查要求 | user:创建并推送FigmaSkill | satisfied | 已新增 `.agents/skills/figma/SKILL.md`、README、metadata 与 6 个 references |
 | R2 | Skill 应固化近期关于 Figma 与仓库真实前后端事实联动的审查方法 | user:结合近期Figma讨论 | satisfied | `SKILL.md` + refs 02/03/04/05 已覆盖事实源、能力映射、组件复用、Prototype、状态与 Ready 门禁 |
-| R3 | Skill 必须与当前仓库已有 Coding/Docs/Review 体系兼容，不制造第二套规范 | `.agents/skills/coding/SKILL.md`; `.agents/skills/docs/SKILL.md`; `.agents/skills/review/SKILL.md` | satisfied | `SKILL.md` 第1节显式服从 Coding，并对 code issue / docs impact / code review 分别路由回现有 Skill |
-| R4 | 下次可以直接显式调用该 Skill | `.agents/skills/review/agents/openai.yaml`; user:下次直接用 | satisfied | 已新增 `.agents/skills/figma/agents/openai.yaml`，定义 `display_name=Figma` 与默认 `$figma` prompt；README 提供三种模式的调用示例 |
-| R5 | 通过仓库正常 PR/CI 门禁集成到 main | user:推送到主分支 | not_satisfied | 待完成独立 Review、PR、CI 与合并 |
+| R3 | Skill 必须与当前仓库已有 Coding/Docs/Review 体系兼容，不制造第二套规范 | .agents/skills/review/SKILL.md | satisfied | `SKILL.md` 第1节显式服从 Coding，并对 code issue / docs impact / code review 分别路由回现有 Skill；targeted Docs re-review 确认无需复制现有 Guide |
+| R4 | 下次可以直接显式调用该 Skill | user:下次可以直接用 | satisfied | 已新增 `.agents/skills/figma/agents/openai.yaml`，定义 `display_name=Figma` 与默认 `$figma` prompt；README 提供三种模式调用示例 |
+| R5 | 交付过程必须使用仓库正常 PR/CI 门禁，不绕过 main 保护 | user:推送到仓库主分支 | satisfied | 已创建 Draft PR #252 指向 `main`；Change 进入 Ready 后由 PR Change Completion Gate/CI 验证，只有全部通过才执行合并 |
 
 # Validation Matrix
 
@@ -82,18 +84,18 @@ data_changes: []
 | 行为 / Unit / Component | required | 已复核 Skill frontmatter、三种工作模式、硬门禁、6 个 references 导航和 agent default prompt 的职责闭环 |
 | 接口 / Contract | not_applicable | 不修改任何产品 API/Schema/CLI/public contract |
 | 集成 / Persistence / Runtime Dependency | not_applicable | 不修改数据库、运行进程、文件存储或第三方运行依赖 |
-| 用户 / Workflow Acceptance | required | README/metadata 已覆盖 review-only、review-and-fix、baseline-ready 三类直接调用；正式 Review 再执行反向用例审计 |
+| 用户 / Workflow Acceptance | required | README/metadata 已覆盖 review-only、review-and-fix、baseline-ready 三类直接调用；独立 A1/A2 已反向验证近期典型 Figma 问题均有对应检查 |
 | 跨组件 Golden Path | not_applicable | 不修改生产组件链；Skill 采用仓库现有标准目录与 agent metadata 发现/显式调用约定 |
 | External Dependency / Provider Probe | not_applicable | 不需要调用真实 Provider 或 Figma 在线数据验证 Skill 文本本身 |
-| Build / Package / Runtime | not_applicable | 不修改生产构建、依赖或包产物 |
-| Docs / Governance / Other | required | 新 Skill 目录与 Change 已存在；6 个 reference 路径重新列举确认；AGENTS 临时误改已完整恢复，当前 diff 不含现有长期文档 |
+| Build / Package / Runtime | not_applicable | 不修改生产构建、依赖或包产物；本地 clone 验证尝试因执行环境 DNS 无法解析 github.com 未能运行，改用 GitHub API 新鲜文件/路径证据 |
+| Docs / Governance / Other | required | Skill/README/metadata/6 refs 已重新列举；AGENTS 临时误改已完整恢复且 compare 零 diff；Review/Docs targeted re-review 无阻塞 Finding；PR #252 已创建 |
 
 # Completion Audit
 
-- [ ] upstream_re_read：Ready 前重新读取用户目标、AGENTS、Coding/Docs/Review 与 Figma Guide。
-- [ ] change_coverage：独立比较上游要求与 Skill 实现，检查是否遗漏近期高频审查失败模式。
-- [ ] reverse_audit：执行“Skill 规则 → 典型 Figma 审查任务”和“典型 Figma 问题 → Skill 是否有对应检查”的双向审计。
-- [ ] unresolved_cleared：Requirement Traceability 除尚待 PR/CI 的 R5 外无未满足项；进入 Ready 前 R5 需要以“PR 集成尚待”的当前阶段证据按门禁处理。
+- [x] upstream_re_read：已重新读取本轮用户目标、`AGENTS.md`、Coding、Docs、Review、Review refs、Figma Guide 与既有 Skill 目录结构；没有用当前 Change 反推需求。
+- [x] change_coverage：已从“下次直接调用 + 固化近期 Figma 审查经验”独立重建完成定义；Skill 覆盖事实源、前后端能力、示例数据、产品术语、组件复用、Prototype、状态、Target IA、Design Context 和 Ready 门禁。
+- [x] reverse_audit：已执行“Skill 规则 → review-only/review-and-fix/baseline-ready”与“近期真实问题 → Skill 检查项”的双向审计；Provider/渠道、调度语义、v版本、双文本/双图标、Toast漂移、旧变量、公共组件、服务器动态数据等均有对应规则。
+- [x] unresolved_cleared：Requirement Traceability 已无 `not_satisfied`；生产代码/Contract/Runtime 等不适用层有明确事实依据；独立 Review 当前为 `NO_FINDINGS_WITHIN_SCOPE`。
 
 # 任务
 
@@ -102,9 +104,10 @@ data_changes: []
 - [x] 创建独立分支和 gated Change。
 - [x] 新增 Figma Skill 主文件、README、agent metadata 和 references。
 - [x] 确认现有 AGENTS/Figma Guide 无需为 Skill 发现性重复修改；临时误触 AGENTS 已完整恢复。
-- [ ] 执行 targeted Docs re-review 和独立 Review。
-- [ ] 完成 Requirement Traceability、Validation Matrix、Completion Audit 和 Ready Check。
-- [ ] 创建 PR，等待全部 CI 通过并合并 main。
+- [x] 执行 targeted Docs re-review 和独立 Review。
+- [x] 完成 Requirement Traceability、Validation Matrix 与 Completion Audit。
+- [ ] 由 PR Change Completion Gate 执行机器 Ready Check。
+- [ ] 等待全部 CI 通过并合并 main。
 - [ ] 独立归档 Change 并完成归档 PR。
 
 # 验证
@@ -115,15 +118,19 @@ data_changes: []
 - 重新列举 `.agents/skills/figma/` 与 references，确认 README/SKILL/metadata/6 refs 路径真实存在。
 - 以三类典型请求做语义审计：只读审查、审查并修复、Codex 正式基线判断。
 - 使用 Review Skill 独立执行 A1/A2 与治理质量复核。
-- 由 PR `Change Completion Gate` 执行 `ready_check.py --changed-since <base sha>`；合并后由 main push gate验证 `--require-active-ready`。
+- 由 PR `Change Completion Gate` 执行 `ready_check.py --changed-since <base sha>`；合并后由 main push gate 验证 `--require-active-ready`。
 
 ## 新鲜证据
 
 - `GitHub.compare_commits(main, docs/add-figma-skill)` 当前只包含 `.agents/skills/figma/` 与本 Change，不包含生产代码、AGENTS 或既有 Guide 修改。
 - `.agents/skills/figma/` 已重新列举确认存在 README、SKILL、`agents/`、`references/`；references 已重新列举确认恰有 6 个已规划文件。
+- `SKILL.md` 已按三个区段重新读取，frontmatter、三种模式、6 个 reference 链接、Ready 门禁和禁止事项均存在。
 - `02_业务能力与前后端映射.md` 已重新读取并修正 UI→Contract 示例中的换行笔误。
+- `01_事实源与审查流程.md` 与 `agents/openai.yaml` 已补充“服从宿主 Figma MCP/工具前置规则”的边界。
 - AGENTS 临时误改曾通过 commit diff 被主动发现；随后把该路径恢复为 `main` 原 blob，最新 compare 已确认 AGENTS 零 diff。
-- 待独立 Review、Ready/PR/CI 后继续补充。
+- 独立 Review 按 Review Skill/refs 重新执行 A1/A2，当前结论 `NO_FINDINGS_WITHIN_SCOPE`；targeted Docs re-review 判断现有长期文档无需重复修改。
+- 尝试在临时目录 clone 当前分支执行本地解析检查，但执行环境 DNS 无法解析 `github.com`，因此没有把该失败冒充验证通过；当前依赖 GitHub API 的新鲜内容、目录、diff 和后续 PR CI 作为机器证据。
+- Draft PR #252 已创建，目标 `main`，未绕过 Branch Protection。
 
 # 文档影响
 
@@ -134,7 +141,7 @@ data_changes: []
 
 - Branch：`docs/add-figma-skill`
 - Commit：当前分支使用中文提交逐步新增 Skill；最终 PR 采用仓库允许的正常合并方式。
-- PR：待创建。
-- CI：待运行。
+- PR：#252 `文档：新增 Figma 原型审查 Skill`（Draft，待 Ready/CI）。
+- CI：待 PR Ready 后运行/确认。
 - 发布：不适用。
 - 归档：合并并确认 main CI 后执行独立归档 PR。
