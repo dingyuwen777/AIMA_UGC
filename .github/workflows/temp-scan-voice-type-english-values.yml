@@ -1,0 +1,64 @@
+name: Temporary Voice Type English Value Scan
+
+on:
+  push:
+    branches:
+      - feature/voice-type-chinese-values
+
+permissions:
+  contents: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 1
+      - name: Scan tracked repository files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          needles = (
+              "user_voice",
+              "brand_official",
+              "dealer_promotion",
+              "creator_marketing",
+              "industry_professional",
+              "media_information",
+              "other_organization",
+          )
+          excluded_prefixes = (
+              ".git/",
+              "changes/archive/",
+          )
+          for path in sorted(Path(".").rglob("*")):
+              if not path.is_file():
+                  continue
+              rel = path.as_posix().removeprefix("./")
+              if rel == ".github/workflows/temp-scan-voice-type-english-values.yml":
+                  continue
+              if any(rel.startswith(prefix) for prefix in excluded_prefixes):
+                  continue
+              try:
+                  text = path.read_text(encoding="utf-8")
+              except (UnicodeDecodeError, OSError):
+                  continue
+              for lineno, line in enumerate(text.splitlines(), start=1):
+                  hits = [needle for needle in needles if needle in line]
+                  if hits:
+                      print(f"{rel}:{lineno}: {','.join(hits)} :: {line}")
+          PY
+      - name: Remove temporary workflow
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/temp-scan-voice-type-english-values.yml
+          git commit -m "工具：删除一次性发声类型英文值扫描"
+          git push origin HEAD:feature/voice-type-chinese-values
