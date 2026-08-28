@@ -27,7 +27,7 @@ def _record(content_id: str) -> UnifiedContentRecordV1:
             observed_fields=["title", "text"],
             platform="xiaohongshu",
             external_content_id=content_id,
-            content_type="unknown",
+            content_type="无法判断",
             title=f"爱玛 {content_id}",
             text="正文",
             observed_at=OBSERVED_AT,
@@ -65,7 +65,7 @@ def _valid_response() -> str:
                 {
                     "item_no": 1,
                     "relevance": "relevant",
-                    "voice_type": "user_voice",
+                    "voice_type": "真实用户发声",
                     "sentiment": taxonomy.sentiments[0],
                     "labels": [
                         {
@@ -89,7 +89,7 @@ def _invalid_response() -> str:
                 {
                     "item_no": 1,
                     "relevance": "relevant",
-                    "voice_type": "user_voice",
+                    "voice_type": "真实用户发声",
                     "sentiment": "不存在的情感",
                     "labels": [
                         {

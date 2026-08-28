@@ -68,7 +68,7 @@ class _TaxonomyBenchmarkLLM:
                 {
                     "item_no": item.item_no,
                     "relevance": "relevant",
-                    "voice_type": "user_voice",
+                    "voice_type": "真实用户发声",
                     "sentiment": self._sentiment,
                     "labels": [
                         {

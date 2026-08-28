@@ -40,7 +40,7 @@ const item = {
   analysis: {
     status: 'completed' as const,
     relevance: 'relevant' as const,
-    voice_type: 'user_voice' as const,
+    voice_type: '真实用户发声' as const,
     sentiment: '负面',
     labels: [
       { primary_label: '产品体验', secondary_label: '续航表现' },

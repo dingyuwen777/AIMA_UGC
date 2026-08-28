@@ -24,7 +24,7 @@ def _record() -> UnifiedContentRecordV1:
             observed_fields=["title", "text"],
             platform="xiaohongshu",
             external_content_id="content-1",
-            content_type="unknown",
+            content_type="无法判断",
             title="爱玛新品",
             text="正文",
             observed_at=_OBSERVED_AT,
@@ -50,7 +50,7 @@ def _valid_response(loader: PromptTaxonomyLoader | None = None) -> str:
                 {
                     "item_no": 1,
                     "relevance": "relevant",
-                    "voice_type": "user_voice",
+                    "voice_type": "真实用户发声",
                     "sentiment": taxonomy.sentiments[0],
                     "labels": [
                         {

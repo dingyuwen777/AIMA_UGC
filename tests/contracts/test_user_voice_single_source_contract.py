@@ -16,7 +16,7 @@ def _completed_http_analysis(**overrides: object) -> dict[str, object]:
     payload: dict[str, object] = {
         "status": "completed",
         "relevance": "relevant",
-        "voice_type": "user_voice",
+        "voice_type": "真实用户发声",
         "sentiment": "正面",
         "labels": (
             ContentLabelPairResponse(
@@ -42,7 +42,7 @@ def test_http_analysis_uses_voice_type_as_the_only_user_voice_fact() -> None:
 
 def test_excel_analysis_uses_voice_type_as_the_only_user_voice_fact() -> None:
     analysis = UnifiedDataExcelAnalysisV1(
-        voice_type="user_voice",
+        voice_type="真实用户发声",
         sentiment="正面",
         primary_label="品牌评价",
         secondary_label="口碑与信任",
@@ -53,7 +53,7 @@ def test_excel_analysis_uses_voice_type_as_the_only_user_voice_fact() -> None:
 
     with pytest.raises(ValidationError):
         UnifiedDataExcelAnalysisV1(
-            voice_type="user_voice",
+            voice_type="真实用户发声",
             is_user_voice=True,
             sentiment="正面",
             primary_label="品牌评价",
@@ -75,4 +75,4 @@ def test_prompt_v3_focuses_voice_classification_on_combined_visible_evidence() -
     assert "标题" in prompt
     assert "正文" in prompt
     assert "证据不足" in prompt
-    assert "unknown" in prompt
+    assert "无法判断" in prompt

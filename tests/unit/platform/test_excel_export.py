@@ -104,7 +104,7 @@ def _export_record() -> UnifiedDataExcelV1:
             _content(),
             matched_keywords=("keyword-a", "keyword-b"),
             analysis=UnifiedDataExcelAnalysisV1(
-                voice_type="creator_marketing",
+                voice_type="营销推广发声",
                 sentiment="sentiment-test",
                 primary_label="primary-test",
                 secondary_label="secondary-test",

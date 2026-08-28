@@ -54,7 +54,7 @@ def _analysis_for(
     if content_id == irrelevant_content_id:
         return ContentLabelAnalysisV3(
             relevance="irrelevant",
-            voice_type="media_information",
+            voice_type="媒体机构发声",
             sentiment=None,
             labels=(),
             prompt_version=identity.prompt_version,
@@ -67,7 +67,7 @@ def _analysis_for(
         )
     return ContentLabelAnalysisV3(
         relevance="relevant",
-        voice_type="user_voice",
+        voice_type="真实用户发声",
         sentiment="中性",
         labels=(ContentLabelPairV2(primary_label="骑行性能", secondary_label="舒适性"),),
         prompt_version=identity.prompt_version,

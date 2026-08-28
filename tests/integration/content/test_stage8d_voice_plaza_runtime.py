@@ -147,7 +147,7 @@ def _analysis_registry(runtime, response: str) -> JobRegistry:  # type: ignore[n
     return registry
 
 
-def _relevant_response(*, sentiment: str = "负面", voice_type: str = "user_voice") -> str:
+def _relevant_response(*, sentiment: str = "负面", voice_type: str = "真实用户发声") -> str:
     return (
         '{"items":[{"item_no":1,"relevance":"relevant","voice_type":"'
         + voice_type
@@ -159,7 +159,7 @@ def _relevant_response(*, sentiment: str = "负面", voice_type: str = "user_voi
     )
 
 
-def _irrelevant_response(*, voice_type: str = "media_information") -> str:
+def _irrelevant_response(*, voice_type: str = "媒体机构发声") -> str:
     return (
         '{"items":[{"item_no":1,"relevance":"irrelevant","voice_type":"'
         + voice_type
@@ -256,7 +256,7 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
         pending = next(item for item in page.items if item.id == content_ids[1])
         assert analyzed.analysis.status == "completed"
         assert analyzed.analysis.relevance == "relevant"
-        assert analyzed.analysis.voice_type == "user_voice"
+        assert analyzed.analysis.voice_type == "真实用户发声"
         assert [item.secondary_label for item in analyzed.analysis.labels] == [
             "实际续航表现",
             "客服与服务态度",
@@ -282,7 +282,7 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
         current = content_service.get_content(content_ids[0])
         assert current.analysis.model_provider == "fake"
         assert current.analysis.relevance == "relevant"
-        assert current.analysis.voice_type == "user_voice"
+        assert current.analysis.voice_type == "真实用户发声"
         assert [label.secondary_label for label in current.analysis.labels] == [
             "实际续航表现",
             "客服与服务态度",
@@ -291,7 +291,7 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
             ContentListQuery(
                 analysis_status="completed",
                 relevance="relevant",
-                voice_type="user_voice",
+                voice_type="真实用户发声",
                 sentiment="负面",
                 primary_label="电池、续航与充电",
                 secondary_label="实际续航表现",
@@ -455,7 +455,7 @@ def test_irrelevant_analysis_is_auditable_but_hidden_from_default_voice_plaza(
                 ).where(analysis_content_results_table.c.content_id == content_ids[0])
             ).one()
             assert stored.relevance == "irrelevant"
-            assert stored.voice_type == "media_information"
+            assert stored.voice_type == "媒体机构发声"
             assert stored.sentiment is None
             assert (
                 connection.scalar(
@@ -481,20 +481,20 @@ def test_irrelevant_analysis_is_auditable_but_hidden_from_default_voice_plaza(
         audited_page = content_service.list_contents(
             ContentListQuery(
                 relevance="irrelevant",
-                voice_type="media_information",
+                voice_type="媒体机构发声",
             )
         )
         assert [item.id for item in audited_page.items] == [content_ids[0]]
         audited = audited_page.items[0]
         assert audited.analysis.status == "completed"
         assert audited.analysis.relevance == "irrelevant"
-        assert audited.analysis.voice_type == "media_information"
+        assert audited.analysis.voice_type == "媒体机构发声"
         assert audited.analysis.sentiment is None
         assert audited.analysis.labels == ()
 
         direct = content_service.get_content(content_ids[0])
         assert direct.analysis.relevance == "irrelevant"
-        assert direct.analysis.voice_type == "media_information"
+        assert direct.analysis.voice_type == "媒体机构发声"
     finally:
         with runtime.database.engine.begin() as connection:
             connection.exec_driver_sql(
@@ -551,7 +551,7 @@ def test_analysis_content_version_change_during_llm_marks_request_item_stale(
             llm=FakeContentLabelingLLM(
                 responses=[
                     '{"items":[{"item_no":1,"relevance":"relevant",'
-                    '"voice_type":"user_voice","sentiment":"中性","labels":['
+                    '"voice_type":"真实用户发声","sentiment":"中性","labels":['
                     '{"primary_label":"电池、续航与充电","secondary_label":"实际续航表现"}]}]}'
                 ]
             ),
