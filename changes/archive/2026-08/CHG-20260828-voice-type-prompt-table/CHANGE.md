@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260828-voice-type-prompt-table"
 title: "更新发声类型定义并统一 Prompt 判断标准表格"
 level: L2
-status: ready_for_review
+status: done
 owner: "chatgpt"
 branch: "feature/voice-type-prompt-table"
 created: 2026-08-28
@@ -93,7 +93,7 @@ data_changes: []
 | R2 | 情感判断、发声类型等判断标准像一级/二级标签一样使用表格，方便展示和修改 | user:2026-08-28-Prompt表格化 | satisfied | 语义相关性、发声类型、情感、一级/二级标签四个章节均使用 Markdown 表格作为主要定义；`test_prompt_judgment_sections_use_tables_with_examples_and_confusion_cases` 通过 |
 | R3 | 每个判断标准表格下提供示例或高混淆场景帮助 AI 判断 | user:2026-08-28-示例与高混淆 | satisfied | 四个判断维度均有高混淆场景和示例；发声类型额外保留两层证据、10 组高混淆边界与明确判断顺序；A1 预审发现的内容守恒问题已修复，最终 Unit/CI 全绿 |
 | R4 | 检查其他代码和文档是否需要同步，不应假设只有 Prompt 受影响 | user:2026-08-28-影响审计 | satisfied | 生产代码审计确认 Excel 展示别名是唯一额外实现同步项；2 个旧 Unit 断言按批准的新标题/中文显示同步；Contract/DB/API/generated 无固定业务枚举依赖，generated drift 通过；Analysis README、AI/Excel Appendix、Blueprint 不复制当前七类业务定义且仍与实现一致，因此不修改 |
-| R5 | 修改完成后正常合并到 `main` | user:2026-08-28-合并主分支 | explicitly_deferred | Draft PR #258 已建立；实现 HEAD 的 CI/Runtime/Full-stack/Tooling 全绿。实际 Ready、squash merge 与 main push CI 必须在本 Change Ready 门禁通过后按仓库顺序执行，并在独立归档 Change 中补最终证据 |
+| R5 | 修改完成后正常合并到 `main` | user:2026-08-28-合并主分支 | satisfied | PR #258 已在 Ready HEAD `e2d7b90924361002622edd436905c47f08b5dd3e` 五个永久门禁全绿后 squash merge；merge/main SHA `66ccfb7f26d9a904ee1db626eb3e9acc10cac56d`；合并后 main 的 Change Gate/CI/Runtime/Full-stack/Tooling 五个 push workflow 全部 success |
 
 # Validation Matrix
 
@@ -128,8 +128,8 @@ data_changes: []
 - [x] 最终实现 HEAD `7ffe6931c906105a142a71fb0e2e03d1c2490dd1` 完成目标测试和完整永久 CI；CI/Runtime/Full-stack/Tooling 全绿。
 - [x] 执行最终 A1/A2 Review 与 Completion Audit；无未解决严重/重要 Finding。
 - [x] Change 切换为 `ready_for_review`，等待新 HEAD 正式 Ready 门禁复验。
-- [ ] PR 全绿后转 Ready、squash merge `main` 并验证 main push CI。
-- [ ] 独立归档 Change。
+- [x] PR 全绿后转 Ready、squash merge `main` 并验证 main push CI。
+- [x] 独立归档 Change，并记录实际 merge/main CI 证据。
 
 # Red / 调试证据
 
@@ -166,6 +166,15 @@ data_changes: []
 - Runtime Acceptance run `33155926565`：canonical Compose、repository-relative host root、Windows overlay 全部 success。
 - Developer Tooling Compatibility run `33155926598`：success。
 - Change Completion Gate run `33155926634` 的 Coding completion-gate tests 成功，但因当时 Change `status: in_progress` 按设计失败；本提交已完成 Traceability/Audit 并切换为 `ready_for_review`，必须使用新 HEAD 的正式 Gate 结果作为合并前证据。
+
+## Ready / 合并 / main 复验证据
+
+- 最终 Ready HEAD：`e2d7b90924361002622edd436905c47f08b5dd3e`。
+- PR #258 Ready HEAD 永久门禁全部 success：Change Completion Gate `33156478703`、CI `33156478701`、Runtime Acceptance `33156478713`、Full-stack Acceptance `33156478768`、Developer Tooling Compatibility `33156478707`。
+- PR #258 已正常 squash merge；merge/main SHA：`66ccfb7f26d9a904ee1db626eb3e9acc10cac56d`。
+- 合并后 `main=66ccfb7f26d9a904ee1db626eb3e9acc10cac56d` 的 push workflow 全部 success：Change Completion Gate `33156780904`、CI `33156780901`、Runtime Acceptance `33156780883`、Full-stack Acceptance `33156780886`、Developer Tooling Compatibility `33156780869`。
+- 实现分支 `feature/voice-type-prompt-table` 已按仓库设置自动删除。
+- 本任务未执行生产部署，也未批量重跑或改写历史 Analysis Result。
 
 # 实现事实
 
@@ -215,6 +224,6 @@ data_changes: []
 - 分支：`feature/voice-type-prompt-table`
 - PR：#258 `调整：更新发声类型定义并统一 Prompt 判断表格`
 - 最终实现预审 HEAD：`7ffe6931c906105a142a71fb0e2e03d1c2490dd1`
-- 合并：本提交 Ready 门禁与同一 HEAD 的永久 PR checks 全绿后转 PR Ready，再使用 expected HEAD 正常 squash merge，不绕过仓库门禁。
-- 归档：实现 merge 并验证 main push CI 后使用独立 docs-only PR 归档 Change，并补记实际 merge SHA 与 main CI。
+- 合并：PR #258 已使用 expected HEAD 正常 squash merge，merge/main SHA 为 `66ccfb7f26d9a904ee1db626eb3e9acc10cac56d`；合并后 main 五个永久 workflow 全绿。
+- 归档：本 Change 通过独立 docs-only PR 移入 `changes/archive/2026-08/`；归档只移动/补记 Change，不修改生产代码。
 - 发布/部署：本任务不执行生产部署或历史数据重新打标。
