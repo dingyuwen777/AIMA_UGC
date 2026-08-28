@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260828-figma-skill"
 title: "新增通用 Figma 原型审查与 Design-to-Code 基线 Skill"
 level: L2
-status: ready_for_review
+status: done
 owner: "chatgpt"
 branch: "docs/add-figma-skill"
 created: 2026-08-28
@@ -22,7 +22,7 @@ data_changes: []
 
 # 目标
 
-新增一个跨项目通用的 `figma` Skill，把 Figma 原型审查、真实系统能力映射、页面美观与可用性、公共组件与业务逻辑复用、Prototype 隐藏状态、动态数据来源和 Design-to-Code Ready 门禁固化为可重复执行工作流。Skill 不绑定 AIMA、具体业务页面、某个后端模型或某一种技术栈；安装到其它项目后应先识别项目形态，再按真实边界执行审查。
+新增一个跨项目通用的 `figma` Skill，把 Figma 原型审查、真实系统能力映射、页面美观与可用性、公共组件与业务逻辑复用、Prototype 隐藏状态、动态数据来源和 Design-to-Code Ready 门禁固化为可重复执行工作流。Skill 不绑定 AIMA、具体业务页面、某个后端模型或某一种技术栈；安装到其它项目后先识别项目形态，再按真实边界执行审查。
 
 # 成功标准
 
@@ -36,7 +36,7 @@ data_changes: []
 - [x] Skill 与现有 Coding/Docs/Review 职责分层，不复制第二套研发、文档或代码 Review 规范。
 - [x] 新增 README、OpenAI agent metadata 和 8 个 references，结构与现有 Skill 目录风格一致。
 - [x] 通过标准 `.agents/skills/figma/` + `agents/openai.yaml` 提供可直接显式调用的 `$figma` Skill。
-- [ ] PR 的 Change Completion Gate、总 CI 和适用治理检查通过后正常合并到 `main`。
+- [x] PR #252 的 Change Completion Gate、Runtime Acceptance、总 CI 全部通过后正常合并到 `main`；合并后的 `main` 三项 push 门禁再次全部通过。
 
 # 范围
 
@@ -78,15 +78,15 @@ data_changes: []
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 创建可直接复用的 Figma Skill，避免后续重复输入审查要求 | user:创建并推送FigmaSkill | satisfied | 已新增 `.agents/skills/figma/` 主文件、README、metadata 和 references |
+| R1 | 创建可直接复用的 Figma Skill，避免后续重复输入审查要求 | user:创建并推送FigmaSkill | satisfied | `.agents/skills/figma/` 已在 `main`，包含主文件、README、metadata 和 8 个 references |
 | R2 | Skill 要固化 Figma 与真实系统能力、动态数据和 Design-to-Code 的审查 | user:结合近期Figma讨论 | satisfied | `SKILL.md` + refs 01/02/04/05 已覆盖事实源、真实系统映射、Prototype 与交付门禁 |
-| R3 | Skill 必须跨项目通用，不能局限 AIMA、具体页面或某种技术栈 | user:通用Skill | satisfied | ref 00 提供项目形态路由；主 Skill/README/metadata 已改为 Web/Mobile/Desktop/Static/Design-only 通用模型；项目特定机器值未写死 |
+| R3 | Skill 必须跨项目通用，不能局限 AIMA、具体页面或某种技术栈 | user:通用Skill | satisfied | ref 00 提供项目形态路由；主 Skill/README/metadata 使用 Web/Mobile/Desktop/Static/Design-only 通用模型，未写死项目特定机器值 |
 | R4 | 页面审查要保证美观、符合使用习惯、尺寸合理、各区块位置合理，图片/标注不重叠且间距统一 | user:布局与美观规范 | satisfied | ref 07 + 主 Ready 门禁覆盖 Viewport、对齐、间距、图片/图表/标注、长文本、滚动和用户任务顺序 |
 | R5 | 需要读取后端/数据库/其它系统数据时必须明确来源并保证设计能真正接入实现 | user:真实可用与数据来源 | satisfied | ref 02 泛化到 API/SDK/CMS/Local Store/Runtime/数据库正式链路；主 Skill 要求动态数据 Annotation 和真实系统动作映射 |
 | R6 | 可复用视觉组件和可复用业务逻辑都要公共化并避免多页面复制 | user:公共组件与业务逻辑复用 | satisfied | ref 03 明确 Shared UI / Feature Public / Shared Domain 唯一 Owner；基础 Button/Input 不承载业务规则 |
 | R7 | Skill 必须与仓库 Coding/Docs/Review 体系兼容，不制造第二套规范 | .agents/skills/review/SKILL.md | satisfied | Skill 显式服从项目研发规则并只定义 Figma 审查；现有 AGENTS/Guide 未修改 |
 | R8 | 下次可以直接显式调用 Skill | user:下次可以直接用 | satisfied | `agents/openai.yaml` 定义 `$figma` 默认 prompt；README 提供通用调用示例 |
-| R9 | 交付必须通过正常 PR/CI 合并 main | user:推送到仓库主分支 | satisfied | Draft PR #252 指向 `main`；Ready 后由 Change Completion Gate/CI 验证，全部通过才合并 |
+| R9 | 交付必须通过正常 PR/CI 合并 main | user:推送到仓库主分支 | satisfied | PR #252 已正常 squash merge 到 `main`，merge commit `cd1701c017e84b8c9337d18790a6e426aa0ee7b1`；PR 与 main push 门禁均成功 |
 
 # Validation Matrix
 
@@ -98,60 +98,51 @@ data_changes: []
 | 用户 / Workflow Acceptance | required | 已用 Design-only、Web Full-stack、Mobile/Desktop、Dashboard 四类典型任务反向审计 Skill；各自只加载真实边界并覆盖布局、数据来源、复用和 Prototype |
 | 跨组件 Golden Path | not_applicable | 不修改生产组件链；Skill 通过标准 Skill 目录与 metadata 调用 |
 | External Dependency / Provider Probe | not_applicable | 不需要真实外部服务验证 Skill 文本 |
-| Build / Package / Runtime | not_applicable | 不修改生产构建/包；机器治理证据由 PR CI 提供 |
-| Docs / Governance / Other | required | Skill 目录、8 refs、README、metadata、Change、独立 Review、PR Ready Check 和 CI |
+| Build / Package / Runtime | not_applicable | 不修改生产构建/包；仓库 PR 与 main push CI 均提供治理/解析机器证据 |
+| Docs / Governance / Other | required | PR #252 Change Completion Gate #1082、Runtime Acceptance #357、CI #3236 成功；main push Change Completion Gate #1083、Runtime Acceptance #358、CI #3237 成功 |
 
 # Completion Audit
 
-- [x] upstream_re_read：已重新读取本轮用户最初目标及后续“真实可用、布局尺寸、图片/标注、业务逻辑复用、跨项目通用”补充，并重新核对项目规则、Coding/Docs/Review 与当前 diff。
-- [x] change_coverage：已独立比较全部用户要求与 Skill：通用项目形态、页面美观/可用性、系统数据来源、真实接线、公共视觉组件、业务逻辑唯一 Owner、Prototype 和 Design-to-Code 都有明确章节/reference/Ready 门禁。
-- [x] reverse_audit：已执行“Design-only / Web Full-stack / Mobile-Desktop / Dashboard → Skill 路由”以及“尺寸错位、图片/标注重叠、长文本、动态数据来源、伪能力、重复组件、重复业务逻辑、旧 Prototype 状态 → Skill 检查项”的双向审计，未发现新的阻塞缺口。
-- [x] unresolved_cleared：Requirement Traceability 无 `not_satisfied`；产品 Contract/Runtime 未变更等不适用层均有事实依据；独立 Review 当前结论 `NO_FINDINGS_WITHIN_SCOPE`。
+- [x] upstream_re_read：已重新读取本轮用户最初目标及后续“真实可用、布局尺寸、图片/标注、业务逻辑复用、跨项目通用”补充，并重新核对项目规则、Coding/Docs/Review 与最终 diff。
+- [x] change_coverage：已独立比较全部用户要求与 Skill；通用项目形态、页面美观/可用性、系统数据来源、真实接线、公共视觉组件、业务逻辑唯一 Owner、Prototype 和 Design-to-Code 都有明确章节/reference/Ready 门禁。
+- [x] reverse_audit：已执行“Design-only / Web Full-stack / Mobile-Desktop / Dashboard → Skill 路由”以及“尺寸错位、图片/标注重叠、长文本、动态数据来源、伪能力、重复组件、重复业务逻辑、旧 Prototype 状态 → Skill 检查项”的双向审计，未发现阻塞缺口。
+- [x] unresolved_cleared：Requirement Traceability 无 `not_satisfied`；产品 Contract/Runtime 未变更等不适用层均有事实依据；独立 Review 结论 `NO_FINDINGS_WITHIN_SCOPE`。
 
 # 任务
 
 - [x] 恢复当前仓库规则和现有 Skill 结构。
-- [x] 创建独立分支、gated Change 和 Draft PR #252。
+- [x] 创建独立分支和 gated Change。
 - [x] 新增通用 Figma Skill 主文件、README、agent metadata。
 - [x] 新增/泛化 8 个 references。
 - [x] 从 Web/后端偏置改成跨项目形态路由。
 - [x] 补页面尺寸、布局、美观、图片/标注、间距和真实可用性门禁。
 - [x] 补公共视觉组件和可复用业务逻辑唯一 Owner 审计。
-- [x] 重新执行 targeted Docs re-review 和独立 A1/A2 Review。
-- [x] 完成 Completion Audit 并切回 `ready_for_review`。
-- [ ] 由 PR Change Completion Gate 执行机器 Ready Check。
-- [ ] 等待全部 CI 通过并合并 main。
-- [ ] 独立归档 Change。
+- [x] 执行 targeted Docs re-review 和独立 A1/A2 Review。
+- [x] 完成 Completion Audit 和 PR Ready Check。
+- [x] PR #252 全部 CI 通过并合并 `main`。
+- [x] 合并后的 `main` 三项 push 门禁成功。
+- [x] 创建独立归档分支并把本 Change 标记 `done`。
 
 # 验证
 
-## 计划
-
-- PR Ready 后由 Change Completion Gate 执行 `ready_check.py --changed-since`。
-- 等待 Runtime Acceptance 和总 CI，全部成功后才合并。
-- 合并后确认 main 的相同门禁通过，再独立归档 Change。
-
 ## 新鲜证据
 
-- `GitHub.compare_commits(main, docs/add-figma-skill)` 只包含 `.agents/skills/figma/` 与本 Change，没有生产代码或现有 AGENTS/Guide 修改。
-- `.agents/skills/figma/references/` 已重新列举，当前使用 00–07 共 8 个通用 reference；旧“前后端映射”文件已删除，替换为“真实系统映射”。
-- `SKILL.md` frontmatter 明确“面向任意项目”，并按项目形态选择 API/SDK/CMS/Local Store/Device/Runtime 等边界。
-- README 明确可安装到任意项目，并列出 Web/Mobile/Desktop/Dashboard/Admin/Static/Design System/Design-only 场景。
-- `agents/openai.yaml` 默认 prompt 明确 `Do not assume every project is a web/full-stack application`，并包含 Viewport、图片/标注重叠、真实长数据、业务逻辑 Owner 和系统能力映射检查。
-- ref 07 已把页面尺寸、浏览器/设备、间距、图片/图表/标注、表格/表单、Overlay/Scroll、动态数据 Annotation 和真实系统调用链纳入硬门禁。
-- ref 03 已把公共视觉组件与可复用业务逻辑分离，并要求跨页面相同业务规则只有一个 Owner。
-- 独立 A1/A2 Review 重新以最新用户要求为上游完成定义，当前 `NO_FINDINGS_WITHIN_SCOPE`；targeted Docs re-review 判断现有项目长期文档无需复制通用 Skill 规则。
-- PR #252 当前保持 Draft，未绕过 Branch Protection；下一步仅在本 Change Ready 后转 Ready。
+- PR #252 当前 HEAD `c30c65a98c04eb9bd796c97d33e49fee9f4bdc1f`：Change Completion Gate #1082、Runtime Acceptance #357、CI #3236 均为 `success`。
+- PR #252 已通过 squash merge 合入 `main`，merge commit：`cd1701c017e84b8c9337d18790a6e426aa0ee7b1`。
+- `main` merge commit：Change Completion Gate #1083、Runtime Acceptance #358、CI #3237 均为 `success`。
+- `.agents/skills/figma/` 已在 `main`，包括 `SKILL.md`、README、agent metadata 和 00–07 共 8 个 references。
+- 最终变更不包含生产代码、API Contract、Schema、数据库或业务 Figma 文件修改。
 
 # 文档影响
 
 - 新增 `.agents/skills/figma/README.md` 作为通用 Skill 自身说明。
-- 现有项目 AGENTS/Guide/Blueprint 没有发生新的产品/系统事实变化，继续不修改，避免把通用 Skill 复制成项目本地第二套事实。
+- 现有项目 AGENTS/Guide/Blueprint 没有新的产品/系统事实变化，因此未重复修改，避免把通用 Skill 复制成项目本地第二套事实。
 
 # 交付
 
-- Branch：`docs/add-figma-skill`
-- PR：#252 `文档：新增通用 Figma 原型审查 Skill`，当前 Draft，待转 Ready。
-- CI：待 PR Ready 后运行/确认。
+- 开发分支：`docs/add-figma-skill`
+- PR：#252 `文档：新增通用 Figma 原型审查 Skill`，已 squash merge。
+- Merge commit：`cd1701c017e84b8c9337d18790a6e426aa0ee7b1`。
+- CI：PR 与合并后 `main` 的 Change Completion Gate、Runtime Acceptance、总 CI 均成功。
 - 发布：不适用。
-- 归档：合并并确认 main CI 后执行独立归档 PR。
+- 归档：本记录通过独立归档 PR 从 `changes/active/` 移至 `changes/archive/2026-08/`。
