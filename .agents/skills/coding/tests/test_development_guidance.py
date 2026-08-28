@@ -28,21 +28,34 @@ class DevelopmentGuidanceTest(unittest.TestCase):
         self.assertIn("同一异常优先在真正拥有处理/终止责任的边界记录一次", workflow)
         self.assertIn("[YYYY-MM-DD HH:mm:ss.SSS source.ext L<line>] [LEVEL] message", workflow)
 
-    def test_figma_canvas_readability_guidance_is_routed_and_actionable(self) -> None:
+    def test_figma_canvas_readability_guidance_is_owned_by_figma_skill(self) -> None:
         routing = self._read(".agents/skills/coding/references/02_跨项目研发任务路由.md")
-        figma = self._read(".agents/skills/coding/references/13_Figma设计画布与可读性规则.md")
-        guide = self._read("docs/guides/01_Figma与前端设计开发工作流.md")
+        figma_skill = self._read(".agents/skills/figma/SKILL.md")
+        layout = self._read(".agents/skills/figma/references/07_页面布局与真实可用性审计.md")
+        preservation = self._read(".agents/skills/coding/references/12_规则保留映射.md")
+        legacy = ROOT / ".agents/skills/coding/references/13_Figma设计画布与可读性规则.md"
 
-        self.assertIn("13_Figma设计画布与可读性规则.md", routing)
-        self.assertIn("Figma 创建 / 修改 / 整理", routing)
-        self.assertIn("项目已经规定间距时，必须使用项目规则", figma)
-        self.assertIn("24–32px", figma)
-        self.assertIn("64–80px", figma)
-        self.assertIn("Canvas-level Review", figma)
-        self.assertIn("zoom-out", figma)
-        self.assertIn("不得声明 Figma 修改完成", figma)
-        self.assertIn("Spacing", guide)
-        self.assertIn("视觉核对", guide)
+        self.assertIn(".agents/skills/figma/SKILL.md", routing)
+        self.assertIn("Coding 不维护第二套 Figma", routing)
+        self.assertNotIn("13_Figma设计画布与可读性规则.md", routing)
+        self.assertFalse(legacy.exists())
+
+        self.assertIn("07_页面布局与真实可用性审计.md", figma_skill)
+        self.assertIn("Canvas-level Review", figma_skill)
+        self.assertIn("项目已经规定间距时，必须使用项目规则", layout)
+        self.assertIn("24–32px", layout)
+        self.assertIn("40–64px", layout)
+        self.assertIn("64–80px", layout)
+        self.assertIn("96–160px", layout)
+        self.assertIn("Canvas-level Review", layout)
+        self.assertIn("zoom-out", layout)
+        self.assertIn("不得声明 Figma 修改完成", layout)
+
+        self.assertIn(
+            ".agents/skills/figma/references/07_页面布局与真实可用性审计.md",
+            preservation,
+        )
+        self.assertIn("不得在 Coding references 下恢复第二套 Figma 设计规则", preservation)
 
     def test_review_and_aima_blueprints_consume_the_rules(self) -> None:
         review = self._read(".agents/skills/coding/references/11_两阶段复核与完成前验证.md")
