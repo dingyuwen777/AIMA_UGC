@@ -238,5 +238,7 @@ def test_production_python_does_not_copy_concrete_voice_type_values() -> None:
             for node in ast.walk(tree)
             if isinstance(node, ast.Constant) and isinstance(node.value, str)
         }
-        copied = [voice_type for voice_type in taxonomy.voice_types if voice_type in string_literals]
+        copied = [
+            voice_type for voice_type in taxonomy.voice_types if voice_type in string_literals
+        ]
         assert copied == [], f"{path} 不得硬编码具体 voice_type: {copied}"
