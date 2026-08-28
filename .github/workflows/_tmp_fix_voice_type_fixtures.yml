@@ -19,13 +19,92 @@ jobs:
           ref: feature/voice-type-classification-tables
           fetch-depth: 0
       - name: Apply fixture migration
-        run: python .tmp_fix_voice_type_fixtures.py
-      - name: Commit fixture migration and remove temporary files
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def read(path):
+              return Path(path).read_text(encoding="utf-8")
+
+          def write(path, text):
+              Path(path).write_text(text, encoding="utf-8")
+
+          def once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f"{label}: expected 1, got {count}")
+              return text.replace(old, new, 1)
+
+          p = "tests/unit/analysis/test_analysis_relevance_voice_v3.py"
+          t = read(p)
+          marker = "def test_v3_contract_enforces_relevance_dependent_shape_and_voice_type() -> None:\n"
+          t = once(t, marker, marker + "    taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()\n", "v3 contract taxonomy")
+          marker = "def test_service_accepts_irrelevant_without_forcing_sentiment_or_labels() -> None:\n    loader = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH)\n"
+          t = once(t, marker, marker + "    taxonomy = loader.load()\n", "irrelevant taxonomy")
+          t = t.replace('voice_type="user_voice",', 'voice_type=taxonomy.voice_types[0],')
+          t = t.replace('voice_type="media_information",', 'voice_type=taxonomy.voice_types[5],')
+          t = t.replace('voice_type="unknown",', 'voice_type=taxonomy.voice_types[-1],')
+          t = t.replace('assert analysis.voice_type == "user_voice"', 'assert analysis.voice_type == taxonomy.voice_types[0]')
+          write(p, t)
+
+          p = "tests/unit/analysis/test_content_labeling.py"
+          t = read(p)
+          if '"voice_type": "unknown",' not in t:
+              raise RuntimeError("content labeling old fixture missing")
+          write(p, t.replace('"voice_type": "unknown",', '"voice_type": taxonomy.voice_types[-1],'))
+
+          p = "tests/unit/analysis/test_content_labeling_validation.py"
+          t = read(p)
+          t = once(t, '"voice_type": "unknown",', '"voice_type": taxonomy.voice_types[-1],', "validation voice")
+          write(p, t)
+
+          p = "tests/unit/analysis/test_multilabel_analysis_v2.py"
+          t = read(p)
+          if t.count('"voice_type": "unknown",') != 3:
+              raise RuntimeError("multilabel old fixture count changed")
+          write(p, t.replace('"voice_type": "unknown",', '"voice_type": taxonomy.voice_types[-1],'))
+
+          for p in (
+              "tests/unit/analysis/test_offline_content_labeling.py",
+              "tests/unit/analysis/test_offline_labeling_concurrency.py",
+              "tests/unit/analysis/test_p1g_checkpoint_recovery.py",
+          ):
+              t = read(p)
+              if '"voice_type": "user_voice",' not in t:
+                  raise RuntimeError(f"{p}: old voice fixture missing")
+              write(p, t.replace('"voice_type": "user_voice",', '"voice_type": taxonomy.voice_types[0],'))
+
+          p = "scripts/performance/benchmark_p1_offline.py"
+          t = read(p)
+          t = once(t, "        self._sentiment = taxonomy.sentiments[0]\n", "        self._voice_type = taxonomy.voice_types[0]\n        self._sentiment = taxonomy.sentiments[0]\n", "benchmark snapshot")
+          t = once(t, '                    "voice_type": "user_voice",', '                    "voice_type": self._voice_type,', "benchmark response")
+          write(p, t)
+
+          p = "tests/unit/platform/test_excel_export.py"
+          t = read(p)
+          t = once(t, '                voice_type="creator_marketing",', '                voice_type="营销推广发声",', "excel fixture")
+          t = once(t, '            "达人/创作者营销",', '            "营销推广发声",', "excel expected")
+          write(p, t)
+
+          p = "tests/unit/platform/test_p1g_labeled_excel.py"
+          t = read(p)
+          t = once(t, '        # V1 历史结果没有 voice_type，兼容导出必须明确展示为“无法判断”。\n', '        # V1 历史结果没有 voice_type，不应为历史事实补造当前分类。\n', "v1 comment")
+          t = once(t, '            "无法判断",\n            "正面",', '            None,\n            "正面",', "v1 expected")
+          write(p, t)
+
+          p = "tests/unit/analysis/test_prompt_judgment_tables.py"
+          t = read(p)
+          t = once(t, "        assert legacy_value not in prompt\n", "        assert f'\"{legacy_value}\"' not in prompt\n", "legacy exact assertion")
+          write(p, t)
+          PY
+      - name: Commit fixture migration and remove temporary workflow
+        shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm .github/workflows/_tmp_fix_voice_type_fixtures.yml .tmp_fix_voice_type_fixtures.py
+          git rm .github/workflows/_tmp_fix_voice_type_fixtures.yml
           git add tests scripts
           git commit -m "测试：迁移发声类型动态 Taxonomy 夹具"
           git push origin HEAD:feature/voice-type-classification-tables
