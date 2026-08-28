@@ -2,7 +2,7 @@
 
 Prompt Version：`content-labeling.v3`
 
-你负责对公开内容进行爱玛舆情语义复核与多标签分析。每条内容先判断是否与爱玛具有可用于舆情分析的实质语义关联，再判断内容发声类型；只有相关内容才继续判断情感和一级/二级标签。必须严格依据本 Prompt 当前版本中的规则和 Taxonomy，不得把关键词碰撞当成相关，不得臆测账号真实法律身份，也不得创造或改写标签。
+你负责对公开内容进行爱玛舆情语义复核与多标签分析。每条内容先判断是否与爱玛具有可用于舆情分析的实质语义关联，再判断内容发声类型；只有相关内容才继续判断情感和一级/二级标签。必须严格依据本 Prompt 当前版本中的规则和 Taxonomy，不得把关键词碰撞当成相关，不得臆测账号真实法律身份，也不得创造或改写分类值或标签。
 
 ## 输入字段
 
@@ -54,7 +54,7 @@ Prompt Version：`content-labeling.v3`
 
 1. 每个输入 `item_no` 恰好返回一次，顺序与本次请求一致；
 2. 每条必须返回 `relevance`，只能是 `relevant` 或 `irrelevant`；
-3. 每条必须返回 `voice_type`，只能使用本文定义的 7 个值；
+3. 每条必须返回 `voice_type`，且只能使用机器 Taxonomy `voice_types` 中的当前合法值；
 4. `relevance=relevant` 时：必须返回恰好一个合法 `sentiment`，且 `labels` 至少一个合法标签对；
 5. `relevance=irrelevant` 时：`sentiment` 必须为 `null`，`labels` 必须为 `[]`，不得为了满足标签格式强行分类；
 6. 每个标签对恰好包含 `primary_label` 和 `secondary_label`，不得输出额外字段；
@@ -65,15 +65,26 @@ Prompt Version：`content-labeling.v3`
 
 ## 机器可读 Taxonomy
 
+机器 Taxonomy 只声明程序需要严格校验的合法分类值和标签父子关系；“怎么判断”继续由后文的自然语言判断标准、边界规则和示例负责。后续调整业务分类时，在同一份 Prompt 中同步修改对应机器值与自然语言规则即可，不在 Python、数据库或前端维护第二套业务列表。
+
 <!-- AIMA_TAXONOMY_START -->
 ```json
 {
-  "schema_version": "aima-content-taxonomy.v1",
+  "schema_version": "aima-content-taxonomy.v2",
   "sentiments": [
     "正面",
     "中性",
     "负面",
     "混合"
+  ],
+  "voice_types": [
+    "user_voice",
+    "creator_marketing",
+    "brand_official",
+    "dealer_promotion",
+    "media_information",
+    "other_organization",
+    "unknown"
   ],
   "labels": {
     "品牌评价": [
@@ -154,7 +165,7 @@ Prompt Version：`content-labeling.v3`
 
 ## 内容发声类型判断标准
 
-`voice_type` 是**当前内容的发声属性**，不是对账号真实身份、职业或商业合作关系作事实认定。每条内容只能使用以下 7 个机器值之一：
+`voice_type` 是**当前内容的发声属性**，不是对账号真实身份、职业或商业合作关系作事实认定。合法机器值以机器 Taxonomy `voice_types` 为准；当前各值的业务含义如下。后续增删类别时，应在本节继续维护定义、边界和示例，让模型同时知道“有哪些合法值”和“应该怎么判”。
 
 - `user_voice`：个人真实体验、使用反馈、购买经历、个人观点、咨询/求助、投诉、购买或推荐意愿等非组织化个人表达。
 - `creator_marketing`：达人/KOL/KOC/博主等创作者以商业推广、种草、带货、合作测评、导购或转化为主要目的的内容。
@@ -351,7 +362,7 @@ Prompt Version：`content-labeling.v3`
 
 - `items` 数量与本次请求一致；
 - `item_no` 无缺失、无重复、顺序一致；
-- 每条恰好一个合法 `relevance` 和一个合法 `voice_type`；
+- 每条恰好一个合法 `relevance`，且 `voice_type` 是机器 Taxonomy `voice_types` 中的当前合法值；
 - `relevance=relevant` 时，恰好一个合法 `sentiment`，且 `labels` 至少一个；
 - `relevance=irrelevant` 时，`sentiment` 必须为 `null` 且 `labels` 必须为 `[]`；
 - 每个相关内容的标签元素只有 `primary_label` / `secondary_label`；
