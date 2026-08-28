@@ -26,7 +26,7 @@ def test_excel_voice_type_display_does_not_enforce_a_parallel_taxonomy(
     voice_type: str | None,
     expected_display: str | None,
 ) -> None:
-    """旧中文别名只负责展示，不能成为 Prompt voice_type 的第二套合法值白名单。"""
+    """Excel 只保留既有中文展示别名，合法 voice_type 集合仍由 Prompt Taxonomy 决定。"""
 
     output = tmp_path / "voice-type.xlsx"
     label_pair = UnifiedDataExcelLabelPairV1(
