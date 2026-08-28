@@ -303,7 +303,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
       </section>
 
       <div
-        v-if="!store.loading || store.items.length > 0"
+        v-if="store.items.length > 0"
         class="list-heading"
       >
         <div class="selection-actions">
@@ -361,7 +361,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
       />
 
       <div
-        v-if="!store.loading || store.items.length > 0"
+        v-if="store.items.length > 0"
         class="pagination"
       >
         <span>游标分页不会虚构总页数</span>
