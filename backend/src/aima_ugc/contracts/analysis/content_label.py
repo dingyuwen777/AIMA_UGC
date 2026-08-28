@@ -1,21 +1,13 @@
 """Provider-neutral 舆情内容 AI 打标结果契约。"""
 
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 _SHA256_PATTERN = r"^[0-9a-f]{64}$"
 
 type ContentRelevance = Literal["relevant", "irrelevant"]
-type ContentVoiceType = Literal[
-    "user_voice",
-    "creator_marketing",
-    "brand_official",
-    "dealer_promotion",
-    "media_information",
-    "other_organization",
-    "unknown",
-]
+type ContentVoiceType = Annotated[str, Field(min_length=1, max_length=128)]
 
 
 class ContentLabelPairV2(BaseModel):
