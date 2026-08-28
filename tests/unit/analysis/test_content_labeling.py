@@ -134,7 +134,7 @@ def test_prompt_taxonomy_has_expected_baseline_and_documented_unique_source() ->
     assert len(taxonomy.primary_labels) == 9
     assert len(taxonomy.all_secondary_labels) == 39
     assert "backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md" in docs
-    assert "唯一完整标签事实" in docs
+    assert "唯一业务事实源" in docs
 
 
 def test_production_python_does_not_copy_concrete_taxonomy_labels() -> None:

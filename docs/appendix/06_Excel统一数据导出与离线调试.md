@@ -306,19 +306,7 @@ taxonomy_version
 - 离线最终业务 JSONL 也可根据离线处理语义排除 irrelevant；
 - 重复展示一个几乎恒为 relevant 的列价值低。
 
-`voice_type` Excel 中文投影由 `_VOICE_TYPE_DISPLAY_NAMES` 唯一实现：
-
-```text
-user_voice         → 真实用户发声
-creator_marketing  → 达人/创作者营销
-brand_official     → 品牌官方传播
-dealer_promotion   → 经销商/门店推广
-media_information → 媒体/资讯转载
-other_organization → 其他机构传播
-unknown            → 无法判断
-```
-
-这个中文映射只影响 Excel 展示。数据库/Contract 仍保存英文稳定机器值。
+`voice_type` Excel 中文投影可通过 `_VOICE_TYPE_DISPLAY_NAMES` 为既有机器值提供展示别名，但这张映射不是合法 Taxonomy 白名单。合法值只由当前 Prompt 的机器 Taxonomy 决定；已有值继续保持既有中文展示，Prompt 新增而尚未配置展示别名的机器值会在 Excel 中原样输出，不会因为导出层未认识该值而失败。数据库/Contract 继续保存稳定机器值。
 
 AI 完整业务语义见：
 

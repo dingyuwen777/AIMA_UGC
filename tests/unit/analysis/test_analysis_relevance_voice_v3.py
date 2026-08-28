@@ -157,10 +157,19 @@ def test_v3_contract_enforces_relevance_dependent_shape_and_voice_type() -> None
             labels=(),
             **_base_fields(),
         )
+    dynamic_voice_type = ContentLabelAnalysisV3(
+        relevance="relevant",
+        voice_type="future_prompt_voice_type",
+        sentiment="中性",
+        labels=(ContentLabelPairV2(primary_label="品牌评价", secondary_label="口碑与信任"),),
+        **_base_fields(),
+    )
+    assert dynamic_voice_type.voice_type == "future_prompt_voice_type"
+
     with pytest.raises(ValidationError):
         ContentLabelAnalysisV3(
             relevance="relevant",
-            voice_type="not-a-real-type",
+            voice_type="",
             sentiment="中性",
             labels=(ContentLabelPairV2(primary_label="品牌评价", secondary_label="口碑与信任"),),
             **_base_fields(),

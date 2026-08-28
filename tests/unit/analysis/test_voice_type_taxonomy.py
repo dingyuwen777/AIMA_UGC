@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 from datetime import UTC, datetime
@@ -231,6 +232,11 @@ def test_production_python_does_not_copy_concrete_voice_type_values() -> None:
     ]
 
     for path in python_files:
-        source = path.read_text(encoding="utf-8")
-        copied = [voice_type for voice_type in taxonomy.voice_types if voice_type in source]
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        string_literals = {
+            node.value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        }
+        copied = [voice_type for voice_type in taxonomy.voice_types if voice_type in string_literals]
         assert copied == [], f"{path} 不得硬编码具体 voice_type: {copied}"
