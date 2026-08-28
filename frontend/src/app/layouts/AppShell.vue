@@ -1,12 +1,14 @@
 <script setup lang="ts">
+import AimaIcon, { type AimaIconName } from '../../shared/ui/AimaIcon.vue'
+
 withDefaults(defineProps<{ sectionTitle?: string }>(), { sectionTitle: '采集运行中心' })
 
 // App Shell 只展示当前首版真实可达页面，未来能力不以无效菜单项占位。
-const navigation = [
-  { label: '首页', icon: '⌂', to: '/' },
-  { label: '声音广场', icon: '◌', to: '/voice-plaza' },
-  { label: '采集运行中心', icon: '▣', to: '/collection-runtime' },
-  { label: '采集策略', icon: '◎', to: '/collection-strategy' },
+const navigation: { label: string; icon: AimaIconName; to: string }[] = [
+  { label: '首页', icon: 'home', to: '/' },
+  { label: '声音广场', icon: 'voice', to: '/voice-plaza' },
+  { label: '采集运行中心', icon: 'runtime', to: '/collection-runtime' },
+  { label: '采集策略', icon: 'strategy', to: '/collection-strategy' },
 ]
 </script>
 
@@ -19,18 +21,22 @@ const navigation = [
         </div>
         <div>
           <strong>爱玛用户声音</strong>
-          <span>智能舆情与洞察平台</span>
+          <span>智能监测与洞察平台</span>
         </div>
       </div>
 
       <nav aria-label="业务导航">
+        <span class="nav-group-label">业务工作台</span>
         <RouterLink
           v-for="item in navigation"
           :key="item.label"
           class="nav-item"
           :to="item.to"
         >
-          <span class="nav-icon">{{ item.icon }}</span>
+          <span class="nav-icon"><AimaIcon
+            :name="item.icon"
+            :size="16"
+          /></span>
           {{ item.label }}
         </RouterLink>
       </nav>
@@ -41,12 +47,10 @@ const navigation = [
         <div class="breadcrumb">
           业务工作台 <span>/</span> <strong>{{ sectionTitle }}</strong>
         </div>
-        <div
-          class="topbar-actions"
-          aria-hidden="true"
-        >
-          <span>♧</span><span>⚙</span><span class="avatar">爱</span>
-        </div>
+        <span
+          class="avatar"
+          aria-label="当前用户"
+        >爱</span>
       </header>
       <main class="workspace-main">
         <slot />
@@ -68,7 +72,7 @@ const navigation = [
   inset: 0 auto 0 0;
   z-index: 10;
   display: flex;
-  width: 232px;
+  width: var(--aima-sidebar-width);
   flex-direction: column;
   border-right: 1px solid var(--aima-border);
   background: #fff;
@@ -76,23 +80,22 @@ const navigation = [
 
 .brand {
   display: flex;
-  height: 82px;
+  height: 76px;
   align-items: center;
-  gap: 12px;
-  padding: 0 20px;
-  border-bottom: 1px solid var(--aima-border);
+  gap: 8px;
+  padding: 0 12px;
 }
 
 .brand-mark {
   display: grid;
-  width: 42px;
-  height: 42px;
+  width: 32px;
+  height: 32px;
   place-items: center;
-  border-radius: 11px;
+  border-radius: 6px;
   color: #fff;
   background: linear-gradient(145deg, #ff377b, #e90050);
   box-shadow: 0 8px 18px rgb(245 0 87 / 22%);
-  font-size: 24px;
+  font-size: 16px;
 }
 
 .brand strong,
@@ -101,30 +104,41 @@ const navigation = [
 }
 
 .brand strong {
-  font-size: 16px;
+  white-space: nowrap;
+  font-size: 14px;
 }
 
 .brand span {
   margin-top: 4px;
   color: #8b93a5;
+  white-space: nowrap;
   font-size: 11px;
 }
 
 nav {
-  padding: 22px 12px;
+  padding: 8px 12px;
+}
+
+.nav-group-label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--aima-text-disabled);
+  font-size: 11px;
+  line-height: 16px;
 }
 
 .nav-item {
   position: relative;
   display: flex;
-  height: 46px;
+  height: 42px;
   align-items: center;
-  gap: 13px;
+  gap: 10px;
   margin-bottom: 4px;
-  padding: 0 15px;
+  padding: 0 16px;
   border-radius: 8px;
   color: #3e4658;
   text-decoration: none;
+  font-size: 14px;
 }
 
 .nav-item.router-link-active {
@@ -144,7 +158,7 @@ nav {
 }
 
 .nav-icon {
-  width: 20px;
+  width: 16px;
   color: #657087;
   font-size: 20px;
   text-align: center;
@@ -155,14 +169,14 @@ nav {
 }
 
 .workspace {
-  width: calc(100% - 232px);
+  width: calc(100% - var(--aima-sidebar-width));
   min-height: 100vh;
-  margin-left: 232px;
+  margin-left: var(--aima-sidebar-width);
 }
 
 .topbar {
   display: flex;
-  height: 60px;
+  height: var(--aima-topbar-height);
   align-items: center;
   justify-content: space-between;
   padding: 0 26px;
@@ -183,13 +197,6 @@ nav {
   color: #1f2737;
 }
 
-.topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 22px;
-  font-size: 20px;
-}
-
 .avatar {
   display: grid;
   width: 32px;
@@ -202,6 +209,6 @@ nav {
 }
 
 .workspace-main {
-  padding: 28px 24px 40px;
+  padding: 24px 24px 40px;
 }
 </style>

@@ -39,4 +39,13 @@ describe('AppShell 内网 V1 导航', () => {
       expect(html).not.toContain(label)
     }
   })
+
+  it('使用代码内 SVG 图标且页面壳尺寸对齐正式桌面基线', async () => {
+    const html = await renderShell()
+
+    expect(html).toContain('data-aima-icon="home"')
+    expect(html).toContain('data-aima-icon="strategy"')
+    expect(html).not.toMatch(/[⌂◌▣◎♧⚙]/u)
+    expect(html).toContain('智能监测与洞察平台')
+  })
 })

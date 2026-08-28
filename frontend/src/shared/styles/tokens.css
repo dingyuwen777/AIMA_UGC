@@ -7,15 +7,27 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   --aima-primary: #f50057;
+  --aima-primary-hover: #d9004e;
   --aima-primary-soft: #fff0f5;
+  --aima-primary-soft-strong: #ffc8dc;
   --aima-border: #e6e9ef;
+  --aima-border-strong: #d8dde6;
   --aima-muted: #667085;
   --aima-surface: #ffffff;
+  --aima-surface-subtle: #f7f8fa;
+  --aima-surface-disabled: #f4f5f7;
+  --aima-text: #172033;
+  --aima-text-secondary: #3e485a;
+  --aima-text-muted: #6d778a;
+  --aima-text-disabled: #98a1b1;
   --aima-success: #16a05d;
   --aima-warning: #f59e0b;
   --aima-danger: #e5484d;
   --aima-info: #2563eb;
   --aima-radius: 10px;
+  --aima-radius-control: 6px;
+  --aima-sidebar-width: 180px;
+  --aima-topbar-height: 60px;
   --el-color-primary: var(--aima-primary);
 }
 

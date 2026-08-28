@@ -2,10 +2,15 @@
 import { ref } from 'vue'
 
 import type { KeywordPackResponse, KeywordPackSummaryResponse } from '../../../../../generated/api/client'
+import AimaButton from '../../../../../shared/ui/AimaButton.vue'
+import { COLLECTION_PLATFORM_OPTIONS } from '../../../presentation'
 
 defineProps<{
   packs: KeywordPackSummaryResponse[]
   selected: KeywordPackResponse | null
+  total: number
+  offset: number
+  limit: number
   loading: boolean
   saving: boolean
   toggleReason: (pack: KeywordPackSummaryResponse) => string | null
@@ -15,53 +20,81 @@ const emit = defineEmits<{
   open: [packId: string]
   toggle: [pack: KeywordPackSummaryResponse]
   addKeyword: [packId: string, text: string]
+  previous: []
+  next: []
 }>()
 
 const keyword = ref('')
+
+/** 把关键词平台范围转换为当前 Feature 的统一展示文案。 */
+function keywordScopeLabel(scope?: string): string {
+  if (!scope || scope === 'all') return '全部平台'
+  return COLLECTION_PLATFORM_OPTIONS.find((item) => item.value === scope)?.label ?? scope
+}
 </script>
 
 <template>
   <section class="panel-grid">
-    <div class="table-card">
-      <div class="table-head">
-        <strong>Discovery 关键词包</strong><span>共 {{ packs.length }} 个</span>
-      </div>
-      <div
-        v-if="loading"
-        class="state"
-      >
-        正在读取关键词包…
-      </div>
-      <div
-        v-else-if="packs.length === 0"
-        class="state"
-      >
-        暂无 Discovery 词包，请先新建词包。
-      </div>
-      <div
-        v-for="pack in packs"
-        v-else
-        :key="pack.id"
-        class="pack-row"
-        :class="{ active: selected?.id === pack.id }"
-        role="button"
-        tabindex="0"
-        @click="emit('open', pack.id)"
-        @keydown.enter="emit('open', pack.id)"
-      >
-        <span><strong>{{ pack.name }}</strong><small>{{ pack.description || '暂无描述' }}</small></span>
-        <span class="count">{{ pack.keyword_count }} 词</span><span>v{{ pack.version }}</span>
-        <span :class="['status', pack.enabled ? 'enabled' : 'disabled']">{{ pack.enabled ? '已启用' : '已停用' }}</span>
-        <button
-          type="button"
-          class="link-button"
-          :disabled="saving || !!toggleReason(pack)"
-          :title="toggleReason(pack) || undefined"
-          @click.stop="emit('toggle', pack)"
+    <div class="list-column">
+      <div class="table-card">
+        <div class="table-head">
+          <strong>关键词包</strong><span>共 {{ total }} 个</span>
+        </div>
+        <div
+          v-if="loading"
+          class="state"
         >
-          {{ pack.enabled ? '停用' : '启用' }}
-        </button>
-      </div>
+          正在读取关键词包…
+        </div>
+        <div
+          v-else-if="packs.length === 0"
+          class="state"
+        >
+          暂无关键词包，请先新建。
+        </div>
+        <div
+          v-for="pack in packs"
+          v-else
+          :key="pack.id"
+          class="pack-row"
+          :class="{ active: selected?.id === pack.id }"
+          role="button"
+          tabindex="0"
+          @click="emit('open', pack.id)"
+          @keydown.enter="emit('open', pack.id)"
+        >
+          <span><strong>{{ pack.name }}</strong><small>{{ pack.description || '暂无描述' }}</small></span>
+          <span class="count">{{ pack.keyword_count }} 词</span><span>v{{ pack.version }}</span>
+          <span :class="['status', pack.enabled ? 'enabled' : 'disabled']">{{ pack.enabled ? '已启用' : '已停用' }}</span>
+          <button
+            type="button"
+            class="link-button"
+            :disabled="saving || !!toggleReason(pack)"
+            :title="toggleReason(pack) || undefined"
+            @click.stop="emit('toggle', pack)"
+          >
+            {{ pack.enabled ? '停用' : '启用' }}
+          </button>
+        </div>
+      </div><nav
+        v-if="total > 0"
+        class="pagination"
+        aria-label="关键词包分页"
+      >
+        <span>第 {{ Math.floor(offset / limit) + 1 }} / {{ Math.ceil(total / limit) }} 页 · 每页 {{ limit }} 个</span><span class="pager-actions"><AimaButton
+          size="small"
+          :disabled="loading || offset === 0"
+          @click="emit('previous')"
+        >
+          上一页
+        </AimaButton><AimaButton
+          size="small"
+          :disabled="loading || offset + limit >= total"
+          @click="emit('next')"
+        >
+          下一页
+        </AimaButton></span>
+      </nav>
     </div>
 
     <aside class="detail-card">
@@ -74,7 +107,7 @@ const keyword = ref('')
           <span
             v-for="item in selected.keywords"
             :key="`${item.id}-${item.platform_scope}`"
-          >{{ item.text }}<small>{{ item.platform_scope === 'all' ? '全部平台' : item.platform_scope }}</small></span>
+          >{{ item.text }}<small>{{ keywordScopeLabel(item.platform_scope) }}</small></span>
           <em v-if="selected.keywords.length === 0">当前词包还没有关键词。</em>
         </div>
         <form @submit.prevent="emit('addKeyword', selected.id, keyword.trim()); keyword = ''">
@@ -102,7 +135,8 @@ const keyword = ref('')
 </template>
 
 <style scoped>
-.panel-grid { display: grid; grid-template-columns: minmax(680px, 1fr) 340px; gap: 16px; }
+.panel-grid { display: grid; grid-template-columns: minmax(620px, 823px) minmax(320px, 373px); gap: 16px; }
+.list-column { min-width: 0; }
 .table-card,.detail-card { border: 1px solid var(--aima-border); border-radius: 9px; background: #fff; }
 .table-head { display: flex; height: 54px; align-items: center; justify-content: space-between; padding: 0 18px; border-bottom: 1px solid var(--aima-border); }
 .table-head span,.detail-card p { color: #758094; font-size: 13px; }
@@ -115,4 +149,5 @@ const keyword = ref('')
 .keyword-list { display: flex; max-height: 330px; flex-wrap: wrap; gap: 8px; overflow: auto; margin: 18px 0; }.keyword-list > span { padding: 7px 9px; border: 1px solid #dce4f0; border-radius: 6px; color: #344258; background: #f8faff; font-size: 13px; }.keyword-list small { margin-left: 5px; color: #8993a3; }.keyword-list em { color: #929aaa; font-style: normal; }
 form { display: flex; gap: 8px; }input { min-width: 0; height: 38px; flex: 1; padding: 0 10px; border: 1px solid #dce1e9; border-radius: 6px; }form button { width: 62px; border: 0; border-radius: 6px; color: #fff; background: var(--aima-primary); cursor: pointer; }
 .state { display: grid; min-height: 190px; place-items: center; color: #8a93a3; }
+.pagination { display: flex; min-height: 46px; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 18px; color: #6f7a8d; font-size: 12px; }.pager-actions { display: flex; gap: 34px; }
 </style>
