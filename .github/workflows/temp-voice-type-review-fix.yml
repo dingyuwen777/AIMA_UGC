@@ -1,0 +1,70 @@
+name: Temporary Voice Type Review Fix
+
+on:
+  push:
+    branches:
+      - feature/voice-type-prompt-table
+    paths:
+      - .github/workflows/temp-voice-type-review-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/voice-type-prompt-table
+          fetch-depth: 0
+      - name: Restore applicable voice-type boundaries and judgment order
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md")
+          text = path.read_text(encoding="utf-8")
+          marker = "### 发声类型示例\n"
+          if marker not in text:
+              raise SystemExit("voice examples heading not found")
+          if "### 发声类型判断顺序" in text:
+              raise SystemExit("judgment order already exists")
+
+          addition = '''8. **真实用户发声 vs 门店经销商发声**
+             - 普通用户讨论门店价格、销售态度、优惠是否划算、到店或提车体验，仍是 `user_voice`。
+             - 作者呈现为爱玛门店/经销商/销售，且正文包含报价、现车、限时优惠、到店、私信留资、联系方式、成交引导等获客目的时，判 `dealer_promotion`。
+             - 即使门店销售使用第一人称，只要当前内容主要目的是获客成交，也不是 `user_voice`。
+
+          9. **品牌官方发声 vs 媒体机构发声**
+             - 品牌自身以第一方口吻发布声明、产品、技术或品牌活动信息，判 `brand_official`。
+             - 新闻媒体、资讯号或其他机构以第三方报道、编辑、转载、公告方式传播同一信息，判 `media_information`；被报道对象是爱玛，不等于发声主体是爱玛官方。
+
+          10. **媒体机构发声 vs 真实用户发声**
+              - 标题/正文主要是新闻事实、行业信息、政策公告、合作通知、资讯摘要或转载，个人表达很少，判 `media_information`。
+              - 用户转发相关信息后加入大量自己的使用经历、评价、投诉或购买判断，且个人表达成为当前内容主体时，可判 `user_voice`。
+              - 只加一句“转发看看”“分享一下”不足以把机构/媒体内容改成真实用户发声。
+
+          ### 发声类型判断顺序
+
+          1. 先独立完成 `relevance` 判断；相关性与发声类型不能互相替代。
+          2. 阅读标题和正文，识别当前内容的主要表达目的和信息量分布。
+          3. 再结合作者展示名、公开简介和认证文案识别主体证据，并检查是否与内容目的相互支持。
+          4. 先排除明确的品牌官方、爱玛门店经销商、行业从业、营销推广和媒体机构证据，再判断是否属于自然的真实用户表达；不得只凭第一人称或单个昵称机械分类。
+          5. 对上述高混淆类型逐对排除，选择证据最充分、最符合当前内容主要目的的一类。
+          6. 如果两个或多个类型仍没有足够证据区分，返回 `unknown`，不要臆测。
+
+          '''
+          text = text.replace(marker, addition + marker, 1)
+          path.write_text(text, encoding="utf-8")
+          PY
+
+          rm .github/workflows/temp-voice-type-review-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md \
+                  .github/workflows/temp-voice-type-review-fix.yml
+          git commit -m "修复：恢复发声类型判断顺序与适用边界"
+          git push origin HEAD:feature/voice-type-prompt-table
