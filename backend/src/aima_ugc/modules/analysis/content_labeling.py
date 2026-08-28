@@ -212,10 +212,16 @@ class _ValidationResult:
 
 
 class RuntimeTaxonomyValidator:
-    """用当前 PromptTaxonomy 做模型标签 membership 与父子关系校验。"""
+    """用当前 PromptTaxonomy 做模型分类 membership 与标签父子关系校验。"""
 
     def __init__(self, taxonomy: PromptTaxonomy) -> None:
         self._taxonomy = taxonomy
+
+    def validate_voice_type(self, *, voice_type: str) -> None:
+        """严格校验发声类型属于当前 Prompt Taxonomy，不猜测或兼容未知值。"""
+
+        if voice_type not in self._taxonomy.voice_types:
+            raise ContentLabelingValidationError(["unknown_voice_type"])
 
     def validate_labels(
         self,
@@ -331,15 +337,20 @@ class RuntimeTaxonomyValidator:
                 continue
 
             shape_errors: list[str] = []
+            try:
+                self.validate_voice_type(voice_type=voice_type)
+            except ContentLabelingValidationError as exc:
+                shape_errors.extend(exc.error_codes)
+
             if relevance == "relevant":
                 if sentiment is None:
                     shape_errors.append("relevant_missing_sentiment")
                 if not label_pairs:
                     shape_errors.append("relevant_missing_labels")
-                if not shape_errors:
+                if sentiment is not None and label_pairs:
                     try:
                         self.validate_label_pairs(
-                            sentiment=cast(str, sentiment),
+                            sentiment=sentiment,
                             labels=label_pairs,
                         )
                     except ContentLabelingValidationError as exc:
