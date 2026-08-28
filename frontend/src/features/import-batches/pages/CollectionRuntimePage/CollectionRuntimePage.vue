@@ -55,6 +55,7 @@ async function reset(): Promise<void> {
 }
 
 async function openDataImport(): Promise<void> {
+  store.selectedHistoricalCampaign = null
   dataImportOpen.value = true
   await store.openHistoricalWorkspace()
 }
