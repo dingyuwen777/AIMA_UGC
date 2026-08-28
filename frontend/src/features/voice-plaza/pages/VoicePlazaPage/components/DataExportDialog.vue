@@ -123,7 +123,7 @@ function canDownload(item: DataExportResponse): boolean {
             未完成 AI 打标的内容不会被丢弃：仍会导出，AI 情感和标签列留空，并在结果统计中提示。
           </p>
           <p class="retention-note">
-            Excel 导出文件生成后保留 7 天；过期自动清理文件，但导出记录保留，需要时可重新创建。
+            Excel 导出文件自生成完成后保留 7 天。过期后文件会自动清理，导出记录仍保留；需要时可重新创建导出。
           </p>
           <div class="records-title">
             <strong>最近导出记录</strong>
