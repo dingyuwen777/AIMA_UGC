@@ -14,6 +14,8 @@ import type {
 } from '../../../../../generated/api/client'
 import CollectionSearchConfigFields from '../../../../../shared/CollectionSearchConfigFields.vue'
 import { isCollectionSearchConfigComplete } from '../../../../../shared/collectionSearchConfig'
+import AimaButton from '../../../../../shared/ui/AimaButton.vue'
+import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
 import { platformLabels, shortId } from '../../../format'
 
 const props = defineProps<{
@@ -188,23 +190,23 @@ function togglePlatform(platform: CollectionPlatform): void {
 
 function submit(): void {
   if (!providerConfigId.value) {
-    validation.value = '请选择本次运行使用的 TikHub Provider 配置。'
+    validation.value = '请选择本次运行使用的采集渠道配置。'
     return
   }
   if (mode.value === 'batch_supplement' && props.loadingBatchPlatforms) {
-    validation.value = '正在核对该 Batch 可补采的平台，请稍后。'
+    validation.value = '正在核对该批次可补采的平台，请稍后。'
     return
   }
   if (platforms.value.length === 0) {
-    validation.value = '当前 Batch、Provider 与采集内容组合没有可执行的平台。'
+    validation.value = '当前批次、采集渠道与采集内容组合没有可执行的平台。'
     return
   }
   if (mode.value === 'discovery' && selectedPackIds.value.length === 0) {
-    validation.value = '请至少选择一个 Discovery 关键词包。'
+    validation.value = '请至少选择一个关键词包。'
     return
   }
   if (mode.value === 'batch_supplement' && !importBatchId.value) {
-    validation.value = '请选择要补采的 Excel Import Batch。'
+    validation.value = '请选择要补采的数据导入批次。'
     return
   }
   validation.value = null
@@ -239,200 +241,228 @@ function submit(): void {
         aria-label="新建 TikHub 辅助补采"
       >
         <header>
-          <div><strong>新建 TikHub 辅助补采</strong><span>创建正式 Collection Run / Job</span></div><button
-            type="button"
+          <div><strong>新建辅助补采</strong><span>创建辅助补采任务</span></div>
+          <AimaButton
+            variant="text"
+            size="small"
             aria-label="关闭"
             @click="emit('update:modelValue', false)"
           >
-            ×
-          </button>
+            关闭
+          </AimaButton>
         </header>
-        <nav class="mode-tabs">
-          <button
-            type="button"
-            :class="{ active: mode === 'discovery' }"
-            @click="mode = 'discovery'"
-          >
-            独立发现新内容
-          </button><button
-            type="button"
-            :class="{ active: mode === 'batch_supplement' }"
-            @click="mode = 'batch_supplement'"
-          >
-            基于已有批次补采
-          </button>
-        </nav>
 
-        <p class="mode-note">
-          {{ mode === 'discovery' ? '选择一个或多个 Discovery 词包；系统冻结词包版本并展开有效关键词到本次 Run。' : '只允许选择已成功入库的 Excel Batch；平台必须在该 Batch 中真实存在，并满足当前 Provider 能力。' }}
-        </p>
-
-        <section v-if="mode === 'discovery'">
-          <label>Discovery 关键词包（可多选）</label>
-          <div class="keyword-box pack-choice-list">
-            <label
-              v-for="pack in keywordPacks"
-              :key="pack.id"
-              class="pack-choice"
-            >
-              <input
-                type="checkbox"
-                :checked="selectedPackIds.includes(pack.id)"
-                @change="togglePack(pack.id)"
-              >
-              <span>{{ pack.name }} · {{ pack.keyword_count }} 词 · v{{ pack.version }}</span>
-            </label>
-          </div>
-          <p
-            v-if="keywordPacks.length === 0"
-            class="platform-state"
-          >
-            当前没有可用的已启用词包。
-          </p>
-        </section>
-        <section v-else>
-          <label for="batch-select">Excel Import Batch</label>
-          <select
-            id="batch-select"
-            v-model="importBatchId"
-          >
-            <option value="">
-              请选择已成功入库批次
-            </option>
-            <option
-              v-for="batch in batches"
-              :key="batch.id"
-              :value="batch.id"
-            >
-              {{ batch.source_filename || '未记录文件名' }} · {{ shortId(batch.id) }}
-            </option>
-          </select>
-        </section>
-
-        <section v-if="(capabilities?.provider_configs.length ?? 0) > 1">
-          <label for="provider-select">TikHub Provider 配置</label>
-          <select
-            id="provider-select"
-            v-model="providerConfigId"
-          >
-            <option value="">
-              请选择配置
-            </option>
-            <option
-              v-for="config in capabilities?.provider_configs"
-              :key="config.id"
-              :value="config.id"
-            >
-              {{ config.display_name }}
-            </option>
-          </select>
-        </section>
-
-        <section>
-          <label>目标平台</label>
-          <p
-            v-if="mode === 'batch_supplement' && loadingBatchPlatforms"
-            class="platform-state"
-          >
-            正在核对该 Batch 的真实 Content 平台…
-          </p>
-          <div
-            v-else
-            class="platform-grid"
-          >
+        <div class="drawer-body">
+          <nav class="mode-tabs">
             <button
-              v-for="platform in availablePlatforms"
-              :key="platform"
               type="button"
-              :class="{ selected: platforms.includes(platform) }"
-              @click="togglePlatform(platform)"
+              :class="{ active: mode === 'discovery' }"
+              @click="mode = 'discovery'"
             >
-              {{ platformLabels[platform] }} <b v-if="platforms.includes(platform)">✓</b>
+              独立发现新内容
             </button>
-          </div>
-          <p
-            v-if="!loadingBatchPlatforms && availablePlatforms.length === 0"
-            class="platform-state"
+            <button
+              type="button"
+              :class="{ active: mode === 'batch_supplement' }"
+              @click="mode = 'batch_supplement'"
+            >
+              基于已有批次补采
+            </button>
+          </nav>
+
+          <AimaFeedbackBanner tone="info">
+            {{ mode === 'discovery'
+              ? '选择一个或多个已启用关键词包；系统会冻结词包版本，并将有效关键词用于本次采集。'
+              : '只允许选择已成功入库的批次；目标平台必须在该批次中真实存在，并满足当前采集渠道能力。' }}
+          </AimaFeedbackBanner>
+
+          <section
+            v-if="mode === 'discovery'"
+            class="form-card"
           >
-            当前选择没有同时满足 Batch Content 与 Provider Capability 的平台。
-          </p>
-        </section>
-
-        <section v-if="mode === 'discovery' && platforms.length">
-          <label>逐平台发现参数</label>
-          <p class="platform-state">
-            默认使用“最新 + 一天内 + 不限内容”；不同平台只显示后端声明支持的参数。
-          </p>
-          <div
-            v-for="platform in platforms"
-            :key="platform"
-            class="search-config-card"
+            <label>关键词包（可多选）</label>
+            <div class="pack-choice-list">
+              <label
+                v-for="pack in keywordPacks"
+                :key="pack.id"
+                class="pack-choice"
+              >
+                <input
+                  type="checkbox"
+                  :checked="selectedPackIds.includes(pack.id)"
+                  @change="togglePack(pack.id)"
+                >
+                <span>{{ pack.name }}</span>
+                <small>{{ pack.keyword_count }} 词 · v{{ pack.version }}</small>
+              </label>
+            </div>
+            <p
+              v-if="keywordPacks.length === 0"
+              class="platform-state"
+            >
+              当前没有可用的已启用词包。
+            </p>
+          </section>
+          <section
+            v-else
+            class="form-card"
           >
-            <strong>{{ platformLabels[platform] }}</strong>
-            <CollectionSearchConfigFields
-              v-if="searchCapability(platform) && searchConfigByPlatform[platform]"
-              :model-value="searchConfigByPlatform[platform]!"
-              :capability="searchCapability(platform)!"
-              :platform-label="platformLabels[platform]"
-              @update:model-value="searchConfigByPlatform[platform] = $event"
-            />
-          </div>
-        </section>
+            <label for="batch-select">数据导入批次</label>
+            <select
+              id="batch-select"
+              v-model="importBatchId"
+            >
+              <option value="">
+                请选择已成功入库批次
+              </option>
+              <option
+                v-for="batch in batches"
+                :key="batch.id"
+                :value="batch.id"
+              >
+                {{ batch.source_filename || '未记录文件名' }} · {{ shortId(batch.id) }}
+              </option>
+            </select>
+          </section>
 
-        <section>
-          <label>采集内容</label>
-          <div class="content-options">
-            <label class="option selected"><input
-              type="checkbox"
-              checked
-              disabled
-            ><span>▣</span><strong>内容详情</strong><small>固定执行</small></label>
-            <label
-              class="option"
-              :class="{ selected: includeComments }"
-            ><input
-              v-model="includeComments"
-              type="checkbox"
-            ><span>◌</span><strong>评论</strong><small>可选</small></label>
-            <label
-              class="option"
-              :class="{ selected: includeSubComments, disabled: !includeComments }"
-            ><input
-              v-model="includeSubComments"
-              type="checkbox"
-              :disabled="!includeComments"
-            ><span>≡</span><strong>二级回复</strong><small>依赖评论</small></label>
-          </div>
-        </section>
+          <section
+            v-if="(capabilities?.provider_configs.length ?? 0) > 0"
+            class="form-card"
+          >
+            <label for="provider-select">采集渠道</label>
+            <select
+              id="provider-select"
+              v-model="providerConfigId"
+              :disabled="capabilities?.provider_configs.length === 1"
+            >
+              <option value="">
+                请选择采集渠道
+              </option>
+              <option
+                v-for="config in capabilities?.provider_configs"
+                :key="config.id"
+                :value="config.id"
+              >
+                {{ config.display_name }}
+              </option>
+            </select>
+          </section>
 
-        <section class="flow">
-          <label>执行方式</label>
-          <div>Collection Run → Durable Job → Worker → TikHub → Raw → Mapper → 全局 Relevance → ContentIngestionService → PostgreSQL</div>
-        </section>
-        <p class="cost-note">
-          ⚠ 将发起真实 TikHub 请求，可能产生费用；提交后由 Worker 后台执行。
-        </p>
-        <p
-          v-if="validation"
-          class="validation"
-          role="alert"
-        >
-          {{ validation }}
-        </p>
+          <section class="form-card platform-card">
+            <div class="section-title-row">
+              <label>目标平台</label>
+              <small>只显示当前采集渠道支持的平台</small>
+            </div>
+            <p
+              v-if="mode === 'batch_supplement' && loadingBatchPlatforms"
+              class="platform-state"
+            >
+              正在核对该批次的真实内容平台…
+            </p>
+            <div
+              v-else
+              class="platform-grid"
+            >
+              <button
+                v-for="platform in availablePlatforms"
+                :key="platform"
+                type="button"
+                :class="{ selected: platforms.includes(platform) }"
+                :aria-pressed="platforms.includes(platform)"
+                @click="togglePlatform(platform)"
+              >
+                <span class="check-box">{{ platforms.includes(platform) ? '✓' : '' }}</span>
+                {{ platformLabels[platform] }}
+              </button>
+            </div>
+            <p
+              v-if="!loadingBatchPlatforms && availablePlatforms.length === 0"
+              class="platform-state"
+            >
+              当前选择没有同时满足批次内容与采集渠道能力的平台。
+            </p>
+          </section>
+
+          <section
+            v-if="mode === 'discovery' && platforms.length"
+            class="search-config-section"
+          >
+            <div
+              v-for="platform in platforms"
+              :key="platform"
+              class="search-config-card"
+            >
+              <strong>逐平台发现参数 · {{ platformLabels[platform] }}</strong>
+              <small>实际字段、选项和默认值由当前采集渠道能力决定</small>
+              <CollectionSearchConfigFields
+                v-if="searchCapability(platform) && searchConfigByPlatform[platform]"
+                :model-value="searchConfigByPlatform[platform]!"
+                :capability="searchCapability(platform)!"
+                :platform-label="platformLabels[platform]"
+                @update:model-value="searchConfigByPlatform[platform] = $event"
+              />
+            </div>
+          </section>
+
+          <section class="form-card content-card">
+            <label>采集内容</label>
+            <div class="content-options">
+              <label class="content-option disabled">
+                <input
+                  type="checkbox"
+                  checked
+                  disabled
+                >
+                <span>内容详情</span><small>固定执行</small>
+              </label>
+              <label class="content-option">
+                <input
+                  v-model="includeComments"
+                  type="checkbox"
+                >
+                <span>评论</span><small>可选</small>
+              </label>
+              <label
+                class="content-option"
+                :class="{ disabled: !includeComments }"
+              >
+                <input
+                  v-model="includeSubComments"
+                  type="checkbox"
+                  :disabled="!includeComments"
+                >
+                <span>二级回复</span><small>依赖评论</small>
+              </label>
+            </div>
+          </section>
+
+          <AimaFeedbackBanner tone="warning">
+            将发起真实外部采集请求，可能产生渠道费用；提交后由后台任务执行，可在采集运行中心查看进度。
+          </AimaFeedbackBanner>
+          <AimaFeedbackBanner
+            v-if="validation"
+            tone="error"
+            role="alert"
+          >
+            {{ validation }}
+          </AimaFeedbackBanner>
+        </div>
+
         <footer>
-          <button
-            type="button"
+          <AimaButton
+            variant="secondary"
+            size="small"
             @click="emit('update:modelValue', false)"
           >
             取消
-          </button><button
-            class="primary"
-            type="button"
+          </AimaButton>
+          <AimaButton
+            variant="primary"
             :disabled="!canSubmit"
             @click="submit"
           >
             {{ creating ? '创建中…' : '创建补采任务' }}
-          </button>
+          </AimaButton>
         </footer>
       </aside>
     </div>
@@ -440,46 +470,42 @@ function submit(): void {
 </template>
 
 <style scoped>
-.drawer-layer { position: fixed; inset: 0; z-index: 110; background: rgb(22 29 43 / 40%); }
-.drawer { position: absolute; inset: 0 0 0 auto; width: 480px; overflow-y: auto; padding: 0 24px 90px; background: #fff; box-shadow: -10px 0 30px rgb(23 32 51 / 12%); }
-header { display: flex; min-height: 72px; align-items: center; justify-content: space-between; }
+.drawer-layer { position: fixed; inset: 0; z-index: 110; background: rgb(17 22 37 / 94%); }
+.drawer { position: absolute; inset: 0 0 0 auto; display: grid; width: min(510px, 100vw); height: 100vh; grid-template-rows: 76px minmax(0, 1fr) 72px; overflow: hidden; border-left: 1px solid var(--aima-border); background: var(--aima-surface); box-shadow: -10px 0 30px rgb(23 32 51 / 12%); }
+header { display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border-bottom: 1px solid var(--aima-border); }
 header strong, header span { display: block; }
-header strong { font-size: 18px; }
-header span { margin-top: 6px; color: #768094; font-size: 12px; }
-header > button { border: 0; color: #475166; background: transparent; cursor: pointer; font-size: 25px; }
-.mode-tabs { display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; border: 1px solid #d9dee8; border-radius: 6px; }
-.mode-tabs button { height: 42px; border: 0; color: #3c4557; background: #fff; cursor: pointer; }
-.mode-tabs button.active { color: #fff; background: var(--aima-primary); font-weight: 600; }
-.mode-note { min-height: 48px; color: #6f798c; font-size: 12px; line-height: 1.8; }
-section { margin-top: 24px; }
-section > label, .flow > label { display: block; margin-bottom: 10px; color: #283245; font-size: 13px; font-weight: 600; }
-select, .keyword-box { width: 100%; min-height: 42px; border: 1px solid #d9dee8; border-radius: 7px; background: #fff; }
-select { padding: 0 11px; color: #3c4557; }
-.keyword-box { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 7px 9px; }
-.keyword-box > span { padding: 5px 8px; border-radius: 5px; color: #485266; background: #f1f3f6; font-size: 11px; }
-.keyword-box span button { border: 0; color: #778093; background: transparent; cursor: pointer; }
-.keyword-box input { min-width: 135px; flex: 1; border: 0; outline: 0; }
-.platform-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
-.platform-grid button { height: 42px; border: 1px solid #d9dee8; border-radius: 7px; color: #3c4557; background: #fff; cursor: pointer; font-size: 12px; }
-.platform-grid button.selected { border-color: #ff8bb4; color: var(--aima-primary); background: #fff5f8; }
-.platform-state { margin: 8px 0; color: #7b8494; font-size: 12px; }
-.search-config-card { margin-top: 10px; padding: 12px; border: 1px solid #dfe4ec; border-radius: 7px; background: #fafbfc; }
-.search-config-card > strong { display: block; margin-bottom: 9px; color: #283245; font-size: 13px; }
-.content-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-.option { position: relative; display: grid; min-height: 86px; grid-template-columns: 26px 1fr; align-content: center; padding: 10px; border: 1px solid #d9dee8; border-radius: 7px; cursor: pointer; }
-.option input { position: absolute; top: 8px; right: 8px; accent-color: var(--aima-primary); }
-.option span { grid-row: 1 / 3; color: #566174; font-size: 20px; }
-.option strong { align-self: end; font-size: 12px; }
-.option small { color: #8790a1; font-size: 10px; }
-.option.selected { border-color: #ff8bb4; color: var(--aima-primary); background: #fff8fa; }
-.option.disabled { cursor: default; opacity: .55; }
-.flow div { padding: 14px; border: 1px solid #dfe4ec; border-radius: 7px; color: #596477; background: #fafbfc; font-size: 11px; line-height: 1.8; }
-.cost-note { padding: 12px; border: 1px solid #ffd0a8; border-radius: 7px; color: #b54708; background: #fff8f0; font-size: 11px; line-height: 1.6; }
-.validation { padding: 11px; border: 1px solid #ffc7cc; border-radius: 7px; color: #b4232d; background: #fff5f6; font-size: 11px; }
-footer { position: absolute; right: 0; bottom: 0; left: 0; display: grid; grid-template-columns: 1fr 1.8fr; gap: 12px; padding: 15px 24px; border-top: 1px solid var(--aima-border); background: #fff; }
-footer button { height: 44px; border: 1px solid #d8dde6; border-radius: 7px; background: #fff; cursor: pointer; }
-footer .primary { border-color: var(--aima-primary); color: #fff; background: var(--aima-primary); }
-footer button:disabled { opacity: .65; cursor: default; }
-.pack-choice-list { display: grid; gap: 8px; padding: 10px; }
-.pack-choice { display: flex; gap: 8px; align-items: center; color: #394255; font-size: 13px; }
+header strong { color: var(--aima-text); font-size: 18px; line-height: 24px; }
+header span { margin-top: 4px; color: var(--aima-text-disabled); font-size: 12px; line-height: 18px; }
+.drawer-body { display: flex; min-height: 0; flex-direction: column; gap: 20px; padding: 16px 24px; overflow-x: hidden; overflow-y: auto; }
+.mode-tabs { display: flex; min-height: 40px; gap: 8px; }
+.mode-tabs button { min-height: 40px; padding: 0 4px; border: 0; border-bottom: 2px solid transparent; color: var(--aima-text-muted); background: transparent; cursor: pointer; font-size: 13px; }
+.mode-tabs button.active { border-bottom-color: var(--aima-primary); color: var(--aima-primary); font-weight: 500; }
+.form-card { padding: 10px 11px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius); background: var(--aima-surface); }
+.form-card > label, .section-title-row > label { display: block; margin-bottom: 9px; color: var(--aima-text); font-size: 13px; font-weight: 500; line-height: 20px; }
+select { width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--aima-border-strong); border-radius: var(--aima-radius-control); color: var(--aima-text-secondary); background: var(--aima-surface); font-size: 13px; }
+select:disabled { color: var(--aima-text-secondary); opacity: 1; }
+.pack-choice-list { display: grid; gap: 4px; }
+.pack-choice { display: grid; min-height: 32px; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 8px; color: var(--aima-text-secondary); font-size: 13px; }
+.pack-choice input, .content-option input { accent-color: var(--aima-primary); }
+.pack-choice small { color: var(--aima-text-disabled); font-size: 11px; }
+.section-title-row { display: flex; align-items: center; gap: 12px; }
+.section-title-row > label { margin-bottom: 0; }
+.section-title-row small { color: var(--aima-text-disabled); font-size: 11px; }
+.platform-card { min-height: 150px; }
+.platform-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; margin-top: 8px; }
+.platform-grid button { display: flex; min-height: 32px; align-items: center; gap: 8px; padding: 0; border: 0; color: var(--aima-text-secondary); background: transparent; cursor: pointer; font-size: 13px; text-align: left; }
+.check-box { display: inline-flex; width: 16px; height: 16px; flex: none; align-items: center; justify-content: center; border: 1px solid var(--aima-border-strong); border-radius: 4px; color: #fff; font-size: 11px; }
+.platform-grid button.selected .check-box { border-color: var(--aima-primary); background: var(--aima-primary); }
+.platform-state { margin: 8px 0 0; color: var(--aima-text-muted); font-size: 12px; line-height: 18px; }
+.search-config-section { display: flex; flex-direction: column; gap: 12px; }
+.search-config-card { padding: 10px 11px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius); background: #f8fafc; }
+.search-config-card > strong { display: block; color: var(--aima-text); font-size: 13px; font-weight: 500; }
+.search-config-card > small { display: block; margin: 4px 0 10px; color: var(--aima-text-disabled); font-size: 11px; line-height: 18px; }
+.content-options { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px; }
+.content-option { display: grid; min-height: 32px; grid-template-columns: 16px 1fr auto; align-items: center; gap: 8px; color: var(--aima-text-secondary); font-size: 13px; }
+.content-option small { color: var(--aima-text-disabled); font-size: 11px; }
+.content-option.disabled { color: var(--aima-text-disabled); }
+footer { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 0 24px; border-top: 1px solid var(--aima-border); background: var(--aima-surface); }
+footer :deep(.aima-button.is-primary) { min-width: 136px; }
+footer :deep(.aima-button.is-secondary) { min-width: 88px; }
 </style>

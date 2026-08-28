@@ -3,6 +3,8 @@ import type {
   CollectionRuntimeRecordType,
   CollectionRuntimeStatus,
 } from '../../../../../generated/api/client'
+import AimaButton from '../../../../../shared/ui/AimaButton.vue'
+import AimaIcon from '../../../../../shared/ui/AimaIcon.vue'
 import type { CollectionRuntimeTab } from '../../../store'
 import { recordTypeLabels, runtimeStatusLabels } from '../../../format'
 
@@ -34,10 +36,29 @@ const stageOptions = [
     aria-label="采集运行筛选"
   >
     <div class="filter-row">
-      <label class="search-box"><span>⌕</span><input
-        v-model="search"
-        placeholder="搜索批次名称、Batch ID、Run ID"
-      ></label>
+      <label class="search-box">
+        <AimaIcon
+          name="search"
+          :size="17"
+        />
+        <input
+          v-model="search"
+          placeholder="搜索批次名称、批次编号、运行编号"
+        >
+      </label>
+      <div class="date-range">
+        <input
+          v-model="createdFrom"
+          type="date"
+          aria-label="开始日期"
+        >
+        <b>—</b>
+        <input
+          v-model="createdTo"
+          type="date"
+          aria-label="结束日期"
+        >
+      </div>
       <select
         v-model="status"
         aria-label="状态"
@@ -84,50 +105,47 @@ const stageOptions = [
           {{ option[1] }}
         </option>
       </select>
-      <div class="date-range">
-        <span>▣</span><input
-          v-model="createdFrom"
-          type="date"
-          aria-label="开始日期"
-        ><b>—</b><input
-          v-model="createdTo"
-          type="date"
-          aria-label="结束日期"
-        >
-      </div>
     </div>
     <div class="filter-actions">
-      <span>筛选时间按北京时间解释；列表使用签名 Cursor 分页。</span>
+      <span>时间按北京时间解释</span>
       <div>
-        <button
-          type="button"
+        <AimaButton
+          variant="secondary"
+          size="small"
           @click="$emit('reset')"
         >
           重置
-        </button><button
-          class="primary"
-          type="button"
+        </AimaButton>
+        <AimaButton
+          variant="primary"
+          size="small"
           @click="$emit('search')"
         >
           查询
-        </button>
+        </AimaButton>
       </div>
     </div>
   </section>
 </template>
 
 <style scoped>
-.filter-panel { padding: 16px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius); background: #fff; }
-.filter-row { display: grid; grid-template-columns: minmax(240px, 1.4fr) 130px 145px 145px minmax(290px, 1.2fr); gap: 10px; }
-.search-box, select, .date-range { height: 42px; border: 1px solid #d9dee8; border-radius: 7px; background: #fff; }
-.search-box { display: flex; align-items: center; gap: 8px; padding: 0 12px; }
-.search-box span { color: #7d8799; font-size: 20px; }
-.search-box input { width: 100%; border: 0; outline: 0; }
-select { min-width: 0; padding: 0 10px; color: #3c4557; }
-.date-range { display: flex; align-items: center; gap: 6px; padding: 0 10px; color: #667085; }
-.date-range input { min-width: 110px; border: 0; outline: 0; color: #3c4557; }
+.filter-panel { min-height: 126px; padding: 15px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius); background: var(--aima-surface); }
+.filter-row { display: grid; grid-template-columns: minmax(260px, 326px) minmax(230px, 258px) repeat(3, minmax(118px, 132px)); gap: 12px; align-items: center; }
+.search-box, select, .date-range { height: 40px; border: 1px solid var(--aima-border-strong); border-radius: var(--aima-radius-control); background: var(--aima-surface); }
+.search-box { display: flex; align-items: center; gap: 8px; padding: 0 12px; color: var(--aima-text-muted); }
+.search-box input { width: 100%; min-width: 0; border: 0; outline: 0; color: var(--aima-text-secondary); background: transparent; font: inherit; font-size: 13px; }
+.search-box input::placeholder { color: var(--aima-text-disabled); }
+select { min-width: 0; padding: 0 12px; color: var(--aima-text-secondary); font-size: 13px; }
+.date-range { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 4px; padding: 0 10px; color: var(--aima-text-muted); }
+.date-range input { width: 100%; min-width: 0; border: 0; outline: 0; color: var(--aima-text-secondary); background: transparent; font-size: 12px; }
 .date-range b { font-weight: 400; }
-.filter-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; color: #8a93a4; font-size: 12px; }
-.filter-actions button { height: 36px; padding: 0 22px; border: 1px solid #d8dde6; border-radius: 7px; color: #313a4c; background: #fff; cursor: pointer; }
-.filter-actions .primary { margin-left: 10px; border-color: var(--aima-primary); color: #fff; background: var(--aima-primary); }
+.filter-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 20px; color: var(--aima-text-disabled); font-size: 12px; line-height: 18px; }
+.filter-actions > div { display: flex; gap: 8px; }
+@media (max-width: 1180px) {
+  .filter-row { grid-template-columns: minmax(240px, 1fr) minmax(230px, 1fr) repeat(3, minmax(110px, .6fr)); }
+}
+@media (max-width: 980px) {
+  .filter-row { grid-template-columns: 1fr 1fr; }
+  .filter-panel { min-height: 0; }
+}
 </style>

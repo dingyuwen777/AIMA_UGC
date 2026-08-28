@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 import type { DataImportIngestionPolicy } from '../../../../../generated/api/client'
 import TaskProgressBar from '../../../../../shared/TaskProgressBar.vue'
+import AimaButton from '../../../../../shared/ui/AimaButton.vue'
+import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
 import {
   type DataImportLocalFileSelection,
   useImportBatchesStore,
@@ -109,7 +111,7 @@ async function pollCampaign(): Promise<void> {
       await store.refreshHistoricalCampaign(campaign.id)
     }
   } catch {
-    notice.value = 'Campaign 状态刷新失败，页面会继续重试。'
+    notice.value = '导入任务状态刷新失败，页面会继续重试。'
   } finally {
     pollInFlight = false
   }
@@ -240,7 +242,7 @@ async function createCampaign(): Promise<void> {
     profile: 'aima-monitoring-excel.v1',
     ingestion_policy: ingestionPolicy.value,
   })
-  if (created) notice.value = 'Campaign 已创建，服务器正在完成不可变快照与预检。'
+  if (created) notice.value = '导入任务已创建，服务器正在完成不可变快照与预检。'
 }
 
 async function startCampaign(): Promise<void> {
@@ -249,7 +251,7 @@ async function startCampaign(): Promise<void> {
 }
 
 async function cancelCampaign(): Promise<void> {
-  if (await store.actOnHistoricalCampaign('cancel')) notice.value = '已请求取消 Campaign。'
+  if (await store.actOnHistoricalCampaign('cancel')) notice.value = '已请求取消导入任务。'
 }
 
 async function retryCampaign(): Promise<void> {
@@ -282,258 +284,31 @@ function viewCampaignContents(): void {
             <h2 id="data-import-title">
               导入数据
             </h2>
-            <p>本机与服务器文件共用不可变 Artifact、预检、Chunk、进度和行账本。</p>
+            <p>从本地电脑或服务器批准目录创建导入任务，并按词包规则完成预检；预检通过后再确认开始入库。</p>
           </div>
-          <button
-            type="button"
+          <AimaButton
+            variant="text"
+            size="small"
             aria-label="关闭导入数据"
             :disabled="store.creatingHistorical"
             @click="emit('update:modelValue', false)"
           >
-            ×
-          </button>
+            关闭
+          </AimaButton>
         </header>
 
         <div class="dialog-body">
           <section
-            class="source-tabs"
-            aria-label="数据来源"
-          >
-            <button
-              type="button"
-              :class="{ selected: sourceKind === 'local_upload' }"
-              :aria-pressed="sourceKind === 'local_upload'"
-              :disabled="store.creatingHistorical"
-              @click="chooseSource('local_upload')"
-            >
-              本地电脑
-            </button>
-            <button
-              type="button"
-              :class="{ selected: sourceKind === 'server_path' }"
-              :aria-pressed="sourceKind === 'server_path'"
-              :disabled="store.creatingHistorical"
-              @click="chooseSource('server_path')"
-            >
-              服务器目录
-            </button>
-          </section>
-
-          <section class="policy-panel">
-            <strong>写入策略</strong>
-            <label>
-              <input
-                v-model="ingestionPolicy"
-                type="radio"
-                value="standard_observation"
-                :disabled="store.creatingHistorical"
-              >
-              <span><b>标准观测</b><small>沿用普通 Excel 导入：按观测时间更新 Current、Version 和可信 Metric。</small></span>
-            </label>
-            <label>
-              <input
-                v-model="ingestionPolicy"
-                type="radio"
-                value="historical_fill_only"
-                :disabled="store.creatingHistorical"
-              >
-              <span><b>历史补空</b><small>只补 Current 空字段；已有非空冲突不覆盖，且无可信时间的 Metric 不更新。</small></span>
-            </label>
-            <p>来源与写入策略相互独立。AI 不会自动执行，需另行显式创建 Analysis Run。</p>
-          </section>
-
-          <section
-            v-if="sourceKind === 'local_upload'"
-            class="source-panel"
-          >
-            <div class="section-heading">
-              <strong>本地文件</strong><span>已选 {{ selectedLocalFiles.length }} 个 .xlsx</span>
-            </div>
-            <p class="source-help">
-              浏览器不会暴露本机绝对路径。可多选文件，或选择文件夹并自动遍历其中所有 .xlsx。
-            </p>
-            <div class="local-actions">
-              <label>
-                选择文件（可多选）
-                <input
-                  type="file"
-                  accept=".xlsx"
-                  multiple
-                  :disabled="store.creatingHistorical"
-                  @change="selectLocalFiles"
-                >
-              </label>
-              <label>
-                选择文件夹（自动遍历）
-                <input
-                  type="file"
-                  accept=".xlsx"
-                  multiple
-                  webkitdirectory
-                  directory
-                  :disabled="store.creatingHistorical"
-                  @change="selectLocalFiles"
-                >
-              </label>
-            </div>
-            <div
-              v-if="selectedLocalFiles.length"
-              class="local-file-list"
-            >
-              <span
-                v-for="item in selectedLocalFiles.slice(0, 100)"
-                :key="item.relativePath"
-              >{{ item.relativePath }} <small>{{ item.file.size }} bytes</small></span>
-              <small v-if="selectedLocalFiles.length > 100">仅预览前 100 个文件，清单会完整提交。</small>
-            </div>
-            <TaskProgressBar
-              v-if="store.creatingHistorical && store.localUploadTotal > 0"
-              label="本地文件上传进度"
-              :value="localUploadPercent"
-              :detail="`${store.localUploadCompleted} / ${store.localUploadTotal} 个文件已上传`"
-            />
-          </section>
-
-          <section
-            v-else
-            class="source-panel"
-          >
-            <div class="section-heading">
-              <strong>服务器目录</strong><span>{{ currentPathLabel }}</span>
-            </div>
-            <p class="source-help">
-              只浏览管理员批准的只读根目录；HTTP 只传相对路径，不提供文件管理能力。
-            </p>
-            <button
-              v-if="store.historicalDirectoryPath"
-              class="directory-up"
-              type="button"
-              :disabled="store.loadingHistorical || store.creatingHistorical"
-              @click="store.browseHistoricalDirectory(parentPath())"
-            >
-              ← 返回上级
-            </button>
-            <p
-              v-if="store.loadingHistorical"
-              class="empty-state"
-            >
-              正在读取批准目录…
-            </p>
-            <p
-              v-else-if="store.historicalDirectoryEntries.length === 0"
-              class="empty-state"
-            >
-              当前目录没有可选的 .xlsx 文件或子目录。
-            </p>
-            <div
-              v-else
-              class="directory-list"
-            >
-              <div
-                v-for="entry in store.historicalDirectoryEntries"
-                :key="entry.relative_path"
-                class="directory-entry"
-                :class="{ 'directory-entry--directory': entry.kind === 'directory' }"
-              >
-                <label>
-                  <input
-                    type="checkbox"
-                    :aria-label="entry.kind === 'directory' ? `选择目录 ${entry.name}` : `选择 ${entry.name}`"
-                    :checked="selectedPaths.includes(entry.relative_path)"
-                    :disabled="store.creatingHistorical"
-                    @change="togglePath(entry.relative_path)"
-                  >
-                  <span>{{ entry.kind === 'directory' ? '📁' : '📄' }} {{ entry.name }}<small>{{ entry.kind === 'directory' ? '选择此目录' : `${entry.byte_size ?? 0} bytes` }}</small></span>
-                </label>
-                <button
-                  v-if="entry.kind === 'directory'"
-                  type="button"
-                  :aria-label="`打开目录 ${entry.name}`"
-                  :disabled="store.creatingHistorical"
-                  @click="store.browseHistoricalDirectory(entry.relative_path)"
-                >
-                  打开
-                </button>
-              </div>
-            </div>
-            <button
-              v-if="store.historicalDirectoryHasMore"
-              class="directory-more"
-              type="button"
-              :disabled="store.loadingHistorical || store.creatingHistorical"
-              @click="store.loadMoreHistoricalDirectory()"
-            >
-              {{ store.loadingHistorical ? '正在加载…' : '加载更多目录项' }}
-            </button>
-            <label class="recursive-option">
-              <input
-                v-model="recursive"
-                type="checkbox"
-                :disabled="store.creatingHistorical"
-              >
-              选择目录时递归发现其中的 .xlsx（受服务器深度和文件数上限约束）
-            </label>
-          </section>
-
-          <section class="pack-panel">
-            <strong>关键词包（至少选择 1 个）</strong>
-            <p
-              v-if="store.loadingHistorical"
-              class="empty-state"
-            >
-              正在读取关键词包…
-            </p>
-            <p
-              v-else-if="store.keywordPackOptions.length === 0"
-              class="empty-state"
-            >
-              当前没有可用的关键词包，请先在采集策略中创建并启用。
-            </p>
-            <div class="pack-list">
-              <label
-                v-for="pack in store.keywordPackOptions"
-                :key="pack.id"
-              >
-                <input
-                  type="checkbox"
-                  :checked="selectedPackIds.includes(pack.id)"
-                  :disabled="store.creatingHistorical"
-                  @change="togglePack(pack.id)"
-                >
-                <span><b>{{ pack.name }}</b><small>{{ pack.keyword_count }} 个关键词 · v{{ pack.version }}</small></span>
-              </label>
-            </div>
-          </section>
-
-          <p
-            v-if="validationError"
-            class="error"
-            role="alert"
-          >
-            {{ validationError }}
-          </p>
-          <button
-            class="primary create-button"
-            type="button"
-            :disabled="!canCreate"
-            :aria-busy="store.creatingHistorical"
-            @click="createCampaign"
-          >
-            {{ store.creatingHistorical ? '正在创建…' : '创建并预检' }}
-          </button>
-
-          <section
-            v-if="store.historicalCampaigns.length"
+            v-if="store.historicalCampaigns.length && !store.selectedHistoricalCampaign"
             class="campaign-history"
           >
-            <strong>导入 Campaign</strong>
+            <strong>导入任务</strong>
             <div>
               <button
                 v-for="campaign in store.historicalCampaigns"
                 :key="campaign.id"
                 type="button"
                 :aria-label="`打开 Campaign ${campaign.id}`"
-                :class="{ selected: store.selectedHistoricalCampaign?.id === campaign.id }"
                 @click="store.refreshHistoricalCampaign(campaign.id)"
               >
                 <code>{{ campaign.id }}</code>
@@ -542,57 +317,301 @@ function viewCampaignContents(): void {
             </div>
           </section>
 
-          <section
-            v-if="store.selectedHistoricalCampaign"
-            class="campaign-panel"
-          >
-            <div class="section-heading">
-              <strong>当前 Campaign</strong><code>{{ store.selectedHistoricalCampaign.id }}</code>
-            </div>
-            <p
-              v-if="store.selectedHistoricalCampaign.status === 'ready'"
-              class="ready-state"
+          <template v-if="!store.selectedHistoricalCampaign">
+            <nav
+              class="source-tabs"
+              aria-label="数据来源"
             >
-              预检完成，可开始导入
-            </p>
-            <p
+              <button
+                type="button"
+                :class="{ selected: sourceKind === 'local_upload' }"
+                :aria-pressed="sourceKind === 'local_upload'"
+                :disabled="store.creatingHistorical"
+                @click="chooseSource('local_upload')"
+              >
+                本地电脑
+              </button>
+              <button
+                type="button"
+                :class="{ selected: sourceKind === 'server_path' }"
+                :aria-pressed="sourceKind === 'server_path'"
+                :disabled="store.creatingHistorical"
+                @click="chooseSource('server_path')"
+              >
+                服务器目录
+              </button>
+            </nav>
+
+            <section class="policy-panel">
+              <strong>写入策略</strong>
+              <div class="policy-grid">
+                <label :class="{ selected: ingestionPolicy === 'standard_observation' }">
+                  <input
+                    v-model="ingestionPolicy"
+                    type="radio"
+                    value="standard_observation"
+                    :disabled="store.creatingHistorical"
+                  >
+                  <span><b>标准观测</b><small>按当前观测语义写入或更新内容事实</small></span>
+                </label>
+                <label :class="{ selected: ingestionPolicy === 'historical_fill_only' }">
+                  <input
+                    v-model="ingestionPolicy"
+                    type="radio"
+                    value="historical_fill_only"
+                    :disabled="store.creatingHistorical"
+                  >
+                  <span><b>历史补空</b><small>只补充历史缺失字段，不覆盖已有观测事实</small></span>
+                </label>
+              </div>
+            </section>
+
+            <section
+              v-if="sourceKind === 'local_upload'"
+              class="source-panel"
+            >
+              <div class="section-heading">
+                <strong>本地数据文件</strong><span>已选 {{ selectedLocalFiles.length }} 个 .xlsx</span>
+              </div>
+              <p class="source-help">
+                支持多选 .xlsx 文件或选择文件夹自动遍历；单文件最大 500 MiB，总文件数上限 1000。
+              </p>
+              <div class="local-actions">
+                <label>
+                  选择文件
+                  <input
+                    type="file"
+                    accept=".xlsx"
+                    multiple
+                    :disabled="store.creatingHistorical"
+                    @change="selectLocalFiles"
+                  >
+                </label>
+                <label class="folder-action">
+                  选择文件夹
+                  <input
+                    type="file"
+                    accept=".xlsx"
+                    multiple
+                    webkitdirectory
+                    directory
+                    :disabled="store.creatingHistorical"
+                    @change="selectLocalFiles"
+                  >
+                </label>
+              </div>
+              <div
+                v-if="selectedLocalFiles.length"
+                class="local-file-list"
+              >
+                <span
+                  v-for="item in selectedLocalFiles.slice(0, 100)"
+                  :key="item.relativePath"
+                >{{ item.relativePath }} <small>{{ item.file.size }} bytes</small></span>
+                <small v-if="selectedLocalFiles.length > 100">仅预览前 100 个文件，清单会完整提交。</small>
+              </div>
+              <TaskProgressBar
+                v-if="store.creatingHistorical && store.localUploadTotal > 0"
+                label="本地文件上传进度"
+                :value="localUploadPercent"
+                :detail="`${store.localUploadCompleted} / ${store.localUploadTotal} 个文件已上传`"
+              />
+            </section>
+
+            <section
               v-else
-              class="status-state"
+              class="source-panel"
             >
-              状态：{{ store.selectedHistoricalCampaign.status }}
-            </p>
-            <div class="campaign-facts">
-              <span>来源 {{ store.selectedHistoricalCampaign.source_kind === 'local_upload' ? '本地电脑' : '服务器目录' }}</span>
-              <span>策略 {{ store.selectedHistoricalCampaign.ingestion_policy === 'standard_observation' ? '标准观测' : '历史补空' }}</span>
-              <span>文件 {{ store.selectedHistoricalCampaign.discovered_file_count }}</span>
-              <span>已预检 {{ store.selectedHistoricalCampaign.ready_item_count }}</span>
-              <span>行数 {{ store.selectedHistoricalCampaign.total_rows }}</span>
-              <span>新建 {{ store.selectedHistoricalCampaign.stats?.created ?? 0 }}</span>
-              <span>补空 {{ store.selectedHistoricalCampaign.stats?.filled ?? 0 }}</span>
-              <span>更新 {{ store.selectedHistoricalCampaign.stats?.updated ?? 0 }}</span>
-              <span>未变 {{ store.selectedHistoricalCampaign.stats?.unchanged ?? 0 }}</span>
-              <span>冲突 {{ store.selectedHistoricalCampaign.stats?.conflict ?? 0 }}</span>
-              <span>过滤 {{ store.selectedHistoricalCampaign.stats?.filtered ?? 0 }}</span>
-              <span>重复 {{ store.selectedHistoricalCampaign.stats?.duplicate ?? 0 }}</span>
-              <span>无效 {{ store.selectedHistoricalCampaign.stats?.invalid ?? 0 }}</span>
-              <span>失败 {{ store.selectedHistoricalCampaign.stats?.failed ?? 0 }}</span>
-            </div>
-            <div class="campaign-progresses">
-              <TaskProgressBar
-                label="导入预检进度"
-                :value="store.selectedHistoricalCampaign.progress.preflight_percent"
-                :indeterminate="preflightIndeterminate"
-                :detail="preflightIndeterminate
-                  ? '正在枚举批准目录，文件总数尚未确定'
-                  : `${store.selectedHistoricalCampaign.progress.preflight_completed_file_count} / ${store.selectedHistoricalCampaign.discovered_file_count} 个文件`"
-              />
-              <TaskProgressBar
-                v-if="showImportProgress"
-                label="数据导入进度"
-                :value="store.selectedHistoricalCampaign.progress.migration_percent"
-                :detail="`${store.selectedHistoricalCampaign.progress.migration_completed_row_count} / ${store.selectedHistoricalCampaign.total_rows} 行已取得终态`"
-              />
-            </div>
+              <div class="section-heading">
+                <strong>服务器批准目录</strong><span>当前：{{ currentPathLabel }}</span>
+                <AimaButton
+                  v-if="store.historicalDirectoryPath"
+                  variant="text"
+                  size="small"
+                  :disabled="store.loadingHistorical || store.creatingHistorical"
+                  @click="store.browseHistoricalDirectory(parentPath())"
+                >
+                  上一级
+                </AimaButton>
+              </div>
+              <p class="source-help">
+                只浏览管理员批准的只读根目录；HTTP 仅提交相对路径，不提供文件管理能力。
+              </p>
+              <p
+                v-if="store.loadingHistorical"
+                class="empty-state"
+              >
+                正在读取批准目录…
+              </p>
+              <p
+                v-else-if="store.historicalDirectoryEntries.length === 0"
+                class="empty-state"
+              >
+                当前目录没有可选的 .xlsx 文件或子目录。
+              </p>
+              <div
+                v-else
+                class="directory-list"
+              >
+                <div
+                  v-for="entry in store.historicalDirectoryEntries"
+                  :key="entry.relative_path"
+                  class="directory-entry"
+                  :class="{ 'directory-entry--directory': entry.kind === 'directory' }"
+                >
+                  <label>
+                    <input
+                      type="checkbox"
+                      :aria-label="entry.kind === 'directory' ? `选择目录 ${entry.name}` : `选择 ${entry.name}`"
+                      :checked="selectedPaths.includes(entry.relative_path)"
+                      :disabled="store.creatingHistorical"
+                      @change="togglePath(entry.relative_path)"
+                    >
+                    <span><b>{{ entry.name }}</b><small>{{ entry.kind === 'directory' ? '目录 · 选择此目录' : `${entry.byte_size ?? 0} bytes` }}</small></span>
+                  </label>
+                  <AimaButton
+                    v-if="entry.kind === 'directory'"
+                    variant="text"
+                    size="small"
+                    :aria-label="`打开目录 ${entry.name}`"
+                    :disabled="store.creatingHistorical"
+                    @click="store.browseHistoricalDirectory(entry.relative_path)"
+                  >
+                    打开
+                  </AimaButton>
+                </div>
+              </div>
+              <AimaButton
+                v-if="store.historicalDirectoryHasMore"
+                class="directory-more"
+                variant="secondary"
+                size="small"
+                :disabled="store.loadingHistorical || store.creatingHistorical"
+                @click="store.loadMoreHistoricalDirectory()"
+              >
+                {{ store.loadingHistorical ? '正在加载…' : '加载更多目录项' }}
+              </AimaButton>
+              <label class="recursive-option">
+                <input
+                  v-model="recursive"
+                  type="checkbox"
+                  :disabled="store.creatingHistorical"
+                >
+                选择目录时递归发现其中的 .xlsx
+                <small>受服务器深度、文件数、批准根目录和分页限制</small>
+              </label>
+            </section>
+
+            <section class="pack-panel">
+              <strong>关键词包（至少选择 1 个）</strong>
+              <p
+                v-if="store.loadingHistorical"
+                class="empty-state"
+              >
+                正在读取关键词包…
+              </p>
+              <p
+                v-else-if="store.keywordPackOptions.length === 0"
+                class="empty-state"
+              >
+                当前没有可用的关键词包，请先在采集策略中创建并启用。
+              </p>
+              <div class="pack-list">
+                <label
+                  v-for="pack in store.keywordPackOptions"
+                  :key="pack.id"
+                >
+                  <input
+                    type="checkbox"
+                    :checked="selectedPackIds.includes(pack.id)"
+                    :disabled="store.creatingHistorical"
+                    @change="togglePack(pack.id)"
+                  >
+                  <span><b>{{ pack.name }}</b><small>{{ pack.keyword_count }} 个关键词 · v{{ pack.version }}</small></span>
+                </label>
+              </div>
+              <small class="pack-help">选项只展示当前已启用且可用的词包</small>
+            </section>
+
+            <AimaFeedbackBanner tone="info">
+              创建后先完成来源确认、不可变快照与预检；AI 不会自动执行，智能分析需要在分析入口手动创建。
+            </AimaFeedbackBanner>
+          </template>
+
+          <template v-else>
+            <section
+              v-if="store.historicalCampaigns.length"
+              class="campaign-history"
+            >
+              <strong>导入任务</strong>
+              <div>
+                <button
+                  v-for="campaign in store.historicalCampaigns"
+                  :key="campaign.id"
+                  type="button"
+                  :aria-label="`打开 Campaign ${campaign.id}`"
+                  :class="{ selected: store.selectedHistoricalCampaign?.id === campaign.id }"
+                  @click="store.refreshHistoricalCampaign(campaign.id)"
+                >
+                  <code>{{ campaign.id }}</code>
+                  <span>{{ campaign.source_kind === 'local_upload' ? '本机' : '服务器' }} · {{ campaign.status }}</span>
+                </button>
+              </div>
+            </section>
+
+            <section class="campaign-panel">
+              <div class="section-heading">
+                <strong>当前导入任务</strong><code>{{ store.selectedHistoricalCampaign.id }}</code>
+              </div>
+              <div
+                class="campaign-status"
+                :class="`campaign-status--${store.selectedHistoricalCampaign.status}`"
+              >
+                {{ store.selectedHistoricalCampaign.status === 'ready' ? '预检完成，可开始导入' : `状态：${store.selectedHistoricalCampaign.status}` }}
+              </div>
+              <div class="campaign-facts">
+                <span>来源<b>{{ store.selectedHistoricalCampaign.source_kind === 'local_upload' ? '本地电脑' : '服务器目录' }}</b></span>
+                <span>策略<b>{{ store.selectedHistoricalCampaign.ingestion_policy === 'standard_observation' ? '标准观测' : '历史补空' }}</b></span>
+                <span>文件<b>{{ store.selectedHistoricalCampaign.discovered_file_count }}</b></span>
+                <span>已预检<b>{{ store.selectedHistoricalCampaign.ready_item_count }}</b></span>
+                <span>行数<b>{{ store.selectedHistoricalCampaign.total_rows }}</b></span>
+              </div>
+              <div class="campaign-progresses">
+                <TaskProgressBar
+                  label="导入预检进度"
+                  :value="store.selectedHistoricalCampaign.progress.preflight_percent"
+                  :indeterminate="preflightIndeterminate"
+                  :detail="preflightIndeterminate
+                    ? '正在枚举批准目录，文件总数尚未确定'
+                    : `${store.selectedHistoricalCampaign.progress.preflight_completed_file_count} / ${store.selectedHistoricalCampaign.discovered_file_count} 个文件已完成预检`"
+                />
+                <TaskProgressBar
+                  v-if="showImportProgress"
+                  label="数据导入进度"
+                  :value="store.selectedHistoricalCampaign.progress.migration_percent"
+                  :detail="`${store.selectedHistoricalCampaign.progress.migration_completed_row_count} / ${store.selectedHistoricalCampaign.total_rows} 行已取得终态`"
+                />
+              </div>
+              <AimaFeedbackBanner tone="info">
+                预检只准备导入任务；AI 不会自动执行，智能分析仍需在分析入口显式创建。
+              </AimaFeedbackBanner>
+            </section>
+
+            <section class="campaign-stats">
+              <strong>处理统计</strong>
+              <div>
+                <span>新建 <b>{{ store.selectedHistoricalCampaign.stats?.created ?? 0 }}</b></span>
+                <span>补空 <b>{{ store.selectedHistoricalCampaign.stats?.filled ?? 0 }}</b></span>
+                <span>更新 <b>{{ store.selectedHistoricalCampaign.stats?.updated ?? 0 }}</b></span>
+                <span>未变 <b>{{ store.selectedHistoricalCampaign.stats?.unchanged ?? 0 }}</b></span>
+                <span>冲突 <b>{{ store.selectedHistoricalCampaign.stats?.conflict ?? 0 }}</b></span>
+                <span>过滤 <b>{{ store.selectedHistoricalCampaign.stats?.filtered ?? 0 }}</b></span>
+                <span>重复 <b>{{ store.selectedHistoricalCampaign.stats?.duplicate ?? 0 }}</b></span>
+                <span>无效 <b>{{ store.selectedHistoricalCampaign.stats?.invalid ?? 0 }}</b></span>
+                <span>失败 <b>{{ store.selectedHistoricalCampaign.stats?.failed ?? 0 }}</b></span>
+              </div>
+            </section>
+
             <div
               v-if="store.historicalCampaignItems.length"
               class="campaign-items"
@@ -606,112 +625,158 @@ function viewCampaignContents(): void {
               </div>
             </div>
             <small v-if="store.historicalCampaignItemsHasMore">明细按失败和运行状态优先，当前仅展示前 200 条。</small>
-            <small v-if="store.historicalCampaignConflictsHasMore">冲突明细当前仅展示前 500 条；总数以 Campaign 统计为准。</small>
-            <div class="campaign-actions">
-              <button
-                class="primary"
-                type="button"
-                :disabled="!store.selectedHistoricalCampaign.can_start || store.actingHistorical"
-                @click="startCampaign"
-              >
-                开始导入
-              </button>
-              <button
-                type="button"
-                :disabled="!canCancel || store.actingHistorical"
-                @click="cancelCampaign"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                :disabled="!canRetry || store.actingHistorical"
-                @click="retryCampaign"
-              >
-                重试失败项
-              </button>
-              <button
-                v-if="canViewContents"
-                type="button"
-                @click="viewCampaignContents"
-              >
-                查看导入内容
-              </button>
-            </div>
-          </section>
+            <small v-if="store.historicalCampaignConflictsHasMore">冲突明细当前仅展示前 500 条；总数以导入任务统计为准。</small>
+          </template>
 
-          <p
+          <AimaFeedbackBanner
             v-if="notice"
-            class="notice"
+            tone="success"
             role="status"
           >
             {{ notice }}
-          </p>
-          <p
+          </AimaFeedbackBanner>
+          <AimaFeedbackBanner
+            v-if="validationError"
+            tone="error"
+            role="alert"
+          >
+            {{ validationError }}
+          </AimaFeedbackBanner>
+          <AimaFeedbackBanner
             v-if="store.error"
-            class="error"
+            tone="error"
             role="alert"
           >
             {{ store.error }}
-          </p>
+          </AimaFeedbackBanner>
         </div>
+
+        <footer>
+          <AimaButton
+            variant="secondary"
+            size="small"
+            :disabled="store.creatingHistorical"
+            @click="emit('update:modelValue', false)"
+          >
+            关闭
+          </AimaButton>
+          <template v-if="!store.selectedHistoricalCampaign">
+            <AimaButton
+              class="create-button"
+              variant="primary"
+              :disabled="!canCreate"
+              :aria-busy="store.creatingHistorical"
+              @click="createCampaign"
+            >
+              {{ store.creatingHistorical ? '正在创建…' : '创建并预检' }}
+            </AimaButton>
+          </template>
+          <template v-else>
+            <AimaButton
+              v-if="canCancel"
+              variant="secondary"
+              size="small"
+              :disabled="store.actingHistorical"
+              @click="cancelCampaign"
+            >
+              取消
+            </AimaButton>
+            <AimaButton
+              v-if="canRetry"
+              variant="secondary"
+              size="small"
+              :disabled="store.actingHistorical"
+              @click="retryCampaign"
+            >
+              重试失败项
+            </AimaButton>
+            <AimaButton
+              v-if="canViewContents"
+              variant="secondary"
+              size="small"
+              @click="viewCampaignContents"
+            >
+              查看导入内容
+            </AimaButton>
+            <AimaButton
+              variant="primary"
+              :disabled="!store.selectedHistoricalCampaign.can_start || store.actingHistorical"
+              @click="startCampaign"
+            >
+              开始导入
+            </AimaButton>
+          </template>
+        </footer>
       </section>
     </div>
   </Teleport>
 </template>
 
 <style scoped>
-.dialog-layer { position: fixed; z-index: 140; inset: 0; display: grid; place-items: center; background: rgb(22 29 43 / 48%); }
-.dialog { width: min(840px, calc(100vw - 48px)); max-height: 90vh; overflow: hidden; border-radius: 11px; background: #fff; box-shadow: 0 22px 60px rgb(22 29 43 / 22%); }
-header { display: flex; align-items: start; justify-content: space-between; padding: 19px 22px; border-bottom: 1px solid var(--aima-border); }
-header h2 { margin: 0; font-size: 19px; }
-header p { margin: 6px 0 0; color: #717b8d; font-size: 12px; }
-header button { border: 0; color: #657087; background: transparent; cursor: pointer; font-size: 25px; }
-.dialog-body { display: grid; gap: 16px; max-height: calc(90vh - 78px); padding: 20px 22px 24px; overflow: auto; }
-.source-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.source-tabs button { height: 42px; border: 1px solid #d9dee7; border-radius: 7px; color: #596477; background: #fff; cursor: pointer; }
-.source-tabs button.selected { border-color: var(--aima-primary); color: var(--aima-primary); background: #fff5f8; font-weight: 600; }
-.policy-panel, .source-panel, .pack-panel, .campaign-panel, .campaign-history { padding: 14px; border: 1px solid var(--aima-border); border-radius: 8px; }
-.policy-panel { display: grid; gap: 9px; }
-.policy-panel label { display: flex; align-items: flex-start; gap: 9px; }
-.policy-panel span { display: grid; gap: 3px; }
-.policy-panel small, .policy-panel p, .source-help { margin: 0; color: #747f91; font-size: 12px; line-height: 1.6; }
-.section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.section-heading span, .section-heading code { overflow: hidden; color: #7a8495; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.local-actions { display: flex; gap: 9px; margin-top: 12px; }
-.local-actions label { padding: 9px 13px; border: 1px solid var(--aima-primary); border-radius: 6px; color: var(--aima-primary); cursor: pointer; font-size: 13px; }
+.dialog-layer { position: fixed; z-index: 140; inset: 0; display: grid; place-items: center; background: rgb(17 22 37 / 94%); }
+.dialog { display: grid; width: min(840px, calc(100vw - 48px)); height: min(800px, calc(100vh - 48px)); grid-template-rows: 76px minmax(0, 1fr) 72px; overflow: hidden; border: 1px solid var(--aima-border); border-radius: 11px; background: var(--aima-surface); box-shadow: 0 22px 60px rgb(22 29 43 / 22%); }
+header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 16px 22px 12px; border-bottom: 1px solid var(--aima-border); }
+header h2 { margin: 0; color: var(--aima-text); font-size: 19px; line-height: 26px; }
+header p { max-width: 620px; margin: 2px 0 0; color: var(--aima-text-muted); font-size: 12px; line-height: 18px; }
+.dialog-body { display: flex; min-height: 0; flex-direction: column; gap: 20px; padding: 16px 22px; overflow-x: hidden; overflow-y: auto; }
+.source-tabs { display: flex; min-height: 40px; gap: 8px; }
+.source-tabs button { min-height: 40px; padding: 0 4px; border: 0; border-bottom: 2px solid transparent; color: var(--aima-text-muted); background: transparent; cursor: pointer; font-size: 13px; }
+.source-tabs button.selected { border-bottom-color: var(--aima-primary); color: var(--aima-primary); font-weight: 500; }
+.policy-panel, .source-panel, .pack-panel, .campaign-panel, .campaign-history, .campaign-stats { padding: 12px 13px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius); background: var(--aima-surface); }
+.policy-panel > strong, .pack-panel > strong, .campaign-history > strong, .campaign-stats > strong { color: var(--aima-text); font-size: 13px; font-weight: 500; line-height: 20px; }
+.policy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+.policy-grid label { position: relative; display: block; min-height: 58px; padding: 9px 11px; border: 1px solid var(--aima-border-strong); border-radius: var(--aima-radius-control); cursor: pointer; }
+.policy-grid label.selected { border-color: var(--aima-primary); background: #fff5f8; }
+.policy-grid input { position: absolute; opacity: 0; }
+.policy-grid span { display: grid; gap: 3px; }
+.policy-grid b { color: var(--aima-text); font-size: 13px; font-weight: 500; }
+.policy-grid label.selected b { color: var(--aima-primary); }
+.policy-grid small, .source-help { margin: 0; color: var(--aima-text-muted); font-size: 12px; line-height: 18px; }
+.section-heading { display: flex; align-items: center; gap: 16px; }
+.section-heading strong { color: var(--aima-text); font-size: 13px; font-weight: 500; }
+.section-heading > span, .section-heading code { min-width: 0; flex: 1; overflow: hidden; color: var(--aima-text-disabled); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.source-help { margin-top: 4px; }
+.local-actions { display: flex; gap: 12px; margin-top: 10px; }
+.local-actions label { display: inline-flex; height: 32px; align-items: center; padding: 0 14px; border: 1px solid var(--aima-border-strong); border-radius: var(--aima-radius-control); color: var(--aima-text); background: var(--aima-surface); cursor: pointer; font-size: 13px; }
+.local-actions .folder-action { border-color: transparent; }
 .local-actions input { position: absolute; width: 1px; height: 1px; opacity: 0; }
-.local-file-list { display: grid; gap: 5px; max-height: 150px; margin-top: 10px; overflow: auto; padding: 9px; border-radius: 6px; background: #f7f8fa; font-size: 12px; }
+.local-file-list { display: grid; gap: 5px; max-height: 112px; margin-top: 10px; overflow: auto; padding: 10px; border-radius: var(--aima-radius-control); background: #f8fafc; font-size: 12px; }
 .local-file-list span { display: flex; justify-content: space-between; gap: 12px; }
-.local-file-list small { color: #8992a3; }
-.directory-list, .pack-list { display: grid; gap: 7px; max-height: 220px; margin-top: 10px; overflow: auto; }
-.directory-entry button, .directory-entry label, .pack-list label { display: flex; width: 100%; align-items: center; gap: 9px; padding: 9px 10px; border: 1px solid #e3e6ec; border-radius: 6px; color: #354052; background: #fff; text-align: left; cursor: pointer; }
-.directory-entry--directory { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
-.directory-entry--directory button { width: auto; }
-.directory-entry label span, .pack-list label span { display: flex; flex: 1; justify-content: space-between; gap: 10px; }
-.directory-entry small, .pack-list small { color: #8a93a3; font-weight: normal; }
-.directory-up { margin-top: 10px; border: 0; color: var(--aima-primary); background: transparent; cursor: pointer; }
-.directory-more { width: 100%; margin-top: 9px; padding: 8px; border: 1px solid #d9dee7; border-radius: 6px; color: #596477; background: #fff; cursor: pointer; }
-.recursive-option { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: #657087; font-size: 12px; }
-.empty-state { color: #8992a3; font-size: 13px; }
-.primary { border-color: var(--aima-primary) !important; color: #fff !important; background: var(--aima-primary) !important; }
-.create-button { justify-self: end; height: 40px; padding: 0 20px; border: 1px solid; border-radius: 6px; cursor: pointer; }
-.campaign-history > div { display: grid; gap: 6px; max-height: 128px; margin-top: 9px; overflow: auto; }
-.campaign-history button { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px solid #e3e6ec; border-radius: 6px; color: #596477; background: #fff; cursor: pointer; }
-.campaign-history button.selected { border-color: var(--aima-primary); background: #f1f7ff; }
+.local-file-list small { color: var(--aima-text-disabled); }
+.directory-list, .pack-list { display: grid; gap: 6px; max-height: 180px; margin-top: 10px; overflow: auto; }
+.directory-entry { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 40px; padding: 0 8px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius-control); }
+.directory-entry label, .pack-list label { display: flex; min-width: 0; align-items: center; gap: 9px; color: var(--aima-text-secondary); cursor: pointer; font-size: 13px; }
+.directory-entry input, .pack-list input, .recursive-option input { accent-color: var(--aima-primary); }
+.directory-entry label span, .pack-list label span { display: flex; min-width: 0; flex: 1; align-items: center; justify-content: space-between; gap: 10px; }
+.directory-entry b, .pack-list b { overflow: hidden; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
+.directory-entry small, .pack-list small { color: var(--aima-text-disabled); font-size: 11px; font-weight: 400; }
+.directory-more { margin-top: 8px; }
+.recursive-option { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: var(--aima-text-secondary); font-size: 12px; }
+.recursive-option small { margin-left: auto; color: var(--aima-text-disabled); font-size: 11px; }
+.pack-list { grid-template-columns: 1fr 1fr; }
+.pack-list label { min-height: 32px; }
+.pack-help { display: block; margin-top: 8px; color: var(--aima-text-disabled); font-size: 11px; }
+.empty-state { margin: 10px 0 0; color: var(--aima-text-muted); font-size: 12px; }
+.campaign-history > div { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; margin-top: 10px; }
+.campaign-history button { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; border: 0; color: var(--aima-text-muted); background: transparent; cursor: pointer; font-size: 11px; text-align: left; }
+.campaign-history button.selected { color: var(--aima-primary); }
 .campaign-history code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.campaign-facts { display: flex; flex-wrap: wrap; gap: 8px; }
-.campaign-facts span { padding: 5px 8px; border-radius: 5px; color: #596477; background: #f3f5f8; font-size: 12px; }
-.campaign-progresses { display: grid; gap: 12px; margin-top: 14px; }
-.campaign-actions { display: flex; gap: 8px; margin-top: 13px; }
-.campaign-actions button { height: 36px; padding: 0 14px; border: 1px solid #d9dee7; border-radius: 6px; background: #fff; cursor: pointer; }
-.campaign-items { display: grid; gap: 6px; max-height: 150px; margin-top: 12px; overflow: auto; }
-.campaign-items > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; padding: 7px 9px; border-radius: 5px; background: #f7f8fa; font-size: 11px; }
+.campaign-status { margin-top: 10px; padding: 12px 13px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius-control); color: var(--aima-text-muted); background: #f8fafc; font-size: 11px; }
+.campaign-status--ready, .campaign-status--succeeded { border-color: var(--aima-success); }
+.campaign-status--failed, .campaign-status--partial_failed { border-color: var(--aima-danger); }
+.campaign-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 20px; margin-top: 12px; }
+.campaign-facts span { display: flex; gap: 6px; color: var(--aima-text-disabled); font-size: 11px; }
+.campaign-facts b { color: var(--aima-text-secondary); font-weight: 500; }
+.campaign-progresses { display: grid; gap: 12px; margin: 18px 0; }
+.campaign-stats > div { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+.campaign-stats span { display: grid; gap: 4px; padding: 9px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius-control); color: var(--aima-text-disabled); font-size: 11px; }
+.campaign-stats b { color: var(--aima-primary); font-size: 16px; }
+.campaign-items { display: grid; gap: 6px; max-height: 150px; overflow: auto; }
+.campaign-items > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; padding: 7px 9px; border-radius: var(--aima-radius-control); background: #f8fafc; font-size: 11px; }
 .campaign-items span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .campaign-items small { grid-column: 1 / -1; color: var(--aima-danger); }
-.ready-state, .notice { color: #087747; }
-.status-state { color: #596477; }
-.notice, .error { margin: 0; font-size: 13px; }
-.error { color: var(--aima-danger); }
+footer { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 0 22px; border-top: 1px solid var(--aima-border); background: var(--aima-surface); }
+footer :deep(.aima-button.is-primary) { min-width: 88px; }
 button:disabled { cursor: not-allowed; opacity: .55; }
+@media (max-width: 760px) { .policy-grid, .pack-list, .campaign-history > div, .campaign-facts, .campaign-stats > div { grid-template-columns: 1fr; } }
 </style>

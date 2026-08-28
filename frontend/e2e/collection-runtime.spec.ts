@@ -113,6 +113,7 @@ test('centralizes runtime facts, opens Batch detail, and creates a local Campaig
   await page.getByRole('button', { name: '关闭详情' }).click()
   await page.getByRole('button', { name: '导入数据' }).click()
   const dialog = page.getByRole('dialog', { name: '导入数据' })
+  await expect(dialog).toContainText('预检通过后再确认开始入库')
   await dialog.locator('input[type="file"]').first().setInputFiles({ name: 'stage8e.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('stage8e') })
   await dialog.getByLabel(/爱玛品牌词包/).check()
   await dialog.getByLabel(/产品车型词包/).check()
@@ -128,8 +129,9 @@ test('centralizes runtime facts, opens Batch detail, and creates a local Campaig
 
 test('creates a one-time TikHub discovery Run from multiple Keyword Packs', async ({ page }) => {
   await page.goto('/collection-runtime')
-  await page.getByRole('button', { name: /新建 TikHub 补采/ }).click()
+  await page.getByRole('button', { name: '新建辅助补采' }).click()
   const drawer = page.getByRole('dialog', { name: '新建 TikHub 辅助补采' })
+  await expect(drawer).toContainText('创建辅助补采任务')
   await drawer.getByLabel(/爱玛品牌词包/).check()
   await drawer.getByLabel(/产品车型词包/).check()
   await drawer.getByRole('button', { name: /小红书/ }).click()
@@ -149,10 +151,10 @@ test('creates a one-time TikHub discovery Run from multiple Keyword Packs', asyn
 
 test('creates a TikHub supplement Run only for a platform that exists in the Batch', async ({ page }) => {
   await page.goto('/collection-runtime')
-  await page.getByRole('button', { name: /新建 TikHub 补采/ }).click()
+  await page.getByRole('button', { name: '新建辅助补采' }).click()
   const drawer = page.getByRole('dialog', { name: '新建 TikHub 辅助补采' })
   await drawer.getByRole('button', { name: '基于已有批次补采' }).click()
-  await drawer.getByLabel('Excel Import Batch').selectOption(batchId)
+  await drawer.getByLabel('数据导入批次').selectOption(batchId)
   await expect(drawer.getByRole('button', { name: /小红书/ })).toBeVisible()
   await expect(drawer.getByRole('button', { name: /抖音/ })).toHaveCount(0)
   await drawer.getByRole('button', { name: /小红书/ }).click()
@@ -169,19 +171,19 @@ test('creates a TikHub supplement Run only for a platform that exists in the Bat
 
 test('re-probes Batch platform eligibility when switching A to B and back to A', async ({ page }) => {
   await page.goto('/collection-runtime')
-  await page.getByRole('button', { name: /新建 TikHub 补采/ }).click()
+  await page.getByRole('button', { name: '新建辅助补采' }).click()
   const drawer = page.getByRole('dialog', { name: '新建 TikHub 辅助补采' })
   await drawer.getByRole('button', { name: '基于已有批次补采' }).click()
 
-  await drawer.getByLabel('Excel Import Batch').selectOption(batchId)
+  await drawer.getByLabel('数据导入批次').selectOption(batchId)
   await expect(drawer.getByRole('button', { name: /小红书/ })).toBeVisible()
   await expect(drawer.getByRole('button', { name: /抖音/ })).toHaveCount(0)
 
-  await drawer.getByLabel('Excel Import Batch').selectOption(secondBatchId)
+  await drawer.getByLabel('数据导入批次').selectOption(secondBatchId)
   await expect(drawer.getByRole('button', { name: /抖音/ })).toBeVisible()
   await expect(drawer.getByRole('button', { name: /小红书/ })).toHaveCount(0)
 
-  await drawer.getByLabel('Excel Import Batch').selectOption(batchId)
+  await drawer.getByLabel('数据导入批次').selectOption(batchId)
   await expect(drawer.getByRole('button', { name: /小红书/ })).toBeVisible()
   await expect(drawer.getByRole('button', { name: /抖音/ })).toHaveCount(0)
 })
@@ -192,7 +194,7 @@ test('explains failed Import terminal state without inventing pending stages', a
   await page.getByRole('button', { name: '查看详情' }).click()
   const detail = page.getByRole('dialog', { name: '批次详情' })
   await detail.getByRole('button', { name: '处理阶段' }).click()
-  await expect(detail.getByText('任务已失败。')).toBeVisible()
+  await expect(detail.getByText('任务已失败。', { exact: false })).toBeVisible()
   await expect(detail.getByText('失败前最后完成阶段', { exact: false })).toBeVisible()
   await expect(detail.locator('.stage-row')).toHaveCount(0)
 })
@@ -259,7 +261,8 @@ test('shows a safe actionable error when the Worker cannot read the Provider Sec
   await page.getByRole('button', { name: '查看详情' }).click()
   const detail = page.getByRole('dialog', { name: 'TikHub 运行详情' })
   await expect(detail).toContainText('Provider Secret 不可用，请联系管理员检查运行配置。')
-  await expect(detail.getByRole('progressbar', { name: '小红书 Scope 进度' })).toHaveAttribute('aria-valuenow', '100')
+  await expect(detail).toContainText('小红书 · 内容补采')
+  await expect(detail).toContainText('失败 · 100%')
   await expect(detail).not.toContainText('providers/tikhub')
 })
 
