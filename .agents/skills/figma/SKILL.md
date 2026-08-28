@@ -1,6 +1,6 @@
 ---
 name: figma
-description: 面向 Figma 产品原型、设计系统和 Design-to-Code 正式开发基线的事实驱动审查与修复工作流。先恢复当前仓库、前端、后端 Contract/Capability/状态机等真实事实，再检查 Figma 的视觉、组件复用、Prototype、状态覆盖、用户术语、动态数据来源和 Codex 可实现性；禁止把 Figma 示例数据当服务器事实、把截图当结构证据、把后端实现名机械暴露给用户，或在后端不支持时由设计稿创造伪能力。支持 review-only、review-and-fix 和 baseline-ready。Use for Figma prototype review, Figma design audit, design-system consistency review, prototype QA, backend-contract alignment, Design-to-Code readiness, and Figma review-and-fix.
+description: 面向 Figma 产品原型、设计系统和 Design-to-Code 正式开发基线的事实驱动审查与修复工作流。先恢复当前仓库、前端、后端 Contract/Capability/状态机等真实事实，再检查 Figma 的视觉美观、页面尺寸、空间布局、组件与业务逻辑复用、Prototype、状态覆盖、用户习惯、用户术语、动态数据来源和 Codex 可实现性；禁止把 Figma 示例数据当服务器事实、把截图当结构证据、把后端实现名机械暴露给用户，或在后端不支持时由设计稿创造伪能力。支持 review-only、review-and-fix 和 baseline-ready。Use for Figma prototype review, Figma design audit, design-system consistency review, prototype QA, layout/usability review, backend-contract alignment, Design-to-Code readiness, and Figma review-and-fix.
 ---
 
 # Figma
@@ -15,8 +15,9 @@ Figma Skill 的职责不是单纯回答：
 这个设计表达的业务能力是真的吗？
 与当前后端 / Contract / Store / Route 一致吗？
 动态数据到底从哪里来？
-用户看到的是业务语言还是后端实现语言？
-公共组件真的复用了吗？
+页面尺寸、区块位置、图片和标注是否适合真实使用？
+用户能否按自然习惯完成任务？
+公共组件和可复用业务逻辑是否有唯一 Owner？
 Prototype 点击后是否仍然正确？
 Codex 能否无歧义地把它实现成当前仓库代码？
 这个 Frame 是否已经达到正式开发基线？
@@ -28,10 +29,11 @@ Codex 能否无歧义地把它实现成当前仓库代码？
 恢复当前事实
 → 明确 Figma Review Target
 → 建立设计事实 / 业务机器事实 / 运行事实边界
-→ 审查静态结构
+→ 审查页面尺寸 / 空间布局 / 用户任务路径
+→ 审查静态结构和视觉层级
 → 审查 Prototype
-→ 审查后端能力映射
-→ 审查设计系统与组件复用
+→ 审查后端能力映射和动态数据来源
+→ 审查设计系统、公共组件与业务逻辑复用
 → 审查状态完整性与产品语言
 → 从 Design Context 复核 Codex 视角
 → 输出 Findings
@@ -456,20 +458,20 @@ Contract 字段命名
 
 ---
 
-# 7. 设计系统与组件复用审计
+# 7. 设计系统、公共组件与业务逻辑复用审计
 
 必须区分：
 
 ```text
 Global Shared Component
-Feature Component
+Feature Public Component / Logic
 Page Pattern
 Page-private Composition
 ```
 
 详细规则见 [03_设计系统与组件复用审计.md](references/03_设计系统与组件复用审计.md)。
 
-## 7.1 跨页面公共组件
+## 7.1 跨页面公共视觉组件
 
 稳定跨页面模式优先复用，例如：
 
@@ -489,9 +491,34 @@ Modal Shell
 Drawer Shell
 ```
 
-同一种稳定模式只允许一种公开实现路径。
+同一种稳定视觉模式只允许一种公开实现路径。
 
-## 7.2 不做万能组件
+## 7.2 可复用业务逻辑也必须有唯一 Owner
+
+如果多个页面真正使用同一业务语义，例如：
+
+```text
+渠道能力 → 可用平台 → 动态参数
+同一状态 → 产品文案
+同一资格判断
+同一表单校验/默认值规则
+```
+
+不能让 Codex 在多个页面分别复制一套逻辑。
+
+应根据真实复用范围进入：
+
+```text
+Feature 公共层
+或
+跨 Feature Shared / Domain Owner
+```
+
+Figma 应通过统一 Pattern/Component + Annotation 告诉实现方“这里复用哪个业务 Owner”。
+
+但不要把业务规则塞进 `AIMA/按钮` 这样的无业务基础组件；Button 负责视觉和通用交互壳，业务 Handler/资格由上层唯一 Owner 决定。
+
+## 7.3 不做万能组件
 
 以下不能因为“看起来会复用”就自动进入 Global Shared：
 
@@ -509,13 +536,13 @@ Feature KPI
 → Page Pattern
 
 同 Feature 真实复用
-→ Feature Component
+→ Feature Public Component / Logic
 
 跨 Feature 稳定复用
-→ Shared
+→ Shared / Domain Owner
 ```
 
-## 7.3 Component Property 审计
+## 7.4 Component Property 审计
 
 可变值必须由真正的 Component Property 表达。
 
@@ -524,7 +551,6 @@ Feature KPI
 ```text
 AIMA/Select
 内部：小红书
-
 +
 页面覆盖 Text：全部平台
 ```
@@ -713,22 +739,30 @@ Icon
 
 ---
 
-# 11. 信息密度与视觉层级
+# 11. 信息密度、页面尺寸与真实可用性
 
 视觉 Review 不能只看“是否对齐”。
 
 至少检查：
 
 ```text
+目标浏览器 / 设备与 Frame 尺寸
+App Shell / 内容区边界
 信息密度
 主次层级
-留白
+留白和间距节奏
 控件权重
-表格宽度
-状态颜色
-重复信息
-用户决策负担
+表格真实长文本
+图片比例和裁切
+图片 / 图表 / 标注是否重叠
+Overlay / Toast / Dropdown 安全区
+滚动和首屏可访问性
+用户任务顺序
+动态数据来源和刷新
+真实前后端调用链
 ```
+
+详细规则见 [07_页面布局与真实可用性审计.md](references/07_页面布局与真实可用性审计.md)。
 
 例如：
 
@@ -739,7 +773,19 @@ Icon
 
 可以判断是否应该收敛成摘要条。
 
-但视觉优化不能改变真实业务字段或后端行为。
+又例如：
+
+```text
+设计 Frame = 1440×900
+```
+
+只能作为设计基准，不能让 Codex 写死整个页面宽高。
+
+图片、标注、按钮和文字没有明确设计目的时不得重叠；开发 Annotation 不应压在正式 UI 上。
+
+动态数据如果来自 API/数据库/运行时，应在 Annotation/规格中明确来源链，前端仍通过正式 API/Store 获取，不直接访问数据库。
+
+视觉优化不能改变真实业务字段或后端行为。
 
 ---
 
@@ -776,20 +822,14 @@ Design-to-Code 时：
 必须确认：
 
 ```text
-Codex 看到的是正式 Frame
-不是历史 Frame
-
-Codex 看到公共 Component Instance
-不是手画拷贝
-
-动态文本是 Component Property
-不是叠加 Text
-
-Annotation 说明真实 API / Contract 来源
-
+Codex 看到的是正式 Frame，不是历史 Frame
+Codex 看到公共 Component Instance，不是手画拷贝
+动态文本是 Component Property，不是叠加 Text
+Annotation 说明真实 API / Contract / Runtime 来源
 动态数据没有被写成常量事实
-
+可复用业务逻辑指向唯一 Owner
 Feature Pattern 与 Shared Component 边界清晰
+页面尺寸和布局不会诱导固定像素实现
 ```
 
 Figma MCP 输出的 React / Tailwind 等代码只能视为结构参考；目标仓库使用什么技术栈，必须重新读取当前仓库事实。
@@ -806,22 +846,30 @@ Figma MCP 输出的 React / Tailwind 等代码只能视为结构参考；目标�
 [ ] 已恢复当前仓库事实
 [ ] 已读取相关 Contract / Store / API / Capability
 [ ] 所有用户输入都对应真实后端能力
-[ ] 所有动态字段都有事实来源
+[ ] 所有动态字段都有 API / Runtime / 系统固定等明确来源
+[ ] 数据库最终事实通过正式 Repository/Service/API 链路进入前端，不要求前端直连数据库
 [ ] 示例数据明确不是服务器事实
 [ ] 没有 Figma 创造的伪能力
-[ ] 公共组件真实复用
+[ ] 公共视觉组件真实复用
+[ ] 可复用业务逻辑存在唯一 Owner，没有多页面复制同一规则
 [ ] Component Property 无覆盖文本
 [ ] Prototype Variable / Reaction 无旧数据
 [ ] Prototype 无失效目标
 [ ] Flow 起点唯一且明确
 [ ] Normal / Loading / Empty / Error 已覆盖
 [ ] 其它状态按业务真实需要覆盖
-[ ] Toast / Overlay / Drawer / Modal 无重叠和漂移
+[ ] Frame 尺寸与目标设备/浏览器有依据
+[ ] App Shell / Page Header / Content 对齐和间距一致
+[ ] 图片、图表、文字、标注和交互控件无无意重叠
+[ ] 图片比例、裁切、长文本和表格列宽有真实数据策略
+[ ] Toast / Overlay / Drawer / Modal / Dropdown 无重叠、裁切和位置漂移
+[ ] 页面无不必要的多层滚动，关键操作在目标 Viewport 可访问
+[ ] 用户操作顺序和默认值符合真实使用习惯并有事实依据
 [ ] 没有双图标 / 双文本 / 重复 Feedback
 [ ] 用户术语符合产品认知
 [ ] 没有不必要暴露内部实现
 [ ] Design Token 无明确语义漂移
-[ ] Fresh Screenshot 通过
+[ ] Fresh Screenshot 通过主要页面、关键状态和关键浮层
 [ ] Design Context 从 Codex 视角通过
 ```
 
@@ -860,6 +908,8 @@ READY
 - 动态数据被写成生产常量；
 - Prototype 与真实状态机冲突；
 - 公共组件结构会让 Codex 生成错误 DOM；
+- 同一业务规则在多个页面被设计成独立实现且会造成行为漂移；
+- 页面尺寸/滚动/重叠导致关键用户任务无法完成；
 - 关键状态缺失；
 - 设计会泄露 Secret / 内部敏感信息；
 - Design Context 与画面表达冲突。
@@ -870,9 +920,9 @@ READY
 
 - 术语混乱；
 - 示例数据跨页面不一致；
-- 组件复用不彻底；
+- 组件或业务复用不彻底；
 - Raw Token 漂移；
-- 次要状态遗漏；
+- 图片/标注间距、表格列宽、次要状态等影响真实可用性的缺口；
 - Prototype 小范围不一致。
 
 ## P2 — 非阻塞优化
@@ -921,11 +971,14 @@ Node / Frame
 所有 Select 文本叠加
 → 改公共 Select Component Property
 
+两个页面都复制“渠道能力 → 动态字段”业务规则
+→ 收敛到唯一业务 Owner，并让 Figma 指向同一 Pattern/逻辑来源
+
 多个页面图标不一致
 → 修公共 Icon 规则
 ```
 
-修改基础组件后必须重新验证所有受影响消费者。
+修改基础组件或公共业务 Owner 后必须重新验证所有受影响消费者。
 
 ---
 
@@ -955,9 +1008,13 @@ Related Route:
 
 列出重要 UI 能力对应的真实事实源。
 
-## Component Reuse
+## Component & Logic Reuse
 
-说明 Shared / Feature / Page-private 的边界是否正确。
+说明 Shared / Feature Public / Page-private 的视觉组件和业务逻辑 Owner 是否正确。
+
+## Layout & Usability
+
+说明 Frame 尺寸、空间位置、间距、图片/标注、表格/表单、滚动和用户任务路径是否满足真实使用。
 
 ## Prototype Audit
 
@@ -987,11 +1044,15 @@ NOT_READY
 4. 为了设计方便创造后端不存在的选项；
 5. 把示例值写成服务器事实；
 6. 机械把所有英文翻成中文；
-7. 把所有重复视觉都升级成 Shared Component；
-8. 用业务页面复制修复代替公共 Owner 修复；
-9. 只检查静态 Frame，不检查 Prototype；
-10. 把 MCP 返回的 React/Tailwind 示例直接交付到不同技术栈项目；
-11. 用 Figma 替代 Contract / Schema；
-12. 用代码现状强迫设计迎合已经确认的实现 Bug；
-13. 因为“演示好看”伪造成功的 API / Worker / Provider 结果；
-14. 未实际验证就宣称“可以交 Codex”。
+7. 把所有重复视觉都升级成全局 Shared Component；
+8. 把同一业务逻辑复制到多个页面而不建立唯一 Owner；
+9. 把业务规则塞进 Button/Input 等无业务基础组件；
+10. 用业务页面复制修复代替公共 Owner 修复；
+11. 只检查静态 Frame，不检查 Prototype；
+12. 忽略 Frame 尺寸、滚动、图片/标注重叠和真实长文本；
+13. 把 MCP 返回的 React/Tailwind 示例直接交付到不同技术栈项目；
+14. 用 Figma 替代 Contract / Schema；
+15. 让前端为了读取“数据库数据”绕过正式 API/Service 直接连接数据库；
+16. 用代码现状强迫设计迎合已经确认的实现 Bug；
+17. 因为“演示好看”伪造成功的 API / Worker / Provider 结果；
+18. 未实际验证就宣称“可以交 Codex”。
