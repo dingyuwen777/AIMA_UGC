@@ -1,5 +1,6 @@
 name: Sync Voice Type Generated Contracts
 
+# 临时生成工作流：提交正式生成产物后自删除。
 on:
   push:
     branches:
