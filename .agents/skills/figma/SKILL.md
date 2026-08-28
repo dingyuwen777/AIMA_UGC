@@ -1,6 +1,6 @@
 ---
 name: figma
-description: 面向任意项目的 Figma 产品原型、设计系统、页面可用性和 Design-to-Code 正式开发基线的事实驱动审查与修复工作流。先识别项目形态和目标用户，再按实际边界读取需求、设计系统、代码、Contract/API/SDK/数据源/运行状态等事实；审查页面尺寸、布局、间距、图片与标注、公共组件与可复用业务逻辑、Prototype、状态覆盖、动态数据来源、用户习惯和实现可行性。禁止把 Figma 示例当生产事实、把截图当结构证据、机械暴露内部实现、复制可复用业务规则，或由设计稿创造系统不存在的能力。支持 review-only、review-and-fix 和 baseline-ready。Use for Figma prototype review, design audit, design-system review, layout/usability QA, prototype QA, real-system capability alignment, and Design-to-Code readiness across web, mobile, desktop, dashboards, admin tools, static sites, and other UI projects.
+description: 面向任意项目的 Figma 产品原型、设计系统、页面可用性和 Design-to-Code 正式开发基线的事实驱动审查、修复与实施交接工作流。支持从“全面检查这个 Figma”“检查并修复”“按这个 Figma 替换现有页面”等自然语言自动路由到 review-only、review-and-fix、baseline-ready 或 baseline-ready → Coding handoff。先识别项目形态和目标用户，再按实际边界读取需求、设计系统、代码、Contract/API/SDK/数据源/运行状态等事实；审查页面尺寸、布局、间距、图片与标注、公共组件与可复用业务逻辑、Prototype、状态覆盖、动态数据来源、用户习惯和实现可行性。禁止把 Figma 示例当生产事实、把截图当结构证据、机械暴露内部实现、复制可复用业务规则，或由设计稿创造系统不存在的能力。Use for Figma prototype review, design audit, design-system review, layout/usability QA, prototype QA, real-system capability alignment, Design-to-Code readiness, and handing a READY design to the target project's coding workflow for implementation across web, mobile, desktop, dashboards, admin tools, static sites, and other UI projects.
 ---
 
 # Figma
@@ -168,6 +168,107 @@ NOT_READY
 ```
 
 必要验证没有实际执行时不得给 `READY`。
+
+## 3.1 高频用户意图自动路由
+
+用户不需要记住 `review-only`、`review-and-fix`、`baseline-ready` 这些模式名。先尊重用户显式模式和权限；没有显式模式时，再按自然语言目标自动路由。
+
+优先级：
+
+```text
+用户显式指定模式 / 明确“只检查、不修改”
+→ 用户明确授予的 Figma / 代码 / Git 权限
+→ 自然语言任务意图
+→ 无法确认写权限时退回只读，不擅自写入
+```
+
+### A. “全面检查 / 审查 / 看看这个 Figma 有没有问题”
+
+常见表达：
+
+```text
+全面检查这个 Figma 页面
+看看是否美观、好用、符合用户习惯
+看看是否符合当前仓库代码
+这个页面能不能直接交给开发
+```
+
+如果同时存在目标仓库或当前实现，需要判断设计与真实系统是否一致：
+
+```text
+→ 默认 baseline-ready
+→ 恢复当前仓库事实
+→ 执行视觉 / 可用性 / Prototype / 系统能力 / Design Context 全量适用门禁
+→ 输出 Findings + READY / READY_WITH_NOTES / NOT_READY
+```
+
+如果没有实现仓库、只是 Design-only 原型：
+
+```text
+→ 默认 review-only
+→ 审查设计、Prototype、设计系统和可实施性
+→ 当前尚不存在的实现边界标记 implementation_required
+→ 不伪造 API / Route / 数据库等系统事实
+```
+
+用户明确说“只检查、不修改”时，无论是否有仓库，都不得因为存在仓库就获得 Figma 写权限。
+
+### B. “全面检查并修复 / 帮我改好 / 有问题直接改”
+
+这些措辞本身可以视为本轮明确的 Figma 写授权：
+
+```text
+→ review-and-fix
+→ 先确认 Finding / 根因
+→ 修改最小真实 Owner
+→ 验证公共消费者
+→ Fresh Screenshot + Prototype / Machine Audit + Design Context（适用时）
+→ 再执行 baseline-ready 判定
+```
+
+如果宿主没有写权限，必须明确阻塞；不能把“给修改建议”描述成已经修复。
+
+### C. “按这个 Figma 替换 / 实现当前页面”
+
+常见表达：
+
+```text
+按这个 Figma 替换仓库当前对应页面
+把这个原型实现到现有代码
+用这个设计重做当前页面
+把这个 Figma 转成当前项目真正可用的页面
+```
+
+这不是第四种 Figma 模式，而是组合流程：
+
+```text
+恢复目标项目当前事实
+→ 对正式 Figma 目标执行 baseline-ready
+→ NOT_READY：
+   - 已明确授权修改 Figma → review-and-fix 后重新 baseline-ready
+   - 未授权修改 Figma → 报告阻塞，不把已知设计缺陷写入生产代码
+→ READY / 可实施的 READY_WITH_NOTES
+→ handoff 到目标项目 Coding 工作流
+→ Coding 负责实现 / 测试 / Review / CI / Git / 交付
+→ 实现完成后再用 Figma 做 targeted re-review / 视觉与交互对照
+```
+
+进入 Coding handoff 后，本 Skill 只提供已经确认的设计事实、动态数据来源、Shared/Feature/Page Owner、Prototype 和状态规格；**不得复制或替代 Coding Skill 的 Change、TDD、验证、CI、Git、PR、Release 规则。**
+
+详细 handoff 见 [05_Design-to-Code交付门禁.md](references/05_Design-to-Code交付门禁.md)。
+
+### D. 短提示词应当足够
+
+安装本 Skill 后，以下输入应当可以直接工作：
+
+```text
+全面检查这个 Figma：<link>
+全面检查并修好这个 Figma：<link>
+对照当前仓库全面验收这个 Figma：<link>
+按这个 Figma 替换当前对应页面：<link>
+```
+
+这些短句只负责选择已有流程，**不在本节复制页面尺寸、组件复用、Prototype、动态数据、真实系统映射等详细规则**；详细规则继续由后续章节和 references 单一维护。
 
 ---
 
