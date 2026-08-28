@@ -114,7 +114,7 @@ data_changes: []
 # 实施步骤
 
 - [x] 恢复最新 `main`、AGENTS/Coding/Figma Skill、目标 Feature、正式 Figma Design Context。
-- [ ] 建立 Design-to-Code 回归测试并取得正确 Red 证据。
+- [x] 建立 Design-to-Code 回归测试并取得正确 Red 证据。
 - [ ] 最小修改 Shared/Page/Feature Owner，使 Normal 与状态稿对齐。
 - [ ] 补齐 Browser Mock 状态覆盖和 1440×900 验收证据。
 - [ ] targeted 同步 Frontend README / Figma Guide。
@@ -122,6 +122,17 @@ data_changes: []
 - [ ] 执行两阶段 Review，修复所有阻塞 Finding。
 - [ ] Ready Check + 永久 CI 全绿，PR 合并 main。
 - [ ] 合并后 main 再验证并归档 Change。
+
+# Red 证据
+
+2026-08-29 在 PR #272 首个 Head `5888d815de5558c5c0d0240e54849844d36605a5` 上，GitHub Actions CI run `33201933092` / Repository Quality job `98953507650` 实际执行前端完整门禁：
+
+- 原有 `frontend/tests/voice-plaza.spec.ts`：11/11 通过；
+- 新增 `frontend/tests/voice-plaza-design.spec.ts`：3/3 因正式 Figma 差距失败；
+- 失败点分别为未复用 `AimaPageHeader`、缺筛选事实源说明、缺正式 Empty/Error 状态；
+- 总计 53 passed / 3 failed，exit code 1。
+
+因此 Red 失败来自当前页面与正式设计基线的已确认差距，不是现有 Voice Plaza 业务行为基线损坏。
 
 # Completion Audit
 
