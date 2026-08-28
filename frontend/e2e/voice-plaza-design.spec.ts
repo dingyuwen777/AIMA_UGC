@@ -103,8 +103,12 @@ test('matches the formal 1440 desktop shell and empty-state composition', async 
 })
 
 test('renders the formal loading state while the content request is in flight', async ({ page }) => {
+  let releaseContents!: () => void
+  const contentRelease = new Promise<void>((resolve) => {
+    releaseContents = resolve
+  })
   await page.route('**/api/v1/contents**', async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 800))
+    await contentRelease
     await route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({ items: [], next_cursor: null, has_more: false }),
@@ -120,6 +124,9 @@ test('renders the formal loading state while the content request is in flight', 
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {
     await page.screenshot({ path: 'test-results/voice-plaza-figma-loading.png', fullPage: true })
   }
+
+  releaseContents()
+  await expect(page.getByText('暂无符合条件的内容')).toBeVisible()
 })
 
 test('renders the formal error banner and recoverable list error state', async ({ page }) => {
@@ -141,7 +148,7 @@ test('renders the formal error banner and recoverable list error state', async (
   await expect(page.getByText('加载声音广场失败')).toBeVisible()
   await expect(page.getByText('暂时无法加载声音记录')).toBeVisible()
   await expect(page.getByText('检查网络或服务状态后点击“刷新数据”重试。')).toBeVisible()
-  await expect(page.getByRole('alert')).toContainText('req_voice_plaza_figma_error')
+  await expect(page.locator('.page-error')).toContainText('req_voice_plaza_figma_error')
   await expect(page.getByText('标题内容', { exact: true })).toHaveCount(0)
 
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {
