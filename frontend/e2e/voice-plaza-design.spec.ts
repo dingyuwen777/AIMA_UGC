@@ -93,9 +93,11 @@ test('matches the formal 1440 desktop shell and empty-state composition', async 
   const sidebar = await page.locator('.sidebar').boundingBox()
   const topbar = await page.locator('.topbar').boundingBox()
   const filters = await page.locator('.filters').boundingBox()
+  const emptyState = await page.locator('.table-state--empty').boundingBox()
   expectNear(sidebar?.width, 180)
   expectNear(topbar?.height, 60)
   expectNear(filters?.width, 1212)
+  expectNear(emptyState?.height, 376)
 
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {
     await page.screenshot({ path: 'test-results/voice-plaza-figma-empty.png', fullPage: true })
@@ -120,6 +122,7 @@ test('renders the formal loading state while the content request is in flight', 
   await expect(page.getByText('正在获取内容列表、AI 状态与运行记录')).toBeVisible()
   await expect(page.locator('.skeleton')).toHaveCount(3)
   await expect(page.getByText('标题内容', { exact: true })).toHaveCount(0)
+  expectNear((await page.locator('.table-state--loading').boundingBox())?.height, 376)
 
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {
     await page.screenshot({ path: 'test-results/voice-plaza-figma-loading.png', fullPage: true })
@@ -150,6 +153,7 @@ test('renders the formal error banner and recoverable list error state', async (
   await expect(page.getByText('检查网络或服务状态后点击“刷新数据”重试。')).toBeVisible()
   await expect(page.locator('.page-error')).toContainText('req_voice_plaza_figma_error')
   await expect(page.getByText('标题内容', { exact: true })).toHaveCount(0)
+  expectNear((await page.locator('.table-state--error').boundingBox())?.height, 306)
 
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {
     await page.screenshot({ path: 'test-results/voice-plaza-figma-error.png', fullPage: true })
@@ -206,6 +210,8 @@ test('matches the formal detail, analysis and export overlay geometry', async ({
   const drawer = page.getByRole('complementary', { name: '内容详情' })
   await expect(drawer).toBeVisible()
   const drawerBox = await drawer.boundingBox()
+  expectNear(drawerBox?.x, 830)
+  expectNear(drawerBox?.y, 0)
   expectNear(drawerBox?.width, 610)
   expectNear(drawerBox?.height, 900)
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {
@@ -220,7 +226,10 @@ test('matches the formal detail, analysis and export overlay geometry', async ({
   const analysisDialog = page.getByRole('dialog', { name: '创建 AI Analysis Run' })
   await expect(analysisDialog).toBeVisible()
   await expect(analysisDialog.getByText('预检目标 1 条，拆分 1 个 Shard')).toBeVisible()
+  await expect(analysisDialog.getByRole('button', { name: '确认并创建 Analysis Run' })).toBeEnabled()
   const analysisBox = await analysisDialog.boundingBox()
+  expectNear(analysisBox?.x, 450)
+  expectNear(analysisBox?.y, 210)
   expectNear(analysisBox?.width, 540)
   expectNear(analysisBox?.height, 446)
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {
@@ -232,6 +241,8 @@ test('matches the formal detail, analysis and export overlay geometry', async ({
   const exportDialog = page.getByRole('dialog', { name: '导出声音记录' })
   await expect(exportDialog).toBeVisible()
   const exportBox = await exportDialog.boundingBox()
+  expectNear(exportBox?.x, 395)
+  expectNear(exportBox?.y, 105)
   expectNear(exportBox?.width, 650)
   expectNear(exportBox?.height, 690)
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {
