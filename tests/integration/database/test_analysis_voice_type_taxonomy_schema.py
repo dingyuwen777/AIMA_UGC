@@ -17,8 +17,8 @@ def test_analysis_voice_type_constraint_is_structural_not_fixed_taxonomy() -> No
 
         assert "ck_analysis_content_results_voice_type_allowed" not in checks
         assert "ck_analysis_content_results_voice_type_nonempty" in checks
-        assert "char_length(voice_type)" in checks[
-            "ck_analysis_content_results_voice_type_nonempty"
-        ]
+        assert (
+            "char_length(voice_type)" in checks["ck_analysis_content_results_voice_type_nonempty"]
+        )
     finally:
         runtime.dispose()
