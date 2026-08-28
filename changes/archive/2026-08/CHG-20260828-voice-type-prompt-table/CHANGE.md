@@ -41,7 +41,7 @@ data_changes: []
 - [x] 现有输出结构 `item_no/relevance/voice_type/sentiment/labels` 不变；RuntimeTaxonomyValidator 继续按 Prompt Taxonomy 校验。
 - [x] Excel 当前合法七类显示新的中文业务名称；历史 `other_organization` 仍可兼容展示，不被重新解释为“行业从业发声”。
 - [x] 其他生产代码、Contract、数据库、API、generated client 经审计无同步修改必要；README/Appendix/Blueprint 不复制具体七类业务定义，无需机械同步。
-- [x] 最终实现 HEAD `7ffe6931c906105a142a71fb0e2e03d1c2490dd1` 已通过 CI、Runtime Acceptance、Full-stack Acceptance、Developer Tooling Compatibility；Change 进入 Ready 后需在新 HEAD 重新通过全部永久门禁。
+- [x] 最终 Ready HEAD `e2d7b90924361002622edd436905c47f08b5dd3e` 五个永久 PR 门禁全部通过；PR #258 已 squash merge 到 `main=66ccfb7f26d9a904ee1db626eb3e9acc10cac56d`，且合并后 main 五个 push workflow 全部成功。
 
 # 范围
 
@@ -106,14 +106,14 @@ data_changes: []
 | 跨组件 Golden Path | not_applicable | 不修改 API/Job/Worker 装配；Runtime Acceptance `33155926565` success，作为额外运行时回归证据 |
 | 外部依赖 Probe | not_applicable | 不修改 LLM HTTP 协议或外部 Provider 字段；无需付费 Probe |
 | Build / Package / Runtime | required | CI `33155926602` Repository Quality `98798671471`：Ruff 529 files、mypy 254 source files、Wheel build/install/import、frontend lint/type/build、50 Vitest、31 Playwright 全部成功；Developer Tooling `33155926598` success |
-| Docs / Governance / Other | required | Secret/docs、architecture/table ownership、generated drift 均通过；A1/A2 Review 已完成；本提交把 Change 切到 `ready_for_review`，需以新 HEAD 的 Change Completion Gate 为最终 Ready 证据 |
+| Docs / Governance / Other | required | Secret/docs、architecture/table ownership、generated drift 均通过；A1/A2 Review 已完成；Ready HEAD Change Completion Gate `33156478703` success，merge 后 main Change Completion Gate `33156780904` success；归档 PR 继续执行 docs/governance 与 archive gate |
 
 # Completion Audit
 
 - [x] upstream_re_read：进入 Ready 前重新读取目标分支根 `AGENTS.md`、本轮用户的七类发声类型定义与表格/示例要求、当前 Prompt、Analysis README/AI/Excel Appendix 既有唯一事实源边界，并核对当前 `main`。
 - [x] change_coverage：重新从用户要求独立重建完成定义，逐项对照七类业务定义、四类判断表格、每表格下边界/示例、代码/文档影响审计与 main 合并要求；未发现 Requirement omission。
 - [x] reverse_audit：沿 `Prompt Taxonomy -> Prompt Loader/Runtime Validator -> Analysis Contract/DB/API -> Excel Export` 双向复核；核心运行链不维护具体枚举，Excel 仅保留展示别名；历史 `other_organization` 不会被新 `industry_professional` 重新解释。前端/Job/DB 无本次新增能力入口，因此相应能力反向审计不适用。
-- [x] unresolved_cleared：R1-R4 已有最终 Green 证据并转 `satisfied`；实现范围内 `not_satisfied` 清零。R5 仅因仓库要求必须先通过 Ready/CI 再执行 merge/main 验证而 `explicitly_deferred`，不是功能遗漏。
+- [x] unresolved_cleared：R1-R5 均已取得实际实现、Ready/PR、merge 与 main push CI 证据并处于 `satisfied`；`not_satisfied` 与 `explicitly_deferred` 均已清零。
 
 # 任务
 
