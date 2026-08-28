@@ -72,7 +72,9 @@ const emit = defineEmits<{
             <section class="stats">
               <div><span>请求</span><strong>{{ formatNumber(item.stats.requested_count) }}</strong></div>
               <div><span>成功</span><strong>{{ formatNumber(item.stats.succeeded_count) }}</strong></div>
-              <div class="stat-error"><span>失败</span><strong>{{ formatNumber(item.stats.failed_count) }}</strong></div>
+              <div class="stat-error">
+                <span>失败</span><strong>{{ formatNumber(item.stats.failed_count) }}</strong>
+              </div>
               <div><span>内容</span><strong>{{ formatNumber(item.stats.content_count) }}</strong></div>
               <div><span>评论</span><strong>{{ formatNumber(item.stats.comment_count) }}</strong></div>
               <div><span>相关性过滤</span><strong>{{ formatNumber(item.stats.filtered_count) }}</strong></div>
