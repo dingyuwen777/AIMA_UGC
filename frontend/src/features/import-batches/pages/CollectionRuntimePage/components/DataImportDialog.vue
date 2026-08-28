@@ -581,15 +581,15 @@ function viewCampaignContents(): void {
             <section class="campaign-stats">
               <strong>处理统计</strong>
               <div>
-                <span>新建<b>{{ store.selectedHistoricalCampaign.stats?.created ?? 0 }}</b></span>
-                <span>补空<b>{{ store.selectedHistoricalCampaign.stats?.filled ?? 0 }}</b></span>
-                <span>更新<b>{{ store.selectedHistoricalCampaign.stats?.updated ?? 0 }}</b></span>
-                <span>未变<b>{{ store.selectedHistoricalCampaign.stats?.unchanged ?? 0 }}</b></span>
-                <span>冲突<b>{{ store.selectedHistoricalCampaign.stats?.conflict ?? 0 }}</b></span>
-                <span>过滤<b>{{ store.selectedHistoricalCampaign.stats?.filtered ?? 0 }}</b></span>
-                <span>重复<b>{{ store.selectedHistoricalCampaign.stats?.duplicate ?? 0 }}</b></span>
-                <span>无效<b>{{ store.selectedHistoricalCampaign.stats?.invalid ?? 0 }}</b></span>
-                <span>失败<b>{{ store.selectedHistoricalCampaign.stats?.failed ?? 0 }}</b></span>
+                <span>新建 <b>{{ store.selectedHistoricalCampaign.stats?.created ?? 0 }}</b></span>
+                <span>补空 <b>{{ store.selectedHistoricalCampaign.stats?.filled ?? 0 }}</b></span>
+                <span>更新 <b>{{ store.selectedHistoricalCampaign.stats?.updated ?? 0 }}</b></span>
+                <span>未变 <b>{{ store.selectedHistoricalCampaign.stats?.unchanged ?? 0 }}</b></span>
+                <span>冲突 <b>{{ store.selectedHistoricalCampaign.stats?.conflict ?? 0 }}</b></span>
+                <span>过滤 <b>{{ store.selectedHistoricalCampaign.stats?.filtered ?? 0 }}</b></span>
+                <span>重复 <b>{{ store.selectedHistoricalCampaign.stats?.duplicate ?? 0 }}</b></span>
+                <span>无效 <b>{{ store.selectedHistoricalCampaign.stats?.invalid ?? 0 }}</b></span>
+                <span>失败 <b>{{ store.selectedHistoricalCampaign.stats?.failed ?? 0 }}</b></span>
               </div>
             </section>
 
@@ -679,9 +679,8 @@ function viewCampaignContents(): void {
               查看导入内容
             </AimaButton>
             <AimaButton
-              v-if="store.selectedHistoricalCampaign.can_start"
               variant="primary"
-              :disabled="store.actingHistorical"
+              :disabled="!store.selectedHistoricalCampaign.can_start || store.actingHistorical"
               @click="startCampaign"
             >
               开始导入
