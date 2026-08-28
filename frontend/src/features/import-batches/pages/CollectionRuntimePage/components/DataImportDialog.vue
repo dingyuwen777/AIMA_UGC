@@ -478,7 +478,7 @@ function viewCampaignContents(): void {
                   type="checkbox"
                   :disabled="store.creatingHistorical"
                 >
-                递归发现 .xlsx 文件
+                选择目录时递归发现其中的 .xlsx
                 <small>受服务器深度、文件数、批准根目录和分页限制</small>
               </label>
             </section>
@@ -515,7 +515,7 @@ function viewCampaignContents(): void {
             </section>
 
             <AimaFeedbackBanner tone="info">
-              创建后先完成来源确认、不可变快照与预检；导入完成不会自动触发智能分析，需要在分析入口手动执行。
+              创建后先完成来源确认、不可变快照与预检；AI 不会自动执行，智能分析需要在分析入口手动创建。
             </AimaFeedbackBanner>
           </template>
 
@@ -530,7 +530,7 @@ function viewCampaignContents(): void {
                   v-for="campaign in store.historicalCampaigns"
                   :key="campaign.id"
                   type="button"
-                  :aria-label="`打开导入任务 ${campaign.id}`"
+                  :aria-label="`打开 Campaign ${campaign.id}`"
                   :class="{ selected: store.selectedHistoricalCampaign?.id === campaign.id }"
                   @click="store.refreshHistoricalCampaign(campaign.id)"
                 >
@@ -574,7 +574,7 @@ function viewCampaignContents(): void {
                 />
               </div>
               <AimaFeedbackBanner tone="info">
-                预检只准备导入任务；智能分析仍需在分析入口显式创建，不会随导入自动执行。
+                预检只准备导入任务；AI 不会自动执行，智能分析仍需在分析入口显式创建。
               </AimaFeedbackBanner>
             </section>
 
@@ -643,6 +643,7 @@ function viewCampaignContents(): void {
           </AimaButton>
           <template v-if="!store.selectedHistoricalCampaign">
             <AimaButton
+              class="create-button"
               variant="primary"
               :disabled="!canCreate"
               :aria-busy="store.creatingHistorical"
@@ -659,7 +660,7 @@ function viewCampaignContents(): void {
               :disabled="store.actingHistorical"
               @click="cancelCampaign"
             >
-              取消任务
+              取消
             </AimaButton>
             <AimaButton
               v-if="canRetry"
