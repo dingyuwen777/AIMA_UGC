@@ -50,17 +50,7 @@ relevance = irrelevant
 
 历史 `ContentLabelAnalysisV1/V2` 只保留读取兼容，不再作为新写入格式。
 
-当前 `voice_type`：
-
-```text
-user_voice
-creator_marketing
-brand_official
-dealer_promotion
-media_information
-other_organization
-unknown
-```
+当前 `voice_type` 合法值集合不在本文复制。唯一机器事实来自当前 Prompt 的机器 Taxonomy `voice_types`；各类型定义、边界、高混淆场景和学习示例也只在同一 Prompt 维护。当前结果继续以字符串 `voice_type` 保存，运行时由 `RuntimeTaxonomyValidator` 严格校验 membership。
 
 真实用户发声唯一业务判断：
 
@@ -78,29 +68,31 @@ voice_type == user_voice
 backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md
 ```
 
-完整情感、9 个一级/39 个二级标签、父子关系、判断规则和示例只维护在这份 Prompt Markdown。
+完整情感、发声类型、9 个一级/39 个二级标签及其父子关系，以及自然语言判断标准、边界和学习示例，只维护在这份 Prompt Markdown。
 
 相关代码：
 
 ```text
 prompt_taxonomy.py
-→ 解析机器 Taxonomy JSON
-→ 校验合法性
+→ 解析 sentiments / voice_types / labels 机器 Taxonomy JSON
+→ 校验合法性、唯一性与标签父子关系
 → taxonomy_sha256
 
 prompt_snapshot.py
 → 冻结 Prompt/Taxonomy 身份
 ```
 
-Python 不维护第二套具体标签 Enum/映射；Blueprint/Appendix 也不复制完整 taxonomy。
+Python、数据库、前端和 Blueprint/Appendix 不维护第二套具体 AI 业务 Taxonomy 列表。
 
-修改标签体系时：
+修改情感、发声类型、一级/二级标签、判断边界或学习示例时：
 
 ```text
-Prompt
+Prompt 的自然语言规则 + 同文件机器 Taxonomy（需要改变合法值时）
 → Prompt/Validator tests
-→ 如果输出 Contract/DB 结构没有变化，不修改 Python 标签常量（因为不存在这套常量）
+→ 固定输出 JSON 结构没有变化时，不修改 Python Contract 或数据库 Schema
 ```
+
+`prompt_sha256` 标识完整 Prompt 变化；`taxonomy_sha256` 只随机器 Taxonomy 变化。因此只优化判断规则/示例时，可以出现 Prompt Hash 变化而 Taxonomy Hash 不变。
 
 ---
 
@@ -398,9 +390,8 @@ docs/appendix/07_AI舆情打标与分析实现.md
 
 | 需求 | 正确入口 |
 | --- | --- |
-| 改业务标签/判断标准 | 当前 Prompt + Prompt/Validator tests |
+| 改情感 / `voice_type` / 一级二级标签合法值、判断标准、边界或学习示例 | 当前 Prompt + Prompt/Validator tests；固定输出结构未变时不改 Contract/DB Schema |
 | 改 V3 输出结构 | Analysis Contract + Service/Validator + DB/API/Export/Frontend + Migration（需要时） |
-| 改 `voice_type` 值集合 | Prompt + Contract + Validator + DB Check/Migration + Excel/Frontend/tests |
 | 改 current/stale/pending | Analysis Identity + Content Query Repository + API/Frontend tests |
 | 改模型/Base URL | Platform Settings + `adapters/llm` + Pricing |
 | 改网络 Retry | `adapters/llm/retrying.py` + audit tests |

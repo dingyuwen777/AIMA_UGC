@@ -13,7 +13,7 @@ from typing import Any
 
 _TAXONOMY_START = "<!-- AIMA_TAXONOMY_START -->"
 _TAXONOMY_END = "<!-- AIMA_TAXONOMY_END -->"
-_TAXONOMY_SCHEMA_VERSION = "aima-content-taxonomy.v1"
+_TAXONOMY_SCHEMA_VERSION = "aima-content-taxonomy.v2"
 PROMPT_VERSION = "content-labeling.v3"
 CONTENT_LABELING_PROMPT_PATH = Path(__file__).with_name("prompts") / "content_labeling_v3.md"
 
@@ -30,6 +30,7 @@ class PromptTaxonomy:
     prompt_text: str
     schema_version: str
     sentiments: tuple[str, ...]
+    voice_types: tuple[str, ...]
     labels: Mapping[str, tuple[str, ...]]
     taxonomy_sha256: str
     prompt_sha256: str
@@ -77,10 +78,10 @@ class PromptTaxonomyLoader:
 
         if not isinstance(payload, dict):
             raise PromptTaxonomyError("Prompt Taxonomy 根节点必须是 JSON object")
-        expected_keys = {"schema_version", "sentiments", "labels"}
+        expected_keys = {"schema_version", "sentiments", "voice_types", "labels"}
         if set(payload) != expected_keys:
             raise PromptTaxonomyError(
-                "Prompt Taxonomy 根节点字段必须严格为 schema_version/sentiments/labels"
+                "Prompt Taxonomy 根节点字段必须严格为 schema_version/sentiments/voice_types/labels"
             )
 
         schema_version = payload["schema_version"]
@@ -90,6 +91,7 @@ class PromptTaxonomyLoader:
             )
 
         sentiments = _clean_string_list(payload["sentiments"], field_name="sentiments")
+        voice_types = _clean_string_list(payload["voice_types"], field_name="voice_types")
         raw_labels = payload["labels"]
         if not isinstance(raw_labels, dict) or not raw_labels:
             raise PromptTaxonomyError("labels 必须是非空 JSON object")
@@ -118,6 +120,7 @@ class PromptTaxonomyLoader:
             {
                 "schema_version": schema_version,
                 "sentiments": list(sentiments),
+                "voice_types": list(voice_types),
                 "labels": {primary: list(secondaries) for primary, secondaries in labels.items()},
             },
             ensure_ascii=False,
@@ -130,6 +133,7 @@ class PromptTaxonomyLoader:
             prompt_text=prompt_text,
             schema_version=schema_version,
             sentiments=sentiments,
+            voice_types=voice_types,
             labels=MappingProxyType(labels),
             taxonomy_sha256=hashlib.sha256(normalized_taxonomy).hexdigest(),
             prompt_sha256=hashlib.sha256(prompt_text.encode("utf-8")).hexdigest(),

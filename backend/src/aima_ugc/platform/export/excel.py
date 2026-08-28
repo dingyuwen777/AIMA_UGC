@@ -600,11 +600,11 @@ def _analysis_label_pairs(
     )
 
 
-def _voice_type_display_name(value: str) -> str:
-    try:
-        return _VOICE_TYPE_DISPLAY_NAMES[value]
-    except KeyError as exc:
-        raise ValueError(f"不支持的发声类型: {value}") from exc
+def _voice_type_display_name(value: str | None) -> str | None:
+    if value is None:
+        return None
+    # 这里只提供既有中文展示别名，不定义合法 Taxonomy；新值必须可直接透传。
+    return _VOICE_TYPE_DISPLAY_NAMES.get(value, value)
 
 
 def _content_cells(

@@ -17,9 +17,8 @@ def test_analysis_result_schema_persists_relevance_and_voice_type() -> None:
         if isinstance(constraint, CheckConstraint)
     }
     assert "relevance in ('relevant','irrelevant')" in check_sql
-    assert any(
-        "voice_type in" in expression and "user_voice" in expression for expression in check_sql
-    )
+    assert "char_length(voice_type) > 0" in check_sql
+    assert not any("voice_type in" in expression for expression in check_sql)
     # 数据库也必须强制 V3 条件结构，不能只依赖 LLM Prompt 或 Pydantic Validator。
     assert any(
         "relevance = 'relevant'" in expression
