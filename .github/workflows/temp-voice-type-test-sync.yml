@@ -1,0 +1,62 @@
+name: Temporary Voice Type Test Sync
+
+on:
+  push:
+    branches:
+      - feature/voice-type-prompt-table
+    paths:
+      - .github/workflows/temp-voice-type-test-sync.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/voice-type-prompt-table
+          fetch-depth: 0
+      - name: Sync legacy assertions with approved prompt layout and display name
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          prompt_test = Path("tests/unit/analysis/test_content_labeling.py")
+          text = prompt_test.read_text(encoding="utf-8")
+          old = '''    assert "## 情感判断标准" in prompt
+              assert "## 一级/二级标签判断标准" in prompt
+              assert "## 多主题与边界冲突优先级" in prompt
+              assert "## 示例" in prompt
+              assert "典型表达只作理解辅助" in prompt
+          '''
+          new = '''    assert "## 情感判断标准" in prompt
+              assert "## 一级/二级标签判断标准" in prompt
+              assert "### 一级/二级标签高混淆场景" in prompt
+              assert "### 一级/二级标签示例" in prompt
+              assert "典型表达只作理解辅助" in prompt
+          '''
+          if old not in text:
+              raise SystemExit("legacy prompt-section assertions not found")
+          prompt_test.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          excel_test = Path("tests/unit/platform/test_excel_export.py")
+          excel = excel_test.read_text(encoding="utf-8")
+          old_display = '            "达人/创作者营销",\n'
+          new_display = '            "营销推广发声",\n'
+          if old_display not in excel:
+              raise SystemExit("legacy Excel display assertion not found")
+          excel_test.write_text(excel.replace(old_display, new_display, 1), encoding="utf-8")
+          PY
+
+          rm .github/workflows/temp-voice-type-test-sync.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/unit/analysis/test_content_labeling.py \
+                  tests/unit/platform/test_excel_export.py \
+                  .github/workflows/temp-voice-type-test-sync.yml
+          git commit -m "测试：同步发声类型新版排版与展示断言"
+          git push origin HEAD:feature/voice-type-prompt-table
