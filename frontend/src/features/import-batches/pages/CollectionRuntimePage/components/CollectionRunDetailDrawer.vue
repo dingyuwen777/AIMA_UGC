@@ -49,7 +49,9 @@ const emit = defineEmits<{
 
           <div class="drawer-body">
             <div class="title-row">
-              <div><span>{{ item.mode === 'discovery' ? '独立发现新内容' : '基于已有批次补采' }}</span><h2>{{ item.keywords?.length ? item.keywords.join(' / ') : '批次内容补采' }}</h2></div>
+              <div>
+                <span>{{ item.mode === 'discovery' ? '独立发现新内容' : '基于已有批次补采' }}</span><h2>{{ item.keywords?.length ? item.keywords.join(' / ') : '批次内容补采' }}</h2>
+              </div>
               <b :class="`status status--${item.status}`">{{ runtimeStatusLabels[item.status] }}</b>
             </div>
             <section class="facts">
