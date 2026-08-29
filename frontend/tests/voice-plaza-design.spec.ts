@@ -79,6 +79,7 @@ describe('声音广场正式 Figma 基线', () => {
 
     expect(empty).toContain('暂无符合条件的内容')
     expect(empty).toContain('当前没有可加载的下一页，不显示虚构页码')
+    expect(empty).toContain('data-aima-icon="empty"')
     expect(error).toContain('暂时无法加载声音记录')
     expect(error).toContain('检查网络或服务状态后点击“刷新数据”重试')
   })
