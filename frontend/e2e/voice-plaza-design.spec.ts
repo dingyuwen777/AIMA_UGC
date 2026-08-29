@@ -36,6 +36,50 @@ const content = {
   source: { provider_name: 'fixture' },
 }
 
+const normalItems = [
+  content,
+  {
+    ...content,
+    id: '43345678-1234-5678-1234-567812345678',
+    external_content_id: 'voice-plaza-figma-2',
+    title: '新提的爱玛露娜，奶油白配色实车比照片更耐看',
+    author_display_name: '测试用户 B',
+    analysis: { ...content.analysis, sentiment: '正面' },
+  },
+  {
+    ...content,
+    id: '44345678-1234-5678-1234-567812345678',
+    external_content_id: 'voice-plaza-figma-3',
+    title: '同价位怎么选？通勤 20 公里更看重舒适和售后',
+    author_display_name: '测试用户 C',
+    analysis: { ...content.analysis, sentiment: '中性' },
+  },
+]
+
+const normalRun = {
+  id: '62345678-1234-5678-1234-567812345678',
+  planner_job_id: '63345678-1234-5678-1234-567812345678',
+  sequence_no: 12,
+  status: 'succeeded',
+  run_intent: 'manual_reanalysis',
+  scope: 'selected',
+  target_count: 3,
+  shard_count: 1,
+  shard_size: 3,
+  prompt_version: 'content_labeling_v3',
+  prompt_sha256: 'a'.repeat(64),
+  taxonomy_sha256: 'b'.repeat(64),
+  model_provider: 'openai-compatible',
+  model: 'fixture-model',
+  generation_config: { temperature: 0 },
+  generation_config_hash: 'c'.repeat(64),
+  stats: { pending: 0, succeeded: 3, failed: 0, cancelled: 0, stale: 0 },
+  shards: [],
+  created_at: '2026-08-29T02:00:00Z',
+  started_at: '2026-08-29T02:00:01Z',
+  finished_at: '2026-08-29T02:00:03Z',
+}
+
 test.use({ viewport: { width: 1440, height: 900 } })
 
 /** 为 Design-to-Code 状态测试固定与目标状态无关的能力、Run 和 Export 只读响应。 */
@@ -72,8 +116,42 @@ function expectNear(actual: number | undefined, expected: number): void {
   expect(Math.abs((actual ?? 0) - expected)).toBeLessThanOrEqual(1)
 }
 
+/** 固定正式 Normal / Runtime 状态共用的三行内容列表。 */
+async function stubNormalContents(page: Page): Promise<void> {
+  await page.route('**/api/v1/contents**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ items: normalItems, next_cursor: 'figma-next', has_more: true }),
+    })
+  })
+}
+
 test.beforeEach(async ({ page }) => {
   await stubCommonRoutes(page)
+})
+
+test('matches the formal normal data composition with run history, table rows and cursor', async ({ page }) => {
+  await stubNormalContents(page)
+  await page.route('**/api/v1/analysis/content-runs**', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname !== '/api/v1/analysis/content-runs') return route.fallback()
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ items: [normalRun] }),
+    })
+  })
+
+  await page.goto('/voice-plaza')
+  await expect(page.getByRole('heading', { name: '声音广场' })).toBeVisible()
+  await expect(page.getByLabel('AI Analysis Run 历史')).toBeVisible()
+  await expect(page.locator('.content-row')).toHaveCount(3)
+  await expect(page.getByText('标题内容', { exact: true })).toBeVisible()
+  await expect(page.getByText('游标分页不会虚构总页数')).toBeVisible()
+  await expect(page.getByRole('button', { name: '加载更多 →' })).toBeEnabled()
+
+  if (process.env.AIMA_CAPTURE_VISUAL === '1') {
+    await page.screenshot({ path: 'test-results/voice-plaza-figma-normal.png', fullPage: true })
+  }
 })
 
 test('matches the formal 1440 desktop shell and empty-state composition', async ({ page }) => {
@@ -89,6 +167,7 @@ test('matches the formal 1440 desktop shell and empty-state composition', async 
   await expect(page.getByText('当前没有可加载的下一页，不显示虚构页码。')).toBeVisible()
   await expect(page.getByText('游标分页不会虚构总页数')).toHaveCount(0)
   await expect(page.getByText('标题内容', { exact: true })).toHaveCount(0)
+  await expect(page.locator('[data-aima-icon="empty"]')).toBeVisible()
 
   const sidebar = await page.locator('.sidebar').boundingBox()
   const topbar = await page.locator('.topbar').boundingBox()
@@ -157,6 +236,28 @@ test('renders the formal error banner and recoverable list error state', async (
 
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {
     await page.screenshot({ path: 'test-results/voice-plaza-figma-error.png', fullPage: true })
+  }
+})
+
+test('keeps the formal runtime-unavailable warning while the content list stays usable', async ({ page }) => {
+  await stubNormalContents(page)
+  await page.route('**/api/v1/content-analysis-capabilities', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ configured: false }),
+    })
+  })
+
+  await page.goto('/voice-plaza')
+  const warning = page.locator('.capability-warning')
+  await expect(warning).toContainText('AI 打标暂不可用：当前环境尚未配置可用的 LLM Runtime。')
+  await expect(page.getByRole('button', { name: 'AI 打标' })).toBeDisabled()
+  await expect(page.locator('.content-row')).toHaveCount(3)
+  await expect(page.getByRole('button', { name: '查看详情' }).first()).toBeEnabled()
+  await expect(page.getByRole('button', { name: '查询' })).toBeEnabled()
+
+  if (process.env.AIMA_CAPTURE_VISUAL === '1') {
+    await page.screenshot({ path: 'test-results/voice-plaza-figma-runtime-unavailable.png', fullPage: true })
   }
 })
 
