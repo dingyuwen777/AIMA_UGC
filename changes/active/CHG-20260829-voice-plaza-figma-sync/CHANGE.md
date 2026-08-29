@@ -27,7 +27,7 @@ data_changes: []
 
 # 背景与现状
 
-`/voice-plaza` 当前业务链路已经具备 Content 查询、Cursor、Detail、Analysis Run、人工相关性复核和 Excel Export，但页面视觉仍早于已经验收 READY 的正式 Figma 基线。正式设计文件为 `EAPm8KVarUe7BFTSnzvOpT`，开发 Section `3079:328`，Normal/Data 起点 `169:10`。
+`/voice-plaza` 业务链路已经具备 Content 查询、Cursor、Detail、Analysis Run、人工相关性复核和 Excel Export，但本 Change 开始时页面视觉仍早于已经验收 READY 的正式 Figma 基线。正式设计文件为 `EAPm8KVarUe7BFTSnzvOpT`，开发 Section `3079:328`，Normal/Data 起点 `169:10`。
 
 本 Change 只同步页面视觉、状态表达和交互组合，不重做后端业务能力，不改变 Pydantic/OpenAPI/generated client、数据库 Schema 或 Analysis/Export 业务语义。
 
@@ -46,7 +46,7 @@ data_changes: []
 - `VoicePlazaFilters`、`VoicePlazaTable`、`ContentDetailDrawer`、`AnalysisSubmitDialog`、`DataExportDialog` 的 Figma 对齐。
 - 仅在真实公共 Owner 存在缺口时最小扩展 Shared UI，例如语义图标。
 - Voice Plaza Design-to-Code 回归测试、相关 Browser Mock E2E。
-- 实现完成后的 `frontend/README.md` 与 Figma Guide targeted 文档同步。
+- 实现完成后的 `frontend/README.md` 与 Figma Guide targeted 文档复核/同步。
 
 ## Excluded
 
@@ -69,18 +69,18 @@ data_changes: []
 
 # Requirement Traceability
 
-| ID | 上游要求 / 事实源 | 当前状态 | 实现 Owner / 证据 |
-| --- | --- | --- | --- |
-| R1 | 用户明确要求以正式 Figma 替换 `/voice-plaza` 页面表现 | not_satisfied | `169:10` + VoicePlazaPage/components |
-| R2 | Figma `169:10`：复用 App Shell、Page Header、Actions、11 个筛选、Run、表格、Cursor | not_satisfied | AppShell / Shared UI / Voice Plaza Feature |
-| R3 | Figma `3083:134/351/568`：Loading/Empty/Error | not_satisfied | VoicePlazaTable/Page + Browser Mock |
-| R4 | Figma `3085:654`：Runtime 未配置时 Warning + AI disabled，列表仍可用 | not_satisfied | Store capability + Page |
-| R5 | Figma `3084:311`：610px Detail Drawer，同时保留真实 supplement/媒体/评论能力 | not_satisfied | ContentDetailDrawer |
-| R6 | Figma `3084:568`：selected-only Analysis Preview/Create，动态 Preview 数据 | not_satisfied | AnalysisSubmitDialog + current Store/API |
-| R7 | Figma `3084:770`：selected/page/query Export、进度、下载、7天保留 | not_satisfied | DataExportDialog + TaskProgressBar + artifactRetention |
-| R8 | Figma/Guide：公共组件按真实 Owner 复用，不机械创建第二套组件库 | not_satisfied | AppShell/shared/ui + Review |
-| R9 | 当前 Contract/Feature：不改变 Cursor、Analysis、Review、Export、Detail 业务语义 | not_satisfied | existing unit/E2E + generated diff zero |
-| R10 | 用户要求实现后 targeted visual review、Review、CI、正常合并 main | not_satisfied | Fresh screenshots + PR/CI/main evidence |
+| ID | Requirement | Source | Status | Evidence |
+| --- | --- | --- | --- | --- |
+| R1 | 以正式 Figma 替换 `/voice-plaza` 的页面视觉与交互组合 | user:声音广场正式Figma同步任务 | satisfied | `frontend/src/features/voice-plaza/pages/VoicePlazaPage/`；Fresh Figma ↔ 1440×900 Browser Visual Evidence |
+| R2 | Normal/Data 复用 App Shell、Page Header、Actions、11 个筛选、Run、表格和 Cursor | external:Figma-EAPm8KVarUe7BFTSnzvOpT-169:10 | satisfied | `VoicePlazaPage.vue`、`VoicePlazaFilters.vue`、`VoicePlazaTable.vue`；`frontend/e2e/voice-plaza-design.spec.ts` Normal 场景 |
+| R3 | Loading / Empty / Error 使用正式状态稿，状态卡不保留数据表头或虚构分页 | external:Figma-EAPm8KVarUe7BFTSnzvOpT-3083:134-351-568 | satisfied | `VoicePlazaTable.vue`；Browser Mock 状态验收；Empty 菱形图标 Red→Green |
+| R4 | AI Runtime 未配置时展示 Warning、禁用 AI 打标，同时列表和非 AI 操作仍可用 | external:Figma-EAPm8KVarUe7BFTSnzvOpT-3085:654 | satisfied | `VoicePlazaPage.vue`；`frontend/e2e/voice-plaza-design.spec.ts` Runtime unavailable；现有 Voice Plaza E2E |
+| R5 | Detail 使用 610px Drawer，同时保留 supplement、媒体、评论等真实能力 | external:Figma-EAPm8KVarUe7BFTSnzvOpT-3084:311 | satisfied | `ContentDetailDrawer.vue`；1440×900 geometry + Browser Mock；既有 detail/supplement 单测 |
+| R6 | Analysis 使用 selected-only Preview/Create，并显示当前真实 Preview 数据 | external:Figma-EAPm8KVarUe7BFTSnzvOpT-3084:568 | satisfied | `AnalysisSubmitDialog.vue` + existing Store/API；540×446 geometry + Browser Mock |
+| R7 | Export 保留 selected/page/query、进度、下载和 7 天 Artifact retention | external:Figma-EAPm8KVarUe7BFTSnzvOpT-3084:770 | satisfied | `DataExportDialog.vue` + `TaskProgressBar.vue` + `artifactRetention.ts`；650×690 Browser Mock；既有 retention E2E |
+| R8 | 公共部分复用真实 Shared Owner，不机械建立第二套组件库 | external:Figma-Design-to-Code-owner-mapping | satisfied | `AimaPageHeader`、`AimaButton`、`AimaFeedbackBanner`、`AimaIcon` 复用；Feature 私有组件仍留 Page Owner |
+| R9 | 不改变 Cursor、Analysis、人工复核、Export、Detail、Contract/generated 业务语义 | repo:frontend/src/features/voice-plaza | satisfied | Store/API 无本 Change 语义改写；CI generated drift gate 通过；Runtime/Full-stack/PostgreSQL 回归通过 |
+| R10 | targeted visual review、正式 Review、永久 CI 后再进入 Ready 并正常合并 main | user:本任务Git与交付授权 | pending_review | Visual Evidence 与永久 CI 已完成；正式独立 Review、Ready、merge/main 验证仍按 Git/交付步骤执行 |
 
 # Design-to-Code 映射
 
@@ -98,32 +98,35 @@ data_changes: []
 
 # Validation Matrix
 
-| 维度 | 级别 | 计划 |
+| 维度 | 级别 | 当前证据 |
 | --- | --- | --- |
-| Voice Plaza unit/component | required | Vitest：现有行为 + Design-to-Code 结构/状态回归 |
-| Shared UI regression | required if modified | 相关 Vitest / App Shell 回归 |
-| Lint / Typecheck / Build | required | 当前 `frontend/package.json` 脚本 |
-| Browser Mock Acceptance | required | Playwright：Normal、Runtime unavailable、Detail、Analysis、Export；补 Loading/Empty/Error 视觉状态 |
-| 1440×900 Fresh Figma visual review | required | Fresh Figma Screenshot ↔ Playwright capture/结构尺寸证据 |
-| Contract/generated | required | generated 目录无手工 diff；仓库 CI Contract gate |
-| Backend/API/PostgreSQL | regression-by-CI | 本 Change 不改接口/后端；执行仓库永久 CI，不能由 Browser Mock 冒充 |
-| Real Full-stack | targeted regression | wiring 未变时复用现有 Golden Path/仓库门禁；若 wiring 改动则运行相关 fullstack spec |
+| Voice Plaza unit/component | required | `frontend/tests/voice-plaza.spec.ts` + `voice-plaza-design.spec.ts`；当前 CI Vitest 门禁通过 |
+| Shared UI regression | required if modified | App Shell / shared UI 相关 Vitest 与完整前端测试门禁通过 |
+| Lint / Typecheck / Build | required | CI Repository Quality 通过 |
+| Browser Mock Acceptance | required | Playwright 覆盖 Normal、Loading、Empty、Error、Runtime unavailable、Detail、Analysis、Export；当前 CI 通过 |
+| 1440×900 Fresh Figma visual review | required | Visual Evidence run `33225606958`，8 张 1440×900 截图；Fresh Figma targeted 对照无阻塞差异 |
+| Contract/generated | required | CI 重新生成 Contract/Orval 后 `git diff --exit-code` 与 compatibility gate 通过 |
+| Backend/API/PostgreSQL | regression-by-CI | CI PostgreSQL Integration 通过；本 Change 无后端 diff |
+| Real Full-stack | targeted regression | Full-stack Acceptance run `33225609693` 通过，真实 Browser/API/Worker/PostgreSQL 链路未回归 |
 | External Provider probe | not_applicable | 页面视觉同步不调用 TikHub/LLM Provider |
-| Docs/Governance | required | Docs targeted review + Completion Audit + Ready Check |
+| Docs/Governance | required | `frontend/README.md` targeted 复核后无需修改；Figma Guide 新增 7.2 正式基线；最终 Ready 前再跑文档/Completion Gate |
 
 # 实施步骤
 
 - [x] 恢复最新 `main`、AGENTS/Coding/Figma Skill、目标 Feature、正式 Figma Design Context。
 - [x] 建立 Design-to-Code 回归测试并取得正确 Red 证据。
-- [ ] 最小修改 Shared/Page/Feature Owner，使 Normal 与状态稿对齐。
-- [ ] 补齐 Browser Mock 状态覆盖和 1440×900 验收证据。
-- [ ] targeted 同步 Frontend README / Figma Guide。
-- [ ] 重新读取上游事实，完成 Completion Audit。
+- [x] 最小修改 Shared/Page/Feature Owner，使 Normal 与状态稿对齐。
+- [x] 补齐 Browser Mock 状态覆盖和 1440×900 验收证据。
+- [x] targeted 复核 Frontend README，并同步 Figma Guide。
+- [x] 重新读取上游事实，完成实现侧 Completion Audit。
 - [ ] 执行两阶段 Review，修复所有阻塞 Finding。
-- [ ] Ready Check + 永久 CI 全绿，PR 合并 main。
-- [ ] 合并后 main 再验证并归档 Change。
+- [ ] 删除临时视觉 Workflow，在无临时验证文件的最终 HEAD 上完成 Ready Check + 永久 CI 全绿。
+- [ ] PR 转 Ready 并正常合并 `main`，合并后验证。
+- [ ] 通过独立归档 PR 移入 `changes/archive/2026-08/` 并清理分支。
 
-# Red 证据
+# Red / Green 证据
+
+## 首轮 Design-to-Code Red
 
 2026-08-29 在 PR #272 首个 Head `5888d815de5558c5c0d0240e54849844d36605a5` 上，GitHub Actions CI run `33201933092` / Repository Quality job `98953507650` 实际执行前端完整门禁：
 
@@ -134,16 +137,44 @@ data_changes: []
 
 因此 Red 失败来自当前页面与正式设计基线的已确认差距，不是现有 Voice Plaza 业务行为基线损坏。
 
+## Empty 图标 targeted Red → Green
+
+Fresh Figma targeted review 发现 Empty 状态正式稿使用灰色圆形中的菱形语义图标，而实现仍使用 `voice` 波形图标。
+
+- Red commit `81e26433dcc9bc1c07b88d6051b2416733d4d741` 增加 `data-aima-icon="empty"` 断言；CI run `33225185083` 精确因实际仍为 `voice` 失败，55 passed / 1 failed。
+- Green commits `ae5c364b0926155a97f39f03441f388bae9d296d`、`83b1498bbc5298170820b1e0cfd68058c0c0fc89` 只新增 Shared `empty` 图标并替换 Empty 状态引用。
+- Green CI run `33225387299`：Vitest 56/56、Build、Browser Mock 35/35、PostgreSQL Integration 全部通过。
+
+# 最终视觉证据
+
+Head `9b35d01951d5242a144a7f77a32d88d35590fe7c` 的 Visual Evidence run `33225606958` 成功生成并上传 Artifact `9706738712`：
+
+- Artifact digest：`sha256:c765777a4863e8738ebb1622f19cf330ceabf7689e8172e2d26d6c8c2b8da6fc`；
+- 实际检查 8/8 PNG，全部为 1440×900；
+- 覆盖 Normal/Data、Loading、Empty、Error、Runtime unavailable、Detail、Analysis、Export；
+- Fresh Figma 重新渲染 `169:10`、`3083:351`、`3085:654` 等高风险节点并与实际浏览器截图 targeted 对照；Empty 菱形已对齐，Normal/Runtime 结构和状态表达无阻塞差异；
+- Figma 的帖子、Run 状态、选择数量等静态示例不作为服务器事实；浏览器原生 date 控件 Chrome 的平台差异不作为生产缺陷。
+
+# 当前永久验证证据
+
+Head `9b35d01951d5242a144a7f77a32d88d35590fe7c`：
+
+- CI run `33225609695`：success；Repository Quality、PostgreSQL Integration、CI Gate 均 success；
+- Runtime Acceptance run `33225609715`：success；
+- Full-stack Acceptance run `33225609693`：success；
+- Change Completion Gate 当前仍失败是预期状态：本文件仍为 `in_progress`，尚未完成正式 Review/Ready，不将此门禁绕过或误报为产品回归。
+
+# 文档同步判断
+
+- `frontend/README.md` 已 targeted 复核：现有文本已经准确描述 `/voice-plaza` 的 Page → Store → Feature API → generated client 边界、筛选/Cursor/Detail/Analysis/人工复核/Export 能力及 Shared UI 复用原则，本 Change 未新增 Route、Contract 或长期架构，因此不重复写第二份节点清单。
+- `docs/guides/01_Figma与前端设计开发工作流.md` 已新增 `7.2 声音广场正式 Figma 基线`，固化正式节点、Owner 边界、1440×900 参考 Viewport、原生控件差异和分层验收规则。
+
 # Completion Audit
 
-- [ ] A1：重新读取用户目标、正式 Figma、当前 Contract/Feature，重建完成定义。
-- [ ] A1：检查“上游要求 → Change”无遗漏，`not_satisfied` 清零。
-- [ ] A2：逐项检查“Change → 实现 / 测试 / 文档 / 运行证据”。
-- [ ] 反向能力审计：当前 Voice Plaza 后端/Store 能力仍有正确前端入口。
-- [ ] 反向动作审计：页面每个可执行动作都有真实系统支持。
-- [ ] Figma DESIGN_EXAMPLE 未进入 production constant。
-- [ ] generated Client 无手工修改，依赖/Schema/API 无无关变化。
-- [ ] Fresh Figma 与实际页面 targeted review 无阻塞偏差。
+- [x] upstream_re_read: 已重新读取用户目标、当前 AGENTS/Coding/Figma/Docs 规则、正式 Figma 节点、Voice Plaza Store/API/Page/Shared Owner 与当前生成 Contract 边界。
+- [x] change_coverage: R1—R9 已逐项映射到实现、Browser Mock、Fresh Figma、Contract/CI/Full-stack 和文档证据；未把 Figma 示例数据扩成后端或生产常量。
+- [x] reverse_audit: 已从页面所有可执行入口反向核对刷新、查询、Cursor、Detail、AI Preview/Create/Cancel、人工相关性复核、Export/Download 与 Runtime capability 均由现有真实系统能力支持。
+- [ ] unresolved_cleared: 正式独立 Review、临时视觉 Workflow 清理、最终无临时文件 HEAD 的永久门禁、PR Ready/merge/main 验证和独立 Change 归档仍待执行。
 
 # Git / 交付
 
