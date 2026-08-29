@@ -253,17 +253,17 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         {{ reviewNote }}
       </AimaFeedbackBanner>
       <AimaFeedbackBanner
-        v-if="store.error"
+        v-if="store.listError || store.error"
         class="page-error"
         tone="error"
         role="alert"
       >
-        <strong>{{ store.items.length === 0 ? '加载声音广场失败' : '声音广场操作失败' }}</strong>
-        <span>{{ store.error }}</span>
+        <strong>{{ store.listError && store.items.length === 0 ? '加载声音广场失败' : '声音广场操作失败' }}</strong>
+        <span>{{ store.listError ?? store.error }}</span>
       </AimaFeedbackBanner>
 
       <section
-        v-if="store.analysisRuns.length && (!store.error || store.items.length > 0)"
+        v-if="store.analysisRuns.length && (!store.listError || store.items.length > 0)"
         class="run-history"
         aria-label="AI Analysis Run 历史"
       >
@@ -282,7 +282,9 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
           <div class="run-info">
             <strong>Run #{{ run.sequence_no }} · {{ runStatusLabels[run.status] }}</strong>
             <span>{{ run.target_count }} 条 · {{ run.shard_count }} Shard · {{ run.model }}</span>
-            <small>{{ analysisRunProgressDetail(run) }}</small>
+            <small>
+              {{ analysisRunProgressDetail(run) }}<template v-if="run.error_code"> · {{ run.error_code }}</template>
+            </small>
           </div>
           <TaskProgressBar
             compact
@@ -351,7 +353,7 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
       <VoicePlazaTable
         :items="store.items"
         :loading="store.loading"
-        :error="store.error"
+        :error="store.listError"
         :selected-ids="store.selectedIds"
         :reviewing="store.reviewingRelevance"
         @detail="store.openDetail"
