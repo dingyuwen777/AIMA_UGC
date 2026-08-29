@@ -3,7 +3,7 @@ schema: rvc-change/v1
 id: "CHG-20260829-voice-plaza-figma-sync"
 title: "声音广场正式 Figma 基线同步"
 level: L2
-status: ready_for_review
+status: done
 owner: "chatgpt"
 branch: "feature/voice-plaza-figma-sync"
 created: 2026-08-29
@@ -79,8 +79,8 @@ data_changes: []
 | R6 | Analysis 使用 selected-only Preview/Create，并显示当前真实 Preview 数据 | external:Figma-EAPm8KVarUe7BFTSnzvOpT-3084:568 | satisfied | `AnalysisSubmitDialog.vue` + existing Store/API；540×446 geometry + Browser Mock |
 | R7 | Export 保留 selected/page/query、进度、下载和 7 天 Artifact retention | external:Figma-EAPm8KVarUe7BFTSnzvOpT-3084:770 | satisfied | `DataExportDialog.vue` + `TaskProgressBar.vue` + `artifactRetention.ts`；650×690 Browser Mock；既有 retention E2E |
 | R8 | 公共部分复用真实 Shared Owner，不机械建立第二套组件库 | external:Figma-Design-to-Code-owner-mapping | satisfied | `AimaPageHeader`、`AimaButton`、`AimaFeedbackBanner`、`AimaIcon` 复用；Feature 私有组件仍留 Page Owner |
-| R9 | 不改变 Cursor、Analysis、人工复核、Export、Detail、Contract/generated 业务语义 | frontend/src/features/voice-plaza/store.ts | satisfied | Review 发现并修复辅助错误误分类与 Failed Run `error_code` 丢失；最新 CI generated drift、PostgreSQL、Runtime、Full-stack 均通过 |
-| R10 | PR 转 Ready 前完成 targeted visual review、正式两阶段 Review，并在无临时验证 Workflow 的 feature HEAD 上通过永久 CI / Runtime / Full-stack | user:本任务Git与交付授权 | satisfied | Visual Evidence 已完成；临时 Workflow 已删除；Review/Re-review 已完成；Head `0388900e...` 的 CI `33226493230`、Runtime `33226493218`、Full-stack `33226493240` 均 success |
+| R9 | 不改变 Cursor、Analysis、人工复核、Export、Detail、Contract/generated 业务语义 | frontend/src/features/voice-plaza/store.ts | satisfied | Review 发现并修复辅助错误误分类与 Failed Run `error_code` 丢失；最终 feature 与 main 的 generated drift、PostgreSQL、Runtime、Full-stack 均通过 |
+| R10 | PR 转 Ready 前完成 targeted visual review、正式两阶段 Review，并在无临时验证 Workflow 的 feature HEAD 上通过永久 CI / Runtime / Full-stack | user:本任务Git与交付授权 | satisfied | 最终干净 feature Head `e0cb7594f4a0a8e2677c24d2835f4bf854cb71c2`：Completion Gate `33227219839`、CI `33227219865`、Runtime `33227219909`、Full-stack `33227220167` 均 success；PR #272 已正常合并 |
 
 # Design-to-Code 映射
 
@@ -100,16 +100,16 @@ data_changes: []
 
 | 维度 | 级别 | 当前证据 |
 | --- | --- | --- |
-| Voice Plaza unit/component | required | 最新 CI Vitest 56/56 |
+| Voice Plaza unit/component | required | 最终 feature/main CI 中 Frontend Vitest 56/56 |
 | Shared UI regression | required if modified | App Shell / Shared UI 相关 Vitest 与完整前端测试门禁通过 |
-| Lint / Typecheck / Build | required | CI Repository Quality 通过 |
+| Lint / Typecheck / Build | required | 最终 feature/main CI Repository Quality 通过 |
 | Browser Mock Acceptance | required | Playwright 39/39：正式视觉状态、既有 Voice Plaza 行为和 2 条 Review 回归均通过 |
 | 1440×900 Fresh Figma visual review | required | Visual Evidence run `33225606958`，8 张 1440×900 截图；Fresh Figma targeted 对照无阻塞差异 |
-| Contract/generated | required | 最新 CI 重新生成 Contract/Orval 后 `git diff --exit-code` 与 compatibility gate 通过 |
-| Backend/API/PostgreSQL | regression-by-CI | 最新 CI PostgreSQL Integration 通过；本 Change 无后端 diff |
-| Real Full-stack | targeted regression | Full-stack Acceptance run `33226493240` 通过，真实 Browser/API/Worker/PostgreSQL 链路未回归 |
+| Contract/generated | required | 最终 CI 重新生成 Contract/Orval 后 `git diff --exit-code` 与 compatibility gate 通过 |
+| Backend/API/PostgreSQL | regression-by-CI | feature/main PostgreSQL Integration 均通过；本 Change 无后端 diff |
+| Real Full-stack | targeted regression | feature Full-stack `33227220167` 与 main Full-stack `33227645603` 均通过，真实 Browser/API/Worker/PostgreSQL 链路未回归 |
 | External Provider probe | not_applicable | 页面视觉同步不调用 TikHub/LLM Provider |
-| Docs/Governance | required | `frontend/README.md` targeted 复核后无需修改；Figma Guide 已新增 7.2 正式基线；最新 Secret/docs gate 通过 |
+| Docs/Governance | required | `frontend/README.md` targeted 复核后无需修改；Figma Guide 已新增 7.2 正式基线；最终 Secret/docs gate 通过 |
 
 # 实施步骤
 
@@ -121,8 +121,8 @@ data_changes: []
 - [x] 重新读取上游事实，完成实现侧 Completion Audit。
 - [x] 执行两阶段 Review，对发现的两个 MEDIUM Finding 建立 Red、修复并完成 re-review。
 - [x] 删除临时视觉 Workflow，并在无临时验证文件的 feature HEAD 上完成永久 CI / Runtime / Full-stack。
-- [ ] 在本 Ready HEAD 上通过 Completion Gate + 永久门禁，PR 转 Ready 并正常合并 `main`，合并后验证。
-- [ ] 通过独立归档 PR 移入 `changes/archive/2026-08/` 并清理分支。
+- [x] 最终 feature Head 通过 Completion Gate + 永久门禁，PR #272 转 Ready、正常合并 `main`，并完成 main 新鲜验证。
+- [x] 在独立归档分支将本 Change 移入 `changes/archive/2026-08/`；归档 PR 与分支清理结果由本文件 Git / 交付段和最终交付报告继续如实记录。
 
 # Red / Green 证据
 
@@ -158,7 +158,7 @@ Green：
 
 - `9de8cc2e2d44c286f1be08e7749f3c444f6ea033`：Store 增加 `listError`，只由内容列表刷新失败写入；辅助能力/Run/Export/Detail 等错误继续使用通用 `error`。
 - `0388900e4e0e8bc0444a00949b796df398675f7a`：Page 只用 `listError` 驱动表格 Error State，通用错误显示为“声音广场操作失败”；Run 历史恢复 `error_code` 可见性。
-- 最新 CI run `33226493230`：Vitest 56/56、Build success、Browser Mock 39/39、PostgreSQL Integration、CI Gate 均 success；两条 Review 回归均转 Green。
+- CI run `33226493230`：Vitest 56/56、Build success、Browser Mock 39/39、PostgreSQL Integration、CI Gate 均 success；两条 Review 回归均转 Green。
 - Runtime Acceptance `33226493218`、Full-stack Acceptance `33226493240` 均 success。
 
 # 最终视觉证据
@@ -172,15 +172,22 @@ Head `9b35d01951d5242a144a7f77a32d88d35590fe7c` 的 Visual Evidence run `3322560
 - 后续 Review 修复只分离错误来源并恢复 Run `error_code`，不改变 App Shell、Filter/Table 正常布局或 Overlay 几何；其用户可见语义由新增 Browser Mock 回归覆盖。
 - Figma 的帖子、Run 状态、选择数量等静态示例不作为服务器事实；浏览器原生 date 控件 Chrome 的平台差异不作为生产缺陷。
 
-# 当前永久验证证据
+# 最终永久验证证据
 
-Head `0388900e4e0e8bc0444a00949b796df398675f7a`：
+最终干净 feature Head `e0cb7594f4a0a8e2677c24d2835f4bf854cb71c2`：
 
-- CI run `33226493230`：success；Repository Quality、PostgreSQL Integration、CI Gate 均 success；
-- Repository Quality 中：Python Unit 705 passed、Contract 92 passed、API 38 passed；前端 Vitest 56/56；Build success；Browser Mock 39/39；
-- Runtime Acceptance run `33226493218`：success；
-- Full-stack Acceptance run `33226493240`：success；
-- 本 Change 在本提交前仍为 `in_progress`，因此当时 Change Completion Gate 失败属于预期施工门禁；切为 `ready_for_review` 后必须在新的 Ready HEAD 重新取得 Completion Gate 与永久门禁证据，不能复用旧 HEAD 冒充最终 Ready。
+- Change Completion Gate `33227219839`：success；
+- CI `33227219865`：success；Repository Quality、PostgreSQL Integration、CI Gate 均 success；
+- Runtime Acceptance `33227219909`：success；
+- Full-stack Acceptance `33227220167`：success；
+- Frontend Vitest 56/56、Build、Browser Mock 39/39、Contract/generated drift/compatibility 等永久门禁通过。
+
+PR #272 以普通 merge commit 正常合入 `main`，merge commit 为 `0bed3fdc094601c1b11cf6f5c2681d1fd0150607`。该 main SHA 的新鲜 push 验证：
+
+- Change Completion Gate `33227645558`：success；
+- CI `33227645575`：success；Repository Quality、PostgreSQL Integration、CI Gate 均 success；
+- Runtime Acceptance `33227645582`：success；
+- Full-stack Acceptance `33227645603`：success，真实 Excel Browser Full-stack Golden Path 完整通过。
 
 # 文档同步判断
 
@@ -207,10 +214,12 @@ Review 确认两个 MEDIUM Finding，均已按 Coding Red→Green 修复并 re-r
 - [x] upstream_re_read: 已重新读取用户目标、当前 AGENTS/Coding/Figma/Docs/Review 规则、正式 Figma 节点、Voice Plaza Store/API/Page/Shared Owner 与当前生成 Contract 边界。
 - [x] change_coverage: R1—R10 已逐项映射到实现、Browser Mock、Fresh Figma、Contract/CI/Full-stack、Review 和文档证据；未把 Figma 示例数据扩成后端或生产常量。
 - [x] reverse_audit: 已从页面所有可执行入口反向核对刷新、查询、Cursor、Detail、AI Preview/Create/Cancel、人工相关性复核、Export/Download 与 Runtime capability 均由现有真实系统能力支持；Review 额外验证辅助错误不会覆盖列表状态语义。
-- [x] unresolved_cleared: 正式 Review 的两个 MEDIUM Finding 已完成 Red→Green 与 re-review；临时视觉 Workflow 已清理；无未决业务/Contract/Schema/依赖/迁移项。PR Ready/merge/main 验证和独立 Change 归档属于后续 Git 交付步骤，不是当前实现未完成项。
+- [x] unresolved_cleared: 正式 Review 的两个 MEDIUM Finding 已完成 Red→Green 与 re-review；临时视觉/Ready workaround Workflow 均已清理；PR #272 已正常合并且 main 四项永久 push 验证全绿；无未决业务/Contract/Schema/依赖/迁移项。
 
 # Git / 交付
 
-用户已明确授权本任务建立开发分支、中文提交、创建 PR、处理 CI/Review、正常合并 `main`、合并后验证与分支清理。不得绕过仓库现有质量门禁。
-
-当前下一步：在本 `ready_for_review` Head 上重新通过 Change Completion Gate、CI、Runtime 和 Full-stack；之后 PR #272 才能从 Draft 转 Ready 并按仓库保护规则正常合并。实现 Change 合并并完成 `main` 验证后，再通过独立归档 PR 移入 `changes/archive/2026-08/`。
+- 实现分支：`feature/voice-plaza-figma-sync`；最终干净 Head `e0cb7594f4a0a8e2677c24d2835f4bf854cb71c2`。
+- 实现 PR：#272 `前端：同步声音广场正式 Figma 基线`；已转 Ready，并以普通 merge commit 正常合并。
+- `main` 合并 commit：`0bed3fdc094601c1b11cf6f5c2681d1fd0150607`；该 SHA 的 Completion Gate、CI、Runtime、Full-stack 均 success。
+- 本 Change 不包含 API/Contract/Schema/Migration/数据结构变化，不新增或升级依赖，不需要数据迁移、部署步骤或特殊回滚；如需回滚，按 Git 正常 revert 本实现 merge commit，不改写历史。
+- 当前文件由独立归档分支 `archive/voice-plaza-figma-sync` 移入 `changes/archive/2026-08/`；归档 PR 的 CI、合并与分支清理必须继续按仓库门禁执行并在最终交付报告中以实际结果为准。
