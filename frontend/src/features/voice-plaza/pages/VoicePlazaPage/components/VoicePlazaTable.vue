@@ -147,7 +147,7 @@ function dateTimeParts(value: string | null | undefined): [string, string] {
       class="table-state table-state--empty"
     >
       <span class="empty-icon"><AimaIcon
-        name="voice"
+        name="empty"
         :size="22"
       /></span>
       <strong>暂无符合条件的内容</strong>
