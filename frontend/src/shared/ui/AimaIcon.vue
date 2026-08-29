@@ -14,6 +14,7 @@ export type AimaIconName =
   | 'copy'
   | 'ai'
   | 'download'
+  | 'empty'
 
 withDefaults(defineProps<{
   name: AimaIconName
@@ -114,6 +115,9 @@ withDefaults(defineProps<{
     </template>
     <template v-else-if="name === 'download'">
       <path d="M12 3v11" /><path d="m8 10 4 4 4-4" /><path d="M5 19h14" />
+    </template>
+    <template v-else-if="name === 'empty'">
+      <path d="m12 5 7 7-7 7-7-7 7-7Z" />
     </template>
   </svg>
 </template>
