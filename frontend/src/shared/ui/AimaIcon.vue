@@ -12,6 +12,9 @@ export type AimaIconName =
   | 'success'
   | 'close'
   | 'copy'
+  | 'ai'
+  | 'download'
+  | 'empty'
 
 withDefaults(defineProps<{
   name: AimaIconName
@@ -105,6 +108,16 @@ withDefaults(defineProps<{
         height="11"
         rx="2"
       /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+    </template>
+    <template v-else-if="name === 'ai'">
+      <path d="m12 3 1.45 3.55L17 8l-3.55 1.45L12 13l-1.45-3.55L7 8l3.55-1.45L12 3Z" />
+      <path d="m18.5 14 .75 1.75L21 16.5l-1.75.75L18.5 19l-.75-1.75L16 16.5l1.75-.75.75-1.75Z" />
+    </template>
+    <template v-else-if="name === 'download'">
+      <path d="M12 3v11" /><path d="m8 10 4 4 4-4" /><path d="M5 19h14" />
+    </template>
+    <template v-else-if="name === 'empty'">
+      <path d="m12 5 7 7-7 7-7-7 7-7Z" />
     </template>
   </svg>
 </template>

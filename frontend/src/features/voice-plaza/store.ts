@@ -105,6 +105,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   const submittingExport = ref(false)
   const reviewingRelevance = ref(false)
   const error = ref<string | null>(null)
+  const listError = ref<string | null>(null)
   const notice = ref<string | null>(null)
   let analysisDraft: {
     targets: AnalysisRunTargetSelection
@@ -154,6 +155,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
 
   async function refresh(silent = false): Promise<void> {
     if (!silent) loading.value = true
+    listError.value = null
     error.value = null
     try {
       const page = await fetchContents(listParams())
@@ -163,7 +165,9 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
       selectedIds.value = selectedIds.value.filter((id) => page.items.some((item) => item.id === id))
       if (detail.value) detail.value = await fetchContentDetail(detail.value.id)
     } catch (reason) {
-      error.value = errorMessage(reason)
+      const message = errorMessage(reason)
+      listError.value = message
+      error.value = message
     } finally {
       if (!silent) loading.value = false
     }
@@ -426,6 +430,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     submittingExport,
     reviewingRelevance,
     error,
+    listError,
     notice,
     refresh,
     refreshAnalysisCapabilities,

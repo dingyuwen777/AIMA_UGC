@@ -395,6 +395,52 @@ Figma
 
 不能只看截图或只复制 Figma MCP 返回的 React/Tailwind 参考代码。每次涉及视觉或交互的变更，都要重新取得目标画板的 Fresh Screenshot，并用真实浏览器页面做 targeted 对照；浏览器 Mock 用于覆盖状态空间，真实 Full-stack Golden Path 只证明关键 Frontend/API/PostgreSQL 接线，两者不能互相冒充。
 
+### 7.2 声音广场正式 Figma 基线
+
+“声音广场”的正式设计文件为 `EAPm8KVarUe7BFTSnzvOpT`。Design-to-Code 和后续 targeted re-review 使用以下正式节点：
+
+```text
+Normal / Data              169:10
+Loading                    3083:134
+Empty                      3083:351
+Error                      3083:568
+内容详情 Drawer            3084:311
+AI Analysis Preview        3084:568
+Excel Export               3084:770
+开发状态规格               3085:525
+AI Runtime 未配置          3085:654
+```
+
+这套 Figma 接管 `/voice-plaza` 的页面布局、视觉层级、状态表达和 Overlay 几何关系；当前 HTTP Contract、Pinia Store、Cursor、Analysis Run、人工相关性复核、Detail supplement、Export Job/Artifact 和错误语义仍以当前代码、generated client 与后端事实为准。Figma 中的帖子、Run 状态、选择数量、模型名、互动数和分页示例只用于说明布局，不得写成生产常量。
+
+当前代码 Owner 保持：
+
+```text
+App Shell
+→ frontend/src/app/layouts/AppShell.vue
+
+跨页面视觉 Owner
+→ frontend/src/shared/ui/
+→ frontend/src/shared/styles/
+
+声音广场业务 Owner
+→ frontend/src/features/voice-plaza/
+→ 页面私有 Filter / Table / Drawer / Dialog 留在 Voice Plaza Page
+```
+
+正式桌面视觉复核使用 `1440×900` 作为参考 Viewport，但生产代码不得因此写死页面宽高。浏览器原生控件（例如 `input[type=date]`）的系统 Chrome 可以随浏览器/平台变化；验收关注其语义、尺寸、布局和可操作性，不用 Figma 静态占位符替代真实原生行为。
+
+声音广场视觉或交互变更至少按以下证据分层验证：
+
+```text
+Fresh Figma Design Context / Screenshot
+→ Browser Mock：Normal / Loading / Empty / Error / Runtime unavailable / Overlay
+→ Lint / Typecheck / Unit / Build / Contract / generated drift gate
+→ Real Full-stack Golden Path：只证明真实 Frontend/API/Worker/PostgreSQL 接线
+```
+
+Browser Mock 可以覆盖广泛的用户可见状态和请求语义，但不能冒充真实后端、PostgreSQL 或 Worker；Real Full-stack 也不需要机械复制全部视觉状态。
+
 ---
 
 ## 8. Figma 文件建议怎样组织

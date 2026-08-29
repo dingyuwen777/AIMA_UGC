@@ -9,6 +9,9 @@ import type {
   DataExportResponse,
 } from '../../../../generated/api/client'
 import TaskProgressBar from '../../../../shared/TaskProgressBar.vue'
+import AimaButton from '../../../../shared/ui/AimaButton.vue'
+import AimaFeedbackBanner from '../../../../shared/ui/AimaFeedbackBanner.vue'
+import AimaPageHeader from '../../../../shared/ui/AimaPageHeader.vue'
 import {
   relevanceReviewDecision,
   type RelevanceReviewDecision,
@@ -70,6 +73,7 @@ onMounted(async () => {
 })
 onBeforeUnmount(() => store.stopPolling())
 
+/** 同步刷新声音列表、导出记录、AI 能力和 Analysis Run 历史。 */
 async function refreshPage(): Promise<void> {
   await Promise.all([
     store.refresh(),
@@ -79,16 +83,19 @@ async function refreshPage(): Promise<void> {
   ])
 }
 
+/** 提交当前筛选并清空旧选择，避免跨查询误操作。 */
 async function search(): Promise<void> {
   store.clearSelection()
   await store.refresh()
 }
 
+/** 恢复默认筛选并重新获取第一页。 */
 async function reset(): Promise<void> {
   store.resetFilters()
   await store.refresh()
 }
 
+/** 把人工相关性复核结果转换为用户可读反馈。 */
 function relevanceNotice(
   decision: RelevanceReviewDecision,
   result: ContentRelevanceReviewResponse,
@@ -99,6 +106,7 @@ function relevanceNotice(
   return `已撤销 ${result.changed_count} 条人工相关性判断${unchanged}。`
 }
 
+/** 对单条内容执行既有人工相关性复核流程。 */
 async function reviewSingle(
   contentId: string,
   decision: RelevanceReviewDecision,
@@ -107,12 +115,14 @@ async function reviewSingle(
   if (result) showNotice(relevanceNotice(decision, result))
 }
 
+/** 对当前选择中具有相同复核决策的内容执行批量复核。 */
 async function reviewSelected(decision: RelevanceReviewDecision): Promise<void> {
   const contentIds = selectedReviewIds.value[decision]
   const result = await store.reviewRelevance(contentIds, decision)
   if (result) showNotice(relevanceNotice(decision, result))
 }
 
+/** 使用预检冻结信息确认创建 Analysis Run。 */
 async function submitAnalysis(): Promise<void> {
   const count = await store.confirmAnalysis()
   if (count === null) return
@@ -120,16 +130,19 @@ async function submitAnalysis(): Promise<void> {
   showNotice(`已创建 AI Analysis Run，冻结 ${count} 条内容。`)
 }
 
+/** 请求取消仍处于可取消状态的 Analysis Run。 */
 async function cancelAnalysis(runId: string): Promise<void> {
   if (await store.cancelRun(runId)) showNotice('已请求取消 Analysis Run。')
 }
 
+/** 创建 selected/page/query 三种既有范围之一的 Excel 导出。 */
 async function submitExport(scope: 'query' | 'selected' | 'page'): Promise<void> {
   const count = await store.createExport(scope)
   if (count === null) return
   showNotice(`已创建 Excel 导出 Job，冻结 ${count} 条内容。`)
 }
 
+/** 下载已经就绪且仍在保留期内的导出 Artifact。 */
 async function download(item: DataExportResponse): Promise<void> {
   const blob = await store.downloadExport(item.id)
   if (!blob) return
@@ -144,6 +157,7 @@ async function download(item: DataExportResponse): Promise<void> {
   showNotice('Excel 导出文件已开始下载。')
 }
 
+/** 展示短时成功反馈，并只清理由本次调用写入的消息。 */
 function showNotice(message: string): void {
   notice.value = message
   window.setTimeout(() => { if (notice.value === message) notice.value = null }, 2800)
@@ -177,215 +191,274 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
 
 <template>
   <AppShell section-title="声音广场">
-    <div class="page-header">
-      <div><h1>声音广场</h1><p>浏览全部渠道入库的用户声音，查看 AI 情感与完整标签结果</p></div><div class="page-actions">
-        <button
-          type="button"
-          @click="refreshPage"
+    <div class="voice-plaza-page">
+      <AimaPageHeader
+        title="声音广场"
+        description="浏览全部渠道入库的用户声音，查看 AI 情感与完整标签结果"
+      >
+        <template #actions>
+          <AimaButton
+            icon="refresh"
+            @click="refreshPage"
+          >
+            刷新数据
+          </AimaButton>
+          <AimaButton
+            icon="ai"
+            :disabled="store.selectedIds.length === 0 || store.selectedIds.length > 1000 || store.analysisConfigured !== true"
+            :title="store.analysisConfigured === false ? '当前环境尚未配置 AI 模型' : store.analysisConfigured === null ? '正在确认 AI 运行配置' : store.selectedIds.length === 0 ? '请先选择需要打标的内容' : store.selectedIds.length > 1000 ? '单次最多选择 1000 条内容' : undefined"
+            @click="analysisOpen = true"
+          >
+            AI 打标
+          </AimaButton>
+          <AimaButton
+            variant="primary"
+            icon="download"
+            @click="exportOpen = true"
+          >
+            导出记录
+          </AimaButton>
+        </template>
+      </AimaPageHeader>
+
+      <VoicePlazaFilters
+        v-model:search="store.filters.search"
+        v-model:platform="store.filters.platform"
+        v-model:content-type="store.filters.contentType"
+        v-model:analysis-status="store.filters.analysisStatus"
+        v-model:relevance="store.filters.relevance"
+        v-model:sentiment="store.filters.sentiment"
+        v-model:primary-label="store.filters.primaryLabel"
+        v-model:secondary-label="store.filters.secondaryLabel"
+        v-model:published-from="store.filters.publishedFrom"
+        v-model:published-to="store.filters.publishedTo"
+        v-model:source-identifier="store.filters.sourceIdentifier"
+        @search="search"
+        @reset="reset"
+      />
+
+      <AimaFeedbackBanner
+        v-if="store.analysisConfigured === false"
+        class="capability-warning"
+        tone="warning"
+      >
+        <strong>AI 打标暂不可用：当前环境尚未配置可用的 LLM Runtime。</strong>
+        <span>能力状态来自 GET /api/v1/content-analysis-capabilities；前端不读取 Secret、Base URL 或模型配置文件。</span>
+      </AimaFeedbackBanner>
+      <AimaFeedbackBanner
+        v-if="reviewNote"
+        class="review-note"
+        tone="info"
+      >
+        {{ reviewNote }}
+      </AimaFeedbackBanner>
+      <AimaFeedbackBanner
+        v-if="store.listError || store.error"
+        class="page-error"
+        tone="error"
+        role="alert"
+      >
+        <strong>{{ store.listError && store.items.length === 0 ? '加载声音广场失败' : '声音广场操作失败' }}</strong>
+        <span>{{ store.listError ?? store.error }}</span>
+      </AimaFeedbackBanner>
+
+      <section
+        v-if="store.analysisRuns.length && (!store.listError || store.items.length > 0)"
+        class="run-history"
+        aria-label="AI Analysis Run 历史"
+      >
+        <header>
+          <strong>AI Analysis Run 历史</strong>
+          <span>不同 Run 结果均保留；Current 按创建顺序选择</span>
+        </header>
+        <article
+          v-for="run in store.analysisRuns"
+          :key="run.id"
         >
-          ↻&nbsp; 刷新数据
-        </button><button
-          type="button"
-          :disabled="store.selectedIds.length === 0 || store.selectedIds.length > 1000 || store.analysisConfigured !== true"
-          :title="store.analysisConfigured === false ? '当前环境尚未配置 AI 模型' : store.analysisConfigured === null ? '正在确认 AI 运行配置' : store.selectedIds.length === 0 ? '请先选择需要打标的内容' : store.selectedIds.length > 1000 ? '单次最多选择 1000 条内容' : undefined"
-          @click="analysisOpen = true"
-        >
-          ◇&nbsp; AI 打标
-        </button><button
-          class="primary"
-          type="button"
-          @click="exportOpen = true"
-        >
-          ⇩&nbsp; 导出记录
-        </button>
+          <span
+            class="run-status"
+            :class="`run-status--${run.status}`"
+          >{{ runStatusLabels[run.status] }}</span>
+          <div class="run-info">
+            <strong>Run #{{ run.sequence_no }} · {{ runStatusLabels[run.status] }}</strong>
+            <span>{{ run.target_count }} 条 · {{ run.shard_count }} Shard · {{ run.model }}</span>
+            <small>
+              {{ analysisRunProgressDetail(run) }}<template v-if="run.error_code"> · {{ run.error_code }}</template>
+            </small>
+          </div>
+          <TaskProgressBar
+            compact
+            :label="`AI Run #${run.sequence_no} 进度`"
+            :value="analysisRunProgress(run)"
+            :detail="analysisRunProgressDetail(run)"
+          />
+          <span class="run-counts">完成 {{ run.stats?.succeeded ?? 0 }} / 失败 {{ run.stats?.failed ?? 0 }} / 取消 {{ run.stats?.cancelled ?? 0 }}</span>
+          <AimaButton
+            v-if="run.status === 'queued' || run.status === 'running'"
+            size="small"
+            :disabled="store.cancellingAnalysisRunId === run.id"
+            @click="cancelAnalysis(run.id)"
+          >
+            {{ store.cancellingAnalysisRunId === run.id ? '取消中…' : '取消 Run' }}
+          </AimaButton>
+        </article>
+      </section>
+
+      <div
+        v-if="store.items.length > 0"
+        class="list-heading"
+      >
+        <div class="selection-actions">
+          <strong>声音记录</strong>
+          <span>已加载 {{ store.items.length }} 条</span>
+          <button
+            v-if="selectedReviewIds.relevant.length"
+            class="review-selected review-selected--relevant"
+            type="button"
+            :disabled="store.reviewingRelevance"
+            @click="reviewSelected('relevant')"
+          >
+            批量标记为相关（{{ selectedReviewIds.relevant.length }}）
+          </button>
+          <button
+            v-if="selectedReviewIds.irrelevant.length"
+            class="review-selected review-selected--irrelevant"
+            type="button"
+            :disabled="store.reviewingRelevance"
+            @click="reviewSelected('irrelevant')"
+          >
+            批量标记为不相关（{{ selectedReviewIds.irrelevant.length }}）
+          </button>
+          <button
+            v-if="selectedReviewIds.inherit_ai.length"
+            class="review-selected review-selected--undo"
+            type="button"
+            :disabled="store.reviewingRelevance"
+            @click="reviewSelected('inherit_ai')"
+          >
+            批量撤销人工判断（{{ selectedReviewIds.inherit_ai.length }}）
+          </button>
+          <button
+            v-if="store.selectedIds.length"
+            class="selected-count"
+            type="button"
+            @click="store.clearSelection()"
+          >
+            已选 {{ store.selectedIds.length }} 条 · 清除
+          </button>
+        </div>
+        <span>发布时间：最新优先</span>
       </div>
-    </div>
 
-    <div
-      v-if="store.analysisConfigured === false"
-      class="capability-warning"
-      role="status"
-    >
-      AI 打标暂不可用：当前环境尚未配置可用的 LLM Runtime。请完成 LLM 配置并重启后端；本地源码调试可编辑根目录 <code>env.local</code>。
-    </div>
+      <VoicePlazaTable
+        :items="store.items"
+        :loading="store.loading"
+        :error="store.listError"
+        :selected-ids="store.selectedIds"
+        :reviewing="store.reviewingRelevance"
+        @detail="store.openDetail"
+        @toggle="store.toggleSelection"
+        @toggle-all="store.toggleVisibleSelection"
+        @review="reviewSingle"
+      />
 
-    <VoicePlazaFilters
-      v-model:search="store.filters.search"
-      v-model:platform="store.filters.platform"
-      v-model:content-type="store.filters.contentType"
-      v-model:analysis-status="store.filters.analysisStatus"
-      v-model:relevance="store.filters.relevance"
-      v-model:sentiment="store.filters.sentiment"
-      v-model:primary-label="store.filters.primaryLabel"
-      v-model:secondary-label="store.filters.secondaryLabel"
-      v-model:published-from="store.filters.publishedFrom"
-      v-model:published-to="store.filters.publishedTo"
-      v-model:source-identifier="store.filters.sourceIdentifier"
-      @search="search"
-      @reset="reset"
-    />
-    <div
-      v-if="reviewNote"
-      class="review-note"
-      role="status"
-    >
-      {{ reviewNote }}
-    </div>
-    <div
-      v-if="store.error"
-      class="page-error"
-      role="alert"
-    >
-      !&nbsp; {{ store.error }}
-    </div>
-    <section
-      v-if="store.analysisRuns.length"
-      class="run-history"
-      aria-label="AI Analysis Run 历史"
-    >
-      <header><strong>AI Analysis Run 历史</strong><span>不同 Run 结果均保留；Current 按创建顺序选择</span></header>
-      <article
-        v-for="run in store.analysisRuns"
-        :key="run.id"
+      <div
+        v-if="store.items.length > 0"
+        class="pagination"
       >
-        <div><strong>Run #{{ run.sequence_no }} · {{ runStatusLabels[run.status] }}</strong><span>{{ run.target_count }} 条 · {{ run.shard_count }} Shard · {{ run.model }}</span><small v-if="run.error_code">{{ run.error_code }}</small></div><TaskProgressBar
-          compact
-          :label="`AI Run #${run.sequence_no} 进度`"
-          :value="analysisRunProgress(run)"
-          :detail="analysisRunProgressDetail(run)"
-        /><span>完成 {{ run.stats?.succeeded ?? 0 }} / 失败 {{ run.stats?.failed ?? 0 }} / 取消 {{ run.stats?.cancelled ?? 0 }}</span><button
-          v-if="run.status === 'queued' || run.status === 'running'"
-          type="button"
-          :disabled="store.cancellingAnalysisRunId === run.id"
-          @click="cancelAnalysis(run.id)"
+        <span>游标分页不会虚构总页数</span>
+        <AimaButton
+          size="small"
+          :disabled="!store.hasMore || store.loadingNext"
+          @click="store.loadNext()"
         >
-          {{ store.cancellingAnalysisRunId === run.id ? '取消中…' : '取消 Run' }}
-        </button>
-      </article>
-    </section>
+          {{ store.loadingNext ? '加载中…' : store.hasMore ? '加载更多 →' : '已加载全部' }}
+        </AimaButton>
+      </div>
 
-    <div class="list-heading">
-      <div>
-        <strong>声音记录</strong><span>已加载 {{ store.items.length }} 条</span><button
-          v-if="selectedReviewIds.relevant.length"
-          class="review-selected review-selected--relevant"
-          type="button"
-          :disabled="store.reviewingRelevance"
-          @click="reviewSelected('relevant')"
-        >
-          批量标记为相关（{{ selectedReviewIds.relevant.length }}）
-        </button><button
-          v-if="selectedReviewIds.irrelevant.length"
-          class="review-selected review-selected--irrelevant"
-          type="button"
-          :disabled="store.reviewingRelevance"
-          @click="reviewSelected('irrelevant')"
-        >
-          批量标记为不相关（{{ selectedReviewIds.irrelevant.length }}）
-        </button><button
-          v-if="selectedReviewIds.inherit_ai.length"
-          class="review-selected review-selected--undo"
-          type="button"
-          :disabled="store.reviewingRelevance"
-          @click="reviewSelected('inherit_ai')"
-        >
-          批量撤销人工判断（{{ selectedReviewIds.inherit_ai.length }}）
-        </button><button
-          v-if="store.selectedIds.length"
-          type="button"
-          @click="store.clearSelection()"
-        >
-          已选 {{ store.selectedIds.length }} 条 ×
-        </button>
-      </div><span>发布时间：最新优先</span>
-    </div>
-    <VoicePlazaTable
-      :items="store.items"
-      :loading="store.loading"
-      :selected-ids="store.selectedIds"
-      :reviewing="store.reviewingRelevance"
-      @detail="store.openDetail"
-      @toggle="store.toggleSelection"
-      @toggle-all="store.toggleVisibleSelection"
-      @review="reviewSingle"
-    />
-    <div class="pagination">
-      <span>游标分页不会虚构总页数</span><button
-        type="button"
-        :disabled="!store.hasMore || store.loadingNext"
-        @click="store.loadNext()"
+      <ContentDetailDrawer
+        v-model="detailOpen"
+        :item="store.detail"
+        :loading="store.loadingDetail"
+      />
+      <AnalysisSubmitDialog
+        v-model="analysisOpen"
+        :selected-count="store.selectedIds.length"
+        :preview="store.analysisPreview"
+        :previewing="store.previewingAnalysis"
+        :submitting="store.submittingAnalysis"
+        @preview="store.previewAnalysis"
+        @submit="submitAnalysis"
+      />
+      <DataExportDialog
+        v-model="exportOpen"
+        :selected-count="store.selectedIds.length"
+        :page-count="store.items.length"
+        :items="store.exports"
+        :submitting="store.submittingExport"
+        @submit="submitExport"
+        @refresh="store.refreshExports"
+        @download="download"
+      />
+      <AimaFeedbackBanner
+        v-if="notice"
+        class="notice"
+        tone="success"
       >
-        {{ store.loadingNext ? '加载中…' : store.hasMore ? '加载更多 →' : '已加载全部' }}
-      </button>
-    </div>
-
-    <ContentDetailDrawer
-      v-model="detailOpen"
-      :item="store.detail"
-      :loading="store.loadingDetail"
-    />
-    <AnalysisSubmitDialog
-      v-model="analysisOpen"
-      :selected-count="store.selectedIds.length"
-      :preview="store.analysisPreview"
-      :previewing="store.previewingAnalysis"
-      :submitting="store.submittingAnalysis"
-      @preview="store.previewAnalysis"
-      @submit="submitAnalysis"
-    />
-    <DataExportDialog
-      v-model="exportOpen"
-      :selected-count="store.selectedIds.length"
-      :page-count="store.items.length"
-      :items="store.exports"
-      :submitting="store.submittingExport"
-      @submit="submitExport"
-      @refresh="store.refreshExports"
-      @download="download"
-    />
-    <div
-      v-if="notice"
-      class="notice"
-      role="status"
-    >
-      ✓ {{ notice }}
+        {{ notice }}
+      </AimaFeedbackBanner>
     </div>
   </AppShell>
 </template>
 
 <style scoped>
-.page-header { display: flex; align-items: center; justify-content: space-between; }
-.page-header h1 { margin: 0; color: #172033; font-size: 25px; }
-.page-header p { margin: 7px 0 0; color: #6e7789; font-size: 13px; }
-.page-actions { display: flex; gap: 10px; }
-.page-actions button { height: 42px; padding: 0 17px; border: 1px solid #d7dce5; border-radius: 7px; color: #384153; background: #fff; cursor: pointer; }
-.page-actions .primary { border-color: var(--aima-primary); color: #fff; background: var(--aima-primary); box-shadow: 0 5px 14px rgb(245 0 87 / 18%); }
-.page-actions button:disabled { opacity: .55; cursor: default; }
-.capability-warning { margin-top: 14px; padding: 11px 14px; border: 1px solid #f2d48a; border-radius: 7px; color: #7f5d18; background: #fff9e9; font-size: 12px; line-height: 1.55; }
-.capability-warning code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
-.review-note { margin-top: 12px; padding: 11px 14px; border: 1px solid #bfd5f5; border-radius: 7px; color: #32618f; background: #f2f7fd; font-size: 12px; line-height: 1.6; }
-.page-error { margin-top: 14px; padding: 11px 14px; border: 1px solid #ffc7cc; border-radius: 7px; color: #b4232d; background: #fff5f6; font-size: 13px; }
-.run-history { margin-top: 14px; overflow: hidden; border: 1px solid #dfe3ea; border-radius: 8px; background: #fff; }
-.run-history header, .run-history article { display: flex; align-items: center; gap: 16px; justify-content: space-between; padding: 11px 14px; }
-.run-history header { background: #f7f8fa; }
-.run-history header span, .run-history article span { color: #768092; font-size: 12px; }
-.run-history article { border-top: 1px solid #edf0f4; }
-.run-history article div { display: grid; gap: 4px; }
-.run-history article :deep(.task-progress) { width: min(300px, 30vw); }
-.run-history article button { padding: 6px 10px; border: 1px solid #d7dce5; border-radius: 5px; color: #b4232d; background: #fff; cursor: pointer; }
-.run-history article button:disabled { opacity: .55; cursor: default; }
-.list-heading { display: flex; align-items: center; justify-content: space-between; margin: 22px 0 11px; }
-.list-heading div { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-.list-heading strong { font-size: 17px; }
-.list-heading span { color: #768092; font-size: 12px; }
-.list-heading > span { padding: 8px 11px; border: 1px solid #dfe3ea; border-radius: 6px; background: #fff; }
-.list-heading button { padding: 5px 9px; border: 0; border-radius: 5px; color: var(--aima-primary); background: var(--aima-primary-soft); cursor: pointer; }
-.list-heading button.review-selected--relevant { color: #12804b; background: #eaf8f1; }
-.list-heading button.review-selected--irrelevant { color: #b4232d; background: #fff0f1; }
-.list-heading button.review-selected--undo { color: #586174; background: #f1f3f6; }
-.list-heading button:disabled { cursor: not-allowed; opacity: .55; }
-.pagination { display: flex; min-height: 70px; align-items: center; justify-content: flex-end; gap: 20px; color: #858e9d; font-size: 11px; }
-.pagination button { min-width: 120px; height: 38px; border: 1px solid var(--aima-primary); border-radius: 6px; color: var(--aima-primary); background: #fff; cursor: pointer; }
-.pagination button:disabled { border-color: #dfe3ea; color: #a4acba; cursor: default; }
-.notice { position: fixed; z-index: 200; top: 76px; left: 50%; padding: 11px 18px; border: 1px solid #a9e3c7; border-radius: 7px; color: #12804b; background: #effbf5; box-shadow: 0 8px 24px rgb(22 29 43 / 12%); transform: translateX(-50%); }
+.voice-plaza-page { display: grid; gap: 10px; }
+.capability-warning strong,
+.capability-warning span,
+.page-error strong,
+.page-error span { display: block; }
+.capability-warning strong,
+.page-error strong { margin-bottom: 2px; font-size: 11px; }
+.capability-warning span,
+.page-error span { font-size: 10px; }
+.run-history { display: grid; gap: 8px; padding: 12px 16px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius-control); background: var(--aima-surface); }
+.run-history header { display: flex; min-height: 20px; align-items: center; justify-content: space-between; gap: 16px; }
+.run-history header strong { color: var(--aima-text); font-size: 13px; }
+.run-history header span { color: var(--aima-text-muted); font-size: 11px; }
+.run-history article { display: grid; min-height: 40px; grid-template-columns: auto minmax(240px, 315px) minmax(260px, 360px) auto auto; align-items: center; gap: 12px; }
+.run-status { display: inline-flex; min-height: 20px; align-items: center; padding: 2px 8px; border-radius: 4px; color: #1677ff; background: #e8f3ff; font-size: 10px; font-weight: 500; }
+.run-status--succeeded { color: #12804b; background: #e8fff3; }
+.run-status--failed,
+.run-status--partial_failed { color: #f04438; background: #fff1f0; }
+.run-status--cancelled,
+.run-status--cancelling { color: var(--aima-text-muted); background: #f2f4f7; }
+.run-info { display: grid; min-width: 0; gap: 3px; }
+.run-info strong,
+.run-info span,
+.run-info small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run-info strong { color: var(--aima-text); font-size: 11px; font-weight: 500; }
+.run-info span { color: var(--aima-text-secondary); font-size: 10px; }
+.run-info small { color: var(--aima-text-muted); font-size: 9px; }
+.run-history article :deep(.task-progress) { width: 100%; }
+.run-history article :deep(.task-progress__heading) { display: none; }
+.run-history article :deep(.task-progress__track) { height: 8px; }
+.run-history article :deep(.task-progress__fill) { background: var(--aima-primary); }
+.run-counts { color: var(--aima-text-muted); font-size: 10px; white-space: nowrap; }
+.list-heading { display: flex; min-height: 36px; align-items: center; justify-content: space-between; gap: 16px; }
+.selection-actions { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 8px; }
+.list-heading strong { color: var(--aima-text); font-size: 14px; }
+.list-heading span { color: var(--aima-text-muted); font-size: 11px; }
+.selection-actions button { min-height: 20px; padding: 2px 8px; border: 0; border-radius: 4px; cursor: pointer; font-size: 10px; }
+.review-selected--relevant { color: #12804b; background: #e8fff3; }
+.review-selected--irrelevant { color: #f04438; background: #fff1f0; }
+.review-selected--undo { color: var(--aima-text-muted); background: #f2f4f7; }
+.selected-count { color: var(--aima-primary); background: var(--aima-primary-soft); }
+.selection-actions button:disabled { cursor: not-allowed; opacity: .55; }
+.pagination { display: flex; min-height: 36px; align-items: center; justify-content: space-between; gap: 20px; color: var(--aima-text-muted); font-size: 11px; }
+.pagination :deep(.aima-button) { height: 34px; }
+.notice { position: fixed; z-index: 200; top: 76px; left: 50%; min-width: 280px; transform: translateX(-50%); box-shadow: 0 8px 24px rgb(22 29 43 / 12%); }
+@media (max-width: 1280px) {
+  .run-history article { grid-template-columns: auto minmax(220px, 1fr) minmax(220px, 1fr); }
+  .run-counts { grid-column: 2; }
+}
 </style>
