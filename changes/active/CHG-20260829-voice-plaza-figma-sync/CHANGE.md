@@ -79,7 +79,7 @@ data_changes: []
 | R6 | Analysis 使用 selected-only Preview/Create，并显示当前真实 Preview 数据 | external:Figma-EAPm8KVarUe7BFTSnzvOpT-3084:568 | satisfied | `AnalysisSubmitDialog.vue` + existing Store/API；540×446 geometry + Browser Mock |
 | R7 | Export 保留 selected/page/query、进度、下载和 7 天 Artifact retention | external:Figma-EAPm8KVarUe7BFTSnzvOpT-3084:770 | satisfied | `DataExportDialog.vue` + `TaskProgressBar.vue` + `artifactRetention.ts`；650×690 Browser Mock；既有 retention E2E |
 | R8 | 公共部分复用真实 Shared Owner，不机械建立第二套组件库 | external:Figma-Design-to-Code-owner-mapping | satisfied | `AimaPageHeader`、`AimaButton`、`AimaFeedbackBanner`、`AimaIcon` 复用；Feature 私有组件仍留 Page Owner |
-| R9 | 不改变 Cursor、Analysis、人工复核、Export、Detail、Contract/generated 业务语义 | repo:frontend/src/features/voice-plaza/store.ts | satisfied | Review 发现并修复辅助错误误分类与 Failed Run `error_code` 丢失；最新 CI generated drift、PostgreSQL、Runtime、Full-stack 均通过 |
+| R9 | 不改变 Cursor、Analysis、人工复核、Export、Detail、Contract/generated 业务语义 | frontend/src/features/voice-plaza/store.ts | satisfied | Review 发现并修复辅助错误误分类与 Failed Run `error_code` 丢失；最新 CI generated drift、PostgreSQL、Runtime、Full-stack 均通过 |
 | R10 | PR 转 Ready 前完成 targeted visual review、正式两阶段 Review，并在无临时验证 Workflow 的 feature HEAD 上通过永久 CI / Runtime / Full-stack | user:本任务Git与交付授权 | satisfied | Visual Evidence 已完成；临时 Workflow 已删除；Review/Re-review 已完成；Head `0388900e...` 的 CI `33226493230`、Runtime `33226493218`、Full-stack `33226493240` 均 success |
 
 # Design-to-Code 映射
