@@ -1,0 +1,31 @@
+name: Temporary Mark Voice Plaza PR Ready
+
+on:
+  push:
+    branches:
+      - feature/voice-plaza-figma-sync
+    paths:
+      - .github/workflows/temporary-mark-pr-ready.yml
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  mark-ready:
+    name: Mark PR #272 ready for review
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Mark PR ready and verify state
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          test "${GH_REPO}" = "dingyuwen777/AIMA_UGC"
+          test "$(gh api "repos/${GH_REPO}/pulls/272" --jq '.head.ref')" = "feature/voice-plaza-figma-sync"
+          if [[ "$(gh api "repos/${GH_REPO}/pulls/272" --jq '.draft')" == "true" ]]; then
+            gh pr ready 272 --repo "${GH_REPO}"
+          fi
+          test "$(gh api "repos/${GH_REPO}/pulls/272" --jq '.draft')" = "false"
