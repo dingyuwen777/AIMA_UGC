@@ -3,6 +3,10 @@ name: review
 description: 面向不同项目形态、编程语言和工具链的独立代码审查与测试充分性验证工作流。Review 不维护第二套编码规范；同仓存在 Coding Skill 时，先读取 Coding 并以其为唯一研发规范源，再独立重建需求与风险、审查 diff/实现/测试/文档、从测试专家视角设计最少充分验证、输出有证据的 Findings。支持 review-only、review-and-test、review-and-fix，并在修复时返回 Coding、修复后 re-review。Use for code review, pull request review, audit, test adequacy analysis, independent verification, regression-risk analysis, and review-driven fix loops across languages and project types.
 ---
 
+<!-- agent-routing:v1
+{"协议":"Agent Skills Skill路由/v1","Skill":"review","触发":{"任一":[{"包含":{"维度":"执行模式","取值":["审查"]}},{"包含":{"维度":"意图","取值":["代码审查","Review-only","Review-and-test","Review-and-fix","独立复核"]}}]}}
+-->
+
 # Review
 
 Review 的职责不是再写一遍“怎样开发”，而是作为**独立审查者 + 测试专家**回答：
@@ -40,9 +44,7 @@ Review **不复制** Coding 的编码、TDD、Git、兼容、安全、Contract�
 
 如果存在：
 
-```text
-.agents/skills/coding/SKILL.md
-```
+[`.agents/skills/coding/SKILL.md`](../coding/SKILL.md)
 
 必须在正式 Review 前读取，并把它及其按任务触发的 references 作为**唯一研发规范源**。Review 不得把 Coding 的详细规则复制成第二份，也不得用 Review 自己的偏好覆盖项目事实。
 
@@ -75,7 +77,7 @@ Review 仍可独立使用，但只能依据：
 Review 发现技术文档缺陷时：
 
 - 只读 Review：作为 Finding 报告；
-- 已授权修文档且存在 `.agents/skills/docs/SKILL.md`：按 Docs 的工作流处理，不由 Review 复制 Docs 写作规则；
+- 已授权修文档且存在 [`.agents/skills/docs/SKILL.md`](../docs/SKILL.md)：按 Docs 的工作流处理，不由 Review 复制 Docs 写作规则；
 - Docs 发现实现问题后仍返回 Coding，不由 Review 越权直接改生产实现。
 
 ## 2. 三种工作模式

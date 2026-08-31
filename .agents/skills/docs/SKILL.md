@@ -3,6 +3,10 @@ name: docs
 description: 面向软件项目技术文档的事实同步、审查、编写和更新工作流。先恢复当前仓库真实事实，再按文档影响选择 not_applicable、targeted 或 full；从第一性原理解释为什么存在、解决什么问题、数据或调用怎么流、当前代码在哪实现，再解释必要术语。术语使用白话，最小例子只在能帮助理解时使用；是否引用代码路径、表名、类名、函数名、接口名或配置项，以能否帮助理解/定位且不会制造第二套事实为判断标准。Use for documentation review, documentation updates, technical writing, README/architecture/API/operations guides, and code-documentation synchronization.
 ---
 
+<!-- agent-routing:v1
+{"协议":"Agent Skills Skill路由/v1","Skill":"docs","触发":{"包含":{"维度":"意图","取值":["文档审查","文档编写","文档更新","文档同步","Docs targeted","Docs full"]}}}
+-->
+
 # Docs
 
 Docs 的目标不是“让 Markdown 看起来更完整”，而是让读者能够**正确理解当前系统，并知道真实实现在哪里**。
@@ -53,6 +57,7 @@ Docs 的目标不是“让 Markdown 看起来更完整”，而是让读者能�
 11. **Review 默认不等于修改授权。** 用户只要求审查时只报告；只有任务明确允许修改时才能进入 Review + Fix 或 Write / Update。未经授权不提交、推送、开 PR、合并或发布。
 12. **发现代码问题时不让文档迎合 Bug。** 如果当前证据表明实现偏离正式要求，Docs 应报告实现问题并返回 Coding；代码修正后再做一次针对性复核。不要通过改文档把错误实现合法化。
 13. **以实用性为结束条件。** 读者看完应知道为什么、怎么流、去哪里找真实实现、怎么验证或排障。文档没有帮助读者完成真实任务时，即使术语很多、章节很多也不算高质量。
+14. **仓库内具体文档引用必须同时可定位、可点击。** 当 Markdown 文档引用当前仓库内另一个具体文档，且目标可由当前仓库事实确认时，统一使用**完整仓库相对路径 + 可点击链接**：显示文字保留完整仓库相对路径，链接目标使用从当前文档位置可解析的相对路径并验证真实存在。不得只写不可点击的 inline-code 路径，也不得用“这里”“详情”等隐藏真实目标；命令、目录树、glob、占位路径、协议/流程示例、生成路径等非导航内容不机械链接化。模板或生成型文档必须按最终输出位置重新验证相对链接。详细写法见 [02_第一性原理技术写作.md](references/02_第一性原理技术写作.md)，审查与修复见 [03_审查编写与修复流程.md](references/03_审查编写与修复流程.md)。
 
 ## 2. Docs Impact：让同步有效但不变重
 
@@ -197,7 +202,7 @@ code_issue_detected
 
 然后按以下规则处理：
 
-- 如果同一仓库存在 `.agents/skills/coding/SKILL.md`，在**任何实现代码修改之前必须读取它**，并切回 Coding 的完整需求、风险、调试/TDD、验证、Review、Git 和完成门禁；Docs 不得用自己的文档规则代替 Coding 去直接修实现；
+- 如果同一仓库存在 [`.agents/skills/coding/SKILL.md`](../coding/SKILL.md)，在**任何实现代码修改之前必须读取它**，并切回 Coding 的完整需求、风险、调试/TDD、验证、Review、Git 和完成门禁；Docs 不得用自己的文档规则代替 Coding 去直接修实现；
 - 如果 Coding Skill 不存在、无法读取，或当前授权只允许文档 Review，则 Docs **不得修改实现代码**；只报告 `code_issue_detected`、证据和阻塞，让上游决定后续研发动作；
 - Coding 完成修复且取得自己的新鲜验证后，再返回 Docs 执行 `targeted re-review`，只复核原受影响文档和必要事实源；
 - 如果第二次 targeted re-review 又发现新的业务决定、Contract 冲突或明显范围扩大，不继续自动循环，而是回到上游需求/决策流程重新界定任务。
@@ -214,6 +219,7 @@ code_issue_detected
 重要因果链可理解
 必要数据/调用/状态流解释清楚
 代码/Contract/Schema 等引用真实且有理解价值
+仓库内具体文档引用显示完整仓库相对路径并可点击，且链接已从当前文档或最终生成位置验证
 术语首次出现已有白话解释
 最小例子没有伪装成生产事实
 没有无意义复制机器事实

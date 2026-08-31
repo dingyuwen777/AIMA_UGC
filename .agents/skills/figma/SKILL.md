@@ -3,6 +3,10 @@ name: figma
 description: 面向任意项目的 Figma 产品原型、设计系统、页面可用性和 Design-to-Code 正式开发基线的事实驱动审查、修复与实施交接工作流。支持从“全面检查这个 Figma”“检查并修复”“按这个 Figma 替换现有页面”等自然语言自动路由到 review-only、review-and-fix、baseline-ready 或 baseline-ready → Coding handoff。先识别项目形态和目标用户，再按实际边界读取需求、设计系统、代码、Contract/API/SDK/数据源/运行状态等事实；审查页面尺寸、布局、间距、Canvas 组织、图片与标注、公共组件与可复用业务逻辑、Prototype、状态覆盖、动态数据来源、用户习惯和实现可行性。禁止把 Figma 示例当生产事实、把截图当结构证据、机械暴露内部实现、复制可复用业务规则，或由设计稿创造系统不存在的能力。Use for Figma prototype review, design audit, design-system review, layout/usability QA, prototype QA, canvas readability, annotation hygiene, real-system capability alignment, Design-to-Code readiness, and handing a READY design to the target project's coding workflow for implementation across web, mobile, desktop, dashboards, admin tools, static sites, and other UI projects.
 ---
 
+<!-- agent-routing:v1
+{"协议":"Agent Skills Skill路由/v1","Skill":"figma","触发":{"任一":[{"包含":{"维度":"能力","取值":["Figma"]}},{"包含":{"维度":"意图","取值":["Figma review-only","Figma review-and-fix","Figma baseline-ready","设计转代码"]}}]}}
+-->
+
 # Figma
 
 这个 Skill 不是“看起来好不好看”的主观点评器。
@@ -150,6 +154,8 @@ code_issue_detected
 
 只要本轮涉及页面、Canvas、Frame、Section、Annotation 或状态稿的视觉修改，修改前必须读取 [07_页面布局与真实可用性审计.md](references/07_页面布局与真实可用性审计.md)，并在每轮 Figma 写操作后执行其中的 Canvas-level Review。
 
+任何 Figma 写入还必须先执行 **Owner-first Figma Mutation**：已有 Shared/Feature/Page Owner 时优先复用或修改真实 Owner，不通过 Detach、复制或页面级重画制造第二套公共组件。公共语义与局部业务变化的详细分支由 [03_设计系统与组件复用审计.md](references/03_设计系统与组件复用审计.md) 维护。
+
 ```text
 先确认 Finding 和根因
 → 找最小真实 Owner
@@ -257,16 +263,19 @@ NOT_READY
    - 已明确授权修改 Figma → review-and-fix 后重新 baseline-ready
    - 未授权修改 Figma → 报告阻塞，不把已知设计缺陷写入生产代码
 → READY / 可实施的 READY_WITH_NOTES
+→ 如果已有对应页面：先执行 Existing Implementation Delta Gate
 → handoff 到目标项目 Coding 工作流
-→ Coding 负责实现 / 测试 / Review / CI / Git / 交付
-→ 实现完成后再用 Figma 做 targeted re-review / 视觉与交互对照
+→ Coding 负责最小增量实现 / 测试 / Review / CI / Git / 交付
+→ 实现完成后执行 Implementation ↔ Figma Conformance
+→ 正式长期 Drift + 有 Figma 写权限时执行授权 back-sync
+→ 强制输出 Figma Sync & Human Review
 ```
 
 “替换 / 实现 / 重做现有页面”本身表示用户要求修改该目标实现；但 commit、PR、merge、release 等 Git/交付权限仍按目标项目 Coding 工作流和用户明确授权判断，不能从“实现页面”自动扩大。
 
 进入 Coding handoff 后，本 Skill 只提供已经确认的设计事实、动态数据来源、Shared/Feature/Page Owner、Prototype 和状态规格；**不得复制或替代 Coding Skill 的 Change、TDD、验证、CI、Git、PR、Release 规则。**
 
-详细 handoff 见 [05_Design-to-Code交付门禁.md](references/05_Design-to-Code交付门禁.md)。
+详细 handoff、已有实现差异更新、back-sync 和人工复核输出见 [05_Design-to-Code交付门禁.md](references/05_Design-to-Code交付门禁.md)。
 
 ### D. 短提示词应当足够
 
@@ -362,6 +371,8 @@ CMS
 → 不作为正式可用能力
 ```
 
+Design-to-Code 的机器边界同样服从真实系统事实：**不得由 Figma / Design Context / Annotation 创建生产 Contract / API**；设计中的接口名、字段、枚举和示例机器值只能作为调查线索。冲突、缺失能力和真实机器边界的详细规则由 [02_业务能力与真实系统映射.md](references/02_业务能力与真实系统映射.md) 维护。
+
 ## 5.2 数据库数据也要通过正式系统边界
 
 如果设计展示的数据最终来自数据库：
@@ -436,6 +447,8 @@ Modal / Drawer Shell
 ```
 
 具体名称以当前 Design System 为准。
+
+Figma 修改遵循 **Owner-first Figma Mutation**：已有公共组件必须优先复用真实 Instance；公共语义变化改公共 Owner 并复核消费者，局部业务变化留在 Feature/Page，不用 Detach 或复制重画制造第二 Owner。详细门禁由 [03_设计系统与组件复用审计.md](references/03_设计系统与组件复用审计.md) 维护。
 
 ## 7.2 业务逻辑也要复用
 
@@ -605,6 +618,12 @@ Secret / Raw / Stack Trace
 错误态
 ```
 
+baseline-ready 必须执行 Annotation Sufficiency Review。只给实现无法从设计结构、Design Context 和正式事实源可靠推导的关键动态/非显然语义提供最小充分说明；不要用注释数量替代质量，也不要把完整 Contract / Schema 复制进 Canvas。详细充分性门禁由 [05_Design-to-Code交付门禁.md](references/05_Design-to-Code交付门禁.md) 维护。
+
+`baseline-ready` 还必须执行 **Annotation Development Readiness**：检查必要注释是否完整、正确并与当前真实系统机器事实一致；在 `review-and-fix` 且有 Figma 写权限时补齐/修正关键缺失并收敛重复说明，再重新复核。详细 Coverage、权限分支和去重规则由 [05_Design-to-Code交付门禁.md](references/05_Design-to-Code交付门禁.md) 与 [02_业务能力与真实系统映射.md](references/02_业务能力与真实系统映射.md) 维护。
+
+当真实 Backend/Contract 与前端/Figma Annotation 发生漂移时，先确认当前正式机器事实 Owner：符合正式 Contract 的后端/SDK/consumer 变化要同步前端并在有权限时同步 Figma Annotation；后端违反正式 Contract/已批准需求时修后端，不能让 Figma 迁就 Bug。无写权限时记录 `Pending Figma Sync`。详细分支由 [02_业务能力与真实系统映射.md](references/02_业务能力与真实系统映射.md) 维护。
+
 开发 Annotation 不应压在正式 UI 上，也不能被实现方误读成产品文案。Annotation 与正式 Frame、相邻画板、说明容器之间的间距、归属、分区和 Canvas-level Review 统一由 [07_页面布局与真实可用性审计.md](references/07_页面布局与真实可用性审计.md) 维护；本 Skill 不再维护第二套具体数值。
 
 ---
@@ -624,6 +643,8 @@ Tailwind / CSS Modules
 
 Figma MCP/工具返回的参考代码只表达结构意图，不得反向改变项目技术栈。
 
+凡是 DatePicker / DateRange / Today / Now 等时间相关 UI，必须映射目标项目当前**真实 Runtime / Contract 时间语义**；设计日期和生成代码时的本机时间不构成生产默认值。详细时间事实源、时区和日期区间规则见 [02_业务能力与真实系统映射.md](references/02_业务能力与真实系统映射.md)。
+
 实现前确认：
 
 ```text
@@ -634,6 +655,12 @@ Figma MCP/工具返回的参考代码只表达结构意图，不得反向改变�
 → Prototype / 状态规格
 → 当前项目实现入口
 ```
+
+如果当前项目已经有目标 Page/Screen，必须先执行 Existing Implementation Delta Gate：以现有正确实现为基线，只实现新 Figma 经 Requirement/Contract/Owner 确认的真实差异，**不默认整页重写**。
+
+生产实现由 Coding 工作流完成后，还必须执行 **Implementation ↔ Figma Conformance**，对实际页面、正式 Figma 与真实 Contract/Backend/SDK/Store 的 Visual、Interaction、State、Data/Contract、Responsive、Component/Owner 六个域做 targeted re-review；代码验证通过本身不等于 Design-to-Code 已闭环。
+
+发现 Figma 已经过期且差异已经被确认成长期正式事实时，在有 Figma 写权限的任务中按 **Bidirectional Design Sync Gate** 回写真实 Figma Owner；不能把偶然实现偏移或 Bug 自动设计化。任何自动回写完成后先标记 `SYNCHRONIZED_PENDING_HUMAN_REVIEW`，并强制输出 `Figma Sync & Human Review`。详细 Drift Owner、back-sync 和人工复核规则由 [05_Design-to-Code交付门禁.md](references/05_Design-to-Code交付门禁.md) 维护。
 
 ---
 
@@ -648,6 +675,8 @@ Figma MCP/工具返回的参考代码只表达结构意图，不得反向改变�
 [ ] 用户输入和动作都有真实系统支持或明确 Future 标识
 [ ] 动态数据都有真实来源
 [ ] DESIGN_EXAMPLE 不冒充线上当前事实
+[ ] Annotation Development Readiness 已完成，必要机器事实已校验
+[ ] 必要 Annotation 最少充分，无会误导实现的缺失/错误/无意义重复
 [ ] 页面尺寸与目标设备/Viewport 有依据
 [ ] 设计基准没有诱导固定像素生产实现
 [ ] 页面区块对齐、间距、信息密度合理
@@ -659,6 +688,7 @@ Figma MCP/工具返回的参考代码只表达结构意图，不得反向改变�
 [ ] 图片比例、裁切、长文本和图表极端状态有策略
 [ ] 表格/表单适配真实数据长度和用户操作顺序
 [ ] 公共视觉组件真实复用
+[ ] Figma 修改遵守 Owner-first，没有 Detach/复制形成第二公共 Owner
 [ ] 可复用业务逻辑有唯一 Owner
 [ ] 不同语义没有为了“复用率”被错误合并
 [ ] Component Property 无覆盖 Text
@@ -790,6 +820,12 @@ Variables / Reactions / Flow / Overlay / Scroll / Hidden State。
 
 `READY / READY_WITH_NOTES / NOT_READY`。
 
+## Figma Sync & Human Review
+
+凡是 Design-to-Code 任务，此项为**强制输出**。本轮实际修改过 Figma 时必须列出具体 File/Page/Section/Frame/Node、Before → After、事实来源/原因、关联实现/Contract、受影响消费者、验证证据和人工复核重点；未修改时也必须说明 `NO_FIGMA_CHANGE_REQUIRED` 或 `Pending Figma Sync` 的依据。
+
+自动回写过 Figma 但尚未取得人工/等价设计审批时，状态必须为 `SYNCHRONIZED_PENDING_HUMAN_REVIEW`；只有明确人工确认或项目已有等价审批证据才能描述为 `HUMAN_VERIFIED`。详细字段和状态定义由 [05_Design-to-Code交付门禁.md](references/05_Design-to-Code交付门禁.md) 唯一维护。
+
 ---
 
 # 18. 常见禁止事项
@@ -817,4 +853,8 @@ Variables / Reactions / Flow / Overlay / Scroll / Hidden State。
 19. 让客户端绕过正式架构直接访问数据库；
 20. 把 MCP 参考代码直接当目标项目实现；
 21. 因为演示好看伪造系统执行成功；
-22. 未执行必要验证就宣称“可以交给实现方”。
+22. 未执行必要验证就宣称“可以交给实现方”；
+23. 已有公共组件时 Detach、复制或重画制造第二 Owner；
+24. 代码实现完成后跳过 Implementation ↔ Figma Conformance，让设计与生产实现长期漂移；
+25. 把未批准的实现 Bug、临时 workaround 或偶然像素偏移自动回写成 Figma 长期事实；
+26. 实际修改过 Figma 后只说“已同步”，却不输出 `Figma Sync & Human Review` 供人工复核。

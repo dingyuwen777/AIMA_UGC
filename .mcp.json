@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "agent-skills": {
+      "args": [
+        "serve"
+      ],
+      "command": "${CLAUDE_PROJECT_DIR:-.}/.agents/runtime/agent-skills-mcp.exe",
+      "type": "stdio"
+    }
+  }
+}

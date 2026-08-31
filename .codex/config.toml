@@ -1,0 +1,5 @@
+# agent-skills:mcp:start
+[mcp_servers.agent-skills]
+command = ".agents/runtime/agent-skills-mcp.exe"
+args = ["serve"]
+# agent-skills:mcp:end

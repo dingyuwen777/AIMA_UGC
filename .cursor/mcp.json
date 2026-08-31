@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "agent-skills": {
+      "args": [
+        "serve"
+      ],
+      "command": "${workspaceFolder}${pathSeparator}.agents${pathSeparator}runtime${pathSeparator}agent-skills-mcp.exe",
+      "type": "stdio"
+    }
+  }
+}

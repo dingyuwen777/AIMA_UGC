@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Coding Skill 的项目发现缓存与并行变更检查工具。"""
+"""Coding Skill 的项目发现缓存、目标项目 Bootstrap 与并行变更检查工具。"""
 
 from __future__ import annotations
 
@@ -20,11 +20,18 @@ from zoneinfo import ZoneInfo
 
 
 CONTEXT_SCHEMA = "coding-project-context/v1"
-CHANGE_SCHEMA = "rvc-change/v1"
-GENERATOR_VERSION = "0.2.0"
+CHANGE_SCHEMA = "coding-change/v1"
+GENERATOR_VERSION = "0.4.0"
 CONTEXT_DIRECTORY = ".agents"
 CONTEXT_FILENAME = "project-context.json"
+DEFAULT_CHANGE_DIRECTORY = Path(".agents") / "changes"
+TOP_LEVEL_CHANGE_DIRECTORY = Path("changes")
 BEIJING_TIMEZONE = ZoneInfo("Asia/Shanghai")
+AGENTS_FILENAME = "AGENTS.md"
+GITIGNORE_FILENAME = ".gitignore"
+AGENTS_MANAGED_START = "<!-- agent-skills:managed:start -->"
+AGENTS_MANAGED_END = "<!-- agent-skills:managed:end -->"
+CACHE_IGNORE_RULE = ".agents/project-context.json"
 CHANGE_ID_PATTERN = re.compile(r"^CHG-\d{8}-[a-z0-9]+(?:-[a-z0-9]+)*$")
 CHANGE_STATUSES = {
     "approved",
@@ -43,6 +50,7 @@ CHANGE_LIST_FIELDS = {
 }
 CHANGE_SCALAR_FIELDS = {
     "branch",
+    "completion_gate",
     "created",
     "id",
     "level",
@@ -225,6 +233,7 @@ def _beijing_now() -> datetime:
 
 
 def _run_git(root: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
+    """在目标仓库内运行只读 Git 命令并返回完整结果。"""
     return subprocess.run(
         ["git", "-C", str(root), *arguments],
         check=False,
@@ -236,11 +245,13 @@ def _run_git(root: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
 
 
 def _git_head(root: Path) -> str | None:
+    """返回当前 HEAD；不是 Git 仓库或无 HEAD 时返回空值。"""
     result = _run_git(root, "rev-parse", "--verify", "HEAD")
     return result.stdout.strip() if result.returncode == 0 else None
 
 
 def _is_git_repository(root: Path) -> bool:
+    """判断给定目录本身是否为当前 Git 仓库根。"""
     result = _run_git(root, "rev-parse", "--show-toplevel")
     if result.returncode != 0:
         return False
@@ -251,6 +262,7 @@ def _is_git_repository(root: Path) -> bool:
 
 
 def _normalise_relative_path(path: str | Path) -> str:
+    """把路径规范成仓库相对的正斜杠形式。"""
     value = str(path).replace("\\", "/")
     while value.startswith("./"):
         value = value[2:]
@@ -258,6 +270,7 @@ def _normalise_relative_path(path: str | Path) -> str:
 
 
 def _is_safe_relative_path(path: str) -> bool:
+    """判断字符串是否为不逃逸仓库的安全相对路径。"""
     candidate = Path(path)
     return (
         bool(path)
@@ -283,14 +296,22 @@ def _safe_project_file(root: Path, relative_path: str) -> Path | None:
         return None
 
 
+def _is_change_management_path(relative_path: str) -> bool:
+    """只排除 Coding 自有 `.agents/changes`，避免把项目其他 `changes` 治理从事实发现中隐藏。"""
+    parts = [part.casefold() for part in Path(relative_path).parts]
+    return len(parts) >= 2 and parts[0] == ".agents" and parts[1] == "changes"
+
+
 def _is_excluded(relative_path: str) -> bool:
+    """判断项目发现是否应跳过该路径。"""
     parts = [part.casefold() for part in Path(relative_path).parts]
     if any(part in EXCLUDED_DIRECTORIES for part in parts):
         return True
-    return bool(parts and parts[0] == "changes")
+    return _is_change_management_path(relative_path)
 
 
 def _classify_path(relative_path: str) -> str | None:
+    """按文件名和路径把候选事实入口分类。"""
     relative = _normalise_relative_path(relative_path)
     if not relative or _is_excluded(relative):
         return None
@@ -334,12 +355,13 @@ def _classify_path(relative_path: str) -> str | None:
 
 
 def _walk_files(root: Path) -> list[str]:
+    """在非 Git 仓库中有界遍历可见项目文件。"""
     files: list[str] = []
     for current_root, directory_names, file_names in os.walk(root):
         directory_names[:] = sorted(
             name
             for name in directory_names
-            if name.casefold() not in EXCLUDED_DIRECTORIES and name.casefold() != "changes"
+            if name.casefold() not in EXCLUDED_DIRECTORIES
         )
         current_path = Path(current_root)
         for file_name in sorted(file_names):
@@ -350,6 +372,7 @@ def _walk_files(root: Path) -> list[str]:
 
 
 def _git_files(root: Path) -> list[str] | None:
+    """返回 Git 已跟踪与未忽略未跟踪文件；Git 不可用时返回空值。"""
     result = _run_git(root, "ls-files", "-co", "--exclude-standard", "-z")
     if result.returncode != 0:
         return None
@@ -363,11 +386,13 @@ def _git_files(root: Path) -> list[str] | None:
 
 
 def _project_files(root: Path) -> list[str]:
+    """优先用 Git 枚举项目文件，必要时退化为文件系统遍历。"""
     git_files = _git_files(root) if _is_git_repository(root) else None
     return git_files if git_files is not None else _walk_files(root)
 
 
 def _candidate_paths(root: Path) -> list[str]:
+    """返回当前仓库可安全读取的高价值事实候选路径。"""
     return sorted(
         path
         for path in _project_files(root)
@@ -376,6 +401,7 @@ def _candidate_paths(root: Path) -> list[str]:
 
 
 def _sha256(path: Path) -> str:
+    """计算文件 SHA-256，作为轻量失效指纹。"""
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
@@ -384,6 +410,7 @@ def _sha256(path: Path) -> str:
 
 
 def _first_heading(path: Path) -> str | None:
+    """从文本型文档前部读取第一个 Markdown 风格标题。"""
     if path.suffix.casefold() not in {".md", ".mdx", ".rst", ".txt", ".adoc"}:
         return None
     try:
@@ -402,6 +429,7 @@ def _first_heading(path: Path) -> str | None:
 
 
 def _read_package_scripts(path: Path) -> dict[str, str]:
+    """只提取 package.json 中真实存在的字符串 scripts。"""
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
@@ -417,6 +445,7 @@ def _read_package_scripts(path: Path) -> dict[str, str]:
 
 
 def _path_digest(paths: Iterable[str]) -> str:
+    """对候选路径集合生成稳定摘要。"""
     joined = "\0".join(sorted(paths)).encode("utf-8")
     return hashlib.sha256(joined).hexdigest()
 
@@ -424,6 +453,7 @@ def _path_digest(paths: Iterable[str]) -> str:
 def _git_worktree_candidate_digest(
     root: Path, known_paths: Iterable[str] = ()
 ) -> str | None:
+    """只对事实候选相关工作区变化计算摘要，避免普通源码变化无意义刷新缓存。"""
     result = _run_git(
         root,
         "-c",
@@ -541,12 +571,12 @@ def scan_project(root: str | Path) -> dict[str, Any]:
 
 
 def _context_path(root: Path) -> Path:
-    """返回项目固定的 Coding 缓存文件路径。"""
+    """返回项目固定的 Coding 本地缓存文件路径。"""
     return root / CONTEXT_DIRECTORY / CONTEXT_FILENAME
 
 
 def _write_context(root: Path, context: dict[str, Any]) -> None:
-    """把项目索引原子写入项目根目录下的 .agents 缓存文件。"""
+    """把本地项目索引原子写入项目根目录下的 .agents 缓存文件。"""
     target = _context_path(root)
     state_directory = target.parent
     state_directory.mkdir(parents=True, exist_ok=True)
@@ -565,7 +595,7 @@ def _write_context(root: Path, context: dict[str, Any]) -> None:
 
 
 def _load_context(root: Path) -> dict[str, Any] | None:
-    """只读取新的 .agents/project-context.json；旧缓存路径不做迁移或兼容。"""
+    """只读取 .agents/project-context.json；损坏或不存在时返回空值。"""
     try:
         payload = json.loads(_context_path(root).read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
@@ -574,6 +604,7 @@ def _load_context(root: Path) -> dict[str, Any] | None:
 
 
 def _git_candidate_changes(root: Path, context: dict[str, Any]) -> bool | None:
+    """判断索引基线之后是否出现需要刷新缓存的 Git 候选事实变化。"""
     git_context = context.get("git")
     if not isinstance(git_context, dict) or not git_context.get("repository"):
         return None
@@ -628,6 +659,7 @@ def _git_candidate_changes(root: Path, context: dict[str, Any]) -> bool | None:
 
 
 def _context_is_fresh(root: Path, context: dict[str, Any]) -> bool:
+    """根据 schema、Git 基线和候选文件指纹判断缓存是否仍可复用。"""
     if context.get("schema") != CONTEXT_SCHEMA:
         return False
     git_changes = _git_candidate_changes(root, context)
@@ -659,7 +691,7 @@ def _context_is_fresh(root: Path, context: dict[str, Any]) -> bool:
 def ensure_project_context(
     root: str | Path, *, force: bool = False
 ) -> tuple[dict[str, Any], str]:
-    """创建或按需刷新项目索引，返回索引和本次模式。"""
+    """创建或按需刷新本地项目索引，返回索引和本次模式。"""
     project_root = Path(root).resolve()
     if not project_root.is_dir():
         raise NotADirectoryError(project_root)
@@ -671,7 +703,241 @@ def ensure_project_context(
     return context, "refreshed" if existing is not None else "created"
 
 
+def _asset_text(name: str) -> str:
+    """读取 Coding Skill 自带 UTF-8 文本模板。"""
+    path = Path(__file__).resolve().parents[1] / "assets" / name
+    return path.read_text(encoding="utf-8")
+
+
+def _detect_newline(content: bytes) -> bytes:
+    """从已有文件选择主换行符，避免增量修改无意义改写整份文本。"""
+    if b"\r\n" in content:
+        return b"\r\n"
+    if b"\r" in content and b"\n" not in content:
+        return b"\r"
+    return b"\n"
+
+
+def _render_with_newline(text: str, newline: bytes) -> bytes:
+    """把模板统一为已有文件的换行风格后编码为 UTF-8。"""
+    normalised = text.replace("\r\n", "\n").replace("\r", "\n").rstrip("\n")
+    return normalised.replace("\n", newline.decode("ascii")).encode("utf-8")
+
+
+def _markdown_safe_text(value: str) -> str:
+    """把仓库派生文本转成安全单行 Markdown 显示，避免名称改变 AGENTS 指令结构。"""
+    escaped: list[str] = []
+    for character in value:
+        codepoint = ord(character)
+        if character == "\\":
+            escaped.append("\\\\")
+        elif character == "\n":
+            escaped.append("\\n")
+        elif character == "\r":
+            escaped.append("\\r")
+        elif character == "\t":
+            escaped.append("\\t")
+        elif character in {"`", "<", ">"}:
+            escaped.append(f"\\u{codepoint:04x}")
+        elif codepoint < 0x20 or codepoint == 0x7F or character in {"\u0085", "\u2028", "\u2029"}:
+            escaped.append(f"\\u{codepoint:04x}")
+        else:
+            escaped.append(character)
+    return "".join(escaped)
+
+
+def _bootstrap_fact_sources(root: Path) -> str:
+    """列出初始化时真实存在的高价值事实入口，只提供导航而不推断技术栈。"""
+    context = scan_project(root)
+    grouped: dict[str, list[str]] = {}
+    for item in context.get("documents", []):
+        if not isinstance(item, dict):
+            continue
+        path = item.get("path")
+        kind = item.get("kind")
+        if not isinstance(path, str) or not isinstance(kind, str):
+            continue
+        normalised = _normalise_relative_path(path)
+        if normalised == AGENTS_FILENAME:
+            continue
+        if normalised.startswith(".agents/skills/") or normalised.startswith(".agents/changes/"):
+            continue
+        grouped.setdefault(kind, []).append(normalised)
+    if not grouped:
+        return "- 初始化扫描未发现可稳定列出的项目规则、Manifest、需求、Contract、Migration 或文档入口；后续任务按实际新增文件继续恢复事实。"
+    labels = {
+        "instructions": "项目规则",
+        "manifest": "Manifest / Lock / Build",
+        "requirements": "需求 / Spec / Roadmap",
+        "contract": "Contract / Schema",
+        "migration": "Migration",
+        "documentation": "README / Architecture / Documentation",
+    }
+    lines: list[str] = []
+    for kind in ("instructions", "manifest", "requirements", "contract", "migration", "documentation"):
+        paths = sorted(set(grouped.get(kind, [])))
+        if not paths:
+            continue
+        lines.append(f"- {labels[kind]}：")
+        lines.extend(f"  - `{_markdown_safe_text(path)}`" for path in paths)
+    return "\n".join(lines)
+
+
+def _managed_asset_text() -> str:
+    """读取 Runtime/项目 Bootstrap 的薄 managed block，并拒绝重新引入内部治理导航。"""
+    text = _asset_text("AGENTS.managed.md")
+    if text.count(AGENTS_MANAGED_START) != 1 or text.count(AGENTS_MANAGED_END) != 1:
+        raise ValueError("AGENTS.managed.md managed marker 不完整或重复")
+    if ".agents/skills/" in text or "ENTRY.md" in text or "router/SKILL.md" in text:
+        raise ValueError("AGENTS.managed.md 不得暴露 Runtime 内部治理路径")
+    return text
+
+
+def _managed_block(newline: bytes) -> bytes:
+    """渲染固定 Agent Skills managed block，并适配目标文件原有换行风格。"""
+    return _render_with_newline(_managed_asset_text(), newline)
+
+
+def _validate_managed_markers(content: bytes) -> tuple[int, int] | None:
+    """校验 managed marker 唯一、成对且顺序正确；无 marker 时返回空值。"""
+    start = AGENTS_MANAGED_START.encode("utf-8")
+    end = AGENTS_MANAGED_END.encode("utf-8")
+    start_count = content.count(start)
+    end_count = content.count(end)
+    if start_count == 0 and end_count == 0:
+        return None
+    if start_count != 1 or end_count != 1:
+        raise ValueError("AGENTS.md 的 Agent Skills managed marker 不完整或重复，拒绝猜测性覆盖")
+    start_index = content.find(start)
+    end_index = content.find(end)
+    if start_index < 0 or end_index < start_index:
+        raise ValueError("AGENTS.md 的 Agent Skills managed marker 顺序错误，拒绝猜测性覆盖")
+    return start_index, end_index + len(end)
+
+
+def _updated_agents_content(root: Path, existing: bytes | None) -> bytes:
+    """生成目标 AGENTS.md 内容；已有文件只追加或替换 managed block，其他字节保持不变。"""
+    if existing is None:
+        newline = b"\n"
+        template = Template(_asset_text("AGENTS.template.md"))
+        rendered = template.substitute(
+            project_name=_markdown_safe_text(root.name or "Project"),
+            managed_block=_managed_asset_text().rstrip("\r\n"),
+            fact_sources=_bootstrap_fact_sources(root),
+        )
+        return _render_with_newline(rendered, newline) + newline
+
+    try:
+        existing.decode("utf-8-sig")
+    except UnicodeDecodeError as error:
+        raise ValueError("AGENTS.md 必须是 UTF-8 文本，无法安全增量修改") from error
+    newline = _detect_newline(existing)
+    block = _managed_block(newline)
+    marker_range = _validate_managed_markers(existing)
+    if marker_range is not None:
+        start, end = marker_range
+        return existing[:start] + block + existing[end:]
+    if not existing:
+        return block + newline
+    if existing.endswith(newline + newline):
+        separator = b""
+    elif existing.endswith(newline):
+        separator = newline
+    else:
+        separator = newline + newline
+    return existing + separator + block + newline
+
+
+def _gitignore_has_cache_rule(content: bytes) -> bool:
+    """判断 .gitignore 是否已经显式忽略本地 project-context 缓存。"""
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError as error:
+        raise ValueError(".gitignore 必须是 UTF-8 文本，无法安全增量修改") from error
+    accepted = {CACHE_IGNORE_RULE, "/" + CACHE_IGNORE_RULE}
+    return any(line.strip() in accepted for line in text.splitlines())
+
+
+def _updated_gitignore_content(existing: bytes | None) -> bytes:
+    """增量补充本地缓存 ignore；已有规则和字节保持原样且重复执行幂等。"""
+    if existing is not None and _gitignore_has_cache_rule(existing):
+        return existing
+    content = existing or b""
+    newline = _detect_newline(content)
+    entry = _render_with_newline(
+        "# Agent local disposable cache\n" + CACHE_IGNORE_RULE,
+        newline,
+    )
+    if not content:
+        return entry + newline
+    if content.endswith(newline + newline):
+        separator = b""
+    elif content.endswith(newline):
+        separator = newline
+    else:
+        separator = newline + newline
+    return content + separator + entry + newline
+
+
+def _atomic_write_bytes(path: Path, content: bytes) -> None:
+    """在同目录写临时文件后原子替换目标，尽量保留已有普通文件权限。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    previous_mode = path.stat().st_mode if path.exists() else None
+    with tempfile.NamedTemporaryFile("wb", dir=path.parent, prefix=path.name + ".", delete=False) as stream:
+        stream.write(content)
+        temporary = Path(stream.name)
+    try:
+        if previous_mode is not None:
+            os.chmod(temporary, previous_mode)
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def bootstrap_project(root: str | Path) -> dict[str, str]:
+    """创建或安全增量更新目标项目 AGENTS Overlay 和本地缓存 ignore，不生成项目语义猜测。"""
+    project_root = Path(root).resolve()
+    if not project_root.is_dir():
+        raise NotADirectoryError(project_root)
+    coding_skill = project_root / ".agents/skills/coding/SKILL.md"
+    if coding_skill.is_symlink() or not coding_skill.is_file():
+        raise FileNotFoundError(f"目标项目缺少已安装的 .agents/skills/coding/SKILL.md：{coding_skill}")
+    entry = project_root / ".agents/skills/ENTRY.md"
+    if entry.is_symlink() or not entry.is_file():
+        raise FileNotFoundError(f"目标项目缺少已安装的 .agents/skills/ENTRY.md：{entry}")
+    router = project_root / ".agents/skills/router/SKILL.md"
+    if router.is_symlink() or not router.is_file():
+        raise FileNotFoundError(f"目标项目缺少已安装的 .agents/skills/router/SKILL.md：{router}")
+
+    agents_path = project_root / AGENTS_FILENAME
+    gitignore_path = project_root / GITIGNORE_FILENAME
+    for path in (agents_path, gitignore_path):
+        if path.is_symlink():
+            raise ValueError(f"Bootstrap 不修改符号链接文件：{path}")
+        if path.exists() and not path.is_file():
+            raise ValueError(f"Bootstrap 目标必须是普通文件：{path}")
+
+    existing_agents = agents_path.read_bytes() if agents_path.exists() else None
+    existing_gitignore = gitignore_path.read_bytes() if gitignore_path.exists() else None
+    next_agents = _updated_agents_content(project_root, existing_agents)
+    next_gitignore = _updated_gitignore_content(existing_gitignore)
+
+    agents_mode = "created" if existing_agents is None else "unchanged"
+    gitignore_mode = "created" if existing_gitignore is None else "unchanged"
+    if existing_agents != next_agents:
+        _atomic_write_bytes(agents_path, next_agents)
+        if existing_agents is not None:
+            agents_mode = "updated"
+    if existing_gitignore != next_gitignore:
+        _atomic_write_bytes(gitignore_path, next_gitignore)
+        if existing_gitignore is not None:
+            gitignore_mode = "updated"
+    return {"agents": agents_mode, "gitignore": gitignore_mode}
+
+
 def _validate_change_id(change_id: str) -> None:
+    """校验 Coding Change ID 使用固定可排序格式。"""
     if not CHANGE_ID_PATTERN.fullmatch(change_id):
         raise ValueError(
             "change id 必须使用 CHG-YYYYMMDD-kebab-case 格式，例如 "
@@ -680,13 +946,98 @@ def _validate_change_id(change_id: str) -> None:
 
 
 def _yaml_scalar(value: str) -> str:
+    """使用 JSON 字符串编码生成兼容 YAML 的安全标量。"""
     return json.dumps(value, ensure_ascii=False)
 
 
-def _yaml_list(name: str, values: Sequence[str]) -> list[str]:
+def _yaml_list(_name: str, values: Sequence[str]) -> list[str]:
+    """把字符串序列序列化为模板字段值所需的 YAML 列表片段。"""
     if not values:
-        return [f"{name}: []"]
-    return [f"{name}:", *(f"  - {_yaml_scalar(value)}" for value in values)]
+        return ["[]"]
+    return ["", *(f"  - {_yaml_scalar(value)}" for value in values)]
+
+
+def _has_coding_change_layout(root: Path, relative_root: Path) -> bool:
+    """判断专用 Coding 目录是否已经具有 active/archive 布局。"""
+    candidate = root / relative_root
+    return (candidate / "active").is_dir() or (candidate / "archive").is_dir()
+
+
+def _raw_change_schema(path: Path) -> str | None:
+    """只读取 CHANGE.md frontmatter 的 schema，用于识别顶层 changes 是否真是当前 Coding carrier。"""
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return None
+    if not lines or lines[0].strip() != "---":
+        return None
+    for line in lines[1:]:
+        if line.strip() == "---":
+            return None
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        if key.strip() == "schema":
+            return value.strip().strip("\"'") or None
+    return None
+
+
+def _top_level_change_documents(root: Path) -> list[Path]:
+    """返回顶层 changes/active 与 archive 下现有 CHANGE.md。"""
+    change_root = root / TOP_LEVEL_CHANGE_DIRECTORY
+    return [
+        *sorted((change_root / "active").glob("*/CHANGE.md")),
+        *sorted((change_root / "archive").glob("*/*/CHANGE.md")),
+    ]
+
+
+def _has_current_top_level_coding_carrier(root: Path) -> bool:
+    """只有顶层 changes 中存在记录且全部为当前 schema，才认作受支持 Coding carrier。"""
+    documents = _top_level_change_documents(root)
+    return bool(documents) and all(
+        _raw_change_schema(path) == CHANGE_SCHEMA for path in documents
+    )
+
+
+def _has_foreign_change_governance(root: Path) -> bool:
+    """检测已知外部治理或未被当前 schema 证明为 Coding carrier 的顶层 changes。"""
+    if (root / "openspec").exists():
+        return True
+    top_level = root / TOP_LEVEL_CHANGE_DIRECTORY
+    return top_level.exists() and not _has_current_top_level_coding_carrier(root)
+
+
+def resolve_change_root(root: str | Path, *, for_create: bool = False) -> Path:
+    """解析当前 Coding Change carrier；创建时遇到外部/未确认治理则拒绝静默写入。"""
+    project_root = Path(root).resolve()
+    if _has_coding_change_layout(project_root, DEFAULT_CHANGE_DIRECTORY):
+        return project_root / DEFAULT_CHANGE_DIRECTORY
+    if _has_current_top_level_coding_carrier(project_root):
+        return project_root / TOP_LEVEL_CHANGE_DIRECTORY
+    if for_create and _has_foreign_change_governance(project_root):
+        raise ValueError(
+            "检测到项目已有 OpenSpec、顶层 changes 或其他未确认治理，"
+            "但没有证据表明它是当前 coding-change/v1 carrier；"
+            "请先按项目规则确定 Requirement Traceability / Validation Matrix / Completion Audit 的承载方式，"
+            "Coding 不会静默创建或污染平行 Change。"
+        )
+    return project_root / DEFAULT_CHANGE_DIRECTORY
+
+
+def active_change_paths(root: str | Path) -> list[Path]:
+    """返回当前 Coding carrier 中所有 Active CHANGE.md 路径。"""
+    return sorted((resolve_change_root(root) / "active").glob("*/CHANGE.md"))
+
+
+def archive_change_paths(root: str | Path) -> list[Path]:
+    """返回当前 Coding carrier 中所有归档 CHANGE.md 路径。"""
+    return sorted((resolve_change_root(root) / "archive").glob("*/*/CHANGE.md"))
+
+
+def change_root_relative(root: str | Path) -> str:
+    """返回当前 Coding carrier 相对仓库根的标准路径。"""
+    project_root = Path(root).resolve()
+    return _normalise_relative_path(resolve_change_root(project_root).relative_to(project_root))
 
 
 def create_change(
@@ -703,7 +1054,7 @@ def create_change(
     data_changes: Sequence[str] = (),
     depends_on: Sequence[str] = (),
 ) -> Path:
-    """以独占目录创建一个可由 Git 追踪的 CHANGE.md。"""
+    """在解析后的 Coding carrier 中以独占目录创建 `coding-change/v1` L2/L3 Change。"""
     _validate_change_id(change_id)
     normalised_level = level.upper()
     if normalised_level not in {"L2", "L3"}:
@@ -720,6 +1071,7 @@ def create_change(
         "branch": branch,
         "created": today,
         "updated": today,
+        "completion_gate": "required",
         "depends_on": list(depends_on),
         "affected_areas": list(affected_areas),
         "affected_paths": list(affected_paths),
@@ -749,7 +1101,7 @@ def create_change(
             _yaml_list("data_changes", metadata["data_changes"])
         ),
     )
-    active_directory = project_root / "changes" / "active"
+    active_directory = resolve_change_root(project_root, for_create=True) / "active"
     active_directory.mkdir(parents=True, exist_ok=True)
     change_directory = active_directory / change_id
     change_directory.mkdir(exist_ok=False)
@@ -766,6 +1118,7 @@ def create_change(
 
 
 def _parse_scalar(value: str) -> Any:
+    """解析 Coding Change frontmatter 中允许的标量和空列表形式。"""
     stripped = value.strip()
     if stripped == "[]":
         return []
@@ -780,6 +1133,7 @@ def _parse_scalar(value: str) -> Any:
 def _validate_change_metadata(
     metadata: dict[str, Any], source: Path | None = None
 ) -> None:
+    """严格校验当前 `coding-change/v1` 元数据，不接受旧 schema 或缺失门禁。"""
     missing = sorted((CHANGE_SCALAR_FIELDS | CHANGE_LIST_FIELDS) - set(metadata))
     if missing:
         raise ValueError(f"Change frontmatter 缺少字段：{', '.join(missing)}")
@@ -788,7 +1142,9 @@ def _validate_change_metadata(
         if not isinstance(value, str) or not value.strip():
             raise ValueError(f"Change 字段 {field} 必须是非空字符串")
     if metadata["schema"] != CHANGE_SCHEMA:
-        raise ValueError(f"不支持的 Change schema：{metadata['schema']}")
+        raise ValueError(f"不支持的 Change schema：{metadata['schema']}；当前只支持 {CHANGE_SCHEMA}")
+    if metadata["completion_gate"] != "required":
+        raise ValueError("Change completion_gate 必须为 required")
     _validate_change_id(metadata["id"])
     if metadata["level"].upper() not in {"L2", "L3"}:
         raise ValueError("Change level 必须是 L2 或 L3")
@@ -815,7 +1171,7 @@ def _validate_change_metadata(
 
 
 def read_change_metadata(path: str | Path) -> dict[str, Any]:
-    """读取 CHANGE.md 中受支持的扁平 YAML frontmatter。"""
+    """读取并严格校验 CHANGE.md 中当前支持的扁平 YAML frontmatter。"""
     source = Path(path)
     lines = source.read_text(encoding="utf-8").splitlines()
     if not lines or lines[0].strip() != "---":
@@ -848,16 +1204,18 @@ def read_change_metadata(path: str | Path) -> dict[str, Any]:
 
 
 def _active_changes(root: Path) -> list[dict[str, Any]]:
+    """读取当前 Coding carrier 中仍处于进行状态的 Change 元数据。"""
     changes: list[dict[str, Any]] = []
-    for path in sorted((root / "changes" / "active").glob("*/CHANGE.md")):
+    for path in active_change_paths(root):
         metadata = read_change_metadata(path)
         metadata["_path"] = _normalise_relative_path(path.relative_to(root))
-        if str(metadata.get("status", "")).casefold() not in {"archived", "cancelled", "done"}:
+        if str(metadata.get("status", "")).casefold() not in {"done"}:
             changes.append(metadata)
     return changes
 
 
 def _normalised_values(metadata: dict[str, Any], key: str) -> list[str]:
+    """返回 Change 字符串列表字段的去重、大小写无关比较值。"""
     value = metadata.get(key, [])
     if not isinstance(value, list):
         return []
@@ -865,6 +1223,7 @@ def _normalised_values(metadata: dict[str, Any], key: str) -> list[str]:
 
 
 def _path_overlap(left: str, right: str) -> bool:
+    """判断两个声明路径是否相同或存在父子覆盖关系。"""
     left_path = left.replace("\\", "/").strip("/").casefold()
     right_path = right.replace("\\", "/").strip("/").casefold()
     left_path = "" if left_path == "." else left_path
@@ -879,7 +1238,7 @@ def _path_overlap(left: str, right: str) -> bool:
 
 
 def detect_conflicts(root: str | Path) -> list[dict[str, Any]]:
-    """检测进行中变更在路径、Contract 和数据上的显式重叠。"""
+    """检测进行中 Coding Change 在路径、Contract 和数据上的显式重叠。"""
     project_root = Path(root).resolve()
     conflicts: list[dict[str, Any]] = []
     for left, right in itertools.combinations(_active_changes(project_root), 2):
@@ -920,25 +1279,31 @@ def detect_conflicts(root: str | Path) -> list[dict[str, Any]]:
 
 
 def _json_print(payload: Any) -> None:
+    """以 UTF-8 友好的稳定格式打印 JSON。"""
     print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    """构造项目 Bootstrap、事实发现、Change 创建和冲突检查 CLI。"""
     parser = argparse.ArgumentParser(
-        description="发现项目事实入口，并检查并行 Change 的显式冲突。"
+        description="初始化项目 Agent Overlay、发现项目事实入口，并检查 Coding Change 的显式冲突。"
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    discover = subparsers.add_parser("discover", help="创建或刷新项目发现缓存")
+    bootstrap = subparsers.add_parser("bootstrap", help="创建或安全增量更新目标项目 AGENTS.md 与缓存 ignore")
+    bootstrap.add_argument("--root", default=".")
+    bootstrap.add_argument("--json", action="store_true")
+
+    discover = subparsers.add_parser("discover", help="创建或刷新本地项目发现缓存")
     discover.add_argument("--root", default=".")
     discover.add_argument("--force", action="store_true")
     discover.add_argument("--json", action="store_true")
 
-    status = subparsers.add_parser("status", help="列出进行中 Change 和冲突")
+    status = subparsers.add_parser("status", help="列出当前 Coding carrier 的进行中 Change 和冲突")
     status.add_argument("--root", default=".")
     status.add_argument("--json", action="store_true")
 
-    new_change = subparsers.add_parser("new-change", help="原子创建一个 L2/L3 Change")
+    new_change = subparsers.add_parser("new-change", help="原子创建一个 coding-change/v1 L2/L3 Change")
     new_change.add_argument("--root", default=".")
     new_change.add_argument("--id", required=True, dest="change_id")
     new_change.add_argument("--title", required=True)
@@ -951,7 +1316,7 @@ def _build_parser() -> argparse.ArgumentParser:
     new_change.add_argument("--data-change", action="append", default=[])
     new_change.add_argument("--depends-on", action="append", default=[])
 
-    conflicts = subparsers.add_parser("conflicts", help="检查进行中 Change 的重叠")
+    conflicts = subparsers.add_parser("conflicts", help="检查当前 Coding carrier 中进行中 Change 的重叠")
     conflicts.add_argument("--root", default=".")
     conflicts.add_argument("--json", action="store_true")
     return parser
@@ -963,6 +1328,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
     root = Path(arguments.root).resolve()
     try:
+        if arguments.command == "bootstrap":
+            result = bootstrap_project(root)
+            if arguments.json:
+                _json_print(result)
+            else:
+                print(f"AGENTS.md={result['agents']}；.gitignore={result['gitignore']}")
+            return 0
         if arguments.command == "discover":
             context, mode = ensure_project_context(root, force=arguments.force)
             if arguments.json:
@@ -1000,11 +1372,18 @@ def main(argv: Sequence[str] | None = None) -> int:
                         f"{conflict['right']}: {', '.join(conflict['overlaps'])}"
                     )
             return 2 if conflicts else 0
-        payload = {"changes": changes, "conflicts": conflicts}
+        payload = {
+            "change_root": change_root_relative(root),
+            "changes": changes,
+            "conflicts": conflicts,
+        }
         if arguments.json:
             _json_print(payload)
         else:
-            print(f"进行中 Change: {len(changes)}；显式冲突: {len(conflicts)}")
+            print(
+                f"Coding Change carrier: {payload['change_root']}；"
+                f"进行中 Change: {len(changes)}；显式冲突: {len(conflicts)}"
+            )
         return 2 if conflicts else 0
     except (FileExistsError, NotADirectoryError, OSError, ValueError) as error:
         print(f"error: {error}", file=sys.stderr)
