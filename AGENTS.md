@@ -1,6 +1,10 @@
-# AIMA_UGC Agent 开发规范
+# AIMA_UGC AI / Coding Agent 开发规范
 
-本文件是目标项目自己的 Agent Overlay。它只记录当前项目真实规则、稳定事实入口、长期工程边界和特殊约束；通用研发方法由本项目已经配置的研发治理能力提供。源仓库维护入口不是目标项目规则，**不要复制到这里**；也不要把通用研发示例中的技术栈当作本项目事实。
+本文件是 AIMA_UGC 所有 AI Coding Agent 和人工开发者的统一入口。
+
+先记住一条原则：**不要从聊天、历史 Stage 或旧文档猜当前实现。先找到当前机器事实，再做最小、可验证的修改。**
+
+精确机器事实由代码、Pydantic Contract、生成 OpenAPI/JSON Schema、Alembic Migration、测试和锁文件维护；长期架构由 `docs/blueprint/` 维护；未完成阶段与生产上线顺序由 `docs/roadmap/` 维护；专题实现和调试由 `docs/appendix/` 维护；开发工作流由 `docs/guides/` 维护；历史阶段原因和验收证据由 `changes/archive/` 维护。
 
 <!-- agent-skills:managed:start -->
 ## 项目研发治理入口
@@ -23,182 +27,313 @@
 <!-- agent-skills:project-governance:v1 -->
 ## 项目治理校准状态
 
-- 状态：已校准（2026-08-31）
-- 本节属于**项目自有 Overlay**，不是安装器受管区。本次校准已核对项目规则、README、长期架构与 Roadmap、Manifest/lock、真实入口和模块、Contract、Schema/Migration、测试、CI、Docker/Compose 与 Release 配置；未核实的外部状态继续明确保留为未确认。
-- 后续普通开发不为形式重复全量调查；只有项目长期治理事实发生变化、现有 `AGENTS.md` 与当前事实疑似漂移，或用户明确要求刷新项目规则时，才做 targeted 校准。
+- 状态：已校准（2026-08-31）。后续只在长期规则或项目事实发生实际变化时做有证据的定向修正，不用普通功能任务重写整份文件。
+- 本次校准依据：当前 `AGENTS.md`、根与模块 README、`docs/blueprint/`、`docs/roadmap/`、`docs/appendix/`、`docs/guides/`、Manifest/lock/版本文件、真实入口与模块实现、Pydantic Contract、生成 OpenAPI/JSON Schema、`database_schema.py`、Alembic Migration、后端/前端测试、GitHub Actions、Dockerfile、Compose 和 Release 配置。
+- 当前仓库未发现 `CONTRIBUTING*`、独立 RFC/ADR/PRD/Spec 目录、`openspec/` 或活动中的 Change；这表示当前不存在这些项目事实源，不代表禁止以后按正式流程新增。
 
-## 项目 Overlay 维护规则
-
-1. 项目语言、Runtime、框架、数据库、目录、模块职责、Contract、Schema/Migration、CI、部署和发布方式，只能依据当前仓库文件、实际运行结果或用户/Owner 已确认决定补充；
-2. 自动发现到 Manifest、锁文件、README、Spec、Contract、Migration 或 CI 入口，只能作为“去哪里继续核实”的导航，不能直接推导未被证据证明的架构结论；**不能单凭文件名推出 React、FastAPI、PostgreSQL** 或其他具体技术路线；
-3. 修改现有规则前先区分**规范性规则、描述性事实和未确认事项**：规范性规则不能因为当前实现没有遵守就被自动删除或弱化；描述性事实只有在当前仓库有充分反证时才修正；无法确认的内容保持未确认，不猜；
-4. 项目规则新增、修改或删除时，应保持已有仍有效约束、例外、失败处理、验证责任、安全与兼容边界，禁止为了让文档更短而丢失原文语义；
-5. 如果项目后续建立更具体的子目录 `AGENTS.md` 或同等规则，进入该目录工作时同时遵守更具体规则；
-6. 项目级研发治理能力可以维护本地可失效导航缓存；该缓存不是项目事实源，不应提交 Git，当前代码、Contract、Schema/Migration、测试和运行结果始终优先。
-
-## 规则、事实与未确认事项的边界
+## 规则、事实和未确认事项的边界
 
 ### 规范性规则
 
-1. 本文件、进入目标目录后适用的更具体 `AGENTS.md`、用户/Owner 已确认决定，以及 [`docs/blueprint/06_开发约束与分阶段实施.md`](docs/blueprint/06_开发约束与分阶段实施.md) 和 [`docs/blueprint/07_技术决策与实施门禁.md`](docs/blueprint/07_技术决策与实施门禁.md) 中仍有效的正式门禁，是项目规范性规则；
-2. [`docs/roadmap/README.md`](docs/roadmap/README.md) 及其正式 Roadmap 记录已批准但未完成的范围、顺序和 Go/No-Go，不得因为当前代码尚未实现就删除或改写成“已完成”；
-3. 当前实现违反正式规则时，应报告并修实现或发起正式决策，不能用“代码现在就是这样”删除、弱化或绕过规则；
-4. 规范之间冲突时，先保留更严格且仍有效的约束，查明 Owner 和演进依据后再修改正式事实源，不静默选边。
+- 本文件、适用的子目录 `AGENTS.md`、用户/业务 Owner 已确认决定，以及 Blueprint 中明确标为长期门禁的内容，是项目规范。当前实现违反规范时，应报告并修复实现或按正式决策流程变更规范，不能仅因代码尚未遵守就删除或弱化规则。
+- Roadmap 中已批准但未完成的能力是未来约束和阶段状态，不得写成当前已实现，也不得因为代码暂时不存在而删除。
+- 重大公共 Contract、Schema、权限、安全、数据保留、外部 Provider、费用、调度、SLO/RPO/RTO 或不可逆数据行为，仍按本文件的用户决策门禁处理。
 
 ### 描述性事实
 
-1. 当前实现、Pydantic Contract、生成 OpenAPI/JSON Schema、Alembic Migration、测试、锁文件、CI 和可复现运行结果负责描述“现在是什么”；
-2. [`README.md`](README.md)、[`docs/01_代码结构与修改导航.md`](docs/01_代码结构与修改导航.md) 和模块 README 是导航与现状说明，必须回到机器事实核验易变细节；
-3. 文档与机器事实冲突时，先区分实现缺陷、文档过期、已批准待实现设计或新决策，再修正确的一方；单个文件不能单独推翻正式边界。
+- 当前代码、手写 Contract、生成 OpenAPI/JSON Schema、Alembic Migration、测试、锁文件、CI 与可复现的本轮命令输出，是“当前已经实现什么”的主要证据；README、模块文档和 Blueprint 中的现状描述必须与这些机器事实交叉验证。
+- 描述性内容只有在充分证据证明过时后才修正。发现冲突时先判断是实现缺陷、文档漂移、待实现设计还是新决策，不能静默选择其中一方。
+- 精确 patch 版本、Migration head、Job 注册、API/Schema 和生成 Client 等易变化事实以对应机器事实源为准，本文件只保留长期基线与必要导航。
 
 ### 未确认事项
 
-无法从仓库、实际运行结果或 Owner 决定确认的环境、平台和业务事实必须写成“未确认”。不得据此猜测生产状态、权限、容量、RPO/RTO、外部系统行为或完成结论。
+- 仓库外的实际生产服务器状态、已部署 Commit/镜像、运行时 Secret 与账号权限、真实数据量和性能、当前备份可恢复性、Provider/模型账户额度，以及托管平台上的实时保护规则，必须在相关任务中查询对应环境后才能下结论。
+- 完整 Production Go-Live 仍未确认；认证授权、HTTPS、协调 Backup/Restore、正式 Deploy/Rollback、SBOM/签名/provenance、容量与完整生产验收等缺口继续以 Roadmap 和真实环境证据为准。
 
-## 开始任务时的稳定事实入口
+## 本次校准确认的偏差
 
-- 总入口与当前能力：[`README.md`](README.md)
-- 代码、Contract、表与测试导航：[`docs/01_代码结构与修改导航.md`](docs/01_代码结构与修改导航.md)
-- 长期架构目录：[`docs/blueprint/README.md`](docs/blueprint/README.md)
-- 当前正式技术决策：[`docs/blueprint/07_技术决策与实施门禁.md`](docs/blueprint/07_技术决策与实施门禁.md)
-- 开发、测试、CI 与 Git：[`docs/blueprint/06_开发约束与分阶段实施.md`](docs/blueprint/06_开发约束与分阶段实施.md)
-- 本地运行和部署入口：[`docs/02_环境运行与部署.md`](docs/02_环境运行与部署.md)
-- 测试和调试入口：[`docs/04_测试与调试说明.md`](docs/04_测试与调试说明.md)
-- 生产上线与剩余门禁：[`docs/roadmap/02_生产上线实施路线.md`](docs/roadmap/02_生产上线实施路线.md)
-- 精确依赖与 Runtime：`pyproject.toml`、`uv.lock`、`.python-version`、`.uv-version`、`.node-version`、`frontend/package.json`、`frontend/package-lock.json`
-- 机器 Contract：`backend/src/aima_ugc/contracts/`、`contracts/`、`scripts/contracts/generate.py`
-- Schema/Migration：`backend/src/aima_ugc/database_schema.py`、各模块 `tables.py`、`migrations/`
-- CI/交付：`.github/workflows/`、`Dockerfile`、`compose.yaml`、`compose.windows.yaml`
-- 历史决策和当时证据：`changes/archive/`；它不是当前实现的替代事实源。
+- `docs/blueprint/01_总体架构与技术选型.md` 的 Job 注册清单仍是旧的四项描述；当前 Worker 入口、根 README、技术决策文档和生产路线一致证明实际注册八种 Job。该项属于文档漂移，不能据此删减现有 Job。
+- 部分既有文档仍直接导航到接入前的本地治理 Reference；当前 Runtime 安装不提供这些本地 Reference。完整规则应从上方受管入口取得，相关文档导航需在后续定向文档任务中同步，不能通过重建一套本地副本解决。
+- `.github/workflows/ci.yml` 与 `.github/workflows/change-completion-gate.yml` 仍执行当前安装中不存在的 `.agents/skills/coding/tests`。这是 CI 配置与安装布局不一致造成的真实门禁故障；在独立修复前不得把该检查描述为已通过，也不得删除或弱化门禁来掩盖问题。
 
-## 当前工程基线
+## 1. 开始前
 
-以下均为当前仓库已确认的描述性事实；精确 patch 版本仍以上述版本文件和锁文件为准：
+处理分析、设计、编码、Review、PR、CI 或交付前：
 
-1. 项目是全栈模块化单体。后端为 Python/FastAPI/Pydantic 2/SQLAlchemy 2/Alembic/psycopg 3，源码位于 `backend/src/aima_ugc/`；前端为 Vue 3/TypeScript/Vite/Pinia，位于 `frontend/`；
-2. Runtime 锁定 Python `3.14.7`、uv `0.12.3`、Node.js `24.19.0`、npm `11.17.0`。Python 项目要求 `>=3.14,<3.15`，CI 与容器也使用对应锁定版本；
-3. 仓库根是唯一 Python/uv 工程根，持有 `pyproject.toml`、`uv.lock`、`.python-version`、`tests/`、`scripts/` 和 `migrations/`。禁止创建 `backend/pyproject.toml`、`backend/uv.lock`、`backend/tests/` 或第二套 backend 工程命令；
-4. PostgreSQL 18 是唯一业务事实库；当前本地开发、Compose 和 CI 的固定镜像版本为 PostgreSQL `18.4`；Alembic 仅支持连接真实 PostgreSQL 的 online Migration；
-5. 后端有 API、Worker、Scheduler、Migration 四个正式进程入口：`entrypoints/api_main.py`、`worker_main.py`、`scheduler_main.py`、`migrate_main.py`；
-6. 前端 Client 由 Pydantic/OpenAPI 经 Orval 生成，生成目录为 `frontend/src/generated/`；
-7. 根 `Dockerfile` 以仓库根为唯一 build context，通过 backend/frontend target 构建；`compose.yaml` 是 canonical Runtime，`compose.windows.yaml` 只覆盖 Windows 存储，不建立第二套业务拓扑；
-8. Internal V1-B / 公司内网 V1 的软件能力和 Stage 12 软件实现已有仓库记录，但这不等于完整 Production Go-Live。公网认证/授权与 HTTPS、协调 Backup/Restore、SBOM/独立签名/完整 provenance、正式服务器 Deploy/Rollback 和完整生产验收仍未完成。
+1. 先读本文件；
+2. 按上方“项目研发治理入口”取得当前任务需要的完整约束；本地受管 Skill Core/CLI 只是运行资产，不是项目规则或完整 Reference 事实源；治理能力不可用时按受管入口失败关闭；
+3. 再读 `docs/blueprint/README.md` 和 `docs/blueprint/07_技术决策与实施门禁.md`；
+4. 如果任务涉及“下一阶段做什么”、生产部署、认证、Release、Backup/Restore、回滚或旧数据迁移，必须再读 `docs/roadmap/02_生产上线实施路线.md`；
+5. 如果需要快速找到真实代码入口，读 `docs/01_代码结构与修改导航.md`；
+6. 按任务读取对应 Blueprint、Roadmap、Appendix/Guide、模块 README、Contract、Migration、依赖、实现和测试；
+7. 只读取与任务直接相关的内容，不用“全仓全部读一遍”代替真正理解调用链；
+8. 能从仓库确认的事实先自行确认；
+9. 文档与机器事实冲突时，先判断是实现缺陷、文档过期、待实现设计还是新决策，再在同一任务修正正确的一方；
+10. 不从旧系统、历史聊天、模型记忆或单个文件猜测当前实现。
 
-## 架构与模块边界
+常见任务导航：
 
-### 当前模块与职责
+| 任务 | 先读 |
+| --- | --- |
+| 不知道代码在哪、准备实际修改 | `docs/01_代码结构与修改导航.md` |
+| 总体架构/模块边界 | `docs/blueprint/01_总体架构与技术选型.md` |
+| Provider、Raw、Mapper、Canonical、Ingestion | `docs/blueprint/02_采集系统与数据标准化.md` |
+| PostgreSQL、Schema、Migration、Artifact | `docs/blueprint/03_数据库与文件存储.md`；需要直接 SQL 时再读 `docs/appendix/01_PostgreSQL查询与调试实战.md` |
+| API、Job、Worker、前端 | `docs/blueprint/04_后端任务API与前端.md` |
+| 日志、安全、运行边界 | `docs/blueprint/05_日志安全部署与运维.md` |
+| 当前开发环境怎么运行 | `docs/02_环境运行与部署.md` |
+| 下一阶段、生产上线、Release/Backup/回滚 | `docs/roadmap/02_生产上线实施路线.md` + `docs/appendix/11_生产部署与离线Release方案.md` |
+| 开发/测试/CI/Git | `docs/blueprint/06_开发约束与分阶段实施.md` |
+| 用户可见行为/前后端/Full-stack/Provider 测试分层 | `docs/blueprint/06_开发约束与分阶段实施.md` + 按上方受管入口加载当前分层验证完整规则 |
+| 重大跨模块决定 | `docs/blueprint/07_技术决策与实施门禁.md` |
+| Collection Plan、Capability、Decision、评论 | `docs/blueprint/08_采集策略与平台能力.md` + `docs/collection/README.md` |
+| Scheduler 运行/停机恢复 | `docs/appendix/05_Scheduler调度执行与停机恢复.md` |
+| TikHub 真实字段/Mapper | `docs/appendix/02_TikHub五平台真实响应与字段映射.md` + 目标平台文档 |
+| TikHub API family / 备用接口 | `docs/appendix/03_TikHub多接口验证与备用策略.md`、`docs/appendix/04_TikHub接口选型与真实验证台账.md` |
+| Excel 导入/统一入库 | `docs/appendix/08_数据入口与统一入库实现.md` |
+| Excel 数据明细导出/离线调试 | `docs/appendix/06_Excel统一数据导出与离线调试.md` |
+| AI 相关性/发声类型/情感/标签 | `docs/appendix/07_AI舆情打标与分析实现.md` + `backend/src/aima_ugc/modules/analysis/README.md` + 当前 Prompt |
+| Word 舆情报告 | `docs/appendix/10_Word舆情报告生成与排版实现.md` + `backend/src/aima_ugc/platform/reporting/README.md` |
+| Figma / Design-to-Code | `docs/guides/01_Figma与前端设计开发工作流.md` + `docs/blueprint/04_后端任务API与前端.md` |
 
-- `modules/system/`：系统配置、关键词、Provider Config、审计等系统事实；
-- `modules/collection/`：采集计划、调度、候选、Provider Request/Attempt 和采集运行；
-- `modules/content/`：Canonical 内容/评论统一入库、Current/Version/Metric/Coverage 与查询；
-- `modules/ingestion/`：Excel Import Batch 和历史数据 Campaign/Item/Chunk 编排；
-- `modules/analysis/`：相关性、AI 打标、Analysis Run/Request/Result 与人工复核；
-- `modules/reporting/`：正式统一 Excel 数据导出；离线 Markdown/Word 渲染能力位于 `platform/reporting/`，当前没有正式 Web Report Center 或 Word Report PostgreSQL Job/API；
-- `platform/`：config、database、jobs、logging、security、storage、export、reporting 等共享基础能力；
-- `adapters/`：PostgreSQL、TikHub/测试 Provider、LLM、ArtifactStore 等外部实现；
-- `bootstrap/`：正式 API/Worker/Scheduler 依赖装配；`entrypoints/` 只负责进程入口；
-- `frontend/src/features/`：当前业务 Feature；正式路由以 `frontend/src/router/index.ts` 为准，当前有 `/`、`/voice-plaza`、`/collection-runtime`、`/collection-strategy`。
+任务开始时按 Skill 判定 L1–L3。L2/L3 先写计划并创建/认领要求的 Change。仓库存在 `openspec/` 后，涉及新能力、行为、数据、接口、架构或安全变化的任务必须按当前 OpenSpec 规则更新对应 change 并通过校验；纯机械文档/格式任务按 Skill 例外处理。不得自行创建与 OpenSpec 工具产物冲突的平行目录。
 
-### 强制调用与写入边界
+### 正式单元完成定义追溯门禁
+
+对新建的 L2/L3 Change，尤其是 Stage / 子 Stage / Roadmap 正式开发单元，必须遵守：
 
 ```text
-Router → Service → Model / Port → Repository / Adapter
+用户已确认决定 / 正式 Roadmap / Spec / Stage 完成定义
+→ Requirement Traceability
+→ 当前 Change
+→ 实现 / 测试 / 文档
+→ Completion Audit
+→ 两阶段 Review
+→ Ready Check / CI
+```
 
+硬规则：
+
+1. 新 Change 模板默认 `completion_gate: required`；机制引入前没有该标记的历史/既有 `rvc-change/v1` 作为 legacy 保持兼容，不批量改写历史；
+2. 当前 Change 是施工契约，**不能作为自身的上游需求全集**；编码前从本轮用户明确决定和仓库正式上游事实源逐条建立 `Requirement Traceability`；
+3. 每条 Requirement 只能是 `satisfied / explicitly_deferred / not_applicable / not_satisfied`；Ready 前 `not_satisfied` 必须清零，延期/不适用必须有正式依据；
+4. 进入 `ready_for_review` 前必须重新读取上游事实源，独立重建完成定义，再比较“上游要求 → Change”和“Change → 实现/测试/文档”；不能因为当前 Change checkbox、测试或 CI 全绿就跳过这一步；
+5. 对存在前后端、生产者/消费者、异步状态或跨页面结果的任务，Completion Audit 还必须执行适用的反向能力审计，例如“后端能力 → 前端入口”和“前端动作 → 后端真实支持”；没有对应边界时记录不适用依据，不制造机制；
+6. Agent 负责主动发现遗漏，不能把用户后续提醒当成完成定义检查机制；
+7. Ready 前运行：
+
+```bash
+python .agents/skills/coding/scripts/ready_check.py --root . --require-active-ready
+```
+
+机器 Ready Check 只验证可机器判断的结构、状态、Source 路径、占位符和 Completion Audit checkbox；它不能证明业务语义完整，因此不能替代 Requirement Traceability 和语义 Review。
+
+对应完整规则通过上方受管入口按当前任务加载。
+
+## 2. 系统基线
+
+以下长期方案不得被普通任务静默改变：
+
+- 模块化单体；
+- API、Worker、Scheduler、Migration 分进程；
+- PostgreSQL 18；
+- Python 3.14；
+- FastAPI、Pydantic 2、SQLAlchemy 2、Alembic、psycopg 3；
+- 仓库根 `uv + pyproject.toml + uv.lock`；
+- Vue 3 + TypeScript + Vite + Pinia；
+- Pydantic/OpenAPI 生成前端 Client；
+- Provider/File Reader → Raw/Input Artifact → Mapper → Canonical → Relevance → Ingestion Service → Owner Repository → PostgreSQL；
+- PostgreSQL 持久化 Job；
+- Local ArtifactStore 默认实现，可在真实需要时替换 S3；
+- 应用 `.log` 为主要人工排障日志，Docker stdout/stderr 为辅助；
+- Docker Compose 离线 Release 是长期部署方向。Internal V1-A 已提供根 `Dockerfile`、`compose.yaml` 与最小可部署容器基础；当前 `.github/workflows/release.yml` 已建立 Linux/AMD64 Backend/Frontend + 固定 PostgreSQL 的离线 `images.tar`、Release/Migration Manifest、`SHA256SUMS`、`DEPLOY.md`、no-build/no-pull 回放以及正式 GHCR digest/Tag/GitHub Release 基础；完整 Production 仍缺 SBOM/独立签名/完整 provenance、协调 Backup-Restore、正式服务器 Deploy/Rollback、认证授权/HTTPS 和完整生产验收。
+
+采用方案 A：仓库根目录是唯一 Python/uv 工程根，保存 `pyproject.toml`、`uv.lock`、`.python-version`、`tests/`、`scripts/` 和 `migrations/`；源码在 `backend/src/aima_ugc/`。禁止创建 `backend/pyproject.toml`、`backend/uv.lock`、`backend/tests/` 或用 `uv --project backend` 形成第二套命令。
+
+Internal V1-A 已在仓库根建立唯一 `Dockerfile` 与 `compose.yaml`，Docker build context 继续固定在仓库根；后端/前端通过不同 target 构建，不把 `backend/` 或 `frontend/` 当独立 context。当前 Release Workflow 已经实现离线 Bundle、镜像身份/Manifest 和离线回放基础，但**不能把这些基础写成完整 Production Go-Live**；剩余 Production 强化仍由后续独立 Change 完成。
+
+打包问题必须修根因：禁止用临时 `PYTHONPATH`、改变工作目录、修改 `sys.path` 或先删除产物来掩盖 package discovery/构建配置问题。
+
+版本政策：精确版本以 `.python-version`、`.node-version`、`.uv-version`、`uv.lock`、`package-lock.json` 和镜像/Release 锁定事实为准。禁止运行时或构建时解析 `latest`，禁止因为发现新版本就在普通功能任务里升级；升级是独立任务，必须核验官方发布、兼容/安全影响并执行完整门禁。
+
+没有实际问题证据不得主动引入微服务、Redis、Kafka、RabbitMQ、MongoDB、OpenSearch、Kubernetes 或多数据库兼容层。
+
+## 3. 编码前
+
+复杂任务至少明确：
+
+```text
+背景与现状
+目标
+范围
+非目标
+成功标准
+输入和输出
+模块 Owner
+必须保持不变
+预计文件
+兼容性
+数据迁移
+测试
+验收
+部署
+回滚
+```
+
+步骤写清：
+
+```text
+[步骤]
+→ 修改范围：[文件 / 模块]
+→ 预期结果：[可观察行为]
+→ 验证方式：[命令 / 检查项]
+```
+
+能从仓库确认的事实不反问；发现用户前提与当前代码冲突时先指出证据。
+
+### 用户决策门禁
+
+如果未决事项会实质影响业务语义、页面/验收、公共 Contract、Schema、权限/安全、隐私与保留/删除、外部 Provider/Operation、费用/预算、调度、SLO/RPO/RTO、兼容或不可逆数据行为，并且仓库没有已批准事实：
+
+1. Agent 不得静默选择默认值后继续实现依赖该决定的行为；
+2. 先完成能由仓库、官方资料、Fixture、测试自行确认的事实调查；
+3. 在对话中先给明确推荐；存在实质取舍时再给 2–3 个真实备选及影响；
+4. 由用户/业务 Owner 作最终决定；未决定前暂停依赖该决定的 Contract、Schema、业务语义、安全策略或不可逆实现；
+5. 用户明确延期时，把延期本身写入长期事实源，不偷偷实现；
+6. 用户决定后，同一任务同步 Blueprint/需求、OpenSpec（存在时）、Contract/Schema（形成机器事实时）及当前 Change；
+7. 后续遇到已经固化的决定直接执行，只有新需求冲突时才重新提请决策。
+
+## 4. 简单、精准、兼容
+
+- 只写满足当前需求的最少代码；
+- 优先标准库和现有依赖；
+- 不增加未要求功能、CLI、配置、兼容层或未来占位抽象；
+- 不顺手重构、改名、格式化无关文件；
+- 默认保持公共 API、Contract、导入路径、配置、环境变量、数据格式、数据库、启动方式、合法行为、错误类型和关键错误信息；
+- 破坏性变化必须先设计版本、Migration、兼容期、部署和回滚。
+
+### 注释语言
+
+- 除专有名词、标识符、协议、库和标准名外，代码注释使用中文；
+- Python 文档字符串遵循 PEP 257；其他语言沿用项目既有文档注释规范；
+- 注释解释原因、约束、风险和非直观规则，不机械复述代码；公共接口以及承载非显然业务规则、关键不变量、状态转换、兼容原因或重要副作用的内部/private/helper 按实际需要补充说明。
+
+## 5. 模块边界
+
+模块化只为四件事：
+
+```text
+输入明确
+输出明确
+变化隔离
+可以独立验证
+```
+
+允许调用链：
+
+```text
+Router
+→ Service
+→ Model / Port
+→ Repository / Adapter
+```
+
+外部数据：
+
+```text
 Provider Adapter / File Reader
 → Raw / Input Artifact
 → Mapper
 → Canonical
 → Relevance
-→ ContentIngestionService
+→ Ingestion Service
 → Owner Repository
 → PostgreSQL
 ```
 
-1. 每张业务表只有一个写 Owner，Owner 由 `Table.info["owner"]` 声明；跨 Owner 写入必须经过正式 Service/Port/Bootstrap，不能直接调用对方 Repository 或表；
-2. Router/Entrypoint 不直接 SQL，Provider 不直接写业务表，Mapper 保持纯转换且不读数据库、不发 HTTP、不做 AI/业务分类；
-3. 第三方 JSON 不能成为公共业务结构；前端不直接访问数据库，不复制另一 Feature 的 Store/API，不再造平行 Client、Mapper、Repository 或 Job；
-4. 外部 HTTP 不放在数据库事务中；业务事实与必须触发的下游 Job 在同一 PostgreSQL Unit of Work 提交；
-5. Collection 在 Raw 后保留 Candidate；文件导入使用真实 Import Batch 或 Campaign/Item/Chunk 父事实，不为目录对称伪造 Collection Run/Scope/Candidate；
-6. 调试入口必须复用生产 Adapter、Operation、Mapper、Ingestion、Job Runtime、生成 Client 或 Renderer，不能复制第二套业务规则。
+Collection 外部来源在 Raw 后还保留 Candidate；文件导入使用 Processing Import Batch 或 Data Import Campaign/Item/Chunk 等真实父事实，不为了目录对称伪造 Collection Run/Scope/Candidate。
 
-## Contract / Schema / Migration
+数据库读取：
 
-1. HTTP Request/Response、Canonical、Job Payload 和导出/Provider/Collection/Analysis 模型的手写事实源位于 `backend/src/aima_ugc/contracts/` 及对应模块；`scripts/contracts/generate.py` 生成/校验 `contracts/openapi/openapi.json` 与版本化 JSON Schema；生成文件和 `frontend/src/generated/` 禁止手工修改；
-2. Contract 删除字段、改名、改类型/语义、可选变必填、改变默认值/排序/错误均按破坏性变化处理，必须设计版本、兼容期、调用方迁移和验证；
-3. 当前 Schema 机器注册入口是 `backend/src/aima_ugc/database_schema.py`，表定义分属各模块和 Platform；Schema 变化必须按 `tables.py → Alembic Revision → 真实 PostgreSQL 测试`，不得在 API 启动时 `create_all()`；
-4. `migrations/versions/` 当前从 `20260813_0001` 演进到单一已确认最新 revision `20260828_0030`，其 `down_revision` 为 `20260827_0029`。已发布 Migration 不改写、不改名；新增变化创建新 Revision，并验证 upgrade、head、兼容和必要 downgrade 边界；
-5. 外部 ID 使用字符串；关系使用外键/关联表；稳定字段用列，真正灵活的扩展元数据才用 `jsonb`；Content/Comment 使用 Current + Version + Metric Observation；
-6. 数据库时间点使用 `timestamptz`，应用 PostgreSQL Session 默认 `Asia/Shanghai`；AIMA 自有 API 时间使用带 `+08:00` 的 ISO-8601，北京时间以外的第三方 Raw/外部协议保持原始时间语义；
-7. Artifact ID、元数据和业务关系由 `ArtifactService` 管理，`ArtifactStore` 只按 `storage_key` 存取；正常业务写入走正式 Service/Owner，不把手工 SQL 发展成第二写入接口；
-8. AI taxonomy 的唯一业务事实源是 `backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md`，不得在 Python、Blueprint、Excel 文档和前端维护平行列表。
-
-## 开发与验证入口
-
-### 开发入口
-
-```bash
-uv run python scripts/dev/backend.py
-uv run python scripts/dev/frontend.py
-uv run python scripts/dev/check_local_stack.py
+```text
+PostgreSQL
+→ Query Repository / Read Model
+→ Query/Application Service
+→ Router / API
 ```
 
-`backend.py` 负责本地 PostgreSQL、Migration、Worker、可选 Scheduler、API 和 readiness；`frontend.py` 负责锁定 Node/npm、必要时 `npm ci` 和 Vite。日常开发不得用临时 `PYTHONPATH`、修改 `sys.path` 或切换工作目录掩盖打包问题。真实 Provider/LLM Probe 默认关闭，显式运行时必须限定请求与费用，不进普通 CI、不默认写生产库、不输出 Secret。
+禁止：
 
-### 后端与仓库质量入口
+- Router 直接 SQL；
+- Provider 直接写业务表；
+- Mapper 读数据库、发 HTTP 或做 AI/业务分类；
+- 第三方 JSON 成为公共业务结构；
+- 一个模块绕过 Owner 写另一个模块的表；
+- 多个 Repository 写同一张业务表；
+- 前端直接访问数据库；
+- Feature 复制另一个 Feature 的 Store/API；
+- 为同一能力再造平行 Client、Mapper、Repository 或 Job；
+- 每个函数机械增加 Interface/Facade/Factory/Manager；
+- 万能 BaseRepository；
+- 运行时任意插件加载。
 
-```bash
-uv run ruff format --check backend tests scripts
-uv run ruff check backend tests scripts
-uv run mypy backend/src
-uv run pytest tests/unit -q
-uv run pytest tests/contracts -q
-uv run pytest tests/api -q
-uv run pytest tests/integration -q
-uv run python scripts/quality/check_architecture.py
-uv run python scripts/quality/check_table_ownership.py
-uv run python scripts/quality/scan_secrets.py
-uv run python scripts/quality/check_docs.py
-uv run python scripts/contracts/generate.py --check
-```
+只有外部基础设施、跨模块边界或独立 Fake 明显受益时才创建 Port。
 
-Integration 依赖真实 PostgreSQL，不能用 SQLite 代替 PostgreSQL 行为证明。新功能、修复、重构和行为变化默认 Red → Green → Refactor；缺陷修复必须有回归测试。文档、治理、生成物和纯配置可声明 TDD 例外，但必须执行相应解析、链接、漂移、结构和仓库级检查，不伪造 Red。
+## 6. 独立调试
 
-### 前端入口
+调试入口必须复用生产实现。
 
-```bash
-npm --prefix frontend run generate:api
-npm --prefix frontend run lint
-npm --prefix frontend run typecheck
-npm --prefix frontend run test
-npm --prefix frontend run build
-npm --prefix frontend run test:e2e
-npm --prefix frontend run test:e2e:fullstack
-```
+- Provider Probe 调生产 Adapter/Operation；TikHub 只是一个 Provider 实现；
+- Mapper 测试调用生产 Mapper；
+- Ingestion 使用 Canonical Fixture 和隔离 PostgreSQL；
+- Worker 使用生产 Job Runtime 和 Fake Handler；
+- Frontend 使用生成 Client 的 Mock；
+- Renderer 使用固定 Report Context；
+- `tikhub_test` / `imports_test` 可以提供人工入口，但不能复制 endpoint、分页、字段映射、去重、AI、Exporter 或业务写库规则。
 
-具体任务按风险选择目标测试、模块测试、Contract/数据库/Provider 专项、Browser Mock、真实 Full-stack 和 Runtime；不机械执行全部层，但任何 `not_applicable` 都要有事实依据。不得用 Browser Mock 冒充真实 API/数据库/Worker，也不得用局部测试或旧 CI 结果冒充完整回归。
+真实付费 Provider/模型 Probe 默认关闭；显式运行时明确费用和请求上限，不进普通 CI，不默认写生产库，不打印 Secret。
 
-### Change 与完成门禁
+## 7. 数据
 
-1. 按正式项目规范判定 L1–L3；L2/L3 先形成可执行计划并创建或认领 `changes/active/` Change。仓库当前未发现 `openspec/`；若以后正式引入，涉及能力、行为、数据、接口、架构或安全变化时同时遵守其当前规则，不创建平行规范目录；
-2. 正式 L2/L3 单元必须建立“上游需求/Owner 决定 → Requirement Traceability → Change → 实现/测试/文档 → Completion Audit → Review → Ready/CI”的闭环；当前 Change 不能充当自身上游需求全集；
-3. 前后端、数据库、异步、公共 Contract 或 Provider 边界按实际风险建立 Validation Matrix；进入 Ready 前重新读取上游事实源，独立核对完成定义；
-4. 门禁失败修根因，不删除/跳过测试、不降低断言、不吞异常、不盲目更新快照、不为测试硬编码成功路径。
+- PostgreSQL 是唯一业务事实库；
+- 外部 ID 使用字符串；
+- 数据库时间继续使用 `timestamptz` 表达绝对时间点，应用 PostgreSQL Session 默认 timezone 固定为 `Asia/Shanghai`；
+- AIMA 自有 API 时间统一使用带 `+08:00` 偏移的 ISO-8601 北京时间；第三方 Raw、外部协议必须保持原始时间语义的事实层按原协议处理；
+- 人工日志使用北京时间 `[YYYY-MM-DD HH:mm:ss.SSS source.ext L<line>] [LEVEL] message`；前缀不额外输出 `timezone` 字段或 `Asia/Shanghai` 文本；
+- 关系使用外键/关联表，不用逗号字符串；
+- 稳定字段用列，确实灵活的扩展元数据才用 `jsonb`；
+- Content/Comment 使用 Current + Version + Metric Observation；
+- 一张表只有一个写 Owner；
+- 外部 HTTP 不放在数据库事务中；
+- 内容版本只与当前 Business Hash 比较，允许 `A → B → A` 形成新版本；
+- Collection Candidate/Ingestion 来源账本必须能追溯 Run、Scope、Attempt、Raw 和来源项；兼容单文件 Import 追溯 Import Batch/Input Artifact；统一 Data Import 追溯 Campaign/Source Item/Chunk/Artifact/Batch/逐行账本；
+- Artifact ID/元数据/业务关系由 `ArtifactService` 管理，`ArtifactStore` 只按 `storage_key` 存取；
+- 业务事实与必须触发的下游 Job 在同一 PostgreSQL Unit of Work 提交；
+- 可重试操作必须有明确、受数据库约束的幂等身份；
+- 正常业务写入优先走正式 Service/Owner，不把手工 SQL 当第二套写入接口。
 
-## CI / Git / Release / 部署
+## 8. Contract
 
-1. `.github/workflows/ci.yml` 按 `docs_only`、`governance_only`、`full` 分流；根/子目录 `AGENTS.md` 属于 `governance_only`。Full profile 覆盖 Python/Frontend 质量、Contract/生成漂移、PostgreSQL Integration、架构/表 Owner、安全和构建；
-2. `.github/workflows/fullstack.yml` 证明少量 Browser → Vue → API → PostgreSQL → Worker → Browser 真实黄金路径；`.github/workflows/runtime.yml` 证明 Dockerfile/Compose/Secret/non-root/readiness/持久化/recovery；`.github/workflows/tooling.yml` 验证本地开发和 Windows 工具；
-3. `.github/workflows/change-completion-gate.yml` 验证需求追溯与完成审计；`.github/workflows/release.yml` 提供 Linux/AMD64 离线候选、Bundle replay、GHCR digest/tag 和 GitHub Release 基础。Release 基础不等于 Production 已获准；
-4. 任务从最新 `main` 创建小写英文/数字/连字符分支，可用 `feature/`、`fix/`、`hotfix/`、`refactor/`、`perf/`、`docs/`、`test/`、`build/`、`chore/`、`migration/`、`revert/` 前缀，不使用工具/模型/人员身份前缀；
-5. 禁止 `git reset --hard`、`git clean -fd`、强推、覆盖用户修改、重写共享历史、绕过 Branch Protection/质量门禁；未经授权不提交、推送、建 PR、合并或删分支；提交信息使用中文；
-6. 完成结论必须基于当前工作树/HEAD 的新鲜验证和 PR 最新 HEAD 的实际 CI。queued/cancelled/旧 commit 绿灯不能当通过；无法验证的内容必须列出原因和风险；
-7. canonical Linux/服务器运行使用 `compose.yaml`；Windows Docker Desktop 使用 `compose.yaml + compose.windows.yaml`。部署、回滚、备份恢复和生产验收只能按当前正式 Roadmap 与实际服务器证据执行，不能根据本地 Compose 成功推断生产就绪。
+手写事实源：
 
-## 项目特殊长期约束
+- HTTP：Pydantic Request/Response；
+- Canonical：Pydantic Canonical Model；
+- Job：版本化 Pydantic Payload；
+- AI taxonomy/输出业务规则：当前版本 Prompt Markdown。
 
-### 持久 Job、Scheduler 与 Provider 恢复
+生成：
 
-当前 Worker 的唯一事实源是 `backend/src/aima_ugc/bootstrap/worker.py`，实际注册 8 个 Job type：
+- OpenAPI；
+- JSON Schema；
+- TypeScript Client。
+
+生成目录禁止手工修改。Contract 删除字段、改名、改类型、改语义、可选变必填、改默认排序或错误都按破坏性变化处理。
+
+AI taxonomy 不允许在 Python、Blueprint、Excel 文档和前端各维护一份平行列表；当前唯一业务事实源是 `backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md`。
+
+## 9. Job、Scheduler 与 Provider 恢复
+
+当前 Worker 实际注册的持久长任务以 `backend/src/aima_ugc/bootstrap/worker.py` 为准。当前机器事实包括：
 
 ```text
 collection.run.v1
@@ -211,44 +346,329 @@ analysis.content-label.v1
 reporting.content-export-excel.v1
 ```
 
-1. 长任务使用同一 PostgreSQL Job Runtime，不在 HTTP 请求中长期执行；Payload 版本、幂等、Lease、Fencing Token、Heartbeat、Attempt Deadline、取消、分类重试、进度和结果/错误语义必须保持；
-2. Scheduler 使用唯一 `(plan_id, schedule_version, scheduled_for)` Occurrence，在同一事务创建 Run/Job 并推进 `next_run_at`；当前策略是 `Asia/Shanghai + latest_only + max_catch_up_runs=0`；
-3. Provider 已有完整 Raw 时不再次发送；同一 Attempt 最多一次外部发送，真正重发创建新 Attempt；`not_sent` 与 `unknown` 分开，网络结果未知保留潜在重复计费事实；Transport 不隐藏自动网络重试，当前不自动跨 TikHub API family fallback；
-4. 当前只有 Billing/成本审计事实，没有请求/金额预算、Budget Account、Reservation Ledger 或发送前 Cost Guard；未来预算能力属于新的 L3 决策，不得把成本记录描述成预算控制；
-5. 完整协调 Backup/Restore 写屏障尚未实现。进入该阶段后，数据库 UoW、Artifact rename/delete 和维护 epoch 必须按正式设计统一协调；当前不得声称已完成。
+三个 `ingestion.historical-*` 是统一 Data Import Campaign 沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner。物理名称保留兼容，不构成平行任务系统。未来把其他长任务产品化时也必须走同一持久 Job Runtime，而不是在 HTTP 请求中长时间执行。
 
-### 日志、安全与依赖
+Job 必须支持：
 
-1. API/Worker/Scheduler 的人工日志使用 UTF-8、北京时间毫秒、真实调用文件/行号、稳定 event 和关联 ID；默认大小轮转并 gzip。正常 Heartbeat、健康检查、空 Scheduler tick 和普通成功细节不刷 INFO；
-2. 不记录完整 Payload、Raw、Token、Cookie、密码、Secret 或用户完整正文；Secret 不提交 Git、不写数据库明文、不进 Raw/Job/日志，Provider Config 只保存 `secret_ref`；
-3. 当前未实现第三方认证/企业身份接入，不能宣称敏感/写 API 具有公网生产认证能力。未来认证、授权和身份 Provider 通过独立 L3 Change 与统一 Principal/AuthContext 接入；
-4. 保持参数绑定 SQL、显式 CORS/Allowed Host/Provider Origin allowlist，以及路径穿越、SSRF、命令执行、不安全反序列化、公式注入、Zip Bomb、超大上传、日志注入和对象级 Artifact 授权防护；
-5. 依赖精确版本只由 Manifest/lock/镜像/Release 事实维护。Python 依赖改 `pyproject.toml` 并同步 `uv.lock`，Frontend 提交 `package-lock.json` 且 CI 使用 `npm ci`；普通任务不升级依赖，不解析 `latest`，新增依赖先说明必要性、许可证、维护、体积和替代方案；
-6. 没有实际问题证据不得主动引入微服务、Redis、Kafka、RabbitMQ、MongoDB、OpenSearch、Kubernetes 或多数据库兼容层。
+- Payload Version；
+- 幂等；
+- Lease；
+- Fencing Token；
+- Heartbeat；
+- Attempt Deadline；
+- 取消；
+- 分类重试；
+- 进度；
+- 结果/错误。
 
-### 文档与用户决策
+Worker 必须原子认领 `queued` 或接管 Lease 已过期的 `running`，并生成新 Fencing Token。完成、失败、进度、续租和业务可见提交都必须验证当前 Token；只扫描 `queued` 不合格。
 
-1. `docs/blueprint/` 承载长期架构与稳定门禁，`docs/roadmap/` 承载阶段状态/待实现/Go-No-Go，模块 README 承载当前实现入口，`docs/appendix/` 承载专题实现与调试，`docs/guides/` 承载开发过程，`docs/collection/` 承载平台采集事实；
-2. `docs/` 下同时遵守 [`docs/AGENTS.md`](docs/AGENTS.md)：同类文档使用两位数字稳定编号，README 不编号；已有编号不因插入主题静默重排；
-3. 未完成但仍批准的设计必须明确标成待实现，不能因代码不存在而删除；迁移/删除旧文档前必须证明有效事实有新承载、链接/测试已迁移、未完成项进入 Roadmap、历史原因可追溯；
-4. 不复制第二套完整 OpenAPI、Prompt taxonomy、Migration SQL 或易漂移 Schema；文档涉及已实现/未实现/限制/默认行为必须有机器事实或 Owner 决定；
-5. 会影响业务语义、公共 Contract、Schema、安全/权限、隐私/保留、Provider/费用、调度、SLO/RPO/RTO、兼容或不可逆数据行为且仓库无正式决定时，先给推荐和取舍，由用户/Owner 决定；未决定前暂停依赖该决定的实现，并把最终决定同步到正式事实源。
+Heartbeat 不能无限延长 Attempt Deadline；Reaper 使用 CAS 处理 Deadline 超时、取消和次数耗尽。
 
-## 已确认的偏差与仍未确认事项
+Scheduler 使用唯一 `(plan_id, schedule_version, scheduled_for)` Occurrence，在同一事务创建 Run/Job 并推进 `next_run_at`。当前策略固定 `Asia/Shanghai + latest_only + max_catch_up_runs=0`。
 
-### 已确认、待单独修正的偏差
+Provider 恢复：
 
-1. [`docs/blueprint/01_总体架构与技术选型.md`](docs/blueprint/01_总体架构与技术选型.md) 仍写旧的 4-Job Registry；当前 `bootstrap/worker.py`、README、Blueprint 07 和 Roadmap 02 均证明实际为上述 8 个 Job。后续 targeted 文档任务应修正 Blueprint 01，不能反向删减实现或测试去匹配旧清单；
-2. 部分正式文档仍保留首次接入前的治理入口导航。运行时以本文件受管入口为准；这些旧导航不构成项目技术事实，后续应在独立文档同步任务中清理，不能据此手工修改受管运行资产；
-3. `ci.yml` 的 governance-only profile 与 `change-completion-gate.yml` 仍调用一套当前安装后不存在的治理回归测试；按 Workflow 原命令执行会在测试发现阶段以退出码 1 失败。修复安装产物与 Workflow 的一致性前，不得声称这两个门禁已通过，也不得删除门禁或伪造空测试目录绕过失败。
+- 已校验完整 Raw 存在时禁止再次调用 Provider；
+- 同一 Attempt 最多一次外部发送；
+- 真正重发创建新 Attempt；
+- `not_sent` 与 `unknown` 必须区分；
+- 网络结果未知时不能承诺零重复计费，保留 `potential_duplicate_charge`；
+- Transport 禁止在一次调用中隐藏自动网络重试；
+- 当前不自动跨 TikHub App/Web/V1/V2/V3 API family fallback。
 
-### 当前未发现
+当前版本**不实现请求/金额预算、Budget Account、Reservation Ledger 或发送前 Budget/Cost Guard**。Provider Request/Attempt 可以保存持久 Billing/成本审计事实；LLM 离线/运行调用可以产生 token/cost 元数据，但当前 `analysis_content_results` 不保存 token/cost 列。成本记录不等于预算控制。未来预算能力必须通过新的 L3 Change 明确 Contract、Schema、Migration、发送前边界和验证。
 
-- 仓库内未发现 `CONTRIBUTING`、独立 RFC/ADR/需求规格目录或 `openspec/`；需求、正式决策和阶段状态当前主要由 Blueprint、Roadmap、用户/Owner 决定、Contract、Migration、Change 与测试承载；
-- 当前未发现 `changes/active/`，只有历史 `changes/archive/`。后续 L2/L3 任务必须先按正式规则创建或认领当前 Change。
+进入正式协调 Backup/Restore 实现后，业务写 Unit of Work、Artifact 生命周期和文件 rename/delete 必须参与统一共享/独占 advisory 写屏障，并在取得共享锁后复核维护 epoch；Backup Set 持有独占锁直到数据库与文件捕获完成。**当前完整 Release 写屏障/协调 Backup-Restore 尚未实现**，不得在文档、测试或交付中伪造为已完成。
 
-### 当前无法由仓库确认
+正常 Heartbeat 不写 INFO。Secret 不进 Job Payload。
 
-- GitHub Branch Protection / Ruleset 的平台侧实际配置和必需 checks；执行 Git/PR 前必须查询平台现状；
-- 目标服务器当前部署 SHA、运行状态、数据规模、Secret/证书配置、备份可恢复性和外部 Provider/LLM 账户状态；
-- 完整 Production 的认证授权方案、HTTPS/域名、RPO/RTO、保留策略、容量/SLO、正式回滚窗口与验收签字；这些必须由对应 Roadmap/Change 和 Owner 决策后才能固化。
+## 10. 日志
+
+应用日志用于人工排障。当前 API/Worker/Scheduler 使用统一北京时间毫秒格式，核心规则：
+
+- UTF-8；
+- 一行一个事件；
+- 前缀包含时间、真实调用文件名和源码行号；
+- 稳定 `event`；
+- 关联 request/job/run/scope/provider/content 等 ID；
+- 默认按当前配置执行大小轮转和 gzip；
+- 同时允许 stdout 作为容器辅助日志；
+- 不记录完整 Payload、Raw、Token、Cookie、密码、Secret 和用户完整正文；
+- 统一转义换行、引号、反斜杠和控制字符，并限制字段/整行长度；
+- 健康检查、空 Scheduler tick、普通成功细节不刷 INFO；
+- 高价值业务/管理操作需要数据库审计时写 `audit_events`。
+
+默认语义：
+
+```text
+INFO    → 低频重要生命周期/结果
+WARNING → Retry、部分失败、需要关注的异常
+ERROR   → 永久失败/未预期错误
+DEBUG   → 正常轮询和成功细节
+```
+
+## 11. 安全
+
+- Secret 不提交 Git、不写数据库明文、不进 Raw、日志、Job；
+- 使用只读 Secret 文件/批准的运行时 Secret 边界；
+- Provider Config 只保存 `secret_ref`；
+- 当前第一版不实现本地账号密码、登录入口、MFA、Session、CSRF 或登录限流；真实企业身份接入需要独立 L3 Change；
+- 未来飞书/OIDC/其他身份源通过 Identity/Authentication Adapter 进入统一 `Principal/AuthContext`；业务模块不得直接依赖飞书 SDK、`open_id`、`union_id` 等 Provider 私有身份；
+- Authentication 与 Authorization 解耦，后端执行权限判断；
+- 当前业务 API/页面已经存在，但第三方认证尚未接入，因此不得宣称敏感/写 API 已具备公网生产认证能力；
+- 如果未来采用 Session，按方案实现 Session 哈希、Cookie、CSRF、撤销/过期；如果采用 OAuth/OIDC/飞书授权，按协议验证 `state`、`nonce`，支持时使用 PKCE；
+- CORS、Allowed Hosts、Provider 出站 Origin 使用显式 Allowlist；
+- TikHub Bearer Secret 只发送到批准的 TikHub HTTPS Origin；
+- 使用参数绑定 SQL；
+- 防路径穿越、SSRF、命令执行、不安全反序列化、公式注入、Zip Bomb、超大上传、日志注入；
+- Raw 和导出按实际授权模型保护并记录必要审计；
+- Artifact 下载执行对象级授权；出站 SSRF 校验覆盖 DNS 和每次重定向；
+- 已实现并批准的安全检查不得为方便调试而关闭。
+
+## 12. 测试
+
+新功能、修复和行为变化默认：
+
+```text
+Red
+→ Green
+→ Refactor
+```
+
+缺陷修复必须有回归测试。测试验证真实行为，不只验证 Mock 被调用。
+
+文档、生成物、纯配置或无法合理 TDD 的任务，明确测试例外，改用链接检查、解析、生成差异、构建、实际运行和仓库级一致性检查；不要伪造 Red。
+
+验证顺序：
+
+```text
+目标测试
+→ 模块测试
+→ Contract/DB/Provider 专项
+→ 前后端集成
+→ 完整 CI
+```
+
+对 L2/L3 且存在用户可见、前后端/数据库/异步、公共 Contract 或 Provider 边界的任务，必须按上方受管入口加载的当前分层验证完整规则建立并维护 Validation Matrix。固定职责是：
+
+```text
+Browser Mock Acceptance
+→ 广覆盖用户可见行为、状态、请求和错误表达
+
+Backend/API/PostgreSQL Integration
+→ 服务器业务规则、事务、持久化、Job/Worker
+
+Contract / Generated Client
+→ Pydantic/OpenAPI/generated client 或其他正式机器 Contract 一致性
+
+Real Full-stack Golden Path
+→ 少量关键路径证明真实 Browser/Frontend/API/DB/Worker 等组件接通
+
+Real Provider Probe
+→ 仅在外部 Provider 当前真实事实需要确认时有界执行，默认不进普通 CI
+```
+
+硬规则：
+
+- Browser Mock 可以是用户可见行为覆盖最宽的一层，但不能被描述为真实后端、数据库、Worker 或 Provider 端到端证明；
+- Backend/DB 行为必须由真实后端/数据库测试承担，不能只靠 Browser Mock；
+- 公共接口变化必须保留 Contract/generated 漂移检查，不能让 Mock 手写第二套接口事实；
+- Real Full-stack 默认只保留足够证明接线的高价值 Golden Path，不用它穷举所有 queued/running/error/empty 等 UI 状态；
+- 不要求每个任务机械执行全部层；`not_applicable` 必须有真实依据，`required` 必须在 Ready 前有新鲜证据；
+- 测试数量按实际行为边界与风险决定，不设置固定 Mock/Integration/Full-stack 数量配额。
+
+涉及公共边界时还必须运行当前存在的架构、表 Owner、Secret 和文档检查：
+
+```bash
+uv run python scripts/quality/check_architecture.py
+uv run python scripts/quality/check_table_ownership.py
+uv run python scripts/quality/scan_secrets.py
+uv run python scripts/quality/check_docs.py
+```
+
+门禁失败修根因，不能修改门禁放行违规实现。失败输出应让开发者知道规则、文件/位置、原因和修复方向。
+
+可靠性/安全专项按实际已实现能力使用真实 PostgreSQL 和生产调用链验证，例如：
+
+- Worker 在 claim、HTTP、Raw、业务提交和终态边界崩溃后的恢复，旧/新 Lease 并发受 Fencing；
+- Attempt Deadline、Reaper 超时/取消/次数耗尽 CAS，Heartbeat 不续 Deadline；
+- 多 Scheduler 对同一 Occurrence 不重复、不丢失；
+- Provider 新发送必须新 Attempt，完整 Raw takeover 不重发，429/5xx/网络未知保留来源/费用事实；
+- 认证接入后再按实际协议补身份/授权/CSRF/OIDC/IDOR 等专项，不对当前未实现认证伪造“已通过”测试；
+- 中文搜索质量/性能、容量、协调 Backup/Restore 等能力只有进入对应正式阶段后才建立相应门禁。
+
+禁止：
+
+- 删除或跳过失败测试；
+- 降低断言和门禁；
+- 吞异常；
+- 针对测试硬编码；
+- 盲目更新 Snapshot；
+- 用旧结果冒充本轮验证；
+- 局部测试冒充完整回归；
+- Browser Mock 冒充 Real Full-stack；
+- 为了覆盖状态空间把所有场景都复制成昂贵 Full-stack；
+- 把真实付费 Provider Probe 偷塞进普通 CI。
+
+## 13. 依赖
+
+- 精确依赖版本以实际版本文件、`uv.lock`、`package-lock.json` 和镜像/Release 锁定事实为准，Blueprint 不维护第二份 patch 版本表；
+- Python 依赖只改 `pyproject.toml`，同步 `uv.lock`；
+- CI 使用 `uv sync --locked`；
+- Frontend 提交 `package-lock.json`，CI 使用 `npm ci`；
+- 不同时使用多个包管理器；
+- 普通功能不升级依赖；
+- 新增依赖说明必要性、许可证、维护、体积和替代方案；
+- 镜像和 Release 使用可审计的固定版本/digest；
+- 不得因有新版本擅自升级；升级必须是独立任务并完整回归。
+
+## 14. 文档
+
+文档职责：
+
+```text
+docs/blueprint/
+→ README + 当前实际编号的核心长期架构、为什么这样设计、稳定门禁
+
+docs/roadmap/
+→ 当前阶段状态、未完成开发、生产上线顺序和 Go/No-Go
+
+模块 README
+→ 当前代码具体实现、Owner、入口、常见修改点
+
+docs/appendix/
+→ PostgreSQL、Scheduler、TikHub、Excel、AI、Word 报告、生产 Release 等专题实现和调试
+
+docs/guides/
+→ Figma 等开发过程指南
+
+docs/collection/
+→ 五个平台当前采集实现
+
+docs/01_代码结构与修改导航.md
+→ 常见开发任务如何定位到真实代码、Contract、表和测试
+
+Contract / Migration / tables.py / generated / tests / locks
+→ 精确机器事实
+
+changes/archive/
+→ 历史为什么改过、已完成阶段/Change 的当时验证证据
+```
+
+核心 Blueprint 的数量、文件名和编号范围不在本规则写死；以 `docs/blueprint/` 当前实际文件集合、`docs/blueprint/README.md` 和 `docs/AGENTS.md` 为准。当前已有稳定编号不得为了插入新主题静默重排。新增主题先判断应该进入现有核心 Blueprint、Roadmap、Appendix、Guide 还是模块 README；只有确实形成新的核心长期领域时才新增 Blueprint，避免把阶段性实现说明无限堆进核心长期架构目录。
+
+未完成但仍批准的 Stage/生产设计不能因为当前代码不存在而删掉；必须放在 `docs/roadmap/` 或当前适用的核心长期设计中，并明确“待实现”。历史方案若被后续正式决策替代，则保留演进说明并明确“禁止照旧实现”。
+
+迁移/删除旧详细文档前，必须证明：
+
+```text
+当前有效事实已有新承载
++ 相关测试/链接已经迁移
++ 未完成阶段已进入 Roadmap
++ 历史原因可从 changes/archive 追溯
+```
+
+不能为了目录整洁先删除知识再补。
+
+代码完成前检查系统事实是否变化：
+
+- 模块职责；
+- 调用链；
+- 输入输出；
+- API/Canonical/Job；
+- 数据库；
+- 配置；
+- 日志；
+- 启动部署；
+- 调试测试；
+- 用户行为；
+- Roadmap 阶段状态/生产 Go-No-Go。
+
+受影响就在同一任务更新，不受影响不制造文档差异。长期文档描述合并后的当前系统；阶段状态和待实现路线放 Roadmap；历史过程留在 Change/Archive。
+
+正式文档的写法必须从实际问题出发：
+
+```text
+为什么需要
+→ 输入是什么
+→ 输出是什么
+→ 数据/调用怎么走
+→ 当前代码在哪里
+→ 要改这个行为应该改哪里
+→ 如何验证/调试
+→ 限制/未实现
+→ 精确事实源
+```
+
+写作要求：
+
+- 假设读者基础一般；
+- 面向开发者，也面向需要理解系统技术方案的人；
+- 必要术语第一次出现用白话解释；
+- 能不用术语就不要为了显得专业而堆术语；
+- 是否引用代码、表名、类名、命令，以是否帮助理解/调试为判断标准；
+- 允许给短、真实、可验证的例子；
+- Provider 真实 JSON 路径、状态机、执行流程、关键 SQL、恢复边界、部署/回滚机制等理解实现必须知道的内容可以在 Appendix 直接展开；
+- 固定且精确的数据结构优先导航到 `tables.py`、Contract、Prompt、Migration，避免复制第二套会漂移的 Schema；
+- 不复制第二套完整 OpenAPI、Prompt taxonomy 或 Migration SQL；
+- 不用“企业级、先进、高可用”等空泛词替代具体机制；
+- “当前已实现/当前未实现/已批准待实现/已被替代/默认行为/限制”必须有仓库事实或正式决策依据；
+- 迁移文档职责时只迁移位置和结构，不得因为“精简”删除仍然有效的技术细节；
+- 用户确认的长期业务/技术决定或明确延期，必须在同一任务落到正式事实源，不能只存在于聊天或 Change 历史。
+
+## 15. Git
+
+任务从最新 `main` 创建分支，前缀可用：
+
+```text
+feature/
+fix/
+hotfix/
+refactor/
+perf/
+docs/
+test/
+build/
+chore/
+migration/
+revert/
+```
+
+名称使用小写英文、数字和连字符，只表达任务内容。禁止工具/模型/人员身份前缀。
+
+禁止：
+
+- `git reset --hard`；
+- `git clean -fd`；
+- 强制推送；
+- 覆盖用户修改；
+- 重写共享历史；
+- 未授权提交、推送、PR、合并或删分支；
+- CI 失败、冲突或结果未确认时强行推进；
+- 绕过 Branch Protection 或仓库现有质量门禁。
+
+提交信息使用中文。
+
+## 16. Review 和交付
+
+复杂任务先执行上游 Requirement Completeness Review，再检查当前 Change 的需求符合性，最后检查代码质量。严重和重要问题未解决不得合并。
+
+对 `completion_gate: required` 的 Change，`ready_for_review` 前必须完成 Requirement Traceability、Validation Matrix、Completion Audit，并取得 `ready_check.py` 与 CI 的机器门禁证据。测试或 CI 绿色不能单独证明正式 Stage / Roadmap 单元完成；某一测试层绿色也不能替代另一层独立风险的验证。
+
+完成结论必须有本轮实际证据。交付至少报告：
+
+- 变更摘要；
+- 逐文件/按类别目的；
+- 上游 Requirement Traceability 与成功标准；
+- Validation Matrix 与各层实际证据；
+- Completion Audit / 两阶段 Review；
+- Contract/数据库变化；
+- 文档同步及依据；
+- 实际验证命令、退出码和结果；
+- 未验证内容及风险；
+- 兼容、依赖、Migration、部署、回滚；
+- Roadmap 当前阶段与下一正式单元；
+- 分支、提交、PR、CI、合并和清理状态。
+
+禁止只说“已完成”“测试通过”。
