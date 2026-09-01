@@ -28,8 +28,8 @@ Change / changes/archive
 
 ### 近期第一优先级
 
-- [`03_4000万历史数据迁移实施方案.md`](03_4000万历史数据迁移实施方案.md)：**当前历史迁移的正式执行计划**。Internal V1-B 已由业务 Owner 于 2026-08-26 确认完成；Stage 12 统一“导入数据”Campaign（本地电脑/服务器批准目录、标准观测/历史补空）、逐行对账与网页手动 AI Run 的软件实现已经合入 `main` 并通过风险相关 CI。下一门禁是公司服务器容量演练，生产 4000 万执行仍需独立授权。
-- [`01_内网V1上线实施计划.md`](01_内网V1上线实施计划.md)：公司内网 V1 的已完成路线与边界。服务器验收明细属于外部运行证据；仓库只记录业务 Owner 的完成确认，不补造命令或日志。
+- [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](03_4000万历史数据迁移实施方案.md)：**当前历史迁移的正式执行计划**。Internal V1-B 已由业务 Owner 于 2026-08-26 确认完成；Stage 12 统一“导入数据”Campaign（本地电脑/服务器批准目录、标准观测/历史补空）、逐行对账与网页手动 AI Run 的软件实现已经合入 `main` 并通过风险相关 CI。下一门禁是公司服务器容量演练，生产 4000 万执行仍需独立授权。
+- [`docs/roadmap/01_内网V1上线实施计划.md`](01_内网V1上线实施计划.md)：公司内网 V1 的已完成路线与边界。服务器验收明细属于外部运行证据；仓库只记录业务 Owner 的完成确认，不补造命令或日志。
 
 当前已经确认的首版范围：
 
@@ -55,18 +55,18 @@ Change / changes/archive
 
 ### 固定续接提示词
 
-- [`../guides/02_AIMA持续开发与内网上线通用提示词.md`](../guides/02_AIMA持续开发与内网上线通用提示词.md)：在新的 ChatGPT / GitHub Coding Agent 会话中直接复制使用。提示词不会保存当前 SHA、PR 或 Stage 完成状态，而是要求每次读取当前 `main`、Active Change、Roadmap、Contract、代码和测试重新判断下一最小正式单元。
+- [`docs/guides/02_AIMA持续开发与内网上线通用提示词.md`](../guides/02_AIMA持续开发与内网上线通用提示词.md)：在新的 ChatGPT / GitHub Coding Agent 会话中直接复制使用。提示词不会保存当前 SHA、PR 或 Stage 完成状态，而是要求每次读取当前 `main`、Active Change、Roadmap、Contract、代码和测试重新判断下一最小正式单元。
 
 这份提示词用于**启动持续开发工作流**，不是新的事实源。阶段状态仍以本 Roadmap 和当前机器事实为准。
 
 ### 长期完整生产路线
 
-- [`02_生产上线实施路线.md`](02_生产上线实施路线.md)：Stage 0—12 的长期实施路线、完整 Production Go/No-Go、认证、Release、Backup/Restore、回滚和生产强化。
-- [`03_4000万历史数据迁移实施方案.md`](03_4000万历史数据迁移实施方案.md)：当前 Stage 12 的自包含开发、测试、容量、部署和实际迁移执行门禁。
-- [`../02_环境运行与部署.md`](../02_环境运行与部署.md)：当前开发环境能实际执行的命令，以及部署设计与当前实现差距。
-- [`../blueprint/05_日志安全部署与运维.md`](../blueprint/05_日志安全部署与运维.md)：日志、安全、Secret、Artifact、备份/恢复和生产运行的长期边界。
-- [`../blueprint/06_开发约束与分阶段实施.md`](../blueprint/06_开发约束与分阶段实施.md)：每个阶段实际开发时必须遵守的工程流程和质量门禁。
-- [`../blueprint/07_技术决策与实施门禁.md`](../blueprint/07_技术决策与实施门禁.md)：已经拍板、普通任务不能静默改变的技术决定。
+- [`docs/roadmap/02_生产上线实施路线.md`](02_生产上线实施路线.md)：Stage 0—12 的长期实施路线、完整 Production Go/No-Go、认证、Release、Backup/Restore、回滚和生产强化。
+- [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](03_4000万历史数据迁移实施方案.md)：当前 Stage 12 的自包含开发、测试、容量、部署和实际迁移执行门禁。
+- [`docs/02_环境运行与部署.md`](../02_环境运行与部署.md)：当前开发环境能实际执行的命令，以及部署设计与当前实现差距。
+- [`docs/blueprint/05_日志安全部署与运维.md`](../blueprint/05_日志安全部署与运维.md)：日志、安全、Secret、Artifact、备份/恢复和生产运行的长期边界。
+- [`docs/blueprint/06_开发约束与分阶段实施.md`](../blueprint/06_开发约束与分阶段实施.md)：每个阶段实际开发时必须遵守的工程流程和质量门禁。
+- [`docs/blueprint/07_技术决策与实施门禁.md`](../blueprint/07_技术决策与实施门禁.md)：已经拍板、普通任务不能静默改变的技术决定。
 
 ## 当前执行顺序
 
@@ -93,13 +93,13 @@ Stage 12：4000 万历史数据迁移与手动 AI 打标
 完整 Production Go-Live
 ```
 
-Stage 8F 的永久业务闭环证据入口：
+Stage 8F 及其后续持续扩展后的永久业务闭环证据入口：
 
-```text
-docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md
-.github/workflows/stage8f-fullstack.yml
-frontend/e2e-fullstack/excel-import.spec.ts
-```
+- [`docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md`](../appendix/09_Stage8F前后端能力矩阵与真实验收.md)
+- [`.github/workflows/fullstack.yml`](../../.github/workflows/fullstack.yml)
+- [`frontend/e2e-fullstack/excel-import.spec.ts`](../../frontend/e2e-fullstack/excel-import.spec.ts)
+
+上述 Full-stack Acceptance Workflow 是当前唯一永久入口；Stage 8F 后新增的人工相关性与 Stage 12 场景也在同一套 Full-stack 入口继续扩展，不再维护独立 `stage8f-fullstack.yml`。
 
 其中真实 Excel Full-stack Acceptance 固定验证两条链：
 
@@ -167,7 +167,7 @@ Roadmap 使用四种状态：
 → 历史方案保留用于理解演进，但不能照旧继续开发
 ```
 
-**状态不是靠 Stage 名字判断。** 每次继续开发前仍要从当前分支重新读取 `AGENTS.md`、代码、Migration、Contract、测试和相关 Blueprint。
+**状态不是靠 Stage 名字判断。** 每次继续开发前仍要从当前分支重新读取 [`AGENTS.md`](../../AGENTS.md)、代码、Migration、Contract、测试和相关 Blueprint。
 
 ## 最重要的原则
 

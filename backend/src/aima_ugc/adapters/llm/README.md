@@ -16,22 +16,20 @@ HTTP、usage、费用、Transport Retry、请求审计
 
 完整 AI 业务实现说明见：
 
-```text
-docs/appendix/07_AI舆情打标与分析实现.md
-```
+- [`docs/appendix/07_AI舆情打标与分析实现.md`](../../../../../docs/appendix/07_AI舆情打标与分析实现.md)
 
 ## 1. 当前代码地图
 
 | 文件 | 当前职责 | 修改它通常意味着什么 |
 | --- | --- | --- |
-| `openai_compatible.py` | 构造并发送一次 OpenAI-compatible Chat Completions 物理请求，解析响应/usage，形成请求审计 | 换兼容 Provider 协议、usage 解析、HTTP 错误语义 |
-| `retrying.py` | 在 Base Adapter 外显式做有界 Transport Retry；同一逻辑请求的多次物理请求共用 `logical_request_id` | 改网络重试条件/退避策略 |
-| `pricing.py` | 解析/校验价格目录，根据请求开始时间选价格时段，使用 `Decimal` 计算费用和价格快照 | 改计价公式或价格目录结构 |
-| `pricing.toml` | 当前实际配置的模型官方价格事实 | 价格变化/新增模型 |
-| `request_audit.py` | 定义物理 HTTP 请求审计、汇总和复算 | 改离线审计结构/费用汇总 |
+| [`backend/src/aima_ugc/adapters/llm/openai_compatible.py`](openai_compatible.py) | 构造并发送一次 OpenAI-compatible Chat Completions 物理请求，解析响应/usage，形成请求审计 | 换兼容 Provider 协议、usage 解析、HTTP 错误语义 |
+| [`backend/src/aima_ugc/adapters/llm/retrying.py`](retrying.py) | 在 Base Adapter 外显式做有界 Transport Retry；同一逻辑请求的多次物理请求共用 `logical_request_id` | 改网络重试条件/退避策略 |
+| [`backend/src/aima_ugc/adapters/llm/pricing.py`](pricing.py) | 解析/校验价格目录，根据请求开始时间选价格时段，使用 `Decimal` 计算费用和价格快照 | 改计价公式或价格目录结构 |
+| [`backend/src/aima_ugc/adapters/llm/pricing.toml`](pricing.toml) | 当前实际配置的模型官方价格事实 | 价格变化/新增模型 |
+| [`backend/src/aima_ugc/adapters/llm/request_audit.py`](request_audit.py) | 定义物理 HTTP 请求审计、汇总和复算 | 改离线审计结构/费用汇总 |
 | `README.md` | 解释上述边界和修改方法 | 不作为机器价格/协议事实源 |
 
-精确导出符号看 `__init__.py`；不要根据 README 猜类名。
+精确导出符号看 [`backend/src/aima_ugc/adapters/llm/__init__.py`](__init__.py)；不要根据 README 猜类名。
 
 ## 2. 当前有两种真实装配方式
 
@@ -53,9 +51,7 @@ POST /api/v1/content-analysis-requests
 
 正式装配位置：
 
-```text
-backend/src/aima_ugc/bootstrap/analysis_worker.py
-```
+- [`backend/src/aima_ugc/bootstrap/analysis_worker.py`](../../bootstrap/analysis_worker.py)
 
 它从 `PlatformSettings` 读取非敏感模型配置，从：
 
@@ -63,7 +59,7 @@ backend/src/aima_ugc/bootstrap/analysis_worker.py
 <AIMA_SECRET_DIR>/llm_api_key
 ```
 
-读取 Secret，然后加载当前 Prompt/Taxonomy 和 `pricing.toml`。
+读取 Secret，然后加载当前 Prompt/Taxonomy 和 [`backend/src/aima_ugc/adapters/llm/pricing.toml`](pricing.toml)。
 
 正式 Analysis Job 的结果写入 `analysis_content_results` 等 Analysis 表；**token/cost 当前不会作为 Analysis Result 列写入数据库**。正式 Worker 当前把物理请求 usage/计算费用作为安全结构化日志审计字段输出。
 
@@ -90,7 +86,7 @@ analysis/failed.jsonl
 
 ## 3. 一次 `complete()` 为什么必须只有一次 HTTP 发送
 
-`openai_compatible.py` 的重要边界是：
+[`backend/src/aima_ugc/adapters/llm/openai_compatible.py`](openai_compatible.py) 的重要边界是：
 
 > 一次 Base Adapter 调用只做一次物理 HTTP 请求，不在底层偷偷重试网络。
 
@@ -103,7 +99,7 @@ analysis/failed.jsonl
 
 如果 Base Adapter 内部静默重发，上层就无法准确知道实际发了几次请求。
 
-需要重试时由 `retrying.py` 显式建立：
+需要重试时由 [`backend/src/aima_ugc/adapters/llm/retrying.py`](retrying.py) 显式建立：
 
 ```text
 一个逻辑 LLM 请求
@@ -129,7 +125,7 @@ Validation Retry
 
 ## 4. 当前哪些 Transport 错误可重试
 
-精确错误分类以 `retrying.py` 和 `openai_compatible.py` 为准。当前长期原则是：
+精确错误分类以 [`backend/src/aima_ugc/adapters/llm/retrying.py`](retrying.py) 和 [`backend/src/aima_ugc/adapters/llm/openai_compatible.py`](openai_compatible.py) 为准。当前长期原则是：
 
 - 网络连接/超时类错误可以进入显式重试；
 - 408、429、部分 5xx 可以重试；
@@ -151,9 +147,7 @@ AI 附录
 
 机器事实：
 
-```text
-backend/src/aima_ugc/adapters/llm/pricing.toml
-```
+- [`backend/src/aima_ugc/adapters/llm/pricing.toml`](pricing.toml)
 
 当前配置项是：
 
@@ -175,9 +169,9 @@ output_per_million_tokens
 
 ### 5.1 当前人类可读价格快照
 
-下面这张表是为了让开发者快速估算一次运行的大致费用；**运行时不会读取 README，真正计费只读取 `pricing.toml`。** 如果 TOML 发生价格变更，这张表也必须在同一任务同步，否则宁可删表也不能长期保留过期报价。
+下面这张表是为了让开发者快速估算一次运行的大致费用；**运行时不会读取 README，真正计费只读取 [`backend/src/aima_ugc/adapters/llm/pricing.toml`](pricing.toml)。** 如果 TOML 发生价格变更，这张表也必须在同一任务同步，否则宁可删表也不能长期保留过期报价。
 
-当前 `pricing.toml` 对应 DeepSeek V4-Pro 官方人民币价格：
+当前 [`backend/src/aima_ugc/adapters/llm/pricing.toml`](pricing.toml) 对应 DeepSeek V4-Pro 官方人民币价格：
 
 | 官方价格项 | 空闲时段 | 高峰时段 |
 | --- | ---: | ---: |
@@ -309,12 +303,11 @@ pricing.toml
 
 重点看：
 
-```text
-openai_compatible.py
-request_audit.py
-pricing.py
-pricing.toml
-```
+- [`backend/src/aima_ugc/adapters/llm/openai_compatible.py`](openai_compatible.py)
+- [`backend/src/aima_ugc/adapters/llm/request_audit.py`](request_audit.py)
+- [`backend/src/aima_ugc/adapters/llm/pricing.py`](pricing.py)
+- [`backend/src/aima_ugc/adapters/llm/pricing.toml`](pricing.toml)
+
 
 先通过真实脱敏响应证明 usage 结构，再扩展解析；不要假定所有 Provider 都返回同一 token 字段。
 
@@ -386,17 +379,15 @@ tests/integration/content/  # 正式 Analysis 纵切由当前测试事实决定
 
 完整 AI 业务规则和 PostgreSQL Analysis 路径见：
 
-```text
-docs/appendix/07_AI舆情打标与分析实现.md
-backend/src/aima_ugc/modules/analysis/README.md
-```
+- [`docs/appendix/07_AI舆情打标与分析实现.md`](../../../../../docs/appendix/07_AI舆情打标与分析实现.md)
+- [`backend/src/aima_ugc/modules/analysis/README.md`](../../modules/analysis/README.md)
 
 ## 13. 不要在这里做什么
 
 - 不在 Adapter 里维护爱玛标签 taxonomy；
 - 不根据平台写五套模型调用；
 - 不在 HTTP Adapter 里决定 relevant/irrelevant；
-- 不在 `pricing.toml` 保存 Secret；
+- 不在 [`backend/src/aima_ugc/adapters/llm/pricing.toml`](pricing.toml) 保存 Secret；
 - 不隐藏 Transport Retry；
 - 不让请求审计保存 Prompt/用户完整正文；
 - 不把计算金额冒充供应商最终账单；

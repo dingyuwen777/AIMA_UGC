@@ -12,11 +12,11 @@
 
 真实响应字段见：
 
-[`02_TikHub五平台真实响应与字段映射.md`](02_TikHub五平台真实响应与字段映射.md)
+[`docs/appendix/02_TikHub五平台真实响应与字段映射.md`](02_TikHub五平台真实响应与字段映射.md)
 
 真实验证台账见：
 
-[`04_TikHub接口选型与真实验证台账.md`](04_TikHub接口选型与真实验证台账.md)
+[`docs/appendix/04_TikHub接口选型与真实验证台账.md`](04_TikHub接口选型与真实验证台账.md)
 
 ---
 
@@ -40,21 +40,15 @@ build_video_search_v1_candidate_request(...)
 
 当前生产能力登记：
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py)
 
 当前运行装配：
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/runtime.py
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub/runtime.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/runtime.py)
 
 集合比较工具：
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/api_family_compare.py
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub/api_family_compare.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/api_family_compare.py)
 
 备用 builder：
 
@@ -309,9 +303,7 @@ Web 二级 0.010 USD
 
 这些数字只属于当时 Probe 证据。当前生产价格必须看：
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml`](../../backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml)
 
 当前正式 builder：
 
@@ -527,7 +519,7 @@ alternate family = endpoint-specific verification required
 | B站 | App vs Web Search/Detail/Comments/Reply | `candidate_pending_probe` | 候选 builder 已存在，需按 operation 真实验证 |
 | 小红书 | App V2 vs App V1/Web V3 等 | `candidate_pending_probe` | 需 endpoint-specific 当前验证 |
 
-注意：本表不是 Runtime 配置。Runtime 当前主链仍看 `capabilities.py` 和各主 builder。
+注意：本表不是 Runtime 配置。Runtime 当前主链仍看 [`backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py) 和各主 builder。
 
 ---
 
@@ -600,9 +592,7 @@ tests/fixtures/providers/tikhub/endpoint_ledger/<date>/
 
 使用：
 
-```text
-api_family_compare.py
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub/api_family_compare.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/api_family_compare.py)
 
 它只做稳定 ID 集合比较，不访问网络、不访问数据库、不读 Secret。
 

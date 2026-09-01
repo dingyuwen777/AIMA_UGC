@@ -4,7 +4,7 @@
 
 真实 JSON 路径：
 
-[`../appendix/02_TikHub五平台真实响应与字段映射.md`](../appendix/02_TikHub五平台真实响应与字段映射.md)
+[`docs/appendix/02_TikHub五平台真实响应与字段映射.md`](../appendix/02_TikHub五平台真实响应与字段映射.md)
 
 ## 1. 当前代码
 
@@ -93,9 +93,7 @@ data.data.items[]
 
 Fixture：
 
-```text
-tests/fixtures/providers/tikhub/bilibili/search_page1.sanitized.json
-```
+- [`tests/fixtures/providers/tikhub/bilibili/search_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/bilibili/search_page1.sanitized.json)
 
 当前可观察：
 
@@ -105,7 +103,7 @@ tests/fixtures/providers/tikhub/bilibili/search_page1.sanitized.json
 - 播放；
 - 弹幕等当前 Fixture 证明的字段。
 
-精确 Mapper 以 `mappers/bilibili.py` 为准。
+精确 Mapper 以 [`backend/src/aima_ugc/adapters/providers/tikhub/mappers/bilibili.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/mappers/bilibili.py) 为准。
 
 ## 5. Detail
 
@@ -121,9 +119,7 @@ data.data
 
 Fixture：
 
-```text
-tests/fixtures/providers/tikhub/bilibili/detail.sanitized.json
-```
+- [`tests/fixtures/providers/tikhub/bilibili/detail.sanitized.json`](../../tests/fixtures/providers/tikhub/bilibili/detail.sanitized.json)
 
 Detail 可以补充 Search 没有观察到的评论数、收藏、投币、时长等事实；哪些字段进入 Canonical 以 Mapper 的 `observed_fields` 为准。
 
@@ -160,9 +156,7 @@ data.data.cursor.pagination_reply.next_offset
 
 Fixture：
 
-```text
-tests/fixtures/providers/tikhub/bilibili/comments_page1.sanitized.json
-```
+- [`tests/fixtures/providers/tikhub/bilibili/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/bilibili/comments_page1.sanitized.json)
 
 Capability：
 
@@ -198,9 +192,7 @@ rcount
 
 Fixture：
 
-```text
-tests/fixtures/providers/tikhub/bilibili/replies_page1.sanitized.json
-```
+- [`tests/fixtures/providers/tikhub/bilibili/replies_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/bilibili/replies_page1.sanitized.json)
 
 B站返回的数字 ID 最终转换成 Canonical 字符串身份，不把第三方 JSON number 直接当业务主键类型。
 
@@ -267,7 +259,7 @@ comparison_extractor_invalid
 
 详细台账：
 
-[`../appendix/04_TikHub接口选型与真实验证台账.md`](../appendix/04_TikHub接口选型与真实验证台账.md)
+[`docs/appendix/04_TikHub接口选型与真实验证台账.md`](../appendix/04_TikHub接口选型与真实验证台账.md)
 
 ## 10. Search 排序对齐为什么要谨慎
 
@@ -331,4 +323,4 @@ Run / Scope
 
 SQL：
 
-[`../appendix/01_PostgreSQL查询与调试实战.md`](../appendix/01_PostgreSQL查询与调试实战.md)
+[`docs/appendix/01_PostgreSQL查询与调试实战.md`](../appendix/01_PostgreSQL查询与调试实战.md)

@@ -13,17 +13,17 @@ Mapper 文件在哪？
 
 系统采集架构先看：
 
-- [`../blueprint/02_采集系统与数据标准化.md`](../blueprint/02_采集系统与数据标准化.md)
-- [`../blueprint/08_采集策略与平台能力.md`](../blueprint/08_采集策略与平台能力.md)
+- [`docs/blueprint/02_采集系统与数据标准化.md`](../blueprint/02_采集系统与数据标准化.md)
+- [`docs/blueprint/08_采集策略与平台能力.md`](../blueprint/08_采集策略与平台能力.md)
 
 真实 JSON 路径：
 
-- [`../appendix/02_TikHub五平台真实响应与字段映射.md`](../appendix/02_TikHub五平台真实响应与字段映射.md)
+- [`docs/appendix/02_TikHub五平台真实响应与字段映射.md`](../appendix/02_TikHub五平台真实响应与字段映射.md)
 
 接口家族/备用：
 
-- [`../appendix/03_TikHub多接口验证与备用策略.md`](../appendix/03_TikHub多接口验证与备用策略.md)
-- [`../appendix/04_TikHub接口选型与真实验证台账.md`](../appendix/04_TikHub接口选型与真实验证台账.md)
+- [`docs/appendix/03_TikHub多接口验证与备用策略.md`](../appendix/03_TikHub多接口验证与备用策略.md)
+- [`docs/appendix/04_TikHub接口选型与真实验证台账.md`](../appendix/04_TikHub接口选型与真实验证台账.md)
 
 ---
 
@@ -53,9 +53,7 @@ backend/src/aima_ugc/adapters/providers/tikhub/
 
 生产 Collection 串联：
 
-```text
-backend/src/aima_ugc/bootstrap/collection_scope.py
-```
+- [`backend/src/aima_ugc/bootstrap/collection_scope.py`](../../backend/src/aima_ugc/bootstrap/collection_scope.py)
 
 Collection Domain：
 
@@ -89,9 +87,7 @@ Endpoint 精确路径不要从这个摘要猜，打开目标平台 `operations/*
 
 机器事实：
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py)
 
 当前：
 
@@ -135,7 +131,7 @@ Capability=false 的平台走受控刷新，不套用同一逻辑。
 - B站 Search 没有真实证据就不能把 `comment_count` 当 0；
 - 快手虽然支持回复数/二级评论，但不代表它支持安全最新评论增量。
 
-精确排序/时间/内容类型枚举看 `capabilities.py` 和 Blueprint 08。
+精确排序/时间/内容类型枚举看 [`backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py) 和 Blueprint 08。
 
 前端配置链统一为：
 
@@ -184,10 +180,8 @@ dispatch_status=unknown
 
 生产代码：
 
-```text
-modules/collection/provider_dispatch.py
-modules/collection/provider_recovery.py
-```
+- [`backend/src/aima_ugc/modules/collection/provider_dispatch.py`](../../backend/src/aima_ugc/modules/collection/provider_dispatch.py)
+- [`backend/src/aima_ugc/modules/collection/provider_recovery.py`](../../backend/src/aima_ugc/modules/collection/provider_recovery.py)
 
 ---
 
@@ -208,10 +202,8 @@ Search Candidate
 
 代码：
 
-```text
-backend/src/aima_ugc/modules/collection/decision.py
-backend/src/aima_ugc/bootstrap/collection_scope.py
-```
+- [`backend/src/aima_ugc/modules/collection/decision.py`](../../backend/src/aima_ugc/modules/collection/decision.py)
+- [`backend/src/aima_ugc/bootstrap/collection_scope.py`](../../backend/src/aima_ugc/bootstrap/collection_scope.py)
 
 目的：
 
@@ -224,11 +216,11 @@ backend/src/aima_ugc/bootstrap/collection_scope.py
 
 ## 7. 五个平台分别去哪看
 
-- [`01_xiaohongshu.md`](01_xiaohongshu.md)
-- [`02_douyin.md`](02_douyin.md)
-- [`03_weibo.md`](03_weibo.md)
-- [`04_bilibili.md`](04_bilibili.md)
-- [`05_kuaishou.md`](05_kuaishou.md)
+- [`docs/collection/01_xiaohongshu.md`](01_xiaohongshu.md)
+- [`docs/collection/02_douyin.md`](02_douyin.md)
+- [`docs/collection/03_weibo.md`](03_weibo.md)
+- [`docs/collection/04_bilibili.md`](04_bilibili.md)
+- [`docs/collection/05_kuaishou.md`](05_kuaishou.md)
 
 每篇应该包含：
 
@@ -334,7 +326,7 @@ Collection Run
 
 数据库 SQL：
 
-[`../appendix/01_PostgreSQL查询与调试实战.md`](../appendix/01_PostgreSQL查询与调试实战.md)
+[`docs/appendix/01_PostgreSQL查询与调试实战.md`](../appendix/01_PostgreSQL查询与调试实战.md)
 
 如果 Response 字段问题：
 

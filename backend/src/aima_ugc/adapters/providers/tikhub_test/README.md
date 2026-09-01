@@ -18,10 +18,10 @@
 
 深入理解当前 TikHub 结构：
 
-- `docs/appendix/02_TikHub五平台真实响应与字段映射.md`
-- `docs/appendix/03_TikHub多接口验证与备用策略.md`
-- `docs/appendix/04_TikHub接口选型与真实验证台账.md`
-- `docs/collection/README.md`
+- [`docs/appendix/02_TikHub五平台真实响应与字段映射.md`](../../../../../../docs/appendix/02_TikHub五平台真实响应与字段映射.md)
+- [`docs/appendix/03_TikHub多接口验证与备用策略.md`](../../../../../../docs/appendix/03_TikHub多接口验证与备用策略.md)
+- [`docs/appendix/04_TikHub接口选型与真实验证台账.md`](../../../../../../docs/appendix/04_TikHub接口选型与真实验证台账.md)
+- [`docs/collection/README.md`](../../../../../../docs/collection/README.md)
 
 ## 1. 先看代码结构
 
@@ -56,9 +56,8 @@ backend/src/aima_ugc/adapters/providers/tikhub/
 
 复制：
 
-```text
-.env.example
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub_test/.env.example`](.env.example)
+
 
 为同目录：
 
@@ -78,9 +77,7 @@ TIKHUB_TIMEOUT_SECONDS=300
 
 生产 `TikHubHttpTransport` 当前允许的 HTTPS Host 以：
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/transport.py
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub/transport.py`](../tikhub/transport.py)
 
 为准。当前默认 Base URL 是 `https://api.tikhub.dev`，同时允许显式使用 `https://api.tikhub.io`；其他 Origin 会在 Secret 发送前被拒绝。
 
@@ -199,10 +196,8 @@ result = run_douyin(
 
 当前 Search V2 Capability 支持业务排序、发布时间、时长和 `all/video/image` 内容类型；精确可选值看：
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py
-backend/src/aima_ugc/adapters/providers/tikhub/operations/douyin.py
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py`](../tikhub/capabilities.py)
+- [`backend/src/aima_ugc/adapters/providers/tikhub/operations/douyin.py`](../tikhub/operations/douyin.py)
 
 ### 4.3 微博
 
@@ -292,9 +287,7 @@ provider_config_id = None
 
 真实 Provider 会产生费用时，运行前应根据当前主 endpoint 和：
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml`](../tikhub/pricing.toml)
 
 估算请求规模。
 
@@ -412,11 +405,9 @@ Canonical Content / Comment
 
 完整设计与当前代码：
 
-```text
-docs/appendix/06_Excel统一数据导出与离线调试.md
-backend/src/aima_ugc/contracts/export/models.py
-backend/src/aima_ugc/platform/export/excel.py
-```
+- [`docs/appendix/06_Excel统一数据导出与离线调试.md`](../../../../../../docs/appendix/06_Excel统一数据导出与离线调试.md)
+- [`backend/src/aima_ugc/contracts/export/models.py`](../../../contracts/export/models.py)
+- [`backend/src/aima_ugc/platform/export/excel.py`](../../../platform/export/excel.py)
 
 Excel 不是 Raw，不作为数据库回灌事实源。
 
@@ -455,11 +446,9 @@ write_to_database=True
 
 正式组合代码主要看：
 
-```text
-backend/src/aima_ugc/bootstrap/tikhub_test_database.py
-backend/src/aima_ugc/modules/collection/provider_dispatch.py
-backend/src/aima_ugc/adapters/persistence/postgres/collection_content.py
-```
+- [`backend/src/aima_ugc/bootstrap/tikhub_test_database.py`](../../../bootstrap/tikhub_test_database.py)
+- [`backend/src/aima_ugc/modules/collection/provider_dispatch.py`](../../../modules/collection/provider_dispatch.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/collection_content.py`](../../persistence/postgres/collection_content.py)
 
 数据库模式固定：
 
@@ -485,9 +474,7 @@ raw/ Search
 
 字段结构参考：
 
-```text
-docs/appendix/02_TikHub五平台真实响应与字段映射.md
-```
+- [`docs/appendix/02_TikHub五平台真实响应与字段映射.md`](../../../../../../docs/appendix/02_TikHub五平台真实响应与字段映射.md)
 
 ### Comment 数明明增长了，但没有继续抓评论
 
@@ -515,9 +502,7 @@ Run / Scope
 
 可以结合：
 
-```text
-docs/appendix/01_PostgreSQL查询与调试实战.md
-```
+- [`docs/appendix/01_PostgreSQL查询与调试实战.md`](../../../../../../docs/appendix/01_PostgreSQL查询与调试实战.md)
 
 ### 想完全重跑人工调试
 
@@ -529,16 +514,16 @@ docs/appendix/01_PostgreSQL查询与调试实战.md
 
 | 需求 | 正确修改入口 |
 | --- | --- |
-| 改人工默认关键词/页数/输出目录 | `tikhub_test/test.py` 或本目录调用参数 |
+| 改人工默认关键词/页数/输出目录 | [`backend/src/aima_ugc/adapters/providers/tikhub_test/test.py`](test.py) 或本目录调用参数 |
 | 改某平台 endpoint/参数翻译 | `adapters/providers/tikhub/operations/<platform>.py` |
 | 改分页推进/停止 | 对应生产 Operation / Runtime |
 | 改 Provider Raw 字段映射 | `adapters/providers/tikhub/mappers/<platform>.py` |
-| 改前端可配置能力 | `adapters/providers/tikhub/capabilities.py` + Contract/API |
-| 改 TikHub 单价 | `adapters/providers/tikhub/pricing.toml` |
+| 改前端可配置能力 | [`backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py`](../tikhub/capabilities.py) + Contract/API |
+| 改 TikHub 单价 | [`backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml`](../tikhub/pricing.toml) |
 | 改内容去重/Current/Version | Content Owner，不在 `tikhub_test` |
 | 改详情/评论是否继续抓 | Collection Decision，不在人工入口复制规则 |
-| 改 Excel 列/安全/样式 | `platform/export/excel.py` + Export Contract |
-| 改数据库调试装配 | `bootstrap/tikhub_test_database.py`，同时保持正式来源链 |
+| 改 Excel 列/安全/样式 | [`backend/src/aima_ugc/platform/export/excel.py`](../../../platform/export/excel.py) + Export Contract |
+| 改数据库调试装配 | [`backend/src/aima_ugc/bootstrap/tikhub_test_database.py`](../../../bootstrap/tikhub_test_database.py)，同时保持正式来源链 |
 
 ## 12. 测试与真实 Probe
 

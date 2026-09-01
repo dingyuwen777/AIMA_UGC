@@ -20,8 +20,8 @@
 
 长期路线由：
 
-- [`../roadmap/01_内网V1上线实施计划.md`](../roadmap/01_内网V1上线实施计划.md)
-- [`../roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)
+- [`docs/roadmap/01_内网V1上线实施计划.md`](../roadmap/01_内网V1上线实施计划.md)
+- [`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)
 
 维护。
 
@@ -56,8 +56,8 @@
 按顺序执行：
 
 1. 读取当前目标分支根目录 `AGENTS.md`；
-2. 按 `AGENTS.md` 读取 `.agents/skills/reliable-vibe-coding/SKILL.md`；
-3. 按 Skill 判断本轮任务等级和 Change 要求；
+2. 使用当前宿主实际可用的 GitHub/仓库读取能力读取 `dingyuwen777/Agent_Skills` 当前默认分支 canonical 源码：先读根 `AGENTS.md`，再按当前源码导航读取 ENTRY、Router、命中的 `SKILL.md` 与 required References；不得把 AIMA 本地 `.agents` 安装副本、Runtime、Release、缓存或历史聊天当作 canonical；
+3. 按当前 canonical Skill 判断本轮任务等级和 Change 要求，同时继续遵守 AIMA 自己的项目 Overlay；
 4. 读取：
    - `docs/blueprint/README.md`
    - `docs/blueprint/07_技术决策与实施门禁.md`
@@ -544,7 +544,7 @@ SSH / 受控部署入口
 只有以下情况才需要改这份提示词：
 
 - 仓库统一开发流程发生变化；
-- `AGENTS.md` / Reliable Vibe Coding 的核心门禁改变；
+- [`AGENTS.md`](../../AGENTS.md) / Reliable Vibe Coding 的核心门禁改变；
 - Roadmap 事实源路径改变；
 - 用户改变“一次完成一个最小正式单元”的工作方式；
 - Git 合并授权边界改变。

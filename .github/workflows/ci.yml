@@ -60,13 +60,14 @@ jobs:
           set -euo pipefail
           python3 scripts/quality/scan_secrets.py
           python3 scripts/quality/check_docs.py
+          python3 scripts/quality/check_docs_facts.py
 
-      - name: Coding governance regression
+      - name: AIMA project governance
         if: needs.scope.outputs.profile == 'governance_only'
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m unittest discover .agents/skills/coding/tests -v
+          python3 scripts/quality/check_agent_governance.py
 
   repository-quality:
     name: Repository Quality
@@ -204,13 +205,15 @@ jobs:
           uv run python scripts/quality/check_architecture.py
           uv run python scripts/quality/check_table_ownership.py
 
-      - name: Secret and docs gates
+      - name: Secret, docs and project governance gates
         if: always()
         shell: bash
         run: |
           set -euo pipefail
           uv run python scripts/quality/scan_secrets.py
           uv run python scripts/quality/check_docs.py
+          uv run python scripts/quality/check_docs_facts.py
+          uv run python scripts/quality/check_agent_governance.py
 
       - name: Build and verify Wheel
         shell: bash

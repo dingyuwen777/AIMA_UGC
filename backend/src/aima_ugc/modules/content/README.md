@@ -19,9 +19,9 @@ Provider / Excel
 
 相关：
 
-- [`../../../../../docs/blueprint/03_数据库与文件存储.md`](../../../../../docs/blueprint/03_数据库与文件存储.md)
-- [`../../../../../docs/appendix/08_数据入口与统一入库实现.md`](../../../../../docs/appendix/08_数据入口与统一入库实现.md)
-- [`../../../../../docs/01_代码结构与修改导航.md`](../../../../../docs/01_代码结构与修改导航.md)
+- [`docs/blueprint/03_数据库与文件存储.md`](../../../../../docs/blueprint/03_数据库与文件存储.md)
+- [`docs/appendix/08_数据入口与统一入库实现.md`](../../../../../docs/appendix/08_数据入口与统一入库实现.md)
+- [`docs/01_代码结构与修改导航.md`](../../../../../docs/01_代码结构与修改导航.md)
 
 ---
 
@@ -39,7 +39,7 @@ backend/src/aima_ugc/modules/content/
 └─ source_constraints.py
 ```
 
-### `ingestion.py`
+### [`backend/src/aima_ugc/modules/content/ingestion.py`](ingestion.py)
 
 领域摄取入口：
 
@@ -50,7 +50,7 @@ ContentIngestionRepository Protocol
 
 同时提供轻量 `InMemoryContentRepository`，用于无数据库情况下验证一部分 freshness/Version/Metric 领域语义。
 
-### `tables.py`
+### [`backend/src/aima_ugc/modules/content/tables.py`](tables.py)
 
 核心 Current/History：
 
@@ -65,7 +65,7 @@ comment_metric_observations
 comment_coverage_observations
 ```
 
-### `extended_tables.py`
+### [`backend/src/aima_ugc/modules/content/extended_tables.py`](extended_tables.py)
 
 内容/评论扩展实体和关系，例如：
 
@@ -80,15 +80,15 @@ thread coverage
 
 精确结构直接看当前文件和 Migration。
 
-### `query.py`
+### [`backend/src/aima_ugc/modules/content/query.py`](query.py)
 
 定义 Provider-neutral Content Read Model，不写 SQL。
 
-### `content_cursor.py`
+### [`backend/src/aima_ugc/modules/content/content_cursor.py`](content_cursor.py)
 
 声音广场 Content 列表 Cursor 编解码和 query-hash 绑定。
 
-### `http.py`
+### [`backend/src/aima_ugc/modules/content/http.py`](http.py)
 
 Content HTTP Port / 应用异常，不直接 SQL。
 
@@ -106,23 +106,17 @@ backend/src/aima_ugc/adapters/persistence/postgres/
 
 Collection 调 Content Owner 的边界：
 
-```text
-collection_content.py
-```
+- [`backend/src/aima_ugc/adapters/persistence/postgres/collection_content.py`](../../adapters/persistence/postgres/collection_content.py)
 
 Content 查询：
 
-```text
-content_queries.py
-```
+- [`backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py`](../../adapters/persistence/postgres/content_queries.py)
 
 生产装配：
 
-```text
-backend/src/aima_ugc/bootstrap/collection_scope.py
-backend/src/aima_ugc/bootstrap/manual_ingestion.py
-backend/src/aima_ugc/bootstrap/content_http.py
-```
+- [`backend/src/aima_ugc/bootstrap/collection_scope.py`](../../bootstrap/collection_scope.py)
+- [`backend/src/aima_ugc/bootstrap/manual_ingestion.py`](../../bootstrap/manual_ingestion.py)
+- [`backend/src/aima_ugc/bootstrap/content_http.py`](../../bootstrap/content_http.py)
 
 如果看到 Provider/Router 直接 `INSERT INTO contents`，就违反了当前 Owner 边界。
 
@@ -369,7 +363,7 @@ Content Version
 
 SQL：
 
-[`../../../../../docs/appendix/01_PostgreSQL查询与调试实战.md`](../../../../../docs/appendix/01_PostgreSQL查询与调试实战.md)
+[`docs/appendix/01_PostgreSQL查询与调试实战.md`](../../../../../docs/appendix/01_PostgreSQL查询与调试实战.md)
 
 ---
 
@@ -409,9 +403,7 @@ comment_thread_coverage_observations
 
 生产查询：
 
-```text
-backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
-```
+- [`backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py`](../../adapters/persistence/postgres/content_queries.py)
 
 它会组合：
 
@@ -425,9 +417,7 @@ Content Current
 
 列表 Application Service：
 
-```text
-backend/src/aima_ugc/bootstrap/content_http.py
-```
+- [`backend/src/aima_ugc/bootstrap/content_http.py`](../../bootstrap/content_http.py)
 
 ### 当前 Analysis 状态
 
@@ -473,9 +463,7 @@ Content 列表/详情是这个模块的 Read Model；Analysis 写入仍归 Analy
 
 精确 HTTP Contract：
 
-```text
-backend/src/aima_ugc/contracts/http.py
-```
+- [`backend/src/aima_ugc/contracts/http.py`](../../contracts/http.py)
 
 ---
 
@@ -485,10 +473,8 @@ backend/src/aima_ugc/contracts/http.py
 
 代码：
 
-```text
-content_cursor.py
-bootstrap/content_http.py
-```
+- [`backend/src/aima_ugc/modules/content/content_cursor.py`](content_cursor.py)
+- [`backend/src/aima_ugc/bootstrap/content_http.py`](../../bootstrap/content_http.py)
 
 Application Service 会对：
 
@@ -649,9 +635,7 @@ contents
 
 生产入口：
 
-```text
-adapters/persistence/postgres/historical_content.py
-→ PostgresHistoricalContentRepository.ingest_rows()
-```
+- [`backend/src/aima_ugc/adapters/persistence/postgres/historical_content.py`](../../adapters/persistence/postgres/historical_content.py)：PostgresHistoricalContentRepository.ingest_rows()
+
 
 该入口每次最多处理一个有界 Chunk，并在同一事务提交业务变化、逐行 outcome 和冲突。普通 Excel/TikHub 继续使用既有字段新鲜度规则，不受历史策略影响。

@@ -4,9 +4,9 @@
 
 长期边界：
 
-- [`../blueprint/04_后端任务API与前端.md`](../blueprint/04_后端任务API与前端.md)
-- [`../blueprint/07_技术决策与实施门禁.md`](../blueprint/07_技术决策与实施门禁.md)
-- [`../blueprint/08_采集策略与平台能力.md`](../blueprint/08_采集策略与平台能力.md)
+- [`docs/blueprint/04_后端任务API与前端.md`](../blueprint/04_后端任务API与前端.md)
+- [`docs/blueprint/07_技术决策与实施门禁.md`](../blueprint/07_技术决策与实施门禁.md)
+- [`docs/blueprint/08_采集策略与平台能力.md`](../blueprint/08_采集策略与平台能力.md)
 
 当前代码入口：
 
@@ -184,9 +184,7 @@ Scheduler Test
 
 领域代码：
 
-```text
-backend/src/aima_ugc/modules/collection/scheduler.py
-```
+- [`backend/src/aima_ugc/modules/collection/scheduler.py`](../../backend/src/aima_ugc/modules/collection/scheduler.py)
 
 关键函数：
 
@@ -270,9 +268,7 @@ PUT  /api/v1/collection-plans/{plan_id}/enabled
 
 真实装配：
 
-```text
-backend/src/aima_ugc/bootstrap/collection_strategy_http.py
-```
+- [`backend/src/aima_ugc/bootstrap/collection_strategy_http.py`](../../backend/src/aima_ugc/bootstrap/collection_strategy_http.py)
 
 所以旧文档中“Stage 8 未来才会定义 Plan API”一类表述已经过期。
 
@@ -282,9 +278,7 @@ backend/src/aima_ugc/bootstrap/collection_strategy_http.py
 
 生产代码：
 
-```text
-backend/src/aima_ugc/bootstrap/scheduler.py
-```
+- [`backend/src/aima_ugc/bootstrap/scheduler.py`](../../backend/src/aima_ugc/bootstrap/scheduler.py)
 
 当前流程：
 
@@ -424,10 +418,8 @@ Decision Policy
 
 代码：
 
-```text
-backend/src/aima_ugc/modules/collection/scheduled_scopes.py
-backend/src/aima_ugc/modules/collection/run_snapshot.py
-```
+- [`backend/src/aima_ugc/modules/collection/scheduled_scopes.py`](../../backend/src/aima_ugc/modules/collection/scheduled_scopes.py)
+- [`backend/src/aima_ugc/modules/collection/run_snapshot.py`](../../backend/src/aima_ugc/modules/collection/run_snapshot.py)
 
 这样 Worker 真正运行时，不会重新读取一个已经被管理员改过的 Keyword Pack，然后执行出另一套任务。
 
@@ -531,9 +523,7 @@ duration_ms
 
 日志配置和格式见：
 
-```text
-docs/blueprint/05_日志安全部署与运维.md
-```
+- [`docs/blueprint/05_日志安全部署与运维.md`](../blueprint/05_日志安全部署与运维.md)
 
 持久化 Scheduler 事实仍以 PostgreSQL 为准，日志不是第二套任务状态库。
 
@@ -565,7 +555,7 @@ docs/blueprint/05_日志安全部署与运维.md
 
 SQL 示例：
 
-[`01_PostgreSQL查询与调试实战.md`](01_PostgreSQL查询与调试实战.md)
+[`docs/appendix/01_PostgreSQL查询与调试实战.md`](01_PostgreSQL查询与调试实战.md)
 
 ### 常见判断
 
@@ -640,11 +630,9 @@ execution_limits.py
 
 主要测试按当前仓库实际分布在：
 
-```text
-tests/unit/collection/
-tests/integration/
-.github/workflows/stage7-scheduler-runtime.yml
-```
+- [`tests/unit/collection/`](../../tests/unit/collection/)
+- [`tests/integration/`](../../tests/integration/)
+- [`.github/workflows/runtime.yml`](../../.github/workflows/runtime.yml)：当前 Runtime Acceptance；Scheduler 进程/Compose 运行边界由这一永久 Workflow 与相关测试共同覆盖，不再存在独立 `stage7-scheduler-runtime.yml`。
 
 关键行为至少应覆盖：
 

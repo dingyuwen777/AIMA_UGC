@@ -9,7 +9,7 @@
 - Figma 页面应该怎样落到当前 Vue 代码；
 - 改完要跑哪些测试。
 
-精确 HTTP 字段由后端 Pydantic Contract、`contracts/openapi/openapi.json` 和 `src/generated/api/` 维护。本文解释当前前端怎么组织和怎么改，不复制第二套接口 Schema。
+精确 HTTP 字段由后端 Pydantic Contract、[`contracts/openapi/openapi.json`](../contracts/openapi/openapi.json) 和 `src/generated/api/` 维护。本文解释当前前端怎么组织和怎么改，不复制第二套接口 Schema。
 
 ---
 
@@ -38,9 +38,7 @@ src/main.ts
 
 路由唯一事实源：
 
-```text
-src/app/routes.ts
-```
+- [`frontend/src/app/routes.ts`](src/app/routes.ts)
 
 不要从菜单、截图或历史 Stage 文档猜当前页面。
 
@@ -50,10 +48,10 @@ src/app/routes.ts
 
 | 路径 | 页面 | 代码入口 |
 | --- | --- | --- |
-| `/` | 首页兼容入口 | `src/views/HomeView.vue`，复用 `CollectionRuntimePage` |
-| `/collection-runtime` | 采集运行中心 | `src/features/import-batches/pages/CollectionRuntimePage/CollectionRuntimePage.vue` |
-| `/collection-strategy` | 采集策略 | `src/features/collection-strategy/pages/CollectionStrategyPage/CollectionStrategyPage.vue` |
-| `/voice-plaza` | 声音广场 | `src/features/voice-plaza/pages/VoicePlazaPage/VoicePlazaPage.vue` |
+| `/` | 首页兼容入口 | [`frontend/src/views/HomeView.vue`](src/views/HomeView.vue)，复用 `CollectionRuntimePage` |
+| `/collection-runtime` | 采集运行中心 | [`frontend/src/features/import-batches/pages/CollectionRuntimePage/CollectionRuntimePage.vue`](src/features/import-batches/pages/CollectionRuntimePage/CollectionRuntimePage.vue) |
+| `/collection-strategy` | 采集策略 | [`frontend/src/features/collection-strategy/pages/CollectionStrategyPage/CollectionStrategyPage.vue`](src/features/collection-strategy/pages/CollectionStrategyPage/CollectionStrategyPage.vue) |
+| `/voice-plaza` | 声音广场 | [`frontend/src/features/voice-plaza/pages/VoicePlazaPage/VoicePlazaPage.vue`](src/features/voice-plaza/pages/VoicePlazaPage/VoicePlazaPage.vue) |
 
 注意：采集运行中心目前仍在：
 
@@ -217,7 +215,7 @@ TikHub Run 详情会读取生成 Client 中既有的 `scopes[].stop_reason`。�
 | 需求 | 先看 |
 | --- | --- |
 | 运行中心布局/按钮/Drawer | `pages/CollectionRuntimePage/` |
-| 导入来源/策略/Campaign UI | `pages/CollectionRuntimePage/components/DataImportDialog.vue` + `api.ts` |
+| 导入来源/策略/Campaign UI | [`frontend/src/features/import-batches/pages/CollectionRuntimePage/components/DataImportDialog.vue`](src/features/import-batches/pages/CollectionRuntimePage/components/DataImportDialog.vue) + `api.ts` |
 | 筛选、轮询、分页、详情状态 | `store.ts` |
 | 后端接口调用 | `api.ts` |
 | 时间/状态格式 | `format.ts` |
@@ -257,7 +255,7 @@ CollectionStrategyPage / Feature Components
 → 当前后端 API
 ```
 
-`eligibility.ts` 是计划创建/重新启用资格的唯一前端 Owner；`shared/collectionSearchConfig.ts` 与 `CollectionSearchConfigFields.vue` 是动态搜索字段和历史摘要的唯一 Owner。周期选择在 UI 中使用批准的受控预设，提交时仍转换为当前 Contract 的 `schedule_expr`；周期、平台和北京时间展示映射由 `presentation.ts` 维护，文档不复制第二套列表。
+[`frontend/src/features/collection-strategy/eligibility.ts`](src/features/collection-strategy/eligibility.ts) 是计划创建/重新启用资格的唯一前端 Owner；[`frontend/src/shared/collectionSearchConfig.ts`](src/shared/collectionSearchConfig.ts) 与 [`frontend/src/shared/CollectionSearchConfigFields.vue`](src/shared/CollectionSearchConfigFields.vue) 是动态搜索字段和历史摘要的唯一 Owner。周期选择在 UI 中使用批准的受控预设，提交时仍转换为当前 Contract 的 `schedule_expr`；周期、平台和北京时间展示映射由 [`frontend/src/features/collection-strategy/presentation.ts`](src/features/collection-strategy/presentation.ts) 维护，文档不复制第二套列表。
 
 ### 5.3 `features/voice-plaza`：声音广场 + 手动 Analysis Run
 
@@ -369,7 +367,7 @@ Figma 不负责：
 
 完整当前工作流：
 
-[`../docs/guides/01_Figma与前端设计开发工作流.md`](../docs/guides/01_Figma与前端设计开发工作流.md)
+[`docs/guides/01_Figma与前端设计开发工作流.md`](../docs/guides/01_Figma与前端设计开发工作流.md)
 
 ---
 
@@ -392,13 +390,11 @@ Vue 哪些业务语义必须保持
 
 ## 9. Element Plus / TypeScript 当前兼容边界
 
-当前锁定依赖以 `package.json` / lock 为准，不在本文长期复制可能漂移的精确版本号；需要版本事实时直接读取：
+当前锁定依赖以 [`frontend/package.json`](package.json) / lock 为准，不在本文长期复制可能漂移的精确版本号；需要版本事实时直接读取：
 
-```text
-frontend/package.json
-frontend/package-lock.json
-.node-version
-```
+- [`frontend/package.json`](package.json)
+- [`frontend/package-lock.json`](package-lock.json)
+- [`.node-version`](../.node-version)
 
 当前 `tsconfig` / typecheck 策略也以仓库文件为准。历史上 Stage 8C 曾暴露 Element Plus 类型声明与当时 TypeScript 工具链的兼容问题，因此普通页面任务禁止通过以下方式规避：
 
@@ -474,13 +470,13 @@ Pydantic Request/Response
 
 ## 12. 本地运行
 
-标准源码开发入口看仓库根 `scripts/dev/frontend.py` 与 [`../docs/02_环境运行与部署.md`](../docs/02_环境运行与部署.md)。直接执行 Vite 时仍可使用：
+标准源码开发入口看仓库根 [`scripts/dev/frontend.py`](../scripts/dev/frontend.py) 与 [`docs/02_环境运行与部署.md`](../docs/02_环境运行与部署.md)。直接执行 Vite 时仍可使用：
 
 ```bash
 npm --prefix frontend run dev
 ```
 
-Vite 当前监听/代理等精确配置看 `vite.config.ts`；不要在 README 复制容易漂移的端口/Host 作为唯一事实。
+Vite 当前监听/代理等精确配置看 [`frontend/vite.config.ts`](vite.config.ts)；不要在 README 复制容易漂移的端口/Host 作为唯一事实。
 
 页面能打开不等于 PostgreSQL/Worker/异步 Job 正常。
 
@@ -612,9 +608,7 @@ Excel fixture
 
 Stage 12 当前真实 Full-stack 入口：
 
-```text
-frontend/e2e-fullstack/stage12-historical-analysis.spec.ts
-```
+- [`frontend/e2e-fullstack/stage12-historical-analysis.spec.ts`](e2e-fullstack/stage12-historical-analysis.spec.ts)
 
 普通 CI 不为这些验收调用真实付费 TikHub 或 LLM。
 
@@ -634,9 +628,9 @@ npm --prefix frontend run test:e2e
 npm --prefix frontend run test:e2e:fullstack
 ```
 
-永久 CI 通过 `.github/workflows/fullstack.yml` 建立隔离环境并执行真实链。完整能力矩阵和边界见：
+永久 CI 通过 [`.github/workflows/fullstack.yml`](../.github/workflows/fullstack.yml) 建立隔离环境并执行真实链。完整能力矩阵和边界见：
 
-[`../docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md`](../docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md)
+[`docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md`](../docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md)
 
 这些前端测试仍不能替代 Job Fencing、Provider、Migration、容量或其他后端专项集成测试；各层验证继续各自证明真实边界。
 
@@ -655,19 +649,19 @@ npm --prefix frontend run test:e2e:fullstack
 
 后续是否实现、何时实现看：
 
-[`../docs/roadmap/02_生产上线实施路线.md`](../docs/roadmap/02_生产上线实施路线.md)
+[`docs/roadmap/02_生产上线实施路线.md`](../docs/roadmap/02_生产上线实施路线.md)
 
 ---
 
 ## 16. 继续阅读
 
-- API/Job/Frontend 长期边界：`docs/blueprint/04_后端任务API与前端.md`
-- 人类可读 API：`docs/03_API接口说明.md`
-- Figma/Design-to-Code：`docs/guides/01_Figma与前端设计开发工作流.md`
-- Collection 策略：`docs/blueprint/08_采集策略与平台能力.md`
-- AI：`docs/appendix/07_AI舆情打标与分析实现.md`
-- Data Import：`docs/appendix/08_数据入口与统一入库实现.md`
-- Stage 12 软件与生产门禁：`docs/roadmap/03_4000万历史数据迁移实施方案.md`
-- Excel Export：`docs/appendix/06_Excel统一数据导出与离线调试.md`
-- Stage 8F 能力矩阵与真实验收：`docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md`
-- 后续阶段/Production Go-Live：`docs/roadmap/02_生产上线实施路线.md`
+- API/Job/Frontend 长期边界：[`docs/blueprint/04_后端任务API与前端.md`](../docs/blueprint/04_后端任务API与前端.md)
+- 人类可读 API：[`docs/03_API接口说明.md`](../docs/03_API接口说明.md)
+- Figma/Design-to-Code：[`docs/guides/01_Figma与前端设计开发工作流.md`](../docs/guides/01_Figma与前端设计开发工作流.md)
+- Collection 策略：[`docs/blueprint/08_采集策略与平台能力.md`](../docs/blueprint/08_采集策略与平台能力.md)
+- AI：[`docs/appendix/07_AI舆情打标与分析实现.md`](../docs/appendix/07_AI舆情打标与分析实现.md)
+- Data Import：[`docs/appendix/08_数据入口与统一入库实现.md`](../docs/appendix/08_数据入口与统一入库实现.md)
+- Stage 12 软件与生产门禁：[`docs/roadmap/03_4000万历史数据迁移实施方案.md`](../docs/roadmap/03_4000万历史数据迁移实施方案.md)
+- Excel Export：[`docs/appendix/06_Excel统一数据导出与离线调试.md`](../docs/appendix/06_Excel统一数据导出与离线调试.md)
+- Stage 8F 能力矩阵与真实验收：[`docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md`](../docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md)
+- 后续阶段/Production Go-Live：[`docs/roadmap/02_生产上线实施路线.md`](../docs/roadmap/02_生产上线实施路线.md)

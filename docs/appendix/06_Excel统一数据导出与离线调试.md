@@ -53,9 +53,7 @@ UnifiedDataExcelV1
 
 精确定义：
 
-```text
-backend/src/aima_ugc/contracts/export/models.py
-```
+- [`backend/src/aima_ugc/contracts/export/models.py`](../../backend/src/aima_ugc/contracts/export/models.py)
 
 它由：
 
@@ -82,9 +80,7 @@ UnifiedDataExcelLabelPairV1
 
 共享实现：
 
-```text
-backend/src/aima_ugc/platform/export/excel.py
-```
+- [`backend/src/aima_ugc/platform/export/excel.py`](../../backend/src/aima_ugc/platform/export/excel.py)
 
 ### 2.1 内容 Sheet
 
@@ -255,9 +251,7 @@ project_canonical_comment(...)
 
 位置：
 
-```text
-platform/export/excel.py
-```
+- [`backend/src/aima_ugc/platform/export/excel.py`](../../backend/src/aima_ugc/platform/export/excel.py)
 
 例如：
 
@@ -310,7 +304,7 @@ taxonomy_version
 
 AI 完整业务语义见：
 
-[`07_AI舆情打标与分析实现.md`](07_AI舆情打标与分析实现.md)
+[`docs/appendix/07_AI舆情打标与分析实现.md`](07_AI舆情打标与分析实现.md)
 
 ---
 
@@ -427,17 +421,13 @@ imports_test 离线导出
 
 最终都进入：
 
-```text
-platform/export/excel.py
-```
+- [`backend/src/aima_ugc/platform/export/excel.py`](../../backend/src/aima_ugc/platform/export/excel.py)
 
 这就是“一套 Excel 实现”的实际代码边界。
 
 正式 Reporting 说明：
 
-```text
-backend/src/aima_ugc/modules/reporting/README.md
-```
+- [`backend/src/aima_ugc/modules/reporting/README.md`](../../backend/src/aima_ugc/modules/reporting/README.md)
 
 ---
 
@@ -468,9 +458,7 @@ Worker 读取 `content_versions` 的指定版本正文，而不是执行时的�
 
 精确投影：
 
-```text
-backend/src/aima_ugc/adapters/persistence/postgres/reporting.py
-```
+- [`backend/src/aima_ugc/adapters/persistence/postgres/reporting.py`](../../backend/src/aima_ugc/adapters/persistence/postgres/reporting.py)
 
 ---
 
@@ -503,7 +491,7 @@ _COMMENT_COLUMN_WIDTHS
 
 二级标签支持按中文/宽字符显示宽度估算换行行数，并自适应行高，最大不会无限增长。
 
-如果只是调整 Workbook 视觉，优先改这些共享常量/函数，而不是在 `imports_test` 或 `export_worker.py` 复制格式代码。
+如果只是调整 Workbook 视觉，优先改这些共享常量/函数，而不是在 `imports_test` 或 [`backend/src/aima_ugc/bootstrap/export_worker.py`](../../backend/src/aima_ugc/bootstrap/export_worker.py) 复制格式代码。
 
 ---
 
@@ -686,7 +674,7 @@ backend/src/aima_ugc/bootstrap/import_worker.py
 
 统一入库见：
 
-[`08_数据入口与统一入库实现.md`](08_数据入口与统一入库实现.md)
+[`docs/appendix/08_数据入口与统一入库实现.md`](08_数据入口与统一入库实现.md)
 
 ---
 

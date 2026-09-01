@@ -9,8 +9,8 @@
 
 它和另外两篇 TikHub 文档的职责不同：
 
-- [`02_TikHub五平台真实响应与字段映射.md`](02_TikHub五平台真实响应与字段映射.md)：开发时查 JSON 路径、Mapper 和 Fixture；
-- [`03_TikHub多接口验证与备用策略.md`](03_TikHub多接口验证与备用策略.md)：说明 A/B 方法、状态和切换门禁；
+- [`docs/appendix/02_TikHub五平台真实响应与字段映射.md`](02_TikHub五平台真实响应与字段映射.md)：开发时查 JSON 路径、Mapper 和 Fixture；
+- [`docs/appendix/03_TikHub多接口验证与备用策略.md`](03_TikHub多接口验证与备用策略.md)：说明 A/B 方法、状态和切换门禁；
 - **本文**：保存已经得到的真实 Endpoint、价格快照和 A/B 结论。
 
 当前生产 Endpoint 的最终机器事实仍看：
@@ -58,9 +58,7 @@ Endpoint 可调用
 
 运行时价格来源：
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml`](../../backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml)
 
 当前 Pricing Snapshot：
 
@@ -401,14 +399,12 @@ data.subCommentsMap.<root>.subComments[]
 
 当前 App 主链结构证据不要误指向历史 Web Fixture。直接看：
 
-[`../../tests/fixtures/providers/tikhub/endpoint_ledger/2026-08-16/kuaishou.sanitized.json`](../../tests/fixtures/providers/tikhub/endpoint_ledger/2026-08-16/kuaishou.sanitized.json)
+[`tests/fixtures/providers/tikhub/endpoint_ledger/2026-08-16/kuaishou.sanitized.json`](../../tests/fixtures/providers/tikhub/endpoint_ledger/2026-08-16/kuaishou.sanitized.json)
 
 历史 Web Fixture 仍保留用于 Web 备用回归：
 
-```text
-tests/fixtures/providers/tikhub/kuaishou/comments_page1.sanitized.json
-tests/fixtures/providers/tikhub/kuaishou/sub_comments_page1.sanitized.json
-```
+- [`tests/fixtures/providers/tikhub/kuaishou/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/kuaishou/comments_page1.sanitized.json)
+- [`tests/fixtures/providers/tikhub/kuaishou/sub_comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/kuaishou/sub_comments_page1.sanitized.json)
 
 ## 7.3 Search V2 vs Web
 
@@ -452,7 +448,7 @@ not_equivalent / no_same_semantic_web_search
 
 状态含义和升级门禁见：
 
-[`03_TikHub多接口验证与备用策略.md`](03_TikHub多接口验证与备用策略.md)
+[`docs/appendix/03_TikHub多接口验证与备用策略.md`](03_TikHub多接口验证与备用策略.md)
 
 ---
 

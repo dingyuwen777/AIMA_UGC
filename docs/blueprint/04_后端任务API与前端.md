@@ -15,21 +15,17 @@ Vue 页面
 
 精确 HTTP 字段看：
 
-```text
-backend/src/aima_ugc/contracts/http.py
-backend/src/aima_ugc/contracts/runtime.py
-backend/src/aima_ugc/contracts/relevance_review.py
-backend/src/aima_ugc/bootstrap/api.py
-backend/src/aima_ugc/bootstrap/analysis_capability_http.py
-backend/src/aima_ugc/entrypoints/api_main.py
-contracts/openapi/openapi.json
-```
+- [`backend/src/aima_ugc/contracts/http.py`](../../backend/src/aima_ugc/contracts/http.py)
+- [`backend/src/aima_ugc/contracts/runtime.py`](../../backend/src/aima_ugc/contracts/runtime.py)
+- [`backend/src/aima_ugc/contracts/relevance_review.py`](../../backend/src/aima_ugc/contracts/relevance_review.py)
+- [`backend/src/aima_ugc/bootstrap/api.py`](../../backend/src/aima_ugc/bootstrap/api.py)
+- [`backend/src/aima_ugc/bootstrap/analysis_capability_http.py`](../../backend/src/aima_ugc/bootstrap/analysis_capability_http.py)
+- [`backend/src/aima_ugc/entrypoints/api_main.py`](../../backend/src/aima_ugc/entrypoints/api_main.py)
+- [`contracts/openapi/openapi.json`](../../contracts/openapi/openapi.json)
 
 前端真实路由看：
 
-```text
-frontend/src/app/routes.ts
-```
+- [`frontend/src/app/routes.ts`](../../frontend/src/app/routes.ts)
 
 ---
 
@@ -58,10 +54,8 @@ frontend/src/features/voice-plaza/
 
 相关代码：
 
-```text
-backend/src/aima_ugc/bootstrap/content_http.py
-backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
-```
+- [`backend/src/aima_ugc/bootstrap/content_http.py`](../../backend/src/aima_ugc/bootstrap/content_http.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py`](../../backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py)
 
 页面不理解数据库表，Router 不写 SQL，Query Repository 不解释 TikHub 私有字段。
 
@@ -84,9 +78,7 @@ Vue / API Client
 
 当前 Worker Registry 的机器事实：
 
-```text
-backend/src/aima_ugc/bootstrap/worker.py
-```
+- [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py)
 
 当前正式 Job：
 
@@ -101,9 +93,9 @@ analysis.content-label.v1
 reporting.content-export-excel.v1
 ```
 
-三个 `ingestion.historical-*` 是统一 Data Import Campaign 继续沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner。它们已经由当前 `bootstrap/worker.py` 注册，不是未来规划。
+三个 `ingestion.historical-*` 是统一 Data Import Campaign 继续沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner。它们已经由当前 [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py) 注册，不是未来规划。
 
-注意：离线 Markdown/Word 报告当前不是上述 PostgreSQL Worker Registry 中的独立正式 Job；它目前由 `platform/reporting/` 和 `imports_test/generate_report.py` 提供离线生成能力。不能因为“报告通常耗时”就把它写成当前已经产品化的 Job。
+注意：离线 Markdown/Word 报告当前不是上述 PostgreSQL Worker Registry 中的独立正式 Job；它目前由 `platform/reporting/` 和 [`backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py`](../../backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py) 提供离线生成能力。不能因为“报告通常耗时”就把它写成当前已经产品化的 Job。
 
 ---
 
@@ -113,11 +105,9 @@ reporting.content-export-excel.v1
 
 当前主 Router 与最终 API Assembly：
 
-```text
-backend/src/aima_ugc/bootstrap/api.py
-backend/src/aima_ugc/bootstrap/analysis_capability_http.py
-backend/src/aima_ugc/entrypoints/api_main.py
-```
+- [`backend/src/aima_ugc/bootstrap/api.py`](../../backend/src/aima_ugc/bootstrap/api.py)
+- [`backend/src/aima_ugc/bootstrap/analysis_capability_http.py`](../../backend/src/aima_ugc/bootstrap/analysis_capability_http.py)
+- [`backend/src/aima_ugc/entrypoints/api_main.py`](../../backend/src/aima_ugc/entrypoints/api_main.py)
 
 Router 负责：
 
@@ -153,14 +143,12 @@ Service 表达一个业务动作，例如：
 
 真实生产 Service 主要在：
 
-```text
-backend/src/aima_ugc/bootstrap/collection_http.py
-backend/src/aima_ugc/bootstrap/collection_strategy_http.py
-backend/src/aima_ugc/bootstrap/import_http.py
-backend/src/aima_ugc/bootstrap/historical_import_http.py
-backend/src/aima_ugc/bootstrap/content_http.py
-backend/src/aima_ugc/bootstrap/reporting_http.py
-```
+- [`backend/src/aima_ugc/bootstrap/collection_http.py`](../../backend/src/aima_ugc/bootstrap/collection_http.py)
+- [`backend/src/aima_ugc/bootstrap/collection_strategy_http.py`](../../backend/src/aima_ugc/bootstrap/collection_strategy_http.py)
+- [`backend/src/aima_ugc/bootstrap/import_http.py`](../../backend/src/aima_ugc/bootstrap/import_http.py)
+- [`backend/src/aima_ugc/bootstrap/historical_import_http.py`](../../backend/src/aima_ugc/bootstrap/historical_import_http.py)
+- [`backend/src/aima_ugc/bootstrap/content_http.py`](../../backend/src/aima_ugc/bootstrap/content_http.py)
+- [`backend/src/aima_ugc/bootstrap/reporting_http.py`](../../backend/src/aima_ugc/bootstrap/reporting_http.py)
 
 这里的 Bootstrap Service 会组装真实 Repository，并在需要时协调跨 Owner 的同一事务。
 
@@ -209,18 +197,14 @@ Pydantic Request / Response
 
 手写 Contract：
 
-```text
-backend/src/aima_ugc/contracts/http.py
-backend/src/aima_ugc/contracts/runtime.py
-```
+- [`backend/src/aima_ugc/contracts/http.py`](../../backend/src/aima_ugc/contracts/http.py)
+- [`backend/src/aima_ugc/contracts/runtime.py`](../../backend/src/aima_ugc/contracts/runtime.py)
 
 其中 `runtime.py` 只承载安全的运行能力读模型，不保存 Secret，也不成为 LLM 配置的第二事实源。
 
 生成 OpenAPI：
 
-```text
-contracts/openapi/openapi.json
-```
+- [`contracts/openapi/openapi.json`](../../contracts/openapi/openapi.json)
 
 前端生成代码：
 
@@ -242,7 +226,7 @@ frontend/src/generated/api/
 
 ## 5. 当前真实 HTTP API 面
 
-下面来自当前 `bootstrap/api.py` 与最终 `entrypoints/api_main.py` Assembly，不是未来规划列表。
+下面来自当前 [`backend/src/aima_ugc/bootstrap/api.py`](../../backend/src/aima_ugc/bootstrap/api.py) 与最终 [`backend/src/aima_ugc/entrypoints/api_main.py`](../../backend/src/aima_ugc/entrypoints/api_main.py) Assembly，不是未来规划列表。
 
 ### 5.1 Health
 
@@ -265,14 +249,12 @@ GET  /api/v1/collection-runtime/summary
 
 代码：
 
-```text
-backend/src/aima_ugc/bootstrap/collection_http.py
-backend/src/aima_ugc/modules/collection/http.py
-```
+- [`backend/src/aima_ugc/bootstrap/collection_http.py`](../../backend/src/aima_ugc/bootstrap/collection_http.py)
+- [`backend/src/aima_ugc/modules/collection/http.py`](../../backend/src/aima_ugc/modules/collection/http.py)
 
 `collection-runtime/runs` 是统一只读投影，不意味着 Excel Import Batch 和 Collection Run 被合并成一张万能表。
 
-`GET /collection-capabilities` 同时返回各 Provider/Platform 的可执行 Operation 和 Provider-neutral Search 选项。手工 Discovery 可以不传 `search_config`，后端会按 Capability 补齐并冻结“最新、一天内、不限内容”的可支持部分；新建周期 Plan 必须逐平台显式提交完整 `search_config`。平台不支持的维度不进入 Contract，前端不得自行维护另一套平台参数表。
+`GET /api/v1/collection-capabilities` 同时返回各 Provider/Platform 的可执行 Operation 和 Provider-neutral Search 选项。手工 Discovery 可以不传 `search_config`，后端会按 Capability 补齐并冻结“最新、一天内、不限内容”的可支持部分；新建周期 Plan 必须逐平台显式提交完整 `search_config`。平台不支持的维度不进入 Contract，前端不得自行维护另一套平台参数表。
 
 历史 Plan 可能持久化空的 `config={}`。读取、重新启用和 Scheduler 执行继续接受这类记录，并沿用原 Adapter 默认行为；系统不把历史 Plan 静默改成新的手工 Discovery 默认值。
 
@@ -294,20 +276,18 @@ POST /api/v1/content-relevance-reviews
 
 代码：
 
-```text
-backend/src/aima_ugc/contracts/runtime.py
-backend/src/aima_ugc/bootstrap/analysis_capability_http.py
-backend/src/aima_ugc/bootstrap/content_http.py
-backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
-backend/src/aima_ugc/adapters/persistence/postgres/analysis.py
-backend/src/aima_ugc/adapters/persistence/postgres/relevance_reviews.py
-```
+- [`backend/src/aima_ugc/contracts/runtime.py`](../../backend/src/aima_ugc/contracts/runtime.py)
+- [`backend/src/aima_ugc/bootstrap/analysis_capability_http.py`](../../backend/src/aima_ugc/bootstrap/analysis_capability_http.py)
+- [`backend/src/aima_ugc/bootstrap/content_http.py`](../../backend/src/aima_ugc/bootstrap/content_http.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py`](../../backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/analysis.py`](../../backend/src/aima_ugc/adapters/persistence/postgres/analysis.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/relevance_reviews.py`](../../backend/src/aima_ugc/adapters/persistence/postgres/relevance_reviews.py)
 
-`GET /content-analysis-capabilities` 是安全只读运行能力投影，只返回 `configured`。它用于让声音广场在 LLM Base URL / Model / Secret 未形成可执行配置时明确提示并禁用 AI 打标；前端不得读取 `env.local`、Secret 文件或复制后端配置判断。源码开发时，能力接口与 Worker 都从 `AIMA_EXTERNAL_SECRET_DIR` 对应的外部 Secret Root 读取 `llm_api_key`，不能误用只存 PostgreSQL/Cursor Secret 的内部 Root。该接口不返回 Base URL、Model、Provider、Secret 路径或 API Key，也不证明外部 LLM 此刻在线；Worker 的执行时配置守卫仍是最终防线。
+`GET /api/v1/content-analysis-capabilities` 是安全只读运行能力投影，只返回 `configured`。它用于让声音广场在 LLM Base URL / Model / Secret 未形成可执行配置时明确提示并禁用 AI 打标；前端不得读取 `env.local`、Secret 文件或复制后端配置判断。源码开发时，能力接口与 Worker 都从 `AIMA_EXTERNAL_SECRET_DIR` 对应的外部 Secret Root 读取 `llm_api_key`，不能误用只存 PostgreSQL/Cursor Secret 的内部 Root。该接口不返回 Base URL、Model、Provider、Secret 路径或 API Key，也不证明外部 LLM 此刻在线；Worker 的执行时配置守卫仍是最终防线。
 
-`POST /content-analysis-requests` 是兼容入口，为保持既有 `request_id/job_id` Response，仍在 HTTP 短事务内冻结目标、创建首个 Shard 并建立 Analysis Run，并兼容历史 selected/query 语义。新页面只允许显式选择 1—1000 条内容：先调用 `/analysis/content-runs/preview` 取得目标数、Shard 数和模型/Prompt/配置身份，再由用户确认创建 Run；新版 Preview/Create Contract 不接受 query scope。创建 HTTP 只保存 Run 头与 Planner Job。Planner 在 PostgreSQL 事务内用 `INSERT ... SELECT` 冻结 Content ID + `current_version`，复核 Preview 数量并维持有界 Shard Job 窗口；数量变化时整次冻结回滚，Run 返回 Planner `error_code` 供页面展示。查询范围 Run 要等真实付费模型 Gold Set、费用和容量报告后重新决策。不同 Run 结果全部保留，Current 按 Run 创建顺序选择，最新失败/取消不会抹掉旧成功结果。
+`POST /api/v1/content-analysis-requests` 是兼容入口，为保持既有 `request_id/job_id` Response，仍在 HTTP 短事务内冻结目标、创建首个 Shard 并建立 Analysis Run，并兼容历史 selected/query 语义。新页面只允许显式选择 1—1000 条内容：先调用 `/api/v1/analysis/content-runs/preview` 取得目标数、Shard 数和模型/Prompt/配置身份，再由用户确认创建 Run；新版 Preview/Create Contract 不接受 query scope。创建 HTTP 只保存 Run 头与 Planner Job。Planner 在 PostgreSQL 事务内用 `INSERT ... SELECT` 冻结 Content ID + `current_version`，复核 Preview 数量并维持有界 Shard Job 窗口；数量变化时整次冻结回滚，Run 返回 Planner `error_code` 供页面展示。查询范围 Run 要等真实付费模型 Gold Set、费用和容量报告后重新决策。不同 Run 结果全部保留，Current 按 Run 创建顺序选择，最新失败/取消不会抹掉旧成功结果。
 
-`POST /content-relevance-reviews` 是同步短事务：接收 1—1000 个不重复 Content ID，并显式提交 `decision=relevant / irrelevant / inherit_ai`。`relevant/irrelevant` 分别把当前 Content Version 人工覆盖为业务相关/不相关；`inherit_ai` 撤销活动人工覆盖并恢复当前 AI 基线。批量请求先锁定并校验全部目标，任一目标不可操作则整批返回 409；重复提交当前已经生效的决定幂等。已有人工覆盖要切换到相反人工结论时必须先撤销。模型原始 `analysis_content_results` 不会被更新或删除。`GET /contents` 与 Detail 同时返回 AI 原判和查询层派生的 `effective_relevance / relevance_source`，前端据此显示人工覆盖与撤销入口，不能从筛选条件猜测人工状态；AI 变为 `stale` 时活动人工覆盖仍可撤销。
+`POST /api/v1/content-relevance-reviews` 是同步短事务：接收 1—1000 个不重复 Content ID，并显式提交 `decision=relevant / irrelevant / inherit_ai`。`relevant/irrelevant` 分别把当前 Content Version 人工覆盖为业务相关/不相关；`inherit_ai` 撤销活动人工覆盖并恢复当前 AI 基线。批量请求先锁定并校验全部目标，任一目标不可操作则整批返回 409；重复提交当前已经生效的决定幂等。已有人工覆盖要切换到相反人工结论时必须先撤销。模型原始 `analysis_content_results` 不会被更新或删除。`GET /api/v1/contents` 与 Detail 同时返回 AI 原判和查询层派生的 `effective_relevance / relevance_source`，前端据此显示人工覆盖与撤销入口，不能从筛选条件猜测人工状态；AI 变为 `stale` 时活动人工覆盖仍可撤销。
 
 ### 5.4 正式 Excel Export
 
@@ -341,16 +321,14 @@ GET  /api/v1/jobs/{job_id}
 
 `POST /api/v1/import-batches` 当前接受 multipart：一个 `file` 和 1—20 个不重复 `keyword_pack_ids`。HTTP 层执行请求体大小与 multipart 形状校验；Import Service 冻结所选词包/关键词快照并创建 `ingestion.import-excel.v1` Job，真正 Excel 处理由 Worker 完成。
 
-该入口仍是合法兼容 Contract，但当前采集运行中心的“导入数据”页面主入口使用 5.8 的 `/api/v1/data-import-*` Campaign，不再把 `/import-batches` 作为第二套页面工作流。
+该入口仍是合法兼容 Contract，但当前采集运行中心的“导入数据”页面主入口使用 5.8 的 `/api/v1/data-import-*` Campaign，不再把 `/api/v1/import-batches` 作为第二套页面工作流。
 
-`GET /api/v1/jobs/{job_id}` 当前由 Import HTTP Service 提供，是 Import 产品面的通用 Job 查询入口；Analysis 还有独立的 `/content-analysis-jobs/{job_id}`。不要据此假设所有内部 `jobs` 表记录都自动成为公共 HTTP Contract。
+`GET /api/v1/jobs/{job_id}` 当前由 Import HTTP Service 提供，是 Import 产品面的通用 Job 查询入口；Analysis 还有独立的 `/api/v1/content-analysis-jobs/{job_id}`。不要据此假设所有内部 `jobs` 表记录都自动成为公共 HTTP Contract。
 
 代码：
 
-```text
-backend/src/aima_ugc/bootstrap/import_http.py
-backend/src/aima_ugc/bootstrap/import_worker.py
-```
+- [`backend/src/aima_ugc/bootstrap/import_http.py`](../../backend/src/aima_ugc/bootstrap/import_http.py)
+- [`backend/src/aima_ugc/bootstrap/import_worker.py`](../../backend/src/aima_ugc/bootstrap/import_worker.py)
 
 ### 5.6 Keyword Pack / Relevance
 
@@ -377,10 +355,8 @@ PUT  /api/v1/collection-plans/{plan_id}/enabled
 
 代码：
 
-```text
-backend/src/aima_ugc/bootstrap/collection_strategy_http.py
-backend/src/aima_ugc/modules/collection/planning.py
-```
+- [`backend/src/aima_ugc/bootstrap/collection_strategy_http.py`](../../backend/src/aima_ugc/bootstrap/collection_strategy_http.py)
+- [`backend/src/aima_ugc/modules/collection/planning.py`](../../backend/src/aima_ugc/modules/collection/planning.py)
 
 ### 5.8 统一数据导入 Campaign
 
@@ -413,9 +389,7 @@ Campaign Response 的 `progress` 由后端从 Source Item、Snapshot Job 和 Chu
 
 真实 Router：
 
-```text
-frontend/src/app/routes.ts
-```
+- [`frontend/src/app/routes.ts`](../../frontend/src/app/routes.ts)
 
 当前注册：
 
@@ -470,7 +444,7 @@ Feature Page
 
 Figma 到代码流程：
 
-[`../guides/01_Figma与前端设计开发工作流.md`](../guides/01_Figma与前端设计开发工作流.md)
+[`docs/guides/01_Figma与前端设计开发工作流.md`](../guides/01_Figma与前端设计开发工作流.md)
 
 ---
 
@@ -488,10 +462,8 @@ Figma 到代码流程：
 
 声音广场的 Cursor 实现：
 
-```text
-backend/src/aima_ugc/modules/content/content_cursor.py
-backend/src/aima_ugc/bootstrap/content_http.py
-```
+- [`backend/src/aima_ugc/modules/content/content_cursor.py`](../../backend/src/aima_ugc/modules/content/content_cursor.py)
+- [`backend/src/aima_ugc/bootstrap/content_http.py`](../../backend/src/aima_ugc/bootstrap/content_http.py)
 
 它会把查询过滤条件 Hash 绑定到 Cursor，防止把一个查询的 Cursor 拿去另一个查询继续翻页。
 
@@ -529,9 +501,7 @@ Content Current
 
 关键代码：
 
-```text
-backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
-```
+- [`backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py`](../../backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py)
 
 当前默认列表：
 
@@ -606,7 +576,7 @@ Occurrence
 
 详细语义：
 
-[`../appendix/05_Scheduler调度执行与停机恢复.md`](../appendix/05_Scheduler调度执行与停机恢复.md)
+[`docs/appendix/05_Scheduler调度执行与停机恢复.md`](../appendix/05_Scheduler调度执行与停机恢复.md)
 
 ---
 
@@ -620,9 +590,7 @@ HttpErrorResponse
 
 定义于：
 
-```text
-backend/src/aima_ugc/contracts/http.py
-```
+- [`backend/src/aima_ugc/contracts/http.py`](../../backend/src/aima_ugc/contracts/http.py)
 
 典型形状：
 
@@ -702,7 +670,7 @@ Job Payload / Handler
 
 更完整的任务导航：
 
-[`../01_代码结构与修改导航.md`](../01_代码结构与修改导航.md)
+[`docs/01_代码结构与修改导航.md`](../01_代码结构与修改导航.md)
 
 ---
 

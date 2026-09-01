@@ -4,7 +4,7 @@
 
 真实 JSON 路径：
 
-[`../appendix/02_TikHub五平台真实响应与字段映射.md`](../appendix/02_TikHub五平台真实响应与字段映射.md)
+[`docs/appendix/02_TikHub五平台真实响应与字段映射.md`](../appendix/02_TikHub五平台真实响应与字段映射.md)
 
 ## 1. 当前代码
 
@@ -82,9 +82,7 @@ data.pcursor
 
 Fixture：
 
-```text
-tests/fixtures/providers/tikhub/kuaishou/search_page1.sanitized.json
-```
+- [`tests/fixtures/providers/tikhub/kuaishou/search_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/kuaishou/search_page1.sanitized.json)
 
 当前 `KuaishouSearchPagination` 会对这些情况停止：
 
@@ -113,11 +111,9 @@ data.photos[0]
 
 Fixture：
 
-```text
-tests/fixtures/providers/tikhub/kuaishou/detail.sanitized.json
-```
+- [`tests/fixtures/providers/tikhub/kuaishou/detail.sanitized.json`](../../tests/fixtures/providers/tikhub/kuaishou/detail.sanitized.json)
 
-Detail 补充 Search 卡片不足的内容/作者/互动事实；精确 `observed_fields` 看 `mappers/kuaishou.py`。
+Detail 补充 Search 卡片不足的内容/作者/互动事实；精确 `observed_fields` 看 [`backend/src/aima_ugc/adapters/providers/tikhub/mappers/kuaishou.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/mappers/kuaishou.py)。
 
 ## 6. App 一级评论
 
@@ -259,9 +255,7 @@ parent_comment_id = null
 
 当前 App 评论/二级评论直接结构证据看：
 
-```text
-tests/fixtures/providers/tikhub/endpoint_ledger/2026-08-16/kuaishou.sanitized.json
-```
+- [`tests/fixtures/providers/tikhub/endpoint_ledger/2026-08-16/kuaishou.sanitized.json`](../../tests/fixtures/providers/tikhub/endpoint_ledger/2026-08-16/kuaishou.sanitized.json)
 
 不要把历史 Web Fixture误认为当前 App 主链 Fixture。
 
@@ -294,9 +288,7 @@ App 二级 0.001 USD
 
 当前运行时价格看：
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml`](../../backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml)
 
 Web 当前状态：
 
@@ -432,4 +424,4 @@ Run / Scope
 
 SQL：
 
-[`../appendix/01_PostgreSQL查询与调试实战.md`](../appendix/01_PostgreSQL查询与调试实战.md)
+[`docs/appendix/01_PostgreSQL查询与调试实战.md`](../appendix/01_PostgreSQL查询与调试实战.md)

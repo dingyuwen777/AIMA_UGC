@@ -4,9 +4,9 @@
 
 公司 Linux 服务器和完整 Production Release 的长期边界仍以：
 
-- `docs/02_环境运行与部署.md`
-- `docs/roadmap/02_生产上线实施路线.md`
-- `docs/appendix/11_生产部署与离线Release方案.md`
+- [`docs/02_环境运行与部署.md`](../02_环境运行与部署.md)
+- [`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)
+- [`docs/appendix/11_生产部署与离线Release方案.md`](../appendix/11_生产部署与离线Release方案.md)
 
 为准。
 
@@ -52,9 +52,7 @@ Debian / PyPI / npm
 
 Docker Hub mirror 列表的唯一仓库配置源是：
 
-```text
-scripts/config/docker_hub_mirrors.txt
-```
+- [`scripts/config/docker_hub_mirrors.txt`](../../scripts/config/docker_hub_mirrors.txt)
 
 配置规则：
 
@@ -78,9 +76,7 @@ Docker Engine 同时设置：
 
 第一次准备环境时运行：
 
-```cmd
-scripts\setup_dev_environment.cmd
-```
+- [`scripts/setup_dev_environment.cmd`](../../scripts/setup_dev_environment.cmd)
 
 Docker Desktop 已安装时，脚本读取统一 mirror 配置，并把 AIMA 管理的 mirrors 写入当前用户的 Docker Engine 配置：
 
@@ -119,9 +115,7 @@ sudo bash scripts/setup_dev_environment.sh
 
 Linux 初始化脚本读取同一份：
 
-```text
-scripts/config/docker_hub_mirrors.txt
-```
+- [`scripts/config/docker_hub_mirrors.txt`](../../scripts/config/docker_hub_mirrors.txt)
 
 并将 mirrors 与 `/data/docker`、日志 driver/rotation 等既有 Docker Engine 设置合并到：
 

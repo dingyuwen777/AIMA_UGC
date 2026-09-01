@@ -15,13 +15,11 @@
 
 入口：
 
-```text
-backend/src/aima_ugc/adapters/providers/imports_test/test.py
-```
+- [`backend/src/aima_ugc/adapters/providers/imports_test/test.py`](test.py)
 
 脚本复用系统正式 Reader、Mapper、关键词过滤、去重、Analysis Service、LLM Adapter、共享 Excel Exporter 和 Provider-neutral Report Renderer。默认 `WRITE_TO_DATABASE = False`，因此普通人工文件调试不要求数据库或 Scheduler；只有显式开启数据库模式时才连接已经由开发者准备好的 PostgreSQL 18，并调用正式 File Import / Content Ingestion 实现。报告阶段只读最终统一 Excel，不反向修改 Canonical、Analysis、数据库或 Excel 数据。
 
-## 1. 先修改 `test.py` 顶部配置
+## 1. 先修改 [`backend/src/aima_ugc/adapters/providers/imports_test/test.py`](test.py) 顶部配置
 
 常用配置：
 
@@ -62,7 +60,7 @@ MAX_VALIDATION_RETRIES = 2
 ```
 
 报告默认模板由 `aima_ugc.platform.reporting` 统一维护在
-`backend/src/aima_ugc/platform/reporting/report_template.md`，人工入口不再维护第二份模板路径。
+[`backend/src/aima_ugc/platform/reporting/report_template.md`](../../../platform/reporting/report_template.md)，人工入口不再维护第二份模板路径。
 
 Excel 输入只有 `INPUT_XLSX_FILES` 一个配置入口。它接受一个 `Path` 或非空的
 `Path` 元组；空元组会在转换前报错，其他类型不受支持。
@@ -239,9 +237,7 @@ Raw/来源定位
 
 默认文件：
 
-```text
-backend/src/aima_ugc/adapters/providers/imports_test/keyword_pack.txt
-```
+- [`backend/src/aima_ugc/adapters/providers/imports_test/keyword_pack.txt`](keyword_pack.txt)
 
 规则：
 
@@ -304,9 +300,8 @@ text
 
 复制：
 
-```text
-.env.example
-```
+- [`backend/src/aima_ugc/adapters/providers/imports_test/.env.example`](.env.example)
+
 
 为：
 
@@ -345,12 +340,10 @@ AIMA_LLM_MODEL=
 
 价格目录：
 
-```text
-backend/src/aima_ugc/adapters/llm/pricing.toml
-```
+- [`backend/src/aima_ugc/adapters/llm/pricing.toml`](../../llm/pricing.toml)
 
 计费与请求审计由全平台共享 LLM Adapter 持有，完整边界见
-`backend/src/aima_ugc/adapters/llm/README.md`。本入口只提供当前人工 run 的配置和审计文件位置，
+[`backend/src/aima_ugc/adapters/llm/README.md`](../../llm/README.md)。本入口只提供当前人工 run 的配置和审计文件位置，
 不维护一套 Excel 专用计费实现。
 
 一个文本模型只配置计算和核验真正需要的字段：
@@ -818,7 +811,7 @@ aima-monitoring-excel.v1
 
 ## 15. 未来正式网页关键词配置
 
-当前 `keyword_pack.txt` 只是本地人工入口配置来源。正式系统已经有 PostgreSQL：
+当前 [`backend/src/aima_ugc/adapters/providers/imports_test/keyword_pack.txt`](keyword_pack.txt) 只是本地人工入口配置来源。正式系统已经有 PostgreSQL：
 
 ```text
 keyword_packs
@@ -950,7 +943,7 @@ print(result.word_path)
 `output_dir` 可以省略。省略时，显式 Excel 的报告默认写到该 Excel 同目录下的 `reports/`。
 `report_date_range` 是包含首尾日期的闭区间；传 `None` 时保持原有全量报告行为。
 
-如果使用本目录的 `generate_report.py`，直接修改文件顶部的 `INPUT_EXCEL` 和
+如果使用本目录的 [`backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py`](generate_report.py)，直接修改文件顶部的 `INPUT_EXCEL` 和
 `REPORT_DATE_RANGE`。脚本按周期写入 `output/reports/YYYYMMDD-YYYYMMDD/`，避免不同周期
 报告互相覆盖；全量报告写入 `output/reports/all/`。
 
@@ -999,9 +992,7 @@ print(result.word_path)
 
 报告正文模板只有：
 
-```text
-backend/src/aima_ugc/platform/reporting/report_template.md
-```
+- [`backend/src/aima_ugc/platform/reporting/report_template.md`](../../../platform/reporting/report_template.md)
 
 固定链路：
 

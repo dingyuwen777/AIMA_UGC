@@ -26,11 +26,11 @@ jobs:
         with:
           python-version: 3.14.7
 
-      - name: Run Coding completion-gate tests
+      - name: Verify AIMA project governance wiring
         shell: bash
         run: |
           set -euo pipefail
-          python -m unittest discover .agents/skills/coding/tests -v
+          python scripts/quality/check_agent_governance.py
 
       - name: Enforce changed PR Change readiness
         if: github.event_name == 'pull_request'

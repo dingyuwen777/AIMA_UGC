@@ -184,9 +184,7 @@ Shard=1 和“仅显式选择最多 1000 条”都是尚未执行真实付费 Go
 
 容量脚本：
 
-```text
-scripts/performance/benchmark_stage12_historical.py
-```
+- [`scripts/performance/benchmark_stage12_historical.py`](../../scripts/performance/benchmark_stage12_historical.py)
 
 它只允许 `AIMA_DB_NAME` 以 `_stage12_capacity` 结尾，并在该专用库内清理上一阶数据。脚本生成 write-only XLSX Fixture，随后调用生产 Campaign/API/Artifact/Chunk/Worker/Content Owner，不是裸 SQL 吞吐脚本。报告记录：硬件和 PostgreSQL 配置、文件/行数、阶段吞吐、Chunk P50/P95、峰值 RSS/CPU、数据库/表/Artifact/WAL/临时文件、锁等待、查询延迟、对账和普通 Job 饥饿探针。
 
