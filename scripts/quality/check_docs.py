@@ -11,6 +11,7 @@ from urllib.parse import unquote
 ROOT = Path(__file__).resolve().parents[2]
 ENTRY_DOCS = (Path("README.md"), Path("docs/blueprint/README.md"))
 LINK_RE = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
+PATH_LINK_RE = re.compile(r"\[`([^`\n]+)`\]\(([^)]+)\)")
 INLINE_CODE_RE = re.compile(r"`([^`\n]+)`")
 FENCE_RE = re.compile(r"^\s*(```|~~~)")
 STANDALONE_MANIFEST_RE = re.compile(r"(?<![\w-])manifest\.json\b")
@@ -253,6 +254,32 @@ def _check_repository_file_navigation(
     return errors
 
 
+def _check_repository_file_link_labels(root: Path, doc: Path, text: str) -> list[str]:
+    """检查路径型仓库文件链接是否显示完整仓库相对路径。"""
+    errors: list[str] = []
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        for label, target in PATH_LINK_RE.findall(line):
+            if target.startswith(("http://", "https://", "#", "mailto:")):
+                continue
+            target_path = target.split("#", 1)[0]
+            if not target_path:
+                continue
+            resolved = (doc.parent / unquote(target_path)).resolve()
+            try:
+                expected = resolved.relative_to(root).as_posix()
+            except ValueError:
+                continue
+            if not resolved.is_file():
+                continue
+            normalized_label = label.replace("\\", "/").removeprefix("./")
+            if normalized_label != expected:
+                errors.append(
+                    f"DOC009 {doc.relative_to(root)}:{line_number}: "
+                    f"仓库文件链接显示路径应为 {expected}，当前为 {label}"
+                )
+    return errors
+
+
 def check_repository(root: Path = ROOT) -> list[str]:
     """返回当前项目文档错误；空列表表示文档静态约束满足。"""
     root = root.resolve()
@@ -300,6 +327,7 @@ def check_repository(root: Path = ROOT) -> list[str]:
                 )
 
         errors.extend(_check_repository_file_navigation(root, doc, text, repository_files))
+        errors.extend(_check_repository_file_link_labels(root, doc, text))
 
     return errors
 
