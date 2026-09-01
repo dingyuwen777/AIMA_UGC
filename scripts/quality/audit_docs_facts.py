@@ -11,6 +11,9 @@ ROOT = Path(__file__).resolve().parents[2]
 CHECKER = runpy.run_path(str(ROOT / "scripts" / "quality" / "check_docs.py"))
 _iter_current_docs = CHECKER["_iter_current_docs"]
 _repository_files = CHECKER["_repository_files"]
+_resolve_file_reference = CHECKER["_resolve_file_reference"]
+_suggest_link = CHECKER["_suggest_link"]
+FENCE_RE = CHECKER["FENCE_RE"]
 INLINE_CODE_RE = re.compile(r"`([^`\n]+)`")
 
 VERSION_PATTERNS = {
@@ -44,22 +47,18 @@ TABLE_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{2,}$")
 
 
 def _read_version(path: str) -> str:
-    """读取单行版本文件。"""
     return (ROOT / path).read_text(encoding="utf-8").strip()
 
 
 def _package_manager_version() -> str:
-    """从前端 packageManager 字段提取 npm 精确版本。"""
     package = json.loads((ROOT / "frontend/package.json").read_text(encoding="utf-8"))
-    manager = package["packageManager"]
-    name, version = manager.split("@", 1)
+    name, version = package["packageManager"].split("@", 1)
     if name != "npm":
-        raise RuntimeError(f"unexpected package manager: {manager}")
+        raise RuntimeError(f"unexpected package manager: {name}")
     return version
 
 
 def _image_version(image: str) -> str:
-    """从 Dockerfile/Compose 提取 canonical image 精确版本。"""
     texts = (
         (ROOT / "Dockerfile").read_text(encoding="utf-8"),
         (ROOT / "compose.yaml").read_text(encoding="utf-8"),
@@ -73,12 +72,10 @@ def _image_version(image: str) -> str:
 
 
 def _compatible_claim(claim: str, current: str) -> bool:
-    """允许文档用当前精确版本的前缀表达主/次版本。"""
     return current == claim or current.startswith(f"{claim}.")
 
 
 def _shape(path: str) -> str:
-    """把 URL 中动态 segment 归一化，比较 endpoint 结构而非参数名。"""
     clean = path.split("?", 1)[0].rstrip(".,;:，。；：")
     parts: list[str] = []
     for segment in clean.split("/"):
@@ -97,19 +94,16 @@ def _shape(path: str) -> str:
 
 
 def _openapi_paths() -> set[str]:
-    """读取 generated OpenAPI 当前 endpoint。"""
     payload = json.loads((ROOT / "contracts/openapi/openapi.json").read_text(encoding="utf-8"))
     return set(payload.get("paths", {}))
 
 
 def _frontend_routes() -> set[str]:
-    """从 route registry 提取当前页面路径。"""
     text = (ROOT / "frontend/src/app/routes.ts").read_text(encoding="utf-8")
     return set(re.findall(r"\bpath:\s*['\"]([^'\"]+)['\"]", text))
 
 
 def _worker_job_types() -> set[str]:
-    """从 Worker 实际装配涉及的 Job 模块提取持久 Job type。"""
     paths = (
         "backend/src/aima_ugc/modules/collection/collection_run_job.py",
         "backend/src/aima_ugc/modules/ingestion/import_job.py",
@@ -127,7 +121,6 @@ def _worker_job_types() -> set[str]:
 def _machine_env_names(
     repository_files: tuple[Path, ...], documents: tuple[Path, ...]
 ) -> set[str]:
-    """从非文档受控文件中收集实际出现的 AIMA_* 配置名。"""
     docs = set(documents)
     names: set[str] = set()
     for path in repository_files:
@@ -142,7 +135,6 @@ def _machine_env_names(
 
 
 def _table_names(repository_files: tuple[Path, ...]) -> set[str]:
-    """从 SQLAlchemy/Alembic 源码提取当前实际表名候选。"""
     names: set[str] = set()
     patterns = (
         re.compile(r'__tablename__\s*=\s*["\']([^"\']+)["\']'),
@@ -162,7 +154,6 @@ def _table_names(repository_files: tuple[Path, ...]) -> set[str]:
 
 
 def _provider_doc(relative: str) -> bool:
-    """TikHub 上游 endpoint 文档不是本仓 FastAPI OpenAPI。"""
     return relative.startswith("docs/collection/") or relative in {
         "docs/appendix/02_TikHub五平台真实响应与字段映射.md",
         "docs/appendix/03_TikHub多接口验证与备用策略.md",
@@ -170,8 +161,49 @@ def _provider_doc(relative: str) -> bool:
     }
 
 
+def _mixed_fence_file_candidates(
+    doc: Path,
+    text: str,
+    repository_files: tuple[Path, ...],
+) -> list[tuple[int, str, str]]:
+    """找出混合代码块中仍承担导航职责的精确仓库文件行，供人工复核。"""
+    findings: list[tuple[int, str, str]] = []
+    in_fence = False
+    block: list[tuple[int, str]] = []
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        if FENCE_RE.match(line):
+            if in_fence:
+                nonempty = [(no, value.strip()) for no, value in block if value.strip()]
+                resolved: list[tuple[int, str, Path]] = []
+                unresolved = False
+                for no, value in nonempty:
+                    target = _resolve_file_reference(ROOT, doc, value, repository_files)
+                    if target is None:
+                        unresolved = True
+                    else:
+                        resolved.append((no, value, target))
+                if unresolved and resolved:
+                    for no, value, target in resolved:
+                        findings.append((no, value, _suggest_link(doc, target, value)))
+                block = []
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            block.append((line_number, line))
+    return findings
+
+
+def _shorthand_api_match(candidate: str, openapi_paths: set[str]) -> str | None:
+    """如果省略 /api/v1 后恰好唯一匹配当前 OpenAPI，则返回完整路径。"""
+    if candidate.startswith(("/api/", "/health/", "/data/")):
+        return None
+    matches = [path for path in openapi_paths if path.endswith(candidate)]
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
 def main() -> int:
-    """输出供人工语义审计使用的机器事实和疑似漂移位置。"""
     repository_files = _repository_files(ROOT)
     documents = _iter_current_docs(ROOT, repository_files)
     versions = {
@@ -208,8 +240,18 @@ def main() -> int:
     findings = 0
     for doc in documents:
         relative = doc.relative_to(ROOT).as_posix()
+        text = doc.read_text(encoding="utf-8")
         provider_doc = _provider_doc(relative)
-        for line_number, line in enumerate(doc.read_text(encoding="utf-8").splitlines(), start=1):
+
+        for line_number, value, suggestion in _mixed_fence_file_candidates(
+            doc, text, repository_files
+        ):
+            findings += 1
+            print(
+                f"MIXED_FILE_NAV {relative}:{line_number}: {value} :: {suggestion}"
+            )
+
+        for line_number, line in enumerate(text.splitlines(), start=1):
             for name, pattern in VERSION_PATTERNS.items():
                 for match in pattern.finditer(line):
                     claim = match.group(1)
@@ -226,6 +268,8 @@ def main() -> int:
                     print(f"STALE_TOKEN {relative}:{line_number}: {token} :: {line.strip()}")
 
             for env_name in sorted(set(AIMA_ENV_RE.findall(line))):
+                if f"{env_name}*" in line:
+                    continue
                 if env_name not in env_names:
                     findings += 1
                     print(f"ENV_UNKNOWN {relative}:{line_number}: {env_name} :: {line.strip()}")
@@ -241,10 +285,22 @@ def main() -> int:
                             f"API_UNKNOWN {relative}:{line_number}: {candidate} :: {line.strip()}"
                         )
 
+            for match in INLINE_ROUTE_RE.finditer(line):
+                candidate = match.group(1)
+                shorthand = _shorthand_api_match(candidate, openapi_paths)
+                if shorthand is not None:
+                    findings += 1
+                    print(
+                        f"API_SHORTHAND {relative}:{line_number}: "
+                        f"{candidate} -> {shorthand} :: {line.strip()}"
+                    )
+
             if "路由" in line or "页面" in line or "访问" in line:
                 for match in INLINE_ROUTE_RE.finditer(line):
                     candidate = match.group(1)
                     if candidate.startswith(("/api/", "/health/", "/data/")):
+                        continue
+                    if _shorthand_api_match(candidate, openapi_paths) is not None:
                         continue
                     if candidate not in frontend_routes:
                         findings += 1
