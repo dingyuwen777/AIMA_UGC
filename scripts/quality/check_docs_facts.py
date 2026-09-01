@@ -28,16 +28,7 @@ TABLE_PATTERNS = (
 )
 JOB_TYPE_RE = re.compile(r'^[A-Z0-9_]+_JOB_TYPE\s*=\s*["\']([^"\']+)["\']', re.MULTILINE)
 ROUTE_RE = re.compile(r"\bpath:\s*['\"]([^'\"]+)['\"]")
-
-# 这些模块正是 bootstrap/worker.py 当前生产 Registry 通过 register_* 入口装配的 Job 定义。
-# 不扫描 modules/** 的全部 *_JOB_TYPE 常量，避免把未注册/备用能力误报为生产 Worker 事实。
-WORKER_JOB_SOURCE_FILES = (
-    Path("backend/src/aima_ugc/modules/collection/collection_run_job.py"),
-    Path("backend/src/aima_ugc/modules/ingestion/import_job.py"),
-    Path("backend/src/aima_ugc/modules/ingestion/historical_jobs.py"),
-    Path("backend/src/aima_ugc/modules/analysis/content_analysis_job.py"),
-    Path("backend/src/aima_ugc/modules/reporting/data_export_job.py"),
-)
+WORKER_BOOTSTRAP = Path("backend/src/aima_ugc/bootstrap/worker.py")
 
 PROVIDER_DOCS = {
     "xiaohongshu": Path("docs/collection/01_xiaohongshu.md"),
@@ -126,10 +117,95 @@ def _current_table_names() -> set[str]:
     return names
 
 
+def _module_file(module_name: str) -> Path:
+    """把 aima_ugc 模块名解析到当前仓库中的 Python 源文件。"""
+    module_path = Path(*module_name.split("."))
+    source_root = ROOT / "backend/src"
+    module_file = source_root / module_path.with_suffix(".py")
+    if module_file.is_file():
+        return module_file.relative_to(ROOT)
+    package_file = source_root / module_path / "__init__.py"
+    if package_file.is_file():
+        return package_file.relative_to(ROOT)
+    raise RuntimeError(f"worker register module not found: {module_name}")
+
+
+def _relative_import_module(
+    current_module: str,
+    current_file: Path,
+    node: ast.ImportFrom,
+) -> str | None:
+    """把 ImportFrom 的绝对/相对模块表达解析为完整模块名。"""
+    if node.level == 0:
+        return node.module
+
+    package_parts = current_module.split(".")
+    if current_file.name != "__init__.py":
+        package_parts = package_parts[:-1]
+    up_levels = node.level - 1
+    if up_levels > len(package_parts):
+        return None
+    base_parts = package_parts[: len(package_parts) - up_levels]
+    if node.module:
+        base_parts.extend(node.module.split("."))
+    return ".".join(base_parts)
+
+
+def _resolve_register_source(
+    module_name: str,
+    register_name: str,
+    seen: set[tuple[str, str]] | None = None,
+) -> Path:
+    """跟随 package re-export，定位 register_* 函数真正定义的源码文件。"""
+    visited = set() if seen is None else seen
+    key = (module_name, register_name)
+    if key in visited:
+        raise RuntimeError(f"cyclic worker register re-export: {module_name}.{register_name}")
+    visited.add(key)
+
+    relative = _module_file(module_name)
+    tree = ast.parse(_read(relative))
+    if any(
+        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == register_name
+        for node in tree.body
+    ):
+        return relative
+
+    for node in tree.body:
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        if not any(alias.name == register_name for alias in node.names):
+            continue
+        imported_module = _relative_import_module(module_name, relative, node)
+        if imported_module is None:
+            break
+        return _resolve_register_source(imported_module, register_name, visited)
+
+    raise RuntimeError(f"worker register definition not found: {module_name}.{register_name}")
+
+
+def _worker_job_source_files() -> tuple[Path, ...]:
+    """从生产 Worker 的 register_* 导入自动发现实际 Job 定义模块。"""
+    tree = ast.parse(_read(WORKER_BOOTSTRAP))
+    sources: set[Path] = set()
+    for node in tree.body:
+        if not isinstance(node, ast.ImportFrom) or node.module is None:
+            continue
+        if not node.module.startswith("aima_ugc.modules."):
+            continue
+        for alias in node.names:
+            if not alias.name.startswith("register_"):
+                continue
+            sources.add(_resolve_register_source(node.module, alias.name))
+    if not sources:
+        raise RuntimeError("no production Worker register_* sources discovered")
+    return tuple(sorted(sources))
+
+
 def _current_job_types() -> set[str]:
-    """返回当前生产 Worker Registry 所装配模块声明的持久 Job type。"""
+    """返回当前生产 Worker Registry 实际装配模块声明的持久 Job type。"""
     names: set[str] = set()
-    for relative in WORKER_JOB_SOURCE_FILES:
+    for relative in _worker_job_source_files():
         names.update(JOB_TYPE_RE.findall(_read(relative)))
     return names
 
