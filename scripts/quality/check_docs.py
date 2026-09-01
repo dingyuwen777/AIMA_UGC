@@ -149,6 +149,35 @@ def _suggest_link(doc: Path, target: Path, label: str) -> str:
     return f"[`{normalized_label}`]({relative})"
 
 
+def _check_pure_file_fence(
+    root: Path,
+    doc: Path,
+    fence_lines: list[tuple[int, str]],
+    repository_files: tuple[Path, ...],
+) -> list[str]:
+    """只有整个代码块都是文件路径时，才把它视为不可点击的导航清单。"""
+    entries = [(line_number, line.strip()) for line_number, line in fence_lines if line.strip()]
+    if not entries:
+        return []
+
+    resolved: list[tuple[int, str, Path]] = []
+    for line_number, value in entries:
+        target = _resolve_file_reference(root, doc, value, repository_files)
+        if target is None:
+            return []
+        resolved.append((line_number, value, target))
+
+    errors: list[str] = []
+    for line_number, value, target in resolved:
+        suggestion = _suggest_link(doc, target, value)
+        errors.append(
+            f"DOC008 {doc.relative_to(root)}:{line_number}: "
+            f"代码块中的真实仓库文件导航不可点击 {value}；"
+            f"改为代码块外链接，例如 {suggestion}"
+        )
+    return errors
+
+
 def _check_repository_file_navigation(
     root: Path,
     doc: Path,
@@ -158,21 +187,20 @@ def _check_repository_file_navigation(
     """检查导航语义明确的真实仓库文件引用是否保持可点击。"""
     errors: list[str] = []
     in_fence = False
+    fence_lines: list[tuple[int, str]] = []
+
     for line_number, line in enumerate(text.splitlines(), start=1):
         if FENCE_RE.match(line):
+            if in_fence:
+                errors.extend(
+                    _check_pure_file_fence(root, doc, fence_lines, repository_files)
+                )
+                fence_lines = []
             in_fence = not in_fence
             continue
 
         if in_fence:
-            value = line.strip()
-            target = _resolve_file_reference(root, doc, value, repository_files)
-            if target is not None:
-                suggestion = _suggest_link(doc, target, value)
-                errors.append(
-                    f"DOC008 {doc.relative_to(root)}:{line_number}: "
-                    f"代码块中的真实仓库文件导航不可点击 {value}；"
-                    f"改为代码块外链接，例如 {suggestion}"
-                )
+            fence_lines.append((line_number, line))
             continue
 
         for match in INLINE_CODE_RE.finditer(line):
