@@ -181,3 +181,14 @@ def test_checker_requires_ready_check_and_completion_gate_wiring(tmp_path: Path)
 
     assert any(error.startswith("GOV004") for error in errors)
     assert any(error.startswith("GOV007") for error in errors)
+
+
+def test_checker_requires_issue_and_pr_requirement_traceability(tmp_path: Path) -> None:
+    """多人协作入口缺少 Issue/PR 需求追溯契约时必须被项目治理检查阻止。"""
+    _minimal_repository(tmp_path)
+
+    errors = CHECK_REPOSITORY(tmp_path)
+
+    assert any(error.startswith("GOV012") for error in errors)
+    assert any(error.startswith("GOV013") for error in errors)
+    assert any(error.startswith("GOV014") for error in errors)
