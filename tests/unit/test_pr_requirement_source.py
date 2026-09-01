@@ -48,8 +48,7 @@ def test_extract_rejects_empty_or_placeholder_sources(value: str) -> None:
 def test_extract_preserves_multiple_sources() -> None:
     """一个 PR 确实实现多个来源时应保留全部 Requirement Source。"""
     sources = EXTRACT_REQUIREMENT_SOURCES(
-        "Requirement-Source: #286\n"
-        "Requirement-Source: docs/blueprint/07_技术决策与实施门禁.md\n"
+        "Requirement-Source: #286\nRequirement-Source: docs/blueprint/07_技术决策与实施门禁.md\n"
     )
 
     assert sources == ("#286", "docs/blueprint/07_技术决策与实施门禁.md")
