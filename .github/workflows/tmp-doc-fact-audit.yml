@@ -1,0 +1,27 @@
+name: Temporary Docs Fact Audit
+
+on:
+  push:
+    branches:
+      - chore/agent-skills-project-governance
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: chore/agent-skills-project-governance
+          fetch-depth: 0
+
+      - name: Audit current documentation facts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/check_docs.py
+          python3 scripts/quality/audit_docs_facts.py
+          git diff --check
