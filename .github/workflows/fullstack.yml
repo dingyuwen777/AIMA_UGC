@@ -1,33 +1,23 @@
 name: Full-stack Acceptance
 
 on:
-  pull_request:
-    branches:
-      - main
-    paths-ignore:
-      - "docs/**"
-      - "changes/**"
-      - ".agents/**"
-      - "AGENTS.md"
-      - "README.md"
-      - "**/README.md"
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - "docs/**"
-      - "changes/**"
-      - ".agents/**"
-      - "AGENTS.md"
-      - "README.md"
-      - "**/README.md"
+  workflow_call:
+    inputs:
+      specs:
+        description: 空格分隔的 frontend/e2e-fullstack spec 文件名；空值表示全量 Golden Path
+        required: false
+        type: string
+        default: ""
+  workflow_dispatch:
+    inputs:
+      specs:
+        description: 空格分隔的 frontend/e2e-fullstack spec 文件名；留空表示全量 Golden Path
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
-
-concurrency:
-  group: fullstack-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   excel-browser-fullstack:
@@ -163,16 +153,33 @@ jobs:
           done
           curl -fsS http://127.0.0.1:8090/health/ready > "${RUNNER_TEMP}/stage8f-ready.json"
 
-      - name: Run real Excel browser acceptance
+      - name: Run selected real browser acceptance
         shell: bash
         env:
           AIMA_STAGE8F_EXCEL_FIXTURE: ${{ runner.temp }}/stage8f-fullstack.xlsx
           AIMA_STAGE8F_FAILURE_EXCEL_FIXTURE: ${{ runner.temp }}/stage8f-worker-failure.xlsx
           AIMA_STAGE12_ORDINARY_FIXTURE: ${{ runner.temp }}/stage12-current.xlsx
           AIMA_FULLSTACK_SEED: 1
+          REQUESTED_SPECS: ${{ inputs.specs }}
         run: |
           set -euo pipefail
-          npm --prefix frontend run test:e2e:fullstack
+          if [[ -z "${REQUESTED_SPECS}" || "${REQUESTED_SPECS}" == "all" ]]; then
+            npm --prefix frontend run test:e2e:fullstack
+            exit 0
+          fi
+
+          read -r -a specs <<< "${REQUESTED_SPECS}"
+          for spec in "${specs[@]}"; do
+            case "${spec}" in
+              collection-plan-search-config.spec.ts|excel-import.spec.ts|manual-relevance-review.spec.ts|stage12-historical-analysis.spec.ts)
+                ;;
+              *)
+                echo "Unknown full-stack spec: ${spec}" >&2
+                exit 2
+                ;;
+            esac
+          done
+          npm --prefix frontend run test:e2e:fullstack -- "${specs[@]}"
 
       - name: Print runtime logs on failure
         if: failure()

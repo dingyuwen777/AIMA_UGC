@@ -1,4 +1,4 @@
-"""Stage 3B Canonical V1 契约测试。"""
+"""Canonical V1 当前契约不变量测试。"""
 
 import json
 from importlib import import_module
@@ -60,7 +60,8 @@ def test_null_means_unknown_and_zero_is_a_real_observation() -> None:
     assert metrics.comment_count is None
 
 
-def test_observed_fields_reject_duplicates_and_coarse_nested_paths() -> None:
+def test_observed_fields_reject_duplicates_coarse_paths_and_unknown_comment_leaves() -> None:
+    """Observed Fields 必须精确到受支持叶子，内容和评论都不能接受模糊或未知路径。"""
     canonical = import_module("aima_ugc.contracts.canonical")
     source = canonical.CanonicalSourceV1(
         provider_name="file_import",
@@ -81,6 +82,15 @@ def test_observed_fields_reject_duplicates_and_coarse_nested_paths() -> None:
         canonical.CanonicalContentV1(**common, observed_fields=["author"])
     with pytest.raises(ValidationError):
         canonical.CanonicalContentV1(**common, observed_fields=["provider.private_field"])
+    with pytest.raises(ValidationError, match="observed_fields"):
+        canonical.CanonicalCommentV1(
+            platform="xiaohongshu",
+            external_content_id="note_1",
+            external_comment_id="comment_1",
+            observed_at="2026-08-13T04:00:00Z",
+            observed_fields=["metrics.not_a_real_metric"],
+            source=source,
+        )
 
 
 def test_aggregate_rejects_wrong_thread_root_and_coverage_count() -> None:

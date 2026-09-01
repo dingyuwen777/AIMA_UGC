@@ -34,6 +34,7 @@ def _definition(
     platforms: tuple[PlanPlatformDefinition, ...] | None = None,
     keyword_pack_ids: tuple[UUID, ...] | None = None,
 ) -> CollectionPlanDefinition:
+    """构造采集计划定义；显式空集合必须保留给校验逻辑，而不能回退默认值。"""
     provider_config_id = uuid4()
     return CollectionPlanDefinition(
         name="爱玛舆情默认计划",
@@ -46,15 +47,18 @@ def _definition(
         detail_policy="on_change",
         comment_policy="adaptive",
         created_by=None,
-        platforms=platforms
-        or (
-            PlanPlatformDefinition(
-                platform="xiaohongshu",
-                provider_config_id=provider_config_id,
-                config={"sort_mode": "latest", "time_filter": "one_day"},
-            ),
+        platforms=(
+            (
+                PlanPlatformDefinition(
+                    platform="xiaohongshu",
+                    provider_config_id=provider_config_id,
+                    config={"sort_mode": "latest", "time_filter": "one_day"},
+                ),
+            )
+            if platforms is None
+            else platforms
         ),
-        keyword_pack_ids=keyword_pack_ids or (uuid4(),),
+        keyword_pack_ids=(uuid4(),) if keyword_pack_ids is None else keyword_pack_ids,
     )
 
 
@@ -103,13 +107,23 @@ def test_service_rejects_duplicate_keyword_pack_identity() -> None:
         )
 
 
-def test_plan_platform_config_rejects_secret_shaped_keys_recursively() -> None:
+@pytest.mark.parametrize("secret_key", ("access-token", "refresh_token"))
+def test_plan_platform_config_rejects_secret_shaped_keys_recursively(secret_key: str) -> None:
+    """计划快照不得把任何常见 Secret 形态持久化到嵌套平台配置。"""
     with pytest.raises(UnsafePlanConfigError, match="Secret"):
         PlanPlatformDefinition(
             platform="xiaohongshu",
             provider_config_id=uuid4(),
-            config={"search": {"access-token": "must-not-be-here"}},
+            config={"search": {secret_key: "must-not-be-here"}},
         )
+
+
+def test_definition_rejects_empty_execution_surface() -> None:
+    """没有平台或词包的计划没有可执行面，必须在模型边界直接拒绝。"""
+    with pytest.raises(ValueError, match="platform"):
+        _definition(platforms=())
+    with pytest.raises(ValueError, match="keyword"):
+        _definition(keyword_pack_ids=())
 
 
 def test_definition_rejects_invalid_stable_numeric_and_text_fields() -> None:

@@ -1,0 +1,185 @@
+---
+schema: coding-change/v1
+id: CHG-20260901-ci-test-scope
+title: 收敛 CI Scope、Full-stack 门禁与测试组织
+level: L3
+status: ready_for_review
+owner: dingyuwen777
+branch: refactor/ci-test-scope
+created: 2026-09-01
+updated: 2026-09-01
+completion_gate: required
+depends_on: []
+affected_areas:
+  - ci
+  - fullstack-acceptance
+  - test-organization
+  - project-governance
+affected_paths:
+  - .github/workflows/ci.yml
+  - .github/workflows/fullstack.yml
+  - scripts/quality/classify_ci_scope.py
+  - tests/unit/test_ci_scope.py
+  - tests/unit/collection/test_collection_planning.py
+  - tests/contracts/test_canonical_v1.py
+  - tests/unit/platform/test_logging.py
+  - tests/unit/test_docs_facts.py
+  - tests/unit/collection/test_collection_run_executor.py
+  - tests/unit/collection/test_stage1_stage7_comprehensive_corrective.py
+  - changes/active/CHG-20260901-ci-test-scope/CHANGE.md
+contracts: []
+data_changes: []
+---
+
+# 目标
+
+在不降低任何独立质量证据的前提下，把“除纯文档/治理外统一进入 full + 独立 Full-stack 再跑一遍”的 CI，收敛为按 changed scope 保守选择证据层的持续验证模型；同时把明显历史 Stage/“全面整改”测试包装迁回真实 Owner，降低长期维护认知成本。
+
+# 成功标准
+
+- [x] `CI Gate` 的 Required Check 身份保持不变，并始终产生可审计结果。
+- [x] changed scope 分类具有永久 Unit 回归；未知、混合、CI 自身和无法可靠分类的路径 fail closed 到最强证据。
+- [x] 纯前端变更只要求前端质量与 Browser Mock 等独立证据，不机械要求 PostgreSQL / Real Full-stack。
+- [x] 后端、Contract、Persistence、跨组件和 CI/Runtime 控制面按风险运行对应 Python、Contract、PostgreSQL、Real Full-stack 证据。
+- [x] Real Full-stack 保留真实 Golden Path；已知单一路径可 targeted，跨组件/未知场景/控制面变化以 `all` 失败关闭，并由 `CI Gate` 对结果负责。
+- [x] `check_agent_governance.py` 只由 Change Completion Gate 承担永久治理责任，不在产品 CI 重复运行。
+- [x] `tests/unit/collection/test_stage1_stage7_comprehensive_corrective.py` 的长期有效断言迁回真实 Owner；没有删除独立回归语义。
+- [x] 正式 CI/测试文档做了 targeted 复核；现有 Blueprint 已表达“风险相关 profile + 稳定总 Gate + 少量 Real Full-stack Golden Path”，无需制造无事实变化的 Markdown diff。
+- [ ] 最终 PR revision 完成 revision-bound Deep Review 与 Required Checks 后合并；随后 `main` 取得 fresh CI，并单独归档本 Change。
+
+# 范围
+
+- 重构 CI changed-scope classifier 与机器输出。
+- 按证据责任拆分 `ci.yml` 的后端、前端、Contract、PostgreSQL 和 Real Full-stack 执行条件。
+- 将 `fullstack.yml` 作为可复用真实 Golden Path workflow，由 CI 条件调用并接收 targeted spec 或 `all`。
+- 移除产品 CI 中重复的 AIMA governance checker 调用，保留 Change Completion Gate 作为唯一 Owner。
+- 最小拆分历史“全面整改”测试文件；只迁移已经存在且长期有效的断言。
+- 定向复核正式 CI/测试文档与当前实现的一致性。
+
+# 非目标
+
+- 不修改业务 API、Contract、Schema/Migration、数据库语义、Provider、Figma 或部署拓扑。
+- 不升级 Python、Node、npm、uv、PostgreSQL、GitHub Actions 或业务依赖。
+- 不批量重命名所有历史 Stage 测试；本次只处理证据清楚、Owner 明确的高价值包装。
+- 不减少 Unit / Contract / API / PostgreSQL Integration / Browser Mock / Real Full-stack 的独立证明责任。
+- 不把 Real Provider Probe 加入普通 CI。
+- 不修改 Ruleset 中 `CI Gate`、`Requirement Traceability and Completion Audit`、`Compose Golden Path` 的 Required Check 名称。
+
+# 必须保持不变
+
+- `CI Gate` 始终存在；轻量路径由 Gate 明确验证 required/skipped 组合，而不是让 Required Check 消失。
+- scope 分类只能白名单降低成本；未知路径、混合高风险路径、CI 自身、Full-stack 控制面或分类失败必须回退更强验证。
+- Browser Mock 不冒充真实 API/PostgreSQL/Worker；PostgreSQL Integration 不冒充 Browser；Real Full-stack 只证明实际运行的 Golden Path。
+- Change Completion Gate 继续实际运行 `scripts/quality/check_agent_governance.py` 和 `ready_check.py`。
+- 当前锁定 Runtime、依赖、Contract、Schema/Migration、部署与业务行为保持不变。
+
+# 关键决策
+
+1. **保留稳定 `CI Gate`，内部条件执行**：采用。避免 Required Check 因 path filter 消失，并让一个稳定 Gate 持续拥有产品质量合并责任。
+2. **删除 Real Full-stack**：不采用。保留真实跨组件证明，但从“几乎所有代码 PR 都跑全部场景”改为“按 changed scope 运行相关 Golden Path”。
+3. **把所有测试合并成更少文件**：不采用。测试文件数量不是目标；只拆历史包装、收敛重复 Owner。
+4. **未知路径默认轻量**：不采用。未知路径 fail closed 到最强证据。
+5. **Full-stack 全量用固定旧 allowlist 表示**：不采用。全量责任统一输出 `all`，由 Playwright 扫描整个 `frontend/e2e-fullstack`，防止未来新增 spec 静默漏跑；只有已知单一路径允许 targeted。
+6. **修改 Ruleset Required Check 名称**：不采用。当前三个 Required Check 身份保持稳定。
+
+# Requirement Traceability
+
+| 编号 | 要求 | 来源 | 状态 | 证据 |
+| --- | --- | --- | --- | --- |
+| R1 | 按已确认方案精简 CI 与测试，但不降低质量 | https://github.com/dingyuwen777/AIMA_UGC/issues/282 | satisfied | PR #283 当前实现保留原 Unit/Contract/API/PostgreSQL/Browser Mock/Real Full-stack 证明责任；CI run 33501430796 全层 success |
+| R2 | `CI Gate` 稳定存在，并按风险选择证据层 | https://github.com/dingyuwen777/AIMA_UGC/issues/282 | satisfied | `.github/workflows/ci.yml` 保留 `CI Gate`；`tests/unit/test_ci_scope.py` 覆盖 docs/governance/frontend/backend/contract/persistence/cross-component/unknown/CI-self 边界；run 33501430796 的 CI Gate job 99836374371 success |
+| R3 | Real Full-stack 保留高价值 Golden Path，并由 CI 条件门禁 | https://github.com/dingyuwen777/AIMA_UGC/issues/282 | satisfied | `fullstack.yml` 改为 reusable workflow；当前 CI-self 变更失败关闭为 `all`，run 33501430796 job 99835565571 实际启动 PostgreSQL/API/Worker/Browser 并 success |
+| R4 | 消除 `check_agent_governance.py` 在 CI/Completion Gate 的重复 Owner | https://github.com/dingyuwen777/AIMA_UGC/issues/282 | satisfied | 产品 CI 的 Docs/Governance 仅保留 Secret/docs；Change Completion Gate 仍为唯一 governance checker Owner，run 33501430776 success |
+| R5 | 历史 Stage/整改测试按真实 Owner 收敛，不按数量删测试 | https://github.com/dingyuwen777/AIMA_UGC/issues/282 | satisfied | 旧 comprehensive 文件删除前的 5 类断言分别迁入 Planning/Canonical/Logging/Docs Facts/Run Executor；Green Unit 721 passed |
+| R6 | 不升级依赖、不改业务 Contract/Schema/Runtime/部署 | AGENTS.md | satisfied | PR #283 changed files 仅 CI/classifier/tests/Change；Contract generate+compatibility、Wheel、Runtime Acceptance 33501430508、PostgreSQL migration/integration 均 success |
+
+# Validation Matrix
+
+| 验证层 | 状态 | 范围 / 证据 |
+| --- | --- | --- |
+| 行为 / Unit / Component | passed | 初始 Red run 33499143177/job 99828181148 因 `classify_requirements` 不存在 exit 2；Review Red run 33501013170/job 99834151769 为 2 failed / 719 passed；Green run 33501430796 为 Unit 721 passed |
+| 接口 / Contract | passed | Green Repository Quality 重新生成 OpenAPI/Analysis/Canonical/Provider/Collection/Export 与 Orval client，git diff + compatibility 通过；Contract 92 passed，API 38 passed |
+| 集成 / Persistence / Runtime Dependency | passed | Green PostgreSQL job 99835565543：Alembic upgrade/current/check、migration compatibility、Platform/Database/Job/Collection/Content/Ingestion integration、real readiness 全部 success |
+| 用户 / Workflow Acceptance | passed | Green frontend Vitest 13 files / 56 tests passed，production build success，Browser Mock Playwright 39 passed |
+| 跨组件 Golden Path | passed | Green Real Full-stack job 99835565571 使用真实 PostgreSQL、API、Worker、fake local LLM 与 Playwright；当前 CI-self scope 以 `all` 执行并 success |
+| 外部依赖 Probe | not_applicable | 本次不修改 Provider/远端 API 当前事实；不以真实远端 Probe 冒充 CI 必要证据 |
+| Build / Package / Runtime | passed | Wheel build/install/import success；Frontend build success；Runtime Acceptance run 33501430508 success |
+| Docs / Governance / Other | passed | Docs/Secret gates success；Change Completion Gate run 33501430776 success；Ruleset fresh re-read仍要求 `CI Gate` / `Requirement Traceability and Completion Audit` / `Compose Golden Path` |
+
+# Evidence Preservation Mapping
+
+| 原证明责任 | 原位置 | 新位置 | 证据等级 | 依据 |
+| --- | --- | --- | --- | --- |
+| Python format/lint/type + Unit/Contract/API | `CI / Repository Quality` | `CI` 条件 Repository Quality | 保持 | 同一锁定 Python/uv 环境；Green 为 531 files format clean、ruff clean、mypy 254 files clean、Unit 721、Contract 92、API 38 |
+| Frontend lint/type/unit/build/Browser Mock | `CI / Repository Quality` | `CI` 条件 Repository Quality | 保持 | 同一 npm lock、lint/typecheck/Vitest/build/Playwright Mock；Green Vitest 56、Browser 39 |
+| Contract / Generated Client drift | `CI / Repository Quality` | Repository Quality 内条件 Contract 步骤 | 保持 | 仍运行正式 generator、Orval、git diff、`generate.py --check`、compatibility |
+| PostgreSQL migration/integration/readiness | `CI / PostgreSQL Integration` | `CI` 条件 PostgreSQL Integration | 保持 | 仍运行 PostgreSQL 18.4、Alembic、真实 readiness 与全部 Integration suites |
+| Real Full-stack Browser→API→Worker→PostgreSQL | 独立 PR/push `Full-stack Acceptance` | `CI` 条件调用 reusable `fullstack.yml` | 保持 | 仍启动同一真实组件；已知单链 targeted，未知/跨组件/控制面用 `all` 失败关闭 |
+| Project governance wiring | `CI` + `Change Completion Gate` | `Change Completion Gate` | 保持且去重 | 同一 checker 继续在稳定 Required Completion Check 中执行，产品 CI 不重复 Owner |
+| `CI Gate` 合并身份 | `CI / CI Gate` | `CI / CI Gate` | 保持 | Ruleset consumer 名称未变化，Gate 对 required success / non-required skipped 做显式核对 |
+
+# Completion Audit
+
+- [x] upstream_re_read：Ready 前已重新读取 Issue #282、PR #283 当前 base/head、main-quality-gate Ruleset、AIMA 当前 Workflow/Test/Ready Check 和 Agent_Skills canonical CI/Review/Completion 规则；没有以旧摘要替代当前事实。
+- [x] change_coverage：已逐项对照 Issue #282 的目标、非目标、兼容/回滚和验收标准；实现只收敛触发与 Owner，没有删除 Unit、Contract、PostgreSQL、Browser Mock 或 Real Full-stack 独立证据。
+- [x] reverse_audit：已从 `CI Gate` 反向追到 Scope、Docs、Repository Quality、PostgreSQL、Reusable Full-stack，并从原 Workflow 责任反向核对新 Owner；当前 CI-self 变更实际走 full/all 路径并全绿。
+- [x] unresolved_cleared：R1–R6 均有当前 PR head 证据；Review 发现的 Full-stack 控制面和未知新增 spec 漏跑风险先形成 2-fail Red，再修为 `all` 失败关闭；当前 required Matrix 无未解决 blocker。
+
+# 任务
+
+- [x] 为 changed-scope classifier 增加永久 Red/Green Unit 回归
+- [x] 扩展 classifier 输出风险层与 Full-stack spec 选择
+- [x] 重构 `ci.yml` 条件 Job 与稳定 `CI Gate`
+- [x] 将 `fullstack.yml` 改为 reusable Golden Path workflow 并支持 targeted / `all`
+- [x] 移除 CI 重复 governance checker
+- [x] 拆分 `test_stage1_stage7_comprehensive_corrective.py` 到真实 Owner
+- [x] 定向复核正式 CI/测试文档；当前文档无需修改
+- [x] 更新 Change 为 ready_for_review 并固化 Completion Audit
+- [ ] 对最终 PR revision 执行 revision-bound Deep Review / re-review
+- [ ] Required Checks 全绿后合并，并取得 main fresh CI
+- [ ] 单独归档 Change
+
+# 验证
+
+## Red
+
+1. **初始能力 Red**：run `33499143177` / Repository Quality job `99828181148`。静态检查通过后，`pytest tests/unit -q` 在收集 `tests/unit/test_ci_scope.py` 时因 `classify_requirements` 尚不存在产生 `KeyError`，exit 2；证明新 scope 能力并非先实现后补测试。
+2. **Deep Review 回归 Red**：run `33501013170` / Repository Quality job `99834151769`。`ruff` / `mypy` 通过，Unit 明确为 **2 failed / 719 passed**，分别命中 Full-stack Playwright 控制面未升级、未知新增 Full-stack spec 未失败关闭；随后才修实现。
+
+## Green / PR
+
+当前已验证实现 revision：`40b333f8c3a52290766a702283fa976180cf4cb9`。
+
+- CI run `33501430796`：`CI Scope`、`Docs and Governance`、`Repository Quality`、`PostgreSQL Integration`、`Real Full-stack Golden Path`、最终 `CI Gate` 全部 success。
+- Repository Quality job `99835565546`：531 files format clean；ruff clean；mypy 254 files clean；Unit **721 passed**；Contract **92 passed**；API **38 passed**；Vitest **56 passed**；Frontend build success；Browser Mock Playwright **39 passed**；Wheel build/install/import success。
+- PostgreSQL job `99835565543`：PostgreSQL 18.4 + Alembic + migration compatibility + readiness + Platform/Database/Job/Collection/Content/Ingestion integration 全部 success。
+- Real Full-stack job `99835565571`：真实 PostgreSQL + API + Worker + local fake LLM + Playwright 链路 success；当前 CI-self scope 走 `all`。
+- Runtime Acceptance run `33501430508`：success。
+- Change Completion Gate run `33501430776`：success。
+
+本次 Change 证据更新会形成新的最终 PR revision；该 revision 仍包含 CI-self 文件，因此必须再次走 full/all 并取得 current-head Required Checks，以上 revision 证据只作为 Green 基线，不替代最终 head 证明。
+
+## Main fresh validation
+
+仅在 PR 正常合并后记录；在 merge 前不把 PR 绿色冒充 `main` 新鲜验证。
+
+# 文档影响
+
+已按 Docs Skill 对 `docs/blueprint/06_开发约束与分阶段实施.md` 做 targeted 复核。当前文档已经明确：
+
+- CI 应按风险 profile 选择执行层；
+- 总 Gate 必须始终给出明确结果；
+- 测试证据存在层级，不能用低成本 Mock 冒充真实 Integration / Browser / Full-stack；
+- Full-stack 只保留少量高价值真实链路。
+
+因此本次实现没有改变需要用户理解的正式工程原则，只把机器执行接线与该原则对齐；不为了“有文档变更”而制造重复、易漂移的 Workflow 细节说明。
+
+# Git / PR / Release 状态
+
+- Requirement Source：Issue #282。
+- 分支：`refactor/ci-test-scope`。
+- PR：#283，当前 open，受保护 `main` 目标分支。
+- 当前已验证实现 head：`40b333f8c3a52290766a702283fa976180cf4cb9`；本 Change 证据提交后需以新的 PR head 重新绑定 Review/CI。
+- merge：未执行；禁止绕过 Required Checks。
+- Change 归档：未执行；必须在实现 PR merge + main fresh CI 后通过独立归档 PR 完成。
+- Release / deploy：不适用，本次没有发布或部署动作。
