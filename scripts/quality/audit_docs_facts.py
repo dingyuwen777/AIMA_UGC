@@ -35,9 +35,7 @@ STALE_TOKENS = (
 )
 API_RE = re.compile(r"(?<![\w])(/(?:api/v1|health)/[A-Za-z0-9_{}<>.*:/-]+)")
 INLINE_ROUTE_RE = re.compile(r"`(/[^`\s?#]*)`")
-JOB_LITERAL_RE = re.compile(
-    r"`((?:collection|ingestion|analysis|reporting)\.[a-z0-9.-]+\.v\d+)`"
-)
+JOB_LITERAL_RE = re.compile(r"`((?:collection|ingestion|analysis|reporting)\.[a-z0-9.-]+\.v\d+)`")
 AIMA_ENV_RE = re.compile(r"\bAIMA_[A-Z0-9_]+\b")
 UUID_SEGMENT_RE = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-"
@@ -118,9 +116,7 @@ def _worker_job_types() -> set[str]:
     return job_types
 
 
-def _machine_env_names(
-    repository_files: tuple[Path, ...], documents: tuple[Path, ...]
-) -> set[str]:
+def _machine_env_names(repository_files: tuple[Path, ...], documents: tuple[Path, ...]) -> set[str]:
     docs = set(documents)
     names: set[str] = set()
     for path in repository_files:
@@ -128,7 +124,7 @@ def _machine_env_names(
             continue
         try:
             text = path.read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError):
+        except UnicodeDecodeError, OSError:
             continue
         names.update(AIMA_ENV_RE.findall(text))
     return names
@@ -146,7 +142,7 @@ def _table_names(repository_files: tuple[Path, ...]) -> set[str]:
             continue
         try:
             text = path.read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError):
+        except UnicodeDecodeError, OSError:
             continue
         for pattern in patterns:
             names.update(pattern.findall(text))
@@ -247,9 +243,7 @@ def main() -> int:
             doc, text, repository_files
         ):
             findings += 1
-            print(
-                f"MIXED_FILE_NAV {relative}:{line_number}: {value} :: {suggestion}"
-            )
+            print(f"MIXED_FILE_NAV {relative}:{line_number}: {value} :: {suggestion}")
 
         for line_number, line in enumerate(text.splitlines(), start=1):
             for name, pattern in VERSION_PATTERNS.items():
