@@ -69,7 +69,11 @@ def test_checker_rejects_file_description_navigation_fence(tmp_path: Path) -> No
     _minimal_repository(tmp_path)
     _write(
         tmp_path / "docs/guide.md",
-        "实现导航：\n\n```text\nbackend/src/example.py\n→ 业务实现\n\nscripts/check.py\n→ 静态检查\n```\n",
+        (
+            "实现导航：\n\n```text\n"
+            "backend/src/example.py\n→ 业务实现\n\n"
+            "scripts/check.py\n→ 静态检查\n```\n"
+        ),
     )
 
     errors = CHECK_REPOSITORY(tmp_path)
