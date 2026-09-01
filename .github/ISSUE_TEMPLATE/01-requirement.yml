@@ -1,0 +1,81 @@
+name: 需求 / 功能
+description: 提交新增或调整用户、调用方或系统可观察行为的需求
+title: "[需求] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请写清“为什么改、做到什么算完成、哪些东西不能被破坏”。没有相关事实时可以写“无 / 不适用 / 待确认（说明原因）”，不要编造。
+
+  - type: checkboxes
+    id: duplicate_search
+    attributes:
+      label: 重复检查
+      options:
+        - label: 我已搜索现有 Issue / 正式需求，没有找到范围和验收标准相同的未完成事项。
+          required: true
+    validations:
+      required: true
+
+  - type: textarea
+    id: objective
+    attributes:
+      label: 目标
+      description: 完成后用户、调用方或系统应观察到什么结果？
+      placeholder: 完成后，应能够……
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: 范围
+      description: 本次明确包含哪些能力、页面、接口、数据或流程？
+      placeholder: |
+        - 包含……
+        - 包含……
+    validations:
+      required: true
+
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: 非目标
+      description: 本次明确不解决什么？没有时写“无”。
+      placeholder: |
+        - 不包含……
+        - 不改变……
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: 验收标准
+      description: 写成可观察、可测试或可核验的完成条件。
+      placeholder: |
+        - [ ] 当……时，应……
+        - [ ] ……保持不变
+    validations:
+      required: true
+
+  - type: textarea
+    id: invariants
+    attributes:
+      label: 必须保持不变
+      description: 哪些现有行为、Contract、数据、权限或流程不能被本需求破坏？没有时写“无”。
+      placeholder: 列出不可回归的行为或约束。
+    validations:
+      required: true
+
+  - type: textarea
+    id: upstream_sources
+    attributes:
+      label: 上游事实源 / 相关资料
+      description: 引用已有 Spec、Roadmap、Figma、Contract、Schema、相关 Issue 等。没有更强来源时写“无”。
+      placeholder: |
+        - Figma / Spec：……
+        - Contract / Schema：……
+        - Related Issue：……
+    validations:
+      required: true

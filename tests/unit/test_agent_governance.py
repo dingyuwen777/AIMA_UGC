@@ -18,6 +18,13 @@ def _write(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
+def _minimal_issue_form(fields: tuple[str, ...]) -> str:
+    """生成只承载 checker 契约所需字段的最小 Issue Form 夹具。"""
+    return "\n".join(
+        f"- type: textarea\n  {field}\n  validations:\n    required: true" for field in fields
+    )
+
+
 def _minimal_repository(root: Path) -> None:
     """建立满足 AIMA 项目治理接线检查的最小仓库夹具。"""
     _write(
@@ -41,6 +48,42 @@ def _minimal_repository(root: Path) -> None:
         root / ".github/workflows/change-completion-gate.yml",
         "python scripts/quality/check_agent_governance.py\n"
         "python .agents/skills/coding/scripts/ready_check.py --root .\n",
+    )
+    _write(
+        root / ".github/ISSUE_TEMPLATE/01-requirement.yml",
+        _minimal_issue_form(
+            (
+                "id: objective",
+                "id: scope",
+                "id: non_goals",
+                "id: acceptance_criteria",
+                "id: invariants",
+                "id: upstream_sources",
+            )
+        ),
+    )
+    _write(
+        root / ".github/ISSUE_TEMPLATE/02-bug.yml",
+        _minimal_issue_form(
+            (
+                "id: actual_behavior",
+                "id: expected_behavior",
+                "id: impact_scope",
+                "id: reproduction_steps",
+                "id: evidence",
+                "id: regression_scope",
+                "id: acceptance_criteria",
+                "id: upstream_sources",
+            )
+        ),
+    )
+    _write(
+        root / ".github/ISSUE_TEMPLATE/config.yml",
+        "blank_issues_enabled: false\n",
+    )
+    _write(
+        root / ".github/PULL_REQUEST_TEMPLATE.md",
+        "Requirement-Source: #123\n不要用关闭关键字替代 Requirement-Source。\n",
     )
 
 
@@ -181,3 +224,17 @@ def test_checker_requires_ready_check_and_completion_gate_wiring(tmp_path: Path)
 
     assert any(error.startswith("GOV004") for error in errors)
     assert any(error.startswith("GOV007") for error in errors)
+
+
+def test_checker_requires_issue_and_pr_requirement_traceability(tmp_path: Path) -> None:
+    """多人协作入口缺少 Issue/PR 需求追溯契约时必须被项目治理检查阻止。"""
+    _minimal_repository(tmp_path)
+    (tmp_path / ".github/ISSUE_TEMPLATE/01-requirement.yml").unlink()
+    (tmp_path / ".github/ISSUE_TEMPLATE/config.yml").unlink()
+    _write(tmp_path / ".github/PULL_REQUEST_TEMPLATE.md", "# PR\n")
+
+    errors = CHECK_REPOSITORY(tmp_path)
+
+    assert any(error.startswith("GOV012") for error in errors)
+    assert any(error.startswith("GOV013") for error in errors)
+    assert any(error.startswith("GOV014") for error in errors)
