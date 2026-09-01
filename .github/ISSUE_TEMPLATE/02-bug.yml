@@ -1,0 +1,99 @@
+name: 缺陷 / Bug
+description: 报告当前实际行为与已确认期望行为不一致的问题
+title: "[缺陷] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请优先提供可复现事实和原始证据。没有根因证据时不要猜测。
+
+  - type: checkboxes
+    id: duplicate_search
+    attributes:
+      label: 重复检查
+      options:
+        - label: 我已搜索现有 Issue / 已知问题，没有找到同一现象和影响范围的未完成缺陷。
+          required: true
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual_behavior
+    attributes:
+      label: 实际行为
+      description: 当前真实发生了什么？
+      placeholder: 在……条件下，系统实际……
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: 期望行为
+      description: 正确结果应该是什么？依据是什么？
+      placeholder: 正确行为应为……；依据为……
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact_scope
+    attributes:
+      label: 影响范围
+      description: 哪些用户、环境、模块、数据或流程受影响？
+      placeholder: 描述影响范围、频率和严重程度。
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction_steps
+    attributes:
+      label: 复现步骤
+      description: 给出最小稳定复现步骤；无法稳定复现时说明已知触发条件。
+      placeholder: |
+        1. ……
+        2. ……
+        3. ……
+        实际结果：……
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 证据
+      description: 日志、错误、截图、请求/响应、失败测试或最小样例。拿不到时说明原因。
+      placeholder: 粘贴或链接可核实证据。
+    validations:
+      required: true
+
+  - type: textarea
+    id: regression_scope
+    attributes:
+      label: 回归范围
+      description: 修复时必须保护哪些相邻行为或历史路径？
+      placeholder: 列出需要避免回归的路径或行为。
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: 修复验收标准
+      description: 什么证据可以证明缺陷已修复且关键相邻行为未回归？
+      placeholder: |
+        - [ ] 原复现路径不再失败
+        - [ ] 回归测试通过
+        - [ ] 相邻关键路径保持正常
+    validations:
+      required: true
+
+  - type: textarea
+    id: upstream_sources
+    attributes:
+      label: 上游事实源 / 相关资料
+      description: 引用定义期望行为的 Contract、Spec、Figma、历史 Issue/PR 等。没有时写“无 / 待确认（原因）”。
+      placeholder: |
+        - Contract / Spec：……
+        - Related Issue / PR：……
+    validations:
+      required: true
