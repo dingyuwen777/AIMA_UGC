@@ -90,7 +90,7 @@ def _validate_repository_path(source: str, root: Path) -> None:
     path = PurePosixPath(source)
     if path.is_absolute() or ".." in path.parts:
         raise RequirementSourceError(
-            f"Requirement-Source {source!r} 必须是仓库内安全的相对路径"
+            f"Requirement-Source {source!r} 必须是安全的仓库相对路径"
         )
 
     root_resolved = root.resolve()
@@ -99,7 +99,7 @@ def _validate_repository_path(source: str, root: Path) -> None:
         candidate.relative_to(root_resolved)
     except ValueError as exc:
         raise RequirementSourceError(
-            f"Requirement-Source {source!r} 必须是仓库内安全的相对路径"
+            f"Requirement-Source {source!r} 必须是安全的仓库相对路径"
         ) from exc
 
     if not candidate.is_file():
@@ -136,9 +136,7 @@ def _load_github_issue(
         raise RequirementSourceError("GitHub event 缺少有效 repository.full_name")
 
     owner, repo = repository.split("/", maxsplit=1)
-    url = (
-        f"{api_url.rstrip('/')}/repos/{quote(owner, safe='')}/{quote(repo, safe='')}/issues/{number}"
-    )
+    url = f"{api_url.rstrip('/')}/repos/{quote(owner, safe='')}/{quote(repo, safe='')}/issues/{number}"
     request = Request(
         url,
         headers={
