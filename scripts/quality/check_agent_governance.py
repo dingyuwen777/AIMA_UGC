@@ -41,6 +41,29 @@ FORBIDDEN_PROJECT_DOC_GOVERNANCE = (
     "研发治理 MCP",
 )
 COMPLETION_GATE = Path(".github/workflows/change-completion-gate.yml")
+ISSUE_TEMPLATE_DIR = Path(".github/ISSUE_TEMPLATE")
+REQUIREMENT_ISSUE_FORM = ISSUE_TEMPLATE_DIR / "01-requirement.yml"
+BUG_ISSUE_FORM = ISSUE_TEMPLATE_DIR / "02-bug.yml"
+ISSUE_TEMPLATE_CONFIG = ISSUE_TEMPLATE_DIR / "config.yml"
+PR_TEMPLATE = Path(".github/PULL_REQUEST_TEMPLATE.md")
+REQUIREMENT_FORM_FIELDS = (
+    "id: objective",
+    "id: scope",
+    "id: non_goals",
+    "id: acceptance_criteria",
+    "id: invariants",
+    "id: upstream_sources",
+)
+BUG_FORM_FIELDS = (
+    "id: actual_behavior",
+    "id: expected_behavior",
+    "id: impact_scope",
+    "id: reproduction_steps",
+    "id: evidence",
+    "id: regression_scope",
+    "id: acceptance_criteria",
+    "id: upstream_sources",
+)
 
 
 def _read_text(path: Path) -> str:
@@ -66,9 +89,25 @@ def _managed_sections(text: str) -> tuple[str, str] | None:
     return managed, project_owned
 
 
+def _check_issue_form(path: Path, required_fields: tuple[str, ...]) -> list[str]:
+    """检查项目 Issue Form 存在且保留最小需求字段。"""
+    if not path.is_file():
+        return [f"GOV012 {path.as_posix()}: 多人协作所需 Issue Form 不存在"]
+
+    text = _read_text(path)
+    errors: list[str] = []
+    for field in required_fields:
+        if field not in text:
+            errors.append(f"GOV012 {path.as_posix()}: 缺少必需需求字段 {field}")
+    if text.count("required: true") < len(required_fields):
+        errors.append(f"GOV012 {path.as_posix()}: 必需需求字段未保持 required 约束")
+    return errors
+
+
 def check_repository(root: Path = ROOT) -> list[str]:
     """返回 AIMA 项目治理接线错误；空列表表示当前静态约束满足。"""
     errors: list[str] = []
+    project_owned = ""
     agents_path = root / "AGENTS.md"
     if not agents_path.is_file():
         errors.append("GOV001 AGENTS.md: 项目统一治理入口不存在")
@@ -127,6 +166,37 @@ def check_repository(root: Path = ROOT) -> list[str]:
             )
         if "check_agent_governance.py" not in gate_text:
             errors.append(f"GOV008 {COMPLETION_GATE.as_posix()}: 必须先执行 AIMA 项目治理接线检查")
+
+    errors.extend(
+        _check_issue_form(root / REQUIREMENT_ISSUE_FORM, REQUIREMENT_FORM_FIELDS)
+    )
+    errors.extend(_check_issue_form(root / BUG_ISSUE_FORM, BUG_FORM_FIELDS))
+
+    issue_config = root / ISSUE_TEMPLATE_CONFIG
+    if not issue_config.is_file():
+        errors.append(f"GOV013 {ISSUE_TEMPLATE_CONFIG.as_posix()}: Issue chooser 配置不存在")
+    elif "blank_issues_enabled: false" not in _read_text(issue_config):
+        errors.append(
+            f"GOV013 {ISSUE_TEMPLATE_CONFIG.as_posix()}: 必须关闭 blank issue 普通入口"
+        )
+
+    pr_template = root / PR_TEMPLATE
+    if not pr_template.is_file():
+        errors.append(f"GOV014 {PR_TEMPLATE.as_posix()}: PR 模板不存在")
+    else:
+        pr_text = _read_text(pr_template)
+        if "Requirement-Source:" not in pr_text:
+            errors.append(f"GOV014 {PR_TEMPLATE.as_posix()}: 缺少 Requirement-Source 追溯字段")
+        if "不要用关闭关键字替代" not in pr_text:
+            errors.append(
+                f"GOV014 {PR_TEMPLATE.as_posix()}: 必须区分需求追溯与 Issue 关闭语义"
+            )
+
+    if project_owned:
+        if "Requirement-Source:" not in project_owned:
+            errors.append("GOV014 AGENTS.md: 项目规则缺少多人协作 Requirement-Source 约束")
+        if "不得声明整体需求符合或可合并" not in project_owned:
+            errors.append("GOV014 AGENTS.md: Requirement Source 不足时必须禁止整体可合并结论")
 
     return errors
 
