@@ -30,18 +30,16 @@ def _worker_job_types() -> set[str]:
 
 
 def _table_names() -> set[str]:
+    """只取当前应用源码注册的表，不把历史 Migration 中已移除的表算作当前 Schema。"""
     patterns = (
         re.compile(r'__tablename__\s*=\s*["\']([^"\']+)["\']'),
         re.compile(r'\bTable\(\s*["\']([^"\']+)["\']'),
-        re.compile(r'op\.create_table\(\s*["\']([^"\']+)["\']'),
     )
     result: set[str] = set()
-    roots = (ROOT / "backend/src/aima_ugc", ROOT / "migrations")
-    for source_root in roots:
-        for path in source_root.rglob("*.py"):
-            text = path.read_text(encoding="utf-8")
-            for pattern in patterns:
-                result.update(pattern.findall(text))
+    for path in (ROOT / "backend/src/aima_ugc").rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        for pattern in patterns:
+            result.update(pattern.findall(text))
     return result
 
 
