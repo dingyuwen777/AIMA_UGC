@@ -38,7 +38,7 @@ def test_checker_rejects_unlinked_inline_repository_file(tmp_path: Path) -> None
 
 
 def test_checker_accepts_linked_repository_file(tmp_path: Path) -> None:
-    """已经使用相对 Markdown 链接的仓库文件导航不应误报。"""
+    """已经使用完整路径相对链接的仓库文件导航不应误报。"""
     _minimal_repository(tmp_path)
     _write(
         tmp_path / "docs/guide.md",
@@ -47,7 +47,20 @@ def test_checker_accepts_linked_repository_file(tmp_path: Path) -> None:
 
     errors = CHECK_REPOSITORY(tmp_path)
 
-    assert not any(error.startswith("DOC007") for error in errors)
+    assert not any(error.startswith(("DOC007", "DOC009")) for error in errors)
+
+
+def test_checker_rejects_short_repository_file_link_label(tmp_path: Path) -> None:
+    """仓库文件导航链接可点击但显示短路径时仍应要求完整仓库相对路径。"""
+    _minimal_repository(tmp_path)
+    _write(
+        tmp_path / "docs/guide.md",
+        "实现入口是 [`example.py`](../backend/src/example.py)。\n",
+    )
+
+    errors = CHECK_REPOSITORY(tmp_path)
+
+    assert any(error.startswith("DOC009 docs/guide.md:1") for error in errors)
 
 
 def test_checker_rejects_exact_file_navigation_inside_code_fence(tmp_path: Path) -> None:
