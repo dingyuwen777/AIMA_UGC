@@ -90,9 +90,9 @@ data_changes: []
 
 | 验证层 | 状态 | 范围 / 证据 |
 | --- | --- | --- |
-| 行为 / Unit / Component | required | 初始有效 Red：CI `33512788064` / Repository Quality `99872369242` 在格式、ruff、mypy通过后，Unit collection 因 checker 尚不存在而 exit 2；Review finding Red：CI `33515205023` 在 format/ruff/mypy Green 后，仅正文编辑重验测试失败，736 passed / 1 failed；实现 HEAD `681526687fe3261c6ce61504efbd45d5d0fd6563` 的 CI `33515853617` 中 Unit 738 passed、Contract 92 passed、API 38 passed；后续提交仅更新本 Change 证据文本，合并前以最新 revision fresh Required Checks 为准 |
+| 行为 / Unit / Component | required | 初始有效 Red：CI `33512788064` / Repository Quality `99872369242` 在格式、ruff、mypy通过后，Unit collection 因 checker 尚不存在而 exit 2；Review finding Red：CI `33515205023` 在 format/ruff/mypy Green 后，仅正文编辑重验测试失败，736 passed / 1 failed；实现 HEAD `681526687fe3261c6ce61504efbd45d5d0fd6563` 的 CI `33515853617` 中 Unit 738 passed、Contract 92 passed、API 38 passed；后续仅更新本 Change 证据文本，合并前以最新 revision fresh Required Checks 为准 |
 | 接口 / Contract | not_applicable | 不修改产品 public API/ABI/HTTP/Schema/generated Contract；CI `33515853617` 的 generated contract/client drift check 通过 |
-| 集成 / Persistence / Runtime Dependency | required | PR #287 的真实 GitHub Actions event + `GITHUB_TOKEN` + Issues API：实现 HEAD Completion run `33515853402` / job `99882553221` 的 `Verify PR Requirement Source` 成功；后续提交仅更新 Change 证据文本，合并前仍要求最新 revision fresh Completion Green |
+| 集成 / Persistence / Runtime Dependency | required | PR #287 的真实 GitHub Actions event + `GITHUB_TOKEN` + Issues API：实现 HEAD Completion run `33515853402` / job `99882553221` 的 `Verify PR Requirement Source` 成功；后续仅更新本 Change 文本，合并前仍要求最新 revision fresh Completion Green |
 | 用户 / Workflow Acceptance | required | PR #287 使用 `Requirement-Source: #286`；Completion Gate 已覆盖 `edited` 事件，PR 正文更新后必须再次真实通过该 Required Check |
 | 跨组件 Golden Path | not_applicable / control-plane regression green | 不修改产品跨组件接线；因 CI-self 变更按保守分类执行，CI `33515853617` 的 Real Full-stack Golden Path 成功；后续仅改 Change 文本 |
 | 外部依赖 Probe | not_applicable | GitHub Issues API 的真实 CI 调用已作为交付依赖证据；无业务 Provider 现时事实变化，不执行额外付费/外部 Probe |
