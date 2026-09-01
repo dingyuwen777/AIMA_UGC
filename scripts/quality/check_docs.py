@@ -82,7 +82,7 @@ def _iter_current_docs(root: Path, repository_files: tuple[Path, ...]) -> tuple[
 
 
 def _looks_like_file_reference(value: str) -> bool:
-    """过滤命令、占位符、URL 等明显不是具体仓库文件的代码片段。"""
+    """过滤命令、占位符、URL、时区标识等明显不是具体仓库文件的片段。"""
     if not value or value.startswith(("http://", "https://", "mailto:", "#", "/")):
         return False
     if any(character.isspace() for character in value):
@@ -91,7 +91,7 @@ def _looks_like_file_reference(value: str) -> bool:
         return False
     normalized = value.replace("\\", "/")
     name = normalized.rsplit("/", 1)[-1]
-    return "/" in normalized or "." in name or name in SPECIAL_FILENAMES
+    return "." in name or name in SPECIAL_FILENAMES
 
 
 def _add_if_repo_file(root: Path, candidate: Path, valid: set[Path]) -> None:
