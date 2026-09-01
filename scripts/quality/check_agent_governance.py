@@ -52,7 +52,8 @@ def check_repository(root: Path = ROOT) -> list[str]:
         for fragment in FORBIDDEN_WORKFLOW_FRAGMENTS:
             if fragment in text:
                 errors.append(
-                    f"GOV005 {relative}: 永久 CI 不得依赖 Agent_Skills canonical 内部路径 {fragment}"
+                    f"GOV005 {relative}: 永久 CI 不得依赖 Agent_Skills canonical "
+                    f"内部路径 {fragment}"
                 )
 
     completion_gate = root / COMPLETION_GATE
