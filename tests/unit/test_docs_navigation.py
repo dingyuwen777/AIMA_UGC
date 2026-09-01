@@ -55,12 +55,13 @@ def test_checker_rejects_exact_file_navigation_inside_code_fence(tmp_path: Path)
     _minimal_repository(tmp_path)
     _write(
         tmp_path / "docs/guide.md",
-        "实现入口：\n\n```text\nbackend/src/example.py\n```\n",
+        "实现入口：\n\n```text\nbackend/src/example.py\nscripts/check.py\n```\n",
     )
 
     errors = CHECK_REPOSITORY(tmp_path)
 
     assert any(error.startswith("DOC008 docs/guide.md:4") for error in errors)
+    assert any(error.startswith("DOC008 docs/guide.md:5") for error in errors)
 
 
 def test_checker_does_not_treat_commands_as_file_navigation(tmp_path: Path) -> None:
@@ -69,6 +70,19 @@ def test_checker_does_not_treat_commands_as_file_navigation(tmp_path: Path) -> N
     _write(
         tmp_path / "docs/guide.md",
         "运行：\n\n```bash\npython scripts/check.py\n```\n",
+    )
+
+    errors = CHECK_REPOSITORY(tmp_path)
+
+    assert not any(error.startswith("DOC008") for error in errors)
+
+
+def test_checker_does_not_treat_mixed_code_fence_as_navigation(tmp_path: Path) -> None:
+    """代码块即使含单独文件字面量，也不能因偶然命中仓库文件而整体判成导航。"""
+    _minimal_repository(tmp_path)
+    _write(
+        tmp_path / "docs/guide.md",
+        "配置示例：\n\n```text\nbackend/src/example.py\nmode=production\n```\n",
     )
 
     errors = CHECK_REPOSITORY(tmp_path)
