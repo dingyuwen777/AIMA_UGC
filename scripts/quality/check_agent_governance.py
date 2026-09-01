@@ -107,7 +107,6 @@ def _check_issue_form(path: Path, required_fields: tuple[str, ...]) -> list[str]
 def check_repository(root: Path = ROOT) -> list[str]:
     """返回 AIMA 项目治理接线错误；空列表表示当前静态约束满足。"""
     errors: list[str] = []
-    project_owned = ""
     agents_path = root / "AGENTS.md"
     if not agents_path.is_file():
         errors.append("GOV001 AGENTS.md: 项目统一治理入口不存在")
@@ -191,12 +190,6 @@ def check_repository(root: Path = ROOT) -> list[str]:
             errors.append(
                 f"GOV014 {PR_TEMPLATE.as_posix()}: 必须区分需求追溯与 Issue 关闭语义"
             )
-
-    if project_owned:
-        if "Requirement-Source:" not in project_owned:
-            errors.append("GOV014 AGENTS.md: 项目规则缺少多人协作 Requirement-Source 约束")
-        if "不得声明整体需求符合或可合并" not in project_owned:
-            errors.append("GOV014 AGENTS.md: Requirement Source 不足时必须禁止整体可合并结论")
 
     return errors
 
