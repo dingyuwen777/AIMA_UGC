@@ -63,6 +63,18 @@ def test_checker_rejects_short_repository_file_link_label(tmp_path: Path) -> Non
     assert any(error.startswith("DOC009 docs/guide.md:1") for error in errors)
 
 
+def test_checker_prefers_document_local_file_for_ambiguous_short_name(tmp_path: Path) -> None:
+    """同名文件存在多个时，文档同目录的真实文件应优先作为导航目标。"""
+    _minimal_repository(tmp_path)
+    _write(tmp_path / "docs/pricing.py", "PRICE = 1\n")
+    _write(tmp_path / "other/pricing.py", "PRICE = 2\n")
+    _write(tmp_path / "docs/guide.md", "价格实现见 `pricing.py`。\n")
+
+    errors = CHECK_REPOSITORY(tmp_path)
+
+    assert any(error.startswith("DOC007 docs/guide.md:1") for error in errors)
+
+
 def test_checker_rejects_exact_file_navigation_inside_code_fence(tmp_path: Path) -> None:
     """仅列真实文件的代码块不能承担不可点击的导航职责。"""
     _minimal_repository(tmp_path)
