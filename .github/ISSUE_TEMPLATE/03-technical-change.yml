@@ -1,0 +1,124 @@
+name: 技术变更
+description: 提交架构、重构、CI、基础设施、性能、安全、依赖、部署、维护性或工程质量类变更
+title: "[技术变更] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        技术变更不等于自动升级为高风险任务；实际 L1/L2/L3 仍由影响边界决定。请写清为什么需要改、当前事实、目标状态、兼容与回滚，以及什么证据可以证明完成。
+
+  - type: checkboxes
+    id: duplicate_search
+    attributes:
+      label: 重复检查
+      options:
+        - label: 我已搜索现有 Issue / Active Change / 正式技术决策，没有找到范围和验收标准相同的未完成事项。
+          required: true
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: 动机 / 工程约束
+      description: 为什么现在需要做这项技术变更？解决什么实际维护、质量、性能、安全、CI 或交付问题？
+      placeholder: 描述问题、约束和触发背景；没有事实时不要猜测。
+    validations:
+      required: true
+
+  - type: textarea
+    id: current_state
+    attributes:
+      label: 当前状态
+      description: 当前仓库或运行行为是什么？引用可验证代码、配置、CI、日志或测量结果。
+      placeholder: 当前实现 / Workflow / 配置实际……
+    validations:
+      required: true
+
+  - type: textarea
+    id: target_state
+    attributes:
+      label: 目标状态
+      description: 合并后工程或系统应达到什么可观察状态？
+      placeholder: 完成后，应能够……
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: 范围
+      description: 本次明确修改哪些模块、工具链、Workflow、基础设施或工程能力？
+      placeholder: |
+        - 包含……
+        - 包含……
+    validations:
+      required: true
+
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: 非目标
+      description: 明确本次不解决什么；没有时写“无”。
+      placeholder: |
+        - 不包含……
+        - 不改变……
+    validations:
+      required: true
+
+  - type: textarea
+    id: compatibility_migration
+    attributes:
+      label: 兼容与迁移
+      description: 是否影响 API、Contract、Schema、数据、配置、依赖、部署、开发流程或已有 PR？不适用时写“无 / 不适用（说明原因）”。
+      placeholder: 描述兼容边界、迁移要求及受影响对象。
+    validations:
+      required: true
+
+  - type: textarea
+    id: risks_rollback
+    attributes:
+      label: 风险与回滚
+      description: 最可能出错在哪里？失败后如何安全恢复？没有特殊风险时也说明依据。
+      placeholder: |
+        - 风险：……
+        - 控制：……
+        - 回滚：……
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: 验收标准
+      description: 写成可测试、可测量或可核验的完成条件。
+      placeholder: |
+        - [ ] 当……时，应……
+        - [ ] 原有……保持不变
+        - [ ] CI / 运行证据……
+    validations:
+      required: true
+
+  - type: textarea
+    id: validation_plan
+    attributes:
+      label: 验证计划
+      description: 计划用哪些最少充分证据验证改动，包括测试、CI、基准、运行验证或人工 Review。
+      placeholder: |
+        - Unit / 静态检查：……
+        - Integration / Runtime：……
+        - Review / CI：……
+    validations:
+      required: true
+
+  - type: textarea
+    id: upstream_sources
+    attributes:
+      label: 上游事实源 / 相关资料
+      description: 引用定义约束或目标的 Issue、Spec、Blueprint、ADR、Contract、Schema、监控数据、外部官方资料等。没有更强来源时写“无”。
+      placeholder: |
+        - Related Issue：……
+        - Blueprint / Spec：……
+        - 官方资料 / 测量证据：……
+    validations:
+      required: true
