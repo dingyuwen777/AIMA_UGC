@@ -398,15 +398,17 @@ Figma
 “声音广场”的正式设计文件为 `EAPm8KVarUe7BFTSnzvOpT`。Design-to-Code 和后续 targeted re-review 使用以下正式节点：
 
 ```text
-Normal / Data              169:10
-Loading                    3083:134
-Empty                      3083:351
-Error                      3083:568
-内容详情 Drawer            3084:311
-AI Analysis Preview        3084:568
-Excel Export               3084:770
-开发状态规格               3085:525
-AI Runtime 未配置          3085:654
+Normal / Data              3924:556
+AI Runtime 未配置          3924:782
+Loading                    3925:697
+Empty                      3925:4440
+Error                      3925:4709
+内容详情 Drawer / Loaded   3925:4978
+内容详情 Drawer / Loading  3925:5068
+内容详情 Drawer / Error    3925:5212
+AI Analysis Preview        3926:978
+Excel Export / Empty       3927:1051
+Excel Export / Running     3929:1133
 ```
 
 这套 Figma 接管 `/voice-plaza` 的页面布局、视觉层级、状态表达和 Overlay 几何关系；当前 HTTP Contract、Pinia Store、Cursor、Analysis Run、人工相关性复核、Detail supplement、Export Job/Artifact 和错误语义仍以当前代码、generated client 与后端事实为准。Figma 中的帖子、Run 状态、选择数量、模型名、互动数和分页示例只用于说明布局，不得写成生产常量。

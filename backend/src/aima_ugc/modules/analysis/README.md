@@ -92,6 +92,8 @@ Prompt 的自然语言规则 + 同文件机器 Taxonomy（需要改变合法值�
 
 `prompt_sha256` 标识完整 Prompt 变化；`taxonomy_sha256` 只随机器 Taxonomy 变化。因此只优化判断规则/示例时，可以出现 Prompt Hash 变化而 Taxonomy Hash 不变。
 
+声音广场通过 `GET /api/v1/content-analysis-taxonomy` 读取这份 Taxonomy 的安全只读投影。生产入口在 [`backend/src/aima_ugc/bootstrap/analysis_taxonomy_http.py`](../../bootstrap/analysis_taxonomy_http.py)，Response 机器事实在 [`backend/src/aima_ugc/contracts/http.py`](../../contracts/http.py)。该投影只让前端取得合法下拉选项和版本 Hash，不返回 Prompt 正文、自然语言规则、模型配置或 Secret；加载失败时返回统一 `503`，前端不会退回平行硬编码。
+
 ---
 
 ## 3. 模型实际看到什么

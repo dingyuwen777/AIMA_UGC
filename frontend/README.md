@@ -270,7 +270,7 @@ src/features/voice-plaza/
 当前组合：
 
 - Content 列表/详情；
-- 平台/文本/时间/来源/Analysis 筛选；
+- 平台/文本/时间/来源/Analysis 筛选；其中情感、发声类型和一级/二级标签从后端只读 Taxonomy Contract 动态加载；
 - Analysis current/stale/pending；
 - 显式选择内容并做 Analysis Run Preview；
 - 创建手动 Analysis Run；
@@ -284,6 +284,18 @@ src/features/voice-plaza/
 当前新版 Analysis Run 只开放显式选择 1—1000 条内容；query scope Run 没有作为当前页面能力开放。页面不负责 Planner/Shard/Current 选择规则，这些由后端 Analysis Domain、PostgreSQL 和 generated Contract 决定。
 
 人工相关性复核通过 generated Client 调当前正式 API；Feature `api.ts` 只提供页面语义薄封装，不在前端复制 `relevant / irrelevant / inherit_ai` 的后端状态机或数据库规则。完整业务语义看 Analysis README 与后端 Contract。
+
+分类选项的调用链是：
+
+```text
+当前 Prompt Taxonomy
+→ GET /api/v1/content-analysis-taxonomy
+→ generated Client
+→ voice-plaza Store
+→ 发声类型 / 情感 / 两级标签筛选
+```
+
+前端不维护情感、发声类型或标签合法值。Taxonomy 暂不可用时，页面显示带 `request_id` 的独立警告并禁用这些筛选，不把分类错误升级成列表错误；平台、文本、时间等独立筛选和当前内容列表仍可使用。实现入口见 [`frontend/src/features/voice-plaza/store.ts`](src/features/voice-plaza/store.ts) 和 [`frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaFilters.vue`](src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaFilters.vue)。
 
 注意三条不同能力：
 
