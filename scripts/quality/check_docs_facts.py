@@ -29,6 +29,16 @@ TABLE_PATTERNS = (
 JOB_TYPE_RE = re.compile(r'^[A-Z0-9_]+_JOB_TYPE\s*=\s*["\']([^"\']+)["\']', re.MULTILINE)
 ROUTE_RE = re.compile(r"\bpath:\s*['\"]([^'\"]+)['\"]")
 
+# 这些模块正是 bootstrap/worker.py 当前生产 Registry 通过 register_* 入口装配的 Job 定义。
+# 不扫描 modules/** 的全部 *_JOB_TYPE 常量，避免把未注册/备用能力误报为生产 Worker 事实。
+WORKER_JOB_SOURCE_FILES = (
+    Path("backend/src/aima_ugc/modules/collection/collection_run_job.py"),
+    Path("backend/src/aima_ugc/modules/ingestion/import_job.py"),
+    Path("backend/src/aima_ugc/modules/ingestion/historical_jobs.py"),
+    Path("backend/src/aima_ugc/modules/analysis/content_analysis_job.py"),
+    Path("backend/src/aima_ugc/modules/reporting/data_export_job.py"),
+)
+
 PROVIDER_DOCS = {
     "xiaohongshu": Path("docs/collection/01_xiaohongshu.md"),
     "douyin": Path("docs/collection/02_douyin.md"),
@@ -76,9 +86,7 @@ def _package_manager_version() -> str:
 
 
 def _image_version(image: str) -> str:
-    pattern = re.compile(
-        rf"(?:FROM\s+|image:\s*){re.escape(image)}:(\d+(?:\.\d+){{0,2}})"
-    )
+    pattern = re.compile(rf"(?:FROM\s+|image:\s*){re.escape(image)}:(\d+(?:\.\d+){{0,2}})")
     for relative in ("Dockerfile", "compose.yaml"):
         match = pattern.search(_read(relative))
         if match is not None:
@@ -119,9 +127,10 @@ def _current_table_names() -> set[str]:
 
 
 def _current_job_types() -> set[str]:
+    """返回当前生产 Worker Registry 所装配模块声明的持久 Job type。"""
     names: set[str] = set()
-    for path in (ROOT / "backend/src/aima_ugc/modules").rglob("*.py"):
-        names.update(JOB_TYPE_RE.findall(path.read_text(encoding="utf-8")))
+    for relative in WORKER_JOB_SOURCE_FILES:
+        names.update(JOB_TYPE_RE.findall(_read(relative)))
     return names
 
 
@@ -218,7 +227,7 @@ def check_repository() -> list[str]:
     _require_all(
         errors,
         code="DOCF003",
-        owner_doc="docs/blueprint/README.md",
+        owner_doc="docs/blueprint/01_总体架构与技术选型.md",
         values=_current_job_types(),
         label="Worker Job type",
     )
@@ -252,9 +261,7 @@ def check_repository() -> list[str]:
         text = _read(owner)
         for operation in sorted(operations):
             if operation not in text:
-                errors.append(
-                    f"DOCF007 {owner}: 缺少当前 TikHub provider operation {operation}"
-                )
+                errors.append(f"DOCF007 {owner}: 缺少当前 TikHub provider operation {operation}")
 
     current_versions = _versions()
     for relative in _tracked_markdown():
@@ -268,11 +275,7 @@ def check_repository() -> list[str]:
                         f"DOCF008 {relative}: {name} 版本声明 {claim} 与当前机器事实 {current} 不一致"
                     )
 
-    analysis_job_types = {
-        value
-        for value in _current_job_types()
-        if value.startswith("analysis.")
-    }
+    analysis_job_types = {value for value in _current_job_types() if value.startswith("analysis.")}
     for owner in (
         "backend/src/aima_ugc/modules/analysis/README.md",
         "docs/appendix/07_AI舆情打标与分析实现.md",
@@ -294,7 +297,9 @@ def check_repository() -> list[str]:
 
     release = _read(".github/workflows/release.yml")
     release_doc = _read("docs/appendix/11_生产部署与离线Release方案.md")
-    postgres_match = re.search(r"^\s*POSTGRES_IMAGE:\s*(postgres:[^\s]+)\s*$", release, re.MULTILINE)
+    postgres_match = re.search(
+        r"^\s*POSTGRES_IMAGE:\s*(postgres:[^\s]+)\s*$", release, re.MULTILINE
+    )
     if postgres_match is None:
         errors.append("DOCF011 .github/workflows/release.yml: 无法解析 POSTGRES_IMAGE")
     elif postgres_match.group(1) not in release_doc:
@@ -326,7 +331,9 @@ def main() -> int:
     if errors:
         print("\n".join(errors))
         return 1
-    print("当前权威文档与 OpenAPI、Schema、Job、Workflow、Route、Provider、版本、Analysis、Release 机器事实一致。")
+    print(
+        "当前权威文档与 OpenAPI、Schema、Job、Workflow、Route、Provider、版本、Analysis、Release 机器事实一致。"
+    )
     return 0
 
 
