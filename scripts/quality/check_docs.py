@@ -149,6 +149,16 @@ def _suggest_link(doc: Path, target: Path, label: str) -> str:
     return f"[`{normalized_label}`]({relative})"
 
 
+def _navigation_error(root: Path, doc: Path, line_number: int, value: str, target: Path) -> str:
+    """生成代码块文件导航未链接的统一错误。"""
+    suggestion = _suggest_link(doc, target, value)
+    return (
+        f"DOC008 {doc.relative_to(root)}:{line_number}: "
+        f"代码块中的真实仓库文件导航不可点击 {value}；"
+        f"改为代码块外链接，例如 {suggestion}"
+    )
+
+
 def _check_pure_file_fence(
     root: Path,
     doc: Path,
@@ -167,15 +177,36 @@ def _check_pure_file_fence(
             return []
         resolved.append((line_number, value, target))
 
-    errors: list[str] = []
-    for line_number, value, target in resolved:
-        suggestion = _suggest_link(doc, target, value)
-        errors.append(
-            f"DOC008 {doc.relative_to(root)}:{line_number}: "
-            f"代码块中的真实仓库文件导航不可点击 {value}；"
-            f"改为代码块外链接，例如 {suggestion}"
-        )
-    return errors
+    return [
+        _navigation_error(root, doc, line_number, value, target)
+        for line_number, value, target in resolved
+    ]
+
+
+def _check_file_description_fence(
+    root: Path,
+    doc: Path,
+    fence_lines: list[tuple[int, str]],
+    repository_files: tuple[Path, ...],
+) -> list[str]:
+    """识别“文件路径 → 职责”导航块，同时避免误伤命令、目录树和流程图。"""
+    entries = [(line_number, line.strip()) for line_number, line in fence_lines if line.strip()]
+    if len(entries) < 2 or len(entries) % 2 != 0:
+        return []
+
+    resolved: list[tuple[int, str, Path]] = []
+    for index in range(0, len(entries), 2):
+        line_number, value = entries[index]
+        _, description = entries[index + 1]
+        target = _resolve_file_reference(root, doc, value, repository_files)
+        if target is None or not description.startswith("→"):
+            return []
+        resolved.append((line_number, value, target))
+
+    return [
+        _navigation_error(root, doc, line_number, value, target)
+        for line_number, value, target in resolved
+    ]
 
 
 def _check_repository_file_navigation(
@@ -192,7 +223,12 @@ def _check_repository_file_navigation(
     for line_number, line in enumerate(text.splitlines(), start=1):
         if FENCE_RE.match(line):
             if in_fence:
-                errors.extend(_check_pure_file_fence(root, doc, fence_lines, repository_files))
+                fence_errors = _check_pure_file_fence(root, doc, fence_lines, repository_files)
+                if not fence_errors:
+                    fence_errors = _check_file_description_fence(
+                        root, doc, fence_lines, repository_files
+                    )
+                errors.extend(fence_errors)
                 fence_lines = []
             in_fence = not in_fence
             continue
