@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = runpy.run_path(str(ROOT / "scripts" / "quality" / "classify_ci_scope.py"))
 CLASSIFY_REQUIREMENTS = SCRIPT["classify_requirements"]
 WRITE_GITHUB_OUTPUT = SCRIPT["_write_github_output"]
-ALL_FULLSTACK_SPECS = SCRIPT["ALL_FULLSTACK_SPECS"]
+FULLSTACK_ALL = SCRIPT["FULLSTACK_ALL"]
 
 
 def _requirements(*paths: str):  # type: ignore[no-untyped-def]
@@ -69,7 +69,7 @@ def test_http_producer_change_requires_contract_drift_and_real_cross_component_p
     assert requirements.contract_required is True
     assert requirements.postgres_required is False
     assert requirements.fullstack_required is True
-    assert requirements.fullstack_specs == ALL_FULLSTACK_SPECS
+    assert requirements.fullstack_specs == FULLSTACK_ALL
 
 
 def test_collection_persistence_change_runs_postgres_and_relevant_golden_path() -> None:
@@ -101,7 +101,7 @@ def test_contract_change_runs_producer_consumer_and_all_real_golden_paths() -> N
     assert requirements.contract_required is True
     assert requirements.postgres_required is False
     assert requirements.fullstack_required is True
-    assert requirements.fullstack_specs == ALL_FULLSTACK_SPECS
+    assert requirements.fullstack_specs == FULLSTACK_ALL
 
 
 def test_contract_test_change_stays_backend_only_instead_of_promoting_cross_component() -> None:
@@ -129,7 +129,7 @@ def test_fullstack_control_plane_change_runs_entire_real_suite() -> None:
     assert requirements.profile == "full"
     assert requirements.postgres_required is True
     assert requirements.fullstack_required is True
-    assert requirements.fullstack_specs == ("all",)
+    assert requirements.fullstack_specs == FULLSTACK_ALL
 
 
 def test_unknown_new_fullstack_spec_fails_closed_to_entire_suite() -> None:
@@ -137,7 +137,7 @@ def test_unknown_new_fullstack_spec_fails_closed_to_entire_suite() -> None:
 
     assert requirements.frontend_required is True
     assert requirements.fullstack_required is True
-    assert requirements.fullstack_specs == ("all",)
+    assert requirements.fullstack_specs == FULLSTACK_ALL
 
 
 def test_mixed_frontend_and_backend_change_requires_cross_component_proof() -> None:
@@ -150,7 +150,7 @@ def test_mixed_frontend_and_backend_change_requires_cross_component_proof() -> N
     assert requirements.frontend_required is True
     assert requirements.backend_required is True
     assert requirements.fullstack_required is True
-    assert requirements.fullstack_specs == ALL_FULLSTACK_SPECS
+    assert requirements.fullstack_specs == FULLSTACK_ALL
 
 
 def test_ci_self_change_and_unknown_path_fail_closed_to_full() -> None:
@@ -165,7 +165,7 @@ def test_ci_self_change_and_unknown_path_fail_closed_to_full() -> None:
         assert requirements.postgres_required is True
         assert requirements.fullstack_required is True
         assert requirements.stack_smoke_required is True
-        assert requirements.fullstack_specs == ALL_FULLSTACK_SPECS
+        assert requirements.fullstack_specs == FULLSTACK_ALL
 
 
 def test_mixed_docs_and_frontend_use_the_product_scope_instead_of_falling_back_full() -> None:
