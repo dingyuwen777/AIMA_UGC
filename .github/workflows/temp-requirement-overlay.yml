@@ -1,0 +1,78 @@
+name: Temporary Requirement Overlay Calibration
+
+on:
+  push:
+    branches:
+      - chore/requirement-issue-flow
+
+permissions:
+  contents: write
+
+jobs:
+  calibrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: chore/requirement-issue-flow
+          fetch-depth: 0
+
+      - name: Patch project-owned AGENTS overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("AGENTS.md")
+          text = path.read_text(encoding="utf-8")
+          start_marker = "<!-- agent-skills:managed:start -->"
+          end_marker = "<!-- agent-skills:managed:end -->"
+
+          def managed_block(value: str) -> str:
+              start = value.index(start_marker)
+              end = value.index(end_marker, start) + len(end_marker)
+              return value[start:end]
+
+          before_managed = managed_block(text)
+          needle = "## 15. Git\n\n任务从最新 `main` 创建分支，前缀可用："
+          replacement = """## 15. Git
+
+### 多人协作需求追溯
+
+- 需要多人协作或通过 PR 交付的功能、缺陷和技术变更，先解析项目已有正式 Requirement Source；AIMA 使用 GitHub Issue 作为需求入口时，优先使用 `.github/ISSUE_TEMPLATE/` 的项目表单。
+- PR 正文使用 `Requirement-Source: <稳定标识>` 指向当前上游需求；`Closes` / `Fixes` / `Resolves` 只表示 merge 后是否关闭整个 Issue，不能替代需求追溯。
+- Review 必须读取真实 Requirement Source 并绑定当前 PR 的 base/head。来源不可访问、已经漂移或不足时，可以继续局部代码质量与测试审查，但不得声明整体需求符合或可合并。
+- Issue 是需求索引和协作入口，不替代 Contract、Schema/Migration、Figma、代码、测试等各自事实 Owner；复杂任务是否还需要 Change 继续按当前 Change / Completion Gate 执行。
+
+任务从最新 `main` 创建分支，前缀可用："""
+
+          if "### 多人协作需求追溯" not in text:
+              if needle not in text:
+                  raise SystemExit("未找到预期 Git 章节锚点，拒绝猜测修改 AGENTS.md")
+              text = text.replace(needle, replacement, 1)
+
+          if managed_block(text) != before_managed:
+              raise SystemExit("installer-managed block 发生变化，拒绝提交")
+
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Verify project governance
+        run: python scripts/quality/check_agent_governance.py
+
+      - name: Commit project overlay only
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- AGENTS.md; then
+            echo "AGENTS.md already calibrated."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add AGENTS.md
+          git commit -m "补充多人协作 Requirement Source 规则"
+          git push origin HEAD:chore/requirement-issue-flow
