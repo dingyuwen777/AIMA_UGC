@@ -648,6 +648,45 @@ export interface ContentAnalysisSubmitRequest {
   targets: ContentTargetSelection;
 }
 
+/**
+ * 只读 Taxonomy 中一个一级标签及其有序二级标签。
+ */
+export interface ContentAnalysisTaxonomyLabelResponse {
+  /**
+     * @minLength 1
+     * @maxLength 256
+     */
+  primary_label: string;
+  /** @minItems 1 */
+  secondary_labels: string[];
+}
+
+/**
+ * 供业务页面消费的安全 Prompt Taxonomy 投影。
+ */
+export interface ContentAnalysisTaxonomyResponse {
+  /** @minItems 1 */
+  labels: ContentAnalysisTaxonomyLabelResponse[];
+  /** @pattern ^[0-9a-f]{64}$ */
+  prompt_sha256: string;
+  /**
+     * @minLength 1
+     * @maxLength 128
+     */
+  prompt_version: string;
+  /**
+     * @minLength 1
+     * @maxLength 128
+     */
+  schema_version: string;
+  /** @minItems 1 */
+  sentiments: string[];
+  /** @pattern ^[0-9a-f]{64}$ */
+  taxonomy_sha256: string;
+  /** @minItems 1 */
+  voice_types: string[];
+}
+
 export interface ContentCommentResponse {
   author_display_name?: string | null;
   external_comment_id: string;
@@ -2055,6 +2094,37 @@ export const createContentAnalysis = async (contentAnalysisSubmitRequest: Conten
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: ContentAnalysisCreatedResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetContentAnalysisTaxonomyUrl = () => {
+
+
+
+
+  return `/api/v1/content-analysis-taxonomy`
+}
+
+/**
+ * @summary Get Content Analysis Taxonomy
+ */
+export const getContentAnalysisTaxonomy = async ( options?: RequestInit): Promise<ContentAnalysisTaxonomyResponse> => {
+
+  const res = await fetch(getGetContentAnalysisTaxonomyUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ContentAnalysisTaxonomyResponse = body ? JSON.parse(body) : {}
   return data
 }
 

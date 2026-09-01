@@ -18,6 +18,7 @@ from starlette.exceptions import HTTPException as StarletteHttpException
 from starlette.responses import JSONResponse, StreamingResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from aima_ugc.bootstrap.analysis_taxonomy_http import ContentAnalysisTaxonomyUnavailable
 from aima_ugc.contracts.http import (
     AnalysisContentRunCreatedResponse,
     AnalysisContentRunCreateRequest,
@@ -532,6 +533,26 @@ def create_app(
             title="AI 分析配置暂不可用",
             detail="AI 模型或密钥配置不可用，请使用 request_id 联系管理员。",
             code="content_analysis_unavailable",
+        )
+
+    @application.exception_handler(ContentAnalysisTaxonomyUnavailable)
+    async def content_analysis_taxonomy_unavailable(
+        request: Request,
+        _: ContentAnalysisTaxonomyUnavailable,
+    ) -> JSONResponse:
+        return _error_response(
+            status_code=503,
+            request_id=_request_id(request),
+            title="AI 分类配置暂不可用",
+            detail="当前 Prompt Taxonomy 无法安全读取或校验。",
+            code="content_analysis_taxonomy_unavailable",
+            errors=(
+                HttpErrorItem(
+                    field="taxonomy",
+                    code="content_analysis_taxonomy_unavailable",
+                    message="请检查服务端 Prompt Taxonomy 配置和日志。",
+                ),
+            ),
         )
 
     @application.exception_handler(ContentAnalysisTargetChanged)

@@ -679,6 +679,29 @@ class ContentLabelPairResponse(BaseModel):
     secondary_label: str
 
 
+class ContentAnalysisTaxonomyLabelResponse(BaseModel):
+    """只读 Taxonomy 中一个一级标签及其有序二级标签。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    primary_label: str = Field(min_length=1, max_length=256)
+    secondary_labels: tuple[str, ...] = Field(min_length=1)
+
+
+class ContentAnalysisTaxonomyResponse(BaseModel):
+    """供业务页面消费的安全 Prompt Taxonomy 投影。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    prompt_version: str = Field(min_length=1, max_length=128)
+    prompt_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    schema_version: str = Field(min_length=1, max_length=128)
+    taxonomy_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    sentiments: tuple[str, ...] = Field(min_length=1)
+    voice_types: tuple[str, ...] = Field(min_length=1)
+    labels: tuple[ContentAnalysisTaxonomyLabelResponse, ...] = Field(min_length=1)
+
+
 class ContentAnalysisResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -1421,6 +1444,8 @@ __all__ = [
     "ContentAnalysisResponse",
     "ContentAnalysisStatus",
     "ContentAnalysisSubmitRequest",
+    "ContentAnalysisTaxonomyLabelResponse",
+    "ContentAnalysisTaxonomyResponse",
     "ContentCommentResponse",
     "ContentDetailResponse",
     "ContentFilterSnapshot",

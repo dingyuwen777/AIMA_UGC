@@ -1954,6 +1954,95 @@
         "title": "ContentAnalysisSubmitRequest",
         "type": "object"
       },
+      "ContentAnalysisTaxonomyLabelResponse": {
+        "additionalProperties": false,
+        "description": "只读 Taxonomy 中一个一级标签及其有序二级标签。",
+        "properties": {
+          "primary_label": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Primary Label",
+            "type": "string"
+          },
+          "secondary_labels": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Secondary Labels",
+            "type": "array"
+          }
+        },
+        "required": [
+          "primary_label",
+          "secondary_labels"
+        ],
+        "title": "ContentAnalysisTaxonomyLabelResponse",
+        "type": "object"
+      },
+      "ContentAnalysisTaxonomyResponse": {
+        "additionalProperties": false,
+        "description": "供业务页面消费的安全 Prompt Taxonomy 投影。",
+        "properties": {
+          "labels": {
+            "items": {
+              "$ref": "#/components/schemas/ContentAnalysisTaxonomyLabelResponse"
+            },
+            "minItems": 1,
+            "title": "Labels",
+            "type": "array"
+          },
+          "prompt_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Prompt Sha256",
+            "type": "string"
+          },
+          "prompt_version": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "schema_version": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "sentiments": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Sentiments",
+            "type": "array"
+          },
+          "taxonomy_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Taxonomy Sha256",
+            "type": "string"
+          },
+          "voice_types": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Voice Types",
+            "type": "array"
+          }
+        },
+        "required": [
+          "prompt_version",
+          "prompt_sha256",
+          "schema_version",
+          "taxonomy_sha256",
+          "sentiments",
+          "voice_types",
+          "labels"
+        ],
+        "title": "ContentAnalysisTaxonomyResponse",
+        "type": "object"
+      },
       "ContentCommentResponse": {
         "additionalProperties": false,
         "properties": {
@@ -5965,6 +6054,27 @@
           }
         },
         "summary": "Create Content Analysis",
+        "tags": [
+          "contents"
+        ]
+      }
+    },
+    "/api/v1/content-analysis-taxonomy": {
+      "get": {
+        "operationId": "getContentAnalysisTaxonomy",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentAnalysisTaxonomyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Content Analysis Taxonomy",
         "tags": [
           "contents"
         ]
