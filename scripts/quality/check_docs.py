@@ -106,36 +106,52 @@ def _add_if_repo_file(root: Path, candidate: Path, valid: set[Path]) -> None:
         valid.add(resolved)
 
 
+def _unique_non_self_target(doc: Path, valid: set[Path]) -> Path | None:
+    """只返回唯一且不是当前文档自身的真实文件。"""
+    if len(valid) != 1:
+        return None
+    target = next(iter(valid))
+    if target == doc.resolve():
+        return None
+    return target
+
+
 def _resolve_file_reference(
     root: Path,
     doc: Path,
     value: str,
     repository_files: tuple[Path, ...],
 ) -> Path | None:
-    """把文档中的具体路径/文件名解析到唯一存在的受控仓库文件。"""
+    """优先按文档上下文解析文件；无直接目标时再做全仓唯一后缀回退。"""
     if not _looks_like_file_reference(value):
         return None
 
     normalized = value.replace("\\", "/")
-    valid: set[Path] = set()
+    direct: set[Path] = set()
     if normalized.startswith(("./", "../")):
-        _add_if_repo_file(root, doc.parent / normalized, valid)
+        _add_if_repo_file(root, doc.parent / normalized, direct)
     else:
-        _add_if_repo_file(root, root / normalized, valid)
-        _add_if_repo_file(root, doc.parent / normalized, valid)
+        _add_if_repo_file(root, root / normalized, direct)
+        _add_if_repo_file(root, doc.parent / normalized, direct)
+
+    direct_target = _unique_non_self_target(doc, direct)
+    if direct_target is not None:
+        return direct_target
+    if len(direct) > 1:
+        return None
 
     suffix = normalized.removeprefix("./")
-    if not suffix.startswith("../"):
-        suffix_marker = f"/{suffix}"
-        for candidate in repository_files:
-            relative = candidate.relative_to(root).as_posix()
-            if relative != suffix and not relative.endswith(suffix_marker):
-                continue
-            _add_if_repo_file(root, candidate, valid)
-
-    if len(valid) != 1:
+    if suffix.startswith("../"):
         return None
-    return next(iter(valid))
+
+    fallback: set[Path] = set()
+    suffix_marker = f"/{suffix}"
+    for candidate in repository_files:
+        relative = candidate.relative_to(root).as_posix()
+        if relative != suffix and not relative.endswith(suffix_marker):
+            continue
+        _add_if_repo_file(root, candidate, fallback)
+    return _unique_non_self_target(doc, fallback)
 
 
 def _is_inline_code_linked(line: str, start: int, end: int) -> bool:
