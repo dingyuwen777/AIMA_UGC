@@ -348,7 +348,8 @@ def check_repository() -> list[str]:
                 current = current_versions[name]
                 if not _compatible_claim(claim, current):
                     errors.append(
-                        f"DOCF008 {relative}: {name} 版本声明 {claim} 与当前机器事实 {current} 不一致"
+                        f"DOCF008 {relative}: {name} 版本声明 {claim} "
+                        f"与当前机器事实 {current} 不一致"
                     )
 
     analysis_job_types = {value for value in _current_job_types() if value.startswith("analysis.")}
@@ -408,7 +409,8 @@ def main() -> int:
         print("\n".join(errors))
         return 1
     print(
-        "当前权威文档与 OpenAPI、Schema、Job、Workflow、Route、Provider、版本、Analysis、Release 机器事实一致。"
+        "当前权威文档与 OpenAPI、Schema、Job、Workflow、Route、Provider、"
+        "版本、Analysis、Release 机器事实一致。"
     )
     return 0
 
