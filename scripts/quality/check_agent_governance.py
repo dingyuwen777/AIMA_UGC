@@ -9,6 +9,7 @@ MANAGED_START = "<!-- agent-skills:managed:start -->"
 MANAGED_END = "<!-- agent-skills:managed:end -->"
 PROJECT_GOVERNANCE_MARKER = "<!-- agent-skills:project-governance:v1 -->"
 READY_CHECK = Path(".agents/skills/coding/scripts/ready_check.py")
+PR_REQUIREMENT_SOURCE_CHECK = Path("scripts/quality/check_pr_requirement_source.py")
 WORKFLOW_DIR = Path(".github/workflows")
 FORBIDDEN_WORKFLOW_FRAGMENTS = (
     ".agents/skills/coding/tests",
@@ -44,6 +45,7 @@ COMPLETION_GATE = Path(".github/workflows/change-completion-gate.yml")
 ISSUE_TEMPLATE_DIR = Path(".github/ISSUE_TEMPLATE")
 REQUIREMENT_ISSUE_FORM = ISSUE_TEMPLATE_DIR / "01-requirement.yml"
 BUG_ISSUE_FORM = ISSUE_TEMPLATE_DIR / "02-bug.yml"
+TECHNICAL_CHANGE_ISSUE_FORM = ISSUE_TEMPLATE_DIR / "03-technical-change.yml"
 ISSUE_TEMPLATE_CONFIG = ISSUE_TEMPLATE_DIR / "config.yml"
 PR_TEMPLATE = Path(".github/PULL_REQUEST_TEMPLATE.md")
 REQUIREMENT_FORM_FIELDS = (
@@ -62,6 +64,18 @@ BUG_FORM_FIELDS = (
     "id: evidence",
     "id: regression_scope",
     "id: acceptance_criteria",
+    "id: upstream_sources",
+)
+TECHNICAL_CHANGE_FORM_FIELDS = (
+    "id: motivation",
+    "id: current_state",
+    "id: target_state",
+    "id: scope",
+    "id: non_goals",
+    "id: compatibility_migration",
+    "id: risks_rollback",
+    "id: acceptance_criteria",
+    "id: validation_plan",
     "id: upstream_sources",
 )
 
@@ -144,6 +158,12 @@ def check_repository(root: Path = ROOT) -> list[str]:
     if not ready_check.is_file():
         errors.append(f"GOV004 {READY_CHECK.as_posix()}: AIMA Change Ready 机器门禁入口不存在")
 
+    pr_requirement_source_check = root / PR_REQUIREMENT_SOURCE_CHECK
+    if not pr_requirement_source_check.is_file():
+        errors.append(
+            f"GOV015 {PR_REQUIREMENT_SOURCE_CHECK.as_posix()}: PR Requirement Source 机器门禁不存在"
+        )
+
     for workflow in _workflow_paths(root):
         text = _read_text(workflow)
         relative = workflow.relative_to(root).as_posix()
@@ -165,9 +185,26 @@ def check_repository(root: Path = ROOT) -> list[str]:
             )
         if "check_agent_governance.py" not in gate_text:
             errors.append(f"GOV008 {COMPLETION_GATE.as_posix()}: 必须先执行 AIMA 项目治理接线检查")
+        if "check_pr_requirement_source.py" not in gate_text:
+            errors.append(
+                f"GOV015 {COMPLETION_GATE.as_posix()}: 必须继续执行真实 PR Requirement Source 校验"
+            )
+        if "issues: read" not in gate_text:
+            errors.append(
+                f"GOV015 {COMPLETION_GATE.as_posix()}: "
+                "PR Requirement Source 校验需要最小 issues: read 权限"
+            )
+        if "types:" not in gate_text or "- edited" not in gate_text:
+            errors.append(
+                f"GOV015 {COMPLETION_GATE.as_posix()}: "
+                "PR 正文 edited 后必须重新执行 Requirement Source 校验"
+            )
 
     errors.extend(_check_issue_form(root / REQUIREMENT_ISSUE_FORM, REQUIREMENT_FORM_FIELDS))
     errors.extend(_check_issue_form(root / BUG_ISSUE_FORM, BUG_FORM_FIELDS))
+    errors.extend(
+        _check_issue_form(root / TECHNICAL_CHANGE_ISSUE_FORM, TECHNICAL_CHANGE_FORM_FIELDS)
+    )
 
     issue_config = root / ISSUE_TEMPLATE_CONFIG
     if not issue_config.is_file():
@@ -184,6 +221,10 @@ def check_repository(root: Path = ROOT) -> list[str]:
             errors.append(f"GOV014 {PR_TEMPLATE.as_posix()}: 缺少 Requirement-Source 追溯字段")
         if "不要用关闭关键字替代" not in pr_text:
             errors.append(f"GOV014 {PR_TEMPLATE.as_posix()}: 必须区分需求追溯与 Issue 关闭语义")
+        if "#123" not in pr_text or "仓库内真实存在" not in pr_text:
+            errors.append(
+                f"GOV014 {PR_TEMPLATE.as_posix()}: 必须公开机器可验证的 Issue / 仓库路径来源格式"
+            )
 
     return errors
 

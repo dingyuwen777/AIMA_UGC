@@ -4,12 +4,18 @@ on:
   pull_request:
     branches:
       - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - edited
   push:
     branches:
       - main
 
 permissions:
   contents: read
+  issues: read
 
 jobs:
   ready-check:
@@ -31,6 +37,17 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/quality/check_agent_governance.py
+
+      - name: Verify PR Requirement Source
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/quality/check_pr_requirement_source.py \
+            --event "${GITHUB_EVENT_PATH}" \
+            --root .
 
       - name: Enforce changed PR Change readiness
         if: github.event_name == 'pull_request'
