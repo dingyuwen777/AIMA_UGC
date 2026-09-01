@@ -142,6 +142,21 @@ def test_checker_rejects_local_installed_skill_as_project_docs_governance_source
     assert len(docs_errors) == 2
 
 
+def test_checker_rejects_generic_governance_implementation_in_project_overlay(
+    tmp_path: Path,
+) -> None:
+    """marker 外 AIMA Overlay 只能描述项目规则和事实，不保存通用治理实现。"""
+    _minimal_repository(tmp_path)
+    agents = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+    agents += "\nSource Mode 从 Project Payload 读取 canonical Reference。\n"
+    _write(tmp_path / "AGENTS.md", agents)
+
+    errors = CHECK_REPOSITORY(tmp_path)
+
+    overlay_errors = [error for error in errors if error.startswith("GOV011")]
+    assert len(overlay_errors) == 3
+
+
 def test_checker_requires_unique_governance_markers(tmp_path: Path) -> None:
     """根治理入口的 managed 与项目校准 marker 必须保持唯一。"""
     _minimal_repository(tmp_path)
