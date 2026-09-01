@@ -334,7 +334,8 @@ def main() -> int:
             "CI profile="
             f"{requirements.profile}; changed_count={changed_count}; "
             f"backend={requirements.backend_required}; frontend={requirements.frontend_required}; "
-            f"contract={requirements.contract_required}; postgres={requirements.postgres_required}; "
+            f"contract={requirements.contract_required}; "
+            f"postgres={requirements.postgres_required}; "
             f"fullstack={requirements.fullstack_required}"
         )
         for changed_path in changed_paths:
