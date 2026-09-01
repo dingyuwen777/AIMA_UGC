@@ -22,28 +22,48 @@ description: 面向不同项目形态、研发阶段和编程语言的可靠软�
 → 选择最少但充分的流程和证据
 → 最小兼容实现
 → 新鲜验证
-→ Completion Audit / Review
+→ 按实际门禁进入 Completion Audit / 独立 Review
 → 只交付证据真正支持的结论
 ```
 
+这里的核心不是让每次开发都走同样长的流水线，而是让**风险强度**与**流程重量**解耦：L1/L2/L3 决定需要控制和证明什么；Change、Docs、独立 Review、Completion Gate、Git/PR/Release 等能力只在当前事实真正需要时加载。能力存在不等于每个任务都要使用，发现新的风险、交接或交付事实后再单调升级。
+
+### 简单代码 Fast Path
+
+如果用户只是要求一段**一次性简单代码 / snippet / scratch code / 小脚本示例**，并且当前已确认：
+
+- 不对目标仓库做持久修改；
+- 不改变 public API/ABI/CLI、Schema、数据格式、权限、安全、依赖、构建、部署或发布边界；
+- 不对真实生产系统、外部 Provider、数据库、文件或其他资源执行有持久副作用的操作；
+- 没有正式 Docs、Review、PR、Release 或可审计交付要求；
+
+则不为了形式启动完整仓库治理。最小路径是：
+
+```text
+确认最少上下文与输入/输出
+→ 直接实现最小代码
+→ 使用最便宜且能直接证明目标的解析 / 编译 / 运行 / targeted test
+→ 如实报告验证证据和限制
+```
+
+这类任务不为形式创建 Change、扫描仓库文档、进入独立 Review 或启动 Git 流程。**Fast Path 不是降风险漏洞**：一旦发现需要持久改仓库，先退出 Scratch Fast Path 并按当前项目事实重新判断 L1/L2/L3；如果仍是行为不变机械修改或边界明确、影响隔离的极小修复，则进入 当前场景所需完整约束 的 `Repository L1 Fast Path`，不因“持久修改仓库”本身预付完整 Feature/Bug/Docs/Review 流程。只有发现公共/数据/安全/依赖/运行时边界、真实外部副作用或正式交付要求时，才按对应事实单调升级。
+
 本 Skill 不是 Python、Web、Backend 或 PostgreSQL 专用流程。它的固定部分是“怎样可靠研发”；具体语言、框架、数据库、目录、包管理器、CI 和部署方式必须来自当前项目事实或 Greenfield 阶段经确认的新建工程决策。
 
-详细规则分布在 `references/`。**当本文件的触发条件命中时，对应 reference 是本 Skill 的规范组成部分，必须在执行相关动作前读取；不能只读主文件后凭印象补流程。**
+详细规则分布在 `当前场景所需完整约束/`。**当本文件的触发条件命中时，对应 完整约束 是本 Skill 的规范组成部分，必须在执行相关动作前读取；不能只读主文件后凭印象补流程。**
 
-`references/` 当前使用 `01_`、`02_`……两位数字前缀表达研发流程阅读顺序，便于人类从目录直接理解上下游关系。**编号只是导航，不是固定文档数量、固定文件名或固定编号上限**；未来 reference 增删时按真实依赖关系调整。每个任务仍只读取命中的最少充分规则，不要求机械通读全部编号文件。
-
-**内容守恒优先于篇幅精简。** 对本 Skill、reference、模板或项目 Overlay 做重组、通用化、拆分、合并、改名或“精简”时，只允许改变组织方式，不允许降低规则语义、触发条件、例外、失败处理、验证责任、安全边界或兼容要求。不能把多条带条件、例外或失败处理的可执行规则压成一句抽象原则；只有逐项证明完全等价时才允许消除重复。无法证明完全等价时，保留原细节。规则重组必须用回归测试、旧入口反向检查和人工语义对照证明高价值规则仍可达，不再依赖独立的规则映射文档。
+**内容守恒优先于篇幅精简。** 对本 Skill、完整约束、模板或项目 Overlay 做重组、通用化、拆分、合并、改名或“精简”时，只允许改变组织方式，不允许降低规则语义、触发条件、例外、失败处理、验证责任、安全边界或兼容要求。不能把多条带条件、例外或失败处理的可执行规则压成一句抽象原则；只有逐项证明完全等价时才允许消除重复。无法证明完全等价时，保留原细节。规则重组必须用回归测试、旧入口反向检查和人工语义对照证明高价值规则仍可达，不再依赖独立的规则映射文档。
 
 ## 0. 强制执行模型：先路由，再工作
 
-每个独立任务在制定实现计划前先按 [02_跨项目研发任务路由.md](references/02_跨项目研发任务路由.md) 建立四维路由：
+每个独立任务在制定实现计划前先按 当前场景所需完整约束 建立四维路由：
 
 ```text
 项目形态
 × 研发阶段 / 任务类型
 × 编程语言 / 工具链
 × 风险等级 L1 / L2 / L3
-→ 本次必须读取的 references
+→ 本次必须读取的 当前场景所需完整约束
 → 本次 Validation Matrix
 → 本次 Change / Review / Git 门禁
 ```
@@ -85,8 +105,8 @@ CMakeLists.txt ≠ Linux-only
 7. **从目标和根因推导机制。** 从可观察目标、硬约束、当前事实和根因选择最小充分方案；“最佳实践”只是候选证据，不能覆盖仓库事实或成为引入复杂度的理由。
 8. **不发明项目制度。** 只执行仓库真实存在或本次需求明确建立的边界、Contract、Schema、Owner、Migration、测试和发布机制；经有界调查未发现时标记不适用并跳过，不为了填模板补造架构。Coding 自带 Change 只是在项目没有可复用治理载体时的 fallback，不能静默与 OpenSpec、RFC、ADR、Issue 或其他既有正式治理体系平行造一套制度。
 9. **独立能力建立独立验证闭环。** 对具有明确输入输出、独立业务价值、独立失败边界，或无需启动完整系统即可验证的能力，优先复用生产入口建立最小验证闭环，使用与风险匹配的自动化测试、Fixture/Fake/隔离依赖、明确运行方式和成功判据。不要机械要求“一模块一个测试文件”或“一功能一个测试文档”。
-10. **L2/L3 必须向上追溯。** 当前 Change 不是自身需求全集。必须从用户已确认决定和上游正式事实源建立 Requirement Traceability；进入 `ready_for_review` 前重新读取上游完成定义并执行 Completion Audit。CI 全绿不能替代需求完整性审计，也不能依赖用户事后发现漏项。
-11. **验证按风险而不是固定技术栈分层。** L2/L3 先按 [07_通用验证与证据策略.md](references/07_通用验证与证据策略.md) 建立技术栈无关 Validation Matrix。任何层都不能声称证明自己没有实际运行的下游边界。若项目真实存在 Web/API/PostgreSQL/外部 Provider，再叠加 [08_分层测试与验收策略.md](references/08_分层测试与验收策略.md) 的 Browser Mock、Backend/API/PostgreSQL Integration、Contract、Real Full-stack、Real Provider Probe 专项规则；这些细节保留但不强加给 CLI、Library、Mobile、Embedded、IaC 等项目。
+10. **L2/L3 必须向上追溯，但不等于都要持久 Change。** 所有 L2/L3 都必须能从用户已确认决定、当前 Requirement Source 或正式项目事实说明目标和验收来源。普通轻量 L2 使用最小充分任务契约并在强完成结论前重新核对当前要求；只有持久 gated L2、L3 或项目明确要求 Completion Gate 的单元才需要完整 Requirement Traceability、持久施工契约与 Completion Audit。CI 全绿不能替代需求完整性核对，也不能依赖用户事后发现漏项。
+11. **验证按风险而不是固定技术栈分层。** L2/L3 先按 当前场景所需完整约束 建立技术栈无关 Validation Matrix。任何层都不能声称证明自己没有实际运行的下游边界。若项目真实存在 Web/API/PostgreSQL/外部 Provider，再叠加 当前场景所需完整约束 的 Browser Mock、Backend/API/PostgreSQL Integration、Contract、Real Full-stack、Real Provider Probe 专项规则；这些细节保留但不强加给 CLI、Library、Mobile、Embedded、IaC 等项目。
 12. **中文注释与函数级说明是通用规则。** 代码注释统一使用中文；专有名词、标识符、协议、库、标准名以及必须保持原样的外部文本可以保留原语言。新增或修改的 public/exported 函数必须有与复杂度匹配的函数级中文注释或文档注释；**内部/private/helper 函数也必须写函数级中文注释或文档注释**，不能因为不是 public 就省略。简单函数的说明可以非常简短，但不能用“自解释”作为完全不写函数级说明的理由。复杂规则、关键不变量、状态转换、算法取舍、兼容原因和重要副作用还要重点解释 `why / invariant / risk / compatibility`，不要逐行翻译语法。
 13. **重要功能可观测性需要匹配现有体系。** 如果仓库已有日志/事件基础设施，且功能涉及关键生命周期、异步任务、外部 I/O、重试/部分失败、状态转换或后期排障价值，应补最小充分结构化观测。复用现有 logger/event/脱敏/关联 ID；禁止打印 Secret/Token/密码/敏感 Raw/PII，禁止 INFO 高频刷屏，日志也不能替代数据库/文件中的正式业务事实或 Health/Audit 机制。
 14. **Git 提交信息统一中文。** 所有 Git 提交信息使用中文，包括普通提交、修复提交和合并提交的说明文本；命令、路径、标识符、版本号等必要技术内容可以保留原文。项目可以进一步规定提交格式或前缀，但不能把提交信息语言改为非中文。
@@ -111,7 +131,7 @@ CMakeLists.txt ≠ Linux-only
 - Monorepo / Polyglot；
 - Documentation / Configuration / Migration-only 当前任务。
 
-具体识别和验证边界见 [02_跨项目研发任务路由.md](references/02_跨项目研发任务路由.md)。
+具体识别和验证边界见 当前场景所需完整约束。
 
 ### 2.2 研发阶段 / 任务类型
 
@@ -134,7 +154,7 @@ Greenfield 表示工程事实尚未建立或只建立了一部分。此时先确
 
 ### 2.3 编程语言 / 工具链
 
-读取 [03_编程语言与工具链适配规则.md](references/03_编程语言与工具链适配规则.md)。它覆盖 Python、JavaScript / TypeScript、Go、Rust、Java / Kotlin、.NET、C / C++、Swift、Dart / Flutter、PHP、Ruby、Elixir、Monorepo、Container / IaC，并提供未列语言的统一发现算法。
+读取 当前场景所需完整约束。它覆盖 Python、JavaScript / TypeScript、Go、Rust、Java / Kotlin、.NET、C / C++、Swift、Dart / Flutter、PHP、Ruby、Elixir、Monorepo、Container / IaC，并提供未列语言的统一发现算法。
 
 任何 profile 都只负责导航：
 
@@ -156,35 +176,36 @@ Greenfield 表示工程事实尚未建立或只建立了一部分。此时先确
 | 等级 | 适用范围 | Change 记录 | 设计门禁 |
 | --- | --- | --- | --- |
 | L1 | 行为不变机械修改，或边界明确、影响隔离的极小修复 | 不创建 | 简短计划后执行，仍需验证 |
-| L2 | 新功能、行为变化、重要 Bug、多文件修改、多人并行或需要追踪的工作 | 一个可审计施工契约 | 明确目标、成功标准、范围、非目标、不变项、验证 |
-| L3 | public API/ABI、Schema/Migration、跨模块 Contract、架构、认证授权、安全、部署恢复、重大依赖或破坏性兼容变化 | 扩展同一个施工契约 | 比较 2–3 个真实方案，关键上游决策确认后实现 |
+| L2 | 新功能、行为变化、重要 Bug、多文件修改、多人并行或需要追踪的工作 | 最小充分任务契约；出现持久治理价值时升级为持久施工契约 | 明确目标、成功标准、范围、非目标、不变项、验证 |
+| L3 | public API/ABI、Schema/Migration、跨模块 Contract、架构、认证授权、安全、部署恢复、重大依赖或破坏性兼容变化 | 持久施工契约 | 比较 2–3 个真实方案，关键上游决策确认后实现 |
 
 行数少不等于 L1。公共配置字段、CLI flag、序列化格式、数据库列、权限语义、不可逆数据操作都可能是 L2/L3。
 
 ## 3. 按触发条件读取资源
 
-不要把所有 reference 一次性全读，也不能在命中触发条件时跳过对应 reference。
+不要把所有 完整约束 一次性全读，也不能在命中触发条件时跳过对应 完整约束。
 
 | 触发条件 | 必须读取 |
 | --- | --- |
-| 首次进入仓库、Greenfield 工程基线尚未建立、缓存缺失或可能过期 | [01_项目发现与可失效缓存.md](references/01_项目发现与可失效缓存.md) + [02_跨项目研发任务路由.md](references/02_跨项目研发任务路由.md) |
-| 需要识别项目形态、研发阶段或组合流程 | [02_跨项目研发任务路由.md](references/02_跨项目研发任务路由.md) |
-| 需要确认语言、Runtime、Manifest、锁文件、构建或包管理；新增/修改网络下载源、镜像或依赖安装链 | [03_编程语言与工具链适配规则.md](references/03_编程语言与工具链适配规则.md) |
-| L2/L3、需要需求追踪或已有 Active Change | [04_轻量变更管理.md](references/04_轻量变更管理.md) |
-| 新/当前 Change 使用 Completion Gate | [10_完成定义追溯门禁.md](references/10_完成定义追溯门禁.md) |
-| 开发 Feature、修 Bug、重构、性能或调查失败 | [05_设计实施与根因调试.md](references/05_设计实施与根因调试.md) |
-| Frontend / Web UI / Design-to-Code / Figma-to-code / 设计稿转代码；新增页面、跨页面 UI 或需要选择前端技术方案 | [16_前端与Design-to-Code实施规则.md](references/16_前端与Design-to-Code实施规则.md) |
-| 需要规划或审计验证证据；新增/修改永久 CI/Workflow 或测试/发布门禁 | [07_通用验证与证据策略.md](references/07_通用验证与证据策略.md) |
-| Web/API/PostgreSQL/Provider 等专项边界真实存在 | [08_分层测试与验收策略.md](references/08_分层测试与验收策略.md) |
-| 跨模块、跨消费者、Contract/Schema/Migration/Owner/数据边界 | [06_仓库边界数据交换与条件式约束.md](references/06_仓库边界数据交换与条件式约束.md) |
-| 多人、多 Agent、多个分支或 Active Change 并行 | [09_多人和多智能体并行协作.md](references/09_多人和多智能体并行协作.md) |
-| Review、Ready、交付或准备表达完成结论 | [11_两阶段复核与完成前验证.md](references/11_两阶段复核与完成前验证.md) |
-| 首次安装/升级 Agent_Skills、创建/补充目标项目 AGENTS、首次 Project Governance Bootstrap、治理事实漂移校准或修复 managed block | [01_项目发现与可失效缓存.md](references/01_项目发现与可失效缓存.md) + [12_目标项目安装与AGENTS_Bootstrap.md](references/12_目标项目安装与AGENTS_Bootstrap.md) |
-| Runtime Bundle/Routing Manifest/Task Route/MCP/Project Payload/安装升级或 Release identity | [13_本地MCP_Runtime分发与原文上下文加载.md](references/13_本地MCP_Runtime分发与原文上下文加载.md) |
-| Git/PR/Release/Delivery、依赖变化、安全边界、最终交付报告或宿主能力降级 | [14_Git交付依赖安全与宿主能力边界.md](references/14_Git交付依赖安全与宿主能力边界.md) |
-| Skill/reference/模板/项目 Overlay 的精简、重组、拆分、合并、改名、迁移或通用化 | [15_规则内容守恒与Skill维护.md](references/15_规则内容守恒与Skill维护.md) |
+| 首次进入仓库、Greenfield 工程基线尚未建立、缓存缺失或可能过期 | 当前场景所需完整约束 |
+| 需要识别项目形态、研发阶段或组合流程 | 当前场景所需完整约束 |
+| 需要确认语言、Runtime、Manifest、锁文件、构建或包管理；新增/修改网络下载源、镜像或依赖安装链 | 当前场景所需完整约束 |
+| Repository L1 持久实现、已确认根因的隔离小修复或 L1 targeted validation | 当前场景所需完整约束 |
+| L3、已有 Active Change、明确要求变更记录/完成门禁或其他已确认持久施工契约 | 当前场景所需完整约束 |
+| 新/当前 Change 使用 Completion Gate、正式仓库初始化、L3 或交付单元 | 当前场景所需完整约束 |
+| L2/L3 的 Requirement/Feature/Bug/Refactor，或任意系统性诊断、Incident、Performance | 当前场景所需完整约束 |
+| Frontend / Web UI / Design-to-Code / Figma-to-code / 设计稿转代码；新增页面、跨页面 UI 或需要选择前端技术方案 | 当前场景所需完整约束 |
+| L2/L3 需要规划或审计 Validation Matrix；新增/修改永久 CI/Workflow 或测试/发布门禁 | 当前场景所需完整约束；L1 targeted validation 由 当前场景所需完整约束 负责 |
+| Web/API/PostgreSQL/Provider 等专项边界真实存在 | 当前场景所需完整约束 |
+| 跨模块、跨消费者、Contract/Schema/Migration/Owner/数据边界 | 当前场景所需完整约束 |
+| 多人、多 Agent、多个分支或 Active Change 并行 | 当前场景所需完整约束 |
+| 显式 Review/Audit、持久 Change/PR Ready、Git/Release 交付或项目明确要求独立复核 | 当前场景所需完整约束 |
+| 首次安装/升级 Agent_Skills、创建/补充目标项目 AGENTS、首次 Project Governance Bootstrap、治理事实漂移校准或修复 managed block | 当前场景所需完整约束 |
+| Runtime Bundle/Routing Manifest/Task Route/MCP/Project Payload/安装升级或 Release identity | 当前场景所需完整约束 |
+| Git/PR/Release/Delivery、依赖变化、安全边界、最终交付报告或宿主能力降级 | 当前场景所需完整约束 |
+| Skill/完整约束/模板/项目 Overlay 的精简、重组、拆分、合并、改名、迁移或通用化 | 当前场景所需完整约束 |
 
-不要要求用户重复提供能够从仓库、缓存或工具确认的信息。只读取当前任务真正需要的事实和 reference，不用“全仓全部读一遍”替代理解调用链。
+不要要求用户重复提供能够从仓库、缓存或工具确认的信息。只读取当前任务真正需要的事实和 完整约束，不用“全仓全部读一遍”替代理解调用链。
 
 ## 4. 统一工作流
 
@@ -218,11 +239,11 @@ Greenfield 表示工程事实尚未建立或只建立了一部分。此时先确
 
 绝不覆盖、回滚、格式化或混入无关用户修改。
 
-Greenfield 仓库即使暂时为空，也先确认仓库根、当前 Git 状态、目标运行/交付环境和用户已确认约束；没有既有代码时不伪造“当前架构”，而是把尚待建立的工程事实标成待决策或待实现。目标项目**首次接入** Agent_Skills、治理状态待校准或长期**治理事实**疑似漂移时，按 ref01 + ref12 在**任何实质性生产代码修改之前**完成 `Project Governance Bootstrap`：写授权下校准项目 Overlay、重读最终 `AGENTS.md` 后**继续原始研发任务**；只有只读授权时在会话内完成最少充分调查、不写项目规则并**继续原始只读任务**。普通后续任务没有长期治理变化时不重复全量校准。
+Greenfield 仓库即使暂时为空，也先确认仓库根、当前 Git 状态、目标运行/交付环境和用户已确认约束；没有既有代码时不伪造“当前架构”，而是把尚待建立的工程事实标成待决策或待实现。目标项目**首次接入** Agent_Skills、治理状态待校准或长期**治理事实**疑似漂移时，按 当前场景所需完整约束 在**任何实质性生产代码修改之前**完成 `Project Governance Bootstrap`：写授权下校准项目 Overlay、重读最终 `AGENTS.md` 后**继续原始研发任务**；只有只读授权时在会话内完成最少充分调查、不写项目规则并**继续原始只读任务**。普通后续任务没有长期治理变化时不重复全量校准。
 
 ### 4.3 恢复项目和工具链事实
 
-按 [01_项目发现与可失效缓存.md](references/01_项目发现与可失效缓存.md) 与 [03_编程语言与工具链适配规则.md](references/03_编程语言与工具链适配规则.md) 确认任务相关的：
+按 当前场景所需完整约束 与 当前场景所需完整约束 确认任务相关的：
 
 ```text
 README / Requirements / Architecture
@@ -262,7 +283,7 @@ python <skill>/scripts/coding.py discover --root <repo>
 
 - `cache_hit`：候选事实源未出现可见失效信号；复用导航，但仍读取本次真实需求、实现、调用链和相关测试；
 - `created` / `refreshed`：检查索引发现的规则、需求、架构、Contract、Migration、配置、依赖和测试入口；
-- 脚本失败：保留原错误，按 `01_项目发现与可失效缓存.md` 人工流程继续，不声称缓存有效。
+- 脚本失败：保留原错误，按 `当前场景所需完整约束` 人工流程继续，不声称缓存有效。
 
 索引只保存路径、分类、轻量指纹和可直接提取的脚本名，不复制需求正文。`cache_hit` 不代表普通源码没有变化，也不能代替 `git diff`、真实文件或调用链调查。缓存 `generated_at` 必须使用带 `+08:00` 偏移的北京时间；旧缓存路径不读取、不迁移，直接由下一次 discover 在 `.agents/project-context.json` 重建。
 
@@ -298,7 +319,7 @@ python <skill>/scripts/coding.py status --root <repo> --json
 - shared tests/fixtures；
 - dependencies/build/release resources。
 
-发现交集时指出具体冲突并决定排序、拆分或共同 Owner；没有交集时不因为“都改后端/都改前端”制造冲突。Change 是 Git 协作协议，不是锁，也看不到未推送/私有客户端状态。多人/多 Agent 细节遵循 [09_多人和多智能体并行协作.md](references/09_多人和多智能体并行协作.md)。
+发现交集时指出具体冲突并决定排序、拆分或共同 Owner；没有交集时不因为“都改后端/都改前端”制造冲突。Change 是 Git 协作协议，不是锁，也看不到未推送/私有客户端状态。多人/多 Agent 细节遵循 当前场景所需完整约束。
 
 ### 4.6 分类 L1/L2/L3 并固化任务契约
 
@@ -326,9 +347,15 @@ Git 授权
 
 L1 可以在工作说明内维护。
 
-L2/L3 必须有一个可审计施工契约。优先复用项目已有正式变更治理，只要它能够承载当前任务需要的目标、成功标准、Requirement Traceability、Validation Matrix、Completion Audit、验证和交付状态；项目已有机制不能承载这些语义时，不静默降低门禁，应按项目规则补充最小承载或提请上游决定。
+L2 必须有**最小充分任务契约**，但不等于必须新建持久文件。它可以由本轮已确认用户要求、PR body、Issue/工单、Spec/OpenSpec/RFC、项目已有 Change/Proposal 或其他可供执行和审查的正式事实承载，只要目标、成功标准、范围/非目标、不变项、风险和验证入口足够清楚。只有跨 Owner、跨 PR、跨会话长期开发、复杂依赖/阶段、正式审计、项目规则明确要求变更记录，或本任务确实需要 Completion Gate 等**持久治理价值**出现时，才升级为独立持久施工契约。
 
-项目没有可复用治理机制时，可以使用 Coding 自带 `coding-change/v1`：
+L3 必须有稳定的持久施工契约，并补充方案比较、公共兼容、Migration/部署/回滚以及安全/运维风险。
+
+目标项目 Overlay 可以更严格。例如项目规则明确要求所有 L2 都使用正式 Change 时，该项目继续执行更严格门禁；通用 Coding 的轻量默认不能覆盖项目自己的治理要求。
+
+当确实需要持久施工契约时，优先复用项目已有正式变更治理，只要它能够承载当前任务实际 required 的 Requirement Traceability、Validation Matrix、Completion Audit、验证和交付状态。项目已有机制不能承载这些 required 语义时，不静默降低门禁，应按项目规则补充最小承载或提请上游决定。
+
+只有任务需要持久施工契约、项目又没有可复用治理机制时，才使用 Coding 自带 `coding-change/v1`：
 
 ```text
 python <skill>/scripts/coding.py new-change --root <repo> \
@@ -346,7 +373,7 @@ python <skill>/scripts/coding.py new-change --root <repo> \
 completion_gate: required
 ```
 
-对这种 Change，编码前必须从本轮用户明确决定、正式 Requirement/Roadmap/Spec/Stage/ADR 和适用项目规则中独立建立 Requirement Traceability。状态只允许：
+对这种持久 gated Change，编码前必须从本轮用户明确决定、正式 Requirement/Roadmap/Spec/Stage/ADR 和适用项目规则中独立建立 Requirement Traceability。状态只允许：
 
 ```text
 satisfied
@@ -410,7 +437,7 @@ not_satisfied
 
 ### 4.9 先建立 Validation Matrix
 
-L2/L3 使用 [07_通用验证与证据策略.md](references/07_通用验证与证据策略.md) 的通用维度：
+L2/L3 使用 当前场景所需完整约束 的通用维度：
 
 ```text
 行为 / Unit / Component
@@ -425,7 +452,7 @@ Docs / Governance / Other
 
 每层只写 `required` 或 `not_applicable`。
 
-如果实际项目是 Web/API/PostgreSQL/Provider，再读取 [08_分层测试与验收策略.md](references/08_分层测试与验收策略.md)，把通用维度映射为其完整专项层：
+如果实际项目是 Web/API/PostgreSQL/Provider，再读取 当前场景所需完整约束，把通用维度映射为其完整专项层：
 
 ```text
 Browser Mock Acceptance
@@ -437,11 +464,27 @@ Real Provider Probe
 
 保留原专项职责：Browser Mock 广覆盖用户状态，Backend/DB 证明服务器与持久化，Contract 防机器接口漂移，Full-stack 用少量 Golden Path 证明真实接线，Provider Probe 仅必要时有界执行。CLI、Library、Mobile、Embedded、IaC 没有这些边界时不制造它们。
 
+L1 targeted validation 不为形式建立完整 Matrix；确认满足 Repository L1 前提时按 当前场景所需完整约束 选择 parse/compile/typecheck/targeted test/regression/direct invocation 等最便宜且直接的证据。若只有 Contract、真实 persistence/runtime、跨组件或 package/release 等更强层才能证明目标，重新评估风险并退出轻量路径。
+
 ### 4.10 按研发阶段实施
 
-#### Feature / 行为变化 / Bug / Refactor
+#### Repository L1 Fast Path
 
-读取 [05_设计实施与根因调试.md](references/05_设计实施与根因调试.md)，默认：
+如果当前事实已经证明是行为不变机械修改，或根因已确认、边界明确且影响隔离的极小修复，并且不触及 public/数据/安全/依赖/运行时/CI/部署/交付等升级边界，则读取 当前场景所需完整约束，按：
+
+```text
+最少相关事实
+→ 最小修改 / 最小回归
+→ targeted validation
+→ Docs Impact
+→ 按真实 Review / Git 门禁结束或升级
+```
+
+已确认根因的 L1 Bug 必须保留回归证据，但不因为 `阶段=缺陷修复` 本身进入完整系统性诊断。调查中发现根因未知、公共边界或其他更强风险后，立即退出本路径并重新路由。
+
+#### L2/L3 Feature / 行为变化 / Bug / Refactor
+
+读取 当前场景所需完整约束，默认：
 
 ```text
 Red
@@ -459,7 +502,7 @@ Bug 修复必须有回归证据。测试验证真实行为，不只验证 Mock �
 允许 TDD 例外，但必须明确原因和替代验证，例如：
 
 - parser/schema；
-- link/reference；
+- link/完整约束；
 - generated diff；
 - build；
 - dry-run/plan；
@@ -469,9 +512,9 @@ Bug 修复必须有回归证据。测试验证真实行为，不只验证 Mock �
 
 不要伪造一个形式化 Red。
 
-#### 失败 / Bug / 性能 / 异常
+#### 需要诊断的失败 / Bug / 性能 / 异常
 
-先根因调查，不猜测式修补：
+根因未知、需要提出和证伪假设、Incident、性能或复杂异常先读取 当前场景所需完整约束 并执行根因调查，不猜测式修补：
 
 ```text
 完整错误和调用栈
@@ -485,7 +528,7 @@ Bug 修复必须有回归证据。测试验证真实行为，不只验证 Mock �
 → 单一修复
 ```
 
-连续三次修复假设失败时停止叠加补丁，重新审视架构、前提和观测手段并报告阻塞。
+连续三次修复假设失败时停止叠加补丁，重新审视架构、前提和观测手段并报告阻塞。已确认根因且仍满足 Repository L1 的隔离小修复按上一节执行，不重复预付完整诊断上下文。
 
 #### 最小、精准、兼容
 
@@ -512,7 +555,7 @@ Bug 修复必须有回归证据。测试验证真实行为，不只验证 Mock �
 
 ### 4.11 跨模块、Contract、Schema 与数据边界
 
-任务跨模块、跨消费者、接口/事件/数据，或仓库已有明确 Owner/Contract/Schema/Migration 时读取 [06_仓库边界数据交换与条件式约束.md](references/06_仓库边界数据交换与条件式约束.md)。
+任务跨模块、跨消费者、接口/事件/数据，或仓库已有明确 Owner/Contract/Schema/Migration 时读取 当前场景所需完整约束。
 
 只在仓库真实存在的边界上执行：
 
@@ -571,7 +614,7 @@ roadmap / release state（项目实际维护时）
 
 ### 4.13 Completion Audit、两阶段 Review 与新鲜验证
 
-对 `completion_gate: required` 的 Coding Change，或项目既有治理中承载等价 Completion Gate 的 L2/L3 单元，在 `ready_for_review` / 等价 Ready 状态前先执行：
+对 `completion_gate: required` 的 Coding Change，或项目既有治理中承载等价 Completion Gate 的 gated L2/L3 单元，在 `ready_for_review` / 等价 Ready 状态前执行完整 Completion Audit：
 
 ```text
 重新读取上游正式事实源
@@ -581,6 +624,16 @@ roadmap / release state（项目实际维护时）
 → 执行适用的反向能力审计
 → 复核 Validation Matrix 的层级选择和证据等级
 → 清零 not_satisfied
+```
+
+普通轻量 L2 没有持久 gated Change 时，不创建形式化 Completion Audit；但在给出“完成 / 可交付 / 可合并”这类强结论前仍至少执行最小完成核对：
+
+```text
+重新读取当前 Requirement Source / 已确认任务事实
+→ 目标、范围、非目标和验收是否仍是当前版本
+→ 关键不变项是否保持
+→ required 验证是否有本轮新鲜证据
+→ 未验证项、延期和未知项是否如实暴露
 ```
 
 反向审计不是固定“前端 ↔ 后端”；按项目形态检查真实双向能力，例如：
@@ -603,7 +656,7 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 
 它只验证机器能判断的结构、状态、Source 路径、占位符和 Audit checkbox，不能判断自然语言业务完整性，也不能自动证明 Validation Matrix 充分。项目使用其他正式治理载体时，使用该项目已有机器校验，并保留同等语义 Review；不要假装 Coding 的脚本懂它没有实现的外部 schema。
 
-完成 Audit 后按 [11_两阶段复核与完成前验证.md](references/11_两阶段复核与完成前验证.md)：
+**只有当前实际存在显式 Review/Audit、持久 gated L2/L3 的独立审查门禁、PR/Change Ready、Git/Release 交付或项目规则明确要求独立复核时**，才按 当前场景所需完整约束 进入完整两阶段 Review：
 
 ```text
 上游 Requirement Completeness Review
@@ -611,6 +664,8 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 → 实现和测试证据
 → Code Quality / 安全 / 兼容 / 可维护性 / 无关改动
 ```
+
+单纯为了获得 targeted validation 新鲜证据而执行 `验证`，不自动触发完整两阶段 Review。隔离 L1 与普通轻量 L2 在目标验证、最小完成核对和 Docs Impact 闭环后，如果没有新的审查/交付门禁，可以结束当前实现任务。
 
 严重/重要问题未解决不能继续交付。
 
@@ -620,7 +675,7 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 确定能证明结论的命令/检查
 → 实际运行完整命令
 → 读取完整输出、退出码、失败数量
-→ 对照成功标准、Requirement Traceability、Validation Matrix、diff
+→ 对照成功标准、Requirement Traceability（适用时）、Validation Matrix、diff
 → 只陈述证据支持的状态
 ```
 
@@ -628,12 +683,16 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 
 ### 4.14 关闭或保留 Change
 
+只有当前任务实际使用了持久 Change / 项目等价施工契约时才进入本节的状态和归档动作：
+
 - 尚未合并/发布：只有 Traceability、Validation Matrix、Completion Audit、验证和文档同步满足时才能进入 `ready_for_review` 或项目等价 Ready 状态；
 - 全部成功标准、验证、文档同步完成且集成状态已确认：标记 `done` / 项目等价完成状态后再归档；Coding 自带 carrier 归档到 `<change-root>/archive/YYYY-MM/`；
 - active 期间需求变化：先回上游事实源和 Traceability，再更新同一个 Change；
 - 已归档需求后来再变：创建新 Change，不改历史；
 - archive 不是成功证据，不能先归档再补验证；
 - 不得删除 `completion_gate`、降低项目现有 gate 或改写状态来绕过 Ready Check。
+
+普通 L1/轻量 L2 没有持久 Change 时，不为了“关闭流程”补建再归档一份 Change。
 
 ## 5. 多 Agent / 多人协作
 
@@ -647,33 +706,34 @@ python <skill>/scripts/ready_check.py --root <repo> --require-active-ready
 - 证据范围是否被夸大；
 - 是否混入无关改动。
 
-不要直接相信“子 Agent 已完成”。详细规则见 [09_多人和多智能体并行协作.md](references/09_多人和多智能体并行协作.md)。
+不要直接相信“子 Agent 已完成”。详细规则见 当前场景所需完整约束。
 
 ## 6. Git、依赖、安全、交付与宿主能力边界
 
-只要任务涉及 Git / PR / Release / Delivery、依赖变化、安全边界、最终交付报告，或当前宿主能力不足需要降级，必须读取 [14_Git交付依赖安全与宿主能力边界.md](references/14_Git交付依赖安全与宿主能力边界.md)。原主文件中 Git、依赖、安全、最终报告和能力边界的详细规则已完整迁入该 reference；不能因为本节变短而把它们视为可选建议。
+只要任务涉及 Git / PR / Release / Delivery、依赖变化、安全边界、最终交付报告，或当前宿主能力不足需要降级，必须读取 当前场景所需完整约束。原主文件中 Git、依赖、安全、最终报告和能力边界的详细规则已完整迁入该 完整约束；不能因为本节变短而把它们视为可选建议。
 
 ## 7. 规则内容守恒与 Skill 维护
 
-当任务会精简、重组、拆分、合并、改名、迁移或通用化 [`SKILL.md`](SKILL.md)、reference、模板或项目 Overlay 时，必须在修改之前读取 [15_规则内容守恒与Skill维护.md](references/15_规则内容守恒与Skill维护.md)。内容守恒仍是硬门禁：只有逐项证明完全等价时才允许消除重复，无法证明时保留原细节。
+当任务会精简、重组、拆分、合并、改名、迁移或通用化 [`SKILL.md`](SKILL.md)、完整约束、模板或项目 Overlay 时，必须在修改之前读取 当前场景所需完整约束。内容守恒仍是硬门禁：只有逐项证明完全等价时才允许消除重复，无法证明时保留原细节。
 
 ## 10. Review Skill 集成
 
-#### Review Skill 完成前协作（仓库存在时）
+#### Review Skill 按实际门禁协作（仓库存在时）
 
-如果仓库存在 [`.agents/skills/review/SKILL.md`](../review/SKILL.md)，Coding 必须把 Review 视为完成前的独立审查层，而不是可选建议：
+如果仓库存在 [`.agents/skills/review/SKILL.md`](../review/SKILL.md)，Coding 在**真实审查条件命中时**把 Review 作为独立审查层；Review 能力完整保留，但不是所有实现任务的固定终点：
 
-- **显式 Code Review / Audit**：Coding 先完成仓库事实恢复、四维任务路由、风险/工具链/权限确认，并读取当前任务应触发的 Coding references；随后必须读取 [`.agents/skills/review/SKILL.md`](../review/SKILL.md)，立即切入 Review，由 Review 负责独立需求重建、Findings 和测试充分性审查；
-- **任何 Coding 实现任务**：完成实现、目标验证、文档同步和进入完成前 Review 时，必须读取 [`.agents/skills/review/SKILL.md`](../review/SKILL.md) 并执行适用 Review；不能只由同一个 Coding 流程用一句“自检完成”替代独立 Review 方法；
+- **显式 Code Review / Audit**：Coding 先完成仓库事实恢复、四维任务路由、风险/工具链/权限确认，并读取当前任务应触发的 Coding 当前场景所需完整约束；随后必须读取 [`.agents/skills/review/SKILL.md`](../review/SKILL.md)，立即切入 Review，由 Review 负责独立需求重建、Findings 和测试充分性审查；
+- **L3、持久 gated L2、PR/Change Ready、Git/Release 交付或项目规则明确要求独立 Review**：完成实现、目标验证、Docs Impact 和适用 Completion Audit 后，必须读取 [`.agents/skills/review/SKILL.md`](../review/SKILL.md) 并执行与风险匹配的 Quick / Standard / Deep Review；不能只用作者自检替代真实独立审查门禁；
+- **隔离 L1 与普通轻量 L2**：在 targeted validation、最小完成核对和 Docs Impact 闭环后，如果没有显式 Review、跨 Owner/PR 交接、项目门禁或更高风险事实，不机械加载独立 Review。后续发现这些事实时再升级，不能为了省流程拒绝已经真实命中的 Review；
 - Review 可以复用 Coding 作为唯一研发规范源，但 Coding 不把 Review 的 Findings、测试专家方法和报告细节复制进本文件；
 - Review 处于 `review-only` 时不自动获得实现修改授权；Review 发现需要修生产代码且任务已授权修复时，返回 Coding，重新按 Coding 完整流程修复并取得新鲜验证，然后再次进入 Review 做 re-review；
-- Review Skill **存在但无法读取**时，必须报告阻塞，**不得宣称 Review 完成**、可合并或可交付；
-- 如果仓库没有 Review Skill，则继续执行 Coding 当前 [11_两阶段复核与完成前验证.md](references/11_两阶段复核与完成前验证.md) 的既有 Review 规则，不能因为可选 Skill 缺失跳过 Review 本身。
+- Review Skill **存在但无法读取**时，只有在当前 Review 实际 required 时才构成完成/交付阻塞；此时不得宣称 Review 完成、可合并或可交付；
+- 如果仓库没有 Review Skill，而当前事实又要求独立/正式 Review，则继续执行 Coding 当前 当前场景所需完整约束 的既有 Review 规则；如果最小充分治理已证明 Review `not_applicable`，不因为缺少 Review Skill 反向制造一轮审查。
 
-这项协作只增加独立审查层，不改变 Coding 原有 L1-L3、Change、TDD、Validation Matrix、Completion Audit、Docs、Git、CI 或交付规则；跨 Skill 选择和交接条件仍由 Router 负责。
+这项协作保留 Coding 原有 L1-L3、Change、TDD、Validation Matrix、Completion Audit、Docs、Git、CI 和交付能力，只把它们从固定串行流水线改成按真实触发条件组合；跨 Skill 选择和交接条件仍由 Router 负责。
 
 ## 11. 网络下载源与永久 Workflow 治理
 
-涉及 Runtime/Compiler/SDK、系统包、语言依赖、bootstrap、Docker/OCI、CI bootstrap、部署/恢复等网络下载行为时，必须读取 [03_编程语言与工具链适配规则.md](references/03_编程语言与工具链适配规则.md) 的“网络下载源与镜像选择”完整规则；该 reference 已保留中国大陆/海外环境判断、联网核验、供应链身份、完整性与 fallback 的全部细节。
+涉及 Runtime/Compiler/SDK、系统包、语言依赖、bootstrap、Docker/OCI、CI bootstrap、部署/恢复等网络下载行为时，必须读取 当前场景所需完整约束 的“网络下载源与镜像选择”完整规则；该 完整约束 已保留中国大陆/海外环境判断、联网核验、供应链身份、完整性与 fallback 的全部细节。
 
-新增或修改永久 CI/Workflow/test gate/build/package/release 流程，或明确优化其成本/时延时，必须读取 [07_通用验证与证据策略.md](references/07_通用验证与证据策略.md) 的 `CI / Workflow Responsibility Audit` 完整规则。删除、合并、迁移或大幅收缩永久 Job/Step 前仍必须完成 `Evidence Preservation Mapping`，并检查 Branch Protection/Ruleset/release gate/check name 的实时消费者；不能因主文件不再复制该长段规则而降低证据责任。
+新增或修改永久 CI/Workflow/test gate/build/package/release 流程，或明确优化其成本/时延时，必须读取 当前场景所需完整约束 的 `CI / Workflow Responsibility Audit` 完整规则。删除、合并、迁移或大幅收缩永久 Job/Step 前仍必须完成 `Evidence Preservation Mapping`，并检查 Branch Protection/Ruleset/release gate/check name 的实时消费者；不能因主文件不再复制该长段规则而降低证据责任。
