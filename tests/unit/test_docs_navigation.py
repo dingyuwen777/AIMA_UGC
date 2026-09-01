@@ -64,6 +64,20 @@ def test_checker_rejects_exact_file_navigation_inside_code_fence(tmp_path: Path)
     assert any(error.startswith("DOC008 docs/guide.md:5") for error in errors)
 
 
+def test_checker_rejects_file_description_navigation_fence(tmp_path: Path) -> None:
+    """“文件路径→职责”代码块本质是导航，应迁移成可点击 Markdown。"""
+    _minimal_repository(tmp_path)
+    _write(
+        tmp_path / "docs/guide.md",
+        "实现导航：\n\n```text\nbackend/src/example.py\n→ 业务实现\n\nscripts/check.py\n→ 静态检查\n```\n",
+    )
+
+    errors = CHECK_REPOSITORY(tmp_path)
+
+    assert any(error.startswith("DOC008 docs/guide.md:4") for error in errors)
+    assert any(error.startswith("DOC008 docs/guide.md:7") for error in errors)
+
+
 def test_checker_does_not_treat_commands_as_file_navigation(tmp_path: Path) -> None:
     """包含文件参数的可执行命令仍是命令，不应被机械链接化。"""
     _minimal_repository(tmp_path)
@@ -78,7 +92,7 @@ def test_checker_does_not_treat_commands_as_file_navigation(tmp_path: Path) -> N
 
 
 def test_checker_does_not_treat_mixed_code_fence_as_navigation(tmp_path: Path) -> None:
-    """代码块即使含单独文件字面量，也不能因偶然命中仓库文件而整体判成导航。"""
+    """配置/流程代码块不能因偶然命中仓库文件而整体判成导航。"""
     _minimal_repository(tmp_path)
     _write(
         tmp_path / "docs/guide.md",
