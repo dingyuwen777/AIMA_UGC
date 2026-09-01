@@ -26,4 +26,5 @@ jobs:
           python3 scripts/quality/audit_docs_facts.py
           python3 scripts/quality/audit_docs_api_paths.py
           python3 scripts/quality/audit_docs_paths.py
+          python3 scripts/quality/audit_docs_coverage.py
           git diff --check
