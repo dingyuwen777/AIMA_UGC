@@ -38,6 +38,41 @@ jobs:
           resolve = checker["_resolve_file_reference"]
           is_linked = checker["_is_inline_code_linked"]
 
+          def link_for(doc: Path, target: Path, description: str | None = None) -> str:
+              label = target.relative_to(root).as_posix()
+              href = os.path.relpath(target, start=doc.parent).replace(os.sep, "/")
+              suffix = f"：{description}" if description else ""
+              return f"- [`{label}`]({href}){suffix}\n"
+
+          def convert_fence(doc: Path, block: list[str]) -> list[str] | None:
+              entries = [line.strip() for line in block[1:-1] if line.strip()]
+              if not entries:
+                  return None
+
+              pure_targets: list[Path] = []
+              for value in entries:
+                  target = resolve(root, doc, value, repository_files)
+                  if target is None:
+                      pure_targets = []
+                      break
+                  pure_targets.append(target)
+              if pure_targets:
+                  return [link_for(doc, target) for target in pure_targets] + ["\n"]
+
+              if len(entries) >= 2 and len(entries) % 2 == 0:
+                  pairs: list[tuple[Path, str]] = []
+                  for index in range(0, len(entries), 2):
+                      value = entries[index]
+                      description = entries[index + 1]
+                      target = resolve(root, doc, value, repository_files)
+                      if target is None or not description.startswith("→"):
+                          pairs = []
+                          break
+                      pairs.append((target, description.removeprefix("→").strip()))
+                  if pairs:
+                      return [link_for(doc, target, description) for target, description in pairs] + ["\n"]
+              return None
+
           def link_unlinked_inline(doc: Path, line: str) -> str:
               pieces: list[str] = []
               cursor = 0
@@ -79,20 +114,34 @@ jobs:
           changed: list[str] = []
           for doc in documents:
               original_lines = doc.read_text(encoding="utf-8").splitlines(keepends=True)
-              updated_lines: list[str] = []
-              in_fence = False
-              for line in original_lines:
-                  if fence_re.match(line):
-                      in_fence = not in_fence
-                      updated_lines.append(line)
+              output: list[str] = []
+              index = 0
+              while index < len(original_lines):
+                  line = original_lines[index]
+                  if not fence_re.match(line):
+                      updated = link_unlinked_inline(doc, line)
+                      output.append(normalize_link_labels(doc, updated))
+                      index += 1
                       continue
-                  if in_fence:
-                      updated_lines.append(line)
-                      continue
-                  updated = link_unlinked_inline(doc, line)
-                  updated_lines.append(normalize_link_labels(doc, updated))
 
-              updated_text = "".join(updated_lines)
+                  end = index + 1
+                  while end < len(original_lines) and not fence_re.match(original_lines[end]):
+                      end += 1
+                  if end >= len(original_lines):
+                      output.extend(original_lines[index:])
+                      break
+
+                  block = original_lines[index : end + 1]
+                  converted = convert_fence(doc, block)
+                  if converted is None:
+                      output.extend(block)
+                  else:
+                      if output and output[-1].strip():
+                          output.append("\n")
+                      output.extend(converted)
+                  index = end + 1
+
+              updated_text = "".join(output)
               original_text = "".join(original_lines)
               if updated_text != original_text:
                   doc.write_text(updated_text, encoding="utf-8")
