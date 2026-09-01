@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import runpy
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 CHECKER_PATH = ROOT / "scripts" / "quality" / "check_agent_governance.py"
 CHECKER = runpy.run_path(str(CHECKER_PATH))
 CHECK_REPOSITORY = CHECKER["check_repository"]
+MANAGED_START = "<!-- agent-skills:managed:start -->"
+MANAGED_END = "<!-- agent-skills:managed:end -->"
 
 
 def _write(path: Path, content: str) -> None:
@@ -21,9 +24,9 @@ def _minimal_repository(root: Path) -> None:
         root / "AGENTS.md",
         "\n".join(
             (
-                "<!-- agent-skills:managed:start -->",
-                "受管区",
-                "<!-- agent-skills:managed:end -->",
+                MANAGED_START,
+                "项目治理能力自身的运行与实现细节不属于项目进度或交付内容。",
+                MANAGED_END,
                 "<!-- agent-skills:project-governance:v1 -->",
                 "项目区",
             )
@@ -37,9 +40,56 @@ def _minimal_repository(root: Path) -> None:
     )
 
 
+def _managed_block(text: str) -> str:
+    """提取唯一的 Agent_Skills managed block，供项目侧披露回归检查。"""
+    start = text.index(MANAGED_START)
+    end = text.index(MANAGED_END, start) + len(MANAGED_END)
+    return text[start:end]
+
+
 def test_current_repository_governance_wiring_is_valid() -> None:
     """当前仓库必须只依赖 AIMA 自己可维护的项目治理接线。"""
     assert CHECK_REPOSITORY(ROOT) == []
+
+
+def test_current_managed_block_is_project_facing_without_runtime_internals() -> None:
+    """正式安装后的根入口不得继续暴露旧 Runtime/MCP/路由加载实现。"""
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    managed = _managed_block(agents)
+
+    assert "项目治理能力自身的运行与实现细节不属于项目进度或交付内容" in managed
+    for forbidden in (
+        "Runtime Mode",
+        "研发治理 MCP",
+        "规则标识",
+        "路由映射",
+        "加载明细",
+        "内部凭据",
+    ):
+        assert forbidden not in managed
+
+
+def test_project_docs_do_not_route_generic_governance_to_local_installed_skill_core() -> None:
+    """项目文档规则不得把本地 Agent_Skills 安装副本当通用治理入口。"""
+    docs_agents = (ROOT / "docs/AGENTS.md").read_text(encoding="utf-8")
+
+    assert ".agents/skills/coding/" not in docs_agents
+    assert "先遵守根 `AGENTS.md`、当前任务适用的项目事实与文档规则" in docs_agents
+
+
+def test_repository_no_longer_tracks_legacy_runtime_or_install_manifest() -> None:
+    """正式升级后 legacy manifest 与项目内 Runtime binary 不再作为 Git 仓库资产。"""
+    assert not (ROOT / ".agents/agent-skills-install.json").exists()
+
+    tracked = subprocess.run(
+        ["git", "ls-files", "--error-unmatch", ".agents/runtime/agent-skills-mcp.exe"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert tracked.returncode != 0
+    assert "/.agents/runtime/" in (ROOT / ".gitignore").read_text(encoding="utf-8")
 
 
 def test_checker_rejects_supplier_internal_workflow_paths(tmp_path: Path) -> None:
