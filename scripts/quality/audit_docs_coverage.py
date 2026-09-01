@@ -30,10 +30,18 @@ def _worker_job_types() -> set[str]:
 
 
 def _table_names() -> set[str]:
-    pattern = re.compile(r'__tablename__\s*=\s*["\']([^"\']+)["\']')
+    patterns = (
+        re.compile(r'__tablename__\s*=\s*["\']([^"\']+)["\']'),
+        re.compile(r'\bTable\(\s*["\']([^"\']+)["\']'),
+        re.compile(r'op\.create_table\(\s*["\']([^"\']+)["\']'),
+    )
     result: set[str] = set()
-    for path in (ROOT / "backend/src/aima_ugc").rglob("*.py"):
-        result.update(pattern.findall(path.read_text(encoding="utf-8")))
+    roots = (ROOT / "backend/src/aima_ugc", ROOT / "migrations")
+    for source_root in roots:
+        for path in source_root.rglob("*.py"):
+            text = path.read_text(encoding="utf-8")
+            for pattern in patterns:
+                result.update(pattern.findall(text))
     return result
 
 
