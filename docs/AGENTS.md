@@ -1,8 +1,8 @@
 # AIMA_UGC `docs/` 文档本地开发规则
 
-本文件只适用于 `docs/` 目录及其子目录，是根 `AGENTS.md` 与 `.agents/skills/coding/` 通用研发流程在 AIMA_UGC 文档树中的项目本地 Overlay。
+本文件只适用于 `docs/` 目录及其子目录，是根 `AGENTS.md` 在 AIMA_UGC 文档树中的项目本地 Overlay；这里只维护 AIMA 自己的文档命名、导航、事实同步和知识保留规则，不解释或复制通用治理能力的安装与运行实现。
 
-先遵守根 `AGENTS.md`、当前任务适用的 Blueprint / Roadmap / Appendix / Guide 和 Coding Skill。本文件不改变这些事实源的职责，只补充 AIMA_UGC 的文档文件命名与导航规则。
+先遵守根 `AGENTS.md`、当前任务适用的项目事实与文档规则，再按任务读取相关 Blueprint / Roadmap / Appendix / Guide、代码、Contract、Schema/Migration、测试、CI 或其他真实事实源。本文件不改变这些事实源的职责。
 
 ## 技术文档文件名规范
 
