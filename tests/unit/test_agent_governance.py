@@ -25,7 +25,7 @@ def _minimal_repository(root: Path) -> None:
         "\n".join(
             (
                 MANAGED_START,
-                "项目治理能力自身的运行与实现细节不属于项目进度或交付内容。",
+                "治理能力自身的运行与实现细节不属于项目进度或交付内容。",
                 MANAGED_END,
                 "<!-- agent-skills:project-governance:v1 -->",
                 "项目区",
@@ -61,7 +61,7 @@ def test_current_managed_block_is_project_facing_without_runtime_internals() -> 
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     managed = _managed_block(agents)
 
-    assert "项目治理能力自身的运行与实现细节不属于项目进度或交付内容" in managed
+    assert "治理能力自身的运行与实现细节不属于项目进度或交付内容" in managed
     for forbidden in (
         "Runtime Mode",
         "研发治理 MCP",
