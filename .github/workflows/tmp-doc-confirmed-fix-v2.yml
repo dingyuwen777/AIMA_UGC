@@ -24,6 +24,26 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/quality/fix_docs_confirmed_drift_v2.py
+          python3 - <<'PY'
+          from pathlib import Path
+
+          reporting = Path('backend/src/aima_ugc/platform/reporting/README.md')
+          text = reporting.read_text(encoding='utf-8')
+          old = '](../../../contracts/export/models.py)'
+          if text.count(old) != 2:
+              raise SystemExit(f'expected two reporting link fixes, got {text.count(old)}')
+          reporting.write_text(text.replace(old, '](../../contracts/export/models.py)'), encoding='utf-8')
+
+          roadmap = Path('docs/roadmap/README.md')
+          text = roadmap.read_text(encoding='utf-8')
+          old = '`fullstack.yml` 是当前唯一永久 Full-stack Acceptance Workflow；'
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one roadmap wording fix, got {text.count(old)}')
+          roadmap.write_text(
+              text.replace(old, '上述 Full-stack Acceptance Workflow 是当前唯一永久入口；', 1),
+              encoding='utf-8',
+          )
+          PY
           git diff --check
           python3 scripts/quality/check_docs.py
           python3 scripts/quality/audit_docs_api_paths.py | tee /tmp/api-paths.log
