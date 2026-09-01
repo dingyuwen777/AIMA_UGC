@@ -117,7 +117,8 @@ def _is_inline_code_linked(line: str, start: int, end: int) -> bool:
 def _suggest_link(doc: Path, target: Path, label: str) -> str:
     """生成从当前文档到目标文件的相对 Markdown 链接建议。"""
     relative = os.path.relpath(target, start=doc.parent).replace(os.sep, "/")
-    return f"[`{label.replace('\\', '/')}`]({relative})"
+    normalized_label = label.replace("\\", "/")
+    return f"[`{normalized_label}`]({relative})"
 
 
 def _check_repository_file_navigation(
