@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -15,6 +16,12 @@ FENCE_RE = re.compile(r"^\s*(```|~~~)")
 STANDALONE_MANIFEST_RE = re.compile(r"(?<![\w-])manifest\.json\b")
 AGENT_REFERENCE_RE = re.compile(r"\.agents/skills/[^/\s)`]+/references/")
 EXCLUDED_DOC_ROOTS = {".agents", ".git", "changes"}
+FALLBACK_EXCLUDED_ROOTS = EXCLUDED_DOC_ROOTS | {
+    ".runtime",
+    ".venv",
+    "dist",
+    "node_modules",
+}
 PATH_META_CHARS = frozenset("*?[]{}<>|$\"'")
 SPECIAL_FILENAMES = {"Dockerfile", "Makefile"}
 
@@ -31,23 +38,46 @@ def _is_current_project_doc(root: Path, path: Path) -> bool:
     return path.name == "README.md"
 
 
-def _iter_current_docs(root: Path) -> tuple[Path, ...]:
-    """返回当前项目文档域内所有 Markdown，保持稳定排序。"""
-    return tuple(
-        sorted(
-            path
-            for path in root.rglob("*.md")
-            if path.is_file() and _is_current_project_doc(root, path)
-        )
-    )
+def _fallback_repository_files(root: Path) -> tuple[Path, ...]:
+    """在非 Git 测试夹具中回退为受控文件系统扫描。"""
+    files: list[Path] = []
+    for path in root.rglob("*"):
+        relative = path.relative_to(root)
+        if any(part in FALLBACK_EXCLUDED_ROOTS for part in relative.parts):
+            continue
+        if path.is_file():
+            files.append(path)
+    return tuple(sorted(files))
 
 
 def _repository_files(root: Path) -> tuple[Path, ...]:
-    """建立仓库文件索引，供短路径和文件名导航解析使用。"""
+    """优先用 Git 受控文件建立索引，避免扫描运行时生成目录和外部软链。"""
+    result = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "-z"],
+        check=False,
+        capture_output=True,
+        text=False,
+    )
+    if result.returncode != 0:
+        return _fallback_repository_files(root)
+
+    files: list[Path] = []
+    for raw_path in result.stdout.split(b"\0"):
+        if not raw_path:
+            continue
+        relative = Path(raw_path.decode("utf-8"))
+        path = root / relative
+        if path.is_file():
+            files.append(path)
+    return tuple(sorted(files))
+
+
+def _iter_current_docs(root: Path, repository_files: tuple[Path, ...]) -> tuple[Path, ...]:
+    """从受控文件索引返回当前项目文档域内所有 Markdown。"""
     return tuple(
-        path.resolve()
-        for path in root.rglob("*")
-        if path.is_file() and ".git" not in path.relative_to(root).parts
+        path
+        for path in repository_files
+        if path.suffix.lower() == ".md" and _is_current_project_doc(root, path)
     )
 
 
@@ -64,45 +94,43 @@ def _looks_like_file_reference(value: str) -> bool:
     return "/" in normalized or "." in name or name in SPECIAL_FILENAMES
 
 
+def _add_if_repo_file(root: Path, candidate: Path, valid: set[Path]) -> None:
+    """只把解析后仍位于仓库内的真实文件加入候选集合。"""
+    resolved = candidate.resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError:
+        return
+    if resolved.is_file():
+        valid.add(resolved)
+
+
 def _resolve_file_reference(
     root: Path,
     doc: Path,
     value: str,
     repository_files: tuple[Path, ...],
 ) -> Path | None:
-    """把文档中的具体路径/文件名解析到唯一存在的仓库文件。"""
+    """把文档中的具体路径/文件名解析到唯一存在的受控仓库文件。"""
     if not _looks_like_file_reference(value):
         return None
 
     normalized = value.replace("\\", "/")
-    direct_candidates: list[Path] = []
-    if normalized.startswith(("./", "../")):
-        direct_candidates.append((doc.parent / normalized).resolve())
-    else:
-        direct_candidates.extend(
-            (
-                (root / normalized).resolve(),
-                (doc.parent / normalized).resolve(),
-            )
-        )
-
     valid: set[Path] = set()
-    root_resolved = root.resolve()
-    for candidate in direct_candidates:
-        try:
-            candidate.relative_to(root_resolved)
-        except ValueError:
-            continue
-        if candidate.is_file():
-            valid.add(candidate)
+    if normalized.startswith(("./", "../")):
+        _add_if_repo_file(root, doc.parent / normalized, valid)
+    else:
+        _add_if_repo_file(root, root / normalized, valid)
+        _add_if_repo_file(root, doc.parent / normalized, valid)
 
     suffix = normalized.removeprefix("./")
     if not suffix.startswith("../"):
         suffix_marker = f"/{suffix}"
         for candidate in repository_files:
-            relative = candidate.relative_to(root_resolved).as_posix()
-            if relative == suffix or relative.endswith(suffix_marker):
-                valid.add(candidate)
+            relative = candidate.relative_to(root).as_posix()
+            if relative != suffix and not relative.endswith(suffix_marker):
+                continue
+            _add_if_repo_file(root, candidate, valid)
 
     if len(valid) != 1:
         return None
@@ -142,7 +170,8 @@ def _check_repository_file_navigation(
                 suggestion = _suggest_link(doc, target, value)
                 errors.append(
                     f"DOC008 {doc.relative_to(root)}:{line_number}: "
-                    f"代码块中的真实仓库文件导航不可点击 {value}；改为代码块外链接，例如 {suggestion}"
+                    f"代码块中的真实仓库文件导航不可点击 {value}；"
+                    f"改为代码块外链接，例如 {suggestion}"
                 )
             continue
 
@@ -164,9 +193,10 @@ def _check_repository_file_navigation(
 
 def check_repository(root: Path = ROOT) -> list[str]:
     """返回当前项目文档错误；空列表表示文档静态约束满足。"""
+    root = root.resolve()
     errors: list[str] = []
-    documents = _iter_current_docs(root)
     repository_files = _repository_files(root)
+    documents = _iter_current_docs(root, repository_files)
 
     for relative in ENTRY_DOCS:
         doc = root / relative
@@ -183,7 +213,7 @@ def check_repository(root: Path = ROOT) -> list[str]:
                 continue
             resolved = (doc.parent / unquote(target_path)).resolve()
             try:
-                resolved.relative_to(root.resolve())
+                resolved.relative_to(root)
             except ValueError:
                 errors.append(f"DOC002 {doc.relative_to(root)}: 链接逃出仓库 {target}")
                 continue
