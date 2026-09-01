@@ -23,6 +23,7 @@ jobs:
         run: |
           git diff --check
           python scripts/quality/check_agent_governance.py
+          python -m pip install --disable-pip-version-check --quiet uv
           uv run pytest tests/unit/test_agent_governance.py -q
       - name: Commit project-owned governance text
         run: |
