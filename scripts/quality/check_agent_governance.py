@@ -194,6 +194,11 @@ def check_repository(root: Path = ROOT) -> list[str]:
                 f"GOV015 {COMPLETION_GATE.as_posix()}: "
                 "PR Requirement Source 校验需要最小 issues: read 权限"
             )
+        if "types:" not in gate_text or "- edited" not in gate_text:
+            errors.append(
+                f"GOV015 {COMPLETION_GATE.as_posix()}: "
+                "PR 正文 edited 后必须重新执行 Requirement Source 校验"
+            )
 
     errors.extend(_check_issue_form(root / REQUIREMENT_ISSUE_FORM, REQUIREMENT_FORM_FIELDS))
     errors.extend(_check_issue_form(root / BUG_ISSUE_FORM, BUG_FORM_FIELDS))
