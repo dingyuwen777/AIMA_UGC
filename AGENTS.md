@@ -318,7 +318,7 @@ PostgreSQL
 - HTTP：Pydantic Request/Response；
 - Canonical：Pydantic Canonical Model；
 - Job：版本化 Pydantic Payload；
-- AI taxonomy/输出业务规则：当前版本 Prompt Markdown。
+- AI taxonomy/输出业务规则：数据库中唯一 active Analysis Scheme Version；空库由当前 Git Prompt bootstrap。
 
 生成：
 
@@ -328,7 +328,7 @@ PostgreSQL
 
 生成目录禁止手工修改。Contract 删除字段、改名、改类型、改语义、可选变必填、改默认排序或错误都按破坏性变化处理。
 
-AI taxonomy 不允许在 Python、Blueprint、Excel 文档和前端各维护一份平行列表；当前唯一业务事实源是 [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md`](backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md)。
+AI taxonomy 不允许在 Python、Blueprint、Excel 文档和前端各维护一份平行列表；运行时唯一业务事实源是数据库中唯一 active Analysis Scheme Version，[`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md`](backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md) 只负责空库 bootstrap/灾备基线。Prompt 模板、`relevance` 规则、情感、`voice_type`、标签和 Validator 所需 Taxonomy 必须作为同一 Scheme Version 原子发布或回滚。
 
 ## 9. Job、Scheduler 与 Provider 恢复
 

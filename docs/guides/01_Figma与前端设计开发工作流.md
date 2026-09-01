@@ -441,6 +441,20 @@ Fresh Figma Design Context / Screenshot
 
 Browser Mock 可以覆盖广泛的用户可见状态和请求语义，但不能冒充真实后端、PostgreSQL 或 Worker；Real Full-stack 也不需要机械复制全部视觉状态。
 
+### 7.3 管理员配置正式 Figma 基线
+
+管理员配置继续使用同一个正式设计文件 `EAPm8KVarUe7BFTSnzvOpT`，但作为独立页面，不放进声音广场 Canvas：
+
+```text
+车型 / 关键词资源        3964:2
+Analysis Scheme          3967:86
+配置状态板               3971:2
+```
+
+代码 Owner 是 [`frontend/src/features/admin-configuration/`](../../frontend/src/features/admin-configuration/)；Provider-neutral Principal 和管理员路由守卫分别由 [`frontend/src/features/identity/`](../../frontend/src/features/identity/) 与 [`frontend/src/app/router.ts`](../../frontend/src/app/router.ts) 负责。车型多选跨 Collection、Import、声音广场和管理员页复用 [`frontend/src/shared/VehicleMultiSelect.vue`](../../frontend/src/shared/VehicleMultiSelect.vue)。
+
+这组 Figma 只定义信息架构、布局、状态和组件复用。角色固定为管理员/普通用户，发布/回滚审计、车型删除限制、Scheme 版本冲突、动态目录和错误语义以当前 Contract/代码为准；示例车型、Prompt、Hash 和审计记录不构成生产事实。当前三个节点共复用 37 个共享组件实例，正文统一使用 Noto Sans SC，并分别保留实现注释；程序化 QA 未发现可见越界、非规范字体或本地重复组件。精确 QA 账本见 [`changes/active/CHG-20260902-u3-admin-identity-config/figma-state.json`](../../changes/active/CHG-20260902-u3-admin-identity-config/figma-state.json)。
+
 ---
 
 ## 8. Figma 文件建议怎样组织

@@ -333,7 +333,7 @@ Current
 backend/src/aima_ugc/modules/analysis/
 ```
 
-Prompt / taxonomy 唯一业务事实源：
+空库 Prompt/taxonomy bootstrap 基线：
 
 - [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md`](backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md)
 
@@ -346,7 +346,7 @@ sentiment
 labels[]
 ```
 
-当前 `voice_type` 与 sentiment、一级/二级标签一样，直接使用 Prompt 中的中文业务名称作为合法机器值；完整集合只维护在当前 Prompt Taxonomy，不在 README 复制第二份列表。
+运行时唯一业务事实源是数据库中唯一 active Analysis Scheme Version；它原子包含 Prompt、相关性规则、`voice_type`、sentiment、一级/二级标签和 Validator Taxonomy。Git Prompt 只用于空库 bootstrap/灾备，不与数据库双写。完整集合不在 README 复制。
 
 真实用户发声当前唯一业务判断：
 
@@ -357,6 +357,7 @@ voice_type == "真实用户发声"
 Analysis 正式表定义：
 
 - [`backend/src/aima_ugc/modules/analysis/tables.py`](backend/src/aima_ugc/modules/analysis/tables.py)
+- [`backend/src/aima_ugc/modules/analysis/scheme_tables.py`](backend/src/aima_ugc/modules/analysis/scheme_tables.py)
 
 AI Semantic Relevance 在：
 
@@ -370,6 +371,7 @@ analysis_content_results.relevance
 
 ```text
 Analysis Run Preview
+→ 冻结 active Scheme Version / Prompt 快照
 → analysis.content-run-plan.v1 Planner
 → 冻结 Run Target
 → 有界 analysis.content-label.v1 Shard Job
@@ -398,6 +400,8 @@ Analysis Run Preview
 ```text
 Content Current
 + 当前匹配 Analysis
++ 当前版本车型证据与人工覆盖
++ Availability 当前投影
 + 来源链
 ```
 
@@ -414,6 +418,7 @@ Content Current
 /voice-plaza
 /collection-runtime
 /collection-strategy
+/admin/configuration
 ```
 
 正式 Feature：
@@ -422,11 +427,13 @@ Content Current
 frontend/src/features/voice-plaza/
 frontend/src/features/import-batches/
 frontend/src/features/collection-strategy/
+frontend/src/features/admin-configuration/
+frontend/src/features/identity/
 ```
 
-统一“导入数据”仍位于 `/collection-runtime` 的 `features/import-batches` Feature；手动 Analysis Run 仍位于 `/voice-plaza`。它们没有新增独立 Router 路由。
+统一“导入数据”位于 `/collection-runtime`；手动 Analysis Run 位于 `/voice-plaza`；车型/关键词关系、Analysis Scheme 和审计位于管理员专用 `/admin/configuration`。车型目录选择跨页面复用 [`frontend/src/shared/VehicleMultiSelect.vue`](frontend/src/shared/VehicleMultiSelect.vue)。
 
-当前没有独立 Analysis/Report/Job/Settings/Dashboard 页面。后端有 API 不等于已经有独立 Vue 页面。
+当前没有独立 Analysis/Report/Job/Dashboard 页面。管理员配置页不是飞书登录页；企业 Authentication 仍待后续 Adapter 接入。
 
 前端入口：
 
@@ -569,7 +576,7 @@ AIMA_HOST_ROOT
 源码开发继续使用：
 
 ```text
-env.local
+[`env.local`](env.local)
 → scripts/dev/backend.py / frontend.py
 ```
 

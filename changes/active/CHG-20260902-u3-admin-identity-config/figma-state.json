@@ -1,0 +1,65 @@
+{
+  "runId": "aima-u1-u5-admin-config-20260902",
+  "fileKey": "EAPm8KVarUe7BFTSnzvOpT",
+  "phase": "phase4",
+  "step": "qa-complete",
+  "completedSteps": [
+    "phase0",
+    "phase1/foundations-audit",
+    "phase1/css-code-syntax",
+    "phase2/pages",
+    "phase2/foundations-screenshot",
+    "phase2/component-inventory",
+    "phase3/admin-sidebar-entry",
+    "phase3/vehicle-catalog-screen",
+    "phase3/analysis-scheme-screen",
+    "phase3/state-and-handoff-board",
+    "phase3/component-reuse-audit",
+    "phase4/visual-screenshot-review",
+    "phase4/geometry-font-annotation-audit"
+  ],
+  "entities": {
+    "pages": {
+      "01 设计规范": "923:8311",
+      "02 公共组件": "283:1714",
+      "03 管理员配置": "3957:2"
+    },
+    "components": {
+      "AIMA/顶部栏": "753:2319",
+      "AIMA/页面标题区": "1210:3005",
+      "AIMA/侧边栏": "589:2115",
+      "AIMA/空状态": "1089:386",
+      "AIMA/模态框": "72:171",
+      "AIMA/表格/表格": "3361:5883"
+    },
+    "componentSets": {
+      "AIMA/按钮": "968:362",
+      "AIMA/输入框": "969:318",
+      "AIMA/下拉选择": "969:344",
+      "AIMA/复选框": "970:316",
+      "AIMA/开关": "970:326",
+      "AIMA/徽标": "970:338",
+      "AIMA/标签": "970:346",
+      "AIMA/侧边栏菜单项": "1079:386",
+      "AIMA/页签项": "1082:390",
+      "AIMA/反馈横幅": "1088:398",
+      "AIMA/表格/数据单元格": "3361:2348"
+    },
+    "frames": {
+      "管理员配置 / 车型目录 / Default": "3964:2",
+      "管理员配置 / Analysis Scheme / Published": "3967:86",
+      "管理员配置 / 状态与交付注释": "3971:2"
+    }
+  },
+  "pendingValidations": [],
+  "validationEvidence": {
+    "screenshots": ["3964:2", "3967:86", "3971:2"],
+    "geometry": "no visible descendants outside target frames",
+    "fonts": "all audited text uses Noto Sans SC",
+    "reuse": "37 component instances across the three delivery frames; no local duplicate components",
+    "annotations": "developer handoff annotations present on all delivery frames"
+  },
+  "userCheckpoints": {
+    "phase0": "approved-by-u1-u5-request-2026-09-02"
+  }
+}

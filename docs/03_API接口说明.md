@@ -375,6 +375,19 @@ inherit_ai
 
 模型原始 Result 不 UPDATE/DELETE；人工决定写入 `analysis_content_relevance_reviews`。批量请求先校验/锁定全部目标，任一目标不可操作时整批失败；已有人工覆盖要切到相反结论必须先撤销。精确 Contract 看 [`backend/src/aima_ugc/contracts/relevance_review.py`](../backend/src/aima_ugc/contracts/relevance_review.py)。
 
+## 7.4 内容人工覆盖、Count、可用状态与通知
+
+```text
+POST /api/v1/contents/count
+PUT  /api/v1/contents/{content_id}/analysis-review
+PUT  /api/v1/contents/{content_id}/vehicles
+POST /api/v1/content-availability-observations
+GET  /api/v1/notifications
+PUT  /api/v1/notifications/read
+```
+
+Count 用独立 `none/exact/estimated` 语义，不替换 Cursor。车型与 Analysis 人工覆盖绑定当前 Content Version，并按维度显式锁定/解锁；Analysis 人工覆盖只纠正当前版本已完成的 AI 结果。Availability 追加观察历史，技术失败不能形成 `unavailable_confirmed`，确认下架还必须关联真实 Provider Attempt 或 Raw Artifact。Notification 按当前 Principal 隔离 Inbox/Read State，不替代 Job/Export/Run 状态机。
+
 ---
 
 # 8. Content Analysis API：当前新版 Run + 兼容 Request
@@ -532,6 +545,28 @@ max_catch_up_runs = 0
 
 完整 Scheduler 语义：[`docs/appendix/05_Scheduler调度执行与停机恢复.md`](appendix/05_Scheduler调度执行与停机恢复.md)。
 
+## 11.1 Principal、车型与管理员配置
+
+```text
+GET    /api/v1/principal
+GET    /api/v1/vehicle-models
+POST   /api/v1/vehicle-models
+GET    /api/v1/vehicle-models/{vehicle_model_id}
+PUT    /api/v1/vehicle-models/{vehicle_model_id}
+DELETE /api/v1/vehicle-models/{vehicle_model_id}
+POST   /api/v1/vehicle-models/{vehicle_model_id}/merge
+PUT    /api/v1/keyword-packs/{pack_id}/vehicle-models
+GET    /api/v1/analysis-schemes
+POST   /api/v1/analysis-schemes
+PUT    /api/v1/analysis-scheme-versions/{version_id}
+POST   /api/v1/analysis-scheme-versions/{version_id}/publish
+POST   /api/v1/analysis-scheme-versions/{version_id}/rollback
+GET    /api/v1/audit-events
+GET    /api/v1/export-columns
+```
+
+Provider-neutral Principal 只允许 `administrator/user`。车型、词包等只读目录可供普通业务页面消费；车型修改/合并/删除、词包写入、全局相关性、采集计划写入、Scheme 管理和审计查询均由后端管理员守卫保护。第一版不强制双人审批，但配置修改、发布和回滚必须记录审计。完整字段以 [`backend/src/aima_ugc/contracts/administration.py`](../backend/src/aima_ugc/contracts/administration.py) 和当前 OpenAPI 为准。
+
 ---
 
 # 12. Cursor 分页
@@ -579,6 +614,10 @@ Data Import 目录/Campaign 的分页/游标以其当前 Pydantic Contract 和 `
 → content-analysis-capabilities
 → analysis/content-runs
 → data-exports
+
+/admin/configuration
+→ principal / vehicle-models / keyword-pack vehicle links
+→ analysis-schemes / audit-events
 ```
 
 当前后端有兼容 `/api/v1/content-analysis-requests`、`/api/v1/import-batches`、`/historical-import-*`，不表示前端要维持平行主入口。

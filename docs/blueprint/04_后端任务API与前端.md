@@ -263,6 +263,7 @@ GET  /api/v1/collection-runtime/summary
 ```text
 GET  /api/v1/contents
 GET  /api/v1/contents/{content_id}
+POST /api/v1/contents/count
 GET  /api/v1/content-analysis-capabilities
 POST /api/v1/content-analysis-requests
 GET  /api/v1/content-analysis-jobs/{job_id}
@@ -272,6 +273,11 @@ GET  /api/v1/analysis/content-runs
 GET  /api/v1/analysis/content-runs/{run_id}
 POST /api/v1/analysis/content-runs/{run_id}/cancel
 POST /api/v1/content-relevance-reviews
+PUT  /api/v1/contents/{content_id}/analysis-review
+PUT  /api/v1/contents/{content_id}/vehicles
+POST /api/v1/content-availability-observations
+GET  /api/v1/notifications
+POST /api/v1/notifications/read
 ```
 
 代码：
@@ -283,11 +289,15 @@ POST /api/v1/content-relevance-reviews
 - [`backend/src/aima_ugc/adapters/persistence/postgres/analysis.py`](../../backend/src/aima_ugc/adapters/persistence/postgres/analysis.py)
 - [`backend/src/aima_ugc/adapters/persistence/postgres/relevance_reviews.py`](../../backend/src/aima_ugc/adapters/persistence/postgres/relevance_reviews.py)
 
-`GET /api/v1/content-analysis-capabilities` 是安全只读运行能力投影，只返回 `configured`。它用于让声音广场在 LLM Base URL / Model / Secret 未形成可执行配置时明确提示并禁用 AI 打标；前端不得读取 `env.local`、Secret 文件或复制后端配置判断。源码开发时，能力接口与 Worker 都从 `AIMA_EXTERNAL_SECRET_DIR` 对应的外部 Secret Root 读取 `llm_api_key`，不能误用只存 PostgreSQL/Cursor Secret 的内部 Root。该接口不返回 Base URL、Model、Provider、Secret 路径或 API Key，也不证明外部 LLM 此刻在线；Worker 的执行时配置守卫仍是最终防线。
+`GET /api/v1/content-analysis-capabilities` 是安全只读运行能力投影，只返回 `configured`。它用于让声音广场在 LLM Base URL / Model / Secret 未形成可执行配置时明确提示并禁用 AI 打标；前端不得读取 [`env.local`](../../env.local)、Secret 文件或复制后端配置判断。源码开发时，能力接口与 Worker 都从 `AIMA_EXTERNAL_SECRET_DIR` 对应的外部 Secret Root 读取 `llm_api_key`，不能误用只存 PostgreSQL/Cursor Secret 的内部 Root。该接口不返回 Base URL、Model、Provider、Secret 路径或 API Key，也不证明外部 LLM 此刻在线；Worker 的执行时配置守卫仍是最终防线。
 
 `POST /api/v1/content-analysis-requests` 是兼容入口，为保持既有 `request_id/job_id` Response，仍在 HTTP 短事务内冻结目标、创建首个 Shard 并建立 Analysis Run，并兼容历史 selected/query 语义。新页面只允许显式选择 1—1000 条内容：先调用 `/api/v1/analysis/content-runs/preview` 取得目标数、Shard 数和模型/Prompt/配置身份，再由用户确认创建 Run；新版 Preview/Create Contract 不接受 query scope。创建 HTTP 只保存 Run 头与 Planner Job。Planner 在 PostgreSQL 事务内用 `INSERT ... SELECT` 冻结 Content ID + `current_version`，复核 Preview 数量并维持有界 Shard Job 窗口；数量变化时整次冻结回滚，Run 返回 Planner `error_code` 供页面展示。查询范围 Run 要等真实付费模型 Gold Set、费用和容量报告后重新决策。不同 Run 结果全部保留，Current 按 Run 创建顺序选择，最新失败/取消不会抹掉旧成功结果。
 
 `POST /api/v1/content-relevance-reviews` 是同步短事务：接收 1—1000 个不重复 Content ID，并显式提交 `decision=relevant / irrelevant / inherit_ai`。`relevant/irrelevant` 分别把当前 Content Version 人工覆盖为业务相关/不相关；`inherit_ai` 撤销活动人工覆盖并恢复当前 AI 基线。批量请求先锁定并校验全部目标，任一目标不可操作则整批返回 409；重复提交当前已经生效的决定幂等。已有人工覆盖要切换到相反人工结论时必须先撤销。模型原始 `analysis_content_results` 不会被更新或删除。`GET /api/v1/contents` 与 Detail 同时返回 AI 原判和查询层派生的 `effective_relevance / relevance_source`，前端据此显示人工覆盖与撤销入口，不能从筛选条件猜测人工状态；AI 变为 `stale` 时活动人工覆盖仍可撤销。
+
+车型、发声类型、情感和标签的人工修订按 `content_id + content_version` 保存，并按维度锁住自动结果；只有显式人工 unlock 才允许后续自动结果重新成为当前投影。车型允许 0..N 个，不设主车型。Count 保持 Cursor 查询不变，通过独立请求表达 `none / exact / estimated`；exact 只在有界范围承诺。
+
+Availability 使用追加式 Observation，不覆盖历史。只有明确 Provider 业务证据可以形成 `unavailable_confirmed`，技术失败只能是 `unknown/suspected`。Notification 是业务终态的按 Principal 收件箱投影，不替代 Job/Export/Run 状态机。
 
 ### 5.4 正式 Excel Export
 
@@ -308,6 +318,8 @@ backend/src/aima_ugc/platform/export/excel.py
 ```
 
 下载只有在 Export 已完成且 Artifact 就绪时可用；未就绪返回 409，而不是空文件或 200。
+
+Export Request 可以提交后端列目录中的稳定 column code；后端在创建时校验白名单并冻结列目录版本/顺序，Worker 不接受任意数据库字段名。当前不保存个人列 Profile。
 
 ### 5.5 Excel Import 兼容入口
 
@@ -383,6 +395,21 @@ Campaign Response 的 `progress` 由后端从 Source Item、Snapshot Job 和 Chu
 
 当前正式 API 仍没有 `/alerts`、通用 Web Report Center 等未来占位路径。未来新增资源时以当时 Pydantic Contract 和 Route 为准，不提前在 Blueprint 冻结不存在的 URL。
 
+### 5.9 Principal、车型目录与管理员配置
+
+管理员能力的精确 Route/字段仍以 [`backend/src/aima_ugc/contracts/administration.py`](../../backend/src/aima_ugc/contracts/administration.py)、[`backend/src/aima_ugc/bootstrap/api.py`](../../backend/src/aima_ugc/bootstrap/api.py) 和生成 OpenAPI 为机器事实。稳定资源边界包括：
+
+```text
+GET  /api/v1/principal
+GET/POST/PUT/DELETE /api/v1/vehicle-models...
+PUT  /api/v1/keyword-packs/{pack_id}/vehicle-models
+GET/POST /api/v1/analysis-schemes
+PUT/POST /api/v1/analysis-scheme-versions/{version_id}...
+GET  /api/v1/audit-events
+```
+
+车型无引用时允许物理删除；有引用后只能废弃、改显示名或合并，合并迁移未来 Plan/Pack 引用但保留历史内容证据。Scheme 草稿保存追加新 Version；发布/回滚整体切换 active Version。第一版不强制双人审批，但上述配置写入、发布和回滚都要在同一 PostgreSQL 事务记录安全审计。
+
 ---
 
 ## 6. 当前前端真实实现
@@ -398,6 +425,7 @@ Campaign Response 的 `progress` 由后端从 Source Item、Snapshot Job 和 Chu
 /voice-plaza
 /collection-runtime
 /collection-strategy
+/admin/configuration
 ```
 
 主要 Feature：
@@ -406,6 +434,8 @@ Campaign Response 的 `progress` 由后端从 Source Item、Snapshot Job 和 Chu
 frontend/src/features/voice-plaza/
 frontend/src/features/import-batches/
 frontend/src/features/collection-strategy/
+frontend/src/features/admin-configuration/
+frontend/src/features/identity/
 ```
 
 含义：
@@ -414,6 +444,7 @@ frontend/src/features/collection-strategy/
 - `/collection-runtime`：Excel/TikHub 统一运行中心视图；其中只有一个“导入数据”入口，可选本地电脑或批准的服务器目录，并在同一 Campaign UI 中完成预检/启动/取消/重试、真实进度与冲突查看；
 - `/voice-plaza`：Analysis Run 预检、显式创建、历史、加权进度与取消；导出弹窗同时展示持久 Export Job 进度；
 - `/collection-strategy`：Keyword Pack、全局 Relevance 和 Collection Plan 管理；
+- `/admin/configuration`：管理员车型/关键词关系、Analysis Scheme 版本与审计；路由守卫只改善交互，后端仍独立鉴权；
 - `/`：当前 HomeView。
 
 后端已经有 Export API，并不等于当前已经有独立 `/export` Vue 页面；类似地，Analysis 使用声音广场中的能力，不存在独立 `features/analysis/` 就不能写成已有 Analysis 页面。
@@ -438,7 +469,7 @@ Feature Page
 - 修改 `frontend/src/generated/api/`；
 - Feature 直接导入另一个 Feature 的私有 Store；
 - 在页面代码里理解 PostgreSQL 表结构；
-- 直接读取 `env.local`、Secret 或复制后端配置规则来判断业务能力。
+- 直接读取 [`env.local`](../../env.local)、Secret 或复制后端配置规则来判断业务能力。
 
 如果设计稿字段和后端 Contract 不一致，先判断需求是否要改后端，不要在页面层“猜字段”。
 
@@ -614,19 +645,20 @@ HttpErrorResponse
 
 ---
 
-## 13. 当前认证边界
+## 13. 当前身份与认证边界
 
-当前代码已经有真实业务 API 和页面，但企业认证尚未正式接入。
+当前代码已有 Provider-neutral `Principal/AuthContext` 和后端 Authorization；角色只允许 `administrator` 与 `user`。development Identity Adapter 为本地环境提供 Principal，不能被描述成公网生产认证。
 
 因此：
 
 - 不能把当前 API 描述成已具备公网生产权限控制；
-- 不能提前在业务模块绑定飞书 `open_id/union_id`；
-- 未来身份 Provider 应进入统一 `Principal/AuthContext`；
+- 不能在业务模块绑定飞书 `open_id/union_id`；
+- 后续飞书身份源只通过 Identity Adapter 映射到既有 Principal；
 - Authentication 与 Authorization 分开；
 - 对象级下载/敏感资源权限最终由后端判断，不靠前端隐藏按钮。
+- 第一版不强制双人审批；配置修改、发布与回滚必须审计。
 
-认证接入属于独立高风险变更。
+飞书真实登录、回调、Session/OIDC、企业目录和生产部署接入属于后续独立高风险变更。
 
 ---
 
@@ -683,7 +715,7 @@ Job Payload / Handler
 /api/v1/reports
 独立 monitoring 模块
 独立 dashboard 模块
-企业登录/正式授权
+飞书企业登录/公网生产认证
 Word Report 的正式 PostgreSQL Job/API
 LLM 配置编辑/Secret 查询 API
 ```

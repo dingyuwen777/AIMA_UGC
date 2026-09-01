@@ -52,6 +52,7 @@ src/main.ts
 | `/collection-runtime` | 采集运行中心 | [`frontend/src/features/import-batches/pages/CollectionRuntimePage/CollectionRuntimePage.vue`](src/features/import-batches/pages/CollectionRuntimePage/CollectionRuntimePage.vue) |
 | `/collection-strategy` | 采集策略 | [`frontend/src/features/collection-strategy/pages/CollectionStrategyPage/CollectionStrategyPage.vue`](src/features/collection-strategy/pages/CollectionStrategyPage/CollectionStrategyPage.vue) |
 | `/voice-plaza` | 声音广场 | [`frontend/src/features/voice-plaza/pages/VoicePlazaPage/VoicePlazaPage.vue`](src/features/voice-plaza/pages/VoicePlazaPage/VoicePlazaPage.vue) |
+| `/admin/configuration` | 管理员配置 | [`frontend/src/features/admin-configuration/pages/AdminConfigurationPage.vue`](src/features/admin-configuration/pages/AdminConfigurationPage.vue) |
 
 注意：采集运行中心目前仍在：
 
@@ -177,7 +178,7 @@ Pydantic Request/Response
 
 ---
 
-## 5. 当前三个业务 Feature
+## 5. 当前四个业务 Feature
 
 ### 5.1 `features/import-batches`：采集运行中心 + 统一数据导入
 
@@ -288,7 +289,7 @@ src/features/voice-plaza/
 分类选项的调用链是：
 
 ```text
-当前 Prompt Taxonomy
+当前 active Analysis Scheme Taxonomy
 → GET /api/v1/content-analysis-taxonomy
 → generated Client
 → voice-plaza Store
@@ -296,6 +297,12 @@ src/features/voice-plaza/
 ```
 
 前端不维护情感、发声类型或标签合法值。Taxonomy 暂不可用时，页面显示带 `request_id` 的独立警告并禁用这些筛选，不把分类错误升级成列表错误；平台、文本、时间等独立筛选和当前内容列表仍可使用。实现入口见 [`frontend/src/features/voice-plaza/store.ts`](src/features/voice-plaza/store.ts) 和 [`frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaFilters.vue`](src/features/voice-plaza/pages/VoicePlazaPage/components/VoicePlazaFilters.vue)。
+
+### 5.4 `features/admin-configuration`：管理员业务配置
+
+该 Feature 消费 Principal、Vehicle Catalog、Keyword Pack↔车型、Analysis Scheme 和审计 Contract。角色只有 `administrator/user`；[`frontend/src/app/router.ts`](src/app/router.ts) 的守卫负责页面导航体验，真正权限由后端判断。车型选择跨 Collection、Import、声音广场和管理员页复用 [`frontend/src/shared/VehicleMultiSelect.vue`](src/shared/VehicleMultiSelect.vue)。
+
+Scheme 草稿、发布、回滚和车型修改都通过 generated Client；页面不保存第二套 Taxonomy，不直接写数据库，不把 development Principal 当飞书生产登录。
 
 注意三条不同能力：
 
@@ -333,9 +340,10 @@ src/shared/
 声音广场
 采集运行中心
 采集策略
+管理员配置（仅 administrator）
 ```
 
-未来能力如果还没有正式页面，不以 disabled 或无效按钮占位；等真实能力形成后，再按“Feature → Page → Route → App Shell → Test”同步加入。
+未来能力如果还没有正式页面，不以 disabled 或无效按钮占位；等真实能力形成后，再按“Feature → Page → Route → App Shell → Test”同步加入。飞书真实登录、Gold Set/双人审批、个人导出列 Profile 当前都不作为已实现页面能力。
 
 全局样式只放真正跨页面 Token/reset。当前 `src/shared/ui/` 提供页面头、按钮、代码内 SVG 图标和反馈 Banner；采集策略 KPI、表格、弹窗、抽屉和业务表单仍留在 Feature 内，不把业务规则塞进万能公共组件。
 
