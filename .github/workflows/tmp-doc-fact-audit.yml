@@ -21,13 +21,38 @@ jobs:
       - name: Audit current documentation facts
         shell: bash
         run: |
+          set -uo pipefail
+          status=0
+          for script in \
+            scripts/quality/check_docs.py \
+            scripts/quality/check_docs_facts.py \
+            scripts/quality/audit_docs_facts.py \
+            scripts/quality/audit_docs_api_paths.py \
+            scripts/quality/audit_docs_paths.py \
+            scripts/quality/audit_docs_coverage.py \
+            scripts/quality/audit_docs_commands.py \
+            scripts/quality/audit_docs_provider_capabilities.py
+          do
+            echo "::group::${script}"
+            python3 "${script}" || status=1
+            echo "::endgroup::"
+          done
+          git diff --check || status=1
+          exit "${status}"
+
+      - name: Show Ruff formatting diff
+        if: always()
+        shell: bash
+        run: |
           set -euo pipefail
-          python3 scripts/quality/check_docs.py
-          python3 scripts/quality/check_docs_facts.py
-          python3 scripts/quality/audit_docs_facts.py
-          python3 scripts/quality/audit_docs_api_paths.py
-          python3 scripts/quality/audit_docs_paths.py
-          python3 scripts/quality/audit_docs_coverage.py
-          python3 scripts/quality/audit_docs_commands.py
-          python3 scripts/quality/audit_docs_provider_capabilities.py
-          git diff --check
+          python3 -m pip install --disable-pip-version-check --quiet ruff==0.16.2
+          ruff format \
+            scripts/quality/check_current_docs_facts.py \
+            scripts/quality/doc_fact_catalog.py \
+            scripts/quality/report_current_docs_facts.py \
+            tests/unit/test_docs_navigation.py
+          git diff -- \
+            scripts/quality/check_current_docs_facts.py \
+            scripts/quality/doc_fact_catalog.py \
+            scripts/quality/report_current_docs_facts.py \
+            tests/unit/test_docs_navigation.py
