@@ -28,4 +28,36 @@ jobs:
           python3 scripts/quality/audit_docs_paths.py
           python3 scripts/quality/audit_docs_coverage.py
           python3 scripts/quality/audit_docs_commands.py
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          target_paths = {
+              '/api/v1/historical-import-campaigns',
+              '/api/v1/historical-import-campaigns/{campaign_id}',
+              '/api/v1/historical-import-campaigns/{campaign_id}/cancel',
+              '/api/v1/historical-import-campaigns/{campaign_id}/conflicts',
+              '/api/v1/historical-import-campaigns/{campaign_id}/items',
+              '/api/v1/historical-import-campaigns/{campaign_id}/retry-failed',
+              '/api/v1/historical-import-campaigns/{campaign_id}/start',
+              '/api/v1/historical-import/directories',
+              '/api/v1/import-batches/{batch_id}/supplement-eligibility',
+          }
+          payload = json.loads(Path('contracts/openapi/openapi.json').read_text(encoding='utf-8'))
+          for path in sorted(target_paths):
+              print(f'OPENAPI_DETAIL {path}')
+              for method, operation in payload['paths'][path].items():
+                  if method.startswith('x-') or not isinstance(operation, dict):
+                      continue
+                  print(json.dumps({
+                      'method': method.upper(),
+                      'summary': operation.get('summary'),
+                      'operationId': operation.get('operationId'),
+                      'deprecated': operation.get('deprecated', False),
+                      'tags': operation.get('tags', []),
+                      'description': operation.get('description'),
+                  }, ensure_ascii=False, sort_keys=True))
+          PY
+          echo '--- route source: historical compatibility ---'
+          rg -n -C 4 'historical-import|supplement-eligibility' backend/src/aima_ugc || true
           git diff --check
