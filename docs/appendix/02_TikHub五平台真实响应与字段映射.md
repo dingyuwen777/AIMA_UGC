@@ -851,11 +851,7 @@ Comment
 - 避免前导零丢失；
 - 不让第三方 JSON 类型决定数据库业务身份。
 
-精确 Contract：
-
-```text
-backend/src/aima_ugc/contracts/canonical.py
-```
+精确评论 Contract：[`backend/src/aima_ugc/contracts/canonical/comment.py`](../../backend/src/aima_ugc/contracts/canonical/comment.py)。
 
 ## 9.2 评论树只写有证据的父子关系
 
@@ -959,11 +955,7 @@ observed_fields
 
 ### 第四步：看 Contract
 
-```text
-backend/src/aima_ugc/contracts/canonical.py
-```
-
-确认系统允许保存哪些公共字段。
+查看 [`backend/src/aima_ugc/contracts/canonical/comment.py`](../../backend/src/aima_ugc/contracts/canonical/comment.py)，确认系统允许保存哪些公共字段。
 
 ### 第五步：看 Ingestion
 

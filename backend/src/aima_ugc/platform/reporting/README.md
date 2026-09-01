@@ -116,10 +116,8 @@ reports/assets/keyword_wordcloud.png
 
 这些是 Report Renderer 的读取要求，不是新的 `UnifiedDataExcelV1` Contract；统一 Excel 的机器/共享实现仍看：
 
-```text
-backend/src/aima_ugc/contracts/export.py
-backend/src/aima_ugc/platform/export/excel.py
-```
+- [`backend/src/aima_ugc/contracts/export/models.py`](../../contracts/export/models.py)
+- [`backend/src/aima_ugc/platform/export/excel.py`](../export/excel.py)
 
 ---
 
@@ -506,10 +504,8 @@ chart_png.py / 对应词云实现
 
 先判断是不是统一 Excel Contract 变化：
 
-```text
-backend/src/aima_ugc/contracts/export.py
-backend/src/aima_ugc/platform/export/excel.py
-```
+- [`backend/src/aima_ugc/contracts/export/models.py`](../../contracts/export/models.py)
+- [`backend/src/aima_ugc/platform/export/excel.py`](../export/excel.py)
 
 如果是，只改 Report Reader 会造成正式 Export 和 Report 语义分叉。
 

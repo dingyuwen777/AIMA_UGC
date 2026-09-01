@@ -630,11 +630,9 @@ execution_limits.py
 
 主要测试按当前仓库实际分布在：
 
-```text
-tests/unit/collection/
-tests/integration/
-.github/workflows/stage7-scheduler-runtime.yml
-```
+- [`tests/unit/collection/`](../../tests/unit/collection/)
+- [`tests/integration/`](../../tests/integration/)
+- [`.github/workflows/runtime.yml`](../../.github/workflows/runtime.yml)：当前 Runtime Acceptance；Scheduler 进程/Compose 运行边界由这一永久 Workflow 与相关测试共同覆盖，不再存在独立 `stage7-scheduler-runtime.yml`。
 
 关键行为至少应覆盖：
 

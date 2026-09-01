@@ -93,13 +93,13 @@ Stage 12：4000 万历史数据迁移与手动 AI 打标
 完整 Production Go-Live
 ```
 
-Stage 8F 的永久业务闭环证据入口：
+Stage 8F 及其后续持续扩展后的永久业务闭环证据入口：
 
-```text
-docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md
-.github/workflows/stage8f-fullstack.yml
-frontend/e2e-fullstack/excel-import.spec.ts
-```
+- [`docs/appendix/09_Stage8F前后端能力矩阵与真实验收.md`](../appendix/09_Stage8F前后端能力矩阵与真实验收.md)
+- [`.github/workflows/fullstack.yml`](../../.github/workflows/fullstack.yml)
+- [`frontend/e2e-fullstack/excel-import.spec.ts`](../../frontend/e2e-fullstack/excel-import.spec.ts)
+
+上述 Full-stack Acceptance Workflow 是当前唯一永久入口；Stage 8F 后新增的人工相关性与 Stage 12 场景也在同一套 Full-stack 入口继续扩展，不再维护独立 `stage8f-fullstack.yml`。
 
 其中真实 Excel Full-stack Acceptance 固定验证两条链：
 

@@ -295,7 +295,27 @@ GET /api/v1/jobs/{job_id}
 
 `GET /api/v1/jobs/{job_id}` 由 Import HTTP Service 暴露通用 Job Read Model；这不表示 `jobs` 表中所有内部 Job 自动成为公共 API。
 
-旧 `/api/v1/historical-import-*` Route 也继续作为 Stage 12 兼容边界存在，但当前页面不依赖它建立平行工作流。
+## 6.3 `GET /api/v1/import-batches/{batch_id}/supplement-eligibility`
+
+这是采集补采前的只读资格投影。后端按当前 Analysis Identity 读取该 Import Batch 对应的现有 Content Target，并按五个平台返回真实 `target_count`；接口本身不创建 Collection Run，也不把声音广场列表查询结果当资格依据。真正创建补采 Run 时，服务端仍会重新冻结/校验同一目标事实，因此该接口是前端展示与预检入口，不是最终写入守卫。
+
+## 6.4 Historical Import 兼容 API
+
+Stage 12 当前页面主流程使用 `data-import-campaigns`，但下列 Historical Import HTTP Contract 仍存在于当前 generated OpenAPI，且 HTTP 层没有标记 `deprecated`；它们属于兼容业务入口，不能描述成“已删除”，也不能再当成当前页面的第二套主工作流：
+
+```text
+GET  /api/v1/historical-import/directories
+GET  /api/v1/historical-import-campaigns
+POST /api/v1/historical-import-campaigns
+GET  /api/v1/historical-import-campaigns/{campaign_id}
+GET  /api/v1/historical-import-campaigns/{campaign_id}/items
+GET  /api/v1/historical-import-campaigns/{campaign_id}/conflicts
+POST /api/v1/historical-import-campaigns/{campaign_id}/start
+POST /api/v1/historical-import-campaigns/{campaign_id}/cancel
+POST /api/v1/historical-import-campaigns/{campaign_id}/retry-failed
+```
+
+精确 Method、Schema、operationId 和当前是否存在始终以 [`contracts/openapi/openapi.json`](../contracts/openapi/openapi.json) 为准。
 
 ---
 

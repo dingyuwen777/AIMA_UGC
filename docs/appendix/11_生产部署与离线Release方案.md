@@ -773,11 +773,9 @@ migrations/
 
 Windows 本地兼容相关时额外读：
 
-```text
-compose.windows.yaml
-docs/guides/03_Windows Docker Desktop Compose运行.md
-.github/workflows/compose-windows-desktop.yml
-```
+- [`compose.windows.yaml`](../../compose.windows.yaml)
+- [`docs/guides/03_Windows Docker Desktop Compose运行.md`](../guides/03_Windows%20Docker%20Desktop%20Compose运行.md)
+- [`.github/workflows/runtime.yml`](../../.github/workflows/runtime.yml)：Windows Compose overlay 已并入当前 Runtime Acceptance，不再存在独立 `compose-windows-desktop.yml`。
 
 然后只实施当前最小 Release 单元。
 
