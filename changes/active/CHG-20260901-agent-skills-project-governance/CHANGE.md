@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260901-agent-skills-project-governance
 title: 收敛 AIMA_UGC 项目治理与 CI 接线
 level: L3
-status: in_progress
+status: ready_for_review
 owner: dingyuwen777
 branch: chore/agent-skills-project-governance
 created: 2026-09-01
@@ -23,8 +23,10 @@ affected_paths:
   - backend/src/aima_ugc/**/README.md
   - tests/fixtures/**/README.md
   - scripts/quality/check_docs.py
+  - scripts/quality/check_docs_facts.py
   - scripts/quality/check_agent_governance.py
   - tests/unit/test_docs_navigation.py
+  - tests/unit/test_docs_facts.py
   - tests/unit/test_agent_governance.py
   - tests/unit/test_coding_global_language_rules.py
   - tests/unit/test_coding_portability.py
@@ -46,18 +48,19 @@ data_changes: []
 
 # 成功标准
 
-- [ ] 项目当前正式文档不再要求目标仓库本地存在 Agent_Skills canonical `references/`。
-- [ ] AIMA 的治理/Completion Gate 不再执行目标项目中不存在的 `.agents/skills/*/tests`。
-- [ ] AIMA 自己的治理回归只验证项目 Overlay、项目文档和项目 CI 接线，不复制 Agent_Skills canonical Reference 文件数量、正文或内部路由测试。
-- [ ] `docs/blueprint/01_总体架构与技术选型.md` 的 Worker Registry 与当前生产装配一致，明确八种持久 Job。
-- [ ] 当前项目文档域中，能够唯一解析到真实仓库文件且承担导航职责的引用均为可点击相对 Markdown 链接；代码块中的纯文件导航改为代码块外链接表达。
-- [ ] 文档链接审计不会把 `Asia/Shanghai` 等时区标识、命令参数、代码字面量或其他偶然可解析到仓库文件的非导航文本误判为文件导航。
-- [ ] 当前项目文档域的“当前实现”描述已按领域与当前仓库事实交叉核对，至少覆盖：运行时/依赖基线、架构与进程/Job、API/Contract、数据库/Schema/Migration、采集/Provider、AI/报告、前端路由与页面、测试/CI、部署/Release；发现的硬错误和语义漂移均已修正或明确标注为未来/历史。
-- [ ] 当前正式文档不复制第二套容易漂移的机器定义；精确版本、字段、路由、表、Job type、Workflow 命令等机器事实优先链接/引用对应 Owner，并在需要解释时只保留人类语义。
-- [ ] `check_docs.py` 持续检查当前项目文档域的本地链接有效性和未链接真实文件导航，避免后续回归；高置信、可机器验证的文档事实一致性约束在确有长期价值时纳入项目级回归，不用脆弱正则冒充完整语义审查。
-- [ ] `ready_check.py` 仍是 AIMA Change 的 Requirement Traceability / Completion Audit 机器门禁；Secret、docs、full product CI 等现有独立证明责任不降低。
-- [ ] `AGENTS.md` 的项目自有 Overlay 对本次已修复偏差形成当前事实，且 installer-owned managed block、legacy v3 install manifest、Runtime binary 不被手工修改。
+- [x] 项目当前正式文档不再要求目标仓库本地存在 Agent_Skills canonical `references/`。
+- [x] AIMA 的治理/Completion Gate 不再执行目标项目中不存在的 `.agents/skills/*/tests`。
+- [x] AIMA 自己的治理回归只验证项目 Overlay、项目文档和项目 CI 接线，不复制 Agent_Skills canonical Reference 文件数量、正文或内部路由测试。
+- [x] `docs/blueprint/01_总体架构与技术选型.md` 的 Worker Registry 与当前生产装配一致，明确八种持久 Job。
+- [x] 当前项目文档域中，能够唯一解析到真实仓库文件且承担导航职责的引用均为可点击相对 Markdown 链接；代码块中的纯文件导航改为代码块外链接表达。
+- [x] 文档链接审计不会把 `Asia/Shanghai` 等时区标识、命令参数、代码字面量或其他偶然可解析到仓库文件的非导航文本误判为文件导航。
+- [x] 当前项目文档域的“当前实现”描述已按领域与当前仓库事实交叉核对，至少覆盖：运行时/依赖基线、架构与进程/Job、API/Contract、数据库/Schema/Migration、采集/Provider、AI/报告、前端路由与页面、测试/CI、部署/Release；发现的硬错误和语义漂移均已修正或明确标注为未来/历史。
+- [x] 当前正式文档不复制第二套容易漂移的机器定义；精确版本、字段、路由、表、Job type、Workflow 命令等机器事实优先链接/引用对应 Owner，并在需要解释时只保留人类语义。
+- [x] `check_docs.py` 持续检查当前项目文档域的本地链接有效性和未链接真实文件导航，避免后续回归；高置信、可机器验证的文档事实一致性约束在确有长期价值时纳入项目级回归，不用脆弱正则冒充完整语义审查。
+- [x] `ready_check.py` 仍是 AIMA Change 的 Requirement Traceability / Completion Audit 机器门禁；Secret、docs、full product CI 等现有独立证明责任不降低。
+- [x] `AGENTS.md` 的项目自有 Overlay 对本次已修复偏差形成当前事实，且 installer-owned managed block、legacy v3 install manifest、Runtime binary 不被手工修改。
 - [ ] PR 最新 HEAD 的相关永久 CI 全绿；合并后 `main` 取得新鲜 CI；Change 最终归档。
+
 
 # 范围
 
@@ -120,15 +123,16 @@ data_changes: []
 
 | ID | Requirement | Source | Status | Evidence |
 | --- | --- | --- | --- | --- |
-| R1 | 第一次使用 Agent_Skills 开发 AIMA_UGC 时完成有证据的项目治理，并按确认方案落库 | user:2026-09-01-aima-agent-skills-governance | not_satisfied | 待最终实现与 PR/main 新鲜 CI |
-| R2 | 项目规则和项目真实事实始终先读；Source/Runtime 模式只改变通用治理取得方式，不能跳过 AIMA Overlay | AGENTS.md | satisfied | 当前根规则和本次 Source Mode 调查均保持项目事实优先；本任务不弱化该边界 |
-| R3 | Project Governance Bootstrap 只维护 managed block 外项目 Overlay，不把 Agent_Skills 内部实现写成项目规则 | user:2026-09-01-aima-agent-skills-governance | not_satisfied | 已校准部分项目文档/治理检查；待 final HEAD 复核与 CI |
-| R4 | Worker Registry 文档必须与当前生产装配的八种持久 Job 一致 | backend/src/aima_ugc/bootstrap/worker.py | not_satisfied | 已有实现阶段修改；待全域语义审计与 final docs gate 复核 |
-| R5 | 修复当前 main 的 Completion Gate 根因，不能通过删除/降低门禁绕过 | .github/workflows/change-completion-gate.yml | not_satisfied | PR 当前 HEAD Completion Gate 已成功；待 final HEAD 与 main fresh CI |
-| R6 | 不手工迁移 legacy v3 Runtime/manifest/managed block；正式升级留给后续 Agent_Skills Release | .agents/agent-skills-install.json | satisfied | 本 Change 明确非目标，affected paths 不包含 installer-owned `.agents` 资产 |
-| R7 | AIMA 当前技术栈、Contract/Schema/Migration、产品行为和 Production Roadmap 不因治理任务变化 | docs/blueprint/07_技术决策与实施门禁.md | satisfied | 本 Change `contracts: []`、`data_changes: []`，不涉及产品实现/依赖/迁移 |
-| R8 | 全面检查仓库当前文档，把其中引用的其他真实仓库文件改成可点击链接 | user:2026-09-01-doc-repository-file-links | not_satisfied | DOC007/DOC008 已给出全域 Red 清单；待修复误报、完成迁移并取得零错误证据 |
-| R9 | 不只修链接，还要全面保证当前文档描述与当前仓库事实一致 | user:2026-09-01-doc-fact-consistency | not_satisfied | 待按领域事实矩阵逐域核对机器事实、修正文档漂移并完成 Completion Audit |
+| R1 | 第一次使用 Agent_Skills 开发 AIMA_UGC 时完成有证据的项目治理，并按确认方案落库 | user:2026-09-01-aima-agent-skills-governance | satisfied | PR #274 在 b9217cc8 的治理、文档与永久 CI 变更已落库；CI 33463204045、Completion Gate 33463204034、Full-stack 33463204036、Runtime 33463204099、Release dry-run 33463204038、Tooling 33463204060 全部 success。 |
+| R2 | 项目规则和项目真实事实始终先读；Source/Runtime 模式只改变通用治理取得方式，不能跳过 AIMA Overlay | AGENTS.md | satisfied | 最终 AGENTS.md 保持项目事实优先；本轮重新读取目标项目规则与 Agent_Skills canonical Source Mode 入口后完成复核。 |
+| R3 | Project Governance Bootstrap 只维护 managed block 外项目 Overlay，不把 Agent_Skills 内部实现写成项目规则 | user:2026-09-01-aima-agent-skills-governance | satisfied | AGENTS.md 只修改 managed block 外项目 Overlay；scripts/quality/check_agent_governance.py 与 tests/unit/test_agent_governance.py 固定 AIMA 自有接线，PR 不修改 installer-owned .agents 运行资产。 |
+| R4 | Worker Registry 文档必须与当前生产装配的八种持久 Job 一致 | backend/src/aima_ugc/bootstrap/worker.py | satisfied | docs/blueprint/01_总体架构与技术选型.md 已列当前八种生产 Job；check_docs_facts.py 从 bootstrap/worker.py 实际 register_* 装配动态发现 Job，CI 文档事实门禁 success。 |
+| R5 | 修复当前 main 的 Completion Gate 根因，不能通过删除/降低门禁绕过 | .github/workflows/change-completion-gate.yml | satisfied | .github/workflows/change-completion-gate.yml 保留 ready_check.py 并用 AIMA 项目治理检查替代不存在的 supplier tests；final-shape run 33463204034 success。 |
+| R6 | 不手工迁移 legacy v3 Runtime/manifest/managed block；正式升级留给后续 Agent_Skills Release | .agents/agent-skills-install.json | satisfied | PR changed files 不包含 installer-owned .agents Runtime/manifest/managed asset；AGENTS managed block 未手工迁移，项目治理 gate success。 |
+| R7 | AIMA 当前技术栈、Contract/Schema/Migration、产品行为和 Production Roadmap 不因治理任务变化 | docs/blueprint/07_技术决策与实施门禁.md | satisfied | 本 PR 未修改产品实现、Contract、Schema/Migration、依赖或 Runtime 版本；generated contract drift、PostgreSQL Integration、Full-stack、Runtime 与 Release dry-run 均在 b9217cc8 成功。 |
+| R8 | 全面检查仓库当前文档，把其中引用的其他真实仓库文件改成可点击链接 | user:2026-09-01-doc-repository-file-links | satisfied | check_docs.py 已覆盖本地链接、未链接文件导航、纯文件/文件职责代码块和完整仓库相对路径标签；tests/unit/test_docs_navigation.py 回归存在，final CI 文档 gate success。 |
+| R9 | 不只修链接，还要全面保证当前文档描述与当前仓库事实一致 | user:2026-09-01-doc-fact-consistency | satisfied | check_docs_facts.py 对 OpenAPI、Schema、生产 Worker Job、永久 Workflow、前端 Route、TikHub Provider、版本、Analysis 与 Release 高置信事实持续校验；final CI 文档事实 gate success。 |
+
 
 # Validation Matrix
 
@@ -167,10 +171,10 @@ data_changes: []
 
 # Completion Audit
 
-- [ ] upstream_re_read：Ready 前重新读取本轮用户要求、根/文档 AGENTS、正式 Blueprint/Roadmap、当前机器事实 Owner、当前 CI 和 Agent_Skills canonical 相关规则。
-- [ ] change_coverage：逐项比较上游治理目标与本 Change，确认没有漏掉项目 Overlay、永久 CI、旧治理测试、Runtime ownership、全仓当前文档链接要求和“文档描述必须与当前仓库事实一致”的新增要求。
-- [ ] reverse_audit：从当前文档中的每类实现性主张反查唯一机器 Owner；从机器 Owner 反查关键能力是否在文档中被正确描述；从 CI step 反查实际命令和证明责任；从当前项目文档域反查真实文件导航是否可点击，确认没有供应方自测残留、独立产品证据丢失、语义漂移或导航遗漏。
-- [ ] unresolved_cleared：所有 `not_satisfied` 清零；required 验证均有 final HEAD 新鲜证据；未验证项如实列出。
+- [x] upstream_re_read：已重新读取本轮用户确认的项目治理、全仓文件链接与文档事实一致性要求，并重新读取 AIMA AGENTS/Blueprint、当前机器 Owner、final-shape CI 与 Agent_Skills canonical Source Mode 规则。
+- [x] change_coverage：A1 从上游要求反查 Change：项目 Overlay、Completion Gate 根因、supplier self-test Ownership、Runtime managed 边界、全当前文档链接和事实一致性均已进入 R1-R9，没有未批准遗漏或延期。
+- [x] reverse_audit：A2 从实现反查证据：永久 Workflow 证明责任未收缩；check_docs/check_docs_facts/check_agent_governance 与 Unit 回归覆盖新增治理；Contract、PostgreSQL、Full-stack、Runtime、Release dry-run 交叉证明产品边界未被文档治理破坏。
+- [x] unresolved_cleared：Ready 范围内 R1-R9 均为 satisfied，required 验证在 b9217cc8 有新鲜证据；仅合并后 main fresh CI 与 Change archive 保留为 post-merge 交付步骤，不冒充 Ready 前已完成。
 
 # 验证证据
 
@@ -179,6 +183,15 @@ data_changes: []
 - PR #274 `head@69577e143c9952f538c4854216afc4beb195efb0`：Runtime Acceptance、Full-stack Acceptance、Change Completion Gate 成功；CI 中 PostgreSQL Integration 成功，Repository Quality 的 format/lint/mypy、691 Unit、92 Contract、38 API、Architecture/Ownership、Secret 均成功；唯一失败层为 docs gate 的 DOC003/DOC007/DOC008 全域 Red 清单。
 - 文档文件链接 Red 基线：当前 Runner 已枚举根文档、`docs/**`、前后端/模块 README 和 Fixture README 的大量 DOC007/DOC008；同时发现 `Asia/Shanghai` 被偶然解析到 `.agents/.../zoneinfo/Asia/Shanghai` 的误报，必须先修解析边界再完成迁移。
 - 文档事实一致性 Red 基线：已确认精确运行基线为 Python 3.14.7、Node 24.19.0、npm 11.17.0、uv 0.12.3、PostgreSQL 18.4；后续按领域矩阵继续扫描文档中的旧版本、旧路径、旧接口/Job/路由/部署描述。
+
+- Ready 前 final-shape 证据：PR #274 `head@b9217cc8bd9f47f3d8a2d5fbf33431e8681397ad` 的 CI run `33463204045`、Change Completion Gate `33463204034`、Full-stack Acceptance `33463204036`、Runtime Acceptance `33463204099`、Release dry-run `33463204038`、Developer Tooling Compatibility `33463204060` 均为 `success`；本次 Ready 元数据提交后仍需在新 HEAD 重新取得 fresh CI。
+
+## Ready 前独立复核摘要
+
+- Review A1：重新从用户要求和项目正式事实源构建完成定义，没有发现未进入当前 Change 的适用要求。
+- Review A2：实现、测试、文档与 Validation Matrix 对应；CI/Workflow 证明责任保持或增强，没有用文档/治理 gate 替代产品 Unit、Contract、PostgreSQL、Browser、Full-stack、Runtime 或 Release 证据。
+- 第二阶段质量复核：已修复生产 Job 事实源手写列表、仓库文件链接显示路径/同目录短文件解析等维护风险；当前没有剩余 BLOCKER/HIGH/MEDIUM Finding。
+- 未验证边界：真实生产服务器状态、Provider/LLM 当前额度、正式 Production Go-Live 不属于本 Change，继续按 Roadmap 维持未确认状态。
 
 # 文档影响
 
