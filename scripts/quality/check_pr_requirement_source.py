@@ -134,7 +134,8 @@ def _load_github_issue(
         raise RequirementSourceError("GitHub event 缺少有效 repository.full_name")
 
     owner, repo = repository.split("/", maxsplit=1)
-    url = f"{api_url.rstrip('/')}/repos/{quote(owner, safe='')}/{quote(repo, safe='')}/issues/{number}"
+    issue_path = f"{quote(owner, safe='')}/{quote(repo, safe='')}/issues/{number}"
+    url = f"{api_url.rstrip('/')}/repos/{issue_path}"
     request = Request(
         url,
         headers={
