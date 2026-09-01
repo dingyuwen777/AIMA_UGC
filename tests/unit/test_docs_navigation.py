@@ -84,3 +84,14 @@ def test_checker_resolves_unique_short_filename(tmp_path: Path) -> None:
     errors = CHECK_REPOSITORY(tmp_path)
 
     assert any(error.startswith("DOC007 docs/guide.md:1") for error in errors)
+
+
+def test_checker_does_not_treat_timezone_identifier_as_file_navigation(tmp_path: Path) -> None:
+    """时区等无扩展名字面量不能因仓库存在同名文件而被误判为导航。"""
+    _minimal_repository(tmp_path)
+    _write(tmp_path / ".agents/tzdata/Asia/Shanghai", "TZif2")
+    _write(tmp_path / "docs/guide.md", "业务展示时区固定为 `Asia/Shanghai`。\n")
+
+    errors = CHECK_REPOSITORY(tmp_path)
+
+    assert not any(error.startswith(("DOC007", "DOC008")) for error in errors)
