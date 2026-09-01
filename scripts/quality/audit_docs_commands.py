@@ -19,7 +19,9 @@ PYTHON_SCRIPT_RE = re.compile(
 NPM_RUN_RE = re.compile(r"\bnpm(?:\s+--prefix\s+frontend)?\s+run\s+([A-Za-z0-9:_-]+)")
 NPM_DIRECT_RE = re.compile(r"\bnpm(?:\s+--prefix\s+frontend)?\s+(test)\b")
 COMPOSE_FILE_RE = re.compile(r"(?:^|\s)-f\s+([^\s;&|]+\.ya?ml)")
-SHELL_SCRIPT_RE = re.compile(r"(?<![A-Za-z0-9_.-])((?:\.\\|\.\/)?scripts[\\/][^\s;&|]+\.(?:cmd|ps1|sh))")
+SHELL_SCRIPT_RE = re.compile(
+    r"(?<![A-Za-z0-9_.-])((?:\.\\|\.\/)?scripts[\\/][^\s;&|]+\.(?:cmd|ps1|sh))"
+)
 
 
 def _exists(value: str) -> bool:
