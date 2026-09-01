@@ -4,7 +4,7 @@
 
 真实 JSON 路径：
 
-[`../appendix/02_TikHub五平台真实响应与字段映射.md`](../appendix/02_TikHub五平台真实响应与字段映射.md)
+[`docs/appendix/02_TikHub五平台真实响应与字段映射.md`](../appendix/02_TikHub五平台真实响应与字段映射.md)
 
 ## 1. 当前代码
 
@@ -103,7 +103,7 @@ Fixture：
 - 播放；
 - 弹幕等当前 Fixture 证明的字段。
 
-精确 Mapper 以 [`mappers/bilibili.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/mappers/bilibili.py) 为准。
+精确 Mapper 以 [`backend/src/aima_ugc/adapters/providers/tikhub/mappers/bilibili.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/mappers/bilibili.py) 为准。
 
 ## 5. Detail
 
@@ -259,7 +259,7 @@ comparison_extractor_invalid
 
 详细台账：
 
-[`../appendix/04_TikHub接口选型与真实验证台账.md`](../appendix/04_TikHub接口选型与真实验证台账.md)
+[`docs/appendix/04_TikHub接口选型与真实验证台账.md`](../appendix/04_TikHub接口选型与真实验证台账.md)
 
 ## 10. Search 排序对齐为什么要谨慎
 
@@ -323,4 +323,4 @@ Run / Scope
 
 SQL：
 
-[`../appendix/01_PostgreSQL查询与调试实战.md`](../appendix/01_PostgreSQL查询与调试实战.md)
+[`docs/appendix/01_PostgreSQL查询与调试实战.md`](../appendix/01_PostgreSQL查询与调试实战.md)

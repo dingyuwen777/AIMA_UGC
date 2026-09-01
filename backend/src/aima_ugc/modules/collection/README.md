@@ -53,10 +53,10 @@ collection_candidate_ingestions
 
 精确 Schema：
 
-- [`modules/collection/tables.py`](tables.py)
-- [`modules/collection/candidate_tables.py`](candidate_tables.py)
-- [`modules/collection/corrective_tables.py`](corrective_tables.py)
-- [`modules/collection/scheduler_schema.py`](scheduler_schema.py)
+- [`backend/src/aima_ugc/modules/collection/tables.py`](tables.py)
+- [`backend/src/aima_ugc/modules/collection/candidate_tables.py`](candidate_tables.py)
+- [`backend/src/aima_ugc/modules/collection/corrective_tables.py`](corrective_tables.py)
+- [`backend/src/aima_ugc/modules/collection/scheduler_schema.py`](scheduler_schema.py)
 
 ### Collection 不拥有
 
@@ -498,7 +498,7 @@ ProviderPlatformCapabilityV1
 → Plan platform config / Run provider snapshot
 ```
 
-[`search_config.py`](search_config.py) 负责从 Capability 提取合法值、生成手工 Discovery 默认值并执行统一校验。手工 Discovery 的默认意图是 `latest + 1d + all`，只应用平台真实支持的维度；新 Plan 要求所有受支持维度完整配置。历史 Plan 的空 `config={}` 仍按非完整兼容模式通过 Scheduler 校验，不能被补写成手工默认。
+[`backend/src/aima_ugc/modules/collection/search_config.py`](search_config.py) 负责从 Capability 提取合法值、生成手工 Discovery 默认值并执行统一校验。手工 Discovery 的默认意图是 `latest + 1d + all`，只应用平台真实支持的维度；新 Plan 要求所有受支持维度完整配置。历史 Plan 的空 `config={}` 仍按非完整兼容模式通过 Scheduler 校验，不能被补写成手工默认。
 
 完整 Route 以：
 
@@ -529,8 +529,8 @@ PostgreSQL 不同 Owner 表
 
 相关代码：
 
-- [`runtime_query.py`](runtime_query.py)
-- [`runtime_cursor.py`](runtime_cursor.py)
+- [`backend/src/aima_ugc/modules/collection/runtime_query.py`](runtime_query.py)
+- [`backend/src/aima_ugc/modules/collection/runtime_cursor.py`](runtime_cursor.py)
 - [`backend/src/aima_ugc/adapters/persistence/postgres/collection_runtime_queries.py`](../../adapters/persistence/postgres/collection_runtime_queries.py)
 
 不能因为页面想统一展示，就把 Import Batch 和 Collection Run 合并成一张业务表。
@@ -609,7 +609,7 @@ Mapper/Operation Test
 Capability / Pricing（按影响）
 ```
 
-不要直接改 [`collection_run_executor.py`](collection_run_executor.py)。
+不要直接改 [`backend/src/aima_ugc/modules/collection/collection_run_executor.py`](collection_run_executor.py)。
 
 ### 改 Scheduler 策略
 

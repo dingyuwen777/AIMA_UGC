@@ -4,7 +4,7 @@
 
 它不是 Production 部署文档。公司 Linux 服务器与完整 Production 仍以 [`docs/02_环境运行与部署.md`](../02_环境运行与部署.md)、[`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)、[`docs/appendix/11_生产部署与离线Release方案.md`](../appendix/11_生产部署与离线Release方案.md) 为准。
 
-Docker Hub mirrors、构建期包源、缓存和项目级重置见 [`04_Docker国内构建源与本地重置.md`](04_Docker国内构建源与本地重置.md)。
+Docker Hub mirrors、构建期包源、缓存和项目级重置见 [`docs/guides/04_Docker国内构建源与本地重置.md`](04_Docker国内构建源与本地重置.md)。
 
 ---
 
@@ -250,7 +250,7 @@ PostgreSQL / 内部 Secret
 
 TikHub / LLM API Key 仍由 `env.production` 输入 Compose Secret。
 
-`env.production` 不选择 Python/Node/Nginx/PostgreSQL 的 Docker registry 或镜像名称。Debian/PyPI/npm 构建期包源可以按机器覆盖，具体见 [`04_Docker国内构建源与本地重置.md`](04_Docker国内构建源与本地重置.md)。
+`env.production` 不选择 Python/Node/Nginx/PostgreSQL 的 Docker registry 或镜像名称。Debian/PyPI/npm 构建期包源可以按机器覆盖，具体见 [`docs/guides/04_Docker国内构建源与本地重置.md`](04_Docker国内构建源与本地重置.md)。
 
 ---
 
@@ -386,7 +386,7 @@ Windows 混合存储 override 只属于开发机存储适配，不改变 Product
 2. Linux Docker Engine 实际运行 Windows merged hybrid Runtime model，验证 bootstrap、PostgreSQL、Migration、Readiness、Artifact/日志 bind mount、宿主文件可见性、Secret mode 和重启持久化；
 3. `down -v` 后宿主 Artifact/日志仍保留，而 PostgreSQL/内部 Secret 继续属于 named-volume 生命周期；
 4. Dockerfile / Compose 的镜像 identity 与包源配置由仓库单元测试约束；
-5. Windows GitHub Runner 直接加载 [`configure_docker_desktop_mirrors.ps1`](../../scripts/dev/configure_docker_desktop_mirrors.ps1)，验证“存在额外有效 mirrors 仍成功、缺少 AIMA mirror 失败、AIMA 相对顺序错误失败、daemon.json 继续精确受 AIMA 管理”；真实 Docker Desktop 应用结果由初始化脚本自身的有界 `docker info` probe 确认。
+5. Windows GitHub Runner 直接加载 [`scripts/dev/configure_docker_desktop_mirrors.ps1`](../../scripts/dev/configure_docker_desktop_mirrors.ps1)，验证“存在额外有效 mirrors 仍成功、缺少 AIMA mirror 失败、AIMA 相对顺序错误失败、daemon.json 继续精确受 AIMA 管理”；真实 Docker Desktop 应用结果由初始化脚本自身的有界 `docker info` probe 确认。
 
 GitHub Hosted Windows Runner 本身不提供当前仓库可依赖的 Docker Desktop Linux-container Runtime，因此永久 CI 的真实容器 Golden Path 由 Ubuntu Docker Engine 验证 merged Compose 语义；具体开发机首次使用仍需要本机 smoke。
 

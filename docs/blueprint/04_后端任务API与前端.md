@@ -93,9 +93,9 @@ analysis.content-label.v1
 reporting.content-export-excel.v1
 ```
 
-三个 `ingestion.historical-*` 是统一 Data Import Campaign 继续沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner。它们已经由当前 [`bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py) 注册，不是未来规划。
+三个 `ingestion.historical-*` 是统一 Data Import Campaign 继续沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner。它们已经由当前 [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py) 注册，不是未来规划。
 
-注意：离线 Markdown/Word 报告当前不是上述 PostgreSQL Worker Registry 中的独立正式 Job；它目前由 `platform/reporting/` 和 [`imports_test/generate_report.py`](../../backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py) 提供离线生成能力。不能因为“报告通常耗时”就把它写成当前已经产品化的 Job。
+注意：离线 Markdown/Word 报告当前不是上述 PostgreSQL Worker Registry 中的独立正式 Job；它目前由 `platform/reporting/` 和 [`backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py`](../../backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py) 提供离线生成能力。不能因为“报告通常耗时”就把它写成当前已经产品化的 Job。
 
 ---
 
@@ -226,7 +226,7 @@ frontend/src/generated/api/
 
 ## 5. 当前真实 HTTP API 面
 
-下面来自当前 [`bootstrap/api.py`](../../backend/src/aima_ugc/bootstrap/api.py) 与最终 [`entrypoints/api_main.py`](../../backend/src/aima_ugc/entrypoints/api_main.py) Assembly，不是未来规划列表。
+下面来自当前 [`backend/src/aima_ugc/bootstrap/api.py`](../../backend/src/aima_ugc/bootstrap/api.py) 与最终 [`backend/src/aima_ugc/entrypoints/api_main.py`](../../backend/src/aima_ugc/entrypoints/api_main.py) Assembly，不是未来规划列表。
 
 ### 5.1 Health
 
@@ -444,7 +444,7 @@ Feature Page
 
 Figma 到代码流程：
 
-[`../guides/01_Figma与前端设计开发工作流.md`](../guides/01_Figma与前端设计开发工作流.md)
+[`docs/guides/01_Figma与前端设计开发工作流.md`](../guides/01_Figma与前端设计开发工作流.md)
 
 ---
 
@@ -576,7 +576,7 @@ Occurrence
 
 详细语义：
 
-[`../appendix/05_Scheduler调度执行与停机恢复.md`](../appendix/05_Scheduler调度执行与停机恢复.md)
+[`docs/appendix/05_Scheduler调度执行与停机恢复.md`](../appendix/05_Scheduler调度执行与停机恢复.md)
 
 ---
 
@@ -670,7 +670,7 @@ Job Payload / Handler
 
 更完整的任务导航：
 
-[`../01_代码结构与修改导航.md`](../01_代码结构与修改导航.md)
+[`docs/01_代码结构与修改导航.md`](../01_代码结构与修改导航.md)
 
 ---
 

@@ -16,7 +16,7 @@ platform/reporting/
 
 如果要改声音广场“导出 Excel”，先看本 README；如果要改横向 A4 Word 报告，去：
 
-[`../../../../../docs/appendix/10_Word舆情报告生成与排版实现.md`](../../../../../docs/appendix/10_Word舆情报告生成与排版实现.md)
+[`docs/appendix/10_Word舆情报告生成与排版实现.md`](../../../../../docs/appendix/10_Word舆情报告生成与排版实现.md)
 
 ---
 
@@ -187,7 +187,7 @@ ordinal > after_ordinal
 
 这样大量内容导出时不会一次把所有 Content + Comments + Analysis 全部加载到内存。
 
-具体页大小属于实现事实，以 [`export_worker.py`](../../bootstrap/export_worker.py) 为准，不把它当公共 Contract。
+具体页大小属于实现事实，以 [`backend/src/aima_ugc/bootstrap/export_worker.py`](../../bootstrap/export_worker.py) 为准，不把它当公共 Contract。
 
 ---
 
@@ -342,7 +342,7 @@ artifact_id is null
 
 详细 Excel 数据契约：
 
-[`../../../../../docs/appendix/06_Excel统一数据导出与离线调试.md`](../../../../../docs/appendix/06_Excel统一数据导出与离线调试.md)
+[`docs/appendix/06_Excel统一数据导出与离线调试.md`](../../../../../docs/appendix/06_Excel统一数据导出与离线调试.md)
 
 ---
 
@@ -352,15 +352,15 @@ artifact_id is null
 | --- | --- | --- |
 | `tables.py` | Export / Export Items 表 | 改持久化父事实或冻结目标结构 |
 | `models.py` | Reporting 内部记录模型 | 改内部 Service/Repository 返回对象 |
-| [`data_export_job.py`](data_export_job.py) | Job Payload / Handler / 上限 | 改 Job 版本、失败分类、Artifact 上限 |
+| [`backend/src/aima_ugc/modules/reporting/data_export_job.py`](data_export_job.py) | Job Payload / Handler / 上限 | 改 Job 版本、失败分类、Artifact 上限 |
 | `http.py` | Reporting HTTP Port/异常 | 改应用 Service 契约边界 |
 
 生产跨目录：
 
-- [`bootstrap/reporting_http.py`](../../bootstrap/reporting_http.py)
-- [`bootstrap/export_worker.py`](../../bootstrap/export_worker.py)
-- [`adapters/persistence/postgres/reporting.py`](../../adapters/persistence/postgres/reporting.py)
-- [`platform/export/excel.py`](../../platform/export/excel.py)
+- [`backend/src/aima_ugc/bootstrap/reporting_http.py`](../../bootstrap/reporting_http.py)
+- [`backend/src/aima_ugc/bootstrap/export_worker.py`](../../bootstrap/export_worker.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/reporting.py`](../../adapters/persistence/postgres/reporting.py)
+- [`backend/src/aima_ugc/platform/export/excel.py`](../../platform/export/excel.py)
 
 ---
 
@@ -447,7 +447,7 @@ SQL 顺序：
 
 SQL 示例：
 
-[`../../../../../docs/appendix/01_PostgreSQL查询与调试实战.md`](../../../../../docs/appendix/01_PostgreSQL查询与调试实战.md)
+[`docs/appendix/01_PostgreSQL查询与调试实战.md`](../../../../../docs/appendix/01_PostgreSQL查询与调试实战.md)
 
 ---
 

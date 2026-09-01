@@ -12,11 +12,11 @@
 
 真实响应字段见：
 
-[`02_TikHub五平台真实响应与字段映射.md`](02_TikHub五平台真实响应与字段映射.md)
+[`docs/appendix/02_TikHub五平台真实响应与字段映射.md`](02_TikHub五平台真实响应与字段映射.md)
 
 真实验证台账见：
 
-[`04_TikHub接口选型与真实验证台账.md`](04_TikHub接口选型与真实验证台账.md)
+[`docs/appendix/04_TikHub接口选型与真实验证台账.md`](04_TikHub接口选型与真实验证台账.md)
 
 ---
 
@@ -519,7 +519,7 @@ alternate family = endpoint-specific verification required
 | B站 | App vs Web Search/Detail/Comments/Reply | `candidate_pending_probe` | 候选 builder 已存在，需按 operation 真实验证 |
 | 小红书 | App V2 vs App V1/Web V3 等 | `candidate_pending_probe` | 需 endpoint-specific 当前验证 |
 
-注意：本表不是 Runtime 配置。Runtime 当前主链仍看 [`capabilities.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py) 和各主 builder。
+注意：本表不是 Runtime 配置。Runtime 当前主链仍看 [`backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py) 和各主 builder。
 
 ---
 
@@ -592,7 +592,7 @@ tests/fixtures/providers/tikhub/endpoint_ledger/<date>/
 
 使用：
 
-- [`api_family_compare.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/api_family_compare.py)
+- [`backend/src/aima_ugc/adapters/providers/tikhub/api_family_compare.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/api_family_compare.py)
 
 它只做稳定 ID 集合比较，不访问网络、不访问数据库、不读 Secret。
 

@@ -151,7 +151,7 @@ Excel Export
 → bootstrap/export_worker.py
 ```
 
-三个 `ingestion.historical-*` 是统一 Data Import Campaign 为兼容现有 Schema/Job 身份继续沿用的物理名称；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner。它们已经由 [`bootstrap/worker.py`](backend/src/aima_ugc/bootstrap/worker.py) 正式注册，不能继续只用旧 4-Job 清单描述当前 Worker。
+三个 `ingestion.historical-*` 是统一 Data Import Campaign 为兼容现有 Schema/Job 身份继续沿用的物理名称；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner。它们已经由 [`backend/src/aima_ugc/bootstrap/worker.py`](backend/src/aima_ugc/bootstrap/worker.py) 正式注册，不能继续只用旧 4-Job 清单描述当前 Worker。
 
 公共 Lease、Heartbeat、Deadline、Fencing、Retry、Cancel 等语义位于：
 

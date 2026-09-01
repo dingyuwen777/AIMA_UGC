@@ -194,7 +194,7 @@ has_more
 
 Fixture：
 
-[`../../tests/fixtures/providers/tikhub/xiaohongshu/search_notes_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/xiaohongshu/search_notes_page1.sanitized.json)
+[`tests/fixtures/providers/tikhub/xiaohongshu/search_notes_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/xiaohongshu/search_notes_page1.sanitized.json)
 
 ## 4.2 Detail
 
@@ -219,8 +219,8 @@ GET /api/v1/xiaohongshu/app_v2/get_video_note_detail
 
 Fixture：
 
-- [`../../tests/fixtures/providers/tikhub/xiaohongshu/image_detail.sanitized.json`](../../tests/fixtures/providers/tikhub/xiaohongshu/image_detail.sanitized.json)
-- [`../../tests/fixtures/providers/tikhub/xiaohongshu/video_detail.sanitized.json`](../../tests/fixtures/providers/tikhub/xiaohongshu/video_detail.sanitized.json)
+- [`tests/fixtures/providers/tikhub/xiaohongshu/image_detail.sanitized.json`](../../tests/fixtures/providers/tikhub/xiaohongshu/image_detail.sanitized.json)
+- [`tests/fixtures/providers/tikhub/xiaohongshu/video_detail.sanitized.json`](../../tests/fixtures/providers/tikhub/xiaohongshu/video_detail.sanitized.json)
 
 ## 4.3 一级评论
 
@@ -252,7 +252,7 @@ parent_comment_id = null
 
 Fixture：
 
-[`../../tests/fixtures/providers/tikhub/xiaohongshu/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/xiaohongshu/comments_page1.sanitized.json)
+[`tests/fixtures/providers/tikhub/xiaohongshu/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/xiaohongshu/comments_page1.sanitized.json)
 
 ## 4.4 二级评论
 
@@ -268,7 +268,7 @@ data.data.comments[]
 
 Fixture：
 
-[`../../tests/fixtures/providers/tikhub/xiaohongshu/sub_comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/xiaohongshu/sub_comments_page1.sanitized.json)
+[`tests/fixtures/providers/tikhub/xiaohongshu/sub_comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/xiaohongshu/sub_comments_page1.sanitized.json)
 
 ---
 
@@ -311,7 +311,7 @@ has_more
 
 Fixture：
 
-[`../../tests/fixtures/providers/tikhub/douyin/search_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/douyin/search_page1.sanitized.json)
+[`tests/fixtures/providers/tikhub/douyin/search_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/douyin/search_page1.sanitized.json)
 
 ## 5.2 Detail
 
@@ -329,7 +329,7 @@ data.aweme_detail
 
 Fixture：
 
-[`../../tests/fixtures/providers/tikhub/douyin/detail.sanitized.json`](../../tests/fixtures/providers/tikhub/douyin/detail.sanitized.json)
+[`tests/fixtures/providers/tikhub/douyin/detail.sanitized.json`](../../tests/fixtures/providers/tikhub/douyin/detail.sanitized.json)
 
 ## 5.3 一级评论
 
@@ -345,7 +345,7 @@ data.comments[]
 
 Fixture：
 
-[`../../tests/fixtures/providers/tikhub/douyin/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/douyin/comments_page1.sanitized.json)
+[`tests/fixtures/providers/tikhub/douyin/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/douyin/comments_page1.sanitized.json)
 
 ## 5.4 评论回复
 
@@ -370,7 +370,7 @@ reply_id / reply_to_reply_id
 
 Fixture：
 
-[`../../tests/fixtures/providers/tikhub/douyin/replies_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/douyin/replies_page1.sanitized.json)
+[`tests/fixtures/providers/tikhub/douyin/replies_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/douyin/replies_page1.sanitized.json)
 
 ---
 
@@ -411,7 +411,7 @@ search_type
 
 Fixture：
 
-[`../../tests/fixtures/providers/tikhub/weibo/search_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/weibo/search_page1.sanitized.json)
+[`tests/fixtures/providers/tikhub/weibo/search_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/weibo/search_page1.sanitized.json)
 
 ## 6.2 Detail
 
@@ -429,7 +429,7 @@ Operation 当前会 fail closed：缺少这个路径时直接视为响应结构�
 
 Fixture：
 
-[`../../tests/fixtures/providers/tikhub/weibo/detail.sanitized.json`](../../tests/fixtures/providers/tikhub/weibo/detail.sanitized.json)
+[`tests/fixtures/providers/tikhub/weibo/detail.sanitized.json`](../../tests/fixtures/providers/tikhub/weibo/detail.sanitized.json)
 
 ## 6.3 一级评论
 
@@ -451,7 +451,7 @@ data.moreInfo.params.max_id
 
 Fixture：
 
-[`../../tests/fixtures/providers/tikhub/weibo/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/weibo/comments_page1.sanitized.json)
+[`tests/fixtures/providers/tikhub/weibo/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/weibo/comments_page1.sanitized.json)
 
 ## 6.4 二级评论
 
@@ -469,7 +469,7 @@ data.data[]
 
 Fixture：
 
-[`../../tests/fixtures/providers/tikhub/weibo/sub_comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/weibo/sub_comments_page1.sanitized.json)
+[`tests/fixtures/providers/tikhub/weibo/sub_comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/weibo/sub_comments_page1.sanitized.json)
 
 ---
 
@@ -516,7 +516,7 @@ Search Fixture 没有证明 `comment_count`，所以 Capability 不应仅凭平�
 
 Fixture：
 
-[`../../tests/fixtures/providers/tikhub/bilibili/search_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/bilibili/search_page1.sanitized.json)
+[`tests/fixtures/providers/tikhub/bilibili/search_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/bilibili/search_page1.sanitized.json)
 
 ## 7.2 Detail
 
@@ -532,7 +532,7 @@ data.data
 
 Fixture：
 
-[`../../tests/fixtures/providers/tikhub/bilibili/detail.sanitized.json`](../../tests/fixtures/providers/tikhub/bilibili/detail.sanitized.json)
+[`tests/fixtures/providers/tikhub/bilibili/detail.sanitized.json`](../../tests/fixtures/providers/tikhub/bilibili/detail.sanitized.json)
 
 ## 7.3 一级评论
 
@@ -560,7 +560,7 @@ data.data.cursor.pagination_reply.next_offset
 
 Fixture：
 
-[`../../tests/fixtures/providers/tikhub/bilibili/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/bilibili/comments_page1.sanitized.json)
+[`tests/fixtures/providers/tikhub/bilibili/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/bilibili/comments_page1.sanitized.json)
 
 ## 7.4 回复详情
 
@@ -590,7 +590,7 @@ Provider 数字 ID 最终转为 Canonical 字符串身份。
 
 Fixture：
 
-[`../../tests/fixtures/providers/tikhub/bilibili/replies_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/bilibili/replies_page1.sanitized.json)
+[`tests/fixtures/providers/tikhub/bilibili/replies_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/bilibili/replies_page1.sanitized.json)
 
 ---
 
@@ -646,7 +646,7 @@ pagination_not_advanced
 
 Fixture：
 
-[`../../tests/fixtures/providers/tikhub/kuaishou/search_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/kuaishou/search_page1.sanitized.json)
+[`tests/fixtures/providers/tikhub/kuaishou/search_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/kuaishou/search_page1.sanitized.json)
 
 代码里还有：
 
@@ -670,7 +670,7 @@ data.photos[0]
 
 Fixture：
 
-[`../../tests/fixtures/providers/tikhub/kuaishou/detail.sanitized.json`](../../tests/fixtures/providers/tikhub/kuaishou/detail.sanitized.json)
+[`tests/fixtures/providers/tikhub/kuaishou/detail.sanitized.json`](../../tests/fixtures/providers/tikhub/kuaishou/detail.sanitized.json)
 
 ## 8.3 当前 App 一级评论主链
 
@@ -737,7 +737,7 @@ subCommentCount > 0
 
 正式 ledger：
 
-[`../../tests/fixtures/providers/tikhub/endpoint_ledger/2026-08-16/kuaishou.sanitized.json`](../../tests/fixtures/providers/tikhub/endpoint_ledger/2026-08-16/kuaishou.sanitized.json)
+[`tests/fixtures/providers/tikhub/endpoint_ledger/2026-08-16/kuaishou.sanitized.json`](../../tests/fixtures/providers/tikhub/endpoint_ledger/2026-08-16/kuaishou.sanitized.json)
 
 ## 8.4 当前 App 二级评论主链
 
@@ -793,8 +793,8 @@ Web 二级 HTTP 200 + data.subComments[] 非空
 
 历史 Fixture：
 
-- [`../../tests/fixtures/providers/tikhub/kuaishou/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/kuaishou/comments_page1.sanitized.json)
-- [`../../tests/fixtures/providers/tikhub/kuaishou/sub_comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/kuaishou/sub_comments_page1.sanitized.json)
+- [`tests/fixtures/providers/tikhub/kuaishou/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/kuaishou/comments_page1.sanitized.json)
+- [`tests/fixtures/providers/tikhub/kuaishou/sub_comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/kuaishou/sub_comments_page1.sanitized.json)
 
 Web 样本 `reply_to` 没有足够证据证明一定是另一个评论 ID，所以不猜成 `parent_comment_id`。
 
@@ -937,7 +937,7 @@ extract_comment_items(...)
 
 ### 第三步：看 Mapper
 
-- [`mappers/weibo.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/mappers/weibo.py)
+- [`backend/src/aima_ugc/adapters/providers/tikhub/mappers/weibo.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/mappers/weibo.py)
 
 确认：
 
@@ -1014,7 +1014,7 @@ operations/<platform>.py
 
 先看：
 
-[`03_TikHub多接口验证与备用策略.md`](03_TikHub多接口验证与备用策略.md)
+[`docs/appendix/03_TikHub多接口验证与备用策略.md`](03_TikHub多接口验证与备用策略.md)
 
 当前备用接口必须显式选型，不能在 Transport 里偷偷自动 fallback。
 
@@ -1053,24 +1053,24 @@ tests/fixtures/providers/tikhub/<platform>/
 
 平台级当前说明：
 
-- [`../collection/01_xiaohongshu.md`](../collection/01_xiaohongshu.md)
-- [`../collection/02_douyin.md`](../collection/02_douyin.md)
-- [`../collection/03_weibo.md`](../collection/03_weibo.md)
-- [`../collection/04_bilibili.md`](../collection/04_bilibili.md)
-- [`../collection/05_kuaishou.md`](../collection/05_kuaishou.md)
+- [`docs/collection/01_xiaohongshu.md`](../collection/01_xiaohongshu.md)
+- [`docs/collection/02_douyin.md`](../collection/02_douyin.md)
+- [`docs/collection/03_weibo.md`](../collection/03_weibo.md)
+- [`docs/collection/04_bilibili.md`](../collection/04_bilibili.md)
+- [`docs/collection/05_kuaishou.md`](../collection/05_kuaishou.md)
 
 接口家族验证与备用边界：
 
-- [`03_TikHub多接口验证与备用策略.md`](03_TikHub多接口验证与备用策略.md)
+- [`docs/appendix/03_TikHub多接口验证与备用策略.md`](03_TikHub多接口验证与备用策略.md)
 
 真实 Probe / 选型历史台账：
 
-- [`04_TikHub接口选型与真实验证台账.md`](04_TikHub接口选型与真实验证台账.md)
+- [`docs/appendix/04_TikHub接口选型与真实验证台账.md`](04_TikHub接口选型与真实验证台账.md)
 
 采集总架构：
 
-- [`../blueprint/02_采集系统与数据标准化.md`](../blueprint/02_采集系统与数据标准化.md)
-- [`../blueprint/08_采集策略与平台能力.md`](../blueprint/08_采集策略与平台能力.md)
+- [`docs/blueprint/02_采集系统与数据标准化.md`](../blueprint/02_采集系统与数据标准化.md)
+- [`docs/blueprint/08_采集策略与平台能力.md`](../blueprint/08_采集策略与平台能力.md)
 
 ---
 

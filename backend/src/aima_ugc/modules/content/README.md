@@ -19,9 +19,9 @@ Provider / Excel
 
 相关：
 
-- [`../../../../../docs/blueprint/03_数据库与文件存储.md`](../../../../../docs/blueprint/03_数据库与文件存储.md)
-- [`../../../../../docs/appendix/08_数据入口与统一入库实现.md`](../../../../../docs/appendix/08_数据入口与统一入库实现.md)
-- [`../../../../../docs/01_代码结构与修改导航.md`](../../../../../docs/01_代码结构与修改导航.md)
+- [`docs/blueprint/03_数据库与文件存储.md`](../../../../../docs/blueprint/03_数据库与文件存储.md)
+- [`docs/appendix/08_数据入口与统一入库实现.md`](../../../../../docs/appendix/08_数据入口与统一入库实现.md)
+- [`docs/01_代码结构与修改导航.md`](../../../../../docs/01_代码结构与修改导航.md)
 
 ---
 
@@ -39,7 +39,7 @@ backend/src/aima_ugc/modules/content/
 └─ source_constraints.py
 ```
 
-### [`ingestion.py`](ingestion.py)
+### [`backend/src/aima_ugc/modules/content/ingestion.py`](ingestion.py)
 
 领域摄取入口：
 
@@ -65,7 +65,7 @@ comment_metric_observations
 comment_coverage_observations
 ```
 
-### [`extended_tables.py`](extended_tables.py)
+### [`backend/src/aima_ugc/modules/content/extended_tables.py`](extended_tables.py)
 
 内容/评论扩展实体和关系，例如：
 
@@ -84,7 +84,7 @@ thread coverage
 
 定义 Provider-neutral Content Read Model，不写 SQL。
 
-### [`content_cursor.py`](content_cursor.py)
+### [`backend/src/aima_ugc/modules/content/content_cursor.py`](content_cursor.py)
 
 声音广场 Content 列表 Cursor 编解码和 query-hash 绑定。
 
@@ -106,11 +106,11 @@ backend/src/aima_ugc/adapters/persistence/postgres/
 
 Collection 调 Content Owner 的边界：
 
-- [`collection_content.py`](../../adapters/persistence/postgres/collection_content.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/collection_content.py`](../../adapters/persistence/postgres/collection_content.py)
 
 Content 查询：
 
-- [`content_queries.py`](../../adapters/persistence/postgres/content_queries.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py`](../../adapters/persistence/postgres/content_queries.py)
 
 生产装配：
 
@@ -363,7 +363,7 @@ Content Version
 
 SQL：
 
-[`../../../../../docs/appendix/01_PostgreSQL查询与调试实战.md`](../../../../../docs/appendix/01_PostgreSQL查询与调试实战.md)
+[`docs/appendix/01_PostgreSQL查询与调试实战.md`](../../../../../docs/appendix/01_PostgreSQL查询与调试实战.md)
 
 ---
 
@@ -473,8 +473,8 @@ Content 列表/详情是这个模块的 Read Model；Analysis 写入仍归 Analy
 
 代码：
 
-- [`content_cursor.py`](content_cursor.py)
-- [`bootstrap/content_http.py`](../../bootstrap/content_http.py)
+- [`backend/src/aima_ugc/modules/content/content_cursor.py`](content_cursor.py)
+- [`backend/src/aima_ugc/bootstrap/content_http.py`](../../bootstrap/content_http.py)
 
 Application Service 会对：
 

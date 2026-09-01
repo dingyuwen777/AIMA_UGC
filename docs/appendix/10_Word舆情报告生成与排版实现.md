@@ -71,14 +71,14 @@ report.docx
 
 | 你想改的东西 | 主要文件 | 不应该先改哪里 |
 | --- | --- | --- |
-| 平台/情感/标签/关键词统计口径 | [`excel_report.py`](../../backend/src/aima_ugc/platform/reporting/excel_report.py) | [`visual_docx.py`](../../backend/src/aima_ugc/platform/reporting/visual_docx.py) |
-| 报告章节、标题、正文说明 | [`report_template.md`](../../backend/src/aima_ugc/platform/reporting/report_template.md) | Python 里硬编码第二套正文 |
-| Markdown → Word 解析规则 | [`markdown_word.py`](../../backend/src/aima_ugc/platform/reporting/markdown_word.py) | 数据库/AI |
-| A4 横向、KPI、Ranking、表格、组合布局 | [`visual_docx.py`](../../backend/src/aima_ugc/platform/reporting/visual_docx.py) | Excel Reader |
-| 图表语义/系列规格 | [`chart_spec.py`](../../backend/src/aima_ugc/platform/reporting/chart_spec.py) | TikHub Mapper |
-| 词云/静态 PNG | [`chart_png.py`](../../backend/src/aima_ugc/platform/reporting/chart_png.py) | Office Chart XML |
-| Office Chart、关系、嵌入 XLSX、OOXML ZIP | [`docx_package.py`](../../backend/src/aima_ugc/platform/reporting/docx_package.py) | 报告统计逻辑 |
-| 人工执行入口 | [`adapters/providers/imports_test/generate_report.py`](../../backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py) | 新写一套 Renderer |
+| 平台/情感/标签/关键词统计口径 | [`backend/src/aima_ugc/platform/reporting/excel_report.py`](../../backend/src/aima_ugc/platform/reporting/excel_report.py) | [`backend/src/aima_ugc/platform/reporting/visual_docx.py`](../../backend/src/aima_ugc/platform/reporting/visual_docx.py) |
+| 报告章节、标题、正文说明 | [`backend/src/aima_ugc/platform/reporting/report_template.md`](../../backend/src/aima_ugc/platform/reporting/report_template.md) | Python 里硬编码第二套正文 |
+| Markdown → Word 解析规则 | [`backend/src/aima_ugc/platform/reporting/markdown_word.py`](../../backend/src/aima_ugc/platform/reporting/markdown_word.py) | 数据库/AI |
+| A4 横向、KPI、Ranking、表格、组合布局 | [`backend/src/aima_ugc/platform/reporting/visual_docx.py`](../../backend/src/aima_ugc/platform/reporting/visual_docx.py) | Excel Reader |
+| 图表语义/系列规格 | [`backend/src/aima_ugc/platform/reporting/chart_spec.py`](../../backend/src/aima_ugc/platform/reporting/chart_spec.py) | TikHub Mapper |
+| 词云/静态 PNG | [`backend/src/aima_ugc/platform/reporting/chart_png.py`](../../backend/src/aima_ugc/platform/reporting/chart_png.py) | Office Chart XML |
+| Office Chart、关系、嵌入 XLSX、OOXML ZIP | [`backend/src/aima_ugc/platform/reporting/docx_package.py`](../../backend/src/aima_ugc/platform/reporting/docx_package.py) | 报告统计逻辑 |
+| 人工执行入口 | [`backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py`](../../backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py) | 新写一套 Renderer |
 
 目录：
 
@@ -88,7 +88,7 @@ backend/src/aima_ugc/platform/reporting/
 
 模块 README：
 
-[`../../backend/src/aima_ugc/platform/reporting/README.md`](../../backend/src/aima_ugc/platform/reporting/README.md)
+[`backend/src/aima_ugc/platform/reporting/README.md`](../../backend/src/aima_ugc/platform/reporting/README.md)
 
 ---
 
@@ -154,7 +154,7 @@ reports/
 
 统一 Excel 具体定义：
 
-[`06_Excel统一数据导出与离线调试.md`](06_Excel统一数据导出与离线调试.md)
+[`docs/appendix/06_Excel统一数据导出与离线调试.md`](06_Excel统一数据导出与离线调试.md)
 
 机器实现：
 
@@ -213,7 +213,7 @@ KPI 一套数字
 明细又第三套数字
 ```
 
-所以 [`excel_report.py`](../../backend/src/aima_ugc/platform/reporting/excel_report.py) 会在统计前做一致性校验。
+所以 [`backend/src/aima_ugc/platform/reporting/excel_report.py`](../../backend/src/aima_ugc/platform/reporting/excel_report.py) 会在统计前做一致性校验。
 
 这类失败不是“Word Renderer 太严格”，而是输入派生视图已经不一致，应先修上游 Export/数据。
 
@@ -223,7 +223,7 @@ KPI 一套数字
 
 统计集中在：
 
-- [`excel_report.py`](../../backend/src/aima_ugc/platform/reporting/excel_report.py)
+- [`backend/src/aima_ugc/platform/reporting/excel_report.py`](../../backend/src/aima_ugc/platform/reporting/excel_report.py)
 
 报告 Context 会集中形成：
 
@@ -283,7 +283,7 @@ Word 不应该重新打开 Excel 再算一次。
 
 优先修改：
 
-- [`report_template.md`](../../backend/src/aima_ugc/platform/reporting/report_template.md)
+- [`backend/src/aima_ugc/platform/reporting/report_template.md`](../../backend/src/aima_ugc/platform/reporting/report_template.md)
 
 为什么不把正文写死在 Python：
 
@@ -345,7 +345,7 @@ A4 横向
 
 真实页面设置实现：
 
-- [`visual_docx.py`](../../backend/src/aima_ugc/platform/reporting/visual_docx.py)
+- [`backend/src/aima_ugc/platform/reporting/visual_docx.py`](../../backend/src/aima_ugc/platform/reporting/visual_docx.py)
 
 横向布局更适合：
 
@@ -380,7 +380,7 @@ A4 横向
 
 不是所有数据都做成彩色卡片，也不是每行做一个小饼图。
 
-[`visual_docx.py`](../../backend/src/aima_ugc/platform/reporting/visual_docx.py) 负责这些组件。
+[`backend/src/aima_ugc/platform/reporting/visual_docx.py`](../../backend/src/aima_ugc/platform/reporting/visual_docx.py) 负责这些组件。
 
 典型一级议题页：
 
@@ -425,8 +425,8 @@ A4 横向
 
 图表规格入口：
 
-- [`chart_spec.py`](../../backend/src/aima_ugc/platform/reporting/chart_spec.py)
-- [`markdown_word.py`](../../backend/src/aima_ugc/platform/reporting/markdown_word.py)
+- [`backend/src/aima_ugc/platform/reporting/chart_spec.py`](../../backend/src/aima_ugc/platform/reporting/chart_spec.py)
+- [`backend/src/aima_ugc/platform/reporting/markdown_word.py`](../../backend/src/aima_ugc/platform/reporting/markdown_word.py)
 
 ---
 
@@ -461,11 +461,11 @@ xychart-beta
 
 OOXML 打包：
 
-- [`docx_package.py`](../../backend/src/aima_ugc/platform/reporting/docx_package.py)
+- [`backend/src/aima_ugc/platform/reporting/docx_package.py`](../../backend/src/aima_ugc/platform/reporting/docx_package.py)
 
 图表规格：
 
-- [`chart_spec.py`](../../backend/src/aima_ugc/platform/reporting/chart_spec.py)
+- [`backend/src/aima_ugc/platform/reporting/chart_spec.py`](../../backend/src/aima_ugc/platform/reporting/chart_spec.py)
 
 ---
 
@@ -501,7 +501,7 @@ Word 没有适合的原生词云对象，所以词云是静态图。
 
 当前词云实现位于：
 
-- [`chart_png.py`](../../backend/src/aima_ugc/platform/reporting/chart_png.py)
+- [`backend/src/aima_ugc/platform/reporting/chart_png.py`](../../backend/src/aima_ugc/platform/reporting/chart_png.py)
 
 目标不是“随机散词”，而是适合正式报告的确定性 Editorial Word Cloud。
 
@@ -649,7 +649,7 @@ convert
 
 实现：
 
-- [`docx_package.py`](../../backend/src/aima_ugc/platform/reporting/docx_package.py)
+- [`backend/src/aima_ugc/platform/reporting/docx_package.py`](../../backend/src/aima_ugc/platform/reporting/docx_package.py)
 
 这能发现：
 
@@ -736,7 +736,7 @@ excel_report.py
 
 优先：
 
-- [`report_template.md`](../../backend/src/aima_ugc/platform/reporting/report_template.md)
+- [`backend/src/aima_ugc/platform/reporting/report_template.md`](../../backend/src/aima_ugc/platform/reporting/report_template.md)
 
 然后验证：
 
@@ -747,7 +747,7 @@ report.docx
 → 同一内容进入 Word
 ```
 
-不应在 [`markdown_word.py`](../../backend/src/aima_ugc/platform/reporting/markdown_word.py) 里偷偷写另一套正文。
+不应在 [`backend/src/aima_ugc/platform/reporting/markdown_word.py`](../../backend/src/aima_ugc/platform/reporting/markdown_word.py) 里偷偷写另一套正文。
 
 ---
 
@@ -765,7 +765,7 @@ report.docx
 
 主要看：
 
-- [`visual_docx.py`](../../backend/src/aima_ugc/platform/reporting/visual_docx.py)
+- [`backend/src/aima_ugc/platform/reporting/visual_docx.py`](../../backend/src/aima_ugc/platform/reporting/visual_docx.py)
 
 如果涉及原生 Chart：
 
@@ -774,7 +774,7 @@ report.docx
 
 如果涉及词云：
 
-- [`chart_png.py`](../../backend/src/aima_ugc/platform/reporting/chart_png.py)
+- [`backend/src/aima_ugc/platform/reporting/chart_png.py`](../../backend/src/aima_ugc/platform/reporting/chart_png.py)
 
 不要因为“Word 看起来不好看”就重构 Excel、AI 或数据库。
 
@@ -838,8 +838,8 @@ Word 中图片大小/位置不好
 
 看：
 
-- [`markdown_word.py`](../../backend/src/aima_ugc/platform/reporting/markdown_word.py)
-- [`visual_docx.py`](../../backend/src/aima_ugc/platform/reporting/visual_docx.py)
+- [`backend/src/aima_ugc/platform/reporting/markdown_word.py`](../../backend/src/aima_ugc/platform/reporting/markdown_word.py)
+- [`backend/src/aima_ugc/platform/reporting/visual_docx.py`](../../backend/src/aima_ugc/platform/reporting/visual_docx.py)
 
 ## Word 图表不显示
 

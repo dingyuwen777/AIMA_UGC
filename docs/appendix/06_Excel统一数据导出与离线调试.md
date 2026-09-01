@@ -251,7 +251,7 @@ project_canonical_comment(...)
 
 位置：
 
-- [`platform/export/excel.py`](../../backend/src/aima_ugc/platform/export/excel.py)
+- [`backend/src/aima_ugc/platform/export/excel.py`](../../backend/src/aima_ugc/platform/export/excel.py)
 
 例如：
 
@@ -304,7 +304,7 @@ taxonomy_version
 
 AI 完整业务语义见：
 
-[`07_AI舆情打标与分析实现.md`](07_AI舆情打标与分析实现.md)
+[`docs/appendix/07_AI舆情打标与分析实现.md`](07_AI舆情打标与分析实现.md)
 
 ---
 
@@ -421,7 +421,7 @@ imports_test 离线导出
 
 最终都进入：
 
-- [`platform/export/excel.py`](../../backend/src/aima_ugc/platform/export/excel.py)
+- [`backend/src/aima_ugc/platform/export/excel.py`](../../backend/src/aima_ugc/platform/export/excel.py)
 
 这就是“一套 Excel 实现”的实际代码边界。
 
@@ -491,7 +491,7 @@ _COMMENT_COLUMN_WIDTHS
 
 二级标签支持按中文/宽字符显示宽度估算换行行数，并自适应行高，最大不会无限增长。
 
-如果只是调整 Workbook 视觉，优先改这些共享常量/函数，而不是在 `imports_test` 或 [`export_worker.py`](../../backend/src/aima_ugc/bootstrap/export_worker.py) 复制格式代码。
+如果只是调整 Workbook 视觉，优先改这些共享常量/函数，而不是在 `imports_test` 或 [`backend/src/aima_ugc/bootstrap/export_worker.py`](../../backend/src/aima_ugc/bootstrap/export_worker.py) 复制格式代码。
 
 ---
 
@@ -674,7 +674,7 @@ backend/src/aima_ugc/bootstrap/import_worker.py
 
 统一入库见：
 
-[`08_数据入口与统一入库实现.md`](08_数据入口与统一入库实现.md)
+[`docs/appendix/08_数据入口与统一入库实现.md`](08_数据入口与统一入库实现.md)
 
 ---
 

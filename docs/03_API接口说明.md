@@ -183,8 +183,8 @@ HTTP 只创建 Run/Scope/Job；真正 Provider 调用由 `collection.run.v1` Wor
 
 完整业务语义：
 
-- [`appendix/08_数据入口与统一入库实现.md`](appendix/08_数据入口与统一入库实现.md)
-- [`roadmap/03_4000万历史数据迁移实施方案.md`](roadmap/03_4000万历史数据迁移实施方案.md)
+- [`docs/appendix/08_数据入口与统一入库实现.md`](appendix/08_数据入口与统一入库实现.md)
+- [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](roadmap/03_4000万历史数据迁移实施方案.md)
 
 ## 5.1 `GET /api/v1/data-import-sources/server/directories`
 
@@ -373,7 +373,7 @@ irrelevant
 inherit_ai
 ```
 
-模型原始 Result 不 UPDATE/DELETE；人工决定写入 `analysis_content_relevance_reviews`。批量请求先校验/锁定全部目标，任一目标不可操作时整批失败；已有人工覆盖要切到相反结论必须先撤销。精确 Contract 看 [`contracts/relevance_review.py`](../backend/src/aima_ugc/contracts/relevance_review.py)。
+模型原始 Result 不 UPDATE/DELETE；人工决定写入 `analysis_content_relevance_reviews`。批量请求先校验/锁定全部目标，任一目标不可操作时整批失败；已有人工覆盖要切到相反结论必须先撤销。精确 Contract 看 [`backend/src/aima_ugc/contracts/relevance_review.py`](../backend/src/aima_ugc/contracts/relevance_review.py)。
 
 ---
 
@@ -390,7 +390,7 @@ inherit_ai
 
 详细：
 
-[`appendix/07_AI舆情打标与分析实现.md`](appendix/07_AI舆情打标与分析实现.md)
+[`docs/appendix/07_AI舆情打标与分析实现.md`](appendix/07_AI舆情打标与分析实现.md)
 
 ## 8.1 `GET /api/v1/content-analysis-capabilities`
 
@@ -523,7 +523,7 @@ misfire_policy = latest_only
 max_catch_up_runs = 0
 ```
 
-完整 Scheduler 语义：[`appendix/05_Scheduler调度执行与停机恢复.md`](appendix/05_Scheduler调度执行与停机恢复.md)。
+完整 Scheduler 语义：[`docs/appendix/05_Scheduler调度执行与停机恢复.md`](appendix/05_Scheduler调度执行与停机恢复.md)。
 
 ---
 
@@ -659,10 +659,10 @@ LLM 配置编辑 / Secret 查询 API
 
 # 17. 相关文档
 
-- API/Job/Frontend 架构：[`blueprint/04_后端任务API与前端.md`](blueprint/04_后端任务API与前端.md)
-- 数据入口：[`appendix/08_数据入口与统一入库实现.md`](appendix/08_数据入口与统一入库实现.md)
-- Stage 12 已实现软件与生产门禁：[`roadmap/03_4000万历史数据迁移实施方案.md`](roadmap/03_4000万历史数据迁移实施方案.md)
-- Analysis：[`appendix/07_AI舆情打标与分析实现.md`](appendix/07_AI舆情打标与分析实现.md)
-- Excel Export：[`appendix/06_Excel统一数据导出与离线调试.md`](appendix/06_Excel统一数据导出与离线调试.md)
-- PostgreSQL：[`appendix/01_PostgreSQL查询与调试实战.md`](appendix/01_PostgreSQL查询与调试实战.md)
-- 代码修改导航：[`01_代码结构与修改导航.md`](01_代码结构与修改导航.md)
+- API/Job/Frontend 架构：[`docs/blueprint/04_后端任务API与前端.md`](blueprint/04_后端任务API与前端.md)
+- 数据入口：[`docs/appendix/08_数据入口与统一入库实现.md`](appendix/08_数据入口与统一入库实现.md)
+- Stage 12 已实现软件与生产门禁：[`docs/roadmap/03_4000万历史数据迁移实施方案.md`](roadmap/03_4000万历史数据迁移实施方案.md)
+- Analysis：[`docs/appendix/07_AI舆情打标与分析实现.md`](appendix/07_AI舆情打标与分析实现.md)
+- Excel Export：[`docs/appendix/06_Excel统一数据导出与离线调试.md`](appendix/06_Excel统一数据导出与离线调试.md)
+- PostgreSQL：[`docs/appendix/01_PostgreSQL查询与调试实战.md`](appendix/01_PostgreSQL查询与调试实战.md)
+- 代码修改导航：[`docs/01_代码结构与修改导航.md`](01_代码结构与修改导航.md)

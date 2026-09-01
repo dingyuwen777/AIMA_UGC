@@ -812,7 +812,7 @@ aima-monitoring-excel.v1
 
 ## 15. 未来正式网页关键词配置
 
-当前 [`keyword_pack.txt`](keyword_pack.txt) 只是本地人工入口配置来源。正式系统已经有 PostgreSQL：
+当前 [`backend/src/aima_ugc/adapters/providers/imports_test/keyword_pack.txt`](keyword_pack.txt) 只是本地人工入口配置来源。正式系统已经有 PostgreSQL：
 
 ```text
 keyword_packs
@@ -944,7 +944,7 @@ print(result.word_path)
 `output_dir` 可以省略。省略时，显式 Excel 的报告默认写到该 Excel 同目录下的 `reports/`。
 `report_date_range` 是包含首尾日期的闭区间；传 `None` 时保持原有全量报告行为。
 
-如果使用本目录的 [`generate_report.py`](generate_report.py)，直接修改文件顶部的 `INPUT_EXCEL` 和
+如果使用本目录的 [`backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py`](generate_report.py)，直接修改文件顶部的 `INPUT_EXCEL` 和
 `REPORT_DATE_RANGE`。脚本按周期写入 `output/reports/YYYYMMDD-YYYYMMDD/`，避免不同周期
 报告互相覆盖；全量报告写入 `output/reports/all/`。
 

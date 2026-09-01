@@ -4,8 +4,8 @@
 
 长期边界仍由以下文档控制：
 
-- [`../blueprint/03_数据库与文件存储.md`](../blueprint/03_数据库与文件存储.md)
-- [`../blueprint/05_日志安全部署与运维.md`](../blueprint/05_日志安全部署与运维.md)
+- [`docs/blueprint/03_数据库与文件存储.md`](../blueprint/03_数据库与文件存储.md)
+- [`docs/blueprint/05_日志安全部署与运维.md`](../blueprint/05_日志安全部署与运维.md)
 
 本文只解释当前 Artifact Lifecycle 的实现细节。
 

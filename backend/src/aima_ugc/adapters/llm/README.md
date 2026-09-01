@@ -22,11 +22,11 @@ HTTP、usage、费用、Transport Retry、请求审计
 
 | 文件 | 当前职责 | 修改它通常意味着什么 |
 | --- | --- | --- |
-| [`openai_compatible.py`](openai_compatible.py) | 构造并发送一次 OpenAI-compatible Chat Completions 物理请求，解析响应/usage，形成请求审计 | 换兼容 Provider 协议、usage 解析、HTTP 错误语义 |
-| [`retrying.py`](retrying.py) | 在 Base Adapter 外显式做有界 Transport Retry；同一逻辑请求的多次物理请求共用 `logical_request_id` | 改网络重试条件/退避策略 |
+| [`backend/src/aima_ugc/adapters/llm/openai_compatible.py`](openai_compatible.py) | 构造并发送一次 OpenAI-compatible Chat Completions 物理请求，解析响应/usage，形成请求审计 | 换兼容 Provider 协议、usage 解析、HTTP 错误语义 |
+| [`backend/src/aima_ugc/adapters/llm/retrying.py`](retrying.py) | 在 Base Adapter 外显式做有界 Transport Retry；同一逻辑请求的多次物理请求共用 `logical_request_id` | 改网络重试条件/退避策略 |
 | `pricing.py` | 解析/校验价格目录，根据请求开始时间选价格时段，使用 `Decimal` 计算费用和价格快照 | 改计价公式或价格目录结构 |
 | `pricing.toml` | 当前实际配置的模型官方价格事实 | 价格变化/新增模型 |
-| [`request_audit.py`](request_audit.py) | 定义物理 HTTP 请求审计、汇总和复算 | 改离线审计结构/费用汇总 |
+| [`backend/src/aima_ugc/adapters/llm/request_audit.py`](request_audit.py) | 定义物理 HTTP 请求审计、汇总和复算 | 改离线审计结构/费用汇总 |
 | `README.md` | 解释上述边界和修改方法 | 不作为机器价格/协议事实源 |
 
 精确导出符号看 `__init__.py`；不要根据 README 猜类名。
@@ -86,7 +86,7 @@ analysis/failed.jsonl
 
 ## 3. 一次 `complete()` 为什么必须只有一次 HTTP 发送
 
-[`openai_compatible.py`](openai_compatible.py) 的重要边界是：
+[`backend/src/aima_ugc/adapters/llm/openai_compatible.py`](openai_compatible.py) 的重要边界是：
 
 > 一次 Base Adapter 调用只做一次物理 HTTP 请求，不在底层偷偷重试网络。
 
@@ -99,7 +99,7 @@ analysis/failed.jsonl
 
 如果 Base Adapter 内部静默重发，上层就无法准确知道实际发了几次请求。
 
-需要重试时由 [`retrying.py`](retrying.py) 显式建立：
+需要重试时由 [`backend/src/aima_ugc/adapters/llm/retrying.py`](retrying.py) 显式建立：
 
 ```text
 一个逻辑 LLM 请求
@@ -125,7 +125,7 @@ Validation Retry
 
 ## 4. 当前哪些 Transport 错误可重试
 
-精确错误分类以 [`retrying.py`](retrying.py) 和 [`openai_compatible.py`](openai_compatible.py) 为准。当前长期原则是：
+精确错误分类以 [`backend/src/aima_ugc/adapters/llm/retrying.py`](retrying.py) 和 [`backend/src/aima_ugc/adapters/llm/openai_compatible.py`](openai_compatible.py) 为准。当前长期原则是：
 
 - 网络连接/超时类错误可以进入显式重试；
 - 408、429、部分 5xx 可以重试；

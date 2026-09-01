@@ -88,8 +88,8 @@ historical_tables.py
 
 完整跨模块链路：
 
-- [`../../../../../docs/appendix/08_数据入口与统一入库实现.md`](../../../../../docs/appendix/08_数据入口与统一入库实现.md)
-- [`../../../../../docs/roadmap/03_4000万历史数据迁移实施方案.md`](../../../../../docs/roadmap/03_4000万历史数据迁移实施方案.md)
+- [`docs/appendix/08_数据入口与统一入库实现.md`](../../../../../docs/appendix/08_数据入口与统一入库实现.md)
+- [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](../../../../../docs/roadmap/03_4000万历史数据迁移实施方案.md)
 
 ---
 
@@ -501,26 +501,26 @@ Excel
 | 文件 | 作用 | 常见修改场景 |
 | --- | --- | --- |
 | `tables.py` | 兼容 Import Batch 与 import-parent 关系 | 改 Batch Schema/来源父级约束 |
-| [`import_job.py`](import_job.py) | `ingestion.import-excel.v1` Payload/Handler | 改兼容 Import Job 语义 |
+| [`backend/src/aima_ugc/modules/ingestion/import_job.py`](import_job.py) | `ingestion.import-excel.v1` Payload/Handler | 改兼容 Import Job 语义 |
 | `http.py` | Import Batch HTTP Port/领域异常 | 改兼容入口应用层边界 |
 | `query.py` | Import Batch Read Model | 改兼容 Batch 列表/摘要 |
-| [`import_batch_cursor.py`](import_batch_cursor.py) | Import Batch Cursor | 改兼容分页安全/过期语义 |
-| [`xlsx_security.py`](xlsx_security.py) | XLSX 资源安全 | 改上传/ZIP 安全边界 |
-| [`historical_tables.py`](historical_tables.py) | Campaign/Item/Row/Conflict 等 Stage 12 数据事实 | 改统一导入 Schema/状态/约束 |
-| [`historical_http.py`](historical_http.py) | Data Import Campaign HTTP Port/模型边界 | 改统一导入应用接口 |
-| [`historical_jobs.py`](historical_jobs.py) | Discover/Snapshot/Import-Chunk Job | 改 Campaign Job Payload/Handler |
-| [`historical_directory.py`](historical_directory.py) | 批准服务器目录安全访问 | 改目录枚举/路径安全 |
+| [`backend/src/aima_ugc/modules/ingestion/import_batch_cursor.py`](import_batch_cursor.py) | Import Batch Cursor | 改兼容分页安全/过期语义 |
+| [`backend/src/aima_ugc/modules/ingestion/xlsx_security.py`](xlsx_security.py) | XLSX 资源安全 | 改上传/ZIP 安全边界 |
+| [`backend/src/aima_ugc/modules/ingestion/historical_tables.py`](historical_tables.py) | Campaign/Item/Row/Conflict 等 Stage 12 数据事实 | 改统一导入 Schema/状态/约束 |
+| [`backend/src/aima_ugc/modules/ingestion/historical_http.py`](historical_http.py) | Data Import Campaign HTTP Port/模型边界 | 改统一导入应用接口 |
+| [`backend/src/aima_ugc/modules/ingestion/historical_jobs.py`](historical_jobs.py) | Discover/Snapshot/Import-Chunk Job | 改 Campaign Job Payload/Handler |
+| [`backend/src/aima_ugc/modules/ingestion/historical_directory.py`](historical_directory.py) | 批准服务器目录安全访问 | 改目录枚举/路径安全 |
 | `historical_chunk.py` | Chunk 内部格式/冻结边界 | 改 Chunk 读写/版本 |
 
 跨目录生产实现：
 
-- [`bootstrap/import_http.py`](../../bootstrap/import_http.py)
-- [`bootstrap/import_worker.py`](../../bootstrap/import_worker.py)
-- [`bootstrap/historical_import_http.py`](../../bootstrap/historical_import_http.py)
-- [`bootstrap/historical_import_worker.py`](../../bootstrap/historical_import_worker.py)
-- [`bootstrap/manual_ingestion.py`](../../bootstrap/manual_ingestion.py)
-- [`adapters/persistence/postgres/historical_import.py`](../../adapters/persistence/postgres/historical_import.py)
-- [`adapters/persistence/postgres/historical_content.py`](../../adapters/persistence/postgres/historical_content.py)
+- [`backend/src/aima_ugc/bootstrap/import_http.py`](../../bootstrap/import_http.py)
+- [`backend/src/aima_ugc/bootstrap/import_worker.py`](../../bootstrap/import_worker.py)
+- [`backend/src/aima_ugc/bootstrap/historical_import_http.py`](../../bootstrap/historical_import_http.py)
+- [`backend/src/aima_ugc/bootstrap/historical_import_worker.py`](../../bootstrap/historical_import_worker.py)
+- [`backend/src/aima_ugc/bootstrap/manual_ingestion.py`](../../bootstrap/manual_ingestion.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/historical_import.py`](../../adapters/persistence/postgres/historical_import.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/historical_content.py`](../../adapters/persistence/postgres/historical_content.py)
 
 ---
 
@@ -614,7 +614,7 @@ historical_import_campaigns
 
 SQL：
 
-[`../../../../../docs/appendix/01_PostgreSQL查询与调试实战.md`](../../../../../docs/appendix/01_PostgreSQL查询与调试实战.md)
+[`docs/appendix/01_PostgreSQL查询与调试实战.md`](../../../../../docs/appendix/01_PostgreSQL查询与调试实战.md)
 
 ---
 
@@ -658,10 +658,10 @@ frontend/e2e-fullstack/stage12-historical-analysis.spec.ts
 
 ## 17. 深入阅读
 
-- [`../../../../../docs/appendix/08_数据入口与统一入库实现.md`](../../../../../docs/appendix/08_数据入口与统一入库实现.md)
-- [`../../../../../docs/roadmap/03_4000万历史数据迁移实施方案.md`](../../../../../docs/roadmap/03_4000万历史数据迁移实施方案.md)
-- [`../../../../../docs/appendix/14_4000万历史迁移与Analysis Run运行手册.md`](../../../../../docs/appendix/14_4000万历史迁移与Analysis Run运行手册.md)
-- [`../../../../../docs/appendix/06_Excel统一数据导出与离线调试.md`](../../../../../docs/appendix/06_Excel统一数据导出与离线调试.md)
-- [`../../../../../docs/blueprint/02_采集系统与数据标准化.md`](../../../../../docs/blueprint/02_采集系统与数据标准化.md)
-- [`../../../../../docs/blueprint/03_数据库与文件存储.md`](../../../../../docs/blueprint/03_数据库与文件存储.md)
-- [`../../../../../docs/blueprint/04_后端任务API与前端.md`](../../../../../docs/blueprint/04_后端任务API与前端.md)
+- [`docs/appendix/08_数据入口与统一入库实现.md`](../../../../../docs/appendix/08_数据入口与统一入库实现.md)
+- [`docs/roadmap/03_4000万历史数据迁移实施方案.md`](../../../../../docs/roadmap/03_4000万历史数据迁移实施方案.md)
+- [`docs/appendix/14_4000万历史迁移与Analysis Run运行手册.md`](../../../../../docs/appendix/14_4000万历史迁移与Analysis Run运行手册.md)
+- [`docs/appendix/06_Excel统一数据导出与离线调试.md`](../../../../../docs/appendix/06_Excel统一数据导出与离线调试.md)
+- [`docs/blueprint/02_采集系统与数据标准化.md`](../../../../../docs/blueprint/02_采集系统与数据标准化.md)
+- [`docs/blueprint/03_数据库与文件存储.md`](../../../../../docs/blueprint/03_数据库与文件存储.md)
+- [`docs/blueprint/04_后端任务API与前端.md`](../../../../../docs/blueprint/04_后端任务API与前端.md)

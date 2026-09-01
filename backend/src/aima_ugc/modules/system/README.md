@@ -61,7 +61,7 @@ Excel Import
 
 `imports_test` 的离线相关性清洗继续复用现有 Relevance 匹配规则。数据库关键词身份与运行时匹配规范化仍是两个有意不同的概念：`keywords.normalized_text` 负责稳定数据库身份；Relevance 匹配可以进一步忽略空白和 `-/_/·`。同一选择范围内多个数据库关键词若收敛为同一匹配文本，运行时按稳定优先级/顺序保留第一个有效匹配项，数据库与管理 API 仍保留各自词条。
 
-正式关键词目录读写由 Pydantic HTTP Contract 与 `PostgresKeywordCatalogRepository` 维护；Collection 全局 Relevance 由 `PostgresGlobalRelevanceRepository` 维护；Import 的多词包冻结在 [`bootstrap/import_http.py`](../../bootstrap/import_http.py) 与 [`modules/ingestion/import_job.py`](../ingestion/import_job.py)。精确请求字段和 Snapshot 结构以当前 Contract/代码为准，不在 README 复制第二套 Schema。
+正式关键词目录读写由 Pydantic HTTP Contract 与 `PostgresKeywordCatalogRepository` 维护；Collection 全局 Relevance 由 `PostgresGlobalRelevanceRepository` 维护；Import 的多词包冻结在 [`backend/src/aima_ugc/bootstrap/import_http.py`](../../bootstrap/import_http.py) 与 [`backend/src/aima_ugc/modules/ingestion/import_job.py`](../ingestion/import_job.py)。精确请求字段和 Snapshot 结构以当前 Contract/代码为准，不在 README 复制第二套 Schema。
 
 当前没有独立 Alias 表。业务别名先作为独立关键词加入词包；如果未来建立“标准词 → 多别名”正式关系，必须先明确它与 `keywords.normalized_text` 唯一身份、Keyword Pack 成员、Collection Run Snapshot、Import Keyword Selection 和前端编辑/去重的关系，再通过正式 Change 落到 Contract/Schema。
 

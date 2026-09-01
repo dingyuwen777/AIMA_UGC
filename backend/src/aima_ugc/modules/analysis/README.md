@@ -149,7 +149,7 @@ ContentLabelingLLMResponse
 
 ### 正式 Job
 
-- [`content_analysis_job.py`](content_analysis_job.py)
+- [`backend/src/aima_ugc/modules/analysis/content_analysis_job.py`](content_analysis_job.py)
 
 当前 Job 类型：
 
@@ -161,7 +161,7 @@ analysis.content-label.v1
 → 对冻结的 Request/Shard 执行实际 LLM 分析并持久化结果
 ```
 
-两类 Job 都由 `register_content_analysis_job()` 注册；[`bootstrap/worker.py`](../../bootstrap/worker.py) 传入 Planner Handler，因此不能只把 `analysis.content-label.v1` 写成当前完整 Analysis Registry。
+两类 Job 都由 `register_content_analysis_job()` 注册；[`backend/src/aima_ugc/bootstrap/worker.py`](../../bootstrap/worker.py) 传入 Planner Handler，因此不能只把 `analysis.content-label.v1` 写成当前完整 Analysis Registry。
 
 ### 正式 Worker 装配
 
@@ -372,10 +372,10 @@ Unified JSONL
 | 改 V3 输出结构 | Analysis Contract + Service/Validator + DB/API/Export/Frontend + Migration（需要时） |
 | 改 current/stale/pending | Analysis Identity + Content Query Repository + API/Frontend tests |
 | 改模型/Base URL | Platform Settings + `adapters/llm` + Pricing |
-| 改网络 Retry | [`adapters/llm/retrying.py`](../../adapters/llm/retrying.py) + audit tests |
-| 改 Validation Retry | [`content_labeling.py`](content_labeling.py) + Analysis tests |
-| 改正式 Job | [`content_analysis_job.py`](content_analysis_job.py) + [`bootstrap/analysis_worker.py`](../../bootstrap/analysis_worker.py) + Job integration |
-| 改离线并发/Checkpoint | [`offline_labeling.py`](offline_labeling.py) + offline tests/Appendix |
+| 改网络 Retry | [`backend/src/aima_ugc/adapters/llm/retrying.py`](../../adapters/llm/retrying.py) + audit tests |
+| 改 Validation Retry | [`backend/src/aima_ugc/modules/analysis/content_labeling.py`](content_labeling.py) + Analysis tests |
+| 改正式 Job | [`backend/src/aima_ugc/modules/analysis/content_analysis_job.py`](content_analysis_job.py) + [`backend/src/aima_ugc/bootstrap/analysis_worker.py`](../../bootstrap/analysis_worker.py) + Job integration |
+| 改离线并发/Checkpoint | [`backend/src/aima_ugc/modules/analysis/offline_labeling.py`](offline_labeling.py) + offline tests/Appendix |
 | 改数据库字段 | `tables.py` + 新 Alembic Migration + Repository + integration |
 
 ---

@@ -4,9 +4,9 @@
 
 长期边界：
 
-- [`../blueprint/04_后端任务API与前端.md`](../blueprint/04_后端任务API与前端.md)
-- [`../blueprint/07_技术决策与实施门禁.md`](../blueprint/07_技术决策与实施门禁.md)
-- [`../blueprint/08_采集策略与平台能力.md`](../blueprint/08_采集策略与平台能力.md)
+- [`docs/blueprint/04_后端任务API与前端.md`](../blueprint/04_后端任务API与前端.md)
+- [`docs/blueprint/07_技术决策与实施门禁.md`](../blueprint/07_技术决策与实施门禁.md)
+- [`docs/blueprint/08_采集策略与平台能力.md`](../blueprint/08_采集策略与平台能力.md)
 
 当前代码入口：
 
@@ -555,7 +555,7 @@ duration_ms
 
 SQL 示例：
 
-[`01_PostgreSQL查询与调试实战.md`](01_PostgreSQL查询与调试实战.md)
+[`docs/appendix/01_PostgreSQL查询与调试实战.md`](01_PostgreSQL查询与调试实战.md)
 
 ### 常见判断
 

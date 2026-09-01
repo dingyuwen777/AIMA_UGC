@@ -28,7 +28,7 @@
 ## 项目治理校准状态
 
 - 状态：已校准（2026-09-01）。后续只在长期规则或项目事实发生实际变化时做有证据的定向修正，不用普通功能任务重写整份文件。
-- 本次校准依据：当前 `AGENTS.md`、根与模块 README、`docs/blueprint/`、`docs/roadmap/`、`docs/appendix/`、`docs/guides/`、Manifest/lock/版本文件、真实入口与模块实现、Pydantic Contract、生成 OpenAPI/JSON Schema、[`database_schema.py`](backend/src/aima_ugc/database_schema.py)、Alembic Migration、后端/前端测试、GitHub Actions、Dockerfile、Compose 和 Release 配置。
+- 本次校准依据：当前 `AGENTS.md`、根与模块 README、`docs/blueprint/`、`docs/roadmap/`、`docs/appendix/`、`docs/guides/`、Manifest/lock/版本文件、真实入口与模块实现、Pydantic Contract、生成 OpenAPI/JSON Schema、[`backend/src/aima_ugc/database_schema.py`](backend/src/aima_ugc/database_schema.py)、Alembic Migration、后端/前端测试、GitHub Actions、Dockerfile、Compose 和 Release 配置。
 - 当前仓库未发现 `CONTRIBUTING*`、独立 RFC/ADR/PRD/Spec 目录或 `openspec/`；是否存在并行施工单元只以 `changes/active/` 当前真实内容为准，不在本文件复制易失效列表。
 
 ## 规则、事实和未确认事项的边界
@@ -155,7 +155,7 @@ Internal V1-A 已在仓库根建立唯一 [`Dockerfile`](Dockerfile) 与 [`compo
 
 打包问题必须修根因：禁止用临时 `PYTHONPATH`、改变工作目录、修改 `sys.path` 或先删除产物来掩盖 package discovery/构建配置问题。
 
-版本政策：精确版本以 [`.python-version`](.python-version)、[`.node-version`](.node-version)、[`.uv-version`](.uv-version)、[`uv.lock`](uv.lock)、[`package-lock.json`](frontend/package-lock.json) 和镜像/Release 锁定事实为准。禁止运行时或构建时解析 `latest`，禁止因为发现新版本就在普通功能任务里升级；升级是独立任务，必须核验官方发布、兼容/安全影响并执行完整门禁。
+版本政策：精确版本以 [`.python-version`](.python-version)、[`.node-version`](.node-version)、[`.uv-version`](.uv-version)、[`uv.lock`](uv.lock)、[`frontend/package-lock.json`](frontend/package-lock.json) 和镜像/Release 锁定事实为准。禁止运行时或构建时解析 `latest`，禁止因为发现新版本就在普通功能任务里升级；升级是独立任务，必须核验官方发布、兼容/安全影响并执行完整门禁。
 
 没有实际问题证据不得主动引入微服务、Redis、Kafka、RabbitMQ、MongoDB、OpenSearch、Kubernetes 或多数据库兼容层。
 
@@ -515,10 +515,10 @@ uv run python scripts/quality/check_agent_governance.py
 
 ## 13. 依赖
 
-- 精确依赖版本以实际版本文件、[`uv.lock`](uv.lock)、[`package-lock.json`](frontend/package-lock.json) 和镜像/Release 锁定事实为准，Blueprint 不维护第二份 patch 版本表；
+- 精确依赖版本以实际版本文件、[`uv.lock`](uv.lock)、[`frontend/package-lock.json`](frontend/package-lock.json) 和镜像/Release 锁定事实为准，Blueprint 不维护第二份 patch 版本表；
 - Python 依赖只改 [`pyproject.toml`](pyproject.toml)，同步 [`uv.lock`](uv.lock)；
 - CI 使用 `uv sync --locked`；
-- Frontend 提交 [`package-lock.json`](frontend/package-lock.json)，CI 使用 `npm ci`；
+- Frontend 提交 [`frontend/package-lock.json`](frontend/package-lock.json)，CI 使用 `npm ci`；
 - 不同时使用多个包管理器；
 - 普通功能不升级依赖；
 - 新增依赖说明必要性、许可证、维护、体积和替代方案；
@@ -656,7 +656,7 @@ revert/
 
 复杂任务先执行上游 Requirement Completeness Review，再检查当前 Change 的需求符合性，最后检查代码质量。严重和重要问题未解决不得合并。
 
-对 `completion_gate: required` 的 Change，`ready_for_review` 前必须完成 Requirement Traceability、Validation Matrix、Completion Audit，并取得 [`ready_check.py`](.agents/skills/coding/scripts/ready_check.py) 与 CI 的机器门禁证据。测试或 CI 绿色不能单独证明正式 Stage / Roadmap 单元完成；某一测试层绿色也不能替代另一层独立风险的验证。
+对 `completion_gate: required` 的 Change，`ready_for_review` 前必须完成 Requirement Traceability、Validation Matrix、Completion Audit，并取得 [`.agents/skills/coding/scripts/ready_check.py`](.agents/skills/coding/scripts/ready_check.py) 与 CI 的机器门禁证据。测试或 CI 绿色不能单独证明正式 Stage / Roadmap 单元完成；某一测试层绿色也不能替代另一层独立风险的验证。
 
 完成结论必须有本轮实际证据。交付至少报告：
 
