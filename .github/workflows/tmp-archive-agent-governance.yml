@@ -1,0 +1,63 @@
+name: Temporary Archive Governance Change
+
+on:
+  push:
+    branches:
+      - chore/archive-agent-skills-project-governance
+
+permissions:
+  contents: write
+
+jobs:
+  archive:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout archive branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: chore/archive-agent-skills-project-governance
+          fetch-depth: 0
+
+      - name: Archive completed Change
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          source = Path("changes/active/CHG-20260901-agent-skills-project-governance/CHANGE.md")
+          target = Path("changes/archive/2026-09/CHG-20260901-agent-skills-project-governance/CHANGE.md")
+          text = source.read_text(encoding="utf-8")
+
+          if text.count("status: ready_for_review") != 1:
+              raise SystemExit("expected ready_for_review status exactly once")
+          text = text.replace("status: ready_for_review", "status: done", 1)
+
+          final_criterion = "- [ ] PR 最新 HEAD 的相关永久 CI 全绿；合并后 `main` 取得新鲜 CI；Change 最终归档。"
+          if text.count(final_criterion) != 1:
+              raise SystemExit("final success criterion not found exactly once")
+          text = text.replace(final_criterion, final_criterion.replace("- [ ]", "- [x]", 1), 1)
+
+          evidence = """## 合并与归档证据\n\n- Draft PR #274 因当前宿主 Draft → Ready mutation 返回已知 GraphQL 字段错误而关闭，`merged=false`；未作为最终交付 PR。\n- 最终 PR #275：reviewed head `9a716d9e24de810a510dd7cd47c3c2deb8a123f9`，Deep Review `5073545285` 结论 `NO_FINDINGS_WITHIN_SCOPE`，无未解决 review thread。\n- PR #275 fresh CI 全绿：CI `33464113553`、Change Completion Gate `33464113561`、Full-stack Acceptance `33464113556`、Runtime Acceptance `33464113613`、Release dry-run `33464113589`、Developer Tooling Compatibility `33464113537` 均为 `success`。\n- PR #275 使用 expected-head SHA 合并，merge commit 为 `ebebd5fd7d001d4aadec53fd486f8c6d163b88df`。\n- 合并后 `main@ebebd5fd7d001d4aadec53fd486f8c6d163b88df` fresh push CI 全绿：CI `33464376086`、Change Completion Gate `33464376112`、Full-stack Acceptance `33464376092`、Runtime Acceptance `33464376171`、Developer Tooling Compatibility `33464376109` 均为 `success`。\n- 本归档只把已完成 Change 从 `changes/active/` 移到 `changes/archive/2026-09/` 并封存最终证据，不修改产品实现、Contract、Schema/Migration、依赖或运行时。\n\n"""
+          marker = "# 文档影响"
+          if "## 合并与归档证据" not in text:
+              if marker not in text:
+                  raise SystemExit("document impact marker not found")
+              text = text.replace(marker, evidence + marker, 1)
+
+          target.parent.mkdir(parents=True, exist_ok=True)
+          target.write_text(text, encoding="utf-8")
+          source.unlink()
+          PY
+
+          python3 scripts/quality/check_docs.py
+          python3 scripts/quality/check_docs_facts.py
+          python3 scripts/quality/check_agent_governance.py
+          python3 .agents/skills/coding/scripts/ready_check.py --root .
+          git diff --check
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add changes/active changes/archive
+          git commit -m "归档治理Change"
+          git push origin HEAD:chore/archive-agent-skills-project-governance
