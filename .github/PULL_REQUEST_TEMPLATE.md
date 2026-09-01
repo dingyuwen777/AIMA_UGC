@@ -1,3 +1,10 @@
+## Requirement Source
+
+Requirement-Source: #<Issue>
+
+- 如果项目已有更强的正式需求源，可填写其稳定 ID 或仓库内正式路径。
+- `Closes` / `Fixes` / `Resolves` 只在本 PR 合并后确实完成整个 Issue 时使用；不要用关闭关键字替代 `Requirement-Source:`。
+
 ## 背景与现状
 
 说明当前可验证事实和本 PR 解决的问题。
