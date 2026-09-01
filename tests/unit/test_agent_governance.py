@@ -47,6 +47,13 @@ def _minimal_repository(root: Path) -> None:
     _write(root / "scripts/quality/check_pr_requirement_source.py", "# 测试夹具\n")
     _write(
         root / ".github/workflows/change-completion-gate.yml",
+        "on:\n"
+        "  pull_request:\n"
+        "    types:\n"
+        "      - opened\n"
+        "      - synchronize\n"
+        "      - reopened\n"
+        "      - edited\n"
         "permissions:\n  contents: read\n  issues: read\n"
         "python scripts/quality/check_agent_governance.py\n"
         "python scripts/quality/check_pr_requirement_source.py --event event.json --root .\n"
@@ -263,7 +270,19 @@ def test_checker_requires_pr_requirement_source_gate_wiring(tmp_path: Path) -> N
     errors = CHECK_REPOSITORY(tmp_path)
 
     source_errors = [error for error in errors if error.startswith("GOV015")]
-    assert len(source_errors) == 3
+    assert len(source_errors) == 4
+
+
+def test_checker_requires_pr_body_edit_revalidation(tmp_path: Path) -> None:
+    """治理回归必须阻止 Requirement Source 的 `edited` 重验触发被删除。"""
+    _minimal_repository(tmp_path)
+    workflow_path = tmp_path / ".github/workflows/change-completion-gate.yml"
+    workflow = workflow_path.read_text(encoding="utf-8").replace("      - edited\n", "")
+    _write(workflow_path, workflow)
+
+    errors = CHECK_REPOSITORY(tmp_path)
+
+    assert any(error.startswith("GOV015") and "正文 edited" in error for error in errors)
 
 
 def test_checker_requires_issue_and_pr_requirement_traceability(tmp_path: Path) -> None:
