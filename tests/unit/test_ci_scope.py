@@ -104,12 +104,40 @@ def test_contract_change_runs_producer_consumer_and_all_real_golden_paths() -> N
     assert requirements.fullstack_specs == ALL_FULLSTACK_SPECS
 
 
+def test_contract_test_change_stays_backend_only_instead_of_promoting_cross_component() -> None:
+    requirements = _requirements("tests/contracts/test_canonical_v1.py")
+
+    assert requirements.profile == "backend_only"
+    assert requirements.backend_required is True
+    assert requirements.frontend_required is False
+    assert requirements.contract_required is False
+    assert requirements.postgres_required is False
+    assert requirements.fullstack_required is False
+
+
 def test_fullstack_spec_change_runs_only_that_real_golden_path() -> None:
     requirements = _requirements("frontend/e2e-fullstack/manual-relevance-review.spec.ts")
 
     assert requirements.frontend_required is True
     assert requirements.fullstack_required is True
     assert requirements.fullstack_specs == ("manual-relevance-review.spec.ts",)
+
+
+def test_fullstack_control_plane_change_runs_entire_real_suite() -> None:
+    requirements = _requirements("frontend/playwright.fullstack.config.ts")
+
+    assert requirements.profile == "full"
+    assert requirements.postgres_required is True
+    assert requirements.fullstack_required is True
+    assert requirements.fullstack_specs == ("all",)
+
+
+def test_unknown_new_fullstack_spec_fails_closed_to_entire_suite() -> None:
+    requirements = _requirements("frontend/e2e-fullstack/new-critical-flow.spec.ts")
+
+    assert requirements.frontend_required is True
+    assert requirements.fullstack_required is True
+    assert requirements.fullstack_specs == ("all",)
 
 
 def test_mixed_frontend_and_backend_change_requires_cross_component_proof() -> None:
