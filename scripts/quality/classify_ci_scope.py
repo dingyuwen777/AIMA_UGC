@@ -14,6 +14,7 @@ ALL_FULLSTACK_SPECS = (
     "manual-relevance-review.spec.ts",
     "stage12-historical-analysis.spec.ts",
 )
+FULLSTACK_ALL = ("all",)
 
 DOCS_ONLY_EXACT = {"README.md"}
 GOVERNANCE_ONLY_EXACT = {"AGENTS.md"}
@@ -35,6 +36,7 @@ FULL_EXACT = {
     "compose.yaml",
     "compose.windows.yaml",
     "Dockerfile",
+    "frontend/playwright.fullstack.config.ts",
 }
 FULL_PREFIXES = (
     "migrations/",
@@ -120,10 +122,10 @@ def _is_persistence_path(path: str) -> bool:
 
 
 def _fullstack_specs_for_path(path: str) -> tuple[str, ...]:
-    """把高价值真实用户链路映射到当前四条 Golden Path；无法精确归属时返回全集。"""
+    """把高价值真实用户链路映射到 Golden Path；未知 Full-stack 场景失败关闭为全量。"""
     if path.startswith("frontend/e2e-fullstack/") and path.endswith(".spec.ts"):
         spec = Path(path).name
-        return (spec,) if spec in ALL_FULLSTACK_SPECS else ALL_FULLSTACK_SPECS
+        return (spec,) if spec in ALL_FULLSTACK_SPECS else FULLSTACK_ALL
 
     collection_markers = ("/collection/", "collection-plan", "collection_strategy")
     ingestion_markers = ("/ingestion/", "import", "historical")
@@ -138,11 +140,13 @@ def _fullstack_specs_for_path(path: str) -> tuple[str, ...]:
         return ("stage12-historical-analysis.spec.ts",)
     if any(marker in path for marker in content_markers):
         return ("manual-relevance-review.spec.ts",)
-    return ALL_FULLSTACK_SPECS
+    return FULLSTACK_ALL
 
 
 def _ordered_specs(specs: set[str]) -> tuple[str, ...]:
-    """按正式 Full-stack suite 的固定顺序输出 spec，避免集合顺序造成 CI 漂移。"""
+    """按正式 Full-stack suite 的固定顺序输出 spec；`all` 优先表示整个目录。"""
+    if "all" in specs:
+        return FULLSTACK_ALL
     return tuple(spec for spec in ALL_FULLSTACK_SPECS if spec in specs)
 
 
@@ -157,7 +161,7 @@ def _full_requirements() -> CiRequirements:
         postgres_required=True,
         fullstack_required=True,
         stack_smoke_required=True,
-        fullstack_specs=ALL_FULLSTACK_SPECS,
+        fullstack_specs=FULLSTACK_ALL,
     )
 
 
@@ -205,11 +209,17 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
             kinds.add("frontend")
             continue
 
+        if path.startswith("frontend/e2e-fullstack/"):
+            frontend_required = True
+            fullstack_specs.update(FULLSTACK_ALL)
+            kinds.add("frontend")
+            continue
+
         if _is_contract_path(path):
             backend_required = True
             frontend_required = True
             contract_required = True
-            fullstack_specs.update(ALL_FULLSTACK_SPECS)
+            fullstack_specs.update(FULLSTACK_ALL)
             kinds.add("contract")
             continue
 
@@ -250,7 +260,7 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
         profile = "cross_component"
 
     if frontend_required and backend_required and not contract_required:
-        fullstack_specs.update(ALL_FULLSTACK_SPECS)
+        fullstack_specs.update(FULLSTACK_ALL)
 
     selected_specs = _ordered_specs(fullstack_specs)
     return CiRequirements(
