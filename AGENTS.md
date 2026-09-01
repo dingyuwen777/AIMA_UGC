@@ -27,9 +27,9 @@
 <!-- agent-skills:project-governance:v1 -->
 ## 项目治理校准状态
 
-- 状态：已校准（2026-08-31）。后续只在长期规则或项目事实发生实际变化时做有证据的定向修正，不用普通功能任务重写整份文件。
+- 状态：已校准（2026-09-01）。后续只在长期规则或项目事实发生实际变化时做有证据的定向修正，不用普通功能任务重写整份文件。
 - 本次校准依据：当前 `AGENTS.md`、根与模块 README、`docs/blueprint/`、`docs/roadmap/`、`docs/appendix/`、`docs/guides/`、Manifest/lock/版本文件、真实入口与模块实现、Pydantic Contract、生成 OpenAPI/JSON Schema、`database_schema.py`、Alembic Migration、后端/前端测试、GitHub Actions、Dockerfile、Compose 和 Release 配置。
-- 当前仓库未发现 `CONTRIBUTING*`、独立 RFC/ADR/PRD/Spec 目录、`openspec/` 或活动中的 Change；这表示当前不存在这些项目事实源，不代表禁止以后按正式流程新增。
+- 当前仓库未发现 `CONTRIBUTING*`、独立 RFC/ADR/PRD/Spec 目录或 `openspec/`；是否存在并行施工单元只以 `changes/active/` 当前真实内容为准，不在本文件复制易失效列表。
 
 ## 规则、事实和未确认事项的边界
 
@@ -50,18 +50,19 @@
 - 仓库外的实际生产服务器状态、已部署 Commit/镜像、运行时 Secret 与账号权限、真实数据量和性能、当前备份可恢复性、Provider/模型账户额度，以及托管平台上的实时保护规则，必须在相关任务中查询对应环境后才能下结论。
 - 完整 Production Go-Live 仍未确认；认证授权、HTTPS、协调 Backup/Restore、正式 Deploy/Rollback、SBOM/签名/provenance、容量与完整生产验收等缺口继续以 Roadmap 和真实环境证据为准。
 
-## 本次校准确认的偏差
+## 治理校准后的项目边界
 
-- `docs/blueprint/01_总体架构与技术选型.md` 的 Job 注册清单仍是旧的四项描述；当前 Worker 入口、根 README、技术决策文档和生产路线一致证明实际注册八种 Job。该项属于文档漂移，不能据此删减现有 Job。
-- 部分既有文档仍直接导航到接入前的本地治理 Reference；当前 Runtime 安装不提供这些本地 Reference。完整规则应从上方受管入口取得，相关文档导航需在后续定向文档任务中同步，不能通过重建一套本地副本解决。
-- `.github/workflows/ci.yml` 与 `.github/workflows/change-completion-gate.yml` 仍执行当前安装中不存在的 `.agents/skills/coding/tests`。这是 CI 配置与安装布局不一致造成的真实门禁故障；在独立修复前不得把该检查描述为已通过，也不得删除或弱化门禁来掩盖问题。
+- Worker 持久 Job 的精确注册以 `backend/src/aima_ugc/bootstrap/worker.py` 为机器事实；当前正式架构文档已经同步八种 Job，不再保留旧四项摘要。
+- 当前正式项目文档只维护 AIMA 自己的架构、Contract、Schema、测试、CI、部署和开发导航；通用研发治理规则通过上方项目研发治理入口取得，不在 AIMA 文档树复制 canonical Reference 路径或正文。
+- 永久 CI 只验证 AIMA 自己可维护的项目治理接线、文档/Secret、Change Ready 和产品质量；通用治理能力自身的源码回归由其 canonical Owner 负责，不复制到业务仓库。
+- 当前已安装的受管治理运行资产继续由正式安装/升级流程维护。普通 AIMA 业务开发不手工迁移、删除或重写这些受管文件；未来版本升级作为独立治理动作执行。
 
 ## 1. 开始前
 
 处理分析、设计、编码、Review、PR、CI 或交付前：
 
 1. 先读本文件；
-2. 按上方“项目研发治理入口”取得当前任务需要的完整约束；本地受管 Skill Core/CLI 只是运行资产，不是项目规则或完整 Reference 事实源；治理能力不可用时按受管入口失败关闭；
+2. 按上方“项目研发治理入口”执行当前任务需要的通用研发约束；AIMA 项目规则和当前机器事实始终继续生效，受管运行资产不作为项目自有长期事实源直接维护；
 3. 再读 `docs/blueprint/README.md` 和 `docs/blueprint/07_技术决策与实施门禁.md`；
 4. 如果任务涉及“下一阶段做什么”、生产部署、认证、Release、Backup/Restore、回滚或旧数据迁移，必须再读 `docs/roadmap/02_生产上线实施路线.md`；
 5. 如果需要快速找到真实代码入口，读 `docs/01_代码结构与修改导航.md`；
@@ -84,7 +85,7 @@
 | 当前开发环境怎么运行 | `docs/02_环境运行与部署.md` |
 | 下一阶段、生产上线、Release/Backup/回滚 | `docs/roadmap/02_生产上线实施路线.md` + `docs/appendix/11_生产部署与离线Release方案.md` |
 | 开发/测试/CI/Git | `docs/blueprint/06_开发约束与分阶段实施.md` |
-| 用户可见行为/前后端/Full-stack/Provider 测试分层 | `docs/blueprint/06_开发约束与分阶段实施.md` + 按上方受管入口加载当前分层验证完整规则 |
+| 用户可见行为/前后端/Full-stack/Provider 测试分层 | `docs/blueprint/06_开发约束与分阶段实施.md` + 按上方项目研发治理入口取得当前分层验证规则 |
 | 重大跨模块决定 | `docs/blueprint/07_技术决策与实施门禁.md` |
 | Collection Plan、Capability、Decision、评论 | `docs/blueprint/08_采集策略与平台能力.md` + `docs/collection/README.md` |
 | Scheduler 运行/停机恢复 | `docs/appendix/05_Scheduler调度执行与停机恢复.md` |
@@ -96,7 +97,7 @@
 | Word 舆情报告 | `docs/appendix/10_Word舆情报告生成与排版实现.md` + `backend/src/aima_ugc/platform/reporting/README.md` |
 | Figma / Design-to-Code | `docs/guides/01_Figma与前端设计开发工作流.md` + `docs/blueprint/04_后端任务API与前端.md` |
 
-任务开始时按 Skill 判定 L1–L3。L2/L3 先写计划并创建/认领要求的 Change。仓库存在 `openspec/` 后，涉及新能力、行为、数据、接口、架构或安全变化的任务必须按当前 OpenSpec 规则更新对应 change 并通过校验；纯机械文档/格式任务按 Skill 例外处理。不得自行创建与 OpenSpec 工具产物冲突的平行目录。
+任务开始时按当前治理规则判定 L1–L3。L2/L3 先写计划并创建/认领要求的 Change。仓库存在 `openspec/` 后，涉及新能力、行为、数据、接口、架构或安全变化的任务必须按当前 OpenSpec 规则更新对应 change 并通过校验；纯机械文档/格式任务按当前治理规则的例外处理。不得自行创建与 OpenSpec 工具产物冲突的平行目录。
 
 ### 正式单元完成定义追溯门禁
 
@@ -128,7 +129,7 @@ python .agents/skills/coding/scripts/ready_check.py --root . --require-active-re
 
 机器 Ready Check 只验证可机器判断的结构、状态、Source 路径、占位符和 Completion Audit checkbox；它不能证明业务语义完整，因此不能替代 Requirement Traceability 和语义 Review。
 
-对应完整规则通过上方受管入口按当前任务加载。
+对应完整规则通过上方项目研发治理入口按当前任务取得。
 
 ## 2. 系统基线
 
@@ -450,7 +451,7 @@ Red
 → 完整 CI
 ```
 
-对 L2/L3 且存在用户可见、前后端/数据库/异步、公共 Contract 或 Provider 边界的任务，必须按上方受管入口加载的当前分层验证完整规则建立并维护 Validation Matrix。固定职责是：
+对 L2/L3 且存在用户可见、前后端/数据库/异步、公共 Contract 或 Provider 边界的任务，必须按上方项目研发治理入口取得当前分层验证规则并建立 Validation Matrix。固定职责是：
 
 ```text
 Browser Mock Acceptance
@@ -478,13 +479,14 @@ Real Provider Probe
 - 不要求每个任务机械执行全部层；`not_applicable` 必须有真实依据，`required` 必须在 Ready 前有新鲜证据；
 - 测试数量按实际行为边界与风险决定，不设置固定 Mock/Integration/Full-stack 数量配额。
 
-涉及公共边界时还必须运行当前存在的架构、表 Owner、Secret 和文档检查：
+涉及公共边界时还必须运行当前存在的架构、表 Owner、Secret、文档和项目治理检查：
 
 ```bash
 uv run python scripts/quality/check_architecture.py
 uv run python scripts/quality/check_table_ownership.py
 uv run python scripts/quality/scan_secrets.py
 uv run python scripts/quality/check_docs.py
+uv run python scripts/quality/check_agent_governance.py
 ```
 
 门禁失败修根因，不能修改门禁放行违规实现。失败输出应让开发者知道规则、文件/位置、原因和修复方向。
