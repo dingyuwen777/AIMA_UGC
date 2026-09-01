@@ -138,9 +138,7 @@ def test_github_output_exposes_each_required_layer_and_selected_specs(tmp_path: 
     WRITE_GITHUB_OUTPUT(output, requirements, changed_count=1)
 
     values = dict(
-        line.split("=", 1)
-        for line in output.read_text(encoding="utf-8").splitlines()
-        if line
+        line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines() if line
     )
     assert values["profile"] == "persistence"
     assert values["repository_required"] == "true"
