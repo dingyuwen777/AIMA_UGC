@@ -118,6 +118,7 @@ test('creates only a periodic Collection Plan from the approved drawer', async (
     name: '爱玛新品自动采集',
     schedule_expr: '0 */6 * * *',
     keyword_pack_ids: [packId],
+    vehicle_model_ids: [],
     platforms: [{
       platform: 'xiaohongshu',
       provider_config_id: providerId,
