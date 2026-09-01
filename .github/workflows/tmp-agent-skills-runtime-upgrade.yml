@@ -1,0 +1,123 @@
+name: Temporary Agent Skills Runtime Upgrade
+
+on:
+  push:
+    branches:
+      - chore/agent-skills-runtime-alignment
+
+permissions:
+  contents: write
+
+jobs:
+  upgrade:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout upgrade branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: chore/agent-skills-runtime-alignment
+          fetch-depth: 0
+
+      - name: Download and verify official v3.1.1 Windows package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = Join-Path $env:RUNNER_TEMP 'agent-skills-v3.1.1-windows.zip'
+          $url = 'https://github.com/dingyuwen777/Agent_Skills/releases/download/v3.1.1/agent-skills-v3.1.1-windows.zip'
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          $actual = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expected = 'ef2a1b492fe26b3d4b6642ac47ebcec722cf8bd06e88f46ad428e3a36be0955d'
+          if ($actual -ne $expected) { throw "Agent_Skills v3.1.1 ZIP SHA256 mismatch: $actual" }
+          $dest = Join-Path $env:RUNNER_TEMP 'agent-skills-v3.1.1'
+          Expand-Archive -Path $zip -DestinationPath $dest -Force
+          $exe = Join-Path $dest 'agent-skills-mcp-v3.1.1-windows.exe'
+          if (-not (Test-Path $exe -PathType Leaf)) { throw "Runtime binary missing: $exe" }
+          & $exe status --json
+          & $exe self-test --json
+          "AGENT_SKILLS_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Upgrade legacy v3 installation through official installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Copy-Item AGENTS.md "$env:RUNNER_TEMP\AGENTS.before.md"
+          & $env:AGENT_SKILLS_EXE install --target (Get-Location).Path --json
+          if ($LASTEXITCODE -ne 0) { throw "Agent_Skills installer failed: $LASTEXITCODE" }
+          & '.\.agents\runtime\agent-skills-mcp.exe' status --json
+          & '.\.agents\runtime\agent-skills-mcp.exe' self-test --json
+
+      - name: Verify ownership migration and project-facing managed block
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          from pathlib import Path
+
+          start = '<!-- agent-skills:managed:start -->'
+          end = '<!-- agent-skills:managed:end -->'
+
+          def split(text: str) -> tuple[str, str, str]:
+              if text.count(start) != 1 or text.count(end) != 1:
+                  raise SystemExit('managed marker is not unique')
+              left, rest = text.split(start, 1)
+              managed, right = rest.split(end, 1)
+              return left, managed, right
+
+          before = Path(__import__('os').environ['RUNNER_TEMP']) / 'AGENTS.before.md'
+          old = before.read_text(encoding='utf-8')
+          new = Path('AGENTS.md').read_text(encoding='utf-8')
+          old_left, _, old_right = split(old)
+          new_left, managed, new_right = split(new)
+          if old_left != new_left or old_right != new_right:
+              raise SystemExit('installer changed AGENTS.md outside managed block')
+
+          required = (
+              '无论采用哪种通用治理执行方式',
+              '治理能力自身的运行与实现细节不属于项目进度或交付内容',
+              '只改变通用治理约束的取得和呈现方式',
+          )
+          forbidden = (
+              'Runtime Mode',
+              'Source Mode',
+              '研发治理 MCP',
+              '规则标识',
+              '路由映射',
+              '加载明细',
+              '内部凭据',
+          )
+          for marker in required:
+              if marker not in managed:
+                  raise SystemExit(f'managed block missing required project-facing clause: {marker}')
+          for marker in forbidden:
+              if marker in managed:
+                  raise SystemExit(f'managed block still exposes internal implementation: {marker}')
+
+          if Path('.agents/agent-skills-install.json').exists():
+              raise SystemExit('legacy agent-skills-install.json still exists after v3 migration')
+          gitignore = Path('.gitignore').read_text(encoding='utf-8')
+          if '/.agents/runtime/' not in gitignore:
+              raise SystemExit('Runtime local asset ignore is missing')
+          '@ | python -
+
+      - name: Stop tracking project-local Runtime binary
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Test-Path '.agents/runtime/agent-skills-mcp.exe' -PathType Leaf)) {
+            throw 'installed Runtime binary missing before git untrack'
+          }
+          git rm --cached --ignore-unmatch .agents/runtime/agent-skills-mcp.exe
+          git check-ignore .agents/runtime/agent-skills-mcp.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Runtime binary is not ignored after upgrade' }
+
+      - name: Commit formal installer outputs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git status --short
+          git commit -m '正式升级Agent_Skills Runtime至v3.1.1'
+          git push origin HEAD:chore/agent-skills-runtime-alignment
