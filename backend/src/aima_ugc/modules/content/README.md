@@ -635,9 +635,7 @@ contents
 
 生产入口：
 
-```text
-adapters/persistence/postgres/historical_content.py
-→ PostgresHistoricalContentRepository.ingest_rows()
-```
+- [`backend/src/aima_ugc/adapters/persistence/postgres/historical_content.py`](../../adapters/persistence/postgres/historical_content.py)：PostgresHistoricalContentRepository.ingest_rows()
+
 
 该入口每次最多处理一个有界 Chunk，并在同一事务提交业务变化、逐行 outcome 和冲突。普通 Excel/TikHub 继续使用既有字段新鲜度规则，不受历史策略影响。

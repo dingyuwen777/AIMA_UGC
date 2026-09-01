@@ -109,22 +109,12 @@ PostgreSQL Plan / Occurrence Repository：
 
 ### 2.2 Run / Scope
 
-```text
-execution.py
-→ Collection Run / Scope 的领域记录和创建边界
+- [`backend/src/aima_ugc/modules/collection/execution.py`](execution.py)：Collection Run / Scope 的领域记录和创建边界
+- [`backend/src/aima_ugc/modules/collection/collection_run_job.py`](collection_run_job.py)：collection.run.v1 Job Payload / Handler
+- [`backend/src/aima_ugc/modules/collection/collection_run_executor.py`](collection_run_executor.py)：Run 的总体执行器、Scope 生命周期、Run 终态
+- [`backend/src/aima_ugc/modules/collection/execution_limits.py`](execution_limits.py)：Provider 执行上限的技术边界
+- [`backend/src/aima_ugc/modules/collection/run_snapshot.py`](run_snapshot.py)：Run Snapshot 中稳定执行事实的结构
 
-collection_run_job.py
-→ collection.run.v1 Job Payload / Handler
-
-collection_run_executor.py
-→ Run 的总体执行器、Scope 生命周期、Run 终态
-
-execution_limits.py
-→ Provider 执行上限的技术边界
-
-run_snapshot.py
-→ Run Snapshot 中稳定执行事实的结构
-```
 
 真正把 TikHub、Raw、Mapper、Ingestion 串起来：
 
@@ -204,10 +194,8 @@ POST /api/v1/collection-runs
 
 入口：
 
-```text
-bootstrap/api.py
-→ bootstrap/collection_http.py
-```
+- [`backend/src/aima_ugc/bootstrap/api.py`](../../bootstrap/api.py)：bootstrap/collection_http.py
+
 
 Run 创建时会冻结当前需要的执行事实，例如：
 

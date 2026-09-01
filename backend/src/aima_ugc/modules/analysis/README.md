@@ -121,10 +121,8 @@ author.verification_label
 
 核心代码：
 
-```text
-content_labeling.py
-→ ContentLabelingModelItem.model_payload()
-```
+- [`backend/src/aima_ugc/modules/analysis/content_labeling.py`](content_labeling.py)：ContentLabelingModelItem.model_payload()
+
 
 ---
 

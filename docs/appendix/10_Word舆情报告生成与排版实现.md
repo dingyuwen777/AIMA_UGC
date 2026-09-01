@@ -769,10 +769,8 @@ report.docx
 
 如果涉及原生 Chart：
 
-```text
-chart_spec.py
-→ docx_package.py
-```
+- [`backend/src/aima_ugc/platform/reporting/chart_spec.py`](../../backend/src/aima_ugc/platform/reporting/chart_spec.py)：docx_package.py
+
 
 如果涉及词云：
 
