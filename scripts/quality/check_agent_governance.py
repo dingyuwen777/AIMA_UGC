@@ -98,7 +98,8 @@ def check_repository(root: Path = ROOT) -> list[str]:
         for fragment in FORBIDDEN_PROJECT_DOC_GOVERNANCE:
             if fragment in docs_text:
                 errors.append(
-                    f"GOV010 {PROJECT_DOC_RULES.as_posix()}: 项目文档规则不得把本地通用治理安装资产当规则入口 {fragment}"
+                    f"GOV010 {PROJECT_DOC_RULES.as_posix()}: "
+                    f"项目文档规则不得把本地通用治理安装资产当规则入口 {fragment}"
                 )
 
     ready_check = root / READY_CHECK
