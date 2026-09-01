@@ -10,6 +10,9 @@ export default defineConfig({
       target: 'src/generated/api/client.ts',
       client: 'fetch',
       override: {
+        formData: {
+          arrayHandling: 'serialize',
+        },
         fetch: {
           includeHttpResponseReturnType: false,
         },

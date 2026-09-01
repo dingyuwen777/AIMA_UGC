@@ -38,6 +38,7 @@ class ContentAnalysisRead:
     model: str | None
     latest_run_id: UUID | None
     latest_run_status: str | None
+    manual_locked_dimensions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +48,32 @@ class ContentSourceRead:
     raw_artifact_id: UUID | None
     import_batch_id: UUID | None
     collection_run_id: UUID | None
+
+
+@dataclass(frozen=True, slots=True)
+class ContentVehicleEvidenceRead:
+    source: str
+    matched_text: str | None
+    source_field: str | None
+    catalog_version: int
+    confidence: float | None
+    is_manual_locked: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ContentVehicleRead:
+    vehicle_model_id: UUID
+    code: str
+    display_name: str
+    evidences: tuple[ContentVehicleEvidenceRead, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ContentAvailabilityRead:
+    status: str
+    reason_code: str
+    evidence_kind: str
+    observed_at: datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,12 +96,17 @@ class ContentReadRecord:
     effective_relevance: str | None
     relevance_source: str | None
     source: ContentSourceRead
+    vehicles: tuple[ContentVehicleRead, ...] = ()
+    availability: ContentAvailabilityRead | None = None
 
 
 __all__ = [
     "ContentAnalysisRead",
+    "ContentAvailabilityRead",
     "ContentReadQuery",
     "ContentReadRecord",
     "ContentSourceRead",
+    "ContentVehicleEvidenceRead",
+    "ContentVehicleRead",
     "ContentTarget",
 ]

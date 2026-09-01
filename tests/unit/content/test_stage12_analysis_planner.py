@@ -89,7 +89,6 @@ def test_new_analysis_run_defers_target_freeze_to_planner(
     monkeypatch.setattr(content_http, "PostgresAnalysisRepository", _AnalysisRepository)
     monkeypatch.setattr(content_http, "PostgresJobRepository", _JobRepository)
     monkeypatch.setattr(content_http, "PostgresAuditRepository", _AuditRepository)
-    monkeypatch.setattr(content_http, "current_analysis_identity", lambda settings: identity)
     monkeypatch.setattr(
         content_http,
         "current_analysis_generation_config",
@@ -100,6 +99,15 @@ def test_new_analysis_run_defers_target_freeze_to_planner(
         settings=SimpleNamespace(analysis_run_shard_size=100),
     )
     service = PostgresContentHttpService(runtime)  # type: ignore[arg-type]
+    monkeypatch.setattr(
+        service,
+        "_load_active_analysis_configuration",
+        lambda: SimpleNamespace(
+            identity=identity,
+            scheme=SimpleNamespace(id=uuid4()),
+            taxonomy=SimpleNamespace(prompt_text="frozen-prompt"),
+        ),
+    )
 
     def reject_http_target_scan(session: object, targets: object) -> Any:
         del session, targets

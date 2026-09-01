@@ -179,3 +179,26 @@ class PostgresAuditRepository:
                 created_at=event.created_at,
             )
         )
+
+    def list_recent(self, *, limit: int) -> tuple[AuditEvent, ...]:
+        """按时间倒序返回有界审计事件，不提供任意正文搜索。"""
+
+        rows = self._session.execute(
+            select(audit_events_table)
+            .order_by(audit_events_table.c.created_at.desc(), audit_events_table.c.id.desc())
+            .limit(limit)
+        ).mappings()
+        return tuple(
+            AuditEvent(
+                id=row["id"],
+                actor_kind=row["actor_kind"],
+                actor_ref=row["actor_ref"],
+                event_type=row["event_type"],
+                object_type=row["object_type"],
+                object_id=row["object_id"],
+                request_id=row["request_id"],
+                safe_detail=row["safe_detail"],
+                created_at=row["created_at"],
+            )
+            for row in rows
+        )

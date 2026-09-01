@@ -30,10 +30,10 @@ def test_stage8f_plan_contract_only_accepts_periodic_business_configuration() ->
         "name",
         "schedule_expr",
         "platforms",
-        "keyword_pack_ids",
     }
     assert request["properties"]["platforms"]["maxItems"] == 5
     assert request["properties"]["keyword_pack_ids"]["maxItems"] == 20
+    assert request["properties"]["vehicle_model_ids"]["maxItems"] == 100
     assert "schedule_mode" not in request["properties"]
     assert "relevance_keyword_pack_id" not in request["properties"]
     assert "provider_config" not in request["properties"]

@@ -33,6 +33,7 @@ def _definition(
     max_catch_up_runs: int = 0,
     platforms: tuple[PlanPlatformDefinition, ...] | None = None,
     keyword_pack_ids: tuple[UUID, ...] | None = None,
+    vehicle_model_ids: tuple[UUID, ...] = (),
 ) -> CollectionPlanDefinition:
     """构造采集计划定义；显式空集合必须保留给校验逻辑，而不能回退默认值。"""
     provider_config_id = uuid4()
@@ -59,6 +60,7 @@ def _definition(
             else platforms
         ),
         keyword_pack_ids=(uuid4(),) if keyword_pack_ids is None else keyword_pack_ids,
+        vehicle_model_ids=vehicle_model_ids,
     )
 
 
@@ -119,11 +121,13 @@ def test_plan_platform_config_rejects_secret_shaped_keys_recursively(secret_key:
 
 
 def test_definition_rejects_empty_execution_surface() -> None:
-    """没有平台或词包的计划没有可执行面，必须在模型边界直接拒绝。"""
+    """没有平台或匹配资源的计划没有可执行面，必须在模型边界直接拒绝。"""
     with pytest.raises(ValueError, match="platform"):
         _definition(platforms=())
-    with pytest.raises(ValueError, match="keyword"):
+    with pytest.raises(ValueError, match="词包或车型"):
         _definition(keyword_pack_ids=())
+
+    assert _definition(keyword_pack_ids=(), vehicle_model_ids=(uuid4(),)).vehicle_model_ids
 
 
 def test_definition_rejects_invalid_stable_numeric_and_text_fields() -> None:

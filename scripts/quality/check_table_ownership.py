@@ -11,9 +11,11 @@ ALLOWED_OWNERS = {
     "dashboard",
     "ingestion",
     "monitoring",
+    "notification",
     "platform",
     "reporting",
     "system",
+    "vehicles",
 }
 _PLATFORM_TABLES = {"artifacts", "jobs", "job_attempt_events"}
 _SYSTEM_TABLES = {
@@ -25,6 +27,15 @@ _SYSTEM_TABLES = {
     "system_settings",
 }
 _INGESTION_TABLES = {"processing_import_batches"}
+_NOTIFICATION_TABLES = {"notification_events", "notification_inbox_items"}
+_VEHICLE_TABLES = {
+    "content_vehicle_evidence",
+    "content_vehicle_review_locks",
+    "keyword_pack_vehicle_models",
+    "vehicle_catalog_versions",
+    "vehicle_model_aliases",
+    "vehicle_models",
+}
 _CONTENT_PREFIXES = (
     "account_",
     "accounts",
@@ -44,6 +55,10 @@ def _expected_owner(table_name: str) -> str | None:
         return "system"
     if table_name in _INGESTION_TABLES:
         return "ingestion"
+    if table_name in _NOTIFICATION_TABLES:
+        return "notification"
+    if table_name in _VEHICLE_TABLES:
+        return "vehicles"
     if table_name.startswith(_CONTENT_PREFIXES):
         return "content"
     if table_name.startswith(_COLLECTION_PREFIXES):

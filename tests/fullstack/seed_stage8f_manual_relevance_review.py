@@ -11,8 +11,8 @@ from uuid import UUID, uuid4
 from aima_ugc.adapters.persistence.postgres.analysis import PostgresAnalysisRepository
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.bootstrap.analysis_identity import (
+    active_analysis_configuration,
     current_analysis_generation_config,
-    current_analysis_identity,
 )
 from aima_ugc.bootstrap.import_http import PostgresImportHttpService
 from aima_ugc.bootstrap.worker import (
@@ -116,14 +116,16 @@ def main() -> int:
         if not import_worker.run_once():
             raise RuntimeError("Stage8F 人工复核前置 Excel Import Job 未被执行")
 
-        identity = current_analysis_identity(runtime.settings)
-        if identity is None:
-            raise RuntimeError("Stage8F 人工复核必须配置测试 Analysis identity")
         generation_config, generation_config_hash = current_analysis_generation_config()
 
         session = runtime.database.new_session()
         try:
             with session.begin():
+                identity = active_analysis_configuration(
+                    session, runtime.settings
+                ).identity
+                if identity is None:
+                    raise RuntimeError("Stage8F 人工复核必须配置测试 Analysis identity")
                 rows = tuple(
                     session.execute(
                         select(

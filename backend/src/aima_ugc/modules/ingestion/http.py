@@ -53,6 +53,7 @@ class ImportHttpService(Protocol):
         content_type: str | None,
         source: BinaryIO,
         keyword_pack_ids: tuple[UUID, ...],
+        vehicle_model_ids: tuple[UUID, ...],
         request_id: str,
     ) -> ImportBatchCreatedResponse: ...
 
@@ -64,18 +65,31 @@ class ImportHttpService(Protocol):
 
     def get_job(self, job_id: UUID) -> JobStatusResponse: ...
 
-    def create_keyword_pack(self, request: KeywordPackCreateRequest) -> KeywordPackResponse: ...
+    def create_keyword_pack(
+        self,
+        request: KeywordPackCreateRequest,
+        *,
+        actor_ref: str,
+        request_id: str,
+    ) -> KeywordPackResponse: ...
 
     def add_keyword(
         self,
         pack_id: UUID,
         request: KeywordPackKeywordCreateRequest,
+        *,
+        actor_ref: str,
+        request_id: str,
     ) -> KeywordPackResponse: ...
 
     def get_keyword_pack(self, pack_id: UUID) -> KeywordPackResponse: ...
 
     def set_global_relevance(
-        self, request: GlobalRelevanceConfigRequest
+        self,
+        request: GlobalRelevanceConfigRequest,
+        *,
+        actor_ref: str,
+        request_id: str,
     ) -> GlobalRelevanceConfigResponse: ...
 
     def get_global_relevance(self) -> GlobalRelevanceConfigResponse: ...

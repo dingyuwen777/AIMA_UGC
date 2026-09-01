@@ -15,6 +15,8 @@ from aima_ugc.contracts.collection.models import BusinessOperation, CollectionSe
 from aima_ugc.contracts.platform import PlatformName, PlatformScope, normalize_platform_name
 from aima_ugc.platform.time import to_beijing
 
+from .product import ContentAvailabilityResponse
+
 type ImportBatchStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 
 type ImportStage = Literal[
@@ -233,6 +235,7 @@ class CollectionRunCreateRequest(BaseModel):
 
     mode: CollectionRunMode
     keyword_pack_ids: tuple[UUID, ...] = Field(default=(), max_length=20)
+    vehicle_model_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
     import_batch_id: UUID | None = None
     platforms: tuple[CollectionRunPlatformRequest, ...] = Field(min_length=1, max_length=5)
     include_comments: bool = True
@@ -245,9 +248,11 @@ class CollectionRunCreateRequest(BaseModel):
             raise ValueError("同一次 Collection Run 的目标平台不得重复")
         if len(self.keyword_pack_ids) != len(set(self.keyword_pack_ids)):
             raise ValueError("同一次 Collection Run 的词包不得重复")
+        if len(self.vehicle_model_ids) != len(set(self.vehicle_model_ids)):
+            raise ValueError("同一次 Collection Run 的车型不得重复")
         if self.mode == "discovery":
-            if not self.keyword_pack_ids:
-                raise ValueError("主动发现必须选择至少一个 Keyword Pack")
+            if not self.keyword_pack_ids and not self.vehicle_model_ids:
+                raise ValueError("主动发现必须至少选择一个 Keyword Pack 或车型")
             if self.import_batch_id is not None:
                 raise ValueError("主动发现不能关联 Import Batch")
         else:
@@ -255,6 +260,8 @@ class CollectionRunCreateRequest(BaseModel):
                 raise ValueError("基于 Batch 补采必须提供 import_batch_id")
             if self.keyword_pack_ids:
                 raise ValueError("基于 Batch 补采不能提交 Keyword Pack")
+            if self.vehicle_model_ids:
+                raise ValueError("基于 Batch 补采不能提交车型")
             if any(item.search_config is not None for item in self.platforms):
                 raise ValueError("基于 Batch 补采不能提交关键词搜索配置")
         if self.include_sub_comments and not self.include_comments:
@@ -591,7 +598,8 @@ class CollectionPlanCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     schedule_expr: str = Field(min_length=1, max_length=100)
     platforms: tuple[CollectionPlanPlatformRequest, ...] = Field(min_length=1, max_length=5)
-    keyword_pack_ids: tuple[UUID, ...] = Field(min_length=1, max_length=20)
+    keyword_pack_ids: tuple[UUID, ...] = Field(default=(), max_length=20)
+    vehicle_model_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
     enabled: bool = True
 
     @field_validator("name", "schedule_expr", mode="before")
@@ -610,6 +618,10 @@ class CollectionPlanCreateRequest(BaseModel):
             raise ValueError("同一 Plan 的目标平台不得重复")
         if len(self.keyword_pack_ids) != len(set(self.keyword_pack_ids)):
             raise ValueError("同一 Plan 的 Discovery 词包不得重复")
+        if len(self.vehicle_model_ids) != len(set(self.vehicle_model_ids)):
+            raise ValueError("同一 Plan 的车型不得重复")
+        if not self.keyword_pack_ids and not self.vehicle_model_ids:
+            raise ValueError("Plan 必须至少选择一个 Keyword Pack 或车型")
         return self
 
 
@@ -636,6 +648,7 @@ class CollectionPlanResponse(BaseModel):
     comment_policy: Literal["adaptive"]
     platforms: tuple[CollectionPlanPlatformResponse, ...]
     keyword_pack_ids: tuple[UUID, ...]
+    vehicle_model_ids: tuple[UUID, ...] = ()
     created_at: datetime
     updated_at: datetime
 
@@ -715,6 +728,9 @@ class ContentAnalysisResponse(BaseModel):
     model: str | None = None
     latest_run_id: UUID | None = None
     latest_run_status: str | None = None
+    manual_locked_dimensions: tuple[
+        Literal["voice_type", "sentiment", "labels"], ...
+    ] = ()
 
     @model_validator(mode="after")
     def validate_completed_shape(self) -> ContentAnalysisResponse:
@@ -764,6 +780,28 @@ class ContentSourceResponse(BaseModel):
     collection_run_id: UUID | None = None
 
 
+class ContentVehicleEvidenceResponse(BaseModel):
+    """一个车型关联的可追溯证据。"""
+
+    model_config = ConfigDict(extra="forbid")
+    source: Literal["alias_match", "ai_candidate", "manual_review", "import"]
+    matched_text: str | None = None
+    source_field: str | None = None
+    catalog_version: int = Field(gt=0)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    is_manual_locked: bool = False
+
+
+class ContentVehicleResponse(BaseModel):
+    """内容当前车型及其全部有效证据。"""
+
+    model_config = ConfigDict(extra="forbid")
+    vehicle_model_id: UUID
+    code: str
+    display_name: str
+    evidences: tuple[ContentVehicleEvidenceResponse, ...] = Field(min_length=1)
+
+
 class ContentMediaResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -778,6 +816,7 @@ class ContentListItemResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: UUID
+    content_version: int = Field(gt=0)
     platform: PlatformName
     external_content_id: str
     content_type: str
@@ -792,6 +831,8 @@ class ContentListItemResponse(BaseModel):
     effective_relevance: ContentRelevance | None = None
     relevance_source: ContentRelevanceSource | None = None
     source: ContentSourceResponse
+    vehicles: tuple[ContentVehicleResponse, ...] = ()
+    availability: ContentAvailabilityResponse | None = None
 
     @model_validator(mode="after")
     def validate_relevance_projection(self) -> ContentListItemResponse:
@@ -822,6 +863,7 @@ class ContentFilterSnapshot(BaseModel):
     published_from: datetime | None = None
     published_to: datetime | None = None
     source_identifier: UUID | None = None
+    vehicle_model_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
 
     @field_validator("platforms", mode="before")
     @classmethod
@@ -843,6 +885,8 @@ class ContentFilterSnapshot(BaseModel):
             and self.published_from > self.published_to
         ):
             raise ValueError("published_from 不能晚于 published_to")
+        if len(self.vehicle_model_ids) != len(set(self.vehicle_model_ids)):
+            raise ValueError("vehicle_model_ids 不能重复")
         return self
 
 
@@ -851,6 +895,25 @@ class ContentListQuery(ContentFilterSnapshot):
 
     cursor: str | None = Field(default=None, min_length=1, max_length=4096)
     limit: int = Field(default=20, ge=1, le=100)
+
+
+class ContentCountRequest(BaseModel):
+    """独立 Count 请求；不改变声音广场 Cursor 分页。"""
+
+    model_config = ConfigDict(extra="forbid")
+    filters: ContentFilterSnapshot = Field(default_factory=ContentFilterSnapshot)
+    count_mode: Literal["none", "exact", "estimated"] = "none"
+    exact_limit: int | None = Field(default=None, ge=1, le=100_000)
+
+    @model_validator(mode="after")
+    def validate_count_mode(self) -> ContentCountRequest:
+        """exact 必须显式给出扫描上限，其他模式不得携带该字段。"""
+
+        if self.count_mode == "exact" and self.exact_limit is None:
+            raise ValueError("exact count_mode 必须设置 exact_limit")
+        if self.count_mode != "exact" and self.exact_limit is not None:
+            raise ValueError("只有 exact count_mode 可以设置 exact_limit")
+        return self
 
 
 class ContentListResponse(BaseModel):
@@ -969,6 +1032,7 @@ class AnalysisContentRunPreviewResponse(BaseModel):
     target_count: int = Field(gt=0)
     shard_count: int = Field(gt=0)
     shard_size: int = Field(gt=0)
+    analysis_scheme_version_id: UUID | None = None
     prompt_version: str
     prompt_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     taxonomy_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -1029,6 +1093,7 @@ class AnalysisContentRunResponse(BaseModel):
     target_count: int = Field(gt=0)
     shard_count: int = Field(gt=0)
     shard_size: int = Field(gt=0)
+    analysis_scheme_version_id: UUID | None = None
     prompt_version: str
     prompt_sha256: str
     taxonomy_sha256: str
@@ -1060,11 +1125,65 @@ class AnalysisContentRunListResponse(BaseModel):
     items: tuple[AnalysisContentRunResponse, ...]
 
 
+type ExportColumnKey = Literal[
+    "platform",
+    "external_content_id",
+    "source_item_id",
+    "content_type",
+    "content_url",
+    "title",
+    "text",
+    "author_display_name",
+    "author_follower_count",
+    "author_following_count",
+    "author_content_count",
+    "author_total_like_count",
+    "published_at",
+    "voice_type",
+    "sentiment",
+    "primary_label",
+    "secondary_label",
+    "vehicles",
+    "availability",
+    "like_count",
+    "comment_count",
+    "favorite_count",
+    "share_count",
+    "repost_count",
+    "view_count",
+    "play_count",
+    "danmaku_count",
+    "coin_count",
+    "download_count",
+    "matched_keywords",
+    "analysis_model",
+    "prompt_version",
+    "taxonomy_version",
+    "source_provider",
+    "raw_locator",
+    "coverage",
+]
+
+
 class DataExportSubmitRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     targets: ContentTargetSelection
     format: Literal["xlsx"] = "xlsx"
+    columns: tuple[ExportColumnKey, ...] = Field(default=(), max_length=100)
+
+    @field_validator("columns")
+    @classmethod
+    def validate_unique_columns(
+        cls, value: tuple[ExportColumnKey, ...]
+    ) -> tuple[ExportColumnKey, ...]:
+        """列 key 必须非空且不重复；白名单由 Reporting Owner 校验。"""
+
+        if any(not item.strip() or item != item.strip() for item in value):
+            raise ValueError("columns 必须是无首尾空白的非空 key")
+        if len(value) != len(set(value)):
+            raise ValueError("columns 不能重复")
+        return value
 
 
 class DataExportCreatedResponse(BaseModel):
@@ -1095,6 +1214,8 @@ class DataExportResponse(BaseModel):
     stats: DataExportStatsResponse | None = None
     created_at: datetime
     completed_at: datetime | None = None
+    columns: tuple[str, ...] = ()
+    column_catalog_version: int = Field(default=1, gt=0)
 
 
 class DataExportListResponse(BaseModel):
@@ -1181,7 +1302,8 @@ class HistoricalCampaignCreateRequest(BaseModel):
     )
     relative_paths: tuple[str, ...] = Field(min_length=1, max_length=1000)
     recursive: bool = False
-    keyword_pack_ids: tuple[UUID, ...] = Field(min_length=1, max_length=20)
+    keyword_pack_ids: tuple[UUID, ...] = Field(default=(), max_length=20)
+    vehicle_model_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
     profile: Literal["aima-monitoring-excel.v1"] = "aima-monitoring-excel.v1"
     ingestion_policy: DataImportIngestionPolicy = "historical_fill_only"
 
@@ -1199,6 +1321,16 @@ class HistoricalCampaignCreateRequest(BaseModel):
         if len(set(value)) != len(value):
             raise ValueError("keyword_pack_ids 不能重复")
         return value
+
+    @model_validator(mode="after")
+    def validate_matching_resources(self) -> HistoricalCampaignCreateRequest:
+        """历史 Campaign 至少冻结词包或车型中的一个维度。"""
+
+        if len(self.vehicle_model_ids) != len(set(self.vehicle_model_ids)):
+            raise ValueError("vehicle_model_ids 不能重复")
+        if not self.keyword_pack_ids and not self.vehicle_model_ids:
+            raise ValueError("必须至少选择一个 Keyword Pack 或车型")
+        return self
 
 
 class LocalDataImportFileManifest(BaseModel):
@@ -1229,7 +1361,8 @@ class LocalDataImportCampaignCreateRequest(BaseModel):
         pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
     )
     files: tuple[LocalDataImportFileManifest, ...] = Field(min_length=1, max_length=1000)
-    keyword_pack_ids: tuple[UUID, ...] = Field(min_length=1, max_length=20)
+    keyword_pack_ids: tuple[UUID, ...] = Field(default=(), max_length=20)
+    vehicle_model_ids: tuple[UUID, ...] = Field(default=(), max_length=100)
     profile: Literal["aima-monitoring-excel.v1"] = "aima-monitoring-excel.v1"
     ingestion_policy: DataImportIngestionPolicy = "standard_observation"
 
@@ -1250,6 +1383,16 @@ class LocalDataImportCampaignCreateRequest(BaseModel):
         if len(set(value)) != len(value):
             raise ValueError("keyword_pack_ids 不能重复")
         return value
+
+    @model_validator(mode="after")
+    def validate_matching_resources(self) -> LocalDataImportCampaignCreateRequest:
+        """本地 Campaign 至少冻结词包或车型中的一个维度。"""
+
+        if len(self.vehicle_model_ids) != len(set(self.vehicle_model_ids)):
+            raise ValueError("vehicle_model_ids 不能重复")
+        if not self.keyword_pack_ids and not self.vehicle_model_ids:
+            raise ValueError("必须至少选择一个 Keyword Pack 或车型")
+        return self
 
 
 class LocalDataImportUploadItemResponse(BaseModel):
@@ -1447,6 +1590,7 @@ __all__ = [
     "ContentAnalysisTaxonomyLabelResponse",
     "ContentAnalysisTaxonomyResponse",
     "ContentCommentResponse",
+    "ContentCountRequest",
     "ContentDetailResponse",
     "ContentFilterSnapshot",
     "ContentLabelPairResponse",
@@ -1465,6 +1609,7 @@ __all__ = [
     "DataExportResponse",
     "DataExportStatsResponse",
     "DataExportSubmitRequest",
+    "ExportColumnKey",
     "DataImportIngestionPolicy",
     "DataImportSourceKind",
     "GlobalRelevanceConfigRequest",

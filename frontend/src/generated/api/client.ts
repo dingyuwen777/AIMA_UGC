@@ -110,6 +110,7 @@ export const AnalysisContentRunResponseStatus = {
 export type AnalysisContentRunResponseGenerationConfig = { [key: string]: unknown };
 
 export interface AnalysisContentRunResponse {
+  analysis_scheme_version_id?: string | null;
   created_at: string;
   error_code?: string | null;
   finished_at?: string | null;
@@ -149,6 +150,7 @@ export interface AnalysisContentRunPreviewRequest {
 export type AnalysisContentRunPreviewResponseGenerationConfig = { [key: string]: unknown };
 
 export interface AnalysisContentRunPreviewResponse {
+  analysis_scheme_version_id?: string | null;
   /** @pattern ^[0-9a-f]{64}$ */
   configuration_hash: string;
   cost_estimate_available?: boolean;
@@ -171,9 +173,155 @@ export interface AnalysisContentRunPreviewResponse {
   taxonomy_sha256: string;
 }
 
+/**
+ * 一个人工确认的一级/二级标签对。
+ */
+export interface AnalysisManualLabelRequest {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  primary_label: string;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  secondary_label: string;
+}
+
+export type AnalysisSchemeDefinitionRequestLabels = {[key: string]: string[]};
+
+/**
+ * 一个原子 Analysis Scheme 的结构化定义。
+ */
+export interface AnalysisSchemeDefinitionRequest {
+  labels: AnalysisSchemeDefinitionRequestLabels;
+  /**
+     * @minLength 1
+     * @maxLength 100000
+     */
+  prompt_template: string;
+  /**
+     * @minItems 1
+     * @maxItems 50
+     */
+  sentiments: string[];
+  /**
+     * @minItems 1
+     * @maxItems 50
+     */
+  voice_types: string[];
+}
+
+/**
+ * 基于当前发布版或新定义创建草稿。
+ */
+export interface AnalysisSchemeCreateDraftRequest {
+  definition: AnalysisSchemeDefinitionRequest;
+  /** @maxLength 2000 */
+  description?: string;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  name: string;
+}
+
+export type AnalysisSchemeVersionResponseStatus = typeof AnalysisSchemeVersionResponseStatus[keyof typeof AnalysisSchemeVersionResponseStatus];
+
+
+export const AnalysisSchemeVersionResponseStatus = {
+  draft: 'draft',
+  published: 'published',
+  retired: 'retired',
+} as const;
+
+/**
+ * 管理员可见的 Scheme Version；不包含 Secret 或 LLM API 配置。
+ */
+export interface AnalysisSchemeVersionResponse {
+  created_at: string;
+  created_by: string;
+  definition: AnalysisSchemeDefinitionRequest;
+  description: string;
+  id: string;
+  /** @pattern ^[0-9a-f]{64}$ */
+  prompt_sha256: string;
+  published_at?: string | null;
+  scheme_id: string;
+  status: AnalysisSchemeVersionResponseStatus;
+  /** @pattern ^[0-9a-f]{64}$ */
+  taxonomy_sha256: string;
+  /** @exclusiveMinimum 0 */
+  version: number;
+}
+
+/**
+ * Scheme 聚合及其版本列表。
+ */
+export interface AnalysisSchemeResponse {
+  active_version_id?: string | null;
+  created_at: string;
+  id: string;
+  is_active: boolean;
+  name: string;
+  updated_at: string;
+  versions: AnalysisSchemeVersionResponse[];
+}
+
+/**
+ * 管理员 Scheme 目录响应。
+ */
+export interface AnalysisSchemeListResponse {
+  items: AnalysisSchemeResponse[];
+}
+
+/**
+ * 发布或回滚时的乐观锁请求。
+ */
+export interface AnalysisSchemePublishRequest {
+  /** @exclusiveMinimum 0 */
+  expected_version: number;
+}
+
+/**
+ * 以当前草稿版本为并发前提，追加一个新的草稿 Version。
+ */
+export interface AnalysisSchemeUpdateDraftRequest {
+  definition: AnalysisSchemeDefinitionRequest;
+  /** @maxLength 2000 */
+  description?: string;
+  /** @exclusiveMinimum 0 */
+  expected_version: number;
+}
+
+export type AuditEventResponseSafeDetail = { [key: string]: unknown };
+
+/**
+ * 安全审计事件投影。
+ */
+export interface AuditEventResponse {
+  actor_ref?: string | null;
+  created_at: string;
+  event_type: string;
+  id: string;
+  object_id?: string | null;
+  object_type?: string | null;
+  request_id?: string | null;
+  safe_detail: AuditEventResponseSafeDetail;
+}
+
+/**
+ * 管理员最近审计事件列表。
+ */
+export interface AuditEventListResponse {
+  items: AuditEventResponse[];
+}
+
 export interface BodyCreateImportBatch {
   file: Blob;
-  keyword_pack_ids: string[];
+  keyword_pack_ids?: string[];
+  vehicle_model_ids?: string[];
 }
 
 export interface BodyUploadLocalDataImportFile {
@@ -272,11 +420,8 @@ export interface CollectionPlanPlatformRequest {
  */
 export interface CollectionPlanCreateRequest {
   enabled?: boolean;
-  /**
-     * @minItems 1
-     * @maxItems 20
-     */
-  keyword_pack_ids: string[];
+  /** @maxItems 20 */
+  keyword_pack_ids?: string[];
   /**
      * @minLength 1
      * @maxLength 200
@@ -292,6 +437,8 @@ export interface CollectionPlanCreateRequest {
      * @maxLength 100
      */
   schedule_expr: string;
+  /** @maxItems 100 */
+  vehicle_model_ids?: string[];
 }
 
 export interface CollectionPlanPlatformResponse {
@@ -316,6 +463,7 @@ export interface CollectionPlanResponse {
   schedule_version: number;
   timezone: 'Asia/Shanghai';
   updated_at: string;
+  vehicle_model_ids?: string[];
 }
 
 export interface CollectionPlanListResponse {
@@ -365,6 +513,8 @@ export interface CollectionRunCreateRequest {
      * @maxItems 5
      */
   platforms: CollectionRunPlatformRequest[];
+  /** @maxItems 100 */
+  vehicle_model_ids?: string[];
 }
 
 export interface CollectionRunCreatedResponse {
@@ -551,6 +701,59 @@ export interface ContentAnalysisJobResultResponse {
   succeeded: number;
 }
 
+export type ContentAnalysisManualReviewRequestUnlockDimensionsItem = typeof ContentAnalysisManualReviewRequestUnlockDimensionsItem[keyof typeof ContentAnalysisManualReviewRequestUnlockDimensionsItem];
+
+
+export const ContentAnalysisManualReviewRequestUnlockDimensionsItem = {
+  voice_type: 'voice_type',
+  sentiment: 'sentiment',
+  labels: 'labels',
+} as const;
+
+/**
+ * 人工纠正分析维度；已锁定维度修改前必须显式解锁。
+ */
+export interface ContentAnalysisManualReviewRequest {
+  /** @exclusiveMinimum 0 */
+  content_version: number;
+  labels?: AnalysisManualLabelRequest[] | null;
+  sentiment?: string | null;
+  /** @maxItems 3 */
+  unlock_dimensions?: ContentAnalysisManualReviewRequestUnlockDimensionsItem[];
+  voice_type?: string | null;
+}
+
+export type ContentAnalysisManualReviewResponseLockedDimensionsItem = typeof ContentAnalysisManualReviewResponseLockedDimensionsItem[keyof typeof ContentAnalysisManualReviewResponseLockedDimensionsItem];
+
+
+export const ContentAnalysisManualReviewResponseLockedDimensionsItem = {
+  voice_type: 'voice_type',
+  sentiment: 'sentiment',
+  labels: 'labels',
+} as const;
+
+/**
+ * 人工纠正后的当前锁定状态。
+ */
+export interface ContentAnalysisManualReviewResponse {
+  content_id: string;
+  /** @exclusiveMinimum 0 */
+  content_version: number;
+  labels?: AnalysisManualLabelRequest[];
+  locked_dimensions: ContentAnalysisManualReviewResponseLockedDimensionsItem[];
+  sentiment?: string | null;
+  voice_type?: string | null;
+}
+
+export type ContentAnalysisResponseManualLockedDimensionsItem = typeof ContentAnalysisResponseManualLockedDimensionsItem[keyof typeof ContentAnalysisResponseManualLockedDimensionsItem];
+
+
+export const ContentAnalysisResponseManualLockedDimensionsItem = {
+  voice_type: 'voice_type',
+  sentiment: 'sentiment',
+  labels: 'labels',
+} as const;
+
 /**
  * 按模型重要性顺序返回的一个一级/二级标签对。
  */
@@ -587,6 +790,7 @@ export interface ContentAnalysisResponse {
   labels?: ContentLabelPairResponse[];
   latest_run_id?: string | null;
   latest_run_status?: string | null;
+  manual_locked_dimensions?: ContentAnalysisResponseManualLockedDimensionsItem[];
   model?: string | null;
   model_provider?: string | null;
   relevance?: ContentRelevance | null;
@@ -623,6 +827,8 @@ export interface ContentFilterSnapshot {
   secondary_label?: string | null;
   sentiment?: string | null;
   source_identifier?: string | null;
+  /** @maxItems 100 */
+  vehicle_model_ids?: string[];
   voice_type?: ContentVoiceType | null;
 }
 
@@ -687,6 +893,63 @@ export interface ContentAnalysisTaxonomyResponse {
   voice_types: string[];
 }
 
+export type ContentAvailabilityObservationRequestEvidenceKind = typeof ContentAvailabilityObservationRequestEvidenceKind[keyof typeof ContentAvailabilityObservationRequestEvidenceKind];
+
+
+export const ContentAvailabilityObservationRequestEvidenceKind = {
+  provider_explicit: 'provider_explicit',
+  technical_failure: 'technical_failure',
+  manual_review: 'manual_review',
+} as const;
+
+export type ContentAvailabilityObservationRequestStatus = typeof ContentAvailabilityObservationRequestStatus[keyof typeof ContentAvailabilityObservationRequestStatus];
+
+
+export const ContentAvailabilityObservationRequestStatus = {
+  available: 'available',
+  unavailable_confirmed: 'unavailable_confirmed',
+  unavailable_suspected: 'unavailable_suspected',
+  unknown: 'unknown',
+} as const;
+
+/**
+ * 追加一条 Provider-neutral 可用状态观察。
+ */
+export interface ContentAvailabilityObservationRequest {
+  content_id: string;
+  evidence_kind: ContentAvailabilityObservationRequestEvidenceKind;
+  provider_attempt_id?: string | null;
+  raw_artifact_id?: string | null;
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  reason_code: string;
+  /** @maxLength 1000 */
+  safe_summary?: string;
+  status: ContentAvailabilityObservationRequestStatus;
+}
+
+export type ContentAvailabilityResponseStatus = typeof ContentAvailabilityResponseStatus[keyof typeof ContentAvailabilityResponseStatus];
+
+
+export const ContentAvailabilityResponseStatus = {
+  available: 'available',
+  unavailable_confirmed: 'unavailable_confirmed',
+  unavailable_suspected: 'unavailable_suspected',
+  unknown: 'unknown',
+} as const;
+
+/**
+ * 内容当前可用状态及最新证据投影。
+ */
+export interface ContentAvailabilityResponse {
+  evidence_kind: string;
+  observed_at: string;
+  reason_code: string;
+  status: ContentAvailabilityResponseStatus;
+}
+
 export interface ContentCommentResponse {
   author_display_name?: string | null;
   external_comment_id: string;
@@ -695,6 +958,53 @@ export interface ContentCommentResponse {
   published_at?: string | null;
   reply_count?: number | null;
   text?: string | null;
+}
+
+export type ContentCountRequestCountMode = typeof ContentCountRequestCountMode[keyof typeof ContentCountRequestCountMode];
+
+
+export const ContentCountRequestCountMode = {
+  none: 'none',
+  exact: 'exact',
+  estimated: 'estimated',
+} as const;
+
+/**
+ * 独立 Count 请求；不改变声音广场 Cursor 分页。
+ */
+export interface ContentCountRequest {
+  count_mode?: ContentCountRequestCountMode;
+  exact_limit?: number | null;
+  filters?: ContentFilterSnapshot;
+}
+
+export type ContentCountResponseCountKind = typeof ContentCountResponseCountKind[keyof typeof ContentCountResponseCountKind];
+
+
+export const ContentCountResponseCountKind = {
+  none: 'none',
+  exact: 'exact',
+  estimated: 'estimated',
+} as const;
+
+export type ContentCountResponseCountMode = typeof ContentCountResponseCountMode[keyof typeof ContentCountResponseCountMode];
+
+
+export const ContentCountResponseCountMode = {
+  none: 'none',
+  exact: 'exact',
+  estimated: 'estimated',
+} as const;
+
+/**
+ * Count 结果带种类和时间，不伪装事务级实时总数。
+ */
+export interface ContentCountResponse {
+  as_of: string;
+  count?: number | null;
+  count_kind: ContentCountResponseCountKind;
+  count_mode: ContentCountResponseCountMode;
+  truncated?: boolean;
 }
 
 export interface ContentMediaResponse {
@@ -742,13 +1052,50 @@ export interface ContentSupplementStatusResponse {
   updated_at: string;
 }
 
+export type ContentVehicleEvidenceResponseSource = typeof ContentVehicleEvidenceResponseSource[keyof typeof ContentVehicleEvidenceResponseSource];
+
+
+export const ContentVehicleEvidenceResponseSource = {
+  alias_match: 'alias_match',
+  ai_candidate: 'ai_candidate',
+  manual_review: 'manual_review',
+  import: 'import',
+} as const;
+
+/**
+ * 一个车型关联的可追溯证据。
+ */
+export interface ContentVehicleEvidenceResponse {
+  /** @exclusiveMinimum 0 */
+  catalog_version: number;
+  confidence?: number | null;
+  is_manual_locked?: boolean;
+  matched_text?: string | null;
+  source: ContentVehicleEvidenceResponseSource;
+  source_field?: string | null;
+}
+
+/**
+ * 内容当前车型及其全部有效证据。
+ */
+export interface ContentVehicleResponse {
+  code: string;
+  display_name: string;
+  /** @minItems 1 */
+  evidences: ContentVehicleEvidenceResponse[];
+  vehicle_model_id: string;
+}
+
 export interface ContentDetailResponse {
   analysis: ContentAnalysisResponse;
   author_display_name?: string | null;
+  availability?: ContentAvailabilityResponse | null;
   comment_coverage?: CommentCoverageResponse | null;
   comments?: ContentCommentResponse[];
   content_type: string;
   content_url?: string | null;
+  /** @exclusiveMinimum 0 */
+  content_version: number;
   effective_relevance?: ContentRelevance | null;
   external_content_id: string;
   id: string;
@@ -763,13 +1110,17 @@ export interface ContentDetailResponse {
   supplement_status?: ContentSupplementStatusResponse | null;
   text?: string | null;
   title?: string | null;
+  vehicles?: ContentVehicleResponse[];
 }
 
 export interface ContentListItemResponse {
   analysis: ContentAnalysisResponse;
   author_display_name?: string | null;
+  availability?: ContentAvailabilityResponse | null;
   content_type: string;
   content_url?: string | null;
+  /** @exclusiveMinimum 0 */
+  content_version: number;
   effective_relevance?: ContentRelevance | null;
   external_content_id: string;
   id: string;
@@ -781,6 +1132,7 @@ export interface ContentListItemResponse {
   source: ContentSourceResponse;
   text?: string | null;
   title?: string | null;
+  vehicles?: ContentVehicleResponse[];
 }
 
 export interface ContentListResponse {
@@ -817,6 +1169,64 @@ export interface ContentRelevanceReviewResponse {
   requested_count: number;
   /** @minimum 0 */
   unchanged_count: number;
+}
+
+/**
+ * 人工确认内容车型；默认不允许覆盖已有人工锁定。
+ */
+export interface ContentVehicleReviewRequest {
+  /** @exclusiveMinimum 0 */
+  content_version: number;
+  unlock_existing?: boolean;
+  /** @maxItems 100 */
+  vehicle_model_ids: string[];
+}
+
+/**
+ * 人工车型确认写入结果。
+ */
+export interface ContentVehicleReviewResponse {
+  content_id: string;
+  /** @exclusiveMinimum 0 */
+  content_version: number;
+  manual_locked?: boolean;
+  vehicle_model_ids: string[];
+}
+
+export type CurrentPrincipalResponseRole = typeof CurrentPrincipalResponseRole[keyof typeof CurrentPrincipalResponseRole];
+
+
+export const CurrentPrincipalResponseRole = {
+  administrator: 'administrator',
+  user: 'user',
+} as const;
+
+export type CurrentPrincipalResponseSource = typeof CurrentPrincipalResponseSource[keyof typeof CurrentPrincipalResponseSource];
+
+
+export const CurrentPrincipalResponseSource = {
+  development: 'development',
+  feishu: 'feishu',
+} as const;
+
+/**
+ * 当前请求的 Provider-neutral Principal 投影。
+ */
+export interface CurrentPrincipalResponse {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  display_name: string;
+  /** 返回当前 Principal 是否具备管理员角色。 */
+  readonly is_administrator: boolean;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  principal_id: string;
+  role: CurrentPrincipalResponseRole;
+  source: CurrentPrincipalResponseSource;
 }
 
 export interface DataExportCreatedResponse {
@@ -890,6 +1300,9 @@ export interface DataExportStatsResponse {
 
 export interface DataExportResponse {
   artifact_id?: string | null;
+  /** @exclusiveMinimum 0 */
+  column_catalog_version?: number;
+  columns?: string[];
   completed_at?: string | null;
   created_at: string;
   filename?: string | null;
@@ -902,7 +1315,51 @@ export interface DataExportListResponse {
   items: DataExportResponse[];
 }
 
+export type ExportColumnKey = typeof ExportColumnKey[keyof typeof ExportColumnKey];
+
+
+export const ExportColumnKey = {
+  platform: 'platform',
+  external_content_id: 'external_content_id',
+  source_item_id: 'source_item_id',
+  content_type: 'content_type',
+  content_url: 'content_url',
+  title: 'title',
+  text: 'text',
+  author_display_name: 'author_display_name',
+  author_follower_count: 'author_follower_count',
+  author_following_count: 'author_following_count',
+  author_content_count: 'author_content_count',
+  author_total_like_count: 'author_total_like_count',
+  published_at: 'published_at',
+  voice_type: 'voice_type',
+  sentiment: 'sentiment',
+  primary_label: 'primary_label',
+  secondary_label: 'secondary_label',
+  vehicles: 'vehicles',
+  availability: 'availability',
+  like_count: 'like_count',
+  comment_count: 'comment_count',
+  favorite_count: 'favorite_count',
+  share_count: 'share_count',
+  repost_count: 'repost_count',
+  view_count: 'view_count',
+  play_count: 'play_count',
+  danmaku_count: 'danmaku_count',
+  coin_count: 'coin_count',
+  download_count: 'download_count',
+  matched_keywords: 'matched_keywords',
+  analysis_model: 'analysis_model',
+  prompt_version: 'prompt_version',
+  taxonomy_version: 'taxonomy_version',
+  source_provider: 'source_provider',
+  raw_locator: 'raw_locator',
+  coverage: 'coverage',
+} as const;
+
 export interface DataExportSubmitRequest {
+  /** @maxItems 100 */
+  columns?: ExportColumnKey[];
   format?: 'xlsx';
   targets: ContentTargetSelection;
 }
@@ -923,6 +1380,26 @@ export const DataImportSourceKind = {
   server_path: 'server_path',
 } as const;
 
+/**
+ * 后端白名单中的一个安全导出列。
+ */
+export interface ExportColumnResponse {
+  default_selected?: boolean;
+  key: string;
+  label: string;
+  sensitive?: boolean;
+}
+
+/**
+ * 版本化导出列目录。
+ */
+export interface ExportColumnCatalogResponse {
+  /** @minItems 1 */
+  columns: ExportColumnResponse[];
+  /** @exclusiveMinimum 0 */
+  version: number;
+}
+
 export interface GlobalRelevanceConfigRequest {
   keyword_pack_id: string;
 }
@@ -935,6 +1412,20 @@ export interface GlobalRelevanceConfigResponse {
   updated_at: string;
   /** @exclusiveMinimum 0 */
   version: number;
+}
+
+export type ValidationErrorCtx = { [key: string]: unknown };
+
+export interface ValidationError {
+  ctx?: ValidationErrorCtx;
+  input?: unknown;
+  loc: (string | number)[];
+  msg: string;
+  type: string;
+}
+
+export interface HTTPValidationError {
+  detail?: ValidationError[];
 }
 
 /**
@@ -973,11 +1464,8 @@ export interface HistoricalCampaignCreateRequest {
      */
   client_idempotency_key: string;
   ingestion_policy?: DataImportIngestionPolicy;
-  /**
-     * @minItems 1
-     * @maxItems 20
-     */
-  keyword_pack_ids: string[];
+  /** @maxItems 20 */
+  keyword_pack_ids?: string[];
   profile?: 'aima-monitoring-excel.v1';
   recursive?: boolean;
   /**
@@ -985,6 +1473,8 @@ export interface HistoricalCampaignCreateRequest {
      * @maxItems 1000
      */
   relative_paths: string[];
+  /** @maxItems 100 */
+  vehicle_model_ids?: string[];
 }
 
 export interface HistoricalCampaignCreatedResponse {
@@ -1311,6 +1801,22 @@ export interface KeywordPackResponse {
 }
 
 /**
+ * 替换一个词包当前引用的车型集合。
+ */
+export interface KeywordPackVehicleLinkRequest {
+  /** @maxItems 100 */
+  vehicle_model_ids?: string[];
+}
+
+/**
+ * 词包当前引用的车型 ID。
+ */
+export interface KeywordPackVehicleLinksResponse {
+  pack_id: string;
+  vehicle_model_ids: string[];
+}
+
+/**
  * 声明浏览器显式选择的一个本地 XLSX；绝不承载本机绝对路径。
  */
 export interface LocalDataImportFileManifest {
@@ -1342,12 +1848,11 @@ export interface LocalDataImportCampaignCreateRequest {
      */
   files: LocalDataImportFileManifest[];
   ingestion_policy?: DataImportIngestionPolicy;
-  /**
-     * @minItems 1
-     * @maxItems 20
-     */
-  keyword_pack_ids: string[];
+  /** @maxItems 20 */
+  keyword_pack_ids?: string[];
   profile?: 'aima-monitoring-excel.v1';
+  /** @maxItems 100 */
+  vehicle_model_ids?: string[];
 }
 
 /**
@@ -1380,6 +1885,51 @@ export interface LocalDataImportFileUploadedResponse {
      * @maxLength 64
      */
   sha256: string;
+}
+
+/**
+ * Principal Inbox 中的一个通知投影。
+ */
+export interface NotificationItemResponse {
+  created_at: string;
+  event_type: string;
+  id: string;
+  is_read: boolean;
+  message: string;
+  read_at?: string | null;
+  resource_id?: string | null;
+  resource_type?: string | null;
+  title: string;
+}
+
+/**
+ * 当前 Principal 的站内通知列表。
+ */
+export interface NotificationListResponse {
+  items: NotificationItemResponse[];
+  /** @minimum 0 */
+  unread_count: number;
+}
+
+/**
+ * 批量标记当前 Principal 自己的通知已读。
+ */
+export interface NotificationMarkReadRequest {
+  /**
+     * @minItems 1
+     * @maxItems 100
+     */
+  item_ids: string[];
+}
+
+/**
+ * 已读操作的幂等统计。
+ */
+export interface NotificationMarkReadResponse {
+  /** @minimum 0 */
+  changed_count: number;
+  /** @minimum 0 */
+  requested_count: number;
 }
 
 export type ReadinessChecksArtifactStore = typeof ReadinessChecksArtifactStore[keyof typeof ReadinessChecksArtifactStore];
@@ -1435,6 +1985,113 @@ export interface ResourceEnabledRequest {
   enabled: boolean;
 }
 
+/**
+ * 车型当前有效别名。
+ */
+export interface VehicleModelAliasResponse {
+  id: string;
+  normalized_text: string;
+  text: string;
+}
+
+/**
+ * 创建一个稳定车型及其初始别名。
+ */
+export interface VehicleModelCreateRequest {
+  /** @maxItems 100 */
+  aliases?: string[];
+  /**
+     * @minLength 1
+     * @maxLength 100
+     * @pattern ^[A-Za-z0-9][A-Za-z0-9._-]*$
+     */
+  code: string;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  display_name: string;
+}
+
+export type VehicleModelResponseStatus = typeof VehicleModelResponseStatus[keyof typeof VehicleModelResponseStatus];
+
+
+export const VehicleModelResponseStatus = {
+  active: 'active',
+  deprecated: 'deprecated',
+  merged: 'merged',
+} as const;
+
+/**
+ * 车型目录中的完整管理投影。
+ */
+export interface VehicleModelResponse {
+  aliases?: VehicleModelAliasResponse[];
+  /** @exclusiveMinimum 0 */
+  catalog_version: number;
+  code: string;
+  created_at: string;
+  display_name: string;
+  id: string;
+  keyword_pack_ids?: string[];
+  merged_into_id?: string | null;
+  referenced?: boolean;
+  status: VehicleModelResponseStatus;
+  updated_at: string;
+  /** @exclusiveMinimum 0 */
+  version: number;
+}
+
+/**
+ * 车型目录页响应。
+ */
+export interface VehicleModelListResponse {
+  /** @exclusiveMinimum 0 */
+  catalog_version: number;
+  items: VehicleModelResponse[];
+  /**
+     * @minimum 1
+     * @maximum 200
+     */
+  limit: number;
+  /** @minimum 0 */
+  offset: number;
+  /** @minimum 0 */
+  total: number;
+}
+
+/**
+ * 把错误或重复车型重定向到稳定目标车型。
+ */
+export interface VehicleModelMergeRequest {
+  target_vehicle_model_id: string;
+}
+
+export type VehicleModelUpdateRequestStatus = typeof VehicleModelUpdateRequestStatus[keyof typeof VehicleModelUpdateRequestStatus] | null;
+
+
+export const VehicleModelUpdateRequestStatus = {
+  active: 'active',
+  deprecated: 'deprecated',
+} as const;
+
+/**
+ * 修改车型显示、别名或启停状态；稳定 code 不允许原地改写。
+ */
+export interface VehicleModelUpdateRequest {
+  aliases?: string[] | null;
+  display_name?: string | null;
+  status?: VehicleModelUpdateRequestStatus;
+}
+
+export type ListAuditEventsParams = {
+/**
+ * @minimum 1
+ * @maximum 200
+ */
+limit?: number;
+};
+
 export type ListCollectionPlansParams = {
 search?: string | null;
 enabled?: boolean | null;
@@ -1487,6 +2144,10 @@ secondary_label?: string | null;
 published_from?: string | null;
 published_to?: string | null;
 source_identifier?: string | null;
+/**
+ * @maxItems 100
+ */
+vehicle_model_ids?: string[];
 cursor?: string | null;
 /**
  * @minimum 1
@@ -1548,6 +2209,200 @@ offset?: number;
  */
 limit?: number;
 };
+
+export type ListNotificationsParams = {
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+};
+
+export type ListVehicleModelsParams = {
+search?: string | null;
+status?: ListVehicleModelsStatus;
+/**
+ * @minimum 0
+ */
+offset?: number;
+/**
+ * @minimum 1
+ * @maximum 200
+ */
+limit?: number;
+};
+
+export type ListVehicleModelsStatus = typeof ListVehicleModelsStatus[keyof typeof ListVehicleModelsStatus] | null;
+
+
+export const ListVehicleModelsStatus = {
+  active: 'active',
+  deprecated: 'deprecated',
+  merged: 'merged',
+} as const;
+
+export const getUpdateAnalysisSchemeDraftUrl = (versionId: string,) => {
+
+
+
+
+  return `/api/v1/analysis-scheme-versions/${versionId}`
+}
+
+/**
+ * 管理员更新尚未发布的 Scheme Version。
+ * @summary Update Analysis Scheme Draft
+ */
+export const updateAnalysisSchemeDraft = async (versionId: string,
+    analysisSchemeUpdateDraftRequest: AnalysisSchemeUpdateDraftRequest, options?: RequestInit): Promise<AnalysisSchemeResponse> => {
+
+  const res = await fetch(getUpdateAnalysisSchemeDraftUrl(versionId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(analysisSchemeUpdateDraftRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: AnalysisSchemeResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getPublishAnalysisSchemeUrl = (versionId: string,) => {
+
+
+
+
+  return `/api/v1/analysis-scheme-versions/${versionId}/publish`
+}
+
+/**
+ * 管理员原子发布 Scheme Version。
+ * @summary Publish Analysis Scheme
+ */
+export const publishAnalysisScheme = async (versionId: string,
+    analysisSchemePublishRequest: AnalysisSchemePublishRequest, options?: RequestInit): Promise<AnalysisSchemeResponse> => {
+
+  const res = await fetch(getPublishAnalysisSchemeUrl(versionId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(analysisSchemePublishRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: AnalysisSchemeResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getRollbackAnalysisSchemeUrl = (versionId: string,) => {
+
+
+
+
+  return `/api/v1/analysis-scheme-versions/${versionId}/rollback`
+}
+
+/**
+ * 管理员把历史版本重新激活。
+ * @summary Rollback Analysis Scheme
+ */
+export const rollbackAnalysisScheme = async (versionId: string,
+    analysisSchemePublishRequest: AnalysisSchemePublishRequest, options?: RequestInit): Promise<AnalysisSchemeResponse> => {
+
+  const res = await fetch(getRollbackAnalysisSchemeUrl(versionId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(analysisSchemePublishRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: AnalysisSchemeResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getListAnalysisSchemesUrl = () => {
+
+
+
+
+  return `/api/v1/analysis-schemes`
+}
+
+/**
+ * 管理员读取 Scheme 与版本历史。
+ * @summary List Analysis Schemes
+ */
+export const listAnalysisSchemes = async ( options?: RequestInit): Promise<AnalysisSchemeListResponse> => {
+
+  const res = await fetch(getListAnalysisSchemesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: AnalysisSchemeListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCreateAnalysisSchemeDraftUrl = () => {
+
+
+
+
+  return `/api/v1/analysis-schemes`
+}
+
+/**
+ * 管理员创建结构化 Analysis Scheme 草稿。
+ * @summary Create Analysis Scheme Draft
+ */
+export const createAnalysisSchemeDraft = async (analysisSchemeCreateDraftRequest: AnalysisSchemeCreateDraftRequest, options?: RequestInit): Promise<AnalysisSchemeResponse> => {
+
+  const res = await fetch(getCreateAnalysisSchemeDraftUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(analysisSchemeCreateDraftRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: AnalysisSchemeResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
 
 export const getListContentAnalysisRunsUrl = () => {
 
@@ -1699,6 +2554,45 @@ export const cancelContentAnalysisRun = async (runId: string, options?: RequestI
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: AnalysisContentRunResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getListAuditEventsUrl = (params?: ListAuditEventsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/audit-events?${stringifiedParams}` : `/api/v1/audit-events`
+}
+
+/**
+ * 管理员读取有界审计历史。
+ * @summary List Audit Events
+ */
+export const listAuditEvents = async (params?: ListAuditEventsParams, options?: RequestInit): Promise<AuditEventListResponse> => {
+
+  const res = await fetch(getListAuditEventsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: AuditEventListResponse = body ? JSON.parse(body) : {}
   return data
 }
 
@@ -2108,6 +3002,7 @@ export const getGetContentAnalysisTaxonomyUrl = () => {
 }
 
 /**
+ * 读取数据库 active Analysis Scheme 的分类安全投影。
  * @summary Get Content Analysis Taxonomy
  */
 export const getContentAnalysisTaxonomy = async ( options?: RequestInit): Promise<ContentAnalysisTaxonomyResponse> => {
@@ -2125,6 +3020,37 @@ export const getContentAnalysisTaxonomy = async ( options?: RequestInit): Promis
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: ContentAnalysisTaxonomyResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCreateContentAvailabilityObservationUrl = () => {
+
+
+
+
+  return `/api/v1/content-availability-observations`
+}
+
+/**
+ * @summary Create Content Availability Observation
+ */
+export const createContentAvailabilityObservation = async (contentAvailabilityObservationRequest: ContentAvailabilityObservationRequest, options?: RequestInit): Promise<ContentAvailabilityResponse> => {
+
+  const res = await fetch(getCreateContentAvailabilityObservationUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(contentAvailabilityObservationRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ContentAvailabilityResponse = body ? JSON.parse(body) : {}
   return data
 }
 
@@ -2165,7 +3091,7 @@ export const getListContentsUrl = (params?: ListContentsParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
-    const explodeParameters = ["platforms","content_types"];
+    const explodeParameters = ["platforms","content_types","vehicle_model_ids"];
 
     if (Array.isArray(value) && explodeParameters.includes(key)) {
       value.forEach((v) => {
@@ -2207,6 +3133,37 @@ export const listContents = async (params?: ListContentsParams, options?: Reques
 
 
 
+export const getCountContentsUrl = () => {
+
+
+
+
+  return `/api/v1/contents/count`
+}
+
+/**
+ * @summary Count Contents
+ */
+export const countContents = async (contentCountRequest: ContentCountRequest, options?: RequestInit): Promise<ContentCountResponse> => {
+
+  const res = await fetch(getCountContentsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(contentCountRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ContentCountResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
 export const getGetContentUrl = (contentId: string,) => {
 
 
@@ -2233,6 +3190,71 @@ export const getContent = async (contentId: string, options?: RequestInit): Prom
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: ContentDetailResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getReviewContentAnalysisUrl = (contentId: string,) => {
+
+
+
+
+  return `/api/v1/contents/${contentId}/analysis-review`
+}
+
+/**
+ * 人工纠正 voice_type、情感与标签，并显式维护维度锁。
+ * @summary Review Content Analysis
+ */
+export const reviewContentAnalysis = async (contentId: string,
+    contentAnalysisManualReviewRequest: ContentAnalysisManualReviewRequest, options?: RequestInit): Promise<ContentAnalysisManualReviewResponse> => {
+
+  const res = await fetch(getReviewContentAnalysisUrl(contentId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(contentAnalysisManualReviewRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ContentAnalysisManualReviewResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getReviewContentVehiclesUrl = (contentId: string,) => {
+
+
+
+
+  return `/api/v1/contents/${contentId}/vehicles`
+}
+
+/**
+ * @summary Review Content Vehicles
+ */
+export const reviewContentVehicles = async (contentId: string,
+    contentVehicleReviewRequest: ContentVehicleReviewRequest, options?: RequestInit): Promise<ContentVehicleReviewResponse> => {
+
+  const res = await fetch(getReviewContentVehiclesUrl(contentId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(contentVehicleReviewRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ContentVehicleReviewResponse = body ? JSON.parse(body) : {}
   return data
 }
 
@@ -2745,6 +3767,37 @@ export const listDataImportServerDirectories = async (params?: ListDataImportSer
 
 
 
+export const getGetExportColumnCatalogUrl = () => {
+
+
+
+
+  return `/api/v1/export-columns`
+}
+
+/**
+ * @summary Get Export Column Catalog
+ */
+export const getExportColumnCatalog = async ( options?: RequestInit): Promise<ExportColumnCatalogResponse> => {
+
+  const res = await fetch(getGetExportColumnCatalogUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ExportColumnCatalogResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
 export const getListHistoricalImportCampaignsUrl = () => {
 
 
@@ -3083,7 +4136,12 @@ export const getCreateImportBatchUrl = () => {
 export const createImportBatch = async (bodyCreateImportBatch: BodyCreateImportBatch, options?: RequestInit): Promise<ImportBatchCreatedResponse> => {
     const formData = new FormData();
 formData.append(`file`, bodyCreateImportBatch.file);
-bodyCreateImportBatch.keyword_pack_ids.forEach(value => formData.append(`keyword_pack_ids`, value));
+if(bodyCreateImportBatch.keyword_pack_ids !== undefined) {
+ bodyCreateImportBatch.keyword_pack_ids.forEach(value => formData.append(`keyword_pack_ids`, value));
+ }
+if(bodyCreateImportBatch.vehicle_model_ids !== undefined) {
+ bodyCreateImportBatch.vehicle_model_ids.forEach(value => formData.append(`vehicle_model_ids`, value));
+ }
 
   const res = await fetch(getCreateImportBatchUrl(),
   {
@@ -3391,6 +4449,140 @@ export const addKeywordToPack = async (packId: string,
 
 
 
+export const getReplaceKeywordPackVehicleModelsUrl = (packId: string,) => {
+
+
+
+
+  return `/api/v1/keyword-packs/${packId}/vehicle-models`
+}
+
+/**
+ * 管理员原子替换一个词包引用的车型。
+ * @summary Replace Keyword Pack Vehicle Models
+ */
+export const replaceKeywordPackVehicleModels = async (packId: string,
+    keywordPackVehicleLinkRequest: KeywordPackVehicleLinkRequest, options?: RequestInit): Promise<KeywordPackVehicleLinksResponse> => {
+
+  const res = await fetch(getReplaceKeywordPackVehicleModelsUrl(packId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(keywordPackVehicleLinkRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: KeywordPackVehicleLinksResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getListNotificationsUrl = (params?: ListNotificationsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/notifications?${stringifiedParams}` : `/api/v1/notifications`
+}
+
+/**
+ * @summary List Notifications
+ */
+export const listNotifications = async (params?: ListNotificationsParams, options?: RequestInit): Promise<NotificationListResponse> => {
+
+  const res = await fetch(getListNotificationsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: NotificationListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getMarkNotificationsReadUrl = () => {
+
+
+
+
+  return `/api/v1/notifications/read`
+}
+
+/**
+ * @summary Mark Notifications Read
+ */
+export const markNotificationsRead = async (notificationMarkReadRequest: NotificationMarkReadRequest, options?: RequestInit): Promise<NotificationMarkReadResponse> => {
+
+  const res = await fetch(getMarkNotificationsReadUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(notificationMarkReadRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: NotificationMarkReadResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getGetCurrentPrincipalUrl = () => {
+
+
+
+
+  return `/api/v1/principal`
+}
+
+/**
+ * 返回当前 Provider-neutral Principal 与两角色投影。
+ * @summary Get Current Principal
+ */
+export const getCurrentPrincipal = async ( options?: RequestInit): Promise<CurrentPrincipalResponse> => {
+
+  const res = await fetch(getGetCurrentPrincipalUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: CurrentPrincipalResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
 export const getGetGlobalRelevanceConfigUrl = () => {
 
 
@@ -3448,6 +4640,207 @@ export const setGlobalRelevanceConfig = async (globalRelevanceConfigRequest: Glo
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
   const data: GlobalRelevanceConfigResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getListVehicleModelsUrl = (params?: ListVehicleModelsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/vehicle-models?${stringifiedParams}` : `/api/v1/vehicle-models`
+}
+
+/**
+ * 读取车型目录供选择器和管理员页面复用。
+ * @summary List Vehicle Models
+ */
+export const listVehicleModels = async (params?: ListVehicleModelsParams, options?: RequestInit): Promise<VehicleModelListResponse> => {
+
+  const res = await fetch(getListVehicleModelsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: VehicleModelListResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getCreateVehicleModelUrl = () => {
+
+
+
+
+  return `/api/v1/vehicle-models`
+}
+
+/**
+ * 管理员创建车型和初始别名。
+ * @summary Create Vehicle Model
+ */
+export const createVehicleModel = async (vehicleModelCreateRequest: VehicleModelCreateRequest, options?: RequestInit): Promise<VehicleModelResponse> => {
+
+  const res = await fetch(getCreateVehicleModelUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(vehicleModelCreateRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: VehicleModelResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getDeleteVehicleModelUrl = (vehicleModelId: string,) => {
+
+
+
+
+  return `/api/v1/vehicle-models/${vehicleModelId}`
+}
+
+/**
+ * 管理员物理删除未引用车型。
+ * @summary Delete Vehicle Model
+ */
+export const deleteVehicleModel = async (vehicleModelId: string, options?: RequestInit): Promise<void> => {
+
+  const res = await fetch(getDeleteVehicleModelUrl(vehicleModelId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: void = body ? JSON.parse(body) : undefined
+  return data
+}
+
+
+
+export const getGetVehicleModelUrl = (vehicleModelId: string,) => {
+
+
+
+
+  return `/api/v1/vehicle-models/${vehicleModelId}`
+}
+
+/**
+ * 读取单个车型目录详情。
+ * @summary Get Vehicle Model
+ */
+export const getVehicleModel = async (vehicleModelId: string, options?: RequestInit): Promise<VehicleModelResponse> => {
+
+  const res = await fetch(getGetVehicleModelUrl(vehicleModelId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: VehicleModelResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getUpdateVehicleModelUrl = (vehicleModelId: string,) => {
+
+
+
+
+  return `/api/v1/vehicle-models/${vehicleModelId}`
+}
+
+/**
+ * 管理员修改车型显示、别名或启停状态。
+ * @summary Update Vehicle Model
+ */
+export const updateVehicleModel = async (vehicleModelId: string,
+    vehicleModelUpdateRequest: VehicleModelUpdateRequest, options?: RequestInit): Promise<VehicleModelResponse> => {
+
+  const res = await fetch(getUpdateVehicleModelUrl(vehicleModelId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(vehicleModelUpdateRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: VehicleModelResponse = body ? JSON.parse(body) : {}
+  return data
+}
+
+
+
+export const getMergeVehicleModelUrl = (vehicleModelId: string,) => {
+
+
+
+
+  return `/api/v1/vehicle-models/${vehicleModelId}/merge`
+}
+
+/**
+ * 管理员把重复车型重定向到稳定目标。
+ * @summary Merge Vehicle Model
+ */
+export const mergeVehicleModel = async (vehicleModelId: string,
+    vehicleModelMergeRequest: VehicleModelMergeRequest, options?: RequestInit): Promise<VehicleModelResponse> => {
+
+  const res = await fetch(getMergeVehicleModelUrl(vehicleModelId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(vehicleModelMergeRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: VehicleModelResponse = body ? JSON.parse(body) : {}
   return data
 }
 

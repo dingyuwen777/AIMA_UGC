@@ -21,7 +21,8 @@ class UnifiedContentRecordV1(BaseModel):
 
     schema_version: Literal["content-record.v1"] = "content-record.v1"
     content: CanonicalContentV1
-    matched_keywords: list[str] = Field(min_length=1)
+    matched_keywords: list[str] = Field(default_factory=list)
+    matched_vehicle_aliases: list[str] = Field(default_factory=list)
     analysis: ContentLabelAnalysis | None = None
 
     @field_validator("matched_keywords")
@@ -32,4 +33,15 @@ class UnifiedContentRecordV1(BaseModel):
         for keyword in value:
             if not keyword or keyword != keyword.strip():
                 raise ValueError("matched_keywords 必须是非空且已清洗的字符串")
+        return value
+
+    @field_validator("matched_vehicle_aliases")
+    @classmethod
+    def validate_matched_vehicle_aliases(cls, value: list[str]) -> list[str]:
+        """冻结命中的非空车型别名，并拒绝重复证据。"""
+
+        if len(value) != len(set(value)):
+            raise ValueError("matched_vehicle_aliases 不能重复")
+        if any(not item or item != item.strip() for item in value):
+            raise ValueError("matched_vehicle_aliases 必须是非空且已清洗的字符串")
         return value

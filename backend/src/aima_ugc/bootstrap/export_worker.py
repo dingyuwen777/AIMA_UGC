@@ -12,22 +12,26 @@ from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataGateway,
     PostgresArtifactMetadataRepository,
 )
+from aima_ugc.adapters.persistence.postgres.notifications import (
+    PostgresNotificationRepository,
+)
 from aima_ugc.adapters.persistence.postgres.reporting import (
     DataExportNotFound,
     PostgresDataExportRepository,
 )
 from aima_ugc.contracts.export import UnifiedDataExcelV1
+from aima_ugc.modules.reporting.column_catalog import export_column_headers
 from aima_ugc.modules.reporting.data_export_job import (
     MAX_EXPORT_ARTIFACT_BYTES,
     DataExportJobPayload,
 )
 from aima_ugc.platform.export.excel import export_unified_data_excel
-from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult
+from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult, JobRecord
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol
 from aima_ugc.platform.storage import ArtifactService, ArtifactSizeLimitError
 from aima_ugc.platform.time import beijing_now
 
-from .analysis_identity import current_analysis_identity
+from .analysis_identity import active_analysis_configuration
 from .runtime import PlatformRuntime
 
 _EXPORT_PAGE_SIZE = 100
@@ -62,6 +66,7 @@ class PostgresDataExportJobExecutor:
         temporary_root = self._runtime.settings.data_dir / "tmp"
         temporary_root.mkdir(parents=True, exist_ok=True)
         counters = _ExportCounters()
+        export_definition = self._export_definition(payload.export_id)
         try:
             with TemporaryDirectory(prefix="content-export-", dir=temporary_root) as directory:
                 output_path = Path(directory) / f"aima-ugc-voice-plaza-{payload.export_id}.xlsx"
@@ -69,6 +74,7 @@ class PostgresDataExportJobExecutor:
                     self._iter_records(payload.export_id, counters, context),
                     output_path,
                     include_analysis=True,
+                    content_columns=export_column_headers(export_definition.columns),
                 )
                 with output_path.open("rb") as source:
                     artifact = ArtifactService(
@@ -137,9 +143,12 @@ class PostgresDataExportJobExecutor:
             session = self._runtime.database.new_session()
             try:
                 with session.begin():
+                    configuration = active_analysis_configuration(
+                        session, self._runtime.settings
+                    )
                     page = PostgresDataExportRepository(
                         session,
-                        analysis_identity=current_analysis_identity(self._runtime.settings),
+                        analysis_identity=configuration.identity,
                     ).load_page(
                         export_id,
                         after_ordinal=after_ordinal,
@@ -186,9 +195,44 @@ class PostgresDataExportJobExecutor:
         finally:
             session.close()
 
+    def _export_definition(self, export_id: UUID):  # type: ignore[no-untyped-def]
+        """在独立短事务中读取冻结列与目录版本。"""
+
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                export = PostgresDataExportRepository(session).get(export_id)
+                if export is None:
+                    raise DataExportNotFound
+                return export
+        finally:
+            session.close()
+
+
+def export_job_terminal_callback(session, job: JobRecord) -> None:  # type: ignore[no-untyped-def]
+    """把导出终态投递到发起人的 Principal Inbox，使用业务幂等键去重。"""
+
+    export = PostgresDataExportRepository(session).get_by_job_id(job.id)
+    if export is None:
+        return
+    principal_id = export.request_snapshot.get("requested_by")
+    if not isinstance(principal_id, str) or not principal_id:
+        return
+    succeeded = job.status == "succeeded"
+    PostgresNotificationRepository(session).publish_to_principal(
+        deduplication_key=f"data-export-terminal:{export.id}:{job.status}",
+        principal_id=principal_id,
+        event_type="data_export_succeeded" if succeeded else "data_export_failed",
+        title="数据导出已完成" if succeeded else "数据导出未完成",
+        message="导出文件已可下载。" if succeeded else "导出任务失败或已取消，请查看任务详情。",
+        resource_type="data_export",
+        resource_id=str(export.id),
+        safe_detail={"status": job.status, "error_code": job.error_code},
+    )
+
 
 def _nonnegative_int(value: object) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
 
 
-__all__ = ["PostgresDataExportJobExecutor"]
+__all__ = ["PostgresDataExportJobExecutor", "export_job_terminal_callback"]

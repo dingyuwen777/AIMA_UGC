@@ -73,6 +73,7 @@ class HistoricalBatchRow:
     content: CanonicalContentV1 | None
     preclassified_outcome: Literal["filtered", "invalid"] | None = None
     error_code: str | None = None
+    matched_vehicle_aliases: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.source_row_ordinal < 1:

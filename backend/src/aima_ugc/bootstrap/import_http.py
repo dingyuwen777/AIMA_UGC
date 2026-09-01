@@ -10,7 +10,9 @@ from typing import BinaryIO, cast
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
+from pydantic import JsonValue
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
     PostgresArtifactMetadataGateway,
@@ -32,6 +34,8 @@ from aima_ugc.adapters.persistence.postgres.scheduled_keywords import (
     MissingScheduledKeywordPackError,
     PostgresScheduledKeywordSnapshotReader,
 )
+from aima_ugc.adapters.persistence.postgres.system import PostgresAuditRepository
+from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
 from aima_ugc.contracts.analysis import RelevanceSnapshotV1
 from aima_ugc.contracts.http import (
     GlobalRelevanceConfigRequest,
@@ -77,6 +81,7 @@ from aima_ugc.modules.ingestion.import_job import (
     ImportJobPayload,
     ImportKeywordPackSnapshot,
     ImportKeywordSelectionSnapshot,
+    ImportVehicleModelSnapshot,
 )
 from aima_ugc.modules.ingestion.query import ImportBatchReadQuery, ImportBatchReadRecord
 from aima_ugc.modules.ingestion.xlsx_security import (
@@ -85,7 +90,7 @@ from aima_ugc.modules.ingestion.xlsx_security import (
     XlsxResourceLimitError,
     validate_xlsx_stream,
 )
-from aima_ugc.modules.system.models import Keyword, KeywordPack, KeywordPackItem
+from aima_ugc.modules.system.models import AuditEvent, Keyword, KeywordPack, KeywordPackItem
 from aima_ugc.platform.jobs import JobRecord
 from aima_ugc.platform.security import SecretFileError, read_secret_file
 from aima_ugc.platform.storage import ArtifactService, ArtifactSizeLimitError
@@ -101,12 +106,15 @@ _SHANGHAI = ZoneInfo("Asia/Shanghai")
 def read_import_keyword_selection(
     runtime: PlatformRuntime,
     keyword_pack_ids: tuple[UUID, ...],
+    vehicle_model_ids: tuple[UUID, ...] = (),
 ) -> ImportKeywordSelectionSnapshot:
-    """复用正式词包读取链，冻结 Import/Historical Campaign 的有效关键词。"""
+    """复用正式目录读取链，冻结 Import/Historical Campaign 的资源选择。"""
 
-    if not keyword_pack_ids or len(keyword_pack_ids) > 20:
+    if (not keyword_pack_ids and not vehicle_model_ids) or len(keyword_pack_ids) > 20:
         raise RelevanceConfigurationError
     if len(keyword_pack_ids) != len(set(keyword_pack_ids)):
+        raise RelevanceConfigurationError
+    if len(vehicle_model_ids) > 100 or len(vehicle_model_ids) != len(set(vehicle_model_ids)):
         raise RelevanceConfigurationError
     session = runtime.database.new_session()
     try:
@@ -117,21 +125,45 @@ def read_import_keyword_selection(
                 raise RelevanceConfigurationError from exc
             if any(not pack.enabled for pack in catalog.keyword_packs):
                 raise RelevanceConfigurationError
-            configured = tuple(
-                RelevanceKeyword(text=entry.keyword_text, priority=entry.priority)
-                for entry in catalog.entries
-                if entry.pack_enabled and entry.keyword_enabled and entry.item_enabled
-            )
+            if keyword_pack_ids:
+                configured = tuple(
+                    RelevanceKeyword(text=entry.keyword_text, priority=entry.priority)
+                    for entry in catalog.entries
+                    if entry.pack_enabled and entry.keyword_enabled and entry.item_enabled
+                )
+                try:
+                    effective = RelevanceService(configured).effective_keywords
+                except ValueError as exc:
+                    raise RelevanceConfigurationError from exc
+            else:
+                effective = ()
             try:
-                effective = RelevanceService(configured).effective_keywords
-            except ValueError as exc:
+                vehicle_snapshot = PostgresVehicleCatalogRepository(session).snapshot(
+                    vehicle_model_ids
+                )
+            except LookupError as exc:
                 raise RelevanceConfigurationError from exc
+            aliases_by_model: dict[UUID, list[str]] = {
+                model_id: [] for model_id in vehicle_model_ids
+            }
+            for model_id, alias in vehicle_snapshot.alias_bindings:
+                aliases_by_model[model_id].append(alias)
+            versions = dict(vehicle_snapshot.vehicle_versions)
             return ImportKeywordSelectionSnapshot(
                 keyword_packs=tuple(
                     ImportKeywordPackSnapshot(id=pack.pack_id, version=pack.version)
                     for pack in catalog.keyword_packs
                 ),
                 effective_keywords=effective,
+                vehicle_catalog_version=vehicle_snapshot.catalog_version,
+                vehicle_models=tuple(
+                    ImportVehicleModelSnapshot(
+                        id=model_id,
+                        version=versions[model_id],
+                        aliases=tuple(aliases_by_model[model_id]),
+                    )
+                    for model_id in vehicle_model_ids
+                ),
             )
     finally:
         session.close()
@@ -156,11 +188,12 @@ class PostgresImportHttpService:
         content_type: str | None,
         source: BinaryIO,
         keyword_pack_ids: tuple[UUID, ...],
+        vehicle_model_ids: tuple[UUID, ...] = (),
         request_id: str,
     ) -> ImportBatchCreatedResponse:
         del content_type
         safe_name = _validate_upload_filename(filename)
-        selection = self._read_import_keyword_selection(keyword_pack_ids)
+        selection = self._read_import_keyword_selection(keyword_pack_ids, vehicle_model_ids)
         try:
             source.seek(0, 2)
             file_size = source.tell()
@@ -328,7 +361,13 @@ class PostgresImportHttpService:
         finally:
             session.close()
 
-    def create_keyword_pack(self, request: KeywordPackCreateRequest) -> KeywordPackResponse:
+    def create_keyword_pack(
+        self,
+        request: KeywordPackCreateRequest,
+        *,
+        actor_ref: str = "system:direct-service-call",
+        request_id: str = "direct-service-call",
+    ) -> KeywordPackResponse:
         name = request.name.strip()
         if not name:
             raise ValueError("Keyword Pack 名称不能为空")
@@ -344,6 +383,15 @@ class PostgresImportHttpService:
                         version=1,
                     )
                 )
+                _audit_configuration(
+                    session,
+                    actor_ref=actor_ref,
+                    request_id=request_id,
+                    event_type="keyword_pack_created",
+                    object_type="keyword_pack",
+                    object_id=str(pack.id),
+                    detail={"version": pack.version, "enabled": pack.enabled},
+                )
                 return _pack_response(PostgresKeywordCatalogRepository(session), pack)
         except IntegrityError as exc:
             raise ImportConflict from exc
@@ -354,6 +402,9 @@ class PostgresImportHttpService:
         self,
         pack_id: UUID,
         request: KeywordPackKeywordCreateRequest,
+        *,
+        actor_ref: str = "system:direct-service-call",
+        request_id: str = "direct-service-call",
     ) -> KeywordPackResponse:
         text = request.text.strip()
         try:
@@ -387,6 +438,19 @@ class PostgresImportHttpService:
                 pack = repository.get_pack(pack_id)
                 if pack is None:  # pragma: no cover - 持锁事务中的父记录不会消失
                     raise ImportResourceNotFound
+                _audit_configuration(
+                    session,
+                    actor_ref=actor_ref,
+                    request_id=request_id,
+                    event_type="keyword_pack_item_added",
+                    object_type="keyword_pack",
+                    object_id=str(pack_id),
+                    detail={
+                        "keyword_id": str(keyword.id),
+                        "priority": request.priority,
+                        "enabled": request.enabled,
+                    },
+                )
                 return _pack_response(repository, pack)
         finally:
             session.close()
@@ -406,6 +470,9 @@ class PostgresImportHttpService:
     def set_global_relevance(
         self,
         request: GlobalRelevanceConfigRequest,
+        *,
+        actor_ref: str = "system:direct-service-call",
+        request_id: str = "direct-service-call",
     ) -> GlobalRelevanceConfigResponse:
         session = self._runtime.database.new_session()
         try:
@@ -418,6 +485,18 @@ class PostgresImportHttpService:
                     raise ImportResourceNotFound from exc
                 except GlobalRelevanceUnavailable as exc:
                     raise RelevanceConfigurationError from exc
+                _audit_configuration(
+                    session,
+                    actor_ref=actor_ref,
+                    request_id=request_id,
+                    event_type="global_relevance_config_updated",
+                    object_type="global_relevance_config",
+                    object_id="global",
+                    detail={
+                        "keyword_pack_id": str(snapshot.keyword_pack_id),
+                        "keyword_pack_version": snapshot.keyword_pack_version,
+                    },
+                )
                 return _relevance_response(snapshot, updated_at)
         finally:
             session.close()
@@ -429,8 +508,11 @@ class PostgresImportHttpService:
     def _read_import_keyword_selection(
         self,
         keyword_pack_ids: tuple[UUID, ...],
+        vehicle_model_ids: tuple[UUID, ...] = (),
     ) -> ImportKeywordSelectionSnapshot:
-        return read_import_keyword_selection(self._runtime, keyword_pack_ids)
+        return read_import_keyword_selection(
+            self._runtime, keyword_pack_ids, vehicle_model_ids
+        )
 
     def _read_relevance_snapshot(self) -> tuple[RelevanceSnapshotV1, datetime]:
         session = self._runtime.database.new_session()
@@ -458,6 +540,33 @@ def _validate_upload_filename(filename: str) -> str:
     ):
         raise InvalidImportFile
     return filename
+
+
+def _audit_configuration(
+    session: Session,
+    *,
+    actor_ref: str,
+    request_id: str,
+    event_type: str,
+    object_type: str,
+    object_id: str,
+    detail: dict[str, JsonValue],
+) -> None:
+    """把配置变更和对应业务写入放在同一数据库事务。"""
+
+    PostgresAuditRepository(session).append(
+        AuditEvent(
+            id=uuid4(),
+            actor_kind="principal",
+            actor_ref=actor_ref,
+            event_type=event_type,
+            object_type=object_type,
+            object_id=object_id,
+            request_id=request_id,
+            safe_detail=detail,
+            created_at=beijing_now(),
+        )
+    )
 
 
 def _pack_response(

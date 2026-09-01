@@ -21,6 +21,9 @@ from aima_ugc.contracts.http import (
     ContentSupplementStatusResponse,
 )
 from aima_ugc.contracts.platform import require_platform_name
+from aima_ugc.modules.analysis.manual_override_tables import (
+    analysis_content_manual_overrides_table,
+)
 from aima_ugc.modules.analysis.persistence import AnalysisConfigurationIdentity
 from aima_ugc.modules.analysis.relevance_review_tables import (
     analysis_content_relevance_reviews_table,
@@ -37,13 +40,19 @@ from aima_ugc.modules.collection.tables import (
     provider_request_attempts_table,
     provider_requests_table,
 )
+from aima_ugc.modules.content.availability_tables import (
+    content_availability_observations_table,
+)
 from aima_ugc.modules.content.extended_tables import content_media_table
 from aima_ugc.modules.content.query import (
     ContentAnalysisRead,
+    ContentAvailabilityRead,
     ContentReadQuery,
     ContentReadRecord,
     ContentSourceRead,
     ContentTarget,
+    ContentVehicleEvidenceRead,
+    ContentVehicleRead,
 )
 from aima_ugc.modules.content.tables import (
     accounts_table,
@@ -58,6 +67,10 @@ from aima_ugc.modules.ingestion.historical_tables import (
 )
 from aima_ugc.modules.ingestion.tables import (
     register_ingestion_schema,
+)
+from aima_ugc.modules.vehicles.tables import (
+    content_vehicle_evidence_table,
+    vehicle_models_table,
 )
 
 register_ingestion_schema()
@@ -335,6 +348,7 @@ class PostgresContentQueryRepository:
         request = provider_requests_table
         scope = collection_scopes_table
         review = _latest_relevance_review_subquery()
+        manual = analysis_content_manual_overrides_table
         analysis = _latest_analysis_subquery(self._analysis_identity)
         latest_run = _latest_analysis_run_subquery()
         sort_at = func.coalesce(content.c.published_at, content.c.last_seen_at).label("sort_at")
@@ -353,6 +367,10 @@ class PostgresContentQueryRepository:
             review.c.content_version == content.c.current_version,
             review.c.rank == 1,
         )
+        current_manual = and_(
+            manual.c.content_id == content.c.id,
+            manual.c.content_version == content.c.current_version,
+        )
         current_latest_run = and_(
             latest_run.c.content_id == content.c.id,
             latest_run.c.content_version == content.c.current_version,
@@ -368,6 +386,14 @@ class PostgresContentQueryRepository:
             (analysis.c.relevance.is_not(None), literal("ai")),
             else_=literal(None),
         )
+        effective_voice_type = case(
+            (manual.c.voice_type_locked.is_(True), manual.c.voice_type),
+            else_=analysis.c.voice_type,
+        )
+        effective_sentiment = case(
+            (manual.c.sentiment_locked.is_(True), manual.c.sentiment),
+            else_=analysis.c.sentiment,
+        )
         source_join = (
             content.join(
                 version,
@@ -382,6 +408,7 @@ class PostgresContentQueryRepository:
             .outerjoin(analysis, current_analysis)
             .outerjoin(latest_run, current_latest_run)
             .outerjoin(review, current_review)
+            .outerjoin(manual, current_manual)
         )
         if targets_only:
             selected: tuple[Any, ...] = (content.c.id, content.c.current_version, sort_at)
@@ -409,8 +436,12 @@ class PostgresContentQueryRepository:
                 content.c.current_play_count,
                 analysis.c.id.label("analysis_result_id"),
                 analysis.c.relevance,
-                analysis.c.voice_type,
-                analysis.c.sentiment,
+                effective_voice_type.label("voice_type"),
+                effective_sentiment.label("sentiment"),
+                manual.c.labels.label("manual_labels"),
+                manual.c.voice_type_locked,
+                manual.c.sentiment_locked,
+                manual.c.labels_locked,
                 analysis.c.analyzed_at,
                 analysis.c.model_provider,
                 analysis.c.model,
@@ -430,6 +461,9 @@ class PostgresContentQueryRepository:
             statement,
             filters=filters,
             analysis=analysis,
+            manual=manual,
+            effective_voice_type=effective_voice_type,
+            effective_sentiment=effective_sentiment,
             effective_relevance=effective_relevance,
             has_any_analysis=has_any_analysis,
             version=version,
@@ -438,6 +472,7 @@ class PostgresContentQueryRepository:
         return statement, {"sort_at": sort_at}
 
     def _records(self, rows: tuple[RowMapping, ...]) -> tuple[ContentReadRecord, ...]:
+        content_ids = tuple(cast(UUID, row["id"]) for row in rows)
         result_ids = tuple(
             cast(UUID, row["analysis_result_id"])
             for row in rows
@@ -458,44 +493,111 @@ class PostgresContentQueryRepository:
                         cast(str, label["secondary_label"]),
                     )
                 )
+
+        vehicles: dict[UUID, dict[UUID, tuple[str, str, list[ContentVehicleEvidenceRead]]]] = (
+            defaultdict(dict)
+        )
+        if content_ids:
+            effective_vehicle = vehicle_models_table.alias("effective_content_vehicle")
+            vehicle_rows = self._session.execute(
+                select(
+                    content_vehicle_evidence_table,
+                    func.coalesce(
+                        effective_vehicle.c.id,
+                        vehicle_models_table.c.id,
+                    ).label("effective_vehicle_model_id"),
+                    func.coalesce(
+                        effective_vehicle.c.code,
+                        vehicle_models_table.c.code,
+                    ).label("effective_vehicle_code"),
+                    func.coalesce(
+                        effective_vehicle.c.display_name,
+                        vehicle_models_table.c.display_name,
+                    ).label("effective_vehicle_display_name"),
+                )
+                .join(
+                    vehicle_models_table,
+                    vehicle_models_table.c.id
+                    == content_vehicle_evidence_table.c.vehicle_model_id,
+                )
+                .outerjoin(
+                    effective_vehicle,
+                    effective_vehicle.c.id == vehicle_models_table.c.merged_into_id,
+                )
+                .join(
+                    contents_table,
+                    contents_table.c.id == content_vehicle_evidence_table.c.content_id,
+                )
+                .where(
+                    content_vehicle_evidence_table.c.content_id.in_(content_ids),
+                    content_vehicle_evidence_table.c.content_version
+                    == contents_table.c.current_version,
+                    content_vehicle_evidence_table.c.is_active.is_(True),
+                )
+                .order_by(
+                    content_vehicle_evidence_table.c.content_id,
+                    func.coalesce(effective_vehicle.c.code, vehicle_models_table.c.code),
+                    content_vehicle_evidence_table.c.created_at,
+                )
+            ).mappings()
+            for vehicle_row in vehicle_rows:
+                content_id = cast(UUID, vehicle_row["content_id"])
+                model_id = cast(UUID, vehicle_row["effective_vehicle_model_id"])
+                existing = vehicles[content_id].setdefault(
+                    model_id,
+                    (
+                        cast(str, vehicle_row["effective_vehicle_code"]),
+                        cast(str, vehicle_row["effective_vehicle_display_name"]),
+                        [],
+                    ),
+                )
+                existing[2].append(
+                    ContentVehicleEvidenceRead(
+                        source=cast(str, vehicle_row["source"]),
+                        matched_text=cast(str | None, vehicle_row["matched_text"]),
+                        source_field=cast(str | None, vehicle_row["source_field"]),
+                        catalog_version=cast(int, vehicle_row["catalog_version"]),
+                        confidence=cast(float | None, vehicle_row["confidence"]),
+                        is_manual_locked=cast(bool, vehicle_row["is_manual_locked"]),
+                    )
+                )
+
+        availability_by_content: dict[UUID, ContentAvailabilityRead] = {}
+        if content_ids:
+            availability = content_availability_observations_table
+            latest_availability = select(
+                *availability.c,
+                func.row_number()
+                .over(
+                    partition_by=availability.c.content_id,
+                    order_by=(availability.c.observed_at.desc(), availability.c.id.desc()),
+                )
+                .label("rank"),
+            ).subquery("latest_content_availability")
+            availability_rows = self._session.execute(
+                select(latest_availability).where(
+                    latest_availability.c.content_id.in_(content_ids),
+                    latest_availability.c.rank == 1,
+                )
+            ).mappings()
+            for availability_row in availability_rows:
+                availability_by_content[cast(UUID, availability_row["content_id"])] = (
+                    ContentAvailabilityRead(
+                        status=cast(str, availability_row["status"]),
+                        reason_code=cast(str, availability_row["reason_code"]),
+                        evidence_kind=cast(str, availability_row["evidence_kind"]),
+                        observed_at=cast(datetime, availability_row["observed_at"]),
+                    )
+                )
+
         records: list[ContentReadRecord] = []
         for row in rows:
             result_id = cast(UUID | None, row["analysis_result_id"])
-            if result_id is not None:
-                ordered = tuple(
-                    (primary, secondary)
-                    for _, primary, secondary in sorted(labels[result_id], key=lambda item: item[0])
-                )
-                analysis = ContentAnalysisRead(
-                    result_id=result_id,
-                    status="completed",
-                    relevance=cast(str, row["relevance"]),
-                    voice_type=cast(str, row["voice_type"]),
-                    sentiment=cast(str | None, row["sentiment"]),
-                    labels=ordered,
-                    analyzed_at=cast(datetime, row["analyzed_at"]),
-                    model_provider=cast(str, row["model_provider"]),
-                    model=cast(str, row["model"]),
-                    latest_run_id=cast(UUID | None, row["latest_run_id"]),
-                    latest_run_status=cast(str | None, row["latest_run_status"]),
-                )
-            else:
-                analysis = ContentAnalysisRead(
-                    result_id=None,
-                    status="stale" if bool(row["has_any_analysis"]) else "pending",
-                    relevance=None,
-                    voice_type=None,
-                    sentiment=None,
-                    labels=(),
-                    analyzed_at=None,
-                    model_provider=None,
-                    model=None,
-                    latest_run_id=cast(UUID | None, row["latest_run_id"]),
-                    latest_run_status=cast(str | None, row["latest_run_status"]),
-                )
+            analysis = self._analysis_read(row, result_id, labels)
+            content_id = cast(UUID, row["id"])
             records.append(
                 ContentReadRecord(
-                    id=cast(UUID, row["id"]),
+                    id=content_id,
                     current_version=cast(int, row["current_version"]),
                     sort_at=cast(datetime, row["sort_at"]),
                     platform=require_platform_name(cast(str, row["platform"])),
@@ -527,9 +629,77 @@ class PostgresContentQueryRepository:
                         import_batch_id=cast(UUID | None, row["import_batch_id"]),
                         collection_run_id=cast(UUID | None, row["collection_run_id"]),
                     ),
+                    vehicles=tuple(
+                        ContentVehicleRead(
+                            vehicle_model_id=model_id,
+                            code=value[0],
+                            display_name=value[1],
+                            evidences=tuple(value[2]),
+                        )
+                        for model_id, value in vehicles[content_id].items()
+                    ),
+                    availability=availability_by_content.get(content_id),
                 )
             )
         return tuple(records)
+
+    @staticmethod
+    def _analysis_read(
+        row: RowMapping,
+        result_id: UUID | None,
+        labels: dict[UUID, list[tuple[int, str, str]]],
+    ) -> ContentAnalysisRead:
+        """把 AI 原始结果与当前内容版本的人工维度锁合成为读取投影。"""
+
+        if result_id is None:
+            return ContentAnalysisRead(
+                result_id=None,
+                status="stale" if bool(row["has_any_analysis"]) else "pending",
+                relevance=None,
+                voice_type=None,
+                sentiment=None,
+                labels=(),
+                analyzed_at=None,
+                model_provider=None,
+                model=None,
+                latest_run_id=cast(UUID | None, row["latest_run_id"]),
+                latest_run_status=cast(str | None, row["latest_run_status"]),
+                manual_locked_dimensions=(),
+            )
+        if bool(row["labels_locked"]):
+            ordered = tuple(
+                (
+                    item["primary_label"],
+                    item["secondary_label"],
+                )
+                for item in cast(list[dict[str, str]], row["manual_labels"])
+            )
+        else:
+            ordered = tuple(
+                (primary, secondary)
+                for _, primary, secondary in sorted(
+                    labels[result_id], key=lambda item: item[0]
+                )
+            )
+        locked_dimensions = tuple(
+            dimension
+            for dimension in ("voice_type", "sentiment", "labels")
+            if bool(row[f"{dimension}_locked"])
+        )
+        return ContentAnalysisRead(
+            result_id=result_id,
+            status="completed",
+            relevance=cast(str, row["relevance"]),
+            voice_type=cast(str, row["voice_type"]),
+            sentiment=cast(str | None, row["sentiment"]),
+            labels=ordered,
+            analyzed_at=cast(datetime, row["analyzed_at"]),
+            model_provider=cast(str, row["model_provider"]),
+            model=cast(str, row["model"]),
+            latest_run_id=cast(UUID | None, row["latest_run_id"]),
+            latest_run_status=cast(str | None, row["latest_run_status"]),
+            manual_locked_dimensions=locked_dimensions,
+        )
 
 
 def _latest_analysis_subquery(
@@ -600,6 +770,9 @@ def _apply_filters(
     *,
     filters: ContentFilterSnapshot,
     analysis: Any,
+    manual: Any,
+    effective_voice_type: Any,
+    effective_sentiment: Any,
     effective_relevance: Any,
     has_any_analysis: Any,
     version: Any,
@@ -614,7 +787,7 @@ def _apply_filters(
     else:
         statement = statement.where(effective_relevance == filters.relevance)
     if filters.voice_type is not None:
-        statement = statement.where(analysis.c.voice_type == filters.voice_type)
+        statement = statement.where(effective_voice_type == filters.voice_type)
     if filters.search is not None:
         pattern = f"%{_escape_like(filters.search)}%"
         statement = statement.where(
@@ -629,6 +802,32 @@ def _apply_filters(
         statement = statement.where(content.c.platform.in_(filters.platforms))
     if filters.content_types:
         statement = statement.where(content.c.content_type.in_(filters.content_types))
+    if filters.vehicle_model_ids:
+        filter_vehicle = vehicle_models_table.alias("content_vehicle_filter_model")
+        statement = statement.where(
+            exists(
+                select(content_vehicle_evidence_table.c.id)
+                .select_from(
+                    content_vehicle_evidence_table.join(
+                        filter_vehicle,
+                        filter_vehicle.c.id
+                        == content_vehicle_evidence_table.c.vehicle_model_id,
+                    )
+                )
+                .where(
+                    content_vehicle_evidence_table.c.content_id == content.c.id,
+                    content_vehicle_evidence_table.c.content_version
+                    == content.c.current_version,
+                    or_(
+                        content_vehicle_evidence_table.c.vehicle_model_id.in_(
+                            filters.vehicle_model_ids
+                        ),
+                        filter_vehicle.c.merged_into_id.in_(filters.vehicle_model_ids),
+                    ),
+                    content_vehicle_evidence_table.c.is_active.is_(True),
+                )
+            )
+        )
     if filters.published_from is not None:
         statement = statement.where(content.c.published_at >= filters.published_from)
     if filters.published_to is not None:
@@ -690,7 +889,7 @@ def _apply_filters(
     elif filters.analysis_status == "pending":
         statement = statement.where(~has_any_analysis)
     if filters.sentiment is not None:
-        statement = statement.where(analysis.c.sentiment == filters.sentiment)
+        statement = statement.where(effective_sentiment == filters.sentiment)
     if filters.primary_label is not None or filters.secondary_label is not None:
         pair = analysis_content_label_pairs_table
         label_conditions = [pair.c.analysis_result_id == analysis.c.id]
@@ -698,7 +897,27 @@ def _apply_filters(
             label_conditions.append(pair.c.primary_label == filters.primary_label)
         if filters.secondary_label is not None:
             label_conditions.append(pair.c.secondary_label == filters.secondary_label)
-        statement = statement.where(exists(select(literal(1)).where(*label_conditions)))
+        manual_label: dict[str, str] = {}
+        if filters.primary_label is not None:
+            manual_label["primary_label"] = filters.primary_label
+        if filters.secondary_label is not None:
+            manual_label["secondary_label"] = filters.secondary_label
+        ai_label_match = exists(select(literal(1)).where(*label_conditions))
+        statement = statement.where(
+            or_(
+                and_(
+                    manual.c.labels_locked.is_(True),
+                    manual.c.labels.contains([manual_label]),
+                ),
+                and_(
+                    or_(
+                        manual.c.labels_locked.is_(False),
+                        manual.c.labels_locked.is_(None),
+                    ),
+                    ai_label_match,
+                ),
+            )
+        )
     return statement
 
 

@@ -23,6 +23,7 @@ from aima_ugc.modules.collection.planning import (
 from aima_ugc.modules.collection.tables import (
     collection_plan_keyword_packs_table,
     collection_plan_platforms_table,
+    collection_plan_vehicle_models_table,
     collection_plans_table,
     collection_schedule_occurrences_table,
 )
@@ -90,6 +91,16 @@ class PostgresCollectionPlanningRepository:
                     [
                         {"plan_id": plan_id, "keyword_pack_id": keyword_pack_id}
                         for keyword_pack_id in definition.keyword_pack_ids
+                    ]
+                )
+            )
+
+        if definition.vehicle_model_ids:
+            self._session.execute(
+                insert(collection_plan_vehicle_models_table).values(
+                    [
+                        {"plan_id": plan_id, "vehicle_model_id": vehicle_model_id}
+                        for vehicle_model_id in definition.vehicle_model_ids
                     ]
                 )
             )
@@ -353,6 +364,14 @@ class PostgresCollectionPlanningRepository:
                 .order_by(collection_plan_keyword_packs_table.c.keyword_pack_id)
             ).scalars()
         )
+        vehicle_model_ids = tuple(
+            cast(UUID, value)
+            for value in self._session.execute(
+                select(collection_plan_vehicle_models_table.c.vehicle_model_id)
+                .where(collection_plan_vehicle_models_table.c.plan_id == plan_id)
+                .order_by(collection_plan_vehicle_models_table.c.vehicle_model_id)
+            ).scalars()
+        )
         policy_payload = self._session.scalar(
             select(collection_plan_decision_policies_table.c.policy).where(
                 collection_plan_decision_policies_table.c.plan_id == plan_id
@@ -366,6 +385,7 @@ class PostgresCollectionPlanningRepository:
             row,
             platforms=platforms,
             keyword_pack_ids=keyword_pack_ids,
+            vehicle_model_ids=vehicle_model_ids,
             decision_policy=decision_policy,
         )
 
@@ -383,6 +403,7 @@ def _row_to_plan(
     *,
     platforms: tuple[PlanPlatformDefinition, ...],
     keyword_pack_ids: tuple[UUID, ...],
+    vehicle_model_ids: tuple[UUID, ...],
     decision_policy: CollectionDecisionPolicyV1,
 ) -> CollectionPlanRecord:
     return CollectionPlanRecord(
@@ -403,6 +424,7 @@ def _row_to_plan(
         updated_at=row["updated_at"],
         platforms=platforms,
         keyword_pack_ids=keyword_pack_ids,
+        vehicle_model_ids=vehicle_model_ids,
         decision_policy=decision_policy,
     )
 

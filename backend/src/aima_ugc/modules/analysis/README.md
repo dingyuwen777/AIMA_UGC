@@ -50,7 +50,7 @@ relevance = irrelevant
 
 历史 `ContentLabelAnalysisV1/V2` 只保留读取兼容，不再作为新写入格式。
 
-当前 `voice_type` 合法值集合不在本文复制。机器值直接使用中文业务名称，唯一机器事实来自当前 Prompt 的机器 Taxonomy `voice_types`；各类型定义、边界、高混淆场景和学习示例也只在同一 Prompt 维护。当前结果继续以字符串 `voice_type` 保存，运行时由 `RuntimeTaxonomyValidator` 严格校验 membership。
+当前 `voice_type` 合法值集合不在本文复制。机器值直接使用中文业务名称，运行时唯一机器事实来自 Analysis Run 冻结的 Scheme Version；当前结果继续以字符串 `voice_type` 保存，由 `RuntimeTaxonomyValidator` 对冻结 Taxonomy 严格校验 membership。
 
 真实用户发声唯一业务判断：
 
@@ -62,11 +62,15 @@ voice_type == "真实用户发声"
 
 ---
 
-## 2. Prompt / Taxonomy 唯一事实源
+## 2. Analysis Scheme 与 Git bootstrap
 
 - [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md`](prompts/content_labeling_v3.md)
+- [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py)
+- [`backend/src/aima_ugc/modules/analysis/scheme_tables.py`](scheme_tables.py)
 
-完整情感、发声类型、9 个一级/39 个二级标签及其父子关系，以及自然语言判断标准、边界和学习示例，只维护在这份 Prompt Markdown。
+空数据库第一次读取 Analysis 配置时，会把 Git Prompt 转成一个已发布 Scheme Version 并记录系统审计。此后运行时唯一事实是数据库中唯一 active Scheme Version；Git Prompt 只负责 bootstrap/灾备，不与数据库双写。
+
+一个 Scheme Version 原子包含 Prompt 模板、情感、发声类型、标签父子树和相关性/分类判断规则。模板只允许一个受控 Taxonomy 占位符；编译后再计算 `prompt_sha256 / taxonomy_sha256`。草稿保存追加新 Version，发布或回滚只切换完整版本，不能分别激活 Prompt 与枚举。
 
 相关代码：
 
@@ -76,23 +80,30 @@ prompt_taxonomy.py
 → 校验合法性、唯一性与标签父子关系
 → taxonomy_sha256
 
-prompt_snapshot.py
-→ 冻结 Prompt/Taxonomy 身份
+schemes.py
+→ 编译受控模板并核对数据库快照 Hash
+
+analysis_identity.py
+→ 读取/初始化 active Version 并形成运行身份
 ```
 
-Python、数据库、前端和 Blueprint/Appendix 不维护第二套具体 AI 业务 Taxonomy 列表。
+Python、前端和 Blueprint/Appendix 不维护第二套具体 AI 业务 Taxonomy 列表。
 
 修改情感、发声类型、一级/二级标签、判断边界或学习示例时：
 
 ```text
-Prompt 的自然语言规则 + 同文件机器 Taxonomy（需要改变合法值时）
-→ Prompt/Validator tests
+管理员配置中心创建/保存完整 Scheme 草稿
+→ 编译/Validator tests
+→ 原子发布并写 audit_events
+→ 只影响之后新建的 Analysis Run
 → 固定输出 JSON 结构没有变化时，不修改 Python Contract 或数据库 Schema
 ```
 
 `prompt_sha256` 标识完整 Prompt 变化；`taxonomy_sha256` 只随机器 Taxonomy 变化。因此只优化判断规则/示例时，可以出现 Prompt Hash 变化而 Taxonomy Hash 不变。
 
-声音广场通过 `GET /api/v1/content-analysis-taxonomy` 读取这份 Taxonomy 的安全只读投影。生产入口在 [`backend/src/aima_ugc/bootstrap/analysis_taxonomy_http.py`](../../bootstrap/analysis_taxonomy_http.py)，Response 机器事实在 [`backend/src/aima_ugc/contracts/http.py`](../../contracts/http.py)。该投影只让前端取得合法下拉选项和版本 Hash，不返回 Prompt 正文、自然语言规则、模型配置或 Secret；加载失败时返回统一 `503`，前端不会退回平行硬编码。
+声音广场通过 `GET /api/v1/content-analysis-taxonomy` 读取 active Scheme 的安全只读投影。生产装配在 [`backend/src/aima_ugc/bootstrap/content_http.py`](../../bootstrap/content_http.py)，投影函数在 [`backend/src/aima_ugc/bootstrap/analysis_taxonomy_http.py`](../../bootstrap/analysis_taxonomy_http.py)，Response 机器事实在 [`backend/src/aima_ugc/contracts/http.py`](../../contracts/http.py)。该接口不返回 Prompt 正文、自然语言规则、模型配置或 Secret；加载失败时返回统一 `503`，前端不会退回平行硬编码。
+
+人工 `voice_type`、情感和标签只纠正当前 Content Version 已完成的 AI Result；无当前结果时不能创建平行人工分类。人工值按维度锁定并用于声音广场筛选/详情及后续导出，原始 `analysis_content_results` 始终不改写。
 
 ---
 
@@ -209,7 +220,8 @@ backend/src/aima_ugc/adapters/providers/imports_test/
 
 ```text
 POST /api/v1/analysis/content-runs/preview
-→ 预检目标数和冻结的 Prompt/Taxonomy/Model/生成配置身份
+→ 读取/必要时 bootstrap active Analysis Scheme
+→ 预检目标数和冻结的 Scheme Version/Prompt/Taxonomy/Model/生成配置身份
 → 用户显式确认
 POST /api/v1/analysis/content-runs
 → 短事务创建 analysis_content_runs + analysis.content-run-plan.v1 Planner
@@ -251,7 +263,7 @@ analysis_content_runs.sequence_no
 
 兼容入口 `POST /api/v1/content-analysis-requests` 为保持既有 `request_id/job_id` Response，仍同步冻结目标并创建首个 Shard；新版 Run API 不在 HTTP 请求内扫描或冻结海量目标。Planner 的 Target 冻结与首批 Shard 创建在同一事务，Lease 重试复用已提交的 Target/Shard。
 
-不同 Run 的 Prompt/Taxonomy/Model/生成配置身份仍完整保存在 Run/Result 中。当前进程配置变化不会把已成功 Run 静默作废；尚未执行的 Shard 如果发现实际配置与冻结身份不同，会在调用 LLM 前以 `analysis_run_configuration_changed` 失败，不把新配置的结果写进旧 Run。最新 Run 失败或取消时，旧成功结果继续展示，API 另行返回最新 Run 状态。因此查询/声音广场可以区分：
+不同 Run 的 Scheme Version、Prompt/Taxonomy/Model/生成配置身份仍完整保存在 Run/Result 中。发布新 Scheme 不会把已成功 Run 静默作废；Worker 使用 Run 自己冻结的 Scheme Version 和 Prompt 快照，不能用后来发布的配置覆盖旧 Run。最新 Run 失败或取消时，旧成功结果继续展示，API 另行返回最新 Run 状态。因此查询/声音广场可以区分：
 
 Migration 0027 无法从旧 Request 还原当时实际 generation config，即使已有 Result 能推断 Prompt/Provider/Model，也不能把 `{}` 的回填哈希当作真实冻结配置。因此 `legacy-request:*` Run 保留兼容执行；Stage 12 新建 Run 全部严格执行上述调用前与持久化前双重校验。
 
@@ -370,7 +382,8 @@ Unified JSONL
 
 | 需求 | 正确入口 |
 | --- | --- |
-| 改情感 / `voice_type` / 一级二级标签合法值、判断标准、边界或学习示例 | 当前 Prompt + Prompt/Validator tests；固定输出结构未变时不改 Contract/DB Schema |
+| 改情感 / `voice_type` / 一级二级标签合法值、判断标准、边界或学习示例 | 管理员 Analysis Scheme 草稿 → 校验 → 发布；Git Prompt 只在要改变新环境 bootstrap 基线时同步 |
+| 改 Scheme 编译、发布或回滚 | [`backend/src/aima_ugc/modules/analysis/schemes.py`](schemes.py) + Administration Service/Repository + Migration/API/审计/Integration tests |
 | 改 V3 输出结构 | Analysis Contract + Service/Validator + DB/API/Export/Frontend + Migration（需要时） |
 | 改 current/stale/pending | Analysis Identity + Content Query Repository + API/Frontend tests |
 | 改模型/Base URL | Platform Settings + `adapters/llm` + Pricing |

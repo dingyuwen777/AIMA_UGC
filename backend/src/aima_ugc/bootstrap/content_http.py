@@ -8,6 +8,7 @@ from math import ceil
 from typing import Any, Literal, cast
 from uuid import UUID, uuid4, uuid5
 
+from sqlalchemy import select
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
@@ -15,6 +16,9 @@ from aima_ugc.adapters.persistence.postgres.analysis import (
     AnalysisRequestNotFound,
     AnalysisRunStateConflict,
     PostgresAnalysisRepository,
+)
+from aima_ugc.adapters.persistence.postgres.analysis_manual_reviews import (
+    PostgresAnalysisManualReviewRepository,
 )
 from aima_ugc.adapters.persistence.postgres.content_queries import (
     PostgresContentQueryRepository,
@@ -24,6 +28,7 @@ from aima_ugc.adapters.persistence.postgres.relevance_reviews import (
     PostgresContentRelevanceReviewRepository,
 )
 from aima_ugc.adapters.persistence.postgres.system import PostgresAuditRepository
+from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
 from aima_ugc.contracts.analysis import ContentRelevance
 from aima_ugc.contracts.http import (
     AnalysisContentRunCreatedResponse,
@@ -42,6 +47,7 @@ from aima_ugc.contracts.http import (
     ContentAnalysisResponse,
     ContentAnalysisStatus,
     ContentAnalysisSubmitRequest,
+    ContentAnalysisTaxonomyResponse,
     ContentDetailResponse,
     ContentFilterSnapshot,
     ContentLabelPairResponse,
@@ -52,7 +58,17 @@ from aima_ugc.contracts.http import (
     ContentRelevanceSource,
     ContentSourceResponse,
     ContentTargetSelection,
+    ContentVehicleEvidenceResponse,
+    ContentVehicleResponse,
     JobStatusResponse,
+)
+from aima_ugc.contracts.product import (
+    AnalysisManualLabelRequest,
+    ContentAnalysisManualReviewRequest,
+    ContentAnalysisManualReviewResponse,
+    ContentAvailabilityResponse,
+    ContentVehicleReviewRequest,
+    ContentVehicleReviewResponse,
 )
 from aima_ugc.contracts.relevance_review import (
     ContentRelevanceReviewRequest,
@@ -80,12 +96,18 @@ from aima_ugc.modules.content.http import (
     ContentSelectionEmpty,
 )
 from aima_ugc.modules.content.query import ContentReadQuery, ContentReadRecord
+from aima_ugc.modules.content.tables import contents_table
 from aima_ugc.modules.system.models import AuditEvent
 from aima_ugc.platform.jobs import JobRecord
 from aima_ugc.platform.security import SecretFileError, read_secret_file
 from aima_ugc.platform.time import beijing_now
 
-from .analysis_identity import current_analysis_generation_config, current_analysis_identity
+from .analysis_identity import (
+    ActiveAnalysisConfiguration,
+    active_analysis_configuration,
+    current_analysis_generation_config,
+)
+from .analysis_taxonomy_http import content_analysis_taxonomy_projection
 from .runtime import PlatformRuntime
 
 _ANALYSIS_RUN_ID_NAMESPACE = UUID("d9c7fe38-1a46-4ef9-b9d3-bb87dd7d8301")
@@ -110,9 +132,12 @@ class PostgresContentHttpService:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
+                configuration = active_analysis_configuration(
+                    session, self._runtime.settings
+                )
                 rows = PostgresContentQueryRepository(
                     session,
-                    analysis_identity=current_analysis_identity(self._runtime.settings),
+                    analysis_identity=configuration.identity,
                 ).list_contents(
                     query=ContentReadQuery(
                         filters=filters,
@@ -137,13 +162,22 @@ class PostgresContentHttpService:
             has_more=has_more,
         )
 
+    def get_analysis_taxonomy(self) -> ContentAnalysisTaxonomyResponse:
+        """返回数据库 active Scheme 的安全 Taxonomy 投影。"""
+
+        configuration = self._load_active_analysis_configuration()
+        return content_analysis_taxonomy_projection(configuration.taxonomy)
+
     def get_content(self, content_id: UUID) -> ContentDetailResponse:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
+                configuration = active_analysis_configuration(
+                    session, self._runtime.settings
+                )
                 repository = PostgresContentQueryRepository(
                     session,
-                    analysis_identity=current_analysis_identity(self._runtime.settings),
+                    analysis_identity=configuration.identity,
                 )
                 record = repository.get_content(content_id)
                 if record is None:
@@ -156,6 +190,180 @@ class PostgresContentHttpService:
                     comment_coverage=repository.latest_comment_coverage(content_id),
                     supplement_status=repository.latest_supplement_status(content_id),
                     source_records=repository.list_source_records(content_id),
+                )
+        finally:
+            session.close()
+
+    def review_vehicles(
+        self,
+        content_id: UUID,
+        request: ContentVehicleReviewRequest,
+        *,
+        request_id: str,
+        actor_ref: str,
+    ) -> ContentVehicleReviewResponse:
+        """人工确认当前内容版本车型，并写入同事务审计。"""
+
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                current_version = session.scalar(
+                    select(contents_table.c.current_version)
+                    .where(contents_table.c.id == content_id)
+                    .with_for_update()
+                )
+                if current_version is None:
+                    raise ContentResourceNotFound
+                if int(current_version) != request.content_version:
+                    raise ContentAnalysisTargetChanged
+                try:
+                    PostgresVehicleCatalogRepository(session).replace_manual_evidence(
+                        content_id=content_id,
+                        content_version=request.content_version,
+                        model_ids=request.vehicle_model_ids,
+                        unlock_existing=request.unlock_existing,
+                        actor_ref=actor_ref,
+                    )
+                except LookupError as exc:
+                    raise ContentResourceNotFound from exc
+                except RuntimeError as exc:
+                    raise ContentAnalysisRunConflict from exc
+                PostgresAuditRepository(session).append(
+                    AuditEvent(
+                        id=uuid4(),
+                        actor_kind="principal",
+                        actor_ref=actor_ref,
+                        event_type="content_vehicle_reviewed",
+                        object_type="content",
+                        object_id=str(content_id),
+                        request_id=request_id,
+                        safe_detail={
+                            "content_version": request.content_version,
+                            "vehicle_model_ids": [
+                                str(item) for item in request.vehicle_model_ids
+                            ],
+                            "unlocked_existing": request.unlock_existing,
+                        },
+                        created_at=beijing_now(),
+                    )
+                )
+                return ContentVehicleReviewResponse(
+                    content_id=content_id,
+                    content_version=request.content_version,
+                    vehicle_model_ids=request.vehicle_model_ids,
+                    manual_locked=not (
+                        request.unlock_existing and not request.vehicle_model_ids
+                    ),
+                )
+        finally:
+            session.close()
+
+    def review_analysis(
+        self,
+        content_id: UUID,
+        request: ContentAnalysisManualReviewRequest,
+        *,
+        request_id: str,
+        actor_ref: str,
+    ) -> ContentAnalysisManualReviewResponse:
+        """人工纠正分析维度并保持原始 AI Result 不变。"""
+
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                current_version = session.scalar(
+                    select(contents_table.c.current_version)
+                    .where(contents_table.c.id == content_id)
+                    .with_for_update()
+                )
+                if current_version is None:
+                    raise ContentResourceNotFound
+                if int(current_version) != request.content_version:
+                    raise ContentAnalysisTargetChanged
+                configuration = active_analysis_configuration(
+                    session, self._runtime.settings
+                )
+                record = PostgresContentQueryRepository(
+                    session,
+                    analysis_identity=configuration.identity,
+                ).get_content(content_id)
+                if record is None:
+                    raise ContentResourceNotFound
+                if record.analysis.status != "completed":
+                    raise ContentAnalysisRunConflict
+                taxonomy = configuration.taxonomy
+                if (
+                    request.voice_type is not None
+                    and request.voice_type not in taxonomy.voice_types
+                ):
+                    raise ContentAnalysisRunConflict
+                if (
+                    request.sentiment is not None
+                    and request.sentiment not in taxonomy.sentiments
+                ):
+                    raise ContentAnalysisRunConflict
+                label_pairs = (
+                    tuple(
+                        (item.primary_label, item.secondary_label)
+                        for item in request.labels
+                    )
+                    if request.labels is not None
+                    else None
+                )
+                if label_pairs is not None and any(
+                    primary not in taxonomy.labels
+                    or secondary not in taxonomy.labels[primary]
+                    for primary, secondary in label_pairs
+                ):
+                    raise ContentAnalysisRunConflict
+                try:
+                    row = PostgresAnalysisManualReviewRepository(session).review(
+                        content_id=content_id,
+                        content_version=request.content_version,
+                        voice_type=request.voice_type,
+                        sentiment=request.sentiment,
+                        labels=label_pairs,
+                        unlock_dimensions=tuple(request.unlock_dimensions),
+                        actor_ref=actor_ref,
+                    )
+                except RuntimeError as exc:
+                    raise ContentAnalysisRunConflict from exc
+                locked_dimensions = tuple(
+                    dimension
+                    for dimension in ("voice_type", "sentiment", "labels")
+                    if bool(row[f"{dimension}_locked"])
+                )
+                _manual_labels = tuple(
+                    AnalysisManualLabelRequest.model_validate(item)
+                    for item in cast(list[dict[str, str]], row["labels"])
+                )
+                PostgresAuditRepository(session).append(
+                    AuditEvent(
+                        id=uuid4(),
+                        actor_kind="principal",
+                        actor_ref=actor_ref,
+                        event_type="content_analysis_manually_reviewed",
+                        object_type="content",
+                        object_id=str(content_id),
+                        request_id=request_id,
+                        safe_detail=cast(
+                            Any,
+                            {
+                                "content_version": request.content_version,
+                                "locked_dimensions": list(locked_dimensions),
+                                "unlocked_dimensions": list(request.unlock_dimensions),
+                            },
+                        ),
+                        created_at=beijing_now(),
+                    )
+                )
+                return ContentAnalysisManualReviewResponse(
+                    content_id=content_id,
+                    content_version=request.content_version,
+                    voice_type=cast(str | None, row["voice_type"]),
+                    sentiment=cast(str | None, row["sentiment"]),
+                    labels=_manual_labels,
+                    locked_dimensions=cast(Any, locked_dimensions),
                 )
         finally:
             session.close()
@@ -196,14 +404,21 @@ class PostgresContentHttpService:
         self,
         targets: _AnalysisTargetSelection,
     ) -> AnalysisContentRunPreviewResponse:
-        identity = current_analysis_identity(self._runtime.settings)
-        if identity is None:
-            raise ContentAnalysisUnavailable
         generation_config, generation_hash = current_analysis_generation_config()
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                target_statement = self._analysis_target_statement(session, targets)
+                configuration = active_analysis_configuration(
+                    session, self._runtime.settings
+                )
+                identity = configuration.identity
+                if identity is None:
+                    raise ContentAnalysisUnavailable
+                target_statement = self._analysis_target_statement(
+                    session,
+                    targets,
+                    analysis_identity=identity,
+                )
                 target_count = PostgresAnalysisRepository(session).count_targets(target_statement)
                 if target_count == 0:
                     raise ContentSelectionEmpty
@@ -214,6 +429,7 @@ class PostgresContentHttpService:
             target_count=target_count,
             shard_count=ceil(target_count / shard_size),
             shard_size=shard_size,
+            analysis_scheme_version_id=configuration.scheme.id,
             prompt_version=identity.prompt_version,
             prompt_sha256=identity.prompt_sha256,
             taxonomy_sha256=identity.taxonomy_sha256,
@@ -320,7 +536,8 @@ class PostgresContentHttpService:
         request_id: str,
         freeze_in_http: bool,
     ) -> tuple[AnalysisContentRunCreatedResponse, UUID | None, UUID | None]:
-        identity = current_analysis_identity(self._runtime.settings)
+        configuration = self._load_active_analysis_configuration()
+        identity = configuration.identity
         if identity is None:
             raise ContentAnalysisUnavailable
         generation_config, generation_hash = current_analysis_generation_config()
@@ -387,6 +604,8 @@ class PostgresContentHttpService:
                     shard_count=shard_count,
                     shard_size=shard_size,
                     identity=identity,
+                    analysis_scheme_version_id=configuration.scheme.id,
+                    prompt_text_snapshot=configuration.taxonomy.prompt_text,
                     generation_config=generation_config,
                     generation_config_hash=generation_hash,
                 )
@@ -437,7 +656,11 @@ class PostgresContentHttpService:
                         None,
                         None,
                     )
-                target_statement = self._analysis_target_statement(session, targets)
+                target_statement = self._analysis_target_statement(
+                    session,
+                    targets,
+                    analysis_identity=identity,
+                )
                 frozen_count = repository.freeze_run_targets(
                     run_id=run_id,
                     target_statement=target_statement,
@@ -519,10 +742,12 @@ class PostgresContentHttpService:
         self,
         session: Session,
         targets: _AnalysisTargetSelection,
+        *,
+        analysis_identity: Any,
     ) -> Any:
         repository = PostgresContentQueryRepository(
             session,
-            analysis_identity=current_analysis_identity(self._runtime.settings),
+            analysis_identity=analysis_identity,
         )
         if isinstance(targets, ContentTargetSelection) and targets.scope == "query":
             return repository.freeze_target_statement(
@@ -541,10 +766,13 @@ class PostgresContentHttpService:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
+                configuration = active_analysis_configuration(
+                    session, self._runtime.settings
+                )
                 summary = PostgresContentRelevanceReviewRepository(session).review_relevance(
                     content_ids=request.content_ids,
                     decision=request.decision,
-                    analysis_identity=current_analysis_identity(self._runtime.settings),
+                    analysis_identity=configuration.identity,
                     request_id=request_id,
                 )
                 return ContentRelevanceReviewResponse(
@@ -552,6 +780,16 @@ class PostgresContentHttpService:
                     changed_count=summary.changed_count,
                     unchanged_count=summary.unchanged_count,
                 )
+        finally:
+            session.close()
+
+    def _load_active_analysis_configuration(self) -> ActiveAnalysisConfiguration:
+        """在短事务中读取并验证当前 Scheme，首次 bootstrap 会连同审计提交。"""
+
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                return active_analysis_configuration(session, self._runtime.settings)
         finally:
             session.close()
 
@@ -667,6 +905,9 @@ def _analysis_run_response(
         target_count=cast(int, row["target_count"]),
         shard_count=cast(int, row["shard_count"]),
         shard_size=cast(int, row["shard_size"]),
+        analysis_scheme_version_id=cast(
+            UUID | None, row["analysis_scheme_version_id"]
+        ),
         prompt_version=cast(str, row["prompt_version"]),
         prompt_sha256=cast(str, row["prompt_sha256"]),
         taxonomy_sha256=cast(str, row["taxonomy_sha256"]),
@@ -705,6 +946,7 @@ def _query_hash(filters: ContentFilterSnapshot) -> str:
 def _item_response(record: ContentReadRecord) -> ContentListItemResponse:
     return ContentListItemResponse(
         id=record.id,
+        content_version=record.current_version,
         platform=record.platform,
         external_content_id=record.external_content_id,
         content_type=record.content_type,
@@ -729,6 +971,9 @@ def _item_response(record: ContentReadRecord) -> ContentListItemResponse:
             model=record.analysis.model,
             latest_run_id=record.analysis.latest_run_id,
             latest_run_status=record.analysis.latest_run_status,
+            manual_locked_dimensions=cast(
+                Any, record.analysis.manual_locked_dimensions
+            ),
         ),
         effective_relevance=cast(ContentRelevance | None, record.effective_relevance),
         relevance_source=cast(ContentRelevanceSource | None, record.relevance_source),
@@ -738,6 +983,35 @@ def _item_response(record: ContentReadRecord) -> ContentListItemResponse:
             raw_artifact_id=record.source.raw_artifact_id,
             import_batch_id=record.source.import_batch_id,
             collection_run_id=record.source.collection_run_id,
+        ),
+        vehicles=tuple(
+            ContentVehicleResponse(
+                vehicle_model_id=vehicle.vehicle_model_id,
+                code=vehicle.code,
+                display_name=vehicle.display_name,
+                evidences=tuple(
+                    ContentVehicleEvidenceResponse(
+                        source=cast(Any, evidence.source),
+                        matched_text=evidence.matched_text,
+                        source_field=evidence.source_field,
+                        catalog_version=evidence.catalog_version,
+                        confidence=evidence.confidence,
+                        is_manual_locked=evidence.is_manual_locked,
+                    )
+                    for evidence in vehicle.evidences
+                ),
+            )
+            for vehicle in record.vehicles
+        ),
+        availability=(
+            ContentAvailabilityResponse(
+                status=cast(Any, record.availability.status),
+                reason_code=record.availability.reason_code,
+                evidence_kind=record.availability.evidence_kind,
+                observed_at=record.availability.observed_at,
+            )
+            if record.availability is not None
+            else None
         ),
     )
 

@@ -22,6 +22,7 @@ from aima_ugc.adapters.persistence.postgres.scheduled_keywords import (
     PostgresScheduledKeywordSnapshotReader,
 )
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
+from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
 from aima_ugc.adapters.providers.registry import build_default_provider_registry
 from aima_ugc.adapters.providers.tikhub.transport import (
     DEFAULT_TIKHUB_REQUEST_TIMEOUT_SECONDS,
@@ -42,11 +43,9 @@ from aima_ugc.modules.collection.execution_limits import (
     provider_execution_window_floor_seconds,
 )
 from aima_ugc.modules.collection.planning import CollectionPlanningService, CollectionPlanRecord
+from aima_ugc.modules.collection.resource_selection import build_collection_resource_snapshot
 from aima_ugc.modules.collection.run_snapshot import provider_run_snapshot
-from aima_ugc.modules.collection.scheduled_scopes import (
-    ScheduledKeywordPackSnapshot,
-    build_scheduled_scope_snapshot,
-)
+from aima_ugc.modules.collection.scheduled_scopes import ScheduledKeywordPackSnapshot
 from aima_ugc.modules.collection.scheduler import (
     ScheduleExpressionError,
     SchedulerBacklogLimitError,
@@ -136,11 +135,15 @@ def run_scheduler_once(
                     keyword_catalog = PostgresScheduledKeywordSnapshotReader(session).read(
                         plan.keyword_pack_ids
                     )
+                    vehicle_snapshot = PostgresVehicleCatalogRepository(session).snapshot(
+                        plan.vehicle_model_ids
+                    )
                     relevance_snapshot, _ = PostgresGlobalRelevanceRepository(session).snapshot()
-                    scope_snapshot = build_scheduled_scope_snapshot(
+                    scope_snapshot = build_collection_resource_snapshot(
                         plan_platforms=tuple(item.platform for item in plan.platforms),
-                        entries=keyword_catalog.entries,
+                        keyword_entries=keyword_catalog.entries,
                         keyword_packs=keyword_catalog.keyword_packs,
+                        vehicles=vehicle_snapshot,
                     )
                     _require_scope_for_every_platform(plan, scope_snapshot.scopes)
 
@@ -184,6 +187,27 @@ def run_scheduler_once(
                             decision.enqueue_for,
                             provider_snapshots=provider_snapshots,
                             keyword_packs=scope_snapshot.keyword_packs,
+                            vehicle_snapshot={
+                                "catalog_version": scope_snapshot.vehicles.catalog_version,
+                                "vehicle_model_ids": [
+                                    str(item)
+                                    for item in scope_snapshot.vehicles.vehicle_model_ids
+                                ],
+                                "resolved_aliases": list(
+                                    scope_snapshot.vehicles.resolved_aliases
+                                ),
+                                "vehicle_versions": [
+                                    {"id": str(model_id), "version": version}
+                for model_id, version in (
+                    scope_snapshot.vehicles.vehicle_versions
+                )
+                                ],
+                                "alias_bindings": [
+                                    {"vehicle_model_id": str(model_id), "text": text}
+                                    for model_id, text in scope_snapshot.vehicles.alias_bindings
+                                ],
+                                "dimension_match": "keyword_or_x_vehicle_or",
+                            },
                             keyword_scope_count=len(scope_snapshot.scopes),
                             job_timeout_seconds=job_timeout_seconds,
                             relevance_snapshot=relevance_snapshot,
@@ -293,6 +317,7 @@ def _scheduled_run_snapshot(
     *,
     provider_snapshots: tuple[dict[str, object], ...],
     keyword_packs: tuple[ScheduledKeywordPackSnapshot, ...],
+    vehicle_snapshot: dict[str, object],
     keyword_scope_count: int,
     job_timeout_seconds: int,
     relevance_snapshot: RelevanceSnapshotV1,
@@ -327,6 +352,7 @@ def _scheduled_run_snapshot(
             }
             for item in keyword_packs
         ],
+        "vehicle_selection": vehicle_snapshot,
         "keyword_scope_count": keyword_scope_count,
         "relevance": relevance_snapshot.model_dump(mode="json"),
     }

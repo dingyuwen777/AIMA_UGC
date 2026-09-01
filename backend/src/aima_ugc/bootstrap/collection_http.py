@@ -28,6 +28,7 @@ from aima_ugc.adapters.persistence.postgres.scheduled_keywords import (
     PostgresScheduledKeywordSnapshotReader,
 )
 from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
+from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
 from aima_ugc.adapters.providers.registry import build_default_provider_registry
 from aima_ugc.adapters.providers.tikhub.transport import (
     DEFAULT_TIKHUB_REQUEST_TIMEOUT_SECONDS,
@@ -85,6 +86,7 @@ from aima_ugc.modules.collection.http import (
 from aima_ugc.modules.collection.http import (
     InvalidCollectionRuntimeCursor as InvalidCollectionRuntimeCursorError,
 )
+from aima_ugc.modules.collection.resource_selection import build_collection_resource_snapshot
 from aima_ugc.modules.collection.run_snapshot import provider_run_snapshot
 from aima_ugc.modules.collection.runtime_cursor import (
     CollectionRuntimeCursorCodec,
@@ -95,7 +97,6 @@ from aima_ugc.modules.collection.runtime_query import (
     CollectionRuntimeReadQuery,
     CollectionRuntimeReadRecord,
 )
-from aima_ugc.modules.collection.scheduled_scopes import build_scheduled_scope_snapshot
 from aima_ugc.modules.collection.search_config import (
     manual_discovery_search_config,
     normalize_search_config,
@@ -104,7 +105,7 @@ from aima_ugc.modules.collection.search_config import (
 from aima_ugc.platform.security import SecretFileError, read_secret_file
 from aima_ugc.platform.time import beijing_now
 
-from .analysis_identity import current_analysis_identity
+from .analysis_identity import active_analysis_configuration
 from .runtime import PlatformRuntime
 
 _COLLECTION_JOB_MAX_ATTEMPTS = 2
@@ -179,9 +180,12 @@ class PostgresCollectionHttpService:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
+                configuration = active_analysis_configuration(
+                    session, self._runtime.settings
+                )
                 reader = PostgresCollectionTargetReader(
                     session,
-                    analysis_identity=current_analysis_identity(self._runtime.settings),
+                    analysis_identity=configuration.identity,
                 )
                 if not reader.batch_exists(batch_id):
                     raise CollectionResourceNotFound
@@ -220,7 +224,9 @@ class PostgresCollectionHttpService:
                     relevance_snapshot, _ = PostgresGlobalRelevanceRepository(session).snapshot()
                 except GlobalRelevanceUnavailable as exc:
                     raise CollectionConflict from exc
-                scopes, keyword_pack_snapshot = self._build_scopes(session, request)
+                scopes, keyword_pack_snapshot, vehicle_snapshot = self._build_scopes(
+                    session, request
+                )
                 if not scopes:
                     raise CollectionConflict
                 effective_keywords = tuple(
@@ -258,6 +264,7 @@ class PostgresCollectionHttpService:
                         "mode": request.mode,
                         "keyword_pack_ids": [str(item) for item in request.keyword_pack_ids],
                         "keyword_packs": list(keyword_pack_snapshot),
+                        "vehicle_selection": vehicle_snapshot,
                         "keywords": list(effective_keywords),
                         "import_batch_id": (
                             str(request.import_batch_id)
@@ -473,32 +480,64 @@ class PostgresCollectionHttpService:
         self,
         session: Session,
         request: CollectionRunCreateRequest,
-    ) -> tuple[tuple[CollectionScopeDefinition, ...], tuple[dict[str, object], ...]]:
+    ) -> tuple[
+        tuple[CollectionScopeDefinition, ...],
+        tuple[dict[str, object], ...],
+        dict[str, object],
+    ]:
         if request.mode == "discovery":
-            try:
-                catalog = PostgresScheduledKeywordSnapshotReader(session).read(
-                    request.keyword_pack_ids
-                )
-            except (MissingScheduledKeywordPackError, ValueError) as exc:
-                raise CollectionResourceNotFound from exc
+            if request.keyword_pack_ids:
+                try:
+                    catalog = PostgresScheduledKeywordSnapshotReader(session).read(
+                        request.keyword_pack_ids
+                    )
+                except (MissingScheduledKeywordPackError, ValueError) as exc:
+                    raise CollectionResourceNotFound from exc
+            else:
+                catalog = PostgresScheduledKeywordSnapshotReader(session).read(())
             if any(not pack.enabled for pack in catalog.keyword_packs):
                 raise CollectionConflict
-            snapshot = build_scheduled_scope_snapshot(
-                plan_platforms=tuple(item.platform for item in request.platforms),
-                entries=catalog.entries,
-                keyword_packs=catalog.keyword_packs,
-            )
+            try:
+                vehicles = PostgresVehicleCatalogRepository(session).snapshot(
+                    request.vehicle_model_ids
+                )
+                snapshot = build_collection_resource_snapshot(
+                    plan_platforms=tuple(item.platform for item in request.platforms),
+                    keyword_entries=catalog.entries,
+                    keyword_packs=catalog.keyword_packs,
+                    vehicles=vehicles,
+                )
+            except (LookupError, ValueError) as exc:
+                raise CollectionResourceNotFound from exc
             return (
                 snapshot.scopes,
                 tuple(
                     {"id": str(pack.pack_id), "version": pack.version}
                     for pack in snapshot.keyword_packs
                 ),
+                {
+                    "catalog_version": snapshot.vehicles.catalog_version,
+                    "vehicle_model_ids": [
+                        str(item) for item in snapshot.vehicles.vehicle_model_ids
+                    ],
+                    "resolved_aliases": list(snapshot.vehicles.resolved_aliases),
+                    "vehicle_versions": [
+                        {"id": str(model_id), "version": version}
+                        for model_id, version in snapshot.vehicles.vehicle_versions
+                    ],
+                    "alias_bindings": [
+                        {"vehicle_model_id": str(model_id), "text": text}
+                        for model_id, text in snapshot.vehicles.alias_bindings
+                    ],
+                    "dimension_match": "keyword_or_x_vehicle_or",
+                },
             )
         assert request.import_batch_id is not None
         reader = PostgresCollectionTargetReader(
             session,
-            analysis_identity=current_analysis_identity(self._runtime.settings),
+            analysis_identity=active_analysis_configuration(
+                session, self._runtime.settings
+            ).identity,
         )
         if not reader.batch_exists(request.import_batch_id):
             raise CollectionResourceNotFound
@@ -521,6 +560,7 @@ class PostgresCollectionHttpService:
                 for target in targets
             ),
             (),
+            {},
         )
 
 

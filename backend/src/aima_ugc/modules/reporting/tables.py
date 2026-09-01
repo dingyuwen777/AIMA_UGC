@@ -23,6 +23,8 @@ reporting_data_exports_table = Table(
     Column("artifact_id", Uuid(), ForeignKey("artifacts.id")),
     Column("format", Text(), nullable=False),
     Column("request_snapshot", JSONB(), nullable=False),
+    Column("columns", JSONB(), nullable=False),
+    Column("column_catalog_version", Integer(), nullable=False),
     Column("stats", JSONB()),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("completed_at", DateTime(timezone=True)),
@@ -33,6 +35,8 @@ reporting_data_exports_table = Table(
         "jsonb_typeof(request_snapshot) = 'object'",
         name="request_snapshot_object",
     ),
+    CheckConstraint("jsonb_typeof(columns) = 'array'", name="columns_array"),
+    CheckConstraint("column_catalog_version > 0", name="column_catalog_version_positive"),
     CheckConstraint("stats is null or jsonb_typeof(stats) = 'object'", name="stats_object"),
     CheckConstraint(
         "(artifact_id is null and stats is null and completed_at is null) or "

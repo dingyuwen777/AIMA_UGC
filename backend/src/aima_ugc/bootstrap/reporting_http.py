@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from datetime import datetime
-from typing import BinaryIO
+from typing import BinaryIO, cast
 from uuid import UUID, uuid4
 
 from aima_ugc.adapters.persistence.postgres.artifact_metadata import (
@@ -26,6 +26,10 @@ from aima_ugc.contracts.http import (
     JobStatusResponse,
 )
 from aima_ugc.modules.content.http import ContentSelectionEmpty
+from aima_ugc.modules.reporting.column_catalog import (
+    EXPORT_COLUMN_CATALOG_VERSION,
+    resolve_export_columns,
+)
 from aima_ugc.modules.reporting.data_export_job import (
     DATA_EXPORT_JOB_MAX_ATTEMPTS,
     DATA_EXPORT_JOB_PAYLOAD_VERSION,
@@ -43,7 +47,7 @@ from aima_ugc.platform.jobs import JobRecord
 from aima_ugc.platform.storage.retention import EXPORT_RETENTION
 from aima_ugc.platform.time import beijing_now
 
-from .analysis_identity import current_analysis_identity
+from .analysis_identity import active_analysis_configuration
 from .runtime import PlatformRuntime
 
 _DOWNLOAD_CHUNK_BYTES = 1024 * 1024
@@ -58,14 +62,18 @@ class PostgresReportingHttpService:
         request: DataExportSubmitRequest,
         *,
         request_id: str,
+        actor_ref: str,
     ) -> DataExportCreatedResponse:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
+                configuration = active_analysis_configuration(
+                    session, self._runtime.settings
+                )
                 target_request = request.targets
                 content_queries = PostgresContentQueryRepository(
                     session,
-                    analysis_identity=current_analysis_identity(self._runtime.settings),
+                    analysis_identity=configuration.identity,
                 )
                 targets = (
                     content_queries.freeze_targets(filters=target_request.filters)
@@ -100,12 +108,16 @@ class PostgresReportingHttpService:
                         if target_request.content_ids
                         else []
                     ),
+                    "requested_by": actor_ref,
                 }
+                columns = resolve_export_columns(cast(tuple[str, ...], request.columns))
                 PostgresDataExportRepository(session).create(
                     export_id=export_id,
                     job_id=job.id,
                     request_snapshot=snapshot,
                     targets=targets,
+                    columns=columns,
+                    column_catalog_version=EXPORT_COLUMN_CATALOG_VERSION,
                 )
                 return DataExportCreatedResponse(
                     export_id=export_id,
@@ -234,6 +246,8 @@ def _export_response(export: DataExportRecord, job: JobRecord) -> DataExportResp
         stats=stats,
         created_at=export.created_at,
         completed_at=export.completed_at,
+        columns=export.columns,
+        column_catalog_version=export.column_catalog_version,
     )
 
 

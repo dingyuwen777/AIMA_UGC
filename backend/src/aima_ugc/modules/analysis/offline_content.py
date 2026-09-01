@@ -67,16 +67,25 @@ def filter_canonical_content_jsonl(
     input_path: Path,
     output_path: Path,
     keywords: Iterable[str],
+    vehicle_aliases: Iterable[str] = (),
 ) -> ContentFilterSummary:
-    """按规范化后的 title/text 包含关系过滤 Canonical JSONL，并写统一内容记录。"""
+    """按维度内 OR、词包与车型维度间 AND 过滤 Canonical JSONL。"""
 
     source_path = Path(input_path)
     target_path = Path(output_path)
-    relevance = RelevanceService(
-        tuple(
-            RelevanceKeyword(text=keyword, priority=priority)
-            for priority, keyword in enumerate(keywords)
+    keyword_values = tuple(dict.fromkeys(item.strip() for item in keywords if item.strip()))
+    alias_values = tuple(dict.fromkeys(item.strip() for item in vehicle_aliases if item.strip()))
+    if not keyword_values and not alias_values:
+        raise ValueError("过滤至少需要关键词或车型别名")
+    relevance = (
+        RelevanceService(
+            tuple(
+                RelevanceKeyword(text=keyword, priority=priority)
+                for priority, keyword in enumerate(keyword_values)
+            )
         )
+        if keyword_values
+        else None
     )
     target_path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = target_path.with_name(f".{target_path.name}.tmp")
@@ -93,12 +102,24 @@ def filter_canonical_content_jsonl(
             for line_number, raw_line in enumerate(input_file, start=1):
                 rows_seen += 1
                 content = _parse_canonical_line(raw_line, source_path, line_number)
-                decision = relevance.evaluate(content)
-                if not decision.matched:
+                decision = relevance.evaluate(content) if relevance is not None else None
+                matched_keywords = () if decision is None else decision.matched_keywords
+                searchable = normalize_keyword_match_text(
+                    " ".join(item for item in (content.title, content.text) if item)
+                )
+                matched_aliases = tuple(
+                    alias
+                    for alias in alias_values
+                    if normalize_keyword_match_text(alias) in searchable
+                )
+                if keyword_values and not matched_keywords:
+                    continue
+                if alias_values and not matched_aliases:
                     continue
                 record = UnifiedContentRecordV1(
                     content=content,
-                    matched_keywords=list(decision.matched_keywords),
+                    matched_keywords=list(matched_keywords),
+                    matched_vehicle_aliases=list(matched_aliases),
                 )
                 _write_model(output_file, record)
                 rows_written += 1

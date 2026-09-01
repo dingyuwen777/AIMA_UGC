@@ -75,6 +75,14 @@ collection_plan_keyword_packs_table = Table(
     info={"owner": "collection"},
 )
 
+collection_plan_vehicle_models_table = Table(
+    "collection_plan_vehicle_models",
+    metadata,
+    Column("plan_id", Uuid(), ForeignKey("collection_plans.id"), primary_key=True),
+    Column("vehicle_model_id", Uuid(), ForeignKey("vehicle_models.id"), primary_key=True),
+    info={"owner": "collection"},
+)
+
 collection_schedule_occurrences_table = Table(
     "collection_schedule_occurrences",
     metadata,

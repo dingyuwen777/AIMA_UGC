@@ -3,11 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from aima_ugc.bootstrap.analysis_taxonomy_http import (
-    install_content_analysis_taxonomy_route,
-)
 from aima_ugc.bootstrap.api import create_app as create_base_app
-from aima_ugc.entrypoints.api_main import create_app
 from aima_ugc.modules.analysis import CONTENT_LABELING_PROMPT_PATH, PromptTaxonomyLoader
 from aima_ugc.platform.health import ReadinessReport
 from fastapi.testclient import TestClient
@@ -20,7 +16,12 @@ def _readiness() -> ReadinessReport:
 def test_analysis_taxonomy_returns_safe_prompt_projection() -> None:
     taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
 
-    response = TestClient(create_app(readiness_check=_readiness)).get(
+    response = TestClient(
+        create_base_app(
+            readiness_check=_readiness,
+            analysis_taxonomy_loader=PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH),
+        )
+    ).get(
         "/api/v1/content-analysis-taxonomy"
     )
 
@@ -51,10 +52,9 @@ def test_analysis_taxonomy_fails_closed_with_unified_error(
 ) -> None:
     invalid_prompt = tmp_path / "invalid-taxonomy.md"
     invalid_prompt.write_text("缺少机器 Taxonomy 标记", encoding="utf-8")
-    application = create_base_app(readiness_check=_readiness)
-    install_content_analysis_taxonomy_route(
-        application,
-        taxonomy_loader=PromptTaxonomyLoader(invalid_prompt),
+    application = create_base_app(
+        readiness_check=_readiness,
+        analysis_taxonomy_loader=PromptTaxonomyLoader(invalid_prompt),
     )
 
     response = TestClient(application, raise_server_exceptions=False).get(
@@ -104,10 +104,9 @@ def test_analysis_taxonomy_fails_closed_when_http_projection_is_invalid(
         ),
         encoding="utf-8",
     )
-    application = create_base_app(readiness_check=_readiness)
-    install_content_analysis_taxonomy_route(
-        application,
-        taxonomy_loader=PromptTaxonomyLoader(prompt),
+    application = create_base_app(
+        readiness_check=_readiness,
+        analysis_taxonomy_loader=PromptTaxonomyLoader(prompt),
     )
 
     response = TestClient(application, raise_server_exceptions=False).get(

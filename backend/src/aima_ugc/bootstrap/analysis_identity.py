@@ -2,30 +2,80 @@
 
 import hashlib
 import json
+from dataclasses import dataclass
+from uuid import uuid4
+
+from sqlalchemy.orm import Session
 
 from aima_ugc.adapters.llm import resolve_openai_compatible_provider_name
-from aima_ugc.modules.analysis import CONTENT_LABELING_PROMPT_PATH, PromptTaxonomyLoader
+from aima_ugc.adapters.persistence.postgres.analysis_schemes import (
+    PostgresAnalysisSchemeRepository,
+)
+from aima_ugc.adapters.persistence.postgres.system import PostgresAuditRepository
 from aima_ugc.modules.analysis.persistence import AnalysisConfigurationIdentity
+from aima_ugc.modules.analysis.prompt_taxonomy import PromptTaxonomy
+from aima_ugc.modules.analysis.schemes import (
+    AnalysisSchemeVersionRecord,
+    prompt_taxonomy_from_version,
+)
+from aima_ugc.modules.system.models import AuditEvent
 from aima_ugc.platform.config import PlatformSettings
+from aima_ugc.platform.time import beijing_now
 
 
-def current_analysis_identity(
+@dataclass(frozen=True, slots=True)
+class ActiveAnalysisConfiguration:
+    """数据库 active Scheme 与模型配置形成的原子运行快照。"""
+
+    scheme: AnalysisSchemeVersionRecord
+    taxonomy: PromptTaxonomy
+    identity: AnalysisConfigurationIdentity | None
+
+
+def active_analysis_configuration(
+    session: Session,
     settings: PlatformSettings,
-) -> AnalysisConfigurationIdentity | None:
-    """未配置模型时没有 current 结果；历史结果仍保留并投影为 stale。"""
+) -> ActiveAnalysisConfiguration:
+    """读取数据库 active Scheme；首次 bootstrap 与系统审计同事务提交。"""
 
-    if settings.llm_base_url is None or settings.llm_model is None:
-        return None
-    taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
-    return AnalysisConfigurationIdentity(
-        prompt_version=taxonomy.prompt_version,
-        prompt_sha256=taxonomy.prompt_sha256,
-        taxonomy_sha256=taxonomy.taxonomy_sha256,
-        model_provider=resolve_openai_compatible_provider_name(
-            settings.llm_base_url,
-            provider_name=settings.llm_provider_name,
-        ),
-        model=settings.llm_model,
+    repository = PostgresAnalysisSchemeRepository(session)
+    scheme, created = repository.bootstrap_default(actor_ref="system:git-bootstrap")
+    if created:
+        PostgresAuditRepository(session).append(
+            AuditEvent(
+                id=uuid4(),
+                actor_kind="system",
+                actor_ref="system:git-bootstrap",
+                event_type="analysis_scheme_bootstrapped",
+                object_type="analysis_scheme_version",
+                object_id=str(scheme.id),
+                request_id=None,
+                safe_detail={
+                    "scheme_id": str(scheme.scheme_id),
+                    "version": scheme.version,
+                    "prompt_sha256": scheme.prompt_sha256,
+                    "taxonomy_sha256": scheme.taxonomy_sha256,
+                },
+                created_at=beijing_now(),
+            )
+        )
+    taxonomy = prompt_taxonomy_from_version(scheme)
+    identity = None
+    if settings.llm_base_url is not None and settings.llm_model is not None:
+        identity = AnalysisConfigurationIdentity(
+            prompt_version=taxonomy.prompt_version,
+            prompt_sha256=taxonomy.prompt_sha256,
+            taxonomy_sha256=taxonomy.taxonomy_sha256,
+            model_provider=resolve_openai_compatible_provider_name(
+                settings.llm_base_url,
+                provider_name=settings.llm_provider_name,
+            ),
+            model=settings.llm_model,
+        )
+    return ActiveAnalysisConfiguration(
+        scheme=scheme,
+        taxonomy=taxonomy,
+        identity=identity,
     )
 
 
@@ -42,4 +92,8 @@ def current_analysis_generation_config() -> tuple[dict[str, object], str]:
     return config, hashlib.sha256(encoded).hexdigest()
 
 
-__all__ = ["current_analysis_generation_config", "current_analysis_identity"]
+__all__ = [
+    "ActiveAnalysisConfiguration",
+    "active_analysis_configuration",
+    "current_analysis_generation_config",
+]

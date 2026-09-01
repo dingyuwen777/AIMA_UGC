@@ -34,6 +34,8 @@ analysis_content_runs_table = Table(
     Column("shard_count", Integer(), nullable=False),
     Column("shard_size", Integer(), nullable=False),
     Column("prompt_version", Text(), nullable=False),
+    Column("analysis_scheme_version_id", Uuid(), ForeignKey("analysis_scheme_versions.id")),
+    Column("prompt_text_snapshot", Text()),
     Column("prompt_sha256", Text(), nullable=False),
     Column("taxonomy_sha256", Text(), nullable=False),
     Column("model_provider", Text(), nullable=False),

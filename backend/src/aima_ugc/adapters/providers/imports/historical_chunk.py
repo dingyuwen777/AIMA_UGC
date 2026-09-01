@@ -11,7 +11,11 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from aima_ugc.modules.analysis import RelevanceKeyword, RelevanceService
+from aima_ugc.modules.analysis import (
+    RelevanceKeyword,
+    RelevanceService,
+    normalize_keyword_match_text,
+)
 from aima_ugc.modules.ingestion.historical_chunk import HISTORICAL_CHUNK_SCHEMA_VERSION
 
 from .excel_profile import get_excel_import_profile
@@ -47,6 +51,7 @@ def convert_historical_excel_to_chunks(
     output_dir: Path,
     profile_name: str,
     effective_keywords: tuple[str, ...],
+    vehicle_aliases: tuple[str, ...] = (),
     observed_at: datetime,
     chunk_rows: int,
     publish: Callable[[HistoricalChunkDescriptor], None],
@@ -58,11 +63,17 @@ def convert_historical_excel_to_chunks(
     if observed_at.utcoffset() is None:
         raise ValueError("observed_at 必须包含时区")
     profile = get_excel_import_profile(profile_name)
-    relevance = RelevanceService(
-        tuple(
-            RelevanceKeyword(text=value, priority=index)
-            for index, value in enumerate(effective_keywords)
+    if not effective_keywords and not vehicle_aliases:
+        raise ValueError("历史导入至少需要关键词或车型别名")
+    relevance = (
+        RelevanceService(
+            tuple(
+                RelevanceKeyword(text=value, priority=index)
+                for index, value in enumerate(effective_keywords)
+            )
         )
+        if effective_keywords
+        else None
     )
     output_dir.mkdir(parents=True, exist_ok=True)
     counters = {"rows_seen": 0, "candidates": 0, "filtered": 0, "invalid": 0, "chunks": 0}
@@ -114,17 +125,29 @@ def convert_historical_excel_to_chunks(
                     sheet_name=row.sheet_name,
                     observed_at=observed_at,
                 )
-                decision = relevance.evaluate(content)
-                outcome = "candidate" if decision.matched else "filtered"
+                decision = relevance.evaluate(content) if relevance is not None else None
+                searchable = normalize_keyword_match_text(
+                    " ".join(item for item in (content.title, content.text) if item)
+                )
+                matched_aliases = tuple(
+                    alias
+                    for alias in vehicle_aliases
+                    if normalize_keyword_match_text(alias) in searchable
+                )
+                keyword_matched = decision is None or decision.matched
+                vehicle_matched = not vehicle_aliases or bool(matched_aliases)
+                matched = keyword_matched and vehicle_matched
+                outcome = "candidate" if matched else "filtered"
                 payload = {
                     "schema_version": HISTORICAL_CHUNK_SCHEMA_VERSION,
                     "source_row_ordinal": row.row_number,
                     "outcome": outcome,
                     "content": content.model_dump(mode="json"),
+                    "matched_vehicle_aliases": list(matched_aliases),
                     "error_code": None,
                 }
-                counter_name = "candidates" if decision.matched else "filtered"
-                descriptor_name = "candidate_count" if decision.matched else "filtered_count"
+                counter_name = "candidates" if matched else "filtered"
+                descriptor_name = "candidate_count" if matched else "filtered_count"
                 counters[counter_name] += 1
                 descriptor_values[descriptor_name] += 1
             except ExcelImportRowError as exc:

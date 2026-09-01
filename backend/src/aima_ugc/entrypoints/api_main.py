@@ -10,7 +10,6 @@ from fastapi import FastAPI
 from aima_ugc.bootstrap.analysis_capability_http import (
     install_content_analysis_capability_route,
 )
-from aima_ugc.bootstrap.analysis_taxonomy_http import install_content_analysis_taxonomy_route
 from aima_ugc.bootstrap.api import HealthResponse, ReadinessChecks, ReadinessResponse
 from aima_ugc.bootstrap.api import create_app as _create_app
 
@@ -24,7 +23,6 @@ def _with_content_analysis_read_routes[**P](
     def wrapped(*args: P.args, **kwargs: P.kwargs) -> FastAPI:
         application = factory(*args, **kwargs)
         install_content_analysis_capability_route(application)
-        install_content_analysis_taxonomy_route(application)
         return application
 
     return wrapped

@@ -127,14 +127,15 @@ def _label_content(
     )
 
 
-def test_prompt_taxonomy_has_expected_baseline_and_documented_unique_source() -> None:
+def test_prompt_taxonomy_has_expected_baseline_and_documented_bootstrap_source() -> None:
     taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
     docs = _analysis_docs()
 
-    assert len(taxonomy.primary_labels) == 9
-    assert len(taxonomy.all_secondary_labels) == 39
+    assert len(taxonomy.primary_labels) == 10
+    assert len(taxonomy.all_secondary_labels) == 40
     assert "backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md" in docs
-    assert "唯一业务事实源" in docs
+    assert "active Analysis Scheme Version" in docs
+    assert "bootstrap/灾备基线" in docs
 
 
 def test_production_python_does_not_copy_concrete_taxonomy_labels() -> None:

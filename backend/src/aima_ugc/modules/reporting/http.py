@@ -37,6 +37,7 @@ class ReportingHttpService(Protocol):
         request: DataExportSubmitRequest,
         *,
         request_id: str,
+        actor_ref: str,
     ) -> DataExportCreatedResponse: ...
 
     def get_export(self, export_id: UUID) -> DataExportResponse: ...

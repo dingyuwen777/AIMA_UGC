@@ -38,9 +38,18 @@ class CollectionStrategyHttpService(Protocol):
         self,
         pack_id: UUID,
         request: ResourceEnabledRequest,
+        *,
+        actor_ref: str,
+        request_id: str,
     ) -> KeywordPackSummaryResponse: ...
 
-    def create_plan(self, request: CollectionPlanCreateRequest) -> CollectionPlanResponse: ...
+    def create_plan(
+        self,
+        request: CollectionPlanCreateRequest,
+        *,
+        actor_ref: str,
+        request_id: str,
+    ) -> CollectionPlanResponse: ...
 
     def list_plans(self, query: CollectionPlanListQuery) -> CollectionPlanListResponse: ...
 
@@ -50,6 +59,9 @@ class CollectionStrategyHttpService(Protocol):
         self,
         plan_id: UUID,
         request: ResourceEnabledRequest,
+        *,
+        actor_ref: str,
+        request_id: str,
     ) -> CollectionPlanResponse: ...
 
 

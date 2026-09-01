@@ -104,6 +104,8 @@ class PostgresAnalysisRepository:
         identity: AnalysisConfigurationIdentity,
         generation_config: dict[str, object],
         generation_config_hash: str,
+        analysis_scheme_version_id: UUID | None = None,
+        prompt_text_snapshot: str | None = None,
     ) -> RowMapping | None:
         return (
             self._session.execute(
@@ -120,6 +122,8 @@ class PostgresAnalysisRepository:
                     shard_count=shard_count,
                     shard_size=shard_size,
                     prompt_version=identity.prompt_version,
+                    analysis_scheme_version_id=analysis_scheme_version_id,
+                    prompt_text_snapshot=prompt_text_snapshot,
                     prompt_sha256=identity.prompt_sha256,
                     taxonomy_sha256=identity.taxonomy_sha256,
                     model_provider=identity.model_provider,

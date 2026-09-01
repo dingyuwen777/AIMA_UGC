@@ -24,6 +24,7 @@ def _item() -> ContentListItemResponse:
     now = datetime(2026, 8, 21, tzinfo=UTC)
     return ContentListItemResponse(
         id=uuid4(),
+        content_version=1,
         platform="xiaohongshu",
         external_content_id="note-1",
         content_type="note",

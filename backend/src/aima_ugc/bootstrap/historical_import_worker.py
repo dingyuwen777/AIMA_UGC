@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import cast
-from uuid import UUID, uuid5
+from uuid import UUID, uuid4, uuid5
 
 from sqlalchemy import select
 from sqlalchemy.engine import RowMapping
@@ -29,6 +29,7 @@ from aima_ugc.adapters.persistence.postgres.historical_import import (
 )
 from aima_ugc.adapters.persistence.postgres.jobs import PostgresJobRepository
 from aima_ugc.adapters.persistence.postgres.provider import PostgresProviderRepository
+from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
 from aima_ugc.adapters.providers.imports.historical_chunk import (
     HistoricalChunkDescriptor,
     convert_historical_excel_to_chunks,
@@ -36,6 +37,7 @@ from aima_ugc.adapters.providers.imports.historical_chunk import (
 from aima_ugc.contracts.canonical import CanonicalContentV1
 from aima_ugc.contracts.provider import ProviderAttemptV1, ProviderBillingV1, ProviderRequestV1
 from aima_ugc.modules.collection.provider_persistence import ProviderPersistenceService
+from aima_ugc.modules.content.tables import contents_table
 from aima_ugc.modules.ingestion.historical_chunk import (
     read_historical_chunk,
 )
@@ -53,6 +55,7 @@ from aima_ugc.modules.ingestion.historical_jobs import (
     HistoricalImportChunkJobPayload,
     HistoricalSnapshotJobPayload,
 )
+from aima_ugc.modules.ingestion.historical_tables import processing_import_batch_items_table
 from aima_ugc.modules.ingestion.tables import processing_import_batches_table
 from aima_ugc.modules.ingestion.xlsx_security import (
     MAX_XLSX_FILE_BYTES,
@@ -60,6 +63,7 @@ from aima_ugc.modules.ingestion.xlsx_security import (
     XlsxResourceLimitError,
     validate_xlsx_archive,
 )
+from aima_ugc.modules.vehicles.models import ContentVehicleEvidence
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult, JobRecord
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol, LeaseLostError
 from aima_ugc.platform.storage import ArtifactRecord, ArtifactService, ArtifactSizeLimitError
@@ -227,7 +231,14 @@ class PostgresHistoricalImportJobExecutor:
                     input_path=frozen_path,
                     output_dir=work_dir / "chunks",
                     profile_name=_required_string(profile, "profile"),
-                    effective_keywords=_string_tuple(keywords.get("effective_keywords")),
+                    effective_keywords=_optional_string_tuple(
+                        keywords.get("effective_keywords")
+                    ),
+                    vehicle_aliases=tuple(
+                        alias
+                        for model in _mapping_tuple(keywords.get("vehicle_models"))
+                        for alias in _string_tuple(model.get("aliases"))
+                    ),
                     observed_at=cast(datetime, campaign["created_at"]),
                     chunk_rows=_required_int(profile, "chunk_rows"),
                     publish=publish,
@@ -348,6 +359,17 @@ class PostgresHistoricalImportJobExecutor:
                         campaign_item_id=payload.chunk_item_id,
                         chunk_ordinal=cast(int, current["ordinal"]),
                         rows=rows,
+                    )
+                    campaign = repository.get_campaign(campaign_id)
+                    if campaign is None:
+                        raise ValueError("Historical Campaign 不存在")
+                    _append_historical_vehicle_evidence(
+                        session,
+                        batch_id=payload.batch_id,
+                        rows=rows,
+                        keyword_snapshot=cast(
+                            dict[str, object], campaign["keyword_pack_snapshot"]
+                        ),
                     )
                     repository.complete_chunk(
                         payload.chunk_item_id,
@@ -581,6 +603,7 @@ class PostgresHistoricalImportJobExecutor:
                         content=None,
                         preclassified_outcome="invalid",
                         error_code=cast(str, record.get("error_code")),
+                        matched_vehicle_aliases=(),
                     )
                 )
                 continue
@@ -591,6 +614,7 @@ class PostgresHistoricalImportJobExecutor:
                         source_row_ordinal=ordinal,
                         content=content,
                         preclassified_outcome="filtered",
+                        matched_vehicle_aliases=(),
                     )
                 )
                 continue
@@ -610,9 +634,79 @@ class PostgresHistoricalImportJobExecutor:
                 HistoricalBatchRow(
                     source_row_ordinal=ordinal,
                     content=content.model_copy(update={"source": source}),
+                    matched_vehicle_aliases=_optional_string_tuple(
+                        record.get("matched_vehicle_aliases")
+                    ),
                 )
             )
         return tuple(rows)
+
+
+def _append_historical_vehicle_evidence(
+    session: Session,
+    *,
+    batch_id: UUID,
+    rows: tuple[HistoricalBatchRow, ...],
+    keyword_snapshot: dict[str, object],
+) -> None:
+    """用 Campaign 冻结别名映射追加证据，不读取实时目录重新解释历史结果。"""
+
+    matched_by_ordinal = {
+        row.source_row_ordinal: row.matched_vehicle_aliases
+        for row in rows
+        if row.matched_vehicle_aliases
+    }
+    if not matched_by_ordinal:
+        return
+    catalog_version = _required_int(keyword_snapshot, "vehicle_catalog_version")
+    model_by_alias: dict[str, UUID] = {}
+    for model in _mapping_tuple(keyword_snapshot.get("vehicle_models")):
+        model_id = UUID(_required_string(model, "id"))
+        for alias in _string_tuple(model.get("aliases")):
+            model_by_alias[alias] = model_id
+    ledgers = tuple(
+        session.execute(
+            select(
+                processing_import_batch_items_table.c.source_row_ordinal,
+                processing_import_batch_items_table.c.content_id,
+                contents_table.c.current_version,
+            )
+            .join(
+                contents_table,
+                contents_table.c.id == processing_import_batch_items_table.c.content_id,
+            )
+            .where(
+                processing_import_batch_items_table.c.batch_id == batch_id,
+                processing_import_batch_items_table.c.source_row_ordinal.in_(
+                    tuple(matched_by_ordinal)
+                ),
+                processing_import_batch_items_table.c.content_id.is_not(None),
+            )
+        ).mappings()
+    )
+    vehicle_repository = PostgresVehicleCatalogRepository(session)
+    for ledger in ledgers:
+        ordinal = cast(int, ledger["source_row_ordinal"])
+        for alias in matched_by_ordinal[ordinal]:
+            resolved_model_id = model_by_alias.get(alias)
+            if resolved_model_id is None:
+                raise ValueError("Historical Chunk 车型别名不在冻结快照中")
+            vehicle_repository.append_evidence(
+                ContentVehicleEvidence(
+                    id=uuid4(),
+                    content_id=cast(UUID, ledger["content_id"]),
+                    content_version=cast(int, ledger["current_version"]),
+                    vehicle_model_id=resolved_model_id,
+                    source="import",
+                    matched_text=alias,
+                    source_field="title_text",
+                    catalog_version=catalog_version,
+                    confidence=1.0,
+                    is_manual_locked=False,
+                    is_active=True,
+                    created_at=beijing_now(),
+                )
+            )
 
 
 def historical_job_terminal_callback(session: Session, job: JobRecord) -> None:
@@ -758,6 +852,28 @@ def _string_tuple(value: object) -> tuple[str, ...]:
     result = tuple(item for item in value if isinstance(item, str) and item)
     if len(result) != len(value):
         raise ValueError("冻结配置字符串列表不合法")
+    return result
+
+
+def _optional_string_tuple(value: object) -> tuple[str, ...]:
+    """严格解析允许为空的冻结字符串序列。"""
+
+    if not isinstance(value, list | tuple):
+        raise ValueError("冻结配置字符串列表不合法")
+    result = tuple(item for item in value if isinstance(item, str) and item)
+    if len(result) != len(value):
+        raise ValueError("冻结配置字符串列表不合法")
+    return result
+
+
+def _mapping_tuple(value: object) -> tuple[dict[str, object], ...]:
+    """严格解析冻结配置中的对象序列。"""
+
+    if not isinstance(value, list | tuple):
+        raise ValueError("冻结配置对象列表不合法")
+    result = tuple(item for item in value if isinstance(item, dict))
+    if len(result) != len(value):
+        raise ValueError("冻结配置对象列表不合法")
     return result
 
 

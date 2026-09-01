@@ -126,7 +126,9 @@ class PostgresHistoricalImportHttpService:
             raise HistoricalDirectoryRequestInvalid from exc
         except InvalidHistoricalRelativePath as exc:
             raise HistoricalDirectoryRequestInvalid from exc
-        selection = read_import_keyword_selection(self._runtime, request.keyword_pack_ids)
+        selection = read_import_keyword_selection(
+            self._runtime, request.keyword_pack_ids, request.vehicle_model_ids
+        )
         profile_snapshot: dict[str, object] = {
             "schema_version": "historical-import-profile.v1",
             "profile": request.profile,
@@ -200,7 +202,9 @@ class PostgresHistoricalImportHttpService:
         *,
         request_id: str,
     ) -> LocalDataImportCampaignCreatedResponse:
-        selection = read_import_keyword_selection(self._runtime, request.keyword_pack_ids)
+        selection = read_import_keyword_selection(
+            self._runtime, request.keyword_pack_ids, request.vehicle_model_ids
+        )
         files = tuple((item.relative_path, item.byte_size) for item in request.files)
         profile_snapshot: dict[str, object] = {
             "schema_version": "data-import-profile.v2",

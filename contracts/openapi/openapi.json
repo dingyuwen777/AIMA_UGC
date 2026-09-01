@@ -115,6 +115,18 @@
       "AnalysisContentRunPreviewResponse": {
         "additionalProperties": false,
         "properties": {
+          "analysis_scheme_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Scheme Version Id"
+          },
           "configuration_hash": {
             "pattern": "^[0-9a-f]{64}$",
             "title": "Configuration Hash",
@@ -197,6 +209,18 @@
       "AnalysisContentRunResponse": {
         "additionalProperties": false,
         "properties": {
+          "analysis_scheme_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Scheme Version Id"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -459,6 +483,30 @@
         "title": "AnalysisContentRunStatsResponse",
         "type": "object"
       },
+      "AnalysisManualLabelRequest": {
+        "additionalProperties": false,
+        "description": "一个人工确认的一级/二级标签对。",
+        "properties": {
+          "primary_label": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Primary Label",
+            "type": "string"
+          },
+          "secondary_label": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Secondary Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "primary_label",
+          "secondary_label"
+        ],
+        "title": "AnalysisManualLabelRequest",
+        "type": "object"
+      },
       "AnalysisRunTargetSelection": {
         "additionalProperties": false,
         "description": "本轮只开放有容量上限的显式 Analysis Run 目标。",
@@ -486,6 +534,378 @@
         "title": "AnalysisRunTargetSelection",
         "type": "object"
       },
+      "AnalysisSchemeCreateDraftRequest": {
+        "additionalProperties": false,
+        "description": "基于当前发布版或新定义创建草稿。",
+        "properties": {
+          "definition": {
+            "$ref": "#/components/schemas/AnalysisSchemeDefinitionRequest"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "definition"
+        ],
+        "title": "AnalysisSchemeCreateDraftRequest",
+        "type": "object"
+      },
+      "AnalysisSchemeDefinitionRequest": {
+        "additionalProperties": false,
+        "description": "一个原子 Analysis Scheme 的结构化定义。",
+        "properties": {
+          "labels": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "maxProperties": 100,
+            "minProperties": 1,
+            "title": "Labels",
+            "type": "object"
+          },
+          "prompt_template": {
+            "maxLength": 100000,
+            "minLength": 1,
+            "title": "Prompt Template",
+            "type": "string"
+          },
+          "sentiments": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Sentiments",
+            "type": "array"
+          },
+          "voice_types": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Voice Types",
+            "type": "array"
+          }
+        },
+        "required": [
+          "prompt_template",
+          "sentiments",
+          "voice_types",
+          "labels"
+        ],
+        "title": "AnalysisSchemeDefinitionRequest",
+        "type": "object"
+      },
+      "AnalysisSchemeListResponse": {
+        "additionalProperties": false,
+        "description": "管理员 Scheme 目录响应。",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisSchemeResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AnalysisSchemeListResponse",
+        "type": "object"
+      },
+      "AnalysisSchemePublishRequest": {
+        "additionalProperties": false,
+        "description": "发布或回滚时的乐观锁请求。",
+        "properties": {
+          "expected_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "AnalysisSchemePublishRequest",
+        "type": "object"
+      },
+      "AnalysisSchemeResponse": {
+        "additionalProperties": false,
+        "description": "Scheme 聚合及其版本列表。",
+        "properties": {
+          "active_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Version Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisSchemeVersionResponse"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "is_active",
+          "versions",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AnalysisSchemeResponse",
+        "type": "object"
+      },
+      "AnalysisSchemeUpdateDraftRequest": {
+        "additionalProperties": false,
+        "description": "以当前草稿版本为并发前提，追加一个新的草稿 Version。",
+        "properties": {
+          "definition": {
+            "$ref": "#/components/schemas/AnalysisSchemeDefinitionRequest"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Description",
+            "type": "string"
+          },
+          "expected_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "definition",
+          "expected_version"
+        ],
+        "title": "AnalysisSchemeUpdateDraftRequest",
+        "type": "object"
+      },
+      "AnalysisSchemeVersionResponse": {
+        "additionalProperties": false,
+        "description": "管理员可见的 Scheme Version；不包含 Secret 或 LLM API 配置。",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/AnalysisSchemeDefinitionRequest"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "prompt_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Prompt Sha256",
+            "type": "string"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "scheme_id": {
+            "format": "uuid",
+            "title": "Scheme Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "published",
+              "retired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "taxonomy_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Taxonomy Sha256",
+            "type": "string"
+          },
+          "version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "scheme_id",
+          "version",
+          "status",
+          "description",
+          "definition",
+          "prompt_sha256",
+          "taxonomy_sha256",
+          "created_by",
+          "created_at"
+        ],
+        "title": "AnalysisSchemeVersionResponse",
+        "type": "object"
+      },
+      "AuditEventListResponse": {
+        "additionalProperties": false,
+        "description": "管理员最近审计事件列表。",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuditEventResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AuditEventListResponse",
+        "type": "object"
+      },
+      "AuditEventResponse": {
+        "additionalProperties": false,
+        "description": "安全审计事件投影。",
+        "properties": {
+          "actor_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Ref"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "object_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Object Id"
+          },
+          "object_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Object Type"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "safe_detail": {
+            "additionalProperties": true,
+            "title": "Safe Detail",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "event_type",
+          "safe_detail",
+          "created_at"
+        ],
+        "title": "AuditEventResponse",
+        "type": "object"
+      },
       "Body_createImportBatch": {
         "properties": {
           "file": {
@@ -494,17 +914,26 @@
             "type": "string"
           },
           "keyword_pack_ids": {
+            "default": [],
             "items": {
               "format": "uuid",
               "type": "string"
             },
             "title": "Keyword Pack Ids",
             "type": "array"
+          },
+          "vehicle_model_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Vehicle Model Ids",
+            "type": "array"
           }
         },
         "required": [
-          "file",
-          "keyword_pack_ids"
+          "file"
         ],
         "title": "Body_createImportBatch",
         "type": "object"
@@ -646,12 +1075,12 @@
             "type": "boolean"
           },
           "keyword_pack_ids": {
+            "default": [],
             "items": {
               "format": "uuid",
               "type": "string"
             },
             "maxItems": 20,
-            "minItems": 1,
             "title": "Keyword Pack Ids",
             "type": "array"
           },
@@ -675,13 +1104,22 @@
             "minLength": 1,
             "title": "Schedule Expr",
             "type": "string"
+          },
+          "vehicle_model_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Vehicle Model Ids",
+            "type": "array"
           }
         },
         "required": [
           "name",
           "schedule_expr",
-          "platforms",
-          "keyword_pack_ids"
+          "platforms"
         ],
         "title": "CollectionPlanCreateRequest",
         "type": "object"
@@ -863,6 +1301,15 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "vehicle_model_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Vehicle Model Ids",
+            "type": "array"
           }
         },
         "required": [
@@ -963,6 +1410,16 @@
             "maxItems": 5,
             "minItems": 1,
             "title": "Platforms",
+            "type": "array"
+          },
+          "vehicle_model_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Vehicle Model Ids",
             "type": "array"
           }
         },
@@ -1824,6 +2281,143 @@
         "title": "ContentAnalysisJobResultResponse",
         "type": "object"
       },
+      "ContentAnalysisManualReviewRequest": {
+        "additionalProperties": false,
+        "description": "人工纠正分析维度；已锁定维度修改前必须显式解锁。",
+        "properties": {
+          "content_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Content Version",
+            "type": "integer"
+          },
+          "labels": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AnalysisManualLabelRequest"
+                },
+                "maxItems": 100,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labels"
+          },
+          "sentiment": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sentiment"
+          },
+          "unlock_dimensions": {
+            "default": [],
+            "items": {
+              "enum": [
+                "voice_type",
+                "sentiment",
+                "labels"
+              ],
+              "type": "string"
+            },
+            "maxItems": 3,
+            "title": "Unlock Dimensions",
+            "type": "array"
+          },
+          "voice_type": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice Type"
+          }
+        },
+        "required": [
+          "content_version"
+        ],
+        "title": "ContentAnalysisManualReviewRequest",
+        "type": "object"
+      },
+      "ContentAnalysisManualReviewResponse": {
+        "additionalProperties": false,
+        "description": "人工纠正后的当前锁定状态。",
+        "properties": {
+          "content_id": {
+            "format": "uuid",
+            "title": "Content Id",
+            "type": "string"
+          },
+          "content_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Content Version",
+            "type": "integer"
+          },
+          "labels": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AnalysisManualLabelRequest"
+            },
+            "title": "Labels",
+            "type": "array"
+          },
+          "locked_dimensions": {
+            "items": {
+              "enum": [
+                "voice_type",
+                "sentiment",
+                "labels"
+              ],
+              "type": "string"
+            },
+            "title": "Locked Dimensions",
+            "type": "array"
+          },
+          "sentiment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sentiment"
+          },
+          "voice_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice Type"
+          }
+        },
+        "required": [
+          "content_id",
+          "content_version",
+          "locked_dimensions"
+        ],
+        "title": "ContentAnalysisManualReviewResponse",
+        "type": "object"
+      },
       "ContentAnalysisResponse": {
         "additionalProperties": false,
         "properties": {
@@ -1869,6 +2463,19 @@
               }
             ],
             "title": "Latest Run Status"
+          },
+          "manual_locked_dimensions": {
+            "default": [],
+            "items": {
+              "enum": [
+                "voice_type",
+                "sentiment",
+                "labels"
+              ],
+              "type": "string"
+            },
+            "title": "Manual Locked Dimensions",
+            "type": "array"
           },
           "model": {
             "anyOf": [
@@ -2043,6 +2650,117 @@
         "title": "ContentAnalysisTaxonomyResponse",
         "type": "object"
       },
+      "ContentAvailabilityObservationRequest": {
+        "additionalProperties": false,
+        "description": "追加一条 Provider-neutral 可用状态观察。",
+        "properties": {
+          "content_id": {
+            "format": "uuid",
+            "title": "Content Id",
+            "type": "string"
+          },
+          "evidence_kind": {
+            "enum": [
+              "provider_explicit",
+              "technical_failure",
+              "manual_review"
+            ],
+            "title": "Evidence Kind",
+            "type": "string"
+          },
+          "provider_attempt_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Attempt Id"
+          },
+          "raw_artifact_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Artifact Id"
+          },
+          "reason_code": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "safe_summary": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Safe Summary",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "unavailable_confirmed",
+              "unavailable_suspected",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content_id",
+          "status",
+          "reason_code",
+          "evidence_kind"
+        ],
+        "title": "ContentAvailabilityObservationRequest",
+        "type": "object"
+      },
+      "ContentAvailabilityResponse": {
+        "additionalProperties": false,
+        "description": "内容当前可用状态及最新证据投影。",
+        "properties": {
+          "evidence_kind": {
+            "title": "Evidence Kind",
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "unavailable_confirmed",
+              "unavailable_suspected",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "reason_code",
+          "evidence_kind",
+          "observed_at"
+        ],
+        "title": "ContentAvailabilityResponse",
+        "type": "object"
+      },
       "ContentCommentResponse": {
         "additionalProperties": false,
         "properties": {
@@ -2121,6 +2839,93 @@
         "title": "ContentCommentResponse",
         "type": "object"
       },
+      "ContentCountRequest": {
+        "additionalProperties": false,
+        "description": "独立 Count 请求；不改变声音广场 Cursor 分页。",
+        "properties": {
+          "count_mode": {
+            "default": "none",
+            "enum": [
+              "none",
+              "exact",
+              "estimated"
+            ],
+            "title": "Count Mode",
+            "type": "string"
+          },
+          "exact_limit": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exact Limit"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/ContentFilterSnapshot"
+          }
+        },
+        "title": "ContentCountRequest",
+        "type": "object"
+      },
+      "ContentCountResponse": {
+        "additionalProperties": false,
+        "description": "Count 结果带种类和时间，不伪装事务级实时总数。",
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count"
+          },
+          "count_kind": {
+            "enum": [
+              "none",
+              "exact",
+              "estimated"
+            ],
+            "title": "Count Kind",
+            "type": "string"
+          },
+          "count_mode": {
+            "enum": [
+              "none",
+              "exact",
+              "estimated"
+            ],
+            "title": "Count Mode",
+            "type": "string"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "count_mode",
+          "count_kind",
+          "as_of"
+        ],
+        "title": "ContentCountResponse",
+        "type": "object"
+      },
       "ContentDetailResponse": {
         "additionalProperties": false,
         "properties": {
@@ -2137,6 +2942,16 @@
               }
             ],
             "title": "Author Display Name"
+          },
+          "availability": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContentAvailabilityResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "comment_coverage": {
             "anyOf": [
@@ -2170,6 +2985,11 @@
               }
             ],
             "title": "Content Url"
+          },
+          "content_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Content Version",
+            "type": "integer"
           },
           "effective_relevance": {
             "anyOf": [
@@ -2273,10 +3093,19 @@
               }
             ],
             "title": "Title"
+          },
+          "vehicles": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ContentVehicleResponse"
+            },
+            "title": "Vehicles",
+            "type": "array"
           }
         },
         "required": [
           "id",
+          "content_version",
           "platform",
           "external_content_id",
           "content_type",
@@ -2418,6 +3247,16 @@
             ],
             "title": "Source Identifier"
           },
+          "vehicle_model_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Vehicle Model Ids",
+            "type": "array"
+          },
           "voice_type": {
             "anyOf": [
               {
@@ -2469,6 +3308,16 @@
             ],
             "title": "Author Display Name"
           },
+          "availability": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContentAvailabilityResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "content_type": {
             "title": "Content Type",
             "type": "string"
@@ -2483,6 +3332,11 @@
               }
             ],
             "title": "Content Url"
+          },
+          "content_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Content Version",
+            "type": "integer"
           },
           "effective_relevance": {
             "anyOf": [
@@ -2560,10 +3414,19 @@
               }
             ],
             "title": "Title"
+          },
+          "vehicles": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ContentVehicleResponse"
+            },
+            "title": "Vehicles",
+            "type": "array"
           }
         },
         "required": [
           "id",
+          "content_version",
           "platform",
           "external_content_id",
           "content_type",
@@ -2962,10 +3825,228 @@
         "title": "ContentTargetSelection",
         "type": "object"
       },
+      "ContentVehicleEvidenceResponse": {
+        "additionalProperties": false,
+        "description": "一个车型关联的可追溯证据。",
+        "properties": {
+          "catalog_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Catalog Version",
+            "type": "integer"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "is_manual_locked": {
+            "default": false,
+            "title": "Is Manual Locked",
+            "type": "boolean"
+          },
+          "matched_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Text"
+          },
+          "source": {
+            "enum": [
+              "alias_match",
+              "ai_candidate",
+              "manual_review",
+              "import"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "source_field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Field"
+          }
+        },
+        "required": [
+          "source",
+          "catalog_version"
+        ],
+        "title": "ContentVehicleEvidenceResponse",
+        "type": "object"
+      },
+      "ContentVehicleResponse": {
+        "additionalProperties": false,
+        "description": "内容当前车型及其全部有效证据。",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "evidences": {
+            "items": {
+              "$ref": "#/components/schemas/ContentVehicleEvidenceResponse"
+            },
+            "minItems": 1,
+            "title": "Evidences",
+            "type": "array"
+          },
+          "vehicle_model_id": {
+            "format": "uuid",
+            "title": "Vehicle Model Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vehicle_model_id",
+          "code",
+          "display_name",
+          "evidences"
+        ],
+        "title": "ContentVehicleResponse",
+        "type": "object"
+      },
+      "ContentVehicleReviewRequest": {
+        "additionalProperties": false,
+        "description": "人工确认内容车型；默认不允许覆盖已有人工锁定。",
+        "properties": {
+          "content_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Content Version",
+            "type": "integer"
+          },
+          "unlock_existing": {
+            "default": false,
+            "title": "Unlock Existing",
+            "type": "boolean"
+          },
+          "vehicle_model_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Vehicle Model Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "content_version",
+          "vehicle_model_ids"
+        ],
+        "title": "ContentVehicleReviewRequest",
+        "type": "object"
+      },
+      "ContentVehicleReviewResponse": {
+        "additionalProperties": false,
+        "description": "人工车型确认写入结果。",
+        "properties": {
+          "content_id": {
+            "format": "uuid",
+            "title": "Content Id",
+            "type": "string"
+          },
+          "content_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Content Version",
+            "type": "integer"
+          },
+          "manual_locked": {
+            "default": true,
+            "title": "Manual Locked",
+            "type": "boolean"
+          },
+          "vehicle_model_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Vehicle Model Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "content_id",
+          "content_version",
+          "vehicle_model_ids"
+        ],
+        "title": "ContentVehicleReviewResponse",
+        "type": "object"
+      },
       "ContentVoiceType": {
         "maxLength": 128,
         "minLength": 1,
         "type": "string"
+      },
+      "CurrentPrincipalResponse": {
+        "additionalProperties": false,
+        "description": "当前请求的 Provider-neutral Principal 投影。",
+        "properties": {
+          "display_name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "is_administrator": {
+            "description": "返回当前 Principal 是否具备管理员角色。",
+            "readOnly": true,
+            "title": "Is Administrator",
+            "type": "boolean"
+          },
+          "principal_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Principal Id",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "administrator",
+              "user"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "development",
+              "feishu"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "principal_id",
+          "display_name",
+          "role",
+          "source",
+          "is_administrator"
+        ],
+        "title": "CurrentPrincipalResponse",
+        "type": "object"
       },
       "DataExportCreatedResponse": {
         "additionalProperties": false,
@@ -3077,6 +4158,20 @@
             ],
             "title": "Artifact Id"
           },
+          "column_catalog_version": {
+            "default": 1,
+            "exclusiveMinimum": 0.0,
+            "title": "Column Catalog Version",
+            "type": "integer"
+          },
+          "columns": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
           "completed_at": {
             "anyOf": [
               {
@@ -3168,6 +4263,15 @@
       "DataExportSubmitRequest": {
         "additionalProperties": false,
         "properties": {
+          "columns": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ExportColumnKey"
+            },
+            "maxItems": 100,
+            "title": "Columns",
+            "type": "array"
+          },
           "format": {
             "const": "xlsx",
             "default": "xlsx",
@@ -3197,6 +4301,102 @@
           "server_path"
         ],
         "type": "string"
+      },
+      "ExportColumnCatalogResponse": {
+        "additionalProperties": false,
+        "description": "版本化导出列目录。",
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ExportColumnResponse"
+            },
+            "minItems": 1,
+            "title": "Columns",
+            "type": "array"
+          },
+          "version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "columns"
+        ],
+        "title": "ExportColumnCatalogResponse",
+        "type": "object"
+      },
+      "ExportColumnKey": {
+        "enum": [
+          "platform",
+          "external_content_id",
+          "source_item_id",
+          "content_type",
+          "content_url",
+          "title",
+          "text",
+          "author_display_name",
+          "author_follower_count",
+          "author_following_count",
+          "author_content_count",
+          "author_total_like_count",
+          "published_at",
+          "voice_type",
+          "sentiment",
+          "primary_label",
+          "secondary_label",
+          "vehicles",
+          "availability",
+          "like_count",
+          "comment_count",
+          "favorite_count",
+          "share_count",
+          "repost_count",
+          "view_count",
+          "play_count",
+          "danmaku_count",
+          "coin_count",
+          "download_count",
+          "matched_keywords",
+          "analysis_model",
+          "prompt_version",
+          "taxonomy_version",
+          "source_provider",
+          "raw_locator",
+          "coverage"
+        ],
+        "type": "string"
+      },
+      "ExportColumnResponse": {
+        "additionalProperties": false,
+        "description": "后端白名单中的一个安全导出列。",
+        "properties": {
+          "default_selected": {
+            "default": false,
+            "title": "Default Selected",
+            "type": "boolean"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "sensitive": {
+            "default": false,
+            "title": "Sensitive",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "ExportColumnResponse",
+        "type": "object"
       },
       "GlobalRelevanceConfigRequest": {
         "additionalProperties": false,
@@ -3252,6 +4452,19 @@
           "updated_at"
         ],
         "title": "GlobalRelevanceConfigResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
         "type": "object"
       },
       "HealthResponse": {
@@ -3367,12 +4580,12 @@
             "default": "historical_fill_only"
           },
           "keyword_pack_ids": {
+            "default": [],
             "items": {
               "format": "uuid",
               "type": "string"
             },
             "maxItems": 20,
-            "minItems": 1,
             "title": "Keyword Pack Ids",
             "type": "array"
           },
@@ -3395,12 +4608,21 @@
             "minItems": 1,
             "title": "Relative Paths",
             "type": "array"
+          },
+          "vehicle_model_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Vehicle Model Ids",
+            "type": "array"
           }
         },
         "required": [
           "client_idempotency_key",
-          "relative_paths",
-          "keyword_pack_ids"
+          "relative_paths"
         ],
         "title": "HistoricalCampaignCreateRequest",
         "type": "object"
@@ -4596,6 +5818,49 @@
         "title": "KeywordPackSummaryResponse",
         "type": "object"
       },
+      "KeywordPackVehicleLinkRequest": {
+        "additionalProperties": false,
+        "description": "替换一个词包当前引用的车型集合。",
+        "properties": {
+          "vehicle_model_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Vehicle Model Ids",
+            "type": "array"
+          }
+        },
+        "title": "KeywordPackVehicleLinkRequest",
+        "type": "object"
+      },
+      "KeywordPackVehicleLinksResponse": {
+        "additionalProperties": false,
+        "description": "词包当前引用的车型 ID。",
+        "properties": {
+          "pack_id": {
+            "format": "uuid",
+            "title": "Pack Id",
+            "type": "string"
+          },
+          "vehicle_model_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Vehicle Model Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "pack_id",
+          "vehicle_model_ids"
+        ],
+        "title": "KeywordPackVehicleLinksResponse",
+        "type": "object"
+      },
       "KeywordResponse": {
         "additionalProperties": false,
         "properties": {
@@ -4660,12 +5925,12 @@
             "default": "standard_observation"
           },
           "keyword_pack_ids": {
+            "default": [],
             "items": {
               "format": "uuid",
               "type": "string"
             },
             "maxItems": 20,
-            "minItems": 1,
             "title": "Keyword Pack Ids",
             "type": "array"
           },
@@ -4674,12 +5939,21 @@
             "default": "aima-monitoring-excel.v1",
             "title": "Profile",
             "type": "string"
+          },
+          "vehicle_model_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Vehicle Model Ids",
+            "type": "array"
           }
         },
         "required": [
           "client_idempotency_key",
-          "files",
-          "keyword_pack_ids"
+          "files"
         ],
         "title": "LocalDataImportCampaignCreateRequest",
         "type": "object"
@@ -4794,6 +6068,149 @@
         "title": "LocalDataImportUploadItemResponse",
         "type": "object"
       },
+      "NotificationItemResponse": {
+        "additionalProperties": false,
+        "description": "Principal Inbox 中的一个通知投影。",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_read": {
+            "title": "Is Read",
+            "type": "boolean"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "read_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read At"
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Id"
+          },
+          "resource_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Type"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "event_type",
+          "title",
+          "message",
+          "is_read",
+          "created_at"
+        ],
+        "title": "NotificationItemResponse",
+        "type": "object"
+      },
+      "NotificationListResponse": {
+        "additionalProperties": false,
+        "description": "当前 Principal 的站内通知列表。",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/NotificationItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "unread_count": {
+            "minimum": 0.0,
+            "title": "Unread Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "unread_count"
+        ],
+        "title": "NotificationListResponse",
+        "type": "object"
+      },
+      "NotificationMarkReadRequest": {
+        "additionalProperties": false,
+        "description": "批量标记当前 Principal 自己的通知已读。",
+        "properties": {
+          "item_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Item Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "item_ids"
+        ],
+        "title": "NotificationMarkReadRequest",
+        "type": "object"
+      },
+      "NotificationMarkReadResponse": {
+        "additionalProperties": false,
+        "description": "已读操作的幂等统计。",
+        "properties": {
+          "changed_count": {
+            "minimum": 0.0,
+            "title": "Changed Count",
+            "type": "integer"
+          },
+          "requested_count": {
+            "minimum": 0.0,
+            "title": "Requested Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "requested_count",
+          "changed_count"
+        ],
+        "title": "NotificationMarkReadResponse",
+        "type": "object"
+      },
       "PlatformName": {
         "enum": [
           "xiaohongshu",
@@ -4888,6 +6305,310 @@
         ],
         "title": "ResourceEnabledRequest",
         "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VehicleModelAliasResponse": {
+        "additionalProperties": false,
+        "description": "车型当前有效别名。",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "normalized_text": {
+            "title": "Normalized Text",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "normalized_text"
+        ],
+        "title": "VehicleModelAliasResponse",
+        "type": "object"
+      },
+      "VehicleModelCreateRequest": {
+        "additionalProperties": false,
+        "description": "创建一个稳定车型及其初始别名。",
+        "properties": {
+          "aliases": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Aliases",
+            "type": "array"
+          },
+          "code": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+            "title": "Code",
+            "type": "string"
+          },
+          "display_name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "display_name"
+        ],
+        "title": "VehicleModelCreateRequest",
+        "type": "object"
+      },
+      "VehicleModelListResponse": {
+        "additionalProperties": false,
+        "description": "车型目录页响应。",
+        "properties": {
+          "catalog_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Catalog Version",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/VehicleModelResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "catalog_version",
+          "offset",
+          "limit"
+        ],
+        "title": "VehicleModelListResponse",
+        "type": "object"
+      },
+      "VehicleModelMergeRequest": {
+        "additionalProperties": false,
+        "description": "把错误或重复车型重定向到稳定目标车型。",
+        "properties": {
+          "target_vehicle_model_id": {
+            "format": "uuid",
+            "title": "Target Vehicle Model Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_vehicle_model_id"
+        ],
+        "title": "VehicleModelMergeRequest",
+        "type": "object"
+      },
+      "VehicleModelResponse": {
+        "additionalProperties": false,
+        "description": "车型目录中的完整管理投影。",
+        "properties": {
+          "aliases": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VehicleModelAliasResponse"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
+          "catalog_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Catalog Version",
+            "type": "integer"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "keyword_pack_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Keyword Pack Ids",
+            "type": "array"
+          },
+          "merged_into_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merged Into Id"
+          },
+          "referenced": {
+            "default": false,
+            "title": "Referenced",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "deprecated",
+              "merged"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "display_name",
+          "status",
+          "version",
+          "catalog_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "VehicleModelResponse",
+        "type": "object"
+      },
+      "VehicleModelUpdateRequest": {
+        "additionalProperties": false,
+        "description": "修改车型显示、别名或启停状态；稳定 code 不允许原地改写。",
+        "properties": {
+          "aliases": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aliases"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "active",
+                  "deprecated"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "title": "VehicleModelUpdateRequest",
+        "type": "object"
       }
     }
   },
@@ -4897,6 +6618,370 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/analysis-scheme-versions/{version_id}": {
+      "put": {
+        "description": "管理员更新尚未发布的 Scheme Version。",
+        "operationId": "updateAnalysisSchemeDraft",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalysisSchemeUpdateDraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisSchemeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Update Analysis Scheme Draft",
+        "tags": [
+          "analysis-schemes"
+        ]
+      }
+    },
+    "/api/v1/analysis-scheme-versions/{version_id}/publish": {
+      "post": {
+        "description": "管理员原子发布 Scheme Version。",
+        "operationId": "publishAnalysisScheme",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalysisSchemePublishRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisSchemeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Publish Analysis Scheme",
+        "tags": [
+          "analysis-schemes"
+        ]
+      }
+    },
+    "/api/v1/analysis-scheme-versions/{version_id}/rollback": {
+      "post": {
+        "description": "管理员把历史版本重新激活。",
+        "operationId": "rollbackAnalysisScheme",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalysisSchemePublishRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisSchemeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Rollback Analysis Scheme",
+        "tags": [
+          "analysis-schemes"
+        ]
+      }
+    },
+    "/api/v1/analysis-schemes": {
+      "get": {
+        "description": "管理员读取 Scheme 与版本历史。",
+        "operationId": "listAnalysisSchemes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisSchemeListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Analysis Schemes",
+        "tags": [
+          "analysis-schemes"
+        ]
+      },
+      "post": {
+        "description": "管理员创建结构化 Analysis Scheme 草稿。",
+        "operationId": "createAnalysisSchemeDraft",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalysisSchemeCreateDraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisSchemeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Create Analysis Scheme Draft",
+        "tags": [
+          "analysis-schemes"
+        ]
+      }
+    },
     "/api/v1/analysis/content-runs": {
       "get": {
         "operationId": "listContentAnalysisRuns",
@@ -5194,6 +7279,72 @@
         ]
       }
     },
+    "/api/v1/audit-events": {
+      "get": {
+        "description": "管理员读取有界审计历史。",
+        "operationId": "listAuditEvents",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditEventListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Audit Events",
+        "tags": [
+          "administration"
+        ]
+      }
+    },
     "/api/v1/collection-capabilities": {
       "get": {
         "operationId": "getCollectionCapabilities",
@@ -5363,6 +7514,16 @@
             },
             "description": "Successful Response"
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -5508,6 +7669,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -6061,6 +8232,7 @@
     },
     "/api/v1/content-analysis-taxonomy": {
       "get": {
+        "description": "读取数据库 active Analysis Scheme 的分类安全投影。",
         "operationId": "getContentAnalysisTaxonomy",
         "responses": {
           "200": {
@@ -6072,9 +8244,100 @@
               }
             },
             "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Get Content Analysis Taxonomy",
+        "tags": [
+          "contents"
+        ]
+      }
+    },
+    "/api/v1/content-availability-observations": {
+      "post": {
+        "operationId": "createContentAvailabilityObservation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContentAvailabilityObservationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentAvailabilityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Create Content Availability Observation",
         "tags": [
           "contents"
         ]
@@ -6346,6 +8609,21 @@
           },
           {
             "in": "query",
+            "name": "vehicle_model_ids",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "maxItems": 100,
+              "title": "Vehicle Model Ids",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
             "name": "cursor",
             "required": false,
             "schema": {
@@ -6433,6 +8711,57 @@
         ]
       }
     },
+    "/api/v1/contents/count": {
+      "post": {
+        "operationId": "countContents",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContentCountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentCountResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Count Contents",
+        "tags": [
+          "contents"
+        ]
+      }
+    },
     "/api/v1/contents/{content_id}": {
       "get": {
         "operationId": "getContent",
@@ -6491,6 +8820,173 @@
           }
         },
         "summary": "Get Content",
+        "tags": [
+          "contents"
+        ]
+      }
+    },
+    "/api/v1/contents/{content_id}/analysis-review": {
+      "put": {
+        "description": "人工纠正 voice_type、情感与标签，并显式维护维度锁。",
+        "operationId": "reviewContentAnalysis",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "content_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Content Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContentAnalysisManualReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentAnalysisManualReviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Review Content Analysis",
+        "tags": [
+          "contents"
+        ]
+      }
+    },
+    "/api/v1/contents/{content_id}/vehicles": {
+      "put": {
+        "operationId": "reviewContentVehicles",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "content_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Content Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContentVehicleReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentVehicleReviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Review Content Vehicles",
         "tags": [
           "contents"
         ]
@@ -6767,6 +9263,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "409": {
             "content": {
@@ -7550,6 +10056,27 @@
         "summary": "List Historical Import Directories",
         "tags": [
           "imports"
+        ]
+      }
+    },
+    "/api/v1/export-columns": {
+      "get": {
+        "operationId": "getExportColumnCatalog",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportColumnCatalogResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Export Column Catalog",
+        "tags": [
+          "exports"
         ]
       }
     },
@@ -8751,6 +11278,16 @@
             },
             "description": "Successful Response"
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "409": {
             "content": {
               "application/json": {
@@ -8887,6 +11424,16 @@
             },
             "description": "Successful Response"
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -8970,6 +11517,16 @@
             },
             "description": "Successful Response"
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -9004,6 +11561,219 @@
         "summary": "Add Keyword",
         "tags": [
           "keywords"
+        ]
+      }
+    },
+    "/api/v1/keyword-packs/{pack_id}/vehicle-models": {
+      "put": {
+        "description": "管理员原子替换一个词包引用的车型。",
+        "operationId": "replaceKeywordPackVehicleModels",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KeywordPackVehicleLinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeywordPackVehicleLinksResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Replace Keyword Pack Vehicle Models",
+        "tags": [
+          "keywords",
+          "vehicles"
+        ]
+      }
+    },
+    "/api/v1/notifications": {
+      "get": {
+        "operationId": "listNotifications",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Notifications",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/api/v1/notifications/read": {
+      "put": {
+        "operationId": "markNotificationsRead",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationMarkReadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationMarkReadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mark Notifications Read",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/api/v1/principal": {
+      "get": {
+        "description": "返回当前 Provider-neutral Principal 与两角色投影。",
+        "operationId": "getCurrentPrincipal",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentPrincipalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Current Principal",
+        "tags": [
+          "identity"
         ]
       }
     },
@@ -9070,6 +11840,16 @@
             },
             "description": "Successful Response"
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -9114,6 +11894,507 @@
         "summary": "Set Global Relevance",
         "tags": [
           "relevance"
+        ]
+      }
+    },
+    "/api/v1/vehicle-models": {
+      "get": {
+        "description": "读取车型目录供选择器和管理员页面复用。",
+        "operationId": "listVehicleModels",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "active",
+                    "deprecated",
+                    "merged"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleModelListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Vehicle Models",
+        "tags": [
+          "vehicles"
+        ]
+      },
+      "post": {
+        "description": "管理员创建车型和初始别名。",
+        "operationId": "createVehicleModel",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VehicleModelCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleModelResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Create Vehicle Model",
+        "tags": [
+          "vehicles"
+        ]
+      }
+    },
+    "/api/v1/vehicle-models/{vehicle_model_id}": {
+      "delete": {
+        "description": "管理员物理删除未引用车型。",
+        "operationId": "deleteVehicleModel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vehicle_model_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Vehicle Model Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Delete Vehicle Model",
+        "tags": [
+          "vehicles"
+        ]
+      },
+      "get": {
+        "description": "读取单个车型目录详情。",
+        "operationId": "getVehicleModel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vehicle_model_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Vehicle Model Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleModelResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Vehicle Model",
+        "tags": [
+          "vehicles"
+        ]
+      },
+      "put": {
+        "description": "管理员修改车型显示、别名或启停状态。",
+        "operationId": "updateVehicleModel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vehicle_model_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Vehicle Model Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VehicleModelUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleModelResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Update Vehicle Model",
+        "tags": [
+          "vehicles"
+        ]
+      }
+    },
+    "/api/v1/vehicle-models/{vehicle_model_id}/merge": {
+      "post": {
+        "description": "管理员把重复车型重定向到稳定目标。",
+        "operationId": "mergeVehicleModel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vehicle_model_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Vehicle Model Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VehicleModelMergeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleModelResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Merge Vehicle Model",
+        "tags": [
+          "vehicles"
         ]
       }
     },

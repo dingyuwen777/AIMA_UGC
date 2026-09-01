@@ -20,10 +20,12 @@ from aima_ugc.adapters.persistence.postgres.manual_ingestion import (
     PostgresProcessingImportBatchRepository,
 )
 from aima_ugc.adapters.persistence.postgres.provider import PostgresProviderRepository
+from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
 from aima_ugc.contracts.analysis import UnifiedContentRecordV1
 from aima_ugc.contracts.provider import ProviderAttemptV1, ProviderBillingV1, ProviderRequestV1
 from aima_ugc.modules.collection.provider_persistence import ProviderPersistenceService
 from aima_ugc.modules.content.ingestion import ContentIngestionService
+from aima_ugc.modules.vehicles.models import ContentVehicleEvidence, normalize_vehicle_text
 from aima_ugc.platform.database import DatabaseRuntime
 from aima_ugc.platform.storage import ArtifactRecord, ArtifactService
 from aima_ugc.platform.time import beijing_now
@@ -305,6 +307,8 @@ def ingest_unified_content_batch(
     rows_seen: int,
     rows_rejected: int,
     source_value_filter: str | None = None,
+    vehicle_catalog_version: int | None = None,
+    vehicle_alias_bindings: tuple[tuple[UUID, str], ...] = (),
 ) -> FileImportWriteSummary:
     """在调用方事务中复用 Stage 8A 正式来源链与 Content Ingestion。"""
 
@@ -316,6 +320,11 @@ def ingest_unified_content_batch(
     lineage_by_platform: dict[str, tuple[UUID, UUID]] = {}
     rows_ingested = 0
     request_count = 0
+    vehicle_by_alias = {
+        normalize_vehicle_text(alias): model_id
+        for model_id, alias in vehicle_alias_bindings
+    }
+    vehicle_repository = PostgresVehicleCatalogRepository(session)
 
     with unified_content_path.open("rb") as handle:
         for line_number, raw_line in enumerate(handle, start=1):
@@ -383,7 +392,28 @@ def ingest_unified_content_batch(
                     "raw_artifact_id": input_artifact.id,
                 }
             )
-            content_service.ingest_content(content.model_copy(update={"source": source}))
+            result = content_service.ingest_content(content.model_copy(update={"source": source}))
+            if result.target_id is not None and vehicle_catalog_version is not None:
+                for alias in record.matched_vehicle_aliases:
+                    model_id = vehicle_by_alias.get(normalize_vehicle_text(alias))
+                    if model_id is None:
+                        continue
+                    vehicle_repository.append_evidence(
+                        ContentVehicleEvidence(
+                            id=uuid4(),
+                            content_id=result.target_id,
+                            content_version=result.version_no,
+                            vehicle_model_id=model_id,
+                            source="import",
+                            matched_text=alias,
+                            source_field="title_text",
+                            catalog_version=vehicle_catalog_version,
+                            confidence=1.0,
+                            is_manual_locked=False,
+                            is_active=True,
+                            created_at=beijing_now(),
+                        )
+                    )
             rows_ingested += 1
 
     PostgresProcessingImportBatchRepository(session).mark_succeeded(

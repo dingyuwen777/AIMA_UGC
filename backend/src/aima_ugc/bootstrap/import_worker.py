@@ -75,6 +75,11 @@ class PostgresImportJobExecutor:
             if artifact is None or artifact.storage_status not in {"stored", "linked"}:
                 raise InvalidXlsxError("Import Source Artifact 不可用")
             effective_keywords = execution.payload.keyword_selection.effective_keywords
+            vehicle_aliases = tuple(
+                alias
+                for model in execution.payload.keyword_selection.vehicle_models
+                for alias in model.aliases
+            )
             profile = execution.batch.stats.get("profile")
             if not isinstance(profile, str) or not profile:
                 raise ValueError("Import Batch 缺少冻结 Excel Profile")
@@ -116,6 +121,7 @@ class PostgresImportJobExecutor:
                     input_path=conversion.output_path,
                     output_path=work_dir / "filtered" / "contents.jsonl",
                     keywords=effective_keywords,
+                    vehicle_aliases=vehicle_aliases,
                 )
                 context.heartbeat(progress=60)
 
@@ -263,6 +269,14 @@ class PostgresImportJobExecutor:
                     unified_content_path=unified_content_path,
                     rows_seen=rows_seen,
                     rows_rejected=0,
+                    vehicle_catalog_version=(
+                        execution.payload.keyword_selection.vehicle_catalog_version
+                    ),
+                    vehicle_alias_bindings=tuple(
+                        (model.id, alias)
+                        for model in execution.payload.keyword_selection.vehicle_models
+                        for alias in model.aliases
+                    ),
                 )
                 jobs.lock_current_execution(fence)
                 return write.rows_ingested

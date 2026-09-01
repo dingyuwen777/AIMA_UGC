@@ -77,6 +77,12 @@ _CONTENT_HEADERS = (
     "Raw/来源定位",
     "评论覆盖",
 )
+_CONTENT_AVAILABLE_HEADERS = (
+    *_CONTENT_HEADERS[:24],
+    "车型",
+    "第三方可用状态",
+    *_CONTENT_HEADERS[24:],
+)
 _LABEL_HEADERS = (
     "内容ID",
     "平台",
@@ -101,12 +107,14 @@ _COMMENT_HEADERS = (
     "来源Provider",
     "Raw/来源定位",
 )
-_LABEL_AVAILABLE_HEADERS = _CONTENT_HEADERS
+_LABEL_AVAILABLE_HEADERS = _CONTENT_AVAILABLE_HEADERS
 _COMMENT_CONTENT_HEADERS = tuple(
-    header for header in _CONTENT_HEADERS if header not in _COMMENT_HEADERS
+    header for header in _CONTENT_AVAILABLE_HEADERS if header not in _COMMENT_HEADERS
 )
 _COMMENT_AVAILABLE_HEADERS = _COMMENT_HEADERS + _COMMENT_CONTENT_HEADERS
-_CONTENT_HEADER_INDEX = {header: index for index, header in enumerate(_CONTENT_HEADERS)}
+_CONTENT_HEADER_INDEX = {
+    header: index for index, header in enumerate(_CONTENT_AVAILABLE_HEADERS)
+}
 _LABEL_HEADER_INDEX = {header: index for index, header in enumerate(_LABEL_AVAILABLE_HEADERS)}
 _COMMENT_HEADER_INDEX = {header: index for index, header in enumerate(_COMMENT_AVAILABLE_HEADERS)}
 _HEADER_FONT = Font(name="Calibri", size=11, bold=True, color="FF000000")
@@ -141,6 +149,8 @@ _CONTENT_COLUMN_WIDTHS = {
     "投币数": 12,
     "下载数": 12,
     "命中关键词": 20,
+    "车型": 24,
+    "第三方可用状态": 18,
     "发声类型": 18,
     "情感标签": 12,
     "一级标签": 20,
@@ -643,6 +653,8 @@ def _content_values(
         (content.coin_count, False, False),
         (content.download_count, False, False),
         ("；".join(content.matched_keywords) or None, False, False),
+        ("；".join(content.vehicles) or None, False, False),
+        (content.availability, False, False),
         (
             analysis.voice_type if analysis is not None else None,
             False,

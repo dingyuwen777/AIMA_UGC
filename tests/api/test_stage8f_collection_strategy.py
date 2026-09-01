@@ -65,11 +65,17 @@ class _FakeStrategyService:
         assert query.limit == 20
         return {"items": [_pack()], "total": 1, "offset": 0, "limit": 20}
 
-    def set_keyword_pack_enabled(self, pack_id, request):  # type: ignore[no-untyped-def]
+    def set_keyword_pack_enabled(  # type: ignore[no-untyped-def]
+        self, pack_id, request, *, actor_ref, request_id
+    ):
         assert pack_id == PACK_ID
+        assert actor_ref == "local-administrator"
+        assert request_id
         return _pack(request.enabled)
 
-    def create_plan(self, request):  # type: ignore[no-untyped-def]
+    def create_plan(self, request, *, actor_ref, request_id):  # type: ignore[no-untyped-def]
+        assert actor_ref == "local-administrator"
+        assert request_id
         assert request.schedule_expr == "0 9 * * *"
         assert request.keyword_pack_ids == (PACK_ID,)
         assert request.platforms[0].search_config.model_dump(exclude_none=True) == SEARCH_CONFIG
@@ -89,8 +95,12 @@ class _FakeStrategyService:
         assert plan_id == PLAN_ID
         return _plan()
 
-    def set_plan_enabled(self, plan_id, request):  # type: ignore[no-untyped-def]
+    def set_plan_enabled(  # type: ignore[no-untyped-def]
+        self, plan_id, request, *, actor_ref, request_id
+    ):
         assert plan_id == PLAN_ID
+        assert actor_ref == "local-administrator"
+        assert request_id
         return _plan(request.enabled)
 
 
@@ -158,8 +168,10 @@ def test_stage8f_rejects_single_run_or_plan_level_relevance_fields() -> None:
 
 def test_stage8f_conflict_does_not_leak_internal_details() -> None:
     class ConflictService(_FakeStrategyService):
-        def create_plan(self, request):  # type: ignore[no-untyped-def]
-            del request
+        def create_plan(  # type: ignore[no-untyped-def]
+            self, request, *, actor_ref, request_id
+        ):
+            del request, actor_ref, request_id
             raise CollectionStrategyConflict("postgresql://secret@host/internal")
 
     response = TestClient(
@@ -186,8 +198,10 @@ def test_stage8f_not_found_and_domain_invalid_keep_request_id_contract() -> None
             del plan_id
             raise CollectionStrategyResourceNotFound
 
-        def create_plan(self, request):  # type: ignore[no-untyped-def]
-            del request
+        def create_plan(  # type: ignore[no-untyped-def]
+            self, request, *, actor_ref, request_id
+        ):
+            del request, actor_ref, request_id
             raise CollectionStrategyInvalid("internal cron parser detail")
 
     client = TestClient(create_app(strategy_service=ErrorService()))

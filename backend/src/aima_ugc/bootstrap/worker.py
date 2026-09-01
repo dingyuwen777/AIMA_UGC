@@ -43,7 +43,7 @@ from .analysis_worker import (
     create_analysis_job_terminal_callback,
 )
 from .collection_scope import TikHubCollectionScopeExecutor
-from .export_worker import PostgresDataExportJobExecutor
+from .export_worker import PostgresDataExportJobExecutor, export_job_terminal_callback
 from .historical_import_worker import (
     PostgresHistoricalImportJobExecutor,
     historical_job_terminal_callback,
@@ -146,6 +146,7 @@ def create_collection_job_registry(
     register_data_export_job(
         registry,
         DataExportJobHandler(PostgresDataExportJobExecutor(runtime)),
+        terminal_callback=export_job_terminal_callback,
     )
     return registry
 

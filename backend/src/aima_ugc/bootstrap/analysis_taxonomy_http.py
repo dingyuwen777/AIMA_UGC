@@ -14,6 +14,7 @@ from aima_ugc.modules.analysis import (
     PromptTaxonomyError,
     PromptTaxonomyLoader,
 )
+from aima_ugc.modules.analysis.prompt_taxonomy import PromptTaxonomy
 
 
 class ContentAnalysisTaxonomyUnavailable(RuntimeError):
@@ -25,7 +26,14 @@ def content_analysis_taxonomy_response(
 ) -> ContentAnalysisTaxonomyResponse:
     """读取唯一 Prompt 事实源，并只返回页面需要的分类目录。"""
 
-    taxonomy = taxonomy_loader.load()
+    return content_analysis_taxonomy_projection(taxonomy_loader.load())
+
+
+def content_analysis_taxonomy_projection(
+    taxonomy: PromptTaxonomy,
+) -> ContentAnalysisTaxonomyResponse:
+    """把文件或数据库 Scheme 的 Taxonomy 投影为同一安全 Contract。"""
+
     return ContentAnalysisTaxonomyResponse(
         prompt_version=taxonomy.prompt_version,
         prompt_sha256=taxonomy.prompt_sha256,
@@ -67,6 +75,7 @@ def install_content_analysis_taxonomy_route(
 
 __all__ = [
     "ContentAnalysisTaxonomyUnavailable",
+    "content_analysis_taxonomy_projection",
     "content_analysis_taxonomy_response",
     "install_content_analysis_taxonomy_route",
 ]

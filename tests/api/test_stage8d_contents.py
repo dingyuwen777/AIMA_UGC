@@ -35,6 +35,7 @@ class _ContentService:
         now = datetime(2026, 8, 21, tzinfo=UTC)
         return ContentListItemResponse(
             id=self.content_id,
+            content_version=1,
             platform="xiaohongshu",
             external_content_id="note-1",
             content_type="note",
@@ -93,7 +94,10 @@ class _ReportingService:
         self.export_id = uuid4()
         self.job_id = uuid4()
 
-    def create_export(self, request, *, request_id):  # type: ignore[no-untyped-def]
+    def create_export(
+        self, request, *, request_id, actor_ref  # type: ignore[no-untyped-def]
+    ):
+        del actor_ref
         return DataExportCreatedResponse(
             export_id=self.export_id,
             job_id=self.job_id,

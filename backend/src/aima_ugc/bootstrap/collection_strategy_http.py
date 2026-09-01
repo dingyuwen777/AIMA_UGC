@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from typing import Literal, cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
+from pydantic import JsonValue
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -23,7 +24,11 @@ from aima_ugc.adapters.persistence.postgres.scheduled_keywords import (
     MissingScheduledKeywordPackError,
     PostgresScheduledKeywordSnapshotReader,
 )
-from aima_ugc.adapters.persistence.postgres.system import PostgresProviderConfigRepository
+from aima_ugc.adapters.persistence.postgres.system import (
+    PostgresAuditRepository,
+    PostgresProviderConfigRepository,
+)
+from aima_ugc.adapters.persistence.postgres.vehicles import PostgresVehicleCatalogRepository
 from aima_ugc.adapters.providers.registry import build_default_provider_registry
 from aima_ugc.contracts.http import (
     CollectionPlanCreateRequest,
@@ -43,7 +48,6 @@ from aima_ugc.modules.collection.planning import (
     CollectionPlanRecord,
     PlanPlatformDefinition,
 )
-from aima_ugc.modules.collection.scheduled_scopes import build_scheduled_scope_snapshot
 from aima_ugc.modules.collection.scheduler import ScheduleExpressionError
 from aima_ugc.modules.collection.search_config import normalize_search_config
 from aima_ugc.modules.collection.strategy_http import (
@@ -51,6 +55,8 @@ from aima_ugc.modules.collection.strategy_http import (
     CollectionStrategyInvalid,
     CollectionStrategyResourceNotFound,
 )
+from aima_ugc.modules.system.models import AuditEvent
+from aima_ugc.platform.time import beijing_now
 
 from .runtime import PlatformRuntime
 
@@ -86,6 +92,9 @@ class PostgresCollectionStrategyHttpService:
         self,
         pack_id: UUID,
         request: ResourceEnabledRequest,
+        *,
+        actor_ref: str = "system:direct-service-call",
+        request_id: str = "direct-service-call",
     ) -> KeywordPackSummaryResponse:
         session = self._runtime.database.new_session()
         try:
@@ -105,6 +114,15 @@ class PostgresCollectionStrategyHttpService:
                 updated = keywords.set_pack_enabled(pack_id, enabled=request.enabled)
                 if updated is None:  # pragma: no cover - 当前事务持有父记录锁
                     raise CollectionStrategyResourceNotFound
+                _audit_configuration(
+                    session,
+                    actor_ref=actor_ref,
+                    request_id=request_id,
+                    event_type="keyword_pack_enabled_updated",
+                    object_type="keyword_pack",
+                    object_id=str(pack_id),
+                    detail={"enabled": updated.enabled, "version": updated.version},
+                )
                 return KeywordPackSummaryResponse(
                     id=updated.id,
                     name=updated.name,
@@ -116,13 +134,19 @@ class PostgresCollectionStrategyHttpService:
         finally:
             session.close()
 
-    def create_plan(self, request: CollectionPlanCreateRequest) -> CollectionPlanResponse:
+    def create_plan(
+        self,
+        request: CollectionPlanCreateRequest,
+        *,
+        actor_ref: str = "system:direct-service-call",
+        request_id: str = "direct-service-call",
+    ) -> CollectionPlanResponse:
         session = self._runtime.database.new_session()
         try:
             try:
                 with session.begin():
                     repository = PostgresCollectionPlanningRepository(session)
-                    definition = _plan_definition(request)
+                    definition = _plan_definition(request, actor_ref=actor_ref)
                     _validate_execution_surface(
                         session,
                         definition,
@@ -130,6 +154,18 @@ class PostgresCollectionStrategyHttpService:
                         require_explicit_search_config=True,
                     )
                     created = CollectionPlanningService(repository).create_plan(definition)
+                    _audit_configuration(
+                        session,
+                        actor_ref=actor_ref,
+                        request_id=request_id,
+                        event_type="collection_plan_created",
+                        object_type="collection_plan",
+                        object_id=str(created.id),
+                        detail={
+                            "enabled": created.enabled,
+                            "schedule_version": created.schedule_version,
+                        },
+                    )
                     return _plan_response(created)
             except IntegrityError as exc:
                 raise CollectionStrategyConflict("同名 Plan 或关联配置冲突") from exc
@@ -179,6 +215,9 @@ class PostgresCollectionStrategyHttpService:
         self,
         plan_id: UUID,
         request: ResourceEnabledRequest,
+        *,
+        actor_ref: str = "system:direct-service-call",
+        request_id: str = "direct-service-call",
     ) -> CollectionPlanResponse:
         session = self._runtime.database.new_session()
         try:
@@ -197,12 +236,28 @@ class PostgresCollectionStrategyHttpService:
                 updated = repository.set_plan_enabled(plan_id, enabled=request.enabled)
                 if updated is None:  # pragma: no cover - 当前事务持有 Plan 锁
                     raise CollectionStrategyResourceNotFound
+                _audit_configuration(
+                    session,
+                    actor_ref=actor_ref,
+                    request_id=request_id,
+                    event_type="collection_plan_enabled_updated",
+                    object_type="collection_plan",
+                    object_id=str(plan_id),
+                    detail={
+                        "enabled": updated.enabled,
+                        "schedule_version": updated.schedule_version,
+                    },
+                )
                 return _plan_response(updated)
         finally:
             session.close()
 
 
-def _plan_definition(request: CollectionPlanCreateRequest) -> CollectionPlanDefinition:
+def _plan_definition(
+    request: CollectionPlanCreateRequest,
+    *,
+    actor_ref: str,
+) -> CollectionPlanDefinition:
     return CollectionPlanDefinition(
         name=request.name,
         enabled=request.enabled,
@@ -223,6 +278,34 @@ def _plan_definition(request: CollectionPlanCreateRequest) -> CollectionPlanDefi
             for item in request.platforms
         ),
         keyword_pack_ids=request.keyword_pack_ids,
+        vehicle_model_ids=request.vehicle_model_ids,
+    )
+
+
+def _audit_configuration(
+    session: Session,
+    *,
+    actor_ref: str,
+    request_id: str,
+    event_type: str,
+    object_type: str,
+    object_id: str,
+    detail: dict[str, JsonValue],
+) -> None:
+    """在配置写事务内追加不含 Secret 的安全审计摘要。"""
+
+    PostgresAuditRepository(session).append(
+        AuditEvent(
+            id=uuid4(),
+            actor_kind="principal",
+            actor_ref=actor_ref,
+            event_type=event_type,
+            object_type=object_type,
+            object_id=object_id,
+            request_id=request_id,
+            safe_detail=detail,
+            created_at=beijing_now(),
+        )
     )
 
 
@@ -241,20 +324,28 @@ def _validate_execution_surface(
         if not pack.enabled:
             raise CollectionStrategyConflict("Plan 引用的 Discovery 词包已停用")
 
-    try:
-        catalog = PostgresScheduledKeywordSnapshotReader(session).read(plan.keyword_pack_ids)
-    except MissingScheduledKeywordPackError as exc:  # pragma: no cover - 已持锁逐项验证
-        raise CollectionStrategyResourceNotFound from exc
-    scopes = build_scheduled_scope_snapshot(
-        plan_platforms=tuple(item.platform for item in plan.platforms),
-        entries=catalog.entries,
-        keyword_packs=catalog.keyword_packs,
-    ).scopes
-    missing = {item.platform for item in plan.platforms} - {item.platform for item in scopes}
-    if missing:
-        raise CollectionStrategyConflict(
-            f"目标平台没有可用 Discovery 关键词: {', '.join(sorted(missing))}"
+    if plan.keyword_pack_ids:
+        try:
+            catalog = PostgresScheduledKeywordSnapshotReader(session).read(plan.keyword_pack_ids)
+        except MissingScheduledKeywordPackError as exc:  # pragma: no cover - 已持锁逐项验证
+            raise CollectionStrategyResourceNotFound from exc
+        keyword_terms = tuple(
+            dict.fromkeys(
+                entry.keyword_text
+                for entry in catalog.entries
+                if entry.pack_enabled and entry.keyword_enabled and entry.item_enabled
+            )
         )
+    else:
+        keyword_terms = ()
+    try:
+        vehicle_snapshot = PostgresVehicleCatalogRepository(session).snapshot(
+            plan.vehicle_model_ids
+        )
+    except LookupError as exc:
+        raise CollectionStrategyResourceNotFound from exc
+    if not keyword_terms and not vehicle_snapshot.resolved_aliases:
+        raise CollectionStrategyConflict("目标平台没有可用 Discovery 关键词或车型别名")
 
     providers = PostgresProviderConfigRepository(session)
     registry = build_default_provider_registry()
@@ -321,6 +412,7 @@ def _plan_response(record: CollectionPlanRecord) -> CollectionPlanResponse:
             for item in record.platforms
         ),
         keyword_pack_ids=record.keyword_pack_ids,
+        vehicle_model_ids=record.vehicle_model_ids,
         created_at=record.created_at,
         updated_at=record.updated_at,
     )

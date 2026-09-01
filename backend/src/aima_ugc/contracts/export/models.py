@@ -74,6 +74,8 @@ class UnifiedDataExcelContentV1(_ExportBaseModel):
     coin_count: int | None = Field(default=None, ge=0)
     download_count: int | None = Field(default=None, ge=0)
     matched_keywords: tuple[str, ...] = ()
+    vehicles: tuple[str, ...] = ()
+    availability: str | None = Field(default=None, max_length=128)
     analysis: UnifiedDataExcelAnalysisV1 | None = None
     source_provider: str | None = Field(default=None, max_length=64)
     raw_locator: str | None = Field(default=None, max_length=4096)

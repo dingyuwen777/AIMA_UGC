@@ -20,6 +20,9 @@ from aima_ugc.adapters.persistence.postgres.analysis import (
     AnalysisRunConfigurationChanged,
     PostgresAnalysisRepository,
 )
+from aima_ugc.adapters.persistence.postgres.analysis_schemes import (
+    PostgresAnalysisSchemeRepository,
+)
 from aima_ugc.adapters.persistence.postgres.content_queries import (
     PostgresContentQueryRepository,
 )
@@ -42,6 +45,7 @@ from aima_ugc.modules.analysis.content_analysis_job import (
     ContentAnalysisPlanJobPayload,
 )
 from aima_ugc.modules.analysis.persistence import AnalysisConfigurationIdentity, AnalysisWorkItem
+from aima_ugc.modules.analysis.schemes import prompt_taxonomy_from_version
 from aima_ugc.platform.jobs import JobExecutionFence, JobHandlerResult, JobRecord, LeaseLostError
 from aima_ugc.platform.jobs.models import JobExecutionContextProtocol
 from aima_ugc.platform.logging import log_event
@@ -64,7 +68,7 @@ class PostgresContentAnalysisJobExecutor:
         | None = None,
     ) -> None:
         self._runtime = runtime
-        self._service_factory = service_factory or self._default_service
+        self._service_factory = service_factory
 
     def execute(
         self,
@@ -73,10 +77,10 @@ class PostgresContentAnalysisJobExecutor:
         fence: JobExecutionFence,
         context: JobExecutionContextProtocol,
     ) -> JobHandlerResult:
-        try:
-            service, close_service = self._service_factory()
-        except OSError, SecretFileError, ValueError:
-            return JobHandlerResult.failed("analysis_configuration_unavailable")
+        service: ContentLabelingService | None = None
+
+        def close_service() -> None:
+            return None
 
         try:
             while True:
@@ -102,6 +106,16 @@ class PostgresContentAnalysisJobExecutor:
                             "stale": stats["stale"],
                         }
                     )
+                if service is None:
+                    try:
+                        if self._service_factory is None:
+                            service, close_service = self._default_service(
+                                work[0].analysis_run_id
+                            )
+                        else:
+                            service, close_service = self._service_factory()
+                    except (OSError, SecretFileError, ValueError):
+                        return JobHandlerResult.failed("analysis_configuration_unavailable")
                 if not _matches_frozen_configuration(work[0], service):
                     return JobHandlerResult.failed("analysis_run_configuration_changed")
                 if context.cancel_requested():
@@ -156,7 +170,10 @@ class PostgresContentAnalysisJobExecutor:
         finally:
             close_service()
 
-    def _default_service(self) -> tuple[ContentLabelingService, Callable[[], None]]:
+    def _default_service(
+        self,
+        analysis_run_id: UUID,
+    ) -> tuple[ContentLabelingService, Callable[[], None]]:
         settings = self._runtime.settings
         if settings.llm_base_url is None or settings.llm_model is None:
             raise ValueError("正式 Analysis 缺少 LLM base URL 或 model")
@@ -164,7 +181,33 @@ class PostgresContentAnalysisJobExecutor:
             settings.llm_api_key_file,
             root=settings.external_secret_root,
         )
-        taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
+        session = self._runtime.database.new_session()
+        try:
+            with session.begin():
+                run = PostgresAnalysisRepository(session).get_run(analysis_run_id)
+                if run is None:
+                    raise ValueError("Analysis Run 不存在")
+                scheme_version_id = cast(UUID | None, run["analysis_scheme_version_id"])
+                prompt_snapshot = cast(str | None, run["prompt_text_snapshot"])
+                if scheme_version_id is None or prompt_snapshot is None:
+                    taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
+                else:
+                    version = PostgresAnalysisSchemeRepository(session).get_version(
+                        scheme_version_id
+                    )
+                    if version is None:
+                        raise ValueError("Analysis Scheme Version 不存在")
+                    taxonomy = prompt_taxonomy_from_version(version)
+                    if taxonomy.prompt_text != prompt_snapshot:
+                        raise ValueError("Analysis Run Prompt 快照与 Scheme Version 不一致")
+                if (
+                    taxonomy.prompt_version != run["prompt_version"]
+                    or taxonomy.prompt_sha256 != run["prompt_sha256"]
+                    or taxonomy.taxonomy_sha256 != run["taxonomy_sha256"]
+                ):
+                    raise ValueError("Analysis Run 冻结身份与 Prompt 快照不一致")
+        finally:
+            session.close()
         adapter = OpenAICompatibleContentLabelingLLM(
             base_url=settings.llm_base_url,
             api_key=api_key,

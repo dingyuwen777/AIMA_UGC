@@ -46,9 +46,10 @@ class _FakeImportService:
         content_type: str | None,
         source: BytesIO,
         keyword_pack_ids: tuple[UUID, ...],
+        vehicle_model_ids: tuple[UUID, ...] = (),
         request_id: str,
     ) -> ImportBatchCreatedResponse:
-        del filename, content_type, request_id
+        del filename, content_type, request_id, vehicle_model_ids
         self.created_keyword_pack_ids = keyword_pack_ids
         if self.invalid:
             raise InvalidImportFile("坏文件")
@@ -79,13 +80,28 @@ class _FakeImportService:
             created_at=datetime(2026, 8, 20, tzinfo=UTC),
         )
 
-    def create_keyword_pack(self, request: KeywordPackCreateRequest) -> KeywordPackResponse:
+    def create_keyword_pack(
+        self,
+        request: KeywordPackCreateRequest,
+        *,
+        actor_ref: str,
+        request_id: str,
+    ) -> KeywordPackResponse:
+        assert actor_ref == "local-administrator"
+        assert request_id
         return self._pack(request.name, request.description)
 
     def add_keyword(
-        self, pack_id: UUID, request: KeywordPackKeywordCreateRequest
+        self,
+        pack_id: UUID,
+        request: KeywordPackKeywordCreateRequest,
+        *,
+        actor_ref: str,
+        request_id: str,
     ) -> KeywordPackResponse:
         assert pack_id == self.pack_id
+        assert actor_ref == "local-administrator"
+        assert request_id
         return self._pack(
             "全局相关性",
             "",
@@ -105,9 +121,15 @@ class _FakeImportService:
         return self._pack("全局相关性", "")
 
     def set_global_relevance(
-        self, request: GlobalRelevanceConfigRequest
+        self,
+        request: GlobalRelevanceConfigRequest,
+        *,
+        actor_ref: str,
+        request_id: str,
     ) -> GlobalRelevanceConfigResponse:
         assert request.keyword_pack_id == self.pack_id
+        assert actor_ref == "local-administrator"
+        assert request_id
         return self.get_global_relevance()
 
     def get_global_relevance(self) -> GlobalRelevanceConfigResponse:
@@ -254,8 +276,14 @@ def test_keyword_contract_rejects_whitespace_only_values() -> None:
 
 def test_keyword_conflict_uses_stable_error_contract() -> None:
     class ConflictService(_FakeImportService):
-        def create_keyword_pack(self, request: KeywordPackCreateRequest) -> KeywordPackResponse:
-            del request
+        def create_keyword_pack(
+            self,
+            request: KeywordPackCreateRequest,
+            *,
+            actor_ref: str,
+            request_id: str,
+        ) -> KeywordPackResponse:
+            del request, actor_ref, request_id
             raise ImportConflict
 
     response = TestClient(create_app(import_service=ConflictService())).post(

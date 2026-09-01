@@ -14,10 +14,17 @@ from aima_ugc.contracts.http import (
     AnalysisContentRunResponse,
     ContentAnalysisCreatedResponse,
     ContentAnalysisSubmitRequest,
+    ContentAnalysisTaxonomyResponse,
     ContentDetailResponse,
     ContentListQuery,
     ContentListResponse,
     JobStatusResponse,
+)
+from aima_ugc.contracts.product import (
+    ContentAnalysisManualReviewRequest,
+    ContentAnalysisManualReviewResponse,
+    ContentVehicleReviewRequest,
+    ContentVehicleReviewResponse,
 )
 from aima_ugc.contracts.relevance_review import (
     ContentRelevanceReviewRequest,
@@ -55,6 +62,30 @@ class ContentHttpService(Protocol):
     def list_contents(self, query: ContentListQuery) -> ContentListResponse: ...
 
     def get_content(self, content_id: UUID) -> ContentDetailResponse: ...
+
+    def review_vehicles(
+        self,
+        content_id: UUID,
+        request: ContentVehicleReviewRequest,
+        *,
+        request_id: str,
+        actor_ref: str,
+    ) -> ContentVehicleReviewResponse:
+        """人工确认当前内容版本的 0..N 个车型。"""
+
+        ...
+
+    def review_analysis(
+        self,
+        content_id: UUID,
+        request: ContentAnalysisManualReviewRequest,
+        *,
+        request_id: str,
+        actor_ref: str,
+    ) -> ContentAnalysisManualReviewResponse:
+        """人工纠正或解锁当前内容版本的分析维度。"""
+
+        ...
 
     def create_analysis(
         self,
@@ -94,6 +125,11 @@ class ContentHttpService(Protocol):
         *,
         request_id: str,
     ) -> AnalysisContentRunResponse: ...
+
+    def get_analysis_taxonomy(self) -> ContentAnalysisTaxonomyResponse:
+        """读取 active Scheme 的安全 Taxonomy 投影。"""
+
+        ...
 
 
 __all__ = [
