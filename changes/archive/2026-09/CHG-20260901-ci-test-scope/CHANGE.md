@@ -194,5 +194,5 @@ data_changes: []
 - main fresh Runtime：`33502405095` success。
 - main fresh Completion：`33502405343` / job `99838536700` success。
 - 归档分支：`archive/ci-test-scope`。
-- 归档 PR：待创建；归档 PR 合并并完成 archive-merge main fresh validation 后关闭 Issue #282。
+- 归档 PR：#284，当前 open；归档 PR 合并并完成 archive-merge main fresh validation 后关闭 Issue #282。
 - Release / deploy：不适用，本次没有发布或部署动作。
