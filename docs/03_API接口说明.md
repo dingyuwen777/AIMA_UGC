@@ -2,20 +2,16 @@
 
 本文面向前端开发、接口联调和后端开发，说明**当前代码真正注册的 HTTP API、每组接口背后的 Application Service/Job/数据 Owner，以及修改接口时需要同步什么**。
 
-精确机器事实始终以：
+精确机器事实始终以以下当前仓库 Owner 为准：
 
-```text
-backend/src/aima_ugc/contracts/http.py
-backend/src/aima_ugc/contracts/runtime.py
-backend/src/aima_ugc/contracts/relevance_review.py
-backend/src/aima_ugc/bootstrap/api.py
-backend/src/aima_ugc/bootstrap/analysis_capability_http.py
-backend/src/aima_ugc/entrypoints/api_main.py
-contracts/openapi/openapi.json
-frontend/src/generated/api/
-```
-
-为准。
+- [`backend/src/aima_ugc/contracts/http.py`](../backend/src/aima_ugc/contracts/http.py)
+- [`backend/src/aima_ugc/contracts/runtime.py`](../backend/src/aima_ugc/contracts/runtime.py)
+- [`backend/src/aima_ugc/contracts/relevance_review.py`](../backend/src/aima_ugc/contracts/relevance_review.py)
+- [`backend/src/aima_ugc/bootstrap/api.py`](../backend/src/aima_ugc/bootstrap/api.py)
+- [`backend/src/aima_ugc/bootstrap/analysis_capability_http.py`](../backend/src/aima_ugc/bootstrap/analysis_capability_http.py)
+- [`backend/src/aima_ugc/entrypoints/api_main.py`](../backend/src/aima_ugc/entrypoints/api_main.py)
+- [`contracts/openapi/openapi.json`](../contracts/openapi/openapi.json)
+- [`frontend/src/generated/api/`](../frontend/src/generated/api/)
 
 本文不会提前写不存在的 `/alerts`、`/reports` 等未来 URL；接口真正进入最终 FastAPI Assembly + OpenAPI + Test 后，才属于当前 API。
 
@@ -558,7 +554,7 @@ Data Import 目录/Campaign 的分页/游标以其当前 Pydantic Contract 和 `
 → data-exports
 ```
 
-当前后端有兼容 `/content-analysis-requests`、`/import-batches`、`/historical-import-*`，不表示前端要维持平行主入口。
+当前后端有兼容 `/api/v1/content-analysis-requests`、`/api/v1/import-batches`、`/historical-import-*`，不表示前端要维持平行主入口。
 
 后端有 `data-exports` API，但没有独立 `/export` Route；Analysis Run 在 `/voice-plaza`，也没有独立 Analysis 管理 Route。
 

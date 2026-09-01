@@ -248,15 +248,13 @@ POST /api/v1/import-batches
 
 关键代码：
 
-```text
-backend/src/aima_ugc/bootstrap/import_http.py
-backend/src/aima_ugc/bootstrap/import_worker.py
-backend/src/aima_ugc/bootstrap/historical_import_http.py
-backend/src/aima_ugc/bootstrap/historical_import_worker.py
-backend/src/aima_ugc/bootstrap/manual_ingestion.py
-backend/src/aima_ugc/modules/ingestion/
-backend/src/aima_ugc/modules/content/ingestion.py
-```
+- [`backend/src/aima_ugc/bootstrap/import_http.py`](backend/src/aima_ugc/bootstrap/import_http.py)
+- [`backend/src/aima_ugc/bootstrap/import_worker.py`](backend/src/aima_ugc/bootstrap/import_worker.py)
+- [`backend/src/aima_ugc/bootstrap/historical_import_http.py`](backend/src/aima_ugc/bootstrap/historical_import_http.py)
+- [`backend/src/aima_ugc/bootstrap/historical_import_worker.py`](backend/src/aima_ugc/bootstrap/historical_import_worker.py)
+- [`backend/src/aima_ugc/bootstrap/manual_ingestion.py`](backend/src/aima_ugc/bootstrap/manual_ingestion.py)
+- [`backend/src/aima_ugc/modules/ingestion/`](backend/src/aima_ugc/modules/ingestion/)
+- [`backend/src/aima_ugc/modules/content/ingestion.py`](backend/src/aima_ugc/modules/content/ingestion.py)
 
 TikHub 和文件导入在 Canonical/Content Owner 边界收敛，所以最终去重、Current/Version/Metric 和来源追溯不由不同入口各写一套数据库逻辑。
 

@@ -98,7 +98,7 @@ GET /api/v1/import-batches/{batch_id}/supplement-eligibility
 + 存在当前正式 TikHub Runtime 可直接消费的 typed lookup identity
 ```
 
-返回的是每个平台真实 `target_count`；前端据此启用平台按钮，再与 Provider Capability 的 `content_detail/comments/sub_comments` 组合判断。前端不再通过 `GET /contents` 或显式查询 `relevance=irrelevant` 猜测补采资格。
+返回的是每个平台真实 `target_count`；前端据此启用平台按钮，再与 Provider Capability 的 `content_detail/comments/sub_comments` 组合判断。前端不再通过 `GET /api/v1/contents` 或显式查询 `relevance=irrelevant` 猜测补采资格。
 
 来源文章编号、`url_sha256:*`、尚未完成身份收敛的短链/分享链仍可保留为数据库审计 Content，但不因此获得付费补采资格。当前 Analysis identity 下明确 `irrelevant` 的 Content 同样不进入普通 Batch Supplement；旧模型/旧 Prompt 结果为 stale，不永久阻断。
 

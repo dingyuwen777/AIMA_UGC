@@ -34,7 +34,7 @@ POST /api/v1/data-exports
 → XLSX
 → ArtifactService / ArtifactStore
 → Export 关联 Artifact
-→ GET /download
+→ GET /api/v1/data-exports/{export_id}/download
 ```
 
 HTTP：
