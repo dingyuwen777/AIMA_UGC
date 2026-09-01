@@ -90,14 +90,14 @@ data_changes: []
 
 | 验证层 | 状态 | 范围 / 证据 |
 | --- | --- | --- |
-| 行为 / Unit / Component | required | 初始有效 Red：CI `33512788064` / Repository Quality `99872369242` 在格式、ruff、mypy通过后，Unit collection 因 checker 尚不存在而 exit 2；Review finding Red：CI `33515205023` 在 format/ruff/mypy Green 后，仅正文编辑重验测试失败，736 passed / 1 failed；最终实现 HEAD `681526687fe3261c6ce61504efbd45d5d0fd6563` 的 CI `33515853617` 中 Unit 738 passed、Contract 92 passed、API 38 passed |
+| 行为 / Unit / Component | required | 初始有效 Red：CI `33512788064` / Repository Quality `99872369242` 在格式、ruff、mypy通过后，Unit collection 因 checker 尚不存在而 exit 2；Review finding Red：CI `33515205023` 在 format/ruff/mypy Green 后，仅正文编辑重验测试失败，736 passed / 1 failed；实现 HEAD `681526687fe3261c6ce61504efbd45d5d0fd6563` 的 CI `33515853617` 中 Unit 738 passed、Contract 92 passed、API 38 passed；后续提交仅更新本 Change 证据文本，合并前以最新 revision fresh Required Checks 为准 |
 | 接口 / Contract | not_applicable | 不修改产品 public API/ABI/HTTP/Schema/generated Contract；CI `33515853617` 的 generated contract/client drift check 通过 |
-| 集成 / Persistence / Runtime Dependency | required | PR #287 的真实 GitHub Actions event + `GITHUB_TOKEN` + Issues API：实现 HEAD Completion run `33515853402` / job `99882553221` 的 `Verify PR Requirement Source` 成功；当前证据记录提交 `eed4483812b0f5feb22ea4a858617cfc7466e4c4` 只修改本 Change，合并前仍要求该 revision fresh Required Checks |
+| 集成 / Persistence / Runtime Dependency | required | PR #287 的真实 GitHub Actions event + `GITHUB_TOKEN` + Issues API：实现 HEAD Completion run `33515853402` / job `99882553221` 的 `Verify PR Requirement Source` 成功；后续提交仅更新 Change 证据文本，合并前仍要求最新 revision fresh Completion Green |
 | 用户 / Workflow Acceptance | required | PR #287 使用 `Requirement-Source: #286`；Completion Gate 已覆盖 `edited` 事件，PR 正文更新后必须再次真实通过该 Required Check |
-| 跨组件 Golden Path | not_applicable / control-plane regression green | 不修改产品跨组件接线；因 CI-self 变更按保守分类执行，CI `33515853617` 的 Real Full-stack Golden Path 成功；当前只追加 Change 证据文本，不改变实现语义 |
+| 跨组件 Golden Path | not_applicable / control-plane regression green | 不修改产品跨组件接线；因 CI-self 变更按保守分类执行，CI `33515853617` 的 Real Full-stack Golden Path 成功；后续仅改 Change 文本 |
 | 外部依赖 Probe | not_applicable | GitHub Issues API 的真实 CI 调用已作为交付依赖证据；无业务 Provider 现时事实变化，不执行额外付费/外部 Probe |
 | Build / Package / Runtime | not_applicable / regression green | 不修改产品 build/package/runtime；CI `33515853617` 的 Wheel、前端 build、56 个前端 Unit、39 个 Browser Mock Acceptance 均成功；Runtime Acceptance `33515853247` success |
-| Docs / Governance / Other | required | governance wiring、PR Requirement Source、`edited` 重验订阅、Issue Form/PR 模板与 changed PR Ready Check 已在实现 HEAD 证明 Green；证据记录提交需在合并前重新取得当前 revision Required Checks |
+| Docs / Governance / Other | required | governance wiring、PR Requirement Source、`edited` 重验订阅、Issue Form/PR 模板与 changed PR Ready Check 已在实现 HEAD 证明 Green；最新 revision 仍以 fresh Required Checks 为最终交付门禁 |
 
 # Evidence Preservation Mapping
 
@@ -114,7 +114,7 @@ data_changes: []
 - [x] upstream_re_read：Ready 前已重新读取 Issue #286、PR #287 的 Requirement Source、当前 base/head、main Ruleset 与受影响项目事实。
 - [x] change_coverage：Issue #286 的三项用户目标分别映射到 checker/Workflow、Blueprint 06、技术变更 Issue Form，不以 Change checklist 代替上游要求。
 - [x] reverse_audit：从真实 Completion run 反向确认 governance checker、PR source validator、Ready Check 都实际执行；PR 模板和技术变更 Issue Form 已把协作者需要知道的规则放在正式入口；Review 进一步发现并修复了 `edited` 事件缺口。
-- [x] unresolved_cleared：Requirement Traceability 已无 `not_satisfied`；实现 HEAD `681526687fe3261c6ce61504efbd45d5d0fd6563` 的 CI `33515853617`、Completion `33515853402`、Runtime `33515853247` 全部 success；L3 Deep Review 已提交 PR #287 review comment `5078944214`，当前无未解决 review threads。当前证据记录提交只改变 Change 文本，合并前继续以其 fresh Required Checks 为最终交付门禁。
+- [x] unresolved_cleared：Requirement Traceability 已无 `not_satisfied`；实现 HEAD `681526687fe3261c6ce61504efbd45d5d0fd6563` 的 CI `33515853617`、Completion `33515853402`、Runtime `33515853247` 全部 success；L3 Deep Review 已提交 PR #287 review comment `5078944214`，当前无未解决 review threads。后续仅为证据记录文本更新，合并前继续以实际最新 head fresh Required Checks 为准。
 
 # 任务
 
@@ -128,7 +128,7 @@ data_changes: []
 - [x] 完成 targeted docs/governance 验证
 - [x] 修复 Review 发现的 PR body `edited` 后不重验缺口并建立 Red 回归
 - [x] 完成实现 revision L3 Deep Review 与 Required Checks
-- [ ] 证据记录 revision fresh Required Checks、正常 merge、main fresh CI、Change 归档与分支清理
+- [ ] 最新证据记录 revision fresh Required Checks、正常 merge、main fresh CI、Change 归档与分支清理
 
 # 验证证据
 
@@ -151,7 +151,7 @@ data_changes: []
 - L3 Deep Review 绑定实现 HEAD `681526687fe3261c6ce61504efbd45d5d0fd6563` 完成。
 - Review submission：PR #287 review `5078944214`，结论 `NO_FINDINGS_WITHIN_SCOPE`。
 - 审查过程中发现“PR body 编辑后不触发 Requirement Source 重验”问题，已按 Red → Green 修复并在实现 revision re-review；当前 review threads 为空。
-- 当前后续提交只更新本 Change 的交付证据，不修改治理实现；合并前仍需重新确认该实际 head 的 Required Checks、mergeable、base/head 与 review threads。
+- 后续提交只更新本 Change 的交付证据，不修改治理实现；合并前仍需重新确认实际最新 head 的 Required Checks、mergeable、base/head 与 review threads。
 
 # 文档同步
 
@@ -164,5 +164,5 @@ Docs Impact: targeted。只修改承担开发流程长期事实的 `docs/bluepri
 - 实现分支：`chore/pr-requirement-source-governance`。
 - 实现 PR：#287 `治理：补齐 PR 需求追溯与轻量协作规则`。
 - 已审查与完整验证的实现 HEAD：`681526687fe3261c6ce61504efbd45d5d0fd6563`。
-- 证据记录 revision：`eed4483812b0f5feb22ea4a858617cfc7466e4c4`；只修改本 Change，合并前以该 revision fresh Required Checks 为准。
+- 后续证据记录提交只修改本 Change；合并前以实际最新 head 的 fresh Required Checks 为准，不需要对实现重新做第二次代码审查，但必须确认 diff 仅为该 Change 文本。
 - 实现 merge / main fresh CI / archive：待后续实际完成后更新归档事实。
