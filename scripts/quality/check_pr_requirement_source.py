@@ -89,9 +89,7 @@ def _validate_repository_path(source: str, root: Path) -> None:
 
     path = PurePosixPath(source)
     if path.is_absolute() or ".." in path.parts:
-        raise RequirementSourceError(
-            f"Requirement-Source {source!r} 必须是安全的仓库相对路径"
-        )
+        raise RequirementSourceError(f"Requirement-Source {source!r} 必须是安全的仓库相对路径")
 
     root_resolved = root.resolve()
     candidate = (root_resolved / Path(*path.parts)).resolve()
@@ -156,9 +154,13 @@ def _load_github_issue(
             f"GitHub Issues API 返回 HTTP {exc.code}，无法确认 Issue #{number}"
         ) from exc
     except URLError as exc:
-        raise RequirementSourceError(f"GitHub Issues API 访问失败，无法确认 Issue #{number}") from exc
+        raise RequirementSourceError(
+            f"GitHub Issues API 访问失败，无法确认 Issue #{number}"
+        ) from exc
     except (json.JSONDecodeError, OSError) as exc:
-        raise RequirementSourceError(f"GitHub Issues API 响应无法解析，无法确认 Issue #{number}") from exc
+        raise RequirementSourceError(
+            f"GitHub Issues API 响应无法解析，无法确认 Issue #{number}"
+        ) from exc
 
     if not isinstance(payload, dict):
         raise RequirementSourceError(f"GitHub Issues API 响应形状异常，无法确认 Issue #{number}")
