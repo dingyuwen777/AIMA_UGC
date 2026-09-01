@@ -44,9 +44,12 @@ def _minimal_repository(root: Path) -> None:
         "# 文档规则\n\n先遵守根 `AGENTS.md`、当前任务适用的项目事实与文档规则。\n",
     )
     _write(root / ".agents/skills/coding/scripts/ready_check.py", "# 测试夹具\n")
+    _write(root / "scripts/quality/check_pr_requirement_source.py", "# 测试夹具\n")
     _write(
         root / ".github/workflows/change-completion-gate.yml",
+        "permissions:\n  contents: read\n  issues: read\n"
         "python scripts/quality/check_agent_governance.py\n"
+        "python scripts/quality/check_pr_requirement_source.py --event event.json --root .\n"
         "python .agents/skills/coding/scripts/ready_check.py --root .\n",
     )
     _write(
@@ -78,12 +81,31 @@ def _minimal_repository(root: Path) -> None:
         ),
     )
     _write(
+        root / ".github/ISSUE_TEMPLATE/03-technical-change.yml",
+        _minimal_issue_form(
+            (
+                "id: motivation",
+                "id: current_state",
+                "id: target_state",
+                "id: scope",
+                "id: non_goals",
+                "id: compatibility_migration",
+                "id: risks_rollback",
+                "id: acceptance_criteria",
+                "id: validation_plan",
+                "id: upstream_sources",
+            )
+        ),
+    )
+    _write(
         root / ".github/ISSUE_TEMPLATE/config.yml",
         "blank_issues_enabled: false\n",
     )
     _write(
         root / ".github/PULL_REQUEST_TEMPLATE.md",
-        "Requirement-Source: #123\n不要用关闭关键字替代 Requirement-Source。\n",
+        "Requirement-Source: #123\n"
+        "仓库内真实存在的正式文件也可以作为 Requirement Source。\n"
+        "不要用关闭关键字替代 Requirement-Source。\n",
     )
 
 
@@ -217,7 +239,9 @@ def test_checker_requires_ready_check_and_completion_gate_wiring(tmp_path: Path)
     (tmp_path / ".agents/skills/coding/scripts/ready_check.py").unlink()
     _write(
         tmp_path / ".github/workflows/change-completion-gate.yml",
-        "python scripts/quality/check_agent_governance.py\n",
+        "permissions:\n  issues: read\n"
+        "python scripts/quality/check_agent_governance.py\n"
+        "python scripts/quality/check_pr_requirement_source.py\n",
     )
 
     errors = CHECK_REPOSITORY(tmp_path)
@@ -226,15 +250,32 @@ def test_checker_requires_ready_check_and_completion_gate_wiring(tmp_path: Path)
     assert any(error.startswith("GOV007") for error in errors)
 
 
+def test_checker_requires_pr_requirement_source_gate_wiring(tmp_path: Path) -> None:
+    """真实 PR Requirement Source checker、Workflow 调用和最小 Issues 权限必须同时存在。"""
+    _minimal_repository(tmp_path)
+    (tmp_path / "scripts/quality/check_pr_requirement_source.py").unlink()
+    _write(
+        tmp_path / ".github/workflows/change-completion-gate.yml",
+        "python scripts/quality/check_agent_governance.py\n"
+        "python .agents/skills/coding/scripts/ready_check.py --root .\n",
+    )
+
+    errors = CHECK_REPOSITORY(tmp_path)
+
+    source_errors = [error for error in errors if error.startswith("GOV015")]
+    assert len(source_errors) == 3
+
+
 def test_checker_requires_issue_and_pr_requirement_traceability(tmp_path: Path) -> None:
     """多人协作入口缺少 Issue/PR 需求追溯契约时必须被项目治理检查阻止。"""
     _minimal_repository(tmp_path)
     (tmp_path / ".github/ISSUE_TEMPLATE/01-requirement.yml").unlink()
+    (tmp_path / ".github/ISSUE_TEMPLATE/03-technical-change.yml").unlink()
     (tmp_path / ".github/ISSUE_TEMPLATE/config.yml").unlink()
     _write(tmp_path / ".github/PULL_REQUEST_TEMPLATE.md", "# PR\n")
 
     errors = CHECK_REPOSITORY(tmp_path)
 
-    assert any(error.startswith("GOV012") for error in errors)
+    assert len([error for error in errors if error.startswith("GOV012")]) >= 2
     assert any(error.startswith("GOV013") for error in errors)
     assert any(error.startswith("GOV014") for error in errors)
