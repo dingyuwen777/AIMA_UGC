@@ -1,0 +1,52 @@
+name: Temporary Confirmed Docs Fix V2
+
+on:
+  push:
+    branches:
+      - chore/agent-skills-project-governance
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: chore/agent-skills-project-governance
+          fetch-depth: 0
+
+      - name: Apply confirmed documentation fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/fix_docs_confirmed_drift_v2.py
+          git diff --check
+          python3 scripts/quality/check_docs.py
+          python3 scripts/quality/audit_docs_api_paths.py | tee /tmp/api-paths.log
+          grep -Fx 'API_SHORTHAND_COUNT 0' /tmp/api-paths.log
+          python3 scripts/quality/audit_docs_coverage.py | tee /tmp/coverage.log
+          grep -F 'COVERAGE openapi docs/03_API接口说明.md: expected=53 missing=0' /tmp/coverage.log
+          grep -F 'COVERAGE tables docs/blueprint/03_数据库与文件存储.md:' /tmp/coverage.log | grep -F 'missing=0'
+          grep -F 'COVERAGE worker_jobs docs/blueprint/README.md: expected=8 missing=0' /tmp/coverage.log
+          grep -F 'COVERAGE workflows docs/04_测试与调试说明.md: expected=6 missing=0' /tmp/coverage.log
+          python3 scripts/quality/audit_docs_commands.py | tee /tmp/commands.log
+          grep -Fx 'COMMAND_FACT_MISSING_COUNT 0' /tmp/commands.log
+          python3 scripts/quality/audit_docs_paths.py | tee /tmp/paths.log
+
+      - name: Commit confirmed documentation fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'No changes to commit.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add README.md docs backend/src/aima_ugc/platform/reporting/README.md
+          git commit -m '修正文档过期入口与当前 API 覆盖'
+          git push origin HEAD:chore/agent-skills-project-governance
