@@ -576,7 +576,7 @@ AIMA_HOST_ROOT
 源码开发继续使用：
 
 ```text
-[`env.local`](env.local)
+`env.local`
 → scripts/dev/backend.py / frontend.py
 ```
 

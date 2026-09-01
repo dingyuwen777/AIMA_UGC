@@ -35,7 +35,7 @@
 
 # 2. 服务器目录安全边界
 
-源码开发模式直接在 [`env.local`](../../env.local) 配置应用批准根：
+源码开发模式直接在 env.local 配置应用批准根：
 
 ```text
 AIMA_HISTORICAL_IMPORT_ROOT=.runtime/historical-input

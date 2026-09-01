@@ -289,7 +289,7 @@ POST /api/v1/notifications/read
 - [`backend/src/aima_ugc/adapters/persistence/postgres/analysis.py`](../../backend/src/aima_ugc/adapters/persistence/postgres/analysis.py)
 - [`backend/src/aima_ugc/adapters/persistence/postgres/relevance_reviews.py`](../../backend/src/aima_ugc/adapters/persistence/postgres/relevance_reviews.py)
 
-`GET /api/v1/content-analysis-capabilities` 是安全只读运行能力投影，只返回 `configured`。它用于让声音广场在 LLM Base URL / Model / Secret 未形成可执行配置时明确提示并禁用 AI 打标；前端不得读取 [`env.local`](../../env.local)、Secret 文件或复制后端配置判断。源码开发时，能力接口与 Worker 都从 `AIMA_EXTERNAL_SECRET_DIR` 对应的外部 Secret Root 读取 `llm_api_key`，不能误用只存 PostgreSQL/Cursor Secret 的内部 Root。该接口不返回 Base URL、Model、Provider、Secret 路径或 API Key，也不证明外部 LLM 此刻在线；Worker 的执行时配置守卫仍是最终防线。
+`GET /api/v1/content-analysis-capabilities` 是安全只读运行能力投影，只返回 `configured`。它用于让声音广场在 LLM Base URL / Model / Secret 未形成可执行配置时明确提示并禁用 AI 打标；前端不得读取 env.local、Secret 文件或复制后端配置判断。源码开发时，能力接口与 Worker 都从 `AIMA_EXTERNAL_SECRET_DIR` 对应的外部 Secret Root 读取 `llm_api_key`，不能误用只存 PostgreSQL/Cursor Secret 的内部 Root。该接口不返回 Base URL、Model、Provider、Secret 路径或 API Key，也不证明外部 LLM 此刻在线；Worker 的执行时配置守卫仍是最终防线。
 
 `POST /api/v1/content-analysis-requests` 是兼容入口，为保持既有 `request_id/job_id` Response，仍在 HTTP 短事务内冻结目标、创建首个 Shard 并建立 Analysis Run，并兼容历史 selected/query 语义。新页面只允许显式选择 1—1000 条内容：先调用 `/api/v1/analysis/content-runs/preview` 取得目标数、Shard 数和模型/Prompt/配置身份，再由用户确认创建 Run；新版 Preview/Create Contract 不接受 query scope。创建 HTTP 只保存 Run 头与 Planner Job。Planner 在 PostgreSQL 事务内用 `INSERT ... SELECT` 冻结 Content ID + `current_version`，复核 Preview 数量并维持有界 Shard Job 窗口；数量变化时整次冻结回滚，Run 返回 Planner `error_code` 供页面展示。查询范围 Run 要等真实付费模型 Gold Set、费用和容量报告后重新决策。不同 Run 结果全部保留，Current 按 Run 创建顺序选择，最新失败/取消不会抹掉旧成功结果。
 
@@ -469,7 +469,7 @@ Feature Page
 - 修改 `frontend/src/generated/api/`；
 - Feature 直接导入另一个 Feature 的私有 Store；
 - 在页面代码里理解 PostgreSQL 表结构；
-- 直接读取 [`env.local`](../../env.local)、Secret 或复制后端配置规则来判断业务能力。
+- 直接读取 env.local、Secret 或复制后端配置规则来判断业务能力。
 
 如果设计稿字段和后端 Contract 不一致，先判断需求是否要改后端，不要在页面层“猜字段”。
 
