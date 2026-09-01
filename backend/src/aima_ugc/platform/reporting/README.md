@@ -30,21 +30,19 @@ platform/reporting/
 
 | 文件 | 当前职责 | 想改什么时先看 |
 | --- | --- | --- |
-| `excel_report.py` | 读取统一 Workbook、筛选日期、统计平台/情感/议题/关键词、构造 Report Context | 统计口径、报告数据来源、日期筛选 |
-| `report_template.md` | Markdown 正文唯一模板 | 标题、章节顺序、说明文字 |
-| `markdown_word.py` | 解析当前支持的 Markdown/展示元数据并驱动 Word | Markdown → DOCX 转换规则 |
-| `visual_docx.py` | A4 横向页面、KPI、Ranking、表格、组合布局、词云等视觉组件 | Word 排版、页面密度、字号/间距 |
-| `chart_spec.py` | 从 Mermaid/报告数据形成 Office Chart 规格 | bar/line/pie 语义、系列分组 |
-| `chart_png.py` | 需要静态位图的确定性视觉资产 | 词云/PNG 生成边界 |
-| `docx_package.py` | OOXML Chart、关系、内嵌 XLSX、ZIP 包装与结构校验 | Office Chart/OOXML/嵌入工作簿 |
+| [`excel_report.py`](excel_report.py) | 读取统一 Workbook、筛选日期、统计平台/情感/议题/关键词、构造 Report Context | 统计口径、报告数据来源、日期筛选 |
+| [`report_template.md`](report_template.md) | Markdown 正文唯一模板 | 标题、章节顺序、说明文字 |
+| [`markdown_word.py`](markdown_word.py) | 解析当前支持的 Markdown/展示元数据并驱动 Word | Markdown → DOCX 转换规则 |
+| [`visual_docx.py`](visual_docx.py) | A4 横向页面、KPI、Ranking、表格、组合布局、词云等视觉组件 | Word 排版、页面密度、字号/间距 |
+| [`chart_spec.py`](chart_spec.py) | 从 Mermaid/报告数据形成 Office Chart 规格 | bar/line/pie 语义、系列分组 |
+| [`chart_png.py`](chart_png.py) | 需要静态位图的确定性视觉资产 | 词云/PNG 生成边界 |
+| [`docx_package.py`](docx_package.py) | OOXML Chart、关系、内嵌 XLSX、ZIP 包装与结构校验 | Office Chart/OOXML/嵌入工作簿 |
 | `__init__.py` | 对外导出 `generate_excel_report` 等稳定入口 | 调用方入口 |
 
 人工入口：
 
-```text
-backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py
-backend/src/aima_ugc/adapters/providers/imports_test/test.py
-```
+- [`backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py`](../../adapters/providers/imports_test/generate_report.py)
+- [`backend/src/aima_ugc/adapters/providers/imports_test/test.py`](../../adapters/providers/imports_test/test.py)
 
 如果只是改 Word 视觉，通常不应该修改 Canonical、Content Ingestion、AI Prompt 或 PostgreSQL Schema。
 
@@ -74,7 +72,7 @@ reports/assets/primary_topics_wordcloud.png
 reports/assets/keyword_wordcloud.png
 ```
 
-`report_date_range` 是可选的北京时间自然日闭区间，只限制报告统计；传 `None` 时使用 Excel 全部日期。`generate_excel_report()` 默认使用本目录的 `report_template.md`；调用方也可显式传入 `template_path=` 覆盖模板。
+`report_date_range` 是可选的北京时间自然日闭区间，只限制报告统计；传 `None` 时使用 Excel 全部日期。`generate_excel_report()` 默认使用本目录的 [`report_template.md`](report_template.md)；调用方也可显式传入 `template_path=` 覆盖模板。
 
 该函数：
 
@@ -229,11 +227,9 @@ Word 不维护第二套正文。
 
 优先改：
 
-```text
-report_template.md
-```
+- [`report_template.md`](report_template.md)
 
-而不是在 `visual_docx.py` 再写一套正文字符串。
+而不是在 [`visual_docx.py`](visual_docx.py) 再写一套正文字符串。
 
 ---
 
@@ -264,15 +260,11 @@ word/embeddings/chartN.xlsx
 
 精确 OOXML 打包实现：
 
-```text
-docx_package.py
-```
+- [`docx_package.py`](docx_package.py)
 
 图表规格：
 
-```text
-chart_spec.py
-```
+- [`chart_spec.py`](chart_spec.py)
 
 未支持的 Mermaid 类型必须直接失败，不能静默丢图。
 
@@ -317,9 +309,7 @@ Top 重点 Ranking
 
 这些视觉实现主要在：
 
-```text
-visual_docx.py
-```
+- [`visual_docx.py`](visual_docx.py)
 
 ---
 
@@ -418,9 +408,7 @@ docx_package.py
 
 人工入口：
 
-```text
-backend/src/aima_ugc/adapters/providers/imports_test/test.py
-```
+- [`backend/src/aima_ugc/adapters/providers/imports_test/test.py`](../../adapters/providers/imports_test/test.py)
 
 当前 `run_all()` 人工链：
 

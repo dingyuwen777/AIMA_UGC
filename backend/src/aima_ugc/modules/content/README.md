@@ -39,7 +39,7 @@ backend/src/aima_ugc/modules/content/
 └─ source_constraints.py
 ```
 
-### `ingestion.py`
+### [`ingestion.py`](ingestion.py)
 
 领域摄取入口：
 
@@ -65,7 +65,7 @@ comment_metric_observations
 comment_coverage_observations
 ```
 
-### `extended_tables.py`
+### [`extended_tables.py`](extended_tables.py)
 
 内容/评论扩展实体和关系，例如：
 
@@ -84,7 +84,7 @@ thread coverage
 
 定义 Provider-neutral Content Read Model，不写 SQL。
 
-### `content_cursor.py`
+### [`content_cursor.py`](content_cursor.py)
 
 声音广场 Content 列表 Cursor 编解码和 query-hash 绑定。
 
@@ -106,23 +106,17 @@ backend/src/aima_ugc/adapters/persistence/postgres/
 
 Collection 调 Content Owner 的边界：
 
-```text
-collection_content.py
-```
+- [`collection_content.py`](../../adapters/persistence/postgres/collection_content.py)
 
 Content 查询：
 
-```text
-content_queries.py
-```
+- [`content_queries.py`](../../adapters/persistence/postgres/content_queries.py)
 
 生产装配：
 
-```text
-backend/src/aima_ugc/bootstrap/collection_scope.py
-backend/src/aima_ugc/bootstrap/manual_ingestion.py
-backend/src/aima_ugc/bootstrap/content_http.py
-```
+- [`backend/src/aima_ugc/bootstrap/collection_scope.py`](../../bootstrap/collection_scope.py)
+- [`backend/src/aima_ugc/bootstrap/manual_ingestion.py`](../../bootstrap/manual_ingestion.py)
+- [`backend/src/aima_ugc/bootstrap/content_http.py`](../../bootstrap/content_http.py)
 
 如果看到 Provider/Router 直接 `INSERT INTO contents`，就违反了当前 Owner 边界。
 
@@ -409,9 +403,7 @@ comment_thread_coverage_observations
 
 生产查询：
 
-```text
-backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
-```
+- [`backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py`](../../adapters/persistence/postgres/content_queries.py)
 
 它会组合：
 
@@ -425,9 +417,7 @@ Content Current
 
 列表 Application Service：
 
-```text
-backend/src/aima_ugc/bootstrap/content_http.py
-```
+- [`backend/src/aima_ugc/bootstrap/content_http.py`](../../bootstrap/content_http.py)
 
 ### 当前 Analysis 状态
 
@@ -473,9 +463,7 @@ Content 列表/详情是这个模块的 Read Model；Analysis 写入仍归 Analy
 
 精确 HTTP Contract：
 
-```text
-backend/src/aima_ugc/contracts/http.py
-```
+- [`backend/src/aima_ugc/contracts/http.py`](../../contracts/http.py)
 
 ---
 
@@ -485,10 +473,8 @@ backend/src/aima_ugc/contracts/http.py
 
 代码：
 
-```text
-content_cursor.py
-bootstrap/content_http.py
-```
+- [`content_cursor.py`](content_cursor.py)
+- [`bootstrap/content_http.py`](../../bootstrap/content_http.py)
 
 Application Service 会对：
 

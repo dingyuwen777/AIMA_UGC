@@ -2,15 +2,15 @@
 
 本文说明在 Windows 开发机上，不进入 WSL 终端，直接从 CMD 或 PowerShell 使用标准 Docker Compose CLI 启动、停止和维护 AIMA_UGC 的完整 Docker Runtime。
 
-它不是 Production 部署文档。公司 Linux 服务器与完整 Production 仍以 `docs/02_环境运行与部署.md`、`docs/roadmap/02_生产上线实施路线.md`、`docs/appendix/11_生产部署与离线Release方案.md` 为准。
+它不是 Production 部署文档。公司 Linux 服务器与完整 Production 仍以 [`docs/02_环境运行与部署.md`](../02_环境运行与部署.md)、[`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md)、[`docs/appendix/11_生产部署与离线Release方案.md`](../appendix/11_生产部署与离线Release方案.md) 为准。
 
 Docker Hub mirrors、构建期包源、缓存和项目级重置见 [`04_Docker国内构建源与本地重置.md`](04_Docker国内构建源与本地重置.md)。
 
 ---
 
-## 1. 为什么 Windows 仍需要 `compose.windows.yaml`
+## 1. 为什么 Windows 仍需要 [`compose.windows.yaml`](../../compose.windows.yaml)
 
-根 `compose.yaml` 面向 Linux/WSL/公司服务器，bootstrap 会为 PostgreSQL、应用目录和内部 Secret 固定 Linux UID/GID 与 mode。
+根 [`compose.yaml`](../../compose.yaml) 面向 Linux/WSL/公司服务器，bootstrap 会为 PostgreSQL、应用目录和内部 Secret 固定 Linux UID/GID 与 mode。
 
 Windows Docker Desktop 虽然运行 Linux 容器，但 Windows/NTFS 文件共享层不等于 Linux 原生文件系统。数据库和内部 Secret 不为了桌面兼容而放宽 Linux 权限门禁；另一方面，Artifact 和应用 `.log` 属于开发时需要直接查看的普通文件，不需要隐藏在 Docker volume 中。
 
@@ -24,7 +24,7 @@ compose.yaml
 → PostgreSQL / 内部 Secret：Docker-managed named volumes
 ```
 
-`compose.windows.yaml` 只覆盖 storage source 和 bootstrap 对 Windows bind 目录的权限适配；API、Worker、Scheduler、Migration、PostgreSQL 版本、Health、端口、网络、外部 Secret 和业务配置仍来自根 `compose.yaml`。
+[`compose.windows.yaml`](../../compose.windows.yaml) 只覆盖 storage source 和 bootstrap 对 Windows bind 目录的权限适配；API、Worker、Scheduler、Migration、PostgreSQL 版本、Health、端口、网络、外部 Secret 和业务配置仍来自根 [`compose.yaml`](../../compose.yaml)。
 
 ---
 
@@ -37,15 +37,11 @@ compose.yaml
 
 首次准备环境运行：
 
-```cmd
-scripts\setup_dev_environment.cmd
-```
+- [`scripts/setup_dev_environment.cmd`](../../scripts/setup_dev_environment.cmd)
 
 Docker Hub mirror 列表的唯一仓库配置源是：
 
-```text
-scripts/config/docker_hub_mirrors.txt
-```
+- [`scripts/config/docker_hub_mirrors.txt`](../../scripts/config/docker_hub_mirrors.txt)
 
 该文件每个非空、非 `#` 注释行表示一个 HTTPS mirror，文件顺序就是 AIMA 管理的 mirror 顺序。Windows 和 Linux 环境初始化都读取这一份配置；增删或调整 AIMA mirror 顺序只修改该文件。
 
@@ -87,9 +83,7 @@ docker info
 
 仓库提交：
 
-```text
-env.production.example
-```
+- [`env.production.example`](../../env.production.example)
 
 本机真实文件：
 
@@ -341,7 +335,7 @@ docker system prune -a --volumes
 
 ## 10. WSL2 模式
 
-如果仓库位于 WSL2 Linux 文件系统并从 WSL shell 运行 Compose，可直接使用根 `compose.yaml`：
+如果仓库位于 WSL2 Linux 文件系统并从 WSL shell 运行 Compose，可直接使用根 [`compose.yaml`](../../compose.yaml)：
 
 ```dotenv
 AIMA_HOST_ROOT=./.runtime/compose
@@ -392,15 +386,13 @@ Windows 混合存储 override 只属于开发机存储适配，不改变 Product
 2. Linux Docker Engine 实际运行 Windows merged hybrid Runtime model，验证 bootstrap、PostgreSQL、Migration、Readiness、Artifact/日志 bind mount、宿主文件可见性、Secret mode 和重启持久化；
 3. `down -v` 后宿主 Artifact/日志仍保留，而 PostgreSQL/内部 Secret 继续属于 named-volume 生命周期；
 4. Dockerfile / Compose 的镜像 identity 与包源配置由仓库单元测试约束；
-5. Windows GitHub Runner 直接加载 `configure_docker_desktop_mirrors.ps1`，验证“存在额外有效 mirrors 仍成功、缺少 AIMA mirror 失败、AIMA 相对顺序错误失败、daemon.json 继续精确受 AIMA 管理”；真实 Docker Desktop 应用结果由初始化脚本自身的有界 `docker info` probe 确认。
+5. Windows GitHub Runner 直接加载 [`configure_docker_desktop_mirrors.ps1`](../../scripts/dev/configure_docker_desktop_mirrors.ps1)，验证“存在额外有效 mirrors 仍成功、缺少 AIMA mirror 失败、AIMA 相对顺序错误失败、daemon.json 继续精确受 AIMA 管理”；真实 Docker Desktop 应用结果由初始化脚本自身的有界 `docker info` probe 确认。
 
 GitHub Hosted Windows Runner 本身不提供当前仓库可依赖的 Docker Desktop Linux-container Runtime，因此永久 CI 的真实容器 Golden Path 由 Ubuntu Docker Engine 验证 merged Compose 语义；具体开发机首次使用仍需要本机 smoke。
 
 真实 Windows Docker Desktop 首次初始化运行：
 
-```cmd
-scripts\setup_dev_environment.cmd
-```
+- [`scripts/setup_dev_environment.cmd`](../../scripts/setup_dev_environment.cmd)
 
 随后：
 

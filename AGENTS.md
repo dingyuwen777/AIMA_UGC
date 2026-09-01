@@ -28,7 +28,7 @@
 ## 项目治理校准状态
 
 - 状态：已校准（2026-09-01）。后续只在长期规则或项目事实发生实际变化时做有证据的定向修正，不用普通功能任务重写整份文件。
-- 本次校准依据：当前 `AGENTS.md`、根与模块 README、`docs/blueprint/`、`docs/roadmap/`、`docs/appendix/`、`docs/guides/`、Manifest/lock/版本文件、真实入口与模块实现、Pydantic Contract、生成 OpenAPI/JSON Schema、`database_schema.py`、Alembic Migration、后端/前端测试、GitHub Actions、Dockerfile、Compose 和 Release 配置。
+- 本次校准依据：当前 `AGENTS.md`、根与模块 README、`docs/blueprint/`、`docs/roadmap/`、`docs/appendix/`、`docs/guides/`、Manifest/lock/版本文件、真实入口与模块实现、Pydantic Contract、生成 OpenAPI/JSON Schema、[`database_schema.py`](backend/src/aima_ugc/database_schema.py)、Alembic Migration、后端/前端测试、GitHub Actions、Dockerfile、Compose 和 Release 配置。
 - 当前仓库未发现 `CONTRIBUTING*`、独立 RFC/ADR/PRD/Spec 目录或 `openspec/`；是否存在并行施工单元只以 `changes/active/` 当前真实内容为准，不在本文件复制易失效列表。
 
 ## 规则、事实和未确认事项的边界
@@ -52,7 +52,7 @@
 
 ## 治理校准后的项目边界
 
-- Worker 持久 Job 的精确注册以 `backend/src/aima_ugc/bootstrap/worker.py` 为机器事实；当前正式架构文档已经同步八种 Job，不再保留旧四项摘要。
+- Worker 持久 Job 的精确注册以 [`backend/src/aima_ugc/bootstrap/worker.py`](backend/src/aima_ugc/bootstrap/worker.py) 为机器事实；当前正式架构文档已经同步八种 Job，不再保留旧四项摘要。
 - 当前正式项目文档只维护 AIMA 自己的架构、Contract、Schema、测试、CI、部署和开发导航；通用研发治理规则通过上方项目研发治理入口取得，不在 AIMA 文档树复制 canonical Reference 路径或正文。
 - 永久 CI 只验证 AIMA 自己可维护的项目治理接线、文档/Secret、Change Ready 和产品质量；通用治理能力自身的源码回归由其 canonical Owner 负责，不复制到业务仓库。
 - 当前已安装的受管治理运行资产继续由正式安装/升级流程维护。普通 AIMA 业务开发不手工迁移、删除或重写这些受管文件；未来版本升级作为独立治理动作执行。
@@ -63,9 +63,9 @@
 
 1. 先读本文件；
 2. 按上方“项目研发治理入口”执行当前任务需要的通用研发约束；AIMA 项目规则和当前机器事实始终继续生效，受管运行资产不作为项目自有长期事实源直接维护；
-3. 再读 `docs/blueprint/README.md` 和 `docs/blueprint/07_技术决策与实施门禁.md`；
-4. 如果任务涉及“下一阶段做什么”、生产部署、认证、Release、Backup/Restore、回滚或旧数据迁移，必须再读 `docs/roadmap/02_生产上线实施路线.md`；
-5. 如果需要快速找到真实代码入口，读 `docs/01_代码结构与修改导航.md`；
+3. 再读 [`docs/blueprint/README.md`](docs/blueprint/README.md) 和 [`docs/blueprint/07_技术决策与实施门禁.md`](docs/blueprint/07_技术决策与实施门禁.md)；
+4. 如果任务涉及“下一阶段做什么”、生产部署、认证、Release、Backup/Restore、回滚或旧数据迁移，必须再读 [`docs/roadmap/02_生产上线实施路线.md`](docs/roadmap/02_生产上线实施路线.md)；
+5. 如果需要快速找到真实代码入口，读 [`docs/01_代码结构与修改导航.md`](docs/01_代码结构与修改导航.md)；
 6. 按任务读取对应 Blueprint、Roadmap、Appendix/Guide、模块 README、Contract、Migration、依赖、实现和测试；
 7. 只读取与任务直接相关的内容，不用“全仓全部读一遍”代替真正理解调用链；
 8. 能从仓库确认的事实先自行确认；
@@ -76,26 +76,26 @@
 
 | 任务 | 先读 |
 | --- | --- |
-| 不知道代码在哪、准备实际修改 | `docs/01_代码结构与修改导航.md` |
-| 总体架构/模块边界 | `docs/blueprint/01_总体架构与技术选型.md` |
-| Provider、Raw、Mapper、Canonical、Ingestion | `docs/blueprint/02_采集系统与数据标准化.md` |
-| PostgreSQL、Schema、Migration、Artifact | `docs/blueprint/03_数据库与文件存储.md`；需要直接 SQL 时再读 `docs/appendix/01_PostgreSQL查询与调试实战.md` |
-| API、Job、Worker、前端 | `docs/blueprint/04_后端任务API与前端.md` |
-| 日志、安全、运行边界 | `docs/blueprint/05_日志安全部署与运维.md` |
-| 当前开发环境怎么运行 | `docs/02_环境运行与部署.md` |
-| 下一阶段、生产上线、Release/Backup/回滚 | `docs/roadmap/02_生产上线实施路线.md` + `docs/appendix/11_生产部署与离线Release方案.md` |
-| 开发/测试/CI/Git | `docs/blueprint/06_开发约束与分阶段实施.md` |
-| 用户可见行为/前后端/Full-stack/Provider 测试分层 | `docs/blueprint/06_开发约束与分阶段实施.md` + 按上方项目研发治理入口取得当前分层验证规则 |
-| 重大跨模块决定 | `docs/blueprint/07_技术决策与实施门禁.md` |
-| Collection Plan、Capability、Decision、评论 | `docs/blueprint/08_采集策略与平台能力.md` + `docs/collection/README.md` |
-| Scheduler 运行/停机恢复 | `docs/appendix/05_Scheduler调度执行与停机恢复.md` |
-| TikHub 真实字段/Mapper | `docs/appendix/02_TikHub五平台真实响应与字段映射.md` + 目标平台文档 |
-| TikHub API family / 备用接口 | `docs/appendix/03_TikHub多接口验证与备用策略.md`、`docs/appendix/04_TikHub接口选型与真实验证台账.md` |
-| Excel 导入/统一入库 | `docs/appendix/08_数据入口与统一入库实现.md` |
-| Excel 数据明细导出/离线调试 | `docs/appendix/06_Excel统一数据导出与离线调试.md` |
-| AI 相关性/发声类型/情感/标签 | `docs/appendix/07_AI舆情打标与分析实现.md` + `backend/src/aima_ugc/modules/analysis/README.md` + 当前 Prompt |
-| Word 舆情报告 | `docs/appendix/10_Word舆情报告生成与排版实现.md` + `backend/src/aima_ugc/platform/reporting/README.md` |
-| Figma / Design-to-Code | `docs/guides/01_Figma与前端设计开发工作流.md` + `docs/blueprint/04_后端任务API与前端.md` |
+| 不知道代码在哪、准备实际修改 | [`docs/01_代码结构与修改导航.md`](docs/01_代码结构与修改导航.md) |
+| 总体架构/模块边界 | [`docs/blueprint/01_总体架构与技术选型.md`](docs/blueprint/01_总体架构与技术选型.md) |
+| Provider、Raw、Mapper、Canonical、Ingestion | [`docs/blueprint/02_采集系统与数据标准化.md`](docs/blueprint/02_采集系统与数据标准化.md) |
+| PostgreSQL、Schema、Migration、Artifact | [`docs/blueprint/03_数据库与文件存储.md`](docs/blueprint/03_数据库与文件存储.md)；需要直接 SQL 时再读 [`docs/appendix/01_PostgreSQL查询与调试实战.md`](docs/appendix/01_PostgreSQL查询与调试实战.md) |
+| API、Job、Worker、前端 | [`docs/blueprint/04_后端任务API与前端.md`](docs/blueprint/04_后端任务API与前端.md) |
+| 日志、安全、运行边界 | [`docs/blueprint/05_日志安全部署与运维.md`](docs/blueprint/05_日志安全部署与运维.md) |
+| 当前开发环境怎么运行 | [`docs/02_环境运行与部署.md`](docs/02_环境运行与部署.md) |
+| 下一阶段、生产上线、Release/Backup/回滚 | [`docs/roadmap/02_生产上线实施路线.md`](docs/roadmap/02_生产上线实施路线.md) + [`docs/appendix/11_生产部署与离线Release方案.md`](docs/appendix/11_生产部署与离线Release方案.md) |
+| 开发/测试/CI/Git | [`docs/blueprint/06_开发约束与分阶段实施.md`](docs/blueprint/06_开发约束与分阶段实施.md) |
+| 用户可见行为/前后端/Full-stack/Provider 测试分层 | [`docs/blueprint/06_开发约束与分阶段实施.md`](docs/blueprint/06_开发约束与分阶段实施.md) + 按上方项目研发治理入口取得当前分层验证规则 |
+| 重大跨模块决定 | [`docs/blueprint/07_技术决策与实施门禁.md`](docs/blueprint/07_技术决策与实施门禁.md) |
+| Collection Plan、Capability、Decision、评论 | [`docs/blueprint/08_采集策略与平台能力.md`](docs/blueprint/08_采集策略与平台能力.md) + [`docs/collection/README.md`](docs/collection/README.md) |
+| Scheduler 运行/停机恢复 | [`docs/appendix/05_Scheduler调度执行与停机恢复.md`](docs/appendix/05_Scheduler调度执行与停机恢复.md) |
+| TikHub 真实字段/Mapper | [`docs/appendix/02_TikHub五平台真实响应与字段映射.md`](docs/appendix/02_TikHub五平台真实响应与字段映射.md) + 目标平台文档 |
+| TikHub API family / 备用接口 | [`docs/appendix/03_TikHub多接口验证与备用策略.md`](docs/appendix/03_TikHub多接口验证与备用策略.md)、[`docs/appendix/04_TikHub接口选型与真实验证台账.md`](docs/appendix/04_TikHub接口选型与真实验证台账.md) |
+| Excel 导入/统一入库 | [`docs/appendix/08_数据入口与统一入库实现.md`](docs/appendix/08_数据入口与统一入库实现.md) |
+| Excel 数据明细导出/离线调试 | [`docs/appendix/06_Excel统一数据导出与离线调试.md`](docs/appendix/06_Excel统一数据导出与离线调试.md) |
+| AI 相关性/发声类型/情感/标签 | [`docs/appendix/07_AI舆情打标与分析实现.md`](docs/appendix/07_AI舆情打标与分析实现.md) + [`backend/src/aima_ugc/modules/analysis/README.md`](backend/src/aima_ugc/modules/analysis/README.md) + 当前 Prompt |
+| Word 舆情报告 | [`docs/appendix/10_Word舆情报告生成与排版实现.md`](docs/appendix/10_Word舆情报告生成与排版实现.md) + [`backend/src/aima_ugc/platform/reporting/README.md`](backend/src/aima_ugc/platform/reporting/README.md) |
+| Figma / Design-to-Code | [`docs/guides/01_Figma与前端设计开发工作流.md`](docs/guides/01_Figma与前端设计开发工作流.md) + [`docs/blueprint/04_后端任务API与前端.md`](docs/blueprint/04_后端任务API与前端.md) |
 
 任务开始时按当前治理规则判定 L1–L3。L2/L3 先写计划并创建/认领要求的 Change。仓库存在 `openspec/` 后，涉及新能力、行为、数据、接口、架构或安全变化的任务必须按当前 OpenSpec 规则更新对应 change 并通过校验；纯机械文档/格式任务按当前治理规则的例外处理。不得自行创建与 OpenSpec 工具产物冲突的平行目录。
 
@@ -147,15 +147,15 @@ python .agents/skills/coding/scripts/ready_check.py --root . --require-active-re
 - PostgreSQL 持久化 Job；
 - Local ArtifactStore 默认实现，可在真实需要时替换 S3；
 - 应用 `.log` 为主要人工排障日志，Docker stdout/stderr 为辅助；
-- Docker Compose 离线 Release 是长期部署方向。Internal V1-A 已提供根 `Dockerfile`、`compose.yaml` 与最小可部署容器基础；当前 `.github/workflows/release.yml` 已建立 Linux/AMD64 Backend/Frontend + 固定 PostgreSQL 的离线 `images.tar`、Release/Migration Manifest、`SHA256SUMS`、`DEPLOY.md`、no-build/no-pull 回放以及正式 GHCR digest/Tag/GitHub Release 基础；完整 Production 仍缺 SBOM/独立签名/完整 provenance、协调 Backup-Restore、正式服务器 Deploy/Rollback、认证授权/HTTPS 和完整生产验收。
+- Docker Compose 离线 Release 是长期部署方向。Internal V1-A 已提供根 [`Dockerfile`](Dockerfile)、[`compose.yaml`](compose.yaml) 与最小可部署容器基础；当前 [`.github/workflows/release.yml`](.github/workflows/release.yml) 已建立 Linux/AMD64 Backend/Frontend + 固定 PostgreSQL 的离线 `images.tar`、Release/Migration Manifest、`SHA256SUMS`、`DEPLOY.md`、no-build/no-pull 回放以及正式 GHCR digest/Tag/GitHub Release 基础；完整 Production 仍缺 SBOM/独立签名/完整 provenance、协调 Backup-Restore、正式服务器 Deploy/Rollback、认证授权/HTTPS 和完整生产验收。
 
-采用方案 A：仓库根目录是唯一 Python/uv 工程根，保存 `pyproject.toml`、`uv.lock`、`.python-version`、`tests/`、`scripts/` 和 `migrations/`；源码在 `backend/src/aima_ugc/`。禁止创建 `backend/pyproject.toml`、`backend/uv.lock`、`backend/tests/` 或用 `uv --project backend` 形成第二套命令。
+采用方案 A：仓库根目录是唯一 Python/uv 工程根，保存 [`pyproject.toml`](pyproject.toml)、[`uv.lock`](uv.lock)、[`.python-version`](.python-version)、`tests/`、`scripts/` 和 `migrations/`；源码在 `backend/src/aima_ugc/`。禁止创建 `backend/pyproject.toml`、`backend/uv.lock`、`backend/tests/` 或用 `uv --project backend` 形成第二套命令。
 
-Internal V1-A 已在仓库根建立唯一 `Dockerfile` 与 `compose.yaml`，Docker build context 继续固定在仓库根；后端/前端通过不同 target 构建，不把 `backend/` 或 `frontend/` 当独立 context。当前 Release Workflow 已经实现离线 Bundle、镜像身份/Manifest 和离线回放基础，但**不能把这些基础写成完整 Production Go-Live**；剩余 Production 强化仍由后续独立 Change 完成。
+Internal V1-A 已在仓库根建立唯一 [`Dockerfile`](Dockerfile) 与 [`compose.yaml`](compose.yaml)，Docker build context 继续固定在仓库根；后端/前端通过不同 target 构建，不把 `backend/` 或 `frontend/` 当独立 context。当前 Release Workflow 已经实现离线 Bundle、镜像身份/Manifest 和离线回放基础，但**不能把这些基础写成完整 Production Go-Live**；剩余 Production 强化仍由后续独立 Change 完成。
 
 打包问题必须修根因：禁止用临时 `PYTHONPATH`、改变工作目录、修改 `sys.path` 或先删除产物来掩盖 package discovery/构建配置问题。
 
-版本政策：精确版本以 `.python-version`、`.node-version`、`.uv-version`、`uv.lock`、`package-lock.json` 和镜像/Release 锁定事实为准。禁止运行时或构建时解析 `latest`，禁止因为发现新版本就在普通功能任务里升级；升级是独立任务，必须核验官方发布、兼容/安全影响并执行完整门禁。
+版本政策：精确版本以 [`.python-version`](.python-version)、[`.node-version`](.node-version)、[`.uv-version`](.uv-version)、[`uv.lock`](uv.lock)、[`package-lock.json`](frontend/package-lock.json) 和镜像/Release 锁定事实为准。禁止运行时或构建时解析 `latest`，禁止因为发现新版本就在普通功能任务里升级；升级是独立任务，必须核验官方发布、兼容/安全影响并执行完整门禁。
 
 没有实际问题证据不得主动引入微服务、Redis、Kafka、RabbitMQ、MongoDB、OpenSearch、Kubernetes 或多数据库兼容层。
 
@@ -330,11 +330,11 @@ PostgreSQL
 
 生成目录禁止手工修改。Contract 删除字段、改名、改类型、改语义、可选变必填、改默认排序或错误都按破坏性变化处理。
 
-AI taxonomy 不允许在 Python、Blueprint、Excel 文档和前端各维护一份平行列表；当前唯一业务事实源是 `backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md`。
+AI taxonomy 不允许在 Python、Blueprint、Excel 文档和前端各维护一份平行列表；当前唯一业务事实源是 [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md`](backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md)。
 
 ## 9. Job、Scheduler 与 Provider 恢复
 
-当前 Worker 实际注册的持久长任务以 `backend/src/aima_ugc/bootstrap/worker.py` 为准。当前机器事实包括：
+当前 Worker 实际注册的持久长任务以 [`backend/src/aima_ugc/bootstrap/worker.py`](backend/src/aima_ugc/bootstrap/worker.py) 为准。当前机器事实包括：
 
 ```text
 collection.run.v1
@@ -515,10 +515,10 @@ uv run python scripts/quality/check_agent_governance.py
 
 ## 13. 依赖
 
-- 精确依赖版本以实际版本文件、`uv.lock`、`package-lock.json` 和镜像/Release 锁定事实为准，Blueprint 不维护第二份 patch 版本表；
-- Python 依赖只改 `pyproject.toml`，同步 `uv.lock`；
+- 精确依赖版本以实际版本文件、[`uv.lock`](uv.lock)、[`package-lock.json`](frontend/package-lock.json) 和镜像/Release 锁定事实为准，Blueprint 不维护第二份 patch 版本表；
+- Python 依赖只改 [`pyproject.toml`](pyproject.toml)，同步 [`uv.lock`](uv.lock)；
 - CI 使用 `uv sync --locked`；
-- Frontend 提交 `package-lock.json`，CI 使用 `npm ci`；
+- Frontend 提交 [`package-lock.json`](frontend/package-lock.json)，CI 使用 `npm ci`；
 - 不同时使用多个包管理器；
 - 普通功能不升级依赖；
 - 新增依赖说明必要性、许可证、维护、体积和替代方案；
@@ -558,7 +558,7 @@ changes/archive/
 → 历史为什么改过、已完成阶段/Change 的当时验证证据
 ```
 
-核心 Blueprint 的数量、文件名和编号范围不在本规则写死；以 `docs/blueprint/` 当前实际文件集合、`docs/blueprint/README.md` 和 `docs/AGENTS.md` 为准。当前已有稳定编号不得为了插入新主题静默重排。新增主题先判断应该进入现有核心 Blueprint、Roadmap、Appendix、Guide 还是模块 README；只有确实形成新的核心长期领域时才新增 Blueprint，避免把阶段性实现说明无限堆进核心长期架构目录。
+核心 Blueprint 的数量、文件名和编号范围不在本规则写死；以 `docs/blueprint/` 当前实际文件集合、[`docs/blueprint/README.md`](docs/blueprint/README.md) 和 [`docs/AGENTS.md`](docs/AGENTS.md) 为准。当前已有稳定编号不得为了插入新主题静默重排。新增主题先判断应该进入现有核心 Blueprint、Roadmap、Appendix、Guide 还是模块 README；只有确实形成新的核心长期领域时才新增 Blueprint，避免把阶段性实现说明无限堆进核心长期架构目录。
 
 未完成但仍批准的 Stage/生产设计不能因为当前代码不存在而删掉；必须放在 `docs/roadmap/` 或当前适用的核心长期设计中，并明确“待实现”。历史方案若被后续正式决策替代，则保留演进说明并明确“禁止照旧实现”。
 
@@ -656,7 +656,7 @@ revert/
 
 复杂任务先执行上游 Requirement Completeness Review，再检查当前 Change 的需求符合性，最后检查代码质量。严重和重要问题未解决不得合并。
 
-对 `completion_gate: required` 的 Change，`ready_for_review` 前必须完成 Requirement Traceability、Validation Matrix、Completion Audit，并取得 `ready_check.py` 与 CI 的机器门禁证据。测试或 CI 绿色不能单独证明正式 Stage / Roadmap 单元完成；某一测试层绿色也不能替代另一层独立风险的验证。
+对 `completion_gate: required` 的 Change，`ready_for_review` 前必须完成 Requirement Traceability、Validation Matrix、Completion Audit，并取得 [`ready_check.py`](.agents/skills/coding/scripts/ready_check.py) 与 CI 的机器门禁证据。测试或 CI 绿色不能单独证明正式 Stage / Roadmap 单元完成；某一测试层绿色也不能替代另一层独立风险的验证。
 
 完成结论必须有本轮实际证据。交付至少报告：
 

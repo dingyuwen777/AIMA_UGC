@@ -64,9 +64,7 @@ voice_type == "真实用户发声"
 
 ## 2. Prompt / Taxonomy 唯一事实源
 
-```text
-backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md
-```
+- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md`](prompts/content_labeling_v3.md)
 
 完整情感、发声类型、9 个一级/39 个二级标签及其父子关系，以及自然语言判断标准、边界和学习示例，只维护在这份 Prompt Markdown。
 
@@ -134,16 +132,12 @@ content_labeling.py
 
 ### Contract
 
-```text
-backend/src/aima_ugc/contracts/analysis/content_label.py
-backend/src/aima_ugc/contracts/analysis/content_record.py
-```
+- [`backend/src/aima_ugc/contracts/analysis/content_label.py`](../../contracts/analysis/content_label.py)
+- [`backend/src/aima_ugc/contracts/analysis/content_record.py`](../../contracts/analysis/content_record.py)
 
 ### Service / Validator
 
-```text
-backend/src/aima_ugc/modules/analysis/content_labeling.py
-```
+- [`backend/src/aima_ugc/modules/analysis/content_labeling.py`](content_labeling.py)
 
 核心：
 
@@ -157,9 +151,7 @@ ContentLabelingLLMResponse
 
 ### 正式 Job
 
-```text
-content_analysis_job.py
-```
+- [`content_analysis_job.py`](content_analysis_job.py)
 
 当前 Job 类型：
 
@@ -171,19 +163,15 @@ analysis.content-label.v1
 → 对冻结的 Request/Shard 执行实际 LLM 分析并持久化结果
 ```
 
-两类 Job 都由 `register_content_analysis_job()` 注册；`bootstrap/worker.py` 传入 Planner Handler，因此不能只把 `analysis.content-label.v1` 写成当前完整 Analysis Registry。
+两类 Job 都由 `register_content_analysis_job()` 注册；[`bootstrap/worker.py`](../../bootstrap/worker.py) 传入 Planner Handler，因此不能只把 `analysis.content-label.v1` 写成当前完整 Analysis Registry。
 
 ### 正式 Worker 装配
 
-```text
-backend/src/aima_ugc/bootstrap/analysis_worker.py
-```
+- [`backend/src/aima_ugc/bootstrap/analysis_worker.py`](../../bootstrap/analysis_worker.py)
 
 ### PostgreSQL 表
 
-```text
-backend/src/aima_ugc/modules/analysis/tables.py
-```
+- [`backend/src/aima_ugc/modules/analysis/tables.py`](tables.py)
 
 当前正式表：
 
@@ -199,9 +187,7 @@ analysis_content_relevance_reviews
 
 ### PostgreSQL Repository
 
-```text
-backend/src/aima_ugc/adapters/persistence/postgres/analysis.py
-```
+- [`backend/src/aima_ugc/adapters/persistence/postgres/analysis.py`](../../adapters/persistence/postgres/analysis.py)
 
 ### LLM Adapter
 
@@ -277,10 +263,8 @@ pending
 
 相关查询：
 
-```text
-backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
-backend/src/aima_ugc/bootstrap/content_http.py
-```
+- [`backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py`](../../adapters/persistence/postgres/content_queries.py)
+- [`backend/src/aima_ugc/bootstrap/content_http.py`](../../bootstrap/content_http.py)
 
 不要在 Vue 里把旧 Analysis 强行当 current。
 
@@ -339,9 +323,7 @@ Base LLM Adapter 一次 `complete()` 最多一次物理 HTTP 发送；Transport 
 
 详细错误码、次数、费用审计见 AI Appendix 和：
 
-```text
-backend/src/aima_ugc/adapters/llm/README.md
-```
+- [`backend/src/aima_ugc/adapters/llm/README.md`](../../adapters/llm/README.md)
 
 ---
 
@@ -378,9 +360,7 @@ Unified JSONL
 
 离线 250 有界并发、Canary、Checkpoint、单写者、顺序回写、物理请求审计等细节统一维护在：
 
-```text
-docs/appendix/07_AI舆情打标与分析实现.md
-```
+- [`docs/appendix/07_AI舆情打标与分析实现.md`](../../../../../docs/appendix/07_AI舆情打标与分析实现.md)
 
 不在模块 README 复制第二份长说明。
 
@@ -394,10 +374,10 @@ docs/appendix/07_AI舆情打标与分析实现.md
 | 改 V3 输出结构 | Analysis Contract + Service/Validator + DB/API/Export/Frontend + Migration（需要时） |
 | 改 current/stale/pending | Analysis Identity + Content Query Repository + API/Frontend tests |
 | 改模型/Base URL | Platform Settings + `adapters/llm` + Pricing |
-| 改网络 Retry | `adapters/llm/retrying.py` + audit tests |
-| 改 Validation Retry | `content_labeling.py` + Analysis tests |
-| 改正式 Job | `content_analysis_job.py` + `bootstrap/analysis_worker.py` + Job integration |
-| 改离线并发/Checkpoint | `offline_labeling.py` + offline tests/Appendix |
+| 改网络 Retry | [`adapters/llm/retrying.py`](../../adapters/llm/retrying.py) + audit tests |
+| 改 Validation Retry | [`content_labeling.py`](content_labeling.py) + Analysis tests |
+| 改正式 Job | [`content_analysis_job.py`](content_analysis_job.py) + [`bootstrap/analysis_worker.py`](../../bootstrap/analysis_worker.py) + Job integration |
+| 改离线并发/Checkpoint | [`offline_labeling.py`](offline_labeling.py) + offline tests/Appendix |
 | 改数据库字段 | `tables.py` + 新 Alembic Migration + Repository + integration |
 
 ---

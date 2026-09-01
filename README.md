@@ -83,10 +83,10 @@ backend/src/aima_ugc/adapters/
 
 | 进程 | 启动入口 | 真实装配 |
 | --- | --- | --- |
-| API | `backend/src/aima_ugc/entrypoints/api_main.py` | `backend/src/aima_ugc/bootstrap/api.py` |
-| Worker | `backend/src/aima_ugc/entrypoints/worker_main.py` | `backend/src/aima_ugc/bootstrap/worker.py` |
-| Scheduler | `backend/src/aima_ugc/entrypoints/scheduler_main.py` | `backend/src/aima_ugc/bootstrap/scheduler.py` |
-| Migration | `backend/src/aima_ugc/entrypoints/migrate_main.py` | `backend/src/aima_ugc/bootstrap/migration.py` |
+| API | [`backend/src/aima_ugc/entrypoints/api_main.py`](backend/src/aima_ugc/entrypoints/api_main.py) | [`backend/src/aima_ugc/bootstrap/api.py`](backend/src/aima_ugc/bootstrap/api.py) |
+| Worker | [`backend/src/aima_ugc/entrypoints/worker_main.py`](backend/src/aima_ugc/entrypoints/worker_main.py) | [`backend/src/aima_ugc/bootstrap/worker.py`](backend/src/aima_ugc/bootstrap/worker.py) |
+| Scheduler | [`backend/src/aima_ugc/entrypoints/scheduler_main.py`](backend/src/aima_ugc/entrypoints/scheduler_main.py) | [`backend/src/aima_ugc/bootstrap/scheduler.py`](backend/src/aima_ugc/bootstrap/scheduler.py) |
+| Migration | [`backend/src/aima_ugc/entrypoints/migrate_main.py`](backend/src/aima_ugc/entrypoints/migrate_main.py) | [`backend/src/aima_ugc/bootstrap/migration.py`](backend/src/aima_ugc/bootstrap/migration.py) |
 
 职责：
 
@@ -112,9 +112,7 @@ Scheduler 不直接请求 TikHub；API 不在 HTTP 请求中同步跑分钟级�
 
 真实 Registry：
 
-```text
-backend/src/aima_ugc/bootstrap/worker.py
-```
+- [`backend/src/aima_ugc/bootstrap/worker.py`](backend/src/aima_ugc/bootstrap/worker.py)
 
 当前正式 Job：
 
@@ -153,7 +151,7 @@ Excel Export
 → bootstrap/export_worker.py
 ```
 
-三个 `ingestion.historical-*` 是统一 Data Import Campaign 为兼容现有 Schema/Job 身份继续沿用的物理名称；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner。它们已经由 `bootstrap/worker.py` 正式注册，不能继续只用旧 4-Job 清单描述当前 Worker。
+三个 `ingestion.historical-*` 是统一 Data Import Campaign 为兼容现有 Schema/Job 身份继续沿用的物理名称；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner。它们已经由 [`bootstrap/worker.py`](backend/src/aima_ugc/bootstrap/worker.py) 正式注册，不能继续只用旧 4-Job 清单描述当前 Worker。
 
 公共 Lease、Heartbeat、Deadline、Fencing、Retry、Cancel 等语义位于：
 
@@ -191,16 +189,12 @@ backend/src/aima_ugc/adapters/providers/tikhub/mappers/
 
 HTTP 发送：
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/transport.py
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub/transport.py`](backend/src/aima_ugc/adapters/providers/tikhub/transport.py)
 
 Capability / Runtime：
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py
-backend/src/aima_ugc/adapters/providers/tikhub/runtime.py
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py`](backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py)
+- [`backend/src/aima_ugc/adapters/providers/tikhub/runtime.py`](backend/src/aima_ugc/adapters/providers/tikhub/runtime.py)
 
 真实响应与验证：
 
@@ -286,9 +280,7 @@ backend/src/aima_ugc/adapters/providers/tikhub_test/
 
 领域入口：
 
-```text
-backend/src/aima_ugc/modules/content/ingestion.py
-```
+- [`backend/src/aima_ugc/modules/content/ingestion.py`](backend/src/aima_ugc/modules/content/ingestion.py)
 
 核心 Service：
 
@@ -298,11 +290,9 @@ ContentIngestionService
 
 主要表定义：
 
-```text
-backend/src/aima_ugc/modules/content/tables.py
-backend/src/aima_ugc/modules/content/extended_tables.py
-backend/src/aima_ugc/modules/content/account_tables.py
-```
+- [`backend/src/aima_ugc/modules/content/tables.py`](backend/src/aima_ugc/modules/content/tables.py)
+- [`backend/src/aima_ugc/modules/content/extended_tables.py`](backend/src/aima_ugc/modules/content/extended_tables.py)
+- [`backend/src/aima_ugc/modules/content/account_tables.py`](backend/src/aima_ugc/modules/content/account_tables.py)
 
 业务身份：
 
@@ -347,9 +337,7 @@ backend/src/aima_ugc/modules/analysis/
 
 Prompt / taxonomy 唯一业务事实源：
 
-```text
-backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md
-```
+- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md`](backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md)
 
 当前 V3 输出：
 
@@ -370,9 +358,7 @@ voice_type == "真实用户发声"
 
 Analysis 正式表定义：
 
-```text
-backend/src/aima_ugc/modules/analysis/tables.py
-```
+- [`backend/src/aima_ugc/modules/analysis/tables.py`](backend/src/aima_ugc/modules/analysis/tables.py)
 
 AI Semantic Relevance 在：
 
@@ -406,10 +392,8 @@ Analysis Run Preview
 
 后端 Content Query：
 
-```text
-backend/src/aima_ugc/bootstrap/content_http.py
-backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
-```
+- [`backend/src/aima_ugc/bootstrap/content_http.py`](backend/src/aima_ugc/bootstrap/content_http.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py`](backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py)
 
 它把：
 
@@ -423,9 +407,7 @@ Content Current
 
 当前 Vue Router：
 
-```text
-frontend/src/app/routes.ts
-```
+- [`frontend/src/app/routes.ts`](frontend/src/app/routes.ts)
 
 真实路由：
 
@@ -487,9 +469,7 @@ backend/src/aima_ugc/platform/reporting/
 
 人工入口：
 
-```text
-backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py
-```
+- [`backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py`](backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py)
 
 详细：
 
@@ -574,12 +554,10 @@ changes/archive/
 
 根目录当前已经存在：
 
-```text
-Dockerfile
-compose.yaml
-env.production.example
-.github/workflows/release.yml
-```
+- [`Dockerfile`](Dockerfile)
+- [`compose.yaml`](compose.yaml)
+- [`env.production.example`](env.production.example)
+- [`.github/workflows/release.yml`](.github/workflows/release.yml)
 
 完整容器 Runtime 使用：
 
@@ -647,7 +625,7 @@ python scripts/quality/scan_secrets.py
 python scripts/quality/check_docs.py
 ```
 
-前端准确命令看 `frontend/package.json`。
+前端准确命令看 [`frontend/package.json`](frontend/package.json)。
 
 数据库 Integration 和 Migration 使用真实 PostgreSQL，不用 SQLite 冒充。
 

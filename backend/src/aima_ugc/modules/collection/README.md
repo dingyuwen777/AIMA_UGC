@@ -23,10 +23,10 @@ Plan / API Run
 
 系统级设计：
 
-- `docs/blueprint/02_采集系统与数据标准化.md`
-- `docs/blueprint/08_采集策略与平台能力.md`
-- `docs/appendix/05_Scheduler调度执行与停机恢复.md`
-- `docs/appendix/02_TikHub五平台真实响应与字段映射.md`
+- [`docs/blueprint/02_采集系统与数据标准化.md`](../../../../../docs/blueprint/02_采集系统与数据标准化.md)
+- [`docs/blueprint/08_采集策略与平台能力.md`](../../../../../docs/blueprint/08_采集策略与平台能力.md)
+- [`docs/appendix/05_Scheduler调度执行与停机恢复.md`](../../../../../docs/appendix/05_Scheduler调度执行与停机恢复.md)
+- [`docs/appendix/02_TikHub五平台真实响应与字段映射.md`](../../../../../docs/appendix/02_TikHub五平台真实响应与字段映射.md)
 
 ---
 
@@ -53,12 +53,10 @@ collection_candidate_ingestions
 
 精确 Schema：
 
-```text
-modules/collection/tables.py
-modules/collection/candidate_tables.py
-modules/collection/corrective_tables.py
-modules/collection/scheduler_schema.py
-```
+- [`modules/collection/tables.py`](tables.py)
+- [`modules/collection/candidate_tables.py`](candidate_tables.py)
+- [`modules/collection/corrective_tables.py`](corrective_tables.py)
+- [`modules/collection/scheduler_schema.py`](scheduler_schema.py)
 
 ### Collection 不拥有
 
@@ -103,15 +101,11 @@ scheduler_schema.py
 
 生产 Scheduler 装配不在本目录，而在：
 
-```text
-backend/src/aima_ugc/bootstrap/scheduler.py
-```
+- [`backend/src/aima_ugc/bootstrap/scheduler.py`](../../bootstrap/scheduler.py)
 
 PostgreSQL Plan / Occurrence Repository：
 
-```text
-backend/src/aima_ugc/adapters/persistence/postgres/collection_planning.py
-```
+- [`backend/src/aima_ugc/adapters/persistence/postgres/collection_planning.py`](../../adapters/persistence/postgres/collection_planning.py)
 
 ### 2.2 Run / Scope
 
@@ -134,9 +128,7 @@ run_snapshot.py
 
 真正把 TikHub、Raw、Mapper、Ingestion 串起来：
 
-```text
-backend/src/aima_ugc/bootstrap/collection_scope.py
-```
+- [`backend/src/aima_ugc/bootstrap/collection_scope.py`](../../bootstrap/collection_scope.py)
 
 ### 2.3 Provider Request / Attempt
 
@@ -195,10 +187,8 @@ runtime_cursor.py
 
 生产 HTTP 实现：
 
-```text
-backend/src/aima_ugc/bootstrap/collection_http.py
-backend/src/aima_ugc/bootstrap/collection_strategy_http.py
-```
+- [`backend/src/aima_ugc/bootstrap/collection_http.py`](../../bootstrap/collection_http.py)
+- [`backend/src/aima_ugc/bootstrap/collection_strategy_http.py`](../../bootstrap/collection_strategy_http.py)
 
 ---
 
@@ -342,9 +332,7 @@ unknown
 
 当前不自动从 TikHub App API 切到 Web API，也不自动从 V2 切到 V1。API family 备用策略见：
 
-```text
-docs/appendix/03_TikHub多接口验证与备用策略.md
-```
+- [`docs/appendix/03_TikHub多接口验证与备用策略.md`](../../../../../docs/appendix/03_TikHub多接口验证与备用策略.md)
 
 ---
 
@@ -485,9 +473,7 @@ Occurrence 唯一身份：
 
 详细代码和恢复案例：
 
-```text
-docs/appendix/05_Scheduler调度执行与停机恢复.md
-```
+- [`docs/appendix/05_Scheduler调度执行与停机恢复.md`](../../../../../docs/appendix/05_Scheduler调度执行与停机恢复.md)
 
 ---
 
@@ -524,13 +510,11 @@ ProviderPlatformCapabilityV1
 → Plan platform config / Run provider snapshot
 ```
 
-`search_config.py` 负责从 Capability 提取合法值、生成手工 Discovery 默认值并执行统一校验。手工 Discovery 的默认意图是 `latest + 1d + all`，只应用平台真实支持的维度；新 Plan 要求所有受支持维度完整配置。历史 Plan 的空 `config={}` 仍按非完整兼容模式通过 Scheduler 校验，不能被补写成手工默认。
+[`search_config.py`](search_config.py) 负责从 Capability 提取合法值、生成手工 Discovery 默认值并执行统一校验。手工 Discovery 的默认意图是 `latest + 1d + all`，只应用平台真实支持的维度；新 Plan 要求所有受支持维度完整配置。历史 Plan 的空 `config={}` 仍按非完整兼容模式通过 Scheduler 校验，不能被补写成手工默认。
 
 完整 Route 以：
 
-```text
-backend/src/aima_ugc/bootstrap/api.py
-```
+- [`backend/src/aima_ugc/bootstrap/api.py`](../../bootstrap/api.py)
 
 为准。
 
@@ -557,11 +541,9 @@ PostgreSQL 不同 Owner 表
 
 相关代码：
 
-```text
-runtime_query.py
-runtime_cursor.py
-backend/src/aima_ugc/adapters/persistence/postgres/collection_runtime_queries.py
-```
+- [`runtime_query.py`](runtime_query.py)
+- [`runtime_cursor.py`](runtime_cursor.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/collection_runtime_queries.py`](../../adapters/persistence/postgres/collection_runtime_queries.py)
 
 不能因为页面想统一展示，就把 Import Batch 和 Collection Run 合并成一张业务表。
 
@@ -598,9 +580,7 @@ backend/src/aima_ugc/adapters/providers/tikhub/mappers/
 
 ### Capability
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py`](../../adapters/providers/tikhub/capabilities.py)
 
 回答：某个平台当前正式支持哪些 Search/Detail/Comment/Reply 能力。
 
@@ -641,7 +621,7 @@ Mapper/Operation Test
 Capability / Pricing（按影响）
 ```
 
-不要直接改 `collection_run_executor.py`。
+不要直接改 [`collection_run_executor.py`](collection_run_executor.py)。
 
 ### 改 Scheduler 策略
 
@@ -692,9 +672,7 @@ Migration（如果数据库约束变化）
 
 SQL 示例：
 
-```text
-docs/appendix/01_PostgreSQL查询与调试实战.md
-```
+- [`docs/appendix/01_PostgreSQL查询与调试实战.md`](../../../../../docs/appendix/01_PostgreSQL查询与调试实战.md)
 
 如果 Provider 返回字段不对：
 

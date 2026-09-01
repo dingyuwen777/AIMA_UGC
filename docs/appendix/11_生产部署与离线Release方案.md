@@ -14,7 +14,7 @@
 
 当前结论先写在前面：
 
-> **当前仓库已经通过 Internal V1-A 实现根 `Dockerfile`、canonical `compose.yaml`、`env.production.example`、宿主 bootstrap 与 Nginx Runtime，并新增 `.github/workflows/release.yml` 建立 GitHub 一键离线 Release 基础。Release Workflow 在 GitHub Hosted Linux Runner 内显式使用 Docker Hub / Debian / PyPI / npm 官方上游构建 Linux/AMD64 Backend/Frontend，固定官方 `postgres:18.4`，生成 `images.tar`、release/migration manifest、`SHA256SUMS` 与 `DEPLOY.md`，并在 PR dry-run 中删除候选运行镜像后从 `images.tar` 重新 load，以 canonical Compose 的 `--no-build --pull never` 完成真实启动回放。正式 `workflow_dispatch` 路径只允许当前 `main` 最新 SHA，具备推送 GHCR、记录应用 digest、创建 Git Tag 与 GitHub Release 的能力；正式业务版本仍由用户在合并后手工触发。Linux/WSL 与公司服务器继续使用单一 `AIMA_HOST_ROOT`，Windows Docker Desktop 仍只叠加 storage-only `compose.windows.yaml`。当前仍不是完整 Production Go-Live：协调 Backup/Restore、企业认证/授权、HTTPS、SBOM/独立来源签名/provenance、生产服务器发布/回滚与真实生产验收仍待后续正式 Change。**
+> **当前仓库已经通过 Internal V1-A 实现根 [`Dockerfile`](../../Dockerfile)、canonical [`compose.yaml`](../../compose.yaml)、[`env.production.example`](../../env.production.example)、宿主 bootstrap 与 Nginx Runtime，并新增 [`.github/workflows/release.yml`](../../.github/workflows/release.yml) 建立 GitHub 一键离线 Release 基础。Release Workflow 在 GitHub Hosted Linux Runner 内显式使用 Docker Hub / Debian / PyPI / npm 官方上游构建 Linux/AMD64 Backend/Frontend，固定官方 `postgres:18.4`，生成 `images.tar`、release/migration manifest、`SHA256SUMS` 与 `DEPLOY.md`，并在 PR dry-run 中删除候选运行镜像后从 `images.tar` 重新 load，以 canonical Compose 的 `--no-build --pull never` 完成真实启动回放。正式 `workflow_dispatch` 路径只允许当前 `main` 最新 SHA，具备推送 GHCR、记录应用 digest、创建 Git Tag 与 GitHub Release 的能力；正式业务版本仍由用户在合并后手工触发。Linux/WSL 与公司服务器继续使用单一 `AIMA_HOST_ROOT`，Windows Docker Desktop 仍只叠加 storage-only [`compose.windows.yaml`](../../compose.windows.yaml)。当前仍不是完整 Production Go-Live：协调 Backup/Restore、企业认证/授权、HTTPS、SBOM/独立来源签名/provenance、生产服务器发布/回滚与真实生产验收仍待后续正式 Change。**
 
 生产上线总路线见：
 
@@ -108,7 +108,7 @@ Vue build 输出
 
 ### `worker`
 
-消费 PostgreSQL durable Job；精确 Registry 以 `backend/src/aima_ugc/bootstrap/worker.py` 为准，当前包括：
+消费 PostgreSQL durable Job；精确 Registry 以 [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py) 为准，当前包括：
 
 ```text
 collection.run.v1
@@ -192,7 +192,7 @@ AIMA_HOST_ROOT=./.runtime/compose
 
 ## 3.1 Windows Docker Desktop 不是 Production Host Root 模型
 
-Windows 原生 CMD / PowerShell 为了避免 NTFS/Windows 文件共享层承担 PostgreSQL 与内部 Secret 的 Linux UID/GID/mode 语义，叠加 `compose.windows.yaml`。当前混合存储是：
+Windows 原生 CMD / PowerShell 为了避免 NTFS/Windows 文件共享层承担 PostgreSQL 与内部 Secret 的 Linux UID/GID/mode 语义，叠加 [`compose.windows.yaml`](../../compose.windows.yaml)。当前混合存储是：
 
 ```text
 AIMA_HOST_ROOT/runtime/data
@@ -228,7 +228,7 @@ windows_internal_secrets
 
 未来升级 PostgreSQL 时仍必须重新验证当时锁定镜像的实际约定，不能把当前路径无条件套到未来主版本。
 
-`bootstrap`/`scripts/deploy/prepare_host.py` 会：
+`bootstrap`/[`scripts/deploy/prepare_host.py`](../../scripts/deploy/prepare_host.py) 会：
 
 - 建立/校验运行所需目录；
 - 固定 App/PostgreSQL/Secret group UID/GID；
@@ -324,7 +324,7 @@ GitHub Release PR dry-run 不读取真实 TikHub/LLM Secret，正式 Release 构
 
 # 6. Dockerfile 当前实现与 Release 构建源
 
-Internal V1-A 已建立根 `Dockerfile`，并固定：
+Internal V1-A 已建立根 [`Dockerfile`](../../Dockerfile)，并固定：
 
 ```text
 仓库根 = 唯一 build context
@@ -336,7 +336,7 @@ Internal V1-A 已建立根 `Dockerfile`，并固定：
 
 已经：
 
-- 按 `uv.lock` 安装锁定依赖；
+- 按 [`uv.lock`](../../uv.lock) 安装锁定依赖；
 - 安装项目 package；
 - 不包含无关开发缓存；
 - Runtime 启动不再联网 `pip install`；
@@ -345,7 +345,7 @@ Internal V1-A 已建立根 `Dockerfile`，并固定：
 - 只有一次性 bootstrap 显式覆盖为 root，完成后退出；
 - 镜像构建时不写入 Secret。
 
-`.dockerignore` 不把源码开发脚本、`.runtime` 或真实 env 文件塞入运行镜像；Windows launcher/override 是宿主启动辅助，不改变镜像内容。
+[`.dockerignore`](../../.dockerignore) 不把源码开发脚本、`.runtime` 或真实 env 文件塞入运行镜像；Windows launcher/override 是宿主启动辅助，不改变镜像内容。
 
 ## Frontend Runtime
 
@@ -360,9 +360,9 @@ Node build stage
 
 ## Release Runner 与本地源隔离
 
-`Dockerfile`、`compose.yaml`、`env.production.example` 继续保留面向国内本地/公司环境的默认 Debian/PyPI/npm 下载源；Docker Hub 下载加速仍由宿主 Docker Engine mirror 负责。
+[`Dockerfile`](../../Dockerfile)、[`compose.yaml`](../../compose.yaml)、[`env.production.example`](../../env.production.example) 继续保留面向国内本地/公司环境的默认 Debian/PyPI/npm 下载源；Docker Hub 下载加速仍由宿主 Docker Engine mirror 负责。
 
-`.github/workflows/release.yml` 只在 GitHub Hosted Linux Runner 内显式通过 build args 覆盖为：
+[`.github/workflows/release.yml`](../../.github/workflows/release.yml) 只在 GitHub Hosted Linux Runner 内显式通过 build args 覆盖为：
 
 ```text
 Docker 基础镜像 / PostgreSQL → Docker Hub canonical reference
@@ -384,9 +384,7 @@ npm                          → https://registry.npmjs.org
 
 业务 Runtime 唯一基线是根：
 
-```text
-compose.yaml
-```
+- [`compose.yaml`](../../compose.yaml)
 
 它定义服务 command、environment、depends_on、Health、network、端口、外部 Secret 和 Linux/Production 持久 target。
 
@@ -399,7 +397,7 @@ chmod 0600 env.production
 docker compose --env-file env.production up -d --build --wait
 ```
 
-GitHub Release Bundle 同样直接携带 canonical `compose.yaml`，不为“一键 Release”复制第二套 Runtime。只有未来确实出现独立生产语义时，才新增最小 `compose.production.yaml` 覆盖。
+GitHub Release Bundle 同样直接携带 canonical [`compose.yaml`](../../compose.yaml)，不为“一键 Release”复制第二套 Runtime。只有未来确实出现独立生产语义时，才新增最小 `compose.production.yaml` 覆盖。
 
 ## 7.2 Windows storage-only override
 
@@ -429,7 +427,7 @@ docker compose -f compose.yaml -f compose.windows.yaml --env-file env.production
 - Release PR dry-run：真实 GitHub Hosted Linux Runner build → `images.tar` → 删除本地候选运行镜像 tag → `docker load` → canonical Compose `--no-build --pull never --wait` → Migration/Readiness/持久目录；
 - Hosted Windows Runner 本身不作为真实 Docker Desktop Linux-container Runtime，因此首次个人 Windows 开发机仍要本机 smoke。
 
-完整 Stage 11 若需要独立生产覆盖，可在正式 Production Change 中增加有独立语义的 `compose.production.yaml`，但不能只是复制根 Compose，也不能从 `compose.windows.yaml` 演化 Production 逻辑。
+完整 Stage 11 若需要独立生产覆盖，可在正式 Production Change 中增加有独立语义的 `compose.production.yaml`，但不能只是复制根 Compose，也不能从 [`compose.windows.yaml`](../../compose.windows.yaml) 演化 Production 逻辑。
 
 ---
 
@@ -518,7 +516,7 @@ postgres:18.4
 
 Production Bundle **不得携带当前生产 PostgreSQL、Artifact、日志、真实 `env.production` 或内部/外部 Secret 内容**；它们继续位于固定 `AIMA_HOST_ROOT=/data/AIMA_UGC`。
 
-`compose.windows.yaml` 不进入服务器 Release Bundle。
+[`compose.windows.yaml`](../../compose.windows.yaml) 不进入服务器 Release Bundle。
 
 ## 10.3 长期完整 Production Bundle 仍需补什么
 
@@ -566,7 +564,7 @@ GitHub Release Bundle 已把正式服务器的目标路径落成：
 AIMA_HOST_ROOT=/data/AIMA_UGC
 ```
 
-**生产服务器不使用 `compose.windows.yaml`。** Windows storage adapter 与服务器 Release/Backup/Restore 生命周期没有关系。
+**生产服务器不使用 [`compose.windows.yaml`](../../compose.windows.yaml)。** Windows storage adapter 与服务器 Release/Backup/Restore 生命周期没有关系。
 
 Internal V1-A/B 仍允许仓库源码 `--build` 以完成当前公司内网服务器验证；一旦使用 GitHub Release 资产，则应走 `docker load + --no-build --pull never`，不能把现场 build 当作同一个 Release。
 
@@ -685,7 +683,7 @@ Internal V1-A 已把 Docker/Compose 的最小运行基础提前实现并验证�
 
 后续增量：只有存在独立生产语义时才增加 `compose.production.yaml`；完成生产 HTTPS/认证入口、Host/浏览器安全、资源/安全覆盖和完整 provenance 约束。
 
-Windows `compose.windows.yaml` 不进入 Stage 11A Production 逻辑。
+Windows [`compose.windows.yaml`](../../compose.windows.yaml) 不进入 Stage 11A Production 逻辑。
 
 ## Stage 11B：离线 Release 构建
 

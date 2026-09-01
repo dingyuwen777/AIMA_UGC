@@ -55,21 +55,15 @@ Router 不直接 SQL，也不直接请求 TikHub/LLM。目录发现、XLSX 预�
 
 HTTP Request/Response 主要维护在：
 
-```text
-backend/src/aima_ugc/contracts/http.py
-```
+- [`backend/src/aima_ugc/contracts/http.py`](../backend/src/aima_ugc/contracts/http.py)
 
 运行能力类的安全只读 Contract：
 
-```text
-backend/src/aima_ugc/contracts/runtime.py
-```
+- [`backend/src/aima_ugc/contracts/runtime.py`](../backend/src/aima_ugc/contracts/runtime.py)
 
 人工相关性复核 Contract：
 
-```text
-backend/src/aima_ugc/contracts/relevance_review.py
-```
+- [`backend/src/aima_ugc/contracts/relevance_review.py`](../backend/src/aima_ugc/contracts/relevance_review.py)
 
 生成链：
 
@@ -131,10 +125,8 @@ HttpErrorResponse
 
 代码：
 
-```text
-backend/src/aima_ugc/bootstrap/api.py
-backend/src/aima_ugc/platform/health.py
-```
+- [`backend/src/aima_ugc/bootstrap/api.py`](../backend/src/aima_ugc/bootstrap/api.py)
+- [`backend/src/aima_ugc/platform/health.py`](../backend/src/aima_ugc/platform/health.py)
 
 ---
 
@@ -142,11 +134,9 @@ backend/src/aima_ugc/platform/health.py
 
 代码：
 
-```text
-backend/src/aima_ugc/bootstrap/collection_http.py
-backend/src/aima_ugc/modules/collection/http.py
-backend/src/aima_ugc/adapters/persistence/postgres/collection_runtime_queries.py
-```
+- [`backend/src/aima_ugc/bootstrap/collection_http.py`](../backend/src/aima_ugc/bootstrap/collection_http.py)
+- [`backend/src/aima_ugc/modules/collection/http.py`](../backend/src/aima_ugc/modules/collection/http.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/collection_runtime_queries.py`](../backend/src/aima_ugc/adapters/persistence/postgres/collection_runtime_queries.py)
 
 ## 4.1 `GET /api/v1/collection-capabilities`
 
@@ -188,14 +178,12 @@ HTTP 只创建 Run/Scope/Job；真正 Provider 调用由 `collection.run.v1` Wor
 
 实现入口：
 
-```text
-backend/src/aima_ugc/bootstrap/historical_import_http.py
-backend/src/aima_ugc/bootstrap/historical_import_worker.py
-backend/src/aima_ugc/modules/ingestion/historical_http.py
-backend/src/aima_ugc/modules/ingestion/historical_jobs.py
-backend/src/aima_ugc/adapters/persistence/postgres/historical_import.py
-frontend/src/features/import-batches/pages/CollectionRuntimePage/components/DataImportDialog.vue
-```
+- [`backend/src/aima_ugc/bootstrap/historical_import_http.py`](../backend/src/aima_ugc/bootstrap/historical_import_http.py)
+- [`backend/src/aima_ugc/bootstrap/historical_import_worker.py`](../backend/src/aima_ugc/bootstrap/historical_import_worker.py)
+- [`backend/src/aima_ugc/modules/ingestion/historical_http.py`](../backend/src/aima_ugc/modules/ingestion/historical_http.py)
+- [`backend/src/aima_ugc/modules/ingestion/historical_jobs.py`](../backend/src/aima_ugc/modules/ingestion/historical_jobs.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/historical_import.py`](../backend/src/aima_ugc/adapters/persistence/postgres/historical_import.py)
+- [`frontend/src/features/import-batches/pages/CollectionRuntimePage/components/DataImportDialog.vue`](../frontend/src/features/import-batches/pages/CollectionRuntimePage/components/DataImportDialog.vue)
 
 完整业务语义：
 
@@ -319,12 +307,10 @@ GET /api/v1/jobs/{job_id}
 
 代码：
 
-```text
-backend/src/aima_ugc/bootstrap/content_http.py
-backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
-backend/src/aima_ugc/modules/content/query.py
-backend/src/aima_ugc/modules/content/content_cursor.py
-```
+- [`backend/src/aima_ugc/bootstrap/content_http.py`](../backend/src/aima_ugc/bootstrap/content_http.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py`](../backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py)
+- [`backend/src/aima_ugc/modules/content/query.py`](../backend/src/aima_ugc/modules/content/query.py)
+- [`backend/src/aima_ugc/modules/content/content_cursor.py`](../backend/src/aima_ugc/modules/content/content_cursor.py)
 
 前端：
 
@@ -371,7 +357,7 @@ irrelevant
 inherit_ai
 ```
 
-模型原始 Result 不 UPDATE/DELETE；人工决定写入 `analysis_content_relevance_reviews`。批量请求先校验/锁定全部目标，任一目标不可操作时整批失败；已有人工覆盖要切到相反结论必须先撤销。精确 Contract 看 `contracts/relevance_review.py`。
+模型原始 Result 不 UPDATE/DELETE；人工决定写入 `analysis_content_relevance_reviews`。批量请求先校验/锁定全部目标，任一目标不可操作时整批失败；已有人工覆盖要切到相反结论必须先撤销。精确 Contract 看 [`contracts/relevance_review.py`](../backend/src/aima_ugc/contracts/relevance_review.py)。
 
 ---
 
@@ -379,14 +365,12 @@ inherit_ai
 
 代码：
 
-```text
-backend/src/aima_ugc/contracts/runtime.py
-backend/src/aima_ugc/bootstrap/analysis_capability_http.py
-backend/src/aima_ugc/bootstrap/content_http.py
-backend/src/aima_ugc/bootstrap/analysis_worker.py
-backend/src/aima_ugc/modules/analysis/content_analysis_job.py
-backend/src/aima_ugc/adapters/persistence/postgres/analysis.py
-```
+- [`backend/src/aima_ugc/contracts/runtime.py`](../backend/src/aima_ugc/contracts/runtime.py)
+- [`backend/src/aima_ugc/bootstrap/analysis_capability_http.py`](../backend/src/aima_ugc/bootstrap/analysis_capability_http.py)
+- [`backend/src/aima_ugc/bootstrap/content_http.py`](../backend/src/aima_ugc/bootstrap/content_http.py)
+- [`backend/src/aima_ugc/bootstrap/analysis_worker.py`](../backend/src/aima_ugc/bootstrap/analysis_worker.py)
+- [`backend/src/aima_ugc/modules/analysis/content_analysis_job.py`](../backend/src/aima_ugc/modules/analysis/content_analysis_job.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/analysis.py`](../backend/src/aima_ugc/adapters/persistence/postgres/analysis.py)
 
 详细：
 
@@ -503,10 +487,8 @@ GET  /api/v1/relevance-config
 
 代码：
 
-```text
-backend/src/aima_ugc/bootstrap/collection_strategy_http.py
-backend/src/aima_ugc/modules/collection/planning.py
-```
+- [`backend/src/aima_ugc/bootstrap/collection_strategy_http.py`](../backend/src/aima_ugc/bootstrap/collection_strategy_http.py)
+- [`backend/src/aima_ugc/modules/collection/planning.py`](../backend/src/aima_ugc/modules/collection/planning.py)
 
 当前：
 
@@ -556,9 +538,7 @@ Data Import 目录/Campaign 的分页/游标以其当前 Pydantic Contract 和 `
 
 真实路由：
 
-```text
-frontend/src/app/routes.ts
-```
+- [`frontend/src/app/routes.ts`](../frontend/src/app/routes.ts)
 
 当前页面：
 

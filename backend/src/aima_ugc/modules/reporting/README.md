@@ -39,27 +39,19 @@ POST /api/v1/data-exports
 
 HTTP：
 
-```text
-backend/src/aima_ugc/bootstrap/reporting_http.py
-```
+- [`backend/src/aima_ugc/bootstrap/reporting_http.py`](../../bootstrap/reporting_http.py)
 
 Worker：
 
-```text
-backend/src/aima_ugc/bootstrap/export_worker.py
-```
+- [`backend/src/aima_ugc/bootstrap/export_worker.py`](../../bootstrap/export_worker.py)
 
 PostgreSQL Repository：
 
-```text
-backend/src/aima_ugc/adapters/persistence/postgres/reporting.py
-```
+- [`backend/src/aima_ugc/adapters/persistence/postgres/reporting.py`](../../adapters/persistence/postgres/reporting.py)
 
 共享 Excel Renderer：
 
-```text
-backend/src/aima_ugc/platform/export/excel.py
-```
+- [`backend/src/aima_ugc/platform/export/excel.py`](../../platform/export/excel.py)
 
 ---
 
@@ -100,9 +92,7 @@ Worker 后续严格按这些版本读取。
 
 定义：
 
-```text
-backend/src/aima_ugc/modules/reporting/tables.py
-```
+- [`backend/src/aima_ugc/modules/reporting/tables.py`](tables.py)
 
 ### `reporting_data_exports`
 
@@ -146,21 +136,15 @@ reporting.content-export-excel.v1
 
 定义：
 
-```text
-backend/src/aima_ugc/modules/reporting/data_export_job.py
-```
+- [`backend/src/aima_ugc/modules/reporting/data_export_job.py`](data_export_job.py)
 
 Worker Registry：
 
-```text
-backend/src/aima_ugc/bootstrap/worker.py
-```
+- [`backend/src/aima_ugc/bootstrap/worker.py`](../../bootstrap/worker.py)
 
 执行器：
 
-```text
-backend/src/aima_ugc/bootstrap/export_worker.py
-```
+- [`backend/src/aima_ugc/bootstrap/export_worker.py`](../../bootstrap/export_worker.py)
 
 当前 Worker 会：
 
@@ -203,7 +187,7 @@ ordinal > after_ordinal
 
 这样大量内容导出时不会一次把所有 Content + Comments + Analysis 全部加载到内存。
 
-具体页大小属于实现事实，以 `export_worker.py` 为准，不把它当公共 Contract。
+具体页大小属于实现事实，以 [`export_worker.py`](../../bootstrap/export_worker.py) 为准，不把它当公共 Contract。
 
 ---
 
@@ -211,9 +195,7 @@ ordinal > after_ordinal
 
 文件：
 
-```text
-backend/src/aima_ugc/adapters/persistence/postgres/reporting.py
-```
+- [`backend/src/aima_ugc/adapters/persistence/postgres/reporting.py`](../../adapters/persistence/postgres/reporting.py)
 
 它不是简单读取 `contents` Current。
 
@@ -321,22 +303,16 @@ GET  /api/v1/data-exports/{export_id}/download
 
 Route：
 
-```text
-backend/src/aima_ugc/bootstrap/api.py
-```
+- [`backend/src/aima_ugc/bootstrap/api.py`](../../bootstrap/api.py)
 
 Application Service：
 
-```text
-backend/src/aima_ugc/bootstrap/reporting_http.py
-```
+- [`backend/src/aima_ugc/bootstrap/reporting_http.py`](../../bootstrap/reporting_http.py)
 
 精确 Request/Response：
 
-```text
-backend/src/aima_ugc/contracts/http.py
-contracts/openapi/openapi.json
-```
+- [`backend/src/aima_ugc/contracts/http.py`](../../contracts/http.py)
+- [`contracts/openapi/openapi.json`](../../../../../contracts/openapi/openapi.json)
 
 ### 下载边界
 
@@ -354,9 +330,7 @@ artifact_id is null
 
 真正生成 Workbook 的公共实现：
 
-```text
-backend/src/aima_ugc/platform/export/excel.py
-```
+- [`backend/src/aima_ugc/platform/export/excel.py`](../../platform/export/excel.py)
 
 它也被离线 `imports_test` 复用。
 
@@ -378,17 +352,15 @@ backend/src/aima_ugc/platform/export/excel.py
 | --- | --- | --- |
 | `tables.py` | Export / Export Items 表 | 改持久化父事实或冻结目标结构 |
 | `models.py` | Reporting 内部记录模型 | 改内部 Service/Repository 返回对象 |
-| `data_export_job.py` | Job Payload / Handler / 上限 | 改 Job 版本、失败分类、Artifact 上限 |
+| [`data_export_job.py`](data_export_job.py) | Job Payload / Handler / 上限 | 改 Job 版本、失败分类、Artifact 上限 |
 | `http.py` | Reporting HTTP Port/异常 | 改应用 Service 契约边界 |
 
 生产跨目录：
 
-```text
-bootstrap/reporting_http.py
-bootstrap/export_worker.py
-adapters/persistence/postgres/reporting.py
-platform/export/excel.py
-```
+- [`bootstrap/reporting_http.py`](../../bootstrap/reporting_http.py)
+- [`bootstrap/export_worker.py`](../../bootstrap/export_worker.py)
+- [`adapters/persistence/postgres/reporting.py`](../../adapters/persistence/postgres/reporting.py)
+- [`platform/export/excel.py`](../../platform/export/excel.py)
 
 ---
 

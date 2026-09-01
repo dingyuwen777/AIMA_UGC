@@ -38,7 +38,7 @@ Mock Browser E2E 用于页面和交互回归，不能单独证明真实后端业
 
 | 业务入口 | Router | App Shell | 当前状态 | 验证 |
 | --- | --- | --- | --- | --- |
-| 首页兼容入口 | `/` | `首页` 可导航 | 已完整闭环 | `frontend/tests/app-shell.spec.ts`、`frontend/tests/routes.spec.ts` |
+| 首页兼容入口 | `/` | `首页` 可导航 | 已完整闭环 | [`frontend/tests/app-shell.spec.ts`](../../frontend/tests/app-shell.spec.ts)、[`frontend/tests/routes.spec.ts`](../../frontend/tests/routes.spec.ts) |
 | 声音广场 | `/voice-plaza` | 可导航 | 已完整闭环 | Routes / Voice Plaza Unit / Browser E2E |
 | 采集运行中心 | `/collection-runtime` | 可导航 | 已完整闭环 | Routes / Runtime Unit / Browser E2E |
 | 采集策略 | `/collection-strategy` | 可导航 | 已完整闭环 | Routes / Strategy Unit / Browser E2E |
@@ -118,9 +118,7 @@ Collection / TikHub 公共 Contract
 
 不修改 Content 持久身份，也不在全仓复制别名。兼容只放在 Collection 读取 Batch target 的边界：
 
-```text
-backend/src/aima_ugc/adapters/persistence/postgres/collection_targets.py
-```
+- [`backend/src/aima_ugc/adapters/persistence/postgres/collection_targets.py`](../../backend/src/aima_ugc/adapters/persistence/postgres/collection_targets.py)
 
 行为固定为：
 
@@ -199,7 +197,7 @@ GET /api/v1/collection-plans?enabled=true
 | --- | --- | --- | --- | --- |
 | Content 列表/详情 | `GET /api/v1/contents`、`GET /api/v1/contents/{id}` | Voice Store / `api.ts` / generated client | 已完整闭环 | Content PostgreSQL Integration + Unit/Mock E2E |
 | 文本/平台/内容类型/时间筛选 | `ContentListQuery` | Filters → Store → generated client | 已完整闭环 | Unit + Backend Query Integration |
-| 五平台筛选 | 小红书、抖音、微博、B站、快手；另有 `file` | Filters | 已完整闭环 | `frontend/tests/voice-plaza.spec.ts` |
+| 五平台筛选 | 小红书、抖音、微博、B站、快手；另有 `file` | Filters | 已完整闭环 | [`frontend/tests/voice-plaza.spec.ts`](../../frontend/tests/voice-plaza.spec.ts) |
 | Batch / Run 来源筛选 | 后端 `source_identifier` 沿 Content Version → Provider Request/Attempt → Import Batch 或 Collection Run 查询 | Route query / Filters → API | 已完整闭环 | PostgreSQL Integration + Real Full-stack Batch 链 |
 | Analysis pending/stale/completed | Content Query 投影当前匹配 Analysis | Store / Table / Detail | 已完整闭环 | Backend Integration + Unit/Mock E2E |
 | AI Analysis Request / Job | `POST /api/v1/content-analysis-requests`、`GET /api/v1/content-analysis-jobs/{job_id}` | Voice Page / Store；Job 状态显示为排队中/处理中/已完成/失败/已取消 | 已完整闭环 | Backend Fake/Fixture + 前端 Mock；普通 CI 不调用付费 LLM |
@@ -241,7 +239,7 @@ tests/fullstack/run_stage8f_worker.py
 
 真实验收不 Mock `/api/v1/**`，固定覆盖 Excel 成功、Excel 失败和 Collection Plan 配置持久化三条链。
 
-`seed_collection_plan_provider.py` 会写入固定的测试 Provider Config，因此只允许在隔离 Full-stack 数据库中执行，并要求显式设置 `AIMA_FULLSTACK_SEED=1`。未设置时脚本会在装配 Runtime、连接数据库之前拒绝运行，避免测试配置进入日常开发库。
+[`seed_collection_plan_provider.py`](../../tests/fullstack/seed_collection_plan_provider.py) 会写入固定的测试 Provider Config，因此只允许在隔离 Full-stack 数据库中执行，并要求显式设置 `AIMA_FULLSTACK_SEED=1`。未设置时脚本会在装配 Runtime、连接数据库之前拒绝运行，避免测试配置进入日常开发库。
 
 ### 6.1 成功链
 
@@ -371,4 +369,4 @@ Role / Permission / 权限隔离
 Monitoring / Alert / VOC / Ticket
 ```
 
-这些延期不代表完整 Production 已达到安全、灾备或治理标准；后续仍按 `docs/roadmap/02_生产上线实施路线.md` 推进。
+这些延期不代表完整 Production 已达到安全、灾备或治理标准；后续仍按 [`docs/roadmap/02_生产上线实施路线.md`](../roadmap/02_生产上线实施路线.md) 推进。

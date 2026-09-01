@@ -135,15 +135,11 @@ Search content_id
 
 当前生产 Operation：
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/operations/xiaohongshu.py
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub/operations/xiaohongshu.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/operations/xiaohongshu.py)
 
 当前 Mapper：
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/mappers/xiaohongshu.py
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub/mappers/xiaohongshu.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/mappers/xiaohongshu.py)
 
 Operation 当前还包含 App V1 / Web V3 的显式 A/B Candidate Builder，但它们不等于自动 fallback。
 
@@ -280,15 +276,11 @@ Fixture：
 
 Operation：
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/operations/douyin.py
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub/operations/douyin.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/operations/douyin.py)
 
 Mapper：
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/mappers/douyin.py
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub/mappers/douyin.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/mappers/douyin.py)
 
 当前主 Search 是 V2；代码中有 V1 Candidate Builder，仅用于显式 A/B。
 
@@ -386,15 +378,11 @@ Fixture：
 
 Operation：
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/operations/weibo.py
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub/operations/weibo.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/operations/weibo.py)
 
 Mapper：
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/mappers/weibo.py
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub/mappers/weibo.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/mappers/weibo.py)
 
 当前主 Search 使用 Web；代码里保留 App Search All Candidate。一级评论当前主链使用 App，另有 Web V2 Candidate；二级评论当前使用 Web V2。
 
@@ -489,15 +477,11 @@ Fixture：
 
 Operation：
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/operations/bilibili.py
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub/operations/bilibili.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/operations/bilibili.py)
 
 Mapper：
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/mappers/bilibili.py
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub/mappers/bilibili.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/mappers/bilibili.py)
 
 当前 App 是主链；Search/Detail/Comments/Reply 都存在显式 Web Candidate Builder，但不会自动切换。
 
@@ -614,15 +598,11 @@ Fixture：
 
 Operation：
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/operations/kuaishou.py
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub/operations/kuaishou.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/operations/kuaishou.py)
 
 Mapper：
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/mappers/kuaishou.py
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub/mappers/kuaishou.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/mappers/kuaishou.py)
 
 当前代码事实非常明确：
 
@@ -836,9 +816,7 @@ Web 样本 `reply_to` 没有足够证据证明一定是另一个评论 ID，所�
 
 当前价格事实看：
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml`](../../backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml)
 
 当前生产选型：
 
@@ -938,9 +916,7 @@ Content Owner 之后使用 `field_observed_at` 做字段级 freshness。
 
 ### 第一步：看真实 JSON
 
-```text
-tests/fixtures/providers/tikhub/weibo/comments_page1.sanitized.json
-```
+- [`tests/fixtures/providers/tikhub/weibo/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/weibo/comments_page1.sanitized.json)
 
 确认：
 
@@ -965,9 +941,7 @@ extract_comment_items(...)
 
 ### 第三步：看 Mapper
 
-```text
-mappers/weibo.py
-```
+- [`mappers/weibo.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/mappers/weibo.py)
 
 确认：
 
@@ -993,9 +967,7 @@ backend/src/aima_ugc/contracts/canonical.py
 
 ### 第五步：看 Ingestion
 
-```text
-backend/src/aima_ugc/modules/content/ingestion.py
-```
+- [`backend/src/aima_ugc/modules/content/ingestion.py`](../../backend/src/aima_ugc/modules/content/ingestion.py)
 
 再沿 PostgreSQL Owner 看：
 

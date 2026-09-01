@@ -93,9 +93,7 @@ data.data.items[]
 
 Fixture：
 
-```text
-tests/fixtures/providers/tikhub/bilibili/search_page1.sanitized.json
-```
+- [`tests/fixtures/providers/tikhub/bilibili/search_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/bilibili/search_page1.sanitized.json)
 
 当前可观察：
 
@@ -105,7 +103,7 @@ tests/fixtures/providers/tikhub/bilibili/search_page1.sanitized.json
 - 播放；
 - 弹幕等当前 Fixture 证明的字段。
 
-精确 Mapper 以 `mappers/bilibili.py` 为准。
+精确 Mapper 以 [`mappers/bilibili.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/mappers/bilibili.py) 为准。
 
 ## 5. Detail
 
@@ -121,9 +119,7 @@ data.data
 
 Fixture：
 
-```text
-tests/fixtures/providers/tikhub/bilibili/detail.sanitized.json
-```
+- [`tests/fixtures/providers/tikhub/bilibili/detail.sanitized.json`](../../tests/fixtures/providers/tikhub/bilibili/detail.sanitized.json)
 
 Detail 可以补充 Search 没有观察到的评论数、收藏、投币、时长等事实；哪些字段进入 Canonical 以 Mapper 的 `observed_fields` 为准。
 
@@ -160,9 +156,7 @@ data.data.cursor.pagination_reply.next_offset
 
 Fixture：
 
-```text
-tests/fixtures/providers/tikhub/bilibili/comments_page1.sanitized.json
-```
+- [`tests/fixtures/providers/tikhub/bilibili/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/bilibili/comments_page1.sanitized.json)
 
 Capability：
 
@@ -198,9 +192,7 @@ rcount
 
 Fixture：
 
-```text
-tests/fixtures/providers/tikhub/bilibili/replies_page1.sanitized.json
-```
+- [`tests/fixtures/providers/tikhub/bilibili/replies_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/bilibili/replies_page1.sanitized.json)
 
 B站返回的数字 ID 最终转换成 Canonical 字符串身份，不把第三方 JSON number 直接当业务主键类型。
 

@@ -64,10 +64,8 @@ ingestion_policy
 
 当前 HTTP/Worker：
 
-```text
-backend/src/aima_ugc/bootstrap/historical_import_http.py
-backend/src/aima_ugc/bootstrap/historical_import_worker.py
-```
+- [`backend/src/aima_ugc/bootstrap/historical_import_http.py`](../../bootstrap/historical_import_http.py)
+- [`backend/src/aima_ugc/bootstrap/historical_import_worker.py`](../../bootstrap/historical_import_worker.py)
 
 当前领域实现：
 
@@ -81,16 +79,12 @@ historical_tables.py
 
 当前 PostgreSQL：
 
-```text
-backend/src/aima_ugc/adapters/persistence/postgres/historical_import.py
-backend/src/aima_ugc/adapters/persistence/postgres/historical_content.py
-```
+- [`backend/src/aima_ugc/adapters/persistence/postgres/historical_import.py`](../../adapters/persistence/postgres/historical_import.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/historical_content.py`](../../adapters/persistence/postgres/historical_content.py)
 
 当前页面：
 
-```text
-frontend/src/features/import-batches/pages/CollectionRuntimePage/components/DataImportDialog.vue
-```
+- [`frontend/src/features/import-batches/pages/CollectionRuntimePage/components/DataImportDialog.vue`](../../../../../frontend/src/features/import-batches/pages/CollectionRuntimePage/components/DataImportDialog.vue)
 
 完整跨模块链路：
 
@@ -103,9 +97,7 @@ frontend/src/features/import-batches/pages/CollectionRuntimePage/components/Data
 
 真实 Worker Registry 以：
 
-```text
-backend/src/aima_ugc/bootstrap/worker.py
-```
+- [`backend/src/aima_ugc/bootstrap/worker.py`](../../bootstrap/worker.py)
 
 为准。
 
@@ -126,15 +118,11 @@ ingestion.historical-import-chunk.v1
 
 Job 领域入口：
 
-```text
-backend/src/aima_ugc/modules/ingestion/historical_jobs.py
-```
+- [`backend/src/aima_ugc/modules/ingestion/historical_jobs.py`](historical_jobs.py)
 
 执行器：
 
-```text
-backend/src/aima_ugc/bootstrap/historical_import_worker.py
-```
+- [`backend/src/aima_ugc/bootstrap/historical_import_worker.py`](../../bootstrap/historical_import_worker.py)
 
 所有 Job 继续复用公共 PostgreSQL Durable Job Runtime 的：
 
@@ -261,9 +249,7 @@ Source Item
 
 XLSX 本身是 ZIP，仍受：
 
-```text
-backend/src/aima_ugc/modules/ingestion/xlsx_security.py
-```
+- [`backend/src/aima_ugc/modules/ingestion/xlsx_security.py`](xlsx_security.py)
 
 保护，包括文件/请求大小、ZIP member、解压总量、单 member、压缩比和基本结构安全。具体阈值看当前代码/配置，不在 README 固化第二份数字。
 
@@ -301,9 +287,7 @@ ContentIngestionService
 
 Historical Fill-Only 的集合式写入：
 
-```text
-backend/src/aima_ugc/adapters/persistence/postgres/historical_content.py
-```
+- [`backend/src/aima_ugc/adapters/persistence/postgres/historical_content.py`](../../adapters/persistence/postgres/historical_content.py)
 
 不能退回逐行“先 SELECT 再 UPDATE”的 4000 万实现，也不能用外部 SQL/COPY 绕过 Mapper/Canonical/Content Owner。
 
@@ -401,16 +385,12 @@ POST /api/v1/import-batches
 
 生产 HTTP/Worker：
 
-```text
-backend/src/aima_ugc/bootstrap/import_http.py
-backend/src/aima_ugc/bootstrap/import_worker.py
-```
+- [`backend/src/aima_ugc/bootstrap/import_http.py`](../../bootstrap/import_http.py)
+- [`backend/src/aima_ugc/bootstrap/import_worker.py`](../../bootstrap/import_worker.py)
 
 Job 领域入口：
 
-```text
-backend/src/aima_ugc/modules/ingestion/import_job.py
-```
+- [`backend/src/aima_ugc/modules/ingestion/import_job.py`](import_job.py)
 
 `ImportKeywordSelectionSnapshot` 冻结多词包执行输入；当前新建/执行 Payload 要求 `keyword_selection`，不提供旧 `relevance` 单词包 Payload 兼容字段。Worker 校验 Batch `stats.keyword_selection` 与 Job Payload 一致，不一致时关闭失败。
 
@@ -521,28 +501,26 @@ Excel
 | 文件 | 作用 | 常见修改场景 |
 | --- | --- | --- |
 | `tables.py` | 兼容 Import Batch 与 import-parent 关系 | 改 Batch Schema/来源父级约束 |
-| `import_job.py` | `ingestion.import-excel.v1` Payload/Handler | 改兼容 Import Job 语义 |
+| [`import_job.py`](import_job.py) | `ingestion.import-excel.v1` Payload/Handler | 改兼容 Import Job 语义 |
 | `http.py` | Import Batch HTTP Port/领域异常 | 改兼容入口应用层边界 |
 | `query.py` | Import Batch Read Model | 改兼容 Batch 列表/摘要 |
-| `import_batch_cursor.py` | Import Batch Cursor | 改兼容分页安全/过期语义 |
-| `xlsx_security.py` | XLSX 资源安全 | 改上传/ZIP 安全边界 |
-| `historical_tables.py` | Campaign/Item/Row/Conflict 等 Stage 12 数据事实 | 改统一导入 Schema/状态/约束 |
-| `historical_http.py` | Data Import Campaign HTTP Port/模型边界 | 改统一导入应用接口 |
-| `historical_jobs.py` | Discover/Snapshot/Import-Chunk Job | 改 Campaign Job Payload/Handler |
-| `historical_directory.py` | 批准服务器目录安全访问 | 改目录枚举/路径安全 |
+| [`import_batch_cursor.py`](import_batch_cursor.py) | Import Batch Cursor | 改兼容分页安全/过期语义 |
+| [`xlsx_security.py`](xlsx_security.py) | XLSX 资源安全 | 改上传/ZIP 安全边界 |
+| [`historical_tables.py`](historical_tables.py) | Campaign/Item/Row/Conflict 等 Stage 12 数据事实 | 改统一导入 Schema/状态/约束 |
+| [`historical_http.py`](historical_http.py) | Data Import Campaign HTTP Port/模型边界 | 改统一导入应用接口 |
+| [`historical_jobs.py`](historical_jobs.py) | Discover/Snapshot/Import-Chunk Job | 改 Campaign Job Payload/Handler |
+| [`historical_directory.py`](historical_directory.py) | 批准服务器目录安全访问 | 改目录枚举/路径安全 |
 | `historical_chunk.py` | Chunk 内部格式/冻结边界 | 改 Chunk 读写/版本 |
 
 跨目录生产实现：
 
-```text
-bootstrap/import_http.py
-bootstrap/import_worker.py
-bootstrap/historical_import_http.py
-bootstrap/historical_import_worker.py
-bootstrap/manual_ingestion.py
-adapters/persistence/postgres/historical_import.py
-adapters/persistence/postgres/historical_content.py
-```
+- [`bootstrap/import_http.py`](../../bootstrap/import_http.py)
+- [`bootstrap/import_worker.py`](../../bootstrap/import_worker.py)
+- [`bootstrap/historical_import_http.py`](../../bootstrap/historical_import_http.py)
+- [`bootstrap/historical_import_worker.py`](../../bootstrap/historical_import_worker.py)
+- [`bootstrap/manual_ingestion.py`](../../bootstrap/manual_ingestion.py)
+- [`adapters/persistence/postgres/historical_import.py`](../../adapters/persistence/postgres/historical_import.py)
+- [`adapters/persistence/postgres/historical_content.py`](../../adapters/persistence/postgres/historical_content.py)
 
 ---
 

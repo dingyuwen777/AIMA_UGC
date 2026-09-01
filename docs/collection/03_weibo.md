@@ -79,9 +79,7 @@ data.data.cards[].mblog
 
 Fixture：
 
-```text
-tests/fixtures/providers/tikhub/weibo/search_page1.sanitized.json
-```
+- [`tests/fixtures/providers/tikhub/weibo/search_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/weibo/search_page1.sanitized.json)
 
 这一结构曾由 Real Probe 纠正，不能把其他平台的 `items[]` 模板套过来。
 
@@ -103,9 +101,7 @@ data.detailInfo.status
 
 Fixture：
 
-```text
-tests/fixtures/providers/tikhub/weibo/detail.sanitized.json
-```
+- [`tests/fixtures/providers/tikhub/weibo/detail.sanitized.json`](../../tests/fixtures/providers/tikhub/weibo/detail.sanitized.json)
 
 当前 Operation 对这个核心路径 fail closed：找不到时不在响应其他位置漫游猜测。
 
@@ -131,9 +127,7 @@ data.moreInfo.params.max_id
 
 Fixture：
 
-```text
-tests/fixtures/providers/tikhub/weibo/comments_page1.sanitized.json
-```
+- [`tests/fixtures/providers/tikhub/weibo/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/weibo/comments_page1.sanitized.json)
 
 Capability：
 
@@ -162,9 +156,7 @@ data.data[]
 
 Fixture：
 
-```text
-tests/fixtures/providers/tikhub/weibo/sub_comments_page1.sanitized.json
-```
+- [`tests/fixtures/providers/tikhub/weibo/sub_comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/weibo/sub_comments_page1.sanitized.json)
 
 ## 8. 为什么微博当前不声明最新评论增量
 

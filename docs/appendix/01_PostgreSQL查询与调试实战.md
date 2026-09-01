@@ -77,11 +77,9 @@ Job / Artifact
 
 ## 2. 连接 PostgreSQL
 
-本地非敏感配置以根目录 `env.local.example` 和当前 `PlatformSettings` 为准。当前变量映射代码：
+本地非敏感配置以根目录 [`env.local.example`](../../env.local.example) 和当前 `PlatformSettings` 为准。当前变量映射代码：
 
-```text
-backend/src/aima_ugc/platform/config/settings.py
-```
+- [`backend/src/aima_ugc/platform/config/settings.py`](../../backend/src/aima_ugc/platform/config/settings.py)
 
 常用变量：
 
@@ -233,7 +231,7 @@ ORDER BY observed_at;
 → content_metric_observations
 ```
 
-如果怀疑“旧数据把新字段覆盖了”，还应检查 `contents.field_observed_at`，并回到 `modules/content/ingestion.py` 看字段 freshness 规则。
+如果怀疑“旧数据把新字段覆盖了”，还应检查 `contents.field_observed_at`，并回到 [`modules/content/ingestion.py`](../../backend/src/aima_ugc/modules/content/ingestion.py) 看字段 freshness 规则。
 
 ## 6. 看评论
 
@@ -618,11 +616,9 @@ inherit_ai
 
 精确规则看：
 
-```text
-backend/src/aima_ugc/modules/analysis/README.md
-backend/src/aima_ugc/modules/analysis/relevance_review_tables.py
-backend/src/aima_ugc/adapters/persistence/postgres/relevance_reviews.py
-```
+- [`backend/src/aima_ugc/modules/analysis/README.md`](../../backend/src/aima_ugc/modules/analysis/README.md)
+- [`backend/src/aima_ugc/modules/analysis/relevance_review_tables.py`](../../backend/src/aima_ugc/modules/analysis/relevance_review_tables.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/relevance_reviews.py`](../../backend/src/aima_ugc/adapters/persistence/postgres/relevance_reviews.py)
 
 ### 一次正式 Analysis 请求
 
@@ -711,7 +707,7 @@ reporting_data_exports.artifact_id
 → ArtifactStore 对应 storage_key
 ```
 
-正式 Export 实现见 `backend/src/aima_ugc/modules/reporting/README.md`。
+正式 Export 实现见 [`backend/src/aima_ugc/modules/reporting/README.md`](../../backend/src/aima_ugc/modules/reporting/README.md)。
 
 ## 13. 看数据库和索引大小
 
@@ -893,9 +889,7 @@ uv run alembic check
 
 当前声音广场查询：
 
-```text
-backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
-```
+- [`backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py`](../../backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py)
 
 ### Excel 导入一直处理中
 
@@ -947,16 +941,16 @@ backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
 
 ## 18. 精确事实去哪里看
 
-- 数据表注册：`backend/src/aima_ugc/database_schema.py`
-- Content：`backend/src/aima_ugc/modules/content/tables.py`、`extended_tables.py`
+- 数据表注册：[`backend/src/aima_ugc/database_schema.py`](../../backend/src/aima_ugc/database_schema.py)
+- Content：[`backend/src/aima_ugc/modules/content/tables.py`](../../backend/src/aima_ugc/modules/content/tables.py)、[`extended_tables.py`](../../backend/src/aima_ugc/modules/content/extended_tables.py)
 - Collection：`backend/src/aima_ugc/modules/collection/*tables.py`
-- Import Batch：`backend/src/aima_ugc/modules/ingestion/tables.py`
-- Analysis：`backend/src/aima_ugc/modules/analysis/tables.py`、`relevance_review_tables.py`
-- Reporting：`backend/src/aima_ugc/modules/reporting/tables.py`
-- Job：`backend/src/aima_ugc/platform/jobs/tables.py`
+- Import Batch：[`backend/src/aima_ugc/modules/ingestion/tables.py`](../../backend/src/aima_ugc/modules/ingestion/tables.py)
+- Analysis：[`backend/src/aima_ugc/modules/analysis/tables.py`](../../backend/src/aima_ugc/modules/analysis/tables.py)、[`relevance_review_tables.py`](../../backend/src/aima_ugc/modules/analysis/relevance_review_tables.py)
+- Reporting：[`backend/src/aima_ugc/modules/reporting/tables.py`](../../backend/src/aima_ugc/modules/reporting/tables.py)
+- Job：[`backend/src/aima_ugc/platform/jobs/tables.py`](../../backend/src/aima_ugc/platform/jobs/tables.py)
 - Migration：`migrations/versions/`
-- 运行配置：`backend/src/aima_ugc/platform/config/settings.py`
-- 本地配置示例：`env.local.example`
+- 运行配置：[`backend/src/aima_ugc/platform/config/settings.py`](../../backend/src/aima_ugc/platform/config/settings.py)
+- 本地配置示例：[`env.local.example`](../../env.local.example)
 - 数据架构原则：[`../blueprint/03_数据库与文件存储.md`](../blueprint/03_数据库与文件存储.md)
 
 数据库结构发生变化时，应先改代码/Migration/测试，再同步本文中受影响的 SQL 示例；不能反过来让附录成为 Schema 事实源。

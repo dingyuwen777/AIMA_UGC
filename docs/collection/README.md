@@ -53,9 +53,7 @@ backend/src/aima_ugc/adapters/providers/tikhub/
 
 生产 Collection 串联：
 
-```text
-backend/src/aima_ugc/bootstrap/collection_scope.py
-```
+- [`backend/src/aima_ugc/bootstrap/collection_scope.py`](../../backend/src/aima_ugc/bootstrap/collection_scope.py)
 
 Collection Domain：
 
@@ -89,9 +87,7 @@ Endpoint 精确路径不要从这个摘要猜，打开目标平台 `operations/*
 
 机器事实：
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py)
 
 当前：
 
@@ -135,7 +131,7 @@ Capability=false 的平台走受控刷新，不套用同一逻辑。
 - B站 Search 没有真实证据就不能把 `comment_count` 当 0；
 - 快手虽然支持回复数/二级评论，但不代表它支持安全最新评论增量。
 
-精确排序/时间/内容类型枚举看 `capabilities.py` 和 Blueprint 08。
+精确排序/时间/内容类型枚举看 [`capabilities.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py) 和 Blueprint 08。
 
 前端配置链统一为：
 
@@ -184,10 +180,8 @@ dispatch_status=unknown
 
 生产代码：
 
-```text
-modules/collection/provider_dispatch.py
-modules/collection/provider_recovery.py
-```
+- [`modules/collection/provider_dispatch.py`](../../backend/src/aima_ugc/modules/collection/provider_dispatch.py)
+- [`modules/collection/provider_recovery.py`](../../backend/src/aima_ugc/modules/collection/provider_recovery.py)
 
 ---
 
@@ -208,10 +202,8 @@ Search Candidate
 
 代码：
 
-```text
-backend/src/aima_ugc/modules/collection/decision.py
-backend/src/aima_ugc/bootstrap/collection_scope.py
-```
+- [`backend/src/aima_ugc/modules/collection/decision.py`](../../backend/src/aima_ugc/modules/collection/decision.py)
+- [`backend/src/aima_ugc/bootstrap/collection_scope.py`](../../backend/src/aima_ugc/bootstrap/collection_scope.py)
 
 目的：
 

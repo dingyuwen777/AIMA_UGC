@@ -331,33 +331,27 @@ Scheduler 短暂停机不会导致业务数据损坏，只会延后文件删除�
 
 核心代码：
 
-```text
-backend/src/aima_ugc/platform/storage/retention.py
-backend/src/aima_ugc/platform/storage/service.py
-backend/src/aima_ugc/platform/storage/ports.py
-backend/src/aima_ugc/adapters/storage/local/store.py
-backend/src/aima_ugc/adapters/persistence/postgres/artifact_metadata.py
-backend/src/aima_ugc/bootstrap/artifact_cleanup.py
-backend/src/aima_ugc/entrypoints/scheduler_main.py
-backend/src/aima_ugc/bootstrap/reporting_http.py
-```
+- [`backend/src/aima_ugc/platform/storage/retention.py`](../../backend/src/aima_ugc/platform/storage/retention.py)
+- [`backend/src/aima_ugc/platform/storage/service.py`](../../backend/src/aima_ugc/platform/storage/service.py)
+- [`backend/src/aima_ugc/platform/storage/ports.py`](../../backend/src/aima_ugc/platform/storage/ports.py)
+- [`backend/src/aima_ugc/adapters/storage/local/store.py`](../../backend/src/aima_ugc/adapters/storage/local/store.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/artifact_metadata.py`](../../backend/src/aima_ugc/adapters/persistence/postgres/artifact_metadata.py)
+- [`backend/src/aima_ugc/bootstrap/artifact_cleanup.py`](../../backend/src/aima_ugc/bootstrap/artifact_cleanup.py)
+- [`backend/src/aima_ugc/entrypoints/scheduler_main.py`](../../backend/src/aima_ugc/entrypoints/scheduler_main.py)
+- [`backend/src/aima_ugc/bootstrap/reporting_http.py`](../../backend/src/aima_ugc/bootstrap/reporting_http.py)
 
 前端：
 
-```text
-frontend/src/shared/artifactRetention.ts
-frontend/src/features/import-batches/pages/CollectionRuntimePage/components/ImportBatchDetailDrawer.vue
-frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/DataExportDialog.vue
-```
+- [`frontend/src/shared/artifactRetention.ts`](../../frontend/src/shared/artifactRetention.ts)
+- [`frontend/src/features/import-batches/pages/CollectionRuntimePage/components/ImportBatchDetailDrawer.vue`](../../frontend/src/features/import-batches/pages/CollectionRuntimePage/components/ImportBatchDetailDrawer.vue)
+- [`frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/DataExportDialog.vue`](../../frontend/src/features/voice-plaza/pages/VoicePlazaPage/components/DataExportDialog.vue)
 
 关键验证：
 
-```text
-tests/unit/platform/test_artifact_retention.py
-tests/unit/platform/test_artifact_service_failure_recovery.py
-tests/unit/platform/test_artifact_cleanup_scheduler.py
-tests/unit/platform/test_export_download_retention.py
-tests/integration/database/test_artifact_retention_repository.py
-frontend/tests/artifact-retention.spec.ts
-frontend/e2e/artifact-retention.spec.ts
-```
+- [`tests/unit/platform/test_artifact_retention.py`](../../tests/unit/platform/test_artifact_retention.py)
+- [`tests/unit/platform/test_artifact_service_failure_recovery.py`](../../tests/unit/platform/test_artifact_service_failure_recovery.py)
+- [`tests/unit/platform/test_artifact_cleanup_scheduler.py`](../../tests/unit/platform/test_artifact_cleanup_scheduler.py)
+- [`tests/unit/platform/test_export_download_retention.py`](../../tests/unit/platform/test_export_download_retention.py)
+- [`tests/integration/database/test_artifact_retention_repository.py`](../../tests/integration/database/test_artifact_retention_repository.py)
+- [`frontend/tests/artifact-retention.spec.ts`](../../frontend/tests/artifact-retention.spec.ts)
+- [`frontend/e2e/artifact-retention.spec.ts`](../../frontend/e2e/artifact-retention.spec.ts)

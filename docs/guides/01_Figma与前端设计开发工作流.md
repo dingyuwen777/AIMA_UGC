@@ -52,7 +52,7 @@ Figma 目标信息架构（Target IA）
 当前已经实现的 Vue Route
 ```
 
-Figma 可以先表达已经确认的长期产品方向，例如公共 Sidebar 中可以先出现未来页面入口；但 Design-to-Code 时只能为 `frontend/src/app/routes.ts` 当前真实存在的页面接通可点击导航。未来入口在代码中不得被实现成死链、伪路由、空白假页面或仅为了“和设计一致”而增加的无效菜单动作。真正新增页面时再按：
+Figma 可以先表达已经确认的长期产品方向，例如公共 Sidebar 中可以先出现未来页面入口；但 Design-to-Code 时只能为 [`frontend/src/app/routes.ts`](../../frontend/src/app/routes.ts) 当前真实存在的页面接通可点击导航。未来入口在代码中不得被实现成死链、伪路由、空白假页面或仅为了“和设计一致”而增加的无效菜单动作。真正新增页面时再按：
 
 ```text
 Feature
@@ -70,9 +70,7 @@ Feature
 
 真实 Router：
 
-```text
-frontend/src/app/routes.ts
-```
+- [`frontend/src/app/routes.ts`](../../frontend/src/app/routes.ts)
 
 当前路由：
 
@@ -529,7 +527,7 @@ Figma 已经存在对应 AIMA Design Token 时，页面和公共组件应优先�
 
 ## 10. Element Plus 当前兼容边界
 
-当前依赖事实以 `frontend/package.json` / lock 为准，目前包括：
+当前依赖事实以 [`frontend/package.json`](../../frontend/package.json) / lock 为准，目前包括：
 
 ```text
 element-plus = 2.14.4
@@ -752,7 +750,7 @@ npm --prefix frontend run build
 npm --prefix frontend run test:e2e
 ```
 
-具体脚本以 `frontend/package.json` 为准。
+具体脚本以 [`frontend/package.json`](../../frontend/package.json) 为准。
 
 页面状态按实际需要检查：
 

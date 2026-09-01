@@ -15,21 +15,17 @@ Vue 页面
 
 精确 HTTP 字段看：
 
-```text
-backend/src/aima_ugc/contracts/http.py
-backend/src/aima_ugc/contracts/runtime.py
-backend/src/aima_ugc/contracts/relevance_review.py
-backend/src/aima_ugc/bootstrap/api.py
-backend/src/aima_ugc/bootstrap/analysis_capability_http.py
-backend/src/aima_ugc/entrypoints/api_main.py
-contracts/openapi/openapi.json
-```
+- [`backend/src/aima_ugc/contracts/http.py`](../../backend/src/aima_ugc/contracts/http.py)
+- [`backend/src/aima_ugc/contracts/runtime.py`](../../backend/src/aima_ugc/contracts/runtime.py)
+- [`backend/src/aima_ugc/contracts/relevance_review.py`](../../backend/src/aima_ugc/contracts/relevance_review.py)
+- [`backend/src/aima_ugc/bootstrap/api.py`](../../backend/src/aima_ugc/bootstrap/api.py)
+- [`backend/src/aima_ugc/bootstrap/analysis_capability_http.py`](../../backend/src/aima_ugc/bootstrap/analysis_capability_http.py)
+- [`backend/src/aima_ugc/entrypoints/api_main.py`](../../backend/src/aima_ugc/entrypoints/api_main.py)
+- [`contracts/openapi/openapi.json`](../../contracts/openapi/openapi.json)
 
 前端真实路由看：
 
-```text
-frontend/src/app/routes.ts
-```
+- [`frontend/src/app/routes.ts`](../../frontend/src/app/routes.ts)
 
 ---
 
@@ -58,10 +54,8 @@ frontend/src/features/voice-plaza/
 
 相关代码：
 
-```text
-backend/src/aima_ugc/bootstrap/content_http.py
-backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
-```
+- [`backend/src/aima_ugc/bootstrap/content_http.py`](../../backend/src/aima_ugc/bootstrap/content_http.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py`](../../backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py)
 
 页面不理解数据库表，Router 不写 SQL，Query Repository 不解释 TikHub 私有字段。
 
@@ -84,9 +78,7 @@ Vue / API Client
 
 当前 Worker Registry 的机器事实：
 
-```text
-backend/src/aima_ugc/bootstrap/worker.py
-```
+- [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py)
 
 当前正式 Job：
 
@@ -101,9 +93,9 @@ analysis.content-label.v1
 reporting.content-export-excel.v1
 ```
 
-三个 `ingestion.historical-*` 是统一 Data Import Campaign 继续沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner。它们已经由当前 `bootstrap/worker.py` 注册，不是未来规划。
+三个 `ingestion.historical-*` 是统一 Data Import Campaign 继续沿用的物理 Job type；`analysis.content-run-plan.v1` 是新版 Analysis Run Planner。它们已经由当前 [`bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py) 注册，不是未来规划。
 
-注意：离线 Markdown/Word 报告当前不是上述 PostgreSQL Worker Registry 中的独立正式 Job；它目前由 `platform/reporting/` 和 `imports_test/generate_report.py` 提供离线生成能力。不能因为“报告通常耗时”就把它写成当前已经产品化的 Job。
+注意：离线 Markdown/Word 报告当前不是上述 PostgreSQL Worker Registry 中的独立正式 Job；它目前由 `platform/reporting/` 和 [`imports_test/generate_report.py`](../../backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py) 提供离线生成能力。不能因为“报告通常耗时”就把它写成当前已经产品化的 Job。
 
 ---
 
@@ -113,11 +105,9 @@ reporting.content-export-excel.v1
 
 当前主 Router 与最终 API Assembly：
 
-```text
-backend/src/aima_ugc/bootstrap/api.py
-backend/src/aima_ugc/bootstrap/analysis_capability_http.py
-backend/src/aima_ugc/entrypoints/api_main.py
-```
+- [`backend/src/aima_ugc/bootstrap/api.py`](../../backend/src/aima_ugc/bootstrap/api.py)
+- [`backend/src/aima_ugc/bootstrap/analysis_capability_http.py`](../../backend/src/aima_ugc/bootstrap/analysis_capability_http.py)
+- [`backend/src/aima_ugc/entrypoints/api_main.py`](../../backend/src/aima_ugc/entrypoints/api_main.py)
 
 Router 负责：
 
@@ -153,14 +143,12 @@ Service 表达一个业务动作，例如：
 
 真实生产 Service 主要在：
 
-```text
-backend/src/aima_ugc/bootstrap/collection_http.py
-backend/src/aima_ugc/bootstrap/collection_strategy_http.py
-backend/src/aima_ugc/bootstrap/import_http.py
-backend/src/aima_ugc/bootstrap/historical_import_http.py
-backend/src/aima_ugc/bootstrap/content_http.py
-backend/src/aima_ugc/bootstrap/reporting_http.py
-```
+- [`backend/src/aima_ugc/bootstrap/collection_http.py`](../../backend/src/aima_ugc/bootstrap/collection_http.py)
+- [`backend/src/aima_ugc/bootstrap/collection_strategy_http.py`](../../backend/src/aima_ugc/bootstrap/collection_strategy_http.py)
+- [`backend/src/aima_ugc/bootstrap/import_http.py`](../../backend/src/aima_ugc/bootstrap/import_http.py)
+- [`backend/src/aima_ugc/bootstrap/historical_import_http.py`](../../backend/src/aima_ugc/bootstrap/historical_import_http.py)
+- [`backend/src/aima_ugc/bootstrap/content_http.py`](../../backend/src/aima_ugc/bootstrap/content_http.py)
+- [`backend/src/aima_ugc/bootstrap/reporting_http.py`](../../backend/src/aima_ugc/bootstrap/reporting_http.py)
 
 这里的 Bootstrap Service 会组装真实 Repository，并在需要时协调跨 Owner 的同一事务。
 
@@ -209,18 +197,14 @@ Pydantic Request / Response
 
 手写 Contract：
 
-```text
-backend/src/aima_ugc/contracts/http.py
-backend/src/aima_ugc/contracts/runtime.py
-```
+- [`backend/src/aima_ugc/contracts/http.py`](../../backend/src/aima_ugc/contracts/http.py)
+- [`backend/src/aima_ugc/contracts/runtime.py`](../../backend/src/aima_ugc/contracts/runtime.py)
 
 其中 `runtime.py` 只承载安全的运行能力读模型，不保存 Secret，也不成为 LLM 配置的第二事实源。
 
 生成 OpenAPI：
 
-```text
-contracts/openapi/openapi.json
-```
+- [`contracts/openapi/openapi.json`](../../contracts/openapi/openapi.json)
 
 前端生成代码：
 
@@ -242,7 +226,7 @@ frontend/src/generated/api/
 
 ## 5. 当前真实 HTTP API 面
 
-下面来自当前 `bootstrap/api.py` 与最终 `entrypoints/api_main.py` Assembly，不是未来规划列表。
+下面来自当前 [`bootstrap/api.py`](../../backend/src/aima_ugc/bootstrap/api.py) 与最终 [`entrypoints/api_main.py`](../../backend/src/aima_ugc/entrypoints/api_main.py) Assembly，不是未来规划列表。
 
 ### 5.1 Health
 
@@ -265,10 +249,8 @@ GET  /api/v1/collection-runtime/summary
 
 代码：
 
-```text
-backend/src/aima_ugc/bootstrap/collection_http.py
-backend/src/aima_ugc/modules/collection/http.py
-```
+- [`backend/src/aima_ugc/bootstrap/collection_http.py`](../../backend/src/aima_ugc/bootstrap/collection_http.py)
+- [`backend/src/aima_ugc/modules/collection/http.py`](../../backend/src/aima_ugc/modules/collection/http.py)
 
 `collection-runtime/runs` 是统一只读投影，不意味着 Excel Import Batch 和 Collection Run 被合并成一张万能表。
 
@@ -294,14 +276,12 @@ POST /api/v1/content-relevance-reviews
 
 代码：
 
-```text
-backend/src/aima_ugc/contracts/runtime.py
-backend/src/aima_ugc/bootstrap/analysis_capability_http.py
-backend/src/aima_ugc/bootstrap/content_http.py
-backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
-backend/src/aima_ugc/adapters/persistence/postgres/analysis.py
-backend/src/aima_ugc/adapters/persistence/postgres/relevance_reviews.py
-```
+- [`backend/src/aima_ugc/contracts/runtime.py`](../../backend/src/aima_ugc/contracts/runtime.py)
+- [`backend/src/aima_ugc/bootstrap/analysis_capability_http.py`](../../backend/src/aima_ugc/bootstrap/analysis_capability_http.py)
+- [`backend/src/aima_ugc/bootstrap/content_http.py`](../../backend/src/aima_ugc/bootstrap/content_http.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py`](../../backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/analysis.py`](../../backend/src/aima_ugc/adapters/persistence/postgres/analysis.py)
+- [`backend/src/aima_ugc/adapters/persistence/postgres/relevance_reviews.py`](../../backend/src/aima_ugc/adapters/persistence/postgres/relevance_reviews.py)
 
 `GET /content-analysis-capabilities` 是安全只读运行能力投影，只返回 `configured`。它用于让声音广场在 LLM Base URL / Model / Secret 未形成可执行配置时明确提示并禁用 AI 打标；前端不得读取 `env.local`、Secret 文件或复制后端配置判断。源码开发时，能力接口与 Worker 都从 `AIMA_EXTERNAL_SECRET_DIR` 对应的外部 Secret Root 读取 `llm_api_key`，不能误用只存 PostgreSQL/Cursor Secret 的内部 Root。该接口不返回 Base URL、Model、Provider、Secret 路径或 API Key，也不证明外部 LLM 此刻在线；Worker 的执行时配置守卫仍是最终防线。
 
@@ -347,10 +327,8 @@ GET  /api/v1/jobs/{job_id}
 
 代码：
 
-```text
-backend/src/aima_ugc/bootstrap/import_http.py
-backend/src/aima_ugc/bootstrap/import_worker.py
-```
+- [`backend/src/aima_ugc/bootstrap/import_http.py`](../../backend/src/aima_ugc/bootstrap/import_http.py)
+- [`backend/src/aima_ugc/bootstrap/import_worker.py`](../../backend/src/aima_ugc/bootstrap/import_worker.py)
 
 ### 5.6 Keyword Pack / Relevance
 
@@ -377,10 +355,8 @@ PUT  /api/v1/collection-plans/{plan_id}/enabled
 
 代码：
 
-```text
-backend/src/aima_ugc/bootstrap/collection_strategy_http.py
-backend/src/aima_ugc/modules/collection/planning.py
-```
+- [`backend/src/aima_ugc/bootstrap/collection_strategy_http.py`](../../backend/src/aima_ugc/bootstrap/collection_strategy_http.py)
+- [`backend/src/aima_ugc/modules/collection/planning.py`](../../backend/src/aima_ugc/modules/collection/planning.py)
 
 ### 5.8 统一数据导入 Campaign
 
@@ -413,9 +389,7 @@ Campaign Response 的 `progress` 由后端从 Source Item、Snapshot Job 和 Chu
 
 真实 Router：
 
-```text
-frontend/src/app/routes.ts
-```
+- [`frontend/src/app/routes.ts`](../../frontend/src/app/routes.ts)
 
 当前注册：
 
@@ -488,10 +462,8 @@ Figma 到代码流程：
 
 声音广场的 Cursor 实现：
 
-```text
-backend/src/aima_ugc/modules/content/content_cursor.py
-backend/src/aima_ugc/bootstrap/content_http.py
-```
+- [`backend/src/aima_ugc/modules/content/content_cursor.py`](../../backend/src/aima_ugc/modules/content/content_cursor.py)
+- [`backend/src/aima_ugc/bootstrap/content_http.py`](../../backend/src/aima_ugc/bootstrap/content_http.py)
 
 它会把查询过滤条件 Hash 绑定到 Cursor，防止把一个查询的 Cursor 拿去另一个查询继续翻页。
 
@@ -529,9 +501,7 @@ Content Current
 
 关键代码：
 
-```text
-backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py
-```
+- [`backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py`](../../backend/src/aima_ugc/adapters/persistence/postgres/content_queries.py)
 
 当前默认列表：
 
@@ -620,9 +590,7 @@ HttpErrorResponse
 
 定义于：
 
-```text
-backend/src/aima_ugc/contracts/http.py
-```
+- [`backend/src/aima_ugc/contracts/http.py`](../../backend/src/aima_ugc/contracts/http.py)
 
 典型形状：
 

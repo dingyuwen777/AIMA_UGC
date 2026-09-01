@@ -58,9 +58,7 @@ Endpoint 可调用
 
 运行时价格来源：
 
-```text
-backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml`](../../backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml)
 
 当前 Pricing Snapshot：
 
@@ -405,10 +403,8 @@ data.subCommentsMap.<root>.subComments[]
 
 历史 Web Fixture 仍保留用于 Web 备用回归：
 
-```text
-tests/fixtures/providers/tikhub/kuaishou/comments_page1.sanitized.json
-tests/fixtures/providers/tikhub/kuaishou/sub_comments_page1.sanitized.json
-```
+- [`tests/fixtures/providers/tikhub/kuaishou/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/kuaishou/comments_page1.sanitized.json)
+- [`tests/fixtures/providers/tikhub/kuaishou/sub_comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/kuaishou/sub_comments_page1.sanitized.json)
 
 ## 7.3 Search V2 vs Web
 

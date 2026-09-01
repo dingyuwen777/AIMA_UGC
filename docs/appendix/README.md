@@ -23,16 +23,16 @@
 | 你想解决的问题 | 先看 | 代码事实入口 |
 | --- | --- | --- |
 | 直接查 PostgreSQL，确认内容/Job/Analysis/Export 到底写了什么 | [`01_PostgreSQL查询与调试实战.md`](01_PostgreSQL查询与调试实战.md) | `backend/src/aima_ugc/**/tables.py`、`adapters/persistence/postgres/`、`migrations/versions/` |
-| 理解定时采集、Cron、`latest_only`、停机恢复和并发防重 | [`05_Scheduler调度执行与停机恢复.md`](05_Scheduler调度执行与停机恢复.md) | `modules/collection/scheduler.py`、`bootstrap/scheduler.py`、Collection PostgreSQL Repository |
+| 理解定时采集、Cron、`latest_only`、停机恢复和并发防重 | [`05_Scheduler调度执行与停机恢复.md`](05_Scheduler调度执行与停机恢复.md) | [`modules/collection/scheduler.py`](../../backend/src/aima_ugc/modules/collection/scheduler.py)、[`bootstrap/scheduler.py`](../../backend/src/aima_ugc/bootstrap/scheduler.py)、Collection PostgreSQL Repository |
 | 看五个平台 TikHub 真正返回哪些 JSON 字段、Mapper 从哪里取值 | [`02_TikHub五平台真实响应与字段映射.md`](02_TikHub五平台真实响应与字段映射.md) | `adapters/providers/tikhub/operations/`、`mappers/`、`tests/fixtures/providers/tikhub/` |
-| 理解 App/Web/V1/V2/V3 为什么不自动切换、备用接口如何验证 | [`03_TikHub多接口验证与备用策略.md`](03_TikHub多接口验证与备用策略.md) | `capabilities.py`、接口比较/备用 Operation、Fixture |
+| 理解 App/Web/V1/V2/V3 为什么不自动切换、备用接口如何验证 | [`03_TikHub多接口验证与备用策略.md`](03_TikHub多接口验证与备用策略.md) | [`capabilities.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py)、接口比较/备用 Operation、Fixture |
 | 查某次真实 Probe、endpoint 价格快照、接口选型证据 | [`04_TikHub接口选型与真实验证台账.md`](04_TikHub接口选型与真实验证台账.md) | `tests/fixtures/providers/tikhub/endpoint_ledger/`、Pricing、Probe 代码 |
-| 理解 Excel 与 TikHub 为什么最后进入同一个 Content、来源链怎么保留 | [`08_数据入口与统一入库实现.md`](08_数据入口与统一入库实现.md) | `bootstrap/import_worker.py`、`manual_ingestion.py`、`modules/ingestion/`、`modules/content/ingestion.py` |
-| 理解统一 Excel 数据契约、三张 Sheet、离线处理与共享 Exporter | [`06_Excel统一数据导出与离线调试.md`](06_Excel统一数据导出与离线调试.md) | `platform/export/excel.py`、`contracts/export/`、`adapters/providers/imports_test/` |
+| 理解 Excel 与 TikHub 为什么最后进入同一个 Content、来源链怎么保留 | [`08_数据入口与统一入库实现.md`](08_数据入口与统一入库实现.md) | [`bootstrap/import_worker.py`](../../backend/src/aima_ugc/bootstrap/import_worker.py)、`manual_ingestion.py`、`modules/ingestion/`、[`modules/content/ingestion.py`](../../backend/src/aima_ugc/modules/content/ingestion.py) |
+| 理解统一 Excel 数据契约、三张 Sheet、离线处理与共享 Exporter | [`06_Excel统一数据导出与离线调试.md`](06_Excel统一数据导出与离线调试.md) | [`platform/export/excel.py`](../../backend/src/aima_ugc/platform/export/excel.py)、`contracts/export/`、`adapters/providers/imports_test/` |
 | 理解 AI relevance / voice_type / sentiment / labels、Validator、Retry、持久化 | [`07_AI舆情打标与分析实现.md`](07_AI舆情打标与分析实现.md) | `modules/analysis/`、当前 Prompt、Analysis PostgreSQL Repository |
-| 运行服务器历史 Campaign、理解 Fill-Only/逐行对账/容量门禁与手动 Analysis Run | [`14_4000万历史迁移与Analysis Run运行手册.md`](14_4000万历史迁移与Analysis Run运行手册.md) | `bootstrap/historical_import_*`、`historical_content.py`、Analysis Run/Shard、Stage 12 Migration/测试 |
+| 运行服务器历史 Campaign、理解 Fill-Only/逐行对账/容量门禁与手动 Analysis Run | [`14_4000万历史迁移与Analysis Run运行手册.md`](14_4000万历史迁移与Analysis Run运行手册.md) | `bootstrap/historical_import_*`、[`historical_content.py`](../../backend/src/aima_ugc/adapters/persistence/postgres/historical_content.py)、Analysis Run/Shard、Stage 12 Migration/测试 |
 | 评估数千万级 AI 打标的成本、吞吐、本地分类器与 LLM fallback 路线 | [`13_AI大规模打标与成本优化方案.md`](13_AI大规模打标与成本优化方案.md) | `modules/analysis/`、`adapters/llm/`、当前 Analysis Identity 与 Prompt/Taxonomy |
-| 理解 Markdown/Word 报告的数据流、图表、词云和 DOCX 结构 | [`10_Word舆情报告生成与排版实现.md`](10_Word舆情报告生成与排版实现.md) | `platform/reporting/`、`imports_test/generate_report.py` |
+| 理解 Markdown/Word 报告的数据流、图表、词云和 DOCX 结构 | [`10_Word舆情报告生成与排版实现.md`](10_Word舆情报告生成与排版实现.md) | `platform/reporting/`、[`imports_test/generate_report.py`](../../backend/src/aima_ugc/adapters/providers/imports_test/generate_report.py) |
 | 从当前代码继续做到生产 Docker/Compose、离线 Release、备份恢复和回滚 | [`11_生产部署与离线Release方案.md`](11_生产部署与离线Release方案.md) | 当前 `entrypoints/`、`PlatformSettings`、Storage/Logging/Health；Docker/Compose 仍待 Stage 11 实现 |
 
 前端页面设计与 Figma 属于开发工作流，见：

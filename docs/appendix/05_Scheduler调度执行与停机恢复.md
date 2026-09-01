@@ -184,9 +184,7 @@ Scheduler Test
 
 领域代码：
 
-```text
-backend/src/aima_ugc/modules/collection/scheduler.py
-```
+- [`backend/src/aima_ugc/modules/collection/scheduler.py`](../../backend/src/aima_ugc/modules/collection/scheduler.py)
 
 关键函数：
 
@@ -270,9 +268,7 @@ PUT  /api/v1/collection-plans/{plan_id}/enabled
 
 真实装配：
 
-```text
-backend/src/aima_ugc/bootstrap/collection_strategy_http.py
-```
+- [`backend/src/aima_ugc/bootstrap/collection_strategy_http.py`](../../backend/src/aima_ugc/bootstrap/collection_strategy_http.py)
 
 所以旧文档中“Stage 8 未来才会定义 Plan API”一类表述已经过期。
 
@@ -282,9 +278,7 @@ backend/src/aima_ugc/bootstrap/collection_strategy_http.py
 
 生产代码：
 
-```text
-backend/src/aima_ugc/bootstrap/scheduler.py
-```
+- [`backend/src/aima_ugc/bootstrap/scheduler.py`](../../backend/src/aima_ugc/bootstrap/scheduler.py)
 
 当前流程：
 
@@ -424,10 +418,8 @@ Decision Policy
 
 代码：
 
-```text
-backend/src/aima_ugc/modules/collection/scheduled_scopes.py
-backend/src/aima_ugc/modules/collection/run_snapshot.py
-```
+- [`backend/src/aima_ugc/modules/collection/scheduled_scopes.py`](../../backend/src/aima_ugc/modules/collection/scheduled_scopes.py)
+- [`backend/src/aima_ugc/modules/collection/run_snapshot.py`](../../backend/src/aima_ugc/modules/collection/run_snapshot.py)
 
 这样 Worker 真正运行时，不会重新读取一个已经被管理员改过的 Keyword Pack，然后执行出另一套任务。
 
@@ -531,9 +523,7 @@ duration_ms
 
 日志配置和格式见：
 
-```text
-docs/blueprint/05_日志安全部署与运维.md
-```
+- [`docs/blueprint/05_日志安全部署与运维.md`](../blueprint/05_日志安全部署与运维.md)
 
 持久化 Scheduler 事实仍以 PostgreSQL 为准，日志不是第二套任务状态库。
 

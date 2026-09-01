@@ -22,9 +22,7 @@ Capability
 
 生产 Collection 串联：
 
-```text
-backend/src/aima_ugc/bootstrap/collection_scope.py
-```
+- [`backend/src/aima_ugc/bootstrap/collection_scope.py`](../../backend/src/aima_ugc/bootstrap/collection_scope.py)
 
 ## 2. 当前正式主 Operation
 
@@ -99,9 +97,7 @@ item.note
 
 Fixture：
 
-```text
-tests/fixtures/providers/tikhub/xiaohongshu/search_notes_page1.sanitized.json
-```
+- [`tests/fixtures/providers/tikhub/xiaohongshu/search_notes_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/xiaohongshu/search_notes_page1.sanitized.json)
 
 Operation 中的 Extractor 是生产字段事实；不要从本文复制一段 JSONPath 后在其他脚本再实现一套。
 
@@ -131,7 +127,7 @@ search_session_id
 - 分页状态不推进；
 - 重复页/安全上限等生产保护。
 
-如果要改 xiaohongshu 分页，先改 `operations/xiaohongshu.py` 的状态机和对应 Unit Test，不要在 `collection_scope.py` 增加小红书私有 cursor 逻辑。
+如果要改 xiaohongshu 分页，先改 `operations/xiaohongshu.py` 的状态机和对应 Unit Test，不要在 [`collection_scope.py`](../../backend/src/aima_ugc/bootstrap/collection_scope.py) 增加小红书私有 cursor 逻辑。
 
 ## 6. Detail 为什么分图文/视频
 
@@ -149,10 +145,8 @@ xiaohongshu 当前不同内容类型使用不同 Detail Endpoint。
 
 Fixture：
 
-```text
-xiaohongshu/image_detail.sanitized.json
-xiaohongshu/video_detail.sanitized.json
-```
+- [`xiaohongshu/image_detail.sanitized.json`](../../tests/fixtures/providers/tikhub/xiaohongshu/image_detail.sanitized.json)
+- [`xiaohongshu/video_detail.sanitized.json`](../../tests/fixtures/providers/tikhub/xiaohongshu/video_detail.sanitized.json)
 
 Search Mapper 能识别内容类型；Decision 需要 Detail 时，生产链选择正确的 Detail Operation。
 
@@ -223,9 +217,7 @@ latest comments page
 
 相关实现：
 
-```text
-backend/src/aima_ugc/modules/collection/xiaohongshu_replay.py
-```
+- [`backend/src/aima_ugc/modules/collection/xiaohongshu_replay.py`](../../backend/src/aima_ugc/modules/collection/xiaohongshu_replay.py)
 
 这体现通用规则：完整 Raw 已存在时优先重放，不重复付费请求 Provider。
 

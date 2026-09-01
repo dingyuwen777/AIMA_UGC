@@ -54,7 +54,7 @@ changes/archive
 
 ## 2. 当前核心 Blueprint
 
-当前仓库此刻存在以下核心 Blueprint。这个列表描述**当前实际文档集合**，以本目录实际文件、`../AGENTS.md` 和本文为准；**不设置固定数量、不设置固定文件名，也不设置固定编号上限**。
+当前仓库此刻存在以下核心 Blueprint。这个列表描述**当前实际文档集合**，以本目录实际文件、[`../AGENTS.md`](../AGENTS.md) 和本文为准；**不设置固定数量、不设置固定文件名，也不设置固定编号上限**。
 
 | 文档 | 解决的问题 | 关键结论 |
 | --- | --- | --- |
@@ -69,7 +69,7 @@ changes/archive
 
 新增一个具体业务场景或某个 Provider 细节时，仍优先放 Appendix/模块 README；不要仅为了延续编号就新增 Blueprint，也不要因为当前列表恰好到 `08_` 就禁止未来出现 `09_` 或更大的编号。
 
-只有真正出现**新的长期架构领域**，且无法合理归入现有核心 Blueprint 时，才通过新的文档治理 Change 新增或调整核心结构。新增、插入、重命名或重新编号时遵守 `../AGENTS.md`：按上游依赖排序，保留当前稳定编号，必要迁移时同步所有实时引用。
+只有真正出现**新的长期架构领域**，且无法合理归入现有核心 Blueprint 时，才通过新的文档治理 Change 新增或调整核心结构。新增、插入、重命名或重新编号时遵守 [`../AGENTS.md`](../AGENTS.md)：按上游依赖排序，保留当前稳定编号，必要迁移时同步所有实时引用。
 
 ---
 
@@ -86,8 +86,8 @@ changes/archive
 | TikHub App/Web/V1/V2/V3 验证和备用接口 | [`../appendix/03_TikHub多接口验证与备用策略.md`](../appendix/03_TikHub多接口验证与备用策略.md) |
 | TikHub 真实 Probe/接口选型台账 | [`../appendix/04_TikHub接口选型与真实验证台账.md`](../appendix/04_TikHub接口选型与真实验证台账.md) |
 | 统一 Excel 数据导出/离线调试 | [`../appendix/06_Excel统一数据导出与离线调试.md`](../appendix/06_Excel统一数据导出与离线调试.md) |
-| AI 打标、相关性、发声类型、Validator、Retry、持久化 | [`../appendix/07_AI舆情打标与分析实现.md`](../appendix/07_AI舆情打标与分析实现.md) + `backend/src/aima_ugc/modules/analysis/README.md` + 当前 Prompt |
-| 前端页面结构、Figma/Design-to-Code | [`../guides/01_Figma与前端设计开发工作流.md`](../guides/01_Figma与前端设计开发工作流.md) + `frontend/README.md` |
+| AI 打标、相关性、发声类型、Validator、Retry、持久化 | [`../appendix/07_AI舆情打标与分析实现.md`](../appendix/07_AI舆情打标与分析实现.md) + [`backend/src/aima_ugc/modules/analysis/README.md`](../../backend/src/aima_ugc/modules/analysis/README.md) + 当前 Prompt |
+| 前端页面结构、Figma/Design-to-Code | [`../guides/01_Figma与前端设计开发工作流.md`](../guides/01_Figma与前端设计开发工作流.md) + [`frontend/README.md`](../../frontend/README.md) |
 | Stage 8 Excel/TikHub 统一入库、Import Batch、页面/API/Job | [`../appendix/08_数据入口与统一入库实现.md`](../appendix/08_数据入口与统一入库实现.md) + API/Frontend README + Roadmap |
 
 历史阶段为什么这样拆、当时哪些能力尚未实现、当时的验收证据，继续由：
@@ -164,13 +164,11 @@ changes/archive/
 ### AI
 
 - [`../appendix/07_AI舆情打标与分析实现.md`](../appendix/07_AI舆情打标与分析实现.md)
-- `backend/src/aima_ugc/modules/analysis/README.md`
+- [`backend/src/aima_ugc/modules/analysis/README.md`](../../backend/src/aima_ugc/modules/analysis/README.md)
 
 完整 Prompt / taxonomy 唯一业务事实源：
 
-```text
-backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md
-```
+- [`backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md`](../../backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md)
 
 ### Word Report
 
@@ -179,7 +177,7 @@ backend/src/aima_ugc/modules/analysis/prompts/content_labeling_v3.md
 ### Figma / Frontend
 
 - [`../guides/01_Figma与前端设计开发工作流.md`](../guides/01_Figma与前端设计开发工作流.md)
-- `frontend/README.md`
+- [`frontend/README.md`](../../frontend/README.md)
 
 ### Production Release
 
@@ -245,9 +243,7 @@ dashboard
 
 真实 Registry：
 
-```text
-backend/src/aima_ugc/bootstrap/worker.py
-```
+- [`backend/src/aima_ugc/bootstrap/worker.py`](../../backend/src/aima_ugc/bootstrap/worker.py)
 
 当前：
 
@@ -268,9 +264,7 @@ reporting.content-export-excel.v1
 
 真实 Router：
 
-```text
-frontend/src/app/routes.ts
-```
+- [`frontend/src/app/routes.ts`](../../frontend/src/app/routes.ts)
 
 当前：
 
@@ -285,12 +279,10 @@ frontend/src/app/routes.ts
 
 仓库当前根目录已经有：
 
-```text
-Dockerfile
-compose.yaml
-env.production.example
-.github/workflows/release.yml
-```
+- [`Dockerfile`](../../Dockerfile)
+- [`compose.yaml`](../../compose.yaml)
+- [`env.production.example`](../../env.production.example)
+- [`.github/workflows/release.yml`](../../.github/workflows/release.yml)
 
 Internal V1-A 已提供最小可部署容器栈并把管理员入口收敛为 `env.production` + 一条 Docker Compose 启动命令；GitHub Release Workflow 已能构建 Linux/AMD64 Backend/Frontend、固定 `postgres:18.4`，生成 `images.tar`、Release/Migration Manifest、`SHA256SUMS`、`DEPLOY.md`，并从删除候选镜像后的 Bundle 以 `--no-build --pull never` 完成离线回放。正式手工发布路径还能推送 GHCR、记录应用 digest、创建 Git Tag/GitHub Release。
 

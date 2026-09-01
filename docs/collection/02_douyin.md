@@ -22,9 +22,7 @@ Fixture
 
 生产 Collection 串联：
 
-```text
-backend/src/aima_ugc/bootstrap/collection_scope.py
-```
+- [`backend/src/aima_ugc/bootstrap/collection_scope.py`](../../backend/src/aima_ugc/bootstrap/collection_scope.py)
 
 ## 2. 当前正式主 Operation
 
@@ -105,9 +103,7 @@ aweme_info
 
 Fixture：
 
-```text
-tests/fixtures/providers/tikhub/douyin/search_page1.sanitized.json
-```
+- [`tests/fixtures/providers/tikhub/douyin/search_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/douyin/search_page1.sanitized.json)
 
 如果 TikHub 改了 wrapper/path，应先用新 Sanitized Fixture 让 Extractor/Mapper 测试暴露问题，再改代码。
 
@@ -157,11 +153,9 @@ data.aweme_detail
 
 Fixture：
 
-```text
-tests/fixtures/providers/tikhub/douyin/detail.sanitized.json
-```
+- [`tests/fixtures/providers/tikhub/douyin/detail.sanitized.json`](../../tests/fixtures/providers/tikhub/douyin/detail.sanitized.json)
 
-Mapper 可从当前真实 Detail 观察标题/正文、作者、发布时间、互动指标、视频信息等 Canonical 事实。精确字段映射直接看 `mappers/douyin.py`。
+Mapper 可从当前真实 Detail 观察标题/正文、作者、发布时间、互动指标、视频信息等 Canonical 事实。精确字段映射直接看 [`mappers/douyin.py`](../../backend/src/aima_ugc/adapters/providers/tikhub/mappers/douyin.py)。
 
 ## 7. 一级评论
 
@@ -179,9 +173,7 @@ data.comments[]
 
 Fixture：
 
-```text
-tests/fixtures/providers/tikhub/douyin/comments_page1.sanitized.json
-```
+- [`tests/fixtures/providers/tikhub/douyin/comments_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/douyin/comments_page1.sanitized.json)
 
 当前 Capability：
 
@@ -218,9 +210,7 @@ Mapper 只有在 Provider 明确给出直接父评论关系时才填 `parent_com
 
 Fixture：
 
-```text
-tests/fixtures/providers/tikhub/douyin/replies_page1.sanitized.json
-```
+- [`tests/fixtures/providers/tikhub/douyin/replies_page1.sanitized.json`](../../tests/fixtures/providers/tikhub/douyin/replies_page1.sanitized.json)
 
 ## 9. 为什么当前不做评论增量 stop
 
