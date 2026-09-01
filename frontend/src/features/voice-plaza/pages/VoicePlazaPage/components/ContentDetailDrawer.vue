@@ -1,10 +1,89 @@
 <script setup lang="ts">
-import type { ContentDetailResponse } from '../../../../../generated/api/client'
+import { computed, ref, watch } from 'vue'
+
+import type {
+  AnalysisManualLabelRequest,
+  ContentAnalysisManualReviewRequest,
+  ContentAnalysisTaxonomyResponse,
+  ContentDetailResponse,
+} from '../../../../../generated/api/client'
+import VehicleMultiSelect from '../../../../../shared/VehicleMultiSelect.vue'
+import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaIcon from '../../../../../shared/ui/AimaIcon.vue'
 import { contentSummary, formatDateTime, formatNumber, labelPairText, platformLabel } from '../../../format'
 
-defineProps<{ modelValue: boolean; item: ContentDetailResponse | null; loading: boolean }>()
-defineEmits<{ 'update:modelValue': [open: boolean] }>()
+const props = withDefaults(defineProps<{
+  modelValue: boolean
+  item: ContentDetailResponse | null
+  loading: boolean
+  taxonomy?: ContentAnalysisTaxonomyResponse | null
+  saving?: boolean
+}>(), { taxonomy: null, saving: false })
+const emit = defineEmits<{
+  'update:modelValue': [open: boolean]
+  'review-vehicles': [vehicleModelIds: string[], unlockExisting: boolean]
+  'review-analysis': [request: Omit<ContentAnalysisManualReviewRequest, 'content_version'>]
+}>()
+
+const vehicleModelIds = ref<string[]>([])
+const voiceType = ref('')
+const sentiment = ref('')
+const labels = ref<AnalysisManualLabelRequest[]>([])
+const labelPrimary = ref('')
+const labelSecondary = ref('')
+const confirmUnlockVehicles = ref(false)
+const confirmUnlockAnalysis = ref(false)
+
+const hasVehicleLock = computed(() =>
+  (props.item?.vehicles ?? []).some((vehicle) =>
+    vehicle.evidences.some((evidence) => evidence.is_manual_locked),
+  ),
+)
+const lockedDimensions = computed(() => props.item?.analysis.manual_locked_dimensions ?? [])
+const secondaryOptions = computed(() =>
+  props.taxonomy?.labels.find((item) => item.primary_label === labelPrimary.value)?.secondary_labels ?? [],
+)
+
+watch(() => props.item, (item) => {
+  vehicleModelIds.value = (item?.vehicles ?? []).map((vehicle) => vehicle.vehicle_model_id)
+  voiceType.value = item?.analysis.voice_type ?? ''
+  sentiment.value = item?.analysis.sentiment ?? ''
+  labels.value = [...(item?.analysis.labels ?? [])]
+  confirmUnlockVehicles.value = false
+  confirmUnlockAnalysis.value = false
+}, { immediate: true })
+
+function addLabel(): void {
+  if (!labelPrimary.value || !labelSecondary.value) return
+  if (!labels.value.some((item) => item.primary_label === labelPrimary.value && item.secondary_label === labelSecondary.value)) {
+    labels.value.push({ primary_label: labelPrimary.value, secondary_label: labelSecondary.value })
+  }
+  labelSecondary.value = ''
+}
+
+function saveVehicleReview(): void {
+  emit('review-vehicles', vehicleModelIds.value, hasVehicleLock.value && confirmUnlockVehicles.value)
+}
+
+function unlockVehicleReview(): void {
+  if (!window.confirm('解除车型人工锁定后，当前自动证据会重新生效。是否继续？')) return
+  emit('review-vehicles', [], true)
+}
+
+function saveAnalysisReview(): void {
+  if (!voiceType.value || !sentiment.value || labels.value.length === 0) return
+  emit('review-analysis', {
+    voice_type: voiceType.value,
+    sentiment: sentiment.value,
+    labels: labels.value,
+    unlock_dimensions: confirmUnlockAnalysis.value ? [...lockedDimensions.value] : [],
+  })
+}
+
+function unlockAnalysisReview(): void {
+  if (!window.confirm('解除人工分析锁定后，页面将恢复展示当前 AI 结果。是否继续？')) return
+  emit('review-analysis', { unlock_dimensions: [...lockedDimensions.value] })
+}
 
 /** 将内容补充状态映射为用户可理解的区块标题。 */
 function supplementTitle(status: string): string {
@@ -110,6 +189,164 @@ function supplementMessage(status: string): string {
               <em v-if="(item.analysis.labels ?? []).length === 0">暂无 AI 标签</em>
             </div>
             <small v-if="item.analysis.analyzed_at">分析时间：{{ formatDateTime(item.analysis.analyzed_at) }} · {{ item.analysis.model_provider }} / {{ item.analysis.model }}</small>
+          </section>
+
+          <section class="manual-review">
+            <header class="section-heading">
+              <div><h4>车型人工确认</h4><small>0..N 个车型；自动别名证据与人工结论分开保留。</small></div>
+              <span v-if="hasVehicleLock">已人工锁定</span>
+            </header>
+            <VehicleMultiSelect
+              v-model="vehicleModelIds"
+              label="当前车型"
+            />
+            <div
+              v-if="(item.vehicles ?? []).length"
+              class="evidence-list"
+            >
+              <article
+                v-for="vehicle in item.vehicles ?? []"
+                :key="vehicle.vehicle_model_id"
+              >
+                <strong>{{ vehicle.display_name }}</strong>
+                <span
+                  v-for="(evidence, index) in vehicle.evidences"
+                  :key="`${evidence.source}:${index}`"
+                >
+                  {{ evidence.source }}<template v-if="evidence.matched_text"> · “{{ evidence.matched_text }}”</template> · catalog v{{ evidence.catalog_version }}<template v-if="evidence.is_manual_locked"> · 人工锁定</template>
+                </span>
+              </article>
+            </div>
+            <label
+              v-if="hasVehicleLock"
+              class="unlock-confirm"
+            ><input
+              v-model="confirmUnlockVehicles"
+              type="checkbox"
+            >我确认先解锁现有人工车型结论，再保存新结论</label>
+            <div class="review-actions">
+              <AimaButton
+                v-if="hasVehicleLock"
+                size="small"
+                @click="unlockVehicleReview"
+              >
+                仅解除锁定
+              </AimaButton><AimaButton
+                variant="primary"
+                size="small"
+                :disabled="saving || (hasVehicleLock && !confirmUnlockVehicles)"
+                @click="saveVehicleReview"
+              >
+                保存车型结论
+              </AimaButton>
+            </div>
+          </section>
+
+          <section class="manual-review">
+            <header class="section-heading">
+              <div><h4>发声类型、情感与标签人工纠正</h4><small>合法值来自当前发布的原子 Analysis Scheme。</small></div>
+              <span v-if="lockedDimensions.length">锁定 {{ lockedDimensions.join('、') }}</span>
+            </header>
+            <p
+              v-if="item.analysis.status !== 'completed'"
+              class="review-warning"
+            >
+              尚无可纠正的当前 AI 结果，请先完成 AI 打标。
+            </p>
+            <template v-else>
+              <div class="review-grid">
+                <label>发声类型<select v-model="voiceType"><option value="">请选择</option><option
+                  v-for="value in taxonomy?.voice_types ?? []"
+                  :key="value"
+                  :value="value"
+                >{{ value }}</option></select></label>
+                <label>情感<select v-model="sentiment"><option value="">请选择</option><option
+                  v-for="value in taxonomy?.sentiments ?? []"
+                  :key="value"
+                  :value="value"
+                >{{ value }}</option></select></label>
+              </div>
+              <div class="label-editor">
+                <select
+                  v-model="labelPrimary"
+                  @change="labelSecondary = ''"
+                >
+                  <option value="">
+                    一级标签
+                  </option><option
+                    v-for="group in taxonomy?.labels ?? []"
+                    :key="group.primary_label"
+                    :value="group.primary_label"
+                  >
+                    {{ group.primary_label }}
+                  </option>
+                </select>
+                <select
+                  v-model="labelSecondary"
+                  :disabled="!labelPrimary"
+                >
+                  <option value="">
+                    二级标签
+                  </option><option
+                    v-for="value in secondaryOptions"
+                    :key="value"
+                    :value="value"
+                  >
+                    {{ value }}
+                  </option>
+                </select>
+                <AimaButton
+                  size="small"
+                  :disabled="!labelPrimary || !labelSecondary"
+                  @click="addLabel"
+                >
+                  添加
+                </AimaButton>
+              </div>
+              <div class="manual-labels">
+                <button
+                  v-for="(label, index) in labels"
+                  :key="`${label.primary_label}:${label.secondary_label}`"
+                  type="button"
+                  @click="labels.splice(index, 1)"
+                >
+                  {{ label.primary_label }} ／ {{ label.secondary_label }} ×
+                </button>
+              </div>
+              <label
+                v-if="lockedDimensions.length"
+                class="unlock-confirm"
+              ><input
+                v-model="confirmUnlockAnalysis"
+                type="checkbox"
+              >我确认先解锁已锁定维度，再保存新的人工结论</label>
+              <div class="review-actions">
+                <AimaButton
+                  v-if="lockedDimensions.length"
+                  size="small"
+                  @click="unlockAnalysisReview"
+                >
+                  解除全部分析锁定
+                </AimaButton><AimaButton
+                  variant="primary"
+                  size="small"
+                  :disabled="saving || !taxonomy || !voiceType || !sentiment || labels.length === 0 || (lockedDimensions.length > 0 && !confirmUnlockAnalysis)"
+                  @click="saveAnalysisReview"
+                >
+                  保存人工纠正
+                </AimaButton>
+              </div>
+            </template>
+          </section>
+
+          <section>
+            <h4>第三方可用状态</h4>
+            <p v-if="item.availability">
+              {{ item.availability.status }} · {{ item.availability.reason_code }} · {{ item.availability.evidence_kind }} · {{ formatDateTime(item.availability.observed_at) }}
+            </p>
+            <p v-else>
+              unknown · 尚无明确 Provider 证据。技术失败不会直接标记为确认下架。
+            </p>
           </section>
 
           <section v-if="(item.media ?? []).length > 0">
@@ -223,6 +460,26 @@ h4 { margin: 0 0 9px; color: var(--aima-text); font-size: 13px; line-height: 18p
 .label-grid em,
 .empty { color: var(--aima-text-disabled); font-size: 11px; font-style: normal; }
 .drawer-body section > small { color: var(--aima-text-disabled); font-size: 10px; }
+.section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.section-heading h4 { margin-bottom: 2px; }
+.section-heading small { color: var(--aima-text-disabled); font-size: 9px; }
+.section-heading > span { padding: 3px 7px; border-radius: 4px; color: var(--aima-primary); background: var(--aima-primary-soft); font-size: 9px; }
+.manual-review { display: grid; gap: 10px; }
+.evidence-list { display: grid; gap: 6px; }
+.evidence-list article { display: grid; gap: 3px; padding: 7px 9px; border-radius: 5px; background: #f7f8fa; }
+.evidence-list strong { color: var(--aima-text); font-size: 10px; }
+.evidence-list span { color: var(--aima-text-muted); font-size: 9px; }
+.unlock-confirm { display: flex; align-items: flex-start; gap: 6px; color: var(--aima-danger); font-size: 10px; line-height: 15px; }
+.unlock-confirm input { margin: 1px 0 0; accent-color: var(--aima-primary); }
+.review-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.review-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.review-grid label { display: grid; gap: 5px; color: var(--aima-text-muted); font-size: 10px; }
+.review-grid select,
+.label-editor select { height: 35px; padding: 0 9px; border: 1px solid var(--aima-border-strong); border-radius: 5px; color: var(--aima-text-secondary); background: var(--aima-surface); font-size: 11px; }
+.label-editor { display: grid; grid-template-columns: 1fr 1fr auto; gap: 7px; }
+.manual-labels { display: flex; flex-wrap: wrap; gap: 6px; }
+.manual-labels button { padding: 3px 7px; border: 0; border-radius: 4px; color: #396b9e; background: #e8f3ff; cursor: pointer; font-size: 9px; }
+.review-warning { padding: 8px 10px; border-radius: 5px; color: #8a641d !important; background: #fff9ec; }
 dl { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 8px; margin: 0; }
 dl div { display: flex; min-height: 28px; align-items: flex-start; justify-content: space-between; gap: 10px; }
 dt { color: var(--aima-text-disabled); font-size: 10px; }

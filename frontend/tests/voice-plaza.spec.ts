@@ -30,6 +30,7 @@ import { useVoicePlazaStore } from '../src/features/voice-plaza/store'
 
 const item = {
   id: '01991f80-6d5d-7dc8-95cb-c67c12345678',
+  content_version: 1,
   platform: 'xiaohongshu' as const,
   external_content_id: 'note-1',
   content_type: 'note',

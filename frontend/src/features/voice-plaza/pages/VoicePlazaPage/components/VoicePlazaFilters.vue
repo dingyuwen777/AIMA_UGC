@@ -8,8 +8,9 @@ import type {
   PlatformName,
 } from '../../../../../generated/api/client'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
+import VehicleMultiSelect from '../../../../../shared/VehicleMultiSelect.vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   search: string
   platform: '' | PlatformName
   contentType: string
@@ -22,9 +23,10 @@ const props = defineProps<{
   publishedFrom: string
   publishedTo: string
   sourceIdentifier: string
+  vehicleModelIds?: string[]
   taxonomy: ContentAnalysisTaxonomyResponse | null
   taxonomyLoading: boolean
-}>()
+}>(), { vehicleModelIds: () => [] })
 
 const emit = defineEmits<{
   'update:search': [value: string]
@@ -39,6 +41,7 @@ const emit = defineEmits<{
   'update:publishedFrom': [value: string]
   'update:publishedTo': [value: string]
   'update:sourceIdentifier': [value: string]
+  'update:vehicleModelIds': [value: string[]]
   search: []
   reset: []
 }>()
@@ -147,8 +150,14 @@ function updatePrimaryLabel(event: Event): void {
       ></label>
     </div>
 
+    <VehicleMultiSelect
+      :model-value="vehicleModelIds"
+      label="车型筛选（同一维度 OR，与其他筛选 AND）"
+      @update:model-value="emit('update:vehicleModelIds', $event)"
+    />
+
     <footer class="filter-footer">
-      <p>分类选项来自 GET /api/v1/content-analysis-taxonomy；查询字段来自 GET /api/v1/contents。</p>
+      <p>分类来自当前发布的 Analysis Scheme；车型来自版本化目录，歧义别名不会自动选择。</p>
       <div class="filter-actions">
         <AimaButton
           size="small"

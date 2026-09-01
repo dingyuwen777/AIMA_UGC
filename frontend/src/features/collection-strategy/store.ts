@@ -249,7 +249,8 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
 
   function planReason(request: CollectionPlanCreateRequest): string | null {
     return planExecutionReason({
-      keywordPackIds: request.keyword_pack_ids,
+      keywordPackIds: request.keyword_pack_ids ?? [],
+      vehicleModelIds: request.vehicle_model_ids ?? [],
       platforms: request.platforms,
       requireRelevance: request.enabled ?? true,
       relevanceAvailable: relevance.value !== null,
@@ -262,7 +263,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
     saving.value = true
     error.value = null
     try {
-      await loadPackDetails(request.keyword_pack_ids)
+      await loadPackDetails(request.keyword_pack_ids ?? [])
       const reason = planReason(request)
       if (reason) {
         error.value = reason
@@ -288,7 +289,8 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
   function planToggleReason(plan: CollectionPlanResponse): string | null {
     if (plan.enabled) return null
     return planExecutionReason({
-      keywordPackIds: plan.keyword_pack_ids,
+      keywordPackIds: plan.keyword_pack_ids ?? [],
+      vehicleModelIds: plan.vehicle_model_ids ?? [],
       platforms: plan.platforms,
       requireRelevance: true,
       relevanceAvailable: relevance.value !== null,
@@ -300,7 +302,7 @@ export const useCollectionStrategyStore = defineStore('collection-strategy', () 
   async function togglePlan(plan: CollectionPlanResponse): Promise<void> {
     if (!plan.enabled) {
       try {
-        await loadPackDetails(plan.keyword_pack_ids)
+        await loadPackDetails(plan.keyword_pack_ids ?? [])
       } catch (reason) {
         error.value = errorMessage(reason)
         return

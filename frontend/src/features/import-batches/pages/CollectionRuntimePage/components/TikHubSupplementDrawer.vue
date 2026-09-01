@@ -13,6 +13,7 @@ import type {
   KeywordPackSummaryResponse,
 } from '../../../../../generated/api/client'
 import CollectionSearchConfigFields from '../../../../../shared/CollectionSearchConfigFields.vue'
+import VehicleMultiSelect from '../../../../../shared/VehicleMultiSelect.vue'
 import { isCollectionSearchConfigComplete } from '../../../../../shared/collectionSearchConfig'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 import AimaFeedbackBanner from '../../../../../shared/ui/AimaFeedbackBanner.vue'
@@ -36,6 +37,7 @@ const emit = defineEmits<{
 
 const mode = ref<CollectionRunMode>('discovery')
 const selectedPackIds = ref<string[]>([])
+const selectedVehicleIds = ref<string[]>([])
 const platforms = ref<CollectionPlatform[]>([])
 const providerConfigId = ref('')
 const importBatchId = ref('')
@@ -97,7 +99,7 @@ function clearSearchConfigs(): void {
 const canSubmit = computed(() => {
   if (props.creating || !providerConfigId.value || platforms.value.length === 0) return false
   if (mode.value === 'discovery') {
-    return selectedPackIds.value.length > 0 && platforms.value.every((platform) => {
+    return (selectedPackIds.value.length > 0 || selectedVehicleIds.value.length > 0) && platforms.value.every((platform) => {
       const capability = searchCapability(platform)
       return capability && isCollectionSearchConfigComplete(capability, searchConfigByPlatform[platform])
     })
@@ -119,6 +121,7 @@ watch(
     mode.value = props.initialBatchId ? 'batch_supplement' : 'discovery'
     importBatchId.value = props.initialBatchId ?? ''
     selectedPackIds.value = []
+    selectedVehicleIds.value = []
     platforms.value = []
     includeComments.value = true
     includeSubComments.value = false
@@ -201,8 +204,8 @@ function submit(): void {
     validation.value = '当前批次、采集渠道与采集内容组合没有可执行的平台。'
     return
   }
-  if (mode.value === 'discovery' && selectedPackIds.value.length === 0) {
-    validation.value = '请至少选择一个关键词包。'
+  if (mode.value === 'discovery' && selectedPackIds.value.length === 0 && selectedVehicleIds.value.length === 0) {
+    validation.value = '请至少选择一个关键词包或车型。'
     return
   }
   if (mode.value === 'batch_supplement' && !importBatchId.value) {
@@ -213,6 +216,7 @@ function submit(): void {
   emit('submit', {
     mode: mode.value,
     keyword_pack_ids: mode.value === 'discovery' ? selectedPackIds.value : [],
+    vehicle_model_ids: mode.value === 'discovery' ? selectedVehicleIds.value : [],
     import_batch_id: mode.value === 'batch_supplement' ? importBatchId.value : null,
     platforms: platforms.value.map((platform) => ({
       platform,
@@ -272,7 +276,7 @@ function submit(): void {
 
           <AimaFeedbackBanner tone="info">
             {{ mode === 'discovery'
-              ? '选择一个或多个已启用关键词包；系统会冻结词包版本，并将有效关键词用于本次采集。'
+              ? '选择关键词包或车型；系统会冻结两类版本与解析后的车型别名，并按统一发现语义采集。'
               : '只允许选择已成功入库的批次；目标平台必须在该批次中真实存在，并满足当前采集渠道能力。' }}
           </AimaFeedbackBanner>
 
@@ -302,6 +306,10 @@ function submit(): void {
             >
               当前没有可用的已启用词包。
             </p>
+            <VehicleMultiSelect
+              v-model="selectedVehicleIds"
+              label="车型（可单独选择，也可与词包组合）"
+            />
           </section>
           <section
             v-else

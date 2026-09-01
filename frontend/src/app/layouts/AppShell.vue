@@ -1,15 +1,26 @@
 <script setup lang="ts">
+import { computed, onMounted } from 'vue'
+
+import NotificationInbox from '../../features/identity/NotificationInbox.vue'
+import { useIdentityStore } from '../../features/identity/store'
 import AimaIcon, { type AimaIconName } from '../../shared/ui/AimaIcon.vue'
 
 withDefaults(defineProps<{ sectionTitle?: string }>(), { sectionTitle: '采集运行中心' })
 
 // App Shell 只展示当前首版真实可达页面，未来能力不以无效菜单项占位。
-const navigation: { label: string; icon: AimaIconName; to: string }[] = [
+const identity = useIdentityStore()
+
+const navigation = computed<{ label: string; icon: AimaIconName; to: string }[]>(() => [
   { label: '首页', icon: 'home', to: '/' },
   { label: '声音广场', icon: 'voice', to: '/voice-plaza' },
   { label: '采集运行中心', icon: 'runtime', to: '/collection-runtime' },
   { label: '采集策略', icon: 'strategy', to: '/collection-strategy' },
-]
+  ...(identity.isAdministrator
+    ? [{ label: '管理员配置', icon: 'settings' as const, to: '/admin/configuration' }]
+    : []),
+])
+
+onMounted(() => void identity.ensurePrincipal())
 </script>
 
 <template>
@@ -47,10 +58,17 @@ const navigation: { label: string; icon: AimaIconName; to: string }[] = [
         <div class="breadcrumb">
           业务工作台 <span>/</span> <strong>{{ sectionTitle }}</strong>
         </div>
-        <span
-          class="avatar"
-          aria-label="当前用户"
-        >爱</span>
+        <div class="account-area">
+          <NotificationInbox />
+          <div class="principal">
+            <strong>{{ identity.principal?.display_name ?? '身份加载中' }}</strong>
+            <span>{{ identity.principal?.role === 'administrator' ? '管理员' : '普通用户' }}</span>
+          </div>
+          <span
+            class="avatar"
+            aria-label="当前用户"
+          >{{ identity.principal?.display_name?.slice(0, 1) ?? '爱' }}</span>
+        </div>
       </header>
       <main class="workspace-main">
         <slot />
@@ -183,6 +201,11 @@ nav {
   border-bottom: 1px solid var(--aima-border);
   background: rgb(255 255 255 / 88%);
 }
+
+.account-area { display: flex; align-items: center; gap: 10px; }
+.principal { display: grid; gap: 2px; text-align: right; }
+.principal strong { color: var(--aima-text); font-size: 11px; }
+.principal span { color: var(--aima-text-disabled); font-size: 9px; }
 
 .breadcrumb {
   color: #626b7c;

@@ -2,32 +2,96 @@
   color: #172033;
   background: #f5f7fb;
   font-family:
-    Inter, "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
+    "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  --aima-primary: #f50057;
-  --aima-primary-hover: #d9004e;
-  --aima-primary-soft: #fff0f5;
-  --aima-primary-soft-strong: #ffc8dc;
-  --aima-border: #e6e9ef;
-  --aima-border-strong: #d8dde6;
-  --aima-muted: #667085;
-  --aima-surface: #ffffff;
-  --aima-surface-subtle: #f7f8fa;
-  --aima-surface-disabled: #f4f5f7;
-  --aima-text: #172033;
-  --aima-text-secondary: #3e485a;
-  --aima-text-muted: #6d778a;
-  --aima-text-disabled: #98a1b1;
-  --aima-success: #16a05d;
-  --aima-warning: #f59e0b;
-  --aima-danger: #e5484d;
-  --aima-info: #2563eb;
-  --aima-radius: 10px;
-  --aima-radius-control: 6px;
-  --aima-sidebar-width: 180px;
-  --aima-topbar-height: 60px;
+
+  /* Figma `Design Tokens` collection. */
+  --aima-color-primary: #e6005c;
+  --aima-color-primary-light: #ffeef6;
+  --aima-color-primary-badge: #ffd5e8;
+  --aima-color-text-primary: #17233d;
+  --aima-color-text-secondary: #6b778c;
+  --aima-color-text-tertiary: #a8b0bf;
+  --aima-color-border-default: #e6eaf0;
+  --aima-color-border-checkbox: #cbd5e1;
+  --aima-color-border-warning: #ffe58f;
+  --aima-color-bg-page: #f5f7fa;
+  --aima-color-bg-white: #ffffff;
+  --aima-color-bg-table-header: #fafbfc;
+  --aima-color-bg-hover: #f2f4f7;
+  --aima-color-bg-subtle: #f8fafc;
+  --aima-color-bg-mask-dark: #111625;
+  --aima-color-error: #f04438;
+  --aima-color-error-bg: #fff1f0;
+  --aima-color-success: #12b76a;
+  --aima-color-success-bg: #e8fff3;
+  --aima-color-warning: #d48806;
+  --aima-color-warning-bg: #fffbe6;
+  --aima-color-info: #1677ff;
+  --aima-color-info-bg: #e8f3ff;
+  --aima-color-info-badge: #f97316;
+  --aima-color-text-disabled: #99a3b2;
+  --aima-color-bg-disabled: #f2f5f7;
+  --aima-color-border-strong: #d9dee8;
+  --aima-color-focus-ring: rgb(230 0 92 / 20%);
+  --aima-color-primary-hover: #d60054;
+  --aima-color-primary-active: #c2004d;
+  --aima-color-accent-purple: #7c3aed;
+  --aima-color-text-inverse: #ffffff;
+
+  /* Figma `Spacing Tokens` collection. */
+  --aima-spacing-xs: 4px;
+  --aima-spacing-sm: 8px;
+  --aima-spacing-md: 12px;
+  --aima-spacing-lg: 16px;
+  --aima-spacing-xl: 20px;
+  --aima-spacing-2xl: 24px;
+  --aima-spacing-3xl: 32px;
+  --aima-radius-sm: 4px;
+  --aima-radius-md: 6px;
+  --aima-radius-lg: 8px;
+  --aima-radius-xl: 12px;
+  --aima-radius-full: 999px;
+
+  /* Figma `Layout Tokens` collection. */
+  --aima-layout-sidebar-width: 180px;
+  --aima-layout-topbar-height: 60px;
+  --aima-layout-page-padding-x: 24px;
+  --aima-layout-page-padding-y: 28px;
+  --aima-layout-content-max-width: 1400px;
+  --aima-layout-drawer-width: 510px;
+  --aima-layout-detail-drawer-width: 450px;
+  --aima-control-height-sm: 32px;
+  --aima-control-height-md: 40px;
+  --aima-border-width-default: 1px;
+  --aima-border-width-focus: 2px;
+  --aima-control-height-toggle: 24px;
+
+  /* 兼容已有页面的短名称；值只从上述 Figma 映射变量取得。 */
+  --aima-primary: var(--aima-color-primary);
+  --aima-primary-hover: var(--aima-color-primary-hover);
+  --aima-primary-soft: var(--aima-color-primary-light);
+  --aima-primary-soft-strong: var(--aima-color-primary-badge);
+  --aima-border: var(--aima-color-border-default);
+  --aima-border-strong: var(--aima-color-border-strong);
+  --aima-muted: var(--aima-color-text-secondary);
+  --aima-surface: var(--aima-color-bg-white);
+  --aima-surface-subtle: var(--aima-color-bg-subtle);
+  --aima-surface-disabled: var(--aima-color-bg-disabled);
+  --aima-text: var(--aima-color-text-primary);
+  --aima-text-secondary: var(--aima-color-text-secondary);
+  --aima-text-muted: var(--aima-color-text-secondary);
+  --aima-text-disabled: var(--aima-color-text-disabled);
+  --aima-success: var(--aima-color-success);
+  --aima-warning: var(--aima-color-warning);
+  --aima-danger: var(--aima-color-error);
+  --aima-info: var(--aima-color-info);
+  --aima-radius: var(--aima-radius-xl);
+  --aima-radius-control: var(--aima-radius-md);
+  --aima-sidebar-width: var(--aima-layout-sidebar-width);
+  --aima-topbar-height: var(--aima-layout-topbar-height);
   --el-color-primary: var(--aima-primary);
 }
 
@@ -43,7 +107,7 @@ body,
 }
 
 body {
-  background: #f5f7fb;
+  background: var(--aima-color-bg-page);
 }
 
 button,

@@ -58,8 +58,9 @@ describe('声音广场正式 Figma 基线', () => {
       '发布结束',
     ]) expect(html).toContain(label)
 
-    expect(html).toContain('分类选项来自 GET /api/v1/content-analysis-taxonomy')
-    expect(html).toContain('查询字段来自 GET /api/v1/contents')
+    expect(html).toContain('分类来自当前发布的 Analysis Scheme')
+    expect(html).toContain('车型来自版本化目录')
+    expect(html).toContain('歧义别名不会自动选择')
   })
 
   it('Empty 与 Error 使用正式状态文案，不虚构分页结果', async () => {

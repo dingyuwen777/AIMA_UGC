@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 
-import type { DataExportResponse } from '../../../../../generated/api/client'
+import type {
+  DataExportResponse,
+  ExportColumnCatalogResponse,
+  ExportColumnKey,
+} from '../../../../../generated/api/client'
 import { exportArtifactRetention } from '../../../../../shared/artifactRetention'
 import TaskProgressBar from '../../../../../shared/TaskProgressBar.vue'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
@@ -13,24 +17,39 @@ const props = defineProps<{
   selectedCount: number
   pageCount: number
   items: DataExportResponse[]
+  columnCatalog: ExportColumnCatalogResponse | null
   submitting: boolean
 }>()
 const emit = defineEmits<{
   'update:modelValue': [open: boolean]
-  submit: [scope: 'query' | 'selected' | 'page']
+  submit: [scope: 'query' | 'selected' | 'page', columns: ExportColumnKey[]]
   refresh: []
   download: [item: DataExportResponse]
 }>()
 const scope = ref<'query' | 'selected' | 'page'>('selected')
+const selectedColumns = ref<ExportColumnKey[]>([])
 
 watch(() => props.modelValue, (open) => {
-  if (open) scope.value = props.selectedCount > 0 ? 'selected' : props.pageCount > 0 ? 'page' : 'query'
+  if (open) {
+    scope.value = props.selectedCount > 0 ? 'selected' : props.pageCount > 0 ? 'page' : 'query'
+    selectedColumns.value = (props.columnCatalog?.columns ?? [])
+      .filter((item) => item.default_selected)
+      .map((item) => item.key as ExportColumnKey)
+  }
 })
 
 const canSubmit = computed(() => {
+  if (selectedColumns.value.length === 0) return false
   if (scope.value === 'selected') return props.selectedCount > 0
   return props.pageCount > 0
 })
+
+function toggleColumn(key: string): void {
+  const typedKey = key as ExportColumnKey
+  selectedColumns.value = selectedColumns.value.includes(typedKey)
+    ? selectedColumns.value.filter((item) => item !== typedKey)
+    : [...selectedColumns.value, typedKey]
+}
 
 const statusLabels = {
   queued: '排队中',
@@ -77,6 +96,24 @@ function canDownload(item: DataExportResponse): boolean {
             </h2>
             <p>复用正式 Excel 导出链路，后台生成可下载 Artifact。</p>
           </div>
+          <section class="column-picker">
+            <header><strong>导出列</strong><span>后端白名单 v{{ columnCatalog?.version ?? '—' }}</span></header>
+            <div>
+              <label
+                v-for="column in columnCatalog?.columns ?? []"
+                :key="column.key"
+              >
+                <input
+                  type="checkbox"
+                  :checked="selectedColumns.includes(column.key as ExportColumnKey)"
+                  @change="toggleColumn(column.key)"
+                >
+                <span>{{ column.label }}</span>
+                <small v-if="column.sensitive">敏感列</small>
+              </label>
+              <em v-if="!columnCatalog">列目录加载中…</em>
+            </div>
+          </section>
           <button
             class="close-button"
             type="button"
@@ -189,7 +226,7 @@ function canDownload(item: DataExportResponse): boolean {
           <AimaButton
             variant="primary"
             :disabled="submitting || !canSubmit"
-            @click="emit('submit', scope)"
+            @click="emit('submit', scope, selectedColumns)"
           >
             {{ submitting ? '正在创建…' : '创建 Excel 导出' }}
           </AimaButton>
@@ -217,6 +254,15 @@ header p { margin: 5px 0 0; color: var(--aima-text-muted); font-size: 11px; line
 .choice-grid small { display: block; }
 .choice-grid strong { color: var(--aima-text); font-size: 11px; }
 .choice-grid small { margin-top: 5px; color: var(--aima-text-muted); font-size: 9px; }
+.column-picker { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--aima-border); border-radius: 7px; }
+.column-picker header { display: flex; min-height: auto; align-items: center; justify-content: space-between; padding: 0 0 8px; border: 0; }
+.column-picker header strong { color: var(--aima-text); font-size: 11px; }
+.column-picker header span { color: var(--aima-text-disabled); font-size: 9px; }
+.column-picker > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.column-picker label { display: inline-flex; min-height: 27px; align-items: center; gap: 5px; padding: 0 7px; border: 1px solid var(--aima-border); border-radius: 5px; color: var(--aima-text-secondary); font-size: 10px; }
+.column-picker input { margin: 0; accent-color: var(--aima-primary); }
+.column-picker small { color: var(--aima-danger); font-size: 8px; }
+.column-picker em { color: var(--aima-text-disabled); font-size: 10px; font-style: normal; }
 .analysis-note,
 .retention-note { margin: 8px 0 0; padding: 8px 10px; border: 1px solid #bcd5f5; border-radius: 6px; color: #39678f; background: #f2f7fd; font-size: 10px; line-height: 14px; }
 .retention-note { border-color: #e2d7a4; color: #6e5c20; background: #fffaf0; line-height: 17px; }
