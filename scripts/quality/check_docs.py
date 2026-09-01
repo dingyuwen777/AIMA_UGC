@@ -192,9 +192,7 @@ def _check_repository_file_navigation(
     for line_number, line in enumerate(text.splitlines(), start=1):
         if FENCE_RE.match(line):
             if in_fence:
-                errors.extend(
-                    _check_pure_file_fence(root, doc, fence_lines, repository_files)
-                )
+                errors.extend(_check_pure_file_fence(root, doc, fence_lines, repository_files))
                 fence_lines = []
             in_fence = not in_fence
             continue
