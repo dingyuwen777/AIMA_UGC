@@ -1,0 +1,77 @@
+name: Temporary Docs Link Label Migration
+
+on:
+  push:
+    branches:
+      - chore/agent-skills-project-governance
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: chore/agent-skills-project-governance
+          fetch-depth: 0
+
+      - name: Normalize repository file link labels
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re
+          import runpy
+          from pathlib import Path
+          from urllib.parse import unquote
+
+          root = Path.cwd().resolve()
+          checker = runpy.run_path(str(root / "scripts/quality/check_docs.py"))
+          repository_files = checker["_repository_files"](root)
+          documents = checker["_iter_current_docs"](root, repository_files)
+          pattern = re.compile(r"\[`([^`\n]+)`\]\(([^)]+)\)")
+
+          changed: list[str] = []
+          for doc in documents:
+              original = doc.read_text(encoding="utf-8")
+
+              def replace(match: re.Match[str]) -> str:
+                  label, target = match.groups()
+                  if target.startswith(("http://", "https://", "#", "mailto:")):
+                      return match.group(0)
+                  target_path = target.split("#", 1)[0]
+                  if not target_path:
+                      return match.group(0)
+                  resolved = (doc.parent / unquote(target_path)).resolve()
+                  try:
+                      expected = resolved.relative_to(root).as_posix()
+                  except ValueError:
+                      return match.group(0)
+                  if not resolved.is_file() or label.replace("\\", "/") == expected:
+                      return match.group(0)
+                  return f"[`{expected}`]({target})"
+
+              updated = pattern.sub(replace, original)
+              if updated != original:
+                  doc.write_text(updated, encoding="utf-8")
+                  changed.append(doc.relative_to(root).as_posix())
+
+          print(f"NORMALIZED_DOCS {len(changed)}")
+          for path in changed:
+              print(path)
+          PY
+
+          python3 scripts/quality/check_docs.py
+          python3 scripts/quality/check_docs_facts.py
+          git diff --check
+
+          if [[ -n "$(git status --porcelain -- '*.md')" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -- '*.md'
+            git commit -m "统一仓库文件链接显示路径"
+            git push origin HEAD:chore/agent-skills-project-governance
+          fi
