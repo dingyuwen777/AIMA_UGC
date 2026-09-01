@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260901-agent-skills-project-governance
 title: 收敛 AIMA_UGC 项目治理与 CI 接线
 level: L3
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: chore/agent-skills-project-governance
 created: 2026-09-01
@@ -59,7 +59,7 @@ data_changes: []
 - [x] `check_docs.py` 持续检查当前项目文档域的本地链接有效性和未链接真实文件导航，避免后续回归；高置信、可机器验证的文档事实一致性约束在确有长期价值时纳入项目级回归，不用脆弱正则冒充完整语义审查。
 - [x] `ready_check.py` 仍是 AIMA Change 的 Requirement Traceability / Completion Audit 机器门禁；Secret、docs、full product CI 等现有独立证明责任不降低。
 - [x] `AGENTS.md` 的项目自有 Overlay 对本次已修复偏差形成当前事实，且 installer-owned managed block、legacy v3 install manifest、Runtime binary 不被手工修改。
-- [ ] PR 最新 HEAD 的相关永久 CI 全绿；合并后 `main` 取得新鲜 CI；Change 最终归档。
+- [x] PR 最新 HEAD 的相关永久 CI 全绿；合并后 `main` 取得新鲜 CI；Change 最终归档。
 
 
 # 范围
@@ -192,6 +192,15 @@ data_changes: []
 - Review A2：实现、测试、文档与 Validation Matrix 对应；CI/Workflow 证明责任保持或增强，没有用文档/治理 gate 替代产品 Unit、Contract、PostgreSQL、Browser、Full-stack、Runtime 或 Release 证据。
 - 第二阶段质量复核：已修复生产 Job 事实源手写列表、仓库文件链接显示路径/同目录短文件解析等维护风险；当前没有剩余 BLOCKER/HIGH/MEDIUM Finding。
 - 未验证边界：真实生产服务器状态、Provider/LLM 当前额度、正式 Production Go-Live 不属于本 Change，继续按 Roadmap 维持未确认状态。
+
+## 合并与归档证据
+
+- Draft PR #274 因当前宿主 Draft → Ready mutation 返回已知 GraphQL 字段错误而关闭，`merged=false`；未作为最终交付 PR。
+- 最终 PR #275：reviewed head `9a716d9e24de810a510dd7cd47c3c2deb8a123f9`，Deep Review `5073545285` 结论 `NO_FINDINGS_WITHIN_SCOPE`，无未解决 review thread。
+- PR #275 fresh CI 全绿：CI `33464113553`、Change Completion Gate `33464113561`、Full-stack Acceptance `33464113556`、Runtime Acceptance `33464113613`、Release dry-run `33464113589`、Developer Tooling Compatibility `33464113537` 均为 `success`。
+- PR #275 使用 expected-head SHA 合并，merge commit 为 `ebebd5fd7d001d4aadec53fd486f8c6d163b88df`。
+- 合并后 `main@ebebd5fd7d001d4aadec53fd486f8c6d163b88df` fresh push CI 全绿：CI `33464376086`、Change Completion Gate `33464376112`、Full-stack Acceptance `33464376092`、Runtime Acceptance `33464376171`、Developer Tooling Compatibility `33464376109` 均为 `success`。
+- 本归档只把已完成 Change 从 `changes/active/` 移到 `changes/archive/2026-09/` 并封存最终证据，不修改产品实现、Contract、Schema/Migration、依赖或运行时。
 
 # 文档影响
 
