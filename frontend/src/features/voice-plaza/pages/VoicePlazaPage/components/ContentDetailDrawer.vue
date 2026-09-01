@@ -98,6 +98,10 @@ function supplementMessage(status: string): string {
 
           <section>
             <h4>AI 情感与全部标签</h4>
+            <p class="analysis-summary">
+              <span>发声类型：{{ item.analysis.voice_type || '未判定' }}</span>
+              <span>情感：{{ item.analysis.sentiment || '未判定' }}</span>
+            </p>
             <div class="label-grid">
               <span
                 v-for="(label, index) in item.analysis.labels ?? []"
@@ -212,6 +216,8 @@ header small { color: var(--aima-text-disabled); font-size: 10px; }
 .drawer-body > .supplement-status--running,
 .drawer-body > .supplement-status--queued { border-color: #ccdeef; background: #f5f9fd; }
 h4 { margin: 0 0 9px; color: var(--aima-text); font-size: 13px; line-height: 18px; }
+.analysis-summary { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 9px !important; }
+.analysis-summary span { padding: 3px 8px; border-radius: 4px; color: #cc2f58; background: var(--aima-primary-soft); font-size: 11px; }
 .label-grid { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 9px; }
 .label-grid span { padding: 3px 8px; border-radius: 4px; color: #396b9e; background: #e8f3ff; font-size: 11px; }
 .label-grid em,

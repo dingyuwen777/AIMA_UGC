@@ -24,6 +24,7 @@ import type {
   ListCollectionRuntimeRunsParams,
   LocalDataImportCampaignCreateRequest,
 } from '../../generated/api/client'
+import { beijingDayBoundary } from '../../shared/domain/beijingTime'
 import {
   createTikHubCollectionRun,
   cancelHistoricalCampaign,
@@ -82,14 +83,6 @@ const SUPPORTED_PLATFORMS: CollectionPlatform[] = [
   'bilibili',
   'kuaishou',
 ]
-
-function shanghaiDateStart(value: string): string | undefined {
-  return value ? new Date(`${value}T00:00:00+08:00`).toISOString() : undefined
-}
-
-function shanghaiDateEnd(value: string): string | undefined {
-  return value ? new Date(`${value}T23:59:59.999+08:00`).toISOString() : undefined
-}
 
 function errorMessage(error: unknown): string {
   if (error instanceof ImportApiError) {
@@ -177,8 +170,8 @@ export const useImportBatchesStore = defineStore('collection-runtime', () => {
       record_types: selectedRecordTypes(),
       status: filters.status || undefined,
       stage: filters.stage.trim() || undefined,
-      created_from: shanghaiDateStart(filters.createdFrom),
-      created_to: shanghaiDateEnd(filters.createdTo),
+      created_from: beijingDayBoundary(filters.createdFrom, 'start'),
+      created_to: beijingDayBoundary(filters.createdTo, 'end'),
       cursor,
       limit: 20,
     }

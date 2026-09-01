@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+import { stubVoicePlazaTaxonomy } from './voicePlazaTaxonomy'
+
 const irrelevantContentId = '42345678-1234-5678-1234-567812345678'
 const relevantContentId = '52345678-1234-5678-1234-567812345678'
 
@@ -70,6 +72,7 @@ const staleManuallyIncludedItem = {
 }
 
 async function routeShared(page: import('@playwright/test').Page): Promise<void> {
+  await stubVoicePlazaTaxonomy(page)
   await page.route('**/api/v1/content-analysis-capabilities', async (route) => {
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ configured: true }) })
   })

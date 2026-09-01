@@ -7,6 +7,7 @@ const generated = vi.hoisted(() => ({
   listContents: vi.fn(),
   getContent: vi.fn(),
   getContentAnalysisCapabilities: vi.fn(),
+  getContentAnalysisTaxonomy: vi.fn(),
   previewContentAnalysisRun: vi.fn(),
   createContentAnalysisRun: vi.fn(),
   listContentAnalysisRuns: vi.fn(),
@@ -54,11 +55,25 @@ const item = {
   source: { provider_name: 'file-import' },
 }
 
+const taxonomy = {
+  prompt_version: 'content-labeling.v3',
+  prompt_sha256: 'a'.repeat(64),
+  schema_version: 'aima-content-taxonomy.v2',
+  taxonomy_sha256: 'b'.repeat(64),
+  sentiments: ['正面', '中性', '负面'],
+  voice_types: ['真实用户发声', '媒体机构发声', '无法判断'],
+  labels: [
+    { primary_label: '产品体验', secondary_labels: ['续航表现', '骑行舒适'] },
+    { primary_label: '服务体验', secondary_labels: ['门店服务'] },
+  ],
+}
+
 describe('voice plaza', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.resetAllMocks()
     generated.getContentAnalysisCapabilities.mockResolvedValue({ configured: true })
+    generated.getContentAnalysisTaxonomy.mockResolvedValue(taxonomy)
   })
 
   afterEach(() => {
@@ -84,12 +99,15 @@ describe('voice plaza', () => {
           contentType: '',
           analysisStatus: '',
           relevance: '',
+          voiceType: '',
           sentiment: '',
           primaryLabel: '',
           secondaryLabel: '',
           publishedFrom: '',
           publishedTo: '',
           sourceIdentifier: '',
+          taxonomy,
+          taxonomyLoading: false,
         }),
       }),
     )
@@ -105,6 +123,66 @@ describe('voice plaza', () => {
       expect(html).toContain(label)
     }
     expect(html).not.toContain('value="file"')
+  })
+
+  it('renders sentiments, voice types and dependent labels from the backend taxonomy', async () => {
+    const futureTaxonomy = {
+      ...taxonomy,
+      sentiments: ['混合情感'],
+      voice_types: ['社区活动发声'],
+      labels: [{ primary_label: '社区反馈', secondary_labels: ['活动体验'] }],
+    }
+    const html = await renderToString(
+      createSSRApp({
+        render: () => h(VoicePlazaFilters, {
+          search: '',
+          platform: '',
+          contentType: '',
+          analysisStatus: '',
+          relevance: '',
+          voiceType: '',
+          sentiment: '',
+          primaryLabel: '社区反馈',
+          secondaryLabel: '',
+          publishedFrom: '',
+          publishedTo: '',
+          sourceIdentifier: '',
+          taxonomy: futureTaxonomy,
+          taxonomyLoading: false,
+        }),
+      }),
+    )
+
+    expect(html).toContain('混合情感')
+    expect(html).toContain('社区活动发声')
+    expect(html).toContain('社区反馈')
+    expect(html).toContain('活动体验')
+    expect(html).not.toContain('value="正面"')
+  })
+
+  it('disables taxonomy-dependent controls while a newer taxonomy is loading', async () => {
+    const html = await renderToString(
+      createSSRApp({
+        render: () => h(VoicePlazaFilters, {
+          search: '',
+          platform: '',
+          contentType: '',
+          analysisStatus: '',
+          relevance: '',
+          voiceType: '',
+          sentiment: '',
+          primaryLabel: '',
+          secondaryLabel: '',
+          publishedFrom: '',
+          publishedTo: '',
+          sourceIdentifier: '',
+          taxonomy,
+          taxonomyLoading: true,
+        }),
+      }),
+    )
+
+    expect(html.match(/<select[^>]*disabled/g)?.length ?? 0).toBeGreaterThanOrEqual(4)
   })
 
   it('renders every ordered primary and secondary AI label pair in the label column', async () => {
@@ -124,6 +202,49 @@ describe('voice plaza', () => {
     expect(labels).toContain('门店服务')
     expect(labels).toContain('购买体验')
     expect(labels).toContain('价格感知')
+    expect(labels).toContain('真实用户发声')
+  })
+
+  it('loads taxonomy and sends voice type with the existing query filters', async () => {
+    generated.listContents.mockResolvedValue({ items: [item], has_more: false })
+    const store = useVoicePlazaStore()
+
+    await store.refreshTaxonomy()
+    store.filters.voiceType = '真实用户发声'
+    store.filters.sentiment = '负面'
+    store.filters.primaryLabel = '产品体验'
+    store.filters.secondaryLabel = '续航表现'
+    await store.refresh()
+
+    expect(store.taxonomy?.taxonomy_sha256).toBe('b'.repeat(64))
+    expect(generated.listContents).toHaveBeenCalledWith(expect.objectContaining({
+      voice_type: '真实用户发声',
+      sentiment: '负面',
+      primary_label: '产品体验',
+      secondary_label: '续航表现',
+    }))
+  })
+
+  it('fails taxonomy closed without blocking the independent content list', async () => {
+    generated.getContentAnalysisTaxonomy.mockRejectedValue(
+      new VoicePlazaApiError({
+        type: 'about:blank',
+        title: 'AI 分类配置暂不可用',
+        status: 503,
+        detail: '当前 Prompt Taxonomy 无法安全读取或校验。',
+        request_id: 'request-taxonomy',
+        errors: [],
+      }),
+    )
+    generated.listContents.mockResolvedValue({ items: [item], has_more: false })
+    const store = useVoicePlazaStore()
+
+    await Promise.all([store.refreshTaxonomy(), store.refresh()])
+
+    expect(store.taxonomy).toBeNull()
+    expect(store.taxonomyError).toContain('request-taxonomy')
+    expect(store.items).toEqual([item])
+    expect(store.listError).toBeNull()
   })
 
   it('keeps a manual relevance override visible and undoable when AI is stale', async () => {

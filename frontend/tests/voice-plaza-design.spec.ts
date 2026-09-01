@@ -47,6 +47,7 @@ describe('声音广场正式 Figma 基线', () => {
       '搜索内容',
       '平台',
       'AI 相关性',
+      '发声类型',
       'AI 情感',
       'AI 状态',
       '内容类型',
@@ -57,8 +58,8 @@ describe('声音广场正式 Figma 基线', () => {
       '发布结束',
     ]) expect(html).toContain(label)
 
-    expect(html).toContain('筛选字段来自 GET /api/v1/contents')
-    expect(html).toContain('示例值仅用于布局，不表示服务器当前数据')
+    expect(html).toContain('分类选项来自 GET /api/v1/content-analysis-taxonomy')
+    expect(html).toContain('查询字段来自 GET /api/v1/contents')
   })
 
   it('Empty 与 Error 使用正式状态文案，不虚构分页结果', async () => {

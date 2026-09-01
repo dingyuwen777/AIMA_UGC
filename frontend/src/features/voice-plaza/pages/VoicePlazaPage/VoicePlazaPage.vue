@@ -73,8 +73,9 @@ onMounted(async () => {
 })
 onBeforeUnmount(() => store.stopPolling())
 
-/** 同步刷新声音列表、导出记录、AI 能力和 Analysis Run 历史。 */
+/** 先校准分类筛选，再并行刷新列表和独立业务资源。 */
 async function refreshPage(): Promise<void> {
+  await store.refreshTaxonomy()
   await Promise.all([
     store.refresh(),
     store.refreshExports(),
@@ -227,12 +228,15 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
         v-model:content-type="store.filters.contentType"
         v-model:analysis-status="store.filters.analysisStatus"
         v-model:relevance="store.filters.relevance"
+        v-model:voice-type="store.filters.voiceType"
         v-model:sentiment="store.filters.sentiment"
         v-model:primary-label="store.filters.primaryLabel"
         v-model:secondary-label="store.filters.secondaryLabel"
         v-model:published-from="store.filters.publishedFrom"
         v-model:published-to="store.filters.publishedTo"
         v-model:source-identifier="store.filters.sourceIdentifier"
+        :taxonomy="store.taxonomy"
+        :taxonomy-loading="store.taxonomyLoading"
         @search="search"
         @reset="reset"
       />
@@ -244,6 +248,15 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
       >
         <strong>AI 打标暂不可用：当前环境尚未配置可用的 LLM Runtime。</strong>
         <span>能力状态来自 GET /api/v1/content-analysis-capabilities；前端不读取 Secret、Base URL 或模型配置文件。</span>
+      </AimaFeedbackBanner>
+      <AimaFeedbackBanner
+        v-if="store.taxonomyError"
+        class="taxonomy-warning"
+        tone="warning"
+        role="alert"
+      >
+        <strong>分类配置暂不可用</strong>
+        <span>{{ store.taxonomyError }}；依赖分类配置的筛选已禁用，内容列表和独立操作仍可使用。</span>
       </AimaFeedbackBanner>
       <AimaFeedbackBanner
         v-if="reviewNote"
@@ -415,11 +428,15 @@ function analysisRunProgressDetail(run: AnalysisContentRunResponse): string {
 .voice-plaza-page { display: grid; gap: 10px; }
 .capability-warning strong,
 .capability-warning span,
+.taxonomy-warning strong,
+.taxonomy-warning span,
 .page-error strong,
 .page-error span { display: block; }
 .capability-warning strong,
+.taxonomy-warning strong,
 .page-error strong { margin-bottom: 2px; font-size: 11px; }
 .capability-warning span,
+.taxonomy-warning span,
 .page-error span { font-size: 10px; }
 .run-history { display: grid; gap: 8px; padding: 12px 16px; border: 1px solid var(--aima-border); border-radius: var(--aima-radius-control); background: var(--aima-surface); }
 .run-history header { display: flex; min-height: 20px; align-items: center; justify-content: space-between; gap: 16px; }

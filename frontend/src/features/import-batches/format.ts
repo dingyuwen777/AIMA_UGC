@@ -5,6 +5,7 @@ import type {
   ImportBatchStatus,
   ImportStage,
 } from '../../generated/api/client'
+import { PLATFORM_LABELS } from '../../shared/domain/platform'
 
 export const statusLabels: Record<ImportBatchStatus, string> = {
   queued: '排队中',
@@ -41,13 +42,7 @@ export const recordTypeLabels: Record<CollectionRuntimeRecordType, string> = {
   tikhub_batch_supplement: '批次补采',
 }
 
-export const platformLabels: Record<CollectionPlatform, string> = {
-  xiaohongshu: '小红书',
-  douyin: '抖音',
-  weibo: '微博',
-  bilibili: 'B站',
-  kuaishou: '快手',
-}
+export const platformLabels: Record<CollectionPlatform, string> = PLATFORM_LABELS
 
 const runtimeStageLabels: Record<string, string> = {
   queued: '等待处理',

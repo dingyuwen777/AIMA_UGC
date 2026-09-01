@@ -1,16 +1,5 @@
 import type { ContentLabelPairResponse } from '../../generated/api/client'
-
-const PLATFORM_LABELS: Record<string, string> = {
-  douyin: '抖音',
-  file: 'Excel 导入',
-  kuaishou: '快手',
-  tiktok: 'TikTok',
-  xiaohongshu: '小红书',
-}
-
-export function platformLabel(platform: string): string {
-  return PLATFORM_LABELS[platform.toLowerCase()] ?? platform
-}
+export { platformLabel } from '../../shared/domain/platform'
 
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) return '—'

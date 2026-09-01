@@ -8,6 +8,7 @@ import {
   getContent,
   getContentAnalysisRun,
   getContentAnalysisCapabilities,
+  getContentAnalysisTaxonomy,
   getContentAnalysisJob,
   getDataExport,
   listContents,
@@ -21,6 +22,7 @@ import {
   type AnalysisContentRunPreviewResponse,
   type AnalysisContentRunResponse,
   type ContentAnalysisCapabilitiesResponse,
+  type ContentAnalysisTaxonomyResponse,
   type ContentAnalysisCreatedResponse,
   type ContentAnalysisSubmitRequest,
   type ContentDetailResponse,
@@ -73,6 +75,11 @@ export async function fetchContentDetail(contentId: string): Promise<ContentDeta
 
 export async function fetchContentAnalysisCapabilities(): Promise<ContentAnalysisCapabilitiesResponse> {
   return unwrap(await getContentAnalysisCapabilities())
+}
+
+/** 通过生成 Client 读取当前 Prompt Taxonomy 的安全只读投影。 */
+export async function fetchContentAnalysisTaxonomy(): Promise<ContentAnalysisTaxonomyResponse> {
+  return unwrap(await getContentAnalysisTaxonomy())
 }
 
 export async function submitContentAnalysis(

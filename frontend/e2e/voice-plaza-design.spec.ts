@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
+import { stubVoicePlazaTaxonomy } from './voicePlazaTaxonomy'
+
 const contentId = '42345678-1234-5678-1234-567812345678'
 const content = {
   id: contentId,
@@ -84,6 +86,7 @@ test.use({ viewport: { width: 1440, height: 900 } })
 
 /** 为 Design-to-Code 状态测试固定与目标状态无关的能力、Run 和 Export 只读响应。 */
 async function stubCommonRoutes(page: Page): Promise<void> {
+  await stubVoicePlazaTaxonomy(page)
   await page.route('**/api/v1/content-analysis-capabilities', async (route) => {
     await route.fulfill({
       contentType: 'application/json',

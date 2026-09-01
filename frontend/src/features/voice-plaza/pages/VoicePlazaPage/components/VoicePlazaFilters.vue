@@ -1,23 +1,29 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
 import type {
   ContentAnalysisStatus,
+  ContentAnalysisTaxonomyResponse,
   ContentRelevance,
   PlatformName,
 } from '../../../../../generated/api/client'
 import AimaButton from '../../../../../shared/ui/AimaButton.vue'
 
-defineProps<{
+const props = defineProps<{
   search: string
   platform: '' | PlatformName
   contentType: string
   analysisStatus: '' | ContentAnalysisStatus
   relevance: '' | ContentRelevance
+  voiceType: string
   sentiment: string
   primaryLabel: string
   secondaryLabel: string
   publishedFrom: string
   publishedTo: string
   sourceIdentifier: string
+  taxonomy: ContentAnalysisTaxonomyResponse | null
+  taxonomyLoading: boolean
 }>()
 
 const emit = defineEmits<{
@@ -26,6 +32,7 @@ const emit = defineEmits<{
   'update:contentType': [value: string]
   'update:analysisStatus': [value: '' | ContentAnalysisStatus]
   'update:relevance': [value: '' | ContentRelevance]
+  'update:voiceType': [value: string]
   'update:sentiment': [value: string]
   'update:primaryLabel': [value: string]
   'update:secondaryLabel': [value: string]
@@ -36,9 +43,20 @@ const emit = defineEmits<{
   reset: []
 }>()
 
+const secondaryLabels = computed(
+  () => props.taxonomy?.labels.find((item) => item.primary_label === props.primaryLabel)
+    ?.secondary_labels ?? [],
+)
+
 /** 从原生输入控件事件中读取字符串值，保持页面与 Store 的 v-model 边界单一。 */
 function value(event: Event): string {
   return (event.target as HTMLInputElement | HTMLSelectElement).value
+}
+
+/** 一级标签变化时同时清空旧二级标签，避免提交不合法父子组合。 */
+function updatePrimaryLabel(event: Event): void {
+  emit('update:primaryLabel', value(event))
+  emit('update:secondaryLabel', '')
 }
 </script>
 
@@ -62,10 +80,24 @@ function value(event: Event): string {
         :value="relevance"
         @change="emit('update:relevance', value($event) as '' | ContentRelevance)"
       ><option value="">默认业务数据</option><option value="relevant">相关（AI / 人工有效）</option><option value="irrelevant">不相关（AI / 人工有效）</option></select></label>
+      <label class="field field--voice-type"><span>发声类型</span><select
+        :value="voiceType"
+        :disabled="taxonomyLoading || !taxonomy"
+        @change="emit('update:voiceType', value($event))"
+      ><option value="">{{ taxonomyLoading ? '分类配置加载中' : taxonomy ? '全部发声类型' : '分类配置暂不可用' }}</option><option
+        v-for="item in taxonomy?.voice_types ?? []"
+        :key="item"
+        :value="item"
+      >{{ item }}</option></select></label>
       <label class="field field--sentiment"><span>AI 情感</span><select
         :value="sentiment"
+        :disabled="taxonomyLoading || !taxonomy"
         @change="emit('update:sentiment', value($event))"
-      ><option value="">全部情感</option><option value="正面">正面</option><option value="中性">中性</option><option value="负面">负面</option></select></label>
+      ><option value="">{{ taxonomyLoading ? '分类配置加载中' : taxonomy ? '全部情感' : '分类配置暂不可用' }}</option><option
+        v-for="item in taxonomy?.sentiments ?? []"
+        :key="item"
+        :value="item"
+      >{{ item }}</option></select></label>
       <label class="field field--status"><span>AI 状态</span><select
         :value="analysisStatus"
         @change="emit('update:analysisStatus', value($event) as '' | ContentAnalysisStatus)"
@@ -78,16 +110,24 @@ function value(event: Event): string {
     </div>
 
     <div class="filter-row filter-row--secondary">
-      <label class="field field--label"><span>一级标签</span><input
+      <label class="field field--label"><span>一级标签</span><select
         :value="primaryLabel"
-        placeholder="全部一级标签"
-        @input="emit('update:primaryLabel', value($event))"
-      ></label>
-      <label class="field field--label"><span>二级标签</span><input
+        :disabled="taxonomyLoading || !taxonomy"
+        @change="updatePrimaryLabel"
+      ><option value="">{{ taxonomyLoading ? '分类配置加载中' : taxonomy ? '全部一级标签' : '分类配置暂不可用' }}</option><option
+        v-for="item in taxonomy?.labels ?? []"
+        :key="item.primary_label"
+        :value="item.primary_label"
+      >{{ item.primary_label }}</option></select></label>
+      <label class="field field--label"><span>二级标签</span><select
         :value="secondaryLabel"
-        placeholder="全部二级标签"
-        @input="emit('update:secondaryLabel', value($event))"
-      ></label>
+        :disabled="taxonomyLoading || !taxonomy || !primaryLabel"
+        @change="emit('update:secondaryLabel', value($event))"
+      ><option value="">{{ primaryLabel ? '全部二级标签' : '请先选择一级标签' }}</option><option
+        v-for="item in secondaryLabels"
+        :key="item"
+        :value="item"
+      >{{ item }}</option></select></label>
       <label class="field field--source"><span>来源 Batch / Run ID</span><input
         :value="sourceIdentifier"
         placeholder="UUID / 来源标识"
@@ -108,7 +148,7 @@ function value(event: Event): string {
     </div>
 
     <footer class="filter-footer">
-      <p>筛选字段来自 GET /api/v1/contents；示例值仅用于布局，不表示服务器当前数据。</p>
+      <p>分类选项来自 GET /api/v1/content-analysis-taxonomy；查询字段来自 GET /api/v1/contents。</p>
       <div class="filter-actions">
         <AimaButton
           size="small"
@@ -139,12 +179,13 @@ function value(event: Event): string {
 }
 .filter-row { display: flex; min-width: 0; align-items: flex-start; gap: 10px; }
 .field { display: grid; min-width: 0; gap: 6px; color: var(--aima-text-muted); font-size: 11px; font-weight: 500; }
-.field--search { flex: 0 1 330px; }
-.field--platform { flex: 0 1 135px; }
-.field--relevance { flex: 0 1 150px; }
-.field--sentiment { flex: 0 1 130px; }
-.field--status { flex: 0 1 140px; }
-.field--content-type { flex: 0 1 145px; }
+.field--search { flex: 0 1 280px; }
+.field--platform { flex: 0 1 120px; }
+.field--relevance { flex: 0 1 140px; }
+.field--voice-type { flex: 0 1 150px; }
+.field--sentiment { flex: 0 1 120px; }
+.field--status { flex: 0 1 130px; }
+.field--content-type { flex: 0 1 130px; }
 .field--label { flex: 0 1 170px; }
 .field--source { flex: 0 1 280px; }
 .field--date { flex: 0 1 190px; }
@@ -164,6 +205,7 @@ select {
   line-height: 20px;
 }
 input::placeholder { color: var(--aima-text-disabled); }
+select:disabled { cursor: not-allowed; color: var(--aima-text-disabled); background: #f5f7fa; }
 input:focus,
 select:focus { border-color: var(--aima-primary); box-shadow: 0 0 0 2px var(--aima-primary-soft); }
 .filter-footer { display: flex; min-height: 36px; align-items: center; justify-content: space-between; gap: 16px; }

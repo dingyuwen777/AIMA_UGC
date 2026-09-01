@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
+import { stubVoicePlazaTaxonomy } from './voicePlazaTaxonomy'
+
 const content = {
   id: '52345678-1234-5678-1234-567812345678',
   platform: 'xiaohongshu',
@@ -37,6 +39,7 @@ const content = {
 
 /** 固定与当前 Review 风险无关的导出记录和 Analysis 能力响应。 */
 async function stubStableAuxiliaryRoutes(page: Page): Promise<void> {
+  await stubVoicePlazaTaxonomy(page)
   await page.route('**/api/v1/content-analysis-capabilities', async (route) => {
     await route.fulfill({
       contentType: 'application/json',

@@ -1,4 +1,5 @@
 import type { CollectionPlatform } from '../../generated/api/client'
+import { PLATFORM_LABELS, PLATFORM_OPTIONS } from '../../shared/domain/platform'
 
 export const COLLECTION_SCHEDULE_PRESETS = [
   { value: '0 * * * *', label: '每 1 小时' },
@@ -7,14 +8,6 @@ export const COLLECTION_SCHEDULE_PRESETS = [
   { value: '0 */12 * * *', label: '每 12 小时' },
   { value: '0 0 * * *', label: '每天 00:00' },
 ] as const
-
-const PLATFORM_LABELS: Record<CollectionPlatform, string> = {
-  xiaohongshu: '小红书',
-  douyin: '抖音',
-  weibo: '微博',
-  bilibili: 'B站',
-  kuaishou: '快手',
-}
 
 /** 把后端 Cron 值映射为正式页面文案；历史自定义值保持原样，避免伪造语义。 */
 export function collectionScheduleLabel(scheduleExpr: string): string {
@@ -40,6 +33,7 @@ export function formatBeijingDateTime(value: string): string {
   }).format(new Date(value))
 }
 
-export const COLLECTION_PLATFORM_OPTIONS = (
-  Object.entries(PLATFORM_LABELS) as [CollectionPlatform, string][]
-).map(([value, label]) => ({ value, label }))
+export const COLLECTION_PLATFORM_OPTIONS = PLATFORM_OPTIONS as Array<{
+  value: CollectionPlatform
+  label: string
+}>

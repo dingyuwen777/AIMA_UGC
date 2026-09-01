@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+import { stubVoicePlazaTaxonomy, voicePlazaTaxonomyFixture } from './voicePlazaTaxonomy'
+
 const contentId = '42345678-1234-5678-1234-567812345678'
 const analysisJobId = '52345678-1234-5678-1234-567812345678'
 const analysisRunId = '62345678-1234-5678-1234-567812345678'
@@ -47,6 +49,8 @@ const item = {
   metrics: { like_count: 128, comment_count: 18, share_count: 6, favorite_count: 32 },
   analysis: {
     status: 'completed',
+    relevance: 'relevant',
+    voice_type: '真实用户发声',
     sentiment: '负面',
     labels: [
       { primary_label: '电池、续航与充电', secondary_label: '实际续航表现' },
@@ -57,6 +61,8 @@ const item = {
     model_provider: 'fixture',
     model: 'fixture-model',
   },
+  effective_relevance: 'relevant',
+  relevance_source: 'ai',
   source: {
     provider_name: 'file-import',
     import_batch_id: '12345678-1234-5678-1234-567812345678',
@@ -92,6 +98,8 @@ const runningExport = {
 }
 
 test.beforeEach(async ({ page }) => {
+  await stubVoicePlazaTaxonomy(page)
+
   await page.route('**/api/v1/content-analysis-capabilities', async (route) => {
     await route.fulfill({
       contentType: 'application/json',
@@ -264,10 +272,80 @@ test('renders every AI label and opens the text-first content detail', async ({ 
   await expect(page.getByRole('complementary', { name: '内容详情' })).toBeVisible()
   await expect(page.getByText('AI 情感与全部标签')).toBeVisible()
   await expect(page.getByText('我也关注冬季续航。')).toBeVisible()
+  await expect(page.getByText('发声类型：真实用户发声')).toBeVisible()
   await expect(page.getByText('原始内容媒体')).toHaveCount(0)
   if (process.env.AIMA_CAPTURE_VISUAL === '1') {
     await page.screenshot({ path: 'test-results/stage8d-content-detail.png', fullPage: true })
   }
+})
+
+test('loads taxonomy options and submits voice type with dependent labels', async ({ page }) => {
+  await page.goto('/voice-plaza')
+
+  await page.locator('label.field--voice-type select').selectOption('真实用户发声')
+  await page.locator('label.field--sentiment select').selectOption('负面')
+  await page.locator('label.field--label select').nth(0).selectOption('电池、续航与充电')
+  await page.locator('label.field--label select').nth(1).selectOption('实际续航表现')
+  const requestPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/contents' && url.searchParams.has('voice_type')
+  })
+  await page.getByRole('button', { name: '查询' }).click()
+  const request = await requestPromise
+  const params = new URL(request.url()).searchParams
+
+  expect(params.get('voice_type')).toBe('真实用户发声')
+  expect(params.get('sentiment')).toBe('负面')
+  expect(params.get('primary_label')).toBe('电池、续航与充电')
+  expect(params.get('secondary_label')).toBe('实际续航表现')
+})
+
+test('reconciles taxonomy before issuing the initial content query', async ({ page }) => {
+  await page.unroute('**/api/v1/content-analysis-taxonomy')
+  let taxonomyReady = false
+  let queriedBeforeTaxonomy = false
+  page.on('request', (request) => {
+    const url = new URL(request.url())
+    if (url.pathname === '/api/v1/contents' && !taxonomyReady) queriedBeforeTaxonomy = true
+  })
+  await page.route('**/api/v1/content-analysis-taxonomy', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    taxonomyReady = true
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify(voicePlazaTaxonomyFixture),
+    })
+  })
+
+  await page.goto('/voice-plaza')
+  await expect(page.locator('label.field--voice-type select')).toBeEnabled()
+  expect(queriedBeforeTaxonomy).toBe(false)
+})
+
+test('keeps the content list usable when taxonomy is unavailable', async ({ page }) => {
+  await page.unroute('**/api/v1/content-analysis-taxonomy')
+  await page.route('**/api/v1/content-analysis-taxonomy', async (route) => {
+    await route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        type: 'https://aima.example/problems/content_analysis_taxonomy_unavailable',
+        title: 'AI 分类配置暂不可用',
+        status: 503,
+        detail: '当前 Prompt Taxonomy 无法安全读取或校验。',
+        request_id: 'request-taxonomy',
+        errors: [],
+      }),
+    })
+  })
+
+  await page.goto('/voice-plaza')
+
+  await expect(page.getByRole('alert').getByText('分类配置暂不可用', { exact: true })).toBeVisible()
+  await expect(page.getByText(/request-taxonomy/)).toBeVisible()
+  await expect(page.locator('label.field--voice-type select')).toBeDisabled()
+  await expect(page.getByText(item.title)).toBeVisible()
+  await expect(page.getByRole('button', { name: /导出记录/ })).toBeEnabled()
 })
 
 test('shows AI unavailable and disables analysis when runtime is not configured', async ({ page }) => {

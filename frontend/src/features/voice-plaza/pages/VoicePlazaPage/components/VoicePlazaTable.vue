@@ -70,13 +70,16 @@ function relevanceClass(item: ContentListItemResponse): string {
 /** 组合 AI 当前性与人工覆盖来源，避免只展示情感而丢失状态。 */
 function analysisMeta(item: ContentListItemResponse): string {
   const reviewBadge = badge(item)
+  const voiceType = item.analysis.voice_type ? `发声：${item.analysis.voice_type} · ` : ''
   if (item.analysis.status === 'stale') {
     return reviewBadge ? `AI stale · ${reviewBadge}` : 'AI stale · 需重新打标'
   }
   if (item.analysis.status !== 'completed') {
     return reviewBadge ? `AI 未完成 · ${reviewBadge}` : 'AI 未完成'
   }
-  return reviewBadge ? `AI 已完成 · ${reviewBadge}` : 'AI 已完成 · 人工未覆盖'
+  return reviewBadge
+    ? `${voiceType}AI 已完成 · ${reviewBadge}`
+    : `${voiceType}AI 已完成 · 人工未覆盖`
 }
 
 /** 返回当前行可执行的人工相关性复核决策。 */

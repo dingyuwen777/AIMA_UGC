@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+import { stubVoicePlazaTaxonomy } from './voicePlazaTaxonomy'
+
 const batchId = '12345678-1234-5678-1234-567812345678'
 const importJobId = '22345678-1234-5678-1234-567812345678'
 const contentId = '32345678-1234-5678-1234-567812345678'
@@ -160,6 +162,7 @@ test('shows Excel import source retention from terminal Job time when Batch time
 })
 
 test('shows the seven-day Excel export window in the existing export dialog', async ({ page }) => {
+  await stubVoicePlazaTaxonomy(page)
   await page.route('**/api/v1/content-analysis-capabilities', async (route) => {
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ configured: true }) })
   })

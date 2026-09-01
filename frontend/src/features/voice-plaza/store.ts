@@ -6,6 +6,7 @@ import type {
   AnalysisContentRunResponse,
   AnalysisRunTargetSelection,
   ContentAnalysisStatus,
+  ContentAnalysisTaxonomyResponse,
   ContentDetailResponse,
   ContentFilterSnapshot,
   ContentListItemResponse,
@@ -17,12 +18,14 @@ import type {
   ListContentsParams,
   PlatformName,
 } from '../../generated/api/client'
+import { beijingDayBoundary } from '../../shared/domain/beijingTime'
 import {
   VoicePlazaApiError,
   cancelAnalysisRun,
   fetchAnalysisRun,
   fetchAnalysisRuns,
   fetchContentAnalysisCapabilities,
+  fetchContentAnalysisTaxonomy,
   fetchContentDetail,
   fetchContents,
   fetchDataExport,
@@ -40,6 +43,7 @@ export interface VoicePlazaFilters {
   contentType: string
   analysisStatus: '' | ContentAnalysisStatus
   relevance: '' | ContentRelevance
+  voiceType: string
   sentiment: string
   primaryLabel: string
   secondaryLabel: string
@@ -54,17 +58,13 @@ const EMPTY_FILTERS: VoicePlazaFilters = {
   contentType: '',
   analysisStatus: '',
   relevance: '',
+  voiceType: '',
   sentiment: '',
   primaryLabel: '',
   secondaryLabel: '',
   publishedFrom: '',
   publishedTo: '',
   sourceIdentifier: '',
-}
-
-function shanghaiBoundary(value: string, end = false): string | undefined {
-  if (!value) return undefined
-  return new Date(`${value}T${end ? '23:59:59.999' : '00:00:00'}+08:00`).toISOString()
 }
 
 function errorMessage(error: unknown): string {
@@ -96,6 +96,9 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
   const analysisRuns = ref<AnalysisContentRunResponse[]>([])
   const analysisPreview = ref<AnalysisContentRunPreviewResponse | null>(null)
   const analysisConfigured = ref<boolean | null>(null)
+  const taxonomy = ref<ContentAnalysisTaxonomyResponse | null>(null)
+  const taxonomyLoading = ref(false)
+  const taxonomyError = ref<string | null>(null)
   const loading = ref(false)
   const loadingNext = ref(false)
   const loadingDetail = ref(false)
@@ -130,11 +133,12 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
       content_types: filters.contentType ? [filters.contentType] : undefined,
       analysis_status: filters.analysisStatus || undefined,
       relevance: filters.relevance || undefined,
+      voice_type: filters.voiceType.trim() || undefined,
       sentiment: filters.sentiment.trim() || undefined,
       primary_label: filters.primaryLabel.trim() || undefined,
       secondary_label: filters.secondaryLabel.trim() || undefined,
-      published_from: shanghaiBoundary(filters.publishedFrom),
-      published_to: shanghaiBoundary(filters.publishedTo, true),
+      published_from: beijingDayBoundary(filters.publishedFrom, 'start'),
+      published_to: beijingDayBoundary(filters.publishedTo, 'end'),
       source_identifier: filters.sourceIdentifier.trim() || undefined,
     }
   }
@@ -180,6 +184,34 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     } catch (reason) {
       analysisConfigured.value = null
       error.value = errorMessage(reason)
+    }
+  }
+
+  /** 读取当前 Prompt Taxonomy，并清理部署切换后已经失效的分类筛选。 */
+  async function refreshTaxonomy(): Promise<void> {
+    taxonomyLoading.value = true
+    taxonomyError.value = null
+    try {
+      const loaded = await fetchContentAnalysisTaxonomy()
+      taxonomy.value = loaded
+      if (!loaded.sentiments.includes(filters.sentiment)) filters.sentiment = ''
+      if (!loaded.voice_types.includes(filters.voiceType)) filters.voiceType = ''
+      const labelGroup = loaded.labels.find((item) => item.primary_label === filters.primaryLabel)
+      if (!labelGroup) {
+        filters.primaryLabel = ''
+        filters.secondaryLabel = ''
+      } else if (!labelGroup.secondary_labels.includes(filters.secondaryLabel)) {
+        filters.secondaryLabel = ''
+      }
+    } catch (reason) {
+      taxonomy.value = null
+      filters.sentiment = ''
+      filters.voiceType = ''
+      filters.primaryLabel = ''
+      filters.secondaryLabel = ''
+      taxonomyError.value = errorMessage(reason)
+    } finally {
+      taxonomyLoading.value = false
     }
   }
 
@@ -418,6 +450,9 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     analysisRuns,
     analysisPreview,
     analysisConfigured,
+    taxonomy,
+    taxonomyLoading,
+    taxonomyError,
     hasMore,
     allVisibleSelected,
     hasActiveJobs,
@@ -434,6 +469,7 @@ export const useVoicePlazaStore = defineStore('voice-plaza', () => {
     notice,
     refresh,
     refreshAnalysisCapabilities,
+    refreshTaxonomy,
     loadNext,
     openDetail,
     closeDetail,
