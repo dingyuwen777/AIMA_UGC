@@ -6,7 +6,7 @@ on:
       - chore/agent-skills-project-governance
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   audit:
@@ -17,6 +17,91 @@ jobs:
         with:
           ref: chore/agent-skills-project-governance
           fetch-depth: 0
+
+      - name: Migrate explicit file responsibility navigation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import runpy
+          from pathlib import Path
+
+          root = Path.cwd().resolve()
+          checker = runpy.run_path(str(root / "scripts/quality/check_docs.py"))
+          repository_files = checker["_repository_files"](root)
+          documents = checker["_iter_current_docs"](root, repository_files)
+          resolve = checker["_resolve_file_reference"]
+          fence_re = checker["FENCE_RE"]
+
+          changed = 0
+          for doc in documents:
+              lines = doc.read_text(encoding="utf-8").splitlines(keepends=True)
+              output: list[str] = []
+              index = 0
+              doc_changed = False
+              while index < len(lines):
+                  if not fence_re.match(lines[index]):
+                      output.append(lines[index])
+                      index += 1
+                      continue
+
+                  end = index + 1
+                  while end < len(lines) and not fence_re.match(lines[end]):
+                      end += 1
+                  if end >= len(lines):
+                      output.extend(lines[index:])
+                      break
+
+                  entries = [
+                      (line_no, lines[line_no].strip())
+                      for line_no in range(index + 1, end)
+                      if lines[line_no].strip()
+                  ]
+                  pairs: list[tuple[Path, str]] = []
+                  if len(entries) >= 2 and len(entries) % 2 == 0:
+                      valid = True
+                      for pair_index in range(0, len(entries), 2):
+                          _, value = entries[pair_index]
+                          _, description = entries[pair_index + 1]
+                          target = resolve(root, doc, value, repository_files)
+                          if target is None or not description.startswith("→"):
+                              valid = False
+                              break
+                          pairs.append((target, description.removeprefix("→").strip()))
+                      if valid:
+                          if output and output[-1].strip():
+                              output.append("\n")
+                          for target, description in pairs:
+                              label = target.relative_to(root).as_posix()
+                              href = os.path.relpath(target, start=doc.parent).replace(os.sep, "/")
+                              output.append(f"- [`{label}`]({href})：{description}\n")
+                          output.append("\n")
+                          doc_changed = True
+                          index = end + 1
+                          continue
+
+                  output.extend(lines[index : end + 1])
+                  index = end + 1
+
+              if doc_changed:
+                  doc.write_text("".join(output), encoding="utf-8")
+                  changed += 1
+
+          print(f"MIGRATED_DOCS {changed}")
+          PY
+
+          python3 scripts/quality/check_docs.py
+          python3 scripts/quality/check_docs_facts.py
+          git diff --check
+
+          if [[ -n "$(git status --porcelain -- '*.md')" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -- '*.md'
+            git commit -m "链接化文档中的文件职责导航"
+            git push origin HEAD:chore/agent-skills-project-governance
+          fi
 
       - name: Audit current documentation facts
         shell: bash
@@ -39,20 +124,3 @@ jobs:
           done
           git diff --check || status=1
           exit "${status}"
-
-      - name: Show Ruff formatting diff
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m pip install --disable-pip-version-check --quiet ruff==0.16.2
-          ruff format \
-            scripts/quality/check_current_docs_facts.py \
-            scripts/quality/doc_fact_catalog.py \
-            scripts/quality/report_current_docs_facts.py \
-            tests/unit/test_docs_navigation.py
-          git diff -- \
-            scripts/quality/check_current_docs_facts.py \
-            scripts/quality/doc_fact_catalog.py \
-            scripts/quality/report_current_docs_facts.py \
-            tests/unit/test_docs_navigation.py
