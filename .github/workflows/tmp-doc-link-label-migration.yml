@@ -18,12 +18,12 @@ jobs:
           ref: chore/agent-skills-project-governance
           fetch-depth: 0
 
-      - name: Normalize repository file link labels
+      - name: Normalize repository file navigation links
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import re
+          import os
           import runpy
           from pathlib import Path
           from urllib.parse import unquote
@@ -32,13 +32,33 @@ jobs:
           checker = runpy.run_path(str(root / "scripts/quality/check_docs.py"))
           repository_files = checker["_repository_files"](root)
           documents = checker["_iter_current_docs"](root, repository_files)
-          pattern = re.compile(r"\[`([^`\n]+)`\]\(([^)]+)\)")
+          inline_code_re = checker["INLINE_CODE_RE"]
+          path_link_re = checker["PATH_LINK_RE"]
+          fence_re = checker["FENCE_RE"]
+          resolve = checker["_resolve_file_reference"]
+          is_linked = checker["_is_inline_code_linked"]
 
-          changed: list[str] = []
-          for doc in documents:
-              original = doc.read_text(encoding="utf-8")
+          def link_unlinked_inline(doc: Path, line: str) -> str:
+              pieces: list[str] = []
+              cursor = 0
+              for match in inline_code_re.finditer(line):
+                  if is_linked(line, match.start(), match.end()):
+                      continue
+                  target = resolve(root, doc, match.group(1), repository_files)
+                  if target is None:
+                      continue
+                  label = target.relative_to(root).as_posix()
+                  href = os.path.relpath(target, start=doc.parent).replace(os.sep, "/")
+                  pieces.append(line[cursor : match.start()])
+                  pieces.append(f"[`{label}`]({href})")
+                  cursor = match.end()
+              if not pieces:
+                  return line
+              pieces.append(line[cursor:])
+              return "".join(pieces)
 
-              def replace(match: re.Match[str]) -> str:
+          def normalize_link_labels(doc: Path, line: str) -> str:
+              def replace(match):
                   label, target = match.groups()
                   if target.startswith(("http://", "https://", "#", "mailto:")):
                       return match.group(0)
@@ -54,9 +74,28 @@ jobs:
                       return match.group(0)
                   return f"[`{expected}`]({target})"
 
-              updated = pattern.sub(replace, original)
-              if updated != original:
-                  doc.write_text(updated, encoding="utf-8")
+              return path_link_re.sub(replace, line)
+
+          changed: list[str] = []
+          for doc in documents:
+              original_lines = doc.read_text(encoding="utf-8").splitlines(keepends=True)
+              updated_lines: list[str] = []
+              in_fence = False
+              for line in original_lines:
+                  if fence_re.match(line):
+                      in_fence = not in_fence
+                      updated_lines.append(line)
+                      continue
+                  if in_fence:
+                      updated_lines.append(line)
+                      continue
+                  updated = link_unlinked_inline(doc, line)
+                  updated_lines.append(normalize_link_labels(doc, updated))
+
+              updated_text = "".join(updated_lines)
+              original_text = "".join(original_lines)
+              if updated_text != original_text:
+                  doc.write_text(updated_text, encoding="utf-8")
                   changed.append(doc.relative_to(root).as_posix())
 
           print(f"NORMALIZED_DOCS {len(changed)}")
@@ -72,6 +111,6 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add -- '*.md'
-            git commit -m "统一仓库文件链接显示路径"
+            git commit -m "补齐仓库文件导航链接"
             git push origin HEAD:chore/agent-skills-project-governance
           fi
