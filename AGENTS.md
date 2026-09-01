@@ -51,16 +51,16 @@
 ## 治理校准后的项目边界
 
 - Worker 持久 Job 的精确注册以 [`backend/src/aima_ugc/bootstrap/worker.py`](backend/src/aima_ugc/bootstrap/worker.py) 为机器事实；当前正式架构文档已经同步八种 Job，不再保留旧四项摘要。
-- 当前正式项目文档只维护 AIMA 自己的架构、Contract、Schema、测试、CI、部署和开发导航；通用研发治理规则通过上方项目研发治理入口取得，不在 AIMA 文档树复制 canonical Reference 路径或正文。
-- 永久 CI 只验证 AIMA 自己可维护的项目治理接线、文档/Secret、Change Ready 和产品质量；通用治理能力自身的源码回归由其 canonical Owner 负责，不复制到业务仓库。
-- 当前已安装的受管治理运行资产继续由正式安装/升级流程维护。普通 AIMA 业务开发不手工迁移、删除或重写这些受管文件；未来版本升级作为独立治理动作执行。
+- 当前正式项目文档只维护 AIMA 自己的架构、Contract、Schema、测试、CI、部署和开发导航；不在 AIMA 文档树复制外部通用治理规则或其安装、运行实现说明。
+- 永久 CI 只验证 AIMA 自己可维护的项目治理接线、文档/Secret、Change Ready 和产品质量；外部通用治理能力自身的源码回归不复制到业务仓库。
+- 项目中由安装流程维护的受管文件不作为 AIMA 项目事实源；普通业务开发不直接改写，版本更新通过正式安装/升级流程完成。
 
 ## 1. 开始前
 
 处理分析、设计、编码、Review、PR、CI 或交付前：
 
 1. 先读本文件；
-2. 按上方“项目研发治理入口”执行当前任务需要的通用研发约束；AIMA 项目规则和当前机器事实始终继续生效，受管运行资产不作为项目自有长期事实源直接维护；
+2. AIMA 项目规则和当前机器事实始终继续生效；通用研发方法不得覆盖或替代项目事实；
 3. 再读 [`docs/blueprint/README.md`](docs/blueprint/README.md) 和 [`docs/blueprint/07_技术决策与实施门禁.md`](docs/blueprint/07_技术决策与实施门禁.md)；
 4. 如果任务涉及“下一阶段做什么”、生产部署、认证、Release、Backup/Restore、回滚或旧数据迁移，必须再读 [`docs/roadmap/02_生产上线实施路线.md`](docs/roadmap/02_生产上线实施路线.md)；
 5. 如果需要快速找到真实代码入口，读 [`docs/01_代码结构与修改导航.md`](docs/01_代码结构与修改导航.md)；
@@ -83,7 +83,7 @@
 | 当前开发环境怎么运行 | [`docs/02_环境运行与部署.md`](docs/02_环境运行与部署.md) |
 | 下一阶段、生产上线、Release/Backup/回滚 | [`docs/roadmap/02_生产上线实施路线.md`](docs/roadmap/02_生产上线实施路线.md) + [`docs/appendix/11_生产部署与离线Release方案.md`](docs/appendix/11_生产部署与离线Release方案.md) |
 | 开发/测试/CI/Git | [`docs/blueprint/06_开发约束与分阶段实施.md`](docs/blueprint/06_开发约束与分阶段实施.md) |
-| 用户可见行为/前后端/Full-stack/Provider 测试分层 | [`docs/blueprint/06_开发约束与分阶段实施.md`](docs/blueprint/06_开发约束与分阶段实施.md) + 按上方项目研发治理入口取得当前分层验证规则 |
+| 用户可见行为/前后端/Full-stack/Provider 测试分层 | [`docs/blueprint/06_开发约束与分阶段实施.md`](docs/blueprint/06_开发约束与分阶段实施.md) + 当前实际测试与 CI 配置 |
 | 重大跨模块决定 | [`docs/blueprint/07_技术决策与实施门禁.md`](docs/blueprint/07_技术决策与实施门禁.md) |
 | Collection Plan、Capability、Decision、评论 | [`docs/blueprint/08_采集策略与平台能力.md`](docs/blueprint/08_采集策略与平台能力.md) + [`docs/collection/README.md`](docs/collection/README.md) |
 | Scheduler 运行/停机恢复 | [`docs/appendix/05_Scheduler调度执行与停机恢复.md`](docs/appendix/05_Scheduler调度执行与停机恢复.md) |
