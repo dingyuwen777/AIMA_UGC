@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import runpy
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 CHECKER_PATH = ROOT / "scripts" / "quality" / "check_agent_governance.py"
 CHECKER = runpy.run_path(str(CHECKER_PATH))
 CHECK_REPOSITORY = CHECKER["check_repository"]
+MANAGED_START = "<!-- agent-skills:managed:start -->"
+MANAGED_END = "<!-- agent-skills:managed:end -->"
 
 
 def _write(path: Path, content: str) -> None:
@@ -21,13 +24,17 @@ def _minimal_repository(root: Path) -> None:
         root / "AGENTS.md",
         "\n".join(
             (
-                "<!-- agent-skills:managed:start -->",
-                "受管区",
-                "<!-- agent-skills:managed:end -->",
+                MANAGED_START,
+                "治理能力自身的运行与实现细节不属于项目进度或交付内容。",
+                MANAGED_END,
                 "<!-- agent-skills:project-governance:v1 -->",
                 "项目区",
             )
         ),
+    )
+    _write(
+        root / "docs/AGENTS.md",
+        "# 文档规则\n\n先遵守根 `AGENTS.md`、当前任务适用的项目事实与文档规则。\n",
     )
     _write(root / ".agents/skills/coding/scripts/ready_check.py", "# 测试夹具\n")
     _write(
@@ -37,9 +44,56 @@ def _minimal_repository(root: Path) -> None:
     )
 
 
+def _managed_block(text: str) -> str:
+    """提取唯一的 Agent_Skills managed block，供项目侧披露回归检查。"""
+    start = text.index(MANAGED_START)
+    end = text.index(MANAGED_END, start) + len(MANAGED_END)
+    return text[start:end]
+
+
 def test_current_repository_governance_wiring_is_valid() -> None:
     """当前仓库必须只依赖 AIMA 自己可维护的项目治理接线。"""
     assert CHECK_REPOSITORY(ROOT) == []
+
+
+def test_current_managed_block_is_project_facing_without_runtime_internals() -> None:
+    """正式安装后的根入口不得继续暴露旧 Runtime/MCP/路由加载实现。"""
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    managed = _managed_block(agents)
+
+    assert "治理能力自身的运行与实现细节不属于项目进度或交付内容" in managed
+    for forbidden in (
+        "Runtime Mode",
+        "研发治理 MCP",
+        "规则标识",
+        "路由映射",
+        "加载明细",
+        "内部凭据",
+    ):
+        assert forbidden not in managed
+
+
+def test_project_docs_do_not_route_generic_governance_to_local_installed_skill_core() -> None:
+    """项目文档规则不得把本地 Agent_Skills 安装副本当通用治理入口。"""
+    docs_agents = (ROOT / "docs/AGENTS.md").read_text(encoding="utf-8")
+
+    assert ".agents/skills/coding/" not in docs_agents
+    assert "先遵守根 `AGENTS.md`、当前任务适用的项目事实与文档规则" in docs_agents
+
+
+def test_repository_no_longer_tracks_legacy_runtime_or_install_manifest() -> None:
+    """正式升级后 legacy manifest 与项目内 Runtime binary 不再作为 Git 仓库资产。"""
+    assert not (ROOT / ".agents/agent-skills-install.json").exists()
+
+    tracked = subprocess.run(
+        ["git", "ls-files", "--error-unmatch", ".agents/runtime/agent-skills-mcp.exe"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert tracked.returncode != 0
+    assert "/.agents/runtime/" in (ROOT / ".gitignore").read_text(encoding="utf-8")
 
 
 def test_checker_rejects_supplier_internal_workflow_paths(tmp_path: Path) -> None:
@@ -54,6 +108,53 @@ def test_checker_rejects_supplier_internal_workflow_paths(tmp_path: Path) -> Non
     errors = CHECK_REPOSITORY(tmp_path)
 
     assert len([error for error in errors if error.startswith("GOV005")]) == 2
+
+
+def test_checker_rejects_internal_runtime_terms_in_managed_block(tmp_path: Path) -> None:
+    """目标项目根 managed block 不得重新生长旧 Runtime/MCP 实现说明。"""
+    _minimal_repository(tmp_path)
+    agents = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+    agents = agents.replace(
+        MANAGED_END,
+        "Runtime Mode 使用研发治理 MCP，并输出路由映射与加载明细。\n" + MANAGED_END,
+    )
+    _write(tmp_path / "AGENTS.md", agents)
+
+    errors = CHECK_REPOSITORY(tmp_path)
+
+    managed_errors = [error for error in errors if error.startswith("GOV009")]
+    assert len(managed_errors) >= 4
+
+
+def test_checker_rejects_local_installed_skill_as_project_docs_governance_source(
+    tmp_path: Path,
+) -> None:
+    """项目自有 docs 规则不能把本地安装 Skill Core 当作通用规范 Owner。"""
+    _minimal_repository(tmp_path)
+    _write(
+        tmp_path / "docs/AGENTS.md",
+        "先遵守根 `AGENTS.md` 与 `.agents/skills/coding/` 的 Coding Skill。\n",
+    )
+
+    errors = CHECK_REPOSITORY(tmp_path)
+
+    docs_errors = [error for error in errors if error.startswith("GOV010")]
+    assert len(docs_errors) == 2
+
+
+def test_checker_rejects_generic_governance_implementation_in_project_overlay(
+    tmp_path: Path,
+) -> None:
+    """marker 外 AIMA Overlay 只能描述项目规则和事实，不保存通用治理实现。"""
+    _minimal_repository(tmp_path)
+    agents = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+    agents += "\nSource Mode 从 Project Payload 读取 canonical Reference。\n"
+    _write(tmp_path / "AGENTS.md", agents)
+
+    errors = CHECK_REPOSITORY(tmp_path)
+
+    overlay_errors = [error for error in errors if error.startswith("GOV011")]
+    assert len(overlay_errors) == 3
 
 
 def test_checker_requires_unique_governance_markers(tmp_path: Path) -> None:

@@ -36,7 +36,7 @@ Review 的职责不是再写一遍“怎样开发”，而是作为**独立审�
 
 Review **不复制** Coding 的编码、TDD、Git、兼容、安全、Contract、Schema/Migration、Validation Matrix、时间、日志或注释规范。它只定义“怎样独立审、怎样判断测试是否充分、怎样报告问题”。
 
-详细方法位于 `references/`；命中对应场景时必须读取相关 reference。
+详细方法位于 `当前场景所需完整约束/`；命中对应场景时必须读取相关 完整约束。
 
 ## 1. 规则事实源与集成边界
 
@@ -46,7 +46,7 @@ Review **不复制** Coding 的编码、TDD、Git、兼容、安全、Contract�
 
 [`.agents/skills/coding/SKILL.md`](../coding/SKILL.md)
 
-必须在正式 Review 前读取，并把它及其按任务触发的 references 作为**唯一研发规范源**。Review 不得把 Coding 的详细规则复制成第二份，也不得用 Review 自己的偏好覆盖项目事实。
+必须在正式 Review 前读取，并把它及其按任务触发的 当前场景所需完整约束 作为**唯一研发规范源**。Review 不得把 Coding 的详细规则复制成第二份，也不得用 Review 自己的偏好覆盖项目事实。
 
 Review 负责增加：
 
@@ -153,7 +153,7 @@ Base / Head（适用时）
 上游需求/Change/Spec
 项目形态与实际工具链
 风险等级与影响边界
-需要读取的 Coding references（存在 Coding 时）
+需要读取的 Coding 当前场景所需完整约束（存在 Coding 时）
 允许执行的测试/外部动作
 ```
 
@@ -179,7 +179,7 @@ A2 当前 Change/实现 → 测试/文档/运行证据
 
 ## 5. 测试专家审查是 Review 的核心职责
 
-读取 [03_测试专家审查方法.md](references/03_测试专家审查方法.md)。
+读取 当前场景所需完整约束。
 
 Review 不是问：
 
@@ -205,13 +205,13 @@ Real Full-stack Golden Path
 Real Provider Probe
 ```
 
-其中 Browser Mock 可以非常适合广覆盖**用户可见行为、状态和请求语义**，但不能被写成真实后端/数据库/Worker/Provider 证明；各层完整语义以 Coding 的当前 reference 为准。
+其中 Browser Mock 可以非常适合广覆盖**用户可见行为、状态和请求语义**，但不能被写成真实后端/数据库/Worker/Provider 证明；各层完整语义以 Coding 的当前 完整约束 为准。
 
 Review 不设置固定测试数量配额，也不把所有状态复制成昂贵 Real Full-stack。测试成本必须与风险和证据价值匹配。
 
 ## 6. Findings 必须可执行、可验证
 
-读取 [02_Findings与严重度.md](references/02_Findings与严重度.md)。
+读取 当前场景所需完整约束。
 
 每个确定性 Finding 至少回答：
 
@@ -245,7 +245,7 @@ Review 不设置固定测试数量配额，也不把所有状态复制成昂贵 
 
 ## 7. 审查执行顺序
 
-完整流程见 [01_审查执行流程.md](references/01_审查执行流程.md)。默认顺序：
+完整流程见 当前场景所需完整约束。默认顺序：
 
 ```text
 1. 恢复规则与 Review Target

@@ -14,6 +14,32 @@ FORBIDDEN_WORKFLOW_FRAGMENTS = (
     ".agents/skills/coding/tests",
     ".agents/skills/coding/references/",
 )
+FORBIDDEN_MANAGED_INTERNALS = (
+    "Runtime Mode",
+    "Source Mode",
+    "研发治理 MCP",
+    "规则标识",
+    "路由映射",
+    "加载明细",
+    "内部凭据",
+)
+FORBIDDEN_PROJECT_OVERLAY_GOVERNANCE = (
+    "Runtime Mode",
+    "Source Mode",
+    "研发治理 MCP",
+    "Project Payload",
+    "Runtime Skill Projection",
+    "canonical Reference",
+    ".agents/skills/router/",
+)
+PROJECT_DOC_RULES = Path("docs/AGENTS.md")
+FORBIDDEN_PROJECT_DOC_GOVERNANCE = (
+    ".agents/skills/coding/",
+    "Coding Skill",
+    "Runtime Mode",
+    "Source Mode",
+    "研发治理 MCP",
+)
 COMPLETION_GATE = Path(".github/workflows/change-completion-gate.yml")
 
 
@@ -29,6 +55,17 @@ def _workflow_paths(root: Path) -> tuple[Path, ...]:
     return tuple(sorted(paths))
 
 
+def _managed_sections(text: str) -> tuple[str, str] | None:
+    """在 marker 唯一时返回 managed block 与 marker 外项目文本。"""
+    if text.count(MANAGED_START) != 1 or text.count(MANAGED_END) != 1:
+        return None
+    start = text.index(MANAGED_START)
+    end = text.index(MANAGED_END, start) + len(MANAGED_END)
+    managed = text[start:end]
+    project_owned = text[:start] + text[end:]
+    return managed, project_owned
+
+
 def check_repository(root: Path = ROOT) -> list[str]:
     """返回 AIMA 项目治理接线错误；空列表表示当前静态约束满足。"""
     errors: list[str] = []
@@ -37,10 +74,33 @@ def check_repository(root: Path = ROOT) -> list[str]:
         errors.append("GOV001 AGENTS.md: 项目统一治理入口不存在")
     else:
         agents = _read_text(agents_path)
-        if agents.count(MANAGED_START) != 1 or agents.count(MANAGED_END) != 1:
+        sections = _managed_sections(agents)
+        if sections is None:
             errors.append("GOV002 AGENTS.md: Agent_Skills managed marker 必须且只能有一对")
+        else:
+            managed, project_owned = sections
+            for fragment in FORBIDDEN_MANAGED_INTERNALS:
+                if fragment in managed:
+                    errors.append(
+                        f"GOV009 AGENTS.md: managed block 不应展开治理实现细节 {fragment}"
+                    )
+            for fragment in FORBIDDEN_PROJECT_OVERLAY_GOVERNANCE:
+                if fragment in project_owned:
+                    errors.append(
+                        f"GOV011 AGENTS.md: 项目自有 Overlay 不应保存通用治理实现说明 {fragment}"
+                    )
         if agents.count(PROJECT_GOVERNANCE_MARKER) != 1:
             errors.append("GOV003 AGENTS.md: 项目治理校准区 marker 必须且只能存在一次")
+
+    project_docs = root / PROJECT_DOC_RULES
+    if project_docs.is_file():
+        docs_text = _read_text(project_docs)
+        for fragment in FORBIDDEN_PROJECT_DOC_GOVERNANCE:
+            if fragment in docs_text:
+                errors.append(
+                    f"GOV010 {PROJECT_DOC_RULES.as_posix()}: "
+                    f"项目文档规则不得把本地通用治理安装资产当规则入口 {fragment}"
+                )
 
     ready_check = root / READY_CHECK
     if not ready_check.is_file():

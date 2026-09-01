@@ -238,3 +238,6 @@ desktop.ini
 .runtime/
 
 .agents/project-context.json
+
+# Agent Skills local runtime/cache
+/.agents/runtime/

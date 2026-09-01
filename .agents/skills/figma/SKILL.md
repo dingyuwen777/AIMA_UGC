@@ -47,7 +47,7 @@ Prototype 点击之后是否仍然正确？
 → READY / READY_WITH_NOTES / NOT_READY
 ```
 
-详细方法位于 `references/`。命中对应场景时必须读取相关 reference；不能只读本文件后凭经验完成审查。
+详细方法位于 `当前场景所需完整约束/`。命中对应场景时必须读取相关 完整约束；不能只读本文件后凭经验完成审查。
 
 ---
 
@@ -72,7 +72,7 @@ Web 应用
 Design-only 原型
 ```
 
-开始前先读取 [00_通用适用性与项目形态.md](references/00_通用适用性与项目形态.md)，只加载当前项目真实存在的边界。
+开始前先读取 当前场景所需完整约束，只加载当前项目真实存在的边界。
 
 硬规则：
 
@@ -127,7 +127,7 @@ code_issue_detected
 
 如果环境只有读权限，`review-and-fix` 必须明确阻塞，不能假装已经改过设计。
 
-详见 [01_事实源与审查流程.md](references/01_事实源与审查流程.md)。
+详见 当前场景所需完整约束。
 
 ---
 
@@ -152,9 +152,9 @@ code_issue_detected
 
 仅在明确授权修改 Figma 时使用。
 
-只要本轮涉及页面、Canvas、Frame、Section、Annotation 或状态稿的视觉修改，修改前必须读取 [07_页面布局与真实可用性审计.md](references/07_页面布局与真实可用性审计.md)，并在每轮 Figma 写操作后执行其中的 Canvas-level Review。
+只要本轮涉及页面、Canvas、Frame、Section、Annotation 或状态稿的视觉修改，修改前必须读取 当前场景所需完整约束，并在每轮 Figma 写操作后执行其中的 Canvas-level Review。
 
-任何 Figma 写入还必须先执行 **Owner-first Figma Mutation**：已有 Shared/Feature/Page Owner 时优先复用或修改真实 Owner，不通过 Detach、复制或页面级重画制造第二套公共组件。公共语义与局部业务变化的详细分支由 [03_设计系统与组件复用审计.md](references/03_设计系统与组件复用审计.md) 维护。
+任何 Figma 写入还必须先执行 **Owner-first Figma Mutation**：已有 Shared/Feature/Page Owner 时优先复用或修改真实 Owner，不通过 Detach、复制或页面级重画制造第二套公共组件。公共语义与局部业务变化的详细分支由 当前场景所需完整约束 维护。
 
 ```text
 先确认 Finding 和根因
@@ -275,7 +275,7 @@ NOT_READY
 
 进入 Coding handoff 后，本 Skill 只提供已经确认的设计事实、动态数据来源、Shared/Feature/Page Owner、Prototype 和状态规格；**不得复制或替代 Coding Skill 的 Change、TDD、验证、CI、Git、PR、Release 规则。**
 
-详细 handoff、已有实现差异更新、back-sync 和人工复核输出见 [05_Design-to-Code交付门禁.md](references/05_Design-to-Code交付门禁.md)。
+详细 handoff、已有实现差异更新、back-sync 和人工复核输出见 当前场景所需完整约束。
 
 ### D. 短提示词应当足够
 
@@ -288,7 +288,7 @@ NOT_READY
 按这个 Figma 替换当前对应页面：<link>
 ```
 
-这些短句只负责选择已有流程，**不在本节复制页面尺寸、组件复用、Prototype、动态数据、真实系统映射等详细规则**；详细规则继续由后续章节和 references 单一维护。
+这些短句只负责选择已有流程，**不在本节复制页面尺寸、组件复用、Prototype、动态数据、真实系统映射等详细规则**；详细规则继续由后续章节和 当前场景所需完整约束 单一维护。
 
 ---
 
@@ -348,7 +348,7 @@ CMS
 
 关键字段如果不知道来源、默认值、错误行为或真实系统支持方式，不能宣布基线闭环。
 
-详细规则见 [02_业务能力与真实系统映射.md](references/02_业务能力与真实系统映射.md)。
+详细规则见 当前场景所需完整约束。
 
 ## 5.1 设计不能创造不存在的能力
 
@@ -371,7 +371,7 @@ CMS
 → 不作为正式可用能力
 ```
 
-Design-to-Code 的机器边界同样服从真实系统事实：**不得由 Figma / Design Context / Annotation 创建生产 Contract / API**；设计中的接口名、字段、枚举和示例机器值只能作为调查线索。冲突、缺失能力和真实机器边界的详细规则由 [02_业务能力与真实系统映射.md](references/02_业务能力与真实系统映射.md) 维护。
+Design-to-Code 的机器边界同样服从真实系统事实：**不得由 Figma / Design Context / Annotation 创建生产 Contract / API**；设计中的接口名、字段、枚举和示例机器值只能作为调查线索。冲突、缺失能力和真实机器边界的详细规则由 当前场景所需完整约束 维护。
 
 ## 5.2 数据库数据也要通过正式系统边界
 
@@ -392,7 +392,7 @@ Database
 
 # 6. 页面尺寸、布局、美观和真实可用性
 
-凡是任务涉及 Figma 页面/Canvas 的视觉审查、创建、修改、整理、状态稿维护或 `baseline-ready`，都必须读取 [07_页面布局与真实可用性审计.md](references/07_页面布局与真实可用性审计.md)。这既是页面布局规则，也是 Canvas/Section/Annotation 可读性的唯一详细设计事实源。
+凡是任务涉及 Figma 页面/Canvas 的视觉审查、创建、修改、整理、状态稿维护或 `baseline-ready`，都必须读取 当前场景所需完整约束。这既是页面布局规则，也是 Canvas/Section/Annotation 可读性的唯一详细设计事实源。
 
 `baseline-ready` 时这是硬审查域；`review-and-fix` 时也是所有视觉写操作的写后复核规则。
 
@@ -425,7 +425,7 @@ zoom-out 整体视图是否仍然清晰可读
 
 # 7. 公共组件与可复用业务逻辑
 
-必须读取 [03_设计系统与组件复用审计.md](references/03_设计系统与组件复用审计.md)。
+必须读取 当前场景所需完整约束。
 
 ## 7.1 视觉公共组件
 
@@ -448,7 +448,7 @@ Modal / Drawer Shell
 
 具体名称以当前 Design System 为准。
 
-Figma 修改遵循 **Owner-first Figma Mutation**：已有公共组件必须优先复用真实 Instance；公共语义变化改公共 Owner 并复核消费者，局部业务变化留在 Feature/Page，不用 Detach 或复制重画制造第二 Owner。详细门禁由 [03_设计系统与组件复用审计.md](references/03_设计系统与组件复用审计.md) 维护。
+Figma 修改遵循 **Owner-first Figma Mutation**：已有公共组件必须优先复用真实 Instance；公共语义变化改公共 Owner 并复核消费者，局部业务变化留在 Feature/Page，不用 Detach 或复制重画制造第二 Owner。详细门禁由 当前场景所需完整约束 维护。
 
 ## 7.2 业务逻辑也要复用
 
@@ -514,7 +514,7 @@ Service / Capability / SDK
 
 # 9. Prototype 审计
 
-必须读取 [04_Prototype状态与交互审计.md](references/04_Prototype状态与交互审计.md)。
+必须读取 当前场景所需完整约束。
 
 静态画布正确不代表点击后正确。
 
@@ -618,19 +618,19 @@ Secret / Raw / Stack Trace
 错误态
 ```
 
-baseline-ready 必须执行 Annotation Sufficiency Review。只给实现无法从设计结构、Design Context 和正式事实源可靠推导的关键动态/非显然语义提供最小充分说明；不要用注释数量替代质量，也不要把完整 Contract / Schema 复制进 Canvas。详细充分性门禁由 [05_Design-to-Code交付门禁.md](references/05_Design-to-Code交付门禁.md) 维护。
+baseline-ready 必须执行 Annotation Sufficiency Review。只给实现无法从设计结构、Design Context 和正式事实源可靠推导的关键动态/非显然语义提供最小充分说明；不要用注释数量替代质量，也不要把完整 Contract / Schema 复制进 Canvas。详细充分性门禁由 当前场景所需完整约束 维护。
 
-`baseline-ready` 还必须执行 **Annotation Development Readiness**：检查必要注释是否完整、正确并与当前真实系统机器事实一致；在 `review-and-fix` 且有 Figma 写权限时补齐/修正关键缺失并收敛重复说明，再重新复核。详细 Coverage、权限分支和去重规则由 [05_Design-to-Code交付门禁.md](references/05_Design-to-Code交付门禁.md) 与 [02_业务能力与真实系统映射.md](references/02_业务能力与真实系统映射.md) 维护。
+`baseline-ready` 还必须执行 **Annotation Development Readiness**：检查必要注释是否完整、正确并与当前真实系统机器事实一致；在 `review-and-fix` 且有 Figma 写权限时补齐/修正关键缺失并收敛重复说明，再重新复核。详细 Coverage、权限分支和去重规则由 当前场景所需完整约束 与 当前场景所需完整约束 维护。
 
-当真实 Backend/Contract 与前端/Figma Annotation 发生漂移时，先确认当前正式机器事实 Owner：符合正式 Contract 的后端/SDK/consumer 变化要同步前端并在有权限时同步 Figma Annotation；后端违反正式 Contract/已批准需求时修后端，不能让 Figma 迁就 Bug。无写权限时记录 `Pending Figma Sync`。详细分支由 [02_业务能力与真实系统映射.md](references/02_业务能力与真实系统映射.md) 维护。
+当真实 Backend/Contract 与前端/Figma Annotation 发生漂移时，先确认当前正式机器事实 Owner：符合正式 Contract 的后端/SDK/consumer 变化要同步前端并在有权限时同步 Figma Annotation；后端违反正式 Contract/已批准需求时修后端，不能让 Figma 迁就 Bug。无写权限时记录 `Pending Figma Sync`。详细分支由 当前场景所需完整约束 维护。
 
-开发 Annotation 不应压在正式 UI 上，也不能被实现方误读成产品文案。Annotation 与正式 Frame、相邻画板、说明容器之间的间距、归属、分区和 Canvas-level Review 统一由 [07_页面布局与真实可用性审计.md](references/07_页面布局与真实可用性审计.md) 维护；本 Skill 不再维护第二套具体数值。
+开发 Annotation 不应压在正式 UI 上，也不能被实现方误读成产品文案。Annotation 与正式 Frame、相邻画板、说明容器之间的间距、归属、分区和 Canvas-level Review 统一由 当前场景所需完整约束 维护；本 Skill 不再维护第二套具体数值。
 
 ---
 
 # 13. Design-to-Code / 实现交付
 
-进入 `baseline-ready` 时读取 [05_Design-to-Code交付门禁.md](references/05_Design-to-Code交付门禁.md)。
+进入 `baseline-ready` 时读取 当前场景所需完整约束。
 
 有代码仓库时必须重新确认当前技术栈，不假设：
 
@@ -643,7 +643,7 @@ Tailwind / CSS Modules
 
 Figma MCP/工具返回的参考代码只表达结构意图，不得反向改变项目技术栈。
 
-凡是 DatePicker / DateRange / Today / Now 等时间相关 UI，必须映射目标项目当前**真实 Runtime / Contract 时间语义**；设计日期和生成代码时的本机时间不构成生产默认值。详细时间事实源、时区和日期区间规则见 [02_业务能力与真实系统映射.md](references/02_业务能力与真实系统映射.md)。
+凡是 DatePicker / DateRange / Today / Now 等时间相关 UI，必须映射目标项目当前**真实 Runtime / Contract 时间语义**；设计日期和生成代码时的本机时间不构成生产默认值。详细时间事实源、时区和日期区间规则见 当前场景所需完整约束。
 
 实现前确认：
 
@@ -660,7 +660,7 @@ Figma MCP/工具返回的参考代码只表达结构意图，不得反向改变�
 
 生产实现由 Coding 工作流完成后，还必须执行 **Implementation ↔ Figma Conformance**，对实际页面、正式 Figma 与真实 Contract/Backend/SDK/Store 的 Visual、Interaction、State、Data/Contract、Responsive、Component/Owner 六个域做 targeted re-review；代码验证通过本身不等于 Design-to-Code 已闭环。
 
-发现 Figma 已经过期且差异已经被确认成长期正式事实时，在有 Figma 写权限的任务中按 **Bidirectional Design Sync Gate** 回写真实 Figma Owner；不能把偶然实现偏移或 Bug 自动设计化。任何自动回写完成后先标记 `SYNCHRONIZED_PENDING_HUMAN_REVIEW`，并强制输出 `Figma Sync & Human Review`。详细 Drift Owner、back-sync 和人工复核规则由 [05_Design-to-Code交付门禁.md](references/05_Design-to-Code交付门禁.md) 维护。
+发现 Figma 已经过期且差异已经被确认成长期正式事实时，在有 Figma 写权限的任务中按 **Bidirectional Design Sync Gate** 回写真实 Figma Owner；不能把偶然实现偏移或 Bug 自动设计化。任何自动回写完成后先标记 `SYNCHRONIZED_PENDING_HUMAN_REVIEW`，并强制输出 `Figma Sync & Human Review`。详细 Drift Owner、back-sync 和人工复核规则由 当前场景所需完整约束 维护。
 
 ---
 
@@ -715,7 +715,7 @@ Figma MCP/工具返回的参考代码只表达结构意图，不得反向改变�
 
 # 15. Findings
 
-读取 [06_Findings与修复优先级.md](references/06_Findings与修复优先级.md)。
+读取 当前场景所需完整约束。
 
 ## P0
 
@@ -824,7 +824,7 @@ Variables / Reactions / Flow / Overlay / Scroll / Hidden State。
 
 凡是 Design-to-Code 任务，此项为**强制输出**。本轮实际修改过 Figma 时必须列出具体 File/Page/Section/Frame/Node、Before → After、事实来源/原因、关联实现/Contract、受影响消费者、验证证据和人工复核重点；未修改时也必须说明 `NO_FIGMA_CHANGE_REQUIRED` 或 `Pending Figma Sync` 的依据。
 
-自动回写过 Figma 但尚未取得人工/等价设计审批时，状态必须为 `SYNCHRONIZED_PENDING_HUMAN_REVIEW`；只有明确人工确认或项目已有等价审批证据才能描述为 `HUMAN_VERIFIED`。详细字段和状态定义由 [05_Design-to-Code交付门禁.md](references/05_Design-to-Code交付门禁.md) 唯一维护。
+自动回写过 Figma 但尚未取得人工/等价设计审批时，状态必须为 `SYNCHRONIZED_PENDING_HUMAN_REVIEW`；只有明确人工确认或项目已有等价审批证据才能描述为 `HUMAN_VERIFIED`。详细字段和状态定义由 当前场景所需完整约束 唯一维护。
 
 ---
 
