@@ -19,7 +19,7 @@
 
 脚本复用系统正式 Reader、Mapper、关键词过滤、去重、Analysis Service、LLM Adapter、共享 Excel Exporter 和 Provider-neutral Report Renderer。默认 `WRITE_TO_DATABASE = False`，因此普通人工文件调试不要求数据库或 Scheduler；只有显式开启数据库模式时才连接已经由开发者准备好的 PostgreSQL 18，并调用正式 File Import / Content Ingestion 实现。报告阶段只读最终统一 Excel，不反向修改 Canonical、Analysis、数据库或 Excel 数据。
 
-## 1. 先修改 `test.py` 顶部配置
+## 1. 先修改 [`backend/src/aima_ugc/adapters/providers/imports_test/test.py`](test.py) 顶部配置
 
 常用配置：
 
@@ -300,9 +300,8 @@ text
 
 复制：
 
-```text
-.env.example
-```
+- [`backend/src/aima_ugc/adapters/providers/imports_test/.env.example`](.env.example)
+
 
 为：
 

@@ -50,7 +50,7 @@ ContentIngestionRepository Protocol
 
 同时提供轻量 `InMemoryContentRepository`，用于无数据库情况下验证一部分 freshness/Version/Metric 领域语义。
 
-### `tables.py`
+### [`backend/src/aima_ugc/modules/content/tables.py`](tables.py)
 
 核心 Current/History：
 
@@ -80,7 +80,7 @@ thread coverage
 
 精确结构直接看当前文件和 Migration。
 
-### `query.py`
+### [`backend/src/aima_ugc/modules/content/query.py`](query.py)
 
 定义 Provider-neutral Content Read Model，不写 SQL。
 
@@ -88,7 +88,7 @@ thread coverage
 
 声音广场 Content 列表 Cursor 编解码和 query-hash 绑定。
 
-### `http.py`
+### [`backend/src/aima_ugc/modules/content/http.py`](http.py)
 
 Content HTTP Port / 应用异常，不直接 SQL。
 

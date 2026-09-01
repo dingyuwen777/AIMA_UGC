@@ -91,7 +91,7 @@ docker info
 env.production
 ```
 
-它被 `.gitignore` 忽略，可能包含 TikHub / LLM API Key，不能提交 Git。
+它被 [`.gitignore`](../../.gitignore) 忽略，可能包含 TikHub / LLM API Key，不能提交 Git。
 
 CMD：
 

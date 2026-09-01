@@ -56,9 +56,8 @@ backend/src/aima_ugc/adapters/providers/tikhub/
 
 复制：
 
-```text
-.env.example
-```
+- [`backend/src/aima_ugc/adapters/providers/tikhub_test/.env.example`](.env.example)
+
 
 为同目录：
 

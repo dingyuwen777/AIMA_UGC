@@ -544,7 +544,7 @@ SSH / 受控部署入口
 只有以下情况才需要改这份提示词：
 
 - 仓库统一开发流程发生变化；
-- `AGENTS.md` / Reliable Vibe Coding 的核心门禁改变；
+- [`AGENTS.md`](../../AGENTS.md) / Reliable Vibe Coding 的核心门禁改变；
 - Roadmap 事实源路径改变；
 - 用户改变“一次完成一个最小正式单元”的工作方式；
 - Git 合并授权边界改变。

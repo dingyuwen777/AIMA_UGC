@@ -109,7 +109,7 @@ created_at
 completed_at
 ```
 
-精确 FK、Check、Unique 直接看 `tables.py`。
+精确 FK、Check、Unique 直接看 [`backend/src/aima_ugc/modules/reporting/tables.py`](tables.py)。
 
 ### `reporting_data_export_items`
 
@@ -350,10 +350,10 @@ artifact_id is null
 
 | 文件 | 职责 | 常见修改 |
 | --- | --- | --- |
-| `tables.py` | Export / Export Items 表 | 改持久化父事实或冻结目标结构 |
-| `models.py` | Reporting 内部记录模型 | 改内部 Service/Repository 返回对象 |
+| [`backend/src/aima_ugc/modules/reporting/tables.py`](tables.py) | Export / Export Items 表 | 改持久化父事实或冻结目标结构 |
+| [`backend/src/aima_ugc/modules/reporting/models.py`](models.py) | Reporting 内部记录模型 | 改内部 Service/Repository 返回对象 |
 | [`backend/src/aima_ugc/modules/reporting/data_export_job.py`](data_export_job.py) | Job Payload / Handler / 上限 | 改 Job 版本、失败分类、Artifact 上限 |
-| `http.py` | Reporting HTTP Port/异常 | 改应用 Service 契约边界 |
+| [`backend/src/aima_ugc/modules/reporting/http.py`](http.py) | Reporting HTTP Port/异常 | 改应用 Service 契约边界 |
 
 生产跨目录：
 

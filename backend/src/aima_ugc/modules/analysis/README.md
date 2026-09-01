@@ -376,7 +376,7 @@ Unified JSONL
 | 改 Validation Retry | [`backend/src/aima_ugc/modules/analysis/content_labeling.py`](content_labeling.py) + Analysis tests |
 | 改正式 Job | [`backend/src/aima_ugc/modules/analysis/content_analysis_job.py`](content_analysis_job.py) + [`backend/src/aima_ugc/bootstrap/analysis_worker.py`](../../bootstrap/analysis_worker.py) + Job integration |
 | 改离线并发/Checkpoint | [`backend/src/aima_ugc/modules/analysis/offline_labeling.py`](offline_labeling.py) + offline tests/Appendix |
-| 改数据库字段 | `tables.py` + 新 Alembic Migration + Repository + integration |
+| 改数据库字段 | [`backend/src/aima_ugc/modules/analysis/tables.py`](tables.py) + 新 Alembic Migration + Repository + integration |
 
 ---
 

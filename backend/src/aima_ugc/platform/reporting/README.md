@@ -37,7 +37,7 @@ platform/reporting/
 | [`backend/src/aima_ugc/platform/reporting/chart_spec.py`](chart_spec.py) | 从 Mermaid/报告数据形成 Office Chart 规格 | bar/line/pie 语义、系列分组 |
 | [`backend/src/aima_ugc/platform/reporting/chart_png.py`](chart_png.py) | 需要静态位图的确定性视觉资产 | 词云/PNG 生成边界 |
 | [`backend/src/aima_ugc/platform/reporting/docx_package.py`](docx_package.py) | OOXML Chart、关系、内嵌 XLSX、ZIP 包装与结构校验 | Office Chart/OOXML/嵌入工作簿 |
-| `__init__.py` | 对外导出 `generate_excel_report` 等稳定入口 | 调用方入口 |
+| [`backend/src/aima_ugc/platform/reporting/__init__.py`](__init__.py) | 对外导出 `generate_excel_report` 等稳定入口 | 调用方入口 |
 
 人工入口：
 

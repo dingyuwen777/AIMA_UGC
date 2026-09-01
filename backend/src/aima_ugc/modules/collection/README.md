@@ -85,19 +85,11 @@ Collection 可以在同一事务里协调这些 Owner 的公开 Repository/Servi
 
 ### 2.1 Plan / Scheduler
 
-```text
-planning.py
-→ Plan 领域模型、平台/词包配置和领域校验
+- [`backend/src/aima_ugc/modules/collection/planning.py`](planning.py)：Plan 领域模型、平台/词包配置和领域校验
+- [`backend/src/aima_ugc/modules/collection/scheduler.py`](scheduler.py)：Cron 计算、latest_only、misfire 决策
+- [`backend/src/aima_ugc/modules/collection/scheduled_scopes.py`](scheduled_scopes.py)：从 Plan + Keyword Pack 展开实际 Scope
+- [`backend/src/aima_ugc/modules/collection/scheduler_schema.py`](scheduler_schema.py)：Scheduler 相关数据库补充约束注册
 
-scheduler.py
-→ Cron 计算、latest_only、misfire 决策
-
-scheduled_scopes.py
-→ 从 Plan + Keyword Pack 展开实际 Scope
-
-scheduler_schema.py
-→ Scheduler 相关数据库补充约束注册
-```
 
 生产 Scheduler 装配不在本目录，而在：
 
@@ -301,10 +293,9 @@ Transport 不允许偷偷自动重试同一个 Attempt。
 
 代码：
 
-```text
-provider_recovery.py
-provider_dispatch.py
-```
+- [`backend/src/aima_ugc/modules/collection/provider_recovery.py`](provider_recovery.py)
+- [`backend/src/aima_ugc/modules/collection/provider_dispatch.py`](provider_dispatch.py)
+
 
 网络失败要区分：
 
@@ -345,9 +336,8 @@ Provider Response
 
 xiaohongshu 当前还有专门的 Raw Replay 实现：
 
-```text
-xiaohongshu_replay.py
-```
+- [`backend/src/aima_ugc/modules/collection/xiaohongshu_replay.py`](xiaohongshu_replay.py)
+
 
 Raw 不等于业务 Current。Raw 只保存“Provider 当时返回了什么”。
 
@@ -427,9 +417,8 @@ skip / refresh
 
 当前领域算法：
 
-```text
-scheduler.py
-```
+- [`backend/src/aima_ugc/modules/collection/scheduler.py`](scheduler.py)
+
 
 固定恢复策略：
 

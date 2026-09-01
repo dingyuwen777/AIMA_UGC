@@ -167,7 +167,7 @@ Roadmap 使用四种状态：
 → 历史方案保留用于理解演进，但不能照旧继续开发
 ```
 
-**状态不是靠 Stage 名字判断。** 每次继续开发前仍要从当前分支重新读取 `AGENTS.md`、代码、Migration、Contract、测试和相关 Blueprint。
+**状态不是靠 Stage 名字判断。** 每次继续开发前仍要从当前分支重新读取 [`AGENTS.md`](../../AGENTS.md)、代码、Migration、Contract、测试和相关 Blueprint。
 
 ## 最重要的原则
 

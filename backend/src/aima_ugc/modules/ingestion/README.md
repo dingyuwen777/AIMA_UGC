@@ -69,13 +69,12 @@ ingestion_policy
 
 当前领域实现：
 
-```text
-historical_directory.py
-historical_chunk.py
-historical_http.py
-historical_jobs.py
-historical_tables.py
-```
+- [`backend/src/aima_ugc/modules/ingestion/historical_directory.py`](historical_directory.py)
+- [`backend/src/aima_ugc/modules/ingestion/historical_chunk.py`](historical_chunk.py)
+- [`backend/src/aima_ugc/modules/ingestion/historical_http.py`](historical_http.py)
+- [`backend/src/aima_ugc/modules/ingestion/historical_jobs.py`](historical_jobs.py)
+- [`backend/src/aima_ugc/modules/ingestion/historical_tables.py`](historical_tables.py)
+
 
 当前 PostgreSQL：
 
@@ -500,17 +499,17 @@ Excel
 
 | 文件 | 作用 | 常见修改场景 |
 | --- | --- | --- |
-| `tables.py` | 兼容 Import Batch 与 import-parent 关系 | 改 Batch Schema/来源父级约束 |
+| [`backend/src/aima_ugc/modules/ingestion/tables.py`](tables.py) | 兼容 Import Batch 与 import-parent 关系 | 改 Batch Schema/来源父级约束 |
 | [`backend/src/aima_ugc/modules/ingestion/import_job.py`](import_job.py) | `ingestion.import-excel.v1` Payload/Handler | 改兼容 Import Job 语义 |
-| `http.py` | Import Batch HTTP Port/领域异常 | 改兼容入口应用层边界 |
-| `query.py` | Import Batch Read Model | 改兼容 Batch 列表/摘要 |
+| [`backend/src/aima_ugc/modules/ingestion/http.py`](http.py) | Import Batch HTTP Port/领域异常 | 改兼容入口应用层边界 |
+| [`backend/src/aima_ugc/modules/ingestion/query.py`](query.py) | Import Batch Read Model | 改兼容 Batch 列表/摘要 |
 | [`backend/src/aima_ugc/modules/ingestion/import_batch_cursor.py`](import_batch_cursor.py) | Import Batch Cursor | 改兼容分页安全/过期语义 |
 | [`backend/src/aima_ugc/modules/ingestion/xlsx_security.py`](xlsx_security.py) | XLSX 资源安全 | 改上传/ZIP 安全边界 |
 | [`backend/src/aima_ugc/modules/ingestion/historical_tables.py`](historical_tables.py) | Campaign/Item/Row/Conflict 等 Stage 12 数据事实 | 改统一导入 Schema/状态/约束 |
 | [`backend/src/aima_ugc/modules/ingestion/historical_http.py`](historical_http.py) | Data Import Campaign HTTP Port/模型边界 | 改统一导入应用接口 |
 | [`backend/src/aima_ugc/modules/ingestion/historical_jobs.py`](historical_jobs.py) | Discover/Snapshot/Import-Chunk Job | 改 Campaign Job Payload/Handler |
 | [`backend/src/aima_ugc/modules/ingestion/historical_directory.py`](historical_directory.py) | 批准服务器目录安全访问 | 改目录枚举/路径安全 |
-| `historical_chunk.py` | Chunk 内部格式/冻结边界 | 改 Chunk 读写/版本 |
+| [`backend/src/aima_ugc/modules/ingestion/historical_chunk.py`](historical_chunk.py) | Chunk 内部格式/冻结边界 | 改 Chunk 读写/版本 |
 
 跨目录生产实现：
 
