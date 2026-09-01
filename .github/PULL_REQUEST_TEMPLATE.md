@@ -2,7 +2,11 @@
 
 Requirement-Source: #<Issue>
 
-- 如果项目已有更强的正式需求源，可填写其稳定 ID 或仓库内正式路径。
+- 机器门禁当前接受两类稳定来源：本仓 Issue（例如 `Requirement-Source: #123`，且必须是真实 Issue 而不是 PR）或当前仓库内真实存在的正式文件相对路径（例如 `Requirement-Source: docs/blueprint/07_技术决策与实施门禁.md`）。
+- 一个 PR 确实对应多个来源时，重复填写多行 `Requirement-Source:`；不要把多个来源挤在同一行。
+- `#<Issue>`、空值、`TBD` / `TODO` / `待确认` / `无` 等占位值、已不存在的 Issue/路径或自由文本 ID 会被 `Requirement Traceability and Completion Audit` 拒绝。
+- 机器门禁只确认来源“存在、可解析、可访问”，不判断需求自然语言是否完整，也不替代 Completion Audit / Agent_Skills Review 的需求符合性审查。
+- 如果项目已有更强的正式需求源，可填写当前仓库内对应正式路径；仓库外 ID/URL 只有在项目后续为其建立明确机器解析规则后才可作为机器来源。
 - `Closes` / `Fixes` / `Resolves` 只在本 PR 合并后确实完成整个 Issue 时使用；不要用关闭关键字替代 `Requirement-Source:`。
 
 ## 背景与现状
