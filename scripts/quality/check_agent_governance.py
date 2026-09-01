@@ -44,9 +44,7 @@ def check_repository(root: Path = ROOT) -> list[str]:
 
     ready_check = root / READY_CHECK
     if not ready_check.is_file():
-        errors.append(
-            f"GOV004 {READY_CHECK.as_posix()}: AIMA Change Ready 机器门禁入口不存在"
-        )
+        errors.append(f"GOV004 {READY_CHECK.as_posix()}: AIMA Change Ready 机器门禁入口不存在")
 
     for workflow in _workflow_paths(root):
         text = _read_text(workflow)
@@ -67,9 +65,7 @@ def check_repository(root: Path = ROOT) -> list[str]:
                 f"GOV007 {COMPLETION_GATE.as_posix()}: 必须继续执行 AIMA Change Ready Check"
             )
         if "check_agent_governance.py" not in gate_text:
-            errors.append(
-                f"GOV008 {COMPLETION_GATE.as_posix()}: 必须先执行 AIMA 项目治理接线检查"
-            )
+            errors.append(f"GOV008 {COMPLETION_GATE.as_posix()}: 必须先执行 AIMA 项目治理接线检查")
 
     return errors
 
