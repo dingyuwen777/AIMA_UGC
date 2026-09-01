@@ -85,6 +85,32 @@ def test_exception_event_keeps_safe_stack_without_raw_exception_message(
     assert "secret" not in caplog.text
 
 
+def test_formatter_recursively_redacts_nested_sensitive_context() -> None:
+    """结构化日志中的嵌套 Secret 也必须递归脱敏，不能只保护顶层字段。"""
+    record = logging.LogRecord(
+        name="test",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="safe",
+        args=(),
+        exc_info=None,
+    )
+    record.event = "test.event"
+    record.context = {
+        "safe": "visible",
+        "password": "nested-password-must-not-survive",
+        "tokens": [{"refresh_token": "nested-token-must-not-survive"}],
+    }
+
+    rendered = AimaLogFormatter(service="worker").format(record)
+
+    assert "nested-password-must-not-survive" not in rendered
+    assert "nested-token-must-not-survive" not in rendered
+    assert "visible" in rendered
+    assert "***" in rendered
+
+
 def test_logging_redacts_escapes_and_rotates_to_gzip(tmp_path) -> None:
     settings = PlatformSettings(
         data_dir=tmp_path / "data",

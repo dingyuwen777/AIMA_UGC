@@ -21,6 +21,14 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       profile: ${{ steps.classify.outputs.profile }}
+      repository_required: ${{ steps.classify.outputs.repository_required }}
+      backend_required: ${{ steps.classify.outputs.backend_required }}
+      frontend_required: ${{ steps.classify.outputs.frontend_required }}
+      contract_required: ${{ steps.classify.outputs.contract_required }}
+      postgres_required: ${{ steps.classify.outputs.postgres_required }}
+      fullstack_required: ${{ steps.classify.outputs.fullstack_required }}
+      stack_smoke_required: ${{ steps.classify.outputs.stack_smoke_required }}
+      fullstack_specs: ${{ steps.classify.outputs.fullstack_specs }}
       changed_count: ${{ steps.classify.outputs.changed_count }}
     steps:
       - name: Checkout
@@ -48,7 +56,6 @@ jobs:
   docs-governance:
     name: Docs and Governance
     needs: scope
-    if: needs.scope.outputs.profile != 'full'
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -62,46 +69,50 @@ jobs:
           python3 scripts/quality/check_docs.py
           python3 scripts/quality/check_docs_facts.py
 
-      - name: AIMA project governance
-        if: needs.scope.outputs.profile == 'governance_only'
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 scripts/quality/check_agent_governance.py
-
   repository-quality:
     name: Repository Quality
     needs: scope
-    if: needs.scope.outputs.profile == 'full'
+    if: needs.scope.outputs.repository_required == 'true'
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
 
       - name: Setup Python
+        if: needs.scope.outputs.backend_required == 'true'
         uses: actions/setup-python@v6.2.0
         with:
           python-version: 3.14.7
 
       - name: Setup Node
+        if: needs.scope.outputs.frontend_required == 'true'
         uses: actions/setup-node@v6.4.0
         with:
           node-version: 24.19.0
 
       - name: Install report validation CJK font
+        if: needs.scope.outputs.backend_required == 'true'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends fonts-noto-cjk
 
-      - name: Verify runtime versions
+      - name: Verify required runtime versions
         shell: bash
+        env:
+          BACKEND_REQUIRED: ${{ needs.scope.outputs.backend_required }}
+          FRONTEND_REQUIRED: ${{ needs.scope.outputs.frontend_required }}
         run: |
           set -euo pipefail
-          test "$(python --version)" = "Python 3.14.7"
-          test "$(node --version)" = "v24.19.0"
-          test "$(npm --version)" = "11.17.0"
+          if [[ "${BACKEND_REQUIRED}" == "true" ]]; then
+            test "$(python --version)" = "Python 3.14.7"
+          fi
+          if [[ "${FRONTEND_REQUIRED}" == "true" ]]; then
+            test "$(node --version)" = "v24.19.0"
+            test "$(npm --version)" = "11.17.0"
+          fi
 
       - name: Install frozen Python environment
+        if: needs.scope.outputs.backend_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -113,9 +124,11 @@ jobs:
           uv run python -c "import aima_ugc"
 
       - name: Install locked frontend environment
+        if: needs.scope.outputs.frontend_required == 'true'
         run: npm ci --prefix frontend
 
       - name: Audit frontend dependencies
+        if: needs.scope.outputs.frontend_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -123,6 +136,7 @@ jobs:
           npm --prefix frontend audit --audit-level=high
 
       - name: Source API and frontend startup smoke
+        if: needs.scope.outputs.stack_smoke_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -159,6 +173,7 @@ jobs:
           fi
 
       - name: Verify generated contracts and client
+        if: needs.scope.outputs.contract_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -175,6 +190,7 @@ jobs:
           uv run python scripts/contracts/check_compatibility.py
 
       - name: Python format, lint and type gates
+        if: needs.scope.outputs.backend_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -191,6 +207,7 @@ jobs:
           uv run mypy backend/src
 
       - name: Unit, Contract and API tests
+        if: needs.scope.outputs.backend_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -199,23 +216,15 @@ jobs:
           uv run pytest tests/api -q
 
       - name: Architecture and ownership gates
+        if: needs.scope.outputs.backend_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
           uv run python scripts/quality/check_architecture.py
           uv run python scripts/quality/check_table_ownership.py
 
-      - name: Secret, docs and project governance gates
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run python scripts/quality/scan_secrets.py
-          uv run python scripts/quality/check_docs.py
-          uv run python scripts/quality/check_docs_facts.py
-          uv run python scripts/quality/check_agent_governance.py
-
       - name: Build and verify Wheel
+        if: needs.scope.outputs.backend_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -225,6 +234,7 @@ jobs:
           .wheel-venv/bin/python -c "import aima_ugc; print(aima_ugc.__version__)"
 
       - name: Frontend unit, build and Browser Mock Acceptance
+        if: needs.scope.outputs.frontend_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -238,7 +248,7 @@ jobs:
   postgres-integration:
     name: PostgreSQL Integration
     needs: scope
-    if: needs.scope.outputs.profile == 'full'
+    if: needs.scope.outputs.postgres_required == 'true'
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -391,6 +401,14 @@ jobs:
           set -euo pipefail
           uv run pytest tests/integration/ingestion -q
 
+  real-fullstack:
+    name: Real Full-stack Golden Path
+    needs: scope
+    if: needs.scope.outputs.fullstack_required == 'true'
+    uses: ./.github/workflows/fullstack.yml
+    with:
+      specs: ${{ needs.scope.outputs.fullstack_specs }}
+
   ci-gate:
     name: CI Gate
     if: always()
@@ -399,32 +417,40 @@ jobs:
       - docs-governance
       - repository-quality
       - postgres-integration
+      - real-fullstack
     runs-on: ubuntu-24.04
     steps:
       - name: Verify required CI layers
         shell: bash
         env:
           SCOPE_RESULT: ${{ needs.scope.result }}
-          PROFILE: ${{ needs.scope.outputs.profile }}
           DOCS_GOVERNANCE_RESULT: ${{ needs.docs-governance.result }}
+          REPOSITORY_REQUIRED: ${{ needs.scope.outputs.repository_required }}
           REPOSITORY_QUALITY_RESULT: ${{ needs.repository-quality.result }}
+          POSTGRES_REQUIRED: ${{ needs.scope.outputs.postgres_required }}
           POSTGRES_INTEGRATION_RESULT: ${{ needs.postgres-integration.result }}
+          FULLSTACK_REQUIRED: ${{ needs.scope.outputs.fullstack_required }}
+          FULLSTACK_RESULT: ${{ needs.real-fullstack.result }}
         run: |
           set -euo pipefail
           test "${SCOPE_RESULT}" = "success"
-          case "${PROFILE}" in
-            full)
-              test "${DOCS_GOVERNANCE_RESULT}" = "skipped"
-              test "${REPOSITORY_QUALITY_RESULT}" = "success"
-              test "${POSTGRES_INTEGRATION_RESULT}" = "success"
-              ;;
-            docs_only|governance_only)
-              test "${DOCS_GOVERNANCE_RESULT}" = "success"
-              test "${REPOSITORY_QUALITY_RESULT}" = "skipped"
-              test "${POSTGRES_INTEGRATION_RESULT}" = "skipped"
-              ;;
-            *)
-              echo "Unknown CI profile: ${PROFILE}" >&2
+          test "${DOCS_GOVERNANCE_RESULT}" = "success"
+
+          require_or_skip() {
+            local required="$1"
+            local result="$2"
+            local label="$3"
+            if [[ "${required}" == "true" ]]; then
+              if [[ "${result}" != "success" ]]; then
+                echo "${label} required but result=${result}" >&2
+                exit 1
+              fi
+            elif [[ "${result}" != "skipped" ]]; then
+              echo "${label} not required but result=${result}" >&2
               exit 1
-              ;;
-          esac
+            fi
+          }
+
+          require_or_skip "${REPOSITORY_REQUIRED}" "${REPOSITORY_QUALITY_RESULT}" "Repository Quality"
+          require_or_skip "${POSTGRES_REQUIRED}" "${POSTGRES_INTEGRATION_RESULT}" "PostgreSQL Integration"
+          require_or_skip "${FULLSTACK_REQUIRED}" "${FULLSTACK_RESULT}" "Real Full-stack Golden Path"

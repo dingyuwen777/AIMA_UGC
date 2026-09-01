@@ -60,6 +60,18 @@ def test_backend_non_persistence_change_can_skip_postgres_and_real_fullstack() -
     assert requirements.fullstack_required is False
 
 
+def test_http_producer_change_requires_contract_drift_and_real_cross_component_proof() -> None:
+    requirements = _requirements("backend/src/aima_ugc/entrypoints/api_main.py")
+
+    assert requirements.profile == "contract"
+    assert requirements.backend_required is True
+    assert requirements.frontend_required is True
+    assert requirements.contract_required is True
+    assert requirements.postgres_required is False
+    assert requirements.fullstack_required is True
+    assert requirements.fullstack_specs == ALL_FULLSTACK_SPECS
+
+
 def test_collection_persistence_change_runs_postgres_and_relevant_golden_path() -> None:
     requirements = _requirements("backend/src/aima_ugc/modules/collection/tables.py")
 
@@ -68,6 +80,16 @@ def test_collection_persistence_change_runs_postgres_and_relevant_golden_path() 
     assert requirements.postgres_required is True
     assert requirements.fullstack_required is True
     assert requirements.fullstack_specs == ("collection-plan-search-config.spec.ts",)
+
+
+def test_integration_test_change_runs_postgres_without_promoting_itself_to_real_fullstack() -> None:
+    requirements = _requirements("tests/integration/content/test_postgres_ingestion.py")
+
+    assert requirements.profile == "persistence"
+    assert requirements.backend_required is True
+    assert requirements.postgres_required is True
+    assert requirements.fullstack_required is False
+    assert requirements.fullstack_specs == ()
 
 
 def test_contract_change_runs_producer_consumer_and_all_real_golden_paths() -> None:

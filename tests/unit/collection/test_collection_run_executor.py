@@ -235,6 +235,25 @@ def test_executor_finishes_successful_run_with_aggregated_scope_counts() -> None
     assert [status for _, status, _ in gateway.finished_scopes] == ["succeeded", "succeeded"]
 
 
+def test_executor_fails_closed_when_run_has_no_scopes() -> None:
+    """零 Scope 的 Collection Run 不能伪装成成功，必须失败关闭且不调用 Scope executor。"""
+    execution = _execution(scope_count=0)
+    context = _Context()
+    context._fence = JobExecutionFence(job_id=execution.run.job_id, lease_token="lease")
+    gateway = _Gateway(execution)
+    scope_executor = _ScopeExecutor({})
+
+    result = CollectionRunExecutor(gateway=gateway, scope_executor=scope_executor).execute(
+        fence=context.fence,
+        context=context,
+    )
+
+    assert result.outcome == "failed"
+    assert scope_executor.calls == []
+    assert gateway.finished_run is not None
+    assert gateway.finished_run[0] == "failed"
+
+
 def test_executor_isolates_scope_exception_and_marks_run_partial_success() -> None:
     execution = _execution()
     context = _Context()
