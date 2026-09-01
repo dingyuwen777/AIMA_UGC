@@ -166,18 +166,14 @@ def check_repository(root: Path = ROOT) -> list[str]:
         if "check_agent_governance.py" not in gate_text:
             errors.append(f"GOV008 {COMPLETION_GATE.as_posix()}: 必须先执行 AIMA 项目治理接线检查")
 
-    errors.extend(
-        _check_issue_form(root / REQUIREMENT_ISSUE_FORM, REQUIREMENT_FORM_FIELDS)
-    )
+    errors.extend(_check_issue_form(root / REQUIREMENT_ISSUE_FORM, REQUIREMENT_FORM_FIELDS))
     errors.extend(_check_issue_form(root / BUG_ISSUE_FORM, BUG_FORM_FIELDS))
 
     issue_config = root / ISSUE_TEMPLATE_CONFIG
     if not issue_config.is_file():
         errors.append(f"GOV013 {ISSUE_TEMPLATE_CONFIG.as_posix()}: Issue chooser 配置不存在")
     elif "blank_issues_enabled: false" not in _read_text(issue_config):
-        errors.append(
-            f"GOV013 {ISSUE_TEMPLATE_CONFIG.as_posix()}: 必须关闭 blank issue 普通入口"
-        )
+        errors.append(f"GOV013 {ISSUE_TEMPLATE_CONFIG.as_posix()}: 必须关闭 blank issue 普通入口")
 
     pr_template = root / PR_TEMPLATE
     if not pr_template.is_file():
@@ -187,9 +183,7 @@ def check_repository(root: Path = ROOT) -> list[str]:
         if "Requirement-Source:" not in pr_text:
             errors.append(f"GOV014 {PR_TEMPLATE.as_posix()}: 缺少 Requirement-Source 追溯字段")
         if "不要用关闭关键字替代" not in pr_text:
-            errors.append(
-                f"GOV014 {PR_TEMPLATE.as_posix()}: 必须区分需求追溯与 Issue 关闭语义"
-            )
+            errors.append(f"GOV014 {PR_TEMPLATE.as_posix()}: 必须区分需求追溯与 Issue 关闭语义")
 
     return errors
 
