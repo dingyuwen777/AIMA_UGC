@@ -171,7 +171,11 @@ def classify_requirements(paths: Iterable[str]) -> CiRequirements:
         path for path in normalized if not _is_docs_path(path) and not _is_governance_path(path)
     )
     if not product_paths:
-        profile = "governance_only" if any(_is_governance_path(path) for path in normalized) else "docs_only"
+        profile = (
+            "governance_only"
+            if any(_is_governance_path(path) for path in normalized)
+            else "docs_only"
+        )
         return CiRequirements(
             profile=profile,
             repository_required=False,
