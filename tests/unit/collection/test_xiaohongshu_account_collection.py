@@ -236,7 +236,7 @@ def test_account_run_filters_date_and_all_mode_crosses_soft_comment_target(
     ]
     requests: list[ProviderTransportRequest] = []
     monkeypatch.setattr(
-        "aima_ugc.adapters.providers.tikhub_test.operations.xiaohongshu_accounts.TikHubHttpTransport",
+        "aima_ugc.adapters.providers.tikhub_test.operations.runner.TikHubHttpTransport",
         _fake_transport_type(responses, requests),
     )
 
