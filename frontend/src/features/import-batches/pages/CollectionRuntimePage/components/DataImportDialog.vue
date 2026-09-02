@@ -710,8 +710,9 @@ function viewCampaignContents(): void {
               查看导入内容
             </AimaButton>
             <AimaButton
+              v-if="store.selectedHistoricalCampaign.can_start"
               variant="primary"
-              :disabled="!store.selectedHistoricalCampaign.can_start || store.actingHistorical"
+              :disabled="store.actingHistorical"
               @click="startCampaign"
             >
               开始导入

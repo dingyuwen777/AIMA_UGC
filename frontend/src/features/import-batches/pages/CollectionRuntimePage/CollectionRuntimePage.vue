@@ -70,7 +70,7 @@ async function createRun(request: CollectionRunCreateRequest): Promise<void> {
   const created = await store.createRun(request)
   if (!created) return
   supplementOpen.value = false
-  showNotice('TikHub Collection Run / Job 已创建，将由 Worker 在后台执行。')
+  showNotice('辅助补采任务已创建，将在后台执行。')
 }
 
 async function selectItem(item: CollectionRuntimeItemResponse): Promise<void> {

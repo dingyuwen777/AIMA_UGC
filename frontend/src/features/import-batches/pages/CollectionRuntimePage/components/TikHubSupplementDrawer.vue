@@ -242,7 +242,7 @@ function submit(): void {
         class="drawer"
         role="dialog"
         aria-modal="true"
-        aria-label="新建 TikHub 辅助补采"
+        aria-label="新建辅助补采"
       >
         <header>
           <div><strong>新建辅助补采</strong><span>创建辅助补采任务</span></div>
