@@ -98,12 +98,12 @@ data_changes: []
 
 # Requirement Traceability
 
-| 编号 | 要求 | 来源 | 状态 | 最终证据 |
+| 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 真正校验每个 PR 的 `Requirement-Source` | Issue #286 | satisfied | checker + Unit + PR #287 真实 Completion Gate；PR body `edited` 后 Completion `33517313888` 再次执行 `Verify PR Requirement Source` 并成功 |
-| R2 | 修正 AIMA 文档中过重的 L2 规则 | Issue #286 | satisfied | Blueprint 06 已改为普通 L2 最小充分任务契约，持久 gated L2/L3 保持完整治理；Docs/Governance CI 通过 |
-| R3 | 增加“技术变更” Issue 模板 | Issue #286 | satisfied | `.github/ISSUE_TEMPLATE/03-technical-change.yml` + governance checker / Unit 回归 |
-| R4 | 不新增平行 Workflow/Required Check，不改变产品接口、数据或依赖 | Issue #286 | satisfied | 复用原 Completion Gate；产品 Contract/Schema/lock 未变化；PR 与 main fresh CI 均通过 |
+| R1 | 真正校验每个 PR 的 `Requirement-Source` | https://github.com/dingyuwen777/AIMA_UGC/issues/286 | satisfied | checker + Unit + PR #287 真实 Completion Gate；PR body `edited` 后 Completion `33517313888` 再次执行 `Verify PR Requirement Source` 并成功 |
+| R2 | 修正 AIMA 文档中过重的 L2 规则 | https://github.com/dingyuwen777/AIMA_UGC/issues/286 | satisfied | Blueprint 06 已改为普通 L2 最小充分任务契约，持久 gated L2/L3 保持完整治理；Docs/Governance CI 通过 |
+| R3 | 增加“技术变更” Issue 模板 | https://github.com/dingyuwen777/AIMA_UGC/issues/286 | satisfied | `.github/ISSUE_TEMPLATE/03-technical-change.yml` + governance checker / Unit 回归 |
+| R4 | 不新增平行 Workflow/Required Check，不改变产品接口、数据或依赖 | https://github.com/dingyuwen777/AIMA_UGC/issues/286 | satisfied | 复用原 Completion Gate；产品 Contract/Schema/lock 未变化；PR 与 main fresh CI 均通过 |
 
 # Validation Matrix
 

@@ -54,7 +54,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python .agents/skills/coding/scripts/ready_check.py \
+          python scripts/quality/check_change_completion.py \
             --root . \
             --changed-since "${{ github.event.pull_request.base.sha }}"
 
@@ -63,6 +63,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python .agents/skills/coding/scripts/ready_check.py \
+          python scripts/quality/check_change_completion.py \
             --root . \
             --require-active-ready

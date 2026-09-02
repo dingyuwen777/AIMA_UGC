@@ -98,6 +98,17 @@ status: archived
 """
 
 
+def _unversioned_legacy_change() -> str:
+    """返回 schema 机制引入前的不可变历史 Change。"""
+    return """---
+id: CHG-20260801-unversioned-history
+status: done
+---
+
+# Historical record before schema
+"""
+
+
 def _check(root: Path, **kwargs: object) -> dict[str, Any]:
     """调用项目 checker，并显式复用当前安装的 validator。"""
     checker = _load_checker()
@@ -133,6 +144,10 @@ def test_ready_current_change_and_unchanged_legacy_archive_pass(tmp_path: Path) 
         tmp_path / "changes/archive/2026-08/CHG-20260801-legacy-history/CHANGE.md",
         _legacy_change(),
     )
+    _write(
+        tmp_path / "changes/archive/2026-08/CHG-20260801-unversioned-history/CHANGE.md",
+        _unversioned_legacy_change(),
+    )
     base = _commit(tmp_path, "归档历史变更")
     _write(
         tmp_path / "changes/active/CHG-20260902-current/CHANGE.md",
@@ -147,7 +162,7 @@ def test_ready_current_change_and_unchanged_legacy_archive_pass(tmp_path: Path) 
         "change_root": "changes",
         "gated": 1,
         "strict_checked": 1,
-        "legacy": 1,
+        "legacy": 2,
         "errors": [],
     }
 
@@ -179,7 +194,9 @@ def test_legacy_change_in_active_fails(tmp_path: Path) -> None:
     result = _check(tmp_path, require_active_ready=True)
 
     assert result["ok"] is False
-    assert any("legacy" in error["message"] and "active" in error["message"] for error in result["errors"])
+    assert any(
+        "legacy" in error["message"] and "active" in error["message"] for error in result["errors"]
+    )
 
 
 def test_unknown_schema_fails(tmp_path: Path) -> None:
@@ -213,3 +230,27 @@ def test_deleted_current_change_fails_changed_since(tmp_path: Path) -> None:
 
     assert result["ok"] is False
     assert any("删除" in error["message"] for error in result["errors"])
+
+
+def test_current_change_can_move_from_active_to_archive(tmp_path: Path) -> None:
+    """同一当前 Change 完成后允许从 Active 原子移动到 Archive。"""
+    _init_repository(tmp_path)
+    active = tmp_path / "changes/active/CHG-20260902-current/CHANGE.md"
+    _write(active, _current_change("CHG-20260902-current"))
+    base = _commit(tmp_path, "新增当前变更")
+    archived = tmp_path / "changes/archive/2026-09/CHG-20260902-current/CHANGE.md"
+    _write(
+        archived,
+        _current_change("CHG-20260902-current").replace(
+            "status: ready_for_review",
+            "status: done",
+        ),
+    )
+    active.unlink()
+    _commit(tmp_path, "归档当前变更")
+
+    result = _check(tmp_path, changed_since=base)
+
+    assert result["ok"] is True
+    assert result["gated"] == 1
+    assert result["strict_checked"] == 1
