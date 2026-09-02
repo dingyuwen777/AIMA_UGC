@@ -318,6 +318,7 @@ async function fetchAllSupplementBatches(): Promise<ImportBatchResponse[]> {
   return batches.filter(isSupplementBatch)
 }
 
+  /** 加载新建补采所需能力、全部合法历史批次和完整启用词包目录。 */
   async function loadCreationOptions(selectedBatchId?: string | null): Promise<void> {
     error.value = null
     batchContentPlatforms.value = []

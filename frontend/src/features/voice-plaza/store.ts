@@ -331,6 +331,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     selectedIds.value = []
   }
 
+  /** 提交相关性人工复核，并刷新当前已加载窗口而不折叠分页。 */
   async function reviewRelevance(
     contentIds: string[],
     decision: ContentRelevanceReviewRequestDecision,
@@ -356,6 +357,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     }
   }
 
+  /** 保存详情页车型人工结论，并保持当前列表分页窗口。 */
   async function reviewDetailVehicles(
     vehicleModelIds: string[],
     unlockExisting: boolean,
@@ -381,6 +383,7 @@ async function refreshAnalysisCapabilities(): Promise<void> {
     }
   }
 
+  /** 保存详情页分析人工纠正，并保持当前列表分页窗口。 */
   async function reviewDetailAnalysis(
     request: Omit<ContentAnalysisManualReviewRequest, 'content_version'>,
   ): Promise<boolean> {

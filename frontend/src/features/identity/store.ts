@@ -48,6 +48,7 @@ export const useIdentityStore = defineStore('identity', () => {
     }
   }
 
+  /** 标记当前 Principal 的通知已读，并以服务端全量未读计数作为最终事实。 */
   async function markRead(itemIds: string[]): Promise<void> {
     if (itemIds.length === 0) return
     try {
