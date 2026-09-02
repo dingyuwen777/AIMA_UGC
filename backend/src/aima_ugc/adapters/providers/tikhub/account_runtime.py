@@ -2,54 +2,20 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, cast
 
-from pydantic import SecretStr, TypeAdapter
+from pydantic import TypeAdapter
 
 from aima_ugc.contracts.provider import JsonObject
-from aima_ugc.modules.collection.providers.transport import ProviderTransportRequest
 
+from . import runtime as shared_runtime
 from .operations import xiaohongshu
 
 _JSON_OBJECT_ADAPTER = TypeAdapter(JsonObject)
-TikHubAccountBusinessOperation = Literal["account_search", "account_info", "account_notes"]
 
 
-@dataclass(frozen=True, slots=True)
-class TikHubAccountOperationCall:
-    """一个不含 Secret 的小红书账号 Discovery 调用事实。"""
-
-    business_operation: TikHubAccountBusinessOperation
-    operation: str
-    method: Literal["GET"]
-    path: str
-    params: JsonObject
-    pagination_input: JsonObject | None = None
-
-    def transport_request(self, credential: SecretStr) -> ProviderTransportRequest:
-        """在发送边界注入 Secret，不把鉴权事实写进调试输出。"""
-        return ProviderTransportRequest(
-            transport_kind="http",
-            method=self.method,
-            path=self.path,
-            params=self.params,
-            body=None,
-            credential=credential,
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class TikHubAccountPageAdvance:
-    """账号 Discovery 的 Provider-private 分页推进结果。"""
-
-    next_state: JsonObject | None
-    stop_reason: str | None
-
-    @property
-    def should_continue(self) -> bool:
-        """只有存在下一页状态时才允许继续产生 Provider 请求。"""
-        return self.next_state is not None
+class TikHubAccountOperationCall(shared_runtime.TikHubOperationCall):
+    """沿用通用 TikHub 调用事实结构，但账号 Discovery 不进入公开 Collection Capability。"""
 
 
 def build_user_search_call(
@@ -65,7 +31,8 @@ def build_user_search_call(
         search_id=_optional_str_state(paging, "search_id"),
     )
     return TikHubAccountOperationCall(
-        business_operation="account_search",
+        platform="xiaohongshu",
+        business_operation=cast(Any, "account_search"),
         operation="search_users",
         method="GET",
         path=request.path,
@@ -78,7 +45,7 @@ def advance_user_search(
     *,
     state: dict[str, object] | None,
     body: dict[str, Any],
-) -> TikHubAccountPageAdvance:
+) -> shared_runtime.TikHubPageAdvance:
     """按正式用户搜索分页状态推进下一页。"""
     current = state or {}
     result = xiaohongshu.XiaohongshuUserSearchPagination.from_response(
@@ -87,8 +54,8 @@ def advance_user_search(
         previous_item_ids=tuple(_string_list(current.get("item_ids"))),
     )
     if not result.should_continue:
-        return TikHubAccountPageAdvance(None, result.stop_reason)
-    return TikHubAccountPageAdvance(
+        return shared_runtime.TikHubPageAdvance(None, result.stop_reason)
+    return shared_runtime.TikHubPageAdvance(
         _json_object(
             {
                 "page": result.next_page,
@@ -109,7 +76,8 @@ def build_user_info_call(*, user_id: str) -> TikHubAccountOperationCall:
     """构造已解析稳定 user_id 的用户详情调用。"""
     request = xiaohongshu.build_user_info_request(user_id=user_id)
     return TikHubAccountOperationCall(
-        business_operation="account_info",
+        platform="xiaohongshu",
+        business_operation=cast(Any, "account_info"),
         operation="get_user_info",
         method="GET",
         path=request.path,
@@ -134,7 +102,8 @@ def build_user_notes_call(
         cursor=_str_state(paging, "cursor", default=""),
     )
     return TikHubAccountOperationCall(
-        business_operation="account_notes",
+        platform="xiaohongshu",
+        business_operation=cast(Any, "account_notes"),
         operation="get_user_posted_notes",
         method="GET",
         path=request.path,
@@ -147,7 +116,7 @@ def advance_user_notes(
     *,
     state: dict[str, object] | None,
     body: dict[str, Any],
-) -> TikHubAccountPageAdvance:
+) -> shared_runtime.TikHubPageAdvance:
     """按用户笔记最后一项 cursor 推进下一页，并保留重复页保护。"""
     current = state or {}
     result = xiaohongshu.XiaohongshuUserNotesPagination.from_response(
@@ -156,9 +125,9 @@ def advance_user_notes(
         previous_item_ids=tuple(_string_list(current.get("item_ids"))),
     )
     if not result.should_continue:
-        return TikHubAccountPageAdvance(None, result.stop_reason)
+        return shared_runtime.TikHubPageAdvance(None, result.stop_reason)
     assert result.next_cursor is not None
-    return TikHubAccountPageAdvance(
+    return shared_runtime.TikHubPageAdvance(
         _json_object(
             {
                 "cursor": result.next_cursor,
@@ -211,7 +180,6 @@ def _string_list(value: object) -> list[str]:
 
 __all__ = [
     "TikHubAccountOperationCall",
-    "TikHubAccountPageAdvance",
     "advance_user_notes",
     "advance_user_search",
     "build_user_info_call",
