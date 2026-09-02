@@ -28,21 +28,29 @@ const emit = defineEmits<{
   next: []
 }>()
 
-/** 按 Figma 列表密度组合真实词包与车型范围；缺失目录项保留原始 ID。 */
+/**
+ * 按 Figma 列表密度组合真实词包与车型范围。
+ * 两类同时存在时优先各展示一项，避免车型被第二个词包挤出可见范围；缺失目录项保留原始 ID。
+ */
 function discoveryScopeLines(
   plan: CollectionPlanResponse,
   packs: KeywordPackSummaryResponse[],
   vehicles: VehicleModelResponse[],
 ): string[] {
-  const lines = [
-    ...plan.keyword_pack_ids.map((id) => packs.find((pack) => pack.id === id)?.name ?? id),
-    ...(plan.vehicle_model_ids ?? []).map((id) => {
-      const vehicle = vehicles.find((item) => item.id === id)
-      return `车型：${vehicle?.display_name ?? id}`
-    }),
-  ]
-  if (lines.length <= 2) return lines
-  return [...lines.slice(0, 2), `另有 ${lines.length - 2} 项范围`]
+  const packLines = plan.keyword_pack_ids.map((id) => packs.find((pack) => pack.id === id)?.name ?? id)
+  const vehicleLines = (plan.vehicle_model_ids ?? []).map((id) => {
+    const vehicle = vehicles.find((item) => item.id === id)
+    return `车型：${vehicle?.display_name ?? id}`
+  })
+  const visible: string[] = []
+  if (packLines[0]) visible.push(packLines[0])
+  if (vehicleLines[0]) visible.push(vehicleLines[0])
+  for (const line of [...packLines.slice(1), ...vehicleLines.slice(1)]) {
+    if (visible.length >= 2) break
+    visible.push(line)
+  }
+  const remaining = packLines.length + vehicleLines.length - visible.length
+  return remaining > 0 ? [...visible, `另有 ${remaining} 项范围`] : visible
 }
 
 /** 把 Provider 配置 ID 转为后端返回的展示名称，缺失映射保留原始 ID。 */

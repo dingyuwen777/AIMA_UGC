@@ -66,10 +66,25 @@ test.beforeEach(async ({ page }) => {
     }
     if (url.pathname === '/api/v1/vehicle-models' && request.method() === 'GET') {
       const activeOnly = url.searchParams.get('status') === 'active'
-      const items = activeOnly ? [activeVehicle] : [historicalVehicle]
+      const offset = Number(url.searchParams.get('offset') ?? '0')
+      if (activeOnly) {
+        const items = offset === 0
+          ? Array.from({ length: 200 }, (_, index) => ({
+            ...activeVehicle,
+            id: `active-${index}`,
+            code: `Q${index}`,
+            display_name: `候选车型 ${index}`,
+          }))
+          : offset === 200 ? [activeVehicle] : []
+        await route.fulfill({
+          contentType: 'application/json',
+          body: JSON.stringify({ items, total: 201, catalog_version: 9, offset, limit: 200 }),
+        })
+        return
+      }
       await route.fulfill({
         contentType: 'application/json',
-        body: JSON.stringify({ items, total: items.length, catalog_version: 9, offset: 0, limit: 200 }),
+        body: JSON.stringify({ items: [historicalVehicle], total: 1, catalog_version: 9, offset: 0, limit: 200 }),
       })
       return
     }
@@ -154,15 +169,19 @@ test('disables Keyword Pack stop actions when current backend facts forbid them'
   await expect(relevancePackRow.getByRole('button', { name: '停用' })).toHaveAttribute('title', /全局相关性/)
 })
 
-test('creates only a periodic Collection Plan and keeps the vehicle selector active-only', async ({ page }) => {
+test('creates only a periodic Collection Plan and fully paginates the active-only vehicle selector', async ({ page }) => {
   await page.goto('/collection-strategy')
-  const vehicleRequestPromise = page.waitForRequest((request) => {
+  const secondVehiclePagePromise = page.waitForRequest((request) => {
     const url = new URL(request.url())
-    return url.pathname === '/api/v1/vehicle-models' && url.searchParams.get('status') === 'active'
+    return url.pathname === '/api/v1/vehicle-models'
+      && url.searchParams.get('status') === 'active'
+      && url.searchParams.get('offset') === '200'
   })
   await page.getByRole('button', { name: /新建采集计划/ }).click()
-  const vehicleRequest = await vehicleRequestPromise
-  expect(new URL(vehicleRequest.url()).searchParams.get('limit')).toBe('200')
+  const secondVehiclePage = await secondVehiclePagePromise
+  const vehicleUrl = new URL(secondVehiclePage.url())
+  expect(vehicleUrl.searchParams.get('limit')).toBe('200')
+  expect(vehicleUrl.searchParams.get('status')).toBe('active')
 
   const drawer = page.getByRole('dialog', { name: '新建采集计划' })
   await expect(drawer).toBeVisible()

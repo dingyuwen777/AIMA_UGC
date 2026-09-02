@@ -31,8 +31,8 @@ const plan: CollectionPlanResponse = {
   detail_policy: 'on_change',
   comment_policy: 'adaptive',
   platforms: [{ platform: 'xiaohongshu', provider_config_id: 'provider-1', search_config: {} }],
-  keyword_pack_ids: ['pack-1'],
-  vehicle_model_ids: ['vehicle-1'],
+  keyword_pack_ids: ['pack-1', 'pack-2'],
+  vehicle_model_ids: ['vehicle-1', 'vehicle-2'],
   created_at: '2026-08-28T08:00:00+08:00',
   updated_at: '2026-08-28T08:00:00+08:00',
 }
@@ -62,15 +62,25 @@ describe('采集策略正式 Figma 组件基线', () => {
     expect(html).not.toContain('Discovery')
   })
 
-  it('计划列表只保留六列并按 Figma 合并展示真实词包与车型范围', async () => {
+  it('计划列表只保留六列，并像 Figma 一样优先各展示一个词包和车型后汇总剩余范围', async () => {
     const html = await renderComponent(PlanPanel, {
       plans: [plan],
-      packs: [{ id: 'pack-1', name: '新品词包', description: '', enabled: true, version: 3, keyword_count: 2 }],
-      vehicles: [{
-        id: 'vehicle-1', code: 'A7', display_name: '爱玛 A7', status: 'deprecated', version: 2,
-        catalog_version: 8, merged_into_id: null, aliases: [], keyword_pack_ids: [], referenced: true,
-        created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-28T00:00:00Z',
-      }],
+      packs: [
+        { id: 'pack-1', name: '新品词包', description: '', enabled: true, version: 3, keyword_count: 2 },
+        { id: 'pack-2', name: '次要词包', description: '', enabled: true, version: 1, keyword_count: 1 },
+      ],
+      vehicles: [
+        {
+          id: 'vehicle-1', code: 'A7', display_name: '爱玛 A7', status: 'deprecated', version: 2,
+          catalog_version: 8, merged_into_id: null, aliases: [], keyword_pack_ids: [], referenced: true,
+          created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-28T00:00:00Z',
+        },
+        {
+          id: 'vehicle-2', code: 'B9', display_name: '爱玛 B9', status: 'active', version: 1,
+          catalog_version: 8, merged_into_id: null, aliases: [], keyword_pack_ids: [], referenced: false,
+          created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-28T00:00:00Z',
+        },
+      ],
       providers: [{ id: 'provider-1', provider: 'tikhub', display_name: 'TikHub 主配置' }],
       total: 1,
       offset: 0,
@@ -87,6 +97,9 @@ describe('采集策略正式 Figma 组件基线', () => {
     expect(html).toContain('目标平台 / 采集渠道')
     expect(html).toContain('新品词包')
     expect(html).toContain('车型：爱玛 A7')
+    expect(html).toContain('另有 2 项范围')
+    expect(html).not.toContain('次要词包')
+    expect(html).not.toContain('车型：爱玛 B9')
     expect(html).toContain('计划编号： 33333333-3333-4333-8333-333333333333')
     expect(html).toContain('每6小时')
   })
