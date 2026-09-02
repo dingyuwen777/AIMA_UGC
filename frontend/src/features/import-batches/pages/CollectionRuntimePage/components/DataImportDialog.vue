@@ -62,9 +62,7 @@ const canCancel = computed(() =>
 )
 const canRetry = computed(() =>
   ['partial_failed', 'failed'].includes(store.selectedHistoricalCampaign?.status ?? '') &&
-  store.historicalCampaignItems.some(
-    (item) => item.item_kind === 'chunk' && item.status === 'failed',
-  ),
+  (store.selectedHistoricalCampaign?.failed_chunk_count ?? 0) > 0,
 )
 const canViewContents = computed(() => {
   const campaign = store.selectedHistoricalCampaign

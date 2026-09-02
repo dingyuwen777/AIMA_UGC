@@ -813,7 +813,7 @@
       },
       "AuditEventListResponse": {
         "additionalProperties": false,
-        "description": "管理员最近审计事件列表。",
+        "description": "管理员审计事件分页响应。",
         "properties": {
           "items": {
             "items": {
@@ -821,10 +821,29 @@
             },
             "title": "Items",
             "type": "array"
+          },
+          "limit": {
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
           }
         },
         "required": [
-          "items"
+          "items",
+          "total",
+          "offset",
+          "limit"
         ],
         "title": "AuditEventListResponse",
         "type": "object"
@@ -4939,6 +4958,12 @@
             ],
             "title": "Error Summary"
           },
+          "failed_chunk_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Failed Chunk Count",
+            "type": "integer"
+          },
           "finished_at": {
             "anyOf": [
               {
@@ -5644,12 +5669,22 @@
       },
       "KeywordPackCreateRequest": {
         "additionalProperties": false,
+        "description": "创建词包；可在同一事务中携带初始关键词，旧客户端仍可省略。",
         "properties": {
           "description": {
             "default": "",
             "maxLength": 2000,
             "title": "Description",
             "type": "string"
+          },
+          "keywords": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/KeywordPackKeywordCreateRequest"
+            },
+            "maxItems": 500,
+            "title": "Keywords",
+            "type": "array"
           },
           "name": {
             "maxLength": 200,
@@ -7281,15 +7316,26 @@
     },
     "/api/v1/audit-events": {
       "get": {
-        "description": "管理员读取有界审计历史。",
+        "description": "管理员分页读取完整审计历史。",
         "operationId": "listAuditEvents",
         "parameters": [
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
           {
             "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
-              "default": 50,
+              "default": 100,
               "maximum": 200,
               "minimum": 1,
               "title": "Limit",

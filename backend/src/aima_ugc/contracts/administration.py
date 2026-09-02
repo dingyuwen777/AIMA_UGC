@@ -299,6 +299,14 @@ class AnalysisSchemeListResponse(BaseModel):
     items: tuple[AnalysisSchemeResponse, ...]
 
 
+class AuditEventListQuery(BaseModel):
+    """管理员审计事件稳定 Offset 分页。"""
+
+    model_config = ConfigDict(extra="forbid")
+    offset: int = Field(default=0, ge=0)
+    limit: int = Field(default=100, ge=1, le=200)
+
+
 class AuditEventResponse(BaseModel):
     """安全审计事件投影。"""
 
@@ -314,10 +322,13 @@ class AuditEventResponse(BaseModel):
 
 
 class AuditEventListResponse(BaseModel):
-    """管理员最近审计事件列表。"""
+    """管理员审计事件分页响应。"""
 
     model_config = ConfigDict(extra="forbid")
     items: tuple[AuditEventResponse, ...]
+    total: int = Field(ge=0)
+    offset: int = Field(ge=0)
+    limit: int = Field(ge=1, le=200)
 
 
 __all__ = [
@@ -328,6 +339,7 @@ __all__ = [
     "AnalysisSchemeResponse",
     "AnalysisSchemeUpdateDraftRequest",
     "AnalysisSchemeVersionResponse",
+    "AuditEventListQuery",
     "AuditEventListResponse",
     "AuditEventResponse",
     "CurrentPrincipalResponse",

@@ -468,22 +468,6 @@ class ContentSupplementStatusResponse(BaseModel):
     updated_at: datetime
 
 
-class KeywordPackCreateRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    name: str = Field(min_length=1, max_length=200)
-    description: str = Field(default="", max_length=2000)
-
-    @field_validator("name", mode="before")
-    @classmethod
-    def validate_name(cls, value: object) -> object:
-        if isinstance(value, str):
-            value = value.strip()
-            if not value:
-                raise ValueError("Keyword Pack 名称不能为空")
-        return value
-
-
 class KeywordPackKeywordCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -499,6 +483,25 @@ class KeywordPackKeywordCreateRequest(BaseModel):
             value = value.strip()
             if not value:
                 raise ValueError("关键词不能为空")
+        return value
+
+
+class KeywordPackCreateRequest(BaseModel):
+    """创建词包；可在同一事务中携带初始关键词，旧客户端仍可省略。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=2000)
+    keywords: tuple[KeywordPackKeywordCreateRequest, ...] = Field(default=(), max_length=500)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def validate_name(cls, value: object) -> object:
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                raise ValueError("Keyword Pack 名称不能为空")
         return value
 
 
@@ -1461,6 +1464,7 @@ class HistoricalCampaignResponse(BaseModel):
     discovered_file_count: int = Field(ge=0)
     ready_item_count: int = Field(ge=0)
     total_rows: int = Field(ge=0)
+    failed_chunk_count: int = Field(default=0, ge=0)
     progress: HistoricalCampaignProgressResponse
     stats: HistoricalCampaignStatsResponse = Field(default_factory=HistoricalCampaignStatsResponse)
     error_summary: str | None = None

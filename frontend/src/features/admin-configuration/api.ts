@@ -83,5 +83,8 @@ export const activateScheme = async (id: string, expectedVersion: number): Promi
 export const restoreScheme = async (id: string, expectedVersion: number): Promise<AnalysisSchemeResponse> =>
   unwrapResponse(await rollbackAnalysisScheme(id, { expected_version: expectedVersion }))
 
-export const fetchAuditEvents = async (): Promise<AuditEventListResponse> =>
-  unwrapResponse(await listAuditEvents({ limit: 100 }))
+export const fetchAuditEvents = async (
+  offset = 0,
+  limit = 100,
+): Promise<AuditEventListResponse> =>
+  unwrapResponse(await listAuditEvents({ offset, limit }))

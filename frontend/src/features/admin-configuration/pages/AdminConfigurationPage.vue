@@ -58,6 +58,9 @@ const schemeDraft = reactive({
   labelsJson: '{}',
 })
 
+const vehicleFormValid = computed(() => Boolean(
+  vehicleDraft.code.trim() && vehicleDraft.displayName.trim(),
+))
 const selectedPack = computed(() => packs.value.find((item) => item.id === selectedPackId.value) ?? null)
 const selectedSchemeVersion = computed(() => {
   for (const scheme of schemes.value) {
@@ -390,7 +393,7 @@ async function rollbackVersion(version: AnalysisSchemeVersionResponse): Promise<
               取消
             </AimaButton><AimaButton
               variant="primary"
-              :disabled="saving"
+              :disabled="saving || !vehicleFormValid"
               @click="saveVehicle"
             >
               保存

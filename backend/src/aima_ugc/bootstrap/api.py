@@ -28,6 +28,7 @@ from aima_ugc.contracts.administration import (
     AnalysisSchemePublishRequest,
     AnalysisSchemeResponse,
     AnalysisSchemeUpdateDraftRequest,
+    AuditEventListQuery,
     AuditEventListResponse,
     CurrentPrincipalResponse,
     KeywordPackVehicleLinkRequest,
@@ -2172,12 +2173,15 @@ def create_app(
     )
     def list_audit_events(
         request: Request,
-        limit: Annotated[int, Query(ge=1, le=200)] = 50,
+        query: Annotated[AuditEventListQuery, Query()],
     ) -> AuditEventListResponse:
-        """管理员读取有界审计历史。"""
+        """管理员分页读取完整审计历史。"""
 
         current_principal(request).require_administrator()
-        return current_administration_service().list_audit_events(limit=limit)
+        return current_administration_service().list_audit_events(
+            offset=query.offset,
+            limit=query.limit,
+        )
 
     @application.post(
         "/api/v1/keyword-packs",

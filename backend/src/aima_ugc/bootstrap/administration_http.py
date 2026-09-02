@@ -431,13 +431,14 @@ class PostgresAdministrationHttpService:
         finally:
             session.close()
 
-    def list_audit_events(self, *, limit: int) -> AuditEventListResponse:
-        """管理员读取最近审计记录。"""
+    def list_audit_events(self, *, offset: int, limit: int) -> AuditEventListResponse:
+        """管理员分页读取完整审计历史。"""
 
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                events = PostgresAuditRepository(session).list_recent(limit=limit)
+                repository = PostgresAuditRepository(session)
+                events = repository.list_page(offset=offset, limit=limit)
                 return AuditEventListResponse(
                     items=tuple(
                         AuditEventResponse(
@@ -451,7 +452,10 @@ class PostgresAdministrationHttpService:
                             created_at=event.created_at,
                         )
                         for event in events
-                    )
+                    ),
+                    total=repository.count(),
+                    offset=offset,
+                    limit=limit,
                 )
         finally:
             session.close()

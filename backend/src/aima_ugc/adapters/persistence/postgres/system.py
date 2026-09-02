@@ -180,12 +180,13 @@ class PostgresAuditRepository:
             )
         )
 
-    def list_recent(self, *, limit: int) -> tuple[AuditEvent, ...]:
-        """按时间倒序返回有界审计事件，不提供任意正文搜索。"""
+    def list_page(self, *, offset: int, limit: int) -> tuple[AuditEvent, ...]:
+        """按时间倒序分页读取审计事件，不提供任意正文搜索。"""
 
         rows = self._session.execute(
             select(audit_events_table)
             .order_by(audit_events_table.c.created_at.desc(), audit_events_table.c.id.desc())
+            .offset(offset)
             .limit(limit)
         ).mappings()
         return tuple(
@@ -202,3 +203,13 @@ class PostgresAuditRepository:
             )
             for row in rows
         )
+
+    def list_recent(self, *, limit: int) -> tuple[AuditEvent, ...]:
+        """兼容旧内部调用，等价于读取第一页。"""
+
+        return self.list_page(offset=0, limit=limit)
+
+    def count(self) -> int:
+        """返回完整审计事件数量，供稳定分页使用。"""
+
+        return int(self._session.scalar(select(func.count()).select_from(audit_events_table)) or 0)
