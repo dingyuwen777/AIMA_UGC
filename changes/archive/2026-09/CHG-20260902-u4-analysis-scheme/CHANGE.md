@@ -3,14 +3,22 @@ schema: coding-change/v1
 id: CHG-20260902-u4-analysis-scheme
 title: U4 Analysis Scheme 原子版本与生产切换
 level: L3
-status: ready_for_review
+status: done
 owner: codex
 branch: test/294-vp5-u1-u5-runtime-validation
 created: 2026-09-02
 updated: 2026-09-02
 completion_gate: required
-depends_on: [CHG-20260902-u3-admin-identity-config]
-affected_areas: [analysis, identity, api, worker, contracts, frontend, documentation]
+depends_on:
+  - CHG-20260902-u3-admin-identity-config
+affected_areas:
+  - analysis
+  - identity
+  - api
+  - worker
+  - contracts
+  - frontend
+  - documentation
 affected_paths:
   - backend/src/aima_ugc/modules/analysis/
   - backend/src/aima_ugc/bootstrap/
@@ -59,12 +67,12 @@ data_changes:
 
 # Completion Audit
 
-- [x] upstream_re_read
-- [x] change_coverage
-- [x] reverse_audit
-- [x] unresolved_cleared
+- [x] upstream_re_read：已重新读取 Scheme 耦合配置、发布审计决定、路线、Contract、Schema、实现与最终验证事实。
+- [x] change_coverage：Prompt、Taxonomy、校验、发布、回滚、Run 冻结和审计均有实现与测试证据。
+- [x] reverse_audit：已从管理员操作与 Analysis Run 结果反查权限、数据库原子性和 Worker 冻结身份。
+- [x] unresolved_cleared：Gold Set 与双人审批按确认范围延期，其余 Required 项均满足，无 `not_satisfied`。
 
-当前无语义未决项：本地 required 验证与独立 Review 已完成，Gold Set、双人审批不在第一版范围，本 Change 进入 `ready_for_review`；PR CI、合并与 main 新鲜验证仍是外部交付门禁。
+当前无语义未决项：本地 required 验证与独立 Review 已完成，Gold Set、双人审批不在第一版范围。
 
 # 本轮验证证据
 
@@ -73,3 +81,9 @@ data_changes:
 - 管理员 Scheme 草稿、发布、回滚和审计 UI 已通过 ESLint/typecheck、前端 `67 passed` 与 production build；
 - PostgreSQL 18.4 空库及既有 `0037` 开发库均真实升级到 `0038`；Schema 重编译生命周期测试、单一 active、审计事务和 Worker Run 冻结均已通过；
 - Real Full-stack 已证明“发布 Scheme→新 Run 冻结新版本→旧 Run 身份与终态不变”；只使用本机假 LLM，不把它写成真实模型质量证据。
+
+# 交付完成证据
+
+- PR #289 已把 U1–U5 前端与文档接线合并到 `main`（merge commit `b5622e2308193da4bb6878672944f38938bf46d5`）；PR #295 又完成恢复验证与基线修复（merge commit `f60f598c84e0696873cc01fc30f4d817ed51ae52`）；
+- `main` 的 CI run #33589659720 与 Runtime Acceptance run #33589659537 均成功，覆盖产品、PostgreSQL、真实浏览器和 Compose 门禁；
+- 本 Change 的实现、验证、Review、合并与 main 新鲜验证已闭环，因此转为 `done` 并归档。
