@@ -68,8 +68,8 @@ watch(
 </template>
 
 <style scoped>
-.relevance-layout { display: grid; grid-template-columns: minmax(620px, 790px) minmax(330px, 400px); gap: 16px; }
-article,aside { padding: 24px; border: 1px solid var(--aima-border); border-radius: 9px; background: #fff; }
+.relevance-layout { display: grid; grid-template-columns: minmax(620px, 790px) minmax(330px, 400px); gap: 22px; }
+article,aside { height: 322px; padding: 24px; border: 1px solid var(--aima-border); border-radius: 9px; background: #fff; }
 .heading { display: flex; justify-content: space-between; }.heading h2 { margin: 0; font-size: 20px; }.heading p { margin: 7px 0 24px; color: #6f7a8e; }.heading > span { height: 26px; padding: 5px 9px; border-radius: 5px; color: #188252; background: #eaf8f1; font-size: 12px; }
 label { display: block; color: #344054; font-weight: 600; }select { display: block; width: 100%; height: 43px; margin-top: 9px; padding: 0 12px; border: 1px solid #d9dee7; border-radius: 7px; background: #fff; }
 .aima-feedback { margin: 18px 0; }
