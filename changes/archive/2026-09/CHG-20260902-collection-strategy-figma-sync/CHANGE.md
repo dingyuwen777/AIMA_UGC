@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260902-collection-strategy-figma-sync
 title: 同步采集策略 Figma 与真实车型和词包后端契约
 level: L2
-status: ready_for_review
+status: done
 owner: dingyuwen777
 branch: fix/306-collection-strategy-figma-sync
 created: 2026-09-02
@@ -37,7 +37,7 @@ data_changes: []
 - [x] 计划详情显示真实词包与车型；车型使用 `display_name · code`，历史 deprecated/merged 车型仍可解析，目录缺失时保留原始 ID。
 - [x] 新建计划继续只从 active 车型目录选择，并保持“词包或车型至少一个”的现有资格约束。
 - [x] 前端通过 generated Orval client 完整分页读取车型目录，不改后端 Contract、generated client、依赖或数据库。
-- [x] 正式 1440×900 Figma 关键几何、Vitest、Playwright Browser Mock、lint、typecheck、build 和 Runtime Acceptance 已取得新鲜 GREEN 证据；合并、归档与 Issue 关闭属于通过评审后的交付阶段，不作为 `ready_for_review` 前置条件。
+- [x] 正式 1440×900 Figma 关键几何、Vitest、Playwright Browser Mock、lint、typecheck、build 和 Runtime Acceptance 已取得新鲜 GREEN 证据；实现 PR #308 已合并，main fresh CI / Runtime / Change Completion 均成功，本 Change 进入独立归档流程。
 
 # 范围
 
@@ -79,21 +79,21 @@ data_changes: []
 | R3 | 计划详情展示真实车型名与 code，历史状态可解析，缺失目录回退原始 ID | https://github.com/dingyuwen777/AIMA_UGC/issues/306 | satisfied | `PlanDetailDrawer.vue` 展示独立车型区；Store 无 status 拉取历史目录；Browser Mock 验证 deprecated 车型 `display_name · code` |
 | R4 | 新建计划保持 active-only 车型选择与词包/车型至少一个的资格规则 | https://github.com/dingyuwen777/AIMA_UGC/issues/306 | satisfied | `VehicleMultiSelect.vue` 默认 `status=active`；`PlanCreateDrawer.vue` 继续复用 `planExecutionReason`；Browser Mock 验证 active-only 请求与选择器 |
 | R5 | 车型目录必须走 Orval generated client，并按 offset/limit 完整分页 | https://github.com/dingyuwen777/AIMA_UGC/issues/306 | satisfied | `api.ts` 只包装 generated `listVehicleModels`；Store 历史目录和共享选择器都按 `limit=200`/offset 迭代；单元与 Browser Mock 覆盖多页 |
-| R6 | 平台、Provider、Cron、北京时间、Capability/Eligibility、相关性与分页既有行为保持 | https://github.com/dingyuwen777/AIMA_UGC/issues/306 | satisfied | generated 五平台枚举与 Cron 机器值未改；Capability/Eligibility Owner 保持；北京时间显示到 Figma 约定分钟粒度；完整前端 CI 通过 |
-| R7 | 不修改后端 Contract、generated client、依赖和数据库 | https://github.com/dingyuwen777/AIMA_UGC/issues/306 | satisfied | `main@c246d504...` 到 `082b3533...` 新鲜 compare 仅含前端源码/测试/Change，无 backend、generated、manifest/lock、migration 或数据库路径 |
+| R6 | 平台、Provider、Cron、北京时间、Capability/Eligibility、相关性与分页既有行为保持 | https://github.com/dingyuwen777/AIMA_UGC/issues/306 | satisfied | generated 五平台枚举与 Cron 机器值未改；Capability/Eligibility Owner 保持；北京时间显示到 Figma 约定分钟粒度；PR #308 与 main fresh CI 均通过 |
+| R7 | 不修改后端 Contract、generated client、依赖和数据库 | https://github.com/dingyuwen777/AIMA_UGC/issues/306 | satisfied | 最终实现 diff 仅含前端源码、前端测试与 Change，无 backend、generated、manifest/lock、migration 或数据库路径 |
 
 # 验证矩阵
 
 | 验证层 | 是否要求 | 范围 / 证据 |
 | --- | --- | --- |
-| 行为 / 单元 / 组件 | required | CI #3699：Vitest 16 files / 72 tests 全绿；其中采集策略 Store 8 项、设计 SSR 4 项，覆盖历史车型目录全量分页和 Figma 文案/范围 |
-| 接口 / 契约 | required | 新鲜读取 generated client 确认五个平台、Plan `vehicle_model_ids`、`Asia/Shanghai`；新鲜读取车型 Contract 确认 active/deprecated/merged 与 limit≤200；PR diff 不改 Contract/generated |
+| 行为 / 单元 / 组件 | required | PR #308 CI #3704：Vitest 16 files / 72 tests 全绿；采集策略 Store 与设计 SSR 覆盖历史车型目录全量分页和 Figma 文案/范围 |
+| 接口 / 契约 | required | 新鲜读取 generated client 确认五个平台、Plan `vehicle_model_ids`、`Asia/Shanghai`；新鲜读取车型 Contract 确认 active/deprecated/merged 与 limit≤200；最终 diff 不改 Contract/generated |
 | 集成 / 持久化 / 运行依赖 | not_applicable | 本次不修改持久化、数据库或真实外部服务语义；前端接线通过正式 HTTP 形状 Browser Mock 验证，无需 TikHub 实探 |
-| 用户 / 工作流验收 | required | CI #3699：Playwright 46/46 全绿；覆盖页头/词包入口、范围、历史车型详情、active-only 创建以及正式 Figma 关键几何 |
+| 用户 / 工作流验收 | required | PR #308 CI #3704：Playwright 46 个 Browser Mock 测试全绿；覆盖页头/词包入口、范围、历史车型详情、active-only 创建以及正式 Figma 关键几何 |
 | 跨组件关键路径 | required | Store → Page → PlanPanel/PlanDetailDrawer 使用同一历史车型目录；PlanCreateDrawer → VehicleMultiSelect 保持独立 active-only 创建路径；相关回归全绿 |
 | 外部依赖 / 供应方探测 | not_applicable | 本次不改变供应方 API；Figma 正式节点已作为设计事实源重新读取并截图复核，TikHub 实探没有新增证明价值 |
-| 构建 / 打包 / 运行 | required | GitHub Actions 锁定 Node 24.19.0 / npm 11.17.0；lint、typecheck、Vitest、Vite build、Playwright 全绿；Runtime Acceptance #820 成功 |
-| 文档 / 治理 / 其他 | required | Issue #306、PR #307 `Requirement-Source: #306`、本 Active Change 均存在；Change Ready 提交后由 Completion Gate 再次机器验证 |
+| 构建 / 打包 / 运行 | required | GitHub Actions 锁定 Node 24.19.0 / npm 11.17.0；lint、typecheck、Vitest、Vite build、Playwright 全绿；PR Runtime #825 与 main Runtime #826 成功 |
+| 文档 / 治理 / 其他 | required | Issue #306、PR #308 `Requirement-Source: #306`、Change Completion #1563 均通过；main Change Completion #1564 成功 |
 
 # 完成审计
 
@@ -127,23 +127,33 @@ data_changes: []
 
 ## 新鲜证据
 
-- RED：PR #307 首提交锁定车型目录与 Figma 数据流后，CI #3691 按预期失败；后续几何测试提交也先观察到可复现的布局差异，再进行最小修复。
-- GREEN：最终实现头 `082b35332af0ed912c78d6f57b985d0abbd43176` 的 CI #3699 成功；Repository Quality 使用 Node 24.19.0 / npm 11.17.0 执行 lint、typecheck、Vitest、build 与 Playwright 全绿。
+- RED：原 Draft PR #307 首提交锁定车型目录与 Figma 数据流后，相关回归按预期先失败；后续几何测试也先观察到可复现的布局差异，再进行最小修复。
+- GREEN：最终 feature head `4239be9b1c76cd512628d10f2bb2c01b2151ca31` 在非 Draft PR #308 上取得 CI #3704、Runtime Acceptance #825、Change Completion #1563 全部 success。
 - Vitest：16 个测试文件、72 个测试通过。
 - Browser Mock：46 个 Playwright 测试通过，其中采集策略 3 个正式几何用例覆盖主工作区、关键词弹窗/新建计划抽屉、全局相关性/详情抽屉。
-- Runtime Acceptance #820 成功。
 - Dependency audit：生产与完整 npm audit 均为 0 vulnerabilities；本变更未修改依赖。
-- `main` 新鲜基线仍为 `c246d504679b60708eaeb698a4cce38b1702ea1a`，PR head 相对该基线 ahead 9 / behind 0，当前 mergeable=true。
+- guarded merge：PR #308 使用 expected head `4239be9b1c76cd512628d10f2bb2c01b2151ca31` 正常 merge，merge revision `2f657dedd35f4d9dc6d0cc751e4caa4a8735c01c`。
+- main fresh：CI #3705、Runtime Acceptance #826、Change Completion #1564 均在 `2f657dedd35f4d9dc6d0cc751e4caa4a8735c01c` 上 success。
+
+# Post-Merge Finalization
+
+- implementation PR：#308 已 merge；原 Draft #307 因宿主 Draft→Ready GraphQL 包装器缺陷关闭未合并，保留为过程证据。
+- merge revision：`2f657dedd35f4d9dc6d0cc751e4caa4a8735c01c`，已确认是 `main` 当前实现合入 revision。
+- main fresh CI：CI #3705、Runtime #826、Change Completion #1564 全部 success。
+- archive：本文件由独立 governance-only 归档分支以同一 ID 从 `changes/active/` 移至 `changes/archive/2026-09/` 并设置 `status: done`。
+- Requirement Source：Issue #306 保持 open，待归档 PR 合入并取得最终 main 治理验证后执行 Closure Audit，再显式 close；没有使用 closing keyword 绕过 post-merge evidence。
 
 # 文档影响
 
 - 产品/架构文档不需要修改：公共 Contract、路由、数据模型、部署方式均不变化。
 - Figma “开发状态规格”的可见前端实现契约已同步当前真实数据源、字体与车型规则；历史 Dev Mode 注释中无法由当前 Plugin API 稳定改写的旧描述由该正式规格显式覆盖，不作为代码生成事实源。
-- Change 与 Issue 作为本次治理和需求追溯文档；合并 `main` 且 main 新鲜 CI 通过后再单独归档 Change 并关闭 Issue。
+- Change 与 Issue 作为本次治理和需求追溯文档；实现已合并 main，本文件完成独立归档后再关闭 Issue #306。
 
 # 交付
 
-- 提交：实现与验证头 `082b35332af0ed912c78d6f57b985d0abbd43176`；本提交将 Change 切换为 `ready_for_review`
-- 拉取请求：#307（当前 Draft；Change Completion Gate 通过后再转 Ready）
-- 合并：未执行；等待明确合并授权
-- 发布：不适用；合并 main 后由现有发布流程按需处理
+- 实现提交：feature head `4239be9b1c76cd512628d10f2bb2c01b2151ca31`
+- 实现拉取请求：#308 已合并；#307 关闭未合并，仅因宿主 Draft→Ready 连接器缺陷被替代
+- 合并：merge revision `2f657dedd35f4d9dc6d0cc751e4caa4a8735c01c`
+- main fresh：CI #3705、Runtime #826、Change Completion #1564 全绿
+- 归档：独立治理 PR 承载本文件 active→archive 同 ID 移动；归档合并并验证后关闭 Issue #306
+- 发布：不适用；后续由现有发布流程按需处理
