@@ -31,13 +31,13 @@ Requirement Source：https://github.com/dingyuwen777/AIMA_UGC/issues/290
 
 # 成功标准
 
-- [ ] AIMA 项目规则明确区分本地分支、远程分支和早期 PR 的正确时序。
-- [ ] L1 快速路径继续保留；只读分析/方案/Review 不因本门禁获得写权限。
-- [ ] 持久 gated L2 和 L3 在生产代码前建立 Issue/正式 Requirement Source、Change 与本地任务分支。
-- [ ] 首个本地治理/失败测试提交完成后，首次 push 创建远程跟踪分支，再建立早期 PR。
-- [ ] 早期 PR 未达到 Ready 时保持 Draft；宿主无法可靠转 Ready 时使用普通 PR 并明确逻辑未就绪。
-- [ ] Issue、Change、branch、PR 保持稳定可追溯，机器回归防止规则被误删。
-- [ ] 不新增平行 Workflow，不改变产品 Contract、Schema、依赖、Runtime 或部署。
+- [x] AIMA 项目规则明确区分本地分支、远程分支和早期 PR 的正确时序。
+- [x] L1 快速路径继续保留；只读分析/方案/Review 不因本门禁获得写权限。
+- [x] 持久 gated L2 和 L3 在生产代码前建立 Issue/正式 Requirement Source、Change 与本地任务分支。
+- [x] 首个本地治理/失败测试提交完成后，首次 push 创建远程跟踪分支，再建立早期 PR。
+- [x] 早期 PR 未达到 Ready 时保持 Draft；宿主无法可靠转 Ready 时使用普通 PR 并明确逻辑未就绪。
+- [x] Issue、Change、branch、PR 保持稳定可追溯，机器回归防止规则被误删。
+- [x] 不新增平行 Workflow，不改变产品 Contract、Schema、依赖、Runtime 或部署。
 
 # 范围
 
@@ -71,10 +71,10 @@ Requirement Source：https://github.com/dingyuwen777/AIMA_UGC/issues/290
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 任务开始时建立 Issue、Change、分支与早期 PR 的可追溯流程 | https://github.com/dingyuwen777/AIMA_UGC/issues/290 | not_satisfied | 尚未实现 |
-| R2 | 本地开发先创建本地分支，不能先创建远程分支 | user:local-branch-first | not_satisfied | 尚未实现 |
-| R3 | Skill Mutation 只改 canonical Agent_Skills，不在 AIMA 新建替代 Skill | user:canonical-skill-owner | not_satisfied | Agent_Skills Issue #156/独立 Change 正在实施；AIMA 本 Change 不新增 Skill |
-| R4 | 不改变现有产品能力与未完成 U1–U5 状态 | AGENTS.md；当前 Active Changes | not_satisfied | 待通过 diff 和回归证明 |
+| R1 | 任务开始时建立 Issue、Change、分支与早期 PR 的可追溯流程 | https://github.com/dingyuwen777/AIMA_UGC/issues/290 | satisfied | Issue #290、当前 Change、本地分支 `chore/290-work-initialization-gate` 与 PR #291 已形成追溯链；项目规则和 GOV016 锁定顺序 |
+| R2 | 本地开发先创建本地分支，不能先创建远程分支 | user:local-branch-first | satisfied | 首次 push 前已创建本地分支与提交 `1b3f3a5b`；`AGENTS.md`、Blueprint 06 与单测明确禁止远程空分支先行 |
+| R3 | Skill Mutation 只改 canonical Agent_Skills，不在 AIMA 新建替代 Skill | user:canonical-skill-owner | satisfied | AIMA diff 未新增 Skill；通用修改由 Agent_Skills Issue #156、Change 和 PR #157 独立承载 |
+| R4 | 不改变现有产品能力与未完成 U1–U5 状态 | AGENTS.md；当前 Active Changes | satisfied | diff 仅覆盖项目治理、文档、checker 与单测；Contract、Schema、依赖、Runtime 和既有 Active Change 状态未修改 |
 
 # Validation Matrix
 
@@ -101,10 +101,11 @@ Requirement Source：https://github.com/dingyuwen777/AIMA_UGC/issues/290
 - [x] 创建并关联 Issue #290
 - [x] 从最新 `main` 创建本地分支 `chore/290-work-initialization-gate`
 - [x] 建立本 Change
-- [ ] 提交本 Change，首次 push 创建远程分支并创建早期 PR
-- [ ] 先扩展失败回归并取得 Red
-- [ ] 更新项目规则、Blueprint 和 governance checker
-- [ ] 运行目标测试、项目质量门禁与 Ready Check
+- [x] 提交本 Change，首次 push 创建远程分支并创建早期 PR #291
+- [x] 先扩展失败回归并取得 Red
+- [x] 更新项目规则、Blueprint 和 governance checker
+- [x] 运行目标测试与项目质量门禁
+- [ ] 运行 Ready Check
 - [ ] 执行独立 Review、PR CI、merge 授权检查和 main fresh 验证
 
 # 验证
@@ -117,7 +118,12 @@ Requirement Source：https://github.com/dingyuwen777/AIMA_UGC/issues/290
 
 ## 新鲜证据
 
-- 尚未执行。
+- Red：`uv run pytest tests/unit/test_agent_governance.py -q` → `2 failed, 13 passed`；失败点分别是项目规则缺少本地优先标记、checker 未拒绝缺失门禁。
+- Green：同一目标测试 → `15 passed in 0.71s`。
+- `uv run ruff format --check scripts/quality/check_agent_governance.py tests/unit/test_agent_governance.py` → exit 0，`2 files already formatted`。
+- `uv run ruff check scripts/quality/check_agent_governance.py tests/unit/test_agent_governance.py` → exit 0。
+- `check_agent_governance.py`、`check_architecture.py`、`check_table_ownership.py`、`scan_secrets.py`、`check_docs.py` 均 exit 0。
+- 真实工作流：本地分支与首个本地提交 `1b3f3a5b` 先于首次 push；随后创建远程跟踪分支和早期 PR #291。
 
 # 文档影响
 
@@ -125,6 +131,6 @@ Requirement Source：https://github.com/dingyuwen777/AIMA_UGC/issues/290
 
 # 交付
 
-- 提交：待创建
-- 拉取请求：首次 push 后创建，Requirement-Source: #290
+- 提交：`1b3f3a5b`（Change）、`2b054aa4`（回归测试）、`f23f1f38`（规则与 checker）；本文件证据提交待生成
+- 拉取请求：https://github.com/dingyuwen777/AIMA_UGC/pull/291（Requirement-Source: #290）
 - 发布：不适用
