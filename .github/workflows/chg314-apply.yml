@@ -1,0 +1,94 @@
+name: CHG314 Apply Contract Patch
+
+on:
+  push:
+    branches:
+      - fix/314-frontend-fullstack-reliability
+    paths:
+      - .github/workflows/chg314-apply.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout change branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: fix/314-frontend-fullstack-reliability
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: 3.14.7
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24.19.0
+
+      - name: Install locked environments
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(npm --version)" = "11.17.0"
+          UV_VERSION="$(tr -d '\r\n' < .uv-version)"
+          python -m pip install "uv==${UV_VERSION}"
+          uv lock --check
+          uv sync --locked
+          npm ci --prefix frontend
+
+      - name: Apply exact source patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/dev/run_chg314_patch.py
+          uv run ruff format \
+            backend/src/aima_ugc/contracts/http.py \
+            backend/src/aima_ugc/contracts/administration.py \
+            backend/src/aima_ugc/bootstrap/api.py \
+            backend/src/aima_ugc/bootstrap/import_http.py \
+            backend/src/aima_ugc/bootstrap/administration_http.py \
+            backend/src/aima_ugc/bootstrap/historical_import_http.py \
+            backend/src/aima_ugc/adapters/persistence/postgres/system.py \
+            backend/src/aima_ugc/adapters/persistence/postgres/historical_import.py \
+            backend/src/aima_ugc/modules/administration/http.py \
+            tests/api/test_frontend_reliability_contracts.py
+
+      - name: Regenerate canonical contracts and frontend client
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/contracts/generate.py
+          npm --prefix frontend run generate:api
+          uv run python scripts/contracts/generate.py --check
+
+      - name: Run targeted RED to Green checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run pytest tests/api/test_frontend_reliability_contracts.py -q
+          npm --prefix frontend run test -- --run tests/identity-store.spec.ts tests/frontend-audit-regressions.spec.ts
+          npm --prefix frontend run typecheck
+
+      - name: Commit generated Green implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git status --short
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            backend \
+            contracts \
+            frontend/src \
+            tests/api/test_frontend_reliability_contracts.py
+          if git diff --cached --quiet; then
+            echo "No generated implementation changes found" >&2
+            exit 1
+          fi
+          git commit -m "fix: 建立可靠性公共 Contract" -m "Requirement-Source: #314"
+          git push origin HEAD:fix/314-frontend-fullstack-reliability
