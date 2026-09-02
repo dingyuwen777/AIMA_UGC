@@ -108,12 +108,11 @@ describe('采集运行中心正式 Figma 基线', () => {
       items: [],
       loading: false,
     })
-    const headStart = html.indexOf('<div class="table-head">')
-    const headEnd = html.indexOf('</div>', headStart)
-    const tableHead = html.slice(headStart, headEnd)
+    const tableHeadMatch = html.match(/<div class="table-head"[^>]*>([\s\S]*?)<\/div>/)
+    const tableHead = tableHeadMatch?.[1] ?? ''
 
-    expect(headStart).toBeGreaterThan(-1)
-    expect(tableHead.match(/<span>/g)).toHaveLength(7)
+    expect(tableHeadMatch).not.toBeNull()
+    expect(tableHead.match(/<span(?:\s[^>]*)?>/g)).toHaveLength(7)
     expect(tableHead).toContain('任务 / 执行编号')
     expect(tableHead).toContain('类型')
     expect(tableHead).toContain('状态与进度')
