@@ -27,6 +27,9 @@ async function load(): Promise<void> {
       status: props.includeDeprecated ? undefined : 'active',
       limit: 200,
     }))
+    if (!Array.isArray(response.items)) {
+      throw new Error('车型目录响应无效，请稍后重试。')
+    }
     options.value = response.items
   } catch (reason) {
     error.value = apiErrorMessage(reason)

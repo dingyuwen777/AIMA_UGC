@@ -517,8 +517,7 @@ class PostgresContentQueryRepository:
                 )
                 .join(
                     vehicle_models_table,
-                    vehicle_models_table.c.id
-                    == content_vehicle_evidence_table.c.vehicle_model_id,
+                    vehicle_models_table.c.id == content_vehicle_evidence_table.c.vehicle_model_id,
                 )
                 .outerjoin(
                     effective_vehicle,
@@ -677,9 +676,7 @@ class PostgresContentQueryRepository:
         else:
             ordered = tuple(
                 (primary, secondary)
-                for _, primary, secondary in sorted(
-                    labels[result_id], key=lambda item: item[0]
-                )
+                for _, primary, secondary in sorted(labels[result_id], key=lambda item: item[0])
             )
         locked_dimensions = tuple(
             dimension
@@ -810,14 +807,12 @@ def _apply_filters(
                 .select_from(
                     content_vehicle_evidence_table.join(
                         filter_vehicle,
-                        filter_vehicle.c.id
-                        == content_vehicle_evidence_table.c.vehicle_model_id,
+                        filter_vehicle.c.id == content_vehicle_evidence_table.c.vehicle_model_id,
                     )
                 )
                 .where(
                     content_vehicle_evidence_table.c.content_id == content.c.id,
-                    content_vehicle_evidence_table.c.content_version
-                    == content.c.current_version,
+                    content_vehicle_evidence_table.c.content_version == content.c.current_version,
                     or_(
                         content_vehicle_evidence_table.c.vehicle_model_id.in_(
                             filters.vehicle_model_ids

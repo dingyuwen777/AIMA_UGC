@@ -96,8 +96,7 @@ class PostgresNotificationRepository:
                 )
                 .join(
                     notification_events_table,
-                    notification_events_table.c.id
-                    == notification_inbox_items_table.c.event_id,
+                    notification_events_table.c.id == notification_inbox_items_table.c.event_id,
                 )
                 .where(notification_inbox_items_table.c.principal_id == principal_id)
                 .order_by(

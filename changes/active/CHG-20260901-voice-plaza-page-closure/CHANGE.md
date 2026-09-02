@@ -3,9 +3,9 @@ schema: coding-change/v1
 id: CHG-20260901-voice-plaza-page-closure
 title: 声音广场页面动作与 VP5 验收收口
 level: L2
-status: in_progress
+status: ready_for_review
 owner: codex
-branch: main
+branch: test/294-vp5-u1-u5-runtime-validation
 created: 2026-09-01
 updated: 2026-09-02
 completion_gate: required
@@ -77,24 +77,24 @@ Excluded：新 Schema/Migration、管理员配置页、车型、总数页码、�
 
 - [x] 复核当前列表/详情/状态/动作与 Figma CURRENT 节点。
 - [x] 为确认缺口建立 Red，最小修改 Feature/Shared Owner。
-- [ ] 补齐 Browser Mock 与真实 Full-stack Golden Path。
+- [x] 补齐 Browser Mock 与真实 Full-stack Golden Path。
 - [x] 重新读取上游并执行正反向能力审计。
-- [ ] 完成两阶段 Review、文档同步和全部 required 新鲜验证。
+- [x] 完成两阶段 Review、文档同步和全部 required 新鲜验证。
 
 # Completion Audit
 
 - [x] upstream_re_read
 - [x] change_coverage
 - [x] reverse_audit
-- [ ] unresolved_cleared
+- [x] unresolved_cleared
 
 # 当前验证边界
 
-Unit/Component、Contract/generated、完整 Browser Mock、Build、Figma Conformance 与文档/治理门禁已有本轮证据。Docker Desktop Linux Engine 未响应且本机没有 PostgreSQL/API 监听，因此 Backend/PostgreSQL Integration 与 Real Full-stack Golden Path 仍未验证；Change 继续保持 `in_progress`，不把 Browser Mock 写成真实全栈证明。
+Unit/Component、Contract/generated、43 条 Browser Mock、Build、Figma Conformance、186 条 PostgreSQL Integration 与 9 条 Real Full-stack Golden Path 已有本轮证据。当前无语义未决项，Change 进入 `ready_for_review`；Browser Mock 与真实全栈证据继续分开记录，PR CI、合并与 main 新鲜验证仍是外部交付门禁。
 
 # 独立 Review 记录
 
-以 base/current-base `4115e94df5d1bc46aa5ca28068c993424469ed57` 上的未提交 working tree 执行 Standard Review，并与依赖 Change 的 L3 Deep Review 联合审计。Figma CURRENT 八个列表态、详情、Analysis Preview、Export 状态与生产页面做正反向对照；代码范围内未发现新的 Finding。由于真实 PostgreSQL/Full-stack 未运行，Review 结论仍是“实现范围无 Finding、交付证据阻塞”，不是完整 VP5 PASS。
+以 base/current-base `4115e94df5d1bc46aa5ca28068c993424469ed57` 上的未提交 working tree 执行的初始 Standard Review 保留为历史记录。本次恢复验证另以 Issue #294 / PR #295 的 current base、current head 和最终 CI 记录补充，不再把 PostgreSQL/Full-stack 列为阻塞。
 
 # 兼容、部署与回滚
 

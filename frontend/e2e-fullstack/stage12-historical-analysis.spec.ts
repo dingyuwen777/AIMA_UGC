@@ -46,13 +46,31 @@ async function uploadBaseline(
   }, { timeout: 60_000 }).toBe('succeeded')
 }
 
-async function createAnalysisRun(page: Page, expectedSequence: number): Promise<void> {
+async function createAnalysisRun(
+  page: Page,
+  request: APIRequestContext,
+): Promise<{ id: string; sequenceNo: number }> {
   await page.getByLabel(/选择 爱玛 Stage12 当前标题/).check()
   await page.getByRole('button', { name: /AI 打标/ }).click()
   const dialog = page.getByRole('dialog', { name: '创建 AI Analysis Run' })
   await expect(dialog.getByText('预检目标 1 条，拆分 1 个 Shard')).toBeVisible()
+  const createdResponsePromise = page.waitForResponse((response) =>
+    response.request().method() === 'POST'
+      && new URL(response.url()).pathname === '/api/v1/analysis/content-runs')
   await dialog.getByRole('button', { name: '确认并创建 Analysis Run' }).click()
-  await expect(page.getByText(`Run #${expectedSequence} · 已完成`)).toBeVisible({ timeout: 60_000 })
+  const createdResponse = await createdResponsePromise
+  expect(createdResponse.status()).toBe(202)
+  const created = await createdResponse.json() as { run_id: string }
+  let sequenceNo = 0
+  await expect.poll(async () => {
+    const response = await request.get(`/api/v1/analysis/content-runs/${created.run_id}`)
+    if (response.status() !== 200) return `http-${response.status()}`
+    const run = await response.json() as { sequence_no: number; status: string }
+    sequenceNo = run.sequence_no
+    return run.status
+  }, { timeout: 60_000 }).toBe('succeeded')
+  await expect(page.getByText(`Run #${sequenceNo} · 已完成`)).toBeVisible()
+  return { id: created.run_id, sequenceNo }
 }
 
 async function injectPrewriteChunkFailure(campaignId: string): Promise<void> {
@@ -108,13 +126,15 @@ test('统一导入的服务器历史补空 Campaign 经真实 API/Worker/DB 入�
   await expect(page.getByText('爱玛 Stage12 历史新建', { exact: true })).toBeVisible()
   await expect(page.getByText('爱玛 Stage12 历史冲突标题', { exact: true })).toHaveCount(0)
 
-  await createAnalysisRun(page, 1)
+  const firstRun = await createAnalysisRun(page, request)
   await page.getByRole('button', { name: '刷新数据' }).click()
   const contentList = page.getByRole('region', { name: '声音广场内容列表' })
   await expect(contentList.getByText('正面', { exact: true })).toBeVisible()
-  await createAnalysisRun(page, 2)
+  const secondRun = await createAnalysisRun(page, request)
   await page.getByRole('button', { name: '刷新数据' }).click()
   await expect(contentList.getByText('负面', { exact: true })).toBeVisible()
-  await expect(page.getByText('Run #1 · 已完成')).toBeVisible()
-  await expect(page.getByText('Run #2 · 已完成')).toBeVisible()
+  expect(secondRun.id).not.toBe(firstRun.id)
+  expect(secondRun.sequenceNo).toBeGreaterThan(firstRun.sequenceNo)
+  await expect(page.getByText(`Run #${firstRun.sequenceNo} · 已完成`)).toBeVisible()
+  await expect(page.getByText(`Run #${secondRun.sequenceNo} · 已完成`)).toBeVisible()
 })

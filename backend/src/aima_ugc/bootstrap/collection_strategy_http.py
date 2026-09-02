@@ -329,23 +329,27 @@ def _validate_execution_surface(
             catalog = PostgresScheduledKeywordSnapshotReader(session).read(plan.keyword_pack_ids)
         except MissingScheduledKeywordPackError as exc:  # pragma: no cover - 已持锁逐项验证
             raise CollectionStrategyResourceNotFound from exc
-        keyword_terms = tuple(
-            dict.fromkeys(
-                entry.keyword_text
-                for entry in catalog.entries
-                if entry.pack_enabled and entry.keyword_enabled and entry.item_enabled
-            )
+        keyword_entries = tuple(
+            entry
+            for entry in catalog.entries
+            if entry.pack_enabled and entry.keyword_enabled and entry.item_enabled
         )
     else:
-        keyword_terms = ()
+        keyword_entries = ()
     try:
         vehicle_snapshot = PostgresVehicleCatalogRepository(session).snapshot(
             plan.vehicle_model_ids
         )
     except LookupError as exc:
         raise CollectionStrategyResourceNotFound from exc
-    if not keyword_terms and not vehicle_snapshot.resolved_aliases:
-        raise CollectionStrategyConflict("目标平台没有可用 Discovery 关键词或车型别名")
+    if not vehicle_snapshot.resolved_aliases:
+        for item in plan.platforms:
+            if not any(
+                entry.item_platform_scope in ("all", item.platform) for entry in keyword_entries
+            ):
+                raise CollectionStrategyConflict(
+                    f"目标平台 {item.platform} 没有可用 Discovery 关键词或车型别名"
+                )
 
     providers = PostgresProviderConfigRepository(session)
     registry = build_default_provider_registry()

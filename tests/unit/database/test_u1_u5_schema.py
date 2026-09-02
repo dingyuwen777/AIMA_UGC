@@ -38,6 +38,18 @@ def test_vehicle_alias_and_content_evidence_constraints_exist() -> None:
     assert "uq_content_vehicle_evidence_identity" in evidence_uniques
 
 
+def test_u1_u5_query_indexes_are_registered_in_metadata() -> None:
+    """迁移创建的查询索引也必须进入 MetaData，避免 Alembic 误判为待删除。"""
+
+    evidence = metadata.tables["content_vehicle_evidence"]
+    inbox = metadata.tables["notification_inbox_items"]
+
+    assert "ix_content_vehicle_evidence_active_vehicle" in {
+        index.name for index in evidence.indexes
+    }
+    assert "ix_notification_inbox_principal_created" in {index.name for index in inbox.indexes}
+
+
 def test_confirmed_unavailable_requires_linked_provider_evidence_constraint() -> None:
     """数据库必须阻止只有字符串声明、却没有 Attempt/Raw 指针的 confirmed 状态。"""
 
@@ -47,9 +59,10 @@ def test_confirmed_unavailable_requires_linked_provider_evidence_constraint() ->
         for constraint in availability.constraints
         if hasattr(constraint, "sqltext")
     }
-    expression = checks[
-        "ck_content_availability_observations_confirmed_requires_explicit_evidence"
-    ]
+    expression = checks["ck_content_availability_observations_confirmed_evidence"]
 
     assert "provider_attempt_id is not null" in expression
     assert "raw_artifact_id is not null" in expression
+
+    assert "ck_content_availability_observations_technical_status" in checks
+    assert all(len(name) <= 63 for name in checks)

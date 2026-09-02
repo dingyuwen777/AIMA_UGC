@@ -20,9 +20,7 @@ TAXONOMY_PLACEHOLDER = "{{AIMA_TAXONOMY_JSON}}"
 _TAXONOMY_START = "<!-- AIMA_TAXONOMY_START -->"
 _TAXONOMY_END = "<!-- AIMA_TAXONOMY_END -->"
 _BLOCK_PATTERN = re.compile(
-    re.escape(_TAXONOMY_START)
-    + r".*?"
-    + re.escape(_TAXONOMY_END),
+    re.escape(_TAXONOMY_START) + r".*?" + re.escape(_TAXONOMY_END),
     flags=re.DOTALL,
 )
 
@@ -78,7 +76,8 @@ def compile_analysis_scheme(
         "schema_version": "aima-content-taxonomy.v2",
         "sentiments": list(definition.sentiments),
         "voice_types": list(definition.voice_types),
-        "labels": {key: list(values) for key, values in definition.labels.items()},
+        # PostgreSQL JSONB 不保留对象键插入顺序，Prompt 编译必须显式规范化。
+        "labels": {key: list(definition.labels[key]) for key in sorted(definition.labels)},
     }
     readable_json = json.dumps(taxonomy_payload, ensure_ascii=False, indent=2)
     normalized_json = json.dumps(

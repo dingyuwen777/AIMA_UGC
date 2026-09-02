@@ -3,9 +3,9 @@ schema: coding-change/v1
 id: CHG-20260902-u1-vehicle-catalog
 title: U1 车型目录与词包资源统一
 level: L3
-status: in_progress
+status: ready_for_review
 owner: codex
-branch: main
+branch: test/294-vp5-u1-u5-runtime-validation
 created: 2026-09-02
 updated: 2026-09-02
 completion_gate: required
@@ -80,14 +80,15 @@ data_changes:
 - [x] upstream_re_read
 - [x] change_coverage
 - [x] reverse_audit
-- [ ] unresolved_cleared
+- [x] unresolved_cleared
 
-当前未清零项：本机 Docker Desktop Linux Engine 因 `dockerInference` reparse point 故障不可用，且无独立 PostgreSQL 二进制；真实 Migration、PostgreSQL Integration 与 Real Full-stack 证据尚未取得，因此本 Change 保持 `in_progress`。
+当前无语义未决项：本地 required 验证与独立 Review 已完成，本 Change 进入 `ready_for_review`；PR CI、合并与 main 新鲜验证仍是外部交付门禁。
 
 # 本轮验证证据
 
-- API/Contract/Unit 受支持范围：`866 passed, 8 skipped, 0 failed`；
+- Windows 可支持 Unit 范围：`723 passed, 8 skipped, 0 failed`；完整 Unit 另有 9 条已知 POSIX-only 失败，交由 Ubuntu PR CI 作权威门禁；
 - 生成后 Contract 专项：`101 passed, 0 failed`；OpenAPI 与 Orval Client 重新生成成功；
 - 前端：ESLint、TypeScript/Vue typecheck、`67 passed`、production build 通过；
 - 变更集 Ruff、全后端 Mypy、六项架构/Owner/Secret/Docs/Governance 门禁通过；
-- Alembic 静态链为 `20260902_0031 -> ... -> 20260902_0036 (head)`；未把静态链检查写成真实迁移成功。
+- PostgreSQL 18.4 空库真实升级到 `20260902_0038` 且 `alembic check` 无漂移；既有 `0037` 开发库保留 1 条 Scheme Version 升级到 `0038`；
+- PostgreSQL Integration `186 passed`；Real Full-stack 中“新建车型→关联词包→重新读取”通过。

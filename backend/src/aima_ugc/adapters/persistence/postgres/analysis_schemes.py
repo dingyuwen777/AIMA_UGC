@@ -211,14 +211,17 @@ class PostgresAnalysisSchemeRepository:
             raise RuntimeError("Scheme 草稿不存在、已发布或版本冲突")
 
         target = _version_from_row(target_row)
-        next_version = int(
-            self._session.scalar(
-                select(func.max(analysis_scheme_versions_table.c.version)).where(
-                    analysis_scheme_versions_table.c.scheme_id == target.scheme_id
+        next_version = (
+            int(
+                self._session.scalar(
+                    select(func.max(analysis_scheme_versions_table.c.version)).where(
+                        analysis_scheme_versions_table.c.scheme_id == target.scheme_id
+                    )
                 )
+                or 0
             )
-            or 0
-        ) + 1
+            + 1
+        )
         now = beijing_now()
         self._session.execute(
             update(analysis_scheme_versions_table)

@@ -74,9 +74,7 @@ class PostgresVehicleCatalogRepository:
         )
         if seed is None:
             raise RuntimeError("Vehicle Catalog 尚未初始化")
-        current = self._session.scalar(
-            select(func.max(vehicle_catalog_versions_table.c.version))
-        )
+        current = self._session.scalar(select(func.max(vehicle_catalog_versions_table.c.version)))
         next_version = int(current or 1) + 1
         self._session.execute(
             insert(vehicle_catalog_versions_table).values(
@@ -449,9 +447,7 @@ class PostgresVehicleCatalogRepository:
                 cast(UUID, alias_row["vehicle_model_id"])
             )
         unambiguous_rows = tuple(
-            row
-            for row in rows
-            if len(candidates_by_alias[cast(str, row["normalized_text"])]) == 1
+            row for row in rows if len(candidates_by_alias[cast(str, row["normalized_text"])]) == 1
         )
         if not unambiguous_rows:
             raise LookupError("所选车型没有可自动解析的非歧义别名")
@@ -462,13 +458,10 @@ class PostgresVehicleCatalogRepository:
                 dict.fromkeys(cast(str, row["text"]) for row in unambiguous_rows)
             ),
             vehicle_versions=tuple(
-                dict.fromkeys(
-                    (cast(UUID, row["id"]), cast(int, row["version"])) for row in rows
-                )
+                dict.fromkeys((cast(UUID, row["id"]), cast(int, row["version"])) for row in rows)
             ),
             alias_bindings=tuple(
-                (cast(UUID, row["id"]), cast(str, row["text"]))
-                for row in unambiguous_rows
+                (cast(UUID, row["id"]), cast(str, row["text"])) for row in unambiguous_rows
             ),
         )
 
@@ -510,19 +503,19 @@ class PostgresVehicleCatalogRepository:
                 return False
 
         statement = pg_insert(content_vehicle_evidence_table).values(
-                id=evidence.id,
-                content_id=evidence.content_id,
-                content_version=evidence.content_version,
-                vehicle_model_id=evidence.vehicle_model_id,
-                source=evidence.source,
-                matched_text=evidence.matched_text,
-                source_field=evidence.source_field,
-                catalog_version=evidence.catalog_version,
-                confidence=evidence.confidence,
-                is_manual_locked=evidence.is_manual_locked,
-                is_active=evidence.is_active,
-                created_at=evidence.created_at,
-            )
+            id=evidence.id,
+            content_id=evidence.content_id,
+            content_version=evidence.content_version,
+            vehicle_model_id=evidence.vehicle_model_id,
+            source=evidence.source,
+            matched_text=evidence.matched_text,
+            source_field=evidence.source_field,
+            catalog_version=evidence.catalog_version,
+            confidence=evidence.confidence,
+            is_manual_locked=evidence.is_manual_locked,
+            is_active=evidence.is_active,
+            created_at=evidence.created_at,
+        )
         if evidence.is_manual_locked:
             statement = statement.on_conflict_do_update(
                 constraint="uq_content_vehicle_evidence_identity",

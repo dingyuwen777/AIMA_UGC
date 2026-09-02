@@ -7,6 +7,9 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from aima_ugc.adapters.persistence.postgres.analysis_schemes import (
+    PostgresAnalysisSchemeRepository,
+)
 from aima_ugc.adapters.persistence.postgres.reporting import PostgresDataExportRepository
 from aima_ugc.bootstrap.analysis_worker import (
     PostgresContentAnalysisJobExecutor,
@@ -30,17 +33,16 @@ from aima_ugc.contracts.http import (
     DataExportSubmitRequest,
 )
 from aima_ugc.modules.analysis import (
-    CONTENT_LABELING_PROMPT_PATH,
     ContentLabelingService,
     FakeContentLabelingLLM,
     FrozenPromptTaxonomyLoader,
-    PromptTaxonomyLoader,
 )
 from aima_ugc.modules.analysis.content_analysis_job import (
     ContentAnalysisJobHandler,
     ContentAnalysisPlanJobHandler,
     register_content_analysis_job,
 )
+from aima_ugc.modules.analysis.schemes import prompt_taxonomy_from_version
 from aima_ugc.modules.analysis.tables import (
     analysis_content_label_pairs_table,
     analysis_content_request_items_table,
@@ -123,8 +125,21 @@ def _seed_import(client: TestClient, *, text_suffix: str = "") -> str:
     return str(uploaded.json()["batch_id"])
 
 
+def _active_taxonomy(runtime):  # type: ignore[no-untyped-def]
+    """读取 Run 已冻结的数据库 Scheme，避免测试重新引入 Git Prompt 配置源。"""
+
+    session = runtime.database.new_session()
+    try:
+        with session.begin():
+            version = PostgresAnalysisSchemeRepository(session).get_active_version()
+            assert version is not None
+            return prompt_taxonomy_from_version(version)
+    finally:
+        session.close()
+
+
 def _analysis_registry(runtime, response: str) -> JobRegistry:  # type: ignore[no-untyped-def]
-    taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
+    taxonomy = _active_taxonomy(runtime)
     service = ContentLabelingService(
         prompt_loader=FrozenPromptTaxonomyLoader(taxonomy),
         llm=FakeContentLabelingLLM(responses=[response]),
@@ -305,6 +320,7 @@ def test_voice_plaza_analysis_idempotency_and_export_artifact(tmp_path: Path) ->
                 targets=ContentTargetSelection(scope="selected", content_ids=content_ids)
             ),
             request_id="stage8d-export",
+            actor_ref="user:stage8d",
         )
         session = runtime.database.new_session()
         try:
@@ -545,7 +561,7 @@ def test_analysis_content_version_change_during_llm_marks_request_item_stale(
             ),
             request_id="stage8d-stale",
         )
-        taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
+        taxonomy = _active_taxonomy(runtime)
         delegate = ContentLabelingService(
             prompt_loader=FrozenPromptTaxonomyLoader(taxonomy),
             llm=FakeContentLabelingLLM(

@@ -121,9 +121,7 @@ def main() -> int:
         session = runtime.database.new_session()
         try:
             with session.begin():
-                identity = active_analysis_configuration(
-                    session, runtime.settings
-                ).identity
+                identity = active_analysis_configuration(session, runtime.settings).identity
                 if identity is None:
                     raise RuntimeError("Stage8F 人工复核必须配置测试 Analysis identity")
                 rows = tuple(

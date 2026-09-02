@@ -419,9 +419,7 @@ class PostgresAdministrationHttpService:
         try:
             with session.begin():
                 repository = PostgresAnalysisSchemeRepository(session)
-                version, created = repository.bootstrap_default(
-                    actor_ref="system:git-bootstrap"
-                )
+                version, created = repository.bootstrap_default(actor_ref="system:git-bootstrap")
                 if created:
                     _audit_system_scheme_bootstrap(session, version)
                 return AnalysisSchemeListResponse(

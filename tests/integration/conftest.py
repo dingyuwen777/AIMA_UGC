@@ -9,9 +9,23 @@ import pytest
 from aima_ugc.platform.config import load_settings
 from aima_ugc.platform.database import DatabaseRuntime
 from sqlalchemy import inspect, text
+from sqlalchemy.engine import Connection
 
 _CI_DATABASE_PASSWORD = "ci-postgres"
 _LOCAL_DATABASE_HOSTS = {"127.0.0.1", "localhost"}
+
+
+def _restore_migration_seed_rows(connection: Connection) -> None:
+    """恢复被 CI 清库删除、但生产数据库由 Migration 保证存在的系统种子。"""
+
+    connection.execute(
+        text(
+            "INSERT INTO vehicle_catalog_versions "
+            "(version, reason, actor_ref, created_at) "
+            "VALUES (1, 'initial_catalog', 'system:migration', CURRENT_TIMESTAMP) "
+            "ON CONFLICT (version) DO NOTHING"
+        )
+    )
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -49,6 +63,7 @@ def reset_consolidated_ci_database() -> Iterator[None]:
             tables = ", ".join(quote(table_name) for table_name in table_names)
             with runtime.engine.begin() as connection:
                 connection.execute(text(f"TRUNCATE TABLE {tables} RESTART IDENTITY CASCADE"))
+                _restore_migration_seed_rows(connection)
     finally:
         runtime.dispose()
 

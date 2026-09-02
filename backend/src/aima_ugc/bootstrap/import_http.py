@@ -510,9 +510,7 @@ class PostgresImportHttpService:
         keyword_pack_ids: tuple[UUID, ...],
         vehicle_model_ids: tuple[UUID, ...] = (),
     ) -> ImportKeywordSelectionSnapshot:
-        return read_import_keyword_selection(
-            self._runtime, keyword_pack_ids, vehicle_model_ids
-        )
+        return read_import_keyword_selection(self._runtime, keyword_pack_ids, vehicle_model_ids)
 
     def _read_relevance_snapshot(self) -> tuple[RelevanceSnapshotV1, datetime]:
         session = self._runtime.database.new_session()

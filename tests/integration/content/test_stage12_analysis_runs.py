@@ -8,6 +8,9 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
+from aima_ugc.adapters.persistence.postgres.analysis_schemes import (
+    PostgresAnalysisSchemeRepository,
+)
 from aima_ugc.bootstrap.analysis_worker import (
     PostgresContentAnalysisJobExecutor,
     PostgresContentAnalysisPlanJobExecutor,
@@ -22,17 +25,16 @@ from aima_ugc.bootstrap.worker import (
     create_worker_runtime,
 )
 from aima_ugc.modules.analysis import (
-    CONTENT_LABELING_PROMPT_PATH,
     ContentLabelingService,
     FakeContentLabelingLLM,
     FrozenPromptTaxonomyLoader,
-    PromptTaxonomyLoader,
 )
 from aima_ugc.modules.analysis.content_analysis_job import (
     ContentAnalysisJobHandler,
     ContentAnalysisPlanJobHandler,
     register_content_analysis_job,
 )
+from aima_ugc.modules.analysis.schemes import prompt_taxonomy_from_version
 from aima_ugc.modules.analysis.tables import (
     analysis_content_requests_table,
     analysis_content_results_table,
@@ -107,7 +109,14 @@ def _response(sentiment: str) -> str:
 
 
 def _analysis_registry(runtime, *, sentiment: str) -> JobRegistry:  # type: ignore[no-untyped-def]
-    taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
+    session = runtime.database.new_session()
+    try:
+        with session.begin():
+            version = PostgresAnalysisSchemeRepository(session).get_active_version()
+            assert version is not None
+            taxonomy = prompt_taxonomy_from_version(version)
+    finally:
+        session.close()
     service = ContentLabelingService(
         prompt_loader=FrozenPromptTaxonomyLoader(taxonomy),
         llm=FakeContentLabelingLLM(responses=[_response(sentiment)] * 3),
@@ -528,7 +537,14 @@ def test_analysis_run_runtime_configuration_policy(
         drifted_runtime = create_worker_runtime(
             settings=settings.model_copy(update={"llm_model": "fake-content-labeler-v2"})
         )
-        taxonomy = PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH).load()
+        session = drifted_runtime.database.new_session()
+        try:
+            with session.begin():
+                version = PostgresAnalysisSchemeRepository(session).get_active_version()
+                assert version is not None
+                taxonomy = prompt_taxonomy_from_version(version)
+        finally:
+            session.close()
         fake_llm = FakeContentLabelingLLM(
             responses=[_response("负面")],
             model_name="fake-content-labeler-v2",

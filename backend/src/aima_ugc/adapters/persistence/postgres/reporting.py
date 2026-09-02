@@ -312,9 +312,7 @@ class PostgresDataExportRepository:
                 )
             )
         ).mappings()
-        manual_by_content = {
-            cast(UUID, manual["content_id"]): manual for manual in manual_rows
-        }
+        manual_by_content = {cast(UUID, manual["content_id"]): manual for manual in manual_rows}
         result_ids = tuple(cast(UUID, row["id"]) for row in rows)
         labels: dict[UUID, list[tuple[int, str, str]]] = defaultdict(list)
         if result_ids:
@@ -528,10 +526,7 @@ class PostgresDataExportRepository:
             .subquery()
         )
         rows = self._session.execute(select(ranked).where(ranked.c.rank == 1)).mappings()
-        return {
-            cast(UUID, row["content_id"]): cast(str, row["status"])
-            for row in rows
-        }
+        return {cast(UUID, row["content_id"]): cast(str, row["status"]) for row in rows}
 
 
 def _content_projection(

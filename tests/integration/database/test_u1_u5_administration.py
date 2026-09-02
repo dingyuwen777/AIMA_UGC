@@ -140,26 +140,38 @@ def test_vehicle_merge_redirects_future_references_and_audits_mutations(runtime)
     assert service.get_vehicle_model(source.id).merged_into_id == final_target.id
     assert service.get_vehicle_model(target.id).merged_into_id == final_target.id
     with runtime.database.engine.begin() as connection:
-        assert connection.scalar(
-            select(func.count()).select_from(keyword_pack_vehicle_models_table).where(
-                keyword_pack_vehicle_models_table.c.vehicle_model_id == source.id
+        assert (
+            connection.scalar(
+                select(func.count())
+                .select_from(keyword_pack_vehicle_models_table)
+                .where(keyword_pack_vehicle_models_table.c.vehicle_model_id == source.id)
             )
-        ) == 0
-        assert connection.scalar(
-            select(func.count()).select_from(keyword_pack_vehicle_models_table).where(
-                keyword_pack_vehicle_models_table.c.vehicle_model_id == final_target.id
+            == 0
+        )
+        assert (
+            connection.scalar(
+                select(func.count())
+                .select_from(keyword_pack_vehicle_models_table)
+                .where(keyword_pack_vehicle_models_table.c.vehicle_model_id == final_target.id)
             )
-        ) == 1
-        assert connection.scalar(
-            select(func.count()).select_from(collection_plan_vehicle_models_table).where(
-                collection_plan_vehicle_models_table.c.vehicle_model_id == source.id
+            == 1
+        )
+        assert (
+            connection.scalar(
+                select(func.count())
+                .select_from(collection_plan_vehicle_models_table)
+                .where(collection_plan_vehicle_models_table.c.vehicle_model_id == source.id)
             )
-        ) == 0
-        assert connection.scalar(
-            select(func.count()).select_from(collection_plan_vehicle_models_table).where(
-                collection_plan_vehicle_models_table.c.vehicle_model_id == final_target.id
+            == 0
+        )
+        assert (
+            connection.scalar(
+                select(func.count())
+                .select_from(collection_plan_vehicle_models_table)
+                .where(collection_plan_vehicle_models_table.c.vehicle_model_id == final_target.id)
             )
-        ) == 1
+            == 1
+        )
 
     session = runtime.database.new_session()
     try:

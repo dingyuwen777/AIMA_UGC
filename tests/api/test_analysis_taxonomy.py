@@ -21,9 +21,7 @@ def test_analysis_taxonomy_returns_safe_prompt_projection() -> None:
             readiness_check=_readiness,
             analysis_taxonomy_loader=PromptTaxonomyLoader(CONTENT_LABELING_PROMPT_PATH),
         )
-    ).get(
-        "/api/v1/content-analysis-taxonomy"
-    )
+    ).get("/api/v1/content-analysis-taxonomy")
 
     assert response.status_code == 200
     payload = response.json()

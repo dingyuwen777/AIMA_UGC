@@ -231,9 +231,7 @@ class PostgresHistoricalImportJobExecutor:
                     input_path=frozen_path,
                     output_dir=work_dir / "chunks",
                     profile_name=_required_string(profile, "profile"),
-                    effective_keywords=_optional_string_tuple(
-                        keywords.get("effective_keywords")
-                    ),
+                    effective_keywords=_optional_string_tuple(keywords.get("effective_keywords")),
                     vehicle_aliases=tuple(
                         alias
                         for model in _mapping_tuple(keywords.get("vehicle_models"))
@@ -367,9 +365,7 @@ class PostgresHistoricalImportJobExecutor:
                         session,
                         batch_id=payload.batch_id,
                         rows=rows,
-                        keyword_snapshot=cast(
-                            dict[str, object], campaign["keyword_pack_snapshot"]
-                        ),
+                        keyword_snapshot=cast(dict[str, object], campaign["keyword_pack_snapshot"]),
                     )
                     repository.complete_chunk(
                         payload.chunk_item_id,

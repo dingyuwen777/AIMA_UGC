@@ -123,6 +123,31 @@ def test_fullstack_spec_change_runs_only_that_real_golden_path() -> None:
     assert requirements.fullstack_specs == ("manual-relevance-review.spec.ts",)
 
 
+def test_administration_persistence_runs_admin_product_golden_path() -> None:
+    requirements = _requirements(
+        "backend/src/aima_ugc/adapters/persistence/postgres/notifications.py"
+    )
+
+    assert requirements.backend_required is True
+    assert requirements.postgres_required is True
+    assert requirements.fullstack_required is True
+    assert requirements.fullstack_specs == ("admin-product-capabilities.spec.ts",)
+
+
+def test_analysis_scheme_persistence_runs_admin_and_frozen_run_golden_paths() -> None:
+    requirements = _requirements(
+        "backend/src/aima_ugc/adapters/persistence/postgres/analysis_schemes.py"
+    )
+
+    assert requirements.backend_required is True
+    assert requirements.postgres_required is True
+    assert requirements.fullstack_required is True
+    assert requirements.fullstack_specs == (
+        "admin-product-capabilities.spec.ts",
+        "stage12-historical-analysis.spec.ts",
+    )
+
+
 def test_fullstack_control_plane_change_runs_entire_real_suite() -> None:
     requirements = _requirements("frontend/playwright.fullstack.config.ts")
 

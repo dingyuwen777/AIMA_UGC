@@ -3,9 +3,9 @@ schema: coding-change/v1
 id: CHG-20260902-u5-product-capabilities
 title: U5 可用状态、计数、导出列与站内通知
 level: L3
-status: in_progress
+status: ready_for_review
 owner: codex
-branch: main
+branch: test/294-vp5-u1-u5-runtime-validation
 created: 2026-09-02
 updated: 2026-09-02
 completion_gate: required
@@ -69,13 +69,14 @@ U5 增加四个独立 Owner 的能力，不建万能任务表：Content 保存�
 - [x] upstream_re_read
 - [x] change_coverage
 - [x] reverse_audit
-- [ ] unresolved_cleared
+- [x] unresolved_cleared
 
-当前未清零项：Contract、列白名单、前端交互和静态 Schema 已验证，但 Availability/Count/Export Snapshot/Inbox 的真实 PostgreSQL Integration、Migration 与导出终态 Full-stack 仍受本机 Docker/PostgreSQL 不可用阻塞；逐 Provider 自动观察、生产估算源和个人列 Profile 按路线延期。本 Change 保持 `in_progress`。
+当前无语义未决项：本地 required 验证与独立 Review 已完成，逐 Provider 自动观察、生产估算源和个人列 Profile 按路线延期，本 Change 进入 `ready_for_review`；PR CI、合并与 main 新鲜验证仍是外部交付门禁。
 
 # 本轮验证证据
 
 - API/Contract/Unit 受支持范围：`866 passed, 8 skipped, 0 failed`；生成后 Contract 专项 `101 passed`；
 - `unavailable_confirmed` 的 Provider 证据指针、截断 exact→none、列白名单/版本和 Principal Inbox 隔离已由 Contract/API/静态 Schema 测试覆盖；
 - 声音广场 Count/Availability/导出列和 AppShell 通知入口已反向审计，前端 ESLint/typecheck、`67 passed` 与 production build 通过；
-- 导出终态→通知→下载、Availability 历史和 Count 查询的真实数据库路径仍未运行，不能标记 Ready。
+- PostgreSQL Integration 已覆盖 Availability 历史、Count、Export Snapshot 与 Inbox Principal 隔离；
+- Real Full-stack 已通过“导出 Worker 终态→当前 Principal 通知→真实 XLSX 下载”。

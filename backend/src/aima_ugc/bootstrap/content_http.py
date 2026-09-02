@@ -132,9 +132,7 @@ class PostgresContentHttpService:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                configuration = active_analysis_configuration(
-                    session, self._runtime.settings
-                )
+                configuration = active_analysis_configuration(session, self._runtime.settings)
                 rows = PostgresContentQueryRepository(
                     session,
                     analysis_identity=configuration.identity,
@@ -172,9 +170,7 @@ class PostgresContentHttpService:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                configuration = active_analysis_configuration(
-                    session, self._runtime.settings
-                )
+                configuration = active_analysis_configuration(session, self._runtime.settings)
                 repository = PostgresContentQueryRepository(
                     session,
                     analysis_identity=configuration.identity,
@@ -239,9 +235,7 @@ class PostgresContentHttpService:
                         request_id=request_id,
                         safe_detail={
                             "content_version": request.content_version,
-                            "vehicle_model_ids": [
-                                str(item) for item in request.vehicle_model_ids
-                            ],
+                            "vehicle_model_ids": [str(item) for item in request.vehicle_model_ids],
                             "unlocked_existing": request.unlock_existing,
                         },
                         created_at=beijing_now(),
@@ -251,9 +245,7 @@ class PostgresContentHttpService:
                     content_id=content_id,
                     content_version=request.content_version,
                     vehicle_model_ids=request.vehicle_model_ids,
-                    manual_locked=not (
-                        request.unlock_existing and not request.vehicle_model_ids
-                    ),
+                    manual_locked=not (request.unlock_existing and not request.vehicle_model_ids),
                 )
         finally:
             session.close()
@@ -280,15 +272,14 @@ class PostgresContentHttpService:
                     raise ContentResourceNotFound
                 if int(current_version) != request.content_version:
                     raise ContentAnalysisTargetChanged
-                configuration = active_analysis_configuration(
-                    session, self._runtime.settings
-                )
+                configuration = active_analysis_configuration(session, self._runtime.settings)
                 record = PostgresContentQueryRepository(
                     session,
                     analysis_identity=configuration.identity,
                 ).get_content(content_id)
                 if record is None:
-                    raise ContentResourceNotFound
+                    # Content 已在当前事务确认存在；缺少可读 Analysis 投影属于不可纠正状态。
+                    raise ContentAnalysisRunConflict
                 if record.analysis.status != "completed":
                     raise ContentAnalysisRunConflict
                 taxonomy = configuration.taxonomy
@@ -297,22 +288,15 @@ class PostgresContentHttpService:
                     and request.voice_type not in taxonomy.voice_types
                 ):
                     raise ContentAnalysisRunConflict
-                if (
-                    request.sentiment is not None
-                    and request.sentiment not in taxonomy.sentiments
-                ):
+                if request.sentiment is not None and request.sentiment not in taxonomy.sentiments:
                     raise ContentAnalysisRunConflict
                 label_pairs = (
-                    tuple(
-                        (item.primary_label, item.secondary_label)
-                        for item in request.labels
-                    )
+                    tuple((item.primary_label, item.secondary_label) for item in request.labels)
                     if request.labels is not None
                     else None
                 )
                 if label_pairs is not None and any(
-                    primary not in taxonomy.labels
-                    or secondary not in taxonomy.labels[primary]
+                    primary not in taxonomy.labels or secondary not in taxonomy.labels[primary]
                     for primary, secondary in label_pairs
                 ):
                     raise ContentAnalysisRunConflict
@@ -408,9 +392,7 @@ class PostgresContentHttpService:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                configuration = active_analysis_configuration(
-                    session, self._runtime.settings
-                )
+                configuration = active_analysis_configuration(session, self._runtime.settings)
                 identity = configuration.identity
                 if identity is None:
                     raise ContentAnalysisUnavailable
@@ -766,9 +748,7 @@ class PostgresContentHttpService:
         session = self._runtime.database.new_session()
         try:
             with session.begin():
-                configuration = active_analysis_configuration(
-                    session, self._runtime.settings
-                )
+                configuration = active_analysis_configuration(session, self._runtime.settings)
                 summary = PostgresContentRelevanceReviewRepository(session).review_relevance(
                     content_ids=request.content_ids,
                     decision=request.decision,
@@ -905,9 +885,7 @@ def _analysis_run_response(
         target_count=cast(int, row["target_count"]),
         shard_count=cast(int, row["shard_count"]),
         shard_size=cast(int, row["shard_size"]),
-        analysis_scheme_version_id=cast(
-            UUID | None, row["analysis_scheme_version_id"]
-        ),
+        analysis_scheme_version_id=cast(UUID | None, row["analysis_scheme_version_id"]),
         prompt_version=cast(str, row["prompt_version"]),
         prompt_sha256=cast(str, row["prompt_sha256"]),
         taxonomy_sha256=cast(str, row["taxonomy_sha256"]),
@@ -971,9 +949,7 @@ def _item_response(record: ContentReadRecord) -> ContentListItemResponse:
             model=record.analysis.model,
             latest_run_id=record.analysis.latest_run_id,
             latest_run_status=record.analysis.latest_run_status,
-            manual_locked_dimensions=cast(
-                Any, record.analysis.manual_locked_dimensions
-            ),
+            manual_locked_dimensions=cast(Any, record.analysis.manual_locked_dimensions),
         ),
         effective_relevance=cast(ContentRelevance | None, record.effective_relevance),
         relevance_source=cast(ContentRelevanceSource | None, record.relevance_source),

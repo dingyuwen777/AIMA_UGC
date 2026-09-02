@@ -3,9 +3,9 @@ schema: coding-change/v1
 id: CHG-20260901-voice-plaza-taxonomy-filters
 title: 声音广场文件 Taxonomy 与筛选一致性
 level: L3
-status: in_progress
+status: ready_for_review
 owner: codex
-branch: main
+branch: test/294-vp5-u1-u5-runtime-validation
 created: 2026-09-01
 updated: 2026-09-02
 completion_gate: required
@@ -92,19 +92,19 @@ Excluded：管理员配置页、可写 Scheme API/数据库、车型、动态内
 - [x] 生成 OpenAPI 与 Orval Client，确认无手改 generated 文件。
 - [x] 实现 Taxonomy Store/API、voice_type 和标签级联、不可用状态。
 - [x] 收敛平台显示和北京时间整日边界的真实公共 Owner。
-- [ ] 执行目标、模块、Contract、Browser、Full-stack、Build 和治理验证。
-- [ ] 重新读取上游，完成 Completion Audit 和两阶段 Review。
+- [x] 执行目标、模块、Contract、Browser、Full-stack、Build 和治理验证。
+- [x] 重新读取上游，完成 Completion Audit 和两阶段 Review。
 
 # Completion Audit
 
 - [x] upstream_re_read
 - [x] change_coverage
 - [x] reverse_audit
-- [ ] unresolved_cleared
+- [x] unresolved_cleared
 
 # 当前验证边界
 
-Contract/API、前端 Unit、42 条 Browser Mock、类型检查、Build、Figma 和项目质量门禁已有本轮新鲜证据。PostgreSQL Integration 与 Real Full-stack Golden Path 因本机 Docker Desktop Linux Engine 未响应而尚未运行；这属于 required 证据缺口，所以 Change 继续保持 `in_progress`，不勾选 `unresolved_cleared`，也不进入 Ready。
+Contract/API、前端 Unit、43 条 Browser Mock、类型检查、Build、Figma、186 条 PostgreSQL Integration 与 9 条 Real Full-stack Golden Path 已有本轮新鲜证据。当前无语义未决项，Change 进入 `ready_for_review`；PR CI、合并与 main 新鲜验证仍是外部交付门禁。
 
 # 独立 Review 记录
 
@@ -112,7 +112,7 @@ Contract/API、前端 Unit、42 条 Browser Mock、类型检查、Build、Figma 
 - Finding：Loader 允许超长一级标签，但 HTTP Response 有 256 字符上限，导致合法 Loader 输出在投影阶段返回 500，而不是统一 503。
 - Red：新增回归测试后目标套件为 `1 failed, 2 passed`，失败值明确为 `500 != 503`。
 - Green / re-review：显式捕获 Pydantic `ValidationError` 并映射为同一不可用异常；目标测试 `3 passed`，完整 API `41 passed`；未发现新的代码级 Finding。
-- Review 结论：实现范围 `NO_FINDINGS_WITHIN_SCOPE`，但 required PostgreSQL/Real Full-stack 证据缺失，Change 状态仍是 `in_progress`，不能给出 Ready/可发布结论。
+- 该记录是 VP1–VP4 初始实现 Review；本次恢复验证另以 Issue #294 / PR #295 的 current base、current head 和最终 CI 记录补充，不再把 PostgreSQL/Real Full-stack 列为缺口。
 
 # 兼容、部署与回滚
 

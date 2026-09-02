@@ -54,9 +54,7 @@ class ContentAnalysisManualReviewRequest(BaseModel):
         if len(self.unlock_dimensions) != len(set(self.unlock_dimensions)):
             raise ValueError("unlock_dimensions 不能重复")
         if self.labels is not None:
-            identities = tuple(
-                (item.primary_label, item.secondary_label) for item in self.labels
-            )
+            identities = tuple((item.primary_label, item.secondary_label) for item in self.labels)
             if len(identities) != len(set(identities)):
                 raise ValueError("labels 不能重复")
         return self

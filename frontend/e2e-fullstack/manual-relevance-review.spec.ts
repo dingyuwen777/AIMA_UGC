@@ -10,15 +10,16 @@ test('AI irrelevant 内容可在真实声音广场人工纳入并进入默认业
 
   await page.getByLabel('AI 相关性').selectOption('irrelevant')
   await page.getByRole('button', { name: '查询' }).click()
-  await expect(page.getByText(manualIncludeTitle, { exact: true })).toBeVisible({ timeout: 30_000 })
-  await expect(page.getByText('AI 判定不相关', { exact: true })).toBeVisible()
+  const contentRow = page.locator('article.content-row').filter({ hasText: manualIncludeTitle })
+  await expect(contentRow.getByText(manualIncludeTitle, { exact: true })).toBeVisible({ timeout: 30_000 })
+  await expect(contentRow.getByText('AI 判定不相关', { exact: true })).toBeVisible()
 
   const reviewResponsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' &&
       new URL(response.url()).pathname === '/api/v1/content-relevance-reviews',
   )
-  await page.getByRole('button', { name: '人工标记为相关' }).click()
+  await contentRow.getByRole('button', { name: '人工标记为相关' }).click()
   const reviewResponse = await reviewResponsePromise
   expect(reviewResponse.status()).toBe(200)
   expect(await reviewResponse.json()).toMatchObject({
@@ -39,14 +40,15 @@ test('AI relevant 内容可人工排除并撤销，恢复 AI 业务基线', asyn
   await page.goto('/voice-plaza')
   await page.getByLabel('AI 相关性').selectOption('relevant')
   await page.getByRole('button', { name: '查询' }).click()
-  await expect(page.getByText(manualExcludeTitle, { exact: true })).toBeVisible({ timeout: 30_000 })
+  const contentRow = page.locator('article.content-row').filter({ hasText: manualExcludeTitle })
+  await expect(contentRow.getByText(manualExcludeTitle, { exact: true })).toBeVisible({ timeout: 30_000 })
 
   const excludeResponsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' &&
       new URL(response.url()).pathname === '/api/v1/content-relevance-reviews',
   )
-  await page.getByRole('button', { name: '人工标记为不相关' }).click()
+  await contentRow.getByRole('button', { name: '人工标记为不相关' }).click()
   const excludeResponse = await excludeResponsePromise
   expect(excludeResponse.status()).toBe(200)
   expect(await excludeResponse.json()).toMatchObject({
@@ -68,7 +70,7 @@ test('AI relevant 内容可人工排除并撤销，恢复 AI 业务基线', asyn
       response.request().method() === 'POST' &&
       new URL(response.url()).pathname === '/api/v1/content-relevance-reviews',
   )
-  await page.getByRole('button', { name: '撤销人工判断' }).click()
+  await contentRow.getByRole('button', { name: '撤销人工判断' }).click()
   const undoResponse = await undoResponsePromise
   expect(undoResponse.status()).toBe(200)
   expect(await undoResponse.json()).toMatchObject({
@@ -81,8 +83,7 @@ test('AI relevant 内容可人工排除并撤销，恢复 AI 业务基线', asyn
 
   await page.getByLabel('AI 相关性').selectOption('relevant')
   await page.getByRole('button', { name: '查询' }).click()
-  const contentList = page.getByLabel('声音广场内容列表')
-  await expect(contentList.getByText(manualExcludeTitle, { exact: true })).toBeVisible({ timeout: 30_000 })
-  await expect(contentList.getByText('中性', { exact: true })).toBeVisible()
-  await expect(contentList.getByText(preservedAiLabel, { exact: true })).toBeVisible()
+  await expect(contentRow.getByText(manualExcludeTitle, { exact: true })).toBeVisible({ timeout: 30_000 })
+  await expect(contentRow.getByText('中性', { exact: true })).toBeVisible()
+  await expect(contentRow.getByText(preservedAiLabel, { exact: true })).toBeVisible()
 })
