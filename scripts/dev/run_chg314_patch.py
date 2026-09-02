@@ -7,10 +7,8 @@ import apply_chg314 as patch
 
 def patch_audit_repository_and_service() -> None:
     path = "backend/src/aima_ugc/adapters/persistence/postgres/system.py"
-    patch.replace_in_section(
+    patch.replace_once(
         path,
-        "class PostgresAuditRepository:",
-        "\n\nclass ",
         '''    def list_recent(self, *, limit: int) -> tuple[AuditEvent, ...]:
         """按时间倒序返回有界审计事件，不提供任意正文搜索。"""
 
