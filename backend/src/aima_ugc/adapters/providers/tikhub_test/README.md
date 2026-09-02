@@ -54,14 +54,10 @@ backend/src/aima_ugc/adapters/providers/tikhub/
 
 如果只是改人工入口的默认参数/输出路径，才优先改 `tikhub_test`；如果要改 endpoint、分页、Mapper 或 Capability，应先改生产 TikHub 代码和测试，再让本目录继续复用。
 
-小红书指定账号 Discovery 的 Provider endpoint、Extractor 和分页也不写在 `xiaohongshu_accounts_test.py` 里，而由：
+小红书指定账号 Discovery 的 Provider endpoint、Extractor 和分页也不写在 `xiaohongshu_accounts_test.py` 里，而由以下生产适配层统一维护：
 
-```text
-adapters/providers/tikhub/operations/xiaohongshu_accounts.py
-adapters/providers/tikhub/account_runtime.py
-```
-
-统一维护。
+- [`backend/src/aima_ugc/adapters/providers/tikhub/operations/xiaohongshu_accounts.py`](../tikhub/operations/xiaohongshu_accounts.py)
+- [`backend/src/aima_ugc/adapters/providers/tikhub/account_runtime.py`](../tikhub/account_runtime.py)
 
 ## 2. 配置 URL 和密钥
 
@@ -218,7 +214,7 @@ result = run_xiaohongshu_accounts(
 
 仓库已经提供一个只放人工参数的薄入口：
 
-- [`xiaohongshu_accounts_test.py`](xiaohongshu_accounts_test.py)
+- [`backend/src/aima_ugc/adapters/providers/tikhub_test/xiaohongshu_accounts_test.py`](xiaohongshu_accounts_test.py)
 
 当前文件预置的五个目标账号是：
 
@@ -266,21 +262,25 @@ output/xiaohongshu/resolved_accounts.json
 
 - `start_date` / `end_date` 都是**包含式**自然日；
 - 内部按 `Asia/Shanghai` 转换为左闭右开的时间窗口；
-- `get_user_posted_notes` 当前没有被假设成“看到旧笔记就可安全停止”，所以会继续按 Provider cursor 翻页，再做日期过滤。
+- `get_user_posted_notes` 当前没有被假设成“看到旧笔记就可安全停止”，所以会继续按 Provider cursor 翻页，再做日期过滤；
+- 翻页优先使用响应级下一页 `cursor`，只有响应未观察到该字段时才兼容回退到最后一条笔记的 cursor/note_id。
 
 `comment_mode="all"` 的“全部”含义是：
 
 ```text
-comment_count / reply_count
-不是停止条件
+正数或未知 comment_count / reply_count
+→ 不作为“已经抓完”的停止条件
 
-继续翻页直到
-→ Provider 明确 has_more=false / 分页耗尽
+显式 comment_count=0 / reply_count=0
+→ 沿用正式 Collection Decision，跳过对应评论/回复接口
+
+一旦进入评论/回复抓取
+→ 继续翻页直到 Provider 明确 has_more=false / 分页耗尽
 或
 → 技术硬页数上限触发
 ```
 
-这是为了避免详情里的数量滞后导致漏掉 Provider 实际还能返回的下一页。一级评论和二级回复都有回归测试覆盖“数量已达到但 `has_more=true`”的情况。
+这是为了避免详情里的正数计数滞后导致漏掉 Provider 实际还能返回的下一页。一级评论和二级回复都有回归测试覆盖“数量已达到但 `has_more=true`”的情况。
 
 仍保留：
 
@@ -289,9 +289,7 @@ max_comment_pages_per_content
 max_reply_pages_per_root
 ```
 
-作为异常响应或极端数据量下的技术硬保护。如果硬上限先于 Provider 耗尽触发，运行摘要不能把该结果视为完整。
-
-显式观察到 `reply_count=0` 时不再额外调用二级回复接口，避免给所有零回复根评论增加无意义付费请求。
+作为异常响应或极端数据量下的技术硬保护。如果硬上限先于 Provider 耗尽触发，运行摘要不能把该结果视为完整。二级回复由于共享 Runner 不暴露最终 Provider 停止原因，账号 `all` 在**触达回复硬页数边界**时采取保守策略，标记账号为 `partial`，避免假完整。
 
 账号 Discovery 使用：
 
@@ -405,7 +403,7 @@ provider_config_id = None
 - `write_to_database=False`：纯文件调试；
 - `write_to_database=True`：同一网络响应同时接入正式数据库来源链。
 
-指定账号入口的 `comment_mode="all"` 会忽略 `max_comments_per_content` / `max_replies_per_root` 这两个**软数量目标**，但不会忽略对应的硬页数上限。
+指定账号入口的 `comment_mode="all"` 会忽略 `max_comments_per_content` / `max_replies_per_root` 这两个**软数量目标**，但不会忽略对应的硬页数上限；显式观察到评论/回复计数为 0 时仍沿用正式 Decision 的零值跳过语义。
 
 当前系统**没有生产预算/金额硬上限模块**。这些参数是人工调试/技术保护边界，不是预算账户。
 
@@ -675,17 +673,17 @@ Run / Scope
 
 | 需求 | 正确修改入口 |
 | --- | --- |
-| 改人工默认关键词/页数/输出目录 | [`test.py`](test.py) 或本目录调用参数 |
-| 改小红书指定账号/日期/人工页数 | [`xiaohongshu_accounts_test.py`](xiaohongshu_accounts_test.py) |
-| 改小红书账号 Discovery endpoint/分页 | `adapters/providers/tikhub/operations/xiaohongshu_accounts.py` + `account_runtime.py` |
-| 改某平台关键词 endpoint/参数翻译 | `adapters/providers/tikhub/operations/<platform>.py` |
+| 改人工默认关键词/页数/输出目录 | [`backend/src/aima_ugc/adapters/providers/tikhub_test/test.py`](test.py) 或本目录调用参数 |
+| 改小红书指定账号/日期/人工页数 | [`backend/src/aima_ugc/adapters/providers/tikhub_test/xiaohongshu_accounts_test.py`](xiaohongshu_accounts_test.py) |
+| 改小红书账号 Discovery endpoint/分页 | [`backend/src/aima_ugc/adapters/providers/tikhub/operations/xiaohongshu_accounts.py`](../tikhub/operations/xiaohongshu_accounts.py) + [`backend/src/aima_ugc/adapters/providers/tikhub/account_runtime.py`](../tikhub/account_runtime.py) |
+| 改某平台关键词 endpoint/参数翻译 | 对应 `adapters/providers/tikhub/operations/<platform>.py` |
 | 改分页推进/停止 | 对应生产 Operation / Runtime |
-| 改 Provider Raw 字段映射 | `adapters/providers/tikhub/mappers/<platform>.py` |
+| 改 Provider Raw 字段映射 | 对应 `adapters/providers/tikhub/mappers/<platform>.py` |
 | 改前端可配置能力 | [`backend/src/aima_ugc/adapters/providers/tikhub/capabilities.py`](../tikhub/capabilities.py) + Contract/API |
 | 改 TikHub 单价 | [`backend/src/aima_ugc/adapters/providers/tikhub/pricing.toml`](../tikhub/pricing.toml) |
 | 改内容去重/Current/Version | Content Owner，不在 `tikhub_test` |
 | 改正式详情/评论是否继续抓 | Collection Decision，不在人工入口复制规则 |
-| 改账号人工 `limited/all` 策略 | `tikhub_test/operations/xiaohongshu_accounts.py`，不得修改正式 Decision Contract |
+| 改账号人工 `limited/all` 策略 | [`backend/src/aima_ugc/adapters/providers/tikhub_test/operations/xiaohongshu_accounts.py`](operations/xiaohongshu_accounts.py)，不得修改正式 Decision Contract |
 | 改 Excel 列/安全/样式 | [`backend/src/aima_ugc/platform/export/excel.py`](../../../platform/export/excel.py) + Export Contract |
 | 改数据库调试装配 | [`backend/src/aima_ugc/bootstrap/tikhub_test_database.py`](../../../bootstrap/tikhub_test_database.py)，同时保持正式来源链 |
 
@@ -708,10 +706,12 @@ Fake Transport 纵切 / PostgreSQL integration
 
 - `red_id` 精确匹配和昵称歧义 fail closed；
 - 用户 Search/Notes 分页推进与异常停止；
+- 响应级用户笔记 cursor 优先于列表项兼容回退值；
 - 北京时间日期过滤；
 - 账号 Discovery → Detail → Comments → Canonical JSONL → Excel；
-- `all` 在 `comment_count` 已达到但 Provider 仍 `has_more=true` 时继续翻一级评论；
-- `all` 在 `reply_count` 已达到但 Provider 仍 `has_more=true` 时继续翻二级回复。
+- `all` 在正数 `comment_count` 已达到但 Provider 仍 `has_more=true` 时继续翻一级评论；
+- `all` 在正数 `reply_count` 已达到但 Provider 仍 `has_more=true` 时继续翻二级回复；
+- 回复触达 `max_reply_pages_per_root` 边界时保守标记 `partial`，避免假完整。
 
 真实接口只在明确需要验证 Provider 当前行为时做受限 Probe：
 
