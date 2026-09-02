@@ -1,4 +1,7 @@
-"""一次性修复 CHG-314 Browser Mock fail-closed 首轮暴露的测试归属问题。"""
+"""一次性修复 CHG-314 Browser Mock fail-closed 首轮暴露的测试归属问题。
+
+本文件变更用于重新触发分支专用 Runner；最终交付前与临时 Workflow 一并删除。
+"""
 
 from __future__ import annotations
 
