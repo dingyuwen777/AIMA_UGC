@@ -117,7 +117,7 @@ Excluded：修改 Agent_Skills canonical 或本地 managed Skill、批量迁移 
 - [x] 重新读取上游，完成 Completion Audit。
 - [x] 完成独立 Review、PR current-head CI 与 Workflow 成功证据。
 - [x] 获授权后受保护合并并执行 main fresh。
-- [ ] 用独立归档 PR 收尾并关闭 Issue。
+- [x] 用独立归档 PR #300 收尾；Issue 只在该 PR 合并并取得 main fresh 证据后关闭。
 
 # 当前新鲜证据
 
@@ -130,7 +130,7 @@ Excluded：修改 Agent_Skills canonical 或本地 managed Skill、批量迁移 
 - 实现分支 final head `3a1fb629` 的 PR run 33596647829、Runtime 33596625892 与完整 CI 33596626086 全部成功；两阶段独立 Review 无 findings。
 - PR #299 已按用户对该 PR 的明确授权使用管理员权限合并；merge commit 为 `c2664f0c0e5e85506bedf36de6caa0e8a39c3b72`。
 - merge commit 的 main fresh Change Completion Gate 33597529998、Runtime Acceptance 33597530035 与完整 CI 33597530173 全部成功；Repository Quality、PostgreSQL Integration、Real Full-stack、Docs/Governance 和 CI Gate 均实际执行并通过。
-- 本归档 PR 只把已完成记录从 Active 移入 Archive，不改变产品、治理实现或 required check 身份。
+- 独立归档 PR #300 只把已完成记录从 Active 移入 Archive，不改变产品、治理实现或 required check 身份；Issue 关闭仍以该 PR 合并和 main fresh 为条件。
 
 # Completion Audit
 
