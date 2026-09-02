@@ -32,6 +32,7 @@ const plan: CollectionPlanResponse = {
   comment_policy: 'adaptive',
   platforms: [{ platform: 'xiaohongshu', provider_config_id: 'provider-1', search_config: {} }],
   keyword_pack_ids: ['pack-1'],
+  vehicle_model_ids: ['vehicle-1'],
   created_at: '2026-08-28T08:00:00+08:00',
   updated_at: '2026-08-28T08:00:00+08:00',
 }
@@ -61,10 +62,15 @@ describe('采集策略正式 Figma 组件基线', () => {
     expect(html).not.toContain('Discovery')
   })
 
-  it('计划列表只保留六个有信息增量的列并展示可读周期', async () => {
+  it('计划列表只保留六列并按 Figma 合并展示真实词包与车型范围', async () => {
     const html = await renderComponent(PlanPanel, {
       plans: [plan],
       packs: [{ id: 'pack-1', name: '新品词包', description: '', enabled: true, version: 3, keyword_count: 2 }],
+      vehicles: [{
+        id: 'vehicle-1', code: 'A7', display_name: '爱玛 A7', status: 'deprecated', version: 2,
+        catalog_version: 8, merged_into_id: null, aliases: [], keyword_pack_ids: [], referenced: true,
+        created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-28T00:00:00Z',
+      }],
       providers: [{ id: 'provider-1', provider: 'tikhub', display_name: 'TikHub 主配置' }],
       total: 1,
       offset: 0,
@@ -77,11 +83,15 @@ describe('采集策略正式 Figma 组件基线', () => {
     expect(html.match(/<th[ >]/g)).toHaveLength(6)
     expect(html).not.toContain('>采集策略</th>')
     expect(html).toContain('计划 / 编号')
+    expect(html).toContain('词包 / 车型')
     expect(html).toContain('目标平台 / 采集渠道')
-    expect(html).toContain('每 6 小时')
+    expect(html).toContain('新品词包')
+    expect(html).toContain('车型：爱玛 A7')
+    expect(html).toContain('计划编号：33333333-3333-4333-8333-333333333333')
+    expect(html).toContain('每6小时')
   })
 
-  it('新建计划只提供 Figma 批准的五个周期预设且默认每六小时', async () => {
+  it('新建计划只提供 Figma 批准的五个频率预设且默认每六小时', async () => {
     const html = await renderComponent(PlanCreateDrawer, {
       modelValue: true,
       packs: [],
@@ -94,13 +104,17 @@ describe('采集策略正式 Figma 组件基线', () => {
       'onUpdate:modelValue': () => undefined,
     })
 
-    expect(html).toContain('aria-label="执行周期"')
-    expect(html).toMatch(/<option value="0 \*\/6 \* \* \*"[^>]* selected>每 6 小时<\/option>/)
+    expect(html).toContain('保存发现范围与周期采集配置')
+    expect(html).toContain('4. 目标平台与采集渠道')
+    expect(html).toContain('5. 执行频率')
+    expect(html).toContain('系统固定规则')
+    expect(html).toContain('aria-label="执行频率"')
+    expect(html).toMatch(/<option value="0 \*\/6 \* \* \*"[^>]* selected>每6小时<\/option>/)
     for (const [label, value] of [
-      ['每 1 小时', '0 * * * *'],
-      ['每 3 小时', '0 */3 * * *'],
-      ['每 6 小时', '0 */6 * * *'],
-      ['每 12 小时', '0 */12 * * *'],
+      ['每1小时', '0 * * * *'],
+      ['每3小时', '0 */3 * * *'],
+      ['每6小时', '0 */6 * * *'],
+      ['每12小时', '0 */12 * * *'],
       ['每天 00:00', '0 0 * * *'],
     ]) {
       expect(html).toContain(`value="${value}"`)

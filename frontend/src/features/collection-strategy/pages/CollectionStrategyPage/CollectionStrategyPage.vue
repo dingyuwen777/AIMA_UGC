@@ -82,12 +82,6 @@ function showNotice(message: string): void {
         >
           刷新数据
         </AimaButton><AimaButton
-          variant="outline"
-          icon="plus"
-          @click="packDialogOpen = true"
-        >
-          新建词包
-        </AimaButton><AimaButton
           variant="primary"
           icon="plus"
           @click="planDrawerOpen = true"
@@ -139,6 +133,7 @@ function showNotice(message: string): void {
       :loading="store.loading"
       :saving="store.saving"
       :toggle-reason="store.packToggleReason"
+      @create="packDialogOpen = true"
       @open="store.openPack"
       @toggle="store.togglePack"
       @add-keyword="addKeyword"
@@ -158,7 +153,7 @@ function showNotice(message: string): void {
       <section class="filters">
         <span class="search-field"><input
           v-model="store.filters.search"
-          placeholder="搜索计划名称、Plan ID"
+          placeholder="搜索计划名称、计划编号"
         ></span><select v-model="store.filters.enabled">
           <option value="">
             全部状态
@@ -191,6 +186,7 @@ function showNotice(message: string): void {
       <PlanPanel
         :plans="store.plans"
         :packs="store.packCatalog"
+        :vehicles="store.vehicleCatalog"
         :providers="providers"
         :total="store.planTotal"
         :offset="store.planOffset"
@@ -226,6 +222,7 @@ function showNotice(message: string): void {
       v-model="planDetailOpen"
       :plan="store.selectedPlan"
       :packs="store.packCatalog"
+      :vehicles="store.vehicleCatalog"
       :providers="providers"
     />
     <AimaFeedbackBanner
@@ -240,6 +237,7 @@ function showNotice(message: string): void {
 </template>
 
 <style scoped>
+:deep(.aima-page-actions) { gap: 12px; }
 .tabs { display: flex; gap: 28px; min-height: 46px; margin: 0 0 24px; border-bottom: 1px solid var(--aima-border); }.tabs button { height: 46px; padding: 0 2px; border: 0; border-bottom: 2px solid transparent; color: #536075; background: transparent; cursor: pointer; font-size: 13px; }.tabs button.active { border-bottom-color: var(--aima-primary); color: var(--aima-primary); font-weight: 600; }
 .filters { display: grid; grid-template-columns: 420px 120px 172px 1fr auto auto; gap: 8px; margin-bottom: 20px; padding: 14px; border: 1px solid var(--aima-border); border-radius: 8px; background: #fff; }.filters input,.filters select { width: 100%; height: 40px; padding: 0 10px; border: 1px solid #d9dfe8; border-radius: 6px; color: var(--aima-text-secondary); background: #fff; font-size: 12px; }
 .page-error { margin-bottom: 14px; }.success-toast { position: fixed; z-index: 200; top: 8px; left: 50%; width: 360px; transform: translateX(-50%); box-shadow: 0 8px 24px rgb(22 29 43 / 12%); }

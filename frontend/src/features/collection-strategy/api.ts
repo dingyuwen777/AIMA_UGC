@@ -8,6 +8,7 @@ import {
   getKeywordPack,
   listCollectionPlans,
   listKeywordPacks,
+  listVehicleModels,
   setGlobalRelevanceConfig,
   updateCollectionPlanEnabled,
   updateKeywordPackEnabled,
@@ -24,6 +25,8 @@ import {
   type KeywordPackSummaryResponse,
   type ListCollectionPlansParams,
   type ListKeywordPacksParams,
+  type ListVehicleModelsParams,
+  type VehicleModelListResponse,
 } from '../../generated/api/client'
 
 export class CollectionStrategyApiError extends Error {
@@ -57,6 +60,12 @@ export async function fetchKeywordPacks(
   params?: ListKeywordPacksParams,
 ): Promise<KeywordPackListResponse> {
   return unwrap(await listKeywordPacks(params))
+}
+
+export async function fetchVehicleModels(
+  params?: ListVehicleModelsParams,
+): Promise<VehicleModelListResponse> {
+  return unwrap(await listVehicleModels(params))
 }
 
 export async function createPack(request: KeywordPackCreateRequest): Promise<KeywordPackResponse> {

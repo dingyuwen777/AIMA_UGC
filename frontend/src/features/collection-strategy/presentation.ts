@@ -2,10 +2,10 @@ import type { CollectionPlatform } from '../../generated/api/client'
 import { PLATFORM_LABELS, PLATFORM_OPTIONS } from '../../shared/domain/platform'
 
 export const COLLECTION_SCHEDULE_PRESETS = [
-  { value: '0 * * * *', label: '每 1 小时' },
-  { value: '0 */3 * * *', label: '每 3 小时' },
-  { value: '0 */6 * * *', label: '每 6 小时' },
-  { value: '0 */12 * * *', label: '每 12 小时' },
+  { value: '0 * * * *', label: '每1小时' },
+  { value: '0 */3 * * *', label: '每3小时' },
+  { value: '0 */6 * * *', label: '每6小时' },
+  { value: '0 */12 * * *', label: '每12小时' },
   { value: '0 0 * * *', label: '每天 00:00' },
 ] as const
 

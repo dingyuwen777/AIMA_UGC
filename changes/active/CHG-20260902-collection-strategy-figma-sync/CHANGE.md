@@ -3,7 +3,7 @@ schema: coding-change/v1
 id: CHG-20260902-collection-strategy-figma-sync
 title: 同步采集策略 Figma 与真实车型和词包后端契约
 level: L2
-status: proposed
+status: in_progress
 owner: dingyuwen777
 branch: fix/306-collection-strategy-figma-sync
 created: 2026-09-02
@@ -11,7 +11,7 @@ updated: 2026-09-02
 completion_gate: required
 depends_on: []
 affected_areas: [frontend, figma-sync, tests]
-affected_paths: [frontend/src/features/collection-strategy, frontend/tests/collection-strategy.spec.ts, frontend/e2e/collection-strategy.spec.ts]
+affected_paths: [frontend/src/features/collection-strategy, frontend/tests/collection-strategy.spec.ts, frontend/tests/collection-strategy-design.spec.ts, frontend/e2e/collection-strategy.spec.ts]
 contracts: [existing-openapi-generated-client]
 data_changes: [none]
 ---
@@ -22,17 +22,17 @@ data_changes: [none]
 
 # 成功标准
 
-- [ ] 页面头部仅显示“刷新数据”和“新建采集计划”，关键词包卡片头部提供唯一“新建词包”入口。
-- [ ] 采集计划列表第三列与 Figma 一致为“词包 / 车型”，能组合展示 API 返回的词包与车型范围。
-- [ ] 计划详情显示真实词包与车型；车型使用 `display_name · code`，历史 deprecated/merged 车型仍可解析，目录缺失时保留原始 ID。
-- [ ] 新建计划继续只从 active 车型目录选择，并保持“词包或车型至少一个”的现有资格约束。
-- [ ] 前端通过 generated Orval client 完整分页读取车型目录，不改后端 Contract、generated client、依赖或数据库。
+- [x] 页面头部仅显示“刷新数据”和“新建采集计划”，关键词包卡片头部提供唯一“新建词包”入口。
+- [x] 采集计划列表第三列与 Figma 一致为“词包 / 车型”，能组合展示 API 返回的词包与车型范围。
+- [x] 计划详情显示真实词包与车型；车型使用 `display_name · code`，历史 deprecated/merged 车型仍可解析，目录缺失时保留原始 ID。
+- [x] 新建计划继续只从 active 车型目录选择，并保持“词包或车型至少一个”的现有资格约束。
+- [x] 前端通过 generated Orval client 完整分页读取车型目录，不改后端 Contract、generated client、依赖或数据库。
 - [ ] Vitest、Playwright Browser Mock、lint、typecheck、build、Change/CI 门禁形成新鲜证据，并完成合并、归档与 Issue 关闭。
 
 # 范围
 
-- 调整 Collection Strategy Feature 的 API wrapper、Store、页面组合、关键词包面板、计划列表与计划详情。
-- 补充 Store/单元测试和 `frontend/e2e/collection-strategy.spec.ts` Browser Mock 验收。
+- 调整 Collection Strategy Feature 的 API wrapper、Store、页面组合、关键词包面板、计划列表、计划详情和 Figma 对应的创建抽屉展示文案。
+- 补充 Store/单元测试、SSR 设计基线和 `frontend/e2e/collection-strategy.spec.ts` Browser Mock 验收。
 - 仅使用现有 AIMA UI 组件、Token、generated client 与共享 `VehicleMultiSelect`。
 
 # 非目标
@@ -47,7 +47,7 @@ data_changes: [none]
 
 - `CollectionPlanCreateRequest` / `CollectionPlanResponse` 既有字段及五个平台机器值保持不变。
 - 新建计划车型选择仍使用 `VehicleMultiSelect` 的 active-only 目录；历史展示目录与可创建目录语义不得混用。
-- `Asia/Shanghai`、现有 Cron 预设、Provider Capability/Search Config、全局相关性、词包分页和启停资格保持不变。
+- `Asia/Shanghai`、现有 Cron 值、Provider Capability/Search Config、全局相关性、词包分页和启停资格保持不变。
 - 车型展示失败不得伪造业务名；未解析 ID 必须保留可追溯原始值。
 
 # 关键决策
@@ -55,30 +55,31 @@ data_changes: [none]
 - 车型目录展示数据由 Collection Strategy Store 统一加载，详情和列表共享，不让组件各自猜测或重复请求。
 - 历史展示读取 `/api/v1/vehicle-models` 时不传 `status`，按 `limit=200` + `offset` 直到覆盖 `total`，因此 active/deprecated/merged 均可解析；创建选择器继续保留 active-only。
 - 列表发现范围按 Figma 的三行密度展示前两项，剩余项用“另有 N 项范围”汇总；车型项加“车型：”前缀，详情用 `display_name · code`。
+- Figma 当前正式文案使用“执行频率”“目标平台与采集渠道”“系统固定规则”和无空格频率标签；仅调整用户可见文案，不改变 Cron 机器值。
 - 采用 connector-only 降级 Git 交付是本轮已获用户明确授权的宿主能力例外；仍保留 Issue、Change、PR、CI、Review、归档和 main 新鲜校验，不绕过门禁。
 
 # 需求追溯
 
 | 编号 | 要求 | 来源 | 状态 | 证据 |
 | --- | --- | --- | --- | --- |
-| R1 | 页头只保留刷新与新建计划，新建词包移动到关键词包卡片头部 | https://github.com/dingyuwen777/AIMA_UGC/issues/306 | not_satisfied | Browser Mock 回归待实现 |
-| R2 | 计划列表同时展示真实关键词包与车型范围，并与 Figma 六列表格一致 | https://github.com/dingyuwen777/AIMA_UGC/issues/306 | not_satisfied | Store/Browser Mock 回归待实现 |
-| R3 | 计划详情展示真实车型名与 code，历史状态可解析，缺失目录回退原始 ID | https://github.com/dingyuwen777/AIMA_UGC/issues/306 | not_satisfied | Browser Mock 回归待实现 |
-| R4 | 新建计划保持 active-only 车型选择与词包/车型至少一个的资格规则 | https://github.com/dingyuwen777/AIMA_UGC/issues/306 | not_satisfied | 既有创建验收与新增目录请求断言待验证 |
-| R5 | 车型目录必须走 Orval generated client，并按 offset/limit 完整分页 | https://github.com/dingyuwen777/AIMA_UGC/issues/306 | not_satisfied | Vitest Store 分页回归待实现 |
-| R6 | 平台、Provider、Cron、北京时间、Capability/Eligibility、相关性与分页既有行为保持 | https://github.com/dingyuwen777/AIMA_UGC/issues/306 | not_satisfied | 既有前端测试与 CI 待验证 |
-| R7 | 不修改后端 Contract、generated client、依赖和数据库 | https://github.com/dingyuwen777/AIMA_UGC/issues/306 | not_satisfied | 最终 PR diff 审计待完成 |
+| R1 | 页头只保留刷新与新建计划，新建词包移动到关键词包卡片头部 | https://github.com/dingyuwen777/AIMA_UGC/issues/306 | not_satisfied | 实现已提交，等待 Browser Mock 与 CI 新鲜证据 |
+| R2 | 计划列表同时展示真实关键词包与车型范围，并与 Figma 六列表格一致 | https://github.com/dingyuwen777/AIMA_UGC/issues/306 | not_satisfied | 实现已提交，等待 SSR/Browser Mock 与 CI 新鲜证据 |
+| R3 | 计划详情展示真实车型名与 code，历史状态可解析，缺失目录回退原始 ID | https://github.com/dingyuwen777/AIMA_UGC/issues/306 | not_satisfied | 实现已提交，等待 Browser Mock 与 CI 新鲜证据 |
+| R4 | 新建计划保持 active-only 车型选择与词包/车型至少一个的资格规则 | https://github.com/dingyuwen777/AIMA_UGC/issues/306 | not_satisfied | 共享 VehicleMultiSelect 未改；等待 Browser Mock 与既有资格回归 |
+| R5 | 车型目录必须走 Orval generated client，并按 offset/limit 完整分页 | https://github.com/dingyuwen777/AIMA_UGC/issues/306 | not_satisfied | Store/API wrapper 与分页回归已实现，等待 CI 新鲜证据 |
+| R6 | 平台、Provider、Cron、北京时间、Capability/Eligibility、相关性与分页既有行为保持 | https://github.com/dingyuwen777/AIMA_UGC/issues/306 | not_satisfied | 机器值与 Owner 未改，等待完整前端测试与 CI |
+| R7 | 不修改后端 Contract、generated client、依赖和数据库 | https://github.com/dingyuwen777/AIMA_UGC/issues/306 | not_satisfied | 当前实现未触及相关路径，等待最终 PR diff 反向审计 |
 
 # 验证矩阵
 
 | 验证层 | 是否要求 | 范围 / 证据 |
 | --- | --- | --- |
-| 行为 / 单元 / 组件 | required | Store 车型目录全量分页、无 status 历史读取、既有资格行为 |
+| 行为 / 单元 / 组件 | required | Store 车型目录全量分页、无 status 历史读取、SSR Figma 展示基线、既有资格行为 |
 | 接口 / 契约 | required | generated `listVehicleModels` 参数及 CollectionPlan 车型字段只读复用；PR diff 不改 Contract/generated |
 | 集成 / 持久化 / 运行依赖 | not_applicable | 本次不修改持久化、数据库或真实外部服务语义；浏览器使用正式 HTTP 形状 Mock 验证前端接线 |
 | 用户 / 工作流验收 | required | Playwright 验证页头、关键词包卡片入口、计划范围、详情车型、新建计划 active-only 请求 |
 | 跨组件关键路径 | required | Store → Page → PlanPanel/PlanDetailDrawer 车型目录接线与创建 selector 独立 active-only 路径 |
-| 外部依赖 / 供应方探测 | not_applicable | 不需要 TikHub/Figma 运行时外部供应方探测；Figma 为正式设计事实源且已读取当前节点 |
+| 外部依赖 / 供应方探测 | not_applicable | 不需要 TikHub 真实请求；Figma 正式节点已作为设计事实源读取 |
 | 构建 / 打包 / 运行 | required | frontend lint、typecheck、Vitest、Vite build 与相关 Playwright/全栈 CI |
 | 文档 / 治理 / 其他 | required | Issue #306、Active Change、Requirement-Source、Completion Gate、Review、归档、main 新鲜 CI |
 
@@ -95,8 +96,8 @@ data_changes: [none]
 - [x] 建立四维任务路由：现有前后端项目 / feature 修复 / Vue3+TS+Python Contract / L2
 - [x] 建立失败测试或说明测试例外
 - [x] 建立并维护验证矩阵
-- [ ] 完成最小实现
-- [ ] 同步受影响文档
+- [x] 完成最小实现
+- [x] 同步受影响文档：产品/架构文档无事实变化，仅维护 Change/Issue 与 Figma 对应显示
 - [ ] 取得新鲜验证证据
 - [ ] 完成需求追溯与完成审计
 
@@ -104,16 +105,17 @@ data_changes: [none]
 
 ## 计划
 
-- 目标测试：`npm --prefix frontend test -- --run frontend/tests/collection-strategy.spec.ts`（以仓库实际脚本为准执行）
-- 浏览器验收：`frontend/e2e/collection-strategy.spec.ts`
-- 相关测试：现有 Collection Strategy 前端测试集
+- Store/单元：`frontend/tests/collection-strategy.spec.ts`
+- 设计 SSR 基线：`frontend/tests/collection-strategy-design.spec.ts`
+- Browser Mock：`frontend/e2e/collection-strategy.spec.ts`
 - 静态检查或构建：frontend lint、typecheck、build
 - 就绪检查：`python .agents/skills/coding/scripts/ready_check.py --root . --require-active-ready`
 - 正式证据以 GitHub Actions 使用仓库锁定工具链执行的结果为准；当前宿主不冒充锁定本地工具链。
 
 ## 新鲜证据
 
-- RED 阶段：已新增要求对应回归，等待 PR CI 证明当前实现不满足。
+- RED 阶段：PR #307 第一提交新增车型目录、Figma 结构回归，当前实现尚未补齐；Change Completion Gate 预期保持非 Ready。
+- GREEN 阶段：实现提交完成，等待 PR CI 结果回填。
 
 # 文档影响
 
@@ -122,6 +124,6 @@ data_changes: [none]
 
 # 交付
 
-- 提交：待创建
-- 拉取请求：待创建
+- 提交：RED + 实现提交进行中
+- 拉取请求：#307（Draft）
 - 发布：不适用；合并 main 后由现有发布流程按需处理
