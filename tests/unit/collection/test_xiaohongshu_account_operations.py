@@ -63,6 +63,17 @@ def test_user_search_request_and_pagination_keep_search_id() -> None:
     assert duplicate.stop_reason == "duplicate_page"
 
 
+def test_user_search_missing_list_shape_is_not_treated_as_empty_page() -> None:
+    """HTTP 200 的上游服务异常若没有用户列表，必须与真实空列表区分。"""
+    pagination = XiaohongshuUserSearchPagination.from_response(
+        current_page=1,
+        body={"data": {"data": "服务异常"}},
+    )
+
+    assert pagination.should_continue is False
+    assert pagination.stop_reason == "response_shape_unavailable"
+
+
 def test_user_info_and_posted_notes_requests_use_approved_app_v2_endpoints() -> None:
     """用户详情和已发布笔记必须使用当前批准的 App V2 endpoint。"""
     user_info = build_user_info_request(user_id="user-aima")
@@ -115,6 +126,17 @@ def test_user_posted_notes_cursor_uses_last_note_cursor_and_stops_safely() -> No
     )
     assert exhausted.should_continue is False
     assert exhausted.stop_reason == "provider_exhausted"
+
+
+def test_user_posted_notes_missing_list_shape_is_not_treated_as_empty_page() -> None:
+    """HTTP 200 的上游服务异常若没有 notes，必须作为响应结构缺失而不是零笔记。"""
+    pagination = XiaohongshuUserNotesPagination.from_response(
+        previous_cursor="",
+        body={"data": {"data": "服务异常"}},
+    )
+
+    assert pagination.should_continue is False
+    assert pagination.stop_reason == "response_shape_unavailable"
 
 
 def test_user_posted_notes_prefers_response_level_cursor() -> None:
