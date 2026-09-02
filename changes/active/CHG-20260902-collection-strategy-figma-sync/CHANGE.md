@@ -10,10 +10,20 @@ created: 2026-09-02
 updated: 2026-09-02
 completion_gate: required
 depends_on: []
-affected_areas: [frontend, figma-sync, tests]
-affected_paths: [frontend/src/features/collection-strategy, frontend/src/shared/VehicleMultiSelect.vue, frontend/tests/collection-strategy.spec.ts, frontend/tests/collection-strategy-design.spec.ts, frontend/e2e/collection-strategy.spec.ts, frontend/e2e/collection-strategy-figma-geometry.spec.ts]
-contracts: [existing-openapi-generated-client]
-data_changes: [none]
+affected_areas:
+  - frontend
+  - figma-sync
+  - tests
+affected_paths:
+  - frontend/src/features/collection-strategy/
+  - frontend/src/shared/VehicleMultiSelect.vue
+  - frontend/tests/collection-strategy.spec.ts
+  - frontend/tests/collection-strategy-design.spec.ts
+  - frontend/e2e/collection-strategy.spec.ts
+  - frontend/e2e/collection-strategy-figma-geometry.spec.ts
+  - changes/active/CHG-20260902-collection-strategy-figma-sync/CHANGE.md
+contracts: []
+data_changes: []
 ---
 
 # 目标
@@ -81,7 +91,7 @@ data_changes: [none]
 | 集成 / 持久化 / 运行依赖 | not_applicable | 本次不修改持久化、数据库或真实外部服务语义；前端接线通过正式 HTTP 形状 Browser Mock 验证，无需 TikHub 实探 |
 | 用户 / 工作流验收 | required | CI #3699：Playwright 46/46 全绿；覆盖页头/词包入口、范围、历史车型详情、active-only 创建以及正式 Figma 关键几何 |
 | 跨组件关键路径 | required | Store → Page → PlanPanel/PlanDetailDrawer 使用同一历史车型目录；PlanCreateDrawer → VehicleMultiSelect 保持独立 active-only 创建路径；相关回归全绿 |
-| 外部依赖 / 供应方探测 | not_applicable | 本次不改变供应方 API；Figma 正式节点作为设计事实源已重新读取并截图复核，TikHub 实探没有新增证明价值 |
+| 外部依赖 / 供应方探测 | not_applicable | 本次不改变供应方 API；Figma 正式节点已作为设计事实源重新读取并截图复核，TikHub 实探没有新增证明价值 |
 | 构建 / 打包 / 运行 | required | GitHub Actions 锁定 Node 24.19.0 / npm 11.17.0；lint、typecheck、Vitest、Vite build、Playwright 全绿；Runtime Acceptance #820 成功 |
 | 文档 / 治理 / 其他 | required | Issue #306、PR #307 `Requirement-Source: #306`、本 Active Change 均存在；Change Ready 提交后由 Completion Gate 再次机器验证 |
 
